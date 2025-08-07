@@ -412,8 +412,8 @@ KStatus TsTableSchemaManager::GetTagMeta(uint32_t version, std::vector<TagInfo>&
 KStatus TsTableSchemaManager::GetMetricSchema(uint32_t version,
                                               std::shared_ptr<MMapMetricsTable>* schema) {
   *schema = getMetricsTable(version);
-  if (!schema) {
-    LOG_ERROR("schema version [%u] does not exists", version);
+  if (*schema == nullptr) {
+    LOG_WARN("schema version [%u] does not exists", version);
     return FAIL;
   }
   return SUCCESS;

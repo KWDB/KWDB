@@ -38,6 +38,7 @@ class TSBlkDataTypeConvert {
   std::list<char*> alloc_mems_;
 
  public:
+  uint32_t scan_version_ = 0;
   std::shared_ptr<SchemaVersionConv> version_conv_;
   std::shared_ptr<TsTableSchemaManager> tbl_schema_mgr_;
   uint64_t key_;
@@ -48,9 +49,6 @@ class TSBlkDataTypeConvert {
   explicit TSBlkDataTypeConvert(TsBlockSpan& blk_span,
                                 const std::shared_ptr<TsTableSchemaManager>& tbl_schema_mgr, uint32_t scan_version);
 
-  TSBlkDataTypeConvert(TsBlock* block, uint32_t row_idx, uint32_t row_num,
-                       const std::shared_ptr<TsTableSchemaManager>& tbl_schema_mgr, uint32_t scan_version);
-
   ~TSBlkDataTypeConvert() {
     for (auto mem : alloc_mems_) {
       free(mem);
@@ -58,7 +56,7 @@ class TSBlkDataTypeConvert {
     alloc_mems_.clear();
   }
 
-  KStatus Init(uint32_t scan_version);
+  KStatus Init();
 
   void SetStartRowIdx(uint32_t start_row_idx) {
     start_row_idx_ = start_row_idx;

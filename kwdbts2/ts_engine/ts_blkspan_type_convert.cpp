@@ -28,21 +28,12 @@ TSBlkDataTypeConvert::TSBlkDataTypeConvert(TsBlockSpan& blk_span,
                                            const std::shared_ptr<TsTableSchemaManager>& tbl_schema_mgr,
                                            uint32_t scan_version)
   : block_(blk_span.block_.get()), start_row_idx_(blk_span.start_row_), row_num_(blk_span.nrow_),
-    tbl_schema_mgr_(tbl_schema_mgr) {
-  Init(scan_version);
-}
+    scan_version_(scan_version), tbl_schema_mgr_(tbl_schema_mgr) { }
 
-TSBlkDataTypeConvert::TSBlkDataTypeConvert(TsBlock* block, uint32_t row_idx, uint32_t row_num,
-                                           const std::shared_ptr<TsTableSchemaManager>& tbl_schema_mgr,
-                                           uint32_t scan_version) :
-        block_(block), start_row_idx_(row_idx), row_num_(row_num), tbl_schema_mgr_(tbl_schema_mgr) {
-  Init(scan_version);
-}
-
-KStatus TSBlkDataTypeConvert::Init(uint32_t scan_version) {
+KStatus TSBlkDataTypeConvert::Init() {
   if (tbl_schema_mgr_) {
     const auto blk_version = block_->GetTableVersion();
-    key_ = (static_cast<uint64_t>(blk_version) << 32) + scan_version;
+    key_ = (static_cast<uint64_t>(blk_version) << 32) + scan_version_;
     auto res = tbl_schema_mgr_->FindVersionConv(key_, &version_conv_);
     if (!res) {
       std::shared_ptr<MMapMetricsTable> blk_metric;
@@ -52,9 +43,9 @@ KStatus TSBlkDataTypeConvert::Init(uint32_t scan_version) {
         return FAIL;
       }
       std::shared_ptr<MMapMetricsTable> scan_metric;
-      s = tbl_schema_mgr_->GetMetricSchema(scan_version, &scan_metric);
+      s = tbl_schema_mgr_->GetMetricSchema(scan_version_, &scan_metric);
       if (s != SUCCESS) {
-        LOG_ERROR("GetMetricSchema failed. table version [%u]", scan_version);
+        LOG_ERROR("GetMetricSchema failed. table version [%u]", scan_version_);
         return FAIL;
       }
       auto& scan_cols = scan_metric->getIdxForValidCols();
@@ -79,7 +70,7 @@ KStatus TSBlkDataTypeConvert::Init(uint32_t scan_version) {
           blk_cols_extended[i] = UINT32_MAX;
         }
       }
-      version_conv_ = std::make_shared<SchemaVersionConv>(scan_version, blk_cols_extended, scan_attrs, blk_attrs);
+      version_conv_ = std::make_shared<SchemaVersionConv>(scan_version_, blk_cols_extended, scan_attrs, blk_attrs);
       tbl_schema_mgr_->InsertVersionConv(key_, version_conv_);
     }
   }
