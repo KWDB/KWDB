@@ -718,8 +718,8 @@ k_bool FieldInList::compare(Field **fields) {
         continue;
       }
       cmp.set_cmp_func(&field, &arg);
-      if (cmp.compare(nullptr, nullptr, field->is_nullable(),
-                      arg->is_nullable()) != 0) {
+      if (cmp.compare(nullptr, nullptr, field->CheckNull(),
+                      arg->CheckNull()) != 0) {
         ret = 1;
         break;
       } else {
