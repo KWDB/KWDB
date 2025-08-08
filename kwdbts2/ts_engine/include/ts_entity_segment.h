@@ -333,7 +333,9 @@ class TsEntitySegment : public TsSegmentBase, public enable_shared_from_this<TsE
 
   uint64_t GetEntityNum() { return meta_mgr_.GetEntityNum(); }
 
-  KStatus GetAllBlockItems(TSEntityID entity_id, std::vector<TsEntitySegmentBlockItem*>* blk_items);
+  KStatus GetAllBlockItems(TSEntityID entity_id, std::vector<TsEntitySegmentBlockItem*>* blk_items) {
+    return meta_mgr_.GetAllBlockItems(entity_id, blk_items);
+  };
 
   KStatus GetBlockSpans(const TsBlockItemFilterParams& filter, std::list<shared_ptr<TsBlockSpan>>& block_spans,
                         std::shared_ptr<TsTableSchemaManager>& tbl_schema_mgr, uint32_t scan_version) override;

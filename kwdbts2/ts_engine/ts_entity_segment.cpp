@@ -658,11 +658,6 @@ KStatus TsEntitySegment::Open() {
   return KStatus::SUCCESS;
 }
 
-inline KStatus TsEntitySegment::GetAllBlockItems(TSEntityID entity_id,
-                                         std::vector<TsEntitySegmentBlockItem*>* blk_items) {
-  return meta_mgr_.GetAllBlockItems(entity_id, blk_items);
-}
-
 inline KStatus TsEntitySegment::GetBlockSpans(const TsBlockItemFilterParams& filter,
                                        std::list<shared_ptr<TsBlockSpan>>& block_spans,
                                        std::shared_ptr<TsTableSchemaManager>& tbl_schema_mgr,
