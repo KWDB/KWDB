@@ -14,11 +14,11 @@
 #include <gtest/gtest.h>
 #include <string>
 #include "ee_kwthd_context.h"
-#include "engine.h"
+#include "ts_engine.h"
 #include "ee_exec_pool.h"
 #include "ee_op_engine_utils.h"
 
-#include "../../engine/tests/test_util.h"
+#include "../../ts_engine/tests/test_util.h"
 
 extern DedupRule g_dedup_rule;
 
@@ -51,31 +51,38 @@ class OperatorTestBase : public ::testing::Test {
 
  public:
   void CreateTable(roachpb::CreateTsTable& meta) {
-    std::vector<RangeGroup> ranges{test_range};
-    ASSERT_EQ(engine_->CreateTsTable(ctx_, table_id_, &meta, {test_range}),
-              KStatus::SUCCESS);
+    std::shared_ptr<TsTable> ts_table;
+    KStatus s = engine_->CreateTsTable(ctx_, table_id_, &meta, ts_table);
+    ASSERT_EQ(s, KStatus::SUCCESS);
   }
 
   void InsertRecords(roachpb::CreateTsTable& meta) {
-    for (int round = 0; round < insert_batch; round++) {
-      k_uint32 p_len = 0;
-      uint16_t inc_entity_cnt;
-      uint32_t inc_unordered_cnt;
-      KTimestamp start_ts = 0;
-      char* data_value = GenSomePayloadData(ctx_, row_num_per_payload, p_len, start_ts, &meta);
-      TSSlice payload{data_value, p_len};
-      DedupResult dedup_result{0, 0, 0, TSSlice {nullptr, 0}};
-      engine_->PutData(ctx_, table_id_, test_range.range_group_id, &payload, 1,
-                       0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
-      delete []data_value;
-    }
+    std::shared_ptr<kwdbts::TsTableSchemaManager> schema_mgr;
+    KStatus s = engine_->GetTableSchemaMgr(ctx_, table_id_, schema_mgr);
+    EXPECT_EQ(s, KStatus::SUCCESS);
+    std::vector<AttributeInfo> metric_schema;
+    s = schema_mgr->GetMetricMeta(1, metric_schema);
+    EXPECT_EQ(s, KStatus::SUCCESS);
+    std::vector<TagInfo> tag_schema;
+    s = schema_mgr->GetTagMeta(1, tag_schema);
+    EXPECT_EQ(s, KStatus::SUCCESS);
+    int entity_num = 3;
+    int entity_rows = 10;
+    int start_ts = 1000;
+    auto pay_load = GenRowPayload(metric_schema, tag_schema, table_id_, 1, entity_num, entity_rows, start_ts);
+    uint16_t inc_entity_cnt;
+    uint32_t inc_unordered_cnt;
+    DedupResult dedup_result{0, 0, 0, TSSlice{nullptr, 0}};
+    s = engine_->PutData(ctx_, table_id_, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
+    EXPECT_EQ(s, KStatus::SUCCESS);
+    free(pay_load.data);
   }
 
  protected:
   void SetUp() override {
     ExecPool::GetInstance().Init(ctx_);
     roachpb::CreateTsTable meta;
-    ConstructRoachpbTable(&meta, "test_table", table_id_);
+    ConstructRoachpbTable(&meta, table_id_);
     CreateTable(meta);
     InsertRecords(meta);
   }
@@ -87,7 +94,7 @@ class OperatorTestBase : public ::testing::Test {
 
   kwdbContext_t test_context;
   kwdbContext_p ctx_ = &test_context;
-  TSEngine* engine_{nullptr};
+  TSEngineV2Impl* engine_{nullptr};
   KTableId table_id_{0};
 };
 

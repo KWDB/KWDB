@@ -248,19 +248,12 @@ class Payload {
 
   // update payload rows lsn
   void SetLsn(TS_LSN lsn) {
-    if (!isTsWithLSNType((DATATYPE)(schema_[0].type))) return;
-    for (int i = 0; i < GetRowCount(); i++) {
-      TimeStamp64LSN* ts_lsn = reinterpret_cast<TimeStamp64LSN*>(GetColumnAddr(i, 0));
-      ts_lsn->lsn = lsn;
-    }
+    lsn_ = lsn;
   }
 
   // get lsn from first row.
   bool GetLsn(TS_LSN& lsn) {
-    if (!isTsWithLSNType((DATATYPE)(schema_[0].type))) return false;
-    if (GetRowCount() <= 0) return false;
-    TimeStamp64LSN* ts_lsn = reinterpret_cast<TimeStamp64LSN*>(GetColumnAddr(0, 0));
-    lsn = ts_lsn->lsn;
+    lsn = lsn_;
     return true;
   }
 
@@ -352,6 +345,7 @@ class Payload {
   int32_t* col_offsets_;
   RecordHelper* rec_helper_{nullptr};
   std::vector<std::map<MetricRowID, std::shared_ptr<void>>> var_merge_values_;
+  TS_LSN lsn_{0};
 
  public:
   DedupRule dedup_rule_ = DedupRule::OVERRIDE;

@@ -1512,10 +1512,10 @@ int TsTimePartition::UndoPut(uint32_t entity_id, kwdbts::TS_LSN lsn, uint64_t st
       block_item_id = block_item->prev_block_id;
       continue;
     }
-    if (!isTsWithLSNType((DATATYPE)segment_tbl->getSchemaInfo()[0].type)) {
-      LOG_ERROR("The data type in the first column is not TIMESTAMP64_LSN.");
-      return KWEDATATYPEMISMATCH;
-    }
+    // if (!isTsWithLSNType((DATATYPE)segment_tbl->getSchemaInfo()[0].type)) {
+    //   LOG_ERROR("The data type in the first column is not TIMESTAMP64_LSN.");
+    //   return KWEDATATYPEMISMATCH;
+    // }
 
     // scan all data in blockitem
     k_uint32 row_count = block_item->publish_row_count;
@@ -2106,7 +2106,7 @@ int TsTimePartition::updatePayloadUsingDedup(uint32_t entity_id, const BlockSpan
   if (payload->dedup_rule_ == DedupRule::KEEP) {
     return err_code;
   }
-  bool ts_with_lsn = isTsWithLSNType((DATATYPE)(payload->GetSchemaInfo()[0].type));
+  bool ts_with_lsn = false;
 
   void* ts_begin = payload->GetColumnAddr(0, 0);
   dedup_info.need_dup = true;

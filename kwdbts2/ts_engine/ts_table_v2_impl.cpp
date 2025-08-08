@@ -618,7 +618,7 @@ KStatus TsTableV2Impl::GetDataVolumeHalfTS(kwdbContext_p ctx, uint64_t begin_has
       return s;
     }
     for (size_t i = 0; i < count; i++) {
-      range_tss.push_back(KTimestamp(reinterpret_cast<char*>(res.data[0][0]->mem) + i * 16));
+      range_tss.push_back(KTimestamp(reinterpret_cast<char*>(res.data[0][0]->mem) + i * 8));
     }
   } while (count > 0);
   range_tss.sort();

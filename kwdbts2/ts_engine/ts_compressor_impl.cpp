@@ -645,7 +645,7 @@ CompressorManager::CompressorManager() {
   GenCompAlg second = twolevel ? GenCompAlg::kSnappy : GenCompAlg::kPlain;
   const std::vector<DATATYPE> timestamp_type{
       DATATYPE::TIMESTAMP64,     DATATYPE::TIMESTAMP64_MICRO,     DATATYPE::TIMESTAMP64_NANO,
-      DATATYPE::TIMESTAMP64_LSN, DATATYPE::TIMESTAMP64_LSN_MICRO, DATATYPE::TIMESTAMP64_LSN_NANO};
+      DATATYPE::TIMESTAMP64, DATATYPE::TIMESTAMP64_MICRO, DATATYPE::TIMESTAMP64_NANO};
   for (auto i : timestamp_type) {
     default_algs_[i] = {TsCompAlg::kGorilla_64, GenCompAlg::kPlain};
   }

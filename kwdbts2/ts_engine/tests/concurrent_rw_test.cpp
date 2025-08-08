@@ -123,7 +123,7 @@ TEST_F(ConcurrentRWTest, FlushOnly) {
         sum += x->count;
         timestamp64* ts = (timestamp64*)x->mem;
         for (int i = 0; i < x->count; i++) {
-          ts_set.insert(ts[i * 2]);
+          ts_set.insert(ts[i]);
         }
       }
       delete ts_iter;
@@ -174,7 +174,7 @@ TEST_F(ConcurrentRWTest, CompactOnly) {
   auto vgroup = vgroup_;
 
   for (int i = 0; i < nlast_segment; ++i) {
-    auto payload = GenRowPayload(metric_schema_, tag_schema_, table_id, 1, 1, nrow_per_last_segment, 100000 * i, 1);
+    auto payload = GenRowPayload(metric_schema_, tag_schema_, table_id, 1, 1, nrow_per_last_segment, 10000000 * i, 1);
     TsRawPayloadRowParser parser{metric_schema_};
     TsRawPayload p{payload, metric_schema_};
     auto ptag = p.GetPrimaryTag();
@@ -210,7 +210,7 @@ TEST_F(ConcurrentRWTest, CompactOnly) {
         sum += x->count;
         timestamp64* ts = (timestamp64*)x->mem;
         for (int i = 0; i < x->count; i++) {
-          ts_set.insert(ts[i * 2]);
+          ts_set.insert(ts[i]);
         }
       }
       delete ts_iter;

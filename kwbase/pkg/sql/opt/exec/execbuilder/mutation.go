@@ -2117,12 +2117,7 @@ func ComputeColumnSize(cols []*sqlbase.ColumnDescriptor) (int, int, error) {
 		case oid.T_int4, oid.T_float4:
 			colSize += 4
 		case oid.T_int8, oid.T_float8, oid.T_timestamp, oid.T_timestamptz:
-			if !col.IsTagCol() && i == 0 {
-				// The first timestamp column in the data column needs to reserve 16 bytes for LSN
-				colSize += sqlbase.FirstTsDataColSize
-			} else {
-				colSize += 8
-			}
+			colSize += 8
 		case oid.T_bool:
 			colSize++
 		case oid.T_char, types.T_nchar, oid.T_text, oid.T_bpchar, oid.T_bytea, types.T_geometry:

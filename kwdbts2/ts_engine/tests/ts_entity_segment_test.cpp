@@ -100,7 +100,7 @@ TEST_F(TsEntitySegmentTest, simpleInsert) {
     ASSERT_EQ(vgroup->Compact(), KStatus::SUCCESS);
 
     auto current = vgroup->CurrentVersion();
-    auto partitions = current->GetPartitions(1, {{INT64_MIN, INT64_MAX}}, DATATYPE::TIMESTAMP64_LSN);
+    auto partitions = current->GetPartitions(1, {{INT64_MIN, INT64_MAX}}, DATATYPE::TIMESTAMP64);
     ASSERT_EQ(partitions.size(), 1);
 
     auto entity_segment = partitions[0]->GetEntitySegment();
@@ -132,7 +132,7 @@ TEST_F(TsEntitySegmentTest, simpleInsert) {
           EXPECT_EQ(s, KStatus::SUCCESS);
           for (int idx = 0; idx < block_span->GetRowNum(); ++idx) {
             EXPECT_EQ(block_span->GetTS(idx), 500 + row_idx + idx);
-            EXPECT_EQ(*(timestamp64 *)(ts_col + idx * 16), 500 + row_idx + idx);
+            EXPECT_EQ(*(timestamp64 *)(ts_col + idx * 8), 500 + row_idx + idx);
             EXPECT_LE(*(int32_t *)(col_values[0] + idx * 4), 1024);
             EXPECT_LE(*(double *)(col_values[1] + idx * 8), 1024 * 1024);
             EXPECT_LE(*(int64_t *)(col_values[2] + idx * 8), 10240);
@@ -177,7 +177,7 @@ TEST_F(TsEntitySegmentTest, simpleInsert) {
           EXPECT_EQ(s, KStatus::SUCCESS);
           for (int idx = 0; idx < block_span->GetRowNum(); ++idx) {
             EXPECT_EQ(block_span->GetTS(idx), 123 + row_idx + idx);
-            EXPECT_EQ(*(timestamp64 *)(ts_col + idx * 16), 123 + row_idx + idx);
+            EXPECT_EQ(*(timestamp64 *)(ts_col + idx * 8), 123 + row_idx + idx);
             EXPECT_LE(*(int32_t *)(col_values[0] + idx * 4), 1024);
             EXPECT_LE(*(double *)(col_values[1] + idx * 8), 1024 * 1024);
             EXPECT_LE(*(int64_t *)(col_values[2] + idx * 8), 10240);
@@ -217,7 +217,7 @@ TEST_F(TsEntitySegmentTest, simpleInsert) {
           EXPECT_EQ(s, KStatus::SUCCESS);
           for (int idx = 0; idx < block_span->GetRowNum(); ++idx) {
             EXPECT_EQ(block_span->GetTS(idx), 123 + row_idx + idx);
-            EXPECT_EQ(*(timestamp64 *)(ts_col + idx * 16), 123 + row_idx + idx);
+            EXPECT_EQ(*(timestamp64 *)(ts_col + idx * 8), 123 + row_idx + idx);
             EXPECT_LE(*(int32_t *)(col_values[0] + idx * 4), 1024);
             EXPECT_LE(*(double *)(col_values[1] + idx * 8), 1024 * 1024);
             EXPECT_LE(*(int64_t *)(col_values[2] + idx * 8), 10240);
@@ -236,7 +236,7 @@ TEST_F(TsEntitySegmentTest, simpleInsert) {
     }
 
     current = vgroup->CurrentVersion();
-    partitions = current->GetPartitions(1, {{INT64_MIN, INT64_MAX}}, DATATYPE::TIMESTAMP64_LSN);
+    partitions = current->GetPartitions(1, {{INT64_MIN, INT64_MAX}}, DATATYPE::TIMESTAMP64);
     ASSERT_EQ(partitions.size(), 1);
     std::vector<std::shared_ptr<TsLastSegment>> result = partitions[0]->GetAllLastSegments();
     ASSERT_EQ(result.size(), 1);
@@ -336,7 +336,7 @@ TEST_F(TsEntitySegmentTest, simpleInsertDoubleCompact) {
     vgroup->Vacuum();
 
     auto current = vgroup->CurrentVersion();
-    auto partitions = current->GetPartitions(1, {{INT64_MIN, INT64_MAX}}, DATATYPE::TIMESTAMP64_LSN);
+    auto partitions = current->GetPartitions(1, {{INT64_MIN, INT64_MAX}}, DATATYPE::TIMESTAMP64);
     ASSERT_EQ(partitions.size(), 1);
 
     auto entity_segment = partitions[0]->GetEntitySegment();
@@ -495,7 +495,7 @@ TEST_F(TsEntitySegmentTest, simpleInsertDoubleCompact) {
     }
 
     current = vgroup->CurrentVersion();
-    partitions = current->GetPartitions(1, {{INT64_MIN, INT64_MAX}}, DATATYPE::TIMESTAMP64_LSN);
+    partitions = current->GetPartitions(1, {{INT64_MIN, INT64_MAX}}, DATATYPE::TIMESTAMP64);
     ASSERT_EQ(partitions.size(), 1);
     std::vector<std::shared_ptr<TsLastSegment>> result = partitions[0]->GetAllLastSegments();
     ASSERT_EQ(result.size(), 1);
@@ -553,7 +553,7 @@ TEST_F(TsEntitySegmentTest, TestEntityMinMaxRowNum) {
     ASSERT_EQ(vgroup->Compact(), KStatus::SUCCESS);
 
     auto current = vgroup->CurrentVersion();
-    auto partitions = current->GetPartitions(1, {{INT64_MIN, INT64_MAX}}, DATATYPE::TIMESTAMP64_LSN);
+    auto partitions = current->GetPartitions(1, {{INT64_MIN, INT64_MAX}}, DATATYPE::TIMESTAMP64);
     ASSERT_EQ(partitions.size(), 1);
     auto lastsegments = partitions[0]->GetAllLastSegments();
     EXPECT_EQ(lastsegments.size(), 1);
