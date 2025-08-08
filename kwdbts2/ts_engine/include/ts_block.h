@@ -131,6 +131,8 @@ class TsBlockSpan {
   TS_LSN GetLastLSN() const;
   uint64_t* GetLSNAddr(int row_idx) const;
 
+  // convert value to compressed entity block data
+  KStatus BuildCompressedData(std::string& data);
   KStatus GetCompressData(std::string& data);
 
   // if just get timestamp, these function return fast.
