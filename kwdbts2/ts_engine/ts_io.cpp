@@ -12,6 +12,7 @@
 #include "ts_io.h"
 
 #include <fcntl.h>
+#include <sys/file.h>
 #include <sys/mman.h>
 #include <unistd.h>
 
@@ -130,6 +131,11 @@ KStatus TsMMapAppendOnlyFile::Close() {
     LOG_ERROR("ftruncate file %s failed, reason: %s", path_.c_str(), strerror(errno));
     return FAIL;
   }
+  ok = flock(fd_, LOCK_UN);
+  if (ok < 0) {
+    LOG_ERROR("flock file %s failed, reason: %s", path_.c_str(), strerror(errno));
+    return FAIL;
+  }
   ok = close(fd_);
   if (ok < 0) {
     LOG_ERROR("close file %s failed, reason: %s", path_.c_str(), strerror(errno));
@@ -211,6 +217,11 @@ KStatus TsMMapIOEnv::NewAppendOnlyFile(const std::string& filepath, std::unique_
     append_offset = offset;
   }
 
+  int ok = flock(fd, LOCK_EX);
+  if (ok < 0) {
+    LOG_ERROR("flock failed, reason: %s", strerror(errno));
+    return FAIL;
+  }
   auto new_file = std::make_unique<TsMMapAppendOnlyFile>(filepath, fd, append_offset);
   *file = std::move(new_file);
   return SUCCESS;

@@ -70,7 +70,6 @@ class TsVGroup {
   std::unique_ptr<TsVersionManager> version_manager_ = nullptr;
 
   std::map<PartitionIdentifier, std::shared_ptr<TsEntitySegmentBuilder>> write_batch_segment_builders_;
-  std::shared_mutex builders_mutex_;
 
   // compact thread flag
   bool enable_compact_thread_{true};
@@ -248,9 +247,11 @@ class TsVGroup {
                                   std::shared_ptr<TsEntitySegmentBuilder>& builder);
 
   KStatus WriteBatchData(kwdbContext_p ctx, TSTableID tbl_id, uint32_t table_version, TSEntityID entity_id,
-                         timestamp64 p_time, TS_LSN lsn, TSSlice data, std::set<PartitionIdentifier>& partition_ids);
+                         timestamp64 p_time, TS_LSN lsn, TSSlice data);
 
-  KStatus FinishWriteBatchData(std::set<PartitionIdentifier>& partition_ids);
+  KStatus FinishWriteBatchData();
+
+  KStatus CancelWriteBatchData();
 
   TsEngineSchemaManager* GetSchemaMgr() const;
 

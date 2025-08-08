@@ -15,6 +15,23 @@
 
 namespace kwdbts {
 
+enum class WriteBatchStatus : uint8_t {
+  None = 0,
+  Writing,
+};
+std::atomic<WriteBatchStatus> write_batch_status = WriteBatchStatus::None;
+
+bool TrySetWriteBusy() {
+  WriteBatchStatus expected = WriteBatchStatus::None;
+  if (write_batch_status.compare_exchange_strong(expected, WriteBatchStatus::Writing)) {
+    return true;
+  }
+  return false;
+}
+void ResetWriteStatus() {
+  write_batch_status.store(WriteBatchStatus::None);
+}
+
 TsReadBatchDataWorker::TsReadBatchDataWorker(TSEngineV2Impl* ts_engine, TSTableID table_id,
                                              uint64_t table_version, KwTsSpan ts_span, uint64_t job_id,
                                              vector<EntityResultIndex> entity_indexes)
@@ -492,25 +509,32 @@ KStatus TsWriteBatchDataWorker::Write(kwdbContext_p ctx, TSTableID table_id, uin
 KStatus TsWriteBatchDataWorker::Finish(kwdbContext_p ctx) {
   is_finished_ = true;
   w_file_->MarkDelete();
-  std::unordered_map<uint32_t, std::set<PartitionIdentifier>> vgroup_partitions;
-  for (int id = 1; id <= vgroups_lsn_.size(); ++id) {
-    vgroup_partitions[id] = {};
+
+  while (!TrySetWriteBusy()) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
   }
+  Defer defer([&]() {
+    ResetWriteStatus();
+  });
+
   // write batch data to entity segment
   {
     BatchDataHeader header;
     size_t batch_header_size = sizeof(BatchDataHeader);
     std::unique_ptr<TsSequentialReadFile> r_file;
+
     MUTEX_LOCK(&w_file_latch_);
-    Defer defer([&]() {
+    Defer defer1([&]() {
       MUTEX_UNLOCK(&w_file_latch_);
     });
+
     TsIOEnv *env = &TsMMapIOEnv::GetInstance();
     KStatus s = env->NewSequentialReadFile(w_file_->GetFilePath(), &r_file);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("NewSequentialReadFile failed, job_id[%lu]", job_id_);
       return s;
     }
+
     uint64_t left = 0;
     while (left < w_file_->GetFileSize()) {
       TSSlice batch_header;
@@ -529,8 +553,7 @@ KStatus TsWriteBatchDataWorker::Finish(kwdbContext_p ctx) {
       s = ts_engine_->GetTsVGroup(header.vgroup_id)->WriteBatchData(ctx, header.table_id, header.table_version,
                                                                     header.entity_id, header.p_time,
                                                                     vgroups_lsn_[header.vgroup_id - 1],
-                                                                    block_data,
-                                                                    vgroup_partitions[header.vgroup_id]);
+                                                                    block_data);
       if (s != KStatus::SUCCESS) {
         LOG_ERROR("WriteBatchData failed, table_id[%lu], entity_id[%lu]", header.table_id, header.entity_id);
         return KStatus::FAIL;
@@ -540,12 +563,21 @@ KStatus TsWriteBatchDataWorker::Finish(kwdbContext_p ctx) {
   }
   // write batch finish
   {
-    for (auto& kv : vgroup_partitions) {
-      KStatus s = ts_engine_->GetTsVGroup(kv.first)->FinishWriteBatchData(kv.second);
+    bool success = true;
+    auto vgroups = ts_engine_->GetTsVGroups();
+    for (const auto& vgroup : *vgroups) {
+      if (!success) {
+        vgroup->CancelWriteBatchData();
+        continue;
+      }
+      KStatus s = vgroup->FinishWriteBatchData();
       if (s != KStatus::SUCCESS) {
         LOG_ERROR("FinishWriteBatchData failed, job_id[%lu]", job_id_);
-        return s;
+        success = false;
       }
+    }
+    if (!success) {
+      return KStatus::FAIL;
     }
   }
   return KStatus::SUCCESS;
@@ -554,5 +586,13 @@ KStatus TsWriteBatchDataWorker::Finish(kwdbContext_p ctx) {
 void TsWriteBatchDataWorker::Cancel(kwdbContext_p ctx) {
   is_finished_ = true;
   w_file_->MarkDelete();
+  while (!TrySetWriteBusy()) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+  }
+  auto vgroups = ts_engine_->GetTsVGroups();
+  for (const auto& vgroup : *vgroups) {
+    vgroup->CancelWriteBatchData();
+  }
+  ResetWriteStatus();
 }
 }  // namespace kwdbts

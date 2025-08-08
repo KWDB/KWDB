@@ -1086,7 +1086,6 @@ const std::vector<KwTsSpan>& ts_spans) {
 KStatus TsVGroup::GetEntitySegmentBuilder(std::shared_ptr<const TsPartitionVersion>& partition,
                                           std::shared_ptr<TsEntitySegmentBuilder>& builder) {
   PartitionIdentifier partition_id = partition->GetPartitionIdentifier();
-  std::unique_lock lock{builders_mutex_};
   auto it = write_batch_segment_builders_.find(partition_id);
   if (it == write_batch_segment_builders_.end()) {
     while (!partition->TrySetBusy(PartitionStatus::BatchDataWriting)) {
@@ -1112,8 +1111,7 @@ KStatus TsVGroup::GetEntitySegmentBuilder(std::shared_ptr<const TsPartitionVersi
 }
 
 KStatus TsVGroup::WriteBatchData(kwdbContext_p ctx, TSTableID tbl_id, uint32_t table_version,
-                                 TSEntityID entity_id, timestamp64 p_time, TS_LSN lsn, TSSlice data,
-                                 std::set<PartitionIdentifier>& partition_ids) {
+                                 TSEntityID entity_id, timestamp64 p_time, TS_LSN lsn, TSSlice data) {
   auto current = version_manager_->Current();
   uint32_t database_id = schema_mgr_->GetDBIDByTableID(tbl_id);
   if (database_id == 0) {
@@ -1130,47 +1128,57 @@ KStatus TsVGroup::WriteBatchData(kwdbContext_p ctx, TSTableID tbl_id, uint32_t t
       return KStatus::FAIL;
     }
   }
-  partition_ids.insert(partition->GetPartitionIdentifier());
 
-  bool need_rebuild = false;
-  do {
-    std::shared_ptr<TsEntitySegmentBuilder> builder;
-    KStatus s = GetEntitySegmentBuilder(partition, builder);
-    if (s != KStatus::SUCCESS) {
-      LOG_ERROR("GetEntitySegmentBuilder failed.");
-      return s;
-    }
-    s = builder->WriteBatch(tbl_id, entity_id, table_version, lsn, data, need_rebuild);
-    if (s != KStatus::SUCCESS) {
-      LOG_ERROR("WriteBatch failed.");
-      return s;
-    }
-  } while (need_rebuild);
+  std::shared_ptr<TsEntitySegmentBuilder> builder;
+  KStatus s = GetEntitySegmentBuilder(partition, builder);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("GetEntitySegmentBuilder failed.");
+    return s;
+  }
+  s = builder->WriteBatch(tbl_id, entity_id, table_version, lsn, data);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("WriteBatch failed.");
+    return s;
+  }
 
   ResetEntityLatestRow(entity_id, INT64_MAX);
   ResetEntityMaxTs(tbl_id, INT64_MAX, entity_id);
   return KStatus::SUCCESS;
 }
 
-KStatus TsVGroup::FinishWriteBatchData(std::set<PartitionIdentifier>& partition_ids) {
+KStatus TsVGroup::FinishWriteBatchData() {
   TsVersionUpdate update;
-  std::unique_lock lock{builders_mutex_};
-  {
-    Defer defer([&]() {
-      for (auto p_id : partition_ids) {
-        auto partition = version_manager_->Current()->GetPartition(std::get<0>(p_id), std::get<1>(p_id));
-        partition->ResetStatus();
-        write_batch_segment_builders_.erase(p_id);
-      }
-    });
-    for (auto p_id : partition_ids) {
-      KStatus s = write_batch_segment_builders_[p_id]->WriteBatchFinish(&update);
-      if (s != KStatus::SUCCESS) {
-        LOG_ERROR("Finish entity segment builder failed");
-        return s;
-      }
+  std::set<PartitionIdentifier> partition_ids;
+  bool success = true;
+  for (auto& kv : write_batch_segment_builders_) {
+    partition_ids.insert(kv.first);
+    KStatus s = kv.second->WriteBatchFinish(&update);
+    if (s != KStatus::SUCCESS) {
+      LOG_ERROR("Finish entity segment builder failed");
+      success = false;
     }
+  }
+  write_batch_segment_builders_.clear();
+  if (success) {
     version_manager_->ApplyUpdate(&update);
+  }
+  for (auto p_id : partition_ids) {
+    auto partition = version_manager_->Current()->GetPartition(std::get<0>(p_id), std::get<1>(p_id));
+    partition->ResetStatus();
+  }
+  return KStatus::SUCCESS;
+}
+
+KStatus TsVGroup::CancelWriteBatchData() {
+  std::set<PartitionIdentifier> partition_ids;
+  for (auto& kv : write_batch_segment_builders_) {
+    partition_ids.insert(kv.first);
+    kv.second->WriteBatchCancel();
+  }
+  write_batch_segment_builders_.clear();
+  for (auto p_id : partition_ids) {
+    auto partition = version_manager_->Current()->GetPartition(std::get<0>(p_id), std::get<1>(p_id));
+    partition->ResetStatus();
   }
   return KStatus::SUCCESS;
 }
