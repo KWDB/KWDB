@@ -307,7 +307,7 @@ class TsVGroup {
   KStatus MtrRollback(kwdbContext_p ctx, uint64_t& mtr_id, bool is_skip = false, const char* tsx_id = nullptr);
   KStatus redoPut(kwdbContext_p ctx, kwdbts::TS_LSN log_lsn, const TSSlice& payload);
 
-  KStatus GetLastRowEntity(std::shared_ptr<TsTableSchemaManager>& table_schema_mgr,
+  KStatus GetLastRowEntity(kwdbContext_p ctx, std::shared_ptr<TsTableSchemaManager>& table_schema_mgr,
                            pair<timestamp64, uint32_t>& last_row_entity);
 
   void UpdateEntityAndMaxTs(KTableKey table_id, timestamp64 max_ts, EntityID entity_id) {

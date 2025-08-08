@@ -825,13 +825,13 @@ const std::vector<KwTsSpan>& ts_spans, uint64_t* row_count) {
   return KStatus::SUCCESS;
 }
 
-KStatus TsTableV2Impl::GetLastRowEntity(EntityResultIndex& entity_id) {
+KStatus TsTableV2Impl::GetLastRowEntity(kwdbContext_p ctx, EntityResultIndex& entity_id) {
   entity_id = {0, 0, 0};
   timestamp64 entity_max_ts = INT64_MIN;
 
   for (auto& vgroup : vgroups_) {
     pair<timestamp64, EntityID> cur_last_entity = {INT64_MIN, 0};
-    if (vgroup->GetLastRowEntity(table_schema_mgr_, cur_last_entity) != KStatus::SUCCESS) {
+    if (vgroup->GetLastRowEntity(ctx, table_schema_mgr_, cur_last_entity) != KStatus::SUCCESS) {
       LOG_ERROR("Vgroup %d GetLastRowEntity failed.", vgroup->GetVGroupID());
       return KStatus::FAIL;
     }

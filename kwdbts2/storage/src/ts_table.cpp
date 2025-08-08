@@ -1226,7 +1226,7 @@ TsEntityGroup::GetTagColumnInfo(kwdbContext_p ctx, struct TagInfo& tag_info, roa
   return KStatus::SUCCESS;
 }
 
-KStatus TsTable::GetLastRowEntity(EntityResultIndex& entity_id) {
+KStatus TsTable::GetLastRowEntity(kwdbContext_p ctx, EntityResultIndex& entity_id) {
   timestamp64 entity_max_ts = INT64_MIN;
   entity_id = {0, 0, 0};
 
