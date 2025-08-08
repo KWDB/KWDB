@@ -393,7 +393,7 @@ class TsLastBlock : public TsBlock {
   }
 };
 
-KStatus TsLastSegment::GetBlock(int block_id, std::shared_ptr<TsBlock>* block) const {
+KStatus TsLastSegment::GetBlock(int block_id, std::shared_ptr<TsLastBlock>* block) const {
   TsLastSegmentBlockIndex* index;
   auto s = block_cache_->GetBlockIndex(block_id, &index);
   if (s == FAIL) {
@@ -501,9 +501,8 @@ KStatus TsLastSegment::GetBlockSpans(std::list<shared_ptr<TsBlockSpan>>& block_s
 
   std::shared_ptr<TsTableSchemaManager> tbl_schema_mgr = nullptr;
   for (int idx = 0; idx < footer_.n_data_block; ++idx) {
-    std::shared_ptr<TsBlock> tmp_block;
-    this->GetBlock(idx, &tmp_block);
-    auto block = std::static_pointer_cast<TsLastBlock>(tmp_block);
+    std::shared_ptr<TsLastBlock> block;
+    this->GetBlock(idx, &block);
 
     // auto block = std::make_shared<TsLastBlock>(shared_from_this(), idx, block_indices[idx], *info);
 
@@ -603,12 +602,10 @@ KStatus TsLastSegment::GetBlockSpans(const TsBlockItemFilterParams& filter,
       int block_idx = it - block_indices.begin();
 
       if (block == nullptr || block->GetBlockID() != block_idx) {
-        std::shared_ptr<TsBlock> tmp_block;
-        auto s = this->GetBlock(block_idx, &tmp_block);
+        auto s = this->GetBlock(block_idx, &block);
         if (s == FAIL) {
           return s;
         }
-        block = std::static_pointer_cast<TsLastBlock>(tmp_block);
       }
       auto ts = block->GetTimestamps();
       auto entities = block->GetEntities();

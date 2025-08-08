@@ -181,7 +181,7 @@ KStatus TsEntitySegmentMetaManager::GetBlockSpans(const TsBlockItemFilterParams&
         IsTsLsnInSpans(cur_blk_item->max_ts, cur_blk_item->max_lsn, filter.spans_)) {
       std::shared_ptr<TsEntityBlock> block = std::make_shared<TsEntityBlock>(filter.table_id, cur_blk_item,
                                                                              blk_segment);
-      block_spans.push_front(make_shared<TsBlockSpan>(filter.vgroup_id, filter.entity_id, block, 0,
+      block_spans.push_front(make_shared<TsBlockSpan>(filter.vgroup_id, filter.entity_id, std::move(block), 0,
                                                       block->GetRowNum(), tbl_schema_mgr, scan_version));
     } else if (IsTsLsnSpanCrossSpans(filter.spans_, {cur_blk_item->min_ts, cur_blk_item->max_ts},
                               {cur_blk_item->min_lsn, cur_blk_item->max_lsn})) {
@@ -198,7 +198,7 @@ KStatus TsEntitySegmentMetaManager::GetBlockSpans(const TsBlockItemFilterParams&
           continue;
         }
         // Because block item traverses from back to front, use push_front
-        block_spans.push_front(make_shared<TsBlockSpan>(filter.vgroup_id, filter.entity_id, block, row_spans[i].first,
+        block_spans.push_front(make_shared<TsBlockSpan>(filter.vgroup_id, filter.entity_id, std::move(block), row_spans[i].first,
                                                         row_spans[i].second, tbl_schema_mgr,
                                                         scan_version));
       }

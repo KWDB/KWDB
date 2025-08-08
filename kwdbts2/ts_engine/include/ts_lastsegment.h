@@ -75,6 +75,8 @@ class LastSegmentBloomFilter : public LastSegmentMetaBlockBase {
   }
 };
 
+class TsLastBlock;
+
 class TsLastSegment : public TsSegmentBase {
  public:
   static int kNRowPerBlock;
@@ -129,7 +131,7 @@ class TsLastSegment : public TsSegmentBase {
 
  private:
   KStatus GetAllBlockIndex(std::vector<TsLastSegmentBlockIndex>*) const;
-  KStatus GetBlock(int block_id, std::shared_ptr<TsBlock>* block) const;
+  KStatus GetBlock(int block_id, std::shared_ptr<TsLastBlock>* block) const;
 };
 
 class TsLastSegment::TsLastSegBlockCache {
