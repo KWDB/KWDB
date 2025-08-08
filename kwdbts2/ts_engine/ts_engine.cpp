@@ -624,7 +624,8 @@ KStatus TSEngineV2Impl::PutEntity(kwdbContext_p ctx, const KTableKey& table_id, 
         return KStatus::FAIL;
       }
       wal_level_mutex_.lock_shared();
-      s = vgroup->GetWALManager()->WriteUpdateWAL(ctx, mtr_id, 0, 0, payload_data[i], tag_pack->getData(), table_id);
+      s = vgroup->GetWALManager()->WriteUpdateWAL(ctx, mtr_id, 0, 0, payload_data[i], tag_pack->getData(), vgroup_id,
+                                                  table_id);
       wal_level_mutex_.unlock_shared();
       if (s == KStatus::FAIL) {
         LOG_ERROR("Failed to WriteUpdateWAL while PutEntity")
