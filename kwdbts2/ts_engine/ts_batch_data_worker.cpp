@@ -479,26 +479,28 @@ KStatus TsWriteBatchDataWorker::Write(kwdbContext_p ctx, TSTableID table_id, uin
   timestamp64 p_time = convertTsToPTime(ts, ts_col_type);
 
   // write batch data to tmp file
-  BatchDataHeader header{table_id, table_version, vgroup_id, entity_id, p_time, new_block_data.len};
-  TSSlice header_data{reinterpret_cast<char *>(&header), sizeof(BatchDataHeader)};
-  MUTEX_LOCK(&w_file_latch_);
-  if (is_finished_) {
-    LOG_ERROR("TsWriteBatchDataWorker::Write job[%lu] is finished", job_id_);
-    return KStatus::FAIL;
+  {
+    BatchDataHeader header{table_id, table_version, vgroup_id, entity_id, p_time, new_block_data.len};
+    TSSlice header_data{reinterpret_cast<char *>(&header), sizeof(BatchDataHeader)};
+    MUTEX_LOCK(&w_file_latch_);
+    Defer defer([&]() {
+      MUTEX_UNLOCK(&w_file_latch_);
+    });
+    if (is_finished_) {
+      LOG_ERROR("TsWriteBatchDataWorker::Write job[%lu] is finished", job_id_);
+      return KStatus::FAIL;
+    }
+    s = w_file_->Append(header_data);
+    if (s != KStatus::SUCCESS) {
+      LOG_ERROR("TsWriteBatchDataWorker::Write append header failed");
+      return KStatus::FAIL;
+    }
+    s = w_file_->Append(new_block_data);
+    if (s != KStatus::SUCCESS) {
+      LOG_ERROR("TsWriteBatchDataWorker::Write append content failed");
+      return KStatus::FAIL;
+    }
   }
-  s = w_file_->Append(header_data);
-  if (s != KStatus::SUCCESS) {
-    MUTEX_UNLOCK(&w_file_latch_);
-    LOG_ERROR("TsWriteBatchDataWorker::Write append header failed");
-    return KStatus::FAIL;
-  }
-  s = w_file_->Append(new_block_data);
-  if (s != KStatus::SUCCESS) {
-    MUTEX_UNLOCK(&w_file_latch_);
-    LOG_ERROR("TsWriteBatchDataWorker::Write append content failed");
-    return KStatus::FAIL;
-  }
-  MUTEX_UNLOCK(&w_file_latch_);
 
   *row_num = KUint32(data->data + TsBatchData::row_num_offset_);
   LOG_INFO("current batch data write success, job_id[%lu], table_id[%lu], vgroup_id[%u], entity_id[%lu], row_num[%u]",
