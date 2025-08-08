@@ -121,7 +121,7 @@ KStatus TsMemSegmentManager::PutData(const TSSlice& payload, TSEntityID entity_i
 
 KStatus TsMemSegmentManager::GetBlockSpans(const TsBlockItemFilterParams& filter,
                                            std::list<shared_ptr<TsBlockSpan>>& block_spans,
-                                           std::shared_ptr<TsTableSchemaManager> tbl_schema_mgr,
+                                           std::shared_ptr<TsTableSchemaManager>& tbl_schema_mgr,
                                            uint32_t scan_version) {
   std::list<std::shared_ptr<TsMemSegment>> segments;
   {
@@ -490,7 +490,7 @@ KStatus TsMemSegment::GetBlockSpans(std::list<shared_ptr<TsBlockSpan>>& blocks, 
 }
 
 KStatus TsMemSegment::GetBlockSpans(const TsBlockItemFilterParams& filter, std::list<shared_ptr<TsBlockSpan>>& blocks,
-                                    std::shared_ptr<TsTableSchemaManager> tbl_schema_mgr, uint32_t scan_version) {
+                                    std::shared_ptr<TsTableSchemaManager>& tbl_schema_mgr, uint32_t scan_version) {
   std::list<kwdbts::TSMemSegRowData*> row_datas;
   bool ok = GetEntityRows(filter, &row_datas);
   if (!ok) {

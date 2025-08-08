@@ -154,7 +154,7 @@ KStatus TsEntitySegmentMetaManager::GetAllBlockItems(TSEntityID entity_id,
 KStatus TsEntitySegmentMetaManager::GetBlockSpans(const TsBlockItemFilterParams& filter,
                                                   std::shared_ptr<TsEntitySegment> blk_segment,
                                                   std::list<shared_ptr<TsBlockSpan>>& block_spans,
-                                                  std::shared_ptr<TsTableSchemaManager> tbl_schema_mgr,
+                                                  std::shared_ptr<TsTableSchemaManager>& tbl_schema_mgr,
                                                   uint32_t scan_version) {
   TsEntityItem entity_item{filter.entity_id};
   bool is_exist;
@@ -665,7 +665,7 @@ KStatus TsEntitySegment::GetAllBlockItems(TSEntityID entity_id,
 
 KStatus TsEntitySegment::GetBlockSpans(const TsBlockItemFilterParams& filter,
                                        std::list<shared_ptr<TsBlockSpan>>& block_spans,
-                                       std::shared_ptr<TsTableSchemaManager> tbl_schema_mgr,
+                                       std::shared_ptr<TsTableSchemaManager>& tbl_schema_mgr,
                                        uint32_t scan_version) {
   if (filter.entity_id > meta_mgr_.GetEntityNum()) {
     // LOG_WARN("entity id [%lu] > entity number [%lu]", filter.entity_id, meta_mgr_.GetEntityNum());

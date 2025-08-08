@@ -545,7 +545,7 @@ KStatus TsLastSegment::GetBlockSpans(std::list<shared_ptr<TsBlockSpan>>& block_s
 using EntityTsPoint = std::tuple<TSEntityID, timestamp64>;
 KStatus TsLastSegment::GetBlockSpans(const TsBlockItemFilterParams& filter,
                                      std::list<shared_ptr<TsBlockSpan>>& block_spans,
-                                     std::shared_ptr<TsTableSchemaManager> tbl_schema_mgr, uint32_t scan_version) {
+                                     std::shared_ptr<TsTableSchemaManager>& tbl_schema_mgr, uint32_t scan_version) {
   assert(block_cache_ != nullptr);
 
   // if filter is empty, no need to do anything.
