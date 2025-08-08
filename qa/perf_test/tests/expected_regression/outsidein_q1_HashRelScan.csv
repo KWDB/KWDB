@@ -1,0 +1,18 @@
+SET
+
+Time: 657.923µs
+
+station_name,count,avg
+station_1,538,90.135
+station_10,545,89.843
+station_2,559,89.976
+station_3,531,90.263
+station_4,541,89.904
+station_5,780,90.059
+station_6,547,90.209
+station_7,539,90
+station_8,541,89.72
+station_9,700,90.05
+
+Time: 39.607959ms
+

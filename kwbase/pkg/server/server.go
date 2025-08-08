@@ -312,7 +312,7 @@ type Server struct {
 
 // NewServer creates a Server from a server.Config.
 func NewServer(cfg Config, stopper *stop.Stopper) (*Server, error) {
-	if err := cfg.ValidateAddrs(context.Background()); err != nil {
+	if err := cfg.ValidateAddrs(context.Background(), cfg.StartMode); err != nil {
 		return nil, err
 	}
 
@@ -1616,8 +1616,10 @@ func (s *Server) Start(ctx context.Context) error {
 	}
 
 	// Pre check AE RPC host/port.
-	if err = s.checkBRPC(ctx); err != nil {
-		return err
+	if s.cfg.StartMode != base.StartSingleNodeCmdName {
+		if err = s.checkBRPC(ctx); err != nil {
+			return err
+		}
 	}
 
 	if s.cfg.TestingKnobs.Server != nil {
@@ -1761,7 +1763,7 @@ func (s *Server) Start(ctx context.Context) error {
 	listenAddrU := util.NewUnresolvedAddr("tcp", s.cfg.Addr)
 	advAddrU := util.NewUnresolvedAddr("tcp", s.cfg.AdvertiseAddr)
 	advSQLAddrU := util.NewUnresolvedAddr("tcp", s.cfg.SQLAdvertiseAddr)
-	brpcAddrU := util.NewUnresolvedAddr("tcp", s.cfg.BRPCAddr)
+	brpcAddrU := util.NewUnresolvedAddr("tcp", s.cfg.AdvertiseBrpcAddr)
 	filtered := s.cfg.FilterGossipBootstrapResolvers(ctx, listenAddrU, advAddrU)
 	s.gossip.Start(advAddrU, filtered)
 	log.Event(ctx, "started gossip")
@@ -1906,19 +1908,21 @@ func (s *Server) Start(ctx context.Context) error {
 			s.node.storeCfg.TsEngine = s.tsEngine
 			s.distSQLServer.ServerConfig.TsEngine = s.tsEngine
 
-			tse.TsRaftLogCombineWAL.SetOnChange(&s.st.SV, func() {
-				combined := tse.TsRaftLogCombineWAL.Get(&s.st.SV)
-				s.tsEngine.SetWriteWAL(!combined)
-				if !combined {
-					if err := kvserver.ClearReplicasAndResetFlushedIndex(ctx); err != nil {
-						log.Warningf(ctx, "failed clear flushed index for replicas, err: %+v", err)
+			if !GetSingleNodeModeFlag(s.cfg.ModeFlag) {
+				tse.TsRaftLogCombineWAL.SetOnChange(&s.st.SV, func() {
+					combined := tse.TsRaftLogCombineWAL.Get(&s.st.SV)
+					s.tsEngine.SetWriteWAL(!combined)
+					if !combined {
+						if err := kvserver.ClearReplicasAndResetFlushedIndex(ctx); err != nil {
+							log.Warningf(ctx, "failed clear flushed index for replicas, err: %+v", err)
+						}
 					}
-				}
-			})
+				})
 
-			tse.TsRaftLogSyncPeriod.SetOnChange(&s.st.SV, func() {
-				storage.SetSyncPeriod(tse.TsRaftLogSyncPeriod.Get(&s.st.SV))
-			})
+				tse.TsRaftLogSyncPeriod.SetOnChange(&s.st.SV, func() {
+					storage.SetSyncPeriod(tse.TsRaftLogSyncPeriod.Get(&s.st.SV))
+				})
+			}
 
 			tsDBCfg := kvcoord.TsDBConfig{
 				KvDB:         s.db,
@@ -2001,9 +2005,9 @@ func (s *Server) Start(ctx context.Context) error {
 	s.recorder.AddNode(s.registry, s.node.Descriptor, s.node.startedAt, s.cfg.AdvertiseAddr, s.cfg.HTTPAdvertiseAddr, s.cfg.SQLAdvertiseAddr)
 
 	// Begin recording runtime statistics.
-	// if err := s.startSampleEnvironment(ctx, DefaultMetricsSampleInterval); err != nil {
-	//	return err
-	// }
+	if err := s.startSampleEnvironment(ctx, DefaultMetricsSampleInterval); err != nil {
+		return err
+	}
 
 	// Begin recording time series data collected by the status monitor.
 	s.tsDB.PollSource(
@@ -2591,13 +2595,12 @@ func (s *Server) startServeUI(
 }
 
 func (s *Server) checkBRPC(ctx context.Context) error {
-	_, err := net.Listen("tcp", s.cfg.BRPCAddr)
+	var err error
+	_, err = listen(ctx, &s.cfg.BRPCAddr, &s.cfg.AdvertiseBrpcAddr, "brpc")
 	if err != nil {
-		return ListenError{
-			error: err,
-			Addr:  s.cfg.BRPCAddr,
-		}
+		return err
 	}
+	log.Eventf(ctx, "listening on port %s", s.cfg.Addr)
 	return nil
 }
 

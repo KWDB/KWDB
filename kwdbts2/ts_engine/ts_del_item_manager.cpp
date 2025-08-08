@@ -10,11 +10,14 @@
 // See the Mulan PSL v2 for more details.
 
 #include <assert.h>
+#include <algorithm>
+#include <string>
+#include <list>
+#include <vector>
 #include "data_type.h"
 #include "ts_del_item_manager.h"
 
 namespace kwdbts {
-
 std::vector<STScanRange> LSNRangeUtil::MergeScanAndDelRange(const std::vector<STScanRange>& ranges, const STDelRange& del) {
   std::vector<STScanRange> result;
   result.reserve(ranges.size());
@@ -119,6 +122,13 @@ TsDelItemManager::~TsDelItemManager() {
 
 KStatus TsDelItemManager::Open() {
   if (mmap_alloc_.Open() == KStatus::SUCCESS) {
+    if (mmap_alloc_.GetAllocSize() >= sizeof(DelItemHeader)) {
+      header_ = reinterpret_cast<DelItemHeader*>(mmap_alloc_.addr(mmap_alloc_.GetStartPos()));
+    } else {
+      auto offset = mmap_alloc_.AllocateAssigned(sizeof(DelItemHeader), 0);
+      header_ = reinterpret_cast<DelItemHeader*>(mmap_alloc_.addr(offset));
+      header_->min_lsn = UINT64_MAX;
+    }
     KStatus s = index_.Init(&mmap_alloc_, &(mmap_alloc_.getHeader()->index_header_offset));
     if (s == KStatus::SUCCESS) {
       return s;
@@ -126,6 +136,48 @@ KStatus TsDelItemManager::Open() {
   }
   LOG_ERROR("deleteitem open failed.");
   return KStatus::FAIL;
+}
+
+KStatus TsDelItemManager::HasValidDelItem(const KwLSNSpan& lsn, bool& has_valid) {
+  has_valid = false;
+  for (size_t i = 1; i <= header_->max_entity_id; i++) {
+    std::list<STDelRange> del_range;
+    auto s = GetDelRange(i, del_range);
+    if (s != KStatus::SUCCESS) {
+      LOG_ERROR("GetDelRange failed. for entity Id [%lu]", i);
+      return s;
+    }
+    for (STDelRange& cur_del : del_range) {
+      if (LSNRangeUtil::IsSpan1CrossSpan2(cur_del.lsn_span, lsn)) {
+        has_valid = true;
+        return KStatus::SUCCESS;
+      }
+    }
+  }
+  return KStatus::SUCCESS;
+}
+
+KStatus TsDelItemManager::RmDeleteItems(TSEntityID entity_id, const KwLSNSpan &lsn) {
+  uint64_t total_dropped = 0;
+  std::list<TsEntityDelItem*> del_range;
+  auto s = GetDelItem(entity_id, del_range);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("GetDelRange failed. for entity Id [%lu]", entity_id);
+    return s;
+  }
+  for (TsEntityDelItem* cur_del : del_range) {
+    if (LSNRangeUtil::IsSpan1IncludeSpan2(lsn, cur_del->range.lsn_span)) {
+      cur_del->status = TsEntityDelItemStatus::DEL_ITEM_DROPPED;
+      total_dropped++;
+    }
+  }
+  {
+    RW_LATCH_X_LOCK(rw_lock_);
+    header_->dropped_num += total_dropped;
+    header_->clear_max_lsn = std::max(header_->clear_max_lsn, lsn.end);
+    RW_LATCH_UNLOCK(rw_lock_);
+  }
+  return KStatus::SUCCESS;
 }
 
 KStatus TsDelItemManager::AddDelItem(TSEntityID entity_id, const TsEntityDelItem& del_item) {
@@ -147,12 +199,16 @@ KStatus TsDelItemManager::AddDelItem(TSEntityID entity_id, const TsEntityDelItem
       new_node->pre_node_offset = *node;
     }
     *node = offset;
+    header_->max_entity_id = std::max(header_->max_entity_id, entity_id);
+    header_->delitem_num += 1;
+    header_->min_lsn = std::min(header_->min_lsn, del_item.range.lsn_span.begin);
+    header_->max_lsn = std::max(header_->max_lsn, del_item.range.lsn_span.end);
     RW_LATCH_UNLOCK(rw_lock_);
   }
   return KStatus::SUCCESS;
 }
 
-KStatus TsDelItemManager::GetDelItem(TSEntityID entity_id, std::list<TsEntityDelItem>& del_items) {
+KStatus TsDelItemManager::GetDelItem(TSEntityID entity_id, std::list<TsEntityDelItem*>& del_items) {
   auto node = index_.GetIndexObject(entity_id, false);
   if (node == nullptr) {
     // this entity has no del item.
@@ -167,9 +223,23 @@ KStatus TsDelItemManager::GetDelItem(TSEntityID entity_id, std::list<TsEntityDel
         LOG_ERROR("GetAddrForOffset failed. offset [%lu]", *node);
         return KStatus::FAIL;
       }
-      del_items.push_back(cur_node->del_item);
+      del_items.push_back(&(cur_node->del_item));
       cur_node_offset = cur_node->pre_node_offset;
     }
+    RW_LATCH_UNLOCK(rw_lock_);
+  }
+  return KStatus::SUCCESS;
+}
+
+KStatus TsDelItemManager::DropEntity(TSEntityID entity_id) {
+  auto node = index_.GetIndexObject(entity_id, false);
+  if (node == nullptr || *node == INVALID_POSITION) {
+    // this entity has no del item.
+    return KStatus::SUCCESS;
+  }
+  {
+    RW_LATCH_X_LOCK(rw_lock_);
+    *node = INVALID_POSITION;
     RW_LATCH_UNLOCK(rw_lock_);
   }
   return KStatus::SUCCESS;
@@ -181,6 +251,7 @@ KStatus TsDelItemManager::RollBackDelItem(TSEntityID entity_id, const KwLSNSpan&
     // this entity has no del item.
     return KStatus::SUCCESS;
   }
+  uint64_t dropped_num = 0;
   {
     RW_LATCH_S_LOCK(rw_lock_);
     auto cur_node_offset = *node;
@@ -192,24 +263,30 @@ KStatus TsDelItemManager::RollBackDelItem(TSEntityID entity_id, const KwLSNSpan&
       }
       if (cur_node->del_item.range.lsn_span.Equal(lsn)) {
         cur_node->del_item.status = DEL_ITEM_ROLLBACK;
+        dropped_num++;
       }
       cur_node_offset = cur_node->pre_node_offset;
     }
+    RW_LATCH_UNLOCK(rw_lock_);
+  }
+  {
+    RW_LATCH_X_LOCK(rw_lock_);
+    header_->dropped_num += dropped_num;
     RW_LATCH_UNLOCK(rw_lock_);
   }
   return KStatus::SUCCESS;
 }
 
 KStatus TsDelItemManager::GetDelRange(TSEntityID entity_id, std::list<STDelRange>& del_range) {
-  std::list<TsEntityDelItem> del_items;
+  std::list<TsEntityDelItem*> del_items;
   auto s = GetDelItem(entity_id, del_items);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("GetDelItem failed. entity_id [%lu]", entity_id);
     return s;
   }
   for (auto& item : del_items) {
-    if (item.status == DEL_ITEM_OK) {
-      del_range.push_back(item.range);
+    if (item->status == DEL_ITEM_OK) {
+      del_range.push_back(item->range);
     }
   }
   return KStatus::SUCCESS;

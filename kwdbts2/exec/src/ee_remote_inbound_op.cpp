@@ -251,13 +251,12 @@ KStatus RemoteInboundOperator::PushChunk(DataChunkPtr& chunk, k_int32 stream_id,
     chunk_request_->set_be_number(stream_id);
     chunk_request_->set_query_id(query_id_);
   }
-
-  if (nullptr != chunk && stream_recvr_ && chunk->Count() > 0) {
-    size_t chunk_size = chunk->Size() + 20;
-    stream_recvr_->GetPassThroughContext().AppendChunk(stream_id, chunk.get(),
-                                                       chunk_size, 0);
+  DataChunk* tmp = chunk.get();
+  if (nullptr != tmp && stream_recvr_ && tmp->Count() > 0) {
+    size_t chunk_size = tmp->Size() + 20;
+    stream_recvr_->GetPassThroughContext().AppendChunk(stream_id, chunk, chunk_size, 0);
     current_request_bytes_ += chunk_size;
-    send_count_ += chunk->Count();
+    send_count_ += tmp->Count();
   }
 
   // if (current_request_bytes_ > 262144) {

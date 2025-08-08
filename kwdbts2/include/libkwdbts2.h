@@ -241,7 +241,7 @@ TSStatus TSCompressTsTable(TSEngine* engine, TSTableID table_id, KTimestamp ts);
  */
 TSStatus TSCompressImmediately(TSEngine* engine, uint64_t goCtxPtr, TSTableID table_id);
 
-TSStatus TSVacuumTsTable(TSEngine* engine, TSTableID table_id, uint32_t ts_version);
+TSStatus TSVacuum(TSEngine* engine);
 
 /**
  * @brief Migrate table partition to another tiering level if hot and cold data tiering is configured

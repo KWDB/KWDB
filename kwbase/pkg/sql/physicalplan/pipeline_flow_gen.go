@@ -114,7 +114,7 @@ func setTsInfo(
 	// set TsInfo for every flow.
 	for _, flow := range flows {
 		flow.TsInfo.BrpcAddrs = brpcAddrs
-		flow.TsInfo.UsePipeline = true
+		flow.TsInfo.UseAeGather = true
 		flow.TsInfo.QueryID = queryID
 	}
 	if p.UseQueryShortCircuit == UseQueryShortCircuitForDistributedPre {

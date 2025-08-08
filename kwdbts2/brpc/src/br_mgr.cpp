@@ -88,7 +88,8 @@ KStatus BrMgr::Init(kwdbContext_p ctx, const EngineOptions& options) {
     brpc_options.auth = auth_.get();
     brpc_options.has_builtin_services = false;
     if (auto ret = brpc_server_->Start(point, &brpc_options); ret != 0) {
-      LOG_ERROR("Failed to start BRPC server, error code:%d", ret);
+      LOG_ERROR("Failed to start BRPC server, brpc_addr:%s, error code:%d",
+                options.brpc_addr.c_str(), ret);
       return KStatus::FAIL;
     }
 

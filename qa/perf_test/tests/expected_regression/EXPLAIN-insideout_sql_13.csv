@@ -1,0 +1,83 @@
+tree,field,description
+"",distributed,true
+"",vectorized,false
+render,"",""
+" │",avg_val,avg
+" │",min_val,min
+" │",max_val,max
+" │",count_val,count
+" │",device,device
+" │",datatype,datatype
+" │",cid,cid
+" └── sort","",""
+"      │",order,"+device,+datatype,+cid"
+"      └── render","",""
+"           │",avg,sum / sum_int
+"           │",datatype,datatype
+"           │",device,device
+"           │",min,min
+"           │",max,max
+"           │",count,sum_int
+"           │",cid,cid
+"           └── group","",""
+"                │",aggregate 0,datatype
+"                │",aggregate 1,device
+"                │",aggregate 2,cid
+"                │",aggregate 3,sum_int(count)
+"                │",aggregate 4,sum(sum)
+"                │",aggregate 5,min(min)
+"                │",aggregate 6,max(max)
+"                │",aggregate 7,sum_int(count)
+"                │",group by,"datatype, device, cid"
+"                └── render","",""
+"                     │",datatype,datatype
+"                     │",device,device
+"                     │",min,min
+"                     │",max,max
+"                     │",count,count
+"                     │",cid,company_id::DECIMAL
+"                     │",sum,sum
+"                     └── hash-join","",""
+"                          │",type,inner
+"                          │",equality,"(companyid, device, datatype) = (company_id, name, index_name)"
+"                          ├── group","",""
+"                          │    │",engine type,time series
+"                          │    │",aggregate 0,companyid
+"                          │    │",aggregate 1,device
+"                          │    │",aggregate 2,datatype
+"                          │    │",aggregate 3,min(value)
+"                          │    │",aggregate 4,max(value)
+"                          │    │",aggregate 5,count(value)
+"                          │    │",aggregate 6,sum(value)
+"                          │    │",group by,"companyid, device, datatype"
+"                          │    │",addSynchronizer ,true
+"                          │    └── ts scan","",""
+"                          │",ts-table,opcdata449600
+"                          │",access mode,tableTableMeta
+"                          └── hash-join","",""
+"                               │",type,inner
+"                               │",equality,(index_id) = (id)
+"                               │",pred,"id::STRING = ANY string_to_array(item_ids, ',')"
+"                               ├── scan","",""
+"                               │",table,plat_tijian_item@primary
+"                               │",spans,FULL SCAN
+"                               └── cross-join","",""
+"                                    │",type,cross
+"                                    ├── scan","",""
+"                                    │",table,plat_tijian_item_index@primary
+"                                    │",spans,FULL SCAN
+"                                    └── lookup-join","",""
+"                                         │",table,plat_device_info@primary
+"                                         │",type,inner
+"                                         │",equality,(obj_id) = (id)
+"                                         │",equality cols are key,""
+"                                         │",parallel,""
+"                                         └── index-join","",""
+"                                              │",table,plat_tijiancard_item_relation@primary
+"                                              │",key columns,id
+"                                              └── scan","",""
+"",table,plat_tijiancard_item_relation@tijian_id_relation
+"",spans,"/""6VVkdjOLPOL1brZ8BBXQtvcRuMIfTfLD4uJyFFzbai5U7LywRF""-/""6VVkdjOLPOL1brZ8BBXQtvcRuMIfTfLD4uJyFFzbai5U7LywRF""/PrefixEnd /""BGNbk9KrNuk9MYF4xu0L1aqOXi4OIKsLtk6xNMpuRVN6EiMThS""-/""BGNbk9KrNuk9MYF4xu0L1aqOXi4OIKsLtk6xNMpuRVN6EiMThS""/PrefixEnd"
+
+Time: 254.991901ms
+

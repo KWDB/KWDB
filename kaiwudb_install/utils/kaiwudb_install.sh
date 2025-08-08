@@ -69,6 +69,7 @@ services:
     ports:
       - $g_rest_port:8080
       - $g_kwdb_port:26257
+      - $g_brpc_port:27257
     $cpus
     ulimits:
       memlock: -1
@@ -90,7 +91,7 @@ services:
       - /bin/bash
       - -c
       - |
-        /kaiwudb/bin/kwbase  $start_type $secure_param --listen-addr=0.0.0.0:26257 --advertise-addr=$1:$g_kwdb_port --http-addr=0.0.0.0:8080 --store=/kaiwudb/deploy/kaiwudb-container $encrypto_opt $opt_join
+        /kaiwudb/bin/kwbase  $start_type $secure_param --listen-addr=0.0.0.0:26257 --advertise-addr=$1:$g_kwdb_port --http-addr=0.0.0.0:8080 --brpc-addr=0.0.0.0:27257 --store=/kaiwudb/deploy/kaiwudb-container $encrypto_opt $opt_join
 \" >/etc/kaiwudb/script/docker-compose.yml"
 }
 
@@ -379,7 +380,7 @@ $cpus
 WorkingDirectory=/usr/local/kaiwudb/bin
 EnvironmentFile=/etc/kaiwudb/script/kaiwudb_env
 ExecStartPre=$(which sudo) $(which sysctl) -w vm.max_map_count=10000000
-ExecStart=/usr/local/kaiwudb/bin/kwbase $start_type \\\$KAIWUDB_START_ARG $secure_param --listen-addr=0.0.0.0:$g_kwdb_port --advertise-addr=$1:$g_kwdb_port --http-addr=0.0.0.0:$g_rest_port --store=$g_data_root $encrypto_opt $opt_join
+ExecStart=/usr/local/kaiwudb/bin/kwbase $start_type \\\$KAIWUDB_START_ARG $secure_param --listen-addr=0.0.0.0:$g_kwdb_port --advertise-addr=$1:$g_kwdb_port --http-addr=0.0.0.0:$g_rest_port --brpc-addr=0.0.0.0:$g_brpc_port --store=$g_data_root $encrypto_opt $opt_join
 ExecStop=/bin/kill \\\$MAINPID
 KillMode=control-group
 # Restart=on-failure

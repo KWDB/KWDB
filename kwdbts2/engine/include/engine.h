@@ -558,6 +558,10 @@ struct TSEngine {
    */
   virtual void AlterTableCacheCapacity(int capacity) = 0;
 
+  virtual KStatus Vacuum() {
+    return SUCCESS;
+  }
+
  protected:
   SharedLruUnorderedMap<KTableKey, TsTable>* tables_cache_{};
 };

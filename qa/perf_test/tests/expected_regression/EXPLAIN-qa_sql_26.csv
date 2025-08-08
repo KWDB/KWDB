@@ -1,0 +1,28 @@
+tree,field,description
+"",distributed,true
+"",vectorized,false
+group,"",""
+" │",aggregate 0,count_rows()
+" │",aggregate 1,avg(value)
+" │",scalar,""
+" └── render","",""
+"      │",value,value
+"      └── hash-join","",""
+"           │",type,inner
+"           │",equality,"(""tag"", companyid) = (""tag"", company_id)"
+"           │",pred,"pic2_upload_time = ""time"""
+"           ├── synchronizer","",""
+"           │    └── ts scan","",""
+"           │",ts-table,opcdata449600
+"           │",access mode,tableTableMeta
+"           │",spans:fromTime,2023-05-29 10:10:10.001 +0000 UTC
+"           │",spans:toTime,2024-01-05 16:10:10 +0000 UTC
+"           └── scan","",""
+"",table,plat_zone_member@primary
+"",spans,FULL SCAN
+"",filter,contract_email = 'ningmeng0823@hotmail.com'
+"","",""
+warning messages,multi-model fall back,join on time-series metrics column
+
+Time: 4.23425ms
+

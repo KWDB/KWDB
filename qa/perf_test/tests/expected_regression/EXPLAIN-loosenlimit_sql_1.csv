@@ -1,0 +1,114 @@
+tree,field,description
+"",distributed,false
+"",vectorized,false
+render,"",""
+" │",upper_value,index_upper_value
+" │",timebucket,timebucket
+" │",avg_value,avg
+" └── sort","",""
+"      │",order,"+index_upper_value,+timebucket"
+"      └── render","",""
+"           │",index_upper_value,index_upper_value
+"           │",avg,sum / sum_int
+"           │",timebucket,timebucket
+"           └── group","",""
+"                │",aggregate 0,index_upper_value
+"                │",aggregate 1,timebucket
+"                │",aggregate 2,sum_int(count)
+"                │",aggregate 3,sum(sum)
+"                │",group by,"index_upper_value, timebucket"
+"                └── render","",""
+"                     │",index_upper_value,index_upper_value
+"                     │",timebucket,timebucket
+"                     │",count,count
+"                     │",sum,sum
+"                     └── hash-join","",""
+"                          │",type,inner
+"                          │",equality,"(companyid, ""tag"") = (company_id, device_no)"
+"                          ├── group","",""
+"                          │    │",engine type,time series
+"                          │    │",aggregate 0,companyid
+"                          │    │",aggregate 1,tag
+"                          │    │",aggregate 2,timebucket
+"                          │    │",aggregate 3,count(value)
+"                          │    │",aggregate 4,sum(value)
+"                          │    │",group by,"companyid, tag, timebucket"
+"                          │    │",addSynchronizer ,true
+"                          │    └── render","",""
+"                          │         │",engine type,time series
+"                          │         │",timebucket,"time_bucket(""time"", '3600s')"
+"                          │         │",time,"""time"""
+"                          │         │",value,value
+"                          │         │",companyid,companyid
+"                          │         │",tag,"""tag"""
+"                          │         └── ts scan","",""
+"                          │",ts-table,opcdata449600
+"                          │",access mode,tableTableMeta
+"                          │",spans:fromTime,2023-01-01 00:00:00 +0000 UTC
+"                          │",spans:toTime,2024-01-01 02:00:00 +0000 UTC
+"                          │",tag filter[0],"""tag"" IN ('1003', 'MAT83104')"
+"                          │",tag filter[1],companyid = 449600
+"                          └── hash-join","",""
+"                               │",type,inner
+"                               │",equality,(id) = (index_id)
+"                               ├── cross-join","",""
+"                               │    │",type,cross
+"                               │    ├── scan","",""
+"                               │    │",table,plat_device_info@primary
+"                               │    │",spans,FULL SCAN
+"                               │    └── scan","",""
+"                               │",table,cd_tijian_item_index@primary
+"                               │",spans,FULL SCAN
+"                               └── hash-join","",""
+"                                    │",type,inner
+"                                    │",equality,(device_id) = (id)
+"                                    │",right cols are key,""
+"                                    ├── scan","",""
+"                                    │",table,cd_device_point@primary
+"                                    │",spans,FULL SCAN
+"                                    └── render","",""
+"                                         └── hash-join","",""
+"                                              │",type,inner
+"                                              │",equality,(id) = (device_info_id)
+"                                              │",left cols are key,""
+"                                              ├── apply-join","",""
+"                                              │    │",type,semi
+"                                              │    │",pred,area_id = id
+"                                              │    └── scan","",""
+"                                              │",table,plat_device_info@primary
+"                                              │",spans,FULL SCAN
+"                                              │",filter,company_id = 449600
+"                                              │",right,"project
+ ├── columns: pra.id:143(int4!null) risk_id:144(int4!null)
+ ├── outer: (123)
+ └── project
+      ├── columns: pra.id:143(int4!null) risk_id:144(int4!null) prab.id:149(int4!null) prab.company_id:150(int4!null)
+      ├── outer: (123)
+      └── inner-join (lookup plat_risk_analyse_objects)
+           ├── columns: pra.id:143(int4!null) risk_id:144(int4!null) prab.id:149(int4!null) prab.company_id:150(int4!null) prab.category:154(int4!null) danger_level:161(varchar!null) risk_type:177(int4!null)
+           ├── key columns: [144] = [149]
+           ├── lookup columns are key
+           ├── outer: (123)
+           ├── scan pra
+           │    └── columns: pra.id:143(int4!null) risk_id:144(int4!null)
+           └── filters
+                ├── eq [type=bool, outer=(123,150), constraints=(/123: (/NULL - ]; /150: (/NULL - ])]
+                │    ├── variable: prab.company_id:150 [type=int4]
+                │    └── variable: pd.company_id:123 [type=int4]
+                ├── eq [type=bool, outer=(154), constraints=(/154: [/1 - /1]; tight)]
+                │    ├── variable: prab.category:154 [type=int4]
+                │    └── const: 1 [type=int]
+                ├── eq [type=bool, outer=(161), constraints=(/161: [/e'\U000056DB\U00007EA7' - /e'\U000056DB\U00007EA7']; tight)]
+                │    ├── variable: danger_level:161 [type=varchar]
+                │    └── const: e'\U000056DB\U00007EA7' [type=string]
+                └── eq [type=bool, outer=(177), constraints=(/177: [/5 - /5]; tight)]
+                     ├── variable: risk_type:177 [type=int4]
+                     └── const: 5 [type=int]
+"
+"                                              └── scan","",""
+"",table,cd_security_device@primary
+"",spans,FULL SCAN
+"",filter,"((company_id = 449600) AND (device_no IN ('1003', 'MAT83104'))) AND (category = 5)"
+
+Time: 90.575675ms
+
