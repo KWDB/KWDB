@@ -120,6 +120,8 @@ class TsLastSegment : public TsSegmentBase {
                         std::shared_ptr<TsTableSchemaManager> tbl_schema_mgr,
                         uint32_t scan_version) override;
 
+  size_t GetFileSize() const { return file_->GetFileSize(); }
+
   bool MayExistEntity(TSEntityID entity_id) const override {
     return bloom_filter_ ? bloom_filter_->MayExist(entity_id)
                          : true;  // always return true when bloom filter doesn't exist.
