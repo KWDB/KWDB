@@ -681,7 +681,7 @@ func (u *sqlSymUnion) caseWhens() []*tree.CaseWhen {
 
 // Ordinary key words in alphabetical order.
 %token <str> ABORT ACTION ADD ADMIN AGGREGATE AUDIT AUDITS
-%token <str> ALL ALTER ANALYSE ANALYZE AND AND_AND ANY ANNOTATE_TYPE APPLICATIONS ARRAY AS ASC
+%token <str> ALL ALTER ANALYSE ANALYZE AND AND_AND ANY ANNOTATE_TYPE AP APPLICATIONS ARRAY AS ASC
 %token <str> ASYMMETRIC ASSIGN AT ATTRIBUTE ATTRIBUTES AUTHORIZATION AUTOMATIC
 
 %token <str> STMT_HINT ACCESS_HINT NO_ACCESS_HINT TABLE_SCAN IGNORE_TABLE_SCAN USE_INDEX_SCAN IGNORE_INDEX_SCAN  LEADING_HINT
@@ -892,6 +892,7 @@ func (u *sqlSymUnion) caseWhens() []*tree.CaseWhen {
 %type <tree.Statement> create_ddl_stmt
 %type <tree.Statement> create_database_stmt
 %type <tree.Statement> create_ts_database_stmt
+%type <tree.Statement> create_ap_database_stmt
 %type <tree.Statement> create_index_stmt
 %type <tree.Statement> create_role_stmt
 %type <tree.Statement> create_schema_stmt
@@ -2725,6 +2726,7 @@ drop_unsupported:
 create_ddl_stmt:
   create_changefeed_stmt
 | create_ts_database_stmt // EXTEND WITH HELP: CREATE TS DATABASE
+| create_ap_database_stmt // EXTEND WITH HELP: CREATE AP DATABASE
 | create_database_stmt // EXTEND WITH HELP: CREATE DATABASE
 | create_index_stmt    // EXTEND WITH HELP: CREATE INDEX
 | create_schema_stmt   // EXTEND WITH HELP: CREATE SCHEMA
@@ -5344,7 +5346,6 @@ create_table_stmt:
       Temporary: $2.persistenceType(),
       StorageParams: $10.storageParams(),
       OnCommit: $11.createTableOnCommitSetting(),
-      TableType: tree.RelationalTable,
       Comment: $12,
     }
   }
@@ -5361,7 +5362,6 @@ create_table_stmt:
       Temporary: $2.persistenceType(),
       StorageParams: $13.storageParams(),
       OnCommit: $14.createTableOnCommitSetting(),
-      TableType: tree.RelationalTable,
       Comment: $15,
     }
   }
@@ -7994,6 +7994,21 @@ create_ts_database_stmt:
       }
   	}
 | CREATE TS DATABASE error // SHOW HELP: CREATE TS DATABASE
+
+// %Help: CREATE AP DATABASE - create a new AP database
+// %Category: DDL
+// %Text:
+// CREATE AP DATABASE <name> [COMMENT <comment>]
+create_ap_database_stmt:
+	CREATE AP DATABASE database_name opt_comment_clause
+  	{
+  		$$.val = &tree.CreateDatabase{
+				Name: tree.Name($4),
+				EngineType: tree.EngineTypeAP,
+				Comment: $5,
+      }
+  	}
+| CREATE AP DATABASE error // SHOW HELP: CREATE AP DATABASE
 
 opt_template_clause:
   TEMPLATE opt_equal non_reserved_word_or_sconst
@@ -12800,6 +12815,7 @@ unreserved_keyword:
 | ADMIN
 | AGGREGATE
 | ALTER
+| AP
 | APPLICATIONS
 | AT
 | AUDIT

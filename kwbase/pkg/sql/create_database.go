@@ -40,6 +40,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqltelemetry"
 	"gitee.com/kwbasedb/kwbase/pkg/util/errorutil/unimplemented"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
+	duckdb "github.com/duckdb-go-bindings"
 )
 
 // MaxTSDBNameLength represents the maximum length of ts database name.
@@ -181,6 +182,21 @@ func (n *createDatabaseNode) startExec(params runParams) error {
 		stmt := fmt.Sprintf("alter database %s CONFIGURE ZONE USING num_replicas = 1;", desc.Name)
 		if _, err := params.ExecCfg().InternalExecutor.Exec(params.ctx, "set num_replicas", params.p.txn, stmt); err != nil {
 			log.Errorf(params.ctx, "failed alter CONFIGURE ZONE USING num_replicas = 1")
+		}
+	}
+	if desc.EngineType == tree.EngineTypeAP {
+		dbPath := params.p.DistSQLPlanner().distSQLSrv.ServerConfig.ApEngine.DbPath
+		var config duckdb.Config
+		dsn := dbPath + "/" + desc.Name
+		defer duckdb.DestroyConfig(&config)
+		if duckdb.CreateConfig(&config) == duckdb.StateError {
+			return pgerror.Newf(pgcode.Warning, "create config failed")
+		}
+		var db duckdb.Database
+		defer duckdb.Close(&db)
+		var errMsg string
+		if duckdb.OpenExt(dsn, &db, config, &errMsg) == duckdb.StateError {
+			return pgerror.Newf(pgcode.Warning, errMsg)
 		}
 	}
 	log.Infof(params.ctx, "create database %s finished, type: %s, id: %d", desc.Name, tree.EngineName(n.n.EngineType), desc.ID)

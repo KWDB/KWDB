@@ -1411,6 +1411,7 @@ var (
 	tableTypeSuper            = tree.NewDString("TEMPLATE TABLE")
 	tableTypeChild            = tree.NewDString("INSTANCE TABLE")
 	tableTypeMaterializedView = tree.NewDString("MATERIALIZED VIEW")
+	tableTypeColumnTable      = tree.NewDString("COLUMN BASED TABLE")
 )
 
 var informationSchemaTablesTable = virtualSchemaTable{
@@ -1449,6 +1450,8 @@ https://www.postgresql.org/docs/9.5/infoschema-tables.html`,
 					// do nothing
 				case tree.TimeseriesTable:
 					tableType = tableTypeNormalTimeSeries
+				case tree.ColumnBasedTable:
+					tableType = tableTypeColumnTable
 				case tree.TemplateTable:
 					tableType = tableTypeSuper
 					allChild, err := sqlbase.GetAllInstanceByTmplTableID(ctx, p.txn, table.ID, true, p.ExecCfg().InternalExecutor)

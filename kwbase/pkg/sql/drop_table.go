@@ -27,7 +27,6 @@ package sql
 import (
 	"context"
 	"fmt"
-
 	"gitee.com/kwbasedb/kwbase/pkg/keys"
 	"gitee.com/kwbasedb/kwbase/pkg/security"
 	"gitee.com/kwbasedb/kwbase/pkg/server/telemetry"
@@ -41,6 +40,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 	"gitee.com/kwbasedb/kwbase/pkg/util/timeutil"
 	"github.com/cockroachdb/errors"
+	duckdb "github.com/duckdb-go-bindings"
 )
 
 type dropTableNode struct {
@@ -74,6 +74,10 @@ func (p *planner) DropTable(ctx context.Context, n *tree.DropTable) (planNode, e
 		// drop multiple time-series tables at once is not supported
 		if droppedDesc.IsTSTable() && len(n.Names) > 1 {
 			return nil, pgerror.New(pgcode.FeatureNotSupported, "drop multiple time-series tables at once is not supported")
+		}
+		// drop multiple column based tables at once is not supported
+		if droppedDesc.IsColumnBasedTable() && len(n.Names) > 1 {
+			return nil, pgerror.New(pgcode.FeatureNotSupported, "drop multiple column based tables at once is not supported")
 		}
 
 		// dropping timeseries table within explicit txn not supported
@@ -172,6 +176,29 @@ func (n *dropTableNode) startExec(params runParams) error {
 		if err != nil {
 			params.p.SetAuditTarget(0, droppedDesc.GetName(), droppedViews)
 			return err
+		}
+		if droppedDesc.IsColumnBasedTable() {
+			if droppedDesc.GetParentSchemaID() == keys.PublicSchemaID {
+				n.n.Names[0].SchemaName = tree.MainSchemaName
+			}
+			n.n.Names[0].ExplicitSchema = true
+			n.n.Names[0].ExplicitCatalog = true
+			dropStmt := n.n.String()
+			conn := params.p.DistSQLPlanner().distSQLSrv.ServerConfig.ApEngine.Connection
+			dbPath := params.p.DistSQLPlanner().distSQLSrv.ServerConfig.ApEngine.DbPath
+			var res duckdb.Result
+			defer duckdb.DestroyResult(&res)
+			attachStmt := fmt.Sprintf(`ATTACH '%s' AS %s`, dbPath+"/"+string(n.n.Names[0].CatalogName), n.n.Names[0].CatalogName)
+			detachStmt := fmt.Sprintf(`DETACH %s`, n.n.Names[0].CatalogName)
+			if duckdb.Query(*conn, attachStmt, &res) == duckdb.StateError {
+				return pgerror.Newf(pgcode.Warning, "attach database %s failed", n.n.Names[0].CatalogName)
+			}
+			if duckdb.Query(*conn, dropStmt, &res) == duckdb.StateError {
+				return pgerror.Newf(pgcode.Warning, "create column based table failed")
+			}
+			if duckdb.Query(*conn, detachStmt, &res) == duckdb.StateError {
+				return pgerror.Newf(pgcode.Warning, "detach database %s failed", n.n.Names[0].CatalogName)
+			}
 		}
 		params.p.SetAuditTarget(uint32(droppedDesc.ID), droppedDesc.GetName(), droppedViews)
 	}

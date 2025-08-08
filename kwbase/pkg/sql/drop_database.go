@@ -26,6 +26,7 @@ package sql
 
 import (
 	"context"
+	"os"
 
 	"gitee.com/kwbasedb/kwbase/pkg/config"
 	"gitee.com/kwbasedb/kwbase/pkg/jobs/jobspb"
@@ -303,6 +304,12 @@ func (n *dropDatabaseNode) startExec(params runParams) error {
 		return err
 	}
 
+	if n.dbDesc.EngineType == tree.EngineTypeAP {
+		dbPath := params.p.DistSQLPlanner().distSQLSrv.ApEngine.DbPath
+		if err := os.Remove(dbPath + "/" + n.dbDesc.Name); err != nil {
+			return err
+		}
+	}
 	// Log Drop Database event. This is an auditable log event and is recorded
 	// in the same transaction as the table descriptor update.
 	p.SetAuditTarget(uint32(n.dbDesc.ID), n.n.Name.String(), tbNameStrings)

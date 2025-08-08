@@ -116,6 +116,12 @@ func (p *planner) AlterTable(ctx context.Context, n *tree.AlterTable) (planNode,
 	// expressions.
 	statsData := make(map[int]tree.TypedExpr)
 	for i, cmd := range n.Cmds {
+		// check if alter table command supported on column based table.
+		if tableDesc.IsColumnBasedTable() {
+			if !checkColumnBasedTableCmd(cmd) {
+				return nil, pgerror.Newf(pgcode.FeatureNotSupported, "command on column based table is not supported")
+			}
+		}
 		injectStats, ok := cmd.(*tree.AlterTableInjectStats)
 		if !ok {
 			continue
@@ -143,6 +149,16 @@ func (p *planner) AlterTable(ctx context.Context, n *tree.AlterTable) (planNode,
 	}, nil
 }
 
+func checkColumnBasedTableCmd(cmd tree.AlterTableCmd) bool {
+	switch cmd.(type) {
+	case *tree.AlterTableAddColumn, *tree.AlterTableAddConstraint, *tree.AlterTableDropColumn,
+		*tree.AlterTableAlterColumnType, *tree.AlterTableSetDefault, *tree.AlterTableSetNotNull,
+		*tree.AlterTableDropNotNull, *tree.AlterTableRenameColumn, *tree.AlterTableRenameTable:
+		return true
+	}
+	return false
+}
+
 func isAlterCmdValidWithoutPrimaryKey(cmd tree.AlterTableCmd) bool {
 	switch t := cmd.(type) {
 	case *tree.AlterTableAlterPrimaryKey:
@@ -166,6 +182,9 @@ func (n *alterTableNode) ReadingOwnWrites() {}
 func (n *alterTableNode) startExec(params runParams) error {
 	if n.tableDesc.IsTSTable() && len(n.n.Cmds) > 1 {
 		return pgerror.New(pgcode.FeatureNotSupported, "alter timeseries table with multiple commands is not supported")
+	}
+	if n.tableDesc.IsColumnBasedTable() && len(n.n.Cmds) > 1 {
+		return pgerror.New(pgcode.FeatureNotSupported, "alter column based table with multiple commands is not supported")
 	}
 	telemetry.Inc(sqltelemetry.SchemaChangeAlterCounter("table"))
 

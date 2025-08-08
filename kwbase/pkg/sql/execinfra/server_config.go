@@ -29,6 +29,7 @@ package execinfra
 import (
 	"context"
 
+	"gitee.com/kwbasedb/kwbase/pkg/ape"
 	"gitee.com/kwbasedb/kwbase/pkg/base"
 	"gitee.com/kwbasedb/kwbase/pkg/cdc/cdcpb"
 	"gitee.com/kwbasedb/kwbase/pkg/gossip"
@@ -159,6 +160,9 @@ type ServerConfig struct {
 
 	// TsEngine is a ts engine
 	TsEngine *tse.TsEngine
+
+	// ApEngine is a ap engine
+	ApEngine *ape.ApEngine
 
 	// StatsRefresher is a refresher of statistic
 	StatsRefresher *stats.Refresher

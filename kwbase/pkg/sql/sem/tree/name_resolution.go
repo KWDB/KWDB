@@ -130,6 +130,11 @@ const (
 	PublicSchema string = "public"
 	// PublicSchemaName is the same, typed as Name.
 	PublicSchemaName Name = Name(PublicSchema)
+	// MainSchema is the name of the physical schema in every
+	// column base database.
+	MainSchema string = "main"
+	// MainSchemaName is the same, typed as Name.
+	MainSchemaName Name = Name(MainSchema)
 )
 
 // NumResolutionResults represents the number of results in the lookup

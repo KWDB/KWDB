@@ -12,17 +12,21 @@
 package importer
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
 	"io/ioutil"
 	"math"
+	"net/url"
 	"sync/atomic"
 	"time"
 
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfra"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfrapb"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgcode"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgerror"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/row"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
@@ -32,6 +36,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 	"gitee.com/kwbasedb/kwbase/pkg/util/tracing"
 	"github.com/cockroachdb/errors"
+	duck "github.com/duckdb-go-bindings"
 )
 
 // importFileInfo describes state specific to a file being imported.
@@ -492,4 +497,52 @@ type partFileInfos []partFileInfo
 type partFileInfo struct {
 	start int64
 	end   int64
+}
+
+func constructCopyAndRun(
+	spec *execinfrapb.ReadImportDataSpec,
+	flowCtx *execinfra.FlowCtx,
+) (bool, int64, error) {
+	if spec.Table.Desc.TableType != tree.ColumnBasedTable {
+		return false, 0, nil
+	}
+	var buf bytes.Buffer
+	buf.WriteString("copy ")
+	buf.WriteString(spec.Table.Desc.Name)
+	buf.WriteString(" from ")
+	buf.WriteString("'")
+	buf.WriteString(flowCtx.Cfg.Settings.ExternalIODir) /* ".../gitee.com/kwbasedb/kwbase/kwbase-data/extern" */
+
+	// parse file name
+	for _, v := range spec.Uri {
+		uri, err := url.Parse(v)
+		if err != nil {
+			return false, 0, err
+		}
+		buf.WriteString(uri.Path)
+	}
+	buf.WriteString("' ")
+
+	// copy SQL
+	stmt := buf.String()
+
+	var state duck.State
+	var res duck.Result
+
+	start := time.Now()
+	state = duck.Query(*flowCtx.Cfg.ApEngine.Connection, stmt, &res)
+	if state != duck.StateSuccess {
+		fmt.Println("copy failed")
+		errMsg := duck.ResultError(&res)
+		return false, 0, pgerror.New(pgcode.Warning, errMsg)
+	}
+	end := time.Now()
+	diff := end.Sub(start)
+	rowsCount := duck.RowsChanged(&res)
+
+	fmt.Printf("copy %s , use time: %v, rows count: %v", spec.Table.Desc.Name, diff, rowsCount)
+	fmt.Println()
+	duck.DestroyResult(&res)
+
+	return true, int64(rowsCount), nil
 }

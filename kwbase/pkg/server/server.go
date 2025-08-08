@@ -53,6 +53,7 @@ import (
 	"time"
 	"unsafe"
 
+	"gitee.com/kwbasedb/kwbase/pkg/ape"
 	"gitee.com/kwbasedb/kwbase/pkg/base"
 	"gitee.com/kwbasedb/kwbase/pkg/blobs"
 	"gitee.com/kwbasedb/kwbase/pkg/blobs/blobspb"
@@ -296,6 +297,7 @@ type Server struct {
 	engines                Engines
 	tsEngine               *tse.TsEngine
 	tseDB                  *tscoord.DB
+	apEngine               *ape.ApEngine
 	internalMemMetrics     sql.MemoryMetrics
 	adminMemMetrics        sql.MemoryMetrics
 	// sqlMemMetrics are used to track memory usage of sql sessions.
@@ -1941,6 +1943,11 @@ func (s *Server) Start(ctx context.Context) error {
 	}
 	// init sync period
 	storage.SetSyncPeriod(tse.TsRaftLogSyncPeriod.Get(&s.st.SV))
+
+	err = s.StartApEngine()
+	if err != nil {
+		return err
+	}
 	// Now that we have a monotonic HLC wrt previous incarnations of the process,
 	// init all the replicas. At this point *some* store has been bootstrapped or
 	// we're joining an existing cluster for the first time.
@@ -3157,4 +3164,20 @@ func goFlushed() C.int {
 		return -1
 	}
 	return 0
+}
+
+// StartApEngine start ap engine.
+func (s *Server) StartApEngine() error {
+	var err error
+	dbPath := ""
+	if len(s.cfg.Stores.Specs) != 0 {
+		dbPath = s.cfg.Stores.Specs[0].Path
+	}
+	s.apEngine, err = ape.NewApEngine(s.stopper, dbPath)
+	if err != nil {
+		return errors.Wrap(err, "failed to create ap engine")
+	}
+	s.stopper.AddCloser(s.apEngine)
+	s.distSQLServer.ServerConfig.ApEngine = s.apEngine
+	return nil
 }

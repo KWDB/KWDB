@@ -813,6 +813,17 @@ func (desc *TableDescriptor) IsTSTable() bool {
 	}
 }
 
+// IsColumnBasedTable returns true if the TableDescriptor actually describes a
+// column based Table resource.
+func (desc *TableDescriptor) IsColumnBasedTable() bool {
+	switch desc.TableType {
+	case tree.ColumnBasedTable:
+		return true
+	default:
+		return false
+	}
+}
+
 // IsView returns true if the TableDescriptor actually describes a
 // View resource rather than a Table.
 func (desc *TableDescriptor) IsView() bool {

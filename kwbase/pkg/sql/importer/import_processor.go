@@ -15,6 +15,7 @@ import (
 	// "bytes"
 	"context"
 	"math"
+
 	// "os/exec"
 	// "strconv"
 	"sync"
@@ -234,6 +235,19 @@ func runImport(
 	// and ingesting produced KVs.
 	group := ctxgroup.WithContext(ctx)
 	// Read input files into kvs
+
+	ok, rowCount, err := constructCopyAndRun(spec, flowCtx)
+	if err != nil {
+		return nil, err
+	}
+	if ok {
+		summary := &roachpb.BulkOpSummary{}
+		summary.DeprecatedRows = rowCount
+		summary.EntryCounts = make(map[uint64]int64)
+		summary.EntryCounts[roachpb.BulkOpSummaryID(uint64(spec.Table.Desc.ID), uint64(spec.Table.Desc.PrimaryIndex.ID))] = rowCount
+		return summary, nil
+	}
+
 	group.GoCtx(func(ctx context.Context) error {
 		defer func() {
 			close(kvCh)

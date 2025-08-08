@@ -55,6 +55,8 @@ const (
 	EngineTypeRelational EngineType = 0
 	// EngineTypeTimeseries represents a timeseries database.
 	EngineTypeTimeseries EngineType = 1
+	// EngineTypeAP represents an Analytical Processing database.
+	EngineTypeAP EngineType = 2
 )
 
 // EngineName converts EngineType to string of engine type
@@ -65,6 +67,8 @@ func EngineName(e EngineType) string {
 		return "RELATIONAL"
 	case EngineTypeTimeseries:
 		return "TIMESERIES"
+	case EngineTypeAP:
+		return "AP"
 	}
 	return engine
 }
@@ -94,6 +98,8 @@ func (node *CreateDatabase) Format(ctx *FmtCtx) {
 	ctx.WriteString("CREATE ")
 	if node.EngineType == EngineTypeTimeseries {
 		ctx.WriteString("TS ")
+	} else if node.EngineType == EngineTypeAP {
+		ctx.WriteString("AP ")
 	}
 	ctx.WriteString("DATABASE ")
 	if node.IfNotExists {
@@ -1236,6 +1242,8 @@ const (
 	TemplateTable
 	// InstanceTable represents instance table
 	InstanceTable
+	// ColumnBasedTable represents ap table
+	ColumnBasedTable
 )
 
 // TableTypeName converts TableType to string of table type
@@ -1250,6 +1258,8 @@ func TableTypeName(t TableType) string {
 		tableType = "TEMPLATE_TABLE"
 	case InstanceTable:
 		tableType = "INSTANCE_TABLE"
+	case ColumnBasedTable:
+		tableType = "COLUMN_BASED_TABLE"
 	}
 	return tableType
 }

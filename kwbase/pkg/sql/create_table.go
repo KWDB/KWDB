@@ -62,6 +62,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/util/hlc"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 	"github.com/cockroachdb/errors"
+	duckdb "github.com/duckdb-go-bindings"
 	"github.com/lib/pq/oid"
 )
 
@@ -340,11 +341,19 @@ func checkEngineType(n *createTableNode) error {
 			return pgerror.Newf(pgcode.WrongObjectType, "downsampling feature is not supported on relational table \"%s\"", n.n.Table.TableName)
 		}
 	}
+	if n.dbDesc.EngineType == tree.EngineTypeAP && n.n.TableType == tree.ColumnBasedTable {
+		if n.n.DownSampling != nil || n.n.Sde {
+			return pgerror.Newf(pgcode.WrongObjectType, "downsampling feature is not supported on column based table \"%s\"", n.n.Table.TableName)
+		}
+	}
 	if n.dbDesc.EngineType == tree.EngineTypeRelational && n.n.TableType != tree.RelationalTable {
 		return pgerror.Newf(pgcode.WrongObjectType, "can not create timeseries table in relational database \"%s\"", n.dbDesc.Name)
 	}
 	if n.dbDesc.EngineType == tree.EngineTypeTimeseries && n.n.TableType == tree.RelationalTable {
 		return pgerror.Newf(pgcode.WrongObjectType, "can not create relational table in timeseries database \"%s\"", n.dbDesc.Name)
+	}
+	if n.dbDesc.EngineType == tree.EngineTypeAP && n.n.TableType != tree.ColumnBasedTable {
+		return pgerror.Newf(pgcode.WrongObjectType, "can not create timeseries table in ap database \"%s\"", n.dbDesc.Name)
 	}
 	if n.dbDesc.EngineType == tree.EngineTypeTimeseries {
 		if sqlbase.ContainsNonAlphaNumSymbol(n.n.Table.String()) {
@@ -359,6 +368,9 @@ func checkEngineType(n *createTableNode) error {
 
 // startExec exec create table node including make table desc, write table desc and exec create table job
 func (n *createTableNode) startExec(params runParams) error {
+	if n.dbDesc.EngineType == tree.EngineTypeAP && n.n.TableType == tree.RelationalTable {
+		n.n.TableType = tree.ColumnBasedTable
+	}
 	if err := checkEngineType(n); err != nil {
 		return err
 	}
@@ -678,7 +690,29 @@ func (n *createTableNode) startExec(params runParams) error {
 			return err
 		}
 	}
-
+	if desc.IsColumnBasedTable() {
+		if schemaID == keys.PublicSchemaID {
+			n.n.Table.SchemaName = tree.MainSchemaName
+		}
+		n.n.Table.ExplicitSchema = true
+		n.n.Table.ExplicitCatalog = true
+		createStmt := n.n.String()
+		conn := params.p.DistSQLPlanner().distSQLSrv.ServerConfig.ApEngine.Connection
+		dbPath := params.p.DistSQLPlanner().distSQLSrv.ServerConfig.ApEngine.DbPath
+		var res duckdb.Result
+		defer duckdb.DestroyResult(&res)
+		attachStmt := fmt.Sprintf(`ATTACH '%s' AS %s`, dbPath+"/"+n.dbDesc.Name, n.dbDesc.Name)
+		detachStmt := fmt.Sprintf(`DETACH %s`, n.dbDesc.Name)
+		if duckdb.Query(*conn, attachStmt, &res) == duckdb.StateError {
+			return pgerror.Newf(pgcode.Warning, "attach database %s failed", n.dbDesc.Name)
+		}
+		if duckdb.Query(*conn, createStmt, &res) == duckdb.StateError {
+			return pgerror.Newf(pgcode.Warning, "create column based table failed")
+		}
+		if duckdb.Query(*conn, detachStmt, &res) == duckdb.StateError {
+			return pgerror.Newf(pgcode.Warning, "detach database %s failed", n.dbDesc.Name)
+		}
+	}
 	if desc.IsTSTable() {
 		if err = createAndExecCreateTSTableJob(params, desc, n); err != nil {
 			return err
