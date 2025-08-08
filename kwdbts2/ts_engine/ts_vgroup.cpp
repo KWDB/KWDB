@@ -1661,7 +1661,7 @@ KStatus TsVGroup::Vacuum() {
       for (auto& block_span : block_spans) {
         string data;
         block_span->GetCompressData(data);
-        uint32_t col_count = block_span->convert_->version_conv_->scan_attrs_.size();
+        uint32_t col_count = block_span->GetColCount();
         uint32_t col_offsets_len = (col_count + 1) * sizeof(uint32_t);
         auto last_col_tail_offset = *reinterpret_cast<uint32_t *>(data.data() + col_count * sizeof(uint32_t));
         auto block_data_len = col_offsets_len + last_col_tail_offset;
@@ -1672,7 +1672,7 @@ KStatus TsVGroup::Vacuum() {
         TsEntitySegmentBlockItem blk_item;
         blk_item.entity_id = entity_item.entity_id;
         blk_item.table_version = block_span->GetTableVersion();
-        blk_item.n_cols = block_span->convert_->version_conv_->scan_attrs_.size() + 1;
+        blk_item.n_cols = block_span->GetColCount() + 1;
         blk_item.n_rows = block_span->GetRowNum();
         blk_item.min_ts = block_span->GetFirstTS();
         blk_item.max_ts = block_span->GetLastTS();
