@@ -1,0 +1,68 @@
+tree,field,description
+"",distributed,false
+"",vectorized,false
+render,"",""
+" └── sort","",""
+"      │",order,"+device,+datatype,+timebucket"
+"      └── render","",""
+"           └── filter","",""
+"                │",filter,avg > 30.0
+"                └── batch-lookup-join","",""
+"                     │",type,inner
+"                     │",equality,"(company_id, name, index_name) = (companyid, device, datatype)"
+"                     ├── hash-join","",""
+"                     │    │",type,inner
+"                     │    │",equality,(index_id) = (id)
+"                     │    │",pred,"id::STRING = ANY string_to_array(item_ids, ',')"
+"                     │    ├── scan","",""
+"                     │    │",table,plat_tijian_item@primary
+"                     │    │",spans,FULL SCAN
+"                     │    └── cross-join","",""
+"                     │         │",type,cross
+"                     │         ├── scan","",""
+"                     │         │",table,plat_tijian_item_index@primary
+"                     │         │",spans,FULL SCAN
+"                     │         └── lookup-join","",""
+"                     │              │",table,plat_device_info@primary
+"                     │              │",type,inner
+"                     │              │",equality,(obj_id) = (id)
+"                     │              │",equality cols are key,""
+"                     │              │",parallel,""
+"                     │              └── index-join","",""
+"                     │                   │",table,plat_tijiancard_item_relation@primary
+"                     │                   │",key columns,id
+"                     │                   └── scan","",""
+"                     │",table,plat_tijiancard_item_relation@tijian_id_relation
+"                     │",spans,"/""6VVkdjOLPOL1brZ8BBXQtvcRuMIfTfLD4uJyFFzbai5U7LywRF""-/""6VVkdjOLPOL1brZ8BBXQtvcRuMIfTfLD4uJyFFzbai5U7LywRF""/PrefixEnd"
+"                     └── group","",""
+"                          │",engine type,time series
+"                          │",aggregate 0,datatype
+"                          │",aggregate 1,device
+"                          │",aggregate 2,company_id
+"                          │",aggregate 3,timebucket
+"                          │",aggregate 4,sum(value)
+"                          │",aggregate 5,count(value)
+"                          │",aggregate 6,max(value)
+"                          │",aggregate 7,min(value)
+"                          │",aggregate 8,count(device)
+"                          │",aggregate 9,count(DISTINCT company_id)
+"                          │",aggregate 10,avg(check_period)
+"                          │",aggregate 11,max(area_id)
+"                          │",aggregate 12,avg(value)
+"                          │",group by,"datatype, device, company_id, timebucket"
+"                          └── render","",""
+"                               │",engine type,time series
+"                               │",timebucket,"time_bucket(""time"", '3600s')"
+"                               │",value,value
+"                               │",datatype,datatype
+"                               │",device,device
+"                               │",company_id,company_id
+"                               │",check_period,check_period
+"                               │",area_id,area_id
+"                               └── synchronizer","",""
+"                                    └── ts scan","",""
+"",ts-table,opcdata449600
+"",access mode,hashTagScan
+
+Time: 7.853094ms
+

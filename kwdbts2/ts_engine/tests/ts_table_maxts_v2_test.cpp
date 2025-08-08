@@ -86,7 +86,7 @@ TEST_F(TestTsTableMaxTSV2, InsertOneRecord) {
   ASSERT_EQ(s, KStatus::SUCCESS);
 
   EntityResultIndex entity_id;
-  s = ts_table->GetLastRowEntity(entity_id);
+  s = ts_table->GetLastRowEntity(ctx_, entity_id);
   EXPECT_EQ(s, KStatus::SUCCESS);
   EXPECT_EQ(entity_id.entityGroupId, 1);
   EXPECT_GE(entity_id.subGroupId, 1);
@@ -131,7 +131,7 @@ TEST_F(TestTsTableMaxTSV2, InsertManyTags) {
   }
 
   EntityResultIndex entity_id;
-  s = ts_table->GetLastRowEntity(entity_id);
+  s = ts_table->GetLastRowEntity(ctx_, entity_id);
   EXPECT_EQ(s, KStatus::SUCCESS);
   EXPECT_EQ(entity_id.entityGroupId, 1);
   EXPECT_GE(entity_id.subGroupId, 1);
@@ -176,7 +176,7 @@ TEST_F(TestTsTableMaxTSV2, InsertManyTags1) {
   }
 
   EntityResultIndex entity_id;
-  s = ts_table->GetLastRowEntity(entity_id);
+  s = ts_table->GetLastRowEntity(ctx_, entity_id);
   EXPECT_EQ(s, KStatus::SUCCESS);
   EXPECT_EQ(entity_id.entityGroupId, 1);
   EXPECT_GE(entity_id.subGroupId, 1);
@@ -222,7 +222,7 @@ TEST_F(TestTsTableMaxTSV2, restart) {
   }
 
   EntityResultIndex entity_id1;
-  s = ts_table1->GetLastRowEntity(entity_id1);
+  s = ts_table1->GetLastRowEntity(ctx_, entity_id1);
   EXPECT_EQ(s, KStatus::SUCCESS);
   EXPECT_EQ(entity_id1.entityGroupId, 1);
   EXPECT_GE(entity_id1.subGroupId, 1);
@@ -238,7 +238,7 @@ TEST_F(TestTsTableMaxTSV2, restart) {
   ASSERT_EQ(s, KStatus::SUCCESS);
 
   EntityResultIndex entity_id2;
-  s = ts_table2->GetLastRowEntity(entity_id2);
+  s = ts_table2->GetLastRowEntity(ctx_, entity_id2);
   EXPECT_EQ(s, KStatus::SUCCESS);
   EXPECT_EQ(entity_id2.entityGroupId, entity_id1.entityGroupId);
   EXPECT_EQ(entity_id2.subGroupId, entity_id1.subGroupId);
@@ -282,7 +282,7 @@ TEST_F(TestTsTableMaxTSV2, deleteSomeData) {
   }
 
   EntityResultIndex entity_id1;
-  s = ts_table->GetLastRowEntity(entity_id1);
+  s = ts_table->GetLastRowEntity(ctx_, entity_id1);
   EXPECT_EQ(s, KStatus::SUCCESS);
   EXPECT_EQ(entity_id1.entityGroupId, 1);
   EXPECT_GE(entity_id1.subGroupId, 1);
@@ -298,7 +298,7 @@ TEST_F(TestTsTableMaxTSV2, deleteSomeData) {
   EXPECT_EQ(tmp_count, 1);
 
   EntityResultIndex entity_id2;
-  s = ts_table->GetLastRowEntity(entity_id2);
+  s = ts_table->GetLastRowEntity(ctx_, entity_id2);
   EXPECT_EQ(s, KStatus::SUCCESS);
   EXPECT_EQ(entity_id2.entityGroupId, 1);
   EXPECT_GE(entity_id2.subGroupId, 1);

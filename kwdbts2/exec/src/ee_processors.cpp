@@ -778,6 +778,7 @@ KStatus Processors::RunWithEncoding(kwdbContext_p ctx, char** buffer,
     ret = KStatus::SUCCESS;
   } else if (EEIteratorErrCode::EE_END_OF_RECORD == code) {
     *is_last_record = KTRUE;
+    collection_.GetAnalyse(ctx);
     ret = KStatus::SUCCESS;
   }
 

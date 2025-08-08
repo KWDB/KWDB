@@ -1,0 +1,85 @@
+tree,field,description
+"",distributed,false
+"",vectorized,false
+sort,"",""
+" │",order,"+device_name,+plat_company_name"
+" └── group","",""
+"      │",aggregate 0,device_name
+"      │",aggregate 1,plat_company_name
+"      │",aggregate 2,count_rows()
+"      │",aggregate 3,avg(value)
+"      │",aggregate 4,max(value)
+"      │",aggregate 5,min(value)
+"      │",group by,"device_name, plat_company_name"
+"      └── render","",""
+"           └── batch-lookup-join","",""
+"                │",type,inner
+"                │",equality,(company_id) = (companyid)
+"                ├── hash-join","",""
+"                │    │",type,inner
+"                │    │",equality,"(id, column181) = (device_id, index_id)"
+"                │    ├── render","",""
+"                │    │    └── hash-join","",""
+"                │    │         │",type,inner
+"                │    │         │",equality,(column183) = (column182)
+"                │    │         ├── hash-join","",""
+"                │    │         │    │",type,inner
+"                │    │         │    │",equality,"(risk_id, id) = (id, id)"
+"                │    │         │    │",right cols are key,""
+"                │    │         │    ├── render","",""
+"                │    │         │    │    └── cross-join","",""
+"                │    │         │    │         │",type,cross
+"                │    │         │    │         ├── cross-join","",""
+"                │    │         │    │         │    │",type,cross
+"                │    │         │    │         │    ├── hash-join","",""
+"                │    │         │    │         │    │    │",type,inner
+"                │    │         │    │         │    │    │",equality,(index_id) = (column180)
+"                │    │         │    │         │    │    ├── scan","",""
+"                │    │         │    │         │    │    │",table,plat_tijian_item@primary
+"                │    │         │    │         │    │    │",spans,FULL SCAN
+"                │    │         │    │         │    │    │",filter,create_user_id = 872
+"                │    │         │    │         │    │    └── render","",""
+"                │    │         │    │         │    │         └── scan","",""
+"                │    │         │    │         │    │",table,plat_tijian_item_index@primary
+"                │    │         │    │         │    │",spans,FULL SCAN
+"                │    │         │    │         │    └── scan","",""
+"                │    │         │    │         │",table,plat_risk_area@primary
+"                │    │         │    │         │",spans,FULL SCAN
+"                │    │         │    │         └── scan","",""
+"                │    │         │    │",table,cd_security_device@primary
+"                │    │         │    │",spans,FULL SCAN
+"                │    │         │    └── hash-join","",""
+"                │    │         │         │",type,inner
+"                │    │         │         │",equality,(company_id) = (company_id)
+"                │    │         │         ├── scan","",""
+"                │    │         │         │",table,plat_device_info@primary
+"                │    │         │         │",spans,FULL SCAN
+"                │    │         │         └── scan","",""
+"                │    │         │",table,plat_risk_analyse_objects@primary
+"                │    │         │",spans,FULL SCAN
+"                │    │         └── render","",""
+"                │    │              └── scan","",""
+"                │    │",table,plat_tijian_item_index@primary
+"                │    │",spans,FULL SCAN
+"                │    └── hash-join","",""
+"                │         │",type,inner
+"                │         │",equality,(company_id) = (company_id)
+"                │         ├── scan","",""
+"                │         │",table,cd_device_point@primary
+"                │         │",spans,FULL SCAN
+"                │         └── scan","",""
+"                │",table,cd_behavior_area@primary
+"                │",spans,FULL SCAN
+"                │",filter,area_type = 1
+"                └── synchronizer","",""
+"                     └── ts scan","",""
+"",ts-table,opcdata449600
+"",access mode,hashTagScan
+"",spans:fromTime,2023-01-01 00:00:00 +0000 UTC
+"",spans:toTime,2024-01-01 01:02:00 +0000 UTC
+"",tag filter[0],"""tag"" IN ('MAT81103', 'MAT81116', 'MAT81117', 'MAT81120', 'MAT81124')"
+"",tag filter[1],device = e'1#\U00007F50\U0000533A\U000053EF\U000071C3\U00006C14\U00004F53\U000062A5\U00008B66\U00005668'
+"",tag filter[2],datatype = e'\U00006C14\U00004F53'
+
+Time: 20.484603ms
+

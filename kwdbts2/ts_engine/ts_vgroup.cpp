@@ -346,7 +346,7 @@ KStatus TsVGroup::redoPut(kwdbContext_p ctx, kwdbts::TS_LSN log_lsn, const TSSli
   return s;
 }
 
-KStatus TsVGroup::GetLastRowEntity(std::shared_ptr<TsTableSchemaManager>& table_schema_mgr,
+KStatus TsVGroup::GetLastRowEntity(kwdbContext_p ctx, std::shared_ptr<TsTableSchemaManager>& table_schema_mgr,
                                    pair<timestamp64, uint32_t>& last_row_entity) {
   KTableKey table_id = table_schema_mgr->GetTableId();
   {
@@ -374,9 +374,14 @@ KStatus TsVGroup::GetLastRowEntity(std::shared_ptr<TsTableSchemaManager>& table_
   std::vector<KwTsSpan> ts_spans = {{INT64_MIN, INT64_MAX}};
   TsScanFilterParams filter{db_id, table_id, vgroup_id_, 0, ts_col_type,
                             scan_lsn, ts_spans};
+
+  std::shared_ptr<TagTable> tag_schema;
+  table_schema_mgr->GetTagSchema(ctx, &tag_schema);
+  std::vector<uint32_t> entity_id_list;
+  tag_schema->GetEntityIdListByVGroupId(vgroup_id_, entity_id_list);
   for (int i = ts_partitions.size() - 1; !last_row_found && i >= 0; --i) {
     std::shared_ptr<TsBlockSpan> last_block_span = nullptr;
-    for (TSEntityID entity_id = 1; entity_id <= max_entity_id_; ++entity_id) {
+    for (auto &entity_id : entity_id_list) {
       std::list<std::shared_ptr<TsBlockSpan>> ts_block_spans;
       filter.entity_id_ = entity_id;
       KStatus ret = ts_partitions[i]->GetBlockSpans(filter, &ts_block_spans, table_schema_mgr,

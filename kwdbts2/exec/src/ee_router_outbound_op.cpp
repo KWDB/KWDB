@@ -61,13 +61,13 @@ KStatus RouterOutboundOperator::Channel::CloseInternal() {
   }
 
   if (chunks_.size() > 0 && chunks_[0] != nullptr) {
-    if (KStatus::SUCCESS != SendOneChunk(chunks_[0].get(), 0, false)) {
+    if (KStatus::SUCCESS != SendOneChunk(chunks_[0], 0, false)) {
       LOG_ERROR("close SendOneChunk faild");
       return KStatus::FAIL;
     }
   }
-
-  if (KStatus::SUCCESS != SendOneChunk(nullptr, 0, true)) {
+  DataChunkPtr chunk = nullptr;
+  if (KStatus::SUCCESS != SendOneChunk(chunk, 0, true)) {
     LOG_ERROR("close SendOneChunk faild");
     return KStatus::FAIL;
   }
@@ -94,9 +94,9 @@ KStatus RouterOutboundOperator::Channel::SendError(
   return KStatus::SUCCESS;
 }
 
-KStatus RouterOutboundOperator::Channel::SendOneChunk(DataChunk* chunk,
-                                                      k_int32 driver_sequence,
-                                                      k_bool eos) {
+KStatus RouterOutboundOperator::Channel::SendOneChunk(DataChunkPtr& chunk,
+                                                        k_int32 driver_sequence,
+                                                        k_bool eos) {
   k_bool is_real_sent = false;
   // if (0 != status_.status_code()) {
   //   SendError();
@@ -105,10 +105,11 @@ KStatus RouterOutboundOperator::Channel::SendOneChunk(DataChunk* chunk,
   return SendOneChunk(chunk, driver_sequence, eos, &is_real_sent);
 }
 
-KStatus RouterOutboundOperator::Channel::SendOneChunk(DataChunk* chunk,
-                                                      k_int32 driver_sequence,
-                                                      k_bool eos,
-                                                      k_bool* is_real_sent) {
+KStatus RouterOutboundOperator::Channel::SendOneChunk(DataChunkPtr& data_chunk,
+                                                        k_int32 driver_sequence,
+                                                        k_bool eos,
+                                                        k_bool* is_real_sent) {
+  DataChunk* chunk = data_chunk.get();
   *is_real_sent = false;
   if (chunk_request_ == nullptr) {
     chunk_request_ = std::make_shared<PTransmitChunkParams>();
@@ -121,7 +122,7 @@ KStatus RouterOutboundOperator::Channel::SendOneChunk(DataChunk* chunk,
     send_count_ += chunk->Count();
     if (use_pass_through_) {
       size_t chunk_size = chunk->Size() + 20;
-      pass_through_context_.AppendChunk(stream_id_, chunk, chunk_size,
+      pass_through_context_.AppendChunk(stream_id_, data_chunk, chunk_size,
                                         DEFAULT_DRIVER_SEQUENCE);
       current_request_bytes_ += chunk_size;
     } else {
@@ -214,22 +215,38 @@ KStatus RouterOutboundOperator::Channel::AddRowsSelective(
   }
 
   if (chunks_[driver_sequence] == nullptr) {
-    chunks_[driver_sequence] = std::make_unique<DataChunk>(
-        chunk->GetColumnInfo(), chunk->ColumnNum(), CAPACITY_SIZE);
-    if (chunks_[driver_sequence]->Initialize() != true) {
+    chunks_[driver_sequence] = std::make_unique<DataChunk>(chunk->GetColumnInfo(), chunk->ColumnNum(), CAPACITY_SIZE);
+    if (chunks_[driver_sequence] == nullptr) {
+      EEPgErrorInfo::SetPgErrorInfo(ERRCODE_OUT_OF_MEMORY, "Insufficient memory");
+      return KStatus::FAIL;
+    }
+    if (!chunks_[driver_sequence]->Initialize()) {
       chunks_[driver_sequence] = nullptr;
+      EEPgErrorInfo::SetPgErrorInfo(ERRCODE_OUT_OF_MEMORY, "Insufficient memory");
       return KStatus::FAIL;
     }
   }
 
   if (chunks_[driver_sequence]->Count() + size > CAPACITY_SIZE) {
-    if (KStatus::SUCCESS !=
-        SendOneChunk(chunks_[driver_sequence].get(), driver_sequence, false)) {
+    if (KStatus::SUCCESS != SendOneChunk(chunks_[driver_sequence], driver_sequence, false)) {
       LOG_ERROR("SendOneChunk faild");
       return KStatus::FAIL;
     }
     // we only clear column data, because we need to reuse column schema
-    chunks_[driver_sequence]->Reset();
+    if (nullptr != chunks_[driver_sequence]) {
+      chunks_[driver_sequence]->Reset();
+    } else {
+      chunks_[driver_sequence] = std::make_unique<DataChunk>(chunk->GetColumnInfo(), chunk->ColumnNum(), CAPACITY_SIZE);
+      if (chunks_[driver_sequence] == nullptr) {
+        EEPgErrorInfo::SetPgErrorInfo(ERRCODE_OUT_OF_MEMORY, "Insufficient memory");
+        return KStatus::FAIL;
+      }
+      if (!chunks_[driver_sequence]->Initialize()) {
+        chunks_[driver_sequence] = nullptr;
+        EEPgErrorInfo::SetPgErrorInfo(ERRCODE_OUT_OF_MEMORY, "Insufficient memory");
+        return KStatus::FAIL;
+      }
+    }
   }
 
   {
@@ -641,15 +658,13 @@ KStatus RouterOutboundOperator::PushChunk(DataChunkPtr& chunk,
       chunk_request_ = std::make_shared<PTransmitChunkParams>();
     }
 
-    int has_not_pass_through = false;
+    // If we have any channel which can pass through chunks, we use
+    // `SendOneChunk`(without serialization)
+    k_bool has_not_pass_through = false;
+    k_int32 pass_through_idx = -1;
     for (auto idx : channel_indices_) {
       if (channels_[idx]->UsePassThrougth()) {
-        if (KStatus::SUCCESS !=
-            channels_[idx]->SendOneChunk(send_chunk, DEFAULT_DRIVER_SEQUENCE,
-                                         false)) {
-          LOG_ERROR("OutboundOperator send chunk fail");
-          return KStatus::FAIL;
-        }
+        pass_through_idx = idx;
       } else {
         has_not_pass_through = true;
       }
@@ -684,13 +699,21 @@ KStatus RouterOutboundOperator::PushChunk(DataChunkPtr& chunk,
         chunk_request_.reset();
       }
     }
+
+    if (-1 != pass_through_idx) {
+      if (KStatus::SUCCESS != channels_[pass_through_idx]->SendOneChunk(
+                                  chunk, DEFAULT_DRIVER_SEQUENCE, false)) {
+        LOG_ERROR("OutboundOperator send chunk fail");
+        return KStatus::FAIL;
+      }
+    }
   } else if (part_type_ ==
              TSOutputRouterSpec_Type::TSOutputRouterSpec_Type_PASS_THROUGH) {
     auto& channel = channels_[curr_channel_idx_];
     k_bool real_sent = false;
-    if (KStatus::SUCCESS != channel->SendOneChunk(send_chunk,
-                                                  DEFAULT_DRIVER_SEQUENCE,
-                                                  false, &real_sent)) {
+    if (KStatus::SUCCESS != channel->SendOneChunk(chunk,
+                                                    DEFAULT_DRIVER_SEQUENCE,
+                                                    false, &real_sent)) {
       LOG_ERROR("OutboundOperator send chunk fail");
       return KStatus::FAIL;
     }
@@ -735,10 +758,9 @@ KStatus RouterOutboundOperator::PushChunk(DataChunkPtr& chunk,
 
       auto& channel = channels_[idx];
       k_bool real_sent = false;
-
-      if (KStatus::SUCCESS != channel->SendOneChunk(send_chunk,
-                                                    DEFAULT_DRIVER_SEQUENCE,
-                                                    false, &real_sent)) {
+      if (KStatus::SUCCESS != channel->SendOneChunk(chunk,
+                                                      DEFAULT_DRIVER_SEQUENCE,
+                                                      false, &real_sent)) {
         LOG_ERROR("OutboundOperator send chunk fail");
         return KStatus::FAIL;
       }

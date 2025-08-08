@@ -1,0 +1,7 @@
+area_name,device_name,avg_value,unique_security_devices,high_value_count,unique_risk_areas
+tongji_area_1,2#溴储罐,57.91281841281132,1,1.2603335019906476e+07,5
+tongji_area_1,2#缓冲罐,57.91281841281132,1,1.2603335019906476e+07,5
+tongji_area_1,3#缓冲罐,57.91281841281132,1,1.2603335019906476e+07,5
+
+Time: 58.208463ms
+

@@ -1,0 +1,27 @@
+SET
+
+Time: 709.715µs
+
+tree,field,description
+"",distributed,false
+"",vectorized,false
+render,"",""
+" └── limit","",""
+"      │",count,100
+"      └── sort","",""
+"           │",order,"+pipeline_name,+measure_type,+measure_category"
+"           └── render","",""
+"                └── batch-lookup-join","",""
+"                     │",type,inner
+"                     │",equality,(pipeline_sn) = (pipeline_sn)
+"                     │",left cols are key,""
+"                     ├── scan","",""
+"                     │",table,pipeline_info@pipeline_name_index
+"                     │",spans,FULL SCAN
+"                     └── synchronizer","",""
+"                          └── ts scan","",""
+"",ts-table,t_point
+"",access mode,hashTagScan
+
+Time: 2.336597ms
+

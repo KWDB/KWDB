@@ -174,11 +174,6 @@ class BtUtil {
         case DATATYPE::TIMESTAMP64:
           KTimestamp(rec_helper->columnAddr(col_idx, rec)) = std::any_cast<timestamp64>(batch[i]);
           break;
-        case DATATYPE::TIMESTAMP64_LSN: {
-          auto ts_lsn = std::any_cast<TimeStamp64LSN>(batch[i]);
-          memcpy(rec_helper->columnAddr(col_idx, rec), &ts_lsn, sizeof(TimeStamp64LSN));
-          break;
-        }
         case DATATYPE::INT64:
           KInt64(rec_helper->columnAddr(col_idx, rec)) = std::any_cast<int64_t>(batch[i]);
           break;
@@ -240,12 +235,6 @@ class BtUtil {
     for (int i = 0; i < schema.size(); i++) {
       switch (schema[i].type) {
         case DATATYPE::TIMESTAMP64:
-          for (int j = 0; j < count; j++) {
-            KTimestamp(p.GetColumnAddr(j, i)) = start_ts;
-            start_ts += ms_interval;
-          }
-          break;
-        case DATATYPE::TIMESTAMP64_LSN:
           for (int j = 0; j < count; j++) {
             KTimestamp(p.GetColumnAddr(j, i)) = start_ts;
             start_ts += ms_interval;
@@ -360,7 +349,7 @@ class BtUtil {
   table_name, int encoding, ErrorInfo& err_info) {
     encoding = encoding | NO_DEFAULT_TABLE;
 ;
-    Def_Column(col_1, 1, "k_ts", DATATYPE::TIMESTAMP64_LSN, 0, 0, 1, 0, AINFO_NOT_NULL, 3, 1, 0);
+    Def_Column(col_1, 1, "k_ts", DATATYPE::TIMESTAMP64, 0, 0, 1, 0, AINFO_NOT_NULL, 3, 1, 0);
     Def_Column(col_2, 2, "v1_value", DATATYPE::INT64, 0, 0, 1, 0, 0, 0, 1, 0);
     Def_Column(col_3, 3, "v2_value", DATATYPE::DOUBLE, 0, 0, 1, 0, 0, 0, 1, 0);
     //  Def_Column(col_4, kwdbts::s_deletable(), DATATYPE::INT32, 0, 0, 1, 0, 0, 0, 1, 0);

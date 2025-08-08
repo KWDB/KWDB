@@ -19,11 +19,7 @@ bool ParseToAttributeInfo(const roachpb::KWDBKTSColumn& col, AttributeInfo& attr
     case roachpb::TIMESTAMP:
     case roachpb::TIMESTAMPTZ:
     case roachpb::DATE:
-      if (first_col) {
-        attr_info.type = DATATYPE::TIMESTAMP64_LSN;
-      } else {
-        attr_info.type = DATATYPE::TIMESTAMP64;
-      }
+      attr_info.type = DATATYPE::TIMESTAMP64;
       attr_info.max_len = 3;
       break;
     case roachpb::SMALLINT:
@@ -86,9 +82,6 @@ bool ParseToAttributeInfo(const roachpb::KWDBKTSColumn& col, AttributeInfo& attr
 bool ParseToColumnInfo(struct AttributeInfo& attr_info, roachpb::KWDBKTSColumn& col) {
   col.clear_storage_len();
   switch (attr_info.type) {
-    case DATATYPE::TIMESTAMP64_LSN:
-      col.set_storage_type(roachpb::TIMESTAMPTZ);
-      break;
     case DATATYPE::TIMESTAMP64:
       col.set_storage_type(roachpb::TIMESTAMP);
       break;
@@ -157,9 +150,6 @@ bool ParseTagColumnInfo(struct TagInfo& tag_info, roachpb::KWDBKTSColumn& col) {
     col.set_dropped(true);
   }
   switch (tag_info.m_data_type) {
-    case DATATYPE::TIMESTAMP64_LSN:
-      col.set_storage_type(roachpb::TIMESTAMPTZ);
-      break;
     case DATATYPE::TIMESTAMP64:
       col.set_storage_type(roachpb::TIMESTAMP);
       break;

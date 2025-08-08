@@ -1,0 +1,31 @@
+tree,field,description
+"",distributed,true
+"",vectorized,false
+render,"",""
+" │",pipeline_name,pipeline_name
+" │",measure_value,measure_value
+" │",value,value
+" └── hash-join","",""
+"      │",type,inner
+"      │",equality,(measure_location) = (adr)
+"      ├── cross-join","",""
+"      │    │",type,inner
+"      │    │",pred,(measure_value >= (pipeline_sn::DECIMAL - 10)) AND (measure_value <= (pipeline_sn::DECIMAL + 10))
+"      │    ├── synchronizer","",""
+"      │    │    └── ts scan","",""
+"      │    │",ts-table,t_point
+"      │    │",access mode,tableTableMeta
+"      │    │",filter,measure_value > 100.0
+"      │    └── scan","",""
+"      │",table,pipeline_info@pipeline_name_index
+"      │",spans,FULL SCAN
+"      └── synchronizer","",""
+"           └── ts scan","",""
+"",ts-table,opcdata449600
+"",access mode,tableTableMeta
+"",filter,value < 50.0
+"","",""
+warning messages,multi-model fall back,join between time-series tables
+
+Time: 336.370906ms
+

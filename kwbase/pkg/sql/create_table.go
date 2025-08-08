@@ -1717,8 +1717,6 @@ func checkAndMakeTSColDesc(
 		return nil, err
 	}
 	if isFirstTSCol {
-		// The first timestamp column in the data column needs to reserve 16 bytes for LSN
-		(*col).TsCol.StorageLen = sqlbase.FirstTsDataColSize
 		// Add a unique constraint to the first column of the timeseries table to prevent a validate error
 		tsPK := sqlbase.IndexDescriptor{
 			Unique:           true,

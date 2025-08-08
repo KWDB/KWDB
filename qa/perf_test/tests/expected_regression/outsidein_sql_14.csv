@@ -1,0 +1,10 @@
+SET
+
+Time: 628.792µs
+
+pipeline_name,timebucket,avg_value
+pipeline_1,2024-01-04 14:30:00+00:00,49.96104867811637
+pipeline_2,2024-01-04 14:30:00+00:00,49.97048064089902
+
+Time: 825.789732ms
+

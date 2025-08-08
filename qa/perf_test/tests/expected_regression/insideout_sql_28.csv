@@ -1,0 +1,7 @@
+area_name,device_name,plat_company_name,risk_level,device_count,avg_value_per_device,unique_security_devices,min_value_per_device,max_value_per_device,unique_risk_areas
+tongji_area_1,2#溴储罐,1#罐区可燃气体报警器,"",20805,50.74650039268994,1,0.0115608221268881,99.47829031880734,5
+tongji_area_1,2#缓冲罐,1#罐区可燃气体报警器,"",20805,50.74650039268994,1,0.0115608221268881,99.47829031880734,5
+tongji_area_1,3#缓冲罐,1#罐区可燃气体报警器,"",20805,50.74650039268994,1,0.0115608221268881,99.47829031880734,5
+
+Time: 44.418123ms
+

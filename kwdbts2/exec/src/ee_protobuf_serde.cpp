@@ -124,7 +124,7 @@ ChunkPB ProtobufChunkSerrialde::Serialize(DataChunk* src) {
   return std::move(chunk_pb);
 }
 
-void ProtobufChunkSerrialde::Deserialize(DataChunkPtr& chunk,
+bool ProtobufChunkSerrialde::Deserialize(DataChunkPtr& chunk,
                                          std::string_view buff,
                                          bool is_encoding, ColumnInfo* col_info,
                                          k_int32 num) {
@@ -133,7 +133,8 @@ void ProtobufChunkSerrialde::Deserialize(DataChunkPtr& chunk,
   k_uint32 version = decode_fixed32(cur);
   if (version != 1) {
     LOG_ERROR("invalid version {%u}", version);
-    return;
+    EEPgErrorInfo::SetPgErrorInfo(ERRCODE_DATA_EXCEPTION, "invalid version");
+    return false;
   }
   cur += 4;
   k_uint32 num_rows = decode_fixed32(cur);
@@ -146,19 +147,24 @@ void ProtobufChunkSerrialde::Deserialize(DataChunkPtr& chunk,
   chunk = std::make_unique<DataChunk>(col_info, num, capacity);
   if (chunk == nullptr) {
     LOG_ERROR("Deserialize make unique data chunk failed");
-    return;
+    EEPgErrorInfo::SetPgErrorInfo(ERRCODE_OUT_OF_MEMORY, "Insufficient memory");
+    return false;
   }
 
   if (is_encoding) {
     chunk->SetEncodingBuf(cur, real_data_size);
   } else {
-    chunk->Initialize();
+    if (!chunk->Initialize()) {
+      LOG_ERROR("Deserialize data chunk, initialize failed");
+      EEPgErrorInfo::SetPgErrorInfo(ERRCODE_OUT_OF_MEMORY, "Insufficient memory");
+      return false;
+    }
     memcpy(chunk->GetData(), cur, real_data_size);
   }
 
   chunk->SetCount(num_rows);
 
-  return;
+  return true;
 }
 
 void ProtobufChunkSerrialde::DeserializeColumn(DataChunkPtr& chunk,

@@ -489,29 +489,17 @@ KStatus TsTableSchemaManager::parseAttrInfo(const roachpb::KWDBKTSColumn& col,
     case roachpb::TIMESTAMP:
     case roachpb::TIMESTAMPTZ:
     case roachpb::DATE:
-      if (first_col) {
-        attr_info.type = DATATYPE::TIMESTAMP64_LSN;
-      } else {
-        attr_info.type = DATATYPE::TIMESTAMP64;
-      }
+      attr_info.type = DATATYPE::TIMESTAMP64;
       attr_info.max_len = 3;
       break;
     case roachpb::TIMESTAMP_MICRO:
     case roachpb::TIMESTAMPTZ_MICRO:
-    if (first_col) {
-        attr_info.type = DATATYPE::TIMESTAMP64_LSN_MICRO;
-      } else {
-        attr_info.type = DATATYPE::TIMESTAMP64_MICRO;
-      }
+      attr_info.type = DATATYPE::TIMESTAMP64_MICRO;
       attr_info.max_len = 6;
       break;
     case roachpb::TIMESTAMP_NANO:
     case roachpb::TIMESTAMPTZ_NANO:
-      if (first_col) {
-        attr_info.type = DATATYPE::TIMESTAMP64_LSN_NANO;
-      } else {
-        attr_info.type = DATATYPE::TIMESTAMP64_NANO;
-      }
+      attr_info.type = DATATYPE::TIMESTAMP64_NANO;
       attr_info.max_len = 9;
       break;
     case roachpb::SMALLINT:

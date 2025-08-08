@@ -1,0 +1,81 @@
+tree,field,description
+"",distributed,false
+"",vectorized,false
+root,"",""
+" ├── render","",""
+" │    └── sort","",""
+" │         │",order,+work_area_name
+" │         └── render","",""
+" │              └── filter","",""
+" │                   │",filter,count > 10
+" │                   └── group","",""
+" │                        │",aggregate 0,work_area_name
+" │                        │",aggregate 1,stddev(measure_value)
+" │                        │",aggregate 2,max(measure_value)
+" │                        │",aggregate 3,min(measure_value)
+" │                        │",aggregate 4,count(measure_value)
+" │                        │",group by,work_area_name
+" │                        └── render","",""
+" │                             └── batch-lookup-join","",""
+" │                                  │",type,inner
+" │                                  │",equality,(point_sn) = (point_sn)
+" │                                  │",left cols are key,""
+" │                                  ├── lookup-join","",""
+" │                                  │    │",table,point_info@primary
+" │                                  │    │",type,inner
+" │                                  │    │",equality,(point_sn) = (point_sn)
+" │                                  │    │",equality cols are key,""
+" │                                  │    │",parallel,""
+" │                                  │    │",pred,@9 LIKE '%type%'
+" │                                  │    └── lookup-join","",""
+" │                                  │         │",table,point_info@point_station_sn_index
+" │                                  │         │",type,inner
+" │                                  │         │",equality,(station_sn) = (station_sn)
+" │                                  │         └── lookup-join","",""
+" │                                  │              │",table,workarea_info@primary
+" │                                  │              │",type,inner
+" │                                  │              │",equality,(work_area_sn) = (work_area_sn)
+" │                                  │              │",equality cols are key,""
+" │                                  │              │",parallel,""
+" │                                  │              └── hash-join","",""
+" │                                  │                   │",type,semi
+" │                                  │                   │",equality,(sub_company_sn) = (sub_company_sn)
+" │                                  │                   │",right cols are key,""
+" │                                  │                   ├── scan","",""
+" │                                  │                   │",table,station_info@primary
+" │                                  │                   │",spans,FULL SCAN
+" │                                  │                   │",filter,station_location LIKE '%00'
+" │                                  │                   └── scan","",""
+" │                                  │",table,company_info@sub_company_name_index
+" │                                  │",spans,/!NULL-
+" │                                  │",filter,sub_company_name LIKE '%com%'
+" │                                  └── synchronizer","",""
+" │                                       └── ts scan","",""
+" │",ts-table,t_point
+" │",access mode,primaryHashTagScan
+" │",spans:fromTime,2024-01-01 00:00:00 +0000 UTC
+" │",spans:toTime,2970-01-01 00:00:00 +0000 UTC
+" │",filter,measure_value > 80.0
+" │",tag filter[0],measure_type = 1
+" └── subquery","",""
+"      │",id,@S1
+"      │",original sql,"(SELECT count(*) FROM pipec_r.station_info AS st2, pipec_r.workarea_info AS w2 WHERE st2.work_area_sn = w2.work_area_sn)"
+"      │",exec mode,one row
+"      └── group","",""
+"           │",aggregate 0,count_rows()
+"           │",scalar,""
+"           └── render","",""
+"                └── merge-join","",""
+"                     │",type,inner
+"                     │",equality,(work_area_sn) = (work_area_sn)
+"                     │",right cols are key,""
+"                     │",mergeJoinOrder,"+""(work_area_sn=work_area_sn)"""
+"                     ├── scan","",""
+"                     │",table,station_info@station_work_area_sn_index
+"                     │",spans,FULL SCAN
+"                     └── scan","",""
+"",table,workarea_info@primary
+"",spans,FULL SCAN
+
+Time: 7.51263ms
+

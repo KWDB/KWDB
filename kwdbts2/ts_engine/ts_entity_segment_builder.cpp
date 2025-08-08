@@ -331,8 +331,7 @@ KStatus TsEntityBlockBuilder::GetCompressData(TsEntitySegmentBlockItem& blk_item
       }
       uint16_t count = 0;
       string max, min, sum;
-      int32_t col_size =
-        (metric_schema_[col_idx - 1].type == DATATYPE::TIMESTAMP64_LSN ? 8 : metric_schema_[col_idx - 1].size);
+      int32_t col_size = metric_schema_[col_idx - 1].size;
       max.resize(col_size, '\0');
       min.resize(col_size, '\0');
       // count: 2 bytes

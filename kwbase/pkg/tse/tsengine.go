@@ -363,7 +363,6 @@ func NewTsEngine(
 		openCh:  make(chan struct{}),
 		Version: KwEngineVersion,
 	}
-
 	return r, nil
 }
 
@@ -445,7 +444,11 @@ func (r *TsEngine) Open(rangeIndex []roachpb.RangeIndex) error {
 		}
 	}
 
-	r.SetWriteWAL(!TsRaftLogCombineWAL.Get(&r.cfg.Settings.SV))
+	if r.cfg.IsSingleNode {
+		r.SetWriteWAL(true)
+	} else {
+		r.SetWriteWAL(!TsRaftLogCombineWAL.Get(&r.cfg.Settings.SV))
+	}
 	r.manageWAL()
 	r.opened = true
 	close(r.openCh)

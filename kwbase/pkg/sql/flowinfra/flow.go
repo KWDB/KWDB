@@ -95,8 +95,8 @@ type Flow interface {
 	SetQueryShortCircuit(bool)
 	// SetVectorized is used to tell if there is vec flow.
 	SetVectorized(bool)
-	// SetPipeLine is used to tell if there is pipeline model.
-	SetPipeLine(pipeline bool)
+	// SetAeGather is used to tell if there is pipeline model.
+	SetAeGather(useAeGather bool)
 	// Start starts the flow. Processors run asynchronously in their own goroutines.
 	// Wait() needs to be called to wait for the flow to finish.
 	// See Run() for a synchronous version.
@@ -192,7 +192,7 @@ type FlowBase struct {
 	isTimeSeries         bool
 	UseQueryShortCircuit bool
 	Format               bool
-	UsePipeLine          bool
+	useAeGather          bool
 	isVectorized         bool
 
 	// inboundStreams are streams that receive data from other hosts; this map
@@ -284,9 +284,9 @@ func (f *FlowBase) SetQueryShortCircuit(useQueryShortCircuit bool) {
 	f.UseQueryShortCircuit = useQueryShortCircuit
 }
 
-// SetPipeLine is part of the Flow interface
-func (f *FlowBase) SetPipeLine(pipeline bool) {
-	f.UsePipeLine = pipeline
+// SetAeGather is part of the Flow interface
+func (f *FlowBase) SetAeGather(useAeGather bool) {
+	f.useAeGather = useAeGather
 }
 
 // ConcurrentExecution is part of the Flow interface.
