@@ -310,7 +310,7 @@ class TsLastBlock : public TsBlock {
     return col_block->GetValueSlice(row_num, value);
   }
 
-  bool IsColNull(int row_num, int col_id, const std::vector<AttributeInfo>& schema) override {
+  inline bool IsColNull(int row_num, int col_id, const std::vector<AttributeInfo>& schema) override {
     TsBitmap bitmap;
     auto s = GetColBitmap(col_id, schema, bitmap);
     if (s == FAIL) {
@@ -320,7 +320,7 @@ class TsLastBlock : public TsBlock {
   }
 
   // if just get timestamp , this function return fast.
-  timestamp64 GetTS(int row_num) override {
+  inline timestamp64 GetTS(int row_num) override {
     auto ts = GetTimestamps();
     if (ts == nullptr) {
       return INVALID_TS;
@@ -328,23 +328,23 @@ class TsLastBlock : public TsBlock {
     return ts[row_num];
   }
 
-  timestamp64 GetFirstTS() override {
+  inline timestamp64 GetFirstTS() override {
     return block_index_.first_ts;
   }
 
-  timestamp64 GetLastTS() override {
+  inline timestamp64 GetLastTS() override {
     return block_index_.last_ts;
   }
 
-  TS_LSN GetFirstLSN() override {
+  inline TS_LSN GetFirstLSN() override {
     return block_index_.first_lsn;
   }
 
-  TS_LSN GetLastLSN() override {
+  inline TS_LSN GetLastLSN() override {
     return block_index_.last_lsn;
   }
 
-  uint64_t* GetLSNAddr(int row_num) override {
+  inline uint64_t* GetLSNAddr(int row_num) override {
     auto seq_nos = GetLSN();
     if (seq_nos == nullptr) {
       LOG_ERROR("cannot get lsn addr");
@@ -353,11 +353,11 @@ class TsLastBlock : public TsBlock {
     return const_cast<uint64_t*>(&seq_nos[row_num]);
   }
 
-  KStatus GetCompressDataFromFile(uint32_t table_version, int32_t nrow, std::string& data) override {
+  inline KStatus GetCompressDataFromFile(uint32_t table_version, int32_t nrow, std::string& data) override {
     return KStatus::FAIL;
   }
 
-  int GetBlockID() const { return block_id_; }
+  inline int GetBlockID() const { return block_id_; }
 
  private:
   friend class TsLastSegment;
@@ -372,7 +372,7 @@ class TsLastBlock : public TsBlock {
     return entity_ids;
   }
 
-  const uint64_t* GetLSN() {
+  inline const uint64_t* GetLSN() {
     TS_LSN* lsn = nullptr;
     auto s = column_block_cache_->GetLSN(&lsn);
     if (s == FAIL) {
@@ -382,7 +382,7 @@ class TsLastBlock : public TsBlock {
     return lsn;
   }
 
-  const timestamp64* GetTimestamps() {
+  inline const timestamp64* GetTimestamps() {
     timestamp64* timestamps = nullptr;
     auto s = column_block_cache_->GetTimestamps(&timestamps);
     if (s == FAIL) {
@@ -432,7 +432,7 @@ KStatus TsLastSegment::TsLastSegBlockCache::GetBlockIndex(int block_id, TsLastSe
   return SUCCESS;
 }
 
-KStatus TsLastSegment::TsLastSegBlockCache::GetBlockInfo(int block_id, TsLastSegmentBlockInfo** info) const {
+inline KStatus TsLastSegment::TsLastSegBlockCache::GetBlockInfo(int block_id, TsLastSegmentBlockInfo** info) const {
   return block_info_cache_->GetBlockInfo(block_id, info);
 }
 

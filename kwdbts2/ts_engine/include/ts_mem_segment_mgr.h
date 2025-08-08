@@ -337,7 +337,10 @@ class TsMemSegmentManager {
 
   void RemoveMemSegment(const std::shared_ptr<TsMemSegment>& mem_seg);
 
-  void GetAllMemSegments(std::list<std::shared_ptr<TsMemSegment>>* mems);
+  void GetAllMemSegments(std::list<std::shared_ptr<TsMemSegment>>* mems) {
+    std::shared_lock lock(segment_lock_);
+    *mems = segment_;
+  };
 
   KStatus PutData(const TSSlice& payload, TSEntityID entity_id, TS_LSN lsn,
     std::list<TSMemSegRowData>* rows = nullptr);
