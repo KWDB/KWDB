@@ -425,3 +425,13 @@ TEST(MMAP, TsMMapAllocFiletest) {
   ASSERT_TRUE(f->getHeader()->alloc_offset == cur_alloc_offset);
   delete f;
 }
+
+// TEST(MMap, FileLock) {
+//   TsIOEnv* env = &TsMMapIOEnv::GetInstance();
+//   std::string filename = "lock_test";
+//   std::filesystem::remove(filename);
+//   std::unique_ptr<TsAppendOnlyFile> wfile1, wfile2;
+//   ASSERT_TRUE(env->NewAppendOnlyFile(filename, &wfile1));
+//   wfile1.reset();
+//   env->NewAppendOnlyFile(filename, &wfile2);
+// }

@@ -539,9 +539,9 @@ void TsVGroup::closeCompactThread() {
 KStatus TsVGroup::PartitionCompact(std::shared_ptr<const TsPartitionVersion> partition, bool call_by_vacuum) {
   auto partition_id = partition->GetPartitionIdentifier();
   if (!partition->TrySetBusy(PartitionStatus::Compacting)) {
-    LOG_INFO("partition[%d,%ld,%ld] skip compact",
-             std::get<0>(partition_id), std::get<1>(partition_id), std::get<2>(partition_id));
-    return KStatus::SUCCESS;
+    auto root_path = this->GetPath() / PartitionDirName(partition->GetPartitionIdentifier());
+    LOG_INFO("partition skip compact, root_path: %s", root_path.c_str());
+    return KStatus::FAIL;
   }
   partition = version_manager_->Current()->GetPartition(std::get<0>(partition_id), std::get<1>(partition_id));
   Defer defer{[&]() {
@@ -1088,14 +1088,41 @@ const std::vector<KwTsSpan>& ts_spans) {
   return deleteData(ctx, tbl_id, e_id, {0, lsn}, ts_spans);
 }
 
-KStatus TsVGroup::WriteBatchData(kwdbContext_p ctx, TSTableID tbl_id, uint32_t table_version, TSEntityID entity_id,
-                                 timestamp64 ts, DATATYPE ts_col_type, TS_LSN lsn, TSSlice data) {
+KStatus TsVGroup::GetEntitySegmentBuilder(std::shared_ptr<const TsPartitionVersion>& partition,
+                                          std::shared_ptr<TsEntitySegmentBuilder>& builder) {
+  PartitionIdentifier partition_id = partition->GetPartitionIdentifier();
+  auto it = write_batch_segment_builders_.find(partition_id);
+  if (it == write_batch_segment_builders_.end()) {
+    while (!partition->TrySetBusy(PartitionStatus::BatchDataWriting)) {
+      sleep(1);
+    }
+    partition = version_manager_->Current()->GetPartition(std::get<0>(partition_id), std::get<1>(partition_id));
+    auto entity_segment = partition->GetEntitySegment();
+
+    auto root_path = this->GetPath() / PartitionDirName(partition->GetPartitionIdentifier());
+    builder = std::make_shared<TsEntitySegmentBuilder>(root_path.string(), version_manager_.get(), partition_id,
+                                                       entity_segment);
+    KStatus s = builder->Open();
+    if (s != KStatus::SUCCESS) {
+      partition->ResetStatus();
+      LOG_ERROR("Open entity segment builder failed.");
+      return s;
+    }
+    write_batch_segment_builders_[partition_id] = builder;
+  } else {
+    builder = it->second;
+  }
+  return KStatus::SUCCESS;
+}
+
+KStatus TsVGroup::WriteBatchData(kwdbContext_p ctx, TSTableID tbl_id, uint32_t table_version,
+                                 TSEntityID entity_id, timestamp64 p_time, TS_LSN lsn, TSSlice data) {
   auto current = version_manager_->Current();
   uint32_t database_id = schema_mgr_->GetDBIDByTableID(tbl_id);
   if (database_id == 0) {
     return KStatus::FAIL;
   }
-  auto p_time = convertTsToPTime(ts, ts_col_type);
+
   auto partition = current->GetPartition(database_id, p_time);
   if (partition == nullptr) {
     version_manager_->AddPartition(database_id, p_time);
@@ -1106,37 +1133,19 @@ KStatus TsVGroup::WriteBatchData(kwdbContext_p ctx, TSTableID tbl_id, uint32_t t
       return KStatus::FAIL;
     }
   }
-  PartitionIdentifier partition_id = partition->GetPartitionIdentifier();
-  std::shared_ptr<TsEntitySegmentBuilder> builder = nullptr;
-  {
-    std::unique_lock lock{builders_mutex_};
-    auto it = write_batch_segment_builders_.find(partition_id);
-    if (it == write_batch_segment_builders_.end()) {
-      while (!partition->TrySetBusy(PartitionStatus::BatchDataWriting)) {
-        sleep(1);
-      }
-      partition = version_manager_->Current()->GetPartition(database_id, p_time);
-      auto entity_segment = partition->GetEntitySegment();
 
-      auto root_path = this->GetPath() / PartitionDirName(partition->GetPartitionIdentifier());
-      builder = std::make_shared<TsEntitySegmentBuilder>(root_path.string(), version_manager_.get(), partition_id,
-                                                         entity_segment);
-      KStatus s = builder->Open();
-      if (s != KStatus::SUCCESS) {
-        partition->ResetStatus();
-        LOG_ERROR("Open entity segment builder failed.");
-        return s;
-      }
-      write_batch_segment_builders_[partition_id] = builder;
-    } else {
-      builder = it->second;
-    }
+  std::shared_ptr<TsEntitySegmentBuilder> builder;
+  KStatus s = GetEntitySegmentBuilder(partition, builder);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("GetEntitySegmentBuilder failed.");
+    return s;
   }
-  KStatus s = builder->WriteBatch(tbl_id, entity_id, table_version, lsn, data);
+  s = builder->WriteBatch(tbl_id, entity_id, table_version, lsn, data);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("WriteBatch failed.");
     return s;
   }
+
   ResetEntityLatestRow(entity_id, INT64_MAX);
   ResetEntityMaxTs(tbl_id, INT64_MAX, entity_id);
   return KStatus::SUCCESS;
@@ -1144,42 +1153,37 @@ KStatus TsVGroup::WriteBatchData(kwdbContext_p ctx, TSTableID tbl_id, uint32_t t
 
 KStatus TsVGroup::FinishWriteBatchData() {
   TsVersionUpdate update;
-  std::unique_lock lock{builders_mutex_};
-  {
-    Defer defer([&]() {
-      for (auto& kv : write_batch_segment_builders_) {
-        auto partition = version_manager_->Current()->GetPartition(std::get<0>(kv.first), std::get<1>(kv.first));
-        partition->ResetStatus();
-      }
-      write_batch_segment_builders_.clear();
-    });
-    for (auto& kv : write_batch_segment_builders_) {
-      KStatus s = kv.second->WriteBatchFinish(&update);
-      if (s != KStatus::SUCCESS) {
-        LOG_ERROR("Finish entity segment builder failed");
-        return s;
-      }
-      kv.second = nullptr;
+  std::set<PartitionIdentifier> partition_ids;
+  bool success = true;
+  for (auto& kv : write_batch_segment_builders_) {
+    partition_ids.insert(kv.first);
+    KStatus s = kv.second->WriteBatchFinish(&update);
+    if (s != KStatus::SUCCESS) {
+      LOG_ERROR("Finish entity segment builder failed");
+      success = false;
     }
+  }
+  write_batch_segment_builders_.clear();
+  if (success) {
     version_manager_->ApplyUpdate(&update);
+  }
+  for (auto p_id : partition_ids) {
+    auto partition = version_manager_->Current()->GetPartition(std::get<0>(p_id), std::get<1>(p_id));
+    partition->ResetStatus();
   }
   return KStatus::SUCCESS;
 }
 
 KStatus TsVGroup::CancelWriteBatchData() {
-  std::unique_lock lock{builders_mutex_};
-  {
-    Defer defer([&]() {
-      for (auto& kv : write_batch_segment_builders_) {
-        auto partition = version_manager_->Current()->GetPartition(std::get<0>(kv.first), std::get<1>(kv.first));
-        partition->ResetStatus();
-      }
-      write_batch_segment_builders_.clear();
-    });
-    for (auto& kv : write_batch_segment_builders_) {
-      kv.second->WriteBatchCancel();
-      kv.second = nullptr;
-    }
+  std::set<PartitionIdentifier> partition_ids;
+  for (auto& kv : write_batch_segment_builders_) {
+    partition_ids.insert(kv.first);
+    kv.second->WriteBatchCancel();
+  }
+  write_batch_segment_builders_.clear();
+  for (auto p_id : partition_ids) {
+    auto partition = version_manager_->Current()->GetPartition(std::get<0>(p_id), std::get<1>(p_id));
+    partition->ResetStatus();
   }
   return KStatus::SUCCESS;
 }
