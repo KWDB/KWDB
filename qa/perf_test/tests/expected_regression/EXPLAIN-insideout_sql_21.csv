@@ -1,0 +1,65 @@
+tree,field,description
+"",distributed,true
+"",vectorized,false
+sort,"",""
+" │",order,"+area_name,+device_name,+plat_company_name,+risk_level"
+" └── group","",""
+"      │",aggregate 0,area_name
+"      │",aggregate 1,device_name
+"      │",aggregate 2,name
+"      │",aggregate 3,level
+"      │",aggregate 4,sum(count_rows)
+"      │",aggregate 5,sum(sum)
+"      │",aggregate 6,max(max)
+"      │",group by,"area_name, device_name, name, level"
+"      └── render","",""
+"           │",area_name,area_name
+"           │",device_name,device_name
+"           │",name,name
+"           │",level,level
+"           │",count_rows,count_rows
+"           │",sum,sum
+"           │",max,max
+"           └── hash-join","",""
+"                │",type,inner
+"                │",equality,(company_id) = (company_id)
+"                ├── hash-join","",""
+"                │    │",type,inner
+"                │    │",equality,(companyid) = (company_id)
+"                │    ├── hash-join","",""
+"                │    │    │",type,inner
+"                │    │    │",equality,(company_id) = (companyid)
+"                │    │    ├── scan","",""
+"                │    │    │",table,cd_behavior_area@primary
+"                │    │    │",spans,FULL SCAN
+"                │    │    │",filter,area_type = 1
+"                │    │    └── group","",""
+"                │    │         │",engine type,time series
+"                │    │         │",aggregate 0,companyid
+"                │    │         │",aggregate 1,count_rows()
+"                │    │         │",aggregate 2,sum(value)
+"                │    │         │",aggregate 3,max(value)
+"                │    │         │",group by,companyid
+"                │    │         │",addSynchronizer ,true
+"                │    │         └── ts scan","",""
+"                │    │",ts-table,opcdata449600
+"                │    │",access mode,tableTableMeta
+"                │    │",tag filter[0],device = e'1#\U00007F50\U0000533A\U000053EF\U000071C3\U00006C14\U00004F53\U000062A5\U00008B66\U00005668'
+"                │    │",tag filter[1],datatype = e'\U00006C14\U00004F53'
+"                │    └── scan","",""
+"                │",table,cd_device_point@primary
+"                │",spans,FULL SCAN
+"                │",filter,index_upper_value >= 1.2
+"                └── hash-join","",""
+"                     │",type,inner
+"                     │",equality,(company_id) = (company_id)
+"                     ├── scan","",""
+"                     │",table,plat_device_info@primary
+"                     │",spans,FULL SCAN
+"                     └── scan","",""
+"",table,plat_risk_analyse_objects@primary
+"",spans,FULL SCAN
+"",filter,risk_status = 1
+
+Time: 234.686003ms
+

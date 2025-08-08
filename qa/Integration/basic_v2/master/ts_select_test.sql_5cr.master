@@ -6242,65 +6242,65 @@ CREATE TABLE
   c0
 ------
 (0 rows)
-> WITH
-jennifer_0 AS (select
+> WITH 
+jennifer_0 AS (select  
     cast(coalesce(subq_0.c10,
-      subq_0.c14) as "varchar") as c0,
-    subq_0.c4 as c1,
+      subq_0.c14) as "varchar") as c0, 
+    subq_0.c4 as c1, 
     subq_0.c12 as c2
-  from
-    (select
-          ref_0.cnc_sn as c0,
-          ref_0.cnc_use_mem as c1,
-          ref_0.cnc_sn as c2,
-          ref_0.prog_seq_num as c3,
-          ref_0.mprog_num as c4,
-          ref_0.cnc_unuse_mem as c5,
-          ref_0.parts_count as c6,
-          ref_0.op_group as c7,
-          ref_0.axis_path as c8,
-          ref_0.k_timestamp as c9,
-          ref_0.alarm_content as c10,
-          33 as c11,
-          8 as c12,
-          ref_0.cnc_status as c13,
-          ref_0.sp_name as c14,
-          ref_0.device_state as c15,
-          2 as c16,
-          ref_0.cur_tool_z_len_val as c17,
+  from 
+    (select  
+          ref_0.cnc_sn as c0, 
+          ref_0.cnc_use_mem as c1, 
+          ref_0.cnc_sn as c2, 
+          ref_0.prog_seq_num as c3, 
+          ref_0.mprog_num as c4, 
+          ref_0.cnc_unuse_mem as c5, 
+          ref_0.parts_count as c6, 
+          ref_0.op_group as c7, 
+          ref_0.axis_path as c8, 
+          ref_0.k_timestamp as c9, 
+          ref_0.alarm_content as c10, 
+          33 as c11, 
+          8 as c12, 
+          ref_0.cnc_status as c13, 
+          ref_0.sp_name as c14, 
+          ref_0.device_state as c15, 
+          2 as c16, 
+          ref_0.cur_tool_z_len_val as c17, 
           ref_0.rel_pos as c18
-        from
+        from 
           public.t_cnc as ref_0
         where cast(null as "timetz") IS DISTINCT FROM case when true then cast(null as "timetz") else cast(null as "timetz") end
             ) as subq_0
-  where ((subq_0.c9 = pg_catalog.transaction_timestamp())
+  where ((subq_0.c9 = pg_catalog.transaction_timestamp()) 
       and (cast(nullif(pg_catalog.kwdb_internal.completed_migrations(),
-          pg_catalog.kwdb_internal.completed_migrations()) as _text) > cast(null as _text)))
+          pg_catalog.kwdb_internal.completed_migrations()) as _text) > cast(null as _text))) 
     and (cast(coalesce(pg_catalog.uuid_v4(),
         cast(null as bytea)) as bytea) IS NOT DISTINCT FROM case when EXISTS (
-          select
-              subq_1.c0 as c0,
-              subq_1.c0 as c1,
-              subq_0.c10 as c2,
-              97 as c3,
-              subq_0.c0 as c4,
-              subq_0.c17 as c5,
+          select  
+              subq_1.c0 as c0, 
+              subq_1.c0 as c1, 
+              subq_0.c10 as c2, 
+              97 as c3, 
+              subq_0.c0 as c4, 
+              subq_0.c17 as c5, 
               subq_1.c5 as c6
-            from
-              (select
-                    ref_1.rallenergy_b as c0,
-                    ref_1.allrenergy2 as c1,
-                    subq_0.c2 as c2,
-                    ref_1.powerl_b as c3,
-                    ref_1.pallenergy_b as c4,
-                    subq_0.c3 as c5,
-                    subq_0.c8 as c6,
+            from 
+              (select  
+                    ref_1.rallenergy_b as c0, 
+                    ref_1.allrenergy2 as c1, 
+                    subq_0.c2 as c2, 
+                    ref_1.powerl_b as c3, 
+                    ref_1.pallenergy_b as c4, 
+                    subq_0.c3 as c5, 
+                    subq_0.c8 as c6, 
                     ref_1.machine_code as c7
-                  from
+                  from 
                     public.t_electmeter as ref_1
                   where false
                   limit 177) as subq_1
-            where (cast(null as "numeric") > cast(null as int8))
+            where (cast(null as "numeric") > cast(null as int8)) 
               and (cast(null as oid) IS DISTINCT FROM cast(null as oid))) then case when false then case when cast(null as date) = cast(null as date) then cast(null as bytea) else cast(null as bytea) end
              else case when cast(null as date) = cast(null as date) then cast(null as bytea) else cast(null as bytea) end
              end
@@ -6309,22 +6309,22 @@ jennifer_0 AS (select
              end
            end
         ))
-select
-    subq_3.c1 as c0,
-    subq_3.c2 as c1,
-    subq_3.c1 as c2,
-    subq_3.c3 as c3,
+select  
+    subq_3.c1 as c0, 
+    subq_3.c2 as c1, 
+    subq_3.c1 as c2, 
+    subq_3.c3 as c3, 
     subq_3.c3 as c4
-  from
-    (select
-          subq_2.c0 as c0,
-          subq_2.c0 as c1,
-          subq_2.c0 as c2,
+  from 
+    (select  
+          subq_2.c0 as c0, 
+          subq_2.c0 as c1, 
+          subq_2.c0 as c2, 
           subq_2.c0 as c3
-        from
-          (select
+        from 
+          (select  
                 ref_2.axis_unit as c0
-              from
+              from 
                 public.t_cnc as ref_2
               where ref_2.machine_code is NULL) as subq_2
         where true
@@ -6344,18 +6344,18 @@ select
          end
        IS NOT DISTINCT FROM pg_catalog.timezone(
       cast(case when EXISTS (
-          select
-              subq_4.c0 as c0,
-              subq_3.c0 as c1,
+          select  
+              subq_4.c0 as c0, 
+              subq_3.c0 as c1, 
               subq_3.c1 as c2
-            from
-              (select
+            from 
+              (select  
                     subq_3.c3 as c0
-                  from
+                  from 
                     jennifer_0 as ref_3
                   where cast(null as _timestamp) != cast(null as _timestamp)
                   limit 75) as subq_4
-            where (cast(null as _time) IS DISTINCT FROM cast(null as _time))
+            where (cast(null as _time) IS DISTINCT FROM cast(null as _time)) 
               or (false)
             limit 76) then cast(nullif(cast(null as "timestamptz"),
           pg_catalog.localtimestamp()) as "timestamptz") else cast(nullif(cast(null as "timestamptz"),
@@ -6644,6 +6644,107 @@ SET
 > drop database test_ts cascade;
 DROP DATABASE
 > drop database test cascade;
+DROP DATABASE
+> drop database tsdb cascade;
+ERROR: database "tsdb" does not exist
+SQLSTATE: 3D000
+> create ts database tsdb;
+CREATE TS DATABASE
+> use tsdb;
+SET
+> create table t1(ts timestamp not null, a int) tags(b int not null) primary tags(b);
+CREATE TABLE
+> insert into t1 values('2025-07-29 03:06:28.103',1,1);
+INSERT 1
+> insert into t1 values('2025-07-29 03:06:29.101',2,2);
+INSERT 1
+> insert into t1 values('2025-07-29 03:07:31.265',3,3);
+INSERT 1
+> insert into t1 values('2025-07-29 03:08:32.313',4,4);
+INSERT 1
+> insert into t1 values('2025-07-29 03:09:35.130',5,5);
+INSERT 1
+> insert into t1 values('2025-07-29 03:09:37.695',6,6);
+INSERT 1
+> insert into t1 values('2025-07-29 03:11:39.103',60,60);
+INSERT 1
+> insert into t1 values('2025-07-29 03:16:41.333',600,600);
+INSERT 1
+> insert into t1 values('2025-07-29 03:26:45.456',6000,6000);
+INSERT 1
+> insert into t1 values('2025-07-29 03:37:46.765',60000,60000);
+INSERT 1
+> insert into t1 values('2025-07-29 03:39:48.334',100,100);
+INSERT 1
+> insert into t1 values('2025-07-29 03:41:49.987',1000,1000);
+INSERT 1
+> insert into t1 values('2025-07-29 03:42:50.322',10000,10000);
+INSERT 1
+> insert into t1 values('2025-07-29 03:46:51.122',100000,100000);
+INSERT 1
+> insert into t1 values('2025-07-29 03:48:53.665',6000,90549856);
+INSERT 1
+> insert into t1 values('2025-07-29 03:50:55.101',60000,89498);
+INSERT 1
+> insert into t1 values('2025-07-29 03:52:56.103',100,9384732);
+INSERT 1
+> insert into t1 values('2025-07-29 03:53:57.156',1000,234566);
+INSERT 1
+> insert into t1 values('2025-07-29 03:57:58.191',10000,345667643);
+INSERT 1
+> insert into t1 values('2025-07-29 03:58:59.203',100000,4564353);
+INSERT 1
+> SELECT max(a) FROM tsdb.t1 GROUP BY a,ts order by ts;
+   max
+----------
+       1
+       2
+       3
+       4
+       5
+       6
+      60
+     600
+    6000
+   60000
+     100
+    1000
+   10000
+  100000
+    6000
+   60000
+     100
+    1000
+   10000
+  100000
+(20 rows)
+> SELECT * FROM tsdb.t1 order by ts;
+               ts               |   a    |     b
+--------------------------------+--------+------------
+  2025-07-29 03:06:28.103+00:00 |      1 |         1
+  2025-07-29 03:06:29.101+00:00 |      2 |         2
+  2025-07-29 03:07:31.265+00:00 |      3 |         3
+  2025-07-29 03:08:32.313+00:00 |      4 |         4
+  2025-07-29 03:09:35.13+00:00  |      5 |         5
+  2025-07-29 03:09:37.695+00:00 |      6 |         6
+  2025-07-29 03:11:39.103+00:00 |     60 |        60
+  2025-07-29 03:16:41.333+00:00 |    600 |       600
+  2025-07-29 03:26:45.456+00:00 |   6000 |      6000
+  2025-07-29 03:37:46.765+00:00 |  60000 |     60000
+  2025-07-29 03:39:48.334+00:00 |    100 |       100
+  2025-07-29 03:41:49.987+00:00 |   1000 |      1000
+  2025-07-29 03:42:50.322+00:00 |  10000 |     10000
+  2025-07-29 03:46:51.122+00:00 | 100000 |    100000
+  2025-07-29 03:48:53.665+00:00 |   6000 |  90549856
+  2025-07-29 03:50:55.101+00:00 |  60000 |     89498
+  2025-07-29 03:52:56.103+00:00 |    100 |   9384732
+  2025-07-29 03:53:57.156+00:00 |   1000 |    234566
+  2025-07-29 03:57:58.191+00:00 |  10000 | 345667643
+  2025-07-29 03:58:59.203+00:00 | 100000 |   4564353
+(20 rows)
+> use defaultdb;
+SET
+> drop database if exists tsdb;
 DROP DATABASE
 > set cluster setting sql.all_push_down.enabled=default;
 SET CLUSTER SETTING

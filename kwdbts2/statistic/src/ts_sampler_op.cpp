@@ -190,7 +190,8 @@ EEIteratorErrCode TsSamplerOperator::mainLoop<Metrics>(kwdbContext_p ctx) {
         if (sk.histogram) {
           SampledRow row{};
           Field* render = childrens_[0]->GetRender(static_cast<int>(col_idx));
-          bool isNull = row_batch->IsNull(render->getColIdxInRs(), normalCol_sketches_[i].column_type);
+          bool isNull = render->is_allow_null()
+                        && row_batch->IsNull(render->getColIdxInRs(), normalCol_sketches_[i].column_type);
           AssignDataToRow(&row, render, isNull, outRetrunTypes_[col_idx]);
           // Randomly generated rankings
           row.rank = static_cast<k_uint64>(normalCol_sketches_[i].reservoir->Int63());
@@ -693,7 +694,7 @@ void SketchSpec::addRow(BaseOperator* input, RowBatch* data_handle) {
     colIdx = statsCol_idx[0];
 
     render = input->GetRender(static_cast<int>(colIdx));
-    isNull = data_handle->IsNull(render->getColIdxInRs(), column_type);
+    isNull = render->is_allow_null() && data_handle->IsNull(render->getColIdxInRs(), column_type);
     if (isNull) {
       numNulls++;
       buf.push_back(ValuesEncoding::encodedNull);
@@ -716,7 +717,7 @@ void SketchSpec::addRow(BaseOperator* input, RowBatch* data_handle) {
     for (auto idx :  statsCol_idx) {
       render = input->GetRender(static_cast<int>(idx));
       if (isNull) {
-        isNull = data_handle->IsNull(render->getColIdxInRs(), column_type);
+        isNull = render->is_allow_null() && data_handle->IsNull(render->getColIdxInRs(), column_type);
       }
       buf = EncodeBytes(render, isNull, buf);
     }

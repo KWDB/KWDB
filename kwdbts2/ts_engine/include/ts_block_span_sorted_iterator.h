@@ -15,6 +15,7 @@
 #include <list>
 #include <memory>
 #include <tuple>
+#include <utility>
 #include <vector>
 
 #include "data_type.h"
@@ -142,7 +143,8 @@ class TsBlockSpanSortedIterator {
   explicit TsBlockSpanSortedIterator(std::list<shared_ptr<TsBlockSpan>>& block_spans,
                                      DedupRule dedup_rule = DedupRule::OVERRIDE,
                                      bool is_reverse = false) :
-                                     block_spans_(std::move(block_spans)), dedup_rule_(dedup_rule), is_reverse_(is_reverse) {}
+                                     block_spans_(std::move(block_spans)),
+                                     dedup_rule_(dedup_rule), is_reverse_(is_reverse) {}
   explicit TsBlockSpanSortedIterator(std::vector<std::list<shared_ptr<TsBlockSpan>>>& block_spans,
                                      DedupRule dedup_rule = DedupRule::OVERRIDE,
                                      bool is_reverse = false) : dedup_rule_(dedup_rule), is_reverse_(is_reverse) {

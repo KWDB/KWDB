@@ -19,6 +19,7 @@
 #include "ts_block_span_sorted_iterator.h"
 #include "ts_coding.h"
 #include "ts_compressor.h"
+#include "ts_entity_segment_handle.h"
 #include "ts_filename.h"
 #include "ts_io.h"
 #include "ts_lastsegment_builder.h"
@@ -60,6 +61,7 @@ KStatus TsEntitySegmentEntityItemFile::GetEntityItem(uint64_t entity_id, TsEntit
     return s;
   }
   entity_item = *reinterpret_cast<TsEntityItem *>(result.data);
+  is_exist = true;
   return s;
 }
 
@@ -105,11 +107,10 @@ KStatus TsEntitySegmentBlockItemFile::GetBlockItem(uint64_t blk_id, TsEntitySegm
   return KStatus::SUCCESS;
 }
 
-TsEntitySegmentMetaManager::TsEntitySegmentMetaManager(const string& dir_path, uint64_t entity_header_file_num,
-                                                       uint64_t header_b_file_size)
+TsEntitySegmentMetaManager::TsEntitySegmentMetaManager(const string& dir_path, EntitySegmentHandleInfo info)
     : dir_path_(dir_path),
-      entity_header_(dir_path + "/" + EntityHeaderFileName(entity_header_file_num)),
-      block_header_(dir_path + "/" + block_item_file_name, header_b_file_size) {}
+      entity_header_(dir_path_ / EntityHeaderFileName(info.header_e_file_number)),
+      block_header_(dir_path_ / BlockHeaderFileName(info.header_b_info.file_number), info.header_b_info.length) {}
 
 KStatus TsEntitySegmentMetaManager::Open() {
   // Attempt to access the directory
@@ -160,6 +161,11 @@ KStatus TsEntitySegmentMetaManager::GetBlockSpans(const TsBlockItemFilterParams&
   KStatus s = entity_header_.GetEntityItem(filter.entity_id, entity_item, is_exist);
   if (s != KStatus::SUCCESS && is_exist) {
     return s;
+  }
+  if (filter.table_id != entity_item.table_id) {
+    LOG_WARN("entity id [%lu], filter table id [%lu], real table id[%lu]",
+              filter.entity_id, filter.table_id, entity_item.table_id);
+    return SUCCESS;
   }
   uint64_t last_blk_id = entity_item.cur_block_id;
 
@@ -226,15 +232,6 @@ TsEntityBlock::TsEntityBlock(uint32_t table_id, TsEntitySegmentBlockItem* block_
 
 char* TsEntityBlock::GetMetricColAddr(uint32_t col_idx) {
   assert(col_idx < column_blocks_.size() - 1);
-  if (col_idx == 0) {
-    if (extra_buffer_.empty()) {
-      extra_buffer_.resize(n_rows_ * 16);
-      for (int i = 0; i < n_rows_; ++i) {
-        memcpy(extra_buffer_.data() + i * 16, column_blocks_[1].buffer.data() + i * 8, 8);
-      }
-    }
-    return extra_buffer_.data();
-  }
   return column_blocks_[col_idx + 1].buffer.data();
 }
 
@@ -640,12 +637,8 @@ KStatus TsEntityBlock::GetVarPreMin(uint32_t blk_col_idx, TSSlice& pre_min) {
   return KStatus::SUCCESS;
 }
 
-TsEntitySegment::TsEntitySegment(const std::filesystem::path& root, TsVersionUpdate::EntitySegmentVersionInfo info)
-    : dir_path_(root),
-      meta_mgr_(root, info.header_e_file_number, info.header_b_size),
-      block_file_(root / block_data_file_name, info.block_file_size),
-      agg_file_(root / block_agg_file_name, info.agg_file_size),
-      info_(info) {
+TsEntitySegment::TsEntitySegment(const std::filesystem::path& root, EntitySegmentHandleInfo info)
+    : dir_path_(root), meta_mgr_(root, info), block_file_(root, info), agg_file_(root, info), info_(info) {
   Open();
 }
 
@@ -675,6 +668,7 @@ KStatus TsEntitySegment::GetBlockSpans(const TsBlockItemFilterParams& filter,
                                        std::shared_ptr<TsTableSchemaManager> tbl_schema_mgr,
                                        uint32_t scan_version) {
   if (filter.entity_id > meta_mgr_.GetEntityNum()) {
+    // LOG_WARN("entity id [%lu] > entity number [%lu]", filter.entity_id, meta_mgr_.GetEntityNum());
     return KStatus::SUCCESS;
   }
   return meta_mgr_.GetBlockSpans(filter, shared_from_this(), block_spans, tbl_schema_mgr, scan_version);
@@ -784,5 +778,4 @@ KStatus TsEntitySegment::GetColumnAgg(int32_t col_idx, TsEntityBlock *block) {
 
   return KStatus::SUCCESS;
 }
-
 }  //  namespace kwdbts

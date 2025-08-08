@@ -1,0 +1,46 @@
+SET
+
+Time: 405.624µs
+
+tree,field,description
+"",distributed,true
+"",vectorized,false
+render,"",""
+" └── lookup-join","",""
+"      │",table,plat_risk_area@primary
+"      │",type,inner
+"      │",equality,(index_id) = (id)
+"      │",equality cols are key,""
+"      │",parallel,""
+"      └── batch-lookup-join","",""
+"           │",type,inner
+"           │",equality,(column21) = (measure_type)
+"           ├── hash-join","",""
+"           │    │",type,inner
+"           │    │",equality,(company_id) = (company_id)
+"           │    ├── render","",""
+"           │    │    └── scan","",""
+"           │    │",table,cd_device_point@primary
+"           │    │",spans,FULL SCAN
+"           │    │",filter,point_name LIKE '%PI%'
+"           │    └── scan","",""
+"           │",table,cd_behavior_area@primary
+"           │",spans,FULL SCAN
+"           └── group","",""
+"                │",engine type,time series
+"                │",aggregate 0,index_id
+"                │",aggregate 1,area_name
+"                │",aggregate 2,avg(measure_value)
+"                │",group by,"index_id, area_name"
+"                │",addSynchronizer ,true
+"                └── render","",""
+"                     │",engine type,time series
+"                     │",measure_value,measure_value
+"                     │",index_id,index_id
+"                     │",area_name,area_name
+"                     └── ts scan","",""
+"",ts-table,t_point
+"",access mode,hashTagScan
+
+Time: 3.305674ms
+

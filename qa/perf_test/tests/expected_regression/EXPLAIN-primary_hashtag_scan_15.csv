@@ -1,0 +1,40 @@
+tree,field,description
+"",distributed,false
+"",vectorized,false
+render,"",""
+" └── limit","",""
+"      │",count,1
+"      └── sort","",""
+"           │",order,"-""time"""
+"           └── batch-lookup-join","",""
+"                │",type,inner
+"                │",equality,"(company_id, channel_id, name, index_name) = (companyid, channel, device, datatype)"
+"                ├── cross-join","",""
+"                │    │",type,cross
+"                │    ├── cross-join","",""
+"                │    │    │",type,cross
+"                │    │    ├── scan","",""
+"                │    │    │",table,channel_info@primary
+"                │    │    │",spans,FULL SCAN
+"                │    │    └── scan","",""
+"                │    │",table,plat_tijian_item_index@primary
+"                │    │",spans,FULL SCAN
+"                │    └── lookup-join","",""
+"                │         │",table,plat_device_info@primary
+"                │         │",type,inner
+"                │         │",equality,(obj_id) = (id)
+"                │         │",equality cols are key,""
+"                │         │",parallel,""
+"                │         └── index-join","",""
+"                │              │",table,plat_tijiancard_item_relation@primary
+"                │              │",key columns,id
+"                │              └── scan","",""
+"                │",table,plat_tijiancard_item_relation@tijian_id_relation
+"                │",spans,"/""6VVkdjOLPOL1brZ8BBXQtvcRuMIfTfLD4uJyFFzbai5U7LywRF""-/""6VVkdjOLPOL1brZ8BBXQtvcRuMIfTfLD4uJyFFzbai5U7LywRF""/PrefixEnd"
+"                └── synchronizer","",""
+"                     └── ts scan","",""
+"",ts-table,opcdata449600
+"",access mode,primaryHashTagScan
+
+Time: 288.756352ms
+

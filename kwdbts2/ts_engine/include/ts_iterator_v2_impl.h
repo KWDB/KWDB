@@ -211,15 +211,12 @@ class TsOffsetIteratorV2Impl : public TsIterator {
 
   inline void GetTerminationTime() {
     switch (ts_col_type_) {
-      case TIMESTAMP64_LSN:
       case TIMESTAMP64:
         t_time_ = 10;
         break;
-      case TIMESTAMP64_LSN_MICRO:
       case TIMESTAMP64_MICRO:
         t_time_ = 10000;
         break;
-      case TIMESTAMP64_LSN_NANO:
       case TIMESTAMP64_NANO:
         t_time_ = 10000000;
         break;

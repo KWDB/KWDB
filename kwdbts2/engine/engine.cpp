@@ -95,7 +95,9 @@ TSEngineImpl::~TSEngineImpl() {
 
   DestoryExecutor();
 #ifndef WITH_TESTS
-  BrMgr::GetInstance().Destroy();
+  if (!EngineOptions::isSingleNode()) {
+    BrMgr::GetInstance().Destroy();
+  }
 #endif
 
   delete tables_cache_;
@@ -236,7 +238,7 @@ KStatus TSEngineImpl::DropTsTable(kwdbContext_p ctx, const KTableKey& table_id) 
   {
     std::shared_ptr<TsTable> table;
     ErrorInfo err_info;
-    KStatus s = GetTsTable(ctx, table_id, table, true, err_info);
+    KStatus s = GetTsTable(ctx, table_id, table, false, err_info);
     if (s == FAIL) {
       s = err_info.errcode == KWENOOBJ ? SUCCESS : FAIL;
       if (s == FAIL) {
@@ -411,7 +413,8 @@ KStatus TSEngineImpl::GetTsTable(kwdbContext_p ctx, const KTableKey& table_id, s
   }
 
   if (ts_table == nullptr) {
-    LOG_ERROR("GetTsTable[%lu] failed", table_id)
+    LOG_ERROR("GetTsTable[%lu] failed", table_id);
+    err_info.errcode = KWENOOBJ;
     return KStatus::FAIL;
   }
 
@@ -554,7 +557,7 @@ KStatus TSEngineImpl::DeleteRangeData(kwdbContext_p ctx, const KTableKey &table_
     LOG_ERROR("DeleteRangeData failed: GetTsTable failed, table id [%lu]", table_id)
     return s;
   }
-  s = table->DeleteRangeData(ctx, range_group_id, hash_span, ts_spans, count, mtr_id, false);
+  s = table->DeleteRangeData(ctx, range_group_id, hash_span, ts_spans, count, mtr_id, writeWAL);
   return s;
 }
 
@@ -1936,7 +1939,6 @@ bool AggCalculator::CalAllAgg(void* min_base, void* max_base, void* sum_base, vo
           break;
         case DATATYPE::TIMESTAMP:
         case DATATYPE::TIMESTAMP64:
-        case DATATYPE::TIMESTAMP64_LSN:
           break;
         default:
           break;
@@ -2113,7 +2115,6 @@ void AggCalculator::UndoAgg(void* min_base, void* max_base, void* sum_base, void
           break;
         case DATATYPE::TIMESTAMP:
         case DATATYPE::TIMESTAMP64:
-        case DATATYPE::TIMESTAMP64_LSN:
           break;
         default:
           break;

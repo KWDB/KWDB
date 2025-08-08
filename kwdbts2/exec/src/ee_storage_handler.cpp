@@ -288,7 +288,7 @@ EEIteratorErrCode StorageHandler::TsStatisticCacheNext(kwdbContext_p ctx) {
   KWThdContext *thd = current_thd;
   if (entities_.empty()) {
     EntityResultIndex entity;
-    KStatus ret = ts_table_->GetLastRowEntity(entity);
+    KStatus ret = ts_table_->GetLastRowEntity(ctx, entity);
     if (KStatus::FAIL == ret) {
       code = EEIteratorErrCode::EE_ERROR;
       Return(code);

@@ -1,0 +1,61 @@
+SET
+
+Time: 850.445µs
+
+tree,field,description
+"",distributed,false
+"",vectorized,false
+render,"",""
+" └── batch-lookup-join","",""
+"      │",type,inner
+"      │",equality,"(station_sn, work_area_sn, sub_company_sn, pipeline_sn, point_sn) = (station_sn, work_area_sn, sub_com_sn, pipeline_sn, point_sn)"
+"      │",left cols are key,""
+"      ├── cross-join","",""
+"      │    │",type,cross
+"      │    ├── cross-join","",""
+"      │    │    │",type,cross
+"      │    │    ├── cross-join","",""
+"      │    │    │    │",type,cross
+"      │    │    │    ├── cross-join","",""
+"      │    │    │    │    │",type,cross
+"      │    │    │    │    ├── scan","",""
+"      │    │    │    │    │",table,pipeline_info@pipeline_sn_index
+"      │    │    │    │    │",spans,FULL SCAN
+"      │    │    │    │    └── scan","",""
+"      │    │    │    │",table,point_info@primary
+"      │    │    │    │",spans,"/""point_sn_1""-/""point_sn_1""/# /""point_sn_30956""-/""point_sn_30956""/#"
+"      │    │    │    │",parallel,""
+"      │    │    │    └── scan","",""
+"      │    │    │",table,company_info@sub_company_name_index
+"      │    │    │",spans,FULL SCAN
+"      │    │    └── scan","",""
+"      │    │",table,workarea_info@workarea_name_index
+"      │    │",spans,FULL SCAN
+"      │    └── scan","",""
+"      │",table,station_info@station_work_area_sn_index
+"      │",spans,FULL SCAN
+"      └── group","",""
+"           │",engine type,time series
+"           │",aggregate 0,point_sn
+"           │",aggregate 1,sub_com_sn
+"           │",aggregate 2,work_area_sn
+"           │",aggregate 3,station_sn
+"           │",aggregate 4,pipeline_sn
+"           │",aggregate 5,count(DISTINCT measure_value)
+"           │",group by,"point_sn, sub_com_sn, work_area_sn, station_sn, pipeline_sn"
+"           └── render","",""
+"                │",engine type,time series
+"                │",measure_value,measure_value
+"                │",point_sn,point_sn
+"                │",sub_com_sn,sub_com_sn
+"                │",work_area_sn,work_area_sn
+"                │",station_sn,station_sn
+"                │",pipeline_sn,pipeline_sn
+"                └── synchronizer","",""
+"                     └── ts scan","",""
+"",ts-table,t_point
+"",access mode,hashRelScan
+"",tag filter[0],measure_type > 10
+
+Time: 4.832472ms
+

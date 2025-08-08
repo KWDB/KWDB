@@ -1,0 +1,9 @@
+SET
+
+Time: 430.216µs
+
+station_sn,work_area_sn,sub_com_sn,pipeline_sn,point_sn,measure_type,measure_location,k_timestamp,avg,min,last
+station_sn_41,work_area_sn_5,sub_com_sn_4,pipeline_sn_3,point_sn_15000,6,measure_location_15000,2024-01-04 13:34:59+00:00,95.86477,95.86477,2024-01-04 14:34:59+00:00
+
+Time: 16.389062489s
+

@@ -13,7 +13,7 @@
 
 #include <cstddef>
 #include <string>
-
+#include <memory>
 #include "data_type.h"
 #include "kwdb_type.h"
 #include "lg_api.h"
@@ -106,17 +106,6 @@ bool TsColumnBlock::GetCompressedData(std::string* out, TsColumnCompressInfo* in
   }
 
   TSSlice input = fixlen_guard_.AsSlice();
-  std::vector<timestamp64> tmp_ts;
-  // TODO(zzr) remove it when payload has 8 bytes timestamp
-  if (need_convert_ts(col_schema_.type)) {
-    tmp_ts.resize(count_);
-    for (int i = 0; i < count_; ++i) {
-      tmp_ts[i] = *reinterpret_cast<timestamp64*>(fixlen_guard_.data() + i * 16);
-    }
-    input.data = reinterpret_cast<char*>(tmp_ts.data());
-    input.len = tmp_ts.size() * sizeof(timestamp64);
-  }
-
   if (!compress) {
     first = TsCompAlg::kPlain;
     second = GenCompAlg::kPlain;
@@ -183,25 +172,6 @@ KStatus TsColumnBlock::ParseCompressedColumnData(const AttributeInfo col_schema,
   }
   RemovePrefix(&compressed_data, info.fixdata_len);
 
-  if (need_convert_ts(col_schema.type)) {
-    if (fixlen_guard.size() != info.row_count * 8) {
-      LOG_ERROR("Invalid timestamp data size: %lu, count: %d", fixlen_guard.size(), info.row_count);
-      return FAIL;
-    }
-    std::string tmp_data;
-    tmp_data.resize(info.row_count * 16);
-    struct TSWithLSN {
-      timestamp64 ts;
-      uint64_t lsn;
-    };
-    auto dst_ptr = reinterpret_cast<TSWithLSN*>(tmp_data.data());
-    auto src_ptr = reinterpret_cast<timestamp64*>(fixlen_guard.data());
-    for (int i = 0; i < info.row_count; ++i) {
-      dst_ptr[i].ts = src_ptr[i];
-    }
-    fixlen_guard = TsSliceGuard{std::move(tmp_data)};
-  }
-
   // 3. Decompress Varchar
   TsSliceGuard varchar_guard;
   if (info.vardata_len != 0) {
@@ -212,8 +182,8 @@ KStatus TsColumnBlock::ParseCompressedColumnData(const AttributeInfo col_schema,
       return KStatus::FAIL;
     }
   }
-  colblock->reset(
-      new TsColumnBlock(col_schema, info.row_count, std::move(bitmap_guard), std::move(fixlen_guard), std::move(varchar_guard)));
+  colblock->reset(new TsColumnBlock(col_schema, info.row_count, std::move(bitmap_guard),
+                                    std::move(fixlen_guard), std::move(varchar_guard)));
   return SUCCESS;
 }
 }  // namespace kwdbts

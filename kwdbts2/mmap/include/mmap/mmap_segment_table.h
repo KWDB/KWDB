@@ -332,12 +332,7 @@ class MMapSegmentTable : public TSObject, public TsTableObject {
       return true;
     }
     TimeStamp64LSN cur_ts(columnAddr({blk_item->block_id, cur_row}, 0));
-    if (isTsWithLSNType((DATATYPE)(cols_info_include_dropped_[0].type))) {
-      // lsn = 0, means this row space is not filled with data.
-      if (cur_ts.lsn == 0) {
-        return false;
-      }
-    } else {
+    {
       // ts = 0, means this row space is not filled with data.
       if (cur_ts.ts64 == 0) {
         return false;
@@ -355,12 +350,7 @@ class MMapSegmentTable : public TSObject, public TsTableObject {
     }
     for (uint32_t i = 1; i <= blk_item->publish_row_count; ++i) {
       TimeStamp64LSN cur_ts(columnAddr({blk_item->block_id, i}, 0));
-      if (isTsWithLSNType((DATATYPE)(cols_info_include_dropped_[0].type))) {
-        // lsn = 0, means this row space is not filled with data.
-        if (cur_ts.lsn == 0) {
-          return true;
-        }
-      } else {
+      {
         // ts = 0, means this row space is not filled with data.
         if (cur_ts.ts64 == 0) {
           return true;

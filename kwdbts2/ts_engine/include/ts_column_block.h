@@ -96,9 +96,4 @@ class TsColumnBlockBuilder {
   }
 };
 
-// TODO(zzr): remove this function later
-inline bool need_convert_ts(int dtype) {
-  return (dtype == TIMESTAMP64_LSN_MICRO || dtype == TIMESTAMP64_LSN || dtype == TIMESTAMP64_LSN_NANO);
-}
-
 }  // namespace kwdbts

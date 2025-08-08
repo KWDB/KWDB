@@ -31,7 +31,6 @@ namespace kwdbts {
 class SchemaVersionConv {
  public:
   uint32_t scan_version_{0};
-  // std::vector<uint32_t> ts_scan_cols_{};
   std::vector<uint32_t> blk_cols_extended_{};
   std::vector<AttributeInfo> scan_attrs_{};
   std::vector<AttributeInfo> blk_attrs_{};

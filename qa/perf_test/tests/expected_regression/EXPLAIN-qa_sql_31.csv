@@ -1,0 +1,68 @@
+tree,field,description
+"",distributed,true
+"",vectorized,false
+group,"",""
+" │",aggregate 0,lower(work_area_name)
+" │",aggregate 1,"concat(station_name, ' Station')"
+" │",aggregate 2,measure_type + 1
+" │",aggregate 3,"time_bucket(k_timestamp, '10s')"
+" │",aggregate 4,"(extract('epoch', k_timestamp) / 600.0)::INT4 * 600"
+" │",aggregate 5,CASE WHEN measure_value > 100.0 THEN 'High' ELSE 'Low' END
+" │",aggregate 6,avg(measure_value)
+" │",aggregate 7,max(measure_value)
+" │",aggregate 8,min(measure_value)
+" │",aggregate 9,count(measure_value)
+" │",group by,"lower(work_area_name), concat(station_name, ' Station'), measure_type + 1, time_bucket(k_timestamp, '10s'), (extract('epoch', k_timestamp) / 600.0)::INT4 * 600, CASE WHEN measure_value > 100.0 THEN 'High' ELSE 'Low' END"
+" └── render","",""
+"      │",lower(work_area_name),lower(work_area_name)
+"      │","concat(station_name, ' Station')","concat(station_name, ' Station')"
+"      │",measure_type + 1,measure_type + 1
+"      │","time_bucket(k_timestamp, '10s')","time_bucket(k_timestamp, '10s')"
+"      │","(extract('epoch', k_timestamp) / 600.0)::INT4 * 600","(extract('epoch', k_timestamp) / 600.0)::INT4 * 600"
+"      │",CASE WHEN measure_value > 100.0 THEN 'High' ELSE 'Low' END,CASE WHEN measure_value > 100.0 THEN 'High' ELSE 'Low' END
+"      │",measure_value,measure_value
+"      └── hash-join","",""
+"           │",type,inner
+"           │",equality,(point_sn) = (point_sn)
+"           │",right cols are key,""
+"           ├── synchronizer","",""
+"           │    └── ts scan","",""
+"           │",ts-table,t_point
+"           │",access mode,tableTableMeta
+"           │",spans:fromTime,2023-08-01 01:00:00 +0000 UTC
+"           │",spans:toTime,2970-01-01 00:00:00 +0000 UTC
+"           └── hash-join","",""
+"                │",type,inner
+"                │",equality,(station_sn) = (station_sn)
+"                │",right cols are key,""
+"                ├── lookup-join","",""
+"                │    │",table,point_info@primary
+"                │    │",type,inner
+"                │    │",equality,(point_sn) = (point_sn)
+"                │    │",equality cols are key,""
+"                │    │",parallel,""
+"                │    └── lookup-join","",""
+"                │         │",table,point_info@point_pipeline_sn_index
+"                │         │",type,inner
+"                │         │",equality,(pipeline_sn) = (pipeline_sn)
+"                │         └── scan","",""
+"                │",table,pipeline_info@pipeline_name_index
+"                │",spans,"/""pipeline_1""-/""pipeline_1""/PrefixEnd"
+"                └── lookup-join","",""
+"                     │",table,station_info@primary
+"                     │",type,inner
+"                     │",equality,(station_sn) = (station_sn)
+"                     │",equality cols are key,""
+"                     │",parallel,""
+"                     └── lookup-join","",""
+"                          │",table,station_info@station_work_area_sn_index
+"                          │",type,inner
+"                          │",equality,(work_area_sn) = (work_area_sn)
+"                          └── scan","",""
+"",table,workarea_info@workarea_name_index
+"",spans,"/""work_area_1""-/""work_area_1""/PrefixEnd /""work_area_2""-/""work_area_2""/PrefixEnd /""work_area_3""-/""work_area_3""/PrefixEnd"
+"","",""
+warning messages,multi-model fall back,unsupported data type
+
+Time: 10.798103ms
+

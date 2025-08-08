@@ -1,0 +1,134 @@
+tree,field,description
+"",distributed,true
+"",vectorized,false
+render,"",""
+" │",sub_company_name,any_not_null
+" │",work_area_name,work_area_name
+" │",station_name,station_name
+" │",measure_type,measure_type
+" │",timebucket,timebucket
+" │",avg_value,avg
+" │",max_value,max
+" │",min_value,min
+" │",number_of_values,count
+" └── group","",""
+"      │",aggregate 0,measure_type
+"      │",aggregate 1,station_name
+"      │",aggregate 2,work_area_name
+"      │",aggregate 3,timebucket
+"      │",aggregate 4,avg(measure_value)
+"      │",aggregate 5,max(measure_value)
+"      │",aggregate 6,min(measure_value)
+"      │",aggregate 7,count(measure_value)
+"      │",aggregate 8,any_not_null(sub_company_name)
+"      │",group by,"measure_type, station_name, work_area_name, timebucket"
+"      └── render","",""
+"           │",timebucket,"time_bucket(k_timestamp, '10s')"
+"           │",measure_value,measure_value
+"           │",measure_type,measure_type
+"           │",station_name,station_name
+"           │",work_area_name,work_area_name
+"           │",sub_company_name,sub_company_name
+"           └── hash-join","",""
+"                │",type,inner
+"                │",equality,"(point_sn, k_timestamp, measure_type) = (point_sn, k_timestamp, measure_type)"
+"                │",pred,measure_value > measure_value
+"                ├── synchronizer","",""
+"                │    └── ts scan","",""
+"                │",ts-table,t_point
+"                │",access mode,tableTableMeta
+"                │",filter,k_timestamp >= '2023-08-01 01:00:00+00:00'
+"                └── hash-join","",""
+"                     │",type,inner
+"                     │",equality,(point_sn) = (point_sn)
+"                     ├── synchronizer","",""
+"                     │    └── ts scan","",""
+"                     │",ts-table,t_point
+"                     │",access mode,tableTableMeta
+"                     │",spans:fromTime,2023-08-01 01:00:00 +0000 UTC
+"                     │",spans:toTime,2970-01-01 00:00:00 +0000 UTC
+"                     └── hash-join","",""
+"                          │",type,inner
+"                          │",equality,"(station_sn, sub_company_sn) = (station_sn, sub_company_sn)"
+"                          │",right cols are key,""
+"                          ├── hash-join","",""
+"                          │    │",type,inner
+"                          │    │",equality,"(station_sn, sub_company_sn) = (station_sn, sub_company_sn)"
+"                          │    │",right cols are key,""
+"                          │    ├── cross-join","",""
+"                          │    │    │",type,cross
+"                          │    │    ├── cross-join","",""
+"                          │    │    │    │",type,cross
+"                          │    │    │    ├── hash-join","",""
+"                          │    │    │    │    │",type,inner
+"                          │    │    │    │    │",equality,"(signal_type, signal_code, pipe_start) = (signal_type, signal_code, pipe_start)"
+"                          │    │    │    │    ├── lookup-join","",""
+"                          │    │    │    │    │    │",table,point_info@primary
+"                          │    │    │    │    │    │",type,inner
+"                          │    │    │    │    │    │",equality,(point_sn) = (point_sn)
+"                          │    │    │    │    │    │",equality cols are key,""
+"                          │    │    │    │    │    │",parallel,""
+"                          │    │    │    │    │    └── lookup-join","",""
+"                          │    │    │    │    │         │",table,point_info@point_pipeline_sn_index
+"                          │    │    │    │    │         │",type,inner
+"                          │    │    │    │    │         │",equality,(pipeline_sn) = (pipeline_sn)
+"                          │    │    │    │    │         └── index-join","",""
+"                          │    │    │    │    │              │",table,pipeline_info@primary
+"                          │    │    │    │    │              │",key columns,pipeline_sn
+"                          │    │    │    │    │              └── scan","",""
+"                          │    │    │    │    │",table,pipeline_info@pipeline_name_index
+"                          │    │    │    │    │",spans,"/""pipeline_1""-/""pipeline_1""/PrefixEnd"
+"                          │    │    │    │    └── lookup-join","",""
+"                          │    │    │    │         │",table,point_info@primary
+"                          │    │    │    │         │",type,inner
+"                          │    │    │    │         │",equality,(point_sn) = (point_sn)
+"                          │    │    │    │         │",equality cols are key,""
+"                          │    │    │    │         │",parallel,""
+"                          │    │    │    │         └── lookup-join","",""
+"                          │    │    │    │              │",table,point_info@point_pipeline_sn_index
+"                          │    │    │    │              │",type,inner
+"                          │    │    │    │              │",equality,(pipeline_sn) = (pipeline_sn)
+"                          │    │    │    │              └── index-join","",""
+"                          │    │    │    │                   │",table,pipeline_info@primary
+"                          │    │    │    │                   │",key columns,pipeline_sn
+"                          │    │    │    │                   └── scan","",""
+"                          │    │    │    │",table,pipeline_info@pipeline_name_index
+"                          │    │    │    │",spans,"/""pipeline_4""-/""pipeline_4""/PrefixEnd"
+"                          │    │    │    └── scan","",""
+"                          │    │    │",table,company_info@sub_company_name_index
+"                          │    │    │",spans,"/""sub_com_2""-/""sub_com_2""/PrefixEnd"
+"                          │    │    └── scan","",""
+"                          │    │",table,company_info@sub_company_name_index
+"                          │    │",spans,"/""sub_com_1""-/""sub_com_1""/PrefixEnd"
+"                          │    └── lookup-join","",""
+"                          │         │",table,station_info@primary
+"                          │         │",type,inner
+"                          │         │",equality,(station_sn) = (station_sn)
+"                          │         │",equality cols are key,""
+"                          │         │",parallel,""
+"                          │         └── lookup-join","",""
+"                          │              │",table,station_info@station_work_area_sn_index
+"                          │              │",type,inner
+"                          │              │",equality,(work_area_sn) = (work_area_sn)
+"                          │              └── scan","",""
+"                          │",table,workarea_info@workarea_name_index
+"                          │",spans,"/""work_area_7""-/""work_area_7""/PrefixEnd /""work_area_8""-/""work_area_8""/PrefixEnd /""work_area_9""-/""work_area_9""/PrefixEnd"
+"                          └── lookup-join","",""
+"                               │",table,station_info@primary
+"                               │",type,inner
+"                               │",equality,(station_sn) = (station_sn)
+"                               │",equality cols are key,""
+"                               │",parallel,""
+"                               └── lookup-join","",""
+"                                    │",table,station_info@station_work_area_sn_index
+"                                    │",type,inner
+"                                    │",equality,(work_area_sn) = (work_area_sn)
+"                                    └── scan","",""
+"",table,workarea_info@workarea_name_index
+"",spans,"/""work_area_1""-/""work_area_1""/PrefixEnd /""work_area_2""-/""work_area_2""/PrefixEnd /""work_area_3""-/""work_area_3""/PrefixEnd"
+"","",""
+warning messages,multi-model fall back,join between time-series tables
+"","",join on time-series metrics column
+
+Time: 19.188529ms
+

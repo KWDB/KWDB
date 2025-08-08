@@ -159,7 +159,7 @@ func (ttr *TsTableReader) initTableReader(
 	ctx context.Context, tsProcessorSpecs []execinfrapb.TSProcessorSpec,
 ) error {
 
-	if ttr.tsInfo.UsePipeline {
+	if ttr.tsInfo.UseAeGather {
 		ttr.initPipelineTableReader(tsProcessorSpecs)
 	} else {
 		// ts processor output StreamID map

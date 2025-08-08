@@ -1,0 +1,94 @@
+tree,field,description
+"",distributed,true
+"",vectorized,false
+sort,"",""
+" │",order,"+pipeline_name,+station_name"
+" └── render","",""
+"      │",pipeline_name,pipeline_name
+"      │",station_name,station_name
+"      │",avg_measure,avg
+"      │",min_measure,min
+"      │",max_measure,max
+"      └── filter","",""
+"           │",filter,avg > 95.0
+"           └── render","",""
+"                │",avg,sum / sum_int
+"                │",pipeline_name,pipeline_name
+"                │",station_name,station_name
+"                │",work_area_name,work_area_name
+"                │",sub_company_name,sub_company_name
+"                │",min,min
+"                │",max,max
+"                └── group","",""
+"                     │",aggregate 0,pipeline_name
+"                     │",aggregate 1,station_name
+"                     │",aggregate 2,work_area_name
+"                     │",aggregate 3,sub_company_name
+"                     │",aggregate 4,sum_int(count)
+"                     │",aggregate 5,sum(sum)
+"                     │",aggregate 6,min(min)
+"                     │",aggregate 7,max(max)
+"                     │",group by,"pipeline_name, station_name, work_area_name, sub_company_name"
+"                     └── render","",""
+"                          │",pipeline_name,pipeline_name
+"                          │",station_name,station_name
+"                          │",work_area_name,work_area_name
+"                          │",sub_company_name,sub_company_name
+"                          │",min,min
+"                          │",max,max
+"                          │",count,count
+"                          │",sum,sum
+"                          └── hash-join","",""
+"                               │",type,inner
+"                               │",equality,(station_sn) = (station_sn)
+"                               │",right cols are key,""
+"                               ├── hash-join","",""
+"                               │    │",type,inner
+"                               │    │",equality,(point_sn) = (point_sn)
+"                               │    │",right cols are key,""
+"                               │    ├── group","",""
+"                               │    │    │",engine type,time series
+"                               │    │    │",aggregate 0,point_sn
+"                               │    │    │",aggregate 1,min(measure_value)
+"                               │    │    │",aggregate 2,max(measure_value)
+"                               │    │    │",aggregate 3,count(measure_value)
+"                               │    │    │",aggregate 4,sum(measure_value)
+"                               │    │    │",group by,point_sn
+"                               │    │    │",addSynchronizer ,true
+"                               │    │    └── ts scan","",""
+"                               │    │",ts-table,t_point
+"                               │    │",access mode,tableTableMeta
+"                               │    │",spans:fromTime,2024-01-01 00:00:00 +0000 UTC
+"                               │    │",spans:toTime,2024-12-31 00:00:00 +0000 UTC
+"                               │    │",filter,measure_value > 90.0
+"                               │    │",tag filter[0],measure_type = 5
+"                               │    └── hash-join","",""
+"                               │         │",type,inner
+"                               │         │",equality,(pipeline_sn) = (pipeline_sn)
+"                               │         │",right cols are key,""
+"                               │         ├── scan","",""
+"                               │         │",table,point_info@primary
+"                               │         │",spans,FULL SCAN
+"                               │         └── scan","",""
+"                               │",table,pipeline_info@pipeline_name_index
+"                               │",spans,FULL SCAN
+"                               └── hash-join","",""
+"                                    │",type,inner
+"                                    │",equality,(work_area_sn) = (work_area_sn)
+"                                    │",right cols are key,""
+"                                    ├── hash-join","",""
+"                                    │    │",type,inner
+"                                    │    │",equality,(sub_company_sn) = (sub_company_sn)
+"                                    │    │",right cols are key,""
+"                                    │    ├── scan","",""
+"                                    │    │",table,station_info@primary
+"                                    │    │",spans,FULL SCAN
+"                                    │    └── scan","",""
+"                                    │",table,company_info@sub_company_name_index
+"                                    │",spans,FULL SCAN
+"                                    └── scan","",""
+"",table,workarea_info@workarea_name_index
+"",spans,FULL SCAN
+
+Time: 11.371731ms
+

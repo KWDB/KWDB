@@ -723,7 +723,7 @@ String FieldFuncMath::ValStr() {
 
 k_bool FieldFuncMath::field_is_nullable() {
   for (k_uint32 i = 0; i < arg_count_; ++i) {
-    if (args_[i]->is_nullable()) {
+    if (args_[i]->CheckNull()) {
       return true;
     }
   }

@@ -1,0 +1,65 @@
+SET
+
+Time: 421.299µs
+
+tree,field,description
+"",distributed,true
+"",vectorized,false
+render,"",""
+" │",station_sn,station_sn
+" │",work_area_sn,work_area_sn
+" │",sub_com_sn,sub_com_sn
+" │",pipeline_sn,pipeline_sn
+" │",point_sn,any_not_null
+" │",count,count
+" │",max,max
+" └── group","",""
+"      │",aggregate 0,sub_com_sn
+"      │",aggregate 1,work_area_sn
+"      │",aggregate 2,station_sn
+"      │",aggregate 3,pipeline_sn
+"      │",aggregate 4,count(measure_value)
+"      │",aggregate 5,max(k_timestamp)
+"      │",aggregate 6,any_not_null(point_sn)
+"      │",group by,"sub_com_sn, work_area_sn, station_sn, pipeline_sn"
+"      └── render","",""
+"           │",k_timestamp,k_timestamp
+"           │",measure_value,measure_value
+"           │",point_sn,point_sn
+"           │",sub_com_sn,sub_com_sn
+"           │",work_area_sn,work_area_sn
+"           │",station_sn,station_sn
+"           │",pipeline_sn,pipeline_sn
+"           └── hash-join","",""
+"                │",type,inner
+"                │",equality,(work_area_sn) = (work_area_sn)
+"                │",left cols are key,""
+"                ├── scan","",""
+"                │",table,workarea_info@workarea_name_index
+"                │",spans,FULL SCAN
+"                └── lookup-join","",""
+"                     │",table,station_info@primary
+"                     │",type,inner
+"                     │",equality,(station_sn) = (station_sn)
+"                     │",equality cols are key,""
+"                     │",parallel,""
+"                     └── hash-join","",""
+"                          │",type,inner
+"                          │",equality,"(sub_com_sn, pipeline_sn) = (sub_company_sn, pipeline_sn)"
+"                          │",right cols are key,""
+"                          ├── synchronizer","",""
+"                          │    └── ts scan","",""
+"                          │",ts-table,t_point
+"                          │",access mode,tagIndexTable
+"                          │",ptag filter[0],point_sn = 'point_sn_1'
+"                          └── cross-join","",""
+"                               │",type,cross
+"                               ├── scan","",""
+"                               │",table,pipeline_info@pipeline_sn_index
+"                               │",spans,FULL SCAN
+"                               └── scan","",""
+"",table,company_info@sub_company_name_index
+"",spans,FULL SCAN
+
+Time: 3.869698ms
+

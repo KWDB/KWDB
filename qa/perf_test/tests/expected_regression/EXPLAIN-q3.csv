@@ -1,0 +1,55 @@
+tree,field,description
+"",distributed,true
+"",vectorized,false
+sort,"",""
+" │",order,-abnormal_point_count
+" └── group","",""
+"      │",aggregate 0,any_not_null
+"      │",aggregate 1,count(DISTINCT point_sn)
+"      │",group by,any_not_null
+"      └── render","",""
+"           │",point_sn,point_sn
+"           │",any_not_null,any_not_null
+"           └── hash-join","",""
+"                │",type,inner
+"                │",equality,"(pipeline_sn, station_sn) = (pipeline_sn, station_sn)"
+"                │",right cols are key,""
+"                │",pred,measure_value < (avg * 0.5)
+"                ├── synchronizer","",""
+"                │    └── ts scan","",""
+"                │",ts-table,t_point
+"                │",access mode,tableTableMeta
+"                │",filter,(k_timestamp >= '2023-08-01 00:00:00+00:00') AND (k_timestamp <= '2024-08-01 01:00:00+00:00')
+"                │",tag filter[0],measure_type = 4
+"                └── group","",""
+"                     │",aggregate 0,pipeline_sn
+"                     │",aggregate 1,station_sn
+"                     │",aggregate 2,avg(measure_value)
+"                     │",aggregate 3,any_not_null(station_name)
+"                     │",group by,"pipeline_sn, station_sn"
+"                     └── render","",""
+"                          │",pipeline_sn,pipeline_sn
+"                          │",station_sn,station_sn
+"                          │",station_name,station_name
+"                          │",measure_value,measure_value
+"                          └── hash-join","",""
+"                               │",type,right outer
+"                               │",equality,(pipeline_sn) = (pipeline_sn)
+"                               ├── synchronizer","",""
+"                               │    └── ts scan","",""
+"                               │",ts-table,t_point
+"                               │",access mode,tableTableMeta
+"                               │",tag filter[0],measure_type = 4
+"                               └── cross-join","",""
+"                                    │",type,cross
+"                                    ├── scan","",""
+"                                    │",table,station_info@station_name_index
+"                                    │",spans,FULL SCAN
+"                                    └── scan","",""
+"",table,pipeline_info@pipeline_name_index
+"",spans,"/""pipeline_1""-/""pipeline_1""/PrefixEnd"
+"","",""
+warning messages,multi-model fall back,join on time-series metrics column
+
+Time: 6.666715ms
+
