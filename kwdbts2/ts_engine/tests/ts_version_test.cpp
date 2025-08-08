@@ -12,6 +12,7 @@
 #include "gtest/gtest.h"
 #include "kwdb_type.h"
 #include "libkwdbts2.h"
+#include "ts_entity_segment_handle.h"
 #include "ts_filename.h"
 #include "ts_io.h"
 #include "ts_lastsegment_builder.h"
@@ -41,8 +42,7 @@ class TsVersionTest : public testing::Test {
     ASSERT_EQ(mgr->ApplyUpdate(&update), SUCCESS);
   }
 
-  void MimicCompaction(TsVersionManager *mgr, PartitionIdentifier par_id,
-                       TsVersionUpdate::EntitySegmentVersionInfo info) {
+  void MimicCompaction(TsVersionManager *mgr, PartitionIdentifier par_id, EntitySegmentHandleInfo info) {
     TsVersionUpdate update;
     auto root = vgroup_root / PartitionDirName(par_id);
     auto current = mgr->Current();
@@ -218,8 +218,8 @@ TEST_F(TsVersionTest, RecoverFromExistingDirTest) {
 
     // mimic compaction
     {
-      MimicCompaction(mgr.get(), par_id, {1, 2, 3, 4});
-      MimicCompaction(mgr.get(), par_id, {4, 5, 6, 7});
+      MimicCompaction(mgr.get(), par_id, {{1, 2}, {3, 4}, {5, 6}, 7});
+      MimicCompaction(mgr.get(), par_id, {{7, 6}, {5, 4}, {3, 2}, 1});
     }
   }
 
@@ -266,8 +266,8 @@ TEST_F(TsVersionTest, RecoverFromCorruptedDirTest) {
 
     // mimic compaction
     {
-      MimicCompaction(mgr.get(), par_id, {7, 8, 9, 10});
-      MimicCompaction(mgr.get(), par_id, {10, 11, 12, 13});
+      MimicCompaction(mgr.get(), par_id, {{1,2},{3,4},{5,6},7});
+      MimicCompaction(mgr.get(), par_id, {{7,6},{5,4},{3,2},1});
     }
 
     for (int i = 0; i < 10; i++) {

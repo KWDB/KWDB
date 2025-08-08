@@ -451,6 +451,7 @@ class MMapTagColumnTable: public TSObject {
 
   void getMaxEntityIdByVGroupId(uint32_t vgroup_id, uint32_t& entity_id);
 
+  void getEntityIdListByVGroupId(uint32_t vgroup_id, std::vector<uint32_t>& entity_id_list);
 
   void getHashpointByRowNum(size_t row, uint32_t *hash_point);
 

@@ -15,6 +15,7 @@
 #include <string>
 #include <tuple>
 #include <unordered_map>
+#include <utility>
 
 #include "data_type.h"
 #include "libkwdbts2.h"
@@ -57,6 +58,46 @@ enum class GenCompAlg : uint16_t {
 enum class BitmapCompAlg : uint8_t {
   kPlain = 0,
   kCompressed = 1,
+};
+
+class TsSliceGuard {
+ private:
+  TSSlice slice;
+  std::string str;
+
+ public:
+  TsSliceGuard() : slice{nullptr, 0} {}
+  explicit TsSliceGuard(TSSlice s) : slice{s} {}
+  explicit TsSliceGuard(std::string&& str_) : str(std::move(str_)) {
+    slice.data = str.data();
+    slice.len = str.size();
+  }
+
+  TsSliceGuard(const TsSliceGuard&) = delete;
+  TsSliceGuard& operator=(const TsSliceGuard&) = delete;
+
+  TsSliceGuard(TsSliceGuard&& other) noexcept { *this = std::move(other); }
+  TsSliceGuard& operator=(TsSliceGuard&& other) noexcept {
+    if (&other == this) {
+      return *this;
+    }
+    if (!other.str.empty()) {
+      this->str = std::move(other.str);
+      this->slice = TSSlice{this->str.data(), this->str.size()};
+    } else {
+      this->slice = other.slice;
+    }
+    return *this;
+  }
+
+  TSSlice AsSlice() const { return slice; }
+  std::string_view AsStringView() const { return {slice.data, slice.len}; }
+  size_t size() const { return slice.len; }
+  const char* data() const { return slice.data; }
+  char* data() { return slice.data; }
+  bool empty() const { return slice.len == 0; }
+
+  const std::string& AsString() const { return str; }
 };
 
 class TsCompressorBase;
@@ -107,9 +148,8 @@ class CompressorManager {
   bool CompressData(TSSlice input, const TsBitmap* bitmap, uint64_t count, std::string* output,
                     TsCompAlg fisrt, GenCompAlg second) const;
   bool CompressVarchar(TSSlice input, std::string* output, GenCompAlg alg) const;
-  bool DecompressData(TSSlice input, const TsBitmap* bitmap, uint64_t count,
-                      std::string* output) const;
-  bool DecompressVarchar(TSSlice input, std::string* output) const;
+  bool DecompressData(TSSlice input, const TsBitmap* bitmap, uint64_t count, TsSliceGuard* out) const;
+  bool DecompressVarchar(TSSlice input, TsSliceGuard* out) const;
 };
 
 }  //  namespace kwdbts

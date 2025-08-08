@@ -34,7 +34,7 @@ int32_t EngineOptions::mem_segment_max_height = 12;
 uint32_t EngineOptions::max_last_segment_num = 2;
 uint32_t EngineOptions::max_compact_num = 10;
 size_t EngineOptions::max_rows_per_block = 4096;
-size_t EngineOptions::min_rows_per_block = 4096;
+size_t EngineOptions::min_rows_per_block = 2048;
 
 extern std::map<std::string, std::string> g_cluster_settings;
 extern DedupRule g_dedup_rule;
@@ -341,6 +341,7 @@ KStatus TSEngineV2Impl::GetTsTable(kwdbContext_p ctx, const KTableKey& table_id,
   if (ts_table == nullptr) {
     if (!create_if_not_exist) {
       LOG_ERROR("cannot found table[%lu], and cannot create it.", table_id);
+      err_info.errcode = KWENOOBJ;
       return KStatus::FAIL;
     }
     // 2. if table no exist. try get schema from go level.
@@ -1547,11 +1548,20 @@ KStatus TSEngineV2Impl::DropResidualTsTable(kwdbContext_p ctx) {
 
 KStatus TSEngineV2Impl::DropTsTable(kwdbContext_p ctx, const KTableKey& table_id) {
   std::shared_ptr<TsTable> ts_table;
-  auto s = GetTsTable(ctx, table_id, ts_table, false);
+  ErrorInfo err_info;
+  auto s = GetTsTable(ctx, table_id, ts_table, false, err_info);
   if (s == KStatus::SUCCESS) {
     ts_table->SetDropped();
+    LOG_INFO("DropTsTable table[%lu] success.", table_id);
+  } else {
+    if (err_info.errcode == KWENOOBJ) {
+      LOG_INFO("DropTsTable table[%lu] has already benn dropped.", table_id);
+      s = KStatus::SUCCESS;
+    } else {
+      LOG_ERROR("DropTsTable table[%lu] failed.", table_id);
+    }
   }
-  return KStatus::SUCCESS;
+  return s;
 }
 
 KStatus TSEngineV2Impl::recover(kwdbts::kwdbContext_p ctx) {
@@ -2256,4 +2266,13 @@ KStatus TSEngineV2Impl::GetMaxEntityIdByVGroupId(kwdbContext_p ctx, uint32_t vgr
   }
   return KStatus::SUCCESS;
 }
+
+KStatus TSEngineV2Impl::Vacuum() {
+  for (const auto& vgroup : vgroups_) {
+    vgroup->Vacuum();
+  }
+  return SUCCESS;
+}
+
+
 }  // namespace kwdbts

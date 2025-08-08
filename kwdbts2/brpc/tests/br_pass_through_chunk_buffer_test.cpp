@@ -92,7 +92,7 @@ TEST_F(BrPassThroughChunkBufferTest, PassThroughChunkBufferComprehensiveTest) {
   // Initialize Context
   context.Init();
   // Test AppendChunk
-  context.AppendChunk(sender_id_, chunk_.get(), chunk_size_, driver_sequence_);
+  context.AppendChunk(sender_id_, chunk_, chunk_size_, driver_sequence_);
   // Test PullChunks
   ChunkUniquePtrVector chunks;
   std::vector<k_size_t> bytes;
@@ -128,7 +128,7 @@ TEST_F(BrPassThroughChunkBufferTest, PassThroughChunkBufferComprehensiveTest) {
         std::lock_guard<std::mutex> lock(test_mutex);
         // Create new data chunk instead of sharing the same one
         auto thread_chunk = CreateTestDataChunk();
-        thread_context.AppendChunk(sender_id_, thread_chunk.get(), chunk_size_, j);
+        thread_context.AppendChunk(sender_id_, thread_chunk, chunk_size_, j);
         ChunkUniquePtrVector thread_chunks;
         std::vector<k_size_t> thread_bytes;
         thread_context.PullChunks(sender_id_, &thread_chunks, &thread_bytes);

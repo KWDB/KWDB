@@ -102,15 +102,12 @@ KStatus MetricsVersionManager::CreateTable(kwdbContext_p ctx, std::vector<Attrib
   // Set lifetime
   int32_t precision = 1;
   switch (meta[0].type) {
-  case TIMESTAMP64_LSN:
   case TIMESTAMP64:
     precision = 1000;
     break;
-  case TIMESTAMP64_LSN_MICRO:
   case TIMESTAMP64_MICRO:
     precision = 1000000;
     break;
-  case TIMESTAMP64_LSN_NANO:
   case TIMESTAMP64_NANO:
     precision = 1000000000;
     break;

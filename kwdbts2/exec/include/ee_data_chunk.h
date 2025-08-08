@@ -141,9 +141,14 @@ class DataChunk : public IChunk {
   KStatus Append_Selective(DataChunk* src, k_uint32 row);
   k_int32 Compare(size_t left, size_t right, k_uint32 col_idx, DataChunk* rhs);
   DataChunkPtr CloneEmpty(k_uint32 num_rows) {
-    DataChunkPtr chunk =
-        std::make_unique<DataChunk>(col_info_, col_num_, num_rows);
-    chunk->Initialize();
+    DataChunkPtr chunk = std::make_unique<DataChunk>(col_info_, col_num_, num_rows);
+    if (chunk == nullptr) {
+      return nullptr;
+    }
+    if (!chunk->Initialize()) {
+      chunk = nullptr;
+      return nullptr;
+    }
     return chunk;
   }
   ////////////////   Basic Methods   ///////////////////

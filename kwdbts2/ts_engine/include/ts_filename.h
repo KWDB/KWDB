@@ -17,11 +17,6 @@
 #include "ts_version.h"
 namespace kwdbts {
 
-const char entity_item_file_name[] = "header.e";
-const char block_item_file_name[] = "header.b";
-const char block_data_file_name[] = "block";
-const char block_agg_file_name[] = "agg";
-
 inline std::string LastSegmentFileName(uint64_t file_number) {
   char buffer[64];
   std::snprintf(buffer, sizeof(buffer), "last.ver-%012lu", file_number);
@@ -30,7 +25,25 @@ inline std::string LastSegmentFileName(uint64_t file_number) {
 
 inline std::string EntityHeaderFileName(uint64_t file_number) {
   char buffer[64];
-  std::snprintf(buffer, sizeof(buffer), "%s.ver-%012lu", entity_item_file_name, file_number);
+  std::snprintf(buffer, sizeof(buffer), "header.e.ver-%012lu", file_number);
+  return buffer;
+}
+
+inline std::string BlockHeaderFileName(uint64_t file_number) {
+  char buffer[64];
+  std::snprintf(buffer, sizeof(buffer), "header.b.ver-%012lu", file_number);
+  return buffer;
+}
+
+inline std::string DataBlockFileName(uint64_t file_number) {
+  char buffer[64];
+  std::snprintf(buffer, sizeof(buffer), "block.ver-%012lu", file_number);
+  return buffer;
+}
+
+inline std::string EntityAggFileName(uint64_t file_number) {
+  char buffer[64];
+  std::snprintf(buffer, sizeof(buffer), "agg.ver-%012lu", file_number);
   return buffer;
 }
 

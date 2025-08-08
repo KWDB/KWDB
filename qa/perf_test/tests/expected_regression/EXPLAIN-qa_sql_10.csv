@@ -1,0 +1,32 @@
+tree,field,description
+"",distributed,true
+"",vectorized,false
+group,"",""
+" │",aggregate 0,measure_type
+" │",aggregate 1,timebucket
+" │",aggregate 2,avg(measure_value)
+" │",aggregate 3,max(measure_value)
+" │",aggregate 4,min(measure_value)
+" │",aggregate 5,count(measure_value)
+" │",group by,"measure_type, timebucket"
+" └── render","",""
+"      │",timebucket,"time_bucket(k_timestamp, '10s')"
+"      │",measure_value,measure_value
+"      │",measure_type,measure_type
+"      └── cross-join","",""
+"           │",type,inner
+"           │",pred,(point_sn = point_sn) OR (point_sn = 'point_sn_21101')
+"           ├── synchronizer","",""
+"           │    └── ts scan","",""
+"           │",ts-table,t_point
+"           │",access mode,tableTableMeta
+"           │",spans:fromTime,2023-08-01 01:00:00 +0000 UTC
+"           │",spans:toTime,2970-01-01 00:00:00 +0000 UTC
+"           └── scan","",""
+"",table,point_info@point_station_sn_index
+"",spans,FULL SCAN
+"","",""
+warning messages,multi-model fall back,cross join is not supported in multi-model
+
+Time: 6.046583ms
+

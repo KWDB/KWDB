@@ -1,0 +1,54 @@
+tree,field,description
+"",distributed,false
+"",vectorized,false
+render,"",""
+" └── sort","",""
+"      │",order,"+work_area_name,+station_name,+measure_type,+timebucket"
+"      └── batch-lookup-join","",""
+"           │",type,inner
+"           │",equality,(point_sn) = (point_sn)
+"           ├── cross-join","",""
+"           │    │",type,cross
+"           │    ├── cross-join","",""
+"           │    │    │",type,cross
+"           │    │    ├── cross-join","",""
+"           │    │    │    │",type,cross
+"           │    │    │    ├── scan","",""
+"           │    │    │    │",table,pipeline_info@pipeline_sn_index
+"           │    │    │    │",spans,FULL SCAN
+"           │    │    │    └── scan","",""
+"           │    │    │",table,point_info@primary
+"           │    │    │",spans,"/""a1""-/""a1""/# /""a2""-/""a2""/# /""a3""-/""a3""/#"
+"           │    │    │",parallel,""
+"           │    │    └── scan","",""
+"           │    │",table,workarea_info@workarea_name_index
+"           │    │",spans,FULL SCAN
+"           │    └── scan","",""
+"           │",table,station_info@station_name_index_small
+"           │",spans,FULL SCAN
+"           └── group","",""
+"                │",engine type,time series
+"                │",aggregate 0,measure_type
+"                │",aggregate 1,station_name
+"                │",aggregate 2,work_area_name
+"                │",aggregate 3,timebucket
+"                │",aggregate 4,avg(measure_value)
+"                │",aggregate 5,max(measure_value)
+"                │",aggregate 6,min(measure_value)
+"                │",aggregate 7,count(measure_value)
+"                │",group by,"measure_type, station_name, work_area_name, timebucket"
+"                │",addSynchronizer ,true
+"                └── render","",""
+"                     │",engine type,time series
+"                     │",timebucket,"time_bucket(k_timestamp, '10s')"
+"                     │",measure_value,measure_value
+"                     │",measure_type,measure_type
+"                     │",station_name,station_name
+"                     │",work_area_name,work_area_name
+"                     └── ts scan","",""
+"",ts-table,t_point
+"",access mode,primaryHashTagScan
+"",ptag filter[0],"point_sn IN ('a1', 'a2', 'a3')"
+
+Time: 5.022393ms
+

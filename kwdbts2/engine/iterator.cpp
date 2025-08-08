@@ -256,12 +256,6 @@ bool TsStorageIterator::isBlockFiltered(BlockItem* block_item) {
           max.ival = *static_cast<k_int64*>(max_addr);
           break;
         }
-        case DATATYPE::TIMESTAMP64_LSN:
-        case DATATYPE::TIMESTAMP64_LSN_MICRO:
-        case DATATYPE::TIMESTAMP64_LSN_NANO: {
-          min.ival = (*(static_cast<TimeStamp64LSN*>(min_addr))).ts64;
-          max.ival = (*(static_cast<TimeStamp64LSN*>(max_addr))).ts64;
-        }
         case DATATYPE::FLOAT: {
           min.dval = static_cast<double>(*static_cast<float*>(min_addr));
           max.dval = static_cast<double>(*static_cast<float*>(max_addr));

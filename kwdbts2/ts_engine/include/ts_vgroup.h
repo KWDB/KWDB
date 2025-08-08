@@ -32,13 +32,6 @@ namespace kwdbts {
 
 class TsEntitySegmentBuilder;
 
-enum class TsExclusiveStatus{
-  NONE = 0,
-  COMPACT,
-  WRITE_BATCH,
-  VACUUM,
-};
-
 enum class TsEntityLatestRowStatus {
   Uninitialized = 0,
   Recovering,
@@ -87,7 +80,6 @@ class TsVGroup {
   // Mutexes for condition variables
   std::mutex cv_mutex_;
 
-  std::atomic<TsExclusiveStatus> comp_vacuum_status_{TsExclusiveStatus::NONE};
   std::atomic<uint64_t> max_lsn_{LOG_BLOCK_HEADER_SIZE + BLOCK_SIZE};
 
   mutable std::shared_mutex last_row_entity_mutex_;
@@ -183,21 +175,6 @@ class TsVGroup {
     return s;
   }
 
-  void ResetTsExclusiveStatus() {
-    comp_vacuum_status_.store(TsExclusiveStatus::NONE);
-  }
-
-  bool TrySetTsExclusiveStatus(TsExclusiveStatus desired) {
-    if (comp_vacuum_status_ == desired) {
-      return true;
-    }
-    TsExclusiveStatus expected = TsExclusiveStatus::NONE;
-    if (comp_vacuum_status_.compare_exchange_strong(expected, desired)) {
-      return true;
-    }
-    return false;
-  }
-
   void SwitchMemSegment(std::shared_ptr<TsMemSegment>* imm_segment) { mem_segment_mgr_.SwitchMemSegment(imm_segment); }
 
   uint64_t GetMtrIDByTsxID(const char* ts_trans_id) {
@@ -271,7 +248,7 @@ class TsVGroup {
 
   KStatus FinishWriteBatchData();
 
-  KStatus ClearWriteBatchData();
+  KStatus CancelWriteBatchData();
 
   TsEngineSchemaManager* GetSchemaMgr() const;
 
@@ -299,8 +276,8 @@ class TsVGroup {
 
   KStatus undoUpdateTag(kwdbContext_p ctx, TS_LSN log_lsn, TSSlice payload, const TSSlice& old_payload);
 
-  KStatus redoDeleteTag(kwdbContext_p ctx, uint64_t table_id, TSSlice& primary_tag, kwdbts::TS_LSN log_lsn, uint32_t group_id,
-                        uint32_t entity_id, TSSlice& tags);
+  KStatus redoDeleteTag(kwdbContext_p ctx, uint64_t table_id, TSSlice& primary_tag, kwdbts::TS_LSN log_lsn,
+                        uint32_t group_id, uint32_t entity_id, TSSlice& tags);
 
   /**
    * @brief Start a mini-transaction for the current EntityGroup.
@@ -330,7 +307,7 @@ class TsVGroup {
   KStatus MtrRollback(kwdbContext_p ctx, uint64_t& mtr_id, bool is_skip = false, const char* tsx_id = nullptr);
   KStatus redoPut(kwdbContext_p ctx, kwdbts::TS_LSN log_lsn, const TSSlice& payload);
 
-  KStatus GetLastRowEntity(std::shared_ptr<TsTableSchemaManager>& table_schema_mgr,
+  KStatus GetLastRowEntity(kwdbContext_p ctx, std::shared_ptr<TsTableSchemaManager>& table_schema_mgr,
                            pair<timestamp64, uint32_t>& last_row_entity);
 
   void UpdateEntityAndMaxTs(KTableKey table_id, timestamp64 max_ts, EntityID entity_id) {
@@ -372,6 +349,8 @@ class TsVGroup {
     }
   }
 
+  KStatus Vacuum();
+
  private:
   // check partition of rows exist. if not creating it.
   KStatus makeSurePartitionExist(TSTableID table_id, const std::list<TSMemSegRowData>& rows);
@@ -386,6 +365,8 @@ class TsVGroup {
   void initCompactThread();
   // Close compact thread.
   void closeCompactThread();
+
+  KStatus PartitionCompact(std::shared_ptr<const TsPartitionVersion> partition, bool call_by_vacuum = false);
 };
 
 }  // namespace kwdbts

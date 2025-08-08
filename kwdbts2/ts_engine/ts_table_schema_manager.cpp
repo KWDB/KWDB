@@ -11,6 +11,7 @@
 
 #include "ts_table_schema_manager.h"
 #include <dirent.h>
+#include <cstdint>
 #include "engine.h"
 #include "sys_utils.h"
 #include "column_utils.h"
@@ -488,29 +489,17 @@ KStatus TsTableSchemaManager::parseAttrInfo(const roachpb::KWDBKTSColumn& col,
     case roachpb::TIMESTAMP:
     case roachpb::TIMESTAMPTZ:
     case roachpb::DATE:
-      if (first_col) {
-        attr_info.type = DATATYPE::TIMESTAMP64_LSN;
-      } else {
-        attr_info.type = DATATYPE::TIMESTAMP64;
-      }
+      attr_info.type = DATATYPE::TIMESTAMP64;
       attr_info.max_len = 3;
       break;
     case roachpb::TIMESTAMP_MICRO:
     case roachpb::TIMESTAMPTZ_MICRO:
-    if (first_col) {
-        attr_info.type = DATATYPE::TIMESTAMP64_LSN_MICRO;
-      } else {
-        attr_info.type = DATATYPE::TIMESTAMP64_MICRO;
-      }
+      attr_info.type = DATATYPE::TIMESTAMP64_MICRO;
       attr_info.max_len = 6;
       break;
     case roachpb::TIMESTAMP_NANO:
     case roachpb::TIMESTAMPTZ_NANO:
-      if (first_col) {
-        attr_info.type = DATATYPE::TIMESTAMP64_LSN_NANO;
-      } else {
-        attr_info.type = DATATYPE::TIMESTAMP64_NANO;
-      }
+      attr_info.type = DATATYPE::TIMESTAMP64_NANO;
       attr_info.max_len = 9;
       break;
     case roachpb::SMALLINT:
@@ -578,7 +567,7 @@ const vector<uint32_t>& TsTableSchemaManager::GetIdxForValidCols(uint32_t table_
   return getMetricsTable(table_version)->getIdxForValidCols();
 }
 
-bool TsTableSchemaManager::FindVersionConv(const string &key, std::shared_ptr<SchemaVersionConv>* version_conv) {
+bool TsTableSchemaManager::FindVersionConv(uint64_t key, std::shared_ptr<SchemaVersionConv>* version_conv) {
   RW_LATCH_S_LOCK(ver_conv_rw_lock_);
   Defer defer{[&]() { RW_LATCH_UNLOCK(ver_conv_rw_lock_); }};
   const auto iter = version_conv_map.find(key);
@@ -589,7 +578,7 @@ bool TsTableSchemaManager::FindVersionConv(const string &key, std::shared_ptr<Sc
   return true;
 }
 
-void TsTableSchemaManager::InsertVersionConv(const string &key, const shared_ptr<SchemaVersionConv>& ver_conv) {
+void TsTableSchemaManager::InsertVersionConv(uint64_t key, const shared_ptr<SchemaVersionConv>& ver_conv) {
   RW_LATCH_X_LOCK(ver_conv_rw_lock_);
   Defer defer{[&]() { RW_LATCH_UNLOCK(ver_conv_rw_lock_); }};
   version_conv_map.insert(make_pair(key, ver_conv));

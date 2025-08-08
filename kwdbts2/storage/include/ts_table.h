@@ -529,7 +529,7 @@ class TsTable {
 
   virtual uint64_t GetHashNum();
 
-  virtual KStatus GetLastRowEntity(EntityResultIndex& entity_id);
+  virtual KStatus GetLastRowEntity(kwdbContext_p ctx, EntityResultIndex& entity_id);
 
   struct SubgroupEntities{
     uint64_t entity_group_id;

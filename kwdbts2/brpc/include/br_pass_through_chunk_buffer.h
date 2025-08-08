@@ -71,7 +71,7 @@ class PassThroughContext {
       : chunk_buffer_(chunk_buffer), query_id_(query_id), processor_id_(processor_id) {}
 
   void Init();
-  void AppendChunk(k_int32 sender_id, DataChunk* chunk, k_size_t chunk_size,
+  void AppendChunk(k_int32 sender_id, DataChunkPtr& chunk, k_size_t chunk_size,
                    k_int32 driver_sequence);
   void PullChunks(k_int32 sender_id, ChunkUniquePtrVector* chunks, std::vector<k_size_t>* bytes);
 

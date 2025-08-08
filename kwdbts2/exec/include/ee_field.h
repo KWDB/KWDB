@@ -191,9 +191,7 @@ class FieldNum : public Field {
   k_bool is_nullable() override;
   char *get_ptr() override;
   char *get_ptr(RowBatch *batch) override {
-    return batch->GetData(col_idx_in_rs_,
-                          0 == num_ ? storage_len_ + 8 : storage_len_,
-                          column_type_, storage_type_);
+    return batch->GetData(col_idx_in_rs_, storage_len_, column_type_, storage_type_);
   }
   k_bool fill_template_field(char *ptr) override;
   k_bool is_over_flow() override;

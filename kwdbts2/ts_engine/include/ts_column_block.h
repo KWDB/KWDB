@@ -18,6 +18,7 @@
 #include "kwdb_type.h"
 #include "libkwdbts2.h"
 #include "ts_bitmap.h"
+#include "ts_compressor.h"
 
 namespace kwdbts {
 
@@ -35,17 +36,16 @@ class TsColumnBlock {
  private:
   const AttributeInfo col_schema_;
   int count_ = 0;
-  TsBitmap bitmap_;
-  std::string fixlen_data_;
-  std::string varchar_data_;
+  TsSliceGuard bitmap_guard_;
+  TsSliceGuard fixlen_guard_, varchar_guard_;
 
-  TsColumnBlock(const AttributeInfo& col_schema, int count, const TsBitmap& bitmap, const std::string& fixlen_data,
-                const std::string& varchar_data)
+  TsColumnBlock(const AttributeInfo& col_schema, int count, TsSliceGuard&& bitmap, TsSliceGuard&& fixlen_data,
+                TsSliceGuard&& varchar_data)
       : col_schema_(col_schema),
         count_(count),
-        bitmap_(bitmap),
-        fixlen_data_(std::move(fixlen_data)),
-        varchar_data_(std::move(varchar_data)) {}
+        bitmap_guard_(std::move(bitmap)),
+        fixlen_guard_(std::move(fixlen_data)),
+        varchar_guard_(std::move(varchar_data)) {}
 
  public:
   static KStatus ParseCompressedColumnData(const AttributeInfo col_schema, TSSlice compressed_data,
@@ -55,7 +55,7 @@ class TsColumnBlock {
 
   size_t GetRowNum() const { return count_; }
   const AttributeInfo& GetColSchama() const { return col_schema_; }
-  char* GetColAddr() { return fixlen_data_.data(); }
+  char* GetColAddr() { return fixlen_guard_.data(); }
   KStatus GetColBitmap(TsBitmap& bitmap);
   KStatus GetValueSlice(int row_num, TSSlice& value);
 };
@@ -76,8 +76,16 @@ class TsColumnBlockBuilder {
   // TODO(zzr) make it const ref
   void AppendColumnBlock(TsColumnBlock& col);
 
-  std::unique_ptr<TsColumnBlock> GetColumnBlock() const {
-    return std::unique_ptr<TsColumnBlock>{new TsColumnBlock(col_schema_, count_, bitmap_, fixlen_data_, varchar_data_)};
+  std::unique_ptr<TsColumnBlock> GetColumnBlock() {
+    std::string fixlen_data, varchar_data;
+    fixlen_data.swap(fixlen_data_);
+    varchar_data.swap(varchar_data_);
+    TsSliceGuard fixlen_guard{std::move(fixlen_data)};
+    TsSliceGuard varchar_guard{std::move(varchar_data)};
+    auto bitmap_str = bitmap_.GetStr();
+    TsSliceGuard bitmap_guard{std::move(bitmap_str)};
+    return std::unique_ptr<TsColumnBlock>{
+        new TsColumnBlock(col_schema_, count_, std::move(bitmap_guard), std::move(fixlen_guard), std::move(varchar_guard))};
   }
 
   void Reset() {
@@ -87,10 +95,5 @@ class TsColumnBlockBuilder {
     varchar_data_.clear();
   }
 };
-
-// TODO(zzr): remove this function later
-inline bool need_convert_ts(int dtype) {
-  return (dtype == TIMESTAMP64_LSN_MICRO || dtype == TIMESTAMP64_LSN || dtype == TIMESTAMP64_LSN_NANO);
-}
 
 }  // namespace kwdbts

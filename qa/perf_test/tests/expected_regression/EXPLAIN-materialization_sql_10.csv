@@ -1,0 +1,174 @@
+SET
+
+Time: 453.093µs
+
+tree,field,description
+"",distributed,true
+"",vectorized,false
+render,"",""
+" │",max,max
+" │",avg,avg
+" │",adr,adr
+" │",channel,channel
+" │",companyid,any_not_null
+" │",companyname,companyname
+" │",datatype,any_not_null
+" │",device,device
+" │",deviceid,deviceid
+" │",highmorewarn,highmorewarn
+" │",highwarn,highwarn
+" │",lowmorewarn,lowmorewarn
+" │",lowwarn,lowwarn
+" │",name,name
+" │",region,region
+" │",slaveid,slaveid
+" │",tag,"""tag"""
+" │",unit,unit
+" │",member_id,member_id
+" │",member_code,any_not_null
+" │",member_type,any_not_null
+" │",sys_investment_workplace_id,any_not_null
+" │",pic1_upload_time,any_not_null
+" │",pic2_url,any_not_null
+" │",company_type,any_not_null
+" │",is_virtual_member,any_not_null
+" │",new_taxpayer_month,any_not_null
+" │",effective_taxpayer_month,any_not_null
+" │",has_return_tax,any_not_null
+" │",level,any_not_null
+" │",leader_name,any_not_null
+" │",leader_tel,any_not_null
+" │",trade_type,any_not_null
+" │",move_in_type,any_not_null
+" │",expense_management_time,any_not_null
+" │",introduce_investment_people_id,any_not_null
+" │",company_belong,any_not_null
+" │",residence_id,any_not_null
+" │",passport_id,any_not_null
+" │",accountant,any_not_null
+" └── sort","",""
+"      │",order,"+max,+member_id"
+"      └── group","",""
+"           │",aggregate 0,member_id
+"           │",aggregate 1,adr
+"           │",aggregate 2,channel
+"           │",aggregate 3,companyname
+"           │",aggregate 4,device
+"           │",aggregate 5,deviceid
+"           │",aggregate 6,highmorewarn
+"           │",aggregate 7,highwarn
+"           │",aggregate 8,lowmorewarn
+"           │",aggregate 9,lowwarn
+"           │",aggregate 10,name
+"           │",aggregate 11,region
+"           │",aggregate 12,slaveid
+"           │",aggregate 13,tag
+"           │",aggregate 14,unit
+"           │",aggregate 15,max(time)
+"           │",aggregate 16,avg(value)
+"           │",aggregate 17,any_not_null(member_code)
+"           │",aggregate 18,any_not_null(member_type)
+"           │",aggregate 19,any_not_null(sys_investment_workplace_id)
+"           │",aggregate 20,any_not_null(pic1_upload_time)
+"           │",aggregate 21,any_not_null(pic2_url)
+"           │",aggregate 22,any_not_null(company_type)
+"           │",aggregate 23,any_not_null(is_virtual_member)
+"           │",aggregate 24,any_not_null(new_taxpayer_month)
+"           │",aggregate 25,any_not_null(effective_taxpayer_month)
+"           │",aggregate 26,any_not_null(has_return_tax)
+"           │",aggregate 27,any_not_null(level)
+"           │",aggregate 28,any_not_null(leader_name)
+"           │",aggregate 29,any_not_null(leader_tel)
+"           │",aggregate 30,any_not_null(trade_type)
+"           │",aggregate 31,any_not_null(move_in_type)
+"           │",aggregate 32,any_not_null(expense_management_time)
+"           │",aggregate 33,any_not_null(introduce_investment_people_id)
+"           │",aggregate 34,any_not_null(company_belong)
+"           │",aggregate 35,any_not_null(residence_id)
+"           │",aggregate 36,any_not_null(passport_id)
+"           │",aggregate 37,any_not_null(accountant)
+"           │",aggregate 38,any_not_null(companyid)
+"           │",aggregate 39,any_not_null(datatype)
+"           │",group by,"member_id, adr, channel, companyname, device, deviceid, highmorewarn, highwarn, lowmorewarn, lowwarn, name, region, slaveid, tag, unit"
+"           └── render","",""
+"                │",member_id,member_id
+"                │",member_code,member_code
+"                │",member_type,member_type
+"                │",sys_investment_workplace_id,sys_investment_workplace_id
+"                │",pic1_upload_time,pic1_upload_time
+"                │",pic2_url,pic2_url
+"                │",company_type,company_type
+"                │",is_virtual_member,is_virtual_member
+"                │",new_taxpayer_month,new_taxpayer_month
+"                │",effective_taxpayer_month,effective_taxpayer_month
+"                │",has_return_tax,has_return_tax
+"                │",level,level
+"                │",leader_name,leader_name
+"                │",leader_tel,leader_tel
+"                │",trade_type,trade_type
+"                │",move_in_type,move_in_type
+"                │",expense_management_time,expense_management_time
+"                │",introduce_investment_people_id,introduce_investment_people_id
+"                │",company_belong,company_belong
+"                │",residence_id,residence_id
+"                │",passport_id,passport_id
+"                │",accountant,accountant
+"                │",time,"""time"""
+"                │",value,value
+"                │",adr,adr
+"                │",channel,channel
+"                │",companyid,companyid
+"                │",companyname,companyname
+"                │",datatype,datatype
+"                │",device,device
+"                │",deviceid,deviceid
+"                │",highmorewarn,highmorewarn
+"                │",highwarn,highwarn
+"                │",lowmorewarn,lowmorewarn
+"                │",lowwarn,lowwarn
+"                │",name,name
+"                │",region,region
+"                │",slaveid,slaveid
+"                │",tag,"""tag"""
+"                │",unit,unit
+"                └── hash-join","",""
+"                     │",type,inner
+"                     │",equality,"(company_id, column151) = (companyid, lowwarn)"
+"                     ├── render","",""
+"                     │    └── hash-join","",""
+"                     │         │",type,inner
+"                     │         │",equality,(company_id) = (company_id)
+"                     │         ├── hash-join","",""
+"                     │         │    │",type,inner
+"                     │         │    │",equality,(company_id) = (company_id)
+"                     │         │    ├── scan","",""
+"                     │         │    │",table,plat_zone_member@primary
+"                     │         │    │",spans,-/385/# /387-
+"                     │         │    │",filter,company_id = 449600
+"                     │         │    └── scan","",""
+"                     │         │",table,plat_tijiancard_item_relation@primary
+"                     │         │",spans,FULL SCAN
+"                     │         │",filter,(company_id = 449600) AND (obj_id < 5000)
+"                     │         └── hash-join","",""
+"                     │              │",type,inner
+"                     │              │",equality,(company_id) = (company_id)
+"                     │              ├── scan","",""
+"                     │              │",table,cd_device_point@primary
+"                     │              │",spans,FULL SCAN
+"                     │              │",filter,company_id = 449600
+"                     │              └── scan","",""
+"                     │",table,plat_risk_analyse_objects@primary
+"                     │",spans,FULL SCAN
+"                     │",filter,company_id = 449600
+"                     └── synchronizer","",""
+"                          └── ts scan","",""
+"",ts-table,opcdata449600
+"",access mode,tableTableMeta
+"",spans:fromTime,2024-01-01 00:00:00 +0000 UTC
+"",spans:toTime,2024-01-01 01:00:00 +0000 UTC
+"",tag filter[0],datatype = e'\U00006DB2\U00004F4D'
+"",tag filter[1],channel != 'CH248'
+"",tag filter[2],companyid = 449600
+
+Time: 9.437392ms
+

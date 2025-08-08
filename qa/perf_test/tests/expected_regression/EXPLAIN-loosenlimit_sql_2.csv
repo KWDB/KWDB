@@ -1,0 +1,65 @@
+tree,field,description
+"",distributed,false
+"",vectorized,false
+render,"",""
+" └── batch-lookup-join","",""
+"      │",type,inner
+"      │",equality,(point_sn) = (point_sn)
+"      ├── hash-join","",""
+"      │    │",type,inner
+"      │    │",equality,(work_area_sn) = (work_area_sn)
+"      │    │",right cols are key,""
+"      │    ├── hash-join","",""
+"      │    │    │",type,left outer
+"      │    │    │",equality,(station_sn) = (station_sn)
+"      │    │    │",right cols are key,""
+"      │    │    ├── lookup-join","",""
+"      │    │    │    │",table,point_info@primary
+"      │    │    │    │",type,inner
+"      │    │    │    │",equality,(point_sn) = (point_sn)
+"      │    │    │    │",equality cols are key,""
+"      │    │    │    │",parallel,""
+"      │    │    │    └── lookup-join","",""
+"      │    │    │         │",table,point_info@point_pipeline_sn_index
+"      │    │    │         │",type,inner
+"      │    │    │         │",equality,(pipeline_sn) = (pipeline_sn)
+"      │    │    │         └── scan","",""
+"      │    │    │",table,pipeline_info@pipeline_name_index
+"      │    │    │",spans,"/""pipeline_1""-/""pipeline_1""/PrefixEnd"
+"      │    │    └── scan","",""
+"      │    │",table,station_info@primary
+"      │    │",spans,FULL SCAN
+"      │    └── scan","",""
+"      │",table,workarea_info@workarea_name_index
+"      │",spans,"/""work_area_1""-/""work_area_1""/PrefixEnd /""work_area_2""-/""work_area_2""/PrefixEnd /""work_area_3""-/""work_area_3""/PrefixEnd"
+"      └── group","",""
+"           │",engine type,time series
+"           │",aggregate 0,station_name
+"           │",aggregate 1,measure_type
+"           │",aggregate 2,work_area_name
+"           │",aggregate 3,timebucket
+"           │",aggregate 4,avg(measure_value)
+"           │",aggregate 5,max(measure_value)
+"           │",aggregate 6,min(measure_value)
+"           │",aggregate 7,count(measure_value)
+"           │",group by,"station_name, measure_type, work_area_name, timebucket"
+"           │",ordered,"+work_area_name,+station_name,+measure_type,+timebucket"
+"           │",addSynchronizer ,true
+"           └── sort","",""
+"                │",engine type,time series
+"                │",order,"+work_area_name,+station_name,+measure_type,+timebucket"
+"                └── render","",""
+"                     │",engine type,time series
+"                     │",timebucket,"time_bucket(k_timestamp, '10s')"
+"                     │",station_name,station_name
+"                     │",measure_value,measure_value
+"                     │",measure_type,measure_type
+"                     │",work_area_name,work_area_name
+"                     └── ts scan","",""
+"",ts-table,t_point
+"",access mode,primaryHashTagScan
+"",spans:fromTime,2023-08-01 01:00:00 +0000 UTC
+"",spans:toTime,2970-01-01 00:00:00 +0000 UTC
+
+Time: 10.545959ms
+

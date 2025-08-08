@@ -34,7 +34,7 @@ class ProtobufChunkSerrialde {
   ProtobufChunkSerrialde() {}
   ~ProtobufChunkSerrialde() {}
   ChunkPB SerializeChunk(DataChunk* src, k_bool* is_first_chunk);
-  void Deserialize(DataChunkPtr& chunk, std::string_view buff, bool is_encoding, ColumnInfo* col_info, k_int32 num);
+  bool Deserialize(DataChunkPtr& chunk, std::string_view buff, bool is_encoding, ColumnInfo* col_info, k_int32 num);
   void DeserializeColumn(DataChunkPtr& chunk, std::string_view buff, ColumnInfo* col_info, k_int32 num);
   ChunkPB SerializeColumn(DataChunk* src, k_bool* is_first_chunk);
   ChunkPB SerializeColumnData(DataChunk* src);

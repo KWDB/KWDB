@@ -20,18 +20,9 @@ class PassThroughSenderChannel {
   ~PassThroughSenderChannel() {}
 
   // Appends a chunk to the buffer.
-  void AppendChunk(DataChunk* chunk, k_size_t chunk_size, k_int32 driver_sequence) {
+  void AppendChunk(DataChunkPtr& chunk, k_size_t chunk_size, k_int32 driver_sequence) {
     std::unique_lock lock(mutex_);
-    DataChunkPtr temp = std::make_unique<kwdbts::DataChunk>(chunk->GetColumnInfo(),
-                                                            chunk->ColumnNum(), chunk->Capacity());
-    if (temp == nullptr) {
-      LOG_ERROR("make unique data chunk failed");
-      return;
-    }
-    temp->Initialize();
-    memcpy(temp->GetData(), chunk->GetData(), chunk->Size());
-    temp->SetCount(chunk->Count());
-    buffer_.emplace_back(std::make_pair(std::move(temp), driver_sequence));
+    buffer_.emplace_back(std::make_pair(std::move(chunk), driver_sequence));
     bytes_.push_back(chunk_size);
   }
 
@@ -106,7 +97,7 @@ void PassThroughContext::Init() {
       chunk_buffer_->GetOrCreateChannel(PassThroughChunkBuffer::Key(query_id_, processor_id_));
 }
 
-void PassThroughContext::AppendChunk(k_int32 sender_id, DataChunk* chunk, k_size_t chunk_size,
+void PassThroughContext::AppendChunk(k_int32 sender_id, DataChunkPtr& chunk, k_size_t chunk_size,
                                      k_int32 driver_sequence) {
   PassThroughSenderChannel* sender_channel = channel_->GetOrCreateSenderChannel(sender_id);
   sender_channel->AppendChunk(chunk, chunk_size, driver_sequence);

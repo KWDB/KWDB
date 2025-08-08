@@ -297,13 +297,6 @@ TSSlice GenSomePayloadData(kwdbContext_p ctx, k_uint32 count, KTimestamp start_t
           start_ts += ms_interval;
         }
         break;
-      case DATATYPE::TIMESTAMP64_LSN:
-        for (int j = 0; j < count; j++) {
-          KTimestamp(p.GetColumnAddr(j, i)) = start_ts;
-          KTimestamp(p.GetColumnAddr(j, i) + 8) = 1;
-          start_ts += ms_interval;
-        }
-        break;
       case DATATYPE::INT64:
         for (int j = 0; j < count; j++) {
           KInt64(p.GetColumnAddr(j, i)) = 333333;
@@ -375,8 +368,7 @@ TSSlice GenRowPayload(const std::vector<AttributeInfo>& metric, const std::vecto
     for (int j = 0; j < metric.size(); ++j) {
       switch (metric[j].type) {
         case DATATYPE::TIMESTAMP:
-        case DATATYPE::TIMESTAMP64:
-        case DATATYPE::TIMESTAMP64_LSN: {
+        case DATATYPE::TIMESTAMP64: {
           builder.SetColumnValue(i, j, (char*)(&cur_ts), sizeof(cur_ts));
           break;
         }

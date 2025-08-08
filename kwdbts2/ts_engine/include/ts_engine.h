@@ -292,6 +292,7 @@ class TSEngineV2Impl : public TSEngine {
     return iter->second;
   }
 
+  KStatus Vacuum() override;
   void initRangeIndexMap(AppliedRangeIndex* applied_indexes, uint64_t range_num) {
     if (applied_indexes != nullptr) {
       for (int i = 0; i < range_num; i++) {

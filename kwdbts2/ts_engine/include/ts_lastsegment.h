@@ -120,6 +120,8 @@ class TsLastSegment : public TsSegmentBase {
                         std::shared_ptr<TsTableSchemaManager> tbl_schema_mgr,
                         uint32_t scan_version) override;
 
+  size_t GetFileSize() const { return file_->GetFileSize(); }
+
   bool MayExistEntity(TSEntityID entity_id) const override {
     return bloom_filter_ ? bloom_filter_->MayExist(entity_id)
                          : true;  // always return true when bloom filter doesn't exist.
@@ -127,6 +129,7 @@ class TsLastSegment : public TsSegmentBase {
 
  private:
   KStatus GetAllBlockIndex(std::vector<TsLastSegmentBlockIndex>*) const;
+  KStatus GetBlock(int block_id, std::shared_ptr<TsBlock>* block) const;
 };
 
 class TsLastSegment::TsLastSegBlockCache {
@@ -139,24 +142,19 @@ class TsLastSegment::TsLastSegBlockCache {
   class BlockInfoCache;
   std::unique_ptr<BlockInfoCache> block_info_cache_;
 
-  class BlockCache;
-  std::unique_ptr<BlockCache> block_cache_;
-
  public:
   explicit TsLastSegBlockCache(TsLastSegment* last, int nblock);
 
   KStatus GetAllBlockIndex(std::vector<TsLastSegmentBlockIndex>** block_indexes) const;
   KStatus GetBlockIndex(int block_id, TsLastSegmentBlockIndex** index) const;
   KStatus GetBlockInfo(int block_id, TsLastSegmentBlockInfo** info) const;
-  KStatus GetBlock(int block_id, std::shared_ptr<TsBlock>* block) const;
 };
 
 class TsLastSegment::TsLastSegBlockCache::BlockIndexCache {
  private:
   TsLastSegment* lastseg_;
-  bool cached_ = false;
-  std::vector<TsLastSegmentBlockIndex> block_indices_;
-  std::shared_mutex mu_;
+  std::unique_ptr<std::vector<TsLastSegmentBlockIndex>> block_indices_;
+  std::mutex mu_;
 
  public:
   explicit BlockIndexCache(TsLastSegment* lastseg) : lastseg_(lastseg) {}
@@ -174,19 +172,6 @@ class TsLastSegment::TsLastSegBlockCache::BlockInfoCache {
   explicit BlockInfoCache(TsLastSegBlockCache* lastseg_cache, int nblocks)
       : lastseg_cache_(lastseg_cache), cache_flag_(nblocks, 0), block_infos_(nblocks) {}
   KStatus GetBlockInfo(int block_id, TsLastSegmentBlockInfo** info);
-};
-
-class TsLastSegment::TsLastSegBlockCache::BlockCache {
- private:
-  TsLastSegBlockCache* lastseg_cache_;
-  std::vector<uint8_t> cache_flag_;
-  std::vector<std::shared_ptr<TsBlock>> block_infos_;
-  std::shared_mutex mu_;
-
- public:
-  explicit BlockCache(TsLastSegBlockCache* cache, int nblocks)
-      : lastseg_cache_(cache), cache_flag_(nblocks, 0), block_infos_(nblocks) {}
-  KStatus GetBlock(int block_id, std::shared_ptr<TsBlock>* block);
 };
 
 }  // namespace kwdbts

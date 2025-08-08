@@ -645,7 +645,7 @@ CompressorManager::CompressorManager() {
   GenCompAlg second = twolevel ? GenCompAlg::kSnappy : GenCompAlg::kPlain;
   const std::vector<DATATYPE> timestamp_type{
       DATATYPE::TIMESTAMP64,     DATATYPE::TIMESTAMP64_MICRO,     DATATYPE::TIMESTAMP64_NANO,
-      DATATYPE::TIMESTAMP64_LSN, DATATYPE::TIMESTAMP64_LSN_MICRO, DATATYPE::TIMESTAMP64_LSN_NANO};
+      DATATYPE::TIMESTAMP64, DATATYPE::TIMESTAMP64_MICRO, DATATYPE::TIMESTAMP64_NANO};
   for (auto i : timestamp_type) {
     default_algs_[i] = {TsCompAlg::kGorilla_64, GenCompAlg::kPlain};
   }
@@ -754,8 +754,7 @@ bool CompressorManager::CompressVarchar(TSSlice input, std::string *output,
   return true;
 }
 
-bool CompressorManager::DecompressData(TSSlice input, const TsBitmap *bitmap, uint64_t count,
-                                       std::string *output) const {
+bool CompressorManager::DecompressData(TSSlice input, const TsBitmap *bitmap, uint64_t count, TsSliceGuard *out) const {
   if (input.len < 4) {
     LOG_ERROR("Invalid input length, too short");
     return false;
@@ -770,14 +769,17 @@ bool CompressorManager::DecompressData(TSSlice input, const TsBitmap *bitmap, ui
     return false;
   }
   if (first == TsCompAlg::kPlain && second == GenCompAlg::kPlain) {
-    output->assign(input.data, input.len);
+    *out = TsSliceGuard{input};
     return true;
   }
   auto compressor = GetCompressor(first, second);
-  return compressor.Decompress(input, bitmap, count, output);
+  std::string tmp;
+  bool ok = compressor.Decompress(input, bitmap, count, &tmp);
+  *out = TsSliceGuard{std::move(tmp)};
+  return ok;
 }
 
-bool CompressorManager::DecompressVarchar(TSSlice input, std::string *output) const {
+bool CompressorManager::DecompressVarchar(TSSlice input, TsSliceGuard *out) const {
   if (input.len < 2) {
     return false;
   }
@@ -789,7 +791,7 @@ bool CompressorManager::DecompressVarchar(TSSlice input, std::string *output) co
   }
 
   if (alg == GenCompAlg::kPlain) {
-    output->assign(input.data, input.len);
+    *out = TsSliceGuard{input};
     return true;
   }
 
@@ -798,8 +800,9 @@ bool CompressorManager::DecompressVarchar(TSSlice input, std::string *output) co
     return false;
   }
   std::string tmp;
-  output->clear();
-  return it->second->Decompress(input, output);
+  bool ok = it->second->Decompress(input, &tmp);
+  *out = TsSliceGuard{std::move(tmp)};
+  return ok;
 }
 
 }  // namespace kwdbts

@@ -236,11 +236,17 @@ void SortedRun::Reset() {
 DataChunkPtr SortedRun::CloneSlice() const {
   if (range.first == 0 && range.second == chunk->Count()) {
     DataChunkPtr cloned = chunk->CloneEmpty(chunk->Count());
+    if (cloned == nullptr) {
+      return nullptr;
+    }
     cloned->Append(chunk.get(), range.first, chunk->Count());
     return cloned;
   } else {
     size_t slice_rows = Count();
     DataChunkPtr cloned = chunk->CloneEmpty(slice_rows);
+    if (cloned == nullptr) {
+      return nullptr;
+    }
     cloned->Append(chunk.get(), range.first, slice_rows);
     return cloned;
   }

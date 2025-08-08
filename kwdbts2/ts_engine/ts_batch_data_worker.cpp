@@ -481,9 +481,9 @@ KStatus TsWriteBatchDataWorker::Finish(kwdbContext_p ctx) {
 void TsWriteBatchDataWorker::Cancel(kwdbContext_p ctx) {
   auto vgroups = ts_engine_->GetTsVGroups();
   for (const auto &vgroup : *vgroups) {
-    KStatus s = vgroup->ClearWriteBatchData();
+    KStatus s = vgroup->CancelWriteBatchData();
     if (s != KStatus::SUCCESS) {
-      LOG_ERROR("ClearWriteBatchData failed, vgroup_id[%u], job_id[%lu]", vgroup->GetVGroupID(), job_id_);
+      LOG_ERROR("CancelWriteBatchData failed, vgroup_id[%u], job_id[%lu]", vgroup->GetVGroupID(), job_id_);
     }
   }
 }

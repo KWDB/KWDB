@@ -54,7 +54,7 @@ String FieldTypeCast::ValStr(char *ptr) { return ValTempStr(ptr); }
 
 char *FieldTypeCast::get_ptr() { return nullptr; }
 
-k_bool FieldTypeCast::is_nullable() { return field_->is_nullable(); }
+k_bool FieldTypeCast::is_nullable() { return field_->CheckNull(); }
 
 k_bool FieldTypeCast::fill_template_field(char *ptr) {
   if (field_->is_nullable()) {
