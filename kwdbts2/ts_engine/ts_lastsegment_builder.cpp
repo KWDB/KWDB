@@ -209,6 +209,8 @@ KStatus TsLastSegmentBuilder::RecordAndWriteBlockToFile() {
 }
 
 void TsLastSegmentBuilder::BlockIndexCollector::Collect(TsBlockSpan* span) {
+  n_entity_ += (span->GetEntityID() != prev_entity_id_);
+  prev_entity_id_ = span->GetEntityID();
   max_entity_id_ = std::max(max_entity_id_, span->GetEntityID());
   min_entity_id_ = std::min(min_entity_id_, span->GetEntityID());
   max_ts_ = std::max(max_ts_, span->GetLastTS());
@@ -239,7 +241,7 @@ TsLastSegmentBlockIndex TsLastSegmentBuilder::BlockIndexCollector::GetIndex() co
   index.length = 0;
   index.table_id = table_id_;
   index.table_version = version_;
-  index.n_entity = -1;
+  index.n_entity = n_entity_;
   index.min_ts = min_ts_;
   index.max_ts = max_ts_;
   index.first_ts = first_ts_;

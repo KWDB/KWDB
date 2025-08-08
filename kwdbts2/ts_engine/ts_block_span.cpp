@@ -91,38 +91,6 @@ bool TsBlockSpan::operator<(const TsBlockSpan& other) const {
   }
 }
 
-uint32_t TsBlockSpan::GetVGroupID() const {
-  return vgroup_id_;
-}
-
-TSEntityID TsBlockSpan::GetEntityID() const {
-  return entity_id_;
-}
-
-int TsBlockSpan::GetRowNum() const {
-  return nrow_;
-}
-
-int TsBlockSpan::GetStartRow() const {
-  return start_row_;
-}
-
-std::shared_ptr<TsBlock> TsBlockSpan::GetTsBlock() const {
-  return block_;
-}
-
-TSTableID TsBlockSpan::GetTableID() const {
-  return block_->GetTableId();
-}
-
-uint32_t TsBlockSpan::GetTableVersion() const {
-  return block_->GetTableVersion();
-}
-
-timestamp64 TsBlockSpan::GetTS(uint32_t row_idx) const {
-  return block_->GetTS(start_row_ + row_idx);
-}
-
 timestamp64 TsBlockSpan::GetFirstTS() const {
   if (start_row_ == 0) {
     return block_->GetFirstTS();
@@ -153,10 +121,6 @@ TS_LSN TsBlockSpan::GetLastLSN() const {
   } else {
     return *block_->GetLSNAddr(start_row_ + nrow_ - 1);
   }
-}
-
-uint64_t* TsBlockSpan::GetLSNAddr(int row_idx) const {
-  return block_->GetLSNAddr(start_row_ + row_idx);
 }
 
 KStatus TsBlockSpan::GetCompressData(std::string& data) {

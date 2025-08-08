@@ -78,6 +78,9 @@ class TsLastSegmentBuilder::BlockIndexCollector {
   TSTableID table_id_;
   uint32_t version_;
 
+  TSEntityID prev_entity_id_ = -1;
+  uint32_t n_entity_ = 0;
+
   TSEntityID max_entity_id_ = 0;
   TSEntityID min_entity_id_ = std::numeric_limits<TSEntityID>::max();
   TS_LSN max_lsn_ = 0;
