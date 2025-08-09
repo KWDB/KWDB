@@ -36,7 +36,7 @@ struct TsEntityFlushInfo {
   TSEntityID entity_id;
   timestamp64 min_ts;
   timestamp64 max_ts;
-  uint64_t depulcate_count;
+  uint64_t deduplicate_count;
   char reserverd[32];
 };
 static_assert(sizeof(TsEntityFlushInfo) == 64, "wrong size of FileHeader, please check TsEntityFlushInfo.");
@@ -55,10 +55,10 @@ class TsPartitionEntityCountManager {
   ~TsPartitionEntityCountManager();
   KStatus Open();
   KStatus AddFlushEntityAgg(TsEntityFlushInfo& info);
-  KStatus SetEntityCountInValid(TSEntityID e_id, const KwTsSpan& del_range);
+  KStatus SetEntityCountInValid(TSEntityID e_id, const KwTsSpan& ts_range);
   KStatus PrepareEntityCountValid(TSEntityID e_id);
   KStatus SetEntityCountValid(TSEntityID e_id, TsEntityFlushInfo* info);
-  KStatus GetEntityCount(TSEntityID e_id, bool* valid, uint64_t* count);
+  KStatus GetEntityCountHeader(TsEntityCountHeader* count_header);
   void DropAll();
   KStatus Reset();
 
