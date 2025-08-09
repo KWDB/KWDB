@@ -253,6 +253,7 @@ class TsOffsetIteratorV2Impl : public TsIterator {
   std::list<std::shared_ptr<TsBlockSpan>> ts_block_spans_;
   std::deque<std::shared_ptr<TsBlockSpan>> block_spans_;
   std::deque<std::shared_ptr<TsBlockSpan>> filter_block_spans_;
+  std::list<std::shared_ptr<TsBlockSpan>> ts_block_spans_with_data_;
 
   int32_t offset_;
   int32_t limit_;

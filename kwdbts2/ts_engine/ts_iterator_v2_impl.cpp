@@ -48,7 +48,6 @@ KStatus ConvertBlockSpanToResultSet(const std::vector<k_uint32>& kw_scan_cols, c
       if (!ts_blk_span->IsVarLenType(kw_col_idx)) {
         TsBitmap ts_bitmap;
         char* value;
-        char* res_value = static_cast<char*>(malloc(ts_blk_span->GetColSize(kw_col_idx) * (*count)));
         ret = ts_blk_span->GetFixLenColAddr(kw_col_idx, &value, ts_bitmap, false);
         if (ret != KStatus::SUCCESS) {
           LOG_ERROR("GetFixLenColAddr failed.");
@@ -61,10 +60,9 @@ KStatus ConvertBlockSpanToResultSet(const std::vector<k_uint32>& kw_scan_cols, c
             }
           }
         }
-        memcpy(res_value, value, ts_blk_span->GetColSize(kw_col_idx) * (*count));
 
-        batch = new Batch(static_cast<void *>(res_value), *count, bitmap, 1, nullptr);
-        batch->is_new = true;
+        batch = new Batch(static_cast<void *>(value), *count, bitmap, 1, nullptr);
+        batch->is_new = false;
       } else {
         batch = new VarColumnBatch(*count, bitmap, 1, nullptr);
         DataFlags bitmap_var;
@@ -289,6 +287,8 @@ KStatus TsSortedRawDataIteratorV2Impl::Next(ResultSet* res, k_uint32* count, boo
           return ret;
         }
         if (*count > 0) {
+          // We are returning memory address inside TsBlockSpan, so we need to keep it until iterator is destroyed
+          ts_block_spans_.push_back(block_span);
           // Return the result set.
           return KStatus::SUCCESS;
         }
@@ -1622,6 +1622,8 @@ KStatus TsOffsetIteratorV2Impl::Next(ResultSet* res, k_uint32* count, timestamp6
     LOG_ERROR("Failed to get next block span for current partition: %ld.", p_time_it_->first);
     return KStatus::FAIL;
   }
+  // We are returning memory address inside TsBlockSpan, so we need to keep it until iterator is destroyed
+  ts_block_spans_with_data_.push_back(ts_block);
   return KStatus::SUCCESS;
 }
 
