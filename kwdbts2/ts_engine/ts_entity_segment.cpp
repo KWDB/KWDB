@@ -307,7 +307,7 @@ KStatus TsEntityBlock::LoadColData(int32_t col_idx, const std::vector<AttributeI
       return KStatus::FAIL;
     }
     // save decompressed col block data
-    column_blocks_[col_idx + 1].buffer = plain.AsStringView();
+    plain.swap(column_blocks_[col_idx + 1].buffer);
   } else {
     uint32_t var_offsets_len = *reinterpret_cast<uint32_t*>(data.data);
     RemovePrefix(&data, sizeof(uint32_t));
