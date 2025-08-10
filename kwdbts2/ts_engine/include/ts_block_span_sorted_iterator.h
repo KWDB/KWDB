@@ -249,12 +249,16 @@ class TsBlockSpanSortedIterator {
 
       // check whether the current TsBlockSpan is empty.
       // If it is not empty, it needs to be readded to the linked list.
-      if (cur_block_span->GetRowNum() != 0) {
-        TsBlockSpanRowInfo next_row_info = getFirstRowInfo(cur_block_span);
-        span_row_infos_.pop_front();
-        insertRowInfo(next_row_info);
+      if (cur_block_span) {
+        if (cur_block_span->GetRowNum() != 0) {
+          TsBlockSpanRowInfo next_row_info = getFirstRowInfo(cur_block_span);
+          span_row_infos_.pop_front();
+          insertRowInfo(next_row_info);
+        } else {
+          cur_block_span->Clear();
+          span_row_infos_.pop_front();
+        }
       } else {
-        cur_block_span->Clear();
         span_row_infos_.pop_front();
       }
 
