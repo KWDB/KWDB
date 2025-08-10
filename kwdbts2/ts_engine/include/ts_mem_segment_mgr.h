@@ -206,7 +206,7 @@ class TsMemSegment : public TsSegmentBase, public enable_shared_from_this<TsMemS
   inline void SetDeleting() { status_.store(MEM_SEGMENT_DELETING); }
 
   KStatus GetBlockSpans(const TsBlockItemFilterParams& filter, std::list<shared_ptr<TsBlockSpan>>& blocks,
-                        std::shared_ptr<TsTableSchemaManager> tbl_schema_mgr, uint32_t scan_version) override;
+                        std::shared_ptr<TsTableSchemaManager>& tbl_schema_mgr, uint32_t scan_version) override;
   KStatus GetBlockSpans(std::list<shared_ptr<TsBlockSpan>>& blocks, TsEngineSchemaManager* schema_mgr);
 };
 
@@ -337,7 +337,10 @@ class TsMemSegmentManager {
 
   void RemoveMemSegment(const std::shared_ptr<TsMemSegment>& mem_seg);
 
-  void GetAllMemSegments(std::list<std::shared_ptr<TsMemSegment>>* mems);
+  void GetAllMemSegments(std::list<std::shared_ptr<TsMemSegment>>* mems) {
+    std::shared_lock lock(segment_lock_);
+    *mems = segment_;
+  };
 
   KStatus PutData(const TSSlice& payload, TSEntityID entity_id, TS_LSN lsn,
     std::list<TSMemSegRowData>* rows = nullptr);
@@ -346,7 +349,7 @@ class TsMemSegmentManager {
                               LifeTime* lifetime = nullptr);
 
   KStatus GetBlockSpans(const TsBlockItemFilterParams& filter, std::list<shared_ptr<TsBlockSpan>>& block_spans,
-                        std::shared_ptr<TsTableSchemaManager> tbl_schema_mgr,
+                        std::shared_ptr<TsTableSchemaManager>& tbl_schema_mgr,
                         uint32_t scan_version = 0);
 };
 

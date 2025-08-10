@@ -15,35 +15,35 @@
 #include "ts_compressor.h"
 
 namespace kwdbts {
-bool TsBlock::HasPreAgg(uint32_t begin_row_idx, uint32_t row_num) {
+inline bool TsBlock::HasPreAgg(uint32_t begin_row_idx, uint32_t row_num) {
   return false;
 }
 
-KStatus TsBlock::GetPreCount(uint32_t blk_col_idx, uint16_t& count) {
+inline KStatus TsBlock::GetPreCount(uint32_t blk_col_idx, uint16_t& count) {
   return KStatus::FAIL;
 }
 
-KStatus TsBlock::GetPreSum(uint32_t blk_col_idx, int32_t size, void* &pre_sum, bool& is_overflow) {
+inline KStatus TsBlock::GetPreSum(uint32_t blk_col_idx, int32_t size, void* &pre_sum, bool& is_overflow) {
   return KStatus::FAIL;
 }
 
-KStatus TsBlock::GetPreMax(uint32_t blk_col_idx, void* &pre_max) {
+inline KStatus TsBlock::GetPreMax(uint32_t blk_col_idx, void* &pre_max) {
   return KStatus::FAIL;
 }
 
-KStatus TsBlock::GetPreMin(uint32_t blk_col_idx, int32_t size, void* &pre_min) {
+inline KStatus TsBlock::GetPreMin(uint32_t blk_col_idx, int32_t size, void* &pre_min) {
   return KStatus::FAIL;
 }
 
-KStatus TsBlock::GetVarPreMax(uint32_t blk_col_idx, TSSlice& pre_max) {
+inline KStatus TsBlock::GetVarPreMax(uint32_t blk_col_idx, TSSlice& pre_max) {
   return KStatus::FAIL;
 }
 
-KStatus TsBlock::GetVarPreMin(uint32_t blk_col_idx, TSSlice& pre_min) {
+inline KStatus TsBlock::GetVarPreMin(uint32_t blk_col_idx, TSSlice& pre_min) {
   return KStatus::FAIL;
 }
 
-KStatus TsBlock::UpdateFirstLastCandidates(const std::vector<k_uint32>& ts_scan_cols,
+inline KStatus TsBlock::UpdateFirstLastCandidates(const std::vector<k_uint32>& ts_scan_cols,
                                                 const std::vector<AttributeInfo>& schema,
                                                 std::vector<k_uint32>& first_col_idxs,
                                                 std::vector<k_uint32>& last_col_idxs,
@@ -115,38 +115,6 @@ bool TsBlockSpan::operator<(const TsBlockSpan& other) const {
       uint64_t other_seq_no = *other.block_->GetLSNAddr(other.start_row_);
       return seq_no > other_seq_no;
     }
-  }
-}
-
-timestamp64 TsBlockSpan::GetFirstTS() const {
-  if (start_row_ == 0) {
-    return block_->GetFirstTS();
-  } else {
-    return block_->GetTS(start_row_);
-  }
-}
-
-timestamp64 TsBlockSpan::GetLastTS() const {
-  if (start_row_ + nrow_ == block_->GetRowNum()) {
-    return block_->GetLastTS();
-  } else {
-    return block_->GetTS(start_row_ + nrow_ - 1);
-  }
-}
-
-TS_LSN TsBlockSpan::GetFirstLSN() const {
-  if (start_row_ == 0) {
-    return block_->GetFirstLSN();
-  } else {
-    return *block_->GetLSNAddr(start_row_);
-  }
-}
-
-TS_LSN TsBlockSpan::GetLastLSN() const {
-  if (start_row_ + nrow_ == block_->GetRowNum()) {
-    return block_->GetLastLSN();
-  } else {
-    return *block_->GetLSNAddr(start_row_ + nrow_ - 1);
   }
 }
 
@@ -453,84 +421,6 @@ KStatus TsBlockSpan::GetCount(uint32_t scan_idx, uint32_t& count) {
   return KStatus::SUCCESS;
 }
 
-KStatus TsBlockSpan::GetSum(uint32_t scan_idx, void *&pre_sum, bool &is_overflow) {
-  return SUCCESS;
-}
-
-KStatus TsBlockSpan::GetMax(uint32_t scan_idx, void *&pre_max) {
-  return SUCCESS;
-}
-
-KStatus TsBlockSpan::GetMin(uint32_t scan_idx, void *&pre_min) {
-  return SUCCESS;
-}
-
-KStatus TsBlockSpan::GetVarMax(uint32_t scan_idx, TSSlice &pre_max) {
-  return SUCCESS;
-}
-
-KStatus TsBlockSpan::GetVarMin(uint32_t scan_idx, TSSlice &pre_min) {
-  return SUCCESS;
-}
-
-bool TsBlockSpan::HasPreAgg() {
-  return has_pre_agg_;
-}
-
-KStatus TsBlockSpan::GetPreCount(uint32_t scan_idx, uint16_t& count) {
-  if (!convert_) {
-    return block_->GetPreCount(scan_idx, count);
-  }
-  return convert_->GetPreCount(scan_idx, count);
-}
-
-KStatus TsBlockSpan::GetPreSum(uint32_t scan_idx, void* &pre_sum, bool& is_overflow) {
-  if (!convert_) {
-    int32_t size = scan_attrs_[scan_idx].size;
-    return block_->GetPreSum(scan_idx, size, pre_sum, is_overflow);
-  }
-  int32_t size = convert_->version_conv_->blk_attrs_[scan_idx].size;
-  return convert_->GetPreSum(scan_idx, size, pre_sum, is_overflow);
-}
-
-KStatus TsBlockSpan::GetPreMax(uint32_t scan_idx, void* &pre_max) {
-  if (!convert_) {
-    return block_->GetPreMax(scan_idx, pre_max);
-  }
-  return convert_->GetPreMax(scan_idx, pre_max);
-}
-
-KStatus TsBlockSpan::GetPreMin(uint32_t scan_idx, void* &pre_min) {
-  if (!convert_) {
-    int32_t size = scan_attrs_[scan_idx].size;
-    return block_->GetPreMin(scan_idx, size, pre_min);
-  }
-  int32_t size = convert_->version_conv_->blk_attrs_[scan_idx].size;
-  return convert_->GetPreMin(scan_idx, size, pre_min);
-}
-
-KStatus TsBlockSpan::GetVarPreMax(uint32_t scan_idx, TSSlice& pre_max) {
-  if (!convert_) {
-    return block_->GetVarPreMax(scan_idx, pre_max);
-  }
-  return convert_->GetVarPreMax(scan_idx, pre_max);
-}
-
-KStatus TsBlockSpan::GetVarPreMin(uint32_t scan_idx, TSSlice& pre_min) {
-  if (!convert_) {
-    return block_->GetVarPreMin(scan_idx, pre_min);
-  }
-  return convert_->GetVarPreMin(scan_idx, pre_min);
-}
-
-KStatus TsBlockSpan::UpdateFirstLastCandidates(const std::vector<k_uint32>& ts_scan_cols,
-                                                const std::vector<AttributeInfo>& schema,
-                                                std::vector<k_uint32>& first_col_idxs,
-                                                std::vector<k_uint32>& last_col_idxs,
-                                                std::vector<AggCandidate>& candidates) {
-  return block_->UpdateFirstLastCandidates(ts_scan_cols, schema, first_col_idxs, last_col_idxs, candidates);
-}
-
 void TsBlockSpan::SplitFront(int row_num, shared_ptr<TsBlockSpan>& front_span) {
   assert(row_num <= nrow_);
   assert(block_ != nullptr);
@@ -554,26 +444,6 @@ void TsBlockSpan::SplitBack(int row_num, shared_ptr<TsBlockSpan>& back_span) {
   // change current span info
   nrow_ -= row_num;
   if (convert_) {
-    convert_->SetRowNum(nrow_);
-  }
-}
-
-void TsBlockSpan::TrimBack(int row_num) {
-  assert(row_num <= nrow_);
-  assert(block_ != nullptr);
-  nrow_ -= row_num;
-  if (convert_) {
-    convert_->SetRowNum(nrow_);
-  }
-}
-
-void TsBlockSpan::TrimFront(int row_num) {
-  assert(row_num <= nrow_);
-  assert(block_ != nullptr);
-  start_row_ += row_num;
-  nrow_ -= row_num;
-  if (convert_) {
-    convert_->SetStartRowIdx(start_row_);
     convert_->SetRowNum(nrow_);
   }
 }

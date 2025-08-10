@@ -75,6 +75,8 @@ class LastSegmentBloomFilter : public LastSegmentMetaBlockBase {
   }
 };
 
+class TsLastBlock;
+
 class TsLastSegment : public TsSegmentBase {
  public:
   static int kNRowPerBlock;
@@ -117,7 +119,7 @@ class TsLastSegment : public TsSegmentBase {
 
   KStatus GetBlockSpans(const TsBlockItemFilterParams& filter,
                         std::list<shared_ptr<TsBlockSpan>>& block_spans,
-                        std::shared_ptr<TsTableSchemaManager> tbl_schema_mgr,
+                        std::shared_ptr<TsTableSchemaManager>& tbl_schema_mgr,
                         uint32_t scan_version) override;
 
   size_t GetFileSize() const { return file_->GetFileSize(); }
@@ -129,7 +131,7 @@ class TsLastSegment : public TsSegmentBase {
 
  private:
   KStatus GetAllBlockIndex(std::vector<TsLastSegmentBlockIndex>*) const;
-  KStatus GetBlock(int block_id, std::shared_ptr<TsBlock>* block) const;
+  KStatus GetBlock(int block_id, std::shared_ptr<TsLastBlock>* block) const;
 };
 
 class TsLastSegment::TsLastSegBlockCache {
