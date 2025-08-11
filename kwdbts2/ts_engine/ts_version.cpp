@@ -635,7 +635,7 @@ std::shared_ptr<TsTableSchemaManager>& tbl_schema_mgr, uint32_t scan_version, bo
       return s;
     }
   }
-  LOG_DEBUG("reading block span num [%lu]", ts_block_spans->size());
+  // LOG_DEBUG("reading block span num [%lu]", ts_block_spans->size());
   return KStatus::SUCCESS;
 }
 
@@ -651,12 +651,13 @@ void TsPartitionVersion::ResetStatus() const {
   exclusive_status_->store(PartitionStatus::None);
 }
 
-KStatus TsPartitionVersion::NeedVacuumEntitySegment(const std::filesystem::path& root_path, bool& need_vacuum) const {
-  std::filesystem::file_time_type latest_mtime{};
+KStatus TsPartitionVersion::NeedVacuumEntitySegment(const std::filesystem::path& root_path,
+  TsEngineSchemaManager* schema_manager, bool& need_vacuum) const {
+  timestamp64 latest_mtime = 0;
   bool has_files = false;
   for (const auto& entry : std::filesystem::directory_iterator(root_path)) {
     if (entry.is_regular_file() && entry.path().filename() != DEL_FILE_NAME) {
-      auto mtime = std::filesystem::last_write_time(entry);
+      auto mtime = ModifyTime(entry.path());
       if (!has_files || mtime > latest_mtime) {
         latest_mtime = mtime;
         has_files = true;
@@ -676,18 +677,11 @@ KStatus TsPartitionVersion::NeedVacuumEntitySegment(const std::filesystem::path&
     vacuum_interval = strtol(vacuum_minutes_char, &endptr, 10);
     assert(*endptr == '\0');
   }
-  auto now = std::chrono::system_clock::now();
-  auto now_sys = std::chrono::system_clock::now();
-  auto now_file = std::filesystem::file_time_type::clock::now();
-  auto file_duration = latest_mtime.time_since_epoch();
-  auto now_file_duration = now_file.time_since_epoch();
-  auto diff = file_duration - now_file_duration;
-  auto diff_sys = std::chrono::duration_cast<std::chrono::system_clock::duration>(diff);
-  auto file_sys_time = now_sys + diff_sys;
 
+  auto now = std::chrono::time_point_cast<std::chrono::seconds>(std::chrono::system_clock::now());
+  float diff_latest_now = (now.time_since_epoch().count() - latest_mtime) / 60;
   vacuum_interval = vacuum_interval != 0 ? vacuum_interval : vacuum_minutes;
-  auto diff_latest_now = now - file_sys_time;
-  if (std::chrono::duration_cast<std::chrono::minutes>(diff_latest_now).count() < vacuum_interval) {
+  if (diff_latest_now < vacuum_interval) {
     need_vacuum = false;
     return SUCCESS;
   }
@@ -701,6 +695,34 @@ KStatus TsPartitionVersion::NeedVacuumEntitySegment(const std::filesystem::path&
     return s;
   }
   need_vacuum = has_del_info && (entity_segment_ != nullptr);
+  if (!need_vacuum) {
+    uint64_t max_entity_id = entity_segment_->GetEntityNum();
+    std::unordered_map<TSTableID, bool> traversed_table;
+    for (int entity_id = 1; entity_id <= max_entity_id; entity_id++) {
+      TsEntityItem entity_item;
+      bool found = false;
+      s = entity_segment_->GetEntityItem(entity_id, entity_item, found);
+      if (s != SUCCESS || !found) {
+        LOG_ERROR("NeedVacuumEntitySegment failed, GetEntityItem failed");
+        return s;
+      }
+      if (traversed_table.count(entity_item.table_id) == 0) {
+        std::shared_ptr<TsTableSchemaManager> tb_schema_mgr{nullptr};
+        s = schema_manager->GetTableSchemaMgr(entity_item.table_id,tb_schema_mgr);
+        if (s != SUCCESS) {
+          return s;
+        }
+        auto life_time = tb_schema_mgr->GetLifeTime();
+        auto start_ts = (now.time_since_epoch().count() - life_time.ts) * life_time.precision;
+        auto end_time = GetTsColTypeEndTime(tb_schema_mgr->GetTsColDataType());
+        if (tb_schema_mgr->IsDropped() || end_time < start_ts) {
+          need_vacuum = true;
+          return KStatus::SUCCESS;
+        }
+        traversed_table[entity_item.table_id] = true;
+      }
+    }
+  }
   return KStatus::SUCCESS;
 }
 

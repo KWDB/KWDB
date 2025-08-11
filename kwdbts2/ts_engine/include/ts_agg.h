@@ -42,7 +42,7 @@ class AggCalculatorV2 {
     }
   }
 
-  bool CalcAggForFlush(uint16_t& count, void* max_addr, void* min_addr, void* sum_addr);
+  bool CalcAggForFlush(int is_not_null, uint16_t& count, void* max_addr, void* min_addr, void* sum_addr);
   KStatus MergeAggResultFromBlock(TSSlice& agg_data, Sumfunctype agg_type, uint32_t col_idx, bool& is_overflow);
 
   KStatus MergeAggResultFromPreAgg(TSSlice& agg_data, Sumfunctype agg_type, bool& is_overflow);

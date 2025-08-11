@@ -96,7 +96,7 @@ class TsPartitionVersion {
   PartitionIdentifier GetPartitionIdentifier() const { return partition_info_; }
 
   std::string GetPartitionIdentifierStr() const {
-    return intToString(std::get<0>(partition_info_)) + "_" + intToString(std::get<0>(partition_info_));
+    return intToString(std::get<1>(partition_info_)) + "_" + intToString(std::get<2>(partition_info_));
   }
 
   bool NeedCompact() const { return last_segments_.size() > EngineOptions::max_last_segment_num; }
@@ -123,7 +123,8 @@ class TsPartitionVersion {
 
   bool TrySetBusy(PartitionStatus desired) const;
   void ResetStatus() const;
-  KStatus NeedVacuumEntitySegment(const std::filesystem::path& root_path, bool& need_vacuum) const;
+  KStatus NeedVacuumEntitySegment(const std::filesystem::path& root_path,
+    TsEngineSchemaManager* schema_manager, bool& need_vacuum) const;
 };
 
 class TsVGroupVersion {
