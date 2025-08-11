@@ -21,8 +21,8 @@ package sql
 import "C"
 import (
 	"context"
-	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 
 	"gitee.com/kwbasedb/kwbase/pkg/jobs/jobspb"
@@ -170,9 +170,9 @@ func getTableMetaByVersion(
 				if targetDesc.GetName() == "t2" {
 					tmp := ""
 					for _, idx := range targetDesc.GetIndexes() {
-						tmp += idx.Name + ", "
+						tmp += idx.Name + "(" + strconv.Itoa(int(idx.ID)) + ")" + ", "
 					}
-					fmt.Printf("****************** current node: %d, current tsVersion: %d, all indexes: %s\n", handler.db.GetNodeID(), targetDesc.TsTable.TsVersion, tmp)
+					log.Infof(ctx, "****************** current node: %d, current tsVersion: %d, all indexes: %s\n", handler.db.GetNodeID(), targetDesc.TsTable.TsVersion, tmp)
 				}
 			default:
 				return errors.AssertionFailedf("Descriptor.Union has unexpected type %T", t)
