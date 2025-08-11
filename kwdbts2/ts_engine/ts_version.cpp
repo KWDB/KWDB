@@ -466,25 +466,12 @@ std::map<uint32_t, std::vector<std::shared_ptr<const TsPartitionVersion>>> TsVGr
 std::vector<std::shared_ptr<TsLastSegment>> TsPartitionVersion::GetCompactLastSegments() const {
   // TODO(zzr): There is room for optimization
   // Maybe we can pre-compute which lastsegments can be compacted, and just return them.
-  if (last_segments_.size() == 0) {
-    return {};
-  }
-
-  std::vector<std::shared_ptr<TsLastSegment>> tmp = last_segments_;
-  std::sort(tmp.begin(), tmp.end(),
-            [](const std::shared_ptr<TsLastSegment> &a, const std::shared_ptr<TsLastSegment> &b) {
-              return a->GetFileSize() > b->GetFileSize();
-            });
-  auto end = std::min(tmp.end(), tmp.begin() + EngineOptions::max_compact_num + 1);
-  size_t following_file_size =
-      std::accumulate(tmp.begin() + 1, end, 0,
-                      [](size_t sum, const std::shared_ptr<TsLastSegment> &a) { return sum + a->GetFileSize(); });
-
+  size_t compact_num = std::min<size_t>(last_segments_.size(), EngineOptions::max_compact_num);
   std::vector<std::shared_ptr<TsLastSegment>> result;
-  if (following_file_size > tmp.front()->GetFileSize()) {
-    result.assign(tmp.begin(), end);
-  } else {
-    result.assign(tmp.begin() + 1, end);
+  result.reserve(compact_num);
+  auto it = last_segments_.begin();
+  for (int i = 0; i < compact_num; ++i, ++it) {
+    result.push_back(*it);
   }
   return result;
 }
