@@ -116,7 +116,7 @@ std::shared_ptr<TsBlock> CreateBlock(int row_count, const std::vector<AttributeI
 
 static std::vector<AttributeInfo> GetSchema() {
   std::vector<AttributeInfo> schema;
-  std::vector<DATATYPE> types{TIMESTAMP64_LSN, INT64, FLOAT, DOUBLE, BYTE, CHAR, VARSTRING};
+  std::vector<DATATYPE> types{TIMESTAMP64, INT64, FLOAT, DOUBLE, BYTE, CHAR, VARSTRING};
   std::vector<int> sizes{16, 8, 4, 8, 23, 34, 255};
   for (int i = 0; i < types.size(); i++) {
     AttributeInfo attr;

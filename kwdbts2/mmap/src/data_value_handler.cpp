@@ -500,11 +500,6 @@ DataToStringPtr getDataToStringHandler(const AttributeInfo &col_info,
       vs = new FloatDataToString<double> (max_len, prec, is_rm_tz);
       break;
     }
-    case TIMESTAMP64_LSN:
-    case TIMESTAMP64_LSN_MICRO:
-    case TIMESTAMP64_LSN_NANO:
-      vs = new TimeStamp64LSNToString();
-      break;
     case DATE32:
       vs = new Date32ToString(max_len);
       break;

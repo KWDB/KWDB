@@ -1939,7 +1939,6 @@ bool AggCalculator::CalAllAgg(void* min_base, void* max_base, void* sum_base, vo
           break;
         case DATATYPE::TIMESTAMP:
         case DATATYPE::TIMESTAMP64:
-        case DATATYPE::TIMESTAMP64_LSN:
           break;
         default:
           break;
@@ -2116,7 +2115,6 @@ void AggCalculator::UndoAgg(void* min_base, void* max_base, void* sum_base, void
           break;
         case DATATYPE::TIMESTAMP:
         case DATATYPE::TIMESTAMP64:
-        case DATATYPE::TIMESTAMP64_LSN:
           break;
         default:
           break;

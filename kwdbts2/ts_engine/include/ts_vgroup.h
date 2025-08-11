@@ -16,6 +16,7 @@
 #include <list>
 #include <memory>
 #include <mutex>
+#include <set>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -69,7 +70,6 @@ class TsVGroup {
   std::unique_ptr<TsVersionManager> version_manager_ = nullptr;
 
   std::map<PartitionIdentifier, std::shared_ptr<TsEntitySegmentBuilder>> write_batch_segment_builders_;
-  std::shared_mutex builders_mutex_;
 
   // compact thread flag
   bool enable_compact_thread_{true};
@@ -243,8 +243,11 @@ class TsVGroup {
   KStatus redoDeleteData(kwdbContext_p ctx, TSTableID tbl_id, std::string& primary_tag, TS_LSN log_lsn,
   const std::vector<KwTsSpan>& ts_spans);
 
+  KStatus GetEntitySegmentBuilder(std::shared_ptr<const TsPartitionVersion>& partition,
+                                  std::shared_ptr<TsEntitySegmentBuilder>& builder);
+
   KStatus WriteBatchData(kwdbContext_p ctx, TSTableID tbl_id, uint32_t table_version, TSEntityID entity_id,
-                         timestamp64 ts, DATATYPE ts_col_type, TS_LSN lsn, TSSlice data);
+                         timestamp64 p_time, TS_LSN lsn, TSSlice data);
 
   KStatus FinishWriteBatchData();
 
@@ -307,7 +310,7 @@ class TsVGroup {
   KStatus MtrRollback(kwdbContext_p ctx, uint64_t& mtr_id, bool is_skip = false, const char* tsx_id = nullptr);
   KStatus redoPut(kwdbContext_p ctx, kwdbts::TS_LSN log_lsn, const TSSlice& payload);
 
-  KStatus GetLastRowEntity(std::shared_ptr<TsTableSchemaManager>& table_schema_mgr,
+  KStatus GetLastRowEntity(kwdbContext_p ctx, std::shared_ptr<TsTableSchemaManager>& table_schema_mgr,
                            pair<timestamp64, uint32_t>& last_row_entity);
 
   void UpdateEntityAndMaxTs(KTableKey table_id, timestamp64 max_ts, EntityID entity_id) {

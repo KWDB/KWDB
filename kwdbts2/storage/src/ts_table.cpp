@@ -999,29 +999,17 @@ TsEntityGroup::GetColAttributeInfo(kwdbContext_p ctx, const roachpb::KWDBKTSColu
     case roachpb::TIMESTAMP:
     case roachpb::TIMESTAMPTZ:
     case roachpb::DATE:
-      if (first_col) {
-        attr_info.type = DATATYPE::TIMESTAMP64_LSN;
-      } else {
-        attr_info.type = DATATYPE::TIMESTAMP64;
-      }
+      attr_info.type = DATATYPE::TIMESTAMP64;
       attr_info.max_len = 3;
       break;
     case roachpb::TIMESTAMP_MICRO:
     case roachpb::TIMESTAMPTZ_MICRO:
-    if (first_col) {
-        attr_info.type = DATATYPE::TIMESTAMP64_LSN_MICRO;
-      } else {
-        attr_info.type = DATATYPE::TIMESTAMP64_MICRO;
-      }
+      attr_info.type = DATATYPE::TIMESTAMP64_MICRO;
       attr_info.max_len = 6;
       break;
     case roachpb::TIMESTAMP_NANO:
     case roachpb::TIMESTAMPTZ_NANO:
-      if (first_col) {
-        attr_info.type = DATATYPE::TIMESTAMP64_LSN_NANO;
-      } else {
-        attr_info.type = DATATYPE::TIMESTAMP64_NANO;
-      }
+      attr_info.type = DATATYPE::TIMESTAMP64_NANO;
       attr_info.max_len = 9;
       break;
     case roachpb::SMALLINT:
@@ -1087,15 +1075,6 @@ KStatus
 TsEntityGroup::GetMetricColumnInfo(kwdbContext_p ctx, struct AttributeInfo& attr_info, roachpb::KWDBKTSColumn& col) {
   col.clear_storage_len();
   switch (attr_info.type) {
-    case DATATYPE::TIMESTAMP64_LSN:
-      col.set_storage_type(roachpb::TIMESTAMPTZ);
-      break;
-    case DATATYPE::TIMESTAMP64_LSN_MICRO:
-      col.set_storage_type(roachpb::TIMESTAMPTZ_MICRO);
-      break;
-    case DATATYPE::TIMESTAMP64_LSN_NANO:
-      col.set_storage_type(roachpb::TIMESTAMPTZ_NANO);
-      break;
     case DATATYPE::TIMESTAMP64:
       col.set_storage_type(roachpb::TIMESTAMP);
       break;
@@ -1171,15 +1150,6 @@ TsEntityGroup::GetTagColumnInfo(kwdbContext_p ctx, struct TagInfo& tag_info, roa
     col.set_dropped(true);
   }
   switch (tag_info.m_data_type) {
-    case DATATYPE::TIMESTAMP64_LSN:
-      col.set_storage_type(roachpb::TIMESTAMPTZ);
-      break;
-    case DATATYPE::TIMESTAMP64_LSN_MICRO:
-      col.set_storage_type(roachpb::TIMESTAMPTZ_MICRO);
-      break;
-    case DATATYPE::TIMESTAMP64_LSN_NANO:
-      col.set_storage_type(roachpb::TIMESTAMPTZ_NANO);
-      break;
     case DATATYPE::TIMESTAMP64:
       col.set_storage_type(roachpb::TIMESTAMP);
       break;
@@ -1226,7 +1196,7 @@ TsEntityGroup::GetTagColumnInfo(kwdbContext_p ctx, struct TagInfo& tag_info, roa
   return KStatus::SUCCESS;
 }
 
-KStatus TsTable::GetLastRowEntity(EntityResultIndex& entity_id) {
+KStatus TsTable::GetLastRowEntity(kwdbContext_p ctx, EntityResultIndex& entity_id) {
   timestamp64 entity_max_ts = INT64_MIN;
   entity_id = {0, 0, 0};
 

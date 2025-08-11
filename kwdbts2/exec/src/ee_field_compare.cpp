@@ -209,7 +209,7 @@ k_int64 FieldFuncLike::ValInt() {
     return FieldLikeComparison::ValInt(ptr);
   } else {
     k_int32 ret = 1;
-    if (args_[0]->is_nullable() || args_[1]->is_nullable()) {
+    if (args_[0]->CheckNull() || args_[1]->CheckNull()) {
       return 0;
     }
     cmp.set_case(is_case_);
@@ -445,9 +445,9 @@ k_int64 FieldCondIsNull::ValInt() {
     return FieldFuncBool::ValInt(ptr);
   }
   if (negation_) {
-    return !args_[0]->is_nullable();
+    return !args_[0]->CheckNull();
   } else {
-    return args_[0]->is_nullable();
+    return args_[0]->CheckNull();
   }
 }
 
@@ -477,9 +477,9 @@ k_int64 FieldCondIsUnknown::ValInt() {
     return FieldFuncBool::ValInt(ptr);
   }
   if (negation_) {
-    return !args_[0]->is_nullable();
+    return !args_[0]->CheckNull();
   } else {
-    return args_[0]->is_nullable();
+    return args_[0]->CheckNull();
   }
 }
 
@@ -590,7 +590,7 @@ Field *FieldCondIsNan::field_to_copy() {
 char *FieldFuncRegex::get_ptr(RowBatch *batch) {
   KStatus err = SUCCESS;
 
-  if (args_[0]->is_nullable() || args_[1]->is_nullable()) {
+  if (args_[0]->CheckNull() || args_[1]->CheckNull()) {
     return const_cast<char *>("");
   }
 
@@ -643,7 +643,7 @@ k_int64 FieldFuncRegex::ValInt() {
   if (ptr) {
     return FieldFuncBool::ValInt(ptr);
   } else {
-    if (args_[0]->is_nullable() || args_[1]->is_nullable()) {
+    if (args_[0]->CheckNull() || args_[1]->CheckNull()) {
       return 0;
     }
     return getRegexValue(negation_, is_case_, args_[0]->ValStr(), args_[1]->ValStr());
@@ -665,7 +665,7 @@ Field *FieldFuncRegex::field_to_copy() {
   return field;
 }
 k_bool FieldFuncRegex::field_is_nullable() {
-  if (args_[0]->is_nullable() || args_[1]->is_nullable()) {
+  if (args_[0]->CheckNull() || args_[1]->CheckNull()) {
     return true;
   }
   return false;
@@ -676,7 +676,7 @@ char *FieldFuncAny::get_ptr(RowBatch *batch) {
   intvalue_ = 0;
 
   for (size_t i = 0; i < arg_count_; i++) {
-    if (args_[i]->is_nullable()) {
+    if (args_[i]->CheckNull()) {
       continue;
     }
     char *ptr = args_[i]->get_ptr(batch);
@@ -731,7 +731,7 @@ k_int64 FieldFuncAny::ValInt() {
     return FieldFuncBool::ValInt(ptr);
   }
   for (size_t i = 0; i < arg_count_; i++) {
-    if (args_[i]->is_nullable()) {
+    if (args_[i]->CheckNull()) {
       continue;
     }
     if (args_[i]->ValInt() == 1) {
@@ -761,7 +761,7 @@ char *FieldFuncAll::get_ptr(RowBatch *batch) {
   intvalue_ = 1;
 
   for (size_t i = 0; i < arg_count_; i++) {
-    if (args_[i]->is_nullable()) {
+    if (args_[i]->CheckNull()) {
       continue;
     }
     char *ptr = args_[i]->get_ptr(batch);
@@ -815,7 +815,7 @@ k_int64 FieldFuncAll::ValInt() {
     return FieldFuncBool::ValInt(ptr);
   }
   for (size_t i = 0; i < arg_count_; i++) {
-    if (args_[i]->is_nullable()) {
+    if (args_[i]->CheckNull()) {
       continue;
     }
     if (args_[i]->ValInt() != 1) {

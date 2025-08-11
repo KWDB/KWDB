@@ -22,9 +22,6 @@ class AggCalculatorV2 {
  public:
   AggCalculatorV2(char* mem, TsBitmap* bitmap, DATATYPE type, int32_t size, int32_t count) :
       mem_(mem), bitmap_(bitmap), type_(type), size_(size), count_(count) {
-    if (type_ == DATATYPE::TIMESTAMP64_LSN) {
-      size_ = 8;
-    }
     if (is_overflow_) {
       sum_type_ = (DATATYPE)DOUBLE;
       sum_size_ = sizeof(double);
@@ -36,9 +33,6 @@ class AggCalculatorV2 {
 
   AggCalculatorV2(char* pre_agg, DATATYPE type, int32_t size, int32_t count) :
       pre_agg_(pre_agg), type_(type), size_(size), count_(count) {
-    if (type_ == DATATYPE::TIMESTAMP64_LSN) {
-      size_ = 8;
-    }
     if (is_overflow_) {
       sum_type_ = (DATATYPE)DOUBLE;
       sum_size_ = sizeof(double);
