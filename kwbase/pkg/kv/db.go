@@ -286,6 +286,10 @@ func (db *DB) NonTransactionalSender() Sender {
 	return &db.crs
 }
 
+func (db *DB) GetNodeID() int32 {
+	return int32(db.ctx.NodeID.Get())
+}
+
 // GetFactory returns the DB's TxnSenderFactory.
 func (db *DB) GetFactory() TxnSenderFactory {
 	return db.factory

@@ -21,6 +21,7 @@ package sql
 import "C"
 import (
 	"context"
+	"fmt"
 	"sort"
 	"strings"
 
@@ -164,6 +165,14 @@ func getTableMetaByVersion(
 				// when we get multiple tableDesc with the same tsVersion, use the one with bigger tableDesc.Version
 				if uint32(table.TsTable.TsVersion) == tsVersion && uint32(table.Version) > biggerDescVersion {
 					targetDesc = table
+				}
+
+				if targetDesc.GetName() == "t2" {
+					tmp := ""
+					for _, idx := range targetDesc.GetIndexes() {
+						tmp += idx.Name + ", "
+					}
+					fmt.Printf("****************** current node: %d, current tsVersion: %d, all indexes: %s\n", handler.db.GetNodeID(), targetDesc.TsTable.TsVersion, tmp)
 				}
 			default:
 				return errors.AssertionFailedf("Descriptor.Union has unexpected type %T", t)
