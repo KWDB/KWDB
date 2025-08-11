@@ -104,6 +104,7 @@ TEST_F(TsBatchDataWorkerTest, TestTsBatchDataWorker) {
   MakeDirectory(engine_root_path);
   engine_ = new TSEngineV2Impl(opts_);
   s = engine_->Init(ctx_);
+  MakeDirectory(engine_root_path + "/temp_db_");
   EXPECT_EQ(s, KStatus::SUCCESS);
 
   // ConstructRoachpbTable(&pb_meta, table_id);
@@ -163,7 +164,7 @@ TEST_F(TsBatchDataWorkerTest, TestTsBatchDataWorker) {
     for (int idx = 0; idx < block_span->GetRowNum(); ++idx) {
       EXPECT_EQ(*(uint64_t *) (block_span->GetLSNAddr(idx)), lsn);
       EXPECT_EQ(block_span->GetTS(idx), 10086000 + idx * 1000);
-      EXPECT_EQ(*(timestamp64 *) (ts_col + idx * 16), 10086000 + idx * 1000);
+      EXPECT_EQ(*(timestamp64 *) (ts_col + idx * 8), 10086000 + idx * 1000);
       EXPECT_LE(*(int32_t *) (col_values[0] + idx * 4), 1024);
       EXPECT_LE(*(double *) (col_values[1] + idx * 8), 1024 * 1024);
       kwdbts::DataFlags flag;

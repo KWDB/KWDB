@@ -1,0 +1,34 @@
+SET
+
+Time: 501.597µs
+
+tree,field,description
+"",distributed,false
+"",vectorized,false
+group,"",""
+" │",aggregate 0,pipeline_name
+" │",aggregate 1,count(measure_value)
+" │",aggregate 2,avg(measure_value)
+" │",group by,pipeline_name
+" └── render","",""
+"      └── hash-join","",""
+"           │",type,inner
+"           │",equality,(pipeline_sn) = (pipeline_sn)
+"           │",right cols are key,""
+"           ├── batch-lookup-join","",""
+"           │    │",type,inner
+"           │    │",equality,(station_sn) = (station_sn)
+"           │    │",left cols are key,""
+"           │    ├── scan","",""
+"           │    │",table,station_info@station_work_area_sn_index
+"           │    │",spans,"/""work_area_sn_1""-/""work_area_sn_1""/PrefixEnd"
+"           │    └── synchronizer","",""
+"           │         └── ts scan","",""
+"           │",ts-table,t_point
+"           │",access mode,hashRelScan
+"           └── scan","",""
+"",table,pipeline_info@pipeline_name_index
+"",spans,FULL SCAN
+
+Time: 2.346575ms
+

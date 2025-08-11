@@ -85,6 +85,8 @@ class TsBlockSpan {
   TSEntityID entity_id_ = 0;
   int start_row_ = 0, nrow_ = 0;
   bool has_pre_agg_{false};
+  std::vector<AttributeInfo> scan_attrs_{};
+  std::shared_ptr<TsTableSchemaManager> tbl_schema_mgr_;
 
  public:
   std::unique_ptr<TSBlkDataTypeConvert> convert_ = nullptr;
@@ -114,69 +116,171 @@ class TsBlockSpan {
     convert_ = nullptr;
   }
 
-  uint32_t GetVGroupID() const;
-  TSEntityID GetEntityID() const;
-  int GetRowNum() const;
-  int GetStartRow() const;
-  std::shared_ptr<TsBlock> GetTsBlock() const;
-  TSTableID GetTableID() const;
-  uint32_t GetTableVersion() const;
-  timestamp64 GetTS(uint32_t row_idx) const;
-  timestamp64 GetFirstTS() const;
-  timestamp64 GetLastTS() const;
-  TS_LSN GetFirstLSN() const;
-  TS_LSN GetLastLSN() const;
-  uint64_t* GetLSNAddr(int row_idx) const;
+  uint32_t GetVGroupID() const { return vgroup_id_; }
+  TSEntityID GetEntityID() const { return entity_id_; }
+  int GetRowNum() const { return nrow_; }
+  int GetStartRow() const { return start_row_; }
+  int GetColCount() const { return scan_attrs_.size(); }
+  std::shared_ptr<TsBlock> GetTsBlock() const { return block_; }
+  TSTableID GetTableID() const { return block_->GetTableId(); }
+  uint32_t GetTableVersion() const { return block_->GetTableVersion(); }
+  timestamp64 GetTS(uint32_t row_idx) const { return block_->GetTS(start_row_ + row_idx); }
+  timestamp64 GetFirstTS() const {
+    if (start_row_ == 0) {
+      return block_->GetFirstTS();
+    } else {
+      return block_->GetTS(start_row_);
+    }
+  };
+  timestamp64 GetLastTS() const {
+    if (start_row_ + nrow_ == block_->GetRowNum()) {
+      return block_->GetLastTS();
+    } else {
+      return block_->GetTS(start_row_ + nrow_ - 1);
+    }
+  };
+  TS_LSN GetFirstLSN() const {
+    if (start_row_ == 0) {
+      return block_->GetFirstLSN();
+    } else {
+      return *block_->GetLSNAddr(start_row_);
+    }
+  };
+  TS_LSN GetLastLSN() const {
+    if (start_row_ + nrow_ == block_->GetRowNum()) {
+      return block_->GetLastLSN();
+    } else {
+      return *block_->GetLSNAddr(start_row_ + nrow_ - 1);
+    }
+  };
+  uint64_t* GetLSNAddr(int row_idx) const { return block_->GetLSNAddr(start_row_ + row_idx); }
 
+  // convert value to compressed entity block data
+  KStatus BuildCompressedData(std::string& data);
   KStatus GetCompressData(std::string& data);
 
   // if just get timestamp, these function return fast.
   void GetTSRange(timestamp64* min_ts, timestamp64* max_ts);
 
-  bool IsColExist(uint32_t scan_idx) { return convert_->IsColExist(scan_idx); }
-  bool IsColNotNull(uint32_t scan_idx) { return convert_->IsColNotNull(scan_idx); }
-  bool IsSameType(uint32_t scan_idx) { return convert_->IsSameType(scan_idx); }
-  bool IsVarLenType(uint32_t scan_idx) { return convert_->IsVarLenType(scan_idx); }
-  int32_t GetColSize(uint32_t scan_idx) { return convert_->GetColSize(scan_idx); }
-  int32_t GetColType(uint32_t scan_idx) { return convert_->GetColType(scan_idx); }
-  KStatus GetColBitmap(uint32_t scan_idx, TsBitmap& bitmap) { return convert_->GetColBitmap(scan_idx, bitmap); }
+  bool IsColExist(uint32_t scan_idx) {
+    if (!convert_) {
+      return scan_idx <= scan_attrs_.size() - 1;
+    }
+    return convert_->IsColExist(scan_idx);
+  }
+  bool IsColNotNull(uint32_t scan_idx) {
+    if (!convert_) {
+      return scan_attrs_[scan_idx].isFlag(AINFO_NOT_NULL);
+    }
+    return convert_->IsColNotNull(scan_idx);
+  }
+  bool IsSameType(uint32_t scan_idx) {
+    if (!convert_) {
+      return true;
+    }
+    return convert_->IsSameType(scan_idx);
+  }
+  bool IsVarLenType(uint32_t scan_idx) {
+    if (!convert_) {
+      return isVarLenType(scan_attrs_[scan_idx].type);
+    }
+    return convert_->IsVarLenType(scan_idx);
+  }
+  int32_t GetColSize(uint32_t scan_idx) {
+    if (!convert_) {
+      return scan_attrs_[scan_idx].size;
+    }
+    return convert_->GetColSize(scan_idx);
+  }
+  int32_t GetColType(uint32_t scan_idx) {
+    if (!convert_) {
+      return scan_attrs_[scan_idx].type;
+    }
+    return convert_->GetColType(scan_idx);
+  }
 
+  KStatus GetColBitmap(uint32_t scan_idx, TsBitmap& bitmap);
   // dest type is fixed len datatype.
-  KStatus GetFixLenColAddr(uint32_t scan_idx, char** value, TsBitmap& bitmap, bool bitmap_required = true) {
-    return convert_->GetFixLenColAddr(scan_idx, value, bitmap, bitmap_required);
-  }
+  KStatus GetFixLenColAddr(uint32_t scan_idx, char** value, TsBitmap& bitmap, bool bitmap_required = true);
   // dest type is varlen datatype.
-  KStatus GetVarLenTypeColAddr(uint32_t row_idx, uint32_t scan_idx, DataFlags& flag, TSSlice& data) {
-    return convert_->GetVarLenTypeColAddr(row_idx, scan_idx, flag, data);
-  }
+  KStatus GetVarLenTypeColAddr(uint32_t row_idx, uint32_t scan_idx, DataFlags& flag, TSSlice& data);
 
   KStatus GetCount(uint32_t scan_idx, uint32_t& count);
-  KStatus GetSum(uint32_t scan_idx, void* &pre_sum, bool& is_overflow);
-  KStatus GetMax(uint32_t scan_idx, void* &pre_max);
-  KStatus GetMin(uint32_t scan_idx, void* &pre_min);
-  KStatus GetVarMax(uint32_t scan_idx, TSSlice& pre_max);
-  KStatus GetVarMin(uint32_t scan_idx, TSSlice& pre_min);
 
-  bool HasPreAgg();
-  KStatus GetPreCount(uint32_t scan_idx, uint16_t& count);
-  KStatus GetPreSum(uint32_t scan_idx, void* &pre_sum, bool& is_overflow);
-  KStatus GetPreMax(uint32_t scan_idx, void* &pre_max);
-  KStatus GetPreMin(uint32_t scan_idx, void* &pre_min);
-  KStatus GetVarPreMax(uint32_t scan_idx, TSSlice& pre_max);
-  KStatus GetVarPreMin(uint32_t scan_idx, TSSlice& pre_min);
+  bool HasPreAgg() {
+    return has_pre_agg_;
+  };
+  KStatus GetPreCount(uint32_t scan_idx, uint16_t& count) {
+    if (!convert_) {
+      return block_->GetPreCount(scan_idx, count);
+    }
+    return convert_->GetPreCount(scan_idx, count);
+  };
+  KStatus GetPreSum(uint32_t scan_idx, void* &pre_sum, bool& is_overflow) {
+    if (!convert_) {
+      int32_t size = scan_attrs_[scan_idx].size;
+      return block_->GetPreSum(scan_idx, size, pre_sum, is_overflow);
+    }
+    int32_t size = convert_->version_conv_->blk_attrs_[scan_idx].size;
+    return convert_->GetPreSum(scan_idx, size, pre_sum, is_overflow);
+  };
+  KStatus GetPreMax(uint32_t scan_idx, void* &pre_max) {
+    if (!convert_) {
+      return block_->GetPreMax(scan_idx, pre_max);
+    }
+    return convert_->GetPreMax(scan_idx, pre_max);
+  };
+  KStatus GetPreMin(uint32_t scan_idx, void* &pre_min) {
+    if (!convert_) {
+      int32_t size = scan_attrs_[scan_idx].size;
+      return block_->GetPreMin(scan_idx, size, pre_min);
+    }
+    int32_t size = convert_->version_conv_->blk_attrs_[scan_idx].size;
+    return convert_->GetPreMin(scan_idx, size, pre_min);
+  };
+  KStatus GetVarPreMax(uint32_t scan_idx, TSSlice& pre_max) {
+    if (!convert_) {
+      return block_->GetVarPreMax(scan_idx, pre_max);
+    }
+    return convert_->GetVarPreMax(scan_idx, pre_max);
+  };
+  KStatus GetVarPreMin(uint32_t scan_idx, TSSlice& pre_min) {
+    if (!convert_) {
+      return block_->GetVarPreMin(scan_idx, pre_min);
+    }
+    return convert_->GetVarPreMin(scan_idx, pre_min);
+  };
 
   KStatus UpdateFirstLastCandidates(const std::vector<k_uint32>& ts_scan_cols,
                                                 const std::vector<AttributeInfo>& schema,
                                                 std::vector<k_uint32>& first_col_idxs,
                                                 std::vector<k_uint32>& last_col_idxs,
-                                                std::vector<AggCandidate>& candidates);
+                                                std::vector<AggCandidate>& candidates) {
+  return block_->UpdateFirstLastCandidates(ts_scan_cols, schema, first_col_idxs, last_col_idxs, candidates);
+};
 
   void SplitFront(int row_num, shared_ptr<TsBlockSpan>& front_span);
 
   void SplitBack(int row_num, shared_ptr<TsBlockSpan>& back_span);
 
-  void TrimBack(int row_num);
+  void TrimBack(int row_num) {
+    assert(row_num <= nrow_);
+    assert(block_ != nullptr);
+    nrow_ -= row_num;
+    if (convert_) {
+      convert_->SetRowNum(nrow_);
+    }
+  };
 
-  void TrimFront(int row_num);
-};
+  void TrimFront(int row_num) {
+    assert(row_num <= nrow_);
+    assert(block_ != nullptr);
+    start_row_ += row_num;
+    nrow_ -= row_num;
+    if (convert_) {
+      convert_->SetStartRowIdx(start_row_);
+      convert_->SetRowNum(nrow_);
+    }
+  }
+  };
 }  // namespace kwdbts

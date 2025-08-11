@@ -32,7 +32,7 @@ struct TsScanFilterParams {
                       const std::vector<KwTsSpan>& ts_spans) :
                       db_id_(db_id), table_id_(table_id), vgroup_id_(vgroup_id),
                       entity_id_(entity_id), table_ts_type_(table_ts_type),
-                      end_lsn_(end_lsn), ts_spans_(ts_spans) {};
+                      end_lsn_(end_lsn), ts_spans_(ts_spans) {}
   uint32_t db_id_;
   TSTableID table_id_;
   uint32_t vgroup_id_;
@@ -57,7 +57,7 @@ class TsSegmentBase {
   // filter blockspans that satisfied condition.
   virtual KStatus GetBlockSpans(const TsBlockItemFilterParams& filter,
                                 std::list<shared_ptr<TsBlockSpan>>& block_spans,
-                                std::shared_ptr<TsTableSchemaManager> tbl_schema_mgr,
+                                std::shared_ptr<TsTableSchemaManager>& tbl_schema_mgr,
                                 uint32_t scan_version) = 0;
 
   virtual bool MayExistEntity(TSEntityID entity_id) const { return true; }

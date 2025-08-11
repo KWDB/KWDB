@@ -1,0 +1,71 @@
+SET
+
+Time: 672.332µs
+
+tree,field,description
+"",distributed,false
+"",vectorized,false
+render,"",""
+" └── batch-lookup-join","",""
+"      │",type,inner
+"      │",equality,"(company_id, channel) = (companyid, channel)"
+"      ├── union","",""
+"      │    ├── render","",""
+"      │    │    └── limit","",""
+"      │    │         │",count,1
+"      │    │         └── lookup-join","",""
+"      │    │              │",table,plat_device_info@primary
+"      │    │              │",type,inner
+"      │    │              │",equality,(obj_id) = (id)
+"      │    │              │",equality cols are key,""
+"      │    │              │",parallel,""
+"      │    │              └── hash-join","",""
+"      │    │                   │",type,inner
+"      │    │                   │",equality,(company_id) = (company_id)
+"      │    │                   │",right cols are key,""
+"      │    │                   ├── scan","",""
+"      │    │                   │",table,plat_tijiancard_item_relation@primary
+"      │    │                   │",spans,FULL SCAN
+"      │    │                   └── limit","",""
+"      │    │                        │",count,1
+"      │    │                        └── scan","",""
+"      │    │",table,plat_tijiancard_item_relation@primary
+"      │    │",spans,FULL SCAN
+"      │    │",filter,(company_id % 100) = 0
+"      │    └── render","",""
+"      │         └── hash-join","",""
+"      │              │",type,inner
+"      │              │",equality,(company_id) = (company_id)
+"      │              ├── hash-join","",""
+"      │              │    │",type,inner
+"      │              │    │",equality,(obj_id) = (id)
+"      │              │    │",right cols are key,""
+"      │              │    ├── scan","",""
+"      │              │    │",table,plat_tijiancard_item_relation@primary
+"      │              │    │",spans,FULL SCAN
+"      │              │    └── scan","",""
+"      │              │",table,plat_device_info@primary
+"      │              │",spans,FULL SCAN
+"      │              └── limit","",""
+"      │                   │",count,100
+"      │                   └── scan","",""
+"      │",table,plat_tijiancard_item_relation@primary
+"      │",spans,FULL SCAN
+"      │",filter,(company_id % 10) = 1
+"      └── group","",""
+"           │",engine type,time series
+"           │",aggregate 0,company_id
+"           │",aggregate 1,sum(value)
+"           │",aggregate 2,count_rows()
+"           │",group by,company_id
+"           │",addSynchronizer ,true
+"           └── render","",""
+"                │",engine type,time series
+"                │",value,value
+"                │",company_id,company_id
+"                └── ts scan","",""
+"",ts-table,opcdata449600
+"",access mode,hashRelScan
+
+Time: 5.421573ms
+

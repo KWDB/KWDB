@@ -197,6 +197,10 @@ type Config struct {
 	// BRPCAddr is the address for AE rpc.
 	BRPCAddr string
 
+	// AdvertiseAddr is the address advertised by the server to other nodes
+	// in the cluster.
+	AdvertiseBrpcAddr string
+
 	// ClusterName is the name used as a sanity check when a node joins
 	// an uninitialized cluster, or when an uninitialized node joins an
 	// initialized cluster. The initial RPC handshake verifies that the

@@ -1,0 +1,8 @@
+SET
+
+Time: 965.291µs
+
+time,value,id,company_id,tijiancard_id,item_ids,obj_type,obj_id,create_time,update_time,delete_time,id,item,content,company_id,create_user_id,create_time,update_time,is_common,card_template_id,card_template_name,period_id,qianyi_id,check_type,index_id,measure,source_from,template_type,id,devicenumber,usecernum,name,areacode,townname,companyname,makecomname,usestatus,address,dangerflag,jycomname,result,nextdate,nextselfdate,inspusestatus,maintaincomname,item_pk,remark,category1,category2,category3,company_id,qianyi_id,device_serial_number,device_name_plate,device_birth_number,check_period,check_period_unit,first_check_time,self_check_period,self_check_period_unit,self_first_check_time,created_at,updated_at,area_id,if_sync_position,3d_model_link,style,nfc_id,coordinate,display_type,id,index_name,index_unit,create_time,update_time,adr,channel,companyid,companyname,datatype,device,deviceid,highmorewarn,highwarn,lowmorewarn,lowwarn,name,region,slaveid,tag,unit
+
+Time: 14.908792751s
+

@@ -167,7 +167,7 @@ TEST_F(TestV2Iterator, mulitEntity) {
         bool is_finished = false;
         ASSERT_EQ(ts_iter->Next(&res, &count, &is_finished), KStatus::SUCCESS);
         ASSERT_EQ(count, entity_row_num);
-        ASSERT_EQ(KTimestamp(reinterpret_cast<char*>(res.data[0][0]->mem) + (entity_row_num -1) * 16) - KTimestamp(res.data[0][0]->mem), interval * (entity_row_num - 1));
+        ASSERT_EQ(KTimestamp(reinterpret_cast<char*>(res.data[0][0]->mem) + (entity_row_num -1) * 8) - KTimestamp(res.data[0][0]->mem), interval * (entity_row_num - 1));
         ASSERT_EQ(ts_iter->Next(&res, &count, &is_finished), KStatus::SUCCESS);
         ASSERT_EQ(count, 0);
         delete ts_iter;
@@ -233,7 +233,7 @@ TEST_F(TestV2Iterator, multiDBAndEntity) {
           ASSERT_EQ(ts_iter->Next(&res, &count, &is_finished), KStatus::SUCCESS);
           if (count > 0) {
             ASSERT_EQ(count, entity_row_num);
-            ASSERT_EQ(KTimestamp(reinterpret_cast<char*>(res.data[0][0]->mem) + (entity_row_num -1) * 16) - KTimestamp(res.data[0][0]->mem), interval * (entity_row_num - 1));
+            ASSERT_EQ(KTimestamp(reinterpret_cast<char*>(res.data[0][0]->mem) + (entity_row_num -1) * 8) - KTimestamp(res.data[0][0]->mem), interval * (entity_row_num - 1));
             ASSERT_EQ(ts_iter->Next(&res, &count, &is_finished), KStatus::SUCCESS);
             ASSERT_EQ(count, 0);
             entity_result_num++;

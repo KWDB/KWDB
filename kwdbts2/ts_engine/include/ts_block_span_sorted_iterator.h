@@ -15,6 +15,7 @@
 #include <list>
 #include <memory>
 #include <tuple>
+#include <utility>
 #include <vector>
 
 #include "data_type.h"
@@ -82,7 +83,7 @@ class TsBlockSpanSortedIterator {
     }
   }
 
-  inline void binarySearch(TsBlockSpanRowInfo& target_row_info, shared_ptr<TsBlockSpan> block_span, int& row_idx) {
+  inline void binarySearch(TsBlockSpanRowInfo& target_row_info, shared_ptr<TsBlockSpan>& block_span, int& row_idx) {
     int left = 0;
     int right = block_span->GetRowNum() - 1;
     int result;
@@ -115,7 +116,7 @@ class TsBlockSpanSortedIterator {
     row_idx = result;
   }
 
-  TsBlockSpanRowInfo getFirstRowInfo(std::shared_ptr<TsBlockSpan> block_span) {
+  TsBlockSpanRowInfo getFirstRowInfo(std::shared_ptr<TsBlockSpan>& block_span) {
     if (!is_reverse_) {
       return {block_span->GetEntityID(), block_span->GetFirstTS(), block_span->GetFirstLSN(), block_span, 0};
     } else {
@@ -125,7 +126,7 @@ class TsBlockSpanSortedIterator {
     }
   }
 
-  inline void getTsAndLSN(std::shared_ptr<TsBlockSpan> block_span, int row_idx, timestamp64& row_ts, TS_LSN& row_lsn) {
+  inline void getTsAndLSN(std::shared_ptr<TsBlockSpan>& block_span, int row_idx, timestamp64& row_ts, TS_LSN& row_lsn) {
     if (row_idx == 0) {
       row_ts = block_span->GetFirstTS();
       row_lsn = block_span->GetFirstLSN();
@@ -142,7 +143,8 @@ class TsBlockSpanSortedIterator {
   explicit TsBlockSpanSortedIterator(std::list<shared_ptr<TsBlockSpan>>& block_spans,
                                      DedupRule dedup_rule = DedupRule::OVERRIDE,
                                      bool is_reverse = false) :
-                                     block_spans_(std::move(block_spans)), dedup_rule_(dedup_rule), is_reverse_(is_reverse) {}
+                                     block_spans_(std::move(block_spans)),
+                                     dedup_rule_(dedup_rule), is_reverse_(is_reverse) {}
   explicit TsBlockSpanSortedIterator(std::vector<std::list<shared_ptr<TsBlockSpan>>>& block_spans,
                                      DedupRule dedup_rule = DedupRule::OVERRIDE,
                                      bool is_reverse = false) : dedup_rule_(dedup_rule), is_reverse_(is_reverse) {
@@ -174,7 +176,7 @@ class TsBlockSpanSortedIterator {
     } else {
       *is_finished = false;
     }
-    shared_ptr<TsBlockSpan> cur_block_span = span_row_infos_.front().block_span;
+    shared_ptr<TsBlockSpan>& cur_block_span = span_row_infos_.front().block_span;
     TsBlockSpanRowInfo next_span_row_info = defaultBlockSpanRowInfo();
     if (span_row_infos_.size() > 1) {
       next_span_row_info = *(++span_row_infos_.begin());
@@ -243,12 +245,13 @@ class TsBlockSpanSortedIterator {
 
       // check whether the current TsBlockSpan is empty.
       // If it is not empty, it needs to be readded to the linked list.
-      span_row_infos_.pop_front();
       if (cur_block_span->GetRowNum() != 0) {
         TsBlockSpanRowInfo next_row_info = getFirstRowInfo(cur_block_span);
+        span_row_infos_.pop_front();
         insertRowInfo(next_row_info);
       } else {
         cur_block_span->Clear();
+        span_row_infos_.pop_front();
       }
 
       // dealing with duplicate data in other TsBlockSpan
@@ -309,12 +312,13 @@ class TsBlockSpanSortedIterator {
 
       // check whether the current TsBlockSpan is empty.
       // If it is not empty, it needs to be readded to the linked list.
-      span_row_infos_.pop_front();
       if (cur_block_span->GetRowNum() != 0) {
         TsBlockSpanRowInfo next_row_info = getFirstRowInfo(cur_block_span);
+        span_row_infos_.pop_front();
         insertRowInfo(next_row_info);
       } else {
         cur_block_span->Clear();
+        span_row_infos_.pop_front();
       }
 
       // dealing with duplicate data in other TsBlockSpan
@@ -345,12 +349,13 @@ class TsBlockSpanSortedIterator {
 
       // check whether the current TsBlockSpan is empty.
       // If it is not empty, it needs to be readded to the linked list.
-      span_row_infos_.pop_front();
       if (cur_block_span->GetRowNum() != 0) {
         TsBlockSpanRowInfo next_row_info = getFirstRowInfo(cur_block_span);
+        span_row_infos_.pop_front();
         insertRowInfo(next_row_info);
       } else {
         cur_block_span->Clear();
+        span_row_infos_.pop_front();
       }
     }
     return KStatus::SUCCESS;

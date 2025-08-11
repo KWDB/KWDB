@@ -1780,24 +1780,18 @@ KStatus DataChunk::AddRecordByColumn(kwdbContext_p ctx, RowBatch* row_batch, Fie
         case roachpb::DataType::FLOAT:
         case roachpb::DataType::DOUBLE: {
           k_uint32 len = field->get_storage_length();
-          if (0 == field->get_num()) {
+          k_uint32 col_offset = count_ * col_info_[col].fixed_storage_len + col_offset_[col];
+          row_batch->CopyColumnData(field->getColIdxInRs(), data_ + col_offset, len, field->get_column_type(),
+                                    field->get_storage_type());
+          if (field->is_allow_null()) {
             for (int row = 0; row < row_batch->Count(); ++row) {
-              k_int64 val = field->ValInt();
-              InsertData(count_ + row, col, reinterpret_cast<char*>(&val), len);
-              row_batch->NextLine();
-            }
-          } else {
-            k_uint32 col_offset = count_ * col_info_[col].fixed_storage_len + col_offset_[col];
-            row_batch->CopyColumnData(field->getColIdxInRs(), data_ + col_offset, len, field->get_column_type(),
-                                      field->get_storage_type());
-
-            for (int row = 0; row < row_batch->Count(); ++row) {
-              if (field->CheckNull()) {
+              if (field->is_nullable()) {
                 SetNull(count_ + row, col);
               }
               row_batch->NextLine();
             }
           }
+
           break;
         }
         case roachpb::DataType::CHAR:
@@ -1846,7 +1840,7 @@ KStatus DataChunk::AddRecordByColumnWithSelection(kwdbContext_p ctx, RowBatch* r
     row_batch->ResetLine();
     const k_uint32 total_rows = row_batch->Count();
     const auto storage_len = field->get_storage_length();
-    const auto offset_storage_len = (field->get_num() == 0) ? storage_len + 8 : storage_len;
+    const auto offset_storage_len = storage_len;
     const auto col_idx_in_rs = field->getColIdxInRs();
     const auto column_type = field->get_column_type();
     const bool is_tag =

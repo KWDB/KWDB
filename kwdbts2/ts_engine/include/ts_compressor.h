@@ -15,6 +15,7 @@
 #include <string>
 #include <tuple>
 #include <unordered_map>
+#include <utility>
 
 #include "data_type.h"
 #include "libkwdbts2.h"
@@ -97,6 +98,15 @@ class TsSliceGuard {
   bool empty() const { return slice.len == 0; }
 
   const std::string& AsString() const { return str; }
+  void swap(std::string& strVal) {
+    if (str.data() != slice.data) {
+      strVal = {slice.data, slice.len};
+    } else {
+      strVal.swap(str);
+      slice.data = str.data();
+      slice.len = str.size();
+    }
+  }
 };
 
 class TsCompressorBase;

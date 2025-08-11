@@ -363,7 +363,6 @@ func NewTsEngine(
 		openCh:  make(chan struct{}),
 		Version: KwEngineVersion,
 	}
-
 	return r, nil
 }
 
@@ -445,7 +444,11 @@ func (r *TsEngine) Open(rangeIndex []roachpb.RangeIndex) error {
 		}
 	}
 
-	r.SetWriteWAL(!TsRaftLogCombineWAL.Get(&r.cfg.Settings.SV))
+	if r.cfg.IsSingleNode {
+		r.SetWriteWAL(true)
+	} else {
+		r.SetWriteWAL(!TsRaftLogCombineWAL.Get(&r.cfg.Settings.SV))
+	}
 	r.manageWAL()
 	r.opened = true
 	close(r.openCh)
@@ -1549,12 +1552,12 @@ func (r *TsEngine) CompressImmediately(ctx context.Context, tableID uint64) erro
 	return nil
 }
 
-// VacuumTsTable vacuum partitions after compress
-func (r *TsEngine) VacuumTsTable(tableID uint64, tsVersion uint32) error {
+// Vacuum vacuum partitions
+func (r *TsEngine) Vacuum() error {
 	r.checkOrWaitForOpen()
-	status := C.TSVacuumTsTable(r.tdb, C.TSTableID(tableID), C.uint32_t(tsVersion))
+	status := C.TSVacuum(r.tdb)
 	if err := statusToError(status); err != nil {
-		return errors.Wrap(err, "failed to vacuum ts table")
+		return errors.Wrap(err, "failed to vacuum ts storage")
 	}
 	return nil
 }

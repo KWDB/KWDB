@@ -71,8 +71,8 @@ class TSEngineV2Impl : public TSEngine {
 
   std::unordered_map<uint64_t, std::unordered_map<std::string, std::shared_ptr<TsBatchDataWorker>>> read_batch_data_workers_;
   KRWLatch read_batch_workers_lock_;
-  std::shared_ptr<TsBatchDataWorker> write_batch_data_worker_;
-  KRWLatch write_batch_worker_lock_;
+  std::unordered_map<uint64_t, std::shared_ptr<TsBatchDataWorker>> write_batch_data_workers_;
+  KRWLatch write_batch_workers_lock_;
 
   KRWLatch insert_tag_lock_;
 
@@ -270,6 +270,8 @@ class TSEngineV2Impl : public TSEngine {
 
   KStatus GetMeta(kwdbContext_p ctx, TSTableID table_id, uint32_t version, roachpb::CreateTsTable* meta);
 
+  std::string GetDbDir() const { return options_.db_path; }
+
   KStatus SwitchMemSegments(TS_LSN lsn) {
     return flush_mgr_.FlushMemSegment(lsn);
   }
@@ -292,6 +294,7 @@ class TSEngineV2Impl : public TSEngine {
     return iter->second;
   }
 
+  KStatus Vacuum() override;
   void initRangeIndexMap(AppliedRangeIndex* applied_indexes, uint64_t range_num) {
     if (applied_indexes != nullptr) {
       for (int i = 0; i < range_num; i++) {

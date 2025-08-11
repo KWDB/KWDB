@@ -185,7 +185,7 @@ KBStatus StScanWorker::do_work(KTimestamp  new_ts) {
   KWDB_START();
 
   uint32_t entity_index = 1;
-  KwTsSpan ts_span = {int64_t(start_ts_), GetTimeNow()};
+  KwTsSpan ts_span = {INT64_MIN, INT64_MAX};
   std::vector<KwTsSpan> ts_spans;
   ts_spans.push_back(ts_span);
   std::vector<k_uint32> scan_cols;
@@ -206,7 +206,12 @@ KBStatus StScanWorker::do_work(KTimestamp  new_ts) {
       scan_cols.push_back(i);
     }
     EntityResultIndex e_idx{1, entity_index, 1};
-    TsIterator* iter;
+    TsIterator* iter = nullptr;
+    Defer defer{[&]() {
+      if (iter != nullptr) {
+        delete iter;
+      }
+    }};
     ctx->ts_engine = st_inst_->GetTSEngine();
     std::vector<EntityResultIndex> entity_ids = {e_idx};
     std::vector<BlockFilter> block_filter;
@@ -230,11 +235,11 @@ KBStatus StScanWorker::do_work(KTimestamp  new_ts) {
     if (s.isNotOK()) {
       return s;
     }
-    ResultSet res;
-    res.setColumnNum(scan_cols.size());
     uint32_t count = 0;
     bool is_finished = false;
     do {
+      ResultSet res;
+      res.setColumnNum(scan_cols.size());
       status = iter->Next(&res, &count);
       s = dump_zstatus("IteratorNext", ctx, status);
       if (s.isNotOK()) {
@@ -255,7 +260,12 @@ KBStatus StScanWorker::do_work(KTimestamp  new_ts) {
     }
     vector<uint32_t> entity_ids = {entity_index};
     SubGroupID group_id = 1;
-    TsStorageIterator* iter;
+    TsStorageIterator* iter = nullptr;
+    Defer defer{[&]() {
+      if (iter != nullptr) {
+        delete iter;
+      }
+    }};
     stat = tbl_range->GetIterator(ctx, group_id, entity_ids, ts_spans, {}, ts_type, scan_cols, scan_cols, {}, scan_agg_types, 1, &iter, tbl_range,
                         {}, false, false);
     s = dump_zstatus("GetIterator", ctx, stat);

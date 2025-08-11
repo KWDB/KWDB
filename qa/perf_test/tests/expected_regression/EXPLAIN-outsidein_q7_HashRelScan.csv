@@ -1,0 +1,49 @@
+SET
+
+Time: 471.93µs
+
+tree,field,description
+"",distributed,false
+"",vectorized,false
+render,"",""
+" └── limit","",""
+"      │",count,1
+"      └── sort","",""
+"           │",order,"-""time"""
+"           └── batch-lookup-join","",""
+"                │",type,inner
+"                │",equality,"(company_id, name, index_name) = (companyid, device, datatype)"
+"                ├── hash-join","",""
+"                │    │",type,inner
+"                │    │",equality,(index_id) = (id)
+"                │    │",pred,"id::STRING = ANY string_to_array(item_ids, ',')"
+"                │    ├── scan","",""
+"                │    │",table,plat_tijian_item@primary
+"                │    │",spans,FULL SCAN
+"                │    │",filter,(create_user_id > 8000) AND (create_user_id < 8500)
+"                │    └── cross-join","",""
+"                │         │",type,cross
+"                │         ├── scan","",""
+"                │         │",table,plat_tijian_item_index@primary
+"                │         │",spans,FULL SCAN
+"                │         └── lookup-join","",""
+"                │              │",table,plat_device_info@primary
+"                │              │",type,inner
+"                │              │",equality,(obj_id) = (id)
+"                │              │",equality cols are key,""
+"                │              │",parallel,""
+"                │              └── index-join","",""
+"                │                   │",table,plat_tijiancard_item_relation@primary
+"                │                   │",key columns,id
+"                │                   └── scan","",""
+"                │",table,plat_tijiancard_item_relation@tijian_id_relation
+"                │",spans,"/""6VVkdjOLPOL1brZ8BBXQtvcRuMIfTfLD4uJyFFzbai5U7LywRF""-/""6VVkdjOLPOL1brZ8BBXQtvcRuMIfTfLD4uJyFFzbai5U7LywRF""/PrefixEnd"
+"                └── synchronizer","",""
+"                     └── ts scan","",""
+"",ts-table,opcdata449600
+"",access mode,hashRelScan
+"",spans:fromTime,2024-06-20 23:59:59 +0000 UTC
+"",spans:toTime,2024-06-29 23:59:59 +0000 UTC
+
+Time: 6.21464ms
+

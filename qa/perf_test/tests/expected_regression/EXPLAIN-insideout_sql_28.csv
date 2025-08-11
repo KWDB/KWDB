@@ -1,0 +1,109 @@
+tree,field,description
+"",distributed,true
+"",vectorized,false
+render,"",""
+" │",area_name,area_name
+" │",device_name,device_name
+" │",plat_company_name,name
+" │",risk_level,level
+" │",device_count,count_rows
+" │",avg_value_per_device,avg
+" │",unique_security_devices,count
+" │",min_value_per_device,min
+" │",max_value_per_device,max
+" │",unique_risk_areas,count
+" └── sort","",""
+"      │",order,"+area_name,+device_name,+name,+level"
+"      └── filter","",""
+"           │",filter,avg > 30.0
+"           └── render","",""
+"                │",avg,sum / sum_int
+"                │",area_name,area_name
+"                │",device_name,device_name
+"                │",name,name
+"                │",level,level
+"                │",count_rows,sum
+"                │",count,count
+"                │",min,min
+"                │",max,max
+"                │",count,count
+"                └── group","",""
+"                     │",aggregate 0,area_name
+"                     │",aggregate 1,device_name
+"                     │",aggregate 2,name
+"                     │",aggregate 3,level
+"                     │",aggregate 4,sum(count_rows)
+"                     │",aggregate 5,sum_int(count)
+"                     │",aggregate 6,sum(sum)
+"                     │",aggregate 7,count(DISTINCT device_no)
+"                     │",aggregate 8,min(min)
+"                     │",aggregate 9,max(max)
+"                     │",aggregate 10,count(DISTINCT area_id)
+"                     │",group by,"area_name, device_name, name, level"
+"                     └── render","",""
+"                          │",area_name,area_name
+"                          │",device_name,device_name
+"                          │",name,name
+"                          │",level,level
+"                          │",device_no,device_no
+"                          │",area_id,area_id
+"                          │",count_rows,count_rows
+"                          │",min,min
+"                          │",max,max
+"                          │",count,count
+"                          │",sum,sum
+"                          └── hash-join","",""
+"                               │",type,inner
+"                               │",equality,(companyid) = (company_id)
+"                               ├── group","",""
+"                               │    │",engine type,time series
+"                               │    │",aggregate 0,companyid
+"                               │    │",aggregate 1,count_rows()
+"                               │    │",aggregate 2,min(value)
+"                               │    │",aggregate 3,max(value)
+"                               │    │",aggregate 4,count(value)
+"                               │    │",aggregate 5,sum(value)
+"                               │    │",group by,companyid
+"                               │    │",addSynchronizer ,true
+"                               │    └── ts scan","",""
+"                               │",ts-table,opcdata449600
+"                               │",access mode,tableTableMeta
+"                               │",spans:fromTime,2024-06-29 23:00:00 +0000 UTC
+"                               │",spans:toTime,2970-01-01 00:00:00 +0000 UTC
+"                               │",tag filter[0],device = e'1#\U00007F50\U0000533A\U000053EF\U000071C3\U00006C14\U00004F53\U000062A5\U00008B66\U00005668'
+"                               │",tag filter[1],datatype = e'\U00006C14\U00004F53'
+"                               └── hash-join","",""
+"                                    │",type,inner
+"                                    │",equality,"(company_id, id) = (company_id, id)"
+"                                    ├── cross-join","",""
+"                                    │    │",type,cross
+"                                    │    ├── scan","",""
+"                                    │    │",table,cd_security_device@primary
+"                                    │    │",spans,FULL SCAN
+"                                    │    └── lookup-join","",""
+"                                    │         │",table,plat_risk_analyse_objects@primary
+"                                    │         │",type,inner
+"                                    │         │",equality,(risk_id) = (id)
+"                                    │         │",equality cols are key,""
+"                                    │         │",parallel,""
+"                                    │         └── scan","",""
+"                                    │",table,plat_risk_area@primary
+"                                    │",spans,FULL SCAN
+"                                    └── lookup-join","",""
+"                                         │",table,plat_device_info@primary
+"                                         │",type,inner
+"                                         │",equality,(device_id) = (id)
+"                                         │",equality cols are key,""
+"                                         │",parallel,""
+"                                         └── hash-join","",""
+"                                              │",type,inner
+"                                              │",equality,(company_id) = (company_id)
+"                                              ├── scan","",""
+"                                              │",table,cd_device_point@primary
+"                                              │",spans,FULL SCAN
+"                                              └── scan","",""
+"",table,cd_behavior_area@primary
+"",spans,FULL SCAN
+
+Time: 57.45478ms
+

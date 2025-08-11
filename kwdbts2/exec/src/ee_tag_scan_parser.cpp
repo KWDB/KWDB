@@ -23,7 +23,9 @@ TsTagScanParser::TsTagScanParser(TSTagReaderSpec* spec , TSPostProcessSpec *post
 KStatus TsTagScanParser::ParserTagSpec(kwdbContext_p ctx) {
   EnterFunc();
   table_->SetAccessMode(spec_->accessmode());
-  table_->ptag_size_ = spec_->primarytags_size();
+  if (spec_->primarytags_size() > 0) {
+    table_->ptag_size_ = (spec_->primarytags(0).tagvalues_size() + 7) / 8;
+  }
   object_id_ = spec_->tableid();
   table_->SetTableVersion(spec_->tableversion());
   table_->SetOnlyTag(spec_->only_tag());

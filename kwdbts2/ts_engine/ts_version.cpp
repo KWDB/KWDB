@@ -14,6 +14,7 @@
 #include <algorithm>
 #include <atomic>
 #include <cassert>
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
@@ -21,6 +22,7 @@
 #include <list>
 #include <memory>
 #include <mutex>
+#include <numeric>
 #include <regex>
 #include <string>
 #include <string_view>
@@ -41,7 +43,7 @@
 
 namespace kwdbts {
 static const int64_t interval = 3600 * 24 * 10;  // 10 days.
-
+static const int64_t vacuum_minutes = 24 * 60;  // 24 hours.
 // Note: we expect this function always return lower bound of both positive and negative timestamp
 // e.g. interval = 3,
 // timestamp = 0, return 0;
@@ -221,6 +223,7 @@ KStatus TsVersionManager::Recover() {
   builder.Finalize(&update);
   assert(logger_ != nullptr);
   s = ApplyUpdate(&update);
+  LOG_INFO("recovered update: %s", update.DebugStr().c_str());
   if (s == FAIL) {
     return FAIL;
   }
@@ -377,6 +380,9 @@ KStatus TsVersionManager::ApplyUpdate(TsVersionUpdate *update) {
       std::string root = root_path_ / PartitionDirName(par_id);
       if (new_partition_version->entity_segment_) {
         new_partition_version->entity_segment_->MarkDeleteEntityHeader();
+        if (update->delete_all_prev_entity_segment_) {
+          new_partition_version->entity_segment_->MarkDeleteAll();
+        }
       }
       new_partition_version->entity_segment_ = std::make_unique<TsEntitySegment>(root, it->second);
     }
@@ -420,6 +426,21 @@ std::vector<std::shared_ptr<const TsPartitionVersion>> TsVGroupVersion::GetParti
   return result;
 }
 
+std::vector<std::shared_ptr<const TsPartitionVersion>> TsVGroupVersion::GetPartitionsToVacuum() const {
+  std::vector<std::shared_ptr<const TsPartitionVersion>> result;
+  std::shared_ptr<const TsPartitionVersion> partition = nullptr;
+  PartitionIdentifier partition_id;
+  for (const auto &[k, v] : partitions_) {
+    if (std::get<0>(k) != std::get<0>(partition_id)) {
+      partition_id = k;
+      partition = v;
+    } else if (partition != nullptr) {
+      result.push_back(partition);
+    }
+  }
+  return result;
+}
+
 std::shared_ptr<const TsPartitionVersion> TsVGroupVersion::GetPartition(uint32_t target_dbid,
                                                                         timestamp64 target_time) const {
   timestamp64 start = GetPartitionStartTime(target_time, interval);
@@ -430,15 +451,36 @@ std::shared_ptr<const TsPartitionVersion> TsVGroupVersion::GetPartition(uint32_t
   return it->second;
 }
 
+std::map<uint32_t, std::vector<std::shared_ptr<const TsPartitionVersion>>> TsVGroupVersion::GetPartitions() const {
+  std::map<uint32_t, std::vector<std::shared_ptr<const TsPartitionVersion>>> result;
+  for (const auto &[k, v] : partitions_) {
+      result[std::get<0>(k)].push_back(v);
+  }
+  return result;
+}
+
 std::vector<std::shared_ptr<TsLastSegment>> TsPartitionVersion::GetCompactLastSegments() const {
   // TODO(zzr): There is room for optimization
   // Maybe we can pre-compute which lastsegments can be compacted, and just return them.
-  size_t compact_num = std::min<size_t>(last_segments_.size(), EngineOptions::max_compact_num);
+  if (last_segments_.size() == 0) {
+    return {};
+  }
+
+  std::vector<std::shared_ptr<TsLastSegment>> tmp = last_segments_;
+  std::sort(tmp.begin(), tmp.end(),
+            [](const std::shared_ptr<TsLastSegment> &a, const std::shared_ptr<TsLastSegment> &b) {
+              return a->GetFileSize() > b->GetFileSize();
+            });
+  auto end = std::min(tmp.end(), tmp.begin() + EngineOptions::max_compact_num + 1);
+  size_t following_file_size =
+      std::accumulate(tmp.begin() + 1, end, 0,
+                      [](size_t sum, const std::shared_ptr<TsLastSegment> &a) { return sum + a->GetFileSize(); });
+
   std::vector<std::shared_ptr<TsLastSegment>> result;
-  result.reserve(compact_num);
-  auto it = last_segments_.begin();
-  for (int i = 0; i < compact_num; ++i, ++it) {
-    result.push_back(*it);
+  if (following_file_size > tmp.front()->GetFileSize()) {
+    result.assign(tmp.begin(), end);
+  } else {
+    result.assign(tmp.begin() + 1, end);
   }
   return result;
 }
@@ -484,6 +526,27 @@ KStatus TsPartitionVersion::UndoDeleteData(TSEntityID e_id, const std::vector<Kw
   }
   return KStatus::SUCCESS;
 }
+
+KStatus TsPartitionVersion::HasDeleteItem(bool& has_delete_info, const KwLSNSpan &lsn) const {
+  return del_info_->HasValidDelItem(lsn, has_delete_info);
+}
+
+KStatus TsPartitionVersion::RmDeleteItems(const std::list<std::pair<TSEntityID, TS_LSN>>& entity_max_lsn) const {
+  for (auto entity : entity_max_lsn) {
+    auto s = del_info_->RmDeleteItems(entity.first, {0, entity.second});
+    if (s != KStatus::SUCCESS) {
+      // failed not cause any function err, but scan may slow a little.
+      LOG_WARN("RmDeleteItems failed. entity_id[%lu], lsn[%lu]", entity.first, entity.second);
+    }
+  }
+  return KStatus::SUCCESS;
+}
+
+KStatus TsPartitionVersion::DropEntity(TSEntityID e_id) const {
+  // todo(liangbo01) add metric data clearing function
+  return del_info_->DropEntity(e_id);
+}
+
 KStatus TsPartitionVersion::getFilter(const TsScanFilterParams& filter, TsBlockItemFilterParams& block_data_filter) const {
   std::list<STDelRange> del_range_all;
   auto s = GetDelRange(filter.entity_id_, del_range_all);
@@ -531,7 +594,7 @@ KStatus TsPartitionVersion::getFilter(const TsScanFilterParams& filter, TsBlockI
 
 KStatus TsPartitionVersion::GetBlockSpans(const TsScanFilterParams& filter,
 std::list<shared_ptr<TsBlockSpan>>* ts_block_spans,
-std::shared_ptr<TsTableSchemaManager> tbl_schema_mgr, uint32_t scan_version, bool skip_last, bool skip_entity) const {
+std::shared_ptr<TsTableSchemaManager>& tbl_schema_mgr, uint32_t scan_version, bool skip_last, bool skip_entity) const {
   TsBlockItemFilterParams block_data_filter;
   auto s = getFilter(filter, block_data_filter);
   if (s != KStatus::SUCCESS) {
@@ -554,7 +617,7 @@ std::shared_ptr<TsTableSchemaManager> tbl_schema_mgr, uint32_t scan_version, boo
     for (auto& last_seg : last_segments_) {
       s = last_seg->GetBlockSpans(block_data_filter, *ts_block_spans, tbl_schema_mgr, scan_version);
       if (s != KStatus::SUCCESS) {
-        LOG_ERROR("GetBlockSpans of mem segment failed.");
+        LOG_ERROR("GetBlockSpans of last segment failed.");
         return s;
       }
     }
@@ -568,11 +631,76 @@ std::shared_ptr<TsTableSchemaManager> tbl_schema_mgr, uint32_t scan_version, boo
     s = entity_segment_->GetBlockSpans(block_data_filter, *ts_block_spans,
              tbl_schema_mgr, scan_version);
     if (s != KStatus::SUCCESS) {
-      LOG_ERROR("GetBlockSpans of mem segment failed.");
+      LOG_ERROR("GetBlockSpans of entity segment failed.");
       return s;
     }
   }
   LOG_DEBUG("reading block span num [%lu]", ts_block_spans->size());
+  return KStatus::SUCCESS;
+}
+
+bool TsPartitionVersion::TrySetBusy(PartitionStatus desired) const {
+  PartitionStatus expected = PartitionStatus::None;
+  if (exclusive_status_->compare_exchange_strong(expected, desired)) {
+    return true;
+  }
+  return false;
+}
+
+void TsPartitionVersion::ResetStatus() const {
+  exclusive_status_->store(PartitionStatus::None);
+}
+
+KStatus TsPartitionVersion::NeedVacuumEntitySegment(const std::filesystem::path& root_path, bool& need_vacuum) const {
+  std::filesystem::file_time_type latest_mtime{};
+  bool has_files = false;
+  for (const auto& entry : std::filesystem::directory_iterator(root_path)) {
+    if (entry.is_regular_file() && entry.path().filename() != DEL_FILE_NAME) {
+      auto mtime = std::filesystem::last_write_time(entry);
+      if (!has_files || mtime > latest_mtime) {
+        latest_mtime = mtime;
+        has_files = true;
+      }
+    }
+  }
+  if (!has_files) {
+    std::cerr << "No regular files found in directory\n";
+    need_vacuum = false;
+    return SUCCESS;
+  }
+  // Temporarily add environment variables to control vacuum
+  const char *vacuum_minutes_char = getenv("KW_VACUUM_TIME");
+  uint32_t vacuum_interval = 0;
+  if (vacuum_minutes_char) {
+    char *endptr;
+    vacuum_interval = strtol(vacuum_minutes_char, &endptr, 10);
+    assert(*endptr == '\0');
+  }
+  auto now = std::chrono::system_clock::now();
+  auto now_sys = std::chrono::system_clock::now();
+  auto now_file = std::filesystem::file_time_type::clock::now();
+  auto file_duration = latest_mtime.time_since_epoch();
+  auto now_file_duration = now_file.time_since_epoch();
+  auto diff = file_duration - now_file_duration;
+  auto diff_sys = std::chrono::duration_cast<std::chrono::system_clock::duration>(diff);
+  auto file_sys_time = now_sys + diff_sys;
+
+  vacuum_interval = vacuum_interval != 0 ? vacuum_interval : vacuum_minutes;
+  auto diff_latest_now = now - file_sys_time;
+  if (std::chrono::duration_cast<std::chrono::minutes>(diff_latest_now).count() < vacuum_interval) {
+    need_vacuum = false;
+    return SUCCESS;
+  }
+
+  bool has_del_info;
+  // todo(liangbo01) get entity segment min and max lsn.
+  KwLSNSpan span{0, UINT64_MAX};
+  auto s = del_info_->HasValidDelItem(span, has_del_info);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("HasValidDelItem failed.");
+    return s;
+  }
+  need_vacuum = has_del_info && (entity_segment_ != nullptr);
   return KStatus::SUCCESS;
 }
 
@@ -651,22 +779,33 @@ inline const char *DecodePartitonFiles(const char *ptr, const char *limit,
   return ptr;
 }
 
-inline void EncodeEntitySegment(
-    std::string *result,
-    const std::map<PartitionIdentifier, TsVersionUpdate::EntitySegmentVersionInfo> &entity_segments) {
+static inline void EncodeMetaInfo(std::string *result, const MetaFileInfo &meta_info) {
+  PutVarint64(result, meta_info.file_number);
+  PutVarint64(result, meta_info.length);
+}
+
+static inline const char *DecodeMetaInfo(const char *ptr, const char *limit, MetaFileInfo *meta_info) {
+  ptr = DecodeVarint64(ptr, limit, &meta_info->file_number);
+  ptr = DecodeVarint64(ptr, limit, &meta_info->length);
+  return ptr;
+}
+
+inline void EncodeEntitySegment(std::string *result,
+                                const std::map<PartitionIdentifier, EntitySegmentHandleInfo> &entity_segments) {
   uint32_t npartition = entity_segments.size();
   PutVarint32(result, npartition);
   for (const auto &[par_id, info] : entity_segments) {
     EncodePartitionID(result, par_id);
-    PutVarint64(result, info.block_file_size);
-    PutVarint64(result, info.header_b_size);
+
+    EncodeMetaInfo(result, info.datablock_info);
+    EncodeMetaInfo(result, info.header_b_info);
     PutVarint64(result, info.header_e_file_number);
-    PutVarint64(result, info.agg_file_size);
+    EncodeMetaInfo(result, info.agg_info);
   }
 }
 
 const char *DecodeEntitySegment(const char *ptr, const char *limit,
-                                std::map<PartitionIdentifier, TsVersionUpdate::EntitySegmentVersionInfo> *entity_segments) {
+                                std::map<PartitionIdentifier, EntitySegmentHandleInfo> *entity_segments) {
   uint32_t npartition = 0;
   ptr = DecodeVarint32(ptr, limit, &npartition);
   if (ptr == nullptr) {
@@ -679,11 +818,11 @@ const char *DecodeEntitySegment(const char *ptr, const char *limit,
     if (ptr == nullptr) {
       return nullptr;
     }
-    TsVersionUpdate::EntitySegmentVersionInfo info;
-    ptr = DecodeVarint64(ptr, limit, &info.block_file_size);
-    ptr = DecodeVarint64(ptr, limit, &info.header_b_size);
+    EntitySegmentHandleInfo info;
+    ptr = DecodeMetaInfo(ptr, limit, &info.datablock_info);
+    ptr = DecodeMetaInfo(ptr, limit, &info.header_b_info);
     ptr = DecodeVarint64(ptr, limit, &info.header_e_file_number);
-    ptr = DecodeVarint64(ptr, limit, &info.agg_file_size);
+    ptr = DecodeMetaInfo(ptr, limit, &info.agg_info);
     if (ptr == nullptr) {
       return nullptr;
     }
@@ -989,9 +1128,9 @@ static std::ostream &operator<<(std::ostream &os, const std::set<uint64_t> &info
   return os;
 }
 
-static std::ostream &operator<<(std::ostream &os, const TsVersionUpdate::EntitySegmentVersionInfo &info) {
-  os << "[" << info.block_file_size << "," << info.header_b_size << "," << info.header_e_file_number << ","
-     << info.agg_file_size << "]";
+static std::ostream &operator<<(std::ostream &os, const EntitySegmentHandleInfo &info) {
+  os << "[" << info.datablock_info.length << "," << info.header_b_info.length << "," << info.header_e_file_number << ","
+     << info.agg_info.length << "]";
   return os;
 }
 

@@ -1,0 +1,10 @@
+work_area_name,station_name,measure_type,timebucket,avg_value,max_value,min_value,number_of_values
+work_area_0,dd,2,2024-08-26 10:00:00+00:00,13.5,13.5,13.5,6
+work_area_1,dd,2,2024-08-26 10:00:00+00:00,13.5,13.5,13.5,6
+work_area_2,dd,2,2024-08-26 10:00:00+00:00,13.5,13.5,13.5,6
+work_area_3,dd,2,2024-08-26 10:00:00+00:00,13.5,13.5,13.5,6
+work_area_4,dd,2,2024-08-26 10:00:00+00:00,13.5,13.5,13.5,6
+work_area_5,dd,2,2024-08-26 10:00:00+00:00,13.5,13.5,13.5,6
+
+Time: 106.549814ms
+

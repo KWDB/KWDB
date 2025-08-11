@@ -456,10 +456,6 @@ TSSlice genValue4Col(DATATYPE type, int size, int store_value) {
   size_t length = 0;
   string str_value;
   switch (type) {
-    case DATATYPE::TIMESTAMP64_LSN:
-      std::cout << "cannot run here . exit." << std::endl;
-      exit(-1);
-      break;
     case DATATYPE::TIMESTAMP64:
       length = sizeof(uint64_t);
       addr = new char[length];
@@ -523,12 +519,7 @@ void genRowBasedPayloadData(std::vector<TagInfo> tag_schema, std::vector<Attribu
     for (size_t i = 0; i < data_schema.size(); i++) {
       char* addr = nullptr;
       int length = 0;
-      if (data_schema[i].type == DATATYPE::TIMESTAMP64_LSN) {
-        length = sizeof(uint64_t) * 2;
-        addr = new char[length];
-        KTimestamp(addr) = (start_ts + j * time_inc);
-        KTimestamp(addr + 8) = 1;
-      } else {
+      {
         int store_value = ((start_ts + j * time_inc) / time_inc) % 11 + i;
         TSSlice ret = genValue4Col((DATATYPE)data_schema[i].type, data_schema[i].size, store_value);
         addr = ret.data;
@@ -564,12 +555,7 @@ void genPayloadData(std::vector<TagInfo> tag_schema, std::vector<AttributeInfo> 
     for (size_t i = 0; i < data_schema.size(); i++) {
       char* addr = nullptr;
       int length = 0;
-      if (data_schema[i].type == DATATYPE::TIMESTAMP64_LSN) {
-        length = sizeof(uint64_t) * 2;
-        addr = new char[length];
-        KTimestamp(addr) = (start_ts + j * time_inc);
-        KTimestamp(addr + 8) = 1;
-      } else {
+      {
         int store_value = ((start_ts + j * time_inc) / time_inc) % 11 + i;
         TSSlice ret = genValue4Col((DATATYPE)data_schema[i].type, data_schema[i].size, store_value);
         addr = ret.data;
