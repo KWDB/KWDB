@@ -161,7 +161,7 @@ EEIteratorErrCode DiskDataContainer::NextChunk(DataChunkPtr& chunk) {
   if (ret != SUCCESS) {
     return EEIteratorErrCode::EE_ERROR;
   }
-  EEIteratorErrCode code = mergeMultipleLists(0u, &sorted_count_, true);
+  EEIteratorErrCode code = mergeMultipleLists(0u, &sorted_count_);
   if (code != EEIteratorErrCode::EE_OK) return code;
   write_cache_chunk_ptr_->DecodeData();
   output_chunk_start_row_index_ = write_merge_infos_->count_;
@@ -284,21 +284,31 @@ KStatus DiskDataContainer::UpdateTempCacheChunk() {
 KStatus DiskDataContainer::Sort() {
   KStatus ret = KStatus::SUCCESS;
 
+  // Sort the data in the last Chunk
   ret = SortAndFlushLastChunk(true);
   if (ret != SUCCESS) {
     LOG_ERROR("SortAndFlushLastChunk Failed : %d", ret);
     return ret;
   }
+  // At this point, all data has been read, and the maximum length of
+  // variable-length data for each column is known Control that in the
+  // subsequent Chunk copying process, variable-length data is forced to be
+  // stored as fixed-length (maximum length + 2-byte length flag) to improve
+  // copying efficiency
   write_force_constant_ = true;
+
   if (read_merge_infos_->batch_chunk_indexs_.size() > 1) {
+    // Perform merge sort
     ret = divideAndConquerMerge();
     if (ret != SUCCESS) {
       LOG_ERROR("ConquerMerge Failed : %d", ret);
       return ret;
     }
+
+    // Reset the cache Chunk pointer used for reading
     ReloadReadPtr(MAX_CHUNK_BATCH_NUM, 0);
-    loser_tree_.Init(read_merge_infos_->batch_chunk_indexs_.size(), cache_chunk_readers_, compare_);
     write_merge_infos_->batch_chunk_indexs_.push_back({});
+    loser_tree_.Init(read_merge_infos_->batch_chunk_indexs_.size(), cache_chunk_readers_, compare_);
   }
 
   sorted_count_ = 0;
@@ -307,12 +317,21 @@ KStatus DiskDataContainer::Sort() {
 
 void DiskDataContainer::ReloadReadPtr(
     k_uint32 ptr_pool_size, k_uint32 start_batch_index) {
+  // Load the corresponding Chunks into memory based on the starting Chunk index of the Batch
+  // to be loaded into memory (start_batch_index) and the cache pool size (ptr_pool_size)
+  // For example, if each Batch contains 7 Chunks, then when loading the second Batch into memory,
+  // start_batch_index is 7 and ptr_pool_size is 7, so Chunks 8 to 14 need to be loaded
+
+  // Reset the cache Chunk pointer used for reading
   current_read_pool_size_ = ptr_pool_size;
+  // For pointers that have already been initialized, simply call the Reset function to reset them
   for (k_uint32 i = 0; i < cache_chunk_readers_.size(); ++i) {
     if (cache_chunk_readers_[i].chunk_ptr_ != nullptr) {
       cache_chunk_readers_[i].chunk_ptr_->Reset(read_force_constant_);
     }
   }
+  // If the number of required read cache Chunks is greater than the number of currently initialized ones,
+  // new pointers need to be initialized
   for (k_uint32 i = cache_chunk_readers_.size(); i < ptr_pool_size; ++i) {
     cache_chunk_readers_.push_back(io_file_reader_t());
     cache_chunk_readers_.back().chunk_ptr_ = std::make_unique<SortRowChunk>(
@@ -330,15 +349,17 @@ void DiskDataContainer::ReloadReadPtr(
        ++i) {
     auto chunk_index = read_merge_infos_->batch_chunk_indexs_[i].front();
     read_merge_infos_->batch_chunk_indexs_[i].pop();
+    // Get Chunk information for the specified index
     auto* reader = &cache_chunk_readers_[i % ptr_pool_size];
-
-
     reader->chunk_index_ = chunk_index;
     chunk_info_t *chunk_info = &(read_merge_infos_->chunk_infos_[chunk_index]);
+    // Reset Chunk pointer and set Count
     reader->chunk_ptr_->Reset(read_force_constant_);
     reader->chunk_ptr_->SetCount(chunk_info->count_);
+    // Read Chunk data from disk
     read_merge_infos_->io_cache_handler_.Read(reader->chunk_ptr_->GetData(), chunk_info->offset_,
                                reader->chunk_ptr_->Size());
+    // If there is variable-length data, additional reading from disk is required
     if (!all_constant_) {
       read_merge_infos_->io_cache_handler_.Read(reader->chunk_ptr_->GetNonConstantData(),
                                  chunk_info->offset_ + reader->chunk_ptr_->Size(),
@@ -349,6 +370,8 @@ void DiskDataContainer::ReloadReadPtr(
       }
     }
   }
+  // Check if all Chunk data are of fixed length, and select different
+  // comparison methods based on the presence of variable-length data
   if (read_merge_infos_->batch_chunk_indexs_.size() > 0) {
     all_constant_ = cache_chunk_readers_[0].chunk_ptr_->IsAllConstant();
     all_constant_in_order_col_ =
@@ -363,16 +386,22 @@ void DiskDataContainer::ReloadReadPtr(
 }
 
 KStatus DiskDataContainer::SortAndFlushLastChunk(k_bool force_merge) {
+  // Sort the data in the latest SortRowChunk and flush it to disk
+  // If force_merge is true, force merging at the end
   KStatus ret = KStatus::SUCCESS;
   if (write_cache_chunk_ptr_ == nullptr ||
       write_cache_chunk_ptr_->Count() == 0) {
     return KStatus::SUCCESS;
   }
 
+  // Save information of the current Chunk, including number of rows, total rows, etc.
   auto chunk_index = read_merge_infos_->chunk_infos_.size();
   read_merge_infos_->chunk_infos_.push_back(
       {write_cache_chunk_ptr_->Count(), read_merge_infos_->count_, 0, 0});
+
   if (cache_chunk_readers_.size() <= (chunk_index % MAX_CHUNK_BATCH_NUM)) {
+    // If the number of temporary chunks in memory is less than the index of the chunk within the batch,
+    // need to expand the number of temporary chunks
     cache_chunk_readers_.push_back(io_file_reader_t());
     auto& chunk_reader = cache_chunk_readers_.back();
     chunk_reader.chunk_ptr_ = make_unique<SortRowChunk>(
@@ -383,28 +412,38 @@ KStatus DiskDataContainer::SortAndFlushLastChunk(k_bool force_merge) {
                                     "Insufficient memory");
       return KStatus::FAIL;
     }
+    // Copy and sort data from the temporary write chunk
     chunk_reader.chunk_ptr_->CopyWithSortFrom(write_cache_chunk_ptr_);
     chunk_reader.chunk_index_ = chunk_index;
   } else {
+    // If the number of temporary chunks in memory is greater than or equal to
+    // the index of the chunk within the batch, reset the chunk directly
     auto chunk_reader =
         &cache_chunk_readers_[ chunk_index % MAX_CHUNK_BATCH_NUM];
     chunk_reader->chunk_ptr_->Reset(false);
     chunk_reader->chunk_ptr_->CopyWithSortFrom(write_cache_chunk_ptr_);
     chunk_reader->chunk_index_ = chunk_index;
   }
+  // Update information in read_merge_infos_
   read_merge_infos_->count_ += write_cache_chunk_ptr_->Count();
   read_merge_infos_->batch_chunk_indexs_.push_back({});
 
+  // Two cases require merging and flushing the result to disk here:
+  // 1. Force merge sort, and current chunk index is greater than 0
+  // (usually when all data is read, with a few remaining chunks in the last batch, called by Sort() function)
+  // 2. Current chunk index + 1 equals the number of chunks in a batch, indicating the current batch is full
   if ((force_merge && chunk_index > 0)|| (chunk_index+1) % MAX_CHUNK_BATCH_NUM == 0) {
     k_int64 sorted_count = 0;
     auto batch_start_chunk_index = (chunk_index/MAX_CHUNK_BATCH_NUM)*MAX_CHUNK_BATCH_NUM;
     auto batch_chunk_num = chunk_index % MAX_CHUNK_BATCH_NUM + 1;
+    // Initialize object for saving merge results
     write_merge_infos_->batch_chunk_indexs_.push_back({});
     KStatus ret = UpdateTempCacheChunk();
     if (ret != SUCCESS) {
       return ret;
     }
     loser_tree_.Init(batch_chunk_num, cache_chunk_readers_, compare_);
+    // Perform merging
     for (;;) {
       EEIteratorErrCode code =
           mergeMultipleLists(batch_start_chunk_index, &sorted_count);
@@ -412,8 +451,10 @@ KStatus DiskDataContainer::SortAndFlushLastChunk(k_bool force_merge) {
         return KStatus::FAIL;
       else if (code == EE_END_OF_RECORD)
         break;
+      // When a chunk is full, need to flush to disk
       Write(write_cache_chunk_ptr_);
       // Compute max length for each variable length column
+      // If there is variable-length data, flush it to disk separately
       if (!all_constant_) {
         for (k_int32 i = 0; i < col_num_; i++) {
           if (col_info_[i].is_string) {
@@ -423,6 +464,7 @@ KStatus DiskDataContainer::SortAndFlushLastChunk(k_bool force_merge) {
           }
         }
       }
+      // Refresh temporary chunk
       ret = UpdateTempCacheChunk();
       if (ret != SUCCESS) {
         return ret;
@@ -434,15 +476,23 @@ KStatus DiskDataContainer::SortAndFlushLastChunk(k_bool force_merge) {
 }
 
 EEIteratorErrCode DiskDataContainer::mergeMultipleLists(
-    k_uint32 start_batch_index, k_int64* sorted_count, k_bool with_limit_offset) {
+    k_uint32 start_batch_index, k_int64* sorted_count) {
+  // Perform a merge sort on the current batch
+  // start_batch_index: Starting chunk index of the current batch
+  // sorted_count: Number of rows that have been sorted
   DatumPtr data_ptr = nullptr;
   k_int32 data_index = -1;
+
+  // Continuously get winners through the loser tree until the loser tree is empty
+  // or the number of sorted rows exceeds the chunk capacity
   while (loser_tree_.GetWinner(data_ptr, data_index) ==
              EEIteratorErrCode::EE_OK &&
          *sorted_count < max_output_rows_) {
     k_uint32 batch_index = start_batch_index + data_index;
     KStatus ret = write_cache_chunk_ptr_->Append(
         cache_chunk_readers_[data_index].chunk_ptr_, data_ptr);
+    // If Append fails, return EE_OK, indicating that the current
+    // write_cache_chunk_ptr_ has been sorted
     if (ret != SUCCESS) {
       return EEIteratorErrCode::EE_OK;
     }
@@ -473,6 +523,12 @@ EEIteratorErrCode DiskDataContainer::mergeMultipleLists(
 }
 
 KStatus DiskDataContainer::divideAndConquerMerge() {
+  // This function is used to perform merge sort recursively. Each round of
+  // merging will be flushed to disk once, but it will not perform the last
+  // merge, because the result of the last merge does not need to be flushed to
+  // disk. Instead, the chunk will be directly passed to the upper operator
+  // through the Next() interface. Therefore, the last merge will be performed
+  // in NextChunk()
   ReverseFile();
   if (read_merge_infos_->batch_chunk_indexs_.size() <= (MAX_CHUNK_BATCH_NUM + 1)) {
     return KStatus::SUCCESS;

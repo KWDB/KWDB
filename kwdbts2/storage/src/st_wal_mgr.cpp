@@ -483,7 +483,7 @@ KStatus WALMgr::ReadWALLog(std::vector<LogEntry*>& logs, TS_LSN start_lsn, TS_LS
 
 KStatus WALMgr::ReadWALLogForMtr(uint64_t mtr_trans_id, std::vector<LogEntry*>& logs) {
   file_mgr_->Lock();
-  KStatus status = buffer_mgr_->readWALLogs(logs, mtr_trans_id, meta_.current_lsn, mtr_trans_id);
+  KStatus status = buffer_mgr_->readWALLogs(logs, meta_.checkpoint_lsn, meta_.current_lsn, mtr_trans_id);
   file_mgr_->Unlock();
   if (status == FAIL) {
     LOG_ERROR("Failed to read the WAL log with transaction id %lu", mtr_trans_id)

@@ -118,6 +118,7 @@ k_bool SortRowChunk::Initialize() {
   non_constant_max_row_size_ = 0;
   memset(is_encoded_col_, NOT_ENCODED_COL, col_num_ * sizeof(k_int8));
   sort_row_size_ = 0;
+  // Initialize the fixed length of the column
   for (int i = 0; i < col_num_; ++i) {
     if (col_info_[i].is_string) {
       col_info_[i].fixed_storage_len = col_info_[i].storage_len + STRING_WIDE;
@@ -127,6 +128,7 @@ k_bool SortRowChunk::Initialize() {
       col_info_[i].fixed_storage_len = col_info_[i].storage_len;
     }
   }
+  // Initialize the sorted column information
   for (auto& sort_col : order_info_) {
     is_encoded_col_[sort_col.col_idx] = sort_col.direction;
     col_offset_[sort_col.col_idx] = sort_row_size_;
@@ -333,13 +335,17 @@ KStatus SortRowChunk::Append(SortRowChunkPtr& data_chunk_ptr,
     return FAIL;
   }
   if (all_constant_ && data_chunk_ptr->all_constant_) {
+    // When the columns of both SortRowChunkPtr are of fixed length, copy memory directly
+    if (count_ >= capacity_) {
+      return KStatus::FAIL;
+    }
     // Append Data
     std::memcpy(data_ + count_ * row_size_, input_row_data_ptr, row_size_);
     ++count_;
 
     return SUCCESS;
   } else if (!all_constant_ && !data_chunk_ptr->all_constant_) {
-    if (count_ >= capacity_ && !all_constant_) {
+    if (count_ >= capacity_) {
       KStatus ret = Expand(count_ * 2);
       if (ret != KStatus::SUCCESS) {
         return ret;

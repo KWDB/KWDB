@@ -47,6 +47,12 @@ KStatus WALBufferMgr::init(TS_LSN start_lsn) {
     buffer_[0].reset(last_write_block_no);
   } else {
     buffer_[0] = *(first_block[0]);
+    // On OSS branch, The WAL will reset wal files when the WAL is restarted.
+    // The following code does not need to be added.
+    //    size_t offset_in_block = start_lsn - file_mgr_->GetLSNFromBlockNo(buffer_[0].getBlockNo());
+    //    if (buffer_[0].getDataLen() != offset_in_block) {
+    //      buffer_[0].setDataLen(offset_in_block);
+    //    }
   }
 
   for (auto& block : first_block) {
@@ -118,6 +124,20 @@ KStatus WALBufferMgr::readWALLogs(std::vector<LogEntry*>& log_entries,
     uint64_t x_id = 0;
     current_lsn = current_offset;
     char* read_buf;
+
+    auto current_block = read_queue.front();
+    size_t offset_in_block = current_offset - file_mgr_->GetLSNFromBlockNo(current_block->getBlockNo());
+    if (offset_in_block == LOG_BLOCK_MAX_LOG_SIZE) {
+      read_queue.pop();
+      if (!read_queue.empty()) {
+        current_block = read_queue.front();
+        current_offset = file_mgr_->GetLSNFromBlockNo(current_block->getBlockNo());
+        current_lsn = current_offset;
+      } else {
+        status = FAIL;
+        break;
+      }
+    }
 
     status = readBytes(current_offset, read_queue, 1, read_buf);
     if (status == FAIL) {
@@ -829,8 +849,8 @@ KStatus WALBufferMgr::readUpdateLog(std::vector<LogEntry*>& log_entries, TS_LSN 
       read_offset += sizeof(UpdateLogTagsEntry::offset_);
       memcpy(&length, read_buf + read_offset,
              sizeof(UpdateLogTagsEntry::length_));
-      read_offset += sizeof(DeleteLogTagsEntry::p_tag_len_);
-      memcpy(&old_len, read_buf + read_offset, sizeof(DeleteLogTagsEntry::tag_len_));
+      read_offset += sizeof(UpdateLogTagsEntry::length_);
+      memcpy(&old_len, read_buf + read_offset, sizeof(UpdateLogTagsEntry::old_len_));
       delete[] read_buf;
       read_buf = nullptr;
 
