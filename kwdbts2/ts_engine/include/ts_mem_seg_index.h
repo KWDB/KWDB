@@ -203,7 +203,7 @@ class TsMemSegIndex {
   const uint16_t kBranching_;
   const uint32_t kScaledInverseBranching_;
 
-  Allocator* const allocator_;
+  BaseAllocator* const allocator_;
   TSRowDataComparator const compare_;
   SkipListNode* const head_;
   std::atomic<int> skiplist_max_height_;
@@ -212,7 +212,7 @@ class TsMemSegIndex {
  public:
   static const uint16_t kMaxPossibleHeight = 32;
 
-  explicit TsMemSegIndex(Allocator* allocator, int32_t max_height = 12, int32_t branching_factor = 4);
+  explicit TsMemSegIndex(BaseAllocator* allocator, int32_t max_height = 12, int32_t branching_factor = 4);
 
   char* AllocateKeyValue(size_t key_size);
 

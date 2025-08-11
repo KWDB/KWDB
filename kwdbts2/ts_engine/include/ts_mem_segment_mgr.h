@@ -42,7 +42,7 @@ class TsMemSegment : public TsSegmentBase, public enable_shared_from_this<TsMemS
   std::atomic<uint32_t> intent_row_num_{0};
   std::atomic<uint32_t> written_row_num_{0};
   std::atomic<TsMemSegmentStatus> status_{MEM_SEGMENT_INITED};
-  ConcurrentArena arena_;
+  ConcurrentAllocator arena_;
   TsMemSegIndex skiplist_;
 
   explicit TsMemSegment(int32_t max_height);
