@@ -286,11 +286,12 @@ class TsEntitySegmentBuilder {
 
   KStatus Compact(bool call_by_vacuum, TsVersionUpdate* update);
 
-  KStatus WriteBatch(TSTableID tbl_id, uint32_t entity_id, uint32_t table_version, TS_LSN lsn, TSSlice data);
+  KStatus WriteBatch(TSTableID tbl_id, uint32_t entity_id, uint32_t table_version, TS_LSN lsn,
+                     TSSlice data, TsEntityFlushInfo* info);
 
   KStatus WriteBatchFinish(TsVersionUpdate* update);
 
-  void WriteBatchCancel();
+  void WriteBatchCancel(std::shared_ptr<const TsVGroupVersion> current);
 };
 
 class TsEntitySegmentVacuumer {
