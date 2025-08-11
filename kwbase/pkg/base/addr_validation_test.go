@@ -238,6 +238,9 @@ func TestValidateBrpcAddrs(t *testing.T) {
 		{addrs{":26257", "", ":8080", "", ":5432", ""}, "",
 			addrs{":26257", hostname + ":26257", ":8080", hostname + ":8080", ":5432", hostname + ":5432"},
 			"0.0.0.0:26257"},
+		{addrs{":26257", "", ":8080", "", ":5432", ""}, "",
+			addrs{":26257", hostname + ":26257", ":8080", hostname + ":8080", ":5432", hostname + ":5432"},
+			hostname + ":26257"},
 		// Expected errors.
 		{addrs{":26257", "", ":8080", "", ":5432", ""}, brpcExpectedErr,
 			addrs{":26257", hostname + ":26257", ":8080", hostname + ":8080", ":5432", hostname + ":5432"},

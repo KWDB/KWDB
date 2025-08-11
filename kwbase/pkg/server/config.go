@@ -706,7 +706,7 @@ func (cfg *Config) CreateTsEngine(
 		BufferPoolSize: bufferPoolSize,
 		LogCfg:         cfg.LogConfig,
 		IsSingleNode:   GetSingleNodeModeFlag(cfg.ModeFlag),
-		BRPCAddr:       cfg.AdvertiseBrpcAddr,
+		BRPCAddr:       cfg.BRPCListenAddr,
 		ClusterID:      clusterID,
 	}
 	tsDB, err := tse.NewTsEngine(ctx, tsConfig, stopper)

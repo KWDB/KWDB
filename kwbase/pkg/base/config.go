@@ -195,6 +195,9 @@ type Config struct {
 	// BRPCAddr is the address for AE rpc.
 	BRPCAddr string
 
+	// BRPCListenAddr is the address for AE rpc.
+	BRPCListenAddr string
+
 	// AdvertiseAddr is the address advertised by the server to other nodes
 	// in the cluster.
 	AdvertiseBrpcAddr string

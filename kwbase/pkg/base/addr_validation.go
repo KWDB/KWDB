@@ -110,8 +110,17 @@ func (cfg *Config) ValidateAddrs(ctx context.Context, StartMode string) error {
 			return errors.New(brpcErr)
 		}
 		if err == nil && (host == "" || host == "0.0.0.0") {
-			// when the host of brpc is not specified or it is 0.0.0.0, use advertiseAddr's host
-			cfg.BRPCAddr = advHost + ":" + port
+			// Validate the BRPC address
+			_, brpcPort, err := validateListenAddr(ctx, cfg.BRPCAddr, listenHost)
+			if err != nil {
+				log.Errorf(ctx, "invalid --brpc-addr, addr:%v", cfg.BRPCAddr)
+				return errors.Wrap(err, "invalid --brpc-addr")
+			}
+			cfg.BRPCAddr = net.JoinHostPort(listenHost, brpcPort)
+			cfg.AdvertiseBrpcAddr = net.JoinHostPort(advHost, brpcPort)
+			cfg.BRPCListenAddr = cfg.BRPCAddr
+			log.Infof(ctx, "BRPCAddr:%v, AdvertiseBrpcAddr:%v", cfg.BRPCAddr, cfg.AdvertiseBrpcAddr)
+			return nil
 		}
 		// Validate the BRPC address
 		brpcHost, brpcPort, err := validateListenAddr(ctx, cfg.BRPCAddr, listenHost)
@@ -119,6 +128,7 @@ func (cfg *Config) ValidateAddrs(ctx context.Context, StartMode string) error {
 			return errors.Wrap(err, "invalid --brpc-addr")
 		}
 		cfg.AdvertiseBrpcAddr = net.JoinHostPort(brpcHost, brpcPort)
+		cfg.BRPCListenAddr = cfg.AdvertiseBrpcAddr
 	} else {
 		cfg.AdvertiseBrpcAddr = "127.0.0.1:27257"
 	}
