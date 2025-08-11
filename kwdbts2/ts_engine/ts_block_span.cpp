@@ -429,6 +429,7 @@ void TsBlockSpan::SplitFront(int row_num, shared_ptr<TsBlockSpan>& front_span) {
   // change current span info
   start_row_ += row_num;
   nrow_ -= row_num;
+  has_pre_agg_ = false;
   if (convert_) {
     convert_->SetStartRowIdx(start_row_);
     convert_->SetRowNum(nrow_);
@@ -443,6 +444,7 @@ void TsBlockSpan::SplitBack(int row_num, shared_ptr<TsBlockSpan>& back_span) {
                       convert_ == nullptr ? block_->GetTableVersion() : convert_->version_conv_->scan_version_);
   // change current span info
   nrow_ -= row_num;
+  has_pre_agg_ = false;
   if (convert_) {
     convert_->SetRowNum(nrow_);
   }
