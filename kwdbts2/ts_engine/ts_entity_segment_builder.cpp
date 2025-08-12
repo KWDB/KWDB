@@ -341,7 +341,8 @@ KStatus TsEntityBlockBuilder::GetCompressData(TsEntitySegmentBlockItem& blk_item
 
       AggCalculatorV2 aggCalc(block.buffer.data(), bitmap, DATATYPE(metric_schema_[col_idx - 1].type),
                               metric_schema_[col_idx - 1].size, n_rows_);
-      *reinterpret_cast<bool *>(sum.data()) =  aggCalc.CalcAggForFlush(count, max.data(), min.data(), sum.data() + 1);
+      auto is_not_null = metric_schema_[col_idx - 1].isFlag(AINFO_NOT_NULL);
+      *reinterpret_cast<bool *>(sum.data()) =  aggCalc.CalcAggForFlush(is_not_null, count, max.data(), min.data(), sum.data() + 1);
       if (0 == count) {
         continue;
       }
@@ -746,7 +747,7 @@ KStatus TsEntitySegmentBuilder::Compact(bool call_by_vacuum, TsVersionUpdate* up
 }
 
 KStatus TsEntitySegmentBuilder::WriteBatch(TSTableID tbl_id, uint32_t entity_id, uint32_t table_version,
-                                           TS_LSN lsn, TSSlice block_data) {
+                                           TS_LSN lsn, TSSlice block_data, TsEntityFlushInfo* info) {
   std::unique_lock lock{mutex_};
   LOG_INFO("TsEntitySegmentBuilder WriteBatch begin, root_path: %s, entity_header_file_num: %lu", root_path_.c_str(),
            entity_item_file_number_);
@@ -827,6 +828,10 @@ KStatus TsEntitySegmentBuilder::WriteBatch(TSTableID tbl_id, uint32_t entity_id,
   if (block_item.min_ts < entity_items_[entity_id].min_ts) {
     entity_items_[entity_id].min_ts = block_item.min_ts;
   }
+  info->entity_id = entity_id;
+  info->min_ts = block_item.min_ts;
+  info->max_ts = block_item.max_ts;
+  info->deduplicate_count = block_item.n_rows;
   return KStatus::SUCCESS;
 }
 
@@ -900,7 +905,7 @@ KStatus TsEntitySegmentBuilder::WriteBatchFinish(TsVersionUpdate *update) {
   return KStatus::SUCCESS;
 }
 
-void TsEntitySegmentBuilder::WriteBatchCancel() {
+void TsEntitySegmentBuilder::WriteBatchCancel(std::shared_ptr<const TsVGroupVersion> current) {
   write_batch_finished_ = true;
   std::unique_lock lock{mutex_};
   LOG_INFO("TsEntitySegmentBuilder WriteBatchFinish begin, root_path: %s, entity_header_file_num: %lu", root_path_.c_str(),
@@ -911,6 +916,10 @@ void TsEntitySegmentBuilder::WriteBatchCancel() {
     ReleaseBuilders();
   });
   entity_item_builder_->MarkDelete();
+  auto partition = current->GetPartition(std::get<0>(partition_id_), std::get<1>(partition_id_));
+  for (auto kv : entity_items_) {
+    partition->GetCountManager()->SetEntityCountInValid(kv.first, {kv.second.min_ts, kv.second.max_ts});
+  }
 }
 
 TsEntitySegmentVacuumer::TsEntitySegmentVacuumer(const std::string& root_path, TsVersionManager* version_manager)
