@@ -768,6 +768,9 @@ KStatus TSEngineImpl::CreateCheckpointForTable(kwdbts::kwdbContext_p ctx, TSTabl
 }
 
 KStatus TSEngineImpl::recover(kwdbts::kwdbContext_p ctx) {
+  if (options_.wal_level == WALMode::OFF || options_.use_raft_log_as_wal) {
+    return KStatus::SUCCESS;
+  }
   /*
   *   DDL alter table crash recovery logic, always enabled
   * 1. The log only contains the beginning, indicating that the storage alter has not been performed and the copy has not received a successful message.

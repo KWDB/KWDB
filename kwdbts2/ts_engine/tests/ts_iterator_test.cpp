@@ -475,7 +475,7 @@ TEST_F(TestV2Iterator, mulitEntityDeleteCount) {
   std::string p_key = string((char*)(&p_tag_entity_id), sizeof(p_tag_entity_id));
 
   s = engine_->DeleteData(ctx_, table_id, 0, p_key, {{start_ts + entity_row_num / 2 * interval, INT64_MAX}},
-                          &tmp_count, 0, false);
+                          &tmp_count, 0);
   ASSERT_EQ(s, KStatus::SUCCESS);
   auto tag_table = table_schema_mgr->GetTagTable();
   uint32_t v_group_id, del_entity_id;

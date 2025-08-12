@@ -150,10 +150,7 @@ bool TsStorageIterator::matchesFilterRange(const BlockFilter& filter, SpanValue 
       case DATATYPE::TIMESTAMP:
       case DATATYPE::TIMESTAMP64:
       case DATATYPE::TIMESTAMP64_MICRO:
-      case DATATYPE::TIMESTAMP64_NANO:
-      case DATATYPE::TIMESTAMP64_LSN:
-      case DATATYPE::TIMESTAMP64_LSN_MICRO:
-      case DATATYPE::TIMESTAMP64_LSN_NANO: {
+      case DATATYPE::TIMESTAMP64_NANO: {
         min_res = (min.ival > filter_span.end.ival) ? 1 : ((min.ival < filter_span.end.ival) ? -1 : 0);
         max_res = (max.ival > filter_span.start.ival) ? 1 : ((max.ival < filter_span.start.ival) ? -1 : 0);
         break;

@@ -715,8 +715,7 @@ KStatus TsTableV2Impl::DeleteRangeEntities(kwdbContext_p ctx, const uint64_t& ra
 }
 
 KStatus TsTableV2Impl::DeleteRangeData(kwdbContext_p ctx, uint64_t range_group_id, HashIdSpan& hash_span,
-                                const std::vector<KwTsSpan>& ts_spans, uint64_t* count, uint64_t mtr_id,
-                                bool writeWAL) {
+                                const std::vector<KwTsSpan>& ts_spans, uint64_t* count, uint64_t mtr_id) {
   *count = 0;
   vector<string> primary_tags;
   auto s = getPTagsByHashSpan(ctx, hash_span, &primary_tags);
@@ -727,7 +726,7 @@ KStatus TsTableV2Impl::DeleteRangeData(kwdbContext_p ctx, uint64_t range_group_i
   for (auto p_tags : primary_tags) {
     // Delete the data corresponding to the tag within the time range
     uint64_t entity_del_count = 0;
-    KStatus status = DeleteData(ctx, 1, p_tags, ts_spans,  &entity_del_count, mtr_id, writeWAL);
+    KStatus status = DeleteData(ctx, 1, p_tags, ts_spans,  &entity_del_count, mtr_id);
     if (status == KStatus::FAIL) {
       LOG_ERROR("DeleteRangeData failed, delete entity by primary key %s failed", p_tags.c_str());
       return KStatus::FAIL;
@@ -739,7 +738,7 @@ KStatus TsTableV2Impl::DeleteRangeData(kwdbContext_p ctx, uint64_t range_group_i
 }
 
 KStatus TsTableV2Impl::DeleteData(kwdbContext_p ctx, uint64_t range_group_id, std::string& primary_tag,
-                            const std::vector<KwTsSpan>& ts_spans, uint64_t* count, uint64_t mtr_id, bool writeWAL) {
+                            const std::vector<KwTsSpan>& ts_spans, uint64_t* count, uint64_t mtr_id) {
   ErrorInfo err_info;
   auto tag_table = table_schema_mgr_->GetTagTable();
   uint32_t v_group_id, entity_id;

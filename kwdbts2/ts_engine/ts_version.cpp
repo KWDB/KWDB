@@ -706,7 +706,7 @@ KStatus TsPartitionVersion::NeedVacuumEntitySegment(const std::filesystem::path&
       }
       if (traversed_table.count(entity_item.table_id) == 0) {
         std::shared_ptr<TsTableSchemaManager> tb_schema_mgr{nullptr};
-        s = schema_manager->GetTableSchemaMgr(entity_item.table_id,tb_schema_mgr);
+        s = schema_manager->GetTableSchemaMgr(entity_item.table_id, tb_schema_mgr);
         if (s != SUCCESS) {
           return s;
         }
