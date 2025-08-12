@@ -38,11 +38,11 @@ char* TsMemSegIndex::AllocateKeyValue(size_t key_size) {
   return const_cast<char*>(AllocateNode(key_size, RandomHeight())->Key());
 }
 
-SkipListNode* TsMemSegIndex::AllocateNode(size_t key_size, int height) {
-  auto prefix = sizeof(std::atomic<SkipListNode*>) * (height - 1);
+SkipListNode* TsMemSegIndex::AllocateNode(size_t key_size, int sl_height) {
+  auto prefix = sizeof(std::atomic<SkipListNode*>) * (sl_height - 1);
   char* raw = allocator_->AllocateAligned(prefix + sizeof(SkipListNode) + key_size);
   SkipListNode* x = reinterpret_cast<SkipListNode*>(raw + prefix);
-  x->StashHeight(height);
+  x->StashHeight(sl_height);
   return x;
 }
 
@@ -81,14 +81,14 @@ bool TsMemSegIndex::InsertWithCAS(const char* key) {
   cur_splice.next_ = next;
   SkipListNode* x = reinterpret_cast<SkipListNode*>(const_cast<char*>(key)) - 1;
   const TSMemSegRowData* key_decoded = compare_.DecodeKeyValue(key);
-  int height = x->UnstashHeight();
-  assert(height >= 1 && height <= kMaxHeight_);
+  int sl_height = x->UnstashHeight();
+  assert(sl_height >= 1 && sl_height <= kMaxHeight_);
 
   int max_height = skiplist_max_height_.load(std::memory_order_relaxed);
-  while (height > max_height) {
-    if (skiplist_max_height_.compare_exchange_weak(max_height, height)) {
+  while (sl_height > max_height) {
+    if (skiplist_max_height_.compare_exchange_weak(max_height, sl_height)) {
       // successfully updated it
-      max_height = height;
+      max_height = sl_height;
       break;
     }
   }
@@ -124,7 +124,7 @@ bool TsMemSegIndex::InsertWithCAS(const char* key) {
 
   bool splice_is_valid = true;
   {
-    for (int i = 0; i < height; ++i) {
+    for (int i = 0; i < sl_height; ++i) {
       while (true) {
         // Checking for duplicate keys on the level 0 is sufficient
         if (UNLIKELY(i == 0 && cur_splice.next_[i] != nullptr &&
@@ -146,17 +146,8 @@ bool TsMemSegIndex::InsertWithCAS(const char* key) {
           // success
           break;
         }
-        // CAS failed, we need to recompute prev and next. It is unlikely
-        // to be helpful to try to use a different level as we redo the
-        // search, because it should be unlikely that lots of nodes have
-        // been inserted between prev[i] and next[i]. No point in using
-        // next[i] as the after hint, because we know it is stale.
         FindSpliceForLevel<false>(key_decoded, cur_splice.prev_[i], nullptr, i,
                                   &cur_splice.prev_[i], &cur_splice.next_[i]);
-
-        // Since we've narrowed the bracket for level i, we might have
-        // violated the SkipListSplice constraint between i and i-1.  Make sure
-        // we recompute the whole thing next time.
         if (i > 0) {
           splice_is_valid = false;
         }
@@ -164,7 +155,7 @@ bool TsMemSegIndex::InsertWithCAS(const char* key) {
     }
   }
   if (splice_is_valid) {
-    for (int i = 0; i < height; ++i) {
+    for (int i = 0; i < sl_height; ++i) {
       cur_splice.prev_[i] = x;
     }
     assert(cur_splice.prev_[cur_splice.height_] == head_);
@@ -190,8 +181,8 @@ bool TsMemSegIndex::InsertWithCAS(const char* key) {
 }
 
 void TsMemSegIndex::RecomputeSpliceLevels(const TSMemSegRowData*& key,
-                                                       SkipListSplice* splice,
-                                                       int recompute_level) {
+                                          SkipListSplice* splice,
+                                          int recompute_level) {
   assert(recompute_level > 0);
   assert(recompute_level <= splice->height_);
   for (int i = recompute_level - 1; i >= 0; --i) {
@@ -211,15 +202,15 @@ bool TsMemSegIndex::Contains(const char* key) const {
 
 int TsMemSegIndex::RandomHeight() {
   auto rnd = Random::GetTLSInstance();
-  int height = 1;
-  while (height < kMaxHeight_ && height < kMaxPossibleHeight &&
+  int sl_height = 1;
+  while (sl_height < kMaxHeight_ && sl_height < kMaxPossibleHeight &&
          rnd->Next() < kScaledInverseBranching_) {
-    height++;
+    sl_height++;
   }
-  assert(height > 0);
-  assert(height <= kMaxHeight_);
-  assert(height <= kMaxPossibleHeight);
-  return height;
+  assert(sl_height > 0);
+  assert(sl_height <= kMaxHeight_);
+  assert(sl_height <= kMaxPossibleHeight);
+  return sl_height;
 }
 
 bool TsMemSegIndex::KeyIsAfterNode(const char* key, SkipListNode* n) const {
@@ -247,8 +238,7 @@ SkipListNode* TsMemSegIndex::FindGreaterOrEqual(const char* key) const {
     // Make sure we haven't overshot during our search
     assert(x == head_ || KeyIsAfterNode(key_decoded, x));
     int cmp = (next == nullptr || next == last_bigger)
-                  ? 1
-                  : compare_(next->Key(), key_decoded);
+                  ? 1 : compare_(next->Key(), key_decoded);
     if (cmp == 0 || (cmp > 0 && level == 0)) {
       return next;
     } else if (cmp < 0) {
