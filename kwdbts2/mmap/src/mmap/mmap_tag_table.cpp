@@ -426,6 +426,7 @@ int TagTable::DeleteTagRecord(const char *primary_tags, int len, ErrorInfo& err_
     LOG_ERROR("Tag table version[%u] doesnot exist.", ret.first);
     return -1;
   }
+  tag_part_table->startRead();
   tag_part_table->NtagIndexRWMutexSLock();
   for (auto ntag_index : tag_part_table->getMmapNTagHashIndex()) {
     // ntag_index->getTagColID();
@@ -457,9 +458,7 @@ int TagTable::DeleteTagRecord(const char *primary_tags, int len, ErrorInfo& err_
     }
     result_scan_tag_infos = tag_version_object->getIncludeDroppedSchemaInfos();
     kwdbts::ResultSet res;
-    tag_part_table->startRead();
     tag_part_table->getColumnsByRownum(ret.second, src_scan_tags_idx, result_scan_tag_infos, &res);
-    tag_part_table->stopRead();
 
     std::vector<void*> tag_cols;
     for (int col = 0; col < res.data.size(); col++) {
@@ -476,6 +475,7 @@ int TagTable::DeleteTagRecord(const char *primary_tags, int len, ErrorInfo& err_
     ntag_index->remove(ret.second, ret.first, index_key, ntag_index->keySize());
   }
   tag_part_table->NtagIndexRWMutexUnLock();
+  tag_part_table->stopRead();
 
   // 2. delete mark
   uint32_t entity_id{0}, sub_group_id{0};
