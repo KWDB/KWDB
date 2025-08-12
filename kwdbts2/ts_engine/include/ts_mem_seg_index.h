@@ -214,48 +214,48 @@ class TsMemSegIndex {
 
   explicit TsMemSegIndex(BaseAllocator* allocator, int32_t max_height = 12, int32_t branching_factor = 4);
 
-  char* AllocateKeyValue(size_t key_size);
+  inline char* AllocateKeyValue(size_t key_size);
 
-  SkipListSplice* AllocateSkiplistSplice();
+  inline SkipListSplice* AllocateSkiplistSplice();
 
-  bool InsertWithCAS(const char* key);
+  inline bool InsertWithCAS(const char* key);
 
-  bool InsertRowData(const TSMemSegRowData& row, uint32_t row_idx);
+  inline bool InsertRowData(const TSMemSegRowData& row, uint32_t row_idx);
 
   inline TSMemSegRowData* ParseKey(const char* key) {
     return compare_.DecodeKeyValue(key);
   }
 
-  bool Contains(const char* key) const;
+  inline bool Contains(const char* key) const;
 
   inline int GetMaxHeight() const {
     return skiplist_max_height_.load(std::memory_order_relaxed);
   }
 
-  int RandomHeight();
+  inline int RandomHeight();
 
-  SkipListNode* AllocateNode(size_t key_size, int height);
+  inline SkipListNode* AllocateNode(size_t key_size, int height);
 
-  bool Equal(const char* a, const char* b) const {
+  inline bool Equal(const char* a, const char* b) const {
     return (compare_(a, b) == 0);
   }
 
-  bool LessThan(const char* a, const char* b) const {
+  inline bool LessThan(const char* a, const char* b) const {
     return (compare_(a, b) < 0);
   }
 
   // Return true if key is greater than the data stored in "n".  Null n
   // is considered infinite.  n should not be head_.
-  bool KeyIsAfterNode(const char* key, SkipListNode* n) const;
-  bool KeyIsAfterNode(const TSMemSegRowData*& key, SkipListNode* n) const;
+  inline bool KeyIsAfterNode(const char* key, SkipListNode* n) const;
+  inline bool KeyIsAfterNode(const TSMemSegRowData*& key, SkipListNode* n) const;
 
   SkipListNode* FindGreaterOrEqual(const char* key) const;
 
   template <bool prefetch_before>
-  void FindSpliceForLevel(const TSMemSegRowData*& key, SkipListNode* before, SkipListNode* after, int level,
+  inline void FindSpliceForLevel(const TSMemSegRowData*& key, SkipListNode* before, SkipListNode* after, int level,
                           SkipListNode** out_prev, SkipListNode** out_next);
 
-  void RecomputeSpliceLevels(const TSMemSegRowData*& key, SkipListSplice* splice,
+  inline void RecomputeSpliceLevels(const TSMemSegRowData*& key, SkipListSplice* splice,
                              int recompute_level);
 
   friend SkiplistIterator;
