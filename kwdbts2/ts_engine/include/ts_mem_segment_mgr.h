@@ -42,7 +42,6 @@ class TsMemSegment : public TsSegmentBase, public enable_shared_from_this<TsMemS
   std::atomic<uint32_t> intent_row_num_{0};
   std::atomic<uint32_t> written_row_num_{0};
   std::atomic<TsMemSegmentStatus> status_{MEM_SEGMENT_INITED};
-  ConcurrentAllocator arena_;
   TsMemSegIndex skiplist_;
 
   explicit TsMemSegment(int32_t max_height);
@@ -56,7 +55,7 @@ class TsMemSegment : public TsSegmentBase, public enable_shared_from_this<TsMemS
 
   void Traversal(std::function<bool(TSMemSegRowData* row)> func, bool waiting_done = false);
 
-  size_t Size() { return arena_.MemoryAllocatedBytes(); }
+  size_t Size() { return skiplist_.GetAllocator().MemoryAllocatedBytes(); }
 
   uint32_t GetRowNum() { return intent_row_num_.load(); }
 
@@ -70,7 +69,7 @@ class TsMemSegment : public TsSegmentBase, public enable_shared_from_this<TsMemS
 
   bool GetAllEntityRows(std::list<TSMemSegRowData*>* rows);
 
-  inline uint32_t GetMemSegmentSize() { return arena_.MemoryAllocatedBytes(); }
+  inline uint32_t GetMemSegmentSize() { return skiplist_.GetAllocator().MemoryAllocatedBytes(); }
 
   inline bool SetImm() {
     TsMemSegmentStatus tmp = MEM_SEGMENT_INITED;

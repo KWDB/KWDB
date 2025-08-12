@@ -16,11 +16,9 @@
 
 namespace kwdbts {
 
-static constexpr size_t ALIGNED_SIZE = alignof(max_align_t);
-static_assert((ALIGNED_SIZE & (ALIGNED_SIZE - 1)) == 0, "Aligned size must be pow of 2");
-
 int GetCPUID() {
-#if defined(__x86_64__) && (__GNUC__ > 2 || (__GNUC__ == 2 && __GNUC_MINOR__ >= 22))
+#if defined(__x86_64__) &&                                                     \
+    (__GNUC__ > 2 || (__GNUC__ == 2 && __GNUC_MINOR__ >= 22))
   return sched_getcpu();
 #elif defined(__x86_64__) || defined(__i386__)
   unsigned eax, ebx = 0, ecx, edx;
@@ -34,8 +32,8 @@ int GetCPUID() {
 }
 
 static size_t FixedBlockSize(size_t size) {
-  size = std::max(Allocator::MIN_BLOCK_SIZE, size);
-  size = std::min(Allocator::MAX_BLOCK_SIZE, size);
+  size = std::max(MIN_BLOCK_SIZE, size);
+  size = std::min(MAX_BLOCK_SIZE, size);
   if ((size & (ALIGNED_SIZE - 1)) != 0) {
     size &= ~(ALIGNED_SIZE - 1);
     size += ALIGNED_SIZE;
@@ -43,69 +41,61 @@ static size_t FixedBlockSize(size_t size) {
   return size;
 }
 
-Allocator::Allocator(size_t size) : block_size_(FixedBlockSize(size)) {
-  assert(block_size_ >= MIN_BLOCK_SIZE && block_size_ <= MAX_BLOCK_SIZE && (block_size_ & (ALIGNED_SIZE - 1)) == 0);
+static constexpr size_t MAX_SHARD_BLOCK_SIZE = 1 << 17;
+__thread size_t ConcurrentAllocator::tls_cpuid = 0;
+
+ConcurrentAllocator::ConcurrentAllocator(size_t size) // NOLINT
+    : shard_block_size_(std::min(MAX_SHARD_BLOCK_SIZE, size / 8)),
+      block_size_(FixedBlockSize(size)) {
+  assert(block_size_ >= MIN_BLOCK_SIZE && block_size_ <= MAX_BLOCK_SIZE &&
+         (block_size_ & (ALIGNED_SIZE - 1)) == 0);
   alloc_bytes_remaining_ = sizeof(internal_storage_);
   blocks_memory_ += alloc_bytes_remaining_;
   aligned_alloc_ptr_ = internal_storage_;
   unaligned_alloc_ptr_ = internal_storage_ + alloc_bytes_remaining_;
+  Update();
 }
 
-Allocator::~Allocator() {
+ConcurrentAllocator::~ConcurrentAllocator() {
   for (const auto &block : blocks_) {
     delete[] block;
   }
 }
 
-char *Allocator::AllocateFallback(size_t bytes, bool aligned) {
-  if (bytes > block_size_ / 4) {
-    ++irregular_block_num_;
-    return AllocateNewBlock(bytes);
-  }
-
-  auto block_head = AllocateNewBlock(block_size_);
-  alloc_bytes_remaining_ = block_size_ - bytes;
-
-  if (aligned) {
-    aligned_alloc_ptr_ = block_head + bytes;
-    unaligned_alloc_ptr_ = block_head + block_size_;
-    return block_head;
-  }
-  aligned_alloc_ptr_ = block_head;
-  unaligned_alloc_ptr_ = block_head + block_size_ - bytes;
-  return unaligned_alloc_ptr_;
-}
-
-char *Allocator::AllocateAligned(size_t bytes) {
-  size_t mod = reinterpret_cast<uintptr_t>(aligned_alloc_ptr_) & (ALIGNED_SIZE - 1);
+char *ConcurrentAllocator::AllocateAlignedUnsafe(size_t size) {
+  size_t mod =
+      reinterpret_cast<uintptr_t>(aligned_alloc_ptr_) & (ALIGNED_SIZE - 1);
   size_t skip = mod == 0 ? 0 : ALIGNED_SIZE - mod;
-  size_t needed = bytes + skip;
+  size_t needed = size + skip;
   char *result;
   if (needed <= alloc_bytes_remaining_) {
     result = aligned_alloc_ptr_ + skip;
     aligned_alloc_ptr_ += needed;
     alloc_bytes_remaining_ -= needed;
   } else {
-    result = AllocateFallback(bytes, true);
+    result = AllocateInternal(size, true);
   }
   assert((reinterpret_cast<uintptr_t>(result) & (ALIGNED_SIZE - 1)) == 0);
   return result;
 }
 
-char *Allocator::AllocateNewBlock(size_t block_bytes) {
-  blocks_.emplace_back(nullptr);
-  auto block = new char[block_bytes];
-  blocks_memory_ += block_bytes;
-  blocks_.back() = block;
-  return block;
-}
+char *ConcurrentAllocator::AllocateInternal(size_t size, bool aligned) {
+  if (size > block_size_ / 4) {
+    ++irregular_block_num_;
+    return AllocateBlock(size);
+  }
 
-static constexpr size_t MAX_SHARD_BLOCK_SIZE = 1 << 17;
-__thread size_t ConcurrentAllocator::tls_cpuid = 0;
+  auto block_head = AllocateBlock(block_size_);
+  alloc_bytes_remaining_ = block_size_ - size;
 
-ConcurrentAllocator::ConcurrentAllocator(size_t size) // NOLINT
-    : shard_block_size_(std::min(MAX_SHARD_BLOCK_SIZE, size / 8)), alloc_(size) {
-  Update();
+  if (aligned) {
+    aligned_alloc_ptr_ = block_head + size;
+    unaligned_alloc_ptr_ = block_head + block_size_;
+    return block_head;
+  }
+  aligned_alloc_ptr_ = block_head;
+  unaligned_alloc_ptr_ = block_head + block_size_ - size;
+  return unaligned_alloc_ptr_;
 }
 
 ConcurrentAllocator::Shard *ConcurrentAllocator::Repick() {

@@ -15,11 +15,11 @@ namespace kwdbts {
 
 #define PREFETCH(addr, rw, locality) __builtin_prefetch(addr, rw, locality)
 
-TsMemSegIndex::TsMemSegIndex(BaseAllocator* allocator, int32_t max_height, int32_t branching_factor)
+TsMemSegIndex::TsMemSegIndex(int32_t max_height, int32_t branching_factor)
     : kMaxHeight_(static_cast<uint16_t>(max_height)),
       kBranching_(static_cast<uint16_t>(branching_factor)),
       kScaledInverseBranching_((Random::MAX_NEXT + 1) / kBranching_),
-      allocator_(allocator),
+      allocator_(),
       compare_(),
       head_(AllocateNode(0, max_height)),
       skiplist_max_height_(1),
@@ -40,7 +40,7 @@ char* TsMemSegIndex::AllocateKeyValue(size_t key_size) {
 
 SkipListNode* TsMemSegIndex::AllocateNode(size_t key_size, int sl_height) {
   auto prefix = sizeof(std::atomic<SkipListNode*>) * (sl_height - 1);
-  char* raw = allocator_->AllocateAligned(prefix + sizeof(SkipListNode) + key_size);
+  char* raw = allocator_.AllocateAligned(prefix + sizeof(SkipListNode) + key_size);
   SkipListNode* x = reinterpret_cast<SkipListNode*>(raw + prefix);
   x->StashHeight(sl_height);
   return x;
@@ -49,7 +49,7 @@ SkipListNode* TsMemSegIndex::AllocateNode(size_t key_size, int sl_height) {
 SkipListSplice* TsMemSegIndex::AllocateSkiplistSplice() {
   // size of prev_ and next_
   size_t array_size = sizeof(SkipListNode*) * (kMaxHeight_ + 1);
-  char* raw = allocator_->AllocateAligned(sizeof(SkipListSplice) + array_size * 2);
+  char* raw = allocator_.AllocateAligned(sizeof(SkipListSplice) + array_size * 2);
   SkipListSplice* splice = reinterpret_cast<SkipListSplice*>(raw);
   splice->height_ = 0;
   splice->prev_ = reinterpret_cast<SkipListNode**>(raw + sizeof(SkipListSplice));

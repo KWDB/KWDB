@@ -80,76 +80,15 @@ public:
   }
 };
 
-class BaseAllocator {
-public:
-  virtual ~BaseAllocator() = default;
-  virtual char *Allocate(size_t size) = 0;
-  virtual char *AllocateAligned(size_t size) = 0;
-  virtual size_t BlockSize() const = 0; // NOLINT
-};
-
-class Allocator final : public BaseAllocator {
-public:
-  static constexpr size_t INTERNAL_SIZE = 1u << 11;
-  static constexpr size_t MIN_BLOCK_SIZE = 1u << 17;
-  static constexpr size_t MAX_BLOCK_SIZE = 1u << 31;
-
-  explicit Allocator(size_t size = MIN_BLOCK_SIZE);
-  ~Allocator() override;
-
-  Allocator(const Allocator &) = delete;
-  void operator=(const Allocator &) = delete;
-
-  char *Allocate(size_t bytes) override;
-  char *AllocateAligned(size_t bytes) override;
-
-  auto ApproximateMemoryUsage() const { // NOLINT
-    return blocks_memory_ + blocks_.capacity() * sizeof(char *) - alloc_bytes_remaining_;
-  }
-
-  size_t MemoryAllocatedBytes() const { return blocks_memory_; }
-  size_t AllocatedAndUnused() const { return alloc_bytes_remaining_; }
-  size_t IrregularBlockNum() const { return irregular_block_num_; }
-  size_t BlockSize() const override { return block_size_; }
-
-  bool IsInInlineBlock() const { return blocks_.empty(); }
-
-private:
-  char *AllocateFallback(size_t bytes, bool aligned);
-  char *AllocateNewBlock(size_t block_bytes);
-
-private:
-  char internal_storage_[INTERNAL_SIZE] __attribute__((__aligned__(alignof(max_align_t)))){};
-  const size_t block_size_;
-  std::vector<char *> blocks_;
-  size_t irregular_block_num_ = 0;
-
-  char *unaligned_alloc_ptr_ = nullptr;
-  char *aligned_alloc_ptr_ = nullptr;
-  size_t alloc_bytes_remaining_ = 0;
-  size_t blocks_memory_ = 0;
-};
-
-inline char *Allocator::Allocate(size_t bytes) {
-  assert(bytes > 0);
-  if (bytes <= alloc_bytes_remaining_) {
-    unaligned_alloc_ptr_ -= bytes;
-    alloc_bytes_remaining_ -= bytes;
-    return unaligned_alloc_ptr_;
-  }
-  return AllocateFallback(bytes, false);
-}
-
 class SpinMutex {
 public:
   SpinMutex() : locked_(false) {}
 
   bool try_lock() {
     auto locked = locked_.load(std::memory_order_relaxed);
-    return !locked &&
-           locked_.compare_exchange_weak(locked, true,
-                                         std::memory_order_acquire,
-                                         std::memory_order_relaxed);
+    return !locked && locked_.compare_exchange_weak(locked, true,
+                                                    std::memory_order_acquire,
+                                                    std::memory_order_relaxed);
   }
 
   void lock() {
@@ -174,9 +113,9 @@ template <typename T> class TLSArray {
 public:
   TLSArray();
 
-  auto Size() const { return 1ul << size_shift_; }  // NOLINT
+  auto Size() const { return 1ul << size_shift_; }     // NOLINT
   auto Access() const { return AccessElementAndIndex().first; } // NOLINT
-  auto AccessAtCore(size_t core_idx) const {  // NOLINT
+  auto AccessAtCore(size_t core_idx) const {                    // NOLINT
     assert(core_idx < (1ul << size_shift_));
     return &data_[core_idx];
   }
@@ -211,32 +150,48 @@ std::pair<T *, size_t> TLSArray<T>::AccessElementAndIndex() const {
   return {AccessAtCore(idx), idx};
 }
 
-class ConcurrentAllocator final : public BaseAllocator {
+static constexpr size_t INTERNAL_SIZE = 1u << 11;
+static constexpr size_t MIN_BLOCK_SIZE = 1u << 17;
+static constexpr size_t MAX_BLOCK_SIZE = 1u << 31;
+static constexpr size_t ALIGNED_SIZE = alignof(max_align_t);
+static_assert((ALIGNED_SIZE & (ALIGNED_SIZE - 1)) == 0,
+              "Aligned size must be pow of 2");
+
+class ConcurrentAllocator final {
 public:
-  explicit ConcurrentAllocator(size_t size = Allocator::MIN_BLOCK_SIZE);
+  explicit ConcurrentAllocator(size_t size = MIN_BLOCK_SIZE);
+  ~ConcurrentAllocator();
 
   // NOCOPY
   ConcurrentAllocator(const ConcurrentAllocator &) = delete;
   ConcurrentAllocator &operator=(const ConcurrentAllocator &) = delete;
 
-  char *Allocate(size_t bytes) override {
-    return AllocateImpl(bytes, false,
-                        [=] { return alloc_.Allocate(bytes); });
+  char *Allocate(size_t bytes) {
+    return AllocateImpl(bytes, false, [=] {
+      assert(bytes > 0);
+      if (bytes <= alloc_bytes_remaining_) {
+        unaligned_alloc_ptr_ -= bytes;
+        alloc_bytes_remaining_ -= bytes;
+        return unaligned_alloc_ptr_;
+      }
+      return AllocateInternal(bytes, false);
+    });
   }
 
-  char *AllocateAligned(size_t bytes) override {
+  char *AllocateAligned(size_t bytes) {
     size_t rounded_up = ((bytes - 1) | (sizeof(void *) - 1)) + 1;
-    assert(rounded_up >= bytes && rounded_up < bytes + sizeof(void *) && rounded_up % sizeof(void *) == 0);
+    assert(rounded_up >= bytes && rounded_up < bytes + sizeof(void *) &&
+           rounded_up % sizeof(void *) == 0);
 
-    return AllocateImpl(rounded_up, false, [=] {
-      return alloc_.AllocateAligned(rounded_up);
-    });
+    return AllocateImpl(rounded_up, false,
+                        [=] { return AllocateAlignedUnsafe(rounded_up); });
   }
 
   size_t ApproximateMemoryUsage() const {
     std::unique_lock lock(alloc_mutex_, std::defer_lock);
     lock.lock();
-    return alloc_.ApproximateMemoryUsage() - ShardAllocatedAndUnused();
+    return blocks_memory_ + blocks_.capacity() * sizeof(char *) -
+           alloc_bytes_remaining_ - ShardAllocatedAndUnused();
   }
 
   size_t MemoryAllocatedBytes() const {
@@ -252,7 +207,9 @@ public:
     return irregular_block_count_.load(std::memory_order_relaxed);
   }
 
-  size_t BlockSize() const override { return alloc_.BlockSize(); }
+  size_t BlockSize() const { return block_size_; }
+
+  bool IsInInlineBlock() const { return blocks_.empty(); }
 
 private:
   struct Shard {
@@ -265,25 +222,40 @@ private:
   };
 
   static __thread size_t tls_cpuid;
-  char padding0[56];
 
   size_t shard_block_size_;
   TLSArray<Shard> shards_;
 
-  Allocator alloc_;
+  // unsafe alloc
+  const size_t block_size_;
+  std::vector<char *> blocks_;
+  size_t irregular_block_num_ = 0;
+  char internal_storage_[INTERNAL_SIZE]
+      __attribute__((__aligned__(alignof(max_align_t)))){};
+
+  char *unaligned_alloc_ptr_ = nullptr;
+  char *aligned_alloc_ptr_ = nullptr;
+  size_t alloc_bytes_remaining_ = 0;
+  size_t blocks_memory_ = 0;
+
+  // concurrent
   mutable SpinMutex alloc_mutex_;
   std::atomic<size_t> alloc_allocated_and_unused_;
-  std::atomic<size_t> memory_allocated_;  // bytes
+  std::atomic<size_t> memory_allocated_; // bytes
   std::atomic<size_t> irregular_block_count_;
 
-  char padding1[56];
+  // unsafe
+  char *AllocateAlignedUnsafe(size_t size);
+  char *AllocateInternal(size_t size, bool aligned);
+  char *AllocateBlock(size_t block_size);
 
   Shard *Repick();
 
   size_t ShardAllocatedAndUnused() const {
     size_t total = 0;
     for (size_t i = 0; i < shards_.Size(); ++i) {
-      total += shards_.AccessAtCore(i)->allocated_and_unused_.load(std::memory_order_relaxed);
+      total += shards_.AccessAtCore(i)->allocated_and_unused_.load(
+          std::memory_order_relaxed);
     }
     return total;
   }
@@ -293,8 +265,10 @@ private:
     size_t cpu;
     std::unique_lock alloc_lock(alloc_mutex_, std::defer_lock);
     if (bytes > shard_block_size_ / 4 || force_arena ||
-        ((cpu = tls_cpuid) == 0 && !shards_.AccessAtCore(0)->allocated_and_unused_.load(std::memory_order_relaxed) &&
-          alloc_lock.try_lock())) {
+        ((cpu = tls_cpuid) == 0 &&
+         !shards_.AccessAtCore(0)->allocated_and_unused_.load(
+             std::memory_order_relaxed) &&
+         alloc_lock.try_lock())) {
       if (!alloc_lock.owns_lock()) {
         alloc_lock.lock();
       }
@@ -317,14 +291,16 @@ private:
       auto exact = alloc_allocated_and_unused_.load(std::memory_order_relaxed);
       assert(exact == alloc_.AllocatedAndUnused());
 
-      if (exact >= bytes && alloc_.IsInInlineBlock()) {
+      if (exact >= bytes && IsInInlineBlock()) {
         auto rv = func();
         Update();
         return rv;
       }
 
-      avail = exact >= shard_block_size_ / 2 && exact < shard_block_size_ * 2 ? exact : shard_block_size_;
-      s->free_begin_ = alloc_.AllocateAligned(avail);
+      avail = exact >= shard_block_size_ / 2 && exact < shard_block_size_ * 2
+                  ? exact
+                  : shard_block_size_;
+      s->free_begin_ = AllocateAlignedUnsafe(avail);
       Update();
     }
     s->allocated_and_unused_.store(avail - bytes, std::memory_order_relaxed);
@@ -340,10 +316,20 @@ private:
   }
 
   void Update() {
-    alloc_allocated_and_unused_.store(alloc_.AllocatedAndUnused(), std::memory_order_relaxed);
-    memory_allocated_.store(alloc_.MemoryAllocatedBytes(), std::memory_order_relaxed);
-    irregular_block_count_.store(alloc_.IrregularBlockNum(), std::memory_order_relaxed);
+    alloc_allocated_and_unused_.store(alloc_bytes_remaining_,
+                                      std::memory_order_relaxed);
+    memory_allocated_.store(blocks_memory_, std::memory_order_relaxed);
+    irregular_block_count_.store(irregular_block_num_,
+                                 std::memory_order_relaxed);
   }
 };
+
+inline char *ConcurrentAllocator::AllocateBlock(size_t block_size) {
+  blocks_.emplace_back(nullptr);
+  auto block = new char[block_size];
+  blocks_memory_ += block_size;
+  blocks_.back() = block;
+  return block;
+}
 
 } // namespace kwdbts

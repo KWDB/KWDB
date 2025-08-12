@@ -22,7 +22,7 @@
 
 namespace kwdbts {
 
-TsMemSegment::TsMemSegment(int32_t height) : skiplist_(&arena_, height) {}
+TsMemSegment::TsMemSegment(int32_t height) : skiplist_(height) {}
 
 TsMemSegmentManager::TsMemSegmentManager(TsVGroup* vgroup)
     : vgroup_(vgroup), cur_mem_seg_(TsMemSegment::Create(EngineOptions::mem_segment_max_height)) {
