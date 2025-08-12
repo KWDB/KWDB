@@ -200,7 +200,7 @@ KStatus TsStorageIteratorV2Impl::getBlockSpanMinValue(std::shared_ptr<TsBlockSpa
   }
   min = nullptr;
   uint32_t row_num = block_span->GetRowNum();
-  int32_t size = col_id == 0 ? 16 : block_span->GetColSize(col_id);
+  int32_t size = block_span->GetColSize(col_id);
   for (int row_idx = 0; row_idx < row_num; ++row_idx) {
     if (bitmap[row_idx] != DataFlags::kValid) {
       continue;
@@ -227,7 +227,7 @@ KStatus TsStorageIteratorV2Impl::getBlockSpanMaxValue(std::shared_ptr<TsBlockSpa
   }
   max = nullptr;
   uint32_t row_num = block_span->GetRowNum();
-  int32_t size = col_id == 0 ? 16 : block_span->GetColSize(col_id);
+  int32_t size = block_span->GetColSize(col_id);
   for (int row_idx = 0; row_idx < row_num; ++row_idx) {
     if (bitmap[row_idx] != DataFlags::kValid) {
       continue;
