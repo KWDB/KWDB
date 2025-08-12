@@ -102,6 +102,8 @@ void TsVersionManager::AddPartition(DatabaseID dbid, timestamp64 ptime) {
 
     partition->del_info_ = std::make_shared<TsDelItemManager>(partition_dir);
     partition->del_info_->Open();
+    partition->count_info_ = std::make_shared<TsPartitionEntityCountManager>(partition_dir);
+    partition->count_info_->Open();
   }
   new_version->partitions_.insert({partition_id, std::move(partition)});
 
@@ -309,6 +311,8 @@ KStatus TsVersionManager::ApplyUpdate(TsVersionUpdate *update) {
       auto partition = std::unique_ptr<TsPartitionVersion>(new TsPartitionVersion{p});
       partition->del_info_ = std::make_shared<TsDelItemManager>(root_path_ / PartitionDirName(p));
       partition->del_info_->Open();
+      partition->count_info_ = std::make_shared<TsPartitionEntityCountManager>(root_path_ / PartitionDirName(p));
+      partition->count_info_->Open();
       new_vgroup_version->partitions_.insert({p, std::move(partition)});
     }
   }
@@ -462,25 +466,12 @@ std::map<uint32_t, std::vector<std::shared_ptr<const TsPartitionVersion>>> TsVGr
 std::vector<std::shared_ptr<TsLastSegment>> TsPartitionVersion::GetCompactLastSegments() const {
   // TODO(zzr): There is room for optimization
   // Maybe we can pre-compute which lastsegments can be compacted, and just return them.
-  if (last_segments_.size() == 0) {
-    return {};
-  }
-
-  std::vector<std::shared_ptr<TsLastSegment>> tmp = last_segments_;
-  std::sort(tmp.begin(), tmp.end(),
-            [](const std::shared_ptr<TsLastSegment> &a, const std::shared_ptr<TsLastSegment> &b) {
-              return a->GetFileSize() > b->GetFileSize();
-            });
-  auto end = std::min(tmp.end(), tmp.begin() + EngineOptions::max_compact_num + 1);
-  size_t following_file_size =
-      std::accumulate(tmp.begin() + 1, end, 0,
-                      [](size_t sum, const std::shared_ptr<TsLastSegment> &a) { return sum + a->GetFileSize(); });
-
+  size_t compact_num = std::min<size_t>(last_segments_.size(), EngineOptions::max_compact_num);
   std::vector<std::shared_ptr<TsLastSegment>> result;
-  if (following_file_size > tmp.front()->GetFileSize()) {
-    result.assign(tmp.begin(), end);
-  } else {
-    result.assign(tmp.begin() + 1, end);
+  result.reserve(compact_num);
+  auto it = last_segments_.begin();
+  for (int i = 0; i < compact_num; ++i, ++it) {
+    result.push_back(*it);
   }
   return result;
 }
@@ -513,6 +504,10 @@ KStatus TsPartitionVersion::DeleteData(TSEntityID e_id, const std::vector<KwTsSp
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("AddDelItem failed. for entity[%lu]", e_id);
       return s;
+    }
+    s = count_info_->SetEntityCountInValid(e_id, ts_span);
+    if (s != KStatus::SUCCESS) {
+      LOG_ERROR("SetEntityCountInValid failed. for entity[%lu]", e_id);
     }
   }
   return KStatus::SUCCESS;
@@ -593,8 +588,9 @@ KStatus TsPartitionVersion::getFilter(const TsScanFilterParams& filter, TsBlockI
 }
 
 KStatus TsPartitionVersion::GetBlockSpans(const TsScanFilterParams& filter,
-std::list<shared_ptr<TsBlockSpan>>* ts_block_spans,
-std::shared_ptr<TsTableSchemaManager>& tbl_schema_mgr, uint32_t scan_version, bool skip_last, bool skip_entity) const {
+                                          std::list<shared_ptr<TsBlockSpan>>* ts_block_spans,
+                                          std::shared_ptr<TsTableSchemaManager>& tbl_schema_mgr, uint32_t scan_version,
+                                          bool skip_mem, bool skip_last, bool skip_entity) const {
   TsBlockItemFilterParams block_data_filter;
   auto s = getFilter(filter, block_data_filter);
   if (s != KStatus::SUCCESS) {
@@ -602,13 +598,15 @@ std::shared_ptr<TsTableSchemaManager>& tbl_schema_mgr, uint32_t scan_version, bo
     return s;
   }
 
-  // get block span in mem segment
-  if (valid_memseg_ != nullptr) {
-    for (auto &mem : *valid_memseg_) {
-      s = mem->GetBlockSpans(block_data_filter, *ts_block_spans, tbl_schema_mgr, scan_version);
-      if (s != KStatus::SUCCESS) {
-        LOG_ERROR("GetBlockSpans of mem segment failed.");
-        return s;
+  if (!skip_mem) {
+    // get block span in mem segment
+    if (valid_memseg_ != nullptr) {
+      for (auto &mem : *valid_memseg_) {
+        s = mem->GetBlockSpans(block_data_filter, *ts_block_spans, tbl_schema_mgr, scan_version);
+        if (s != KStatus::SUCCESS) {
+          LOG_ERROR("GetBlockSpans of mem segment failed.");
+          return s;
+        }
       }
     }
   }

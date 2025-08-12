@@ -33,6 +33,7 @@
 #include "ts_mem_segment_mgr.h"
 #include "ts_segment.h"
 #include "ts_entity_segment_handle.h"
+#include "ts_partition_count_mgr.h"
 
 namespace kwdbts {
 using DatabaseID = uint32_t;
@@ -66,6 +67,7 @@ class TsPartitionVersion {
   std::shared_ptr<std::atomic<PartitionStatus>> exclusive_status_;
 
   std::shared_ptr<TsDelItemManager> del_info_;
+  std::shared_ptr<TsPartitionEntityCountManager> count_info_;
 
   // Only TsVersionManager can create TsPartitionVersion
   explicit TsPartitionVersion(PartitionIdentifier partition_info)
@@ -105,6 +107,7 @@ class TsPartitionVersion {
   std::vector<std::shared_ptr<TsLastSegment>> GetAllLastSegments() const { return last_segments_; }
   std::shared_ptr<TsEntitySegment> GetEntitySegment() const { return entity_segment_; }
   std::list<std::shared_ptr<TsMemSegment>> GetAllMemSegments() const;
+  shared_ptr<TsPartitionEntityCountManager> GetCountManager() const { return count_info_; }
 
   // TODO(zzr): optimize the following function ralate to deletions, deletion should also be atomic in future, this is
   // just a temporary solution
@@ -119,7 +122,7 @@ class TsPartitionVersion {
   KStatus getFilter(const TsScanFilterParams& filter, TsBlockItemFilterParams& block_data_filter) const;
   KStatus GetBlockSpans(const TsScanFilterParams& filter, std::list<shared_ptr<TsBlockSpan>>* ts_block_spans,
                        std::shared_ptr<TsTableSchemaManager>& tbl_schema_mgr, uint32_t scan_version,
-                       bool skip_last = false, bool skip_entity = false) const;
+                       bool skip_mem = false, bool skip_last = false, bool skip_entity = false) const;
 
   bool TrySetBusy(PartitionStatus desired) const;
   void ResetStatus() const;
@@ -148,6 +151,10 @@ class TsVGroupVersion {
   std::shared_ptr<const TsPartitionVersion> GetPartition(uint32_t dbid, timestamp64 timestamp) const;
 
   std::map<uint32_t, std::vector<std::shared_ptr<const TsPartitionVersion>>> GetPartitions() const;
+
+  std::map<PartitionIdentifier, std::shared_ptr<const TsPartitionVersion>> GetAllPartitions() const {
+    return partitions_;
+  }
 
   TS_LSN GetMaxLSN() const { return max_lsn_; }
 };
