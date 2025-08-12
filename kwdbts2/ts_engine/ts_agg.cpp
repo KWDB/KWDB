@@ -21,14 +21,14 @@ bool AggCalculatorV2::isnull(size_t row) {
   return (*bitmap_)[row] == DataFlags::kNull;
 }
 
-bool AggCalculatorV2::CalcAggForFlush(uint16_t& count, void* max_addr, void* min_addr,
+bool AggCalculatorV2::CalcAggForFlush(int is_not_null, uint16_t& count, void* max_addr, void* min_addr,
                                       void* sum_addr) {
   count = 0;
   void* min = nullptr;
   void* max = nullptr;
   bool is_overflow = false;
   for (int i = 0; i < count_; ++i) {
-    if (isnull(i)) {
+    if (!is_not_null && isnull(i)) {
       continue;
     }
     ++count;

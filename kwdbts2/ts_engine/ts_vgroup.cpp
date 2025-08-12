@@ -1616,7 +1616,7 @@ KStatus TsVGroup::Vacuum() {
     auto partition_id = partition->GetPartitionIdentifier();
     auto root_path = this->GetPath() / PartitionDirName(partition_id);
     bool need_vacuum = false;
-    s = partition->NeedVacuumEntitySegment(root_path, need_vacuum);
+    s = partition->NeedVacuumEntitySegment(root_path, schema_mgr_, need_vacuum);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("NeedVacuumEntitySegment failed.");
       continue;

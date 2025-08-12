@@ -275,7 +275,8 @@ KStatus TsBlockSpan::BuildCompressedData(std::string& data) {
 
       DATATYPE type = static_cast<DATATYPE>(scan_attrs_[scan_idx].type);
       AggCalculatorV2 aggCalc(fixed_col_value_addr, b, type, d_size, nrow_);
-      *reinterpret_cast<bool *>(sum.data()) = aggCalc.CalcAggForFlush(count, max.data(), min.data(), sum.data() + 1);
+      auto is_not_null = scan_attrs_[scan_idx].isFlag(AINFO_NOT_NULL);
+      *reinterpret_cast<bool *>(sum.data()) = aggCalc.CalcAggForFlush(is_not_null, count, max.data(), min.data(), sum.data() + 1);
       if (0 != count) {
         col_agg.resize(sizeof(uint16_t) + 2 * col_size + 9, '\0');
         memcpy(col_agg.data(), &count, sizeof(uint16_t));
