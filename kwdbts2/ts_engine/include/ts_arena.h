@@ -289,7 +289,7 @@ private:
     if (avail < bytes) {
       std::lock_guard reload_lock(alloc_mutex_);
       auto exact = alloc_allocated_and_unused_.load(std::memory_order_relaxed);
-      assert(exact == alloc_.AllocatedAndUnused());
+      assert(exact == alloc_bytes_remaining_);
 
       if (exact >= bytes && IsInInlineBlock()) {
         auto rv = func();
