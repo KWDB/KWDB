@@ -1075,6 +1075,9 @@ KStatus TsVGroup::DeleteEntity(kwdbContext_p ctx, TSTableID table_id, std::strin
   if (*count != 0) {
     // todo(liangbo01) we should delete current entity metric datas.
     TS_LSN cur_lsn = wal_manager_->FetchCurrentLSN();
+    if (engine_options_->use_raft_log_as_wal) {
+      cur_lsn = LSNInc();
+    }
     std::vector<KwTsSpan> ts_spans;
     ts_spans.push_back({INT64_MIN, INT64_MAX});
     // delete current entity metric datas.
@@ -1100,6 +1103,8 @@ KStatus TsVGroup::DeleteData(kwdbContext_p ctx, TSTableID tbl_id, std::string& p
       LOG_ERROR("WriteDeleteTagWAL failed.");
       return s;
     }
+  } else {
+    current_lsn = LSNInc();
   }
 
   // delete current entity metric datas.
