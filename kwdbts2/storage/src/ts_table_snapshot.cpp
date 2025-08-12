@@ -509,7 +509,7 @@ KStatus TsSnapshotConsumer::setMtrOver(kwdbContext_p ctx, bool commit) {
       entity_grps[entity_grp.entityGroupId] = true;
     }
     for (auto& entity_grp_id : entity_grps) {
-      snapshot_info_.table->DeleteRangeData(ctx, entity_grp_id.first, hash_span, ts_spans, &count, 0, false);
+      snapshot_info_.table->DeleteRangeData(ctx, entity_grp_id.first, hash_span, ts_spans, &count, 0);
     }
     LOG_DEBUG("snapshot[%s] consumer over, result: %s", Print().c_str(), commit ? "success" : "rollback");
     return KStatus::SUCCESS;

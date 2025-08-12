@@ -265,7 +265,7 @@ TSStatus TSIsTsTableExist(TSEngine* engine, TSTableID tableId, bool* find);
 TSStatus TSGetMetaData(TSEngine* engine, TSTableID table_id, RangeGroup range, TSSlice* schema);
 
 TSStatus TSPutEntity(TSEngine *engine, TSTableID tableId, TSSlice *payload, size_t payload_num, RangeGroup range_group,
-                     uint64_t mtr_id, bool writeWAL);
+                     uint64_t mtr_id);
 
 TSStatus TSPutData(TSEngine* engine, TSTableID tableId, TSSlice* payload, size_t payload_num, RangeGroup range_group,
                    uint64_t mtr_id, uint16_t* inc_entity_cnt, uint32_t* inc_unordered_cnt, DedupResult* dedup_result,
@@ -274,13 +274,14 @@ TSStatus TSPutData(TSEngine* engine, TSTableID tableId, TSSlice* payload, size_t
 TSStatus TSExecQuery(TSEngine* engine, QueryInfo* req, RespInfo* resp, TsFetcher* fetchers, void* fetcher);
 
 TSStatus TsDeleteEntities(TSEngine *engine, TSTableID table_id, TSSlice *primary_tags, size_t primary_tags_num,
-                          uint64_t range_group_id, uint64_t *count, uint64_t mtr_id, bool writeWAL);
+                          uint64_t range_group_id, uint64_t *count, uint64_t mtr_id);
 
 TSStatus TsDeleteRangeData(TSEngine *engine, TSTableID table_id, uint64_t range_group_id, HashIdSpan hash_span,
-                           KwTsSpans ts_spans, uint64_t *count, uint64_t mtr_id, bool writeWAL);
+                           KwTsSpans ts_spans, uint64_t *count, uint64_t mtr_id);
 
-TSStatus TsDeleteData(TSEngine *engine, TSTableID table_id, uint64_t range_group_id, TSSlice primary_tag,
-                      KwTsSpans ts_spans, uint64_t *count, uint64_t mtr_id, bool writeWAL);
+TSStatus
+TsDeleteData(TSEngine *engine, TSTableID table_id, uint64_t range_group_id, TSSlice primary_tag, KwTsSpans ts_spans,
+             uint64_t *count, uint64_t mtr_id);
 
 TSStatus TSFlushBuffer(TSEngine* engine);
 
@@ -494,6 +495,13 @@ char* TsGetStringPtr(void *data, uint32_t offset,  uint16_t *len);
  * @return
  */
 TSStatus TsGetWalLevel(TSEngine* engine, uint8_t *wal_level);
+
+/**
+ * @brief Set whether use raft log as WAL
+ * @param[in] use means use raft log as WAL or not
+ * @return
+ */
+TSStatus TsSetUseRaftLogAsWAL(TSEngine* engine, bool use);
 
 TSStatus TSCountTsTable(TSEngine* engine, TSTableID table_id);
 

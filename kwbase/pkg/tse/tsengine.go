@@ -264,12 +264,11 @@ type EntitiesAffect struct {
 
 // TsEngine is ts database instance.
 type TsEngine struct {
-	stopper  *stop.Stopper
-	cfg      TsEngineConfig
-	tdb      *C.TSEngine
-	opened   bool
-	openCh   chan struct{}
-	writeWAL bool
+	stopper *stop.Stopper
+	cfg     TsEngineConfig
+	tdb     *C.TSEngine
+	opened  bool
+	openCh  chan struct{}
 }
 
 // IsSingleNode Returns whether TsEngine is started in singleNode mode
@@ -496,9 +495,9 @@ func (r *TsEngine) Open(rangeIndex []roachpb.RangeIndex) error {
 	}
 
 	if r.cfg.IsSingleNode {
-		r.SetWriteWAL(true)
+		r.SetRaftLogCombinedWAL(false)
 	} else {
-		r.SetWriteWAL(!TsRaftLogCombineWAL.Get(&r.cfg.Settings.SV))
+		r.SetRaftLogCombinedWAL(TsRaftLogCombineWAL.Get(&r.cfg.Settings.SV))
 	}
 	r.manageWAL()
 	r.opened = true
@@ -506,9 +505,11 @@ func (r *TsEngine) Open(rangeIndex []roachpb.RangeIndex) error {
 	return nil
 }
 
-// SetWriteWAL set the writeWAL
-func (r *TsEngine) SetWriteWAL(writeWAL bool) {
-	r.writeWAL = writeWAL
+// SetRaftLogCombinedWAL set the state of TsRaftLogCombineWAL to AE
+func (r *TsEngine) SetRaftLogCombinedWAL(combined bool) {
+	if r.tdb != nil {
+		_ = C.TsSetUseRaftLogAsWAL(r.tdb, C.bool(combined))
+	}
 }
 
 // CreateTsTable create ts table
@@ -708,8 +709,7 @@ func (r *TsEngine) PutEntity(
 		&cTsSlice[0],
 		(C.size_t)(len(cTsSlice)),
 		cRangeGroup,
-		C.uint64_t(tsTxnID),
-		C.bool(r.writeWAL))
+		C.uint64_t(tsTxnID))
 	if err := statusToError(status); err != nil {
 		return errors.Wrap(err, "could not PutEntity")
 	}
@@ -748,7 +748,6 @@ func (r *TsEngine) PutData(
 	var affect EntitiesAffect
 	var entitiesAffected C.uint16_t
 	var unorderedAffected C.uint32_t
-	writeWAL = r.writeWAL && writeWAL
 	status := C.TSPutData(r.tdb, C.TSTableID(tableID), &cTsSlice[0], (C.size_t)(len(cTsSlice)), cRangeGroup, C.uint64_t(tsTxnID),
 		&entitiesAffected, &unorderedAffected, &dedupResult, C.bool(writeWAL))
 	if err := statusToError(status); err != nil {
@@ -804,7 +803,6 @@ func (r *TsEngine) PutRowData(
 	totalRowCnt := len(payload)
 	var res DedupResult
 	var affect EntitiesAffect
-	writeWAL = r.writeWAL && writeWAL
 	for i := 0; i < totalRowCnt; i++ {
 		p := payload[i]
 		if len(p) == 0 {
@@ -1424,7 +1422,7 @@ func (r *TsEngine) DeleteEntities(
 
 	var delCnt C.uint64_t
 	status := C.TsDeleteEntities(r.tdb, C.TSTableID(tableID), &cTsSlice[0], (C.size_t)(len(cTsSlice)),
-		C.uint64_t(rangeGroupID), &delCnt, C.uint64_t(tsTxnID), C.bool(r.writeWAL))
+		C.uint64_t(rangeGroupID), &delCnt, C.uint64_t(tsTxnID))
 	if err := statusToError(status); err != nil {
 		if isDrop {
 			return 0, err
@@ -1467,8 +1465,7 @@ func (r *TsEngine) DeleteRangeData(
 		cKwHashIDSpans,
 		cKwTsSpans,
 		&delCnt,
-		C.uint64_t(tsTxnID),
-		C.bool(r.writeWAL))
+		C.uint64_t(tsTxnID))
 	if err := statusToError(status); err != nil {
 		return uint64(delCnt), errors.New("Data deletion failed or partially failed")
 	}
@@ -1525,8 +1522,7 @@ func (r *TsEngine) DeleteData(
 		cTsSlice,
 		cKwTsSpans,
 		&delCnt,
-		C.uint64_t(tsTxnID),
-		C.bool(r.writeWAL))
+		C.uint64_t(tsTxnID))
 	if err := statusToError(status); err != nil {
 		return uint64(delCnt), errors.Wrap(err, "failed to delete ts data")
 	}

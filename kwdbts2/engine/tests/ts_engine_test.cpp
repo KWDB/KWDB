@@ -370,7 +370,7 @@ TEST_F(TestEngine, DeleteEntities) {
   primary_tags.emplace_back(pd.GetPrimaryTag().data, pd.GetPrimaryTag().len);
   // delete entities
   uint64_t del_cnt;
-  s = tbl_range->DeleteEntities(ctx_, primary_tags, &del_cnt, 0, true);
+  s = tbl_range->DeleteEntities(ctx_, primary_tags, &del_cnt, 0);
   ASSERT_EQ(s, KStatus::SUCCESS);
   EXPECT_EQ(del_cnt, row_num_);
 
@@ -478,7 +478,7 @@ TEST_F(TestEngine, DeleteData) {
   count = 0;
   KwTsSpan span{1, ts + 10};
   span = ConvertMsToPrecision(span, ts_type);
-  s = tbl_range->DeleteData(ctx_, primary_tag, 0, {span}, nullptr, &count, 0, false, true);
+  s = tbl_range->DeleteData(ctx_, primary_tag, 0, {span}, nullptr, &count, 0, false);
   ASSERT_EQ(s, KStatus::SUCCESS);
   ASSERT_EQ(count, 2 + row_num_);  // delete 7 rows
 
@@ -655,7 +655,7 @@ TEST_F(TestEngine, CompressTsTable) {
 
   // delete entities
   uint64_t del_cnt;
-  KStatus s = tbl_range->DeleteEntities(ctx_, primary_tags, &del_cnt, 0, true);
+  KStatus s = tbl_range->DeleteEntities(ctx_, primary_tags, &del_cnt, 0);
   ASSERT_EQ(s, KStatus::SUCCESS);
   EXPECT_EQ(del_cnt, write_count * partition_num);
   // Data check
@@ -688,7 +688,7 @@ TEST_F(TestEngine, CompressTsTable) {
   delete iter;
 
   // delete entities
-  s = tbl_range->DeleteEntities(ctx_, primary_tags, &del_cnt, 0, true);
+  s = tbl_range->DeleteEntities(ctx_, primary_tags, &del_cnt, 0);
   ASSERT_EQ(s, KStatus::SUCCESS);
   ASSERT_EQ(del_cnt, write_count * partition_num);
   // Data check

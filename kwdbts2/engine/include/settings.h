@@ -44,6 +44,8 @@ struct EngineOptions {
   std::string db_path;
   // WAL work level: 0:off, 1:on, 2:sync, default is sync.
   uint8_t wal_level = WALMode::SYNC;
+  // whether use raft log as WAL
+  bool use_raft_log_as_wal = false;
   // WAL file size, default is 64Mb
   uint16_t wal_file_size = 64;
   uint16_t wal_file_in_group = 3;
