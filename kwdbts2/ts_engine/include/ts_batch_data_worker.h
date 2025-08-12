@@ -307,6 +307,17 @@ class TsWriteBatchDataWorker : public TsBatchDataWorker {
 
   std::unordered_map<uint64_t, TS_LSN> vgroups_lsn_;
 
+  struct BatchDataHeader {
+    TSTableID table_id;
+    uint32_t table_version;
+    uint32_t vgroup_id;
+    TSEntityID entity_id;
+    timestamp64 p_time;
+    uint64_t data_length;
+  };
+  std::unique_ptr<TsAppendOnlyFile> w_file_;
+  KLatch w_file_latch_;
+
   KStatus GetTagPayload(uint32_t table_version, TSSlice* data, std::string& tag_payload_str);
 
   KStatus UpdateLSN(uint32_t vgroup_id, TSSlice* input, std::string& result);

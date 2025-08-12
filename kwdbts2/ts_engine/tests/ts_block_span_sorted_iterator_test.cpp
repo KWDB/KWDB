@@ -28,7 +28,13 @@ using namespace kwdbts;  // NOLINT
 TsBlockSpan::TsBlockSpan(TSEntityID entity_id, std::shared_ptr<TsBlock> block, int start, int nrow,
                          const std::shared_ptr<TsTableSchemaManager>& tbl_schema_mgr, uint32_t scan_version)
     : block_(block), entity_id_(entity_id), start_row_(start), nrow_(nrow) {
-  convert_ = std::make_unique<TSBlkDataTypeConvert>();
+  if (block_->GetTableVersion() != scan_version) {
+    convert_ = std::make_unique<TSBlkDataTypeConvert>();
+    auto s = convert_->Init();
+    if (s != SUCCESS) {
+      LOG_ERROR("convert_ Init failed!");
+    }
+  }
 }
 
 void TsBlockSpan::SplitFront(int row_num, shared_ptr<TsBlockSpan>& front_span) {

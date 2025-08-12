@@ -124,6 +124,9 @@ class TsAggIteratorV2Impl : public TsStorageIteratorV2Impl {
 
  protected:
   KStatus Aggregate();
+  KStatus CountAggregate();
+  KStatus RecalculateCountInfo(std::shared_ptr<const TsPartitionVersion> partition,
+                               shared_ptr<TsPartitionEntityCountManager> count_manager);
   KStatus UpdateAggregation(bool can_remove_last_candidate);
   KStatus UpdateAggregation(std::shared_ptr<TsBlockSpan>& block_span,
                             bool aggregate_first_last_cols,
@@ -261,6 +264,7 @@ class TsOffsetIteratorV2Impl : public TsIterator {
   std::list<std::shared_ptr<TsBlockSpan>> ts_block_spans_;
   std::deque<std::shared_ptr<TsBlockSpan>> block_spans_;
   std::deque<std::shared_ptr<TsBlockSpan>> filter_block_spans_;
+  std::list<std::shared_ptr<TsBlockSpan>> ts_block_spans_with_data_;
 
   int32_t offset_;
   int32_t limit_;
