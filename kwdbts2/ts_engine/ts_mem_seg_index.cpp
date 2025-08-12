@@ -15,10 +15,10 @@ namespace kwdbts {
 
 #define PREFETCH(addr, rw, locality) __builtin_prefetch(addr, rw, locality)
 
-TsMemSegIndex::TsMemSegIndex(Allocator* allocator, int32_t max_height, int32_t branching_factor)
+TsMemSegIndex::TsMemSegIndex(BaseAllocator* allocator, int32_t max_height, int32_t branching_factor)
     : kMaxHeight_(static_cast<uint16_t>(max_height)),
       kBranching_(static_cast<uint16_t>(branching_factor)),
-      kScaledInverseBranching_((Random::kMaxNext + 1) / kBranching_),
+      kScaledInverseBranching_((Random::MAX_NEXT + 1) / kBranching_),
       allocator_(allocator),
       compare_(),
       head_(AllocateNode(0, max_height)),
@@ -201,7 +201,7 @@ bool TsMemSegIndex::Contains(const char* key) const {
 }
 
 int TsMemSegIndex::RandomHeight() {
-  auto rnd = Random::GetTLSInstance();
+  auto rnd = Random::GetInstance();
   int sl_height = 1;
   while (sl_height < kMaxHeight_ && sl_height < kMaxPossibleHeight &&
          rnd->Next() < kScaledInverseBranching_) {
