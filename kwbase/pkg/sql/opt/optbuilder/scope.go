@@ -92,6 +92,10 @@ type scope struct {
 	// Must not be modified in-place after being set.
 	ordering opt.Ordering
 
+	// when a LimitExpr, OffsetExpr or Ordinality exist in  fromSubquery,
+	// there is no need to handle the OrderBy within the fromSubquery.
+	noHandleOrderInFrom bool
+
 	// distinctOnCols records the DISTINCT ON columns by ID.
 	distinctOnCols opt.ColSet
 

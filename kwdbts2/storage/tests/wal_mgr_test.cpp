@@ -512,6 +512,55 @@ TEST_F(TestWALManager, TestWALRead) {
   }
 }
 
+TEST_F(TestWALManager, TestWALRollbackRead) {
+
+  vector<LogEntry*> redo_logs;
+  wal_->ReadWALLog(redo_logs, wal_->FetchCheckpointLSN(), wal_->FetchCheckpointLSN());
+  EXPECT_EQ(redo_logs.size(), 0);
+  wal_->ReadWALLog(redo_logs, wal_->FetchCheckpointLSN(), wal_->FetchCurrentLSN() + 100);
+  EXPECT_EQ(redo_logs.size(), 0);
+
+  AddInsertWal(0);
+  uint64_t x_id = wal_->FetchCurrentLSN();
+  AddMtrWal(WALLogType::MTR_BEGIN, x_id);
+
+  for (int i = 0; i < 10; i++) {
+    AddInsertWal(x_id);
+  }
+
+  for (int i = 0; i < 2; i++) {
+    AddDeleteDataWal(x_id);
+  }
+
+  wal_->CreateCheckpoint(ctx_);
+
+  std::vector<LogEntry*> logs;
+  wal_->ReadWALLogForMtr(x_id, logs);
+  EXPECT_EQ(logs.size(), 0);
+
+  for (int i = 0; i < 2; i++) {
+    AddDeleteTagWal(x_id);
+    AddDeleteTagWal(1234567);
+  }
+
+  for (int i = 0; i < 2; i++) {
+    AddDeleteDataWal(x_id);
+  }
+
+  AddMtrWal(WALLogType::MTR_ROLLBACK, x_id);
+
+  wal_->ReadWALLogForMtr(x_id, logs);
+  EXPECT_EQ(logs.size(), 5);
+  for (auto& l : logs) {
+    delete l;
+  }
+  logs.clear();
+
+  wal_->ReadWALLogForMtr(x_id + 30, logs);
+  EXPECT_EQ(logs.size(), 0);
+
+}
+
 TEST_F(TestWALManager, TestWALSyncInsert) {
   opts_.wal_level = 2;
   opts_.wal_buffer_size = 1;

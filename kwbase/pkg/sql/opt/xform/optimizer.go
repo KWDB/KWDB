@@ -448,12 +448,13 @@ func (o *Optimizer) optimizeExpr(
 //	           ├── variable: a.x [type=int]
 //	           └── const: 1 [type=int]
 func (o *Optimizer) optimizeGroup(grp memo.RelExpr, required *physical.Required) *groupState {
+	newRequired := o.buildSortRequired(grp, required)
 	// Always start with the first expression in the group.
 	grp = grp.FirstExpr()
 
 	// If this group is already fully optimized, then return the already prepared
 	// best expression (won't ever get better than this).
-	state := o.ensureOptState(grp, required)
+	state := o.ensureOptState(grp, newRequired)
 	if state.fullyOptimized {
 		return state
 	}
@@ -470,7 +471,7 @@ func (o *Optimizer) optimizeGroup(grp memo.RelExpr, required *physical.Required)
 			}
 
 			// Optimize the group member with respect to the required properties.
-			memberOptimized := o.optimizeGroupMember(state, member, required)
+			memberOptimized := o.optimizeGroupMember(state, member, newRequired)
 
 			// If any of the group members have not yet been fully optimized, then
 			// the group is not yet fully optimized.
@@ -483,7 +484,7 @@ func (o *Optimizer) optimizeGroup(grp memo.RelExpr, required *physical.Required)
 
 		// Now try to generate new expressions that are logically equivalent to
 		// other expressions in this group.
-		if o.shouldExplore(required) && !o.explorer.exploreGroup(grp).fullyExplored {
+		if o.shouldExplore(newRequired) && !o.explorer.exploreGroup(grp).fullyExplored {
 			fullyOptimized = false
 		}
 
@@ -728,9 +729,11 @@ func (o *Optimizer) shouldExplore(required *physical.Required) bool {
 func (o *Optimizer) setLowestCostTree(parent opt.Expr, parentProps *physical.Required) opt.Expr {
 	var relParent memo.RelExpr
 	var relCost memo.Cost
+	var newProps *physical.Required
 	switch t := parent.(type) {
 	case memo.RelExpr:
-		state := o.lookupOptState(t.FirstExpr(), parentProps)
+		newProps = o.buildSortRequired(t, parentProps)
+		state := o.lookupOptState(t.FirstExpr(), newProps)
 		relParent, relCost = state.best, state.cost
 		parent = relParent
 
@@ -750,7 +753,7 @@ func (o *Optimizer) setLowestCostTree(parent opt.Expr, parentProps *physical.Req
 		before := parent.Child(i)
 
 		if relParent != nil {
-			childProps = BuildChildPhysicalProps(o.mem, relParent, i, parentProps)
+			childProps = BuildChildPhysicalProps(o.mem, relParent, i, newProps)
 		} else {
 			childProps = BuildChildPhysicalPropsScalar(o.mem, parent, i)
 		}
@@ -779,8 +782,8 @@ func (o *Optimizer) setLowestCostTree(parent opt.Expr, parentProps *physical.Req
 		var provided physical.Provided
 		// BuildProvided relies on ProvidedPhysical() being set in the children, so
 		// it must run after the recursive calls on the children.
-		provided.Ordering = ordering.BuildProvided(relParent, &parentProps.Ordering)
-		o.mem.SetBestProps(relParent, parentProps, &provided, relCost)
+		provided.Ordering = ordering.BuildProvided(relParent, &newProps.Ordering)
+		o.mem.SetBestProps(relParent, newProps, &provided, relCost)
 	}
 
 	return parent
@@ -897,6 +900,19 @@ func (o *Optimizer) optimizeRootWithProps() {
 			}
 		}
 	}
+}
+
+// we need to rebuild the required if the SortExpr is saved from fromSubquery.
+func (o *Optimizer) buildSortRequired(
+	grp memo.RelExpr, required *physical.Required,
+) *physical.Required {
+	var newRequired *physical.Required
+	if s, ok := grp.(*memo.SortExpr); ok && s.InputOrdering.CheckFlag(physical.OrderFromSubquerySave) {
+		newRequired = BuildChildPhysicalProps(o.mem, s, 0, required)
+	} else {
+		newRequired = required
+	}
+	return newRequired
 }
 
 // groupStateKey associates groupState with a group that is being optimized with

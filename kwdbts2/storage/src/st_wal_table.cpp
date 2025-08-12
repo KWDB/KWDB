@@ -146,7 +146,7 @@ KStatus LoggedTsEntityGroup::OpenInit(kwdbContext_p ctx) {
   Return(KStatus::SUCCESS)
 }
 
-KStatus LoggedTsEntityGroup::PutEntity(kwdbContext_p ctx, TSSlice &payload, uint64_t mtr_id, bool writeWAL) {
+KStatus LoggedTsEntityGroup::PutEntity(kwdbContext_p ctx, TSSlice &payload, uint64_t mtr_id) {
   // require Tag lock. To prevent updating same Primary tag.
   // TODO(liuwei): Using EntityGroup.Mutex protect tag table temporarily. Need to replace with TagTable.Mutex
   // replace it in TsEntityGroup.PutEntity\PutData at the same time
@@ -165,7 +165,7 @@ KStatus LoggedTsEntityGroup::PutEntity(kwdbContext_p ctx, TSSlice &payload, uint
     if (UNLIKELY(nullptr == tag_pack)) {
       return KStatus::FAIL;
     }
-    if (writeWAL) {
+    if (!engine_opt_->use_raft_log_as_wal) {
       KStatus s = wal_manager_->WriteUpdateWAL(ctx, mtr_id, 0, 0, payload, tag_pack->getData());
       if (s == KStatus::FAIL) {
         delete tag_pack;
@@ -236,7 +236,7 @@ KStatus LoggedTsEntityGroup::PutData(kwdbContext_p ctx, TSSlice payload, TS_LSN 
     if (!new_tag_bt_->hasPrimaryKey(tmp_slice.data, tmp_slice.len, entity_id, group_id)) {
       // not found
       ++(*inc_entity_cnt);
-      if (write_wal) {
+      if (write_wal && !engine_opt_->use_raft_log_as_wal) {
         // no need lock, lock inside.
         KStatus s = wal_manager_->WriteInsertWAL(ctx, mini_trans_id, 0, 0, payload);
         if (s == KStatus::FAIL) {
@@ -269,7 +269,7 @@ KStatus LoggedTsEntityGroup::PutData(kwdbContext_p ctx, TSSlice payload, TS_LSN 
   }
 
   TS_LSN entry_lsn = 0;
-  if (write_wal) {
+  if (write_wal && !engine_opt_->use_raft_log_as_wal) {
     // lock current lsn: Lock the current LSN until the log is written to the cache
     wal_manager_->Lock();
     TS_LSN current_lsn = wal_manager_->FetchCurrentLSN();
@@ -308,12 +308,12 @@ KStatus LoggedTsEntityGroup::EvaluateDeleteData(kwdbContext_p ctx, const string&
                                                 const std::vector<KwTsSpan>& ts_spans, vector<DelRowSpan>& rows,
                                                 uint64_t mtr_id) {
   uint64_t count = 0;
-  return TsEntityGroup::DeleteData(ctx, primary_tag, 0, ts_spans, &rows, &count, mtr_id, true, false);
+  return TsEntityGroup::DeleteData(ctx, primary_tag, 0, ts_spans, &rows, &count, mtr_id, true);
 }
 
 KStatus LoggedTsEntityGroup::DeleteData(kwdbContext_p ctx, const string &primary_tag, TS_LSN lsn,
-                                        const std::vector<KwTsSpan> &ts_spans, vector<DelRowSpan> *rows,
-                                        uint64_t *count, uint64_t mtr_id, bool evaluate_del, bool writeWAL) {
+                                        const std::vector<KwTsSpan> &ts_spans,
+                                        vector<DelRowSpan> *rows, uint64_t *count, uint64_t mtr_id, bool evaluate_del) {
   EnterFunc();
 
   // The method that generates DelTimePartition using time range needs to move MMapPartitionTable
@@ -335,7 +335,7 @@ KStatus LoggedTsEntityGroup::DeleteData(kwdbContext_p ctx, const string &primary
     Return(s)
   }
 
-  if (writeWAL) {
+  if (!engine_opt_->use_raft_log_as_wal) {
     s = wal_manager_->WriteDeleteMetricsWAL(ctx, mtr_id, primary_tag, ts_spans, dtp_list);
     if (s == KStatus::FAIL) {
       Return(s)
@@ -343,7 +343,7 @@ KStatus LoggedTsEntityGroup::DeleteData(kwdbContext_p ctx, const string &primary
   }
 
   // Call the parent class's DeleteData
-  s = TsEntityGroup::DeleteData(ctx, primary_tag, current_lsn, ts_spans, rows, count, mtr_id, false, false);
+  s = TsEntityGroup::DeleteData(ctx, primary_tag, current_lsn, ts_spans, rows, count, mtr_id, false);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("Failed to delete data")
     Return(s)
@@ -354,8 +354,9 @@ KStatus LoggedTsEntityGroup::DeleteData(kwdbContext_p ctx, const string &primary
   Return(KStatus::SUCCESS);
 }
 
-KStatus LoggedTsEntityGroup::DeleteEntities(kwdbContext_p ctx, const std::vector<std::string> &primary_tags,
-                                            uint64_t *count, uint64_t mtr_id, bool writeWAL) {
+KStatus
+LoggedTsEntityGroup::DeleteEntities(kwdbContext_p ctx, const std::vector<std::string> &primary_tags, uint64_t *count,
+                                    uint64_t mtr_id) {
   EnterFunc()
   *count = 0;
   for (const auto& p_tags : primary_tags) {
@@ -370,7 +371,7 @@ KStatus LoggedTsEntityGroup::DeleteEntities(kwdbContext_p ctx, const std::vector
     if (UNLIKELY(nullptr == tag_pack)) {
       return KStatus::FAIL;
     }
-    if (writeWAL) {
+    if (!engine_opt_->use_raft_log_as_wal) {
       KStatus s = wal_manager_->WriteDeleteTagWAL(ctx, mtr_id, p_tags, sub_group_id, entity_id,
                                                   tag_pack->getData());
       if (s == KStatus::FAIL) {
@@ -794,7 +795,7 @@ KStatus LoggedTsEntityGroup::rollback(kwdbContext_p ctx, LogEntry* wal_log) {
       KwTsSpan ts_span;
       snapshot_log->GetRangeInfo(&hash_span, &ts_span);
       uint64_t count = 0;
-      auto s = DeleteRangeData(ctx, hash_span, 0, {ts_span}, nullptr, &count, snapshot_log->getXID(), false, true);
+      auto s = DeleteRangeData(ctx, hash_span, 0, {ts_span}, nullptr, &count, snapshot_log->getXID(), false);
       if (s != KStatus::SUCCESS) {
         LOG_ERROR(" WAL rollback snapshot delete range data faild.");
         return KStatus::FAIL;

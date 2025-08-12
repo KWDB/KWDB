@@ -496,7 +496,6 @@ KStatus Processors::BuildPipeline(kwdbContext_p ctx) {
 }
 
 KStatus Processors::ScheduleTasks(kwdbContext_p ctx) {
-  KStatus ret = KStatus::SUCCESS;
   std::map<PipelineGroup *, std::shared_ptr<PipelineTask> > task_map;
   std::vector<std::shared_ptr<PipelineTask> > tasks;
   for (auto pipeline : pipelines_) {
@@ -504,6 +503,8 @@ KStatus Processors::ScheduleTasks(kwdbContext_p ctx) {
     if (nullptr != task) {
       task_map.emplace(pipeline, task);
       tasks.push_back(task);
+    } else {
+      return KStatus::FAIL;
     }
   }
 
@@ -519,7 +520,7 @@ KStatus Processors::ScheduleTasks(kwdbContext_p ctx) {
       k_int32 degree = entry.first->GetDegree();
       KStatus ret = entry.second->Clone(ctx, degree - 1, tasks, new_operators_);
       if (KStatus::FAIL == ret) {
-        break;
+        return KStatus::FAIL;
       }
     }
   }
@@ -534,7 +535,7 @@ KStatus Processors::ScheduleTasks(kwdbContext_p ctx) {
     ExecPool::GetInstance().PushTask(task);
   }
 
-  return ret;
+  return KStatus::SUCCESS;
 }
 
 // Init processors
@@ -624,11 +625,18 @@ void Processors::Reset() {
     CloseIterator(ctx);
   }
 
+  for (auto table : tables_) {
+    SafeDeletePointer(table);
+  }
+  tables_.clear();
+
   for (auto it : pipelines_) {
+    it->Cancel();
     SafeDeletePointer(it)
   }
+
   pipelines_.clear();
-  weak_tasks_.clear();
+
   for (auto it : operators_) {
     SafeDeletePointer(it)
   }
@@ -642,12 +650,7 @@ void Processors::Reset() {
   SafeDeletePointer(root_pipeline_);
   root_pipeline_ = nullptr;
   root_iterator_ = nullptr;
-
-  for (auto table : tables_) {
-    SafeDeletePointer(table);
-  }
-
-  tables_.clear();
+  weak_tasks_.clear();
 }
 
 KStatus Processors::InitIterator(kwdbContext_p ctx, TsNextRetState nextState) {
@@ -697,12 +700,20 @@ KStatus Processors::CloseIterator(kwdbContext_p ctx) {
     Return(KStatus::SUCCESS);
   }
   AssertNotNull(root_iterator_);
+  b_is_cancel_ = true;
   // Stop all task
   for (auto task : weak_tasks_) {
     if (auto sp = task.lock()) {
       sp->SetStop();
     }
   }
+  // Wait all task stop
+  for (auto task : weak_tasks_) {
+    if (auto sp = task.lock()) {
+      sp->Wait();
+    }
+  }
+
   // Close operators
   EEIteratorErrCode code = root_iterator_->Close(ctx);
   if (EEIteratorErrCode::EE_OK == code) {

@@ -571,3 +571,31 @@ select id,e7 from test_block_filter.t1 WHERE
 
 SET CLUSTER SETTING ts.rows_per_block.max_limit=1000;
 drop database test_block_filter cascade;
+
+DROP DATABASE IF EXISTS test_block_filter cascade;
+SET CLUSTER SETTING ts.rows_per_block.max_limit=10;
+CREATE ts DATABASE test_block_filter;
+create table test_block_filter.t1(k_timestamp timestamptz not null, e1 timestamptz not null, e2 nchar(255) not null, e3 varchar(4096), e4 varchar) ATTRIBUTES (code1 int2 not null) primary tags(code1);
+
+INSERT INTO test_block_filter.t1 VALUES(2021688553000, '2020-1-1 12:00:00.000', 'test时间精度通用查询测试！！！@TEST1', 'test时间精度通用查询测试！！！@TEST1\0', 'varchar  中文1', 700);
+INSERT INTO test_block_filter.t1 VALUES(2021688553001, '2020-1-1 12:00:00.000', 'test时间精度通用查询测试！！！@TEST1', 'test时间精度通用查询测试！！！@TEST1\0', 'varchar  中文1', 700);
+INSERT INTO test_block_filter.t1 VALUES(2021688553002, '2020-1-1 12:00:00.000', 'test时间精度通用查询测试！！！@TEST1', 'test时间精度通用查询测试！！！@TEST1\0', 'varchar  中文1', 700);
+INSERT INTO test_block_filter.t1 VALUES(2021688553003, '2020-1-1 12:00:00.000', 'test时间精度通用查询测试！！！@TEST1', 'test时间精度通用查询测试！！！@TEST1\0', 'varchar  中文1', 700);
+INSERT INTO test_block_filter.t1 VALUES(2021688553004, '2020-1-1 12:00:00.000', 'test时间精度通用查询测试！！！@TEST1', 'test时间精度通用查询测试！！！@TEST1\0', 'varchar  中文1', 700);
+INSERT INTO test_block_filter.t1 VALUES(2021688553005, '2020-1-1 12:00:00.000', 'test时间精度通用查询测试！！！@TEST1', 'test时间精度通用查询测试！！！@TEST1\0', 'varchar  中文1', 700);
+INSERT INTO test_block_filter.t1 VALUES(2021688553006, '2020-1-1 12:00:00.000', 'test时间精度通用查询测试！！！@TEST1', 'test时间精度通用查询测试！！！@TEST1\0', 'varchar  中文1', 700);
+INSERT INTO test_block_filter.t1 VALUES(2021688553007, '2020-1-1 12:00:00.000', 'test时间精度通用查询测试！！！@TEST1', 'test时间精度通用查询测试！！！@TEST1\0', 'varchar  中文1', 700);
+INSERT INTO test_block_filter.t1 VALUES(2021688553008, '2020-1-1 12:00:00.000', 'test时间精度通用查询测试！！！@TEST1', 'test时间精度通用查询测试！！！@TEST1\0', 'varchar  中文1', 700);
+INSERT INTO test_block_filter.t1 VALUES(2021688553009, '2020-1-1 12:00:00.000', 'test时间精度通用查询测试！！！@TEST1', 'test时间精度通用查询测试！！！@TEST1\0', 'varchar  中文1', 700);
+
+SELECT e1 FROM test_block_filter.t1 WHERE e1 NOT IN (TIMESTAMPTZ'2020-1-1 12:12:12.000') order by k_timestamp;
+SELECT e1 FROM test_block_filter.t1 WHERE e1 NOT IN (TIMESTAMPTZ'2020-1-1 12:00:00.000') order by k_timestamp;
+SELECT e2 FROM test_block_filter.t1 WHERE e2='test时间精度通用查询测试！！！@TEST1' order by k_timestamp;
+SELECT e2 FROM test_block_filter.t1 WHERE e2>'test时间精度通用查询测试！！！@TEST1' order by k_timestamp;
+SELECT e3 FROM test_block_filter.t1 WHERE e3 LIKE 'test时间精度通用查询测试！！！@TEST1' order by k_timestamp;
+SELECT e3 FROM test_block_filter.t1 WHERE e3>'test时间精度通用查询测试！！！@TEST1' order by k_timestamp;
+select e4 from test_block_filter.t1 where e4 is not null and e4 in('varchar  中文1');
+select e4 from test_block_filter.t1 where e4 is not null and e4 <= 'varchar  中文1';
+
+SET CLUSTER SETTING ts.rows_per_block.max_limit=1000;
+drop database test_block_filter cascade;

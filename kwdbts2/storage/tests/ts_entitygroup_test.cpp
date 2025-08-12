@@ -590,7 +590,7 @@ TEST_F(TestTsEntityGroup, InsertAndDel) {
   vector<DelRowSpan> del_rows;
   KwTsSpan del_ts_span{start_ts + 1, start_ts + 10};
   std::string p_tag((char*) (&primary_key), 8);  // NOLINT
-  s = entity_group_leader_->DeleteData(ctx_, p_tag, 0, {del_ts_span}, &del_rows, &del_count, 0, false, true);
+  s = entity_group_leader_->DeleteData(ctx_, p_tag, 0, {del_ts_span}, &del_rows, &del_count, 0, false);
   ASSERT_EQ(s, KStatus::SUCCESS);
 
 
@@ -627,7 +627,7 @@ TEST_F(TestTsEntityGroup, InsertAndDel) {
   delete iter1;
 
   for (size_t i = 0; i < 3; i++) {
-    s = entity_group_leader_->DeleteData(ctx_, p_tag, 0, {del_ts_span}, &del_rows, &del_count, 0, false, true);
+    s = entity_group_leader_->DeleteData(ctx_, p_tag, 0, {del_ts_span}, &del_rows, &del_count, 0, false);
     ASSERT_EQ(s, KStatus::SUCCESS);
     if (i == 0) {
       ASSERT_EQ(del_count, 10 * batch_times);

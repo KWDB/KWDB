@@ -12,7 +12,7 @@
 
 #include "ee_pipeline_task.h"
 #include "ee_pipeline_group.h"
-
+#include "ee_processors.h"
 #include "ee_base_op.h"
 #include "ee_kwthd_context.h"
 #include "ee_outbound_op.h"
@@ -22,10 +22,9 @@
 namespace kwdbts {
 
 PipelineTask::PipelineTask(PipelineGroup *pipeline)
-  : pipeline_group_(pipeline) { }
+  : pipeline_group_(pipeline), processors_(pipeline->processors_) { }
 PipelineTask::~PipelineTask() {
   SafeDeletePointer(thd_);
-  sem_destroy(&sem_);
 }
 
 KStatus PipelineTask::Init(kwdbContext_p ctx) {
@@ -41,26 +40,19 @@ KStatus PipelineTask::Init(kwdbContext_p ctx) {
   if (!thd_) {
     EEPgErrorInfo::SetPgErrorInfo(ERRCODE_OUT_OF_MEMORY, "Insufficient memory");
     LOG_ERROR("New KWThd failed.");
-    Return(FAIL);
+    Return(KStatus::FAIL);
   }
   thd_->Copy(main_thd);
-  if (sem_init(&sem_, 0, 1) == -1) {
-    LOG_ERROR("sem_init failed.");
-    EEPgErrorInfo::SetPgErrorInfo(ERRCODE_INTERNAL_ERROR, "semaphore init failed");
-    Return(FAIL);
-  }
   state_ = PS_STARTED;
-  Return(SUCCESS);
+  Return(KStatus::SUCCESS);
 }
 
 void PipelineTask::SetStop() {
   is_stop_ = true;
-  if (is_running_) {
-    LOG_ERROR("wait thread task %p, operator name is %s", this, operator_->GetTypeName());
-    sem_wait(&sem_);
-    sem_post(&sem_);
-    LOG_ERROR("thread task %p operator name %s is stop", this, operator_->GetTypeName());
-  }
+}
+
+void PipelineTask::Wait() {
+  std::unique_lock<std::mutex> l(mutex_);
 }
 
 void PipelineTask::SetOperator(BaseOperator *oper) {
@@ -83,6 +75,10 @@ bool PipelineTask::is_can_schedule() {
   }
 
   bool is_can_schedule = false;
+  std::lock_guard<std::mutex> l(block_mutex_);
+  if (is_cancel_) {
+    return true;
+  }
   size_t sz = pipeline_group_->dependencies_.size();
   for (k_uint32 i = 0; i < sz; ++i) {
     is_can_schedule = false;
@@ -106,6 +102,11 @@ bool PipelineTask::is_can_schedule() {
   }
 
   return is_can_schedule;
+}
+
+void PipelineTask::Cancel() {
+  std::lock_guard<std::mutex> l(block_mutex_);
+  is_cancel_ = true;
 }
 
 k_int32 PipelineTask::GetDegree() {
@@ -182,24 +183,21 @@ void PipelineTask::Blocked(kwdbContext_p ctx) {
   // LOG_ERROR("pipelineTask %p is blocked.", this);
   is_running_ = false;
   state_ = PipelineTaskState::PS_BLOCKED;
-  sem_post(&sem_);
   ExecPool::GetInstance().PushBlockedTask(shared_from_this());
 }
 
 void PipelineTask::Finish(kwdbContext_p ctx) {
   is_running_ = false;
   state_ = PipelineTaskState::PS_FINISHED;
-
-  sem_post(&sem_);
 }
 
 void PipelineTask::Run(kwdbContext_p ctx) {
+  std::unique_lock<std::mutex> l(mutex_);
   if (is_stop_) {
     return;
   }
+  ctx->b_is_cancel = &(processors_->b_is_cancel_);
   is_running_ = true;
-  sem_wait(&sem_);
-
   EEPgErrorInfo::ResetPgErrorInfo();
   ctx->ts_engine = ts_engine_;
   ctx->relation_ctx = relation_ctx_;

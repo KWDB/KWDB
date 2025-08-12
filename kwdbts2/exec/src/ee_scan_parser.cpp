@@ -46,6 +46,11 @@ EEIteratorErrCode TsTableScanParser::ParserScanCols(kwdbContext_p ctx) {
   Return(code);
 }
 
+bool string_ends_with(const std::string &str, const std::string &suffix) {
+  if (suffix.size() > str.size()) return false;
+  return str.compare(str.size() - suffix.size(), suffix.size(), suffix) == 0;
+}
+
 EEIteratorErrCode TsTableScanParser::ResolveBlockFilter() {
   k_int32 size = spec_->blockfilter_size();
   for (k_int32 i = 0; i < size; i++) {
@@ -171,6 +176,10 @@ EEIteratorErrCode TsTableScanParser::ResolveBlockFilter() {
               start_str = start_str.substr(1, start_str.length() - 2);
             }
             auto str = parseUnicode2Utf8(start_str);
+            if (string_ends_with(str, "\\x00")) {
+              str = str.substr(0, str.length() - 4);
+              filter_span.startBoundary = FilterSpanBoundary::FSB_EXCLUDE_BOUND;
+            }
             filter_span.start.data = static_cast<char *>(malloc(str.length()));
             memcpy(filter_span.start.data, str.c_str(), str.length());
             filter_span.start.len = str.length();
@@ -185,6 +194,10 @@ EEIteratorErrCode TsTableScanParser::ResolveBlockFilter() {
               end_str = end_str.substr(1, end_str.length() - 2);
             }
             auto str = parseUnicode2Utf8(end_str);
+            if (string_ends_with(str, "\\x00")) {
+              str = str.substr(0, str.length() - 4);
+              filter_span.endBoundary = FilterSpanBoundary::FSB_EXCLUDE_BOUND;
+            }
             filter_span.end.data = static_cast<char *>(malloc(str.length()));
             memcpy(filter_span.end.data, str.c_str(), str.length());
             filter_span.end.len = str.length();

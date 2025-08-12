@@ -45,6 +45,8 @@ struct EngineOptions {
   std::string db_path;
   // WAL work level: 0:off, 1:sync, 2:flush, default is flush.
   uint8_t wal_level = WALMode::FLUSH;
+  // whether use raft log as WAL
+  bool use_raft_log_as_wal = false;
   uint16_t wal_buffer_size = 4;
   uint16_t thread_pool_size = 10;
   uint16_t task_queue_size = 1024;

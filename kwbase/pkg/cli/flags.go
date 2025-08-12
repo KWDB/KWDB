@@ -892,12 +892,6 @@ func extraServerFlagInit(cmd *cobra.Command) error {
 	}
 	serverCfg.AdvertiseAddr = net.JoinHostPort(serverAdvertiseAddr, serverAdvertisePort)
 
-	if serverBRPCAddr == "" {
-		serverBRPCAddr = startCtx.serverListenAddr
-	}
-	if serverBRPCPort == "" {
-		serverBRPCPort = base.DefaultBRPCPort
-	}
 	serverCfg.BRPCAddr = net.JoinHostPort(serverBRPCAddr, serverBRPCPort)
 
 	// Fill in the defaults for --sql-addr.
