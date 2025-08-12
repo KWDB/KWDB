@@ -57,7 +57,7 @@ class TestV2DeleteTest : public ::testing::Test {
     DATATYPE ts_col_type = table_schema_mgr->GetTsColDataType();
     std::vector<k_uint32> scan_cols = {0, 1, 2};
     std::vector<Sumfunctype> scan_agg_types;
-    auto s = entity_v_group->GetIterator(ctx_, {entity_id}, {ts_span}, ts_col_type,
+    auto s = entity_v_group->GetIterator(ctx_, {entity_id}, {ts_span}, {}, ts_col_type,
                         scan_cols, scan_cols, {}, scan_agg_types, table_schema_mgr,
                         1, &ts_iter, entity_v_group, {}, false, false);
     ASSERT_EQ(s, KStatus::SUCCESS);

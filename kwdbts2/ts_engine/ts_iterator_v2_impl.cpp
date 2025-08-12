@@ -118,13 +118,15 @@ static std::vector<KwTsSpan> SortAndMergeSpan(const std::vector<KwTsSpan>& ts_sp
 }
 
 TsStorageIteratorV2Impl::TsStorageIteratorV2Impl(std::shared_ptr<TsVGroup>& vgroup, vector<uint32_t>& entity_ids,
-                                                  std::vector<KwTsSpan>& ts_spans, DATATYPE ts_col_type,
-                                                  std::vector<k_uint32>& kw_scan_cols, std::vector<k_uint32>& ts_scan_cols,
-                                                  std::shared_ptr<TsTableSchemaManager> table_schema_mgr,
-                                                  uint32_t table_version) {
+                                                 std::vector<KwTsSpan>& ts_spans, std::vector<BlockFilter>& block_filter,
+                                                 DATATYPE ts_col_type, std::vector<k_uint32>& kw_scan_cols,
+                                                 std::vector<k_uint32>& ts_scan_cols,
+                                                 std::shared_ptr<TsTableSchemaManager> table_schema_mgr,
+                                                 uint32_t table_version) {
   vgroup_ = vgroup;
   entity_ids_ = entity_ids;
   ts_spans_ = SortAndMergeSpan(ts_spans);
+  block_filter_ = block_filter;
   ts_col_type_ = ts_col_type;
   ts_scan_cols_ = ts_scan_cols;
   kw_scan_cols_ = kw_scan_cols;
@@ -185,6 +187,318 @@ inline bool TsStorageIteratorV2Impl::IsFilteredOut(timestamp64 begin_ts, timesta
   return  (!is_reversed_ && begin_ts > ts) || (is_reversed_ && end_ts < ts);
 }
 
+KStatus TsStorageIteratorV2Impl::getBlockSpanMinValue(std::shared_ptr<TsBlockSpan> block_span,
+                                                      uint32_t col_id, uint32_t type, void*& min) {
+  TsBitmap bitmap;
+  char* value = nullptr;
+  auto s = block_span->GetFixLenColAddr(col_id, &value, bitmap);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("GetFixLenColAddr failed.");
+    return s;
+  }
+  min = nullptr;
+  uint32_t row_num = block_span->GetRowNum();
+  int32_t size = block_span->GetColSize(col_id);
+  for (int row_idx = 0; row_idx < row_num; ++row_idx) {
+    if (bitmap[row_idx] != DataFlags::kValid) {
+      continue;
+    }
+    void* current = reinterpret_cast<void*>((intptr_t)(value + row_idx * size));
+    if (min == nullptr) {
+      min = malloc(size);
+      memcpy(min, current, size);
+    } else if (cmp(min, current, type, size) > 0) {
+      memcpy(min, current, size);
+    }
+  }
+  return KStatus::SUCCESS;
+}
+
+KStatus TsStorageIteratorV2Impl::getBlockSpanMaxValue(std::shared_ptr<TsBlockSpan> block_span,
+                                                      uint32_t col_id, uint32_t type, void*& max) {
+  TsBitmap bitmap;
+  char* value = nullptr;
+  auto s = block_span->GetFixLenColAddr(col_id, &value, bitmap);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("GetFixLenColAddr failed.");
+    return s;
+  }
+  max = nullptr;
+  uint32_t row_num = block_span->GetRowNum();
+  int32_t size = block_span->GetColSize(col_id);
+  for (int row_idx = 0; row_idx < row_num; ++row_idx) {
+    if (bitmap[row_idx] != DataFlags::kValid) {
+      continue;
+    }
+    void* current = reinterpret_cast<void*>((intptr_t)(value + row_idx * size));
+    if (max == nullptr) {
+      max = malloc(size);
+      memcpy(max, current, size);
+    } else if (cmp(current, max, type, size) > 0) {
+      memcpy(max, current, size);
+    }
+  }
+  return KStatus::SUCCESS;
+}
+
+KStatus TsStorageIteratorV2Impl::getBlockSpanVarMinValue(std::shared_ptr<TsBlockSpan> block_span,
+                                                         uint32_t col_id, uint32_t type, TSSlice& min) {
+  KStatus ret;
+  std::vector<string> var_rows;
+  uint32_t row_num = block_span->GetRowNum();
+  for (int row_idx = 0; row_idx < row_num; ++row_idx) {
+    TSSlice slice;
+    DataFlags flag;
+    ret = block_span->GetVarLenTypeColAddr(row_idx, col_id, flag, slice);
+    if (ret != KStatus::SUCCESS) {
+      LOG_ERROR("GetVarLenTypeColAddr failed.");
+      return ret;
+    }
+    if (flag == DataFlags::kValid) {
+      var_rows.emplace_back(slice.data, slice.len);
+    }
+  }
+  min = {nullptr, 0};
+  if (!var_rows.empty()) {
+    auto min_it = std::min_element(var_rows.begin(), var_rows.end());
+    if (min.data) {
+      string current_max({min.data, min.len});
+      if (current_max > *min_it) {
+        free(min.data);
+        min.data = nullptr;
+      }
+    }
+    if (min.data == nullptr) {
+      min.len = min_it->length();
+      min.data = static_cast<char*>(malloc(min.len));
+      memcpy(min.data, min_it->c_str(), min.len);
+    }
+  }
+  return KStatus::SUCCESS;
+}
+
+KStatus TsStorageIteratorV2Impl::getBlockSpanVarMaxValue(std::shared_ptr<TsBlockSpan> block_span,
+                                                         uint32_t col_id, uint32_t type, TSSlice& max) {
+  KStatus ret;
+  std::vector<string> var_rows;
+  uint32_t row_num = block_span->GetRowNum();
+  for (int row_idx = 0; row_idx < row_num; ++row_idx) {
+    TSSlice slice;
+    DataFlags flag;
+    ret = block_span->GetVarLenTypeColAddr(row_idx, col_id, flag, slice);
+    if (ret != KStatus::SUCCESS) {
+      LOG_ERROR("GetVarLenTypeColAddr failed.");
+      return ret;
+    }
+    if (flag == DataFlags::kValid) {
+      var_rows.emplace_back(slice.data, slice.len);
+    }
+  }
+  max = {nullptr, 0};
+  if (!var_rows.empty()) {
+    auto max_it = std::max_element(var_rows.begin(), var_rows.end());
+    if (max.data) {
+      string current_max({max.data, max.len});
+      if (current_max < *max_it) {
+        free(max.data);
+        max.data = nullptr;
+      }
+    }
+    if (max.data == nullptr) {
+      // Can we use the memory in var_rows?
+      max.len = max_it->length();
+      max.data = static_cast<char*>(malloc(max.len));
+      memcpy(max.data, max_it->c_str(), max_it->length());
+    }
+  }
+  return KStatus::SUCCESS;
+}
+
+bool TsStorageIteratorV2Impl::isBlockFiltered(std::shared_ptr<TsBlockSpan>& block_span) {
+  // if (!block_span->HasPreAgg()) {
+  //   return false;
+  // }
+  KStatus ret;
+  for (const auto& filter : block_filter_) {
+    uint32_t col_id = filter.colID;
+    BlockFilterType filter_type = filter.filterType;
+    std::vector<FilterSpan> filter_spans = filter.spans;
+    if (filter.filterType == BlockFilterType::BFT_NULL) {
+      if (block_span->IsColNotNull(col_id)) {
+        return true;
+      }
+      if (block_span->HasPreAgg()) {
+        // Use pre agg to calculate count
+        uint16_t pre_count{0};
+        ret = block_span->GetPreCount(col_id, pre_count);
+        if (ret != KStatus::SUCCESS) {
+          return KStatus::FAIL;
+        }
+        if (pre_count == block_span->GetRowNum()) return true;
+      } else {
+        uint32_t col_count{0};
+        ret = block_span->GetCount(col_id, col_count);
+        if (ret != KStatus::SUCCESS) {
+          return KStatus::FAIL;
+        }
+        if (col_count == block_span->GetRowNum()) return true;
+      }
+    } else if (filter.filterType == BlockFilterType::BFT_NOTNULL) {
+      if (block_span->HasPreAgg()) {
+        // Use pre agg to calculate count
+        uint16_t pre_count{0};
+        ret = block_span->GetPreCount(col_id, pre_count);
+        if (ret != KStatus::SUCCESS) {
+          return KStatus::FAIL;
+        }
+        if (!pre_count) return true;
+      } else {
+        uint32_t col_count{0};
+        ret = block_span->GetCount(col_id, col_count);
+        if (ret != KStatus::SUCCESS) {
+          return KStatus::FAIL;
+        }
+        if (!col_count) return true;
+      }
+    } else if (filter.filterType == BlockFilterType::BFT_SPAN) {
+      SpanValue min, max;
+      void* min_addr{nullptr};
+      void* max_addr{nullptr};
+      bool is_new = false;
+      Defer defer{[&]() {
+        if (is_new) {
+          if (isVarLenType(attrs_[col_id].type)) {
+            free(min.data);
+            free(max.data);
+          } else {
+            free(min_addr);
+            free(max_addr);
+          }
+        }
+      }};
+      if (!isVarLenType(attrs_[col_id].type)) {
+        if (block_span->HasPreAgg()) {
+          ret = block_span->GetPreMin(col_id, min_addr);
+          if (ret != KStatus::SUCCESS) {
+            return KStatus::FAIL;
+          }
+          ret = block_span->GetPreMax(col_id, max_addr);
+          if (ret != KStatus::SUCCESS) {
+            return KStatus::FAIL;
+          }
+        } else {
+          ret = getBlockSpanMinValue(block_span, col_id, attrs_[col_id].type, min_addr);
+          ret = getBlockSpanMaxValue(block_span, col_id, attrs_[col_id].type, max_addr);
+          is_new = true;
+        }
+        if (!min_addr || !max_addr) continue;
+
+        switch (attrs_[col_id].type) {
+          case DATATYPE::BYTE:
+          case DATATYPE::BOOL: {
+            min.data = static_cast<char*>(min_addr);
+            max.data = static_cast<char*>(max_addr);
+            min.len = max.len = attrs_[col_id].size;
+            break;
+          }
+          case DATATYPE::BINARY:
+          case DATATYPE::CHAR:
+          case DATATYPE::STRING: {
+            min.data = static_cast<char*>(min_addr);
+            max.data = static_cast<char*>(max_addr);
+            min.len = strlen(min.data);
+            max.len = strlen(max.data);
+            break;
+          }
+          case DATATYPE::INT8: {
+            min.ival = (k_int64)(*(static_cast<k_int8*>(min_addr)));
+            max.ival = (k_int64)(*(static_cast<k_int8*>(max_addr)));
+            break;
+          }
+          case DATATYPE::INT16: {
+            min.ival = (k_int64)(*(static_cast<k_int16*>(min_addr)));
+            max.ival = (k_int64)(*(static_cast<k_int16*>(max_addr)));
+            break;
+          }
+          case DATATYPE::INT32:
+          case DATATYPE::TIMESTAMP: {
+            min.ival = (k_int64)(*(static_cast<k_int32*>(min_addr)));
+            max.ival = (k_int64)(*(static_cast<k_int32*>(max_addr)));
+            break;
+          }
+          case DATATYPE::INT64:
+          case DATATYPE::TIMESTAMP64:
+          case DATATYPE::TIMESTAMP64_MICRO:
+          case DATATYPE::TIMESTAMP64_NANO: {
+            min.ival = *static_cast<k_int64*>(min_addr);
+            max.ival = *static_cast<k_int64*>(max_addr);
+            break;
+          }
+          case DATATYPE::FLOAT: {
+            min.dval = static_cast<double>(*static_cast<float*>(min_addr));
+            max.dval = static_cast<double>(*static_cast<float*>(max_addr));
+            break;
+          }
+          case DATATYPE::DOUBLE: {
+            min.dval = *static_cast<double*>(min_addr);
+            max.dval = *static_cast<double*>(max_addr);
+            break;
+          }
+          default:
+            break;
+        }
+      } else {
+        bool is_var_string = (attrs_[col_id].type == DATATYPE::VARSTRING);
+        if (block_span->HasPreAgg()) {
+          TSSlice var_pre_min{nullptr, 0};
+          ret = block_span->GetVarPreMin(col_id, var_pre_min);
+          if (ret != KStatus::SUCCESS) {
+            LOG_ERROR("GetVarPreMin failed.");
+            return KStatus::FAIL;
+          }
+          TSSlice var_pre_max{nullptr, 0};
+          ret = block_span->GetVarPreMax(col_id, var_pre_max);
+          if (ret != KStatus::SUCCESS) {
+            LOG_ERROR("GetVarPreMax failed.");
+            return KStatus::FAIL;
+          }
+          if (!var_pre_min.data || !var_pre_max.data) continue;
+
+          min.len = is_var_string ? (var_pre_min.len - 1) : var_pre_min.len;
+          min.data = var_pre_min.data;
+          max.len = is_var_string ? (var_pre_max.len - 1) : var_pre_max.len;
+          max.data = var_pre_max.data;
+        } else {
+          TSSlice var_pre_min{nullptr, 0};
+          ret = getBlockSpanVarMinValue(block_span, col_id, attrs_[col_id].type, var_pre_min);
+          if (ret != KStatus::SUCCESS) {
+            LOG_ERROR("GetVarPreMin failed.");
+            return KStatus::FAIL;
+          }
+          TSSlice var_pre_max{nullptr, 0};
+          ret = getBlockSpanVarMaxValue(block_span, col_id, attrs_[col_id].type, var_pre_max);
+          if (ret != KStatus::SUCCESS) {
+            LOG_ERROR("GetVarPreMax failed.");
+            return KStatus::FAIL;
+          }
+          if (!var_pre_min.data || !var_pre_max.data) continue;
+
+          min.len = is_var_string ? (var_pre_min.len - 1) : var_pre_min.len;
+          min.data = var_pre_min.data;
+          max.len = is_var_string ? (var_pre_max.len - 1) : var_pre_max.len;
+          max.data = var_pre_max.data;
+
+          is_new = true;
+        }
+      }
+      if (!matchesFilterRange(filter, min, max, (DATATYPE)attrs_[col_id].type)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 KStatus TsStorageIteratorV2Impl::ScanEntityBlockSpans(timestamp64 ts) {
   ts_block_spans_.clear();
   UpdateTsSpans(ts);
@@ -199,6 +513,17 @@ KStatus TsStorageIteratorV2Impl::ScanEntityBlockSpans(timestamp64 ts) {
       LOG_ERROR("partition_version GetBlockSpan failed.");
       return s;
     }
+    if (!block_filter_.empty()) {
+      uint32_t size = ts_block_spans_.size();
+      for (uint32_t i = 0; i < size; ++i) {
+        auto block_span = ts_block_spans_.front();
+        ts_block_spans_.pop_front();
+        if (!block_span->GetRowNum() || isBlockFiltered(block_span)) {
+          continue;
+        }
+        ts_block_spans_.push_back(block_span);
+      }
+    }
   }
 
   return KStatus::SUCCESS;
@@ -207,15 +532,16 @@ KStatus TsStorageIteratorV2Impl::ScanEntityBlockSpans(timestamp64 ts) {
 TsSortedRawDataIteratorV2Impl::TsSortedRawDataIteratorV2Impl(std::shared_ptr<TsVGroup>& vgroup,
                                                               vector<uint32_t>& entity_ids,
                                                               std::vector<KwTsSpan>& ts_spans,
+                                                              std::vector<BlockFilter>& block_filter,
                                                               DATATYPE ts_col_type,
                                                               std::vector<k_uint32>& kw_scan_cols,
                                                               std::vector<k_uint32>& ts_scan_cols,
                                                               std::shared_ptr<TsTableSchemaManager> table_schema_mgr,
                                                               uint32_t table_version,
                                                               SortOrder order_type) :
-                          TsStorageIteratorV2Impl::TsStorageIteratorV2Impl(vgroup, entity_ids, ts_spans, ts_col_type,
-                                                                            kw_scan_cols, ts_scan_cols, table_schema_mgr,
-                                                                            table_version) {
+                          TsStorageIteratorV2Impl::TsStorageIteratorV2Impl(vgroup, entity_ids, ts_spans, block_filter,
+                                                                           ts_col_type, kw_scan_cols, ts_scan_cols,
+                                                                           table_schema_mgr, table_version) {
 }
 
 TsSortedRawDataIteratorV2Impl::~TsSortedRawDataIteratorV2Impl() {
@@ -303,13 +629,13 @@ KStatus TsSortedRawDataIteratorV2Impl::Next(ResultSet* res, k_uint32* count, boo
 }
 
 TsAggIteratorV2Impl::TsAggIteratorV2Impl(std::shared_ptr<TsVGroup>& vgroup, vector<uint32_t>& entity_ids,
-                                         std::vector<KwTsSpan>& ts_spans, DATATYPE ts_col_type,
-                                         std::vector<k_uint32>& kw_scan_cols, std::vector<k_uint32>& ts_scan_cols,
-                                         std::vector<k_int32>& agg_extend_cols,
+                                         std::vector<KwTsSpan>& ts_spans, std::vector<BlockFilter>& block_filter,
+                                         DATATYPE ts_col_type, std::vector<k_uint32>& kw_scan_cols,
+                                         std::vector<k_uint32>& ts_scan_cols, std::vector<k_int32>& agg_extend_cols,
                                          std::vector<Sumfunctype>& scan_agg_types, std::vector<timestamp64>& ts_points,
                                          std::shared_ptr<TsTableSchemaManager> table_schema_mgr, uint32_t table_version)
-    : TsStorageIteratorV2Impl::TsStorageIteratorV2Impl(vgroup, entity_ids, ts_spans, ts_col_type, kw_scan_cols,
-                                                       ts_scan_cols, table_schema_mgr, table_version),
+    : TsStorageIteratorV2Impl::TsStorageIteratorV2Impl(vgroup, entity_ids, ts_spans, block_filter, ts_col_type,
+                                                       kw_scan_cols, ts_scan_cols, table_schema_mgr, table_version),
       scan_agg_types_(scan_agg_types),
       last_ts_points_(ts_points),
       agg_extend_cols_{agg_extend_cols} {}
