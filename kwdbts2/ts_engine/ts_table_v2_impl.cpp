@@ -225,7 +225,7 @@ KStatus TsTableV2Impl::GetNormalIterator(kwdbContext_p ctx, const IteratorParams
       acceptable_ts = now.time_since_epoch().count() - life_time.ts;
       updateTsSpan(acceptable_ts * life_time.precision, params.ts_spans);
     }
-    s = vgroup->GetIterator(ctx, vgroup_ids[vgroup_iter.first], params.ts_spans, ts_col_type,
+    s = vgroup->GetIterator(ctx, vgroup_ids[vgroup_iter.first], params.ts_spans, params.block_filter, ts_col_type,
                             params.scan_cols, ts_scan_cols, params.agg_extend_cols,
                             params.scan_agg_types, table_schema_mgr_, params.table_version,
                             &ts_iter, vgroup, params.ts_points, params.reverse, params.sorted);
