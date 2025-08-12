@@ -115,7 +115,7 @@ KStatus BlockCompressionCodec::Compress(const std::vector<KSlice>& inputs,
   }
   std::string buf;
   // we compute total size to avoid more memory copy
-  size_t total_size = KSlice::compute_total_size(inputs);
+  size_t total_size = KSlice::ComputeTotalSize(inputs);
   buf.reserve(total_size);
   for (auto& input : inputs) {
     buf.append(input.data, input.size);
@@ -221,13 +221,13 @@ class Lz4BlockCompression : public BlockCompressionCodec {
       if (max_len <= COMPRESSION_BUFFER_THRESHOLD) {
         compression_buffer->resize(output->size);
         if (compressed_body1) {
-          compressed_body1->assign_copy(compression_buffer->data(),
-                                        compression_buffer->size());
+          compressed_body1->AssignCopy(compression_buffer->data(),
+                                        compression_buffer->Size());
         } else {
           compressed_body2->clear();
-          compressed_body2->resize(compression_buffer->size());
+          compressed_body2->resize(compression_buffer->Size());
           memcpy(compressed_body2->data(), compression_buffer->data(),
-                 compression_buffer->size());
+                 compression_buffer->Size());
         }
         compression_buffer->resize(0);
       } else {

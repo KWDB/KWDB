@@ -22,7 +22,6 @@
 #include "ee_scan_op.h"
 #include "ee_sort_op.h"
 #include "ee_statistic_scan_op.h"
-#include "ee_synchronizer_op.h"
 #include "ee_sort_scan_op.h"
 #include "ee_table.h"
 #include "ee_tag_scan_op.h"

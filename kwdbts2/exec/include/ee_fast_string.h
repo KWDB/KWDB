@@ -40,79 +40,34 @@ class faststring {
       data_ = new uint8_t[capacity];
       capacity_ = capacity;
     }
-    // ASAN_POISON_MEMORY_REGION(data_, capacity_);
   }
 
   ~faststring() {
-    // ASAN_UNPOISON_MEMORY_REGION(initial_data_, arraysize(initial_data_));
     if (data_ != initial_data_) {
       delete[] data_;
     }
   }
 
   // Reset the valid length of the string to 0.
-  //
-  // This does not free up any memory. The capacity of the string remains
-  // unchanged.
-  void clear() {
+  void Clear() {
     resize(0);
-    // ASAN_POISON_MEMORY_REGION(data_, capacity_);
   }
 
-  // Resize the string to the given length.
-  // If the new length is larger than the old length, the capacity is expanded
-  // as necessary.
-  //
-  // NOTE: in contrast to std::string's implementation, Any newly "exposed"
-  // bytes of data are not cleared.
   void resize(size_t newsize) {
     if (newsize > capacity_) {
-      reserve(newsize);
+      Reserve(newsize);
     }
     len_ = newsize;
-    // ASAN_POISON_MEMORY_REGION(data_ + len_, capacity_ - len_);
-    // ASAN_UNPOISON_MEMORY_REGION(data_, len_);
   }
 
-  // Return the buffer built so far and reset `this` to the initial status
-  // (size() == 0). NOTE: the returned data pointer is not necessarily the
-  // pointer returned by data() OwnedSlice build() {
-  //     uint8_t* ret = data_;
-  //     if (ret == initial_data_) {
-  //         ret = new uint8_t[len_];
-  //         strings::memcpy_inlined(ret, data_, len_);
-  //     }
-  //     OwnedSlice result(ret, len_);
-  //     len_ = 0;
-  //     capacity_ = kInitialCapacity;
-  //     data_ = initial_data_;
-  //     ASAN_POISON_MEMORY_REGION(data_, capacity_);
-  //     return result;
-  // }
-
-  // Reserve space for the given total amount of data. If the current capacity
-  // is already larger than the newly requested capacity, this is a no-op (i.e.
-  // it does not ever free memory).
-  //
-  // NOTE: even though the new capacity is reserved, it is illegal to begin
-  // writing into that memory directly using pointers. If ASAN is enabled, this
-  // is ensured using manual memory poisoning.
-  void reserve(size_t newcapacity) {
+  void Reserve(size_t newcapacity) {
     if (PREDICT_TRUE(newcapacity <= capacity_)) return;
     GrowArray(newcapacity);
   }
 
-  // Append the given data to the string, resizing capacity as necessary.
-  void append(const void* src_v, size_t count) {
+  void Append(const void* src_v, size_t count) {
     const auto* src = reinterpret_cast<const uint8_t*>(src_v);
     EnsureRoomForAppend(count);
-    // ASAN_UNPOISON_MEMORY_REGION(data_ + len_, count);
-
-    // appending short values is common enough that this
-    // actually helps, according to benchmarks. In theory
-    // memcpy_inlined should already be just as good, but this
-    // was ~20% faster for reading a large prefix-coded string file
-    // where each string was only a few chars different
     if (count <= 4) {
       uint8_t* p = &data_[len_];
       for (int i = 0; i < count; i++) {
@@ -124,140 +79,62 @@ class faststring {
     len_ += count;
   }
 
-  // Append the given string to this string.
-  void append(const std::string& str) { append(str.data(), str.size()); }
+  void Append(const std::string& str) { Append(str.data(), str.size()); }
 
-  // Append the given character to this string.
   void push_back(const char byte) {
     EnsureRoomForAppend(1);
-    // ASAN_UNPOISON_MEMORY_REGION(data_ + len_, 1);
     data_[len_] = byte;
     len_++;
   }
 
-  // Return the valid length of this string.
-  size_t length() const { return len_; }
+  size_t Length() const { return len_; }
 
-  // Return the valid length of this string (identical to length())
-  size_t size() const { return len_; }
+  size_t Size() const { return len_; }
 
-  // Return the allocated capacity of this string.
-  size_t capacity() const { return capacity_; }
+  size_t Capacity() const { return capacity_; }
 
-  // Return a pointer to the data in this string. Note that this pointer
-  // may be invalidated by any later non-const operation.
   const uint8_t* data() const { return &data_[0]; }
 
-  // Return a pointer to the data in this string. Note that this pointer
-  // may be invalidated by any later non-const operation.
   uint8_t* data() { return &data_[0]; }
 
-  // Return the given element of this string. Note that this does not perform
-  // any bounds checking.
-  const uint8_t& at(size_t i) const { return data_[i]; }
+  const uint8_t& At(size_t i) const { return data_[i]; }
 
-  // Return the given element of this string. Note that this does not perform
-  // any bounds checking.
   const uint8_t& operator[](size_t i) const { return data_[i]; }
 
-  // Return the given element of this string. Note that this does not perform
-  // any bounds checking.
   uint8_t& operator[](size_t i) { return data_[i]; }
 
-  // Reset the contents of this string by copying 'len' bytes from 'src'.
-  void assign_copy(const uint8_t* src, size_t len) {
-    // Reset length so that the first resize doesn't need to copy the current
-    // contents of the array.
+  void AssignCopy(const uint8_t* src, size_t len) {
     len_ = 0;
     resize(len);
     kwdbts::memcpy_inlined(data(), src, len);
   }
 
-  // Reset the contents of this string by copying from the given std::string.
-  void assign_copy(const std::string& str) {
-    assign_copy(reinterpret_cast<const uint8_t*>(str.c_str()), str.size());
+  void AssignCopy(const std::string& str) {
+    AssignCopy(reinterpret_cast<const uint8_t*>(str.c_str()), str.size());
   }
 
-  // Reallocates the internal storage to fit only the current data.
-  //
-  // This may revert to using internal storage if the current length is shorter
-  // than kInitialCapacity. In that case, after this call, capacity() will go
-  // down to kInitialCapacity.
-  //
-  // Any pointers within this instance may be invalidated.
-  void shrink_to_fit() {
+  void ShrinkToFit() {
     if (data_ == initial_data_ || capacity_ == len_) return;
     ShrinkToFitInternal();
   }
 
-  // Return a copy of this string as a std::string.
   std::string ToString() const {
     return std::string(reinterpret_cast<const char*>(data()), len_);
   }
-
-  //     void swap(faststring& rhs) {
-  //         char tmp_buff[kInitialCapacity];
-  //         if (data_ == initial_data_ && rhs.data_ == rhs.initial_data_) {
-  //             // // assert(capacity_ == kInitialCapacity);
-  //             // assert(rhs.capacity_ == kInitialCapacity);
-  //             // ASAN_UNPOISON_MEMORY_REGION(initial_data_,
-  //             kInitialCapacity);
-  //             // ASAN_UNPOISON_MEMORY_REGION(rhs.initial_data_,
-  //             kInitialCapacity);
-  // #pragma GCC diagnostic push
-  // #pragma GCC diagnostic ignored "-Wuninitialized"
-  //             memcpy(tmp_buff, initial_data_, kInitialCapacity);
-  //             memcpy(initial_data_, rhs.initial_data_, kInitialCapacity);
-  //             memcpy(rhs.initial_data_, tmp_buff, kInitialCapacity);
-  // #pragma GCC diagnostic pop
-  //             std::swap(len_, rhs.len_);
-  //         } else if (data_ == initial_data_) {
-  //             assert(capacity_ == kInitialCapacity);
-  //             ASAN_UNPOISON_MEMORY_REGION(rhs.initial_data_, len_);
-  //             strings::memcpy_inlined(rhs.initial_data_, initial_data_,
-  //             len_); std::swap(len_, rhs.len_); data_ = rhs.data_; capacity_
-  //             = rhs.capacity_; rhs.data_ = rhs.initial_data_; rhs.capacity_ =
-  //             kInitialCapacity;
-  //         } else if (rhs.data_ == rhs.initial_data_) {
-  //             assert(rhs.capacity_ == kInitialCapacity);
-  //             ASAN_UNPOISON_MEMORY_REGION(initial_data_, rhs.len_);
-  //             strings::memcpy_inlined(initial_data_, rhs.initial_data_,
-  //             rhs.len_); std::swap(len_, rhs.len_); rhs.data_ = data_;
-  //             rhs.capacity_ = capacity_;
-  //             data_ = initial_data_;
-  //             capacity_ = kInitialCapacity;
-  //         } else {
-  //             std::swap(data_, rhs.data_);
-  //             std::swap(len_, rhs.len_);
-  //             std::swap(capacity_, rhs.capacity_);
-  //         }
-  //         ASAN_POISON_MEMORY_REGION(data_ + len_, capacity_ - len_);
-  //         ASAN_POISON_MEMORY_REGION(rhs.data_ + rhs.len_, rhs.capacity_ -
-  //         rhs.len_);
-  //     }
 
  private:
   faststring(const faststring&) = delete;
   const faststring& operator=(const faststring&) = delete;
 
-  // If necessary, expand the buffer to fit at least 'count' more bytes.
-  // If the array has to be grown, it is grown by at least 50%.
   void EnsureRoomForAppend(size_t count) {
     if (PREDICT_TRUE(len_ + count <= capacity_)) {
       return;
     }
-
-    // Call the non-inline slow path - this reduces the number of instructions
-    // on the hot path.
     GrowToAtLeast(len_ + count);
   }
 
-  // The slow path of EnsureRoomForAppend. Grows the buffer by either
-  // 'count' bytes, or 50%, whichever is more.
   void GrowToAtLeast(size_t newcapacity);
 
-  // Grow the array to the given capacity, which must be more than
-  // the current capacity.
   void GrowArray(size_t newcapacity);
 
   void ShrinkToFitInternal();
@@ -265,8 +142,6 @@ class faststring {
   uint8_t* data_;
   uint8_t initial_data_[kInitialCapacity];
   size_t len_{0};
-  // NOTE: we will make a initial buffer as part of the object, so the smallest
-  // possible value of capacity_ is kInitialCapacity.
   size_t capacity_{kInitialCapacity};
 };
 }  // namespace kwdbts

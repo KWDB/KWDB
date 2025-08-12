@@ -21,25 +21,23 @@ static KSlice slice_min_value_;
 
 class SliceInit {
  public:
-  SliceInit() { KSlice::init(); }
+  SliceInit() { KSlice::Init(); }
 };
-
-static SliceInit _slice_init;
 
 // NOTE(zc): we define this function here to make compile work.
 KSlice::KSlice(const faststring& s)
     :  // NOLINT(runtime/explicit)
       data(const_cast<char *>(reinterpret_cast<const char*>(s.data()))),
-      size(s.size()) {}
+      size(s.Size()) {}
 
-void KSlice::init() {
+void KSlice::Init() {
   memset(slice_max_value_data_, 0xff, sizeof(slice_max_value_data_));
   slice_max_value_ =
       KSlice(slice_max_value_data_, sizeof(slice_max_value_data_));
   slice_min_value_ = KSlice(const_cast<char*>(""), 0);
 }
 
-const KSlice& KSlice::max_value() { return slice_max_value_; }
+const KSlice& KSlice::MaxValue() { return slice_max_value_; }
 
-const KSlice& KSlice::min_value() { return slice_min_value_; }
+const KSlice& KSlice::MinValue() { return slice_min_value_; }
 }  // namespace kwdbts

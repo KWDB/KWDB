@@ -63,12 +63,17 @@ class RouterOutboundOperator : public OutboundOperator {
                              const k_uint32* row_indexes, k_uint32 size);
     k_bool UsePassThrougth() { return use_pass_through_; }
     KStatus CloseInternal();
+    KStatus SendFinish();
     KStatus Close();
     void SetType(::kwdbts::StreamEndpointType type) { type_ = type; }
     void SetStatus(k_int32 code, const std::string& msg) {
       status_.set_status_code(code);
       status_.set_error_msgs(0, msg);
     }
+    void SetSendLastChunk(k_bool send_last_chunk) {
+      is_send_last_chunk_ = send_last_chunk;
+    }
+
     k_int32 GetDestProcessorid() { return dest_processor_id_; }
 
    public:
@@ -92,6 +97,7 @@ class RouterOutboundOperator : public OutboundOperator {
     StatusPB status_;
     k_int32 send_count_ = 0;
     k_bool is_first_chunk_{true};
+    k_bool is_send_last_chunk_{false};
   };
 
   RouterOutboundOperator(TsFetcherCollection* collection,
@@ -135,23 +141,6 @@ class RouterOutboundOperator : public OutboundOperator {
         status_.set_error_msgs(0, msg);
       }
     }
-
-    // std::map<k_int32, StatusPB>::iterator iter = channel_status_.find(nodeid);
-    // if (iter != channel_status_.end()) {
-    //   iter->second.set_status_code(code);
-    // } else {
-    //   LOG_ERROR("RouterOutboundOperator not find target node id:%d", nodeid);
-    //   return;
-    // }
-    // wait_cond_.notify_one();
-    //     if (status_.load() != nullptr) {
-    //     return;
-    // }
-    // StatusPB* expected = nullptr;
-    // if(status_.compare_exchange_strong(expected, &status_1_)){
-    //     status_1_.set_status_code(code);
-    //     status_1_.add_error_msgs(message);
-    // }
   }
 
   void ReceiveNotifyEx() {
@@ -160,8 +149,8 @@ class RouterOutboundOperator : public OutboundOperator {
 
  private:
   k_bool CheckReady(kwdbContext_p ctx);
-  k_bool SendErrorMessage(kwdbContext_p ctx, k_int32 error_code,
-                          const std::string& error_msg);
+  k_bool SendErrorMessage(k_int32 error_code, const std::string& error_msg);
+  KStatus SendLastChunk();
 
  private:
   std::string host_name_;

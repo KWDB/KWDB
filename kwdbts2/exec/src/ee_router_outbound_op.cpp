@@ -25,7 +25,7 @@
 #include "ee_inbound_op.h"
 #include "ee_new_slice.h"
 #include "ee_pb_plan.pb.h"
-#include "ee_protobufC_serde.h"
+#include "ee_protobuf_serde.h"
 #include "lg_api.h"
 #define CAPACITY_SIZE 65536
 namespace kwdbts {
@@ -67,11 +67,20 @@ KStatus RouterOutboundOperator::Channel::CloseInternal() {
     }
   }
   DataChunkPtr chunk = nullptr;
-  if (KStatus::SUCCESS != SendOneChunk(chunk, 0, true)) {
+  if (KStatus::SUCCESS != SendOneChunk(chunk, 0, false)) {
     LOG_ERROR("close SendOneChunk faild");
     return KStatus::FAIL;
   }
 
+  return KStatus::SUCCESS;
+}
+
+KStatus RouterOutboundOperator::Channel::SendFinish() {
+  DataChunkPtr chunk = nullptr;
+  if (KStatus::SUCCESS != SendOneChunk(chunk, 0, true)) {
+    LOG_ERROR("close SendOneChunk faild");
+    return KStatus::FAIL;
+  }
   return KStatus::SUCCESS;
 }
 
@@ -136,7 +145,7 @@ KStatus RouterOutboundOperator::Channel::SendOneChunk(DataChunkPtr& data_chunk,
     }
   }
 
-  if (current_request_bytes_ > 262144 || eos) {
+  if (current_request_bytes_ > 262144 || eos || is_send_last_chunk_) {
     chunk_request_->set_eos(eos);
     chunk_request_->set_use_pass_through(use_pass_through_);
     butil::IOBuf attachment;
@@ -149,7 +158,9 @@ KStatus RouterOutboundOperator::Channel::SendOneChunk(DataChunkPtr& data_chunk,
       LOG_ERROR("AddRequest faild");
       return KStatus::FAIL;
     }
-    if (eos) {
+    // LOG_ERROR("send_count_ %d,is_send_last_chunk_ %s,eos %s,stream_id_ %d",
+    //    send_count_, is_send_last_chunk_ ? "true" : "false", eos ? "true" : "false",stream_id_);
+    if (eos || is_send_last_chunk_) {
       send_count_ = 0;
     }
     current_request_bytes_ = 0;
@@ -360,25 +371,13 @@ EEIteratorErrCode RouterOutboundOperator::Start(kwdbContext_p ctx) {
   EEIteratorErrCode ret = OutboundOperator::Start(ctx);
   if (ret != EEIteratorErrCode::EE_OK) {
     LOG_ERROR("RouterOutboundOperator::Start failed\n");
-    k_int32 err_code = ret;
-    std::string msg = "RouterOutboundOperator Start failed";
-    auto& error_info = EEPgErrorInfo::GetPgErrorInfo();
-    if (error_info.code > 0) {
-      err_code = error_info.code;
-      msg = std::string(error_info.msg);
-    } else if (err_code == EEIteratorErrCode::EE_ERROR) {
-      err_code = EEIteratorErrCode::EE_DATA_ERROR;
-    }
-    SendErrorMessage(ctx, err_code, msg);
     Return(ret);
   }
   buffer_->IncrSinker();
   Return(EEIteratorErrCode::EE_OK);
 }
 
-k_bool RouterOutboundOperator::SendErrorMessage(kwdbContext_p ctx,
-                                                k_int32 error_code,
-                                                const std::string& error_msg) {
+k_bool RouterOutboundOperator::SendErrorMessage(k_int32 error_code, const std::string& error_msg) {
   for (auto& [_, channel] : target_id2channel_) {
     if ((part_type_ ==
          TSOutputRouterSpec_Type::TSOutputRouterSpec_Type_BY_GATHER) &&
@@ -480,24 +479,17 @@ EEIteratorErrCode RouterOutboundOperator::Next(kwdbContext_p ctx,
   DataChunkPtr temp_chunk = nullptr;
   EEIteratorErrCode code = childrens_[0]->Next(ctx, temp_chunk);
   if (EEIteratorErrCode::EE_OK != code) {
-    if (EEIteratorErrCode::EE_TIMESLICE_OUT != code &&
-        EEIteratorErrCode::EE_END_OF_RECORD != code) {
+    if (EEIteratorErrCode::EE_TIMESLICE_OUT != code && EEIteratorErrCode::EE_END_OF_RECORD != code) {
       LOG_ERROR("RouterOutboundOperator::Next failed, code:%d", code);
-      auto& error_info = EEPgErrorInfo::GetPgErrorInfo();
-      k_int32 err_code = code;
-      std::string msg = "RouterOutboundOperator failed";
-      if (error_info.code > 0) {
-        err_code = error_info.code;
-        msg = std::string(error_info.msg);
-      } else if (err_code == EEIteratorErrCode::EE_ERROR) {
-        err_code = EEIteratorErrCode::EE_DATA_ERROR;
-      }
-      SendErrorMessage(ctx, err_code, msg);
-      Return(EEIteratorErrCode::EE_ERROR);
+      Return(code);
     }
-    EEPgErrorInfo info;
-    PushFinish(code, 0, info);
+    SendLastChunk();
   } else {
+    if (EEPgErrorInfo::IsError()) {
+      code = EEIteratorErrCode::EE_ERROR;
+      Return(code);
+    }
+
     PushChunk(temp_chunk, 0);
     code = EEIteratorErrCode::EE_NEXT_CONTINUE;
   }
@@ -524,11 +516,20 @@ EEIteratorErrCode RouterOutboundOperator::Next(kwdbContext_p ctx,
   Return(code);
 }
 
-void RouterOutboundOperator::PushFinish(EEIteratorErrCode code,
-                                        k_int32 stream_id,
-                                        const EEPgErrorInfo& pgInfo) {
-  // pg_info_ = pgInfo;
-  SetFinishing();
+void RouterOutboundOperator::PushFinish(EEIteratorErrCode code, k_int32 stream_id, const EEPgErrorInfo& pgInfo) {
+  // LOG_ERROR("RouterOutboundOperator::PushFinish code %s, pgInfo.code = %d, pgInfo %s, query_id = %ld",
+  //                 EEIteratorErrCodeToString(code).c_str(), pgInfo.code, pgInfo.msg, query_id_);
+  if (pgInfo.code > 0) {
+    SendErrorMessage(pgInfo.code, pgInfo.msg);
+  } else {
+    SetFinishing();
+  }
+
+  if (is_collected_) {
+    for (auto parent : parent_operators_) {
+      parent->PushFinish(code, stream_id, pgInfo);
+    }
+  }
 }
 
 int64_t RouterOutboundOperator::ConstrucBrpcAttachment(
@@ -564,6 +565,44 @@ KStatus RouterOutboundOperator::SetFinishing() {
   if (is_real_finished_) {
     return status;
   }
+  for (auto& [_, channel] : target_id2channel_) {
+    if ((part_type_ ==
+         TSOutputRouterSpec_Type::TSOutputRouterSpec_Type_BY_GATHER) &&
+        channel->UsePassThrougth()) {
+      continue;
+    }
+    channel->SetSendLastChunk(true);
+    auto tmp_status = channel->SendFinish();
+    if (tmp_status != KStatus::SUCCESS) {
+      status = tmp_status;
+    }
+  }
+
+  {
+    while (true) {
+      // wait
+      if (buffer_->IsFinishedExtra()) {
+        break;
+      }
+      wait_cond_.wait_for(l, std::chrono::seconds(2));
+      continue;
+    }
+
+    if (status_.status_code() > 0) {
+      EEPgErrorInfo::SetPgErrorInfo(status_.status_code(),
+                                    status_.error_msgs(0).c_str());
+      // LOG_ERROR("RouterOutboundOperator SetFinishing failed, status_code:%d, msg:%s",
+      //           status_.status_code(), status_.error_msgs(0).c_str());
+      return KStatus::FAIL;
+    }
+  }
+
+  is_real_finished_ = true;
+  return status;
+}
+
+KStatus RouterOutboundOperator::SendLastChunk() {
+  KStatus status = KStatus::SUCCESS;
   if (chunk_request_ != nullptr) {
     butil::IOBuf attachment;
     int64_t attachment_physical_bytes =
@@ -571,7 +610,6 @@ KStatus RouterOutboundOperator::SetFinishing() {
     for (const auto& [_, channel] : target_id2channel_) {
       PTransmitChunkParamsPtr copy =
           std::make_shared<PTransmitChunkParams>(*chunk_request_);
-      channel->SetStatus(pg_info_.code, pg_info_.msg);
       if (KStatus::SUCCESS !=
           channel->SendChunkRequest(copy, attachment,
                                     attachment_physical_bytes)) {
@@ -589,13 +627,12 @@ KStatus RouterOutboundOperator::SetFinishing() {
         channel->UsePassThrougth()) {
       continue;
     }
-    channel->SetStatus(pg_info_.code, pg_info_.msg);
+    channel->SetSendLastChunk(true);
     auto tmp_status = channel->Close();
     if (tmp_status != KStatus::SUCCESS) {
       status = tmp_status;
     }
   }
-  is_real_finished_ = true;
   return status;
 }
 
@@ -611,6 +648,8 @@ BaseOperator* RouterOutboundOperator::Clone() {
   } else {
     delete input;
   }
+
+  dynamic_cast<RouterOutboundOperator *>(iter)->SetCollected(is_collected_);
 
   return iter;
 }
@@ -836,7 +875,7 @@ KStatus RouterOutboundOperator::SerializeChunk(DataChunk* src, ChunkPB* dst,
       encode_fixed32(buff + 8, src->Capacity());
       encode_fixed32(buff + 12, src->Size());
       buff = buff + 20;
-      for (int i = 0; i < dst->columns_size(); ++i) {
+      for (int i = 0; i < col_num; ++i) {
         const ColumnPB& column = dst->columns(i);
         k_int64 column_uncompressed_size = column.uncompressed_size();
         encode_fixed32(buff + 0, column_uncompressed_size);
@@ -850,7 +889,7 @@ KStatus RouterOutboundOperator::SerializeChunk(DataChunk* src, ChunkPB* dst,
         buff = buff + column_compressed_size;
       }
       dst->set_compress_type(compress_type_);
-      for (int i = 0; i < dst->columns_size(); ++i) {
+      for (int i = 0; i < col_num; ++i) {
         dst->mutable_columns(i)->clear_data();
       }
     }

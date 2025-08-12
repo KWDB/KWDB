@@ -1100,8 +1100,8 @@ char* GenPayloadDataWithNull(kwdbContext_p ctx, k_uint32 count, k_uint32& payloa
   return value;
 }
 
-void make_hashpoint(std::vector<k_uint32> *hps) {
-  for (uint32_t i=0; i<g_testcase_hash_num; i++) {
-    hps->push_back(i);
+void make_hashpoint(std::unordered_set<uint32_t>* hps) {
+  for (uint32_t i = 0; i < g_testcase_hash_num; i++) {
+    hps->insert(i);
   }
 }

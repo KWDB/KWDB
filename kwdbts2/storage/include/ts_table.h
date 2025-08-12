@@ -16,6 +16,7 @@
 #include <list>
 #include <set>
 #include <unordered_map>
+#include <unordered_set>
 #include <string>
 #include <vector>
 #include "ts_common.h"
@@ -432,7 +433,7 @@ class TsTable {
    */
   virtual KStatus GetTagIterator(kwdbContext_p ctx,
                                  std::vector<uint32_t> scan_tags,
-                                 const vector<uint32_t> hps,
+                                 const std::unordered_set<uint32_t> hps,
                                  TagIterator** iter, k_uint32 table_version);
 
   KStatus GetTagIterator(kwdbContext_p ctx, std::vector<uint32_t> scan_tags,
@@ -867,7 +868,7 @@ class TsEntityGroup {
                                  std::vector<uint32_t>& scan_tags, uint32_t table_version, EntityGroupTagIterator** iter);
   virtual KStatus GetTagIterator(kwdbContext_p ctx, std::shared_ptr<TsEntityGroup> entity_group,
                                 std::vector<k_uint32>& scan_tags, uint32_t table_version, EntityGroupTagIterator** iter,
-                          const std::vector<uint32_t>& hps);
+                          const std::unordered_set<uint32_t>& hps);
   /**
    * @brief create EntityGroupMetaIterator
    * @param[out] EntityGroupMetaIterator**

@@ -265,6 +265,7 @@ EEIteratorErrCode PassThroughNoopOperaotr::Next(kwdbContext_p ctx, DataChunkPtr&
 
   auto end = std::chrono::high_resolution_clock::now();
   if (chunk != nullptr) {
+    OPERATOR_DIRECT_ENCODING(ctx, output_encoding_, use_query_short_circuit_, thd, chunk);
     fetcher_.Update(chunk->Count(), (end - start).count(), chunk->Count() * chunk->RowSize(), 0, 0, 0);
   } else {
     fetcher_.Update(0, (end - start).count(), 0, 0, 0, 0);

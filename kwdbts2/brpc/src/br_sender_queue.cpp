@@ -23,7 +23,7 @@
 #include "ee_defer.h"
 #include "ee_fast_string.h"
 #include "ee_new_slice.h"
-#include "ee_protobufC_serde.h"
+#include "ee_protobuf_serde.h"
 #include "lg_api.h"
 
 namespace kwdbts {
@@ -117,7 +117,7 @@ KStatus DataStreamRecvr::SenderQueue::DeserializeChunk(const ChunkPB& pchunk, Da
         uncompressed_buffer.resize(uncompressed_size);
         KSlice output{uncompressed_buffer.data(), uncompressed_size};
         KSlice compressed_data(cur, compressed_size);
-        if (codec != nullptr && compressed_data.get_size() > 0) {
+        if (codec != nullptr && compressed_data.GetSize() > 0) {
           if (KStatus::FAIL == codec->Decompress(compressed_data, &output)) {
             LOG_ERROR("decompress failed, queryid:%ld", recvr_->QueryId());
             EEPgErrorInfo::SetPgErrorInfo(ERRCODE_DATA_EXCEPTION, "decompress failed");

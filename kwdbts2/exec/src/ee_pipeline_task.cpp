@@ -127,6 +127,8 @@ KStatus PipelineTask::Clone(kwdbContext_p ctx, k_int32 num, std::vector<std::sha
   for (k_uint32 i = 0; i < num; ++i) {
     std::shared_ptr<PipelineTask> task = std::make_shared<PipelineTask>(pipeline_group_);
     if (nullptr == task) {
+      LOG_ERROR("clone pipeline task failed.");
+      EEPgErrorInfo::SetPgErrorInfo(ERRCODE_OUT_OF_MEMORY, "Insufficient memory");
       return KStatus::FAIL;
     }
     task->is_clone_ = true;
@@ -180,7 +182,6 @@ void PipelineTask::Close(kwdbContext_p ctx, const EEIteratorErrCode &code) {
 }
 
 void PipelineTask::Blocked(kwdbContext_p ctx) {
-  // LOG_ERROR("pipelineTask %p is blocked.", this);
   is_running_ = false;
   state_ = PipelineTaskState::PS_BLOCKED;
   ExecPool::GetInstance().PushBlockedTask(shared_from_this());
@@ -189,6 +190,17 @@ void PipelineTask::Blocked(kwdbContext_p ctx) {
 void PipelineTask::Finish(kwdbContext_p ctx) {
   is_running_ = false;
   state_ = PipelineTaskState::PS_FINISHED;
+}
+
+void PipelineTask::UpdateStartTime() {
+  start_time_ = std::chrono::high_resolution_clock::now();
+}
+
+int64_t PipelineTask::DurationTimes() {
+  auto end = std::chrono::high_resolution_clock::now();
+  auto duration = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start_time_);
+
+  return duration.count();
 }
 
 void PipelineTask::Run(kwdbContext_p ctx) {
@@ -225,16 +237,16 @@ void PipelineTask::Run(kwdbContext_p ctx) {
     state_ = PipelineTaskState::PS_HAS_OUTPUT;
     BaseOperator *source = pipeline_group_->GetSource();
 
-    auto start = std::chrono::high_resolution_clock::now();
+    UpdateStartTime();
 
     while (true) {
       if (is_stop_ || CheckCancel(ctx) != KStatus::SUCCESS) {
+        code = EEIteratorErrCode::EE_ERROR;
         Close(ctx, code);
         break;
       }
 
       if (source && !source->HasOutput()) {
-        // LOG_ERROR("pipelineTask %p is blocked, source name is %s", this, source->GetTypeName());
         Blocked(ctx);
         break;
       }
@@ -242,11 +254,14 @@ void PipelineTask::Run(kwdbContext_p ctx) {
       DataChunkPtr ptr = nullptr;
       code = operator_->Next(ctx, ptr);
       if (EEIteratorErrCode::EE_NEXT_CONTINUE == code) {
-        auto end = std::chrono::high_resolution_clock::now();
-        auto duration = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start);
-        if (duration.count() > YIELD_MAX_TIME_SPENT_NS) {
-          // LOG_ERROR("pipelineTask %p is blocked.", this);
-          Blocked(ctx);
+        int64_t duration = DurationTimes();
+        if (duration > YIELD_MAX_TIME_SPENT_NS) {
+          if (instance.IsEmpty()) {
+            UpdateStartTime();
+            continue;
+          } else {
+            Blocked(ctx);
+          }
           break;
         } else {
           continue;
@@ -254,7 +269,6 @@ void PipelineTask::Run(kwdbContext_p ctx) {
       }
 
       if (EEIteratorErrCode::EE_QUEUE_FULL == code) {
-        // LOG_ERROR("pipelineTask %p is blocked, source name is %s", this, source ? source->GetTypeName() : "NULL");
         Blocked(ctx);
         break;
       }
@@ -263,12 +277,14 @@ void PipelineTask::Run(kwdbContext_p ctx) {
         Close(ctx, code);
         break;
       }
-      auto end = std::chrono::high_resolution_clock::now();
-      auto duration = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start);
-      if (duration.count() > YIELD_MAX_TIME_SPENT_NS) {
-        // LOG_ERROR("pipelineTask %p is blocked.", this);
-        Blocked(ctx);
-        break;
+      int64_t duration = DurationTimes();
+      if (duration > YIELD_MAX_TIME_SPENT_NS) {
+        if (instance.IsEmpty()) {
+          UpdateStartTime();
+        } else {
+          Blocked(ctx);
+          break;
+        }
       }
     }
   } catch (const std::bad_alloc &e) {
