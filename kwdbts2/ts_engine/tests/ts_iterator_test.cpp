@@ -316,7 +316,7 @@ TEST_F(TestV2Iterator, mulitEntityCount) {
       }
     }
     for (k_uint32 entity_id = 1; entity_id <= vgroup->GetMaxEntityID(); entity_id++) {
-      s = vgroup->GetIterator(ctx_, {entity_id}, {ts_span}, ts_col_type,
+      s = vgroup->GetIterator(ctx_, {entity_id}, {ts_span}, {}, ts_col_type,
                               scan_cols, scan_cols, {}, scan_agg_types, table_schema_mgr,
                               1, &ts_iter, vgroup, {}, false, false);
       ASSERT_EQ(s, KStatus::SUCCESS);
@@ -393,7 +393,7 @@ TEST_F(TestV2Iterator, mulitEntityDeleteCount) {
     std::vector<Sumfunctype> scan_agg_types = {Sumfunctype::COUNT};
 
     for (k_uint32 entity_id = 1; entity_id <= vgroup->GetMaxEntityID(); entity_id++) {
-      s = vgroup->GetIterator(ctx_, {entity_id}, {ts_span}, ts_col_type,
+      s = vgroup->GetIterator(ctx_, {entity_id}, {ts_span}, {}, ts_col_type,
                               scan_cols, scan_cols, {}, scan_agg_types, table_schema_mgr,
                               1, &ts_iter, vgroup, {}, false, false);
       ASSERT_EQ(s, KStatus::SUCCESS);
@@ -451,7 +451,7 @@ TEST_F(TestV2Iterator, mulitEntityDeleteCount) {
       }
     }
     for (k_uint32 entity_id = 1; entity_id <= vgroup->GetMaxEntityID(); entity_id++) {
-      s = vgroup->GetIterator(ctx_, {entity_id}, {ts_span}, ts_col_type,
+      s = vgroup->GetIterator(ctx_, {entity_id}, {ts_span}, {}, ts_col_type,
                               scan_cols, scan_cols, {}, scan_agg_types, table_schema_mgr,
                               1, &ts_iter, vgroup, {}, false, false);
       ASSERT_EQ(s, KStatus::SUCCESS);
@@ -507,7 +507,7 @@ TEST_F(TestV2Iterator, mulitEntityDeleteCount) {
     }
 
     for (k_uint32 entity_id = 1; entity_id <= vgroup->GetMaxEntityID(); entity_id++) {
-      s = vgroup->GetIterator(ctx_, {entity_id}, {ts_span}, ts_col_type,
+      s = vgroup->GetIterator(ctx_, {entity_id}, {ts_span}, {}, ts_col_type,
                               scan_cols, scan_cols, {}, scan_agg_types, table_schema_mgr,
                               1, &ts_iter, vgroup, {}, false, false);
       ASSERT_EQ(s, KStatus::SUCCESS);
