@@ -27,7 +27,6 @@ package sql
 import (
 	"context"
 	"fmt"
-
 	"gitee.com/kwbasedb/kwbase/pkg/clusterversion"
 	"gitee.com/kwbasedb/kwbase/pkg/jobs/jobspb"
 	"gitee.com/kwbasedb/kwbase/pkg/server/telemetry"
@@ -377,6 +376,7 @@ func maybeCreateAndAddShardCol(
 }
 
 func (n *createIndexNode) startExec(params runParams) error {
+
 	telemetry.Inc(sqltelemetry.SchemaChangeCreateCounter("index"))
 	_, dropped, err := n.tableDesc.FindIndexByName(string(n.n.Name))
 	if err == nil {

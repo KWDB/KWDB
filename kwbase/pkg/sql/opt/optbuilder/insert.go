@@ -199,6 +199,7 @@ func (b *Builder) buildInsert(ins *tree.Insert, inScope *scope) (outScope *scope
 	tab, depName, alias, refColumns := b.resolveTableForMutation(ins.Table, privilege.INSERT)
 	// Forward to buildTSInsert if tab is a ts table.
 	tblTyp := tab.GetTableType()
+
 	// insert into template table error
 	if tblTyp == tree.TemplateTable && !opt.CheckTsProperty(b.TSInfo.TSProp, TSPropInsertCreateTable) {
 		panic(pgerror.Newf(pgcode.FeatureNotSupported, "cannot insert into a TEMPLATE table, table name: %v", tab.Name()))
@@ -401,7 +402,7 @@ func (b *Builder) buildInsert(ins *tree.Insert, inScope *scope) (outScope *scope
 	// Case 1: Simple INSERT statement.
 	case ins.OnConflict == nil:
 		// Build the final insert statement, including any returned expressions.
-		if mb.tab.GetTableType() != tree.RelationalTable {
+		if mb.tab.GetTableType() != tree.RelationalTable && mb.tab.GetTableType() != tree.ColumnBasedTable {
 			mb.buildTSInsertSelect(selectRelationalTableNum, selectTimeSeriesTableNum, ins, b)
 			// case: ts insert select with order by clause.
 			if mb.outScope.ordering != nil {

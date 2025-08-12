@@ -28,6 +28,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"gitee.com/kwbasedb/kwbase/pkg/ape"
 	"net"
 	"net/url"
 	"reflect"
@@ -683,6 +684,9 @@ type ExecutorConfig struct {
 
 	// TsEngine is a ts engine
 	TsEngine *tse.TsEngine
+
+	// ApEngine is a ap engine
+	ApEngine *ape.ApEngine
 
 	// UDFCache is user defined functions
 	UDFCache *UDFCache

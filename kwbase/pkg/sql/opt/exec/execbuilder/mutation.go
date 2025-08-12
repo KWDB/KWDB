@@ -2412,6 +2412,10 @@ func (b *Builder) tryBuildFastPathInsert(ins *memo.InsertExpr) (_ execPlan, ok b
 	md := b.mem.Metadata()
 	tab := md.Table(ins.Table)
 
+	if tab.GetTableType() == tree.ColumnBasedTable {
+		return execPlan{}, false, nil
+	}
+
 	//  - there are no self-referencing foreign keys;
 	//  - all FK checks can be performed using direct lookups into unique indexes.
 	fkChecks := make([]exec.InsertFastPathFKCheck, len(ins.Checks))

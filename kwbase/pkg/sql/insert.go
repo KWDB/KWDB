@@ -26,6 +26,7 @@ package sql
 
 import (
 	"context"
+	"gitee.com/kwbasedb/kwbase/pkg/ape"
 	"sync"
 
 	"gitee.com/kwbasedb/kwbase/pkg/sql/rowcontainer"
@@ -196,6 +197,29 @@ func (r *insertRun) processSourceRow(params runParams, rowVals tree.Datums) erro
 func (n *insertNode) startExec(params runParams) error {
 	// Cache traceKV during execution, to avoid re-evaluating it for every row.
 	n.run.traceKV = params.p.ExtendedEvalContext().Tracing.KVTracingEnabled()
+	if n.run.ti.tableDesc().IsColumnBasedTable() {
+		dbDesc, err := getDatabaseDescByID(params.ctx, params.p.txn, n.run.ti.tableDesc().ParentID)
+		if err != nil {
+			return err
+		}
+		rowVals := make([]tree.Datums, 0)
+		for {
+			// Advance one individual row.
+			if next, err := n.source.Next(params); !next {
+				if err != nil {
+					return err
+				}
+				break
+			}
+			rowVals = append(rowVals, n.source.Values())
+			n.run.rowCount++
+		}
+		err = ape.DuckInsert(params.ctx, params.ExecCfg().ApEngine, dbDesc.Name, n.run.ti.tableDesc().Name, rowVals)
+		if err != nil {
+			return err
+		}
+		return nil
+	}
 
 	n.run.initRowContainer(params, n.columns, 0 /* rowCapacity */)
 
@@ -214,7 +238,7 @@ func (n *insertNode) Values() tree.Datums { panic("not valid") }
 
 // BatchedNext implements the batchedPlanNode interface.
 func (n *insertNode) BatchedNext(params runParams) (bool, error) {
-	if n.run.done {
+	if n.run.done || n.run.ti.tableDesc().IsColumnBasedTable() {
 		return false, nil
 	}
 
