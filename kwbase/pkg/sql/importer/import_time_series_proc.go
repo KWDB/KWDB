@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"math"
 	"net/url"
 	"path/filepath"
 	"reflect"
@@ -29,6 +30,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfra"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfrapb"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/hashrouter/api"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/opt/exec/execbuilder"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
@@ -117,6 +119,37 @@ func runTimeSeriesImport(
 	if tsInfo.hasSwap {
 		return nil, errors.Errorf("Import failed due to incorrect delimiter used, or the CSV file: %s, contains line breaks. "+
 			"The imported database/table needs to be deleted and REIMPORT with thread_concurrency='1' or correct delimiter.", tsInfo.filename)
+	}
+	if err == nil {
+		log.Infof(ctx, "Start flush v-group")
+		// start-single-node
+		if flowCtx.EvalCtx.StartSinglenode {
+			if err := flowCtx.Cfg.TsEngine.TSFlushVGroups(); err != nil {
+				return nil, err
+			}
+		} else {
+			// start-single-replica && start
+			ba := flowCtx.Txn.NewBatch()
+			startKey := sqlbase.MakeTsHashPointKey(spec.Table.Desc.ID, uint64(0), spec.Table.Desc.TsTable.HashNum)
+			endKey := sqlbase.MakeTsRangeKey(spec.Table.Desc.ID, api.HashParamV2, math.MaxInt64, spec.Table.Desc.TsTable.HashNum)
+			// make TsImportFlushRequest
+			ba.AddRawRequest(&roachpb.TsImportFlushRequest{
+				RequestHeader: roachpb.RequestHeader{
+					Key:    startKey,
+					EndKey: endKey,
+				},
+			})
+			err = flowCtx.Cfg.TseDB.Run(ctx, ba)
+			if err != nil {
+				return nil, err
+			}
+			for respsID := range ba.RawResponse().Responses {
+				resp := ba.RawResponse().Responses[respsID].GetInner().(*roachpb.TsImportFlushResponse)
+				if !resp.IsSuccess {
+					return nil, errors.Errorf("Flush v-group failed")
+				}
+			}
+		}
 	}
 	return &roachpb.BulkOpSummary{TimeSeriesCounts: tsInfo.result.seq, RejectedCounts: tsInfo.RejectedCount, AbandonCounts: tsInfo.AbandonCount}, err
 }

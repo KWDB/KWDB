@@ -263,6 +263,8 @@ class TSEngineV2Impl : public TSEngine {
 
   KStatus SortWALFile(kwdbContext_p ctx);
 
+  KStatus FlushVGroups(kwdbContext_p ctx) override;
+
   // init all engine.
   KStatus Init(kwdbContext_p ctx);
 

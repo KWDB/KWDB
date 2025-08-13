@@ -530,6 +530,16 @@ func (r *TsEngine) DropLeftTsTableGarbage() error {
 	return nil
 }
 
+// TSFlushVGroups flush v-groups after import
+func (r *TsEngine) TSFlushVGroups() error {
+	r.checkOrWaitForOpen()
+	status := C.TSFlushVGroups(r.tdb)
+	if err := statusToError(status); err != nil {
+		return errors.Wrap(err, "could not flush v-groups")
+	}
+	return nil
+}
+
 // AddTSColumn adds column for ts table.
 func (r *TsEngine) AddTSColumn(
 	tableID uint64, currentTSVersion, newTSVersion uint32, transactionID []byte, colMeta []byte,
@@ -767,8 +777,7 @@ func (r *TsEngine) PutRowData(
 	const dataLen = 4       // length of data_len in HeaderPrefix. The location is at the end of HeaderPrefix
 
 	headerLen := len(headerPrefix)
-	cTsSlice.len = C.size_t(int(size) + headerLen + dataLen)
-	cTsSlice.data = (*C.char)(C.malloc(cTsSlice.len))
+	cTsSlice.data = (*C.char)(C.malloc(C.size_t(int(size) + headerLen + dataLen)))
 	if cTsSlice.data == nil {
 		return DedupResult{}, EntitiesAffect{}, errors.New("failed malloc")
 	}
@@ -797,10 +806,13 @@ func (r *TsEngine) PutRowData(
 		// need to check whether the payload size exceeds limit, so calculate it before add the row to payload.
 		payloadSize += partLen
 		if payloadSize > int(sizeLimit) {
+			payloadSize -= partLen
 			// fill data_len
-			*(*int32)(unsafe.Pointer(dataPtr)) = int32(payloadSize - partLen)
+			*(*int32)(unsafe.Pointer(dataPtr)) = int32(payloadSize)
 			// fill row_num
 			*(*int32)(unsafe.Pointer(uintptr(unsafe.Pointer(cTsSlice.data)) + rowNumOffset)) = int32(partRowCnt)
+			// set tsSlice len
+			cTsSlice.len = C.size_t(payloadSize + headerLen + dataLen)
 			var dedupResult C.DedupResult
 			var entitiesAffected C.uint16_t
 			var unorderedAffected C.uint32_t
@@ -827,6 +839,8 @@ func (r *TsEngine) PutRowData(
 	*(*int32)(unsafe.Pointer(dataPtr)) = int32(payloadSize)
 	// fill row_num
 	*(*int32)(unsafe.Pointer(uintptr(unsafe.Pointer(cTsSlice.data)) + rowNumOffset)) = int32(partRowCnt)
+	// set tsSlice len
+	cTsSlice.len = C.size_t(payloadSize + headerLen + dataLen)
 	var dedupResult C.DedupResult
 	var entitiesAffected C.uint16_t
 	var unorderedAffected C.uint32_t

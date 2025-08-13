@@ -560,6 +560,8 @@ struct TSEngine {
    */
   virtual KStatus SetUseRaftLogAsWAL(kwdbContext_p ctx, bool use) = 0;
 
+  virtual KStatus FlushVGroups(kwdbContext_p ctx) = 0;
+
   /**
    * @brief Alter table cache capacity.
    * @param ctx
@@ -725,6 +727,8 @@ class TSEngineImpl : public TSEngine {
   KStatus GetWalLevel(kwdbContext_p ctx, uint8_t* wal_level) override;
 
   KStatus SetUseRaftLogAsWAL(kwdbContext_p ctx, bool use) override;
+
+  KStatus FlushVGroups(kwdbContext_p ctx) override;
 
   virtual KStatus Init(kwdbContext_p ctx);
 

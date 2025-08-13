@@ -501,7 +501,8 @@ func (b *propBuf) FlushLockedWithRaftGroup(raftGroup *raft.RawNode) (int, error)
 					*roachpb.TsTagUpdateRequest,
 					*roachpb.TsDeleteMultiEntitiesDataRequest,
 					*roachpb.TsCommitRequest,
-					*roachpb.TsRollbackRequest:
+					*roachpb.TsRollbackRequest,
+					*roachpb.TsImportFlushRequest:
 					needPropose = true
 				default:
 					continue

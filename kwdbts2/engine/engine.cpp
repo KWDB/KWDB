@@ -1701,6 +1701,10 @@ KStatus TSEngineImpl::SetUseRaftLogAsWAL(kwdbContext_p ctx, bool use) {
   return KStatus::SUCCESS;
 }
 
+KStatus TSEngineImpl::FlushVGroups(kwdbContext_p ctx) {
+  return SUCCESS;
+}
+
 bool AggCalculator::isnull(size_t row) {
   if (!bitmap_) {
     return false;
