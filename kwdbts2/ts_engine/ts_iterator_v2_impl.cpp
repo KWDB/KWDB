@@ -321,6 +321,13 @@ bool TsStorageIteratorV2Impl::isBlockFiltered(std::shared_ptr<TsBlockSpan>& bloc
   KStatus ret;
   for (const auto& filter : block_filter_) {
     uint32_t col_id = filter.colID;
+    if (!block_span->IsColExist(col_id)) {
+      // No data for this column in this block span.
+      if (filter.filterType == BlockFilterType::BFT_NULL) {
+        continue;
+      }
+      return true;
+    }
     BlockFilterType filter_type = filter.filterType;
     std::vector<FilterSpan> filter_spans = filter.spans;
     if (filter.filterType == BlockFilterType::BFT_NULL) {
