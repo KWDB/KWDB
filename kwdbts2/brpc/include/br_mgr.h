@@ -27,56 +27,93 @@ namespace kwdbts {
 
 // BRPC Service Manager Class
 // Responsible for managing the lifecycle and resources of the BRPC service
+// BrMgr: BRPC Service Manager Class
+// This class is responsible for managing the lifecycle, initialization, and resources of the BRPC
+// service. It provides interfaces for accessing core components such as the stub cache, data stream
+// manager, thread pool, and authentication. The class is implemented as a singleton to ensure a
+// single instance throughout the application.
 class BrMgr {
  public:
-  // Singleton Access Interface
+  // Disable copy constructor
+  BrMgr(const BrMgr&) = delete;
+  // Disable copy assignment operator
+  BrMgr& operator=(const BrMgr&) = delete;
+  // Disable move constructor
+  BrMgr(BrMgr&&) = delete;
+  // Disable move assignment operator
+  BrMgr& operator=(BrMgr&&) = delete;
+
+  // Initialize the BRPC service.
+  // @param ctx: KWDB context pointer.
+  // @param options: Engine options for initialization.
+  // @return: Operation status (KStatus).
+  KStatus Init(kwdbContext_p ctx, const EngineOptions& options);
+
+  // Destroy the BRPC service and release resources.
+  // @return: Operation status (KStatus).
+  KStatus Destroy();
+
+  // Get the RPC stub cache.
+  // @return: Pointer to BrpcStubCache.
+  BrpcStubCache* GetBrpcStubCache() const { return brpc_stub_cache_.get(); }
+
+  // Get the data stream manager.
+  // @return: Pointer to DataStreamMgr.
+  DataStreamMgr* GetDataStreamMgr() const { return data_stream_mgr_.get(); }
+
+  // Get the priority thread pool for query RPC.
+  // @return: Pointer to PriorityThreadPool.
+  PriorityThreadPool* GetPriorityThreadPool() const { return query_rpc_pool_.get(); }
+
+  // Get the network address of the BRPC service.
+  // @return: Reference to TNetworkAddress.
+  TNetworkAddress& GetAddr() { return address_; }
+
+  // Get the cluster ID.
+  // @return: Cluster ID as a string.
+  std::string GetClusterID() const { return cluster_id_; }
+
+  // Get the authenticator for the service.
+  // @return: Pointer to BoxAuthenticator.
+  BoxAuthenticator* GetAuth() const { return auth_.get(); }
+
+  // Get the singleton instance of BrMgr.
+  // @return: Reference to the singleton BrMgr instance.
   static BrMgr& GetInstance() {
     static BrMgr instance;
     return instance;
   }
 
-  // Disable Copy and Move
-  BrMgr(const BrMgr&) = delete;
-  BrMgr& operator=(const BrMgr&) = delete;
-  BrMgr(BrMgr&&) = delete;
-  BrMgr& operator=(BrMgr&&) = delete;
-
-  // Initialize BRPC Service
-  // @param ctx: KWDB Context
-  // @param options: Engine Options
-  // @return: Operation Status
-  KStatus Init(kwdbContext_p ctx, const EngineOptions& options);
-  KStatus Destroy();
-
-  // Get RPC Stub Cache
-  BrpcStubCache* GetBrpcStubCache() const { return brpc_stub_cache_.get(); }
-
-  // Get Data Stream Manager
-  DataStreamMgr* GetDataStreamMgr() const { return data_stream_mgr_.get(); }
-
-  // Get Priority Thread Pool
-  PriorityThreadPool* GetPriorityThreadPool() const { return query_rpc_pool_.get(); }
-
-  TNetworkAddress& GetAddr() { return address_; }
-
-  std::string GetClusterID() const { return cluster_id_; }
-
-  BoxAuthenticator* GetAuth() const { return auth_.get(); }
-
  private:
+  // Private constructor to enforce singleton pattern.
   BrMgr() = default;
+  // Private destructor.
   ~BrMgr() = default;
 
-  // Resource Cleanup
+  // Cleanup resources used by the BRPC service.
   void Cleanup();
 
-  // Member Variables
+  // Member variables
+
+  // Unique pointer to the RPC stub cache.
   std::unique_ptr<BrpcStubCache> brpc_stub_cache_;
+
+  // Unique pointer to the data stream manager.
   std::unique_ptr<DataStreamMgr> data_stream_mgr_;
+
+  // Unique pointer to the priority thread pool for query RPC.
   std::unique_ptr<PriorityThreadPool> query_rpc_pool_;
+
+  // Unique pointer to the BRPC server instance.
   std::unique_ptr<brpc::Server> brpc_server_;
+
+  // Network address of the BRPC service.
   TNetworkAddress address_;
+
+  // Cluster ID string.
   std::string cluster_id_;
+
+  // Unique pointer to the authenticator.
   std::unique_ptr<BoxAuthenticator> auth_;
 };
 

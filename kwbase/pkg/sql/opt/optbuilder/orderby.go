@@ -28,6 +28,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/opt"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/opt/cat"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/opt/memo"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/opt/props/physical"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgcode"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgerror"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/privilege"
@@ -91,6 +92,44 @@ func (b *Builder) buildOrderBy(inScope, projectionsScope, orderByScope *scope) {
 	}
 
 	projectionsScope.setOrdering(orderByScope.cols, orderByScope.ordering)
+}
+
+// build orderby from ordering of fromSubquery.
+// convert ordering of fromSubquery to sortExpr, and add sortExpr to expr of fromScope.
+// eg: select * from (select * from table order by col1, col2) limit 10;
+func (b *Builder) buildOrderByFromInSope(
+	inScope *scope, sel *tree.SelectClause, orderBy tree.OrderBy,
+) {
+	if inScope.ordering == nil {
+		return
+	}
+
+	// we need not handle inScope.OrderBy if GroupBy, DistinctOn, orderBy exist.
+	// we need not handle inScope.OrderBy if noHandleOrderInFrom is true.
+	// we need not handle inScope.OrderBy if sql exec in distribute scenario.
+	if sel.GroupBy != nil || sel.DistinctOn != nil || orderBy != nil ||
+		inScope.noHandleOrderInFrom || b.evalCtx.StartDistributeMode {
+		return
+	}
+
+	// we need not handle inScope.OrderBy if aggregation or windowFunction exist.
+	for _, expr := range sel.Exprs {
+		if f, ok := expr.Expr.(*tree.FuncExpr); ok {
+			def, err := f.Func.Resolve(b.semaCtx.SearchPath)
+			if err != nil {
+				panic(err)
+			}
+			if isAggregate(def) || isWindow(def) {
+				return
+			}
+		}
+	}
+
+	// we need add sortExpr to inScope.expr.
+	sort := &memo.SortExpr{Input: inScope.expr}
+	sort.InputOrdering.FromOrdering(inScope.ordering)
+	sort.InputOrdering.SetFlag(physical.OrderFromSubquerySave)
+	inScope.expr = sort
 }
 
 // findIndexByName returns an index in the table with the given name. If the

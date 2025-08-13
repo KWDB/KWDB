@@ -57,6 +57,7 @@ typedef struct _kwdbContext_t: public _KContext_t {
     frame_level = {0};
     connection_id = {0};
     timezone = {8};
+    b_is_cancel = nullptr;
     for (int i = 0; i < CTX_MAX_FRAME_LEVEL; i++) {
       memset(file_name[i], '\0', CTX_MAX_FILE_NAME_LEN);
       memset(func_name[i], '\0', CTX_MAX_FILE_NAME_LEN);
@@ -82,7 +83,8 @@ typedef struct _kwdbContext_t: public _KContext_t {
   ThreadLabel label;         // indicating associated thread category
   void *ts_engine{nullptr};
   void *fetcher{nullptr};
-  DmlExec* dml_exec_handle{nullptr}; // handle in DmlExec for multiple model processing
+  DmlExec* dml_exec_handle{nullptr};  // handle in DmlExec for multiple model processing
+  k_bool *b_is_cancel{nullptr};
 } kwdbContext_t;
 // Defines the context structure pointer type
 typedef kwdbContext_t* kwdbContext_p;

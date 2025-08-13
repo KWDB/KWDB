@@ -23,11 +23,11 @@ class DataStreamRecvr;
 class RemoteInboundOperator : public InboundOperator {
  public:
   using InboundOperator::InboundOperator;
-  virtual ~RemoteInboundOperator() = default;
+  virtual ~RemoteInboundOperator();
   EEIteratorErrCode Init(kwdbContext_p ctx) override;
   EEIteratorErrCode Next(kwdbContext_p ctx, DataChunkPtr& chunk) override;
   EEIteratorErrCode Close(kwdbContext_p ctx) override;
-  KStatus PullChunk(DataChunkPtr& chunk) override;
+  KStatus PullChunk(kwdbContext_p ctx, DataChunkPtr& chunk) override;
   KStatus PushChunk(DataChunkPtr& chunk, k_int32 stream_id,
                     EEIteratorErrCode code = EEIteratorErrCode::EE_OK) override;
   void PushFinish(EEIteratorErrCode code, k_int32 stream_id,

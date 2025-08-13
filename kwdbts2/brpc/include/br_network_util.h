@@ -11,9 +11,22 @@
 
 #pragma once
 
+#include <arpa/inet.h>
+#include <ifaddrs.h>
+#include <netdb.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
 #include <sys/un.h>
+#include <unistd.h>
 
+#include <algorithm>
+#include <cctype>
+#include <cerrno>
+#include <climits>
+#include <cstring>
+#include <sstream>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "kwdb_type.h"
@@ -22,16 +35,26 @@ namespace kwdbts {
 
 class TNetworkAddress {
  public:
-  TNetworkAddress(const TNetworkAddress&);
-  TNetworkAddress& operator=(const TNetworkAddress&);
+  TNetworkAddress(const TNetworkAddress& other) {
+    hostname_ = other.hostname_;
+    port_ = other.port_;
+  }
+
+  TNetworkAddress& operator=(const TNetworkAddress& other) {
+    hostname_ = other.hostname_;
+    port_ = other.port_;
+    return *this;
+  }
+
   TNetworkAddress() noexcept : hostname_(), port_(0) {}
 
-  virtual ~TNetworkAddress() noexcept;
+  virtual ~TNetworkAddress() noexcept {}
+
   std::string hostname_;
   k_int32 port_;
 
-  void SetHostname(const std::string& val);
-  void SetPort(const k_int32 val);
+  void SetHostname(const std::string& val) { this->hostname_ = val; }
+  void SetPort(const k_int32 val) { this->port_ = val; }
 
   k_bool operator==(const TNetworkAddress& rhs) const {
     if (!(hostname_ == rhs.hostname_)) return false;
@@ -44,40 +67,75 @@ class TNetworkAddress {
   k_bool operator<(const TNetworkAddress&) const;
 };
 
-class InetAddress {
- public:
-  InetAddress(std::string ip, sa_family_t family, k_bool is_loopback);
-  k_bool is_loopback() const;
-  std::string GetHostAddress() const;
-  k_bool IsIpv6() const;
+inline void swap(TNetworkAddress& a, TNetworkAddress& b) {
+  using ::std::swap;
+  swap(a.hostname_, b.hostname_);
+  swap(a.port_, b.port_);
+}
 
- private:
-  std::string ip_addr_;
-  sa_family_t family_;
-  k_bool is_loopback_;
-};
+inline k_bool IsValidIp(const std::string& ip) {
+  unsigned char buf[sizeof(struct in6_addr)];
+  return (inet_pton(AF_INET6, ip.data(), buf) > 0) || (inet_pton(AF_INET, ip.data(), buf) > 0);
+}
 
-// Looks up all IP addresses associated with a given hostname. Returns
-// an error status if any system call failed, otherwise OK. Even if OK
-// is returned, addresses may still be of zero length.
-KStatus HostnameToIp(const std::string& host, std::string& ip);
-KStatus HostnameToIp(const std::string& host, std::string& ip, k_bool ipv6);
-KStatus HostnameToIpv4(const std::string& host, std::string& ip);
-KStatus HostnameToIpv6(const std::string& host, std::string& ip);
+inline std::string GetHostPort(const std::string& host, k_int32 port) {
+  std::stringstream ss;
+  if (host.find(':') == std::string::npos) {
+    ss << host << ":" << port;
+  } else {
+    ss << "[" << host << "]:" << port;
+  }
+  return ss.str();
+}
 
-k_bool IsValidIp(const std::string& ip);
+inline KStatus HostnameToIpv6(const std::string& host, std::string& ip) {
+  char ipv6_str[128];
+  struct sockaddr_in6* sockaddr_ipv6;
 
-// Sets the output argument to the system defined hostname.
-// Returns OK if a hostname can be found, false otherwise.
-KStatus GetHostname(std::string* hostname);
+  struct addrinfo *answer, hint;
+  bzero(&hint, sizeof(hint));
+  hint.ai_family = AF_INET6;
+  hint.ai_socktype = SOCK_STREAM;
 
-KStatus GetHosts(std::vector<InetAddress>* hosts);
+  k_int32 err = getaddrinfo(host.c_str(), nullptr, &hint, &answer);
+  if (err != 0) {
+    return KStatus::FAIL;
+  }
 
-// Utility method because Thrift does not supply useful constructors
-TNetworkAddress MakeNetworkAddress(const std::string& hostname, k_int32 port);
+  sockaddr_ipv6 = reinterpret_cast<struct sockaddr_in6*>(answer->ai_addr);
+  inet_ntop(AF_INET6, &sockaddr_ipv6->sin6_addr, ipv6_str, sizeof(ipv6_str));
+  ip = ipv6_str;
+  fflush(nullptr);
+  freeaddrinfo(answer);
+  return KStatus::SUCCESS;
+}
 
-KStatus GetInetInterfaces(std::vector<std::string>* interfaces, k_bool include_ipv6 = false);
+inline KStatus HostnameToIpv4(const std::string& host, std::string& ip) {
+  addrinfo hints, *res;
+  in_addr addr;
 
-std::string GetHostPort(const std::string& host, k_int32 port);
+  memset(&hints, 0, sizeof(addrinfo));
+  hints.ai_socktype = SOCK_STREAM;
+  hints.ai_family = AF_INET;
+  k_int32 err = getaddrinfo(host.c_str(), nullptr, &hints, &res);
+  if (err != 0) {
+    return KStatus::FAIL;
+  }
+
+  addr.s_addr = reinterpret_cast<sockaddr_in*>(res->ai_addr)->sin_addr.s_addr;
+  ip = inet_ntoa(addr);
+
+  freeaddrinfo(res);
+  return KStatus::SUCCESS;
+}
+
+inline KStatus HostnameToIp(const std::string& host, std::string& ip) {
+  KStatus status = HostnameToIpv4(host, ip);
+  if (status == KStatus::SUCCESS) {
+    return status;
+  }
+  status = HostnameToIpv6(host, ip);
+  return status;
+}
 
 }  // namespace kwdbts

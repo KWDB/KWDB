@@ -20,42 +20,10 @@
 namespace kwdbts {
 
 template <typename T>
-void PInternalServiceBase<T>::DialDataRecvr(::google::protobuf::RpcController* controller,
-                                            const ::kwdbts::PDialDataRecvr* request,
-                                            ::kwdbts::PDialDataRecvrResult* response,
-                                            ::google::protobuf::Closure* done) {
-  this->DialDataRecvrInternal(controller, request, response, done);
-}
-
-template <typename T>
-void PInternalServiceBase<T>::TransmitChunk(google::protobuf::RpcController* controller,
-                                            const PTransmitChunkParams* request,
-                                            PTransmitChunkResult* response,
-                                            google::protobuf::Closure* done) {
-  auto task = [=]() { this->TransmitChunkInternal(controller, request, response, done); };
-
-  if (!BrMgr::GetInstance().GetPriorityThreadPool()->TryOffer(std::move(task))) {
-    brpc::ClosureGuard closure_guard(done);
-    LOG_ERROR("submit transmit_chunk task failed");
-    BRStatus::ServiceUnavailable("submit transmit_chunk task failed")
-        .toProtobuf(response->mutable_status());
-    return;
-  }
-}
-
-template <typename T>
-void PInternalServiceBase<T>::SendExecStatus(::google::protobuf::RpcController* controller,
-                                             const ::kwdbts::PSendExecStatus* request,
-                                             ::kwdbts::PSendExecStatusResult* response,
-                                             ::google::protobuf::Closure* done) {
-  this->SendExecStatusInternal(controller, request, response, done);
-}
-
-template <typename T>
-void PInternalServiceBase<T>::DialDataRecvrInternal(::google::protobuf::RpcController* controller,
-                                                    const ::kwdbts::PDialDataRecvr* request,
-                                                    ::kwdbts::PDialDataRecvrResult* response,
-                                                    ::google::protobuf::Closure* done) {
+void BoxServiceBase<T>::DialDataRecvrInternal(::google::protobuf::RpcController* controller,
+                                              ::google::protobuf::Closure* done,
+                                              const ::kwdbts::PDialDataRecvr* request,
+                                              ::kwdbts::PDialDataRecvrResult* response) {
   brpc::ClosureGuard closure_guard(done);
 
   BRStatus st = BrMgr::GetInstance().GetDataStreamMgr()->DialDataRecvr(*request);
@@ -63,10 +31,10 @@ void PInternalServiceBase<T>::DialDataRecvrInternal(::google::protobuf::RpcContr
 }
 
 template <typename T>
-void PInternalServiceBase<T>::TransmitChunkInternal(google::protobuf::RpcController* controller,
-                                                    const PTransmitChunkParams* request,
-                                                    PTransmitChunkResult* response,
-                                                    google::protobuf::Closure* done) {
+void BoxServiceBase<T>::TransmitChunkInternal(google::protobuf::RpcController* controller,
+                                              ::google::protobuf::Closure* done,
+                                              const PTransmitChunkParams* request,
+                                              PTransmitChunkResult* response) {
   class WrapClosure : public google::protobuf::Closure {
    public:
     WrapClosure(google::protobuf::Closure* done, PTransmitChunkResult* response)
@@ -134,16 +102,48 @@ void PInternalServiceBase<T>::TransmitChunkInternal(google::protobuf::RpcControl
 }
 
 template <typename T>
-void PInternalServiceBase<T>::SendExecStatusInternal(::google::protobuf::RpcController* controller,
-                                                     const ::kwdbts::PSendExecStatus* request,
-                                                     ::kwdbts::PSendExecStatusResult* response,
-                                                     ::google::protobuf::Closure* done) {
+void BoxServiceBase<T>::SendExecStatusInternal(::google::protobuf::RpcController* controller,
+                                               ::google::protobuf::Closure* done,
+                                               const ::kwdbts::PSendExecStatus* request,
+                                               ::kwdbts::PSendExecStatusResult* response) {
   brpc::ClosureGuard closure_guard(done);
 
   BRStatus st = BrMgr::GetInstance().GetDataStreamMgr()->SendExecStatus(*request);
   st.toProtobuf(response->mutable_status());
 }
 
-template class PInternalServiceBase<PInternalService>;
+template <typename T>
+void BoxServiceBase<T>::DialDataRecvr(::google::protobuf::RpcController* controller,
+                                      const ::kwdbts::PDialDataRecvr* request,
+                                      ::kwdbts::PDialDataRecvrResult* response,
+                                      ::google::protobuf::Closure* done) {
+  this->DialDataRecvrInternal(controller, done, request, response);
+}
+
+template <typename T>
+void BoxServiceBase<T>::TransmitChunk(google::protobuf::RpcController* controller,
+                                      const PTransmitChunkParams* request,
+                                      PTransmitChunkResult* response,
+                                      google::protobuf::Closure* done) {
+  auto task = [=]() { this->TransmitChunkInternal(controller, done, request, response); };
+
+  if (!BrMgr::GetInstance().GetPriorityThreadPool()->TryOffer(std::move(task))) {
+    brpc::ClosureGuard closure_guard(done);
+    LOG_ERROR("submit transmit_chunk task failed");
+    BRStatus::ServiceUnavailable("submit transmit_chunk task failed")
+        .toProtobuf(response->mutable_status());
+    return;
+  }
+}
+
+template <typename T>
+void BoxServiceBase<T>::SendExecStatus(::google::protobuf::RpcController* controller,
+                                       const ::kwdbts::PSendExecStatus* request,
+                                       ::kwdbts::PSendExecStatusResult* response,
+                                       ::google::protobuf::Closure* done) {
+  this->SendExecStatusInternal(controller, done, request, response);
+}
+
+template class BoxServiceBase<BoxService>;
 
 }  // namespace kwdbts

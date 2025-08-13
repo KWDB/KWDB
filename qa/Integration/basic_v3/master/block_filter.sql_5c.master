@@ -5,31 +5,31 @@ SET CLUSTER SETTING
 > CREATE ts DATABASE test_block_filter;
 CREATE TS DATABASE
 > CREATE TABLE test_block_filter.t1(
-                                     k_timestamp TIMESTAMPTZ NOT NULL,
-                                     id INT NOT NULL,
-                                     e1 INT2,
-                                     e2 INT,
-                                     e3 INT8,
-                                     e4 FLOAT4,
-                                     e5 FLOAT8,
-                                     e6 BOOL,
-                                     e7 TIMESTAMPTZ,
-                                     e8 CHAR(100),
-                                     e9 NCHAR(100),
-                                     e10 VARCHAR(100),
-                                     e11 CHAR,
-                                     e12 CHAR(255),
-                                     e13 NCHAR,
-                                     e14 NVARCHAR(100),
-                                     e15 VARCHAR(100),
-                                     e16 NVARCHAR(200),
-                                     e17 NCHAR(100),
-                                     e18 CHAR(200),
-                                     e19 VARBYTES,
-                                     e20 varbytes(160),
-                                     e21 VARCHAR,
-                                     e22 NVARCHAR)
-    ATTRIBUTES (
+                k_timestamp TIMESTAMPTZ NOT NULL,
+                id INT NOT NULL,
+                e1 INT2,
+                e2 INT,
+                e3 INT8,
+                e4 FLOAT4,
+                e5 FLOAT8,
+                e6 BOOL,
+                e7 TIMESTAMPTZ,
+                e8 CHAR(100),
+                e9 NCHAR(100),
+                e10 VARCHAR(100),
+                e11 CHAR,
+                e12 CHAR(255),
+                e13 NCHAR,
+                e14 NVARCHAR(100),
+                e15 VARCHAR(100), 
+                e16 NVARCHAR(200),
+                e17 NCHAR(100),
+                e18 CHAR(200),
+                e19 VARBYTES,
+                e20 varbytes(160),
+                e21 VARCHAR,
+                e22 NVARCHAR) 
+ATTRIBUTES (
             code1 INT2 NOT NULL,code2 INT,code3 INT8,
             code4 FLOAT4 ,code5 FLOAT8,
             code6 BOOL,
@@ -37,7 +37,7 @@ CREATE TS DATABASE
             code9 VARBYTES,code10 varbytes(60),
             code11 VARCHAR,code12 VARCHAR(60),
             code13 CHAR(2),code14 CHAR(1023) NOT NULL,
-            code15 NCHAR,code16 NCHAR(254) NOT NULL)
+            code15 NCHAR,code16 NCHAR(254) NOT NULL) 
 PRIMARY TAGS(code1,code14,code8,code16);
 CREATE TABLE
 > INSERT INTO test_block_filter.t1 VALUES(1,1,0,0,0,0,0,true,0,'','','','','','','','','','','','','','','',0,0,0,0,0,false,'','','','','','','','','','');
@@ -2084,313 +2084,427 @@ INSERT 1
   16 | \x27 | 11111
 (2 rows)
 > select id,e7 from test_block_filter.t1 WHERE
-  k_timestamp BETWEEN '2023-01-01 00:00:00+08' AND '2025-12-31 23:59:59+08'
-  AND id IN (1001, 2002, 3003, 4004, 5005)
-  AND e1 <= 32767
-  AND e2 > -2147483648
-  AND e3 BETWEEN 922337203685477580 AND 9223372036854775807
-  AND e4 >= -3.4028235E+38
-  AND e5 < 1.7976931348623157E+308
-  AND e6 = FALSE
-  AND e7 IS NOT NULL
-  AND e8 IN ('test_value_1', 'test_value_2', 'test_value_3')
-  AND e9 = '固定长度字符串示例'
-  AND e10 BETWEEN 'apple' AND 'zebra'
-  AND e11 = 'A'
-  AND e12 LIKE '部分匹配%'
-  AND e13 = '中'
-  AND e14 IN ('unicode文本1', 'unicode文本2')
-  AND e15 = '可变长度字符串'
-  AND e16 LIKE '%包含内容%'
-  AND e17 = 'NCHAR类型示例'
-  AND e18 IN ('长字符数据1', '长字符数据2')
-  AND e19 = '\x1A2B3C4D5E6F'
-  AND e20 = '\x0123456789ABCDEF'
-  AND e21 = '未指定长度的VARCHAR'
+  k_timestamp BETWEEN '2023-01-01 00:00:00+08' AND '2025-12-31 23:59:59+08' 
+  AND id IN (1001, 2002, 3003, 4004, 5005) 
+  AND e1 <= 32767 
+  AND e2 > -2147483648 
+  AND e3 BETWEEN 922337203685477580 AND 9223372036854775807 
+  AND e4 >= -3.4028235E+38 
+  AND e5 < 1.7976931348623157E+308 
+  AND e6 = FALSE 
+  AND e7 IS NOT NULL 
+  AND e8 IN ('test_value_1', 'test_value_2', 'test_value_3') 
+  AND e9 = '固定长度字符串示例' 
+  AND e10 BETWEEN 'apple' AND 'zebra' 
+  AND e11 = 'A' 
+  AND e12 LIKE '部分匹配%' 
+  AND e13 = '中' 
+  AND e14 IN ('unicode文本1', 'unicode文本2') 
+  AND e15 = '可变长度字符串' 
+  AND e16 LIKE '%包含内容%' 
+  AND e17 = 'NCHAR类型示例' 
+  AND e18 IN ('长字符数据1', '长字符数据2') 
+  AND e19 = '\x1A2B3C4D5E6F' 
+  AND e20 = '\x0123456789ABCDEF' 
+  AND e21 = '未指定长度的VARCHAR' 
   AND e22 = '未指定长度的NVARCHAR';
   id | e7
 -----+-----
 (0 rows)
-> select id,e7 from test_block_filter.t1 WHERE
-  k_timestamp > '2024-06-01 12:00:00+08'
-  AND id = 10086
-  AND e1 < 500
-  AND e2 BETWEEN 100 AND 200
-  AND e3 IN (9223372036854775800, 9223372036854775807)
-  AND e4 = 3.14
-  AND e5 <= 1000.50
-  AND e6 IS NULL
-  AND e7 < '2023-12-31 23:59:59+08'
-  AND e8 = 'filter_test_1'
-  AND e9 IN ('NCHAR_例1', 'NCHAR_例2')
-  AND e10 LIKE 'e10_%'
-  AND e11 IS NOT NULL
-  AND e12 BETWEEN 'a' AND 'm'
-  AND e13 = '汉'
-  AND e14 = 'Unicode测试'
-  AND e15 IN ('var1', 'var2', 'var3')
-  AND e16 > '长文本比较'
-  AND e17 BETWEEN 'NCHAR_001' AND 'NCHAR_100'
-  AND e18 = '固定200字符'
-  AND e19 = '\xDEADBEEF'
-  AND e20 IN ('\x11223344', '\x55667788')
-  AND e21 = '动态字符串'
+> select id,e7 from test_block_filter.t1 WHERE 
+  k_timestamp > '2024-06-01 12:00:00+08' 
+  AND id = 10086 
+  AND e1 < 500 
+  AND e2 BETWEEN 100 AND 200 
+  AND e3 IN (9223372036854775800, 9223372036854775807) 
+  AND e4 = 3.14 
+  AND e5 <= 1000.50 
+  AND e6 IS NULL 
+  AND e7 < '2023-12-31 23:59:59+08' 
+  AND e8 = 'filter_test_1' 
+  AND e9 IN ('NCHAR_例1', 'NCHAR_例2') 
+  AND e10 LIKE 'e10_%' 
+  AND e11 IS NOT NULL 
+  AND e12 BETWEEN 'a' AND 'm' 
+  AND e13 = '汉' 
+  AND e14 = 'Unicode测试' 
+  AND e15 IN ('var1', 'var2', 'var3') 
+  AND e16 > '长文本比较' 
+  AND e17 BETWEEN 'NCHAR_001' AND 'NCHAR_100' 
+  AND e18 = '固定200字符' 
+  AND e19 = '\xDEADBEEF' 
+  AND e20 IN ('\x11223344', '\x55667788') 
+  AND e21 = '动态字符串' 
   AND e22 IS NOT NULL;
   id | e7
 -----+-----
 (0 rows)
-> select id,e7 from test_block_filter.t1 WHERE
-  k_timestamp BETWEEN '2025-01-01 00:00:00+08' AND '2025-06-20 15:30:00+08'
-  AND id < 5000
-  AND e1 IN (-32768, 100, 20000)
-  AND e2 >= 1000
-  AND e3 > 0
-  AND e4 BETWEEN -100.5 AND 200.5
-  AND e5 = 9999999999.99
-  AND e6 = TRUE
-  AND e7 IS NOT NULL
-  AND e8 BETWEEN 'A_filter' AND 'Z_filter'
-  AND e9 = '固定100字符NCHAR'
-  AND e10 IN ('条件1', '条件2')
-  AND e11 = 'B'
-  AND e12 LIKE '%匹配结尾'
-  AND e13 IN ('日', '韩')
-  AND e14 BETWEEN '文本A' AND '文本Z'
-  AND e15 = 'VARCHAR示例'
-  AND e16 IS NULL
-  AND e17 = 'NCHAR_测试'
-  AND e18 IN ('长字符1', '长字符2', '长字符3')
-  AND e19 = '\x00010203'
-  AND e20 BETWEEN '\x00' AND '\xFF'
-  AND e21 IS NOT NULL
+> select id,e7 from test_block_filter.t1 WHERE 
+  k_timestamp BETWEEN '2025-01-01 00:00:00+08' AND '2025-06-20 15:30:00+08' 
+  AND id < 5000 
+  AND e1 IN (-32768, 100, 20000) 
+  AND e2 >= 1000 
+  AND e3 > 0 
+  AND e4 BETWEEN -100.5 AND 200.5 
+  AND e5 = 9999999999.99 
+  AND e6 = TRUE 
+  AND e7 IS NOT NULL 
+  AND e8 BETWEEN 'A_filter' AND 'Z_filter' 
+  AND e9 = '固定100字符NCHAR' 
+  AND e10 IN ('条件1', '条件2') 
+  AND e11 = 'B' 
+  AND e12 LIKE '%匹配结尾' 
+  AND e13 IN ('日', '韩') 
+  AND e14 BETWEEN '文本A' AND '文本Z' 
+  AND e15 = 'VARCHAR示例' 
+  AND e16 IS NULL 
+  AND e17 = 'NCHAR_测试' 
+  AND e18 IN ('长字符1', '长字符2', '长字符3') 
+  AND e19 = '\x00010203' 
+  AND e20 BETWEEN '\x00' AND '\xFF' 
+  AND e21 IS NOT NULL 
   AND e22 = 'NVARCHAR测试';
   id | e7
 -----+-----
 (0 rows)
-> select id,e7 from test_block_filter.t1 WHERE
-  k_timestamp < '2024-12-31 23:59:59+08'
-  AND id BETWEEN 1000 AND 9999
-  AND e1 > -10000
-  AND e2 IN (2147483647, -2147483648)
-  AND e3 <= 9223372036854775807
-  AND e4 < 0
-  AND e5 BETWEEN 1.0 AND 1000.0
-  AND e6 = FALSE
-  AND e7 IN ('2023-01-01 00:00:00+08', '2024-07-07 07:07:07+08')
-  AND e8 IS NOT NULL
-  AND e9 LIKE 'NCHAR_%条件'
-  AND e10 = 'e10_value'
-  AND e11 IN ('C', 'D')
-  AND e12 = '255字符测试文本'
-  AND e13 = '法'
-  AND e14 BETWEEN 'Unicode_01' AND 'Unicode_99'
-  AND e15 IN ('var_短', 'var_中', 'var_长')
-  AND e16 = '包含中文的NVARCHAR'
-  AND e17 IS NULL
-  AND e18 BETWEEN '固定字符A' AND '固定字符Z'
-  AND e19 = '\xCAFEBABE'
-  AND e20 = '\x1234567890ABCDEF'
-  AND e21 LIKE '未指定长度%'
+> select id,e7 from test_block_filter.t1 WHERE 
+  k_timestamp < '2024-12-31 23:59:59+08' 
+  AND id BETWEEN 1000 AND 9999 
+  AND e1 > -10000 
+  AND e2 IN (2147483647, -2147483648) 
+  AND e3 <= 9223372036854775807 
+  AND e4 < 0 
+  AND e5 BETWEEN 1.0 AND 1000.0 
+  AND e6 = FALSE 
+  AND e7 IN ('2023-01-01 00:00:00+08', '2024-07-07 07:07:07+08') 
+  AND e8 IS NOT NULL 
+  AND e9 LIKE 'NCHAR_%条件' 
+  AND e10 = 'e10_value' 
+  AND e11 IN ('C', 'D') 
+  AND e12 = '255字符测试文本' 
+  AND e13 = '法' 
+  AND e14 BETWEEN 'Unicode_01' AND 'Unicode_99' 
+  AND e15 IN ('var_短', 'var_中', 'var_长') 
+  AND e16 = '包含中文的NVARCHAR' 
+  AND e17 IS NULL 
+  AND e18 BETWEEN '固定字符A' AND '固定字符Z' 
+  AND e19 = '\xCAFEBABE' 
+  AND e20 = '\x1234567890ABCDEF' 
+  AND e21 LIKE '未指定长度%' 
   AND e22 IS NOT NULL;
   id | e7
 -----+-----
 (0 rows)
-> select id,e7 from test_block_filter.t1 WHERE
-  k_timestamp IN ('2025-06-20 00:00:00+08', '2025-06-21 12:00:00+08')
-  AND id > 100
-  AND e1 BETWEEN -32768 AND 32767
-  AND e2 < 500000
-  AND e3 = 9223372036854775800
-  AND e4 >= 0.0
-  AND e5 > 1.7976931348623157E+300
-  AND e6 IS NOT NULL
-  AND e7 BETWEEN '2020-01-01 00:00:00+08' AND '2022-12-31 23:59:59+08'
-  AND e8 IN ('短字符1', '短字符2')
-  AND e9 = 'NCHAR_100字符'
-  AND e10 LIKE 'e10_条件%'
-  AND e11 = 'E'
-  AND e12 BETWEEN 'a123' AND 'z999'
-  AND e13 IN ('德', '意')
-  AND e14 = '多语言Unicode'
-  AND e15 IS NULL
-  AND e16 BETWEEN 'NVARCHAR_短' AND 'NVARCHAR_长'
-  AND e17 = 'NCHAR测试中'
-  AND e18 IN ('200字符A', '200字符B')
-  AND e19 = '\x1122334455'
-  AND e20 < '\xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF'
-  AND e21 = 'VARCHAR无长度'
+> select id,e7 from test_block_filter.t1 WHERE 
+  k_timestamp IN ('2025-06-20 00:00:00+08', '2025-06-21 12:00:00+08') 
+  AND id > 100 
+  AND e1 BETWEEN -32768 AND 32767 
+  AND e2 < 500000 
+  AND e3 = 9223372036854775800 
+  AND e4 >= 0.0 
+  AND e5 > 1.7976931348623157E+300 
+  AND e6 IS NOT NULL 
+  AND e7 BETWEEN '2020-01-01 00:00:00+08' AND '2022-12-31 23:59:59+08' 
+  AND e8 IN ('短字符1', '短字符2') 
+  AND e9 = 'NCHAR_100字符' 
+  AND e10 LIKE 'e10_条件%' 
+  AND e11 = 'E' 
+  AND e12 BETWEEN 'a123' AND 'z999' 
+  AND e13 IN ('德', '意') 
+  AND e14 = '多语言Unicode' 
+  AND e15 IS NULL 
+  AND e16 BETWEEN 'NVARCHAR_短' AND 'NVARCHAR_长' 
+  AND e17 = 'NCHAR测试中' 
+  AND e18 IN ('200字符A', '200字符B') 
+  AND e19 = '\x1122334455' 
+  AND e20 < '\xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF' 
+  AND e21 = 'VARCHAR无长度' 
   AND e22 = 'NVARCHAR无长度';
   id | e7
 -----+-----
 (0 rows)
-> select id,e7 from test_block_filter.t1 WHERE
-  k_timestamp IN ('2025-06-20 00:00:00+08', '2025-06-21 12:00:00+08')
-  AND id > 100
-  AND e1 BETWEEN -32768 AND 32767
-  AND e2 < 500000
-  AND e3 = 9223372036854775800
-  AND e4 >= 0.0
-  AND e5 > 1.7976931348623157E+300
-  AND e6 IS NOT NULL
-  AND e7 BETWEEN '2020-01-01 00:00:00+08' AND '2022-12-31 23:59:59+08'
-  AND e8 IN ('短字符1', '短字符2')
-  AND e9 = 'NCHAR_100字符'
-  AND e10 LIKE 'e10_条件%'
-  AND e11 = 'E'
-  AND e12 BETWEEN 'a123' AND 'z999'
-  AND e13 IN ('德', '意')
-  AND e14 = '多语言Unicode'
-  AND e15 IS NULL
-  AND e16 BETWEEN 'NVARCHAR_短' AND 'NVARCHAR_长'
-  AND e17 = 'NCHAR测试中'
-  AND e18 IN ('200字符A', '200字符B')
-  AND e19 = '\x1122334455'
-  AND e20 < '\xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF'
-  AND e21 = 'VARCHAR无长度'
+> select id,e7 from test_block_filter.t1 WHERE 
+  k_timestamp IN ('2025-06-20 00:00:00+08', '2025-06-21 12:00:00+08') 
+  AND id > 100 
+  AND e1 BETWEEN -32768 AND 32767 
+  AND e2 < 500000 
+  AND e3 = 9223372036854775800 
+  AND e4 >= 0.0 
+  AND e5 > 1.7976931348623157E+300 
+  AND e6 IS NOT NULL 
+  AND e7 BETWEEN '2020-01-01 00:00:00+08' AND '2022-12-31 23:59:59+08' 
+  AND e8 IN ('短字符1', '短字符2') 
+  AND e9 = 'NCHAR_100字符' 
+  AND e10 LIKE 'e10_条件%' 
+  AND e11 = 'E' 
+  AND e12 BETWEEN 'a123' AND 'z999' 
+  AND e13 IN ('德', '意') 
+  AND e14 = '多语言Unicode' 
+  AND e15 IS NULL 
+  AND e16 BETWEEN 'NVARCHAR_短' AND 'NVARCHAR_长' 
+  AND e17 = 'NCHAR测试中' 
+  AND e18 IN ('200字符A', '200字符B') 
+  AND e19 = '\x1122334455' 
+  AND e20 < '\xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF' 
+  AND e21 = 'VARCHAR无长度' 
   AND e22 = 'NVARCHAR无长度';
   id | e7
 -----+-----
 (0 rows)
-> select id,e7 from test_block_filter.t1 WHERE
-  k_timestamp >= '2024-01-01 00:00:00+08'
-  AND id BETWEEN 5000 AND 10000
-  AND e1 < 15000
-  AND e2 IN (1000, 2000, 3000)
-  AND e3 > 1000000000000000000
-  AND e4 = -3.14159
-  AND e5 <= 1000000.00
-  AND e6 = TRUE
-  AND e7 IS NULL
-  AND e8 = 'e8_测试条件'
-  AND e9 LIKE 'NCHAR_例%'
-  AND e10 BETWEEN 'apple' AND 'orange'
-  AND e11 IN ('F', 'G')
-  AND e12 = '255字符完整测试'
-  AND e13 = '西'
-  AND e14 IN ('Unicode_测试1', 'Unicode_测试2')
-  AND e15 BETWEEN 'varchar_1' AND 'varchar_100'
-  AND e16 IS NOT NULL
-  AND e17 = 'NCHAR_100位'
-  AND e18 BETWEEN '长字符A' AND '长字符Z'
-  AND e19 = b'\x00FF00FF'
-  AND e20 = b'\x1A2B3C4D5E6F7G8H'
-  AND e21 LIKE '%动态匹配%'
+> select id,e7 from test_block_filter.t1 WHERE 
+  k_timestamp >= '2024-01-01 00:00:00+08' 
+  AND id BETWEEN 5000 AND 10000 
+  AND e1 < 15000 
+  AND e2 IN (1000, 2000, 3000) 
+  AND e3 > 1000000000000000000 
+  AND e4 = -3.14159 
+  AND e5 <= 1000000.00 
+  AND e6 = TRUE 
+  AND e7 IS NULL 
+  AND e8 = 'e8_测试条件' 
+  AND e9 LIKE 'NCHAR_例%' 
+  AND e10 BETWEEN 'apple' AND 'orange' 
+  AND e11 IN ('F', 'G') 
+  AND e12 = '255字符完整测试' 
+  AND e13 = '西' 
+  AND e14 IN ('Unicode_测试1', 'Unicode_测试2') 
+  AND e15 BETWEEN 'varchar_1' AND 'varchar_100' 
+  AND e16 IS NOT NULL 
+  AND e17 = 'NCHAR_100位' 
+  AND e18 BETWEEN '长字符A' AND '长字符Z' 
+  AND e19 = b'\x00FF00FF' 
+  AND e20 = b'\x1A2B3C4D5E6F7G8H' 
+  AND e21 LIKE '%动态匹配%' 
   AND e22 = 'NVARCHAR示例';
   id | e7
 -----+-----
 (0 rows)
-> select id,e7 from test_block_filter.t1 WHERE
-  k_timestamp BETWEEN '2023-06-01 00:00:00+08' AND '2023-12-31 23:59:59+08'
-  AND id < 2000
-  AND e1 IN (-10000, 0, 10000)
-  AND e2 >= 100000
-  AND e3 BETWEEN 0 AND 9223372036854775807
-  AND e4 < 100.0
-  AND e5 = 999999999.99
-  AND e6 IS NOT NULL
-  AND e7 > '2024-01-01 00:00:00+08'
-  AND e8 LIKE 'e8_%条件'
-  AND e9 = 'NCHAR固定长度'
-  AND e10 IN ('条件A', '条件B', '条件C')
-  AND e11 = 'H'
-  AND e12 BETWEEN '测试1' AND '测试99'
-  AND e13 IN ('葡', '西')
-  AND e14 = '多语言Unicode文本'
-  AND e15 IS NULL
-  AND e16 BETWEEN 'NVARCHAR_1' AND 'NVARCHAR_200'
-  AND e17 = 'NCHAR类型测试'
-  AND e18 IN ('200字符测试1', '200字符测试2')
-  AND e19 = b'\x12345678'
-  AND e20 BETWEEN b'\x0000' AND b'\xFFFF'
-  AND e21 = 'VARCHAR无长度限制'
+> select id,e7 from test_block_filter.t1 WHERE 
+  k_timestamp BETWEEN '2023-06-01 00:00:00+08' AND '2023-12-31 23:59:59+08' 
+  AND id < 2000 
+  AND e1 IN (-10000, 0, 10000) 
+  AND e2 >= 100000 
+  AND e3 BETWEEN 0 AND 9223372036854775807 
+  AND e4 < 100.0 
+  AND e5 = 999999999.99 
+  AND e6 IS NOT NULL 
+  AND e7 > '2024-01-01 00:00:00+08' 
+  AND e8 LIKE 'e8_%条件' 
+  AND e9 = 'NCHAR固定长度' 
+  AND e10 IN ('条件A', '条件B', '条件C') 
+  AND e11 = 'H' 
+  AND e12 BETWEEN '测试1' AND '测试99' 
+  AND e13 IN ('葡', '西') 
+  AND e14 = '多语言Unicode文本' 
+  AND e15 IS NULL 
+  AND e16 BETWEEN 'NVARCHAR_1' AND 'NVARCHAR_200' 
+  AND e17 = 'NCHAR类型测试' 
+  AND e18 IN ('200字符测试1', '200字符测试2') 
+  AND e19 = b'\x12345678' 
+  AND e20 BETWEEN b'\x0000' AND b'\xFFFF' 
+  AND e21 = 'VARCHAR无长度限制' 
   AND e22 IS NOT NULL;
   id | e7
 -----+-----
 (0 rows)
-> select id,e7 from test_block_filter.t1 WHERE
-  k_timestamp < '2025-06-20 15:30:00+08'
-  AND id = 7777
-  AND e1 > -20000
-  AND e2 BETWEEN 5000 AND 15000
-  AND e3 IN (1234567890123456789, 9223372036854775807)
-  AND e4 = 2.71828
-  AND e5 <= 1.7976931348623157E+308
-  AND e6 = FALSE
-  AND e7 IS NOT NULL
-  AND e8 BETWEEN '过滤条件1' AND '过滤条件100'
-  AND e9 LIKE 'NCHAR_匹配%'
-  AND e10 = 'e10_值'
-  AND e11 IN ('I', 'J')
-  AND e12 = '255字符数据示例'
-  AND e13 = '俄'
-  AND e14 IN ('Unicode_1', 'Unicode_2', 'Unicode_3')
-  AND e15 BETWEEN 'varchar短' AND 'varchar长'
-  AND e16 = '包含特殊字符的NVARCHAR'
-  AND e17 IS NULL
-  AND e18 BETWEEN '固定200A' AND '固定200Z'
-  AND e19 = b'\xABCD1234'
-  AND e20 = b'\x0123456789ABCDEF01'
-  AND e21 LIKE '未指定%长度'
+> select id,e7 from test_block_filter.t1 WHERE 
+  k_timestamp < '2025-06-20 15:30:00+08' 
+  AND id = 7777 
+  AND e1 > -20000 
+  AND e2 BETWEEN 5000 AND 15000 
+  AND e3 IN (1234567890123456789, 9223372036854775807) 
+  AND e4 = 2.71828 
+  AND e5 <= 1.7976931348623157E+308 
+  AND e6 = FALSE 
+  AND e7 IS NOT NULL 
+  AND e8 BETWEEN '过滤条件1' AND '过滤条件100' 
+  AND e9 LIKE 'NCHAR_匹配%' 
+  AND e10 = 'e10_值' 
+  AND e11 IN ('I', 'J') 
+  AND e12 = '255字符数据示例' 
+  AND e13 = '俄' 
+  AND e14 IN ('Unicode_1', 'Unicode_2', 'Unicode_3') 
+  AND e15 BETWEEN 'varchar短' AND 'varchar长' 
+  AND e16 = '包含特殊字符的NVARCHAR' 
+  AND e17 IS NULL 
+  AND e18 BETWEEN '固定200A' AND '固定200Z' 
+  AND e19 = b'\xABCD1234' 
+  AND e20 = b'\x0123456789ABCDEF01' 
+  AND e21 LIKE '未指定%长度' 
   AND e22 = 'NVARCHAR无长度定义';
   id | e7
 -----+-----
 (0 rows)
-> select id,e7 from test_block_filter.t1 WHERE
-  k_timestamp IN ('2024-03-15 10:10:10+08', '2024-09-15 10:10:10+08')
-  AND id > 3000
-  AND e1 BETWEEN -32768 AND 10000
-  AND e2 < 1000000
-  AND e3 = 1234567890123456789
-  AND e4 >= -100.0
-  AND e5 > 10000000.0
-  AND e6 IS NOT NULL
-  AND e7 BETWEEN '2021-01-01 00:00:00+08' AND '2023-12-31 23:59:59+08'
-  AND e8 IN ('e8_条件1', 'e8_条件2')
-  AND e9 = 'NCHAR_100字符示例'
-  AND e10 LIKE 'e10_匹配%'
-  AND e11 = 'K'
-  AND e12 BETWEEN 'a' AND 'z'
-  AND e13 IN ('中', '英')
-  AND e14 = 'Unicode混合文本'
-  AND e15 IS NULL
-  AND e16 BETWEEN 'NVARCHAR短' AND 'NVARCHAR长'
-  AND e17 = 'NCHAR测试样本'
-  AND e18 IN ('200字符A段', '200字符B段')
-  AND e19 = b'\x1122334455667788'
-  AND e20 < b'\xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF'
-  AND e21 = 'VARCHAR动态内容'
+> select id,e7 from test_block_filter.t1 WHERE 
+  k_timestamp IN ('2024-03-15 10:10:10+08', '2024-09-15 10:10:10+08') 
+  AND id > 3000 
+  AND e1 BETWEEN -32768 AND 10000 
+  AND e2 < 1000000 
+  AND e3 = 1234567890123456789 
+  AND e4 >= -100.0 
+  AND e5 > 10000000.0 
+  AND e6 IS NOT NULL 
+  AND e7 BETWEEN '2021-01-01 00:00:00+08' AND '2023-12-31 23:59:59+08' 
+  AND e8 IN ('e8_条件1', 'e8_条件2') 
+  AND e9 = 'NCHAR_100字符示例' 
+  AND e10 LIKE 'e10_匹配%' 
+  AND e11 = 'K' 
+  AND e12 BETWEEN 'a' AND 'z' 
+  AND e13 IN ('中', '英') 
+  AND e14 = 'Unicode混合文本' 
+  AND e15 IS NULL 
+  AND e16 BETWEEN 'NVARCHAR短' AND 'NVARCHAR长' 
+  AND e17 = 'NCHAR测试样本' 
+  AND e18 IN ('200字符A段', '200字符B段') 
+  AND e19 = b'\x1122334455667788' 
+  AND e20 < b'\xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF' 
+  AND e21 = 'VARCHAR动态内容' 
   AND e22 IS NOT NULL;
   id | e7
 -----+-----
 (0 rows)
-> select id,e7 from test_block_filter.t1 WHERE
-  k_timestamp >= '2025-01-01 00:00:00+08'
-  AND id BETWEEN 10000 AND 20000
-  AND e1 < 30000
-  AND e2 IN (200000, 300000, 400000)
-  AND e3 > 5000000000000000000
-  AND e4 = 0.0
-  AND e5 BETWEEN 1000.0 AND 10000.0
-  AND e6 = TRUE
-  AND e7 IS NULL
-  AND e8 = 'e8_过滤条件'
-  AND e9 LIKE 'NCHAR_例%条件'
-  AND e10 BETWEEN 'banana' AND 'watermelon'
-  AND e11 IN ('L', 'M')
-  AND e12 = '255字符完整内容'
-  AND e13 = '日'
-  AND e14 IN ('Unicode_测试A', 'Unicode_测试B')
-  AND e15 BETWEEN 'varchar_条件1' AND 'varchar_条件100'
-  AND e16 IS NOT NULL
-  AND e17 = 'NCHAR_100位数据'
-  AND e18 BETWEEN '长字符测试A' AND '长字符测试Z'
-  AND e19 = b'\xDEADBEEF1234'
-  AND e20 = b'\x1A2B3C4D5E6F7G8H9I'
-  AND e21 LIKE '%VARCHAR匹配%'
+> select id,e7 from test_block_filter.t1 WHERE 
+  k_timestamp >= '2025-01-01 00:00:00+08' 
+  AND id BETWEEN 10000 AND 20000 
+  AND e1 < 30000 
+  AND e2 IN (200000, 300000, 400000) 
+  AND e3 > 5000000000000000000 
+  AND e4 = 0.0 
+  AND e5 BETWEEN 1000.0 AND 10000.0 
+  AND e6 = TRUE 
+  AND e7 IS NULL 
+  AND e8 = 'e8_过滤条件' 
+  AND e9 LIKE 'NCHAR_例%条件' 
+  AND e10 BETWEEN 'banana' AND 'watermelon' 
+  AND e11 IN ('L', 'M') 
+  AND e12 = '255字符完整内容' 
+  AND e13 = '日' 
+  AND e14 IN ('Unicode_测试A', 'Unicode_测试B') 
+  AND e15 BETWEEN 'varchar_条件1' AND 'varchar_条件100' 
+  AND e16 IS NOT NULL 
+  AND e17 = 'NCHAR_100位数据' 
+  AND e18 BETWEEN '长字符测试A' AND '长字符测试Z' 
+  AND e19 = b'\xDEADBEEF1234' 
+  AND e20 = b'\x1A2B3C4D5E6F7G8H9I' 
+  AND e21 LIKE '%VARCHAR匹配%' 
   AND e22 = 'NVARCHAR测试样本';
   id | e7
 -----+-----
 (0 rows)
+> SET CLUSTER SETTING ts.rows_per_block.max_limit=1000;
+SET CLUSTER SETTING
+> drop database test_block_filter cascade;
+DROP DATABASE
+> DROP DATABASE IF EXISTS test_block_filter cascade;
+DROP DATABASE
+> SET CLUSTER SETTING ts.rows_per_block.max_limit=10;
+SET CLUSTER SETTING
+> CREATE ts DATABASE test_block_filter;
+CREATE TS DATABASE
+> create table test_block_filter.t1(k_timestamp timestamptz not null, e1 timestamptz not null, e2 nchar(255) not null, e3 varchar(4096), e4 varchar) ATTRIBUTES (code1 int2 not null) primary tags(code1);
+CREATE TABLE
+> INSERT INTO test_block_filter.t1 VALUES(2021688553000, '2020-1-1 12:00:00.000', 'test时间精度通用查询测试！！！@TEST1', 'test时间精度通用查询测试！！！@TEST1\0', 'varchar  中文1', 700);
+INSERT 1
+> INSERT INTO test_block_filter.t1 VALUES(2021688553001, '2020-1-1 12:00:00.000', 'test时间精度通用查询测试！！！@TEST1', 'test时间精度通用查询测试！！！@TEST1\0', 'varchar  中文1', 700);
+INSERT 1
+> INSERT INTO test_block_filter.t1 VALUES(2021688553002, '2020-1-1 12:00:00.000', 'test时间精度通用查询测试！！！@TEST1', 'test时间精度通用查询测试！！！@TEST1\0', 'varchar  中文1', 700);
+INSERT 1
+> INSERT INTO test_block_filter.t1 VALUES(2021688553003, '2020-1-1 12:00:00.000', 'test时间精度通用查询测试！！！@TEST1', 'test时间精度通用查询测试！！！@TEST1\0', 'varchar  中文1', 700);
+INSERT 1
+> INSERT INTO test_block_filter.t1 VALUES(2021688553004, '2020-1-1 12:00:00.000', 'test时间精度通用查询测试！！！@TEST1', 'test时间精度通用查询测试！！！@TEST1\0', 'varchar  中文1', 700);
+INSERT 1
+> INSERT INTO test_block_filter.t1 VALUES(2021688553005, '2020-1-1 12:00:00.000', 'test时间精度通用查询测试！！！@TEST1', 'test时间精度通用查询测试！！！@TEST1\0', 'varchar  中文1', 700);
+INSERT 1
+> INSERT INTO test_block_filter.t1 VALUES(2021688553006, '2020-1-1 12:00:00.000', 'test时间精度通用查询测试！！！@TEST1', 'test时间精度通用查询测试！！！@TEST1\0', 'varchar  中文1', 700);
+INSERT 1
+> INSERT INTO test_block_filter.t1 VALUES(2021688553007, '2020-1-1 12:00:00.000', 'test时间精度通用查询测试！！！@TEST1', 'test时间精度通用查询测试！！！@TEST1\0', 'varchar  中文1', 700);
+INSERT 1
+> INSERT INTO test_block_filter.t1 VALUES(2021688553008, '2020-1-1 12:00:00.000', 'test时间精度通用查询测试！！！@TEST1', 'test时间精度通用查询测试！！！@TEST1\0', 'varchar  中文1', 700);
+INSERT 1
+> INSERT INTO test_block_filter.t1 VALUES(2021688553009, '2020-1-1 12:00:00.000', 'test时间精度通用查询测试！！！@TEST1', 'test时间精度通用查询测试！！！@TEST1\0', 'varchar  中文1', 700);
+INSERT 1
+> SELECT e1 FROM test_block_filter.t1 WHERE e1 NOT IN (TIMESTAMPTZ'2020-1-1 12:12:12.000') order by k_timestamp;
+             e1
+-----------------------------
+  2020-01-01 12:00:00+00:00
+  2020-01-01 12:00:00+00:00
+  2020-01-01 12:00:00+00:00
+  2020-01-01 12:00:00+00:00
+  2020-01-01 12:00:00+00:00
+  2020-01-01 12:00:00+00:00
+  2020-01-01 12:00:00+00:00
+  2020-01-01 12:00:00+00:00
+  2020-01-01 12:00:00+00:00
+  2020-01-01 12:00:00+00:00
+(10 rows)
+> SELECT e1 FROM test_block_filter.t1 WHERE e1 NOT IN (TIMESTAMPTZ'2020-1-1 12:00:00.000') order by k_timestamp;
+  e1
+------
+(0 rows)
+> SELECT e2 FROM test_block_filter.t1 WHERE e2='test时间精度通用查询测试！！！@TEST1' order by k_timestamp;
+                   e2
+----------------------------------------
+  test时间精度通用查询测试！！！@TEST1
+  test时间精度通用查询测试！！！@TEST1
+  test时间精度通用查询测试！！！@TEST1
+  test时间精度通用查询测试！！！@TEST1
+  test时间精度通用查询测试！！！@TEST1
+  test时间精度通用查询测试！！！@TEST1
+  test时间精度通用查询测试！！！@TEST1
+  test时间精度通用查询测试！！！@TEST1
+  test时间精度通用查询测试！！！@TEST1
+  test时间精度通用查询测试！！！@TEST1
+(10 rows)
+> SELECT e2 FROM test_block_filter.t1 WHERE e2>'test时间精度通用查询测试！！！@TEST1' order by k_timestamp;
+  e2
+------
+(0 rows)
+> SELECT e3 FROM test_block_filter.t1 WHERE e3 LIKE 'test时间精度通用查询测试！！！@TEST1' order by k_timestamp;
+  e3
+------
+(0 rows)
+> SELECT e3 FROM test_block_filter.t1 WHERE e3>'test时间精度通用查询测试！！！@TEST1' order by k_timestamp;
+                    e3
+------------------------------------------
+  test时间精度通用查询测试！！！@TEST1\0
+  test时间精度通用查询测试！！！@TEST1\0
+  test时间精度通用查询测试！！！@TEST1\0
+  test时间精度通用查询测试！！！@TEST1\0
+  test时间精度通用查询测试！！！@TEST1\0
+  test时间精度通用查询测试！！！@TEST1\0
+  test时间精度通用查询测试！！！@TEST1\0
+  test时间精度通用查询测试！！！@TEST1\0
+  test时间精度通用查询测试！！！@TEST1\0
+  test时间精度通用查询测试！！！@TEST1\0
+(10 rows)
+> select e4 from test_block_filter.t1 where e4 is not null and e4 in('varchar  中文1');
+        e4
+------------------
+  varchar  中文1
+  varchar  中文1
+  varchar  中文1
+  varchar  中文1
+  varchar  中文1
+  varchar  中文1
+  varchar  中文1
+  varchar  中文1
+  varchar  中文1
+  varchar  中文1
+(10 rows)
+> select e4 from test_block_filter.t1 where e4 is not null and e4 <= 'varchar  中文1';
+        e4
+------------------
+  varchar  中文1
+  varchar  中文1
+  varchar  中文1
+  varchar  中文1
+  varchar  中文1
+  varchar  中文1
+  varchar  中文1
+  varchar  中文1
+  varchar  中文1
+  varchar  中文1
+(10 rows)
 > SET CLUSTER SETTING ts.rows_per_block.max_limit=1000;
 SET CLUSTER SETTING
 > drop database test_block_filter cascade;

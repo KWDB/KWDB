@@ -158,7 +158,7 @@ KStatus DataStreamRecvr::GetChunkForPipeline(std::unique_ptr<DataChunk>* chunk,
 KStatus DataStreamRecvr::GetNextForPipeline(std::unique_ptr<DataChunk>* chunk,
                                             std::atomic<k_bool>* eos, k_bool* should_exit) {
   DCHECK(cascade_merger_);
-  KStatus status = cascade_merger_->GetNextChunk(chunk, eos, should_exit);
+  KStatus status = cascade_merger_->GetNextMergeChunk(chunk, eos, should_exit);
   if (status != KStatus::SUCCESS) {
     LOG_ERROR("failed to get merge chunk, query_id=%ld, dest_processor_id=%d", query_id_,
               dest_processor_id_);

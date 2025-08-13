@@ -13,7 +13,6 @@
 
 #include "ee_outbound_op.h"
 #include "ee_inbound_op.h"
-#include "ee_op_factory.h"
 #include "ee_exec_pool.h"
 
 namespace kwdbts {
@@ -142,32 +141,7 @@ EEIteratorErrCode OutboundOperator::Close(kwdbContext_p ctx) {
   Return(code);
 }
 
-KStatus OutboundOperator::CreateInputChannel(kwdbContext_p ctx, std::vector<BaseOperator *> &new_operators) {
-  KStatus ret = KStatus::SUCCESS;
-  TSInputSyncSpec *input_spec = rpcSpecInfo_.input_specs_[0];
-  BaseOperator *inbound_operator = nullptr;
-  ret = OpFactory::NewInboundOperator(ctx, collection_, input_spec, &inbound_operator, &table_, false, false);
-  if (ret!= KStatus::SUCCESS) {
-    return ret;
-  }
-  new_operators.push_back(inbound_operator);
-  AddDependency(inbound_operator);
 
-  BaseOperator *outbound_operator = nullptr;
-  RpcSpecResolve &child_rpc = childrens_[0]->GetRpcSpecInfo();
-  TSOutputRouterSpec *child_output_spec = child_rpc.output_specs_[0];
-  ret = OpFactory::NewOutboundOperator(ctx, collection_, child_output_spec, &outbound_operator, &table_, false);
-  if (ret!= KStatus::SUCCESS) {
-    return ret;
-  }
-  dynamic_cast<OutboundOperator*>(outbound_operator)->SetDegree(degree_);
-  inbound_operator->AddDependency(outbound_operator);
-  outbound_operator->AddDependency(childrens_[0]);
-  RemoveDependency(childrens_[0]);
-  new_operators.push_back(outbound_operator);
-
-  return ret;
-}
 
 KStatus OutboundOperator::CreateOutputChannel(kwdbContext_p ctx, std::vector<BaseOperator *> &new_operators) {
   KStatus ret = KStatus::SUCCESS;

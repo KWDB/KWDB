@@ -26,6 +26,7 @@
 #include "ee_pipeline_task.h"
 #include "ee_exec_pool.h"
 #include "ee_dml_exec.h"
+#include "ee_outbound_op.h"
 
 // support returning multi-rows datas
 #define TSSCAN_RS_MULTILINE_SEND 1
@@ -451,33 +452,32 @@ KStatus Processors::TransformOperator(kwdbContext_p ctx) {
 KStatus Processors::BuildTopOperator(kwdbContext_p ctx) {
   EnterFunc();
   root_iterator_ = operators_.back();
-  if (OperatorType::OPERATOR_REMOTR_OUT_BOUND == root_iterator_->Type() ||
-              OperatorType::OPERATOR_LOCAL_OUT_BOUND == root_iterator_->Type()) {
-    if (OperatorType::OPERATOR_REMOTR_OUT_BOUND == root_iterator_->Type()) {
-      for (auto oper : operators_) {
-        if (oper->GetProcessorId() == top_process_id_) {
-          if (oper->IsUseQueryShortCircuit()) {
-            oper->SetOutputEncoding(true);
-          } else {
-            oper->SetOutputEncoding(false);
-          }
-          break;
+  if (OperatorType::OPERATOR_REMOTR_OUT_BOUND == root_iterator_->Type()) {
+    for (auto oper : operators_) {
+      if (oper->GetProcessorId() == top_process_id_) {
+        if (oper->IsUseQueryShortCircuit()) {
+          oper->SetOutputEncoding(true);
+        } else {
+          oper->SetOutputEncoding(false);
         }
+        break;
       }
     }
-    Return(KStatus::SUCCESS);
+
+    BaseOperator* oper = nullptr;
+    KStatus ret = OpFactory::NewResultCollectorOp(ctx, &oper);
+    if (ret != KStatus::SUCCESS) {
+      Return(ret);
+    }
+
+    operators_.push_back(oper);
+    oper->AddDependency(root_iterator_);
+    dynamic_cast<OutboundOperator*>(root_iterator_)->SetCollected(true);
+
+      root_iterator_ = operators_.back();
+  } else {
+    root_iterator_->SetOutputEncoding(true);
   }
-
-  BaseOperator* oper = nullptr;
-  KStatus ret = OpFactory::NewResultCollectorOp(ctx, &oper);
-  if (ret != KStatus::SUCCESS) {
-    Return(ret);
-  }
-
-  operators_.push_back(oper);
-  oper->AddDependency(root_iterator_);
-
-  root_iterator_ = operators_.back();
 
   Return(KStatus::SUCCESS);
 }
@@ -492,11 +492,14 @@ KStatus Processors::BuildPipeline(kwdbContext_p ctx) {
 
   KStatus ret = root_iterator_->BuildPipeline(root_pipeline_, this);
   root_pipeline_->GetPipelines(pipelines_, false);
+  if (!root_pipeline_->HasOperator()) {
+    root_pipeline_->SetPipelineOperator(root_iterator_);
+  }
+
   Return(KStatus::SUCCESS);
 }
 
 KStatus Processors::ScheduleTasks(kwdbContext_p ctx) {
-  KStatus ret = KStatus::SUCCESS;
   std::map<PipelineGroup *, std::shared_ptr<PipelineTask> > task_map;
   std::vector<std::shared_ptr<PipelineTask> > tasks;
   for (auto pipeline : pipelines_) {
@@ -504,6 +507,8 @@ KStatus Processors::ScheduleTasks(kwdbContext_p ctx) {
     if (nullptr != task) {
       task_map.emplace(pipeline, task);
       tasks.push_back(task);
+    } else {
+      return KStatus::FAIL;
     }
   }
 
@@ -519,7 +524,7 @@ KStatus Processors::ScheduleTasks(kwdbContext_p ctx) {
       k_int32 degree = entry.first->GetDegree();
       KStatus ret = entry.second->Clone(ctx, degree - 1, tasks, new_operators_);
       if (KStatus::FAIL == ret) {
-        break;
+        return KStatus::FAIL;
       }
     }
   }
@@ -534,7 +539,7 @@ KStatus Processors::ScheduleTasks(kwdbContext_p ctx) {
     ExecPool::GetInstance().PushTask(task);
   }
 
-  return ret;
+  return KStatus::SUCCESS;
 }
 
 // Init processors
@@ -624,11 +629,18 @@ void Processors::Reset() {
     CloseIterator(ctx);
   }
 
+  for (auto table : tables_) {
+    SafeDeletePointer(table);
+  }
+  tables_.clear();
+
   for (auto it : pipelines_) {
+    it->Cancel();
     SafeDeletePointer(it)
   }
+
   pipelines_.clear();
-  weak_tasks_.clear();
+
   for (auto it : operators_) {
     SafeDeletePointer(it)
   }
@@ -642,12 +654,7 @@ void Processors::Reset() {
   SafeDeletePointer(root_pipeline_);
   root_pipeline_ = nullptr;
   root_iterator_ = nullptr;
-
-  for (auto table : tables_) {
-    SafeDeletePointer(table);
-  }
-
-  tables_.clear();
+  weak_tasks_.clear();
 }
 
 KStatus Processors::InitIterator(kwdbContext_p ctx, TsNextRetState nextState) {
@@ -697,12 +704,20 @@ KStatus Processors::CloseIterator(kwdbContext_p ctx) {
     Return(KStatus::SUCCESS);
   }
   AssertNotNull(root_iterator_);
+  b_is_cancel_ = true;
   // Stop all task
   for (auto task : weak_tasks_) {
     if (auto sp = task.lock()) {
       sp->SetStop();
     }
   }
+  // Wait all task stop
+  for (auto task : weak_tasks_) {
+    if (auto sp = task.lock()) {
+      sp->Wait();
+    }
+  }
+
   // Close operators
   EEIteratorErrCode code = root_iterator_->Close(ctx);
   if (EEIteratorErrCode::EE_OK == code) {
@@ -771,6 +786,12 @@ KStatus Processors::RunWithEncoding(kwdbContext_p ctx, char** buffer,
     }
     break;
   } while (true);
+
+  if (nullptr != chunk) {
+    if (EEPgErrorInfo::IsError()) {
+      code = EEIteratorErrCode::EE_ERROR;
+    }
+  }
 
   if (EEIteratorErrCode::EE_OK == code) {
     chunk->GetEncodingBuffer(buffer, length, count);

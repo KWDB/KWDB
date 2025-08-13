@@ -52,6 +52,8 @@ class PipelineGroup {
 
   k_int32 GetDegree();
 
+  void Cancel();
+
   bool HasOperator() { return operator_ != nullptr; }
 
   void GetPipelines(std::vector<PipelineGroup *> &pipelines, bool include);

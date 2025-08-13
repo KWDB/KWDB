@@ -15,7 +15,6 @@
 #include <string>
 
 #include "ee_row_batch.h"
-#include "ee_parallel_group.h"
 #include "kwdb_type.h"
 #include "ee_pipeline_task.h"
 

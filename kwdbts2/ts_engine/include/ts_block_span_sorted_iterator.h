@@ -333,8 +333,7 @@ class TsBlockSpanSortedIterator {
           cur_block_span->Clear();
           span_row_infos_.pop_front();
         }
-      }
-      else {
+      } else {
         span_row_infos_.pop_front();
       }
 

@@ -12,7 +12,7 @@
 
 #include "br_internal_service_recoverable_stub.h"
 #include "ee_global.h"
-#include "ee_protobufC_serde.h"
+#include "ee_protobuf_serde.h"
 #include "lg_api.h"
 namespace kwdbts {
 
@@ -44,8 +44,7 @@ ChunkPB ProtobufChunkSerrialde::SerializeChunk(DataChunk* src,
 
 ChunkPB ProtobufChunkSerrialde::SerializeColumn(DataChunk* src,
                                                 k_bool* is_first_chunk) {
-  ChunkPB dst;
-  // = SerializeColumnData(src);
+  ChunkPB dst;  // = SerializeColumnData(src);
   auto* column_info = src->GetColumnInfo();
   dst.set_data_size(src->Size());
   if (*is_first_chunk) {

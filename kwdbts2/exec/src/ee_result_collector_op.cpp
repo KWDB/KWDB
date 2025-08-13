@@ -19,30 +19,32 @@ namespace kwdbts {
 EEIteratorErrCode ResultCollectorOperator::Init(kwdbContext_p ctx) {
   EnterFunc();
   EEIteratorErrCode code = childrens_[0]->Init(ctx);
-  output_encoding_ = true;
+  // output_encoding_ = true;
   Return(code);
 }
 
 EEIteratorErrCode ResultCollectorOperator::Start(kwdbContext_p ctx) {
   EnterFunc();
-  EEIteratorErrCode code = childrens_[0]->Start(ctx);
-  Return(code);
+  // EEIteratorErrCode code = childrens_[0]->Start(ctx);
+  Return(EEIteratorErrCode::EE_OK);
 }
 
 EEIteratorErrCode ResultCollectorOperator::Next(kwdbContext_p ctx, DataChunkPtr& chunk) {
   EnterFunc();
 
-  EEIteratorErrCode code = childrens_[0]->Next(ctx, chunk);
-  KWThdContext *thd = current_thd;
-  if (nullptr != chunk) {
-    if (EEPgErrorInfo::IsError()) {
-      code = EEIteratorErrCode::EE_ERROR;
-    } else {
-     total_rows_ += chunk->Count();
-     OPERATOR_DIRECT_ENCODING(ctx, output_encoding_, use_query_short_circuit_, thd, chunk);
+  std::unique_lock<std::mutex> l(mutex_);
+  while (true) {
+    if (is_finished_) {
+      if (pg_info_.code > 0) {
+        EEPgErrorInfo::SetPgErrorInfo(pg_info_.code, pg_info_.msg);
+      }
+      // LOG_ERROR("ResultCollectorOperator::Next is finished. code = %s, pginfo.code = %d, pginfo.msg = %s",
+      //                 EEIteratorErrCodeToString(code_).c_str(), pg_info_.code, pg_info_.msg);
+      Return(code_);
     }
+
+    wait_cond_.wait_for(l, std::chrono::seconds(2));
   }
-  Return(code);
 }
 
 EEIteratorErrCode ResultCollectorOperator::Reset(kwdbContext_p ctx) {
@@ -55,9 +57,16 @@ EEIteratorErrCode ResultCollectorOperator::Close(kwdbContext_p ctx) {
   Return(childrens_[0]->Close(ctx));
 }
 
+void ResultCollectorOperator::PushFinish(EEIteratorErrCode code, k_int32 stream_id, const EEPgErrorInfo& pgInfo) {
+  std::lock_guard<std::mutex> l(mutex_);
+  is_finished_ = true;
+  code_ = code;
+  pg_info_ = pgInfo;
+  wait_cond_.notify_one();
+}
+
 KStatus ResultCollectorOperator::BuildPipeline(PipelineGroup *pipeline, Processors *processor) {
   pipeline->SetPipelineOperator(this);
-  // pipeline->SetSource(this);
   return childrens_[0]->BuildPipeline(pipeline, processor);
 }
 

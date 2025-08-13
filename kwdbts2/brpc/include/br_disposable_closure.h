@@ -23,33 +23,36 @@
 
 namespace kwdbts {
 
-// Disposable call back, it must be created on the heap.
-// It will destroy itself after call back
 template <typename T, typename C = void>
 class DisposableClosure : public google::protobuf::Closure {
  public:
-  using FailedFunc = std::function<void(const C&, std::string_view)>;
-  using SuccessFunc = std::function<void(const C&, const T&)>;
-
   explicit DisposableClosure(const C& ctx) : ctx_(ctx) {}
-  ~DisposableClosure() override = default;
-  // Disallow copy and assignment.
-  DisposableClosure(const DisposableClosure& other) = delete;
-  DisposableClosure& operator=(const DisposableClosure& other) = delete;
 
-  void AddFailedHandler(FailedFunc fn) { failed_handler_ = std::move(fn); }
+  DisposableClosure(const DisposableClosure&) = delete;
+  DisposableClosure& operator=(const DisposableClosure&) = delete;
+
+  ~DisposableClosure() override = default;
+
+  using SuccessFunc = std::function<void(const C&, const T&)>;
+  using FailedFunc = std::function<void(const C&, std::string_view)>;
+
   void AddSuccessHandler(SuccessFunc fn) { success_handler_ = fn; }
+  void AddFailedHandler(FailedFunc fn) { failed_handler_ = std::move(fn); }
+
+  T result;
+  brpc::Controller cntl;
 
   void Run() noexcept override {
     std::unique_ptr<DisposableClosure> self_guard(this);
 
     try {
-      if (cntl.Failed()) {
+      if (!cntl.Failed()) {
+        success_handler_(ctx_, result);
+
+      } else {
         std::string rpc_err_str = "brpc failed, error={" + std::string(berror(cntl.ErrorCode())) +
                                   "}, error_text={" + cntl.ErrorText() + "}";
         failed_handler_(ctx_, std::string_view(rpc_err_str));
-      } else {
-        success_handler_(ctx_, result);
       }
     } catch (const std::exception& exp) {
       LOG_ERROR("Callback error: {%s}", exp.what());
@@ -58,14 +61,10 @@ class DisposableClosure : public google::protobuf::Closure {
     }
   }
 
- public:
-  brpc::Controller cntl;
-  T result;
-
  private:
-  const C ctx_;
-  FailedFunc failed_handler_;
   SuccessFunc success_handler_;
+  FailedFunc failed_handler_;
+  const C ctx_;
 };
 
 }  // namespace kwdbts

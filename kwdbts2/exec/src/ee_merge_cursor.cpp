@@ -32,31 +32,22 @@ void MaterializeDst(DataChunk* dst, const std::vector<DataChunkSPtr>& chunks,
   return;
 }
 
-struct CursorOpAlgo {
-  static k_int32 CompareTailRow(const SortDescs& desc, const SortedRun& left,
-                                const SortedRun& right) {
-    size_t lhs_tail = left.range.second - 1;
-    size_t rhs_tail = right.range.second - 1;
-    return left.CompareRow(desc, right, lhs_tail, rhs_tail);
-  }
-};
-
-MergeTwoCursor::MergeTwoCursor(
-    const SortDescs& sort_desc,
-    std::unique_ptr<SimpleChunkSortCursor>&& left_cursor,
-    std::unique_ptr<SimpleChunkSortCursor>&& right_cursor)
-    : sort_desc_(sort_desc),
-      left_cursor_(std::move(left_cursor)),
-      right_cursor_(std::move(right_cursor)) {
-  chunk_provider_ = [&](DataChunkPtr* output, k_bool* eos) -> k_bool {
-    if (output == nullptr || eos == nullptr) {
+TwoCursorMerger::TwoCursorMerger(
+    const SortingRules& sort_desc,
+    std::unique_ptr<SortedChunkCursor>&& left_sort_cursor,
+    std::unique_ptr<SortedChunkCursor>&& right_sort_cursor)
+    : sort_rules_(sort_desc),
+      left_cursor_(std::move(left_sort_cursor)),
+      right_cursor_(std::move(right_sort_cursor)) {
+  chunk_provider_ = [&](DataChunkPtr* chunk, k_bool* eos) -> k_bool {
+    if (chunk == nullptr || eos == nullptr) {
       return IsDataReady();
     }
-    *eos = IsEos();
-    if (KStatus::SUCCESS != Next(*output)) {
+    *eos = IsAtEnd();
+    if (KStatus::SUCCESS != GetNextMergedChunk(*chunk)) {
       return false;
     }
-    if (nullptr == (*output)) {
+    if (nullptr == (*chunk)) {
       return false;
     } else {
       return true;
@@ -64,59 +55,59 @@ MergeTwoCursor::MergeTwoCursor(
   };
 }
 
-// use this as cursor
-std::unique_ptr<SimpleChunkSortCursor> MergeTwoCursor::AsChunkCursor() {
-  return std::make_unique<SimpleChunkSortCursor>(
-      AsProvider(), left_cursor_->GetSortColumns());
+k_bool TwoCursorMerger::IsAtEnd() {
+  return left_.Empty() && left_cursor_->IsAtEnd() && right_.Empty() &&
+         right_cursor_->IsAtEnd();
 }
-k_bool MergeTwoCursor::IsDataReady() {
+
+KStatus TwoCursorMerger::GetNextMergedChunk(DataChunkPtr& chunk) {
+  if (!IsDataReady() || IsAtEnd()) {
+    return KStatus::SUCCESS;
+  }
+  if (AdvanceCursors()) {
+    return KStatus::SUCCESS;
+  }
+  return ExecuteDualCursorMerge(chunk);
+}
+
+// k_bool TwoCursorMerger::AdvanceCursors() {
+//   k_bool eos = left_.Empty() || right_.Empty();
+//   if (left_.Empty() && !left_cursor_->IsAtEnd()) {
+//     auto temp_chunk = left_cursor_->FetchNextSortedChunk();
+//     if (temp_chunk.first) {
+//       left_ = SortedRun(DataChunkSPtr(temp_chunk.first.release()), &temp_chunk.second);
+//     }
+//   }
+//   if (right_.Empty() && !right_cursor_->IsAtEnd()) {
+//     auto temp_chunk = right_cursor_->FetchNextSortedChunk();
+//     if (temp_chunk.first) {
+//       right_ = SortedRun(DataChunkSPtr(temp_chunk.first.release()), &temp_chunk.second);
+//     }
+//   }
+
+//   if (!left_.Empty() && !right_.Empty()) {
+//     eos = false;
+//   }
+
+//   if ((left_cursor_->IsAtEnd() && !right_.Empty()) ||
+//       (right_cursor_->IsAtEnd() && !left_.Empty())) {
+//     eos = false;
+//   }
+
+//   return eos;
+// }
+
+// use this as cursor
+std::unique_ptr<SortedChunkCursor> TwoCursorMerger::AsChunkCursor() {
+  return std::make_unique<SortedChunkCursor>(
+      GetChunkProvider(), left_cursor_->GetSortColumns());
+}
+k_bool TwoCursorMerger::IsDataReady() {
   return left_cursor_->IsDataReady() && right_cursor_->IsDataReady();
 }
 
-k_bool MergeTwoCursor::IsEos() {
-  return left_.Empty() && left_cursor_->IsEos() && right_.Empty() &&
-         right_cursor_->IsEos();
-}
-
-KStatus MergeTwoCursor::Next(DataChunkPtr& chunk) {
-  if (!IsDataReady() || IsEos()) {
-    return KStatus::SUCCESS;
-  }
-  if (MoveCursor()) {
-    return KStatus::SUCCESS;
-  }
-  return MergeSortedCursorTwoWay(chunk);
-}
-
-k_bool MergeTwoCursor::MoveCursor() {
-  k_bool eos = left_.Empty() || right_.Empty();
-  if (left_.Empty() && !left_cursor_->IsEos()) {
-    auto chunk = left_cursor_->TryGetNextChunk();
-    if (chunk.first) {
-      left_ = SortedRun(DataChunkSPtr(chunk.first.release()), &chunk.second);
-    }
-  }
-  if (right_.Empty() && !right_cursor_->IsEos()) {
-    auto chunk = right_cursor_->TryGetNextChunk();
-    if (chunk.first) {
-      right_ = SortedRun(DataChunkSPtr(chunk.first.release()), &chunk.second);
-    }
-  }
-
-  if (!left_.Empty() && !right_.Empty()) {
-    eos = false;
-  }
-
-  if ((left_cursor_->IsEos() && !right_.Empty()) ||
-      (right_cursor_->IsEos() && !left_.Empty())) {
-    eos = false;
-  }
-
-  return eos;
-}
-
-KStatus MergeTwoCursor::MergeSortedCursorTwoWay(DataChunkPtr& chunk) {
-  const SortDescs& sort_desc = sort_desc_;
+KStatus TwoCursorMerger::ExecuteDualCursorMerge(DataChunkPtr& chunk) {
+  const SortingRules& sort_desc = sort_rules_;
   // debug scope
 #ifndef NDEBUG
   left_is_empty_ |= left_.Empty();
@@ -125,36 +116,40 @@ KStatus MergeTwoCursor::MergeSortedCursorTwoWay(DataChunkPtr& chunk) {
 
   k_int32 intersect = left_.Intersect(sort_desc, right_);
   if (intersect < 0) {
-    chunk = left_.CloneSlice();
+    chunk = left_.CloneDataSlice();
     if (chunk == nullptr) {
       EEPgErrorInfo::SetPgErrorInfo(ERRCODE_DATA_EXCEPTION, "sort data error");
       return KStatus::FAIL;
     }
     left_.Reset();
   } else if (intersect > 0) {
-    chunk = right_.CloneSlice();
+    chunk = right_.CloneDataSlice();
     if (chunk == nullptr) {
       EEPgErrorInfo::SetPgErrorInfo(ERRCODE_DATA_EXCEPTION, "sort data error");
       return KStatus::FAIL;
     }
     right_.Reset();
   } else {
-    return MergeSortedForIntersectedCursor(chunk, left_, right_);
+    return ExecuteIntersectionMerge(chunk, left_, right_);
   }
 
   return KStatus::SUCCESS;
 }
 
-KStatus MergeTwoCursor::MergeSortedForIntersectedCursor(DataChunkPtr& chunk,
+DataChunkPtr CascadingCursorMerger::FetchNextSortedChunk() {
+  return root_cursor_->FetchNextSortedChunk().first;
+}
+
+KStatus TwoCursorMerger::ExecuteIntersectionMerge(DataChunkPtr& chunk,
                                                         SortedRun& run1,
                                                         SortedRun& run2) {
-  const auto& sort_desc = sort_desc_;
+  const auto& sort_rule = sort_rules_;
 
-  k_int32 tail_cmp = CursorOpAlgo::CompareTailRow(sort_desc, run1, run2);
+  k_int32 tailComparison = CursorOperationAlgorithm::CompareTailRow(sort_rule, run1, run2);
 
   Permutation permutation;
   if (KStatus::SUCCESS !=
-      MergeSortedTwoWay(sort_desc, run1, run2, &permutation)) {
+      MergeTwoSortedRuns(sort_rule, run1, run2, &permutation)) {
     return KStatus::FAIL;
   }
 
@@ -177,7 +172,7 @@ KStatus MergeTwoCursor::MergeSortedForIntersectedCursor(DataChunkPtr& chunk,
   MaterializeDst(left_merged.get(), {run1.chunk, run2.chunk},
                  permutation.data() + merged_rows, left_rows);
 
-  if (tail_cmp <= 0) {
+  if (tailComparison <= 0) {
     run1.Reset();
     run2 = SortedRun(std::move(left_merged), left_cursor_->GetSortColumns());
   } else {
@@ -187,43 +182,39 @@ KStatus MergeTwoCursor::MergeSortedForIntersectedCursor(DataChunkPtr& chunk,
   return KStatus::SUCCESS;
 }
 
-KStatus MergeCursorsCascade::Init(
-    const SortDescs& sort_desc,
-    std::vector<std::unique_ptr<SimpleChunkSortCursor>>&& cursors) {
-  std::vector<std::unique_ptr<SimpleChunkSortCursor>> cur_level =
-      std::move(cursors);
+// KStatus CascadingCursorMerger::Init(
+//     const SortingRules& sort_desc,
+//     std::vector<std::unique_ptr<SortedChunkCursor>>&& cursors) {
+//   std::vector<std::unique_ptr<SortedChunkCursor>> cur_level =
+//       std::move(cursors);
 
-  while (cur_level.size() > 1) {
-    std::vector<std::unique_ptr<SimpleChunkSortCursor>> next_level;
-    next_level.reserve(cur_level.size() / 2);
+//   while (cur_level.size() > 1) {
+//     std::vector<std::unique_ptr<SortedChunkCursor>> next_level;
+//     next_level.reserve(cur_level.size() / 2);
 
-    int level_size = cur_level.size() & ~1;
-    for (int i = 0; i < level_size; i += 2) {
-      auto& left = cur_level[i];
-      auto& right = cur_level[i + 1];
-      mergers_.push_back(std::make_unique<MergeTwoCursor>(
-          sort_desc, std::move(left), std::move(right)));
-      next_level.push_back(mergers_.back()->AsChunkCursor());
-    }
-    if (cur_level.size() % 2 == 1) {
-      next_level.push_back(std::move(cur_level.back()));
-    }
+//     int level_size = cur_level.size() & ~1;
+//     for (int i = 0; i < level_size; i += 2) {
+//       auto& left = cur_level[i];
+//       auto& right = cur_level[i + 1];
+//       cascade_mergers_.push_back(std::make_unique<TwoCursorMerger>(
+//           sort_desc, std::move(left), std::move(right)));
+//       next_level.push_back(cascade_mergers_.back()->AsChunkCursor());
+//     }
+//     if (cur_level.size() % 2 == 1) {
+//       next_level.push_back(std::move(cur_level.back()));
+//     }
 
-    std::swap(next_level, cur_level);
-  }
-  root_cursor_ = std::move(cur_level.front());
+//     std::swap(next_level, cur_level);
+//   }
+//   root_cursor_ = std::move(cur_level.front());
 
-  return KStatus::SUCCESS;
-}
+//   return KStatus::SUCCESS;
+// }
 
-k_bool MergeCursorsCascade::IsDataReady() {
+k_bool CascadingCursorMerger::IsDataReady() {
   return root_cursor_->IsDataReady();
 }
 
-k_bool MergeCursorsCascade::IsEos() { return root_cursor_->IsEos(); }
-
-DataChunkPtr MergeCursorsCascade::TryGetNextChunk() {
-  return root_cursor_->TryGetNextChunk().first;
-}
+k_bool CascadingCursorMerger::IsAtEnd() { return root_cursor_->IsAtEnd(); }
 
 }  // namespace kwdbts

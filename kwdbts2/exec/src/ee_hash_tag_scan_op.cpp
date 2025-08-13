@@ -49,11 +49,8 @@ HashTagScanOperator::HashTagScanOperator(TsFetcherCollection *collection,
   }
 }
 
-HashTagScanOperator::~HashTagScanOperator() = default;
-
-EEIteratorErrCode HashTagScanOperator::Close(kwdbContext_p ctx) {
-  EnterFunc();
-  Reset(ctx);
+HashTagScanOperator::~HashTagScanOperator() {
+  SafeDeletePointer(handler_);
   if (dynamic_hash_index_) {
     delete dynamic_hash_index_;
     dynamic_hash_index_ = nullptr;
@@ -64,6 +61,15 @@ EEIteratorErrCode HashTagScanOperator::Close(kwdbContext_p ctx) {
     tag_renders_ = nullptr;
   }
   SafeDeleteArray(tag_col_info_);
+}
+
+EEIteratorErrCode HashTagScanOperator::Close(kwdbContext_p ctx) {
+  EnterFunc();
+  Reset(ctx);
+  total_read_row_ = 0;
+  tag_index_once_ = false;
+  started_ = false;
+  tag_index_once_ = true;
   Return(EEIteratorErrCode::EE_OK);
 }
 
@@ -645,15 +651,6 @@ RowBatch* HashTagScanOperator::GetRowBatch(kwdbContext_p ctx) {
 
 EEIteratorErrCode HashTagScanOperator::Reset(kwdbContext_p ctx) {
   EnterFunc();
-
-  if (handler_) {
-    SafeDeletePointer(handler_);
-  }
-  total_read_row_ = 0;
-  tag_index_once_ = false;
-  started_ = false;
-  tag_index_once_ = true;
-
   Return(EEIteratorErrCode::EE_OK)
 }
 

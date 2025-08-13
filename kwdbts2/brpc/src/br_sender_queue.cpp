@@ -23,132 +23,10 @@
 #include "ee_defer.h"
 #include "ee_fast_string.h"
 #include "ee_new_slice.h"
-#include "ee_protobufC_serde.h"
+#include "ee_protobuf_serde.h"
 #include "lg_api.h"
 
 namespace kwdbts {
-
-KStatus DataStreamRecvr::SenderQueue::BuildChunkMeta(const ChunkPB& pb_chunk) {
-  if (col_info_initialized_.load(std::memory_order_acquire)) {
-    return KStatus::SUCCESS;
-  }
-
-  std::lock_guard<std::mutex> lock(col_info_mutex_);
-
-  if (col_info_initialized_.load(std::memory_order_relaxed)) {
-    return KStatus::SUCCESS;
-  }
-
-  const auto& column_info_list = pb_chunk.column_info();
-  if (!column_info_list.empty()) {
-    const k_int32 new_col_num = static_cast<k_int32>(column_info_list.size());
-    ColumnInfo* new_col_info = KNEW ColumnInfo[new_col_num];
-    if (new_col_info == nullptr) {
-      LOG_ERROR("Failed to allocate memory for column info, size: %d", new_col_num);
-      return KStatus::FAIL;
-    }
-
-    for (k_int32 i = 0; i < new_col_num; ++i) {
-      const auto& pb_col_info = column_info_list[i];
-      auto& col_info = new_col_info[i];
-
-      col_info.allow_null = pb_col_info.allow_null();
-      col_info.fixed_storage_len = pb_col_info.fixed_storage_len();
-      col_info.return_type = static_cast<KWDBTypeFamily>(pb_col_info.return_type());
-      col_info.storage_len = pb_col_info.storage_len();
-      col_info.storage_type = static_cast<roachpb::DataType>(pb_col_info.storage_type());
-      col_info.is_string = pb_col_info.is_string();
-    }
-
-    col_num_ = new_col_num;
-    col_info_ = new_col_info;
-
-    col_info_initialized_.store(true, std::memory_order_release);
-  }
-
-  return KStatus::SUCCESS;
-}
-
-KStatus DataStreamRecvr::SenderQueue::DeserializeChunk(const ChunkPB& pchunk, DataChunkPtr& chunk) {
-  if (UNLIKELY(!col_info_initialized_.load(std::memory_order_acquire))) {
-    LOG_ERROR("Column info not initialized before deserialization");
-    return KStatus::FAIL;
-  }
-
-  ProtobufChunkSerrialde serial;
-  if (pchunk.compress_type() == CompressionTypePB::NO_COMPRESSION) {
-    if (false == serial.Deserialize(chunk, pchunk.data(), pchunk.is_encoding(), col_info_, col_num_)) {
-      return KStatus::FAIL;
-    }
-  } else {
-    std::string_view buff = pchunk.data();
-    auto* cur = reinterpret_cast<const uint8_t*>(buff.data());
-
-    k_uint32 version = decode_fixed32(cur);
-    if (version != 1) {
-      LOG_ERROR("invalid version {%u}", version);
-      EEPgErrorInfo::SetPgErrorInfo(ERRCODE_DATA_EXCEPTION, "invalid version");
-      return KStatus::FAIL;
-    }
-    cur += 4;
-    k_uint32 num_rows = decode_fixed32(cur);
-    cur += 4;
-    k_uint32 capacity = decode_fixed32(cur);
-    cur += 4;
-    k_uint32 size = decode_fixed32(cur);
-    cur += 8;
-    size_t uncompressed_size = 0;
-    size_t offset = 0;
-    {
-      const BlockCompressionCodec* codec = nullptr;
-      if (KStatus::FAIL == GetBlockCompressionCodec(pchunk.compress_type(), &codec)) {
-        LOG_ERROR("GetBlockCompressionCodec failed, compress_type: %d", pchunk.compress_type());
-        EEPgErrorInfo::SetPgErrorInfo(ERRCODE_DATA_EXCEPTION, "invalid compress type");
-        return KStatus::FAIL;
-      }
-      for (k_int32 i = 0; i < col_num_; i++) {
-        uncompressed_size = decode_fixed64(cur);
-        cur += 8;
-        k_int64 compressed_size = decode_fixed64(cur);
-        cur += 8;
-        k_int64 column_offset = decode_fixed64(cur);
-        cur += 8;
-        faststring uncompressed_buffer;
-        uncompressed_buffer.resize(uncompressed_size);
-        KSlice output{uncompressed_buffer.data(), uncompressed_size};
-        KSlice compressed_data(cur, compressed_size);
-        if (codec != nullptr && compressed_data.get_size() > 0) {
-          if (KStatus::FAIL == codec->Decompress(compressed_data, &output)) {
-            LOG_ERROR("decompress failed, queryid:%ld", recvr_->QueryId());
-            EEPgErrorInfo::SetPgErrorInfo(ERRCODE_DATA_EXCEPTION, "decompress failed");
-            return KStatus::FAIL;
-          }
-        }
-        cur += compressed_size;
-        std::string_view buff(reinterpret_cast<const char*>(uncompressed_buffer.data()),
-                              uncompressed_size);
-        auto* uncompress_buf = reinterpret_cast<const uint8_t*>(buff.data());
-        if (chunk == nullptr) {
-          chunk = std::make_unique<DataChunk>(col_info_, col_num_, capacity);
-          if (chunk == nullptr) {
-            LOG_ERROR("Deserialize make unique data chunk failed");
-            EEPgErrorInfo::SetPgErrorInfo(ERRCODE_OUT_OF_MEMORY, "Insufficient memory");
-            return KStatus::FAIL;
-          }
-          if (!chunk->Initialize()) {
-            LOG_ERROR("Deserialize data chunk, initialize failed");
-            EEPgErrorInfo::SetPgErrorInfo(ERRCODE_OUT_OF_MEMORY, "Insufficient memory");
-            return KStatus::FAIL;
-          }
-          chunk->SetCount(num_rows);
-        }
-        memcpy(chunk->GetData() + offset, uncompress_buf, uncompressed_size);
-        offset += uncompressed_size;
-      }
-    }
-  }
-  return KStatus::SUCCESS;
-}
 
 DataStreamRecvr::PipelineSenderQueue::PipelineSenderQueue(DataStreamRecvr* parent_recvr,
                                                           k_int32 num_senders)
@@ -156,163 +34,11 @@ DataStreamRecvr::PipelineSenderQueue::PipelineSenderQueue(DataStreamRecvr* paren
   chunk_queues_.emplace_back();
 }
 
-KStatus DataStreamRecvr::PipelineSenderQueue::GetChunk(DataChunk** chunk,
-                                                       const k_int32 driver_sequence) {
-  KStatus ret = KStatus::SUCCESS;
-  if (is_cancelled_) {
-    LOG_ERROR("Receiver is cancelled");
-    return KStatus::FAIL;
-  }
-
-  auto& chunk_queue = chunk_queues_[0];
-  auto& chunk_queue_state = chunk_queue_states_[0];
-
-  ChunkItem item;
-  if (!chunk_queue.TryPop(item)) {
-    chunk_queue_state.unpluging = false;
-    LOG_ERROR("DataStreamRecvr no new data, stop unpluging");
-    return ret;
-  }
-
-  DeferOp defer_op([&]() {
-    auto* closure = item.closure;
-    if (closure != nullptr) {
-      closure->Run();
-      chunk_queue_state.blocked_closure_num--;
-    }
-  });
-
-  if (item.chunk_ptr == nullptr) {
-    DataChunkPtr chunk_ptr = nullptr;
-    if (DeserializeChunk(item.pchunk, chunk_ptr)) {
-      *chunk = chunk_ptr.release();
-    } else {
-      LOG_ERROR("DeserializeChunk failed");
-      ret = KStatus::FAIL;
-    }
-  } else {
-    *chunk = item.chunk_ptr.release();
-  }
-
-  total_chunks_--;
-  recvr_->num_buffered_bytes_ -= item.chunk_bytes;
-
-  return ret;
-}
-
-KStatus DataStreamRecvr::PipelineSenderQueue::TryGetChunk(DataChunk** chunk) {
-  if (is_cancelled_) {
-    LOG_ERROR("Receiver is cancelled");
-    return KStatus::FAIL;
-  }
-  auto& chunk_queue = chunk_queues_[0];
-  auto& chunk_queue_state = chunk_queue_states_[0];
-  ChunkItem item;
-  if (!chunk_queue.TryPop(item)) {
-    chunk_queue_state.unpluging = false;
-    return KStatus::FAIL;
-  }
-  DCHECK(item.chunk_ptr != nullptr);
-  *chunk = item.chunk_ptr.release();
-
-  auto* closure = item.closure;
-  if (closure != nullptr) {
-    closure->Run();
-    chunk_queue_state.blocked_closure_num--;
-  }
-  total_chunks_--;
-  return KStatus::SUCCESS;
-}
-
-BRStatus DataStreamRecvr::PipelineSenderQueue::AddChunks(const PTransmitChunkParams& request,
-                                                         ::google::protobuf::Closure** done) {
-  return AddChunksInternal<false>(request, done);
-}
-
-BRStatus DataStreamRecvr::PipelineSenderQueue::AddChunksAndKeepOrder(
-    const PTransmitChunkParams& request, ::google::protobuf::Closure** done) {
-  return AddChunksInternal<true>(request, done);
-}
-
-void DataStreamRecvr::PipelineSenderQueue::DecrementSenders(k_int32 be_number) {
-  std::lock_guard<Mutex> l(lock_);
-  if (UNLIKELY(sender_eos_set_.find(be_number) != sender_eos_set_.end())) {
-    LOG_ERROR("More than one EOS from %d in query id %ld on processor id %d", be_number,
-              recvr_->QueryId(), recvr_->DestProcessorId());
-    return;
-  }
-  sender_eos_set_.insert(be_number);
-
-  if (num_remaining_senders_ > 0) {
-    num_remaining_senders_--;
-  }
-}
+void DataStreamRecvr::PipelineSenderQueue::Close() { CleanBufferQueues(); }
 
 void DataStreamRecvr::PipelineSenderQueue::Cancel() {
   is_cancelled_ = true;
   CleanBufferQueues();
-}
-
-void DataStreamRecvr::PipelineSenderQueue::Close() { CleanBufferQueues(); }
-
-void DataStreamRecvr::PipelineSenderQueue::CleanBufferQueues() {
-  std::lock_guard<Mutex> l(lock_);
-
-  for (k_int32 i = 0; i < chunk_queues_.size(); i++) {
-    auto& chunk_queue = chunk_queues_[i];
-    auto& chunk_queue_state = chunk_queue_states_[i];
-
-    ChunkItem item;
-    while (chunk_queue.Size() > 0) {
-      if (chunk_queue.TryPop(item)) {
-        if (item.closure != nullptr) {
-          item.closure->Run();
-          chunk_queue_state.blocked_closure_num--;
-        }
-        --total_chunks_;
-        recvr_->num_buffered_bytes_ -= item.chunk_bytes;
-      }
-    }
-  }
-
-  for (auto& [_, chunk_queues] : buffered_chunk_queues_) {
-    for (auto& [_, chunk_queue] : chunk_queues) {
-      for (auto& item : chunk_queue) {
-        if (item.closure != nullptr) {
-          item.closure->Run();
-        }
-      }
-      chunk_queue.clear();
-    }
-  }
-}
-
-void DataStreamRecvr::PipelineSenderQueue::CheckLeakClosure() {
-  std::lock_guard<Mutex> l(lock_);
-
-  // Check for leaks in the main queue
-  for (k_int32 i = 0; i < chunk_queues_.size(); i++) {
-    auto& chunk_queue = chunk_queues_[i];
-    ChunkItem item;
-    while (chunk_queue.Size() > 0) {
-      if (chunk_queue.TryPop(item)) {
-        if (item.closure != nullptr) {
-          LOG_ERROR("leak closure detected");
-        }
-      }
-    }
-  }
-
-  // Check for leaks in the buffered queues
-  for (auto& [_, chunk_queues] : buffered_chunk_queues_) {
-    for (auto& [_, chunk_queue] : chunk_queues) {
-      for (auto& item : chunk_queue) {
-        if (item.closure != nullptr) {
-          LOG_ERROR("leak closure detected");
-        }
-      }
-    }
-  }
 }
 
 KStatus DataStreamRecvr::PipelineSenderQueue::TryToBuildChunkMeta(
@@ -371,16 +97,6 @@ KStatus DataStreamRecvr::PipelineSenderQueue::GetChunksFromRequest(
   return KStatus::SUCCESS;
 }
 
-k_bool DataStreamRecvr::PipelineSenderQueue::HasChunk() {
-  if (is_cancelled_) {
-    return true;
-  }
-  if (chunk_queues_[0].Size() == 0 && num_remaining_senders_ > 0) {
-    return false;
-  }
-  return true;
-}
-
 template <k_bool keep_order>
 BRStatus DataStreamRecvr::PipelineSenderQueue::AddChunksInternal(
     const PTransmitChunkParams& request, ::google::protobuf::Closure** done) {
@@ -414,9 +130,8 @@ BRStatus DataStreamRecvr::PipelineSenderQueue::AddChunksInternal(
   ChunkList chunks;
   KStatus status = use_pass_through
                        ? GetChunksFromPassThrough(request.sender_id(), total_chunk_bytes, chunks)
-                       : keep_order
-                             ? GetChunksFromRequest<true>(request, total_chunk_bytes, chunks)
-                             : GetChunksFromRequest<false>(request, total_chunk_bytes, chunks);
+                   : keep_order ? GetChunksFromRequest<true>(request, total_chunk_bytes, chunks)
+                                : GetChunksFromRequest<false>(request, total_chunk_bytes, chunks);
   if (status != KStatus::SUCCESS) {
     std::ostringstream oss;
     oss << "get chunks from request failed";
@@ -448,35 +163,12 @@ BRStatus DataStreamRecvr::PipelineSenderQueue::AddChunksInternal(
       buffered_chunk_queues_[be_number] = std::unordered_map<k_int64, ChunkList>();
     }
 
-    auto& chunk_queues = buffered_chunk_queues_[be_number];
-
     if (!chunks.empty() && done != nullptr && recvr_->ExceedsLimit(total_chunk_bytes)) {
       chunks.back().closure = *done;
       *done = nullptr;
     }
 
-    chunk_queues[sequence] = std::move(chunks);
-    std::unordered_map<k_int64, ChunkList>::iterator it;
-    k_int64& max_processed_sequence = max_processed_sequences_[be_number];
-
-    // max_processed_sequence + 1 means the first unprocessed sequence
-    while ((it = chunk_queues.find(max_processed_sequence + 1)) != chunk_queues.end()) {
-      ChunkList& unprocessed_chunk_queue = (*it).second;
-
-      // Now, all the packets with sequance <= unprocessed_sequence have been received
-      // so chunks of unprocessed_sequence can be flushed to ready queue
-      for (auto& item : unprocessed_chunk_queue) {
-        size_t chunk_bytes = item.chunk_bytes;
-        auto* closure = item.closure;
-        chunk_queues_[0].Push(std::move(item));
-        chunk_queue_states_[0].blocked_closure_num += closure != nullptr;
-        total_chunks_++;
-        recvr_->num_buffered_bytes_ += chunk_bytes;
-      }
-
-      chunk_queues.erase(it);
-      ++max_processed_sequence;
-    }
+    ProcessSequentialChunks(be_number, sequence, chunks);
   } else {
     // If exceeds limit, append closure to the last chunk
     if (!chunks.empty() && done != nullptr && recvr_->ExceedsLimit(total_chunk_bytes)) {
@@ -508,6 +200,133 @@ BRStatus DataStreamRecvr::PipelineSenderQueue::AddChunksInternal(
   return BRStatus::OK();
 }
 
+void DataStreamRecvr::PipelineSenderQueue::ProcessSequentialChunks(k_int32 be_number,
+                                                                   k_int64 sequence,
+                                                                   ChunkList& chunks) {
+  auto& chunk_queues = buffered_chunk_queues_[be_number];
+  chunk_queues[sequence] = std::move(chunks);
+  std::unordered_map<k_int64, ChunkList>::iterator it;
+  k_int64& max_processed_sequence = max_processed_sequences_[be_number];
+
+  while ((it = chunk_queues.find(max_processed_sequence + 1)) != chunk_queues.end()) {
+    ChunkList& unprocessed_chunk_queue = (*it).second;
+
+    for (auto& item : unprocessed_chunk_queue) {
+      size_t chunk_bytes = item.chunk_bytes;
+      auto* closure = item.closure;
+      chunk_queues_[0].Push(std::move(item));
+      chunk_queue_states_[0].blocked_closure_num += closure != nullptr;
+      total_chunks_++;
+      recvr_->num_buffered_bytes_ += chunk_bytes;
+    }
+
+    chunk_queues.erase(it);
+    ++max_processed_sequence;
+  }
+}
+
+BRStatus DataStreamRecvr::PipelineSenderQueue::AddChunks(const PTransmitChunkParams& request,
+                                                         ::google::protobuf::Closure** done) {
+  return AddChunksInternal<false>(request, done);
+}
+
+BRStatus DataStreamRecvr::PipelineSenderQueue::AddChunksAndKeepOrder(
+    const PTransmitChunkParams& request, ::google::protobuf::Closure** done) {
+  return AddChunksInternal<true>(request, done);
+}
+
+KStatus DataStreamRecvr::PipelineSenderQueue::TryGetChunk(DataChunk** chunk) {
+  if (is_cancelled_) {
+    LOG_ERROR("Receiver is cancelled");
+    return KStatus::FAIL;
+  }
+  auto& chunk_queue = chunk_queues_[0];
+  auto& chunk_queue_state = chunk_queue_states_[0];
+  ChunkItem item;
+  if (!chunk_queue.TryPop(item)) {
+    chunk_queue_state.unpluging = false;
+    return KStatus::FAIL;
+  }
+  DCHECK(item.chunk_ptr != nullptr);
+  *chunk = item.chunk_ptr.release();
+
+  auto* closure = item.closure;
+  if (closure != nullptr) {
+    closure->Run();
+    chunk_queue_state.blocked_closure_num--;
+  }
+  total_chunks_--;
+  return KStatus::SUCCESS;
+}
+
+KStatus DataStreamRecvr::PipelineSenderQueue::GetChunk(DataChunk** chunk,
+                                                       const k_int32 driver_sequence) {
+  KStatus ret = KStatus::SUCCESS;
+  if (is_cancelled_) {
+    LOG_ERROR("Receiver is cancelled");
+    return KStatus::FAIL;
+  }
+
+  auto& chunk_queue = chunk_queues_[0];
+  auto& chunk_queue_state = chunk_queue_states_[0];
+
+  ChunkItem item;
+  if (!chunk_queue.TryPop(item)) {
+    chunk_queue_state.unpluging = false;
+    LOG_ERROR("DataStreamRecvr no new data, stop unpluging");
+    return ret;
+  }
+
+  DeferOp defer_op([&]() {
+    auto* closure = item.closure;
+    if (closure != nullptr) {
+      closure->Run();
+      chunk_queue_state.blocked_closure_num--;
+    }
+  });
+
+  if (item.chunk_ptr == nullptr) {
+    DataChunkPtr chunk_ptr = nullptr;
+    if (DeserializeChunk(item.pchunk, chunk_ptr)) {
+      *chunk = chunk_ptr.release();
+    } else {
+      LOG_ERROR("DeserializeChunk failed");
+      ret = KStatus::FAIL;
+    }
+  } else {
+    *chunk = item.chunk_ptr.release();
+  }
+
+  total_chunks_--;
+  recvr_->num_buffered_bytes_ -= item.chunk_bytes;
+
+  return ret;
+}
+
+void DataStreamRecvr::PipelineSenderQueue::DecrementSenders(k_int32 be_number) {
+  std::lock_guard<Mutex> l(lock_);
+  if (UNLIKELY(sender_eos_set_.find(be_number) != sender_eos_set_.end())) {
+    LOG_ERROR("More than one EOS from %d in query id %ld on processor id %d", be_number,
+              recvr_->QueryId(), recvr_->DestProcessorId());
+    return;
+  }
+  sender_eos_set_.insert(be_number);
+
+  if (num_remaining_senders_ > 0) {
+    num_remaining_senders_--;
+  }
+}
+
+k_bool DataStreamRecvr::PipelineSenderQueue::HasChunk() {
+  if (is_cancelled_) {
+    return true;
+  }
+  if (chunk_queues_[0].Size() == 0 && num_remaining_senders_ > 0) {
+    return false;
+  }
+  return true;
+}
+
 void DataStreamRecvr::PipelineSenderQueue::ShortCircuit(const k_int32 driver_sequence) {
   chunk_queue_states_[0].is_short_circuited.store(true, std::memory_order_relaxed);
 }
@@ -519,11 +338,7 @@ k_bool DataStreamRecvr::PipelineSenderQueue::HasOutput(const k_int32 driver_sequ
 
   k_int32 chunk_num = chunk_queues_[0].Size();
   auto& chunk_queue_state = chunk_queue_states_[0];
-  // introduce an unplug mechanism similar to scan operator to reduce scheduling
-  // overhead
 
-  // 1. in the unplug state, return true if there is a chunk, otherwise return
-  // false and exit the unplug state
   if (chunk_queue_state.unpluging) {
     if (chunk_num > 0) {
       return true;
@@ -531,30 +346,150 @@ k_bool DataStreamRecvr::PipelineSenderQueue::HasOutput(const k_int32 driver_sequ
     chunk_queue_state.unpluging = false;
     return false;
   }
-  // 2. if this queue is not in the unplug state, try to batch as much chunk as
-  // possible before returning
+
   if (chunk_num >= kUnplugBufferThreshold) {
     chunk_queue_state.unpluging = true;
     return true;
   }
 
   k_bool is_buffer_full = recvr_->num_buffered_bytes_ > recvr_->total_buffer_limit_;
-  // 3. if buffer is full and this queue has chunks, return true to release the
-  // buffer capacity ASAP
+
   if (is_buffer_full && chunk_num > 0) {
     return true;
   }
-  // 4. if there is no new data, return true if this queue has chunks
+
   if (num_remaining_senders_ == 0) {
     return chunk_num > 0;
   }
-  // 5. if this queue has blocked closures, return true to release the closure
-  // ASAP to trigger the next transmit requests
+
   return chunk_queue_state.blocked_closure_num > 0;
 }
 
 k_bool DataStreamRecvr::PipelineSenderQueue::IsFinished() const {
   return is_cancelled_ || (num_remaining_senders_ == 0 && total_chunks_ == 0);
+}
+
+KStatus DataStreamRecvr::SenderQueue::BuildChunkMeta(const ChunkPB& pb_chunk) {
+  if (col_info_initialized_.load(std::memory_order_acquire)) {
+    return KStatus::SUCCESS;
+  }
+
+  std::lock_guard<std::mutex> lock(col_info_mutex_);
+
+  if (col_info_initialized_.load(std::memory_order_relaxed)) {
+    return KStatus::SUCCESS;
+  }
+
+  const auto& column_info_list = pb_chunk.column_info();
+  if (!column_info_list.empty()) {
+    const k_int32 new_col_num = static_cast<k_int32>(column_info_list.size());
+    ColumnInfo* new_col_info = KNEW ColumnInfo[new_col_num];
+    if (new_col_info == nullptr) {
+      LOG_ERROR("Failed to allocate memory for column info, size: %d", new_col_num);
+      return KStatus::FAIL;
+    }
+
+    for (k_int32 i = 0; i < new_col_num; ++i) {
+      const auto& pb_col_info = column_info_list[i];
+      auto& col_info = new_col_info[i];
+
+      col_info.allow_null = pb_col_info.allow_null();
+      col_info.fixed_storage_len = pb_col_info.fixed_storage_len();
+      col_info.return_type = static_cast<KWDBTypeFamily>(pb_col_info.return_type());
+      col_info.storage_len = pb_col_info.storage_len();
+      col_info.storage_type = static_cast<roachpb::DataType>(pb_col_info.storage_type());
+      col_info.is_string = pb_col_info.is_string();
+    }
+
+    col_num_ = new_col_num;
+    col_info_ = new_col_info;
+
+    col_info_initialized_.store(true, std::memory_order_release);
+  }
+
+  return KStatus::SUCCESS;
+}
+
+KStatus DataStreamRecvr::SenderQueue::DeserializeChunk(const ChunkPB& pchunk, DataChunkPtr& chunk) {
+  if (UNLIKELY(!col_info_initialized_.load(std::memory_order_acquire))) {
+    LOG_ERROR("Column info not initialized before deserialization");
+    return KStatus::FAIL;
+  }
+
+  ProtobufChunkSerrialde serial;
+  if (pchunk.compress_type() == CompressionTypePB::NO_COMPRESSION) {
+    if (false ==
+        serial.Deserialize(chunk, pchunk.data(), pchunk.is_encoding(), col_info_, col_num_)) {
+      return KStatus::FAIL;
+    }
+  } else {
+    std::string_view buff = pchunk.data();
+    auto* cur = reinterpret_cast<const uint8_t*>(buff.data());
+
+    k_uint32 version = decode_fixed32(cur);
+    if (version != 1) {
+      LOG_ERROR("invalid version {%u}", version);
+      EEPgErrorInfo::SetPgErrorInfo(ERRCODE_DATA_EXCEPTION, "invalid version");
+      return KStatus::FAIL;
+    }
+    cur += 4;
+    k_uint32 num_rows = decode_fixed32(cur);
+    cur += 4;
+    k_uint32 capacity = decode_fixed32(cur);
+    cur += 4;
+    k_uint32 size = decode_fixed32(cur);
+    cur += 8;
+    size_t uncompressed_size = 0;
+    size_t offset = 0;
+    {
+      const BlockCompressor* codec = nullptr;
+      if (KStatus::FAIL == GetBlockCompressor(pchunk.compress_type(), &codec)) {
+        LOG_ERROR("GetBlockCompressor failed, compress_type: %d", pchunk.compress_type());
+        EEPgErrorInfo::SetPgErrorInfo(ERRCODE_DATA_EXCEPTION, "invalid compress type");
+        return KStatus::FAIL;
+      }
+      for (k_int32 i = 0; i < col_num_; i++) {
+        uncompressed_size = decode_fixed64(cur);
+        cur += 8;
+        k_int64 compressed_size = decode_fixed64(cur);
+        cur += 8;
+        k_int64 column_offset = decode_fixed64(cur);
+        cur += 8;
+        QuickString uncompressed_buffer;
+        uncompressed_buffer.resize(uncompressed_size);
+        KSlice output{uncompressed_buffer.data(), uncompressed_size};
+        KSlice compressed_data(cur, compressed_size);
+        if (codec != nullptr && compressed_data.GetSize() > 0) {
+          if (KStatus::FAIL == codec->DecompressBlock(compressed_data, &output)) {
+            LOG_ERROR("decompress failed, queryid:%ld", recvr_->QueryId());
+            EEPgErrorInfo::SetPgErrorInfo(ERRCODE_DATA_EXCEPTION, "decompress failed");
+            return KStatus::FAIL;
+          }
+        }
+        cur += compressed_size;
+        std::string_view buff(reinterpret_cast<const char*>(uncompressed_buffer.data()),
+                              uncompressed_size);
+        auto* uncompress_buf = reinterpret_cast<const uint8_t*>(buff.data());
+        if (chunk == nullptr) {
+          chunk = std::make_unique<DataChunk>(col_info_, col_num_, capacity);
+          if (chunk == nullptr) {
+            LOG_ERROR("Deserialize make unique data chunk failed");
+            EEPgErrorInfo::SetPgErrorInfo(ERRCODE_OUT_OF_MEMORY, "Insufficient memory");
+            return KStatus::FAIL;
+          }
+          if (!chunk->Initialize()) {
+            LOG_ERROR("Deserialize data chunk, initialize failed");
+            EEPgErrorInfo::SetPgErrorInfo(ERRCODE_OUT_OF_MEMORY, "Insufficient memory");
+            return KStatus::FAIL;
+          }
+          chunk->SetCount(num_rows);
+        }
+        memcpy(chunk->GetData() + offset, uncompress_buf, uncompressed_size);
+        offset += uncompressed_size;
+      }
+    }
+  }
+  return KStatus::SUCCESS;
 }
 
 }  // namespace kwdbts

@@ -12,7 +12,7 @@
 
 #pragma once
 
-#include <semaphore.h>
+#include <mutex>
 
 #include <memory>
 #include <vector>
@@ -26,6 +26,7 @@ class PipelineGroup;
 class BaseOperator;
 class TABLE;
 class KWThdContext;
+class Processors;
 
 enum PipelineTaskState {
   PS_NOT_RUNNING = 0,
@@ -43,6 +44,8 @@ class PipelineTask : public ExecTask {
 
   void SetStop();
 
+  void Wait();
+
   KStatus Init(kwdbContext_p ctx);
 
   void SetOperator(BaseOperator *oper);
@@ -50,6 +53,8 @@ class PipelineTask : public ExecTask {
   void AddDependency(std::shared_ptr<PipelineTask> task);
 
   bool is_can_schedule() override;
+
+  void Cancel();
 
   k_int32 GetDegree();
 
@@ -72,11 +77,16 @@ class PipelineTask : public ExecTask {
   void Blocked(kwdbContext_p ctx);
   void Finish(kwdbContext_p ctx);
 
+  void UpdateStartTime();
+
+  int64_t DurationTimes();
+
   void Run(kwdbContext_p ctx);
 
  private:
   BaseOperator *operator_{nullptr};
   PipelineGroup *pipeline_group_{nullptr};
+  Processors *processors_{nullptr};
   std::vector<PipelineTask *> parents_;
   std::vector<PipelineTask *> dependencies_;
   k_int32 total_dependencies_{0};
@@ -87,14 +97,17 @@ class PipelineTask : public ExecTask {
   k_bool is_parallel_pg_{KFALSE};
   std::atomic_bool is_stop_{false};
   std::atomic_bool is_running_{false};
+  std::atomic_bool is_cancel_{false};
   std::atomic_bool in_exec_pool_{false};
   k_uint64 relation_ctx_{0};
   k_int8 timezone_;
   KWThdContext *thd_{nullptr};
   bool is_clone_{false};
-  sem_t sem_;
+  std::mutex mutex_;
+  std::mutex block_mutex_;
   PipelineTaskState state_{PS_NOT_RUNNING};
   static constexpr int64_t YIELD_MAX_TIME_SPENT_NS = 100'000'000L;  // 100ms
+  std::chrono::_V2::system_clock::time_point start_time_;
 };
 
 }  // namespace kwdbts

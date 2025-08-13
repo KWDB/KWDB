@@ -57,14 +57,17 @@ SELECT * FROM av2
 ----
 project
  ├── columns: x:1!null y:3
- └── project
+ └── sort
       ├── columns: k:1!null f:3 s:4
-      └── select
-           ├── columns: k:1!null i:2!null f:3 s:4 j:5
-           ├── scan a
-           │    └── columns: k:1!null i:2 f:3 s:4 j:5
-           └── filters
-                └── i:2 = 10
+      ├── ordering: +4
+      └── project
+           ├── columns: k:1!null f:3 s:4
+           └── select
+                ├── columns: k:1!null i:2!null f:3 s:4 j:5
+                ├── scan a
+                │    └── columns: k:1!null i:2 f:3 s:4 j:5
+                └── filters
+                     └── i:2 = 10
 
 # Sort used by group by because of presence of ARRAY_AGG.
 build

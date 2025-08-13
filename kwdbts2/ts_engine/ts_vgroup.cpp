@@ -107,7 +107,7 @@ KStatus TsVGroup::CreateTable(kwdbContext_p ctx, const KTableKey& table_id, roac
 KStatus TsVGroup::PutData(kwdbContext_p ctx, TSTableID table_id, uint64_t mtr_id, TSSlice* primary_tag,
                           TSEntityID entity_id, TSSlice* payload, bool write_wal) {
   TS_LSN current_lsn = 1;
-  if (engine_options_->wal_level != WALMode::OFF && write_wal) {
+  if (engine_options_->wal_level != WALMode::OFF && write_wal && !engine_options_->use_raft_log_as_wal) {
     LockSharedLevelMutex();
     TS_LSN entry_lsn = 0;
     // lock current lsn: Lock the current LSN until the log is written to the cache
@@ -130,7 +130,7 @@ KStatus TsVGroup::PutData(kwdbContext_p ctx, TSTableID table_id, uint64_t mtr_id
     current_lsn = LSNInc();
   }
   // TODO(limeng04): import and export current lsn that temporarily use wal
-  if (engine_options_->wal_level != WALMode::OFF && !write_wal) {
+  if (engine_options_->wal_level != WALMode::OFF && !write_wal && !engine_options_->use_raft_log_as_wal) {
     current_lsn = wal_manager_->FetchCurrentLSN();
   }
   std::list<TSMemSegRowData> rows;
@@ -1048,7 +1048,7 @@ KStatus TsVGroup::DeleteEntity(kwdbContext_p ctx, TSTableID table_id, std::strin
     return KStatus::FAIL;
   }
   auto tag_table = tb_schema_manager->GetTagTable();
-  if (engine_options_->wal_level != WALMode::OFF) {
+  if (engine_options_->wal_level != WALMode::OFF && !engine_options_->use_raft_log_as_wal) {
     TagTuplePack* tag_pack = tag_table->GenTagPack(p_tag.data(), p_tag.size());
     if (UNLIKELY(nullptr == tag_pack)) {
       return KStatus::FAIL;
@@ -1075,6 +1075,9 @@ KStatus TsVGroup::DeleteEntity(kwdbContext_p ctx, TSTableID table_id, std::strin
   if (*count != 0) {
     // todo(liangbo01) we should delete current entity metric datas.
     TS_LSN cur_lsn = wal_manager_->FetchCurrentLSN();
+    if (engine_options_->use_raft_log_as_wal) {
+      cur_lsn = LSNInc();
+    }
     std::vector<KwTsSpan> ts_spans;
     ts_spans.push_back({INT64_MIN, INT64_MAX});
     // delete current entity metric datas.
@@ -1092,7 +1095,7 @@ KStatus TsVGroup::DeleteData(kwdbContext_p ctx, TSTableID tbl_id, std::string& p
   std::vector<DelRowSpan> dtp_list;
   // todo(xy): need to initialize lsn if wal_level = off
   TS_LSN current_lsn = 0;
-  if (engine_options_->wal_level != WALMode::OFF) {
+  if (engine_options_->wal_level != WALMode::OFF && !engine_options_->use_raft_log_as_wal) {
     LockSharedLevelMutex();
     KStatus s = wal_manager_->WriteDeleteMetricsWAL4V2(ctx, mtr_id, tbl_id, p_tag, ts_spans, vgroup_id_, &current_lsn);
     UnLockSharedLevelMutex();
@@ -1100,6 +1103,8 @@ KStatus TsVGroup::DeleteData(kwdbContext_p ctx, TSTableID tbl_id, std::string& p
       LOG_ERROR("WriteDeleteTagWAL failed.");
       return s;
     }
+  } else {
+    current_lsn = LSNInc();
   }
 
   // delete current entity metric datas.

@@ -595,7 +595,7 @@ KStatus TSEngineV2Impl::PutData(kwdbContext_p ctx, const KTableKey& table_id, ui
 
 // TODO(wal): add WAL
 KStatus TSEngineV2Impl::PutEntity(kwdbContext_p ctx, const KTableKey& table_id, uint64_t range_group_id,
-                                  TSSlice* payload_data, int payload_num, uint64_t mtr_id, bool writeWAL) {
+                                  TSSlice* payload_data, int payload_num, uint64_t mtr_id) {
   std::shared_ptr<kwdbts::TsTable> ts_table;
   ErrorInfo err_info;
   uint32_t vgroup_id;
@@ -629,7 +629,7 @@ KStatus TSEngineV2Impl::PutEntity(kwdbContext_p ctx, const KTableKey& table_id, 
     auto vgroup = GetVGroupByID(ctx, vgroup_id);
     assert(vgroup != nullptr);
 
-    if (options_.wal_level != WALMode::OFF) {
+    if (options_.wal_level != WALMode::OFF && !options_.use_raft_log_as_wal) {
       // get old payload
       TagTuplePack* tag_pack = tag_table->GenTagPack(primary_key.data, primary_key.len);
       if (UNLIKELY(nullptr == tag_pack)) {
@@ -1053,7 +1053,22 @@ KStatus TSEngineV2Impl::TSxRollback(kwdbContext_p ctx, const KTableKey& table_id
 }
 
 KStatus TSEngineV2Impl::CreateCheckpoint(kwdbContext_p ctx) {
+  // use raft log
+  if (options_.use_raft_log_as_wal) {
+    goPrepareFlush();
+    // trig all vgroup flush
+    for (const auto &vgrp : vgroups_) {
+      auto s = vgrp->Flush();
+      if (s == KStatus::FAIL) {
+        LOG_ERROR("Failed to flush metric file.")
+        return s;
+      }
+    }
+    goFlushed();
+    return KStatus::SUCCESS;
+  }
   /*
+   * use wal
    * 1. read chk log from chk file.
    * 2. read wal log from all vgroup
    * 3. merge chk log and wal log
@@ -1329,7 +1344,7 @@ KStatus TSEngineV2Impl::GetMetaData(kwdbContext_p ctx, const KTableKey& table_id
 
 KStatus TSEngineV2Impl::DeleteRangeData(kwdbContext_p ctx, const KTableKey& table_id, uint64_t range_group_id,
                         HashIdSpan& hash_span, const std::vector<KwTsSpan>& ts_spans, uint64_t* count,
-                        uint64_t mtr_id, bool writeWAL) {
+                        uint64_t mtr_id) {
   ErrorInfo err_info;
   std::shared_ptr<kwdbts::TsTable> ts_table;
   auto s = GetTsTable(ctx, table_id, ts_table, true, err_info, 0);
@@ -1338,12 +1353,12 @@ KStatus TSEngineV2Impl::DeleteRangeData(kwdbContext_p ctx, const KTableKey& tabl
     return s;
   }
   ctx->ts_engine = this;
-  return ts_table->DeleteRangeData(ctx, range_group_id, hash_span, ts_spans, count, mtr_id, writeWAL);
+  return ts_table->DeleteRangeData(ctx, range_group_id, hash_span, ts_spans, count, mtr_id);
 }
 
 KStatus TSEngineV2Impl::DeleteData(kwdbContext_p ctx, const KTableKey& table_id, uint64_t range_group_id,
                     std::string& primary_tag, const std::vector<KwTsSpan>& ts_spans, uint64_t* count,
-                    uint64_t mtr_id, bool writeWAL) {
+                    uint64_t mtr_id) {
   ErrorInfo err_info;
   std::shared_ptr<kwdbts::TsTable> ts_table;
   auto s = GetTsTable(ctx, table_id, ts_table, true, err_info, 0);
@@ -1352,11 +1367,11 @@ KStatus TSEngineV2Impl::DeleteData(kwdbContext_p ctx, const KTableKey& table_id,
     return s;
   }
   ctx->ts_engine = this;
-  return ts_table->DeleteData(ctx, range_group_id, primary_tag, ts_spans, count, mtr_id, writeWAL);
+  return ts_table->DeleteData(ctx, range_group_id, primary_tag, ts_spans, count, mtr_id);
 }
 
 KStatus TSEngineV2Impl::DeleteEntities(kwdbContext_p ctx, const KTableKey& table_id, uint64_t range_group_id,
-                        std::vector<std::string> primary_tags, uint64_t* count, uint64_t mtr_id, bool writeWAL) {
+                        std::vector<std::string> primary_tags, uint64_t* count, uint64_t mtr_id) {
   ErrorInfo err_info;
   std::shared_ptr<kwdbts::TsTable> ts_table;
   auto s = GetTsTable(ctx, table_id, ts_table, true, err_info, 0);
@@ -1811,7 +1826,7 @@ KStatus TSEngineV2Impl::Recover(kwdbContext_p ctx) {
    * 2. get all vgroup wal log from last checkpoint lsn.
    * 3. merge wal and apply wal
    */
-  if (options_.wal_level == WALMode::OFF) {
+  if (options_.wal_level == WALMode::OFF || options_.use_raft_log_as_wal) {
     return KStatus::SUCCESS;
   }
   LOG_INFO("Recover start.");
@@ -2238,7 +2253,7 @@ KStatus TSEngineV2Impl::DeleteSnapshot(kwdbContext_p ctx, uint64_t snapshot_id) 
 }
 
 KStatus TSEngineV2Impl::FlushBuffer(kwdbContext_p ctx) {
-  if (options_.wal_level != WALMode::OFF) {
+  if (options_.wal_level != WALMode::OFF && !options_.use_raft_log_as_wal) {
     {
       wal_mgr_->Lock();
       wal_mgr_->Flush(ctx);
@@ -2260,6 +2275,11 @@ KStatus TSEngineV2Impl::GetWalLevel(kwdbContext_p ctx, uint8_t* wal_level) {
     return KStatus::FAIL;
   }
   *wal_level = options_.wal_level;
+  return KStatus::SUCCESS;
+}
+
+KStatus TSEngineV2Impl::SetUseRaftLogAsWAL(kwdbContext_p ctx, bool use) {
+  options_.use_raft_log_as_wal = use;
   return KStatus::SUCCESS;
 }
 

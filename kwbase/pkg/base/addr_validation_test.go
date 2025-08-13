@@ -222,7 +222,7 @@ func TestValidateBrpcAddrs(t *testing.T) {
 		t.Fatal("expected host resolution failure, got no error")
 	}
 
-	brpcExpectedErr := "--brpc-addr not specified"
+	brpcExpectedErr := "--brpc-addr's port not specified"
 
 	// The test cases.
 	testData := []struct {
@@ -238,10 +238,28 @@ func TestValidateBrpcAddrs(t *testing.T) {
 		{addrs{":26257", "", ":8080", "", ":5432", ""}, "",
 			addrs{":26257", hostname + ":26257", ":8080", hostname + ":8080", ":5432", hostname + ":5432"},
 			"0.0.0.0:26257"},
+		{addrs{":26257", "", ":8080", "", ":5432", ""}, "",
+			addrs{":26257", hostname + ":26257", ":8080", hostname + ":8080", ":5432", hostname + ":5432"},
+			hostname + ":26257"},
 		// Expected errors.
 		{addrs{":26257", "", ":8080", "", ":5432", ""}, brpcExpectedErr,
 			addrs{":26257", hostname + ":26257", ":8080", hostname + ":8080", ":5432", hostname + ":5432"},
-			base.DefaultBRPVAddr},
+			":"},
+		{addrs{":26257", "", ":8080", "", ":5432", ""}, brpcExpectedErr,
+			addrs{":26257", hostname + ":26257", ":8080", hostname + ":8080", ":5432", hostname + ":5432"},
+			"127.0.0.1:"},
+		{addrs{":26257", "", ":8080", "", ":5432", ""}, brpcExpectedErr,
+			addrs{":26257", hostname + ":26257", ":8080", hostname + ":8080", ":5432", hostname + ":5432"},
+			""},
+		{addrs{":26257", "", ":8080", "", ":5432", ""}, "--brpc-addr: address  : missing port in address",
+			addrs{":26257", hostname + ":26257", ":8080", hostname + ":8080", ":5432", hostname + ":5432"},
+			" "},
+		{addrs{":26257", "", ":8080", "", ":5432", ""}, brpcExpectedErr,
+			addrs{":26257", hostname + ":26257", ":8080", hostname + ":8080", ":5432", hostname + ":5432"},
+			"-1:"},
+		{addrs{":26257", "", ":8080", "", ":5432", ""}, "--brpc-addr: address -1: invalid port",
+			addrs{":26257", hostname + ":26257", ":8080", hostname + ":8080", ":5432", hostname + ":5432"},
+			":-1"},
 		{addrs{":26257", "", ":8080", "", ":5432", ""}, "no such host",
 			addrs{":26257", hostname + ":26257", ":8080", hostname + ":8080", ":5432", hostname + ":5432"},
 			"333.333.333.333:26257"},
