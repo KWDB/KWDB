@@ -387,6 +387,7 @@ target_link_libraries(${KWDBTS2_SERVER_LIB} PRIVATE
         ${DUCKDB_PREFIX_DIR}/extension/jemalloc/libjemalloc_extension.a
         ${DUCKDB_PREFIX_DIR}/extension/core_functions/libcore_functions_extension.a
         ${DUCKDB_PREFIX_DIR}/extension/parquet/libparquet_extension.a
+        ${DUCKDB_PREFIX_DIR}/extension/mysql_scanner/libmysql_scanner_extension.a
         )
 
 target_link_libraries(${KWDBTS2_SERVER_LIB} PUBLIC ${DUCKDB_PREFIX_DIR}/third_party/skiplist/libduckdb_skiplistlib.a)
