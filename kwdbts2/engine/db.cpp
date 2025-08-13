@@ -1582,3 +1582,17 @@ TSStatus TSCountTsTable(TSEngine* engine, TSTableID table_id) {
   LOG_DEBUG("count table[%lu] end", table_id);
   return kTsSuccess;
 }
+
+TSStatus TSFlushVGroups(TSEngine* engine) {
+  kwdbContext_t context;
+  kwdbContext_p ctx_p = &context;
+  KStatus s = InitServerKWDBContext(ctx_p);
+  if (s != KStatus::SUCCESS) {
+    return ToTsStatus("InitServerKWDBContext Error!");
+  }
+  s = engine->FlushVGroups(ctx_p);
+  if (s != KStatus::SUCCESS) {
+    return ToTsStatus("Checkpoint Error!");
+  }
+  return kTsSuccess;
+}

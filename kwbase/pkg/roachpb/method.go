@@ -195,4 +195,6 @@ const (
 	TsRollbackTag
 	// TsCommitTag insert only tag for an entity
 	TsCommitTag
+	// TsImportFlush flush data after IMPORT
+	TsImportFlush
 )

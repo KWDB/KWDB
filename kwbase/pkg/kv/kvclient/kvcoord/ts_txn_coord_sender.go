@@ -150,6 +150,18 @@ func (s *TsSender) Send(
 						},
 					},
 				})
+			case *roachpb.TsImportFlushRequest:
+				err := s.tsEngine.TSFlushVGroups()
+				if err != nil {
+					return nil, &roachpb.Error{Message: err.Error()}
+				}
+				resp.Responses = append(resp.Responses, roachpb.ResponseUnion{
+					Value: &roachpb.ResponseUnion_TsImportFlush{
+						TsImportFlush: &roachpb.TsImportFlushResponse{
+							IsSuccess: true,
+						},
+					},
+				})
 			default:
 				ba.Header.ReadConsistency = roachpb.READ_UNCOMMITTED
 				return s.wrapped.Send(ctx, ba)
@@ -189,7 +201,8 @@ func (s *TsSender) Send(
 			case *roachpb.TsDeleteRequest,
 				*roachpb.TsDeleteEntityRequest,
 				*roachpb.TsDeleteMultiEntitiesDataRequest,
-				*roachpb.TsTagUpdateRequest:
+				*roachpb.TsTagUpdateRequest,
+				*roachpb.TsImportFlushRequest:
 				ba.Header.ReadConsistency = roachpb.READ_UNCOMMITTED
 			}
 		}
