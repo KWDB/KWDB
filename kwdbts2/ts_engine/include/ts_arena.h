@@ -28,30 +28,29 @@ namespace kwdbts {
 #define UNLIKELY(x) (x)
 #endif
 
-static void AsmVolatilePause() {
-#if defined(__i386__) || defined(__x86_64__)
-  asm volatile("pause");
-#elif defined(__aarch64__)
-  asm volatile("wfe");
-#elif defined(__powerpc64__)
-  asm volatile("or 27,27,27");
-#endif
-  // it's okay for other platforms to be no-ops
-}
-
-class Random {
-private:
-  static constexpr uint32_t M = 2147483647L; // 2^31 - 1
+class FakeRandom {
+ private:
+  static constexpr uint32_t M = 2147483647L;  // 2^31 - 1
   static constexpr uint32_t A = 16807;       // bits 14, 8, 7, 5, 2, 1, 0
 
   uint32_t seed_;
 
-public:
-  explicit Random(uint32_t s) : seed_((s & M) != 0 ? s & M : 1) {}
-  void Reset(uint32_t s) { seed_ = (s & M) != 0 ? s & M : 1; }
-
+ public:
   static constexpr auto MAX_NEXT = M;
+  static FakeRandom *GetInstance() {
+    thread_local FakeRandom *instance;
+    thread_local std::aligned_storage_t<sizeof(FakeRandom)> storage;
 
+    auto ret = instance;
+    if (UNLIKELY(ret == nullptr)) {
+      const auto seed =
+          std::hash<std::thread::id>()(std::this_thread::get_id());
+      ret = new (&storage) FakeRandom(static_cast<uint32_t>(seed));
+      instance = ret;
+    }
+    return ret;
+  }
+  explicit FakeRandom(uint32_t s) : seed_((s & M) != 0 ? s & M : 1) {}
   auto Next() {
     auto x = static_cast<uint64_t>(seed_) * A;
     seed_ = static_cast<uint32_t>((x >> 31) + (x & M));
@@ -60,28 +59,11 @@ public:
     }
     return seed_;
   }
-
   uint32_t Uniform(int n) { return Next() % n; }
-  bool OneIn(int n) { return Uniform(n) == 0; }
-  uint32_t Skewed(int n) { return Uniform(1 << Uniform(n + 1)); }
-
-  static Random *GetInstance() {
-    thread_local Random *instance;
-    thread_local std::aligned_storage_t<sizeof(Random)> storage;
-
-    auto ret = instance;
-    if (UNLIKELY(ret == nullptr)) {
-      const auto seed =
-          std::hash<std::thread::id>()(std::this_thread::get_id());
-      ret = new (&storage) Random(static_cast<uint32_t>(seed));
-      instance = ret;
-    }
-    return ret;
-  }
 };
 
 class SpinMutex {
-public:
+ public:
   SpinMutex() : locked_(false) {}
 
   bool try_lock() {
@@ -96,7 +78,15 @@ public:
       if (try_lock()) {
         break;
       }
-      AsmVolatilePause();
+
+      #if defined(__i386__) || defined(__x86_64__)
+        asm volatile("pause");
+      #elif defined(__aarch64__)
+        asm volatile("wfe");
+      #elif defined(__powerpc64__)
+        asm volatile("or 27,27,27");
+      #endif
+
       if (count > 100) {
         std::this_thread::yield();
       }
@@ -105,12 +95,12 @@ public:
 
   void unlock() { locked_.store(false, std::memory_order_release); }
 
-private:
+ private:
   std::atomic<bool> locked_;
 };
 
 template <typename T> class TLSArray {
-public:
+ public:
   TLSArray();
 
   auto Size() const { return 1ul << size_shift_; }     // NOLINT
@@ -122,7 +112,7 @@ public:
 
   std::pair<T *, size_t> AccessElementAndIndex() const; // NOLINT
 
-private:
+ private:
   std::unique_ptr<T[]> data_;
   int size_shift_;
 };
@@ -143,7 +133,7 @@ std::pair<T *, size_t> TLSArray<T>::AccessElementAndIndex() const {
   auto cpuid = GetCPUID();
   size_t idx;
   if (UNLIKELY(cpuid < 0)) {
-    idx = Random::GetInstance()->Uniform(1 << size_shift_);
+    idx = FakeRandom::GetInstance()->Uniform(1 << size_shift_);
   } else {
     idx = static_cast<size_t>(cpuid & ((1 << size_shift_) - 1));
   }
@@ -158,7 +148,7 @@ static_assert((ALIGNED_SIZE & (ALIGNED_SIZE - 1)) == 0,
               "Aligned size must be pow of 2");
 
 class ConcurrentAllocator final {
-public:
+ public:
   explicit ConcurrentAllocator(size_t size = MIN_BLOCK_SIZE);
   ~ConcurrentAllocator();
 
@@ -211,7 +201,7 @@ public:
 
   bool IsInInlineBlock() const { return blocks_.empty(); }
 
-private:
+ private:
   struct Shard {
     char padding[40];
     mutable SpinMutex mutex;
@@ -241,7 +231,7 @@ private:
   // concurrent
   mutable SpinMutex alloc_mutex_;
   std::atomic<size_t> alloc_allocated_and_unused_;
-  std::atomic<size_t> memory_allocated_; // bytes
+  std::atomic<size_t> memory_allocated_;  // bytes
   std::atomic<size_t> irregular_block_count_;
 
   // unsafe
@@ -332,4 +322,4 @@ inline char *ConcurrentAllocator::AllocateBlock(size_t block_size) {
   return block;
 }
 
-} // namespace kwdbts
+}  // namespace kwdbts
