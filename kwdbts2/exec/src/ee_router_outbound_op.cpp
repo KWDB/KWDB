@@ -151,10 +151,10 @@ KStatus RouterOutboundOperator::Channel::SendOneChunk(DataChunkPtr& data_chunk,
     butil::IOBuf attachment;
     int64_t attachment_physical_bytes =
         parent_->ConstrucBrpcAttachment(chunk_request_, attachment);
-    TransmitChunkInfo info = {this->target_node_id_,     brpc_stub_,
+    ChunkTransmitContext info = {this->target_node_id_,     brpc_stub_,
                               std::move(chunk_request_), attachment,
                               attachment_physical_bytes, rpc_dest_addr_};
-    if (KStatus::SUCCESS != parent_->buffer_->AddRequest(info)) {
+    if (KStatus::SUCCESS != parent_->buffer_->AddSendRequest(info)) {
       LOG_ERROR("AddRequest faild");
       return KStatus::FAIL;
     }
@@ -182,11 +182,11 @@ KStatus RouterOutboundOperator::Channel::SendChunkRequest(
   chunk_request->set_be_number(stream_id_);
   chunk_request->set_eos(false);
   chunk_request->set_use_pass_through(use_pass_through_);
-  TransmitChunkInfo info = {this->target_node_id_,     brpc_stub_,
+  ChunkTransmitContext info = {this->target_node_id_,     brpc_stub_,
                             std::move(chunk_request),  attachment,
                             attachment_physical_bytes, rpc_dest_addr_};
-  if (KStatus::SUCCESS != parent_->buffer_->AddRequest(info)) {
-    LOG_ERROR("AddRequest faild");
+  if (KStatus::SUCCESS != parent_->buffer_->AddSendRequest(info)) {
+    LOG_ERROR("AddSendRequest faild");
     return KStatus::FAIL;
   }
   return KStatus::SUCCESS;
@@ -346,7 +346,7 @@ EEIteratorErrCode RouterOutboundOperator::Init(kwdbContext_p ctx) {
       Return(EEIteratorErrCode::EE_ERROR);
     }
   }
-  buffer_ = make_shared<SinkBuffer>(destinations, 0);
+  buffer_ = make_shared<OutboundBuffer>(destinations, 0);
   if (buffer_) {
     buffer_->SetReceiveNotify(
         [this](k_int32 nodeid, k_int32 code, const std::string& msg) { this->ReceiveNotify(nodeid, code, msg); });
@@ -362,7 +362,7 @@ EEIteratorErrCode RouterOutboundOperator::Init(kwdbContext_p ctx) {
   // }
   // compress type ,default LZ4
   compress_type_ = CompressionTypePB::LZ4_COMPRESSION;
-  GetBlockCompressionCodec(compress_type_, &compress_codec_);
+  GetBlockCompressor(compress_type_, &compress_codec_);
   Return(EEIteratorErrCode::EE_OK);
 }
 
@@ -838,25 +838,25 @@ KStatus RouterOutboundOperator::SerializeChunk(DataChunk* src, ChunkPB* dst,
         col_size = column_info[i].fixed_storage_len * src->Capacity() + bitmap_size;
         KSlice input(src->GetData() + offset, col_size);
         offset += col_size;
-        if (UseCompressionPool(compress_codec_->Type())) {
+        if (UseCompressionPool(compress_codec_->GetCompressionType())) {
           KSlice compressed_slice;
           if (KStatus::FAIL ==
-              compress_codec_->Compress(input, &compressed_slice, true, col_size, nullptr, &compression_scratch_)) {
+              compress_codec_->CompressBlock(input, &compressed_slice, true, col_size, nullptr, &compression_scratch_)) {
             LOG_ERROR("compress fail");
             return KStatus::FAIL;
           }
         } else {
-          k_int32 max_compressed_size = compress_codec_->MaxCompressedLen(col_size);
+          k_int32 max_compressed_size = compress_codec_->CalculateMaxCompressedLength(col_size);
           if (compression_scratch_.size() < max_compressed_size) {
             compression_scratch_.resize(max_compressed_size);
           }
           KSlice compressed_slice{compression_scratch_.data(), compression_scratch_.size()};
           KSlice input(column_pb->data());
-          if (KStatus::FAIL == compress_codec_->Compress(input, &compressed_slice)) {
+          if (KStatus::FAIL == compress_codec_->CompressBlock(input, &compressed_slice)) {
             LOG_ERROR("compress fail");
             return KStatus::FAIL;
           }
-          compression_scratch_.resize(compressed_slice.size);
+          compression_scratch_.resize(compressed_slice.data_size_);
         }
         // column_pb->clear_data();
         column_pb->set_compressed_size(compression_scratch_.size());

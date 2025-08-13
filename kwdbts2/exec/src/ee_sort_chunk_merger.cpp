@@ -17,44 +17,44 @@ CascadeDataChunkMerger::CascadeDataChunkMerger(kwdbContext_p ctx)
     : DataChunkMerger(ctx) {}
 
 KStatus CascadeDataChunkMerger::Init(
-    const std::vector<DataChunkProvider>& providers,
-    const std::vector<k_uint32>* order_column, const SortDescs& sort_desc) {
-  std::vector<std::unique_ptr<SimpleChunkSortCursor>> cursors;
-  for (const auto& provider : providers) {
+    const std::vector<DataChunkProvider>& chunk_providers,
+    const std::vector<k_uint32>* sort_column_indices, const SortingRules& sort_rules) {
+  std::vector<std::unique_ptr<SortedChunkCursor>> cursors;
+  for (const auto& provider : chunk_providers) {
     cursors.push_back(
-        std::make_unique<SimpleChunkSortCursor>(provider, order_column));
+        std::make_unique<SortedChunkCursor>(provider, sort_column_indices));
   }
-  order_column_ = order_column;
-  sort_desc_ = sort_desc;
-  merger_ = std::make_unique<MergeCursorsCascade>();
-  return merger_->Init(sort_desc_, std::move(cursors));
+  order_column_ = sort_column_indices;
+  sort_rules_ = sort_rules;
+  cursor_merger_ = std::make_unique<CascadingCursorMerger>();
+  return cursor_merger_->Init(sort_rules_, std::move(cursors));
 }
 KStatus CascadeDataChunkMerger::Init(
-    const std::vector<DataChunkProvider>& providers,
-    const std::vector<k_uint32>* order_column,
-    const std::vector<k_bool>* sort_orders,
-    const std::vector<k_bool>* null_firsts) {
-  auto descs = SortDescs(*sort_orders, *null_firsts);
-  if (KStatus::SUCCESS != Init(providers, order_column, descs)) {
+    const std::vector<DataChunkProvider>& chunk_providers,
+    const std::vector<k_uint32>* sort_column_indices,
+    const std::vector<k_bool>* sort_directions,
+    const std::vector<k_bool>* nullsFirstFlags) {
+  auto descs = SortingRules(*sort_directions, *nullsFirstFlags);
+  if (KStatus::SUCCESS != Init(chunk_providers, sort_column_indices, descs)) {
     return KStatus::FAIL;
   }
   return KStatus::SUCCESS;
 }
 
-k_bool CascadeDataChunkMerger::IsDataReady() { return merger_->IsDataReady(); }
+k_bool CascadeDataChunkMerger::IsDataReady() { return cursor_merger_->IsDataReady(); }
 
-KStatus CascadeDataChunkMerger::GetNextChunk(DataChunkPtr* output,
+KStatus CascadeDataChunkMerger::GetNextMergeChunk(DataChunkPtr* output,
                                              std::atomic<k_bool>* eos,
                                              k_bool* should_exit) {
-  if (merger_->IsEos()) {
+  if (cursor_merger_->IsAtEnd()) {
     *eos = true;
     *should_exit = true;
     return KStatus::SUCCESS;
   }
 
-  DataChunkPtr chunk = merger_->TryGetNextChunk();
+  DataChunkPtr chunk = cursor_merger_->FetchNextSortedChunk();
   if (!chunk) {
-    *eos = merger_->IsEos();
+    *eos = cursor_merger_->IsAtEnd();
     *should_exit = true;
     return KStatus::SUCCESS;
   }
@@ -67,17 +67,17 @@ ConstDataChunkMerger::ConstDataChunkMerger(kwdbContext_p ctx)
     : DataChunkMerger(ctx) {}
 
 KStatus ConstDataChunkMerger::Init(
-    const std::vector<DataChunkProvider>& providers,
-    const std::vector<k_uint32>* order_column, const SortDescs& sort_desc) {
-  providers_ = providers;
+    const std::vector<DataChunkProvider>& chunk_providers,
+    const std::vector<k_uint32>* sort_column_indices, const SortingRules& sort_rules) {
+  providers_ = chunk_providers;
   return KStatus::SUCCESS;
 }
 KStatus ConstDataChunkMerger::Init(
-    const std::vector<DataChunkProvider>& providers,
-    const std::vector<k_uint32>* order_column,
-    const std::vector<k_bool>* sort_orders,
-    const std::vector<k_bool>* null_firsts) {
-  providers_ = providers;
+    const std::vector<DataChunkProvider>& chunk_providers,
+    const std::vector<k_uint32>* sort_column_indices,
+    const std::vector<k_bool>* sort_directions,
+    const std::vector<k_bool>* nullsFirstFlags) {
+  providers_ = chunk_providers;
   return KStatus::SUCCESS;
 }
 
@@ -90,7 +90,7 @@ k_bool ConstDataChunkMerger::IsDataReady() {
   return false;
 }
 
-KStatus ConstDataChunkMerger::GetNextChunk(DataChunkPtr* output,
+KStatus ConstDataChunkMerger::GetNextMergeChunk(DataChunkPtr* output,
                                            std::atomic<k_bool>* eos,
                                            k_bool* should_exit) {
   k_bool all = true;

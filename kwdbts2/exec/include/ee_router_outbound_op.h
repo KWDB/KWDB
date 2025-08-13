@@ -28,7 +28,7 @@
 #include "ee_global.h"
 namespace kwdbts {
 
-class SinkBuffer;
+class OutboundBuffer;
 
 class RouterOutboundOperator : public OutboundOperator {
  public:
@@ -91,7 +91,7 @@ class RouterOutboundOperator : public OutboundOperator {
     std::vector<std::unique_ptr<DataChunk>> chunks_;
     PTransmitChunkParamsPtr chunk_request_;
     size_t current_request_bytes_ = 0;
-    std::shared_ptr<PInternalServiceRecoverableStub> brpc_stub_ = nullptr;
+    std::shared_ptr<BoxServiceRetryableClosureStub> brpc_stub_ = nullptr;
     ::kwdbts::StreamEndpointType type_ = ::kwdbts::StreamEndpointType::LOCAL;
     PassThroughContext pass_through_context_;
     StatusPB status_;
@@ -162,7 +162,7 @@ class RouterOutboundOperator : public OutboundOperator {
   int32_t curr_channel_idx_{0};
   k_bool is_first_chunk_{true};
   PTransmitChunkParamsPtr chunk_request_;
-  std::shared_ptr<SinkBuffer> buffer_;
+  std::shared_ptr<OutboundBuffer> buffer_;
   k_int32 sender_id_{0};
   k_int32 be_number_ = 0;
   BaseOperator* input_{nullptr};  // input iterator
@@ -177,7 +177,7 @@ class RouterOutboundOperator : public OutboundOperator {
   // k_bool is_ready_ = false;
   k_bool is_tp_stop_{false};
   CompressionTypePB compress_type_ = CompressionTypePB::NO_COMPRESSION;
-  const BlockCompressionCodec* compress_codec_ = nullptr;
+  const BlockCompressor* compress_codec_ = nullptr;
   std::string compression_scratch_;
   //   std::atomic<StatusPB*> status_{nullptr};
   // StatusPB status_1_;

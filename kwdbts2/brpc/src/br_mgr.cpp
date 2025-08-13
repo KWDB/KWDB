@@ -20,7 +20,7 @@
 namespace kwdbts {
 
 // Global Internal Service Instance
-static std::unique_ptr<PInternalServiceBase<PInternalService>> s_internal_service;
+static std::unique_ptr<BoxServiceBase<BoxService>> s_internal_service;
 
 KStatus BrMgr::Init(kwdbContext_p ctx, const EngineOptions& options) {
   EnterFunc();
@@ -55,9 +55,9 @@ KStatus BrMgr::Init(kwdbContext_p ctx, const EngineOptions& options) {
 
   // Initialize Internal Service
   try {
-    s_internal_service = std::make_unique<PInternalServiceBase<PInternalService>>(this);
+    s_internal_service = std::make_unique<BoxServiceBase<BoxService>>(this);
   } catch (const std::exception& e) {
-    LOG_ERROR("Failed to initialize PInternalServiceBase:%s", e.what());
+    LOG_ERROR("Failed to initialize BoxServiceBase:%s", e.what());
     return KStatus::FAIL;
   }
 

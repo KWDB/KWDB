@@ -18,32 +18,32 @@
 
 namespace kwdbts {
 
-SimpleChunkSortCursor::SimpleChunkSortCursor(DataChunkProvider chunk_provider,
-                                             const std::vector<k_uint32>* order_column)
-    : chunk_provider_(std::move(chunk_provider)), order_column_(order_column) {}
+SortedChunkCursor::SortedChunkCursor(DataChunkProvider chunk_provider,
+                                             const std::vector<k_uint32>* sorted_column)
+    : chunk_provider_(std::move(chunk_provider)), sorted_column_(sorted_column) {}
 
-k_bool SimpleChunkSortCursor::IsDataReady() {
-  if (!data_ready_ && !chunk_provider_(nullptr, nullptr)) {
+std::pair<DataChunkPtr, std::vector<k_uint32>> SortedChunkCursor::FetchNextSortedChunk() {
+  if (is_end_) {
+    return {nullptr, std::vector<k_uint32>{}};
+  }
+  DataChunkPtr next_chunk = nullptr;
+  const bool fetch_success = chunk_provider_(&next_chunk, &is_end_);
+  if (!fetch_success || !next_chunk || (0 == next_chunk->Count())) {
+    return {nullptr, std::vector<k_uint32>{}};
+  }
+  return {std::move(next_chunk), *sorted_column_};
+}
+
+k_bool SortedChunkCursor::IsAtEnd() {
+  return is_end_;
+}
+
+k_bool SortedChunkCursor::IsDataReady() {
+  if (!sorted_data_ready_ && !chunk_provider_(nullptr, nullptr)) {
     return false;
   }
-  data_ready_ = true;
+  sorted_data_ready_ = true;
   return true;
 }
-
-std::pair<DataChunkPtr, std::vector<k_uint32>> SimpleChunkSortCursor::TryGetNextChunk() {
-  if (eos_) {
-    return {nullptr, std::vector<k_uint32>{}};
-  }
-  DataChunkPtr chunk = nullptr;
-  if (!chunk_provider_(&chunk, &eos_) || !chunk) {
-    return {nullptr, std::vector<k_uint32>{}};
-  }
-  if (!chunk || (0 == chunk->Count())) {
-    return {nullptr, std::vector<k_uint32>{}};
-  }
-  return {std::move(chunk), *order_column_};
-}
-
-k_bool SimpleChunkSortCursor::IsEos() { return eos_; }
 
 }  // namespace kwdbts

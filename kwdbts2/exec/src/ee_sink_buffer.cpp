@@ -25,9 +25,9 @@ namespace kwdbts {
 
 #define PIPELINE_SINK_BUFFER_SIZE 64
 
-SinkBuffer::SinkBuffer(const std::vector<FragmentDestination>& destinations,
+OutboundBuffer::OutboundBuffer(const std::vector<FragmentDestination>& destinations,
                        bool is_dest_merge)
-    : sent_audit_stats_frequency_upper_limit_(16),
+    : audit_stats_send_frequency_max_(16),
       is_dest_merge_(is_dest_merge) {
   for (const auto& dest : destinations) {
     const auto& target_node_id = dest.target_node_id;
@@ -37,65 +37,60 @@ SinkBuffer::SinkBuffer(const std::vector<FragmentDestination>& destinations,
       continue;
     }
 
-    if (sink_ctxs_.count(target_node_id) == 0) {
-      sink_ctxs_[target_node_id] = std::make_unique<SinkContext>();
-      auto& ctx = SinkCtx(target_node_id);
-      ctx.num_sinker = 0;
+    if (outbound_ctxs_.count(target_node_id) == 0) {
+      outbound_ctxs_[target_node_id] = std::make_unique<OutboundContext>();
+      auto& ctx = OutboundCtx(target_node_id);
+      ctx.count_outbounder = 0;
       ctx.request_seq = -1;
-      ctx.max_continuous_acked_seqs = -1;
+      ctx.max_in_contiguous_ack_seq = -1;
       ctx.num_finished_rpcs = 0;
       ctx.num_in_flight_rpcs = 0;
-      ctx.dest_addrs = dest.brpc_addr;
+      ctx.brpc_dest_addrs = dest.brpc_addr;
       ctx.query_id = dest.query_id;
       // LOG_ERROR("SinkBuffer::AddRequest [End], query_id: %d", dest.query_id);
     }
   }
 }
 
-SinkBuffer::~SinkBuffer() {
+OutboundBuffer::~OutboundBuffer() {
   // In some extreme cases, the pipeline driver has not been created yet, and
   // the query is over At this time, sink_buffer also needs to be able to be
   // destructed correctly
-  is_finishing_ = true;
+  is_completing_ = true;
 
   // DCHECK(IsFinished());
 
-  sink_ctxs_.clear();
+  outbound_ctxs_.clear();
 }
 
-void SinkBuffer::IncrSinker() {
-  num_uncancelled_sinkers_++;
-  for (auto& [nodeid, sink_ctx] : sink_ctxs_) {
-    sink_ctx->num_sinker++;
+void OutboundBuffer::IncrSinker() {
+  uncancelled_sinker_count_++;
+  for (auto& [nodeid, outbound_ctx] : outbound_ctxs_) {
+    outbound_ctx->count_outbounder++;
     // LOG_ERROR("send target_id:%ld", nodeid);
   }
-  num_remaining_eos_ += sink_ctxs_.size();
+  unprocessed_eos_num_ += outbound_ctxs_.size();
 }
 
-KStatus SinkBuffer::AddRequest(TransmitChunkInfo& request) {
-  // DCHECK(num_remaining_eos_ > 0);
-  if (is_finishing_) {
-    LOG_ERROR("AddRequest is_finishing_");
+KStatus OutboundBuffer::AddSendRequest(ChunkTransmitContext& request) {
+  if (is_completing_) {
+    LOG_ERROR("AddRequest is_completing_");
     return KStatus::SUCCESS;
   }
 
   {
-    // set stats every sent_audit_stats_frequency_, so FE can get approximate
-    // stats even missing eos chunks. sent_audit_stats_frequency_ grows
-    // exponentially to reduce the costs of collecting stats but let the first
-    // (limited) chunks' stats approach truth。
-    auto request_sequence = request_sequence_++;
-    if (!request.params->eos() &&
-        (request_sequence & (sent_audit_stats_frequency_ - 1)) == 0) {
-      if (sent_audit_stats_frequency_ <
-          sent_audit_stats_frequency_upper_limit_) {
-        sent_audit_stats_frequency_ = sent_audit_stats_frequency_ << 1;
+    auto request_sequence = request_sequence_id_++;
+    if (!request.transmit_params->eos() &&
+        (request_sequence & (audit_stats_send_frequency_ - 1)) == 0) {
+      if (audit_stats_send_frequency_ <
+          audit_stats_send_frequency_max_) {
+        audit_stats_send_frequency_ = audit_stats_send_frequency_ << 1;
       }
     }
 
-    auto& context = SinkCtx(request.target_node_id);
+    auto& context = OutboundCtx(request.target_node_id);
 
-    if (KStatus::SUCCESS != TrySendRpc(request.target_node_id, [&]() {
+    if (KStatus::SUCCESS != AttemptSendRpc(request.target_node_id, [&]() {
           context.buffer.push(request);
         })) {
       LOG_ERROR("TrySendRpc fail");
@@ -112,50 +107,48 @@ KStatus SinkBuffer::AddRequest(TransmitChunkInfo& request) {
   return KStatus::SUCCESS;
 }
 
-k_bool SinkBuffer::IsFull() const {
+k_bool OutboundBuffer::IsFull() const {
   // std::queue' read is concurrent safe without mutex
   // Judgement may not that accurate because we do not known in advance which
   // instance the data to be sent corresponds to
-  size_t max_buffer_size = PIPELINE_SINK_BUFFER_SIZE * sink_ctxs_.size();
+  size_t max_buffer_size = PIPELINE_SINK_BUFFER_SIZE * outbound_ctxs_.size();
   size_t buffer_size = 0;
-  for (auto& [_, context] : sink_ctxs_) {
+  for (auto& [_, context] : outbound_ctxs_) {
     buffer_size += context->buffer.size();
   }
   return buffer_size > max_buffer_size;
 }
 
-void SinkBuffer::SetFinishing() {}
-
-k_bool SinkBuffer::IsFinished() const {
-  if (!is_finishing_) {
+k_bool OutboundBuffer::IsFinished() const {
+  if (!is_completing_) {
     return false;
   }
 
-  return num_sending_rpc_ == 0 && total_in_flight_rpc_ == 0;
+  return sending_rpc_count_ == 0 && pending_rpc_total_ == 0;
 }
 
-k_bool SinkBuffer::IsFinishedExtra() const {
-  return (num_sending_rpc_ == 0 &&
-          total_in_flight_rpc_ == 0) /*|| is_finishing_*/;
+k_bool OutboundBuffer::IsFinishedExtra() const {
+  return (sending_rpc_count_ == 0 &&
+          pending_rpc_total_ == 0) /*|| is_completing_*/;
 }
-void SinkBuffer::CancelOneSinker() {
+void OutboundBuffer::CancelOneSinker() {
   // auto notify = this->defer_notify();
-  if (--num_uncancelled_sinkers_ == 0) {
-    is_finishing_ = true;
+  if (--uncancelled_sinker_count_ == 0) {
+    is_completing_ = true;
   }
 }
 
-void SinkBuffer::ProcessSendWindow(const k_int64& instance_id,
+void OutboundBuffer::UpdateSendWindow(const k_int64& instance_id,
                                    const k_int64 sequence) {
   // Both sender side and receiver side can tolerate disorder of tranmission
   // if receiver side is not ExchangeMergeSortSourceOperator
   if (!is_dest_merge_) {
     return;
   }
-  auto& context = SinkCtx(instance_id);
-  auto& seqs = context.discontinuous_acked_seqs;
+  auto& context = OutboundCtx(instance_id);
+  auto& seqs = context.non_contiguous_acked_seqs;
   seqs.insert(sequence);
-  auto& max_continuous_acked_seq = context.max_continuous_acked_seqs;
+  auto& max_continuous_acked_seq = context.max_in_contiguous_ack_seq;
   std::unordered_set<k_int64>::iterator it;
   while ((it = seqs.find(max_continuous_acked_seq + 1)) != seqs.end()) {
     seqs.erase(it);
@@ -163,17 +156,17 @@ void SinkBuffer::ProcessSendWindow(const k_int64& instance_id,
   }
 }
 
-KStatus SinkBuffer::TrySendRpc(const k_int64& instance_id,
+KStatus OutboundBuffer::AttemptSendRpc(const k_int64& instance_id,
                                const std::function<void()>& pre_works) {
-  auto& context = SinkCtx(instance_id);
+  auto& context = OutboundCtx(instance_id);
   std::lock_guard guard(context.mutex);
   pre_works();
 
-  DeferOp decrease_defer([this]() { --num_sending_rpc_; });
-  ++num_sending_rpc_;
+  DeferOp decrease_defer([this]() { --sending_rpc_count_; });
+  ++sending_rpc_count_;
 
   for (;;) {
-    if (is_finishing_) {
+    if (is_completing_) {
       return KStatus::SUCCESS;
     }
 
@@ -182,7 +175,7 @@ KStatus SinkBuffer::TrySendRpc(const k_int64& instance_id,
     bool too_much_brpc_process = false;
     if (is_dest_merge_) {
       k_int64 discontinuous_acked_window_size =
-          context.request_seq - context.max_continuous_acked_seqs;
+          context.request_seq - context.max_in_contiguous_ack_seq;
       too_much_brpc_process = discontinuous_acked_window_size >= 64;
     } else {
       too_much_brpc_process = context.num_in_flight_rpcs >= 64;
@@ -191,7 +184,7 @@ KStatus SinkBuffer::TrySendRpc(const k_int64& instance_id,
       return KStatus::SUCCESS;
     }
 
-    TransmitChunkInfo& request = buffer.front();
+    ChunkTransmitContext& request = buffer.front();
     bool need_wait = false;
     DeferOp pop_defer([&need_wait, &buffer]() {
       if (need_wait) {
@@ -207,17 +200,17 @@ KStatus SinkBuffer::TrySendRpc(const k_int64& instance_id,
       need_wait = true;
       return KStatus::SUCCESS;
     }
-    if (request.params->eos()) {
+    if (request.transmit_params->eos()) {
       DeferOp eos_defer([this, &instance_id, &need_wait]() {
         if (need_wait) {
           return;
         }
-        if (--num_remaining_eos_ == 0) {
-          is_finishing_ = true;
+        if (--unprocessed_eos_num_ == 0) {
+          is_completing_ = true;
         }
-        SinkCtx(instance_id).num_sinker--;
+        OutboundCtx(instance_id).count_outbounder--;
       });
-      if (context.num_sinker > 1) {
+      if (context.count_outbounder > 1) {
         // if (request.params->chunks_size() == 0) {
         //     continue;
         // } else {
@@ -234,26 +227,26 @@ KStatus SinkBuffer::TrySendRpc(const k_int64& instance_id,
       }
     }
 
-    request.params->set_query_id(context.query_id);
-    request.params->set_sequence(++context.request_seq);
+    request.transmit_params->set_query_id(context.query_id);
+    request.transmit_params->set_sequence(++context.request_seq);
     auto* closure = new DisposableClosure<PTransmitChunkResult, ClosureContext>(
-        {instance_id, request.params->sequence(), MonotonicNanos()});
+        {instance_id, request.transmit_params->sequence(), MonotonicNanos()});
 
     closure->AddFailedHandler([this](const ClosureContext& ctx, std::string_view rpc_error_msg) noexcept {
       auto defer = DeferOp([this, ctx, rpc_error_msg]() {
         if (notify_rpc_callback_) {
           notify_rpc_callback_(ctx.instance_id, ERRCODE_INTERNAL_ERROR, std::string(rpc_error_msg));
         }
-        --total_in_flight_rpc_;
+        --pending_rpc_total_;
         if (notify_callback_) {
           notify_callback_();
         }
       });
-      is_finishing_ = true;
-      auto& context = SinkCtx(ctx.instance_id);
+      is_completing_ = true;
+      auto& context = OutboundCtx(ctx.instance_id);
       ++context.num_finished_rpcs;
       --context.num_in_flight_rpcs;
-      const auto& dest_addr = context.dest_addrs;
+      const auto& dest_addr = context.brpc_dest_addrs;
       LOG_ERROR(
           "transmit chunk rpc failed [target_node_id={%ld}] "
           "[dest={%s}:{%d}] detail:{%s}",
@@ -270,32 +263,32 @@ KStatus SinkBuffer::TrySendRpc(const k_int64& instance_id,
               std::string msg = status.error_msgs(0);
               notify_rpc_callback_(ctx.instance_id, status.status_code(), msg);
             }
-            --total_in_flight_rpc_;
+            --pending_rpc_total_;
             if (notify_callback_) {
               notify_callback_();
             }
           });
 
-          auto& context = SinkCtx(ctx.instance_id);
+          auto& context = OutboundCtx(ctx.instance_id);
           ++context.num_finished_rpcs;
           --context.num_in_flight_rpcs;
 
           if (0 != status.status_code()) {
-            is_finishing_ = true;
-            const auto& dest_addr = context.dest_addrs;
+            is_completing_ = true;
+            const auto& dest_addr = context.brpc_dest_addrs;
             LOG_ERROR(
                 "transmit chunk rpc failed [target_node_id={%ld}] "
                 "[dest={%s}:{%d}] detail:{%s}",
                 ctx.instance_id, dest_addr.hostname_.c_str(), dest_addr.port_,
                 status.error_msgs(0).c_str());
           } else {
-            static_cast<void>(TrySendRpc(ctx.instance_id, [&]() {
-              ProcessSendWindow(ctx.instance_id, ctx.sequence);
+            static_cast<void>(AttemptSendRpc(ctx.instance_id, [&]() {
+              UpdateSendWindow(ctx.instance_id, ctx.seq);
             }));
           }
         });
 
-    ++total_in_flight_rpc_;
+    ++pending_rpc_total_;
     ++context.num_in_flight_rpcs;
 
     closure->cntl.Reset();
@@ -303,30 +296,29 @@ KStatus SinkBuffer::TrySendRpc(const k_int64& instance_id,
 
     KStatus st;
     if (bthread_self()) {
-      st = SendRpc(closure, request);
+      st = SendDataViaRpc(closure, request);
     } else {
-      st = SendRpc(closure, request);
+      st = SendDataViaRpc(closure, request);
     }
     return st;
   }
   return KStatus::SUCCESS;
 }
 
-KStatus SinkBuffer::SendRpc(
+KStatus OutboundBuffer::SendDataViaRpc(
     DisposableClosure<PTransmitChunkResult, ClosureContext>* closure,
-    const TransmitChunkInfo& request) {
-  closure->cntl.request_attachment().append(request.attachment);
-  request.brpc_stub->TransmitChunk(&closure->cntl, request.params.get(),
-                                   &closure->result, closure);
+    const ChunkTransmitContext& request) {
+  closure->cntl.request_attachment().append(request.attachment_data);
+  request.brpc_service_stub->TransmitChunk(&closure->cntl, request.transmit_params.get(), &closure->result, closure);
 
   return KStatus::SUCCESS;
 }
-KStatus SinkBuffer::SendErrMsg(TransmitSimpleInfo& request) {
-  auto& context = SinkCtx(request.target_node_id);
+KStatus OutboundBuffer::SendErrMsg(TransmitSimpleInfo& request) {
+  auto& context = OutboundCtx(request.target_node_id);
   std::lock_guard guard(context.mutex);
 
-  DeferOp decrease_defer([this]() { --num_sending_rpc_; });
-  ++num_sending_rpc_;
+  DeferOp decrease_defer([this]() { --sending_rpc_count_; });
+  ++sending_rpc_count_;
 
   for (;;) {
     auto* closure =
@@ -338,7 +330,7 @@ KStatus SinkBuffer::SendErrMsg(TransmitSimpleInfo& request) {
         if (notify_rpc_callback_) {
           notify_rpc_callback_(ctx.instance_id, ERRCODE_INTERNAL_ERROR, std::string(rpc_error_msg));
         }
-        --total_in_flight_rpc_;
+        --pending_rpc_total_;
         if (notify_callback_) {
           notify_callback_();
         }
@@ -353,14 +345,14 @@ KStatus SinkBuffer::SendErrMsg(TransmitSimpleInfo& request) {
               std::string msg = status.error_msgs(0);
               notify_rpc_callback_(ctx.instance_id, status.status_code(), msg);
             }
-            --total_in_flight_rpc_;
+            --pending_rpc_total_;
             if (notify_callback_) {
               notify_callback_();
             }
           });
         });
 
-    ++total_in_flight_rpc_;
+    ++pending_rpc_total_;
     closure->cntl.Reset();
     closure->cntl.set_timeout_ms(300 * 1000);
     // closure->cntl.request_attachment().append(request.attachment);
@@ -372,12 +364,12 @@ KStatus SinkBuffer::SendErrMsg(TransmitSimpleInfo& request) {
   return KStatus::SUCCESS;
 }
 
-KStatus SinkBuffer::SendSimpleMsg(TransmitSimpleInfo& request) {
-  auto& context = SinkCtx(request.target_node_id);
+KStatus OutboundBuffer::SendSimpleMsg(TransmitSimpleInfo& request) {
+  auto& context = OutboundCtx(request.target_node_id);
   std::lock_guard guard(context.mutex);
 
-  DeferOp decrease_defer([this]() { --num_sending_rpc_; });
-  ++num_sending_rpc_;
+  DeferOp decrease_defer([this]() { --sending_rpc_count_; });
+  ++sending_rpc_count_;
 
   for (;;) {
     auto* closure = new DisposableClosure<PDialDataRecvrResult, ClosureContext>(
@@ -388,7 +380,7 @@ KStatus SinkBuffer::SendSimpleMsg(TransmitSimpleInfo& request) {
         if (notify_rpc_callback_) {
           notify_rpc_callback_(ctx.instance_id, ERRCODE_INTERNAL_ERROR, std::string(rpc_error_msg));
         }
-        --total_in_flight_rpc_;
+        --pending_rpc_total_;
         if (notify_callback_) {
           notify_callback_();
         }
@@ -402,14 +394,14 @@ KStatus SinkBuffer::SendSimpleMsg(TransmitSimpleInfo& request) {
           std::string msg = status.error_msgs(0);
           notify_rpc_callback_(ctx.instance_id, status.status_code(), msg);
         }
-        --total_in_flight_rpc_;
+        --pending_rpc_total_;
         if (notify_callback_) {
           notify_callback_();
         }
       });
     });
 
-    ++total_in_flight_rpc_;
+    ++pending_rpc_total_;
     closure->cntl.Reset();
     closure->cntl.set_timeout_ms(300 * 1000);
     // closure->cntl.request_attachment().append(request.attachment);
