@@ -16,7 +16,6 @@
 #include <deque>
 
 #include "ee_row_batch.h"
-#include "ee_parallel_group.h"
 #include "kwdb_type.h"
 
 namespace kwdbts {

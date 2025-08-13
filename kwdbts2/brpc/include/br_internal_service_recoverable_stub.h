@@ -23,39 +23,46 @@
 
 namespace kwdbts {
 
-class PInternalServiceRecoverableStub
-    : public PInternalService,
-      public std::enable_shared_from_this<PInternalServiceRecoverableStub> {
+class BoxServiceRetryableClosureStub : public BoxService,
+                                       public std::enable_shared_from_this<BoxServiceRetryableClosureStub> {
  public:
-  explicit PInternalServiceRecoverableStub(const butil::EndPoint& endpoint);
-  ~PInternalServiceRecoverableStub();
+  explicit BoxServiceRetryableClosureStub(const butil::EndPoint& endpoint) : endpoint_(endpoint) {}
+  ~BoxServiceRetryableClosureStub() = default;
 
   KStatus ResetChannel(const std::string& protocol = "");
 
-  // implements PInternalService ------------------------------------------
-  void DialDataRecvr(::google::protobuf::RpcController* controller,
-                     const ::kwdbts::PDialDataRecvr* request,
-                     ::kwdbts::PDialDataRecvrResult* response,
-                     ::google::protobuf::Closure* done) override;
+  // implements BoxService ------------------------------------------
+  void DialDataRecvr(::google::protobuf::RpcController* controller, const ::kwdbts::PDialDataRecvr* request,
+                     ::kwdbts::PDialDataRecvrResult* response, ::google::protobuf::Closure* done) override;
 
   void TransmitChunk(::google::protobuf::RpcController* controller,
-                     const ::kwdbts::PTransmitChunkParams* request,
-                     ::kwdbts::PTransmitChunkResult* response,
+                     const ::kwdbts::PTransmitChunkParams* request, ::kwdbts::PTransmitChunkResult* response,
                      ::google::protobuf::Closure* done) override;
 
-  void SendExecStatus(::google::protobuf::RpcController* controller,
-                      const ::kwdbts::PSendExecStatus* request,
-                      ::kwdbts::PSendExecStatusResult* response,
-                      ::google::protobuf::Closure* done) override;
+  void SendExecStatus(::google::protobuf::RpcController* controller, const ::kwdbts::PSendExecStatus* request,
+                      ::kwdbts::PSendExecStatusResult* response, ::google::protobuf::Closure* done) override;
 
  private:
-  std::shared_ptr<kwdbts::PInternalService_Stub> stub_;
+  std::shared_ptr<kwdbts::BoxService_Stub> stub_;
   const butil::EndPoint endpoint_;
   k_int64 connection_group_ = 0;
   std::mutex mutex_;
 
-  PInternalServiceRecoverableStub(const PInternalServiceRecoverableStub&) = delete;
-  PInternalServiceRecoverableStub& operator=(const PInternalServiceRecoverableStub&) = delete;
+  BoxServiceRetryableClosureStub(const BoxServiceRetryableClosureStub&) = delete;
+  BoxServiceRetryableClosureStub& operator=(const BoxServiceRetryableClosureStub&) = delete;
+};
+
+class RetryableClosure : public ::google::protobuf::Closure {
+ public:
+  RetryableClosure(std::shared_ptr<kwdbts::BoxServiceRetryableClosureStub> stub,
+                   ::google::protobuf::RpcController* controller, ::google::protobuf::Closure* done);
+
+  void Run() override;
+
+ private:
+  std::shared_ptr<kwdbts::BoxServiceRetryableClosureStub> stub_;
+  ::google::protobuf::RpcController* controller_;
+  ::google::protobuf::Closure* done_;
 };
 
 }  // namespace kwdbts

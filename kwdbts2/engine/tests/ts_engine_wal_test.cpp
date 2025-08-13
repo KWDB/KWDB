@@ -632,7 +632,7 @@ TEST_F(TestEngineWAL, updateTag) {
   std::vector<EntityResultIndex> entity_id_list;
   std::vector<k_uint32> scan_tags = {1, 2};
   BaseEntityIterator *iter;
-  vector<uint32_t> hps;
+  std::unordered_set<uint32_t> hps;
   make_hashpoint(&hps);
   ASSERT_EQ(ts_table->GetTagIterator(ctx_, scan_tags, hps, &iter, 1), KStatus::SUCCESS);
 

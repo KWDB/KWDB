@@ -26,6 +26,7 @@
 #include "ee_pipeline_task.h"
 #include "ee_exec_pool.h"
 #include "ee_dml_exec.h"
+#include "ee_outbound_op.h"
 
 // support returning multi-rows datas
 #define TSSCAN_RS_MULTILINE_SEND 1
@@ -451,33 +452,32 @@ KStatus Processors::TransformOperator(kwdbContext_p ctx) {
 KStatus Processors::BuildTopOperator(kwdbContext_p ctx) {
   EnterFunc();
   root_iterator_ = operators_.back();
-  if (OperatorType::OPERATOR_REMOTR_OUT_BOUND == root_iterator_->Type() ||
-              OperatorType::OPERATOR_LOCAL_OUT_BOUND == root_iterator_->Type()) {
-    if (OperatorType::OPERATOR_REMOTR_OUT_BOUND == root_iterator_->Type()) {
-      for (auto oper : operators_) {
-        if (oper->GetProcessorId() == top_process_id_) {
-          if (oper->IsUseQueryShortCircuit()) {
-            oper->SetOutputEncoding(true);
-          } else {
-            oper->SetOutputEncoding(false);
-          }
-          break;
+  if (OperatorType::OPERATOR_REMOTR_OUT_BOUND == root_iterator_->Type()) {
+    for (auto oper : operators_) {
+      if (oper->GetProcessorId() == top_process_id_) {
+        if (oper->IsUseQueryShortCircuit()) {
+          oper->SetOutputEncoding(true);
+        } else {
+          oper->SetOutputEncoding(false);
         }
+        break;
       }
     }
-    Return(KStatus::SUCCESS);
+
+    BaseOperator* oper = nullptr;
+    KStatus ret = OpFactory::NewResultCollectorOp(ctx, &oper);
+    if (ret != KStatus::SUCCESS) {
+      Return(ret);
+    }
+
+    operators_.push_back(oper);
+    oper->AddDependency(root_iterator_);
+    dynamic_cast<OutboundOperator*>(root_iterator_)->SetCollected(true);
+
+      root_iterator_ = operators_.back();
+  } else {
+    root_iterator_->SetOutputEncoding(true);
   }
-
-  BaseOperator* oper = nullptr;
-  KStatus ret = OpFactory::NewResultCollectorOp(ctx, &oper);
-  if (ret != KStatus::SUCCESS) {
-    Return(ret);
-  }
-
-  operators_.push_back(oper);
-  oper->AddDependency(root_iterator_);
-
-  root_iterator_ = operators_.back();
 
   Return(KStatus::SUCCESS);
 }
@@ -492,6 +492,10 @@ KStatus Processors::BuildPipeline(kwdbContext_p ctx) {
 
   KStatus ret = root_iterator_->BuildPipeline(root_pipeline_, this);
   root_pipeline_->GetPipelines(pipelines_, false);
+  if (!root_pipeline_->HasOperator()) {
+    root_pipeline_->SetPipelineOperator(root_iterator_);
+  }
+
   Return(KStatus::SUCCESS);
 }
 
@@ -782,6 +786,12 @@ KStatus Processors::RunWithEncoding(kwdbContext_p ctx, char** buffer,
     }
     break;
   } while (true);
+
+  if (nullptr != chunk) {
+    if (EEPgErrorInfo::IsError()) {
+      code = EEIteratorErrCode::EE_ERROR;
+    }
+  }
 
   if (EEIteratorErrCode::EE_OK == code) {
     chunk->GetEncodingBuffer(buffer, length, count);

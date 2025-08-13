@@ -220,7 +220,7 @@ message PSendExecStatusResult {
     optional StatusPB status = 1;
 };
 
-service PInternalService {
+service BoxService {
     // Transmit vectorized data between backends.
     rpc DialDataRecvr(PDialDataRecvr) returns (PDialDataRecvrResult);
     rpc TransmitChunk(PTransmitChunkParams) returns (PTransmitChunkResult);

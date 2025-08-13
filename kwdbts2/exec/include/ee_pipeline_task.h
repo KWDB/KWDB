@@ -77,6 +77,10 @@ class PipelineTask : public ExecTask {
   void Blocked(kwdbContext_p ctx);
   void Finish(kwdbContext_p ctx);
 
+  void UpdateStartTime();
+
+  int64_t DurationTimes();
+
   void Run(kwdbContext_p ctx);
 
  private:
@@ -103,6 +107,7 @@ class PipelineTask : public ExecTask {
   std::mutex block_mutex_;
   PipelineTaskState state_{PS_NOT_RUNNING};
   static constexpr int64_t YIELD_MAX_TIME_SPENT_NS = 100'000'000L;  // 100ms
+  std::chrono::_V2::system_clock::time_point start_time_;
 };
 
 }  // namespace kwdbts

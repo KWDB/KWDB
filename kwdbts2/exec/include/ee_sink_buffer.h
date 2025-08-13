@@ -32,86 +32,89 @@
 
 namespace kwdbts {
 
-using PTransmitChunkParamsPtr = std::shared_ptr<PTransmitChunkParams>;
+// PDialDataRecvrPtr is used to store the dial data recvr.
 using PDialDataRecvrPtr = std::shared_ptr<PDialDataRecvr>;
+// PTransmitChunkParamsPtr is used to store the transmit chunk params.
+using PTransmitChunkParamsPtr = std::shared_ptr<PTransmitChunkParams>;
+// PSendExecStatusPtr is used to store the send exec status.
 using PSendExecStatusPtr = std::shared_ptr<PSendExecStatus>;
 
-struct ClosureContext {
-  k_int64 instance_id;
-  k_int64 sequence;
-  k_int64 send_timestamp;
-};
-
-struct TransmitChunkInfo {
-  // For BUCKET_SHUFFLE_HASH_PARTITIONED, multiple channels may be related to
-  // a same exchange source fragment instance, so we should use
-  // fragment_instance_id of the destination as the key of destination instead
-  // of channel_id.
-  k_int32 target_node_id;
-  std::shared_ptr<PInternalServiceRecoverableStub> brpc_stub;
-  PTransmitChunkParamsPtr params;
-  butil::IOBuf attachment;
-  k_int64 attachment_physical_bytes;
-  const TNetworkAddress brpc_addr;
-};
-
+// TransmitSimpleInfo is used to store the transmit simple info.
 struct TransmitSimpleInfo {
   k_int32 target_node_id;
   k_int32 error_code;
   std::string error_msg;
-  std::shared_ptr<PInternalServiceRecoverableStub> brpc_stub;
+  std::shared_ptr<BoxServiceRetryableClosureStub> brpc_stub;
   PDialDataRecvrPtr params;
   PSendExecStatusPtr exec_status;
   const TNetworkAddress brpc_addr;
 };
 
+struct ChunkTransmitContext {
+  k_int32 target_node_id;
+  std::shared_ptr<BoxServiceRetryableClosureStub> brpc_service_stub;
+  PTransmitChunkParamsPtr transmit_params;
+  butil::IOBuf attachment_data;
+  k_int64 actual_memory_bytes;
+  const TNetworkAddress brpc_addr;
+};
+
+// FragmentDestination is used to store the fragment destination.
 struct FragmentDestination {
   k_int64 query_id;
   k_int32 target_node_id;
   TNetworkAddress brpc_addr;
 };
 
-class SinkBuffer {
- public:
-  SinkBuffer(const std::vector<FragmentDestination>& destinations, bool is_dest_merge);
-  ~SinkBuffer();
+struct ClosureContext {
+  k_int64 instance_id;
+  k_int64 seq;
+  // for send time stamp
+  k_int64 timestamp;
+};
 
-  KStatus AddRequest(TransmitChunkInfo& request);
+class OutboundBuffer {
+ public:
+  OutboundBuffer(const std::vector<FragmentDestination>& destinations, bool is_dest_merge);
+  ~OutboundBuffer();
+
+  KStatus AddSendRequest(ChunkTransmitContext& request);
+  // SendSimpleMsg is used to send the simple msg.
   KStatus SendSimpleMsg(TransmitSimpleInfo& request);
+  // SendErrMsg is used to send the err msg.
   KStatus SendErrMsg(TransmitSimpleInfo& request);
   k_bool IsFull() const;
-
-  void SetFinishing();
+  // IsFinished is used to check if the buffer is finished.
   k_bool IsFinished() const;
+  // IsFinishedExtra is used to check if the buffer is finished extra.
   k_bool IsFinishedExtra() const;
   void CancelOneSinker();
   void IncrSinker();
+  // GetUnfinihedRpc is used to get the unfinished rpc.
   k_int32 GetUnfinihedRpc() {
-    return total_in_flight_rpc_;
+    return pending_rpc_total_;
   }
-
+  // SetReceiveNotify is used to set the receive notify.
   void SetReceiveNotify(ReceiveNotify notify) {
     notify_rpc_callback_ = notify;
   }
+  // SetReceiveNotifyEx is used to set the receive notify ex.
   void SetReceiveNotifyEx(ReceiveNotifyEx notify) {
     notify_callback_ = notify;
   }
 
  private:
-  using Mutex = bthread::Mutex;
-  void ProcessSendWindow(const k_int64& instance_id, const k_int64 sequence);
-  KStatus TrySendRpc(const k_int64& instance_id, const std::function<void()>& pre_works);
-
   // send by rpc
-  KStatus SendRpc(DisposableClosure<PTransmitChunkResult, ClosureContext>* closure, const TransmitChunkInfo& req);
-  const k_bool is_dest_merge_;
-  struct SinkContext {
-    k_int64 num_sinker;
+  KStatus SendDataViaRpc(DisposableClosure<PTransmitChunkResult, ClosureContext>* closure,
+                         const ChunkTransmitContext& req);
+  using Mutex = bthread::Mutex;
+  struct OutboundContext {
+    k_int64 count_outbounder;
     k_int64 request_seq;
-    k_int64 max_continuous_acked_seqs;
-    std::unordered_set<k_int64> discontinuous_acked_seqs;
+    k_int64 max_in_contiguous_ack_seq;
+    std::unordered_set<k_int64> non_contiguous_acked_seqs;
     k_int64 query_id;
-    std::queue<TransmitChunkInfo, std::list<TransmitChunkInfo>> buffer;
+    std::queue<ChunkTransmitContext, std::list<ChunkTransmitContext>> buffer;
     Mutex request_mutex;
 
     std::atomic_size_t num_finished_rpcs;
@@ -119,25 +122,29 @@ class SinkBuffer {
 
     Mutex mutex;
 
-    TNetworkAddress dest_addrs;
+    TNetworkAddress brpc_dest_addrs;
   };
-  std::map<k_int64, std::unique_ptr<SinkContext>> sink_ctxs_;
-  SinkContext& SinkCtx(k_int64 instance_id) {
-    return *sink_ctxs_[instance_id];
+  OutboundContext& OutboundCtx(k_int64 instance_id) {
+    return *outbound_ctxs_[instance_id];
   }
+  // AttemptSendRpc is used to attempt send rpc.
+  KStatus AttemptSendRpc(const k_int64& instance_id, const std::function<void()>& pre_works);
 
-  std::atomic<k_int32> total_in_flight_rpc_ = 0;
-  std::atomic<k_int32> num_uncancelled_sinkers_ = 0;
-  std::atomic<k_int32> num_remaining_eos_ = 0;
-  std::atomic<k_bool> is_finishing_ = false;
-  std::atomic<k_int32> num_sending_rpc_ = 0;
+  void UpdateSendWindow(const k_int64& instance_id, const k_int64 sequence);
 
-  std::atomic<k_int64> request_sequence_ = 0;
-  k_int64 sent_audit_stats_frequency_ = 1;
-  k_int64 sent_audit_stats_frequency_upper_limit_ = 64;
+ private:
+  const k_bool is_dest_merge_;
+  std::map<k_int64, std::unique_ptr<OutboundContext>> outbound_ctxs_;
+  k_int64 audit_stats_send_frequency_ = 1;
+  std::atomic<k_int32> sending_rpc_count_ = 0;
+  std::atomic<k_int32> pending_rpc_total_ = 0;
   ReceiveNotify notify_rpc_callback_{nullptr};
+  std::atomic<k_int32> uncancelled_sinker_count_ = 0;
   ReceiveNotifyEx notify_callback_{nullptr};
-  k_bool ignore_ = false;
+  std::atomic<k_int32> unprocessed_eos_num_ = 0;
+  std::atomic<k_bool> is_completing_ = false;
+  std::atomic<k_int64> request_sequence_id_ = 0;
+  k_int64 audit_stats_send_frequency_max_ = 64;
 };
 
 }  // namespace kwdbts

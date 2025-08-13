@@ -12,6 +12,8 @@
 #include "ee_local_outbound_op.h"
 #include "ee_local_inbound_op.h"
 #include "ee_kwthd_context.h"
+#include "ee_op_factory.h"
+#include "ee_dml_exec.h"
 
 namespace kwdbts {
 
@@ -29,6 +31,7 @@ EEIteratorErrCode LocalOutboundOperator::Init(kwdbContext_p ctx) {
   }
   const TSStreamEndpointSpec& streams = spec_->streams(0);
   stream_id_ = streams.stream_id();
+
   Return(ret);
 }
 
@@ -55,6 +58,8 @@ void LocalOutboundOperator::PushFinish(EEIteratorErrCode code,
     InboundOperator* parent_inbound = dynamic_cast<InboundOperator*>(parent);
     if (parent_inbound) {
       parent_inbound->PushFinish(code, stream_id_, pgInfo);
+      // LOG_ERROR("LocalOutboundOperator::PushFinish code %s, pgInfo.code = %d, pgInfo %s, query_id = %ld",
+      //             EEIteratorErrCodeToString(code).c_str(), pgInfo.code, pgInfo.msg, query_id_);
     }
   }
 }
@@ -103,6 +108,33 @@ EEIteratorErrCode LocalOutboundOperator::Next(kwdbContext_p ctx,
   }
 
   Return(code);
+}
+
+KStatus LocalOutboundOperator::CreateInputChannel(kwdbContext_p ctx, std::vector<BaseOperator *> &new_operators) {
+  KStatus ret = KStatus::SUCCESS;
+  TSInputSyncSpec *input_spec = rpcSpecInfo_.input_specs_[0];
+  BaseOperator *inbound_operator = nullptr;
+  ret = OpFactory::NewInboundOperator(ctx, collection_, input_spec, &inbound_operator, &table_, false, false);
+  if (ret!= KStatus::SUCCESS) {
+    return ret;
+  }
+  new_operators.push_back(inbound_operator);
+  AddDependency(inbound_operator);
+
+  BaseOperator *outbound_operator = nullptr;
+  RpcSpecResolve &child_rpc = childrens_[0]->GetRpcSpecInfo();
+  TSOutputRouterSpec *child_output_spec = child_rpc.output_specs_[0];
+  ret = OpFactory::NewOutboundOperator(ctx, collection_, child_output_spec, &outbound_operator, &table_, false);
+  if (ret!= KStatus::SUCCESS) {
+    return ret;
+  }
+  dynamic_cast<OutboundOperator*>(outbound_operator)->SetDegree(degree_);
+  inbound_operator->AddDependency(outbound_operator);
+  outbound_operator->AddDependency(childrens_[0]);
+  RemoveDependency(childrens_[0]);
+  new_operators.push_back(outbound_operator);
+
+  return ret;
 }
 
 BaseOperator* LocalOutboundOperator::Clone() {

@@ -25,7 +25,7 @@ class TestTsPayloadBuilder : public TestBigTableInstance {
   std::vector<TagInfo> tag_schema_;
   std::vector<uint32_t> actual_cols_;
   std::vector<AttributeInfo> data_schema_;
-  std::vector<uint32_t> hps_total_;
+  std::unordered_set<uint32_t> hps_total_;
   TsTable *table_{nullptr};
   KTableKey table_id_ = 10086;
   kwdbContext_t context_;
@@ -37,7 +37,7 @@ class TestTsPayloadBuilder : public TestBigTableInstance {
     InitServerKWDBContext(ctx_);
     table_ = new TsTableImpl(ctx_, kDbPath, 10086);
     for (size_t i = 0; i <= g_testcase_hash_num; i++) {
-      hps_total_.push_back(i);
+      hps_total_.insert(i);
     }
   }
 
@@ -337,8 +337,8 @@ TEST_F(TestTsPayloadBuilder, create_3) {
   for (int i = 0; i < tag_schema_.size(); i++) {
     scan_tags.push_back(i);
   }
-  
-  s = table_->GetTagIterator(ctx_, scan_tags,hps_total_, &iter, 1);
+
+  s = table_->GetTagIterator(ctx_, scan_tags, hps_total_, &iter, 1);
   EXPECT_EQ(s, KStatus::SUCCESS);
   ResultSet rs{(k_uint32) scan_tags.size()};
   std::vector<EntityResultIndex> entity_id_list;
@@ -396,7 +396,7 @@ TEST_F(TestTsPayloadBuilder, create_4) {
   for (int i = 0; i < tag_schema_.size(); i++) {
     scan_tags.push_back(i);
   }
-  s = table_->GetTagIterator(ctx_, scan_tags,hps_total_, &iter, 1);
+  s = table_->GetTagIterator(ctx_, scan_tags, hps_total_, &iter, 1);
   EXPECT_EQ(s, KStatus::SUCCESS);
   ResultSet rs{(k_uint32) scan_tags.size()};
   std::vector<EntityResultIndex> entity_id_list;
@@ -457,7 +457,7 @@ TEST_F(TestTsPayloadBuilder, create_5) {
   for (int i = 0; i < tag_schema_.size(); i++) {
     scan_tags.push_back(i);
   }
-  s = table_->GetTagIterator(ctx_, scan_tags,hps_total_, &iter, 1);
+  s = table_->GetTagIterator(ctx_, scan_tags, hps_total_, &iter, 1);
   EXPECT_EQ(s, KStatus::SUCCESS);
   ResultSet rs{(k_uint32) scan_tags.size()};
   std::vector<EntityResultIndex> entity_id_list;

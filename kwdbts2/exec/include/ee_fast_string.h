@@ -11,262 +11,219 @@
 // Mulan PSL v2 for more details.
 
 #pragma once
-
-#include <cstdint>
-#include <cstring>
+#include <memory>
 #include <string>
+#include <utility>
 
 #include "ee_fast_mem.h"
-
+#include "kwdb_type.h"
 namespace kwdbts {
 
 #if defined(__GNUC__)
-#define PREDICT_FALSE(x) (__builtin_expect(x, 0))
-#define PREDICT_TRUE(x) (__builtin_expect(!!(x), 1))
+#define LIKELY_FALSE(x) (__builtin_expect(x, 0))
+#define LIKELY_TRUE(x) (__builtin_expect(!!(x), 1))
 #else
-#define PREDICT_FALSE(x) x
-#define PREDICT_TRUE(x) x
+#define LIKELY_FALSE(x) x
+#define LIKELY_TRUE(x) x
 #endif
 
-class faststring {
+class QuickString {
  public:
-  enum { kInitialCapacity = 32 };
+  enum { kinline_buf_initial_capacity = 32 };
 
-  faststring() : data_(initial_data_) {}
-
-  // Construct a string with the given capacity, in bytes.
-  explicit faststring(size_t capacity) : data_(initial_data_) {
-    if (capacity > capacity_) {
-      data_ = new uint8_t[capacity];
-      capacity_ = capacity;
-    }
-    // ASAN_POISON_MEMORY_REGION(data_, capacity_);
+  QuickString() : data_(inline_initial_buffer_) {
   }
 
-  ~faststring() {
-    // ASAN_UNPOISON_MEMORY_REGION(initial_data_, arraysize(initial_data_));
-    if (data_ != initial_data_) {
+  ~QuickString() {
+    if (data_ != inline_initial_buffer_) {
       delete[] data_;
     }
   }
 
-  // Reset the valid length of the string to 0.
-  //
-  // This does not free up any memory. The capacity of the string remains
-  // unchanged.
-  void clear() {
+  // make a QuickString with given capacity.
+  explicit QuickString(size_t capacity) : data_(inline_initial_buffer_) {
+    if (capacity > capacity_) {
+      data_ = new uint8_t[capacity];
+      capacity_ = capacity;
+    }
+  }
+  // clear the buffer.
+  void ClearBuffer() {
     resize(0);
-    // ASAN_POISON_MEMORY_REGION(data_, capacity_);
   }
 
-  // Resize the string to the given length.
-  // If the new length is larger than the old length, the capacity is expanded
-  // as necessary.
-  //
-  // NOTE: in contrast to std::string's implementation, Any newly "exposed"
-  // bytes of data are not cleared.
+  // Get the byte at index i.
+  const uint8_t& At(size_t i) const {
+    return data_[i];
+  }
+
+  // resize buffer
   void resize(size_t newsize) {
     if (newsize > capacity_) {
-      reserve(newsize);
+      ReserveBuffer(newsize);
     }
     len_ = newsize;
-    // ASAN_POISON_MEMORY_REGION(data_ + len_, capacity_ - len_);
-    // ASAN_UNPOISON_MEMORY_REGION(data_, len_);
   }
 
-  // Return the buffer built so far and reset `this` to the initial status
-  // (size() == 0). NOTE: the returned data pointer is not necessarily the
-  // pointer returned by data() OwnedSlice build() {
-  //     uint8_t* ret = data_;
-  //     if (ret == initial_data_) {
-  //         ret = new uint8_t[len_];
-  //         strings::memcpy_inlined(ret, data_, len_);
-  //     }
-  //     OwnedSlice result(ret, len_);
-  //     len_ = 0;
-  //     capacity_ = kInitialCapacity;
-  //     data_ = initial_data_;
-  //     ASAN_POISON_MEMORY_REGION(data_, capacity_);
-  //     return result;
-  // }
-
-  // Reserve space for the given total amount of data. If the current capacity
-  // is already larger than the newly requested capacity, this is a no-op (i.e.
-  // it does not ever free memory).
-  //
-  // NOTE: even though the new capacity is reserved, it is illegal to begin
-  // writing into that memory directly using pointers. If ASAN is enabled, this
-  // is ensured using manual memory poisoning.
-  void reserve(size_t newcapacity) {
-    if (PREDICT_TRUE(newcapacity <= capacity_)) return;
-    GrowArray(newcapacity);
+  void ReserveBuffer(size_t size) {
+    if (LIKELY_TRUE(size <= capacity_)) return;
+    ResizeInternalArray(size);
+  }
+  // append a string to the buffer.
+  void AppendString(const std::string& str) {
+    AppendInternal(str.data(), str.size());
   }
 
-  // Append the given data to the string, resizing capacity as necessary.
-  void append(const void* src_v, size_t count) {
-    const auto* src = reinterpret_cast<const uint8_t*>(src_v);
-    EnsureRoomForAppend(count);
-    // ASAN_UNPOISON_MEMORY_REGION(data_ + len_, count);
+  // Get the data pointer.
+  const uint8_t* data() const {
+    return &data_[0];
+  }
 
-    // appending short values is common enough that this
-    // actually helps, according to benchmarks. In theory
-    // memcpy_inlined should already be just as good, but this
-    // was ~20% faster for reading a large prefix-coded string file
-    // where each string was only a few chars different
-    if (count <= 4) {
+  // Append data to the buffer.
+  void AppendInternal(const void* ptr, size_t size) {
+    const auto* src = reinterpret_cast<const uint8_t*>(ptr);
+    EnsureCapacityForAppend(size);
+    if (size <= 4) {
       uint8_t* p = &data_[len_];
-      for (int i = 0; i < count; i++) {
+      for (int i = 0; i < size; i++) {
         *p++ = *src++;
       }
     } else {
-      kwdbts::memcpy_inlined(&data_[len_], src, count);
+      kwdbts::memcpy_inlined(&data_[len_], src, size);
     }
-    len_ += count;
+    len_ += size;
   }
 
-  // Append the given string to this string.
-  void append(const std::string& str) { append(str.data(), str.size()); }
-
-  // Append the given character to this string.
-  void push_back(const char byte) {
-    EnsureRoomForAppend(1);
-    // ASAN_UNPOISON_MEMORY_REGION(data_ + len_, 1);
-    data_[len_] = byte;
-    len_++;
-  }
-
-  // Return the valid length of this string.
-  size_t length() const { return len_; }
-
-  // Return the valid length of this string (identical to length())
-  size_t size() const { return len_; }
-
-  // Return the allocated capacity of this string.
-  size_t capacity() const { return capacity_; }
-
-  // Return a pointer to the data in this string. Note that this pointer
-  // may be invalidated by any later non-const operation.
-  const uint8_t* data() const { return &data_[0]; }
-
-  // Return a pointer to the data in this string. Note that this pointer
-  // may be invalidated by any later non-const operation.
-  uint8_t* data() { return &data_[0]; }
-
-  // Return the given element of this string. Note that this does not perform
-  // any bounds checking.
-  const uint8_t& at(size_t i) const { return data_[i]; }
-
-  // Return the given element of this string. Note that this does not perform
-  // any bounds checking.
-  const uint8_t& operator[](size_t i) const { return data_[i]; }
-
-  // Return the given element of this string. Note that this does not perform
-  // any bounds checking.
-  uint8_t& operator[](size_t i) { return data_[i]; }
-
-  // Reset the contents of this string by copying 'len' bytes from 'src'.
-  void assign_copy(const uint8_t* src, size_t len) {
-    // Reset length so that the first resize doesn't need to copy the current
-    // contents of the array.
-    len_ = 0;
-    resize(len);
-    kwdbts::memcpy_inlined(data(), src, len);
-  }
-
-  // Reset the contents of this string by copying from the given std::string.
-  void assign_copy(const std::string& str) {
-    assign_copy(reinterpret_cast<const uint8_t*>(str.c_str()), str.size());
-  }
-
-  // Reallocates the internal storage to fit only the current data.
-  //
-  // This may revert to using internal storage if the current length is shorter
-  // than kInitialCapacity. In that case, after this call, capacity() will go
-  // down to kInitialCapacity.
-  //
-  // Any pointers within this instance may be invalidated.
-  void shrink_to_fit() {
-    if (data_ == initial_data_ || capacity_ == len_) return;
-    ShrinkToFitInternal();
-  }
-
-  // Return a copy of this string as a std::string.
+  // convert the buffer to a string.
   std::string ToString() const {
     return std::string(reinterpret_cast<const char*>(data()), len_);
   }
 
-  //     void swap(faststring& rhs) {
-  //         char tmp_buff[kInitialCapacity];
-  //         if (data_ == initial_data_ && rhs.data_ == rhs.initial_data_) {
-  //             // // assert(capacity_ == kInitialCapacity);
-  //             // assert(rhs.capacity_ == kInitialCapacity);
-  //             // ASAN_UNPOISON_MEMORY_REGION(initial_data_,
-  //             kInitialCapacity);
-  //             // ASAN_UNPOISON_MEMORY_REGION(rhs.initial_data_,
-  //             kInitialCapacity);
-  // #pragma GCC diagnostic push
-  // #pragma GCC diagnostic ignored "-Wuninitialized"
-  //             memcpy(tmp_buff, initial_data_, kInitialCapacity);
-  //             memcpy(initial_data_, rhs.initial_data_, kInitialCapacity);
-  //             memcpy(rhs.initial_data_, tmp_buff, kInitialCapacity);
-  // #pragma GCC diagnostic pop
-  //             std::swap(len_, rhs.len_);
-  //         } else if (data_ == initial_data_) {
-  //             assert(capacity_ == kInitialCapacity);
-  //             ASAN_UNPOISON_MEMORY_REGION(rhs.initial_data_, len_);
-  //             strings::memcpy_inlined(rhs.initial_data_, initial_data_,
-  //             len_); std::swap(len_, rhs.len_); data_ = rhs.data_; capacity_
-  //             = rhs.capacity_; rhs.data_ = rhs.initial_data_; rhs.capacity_ =
-  //             kInitialCapacity;
-  //         } else if (rhs.data_ == rhs.initial_data_) {
-  //             assert(rhs.capacity_ == kInitialCapacity);
-  //             ASAN_UNPOISON_MEMORY_REGION(initial_data_, rhs.len_);
-  //             strings::memcpy_inlined(initial_data_, rhs.initial_data_,
-  //             rhs.len_); std::swap(len_, rhs.len_); rhs.data_ = data_;
-  //             rhs.capacity_ = capacity_;
-  //             data_ = initial_data_;
-  //             capacity_ = kInitialCapacity;
-  //         } else {
-  //             std::swap(data_, rhs.data_);
-  //             std::swap(len_, rhs.len_);
-  //             std::swap(capacity_, rhs.capacity_);
-  //         }
-  //         ASAN_POISON_MEMORY_REGION(data_ + len_, capacity_ - len_);
-  //         ASAN_POISON_MEMORY_REGION(rhs.data_ + rhs.len_, rhs.capacity_ -
-  //         rhs.len_);
-  //     }
-
- private:
-  faststring(const faststring&) = delete;
-  const faststring& operator=(const faststring&) = delete;
-
-  // If necessary, expand the buffer to fit at least 'count' more bytes.
-  // If the array has to be grown, it is grown by at least 50%.
-  void EnsureRoomForAppend(size_t count) {
-    if (PREDICT_TRUE(len_ + count <= capacity_)) {
-      return;
-    }
-
-    // Call the non-inline slow path - this reduces the number of instructions
-    // on the hot path.
-    GrowToAtLeast(len_ + count);
+  // swap the buffer with other.
+  void Swap(QuickString& other) {
+    std::swap(len_, other.len_);
+    std::swap(capacity_, other.capacity_);
+    std::swap(data_, other.data_);
+    std::swap_ranges(inline_initial_buffer_, inline_initial_buffer_ + kinline_buf_initial_capacity,
+                     other.inline_initial_buffer_);
   }
 
-  // The slow path of EnsureRoomForAppend. Grows the buffer by either
-  // 'count' bytes, or 50%, whichever is more.
-  void GrowToAtLeast(size_t newcapacity);
+  // prepare write
+  uint8_t* PrepareWrite(size_t write_size) {
+    EnsureCapacityForAppend(write_size);
+    return data_ + len_;
+  }
 
-  // Grow the array to the given capacity, which must be more than
-  // the current capacity.
-  void GrowArray(size_t newcapacity);
+  // finish write
+  void FinishWrite(size_t actual_written) {
+    if (actual_written > 0) {
+      len_ += actual_written;
+    }
+  }
 
-  void ShrinkToFitInternal();
+  // Get the length of the buffer.
+  size_t Length() const {
+    return len_;
+  }
+  // Append a byte to the buffer.
+  void PushBack(const char b) {
+    EnsureCapacityForAppend(1);
+    data_[len_] = b;
+    len_++;
+  }
 
-  uint8_t* data_;
-  uint8_t initial_data_[kInitialCapacity];
+  // Get the size of the buffer.
+  size_t Size() const {
+    return len_;
+  }
+
+  // Get the data pointer.
+  uint8_t* data() {
+    return &data_[0];
+  }
+
+  // Get the byte at index i.
+  const uint8_t& operator[](size_t i) const {
+    return data_[i];
+  }
+  // find the first occurrence of byte in the buffer.
+  size_t Find(uint8_t byte, size_t start = 0) const {
+    if (start >= len_) {
+      return std::string::npos;
+    }
+    for (size_t i = start; i < len_; ++i) {
+      if (data_[i] == byte) {
+        return i;
+      }
+    }
+    return std::string::npos;
+  }
+  // find the last occurrence of byte in the buffer.
+  size_t FindLast(uint8_t byte) const {
+    for (size_t i = len_; i > 0; --i) {
+      if (data_[i - 1] == byte) {
+        return i - 1;
+      }
+    }
+    return std::string::npos;
+  }
+  // Get the byte at index i.
+  uint8_t& operator[](size_t i) {
+    return data_[i];
+  }
+
+  // Get the capacity of the buffer.
+  size_t Capacity() const {
+    return capacity_;
+  }
+  // Assign a copy of the given data to the buffer.
+  void AssignCopy(const uint8_t* src, size_t len) {
+    len_ = 0;
+    resize(len);
+    kwdbts::memcpy_inlined(data(), src, len);
+  }
+  // assign a copy of the given string to the buffer.
+  void AssignCopy(const std::string& str) {
+    AssignCopy(reinterpret_cast<const uint8_t*>(str.c_str()), str.size());
+  }
+
+ private:
+  QuickString(const QuickString&) = delete;
+  const QuickString& operator=(const QuickString&) = delete;
+
+ private:
+  // expand the buffer to at least size.
+  void ExpandToAtLeast(size_t size) {
+    if (size < capacity_ * 3 / 2) {
+      size = capacity_ * 3 / 2;
+    }
+    ResizeInternalArray(size);
+  }
+  // ensure the buffer has at least size bytes.
+  void EnsureCapacityForAppend(size_t size) {
+    if (LIKELY_TRUE(len_ + size <= capacity_)) {
+      return;
+    }
+    ExpandToAtLeast(len_ + size);
+  }
+  // resize the buffer to size.
+  void ResizeInternalArray(size_t size) {
+    std::unique_ptr<uint8_t[]> temp(new uint8_t[size]);
+    if (len_ > 0) {
+      memcpy(&temp[0], &data_[0], len_);
+    }
+    capacity_ = size;
+    if (data_ != inline_initial_buffer_) {
+      delete[] data_;
+    }
+
+    data_ = temp.release();
+  }
+
+ public:
   size_t len_{0};
-  // NOTE: we will make a initial buffer as part of the object, so the smallest
-  // possible value of capacity_ is kInitialCapacity.
-  size_t capacity_{kInitialCapacity};
+  uint8_t* data_;
+  uint8_t inline_initial_buffer_[kinline_buf_initial_capacity];
+  size_t capacity_{kinline_buf_initial_capacity};
 };
 }  // namespace kwdbts

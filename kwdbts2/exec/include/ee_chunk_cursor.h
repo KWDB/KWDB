@@ -20,26 +20,26 @@
 namespace kwdbts {
 
 using DataChunkProvider = std::function<k_bool(DataChunkPtr*, k_bool*)>;
-class SimpleChunkSortCursor {
+class SortedChunkCursor {
  public:
-  SimpleChunkSortCursor() = delete;
-  SimpleChunkSortCursor(const SimpleChunkSortCursor& rhs) = delete;
-  SimpleChunkSortCursor(DataChunkProvider chunk_provider,
-                        const std::vector<k_uint32>* order_column);
-  ~SimpleChunkSortCursor() = default;
+  SortedChunkCursor() = delete;
+  SortedChunkCursor(const SortedChunkCursor& rhs) = delete;
+  SortedChunkCursor(DataChunkProvider chunk_provider,
+                        const std::vector<k_uint32>* sorted_column);
+  ~SortedChunkCursor() = default;
 
   k_bool IsDataReady();
-  std::pair<DataChunkPtr, std::vector<k_uint32>> TryGetNextChunk();
-  k_bool IsEos();
+  std::pair<DataChunkPtr, std::vector<k_uint32>> FetchNextSortedChunk();
+  k_bool IsAtEnd();
 
-  const std::vector<k_uint32>* GetSortColumns() const { return order_column_; }
+  const std::vector<k_uint32>* GetSortColumns() const { return sorted_column_; }
 
  private:
-  k_bool data_ready_ = false;
-  k_bool eos_ = false;
+  k_bool sorted_data_ready_ = false;
+  k_bool is_end_ = false;
 
   DataChunkProvider chunk_provider_;
-  const std::vector<k_uint32>* order_column_;
+  const std::vector<k_uint32>* sorted_column_;
 };
 
 }  // namespace kwdbts
