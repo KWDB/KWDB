@@ -380,15 +380,6 @@ KStatus WALBufferMgr::readWALLogs(std::vector<LogEntry*>& log_entries, TS_LSN st
         log_entries.push_back(drop_entry);
         break;
       }
-      case WALLogType::PARTITION_TIER_CHANGE: {
-        status = readPartitionTierChangeLog(log_entries, current_lsn, txn_id, current_offset, read_queue);
-        if (status == FAIL) {
-          delete[] read_buf;
-          read_buf = nullptr;
-          LOG_ERROR("Failed to parse the PARTITION_TIER_CHANGE WAL log.")
-        }
-        break;
-      }
       case WALLogType::END_CHECKPOINT: {
         status = readBytes(current_offset, read_queue, EndCheckpointEntry::fixed_length - sizeof(WALLogType), read_buf);
         if (status == FAIL) {
@@ -442,50 +433,6 @@ KStatus WALBufferMgr::readWALLogs(std::vector<LogEntry*>& log_entries, TS_LSN st
     return status;
   }
   return SUCCESS;
-}
-
-KStatus WALBufferMgr::readPartitionTierChangeLog(std::vector<LogEntry*>& log_entries, TS_LSN current_lsn,
-                              TS_LSN txn_id, TS_LSN& current_offset, std::queue<EntryBlock*>& read_queue) {
-  char* read_buf = nullptr;
-  auto status = readBytes(current_offset, read_queue, PartitionTierChangeEntry::header_length, read_buf);
-  if (status == FAIL) {
-    delete[] read_buf;
-    read_buf = nullptr;
-    LOG_ERROR("Failed to parse the WAL log.")
-    return KStatus::FAIL;
-  }
-  char* read_loc = read_buf;
-  uint64_t x_id;
-  memcpy(&x_id, read_loc, sizeof(x_id));
-  read_loc += sizeof(x_id);
-  size_t link_len;
-  memcpy(&link_len, read_loc, sizeof(link_len));
-  read_loc += sizeof(link_len);
-  size_t tier_len;
-  memcpy(&tier_len, read_loc, sizeof(tier_len));
-  delete[] read_buf;
-  read_buf = nullptr;
-  status = readBytes(current_offset, read_queue, link_len + tier_len, read_buf);
-  if (status == FAIL) {
-    delete[] read_buf;
-    read_buf = nullptr;
-    LOG_ERROR("Failed to parse the WAL log.")
-    return KStatus::FAIL;
-  }
-  std::string link_file_path(read_buf);
-  std::string tier_file_path(read_buf + link_len);
-  auto* drop_entry = KNEW PartitionTierChangeEntry(current_lsn, x_id, link_file_path, tier_file_path);
-  if (drop_entry == nullptr) {
-    delete[] read_buf;
-    read_buf = nullptr;
-    LOG_ERROR("Failed to construct entry.")
-    status = FAIL;
-    return KStatus::FAIL;
-  }
-  delete[] read_buf;
-  read_buf = nullptr;
-  log_entries.push_back(drop_entry);
-  return KStatus::SUCCESS;
 }
 
 KStatus WALBufferMgr::readBytes(TS_LSN& start_offset,

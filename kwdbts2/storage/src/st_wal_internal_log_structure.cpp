@@ -718,16 +718,6 @@ void TempDirectoryEntry::prettyPrint() {
   std::cout << "path :" << abs_path_ << "\n";
 }
 
-void PartitionTierChangeEntry::prettyPrint() {
-  std::cout << "start_lsn : " << lsn_ << "\t";
-  std::cout << "typ : ";
-  // EXPECT_EQ(type_, WALLogType::INSERT);
-  std::cout << "partition tier change \t";
-  std::cout << "x_id : " << x_id_ << "\t";
-  std::cout << "link path :" << link_path_ << "\t";
-  std::cout << "tier path :" << tier_path_ << "\n";
-}
-
 void MTREntry::prettyPrint() {
   std::cout << "start_lsn : " << lsn_ << "\t";
   std::cout << "typ : ";

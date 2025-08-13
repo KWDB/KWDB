@@ -483,21 +483,6 @@ KStatus LoggedTsEntityGroup::BeginSnapshotMtr(kwdbContext_p ctx, uint64_t range_
   return KStatus::SUCCESS;
 }
 
-KStatus LoggedTsEntityGroup::BeginPartitionTierChangeMtr(kwdbContext_p ctx, uint64_t range_id,
-                                              std::string link_path, std::string tier_path, uint64_t &mtr_id) {
-  KStatus s = MtrBegin(ctx, range_id, UINT64_MAX, mtr_id);
-  if (s != KStatus::SUCCESS) {
-    LOG_ERROR("BeginPartitionTierChangeMtr failed during MtrBegin.")
-    return s;
-  }
-  s = wal_manager_->WritePartitionTierWAL(ctx, mtr_id, link_path, tier_path);
-  if (s != KStatus::SUCCESS) {
-    LOG_ERROR("BeginPartitionTierChangeMtr failed during WritePartitionTierWAL.")
-    return s;
-  }
-  return KStatus::SUCCESS;
-}
-
 KStatus LoggedTsEntityGroup::WriteTempDirectoryLog(kwdbContext_p ctx, uint64_t mtr_id, std::string path) {
   auto s = wal_manager_->WriteTempDirectoryWAL(ctx, mtr_id, path);
   if (s != KStatus::SUCCESS) {
@@ -811,21 +796,6 @@ KStatus LoggedTsEntityGroup::rollback(kwdbContext_p ctx, LogEntry* wal_log) {
       std::string path = temp_path_log->GetPath();
       if (!Remove(path)) {
         LOG_ERROR(" WAL rollback cannot remove path[%s]", path.c_str());
-        return KStatus::FAIL;
-      }
-      break;
-    }
-    case WALLogType::PARTITION_TIER_CHANGE:
-    {
-      auto tier_log = reinterpret_cast<PartitionTierChangeEntry*>(wal_log);
-      if (tier_log == nullptr) {
-        LOG_ERROR(" WAL rollback cannot prase partition tier log.");
-        return KStatus::FAIL;
-      }
-      ErrorInfo err_info;
-      auto s = TsTierPartitionManager::GetInstance().Recover(tier_log->GetLinkPath(), tier_log->GetTierPath(), err_info);
-      if (s != KStatus::SUCCESS) {
-        LOG_ERROR(" WAL rollback partition tier change faild. %s", err_info.errmsg.c_str());
         return KStatus::FAIL;
       }
       break;

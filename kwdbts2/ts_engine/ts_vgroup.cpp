@@ -943,21 +943,6 @@ KStatus TsVGroup::rollback(kwdbContext_p ctx, LogEntry* wal_log, bool from_chk) 
       }
       break;
     }
-    case WALLogType::PARTITION_TIER_CHANGE: {
-      //      auto tier_log = reinterpret_cast<PartitionTierChangeEntry*>(wal_log);
-      //      if (tier_log == nullptr) {
-      //        LOG_ERROR(" WAL rollback cannot prase partition tier log.");
-      //        return KStatus::FAIL;
-      //      }
-      //      ErrorInfo err_info;
-      //      auto s = TsTierPartitionManager::GetInstance().Recover(tier_log->GetLinkPath(),
-      //      tier_log->GetTierPath(), err_info); if (s != KStatus::SUCCESS) {
-      //        LOG_ERROR(" WAL rollback partition tier change faild. %s", err_info.errmsg.c_str());
-      //        return KStatus::FAIL;
-      //      }
-      //      break;
-    }
-
     // TODO(xy): code review here, the following cases are not handled.
     case WALLogType::CREATE_INDEX:
     case WALLogType::DROP_INDEX:
