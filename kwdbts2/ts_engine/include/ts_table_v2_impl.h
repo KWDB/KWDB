@@ -11,6 +11,7 @@
 #pragma once
 
 #include <string>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 #include <memory>
@@ -63,7 +64,7 @@ class TsTableV2Impl : public TsTable {
 
   KStatus GetTagIterator(kwdbContext_p ctx,
                           std::vector<uint32_t> scan_tags,
-                          const vector<uint32_t> hps,
+                          const std::unordered_set<uint32_t> hps,
                           BaseEntityIterator** iter, k_uint32 table_version) override;
 
   KStatus GetEntityIdList(kwdbContext_p ctx, const std::vector<void*>& primary_tags,

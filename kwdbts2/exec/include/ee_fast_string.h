@@ -223,7 +223,7 @@ class QuickString {
  public:
   size_t len_{0};
   uint8_t* data_;
-  uint8_t inline_initial_buffer_[kinline_buf_initial_capacity];
+  uint8_t inline_initial_buffer_[kinline_buf_initial_capacity];  // NOLINT
   size_t capacity_{kinline_buf_initial_capacity};
 };
 }  // namespace kwdbts

@@ -421,9 +421,9 @@ class PayloadBuilder {
 };
 }  // namespace kwtest
 
-void make_hashpoint(std::vector<k_uint32> *hps) {
+void make_hashpoint(std::unordered_set<k_uint32> *hps) {
   for (uint32_t i=0; i< g_testcase_hash_num; i++) {
-    hps->push_back(i);
+    hps->insert(i);
   }
 }
 
