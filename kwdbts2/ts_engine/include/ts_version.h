@@ -146,8 +146,6 @@ class TsVGroupVersion {
 
   std::vector<std::shared_ptr<const TsPartitionVersion>> GetPartitionsToCompact() const;
 
-  std::vector<std::shared_ptr<const TsPartitionVersion>> GetPartitionsToVacuum() const;
-
   // timestamp is in ptime
   std::shared_ptr<const TsPartitionVersion> GetPartition(uint32_t dbid, timestamp64 timestamp) const;
 
