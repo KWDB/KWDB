@@ -629,7 +629,7 @@ KStatus TSEngineV2Impl::PutEntity(kwdbContext_p ctx, const KTableKey& table_id, 
     auto vgroup = GetVGroupByID(ctx, vgroup_id);
     assert(vgroup != nullptr);
 
-    if (options_.wal_level != WALMode::OFF && !options_.use_raft_log_as_wal) {
+    if (vgroup->NeedWriteWAL()) {
       // get old payload
       TagTuplePack* tag_pack = tag_table->GenTagPack(primary_key.data, primary_key.len);
       if (UNLIKELY(nullptr == tag_pack)) {

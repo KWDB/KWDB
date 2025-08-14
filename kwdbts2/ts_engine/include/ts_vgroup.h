@@ -146,6 +146,10 @@ class TsVGroup {
     max_lsn_.store(GetMaxLSN());
   }
 
+  bool NeedWriteWAL() {
+    return engine_options_->wal_level != WALMode::OFF && !engine_options_->use_raft_log_as_wal;
+  }
+
   uint64_t LSNInc() {
     return max_lsn_.fetch_add(1, std::memory_order_relaxed);
   }
@@ -193,9 +197,6 @@ class TsVGroup {
 
 
   KStatus FlushImmSegment(const std::shared_ptr<TsMemSegment>& segment);
-  KStatus WriteInsertWAL(kwdbContext_p ctx, uint64_t x_id, TSSlice prepared_payload);
-
-  KStatus WriteInsertWAL(kwdbContext_p ctx, uint64_t x_id, TSSlice primary_tag, TSSlice prepared_payload);
 
   KStatus RemoveChkFile(kwdbContext_p ctx);
 
@@ -204,8 +205,6 @@ class TsVGroup {
   KStatus ReadLogFromLastCheckpoint(kwdbContext_p ctx, std::vector<LogEntry*>& logs, TS_LSN& last_lsn);
 
   KStatus ReadWALLogForMtr(uint64_t mtr_trans_id, std::vector<LogEntry*>& logs);
-
-  KStatus CreateCheckpointInternal(kwdbContext_p ctx);
 
   KStatus GetIterator(kwdbContext_p ctx, vector<uint32_t> entity_ids,
                       std::vector<KwTsSpan> ts_spans, std::vector<BlockFilter> block_filter, DATATYPE ts_col_type,
