@@ -370,7 +370,9 @@ add_dependencies(${KWDBTS2_SERVER_LIB} duckdb)
 find_library(MYSQL_LIBRARIES mysqlclient)
 target_link_libraries(${KWDBTS2_SERVER_LIB} PRIVATE ${BRPC_OUTPUT_DIR}/lib/libbrpc.a)
 target_link_libraries(${KWDBTS2_SERVER_LIB} PRIVATE gflags ssl lz4)
+
 target_link_libraries(${KWDBTS2_SERVER_LIB} PRIVATE
+        -Wl,--whole-archive
         ${DUCKDB_PREFIX_DIR}/tools/sqlite3_api_wrapper/libsqlite3_api_wrapper_static.a
         ${DUCKDB_PREFIX_DIR}/src/libduckdb_static.a
         ${DUCKDB_PREFIX_DIR}/third_party/utf8proc/libduckdb_utf8proc.a
@@ -390,6 +392,7 @@ target_link_libraries(${KWDBTS2_SERVER_LIB} PRIVATE
         ${DUCKDB_PREFIX_DIR}/extension/parquet/libparquet_extension.a
         ${DUCKDB_PREFIX_DIR}/extension/mysql_scanner/libmysql_scanner_extension.a
         ${MYSQL_LIBRARIES}
+        -Wl,--no-whole-archive
         )
 
 target_link_libraries(${KWDBTS2_SERVER_LIB} PUBLIC ${DUCKDB_PREFIX_DIR}/third_party/skiplist/libduckdb_skiplistlib.a)
