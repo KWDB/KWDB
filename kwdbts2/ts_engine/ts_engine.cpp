@@ -534,7 +534,7 @@ KStatus TSEngineV2Impl::InsertTagData(kwdbContext_p ctx, const KTableKey& table_
     }
     vgroup = GetVGroupByID(ctx, vgroup_id);
     if (new_tag) {
-      if (options_.wal_level != WALMode::OFF && write_wal) {
+      if (EnableWAL() && write_wal) {
         wal_level_mutex_.lock_shared();
         s = vgroup->GetWALManager()->WriteInsertWAL(ctx, mtr_id, 0, 0, payload_data, vgroup_id, table_id);
         wal_level_mutex_.unlock_shared();
@@ -629,7 +629,7 @@ KStatus TSEngineV2Impl::PutEntity(kwdbContext_p ctx, const KTableKey& table_id, 
     auto vgroup = GetVGroupByID(ctx, vgroup_id);
     assert(vgroup != nullptr);
 
-    if (vgroup->NeedWriteWAL()) {
+    if (EnableWAL()) {
       // get old payload
       TagTuplePack* tag_pack = tag_table->GenTagPack(primary_key.data, primary_key.len);
       if (UNLIKELY(nullptr == tag_pack)) {
@@ -798,7 +798,7 @@ std::shared_ptr<TsVGroup> TSEngineV2Impl::GetTsVGroup(uint32_t vgroup_id) {
 
 KStatus TSEngineV2Impl::TSMtrBegin(kwdbContext_p ctx, const KTableKey& table_id, uint64_t range_group_id,
                                    uint64_t range_id, uint64_t index, uint64_t& mtr_id, const char* tsx_id) {
-  if (options_.wal_level == WALMode::OFF) {
+  if (!EnableWAL()) {
     return KStatus::SUCCESS;
   }
   // Invoke the TSxMgr interface to start the Mini-Transaction and write the BEGIN log entry
@@ -808,7 +808,7 @@ KStatus TSEngineV2Impl::TSMtrBegin(kwdbContext_p ctx, const KTableKey& table_id,
 
 KStatus TSEngineV2Impl::TSMtrCommit(kwdbContext_p ctx, const KTableKey& table_id,
                                     uint64_t range_group_id, uint64_t mtr_id, const char* tsx_id) {
-  if (options_.wal_level == WALMode::OFF) {
+  if (!EnableWAL()) {
     return KStatus::SUCCESS;
   }
   // Call the TSxMgr interface to COMMIT the Mini-Transaction and write the COMMIT log entry
@@ -826,7 +826,7 @@ KStatus TSEngineV2Impl::TSMtrRollback(kwdbContext_p ctx, const KTableKey& table_
 //    2) For the DELETE operation, remove the DELETE MARK of the corresponding data;
 //    3) For ALTER operations, roll back to the previous schema version;
 //  4. If the rollback fails, a system log is generated and an error exit is reported.
-  if (options_.wal_level == WALMode::OFF) {
+  if (!EnableWAL()) {
     Return(KStatus::SUCCESS);
   }
   KStatus s;
@@ -1079,7 +1079,7 @@ KStatus TSEngineV2Impl::CreateCheckpoint(kwdbContext_p ctx) {
    * 7. trig all vgroup write checkpoint wal and update checkpoint LSN
    * 8. remove vgroup wal file and old chk file
    */
-  if (options_.wal_level == WALMode::OFF) {
+  if (!EnableWAL()) {
     return KStatus::SUCCESS;
   } else if (EngineOptions::isSingleNode()) {
     std::vector<uint64_t> vgrp_lsn;
@@ -1827,7 +1827,7 @@ KStatus TSEngineV2Impl::Recover(kwdbContext_p ctx) {
    * 2. get all vgroup wal log from last checkpoint lsn.
    * 3. merge wal and apply wal
    */
-  if (options_.wal_level == WALMode::OFF || options_.use_raft_log_as_wal) {
+  if (!EnableWAL()) {
     return KStatus::SUCCESS;
   }
   LOG_INFO("Recover start.");
@@ -1969,7 +1969,7 @@ KStatus TSEngineV2Impl::UpdateSetting(kwdbContext_p ctx) {
       }
       options_.wal_level = std::stoll(value);
       LOG_INFO("update wal level to %hhu", options_.wal_level)
-      if (options_.wal_level == WALMode::OFF || options_.wal_level == WALMode::BYRL) {
+      if (!EnableWAL()) {
         UpdateAtomicLSN();
       }
       wal_level_mutex_.unlock();

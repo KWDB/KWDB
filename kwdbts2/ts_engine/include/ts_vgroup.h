@@ -146,7 +146,7 @@ class TsVGroup {
     max_lsn_.store(GetMaxLSN());
   }
 
-  bool NeedWriteWAL() {
+  bool EnableWAL() {
     return engine_options_->wal_level != WALMode::OFF && !engine_options_->use_raft_log_as_wal;
   }
 
