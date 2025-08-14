@@ -238,7 +238,9 @@ KStatus TsTableSchemaManager::CreateTable(kwdbContext_p ctx, roachpb::CreateTsTa
       return FAIL;
     }
   }
-  cur_version_ = ts_version;
+  if (ts_version > cur_version_) {
+    cur_version_ = ts_version;
+  }
   return SUCCESS;
 }
 
