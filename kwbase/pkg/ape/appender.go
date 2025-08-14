@@ -39,6 +39,7 @@ type DataChunk struct {
 }
 
 func DuckInsert(ctx context.Context, r *ApEngine, dbName, tabName string, rowVals []tree.Datums) error {
+	fmt.Println("DuckInsert start")
 	db := duck.Database{}
 	var state duck.State
 	state = duck.Open(r.DbPath+"/"+dbName, &db)
@@ -68,9 +69,11 @@ func DuckInsert(ctx context.Context, r *ApEngine, dbName, tabName string, rowVal
 		return pgerror.Newf(pgcode.Internal, "could not flush and close appender: %s", err.Error())
 	}
 	var res duck.Result
-	duck.Query(conn, `SELECT * FROM zxy1`, &res)
+	query := fmt.Sprintf("SELECT * FROM %s", tabName)
+	duck.Query(conn, query, &res)
 	count := duck.RowCount(&res)
 	fmt.Printf("select count= %s:%d\n", tabName, int(count))
+	fmt.Println("DuckInsert done")
 	return nil
 }
 
@@ -130,21 +133,21 @@ var typeToStringMap = map[duck.Type]string{
 	duck.TypeSmallInt: "SMALLINT",
 	duck.TypeInteger:  "INTEGER",
 	duck.TypeBigInt:   "BIGINT",
+	duck.TypeFloat:    "FLOAT",
+	duck.TypeDouble:   "DOUBLE",
+	duck.TypeVarchar:  "VARCHAR",
+	duck.TypeBlob:     "BLOB",
+	duck.TypeDecimal:  "DECIMAL",
+	duck.TypeDate:     "DATE",
 	//TYPE_UTINYINT:     "UTINYINT",
 	//TYPE_USMALLINT:    "USMALLINT",
 	//TYPE_UINTEGER:     "UINTEGER",
 	//TYPE_UBIGINT:      "UBIGINT",
-	//TYPE_FLOAT:        "FLOAT",
-	//TYPE_DOUBLE:       "DOUBLE",
 	//TYPE_TIMESTAMP:    "TIMESTAMP",
-	//TYPE_DATE:         "DATE",
 	//TYPE_TIME:         "TIME",
 	//TYPE_INTERVAL:     "INTERVAL",
 	//TYPE_HUGEINT:      "HUGEINT",
 	//TYPE_UHUGEINT:     "UHUGEINT",
-	//TYPE_VARCHAR:      "VARCHAR",
-	//TYPE_BLOB:         "BLOB",
-	//TYPE_DECIMAL:      "DECIMAL",
 	//TYPE_TIMESTAMP_S:  "TIMESTAMP_S",
 	//TYPE_TIMESTAMP_MS: "TIMESTAMP_MS",
 	//TYPE_TIMESTAMP_NS: "TIMESTAMP_NS",

@@ -2,8 +2,11 @@ package ape
 
 import (
 	"errors"
+	"fmt"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 	duck "github.com/duckdb-go-bindings"
+	"math/big"
+	"time"
 	"unsafe"
 )
 
@@ -24,6 +27,8 @@ type vector struct {
 
 	// The vector's type information.
 	duck.Type
+	// The internal type for ENUM and DECIMAL values.
+	internalType duck.Type
 }
 
 const aliasJSON = "JSON"
@@ -55,6 +60,16 @@ func (vec *vector) init(logicalType duck.LogicalType, colIdx int) error {
 		initInt32(vec, t)
 	case duck.TypeBigInt:
 		initInt64(vec, t)
+	case duck.TypeFloat:
+		initFloat32(vec, t)
+	case duck.TypeDouble:
+		initFloat64(vec, t)
+	case duck.TypeDate:
+		initDate(vec, t)
+	case duck.TypeVarchar, duck.TypeBlob:
+		initBytes(vec, t)
+	case duck.TypeDecimal:
+		return vec.initDecimal(logicalType, colIdx)
 
 	default:
 		return addIndexToError(errors.New(" unsupportedTypeError(unknownTypeErrMsg)"), colIdx)
@@ -233,5 +248,206 @@ func getInt64(vec *vector, rowIdx duck.IdxT) int64 {
 func setInt64(vec *vector, rowIdx duck.IdxT, v tree.Datum) error {
 	xs := (*[1 << 31]int64)(vec.dataPtr)
 	xs[rowIdx] = int64(tree.MustBeDInt(v))
+	return nil
+}
+
+func initFloat32(vec *vector, t duck.Type) {
+	vec.getFn = func(vec *vector, rowIdx duck.IdxT) tree.Datum {
+		if vec.getNull(rowIdx) {
+			return nil
+		}
+		return tree.NewDFloat(tree.DFloat(getFloat32(vec, rowIdx)))
+	}
+	vec.setFn = func(vec *vector, rowIdx duck.IdxT, val tree.Datum) error {
+		if val == nil {
+			vec.setNull(rowIdx)
+			return nil
+		}
+		return setFloat32(vec, rowIdx, val)
+	}
+	vec.Type = t
+}
+
+func getFloat32(vec *vector, rowIdx duck.IdxT) float32 {
+	xs := (*[1 << 31]float32)(vec.dataPtr)
+	return xs[rowIdx]
+}
+
+func setFloat32(vec *vector, rowIdx duck.IdxT, v tree.Datum) error {
+	xs := (*[1 << 31]float32)(vec.dataPtr)
+	xs[rowIdx] = float32(tree.MustBeDFloat(v))
+	return nil
+}
+
+func initFloat64(vec *vector, t duck.Type) {
+	vec.getFn = func(vec *vector, rowIdx duck.IdxT) tree.Datum {
+		if vec.getNull(rowIdx) {
+			return nil
+		}
+		return tree.NewDFloat(tree.DFloat(getFloat64(vec, rowIdx)))
+	}
+	vec.setFn = func(vec *vector, rowIdx duck.IdxT, val tree.Datum) error {
+		if val == nil {
+			vec.setNull(rowIdx)
+			return nil
+		}
+		return setFloat64(vec, rowIdx, val)
+	}
+	vec.Type = t
+}
+
+func getFloat64(vec *vector, rowIdx duck.IdxT) float64 {
+	xs := (*[1 << 31]float64)(vec.dataPtr)
+	return xs[rowIdx]
+}
+
+func setFloat64(vec *vector, rowIdx duck.IdxT, v tree.Datum) error {
+	xs := (*[1 << 31]float64)(vec.dataPtr)
+	xs[rowIdx] = float64(tree.MustBeDFloat(v))
+	return nil
+}
+
+func initDate(vec *vector, t duck.Type) {
+	vec.getFn = func(vec *vector, rowIdx duck.IdxT) tree.Datum {
+		if vec.getNull(rowIdx) {
+			return nil
+		}
+		time := vec.getDate(rowIdx)
+		d, err := tree.NewDDateFromTime(time)
+		if err != nil {
+			panic(err)
+		}
+		return d
+	}
+	vec.setFn = func(vec *vector, rowIdx duck.IdxT, val tree.Datum) error {
+		if val == nil {
+			vec.setNull(rowIdx)
+			return nil
+		}
+		return setDate(vec, rowIdx, val)
+	}
+	vec.Type = t
+}
+
+func (vec *vector) getDate(rowIdx duck.IdxT) time.Time {
+	date := (*[1 << 31]duck.Date)(vec.dataPtr)[rowIdx]
+	d := duck.FromDate(date)
+	year, month, day := duck.DateStructMembers(&d)
+	return time.Date(int(year), time.Month(month), int(day), 0, 0, 0, 0, time.UTC)
+}
+
+func setDate(vec *vector, rowIdx duck.IdxT, v tree.Datum) error {
+	switch val := v.(type) {
+	case *tree.DDate:
+		date := duck.NewDate(int32(val.UnixEpochDays()))
+		xs := (*[1 << 31]duck.Date)(vec.dataPtr)
+		xs[rowIdx] = *date
+	}
+	return nil
+}
+
+func initBytes(vec *vector, t duck.Type) {
+	vec.getFn = func(vec *vector, rowIdx duck.IdxT) tree.Datum {
+		if vec.getNull(rowIdx) {
+			return nil
+		}
+		b := getBytes(vec, rowIdx)
+		if t == duck.TypeVarchar {
+			return tree.NewDString(b)
+		}
+		return tree.NewDBytes(tree.DBytes(b))
+	}
+	vec.setFn = func(vec *vector, rowIdx duck.IdxT, val tree.Datum) error {
+		if val == nil {
+			vec.setNull(rowIdx)
+			return nil
+		}
+		return setBytes(vec, rowIdx, val)
+	}
+	vec.Type = t
+}
+
+func getBytes(vec *vector, rowIdx duck.IdxT) string {
+	strT := (*[1 << 31]duck.StringT)(vec.dataPtr)[rowIdx]
+	str := duck.StringTData(&strT)
+	return str
+}
+
+func setBytes(vec *vector, rowIdx duck.IdxT, v tree.Datum) error {
+	switch val := v.(type) {
+	case *tree.DString:
+		duck.VectorAssignStringElement(vec.vec, rowIdx, string(*val))
+	case *tree.DBytes:
+		duck.VectorAssignStringElementLen(vec.vec, rowIdx, []byte(*val))
+	default:
+		return errors.New("unsupported type")
+	}
+	return nil
+}
+
+func (vec *vector) initDecimal(logicalType duck.LogicalType, colIdx int) error {
+
+	t := duck.DecimalInternalType(logicalType)
+	switch t {
+	case duck.TypeSmallInt, duck.TypeInteger, duck.TypeBigInt, duck.TypeHugeInt:
+		vec.getFn = func(vec *vector, rowIdx duck.IdxT) tree.Datum {
+			if vec.getNull(rowIdx) {
+				return nil
+			}
+			return vec.getDecimal(rowIdx)
+		}
+		vec.setFn = func(vec *vector, rowIdx duck.IdxT, val tree.Datum) error {
+			if val == nil {
+				vec.setNull(rowIdx)
+				return nil
+			}
+			return setDecimal(vec, rowIdx, val)
+		}
+	default:
+		return addIndexToError(errors.New(" unsupportedTypeError(typeToStringMap[t])"), colIdx)
+	}
+
+	vec.Type = duck.TypeDecimal
+	vec.internalType = t
+	return nil
+}
+
+func (vec *vector) getDecimal(rowIdx duck.IdxT) tree.Datum {
+	var val *big.Int
+	var d tree.DDecimal
+	switch vec.internalType {
+	case duck.TypeSmallInt:
+		v := getInt16(vec, rowIdx)
+		val = big.NewInt(int64(v))
+	case duck.TypeInteger:
+		v := getInt32(vec, rowIdx)
+		val = big.NewInt(int64(v))
+	case duck.TypeBigInt:
+		v := getInt64(vec, rowIdx)
+		val = big.NewInt(v)
+	case duck.TypeHugeInt:
+		panic(errors.New(fmt.Sprintf("hugeInt not supported yet")))
+	}
+	d.Coeff = *val
+	return &d
+}
+
+func setDecimal(vec *vector, rowIdx duck.IdxT, val tree.Datum) error {
+	d, ok := val.(*tree.DDecimal)
+	if !ok {
+		return errors.New("setDecimal needs a DDecimal")
+	}
+	v := tree.NewDInt(tree.DInt(d.Coeff.Int64()))
+	switch vec.internalType {
+	case duck.TypeSmallInt:
+		return setInt16(vec, rowIdx, v)
+	case duck.TypeInteger:
+		return setInt32(vec, rowIdx, v)
+	case duck.TypeBigInt:
+		return setInt64(vec, rowIdx, v)
+	case duck.TypeHugeInt:
+		return errors.New(fmt.Sprintf("hugeInt not supported yet"))
+		//return setHugeint(vec, rowIdx, val)
+	}
 	return nil
 }

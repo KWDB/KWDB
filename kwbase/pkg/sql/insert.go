@@ -202,6 +202,15 @@ func (n *insertNode) startExec(params runParams) error {
 		if err != nil {
 			return err
 		}
+		// TODO(ZXY):  rowid column needs to be removed
+		rowidIdx := -1
+		for i := range n.run.ti.tableDesc().Columns {
+			col := n.run.ti.tableDesc().Columns[i]
+			if col.Name == "rowid" && col.Hidden {
+				rowidIdx = i
+				break
+			}
+		}
 		rowVals := make([]tree.Datums, 0)
 		for {
 			// Advance one individual row.
@@ -211,7 +220,16 @@ func (n *insertNode) startExec(params runParams) error {
 				}
 				break
 			}
-			rowVals = append(rowVals, n.source.Values())
+			if rowidIdx == -1 {
+				rowVals = append(rowVals, n.source.Values())
+			} else if rowidIdx == len(n.run.ti.tableDesc().Columns)-1 {
+				// column[a, b, rowid]
+				rowVals = append(rowVals, n.source.Values()[:rowidIdx])
+			} else {
+				// column[a, rowid, b]
+				rowVals = append(rowVals, n.source.Values()[:rowidIdx], n.source.Values()[rowidIdx+1:])
+			}
+
 			n.run.rowCount++
 		}
 		err = ape.DuckInsert(params.ctx, params.ExecCfg().ApEngine, dbDesc.Name, n.run.ti.tableDesc().Name, rowVals)
