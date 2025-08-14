@@ -49,7 +49,7 @@ class LoggedTsEntityGroup : public TsEntityGroup {
    *
    * @return KStatus
    */
-  KStatus PutEntity(kwdbContext_p ctx, TSSlice &payload_data, uint64_t mtr_id, bool writeWAL) override;
+  KStatus PutEntity(kwdbContext_p ctx, TSSlice &payload_data, uint64_t mtr_id) override;
 
   /**
    * PutData writes the Tag value and time series data to the entity
@@ -90,8 +90,7 @@ class LoggedTsEntityGroup : public TsEntityGroup {
    * @return KStatus
    */
   KStatus DeleteData(kwdbContext_p ctx, const string &primary_tag, TS_LSN lsn, const std::vector<KwTsSpan> &ts_spans,
-                     vector<DelRowSpan> *rows, uint64_t *count, uint64_t mtr_id, bool evaluate_del,
-                     bool writeWAL) override;
+                     vector<DelRowSpan> *rows, uint64_t *count, uint64_t mtr_id, bool evaluate_del) override;
 
   KStatus EvaluateDeleteData(kwdbContext_p ctx, const string& primary_tag,
                              const std::vector<KwTsSpan>& ts_spans, vector<DelRowSpan>& rows, uint64_t mtr_id);
@@ -107,7 +106,7 @@ class LoggedTsEntityGroup : public TsEntityGroup {
    * @return KStatus
    */
   KStatus DeleteEntities(kwdbContext_p ctx, const std::vector<std::string> &primary_tags, uint64_t *count,
-                         uint64_t mtr_id, bool writeWAL) override;
+                         uint64_t mtr_id) override;
 
   /**
    * @brief  Flush the WAL cache of the current EntityGroup to the disk file.

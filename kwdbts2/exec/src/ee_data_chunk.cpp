@@ -426,7 +426,7 @@ bool DataChunk::IsNull(k_uint32 row, k_uint32 col) {
   if (!col_info_[col].allow_null) {
     return false;
   }
-  char* bitmap = reinterpret_cast<char*>(data_ + bitmap_offset_[col]);
+  char* bitmap = data_ + bitmap_offset_[col];
   if (bitmap == nullptr) {
     return true;
   }

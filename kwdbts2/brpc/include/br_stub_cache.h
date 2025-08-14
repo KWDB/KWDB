@@ -24,42 +24,59 @@
 namespace kwdbts {
 
 class BrpcStubCache {
+ private:
+  struct StubPool {
+    StubPool() { stubs_.reserve(1); }
+
+    std::shared_ptr<BoxServiceRetryableClosureStub> GetOrCreate(const butil::EndPoint& endpoint) {
+      if (stubs_.empty()) {
+        auto stub = std::make_shared<BoxServiceRetryableClosureStub>(endpoint);
+        if (stub->ResetChannel() != KStatus::SUCCESS) {
+          return nullptr;
+        }
+        stubs_.push_back(stub);
+        idx_ = 0;
+        return stub;
+      }
+      if (++idx_ >= static_cast<k_int64>(stubs_.size())) {
+        idx_ = 0;
+      }
+      return stubs_[idx_];
+    }
+
+    std::vector<std::shared_ptr<BoxServiceRetryableClosureStub>> stubs_;
+    k_int64 idx_ = -1;
+  };
+
+  SpinLock lock_;
+  butil::FlatMap<butil::EndPoint, StubPool*> stub_map_;
+
  public:
   BrpcStubCache() { stub_map_.init(239); }
 
+  BrpcStubCache(const BrpcStubCache&) = delete;
+  BrpcStubCache& operator=(const BrpcStubCache&) = delete;
+
   ~BrpcStubCache() {
-    for (auto& stub : stub_map_) {
-      delete stub.second;
+    for (auto& entry : stub_map_) {
+      delete entry.second;
     }
   }
 
-  std::shared_ptr<PInternalServiceRecoverableStub> GetStub(const butil::EndPoint& endpoint) {
-    std::lock_guard<SpinLock> l(lock_);
-    auto stub_pool = stub_map_.seek(endpoint);
-    if (stub_pool == nullptr) {
-      StubPool* pool = new StubPool();
-      stub_map_.insert(endpoint, pool);
-      return pool->GetOrCreate(endpoint);
-    }
-    return (*stub_pool)->GetOrCreate(endpoint);
-  }
-
-  std::shared_ptr<PInternalServiceRecoverableStub> GetStub(const TNetworkAddress& taddr) {
+  std::shared_ptr<BoxServiceRetryableClosureStub> GetStub(const TNetworkAddress& taddr) {
     return GetStub(taddr.hostname_, taddr.port_);
   }
 
-  std::shared_ptr<PInternalServiceRecoverableStub> GetStub(const std::string& host, k_int32 port) {
+  std::shared_ptr<BoxServiceRetryableClosureStub> GetStub(const std::string& host, k_int32 port) {
     butil::EndPoint endpoint;
-    std::string realhost;
-    std::string brpc_url;
-    realhost = host;
+    std::string real_host = host;
     if (!IsValidIp(host)) {
-      KStatus status = HostnameToIp(host, realhost);
+      KStatus status = HostnameToIp(host, real_host);
       if (status != KStatus::SUCCESS) {
         return nullptr;
       }
     }
-    brpc_url = GetHostPort(realhost, port);
+    std::string brpc_url = GetHostPort(real_host, port);
     if (str2endpoint(brpc_url.c_str(), &endpoint)) {
       LOG_ERROR("unknown endpoint, host=%s, port=%d", host.c_str(), port);
       return nullptr;
@@ -67,82 +84,16 @@ class BrpcStubCache {
     return GetStub(endpoint);
   }
 
- private:
-  struct StubPool {
-    // StubPool() { stubs_.reserve(config::brpc_max_connections_per_server); }
-    StubPool() { stubs_.reserve(1); }
-
-    std::shared_ptr<PInternalServiceRecoverableStub> GetOrCreate(const butil::EndPoint& endpoint) {
-      // if (UNLIKELY(stubs_.size() < config::brpc_max_connections_per_server))
-      // {
-      if (stubs_.size() < 1) {
-        auto stub = std::make_shared<PInternalServiceRecoverableStub>(endpoint);
-        if (stub->ResetChannel() != KStatus::SUCCESS) {
-          return nullptr;
-        }
-        stubs_.push_back(stub);
-        return stub;
-      }
-      // if (++idx_ >= config::brpc_max_connections_per_server) {
-      if (++idx_ >= 1) {
-        idx_ = 0;
-      }
-      return stubs_[idx_];
+  std::shared_ptr<BoxServiceRetryableClosureStub> GetStub(const butil::EndPoint& endpoint) {
+    std::lock_guard<SpinLock> lock(lock_);
+    auto stub_pool_ptr = stub_map_.seek(endpoint);
+    if (stub_pool_ptr == nullptr) {
+      auto* pool = new StubPool();
+      stub_map_.insert(endpoint, pool);
+      return pool->GetOrCreate(endpoint);
     }
-
-    std::vector<std::shared_ptr<PInternalServiceRecoverableStub>> stubs_;
-    k_int64 idx_ = -1;
-  };
-
-  SpinLock lock_;
-  butil::FlatMap<butil::EndPoint, StubPool*> stub_map_;
-};
-
-class HttpBrpcStubCache {
- public:
-  static HttpBrpcStubCache* GetInstance() {
-    static HttpBrpcStubCache cache;
-    return &cache;
+    return (*stub_pool_ptr)->GetOrCreate(endpoint);
   }
-
-  std::shared_ptr<PInternalServiceRecoverableStub> GetHttpStub(const TNetworkAddress& taddr) {
-    butil::EndPoint endpoint;
-    std::string realhost;
-    std::string brpc_url;
-    realhost = taddr.hostname_;
-    if (!IsValidIp(taddr.hostname_)) {
-      KStatus status = HostnameToIp(taddr.hostname_, realhost);
-      if (status != KStatus::SUCCESS) {
-        return nullptr;
-      }
-    }
-    brpc_url = GetHostPort(realhost, taddr.port_);
-    if (str2endpoint(brpc_url.c_str(), &endpoint)) {
-      return nullptr;
-    }
-    // get is exist
-    std::lock_guard<SpinLock> l(lock_);
-    auto stub_ptr = stub_map_.seek(endpoint);
-
-    if (stub_ptr != nullptr) {
-      return *stub_ptr;
-    }
-    // create
-    auto stub = std::make_shared<PInternalServiceRecoverableStub>(endpoint);
-    if (stub->ResetChannel("http") != KStatus::SUCCESS) {
-      return nullptr;
-    }
-    stub_map_.insert(endpoint, stub);
-    return stub;
-  }
-
- private:
-  HttpBrpcStubCache() { stub_map_.init(500); }
-  HttpBrpcStubCache(const HttpBrpcStubCache& cache) = delete;
-  HttpBrpcStubCache& operator=(const HttpBrpcStubCache& cache) = delete;
-
-  SpinLock lock_;
-  butil::FlatMap<butil::EndPoint, std::shared_ptr<PInternalServiceRecoverableStub>> stub_map_;
 };
 
 }  // namespace kwdbts

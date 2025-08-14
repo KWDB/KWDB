@@ -11,6 +11,7 @@
 
 #include "ee_local_inbound_op.h"
 #include "lg_api.h"
+#include "ee_cancel_checker.h"
 
 namespace kwdbts {
 
@@ -38,7 +39,7 @@ EEIteratorErrCode LocalInboundOperator::Init(kwdbContext_p ctx) {
 EEIteratorErrCode LocalInboundOperator::Next(kwdbContext_p ctx, DataChunkPtr& chunk) {
   EnterFunc();
   EEIteratorErrCode code = EEIteratorErrCode::EE_OK;
-  PullChunk(chunk);
+  PullChunk(ctx, chunk);
   if (pg_info_.code > 0) {
     LOG_ERROR("LocalInboundOperator next error code is %d, error msg is %s", pg_info_.code, pg_info_.msg);
     EEPgErrorInfo::SetPgErrorInfo(pg_info_.code, pg_info_.msg);
@@ -87,10 +88,18 @@ KStatus LocalInboundOperator::PushChunk(DataChunkPtr& chunk, k_int32 stream_id,
   return KStatus::SUCCESS;
 }
 
-KStatus LocalInboundOperator::PullChunk(DataChunkPtr& chunk) {
+KStatus LocalInboundOperator::PullChunk(kwdbContext_p ctx, DataChunkPtr& chunk) {
   // lock
   std::unique_lock l(chunk_lock_);
   while (true) {
+    if (ctx->b_is_cancel && *(ctx->b_is_cancel))  {
+      break;
+    }
+
+    if ((CheckCancel(ctx) != SUCCESS)) {
+      break;
+    }
+
     // data_queue_ is empty，wait
     if (chunks_.empty()) {
       // all children finish break

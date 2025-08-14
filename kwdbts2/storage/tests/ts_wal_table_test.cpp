@@ -392,7 +392,7 @@ TEST_F(TestTSWALTable, DeleteData) {
 
   // use mtr id 0 for redo case.
   TS_LSN mtr_id = 0;
-  s = log_eg->DeleteData(ctx_, primary_tag, 0, {span}, &rows, &count, mtr_id, false, true);
+  s = log_eg->DeleteData(ctx_, primary_tag, 0, {span}, &rows, &count, mtr_id, false);
   ASSERT_EQ(s, KStatus::SUCCESS);
   ASSERT_EQ(count, 2 + row_num);  // delete 12 rows
   // after delete
@@ -474,7 +474,7 @@ TEST_F(TestTSWALTable, DeleteDataRollback) {
   ts_span = ConvertMsToPrecision(ts_span, ts_type);
   vector<DelRowSpan> rows;
   // use mtr id 0 for redo case.
-  s = log_eg->DeleteData(ctx_, primary_tag, 0, {ts_span}, &rows, &count, mtr_id, false, true);
+  s = log_eg->DeleteData(ctx_, primary_tag, 0, {ts_span}, &rows, &count, mtr_id, false);
   ASSERT_EQ(s, KStatus::SUCCESS);
   ASSERT_EQ(count, 2 + row_num);  // delete
 
@@ -538,7 +538,7 @@ TEST_F(TestTSWALTable, putDeleteRollback) {
   ts_span = ConvertMsToPrecision(ts_span, ts_type);
   vector<DelRowSpan> rows;
   // use mtr id 0 for redo case.
-  s = log_eg->DeleteData(ctx_, primary_tag, 0, {ts_span}, &rows, &count, mtr_id, false, true);
+  s = log_eg->DeleteData(ctx_, primary_tag, 0, {ts_span}, &rows, &count, mtr_id, false);
   ASSERT_EQ(s, KStatus::SUCCESS);
   ASSERT_EQ(count, 2 + row_num);  // delete
   ts_span = {1, ts + 5000};
@@ -590,7 +590,7 @@ TEST_F(TestTSWALTable, DeleteEntitiesRollback) {
   // delete entities
   uint64_t del_cnt;
   TS_LSN x_id = log_eg->FetchCurrentLSN();
-  s = log_eg->DeleteEntities(ctx_, primary_tags, &del_cnt, x_id, true);
+  s = log_eg->DeleteEntities(ctx_, primary_tags, &del_cnt, x_id);
   ASSERT_EQ(s, KStatus::SUCCESS);
   EXPECT_EQ(del_cnt, row_num);
   ts_span = {start_ts, start_ts + row_num * 10};
@@ -643,7 +643,7 @@ TEST_F(TestTSWALTable, putDeleteEntityRollback) {
   primary_tags.emplace_back(pd.GetPrimaryTag().data, pd.GetPrimaryTag().len);
   // delete entities
   uint64_t del_cnt;
-  s = log_eg->DeleteEntities(ctx_, primary_tags, &del_cnt, mtr_id, true);
+  s = log_eg->DeleteEntities(ctx_, primary_tags, &del_cnt, mtr_id);
   ASSERT_EQ(s, KStatus::SUCCESS);
   EXPECT_EQ(del_cnt, row_num * 2);
 
@@ -1252,7 +1252,7 @@ TEST_F(TestTSWALTable, putEntityRecover) {
   // tagiterator
   std::vector<EntityResultIndex> entity_id_list;
   std::vector<k_uint32> scan_tags = {1, 2};
-  std::vector<k_uint32> hps;
+  std::unordered_set<k_uint32> hps;
   make_hashpoint(&hps);
   BaseEntityIterator *iter;
   ASSERT_EQ(table_->GetTagIterator(ctx_, scan_tags,hps, &iter, 1), KStatus::SUCCESS);
@@ -1321,7 +1321,7 @@ TEST_F(TestTSWALTable, putEntityRollback) {
   std::vector<EntityResultIndex> entity_id_list;
   std::vector<k_uint32> scan_tags = {1, 2};
   BaseEntityIterator *iter;
-  std::vector<k_uint32> hps;
+  std::unordered_set<k_uint32> hps;
   make_hashpoint(&hps);
   ASSERT_EQ(table_->GetTagIterator(ctx_, scan_tags, hps,&iter, 1), KStatus::SUCCESS);
 
@@ -1366,7 +1366,7 @@ TEST_F(TestTSWALTable, putEntityRollback) {
   data_value = nullptr;
   char* data_value1 = GenSomePayloadData(ctx_, 10, p_len, start_ts, &meta_, 10, 1, false);
   TSSlice payload1{data_value1, p_len};
-  s = log_eg->PutEntity(ctx_, payload1, mtr_id, true);
+  s = log_eg->PutEntity(ctx_, payload1, mtr_id);
   ASSERT_EQ(s, KStatus::SUCCESS);
   ts_span = {start_ts, start_ts + row_num * 10};
   ts_span = ConvertMsToPrecision(ts_span, ts_type);
@@ -1376,7 +1376,7 @@ TEST_F(TestTSWALTable, putEntityRollback) {
   BaseEntityIterator *iter1;
   ResultSet res1{(k_uint32) scan_tags.size()};
   // std::vector<k_uint32> hps = {0,1,2,3,4,5,6,7,8,9};
-  ASSERT_EQ(table_->GetTagIterator(ctx_, scan_tags,hps, &iter1, 1), KStatus::SUCCESS);
+  ASSERT_EQ(table_->GetTagIterator(ctx_, scan_tags, hps, &iter1, 1), KStatus::SUCCESS);
   ASSERT_EQ(iter1->Next(&entity_id_list, &res1, &count), KStatus::SUCCESS);
   ASSERT_EQ(count, 1);
   for (int tagidx = 0; tagidx < scan_tags.size(); tagidx++) {

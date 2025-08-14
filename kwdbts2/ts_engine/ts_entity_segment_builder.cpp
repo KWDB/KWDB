@@ -342,7 +342,8 @@ KStatus TsEntityBlockBuilder::GetCompressData(TsEntitySegmentBlockItem& blk_item
       AggCalculatorV2 aggCalc(block.buffer.data(), bitmap, DATATYPE(metric_schema_[col_idx - 1].type),
                               metric_schema_[col_idx - 1].size, n_rows_);
       auto is_not_null = metric_schema_[col_idx - 1].isFlag(AINFO_NOT_NULL);
-      *reinterpret_cast<bool *>(sum.data()) =  aggCalc.CalcAggForFlush(is_not_null, count, max.data(), min.data(), sum.data() + 1);
+      *reinterpret_cast<bool *>(sum.data()) =  aggCalc.CalcAggForFlush(is_not_null, count, max.data(),
+                                                                       min.data(), sum.data() + 1);
       if (0 == count) {
         continue;
       }

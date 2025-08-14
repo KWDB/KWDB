@@ -18,19 +18,37 @@
 
 namespace kwdbts {
 
-// An ObjectPool maintains a list of C++ objects which are deallocated
-// by destroying the pool.
-// Thread-safe.
 class ObjectPool {
+ private:
+  SpinLock lock_;
+
+  using DeleteFn = void (*)(void*);
+  struct Element {
+    void* obj;
+    DeleteFn delete_fn;
+  };
+
+  std::vector<Element> objects_;
+
+  void DeleteAllObjects() {
+    for (auto i = objects_.rbegin(); i != objects_.rend(); ++i) {
+      if (i->delete_fn != nullptr) {
+        i->delete_fn(i->obj);
+      }
+    }
+  }
+
  public:
-  ObjectPool() = default;
+  void AcquireData(ObjectPool* src) {
+    objects_.insert(objects_.end(), src->objects_.begin(), src->objects_.end());
+    src->objects_.clear();
+  }
 
-  ~ObjectPool() { Clear(); }
-
-  ObjectPool(const ObjectPool& pool) = delete;
-  ObjectPool& operator=(const ObjectPool& pool) = delete;
-  ObjectPool(ObjectPool&& pool) = default;
-  ObjectPool& operator=(ObjectPool&& pool) = default;
+  void Clear() {
+    std::lock_guard<SpinLock> l(lock_);
+    DeleteAllObjects();
+    objects_.clear();
+  }
 
   template <class T>
   T* Add(T* t) {
@@ -39,33 +57,14 @@ class ObjectPool {
     return t;
   }
 
-  void Clear() {
-    std::lock_guard<SpinLock> l(lock_);
-    for (auto i = objects_.rbegin(); i != objects_.rend(); ++i) {
-      if (i->delete_fn != nullptr) {
-        i->delete_fn(i->obj);
-      }
-    }
-    objects_.clear();
-  }
+  ObjectPool& operator=(ObjectPool&& pool) = default;
+  ObjectPool(ObjectPool&& pool) = default;
+  ObjectPool& operator=(const ObjectPool& pool) = delete;
+  ObjectPool(const ObjectPool& pool) = delete;
 
-  void AcquireData(ObjectPool* src) {
-    objects_.insert(objects_.end(), src->objects_.begin(), src->objects_.end());
-    src->objects_.clear();
-  }
+  ~ObjectPool() { Clear(); }
 
- private:
-  // A generic deletion function pointer. Deletes its first argument.
-  using DeleteFn = void (*)(void*);
-
-  // For each object, a pointer to the object and a function that deletes it.
-  struct Element {
-    void* obj;
-    DeleteFn delete_fn;
-  };
-
-  std::vector<Element> objects_;
-  SpinLock lock_;
+  ObjectPool() = default;
 };
 
 }  // namespace kwdbts

@@ -28,6 +28,8 @@ class OutboundOperator : public BaseOperator {
   void SetDegree(k_int32 degree);
   k_int32 GetDegree();
 
+  void SetCollected(bool is_collected) { is_collected_ =  is_collected; }
+
   EEIteratorErrCode Init(kwdbContext_p ctx) override;
 
   EEIteratorErrCode Start(kwdbContext_p ctx) override;
@@ -36,7 +38,7 @@ class OutboundOperator : public BaseOperator {
 
   EEIteratorErrCode Close(kwdbContext_p ctx) override;
 
-  KStatus CreateInputChannel(kwdbContext_p ctx, std::vector<BaseOperator *> &new_operators) override;
+  // KStatus CreateInputChannel(kwdbContext_p ctx, std::vector<BaseOperator *> &new_operators) override;
 
   KStatus CreateOutputChannel(kwdbContext_p ctx, std::vector<BaseOperator *> &new_operators) override;
 
@@ -72,6 +74,7 @@ class OutboundOperator : public BaseOperator {
   k_int32 degree_{1};
   k_uint32 total_rows_{0};
   DataChunkPtr chunk_tmp_;
+  bool is_collected_{false};
 };
 
 }   // namespace kwdbts

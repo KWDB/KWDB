@@ -36,7 +36,7 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-//go:generate go run -tags gen_batch gen_batch.go
+//go:generate go run -tags gen-batch gen_batch.go
 
 // SetActiveTimestamp sets the correct timestamp at which the request is to be
 // carried out. For transactional requests, ba.Timestamp must be zero initially
@@ -117,7 +117,8 @@ func (ba *BatchRequest) IsTsWrite() bool {
 			*TsTagUpdateRequest,
 			*TsDeleteMultiEntitiesDataRequest,
 			*TsCommitRequest,
-			*TsRollbackRequest:
+			*TsRollbackRequest,
+			*TsImportFlushRequest:
 			return true
 		}
 	}

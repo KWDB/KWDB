@@ -14,7 +14,7 @@
 #include <memory>
 #include <mutex>
 #include <vector>
-
+#include <utility>
 #include "kwdb_type.h"
 #include "ts_mem_segment_mgr.h"
 #include "ts_table_schema_manager.h"
@@ -22,7 +22,7 @@
 
 namespace kwdbts {
 
-TsMemSegment::TsMemSegment(int32_t height) : skiplist_(comp_, &arena_, height) {}
+TsMemSegment::TsMemSegment(int32_t height) : skiplist_(height) {}
 
 TsMemSegmentManager::TsMemSegmentManager(TsVGroup* vgroup)
     : vgroup_(vgroup), cur_mem_seg_(TsMemSegment::Create(EngineOptions::mem_segment_max_height)) {
@@ -262,30 +262,17 @@ inline bool TsMemSegBlock::IsColNull(int row_num, int col_id, const std::vector<
 }
 
 bool TsMemSegment::AppendOneRow(TSMemSegRowData& row) {
-  size_t malloc_size = sizeof(TSMemSegRowData) + row.row_data.len + TSMemSegRowData::GetKeyLen();
-  char* buf = skiplist_.AllocateKey(malloc_size);
-  if (buf != nullptr) {
-    TSMemSegRowData* cur_row = reinterpret_cast<TSMemSegRowData*>(buf + +TSMemSegRowData::GetKeyLen());
-    memcpy(cur_row, &row, sizeof(TSMemSegRowData));
-    cur_row->row_data.data = buf + sizeof(TSMemSegRowData) + TSMemSegRowData::GetKeyLen();
-    cur_row->row_data.len = row.row_data.len;
-    cur_row->row_idx_in_mem_seg = row_idx_.fetch_add(1);
-    memcpy(cur_row->row_data.data, row.row_data.data, row.row_data.len);
-    cur_row->GenKey(buf);
-    auto ok = skiplist_.InsertConcurrently(buf);
-    if (ok) {
-      cur_size_.fetch_add(malloc_size);
-      written_row_num_.fetch_add(1);
-    } else {
-      LOG_ERROR("insert failed. duplicated rows.");
-    }
-    return ok;
+  auto ok = skiplist_.InsertRowData(row, row_idx_.fetch_add(1));
+  if (ok) {
+    written_row_num_.fetch_add(1);
+  } else {
+    LOG_ERROR("insert failed. duplicated rows.");
   }
-  return false;
+  return  ok;
 }
 
 bool TsMemSegment::HasEntityRows(const TsScanFilterParams& filter) {
-  InlineSkipList<TSRowDataComparator>::Iterator iter(&skiplist_);
+  SkiplistIterator iter(&skiplist_);
   char key[TSMemSegRowData::GetKeyLen() + sizeof(TSMemSegRowData)];
   uint32_t cur_version = 1;
   while (true) {
@@ -296,7 +283,7 @@ bool TsMemSegment::HasEntityRows(const TsScanFilterParams& filter) {
     iter.Seek(reinterpret_cast<char*>(&key));
     bool scan_over = false;
     while (iter.Valid()) {
-      auto cur_row = TSRowDataComparator::decode_key(iter.key());
+      auto cur_row = skiplist_.ParseKey(iter.key());
       assert(cur_row != nullptr);
       if (!cur_row->SameTableId(begin)) {
         scan_over = true;
@@ -325,7 +312,7 @@ bool TsMemSegment::HasEntityRows(const TsScanFilterParams& filter) {
 
 bool TsMemSegment::GetEntityRows(const TsBlockItemFilterParams& filter, std::list<TSMemSegRowData*>* rows) {
   rows->clear();
-  InlineSkipList<TSRowDataComparator>::Iterator iter(&skiplist_);
+  SkiplistIterator iter(&skiplist_);
   char key[TSMemSegRowData::GetKeyLen() + sizeof(TSMemSegRowData)];
   uint32_t cur_version = 1;
   while (true) {
@@ -336,7 +323,7 @@ bool TsMemSegment::GetEntityRows(const TsBlockItemFilterParams& filter, std::lis
     iter.Seek(reinterpret_cast<char*>(&key));
     bool scan_over = false;
     while (iter.Valid()) {
-      auto cur_row = TSRowDataComparator::decode_key(iter.key());
+      auto cur_row = skiplist_.ParseKey(iter.key());
       assert(cur_row != nullptr);
       if (!cur_row->SameTableId(begin)) {
         scan_over = true;
@@ -365,10 +352,10 @@ bool TsMemSegment::GetEntityRows(const TsBlockItemFilterParams& filter, std::lis
 
 bool TsMemSegment::GetAllEntityRows(std::list<TSMemSegRowData*>* rows) {
   rows->clear();
-  InlineSkipList<TSRowDataComparator>::Iterator iter(&skiplist_);
+  SkiplistIterator iter(&skiplist_);
   iter.SeekToFirst();
   while (iter.Valid()) {
-    auto cur_row = TSRowDataComparator::decode_key(iter.key());
+    auto cur_row = skiplist_.ParseKey(iter.key());
     assert(cur_row != nullptr);
     rows->push_back(cur_row);
     iter.Next();
@@ -388,10 +375,10 @@ void TsMemSegment::Traversal(std::function<bool(TSMemSegRowData* row)> func, boo
   }
 
   bool run_ok = true;
-  InlineSkipList<TSRowDataComparator>::Iterator iter(&skiplist_);
+  SkiplistIterator iter(&skiplist_);
   iter.SeekToFirst();
   while (iter.Valid()) {
-    auto cur_row = TSRowDataComparator::decode_key(iter.key());
+    auto cur_row = skiplist_.ParseKey(iter.key());
     assert(cur_row != nullptr);
     auto ok = func(cur_row);
     if (!ok) {
@@ -410,7 +397,7 @@ KStatus TsMemSegment::GetBlockSpans(std::list<shared_ptr<TsBlockSpan>>& blocks, 
                intent_row_num_.load(), written_row_num_.load(), re_try_times);
     usleep(1000);
   }
-  InlineSkipList<TSRowDataComparator>::Iterator iter(&skiplist_);
+  SkiplistIterator iter(&skiplist_);
   iter.SeekToFirst();
 
   std::vector<std::unique_ptr<TsMemSegBlock>> mem_blocks;
@@ -420,7 +407,7 @@ KStatus TsMemSegment::GetBlockSpans(std::list<shared_ptr<TsBlockSpan>>& blocks, 
   if (EngineOptions::g_dedup_rule == DedupRule::OVERRIDE) {
     TSMemSegRowData* last_row_data = nullptr;
     for (; iter.Valid(); iter.Next()) {
-      TSMemSegRowData* cur_row = TSRowDataComparator::decode_key(iter.key());
+      TSMemSegRowData* cur_row = skiplist_.ParseKey(iter.key());
       assert(cur_row != nullptr);
       if (last_row_data == nullptr || last_row_data->SameEntityAndTs(cur_row)) {
         last_row_data = cur_row;
@@ -445,7 +432,7 @@ KStatus TsMemSegment::GetBlockSpans(std::list<shared_ptr<TsBlockSpan>>& blocks, 
   } else if (EngineOptions::g_dedup_rule == DedupRule::DISCARD) {
     TSMemSegRowData* last_row_data = nullptr;
     for (; iter.Valid(); iter.Next()) {
-      TSMemSegRowData* cur_row = TSRowDataComparator::decode_key(iter.key());
+      TSMemSegRowData* cur_row = skiplist_.ParseKey(iter.key());
       assert(cur_row != nullptr);
       if (last_row_data == nullptr || !last_row_data->SameEntityAndTs(cur_row)) {
         if (current_memblock == nullptr || !current_memblock->InsertRow(cur_row)) {
@@ -459,7 +446,7 @@ KStatus TsMemSegment::GetBlockSpans(std::list<shared_ptr<TsBlockSpan>>& blocks, 
     }
   } else {  // KEEP
     for (; iter.Valid(); iter.Next()) {
-      TSMemSegRowData* cur_row = TSRowDataComparator::decode_key(iter.key());
+      TSMemSegRowData* cur_row = skiplist_.ParseKey(iter.key());
       assert(cur_row != nullptr);
       if (current_memblock == nullptr || !current_memblock->InsertRow(cur_row)) {
         auto p = std::make_unique<TsMemSegBlock>(self);

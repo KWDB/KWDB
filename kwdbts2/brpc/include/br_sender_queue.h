@@ -189,8 +189,65 @@ class DataStreamRecvr::PipelineSenderQueue final : public DataStreamRecvr::Sende
     std::atomic<k_size_t> size_{0};
   };
 
-  void CleanBufferQueues();
-  void CheckLeakClosure();
+  void CleanBufferQueues() {
+    std::lock_guard<Mutex> l(lock_);
+
+    for (k_int32 i = 0; i < chunk_queues_.size(); i++) {
+      auto& chunk_queue = chunk_queues_[i];
+      auto& chunk_queue_state = chunk_queue_states_[i];
+
+      ChunkItem item;
+      while (chunk_queue.Size() > 0) {
+        if (chunk_queue.TryPop(item)) {
+          if (item.closure != nullptr) {
+            item.closure->Run();
+            chunk_queue_state.blocked_closure_num--;
+          }
+          --total_chunks_;
+          recvr_->num_buffered_bytes_ -= item.chunk_bytes;
+        }
+      }
+    }
+
+    for (auto& [_, chunk_queues] : buffered_chunk_queues_) {
+      for (auto& [_, chunk_queue] : chunk_queues) {
+        for (auto& item : chunk_queue) {
+          if (item.closure != nullptr) {
+            item.closure->Run();
+          }
+        }
+        chunk_queue.clear();
+      }
+    }
+  }
+
+  void CheckLeakClosure() {
+    std::lock_guard<Mutex> l(lock_);
+
+    // Check for leaks in the main queue
+    for (k_int32 i = 0; i < chunk_queues_.size(); i++) {
+      auto& chunk_queue = chunk_queues_[i];
+      ChunkItem item;
+      while (chunk_queue.Size() > 0) {
+        if (chunk_queue.TryPop(item)) {
+          if (item.closure != nullptr) {
+            LOG_ERROR("leak closure detected");
+          }
+        }
+      }
+    }
+
+    // Check for leaks in the buffered queues
+    for (auto& [_, chunk_queues] : buffered_chunk_queues_) {
+      for (auto& [_, chunk_queue] : chunk_queues) {
+        for (auto& item : chunk_queue) {
+          if (item.closure != nullptr) {
+            LOG_ERROR("leak closure detected");
+          }
+        }
+      }
+    }
+  }
 
   KStatus GetChunksFromPassThrough(const k_int32 sender_id, k_int32& total_chunk_bytes,
                                    ChunkList& chunks);
@@ -204,6 +261,8 @@ class DataStreamRecvr::PipelineSenderQueue final : public DataStreamRecvr::Sende
   template <k_bool keep_order>
   BRStatus AddChunksInternal(const PTransmitChunkParams& request,
                              ::google::protobuf::Closure** done);
+
+  void ProcessSequentialChunks(k_int32 be_number, k_int64 sequence, ChunkList& chunks);
 
   std::atomic<k_bool> is_cancelled_{false};
   std::atomic<k_int32> num_remaining_senders_;

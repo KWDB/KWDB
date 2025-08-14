@@ -31,7 +31,7 @@ class LocalInboundOperator : public InboundOperator {
 
   KStatus PushChunk(DataChunkPtr& chunk, k_int32 stream_id,
                     EEIteratorErrCode code = EEIteratorErrCode::EE_OK) override;
-  KStatus PullChunk(DataChunkPtr& chunk) override;
+  KStatus PullChunk(kwdbContext_p ctx, DataChunkPtr& chunk) override;
 
   enum OperatorType Type() override {return OperatorType::OPERATOR_LOCAL_IN_BOUND;}
 

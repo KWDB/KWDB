@@ -89,7 +89,7 @@ KStatus TABLE::Init(kwdbContext_p ctx, const TSTagReaderSpec *spec) {
     for (k_int32 i = 0; i < hps_num; ++i) {
       std::vector<KwTsSpan> ts_kwspans;
       const HashpointSpan &hps = spec->rangespans(i);
-      hash_points_.push_back(hps.hashpoint());
+      hash_points_.insert(hps.hashpoint());
       int count = hps.tspans_size();
       for (int j = 0; j < count; ++j) {
         const TsSpan &span = hps.tspans(j);

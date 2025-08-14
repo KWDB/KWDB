@@ -1724,7 +1724,6 @@ func (s *Server) Start(ctx context.Context) error {
 	if err != nil {
 		return errors.Wrap(err, "failed to create engines")
 	}
-	s.stopper.AddCloser(&s.engines)
 
 	s.node.startAssertEngineHealth(ctx, s.engines)
 
@@ -1911,7 +1910,7 @@ func (s *Server) Start(ctx context.Context) error {
 			if !GetSingleNodeModeFlag(s.cfg.ModeFlag) {
 				tse.TsRaftLogCombineWAL.SetOnChange(&s.st.SV, func() {
 					combined := tse.TsRaftLogCombineWAL.Get(&s.st.SV)
-					s.tsEngine.SetWriteWAL(!combined)
+					s.tsEngine.SetRaftLogCombinedWAL(combined)
 					if !combined {
 						if err := kvserver.ClearReplicasAndResetFlushedIndex(ctx); err != nil {
 							log.Warningf(ctx, "failed clear flushed index for replicas, err: %+v", err)
@@ -1962,6 +1961,9 @@ func (s *Server) Start(ctx context.Context) error {
 		return err
 	}
 	sql.Init(s.db, s.tsEngine)
+
+	// close tsEngine will use rocksDB, so close rocksDB after close tsEngine.
+	s.stopper.AddCloser(&s.engines)
 
 	// NewUDFCache creates a new udf cache.
 	s.execCfg.UDFCache = sql.NewUDFCache(

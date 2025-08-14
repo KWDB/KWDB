@@ -99,7 +99,7 @@ KStatus TsEntityGroup::OpenInit(kwdbContext_p ctx) {
   return KStatus::SUCCESS;
 }
 
-KStatus TsEntityGroup::PutEntity(kwdbContext_p ctx, TSSlice &payload_data, uint64_t mtr_id, bool writeWAL) {
+KStatus TsEntityGroup::PutEntity(kwdbContext_p ctx, TSSlice &payload_data, uint64_t mtr_id) {
   RW_LATCH_S_LOCK(drop_mutex_);
   Defer defer{[&]() { RW_LATCH_UNLOCK(drop_mutex_); }};
   KStatus status = SUCCESS;
@@ -461,7 +461,7 @@ void TsEntityGroup::putAfterProcess(unordered_map<TsTimePartition*, PutAfterProc
 KStatus TsEntityGroup::DeleteRangeData(kwdbContext_p ctx, const HashIdSpan &hash_span, TS_LSN lsn,
                                        const std::vector<KwTsSpan> &ts_spans,
                                        vector<DelRowSpans> *del_rows, uint64_t *count, uint64_t mtr_id,
-                                       bool evaluate_del, bool writeWAL) {
+                                       bool evaluate_del) {
   RW_LATCH_S_LOCK(drop_mutex_);
   Defer defer{[&]() { RW_LATCH_UNLOCK(drop_mutex_); }};
   // Based on the hash ID range, find all the rows of tag data that need to be deleted.
@@ -500,7 +500,7 @@ KStatus TsEntityGroup::DeleteRangeData(kwdbContext_p ctx, const HashIdSpan &hash
     uint64_t entity_del_count = 0;
     DelRowSpans del_row_spans{p_tags};
     KStatus status = DeleteData(ctx, p_tags, lsn, ts_spans, &del_row_spans.spans, &entity_del_count, mtr_id,
-                                evaluate_del, writeWAL);
+                                evaluate_del);
     if (status == KStatus::FAIL) {
       LOG_ERROR("DeleteRangeData failed, delete entity by primary key %s failed", p_tags.c_str());
       return KStatus::FAIL;
@@ -515,8 +515,8 @@ KStatus TsEntityGroup::DeleteRangeData(kwdbContext_p ctx, const HashIdSpan &hash
 }
 
 KStatus TsEntityGroup::DeleteData(kwdbContext_p ctx, const string &primary_tag, TS_LSN lsn,
-                                  const std::vector<KwTsSpan> &ts_spans, vector<DelRowSpan> *rows,
-                                  uint64_t *count, uint64_t mtr_id, bool evaluate_del, bool writeWAL) {
+                                  const std::vector<KwTsSpan> &ts_spans,
+                                  vector<DelRowSpan> *rows, uint64_t *count, uint64_t mtr_id, bool evaluate_del) {
   RW_LATCH_S_LOCK(drop_mutex_);
   Defer defer{[&]() { RW_LATCH_UNLOCK(drop_mutex_); }};
   *count = 0;
@@ -615,8 +615,7 @@ KStatus TsEntityGroup::DeleteEntity(kwdbContext_p ctx, const string& primary_tag
 }
 
 KStatus TsEntityGroup::DeleteEntities(kwdbContext_p ctx, const std::vector<std::string> &primary_tags, uint64_t *count,
-                                      uint64_t mtr_id,
-                                      bool writeWAL) {
+                                      uint64_t mtr_id) {
   RW_LATCH_S_LOCK(drop_mutex_);
   Defer defer{[&]() { RW_LATCH_UNLOCK(drop_mutex_); }};
   *count = 0;
@@ -674,7 +673,7 @@ KStatus TsEntityGroup::DeleteRangeEntities(kwdbContext_p ctx, const HashIdSpan& 
     }
     entity_tag_bt->stopRead();
   }
-  if (DeleteEntities(ctx, primary_tags, count, mtr_id, false) == KStatus::FAIL) {
+  if (DeleteEntities(ctx, primary_tags, count, mtr_id) == KStatus::FAIL) {
     LOG_ERROR("delete entities error")
     return KStatus::FAIL;
   }
@@ -926,7 +925,7 @@ TsEntityGroup::GetTagIterator(kwdbContext_p ctx,
                             std::vector<k_uint32>& scan_tags,
                             uint32_t table_version,
                             EntityGroupTagIterator** iter,
-                            const std::vector<uint32_t>& hps) {
+                            const std::unordered_set<uint32_t>& hps) {
   ErrorInfo err_info;
   if (getTagTable(err_info) != KStatus::SUCCESS) {
     LOG_ERROR("getTagTable failed. error: %s ", err_info.errmsg.c_str());
@@ -2682,8 +2681,7 @@ KStatus TsTable::DeleteRangeEntities(kwdbContext_p ctx, const uint64_t& range_gr
 }
 
 KStatus TsTable::DeleteRangeData(kwdbContext_p ctx, uint64_t range_group_id, HashIdSpan &hash_span,
-                                 const std::vector<KwTsSpan> &ts_spans, uint64_t *count, uint64_t mtr_id,
-                                 bool writeWAL) {
+                                 const std::vector<KwTsSpan> &ts_spans, uint64_t *count, uint64_t mtr_id) {
   std::shared_ptr<TsEntityGroup> table_range;
   auto s = GetEntityGroup(ctx, range_group_id, &table_range);
   if (s == KStatus::FAIL) {
@@ -2692,7 +2690,7 @@ KStatus TsTable::DeleteRangeData(kwdbContext_p ctx, uint64_t range_group_id, Has
   }
 
   if (table_range) {
-    s = table_range->DeleteRangeData(ctx, hash_span, 0, ts_spans, nullptr, count, mtr_id, false, writeWAL);
+    s = table_range->DeleteRangeData(ctx, hash_span, 0, ts_spans, nullptr, count, mtr_id, false);
     if (s == KStatus::FAIL) {
       LOG_ERROR("DeleteRangeData failed, tableID:%lu, rangeGroupID: %lu, hashSpan[%lu,%lu]",
                 table_id_, range_group_id, hash_span.begin, hash_span.end)
@@ -2710,7 +2708,8 @@ KStatus TsTable::DeleteRangeData(kwdbContext_p ctx, uint64_t range_group_id, Has
 }
 
 KStatus TsTable::DeleteData(kwdbContext_p ctx, uint64_t range_group_id, std::string &primary_tag,
-                            const std::vector<KwTsSpan> &ts_spans, uint64_t *count, uint64_t mtr_id, bool writeWAL) {
+                            const std::vector<KwTsSpan> &ts_spans,
+                            uint64_t *count, uint64_t mtr_id) {
   std::shared_ptr<TsEntityGroup> table_range;
   auto s = GetEntityGroup(ctx, range_group_id, &table_range);
   if (s == KStatus::FAIL) {
@@ -2719,7 +2718,7 @@ KStatus TsTable::DeleteData(kwdbContext_p ctx, uint64_t range_group_id, std::str
   }
 
   if (table_range) {
-    s = table_range->DeleteData(ctx, primary_tag, 0, ts_spans, nullptr, count, mtr_id, false, writeWAL);
+    s = table_range->DeleteData(ctx, primary_tag, 0, ts_spans, nullptr, count, mtr_id, false);
     if (s == KStatus::FAIL) {
       LOG_ERROR("DeleteData failed, tableID:%lu, rangeGroupID: %lu", table_id_, range_group_id)
       return s;
@@ -2790,7 +2789,7 @@ KStatus TsTable::GetTagList(kwdbContext_p ctx, const std::vector<EntityResultInd
 }
 
 KStatus TsTable::GetTagIterator(kwdbContext_p ctx, std::vector<uint32_t> scan_tags,
-                                const std::vector<uint32_t> hps,
+                                const std::unordered_set<uint32_t> hps,
                                 BaseEntityIterator** iter, k_uint32 table_version) {
   std::vector<EntityGroupTagIterator*> eg_tag_iters;
   EntityGroupTagIterator* eg_tag_iter = nullptr;

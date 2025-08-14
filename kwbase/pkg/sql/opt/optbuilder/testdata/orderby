@@ -768,8 +768,11 @@ SELECT a+b AS r FROM (SELECT * FROM abcd ORDER BY d)
 ----
 project
  ├── columns: r:5
- ├── scan abcd
- │    └── columns: a:1!null b:2 c:3 d:4
+ ├── sort
+ │    ├── columns: a:1!null b:2 c:3 d:4
+ │    ├── ordering: +4
+ │    └── scan abcd
+ │         └── columns: a:1!null b:2 c:3 d:4
  └── projections
       └── a:1 + b:2 [as=r:5]
 
@@ -778,8 +781,12 @@ SELECT b+d AS r FROM (SELECT * FROM abcd ORDER BY a,d)
 ----
 project
  ├── columns: r:5
- ├── scan abcd
- │    └── columns: a:1!null b:2 c:3 d:4
+ ├── sort (segmented)
+ │    ├── columns: a:1!null b:2 c:3 d:4
+ │    ├── ordering: +1,+4
+ │    └── scan abcd
+ │         ├── columns: a:1!null b:2 c:3 d:4
+ │         └── ordering: +1
  └── projections
       └── b:2 + d:4 [as=r:5]
 
@@ -798,11 +805,14 @@ sort
 build
 SELECT * FROM (SELECT * FROM (VALUES ('a'), ('b'), ('c')) AS c(x) ORDER BY x)
 ----
-values
+sort
  ├── columns: x:1!null
- ├── ('a',)
- ├── ('b',)
- └── ('c',)
+ ├── ordering: +1
+ └── values
+      ├── columns: column1:1!null
+      ├── ('a',)
+      ├── ('b',)
+      └── ('c',)
 
 exec-ddl
 CREATE TABLE blocks (

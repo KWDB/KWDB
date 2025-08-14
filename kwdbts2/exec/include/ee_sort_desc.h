@@ -17,55 +17,107 @@
 #include "kwdb_type.h"
 
 namespace kwdbts {
-struct SortDesc {
-  k_int32 sort_order;
+struct SortingRule {
+  k_int32 order_direction;
   k_int32 null_first;
+  k_int32 sort_priority;
 
-  SortDesc() = default;
-  SortDesc(k_bool is_asc, k_bool inull_first) {
-    sort_order = is_asc ? 1 : -1;
-    null_first = (inull_first ? -1 : 1) * sort_order;
+  SortingRule() = default;
+  SortingRule(k_int32 direction, k_int32 null_direction)
+      : order_direction(direction), null_first(null_direction), sort_priority(0) {
   }
-  SortDesc(k_int32 order, k_int32 null) : sort_order(order), null_first(null) {}
+  SortingRule(k_bool is_ascending, k_bool inull_first) {
+    order_direction = is_ascending ? 1 : -1;
+    null_first = (inull_first ? -1 : 1) * order_direction;
+    sort_priority = 0;
+  }
+  // compare values
+  template <typename T>
+  int CompareValues(const T& a, const T& b) const {
+    if (a < b) return -order_direction;
+    if (a > b) return order_direction;
+    return 0;
+  }
 
-  // Discard sort_order effect on the null_first
-  k_int32 NanDirection() const { return null_first * sort_order; }
-  k_bool IsNullFirst() const { return (null_first * sort_order) == -1; }
-  k_bool IsAsc() const { return sort_order == 1; }
+  // null direction: -1 if null first, 1 if null last
+  k_int32 NullDirection() const {
+    return null_first * order_direction;
+  }
+
+  k_bool IsAscending() const {
+    return order_direction == 1;
+  }
+  // set priority
+  void SetPriority(k_int32 priority) {
+    sort_priority = priority;
+  }
+
+  // get priority
+  k_int32 GetPriority() const {
+    return sort_priority;
+  }
+  k_bool IsNullFirst() const {
+    return (null_first * order_direction) == -1;
+  }
 };
-struct SortDescs {
-  std::vector<SortDesc> descs;
+struct SortingRules {
+  std::vector<SortingRule> rules;
 
-  SortDescs() = default;
-  ~SortDescs() = default;
+  SortingRules() = default;
+  ~SortingRules() = default;
 
-  SortDescs(const std::vector<k_bool>& orders,
+  // sort rules
+  SortingRules(const std::vector<k_bool>& orders,
             const std::vector<k_bool>& null_firsts) {
-    descs.resize(orders.size());
+    rules.resize(orders.size());
     for (size_t i = 0; i < orders.size(); ++i) {
-      descs[i] = SortDesc(orders.at(i), null_firsts.at(i));
+      rules[i] = SortingRule(orders.at(i), null_firsts.at(i));
     }
   }
 
-  SortDescs(const std::vector<k_int32>& orders,
+  // sort rules
+  SortingRules(const std::vector<k_int32>& orders,
             const std::vector<k_int32>& nulls) {
-    descs.reserve(orders.size());
+    rules.reserve(orders.size());
     for (k_int32 i = 0; i < orders.size(); i++) {
-      descs.emplace_back(orders[i], nulls[i]);
+      rules.emplace_back(orders[i], nulls[i]);
     }
   }
 
-  // Create a default desc with asc order and null_first
-  static SortDescs asc_null_first(k_int32 columns) {
-    SortDescs res;
-    for (k_int32 i = 0; i < columns; i++) {
-      res.descs.emplace_back(1, -1);
+  SortingRule GetColumnRule(k_int32 col) const {
+    return rules[col];
+  }
+  // Check if rules are empty
+  bool IsEmpty() const {
+    return rules.empty();
+  }
+  // null fisrt
+  static SortingRules AscNullFirst(k_int32 cols) {
+    SortingRules res;
+    for (k_int32 i = 0; i < cols; i++) {
+      res.rules.emplace_back(1, -1);
     }
     return res;
   }
+  // Create rules for ascending order with nulls last
+  static SortingRules AscNullLast(k_int32 cols) {
+    SortingRules res;
+    for (k_int32 i = 0; i < cols; i++) {
+      res.rules.emplace_back(1, 1);
+    }
+    return res;
+  }
+  size_t ColumnsNum() const {
+    return rules.size();
+  }
+  // Add a new sorting rule
+  void AddRule(const SortingRule& rule) {
+    rules.push_back(rule);
+  }
 
-  size_t ColumnsNum() const { return descs.size(); }
-
-  SortDesc GetColumnDesc(k_int32 col) const { return descs[col]; }
+  // Add a new rule with individual parameters
+  void AddRule(k_bool order, k_bool null_first) {
+    rules.emplace_back(order, null_first);
+  }
 };
 }  // namespace kwdbts

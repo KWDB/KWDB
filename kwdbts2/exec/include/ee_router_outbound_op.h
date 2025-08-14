@@ -28,7 +28,7 @@
 #include "ee_global.h"
 namespace kwdbts {
 
-class SinkBuffer;
+class OutboundBuffer;
 
 class RouterOutboundOperator : public OutboundOperator {
  public:
@@ -63,12 +63,17 @@ class RouterOutboundOperator : public OutboundOperator {
                              const k_uint32* row_indexes, k_uint32 size);
     k_bool UsePassThrougth() { return use_pass_through_; }
     KStatus CloseInternal();
+    KStatus SendFinish();
     KStatus Close();
     void SetType(::kwdbts::StreamEndpointType type) { type_ = type; }
     void SetStatus(k_int32 code, const std::string& msg) {
       status_.set_status_code(code);
       status_.set_error_msgs(0, msg);
     }
+    void SetSendLastChunk(k_bool send_last_chunk) {
+      is_send_last_chunk_ = send_last_chunk;
+    }
+
     k_int32 GetDestProcessorid() { return dest_processor_id_; }
 
    public:
@@ -86,12 +91,13 @@ class RouterOutboundOperator : public OutboundOperator {
     std::vector<std::unique_ptr<DataChunk>> chunks_;
     PTransmitChunkParamsPtr chunk_request_;
     size_t current_request_bytes_ = 0;
-    std::shared_ptr<PInternalServiceRecoverableStub> brpc_stub_ = nullptr;
+    std::shared_ptr<BoxServiceRetryableClosureStub> brpc_stub_ = nullptr;
     ::kwdbts::StreamEndpointType type_ = ::kwdbts::StreamEndpointType::LOCAL;
     PassThroughContext pass_through_context_;
     StatusPB status_;
     k_int32 send_count_ = 0;
     k_bool is_first_chunk_{true};
+    k_bool is_send_last_chunk_{false};
   };
 
   RouterOutboundOperator(TsFetcherCollection* collection,
@@ -135,23 +141,6 @@ class RouterOutboundOperator : public OutboundOperator {
         status_.set_error_msgs(0, msg);
       }
     }
-
-    // std::map<k_int32, StatusPB>::iterator iter = channel_status_.find(nodeid);
-    // if (iter != channel_status_.end()) {
-    //   iter->second.set_status_code(code);
-    // } else {
-    //   LOG_ERROR("RouterOutboundOperator not find target node id:%d", nodeid);
-    //   return;
-    // }
-    // wait_cond_.notify_one();
-    //     if (status_.load() != nullptr) {
-    //     return;
-    // }
-    // StatusPB* expected = nullptr;
-    // if(status_.compare_exchange_strong(expected, &status_1_)){
-    //     status_1_.set_status_code(code);
-    //     status_1_.add_error_msgs(message);
-    // }
   }
 
   void ReceiveNotifyEx() {
@@ -160,8 +149,8 @@ class RouterOutboundOperator : public OutboundOperator {
 
  private:
   k_bool CheckReady(kwdbContext_p ctx);
-  k_bool SendErrorMessage(kwdbContext_p ctx, k_int32 error_code,
-                          const std::string& error_msg);
+  k_bool SendErrorMessage(k_int32 error_code, const std::string& error_msg);
+  KStatus SendLastChunk();
 
  private:
   std::string host_name_;
@@ -173,7 +162,7 @@ class RouterOutboundOperator : public OutboundOperator {
   int32_t curr_channel_idx_{0};
   k_bool is_first_chunk_{true};
   PTransmitChunkParamsPtr chunk_request_;
-  std::shared_ptr<SinkBuffer> buffer_;
+  std::shared_ptr<OutboundBuffer> buffer_;
   k_int32 sender_id_{0};
   k_int32 be_number_ = 0;
   BaseOperator* input_{nullptr};  // input iterator
@@ -188,7 +177,7 @@ class RouterOutboundOperator : public OutboundOperator {
   // k_bool is_ready_ = false;
   k_bool is_tp_stop_{false};
   CompressionTypePB compress_type_ = CompressionTypePB::NO_COMPRESSION;
-  const BlockCompressionCodec* compress_codec_ = nullptr;
+  const BlockCompressor* compress_codec_ = nullptr;
   std::string compression_scratch_;
   //   std::atomic<StatusPB*> status_{nullptr};
   // StatusPB status_1_;

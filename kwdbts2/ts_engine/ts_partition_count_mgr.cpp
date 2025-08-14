@@ -98,7 +98,7 @@ KStatus TsPartitionEntityCountManager::AddFlushEntityAgg(TsEntityFlushInfo& info
   }
   KStatus s = KStatus::SUCCESS;
   {
-    RW_LATCH_X_LOCK(rw_lock_); // TODO:(zyc) HASH LOCK
+    RW_LATCH_X_LOCK(rw_lock_);  // TODO(zyc): HASH LOCK
     TsEntityCountHeader* header = reinterpret_cast<TsEntityCountHeader*>(mmap_alloc_.addr(*node));
     assert(header != nullptr);
     s = updateEntityCount(header, &info);

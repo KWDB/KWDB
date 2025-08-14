@@ -22,8 +22,53 @@
 namespace kwdbts {
 
 using ChunkUniquePtrVector = std::vector<std::pair<DataChunkPtr, k_int32>>;
-// To manage pass through chunks between sink/sources in the same process.
-class PassThroughChannel;
+class PassThroughSenderChannel {
+ public:
+  PassThroughSenderChannel() {}
+  ~PassThroughSenderChannel() {}
+
+  void AppendChunk(DataChunkPtr& chunk, k_size_t chunk_size, k_int32 driver_sequence) {
+    std::unique_lock lock(mutex_);
+    buffer_.emplace_back(std::make_pair(std::move(chunk), driver_sequence));
+    bytes_.push_back(chunk_size);
+  }
+
+  void PullChunks(ChunkUniquePtrVector* chunks, std::vector<k_size_t>* bytes) {
+    std::unique_lock lock(mutex_);
+    chunks->swap(buffer_);
+    bytes->swap(bytes_);
+  }
+
+ private:
+  std::mutex mutex_;
+  ChunkUniquePtrVector buffer_;
+  std::vector<k_size_t> bytes_;
+};
+
+class PassThroughChannel {
+ public:
+  PassThroughSenderChannel* GetOrCreateSenderChannel(k_int32 sender_id) {
+    std::unique_lock lock(mutex_);
+    auto it = sender_id_to_channel_.find(sender_id);
+    if (it == sender_id_to_channel_.end()) {
+      auto* channel = new PassThroughSenderChannel();
+      sender_id_to_channel_.emplace(sender_id, channel);
+      return channel;
+    }
+    return it->second;
+  }
+
+  ~PassThroughChannel() {
+    for (auto& it : sender_id_to_channel_) {
+      delete it.second;
+    }
+    sender_id_to_channel_.clear();
+  }
+
+ private:
+  std::mutex mutex_;
+  std::unordered_map<k_int32, PassThroughSenderChannel*> sender_id_to_channel_;
+};
 
 // Manages a buffer for passing chunks between components in the same process.
 class PassThroughChunkBuffer {
@@ -88,8 +133,22 @@ class PassThroughChunkBufferManager {
  public:
   KStatus OpenQueryInstance(const KQueryId& query_id);
   KStatus CloseQueryInstance(const KQueryId& query_id);
-  PassThroughChunkBuffer* Get(const KQueryId& query_id);
-  void Close();
+  PassThroughChunkBuffer* Get(const KQueryId& query_id) {
+    std::unique_lock lock(mutex_);
+    auto it = query_id_to_buffer_.find(query_id);
+    if (it == query_id_to_buffer_.end()) {
+      return nullptr;
+    }
+    return it->second;
+  }
+
+  void Close() {
+    std::unique_lock lock(mutex_);
+    for (auto it = query_id_to_buffer_.begin(); it != query_id_to_buffer_.end();) {
+      delete it->second;
+      it = query_id_to_buffer_.erase(it);
+    }
+  }
 
  private:
   std::mutex mutex_;

@@ -369,7 +369,7 @@ ALTER TABLE
     true
 (1 row)
 > alter table test_alter.t3 add tag attr17_a1 smallint;
-ERROR: duplicate tag name: "attr17_a1"
+ERROR: column/tag named "attr17_a1" already exists
 SQLSTATE: 42701
 > select pg_sleep(1);
   pg_sleep
@@ -391,7 +391,7 @@ ALTER TABLE
     true
 (1 row)
 > alter table test_alter.t3 add tag attr17_a1 smallint;
-ERROR: duplicate tag name: "attr17_a1"
+ERROR: column/tag named "attr17_a1" already exists
 SQLSTATE: 42701
 > select pg_sleep(1);
   pg_sleep

@@ -11,6 +11,7 @@
 #pragma once
 
 #include <memory>
+#include <unordered_set>
 #include <vector>
 #include "kwdb_type.h"
 #include "ts_time_partition.h"
@@ -28,7 +29,7 @@ class TagIteratorV2Impl : public BaseEntityIterator {
  public:
   TagIteratorV2Impl(std::shared_ptr<TagTable> tag_bt, uint32_t table_versioin, const std::vector<k_uint32>& scan_tags);
   TagIteratorV2Impl(std::shared_ptr<TagTable> tag_bt, uint32_t table_versioin, const std::vector<k_uint32>& scan_tags,
-                    const std::vector<uint32_t>& hps);
+                    const std::unordered_set<uint32_t>& hps);
   ~TagIteratorV2Impl() override;
 
   KStatus Init() override;
@@ -37,7 +38,7 @@ class TagIteratorV2Impl : public BaseEntityIterator {
 
  private:
   std::vector<k_uint32> scan_tags_;
-  std::vector<uint32_t> hps_;
+  std::unordered_set<uint32_t> hps_;
   std::shared_ptr<TagTable> tag_bt_;
   std::vector<TagPartitionIterator*> tag_partition_iters_;
   uint32_t table_version_;

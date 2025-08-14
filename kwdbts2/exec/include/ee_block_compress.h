@@ -23,41 +23,66 @@
 #include "kwdb_type.h"
 
 namespace kwdbts {
-class BlockCompressionCodec {
+class BlockCompressor {
  public:
-  explicit BlockCompressionCodec(CompressionTypePB type) : type_(type) {
+  explicit BlockCompressor(CompressionTypePB type) : compression_type_(type) {
   }
 
-  virtual ~BlockCompressionCodec() = default;
-  virtual KStatus Compress(const KSlice& input, KSlice* output, k_bool use_compression_buffer = false,
-                           size_t uncompressed_size = -1, faststring* compressed_body1 = nullptr,
-                           std::string* compressed_body2 = nullptr) const = 0;
-  virtual KStatus Compress(const std::vector<KSlice>& input, KSlice* output, k_bool use_compression_buffer = false,
-                           size_t uncompressed_size = -1, faststring* compressed_body1 = nullptr,
-                           std::string* compressed_body2 = nullptr) const;
-  virtual KStatus Decompress(const KSlice& input, KSlice* output) const = 0;
-  virtual size_t MaxCompressedLen(size_t len) const = 0;
-  virtual k_bool ExceedMaxInputSize(size_t len) const {
+  virtual ~BlockCompressor() = default;
+
+  // Calculate the maximum compressed length of the input data.
+  virtual size_t CalculateMaxCompressedLength(size_t len) const = 0;
+  // Compress the input data.
+  virtual KStatus CompressBlock(const KSlice& input, KSlice* output, k_bool use_compressed_buff = false,
+                                size_t uncompressed_size = -1, QuickString* compressed_fast = nullptr,
+                                std::string* compressed_std = nullptr) const = 0;
+  virtual k_bool CheckIfExceedsMaxInputSize(size_t len) const {
     return false;
   }
-
-  virtual size_t MaxInputSize() const {
-    return std::numeric_limits<size_t>::max();
-  }
-
-  virtual LZ4_stream_t* GetLz4() const {
+  // no use now
+  virtual LZ4_stream_t* GetLz4StreamObject() const {
     return nullptr;
   }
-  CompressionTypePB Type() const {
-    return type_;
+  // no use now
+  virtual BlockCompressor* GetBlockCompressor() const {
+    return nullptr;
+  }
+
+  // Decompress the input data.
+  virtual KStatus DecompressBlock(const KSlice& input, KSlice* output) const = 0;
+
+  // get max size
+  virtual size_t GetMaxInputSize() const {
+    return std::numeric_limits<size_t>::max();
+  }
+  // Compress the input data.
+  virtual KStatus CompressBlock(const std::vector<KSlice>& input, KSlice* output, k_bool use_compressed_buff = false,
+                                size_t uncompressed_size = -1, QuickString* compressed_fast = nullptr,
+                                std::string* compressed_std = nullptr) const;
+
+  virtual size_t GetOutputSize() const {
+    return output_size_;
+  }
+
+  // get compression type
+  CompressionTypePB GetCompressionType() const {
+    return compression_type_;
+  }
+
+  virtual k_int32 GetCompressionLevel() const {
+    return compression_level_;
   }
 
  protected:
-  CompressionTypePB type_;
+  CompressionTypePB compression_type_;
+
+ private:
+  size_t output_size_ = 0;
+  k_int32 compression_level_ = -1;
 };
 
 // Return SUCCESS.
-KStatus GetBlockCompressionCodec(CompressionTypePB type, const BlockCompressionCodec** codec,
+KStatus GetBlockCompressor(CompressionTypePB type, const BlockCompressor** codec,
                                  k_int32 compression_level = -1);
 
 k_bool UseCompressionPool(CompressionTypePB type);

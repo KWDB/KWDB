@@ -35,6 +35,8 @@ class LocalOutboundOperator : public OutboundOperator {
 
   EEIteratorErrCode Next(kwdbContext_p ctx, DataChunkPtr &chunk) override;
 
+  KStatus CreateInputChannel(kwdbContext_p ctx, std::vector<BaseOperator *> &new_operators) override;
+
   enum OperatorType Type() override {return OperatorType::OPERATOR_LOCAL_OUT_BOUND; }
 
   BaseOperator* Clone() override;

@@ -35,7 +35,9 @@ TagScanOperator::TagScanOperator(TsFetcherCollection* collection, TSTagReaderSpe
       param_(spec, post, table) {
 }
 
-TagScanOperator::~TagScanOperator() { }
+TagScanOperator::~TagScanOperator() {
+  SafeDeletePointer(handler_);
+}
 
 EEIteratorErrCode TagScanOperator::Init(kwdbContext_p ctx) {
   EnterFunc();
@@ -236,10 +238,7 @@ RowBatch* TagScanOperator::GetRowBatch(kwdbContext_p ctx) {
 
 EEIteratorErrCode TagScanOperator::Reset(kwdbContext_p ctx) {
   EnterFunc();
-
-  if (handler_) {
-    SafeDeletePointer(handler_);
-  }
+  SafeDeletePointer(handler_);
   examined_rows_ = 0;
   total_read_row_ = 0;
   data_ = nullptr;
@@ -247,7 +246,6 @@ EEIteratorErrCode TagScanOperator::Reset(kwdbContext_p ctx) {
   tag_index_once_ = false;
   started_ = false;
   tag_index_once_ = true;
-
   Return(EEIteratorErrCode::EE_OK)
 }
 

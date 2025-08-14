@@ -131,28 +131,28 @@ class TsBlockSpan {
     } else {
       return block_->GetTS(start_row_);
     }
-  };
+  }
   timestamp64 GetLastTS() const {
     if (start_row_ + nrow_ == block_->GetRowNum()) {
       return block_->GetLastTS();
     } else {
       return block_->GetTS(start_row_ + nrow_ - 1);
     }
-  };
+  }
   TS_LSN GetFirstLSN() const {
     if (start_row_ == 0) {
       return block_->GetFirstLSN();
     } else {
       return *block_->GetLSNAddr(start_row_);
     }
-  };
+  }
   TS_LSN GetLastLSN() const {
     if (start_row_ + nrow_ == block_->GetRowNum()) {
       return block_->GetLastLSN();
     } else {
       return *block_->GetLSNAddr(start_row_ + nrow_ - 1);
     }
-  };
+  }
   uint64_t* GetLSNAddr(int row_idx) const { return block_->GetLSNAddr(start_row_ + row_idx); }
 
   // convert value to compressed entity block data
@@ -209,13 +209,13 @@ class TsBlockSpan {
 
   bool HasPreAgg() {
     return has_pre_agg_;
-  };
+  }
   KStatus GetPreCount(uint32_t scan_idx, uint16_t& count) {
     if (!convert_) {
       return block_->GetPreCount(scan_idx, count);
     }
     return convert_->GetPreCount(scan_idx, count);
-  };
+  }
   KStatus GetPreSum(uint32_t scan_idx, void* &pre_sum, bool& is_overflow) {
     if (!convert_) {
       int32_t size = scan_attrs_[scan_idx].size;
@@ -223,13 +223,13 @@ class TsBlockSpan {
     }
     int32_t size = convert_->version_conv_->blk_attrs_[scan_idx].size;
     return convert_->GetPreSum(scan_idx, size, pre_sum, is_overflow);
-  };
+  }
   KStatus GetPreMax(uint32_t scan_idx, void* &pre_max) {
     if (!convert_) {
       return block_->GetPreMax(scan_idx, pre_max);
     }
     return convert_->GetPreMax(scan_idx, pre_max);
-  };
+  }
   KStatus GetPreMin(uint32_t scan_idx, void* &pre_min) {
     if (!convert_) {
       int32_t size = scan_attrs_[scan_idx].size;
@@ -237,27 +237,27 @@ class TsBlockSpan {
     }
     int32_t size = convert_->version_conv_->blk_attrs_[scan_idx].size;
     return convert_->GetPreMin(scan_idx, size, pre_min);
-  };
+  }
   KStatus GetVarPreMax(uint32_t scan_idx, TSSlice& pre_max) {
     if (!convert_) {
       return block_->GetVarPreMax(scan_idx, pre_max);
     }
     return convert_->GetVarPreMax(scan_idx, pre_max);
-  };
+  }
   KStatus GetVarPreMin(uint32_t scan_idx, TSSlice& pre_min) {
     if (!convert_) {
       return block_->GetVarPreMin(scan_idx, pre_min);
     }
     return convert_->GetVarPreMin(scan_idx, pre_min);
-  };
+  }
 
   KStatus UpdateFirstLastCandidates(const std::vector<k_uint32>& ts_scan_cols,
                                                 const std::vector<AttributeInfo>& schema,
                                                 std::vector<k_uint32>& first_col_idxs,
                                                 std::vector<k_uint32>& last_col_idxs,
                                                 std::vector<AggCandidate>& candidates) {
-  return block_->UpdateFirstLastCandidates(ts_scan_cols, schema, first_col_idxs, last_col_idxs, candidates);
-};
+    return block_->UpdateFirstLastCandidates(ts_scan_cols, schema, first_col_idxs, last_col_idxs, candidates);
+  }
 
   void SplitFront(int row_num, shared_ptr<TsBlockSpan>& front_span);
 
@@ -270,7 +270,7 @@ class TsBlockSpan {
     if (convert_) {
       convert_->SetRowNum(nrow_);
     }
-  };
+  }
 
   void TrimFront(int row_num) {
     assert(row_num <= nrow_);
@@ -282,5 +282,5 @@ class TsBlockSpan {
       convert_->SetRowNum(nrow_);
     }
   }
-  };
+};
 }  // namespace kwdbts

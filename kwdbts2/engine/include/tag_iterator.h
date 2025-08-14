@@ -12,6 +12,7 @@
 
 #include <vector>
 #include <memory>
+#include <unordered_set>
 #include "libkwdbts2.h"
 #include "kwdb_type.h"
 #include "ts_time_partition.h"
@@ -35,7 +36,7 @@ class TagPartitionIterator {
  public:
   TagPartitionIterator() = delete;
   explicit TagPartitionIterator(TagPartitionTable* tag_partition_table, const std::vector<k_uint32>& src_scan_tags,
-                                const std::vector<TagInfo>& result_tag_infos, const std::vector<uint32_t>& hps) :
+                      const std::vector<TagInfo>& result_tag_infos, const std::unordered_set<kwdbts::k_uint32>& hps) :
                                 m_tag_partition_table_(tag_partition_table), src_version_scan_tags_(src_scan_tags),
                                 result_version_tag_infos_(result_tag_infos), hps_(hps) {}
 
@@ -50,7 +51,7 @@ class TagPartitionIterator {
   std::vector<k_uint32> src_version_scan_tags_;
   // std::vector<k_uint32> result_version_scan_tags_;
   std::vector<TagInfo>  result_version_tag_infos_;
-  std::vector<uint32_t> hps_;
+  std::unordered_set<uint32_t> hps_;
 };
 
 class TsEntityGroup;
@@ -63,7 +64,7 @@ class EntityGroupTagIterator {
 
   explicit EntityGroupTagIterator(std::shared_ptr<TsEntityGroup> entity_group, TagTable* tag_bt,
                          uint32_t table_versioin, const std::vector<k_uint32>& scan_tags,
-                         const std::vector<uint32_t>& hps);
+                         const std::unordered_set<uint32_t>& hps);
 
   virtual ~EntityGroupTagIterator();
 
@@ -73,7 +74,7 @@ class EntityGroupTagIterator {
 
  private:
   std::vector<k_uint32> scan_tags_;
-  std::vector<uint32_t> hps_;
+  std::unordered_set<uint32_t> hps_;
   TagTable* tag_bt_;
   std::shared_ptr<TsEntityGroup> entity_group_;
   std::vector<TagPartitionIterator*> tag_partition_iters_;

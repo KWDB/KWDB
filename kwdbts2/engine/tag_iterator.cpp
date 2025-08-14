@@ -15,7 +15,7 @@
 
 namespace kwdbts {
 
-bool in(kwdbts::k_uint32 hp, const std::vector<kwdbts::k_uint32>& hps);
+bool in(kwdbts::k_uint32 hp, const std::unordered_set<uint32_t>& hps);
 
 KStatus TagPartitionIterator::Next(std::vector<EntityResultIndex>* entity_id_list,
                                      ResultSet* res, k_uint32* count, bool* is_finish) {
@@ -148,15 +148,15 @@ EntityGroupTagIterator::EntityGroupTagIterator(std::shared_ptr<TsEntityGroup> en
 
 EntityGroupTagIterator::EntityGroupTagIterator(std::shared_ptr<TsEntityGroup> entity_group, TagTable* tag_bt,
                          uint32_t table_versioin, const std::vector<k_uint32>& scan_tags,
-                         const std::vector<uint32_t>& hps) :
+                         const std::unordered_set<uint32_t>& hps) :
                         entity_group_(entity_group), tag_bt_(tag_bt),
                         table_version_(table_versioin), scan_tags_(scan_tags),
                         hps_(hps) {
     entity_group_->RdDropLock();
     #ifdef K_DEBUG
-    for (int i =0; i< hps_.size(); i++) {
-      LOG_DEBUG("Init EntityGroupTagIterator hashpoints is %u", hps_.at(i));
-    }
+    // for (int i =0; i< hps_.size(); i++) {
+    //   LOG_DEBUG("Init EntityGroupTagIterator hashpoints is %u", hps_.at(i));
+    // }
     #endif
 }
 
@@ -210,8 +210,8 @@ KStatus EntityGroupTagIterator::Init() {
   cur_tag_part_iter_ = tag_partition_iters_[cur_tag_part_idx_];
   return KStatus::SUCCESS;
 }
-bool in(kwdbts::k_uint32 hp, const std::vector<kwdbts::k_uint32>& hps) {
-  return std::find(hps.begin(), hps.end(), hp) != hps.end();
+bool in(kwdbts::k_uint32 hp, const std::unordered_set<uint32_t>& hps) {
+  return hps.find(hp) != hps.end();
 }
 
 KStatus EntityGroupTagIterator::Next(std::vector<EntityResultIndex>* entity_id_list,

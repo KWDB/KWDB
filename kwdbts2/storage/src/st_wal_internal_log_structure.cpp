@@ -402,7 +402,8 @@ CheckpointEntry::~CheckpointEntry() {
 }
 
 size_t CheckpointEntry::getLen() {
-  return LogEntry::getLen();
+  uint64_t partition_len = sizeof(CheckpointPartition) * partition_number_;
+  return fixed_length + partition_len;
 }
 
 size_t CheckpointEntry::getPartitionLen() const {
@@ -439,7 +440,7 @@ uint64_t DDLEntry::getObjectID() const {
 DDLCreateEntry::DDLCreateEntry(TS_LSN lsn, WALLogType type, uint64_t x_id, uint64_t object_id, int meta_length,
                                uint64_t range_size, roachpb::CreateTsTable* meta, RangeGroup* ranges)
     : DDLEntry(lsn, type, x_id, object_id) {
-  len_ = fixed_length + meta_length + range_size * sizeof(RangeGroup);
+  len_ = fixed_length + meta_length + range_size * range_length;
 }
 
 DDLCreateEntry::DDLCreateEntry(TS_LSN lsn, WALLogType type, char* data) : DDLEntry(lsn, type, 0, 0) {
@@ -454,7 +455,7 @@ DDLCreateEntry::DDLCreateEntry(TS_LSN lsn, WALLogType type, char* data) : DDLEnt
 
   meta_ = KNEW roachpb::CreateTsTable();
   ranges_ = KNEW RangeGroup[range_size_];
-  len_ = fixed_length + meta_length_ + range_size_ * sizeof(RangeGroup);
+  len_ = fixed_length + meta_length_ + range_size_ * range_length;
 }
 
 DDLCreateEntry::~DDLCreateEntry() {

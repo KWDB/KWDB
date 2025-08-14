@@ -269,6 +269,20 @@ message TsRowPutRequest {
   TsTransaction ts_transaction = 8 ;
 }
 
+// A TsImportFlushRequest is the argument to flush data after import
+message TsImportFlushRequest {
+  option (gogoproto.equal) = true;
+
+  RequestHeader header = 1 [(gogoproto.nullable) = false, (gogoproto.embed) = true];
+}
+
+// A TsImportFlushResponse is the return status
+message TsImportFlushResponse {
+  ResponseHeader header = 1 [(gogoproto.nullable) = false, (gogoproto.embed) = true];
+
+  bool IsSuccess = 2;
+}
+
 // A TsRowPutResponse is the return value for inserting row values to TS DB
 message TsRowPutResponse {
   ResponseHeader header = 1 [(gogoproto.nullable) = false, (gogoproto.embed) = true];
@@ -2070,6 +2084,7 @@ message RequestUnion {
     TsPutTagRequest ts_put_tag = 61;
     TsCommitRequest ts_commit = 62;
     TsRollbackRequest ts_rollback = 63;
+    TsImportFlushRequest ts_import_flush = 64;
   }
   reserved 8, 15, 23, 25, 27;
 }
@@ -2132,6 +2147,7 @@ message ResponseUnion {
     TsPutTagResponse ts_put_tag = 61;
     TsCommitResponse ts_commit = 62;
     TsRollbackResponse ts_rollback = 63;
+    TsImportFlushResponse ts_import_flush = 64;
   }
   reserved 8, 15, 23, 25, 27, 28;
 }

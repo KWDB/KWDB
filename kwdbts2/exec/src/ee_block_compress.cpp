@@ -32,7 +32,7 @@ struct LZ4CompressContext {
 
   k_bool compression_fail{false};
   k_uint32 compression_count{0};
-  faststring compression_buffer;
+  QuickString compression_buffer;
   ~LZ4CompressContext() {
     LZ4_freeStream(ctx);
   }
@@ -103,40 +103,40 @@ class LZ4StreamPool {
   }
 };
 
-KStatus BlockCompressionCodec::Compress(const std::vector<KSlice>& inputs,
+KStatus BlockCompressor::CompressBlock(const std::vector<KSlice>& inputs,
                                         KSlice* output,
-                                        k_bool use_compression_buffer,
+                                        k_bool use_compressed_buff,
                                         size_t uncompressed_size,
-                                        faststring* compressed_body1,
-                                        std::string* compressed_body2) const {
+                                        QuickString* compressed_fast,
+                                        std::string* compressed_std) const {
   if (inputs.size() == 1) {
-    return Compress(inputs[0], output, use_compression_buffer,
-                    uncompressed_size, compressed_body1, compressed_body2);
+    return CompressBlock(inputs[0], output, use_compressed_buff,
+                    uncompressed_size, compressed_fast, compressed_std);
   }
   std::string buf;
   // we compute total size to avoid more memory copy
-  size_t total_size = KSlice::compute_total_size(inputs);
+  size_t total_size = KSlice::ComputeTotalSize(inputs);
   buf.reserve(total_size);
   for (auto& input : inputs) {
-    buf.append(input.data, input.size);
+    buf.append(input.data_, input.data_size_);
   }
-  return Compress(KSlice(buf), output, use_compression_buffer, uncompressed_size,
-                  compressed_body1, compressed_body2);
+  return CompressBlock(KSlice(buf), output, use_compressed_buff, uncompressed_size,
+                  compressed_fast, compressed_std);
 }
 
-class Lz4BlockCompression : public BlockCompressionCodec {
+class Lz4BlockCompressor : public BlockCompressor {
  public:
-  Lz4BlockCompression()
-      : BlockCompressionCodec(CompressionTypePB::LZ4_COMPRESSION) {}
+  Lz4BlockCompressor()
+      : BlockCompressor(CompressionTypePB::LZ4_COMPRESSION) {}
 
-  explicit Lz4BlockCompression(CompressionTypePB type) : BlockCompressionCodec(type) {}
+  explicit Lz4BlockCompressor(CompressionTypePB type) : BlockCompressor(type) {}
 
-  static const Lz4BlockCompression* Instance() {
-    static Lz4BlockCompression s_instance;
+  static const Lz4BlockCompressor* Instance() {
+    static Lz4BlockCompressor s_instance;
     return &s_instance;
   }
 
-  ~Lz4BlockCompression() override {
+  ~Lz4BlockCompressor() override {
     if (context) {
       if (context->ctx) {
         LZ4_freeStream(context->ctx);
@@ -147,94 +147,98 @@ class Lz4BlockCompression : public BlockCompressionCodec {
     }
   };
 
-  KStatus Compress(const KSlice& input, KSlice* output,
-                   k_bool use_compression_buffer, size_t uncompressed_size,
-                   faststring* compressed_body1,
-                   std::string* compressed_body2) const override {
-    return DoCompress(input, output, use_compression_buffer, uncompressed_size,
-                      compressed_body1, compressed_body2);
+  KStatus CompressBlock(const KSlice& input, KSlice* output,
+                   k_bool use_compressed_buff, size_t uncompressed_size,
+                   QuickString* compressed_fast,
+                   std::string* compressed_std) const override {
+    return DoCompressBlock(input, output, use_compressed_buff, uncompressed_size,
+                      compressed_fast, compressed_std);
   }
 
-  KStatus Decompress(const KSlice& input, KSlice* output) const override {
+  KStatus DecompressBlock(const KSlice& input, KSlice* output) const override {
     auto decompressed_len =
-        LZ4_decompress_safe(input.data, output->data, input.size, output->size);
+        LZ4_decompress_safe(input.data_, output->data_, input.data_size_, output->data_size_);
     if (decompressed_len < 0) {
       LOG_ERROR(
           "decompress faild , decompress_len %d, error=$0, input.size %ld, "
           "output->size %ld",
-          decompressed_len, input.size, output->size);
+          decompressed_len, input.data_size_, output->data_size_);
       return KStatus::FAIL;
     }
-    output->size = decompressed_len;
+    output->data_size_ = decompressed_len;
     return KStatus::SUCCESS;
   }
 
-  size_t MaxCompressedLen(size_t len) const override {
+  size_t CalculateMaxCompressedLength(size_t len) const override {
     return LZ4_compressBound(len);
   }
 
-  k_bool ExceedMaxInputSize(size_t len) const override {
+  k_bool CheckIfExceedsMaxInputSize(size_t len) const override {
     return len > LZ4_MAX_INPUT_SIZE;
   }
 
-  size_t MaxInputSize() const override { return LZ4_MAX_INPUT_SIZE; }
-  LZ4_stream_t* GetLz4() const override { return context->ctx; }
+  size_t GetMaxInputSize() const override {
+    return LZ4_MAX_INPUT_SIZE;
+  }
+  LZ4_stream_t* GetLz4StreamObject() const override {
+    return context->ctx;
+  }
 
  private:
-  KStatus DoCompress(const KSlice& input, KSlice* output,
-                     k_bool use_compression_buffer, size_t uncompressed_size,
-                     faststring* compressed_body1,
-                     std::string* compressed_body2) const {
+  KStatus DoCompressBlock(const KSlice& input, KSlice* output,
+                     k_bool use_compressed_buff, size_t uncompressed_size,
+                     QuickString* compressed_fast,
+                     std::string* compressed_std) const {
     auto context = LZ4StreamPool::GetInstance().GetLZ4Ctx();
-    [[maybe_unused]] faststring* compression_buffer = nullptr;
+    [[maybe_unused]] QuickString* compression_buffer = nullptr;
     [[maybe_unused]] size_t max_len = 0;
-    if (use_compression_buffer) {
-      max_len = MaxCompressedLen(uncompressed_size);
+    if (use_compressed_buff) {
+      max_len = CalculateMaxCompressedLength(uncompressed_size);
       if (max_len <= COMPRESSION_BUFFER_THRESHOLD) {
         compression_buffer = &context->compression_buffer;
         compression_buffer->resize(max_len);
-        output->data = reinterpret_cast<char*>(compression_buffer->data());
-        output->size = max_len;
+        output->data_ = reinterpret_cast<char*>(compression_buffer->data());
+        output->data_size_ = max_len;
       } else {
-        if (compressed_body1) {
-          compressed_body1->resize(max_len);
-          output->data = reinterpret_cast<char*>(compressed_body1->data());
+        if (compressed_fast) {
+          compressed_fast->resize(max_len);
+          output->data_ = reinterpret_cast<char*>(compressed_fast->data());
         } else {
-          compressed_body2->resize(max_len);
-          output->data = reinterpret_cast<char*>(compressed_body2->data());
+          compressed_std->resize(max_len);
+          output->data_ = reinterpret_cast<char*>(compressed_std->data());
         }
-        output->size = max_len;
+        output->data_size_ = max_len;
       }
     }
 
     k_int32 acceleration = 1;
     size_t compressed_size =
-        LZ4_compress_fast_continue(context->ctx, input.data, output->data,
-                                   input.size, output->size, acceleration);
+        LZ4_compress_fast_continue(context->ctx, input.data_, output->data_,
+                                   input.data_size_, output->data_size_, acceleration);
     if (compressed_size <= 0) {
       LOG_ERROR("compressed_size %ld, failed", compressed_size);
       return KStatus::FAIL;
     }
-    output->size = compressed_size;
+    output->data_size_ = compressed_size;
 
-    if (use_compression_buffer) {
+    if (use_compressed_buff) {
       if (max_len <= COMPRESSION_BUFFER_THRESHOLD) {
-        compression_buffer->resize(output->size);
-        if (compressed_body1) {
-          compressed_body1->assign_copy(compression_buffer->data(),
-                                        compression_buffer->size());
+        compression_buffer->resize(output->data_size_);
+        if (compressed_fast) {
+          compressed_fast->AssignCopy(compression_buffer->data(),
+                                        compression_buffer->Size());
         } else {
-          compressed_body2->clear();
-          compressed_body2->resize(compression_buffer->size());
-          memcpy(compressed_body2->data(), compression_buffer->data(),
-                 compression_buffer->size());
+          compressed_std->clear();
+          compressed_std->resize(compression_buffer->Size());
+          memcpy(compressed_std->data(), compression_buffer->data(),
+                 compression_buffer->Size());
         }
         compression_buffer->resize(0);
       } else {
-        if (compressed_body1) {
-          compressed_body1->resize(output->size);
+        if (compressed_fast) {
+          compressed_fast->resize(output->data_size_);
         } else {
-          compressed_body2->resize(output->size);
+          compressed_std->resize(output->data_size_);
         }
       }
     }
@@ -245,23 +249,21 @@ class Lz4BlockCompression : public BlockCompressionCodec {
  private:
   LZ4CompressContext* context = nullptr;
 };
-KStatus GetBlockCompressionCodec(CompressionTypePB type, const BlockCompressionCodec** codec, int compression_level) {
+KStatus GetBlockCompressor(CompressionTypePB type, const BlockCompressor** compressor, int compression_level) {
   switch (type) {
     case CompressionTypePB::NO_COMPRESSION:
-      *codec = nullptr;
+      *compressor = nullptr;
       break;
     case CompressionTypePB::LZ4_COMPRESSION:
-      *codec = Lz4BlockCompression::Instance();
+      *compressor = Lz4BlockCompressor::Instance();
       break;
     default:
       return KStatus::FAIL;
   }
   return KStatus::SUCCESS;
 }
-
 k_bool UseCompressionPool(CompressionTypePB type) {
-  if (type == CompressionTypePB::LZ4_FRAME_COMPRESSION ||
-      type == CompressionTypePB::ZSTD_COMPRESSION ||
+  if (type == CompressionTypePB::LZ4_FRAME_COMPRESSION || type == CompressionTypePB::ZSTD_COMPRESSION ||
       type == CompressionTypePB::LZ4_COMPRESSION) {
     return true;
   }

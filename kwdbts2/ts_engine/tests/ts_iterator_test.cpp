@@ -96,7 +96,7 @@ TEST_F(TestV2Iterator, basic) {
         std::vector<k_uint32> scan_cols = {0, 1, 2};
         std::vector<Sumfunctype> scan_agg_types;
 
-        s = vgroup->GetIterator(ctx_, {entity_id}, {ts_span}, ts_col_type,
+        s = vgroup->GetIterator(ctx_, {entity_id}, {ts_span}, {}, ts_col_type,
                             scan_cols, scan_cols, {}, scan_agg_types, table_schema_mgr,
                             1, &ts_iter, vgroup, {}, false, false);
         ASSERT_EQ(s, KStatus::SUCCESS);
@@ -158,7 +158,7 @@ TEST_F(TestV2Iterator, mulitEntity) {
       std::vector<k_uint32> scan_cols = {0, 1, 2};
       std::vector<Sumfunctype> scan_agg_types;
       for (k_uint32 entity_id = 1; entity_id <= vgroup->GetMaxEntityID(); entity_id++) {
-        s = vgroup->GetIterator(ctx_, {entity_id}, {ts_span}, ts_col_type,
+        s = vgroup->GetIterator(ctx_, {entity_id}, {ts_span}, {}, ts_col_type,
                           scan_cols, scan_cols, {}, scan_agg_types, table_schema_mgr,
                           1, &ts_iter, vgroup, {}, false, false);
         ASSERT_EQ(s, KStatus::SUCCESS);
@@ -223,7 +223,7 @@ TEST_F(TestV2Iterator, multiDBAndEntity) {
         for (size_t db_id = 1; db_id <= db_num; db_id++) {
           s = engine_->GetTableSchemaMgr(ctx_, table_id + db_id - 1, table_schema_mgr);
           ASSERT_EQ(s , KStatus::SUCCESS);
-          s = vgroup->GetIterator(ctx_, {entity_id}, {ts_span}, ts_col_type,
+          s = vgroup->GetIterator(ctx_, {entity_id}, {ts_span}, {}, ts_col_type,
                           scan_cols, scan_cols, {}, scan_agg_types, table_schema_mgr,
                           1, &ts_iter, vgroup, {}, false, false);
           ASSERT_EQ(s, KStatus::SUCCESS);
@@ -316,7 +316,7 @@ TEST_F(TestV2Iterator, mulitEntityCount) {
       }
     }
     for (k_uint32 entity_id = 1; entity_id <= vgroup->GetMaxEntityID(); entity_id++) {
-      s = vgroup->GetIterator(ctx_, {entity_id}, {ts_span}, ts_col_type,
+      s = vgroup->GetIterator(ctx_, {entity_id}, {ts_span}, {}, ts_col_type,
                               scan_cols, scan_cols, {}, scan_agg_types, table_schema_mgr,
                               1, &ts_iter, vgroup, {}, false, false);
       ASSERT_EQ(s, KStatus::SUCCESS);
@@ -393,7 +393,7 @@ TEST_F(TestV2Iterator, mulitEntityDeleteCount) {
     std::vector<Sumfunctype> scan_agg_types = {Sumfunctype::COUNT};
 
     for (k_uint32 entity_id = 1; entity_id <= vgroup->GetMaxEntityID(); entity_id++) {
-      s = vgroup->GetIterator(ctx_, {entity_id}, {ts_span}, ts_col_type,
+      s = vgroup->GetIterator(ctx_, {entity_id}, {ts_span}, {}, ts_col_type,
                               scan_cols, scan_cols, {}, scan_agg_types, table_schema_mgr,
                               1, &ts_iter, vgroup, {}, false, false);
       ASSERT_EQ(s, KStatus::SUCCESS);
@@ -451,7 +451,7 @@ TEST_F(TestV2Iterator, mulitEntityDeleteCount) {
       }
     }
     for (k_uint32 entity_id = 1; entity_id <= vgroup->GetMaxEntityID(); entity_id++) {
-      s = vgroup->GetIterator(ctx_, {entity_id}, {ts_span}, ts_col_type,
+      s = vgroup->GetIterator(ctx_, {entity_id}, {ts_span}, {}, ts_col_type,
                               scan_cols, scan_cols, {}, scan_agg_types, table_schema_mgr,
                               1, &ts_iter, vgroup, {}, false, false);
       ASSERT_EQ(s, KStatus::SUCCESS);
@@ -475,7 +475,7 @@ TEST_F(TestV2Iterator, mulitEntityDeleteCount) {
   std::string p_key = string((char*)(&p_tag_entity_id), sizeof(p_tag_entity_id));
 
   s = engine_->DeleteData(ctx_, table_id, 0, p_key, {{start_ts + entity_row_num / 2 * interval, INT64_MAX}},
-                          &tmp_count, 0, false);
+                          &tmp_count, 0);
   ASSERT_EQ(s, KStatus::SUCCESS);
   auto tag_table = table_schema_mgr->GetTagTable();
   uint32_t v_group_id, del_entity_id;
@@ -507,7 +507,7 @@ TEST_F(TestV2Iterator, mulitEntityDeleteCount) {
     }
 
     for (k_uint32 entity_id = 1; entity_id <= vgroup->GetMaxEntityID(); entity_id++) {
-      s = vgroup->GetIterator(ctx_, {entity_id}, {ts_span}, ts_col_type,
+      s = vgroup->GetIterator(ctx_, {entity_id}, {ts_span}, {}, ts_col_type,
                               scan_cols, scan_cols, {}, scan_agg_types, table_schema_mgr,
                               1, &ts_iter, vgroup, {}, false, false);
       ASSERT_EQ(s, KStatus::SUCCESS);

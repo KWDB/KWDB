@@ -54,7 +54,7 @@ void PipelineTaskPoller::run_internal(void *arg) {
       std::unique_lock<std::mutex> lock(blocked_drivers_mutex_);
       tmp_blocked_tasks.splice(tmp_blocked_tasks.end(), blocked_drivers_);
       if (tmp_blocked_tasks.empty()) {
-        blocked_drivers_cv_.wait(lock);
+        blocked_drivers_cv_.wait_for(lock, std::chrono::seconds(2));
         continue;
       }
     }
