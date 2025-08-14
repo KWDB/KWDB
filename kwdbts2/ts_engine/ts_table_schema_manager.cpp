@@ -482,6 +482,9 @@ KStatus TsTableSchemaManager::UpdateMetricVersion(uint32_t cur_version, uint32_t
     LOG_ERROR("UpdateVersion failed: table id = %lu, new_version = %u", table_id_, new_version);
     return s;
   }
+  if (new_version > cur_version_) {
+    cur_version_ = new_version;
+  }
   return SUCCESS;
 }
 
