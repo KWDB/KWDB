@@ -221,7 +221,7 @@ ExternalProject_Add(
 
 
 # duckdb setup
-set(DUCKDB_VERSION 1.3.0)
+set(DUCKDB_VERSION 1.3.2)
 set(DUCKDB_SOURCE_DIR "${PROJECT_SOURCE_DIR}/third_party/duckdb-1.3.2")
 set(DUCKDB_BUILD_DIR "${DUCKDB_SOURCE_DIR}/build")
 if ("${CMAKE_BUILD_TYPE}" STREQUAL "Debug")
@@ -367,10 +367,7 @@ add_dependencies(${KWDBTS2_SERVER_LIB} duckdb)
 # if ("${CMAKE_BUILD_TYPE}" STREQUAL "Debug")
 #     target_link_libraries(${KWDBTS2_SERVER_LIB} PRIVATE ubsan asan)
 # endif ()
-find_library(MYSQL_LIBRARIES mysqlclient)
 target_link_libraries(${KWDBTS2_SERVER_LIB} PRIVATE ${BRPC_OUTPUT_DIR}/lib/libbrpc.a)
-target_link_libraries(${KWDBTS2_SERVER_LIB} PRIVATE gflags ssl lz4)
-
 target_link_libraries(${KWDBTS2_SERVER_LIB} PRIVATE
         -Wl,--whole-archive
         ${DUCKDB_PREFIX_DIR}/tools/sqlite3_api_wrapper/libsqlite3_api_wrapper_static.a
@@ -391,11 +388,10 @@ target_link_libraries(${KWDBTS2_SERVER_LIB} PRIVATE
         ${DUCKDB_PREFIX_DIR}/extension/core_functions/libcore_functions_extension.a
         ${DUCKDB_PREFIX_DIR}/extension/parquet/libparquet_extension.a
         ${DUCKDB_PREFIX_DIR}/extension/mysql_scanner/libmysql_scanner_extension.a
-        ${MYSQL_LIBRARIES}
         -Wl,--no-whole-archive
         )
+target_link_libraries(${KWDBTS2_SERVER_LIB} PRIVATE gflags ssl lz4 mysqlclient)
 
-target_link_libraries(${KWDBTS2_SERVER_LIB} PUBLIC ${DUCKDB_PREFIX_DIR}/third_party/skiplist/libduckdb_skiplistlib.a)
 # Import the header files required by the server module
 target_include_directories(${KWDBTS2_SERVER_LIB} PRIVATE
     ${PROTOBUF_INCLUDE_DIR}
