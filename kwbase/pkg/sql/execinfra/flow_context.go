@@ -85,6 +85,8 @@ type FlowCtx struct {
 	// Distributed temporal query
 	TsTableReaders []TSReader
 
+	APSchedule []TSReader
+
 	// batchlookup join input
 	// only pass the data chunk formed by batchlookupjoiner to tse for multiple model processing
 	// when the switch is on and the server starts with single node mode.

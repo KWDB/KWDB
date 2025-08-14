@@ -713,6 +713,8 @@ type PlanningCtx struct {
 
 	// cdcCtx used to build cdc filter
 	cdcCtx *CDCContext
+
+	apSelect bool
 }
 
 // CDCContext used to build cdc filter.
@@ -1474,12 +1476,23 @@ func (dsp *DistSQLPlanner) GetAllDistNodesInfo(
 	return nodes, failureNodes, failureNodesErrs, nil
 }
 
+// GetEngine get engine
+func GetEngine(planCtx *PlanningCtx) int32 {
+	if planCtx.apSelect {
+		return 1
+	}
+	return 0
+}
+
 // createTableReaders generates a plan consisting of table reader processors,
 // one for each node that has spans that we are reading.
 // overridesResultColumns is optional.
 func (dsp *DistSQLPlanner) createTableReaders(
 	planCtx *PlanningCtx, n *scanNode, overrideResultColumns []sqlbase.ColumnID,
 ) (PhysicalPlan, error) {
+	if n.desc.TableType == tree.ColumnBasedTable {
+		planCtx.apSelect = true
+	}
 
 	scanNodeToTableOrdinalMap := getScanNodeToTableOrdinalMap(n)
 
@@ -1549,6 +1562,7 @@ func (dsp *DistSQLPlanner) createTableReaders(
 				Core:    execinfrapb.ProcessorCoreUnion{TableReader: tr},
 				Output:  []execinfrapb.OutputRouterSpec{{Type: execinfrapb.OutputRouterSpec_PASS_THROUGH}},
 				StageID: stageID,
+				Engine:  GetEngine(planCtx),
 			},
 		}
 
@@ -2472,6 +2486,7 @@ func (dsp *DistSQLPlanner) createTSInsertSelect(
 			}},
 			Output:  []execinfrapb.OutputRouterSpec{{Type: execinfrapb.OutputRouterSpec_PASS_THROUGH}},
 			StageID: stageID,
+			Engine:  GetEngine(planCtx),
 		},
 	}
 	pIdx := plan.AddProcessor(proc)
@@ -6807,6 +6822,18 @@ func (dsp *DistSQLPlanner) FinalizePlan(planCtx *PlanningCtx, plan *PhysicalPlan
 			panic(fmt.Sprintf("%d results after single group stage", len(plan.ResultRouters)))
 		}
 		plan.Processors[plan.ResultRouters[0]].LogicalSequenceID = []uint64{0}
+	}
+
+	if len(plan.ResultRouters) == 1 && (plan.Processors[plan.ResultRouters[0]].Spec.Engine == 1) {
+		plan.AddSingleGroupStage(
+			thisNodeID,
+			execinfrapb.ProcessorCoreUnion{Noop: &execinfrapb.NoopCoreSpec{
+				InputNum:   uint32(plan.GateNoopInput),
+				TsOperator: plan.TsOperator,
+			}},
+			execinfrapb.PostProcessSpec{OutputTypes: plan.ResultTypes},
+			plan.ResultTypes,
+		)
 	}
 
 	if len(metadataSenders) > 0 {

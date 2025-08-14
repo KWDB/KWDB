@@ -87,6 +87,13 @@ message ProcessorSpec {
   // processors.
   optional int32 processor_id = 6 [(gogoproto.nullable) = false,
                                   (gogoproto.customname) = "ProcessorID"];
+
+  optional int32 engine = 7 [(gogoproto.nullable) = false];
+}
+
+// ap engine processor specs
+message APProcessorSpecs {
+  repeated ProcessorSpec processors = 1 [(gogoproto.nullable) = false];
 }
 
 message ProcessorCoreUnion {

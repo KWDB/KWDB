@@ -135,7 +135,7 @@ func (b *Builder) buildDataSource(
 		switch t := ds.(type) {
 		case cat.Table:
 			switch t.GetTableType() {
-			case tree.RelationalTable:
+			case tree.RelationalTable, tree.ColumnBasedTable:
 				tabMeta := b.addTable(t, &resName)
 				// case relational table.
 				return b.buildScan(tabMeta, nil /* ordinals */, indexFlags, locking, excludeMutations, inScope)

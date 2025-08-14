@@ -1855,6 +1855,8 @@ func (p *PhysicalPlan) PopulateEndpoints(nodeAddresses map[roachpb.NodeID]string
 		if p1.Node == p2.Node {
 			if p1.ExecInTSEngine && !p2.ExecInTSEngine {
 				endpoint.Type = execinfrapb.StreamEndpointType_QUEUE
+			} else if !p2.ExecInTSEngine && p1.Spec.Engine == 1 && p2.Spec.Engine == 0 {
+				endpoint.Type = execinfrapb.StreamEndpointType_AP
 			} else {
 				endpoint.Type = execinfrapb.StreamEndpointType_LOCAL
 			}

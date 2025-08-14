@@ -469,6 +469,14 @@ func (f *FlowBase) Start(ctx context.Context, doneFn func()) error {
 					f.waitGroup.Done()
 				}(i)
 			}
+
+			for i := 0; i < len(f.APSchedule); i++ {
+				f.waitGroup.Add(1)
+				go func(i int) {
+					f.APSchedule[i].(execinfra.Processor).Run(ctx)
+					f.waitGroup.Done()
+				}(i)
+			}
 		}
 
 		for i := 0; i < len(f.processors); i++ {
@@ -502,7 +510,7 @@ func (f *FlowBase) Run(ctx context.Context, doneFn func()) error {
 
 	var headProc execinfra.Processor = f.processors[len(f.processors)-1]
 	otherProcs := f.processors[:len(f.processors)-1]
-	if f.isTimeSeries {
+	if f.isTimeSeries || len(f.APSchedule) > 0 {
 		if f.syncFlowConsumer == nil {
 			return nil
 		}
@@ -537,6 +545,15 @@ func (f *FlowBase) Run(ctx context.Context, doneFn func()) error {
 				f.waitGroup.Add(1)
 				go func(i int) {
 					f.TsTableReaders[i].(execinfra.Processor).RunTS(ctx)
+					f.waitGroup.Done()
+				}(i)
+				f.startedGoroutines = true
+			}
+
+			for i := 0; i < len(f.APSchedule); i++ {
+				f.waitGroup.Add(1)
+				go func(i int) {
+					f.APSchedule[i].(execinfra.Processor).Run(ctx)
 					f.waitGroup.Done()
 				}(i)
 				f.startedGoroutines = true
@@ -580,7 +597,7 @@ func (f *FlowBase) StartProcessor(ctx context.Context, doneFn func()) error {
 
 	var headProc execinfra.Processor = f.processors[len(f.processors)-1]
 	otherProcs := f.processors[:len(f.processors)-1]
-	if f.isTimeSeries {
+	if f.isTimeSeries || len(f.APSchedule) > 0 {
 		if f.syncFlowConsumer == nil {
 			return nil
 		}
@@ -610,6 +627,15 @@ func (f *FlowBase) StartProcessor(ctx context.Context, doneFn func()) error {
 				f.waitGroup.Add(1)
 				go func(i int) {
 					f.TsTableReaders[i].(execinfra.Processor).RunTS(ctx)
+					f.waitGroup.Done()
+				}(i)
+				f.startedGoroutines = true
+			}
+
+			for i := 0; i < len(f.APSchedule); i++ {
+				f.waitGroup.Add(1)
+				go func(i int) {
+					f.APSchedule[i].(execinfra.Processor).RunTS(ctx)
 					f.waitGroup.Done()
 				}(i)
 				f.startedGoroutines = true

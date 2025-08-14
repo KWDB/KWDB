@@ -14,6 +14,8 @@ extern "C" {
 
 typedef struct TSEngine TSEngine;
 
+typedef struct APEngine APEngine;
+
 // A TSSlice contains read-only data that does not need to be freed.
 typedef struct {
   char* data;
@@ -209,6 +211,32 @@ typedef struct _QueryInfo {
 
 typedef QueryInfo RespInfo;
 
+
+typedef struct _APQueryInfo {
+  EnMqType tp;
+  void* value;
+  uint32_t len;
+  int32_t row_num;
+  int32_t code;
+  int32_t id;
+  int32_t unique_id;
+  int32_t ret;
+  void* handle;
+  int32_t time_zone;
+  uint64_t relation_ctx;
+  // only pass the rel data chunk pointer and count info to tse for multiple model processing
+  // when the switch is on and the server starts with single node mode.
+  void* relBatchData;
+  int32_t relRowCount;
+  TSSlice sql;
+  DataInfo vectorize_data;
+  void *db;
+} APQueryInfo;
+
+typedef APQueryInfo APRespInfo;
+
+TSStatus APOpen(APEngine** engine);
+
 TSStatus TSOpen(TSEngine** engine, TSSlice dir, TSOptions options, AppliedRangeIndex* applied_indexes, size_t range_num);
 
 TSStatus TSCreateTsTable(TSEngine* engine, TSTableID tableId, TSSlice meta, RangeGroups range_groups);
@@ -272,6 +300,8 @@ TSStatus TSPutData(TSEngine* engine, TSTableID tableId, TSSlice* payload, size_t
                    bool writeWAL);
 
 TSStatus TSExecQuery(TSEngine* engine, QueryInfo* req, RespInfo* resp, TsFetcher* fetchers, void* fetcher);
+
+TSStatus APExecQuery(APEngine* engine, APQueryInfo* req, APRespInfo* resp);
 
 TSStatus TsDeleteEntities(TSEngine *engine, TSTableID table_id, TSSlice *primary_tags, size_t primary_tags_num,
                           uint64_t range_group_id, uint64_t *count, uint64_t mtr_id);

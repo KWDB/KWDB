@@ -41,6 +41,23 @@ std::atomic<bool> g_is_migrating{false};
 uint64_t g_duration_level0{30 * 24 * 60 * 60};
 uint64_t g_duration_level1{90 * 24 * 60 * 60};
 
+TSStatus APOpen(APEngine** engine) {
+  kwdbContext_t context;
+  kwdbContext_p ctx = &context;
+  KStatus s = InitServerKWDBContext(ctx);
+  if (s != KStatus::SUCCESS) {
+    return ToTsStatus("InitServerKWDBContext Error!");
+  }
+
+  APEngine* apEngine;
+  s = APEngineImpl::OpenEngine(ctx, &apEngine);
+  if (s == KStatus::FAIL) {
+    return ToTsStatus("OpenEngine Internal Error!");
+  }
+  *engine = apEngine;
+  return kTsSuccess;
+}
+
 TSStatus TSOpen(TSEngine** engine, TSSlice dir, TSOptions options,
                 AppliedRangeIndex* applied_indexes, size_t range_num) {
   kwdbContext_t context;
@@ -489,6 +506,23 @@ TSStatus TSExecQuery(TSEngine* engine, QueryInfo* req, RespInfo* resp, TsFetcher
   if (s != KStatus::SUCCESS) {
     return ToTsStatus("Execute Error!");
   }
+
+  return kTsSuccess;
+}
+
+TSStatus APExecQuery(APEngine* engine, APQueryInfo* req, APRespInfo* resp) {
+  kwdbContext_t context;
+  kwdbContext_p ctx_p = &context;
+  KStatus s = InitServerKWDBContext(ctx_p);
+  if (s != KStatus::SUCCESS) {
+    return ToTsStatus("InitServerKWDBContext Error!");
+  }
+  s = engine->Execute(ctx_p, req, resp);
+  if (s != KStatus::SUCCESS) {
+    return ToTsStatus("Execute Error!");
+  }
+
+  LOG_ERROR("MQ_TYPE_DML_PG_RESULT = %d, code = %d", resp->ret, resp->code);
   return kTsSuccess;
 }
 

@@ -210,7 +210,7 @@ ExternalProject_Add(
         ${CMAKE_COMMAND} -E copy_directory "${BRPC_SOURCE_DIR}" "${BRPC_BUILD_DIR}"
         COMMAND cd "${BRPC_BUILD_DIR}" && sh ./config_brpc.sh --headers=/usr/include "--libs=/usr/lib /usr/lib64"
     BUILD_COMMAND
-        cd "${BRPC_BUILD_DIR}" && $(MAKE) -j${DEDUCTED_PARALLEL_DEGREE}
+        cd "${BRPC_BUILD_DIR}" && ${MAKE} -j${DEDUCTED_PARALLEL_DEGREE}
     BUILD_IN_SOURCE 0
     INSTALL_COMMAND
         ${CMAKE_COMMAND} -E make_directory "${BRPC_OUTPUT_DIR}/include"
@@ -222,7 +222,7 @@ ExternalProject_Add(
 
 # duckdb setup
 set(DUCKDB_VERSION 1.3.2)
-set(DUCKDB_SOURCE_DIR "${PROJECT_SOURCE_DIR}/third_party/duckdb-1.3.2")
+set(DUCKDB_SOURCE_DIR "${PROJECT_SOURCE_DIR}/third_party/duckdb-${DUCKDB_VERSION}")
 set(DUCKDB_BUILD_DIR "${DUCKDB_SOURCE_DIR}/build")
 if ("${CMAKE_BUILD_TYPE}" STREQUAL "Debug")
     set(DUCKDB_PREFIX_DIR "${DUCKDB_BUILD_DIR}/debug")
@@ -240,7 +240,7 @@ ExternalProject_Add(
     PREFIX "${DUCKDB_PREFIX_DIR}"
     BINARY_DIR "${DUCKDB_BUILD_DIR}"
     BUILD_COMMAND
-        cd "${DUCKDB_SOURCE_DIR}" && $(MAKE) "${DUCKDB_BUILD_TYPE}" -j
+        cd "${DUCKDB_SOURCE_DIR}" && ${MAKE} "${DUCKDB_BUILD_TYPE}" -j
     # the below line is intended to bypass the "install" action driven by explicit "install" target
     INSTALL_COMMAND ""
 )
@@ -319,6 +319,7 @@ set(TS_INCLUDE
         exec/include
         statistic/include
         brpc/include
+        ${DUCKDB_PREFIX_DIR}/src/include
         )
 if (NOT KWBASE_OSS)
     list(APPEND TS_INCLUDE icl/autonomy/include)
