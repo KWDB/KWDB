@@ -119,7 +119,7 @@ RelBatchQueue* DmlExec::GetRelBatchQueue() {
 
 KStatus DmlExec::ExecQuery(kwdbContext_p ctx, QueryInfo *req, RespInfo *resp) {
   EnterFunc();
-  AssertNotNull(req);
+  KWAssertNotNull(req);
   EEPgErrorInfo::ResetPgErrorInfo();
   KStatus ret = KStatus::FAIL;
   ctx->relation_ctx = req->relation_ctx;

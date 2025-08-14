@@ -154,11 +154,11 @@ enum SlidingWindowStep {
 using ReceiveNotify = std::function<void(k_int32, k_int32, const std::string&)>;
 using ReceiveNotifyEx = std::function<void()>;
 
-#define NANOS_PER_SEC 1000000000ll
+static constexpr const int64_t nanos_per_sec = 1000000000ll;
 inline int64_t MonotonicNanos() {
   timespec ts;
   clock_gettime(CLOCK_MONOTONIC, &ts);
-  return ts.tv_sec * NANOS_PER_SEC + ts.tv_nsec;
+  return ts.tv_sec * nanos_per_sec + ts.tv_nsec;
 }
 inline void encode_fixed32(uint8_t* buf, uint32_t val) {
 #if __BYTE_ORDER == __LITTLE_ENDIAN

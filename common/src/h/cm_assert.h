@@ -42,7 +42,7 @@ if(!(x)) { \
 #endif
 
 #ifdef K_DEBUG
-#define AssertWithReturnValue(x, r)  assert(x)
+#define AssertWithReturnValue(x, r) (assert(x), (void)0)
 #else
 #define AssertWithReturnValue(x, r) { \
 if(!(x)) { \
@@ -54,7 +54,7 @@ if(!(x)) { \
 
 // define normal macro, assert point is not null, else return errCode 1 (point is nullptr).
 // TODO(liangbo01): correct error code
-#define AssertNotNull(ptr) AssertWithReturnValue(nullptr != ptr, 1)
+#define KWAssertNotNull(ptr) AssertWithReturnValue(nullptr != ptr, 1)
 #define AssertNotNullNoRet(ptr) Assert(nullptr != ptr, 1)
 
 }  // namespace kwdbts

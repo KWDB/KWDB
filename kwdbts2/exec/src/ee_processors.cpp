@@ -545,7 +545,7 @@ KStatus Processors::ScheduleTasks(kwdbContext_p ctx) {
 // Init processors
 KStatus Processors::Init(kwdbContext_p ctx, const TSFlowSpec* fspec) {
   EnterFunc();
-  AssertNotNull(fspec);
+  KWAssertNotNull(fspec);
   fspec_ = fspec;
   // DebugPrint(fspec);
   if (fspec_->processors_size() < 1) {
@@ -663,7 +663,7 @@ KStatus Processors::InitIterator(kwdbContext_p ctx, TsNextRetState nextState) {
     EEPgErrorInfo::SetPgErrorInfo(ERRCODE_DATA_EXCEPTION, "Can't init operators again");
     Return(KStatus::FAIL);
   }
-  AssertNotNull(root_iterator_);
+  KWAssertNotNull(root_iterator_);
   EEPgErrorInfo::ResetPgErrorInfo();
   KWThdContext * thd = current_thd;
   thd->SetPgEncode(nextState);
@@ -703,7 +703,7 @@ KStatus Processors::CloseIterator(kwdbContext_p ctx) {
   if (b_close_) {
     Return(KStatus::SUCCESS);
   }
-  AssertNotNull(root_iterator_);
+  KWAssertNotNull(root_iterator_);
   b_is_cancel_ = true;
   // Stop all task
   for (auto task : weak_tasks_) {
@@ -771,7 +771,7 @@ KStatus Processors::RunWithEncoding(kwdbContext_p ctx, char** buffer,
                                     k_uint32* length, k_uint32* count,
                                     k_bool* is_last_record) {
   EnterFunc();
-  AssertNotNull(root_iterator_);
+  KWAssertNotNull(root_iterator_);
   EEPgErrorInfo::ResetPgErrorInfo();
   *count = 0;
   KStatus ret = KStatus::FAIL;
@@ -817,7 +817,7 @@ KStatus Processors::RunWithEncoding(kwdbContext_p ctx, char** buffer,
 KStatus Processors::RunWithVectorize(kwdbContext_p ctx, char **value, void *buffer, k_uint32 *length,
                                                               k_uint32 *count, k_bool *is_last_record) {
   EnterFunc();
-  AssertNotNull(root_iterator_);
+  KWAssertNotNull(root_iterator_);
 
   DataInfo *info = nullptr;
   *count = 0;
