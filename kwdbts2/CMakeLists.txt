@@ -210,7 +210,7 @@ ExternalProject_Add(
         ${CMAKE_COMMAND} -E copy_directory "${BRPC_SOURCE_DIR}" "${BRPC_BUILD_DIR}"
         COMMAND cd "${BRPC_BUILD_DIR}" && sh ./config_brpc.sh --headers=/usr/include "--libs=/usr/lib /usr/lib64"
     BUILD_COMMAND
-        cd "${BRPC_BUILD_DIR}" && ${MAKE} -j${DEDUCTED_PARALLEL_DEGREE}
+        cd "${BRPC_BUILD_DIR}" && make -j${DEDUCTED_PARALLEL_DEGREE}
     BUILD_IN_SOURCE 0
     INSTALL_COMMAND
         ${CMAKE_COMMAND} -E make_directory "${BRPC_OUTPUT_DIR}/include"
@@ -240,7 +240,7 @@ ExternalProject_Add(
     PREFIX "${DUCKDB_PREFIX_DIR}"
     BINARY_DIR "${DUCKDB_BUILD_DIR}"
     BUILD_COMMAND
-        cd "${DUCKDB_SOURCE_DIR}" && ${MAKE} "${DUCKDB_BUILD_TYPE}" -j
+        cd "${DUCKDB_SOURCE_DIR}" && make "${DUCKDB_BUILD_TYPE}" -j
     # the below line is intended to bypass the "install" action driven by explicit "install" target
     INSTALL_COMMAND ""
 )
