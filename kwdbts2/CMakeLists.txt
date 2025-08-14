@@ -367,6 +367,7 @@ add_dependencies(${KWDBTS2_SERVER_LIB} duckdb)
 # if ("${CMAKE_BUILD_TYPE}" STREQUAL "Debug")
 #     target_link_libraries(${KWDBTS2_SERVER_LIB} PRIVATE ubsan asan)
 # endif ()
+find_library(MYSQL_LIBRARIES mysqlclient)
 target_link_libraries(${KWDBTS2_SERVER_LIB} PRIVATE ${BRPC_OUTPUT_DIR}/lib/libbrpc.a)
 target_link_libraries(${KWDBTS2_SERVER_LIB} PRIVATE gflags ssl lz4)
 target_link_libraries(${KWDBTS2_SERVER_LIB} PRIVATE
@@ -388,6 +389,7 @@ target_link_libraries(${KWDBTS2_SERVER_LIB} PRIVATE
         ${DUCKDB_PREFIX_DIR}/extension/core_functions/libcore_functions_extension.a
         ${DUCKDB_PREFIX_DIR}/extension/parquet/libparquet_extension.a
         ${DUCKDB_PREFIX_DIR}/extension/mysql_scanner/libmysql_scanner_extension.a
+        ${MYSQL_LIBRARIES}
         )
 
 target_link_libraries(${KWDBTS2_SERVER_LIB} PUBLIC ${DUCKDB_PREFIX_DIR}/third_party/skiplist/libduckdb_skiplistlib.a)
