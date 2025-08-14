@@ -307,11 +307,11 @@ class TsStorageIterator {
   bool getCurBlockSpan(BlockItem* cur_block, std::shared_ptr<MMapSegmentTable>& segment_tbl, uint32_t* first_row,
                        uint32_t* count);
 
-  void fetchBlockItems(k_uint32 entity_id);
+  KStatus fetchBlockItems(k_uint32 entity_id);
 
   bool matchesFilterRange(const BlockFilter& filter, SpanValue min, SpanValue max, DATATYPE datatype);
 
-  bool isBlockFiltered(BlockItem* block_item);
+  KStatus isBlockFiltered(BlockItem* block_item, bool& is_filtered);
 
   void nextEntity() {
     cur_block_item_ = nullptr;
