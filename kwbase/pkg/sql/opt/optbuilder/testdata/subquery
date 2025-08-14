@@ -964,7 +964,8 @@ SELECT * FROM (SELECT * FROM xyz AS moo (moo1, moo2, moo3) ORDER BY moo1) as foo
 select
  ├── columns: foo1:1!null moo2:2 moo3:3
  ├── scan foo
- │    └── columns: foo1:1!null moo2:2 moo3:3
+ │    ├── columns: foo1:1!null moo2:2 moo3:3
+ │    └── ordering: +1
  └── filters
       └── foo1:1 < 7
 

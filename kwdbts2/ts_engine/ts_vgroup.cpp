@@ -107,7 +107,7 @@ KStatus TsVGroup::CreateTable(kwdbContext_p ctx, const KTableKey& table_id, roac
 KStatus TsVGroup::PutData(kwdbContext_p ctx, TSTableID table_id, uint64_t mtr_id, TSSlice* primary_tag,
                           TSEntityID entity_id, TSSlice* payload, bool write_wal) {
   TS_LSN current_lsn = 1;
-  if (engine_options_->wal_level != WALMode::OFF && write_wal) {
+  if (engine_options_->wal_level != WALMode::OFF && write_wal && !engine_options_->use_raft_log_as_wal) {
     LockSharedLevelMutex();
     TS_LSN entry_lsn = 0;
     // lock current lsn: Lock the current LSN until the log is written to the cache
@@ -130,7 +130,7 @@ KStatus TsVGroup::PutData(kwdbContext_p ctx, TSTableID table_id, uint64_t mtr_id
     current_lsn = LSNInc();
   }
   // TODO(limeng04): import and export current lsn that temporarily use wal
-  if (engine_options_->wal_level != WALMode::OFF && !write_wal) {
+  if (engine_options_->wal_level != WALMode::OFF && !write_wal && !engine_options_->use_raft_log_as_wal) {
     current_lsn = wal_manager_->FetchCurrentLSN();
   }
   std::list<TSMemSegRowData> rows;
@@ -629,20 +629,45 @@ KStatus TsVGroup::FlushImmSegment(const std::shared_ptr<TsMemSegment>& mem_seg) 
       LOG_ERROR("cannot get block spans.");
       return FAIL;
     }
-    sorted_spans.reserve(all_block_spans.size());
-    std::move(all_block_spans.begin(), all_block_spans.end(), std::back_inserter(sorted_spans));
-    std::sort(sorted_spans.begin(), sorted_spans.end(),
-              [](const std::shared_ptr<TsBlockSpan>& left, const std::shared_ptr<TsBlockSpan>& right) {
-                using Helper = std::tuple<TSEntityID, timestamp64, TS_LSN>;
-                auto left_helper = Helper(left->GetEntityID(), left->GetFirstTS(), *left->GetLSNAddr(0));
-                auto right_helper = Helper(right->GetEntityID(), right->GetFirstTS(), *right->GetLSNAddr(0));
-                return left_helper < right_helper;
-              });
+    if (EngineOptions::g_dedup_rule == DedupRule::KEEP) {
+      sorted_spans.reserve(all_block_spans.size());
+      std::move(all_block_spans.begin(), all_block_spans.end(), std::back_inserter(sorted_spans));
+      std::sort(sorted_spans.begin(), sorted_spans.end(),
+                [](const std::shared_ptr<TsBlockSpan>& left, const std::shared_ptr<TsBlockSpan>& right) {
+                  using Helper = std::tuple<TSEntityID, timestamp64, TS_LSN>;
+                  auto left_helper = Helper(left->GetEntityID(), left->GetFirstTS(), *left->GetLSNAddr(0));
+                  auto right_helper = Helper(right->GetEntityID(), right->GetFirstTS(), *right->GetLSNAddr(0));
+                  return left_helper < right_helper;
+                });
+    } else {
+      TsBlockSpanSortedIterator iter(all_block_spans, EngineOptions::g_dedup_rule);
+      iter.Init();
+      std::shared_ptr<TsBlockSpan> dedup_block_span;
+      bool is_finished = false;
+      while (iter.Next(dedup_block_span, &is_finished) == KStatus::SUCCESS && !is_finished) {
+        sorted_spans.push_back(std::move(dedup_block_span));
+      }
+    }
   }
 
   auto current = version_manager_->Current();
 
+  TSEntityID cur_entity  = 0;
+  uint64_t entity_row_num = 0;
+  std::shared_ptr<const TsPartitionVersion> cur_partition = nullptr;
+  timestamp64 min_ts = INT64_MAX;
+  timestamp64 max_ts = INT64_MIN;
+
   for (auto span : sorted_spans) {
+    if (cur_entity != span->GetEntityID()) {
+      if (cur_entity != 0) {
+        TsEntityFlushInfo entity_flush_info = {cur_entity, min_ts, max_ts, entity_row_num, ""};
+        cur_partition->GetCountManager()->AddFlushEntityAgg(entity_flush_info);
+      }
+      cur_entity = span->GetEntityID();
+      entity_row_num = 0;
+      cur_partition = nullptr;
+    }
     auto table_id = span->GetTableID();
     auto table_version = span->GetTableVersion();
     std::shared_ptr<TsTableSchemaManager> table_schema_manager;
@@ -686,11 +711,23 @@ KStatus TsVGroup::FlushImmSegment(const std::shared_ptr<TsMemSegment>& mem_seg) 
         new_created_partitions.insert(partition);
       }
 
+      if (cur_partition == nullptr) {
+        cur_partition = partition;
+        min_ts = current_span->GetFirstTS();
+      } else if (cur_partition->GetPartitionIdentifier() != partition->GetPartitionIdentifier()) {
+        TsEntityFlushInfo entity_flush_info = {cur_entity, min_ts, max_ts, entity_row_num, ""};
+        cur_partition->GetCountManager()->AddFlushEntityAgg(entity_flush_info);
+        cur_partition = partition;
+        entity_row_num = 0;
+        min_ts = current_span->GetFirstTS();
+      }
       std::shared_ptr<TsBlockSpan> span_to_flush;
       if (last_ts < partition->GetEndTime()) {
         // all the data in this span is whithin the current partition, no need to split.
         span_to_flush = std::move(current_span);
         current_span = nullptr;
+        max_ts = span_to_flush->GetLastTS();
+        entity_row_num += span_to_flush->GetRowNum();
       } else {
         // split the span into two parts.
         // find the first row that satisfies current_span->GetTS(idx) => partition->GetEndTime()
@@ -703,6 +740,8 @@ KStatus TsVGroup::FlushImmSegment(const std::shared_ptr<TsMemSegment>& mem_seg) 
         std::shared_ptr<TsBlockSpan> front_span;
         current_span->SplitFront(split_idx, front_span);
         span_to_flush = std::move(front_span);
+        max_ts = span_to_flush->GetLastTS();
+        entity_row_num += span_to_flush->GetRowNum();
       }
 
       auto it = builders.find(partition);
@@ -729,6 +768,10 @@ KStatus TsVGroup::FlushImmSegment(const std::shared_ptr<TsMemSegment>& mem_seg) 
       }
     }
   }
+  if (entity_row_num != 0) {
+    TsEntityFlushInfo entity_flush_info = {cur_entity, min_ts, max_ts, entity_row_num, ""};
+    cur_partition->GetCountManager()->AddFlushEntityAgg(entity_flush_info);
+  }
 
   for (auto& [k, v] : builders) {
     auto s = v.Finalize();
@@ -750,24 +793,24 @@ KStatus TsVGroup::FlushImmSegment(const std::shared_ptr<TsMemSegment>& mem_seg) 
 }
 
 KStatus TsVGroup::GetIterator(kwdbContext_p ctx, vector<uint32_t> entity_ids,
-                                   std::vector<KwTsSpan> ts_spans, DATATYPE ts_col_type,
-                                   std::vector<k_uint32> scan_cols, std::vector<k_uint32> ts_scan_cols,
-                                   std::vector<k_int32> agg_extend_cols,
-                                   std::vector<Sumfunctype> scan_agg_types,
-                                   std::shared_ptr<TsTableSchemaManager> table_schema_mgr,
-                                   uint32_t table_version, TsStorageIterator** iter,
-                                   std::shared_ptr<TsVGroup> vgroup,
-                                   std::vector<timestamp64> ts_points, bool reverse, bool sorted) {
+                              std::vector<KwTsSpan> ts_spans, std::vector<BlockFilter> block_filter, DATATYPE ts_col_type,
+                              std::vector<k_uint32> scan_cols, std::vector<k_uint32> ts_scan_cols,
+                              std::vector<k_int32> agg_extend_cols,
+                              std::vector<Sumfunctype> scan_agg_types,
+                              std::shared_ptr<TsTableSchemaManager> table_schema_mgr,
+                              uint32_t table_version, TsStorageIterator** iter,
+                              std::shared_ptr<TsVGroup> vgroup,
+                              std::vector<timestamp64> ts_points, bool reverse, bool sorted) {
   // TODO(liuwei) update to use read_lsn to fetch Metrics data optimistically.
   // if the read_lsn is 0, ignore the read lsn checking and return all data (it's no WAL support
   // case). TS_LSN read_lsn = GetOptimisticReadLsn();
   TsStorageIterator* ts_iter = nullptr;
   if (scan_agg_types.empty()) {
-    ts_iter = new TsSortedRawDataIteratorV2Impl(vgroup, entity_ids, ts_spans, ts_col_type, scan_cols,
-                                                  ts_scan_cols, table_schema_mgr, table_version, ASC);
+    ts_iter = new TsSortedRawDataIteratorV2Impl(vgroup, entity_ids, ts_spans, block_filter, ts_col_type, scan_cols,
+                                                ts_scan_cols, table_schema_mgr, table_version, ASC);
   } else {
     // need call Next function times: entity_ids.size(), no matter Next return what.
-    ts_iter = new TsAggIteratorV2Impl(vgroup, entity_ids, ts_spans, ts_col_type, scan_cols, ts_scan_cols,
+    ts_iter = new TsAggIteratorV2Impl(vgroup, entity_ids, ts_spans, block_filter, ts_col_type, scan_cols, ts_scan_cols,
                                       agg_extend_cols, scan_agg_types, ts_points, table_schema_mgr, table_version);
   }
   KStatus s = ts_iter->Init(reverse);
@@ -1005,7 +1048,7 @@ KStatus TsVGroup::DeleteEntity(kwdbContext_p ctx, TSTableID table_id, std::strin
     return KStatus::FAIL;
   }
   auto tag_table = tb_schema_manager->GetTagTable();
-  if (engine_options_->wal_level != WALMode::OFF) {
+  if (engine_options_->wal_level != WALMode::OFF && !engine_options_->use_raft_log_as_wal) {
     TagTuplePack* tag_pack = tag_table->GenTagPack(p_tag.data(), p_tag.size());
     if (UNLIKELY(nullptr == tag_pack)) {
       return KStatus::FAIL;
@@ -1032,6 +1075,9 @@ KStatus TsVGroup::DeleteEntity(kwdbContext_p ctx, TSTableID table_id, std::strin
   if (*count != 0) {
     // todo(liangbo01) we should delete current entity metric datas.
     TS_LSN cur_lsn = wal_manager_->FetchCurrentLSN();
+    if (engine_options_->use_raft_log_as_wal) {
+      cur_lsn = LSNInc();
+    }
     std::vector<KwTsSpan> ts_spans;
     ts_spans.push_back({INT64_MIN, INT64_MAX});
     // delete current entity metric datas.
@@ -1049,7 +1095,7 @@ KStatus TsVGroup::DeleteData(kwdbContext_p ctx, TSTableID tbl_id, std::string& p
   std::vector<DelRowSpan> dtp_list;
   // todo(xy): need to initialize lsn if wal_level = off
   TS_LSN current_lsn = 0;
-  if (engine_options_->wal_level != WALMode::OFF) {
+  if (engine_options_->wal_level != WALMode::OFF && !engine_options_->use_raft_log_as_wal) {
     LockSharedLevelMutex();
     KStatus s = wal_manager_->WriteDeleteMetricsWAL4V2(ctx, mtr_id, tbl_id, p_tag, ts_spans, vgroup_id_, &current_lsn);
     UnLockSharedLevelMutex();
@@ -1057,6 +1103,8 @@ KStatus TsVGroup::DeleteData(kwdbContext_p ctx, TSTableID tbl_id, std::string& p
       LOG_ERROR("WriteDeleteTagWAL failed.");
       return s;
     }
+  } else {
+    current_lsn = LSNInc();
   }
 
   // delete current entity metric datas.
@@ -1140,7 +1188,8 @@ KStatus TsVGroup::WriteBatchData(kwdbContext_p ctx, TSTableID tbl_id, uint32_t t
     LOG_ERROR("GetEntitySegmentBuilder failed.");
     return s;
   }
-  s = builder->WriteBatch(tbl_id, entity_id, table_version, lsn, data);
+  TsEntityFlushInfo flush_info{};
+  s = builder->WriteBatch(tbl_id, entity_id, table_version, lsn, data, &flush_info);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("WriteBatch failed.");
     return s;
@@ -1148,6 +1197,11 @@ KStatus TsVGroup::WriteBatchData(kwdbContext_p ctx, TSTableID tbl_id, uint32_t t
 
   ResetEntityLatestRow(entity_id, INT64_MAX);
   ResetEntityMaxTs(tbl_id, INT64_MAX, entity_id);
+
+  s = partition->GetCountManager()->AddFlushEntityAgg(flush_info);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("AddFlushEntityAgg failed.");
+  }
   return KStatus::SUCCESS;
 }
 
@@ -1176,13 +1230,14 @@ KStatus TsVGroup::FinishWriteBatchData() {
 
 KStatus TsVGroup::CancelWriteBatchData() {
   std::set<PartitionIdentifier> partition_ids;
+  auto current = version_manager_->Current();
   for (auto& kv : write_batch_segment_builders_) {
     partition_ids.insert(kv.first);
-    kv.second->WriteBatchCancel();
+    kv.second->WriteBatchCancel(current);
   }
   write_batch_segment_builders_.clear();
   for (auto p_id : partition_ids) {
-    auto partition = version_manager_->Current()->GetPartition(std::get<0>(p_id), std::get<1>(p_id));
+    auto partition = current->GetPartition(std::get<0>(p_id), std::get<1>(p_id));
     partition->ResetStatus();
   }
   return KStatus::SUCCESS;
@@ -1566,7 +1621,7 @@ KStatus TsVGroup::Vacuum() {
     auto partition_id = partition->GetPartitionIdentifier();
     auto root_path = this->GetPath() / PartitionDirName(partition_id);
     bool need_vacuum = false;
-    s = partition->NeedVacuumEntitySegment(root_path, need_vacuum);
+    s = partition->NeedVacuumEntitySegment(root_path, schema_mgr_, need_vacuum);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("NeedVacuumEntitySegment failed.");
       continue;

@@ -660,7 +660,8 @@ func (r *Replica) stageTsBatchRequest(
 			*roachpb.TsDeleteEntityRequest,
 			*roachpb.TsTagUpdateRequest,
 			*roachpb.TsCommitRequest,
-			*roachpb.TsRollbackRequest:
+			*roachpb.TsRollbackRequest,
+			*roachpb.TsImportFlushRequest:
 			tableID = uint64(r.Desc().TableId)
 			isTsRequest = true
 		case *roachpb.ClearRangeRequest:
@@ -986,6 +987,20 @@ func (r *Replica) stageTsBatchRequest(
 				responses[idx] = roachpb.ResponseUnion{
 					Value: &roachpb.ResponseUnion_TsRollback{
 						TsRollback: &roachpb.TsRollbackResponse{},
+					},
+				}
+			}
+		case *roachpb.TsImportFlushRequest:
+			err = r.store.TsEngine.TSFlushVGroups()
+			if err != nil {
+				return tableID, rangeGroupID, tsTxnID, needAutoCommit, wrapWithNonDeterministicFailure(err, "failed flush import")
+			}
+			if isLocal && responses != nil {
+				responses[idx] = roachpb.ResponseUnion{
+					Value: &roachpb.ResponseUnion_TsImportFlush{
+						TsImportFlush: &roachpb.TsImportFlushResponse{
+							IsSuccess: true,
+						},
 					},
 				}
 			}

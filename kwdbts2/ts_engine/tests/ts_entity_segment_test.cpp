@@ -598,3 +598,93 @@ TEST_F(TsEntitySegmentTest, TestEntityMinMaxRowNum) {
     }
   }
 }
+
+TEST_F(TsEntitySegmentTest, simpleCount) {
+  EngineOptions::g_dedup_rule = DedupRule::KEEP;
+  EngineOptions::max_compact_num = 20;
+  EngineOptions::max_rows_per_block = 1000;
+  EngineOptions::min_rows_per_block = 1000;
+  int64_t total_insert_row_num = 0;
+  int64_t entity_row_num = 0;
+  int64_t last_row_num = 0;
+  {
+    TSTableID table_id = 123;
+    std::vector<AttributeInfo> metric_schema;
+    std::vector<TagInfo> tag_schema;
+    std::shared_ptr<TsTableSchemaManager> schema_mgr;
+    std::vector<DataType> metric_types{DataType::TIMESTAMP, DataType::INT, DataType::DOUBLE, DataType::BIGINT,
+                                        DataType::VARCHAR};
+    CreateTable(table_id, metric_types, &metric_schema, &tag_schema, schema_mgr);
+
+    kwdbContext_t ctx;
+    EngineOptions opts;
+    EngineOptions::mem_segment_max_size = INT32_MAX;
+    std::shared_mutex wal_level_mutex;
+    opts.db_path = "db001-123";
+    auto vgroup = std::make_unique<TsVGroup>(&opts, 0, mgr.get(), &wal_level_mutex, false);
+    EXPECT_EQ(vgroup->Init(&ctx), KStatus::SUCCESS);
+
+    for (int i = 1; i <= 10; ++i) {
+      TSEntityID dev_id = i;
+      auto payload = GenRowPayload(metric_schema, tag_schema, table_id, 1, dev_id, 11 + i * 1000, 100, 1);
+      TsRawPayloadRowParser parser{metric_schema};
+      TsRawPayload p{payload, metric_schema};
+      auto ptag = p.GetPrimaryTag();
+
+      vgroup->PutData(&ctx, table_id, 0, &ptag, dev_id, &payload, false);
+      total_insert_row_num += p.GetRowCount();
+      free(payload.data);
+    }
+
+    for (int i = 1; i <= 10; ++i) {
+      TSEntityID dev_id = i;
+      auto payload = GenRowPayload(metric_schema, tag_schema, table_id, 1, dev_id, 11 + i * 1000, 10000 * 86400, 1);
+      TsRawPayloadRowParser parser{metric_schema};
+      TsRawPayload p{payload, metric_schema};
+      auto ptag = p.GetPrimaryTag();
+
+      vgroup->PutData(&ctx, table_id, 0, &ptag, dev_id, &payload, false);
+      total_insert_row_num += p.GetRowCount();
+      free(payload.data);
+    }
+    ASSERT_EQ(vgroup->Flush(), KStatus::SUCCESS);
+
+    auto current = vgroup->CurrentVersion();
+    auto partitions = current->GetPartitions(1, {{INT64_MIN, INT64_MAX}}, DATATYPE::TIMESTAMP64);
+    ASSERT_EQ(partitions.size(), 2);
+
+    uint64_t sum = 0;
+    uint64_t count_sum = 0;
+
+    for (auto partition : partitions) {
+      for (int i = 1; i <= 10; ++i) {
+        // scan [INT64_MIN, INT64_MAX]
+        uint64_t entity_num = 0;
+        std::vector<KwTsSpan> ts_spans = {{INT64_MIN, INT64_MAX}};
+        TsScanFilterParams filter{1, table_id, vgroup->GetVGroupID(), (TSEntityID)i, DATATYPE::TIMESTAMP64,
+                                  UINT64_MAX, ts_spans};
+        std::list<shared_ptr<TsBlockSpan>> block_spans;
+        auto s = partition->GetBlockSpans(filter, &block_spans, schema_mgr, 1);
+        EXPECT_EQ(s, KStatus::SUCCESS);
+        int row_idx = 0;
+        while (!block_spans.empty()) {
+          auto block_span = block_spans.front();
+          entity_num += block_span->GetRowNum();
+          block_spans.pop_front();
+        }
+        sum += entity_num;
+        ASSERT_EQ(entity_num, 11 + i * 1000);
+        auto count_info = partition->GetCountManager();
+        TsEntityCountHeader count_header{};
+        count_header.entity_id = (TSEntityID)i;
+        s = count_info->GetEntityCountHeader(&count_header);
+        ASSERT_EQ(s, KStatus::SUCCESS);
+        ASSERT_TRUE(count_header.is_count_valid);
+        ASSERT_EQ(count_header.valid_count, 11 + i * 1000);
+        count_sum += count_header.valid_count;
+      }
+    }
+    EXPECT_EQ(total_insert_row_num, sum);
+    EXPECT_EQ(total_insert_row_num, count_sum);
+  }
+}

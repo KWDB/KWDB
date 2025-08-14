@@ -137,7 +137,7 @@ bool TsStorageIterator::matchesFilterRange(const BlockFilter& filter, SpanValue 
         }
 
         if (filter_span.startBoundary != FSB_NONE) {
-          k_int32 max_len = std::max(max.len, filter_span.start.len);
+          k_int32 max_len = std::min(max.len, filter_span.start.len);
           ret = memcmp(max.data, filter_span.start.data, max_len);
           max_res = (ret == 0) ? (max.len - filter_span.start.len) : ret;
         }
@@ -146,7 +146,11 @@ bool TsStorageIterator::matchesFilterRange(const BlockFilter& filter, SpanValue 
       case DATATYPE::INT8:
       case DATATYPE::INT16:
       case DATATYPE::INT32:
-      case DATATYPE::INT64: {
+      case DATATYPE::INT64:
+      case DATATYPE::TIMESTAMP:
+      case DATATYPE::TIMESTAMP64:
+      case DATATYPE::TIMESTAMP64_MICRO:
+      case DATATYPE::TIMESTAMP64_NANO: {
         min_res = (min.ival > filter_span.end.ival) ? 1 : ((min.ival < filter_span.end.ival) ? -1 : 0);
         max_res = (max.ival > filter_span.start.ival) ? 1 : ((max.ival < filter_span.start.ival) ? -1 : 0);
         break;
@@ -204,19 +208,25 @@ bool TsStorageIterator::isBlockFiltered(BlockItem* block_item) {
       SpanValue min, max;
       Defer defer{[&]() {
         if (attrs_[col_id].type == DATATYPE::VARBINARY || attrs_[col_id].type == DATATYPE::VARSTRING) {
-          delete[] min.data;
-          delete[] max.data;
+          free(min.data);
+          free(max.data);
         }
       }};
       switch (attrs_[col_id].type) {
         case DATATYPE::BYTE:
-        case DATATYPE::BOOL:
-        case DATATYPE::CHAR:
-        case DATATYPE::BINARY:
-        case DATATYPE::STRING: {
+        case DATATYPE::BOOL: {
           min.data = static_cast<char*>(min_addr);
           max.data = static_cast<char*>(max_addr);
           min.len = max.len = attrs_[col_id].size;
+          break;
+        }
+        case DATATYPE::BINARY:
+        case DATATYPE::CHAR:
+        case DATATYPE::STRING: {
+          min.data = static_cast<char*>(min_addr);
+          max.data = static_cast<char*>(max_addr);
+          min.len = strlen(min.data);
+          max.len = strlen(max.data);
           break;
         }
         case DATATYPE::INT8: {
@@ -255,15 +265,18 @@ bool TsStorageIterator::isBlockFiltered(BlockItem* block_item) {
         }
         case DATATYPE::VARBINARY:
         case DATATYPE::VARSTRING: {
+          bool is_var_string = (attrs_[col_id].type == DATATYPE::VARSTRING);
           MetricRowID row_id = block_item->getRowID(1);
           std::shared_ptr<void> min_agg_addr = segment_tbl->varColumnAggAddr(row_id, col_id, Sumfunctype::MIN);
-          min.len = *(reinterpret_cast<uint16_t*>(min_agg_addr.get()));
-          min.data = new char[min.len];
+          k_int32 min_len = *(reinterpret_cast<uint16_t*>(min_agg_addr.get()));
+          min.len = is_var_string ? min_len - 1 : min_len;
+          min.data = static_cast<char*>(malloc(min.len));
           memcpy(min.data, reinterpret_cast<char*>(min_agg_addr.get()) + kStringLenLen, min.len);
 
           std::shared_ptr<void> max_agg_addr = segment_tbl->varColumnAggAddr(row_id, col_id, Sumfunctype::MAX);
-          max.len = *(reinterpret_cast<uint16_t*>(max_agg_addr.get()));
-          max.data = new char[max.len];
+          k_int32 max_len = *(reinterpret_cast<uint16_t*>(max_agg_addr.get()));
+          max.len = is_var_string ? max_len - 1 : max_len;
+          max.data = static_cast<char*>(malloc(max.len));
           memcpy(max.data, reinterpret_cast<char*>(max_agg_addr.get()) + kStringLenLen, max.len);
           break;
         }

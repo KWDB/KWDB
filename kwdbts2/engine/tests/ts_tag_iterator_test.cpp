@@ -148,7 +148,7 @@ TEST_F(TestEngine, tagiterator) {
   // tag iterator
   std::vector<EntityResultIndex> entity_id_list;
   std::vector<k_uint32> scan_tags = {1, 2};
-  std::vector<k_uint32> hps;
+  std::unordered_set<k_uint32> hps;
   make_hashpoint(&hps);
   BaseEntityIterator *iter;
   ASSERT_EQ(ts_table->GetTagIterator(ctx_, scan_tags,hps, &iter, 1), KStatus::SUCCESS);
@@ -224,15 +224,15 @@ TEST_F(TestEngine, updatetag) {
     k_uint32 p_len = 0;
     data_value = GenSomePayloadData(ctx_, row_num_, p_len, start_ts1 + i * 100, &meta, 10, 1, false);
     TSSlice payload1{data_value, p_len};
-    ASSERT_EQ(tbl_range->PutEntity(ctx_, payload1, 0, true), KStatus::SUCCESS);
+    ASSERT_EQ(tbl_range->PutEntity(ctx_, payload1, 0), KStatus::SUCCESS);
     delete[] data_value;
   }
   // tag iterator
   std::vector<EntityResultIndex> entity_id_list;
   std::vector<k_uint32> scan_tags = {1, 2};
-  std::vector<k_uint32> hps;
-  for (uint32_t i =0; i< g_testcase_hash_num; i++) {
-    hps.push_back(i);
+  std::unordered_set<k_uint32> hps;
+  for (uint32_t i = 0; i < g_testcase_hash_num; i++) {
+    hps.insert(i);
   }
   BaseEntityIterator *iter;
   ASSERT_EQ(ts_table->GetTagIterator(ctx_, scan_tags,hps, &iter, 1), KStatus::SUCCESS);
@@ -332,7 +332,7 @@ TEST_F(TestEngine, altertag) {
   // tag iterator
   std::vector<EntityResultIndex> entity_id_list;
   std::vector<k_uint32> scan_tags = {1, 2, 3};
-  std::vector<k_uint32> hps;
+  std::unordered_set<uint32_t> hps;
   make_hashpoint(&hps);
   BaseEntityIterator *iter;
   ASSERT_EQ(ts_table->GetTagIterator(ctx_, scan_tags,hps, &iter, cur_version), KStatus::SUCCESS);

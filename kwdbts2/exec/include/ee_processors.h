@@ -86,6 +86,9 @@ class Processors {
 
   BaseOperator *GetRootIterator() { return root_iterator_; }
 
+ public:
+  k_bool b_is_cancel_{false};
+
  private:
   // tsflow spec of physical plan
   const TSFlowSpec *fspec_;

@@ -225,7 +225,11 @@ class TsBlockSpanSortedIterator {
           }
           cur_block_span->TrimFront(1);
         } else {
-          cur_block_span->SplitFront(row_idx, block_span);
+          if (cur_block_span->GetRowNum() == row_idx) {
+            block_span = std::move(cur_block_span);
+          } else {
+            cur_block_span->SplitFront(row_idx, block_span);
+          }
           iter = span_row_infos_.end();
         }
       } else {
@@ -245,12 +249,16 @@ class TsBlockSpanSortedIterator {
 
       // check whether the current TsBlockSpan is empty.
       // If it is not empty, it needs to be readded to the linked list.
-      if (cur_block_span->GetRowNum() != 0) {
-        TsBlockSpanRowInfo next_row_info = getFirstRowInfo(cur_block_span);
-        span_row_infos_.pop_front();
-        insertRowInfo(next_row_info);
+      if (cur_block_span) {
+        if (cur_block_span->GetRowNum() != 0) {
+          TsBlockSpanRowInfo next_row_info = getFirstRowInfo(cur_block_span);
+          span_row_infos_.pop_front();
+          insertRowInfo(next_row_info);
+        } else {
+          cur_block_span->Clear();
+          span_row_infos_.pop_front();
+        }
       } else {
-        cur_block_span->Clear();
         span_row_infos_.pop_front();
       }
 
@@ -281,7 +289,11 @@ class TsBlockSpanSortedIterator {
         assert(prev_row_idx >= 0);
         getTsAndLSN(cur_block_span, prev_row_idx, cur_span_row_ts, cur_span_row_lsn);
         TsBlockSpanRowInfo prev_row_info = {cur_block_span->GetEntityID(), cur_span_row_ts, cur_span_row_lsn};
-        cur_block_span->SplitFront(row_idx, block_span);
+        if (cur_block_span->GetRowNum() == row_idx) {
+          block_span = std::move(cur_block_span);
+        } else {
+          cur_block_span->SplitFront(row_idx, block_span);
+        }
         if (prev_row_info.IsSameEntityAndTs(next_span_row_info)) {
           // need dedup
           dedup_row_info = next_span_row_info;
@@ -312,12 +324,16 @@ class TsBlockSpanSortedIterator {
 
       // check whether the current TsBlockSpan is empty.
       // If it is not empty, it needs to be readded to the linked list.
-      if (cur_block_span->GetRowNum() != 0) {
-        TsBlockSpanRowInfo next_row_info = getFirstRowInfo(cur_block_span);
-        span_row_infos_.pop_front();
-        insertRowInfo(next_row_info);
+      if (cur_block_span) {
+        if (cur_block_span->GetRowNum() != 0) {
+          TsBlockSpanRowInfo next_row_info = getFirstRowInfo(cur_block_span);
+          span_row_infos_.pop_front();
+          insertRowInfo(next_row_info);
+        } else {
+          cur_block_span->Clear();
+          span_row_infos_.pop_front();
+        }
       } else {
-        cur_block_span->Clear();
         span_row_infos_.pop_front();
       }
 
@@ -342,19 +358,27 @@ class TsBlockSpanSortedIterator {
       }
     } else {
       if (!is_reverse_) {
-        cur_block_span->SplitFront(row_idx, block_span);
+        if (cur_block_span->GetRowNum() == row_idx) {
+          block_span = std::move(cur_block_span);
+        } else {
+          cur_block_span->SplitFront(row_idx, block_span);
+        }
       } else {
         cur_block_span->SplitBack(span_row_infos_.begin()->row_idx - row_idx, block_span);
       }
 
       // check whether the current TsBlockSpan is empty.
       // If it is not empty, it needs to be readded to the linked list.
-      if (cur_block_span->GetRowNum() != 0) {
-        TsBlockSpanRowInfo next_row_info = getFirstRowInfo(cur_block_span);
-        span_row_infos_.pop_front();
-        insertRowInfo(next_row_info);
+      if (cur_block_span) {
+        if (cur_block_span->GetRowNum() != 0) {
+          TsBlockSpanRowInfo next_row_info = getFirstRowInfo(cur_block_span);
+          span_row_infos_.pop_front();
+          insertRowInfo(next_row_info);
+        } else {
+          cur_block_span->Clear();
+          span_row_infos_.pop_front();
+        }
       } else {
-        cur_block_span->Clear();
         span_row_infos_.pop_front();
       }
     }

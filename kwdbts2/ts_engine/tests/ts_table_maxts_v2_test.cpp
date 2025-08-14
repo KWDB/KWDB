@@ -293,7 +293,7 @@ TEST_F(TestTsTableMaxTSV2, deleteSomeData) {
   uint64_t tmp_count;
   uint64_t p_tag_entity_id = entity_num;
   std::string p_key = string((char*)(&p_tag_entity_id), sizeof(p_tag_entity_id));
-  s = engine_->DeleteData(ctx_, table_id, 0, p_key, {{start_ts + entity_num, start_ts + entity_num}}, &tmp_count, 0, false);
+  s = engine_->DeleteData(ctx_, table_id, 0, p_key, {{start_ts + entity_num, start_ts + entity_num}}, &tmp_count, 0);
   ASSERT_EQ(s, KStatus::SUCCESS);
   EXPECT_EQ(tmp_count, 1);
 

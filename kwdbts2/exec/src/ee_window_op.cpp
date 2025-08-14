@@ -760,12 +760,14 @@ void WindowOperator::ProcessDataValue(kwdbContext_p ctx, RowBatch* row_batch,
 
 EEIteratorErrCode WindowOperator::Reset(kwdbContext_p ctx) {
   EnterFunc();
+  childrens_[0]->Reset(ctx);
   Return(EEIteratorErrCode::EE_OK)
 }
 
 EEIteratorErrCode WindowOperator::Close(kwdbContext_p ctx) {
   EnterFunc();
-  Return(EEIteratorErrCode::EE_OK);
+  Reset(ctx);
+  Return(childrens_[0]->Close(ctx));
 }
 
 BaseOperator* WindowOperator::Clone() {

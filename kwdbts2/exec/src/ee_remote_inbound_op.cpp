@@ -23,6 +23,14 @@
 
 namespace kwdbts {
 
+RemoteInboundOperator::~RemoteInboundOperator() {
+  if (stream_recvr_) {
+    BrMgr::GetInstance().GetDataStreamMgr()->DestroyPassThroughChunkBuffer(query_id_);
+    stream_recvr_->SetReceiveNotify(nullptr);
+    stream_recvr_->Close();
+  }
+}
+
 EEIteratorErrCode RemoteInboundOperator::Init(kwdbContext_p ctx) {
   EnterFunc();
   EEIteratorErrCode code = InboundOperator::Init(ctx);
@@ -114,7 +122,7 @@ EEIteratorErrCode RemoteInboundOperator::TryPullChunk(kwdbContext_p ctx,
       new_chunks_num_--;
     }
   }
-  if (KStatus::SUCCESS != PullChunk(chunk)) {
+  if (KStatus::SUCCESS != PullChunk(ctx, chunk)) {
     LOG_ERROR("PullChunk  failed, queryid %ld", query_id_);
     return EEIteratorErrCode::EE_ERROR;
   }
@@ -122,7 +130,7 @@ EEIteratorErrCode RemoteInboundOperator::TryPullChunk(kwdbContext_p ctx,
   return EEIteratorErrCode::EE_OK;
 }
 
-KStatus RemoteInboundOperator::PullChunk(DataChunkPtr& chunk) {
+KStatus RemoteInboundOperator::PullChunk(kwdbContext_p ctx, DataChunkPtr& chunk) {
   if (KStatus::SUCCESS != stream_recvr_->GetChunkForPipeline(&chunk, 0)) {
     LOG_ERROR("eng to Get DataChunk, faild");
     return KStatus::FAIL;
@@ -284,11 +292,6 @@ EEIteratorErrCode RemoteInboundOperator::Close(kwdbContext_p ctx) {
     Return(code);
   }
 
-  if (stream_recvr_) {
-    BrMgr::GetInstance().GetDataStreamMgr()->DestroyPassThroughChunkBuffer(query_id_);
-    stream_recvr_->SetReceiveNotify(nullptr);
-    stream_recvr_->Close();
-  }
   Return(EEIteratorErrCode::EE_OK);
 }
 

@@ -1,0 +1,138 @@
+> create table ts_table
+(time timestamp not null, e1 smallint, e2 int, e3 bigint, e4 float, e5 bool, e6 varchar)
+    attributes (attr1 smallint not null, attr2 int, attr3 bigint, attr4 float, attr5 bool, attr6 varchar)
+primary attributes (attr1);
+CREATE TABLE
+> insert into ts_table values('2023-05-31 10:00:00', 1000,1000000,100000000000000000,100000000000000000.101,true, 'test_ts1', 1000, 1000000, 1000000000, 100.11, false, 'test_attr_ts'), ('2023-05-31 11:00:00', 2000,2000000,200000000000000000,200000000000000000.202,true, 'test_ts2', 2000, 2000000, 2000000000, 200.11, false, 'test_attr_ts2'), ('2023-05-31 12:00:00', 3000,3000000,300000000000000000,300000000000000000.202,true, 'test_ts3', 3000, 3000000, 3000000000, 300.11, false, 'test_attr_ts3');
+INSERT 3
+> explain select * from (select * from ts_table order by e1 desc) limit 10;
+           tree          |    field    |  description
+-------------------------+-------------+-----------------
+                         | distributed | true
+                         | vectorized  | false
+  limit                  |             |
+   │                     | engine type | time series
+   │                     | count       | 10
+   └── sort              |             |
+        │                | engine type | time series
+        │                | order       | -e1
+        └── synchronizer |             |
+             └── ts scan |             |
+                         | ts-table    | ts_table
+                         | access mode | tableTableMeta
+(12 rows)
+> explain select * from (select * from ts_table WITH ORDINALITY order by e1 desc) limit 10;
+                tree               |    field    |  description
+-----------------------------------+-------------+-----------------
+                                   | distributed | false
+                                   | vectorized  | false
+  render                           |             |
+   │                               | time        | "time"
+   │                               | e1          | e1
+   │                               | e2          | e2
+   │                               | e3          | e3
+   │                               | e4          | e4
+   │                               | e5          | e5
+   │                               | e6          | e6
+   │                               | ordinality  | "ordinality"
+   │                               | attr1       | attr1
+   │                               | attr2       | attr2
+   │                               | attr3       | attr3
+   │                               | attr4       | attr4
+   │                               | attr5       | attr5
+   │                               | attr6       | attr6
+   └── limit                       |             |
+        │                          | count       | 10
+        └── sort                   |             |
+             │                     | order       | -e1
+             └── ordinality        |             |
+                  └── synchronizer |             |
+                       └── ts scan |             |
+                                   | ts-table    | ts_table
+                                   | access mode | tableTableMeta
+(26 rows)
+> explain select * from (select * from ts_table order by e1 desc) WITH ORDINALITY limit 10;
+                tree               |    field    |  description
+-----------------------------------+-------------+-----------------
+                                   | distributed | false
+                                   | vectorized  | false
+  render                           |             |
+   │                               | time        | "time"
+   │                               | e1          | e1
+   │                               | e2          | e2
+   │                               | e3          | e3
+   │                               | e4          | e4
+   │                               | e5          | e5
+   │                               | e6          | e6
+   │                               | ordinality  | "ordinality"
+   │                               | attr1       | attr1
+   │                               | attr2       | attr2
+   │                               | attr3       | attr3
+   │                               | attr4       | attr4
+   │                               | attr5       | attr5
+   │                               | attr6       | attr6
+   └── ordinality                  |             |
+        └── limit                  |             |
+             │                     | engine type | time series
+             │                     | count       | 10
+             └── sort              |             |
+                  │                | engine type | time series
+                  │                | order       | -e1
+                  └── synchronizer |             |
+                       └── ts scan |             |
+                                   | ts-table    | ts_table
+                                   | access mode | tableTableMeta
+(28 rows)
+> explain select e1 from (select * from ts_table order by e1 desc) group by e1 limit 10;
+           tree          |    field    | description
+-------------------------+-------------+--------------
+                         | distributed | true
+                         | vectorized  | false
+  limit                  |             |
+   │                     | engine type | time series
+   │                     | count       | 10
+   └── distinct          |             |
+        │                | distinct on | e1
+        └── synchronizer |             |
+             └── ts scan |             |
+                         | ts-table    | ts_table
+                         | access mode | metaTable
+(11 rows)
+> explain select distinct On(e2) e1 from (select * from ts_table order by e1 desc) group by e1 limit 10;
+ERROR: column "e2" must appear in the GROUP BY clause or be used in an aggregate function
+SQLSTATE: 42803
+> explain select min(e1) from (select * from ts_table order by e2 desc) limit 10;
+      tree     |        field        | description
+---------------+---------------------+--------------
+               | distributed         | true
+               | vectorized          | false
+  group        |                     |
+   │           | engine type         | time series
+   │           | aggregate 0         | min(e1)
+   │           | scalar              |
+   │           | pushLocalAggToScan  | true
+   │           | addSynchronizer     | true
+   └── ts scan |                     |
+               | ts-table            | ts_table
+               | access mode         | metaTable
+               | use statistic       | true
+(12 rows)
+> explain select e1 from (select * from ts_table order by e2 desc limit 10);
+             tree             |    field    | description
+------------------------------+-------------+--------------
+                              | distributed | true
+                              | vectorized  | false
+  render                      |             |
+   │                          | engine type | time series
+   │                          | e1          | e1
+   └── limit                  |             |
+        │                     | engine type | time series
+        │                     | count       | 10
+        └── sort              |             |
+             │                | engine type | time series
+             │                | order       | -e2
+             └── synchronizer |             |
+                  └── ts scan |             |
+                              | ts-table    | ts_table
+                              | access mode | metaTable
+(15 rows)

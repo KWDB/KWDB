@@ -156,6 +156,8 @@ class ExecPool {
   k_bool IsInited();
   k_bool IsStopped();
 
+  k_bool IsEmpty() { return task_queue_.empty(); }
+
  public:
   std::string db_path_;
 };  // ExecPool

@@ -25,15 +25,31 @@ class Controller;
 namespace kwdbts {
 
 template <typename T>
-class PInternalServiceBase : public T {
- public:
-  explicit PInternalServiceBase(BrMgr* br_mgr) : br_mgr_(br_mgr) {}
-  ~PInternalServiceBase() override = default;
+class BoxServiceBase : public T {
+ private:
+  void DialDataRecvrInternal(::google::protobuf::RpcController* controller,
+                             ::google::protobuf::Closure* done,
+                             const ::kwdbts::PDialDataRecvr* request,
+                             ::kwdbts::PDialDataRecvrResult* response);
 
+  void TransmitChunkInternal(::google::protobuf::RpcController* controller,
+                             ::google::protobuf::Closure* done,
+                             const ::kwdbts::PTransmitChunkParams* request,
+                             ::kwdbts::PTransmitChunkResult* response);
+
+  void SendExecStatusInternal(::google::protobuf::RpcController* controller,
+                              ::google::protobuf::Closure* done,
+                              const ::kwdbts::PSendExecStatus* request,
+                              ::kwdbts::PSendExecStatusResult* response);
+
+ public:
   void DialDataRecvr(::google::protobuf::RpcController* controller,
                      const ::kwdbts::PDialDataRecvr* request,
                      ::kwdbts::PDialDataRecvrResult* response,
                      ::google::protobuf::Closure* done) override;
+
+  explicit BoxServiceBase(BrMgr* br_mgr) : br_mgr_(br_mgr) {}
+  ~BoxServiceBase() override = default;
 
   void TransmitChunk(::google::protobuf::RpcController* controller,
                      const ::kwdbts::PTransmitChunkParams* request,
@@ -44,22 +60,6 @@ class PInternalServiceBase : public T {
                       const ::kwdbts::PSendExecStatus* request,
                       ::kwdbts::PSendExecStatusResult* response,
                       ::google::protobuf::Closure* done) override;
-
- private:
-  void DialDataRecvrInternal(::google::protobuf::RpcController* controller,
-                             const ::kwdbts::PDialDataRecvr* request,
-                             ::kwdbts::PDialDataRecvrResult* response,
-                             ::google::protobuf::Closure* done);
-
-  void TransmitChunkInternal(::google::protobuf::RpcController* controller,
-                             const ::kwdbts::PTransmitChunkParams* request,
-                             ::kwdbts::PTransmitChunkResult* response,
-                             ::google::protobuf::Closure* done);
-
-  void SendExecStatusInternal(::google::protobuf::RpcController* controller,
-                              const ::kwdbts::PSendExecStatus* request,
-                              ::kwdbts::PSendExecStatusResult* response,
-                              ::google::protobuf::Closure* done);
 
  protected:
   BrMgr* br_mgr_;

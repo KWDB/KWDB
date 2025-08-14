@@ -57,7 +57,7 @@ class TestV2DeleteTest : public ::testing::Test {
     DATATYPE ts_col_type = table_schema_mgr->GetTsColDataType();
     std::vector<k_uint32> scan_cols = {0, 1, 2};
     std::vector<Sumfunctype> scan_agg_types;
-    auto s = entity_v_group->GetIterator(ctx_, {entity_id}, {ts_span}, ts_col_type,
+    auto s = entity_v_group->GetIterator(ctx_, {entity_id}, {ts_span}, {}, ts_col_type,
                         scan_cols, scan_cols, {}, scan_agg_types, table_schema_mgr,
                         1, &ts_iter, entity_v_group, {}, false, false);
     ASSERT_EQ(s, KStatus::SUCCESS);
@@ -123,7 +123,7 @@ TEST_F(TestV2DeleteTest, basicDelete) {
   uint64_t tmp_count;
   uint64_t p_tag_entity_id = 1;
   std::string p_key = string((char*)(&p_tag_entity_id), sizeof(p_tag_entity_id));
-  s = engine_->DeleteData(ctx_, table_id, 0, p_key, {{start_ts, start_ts + row_num / 2 * 1000 - 1}}, &tmp_count, 0, false);
+  s = engine_->DeleteData(ctx_, table_id, 0, p_key, {{start_ts, start_ts + row_num / 2 * 1000 - 1}}, &tmp_count, 0);
   ASSERT_EQ(s, KStatus::SUCCESS);
 
   CheckRowCount(table_schema_mgr, entity_v_group, 1, ts_span, row_num / 2);
@@ -179,11 +179,11 @@ TEST_F(TestV2DeleteTest, MultiInsertAndDelete) {
   uint64_t tmp_count;
   uint64_t p_tag_entity_id = 1;
   std::string p_key = string((char*)(&p_tag_entity_id), sizeof(p_tag_entity_id));
-  s = engine_->DeleteData(ctx_, table_id, 0, p_key, {{start_ts, start_ts + row_num * 1000 - 1}}, &tmp_count, 0, false);
+  s = engine_->DeleteData(ctx_, table_id, 0, p_key, {{start_ts, start_ts + row_num * 1000 - 1}}, &tmp_count, 0);
   ASSERT_EQ(s, KStatus::SUCCESS);
   CheckRowCount(table_schema_mgr, entity_v_group, 1, ts_span, row_num * (insert_times - 1));
 
-  s = engine_->DeleteData(ctx_, table_id, 0, p_key, {{start_ts + row_num * 1000 * (insert_times - 1), INT64_MAX}}, &tmp_count, 0, false);
+  s = engine_->DeleteData(ctx_, table_id, 0, p_key, {{start_ts + row_num * 1000 * (insert_times - 1), INT64_MAX}}, &tmp_count, 0);
   ASSERT_EQ(s, KStatus::SUCCESS);
   CheckRowCount(table_schema_mgr, entity_v_group, 1, ts_span, row_num * (insert_times - 2));
 }
@@ -234,7 +234,7 @@ TEST_F(TestV2DeleteTest, InsertAndDeleteAndInsert) {
   uint64_t p_tag_entity_id = 1;
   std::string p_key = string((char*)(&p_tag_entity_id), sizeof(p_tag_entity_id));
   for (size_t i = 0; i < 5; i++) {
-    s = engine_->DeleteData(ctx_, table_id, 0, p_key, {{start_ts, start_ts + del_num * 1000 - 1}}, &tmp_count, 0, false);
+    s = engine_->DeleteData(ctx_, table_id, 0, p_key, {{start_ts, start_ts + del_num * 1000 - 1}}, &tmp_count, 0);
     ASSERT_EQ(s, KStatus::SUCCESS);
     KwTsSpan ts_span = {start_ts, INT64_MAX};
     CheckRowCount(table_schema_mgr, entity_v_group, 1, ts_span, (i + 1) * (row_num - del_num));

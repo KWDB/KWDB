@@ -46,7 +46,7 @@ class TsStorageIteratorV2Impl : public TsStorageIterator {
  public:
   TsStorageIteratorV2Impl();
   TsStorageIteratorV2Impl(std::shared_ptr<TsVGroup>& vgroup, vector<uint32_t>& entity_ids,
-                          std::vector<KwTsSpan>& ts_spans, DATATYPE ts_col_type,
+                          std::vector<KwTsSpan>& ts_spans, std::vector<BlockFilter>& block_filter, DATATYPE ts_col_type,
                           std::vector<k_uint32>& kw_scan_cols, std::vector<k_uint32>& ts_scan_cols,
                           std::shared_ptr<TsTableSchemaManager> table_schema_mgr, uint32_t table_version);
   ~TsStorageIteratorV2Impl();
@@ -66,6 +66,13 @@ class TsStorageIteratorV2Impl : public TsStorageIterator {
    */
   KStatus ScanEntityBlockSpans(timestamp64 ts);
 
+  KStatus getBlockSpanMinValue(std::shared_ptr<TsBlockSpan> block_span, uint32_t col_id, uint32_t type, void*& min);
+  KStatus getBlockSpanMaxValue(std::shared_ptr<TsBlockSpan> block_span, uint32_t col_id, uint32_t type, void*& max);
+  KStatus getBlockSpanVarMinValue(std::shared_ptr<TsBlockSpan> block_span, uint32_t col_id, uint32_t type, TSSlice& min);
+  KStatus getBlockSpanVarMaxValue(std::shared_ptr<TsBlockSpan> block_span, uint32_t col_id, uint32_t type, TSSlice& max);
+
+  bool isBlockFiltered(std::shared_ptr<TsBlockSpan>& block_span);
+
   k_int32 cur_entity_index_{-1};
   k_int32 cur_partition_index_{-1};
   TSTableID table_id_;
@@ -83,8 +90,9 @@ class TsStorageIteratorV2Impl : public TsStorageIterator {
 class TsSortedRawDataIteratorV2Impl : public TsStorageIteratorV2Impl {
  public:
   TsSortedRawDataIteratorV2Impl(std::shared_ptr<TsVGroup>& vgroup, vector<uint32_t>& entity_ids,
-                                std::vector<KwTsSpan>& ts_spans, DATATYPE ts_col_type,
-                                std::vector<k_uint32>& kw_scan_cols, std::vector<k_uint32>& ts_scan_cols,
+                                std::vector<KwTsSpan>& ts_spans, std::vector<BlockFilter>& block_filter,
+                                DATATYPE ts_col_type, std::vector<k_uint32>& kw_scan_cols,
+                                std::vector<k_uint32>& ts_scan_cols,
                                 std::shared_ptr<TsTableSchemaManager> table_schema_mgr, uint32_t table_version,
                                 SortOrder order_type = ASC);
   ~TsSortedRawDataIteratorV2Impl();
@@ -102,7 +110,7 @@ class TsSortedRawDataIteratorV2Impl : public TsStorageIteratorV2Impl {
 class TsAggIteratorV2Impl : public TsStorageIteratorV2Impl {
  public:
   TsAggIteratorV2Impl(std::shared_ptr<TsVGroup>& vgroup, vector<uint32_t>& entity_ids,
-                      std::vector<KwTsSpan>& ts_spans, DATATYPE ts_col_type,
+                      std::vector<KwTsSpan>& ts_spans, std::vector<BlockFilter>& block_filter, DATATYPE ts_col_type,
                       std::vector<k_uint32>& kw_scan_cols, std::vector<k_uint32>& ts_scan_cols,
                       std::vector<k_int32>& agg_extend_cols,
                       std::vector<Sumfunctype>& scan_agg_types, std::vector<timestamp64>& ts_points,
@@ -116,6 +124,9 @@ class TsAggIteratorV2Impl : public TsStorageIteratorV2Impl {
 
  protected:
   KStatus Aggregate();
+  KStatus CountAggregate();
+  KStatus RecalculateCountInfo(std::shared_ptr<const TsPartitionVersion> partition,
+                               shared_ptr<TsPartitionEntityCountManager> count_manager);
   KStatus UpdateAggregation(bool can_remove_last_candidate);
   KStatus UpdateAggregation(std::shared_ptr<TsBlockSpan>& block_span,
                             bool aggregate_first_last_cols,

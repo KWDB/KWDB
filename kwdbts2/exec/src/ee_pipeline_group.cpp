@@ -75,6 +75,14 @@ k_int32 PipelineGroup::GetDegree() {
   return oper->GetDegree();
 }
 
+void PipelineGroup::Cancel() {
+  for (auto task : tasks_) {
+    if (auto sp = task.lock()) {
+      sp->Cancel();
+    }
+  }
+}
+
 void PipelineGroup::GetPipelines(std::vector<PipelineGroup *> &pipelines, bool include) {
   if (include) {
     pipelines.push_back(this);
@@ -92,12 +100,20 @@ void PipelineGroup::SetDependenciePipeline(PipelineGroup *child) {
 
 std::shared_ptr<PipelineTask> PipelineGroup::CreateTask(kwdbContext_p ctx) {
   std::shared_ptr<PipelineTask> task = std::make_shared<PipelineTask>(this);
-  if (nullptr != task) {
-    task->SetOperator(operator_);
-    tasks_.push_back(task);
-    ++total_task_;
-    task->Init(ctx);
+  if (nullptr == task) {
+    LOG_ERROR("Create pipeline task failed.");
+    return nullptr;
   }
+
+  KStatus ret = task->Init(ctx);
+  if (ret != KStatus::SUCCESS) {
+    task.reset();
+    return nullptr;
+  }
+
+  task->SetOperator(operator_);
+  tasks_.push_back(task);
+  ++total_task_;
 
   return task;
 }

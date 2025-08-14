@@ -18,37 +18,40 @@
 
 namespace kwdbts {
 
-class RecoverableClosure : public ::google::protobuf::Closure {
- public:
-  RecoverableClosure(std::shared_ptr<kwdbts::PInternalServiceRecoverableStub> stub,
-                     ::google::protobuf::RpcController* controller,
-                     ::google::protobuf::Closure* done)
-      : stub_(std::move(stub)), controller_(controller), done_(done) {}
+void BoxServiceRetryableClosureStub::DialDataRecvr(::google::protobuf::RpcController* controller,
+                                                   const ::kwdbts::PDialDataRecvr* request,
+                                                   ::kwdbts::PDialDataRecvrResult* response,
+                                                   ::google::protobuf::Closure* done) {
+  auto closure = new RetryableClosure(shared_from_this(), controller, done);
+  stub_->DialDataRecvr(controller, request, response, closure);
+}
 
-  void Run() override {
-    auto* cntl = static_cast<brpc::Controller*>(controller_);
-    if (cntl->Failed() && cntl->ErrorCode() == EHOSTDOWN) {
-      auto st = stub_->ResetChannel();
-      if (st != KStatus::SUCCESS) {
-        LOG_WARN("Fail to reset channel: %s", cntl->ErrorText().c_str());
-      }
+RetryableClosure::RetryableClosure(std::shared_ptr<kwdbts::BoxServiceRetryableClosureStub> stub,
+                                   ::google::protobuf::RpcController* controller,
+                                   ::google::protobuf::Closure* done)
+    : stub_(std::move(stub)), controller_(controller), done_(done) {}
+
+void RetryableClosure::Run() {
+  auto* cntl = static_cast<brpc::Controller*>(controller_);
+  if (cntl->Failed() && cntl->ErrorCode() == EHOSTDOWN) {
+    auto st = stub_->ResetChannel();
+    if (st != KStatus::SUCCESS) {
+      LOG_WARN("Fail to reset channel: %s", cntl->ErrorText().c_str());
     }
-    done_->Run();
-    delete this;
   }
+  done_->Run();
+  delete this;
+}
 
- private:
-  std::shared_ptr<kwdbts::PInternalServiceRecoverableStub> stub_;
-  ::google::protobuf::RpcController* controller_;
-  ::google::protobuf::Closure* done_;
-};
+void BoxServiceRetryableClosureStub::TransmitChunk(::google::protobuf::RpcController* controller,
+                                                   const ::kwdbts::PTransmitChunkParams* request,
+                                                   ::kwdbts::PTransmitChunkResult* response,
+                                                   ::google::protobuf::Closure* done) {
+  auto closure = new RetryableClosure(shared_from_this(), controller, done);
+  stub_->TransmitChunk(controller, request, response, closure);
+}
 
-PInternalServiceRecoverableStub::PInternalServiceRecoverableStub(const butil::EndPoint& endpoint)
-    : endpoint_(endpoint) {}
-
-PInternalServiceRecoverableStub::~PInternalServiceRecoverableStub() = default;
-
-KStatus PInternalServiceRecoverableStub::ResetChannel(const std::string& protocol) {
+KStatus BoxServiceRetryableClosureStub::ResetChannel(const std::string& protocol) {
   std::lock_guard<std::mutex> l(mutex_);
 
   brpc::ChannelOptions options;
@@ -67,32 +70,16 @@ KStatus PInternalServiceRecoverableStub::ResetChannel(const std::string& protoco
     LOG_ERROR("Fail to init channel.\n");
     return KStatus::FAIL;
   }
-  stub_ = std::make_shared<PInternalService_Stub>(channel.release(),
-                                                  google::protobuf::Service::STUB_OWNS_CHANNEL);
+  stub_ = std::make_shared<BoxService_Stub>(channel.release(),
+                                            google::protobuf::Service::STUB_OWNS_CHANNEL);
   return KStatus::SUCCESS;
 }
 
-void PInternalServiceRecoverableStub::DialDataRecvr(::google::protobuf::RpcController* controller,
-                                                    const ::kwdbts::PDialDataRecvr* request,
-                                                    ::kwdbts::PDialDataRecvrResult* response,
+void BoxServiceRetryableClosureStub::SendExecStatus(::google::protobuf::RpcController* controller,
+                                                    const ::kwdbts::PSendExecStatus* request,
+                                                    ::kwdbts::PSendExecStatusResult* response,
                                                     ::google::protobuf::Closure* done) {
-  auto closure = new RecoverableClosure(shared_from_this(), controller, done);
-  stub_->DialDataRecvr(controller, request, response, closure);
-}
-
-void PInternalServiceRecoverableStub::TransmitChunk(::google::protobuf::RpcController* controller,
-                                                    const ::kwdbts::PTransmitChunkParams* request,
-                                                    ::kwdbts::PTransmitChunkResult* response,
-                                                    ::google::protobuf::Closure* done) {
-  auto closure = new RecoverableClosure(shared_from_this(), controller, done);
-  stub_->TransmitChunk(controller, request, response, closure);
-}
-
-void PInternalServiceRecoverableStub::SendExecStatus(::google::protobuf::RpcController* controller,
-                                                     const ::kwdbts::PSendExecStatus* request,
-                                                     ::kwdbts::PSendExecStatusResult* response,
-                                                     ::google::protobuf::Closure* done) {
-  auto closure = new RecoverableClosure(shared_from_this(), controller, done);
+  auto closure = new RetryableClosure(shared_from_this(), controller, done);
   stub_->SendExecStatus(controller, request, response, closure);
 }
 

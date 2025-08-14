@@ -744,6 +744,9 @@ func (*TsRollbackRequest) Method() Method { return TsRollbackTag }
 func (*TsCommitRequest) Method() Method { return TsCommitTag }
 
 // Method implements the Request interface.
+func (*TsImportFlushRequest) Method() Method { return TsImportFlush }
+
+// Method implements the Request interface.
 func (*TsPutRequest) Method() Method { return TsPut }
 
 // Method implements the Request interface.
@@ -1047,6 +1050,12 @@ func (r *TsRollbackRequest) ShallowCopy() Request {
 }
 
 // ShallowCopy implements the Request interface.
+func (r *TsImportFlushRequest) ShallowCopy() Request {
+	shallowCopy := *r
+	return &shallowCopy
+}
+
+// ShallowCopy implements the Request interface.
 func (r *TsCommitRequest) ShallowCopy() Request {
 	shallowCopy := *r
 	return &shallowCopy
@@ -1248,6 +1257,10 @@ func (*TsRollbackRequest) flags() int {
 }
 
 func (*TsCommitRequest) flags() int {
+	return isWrite | isTxn | isLocking | consultsTSCache | canBackpressure | isRange
+}
+
+func (*TsImportFlushRequest) flags() int {
 	return isWrite | isTxn | isLocking | consultsTSCache | canBackpressure | isRange
 }
 

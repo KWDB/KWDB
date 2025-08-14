@@ -12,6 +12,11 @@
 
 #include "ee_base_op.h"
 
+#include <condition_variable>
+#include <mutex>
+
+#include "ee_cancel_checker.h"
+
 namespace kwdbts {
 
 class ResultCollectorOperator : public BaseOperator {
@@ -28,12 +33,18 @@ class ResultCollectorOperator : public BaseOperator {
 
   EEIteratorErrCode Close(kwdbContext_p ctx) override;
 
+  void PushFinish(EEIteratorErrCode code, k_int32 stream_id, const EEPgErrorInfo& pgInfo) override;
+
   KStatus BuildPipeline(PipelineGroup *pipeline, Processors *processor) override;
 
   enum OperatorType Type() override { return OperatorType::OPERATOR_RESULT_COLLECTOR; }
 
  private:
-  k_uint32 total_rows_{0};
+  bool is_finished_{false};
+  std::mutex mutex_;
+  std::condition_variable wait_cond_;
+  EEPgErrorInfo pg_info_;
+  EEIteratorErrCode code_{EEIteratorErrCode::EE_END_OF_RECORD};
 };
 
 

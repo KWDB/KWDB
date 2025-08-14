@@ -192,6 +192,8 @@ func (ru RequestUnion) GetInner() Request {
 		return t.TsCommit
 	case *RequestUnion_TsRollback:
 		return t.TsRollback
+	case *RequestUnion_TsImportFlush:
+		return t.TsImportFlush
 	default:
 		return nil
 	}
@@ -308,6 +310,8 @@ func (ru ResponseUnion) GetInner() Response {
 		return t.TsCommit
 	case *ResponseUnion_TsRollback:
 		return t.TsRollback
+	case *ResponseUnion_TsImportFlush:
+		return t.TsImportFlush
 	default:
 		return nil
 	}
@@ -500,6 +504,8 @@ func (ru *RequestUnion) SetInner(r Request) bool {
 		union = &RequestUnion_TsCommit{t}
 	case *TsRollbackRequest:
 		union = &RequestUnion_TsRollback{t}
+	case *TsImportFlushRequest:
+		union = &RequestUnion_TsImportFlush{t}
 	default:
 		return false
 	}
@@ -619,6 +625,8 @@ func (ru *ResponseUnion) SetInner(r Response) bool {
 		union = &ResponseUnion_TsCommit{t}
 	case *TsRollbackResponse:
 		union = &ResponseUnion_TsRollback{t}
+	case *TsImportFlushResponse:
+		union = &ResponseUnion_TsImportFlush{t}
 	default:
 		return false
 	}
@@ -626,7 +634,7 @@ func (ru *ResponseUnion) SetInner(r Response) bool {
 	return true
 }
 
-type reqCounts [55]int32
+type reqCounts [56]int32
 
 // getReqCounts returns the number of times each
 // request type appears in the batch.
@@ -744,6 +752,8 @@ func (ba *BatchRequest) getReqCounts() reqCounts {
 			counts[53]++
 		case *RequestUnion_TsRollback:
 			counts[54]++
+		case *RequestUnion_TsImportFlush:
+			counts[55]++
 		default:
 			panic(fmt.Sprintf("unsupported request: %+v", ru))
 		}
@@ -807,6 +817,7 @@ var requestNames = []string{
 	"TsPutTag",
 	"TsCommit",
 	"TsRollback",
+	"TsImportFlush",
 }
 
 // Summary prints a short summary of the requests in a batch.
@@ -1058,6 +1069,10 @@ type tsRollbackResponseAlloc struct {
 	union ResponseUnion_TsRollback
 	resp  TsRollbackResponse
 }
+type tsImportFlushResponseAlloc struct {
+	union ResponseUnion_TsImportFlush
+	resp  TsImportFlushResponse
+}
 
 // CreateReply creates replies for each of the contained requests, wrapped in a
 // BatchResponse. The response objects are batch allocated to minimize
@@ -1123,6 +1138,7 @@ func (ba *BatchRequest) CreateReply() *BatchResponse {
 	var buf52 []tsPutTagResponseAlloc
 	var buf53 []tsCommitResponseAlloc
 	var buf54 []tsRollbackResponseAlloc
+	var buf55 []tsImportFlushResponseAlloc
 
 	for i, r := range ba.Requests {
 		switch r.GetValue().(type) {
@@ -1511,6 +1527,13 @@ func (ba *BatchRequest) CreateReply() *BatchResponse {
 			buf54[0].union.TsRollback = &buf54[0].resp
 			br.Responses[i].Value = &buf54[0].union
 			buf54 = buf54[1:]
+		case *RequestUnion_TsImportFlush:
+			if buf55 == nil {
+				buf55 = make([]tsImportFlushResponseAlloc, counts[55])
+			}
+			buf55[0].union.TsImportFlush = &buf55[0].resp
+			br.Responses[i].Value = &buf55[0].union
+			buf55 = buf55[1:]
 		default:
 			panic(fmt.Sprintf("unsupported request: %+v", r))
 		}

@@ -120,6 +120,7 @@ RelBatchQueue* DmlExec::GetRelBatchQueue() {
 KStatus DmlExec::ExecQuery(kwdbContext_p ctx, QueryInfo *req, RespInfo *resp) {
   EnterFunc();
   AssertNotNull(req);
+  EEPgErrorInfo::ResetPgErrorInfo();
   KStatus ret = KStatus::FAIL;
   ctx->relation_ctx = req->relation_ctx;
   ctx->timezone = req->time_zone;
@@ -128,64 +129,65 @@ KStatus DmlExec::ExecQuery(kwdbContext_p ctx, QueryInfo *req, RespInfo *resp) {
   k_uint32 len = req->len;
   k_int32 id = req->id;
   k_int32 uniqueID = req->unique_id;
-  // try {
-  if (!req->handle && type != EnMqType::MQ_TYPE_DML_INIT &&
-      type != EnMqType::MQ_TYPE_DML_SETUP) {
-    Return(ret);
-  }
-  DmlExec *handle = nullptr;
-  if (!req->handle) {
-    handle = new DmlExec();
-    handle->Init();
-    req->handle = static_cast<char *>(static_cast<void *>(handle));
-  } else {
-    handle = static_cast<DmlExec *>(static_cast<void *>(req->handle));
-  }
-  ctx->dml_exec_handle = handle;
-  switch (type) {
-    case EnMqType::MQ_TYPE_DML_SETUP:
-      handle->thd_->SetSQL(std::string(req->sql.data, req->sql.len));
-      ret = handle->Setup(ctx, message, len, id, uniqueID, resp);
-      if (ret != KStatus::SUCCESS) {
+  try {
+    if (!req->handle && type != EnMqType::MQ_TYPE_DML_INIT &&
+        type != EnMqType::MQ_TYPE_DML_SETUP) {
+      Return(ret);
+    }
+    DmlExec *handle = nullptr;
+    if (!req->handle) {
+      handle = new DmlExec();
+      handle->Init();
+      req->handle = static_cast<char *>(static_cast<void *>(handle));
+    } else {
+      handle = static_cast<DmlExec *>(static_cast<void *>(req->handle));
+    }
+    ctx->dml_exec_handle = handle;
+    switch (type) {
+      case EnMqType::MQ_TYPE_DML_SETUP:
+        handle->thd_->SetSQL(std::string(req->sql.data, req->sql.len));
+        ret = handle->Setup(ctx, message, len, id, uniqueID, resp);
+        if (ret != KStatus::SUCCESS) {
+          handle->ClearTsScans(ctx);
+        }
+        break;
+      case EnMqType::MQ_TYPE_DML_CLOSE:
         handle->ClearTsScans(ctx);
-      }
-      break;
-    case EnMqType::MQ_TYPE_DML_CLOSE:
-      handle->ClearTsScans(ctx);
-      delete handle;
-      resp->ret = 1;
-      resp->tp = req->tp;
-      break;
-    case EnMqType::MQ_TYPE_DML_INIT:
-      resp->ret = 1;
-      resp->tp = req->tp;
-      resp->code = 0;
-      resp->handle = handle;
-      break;
-    case EnMqType::MQ_TYPE_DML_NEXT:
-      ret = handle->Next(ctx, id, TsNextRetState::DML_NEXT, resp);
-      break;
-    case EnMqType::MQ_TYPE_DML_PG_RESULT:
-      ret = handle->Next(ctx, id, TsNextRetState::DML_PG_RESULT, resp);
-      break;
-    case EnMqType::MQ_TYPE_DML_VECTORIZE_NEXT:
-      ret = handle->Next(ctx, id, TsNextRetState::DML_VECTORIZE_NEXT, resp);
-      break;
-    case EnMqType::MQ_TYPE_DML_PUSH:
-      // push relational data from ME to AE for multiple model processing
-      ret = handle->PushRelData(ctx, req, resp);
-      break;
-    default:
-      EEPgErrorInfo::SetPgErrorInfo(ERRCODE_INDETERMINATE_DATATYPE,
-                                    "Undecided datatype");
-      break;
+        delete handle;
+        resp->ret = 1;
+        resp->tp = req->tp;
+        break;
+      case EnMqType::MQ_TYPE_DML_INIT:
+        resp->ret = 1;
+        resp->tp = req->tp;
+        resp->code = 0;
+        resp->handle = handle;
+        break;
+      case EnMqType::MQ_TYPE_DML_NEXT:
+        ret = handle->Next(ctx, id, TsNextRetState::DML_NEXT, resp);
+        break;
+      case EnMqType::MQ_TYPE_DML_PG_RESULT:
+        ret = handle->Next(ctx, id, TsNextRetState::DML_PG_RESULT, resp);
+        break;
+      case EnMqType::MQ_TYPE_DML_VECTORIZE_NEXT:
+        ret = handle->Next(ctx, id, TsNextRetState::DML_VECTORIZE_NEXT, resp);
+        break;
+      case EnMqType::MQ_TYPE_DML_PUSH:
+        // push relational data from ME to AE for multiple model processing
+        ret = handle->PushRelData(ctx, req, resp);
+        break;
+      default:
+        EEPgErrorInfo::SetPgErrorInfo(ERRCODE_INDETERMINATE_DATATYPE,
+                                      "Undecided datatype");
+        break;
+    }
+  } catch (...) {
+    LOG_ERROR("Throw exception when ExecQuery.");
+#ifdef K_DEBUG
+    ctx->frame_level = my_frame_level;
+#endif
   }
-  //   } catch (...) {
-  //     LOG_ERROR("Throw exception when ExecQuery.");
-  // #ifdef K_DEBUG
-  //     ctx->frame_level = my_frame_level;
-  // #endif
-  //   }
+
   Return(ret);
 }
 
@@ -215,7 +217,6 @@ KStatus DmlExec::Setup(kwdbContext_p ctx, k_char *message, k_uint32 len,
     tsScan->unique_id = uniqueID;
     bool proto_parse = false;
     try {
-      // LOG_ERROR("execute sql: %s", thd_->sql_.c_str());
       proto_parse = tsScan->fspecs->ParseFromArray(message, len);
     } catch (...) {
       LOG_ERROR("Throw exception where parsing physical plan.");
@@ -232,6 +233,7 @@ KStatus DmlExec::Setup(kwdbContext_p ctx, k_char *message, k_uint32 len,
     if (KStatus::SUCCESS != ret) {
       break;
     }
+    // LOG_ERROR("execute sql: %s, query_id = %ld", thd_->sql_.c_str(), brpc_info_.query_id_);
     if (tsscan_head_ == nullptr) {
       tsscan_head_ = tsScan;
       tsscan_end_ = tsscan_head_;
@@ -261,7 +263,8 @@ void DmlExec::DisposeError(kwdbContext_p ctx, QueryInfo *return_info) {
       }
     }
     EEPgErrorInfo::ResetPgErrorInfo();
-    LOG_ERROR("QueryInfo::code = %d, msg = %s", return_info->code, (char*)(return_info->value));
+    // LOG_ERROR("QueryInfo::code = %d, msg = %s, query_id = %ld",
+    //                 return_info->code, (char*)(return_info->value), brpc_info_.query_id_);
   } else {
     return_info->code = ERRCODE_DATA_EXCEPTION;
   }

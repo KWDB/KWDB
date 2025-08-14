@@ -166,4 +166,15 @@ TEST_F(TestSortRowChunk, TestChunk) {
   ASSERT_EQ(check_char, v3);
   // check line
   ASSERT_EQ(row_chunk_2->NextLine(), -1);
+
+  // check one sortrowchunk append to other
+  k_uint64 one_row_chunk_size = 100;
+  auto row_chunk_3 = std::make_unique<kwdbts::SortRowChunk>(
+      col_info, order_info, col_num, one_row_chunk_size, UINT32_MAX, 0, false);
+  ASSERT_EQ(row_chunk_3->Initialize(), true);
+  ASSERT_EQ(row_chunk_3->Append(row_chunk_1, row_chunk_1->GetData()),
+            KStatus::SUCCESS);
+  // check append fail
+  ASSERT_EQ(row_chunk_3->Append(row_chunk_1, row_chunk_1->GetData()),
+            KStatus::FAIL);
 }
