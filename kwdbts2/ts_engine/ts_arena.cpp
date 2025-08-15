@@ -104,4 +104,4 @@ ConcurrentAllocator::Shard *ConcurrentAllocator::Repick() {
   return shard_info.first;
 }
 
-} //  namespace kwdbts
+}  //  namespace kwdbts
