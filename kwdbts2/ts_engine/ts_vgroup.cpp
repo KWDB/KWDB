@@ -107,7 +107,7 @@ KStatus TsVGroup::CreateTable(kwdbContext_p ctx, const KTableKey& table_id, roac
 KStatus TsVGroup::PutData(kwdbContext_p ctx, TSTableID table_id, uint64_t mtr_id, TSSlice* primary_tag,
                           TSEntityID entity_id, TSSlice* payload, bool write_wal) {
   TS_LSN current_lsn = 1;
-  if (engine_options_->wal_level != WALMode::OFF && write_wal && !engine_options_->use_raft_log_as_wal) {
+  if (EnableWAL() && write_wal) {
     LockSharedLevelMutex();
     TS_LSN entry_lsn = 0;
     // lock current lsn: Lock the current LSN until the log is written to the cache
@@ -183,31 +183,6 @@ void TsVGroup::InitEntityID(TSEntityID entity_id) {
   }
 }
 
-KStatus TsVGroup::WriteInsertWAL(kwdbContext_p ctx, uint64_t x_id, TSSlice prepared_payload) {
-  // no need lock, lock inside.
-  return wal_manager_->WriteInsertWAL(ctx, x_id, 0, 0, prepared_payload, vgroup_id_);
-}
-
-KStatus TsVGroup::WriteInsertWAL(kwdbContext_p ctx, uint64_t x_id, TSSlice primary_tag, TSSlice prepared_payload) {
-  TS_LSN entry_lsn = 0;
-  // lock current lsn: Lock the current LSN until the log is written to the cache
-  wal_manager_->Lock();
-  TS_LSN current_lsn = wal_manager_->FetchCurrentLSN();
-  KStatus s = wal_manager_->WriteInsertWAL(ctx, x_id, 0, 0, primary_tag, prepared_payload, entry_lsn, vgroup_id_);
-  if (s == KStatus::FAIL) {
-    wal_manager_->Unlock();
-    return s;
-  }
-  // unlock current lsn
-  wal_manager_->Unlock();
-
-  if (entry_lsn != current_lsn) {
-    LOG_ERROR("expected lsn is %lu, but got %lu ", current_lsn, entry_lsn);
-    return KStatus::FAIL;
-  }
-  return KStatus::SUCCESS;
-}
-
 KStatus TsVGroup::RemoveChkFile(kwdbContext_p ctx) {
   wal_manager_->Lock();
   Defer defer{[&]() {
@@ -273,8 +248,6 @@ KStatus TsVGroup::ReadWALLogForMtr(uint64_t mtr_trans_id, std::vector<LogEntry*>
   std::vector<uint64_t> ignore;
   return wal_manager_->ReadWALLogForMtr(mtr_trans_id, logs, ignore);
 }
-
-KStatus TsVGroup::CreateCheckpointInternal(kwdbContext_p ctx) { return KStatus::SUCCESS; }
 
 TsEngineSchemaManager* TsVGroup::GetSchemaMgr() const {
   return schema_mgr_;
@@ -1058,8 +1031,9 @@ KStatus TsVGroup::DeleteEntity(kwdbContext_p ctx, TSTableID table_id, std::strin
     LOG_ERROR("Get schema manager failed, table id[%lu]", table_id);
     return KStatus::FAIL;
   }
+  TS_LSN cur_lsn = 0;
   auto tag_table = tb_schema_manager->GetTagTable();
-  if (engine_options_->wal_level != WALMode::OFF && !engine_options_->use_raft_log_as_wal) {
+  if (EnableWAL()) {
     TagTuplePack* tag_pack = tag_table->GenTagPack(p_tag.data(), p_tag.size());
     if (UNLIKELY(nullptr == tag_pack)) {
       return KStatus::FAIL;
@@ -1067,12 +1041,15 @@ KStatus TsVGroup::DeleteEntity(kwdbContext_p ctx, TSTableID table_id, std::strin
     LockSharedLevelMutex();
     s = wal_manager_->WriteDeleteTagWAL(ctx, mtr_id, p_tag, vgroup_id_, e_id, tag_pack->getData(), vgroup_id_,
                                         table_id);
+    cur_lsn = wal_manager_->FetchCurrentLSN();
     UnLockSharedLevelMutex();
     delete tag_pack;
     if (s == KStatus::FAIL) {
       LOG_ERROR("WriteDeleteTagWAL failed.");
       return s;
     }
+  } else {
+    cur_lsn = LSNInc();
   }
 
   // if any error, end the delete loop and return ERROR to the caller.
@@ -1085,10 +1062,6 @@ KStatus TsVGroup::DeleteEntity(kwdbContext_p ctx, TSTableID table_id, std::strin
   }
   if (*count != 0) {
     // todo(liangbo01) we should delete current entity metric datas.
-    TS_LSN cur_lsn = wal_manager_->FetchCurrentLSN();
-    if (engine_options_->use_raft_log_as_wal) {
-      cur_lsn = LSNInc();
-    }
     std::vector<KwTsSpan> ts_spans;
     ts_spans.push_back({INT64_MIN, INT64_MAX});
     // delete current entity metric datas.
@@ -1106,7 +1079,7 @@ KStatus TsVGroup::DeleteData(kwdbContext_p ctx, TSTableID tbl_id, std::string& p
   std::vector<DelRowSpan> dtp_list;
   // todo(xy): need to initialize lsn if wal_level = off
   TS_LSN current_lsn = 0;
-  if (engine_options_->wal_level != WALMode::OFF && !engine_options_->use_raft_log_as_wal) {
+  if (EnableWAL()) {
     LockSharedLevelMutex();
     KStatus s = wal_manager_->WriteDeleteMetricsWAL4V2(ctx, mtr_id, tbl_id, p_tag, ts_spans, vgroup_id_, &current_lsn);
     UnLockSharedLevelMutex();

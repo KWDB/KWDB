@@ -71,7 +71,7 @@ class TsStorageIteratorV2Impl : public TsStorageIterator {
   KStatus getBlockSpanVarMinValue(std::shared_ptr<TsBlockSpan> block_span, uint32_t col_id, uint32_t type, TSSlice& min);
   KStatus getBlockSpanVarMaxValue(std::shared_ptr<TsBlockSpan> block_span, uint32_t col_id, uint32_t type, TSSlice& max);
 
-  bool isBlockFiltered(std::shared_ptr<TsBlockSpan>& block_span);
+  KStatus isBlockFiltered(std::shared_ptr<TsBlockSpan>& block_span, bool& is_filtered);
 
   k_int32 cur_entity_index_{-1};
   k_int32 cur_partition_index_{-1};

@@ -535,7 +535,11 @@ func (r *TsEngine) TSFlushVGroups() error {
 	r.checkOrWaitForOpen()
 	status := C.TSFlushVGroups(r.tdb)
 	if err := statusToError(status); err != nil {
-		return errors.Wrap(err, "could not flush v-groups")
+		// retry once
+		retryStatus := C.TSFlushVGroups(r.tdb)
+		if err := statusToError(retryStatus); err != nil {
+			return errors.Wrap(err, "could not flush v-groups")
+		}
 	}
 	return nil
 }
