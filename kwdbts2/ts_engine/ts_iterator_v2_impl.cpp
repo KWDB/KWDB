@@ -314,18 +314,28 @@ KStatus TsStorageIteratorV2Impl::getBlockSpanVarMaxValue(std::shared_ptr<TsBlock
   return KStatus::SUCCESS;
 }
 
-bool TsStorageIteratorV2Impl::isBlockFiltered(std::shared_ptr<TsBlockSpan>& block_span) {
+KStatus TsStorageIteratorV2Impl::isBlockFiltered(std::shared_ptr<TsBlockSpan>& block_span, bool& is_filtered) {
   // if (!block_span->HasPreAgg()) {
   //   return false;
   // }
+  is_filtered = false;
   KStatus ret;
   for (const auto& filter : block_filter_) {
     uint32_t col_id = filter.colID;
+    if (!block_span->IsColExist(col_id)) {
+      // No data for this column in this block span.
+      if (filter.filterType == BlockFilterType::BFT_NULL) {
+        continue;
+      }
+      is_filtered = true;
+      return KStatus::SUCCESS;
+    }
     BlockFilterType filter_type = filter.filterType;
     std::vector<FilterSpan> filter_spans = filter.spans;
     if (filter.filterType == BlockFilterType::BFT_NULL) {
       if (block_span->IsColNotNull(col_id)) {
-        return true;
+        is_filtered = true;
+        return KStatus::SUCCESS;
       }
       if (block_span->HasPreAgg()) {
         // Use pre agg to calculate count
@@ -334,14 +344,20 @@ bool TsStorageIteratorV2Impl::isBlockFiltered(std::shared_ptr<TsBlockSpan>& bloc
         if (ret != KStatus::SUCCESS) {
           return KStatus::FAIL;
         }
-        if (pre_count == block_span->GetRowNum()) return true;
+        if (pre_count == block_span->GetRowNum()) {
+          is_filtered = true;
+          return KStatus::SUCCESS;
+        }
       } else {
         uint32_t col_count{0};
         ret = block_span->GetCount(col_id, col_count);
         if (ret != KStatus::SUCCESS) {
           return KStatus::FAIL;
         }
-        if (col_count == block_span->GetRowNum()) return true;
+        if (col_count == block_span->GetRowNum()) {
+          is_filtered = true;
+          return KStatus::SUCCESS;
+        }
       }
     } else if (filter.filterType == BlockFilterType::BFT_NOTNULL) {
       if (block_span->HasPreAgg()) {
@@ -351,14 +367,20 @@ bool TsStorageIteratorV2Impl::isBlockFiltered(std::shared_ptr<TsBlockSpan>& bloc
         if (ret != KStatus::SUCCESS) {
           return KStatus::FAIL;
         }
-        if (!pre_count) return true;
+        if (!pre_count) {
+          is_filtered = true;
+          return KStatus::SUCCESS;
+        }
       } else {
         uint32_t col_count{0};
         ret = block_span->GetCount(col_id, col_count);
         if (ret != KStatus::SUCCESS) {
           return KStatus::FAIL;
         }
-        if (!col_count) return true;
+        if (!col_count) {
+          is_filtered = true;
+          return KStatus::SUCCESS;
+        }
       }
     } else if (filter.filterType == BlockFilterType::BFT_SPAN) {
       SpanValue min, max;
@@ -492,11 +514,12 @@ bool TsStorageIteratorV2Impl::isBlockFiltered(std::shared_ptr<TsBlockSpan>& bloc
         }
       }
       if (!matchesFilterRange(filter, min, max, (DATATYPE)attrs_[col_id].type)) {
-        return true;
+        is_filtered = true;
+        return KStatus::SUCCESS;
       }
     }
   }
-  return false;
+  return KStatus::SUCCESS;
 }
 
 KStatus TsStorageIteratorV2Impl::ScanEntityBlockSpans(timestamp64 ts) {
@@ -518,9 +541,16 @@ KStatus TsStorageIteratorV2Impl::ScanEntityBlockSpans(timestamp64 ts) {
       for (uint32_t i = 0; i < size; ++i) {
         auto block_span = ts_block_spans_.front();
         ts_block_spans_.pop_front();
-        if (!block_span->GetRowNum() || isBlockFiltered(block_span)) {
+        if (!block_span->GetRowNum()) {
           continue;
         }
+        bool is_filtered = false;
+        s = isBlockFiltered(block_span, is_filtered);
+        if (s != KStatus::SUCCESS) {
+          LOG_ERROR("isBlockFiltered failed, entityid is %lu", block_span->GetEntityID());
+          return KStatus::FAIL;
+        }
+        if (is_filtered) continue;
         ts_block_spans_.push_back(block_span);
       }
     }

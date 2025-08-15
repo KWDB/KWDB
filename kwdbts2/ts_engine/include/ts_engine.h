@@ -311,6 +311,10 @@ class TSEngineV2Impl : public TSEngine {
     LOG_INFO("map for applied range indexes is initialized.");
   }
 
+  bool EnableWAL() {
+    return options_.wal_level != WALMode::OFF && !options_.use_raft_log_as_wal;
+  }
+
  private:
   TsVGroup* GetVGroupByID(kwdbContext_p ctx, uint32_t vgroup_id);
 
