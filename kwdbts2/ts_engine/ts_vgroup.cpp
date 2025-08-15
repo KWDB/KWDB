@@ -1733,35 +1733,10 @@ KStatus TsVGroup::Vacuum() {
             cur_entity_item.min_ts = blk_item.min_ts;
           }
         }
-<<<<<<< HEAD
-      }
-      s = vacuumer->AppendEntityItem(cur_entity_item);
-      if (s != KStatus::SUCCESS) {
-        LOG_ERROR("Vacuum failed, AppendEntityItem failed")
-        return s;
-      }
-      {
-        // check weather mem segment has data for one entity
-        KwTsSpan partition_ts_span = {partition->GetTsColTypeStartTime(tb_schema_mgr->GetTsColDataType()),
-                                      partition->GetTsColTypeEndTime(tb_schema_mgr->GetTsColDataType())};
-        STScanRange scan_range = {partition_ts_span, {0, cur_lsn}};
-        DatabaseID db_id = std::get<0>(partition->GetPartitionIdentifier());
-        TsBlockItemFilterParams param {db_id, entity_item.table_id, vgroup_id_, entity_id, {scan_range}};
-        std::list<shared_ptr<TsBlockSpan>> mem_block_spans;
-        std::shared_ptr<MMapMetricsTable> metric_schema;
-        s = tb_schema_mgr->GetMetricSchema(0, &metric_schema);
-        if (s != SUCCESS) {
-          LOG_ERROR("Vacuum failed, GetMetricSchema failed")
-          return s;
-        }
-        for (auto& mem_segment : mem_segments) {
-          mem_segment->GetBlockSpans(param, mem_block_spans, tb_schema_mgr, metric_schema);
-=======
         s = vacuumer->AppendEntityItem(cur_entity_item);
         if (s != KStatus::SUCCESS) {
           LOG_ERROR("Vacuum failed, AppendEntityItem failed")
           return s;
->>>>>>> st-v3
         }
         {
           // check weather mem segment has data for one entity
@@ -1771,8 +1746,14 @@ KStatus TsVGroup::Vacuum() {
           DatabaseID db_id = std::get<0>(partition->GetPartitionIdentifier());
           TsBlockItemFilterParams param {db_id, entity_item.table_id, vgroup_id_, entity_id, {scan_range}};
           std::list<shared_ptr<TsBlockSpan>> mem_block_spans;
+          std::shared_ptr<MMapMetricsTable> metric_schema;
+          s = tb_schema_mgr->GetMetricSchema(0, &metric_schema);
+          if (s != SUCCESS) {
+            LOG_ERROR("Vacuum failed, GetMetricSchema failed")
+            return s;
+          }
           for (auto& mem_segment : mem_segments) {
-            mem_segment->GetBlockSpans(param, mem_block_spans, tb_schema_mgr, 0);
+            mem_segment->GetBlockSpans(param, mem_block_spans, tb_schema_mgr, metric_schema);
           }
           if (mem_block_spans.empty()) {
             entity_max_lsn.emplace_back(entity_id, cur_lsn);
