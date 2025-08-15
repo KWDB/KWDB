@@ -205,7 +205,7 @@ class TsMemSegIndex {
 
   ConcurrentAllocator allocator_;
   TSRowDataComparator const compare_;
-  SkipListNode* const head_;
+  SkipListNode* const head_node_;
   std::atomic<int> skiplist_max_height_;
   SkipListSplice* seq_splice_;
 
@@ -230,8 +230,6 @@ class TsMemSegIndex {
     return compare_.DecodeKeyValue(key);
   }
 
-  inline bool Contains(const char* key) const;
-
   inline int GetMaxHeight() const {
     return skiplist_max_height_.load(std::memory_order_relaxed);
   }
@@ -249,9 +247,9 @@ class TsMemSegIndex {
   }
 
   // Return true if key is greater than the data stored in "n".  Null n
-  // is considered infinite.  n should not be head_.
-  inline bool KeyIsAfterNode(const char* key, SkipListNode* n) const;
-  inline bool KeyIsAfterNode(const TSMemSegRowData*& key, SkipListNode* n) const;
+  // is considered infinite.  n should not be head_node_.
+  inline bool IsKeyAfterNode(const char* key, SkipListNode* n) const;
+  inline bool IsKeyAfterNode(const TSMemSegRowData*& key, SkipListNode* n) const;
 
   SkipListNode* FindGreaterOrEqual(const char* key) const;
 
@@ -291,7 +289,7 @@ class SkiplistIterator {
 
   inline void Seek(const char* target) { node_ = list_->FindGreaterOrEqual(target); }
 
-  inline void SeekToFirst() { node_ = list_->head_->Next(0); }
+  inline void SeekToFirst() { node_ = list_->head_node_->Next(0); }
 };
 
 template <bool prefetch_before>
@@ -309,10 +307,10 @@ void TsMemSegIndex::FindSpliceForLevel(const TSMemSegRowData*& key,
         PREFETCH(next->Next(level-1), 0, 1);
       }
     }
-    assert(before == head_ || next == nullptr ||
-           KeyIsAfterNode(next->Key(), before));
-    assert(before == head_ || KeyIsAfterNode(key, before));
-    if (next == after || !KeyIsAfterNode(key, next)) {
+    assert(before == head_node_ || next == nullptr ||
+           IsKeyAfterNode(next->Key(), before));
+    assert(before == head_node_ || IsKeyAfterNode(key, before));
+    if (next == after || !IsKeyAfterNode(key, next)) {
       // found it
       *out_prev = before;
       *out_next = next;
