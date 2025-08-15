@@ -1128,7 +1128,7 @@ func (n *alterTableNode) startExec(params runParams) error {
 			}
 			_, _, err := n.tableDesc.FindColumnByName(t.Tag.TagName)
 			if err == nil {
-				return pgerror.Newf(pgcode.DuplicateColumn, "duplicate tag name: %q", t.Tag.TagName)
+				return pgerror.Newf(pgcode.DuplicateColumn, "column/tag named %q already exists", t.Tag.TagName)
 			}
 			if t.Tag.IsSerial {
 				return pgerror.Newf(
