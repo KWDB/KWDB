@@ -2841,19 +2841,31 @@ func (desc *TableDescriptor) FindIndexByName(name string) (*IndexDescriptor, boo
 	if desc.IsPhysicalTable() && desc.PrimaryIndex.Name == name {
 		return &desc.PrimaryIndex, false, nil
 	}
-	for i := range desc.Indexes {
-		idx := &desc.Indexes[i]
-		if idx.Name == name {
-			return idx, false, nil
-		}
-	}
+	var index, mutationIdx *IndexDescriptor
+	isDropped := false
 	for _, m := range desc.Mutations {
 		if idx := m.GetIndex(); idx != nil {
 			if idx.Name == name {
-				return idx, m.Direction == DescriptorMutation_DROP, nil
+				isDropped = m.Direction == DescriptorMutation_DROP
+				mutationIdx = idx
+				break
 			}
 		}
 	}
+	for i := range desc.Indexes {
+		idx := &desc.Indexes[i]
+		if idx.Name == name {
+			index = idx
+			break
+		}
+	}
+
+	if index != nil {
+		return index, isDropped, nil
+	} else if mutationIdx != nil {
+		return mutationIdx, isDropped, nil
+	}
+
 	return nil, false, fmt.Errorf("index %q does not exist", name)
 }
 

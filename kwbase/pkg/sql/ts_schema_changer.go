@@ -1289,6 +1289,13 @@ func (sw *TSSchemaChangeWorker) handleMutationForTSTable(
 					if err := tableDesc.AddIndex(*mutableIdx, false); err != nil {
 						return err
 					}
+				} else {
+					for j, idxEntry := range tableDesc.Indexes {
+						if idxEntry.ID == mutableIdx.ID {
+							tableDesc.Indexes = append(tableDesc.Indexes[:j], tableDesc.Indexes[j+1:]...)
+							break
+						}
+					}
 				}
 				tableDesc.MaybeIncrementTSVersion(ctx, isSucceeded)
 			}

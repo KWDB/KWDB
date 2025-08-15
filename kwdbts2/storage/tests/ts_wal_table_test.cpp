@@ -1455,31 +1455,3 @@ TEST_F(TestTSWALTable, autoCheckpoint) {
     delete[] p.data;
   }
 }
-
-TEST_F(TestTSWALTable, PartitionTierChangeRollback) {
-  std::shared_ptr<TsEntityGroup> entity_group;
-  KStatus s = table_->GetEntityGroup(ctx_, range_group_id_, &entity_group);
-  ASSERT_EQ(s, KStatus::SUCCESS);
-  std::shared_ptr<LoggedTsEntityGroup> log_eg = std::static_pointer_cast<LoggedTsEntityGroup>(entity_group);
-
-  char path[4096];
-  getcwd(path, 4096);
-  std::string abs_path(path);
-  string link_path = abs_path + "/link_path";
-  string tier_path = abs_path + "/tier_path";
-  string old_tier_path = abs_path + "/old_tier_path";
-  ASSERT_TRUE(MakeDirectory(tier_path));
-  ASSERT_TRUE(MakeDirectory(old_tier_path));
-  std::string link_cmd = "ln -s " + old_tier_path + " " + link_path;
-  ASSERT_TRUE(System(link_cmd));
-
-  uint64_t mtr_id;
-  s = log_eg->BeginPartitionTierChangeMtr(ctx_, 1, link_path, tier_path, mtr_id);
-  ASSERT_EQ(s, KStatus::SUCCESS);
-
-  // rollback
-  ASSERT_EQ(log_eg->MtrRollback(ctx_, mtr_id), KStatus::SUCCESS);
-  ASSERT_EQ(access(tier_path.c_str(), 0), -1);
-  ASSERT_EQ(access(link_path.c_str(), 0), 0);
-  ASSERT_EQ(access(old_tier_path.c_str(), 0), 0);
-}

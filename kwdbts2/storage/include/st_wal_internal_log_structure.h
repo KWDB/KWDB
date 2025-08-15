@@ -886,62 +886,6 @@ class TempDirectoryEntry : public LogEntry {
   }
 };
 
-
-class PartitionTierChangeEntry : public LogEntry {
- public:
-  PartitionTierChangeEntry(TS_LSN lsn, uint64_t x_id, std::string link_path, std::string tier_path) :
-                    LogEntry(lsn, WALLogType::PARTITION_TIER_CHANGE, x_id) {
-    link_path_ = link_path;
-    tier_path_ = tier_path;
-  }
-
-  ~PartitionTierChangeEntry() override {}
-
-  char* encode() override {
-    return construct(WALLogType::PARTITION_TIER_CHANGE, x_id_, link_path_, tier_path_);
-  }
-
-  void prettyPrint() override;
-
- public:
-  std::string link_path_;
-  std::string tier_path_;
-
- public:
-  std::string GetLinkPath() {
-    return std::string(link_path_);
-  }
-  std::string GetTierPath() {
-    return std::string(tier_path_);
-  }
-
-  static const size_t header_length = sizeof(x_id_) + sizeof(size_t) + sizeof(size_t);
-
-  static const size_t fixed_length = sizeof(type_) + sizeof(x_id_) + + sizeof(size_t) + sizeof(size_t);
-
-  static char* construct(const WALLogType type, const uint64_t x_id, std::string link_path, std::string tier_path) {
-    uint64_t len = fixed_length;
-    size_t link_path_len = link_path.length() + 1;
-    size_t tier_path_len = tier_path.length() + 1;
-    size_t string_len = link_path_len + tier_path_len;
-    char* log_ptr = KNEW char[len + string_len];
-    memset(log_ptr, 0, len + string_len);
-    int location = 0;
-    memcpy(log_ptr, &type, sizeof(type));
-    location += sizeof(type);
-    memcpy(log_ptr + location, &x_id, sizeof(x_id_));
-    location += sizeof(x_id_);
-    memcpy(log_ptr + location, &link_path_len, sizeof(link_path_len));
-    location += sizeof(link_path_len);
-    memcpy(log_ptr + location, &tier_path_len, sizeof(tier_path_len));
-    location += sizeof(tier_path_len);
-    memcpy(log_ptr + location, link_path.data(), link_path.length());
-    location += link_path_len;
-    memcpy(log_ptr + location, tier_path.data(), tier_path.length());
-    return log_ptr;
-  }
-};
-
 class DDLEntry : public LogEntry {
  public:
   DDLEntry(TS_LSN lsn, WALLogType type, uint64_t x_id, uint64_t object_id);
