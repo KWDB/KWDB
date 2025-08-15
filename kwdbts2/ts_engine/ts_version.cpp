@@ -42,7 +42,7 @@
 #include "ts_io.h"
 
 namespace kwdbts {
-static const int64_t interval = 3600 * 24 * 10;  // 10 days.
+// static const int64_t interval = 3600 * 24 * 10;  // 10 days.
 static const int64_t vacuum_minutes = 24 * 60;  // 24 hours.
 // Note: we expect this function always return lower bound of both positive and negative timestamp
 // e.g. interval = 3,
@@ -63,8 +63,8 @@ static int64_t GetPartitionStartTime(timestamp64 timestamp, int64_t ts_interval)
 }
 
 void TsVersionManager::AddPartition(DatabaseID dbid, timestamp64 ptime) {
-  timestamp64 start = GetPartitionStartTime(ptime, interval);
-  PartitionIdentifier partition_id{dbid, start, start + interval};
+  timestamp64 start = GetPartitionStartTime(ptime, EngineOptions::partition_interval);
+  PartitionIdentifier partition_id{dbid, start, start + EngineOptions::partition_interval};
   if (partition_id == this->last_created_partition_) {
     return;
   }
@@ -447,8 +447,8 @@ std::vector<std::shared_ptr<const TsPartitionVersion>> TsVGroupVersion::GetParti
 
 std::shared_ptr<const TsPartitionVersion> TsVGroupVersion::GetPartition(uint32_t target_dbid,
                                                                         timestamp64 target_time) const {
-  timestamp64 start = GetPartitionStartTime(target_time, interval);
-  auto it = partitions_.find({target_dbid, start, start + interval});
+  timestamp64 start = GetPartitionStartTime(target_time, EngineOptions::partition_interval);
+  auto it = partitions_.find({target_dbid, start, start + EngineOptions::partition_interval});
   if (it == partitions_.end()) {
     return nullptr;
   }
