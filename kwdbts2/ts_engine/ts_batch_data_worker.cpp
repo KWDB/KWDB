@@ -321,7 +321,7 @@ TsWriteBatchDataWorker::TsWriteBatchDataWorker(TSEngineV2Impl* ts_engine, uint64
 KStatus TsWriteBatchDataWorker::Init(kwdbContext_p ctx) {
   auto vgroups = ts_engine_->GetTsVGroups();
   for (uint32_t vgroup_id = 0; vgroup_id < vgroups->size(); ++vgroup_id) {
-    if (ts_engine_->GetWalMode() != WALMode::OFF) {
+    if (ts_engine_->EnableWAL()) {
       vgroups_lsn_[vgroup_id] = (*vgroups)[vgroup_id]->GetWALManager()->FetchCurrentLSN();
     } else {
       vgroups_lsn_[vgroup_id] = (*vgroups)[vgroup_id]->LSNInc();

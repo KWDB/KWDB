@@ -92,27 +92,6 @@ KStatus TsTierPartitionManager::GetPartitionCount(int level, const std::string& 
   return KStatus::SUCCESS;
 }
 
-KStatus TsTierPartitionManager::writeWAL(const std::string &link_path, const std::string &tier_path, uint64_t& mtr_id) {
-  if (wal_mgr_ == nullptr) {
-    return KStatus::SUCCESS;
-  }
-  return wal_mgr_->BeginPartitionTierChangeMtr(ctx_, 1, link_path, tier_path, mtr_id);
-}
-
-KStatus TsTierPartitionManager::commitWAL(uint64_t& mtr_id) {
-  if (wal_mgr_ == nullptr) {
-    return KStatus::SUCCESS;
-  }
-  return wal_mgr_->MtrCommit(ctx_, mtr_id);
-}
-
-KStatus TsTierPartitionManager::rollbackWAL(uint64_t& mtr_id) {
-  if (wal_mgr_ == nullptr) {
-    return KStatus::SUCCESS;
-  }
-  return wal_mgr_->MtrRollback(ctx_, mtr_id);
-}
-
 KStatus TsTierPartitionManager::Recover(const std::string &link_path, const std::string& tier_path, ErrorInfo& error_info) {
   std::string real_path = ParseLinkDirToReal(link_path, error_info);
   if (real_path.compare(tier_path) == 0) {

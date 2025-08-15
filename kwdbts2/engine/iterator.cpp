@@ -100,19 +100,30 @@ TsStorageIterator::~TsStorageIterator() {
   }
 }
 
-void TsStorageIterator::fetchBlockItems(k_uint32 entity_id) {
-  cur_partition_table_->GetAllBlockItems(entity_id, block_item_queue_, is_reversed_);
+KStatus TsStorageIterator::fetchBlockItems(k_uint32 entity_id) {
+  if (cur_partition_table_->GetAllBlockItems(entity_id, block_item_queue_, is_reversed_) != 0) {
+    LOG_ERROR("GetAllBlockItems failed, entityid is %u", entity_id);
+    return KStatus::FAIL;
+  }
   if (!block_filter_.empty()) {
     uint32_t size = block_item_queue_.size();
     for (int i = 0; i < size; ++i) {
       BlockItem* cur_block = block_item_queue_.front();
       block_item_queue_.pop_front();
-      if (!cur_block->publish_row_count || isBlockFiltered(cur_block)) {
+      if (!cur_block->publish_row_count) {
         continue;
       }
+      bool is_filtered = false;
+      KStatus ret = isBlockFiltered(cur_block, is_filtered);
+      if (ret != KStatus::SUCCESS) {
+        LOG_ERROR("isBlockFiltered failed, entityid is %u, blockid is %u", cur_block->entity_id, cur_block->block_id);
+        return KStatus::FAIL;
+      }
+      if (is_filtered) continue;
       block_item_queue_.push_back(cur_block);
     }
   }
+  return KStatus::SUCCESS;
 }
 
 bool TsStorageIterator::matchesFilterRange(const BlockFilter& filter, SpanValue min, SpanValue max, DATATYPE datatype) {
@@ -182,9 +193,10 @@ bool TsStorageIterator::matchesFilterRange(const BlockFilter& filter, SpanValue 
   return false;
 }
 
-bool TsStorageIterator::isBlockFiltered(BlockItem* block_item) {
+KStatus TsStorageIterator::isBlockFiltered(BlockItem* block_item, bool& is_filtered) {
+  is_filtered = false;
   if (!block_item->is_agg_res_available) {
-    return false;
+    return KStatus::SUCCESS;
   }
   for (const auto& filter : block_filter_) {
     uint32_t col_id = filter.colID;
@@ -196,12 +208,23 @@ bool TsStorageIterator::isBlockFiltered(BlockItem* block_item) {
                 block_item->block_id, cur_partition_table_->GetPath().c_str());
       return KStatus::FAIL;
     }
+    if (!segment_tbl->isColExist(col_id)) {
+      if (filter_type == BlockFilterType::BFT_NULL) {
+        continue;
+      }
+      is_filtered = true;
+      return KStatus::SUCCESS;
+    }
     if (filter.filterType == BlockFilterType::BFT_NULL) {
-      if (segment_tbl->isAllNotNullValue(block_item->block_id, block_item->publish_row_count, {filter.colID}))
-        return true;
+      if (segment_tbl->isAllNotNullValue(block_item->block_id, block_item->publish_row_count, {filter.colID})) {
+        is_filtered = true;
+        return KStatus::SUCCESS;
+      }
     } else if (filter.filterType == BlockFilterType::BFT_NOTNULL) {
-      if (segment_tbl->isAllNullValue(block_item->block_id, block_item->publish_row_count, {filter.colID}))
-        return true;
+      if (segment_tbl->isAllNullValue(block_item->block_id, block_item->publish_row_count, {filter.colID})) {
+        is_filtered = true;
+        return KStatus::SUCCESS;
+      }
     } else if (filter.filterType == BlockFilterType::BFT_SPAN) {
       void* min_addr = segment_tbl->columnAggAddr(block_item->block_id, col_id, Sumfunctype::MIN);
       void* max_addr = segment_tbl->columnAggAddr(block_item->block_id, col_id, Sumfunctype::MAX);
@@ -284,11 +307,12 @@ bool TsStorageIterator::isBlockFiltered(BlockItem* block_item) {
           break;
       }
       if (!matchesFilterRange(filter, min, max, (DATATYPE)attrs_[col_id].type)) {
-        return true;
+        is_filtered = true;
+        return KStatus::SUCCESS;
       }
     }
   }
-  return false;
+  return KStatus::SUCCESS;
 }
 
 KStatus TsStorageIterator::Init(bool is_reversed) {
@@ -336,7 +360,11 @@ int TsStorageIterator::nextBlockItem(k_uint32 entity_id, timestamp64 ts) {
         // all partition table scan over.
         return NextBlkStatus::scan_over;
       }
-      fetchBlockItems(entity_id);
+      s = fetchBlockItems(entity_id);
+      if (s != KStatus::SUCCESS) {
+        LOG_ERROR("fetchBlockItems failed.");
+        return NextBlkStatus::error;
+      }
       continue;
     }
     cur_block_item_ = block_item_queue_.front();
