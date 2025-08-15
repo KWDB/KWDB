@@ -32,6 +32,8 @@ TsTable* CreateTable(kwdbts::kwdbContext_p ctx, roachpb::CreateTsTable* meta,
 void genPayloadData(std::vector<TagInfo> tag_schema, std::vector<AttributeInfo> data_schema,
                     int32_t primary_tag, KTimestamp start_ts, int count, int time_inc, TSSlice *payload);
 
+void FillPayloaderBuilderData(TSRowPayloadBuilder& pay_build, int32_t primary_tag, KTimestamp start_ts, int count, int time_inc);
+
 void genRowBasedPayloadData(std::vector<TagInfo> tag_schema, std::vector<AttributeInfo> data_schema,
  TSTableID table_id, uint32_t version,
  int32_t primary_tag, KTimestamp start_ts, int count, int time_inc, TSSlice *payload);

@@ -504,6 +504,13 @@ TSSlice genValue4Col(DATATYPE type, int size, int store_value) {
 void genRowBasedPayloadData(std::vector<TagInfo> tag_schema, std::vector<AttributeInfo> data_schema, TSTableID table_id, uint32_t version,
  int32_t primary_tag, KTimestamp start_ts, int count, int time_inc, TSSlice *payload) {
   TSRowPayloadBuilder pay_build(tag_schema, data_schema, count);
+  FillPayloaderBuilderData(pay_build, primary_tag, start_ts, count, time_inc);
+  pay_build.Build(table_id, version, payload);
+}
+
+void FillPayloaderBuilderData(TSRowPayloadBuilder& pay_build, int32_t primary_tag, KTimestamp start_ts, int count, int time_inc) {
+  auto& tag_schema = pay_build.GetTagSchema();
+  auto& data_schema = pay_build.GetMetricSchema();
   TSSlice pri_val = genValue4Col((DATATYPE)tag_schema[0].m_data_type, tag_schema[0].m_size, primary_tag);
   pay_build.SetTagValue(0, pri_val.data, pri_val.len);
   for (size_t i = 1; i < tag_schema.size(); i++) {
@@ -533,7 +540,6 @@ void genRowBasedPayloadData(std::vector<TagInfo> tag_schema, std::vector<Attribu
       }
     }
   }
-  pay_build.Build(table_id, version, payload);
 }
 
 void genPayloadData(std::vector<TagInfo> tag_schema, std::vector<AttributeInfo> data_schema,

@@ -512,8 +512,7 @@ KStatus TSEngineV2Impl::putTagData(kwdbContext_p ctx, TSTableID table_id, uint32
 KStatus TSEngineV2Impl::InsertTagData(kwdbContext_p ctx, const KTableKey& table_id, uint64_t mtr_id, TSSlice payload_data,
                                       bool write_wal, uint32_t& vgroup_id, TSEntityID& entity_id, uint16_t* inc_entity_cnt) {
   bool new_tag;
-  TsRawPayload p{payload_data};
-  TSSlice primary_key = p.GetPrimaryTag();
+  TSSlice primary_key = TsRawPayload::GetPrimaryKeyFromSlice(payload_data);
   RW_LATCH_S_LOCK(&insert_tag_lock_);
   KStatus s = schema_mgr_->GetVGroup(ctx, table_id, primary_key, &vgroup_id, &entity_id, &new_tag);
   if (s != KStatus::SUCCESS) {
@@ -543,6 +542,7 @@ KStatus TSEngineV2Impl::InsertTagData(kwdbContext_p ctx, const KTableKey& table_
           return s;
         }
       }
+      TsRawPayload p{payload_data};
       entity_id = vgroup->AllocateEntityID();
       s = putTagData(ctx, table_id, vgroup_id, entity_id, p);
       if (s != KStatus::SUCCESS) {
@@ -564,8 +564,8 @@ KStatus TSEngineV2Impl::PutData(kwdbContext_p ctx, const KTableKey& table_id, ui
   dedup_result->payload_num = payload_num;
   dedup_result->dedup_rule = static_cast<int>(EngineOptions::g_dedup_rule);
   for (size_t i = 0; i < payload_num; i++) {
-    TsRawPayload p{payload_data[i]};
-    auto tbl_version = p.GetTableVersion();
+    TSSlice& cur_pd = payload_data[i];
+    auto tbl_version = TsRawPayload::GetTableVersionFromSlice(cur_pd);
     auto s = GetTsTable(ctx, table_id, ts_table, true, err_info, tbl_version);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("cannot found table[%lu] with version[%u], errmsg[%s]", table_id, tbl_version, err_info.errmsg.c_str());
@@ -575,14 +575,14 @@ KStatus TSEngineV2Impl::PutData(kwdbContext_p ctx, const KTableKey& table_id, ui
     if (tsx_id != nullptr) {
       mtr_id = GetVGroupByID(ctx, 1)->GetMtrIDByTsxID(tsx_id);
     }
-    s = InsertTagData(ctx, table_id, mtr_id, payload_data[i], write_wal, vgroup_id, entity_id, inc_entity_cnt);
+    s = InsertTagData(ctx, table_id, mtr_id, cur_pd, write_wal, vgroup_id, entity_id, inc_entity_cnt);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("put tag data failed. table[%lu].", table_id);
       return s;
     }
     auto vgroup = GetVGroupByID(ctx, vgroup_id);
-    payload_size += p.GetData().len;
-    s =  dynamic_pointer_cast<TsTableV2Impl>(ts_table)->PutData(ctx, vgroup, p, entity_id, mtr_id,
+    payload_size += cur_pd.len;
+    s =  dynamic_pointer_cast<TsTableV2Impl>(ts_table)->PutData(ctx, vgroup, &cur_pd, 1, mtr_id, entity_id,
             inc_unordered_cnt, dedup_result, (DedupRule)(dedup_result->dedup_rule), write_wal);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("put data failed. table[%lu].", table_id);

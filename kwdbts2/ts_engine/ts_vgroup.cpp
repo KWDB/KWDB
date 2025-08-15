@@ -145,6 +145,17 @@ KStatus TsVGroup::PutData(kwdbContext_p ctx, TSTableID table_id, uint64_t mtr_id
     LOG_ERROR("makeSurePartitionExist Failed.")
     return FAIL;
   }
+    // update vgroup entity_id.
+  {
+    timestamp64 max_ts = INT64_MIN;
+    for (auto row : rows) {
+      if (max_ts < row.ts) {
+        max_ts = row.ts;
+      }
+    }
+    UpdateEntityAndMaxTs(table_id, max_ts, entity_id);
+    UpdateEntityLatestRow(entity_id, max_ts);
+  }
   return KStatus::SUCCESS;
 }
 

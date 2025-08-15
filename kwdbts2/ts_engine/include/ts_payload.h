@@ -114,7 +114,14 @@ class TsRawPayload {
   uint8_t GetRowType() {
     return  KUint8(payload_.data + row_type_offset_);
   }
+  static uint8_t GetRowTypeFromSlice(const TSSlice &raw) { return KUint8(raw.data + row_type_offset_); }
+
   static TSTableID GetTableIDFromSlice(const TSSlice &raw) { return KUint64(raw.data + table_id_offset_); }
+
+  static TSSlice GetPrimaryKeyFromSlice(const TSSlice &raw) {
+    uint16_t ptag_len = KUint16(raw.data + header_size_);
+    return  {raw.data + header_size_ + sizeof(ptag_len), ptag_len};
+  }
 
   static uint32_t GetDatabaseIdFromSlice(const TSSlice &raw) { return KUint32(raw.data + db_id_offset_); }
 
@@ -283,9 +290,19 @@ class TsRawPayloadRowBuilder {
     for (size_t i = 0; i < col_value_.size(); i++) {
       if (col_value_[i].data != nullptr) {
         free(col_value_[i].data);
+        col_value_[i].data = nullptr;
       }
     }
     col_value_.clear();
+  }
+
+  void Reset() {
+    for (size_t i = 0; i < col_value_.size(); i++) {
+      if (col_value_[i].data != nullptr) {
+        free(col_value_[i].data);
+        col_value_[i].data = nullptr;
+      }
+    }
   }
 
   void SetColValue(int col_id, TSSlice mem) {
@@ -342,6 +359,14 @@ class TSRowPayloadBuilder {
     if (tag_value_mem_) {
       free(tag_value_mem_);
     }
+  }
+  void SetTagMem();
+  void Reset();
+  std::vector<TagInfo>& GetTagSchema() {
+    return tag_schema_;
+  }
+  std::vector<AttributeInfo>& GetMetricSchema() {
+    return data_schema_;
   }
 
   const char* GetTagAddr();

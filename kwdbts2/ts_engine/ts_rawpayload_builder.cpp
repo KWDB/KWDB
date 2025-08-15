@@ -71,6 +71,13 @@ bool TsRawPayloadRowBuilder::Build(TSSlice* row_data) {
 TSRowPayloadBuilder::TSRowPayloadBuilder(const std::vector<TagInfo>& tag_schema,
                                    const std::vector<AttributeInfo>& data_schema, int row_num)
     : tag_schema_(tag_schema), data_schema_(data_schema), count_(row_num) {
+  for (size_t i = 0; i < count_; i++) {
+    rows_.emplace_back(new TsRawPayloadRowBuilder(data_schema_));
+  }
+  SetTagMem();
+}
+
+void TSRowPayloadBuilder::SetTagMem() {
   tag_value_mem_bitmap_len_ = (tag_schema_.size() + 7) / 8;  // bitmap
   tag_value_mem_len_ = tag_value_mem_bitmap_len_;
   for (const auto tag : tag_schema_) {
@@ -89,14 +96,22 @@ TSRowPayloadBuilder::TSRowPayloadBuilder(const std::vector<TagInfo>& tag_schema,
   tag_value_mem_ = reinterpret_cast<char*>(std::malloc(tag_value_mem_len_));
   std::memset(tag_value_mem_, 0xFF, tag_value_mem_bitmap_len_);  // bitmap  set all tag null
   std::memset(tag_value_mem_ + tag_value_mem_bitmap_len_, 0, tag_value_mem_len_ - tag_value_mem_bitmap_len_);
-
-  for (size_t i = 0; i < count_; i++) {
-    rows_.emplace_back(new TsRawPayloadRowBuilder(data_schema_));
-  }
 }
 
 const char* TSRowPayloadBuilder::GetTagAddr() {
   return tag_value_mem_;
+}
+
+void TSRowPayloadBuilder::Reset() {
+  primary_tags_.clear();
+  if (tag_value_mem_) {
+    free(tag_value_mem_);
+    tag_value_mem_ = nullptr;
+  }
+  SetTagMem();
+  for (size_t i = 0; i < count_; i++) {
+    rows_[i]->Reset();
+  }
 }
 
 bool TSRowPayloadBuilder::SetTagValue(int tag_idx, char* mem, int count) {

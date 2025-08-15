@@ -26,6 +26,9 @@
 #include "util.h"
 #include "statistics.h"
 #include "../bench_params.h"
+#include "data_type.h"
+#include "mmap/mmap_tag_column_table.h"
+#include "ts_payload.h"
 
 namespace kwdbts {
 
@@ -67,6 +70,7 @@ class Worker {
       log_ERROR("Worker[%s]  no table to RUN\n", name_.c_str());
       return;
     }
+    table_schemas_.resize(table_ids_.size());
   }
 
   virtual KBStatus SetEntity(int begin, int end) {
@@ -124,8 +128,14 @@ class Worker {
   const uint32_t TS_MS = 1e6;
 
  protected:
+  struct TableSchemaCache {
+    std::vector<TagInfo> tag_schema;
+    std::vector<AttributeInfo> data_schema;
+    std::shared_ptr<TSRowPayloadBuilder> build = nullptr;
+  };
   std::string name_;
   std::vector<uint32_t> table_ids_;
+  std::vector<TableSchemaCache> table_schemas_;
   // table that is currently executing work
   int table_i = 0;
   BenchParams params_;
