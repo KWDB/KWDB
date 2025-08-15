@@ -139,11 +139,12 @@ TsStorageIteratorV2Impl::~TsStorageIteratorV2Impl() {
 
 KStatus TsStorageIteratorV2Impl::Init(bool is_reversed) {
   is_reversed_ = is_reversed;
-  KStatus ret;
-  ret = table_schema_mgr_->GetColumnsExcludeDropped(attrs_, table_version_);
+  auto ret = table_schema_mgr_->GetMetricSchema(table_version_, &schema_);
   if (ret != KStatus::SUCCESS) {
-    return KStatus::FAIL;
+    LOG_ERROR("schema version [%u] does not exists", table_version_);
+    return FAIL;
   }
+  attrs_ = schema_->getSchemaInfoExcludeDropped();
   table_id_ = table_schema_mgr_->GetTableId();
   db_id_ = vgroup_->GetEngineSchemaMgr()->GetDBIDByTableID(table_id_);
 
@@ -508,7 +509,7 @@ KStatus TsStorageIteratorV2Impl::ScanEntityBlockSpans(timestamp64 ts) {
                                           partition_version->GetTsColTypeEndTime(ts_col_type_), ts))  {
       continue;
     }
-    auto s = partition_version->GetBlockSpans(*filter_, &ts_block_spans_, table_schema_mgr_, table_version_);
+    auto s = partition_version->GetBlockSpans(*filter_, &ts_block_spans_, table_schema_mgr_, schema_);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("partition_version GetBlockSpan failed.");
       return s;
@@ -914,7 +915,7 @@ KStatus TsAggIteratorV2Impl::Aggregate() {
                               entity_ids_[cur_entity_index_], ts_col_type_, scan_lsn_, ts_spans_};
     auto partition_version = ts_partitions_[cur_partition_index_];
     ts_block_spans_.clear();
-    auto ret = partition_version->GetBlockSpans(filter, &ts_block_spans_, table_schema_mgr_, table_version_);
+    auto ret = partition_version->GetBlockSpans(filter, &ts_block_spans_, table_schema_mgr_, schema_);
     if (ret != KStatus::SUCCESS) {
       LOG_ERROR("e_paritition GetBlockSpan failed.");
       return ret;
@@ -936,7 +937,7 @@ KStatus TsAggIteratorV2Impl::Aggregate() {
                               entity_ids_[cur_entity_index_], ts_col_type_, scan_lsn_, ts_spans_};
     auto partition_version = ts_partitions_[cur_partition_index_];
     ts_block_spans_.clear();
-    auto ret = partition_version->GetBlockSpans(filter, &ts_block_spans_, table_schema_mgr_, table_version_);
+    auto ret = partition_version->GetBlockSpans(filter, &ts_block_spans_, table_schema_mgr_, schema_);
     if (ret != KStatus::SUCCESS) {
       LOG_ERROR("e_paritition GetBlockSpan failed.");
       return ret;
@@ -957,7 +958,7 @@ KStatus TsAggIteratorV2Impl::Aggregate() {
                                 entity_ids_[cur_entity_index_], ts_col_type_, scan_lsn_, ts_spans_};
       auto partition_version = ts_partitions_[cur_partition_index_];
       ts_block_spans_.clear();
-      auto ret = partition_version->GetBlockSpans(filter, &ts_block_spans_, table_schema_mgr_, table_version_);
+      auto ret = partition_version->GetBlockSpans(filter, &ts_block_spans_, table_schema_mgr_, schema_);
       if (ret != KStatus::SUCCESS) {
         LOG_ERROR("e_paritition GetBlockSpan failed.");
         return ret;
@@ -1069,7 +1070,7 @@ KStatus TsAggIteratorV2Impl::CountAggregate() {
     if (count_header.is_count_valid && checkTimestampWithSpans(ts_spans_, count_header.min_ts, count_header.max_ts) ==
     TimestampCheckResult::FullyContained) {
       std::list<shared_ptr<TsBlockSpan>> mem_block_spans;
-      ret = partition_version->GetBlockSpans(filter, &mem_block_spans, table_schema_mgr_, table_version_,
+      ret = partition_version->GetBlockSpans(filter, &mem_block_spans, table_schema_mgr_, schema_,
                                             false, true, true);
       if (ret != KStatus::SUCCESS) {
         LOG_ERROR("partition_version get mem block span failed.");
@@ -1093,7 +1094,7 @@ KStatus TsAggIteratorV2Impl::CountAggregate() {
         TimestampCheckResult::NonOverlapping)) {
           KUint64(final_agg_data_[0].data) += count_header.valid_count + mem_count;
         } else {
-          ret = partition_version->GetBlockSpans(filter, &ts_block_spans_, table_schema_mgr_, table_version_);
+          ret = partition_version->GetBlockSpans(filter, &ts_block_spans_, table_schema_mgr_, schema_);
           if (ret != KStatus::SUCCESS) {
             LOG_ERROR("e_paritition GetBlockSpan failed.");
             return ret;
@@ -1101,7 +1102,7 @@ KStatus TsAggIteratorV2Impl::CountAggregate() {
         }
       }
     } else {
-      ret = partition_version->GetBlockSpans(filter, &ts_block_spans_, table_schema_mgr_, table_version_);
+      ret = partition_version->GetBlockSpans(filter, &ts_block_spans_, table_schema_mgr_, schema_);
       if (ret != KStatus::SUCCESS) {
         LOG_ERROR("e_paritition GetBlockSpan failed.");
         return ret;
@@ -1129,7 +1130,7 @@ KStatus TsAggIteratorV2Impl::RecalculateCountInfo(std::shared_ptr<const TsPartit
   std::vector<KwTsSpan> ts_spans = {{INT64_MIN, INT64_MAX}};
   TsScanFilterParams count_filter{db_id_, table_id_, vgroup_->GetVGroupID(),
                                   entity_ids_[cur_entity_index_], ts_col_type_, UINT64_MAX, ts_spans};
-  ret = partition->GetBlockSpans(count_filter, &count_block_spans, table_schema_mgr_, table_version_, true);
+  ret = partition->GetBlockSpans(count_filter, &count_block_spans, table_schema_mgr_, schema_, true);
   if (ret != KStatus::SUCCESS) {
     LOG_ERROR("RecalculateCountInfo get mem block span failed.");
     return ret;
@@ -1829,13 +1830,13 @@ KStatus TsOffsetIteratorV2Impl::divideBlockSpans(timestamp64 begin_ts, timestamp
         } else if (is_lower_part && ((is_reversed_ && cur_ts <= mid_ts) || (!is_reversed_ && cur_ts > mid_ts))) {
           *lower_cnt += (j - first_row);
           lower_block_span.push_back(make_shared<TsBlockSpan>(vgroup_id, entity_id, block, first_row, j - first_row,
-                                                              table_schema_mgr_, table_version_));
+                                                              table_schema_mgr_, schema_));
           first_row = j;
           is_lower_part = false;
           min_ts = max_ts = cur_ts;
         } else if (!is_lower_part && ((is_reversed_ && cur_ts > mid_ts) || (!is_reversed_ && cur_ts <= mid_ts))) {
           filter_block_spans_.push_back(make_shared<TsBlockSpan>(vgroup_id, entity_id, block, first_row, j - first_row,
-                                                                 table_schema_mgr_, table_version_));
+                                                                 table_schema_mgr_, schema_));
           first_row = j;
           is_lower_part = true;
           min_ts = max_ts = cur_ts;
@@ -1849,11 +1850,11 @@ KStatus TsOffsetIteratorV2Impl::divideBlockSpans(timestamp64 begin_ts, timestamp
           *lower_cnt += (start_row + row_num - first_row);
           lower_block_span.push_back(make_shared<TsBlockSpan>(vgroup_id, entity_id, block, first_row,
                                                               start_row + row_num - first_row,
-                                                              table_schema_mgr_, table_version_));
+                                                              table_schema_mgr_, schema_));
         } else {
           filter_block_spans_.push_back(make_shared<TsBlockSpan>(vgroup_id, entity_id, block, first_row,
                                                                  start_row + row_num - first_row,
-                                                                 table_schema_mgr_, table_version_));
+                                                                 table_schema_mgr_, schema_));
         }
       }
     }
@@ -1948,7 +1949,7 @@ KStatus TsOffsetIteratorV2Impl::ScanPartitionBlockSpans(uint32_t* cnt) {
     for (auto entity_id : entity_ids) {
       TsScanFilterParams filter{db_id_, table_id_, vgroup_id, entity_id, ts_col_type_, scan_lsn_, ts_spans_};
       ts_block_spans_.clear();
-      ret = partition_version->GetBlockSpans(filter, &ts_block_spans_, table_schema_mgr_, table_version_);
+      ret = partition_version->GetBlockSpans(filter, &ts_block_spans_, table_schema_mgr_, schema_);
       if (ret != KStatus::SUCCESS) {
         LOG_ERROR("GetBlockSpan failed.");
         return KStatus::FAIL;
@@ -1968,11 +1969,12 @@ KStatus TsOffsetIteratorV2Impl::Init(bool is_reversed) {
   comparator_.is_reversed = is_reversed_;
   decltype(p_times_) t_map(comparator_);
   p_times_.swap(t_map);
-  KStatus ret;
-  ret = table_schema_mgr_->GetColumnsExcludeDropped(attrs_, table_version_);
+  auto ret = table_schema_mgr_->GetMetricSchema(table_version_, &schema_);
   if (ret != KStatus::SUCCESS) {
-    return KStatus::FAIL;
+    LOG_ERROR("schema version [%u] does not exists", table_version_);
+    return FAIL;
   }
+  attrs_ = schema_->getSchemaInfoExcludeDropped();
   db_id_ = table_schema_mgr_->GetDbID();
   table_id_ = table_schema_mgr_->GetTableId();
 

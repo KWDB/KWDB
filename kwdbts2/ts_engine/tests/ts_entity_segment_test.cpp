@@ -112,7 +112,9 @@ TEST_F(TsEntitySegmentTest, simpleInsert) {
         std::vector<STScanRange> spans{{{500, INT64_MAX}, {0, UINT64_MAX}}};
         TsBlockItemFilterParams filter{0, table_id, vgroup->GetVGroupID(), (TSEntityID)(1 + i * 123), spans};
         std::list<shared_ptr<TsBlockSpan>> block_spans;
-        auto s = entity_segment->GetBlockSpans(filter, block_spans, schema_mgr, 1);
+        std::shared_ptr<MMapMetricsTable> schema;
+        ASSERT_EQ(schema_mgr->GetMetricSchema(1, &schema), KStatus::SUCCESS);
+        auto s = entity_segment->GetBlockSpans(filter, block_spans, schema_mgr, schema);
         EXPECT_EQ(s, KStatus::SUCCESS);
         EXPECT_EQ(block_spans.size(), i);
         int row_idx = 0;
@@ -156,7 +158,9 @@ TEST_F(TsEntitySegmentTest, simpleInsert) {
         std::vector<STScanRange> spans{{{INT64_MIN, 622}, {0, UINT64_MAX}}};
         TsBlockItemFilterParams filter{0, table_id, vgroup->GetVGroupID(), (TSEntityID)(1 + i * 123), spans};
         std::list<shared_ptr<TsBlockSpan>> block_spans;
-        auto s = entity_segment->GetBlockSpans(filter, block_spans, schema_mgr, 1);
+        std::shared_ptr<MMapMetricsTable> schema;
+        ASSERT_EQ(schema_mgr->GetMetricSchema(1, &schema), KStatus::SUCCESS);
+        auto s = entity_segment->GetBlockSpans(filter, block_spans, schema_mgr, schema);
         EXPECT_EQ(s, KStatus::SUCCESS);
         EXPECT_EQ(block_spans.size(), i > 0 ? 1 : 0);
         int row_idx = 0;
@@ -197,7 +201,9 @@ TEST_F(TsEntitySegmentTest, simpleInsert) {
         std::vector<STScanRange> spans{{{INT64_MIN, INT64_MAX}, {0, UINT64_MAX}}};
         TsBlockItemFilterParams filter{0, table_id, vgroup->GetVGroupID(), (TSEntityID)(1 + i * 123), spans};
         std::list<shared_ptr<TsBlockSpan>> block_spans;
-        auto s = entity_segment->GetBlockSpans(filter, block_spans, schema_mgr, 1);
+        std::shared_ptr<MMapMetricsTable> schema;
+        ASSERT_EQ(schema_mgr->GetMetricSchema(1, &schema), KStatus::SUCCESS);
+        auto s = entity_segment->GetBlockSpans(filter, block_spans, schema_mgr, schema);
         EXPECT_EQ(s, KStatus::SUCCESS);
         EXPECT_EQ(block_spans.size(), i);
         int row_idx = 0;
@@ -240,12 +246,14 @@ TEST_F(TsEntitySegmentTest, simpleInsert) {
     ASSERT_EQ(partitions.size(), 1);
     std::vector<std::shared_ptr<TsLastSegment>> result = partitions[0]->GetAllLastSegments();
     ASSERT_EQ(result.size(), 1);
+    std::shared_ptr<MMapMetricsTable> schema;
+    ASSERT_EQ(schema_mgr->GetMetricSchema(1, &schema), KStatus::SUCCESS);
     for (int j = 0; j < result.size(); ++j) {
       for (int i = 0; i < 10; ++i) {
         std::vector<STScanRange> spans{{{INT64_MIN, INT64_MAX}, {0, UINT64_MAX}}};
         TsBlockItemFilterParams filter{0, table_id, vgroup->GetVGroupID(), (TSEntityID)(1 + i * 123), spans};
         std::list<shared_ptr<TsBlockSpan>> block_span;
-        result[j]->GetBlockSpans(filter, block_span, schema_mgr, 1);
+        result[j]->GetBlockSpans(filter, block_span, schema_mgr, schema);
         for (auto block : block_span) {
           last_row_num += block->GetRowNum();
         }
@@ -352,7 +360,9 @@ TEST_F(TsEntitySegmentTest, simpleInsertDoubleCompact) {
         std::vector<STScanRange> spans{{{500, INT64_MAX}, {0, UINT64_MAX}}};
         TsBlockItemFilterParams filter{0, table_id, vgroup->GetVGroupID(), (TSEntityID)(1 + i * 123), spans};
         std::list<shared_ptr<TsBlockSpan>> block_spans;
-        auto s = entity_segment->GetBlockSpans(filter, block_spans, schema_mgr, 1);
+        std::shared_ptr<MMapMetricsTable> schema;
+        ASSERT_EQ(schema_mgr->GetMetricSchema(1, &schema), KStatus::SUCCESS);
+        auto s = entity_segment->GetBlockSpans(filter, block_spans, schema_mgr, schema);
         EXPECT_EQ(s, KStatus::SUCCESS);
         EXPECT_EQ(block_spans.size(), i * 2);
         while (!block_spans.empty()) {
@@ -399,7 +409,9 @@ TEST_F(TsEntitySegmentTest, simpleInsertDoubleCompact) {
         std::vector<STScanRange> spans{{{INT64_MIN, 622}, {0, UINT64_MAX}}};
         TsBlockItemFilterParams filter{0, table_id, vgroup->GetVGroupID(), (TSEntityID)(1 + i * 123), spans};
         std::list<shared_ptr<TsBlockSpan>> block_spans;
-        auto s = entity_segment->GetBlockSpans(filter, block_spans, schema_mgr, 1);
+        std::shared_ptr<MMapMetricsTable> schema;
+        ASSERT_EQ(schema_mgr->GetMetricSchema(1, &schema), KStatus::SUCCESS);
+        auto s = entity_segment->GetBlockSpans(filter, block_spans, schema_mgr, schema);
         EXPECT_EQ(s, KStatus::SUCCESS);
         EXPECT_EQ(block_spans.size(), i > 0 ? 2 : 0);
         while (!block_spans.empty()) {
@@ -447,7 +459,9 @@ TEST_F(TsEntitySegmentTest, simpleInsertDoubleCompact) {
         std::vector<STScanRange> spans{{{INT64_MIN, INT64_MAX}, {0, UINT64_MAX}}};
         TsBlockItemFilterParams filter{0, table_id, vgroup->GetVGroupID(), (TSEntityID)(1 + i * 123), spans};
         std::list<shared_ptr<TsBlockSpan>> block_spans;
-        auto s = entity_segment->GetBlockSpans(filter, block_spans, schema_mgr, 1);
+        std::shared_ptr<MMapMetricsTable> schema;
+        ASSERT_EQ(schema_mgr->GetMetricSchema(1, &schema), KStatus::SUCCESS);
+        auto s = entity_segment->GetBlockSpans(filter, block_spans, schema_mgr, schema);
         EXPECT_EQ(s, KStatus::SUCCESS);
         EXPECT_EQ(block_spans.size(), i * 2);
         int row_idx = 0;
@@ -503,10 +517,12 @@ TEST_F(TsEntitySegmentTest, simpleInsertDoubleCompact) {
       for (int i = 0; i < 10; ++i) {
         TSTableID table_id = i % 2 == 0 ? table_id1 : table_id2;
         auto schema_mgr = i % 2 == 0 ? schema_mgr1 : schema_mgr2;
+        std::shared_ptr<MMapMetricsTable> schema;
+        ASSERT_EQ(schema_mgr->GetMetricSchema(1, &schema), KStatus::SUCCESS);
         std::vector<STScanRange> spans{{{INT64_MIN, INT64_MAX}, {0, UINT64_MAX}}};
         TsBlockItemFilterParams filter{0, table_id, vgroup->GetVGroupID(), (TSEntityID)(1 + i * 123), spans};
         std::list<shared_ptr<TsBlockSpan>> block_span;
-        result[j]->GetBlockSpans(filter, block_span, schema_mgr, 1);
+        result[j]->GetBlockSpans(filter, block_span, schema_mgr, schema);
         for (auto block : block_span) {
           last_row_num += block->GetRowNum();
         }
@@ -590,7 +606,9 @@ TEST_F(TsEntitySegmentTest, TestEntityMinMaxRowNum) {
       filter.entity_id = eid;
       filter.spans_ = {{{INT64_MIN, INT64_MAX}, {0, UINT64_MAX}}};
       std::list<std::shared_ptr<TsBlockSpan>> spans;
-      auto s = last_segment->GetBlockSpans(filter, spans, schema_mgr, 0);
+      std::shared_ptr<MMapMetricsTable> schema;
+      ASSERT_EQ(schema_mgr->GetMetricSchema(0, &schema), KStatus::SUCCESS);
+      auto s = last_segment->GetBlockSpans(filter, spans, schema_mgr, schema);
       auto nrow = std::accumulate(spans.begin(), spans.end(), 0,
                                   [](int sum, std::shared_ptr<TsBlockSpan> span) { return sum + span->GetRowNum(); });
       EXPECT_EQ(nrow, expect.row_num_in_last_segment);
@@ -664,7 +682,9 @@ TEST_F(TsEntitySegmentTest, simpleCount) {
         TsScanFilterParams filter{1, table_id, vgroup->GetVGroupID(), (TSEntityID)i, DATATYPE::TIMESTAMP64,
                                   UINT64_MAX, ts_spans};
         std::list<shared_ptr<TsBlockSpan>> block_spans;
-        auto s = partition->GetBlockSpans(filter, &block_spans, schema_mgr, 1);
+        std::shared_ptr<MMapMetricsTable> schema;
+        ASSERT_EQ(schema_mgr->GetMetricSchema(1, &schema), KStatus::SUCCESS);
+        auto s = partition->GetBlockSpans(filter, &block_spans, schema_mgr, schema);
         EXPECT_EQ(s, KStatus::SUCCESS);
         int row_idx = 0;
         while (!block_spans.empty()) {

@@ -379,13 +379,14 @@ KStatus TsVGroup::GetLastRowEntity(kwdbContext_p ctx, std::shared_ptr<TsTableSch
   table_schema_mgr->GetTagSchema(ctx, &tag_schema);
   std::vector<uint32_t> entity_id_list;
   tag_schema->GetEntityIdListByVGroupId(vgroup_id_, entity_id_list);
+  std::shared_ptr<MMapMetricsTable> metric_schema = table_schema_mgr->GetCurrentMetricsTable();
   for (int i = ts_partitions.size() - 1; !last_row_found && i >= 0; --i) {
     std::shared_ptr<TsBlockSpan> last_block_span = nullptr;
     for (auto &entity_id : entity_id_list) {
       std::list<std::shared_ptr<TsBlockSpan>> ts_block_spans;
       filter.entity_id_ = entity_id;
       KStatus ret = ts_partitions[i]->GetBlockSpans(filter, &ts_block_spans, table_schema_mgr,
-                                                   table_schema_mgr->GetCurrentVersion());
+                                                   metric_schema);
       if (ret != KStatus::SUCCESS) {
         LOG_ERROR("GetBlockSpan failed.");
         return KStatus::FAIL;
@@ -453,10 +454,11 @@ KStatus TsVGroup::GetEntityLastRow(std::shared_ptr<TsTableSchemaManager>& table_
   TsScanFilterParams filter{db_id, table_id, vgroup_id_, entity_id, ts_col_type,
                             scan_lsn, spans};
   std::shared_ptr<TsBlockSpan> last_block_span = nullptr;
+  std::shared_ptr<MMapMetricsTable> metric_schema = table_schema_mgr->GetCurrentMetricsTable();
   for (int i = ts_partitions.size() - 1; i >= 0; --i) {
     std::list<std::shared_ptr<TsBlockSpan>> ts_block_spans;
     KStatus ret = ts_partitions[i]->GetBlockSpans(filter, &ts_block_spans, table_schema_mgr,
-                                                 table_schema_mgr->GetCurrentVersion());
+                                                 metric_schema);
     if (ret != KStatus::SUCCESS) {
       LOG_ERROR("GetBlockSpan failed.");
       return KStatus::FAIL;
@@ -830,12 +832,13 @@ KStatus TsVGroup::GetBlockSpans(TSTableID table_id, uint32_t entity_id, KwTsSpan
   current = version_manager_->Current();
   std::vector<KwTsSpan> ts_spans{ts_span};
   auto ts_partitions = current->GetPartitions(db_id, ts_spans, ts_col_type);
+  std::shared_ptr<MMapMetricsTable> metric_schema = table_schema_mgr->GetCurrentMetricsTable();
   for (int32_t index = 0; index < ts_partitions.size(); ++index) {
     TsScanFilterParams filter{db_id, table_id, vgroup_id_, entity_id,
                               ts_col_type, wal_manager_->FetchCurrentLSN(), ts_spans};
     auto partition_version = ts_partitions[index];
     std::list<std::shared_ptr<TsBlockSpan>> cur_block_span;
-    auto s = partition_version->GetBlockSpans(filter, &cur_block_span, table_schema_mgr, table_version);
+    auto s = partition_version->GetBlockSpans(filter, &cur_block_span, table_schema_mgr, metric_schema);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("partition_version GetBlockSpan failed.");
       return s;
@@ -1710,7 +1713,13 @@ KStatus TsVGroup::Vacuum() {
       }
 
       std::list<shared_ptr<TsBlockSpan>> block_spans;
-      s = entity_segment->GetBlockSpans(block_data_filter, block_spans, tb_schema_mgr, 0);
+      std::shared_ptr<MMapMetricsTable> metric_schema;
+      s = tb_schema_mgr->GetMetricSchema(0, &metric_schema);
+      if (s != SUCCESS) {
+        LOG_ERROR("Vacuum failed, GetMetricSchema failed")
+        return s;
+      }
+      s = entity_segment->GetBlockSpans(block_data_filter, block_spans, tb_schema_mgr, metric_schema);
       if (s != SUCCESS) {
         LOG_ERROR("Vacuum failed, GetBlockSpans failed")
         return s;
@@ -1775,8 +1784,14 @@ KStatus TsVGroup::Vacuum() {
         DatabaseID db_id = std::get<0>(partition->GetPartitionIdentifier());
         TsBlockItemFilterParams param {db_id, entity_item.table_id, vgroup_id_, entity_id, {scan_range}};
         std::list<shared_ptr<TsBlockSpan>> mem_block_spans;
+        std::shared_ptr<MMapMetricsTable> metric_schema;
+        s = tb_schema_mgr->GetMetricSchema(0, &metric_schema);
+        if (s != SUCCESS) {
+          LOG_ERROR("Vacuum failed, GetMetricSchema failed")
+          return s;
+        }
         for (auto& mem_segment : mem_segments) {
-          mem_segment->GetBlockSpans(param, mem_block_spans, tb_schema_mgr, 0);
+          mem_segment->GetBlockSpans(param, mem_block_spans, tb_schema_mgr, metric_schema);
         }
         if (mem_block_spans.empty()) {
           entity_max_lsn.emplace_back(entity_id, cur_lsn);

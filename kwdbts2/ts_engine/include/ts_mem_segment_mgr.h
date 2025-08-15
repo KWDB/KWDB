@@ -84,7 +84,8 @@ class TsMemSegment : public TsSegmentBase, public enable_shared_from_this<TsMemS
   inline void SetDeleting() { status_.store(MEM_SEGMENT_DELETING); }
 
   KStatus GetBlockSpans(const TsBlockItemFilterParams& filter, std::list<shared_ptr<TsBlockSpan>>& blocks,
-                        std::shared_ptr<TsTableSchemaManager>& tbl_schema_mgr, uint32_t scan_version) override;
+                        std::shared_ptr<TsTableSchemaManager>& tbl_schema_mgr,
+                        std::shared_ptr<MMapMetricsTable>& scan_schema) override;
   KStatus GetBlockSpans(std::list<shared_ptr<TsBlockSpan>>& blocks, TsEngineSchemaManager* schema_mgr);
 };
 
@@ -228,7 +229,7 @@ class TsMemSegmentManager {
 
   KStatus GetBlockSpans(const TsBlockItemFilterParams& filter, std::list<shared_ptr<TsBlockSpan>>& block_spans,
                         std::shared_ptr<TsTableSchemaManager>& tbl_schema_mgr,
-                        uint32_t scan_version = 0);
+                        std::shared_ptr<MMapMetricsTable>& schema);
 };
 
 }  // namespace kwdbts

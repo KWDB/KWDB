@@ -589,7 +589,8 @@ KStatus TsPartitionVersion::getFilter(const TsScanFilterParams& filter, TsBlockI
 
 KStatus TsPartitionVersion::GetBlockSpans(const TsScanFilterParams& filter,
                                           std::list<shared_ptr<TsBlockSpan>>* ts_block_spans,
-                                          std::shared_ptr<TsTableSchemaManager>& tbl_schema_mgr, uint32_t scan_version,
+                                          std::shared_ptr<TsTableSchemaManager>& tbl_schema_mgr,
+                                          std::shared_ptr<MMapMetricsTable>& scan_schema,
                                           bool skip_mem, bool skip_last, bool skip_entity) const {
   TsBlockItemFilterParams block_data_filter;
   auto s = getFilter(filter, block_data_filter);
@@ -602,7 +603,7 @@ KStatus TsPartitionVersion::GetBlockSpans(const TsScanFilterParams& filter,
     // get block span in mem segment
     if (valid_memseg_ != nullptr) {
       for (auto &mem : *valid_memseg_) {
-        s = mem->GetBlockSpans(block_data_filter, *ts_block_spans, tbl_schema_mgr, scan_version);
+        s = mem->GetBlockSpans(block_data_filter, *ts_block_spans, tbl_schema_mgr, scan_schema);
         if (s != KStatus::SUCCESS) {
           LOG_ERROR("GetBlockSpans of mem segment failed.");
           return s;
@@ -613,7 +614,7 @@ KStatus TsPartitionVersion::GetBlockSpans(const TsScanFilterParams& filter,
   if (!skip_last) {
     // get block span in last segment
     for (auto& last_seg : last_segments_) {
-      s = last_seg->GetBlockSpans(block_data_filter, *ts_block_spans, tbl_schema_mgr, scan_version);
+      s = last_seg->GetBlockSpans(block_data_filter, *ts_block_spans, tbl_schema_mgr, scan_schema);
       if (s != KStatus::SUCCESS) {
         LOG_ERROR("GetBlockSpans of last segment failed.");
         return s;
@@ -627,7 +628,7 @@ KStatus TsPartitionVersion::GetBlockSpans(const TsScanFilterParams& filter,
       return KStatus::SUCCESS;
     }
     s = entity_segment_->GetBlockSpans(block_data_filter, *ts_block_spans,
-             tbl_schema_mgr, scan_version);
+             tbl_schema_mgr, scan_schema);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("GetBlockSpans of entity segment failed.");
       return s;

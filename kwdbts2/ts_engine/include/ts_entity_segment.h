@@ -177,7 +177,8 @@ class TsEntitySegmentMetaManager {
 
   KStatus GetBlockSpans(const TsBlockItemFilterParams& filter, std::shared_ptr<TsEntitySegment> blk_segment,
                         std::list<shared_ptr<TsBlockSpan>>& block_spans,
-                        std::shared_ptr<TsTableSchemaManager>& tbl_schema_mgr, uint32_t scan_version);
+                        std::shared_ptr<TsTableSchemaManager>& tbl_schema_mgr,
+                        std::shared_ptr<MMapMetricsTable>& scan_schema);
 
   void MarkDeleteEntityHeader() { entity_header_.MarkDelete(); }
 
@@ -338,7 +339,8 @@ class TsEntitySegment : public TsSegmentBase, public enable_shared_from_this<TsE
   }
 
   KStatus GetBlockSpans(const TsBlockItemFilterParams& filter, std::list<shared_ptr<TsBlockSpan>>& block_spans,
-                        std::shared_ptr<TsTableSchemaManager>& tbl_schema_mgr, uint32_t scan_version) override;
+                        std::shared_ptr<TsTableSchemaManager>& tbl_schema_mgr,
+                        std::shared_ptr<MMapMetricsTable>& scan_schema) override;
 
   KStatus GetBlockData(TsEntityBlock* block, std::string& data);
 

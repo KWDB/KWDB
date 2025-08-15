@@ -155,7 +155,7 @@ KStatus TsEntitySegmentMetaManager::GetBlockSpans(const TsBlockItemFilterParams&
                                                   std::shared_ptr<TsEntitySegment> blk_segment,
                                                   std::list<shared_ptr<TsBlockSpan>>& block_spans,
                                                   std::shared_ptr<TsTableSchemaManager>& tbl_schema_mgr,
-                                                  uint32_t scan_version) {
+                                                  std::shared_ptr<MMapMetricsTable>& scan_schema) {
   TsEntityItem entity_item{filter.entity_id};
   bool is_exist;
   KStatus s = entity_header_.GetEntityItem(filter.entity_id, entity_item, is_exist);
@@ -182,7 +182,7 @@ KStatus TsEntitySegmentMetaManager::GetBlockSpans(const TsBlockItemFilterParams&
       std::shared_ptr<TsEntityBlock> block = std::make_shared<TsEntityBlock>(filter.table_id, cur_blk_item,
                                                                              blk_segment);
       block_spans.push_front(make_shared<TsBlockSpan>(filter.vgroup_id, filter.entity_id, std::move(block), 0,
-                                                      block->GetRowNum(), tbl_schema_mgr, scan_version));
+                                                      block->GetRowNum(), tbl_schema_mgr, scan_schema));
     } else if (IsTsLsnSpanCrossSpans(filter.spans_, {cur_blk_item->min_ts, cur_blk_item->max_ts},
                               {cur_blk_item->min_lsn, cur_blk_item->max_lsn})) {
       std::shared_ptr<TsEntityBlock> block = std::make_shared<TsEntityBlock>(filter.table_id, cur_blk_item,
@@ -200,7 +200,7 @@ KStatus TsEntitySegmentMetaManager::GetBlockSpans(const TsBlockItemFilterParams&
         // Because block item traverses from back to front, use push_front
         block_spans.push_front(make_shared<TsBlockSpan>(filter.vgroup_id, filter.entity_id, block, row_spans[i].first,
                                                         row_spans[i].second, tbl_schema_mgr,
-                                                        scan_version));
+                                                        scan_schema));
       }
     }
     last_blk_id = cur_blk_item->prev_block_id;
@@ -661,12 +661,12 @@ KStatus TsEntitySegment::Open() {
 inline KStatus TsEntitySegment::GetBlockSpans(const TsBlockItemFilterParams& filter,
                                        std::list<shared_ptr<TsBlockSpan>>& block_spans,
                                        std::shared_ptr<TsTableSchemaManager>& tbl_schema_mgr,
-                                       uint32_t scan_version) {
+                                       std::shared_ptr<MMapMetricsTable>& scan_schema) {
   if (filter.entity_id > meta_mgr_.GetEntityNum()) {
     // LOG_WARN("entity id [%lu] > entity number [%lu]", filter.entity_id, meta_mgr_.GetEntityNum());
     return KStatus::SUCCESS;
   }
-  return meta_mgr_.GetBlockSpans(filter, shared_from_this(), block_spans, tbl_schema_mgr, scan_version);
+  return meta_mgr_.GetBlockSpans(filter, shared_from_this(), block_spans, tbl_schema_mgr, scan_schema);
 }
 
 inline KStatus TsEntitySegment::GetBlockData(TsEntityBlock* block, std::string& data) {
