@@ -97,6 +97,7 @@ struct EngineOptions {
   static uint32_t max_compact_num;
   static size_t max_rows_per_block;
   static size_t min_rows_per_block;
+  static int64_t partition_interval;
 
   TsIOEnv* io_env = &TsMMapIOEnv::GetInstance();
 };
