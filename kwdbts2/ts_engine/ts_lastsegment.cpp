@@ -193,7 +193,7 @@ class TsLastBlock : public TsBlock {
       info.row_count = block_info_->nrow;
 
       std::unique_ptr<TsColumnBlock> colblock;
-      s = TsColumnBlock::ParseCompressedColumnData(schema[col_id], result, info, &colblock);
+      s = TsColumnBlock::ParseColumnData(schema[col_id], result, info, &colblock);
       if (s == FAIL) {
         LOG_ERROR("can not parse column data, col_id %d", col_id);
         return FAIL;
