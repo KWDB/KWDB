@@ -74,7 +74,7 @@ class TSEngineV2Impl : public TSEngine {
   std::unordered_map<uint64_t, std::shared_ptr<TsBatchDataWorker>> write_batch_data_workers_;
   KRWLatch write_batch_workers_lock_;
 
-  KRWLatch insert_tag_lock_;
+  TsHashRWLatch insert_tag_lock_;
 
   // std::unique_ptr<TsMemSegmentManager> mem_seg_mgr_ = nullptr;
 
