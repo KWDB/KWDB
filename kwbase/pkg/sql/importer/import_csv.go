@@ -528,9 +528,22 @@ func constructCopyAndRun(
 
 	var state duck.State
 	var res duck.Result
+	db := duck.Database{}
+
+	path := flowCtx.Cfg.ApEngine.DbPath + "/" + spec.Table.DbName
+	state = duck.Open(path, &db)
+	if state != duck.StateSuccess {
+		return false, 0, errors.New("failed to opend the ap database")
+	}
+
+	connection := duck.Connection{}
+	state = duck.Connect(db, &connection)
+	if state != duck.StateSuccess {
+		return false, 0, errors.New("failed to connect to ap database")
+	}
 
 	start := time.Now()
-	state = duck.Query(*flowCtx.Cfg.ApEngine.Connection, stmt, &res)
+	state = duck.Query(connection, stmt, &res)
 	if state != duck.StateSuccess {
 		fmt.Println("copy failed")
 		errMsg := duck.ResultError(&res)

@@ -271,11 +271,12 @@ func importPlanHook(
 					return err
 				}
 				p.SetAuditTargetAndType(uint32(tableDesc.GetID()), tableDesc.GetName(), nil, targetType)
-				if tableDesc.TableType == tree.RelationalTable {
+				switch tableDesc.TableType {
+				case tree.RelationalTable:
 					if tableDetails, err = checkAndGetDetailsInTableInto(tableDesc, intoCols); err != nil {
 						return err
 					}
-				} else {
+				case tree.TimeseriesTable:
 					timeSeriesImport = true
 					tableDesc, err = p.ResolveMutableTableDescriptor(ctx, importStmt.Table, true, sql.ResolveRequireTableDesc)
 					if err != nil {
@@ -287,6 +288,29 @@ func importPlanHook(
 					if err = checkIntoColumns(tableDesc, intoCols); err != nil {
 						return err
 					}
+				case tree.ColumnBasedTable:
+					tableDetails, err = checkAndGetDetailsInTableInto(tableDesc, intoCols)
+					if err != nil {
+						return err
+					}
+
+					descKey := sqlbase.MakeDescMetadataKey(tableDesc.GetParentID())
+					desc := &sqlbase.Descriptor{}
+					
+					_, err := p.ExtendedEvalContext().Txn.GetProtoTs(ctx, descKey, desc)
+					if err != nil {
+						return err
+					}
+					database := desc.GetDatabase()
+					if database == nil {
+						return pgerror.Newf(pgcode.WrongObjectType,
+							"%q is not a database", desc.String())
+					}
+
+					if err := database.Validate(); err != nil {
+						return err
+					}
+					tableDetails[0].DbName = database.Name
 				}
 			} else {
 				if importStmt.CreateFile != nil {
