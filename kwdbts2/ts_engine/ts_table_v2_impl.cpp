@@ -42,39 +42,24 @@ bool TsTableV2Impl::IsDropped() {
   return table_dropped_.load();
 }
 
-KStatus TsTableV2Impl::PutData(kwdbContext_p ctx, uint64_t v_group_id, TSSlice* payload, int payload_num,
-                          uint64_t mtr_id, uint16_t* entity_id, uint32_t* inc_unordered_cnt,
-                          DedupResult* dedup_result, const DedupRule& dedup_rule) {
+KStatus TsTableV2Impl::PutData(kwdbContext_p ctx, TsVGroup* v_group, TSSlice* payload, int payload_num,
+                          uint64_t mtr_id, TSEntityID entity_id, uint32_t* inc_unordered_cnt,
+                          DedupResult* dedup_result, const DedupRule& dedup_rule, bool write_wal) {
   assert(payload_num == 1);
   auto version = TsRawPayload::GetTableVersionFromSlice(*payload);
   std::vector<AttributeInfo> metric_schema;
   table_schema_mgr_->GetColumnsExcludeDropped(metric_schema, version);
-  TsRawPayload p(*payload, metric_schema);
-  uint8_t payload_data_flag = p.GetRowType();
+  uint8_t payload_data_flag = TsRawPayload::GetRowTypeFromSlice(*payload);
   if (payload_data_flag == DataTagFlag::TAG_ONLY) {
     LOG_DEBUG("tag only. so no need putdata.");
     return KStatus::SUCCESS;
   }
-  auto primary_key = p.GetPrimaryTag();
-  auto vgroup = GetVGroupByID(v_group_id);
-  assert(vgroup != nullptr);
-  auto s = vgroup->PutData(ctx, table_id_, mtr_id, &primary_key, KUint64(entity_id), payload, true);
+  auto primary_key = TsRawPayload::GetPrimaryKeyFromSlice(*payload);
+  auto s = v_group->PutData(ctx, table_id_, mtr_id, &primary_key, entity_id, payload, write_wal);
   if (s != KStatus::SUCCESS) {
     // todo(liangbo01) if failed. should we need rollback all inserted data?
-    LOG_ERROR("putdata failed. table id[%lu], group id[%lu]", table_id_, v_group_id);
+    LOG_ERROR("putdata failed. table id[%lu], group id[%u]", table_id_, v_group->GetVGroupID());
     return s;
-  }
-  // update vgroup entity_id.
-  {
-    timestamp64 max_ts = p.GetTS(0);
-    for (size_t i = 1; i < p.GetRowCount(); i++) {
-      auto cur_ts = p.GetTS(i);
-      if (max_ts < cur_ts) {
-        max_ts = cur_ts;
-      }
-    }
-    vgroup->UpdateEntityAndMaxTs(table_id_, max_ts, *entity_id);
-    vgroup->UpdateEntityLatestRow(*entity_id, max_ts);
   }
   return KStatus::SUCCESS;
 }
@@ -95,21 +80,6 @@ KStatus TsTableV2Impl::PutData(kwdbContext_p ctx, TsVGroup* v_group, TsRawPayloa
     // todo(liangbo01) if failed. should we need rollback all inserted data?
     LOG_ERROR("putdata failed. table id[%lu], group id[%u]", table_id_, v_group->GetVGroupID());
     return s;
-  }
-  // update vgroup entity_id.
-  {
-    std::vector<AttributeInfo> metric_schema;
-    table_schema_mgr_->GetColumnsExcludeDropped(metric_schema, version);
-    TsRawPayload tp(payload, metric_schema);
-    timestamp64 max_ts = tp.GetTS(0);
-    for (size_t i = 1; i < tp.GetRowCount(); i++) {
-      auto cur_ts = tp.GetTS(i);
-      if (max_ts < cur_ts) {
-        max_ts = cur_ts;
-      }
-    }
-    v_group->UpdateEntityAndMaxTs(table_id_, max_ts, entity_id);
-    v_group->UpdateEntityLatestRow(entity_id, max_ts);
   }
   return KStatus::SUCCESS;
 }

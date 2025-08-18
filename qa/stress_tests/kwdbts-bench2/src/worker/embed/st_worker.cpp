@@ -49,7 +49,16 @@ KBStatus StWriteWorker::do_work(KTimestamp  new_ts) {
     return KBStatus::Invalid("no table to run");
   }
   // traverse table, execute write
+  KStatus stat;
   uint32_t w_table = table_ids_[table_i];
+  TableSchemaCache& table_schema = table_schemas_[table_i];
+  if (table_schema.data_schema.size() == 0) {
+    stat = st_inst_->GetSchemaInfo(ctx, w_table, &table_schema.tag_schema, &table_schema.data_schema);
+    if (stat != KStatus::SUCCESS) {
+      return KBStatus::NOT_FOUND("st_inst_->GetSchemaInfo failed. tbl:" + std::to_string(w_table));
+    }
+  }
+  
   table_i++;
   if (table_i >= table_ids_.size()) {
     table_i = 0;
@@ -61,22 +70,22 @@ KBStatus StWriteWorker::do_work(KTimestamp  new_ts) {
     _entity_i++;
   }
   KBStatus s;
-  KStatus stat;
   KTimestamp wr_ts = new_ts;
   k_uint32 p_len = 0;
   TSSlice payload;
   {
     KWDB_START();
-    std::vector<TagInfo> tag_schema;
-    std::vector<AttributeInfo> data_schema;
-    stat = st_inst_->GetSchemaInfo(ctx, w_table, &tag_schema, &data_schema);
-    if (stat != KStatus::SUCCESS) {
-      return KBStatus::NOT_FOUND("st_inst_->GetSchemaInfo failed. tbl:" + std::to_string(w_table));
-    }
     if (params_.engine_version == "2") {
-      genRowBasedPayloadData(tag_schema, data_schema, w_table, 1, entity_tag, wr_ts, params_.BATCH_NUM, params_.time_inc, &payload);
+      if (table_schema.build == nullptr) {
+        table_schema.build = std::make_shared<TSRowPayloadBuilder>(table_schema.tag_schema, table_schema.data_schema, params_.BATCH_NUM);
+      } else {
+        table_schema.build->Reset();
+      }
+      FillPayloaderBuilderData(*(table_schema.build.get()), entity_tag, wr_ts, params_.BATCH_NUM, params_.time_inc);
+      table_schema.build->Build(w_table, 1, &payload);
+      // genRowBasedPayloadData(table_schema.tag_schema, table_schema.data_schema, w_table, 1, entity_tag, wr_ts, params_.BATCH_NUM, params_.time_inc, &payload);
     } else {
-      genPayloadData(tag_schema, data_schema, entity_tag, wr_ts, params_.BATCH_NUM, params_.time_inc, &payload);
+      genPayloadData(table_schema.tag_schema, table_schema.data_schema, entity_tag, wr_ts, params_.BATCH_NUM, params_.time_inc, &payload);
     }
 
     KWDB_DURATION(_row_prepare_time);

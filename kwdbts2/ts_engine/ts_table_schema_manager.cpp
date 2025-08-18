@@ -670,6 +670,9 @@ vector<uint32_t> TsTableSchemaManager::GetNTagIndexInfo(uint32_t ts_version, uin
 }
 
 bool TsTableSchemaManager::IsExistTableVersion(uint32_t version) {
+  if (version == cur_version_) {
+    return true;
+  }
   if (getMetricsTable(version) == nullptr) {
     LOG_ERROR("Couldn't find metrics table with version: %u", version);
     return false;
