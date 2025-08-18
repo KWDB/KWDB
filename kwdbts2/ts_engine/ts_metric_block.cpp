@@ -119,12 +119,7 @@ KStatus TsMetricBlock::ParseCompressedMetricData(const std::vector<AttributeInfo
   TSSlice lsn_slice;
   lsn_slice.data = compressed_data.data;
   lsn_slice.len = compress_info.lsn_len;
-  TsSliceGuard out_lsn_guard;
-  bool ok = mgr.DecompressData(lsn_slice, nullptr, compress_info.row_count, &out_lsn_guard);
-  if (!ok) {
-    LOG_ERROR("decompress lsn error");
-    return FAIL;
-  }
+  TsSliceGuard out_lsn_guard(lsn_slice);
 
   if (out_lsn_guard.size() != compress_info.row_count * sizeof(TS_LSN)) {
     LOG_ERROR("decompress lsn size not match");
