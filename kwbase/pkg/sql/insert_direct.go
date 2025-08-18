@@ -413,11 +413,7 @@ func parserString2Int(
 
 // BuildPayload is used to BuildPayloadForTsInsert
 func BuildPayload(
-	evalCtx *tree.EvalContext,
-	priTagRowIdx []int,
-	di *DirectInsert,
-	dit DirectInsertTable,
-	cfg *ExecutorConfig,
+	evalCtx *tree.EvalContext, priTagRowIdx []int, di *DirectInsert, dit DirectInsertTable,
 ) error {
 	payload, _, err := execbuilder.BuildPayloadForTsInsert(
 		evalCtx,
@@ -438,9 +434,6 @@ func BuildPayload(
 	primaryTagKey := sqlbase.MakeTsPrimaryTagKey(sqlbase.ID(dit.TabID), hashPoints)
 	BuildPerNodePayloads(di.PayloadNodeMap, []roachpb.NodeID{evalCtx.NodeID}, payload, priTagRowIdx, primaryTagKey, dit.HashNum)
 
-	di.PayloadNodeMap[int(evalCtx.NodeID)].CDCData = buildCDCDataForDirectInsert(
-		evalCtx, uint64(dit.TabID), dit.ColsDesc, di.InputValues, di.ColIndexs, cfg.CDCCoordinator)
-
 	return nil
 }
 
@@ -452,7 +445,6 @@ func BuildPreparePayload(
 	di *DirectInsert,
 	dit DirectInsertTable,
 	qargs [][]byte,
-	cfg *ExecutorConfig,
 ) error {
 	payload, _, err := execbuilder.BuildPreparePayloadForTsInsert(
 		evalCtx,
@@ -474,8 +466,7 @@ func BuildPreparePayload(
 	hashPoints := sqlbase.DecodeHashPointFromPayload(payload)
 	primaryTagKey := sqlbase.MakeTsPrimaryTagKey(sqlbase.ID(dit.TabID), hashPoints)
 	BuildPerNodePayloads(di.PayloadNodeMap, []roachpb.NodeID{1}, payload, priTagRowIdx, primaryTagKey, dit.HashNum)
-	di.PayloadNodeMap[int(evalCtx.NodeID)].CDCData = buildCDCDataForDirectInsert(
-		evalCtx, uint64(dit.TabID), dit.ColsDesc, di.InputValues, di.ColIndexs, cfg.CDCCoordinator)
+
 	return nil
 }
 
@@ -763,7 +754,7 @@ func BuildRowBytesForPrepareTsInsert(
 		NodeID:          nodeID,
 		PerNodePayloads: allPayloads,
 	}
-	di.PayloadNodeMap[int(evalCtx.NodeID)].CDCData = buildCDCDataForDirectInsert(
+	di.PayloadNodeMap[int(evalCtx.NodeID)].CDCData = BuildCDCDataForDirectInsert(
 		&evalCtx, uint64(table.ID), table.Columns, di.InputValues, di.ColIndexs, cfg.CDCCoordinator)
 	return nil
 }
@@ -1718,7 +1709,7 @@ func GetPayloadMapForMuiltNode(
 		},
 	}
 
-	di.PayloadNodeMap[int(evalCtx.NodeID)].CDCData = buildCDCDataForDirectInsert(
+	di.PayloadNodeMap[int(evalCtx.NodeID)].CDCData = BuildCDCDataForDirectInsert(
 		&evalCtx, uint64(tabID), table.Columns, inputValues, di.ColIndexs, cfg.CDCCoordinator)
 
 	return nil
@@ -2117,8 +2108,8 @@ func boolFormatBinary(Args [][]byte, idx int) error {
 	return pgerror.Newf(pgcode.Syntax, "unsupported binary bool: %x", Args[idx])
 }
 
-// buildCDCDataForDirectInsert builds DirectInsert data for cdc.
-func buildCDCDataForDirectInsert(
+// BuildCDCDataForDirectInsert builds DirectInsert data for cdc.
+func BuildCDCDataForDirectInsert(
 	evalCtx *tree.EvalContext,
 	tableID uint64,
 	columns []sqlbase.ColumnDescriptor,

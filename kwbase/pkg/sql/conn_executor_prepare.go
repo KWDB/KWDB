@@ -529,7 +529,7 @@ func (ex *connExecutor) execPreparedirectBind(
 				return pgerror.Newf(pgcode.Syntax, "table is being dropped")
 			}
 			var sd sessiondata.SessionData
-			EvalContext := tree.EvalContext{
+			evalCtx := tree.EvalContext{
 				Context:          ctx,
 				Txn:              txn,
 				SessionData:      &sd,
@@ -537,8 +537,8 @@ func (ex *connExecutor) execPreparedirectBind(
 				Settings:         ex.server.GetCFG().Settings,
 				NodeID:           ex.server.GetCFG().NodeID.Get(),
 			}
-			EvalContext.StartSinglenode = (ex.server.GetCFG().StartMode == StartSingleNode)
-			if err := GetColsInfo(ctx, EvalContext, &ps.PrepareInsertDirect.Dit.ColsDesc, ins, &di, &ps.PrepareMetadata.Statement); err != nil {
+			evalCtx.StartSinglenode = ex.server.GetCFG().StartMode == StartSingleNode
+			if err := GetColsInfo(ctx, evalCtx, &ps.PrepareInsertDirect.Dit.ColsDesc, ins, &di, &ps.PrepareMetadata.Statement); err != nil {
 				return err
 			}
 			di.RowNum, di.ColNum = len(bindCmd.Args), len(di.IDMap)
@@ -561,11 +561,11 @@ func (ex *connExecutor) execPreparedirectBind(
 				return err
 			}
 
-			if !EvalContext.StartSinglenode {
+			if !evalCtx.StartSinglenode {
 				//start mode
 				di.PayloadNodeMap = make(map[int]*sqlbase.PayloadForDistTSInsert, 1)
 				if err = BuildRowBytesForPrepareTsInsert(
-					ptCtx, bindCmd.Args, ps.PrepareInsertDirect.Dit, &di, EvalContext, table,
+					ptCtx, bindCmd.Args, ps.PrepareInsertDirect.Dit, &di, evalCtx, table,
 					cfg.NodeInfo.NodeID.Get(), rowTimestamps, ex.server.GetCFG()); err != nil {
 					return err
 				}
@@ -575,11 +575,19 @@ func (ex *connExecutor) execPreparedirectBind(
 				priTagValMap := BuildPreparepriTagValMap(bindCmd.Args, di)
 				di.PayloadNodeMap = make(map[int]*sqlbase.PayloadForDistTSInsert, 1)
 				for _, priTagRowIdx := range priTagValMap {
-					if err = BuildPreparePayload(&EvalContext, inputValues, priTagRowIdx,
-						&di, ps.PrepareInsertDirect.Dit, bindCmd.Args, ex.server.GetCFG()); err != nil {
+					if err = BuildPreparePayload(&evalCtx, inputValues, priTagRowIdx,
+						&di, ps.PrepareInsertDirect.Dit, bindCmd.Args); err != nil {
 						return err
 					}
 				}
+				di.PayloadNodeMap[int(evalCtx.NodeID)].CDCData = BuildCDCDataForDirectInsert(
+					&evalCtx,
+					uint64(ps.PrepareInsertDirect.Dit.TabID),
+					ps.PrepareInsertDirect.Dit.ColsDesc,
+					di.InputValues,
+					di.ColIndexs,
+					ex.server.GetCFG().CDCCoordinator,
+				)
 			}
 
 			numCols := len(ps.Columns)
@@ -606,7 +614,7 @@ func (ex *connExecutor) execPreparedirectBind(
 
 			ps.PrepareInsertDirect.payloadNodeMap = di.PayloadNodeMap
 			ps.PrepareInsertDirect.stmtRes = stmtRes
-			ps.PrepareInsertDirect.EvalContext = EvalContext
+			ps.PrepareInsertDirect.EvalContext = evalCtx
 			ps.PrepareInsertDirect.EvalContext.Txn = nil
 			return nil
 		})

@@ -224,9 +224,13 @@ type TimeWindowHelper struct {
 	WindowEndTZ        tree.DTimestampTZ
 	WindowBucktTZ      tree.DTimestampTZ
 	noNeedReCompute    bool
-	//read for read rows,delete later
-	noMatch bool
-	reading bool
+
+	// lastTZ is the last timestampTZ of rows.
+	lastTZ *tree.DTimestampTZ
+	// last is the last timestamp of rows.
+	last *tree.DTimestamp
+	// canSlide defines the rows in the queue can be slided.
+	canSlide bool
 }
 
 func (gw *groupWindow) Close(ctx context.Context) {
@@ -251,7 +255,7 @@ func (gw *groupWindow) CheckAndGetWindowDatum(
 	case tree.CountWindow:
 		// optimize count_window when count_val == sliding_value.
 		if !flowCtx.EvalCtx.GroupWindow.CountWindowHelper.IsSlide {
-			return gw.handelSimpleCountWindow(typ, *row, flowCtx.EvalCtx.GroupWindow.CountWindowHelper.WindowNum)
+			return gw.handleSimpleCountWindow(typ, *row, flowCtx.EvalCtx.GroupWindow.CountWindowHelper.WindowNum)
 		}
 		if *row == nil {
 			return gw.handleCountWindowForRemainingValue(typ, row)
@@ -259,15 +263,12 @@ func (gw *groupWindow) CheckAndGetWindowDatum(
 		return gw.handleCountWindow(typ, flowCtx, *row)
 	case tree.TimeWindow:
 		if flowCtx.EvalCtx.GroupWindow.TimeWindowHelper.IsSlide {
-			if *row != nil {
-				return gw.handleTimeWindowForRemainingValue(typ, flowCtx, *row)
-			}
-			gw.timeWindowHelper.reading = false
 			if flowCtx.EvalCtx.GroupWindow.TimeWindowHelper.IfTZ {
-				return gw.handleTimeTZWindowWithSlide(typ, flowCtx.EvalCtx, row)
+				return gw.handleTimeTZWindowWithSlide(typ, flowCtx, row)
 			}
-			return gw.handleTimeWindowWithSlide(typ, flowCtx.EvalCtx, row)
+			return gw.handleTimeWindowWithSlide(typ, flowCtx, row)
 		}
+
 		if *row == nil {
 			return nil
 		}
@@ -322,7 +323,7 @@ func (gw *groupWindow) handleSessionWindow(
 	}
 }
 
-func (gw *groupWindow) handelSimpleCountWindow(
+func (gw *groupWindow) handleSimpleCountWindow(
 	typ []types.T, row sqlbase.EncDatumRow, target int,
 ) (err error) {
 	if row == nil {
@@ -500,49 +501,61 @@ func (gw *groupWindow) handleTimeWindowWithNoSlide(
 	return nil
 }
 
+// handleTimeTZWindowWithSlide is used to handle the sliding time window with timestampTZ.
 func (gw *groupWindow) handleTimeTZWindowWithSlide(
-	typ []types.T, evalCtx *tree.EvalContext, row *sqlbase.EncDatumRow,
+	typ []types.T, flowCtx *execinfra.FlowCtx, row *sqlbase.EncDatumRow,
 ) (err error) {
-	var row1 sqlbase.EncDatumRow
-	ok, err := gw.iter.Valid()
-	if err != nil {
-		return err
-	}
-	gw.timeWindowHelper.noMatch = false
-	if !ok {
-		newStart := duration.Add(gw.timeWindowHelper.tsTimeStampStartTZ.Time, evalCtx.GroupWindow.TimeWindowHelper.SlidingTime.Duration)
-		if tree.MakeDTimestampTZ(newStart, 0).Compare(evalCtx, &gw.timeWindowHelper.WindowEndTZ) < 1 {
-			gw.groupWindowValue++
-			gw.timeWindowHelper.tsTimeStampStartTZ = *tree.MakeDTimestampTZ(newStart, 0)
-			gw.timeWindowHelper.tsTimeStampEndTZ = *tree.MakeDTimestampTZ(duration.Add(gw.timeWindowHelper.tsTimeStampStartTZ.Time,
-				evalCtx.GroupWindow.TimeWindowHelper.Duration.Duration), 0)
-			gw.timeWindowHelper.noNeedReCompute = true
-		} else {
-			gw.timeWindowHelper.noNeedReCompute = false
-		}
+	evalCtx := flowCtx.EvalCtx
+	if gw.memMonitor == nil {
+		// On the first execution, the buffer queue is initialized.
+		gw.memMonitor = execinfra.NewLimitedMonitor(evalCtx.Ctx(), evalCtx.Mon, flowCtx.Cfg, "group-window-func")
+
+		gw.rows.InitWithMon(
+			nil /* ordering */, typ, evalCtx, gw.memMonitor, 0, /* rowCapacity */
+		)
+		gw.iter = gw.rows.NewIterator(context.Background())
 		gw.iter.Rewind()
-		ok, err = gw.iter.Valid()
+	}
+
+	if *row != nil {
+		// Determine if you can still slide back by comparing the largest timestamp
+		// in the queue with the current window end time.
+		if err = gw.rows.AddRow(context.Background(), *row); err != nil {
+			return err
+		}
+		gw.timeWindowHelper.lastTZ, _ = (*row)[gw.groupWindowColID].Datum.(*tree.DTimestampTZ)
+		if gw.timeWindowHelper.lastTZ.Compare(evalCtx, &gw.timeWindowHelper.tsTimeStampEndTZ) > -1 {
+			gw.timeWindowHelper.canSlide = true
+		}
+	}
+
+	var row1 sqlbase.EncDatumRow
+	var startTimeDur, endTimeDur, newTimeDur, v *tree.DTimestampTZ
+	for {
+		ok, err := gw.iter.Valid()
 		if err != nil {
 			return err
 		}
+
 		if !ok {
-			return nil
-		}
-	}
+			// After all the data in the queue is processed, the current window slides back once.
+			newStart := duration.Add(gw.timeWindowHelper.tsTimeStampStartTZ.Time, evalCtx.GroupWindow.TimeWindowHelper.SlidingTime.Duration)
+			if tree.MakeDTimestampTZ(newStart, 0).Compare(evalCtx, &gw.timeWindowHelper.WindowEndTZ) < 1 {
+				gw.groupWindowValue++
+				gw.timeWindowHelper.tsTimeStampStartTZ = *tree.MakeDTimestampTZ(newStart, 0)
+				gw.timeWindowHelper.tsTimeStampEndTZ = *tree.MakeDTimestampTZ(duration.Add(gw.timeWindowHelper.tsTimeStampStartTZ.Time,
+					evalCtx.GroupWindow.TimeWindowHelper.Duration.Duration), 0)
+				gw.timeWindowHelper.noNeedReCompute = true
+				if gw.timeWindowHelper.lastTZ.Compare(evalCtx, &gw.timeWindowHelper.tsTimeStampEndTZ) > -1 {
+					gw.timeWindowHelper.canSlide = true
+				} else {
+					gw.timeWindowHelper.canSlide = false
+				}
+			} else {
+				gw.timeWindowHelper.noNeedReCompute = false
+			}
 
-	row1, err = gw.iter.Row()
-	if err != nil {
-		return err
-	}
-
-	v, _ := row1[gw.groupWindowColID].Datum.(*tree.DTimestampTZ)
-	var startTimeDur, endTimeDur, newTimeDur *tree.DTimestampTZ
-
-	newTimeDur = tree.MakeDTimestampTZ(getNewTime(v.Time, evalCtx.GroupWindow.TimeWindowHelper.Duration, time.UTC), 0)
-
-	for !gw.timeWindowHelper.noNeedReCompute {
-		if !newTimeDur.Time.After(gw.timeWindowHelper.WindowBucktTZ.Time) {
-			gw.rows.PopFirst()
+			gw.iter.Rewind()
 			ok, err = gw.iter.Valid()
 			if err != nil {
 				return err
@@ -550,38 +563,25 @@ func (gw *groupWindow) handleTimeTZWindowWithSlide(
 			if !ok {
 				return nil
 			}
-			gw.iter.Rewind()
-			row1, err = gw.iter.Row()
-			if err != nil {
-				return err
-			}
-			v, _ = row1[gw.groupWindowColID].Datum.(*tree.DTimestampTZ)
-			newTimeDur = tree.MakeDTimestampTZ(getNewTime(v.Time, evalCtx.GroupWindow.TimeWindowHelper.Duration, time.UTC), 0)
-		} else {
+		}
+
+		row1, err = gw.iter.Row()
+		if err != nil {
+			return err
+		}
+
+		v, _ = row1[gw.groupWindowColID].Datum.(*tree.DTimestampTZ)
+		newTimeDur = tree.MakeDTimestampTZ(getNewTime(v.Time, evalCtx.GroupWindow.TimeWindowHelper.Duration, time.UTC), 0)
+
+		if !gw.timeWindowHelper.noNeedReCompute {
+			// Receives the first data initialization window.
 			if evalCtx.GroupWindow.TimeWindowHelper.SlidingTime.Days != 0 || evalCtx.GroupWindow.TimeWindowHelper.SlidingTime.Nanos() != 0 {
 				startTimeDur = tree.MakeDTimestampTZ(getNewTimeForWin(v.Time, evalCtx.GroupWindow.TimeWindowHelper.SlidingTime, evalCtx.GroupWindow.TimeWindowHelper.Duration, time.UTC), 0)
 			} else {
 				startTimeDur = tree.MakeDTimestampTZ(duration.Subtract(duration.Add(getNewTime(v.Time, evalCtx.GroupWindow.TimeWindowHelper.SlidingTime,
 					time.UTC), evalCtx.GroupWindow.TimeWindowHelper.SlidingTime.Duration), evalCtx.GroupWindow.TimeWindowHelper.Duration.Duration), 0)
 			}
-			if startTimeDur.Compare(evalCtx, &gw.timeWindowHelper.tsTimeStampStartTZ) != 1 {
-				gw.rows.PopFirst()
-				ok, err = gw.iter.Valid()
-				if err != nil {
-					return err
-				}
-				if !ok {
-					return nil
-				}
-				gw.iter.Rewind()
-				row1, err = gw.iter.Row()
-				if err != nil {
-					return err
-				}
-				v, _ = row1[gw.groupWindowColID].Datum.(*tree.DTimestampTZ)
-				newTimeDur = tree.MakeDTimestampTZ(getNewTime(v.Time, evalCtx.GroupWindow.TimeWindowHelper.Duration, time.UTC), 0)
-				continue
-			}
+
 			gw.timeWindowHelper.WindowBucktTZ = *newTimeDur
 			endTimeDur = tree.MakeDTimestampTZ(duration.Add(startTimeDur.Time, evalCtx.GroupWindow.TimeWindowHelper.Duration.Duration), 0)
 
@@ -590,15 +590,33 @@ func (gw *groupWindow) handleTimeTZWindowWithSlide(
 			gw.timeWindowHelper.tsTimeStampEndTZ = *endTimeDur
 			gw.timeWindowHelper.WindowEndTZ = *endTimeDur
 			gw.groupWindowValue++
+			gw.timeWindowHelper.canSlide = false
 		}
-	}
 
-	gw.iter.Next()
-	if v.Compare(evalCtx, &gw.timeWindowHelper.tsTimeStampStartTZ) > -1 && v.Compare(evalCtx, &gw.timeWindowHelper.tsTimeStampEndTZ) == -1 {
-		row1[gw.groupWindowColID] = encodeDatum(gw.groupWindowValue, typ[gw.groupWindowColID])
-	} else {
-		gw.timeWindowHelper.noMatch = true
-		return nil
+		gw.iter.Next()
+		if v.Compare(evalCtx, &gw.timeWindowHelper.tsTimeStampStartTZ) == -1 {
+			// When the time of the row is before the window start time, remove the row from the queue.
+			gw.rows.PopFirst()
+			ok, err = gw.iter.Valid()
+			if err != nil {
+				return err
+			}
+
+			gw.iter.Rewind()
+
+			continue
+		}
+		if v.Compare(evalCtx, &gw.timeWindowHelper.tsTimeStampStartTZ) > -1 && v.Compare(evalCtx, &gw.timeWindowHelper.tsTimeStampEndTZ) == -1 {
+			// When the time of the row is between the start and end of the window, the row is output after calculation.
+			row1[gw.groupWindowColID] = encodeDatum(gw.groupWindowValue, typ[gw.groupWindowColID])
+			break
+		} else {
+			// When the time of the row is after the end of the window, indicate that there is a new window,
+			// set the flag canSlide to true.
+			gw.timeWindowHelper.canSlide = true
+
+			continue
+		}
 	}
 
 	endTimeDur = tree.MakeDTimestampTZ(duration.Add(v.Time, evalCtx.GroupWindow.TimeWindowHelper.Duration.Duration), 0)
@@ -613,55 +631,72 @@ func (gw *groupWindow) handleTimeTZWindowWithSlide(
 		row1[gw.groupLast].Datum = newTimeEnd
 	}
 
-	for i := 0; i < len(row1); i++ {
-		*row = append(*row, row1[i])
+	if *row == nil {
+		for i := 0; i < len(row1); i++ {
+			*row = append(*row, row1[i])
+		}
+	} else {
+		copy(*row, row1)
 	}
+
 	return nil
 }
 
+// handleTimeWindowWithSlide is used to handle the sliding time window with timestamp.
 func (gw *groupWindow) handleTimeWindowWithSlide(
-	typ []types.T, evalCtx *tree.EvalContext, row *sqlbase.EncDatumRow,
+	typ []types.T, flowCtx *execinfra.FlowCtx, row *sqlbase.EncDatumRow,
 ) (err error) {
-	var row1 sqlbase.EncDatumRow
-	ok, err := gw.iter.Valid()
-	if err != nil {
-		return err
-	}
-	gw.timeWindowHelper.noMatch = false
-	if !ok {
-		newStart := duration.Add(gw.timeWindowHelper.tsTimeStampStart.Time, evalCtx.GroupWindow.TimeWindowHelper.SlidingTime.Duration)
-		if tree.MakeDTimestamp(newStart, 0).Compare(evalCtx, &gw.timeWindowHelper.WindowEnd) < 1 {
-			gw.groupWindowValue++
-			gw.timeWindowHelper.tsTimeStampStart = *tree.MakeDTimestamp(newStart, 0)
-			gw.timeWindowHelper.tsTimeStampEnd = *tree.MakeDTimestamp(duration.Add(gw.timeWindowHelper.tsTimeStampStart.Time,
-				evalCtx.GroupWindow.TimeWindowHelper.Duration.Duration), 0)
-			gw.timeWindowHelper.noNeedReCompute = true
-		} else {
-			gw.timeWindowHelper.noNeedReCompute = false
-		}
+	evalCtx := flowCtx.EvalCtx
+	if gw.memMonitor == nil {
+		// On the first execution, the buffer queue is initialized.
+		gw.memMonitor = execinfra.NewLimitedMonitor(flowCtx.EvalCtx.Ctx(), flowCtx.EvalCtx.Mon, flowCtx.Cfg, "group-window-func")
+
+		gw.rows.InitWithMon(
+			nil /* ordering */, typ, flowCtx.EvalCtx, gw.memMonitor, 0, /* rowCapacity */
+		)
+		gw.iter = gw.rows.NewIterator(context.Background())
 		gw.iter.Rewind()
-		ok, err = gw.iter.Valid()
+	}
+
+	if *row != nil {
+		// Determine if you can still slide back by comparing the largest timestamp
+		// in the queue with the current window end time.
+		if err = gw.rows.AddRow(context.Background(), *row); err != nil {
+			return err
+		}
+		gw.timeWindowHelper.last, _ = (*row)[gw.groupWindowColID].Datum.(*tree.DTimestamp)
+		if gw.timeWindowHelper.last.Compare(evalCtx, &gw.timeWindowHelper.tsTimeStampEnd) > -1 {
+			gw.timeWindowHelper.canSlide = true
+		}
+	}
+
+	var row1 sqlbase.EncDatumRow
+	var startTimeDur, endTimeDur, newTimeDur, v *tree.DTimestamp
+	for {
+		ok, err := gw.iter.Valid()
 		if err != nil {
 			return err
 		}
+
 		if !ok {
-			return nil
-		}
-	}
+			// After all the data in the queue is processed, the current window slides back once.
+			newStart := duration.Add(gw.timeWindowHelper.tsTimeStampStart.Time, evalCtx.GroupWindow.TimeWindowHelper.SlidingTime.Duration)
+			if tree.MakeDTimestamp(newStart, 0).Compare(evalCtx, &gw.timeWindowHelper.WindowEnd) < 1 {
+				gw.groupWindowValue++
+				gw.timeWindowHelper.tsTimeStampStart = *tree.MakeDTimestamp(newStart, 0)
+				gw.timeWindowHelper.tsTimeStampEnd = *tree.MakeDTimestamp(duration.Add(gw.timeWindowHelper.tsTimeStampStart.Time,
+					evalCtx.GroupWindow.TimeWindowHelper.Duration.Duration), 0)
+				gw.timeWindowHelper.noNeedReCompute = true
+				if gw.timeWindowHelper.last.Compare(evalCtx, &gw.timeWindowHelper.tsTimeStampEnd) > -1 {
+					gw.timeWindowHelper.canSlide = true
+				} else {
+					gw.timeWindowHelper.canSlide = false
+				}
+			} else {
+				gw.timeWindowHelper.noNeedReCompute = false
+			}
 
-	row1, err = gw.iter.Row()
-	if err != nil {
-		return err
-	}
-
-	v, _ := row1[gw.groupWindowColID].Datum.(*tree.DTimestamp)
-	var startTimeDur, endTimeDur, newTimeDur *tree.DTimestamp
-
-	newTimeDur = tree.MakeDTimestamp(getNewTime(v.Time, evalCtx.GroupWindow.TimeWindowHelper.Duration, time.UTC), 0)
-
-	for !gw.timeWindowHelper.noNeedReCompute {
-		if !newTimeDur.Time.After(gw.timeWindowHelper.WindowBuckt.Time) {
-			gw.rows.PopFirst()
+			gw.iter.Rewind()
 			ok, err = gw.iter.Valid()
 			if err != nil {
 				return err
@@ -669,14 +704,18 @@ func (gw *groupWindow) handleTimeWindowWithSlide(
 			if !ok {
 				return nil
 			}
-			gw.iter.Rewind()
-			row1, err = gw.iter.Row()
-			if err != nil {
-				return err
-			}
-			v, _ = row1[gw.groupWindowColID].Datum.(*tree.DTimestamp)
-			newTimeDur = tree.MakeDTimestamp(getNewTime(v.Time, evalCtx.GroupWindow.TimeWindowHelper.Duration, time.UTC), 0)
-		} else {
+		}
+
+		row1, err = gw.iter.Row()
+		if err != nil {
+			return err
+		}
+
+		v, _ = row1[gw.groupWindowColID].Datum.(*tree.DTimestamp)
+		newTimeDur = tree.MakeDTimestamp(getNewTime(v.Time, evalCtx.GroupWindow.TimeWindowHelper.Duration, time.UTC), 0)
+
+		if !gw.timeWindowHelper.noNeedReCompute {
+			// Receives the first data initialization window.
 			if evalCtx.GroupWindow.TimeWindowHelper.SlidingTime.Days != 0 || evalCtx.GroupWindow.TimeWindowHelper.SlidingTime.Nanos() != 0 {
 				startTimeDur = tree.MakeDTimestamp(getNewTimeForWin(v.Time, evalCtx.GroupWindow.TimeWindowHelper.SlidingTime, evalCtx.GroupWindow.TimeWindowHelper.Duration, time.UTC), 0)
 			} else {
@@ -701,23 +740,41 @@ func (gw *groupWindow) handleTimeWindowWithSlide(
 				newTimeDur = tree.MakeDTimestamp(getNewTime(v.Time, evalCtx.GroupWindow.TimeWindowHelper.Duration, time.UTC), 0)
 				continue
 			}
+
 			gw.timeWindowHelper.WindowBuckt = *newTimeDur
 			endTimeDur = tree.MakeDTimestamp(duration.Add(startTimeDur.Time, evalCtx.GroupWindow.TimeWindowHelper.Duration.Duration), 0)
-
 			gw.timeWindowHelper.noNeedReCompute = true
 			gw.timeWindowHelper.tsTimeStampStart = *startTimeDur
 			gw.timeWindowHelper.tsTimeStampEnd = *endTimeDur
 			gw.timeWindowHelper.WindowEnd = *endTimeDur
 			gw.groupWindowValue++
+			gw.timeWindowHelper.canSlide = false
 		}
-	}
 
-	gw.iter.Next()
-	if v.Compare(evalCtx, &gw.timeWindowHelper.tsTimeStampStart) > -1 && v.Compare(evalCtx, &gw.timeWindowHelper.tsTimeStampEnd) == -1 {
-		row1[gw.groupWindowColID] = encodeDatum(gw.groupWindowValue, typ[gw.groupWindowColID])
-	} else {
-		gw.timeWindowHelper.noMatch = true
-		return nil
+		gw.iter.Next()
+		if v.Compare(evalCtx, &gw.timeWindowHelper.tsTimeStampStart) == -1 {
+			// When the time of the row is before the window start time, remove the row from the queue.
+			gw.rows.PopFirst()
+			ok, err = gw.iter.Valid()
+			if err != nil {
+				return err
+			}
+
+			gw.iter.Rewind()
+
+			continue
+		}
+		if v.Compare(evalCtx, &gw.timeWindowHelper.tsTimeStampStart) > -1 && v.Compare(evalCtx, &gw.timeWindowHelper.tsTimeStampEnd) == -1 {
+			// When the time of the row is between the start and end of the window, the row is output after calculation.
+			row1[gw.groupWindowColID] = encodeDatum(gw.groupWindowValue, typ[gw.groupWindowColID])
+			break
+		} else {
+			// When the time of the row is after the end of the window, indicate that there is a new window,
+			// set the flag canSlide to true.
+			gw.timeWindowHelper.canSlide = true
+
+			continue
+		}
 	}
 
 	endTimeDur = tree.MakeDTimestamp(duration.Add(v.Time, evalCtx.GroupWindow.TimeWindowHelper.Duration.Duration), 0)
@@ -732,30 +789,19 @@ func (gw *groupWindow) handleTimeWindowWithSlide(
 		row1[gw.groupLast].Datum = newTimeEnd
 	}
 
-	for i := 0; i < len(row1); i++ {
-		*row = append(*row, row1[i])
+	if *row == nil {
+		for i := 0; i < len(row1); i++ {
+			*row = append(*row, row1[i])
+		}
+	} else {
+		copy(*row, row1)
 	}
+
 	return nil
 }
 
-func (gw *groupWindow) handleTimeWindowForRemainingValue(
-	typ []types.T, flowCtx *execinfra.FlowCtx, row sqlbase.EncDatumRow,
-) (err error) {
-	if gw.memMonitor == nil {
-		gw.memMonitor = execinfra.NewLimitedMonitor(flowCtx.EvalCtx.Ctx(), flowCtx.EvalCtx.Mon, flowCtx.Cfg, "group-window-func")
-
-		gw.rows.InitWithMon(
-			nil /* ordering */, typ, flowCtx.EvalCtx, gw.memMonitor, 0, /* rowCapacity */
-		)
-		gw.iter = gw.rows.NewIterator(context.Background())
-		gw.iter.Rewind()
-		gw.timeWindowHelper.reading = true
-	}
-
-	if err = gw.rows.AddRow(context.Background(), row); err != nil {
-		return err
-	}
-	return nil
+func (gw *groupWindow) getRowsLength() int {
+	return gw.rows.Len()
 }
 
 func (gw *groupWindow) handleStateWindow(
@@ -1517,11 +1563,6 @@ func (ag *orderedAggregator) accumulateRows() (
 			case tree.EventWindow:
 				if ag.EvalCtx.GroupWindow.EventWindowHelper.IgnoreFlag {
 					ag.EvalCtx.GroupWindow.EventWindowHelper.IgnoreFlag = false
-					continue
-				}
-			case tree.TimeWindow:
-				if (ag.groupWindow.timeWindowHelper.reading || ag.groupWindow.timeWindowHelper.noMatch) &&
-					ag.EvalCtx.GroupWindow.TimeWindowHelper.IsSlide {
 					continue
 				}
 			default:

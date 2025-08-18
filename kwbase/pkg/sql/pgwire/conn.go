@@ -985,10 +985,12 @@ func (c *conn) handleSimpleQuery(
 					priTagValMap := sql.BuildpriTagValMap(di)
 					di.PayloadNodeMap = make(map[int]*sqlbase.PayloadForDistTSInsert, 1)
 					for _, idx := range priTagValMap {
-						if err = sql.BuildPayload(&evalCtx, idx, &di, dit, cfg); err != nil {
+						if err = sql.BuildPayload(&evalCtx, idx, &di, dit); err != nil {
 							return err
 						}
 					}
+					di.PayloadNodeMap[int(evalCtx.NodeID)].CDCData = sql.BuildCDCDataForDirectInsert(
+						&evalCtx, uint64(dit.TabID), dit.ColsDesc, di.InputValues, di.ColIndexs, cfg.CDCCoordinator)
 				}
 
 				if err != nil {
