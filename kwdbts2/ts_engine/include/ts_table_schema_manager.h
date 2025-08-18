@@ -171,6 +171,10 @@ class TsTableSchemaManager {
 
   bool IsExistTableVersion(uint32_t version);
 
+  std::shared_ptr<MMapMetricsTable> GetCurrentMetricsTable() {
+    return metric_mgr_->GetCurrentMetricsTable();
+  }
+
  private:
   std::shared_ptr<MMapMetricsTable> open(uint32_t version, ErrorInfo& err_info);
 
@@ -188,10 +192,6 @@ class TsTableSchemaManager {
 
   std::shared_ptr<MMapMetricsTable> getMetricsTable(uint32_t ts_version) {
     return metric_mgr_->GetMetricsTable(ts_version);
-  }
-
-  std::shared_ptr<MMapMetricsTable> getCurrentMetricsTable() {
-    return metric_mgr_->GetCurrentMetricsTable();
   }
 
   static KStatus parseMetaToSchema(roachpb::CreateTsTable* meta,
