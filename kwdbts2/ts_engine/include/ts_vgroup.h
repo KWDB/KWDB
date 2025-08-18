@@ -11,7 +11,6 @@
 #pragma once
 
 #include <cstdint>
-#include <filesystem>
 #include <map>
 #include <list>
 #include <memory>
@@ -53,7 +52,7 @@ class TsVGroup {
 
   TsMemSegmentManager mem_segment_mgr_;
 
-  std::filesystem::path path_;
+  fs::path path_;
 
   // max entity id of this vgroup
   uint64_t max_entity_id_{0};
@@ -106,7 +105,7 @@ class TsVGroup {
   KStatus PutData(kwdbContext_p ctx, TSTableID table_id, uint64_t mtr_id, TSSlice* primary_tag, TSEntityID entity_id,
                   TSSlice* payload, bool write_wal);
 
-  std::filesystem::path GetPath() const;
+  fs::path GetPath() const;
 
   std::string GetFileName() const;
 

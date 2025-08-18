@@ -11,7 +11,6 @@
 #pragma once
 
 #include <cstdint>
-#include <filesystem>
 #include <list>
 #include <map>
 #include <memory>
@@ -152,7 +151,7 @@ class TsEntitySegmentBlockItemFile {
 class TsEntitySegment;
 class TsEntitySegmentMetaManager {
  private:
-  std::filesystem::path dir_path_;
+  fs::path dir_path_;
   TsEntitySegmentEntityItemFile entity_header_;
   TsEntitySegmentBlockItemFile block_header_;
 
@@ -320,7 +319,7 @@ class TsEntitySegment : public TsSegmentBase, public enable_shared_from_this<TsE
  public:
   TsEntitySegment() = delete;
 
-  explicit TsEntitySegment(const std::filesystem::path& root, EntitySegmentHandleInfo info);
+  explicit TsEntitySegment(const fs::path& root, EntitySegmentHandleInfo info);
 
   ~TsEntitySegment() {}
 

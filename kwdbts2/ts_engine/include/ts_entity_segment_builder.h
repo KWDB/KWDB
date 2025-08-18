@@ -13,7 +13,6 @@
 #include <cstddef>
 #include <cstdint>
 #include <deque>
-#include <filesystem>
 #include <list>
 #include <map>
 #include <memory>
@@ -197,7 +196,7 @@ class TsEntitySegmentBuilder {
 
   void ReleaseBuilders();
 
-  std::filesystem::path root_path_;
+  fs::path root_path_;
   TsEngineSchemaManager* schema_manager_;
   TsVersionManager* version_manager_;
 
@@ -305,7 +304,7 @@ class TsEntitySegmentVacuumer {
   EntitySegmentHandleInfo GetHandleInfo();
 
  private:
-  std::filesystem::path root_path_;
+  fs::path root_path_;
   TsVersionManager* version_manager_;
 
   std::shared_ptr<TsEntitySegmentEntityItemFileBuilder> entity_item_builder_ = nullptr;

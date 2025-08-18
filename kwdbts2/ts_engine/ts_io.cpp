@@ -18,7 +18,6 @@
 
 #include <cstddef>
 #include <cstring>
-#include <filesystem>
 #include <string>
 #include <system_error>
 
@@ -300,9 +299,9 @@ KStatus TsMMapIOEnv::NewSequentialReadFile(const std::string& filepath, std::uni
 
 KStatus TsMMapIOEnv::NewDirectory(const std::string& path) {
   std::error_code ec;
-  bool ok = std::filesystem::create_directories(path, ec);
+  bool ok = fs::create_directories(path, ec);
   if (!ok) {
-    if (std::filesystem::exists(path)) {
+    if (fs::exists(path)) {
       return SUCCESS;
     }
     LOG_ERROR("create directory %s failed, reason: %s", path.c_str(), ec.message().c_str());
@@ -313,7 +312,7 @@ KStatus TsMMapIOEnv::NewDirectory(const std::string& path) {
 
 KStatus TsMMapIOEnv::DeleteDir(const std::string& path) {
   std::error_code ec;
-  uintmax_t n_removed = std::filesystem::remove_all(path, ec);
+  uintmax_t n_removed = fs::remove_all(path, ec);
   if (n_removed == -1) {
     LOG_ERROR("cannot delete directory %s, reason: %s", path.c_str(), ec.message().c_str());
     return FAIL;
@@ -323,7 +322,7 @@ KStatus TsMMapIOEnv::DeleteDir(const std::string& path) {
 
 KStatus TsMMapIOEnv::DeleteFile(const std::string& path) {
   std::error_code ec;
-  bool ok = std::filesystem::remove(path, ec);
+  bool ok = fs::remove(path, ec);
   if (!ok) {
     LOG_ERROR("cannot delete directory %s, reason: %s", path.c_str(), ec.message().c_str());
     return FAIL;

@@ -11,13 +11,6 @@
 
 #include <dirent.h>
 #include <iostream>
-#if defined(__GNUC__) && (__GNUC__ < 8)
-  #include <experimental/filesystem>
-  namespace fs = std::experimental::filesystem;
-#else
-  #include <filesystem>
-  namespace fs = std::filesystem;
-#endif
 #include "engine.h"
 #include "mmap/mmap_metrics_table.h"
 #include "mmap/mmap_tag_column_table.h"
