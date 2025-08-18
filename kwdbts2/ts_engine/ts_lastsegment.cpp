@@ -552,11 +552,6 @@ KStatus TsLastSegment::GetBlockSpans(const TsBlockItemFilterParams& filter,
     return SUCCESS;
   }
 
-  // check bloom filter first
-  if (!MayExistEntity(filter.entity_id)) {
-    return SUCCESS;
-  }
-
   std::vector<TsLastSegmentBlockIndex>* p_block_indices;
   auto s = block_cache_->GetAllBlockIndex(&p_block_indices);
   if (s == FAIL) {
