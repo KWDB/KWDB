@@ -90,42 +90,21 @@ bool TsColumnBlock::GetCompressedData(std::string* out, TsColumnCompressInfo* in
   // 1. compress bitmap;
   // TODO(zzr) bitmap compression algorithms;
   assert(count_ == bitmap.GetCount());
-  compressed_data.push_back(static_cast<char>(BitmapCompAlg::kPlain));
   compressed_data.append(bitmap.GetStr());
   info->bitmap_len = compressed_data.size();
 
   // 2. compress fixlen data
-  const auto& mgr = CompressorManager::GetInstance();
   std::string tmp;
-  TsBitmap* p_bitmap = &bitmap;
-  auto [first, second] = mgr.GetDefaultAlgorithm(static_cast<DATATYPE>(col_schema_.type));
-  if (isVarLenType(col_schema_.type)) {
-    // varchar use Gorilla algorithm
-    first = compress ? TsCompAlg::kChimp_32 : TsCompAlg::kPlain;
-    p_bitmap = nullptr;
-  }
-
   TSSlice input = fixlen_guard_.AsSlice();
-  if (!compress) {
-    first = TsCompAlg::kPlain;
-    second = GenCompAlg::kPlain;
-  }
+  tmp.append(input.data, input.len);
 
-  bool ok = mgr.CompressData(input, p_bitmap, count_, &tmp, first, second);
-  if (!ok) {
-    return false;
-  }
   info->fixdata_len = tmp.size();
   compressed_data.append(tmp);
 
   // 3. compress varchar data
   if (!varchar_guard_.empty()) {
     tmp.clear();
-    auto comp_alg = compress ? GenCompAlg::kSnappy : GenCompAlg::kPlain;
-    ok = mgr.CompressVarchar(varchar_guard_.AsSlice(), &tmp, comp_alg);
-    if (!ok) {
-      return false;
-    }
+    tmp.append(varchar_guard_.AsSlice().data, varchar_guard_.AsSlice().len);
     info->vardata_len = tmp.size();
     compressed_data.append(tmp);
   } else {
