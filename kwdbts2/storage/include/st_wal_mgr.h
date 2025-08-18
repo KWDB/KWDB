@@ -295,15 +295,6 @@ class WALMgr {
   KStatus WriteTempDirectoryWAL(kwdbContext_p ctx, uint64_t x_id, std::string path);
 
   /**
-   * Construct the log entry for partition change directory event.
-   * @param ctx
-   * @param x_id Mini-transaction ID, default value is 0.
-   * @param link_path  directory in tree.
-   * @param tier_path  desc directory abslutly path.
-   * @return
-   */
-  KStatus WritePartitionTierWAL(kwdbContext_p ctx, uint64_t x_id, std::string link_path, std::string tier_path);
-  /**
    * Read WAL log entry.
    * @param start_lsn start LSN
    * @param end_lsn end LSN

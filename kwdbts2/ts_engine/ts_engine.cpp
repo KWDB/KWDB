@@ -12,6 +12,7 @@
 #include "ts_engine.h"
 
 #include <dirent.h>
+#include <cstdint>
 #include <filesystem>
 #include <cstdio>
 #include <vector>
@@ -21,6 +22,7 @@
 #include <memory>
 #include <utility>
 #include "kwdb_type.h"
+#include "settings.h"
 #include "ts_payload.h"
 #include "ee_global.h"
 #include "ee_executor.h"
@@ -35,6 +37,7 @@ uint32_t EngineOptions::max_last_segment_num = 2;
 uint32_t EngineOptions::max_compact_num = 10;
 size_t EngineOptions::max_rows_per_block = 4096;
 size_t EngineOptions::min_rows_per_block = 2048;
+int64_t EngineOptions::partition_interval = 3600 * 24 * 10;
 
 extern std::map<std::string, std::string> g_cluster_settings;
 extern DedupRule g_dedup_rule;
@@ -94,6 +97,16 @@ TSEngineV2Impl::TSEngineV2Impl(const EngineOptions& engine_options) :
   if (min_rows_per_block != nullptr) {
     char *endptr;
     EngineOptions::min_rows_per_block = strtol(min_rows_per_block, &endptr, 10);
+    assert(*endptr == '\0');
+  }
+
+  char* partition_interval = getenv("KW_PARTITION_INTERVAL");
+  if (partition_interval != nullptr) {
+    char* endptr;
+    int64_t interval = strtol(partition_interval, &endptr, 10);
+    if (interval > 0) {
+      EngineOptions::partition_interval = interval;
+    }
     assert(*endptr == '\0');
   }
 }

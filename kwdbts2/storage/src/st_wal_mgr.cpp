@@ -381,20 +381,6 @@ KStatus WALMgr::WriteIncompleteWAL(kwdbContext_p ctx, std::vector<LogEntry*> log
         }
       }
         break;
-      case PARTITION_TIER_CHANGE: {
-        auto wal_log = reinterpret_cast<PartitionTierChangeEntry *>(log);
-        auto log_len = PartitionTierChangeEntry::fixed_length + wal_log->link_path_.length() +
-                sizeof(size_t) + wal_log->tier_path_.length() + sizeof(size_t);
-        auto par_log = PartitionTierChangeEntry::construct(WALLogType::PARTITION_TIER_CHANGE, wal_log->getXID(),
-                                                           wal_log->link_path_, wal_log->tier_path_);
-        s = writeWALInternal(ctx, par_log, log_len, current_lsn);
-        delete []par_log;
-        if (s == KStatus::FAIL) {
-          LOG_ERROR("Failed to writeWALInternal.")
-          return s;
-        }
-      }
-        break;
       case CREATE_INDEX: {
         auto wal_log = reinterpret_cast<CreateIndexEntry *>(log);
         auto log_len = CreateIndexEntry::fixed_length;
@@ -702,19 +688,6 @@ KStatus WALMgr::WriteSnapshotWAL(kwdbContext_p ctx, uint64_t x_id, TSTableID tbl
     return KStatus::FAIL;
   }
   size_t log_len = SnapshotEntry::fixed_length;
-  KStatus status = WriteWAL(ctx, wal_log, log_len);
-
-  delete[] wal_log;
-  return status;
-}
-
-KStatus WALMgr::WritePartitionTierWAL(kwdbContext_p ctx, uint64_t x_id, std::string link_path, std::string tier_path) {
-  auto* wal_log = PartitionTierChangeEntry::construct(WALLogType::PARTITION_TIER_CHANGE, x_id, link_path, tier_path);
-  if (wal_log == nullptr) {
-    LOG_ERROR("Failed to construct WAL, insufficient memory")
-    return KStatus::FAIL;
-  }
-  size_t log_len = PartitionTierChangeEntry::fixed_length + link_path.length() + tier_path.length() + 2;
   KStatus status = WriteWAL(ctx, wal_log, log_len);
 
   delete[] wal_log;

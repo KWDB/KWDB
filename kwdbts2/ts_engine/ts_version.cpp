@@ -42,7 +42,7 @@
 #include "ts_io.h"
 
 namespace kwdbts {
-static const int64_t interval = 3600 * 24 * 10;  // 10 days.
+// static const int64_t interval = 3600 * 24 * 10;  // 10 days.
 static const int64_t vacuum_minutes = 24 * 60;  // 24 hours.
 // Note: we expect this function always return lower bound of both positive and negative timestamp
 // e.g. interval = 3,
@@ -63,8 +63,8 @@ static int64_t GetPartitionStartTime(timestamp64 timestamp, int64_t ts_interval)
 }
 
 void TsVersionManager::AddPartition(DatabaseID dbid, timestamp64 ptime) {
-  timestamp64 start = GetPartitionStartTime(ptime, interval);
-  PartitionIdentifier partition_id{dbid, start, start + interval};
+  timestamp64 start = GetPartitionStartTime(ptime, EngineOptions::partition_interval);
+  PartitionIdentifier partition_id{dbid, start, start + EngineOptions::partition_interval};
   if (partition_id == this->last_created_partition_) {
     return;
   }
@@ -430,25 +430,10 @@ std::vector<std::shared_ptr<const TsPartitionVersion>> TsVGroupVersion::GetParti
   return result;
 }
 
-std::vector<std::shared_ptr<const TsPartitionVersion>> TsVGroupVersion::GetPartitionsToVacuum() const {
-  std::vector<std::shared_ptr<const TsPartitionVersion>> result;
-  std::shared_ptr<const TsPartitionVersion> partition = nullptr;
-  PartitionIdentifier partition_id;
-  for (const auto &[k, v] : partitions_) {
-    if (std::get<0>(k) != std::get<0>(partition_id)) {
-      partition_id = k;
-      partition = v;
-    } else if (partition != nullptr) {
-      result.push_back(partition);
-    }
-  }
-  return result;
-}
-
 std::shared_ptr<const TsPartitionVersion> TsVGroupVersion::GetPartition(uint32_t target_dbid,
                                                                         timestamp64 target_time) const {
-  timestamp64 start = GetPartitionStartTime(target_time, interval);
-  auto it = partitions_.find({target_dbid, start, start + interval});
+  timestamp64 start = GetPartitionStartTime(target_time, EngineOptions::partition_interval);
+  auto it = partitions_.find({target_dbid, start, start + EngineOptions::partition_interval});
   if (it == partitions_.end()) {
     return nullptr;
   }
@@ -651,6 +636,10 @@ void TsPartitionVersion::ResetStatus() const {
 
 KStatus TsPartitionVersion::NeedVacuumEntitySegment(const std::filesystem::path& root_path,
   TsEngineSchemaManager* schema_manager, bool& need_vacuum) const {
+  if (entity_segment_ == nullptr) {
+    need_vacuum = false;
+    return SUCCESS;
+  }
   timestamp64 latest_mtime = 0;
   bool has_files = false;
   for (const auto& entry : std::filesystem::directory_iterator(root_path)) {
@@ -663,7 +652,7 @@ KStatus TsPartitionVersion::NeedVacuumEntitySegment(const std::filesystem::path&
     }
   }
   if (!has_files) {
-    std::cerr << "No regular files found in directory\n";
+    LOG_WARN("No regular files found in directory [%s]", root_path.c_str());
     need_vacuum = false;
     return SUCCESS;
   }
@@ -692,7 +681,7 @@ KStatus TsPartitionVersion::NeedVacuumEntitySegment(const std::filesystem::path&
     LOG_ERROR("HasValidDelItem failed.");
     return s;
   }
-  need_vacuum = has_del_info && (entity_segment_ != nullptr);
+  need_vacuum = has_del_info;
   if (!need_vacuum) {
     uint64_t max_entity_id = entity_segment_->GetEntityNum();
     std::unordered_map<TSTableID, bool> traversed_table;
@@ -701,7 +690,7 @@ KStatus TsPartitionVersion::NeedVacuumEntitySegment(const std::filesystem::path&
       bool found = false;
       s = entity_segment_->GetEntityItem(entity_id, entity_item, found);
       if (s != SUCCESS || !found) {
-        LOG_ERROR("NeedVacuumEntitySegment failed, GetEntityItem failed");
+        LOG_ERROR("NeedVacuumEntitySegment failed: GetEntityItem failed");
         return s;
       }
       if (traversed_table.count(entity_item.table_id) == 0) {
@@ -715,7 +704,7 @@ KStatus TsPartitionVersion::NeedVacuumEntitySegment(const std::filesystem::path&
         auto end_time = GetTsColTypeEndTime(tb_schema_mgr->GetTsColDataType());
         if (tb_schema_mgr->IsDropped() || end_time < start_ts) {
           need_vacuum = true;
-          return KStatus::SUCCESS;
+          return SUCCESS;
         }
         traversed_table[entity_item.table_id] = true;
       }
