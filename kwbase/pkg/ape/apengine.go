@@ -198,8 +198,8 @@ func (r *ApEngine) Execute(
 
 // CreateConnection create new coneection with ap engine.
 func (r *ApEngine) CreateConnection(dbName string) (*duck.Connection, error) {
-	dbPaht := r.DbPath + "/" + dbName
-	_, err := os.Stat(dbPaht)
+	dbPath := r.DbPath + "/" + dbName
+	_, err := os.Stat(dbPath)
 	if os.IsNotExist(err) {
 		return nil, fmt.Errorf("database %s not exist", dbName)
 	}
@@ -209,7 +209,7 @@ func (r *ApEngine) CreateConnection(dbName string) (*duck.Connection, error) {
 	db, ok := r.dbMap[dbName]
 	if !ok {
 		db = &duck.Database{}
-		state := duck.Open(dbPaht, db)
+		state := duck.Open(dbPath, db)
 		if state != duck.StateSuccess {
 			return nil, errors.New("failed to open the ap database")
 		}
