@@ -79,7 +79,6 @@ KStatus TsLastSegment::TsLastSegBlockCache::BlockIndexCache::GetBlockIndices(
 
 KStatus TsLastSegment::TsLastSegBlockCache::BlockInfoCache::GetBlockInfo(int block_id, TsLastSegmentBlockInfo** info) {
   {
-    std::shared_lock lk{mu_};
     if (cache_flag_[block_id] == 1) {
       *info = &block_infos_[block_id];
       return SUCCESS;
@@ -550,11 +549,6 @@ KStatus TsLastSegment::GetBlockSpans(const TsBlockItemFilterParams& filter,
 
   // if filter is empty, no need to do anything.
   if (filter.spans_.empty()) {
-    return SUCCESS;
-  }
-
-  // check bloom filter first
-  if (!MayExistEntity(filter.entity_id)) {
     return SUCCESS;
   }
 
