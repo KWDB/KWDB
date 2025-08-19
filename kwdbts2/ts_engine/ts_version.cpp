@@ -17,7 +17,6 @@
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
-#include <filesystem>
 #include <iterator>
 #include <list>
 #include <memory>
@@ -118,7 +117,7 @@ KStatus TsVersionManager::Recover() {
 
   auto current_path = root_path_ / CurrentVersionName();
   KStatus s;
-  if (!std::filesystem::exists(current_path)) {
+  if (!fs::exists(current_path)) {
     //  Brand new database, create current version
     uint64_t log_file_number = 0;
     auto update_path = root_path_ / VersionUpdateName(log_file_number);
@@ -245,7 +244,7 @@ KStatus TsVersionManager::Recover() {
     }
     tmp_current_file.reset();
     std::error_code ec;
-    std::filesystem::rename(root_path_ / TempFileName(CurrentVersionName()), root_path_ / CurrentVersionName(), ec);
+    fs::rename(root_path_ / TempFileName(CurrentVersionName()), root_path_ / CurrentVersionName(), ec);
     if (ec.value() != 0) {
       LOG_ERROR("can not rename temp current version file, reason: %s", ec.message().c_str());
       return FAIL;
@@ -635,7 +634,7 @@ void TsPartitionVersion::ResetStatus() const {
   exclusive_status_->store(PartitionStatus::None);
 }
 
-KStatus TsPartitionVersion::NeedVacuumEntitySegment(const std::filesystem::path& root_path,
+KStatus TsPartitionVersion::NeedVacuumEntitySegment(const fs::path& root_path,
   TsEngineSchemaManager* schema_manager, bool& need_vacuum) const {
   if (entity_segment_ == nullptr) {
     need_vacuum = false;
@@ -643,7 +642,7 @@ KStatus TsPartitionVersion::NeedVacuumEntitySegment(const std::filesystem::path&
   }
   timestamp64 latest_mtime = 0;
   bool has_files = false;
-  for (const auto& entry : std::filesystem::directory_iterator(root_path)) {
+  for (const auto& entry : fs::directory_iterator(root_path)) {
     if (entry.is_regular_file() && entry.path().filename() != DEL_FILE_NAME) {
       auto mtime = ModifyTime(entry.path());
       if (!has_files || mtime > latest_mtime) {

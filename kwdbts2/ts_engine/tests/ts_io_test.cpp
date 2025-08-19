@@ -24,7 +24,6 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
-#include <filesystem>
 #include <fstream>
 #include <mutex>
 #include <numeric>
@@ -54,7 +53,7 @@ TEST(MMapIOV2, Write) {
   wfile.reset();
 
   // read and check
-  ASSERT_TRUE(std::filesystem::exists(filename));
+  ASSERT_TRUE(fs::exists(filename));
   std::unique_ptr<TsRandomReadFile> rfile;
   s = env->NewRandomReadFile(filename, &rfile);
   ASSERT_EQ(s, SUCCESS);
@@ -75,7 +74,7 @@ TEST(MMapIOV2, Write) {
   EXPECT_EQ(wfile->GetFileSize(), 15);
   wfile.reset();
 
-  ASSERT_TRUE(std::filesystem::exists(filename));
+  ASSERT_TRUE(fs::exists(filename));
   s = env->NewRandomReadFile(filename, &rfile);
   ASSERT_EQ(s, SUCCESS);
   EXPECT_EQ(rfile->GetFileSize(), 15);
@@ -94,7 +93,7 @@ TEST(MMapIOV2, Write) {
   EXPECT_EQ(wfile->GetFileSize(), 27);
   wfile.reset();
 
-  ASSERT_TRUE(std::filesystem::exists(filename));
+  ASSERT_TRUE(fs::exists(filename));
   s = env->NewRandomReadFile(filename, &rfile);
   ASSERT_EQ(s, SUCCESS);
   EXPECT_EQ(rfile->GetFileSize(), 27);
@@ -113,7 +112,7 @@ TEST(MMapIOV2, Write) {
   EXPECT_EQ(wfile->GetFileSize(), 18);
   wfile.reset();
 
-  ASSERT_TRUE(std::filesystem::exists(filename));
+  ASSERT_TRUE(fs::exists(filename));
   s = env->NewRandomReadFile(filename, &rfile);
   ASSERT_EQ(s, SUCCESS);
   EXPECT_EQ(rfile->GetFileSize(), 18);
@@ -121,7 +120,7 @@ TEST(MMapIOV2, Write) {
   sv = std::string_view{result.data, result.len};
   EXPECT_EQ(sv, "abcdeAtestTESTTeSt");
 
-  std::filesystem::remove(filename);
+  fs::remove(filename);
 
   // write large data
   s = env->NewAppendOnlyFile(filename, &wfile);
@@ -135,13 +134,13 @@ TEST(MMapIOV2, Write) {
   ASSERT_EQ(wfile->Append(slice), SUCCESS);
   size_t filesize = wfile->GetFileSize();
   wfile.reset();
-  EXPECT_EQ(std::filesystem::file_size(filename), filesize);
+  EXPECT_EQ(fs::file_size(filename), filesize);
   EXPECT_EQ(size, filesize);
 
-  ASSERT_TRUE(std::filesystem::exists(filename));
+  ASSERT_TRUE(fs::exists(filename));
   s = env->NewRandomReadFile(filename, &rfile);
   ASSERT_EQ(s, SUCCESS);
-  EXPECT_EQ(rfile->GetFileSize(), std::filesystem::file_size(filename));
+  EXPECT_EQ(rfile->GetFileSize(), fs::file_size(filename));
 
   // read 4KB at each time
   ASSERT_EQ(size % 4096, 0);
@@ -155,12 +154,12 @@ TEST(MMapIOV2, Write) {
       ASSERT_EQ(result.data[iloc], expected);
     }
   }
-  std::filesystem::remove(filename);
+  fs::remove(filename);
 }
 
 TEST(MMapIOV2, SequentialRead) {
   std::string filename = "sequential_test";
-  std::filesystem::remove(filename);
+  fs::remove(filename);
   std::ofstream f(filename);
   f << "0123456789";
   f.close();
@@ -191,7 +190,7 @@ TEST(MMapIOV2, OpenZeroSizeFile) {
   TsIOEnv* env = &TsMMapIOEnv::GetInstance();
 
   std::string filename = "zero_size_file";
-  std::filesystem::remove(filename);
+  fs::remove(filename);
   std::string cmd = "touch " + filename;
   int ok = std::system(cmd.c_str());
   ASSERT_EQ(ok, 0);
@@ -247,7 +246,7 @@ TEST(MMapIOV2, FailedCases) {
 
   // open a non-exist file
   std::string filename = "FOOO";
-  ASSERT_FALSE(std::filesystem::exists(filename));
+  ASSERT_FALSE(fs::exists(filename));
   std::unique_ptr<TsRandomReadFile> rfile;
   auto s = env->NewRandomReadFile(filename, &rfile);
   EXPECT_EQ(s, FAIL);
@@ -269,7 +268,7 @@ TEST(MMapIOV2, FailedCases) {
   EXPECT_EQ(result.len, 1);
   std::string_view sv{result.data, result.len};
   EXPECT_EQ(sv, "9");
-  std::filesystem::remove(filename);
+  fs::remove(filename);
 }
 
 TEST(MMapIOV2, ReadAfterAllocate) {
@@ -303,7 +302,7 @@ TEST(MMapIOV2, ReadAfterAllocate) {
   for (int i = 0; i < 4096; ++i) {
     ASSERT_EQ(result.data[i], block[i]);
   }
-  std::filesystem::remove(filepath);
+  fs::remove(filepath);
 }
 
 TEST(MMapIOV2, ConcurrentReadWrite) {
@@ -312,7 +311,7 @@ TEST(MMapIOV2, ConcurrentReadWrite) {
   std::atomic_bool finished{false};
   std::atomic_bool start{false};
   std::string filename = "concurrent_test";
-  std::filesystem::remove(filename);
+  fs::remove(filename);
 
   std::mutex mtx;
   std::condition_variable cv;
@@ -393,11 +392,11 @@ TEST(MMapIOV2, ConcurrentReadWrite) {
   for (auto& t : threads) {
     t.join();
   }
-  std::filesystem::remove(filename);
+  fs::remove(filename);
 }
 
 TEST(MMAP, TsMMapAllocFiletest) {
-  std::filesystem::remove("test");
+  fs::remove("test");
   TsMMapAllocFile* f = new TsMMapAllocFile("test");
   f->Open();
   std::vector<uint64_t> alloc_offsets;
@@ -429,7 +428,7 @@ TEST(MMAP, TsMMapAllocFiletest) {
 // TEST(MMap, FileLock) {
 //   TsIOEnv* env = &TsMMapIOEnv::GetInstance();
 //   std::string filename = "lock_test";
-//   std::filesystem::remove(filename);
+//   fs::remove(filename);
 //   std::unique_ptr<TsAppendOnlyFile> wfile1, wfile2;
 //   ASSERT_TRUE(env->NewAppendOnlyFile(filename, &wfile1));
 //   wfile1.reset();

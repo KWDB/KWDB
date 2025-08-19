@@ -34,7 +34,7 @@ class MetricsVersionManager {
  public:
   MetricsVersionManager(const std::string& table_path, const std::string& sub_path, uint64_t table_id) :
                             table_path_(table_path), tbl_sub_path_(sub_path), table_id_(table_id),
-                            schema_rw_lock_(RWLATCH_ID_TABLE_VERSION_RWLOCK) {}
+                            schema_rw_lock_(RWLATCH_ID_METRIC_VERSION_RWLOCK) {}
 
   ~MetricsVersionManager();
 

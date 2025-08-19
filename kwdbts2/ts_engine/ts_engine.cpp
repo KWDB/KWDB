@@ -13,7 +13,6 @@
 
 #include <dirent.h>
 #include <cstdint>
-#include <filesystem>
 #include <cstdio>
 #include <vector>
 #include <unordered_map>
@@ -228,7 +227,7 @@ KStatus TSEngineV2Impl::Init(kwdbContext_p ctx) {
   }
 #endif
 
-  std::filesystem::path db_path{options_.db_path};
+  fs::path db_path{options_.db_path};
   assert(!db_path.empty());
   schema_mgr_ = std::make_unique<TsEngineSchemaManager>(db_path / schema_directory);
   KStatus s = schema_mgr_->Init(ctx);

@@ -11,7 +11,6 @@
 
 #include "ts_engine_schema_manager.h"
 
-#include <filesystem>
 #include <iostream>
 #include <memory>
 #include <regex>
@@ -202,7 +201,7 @@ bool TsEngineSchemaManager::IsTableExist(TSTableID tbl_id) {
 KStatus TsEngineSchemaManager::GetTableList(std::vector<TSTableID>* table_ids) {
   // scan all directory.
   std::error_code ec;
-  std::filesystem::directory_iterator dir_iter{schema_root_path_, ec};
+  fs::directory_iterator dir_iter{schema_root_path_, ec};
   std::unordered_map<TSTableID, int> table_scan_times;
   if (ec.value() != 0) {
     LOG_ERROR("GetTableList failed, reason: %s", ec.message().c_str());

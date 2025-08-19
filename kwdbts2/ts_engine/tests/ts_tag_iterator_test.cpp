@@ -8,7 +8,6 @@
 // EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT,
 // MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
 // See the Mulan PSL v2 for more details.
-#include <filesystem>
 #include "libkwdbts2.h"
 #include "ts_engine.h"
 #include "test_util.h"
@@ -32,7 +31,7 @@ class TestEngine : public ::testing::Test {
     opts_.db_path = kDbPath;
     opts_.is_single_node_ = true;
 
-    std::filesystem::remove_all(kDbPath);
+    fs::remove_all(kDbPath);
     // Clean up file directory
     auto engine = new TSEngineV2Impl(opts_);
     KStatus s = engine->Init(ctx_);

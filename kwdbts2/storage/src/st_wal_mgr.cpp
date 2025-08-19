@@ -9,8 +9,6 @@
 // MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
 // See the Mulan PSL v2 for more details.
 
-#include <filesystem>
-
 #include "st_wal_mgr.h"
 #include "st_wal_internal_logfile_mgr.h"
 #include "sys_utils.h"
@@ -974,7 +972,7 @@ bool WALMgr::NeedCheckpoint() {
 
 KStatus WALMgr::SwitchNextFile(TS_LSN first_lsn) {
   kwdbts::kwdbContext_p ctx;
-  if (std::filesystem::exists(file_mgr_->getFilePath())) {
+  if (fs::exists(file_mgr_->getFilePath())) {
     KStatus s = FlushWithoutLock(ctx);
     if (s == KStatus::FAIL) {
       LOG_ERROR("Failed to FlushWithoutLock.")
@@ -1017,7 +1015,7 @@ KStatus WALMgr::SwitchNextFile(TS_LSN first_lsn) {
 }
 
 KStatus WALMgr::SwitchLastFile(kwdbContext_p ctx, TS_LSN last_lsn) {
-  if (std::filesystem::exists(file_mgr_->getChkFilePath())) {
+  if (fs::exists(file_mgr_->getChkFilePath())) {
     file_mgr_->Close();
     ResetCurLSNAndFlushMeta(ctx, last_lsn);
     if (Remove(file_mgr_->getFilePath().c_str()) == KStatus::FAIL) {
