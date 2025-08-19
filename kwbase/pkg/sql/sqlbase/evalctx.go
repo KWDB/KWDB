@@ -27,6 +27,7 @@ package sqlbase
 import (
 	"context"
 
+	"gitee.com/kwbasedb/kwbase/pkg/ape"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/parser"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgcode"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgerror"
@@ -138,6 +139,11 @@ func (ep *DummyEvalPlanner) EvalSubquery(expr *tree.Subquery) (tree.Datum, error
 
 // ExecutorConfig is part of the Planner interface.
 func (*DummyEvalPlanner) ExecutorConfig() interface{} {
+	return nil
+}
+
+// GetApEngine is part of the Planner interface.
+func (*DummyEvalPlanner) GetApEngine() *ape.ApEngine {
 	return nil
 }
 
