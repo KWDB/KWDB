@@ -673,6 +673,30 @@ func (*CreateProcedurePG) StatementTag() string { return "CREATE PROCEDURE" }
 func (*CreateProcedurePG) StatTargetType() string { return "PROCEDURE" }
 
 // StatementType implements the Statement interface.
+func (n *CreateTrigger) StatementType() StatementType { return DDL }
+
+// StatOp implements the StatOp interface.
+func (*CreateTrigger) StatOp() string { return "CREATE" }
+
+// StatementTag returns a short string identifying the type of statement.
+func (*CreateTrigger) StatementTag() string { return "CREATE TRIGGER" }
+
+// StatTargetType implements the StatTargetType interface.
+func (*CreateTrigger) StatTargetType() string { return "TRIGGER" }
+
+// StatementType implements the Statement interface.
+func (n *CreateTriggerPG) StatementType() StatementType { return DDL }
+
+// StatOp implements the StatOp interface.
+func (*CreateTriggerPG) StatOp() string { return "CREATE" }
+
+// StatementTag returns a short string identifying the type of statement.
+func (*CreateTriggerPG) StatementTag() string { return "CREATE TRIGGER" }
+
+// StatTargetType implements the StatTargetType interface.
+func (*CreateTriggerPG) StatTargetType() string { return "TRIGGER" }
+
+// StatementType implements the Statement interface.
 func (n *Block) StatementType() StatementType { return Ack }
 
 // StatOp implements the StatOp interface.
@@ -1083,6 +1107,18 @@ func (*DropProcedure) StatOp() string { return "DROP" }
 // StatementTag returns a short string identifying the type of statement.
 func (*DropProcedure) StatementTag() string { return "DROP PROCEDURE" }
 
+// StatTargetType implements the StatTargetType interface.
+func (*DropTrigger) StatTargetType() string { return "TRIGGER" }
+
+// StatementType implements the Statement interface.
+func (*DropTrigger) StatementType() StatementType { return DDL }
+
+// StatOp implements the StatOp interface.
+func (*DropTrigger) StatOp() string { return "DROP" }
+
+// StatementTag returns a short string identifying the type of statement.
+func (*DropTrigger) StatementTag() string { return "DROP TRIGGER" }
+
 // StatementType implements the Statement interface.
 func (*DropAudit) StatementType() StatementType { return DDL }
 
@@ -1335,6 +1371,18 @@ func (n *RenameTable) StatTargetType() string {
 	}
 	return "TABLE"
 }
+
+// StatementType implements the Statement interface.
+func (*RenameTrigger) StatementType() StatementType { return DDL }
+
+// StatOp implements the StatOp interface.
+func (*RenameTrigger) StatOp() string { return "ALTER" }
+
+// StatementTag returns a short string identifying the type of statement.
+func (n *RenameTrigger) StatementTag() string { return "RENAME TRIGGER" }
+
+// StatTargetType implements the StatTargetType interface.
+func (n *RenameTrigger) StatTargetType() string { return "TRIGGER" }
 
 // StatementType implements the Statement interface.
 func (*Relocate) StatementType() StatementType { return Rows }
@@ -1732,6 +1780,18 @@ func (*ShowColumns) StatementTag() string { return "SHOW COLUMNS" }
 func (*ShowColumns) StatTargetType() string { return "" }
 
 // StatementType implements the Statement interface.
+func (*ShowTriggers) StatementType() StatementType { return Rows }
+
+// StatOp implements the StatOp interface.
+func (*ShowTriggers) StatOp() string { return "" }
+
+// StatementTag returns a short string identifying the type of statement.
+func (*ShowTriggers) StatementTag() string { return "SHOW TRIGGERS" }
+
+// StatTargetType implements the StatTargetType interface.
+func (*ShowTriggers) StatTargetType() string { return "" }
+
+// StatementType implements the Statement interface.
 func (*ShowCreate) StatementType() StatementType { return Rows }
 
 // StatOp implements the StatOp interface.
@@ -1766,6 +1826,18 @@ func (*ShowCreateProcedure) StatementTag() string { return "SHOW CREATE PROCEDUR
 
 // StatTargetType implements the StatTargetType interface.
 func (*ShowCreateProcedure) StatTargetType() string { return "" }
+
+// StatementType implements the Statement interface.
+func (*ShowCreateTrigger) StatementType() StatementType { return Rows }
+
+// StatOp implements the StatOp interface.
+func (*ShowCreateTrigger) StatOp() string { return "" }
+
+// StatementTag returns a short string identifying the type of statement.
+func (*ShowCreateTrigger) StatementTag() string { return "SHOW CREATE TRIGGER" }
+
+// StatTargetType implements the StatTargetType interface.
+func (*ShowCreateTrigger) StatTargetType() string { return "" }
 
 // StatementType implements the Statement interface.
 func (*ShowBackup) StatementType() StatementType { return Rows }
@@ -2342,6 +2414,7 @@ func (n *ResumeSchedule) String() string                 { return AsString(n) }
 func (n *AlterSchedule) String() string                  { return AsString(n) }
 func (n *DropFunction) String() string                   { return AsString(n) }
 func (n *DropProcedure) String() string                  { return AsString(n) }
+func (n *DropTrigger) String() string                    { return AsString(n) }
 func (n *DropAudit) String() string                      { return AsString(n) }
 func (n *Execute) String() string                        { return AsString(n) }
 func (n *Explain) String() string                        { return AsString(n) }
@@ -2362,6 +2435,7 @@ func (n *RenameColumn) String() string                   { return AsString(n) }
 func (n *RenameDatabase) String() string                 { return AsString(n) }
 func (n *RenameIndex) String() string                    { return AsString(n) }
 func (n *RenameTable) String() string                    { return AsString(n) }
+func (n *RenameTrigger) String() string                  { return AsString(n) }
 func (n *ProcedureReturn) String() string                { return AsString(n) }
 func (n *Declaration) String() string                    { return AsString(n) }
 func (n *ProcSet) String() string                        { return AsString(n) }
@@ -2398,10 +2472,12 @@ func (n *ShowBackup) String() string                     { return AsString(n) }
 func (n *ShowClusterSetting) String() string             { return AsString(n) }
 func (n *ShowClusterSettingList) String() string         { return AsString(n) }
 func (n *ShowColumns) String() string                    { return AsString(n) }
+func (n *ShowTriggers) String() string                   { return AsString(n) }
 func (n *ShowConstraints) String() string                { return AsString(n) }
 func (n *ShowCreate) String() string                     { return AsString(n) }
 func (n *ShowCreateDatabase) String() string             { return AsString(n) }
 func (n *ShowCreateProcedure) String() string            { return AsString(n) }
+func (n *ShowCreateTrigger) String() string              { return AsString(n) }
 func (n *ShowDatabases) String() string                  { return AsString(n) }
 func (n *ShowFunction) String() string                   { return AsString(n) }
 func (n *ShowSchedule) String() string                   { return AsString(n) }
@@ -2452,6 +2528,9 @@ func (n *CreateProcedure) String() string {
 }
 
 func (n *CreateProcedurePG) String() string { return AsString(n) }
+
+func (n *CreateTrigger) String() string   { return AsString(n) }
+func (n *CreateTriggerPG) String() string { return AsString(n) }
 
 func (n *CallProcedure) String() string { return AsString(n) }
 func (n *Block) String() string         { return AsString(n) }

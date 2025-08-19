@@ -1233,7 +1233,7 @@ func (tc *TxnCoordSender) PrepareRetryableError(ctx context.Context, msg string)
 }
 
 // Step is part of the TxnSender interface.
-func (tc *TxnCoordSender) Step(ctx context.Context) error {
+func (tc *TxnCoordSender) Step(ctx context.Context, canUpdateTS bool) error {
 	if tc.typ != kv.RootTxn {
 		return errors.WithContextTags(
 			errors.AssertionFailedf("cannot call Step() in leaf txn"), ctx)
@@ -1241,7 +1241,7 @@ func (tc *TxnCoordSender) Step(ctx context.Context) error {
 	tc.mu.Lock()
 	defer tc.mu.Unlock()
 	// build statement level's snapshot through bump timestamp
-	if tc.PerStatementReadSnapshot() {
+	if canUpdateTS && tc.PerStatementReadSnapshot() {
 		tc.stepReadTimestampLocked()
 	}
 	return tc.interceptorAlloc.txnSeqNumAllocator.stepLocked(ctx)

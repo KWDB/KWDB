@@ -128,6 +128,7 @@ func TestAllocateIDs(t *testing.T) {
 		NextFamilyID:   1,
 		NextIndexID:    5,
 		NextMutationID: 1,
+		NextTriggerID:  1,
 		FormatVersion:  FamilyFormatVersion,
 	})
 	if !reflect.DeepEqual(expected, desc) {

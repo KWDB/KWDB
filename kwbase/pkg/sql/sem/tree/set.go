@@ -158,7 +158,11 @@ func (node *SelectInto) Format(ctx *FmtCtx) {
 				ctx.WriteString(",")
 			}
 			ctx.WriteString(" ")
-			ctx.WriteString(node.Targets[i].DeclareVar)
+			if node.Targets[i].DeclareVar != "" {
+				ctx.WriteString(node.Targets[i].DeclareVar)
+			} else if node.Targets[i].Udv.VarName != "" {
+				ctx.WriteString(node.Targets[i].Udv.VarName)
+			}
 		}
 		if len(selClause.From.Tables) > 0 {
 			ctx.WriteByte(' ')

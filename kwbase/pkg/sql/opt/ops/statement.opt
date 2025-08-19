@@ -5,6 +5,17 @@
 # if they were expressions with a zero row, zero column result.
 
 [Relational, DDL, Mutation]
+define CreateTrigger {
+  _ CreateTriggerPrivate
+}
+
+[Private]
+define CreateTriggerPrivate {
+    Syntax CreateTrigger
+    Deps ViewDeps
+}
+
+[Relational, DDL, Mutation]
 define CreateProcedure {
   Input  RelExpr
   _ CreateProcedurePrivate

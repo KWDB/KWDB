@@ -51,7 +51,11 @@ func (r *ReturningIntoClause) Format(ctx *FmtCtx) {
 			ctx.WriteString(",")
 		}
 		ctx.WriteString(" ")
-		ctx.WriteString(r.Targets[i].DeclareVar)
+		if r.Targets[i].DeclareVar != "" {
+			ctx.WriteString(r.Targets[i].DeclareVar)
+		} else {
+			ctx.WriteString(r.Targets[i].Udv.VarName)
+		}
 	}
 }
 

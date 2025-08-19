@@ -44,6 +44,9 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/opt"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/opt/exec"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/opt/memo"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/opt/norm"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/opt/props/physical"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/opt/xform"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/parser"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgcode"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgerror"
@@ -104,9 +107,11 @@ func (b *Builder) buildMutationInput(
 }
 
 func (b *Builder) buildInsert(ins *memo.InsertExpr) (execPlan, error) {
+
 	if ep, ok, err := b.tryBuildFastPathInsert(ins); err != nil || ok {
 		return ep, err
 	}
+
 	// Construct list of columns that only contains columns that need to be
 	// inserted (e.g. delete-only mutation columns don't need to be inserted).
 	colList := make(opt.ColList, 0, len(ins.InsertCols)+len(ins.CheckCols))
@@ -124,6 +129,20 @@ func (b *Builder) buildInsert(ins *memo.InsertExpr) (execPlan, error) {
 	returnOrds := ordinalSetFromColList(ins.ReturnCols)
 	// If we planned FK checks, disable the execution code for FK checks.
 	disableExecFKs := !ins.FKFallback
+
+	// assign trigger execution related info to triggerCommands
+	var triggerCommands exec.TriggerExecute
+	if b.hasTriggers(ins.Table, tree.TriggerEventInsert) {
+		Command, ok := ins.TriggerCommands.(*memo.ArrayCommand)
+		if !ok {
+			return execPlan{}, errors.New("arrayCommand error")
+		}
+		triggerCommands = &exec.TriggerCommand{}
+		triggerCommands.SetCommands(*Command)
+		triggerCommands.SetFn(b.replaceMemoBeforePlanning)
+		triggerCommands.SetScalarFn(b.buildProcedureScalarExpr)
+	}
+
 	node, err := b.factory.ConstructInsert(
 		input.root,
 		tab,
@@ -132,6 +151,7 @@ func (b *Builder) buildInsert(ins *memo.InsertExpr) (execPlan, error) {
 		checkOrds,
 		b.allowAutoCommit && len(ins.Checks) == 0,
 		disableExecFKs,
+		triggerCommands,
 	)
 	if err != nil {
 		return execPlan{}, err
@@ -2461,6 +2481,10 @@ func (b *Builder) tryBuildFastPathInsert(ins *memo.InsertExpr) (_ execPlan, ok b
 		return execPlan{}, false, nil
 	}
 
+	if len(b.mem.Metadata().Table(ins.Table).GetTriggers(tree.TriggerEventInsert)) > 0 {
+		return execPlan{}, false, nil
+	}
+
 	// Conditions from ConstructFastPathInsert:
 	//
 	//  - there are no other mutations in the statement, and the output of the
@@ -2646,6 +2670,19 @@ func (b *Builder) buildUpdate(upd *memo.UpdateExpr) (execPlan, error) {
 		}
 	}
 
+	// assign trigger execution related info to triggerCommands
+	var triggerCommands exec.TriggerExecute
+	if b.hasTriggers(upd.Table, tree.TriggerEventUpdate) {
+		Command, ok := upd.TriggerCommands.(*memo.ArrayCommand)
+		if !ok {
+			return execPlan{}, errors.New("arrayCommand error")
+		}
+		triggerCommands = &exec.TriggerCommand{}
+		triggerCommands.SetCommands(*Command)
+		triggerCommands.SetFn(b.replaceMemoBeforePlanning)
+		triggerCommands.SetScalarFn(b.buildProcedureScalarExpr)
+	}
+
 	disableExecFKs := !upd.FKFallback
 	node, err := b.factory.ConstructUpdate(
 		input.root,
@@ -2657,6 +2694,7 @@ func (b *Builder) buildUpdate(upd *memo.UpdateExpr) (execPlan, error) {
 		passthroughCols,
 		b.allowAutoCommit && len(upd.Checks) == 0,
 		disableExecFKs,
+		triggerCommands,
 	)
 	if err != nil {
 		return execPlan{}, err
@@ -2770,6 +2808,19 @@ func (b *Builder) buildDelete(del *memo.DeleteExpr) (execPlan, error) {
 		return execPlan{}, err
 	}
 
+	// assign trigger execution related info to triggerCommands
+	var triggerCommands exec.TriggerExecute
+	if b.hasTriggers(del.Table, tree.TriggerEventDelete) {
+		Command, ok := del.TriggerCommands.(*memo.ArrayCommand)
+		if !ok {
+			return execPlan{}, errors.New("arrayCommand error")
+		}
+		triggerCommands = &exec.TriggerCommand{}
+		triggerCommands.SetCommands(*Command)
+		triggerCommands.SetFn(b.replaceMemoBeforePlanning)
+		triggerCommands.SetScalarFn(b.buildProcedureScalarExpr)
+	}
+
 	// Construct the Delete node.
 	md := b.mem.Metadata()
 	tab := md.Table(del.Table)
@@ -2783,6 +2834,7 @@ func (b *Builder) buildDelete(del *memo.DeleteExpr) (execPlan, error) {
 		returnColOrds,
 		b.allowAutoCommit && len(del.Checks) == 0,
 		disableExecFKs,
+		triggerCommands,
 	)
 	if err != nil {
 		return execPlan{}, err
@@ -3057,6 +3109,10 @@ func (b *Builder) canUseDeleteRange(del *memo.DeleteExpr) bool {
 	if tab.InboundForeignKeyCount() > 0 {
 		// If the table is referenced by other tables' foreign keys, no fast path
 		// is possible, because the integrity of those references must be checked.
+		return false
+	}
+
+	if len(b.mem.Metadata().Table(del.Table).GetTriggers(tree.TriggerEventDelete)) > 0 {
 		return false
 	}
 
@@ -3455,4 +3511,90 @@ func (b *Builder) shouldApplyImplicitLockingToUpsertInput(ups *memo.UpsertExpr) 
 // expression trees and apply a row-level locking mode.
 func (b *Builder) shouldApplyImplicitLockingToDeleteInput(del *memo.DeleteExpr) bool {
 	return false
+}
+
+// replaceMemoBeforePlanning needs to be passed to the execution phase of the procedure/trigger, which is
+// used to replace the variables in the memo expression with constants, perform optimization
+// and finally generate the exec plan.
+//
+//		e.g. create procedure ... {
+//		    Declare var1 int;
+//		    set var1 = 10;
+//		    select * from t where a=var1;
+//	 }
+//
+// In this case, this helper function need to replace var1 with corresponding scalar value, and then do
+// optimization in the same way.
+func (b *Builder) replaceMemoBeforePlanning(
+	expr memo.RelExpr, pr *physical.Required, src []*exec.LocalVariable,
+) (exec.Plan, error) {
+
+	var o xform.Optimizer
+	o.Init(b.evalCtx, b.catalog)
+	o.Memo().SetWhiteList(b.mem.GetWhiteList())
+	f := o.Factory()
+
+	// Copy the right expression into a new memo, replacing each bound column
+	// with the corresponding value from the left row.
+	var replaceFn norm.ReplaceFunc
+	replaceFn = func(e opt.Expr) opt.Expr {
+		switch t := e.(type) {
+		case *memo.VariableExpr:
+			meta := b.mem.Metadata().ColumnMeta(t.Col)
+			if meta.IsDeclaredInsideProcedure {
+
+				return f.ConstructConstVal(src[meta.RealIdx].Data, &src[meta.RealIdx].Typ)
+			}
+		case *memo.TSInsertExpr:
+			for i := range t.InputRows {
+				t.ActualRows[i] = make([]tree.Expr, len(t.InputRows[i]))
+				for j := range t.InputRows[i] {
+					if v, ok := t.InputRows[i][j].(*tree.IndexedVar); ok && v.IsDeclare {
+						t.RunInsideProcedure = true
+						// replace indexVal to Datum
+						t.ActualRows[i][j] = src[v.Idx].Data
+					} else {
+						t.ActualRows[i][j] = t.InputRows[i][j]
+					}
+				}
+			}
+		case *memo.TSDeleteExpr:
+			for i := range t.InputRows {
+				t.ActualRows[i] = make([]tree.Expr, len(t.InputRows[i]))
+				for j := range t.InputRows[i] {
+					if v, ok := t.InputRows[i][j].(*tree.IndexedVar); ok && v.IsDeclare {
+						t.RunInsideProcedure = true
+						// replace indexVal to Datum
+						t.ActualRows[i][j] = src[v.Idx].Data
+					} else {
+						t.ActualRows[i][j] = t.InputRows[i][j]
+					}
+				}
+			}
+		}
+
+		return f.CopyAndReplaceDefault(e, replaceFn)
+	}
+	f.CopyAndReplace(expr, pr, replaceFn)
+
+	newRightSide, err := o.Optimize()
+	if err != nil {
+		return nil, err
+	}
+
+	eb := New(b.factory, f.Memo(), b.catalog, newRightSide, b.evalCtx)
+	eb.disableTelemetry = true
+	plan, err := eb.Build(false)
+	if err != nil {
+		if errors.IsAssertionFailure(err) {
+			// Enhance the error with the EXPLAIN (OPT, VERBOSE) of the inner
+			// expression.
+			fmtFlags := memo.ExprFmtHideQualifications | memo.ExprFmtHideScalars | memo.ExprFmtHideTypes
+			explainOpt := o.FormatExpr(newRightSide, fmtFlags)
+			err = errors.WithDetailf(err, "newStmt:\n%s", explainOpt)
+		}
+		return nil, err
+	}
+
+	return plan, nil
 }

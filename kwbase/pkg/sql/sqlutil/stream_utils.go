@@ -154,8 +154,14 @@ type RunInfo struct {
 
 // StreamSink records information of running stream query.
 type StreamSink struct {
-	SQL    string `json:"sql,omitempty"`
-	HasAgg bool   `json:"has_agg,omitempty"`
+	// SQL is original query
+	SQL string `json:"sql,omitempty"`
+	// HasAgg indicates that the current stream has aggregations.
+	HasAgg bool `json:"has_agg,omitempty"`
+	// HasAgg indicates that the current stream has aggregations with slide window.
+	HasSlide bool `json:"has_slide,omitempty"`
+	// Function indicates that the function name of window.
+	Function string `json:"function,omitempty"`
 }
 
 // MarshalStreamParameters marshals stream parameters to json.

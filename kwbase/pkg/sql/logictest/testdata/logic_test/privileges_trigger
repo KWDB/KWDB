@@ -1,0 +1,95 @@
+# Test default procedure-level permissions.
+# Default user is root.
+statement ok
+CREATE DATABASE a
+
+statement ok
+SET DATABASE = a
+
+statement ok
+create table orders (id int, name string, price float, time timestamp);
+
+statement ok
+create table audit_log(id int, name string, price float, time timestamp, currentuser string);
+
+statement ok
+create trigger my_trigger before insert on orders for each row begin insert into audit_log values (NEW.id, NEW.name, NEW.price, NEW.time, current_user());end;
+
+statement ok
+insert into orders values (1, 'kwdb', 99.99, now());
+
+statement ok
+SHOW GRANTS ON table orders
+
+statement ok
+SHOW GRANTS ON table audit_log
+
+# Switch to a user without any privileges.
+user testuser
+
+# This needs to be repeated since session variables are per client.
+statement ok
+SET DATABASE = a
+
+statement error user testuser does not have DROP privilege on relation orders
+drop trigger my_trigger on orders;
+
+statement error user testuser does not have CREATE privilege on relation orders
+create trigger my_trigger_1 before insert on orders for each row begin insert into audit_log values (NEW.id, NEW.name, NEW.price, NEW.time, current_user());end;
+
+statement error user testuser does not have INSERT privilege on relation orders
+insert into orders values (2, 'kwdb', 99.99, now());
+
+user root
+
+statement ok
+GRANT CREATE ON TABLE orders TO testuser
+
+statement ok
+GRANT INSERT ON TABLE orders TO testuser
+
+statement ok
+GRANT INSERT ON TABLE audit_log TO testuser
+
+user testuser
+
+statement error user testuser does not have DROP privilege on relation orders
+drop trigger my_trigger on orders;
+
+statement ok
+create trigger my_trigger_1 before insert on orders for each row begin insert into audit_log values (NEW.id, NEW.name, NEW.price, NEW.time, current_user());end;
+
+statement ok
+insert into orders values (3, 'kwdb', 99.99, now());
+
+user root
+
+statement ok
+REVOKE CREATE ON TABLE orders FROM testuser
+
+statement ok
+REVOKE INSERT ON TABLE orders FROM testuser
+
+statement ok
+REVOKE INSERT ON TABLE audit_log FROM testuser
+
+user testuser
+
+statement error user testuser does not have DROP privilege on relation orders
+drop trigger my_trigger_1 on orders;
+
+statement error user testuser does not have CREATE privilege on relation orders
+create trigger my_trigger_1 before insert on orders for each row begin insert into audit_log values (NEW.id, NEW.name, NEW.price, NEW.time, current_user());end;
+
+user root
+
+statement ok
+GRANT DROP ON TABLE orders TO testuser
+
+user testuser
+
+statement ok
+drop trigger my_trigger on orders;
+
+statement ok
+drop trigger my_trigger_1 on orders;

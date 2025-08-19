@@ -356,6 +356,9 @@ func (b *Builder) buildRelational(e memo.RelExpr) (execPlan, error) {
 	case *memo.CreateProcedureExpr:
 		ep, err = b.buildCreateProcedure(t)
 
+	case *memo.CreateTriggerExpr:
+		ep, err = b.buildCreateTrigger(t)
+
 	case *memo.CreateTableExpr:
 		ep, err = b.buildCreateTable(t)
 
@@ -538,6 +541,12 @@ func (b *Builder) constructValues(rows [][]tree.TypedExpr, cols opt.ColList) (ex
 	}
 
 	return ep, nil
+}
+
+// hasTriggers returns whether input table has triggers with specific trigger event
+// binding on it
+func (b *Builder) hasTriggers(table opt.TableID, event tree.TriggerEvent) bool {
+	return len(b.mem.Metadata().Table(table).GetTriggers(event)) > 0
 }
 
 // getColumns returns the set of column ordinals in the table for the set of
