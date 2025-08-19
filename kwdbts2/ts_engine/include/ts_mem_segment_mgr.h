@@ -11,11 +11,9 @@
 #pragma once
 
 #include <list>
-#include <map>
 #include <memory>
 #include <unordered_map>
 #include <atomic>
-#include <deque>
 #include <string>
 #include <utility>
 #include <vector>
@@ -30,18 +28,20 @@ namespace kwdbts {
 class TsVGroup;
 
 enum TsMemSegmentStatus : uint8_t {
-  MEM_SEGMENT_INITED = 1,
+  MEM_SEGMENT_IDLE = 1,
   MEM_SEGMENT_IMMUTABLE = 2,
-  MEM_SEGMENT_FLUSHING = 3,
-  MEM_SEGMENT_DELETING = 4,
+  MEM_SEGMENT_WRITING = 3,
+  MEM_SEGMENT_FLUSHING = 4,
 };
 
 class TsMemSegment : public TsSegmentBase, public enable_shared_from_this<TsMemSegment> {
+  friend class TsMemSegmentManager;
+
  private:
   std::atomic<uint32_t> row_idx_{1};
   std::atomic<uint32_t> intent_row_num_{0};
   std::atomic<uint32_t> written_row_num_{0};
-  std::atomic<TsMemSegmentStatus> status_{MEM_SEGMENT_INITED};
+  std::atomic<TsMemSegmentStatus> status_{MEM_SEGMENT_IDLE};
   TsMemSegIndex skiplist_;
 
   explicit TsMemSegment(int32_t max_height);
@@ -71,20 +71,9 @@ class TsMemSegment : public TsSegmentBase, public enable_shared_from_this<TsMemS
 
   inline uint32_t GetMemSegmentSize() { return skiplist_.GetAllocator().MemoryAllocatedBytes(); }
 
-  inline bool SetImm() {
-    TsMemSegmentStatus tmp = MEM_SEGMENT_INITED;
-    return status_.compare_exchange_strong(tmp, MEM_SEGMENT_IMMUTABLE);
-  }
-
-  inline bool SetFlushing() {
-    TsMemSegmentStatus tmp = MEM_SEGMENT_IMMUTABLE;
-    return status_.compare_exchange_strong(tmp, MEM_SEGMENT_FLUSHING);
-  }
-
-  inline void SetDeleting() { status_.store(MEM_SEGMENT_DELETING); }
-
   KStatus GetBlockSpans(const TsBlockItemFilterParams& filter, std::list<shared_ptr<TsBlockSpan>>& blocks,
-                        std::shared_ptr<TsTableSchemaManager>& tbl_schema_mgr, uint32_t scan_version) override;
+                        std::shared_ptr<TsTableSchemaManager>& tbl_schema_mgr,
+                        std::shared_ptr<MMapMetricsTable>& scan_schema) override;
   KStatus GetBlockSpans(std::list<shared_ptr<TsBlockSpan>>& blocks, TsEngineSchemaManager* schema_mgr);
 };
 
@@ -190,28 +179,30 @@ class TsMemSegBlock : public TsBlock {
   }
 };
 
+class TsVersionManager;
 class TsMemSegmentManager {
  private:
   TsVGroup* vgroup_;
+  TsVersionManager* version_manager_;
   std::shared_ptr<TsMemSegment> cur_mem_seg_{nullptr};
   std::list<std::shared_ptr<TsMemSegment>> segment_;
   mutable std::shared_mutex segment_lock_;
+  mutable std::mutex put_lock_;
+
+  std::shared_ptr<TsMemSegment> CurrentMemSegmentAndAllocateRow(uint32_t row_num) const {
+    std::shared_lock lock(segment_lock_);
+    cur_mem_seg_->AllocRowNum(row_num);
+    return cur_mem_seg_;
+  }
 
  public:
-  explicit TsMemSegmentManager(TsVGroup* vgroup);
+  explicit TsMemSegmentManager(TsVGroup* vgroup, TsVersionManager* version_manager);
 
   ~TsMemSegmentManager() {
     segment_.clear();
   }
 
-  // WAL CreateCheckPoint call this function to persistent metric datas.
-
-  std::shared_ptr<TsMemSegment> CurrentMemSegment() const {
-    std::shared_lock lock(segment_lock_);
-    return cur_mem_seg_;
-  }
-
-  void SwitchMemSegment(std::shared_ptr<TsMemSegment>* segments);
+  std::shared_ptr<TsMemSegment> SwitchMemSegment();
 
   void RemoveMemSegment(const std::shared_ptr<TsMemSegment>& mem_seg);
 
@@ -220,15 +211,10 @@ class TsMemSegmentManager {
     *mems = segment_;
   }
 
-  KStatus PutData(const TSSlice& payload, TSEntityID entity_id, TS_LSN lsn,
-    std::list<TSMemSegRowData>* rows = nullptr);
+  KStatus PutData(const TSSlice& payload, TSEntityID entity_id, TS_LSN lsn);
 
   bool GetMetricSchemaAndMeta(TSTableID table_id_, uint32_t version, std::vector<AttributeInfo>& schema,
-                              LifeTime* lifetime = nullptr);
-
-  KStatus GetBlockSpans(const TsBlockItemFilterParams& filter, std::list<shared_ptr<TsBlockSpan>>& block_spans,
-                        std::shared_ptr<TsTableSchemaManager>& tbl_schema_mgr,
-                        uint32_t scan_version = 0);
+                              DATATYPE* ts_type, LifeTime* lifetime = nullptr);
 };
 
 }  // namespace kwdbts

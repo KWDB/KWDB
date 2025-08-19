@@ -137,14 +137,16 @@ TEST_F(TsBatchDataWorkerTest, TestTsBatchDataWorker) {
     auto entity_segment = p->GetEntitySegment();
     uint32_t entity_id = entity_segment->GetEntityNum();
     assert(entity_id == 1);
-    std::shared_ptr<TsTableSchemaManager> schema;
-    s = engine_->GetTableSchemaMgr(ctx_, table_id, schema);
+    std::shared_ptr<TsTableSchemaManager> schema_mgr;
+    s = engine_->GetTableSchemaMgr(ctx_, table_id, schema_mgr);
     ASSERT_EQ(s, KStatus::SUCCESS);
     KwTsSpan ts_span{INT64_MIN, INT64_MAX};
     KwLSNSpan lsn_span{0, UINT64_MAX};
     STScanRange scan_range{ts_span, lsn_span};
     TsBlockItemFilterParams filter{1, table_id, vgroup_id, entity_id, {scan_range}};
-    s = entity_segment->GetBlockSpans(filter, block_spans, schema, 1);
+    std::shared_ptr<MMapMetricsTable> schema;
+    ASSERT_EQ(schema_mgr->GetMetricSchema(1, &schema), KStatus::SUCCESS);
+    s = entity_segment->GetBlockSpans(filter, block_spans, schema_mgr, schema);
     ASSERT_EQ(s, KStatus::SUCCESS);
   }
   ASSERT_EQ(block_spans.size(), 2);

@@ -120,7 +120,7 @@ class TsLastSegment : public TsSegmentBase {
   KStatus GetBlockSpans(const TsBlockItemFilterParams& filter,
                         std::list<shared_ptr<TsBlockSpan>>& block_spans,
                         std::shared_ptr<TsTableSchemaManager>& tbl_schema_mgr,
-                        uint32_t scan_version) override;
+                        std::shared_ptr<MMapMetricsTable>& scan_schema) override;
 
   size_t GetFileSize() const { return file_->GetFileSize(); }
 

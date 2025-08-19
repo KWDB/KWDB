@@ -13,7 +13,6 @@
 
 #include <dirent.h>
 #include <cstdint>
-#include <filesystem>
 #include <cstdio>
 #include <vector>
 #include <unordered_map>
@@ -50,12 +49,11 @@ unsigned seed = std::chrono::system_clock::now().time_since_epoch().count();
 std::mt19937 gen(seed);
 const char schema_directory[]= "schema/";
 
-TSEngineV2Impl::TSEngineV2Impl(const EngineOptions& engine_options) :
-                              options_(engine_options), flush_mgr_(vgroups_),
-                              read_batch_workers_lock_(RWLATCH_ID_READ_BATCH_DATA_JOB_RWLOCK),
-                              write_batch_workers_lock_(RWLATCH_ID_WRITE_BATCH_DATA_JOB_RWLOCK),
-                              insert_tag_lock_(EngineOptions::vgroup_max_num * 2,
-                                              RWLATCH_ID_ENGINE_INSERT_TAG_RWLOCK) {
+TSEngineV2Impl::TSEngineV2Impl(const EngineOptions& engine_options)
+    : options_(engine_options),
+      read_batch_workers_lock_(RWLATCH_ID_READ_BATCH_DATA_JOB_RWLOCK),
+      write_batch_workers_lock_(RWLATCH_ID_WRITE_BATCH_DATA_JOB_RWLOCK),
+      insert_tag_lock_(EngineOptions::vgroup_max_num * 2 , RWLATCH_ID_ENGINE_INSERT_TAG_RWLOCK) {
   LogInit();
   tables_cache_ = new SharedLruUnorderedMap<KTableKey, TsTable>(EngineOptions::table_cache_capacity_, true);
   char* vgroup_num = getenv("KW_VGROUP_NUM");
@@ -122,13 +120,13 @@ TSEngineV2Impl::~TSEngineV2Impl() {
 }
 
 KStatus TSEngineV2Impl::FlushVGroups(kwdbContext_p ctx) {
-  for (auto vgroup : vgroups_) {
-    KStatus s = vgroup->Flush();
-    if (s == KStatus::FAIL) {
-      LOG_ERROR("Failed to flush metric file.")
-      return s;
-    }
-  }
+  // for (auto vgroup : vgroups_) {
+  //   KStatus s = vgroup->Flush();
+  //   if (s == KStatus::FAIL) {
+  //     LOG_ERROR("Failed to flush metric file.")
+  //     return s;
+  //   }
+  // }
   return KStatus::SUCCESS;
 }
 
@@ -229,7 +227,7 @@ KStatus TSEngineV2Impl::Init(kwdbContext_p ctx) {
   }
 #endif
 
-  std::filesystem::path db_path{options_.db_path};
+  fs::path db_path{options_.db_path};
   assert(!db_path.empty());
   schema_mgr_ = std::make_unique<TsEngineSchemaManager>(db_path / schema_directory);
   KStatus s = schema_mgr_->Init(ctx);
@@ -567,8 +565,9 @@ KStatus TSEngineV2Impl::InsertTagData(kwdbContext_p ctx, const KTableKey& table_
 }
 
 KStatus TSEngineV2Impl::PutData(kwdbContext_p ctx, const KTableKey& table_id, uint64_t range_group_id,
-                  TSSlice* payload_data, int payload_num, uint64_t mtr_id, uint16_t* inc_entity_cnt,
-                  uint32_t* inc_unordered_cnt, DedupResult* dedup_result, bool write_wal, const char* tsx_id) {
+                                TSSlice* payload_data, int payload_num, uint64_t mtr_id, uint16_t* inc_entity_cnt,
+                                uint32_t* inc_unordered_cnt, DedupResult* dedup_result, bool write_wal,
+                                const char* tsx_id) {
   std::shared_ptr<kwdbts::TsTable> ts_table;
   ErrorInfo err_info;
   TSEntityID entity_id;
@@ -601,7 +600,6 @@ KStatus TSEngineV2Impl::PutData(kwdbContext_p ctx, const KTableKey& table_id, ui
       return s;
     }
   }
-  flush_mgr_.Count(payload_size);
   return KStatus::SUCCESS;
 }
 

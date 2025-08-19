@@ -13,7 +13,6 @@
 
 #include <cstdint>
 #include <cstring>
-#include <filesystem>
 #include <memory>
 #include <algorithm>
 #include <numeric>
@@ -31,7 +30,6 @@
 #include "kwdb_type.h"
 #include "lg_api.h"
 #include "libkwdbts2.h"
-#include "sys_utils.h"
 #include "ts_block.h"
 #include "ts_common.h"
 #include "ts_entity_segment.h"
@@ -52,12 +50,12 @@ TsVGroup::TsVGroup(EngineOptions* engine_options, uint32_t vgroup_id, TsEngineSc
                    std::shared_mutex* engine_mutex, bool enable_compact_thread)
     : vgroup_id_(vgroup_id),
       schema_mgr_(schema_mgr),
-      mem_segment_mgr_(this),
-      path_(std::filesystem::path(engine_options->db_path) / VGroupDirName(vgroup_id)),
+      path_(fs::path(engine_options->db_path) / VGroupDirName(vgroup_id)),
       max_entity_id_(0),
       engine_options_(engine_options),
       engine_wal_level_mutex_(engine_mutex),
       version_manager_(std::make_unique<TsVersionManager>(engine_options->io_env, path_)),
+      mem_segment_mgr_(std::make_unique<TsMemSegmentManager>(this, version_manager_.get())),
       enable_compact_thread_(enable_compact_thread) {}
 
 TsVGroup::~TsVGroup() {
@@ -94,7 +92,7 @@ KStatus TsVGroup::Init(kwdbContext_p ctx) {
 KStatus TsVGroup::SetReady() {
   TsVersionUpdate update;
   std::list<std::shared_ptr<TsMemSegment>> mems;
-  mem_segment_mgr_.GetAllMemSegments(&mems);
+  mem_segment_mgr_->GetAllMemSegments(&mems);
   update.SetValidMemSegments(mems);
   return version_manager_->ApplyUpdate(&update);
 }
@@ -133,33 +131,16 @@ KStatus TsVGroup::PutData(kwdbContext_p ctx, TSTableID table_id, uint64_t mtr_id
   if (engine_options_->wal_level != WALMode::OFF && !write_wal && !engine_options_->use_raft_log_as_wal) {
     current_lsn = wal_manager_->FetchCurrentLSN();
   }
-  std::list<TSMemSegRowData> rows;
-  auto s = mem_segment_mgr_.PutData(*payload, entity_id, current_lsn, &rows);
+  auto s = mem_segment_mgr_->PutData(*payload, entity_id, current_lsn);
   if (s == KStatus::FAIL) {
     LOG_ERROR("mem_segment_mgr_.PutData Failed.")
     return FAIL;
   }
-  // creating partition directory while inserting data into memroy.
-  s = makeSurePartitionExist(table_id, rows);
-  if (s == KStatus::FAIL) {
-    LOG_ERROR("makeSurePartitionExist Failed.")
-    return FAIL;
-  }
     // update vgroup entity_id.
-  {
-    timestamp64 max_ts = INT64_MIN;
-    for (auto row : rows) {
-      if (max_ts < row.ts) {
-        max_ts = row.ts;
-      }
-    }
-    UpdateEntityAndMaxTs(table_id, max_ts, entity_id);
-    UpdateEntityLatestRow(entity_id, max_ts);
-  }
   return KStatus::SUCCESS;
 }
 
-std::filesystem::path TsVGroup::GetPath() const { return path_; }
+fs::path TsVGroup::GetPath() const { return path_; }
 
 TSEntityID TsVGroup::AllocateEntityID() {
   std::lock_guard<std::mutex> lock1(entity_id_mutex_);
@@ -257,20 +238,21 @@ TsEngineSchemaManager* TsVGroup::GetSchemaMgr() const {
 // if at here, inserting and deleting at same time. maybe sql exec over, data all exist.
 // but restart service, data all disappeared.
 // solution: 1. delete item not store in partition. 2. creating partition before wal insert.
-KStatus TsVGroup::makeSurePartitionExist(TSTableID table_id, const std::list<TSMemSegRowData>& rows) {
-  std::shared_ptr<kwdbts::TsTableSchemaManager> tb_schema_mgr;
-  auto s = schema_mgr_->GetTableSchemaMgr(table_id, tb_schema_mgr);
-  if (s != KStatus::SUCCESS) {
-    LOG_ERROR("GetTableSchemaMgr failed. table[%lu]", table_id);
-    return s;
-  }
-  auto ts_type = tb_schema_mgr->GetTsColDataType();
-  for (auto& row : rows) {
-    auto p_time = convertTsToPTime(row.ts, ts_type);
-    version_manager_->AddPartition(row.database_id, p_time);
-  }
-  return KStatus::SUCCESS;
-}
+
+// KStatus TsVGroup::makeSurePartitionExist(TSTableID table_id, const std::list<TSMemSegRowData>& rows) {
+//   std::shared_ptr<kwdbts::TsTableSchemaManager> tb_schema_mgr;
+//   auto s = schema_mgr_->GetTableSchemaMgr(table_id, tb_schema_mgr);
+//   if (s != KStatus::SUCCESS) {
+//     LOG_ERROR("GetTableSchemaMgr failed. table[%lu]", table_id);
+//     return s;
+//   }
+//   auto ts_type = tb_schema_mgr->GetTsColDataType();
+//   for (auto& row : rows) {
+//     auto p_time = convertTsToPTime(row.ts, ts_type);
+//     version_manager_->AddPartition(row.database_id, p_time);
+//   }
+//   return KStatus::SUCCESS;
+// }
 
 KStatus TsVGroup::redoPut(kwdbContext_p ctx, kwdbts::TS_LSN log_lsn, const TSSlice& payload) {
   TsRawPayload p{payload};
@@ -315,16 +297,10 @@ KStatus TsVGroup::redoPut(kwdbContext_p ctx, kwdbts::TS_LSN log_lsn, const TSSli
   }
 
   if (payload_data_flag == DataTagFlag::DATA_AND_TAG || payload_data_flag == DataTagFlag::DATA_ONLY) {
-    std::list<TSMemSegRowData> rows;
-    s = mem_segment_mgr_.PutData(payload, entity_id, log_lsn, &rows);
+    s = mem_segment_mgr_->PutData(payload, entity_id, log_lsn);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("failed putdata.");
       return s;
-    }
-    s = makeSurePartitionExist(table_id, rows);
-    if (s == KStatus::FAIL) {
-      LOG_ERROR("makeSurePartitionExist Failed.")
-      return FAIL;
     }
   }
   return s;
@@ -363,13 +339,14 @@ KStatus TsVGroup::GetLastRowEntity(kwdbContext_p ctx, std::shared_ptr<TsTableSch
   table_schema_mgr->GetTagSchema(ctx, &tag_schema);
   std::vector<uint32_t> entity_id_list;
   tag_schema->GetEntityIdListByVGroupId(vgroup_id_, entity_id_list);
+  std::shared_ptr<MMapMetricsTable> metric_schema = table_schema_mgr->GetCurrentMetricsTable();
   for (int i = ts_partitions.size() - 1; !last_row_found && i >= 0; --i) {
     std::shared_ptr<TsBlockSpan> last_block_span = nullptr;
     for (auto &entity_id : entity_id_list) {
       std::list<std::shared_ptr<TsBlockSpan>> ts_block_spans;
       filter.entity_id_ = entity_id;
       KStatus ret = ts_partitions[i]->GetBlockSpans(filter, &ts_block_spans, table_schema_mgr,
-                                                   table_schema_mgr->GetCurrentVersion());
+                                                   metric_schema);
       if (ret != KStatus::SUCCESS) {
         LOG_ERROR("GetBlockSpan failed.");
         return KStatus::FAIL;
@@ -437,10 +414,11 @@ KStatus TsVGroup::GetEntityLastRow(std::shared_ptr<TsTableSchemaManager>& table_
   TsScanFilterParams filter{db_id, table_id, vgroup_id_, entity_id, ts_col_type,
                             scan_lsn, spans};
   std::shared_ptr<TsBlockSpan> last_block_span = nullptr;
+  std::shared_ptr<MMapMetricsTable> metric_schema = table_schema_mgr->GetCurrentMetricsTable();
   for (int i = ts_partitions.size() - 1; i >= 0; --i) {
     std::list<std::shared_ptr<TsBlockSpan>> ts_block_spans;
     KStatus ret = ts_partitions[i]->GetBlockSpans(filter, &ts_block_spans, table_schema_mgr,
-                                                 table_schema_mgr->GetCurrentVersion());
+                                                 metric_schema);
     if (ret != KStatus::SUCCESS) {
       LOG_ERROR("GetBlockSpan failed.");
       return KStatus::FAIL;
@@ -593,11 +571,6 @@ KStatus TsVGroup::Compact() {
 }
 
 KStatus TsVGroup::FlushImmSegment(const std::shared_ptr<TsMemSegment>& mem_seg) {
-  if (!mem_seg->SetFlushing()) {
-    LOG_ERROR("cannot set status for mem segment.");
-    return KStatus::FAIL;
-  }
-
   TsIOEnv* env = &TsMMapIOEnv::GetInstance();
 
   std::unordered_map<std::shared_ptr<const TsPartitionVersion>, TsLastSegmentBuilder> builders;
@@ -766,10 +739,9 @@ KStatus TsVGroup::FlushImmSegment(const std::shared_ptr<TsMemSegment>& mem_seg) 
     update.SetMaxLSN(v.GetMaxLSN());
   }
 
-  mem_seg->SetDeleting();
-  mem_segment_mgr_.RemoveMemSegment(mem_seg);
+  mem_segment_mgr_->RemoveMemSegment(mem_seg);
   std::list<std::shared_ptr<TsMemSegment>> mems;
-  mem_segment_mgr_.GetAllMemSegments(&mems);
+  mem_segment_mgr_->GetAllMemSegments(&mems);
   update.SetValidMemSegments(mems);
 
   version_manager_->ApplyUpdate(&update);
@@ -814,12 +786,13 @@ KStatus TsVGroup::GetBlockSpans(TSTableID table_id, uint32_t entity_id, KwTsSpan
   current = version_manager_->Current();
   std::vector<KwTsSpan> ts_spans{ts_span};
   auto ts_partitions = current->GetPartitions(db_id, ts_spans, ts_col_type);
+  std::shared_ptr<MMapMetricsTable> metric_schema = table_schema_mgr->GetCurrentMetricsTable();
   for (int32_t index = 0; index < ts_partitions.size(); ++index) {
     TsScanFilterParams filter{db_id, table_id, vgroup_id_, entity_id,
                               ts_col_type, wal_manager_->FetchCurrentLSN(), ts_spans};
     auto partition_version = ts_partitions[index];
     std::list<std::shared_ptr<TsBlockSpan>> cur_block_span;
-    auto s = partition_version->GetBlockSpans(filter, &cur_block_span, table_schema_mgr, table_version);
+    auto s = partition_version->GetBlockSpans(filter, &cur_block_span, table_schema_mgr, metric_schema);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("partition_version GetBlockSpan failed.");
       return s;
@@ -1683,7 +1656,13 @@ KStatus TsVGroup::Vacuum() {
         }
 
         std::list<shared_ptr<TsBlockSpan>> block_spans;
-        s = entity_segment->GetBlockSpans(block_data_filter, block_spans, tb_schema_mgr, 0);
+        std::shared_ptr<MMapMetricsTable> metric_schema;
+        s = tb_schema_mgr->GetMetricSchema(0, &metric_schema);
+        if (s != SUCCESS) {
+          LOG_ERROR("Vacuum failed, GetMetricSchema failed")
+          return s;
+        }
+        s = entity_segment->GetBlockSpans(block_data_filter, block_spans, tb_schema_mgr, metric_schema);
         if (s != SUCCESS) {
           LOG_ERROR("Vacuum failed, GetBlockSpans failed")
           return s;
@@ -1748,8 +1727,14 @@ KStatus TsVGroup::Vacuum() {
           DatabaseID db_id = std::get<0>(partition->GetPartitionIdentifier());
           TsBlockItemFilterParams param {db_id, entity_item.table_id, vgroup_id_, entity_id, {scan_range}};
           std::list<shared_ptr<TsBlockSpan>> mem_block_spans;
+          std::shared_ptr<MMapMetricsTable> metric_schema;
+          s = tb_schema_mgr->GetMetricSchema(0, &metric_schema);
+          if (s != SUCCESS) {
+            LOG_ERROR("Vacuum failed, GetMetricSchema failed")
+            return s;
+          }
           for (auto& mem_segment : mem_segments) {
-            mem_segment->GetBlockSpans(param, mem_block_spans, tb_schema_mgr, 0);
+            mem_segment->GetBlockSpans(param, mem_block_spans, tb_schema_mgr, metric_schema);
           }
           if (mem_block_spans.empty()) {
             entity_max_lsn.emplace_back(entity_id, cur_lsn);

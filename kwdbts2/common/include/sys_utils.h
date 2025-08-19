@@ -12,6 +12,26 @@
 
 #pragma once
 
+#if defined(__has_include)
+  #if __has_include(<filesystem>)
+    #include <filesystem>
+    namespace fs = std::filesystem;
+  #elif __has_include(<experimental/filesystem>)
+    #include <experimental/filesystem>
+    namespace fs = std::experimental::filesystem;
+  #else
+    #error "No <filesystem> or <experimental/filesystem> available"
+  #endif
+#else
+  #if defined(__GNUC__) && (__GNUC__ < 8)
+    #include <experimental/filesystem>
+    namespace fs = std::experimental::filesystem;
+  #else
+    #include <filesystem>
+    namespace fs = std::filesystem;
+  #endif
+#endif
+
 #include <string>
 #include <vector>
 #include "lg_api.h"

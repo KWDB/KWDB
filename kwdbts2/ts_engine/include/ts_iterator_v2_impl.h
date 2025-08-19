@@ -85,6 +85,7 @@ class TsStorageIteratorV2Impl : public TsStorageIterator {
   std::list<std::shared_ptr<TsBlockSpan>> ts_block_spans_;
 
   std::shared_ptr<TsScanFilterParams> filter_;
+  std::shared_ptr<MMapMetricsTable> schema_;
 };
 
 class TsSortedRawDataIteratorV2Impl : public TsStorageIteratorV2Impl {
@@ -243,6 +244,7 @@ class TsOffsetIteratorV2Impl : public TsIterator {
   uint32_t table_version_;
   // column attributes
   vector<AttributeInfo> attrs_;
+  std::shared_ptr<MMapMetricsTable> schema_;
   std::shared_ptr<TsTableSchemaManager> table_schema_mgr_;
 
   DATATYPE ts_col_type_;

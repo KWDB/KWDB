@@ -11,7 +11,6 @@
 #pragma once
 
 #include <cstdint>
-#include <filesystem>
 #include <map>
 #include <list>
 #include <memory>
@@ -51,9 +50,8 @@ class TsVGroup {
 
   std::shared_mutex s_mu_;
 
-  TsMemSegmentManager mem_segment_mgr_;
 
-  std::filesystem::path path_;
+  fs::path path_;
 
   // max entity id of this vgroup
   uint64_t max_entity_id_{0};
@@ -68,6 +66,7 @@ class TsVGroup {
   std::unique_ptr<TSxMgr> tsx_manager_ = nullptr;
 
   std::unique_ptr<TsVersionManager> version_manager_ = nullptr;
+  std::unique_ptr<TsMemSegmentManager> mem_segment_mgr_ = nullptr;
 
   std::map<PartitionIdentifier, std::shared_ptr<TsEntitySegmentBuilder>> write_batch_segment_builders_;
 
@@ -106,7 +105,7 @@ class TsVGroup {
   KStatus PutData(kwdbContext_p ctx, TSTableID table_id, uint64_t mtr_id, TSSlice* primary_tag, TSEntityID entity_id,
                   TSSlice* payload, bool write_wal);
 
-  std::filesystem::path GetPath() const;
+  fs::path GetPath() const;
 
   std::string GetFileName() const;
 
@@ -162,24 +161,13 @@ class TsVGroup {
 
   // flush all mem segment data into last segment.
   KStatus Flush() {
-    std::shared_ptr<TsMemSegment> imm_segment;
-    mem_segment_mgr_.SwitchMemSegment(&imm_segment);
+    std::shared_ptr<TsMemSegment> imm_segment = mem_segment_mgr_->SwitchMemSegment();
     assert(imm_segment.get() != nullptr);
-
-    // Update vresion before flush.
-    TsVersionUpdate update;
-    std::list<std::shared_ptr<TsMemSegment>> memsegs;
-    mem_segment_mgr_.GetAllMemSegments(&memsegs);
-    update.SetValidMemSegments(memsegs);
-
-    version_manager_->ApplyUpdate(&update);
 
     // Flush imm segment.
     KStatus s = FlushImmSegment(imm_segment);
     return s;
   }
-
-  void SwitchMemSegment(std::shared_ptr<TsMemSegment>* imm_segment) { mem_segment_mgr_.SwitchMemSegment(imm_segment); }
 
   uint64_t GetMtrIDByTsxID(const char* ts_trans_id) {
     return tsx_manager_->getMtrID(ts_trans_id);
@@ -355,7 +343,7 @@ class TsVGroup {
 
  private:
   // check partition of rows exist. if not creating it.
-  KStatus makeSurePartitionExist(TSTableID table_id, const std::list<TSMemSegRowData>& rows);
+  // KStatus makeSurePartitionExist(TSTableID table_id, const std::list<TSMemSegRowData>& rows);
 
   KStatus TrasvalAllPartition(kwdbContext_p ctx, TSTableID tbl_id,
     const std::vector<KwTsSpan>& ts_spans, std::function<KStatus(std::shared_ptr<const TsPartitionVersion>)> func);

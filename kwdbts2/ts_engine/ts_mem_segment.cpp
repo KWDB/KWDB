@@ -9,42 +9,54 @@
 // MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
 // See the Mulan PSL v2 for more details.
 
+#include <atomic>
 #include <cstdint>
 #include <list>
 #include <memory>
 #include <mutex>
-#include <vector>
 #include <utility>
+#include <vector>
+
+#include "data_type.h"
 #include "kwdb_type.h"
+#include "ts_flush_manager.h"
 #include "ts_mem_segment_mgr.h"
 #include "ts_table_schema_manager.h"
+#include "ts_version.h"
 #include "ts_vgroup.h"
 
 namespace kwdbts {
 
 TsMemSegment::TsMemSegment(int32_t height) : skiplist_(height) {}
 
-TsMemSegmentManager::TsMemSegmentManager(TsVGroup* vgroup)
-    : vgroup_(vgroup), cur_mem_seg_(TsMemSegment::Create(EngineOptions::mem_segment_max_height)) {
+TsMemSegmentManager::TsMemSegmentManager(TsVGroup* vgroup, TsVersionManager* version_manager)
+    : vgroup_(vgroup),
+      version_manager_(version_manager),
+      cur_mem_seg_(TsMemSegment::Create(EngineOptions::mem_segment_max_height)) {
   segment_.push_back(cur_mem_seg_);
 }
 
 // WAL CreateCheckPoint call this function to persistent metric datas.
-void TsMemSegmentManager::SwitchMemSegment(std::shared_ptr<TsMemSegment>* segments) {
+std::shared_ptr<TsMemSegment> TsMemSegmentManager::SwitchMemSegment() {
+  std::shared_ptr<TsMemSegment> ret;
   {
     std::unique_lock lock{segment_lock_};
-    if (!cur_mem_seg_->SetImm()) {
-      LOG_ERROR("can not switch mem segment.");
-    }
-    *segments = cur_mem_seg_;
+    ret = cur_mem_seg_;
     cur_mem_seg_ = TsMemSegment::Create(EngineOptions::mem_segment_max_height);
     segment_.push_back(cur_mem_seg_);
   }
-  auto row_num = (*segments)->GetRowNum();
+  auto row_num = ret->GetRowNum();
   uint32_t new_heigh = log2(row_num);
   if (EngineOptions::mem_segment_max_height < new_heigh) {
     EngineOptions::mem_segment_max_height = new_heigh;
   }
+
+  TsVersionUpdate update;
+  std::list<std::shared_ptr<TsMemSegment>> memsegs;
+  GetAllMemSegments(&memsegs);
+  update.SetValidMemSegments(memsegs);
+  version_manager_->ApplyUpdate(&update);
+  return ret;
 }
 
 void TsMemSegmentManager::RemoveMemSegment(const std::shared_ptr<TsMemSegment>& mem_seg) {
@@ -53,7 +65,8 @@ void TsMemSegmentManager::RemoveMemSegment(const std::shared_ptr<TsMemSegment>& 
 }
 
 bool TsMemSegmentManager::GetMetricSchemaAndMeta(TSTableID table_id, uint32_t version,
-                                                 std::vector<AttributeInfo>& schema, LifeTime* lifetime) {
+                                                 std::vector<AttributeInfo>& schema, DATATYPE* ts_type,
+                                                 LifeTime* lifetime) {
   std::shared_ptr<kwdbts::TsTableSchemaManager> schema_mgr;
   auto s = vgroup_->GetEngineSchemaMgr()->GetTableSchemaMgr(table_id, schema_mgr);
   if (s != KStatus::SUCCESS) {
@@ -66,17 +79,25 @@ bool TsMemSegmentManager::GetMetricSchemaAndMeta(TSTableID table_id, uint32_t ve
     return false;
   }
   *lifetime = schema_mgr->GetLifeTime();
+  *ts_type = schema_mgr->GetTsColDataType();
   return true;
 }
 
-KStatus TsMemSegmentManager::PutData(const TSSlice& payload, TSEntityID entity_id, TS_LSN lsn,
-                                     std::list<TSMemSegRowData>* rows) {
+KStatus TsMemSegmentManager::PutData(const TSSlice& payload, TSEntityID entity_id, TS_LSN lsn) {
+  // first of all, check BG flush job status
+  auto bg_status = TsFlushJobPool::GetInstance().GetBackGroundStatus();
+  if (bg_status == FAIL) {
+    return FAIL;
+  }
+
+
   auto table_id = TsRawPayload::GetTableIDFromSlice(payload);
   auto table_version = TsRawPayload::GetTableVersionFromSlice(payload);
   // get column info and life time
   std::vector<AttributeInfo> schema;
   LifeTime life_time{};
-  if (!GetMetricSchemaAndMeta(table_id, table_version, schema, &life_time)) {
+  DATATYPE ts_type;
+  if (!GetMetricSchemaAndMeta(table_id, table_version, schema, &ts_type, &life_time)) {
     LOG_ERROR("GetMetricSchemaAndMeta failed.");
     return KStatus::FAIL;
   }
@@ -86,12 +107,14 @@ KStatus TsMemSegmentManager::PutData(const TSSlice& payload, TSEntityID entity_i
     auto now = std::chrono::time_point_cast<std::chrono::seconds>(std::chrono::system_clock::now());
     acceptable_ts = (now.time_since_epoch().count() - life_time.ts) * life_time.precision;
   }
-  TSMemSegRowData row_data(vgroup_->GetEngineSchemaMgr()->GetDBIDByTableID(table_id), table_id, table_version,
-                           entity_id);
+
+  uint32_t db_id = vgroup_->GetEngineSchemaMgr()->GetDBIDByTableID(table_id);
+  TSMemSegRowData row_data(db_id, table_id, table_version, entity_id);
   TsRawPayload pd(payload, schema);
   uint32_t row_num = pd.GetRowCount();
-  auto cur_mem_seg = CurrentMemSegment();
-  cur_mem_seg->AllocRowNum(row_num);
+
+  auto cur_mem_seg = CurrentMemSegmentAndAllocateRow(row_num);
+  timestamp64 max_ts = INT64_MIN;
   for (size_t i = 0; i < row_num; i++) {
     auto row_ts = pd.GetTS(i);
     if (row_ts < acceptable_ts) {
@@ -99,6 +122,8 @@ KStatus TsMemSegmentManager::PutData(const TSSlice& payload, TSEntityID entity_i
       cur_mem_seg->AllocRowNum(-1);
       continue;
     }
+    auto p_time = convertTsToPTime(row_ts, ts_type);
+    version_manager_->AddPartition(db_id, p_time);
     // TODO(Yongyan): Somebody needs to update lsn later.
     row_data.SetData(row_ts, lsn, pd.GetRowData(i));
     bool ret = cur_mem_seg->AppendOneRow(row_data);
@@ -107,81 +132,26 @@ KStatus TsMemSegmentManager::PutData(const TSSlice& payload, TSEntityID entity_i
       cur_mem_seg->AllocRowNum(0 - (row_num - i));
       return KStatus::FAIL;
     }
-    if (rows != nullptr) {
-      rows->push_back(row_data);
-    }
-  }
-  return KStatus::SUCCESS;
-}
 
-KStatus TsMemSegmentManager::GetBlockSpans(const TsBlockItemFilterParams& filter,
-                                           std::list<shared_ptr<TsBlockSpan>>& block_spans,
-                                           std::shared_ptr<TsTableSchemaManager>& tbl_schema_mgr,
-                                           uint32_t scan_version) {
-  std::list<std::shared_ptr<TsMemSegment>> segments;
-  {
-    std::shared_lock lock(segment_lock_);
-    segments = segment_;
-  }
-  std::list<kwdbts::TSMemSegRowData*> row_datas;
-  std::list<std::shared_ptr<TsMemSegBlock>> mem_block;
-  for (auto& mem : segments) {
-    bool ok = mem->GetEntityRows(filter, &row_datas);
-    if (!ok) {
-      LOG_ERROR("GetBlockSpans failed in GetEntityRows.");
-      return KStatus::FAIL;
-    }
-    if (row_datas.size() == 0) {
-      continue;
-    }
-    std::shared_ptr<TsMemSegBlock> cur_blk_item = nullptr;
-    if (EngineOptions::g_dedup_rule == DedupRule::OVERRIDE) {
-      TSMemSegRowData* last_row_data = nullptr;
-      for (auto& row : row_datas) {
-        if (last_row_data == nullptr || last_row_data->SameEntityAndTs(row)) {
-          last_row_data = row;
-          continue;
-        }
-        if (cur_blk_item == nullptr || !cur_blk_item->InsertRow(last_row_data)) {
-          cur_blk_item = std::make_shared<TsMemSegBlock>(mem);
-          mem_block.push_back(cur_blk_item);
-          cur_blk_item->InsertRow(last_row_data);
-        }
-        last_row_data = row;
-      }
-      if (last_row_data != nullptr) {
-        if (cur_blk_item == nullptr || !cur_blk_item->InsertRow(last_row_data)) {
-          cur_blk_item = std::make_shared<TsMemSegBlock>(mem);
-          mem_block.push_back(cur_blk_item);
-          cur_blk_item->InsertRow(last_row_data);
-        }
-      }
-    } else if (EngineOptions::g_dedup_rule == DedupRule::DISCARD) {
-      TSMemSegRowData* last_row_data = nullptr;
-      for (auto& row : row_datas) {
-        if (last_row_data == nullptr || !last_row_data->SameEntityAndTs(row)) {
-          if (cur_blk_item == nullptr || !cur_blk_item->InsertRow(row)) {
-            cur_blk_item = std::make_shared<TsMemSegBlock>(mem);
-            mem_block.push_back(cur_blk_item);
-            cur_blk_item->InsertRow(row);
-          }
-          last_row_data = row;
-        }
-      }
-    } else {
-      for (auto& row : row_datas) {
-        if (cur_blk_item == nullptr || !cur_blk_item->InsertRow(row)) {
-          cur_blk_item = std::make_shared<TsMemSegBlock>(mem);
-          mem_block.push_back(cur_blk_item);
-          cur_blk_item->InsertRow(row);
-        }
-      }
+    if (row_ts > max_ts) {
+      max_ts = row_ts;
     }
   }
-  for (auto& mem_blk : mem_block) {
-    uint32_t vgroup_id = vgroup_ ? vgroup_->GetVGroupID() : 0;
-    block_spans.push_back(make_shared<TsBlockSpan>(vgroup_id, mem_blk->GetEntityId(), mem_blk, 0, mem_blk->GetRowNum(),
-                                                   tbl_schema_mgr, scan_version));
+  vgroup_->UpdateEntityAndMaxTs(table_id, max_ts, entity_id);
+  vgroup_->UpdateEntityLatestRow(entity_id, max_ts);
+
+  
+
+  if (cur_mem_seg->GetMemSegmentSize() > EngineOptions::mem_segment_max_size) {
+    // prepare to switch, add lock
+    {
+      std::unique_lock lk{put_lock_};
+      // check again
+      if (cur_mem_seg->GetMemSegmentSize() > EngineOptions::mem_segment_max_size) {
+        std::shared_ptr<TsMemSegment> segments = this->SwitchMemSegment();
+        TsFlushJobPool::GetInstance().AddFlushJob(vgroup_, segments);
+      }
+    }
   }
   return KStatus::SUCCESS;
 }
@@ -472,7 +442,8 @@ KStatus TsMemSegment::GetBlockSpans(std::list<shared_ptr<TsBlockSpan>>& blocks, 
 }
 
 KStatus TsMemSegment::GetBlockSpans(const TsBlockItemFilterParams& filter, std::list<shared_ptr<TsBlockSpan>>& blocks,
-                                    std::shared_ptr<TsTableSchemaManager>& tbl_schema_mgr, uint32_t scan_version) {
+                                    std::shared_ptr<TsTableSchemaManager>& tbl_schema_mgr,
+                                    std::shared_ptr<MMapMetricsTable>& scan_schema) {
   std::list<kwdbts::TSMemSegRowData*> row_datas;
   bool ok = GetEntityRows(filter, &row_datas);
   if (!ok) {
@@ -526,7 +497,7 @@ KStatus TsMemSegment::GetBlockSpans(const TsBlockItemFilterParams& filter, std::
   }
   for (auto& mem_blk : mem_blocks) {
     blocks.push_back(make_shared<TsBlockSpan>(filter.vgroup_id, mem_blk->GetEntityId(), mem_blk, 0,
-                                              mem_blk->GetRowNum(), tbl_schema_mgr, scan_version));
+                                              mem_blk->GetRowNum(), tbl_schema_mgr, scan_schema));
   }
   return KStatus::SUCCESS;
 }

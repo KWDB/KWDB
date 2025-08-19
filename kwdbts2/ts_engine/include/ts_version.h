@@ -121,12 +121,13 @@ class TsPartitionVersion {
   }
   KStatus getFilter(const TsScanFilterParams& filter, TsBlockItemFilterParams& block_data_filter) const;
   KStatus GetBlockSpans(const TsScanFilterParams& filter, std::list<shared_ptr<TsBlockSpan>>* ts_block_spans,
-                       std::shared_ptr<TsTableSchemaManager>& tbl_schema_mgr, uint32_t scan_version,
+                       std::shared_ptr<TsTableSchemaManager>& tbl_schema_mgr,
+                       std::shared_ptr<MMapMetricsTable>& scan_schema,
                        bool skip_mem = false, bool skip_last = false, bool skip_entity = false) const;
 
   bool TrySetBusy(PartitionStatus desired) const;
   void ResetStatus() const;
-  KStatus NeedVacuumEntitySegment(const std::filesystem::path& root_path,
+  KStatus NeedVacuumEntitySegment(const fs::path& root_path,
     TsEngineSchemaManager* schema_manager, bool& need_vacuum) const;
 };
 
@@ -280,7 +281,7 @@ class TsVersionManager {
 
   std::atomic<uint64_t> next_file_number_ = 0;
 
-  std::filesystem::path root_path_;
+  fs::path root_path_;
 
   class Logger;
   std::unique_ptr<Logger> logger_;

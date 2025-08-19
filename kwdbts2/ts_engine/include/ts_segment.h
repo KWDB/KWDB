@@ -58,7 +58,7 @@ class TsSegmentBase {
   virtual KStatus GetBlockSpans(const TsBlockItemFilterParams& filter,
                                 std::list<shared_ptr<TsBlockSpan>>& block_spans,
                                 std::shared_ptr<TsTableSchemaManager>& tbl_schema_mgr,
-                                uint32_t scan_version) = 0;
+                                std::shared_ptr<MMapMetricsTable>& scan_schema) = 0;
 
   virtual bool MayExistEntity(TSEntityID entity_id) const { return true; }
 

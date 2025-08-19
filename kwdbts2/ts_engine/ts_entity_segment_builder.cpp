@@ -926,7 +926,7 @@ void TsEntitySegmentBuilder::WriteBatchCancel(std::shared_ptr<const TsVGroupVers
 TsEntitySegmentVacuumer::TsEntitySegmentVacuumer(const std::string& root_path, TsVersionManager* version_manager)
     : root_path_(root_path), version_manager_(version_manager) {
   // entity header file
-  std::filesystem::path root(root_path);
+  fs::path root(root_path);
   uint64_t entity_header_file_number = version_manager->NewFileNumber();
   std::string entity_header_file_path = root / EntityHeaderFileName(entity_header_file_number);
   entity_item_builder_ =

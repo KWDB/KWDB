@@ -79,7 +79,6 @@ KStatus TsLastSegment::TsLastSegBlockCache::BlockIndexCache::GetBlockIndices(
 
 KStatus TsLastSegment::TsLastSegBlockCache::BlockInfoCache::GetBlockInfo(int block_id, TsLastSegmentBlockInfo** info) {
   {
-    std::shared_lock lk{mu_};
     if (cache_flag_[block_id] == 1) {
       *info = &block_infos_[block_id];
       return SUCCESS;
@@ -544,16 +543,12 @@ KStatus TsLastSegment::GetBlockSpans(std::list<shared_ptr<TsBlockSpan>>& block_s
 using EntityTsPoint = std::tuple<TSEntityID, timestamp64>;
 KStatus TsLastSegment::GetBlockSpans(const TsBlockItemFilterParams& filter,
                                      std::list<shared_ptr<TsBlockSpan>>& block_spans,
-                                     std::shared_ptr<TsTableSchemaManager>& tbl_schema_mgr, uint32_t scan_version) {
+                                     std::shared_ptr<TsTableSchemaManager>& tbl_schema_mgr,
+                                      std::shared_ptr<MMapMetricsTable>& scan_schema) {
   assert(block_cache_ != nullptr);
 
   // if filter is empty, no need to do anything.
   if (filter.spans_.empty()) {
-    return SUCCESS;
-  }
-
-  // check bloom filter first
-  if (!MayExistEntity(filter.entity_id)) {
     return SUCCESS;
   }
 
@@ -598,7 +593,13 @@ KStatus TsLastSegment::GetBlockSpans(const TsBlockItemFilterParams& filter,
       if (it->table_id != filter.table_id) {
         continue;
       }
-      //  we need to read the block to do futher filtering.
+      if (it->max_ts < span.ts_span.begin || it->min_ts > span.ts_span.end) {
+        continue;
+      }
+      if (it->max_lsn < span.lsn_span.begin || it->min_lsn > span.lsn_span.end) {
+        continue;
+      }
+      //  we need to read the block to do further filtering.
       int block_idx = it - block_indices.begin();
 
       if (block == nullptr || block->GetBlockID() != block_idx) {
@@ -639,7 +640,7 @@ KStatus TsLastSegment::GetBlockSpans(const TsBlockItemFilterParams& filter,
         // all lsn in the block is in the span, we can directly use the end_idx;
         if (end_idx - start_idx > 0) {
           block_spans.push_back(std::make_shared<TsBlockSpan>(filter.vgroup_id, filter.entity_id, block, start_idx,
-                                                              end_idx - start_idx, tbl_schema_mgr, scan_version));
+                                                              end_idx - start_idx, tbl_schema_mgr, scan_schema));
         }
       } else {
         // we must filter LSN row-by-row
@@ -653,14 +654,14 @@ KStatus TsLastSegment::GetBlockSpans(const TsBlockItemFilterParams& filter,
           if (prev_idx != -1 && i - prev_idx > 0) {
             // we need to split the block into spans.
             block_spans.push_back(std::make_shared<TsBlockSpan>(filter.vgroup_id, filter.entity_id, block, prev_idx,
-                                                                i - prev_idx, tbl_schema_mgr, scan_version));
+                                                                i - prev_idx, tbl_schema_mgr, scan_schema));
           }
           prev_idx = -1;
         }
 
         if (prev_idx != -1 && end_idx - prev_idx > 0) {
           block_spans.push_back(std::make_shared<TsBlockSpan>(filter.vgroup_id, filter.entity_id, block, prev_idx,
-                                                              end_idx - prev_idx, tbl_schema_mgr, scan_version));
+                                                              end_idx - prev_idx, tbl_schema_mgr, scan_schema));
         }
       }
     }

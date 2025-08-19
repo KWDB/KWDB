@@ -15,11 +15,6 @@
 #include <atomic>
 #include <sys/mman.h>
 #include <stdexcept>
-#if defined(__GNUC__) && (__GNUC__ < 8)
-  #include <experimental/filesystem>
-#else
-  #include <filesystem>
-#endif
 #include <st_config.h>
 
 #include "cm_func.h"
