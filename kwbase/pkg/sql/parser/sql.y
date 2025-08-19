@@ -2301,10 +2301,6 @@ import_stmt:
 	{
 		$$.val = &tree.Import{IsDatabase: true, FileFormat: $3, Files: $6.exprs(), Options: $8.kvOptions()}
 	}
-| IMPORT FROM import_format DATABASE database_name TO database_name
-	{
-		$$.val = &tree.Import{IsDatabase: true, Into: true, FileFormat: $3, SrcDatabase: tree.Name($5), DestDatabase: tree.Name($7)}
-	}
 | IMPORT CLUSTER SETTING import_format DATA '(' string_or_placeholder_list ')'
   {
     $$.val = &tree.Import{Settings: true, FileFormat: $4, Files: $7.exprs()}

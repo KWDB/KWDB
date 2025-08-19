@@ -50,7 +50,6 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/util/tracing"
 	"gitee.com/kwbasedb/kwbase/pkg/util/uuid"
 	"github.com/cockroachdb/errors"
-	duck "github.com/duckdb-go-bindings"
 )
 
 const (
@@ -154,13 +153,8 @@ func importPlanHook(
 	}
 	if !importStmt.Users && !importStmt.Settings {
 		if importStmt.IsDatabase || importStmt.Into {
-			if fileFormat.Format != roachpb.IOFileFormat_CSV && fileFormat.Format != roachpb.IOFileFormat_MYSQL {
+			if fileFormat.Format != roachpb.IOFileFormat_CSV {
 				return nil, nil, nil, false, errors.Errorf("Import regular data only supports CSV format")
-			}
-			if fileFormat.Format == roachpb.IOFileFormat_MYSQL {
-				if importStmt.DestDatabase == "" || importStmt.SrcDatabase == "" {
-					return nil, nil, nil, false, errors.Errorf("Import source database or destination database cannot be empty")
-				}
 			}
 		}
 		if importStmt.CreateFile != nil {
@@ -202,7 +196,6 @@ func importPlanHook(
 			return err
 		}
 		var dbName string
-		var srcDbName string
 		var scNames []string
 		var tableDetails []sqlbase.ImportTable
 		var files []string
@@ -247,15 +240,11 @@ func importPlanHook(
 		var timeSeriesImport bool
 		// 3.do some check and get tableDetails in different IMPORT
 		if importStmt.IsDatabase {
-			if fileFormat.Format != roachpb.IOFileFormat_MYSQL {
-				timeSeriesImport, dbName, scNames, tableDetails, databaseComment, privileges, err = checkAndGetDetailsInDatabase(ctx, p, files, hasComment, withPrivileges)
-				if err != nil {
-					return err
-				}
-			} else {
-				dbName = string(importStmt.DestDatabase)
-				srcDbName = string(importStmt.SrcDatabase)
+			timeSeriesImport, dbName, scNames, tableDetails, databaseComment, privileges, err = checkAndGetDetailsInDatabase(ctx, p, files, hasComment, withPrivileges)
+			if err != nil {
+				return err
 			}
+
 			p.SetAuditTargetAndType(0, dbName, nil, targetType)
 		} else { /* Single table import */
 			if importStmt.Into {
@@ -389,7 +378,6 @@ func importPlanHook(
 			Tables:           tableDetails,
 			IsDatabase:       importStmt.IsDatabase,
 			DatabaseName:     dbName,
-			SrcDatabaseName:  srcDbName,
 			SchemaNames:      scNames,
 			TimeSeriesImport: timeSeriesImport,
 			OnlyMeta:         importStmt.OnlyMeta,
@@ -511,17 +499,14 @@ func getImportOpts(p sql.PlanHookState, importStmt *tree.Import) (map[string]str
 
 func getOptsParas(fileFormat string, opts map[string]string) (roachpb.IOFileFormat, error) {
 	ioFileFormat := roachpb.IOFileFormat{}
-	if fileFormat != "CSV" && fileFormat != "SQL" && fileFormat != "MYSQL" {
+	if fileFormat != "CSV" && fileFormat != "SQL" {
 		return ioFileFormat, unimplemented.Newf("import.format", "unsupported import format: %q", fileFormat)
 	}
 
 	if fileFormat == "CSV" {
 		ioFileFormat.Format = roachpb.IOFileFormat_CSV
-	} else if fileFormat == "SQL" {
+	} else {
 		ioFileFormat.Format = roachpb.IOFileFormat_SQL
-	} else if fileFormat == "MYSQL" {
-		ioFileFormat.Format = roachpb.IOFileFormat_MYSQL
-		return ioFileFormat, nil
 	}
 	// Set the default CSV separator for the cases when it is not overwritten.
 	ioFileFormat.Csv.Comma = ','
@@ -670,52 +655,10 @@ func (r *importResumer) Resume(
 		p.ExtendedEvalContext().EvalContext.StartSinglenode = true
 	}
 	cfg := p.ExecCfg()
-	if details.Format.Format == roachpb.IOFileFormat_MYSQL {
-		return r.apResume(ctx, p, details, cfg, resultsCh)
-	}
 	if details.TimeSeriesImport {
 		return r.timeSeriesResume(ctx, p, details, cfg, resultsCh)
 	}
 	return r.relationalResume(ctx, p, details, cfg, resultsCh)
-}
-
-func (r *importResumer) apResume(
-	ctx context.Context,
-	p sql.PlanHookState,
-	details jobspb.ImportDetails,
-	cfg *sql.ExecutorConfig,
-	resultsCh chan<- tree.Datums,
-) error {
-	conn, err := cfg.DistSQLSrv.ApEngine.CreateConnection(details.DatabaseName)
-	if err != nil {
-		return err
-	}
-	defer cfg.DistSQLSrv.ApEngine.DestroyConnection(conn)
-
-	var queryRes duck.Result
-	var format string
-	if details.Format.Format == roachpb.IOFileFormat_MYSQL {
-		format = "mysql"
-	}
-	queryStmt := fmt.Sprintf("SELECT count(*) FROM duckdb_databases WHERE database_name='%s' AND type='%s'", details.SrcDatabaseName, format)
-	queryState := duck.Query(*conn, queryStmt, &queryRes)
-	if queryState != duck.StateSuccess {
-		errMsg := duck.ResultError(&queryRes)
-		return pgerror.New(pgcode.Warning, errMsg)
-	}
-	num := duck.ValueInt64(&queryRes, 0, 0)
-	duck.DestroyResult(&queryRes)
-	if num == 0 {
-		errors.New("source database is not exist")
-	}
-
-	copyStmt := fmt.Sprintf("COPY FROM DATABASE %s TO %s", details.SrcDatabaseName, details.DatabaseName)
-	err = cfg.DistSQLSrv.ApEngine.Exec(conn, copyStmt)
-	if err != nil {
-		return err
-	}
-	showResult(resultsCh, *r.job.ID(), r.res.Rows, 0, 0, false)
-	return nil
 }
 
 // timeSeriesResume does timeSeries Resume job.
