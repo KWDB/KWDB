@@ -7,7 +7,6 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
-#include <filesystem>
 #include <functional>
 #include <initializer_list>
 #include <memory>
@@ -56,13 +55,13 @@ class LastSegmentReadWriteTest : public testing::Test {
 
   TsIOEnv *env = &TsMMapIOEnv::GetInstance();
   void SetUp() override {
-    std::filesystem::remove_all("schema");
-    std::filesystem::remove(filename);
+    fs::remove_all("schema");
+    fs::remove(filename);
     mgr = std::make_unique<TsEngineSchemaManager>("schema");
   }
   void TearDown() override {
-    std::filesystem::remove_all("schema");
-    std::filesystem::remove(filename);
+    fs::remove_all("schema");
+    fs::remove(filename);
   }
 
   void BuilderWithBasicCheck(TSTableID table_id, int nrow);

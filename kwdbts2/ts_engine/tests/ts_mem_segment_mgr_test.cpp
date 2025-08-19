@@ -11,7 +11,6 @@
 #if false
 
 #include <gtest/gtest.h>
-#include <filesystem>
 #include "ts_mem_segment_mgr.h"
 
 using namespace kwdbts;  // NOLINT

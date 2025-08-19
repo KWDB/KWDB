@@ -20,7 +20,6 @@
 #include <cstddef>
 #include <cstdio>
 #include <cstring>
-#include <filesystem>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -253,7 +252,7 @@ class TsMMapAllocFile : public FileWithIndex {
  public:
   explicit TsMMapAllocFile(const std::string& path) : path_(path) {}
   KStatus Open() {
-    bool exists = std::filesystem::exists(path_);
+    bool exists = fs::exists(path_);
     void* base = nullptr;
     size_t file_len;
     if (exists) {

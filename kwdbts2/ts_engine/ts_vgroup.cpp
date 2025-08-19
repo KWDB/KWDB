@@ -13,7 +13,6 @@
 
 #include <cstdint>
 #include <cstring>
-#include <filesystem>
 #include <memory>
 #include <algorithm>
 #include <numeric>
@@ -31,7 +30,6 @@
 #include "kwdb_type.h"
 #include "lg_api.h"
 #include "libkwdbts2.h"
-#include "sys_utils.h"
 #include "ts_block.h"
 #include "ts_common.h"
 #include "ts_entity_segment.h"
@@ -53,7 +51,7 @@ TsVGroup::TsVGroup(EngineOptions* engine_options, uint32_t vgroup_id, TsEngineSc
     : vgroup_id_(vgroup_id),
       schema_mgr_(schema_mgr),
       mem_segment_mgr_(this),
-      path_(std::filesystem::path(engine_options->db_path) / VGroupDirName(vgroup_id)),
+      path_(fs::path(engine_options->db_path) / VGroupDirName(vgroup_id)),
       max_entity_id_(0),
       engine_options_(engine_options),
       engine_wal_level_mutex_(engine_mutex),
@@ -159,7 +157,7 @@ KStatus TsVGroup::PutData(kwdbContext_p ctx, TSTableID table_id, uint64_t mtr_id
   return KStatus::SUCCESS;
 }
 
-std::filesystem::path TsVGroup::GetPath() const { return path_; }
+fs::path TsVGroup::GetPath() const { return path_; }
 
 TSEntityID TsVGroup::AllocateEntityID() {
   std::lock_guard<std::mutex> lock1(entity_id_mutex_);

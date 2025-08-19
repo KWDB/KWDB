@@ -127,7 +127,7 @@ class TsPartitionVersion {
 
   bool TrySetBusy(PartitionStatus desired) const;
   void ResetStatus() const;
-  KStatus NeedVacuumEntitySegment(const std::filesystem::path& root_path,
+  KStatus NeedVacuumEntitySegment(const fs::path& root_path,
     TsEngineSchemaManager* schema_manager, bool& need_vacuum) const;
 };
 
@@ -281,7 +281,7 @@ class TsVersionManager {
 
   std::atomic<uint64_t> next_file_number_ = 0;
 
-  std::filesystem::path root_path_;
+  fs::path root_path_;
 
   class Logger;
   std::unique_ptr<Logger> logger_;

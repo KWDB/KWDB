@@ -637,7 +637,7 @@ inline KStatus TsEntityBlock::GetVarPreMin(uint32_t blk_col_idx, TSSlice& pre_mi
   return KStatus::SUCCESS;
 }
 
-TsEntitySegment::TsEntitySegment(const std::filesystem::path& root, EntitySegmentHandleInfo info)
+TsEntitySegment::TsEntitySegment(const fs::path& root, EntitySegmentHandleInfo info)
     : dir_path_(root), meta_mgr_(root, info), block_file_(root, info), agg_file_(root, info), info_(info) {
   Open();
 }

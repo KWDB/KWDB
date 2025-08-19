@@ -5,7 +5,6 @@
 #include <unistd.h>
 
 #include <cstdint>
-#include <filesystem>
 #include <string_view>
 
 #include "data_type.h"
@@ -20,7 +19,7 @@
 class TsVersionTest : public testing::Test {
  protected:
   TsIOEnv *env = &TsMMapIOEnv::GetInstance();
-  std::filesystem::path vgroup_root = "version_test";
+  fs::path vgroup_root = "version_test";
 
   KwTsSpan all_data{INT64_MIN, INT64_MAX};
 
