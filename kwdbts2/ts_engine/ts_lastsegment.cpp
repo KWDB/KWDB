@@ -168,7 +168,7 @@ class TsLastBlock : public TsBlock {
    public:
     ColumnCache(TsRandomReadFile* file, TsLastSegmentBlockInfo* block_info)
         : file_(file), block_info_(block_info), column_blocks_(block_info->ncol) {}
-    KStatus GetColumnBlock(int col_id, TsColumnBlock** block, const std::vector<AttributeInfo>& schema) {
+    KStatus GetColumnBlock(int col_id, TsColumnBlock** block, const std::vector<AttributeInfo>* schema) {
       if (column_blocks_[col_id] != nullptr) {
         *block = column_blocks_[col_id].get();
         return SUCCESS;
@@ -192,7 +192,7 @@ class TsLastBlock : public TsBlock {
       info.row_count = block_info_->nrow;
 
       std::unique_ptr<TsColumnBlock> colblock;
-      s = TsColumnBlock::ParseCompressedColumnData(schema[col_id], result, info, &colblock);
+      s = TsColumnBlock::ParseCompressedColumnData((*schema)[col_id], result, info, &colblock);
       if (s == FAIL) {
         LOG_ERROR("can not parse column data, col_id %d", col_id);
         return FAIL;
@@ -277,7 +277,7 @@ class TsLastBlock : public TsBlock {
   uint32_t GetTableVersion() override { return block_index_.table_version; }
   size_t GetRowNum() override { return block_info_.nrow; }
 
-  KStatus GetColBitmap(uint32_t col_id, const std::vector<AttributeInfo>& schema, TsBitmap& bitmap) override {
+  KStatus GetColBitmap(uint32_t col_id, const std::vector<AttributeInfo>* schema, TsBitmap& bitmap) override {
     TsColumnBlock* col_block = nullptr;
     auto s = column_block_cache_->GetColumnBlock(col_id, &col_block, schema);
     if (s == FAIL) {
@@ -287,7 +287,7 @@ class TsLastBlock : public TsBlock {
     }
     return col_block->GetColBitmap(bitmap);
   }
-  KStatus GetColAddr(uint32_t col_id, const std::vector<AttributeInfo>& schema, char** value) override {
+  KStatus GetColAddr(uint32_t col_id, const std::vector<AttributeInfo>* schema, char** value) override {
     TsColumnBlock* col_block = nullptr;
     auto s = column_block_cache_->GetColumnBlock(col_id, &col_block, schema);
     if (s == FAIL) {
@@ -298,7 +298,7 @@ class TsLastBlock : public TsBlock {
     *value = col_block->GetColAddr();
     return SUCCESS;
   }
-  KStatus GetValueSlice(int row_num, int col_id, const std::vector<AttributeInfo>& schema, TSSlice& value) override {
+  KStatus GetValueSlice(int row_num, int col_id, const std::vector<AttributeInfo>* schema, TSSlice& value) override {
     TsColumnBlock* col_block = nullptr;
     auto s = column_block_cache_->GetColumnBlock(col_id, &col_block, schema);
     if (s == FAIL) {
@@ -309,7 +309,7 @@ class TsLastBlock : public TsBlock {
     return col_block->GetValueSlice(row_num, value);
   }
 
-  inline bool IsColNull(int row_num, int col_id, const std::vector<AttributeInfo>& schema) override {
+  inline bool IsColNull(int row_num, int col_id, const std::vector<AttributeInfo>* schema) override {
     TsBitmap bitmap;
     auto s = GetColBitmap(col_id, schema, bitmap);
     if (s == FAIL) {
@@ -603,7 +603,7 @@ KStatus TsLastSegment::GetBlockSpans(const TsBlockItemFilterParams& filter,
       int block_idx = it - block_indices.begin();
 
       if (block == nullptr || block->GetBlockID() != block_idx) {
-        auto s = this->GetBlock(block_idx, &block);
+        s = this->GetBlock(block_idx, &block);
         if (s == FAIL) {
           return s;
         }

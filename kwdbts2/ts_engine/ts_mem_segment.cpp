@@ -110,7 +110,7 @@ KStatus TsMemSegmentManager::PutData(const TSSlice& payload, TSEntityID entity_i
 
   uint32_t db_id = vgroup_->GetEngineSchemaMgr()->GetDBIDByTableID(table_id);
   TSMemSegRowData row_data(db_id, table_id, table_version, entity_id);
-  TsRawPayload pd(payload, schema);
+  TsRawPayload pd(payload, &schema);
   uint32_t row_num = pd.GetRowCount();
 
   auto cur_mem_seg = CurrentMemSegmentAndAllocateRow(row_num);
@@ -140,7 +140,7 @@ KStatus TsMemSegmentManager::PutData(const TSSlice& payload, TSEntityID entity_i
   vgroup_->UpdateEntityAndMaxTs(table_id, max_ts, entity_id);
   vgroup_->UpdateEntityLatestRow(entity_id, max_ts);
 
-  
+
 
   if (cur_mem_seg->GetMemSegmentSize() > EngineOptions::mem_segment_max_size) {
     // prepare to switch, add lock
@@ -156,7 +156,7 @@ KStatus TsMemSegmentManager::PutData(const TSSlice& payload, TSEntityID entity_i
   return KStatus::SUCCESS;
 }
 
-KStatus TsMemSegBlock::GetColBitmap(uint32_t col_id, const std::vector<AttributeInfo>& schema, TsBitmap& bitmap) {
+KStatus TsMemSegBlock::GetColBitmap(uint32_t col_id, const std::vector<AttributeInfo>* schema, TsBitmap& bitmap) {
   auto iter = col_bitmaps_.find(col_id);
   if (iter != col_bitmaps_.end()) {
     bitmap = iter->second;
@@ -173,14 +173,14 @@ KStatus TsMemSegBlock::GetColBitmap(uint32_t col_id, const std::vector<Attribute
   return KStatus::SUCCESS;
 }
 
-KStatus TsMemSegBlock::GetColAddr(uint32_t col_id, const std::vector<AttributeInfo>& schema, char** value) {
-  assert(!isVarLenType(schema[col_id].type));
+KStatus TsMemSegBlock::GetColAddr(uint32_t col_id, const std::vector<AttributeInfo>* schema, char** value) {
+  assert(!isVarLenType((*schema)[col_id].type));
   auto iter = col_based_mems_.find(col_id);
   if (iter != col_based_mems_.end() && iter->second != nullptr) {
     *value = iter->second;
     return KStatus::SUCCESS;
   }
-  auto col_len = schema[col_id].size;
+  auto col_len = (*schema)[col_id].size;
   auto col_based_len = col_len * row_data_.size();
   char* col_based_mem = reinterpret_cast<char*>(malloc(col_based_len));
   if (col_based_mem == nullptr) {
@@ -210,7 +210,7 @@ KStatus TsMemSegBlock::GetColAddr(uint32_t col_id, const std::vector<AttributeIn
   return KStatus::SUCCESS;
 }
 
-inline KStatus TsMemSegBlock::GetValueSlice(int row_num, int col_id, const std::vector<AttributeInfo>& schema,
+inline KStatus TsMemSegBlock::GetValueSlice(int row_num, int col_id, const std::vector<AttributeInfo>* schema,
                                      TSSlice& value) {
   assert(row_data_.size() > row_num);
   if (parser_ == nullptr) {
@@ -223,7 +223,7 @@ inline KStatus TsMemSegBlock::GetValueSlice(int row_num, int col_id, const std::
   return KStatus::SUCCESS;
 }
 
-inline bool TsMemSegBlock::IsColNull(int row_num, int col_id, const std::vector<AttributeInfo>& schema) {
+inline bool TsMemSegBlock::IsColNull(int row_num, int col_id, const std::vector<AttributeInfo>* schema) {
   assert(row_data_.size() > row_num);
   if (parser_ == nullptr) {
     parser_ = std::make_unique<TsRawPayloadRowParser>(schema);

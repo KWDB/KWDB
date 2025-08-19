@@ -100,15 +100,15 @@ void LastSegmentReadWriteTest::BuilderWithBasicCheck(TSTableID table_id, int nro
     env->NewAppendOnlyFile(filename, &last_segment);
     TsLastSegmentBuilder builder(mgr.get(), std::move(last_segment), 0);
     auto payload = GenRowPayload(metric_schema, tag_schema, table_id, 1, 1, nrow, 123);
-    TsRawPayloadRowParser parser{metric_schema};
-    TsRawPayload p{payload, metric_schema};
+    TsRawPayloadRowParser parser{&metric_schema};
+    TsRawPayload p{payload, &metric_schema};
 
     auto memseg = TsMemSegment::Create(12);
 
     auto table_id = TsRawPayload::GetTableIDFromSlice(payload);
     auto table_version = TsRawPayload::GetTableVersionFromSlice(payload);
     TSMemSegRowData row_data(1, table_id, table_version, 1);
-    TsRawPayload pd(payload, metric_schema);
+    TsRawPayload pd(payload, &metric_schema);
     uint32_t row_num = pd.GetRowCount();
     memseg->AllocRowNum(row_num);
     for (size_t i = 0; i < row_num; i++) {
@@ -269,8 +269,8 @@ struct FOO<T(Args...)> {
 };
 
 void PushPayloadToBuilder(R *builder, TSSlice *payload, TSTableID table_id, uint32_t version, TSEntityID entity_id) {
-  TsRawPayloadRowParser parser{builder->metric_schema};
-  TsRawPayload p{*payload, builder->metric_schema};
+  TsRawPayloadRowParser parser{&builder->metric_schema};
+  TsRawPayload p{*payload, &builder->metric_schema};
 
   auto memseg = builder->memseg;
 
