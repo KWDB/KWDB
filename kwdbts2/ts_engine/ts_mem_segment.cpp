@@ -465,8 +465,9 @@ KStatus TsMemSegment::GetBlockSpans(std::list<shared_ptr<TsBlockSpan>>& blocks, 
       LOG_ERROR("can not get table schema manager for table_id[%lu].", table_id);
       return s;
     }
+    auto version = mem_blk->GetTableVersion();
     blocks.push_back(std::make_shared<TsBlockSpan>(mem_blk->GetEntityId(), std::move(mem_blk), 0, mem_blk->GetRowNum(),
-                                                   table_schema_mgr, 0));
+                                                   table_schema_mgr, version));
   }
   return SUCCESS;
 }
