@@ -141,6 +141,11 @@ func (*DummyEvalPlanner) ExecutorConfig() interface{} {
 	return nil
 }
 
+// GetApEngine is part of the Planner interface.
+func (*DummyEvalPlanner) GetApEngine() interface{} {
+	return nil
+}
+
 // DummyPrivilegedAccessor implements the tree.PrivilegedAccessor interface by returning errors.
 type DummyPrivilegedAccessor struct{}
 

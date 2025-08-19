@@ -46,6 +46,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"gitee.com/kwbasedb/kwbase/pkg/ape"
 	"gitee.com/kwbasedb/kwbase/pkg/build"
 	"gitee.com/kwbasedb/kwbase/pkg/keys"
 	"gitee.com/kwbasedb/kwbase/pkg/kv"
@@ -4474,6 +4475,43 @@ may increase either contention or retry errors, or both.`,
 				return ret, nil
 			},
 			Info: "This function is used only by CockroachDB's developers for testing purposes.",
+		},
+	),
+	// attach external database.
+	"kwdb_internal.attach": makeBuiltin(
+		tree.FunctionProperties{
+			Category:         categorySystemInfo,
+			DistsqlBlacklist: true,
+		},
+		tree.Overload{
+			Types: tree.ArgTypes{
+				{"conn_info", types.String},
+				{"extern_db_name", types.String},
+				{"type", types.String},
+				{"target_db_name", types.String},
+			}, ReturnType: tree.FixedReturnType(types.Int),
+			Fn: func(evalCtx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				connInfo := strings.ToLower(string(tree.MustBeDString(args[0])))
+				externDB := strings.ToLower(string(tree.MustBeDString(args[1])))
+				dbType := strings.ToLower(string(tree.MustBeDString(args[2])))
+				targetDB := strings.ToLower(string(tree.MustBeDString(args[3])))
+				conn, err := evalCtx.Planner.GetApEngine().(*ape.ApEngine).CreateConnection(targetDB)
+				if err != nil {
+					return nil, err
+				}
+				defer evalCtx.Planner.GetApEngine().(*ape.ApEngine).DestroyConnection(conn)
+				var scanner string
+				if dbType == "mysql" {
+					scanner = "mysql_scanner"
+				}
+				attachStmt := fmt.Sprintf("ATTACH '%s' AS %s (TYPE %s)", connInfo, externDB, scanner)
+				err = evalCtx.Planner.GetApEngine().(*ape.ApEngine).Exec(conn, attachStmt)
+				if err != nil {
+					return nil, err
+				}
+				return tree.DZero, nil
+			},
+			Info: "Attach extern database.",
 		},
 	),
 	"time_bucket": makeBuiltin(tree.FunctionProperties{NullableArgs: true},
