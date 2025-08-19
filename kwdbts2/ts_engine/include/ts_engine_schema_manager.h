@@ -17,7 +17,6 @@
 #include <list>
 #include <set>
 #include <unordered_map>
-#include <filesystem>
 #include <string>
 #include <vector>
 #include <chrono>
@@ -76,7 +75,7 @@ class TsEngineSchemaManager {
   int unLock();
 
  protected:
-  std::filesystem::path schema_root_path_;
+  fs::path schema_root_path_;
   uint32_t vgroup_id_;
   string tbl_sub_path_;
   std::unordered_map<TSTableID, std::shared_ptr<TsTableSchemaManager>> table_schema_mgrs_;

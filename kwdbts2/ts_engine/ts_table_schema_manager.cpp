@@ -161,13 +161,6 @@ std::shared_ptr<MMapMetricsTable> TsTableSchemaManager::open(uint32_t ts_version
   return tmp_bt;
 }
 
-TsTableSchemaManager::~TsTableSchemaManager() {
-  if (ver_conv_rw_lock_) {
-    delete ver_conv_rw_lock_;
-    ver_conv_rw_lock_ = nullptr;
-  }
-}
-
 bool TsTableSchemaManager::IsSchemaDirsExist() {
   return IsExists(table_path_ + "/" + metric_schema_path_) && IsExists(table_path_ + "/" + tag_schema_path_);
 }
@@ -194,12 +187,22 @@ KStatus TsTableSchemaManager::Init() {
 
 KStatus TsTableSchemaManager::CreateTable(kwdbContext_p ctx, roachpb::CreateTsTable* meta, uint64_t db_id,
                                           uint32_t ts_version, ErrorInfo& err_info) {
+  RW_LATCH_X_LOCK(&table_version_rw_lock_);
+  Defer defer{[&]() { RW_LATCH_UNLOCK(&table_version_rw_lock_); }};
+  if (ts_version == cur_version_) {
+    LOG_WARN("CreateTable: table %lu version [%u] already exists", table_id_, ts_version);
+    return SUCCESS;
+  }
   if (metric_mgr_ == nullptr) {
     metric_mgr_ = std::make_shared<MetricsVersionManager>(table_path_, metric_schema_path_, table_id_);
   }
   if (metric_mgr_->GetMetricsTable(ts_version) != nullptr) {
-    LOG_INFO("Creating root table that already exists.");
-    return SUCCESS;
+    if (ts_version == cur_version_) {
+      LOG_WARN("CreateTable: table %lu version [%u] already exists", table_id_, ts_version);
+      return SUCCESS;
+    }
+    LOG_ERROR("CreateTable: metric version [%u] already exists, but current version is [%u]", ts_version, cur_version_);
+    return FAIL;
   }
   std::vector<TagInfo> tag_schema;
   std::vector<AttributeInfo> metric_schema;
@@ -213,8 +216,8 @@ KStatus TsTableSchemaManager::CreateTable(kwdbContext_p ctx, roachpb::CreateTsTa
   hash_num_ = meta->ts_table().hash_num();
   s = metric_mgr_->CreateTable(ctx, metric_schema, db_id, ts_version, meta->ts_table().life_time(), hash_num_, err_info);
   if (s != KStatus::SUCCESS) {
-    LOG_ERROR("failed to create the tag table %s%lu, error: %s",
-              tag_schema_path_.c_str(), table_id_, err_info.errmsg.c_str());
+    LOG_ERROR("failed to create the metric table %lu version [%u], error: %s",
+              table_id_, ts_version, err_info.errmsg.c_str());
     return s;
   }
 
@@ -225,8 +228,8 @@ KStatus TsTableSchemaManager::CreateTable(kwdbContext_p ctx, roachpb::CreateTsTa
       idx_info.emplace_back(meta->index_info(i));
     }
     if (tag_table_->create(tag_schema, ts_version, idx_info, err_info) < 0) {
-      LOG_ERROR("failed to create the tag table %s%lu, error: %s",
-                tag_schema_path_.c_str(), table_id_, err_info.errmsg.c_str());
+      LOG_ERROR("failed to create the tag table [%lu] %s, error: %s",
+                table_id_, tag_schema_path_.c_str(), err_info.errmsg.c_str());
       return FAIL;
     }
   } else {
@@ -236,7 +239,7 @@ KStatus TsTableSchemaManager::CreateTable(kwdbContext_p ctx, roachpb::CreateTsTa
     }
     // Note:: "idx_info" is the index that exists in the current version.
     if (tag_table_->AddNewPartitionVersion(tag_schema, ts_version, err_info, idx_info) < 0) {
-      LOG_ERROR("CreateTable add tag new version[%d] failed.", ts_version);
+      LOG_ERROR("CreateTable add tag new version[%d] failed", ts_version);
       return FAIL;
     }
   }
@@ -575,8 +578,8 @@ const vector<uint32_t>& TsTableSchemaManager::GetIdxForValidCols(uint32_t table_
 }
 
 bool TsTableSchemaManager::FindVersionConv(uint64_t key, std::shared_ptr<SchemaVersionConv>* version_conv) {
-  RW_LATCH_S_LOCK(ver_conv_rw_lock_);
-  Defer defer{[&]() { RW_LATCH_UNLOCK(ver_conv_rw_lock_); }};
+  RW_LATCH_S_LOCK(&ver_conv_rw_lock_);
+  Defer defer{[&]() { RW_LATCH_UNLOCK(&ver_conv_rw_lock_); }};
   const auto iter = version_conv_map.find(key);
   if (iter == version_conv_map.end()) {
     return false;
@@ -586,8 +589,8 @@ bool TsTableSchemaManager::FindVersionConv(uint64_t key, std::shared_ptr<SchemaV
 }
 
 void TsTableSchemaManager::InsertVersionConv(uint64_t key, const shared_ptr<SchemaVersionConv>& ver_conv) {
-  RW_LATCH_X_LOCK(ver_conv_rw_lock_);
-  Defer defer{[&]() { RW_LATCH_UNLOCK(ver_conv_rw_lock_); }};
+  RW_LATCH_X_LOCK(&ver_conv_rw_lock_);
+  Defer defer{[&]() { RW_LATCH_UNLOCK(&ver_conv_rw_lock_); }};
   version_conv_map.insert(make_pair(key, ver_conv));
 }
 

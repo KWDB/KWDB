@@ -4,7 +4,6 @@
 #include <atomic>
 #include <cstdint>
 #include <cstring>
-#include <filesystem>
 #include <future>
 #include <memory>
 #include <thread>
@@ -49,8 +48,8 @@ class ConcurrentRWTest : public testing::Test {
   std::shared_ptr<TsVGroup> vgroup_;
 
   void SetUp() override {
-    std::filesystem::remove_all("./tsdb");
-    std::filesystem::remove_all("./schema");
+    fs::remove_all("./tsdb");
+    fs::remove_all("./schema");
 
     InitKWDBContext(ctx_);
     schema_mgr_ = std::make_unique<TsEngineSchemaManager>(opts_.db_path + "/schema");

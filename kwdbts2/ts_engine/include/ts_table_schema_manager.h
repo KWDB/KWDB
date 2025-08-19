@@ -12,7 +12,6 @@
 
 #include <cstdint>
 #include <cstdio>
-#include <filesystem>
 #include <memory>
 #include <unordered_map>
 #include <utility>
@@ -58,20 +57,21 @@ class TsTableSchemaManager {
   uint32_t cur_version_{0};
   std::shared_ptr<MetricsVersionManager> metric_mgr_{nullptr};
   std::shared_ptr<TagTable> tag_table_{nullptr};
+  KRWLatch table_version_rw_lock_;
+
   std::unordered_map<uint64_t, shared_ptr<SchemaVersionConv>> version_conv_map;
-  KRWLatch* ver_conv_rw_lock_{nullptr};
+  KRWLatch ver_conv_rw_lock_;
 
  public:
   TsTableSchemaManager() = delete;
 
-  TsTableSchemaManager(const string& root_path, TSTableID tbl_id) : table_id_(tbl_id) {
+  TsTableSchemaManager(const string& root_path, TSTableID tbl_id) : table_id_(tbl_id),
+    table_version_rw_lock_(RWLATCH_ID_TABLE_VERSION_RWLOCK),
+    ver_conv_rw_lock_(RWLATCH_ID_VERSION_CONV_RWLOCK) {
     table_path_ = root_path + "/" + std::to_string(tbl_id) + "/";
     metric_schema_path_ = "metric/";
     tag_schema_path_ = "tag/";
-    ver_conv_rw_lock_ = new KRWLatch(RWLATCH_ID_VERSION_CONV_RWLOCK);
   }
-
-  virtual ~TsTableSchemaManager();
 
   bool IsSchemaDirsExist();
 
@@ -171,6 +171,10 @@ class TsTableSchemaManager {
 
   bool IsExistTableVersion(uint32_t version);
 
+  std::shared_ptr<MMapMetricsTable> GetCurrentMetricsTable() {
+    return metric_mgr_->GetCurrentMetricsTable();
+  }
+
  private:
   std::shared_ptr<MMapMetricsTable> open(uint32_t version, ErrorInfo& err_info);
 
@@ -188,10 +192,6 @@ class TsTableSchemaManager {
 
   std::shared_ptr<MMapMetricsTable> getMetricsTable(uint32_t ts_version) {
     return metric_mgr_->GetMetricsTable(ts_version);
-  }
-
-  std::shared_ptr<MMapMetricsTable> getCurrentMetricsTable() {
-    return metric_mgr_->GetCurrentMetricsTable();
   }
 
   static KStatus parseMetaToSchema(roachpb::CreateTsTable* meta,

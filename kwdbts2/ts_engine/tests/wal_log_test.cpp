@@ -9,7 +9,6 @@
 // MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
 // See the Mulan PSL v2 for more details.
 
-#include <filesystem>
 #include "libkwdbts2.h"
 #include "test_util.h"
 #include "st_wal_mgr.h"
@@ -40,7 +39,7 @@ class TestWALManagerV2 : public ::testing::Test {
     opts_.db_path =  "./wal_log_test/";
     mgr = std::make_unique<TsEngineSchemaManager>("./wal_log_test/schema");
 
-    std::filesystem::remove_all(opts_.db_path);
+    fs::remove_all(opts_.db_path);
     wal_ = new WALMgr("./wal_log_test/", intToString(tbl_grp_id_), &opts_);
     auto s = wal_->Init(ctx_);
     EXPECT_EQ(s, KStatus::SUCCESS);

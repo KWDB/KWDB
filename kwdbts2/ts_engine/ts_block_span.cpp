@@ -52,6 +52,28 @@ inline KStatus TsBlock::UpdateFirstLastCandidates(const std::vector<k_uint32>& t
 }
 
 TsBlockSpan::TsBlockSpan(TSEntityID entity_id, std::shared_ptr<TsBlock> block, int start, int nrow,
+                         const std::shared_ptr<TsTableSchemaManager>& tbl_schema_mgr,
+                         std::shared_ptr<MMapMetricsTable>& scan_schema)
+    : block_(block),
+      entity_id_(entity_id),
+      start_row_(start),
+      nrow_(nrow),
+      tbl_schema_mgr_(tbl_schema_mgr) {
+  assert(nrow_ >= 1);
+  uint32_t scan_version = scan_schema->GetVersionNUm();
+  if (block_->GetTableVersion() != scan_version) {
+    convert_ = std::make_unique<TSBlkDataTypeConvert>(*this, tbl_schema_mgr,
+                                                    scan_version == 0 ? block->GetTableVersion() : scan_version);
+    auto s = convert_->Init();
+    if (s != SUCCESS) {
+      LOG_ERROR("convert_ Init failed!");
+    }
+  }
+  scan_attrs_ = scan_schema->getSchemaInfoExcludeDropped();
+  has_pre_agg_ = block_->HasPreAgg(start_row_, nrow_);
+}
+
+TsBlockSpan::TsBlockSpan(TSEntityID entity_id, std::shared_ptr<TsBlock> block, int start, int nrow,
                          const std::shared_ptr<TsTableSchemaManager>& tbl_schema_mgr, uint32_t scan_version)
     : block_(block),
       entity_id_(entity_id),
@@ -77,13 +99,38 @@ TsBlockSpan::TsBlockSpan(TSEntityID entity_id, std::shared_ptr<TsBlock> block, i
 }
 
 TsBlockSpan::TsBlockSpan(uint32_t vgroup_id, TSEntityID entity_id, std::shared_ptr<TsBlock> block, int start, int nrow,
-                         const std::shared_ptr<TsTableSchemaManager>& tbl_schema_mgr, uint32_t scan_version)
+                         const std::shared_ptr<TsTableSchemaManager>& tbl_schema_mgr,
+                         std::shared_ptr<MMapMetricsTable>& scan_schema)
     : block_(block),
       vgroup_id_(vgroup_id),
       entity_id_(entity_id),
       start_row_(start),
       nrow_(nrow),
       tbl_schema_mgr_(tbl_schema_mgr) {
+  assert(nrow_ >= 1);
+  uint32_t scan_version = scan_schema->GetVersionNUm();
+  if (block_->GetTableVersion() != scan_version) {
+    convert_ = std::make_unique<TSBlkDataTypeConvert>(*this, tbl_schema_mgr,
+                                                    scan_version == 0 ? block->GetTableVersion() : scan_version);
+    auto s = convert_->Init();
+    if (s != SUCCESS) {
+      LOG_ERROR("convert_ Init failed!");
+    }
+  }
+  scan_attrs_ = scan_schema->getSchemaInfoExcludeDropped();
+  has_pre_agg_ = block_->HasPreAgg(start_row_, nrow_);
+}
+
+TsBlockSpan::TsBlockSpan(uint32_t vgroup_id, TSEntityID entity_id, std::shared_ptr<TsBlock> block, int start, int nrow,
+                         const std::shared_ptr<TsTableSchemaManager>& tbl_schema_mgr,
+                         uint32_t scan_version, std::vector<AttributeInfo>& scan_attrs)
+    : block_(block),
+      vgroup_id_(vgroup_id),
+      entity_id_(entity_id),
+      start_row_(start),
+      nrow_(nrow),
+      tbl_schema_mgr_(tbl_schema_mgr),
+      scan_attrs_(scan_attrs) {
   assert(nrow_ >= 1);
   if (block_->GetTableVersion() != scan_version) {
     convert_ = std::make_unique<TSBlkDataTypeConvert>(*this, tbl_schema_mgr,
@@ -93,12 +140,6 @@ TsBlockSpan::TsBlockSpan(uint32_t vgroup_id, TSEntityID entity_id, std::shared_p
       LOG_ERROR("convert_ Init failed!");
     }
   }
-  std::shared_ptr<MMapMetricsTable> scan_metric;
-  auto s = tbl_schema_mgr_->GetMetricSchema(scan_version, &scan_metric);
-  if (s != SUCCESS) {
-    LOG_ERROR("GetMetricSchema failed. table id [%u], table version [%lu]", scan_version, block->GetTableId());
-  }
-  scan_attrs_ = scan_metric->getSchemaInfoExcludeDropped();
   has_pre_agg_ = block_->HasPreAgg(start_row_, nrow_);
 }
 
@@ -427,7 +468,8 @@ void TsBlockSpan::SplitFront(int row_num, shared_ptr<TsBlockSpan>& front_span) {
   assert(row_num <= nrow_);
   assert(block_ != nullptr);
   front_span = make_shared<TsBlockSpan>(vgroup_id_, entity_id_, block_, start_row_, row_num, tbl_schema_mgr_,
-                        convert_ == nullptr ? block_->GetTableVersion() : convert_->version_conv_->scan_version_);
+                        convert_ == nullptr ? block_->GetTableVersion() : convert_->version_conv_->scan_version_,
+                        scan_attrs_);
   // change current span info
   start_row_ += row_num;
   nrow_ -= row_num;
@@ -443,7 +485,8 @@ void TsBlockSpan::SplitBack(int row_num, shared_ptr<TsBlockSpan>& back_span) {
   assert(block_ != nullptr);
   back_span = make_shared<TsBlockSpan>(vgroup_id_, entity_id_, block_, start_row_ + nrow_ - row_num,
                                   row_num, tbl_schema_mgr_,
-                      convert_ == nullptr ? block_->GetTableVersion() : convert_->version_conv_->scan_version_);
+                      convert_ == nullptr ? block_->GetTableVersion() : convert_->version_conv_->scan_version_,
+                                  scan_attrs_);
   // change current span info
   nrow_ -= row_num;
   has_pre_agg_ = false;

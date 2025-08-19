@@ -13,13 +13,6 @@
 
 #include <unistd.h>
 #include <sys/stat.h>
-#if defined(__GNUC__) && (__GNUC__ < 8)
-  #include <experimental/filesystem>
-  namespace fs = std::experimental::filesystem;
-#else
-  #include <filesystem>
-  namespace fs = std::filesystem;
-#endif
 
 int64_t g_free_space_alert_threshold = 0;
 
