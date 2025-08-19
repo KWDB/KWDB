@@ -1260,17 +1260,28 @@ func initTableReaderSpec(
 	n *scanNode, planCtx *PlanningCtx, indexVarMap []int,
 ) (*execinfrapb.TableReaderSpec, execinfrapb.PostProcessSpec, error) {
 	s := physicalplan.NewTableReaderSpec()
-	*s = execinfrapb.TableReaderSpec{
-		Table:             *n.desc.TableDesc(),
-		Reverse:           n.reverse,
-		IsCheck:           n.isCheck,
-		Visibility:        n.colCfg.visibility.toDistSQLScanVisibility(),
-		LockingStrength:   n.lockingStrength,
-		LockingWaitPolicy: n.lockingWaitPolicy,
+	if planCtx.apSelect {
+		*s = execinfrapb.TableReaderSpec{
+			Reverse:           n.reverse,
+			IsCheck:           n.isCheck,
+			Visibility:        n.colCfg.visibility.toDistSQLScanVisibility(),
+			LockingStrength:   n.lockingStrength,
+			LockingWaitPolicy: n.lockingWaitPolicy,
+		}
+	} else {
+		*s = execinfrapb.TableReaderSpec{
+			Table:             *n.desc.TableDesc(),
+			Reverse:           n.reverse,
+			IsCheck:           n.isCheck,
+			Visibility:        n.colCfg.visibility.toDistSQLScanVisibility(),
+			LockingStrength:   n.lockingStrength,
+			LockingWaitPolicy: n.lockingWaitPolicy,
 
-		// Retain the capacity of the spans slice.
-		Spans: s.Spans[:0],
+			// Retain the capacity of the spans slice.
+			Spans: s.Spans[:0],
+		}
 	}
+
 	indexIdx, err := getIndexIdx(n)
 	if err != nil {
 		return nil, execinfrapb.PostProcessSpec{}, err
@@ -1301,6 +1312,46 @@ func initTableReaderSpec(
 		post.Limit = uint64(n.hardLimit)
 	} else if n.softLimit != 0 {
 		s.LimitHint = n.softLimit
+	}
+	return s, post, nil
+}
+
+func initAPTableReaderSpec(
+	n *scanNode, planCtx *PlanningCtx, indexVarMap []int,
+) (*execinfrapb.APTableReaderSpec, execinfrapb.PostProcessSpec, error) {
+	s := physicalplan.NewAPTableReaderSpec()
+	*s = execinfrapb.APTableReaderSpec{TableName: n.desc.Name}
+
+	//indexIdx, err := getIndexIdx(n)
+	//if err != nil {
+	//	return nil, execinfrapb.PostProcessSpec{}, err
+	//}
+	//s.IndexIdx = indexIdx
+
+	// When a TableReader is running scrub checks, do not allow a
+	// post-processor. This is because the outgoing stream is a fixed
+	// format (rowexec.ScrubTypes).
+	if n.isCheck {
+		return s, execinfrapb.PostProcessSpec{}, nil
+	}
+
+	filter, err := physicalplan.MakeExpression(n.filter, planCtx, indexVarMap, true, false)
+	if err != nil {
+		return nil, execinfrapb.PostProcessSpec{}, err
+	}
+	filterTs, err := physicalplan.MakeTSExpression(n.filter, planCtx, indexVarMap)
+	if err != nil {
+		return nil, execinfrapb.PostProcessSpec{}, err
+	}
+	post := execinfrapb.PostProcessSpec{
+		Filter:   filter,
+		FilterTs: filterTs,
+	}
+
+	if n.hardLimit != 0 {
+		post.Limit = uint64(n.hardLimit)
+	} else if n.softLimit != 0 {
+		//s.LimitHint = n.softLimit
 	}
 	return s, post, nil
 }
@@ -1495,71 +1546,50 @@ func (dsp *DistSQLPlanner) createTableReaders(
 	}
 
 	scanNodeToTableOrdinalMap := getScanNodeToTableOrdinalMap(n)
-
-	spec, post, err := initTableReaderSpec(n, planCtx, scanNodeToTableOrdinalMap)
-	if err != nil {
-		return PhysicalPlan{}, err
-	}
 	var spanPartitions []SpanPartition
-	if planCtx.isLocal {
-		spanPartitions = []SpanPartition{{dsp.nodeDesc.NodeID, n.spans}}
-	} else if n.hardLimit == 0 {
-		// No hard limit - plan all table readers where their data live. Note
-		// that we're ignoring soft limits for now since the TableReader will
-		// still read too eagerly in the soft limit case. To prevent this we'll
-		// need a new mechanism on the execution side to modulate table reads.
-		// TODO(yuzefovich): add that mechanism.
-		spanPartitions, err = dsp.PartitionSpans(planCtx, n.spans)
+
+	if planCtx.apSelect {
+		spec, post, err := initAPTableReaderSpec(n, planCtx, scanNodeToTableOrdinalMap)
 		if err != nil {
 			return PhysicalPlan{}, err
 		}
-	} else {
-		// If the scan has a hard limit, use a single TableReader to avoid
-		// reading more rows than necessary.
-		nodeID, err := dsp.getNodeIDForScan(planCtx, n.spans, n.reverse)
-		if err != nil {
-			return PhysicalPlan{}, err
-		}
-		spanPartitions = []SpanPartition{{nodeID, n.spans}}
-	}
+		var p PhysicalPlan
+		stageID := p.NewStageID()
 
-	var p PhysicalPlan
-	stageID := p.NewStageID()
+		p.ResultRouters = make([]physicalplan.ProcessorIdx, 1)
+		p.Processors = make([]physicalplan.Processor, 0, 1)
 
-	p.ResultRouters = make([]physicalplan.ProcessorIdx, len(spanPartitions))
-	p.Processors = make([]physicalplan.Processor, 0, len(spanPartitions))
+		returnMutations := n.colCfg.visibility == publicAndNonPublicColumns
 
-	returnMutations := n.colCfg.visibility == publicAndNonPublicColumns
+		//for i, sp := range spanPartitions {
+		//	var tr *execinfrapb.TableReaderSpec
+		//	if i == 0 {
+		//		// For the first span partition, we can just directly use the spec we made
+		//		// above.
+		//		tr = spec
+		//	} else {
+		//		// For the rest, we have to copy the spec into a fresh spec.
+		//		tr = physicalplan.NewTableReaderSpec()
+		//		// Grab the Spans field of the new spec, and reuse it in case the pooled
+		//		// TableReaderSpec we got has pre-allocated Spans memory.
+		//		newSpansSlice := tr.Spans
+		//		*tr = *spec
+		//		tr.Spans = newSpansSlice
+		//	}
+		//	for j := range sp.Spans {
+		//		tr.Spans = append(tr.Spans, execinfrapb.TableReaderSpan{Span: sp.Spans[j]})
+		//	}
 
-	for i, sp := range spanPartitions {
-		var tr *execinfrapb.TableReaderSpec
-		if i == 0 {
-			// For the first span partition, we can just directly use the spec we made
-			// above.
-			tr = spec
-		} else {
-			// For the rest, we have to copy the spec into a fresh spec.
-			tr = physicalplan.NewTableReaderSpec()
-			// Grab the Spans field of the new spec, and reuse it in case the pooled
-			// TableReaderSpec we got has pre-allocated Spans memory.
-			newSpansSlice := tr.Spans
-			*tr = *spec
-			tr.Spans = newSpansSlice
-		}
-		for j := range sp.Spans {
-			tr.Spans = append(tr.Spans, execinfrapb.TableReaderSpan{Span: sp.Spans[j]})
-		}
-
-		tr.MaxResults = n.maxResults
+		//tr.MaxResults = n.maxResults
 		p.TotalEstimatedScannedRows += n.estimatedRowCount
 		if n.estimatedRowCount > p.MaxEstimatedRowCount {
 			p.MaxEstimatedRowCount = n.estimatedRowCount
 		}
 
 		proc := physicalplan.Processor{
-			Node: sp.Node,
+			Node: 1,
 			Spec: execinfrapb.ProcessorSpec{
-				Core:    execinfrapb.ProcessorCoreUnion{TableReader: tr},
+				Core:    execinfrapb.ProcessorCoreUnion{ApTableReader: spec},
 				Output:  []execinfrapb.OutputRouterSpec{{Type: execinfrapb.OutputRouterSpec_PASS_THROUGH}},
 				StageID: stageID,
 				Engine:  GetEngine(planCtx),
@@ -1567,67 +1597,200 @@ func (dsp *DistSQLPlanner) createTableReaders(
 		}
 
 		pIdx := p.AddProcessor(proc)
-		p.ResultRouters[i] = pIdx
-	}
-
-	if len(p.ResultRouters) > 1 && len(n.reqOrdering) > 0 {
-		// Make a note of the fact that we have to maintain a certain ordering
-		// between the parallel streams.
-		//
-		// This information is taken into account by the AddProjection call below:
-		// specifically, it will make sure these columns are kept even if they are
-		// not in the projection (e.g. "SELECT v FROM kv ORDER BY k").
-		p.SetMergeOrdering(dsp.convertOrdering(n.reqOrdering, scanNodeToTableOrdinalMap))
-	}
-
-	var typs []types.T
-	if returnMutations {
-		typs = make([]types.T, 0, len(n.desc.Columns)+len(n.desc.MutationColumns()))
-	} else {
-		typs = make([]types.T, 0, len(n.desc.Columns))
-	}
-	for i := range n.desc.Columns {
-		typs = append(typs, n.desc.Columns[i].Type)
-	}
-	if returnMutations {
-		for _, col := range n.desc.MutationColumns() {
-			typs = append(typs, col.Type)
+		p.ResultRouters[0] = pIdx
+		//}
+		if len(p.ResultRouters) > 1 && len(n.reqOrdering) > 0 {
+			// Make a note of the fact that we have to maintain a certain ordering
+			// between the parallel streams.
+			//
+			// This information is taken into account by the AddProjection call below:
+			// specifically, it will make sure these columns are kept even if they are
+			// not in the projection (e.g. "SELECT v FROM kv ORDER BY k").
+			p.SetMergeOrdering(dsp.convertOrdering(n.reqOrdering, scanNodeToTableOrdinalMap))
 		}
-	}
-	p.SetLastStagePost(post, typs)
 
-	var outCols []uint32
-	if overrideResultColumns == nil {
-		outCols = getOutputColumnsFromScanNode(n, scanNodeToTableOrdinalMap)
-	} else {
-		outCols = make([]uint32, len(overrideResultColumns))
-		for i, id := range overrideResultColumns {
-			outCols[i] = uint32(tableOrdinal(n.desc, id, n.colCfg.visibility))
+		var typs []types.T
+		if returnMutations {
+			typs = make([]types.T, 0, len(n.desc.Columns)+len(n.desc.MutationColumns()))
+		} else {
+			typs = make([]types.T, 0, len(n.desc.Columns))
 		}
-	}
-	planToStreamColMap := make([]int, len(n.cols))
-	descColumnIDs := make([]sqlbase.ColumnID, 0, len(n.desc.Columns))
-	for i := range n.desc.Columns {
-		descColumnIDs = append(descColumnIDs, n.desc.Columns[i].ID)
-	}
-	if returnMutations {
-		for _, c := range n.desc.MutationColumns() {
-			descColumnIDs = append(descColumnIDs, c.ID)
+		for i := range n.desc.Columns {
+			typs = append(typs, n.desc.Columns[i].Type)
 		}
-	}
-	for i := range planToStreamColMap {
-		planToStreamColMap[i] = -1
-		for j, c := range outCols {
-			if descColumnIDs[c] == n.cols[i].ID {
-				planToStreamColMap[i] = j
-				break
+		if returnMutations {
+			for _, col := range n.desc.MutationColumns() {
+				typs = append(typs, col.Type)
 			}
 		}
-	}
-	p.AddProjection(outCols)
+		p.SetLastStagePost(post, typs)
 
-	p.PlanToStreamColMap = planToStreamColMap
-	return p, nil
+		var outCols []uint32
+		if overrideResultColumns == nil {
+			outCols = getOutputColumnsFromScanNode(n, scanNodeToTableOrdinalMap)
+		} else {
+			outCols = make([]uint32, len(overrideResultColumns))
+			for i, id := range overrideResultColumns {
+				outCols[i] = uint32(tableOrdinal(n.desc, id, n.colCfg.visibility))
+			}
+		}
+		planToStreamColMap := make([]int, len(n.cols))
+		descColumnIDs := make([]sqlbase.ColumnID, 0, len(n.desc.Columns))
+		for i := range n.desc.Columns {
+			descColumnIDs = append(descColumnIDs, n.desc.Columns[i].ID)
+		}
+		if returnMutations {
+			for _, c := range n.desc.MutationColumns() {
+				descColumnIDs = append(descColumnIDs, c.ID)
+			}
+		}
+		for i := range planToStreamColMap {
+			planToStreamColMap[i] = -1
+			for j, c := range outCols {
+				if descColumnIDs[c] == n.cols[i].ID {
+					planToStreamColMap[i] = j
+					break
+				}
+			}
+		}
+		p.AddProjection(outCols)
+
+		p.PlanToStreamColMap = planToStreamColMap
+		return p, nil
+
+	} else {
+		spec, post, err := initTableReaderSpec(n, planCtx, scanNodeToTableOrdinalMap)
+		if err != nil {
+			return PhysicalPlan{}, err
+		}
+
+		if planCtx.isLocal {
+			spanPartitions = []SpanPartition{{dsp.nodeDesc.NodeID, n.spans}}
+		} else if n.hardLimit == 0 {
+			// No hard limit - plan all table readers where their data live. Note
+			// that we're ignoring soft limits for now since the TableReader will
+			// still read too eagerly in the soft limit case. To prevent this we'll
+			// need a new mechanism on the execution side to modulate table reads.
+			// TODO(yuzefovich): add that mechanism.
+			spanPartitions, err = dsp.PartitionSpans(planCtx, n.spans)
+			if err != nil {
+				return PhysicalPlan{}, err
+			}
+		} else {
+			// If the scan has a hard limit, use a single TableReader to avoid
+			// reading more rows than necessary.
+			nodeID, err := dsp.getNodeIDForScan(planCtx, n.spans, n.reverse)
+			if err != nil {
+				return PhysicalPlan{}, err
+			}
+			spanPartitions = []SpanPartition{{nodeID, n.spans}}
+		}
+
+		var p PhysicalPlan
+		stageID := p.NewStageID()
+
+		p.ResultRouters = make([]physicalplan.ProcessorIdx, len(spanPartitions))
+		p.Processors = make([]physicalplan.Processor, 0, len(spanPartitions))
+
+		returnMutations := n.colCfg.visibility == publicAndNonPublicColumns
+
+		for i, sp := range spanPartitions {
+			var tr *execinfrapb.TableReaderSpec
+			if i == 0 {
+				// For the first span partition, we can just directly use the spec we made
+				// above.
+				tr = spec
+			} else {
+				// For the rest, we have to copy the spec into a fresh spec.
+				tr = physicalplan.NewTableReaderSpec()
+				// Grab the Spans field of the new spec, and reuse it in case the pooled
+				// TableReaderSpec we got has pre-allocated Spans memory.
+				newSpansSlice := tr.Spans
+				*tr = *spec
+				tr.Spans = newSpansSlice
+			}
+			for j := range sp.Spans {
+				tr.Spans = append(tr.Spans, execinfrapb.TableReaderSpan{Span: sp.Spans[j]})
+			}
+
+			tr.MaxResults = n.maxResults
+			p.TotalEstimatedScannedRows += n.estimatedRowCount
+			if n.estimatedRowCount > p.MaxEstimatedRowCount {
+				p.MaxEstimatedRowCount = n.estimatedRowCount
+			}
+
+			proc := physicalplan.Processor{
+				Node: sp.Node,
+				Spec: execinfrapb.ProcessorSpec{
+					Core:    execinfrapb.ProcessorCoreUnion{TableReader: tr},
+					Output:  []execinfrapb.OutputRouterSpec{{Type: execinfrapb.OutputRouterSpec_PASS_THROUGH}},
+					StageID: stageID,
+					Engine:  GetEngine(planCtx),
+				},
+			}
+
+			pIdx := p.AddProcessor(proc)
+			p.ResultRouters[i] = pIdx
+		}
+		if len(p.ResultRouters) > 1 && len(n.reqOrdering) > 0 {
+			// Make a note of the fact that we have to maintain a certain ordering
+			// between the parallel streams.
+			//
+			// This information is taken into account by the AddProjection call below:
+			// specifically, it will make sure these columns are kept even if they are
+			// not in the projection (e.g. "SELECT v FROM kv ORDER BY k").
+			p.SetMergeOrdering(dsp.convertOrdering(n.reqOrdering, scanNodeToTableOrdinalMap))
+		}
+
+		var typs []types.T
+		if returnMutations {
+			typs = make([]types.T, 0, len(n.desc.Columns)+len(n.desc.MutationColumns()))
+		} else {
+			typs = make([]types.T, 0, len(n.desc.Columns))
+		}
+		for i := range n.desc.Columns {
+			typs = append(typs, n.desc.Columns[i].Type)
+		}
+		if returnMutations {
+			for _, col := range n.desc.MutationColumns() {
+				typs = append(typs, col.Type)
+			}
+		}
+		p.SetLastStagePost(post, typs)
+
+		var outCols []uint32
+		if overrideResultColumns == nil {
+			outCols = getOutputColumnsFromScanNode(n, scanNodeToTableOrdinalMap)
+		} else {
+			outCols = make([]uint32, len(overrideResultColumns))
+			for i, id := range overrideResultColumns {
+				outCols[i] = uint32(tableOrdinal(n.desc, id, n.colCfg.visibility))
+			}
+		}
+		planToStreamColMap := make([]int, len(n.cols))
+		descColumnIDs := make([]sqlbase.ColumnID, 0, len(n.desc.Columns))
+		for i := range n.desc.Columns {
+			descColumnIDs = append(descColumnIDs, n.desc.Columns[i].ID)
+		}
+		if returnMutations {
+			for _, c := range n.desc.MutationColumns() {
+				descColumnIDs = append(descColumnIDs, c.ID)
+			}
+		}
+		for i := range planToStreamColMap {
+			planToStreamColMap[i] = -1
+			for j, c := range outCols {
+				if descColumnIDs[c] == n.cols[i].ID {
+					planToStreamColMap[i] = j
+					break
+				}
+			}
+		}
+		p.AddProjection(outCols)
+
+		p.PlanToStreamColMap = planToStreamColMap
+		return p, nil
+	}
 }
 
 // add tsColIndex in add-delete columns, init in createReaders,

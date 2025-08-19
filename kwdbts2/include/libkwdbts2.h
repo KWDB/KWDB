@@ -231,6 +231,7 @@ typedef struct _APQueryInfo {
   TSSlice sql;
   DataInfo vectorize_data;
   void *db;
+  void *connection;
 } APQueryInfo;
 
 typedef APQueryInfo APRespInfo;

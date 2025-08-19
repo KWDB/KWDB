@@ -1239,7 +1239,7 @@ int TagTable::CreateHashIndex(int flags, const std::vector<uint32_t> &tags, uint
     }
     return 0;
   }
-  LOG_ERROR("Failed create hash index table id:%ld, index id:%ld, cur_version:%d, new_version:%d", m_table_id, index_id,
+  LOG_ERROR("Failed create hash index table id:%ld, index id:%d, cur_version:%d, new_version:%d", m_table_id, index_id,
             cur_version, new_version)
   return -1;
 }
@@ -1344,7 +1344,7 @@ int TagTable::DropHashIndex(uint32_t index_id,  const uint32_t cur_version,
     }
     return 0;
   }
-  LOG_ERROR("Failed drop hash index table id:%ld, index id:%ld, cur_version:%d, new_version:%d", m_table_id, index_id,
+  LOG_ERROR("Failed drop hash index table id:%ld, index id:%d, cur_version:%d, new_version:%d", m_table_id, index_id,
             cur_version, new_version)
   return -1;
 }

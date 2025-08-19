@@ -358,7 +358,7 @@ if (ENABLE_COVERAGE)
   list(APPEND KWDBTS2_SERVER_LIB_SRC ${KWDBTS2_SERVER_EXEC_SRCS})
 endif()
 # Add the server module source files to the dynamic library
-add_library(${KWDBTS2_SERVER_LIB} SHARED ${KWDBTS2_SERVER_LIB_SRC})
+add_library(${KWDBTS2_SERVER_LIB} SHARED ${KWDBTS2_SERVER_LIB_SRC} engine/duckdb_exec.cpp)
 
 # Set brpc and duckdb library dependency
 add_dependencies(${KWDBTS2_SERVER_LIB} brpc)

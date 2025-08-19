@@ -66,11 +66,29 @@ func NewTableReaderSpec() *execinfrapb.TableReaderSpec {
 	return trSpecPool.Get().(*execinfrapb.TableReaderSpec)
 }
 
+var trAPSpecPool = sync.Pool{
+	New: func() interface{} {
+		return &execinfrapb.APTableReaderSpec{}
+	},
+}
+
+// NewAPTableReaderSpec returns a new APTableReader.
+func NewAPTableReaderSpec() *execinfrapb.APTableReaderSpec {
+	return trAPSpecPool.Get().(*execinfrapb.APTableReaderSpec)
+}
+
 // ReleaseTableReaderSpec puts this TableReaderSpec back into its sync pool. It
 // may not be used again after Release returns.
 func ReleaseTableReaderSpec(s *execinfrapb.TableReaderSpec) {
 	s.Reset()
 	trSpecPool.Put(s)
+}
+
+// ReleaseAPTableReaderSpec puts this TableReaderSpec back into its sync pool. It
+// may not be used again after Release returns.
+func ReleaseAPTableReaderSpec(s *execinfrapb.APTableReaderSpec) {
+	s.Reset()
+	trAPSpecPool.Put(s)
 }
 
 // ReleaseSetupFlowRequest releases the resources of this SetupFlowRequest,
@@ -82,6 +100,8 @@ func ReleaseSetupFlowRequest(s *execinfrapb.SetupFlowRequest) {
 	for i := range s.Flow.Processors {
 		if tr := s.Flow.Processors[i].Core.TableReader; tr != nil {
 			ReleaseTableReaderSpec(tr)
+		} else if tr1 := s.Flow.Processors[i].Core.ApTableReader; tr != nil {
+			ReleaseAPTableReaderSpec(tr1)
 		}
 	}
 	ReleaseFlowSpec(&s.Flow)

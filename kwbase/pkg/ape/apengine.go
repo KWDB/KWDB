@@ -69,7 +69,7 @@ type QueryInfo struct {
 func NewApEngine(stopper *stop.Stopper, dbPath string) (*ApEngine, error) {
 	db := duck.Database{}
 	var state duck.State
-	state = duck.Open(dbPath+"/ap_database.db", &db)
+	state = duck.Open(dbPath+"/tpch", &db)
 	if state != duck.StateSuccess {
 		return nil, errors.New("failed to open the ap database")
 	}
@@ -136,6 +136,7 @@ func (r *ApEngine) Execute(
 	cQueryInfo.time_zone = C.int(queryInfo.TimeZone)
 	cQueryInfo.relation_ctx = C.uint64_t(uintptr(unsafe.Pointer(ctx)))
 	cQueryInfo.db = r.db.Ptr
+	cQueryInfo.connection = r.Connection.Ptr
 	cTsSlice := C.TSSlice{
 		data: (*C.char)(C.CBytes([]byte(queryInfo.SQL))),
 		len:  C.size_t(len(queryInfo.SQL)),

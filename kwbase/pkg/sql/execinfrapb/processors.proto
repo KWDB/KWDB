@@ -145,7 +145,7 @@ message ProcessorCoreUnion {
   optional TsInsertWithCDCProSpec tsInsertWithCDC = 43;
   optional StreamReaderSpec streamReader = 44;
   optional StreamAggregatorSpec streamAggregator = 45;
-
+  optional APTableReaderSpec apTableReader = 46;
   reserved 6, 12;
 }
 

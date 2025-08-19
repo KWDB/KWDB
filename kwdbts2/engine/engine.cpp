@@ -25,7 +25,7 @@
 #include "th_kwdb_dynamic_thread_pool.h"
 #include "ee_exec_pool.h"
 #include "st_tier.h"
-#include "duckdb.h"
+#include "duckdb_exec.h"
 
 #ifndef KWBASE_OSS
 #include "ts_config_autonomy.h"
@@ -69,79 +69,7 @@ std::atomic<int64_t> kw_used_anon_memory_size;
   }
 
   KStatus APEngineImpl::Execute(kwdbContext_p ctx, APQueryInfo* req, APRespInfo* resp) {
-    ctx->ts_engine = this;
-    EnterFunc();
-//    AssertNotNull(req);
-    KStatus ret = KStatus::FAIL;
-    ctx->relation_ctx = req->relation_ctx;
-    ctx->timezone = req->time_zone;
-    EnMqType type = req->tp;
-    k_char *message = static_cast<k_char *>(req->value);
-    k_uint32 len = req->len;
-    k_int32 id = req->id;
-    k_int32 uniqueID = req->unique_id;
-    // try {
-//    if (!req->handle && type != EnMqType::MQ_TYPE_DML_INIT &&
-//        type != EnMqType::MQ_TYPE_DML_SETUP) {
-//      Return(ret);
-//    }
-//    DmlExec *handle = nullptr;
-//    if (!req->handle) {
-//      handle = new DmlExec();
-//      handle->Init();
-//      req->handle = static_cast<char *>(static_cast<void *>(handle));
-//    } else {
-//      handle = static_cast<DmlExec *>(static_cast<void *>(req->handle));
-//    }
-//    ctx->dml_exec_handle = handle;
-    auto db = static_cast<duckdb_database>(req->db);
-    switch (type) {
-      case EnMqType::MQ_TYPE_DML_SETUP:
-//        handle->thd_->SetSQL(std::string(req->sql.data, req->sql.len));
-//        ret = handle->Setup(ctx, message, len, id, uniqueID, resp);
-//        if (ret != KStatus::SUCCESS) {
-//          handle->ClearTsScans(ctx);
-//        }
-        resp->ret = 1;
-        resp->tp = req->tp;
-        break;
-      case EnMqType::MQ_TYPE_DML_CLOSE:
-//        handle->ClearTsScans(ctx);
-//        delete handle;
-        resp->ret = 1;
-        resp->tp = req->tp;
-        break;
-      case EnMqType::MQ_TYPE_DML_INIT:
-        resp->ret = 1;
-        resp->tp = req->tp;
-        resp->code = 0;
-//        resp->handle = handle;
-        break;
-      case EnMqType::MQ_TYPE_DML_NEXT:
-//        ret = handle->Next(ctx, id, TsNextRetState::DML_NEXT, resp);
-        resp->ret = 1;
-        resp->code = 1;
-        resp->tp = req->tp;
-        break;
-      case EnMqType::MQ_TYPE_DML_PG_RESULT:
-//        ret = handle->Next(ctx, id, TsNextRetState::DML_PG_RESULT, resp);
-        resp->ret = 1;
-        resp->code = 1;
-        resp->tp = req->tp;
-        break;
-      case EnMqType::MQ_TYPE_DML_VECTORIZE_NEXT:
-//        ret = handle->Next(ctx, id, TsNextRetState::DML_VECTORIZE_NEXT, resp);
-        break;
-      case EnMqType::MQ_TYPE_DML_PUSH:
-        // push relational data from ME to AE for multiple model processing
-//        ret = handle->PushRelData(ctx, req, resp);
-        break;
-      default:
-        EEPgErrorInfo::SetPgErrorInfo(ERRCODE_INDETERMINATE_DATATYPE,
-                                      "Undecided datatype");
-        break;
-    }
-
+    KStatus ret = DuckdbExec::ExecQuery(ctx, req, resp);
     return ret;
   }
 
