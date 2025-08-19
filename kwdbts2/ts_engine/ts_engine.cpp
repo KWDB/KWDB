@@ -47,7 +47,7 @@ namespace kwdbts {
 
 unsigned seed = std::chrono::system_clock::now().time_since_epoch().count();
 std::mt19937 gen(seed);
-const char schema_directory[]= "schema/";
+const char schema_directory[]= "schema";
 
 TSEngineV2Impl::TSEngineV2Impl(const EngineOptions& engine_options) :
                               options_(engine_options), flush_mgr_(vgroups_),

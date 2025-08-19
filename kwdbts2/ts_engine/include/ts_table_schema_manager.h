@@ -172,6 +172,8 @@ class TsTableSchemaManager {
   bool IsExistTableVersion(uint32_t version);
 
   std::shared_ptr<MMapMetricsTable> GetCurrentMetricsTable() {
+    auto cur_metric_version = metric_mgr_->GetCurrentMetricsVersion();
+    assert(cur_version_ == cur_metric_version);
     return metric_mgr_->GetCurrentMetricsTable();
   }
 

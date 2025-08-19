@@ -16,13 +16,13 @@
 
 int64_t g_free_space_alert_threshold = 0;
 
-bool IsExists(const string& path) {
+bool IsExists(const fs::path& path) {
   return fs::exists(path);
 }
 
 bool Remove(const string& path, ErrorInfo& error_info) {
   try {
-    if (!fs::remove_all(path.c_str()) && errno != 0) {
+    if (!fs::remove_all(path) && errno != 0) {
       error_info.errcode = errnumToErrorCode(errno);
       error_info.errmsg = strerror(errno);
       LOG_ERROR("%s remove failed: errno[%d], strerror[%s]", path.c_str(), errno, error_info.errmsg.c_str());
@@ -58,39 +58,24 @@ bool RemoveDirContents(const string& dir_path, ErrorInfo& error_info) {
   return true;
 }
 
-bool MakeDirectory(const string& dir_path, ErrorInfo& error_info) {
-  if (fs::exists(dir_path) && fs::is_directory(dir_path)) {
-    return true;
-  }
-  struct stat st;
-  size_t e_pos = 1;
-  char *path = const_cast<char *>(dir_path.data());
-  while (e_pos < dir_path.size()) {
-    e_pos = dir_path.find_first_of('/', e_pos);
-    if (e_pos != string::npos)
-      path[e_pos] = 0;
-    if (stat(path, &st) != 0) {
-      if (mkdir(path, S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH) < 0) {
-        error_info.errcode = errnumToErrorCode(errno);
-        error_info.errmsg = strerror(errno);
-        LOG_ERROR("mkdir [%s] failed: errno[%d], strerror[%s]", path, errno, error_info.errmsg.c_str());
-        return false;
-      }
-    } else {
-      if (!S_ISDIR(st.st_mode)) {
-        error_info.errcode = KWEOTHER;
-        error_info.errmsg = std::string(path) + " is not directory";
-        LOG_ERROR("mkdir [%s] failed: %s", path, error_info.errmsg.c_str());
-        return false;
-      }
+bool MakeDirectory(const fs::path& dir_path, ErrorInfo& error_info) {
+  std::error_code ec;
+  if (std::filesystem::exists(dir_path, ec)) {
+    if (std::filesystem::is_directory(dir_path, ec)) {
+      return true;
     }
-    if (e_pos != string::npos)
-      path[e_pos] = '/';
-    else
-      break;
-    e_pos++;
+    error_info.errcode = KWEOTHER;
+    error_info.errmsg = dir_path.string() + " exists but is not a directory";
+    LOG_ERROR("MakeDirectory [%s] failed: %s", dir_path.string().c_str(), error_info.errmsg.c_str());
+    return false;
   }
-  LOG_INFO("Make directory [%s] succeeded", dir_path.c_str());
+  if (!std::filesystem::create_directories(dir_path, ec)) {
+    error_info.errcode = errnumToErrorCode(ec.value());
+    error_info.errmsg = ec.message();
+    LOG_ERROR("MakeDirectory [%s] failed: %s", dir_path.string().c_str(), error_info.errmsg.c_str());
+    return false;
+  }
+  LOG_INFO("Make directory [%s] succeeded", dir_path.string().c_str());
   return true;
 }
 
