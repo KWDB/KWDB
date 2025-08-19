@@ -188,7 +188,7 @@ inline bool TsStorageIteratorV2Impl::IsFilteredOut(timestamp64 begin_ts, timesta
   return  (!is_reversed_ && begin_ts > ts) || (is_reversed_ && end_ts < ts);
 }
 
-KStatus TsStorageIteratorV2Impl::getBlockSpanMinValue(std::shared_ptr<TsBlockSpan> block_span,
+KStatus TsStorageIteratorV2Impl::getBlockSpanMinValue(std::shared_ptr<TsBlockSpan>& block_span,
                                                       uint32_t col_id, uint32_t type, void*& min) {
   TsBitmap bitmap;
   char* value = nullptr;
@@ -215,7 +215,7 @@ KStatus TsStorageIteratorV2Impl::getBlockSpanMinValue(std::shared_ptr<TsBlockSpa
   return KStatus::SUCCESS;
 }
 
-KStatus TsStorageIteratorV2Impl::getBlockSpanMaxValue(std::shared_ptr<TsBlockSpan> block_span,
+KStatus TsStorageIteratorV2Impl::getBlockSpanMaxValue(std::shared_ptr<TsBlockSpan>& block_span,
                                                       uint32_t col_id, uint32_t type, void*& max) {
   TsBitmap bitmap;
   char* value = nullptr;
@@ -242,7 +242,7 @@ KStatus TsStorageIteratorV2Impl::getBlockSpanMaxValue(std::shared_ptr<TsBlockSpa
   return KStatus::SUCCESS;
 }
 
-KStatus TsStorageIteratorV2Impl::getBlockSpanVarMinValue(std::shared_ptr<TsBlockSpan> block_span,
+KStatus TsStorageIteratorV2Impl::getBlockSpanVarMinValue(std::shared_ptr<TsBlockSpan>& block_span,
                                                          uint32_t col_id, uint32_t type, TSSlice& min) {
   KStatus ret;
   std::vector<string> var_rows;
@@ -278,7 +278,7 @@ KStatus TsStorageIteratorV2Impl::getBlockSpanVarMinValue(std::shared_ptr<TsBlock
   return KStatus::SUCCESS;
 }
 
-KStatus TsStorageIteratorV2Impl::getBlockSpanVarMaxValue(std::shared_ptr<TsBlockSpan> block_span,
+KStatus TsStorageIteratorV2Impl::getBlockSpanVarMaxValue(std::shared_ptr<TsBlockSpan>& block_span,
                                                          uint32_t col_id, uint32_t type, TSSlice& max) {
   KStatus ret;
   std::vector<string> var_rows;

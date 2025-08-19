@@ -66,10 +66,10 @@ class TsStorageIteratorV2Impl : public TsStorageIterator {
    */
   KStatus ScanEntityBlockSpans(timestamp64 ts);
 
-  KStatus getBlockSpanMinValue(std::shared_ptr<TsBlockSpan> block_span, uint32_t col_id, uint32_t type, void*& min);
-  KStatus getBlockSpanMaxValue(std::shared_ptr<TsBlockSpan> block_span, uint32_t col_id, uint32_t type, void*& max);
-  KStatus getBlockSpanVarMinValue(std::shared_ptr<TsBlockSpan> block_span, uint32_t col_id, uint32_t type, TSSlice& min);
-  KStatus getBlockSpanVarMaxValue(std::shared_ptr<TsBlockSpan> block_span, uint32_t col_id, uint32_t type, TSSlice& max);
+  KStatus getBlockSpanMinValue(std::shared_ptr<TsBlockSpan>& block_span, uint32_t col_id, uint32_t type, void*& min);
+  KStatus getBlockSpanMaxValue(std::shared_ptr<TsBlockSpan>& block_span, uint32_t col_id, uint32_t type, void*& max);
+  KStatus getBlockSpanVarMinValue(std::shared_ptr<TsBlockSpan>& block_span, uint32_t col_id, uint32_t type, TSSlice& min);
+  KStatus getBlockSpanVarMaxValue(std::shared_ptr<TsBlockSpan>& block_span, uint32_t col_id, uint32_t type, TSSlice& max);
 
   KStatus isBlockFiltered(std::shared_ptr<TsBlockSpan>& block_span, bool& is_filtered);
 
