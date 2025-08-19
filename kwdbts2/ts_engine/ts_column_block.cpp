@@ -122,10 +122,9 @@ KStatus TsColumnBlock::ParseColumnData(const AttributeInfo col_schema, TSSlice c
   // std::unique_ptr<TsBitmap> p_bitmap = nullptr;
   TsSliceGuard bitmap_guard;
   if (info.bitmap_len != 0) {
-    RemovePrefix(&compressed_data, 1);
     TSSlice bitmap_data;
     bitmap_data.data = compressed_data.data;
-    bitmap_data.len = info.bitmap_len - 1;
+    bitmap_data.len = info.bitmap_len;
     bitmap_guard = TsSliceGuard{bitmap_data};
     RemovePrefix(&compressed_data, bitmap_data.len);
   }
