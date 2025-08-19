@@ -256,6 +256,7 @@ message ImportDetails {
   string database_comment = 16;
   repeated string privileges = 17;
   bool writeWAL = 18;
+  string src_database_name = 19;
 }
 
 message ImportProgress {

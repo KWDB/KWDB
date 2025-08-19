@@ -29,6 +29,7 @@ import (
 	"fmt"
 	"time"
 
+	"gitee.com/kwbasedb/kwbase/pkg/ape"
 	"gitee.com/kwbasedb/kwbase/pkg/jobs"
 	"gitee.com/kwbasedb/kwbase/pkg/kv"
 	"gitee.com/kwbasedb/kwbase/pkg/server/serverpb"
@@ -236,6 +237,11 @@ type planner struct {
 // ExecutorConfig implements Planner interface.
 func (p *planner) ExecutorConfig() interface{} {
 	return p.execCfg
+}
+
+// GetApEngine is part of the Planner interface.
+func (p *planner) GetApEngine() *ape.ApEngine {
+	return p.execCfg.DistSQLSrv.ApEngine
 }
 
 func (ctx *extendedEvalContext) setSessionID(sessionID ClusterWideID) {

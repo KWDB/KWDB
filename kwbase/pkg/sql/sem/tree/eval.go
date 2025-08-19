@@ -35,6 +35,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"gitee.com/kwbasedb/kwbase/pkg/ape"
 	"gitee.com/kwbasedb/kwbase/pkg/base"
 	"gitee.com/kwbasedb/kwbase/pkg/kv"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
@@ -2894,6 +2895,9 @@ type EvalPlanner interface {
 
 	// GetStmt return stmt
 	GetStmt() string
+
+	// GetApEngine returns ap engine.
+	GetApEngine() *ape.ApEngine
 }
 
 // EvalSessionAccessor is a limited interface to access session variables.

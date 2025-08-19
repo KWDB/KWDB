@@ -26,18 +26,20 @@ package tree
 
 // Import represents a IMPORT statement.
 type Import struct {
-	Table      *TableName
-	IsDatabase bool
-	Into       bool
-	IntoCols   NameList
-	CreateFile Expr
-	CreateDefs TableDefs
-	FileFormat string
-	Files      Exprs
-	Options    KVOptions
-	OnlyMeta   bool
-	Settings   bool
-	Users      bool
+	Table        *TableName
+	IsDatabase   bool
+	Into         bool
+	IntoCols     NameList
+	CreateFile   Expr
+	CreateDefs   TableDefs
+	FileFormat   string
+	Files        Exprs
+	Options      KVOptions
+	OnlyMeta     bool
+	Settings     bool
+	Users        bool
+	DestDatabase Name
+	SrcDatabase  Name
 }
 
 var _ Statement = &Import{}
@@ -45,6 +47,16 @@ var _ Statement = &Import{}
 // Format implements the NodeFormatter interface.
 func (node *Import) Format(ctx *FmtCtx) {
 	ctx.WriteString("IMPORT ")
+
+	if node.Into && node.IsDatabase && node.DestDatabase != "" {
+		ctx.WriteString("FROM ")
+		ctx.WriteString(node.FileFormat)
+		ctx.WriteString(" DATABASE ")
+		ctx.WriteString(string(node.SrcDatabase))
+		ctx.WriteString(" TO ")
+		ctx.WriteString(string(node.DestDatabase))
+		return
+	}
 
 	if node.Into {
 		ctx.WriteString("INTO ")
