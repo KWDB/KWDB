@@ -79,7 +79,6 @@ KStatus TsLastSegment::TsLastSegBlockCache::BlockIndexCache::GetBlockIndices(
 
 KStatus TsLastSegment::TsLastSegBlockCache::BlockInfoCache::GetBlockInfo(int block_id, TsLastSegmentBlockInfo** info) {
   {
-    std::shared_lock lk{mu_};
     if (cache_flag_[block_id] == 1) {
       *info = &block_infos_[block_id];
       return SUCCESS;
@@ -553,11 +552,6 @@ KStatus TsLastSegment::GetBlockSpans(const TsBlockItemFilterParams& filter,
     return SUCCESS;
   }
 
-  // check bloom filter first
-  if (!MayExistEntity(filter.entity_id)) {
-    return SUCCESS;
-  }
-
   std::vector<TsLastSegmentBlockIndex>* p_block_indices;
   auto s = block_cache_->GetAllBlockIndex(&p_block_indices);
   if (s == FAIL) {
@@ -599,7 +593,13 @@ KStatus TsLastSegment::GetBlockSpans(const TsBlockItemFilterParams& filter,
       if (it->table_id != filter.table_id) {
         continue;
       }
-      //  we need to read the block to do futher filtering.
+      if (it->max_ts < span.ts_span.begin || it->min_ts > span.ts_span.end) {
+        continue;
+      }
+      if (it->max_lsn < span.lsn_span.begin || it->min_lsn > span.lsn_span.end) {
+        continue;
+      }
+      //  we need to read the block to do further filtering.
       int block_idx = it - block_indices.begin();
 
       if (block == nullptr || block->GetBlockID() != block_idx) {

@@ -64,14 +64,14 @@ struct BenchParams {
   int64_t time_start = 0;
   // data ts add mode. 0: ordered. 1: using current max ts.
   int ts_add_mode = 1;
-  // timestamp increment, default to 10 ms
-  int time_inc = 10;
+  // timestamp increment, default to 1 ms
+  int time_inc = 1;
   // the proportion of unordered data written
   int dis_int = 0;
   int dis_ext = 0;
   std::vector<int> tag_types;
   std::string engine_params;
-  std::string engine_version = "1";
+  std::string engine_version = "2";
 };
 }
 

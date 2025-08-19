@@ -11,21 +11,55 @@
 
 #pragma once
 
+#include <algorithm>
+#include <condition_variable>
+#include <deque>
 #include <list>
 #include <map>
 #include <memory>
 #include <mutex>
-#include <deque>
-#include <vector>
+#include <thread>
 #include <utility>
+#include <vector>
+
+#include "kwdb_type.h"
 #include "settings.h"
 #include "ts_common.h"
 #include "ts_vgroup.h"
 
 namespace kwdbts {
 
-class TsLSNFlushManager {
+class TsMemSegment;
+class TsFlushJobPool {
  private:
+  TsFlushJobPool() {
+    for (int i = 0; i < kMaxConcurrentJobNum; i++) {
+      workers_.emplace_back([this] { this->WorkerFunc(); });
+    }
+  }
+  ~TsFlushJobPool() {
+    // cancel all unrun jobs
+    {
+      std::lock_guard lk{job_mutex_};
+      jobs_.erase(
+          std::remove_if(jobs_.begin(), jobs_.end(), [](const JobInfo& job) { return job.status == JOB_CREATED; }),
+          jobs_.end());
+
+      // add sentinel
+      for (int i = 0; i < kMaxConcurrentJobNum; i++) {
+        jobs_.push_back({JOB_CANCELED, nullptr, nullptr});
+      }
+    }
+
+    // wait all threads
+    cv_.notify_all();
+    for (auto& worker : workers_) {
+      worker.join();
+    }
+  }
+  TsFlushJobPool(const TsFlushJobPool&) = delete;
+  TsFlushJobPool& operator=(const TsFlushJobPool&) = delete;
+
   enum JobStatus : uint8_t {
     JOB_CREATED = 1,
     JOB_RUNNING = 2,
@@ -33,136 +67,95 @@ class TsLSNFlushManager {
     JOB_CANCELED = 4,
     JOB_FAILED = 5,
   };
-  struct SwithJobInfo {
+
+  struct JobInfo {
     JobStatus status;
-    TS_LSN lsn;
-    KThreadID thread_id;
-    std::vector<TsVGroup*> vgroups;
+    TsVGroup* vgroup;
+    std::shared_ptr<TsMemSegment> imm_segment;
+    int retry_times = 0;
   };
-  const std::vector<std::shared_ptr<TsVGroup>>& vgrps_;
+
+  std::deque<JobInfo> jobs_;
+
+  int kMaxConcurrentJobNum = EngineOptions::vgroup_max_num * 2;
+  std::vector<std::thread> workers_;
+
+  std::condition_variable cv_;
   std::mutex job_mutex_;
-  std::deque<SwithJobInfo> jobs_;
-  TS_LSN flushed_lsn_{0};
-  std::atomic<size_t> mem_size_{0};
-  std::atomic<size_t> mem_total_size_{0};
+
+  KStatus job_status_ = KStatus::SUCCESS;
+
+  void WorkerFunc() {
+    while (true) {
+      std::unique_lock lk{job_mutex_};
+      cv_.wait(lk, [this]() { return !jobs_.empty(); });
+      auto job = jobs_.front();
+      jobs_.pop_front();
+      lk.unlock();
+      if (job.vgroup == nullptr) {
+        // found sentinel, just break;
+        break;
+      }
+
+      BackgroundFlushJob(&job);
+      if (job.status == JOB_CREATED) {
+        // retry again
+        AddFlushJob(job.vgroup, job.imm_segment);
+      } else if (job.status == JOB_FAILED) {
+        job_status_ = KStatus::FAIL;
+      }
+    }
+  }
+
+  static void BackgroundFlushJob(JobInfo* job) {
+    assert(job->status == JOB_CREATED);
+    job->status = JOB_RUNNING;
+    auto s = job->vgroup->FlushImmSegment(job->imm_segment);
+    if (s == FAIL) {
+      if (job->retry_times < 2) {
+        job->retry_times++;
+        job->status = JOB_CREATED;
+      } else {
+        job->status = JOB_FAILED;
+      }
+    } else {
+      job->status = JOB_FINISHED;
+    }
+  }
 
  public:
-  explicit TsLSNFlushManager(std::vector<std::shared_ptr<TsVGroup>>& vgrps) : vgrps_(vgrps) {}
-
-  TS_LSN GetFinishedLSN() {
-    return flushed_lsn_;
+  static TsFlushJobPool& GetInstance() {
+    static TsFlushJobPool instance;
+    return instance;
   }
 
-  void Count(size_t data_size) {
-    auto total_size = mem_total_size_.fetch_add(data_size);
-    mem_size_.fetch_add(data_size);
-    auto now_size = mem_size_.load();
-    if (now_size > EngineOptions::mem_segment_max_size) {
-      if (mem_size_.compare_exchange_strong(now_size, 0)) {
-        // TODO(zzr, liangbo): total_size input as LSN?
-        FlushMemSegment(total_size);
+  void AddFlushJob(TsVGroup* vgroup, std::shared_ptr<TsMemSegment> mem_segment) {
+    JobInfo job_info;
+    job_info.status = JOB_CREATED;
+    job_info.vgroup = vgroup;
+    job_info.imm_segment = mem_segment;
+
+    while (true) {
+      size_t job_size = 0;
+      {
+        std::unique_lock lk{job_mutex_};
+        job_size = jobs_.size();
       }
-    }
-  }
-
-  KStatus FlushMemSegment(TS_LSN lsn) {
-    for (auto& job : jobs_) {
-      if (job.lsn == lsn) {
-        LOG_ERROR("wal file [%lu] already in jobs.", lsn);
-        return KStatus::FAIL;
-      }
-    }
-    while (jobs_.size() > 4) {
-      LOG_INFO("current flush job number [%lu] sleep 1 second.", jobs_.size());
-      sleep(1);
-    }
-    SwithJobInfo flush_job;
-    flush_job.status = JOB_CREATED;
-    flush_job.lsn = lsn;
-    std::shared_ptr<TsMemSegment> cur_mem;
-    for (auto& grp : vgrps_) {
-      flush_job.vgroups.push_back(grp.get());
-    }
-    kwdbts::KWDBOperatorInfo kwdb_operator_info;
-    kwdb_operator_info.SetOperatorName("flushMemSegment");
-    kwdb_operator_info.SetOperatorOwner("TsLSNFlushManager");
-    time_t now;
-    // Record the start time of the operation
-    kwdb_operator_info.SetOperatorStartTime((uint64_t) time(&now));
-    job_mutex_.lock();
-    jobs_.push_back(std::move(flush_job));
-    SwithJobInfo& flush_job_in_list = jobs_.back();
-    job_mutex_.unlock();
-    flush_job_in_list.thread_id = kwdbts::KWDBDynamicThreadPool::GetThreadPool().ApplyThread(
-      std::bind(&TsLSNFlushManager::FlushThreadFunc, this, std::placeholders::_1), &flush_job_in_list,
-      &kwdb_operator_info);
-    if (flush_job_in_list.thread_id < 1) {
-      flush_job_in_list.status = JOB_FAILED;
-      LOG_ERROR("TsLSNFlushManager flush thread create failed");
-    }
-    return KStatus::SUCCESS;
-  }
-
-  void updateFinishLSN() {
-    job_mutex_.lock();
-    while (jobs_.size() > 0) {
-      SwithJobInfo& cur_job = jobs_.front();
-      if (cur_job.status == JOB_FINISHED) {
-        if (flushed_lsn_ < cur_job.lsn) {
-          flushed_lsn_ = cur_job.lsn;
-        }
-        jobs_.pop_front();
-      } else if (cur_job.status == JOB_FAILED) {
-        cur_job.status = JOB_CREATED;
-        kwdbts::KWDBOperatorInfo kwdb_operator_info;
-        kwdb_operator_info.SetOperatorName("flushMemSegment");
-        kwdb_operator_info.SetOperatorOwner("TsLSNFlushManager");
-        time_t now;
-        // Record the start time of the operation
-        kwdb_operator_info.SetOperatorStartTime((uint64_t) time(&now));
-        cur_job.thread_id = kwdbts::KWDBDynamicThreadPool::GetThreadPool().ApplyThread(
-          std::bind(&TsLSNFlushManager::FlushThreadFunc, this, std::placeholders::_1), &cur_job,
-          &kwdb_operator_info);
-        if (cur_job.thread_id < 1) {
-          cur_job.status = JOB_FAILED;
-          LOG_ERROR("TsLSNFlushManager flush thread create failed");
-        }
-        break;
+      if (job_size >= kMaxConcurrentJobNum) {
+        LOG_INFO("Flush job queue is full, wait for a job to finish");
+        std::this_thread::sleep_for(1s);
       } else {
         break;
       }
     }
-    job_mutex_.unlock();
+    {
+      std::unique_lock lk{job_mutex_};
+      jobs_.push_back(job_info);
+    }
+    cv_.notify_one();
   }
 
-  void FlushThreadFunc(void* args) {
-    SwithJobInfo* job_info = reinterpret_cast<SwithJobInfo*>(args);
-    assert(job_info->status == JOB_CREATED);
-    job_info->status = JOB_RUNNING;
-    bool flush_success = true;
-    for (auto& vgroup : job_info->vgroups) {
-      if (kwdbts::KWDBDynamicThreadPool::GetThreadPool().IsCancel()) {
-        job_info->status = JOB_CANCELED;
-        break;
-      }
-      if (vgroup == nullptr) {
-        continue;
-      }
-      auto s = vgroup->Flush();
-      if (s == KStatus::SUCCESS) {
-        // mem segment flush success. no need flush anymore.
-        vgroup = nullptr;
-      } else {
-        flush_success = false;
-      }
-    }
-    if (flush_success) {
-      job_info->status = JOB_FINISHED;
-    } else {
-      job_info->status = JOB_FAILED;
-    }
-    updateFinishLSN();
-  }
+  KStatus GetBackGroundStatus() const { return job_status_; }
 };
 
 }  //  namespace kwdbts
