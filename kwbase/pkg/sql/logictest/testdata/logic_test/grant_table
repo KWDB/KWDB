@@ -82,6 +82,7 @@ test           kwdb_internal       kwdb_procedures                    NULL      
 test           kwdb_internal       kwdb_retention                     NULL            public   SELECT
 test           kwdb_internal       kwdb_schedules                     NULL            public   SELECT
 test           kwdb_internal       kwdb_streams                       NULL            public   SELECT
+test           kwdb_internal       kwdb_triggers                      NULL            public   SELECT
 test           kwdb_internal       kwdb_tse_info                      NULL            public   SELECT
 test           kwdb_internal       leases                             NULL            public   SELECT
 test           kwdb_internal       node_build_info                    NULL            public   SELECT

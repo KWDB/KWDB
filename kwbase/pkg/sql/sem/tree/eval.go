@@ -3074,6 +3074,12 @@ type EvalContext struct {
 	// available during Eval to permit lookup of a particular placeholder's
 	// underlying datum, if available.
 	Placeholders *PlaceholderInfo
+	// TriggerColHolders relates column names to their type and, later, value for trigger's NEW/OLD.
+	// This pointer should always be set to the location of the PlaceholderInfo
+	// in the corresponding SemaContext during normal execution. Placeholders are
+	// available during Eval to permit lookup of a particular placeholder's
+	// underlying datum, if available.
+	TriggerColHolders *PlaceholderInfo
 
 	// Annotations augments the AST with extra information. This pointer should
 	// always be set to the location of the Annotations in the corresponding
@@ -3152,6 +3158,9 @@ type EvalContext struct {
 	GroupWindow         *GroupWindow
 	// IsProcedure is true when the the SQL exec in procedure.
 	IsProcedure bool
+
+	// IsTrigger is true when the the SQL has trigger.
+	IsTrigger bool
 }
 
 // GroupWindow record group_window information.
@@ -4914,8 +4923,37 @@ func makeNoValueProvidedForPlaceholderErr(pIdx PlaceholderIdx) error {
 	)
 }
 
+func makeNoValueProvidedForTriggerPlaceholderErr(pIdx PlaceholderIdx) error {
+	return pgerror.Newf(pgcode.UndefinedParameter,
+		"no value provided for trigger placeholder: $%d", pIdx+1,
+	)
+}
+
 // Eval implements the TypedExpr interface.
 func (t *Placeholder) Eval(ctx *EvalContext) (Datum, error) {
+	if t.IsTrigger {
+		if ctx.TriggerColHolders == nil {
+			// While preparing a query, there will be no available placeholders. A
+			// placeholder evaluates to itself at this point.
+			return t, nil
+		}
+		e, ok := ctx.TriggerColHolders.Value(t.Idx)
+		if !ok {
+			return nil, makeNoValueProvidedForTriggerPlaceholderErr(t.Idx)
+		}
+		// Placeholder expressions cannot contain other placeholders, so we do
+		// not need to recurse.
+		typ := ctx.TriggerColHolders.Types[t.Idx]
+		if typ == nil {
+			// All placeholders should be typed at this point.
+			return nil, errors.AssertionFailedf("missing type for trigger placeholder %s", t)
+		}
+		if !e.ResolvedType().Equivalent(typ) {
+			cast := &CastExpr{Expr: e, Type: typ}
+			return cast.Eval(ctx)
+		}
+		return e.Eval(ctx)
+	}
 	if !ctx.HasPlaceholders() {
 		// While preparing a query, there will be no available placeholders. A
 		// placeholder evaluates to itself at this point.

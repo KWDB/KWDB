@@ -1085,6 +1085,71 @@ message TableDescriptor {
   optional bool is_materialized_view = 48 [(gogoproto.nullable) = false];
   // used to store dropped ts columns
   repeated KWDBTSColumn dropped_ts_columns = 49 [(gogoproto.nullable) = false];
+
+  // metadata of triggers
+  repeated TriggerDescriptor triggers = 50 [(gogoproto.nullable) = false];
+
+  optional uint32 next_trigger_id = 51 [(gogoproto.nullable) = false,
+    (gogoproto.customname) = "NextTriggerID", (gogoproto.casttype) = "ID"];
+}
+
+// TriggerActionTime describes the timing of a trigger: before, after, or
+// instead of the event.
+enum TriggerActionTime {
+  ACTION_UNKNOWN = 0;
+  BEFORE = 1;
+  AFTER = 2;
+}
+
+// TriggerEvent describes the event that will cause a trigger to fire:
+// insert, update, delete
+enum TriggerEvent {
+  EVENT_UNKNOWN = 0;
+  INSERT = 1;
+  UPDATE = 2;
+  DELETE = 3;
+}
+
+// TriggerDescriptor describes a trigger on a table.
+message TriggerDescriptor {
+  option (gogoproto.equal) = true;
+
+  // Used within the table descriptor to uniquely identify individual
+  // trigger
+  optional uint32 id = 1 [(gogoproto.nullable) = false,
+    (gogoproto.customname) = "ID", (gogoproto.casttype) = "ID"];
+
+  // The name of the trigger. Unique within a table
+  optional string name = 2 [(gogoproto.nullable) = false];
+
+  // The timing of the trigger: before or after
+  optional TriggerActionTime action_time = 3 [(gogoproto.nullable) = false];
+
+  // The set of events that cause the trigger to execute: insert, update, delete,
+  optional TriggerEvent event = 4 [(gogoproto.nullable) = false];
+
+  // This field represents the sequence number of the trigger's activation.
+  optional uint32 trigger_order = 5 [(gogoproto.nullable) = false];
+
+  // If true, indicates that the trigger is executed for each mutated row.
+  // Otherwise, the trigger is executed once for the entire statement. (pending support)
+  optional bool for_each_row = 6 [(gogoproto.nullable) = false];
+
+  // The SQL statements that make up the body of the trigger.
+  optional string trigger_body = 7 [(gogoproto.nullable) = false];
+
+  // If true, indicates that the trigger is active.
+  optional bool enabled = 8 [(gogoproto.nullable) = false];
+
+  // The IDs of all relations that this trigger depends on.
+  repeated uint32 depends_on = 9;
+
+  // DependsOnRoutines are the IDs of the user-defined routines that this
+  // trigger depends on.
+  repeated uint32 depends_on_routines = 10;
+
+  // Extended is the reserved extended field.
+  optional bytes extended = 11;
 }
 
 // KWDBTSColumn is a dropped column of time-series table .

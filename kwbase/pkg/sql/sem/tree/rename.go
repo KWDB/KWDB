@@ -110,3 +110,20 @@ func (node *RenameColumn) Format(ctx *FmtCtx) {
 	ctx.WriteString(" TO ")
 	ctx.FormatNode(&node.NewName)
 }
+
+// RenameTrigger represents a RENAME TRIGGER.
+type RenameTrigger struct {
+	Name    Name
+	Table   TableName
+	NewName Name
+}
+
+// Format implements the NodeFormatter interface.
+func (node *RenameTrigger) Format(ctx *FmtCtx) {
+	ctx.WriteString("ALTER TRIGGER")
+	ctx.FormatNode(&node.Name)
+	ctx.WriteString("ON ")
+	ctx.FormatNode(&node.Table)
+	ctx.WriteString(" RENAME TO ")
+	ctx.FormatNode(&node.NewName)
+}

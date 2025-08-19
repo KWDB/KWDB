@@ -206,6 +206,12 @@ func (ins *StmtIns) executeImplement(
 		// and queries after the transaction is started will only be able to query data from the current version.
 		// so we should use NewTxn.
 		params.p.txn = kv.NewTxn(params.ctx, params.extendedEvalCtx.DB, params.extendedEvalCtx.NodeID)
+	} else if params.EvalContext().IsTrigger && params.p.txn.IsOpen() {
+		// we should exec Step to flush seq of txn if trigger exec.
+		if err := params.p.txn.Step(params.ctx, false); err != nil {
+			rCtx.SetProcedureTxn(tree.ProcedureTransactionDefault)
+			return err
+		}
 	}
 
 	rowsAffected, err := runPlanInsideProcedure(params, plan, newResult.Result, ins.typ)
@@ -604,13 +610,17 @@ func (c *Cursor) Clear() {
 // SetValueIns creates a new local variable for procedure
 type SetValueIns struct {
 	name       string
+	index      int
 	typ        *types.T
 	sourceExpr tree.TypedExpr
+	mode       tree.SetValueMode // the value type for local variables inside procedure/trigger
 }
 
 // NewSetIns creates new set instruction
-func NewSetIns(name string, typ *types.T, source tree.TypedExpr) *SetValueIns {
-	return &SetValueIns{name: name, typ: typ, sourceExpr: source}
+func NewSetIns(
+	name string, index int, typ *types.T, source tree.TypedExpr, mode tree.SetValueMode,
+) *SetValueIns {
+	return &SetValueIns{name: name, index: index, typ: typ, sourceExpr: source, mode: mode}
 }
 
 // Execute for SetValueIns
@@ -633,16 +643,24 @@ func (ins *SetValueIns) Execute(params runParams, rCtx *procedure.SpExecContext)
 		return err1
 	}
 
-	idx := rCtx.FindVariable(ins.name)
-	if idx == -1 {
-		rCtx.AddVariable(ins.name, &exec.LocalVariable{Data: value, Typ: *ins.typ})
-	} else {
-		if vars := rCtx.GetLocalVariable(); idx < len(vars) && !ins.typ.Equivalent(&vars[idx].Typ) {
-			rCtx.SetVariableType(idx, *ins.typ)
+	switch ins.mode {
+	case tree.DeclareValue:
+		rCtx.AddVariable(&exec.LocalVariable{Data: value, Typ: *ins.typ, Name: ins.name})
+	case tree.InternalValue:
+		if ins.index < rCtx.GetVariableLen() && !ins.typ.Equivalent(&rCtx.GetVariable(ins.index).Typ) {
+			rCtx.SetVariableType(ins.index, *ins.typ) // update value type
 		}
 		if ins.typ.Equivalent(value.ResolvedType()) || value == tree.DNull {
-			rCtx.SetVariable(idx, &value)
-		} else { //
+			rCtx.SetVariable(ins.index, &value)
+		} else {
+			return pgerror.Newf(pgcode.DatatypeMismatch, "variable %s type %s not save type %s ", ins.name, ins.typ.String(),
+				value.ResolvedType().String())
+		}
+	case tree.ExternalValue:
+		// replace placeholder with values inside EvalCtx
+		if ins.typ.Equivalent(value.ResolvedType()) || value == tree.DNull {
+			rCtx.SetExternalVariable(ins.index, &value)
+		} else {
 			return pgerror.Newf(pgcode.DatatypeMismatch, "variable %s type %s not save type %s ", ins.name, ins.typ.String(),
 				value.ResolvedType().String())
 		}
@@ -971,7 +989,7 @@ func (ins *FetchCursorIns) Execute(params runParams, rCtx *procedure.SpExecConte
 			return pgerror.Newf(pgcode.InvalidCursorState, "the fetch cursor has no more data.")
 		}
 		// get next value into value
-		if err := rCtx.SetVariables(ins.dstVarIdx, res, nil); err != nil {
+		if err := rCtx.SetVariables(ins.dstVarIdx, res, cursor.resultCols); err != nil {
 			return err
 		}
 	}
@@ -1083,12 +1101,12 @@ func (ins *TransactionIns) Execute(params runParams, rCtx *procedure.SpExecConte
 // IntoIns creates a stmt into value ins
 type IntoIns struct {
 	StmtIns
-	dstVarIdx []int
+	dstVar []tree.IntoHelper
 }
 
 // NewIntoIns creates new IntoIns instruction
-func NewIntoIns(query StmtIns, dstIdx []int) *IntoIns {
-	return &IntoIns{StmtIns: query, dstVarIdx: dstIdx}
+func NewIntoIns(query StmtIns, dstIdx []tree.IntoHelper) *IntoIns {
+	return &IntoIns{StmtIns: query, dstVar: dstIdx}
 }
 
 // Execute for IntoIns
@@ -1131,18 +1149,28 @@ func (ins *IntoIns) Execute(params runParams, rCtx *procedure.SpExecContext) err
 	}
 
 	// get next value into value
-	if err := rCtx.SetVariables(ins.dstVarIdx, res.Result.At(0), res.ResultCols); err != nil {
-		contiuneIsExec, exitIsExec, errHandler := dealWithHandleByType(params, rCtx, tree.SQLEXCEPTION)
-		if errHandler != nil {
-			return errHandler
+	for i, v := range ins.dstVar {
+		var err error
+		switch v.Type {
+		case tree.IntoDeclareValue:
+			err = rCtx.IntoDeclareVar(v.DeclareValueIdx, res.Result.At(0)[i], res.ResultCols[i])
+		case tree.IntoUDFValue:
+			err = params.p.sessionDataMutator.SetUserDefinedVar(v.UDFValueName, res.Result.At(0)[i])
 		}
-		if rCtx.NeedReturn() && rCtx.ReturnLabel() == procedure.DefaultLabel {
-			rCtx.AddReturn(procedure.IntoLabel, nil, nil)
+
+		if err != nil {
+			contiuneIsExec, exitIsExec, errHandler := dealWithHandleByType(params, rCtx, tree.SQLEXCEPTION)
+			if errHandler != nil {
+				return errHandler
+			}
+			if rCtx.NeedReturn() && rCtx.ReturnLabel() == procedure.DefaultLabel {
+				rCtx.AddReturn(procedure.IntoLabel, nil, nil)
+			}
+			if contiuneIsExec && !exitIsExec {
+				return nil
+			}
+			return err
 		}
-		if contiuneIsExec && !exitIsExec {
-			return nil
-		}
-		return err
 	}
 
 	return nil

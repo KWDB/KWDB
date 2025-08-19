@@ -2323,6 +2323,7 @@ func (ex *connExecutor) resetEvalCtx(evalCtx *extendedEvalContext, txn *kv.Txn, 
 	evalCtx.StmtTimestamp = stmtTS
 	evalCtx.TxnTimestamp = ex.state.sqlTimestamp
 	evalCtx.Placeholders = nil
+	evalCtx.TriggerColHolders = nil
 	evalCtx.Annotations = nil
 	evalCtx.IVarContainer = nil
 	evalCtx.Context = ex.Ctx()

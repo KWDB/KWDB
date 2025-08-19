@@ -348,6 +348,7 @@ func newInternalPlanner(
 	p.extendedEvalCtx.MemMetrics = memMetrics
 	p.extendedEvalCtx.ExecCfg = execCfg
 	p.extendedEvalCtx.Placeholders = &p.semaCtx.Placeholders
+	p.extendedEvalCtx.TriggerColHolders = &p.semaCtx.TriggerColHolders
 	p.extendedEvalCtx.Annotations = &p.semaCtx.Annotations
 	p.extendedEvalCtx.Tables = tables
 

@@ -891,6 +891,24 @@ func (ot *optTable) GetTableType() tree.TableType {
 	return ot.desc.TableType
 }
 
+// GetTriggers returns the definition of trigger
+func (ot *optTable) GetTriggers(event tree.TriggerEvent) []cat.TriggerMeta {
+	res := make([]cat.TriggerMeta, 0)
+	for _, trig := range ot.desc.Triggers {
+		if trig.Event != sqlbase.TriggerEvent(event) {
+			continue
+		}
+		res = append(res, cat.TriggerMeta{
+			TriggerID:   tree.ID(trig.ID),
+			TriggerName: trig.Name,
+			ActionTime:  tree.TriggerActionTime(trig.ActionTime),
+			Event:       tree.TriggerEvent(trig.Event),
+			Body:        trig.TriggerBody,
+		})
+	}
+	return res
+}
+
 // GetTSVersion return ts_version.
 func (ot *optTable) GetTSVersion() uint32 {
 	return uint32(ot.desc.TsTable.TsVersion)
@@ -1669,6 +1687,24 @@ func (ot *optVirtualTable) GetParentID() tree.ID {
 // GetTableType return which type the table is.
 func (ot *optVirtualTable) GetTableType() tree.TableType {
 	return ot.desc.TableType
+}
+
+// GetTriggers returns the definition of trigger
+func (ot *optVirtualTable) GetTriggers(event tree.TriggerEvent) []cat.TriggerMeta {
+	res := make([]cat.TriggerMeta, 0)
+	for _, trig := range ot.desc.Triggers {
+		if trig.Event != sqlbase.TriggerEvent(event) {
+			continue
+		}
+		res = append(res, cat.TriggerMeta{
+			TriggerID:   tree.ID(trig.ID),
+			TriggerName: trig.Name,
+			ActionTime:  tree.TriggerActionTime(trig.ActionTime),
+			Event:       tree.TriggerEvent(trig.Event),
+			Body:        trig.TriggerBody,
+		})
+	}
+	return res
 }
 
 // GetTSVersion return ts_version.

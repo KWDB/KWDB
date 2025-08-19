@@ -67,6 +67,17 @@ func (b *Builder) buildDelete(del *tree.Delete, inScope *scope) (outScope *scope
 			"cannot specify a list of column IDs with DELETE"))
 	}
 
+	if b.insideObjectDef.HasFlags(InsideTriggerDef) {
+		if tab.GetTableType() != tree.RelationalTable {
+			panic(pgerror.Newf(pgcode.InvalidCatalogName, "unsupported table type: %s in trigger", tree.TableTypeName(tab.GetTableType())))
+		}
+		if del.Returning != nil {
+			if _, ok := del.Returning.(*tree.ReturningExprs); ok {
+				panic(pgerror.Newf(pgcode.FeatureNotSupported, "RETURNING with values is not supported in triggers"))
+			}
+		}
+	}
+
 	// Check Select permission as well, since existing values must be read.
 	b.checkPrivilege(depName, tab, privilege.SELECT)
 
@@ -111,10 +122,10 @@ func (b *Builder) buildDelete(del *tree.Delete, inScope *scope) (outScope *scope
 		case *tree.ReturningExprs:
 			returning = *t
 		case *tree.ReturningIntoClause:
-			if b.insideProcDef {
+			if b.insideObjectDef.HasAnyFlags(InsideProcedureDef | InsideTriggerDef) {
 				returning = t.SelectClause
 			} else {
-				panic(pgerror.Newf(pgcode.FeatureNotSupported, "returning into clause not in procedure is unsupported"))
+				panic(pgerror.Newf(pgcode.FeatureNotSupported, "returning into clause not in procedure/trigger is unsupported"))
 			}
 		}
 		mb.buildDelete(returning)
@@ -131,6 +142,10 @@ func (mb *mutationBuilder) buildDelete(returning tree.ReturningExprs) {
 	mb.buildFKChecksForDelete()
 
 	private := mb.makeMutationPrivate(returning != nil)
+
+	// get triggers and buildProcCommand for trigger body.
+	private.TriggerCommands = mb.buildProcCommandForTriggers(tree.TriggerEventDelete)
+
 	mb.outScope.expr = mb.b.factory.ConstructDelete(mb.outScope.expr, mb.checks, private)
 
 	mb.buildReturning(returning)

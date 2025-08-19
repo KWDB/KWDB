@@ -243,7 +243,8 @@ const (
 	CrdbInternalKWDBSchedulesTableID
 	CrdbInternalKWDBFunctionsTableID
 	KwdbInternalKWDBProceduresTableID
-	MinVirtualID = KwdbInternalKWDBProceduresTableID
+	KwdbInternalKWDBTriggersTableID
+	MinVirtualID = KwdbInternalKWDBTriggersTableID
 )
 
 const (

@@ -1576,6 +1576,7 @@ objoid      classoid    objsubid  description
 4294967253  4294967219  0         kwdb show retentions
 4294967176  4294967219  0         kwdb schedules info
 4294967252  4294967219  0         kwdb streams info
+4294967173  4294967219  0         kwdb triggers info
 4294967251  4294967219  0         kwdb show info of ts engine
 4294967276  4294967219  0         acquired table leases (RAM; local node only)
 4294967293  4294967219  0         detailed identification strings (RAM, local node only)

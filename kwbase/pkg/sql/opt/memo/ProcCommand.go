@@ -106,8 +106,7 @@ type IntoCommand struct {
 	Name         string
 	Body         RelExpr
 	PhysicalProp *physical.Required
-	Idx          []int
-	// params...
+	IntoValue    []tree.IntoHelper // represents the type of variable: Declared(in procedure ) or UDV
 }
 
 // Type implements the ProcCommand interface for IntoCommand.
@@ -142,6 +141,7 @@ type DeclareCol struct {
 	Typ     *types.T
 	Default tree.TypedExpr
 	Idx     int
+	Mode    tree.SetValueMode // the value type for local variables inside procedure/trigger
 }
 
 // WhileCommand creates instruction slice

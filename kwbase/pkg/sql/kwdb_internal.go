@@ -127,6 +127,7 @@ var kwdbInternal = virtualSchema{
 		sqlbase.CrdbInternalKWDBAttributeValueTableID:   kwdbInternalKWDBAttributeValueTable,
 		sqlbase.CrdbInternalKWDBFunctionsTableID:        kwdbInternalKWDBFunctionsTable,
 		sqlbase.KwdbInternalKWDBProceduresTableID:       kwdbInternalKWDBProceduresTable,
+		sqlbase.KwdbInternalKWDBTriggersTableID:         kwdbInternalKWDBTriggersTable,
 		sqlbase.CrdbInternalKWDBSchedulesTableID:        kwdbInternalKWDBSchedulesTable,
 		sqlbase.CrdbInternalKWDBObjectCreateStatementID: kwdbInternalKWDBObjectCreateStatement,
 		sqlbase.CrdbInternalKWDBObjectRetentionID:       kwdbInternalKWDBObjectRetention,
@@ -2748,6 +2749,51 @@ CREATE TABLE kwdb_internal.kwdb_procedures (
 		}
 		return nil
 
+	},
+}
+
+// kwdbInternalKWDBTriggersTable exposes local information about the triggers.
+var kwdbInternalKWDBTriggersTable = virtualSchemaTable{
+	comment: "kwdb triggers info",
+	schema: `
+CREATE TABLE kwdb_internal.kwdb_triggers (
+  trigger_id        INT8 NOT NULL,
+  trigger_name      STRING NOT NULL,
+  database_name     STRING NOT NULL,
+  schema_name       STRING NOT NULL,
+  table_name        STRING NOT NULL,
+  table_id          INT8 NOT NULL,
+  create_statement  STRING
+)
+`,
+	populate: func(ctx context.Context, p *planner, dbContext *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+
+		return forEachTableDescWithTableLookupInternal(ctx, p, dbContext, virtualOnce, true, /*allowAdding*/
+			func(db *DatabaseDescriptor, scName string, table *TableDescriptor, lCtx tableLookupFn) error {
+				parentNameStr := tree.DNull
+				if db != nil {
+					parentNameStr = tree.NewDString(db.Name)
+				}
+				scNameStr := tree.NewDString(scName)
+
+				descID := tree.NewDInt(tree.DInt(table.ID))
+				for i := range table.Triggers {
+					trigger := table.Triggers[i]
+
+					if err := addRow(
+						tree.NewDInt(tree.DInt(trigger.ID)),
+						tree.NewDString(trigger.Name),
+						parentNameStr,
+						scNameStr,
+						tree.NewDString(table.Name),
+						descID,
+						tree.NewDString(trigger.TriggerBody),
+					); err != nil {
+						return err
+					}
+				}
+				return nil
+			})
 	},
 }
 
