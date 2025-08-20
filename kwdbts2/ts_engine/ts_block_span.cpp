@@ -81,12 +81,16 @@ TsBlockSpan::TsBlockSpan(TSEntityID entity_id, std::shared_ptr<TsBlock> block, i
       nrow_(nrow),
       tbl_schema_mgr_(tbl_schema_mgr) {
   assert(nrow_ >= 1);
-  if (block_->GetTableVersion() != scan_version) {
-    convert_ = std::make_unique<TSBlkDataTypeConvert>(*this, tbl_schema_mgr,
-                                                    scan_version == 0 ? block->GetTableVersion() : scan_version);
-    auto s = convert_->Init();
-    if (s != SUCCESS) {
-      LOG_ERROR("convert_ Init failed!");
+  if (scan_version == 0) {
+    scan_version = block_->GetTableVersion();
+  } else {
+    if (block_->GetTableVersion() != scan_version) {
+      convert_ = std::make_unique<TSBlkDataTypeConvert>(*this, tbl_schema_mgr,
+                                                      scan_version == 0 ? block->GetTableVersion() : scan_version);
+      auto s = convert_->Init();
+      if (s != SUCCESS) {
+        LOG_ERROR("convert_ Init failed!");
+      }
     }
   }
   std::shared_ptr<MMapMetricsTable> scan_metric;
