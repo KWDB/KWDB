@@ -57,7 +57,7 @@ TEST(ColumnBlockBuilder, FixLen) {
   EXPECT_EQ(col_block1->GetCompressedData(&out, &compress_info, true), SUCCESS);
 
   std::unique_ptr<TsColumnBlock> col_block2;
-  ASSERT_EQ(TsColumnBlock::ParseCompressedColumnData(col_schema, {out.data(), out.size()},
+  ASSERT_EQ(TsColumnBlock::ParseColumnData(col_schema, {out.data(), out.size()},
                                                      compress_info, &col_block2),
             SUCCESS);
 
@@ -90,7 +90,7 @@ TEST(ColumnBlockBuilder, FixLen) {
   EXPECT_EQ(col_block3->GetRowNum(), std::accumulate(block_len.begin(), block_len.end(), 0) * 2);
   ASSERT_EQ(col_block3->GetCompressedData(&out, &compress_info, true), SUCCESS);
   std::unique_ptr<TsColumnBlock> col_block4;
-  ASSERT_EQ(TsColumnBlock::ParseCompressedColumnData(col_schema, {out.data(), out.size()},
+  ASSERT_EQ(TsColumnBlock::ParseColumnData(col_schema, {out.data(), out.size()},
                                                      compress_info, &col_block4),
             SUCCESS);
   {
@@ -171,7 +171,7 @@ TEST(ColumnBlockBuilder, VarLen) {
   EXPECT_EQ(col_block1->GetCompressedData(&out, &compress_info, true), SUCCESS);
 
   std::unique_ptr<TsColumnBlock> col_block2;
-  ASSERT_EQ(TsColumnBlock::ParseCompressedColumnData(col_schema, {out.data(), out.size()},
+  ASSERT_EQ(TsColumnBlock::ParseColumnData(col_schema, {out.data(), out.size()},
                                                      compress_info, &col_block2),
             SUCCESS);
 
@@ -209,7 +209,7 @@ TEST(ColumnBlockBuilder, VarLen) {
   EXPECT_EQ(col_block3->GetRowNum(), std::accumulate(block_len.begin(), block_len.end(), 0) * 2);
   ASSERT_EQ(col_block3->GetCompressedData(&out, &compress_info, true), SUCCESS);
   std::unique_ptr<TsColumnBlock> col_block4;
-  ASSERT_EQ(TsColumnBlock::ParseCompressedColumnData(col_schema, {out.data(), out.size()},
+  ASSERT_EQ(TsColumnBlock::ParseColumnData(col_schema, {out.data(), out.size()},
                                                      compress_info, &col_block4),
             SUCCESS);
 

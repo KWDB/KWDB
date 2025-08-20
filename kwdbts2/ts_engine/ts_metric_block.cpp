@@ -29,12 +29,7 @@ bool TsMetricBlock::GetCompressedData(std::string* output, TsMetricCompressInfo*
   const auto& mgr = CompressorManager::GetInstance();
   // 1. Compress LSN
   TSSlice lsn_slice{reinterpret_cast<char*>(lsn_buffer_.data()), lsn_buffer_.size() * sizeof(TS_LSN)};
-  TsCompAlg lsn_alg = compress_ts_and_lsn ? TsCompAlg::kSimple8B_u64 : TsCompAlg::kPlain;
-  auto ok = mgr.CompressData(lsn_slice, nullptr, count_, &compressed_data, lsn_alg, GenCompAlg::kPlain);
-  if (!ok) {
-    LOG_ERROR("compress lsn error");
-    return FAIL;
-  }
+  compressed_data.append(lsn_slice.data, lsn_slice.len);
   compress_info->lsn_len = compressed_data.size();
   size_t offset = compress_info->lsn_len;
 
@@ -45,8 +40,7 @@ bool TsMetricBlock::GetCompressedData(std::string* output, TsMetricCompressInfo*
   TsColumnCompressInfo col_compress_info;
   for (int i = 0; i < column_blocks_.size(); i++) {
     tmp.clear();
-    // bool compress = compress_ts_and_lsn || i != 0;
-    ok = column_blocks_[i]->GetCompressedData(&tmp, &col_compress_info, compress_columns);
+    bool ok = column_blocks_[i]->GetCompressedData(&tmp, &col_compress_info, compress_columns);
     if (!ok) {
       LOG_ERROR("compress column data error");
       return FAIL;
@@ -125,12 +119,7 @@ KStatus TsMetricBlock::ParseCompressedMetricData(const std::vector<AttributeInfo
   TSSlice lsn_slice;
   lsn_slice.data = compressed_data.data;
   lsn_slice.len = compress_info.lsn_len;
-  TsSliceGuard out_lsn_guard;
-  bool ok = mgr.DecompressData(lsn_slice, nullptr, compress_info.row_count, &out_lsn_guard);
-  if (!ok) {
-    LOG_ERROR("decompress lsn error");
-    return FAIL;
-  }
+  TsSliceGuard out_lsn_guard(lsn_slice);
 
   if (out_lsn_guard.size() != compress_info.row_count * sizeof(TS_LSN)) {
     LOG_ERROR("decompress lsn size not match");
@@ -145,7 +134,7 @@ KStatus TsMetricBlock::ParseCompressedMetricData(const std::vector<AttributeInfo
     data_slice.data = compressed_data.data + compress_info.column_data_segments[i].offset;
     data_slice.len = compress_info.column_data_segments[i].length;
     std::unique_ptr<TsColumnBlock> colblock;
-    auto s = TsColumnBlock::ParseCompressedColumnData(
+    auto s = TsColumnBlock::ParseColumnData(
         schema[i], data_slice, compress_info.column_compress_infos[i], &colblock);
     if (s == FAIL) {
       LOG_ERROR("parse column data error");
