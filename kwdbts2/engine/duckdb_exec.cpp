@@ -19,6 +19,7 @@
 
 
 #include "duckdb/main/database.hpp"
+#include "duckdb/main/prepared_statement_data.hpp"
 #include "duckdb/main/client_context.hpp"
 #include "duckdb/catalog/catalog.hpp"
 #include "duckdb/catalog/catalog_entry/table_catalog_entry.hpp"
@@ -26,10 +27,13 @@
 #include "duckdb/function/table_function.hpp"
 #include "duckdb/common/extra_operator_info.hpp"
 #include "duckdb/execution/executor.hpp"
+#include "duckdb/execution/operator/helper/physical_batch_collector.hpp"
 
 #include "ee_global.h"
 #include "lg_api.h"
 #include "cm_func.h"
+#include "ee_string_info.h"
+#include "ee_encoding.h"
 
 namespace kwdbts {
   bool checkDuckdbParam(void *db, void *connect) {
@@ -74,8 +78,7 @@ namespace kwdbts {
 
     virtual_column_map_t virtual_columns;
     if (scan_function.get_virtual_columns) {
-      virtual_columns = scan_function.get_virtual_columns(
-          context, bind_data.get());
+      virtual_columns = scan_function.get_virtual_columns(context, bind_data.get());
     } else {
       virtual_columns = table_entry.GetVirtualColumns();
     }
@@ -101,23 +104,6 @@ namespace kwdbts {
         return_types, column_ids, projection_ids, return_names,
         std::move(table_filters), estimated_cardinality,
         std::move(extra_info), parameters, virtual_columns);
-  }
-
-// 获取所有表的主函数
-  vector<TableCatalogEntry*> GetAllTables(ClientContext& context) {
-    vector<TableCatalogEntry*> tables;
-
-    // 1. 获取系统目录
-    auto& catalog = Catalog::GetSystemCatalog(context);
-
-    // 2. 遍历所有模式（Schema），通常默认模式为 "main"
-    vector<string> schemas = {"main"}; // 可添加其他模式，如 "pg_catalog"
-    for (auto& schema_name : schemas) {
-      // 3. 获取模式下的所有目录项
-      auto entries = catalog.GetSchemas(context);
-    }
-
-    return tables;
   }
 
   DuckdbExec::DuckdbExec(void *db, void *connect) {
@@ -325,6 +311,296 @@ namespace kwdbts {
     return ret;
   }
 
+  KStatus EncodingValue(kwdbContext_p ctx, Value &val, const EE_StringInfo& info, LogicalType &return_types) {
+    EnterFunc();
+    KStatus ret = KStatus::SUCCESS;
+
+    // dispose null
+    if (val.IsNull()) {
+      k_int32 len = ValueEncoding::EncodeComputeLenNull(0);
+      ret = ee_enlargeStringInfo(info, len);
+      if (ret != SUCCESS) {
+        Return(ret);
+      }
+
+      CKSlice slice{info->data + info->len, len};
+      ValueEncoding::EncodeNullValue(&slice, 0);
+      info->len = info->len + len;
+      Return(ret);
+    }
+
+//    switch (return_types.id()) {
+//      case LogicalTypeId::BOOLEAN: {
+//        auto res = BooleanValue::Get(val);
+//        std::memcpy(&val, val, sizeof(k_bool));
+//        k_int32 len = ValueEncoding::EncodeComputeLenBool(0, val);
+//        ret = ee_enlargeStringInfo(info, len);
+//        if (ret != SUCCESS) {
+//          break;
+//        }
+//
+//        CKSlice slice{info->data + info->len, len};
+//        ValueEncoding::EncodeBoolValue(&slice, 0, val);
+//        info->len = info->len + len;
+//        break;
+//      }
+//      case LogicalTypeId::STRING_LITERAL: {
+//        k_uint16 val_len;
+//        DatumPtr raw = GetData(row, col, val_len);
+//        std::string val = std::string{static_cast<char*>(raw), val_len};
+//        k_int32 len = ValueEncoding::EncodeComputeLenString(0, val.size());
+//        ret = ee_enlargeStringInfo(info, len);
+//        if (ret != SUCCESS) {
+//          break;
+//        }
+//
+//        CKSlice slice{info->data + info->len, len};
+//        ValueEncoding::EncodeBytesValue(&slice, 0, val);
+//        info->len = info->len + len;
+//        break;
+//      }
+//      case LogicalTypeId::TIMESTAMP:
+//      case LogicalTypeId::TIMESTAMP_TZ:{
+//        DatumPtr raw = GetData(row, col);
+//        k_int64 val;
+//        std::memcpy(&val, raw, sizeof(k_int64));
+//        CKTime ck_time = getCKTime(val, col_info_[col].storage_type, ctx->timezone);
+//        k_int32 len = ValueEncoding::EncodeComputeLenTime(0, ck_time);
+//        ret = ee_enlargeStringInfo(info, len);
+//        if (ret != SUCCESS) {
+//          break;
+//        }
+//
+//        CKSlice slice{info->data + info->len, len};
+//        ValueEncoding::EncodeTimeValue(&slice, 0, ck_time);
+//        info->len = info->len + len;
+//        break;
+//      }
+//      case LogicalTypeId::TINYINT:
+//      case LogicalTypeId::SMALLINT:
+//      case LogicalTypeId::INTEGER:
+//      case LogicalTypeId::BIGINT:{
+//        DatumPtr raw = GetData(row, col);
+//        k_int64 val;
+//        switch (col_info_[col].storage_type) {
+//          case roachpb::DataType::BIGINT:
+//          case roachpb::DataType::TIMESTAMP:
+//          case roachpb::DataType::TIMESTAMPTZ:
+//          case roachpb::DataType::TIMESTAMP_MICRO:
+//          case roachpb::DataType::TIMESTAMP_NANO:
+//          case roachpb::DataType::TIMESTAMPTZ_MICRO:
+//          case roachpb::DataType::TIMESTAMPTZ_NANO:
+//          case roachpb::DataType::DATE:
+//            std::memcpy(&val, raw, sizeof(k_int64));
+//            break;
+//          case roachpb::DataType::SMALLINT:
+//            k_int16 val16;
+//            std::memcpy(&val16, raw, sizeof(k_int16));
+//            val = val16;
+//            break;
+//          default:
+//            k_int32 val32;
+//            std::memcpy(&val32, raw, sizeof(k_int32));
+//            val = val32;
+//            break;
+//        }
+//        k_int32 len = ValueEncoding::EncodeComputeLenInt(0, val);
+//        ret = ee_enlargeStringInfo(info, len);
+//        if (ret != SUCCESS) {
+//          break;
+//        }
+//
+//        CKSlice slice{info->data + info->len, len};
+//        ValueEncoding::EncodeIntValue(&slice, 0, val);
+//        info->len = info->len + len;
+//        break;
+//      }
+//      case LogicalTypeId::FLOAT:
+//      case LogicalTypeId::DOUBLE:{
+//        DatumPtr raw = GetData(row, col);
+//        k_double64 val;
+//        if (col_info_[col].storage_type == roachpb::DataType::FLOAT) {
+//          k_float32 val32;
+//          std::memcpy(&val32, raw, sizeof(k_float32));
+//          val = val32;
+//        } else {
+//          std::memcpy(&val, raw, sizeof(k_double64));
+//        }
+//
+//        k_int32 len = ValueEncoding::EncodeComputeLenFloat(0);
+//        ret = ee_enlargeStringInfo(info, len);
+//        if (ret != SUCCESS) {
+//          break;
+//        }
+//
+//        CKSlice slice{info->data + info->len, len};
+//        ValueEncoding::EncodeFloatValue(&slice, 0, val);
+//        info->len = info->len + len;
+//        break;
+//      }
+//      case LogicalTypeId::DECIMAL: {
+//        switch (col_info_[col].storage_type) {
+//          case roachpb::DataType::SMALLINT: {
+//            DatumPtr ptr = GetData(row, col);
+//            EncodeDecimal<k_int16>(ptr, info);
+//            break;
+//          }
+//          case roachpb::DataType::INT: {
+//            DatumPtr ptr = GetData(row, col);
+//            EncodeDecimal<k_int32>(ptr, info);
+//            break;
+//          }
+//          case roachpb::DataType::TIMESTAMP:
+//          case roachpb::DataType::TIMESTAMPTZ:
+//          case roachpb::DataType::TIMESTAMP_MICRO:
+//          case roachpb::DataType::TIMESTAMP_NANO:
+//          case roachpb::DataType::TIMESTAMPTZ_MICRO:
+//          case roachpb::DataType::TIMESTAMPTZ_NANO:
+//          case roachpb::DataType::DATE:
+//          case roachpb::DataType::BIGINT: {
+//            DatumPtr ptr = GetData(row, col);
+//            EncodeDecimal<k_int64>(ptr, info);
+//            break;
+//          }
+//          case roachpb::DataType::FLOAT: {
+//            DatumPtr ptr = GetData(row, col);
+//            EncodeDecimal<k_float32>(ptr, info);
+//            break;
+//          }
+//          case roachpb::DataType::DOUBLE: {
+//            DatumPtr ptr = GetData(row, col);
+//            EncodeDecimal<k_double64>(ptr, info);
+//            break;
+//          }
+//          case roachpb::DataType::DECIMAL: {
+//            DatumPtr ptr = GetData(row, col);
+//            k_bool is_double = *reinterpret_cast<k_bool*>(ptr);
+//            if (is_double) {
+//              EncodeDecimal<k_double64>(ptr + sizeof(k_bool), info);
+//            } else {
+//              EncodeDecimal<k_int64>(ptr + sizeof(k_bool), info);
+//            }
+//            break;
+//          }
+//          default: {
+//            LOG_ERROR("Unsupported Decimal type for encoding: %d ", col_info_[col].storage_type)
+//            EEPgErrorInfo::SetPgErrorInfo(ERRCODE_INDETERMINATE_DATATYPE, "unsupported data type");
+//            break;
+//          }
+//        }
+//        break;
+//      }
+////      case KWDBTypeFamily::IntervalFamily: {
+////        DatumPtr raw = GetData(row, col);
+////        k_int64 val;
+////        std::memcpy(&val, raw, sizeof(k_int64));
+////
+////        struct KWDuration duration;
+////        switch (col_info_[col].storage_type) {
+////          case roachpb::TIMESTAMP_MICRO:
+////          case roachpb::TIMESTAMPTZ_MICRO:
+////            duration.format(val, 1000);
+////            break;
+////          case roachpb::TIMESTAMP_NANO:
+////          case roachpb::TIMESTAMPTZ_NANO:
+////            duration.format(val, 1);
+////            break;
+////          default:
+////            duration.format(val, 1000000);
+////            break;
+////        }
+////        k_int32 len = ValueEncoding::EncodeComputeLenDuration(0, duration);
+////        ret = ee_enlargeStringInfo(info, len);
+////        if (ret != SUCCESS) {
+////          break;
+////        }
+////
+////        CKSlice slice{info->data + info->len, len};
+////        ValueEncoding::EncodeDurationValue(&slice, 0, duration);
+////        info->len = info->len + len;
+////        break;
+////      }
+////      case KWDBTypeFamily::DateFamily: {
+////        const int secondOfDay = 24 * 3600;
+////        DatumPtr raw = GetData(row, col);
+////        std::string date_str = std::string{static_cast<char*>(raw)};
+////        struct tm stm {
+////            0
+////        };
+////        int year, mon, day;
+////        k_int64 msec;
+////        std::memcpy(&msec, raw, sizeof(k_int64));
+////        k_int64 seconds = msec / 1000;
+////        time_t rawtime = (time_t) seconds;
+////        tm timeinfo;
+////        gmtime_r(&rawtime, &timeinfo);
+////
+////        stm.tm_year = timeinfo.tm_year;
+////        stm.tm_mon = timeinfo.tm_mon;
+////        stm.tm_mday = timeinfo.tm_mday;
+////        time_t val = timelocal(&stm);
+////        val += ctx->timezone * 60 * 60;
+////        val /= secondOfDay;
+////        k_int32 len = ValueEncoding::EncodeComputeLenInt(0, val);
+////        ret = ee_enlargeStringInfo(info, len);
+////        if (ret != SUCCESS) {
+////          break;
+////        }
+////
+////        CKSlice slice{info->data + info->len, len};
+////        ValueEncoding::EncodeIntValue(&slice, 0, val);
+////        info->len = info->len + len;
+////        break;
+////      }
+//      default: {
+//        DatumPtr raw = GetData(row, col);
+//        k_int64 val;
+//        std::memcpy(&val, raw, sizeof(k_int64));
+//        k_int32 len = ValueEncoding::EncodeComputeLenInt(0, val);
+//        ret = ee_enlargeStringInfo(info, len);
+//        if (ret != SUCCESS) {
+//          break;
+//        }
+//
+//        CKSlice slice{info->data + info->len, len};
+//        ValueEncoding::EncodeIntValue(&slice, 0, val);
+//        info->len = info->len + len;
+//        break;
+//      }
+//    }
+    Return(ret);
+  }
+
+  KStatus Encoding(kwdbContext_p ctx, bool use_query_short_circuit, k_int64* command_limit,
+                   std::atomic<k_int64>* count_for_limit, MaterializedQueryResult * res,
+                   char* &encoding_buf_, k_uint32 &encoding_len_, vector<LogicalType> &return_types) {
+    KStatus st = KStatus::SUCCESS;
+    EE_StringInfo msgBuffer = ee_makeStringInfo();
+    if (msgBuffer == nullptr) {
+      return KStatus::FAIL;
+    }
+
+    auto &coll = res->Collection();
+    for (auto &row : coll.Rows()) {
+      for (idx_t col_idx = 0; col_idx < coll.ColumnCount(); col_idx++) {
+        auto val = row.GetValue(col_idx);
+        st = EncodingValue(ctx, val, msgBuffer, return_types[col_idx]);
+        if (st == KStatus::FAIL) {
+          break;
+        }
+      }
+    }
+
+    if (st == SUCCESS) {
+      encoding_buf_ = msgBuffer->data;
+      encoding_len_ = msgBuffer->len;
+    } else {
+      free(msgBuffer->data);
+    }
+    delete msgBuffer;
+    return st;
+  }
+
 	ExecutionResult DuckdbExec::ExecuteCustomPlan() {
 		ExecutionResult result;
 		if (!connect_ || !connect_->context) {
@@ -335,33 +611,115 @@ namespace kwdbts {
     connect_->BeginTransaction();
 
 		try {
-			// 转换自定义物理计划为DuckDB物理计划
-			// 获取表信息
+      // 1. 准备上下文和元数据
       auto& context = *connect_->context.get();
-			auto& catalog = Catalog::GetSystemCatalog(context);
-			std::string table_name = "region"; // 用于扫描
-			auto entry = catalog.GetEntry(context, CatalogType::TABLE_ENTRY, DEFAULT_SCHEMA,
-																		table_name, OnEntryNotFound::RETURN_NULL);
-			if (!entry) {
+      std::string db_name = "tpch";
+      auto& catalog = Catalog::GetCatalog(context, db_name);
+      std::string table_name = "region";
+
+      auto entry = catalog.GetEntry(context, CatalogType::TABLE_ENTRY, "main",
+                                    table_name, OnEntryNotFound::RETURN_NULL);
+      if (!entry) {
         connect_->Rollback();
         result.error_message = "can not find table " + table_name;
         return result;
-			}
+      }
 
-			auto *scanCatalog = dynamic_cast<TableCatalogEntry*>(entry.get());
-			vector<ColumnIndex> column_ids;
-			column_ids.push_back(ColumnIndex(0));
-			auto scanOp = CreateTableScanOperator(context, *scanCatalog, table_name, column_ids);
-			auto root_op = move(scanOp);
+      // 2. 创建扫描运算符
+      auto* scanCatalog = dynamic_cast<TableCatalogEntry*>(entry.get());
+      vector<ColumnIndex> column_ids;
+      column_ids.push_back(ColumnIndex(0));  // 只扫描第0列
+      column_ids.push_back(ColumnIndex(1));
+      column_ids.push_back(ColumnIndex(2));
+      auto scanOp = CreateTableScanOperator(context, *scanCatalog, table_name, column_ids);
+//      auto root_op = move(scanOp);
 
-			// 初始化执行器
-			Executor executor(context);
-			executor.Initialize(*root_op);
-      executor.ExecuteTask(true);
-      executor.WaitForTask();
-      auto res = executor.GetResult();
-      result.success = true;
-			// 获取结果
+      // 3. 准备结果收集（适配DuckDB 1.3.2版本）
+      // 3.1 获取返回类型（通过公共API获取列信息）
+      vector<LogicalType> return_types;
+      vector<string> names;
+      for (auto& col_idx : column_ids) {
+        // 修正：通过公共方法GetColumn获取列定义，使用GetPrimaryIndex()访问索引
+        auto& column = scanCatalog->GetColumn(LogicalIndex(col_idx.GetPrimaryIndex()));
+        names.push_back(column.Name());
+        return_types.push_back(column.Type());
+      }
+
+      StatementType statement_type = StatementType::SELECT_STATEMENT;
+      auto prepareResult = make_shared_ptr<PreparedStatementData>(statement_type);
+      prepareResult->properties.allow_stream_result = false;
+      prepareResult->properties.always_require_rebind = false;
+      prepareResult->names = names;
+      prepareResult->types = return_types;
+//      prepareResult->value_map = std::move(logical_planner.value_map);
+      auto physical_plan = make_uniq<PhysicalPlan>(Allocator::Get(context));
+      physical_plan->SetRoot(*scanOp.get());
+      prepareResult->physical_plan = move(physical_plan);
+      auto root_op = PhysicalResultCollector::GetResultCollector(context, *prepareResult.get());
+      // 4. 初始化执行器并执行
+      Executor executor(context);
+      executor.Initialize(*root_op);
+
+      auto lock = make_uniq<ClientContextLock>(context_lock_);
+
+      PendingExecutionResult execution_result;
+      while (!PendingQueryResult::IsResultReady(execution_result = executor.ExecuteTask(false))) {
+        if (execution_result == PendingExecutionResult::BLOCKED) {
+          executor.WaitForTask();
+        }
+      }
+
+      // 5. 通过Executor获取结果（替代ResultCollector，适配1.3.2版本）
+      auto query_result = executor.GetResult();
+      if (!query_result || query_result->HasError()) {
+        result.error_message = query_result ? query_result->GetError() : "Unknown execution error";
+        connect_->Rollback();
+        return result;
+      }
+
+      switch (query_result->type) {
+        case QueryResultType::MATERIALIZED_RESULT: {
+          auto res = dynamic_cast<MaterializedQueryResult*>(query_result.get());
+          printf("result is %s\n", res->ToString().c_str());
+          auto &coll = res->Collection();
+//          result += "[ Rows: " + to_string(coll.Count()) + "]\n";
+          for (auto &row : coll.Rows()) {
+            for (idx_t col_idx = 0; col_idx < coll.ColumnCount(); col_idx++) {
+              if (col_idx > 0) {
+//                result += "\t";
+              }
+              auto val = row.GetValue(col_idx);
+//              result += val.IsNull() ? "NULL" : StringUtil::Replace(val.ToString(), string("\0", 1), "\\0");
+            }
+//            result += "\n";
+          }
+          break;
+        }
+        case QueryResultType::PENDING_RESULT:
+          break;
+        default:
+          break;
+      }
+
+//      // 6. 提取结果数据（从QueryResult中读取）
+//      auto& materialized_result = query_result->Materialize();  // 物化结果集
+//      result.row_count = materialized_result->RowCount();
+//      // 修正：根据实际ExecutionResult结构调整成员
+//      result.success = true;
+//
+//      // 示例：读取结果数据（按行读取）
+//      Vector row;
+//      idx_t row_idx = 0;
+//      while (materialized_result->Next(row)) {
+//        // 读取第0列数据（根据实际类型处理）
+//        auto val = row.GetValue(0);
+//        if (val.type().id() == LogicalTypeId::INTEGER) {
+//          // 假设ExecutionResult有存储数据的容器（如rows）
+//          result.rows.push_back(std::to_string(val.GetValue<int32_t>()));
+//        }
+//        row_idx++;
+//      }
+
       connect_->Commit();
 			return result;
 		} catch (const Exception& e) {

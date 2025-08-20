@@ -51,11 +51,12 @@ namespace kwdbts {
 
     KStatus Setup(kwdbContext_p ctx, k_char *message, k_uint32 len, k_int32 id, k_int32 uniqueID, APRespInfo *resp);
 
-	  ExecutionResult ExecuteCustomPlan();
+    ExecutionResult ExecuteCustomPlan();
 
   private:
     FlowSpec *fspecs_;
 	  DatabaseWrapper * db_;
 	  Connection *connect_;
+    mutex context_lock_;
   };
 }
