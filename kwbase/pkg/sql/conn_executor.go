@@ -2913,6 +2913,11 @@ func (ex *connExecutor) SendDirectTsInsert(
 	res CommandResult,
 	payloadNodeMap map[int]*sqlbase.PayloadForDistTSInsert,
 ) (useDeepRule bool, dedupRule int64, dedupRows int64) {
+	readOnly := sqlbase.ReadOnly.Get(ex.planner.execCfg.SV())
+	if readOnly || sqlbase.ReadOnlyInternal {
+		res.SetError(errors.New("cannot execute ts insert in a read-only transaction"))
+		return
+	}
 	var tsInsNode planNode
 	// When CDCData is not empty, it signifies that the insert operation includes data that needs to be pushed.
 	// As a result, a tsInsertWithCDCNode is generated to replace the normal insert process's tsInsertNode.
