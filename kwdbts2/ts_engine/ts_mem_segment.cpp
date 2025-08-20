@@ -124,14 +124,16 @@ KStatus TsMemSegmentManager::PutData(const TSSlice& payload, TSEntityID entity_i
     }
     auto p_time = convertTsToPTime(row_ts, ts_type);
     version_manager_->AddPartition(db_id, p_time);
-    // TODO(Yongyan): Somebody needs to update lsn later.
-    row_data.SetData(row_ts, lsn, pd.GetRowData(i));
+
+    auto payload_row_data = pd.GetRowData(i);
+    row_data.SetData(row_ts, lsn, payload_row_data);
     bool ret = cur_mem_seg->AppendOneRow(row_data);
     if (!ret) {
       LOG_ERROR("failed to AppendOneRow for table [%lu]", row_data.table_id);
       cur_mem_seg->AllocRowNum(0 - (row_num - i));
       return KStatus::FAIL;
     }
+    memory_usage_.fetch_add(row_data.row_data.len);
 
     if (row_ts > max_ts) {
       max_ts = row_ts;
@@ -140,17 +142,12 @@ KStatus TsMemSegmentManager::PutData(const TSSlice& payload, TSEntityID entity_i
   vgroup_->UpdateEntityAndMaxTs(table_id, max_ts, entity_id);
   vgroup_->UpdateEntityLatestRow(entity_id, max_ts);
 
-  
+  auto current_memory_usage = memory_usage_.load();
 
-  if (cur_mem_seg->GetMemSegmentSize() > EngineOptions::mem_segment_max_size) {
-    // prepare to switch, add lock
-    {
-      std::unique_lock lk{put_lock_};
-      // check again
-      if (cur_mem_seg->GetMemSegmentSize() > EngineOptions::mem_segment_max_size) {
-        std::shared_ptr<TsMemSegment> segments = this->SwitchMemSegment();
-        TsFlushJobPool::GetInstance().AddFlushJob(vgroup_, segments);
-      }
+  if (current_memory_usage > EngineOptions::mem_segment_max_size) {
+    if (memory_usage_.compare_exchange_strong(current_memory_usage, 0)) {
+      std::shared_ptr<TsMemSegment> segments = this->SwitchMemSegment();
+      TsFlushJobPool::GetInstance().AddFlushJob(vgroup_, segments);
     }
   }
   return KStatus::SUCCESS;

@@ -120,13 +120,13 @@ TSEngineV2Impl::~TSEngineV2Impl() {
 }
 
 KStatus TSEngineV2Impl::FlushVGroups(kwdbContext_p ctx) {
-  // for (auto vgroup : vgroups_) {
-  //   KStatus s = vgroup->Flush();
-  //   if (s == KStatus::FAIL) {
-  //     LOG_ERROR("Failed to flush metric file.")
-  //     return s;
-  //   }
-  // }
+  for (auto vgroup : vgroups_) {
+    KStatus s = vgroup->Flush();
+    if (s == KStatus::FAIL) {
+      LOG_ERROR("Failed to flush metric file.")
+      return s;
+    }
+  }
   return KStatus::SUCCESS;
 }
 

@@ -33,6 +33,7 @@ class TsMemSegment;
 class TsFlushJobPool {
  private:
   TsFlushJobPool() {
+    kMaxConcurrentJobNum = kMaxConcurrentJobNum < 8 ? 8 : kMaxConcurrentJobNum;
     for (int i = 0; i < kMaxConcurrentJobNum; i++) {
       workers_.emplace_back([this] { this->WorkerFunc(); });
     }

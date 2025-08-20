@@ -20,15 +20,24 @@
 #include "ts_payload.h"
 #include "ts_vgroup.h"
 
+kwdbContext_t g_ctx_;
+class Stopper {
+ public:
+  Stopper() { KWDBDynamicThreadPool::GetThreadPool().Init(8, &g_ctx_); }
+  ~Stopper() { KWDBDynamicThreadPool::GetThreadPool().Stop(); }
+};
+
+static Stopper s;
+
 using namespace roachpb;
 std::vector<roachpb::DataType> dtypes{DataType::TIMESTAMP, DataType::DOUBLE};
 class ConcurrentRWTest : public testing::Test {
  protected:
-  kwdbContext_t g_ctx_;
   kwdbContext_p ctx_ = &g_ctx_;
   EngineOptions opts_;
 
   TSTableID table_id = 12315;
+  roachpb::CreateTsTable meta;
 
   ConcurrentRWTest() {
     EngineOptions::vgroup_max_num = 1;
@@ -54,7 +63,6 @@ class ConcurrentRWTest : public testing::Test {
     InitKWDBContext(ctx_);
     schema_mgr_ = std::make_unique<TsEngineSchemaManager>(opts_.db_path + "/schema");
 
-    roachpb::CreateTsTable meta;
     ConstructRoachpbTableWithTypes(&meta, table_id, dtypes);
     std::shared_ptr<TsTable> ts_table;
 
@@ -67,10 +75,15 @@ class ConcurrentRWTest : public testing::Test {
     vgroup_ = std::make_shared<TsVGroup>(&opts_, 1, schema_mgr_.get(), &wal_level_mutex, false);
     ASSERT_EQ(vgroup_->Init(ctx_), KStatus::SUCCESS);
     vgroup_->SetReady();
-  }
-  void TearDown() override { vgroup_.reset(); }
 
-  ~ConcurrentRWTest() { KWDBDynamicThreadPool::GetThreadPool().Stop(); }
+    InitKWDBContext(ctx_);
+   
+  }
+  void TearDown() override {
+    vgroup_.reset();
+  }
+
+  ~ConcurrentRWTest() {}
 };
 
 struct QueryResult {
@@ -256,4 +269,98 @@ TEST_F(ConcurrentRWTest, CompactOnly) {
   }
 
   // vgroup->Compact();
+}
+
+TEST_F(ConcurrentRWTest, SwitchMem) {
+  EngineOptions::mem_segment_max_size = 1024;
+  EngineOptions::max_last_segment_num = 1 << 30;
+  auto engine = std::make_unique<TSEngineV2Impl>(opts_);
+  engine->Init(ctx_);
+
+  std::shared_ptr<TsTable> ts_table;
+  ASSERT_EQ(engine->CreateTsTable(ctx_, table_id, &meta, ts_table), SUCCESS);
+
+  int npayload = 2000;
+  int nrow = 1;
+  int total_row = npayload * nrow;
+
+  std::vector<TSSlice> payloads(npayload);
+  volatile bool stop = false;
+
+  std::atomic_int atomic_count{0};
+
+  for (int i = 0; i < npayload; ++i) {
+    auto payload = GenRowPayload(metric_schema_, tag_schema_, table_id, 1, 1, nrow, 1000 * i, 1);
+    payloads[i] = payload;
+  }
+
+  // TsRawPayloadRowParser parser{metric_schema_};
+  // TsRawPayload p{payload, metric_schema_};
+  // auto ptag = p.GetPrimaryTag();
+  // vgroup_->PutData(ctx_, table_id, 0, &ptag, 1, &payload, false);
+
+  auto WriteWork = [&]() {
+    for (int i = 0; i < npayload; ++i) {
+      auto payload = payloads[i];
+      uint16_t inc_entity_cnt;
+      uint32_t inc_unordered_cnt;
+      DedupResult dedup_result;
+      engine->PutData(ctx_, table_id, 0, &payload, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
+      atomic_count++;
+    }
+  };
+
+  auto QueryWork = [&](std::promise<QueryResult>& promise) {
+    QueryResult result;
+    auto vgroup = engine->GetTsVGroups()->at(0);
+    int i = 0;
+    do {
+      TsStorageIterator* ts_iter;
+      KwTsSpan ts_span = {INT64_MIN, INT64_MAX};
+      DATATYPE ts_col_type = table_schema_mgr_->GetTsColDataType();
+      std::vector<k_uint32> scan_cols = {0, 1};
+      std::vector<Sumfunctype> scan_agg_types;
+      ASSERT_EQ(vgroup->GetIterator(ctx_, {1}, {ts_span}, {}, ts_col_type, scan_cols, scan_cols, {}, scan_agg_types,
+                                    table_schema_mgr_, 1, &ts_iter, vgroup, {}, false, false),
+                KStatus::SUCCESS);
+      auto write_count = atomic_count.load();
+      ResultSet res{(k_uint32)scan_cols.size()};
+      k_uint32 count = 0;
+      uint32_t sum = 0;
+      bool is_finished = false;
+      while (!is_finished) {
+        ts_iter->Next(&res, &count, &is_finished);
+      }
+
+      std::unordered_set<timestamp64> ts_set;
+      for (auto x : res.data[0]) {
+        sum += x->count;
+        timestamp64* ts = (timestamp64*)x->mem;
+        for (int i = 0; i < x->count; i++) {
+          ts_set.insert(ts[i]);
+        }
+      }
+      delete ts_iter;
+      result.count.push_back(sum);
+      result.expect.push_back(write_count);
+    } while (stop != true);
+    promise.set_value(std::move(result));
+  };
+
+  std::promise<QueryResult> q_promise;
+  std::thread t_query(QueryWork, std::ref(q_promise));
+  std::thread t_put(WriteWork);
+  t_put.join();
+  stop = true;
+  auto q_result = q_promise.get_future().get();
+  t_query.join();
+  EXPECT_EQ(q_result.count.size(), q_result.expect.size());
+  auto size = q_result.count.size();
+  for (int i = 0; i < size; i++) {
+    ASSERT_GE(q_result.count[i], q_result.expect[i]);
+  }
+
+  for (auto i : payloads) {
+    free(i.data);
+  }
 }

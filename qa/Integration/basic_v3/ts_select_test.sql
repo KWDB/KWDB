@@ -31,7 +31,7 @@ select e1 from test_ts.ts_table where e2 < 2500000 group by e1 having e1 < 3000;
 select attr2 from test_ts.ts_table where attr1 < 2000 group by attr2 having attr2 < 3000000;
 select e1 from test_ts.ts_table order by e1 desc limit 1 offset 1;
 select e1, attr1 from test_ts.ts_table order by e1 desc limit 1 offset 1;
-select e1, attr2 from test_ts.ts_table order by attr2 desc limit 1 offset 1;
+select e1, attr2 from test_ts.ts_table order by time desc limit 1 offset 1;
 select e1, e2, e3, case e1 when 1000 then 10 when 2000 then 20 end as result from test_ts.ts_table where e3 < 300000000000000000;
 select attr1, attr2, attr6, case attr6 when 'test_attr_c1' then 10 when 'test_attr_c2' then 20 end as result from test_ts.ts_table where e3 < 300000000000000000;
 select e1, e2, e3, case e1 when 1000 then 10 when 1000 then 20 end as result from test_ts.ts_table where attr3 < 300000000000000000;

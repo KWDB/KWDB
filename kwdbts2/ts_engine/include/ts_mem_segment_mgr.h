@@ -187,7 +187,8 @@ class TsMemSegmentManager {
   std::shared_ptr<TsMemSegment> cur_mem_seg_{nullptr};
   std::list<std::shared_ptr<TsMemSegment>> segment_;
   mutable std::shared_mutex segment_lock_;
-  mutable std::mutex put_lock_;
+
+  std::atomic_int memory_usage_{0};
 
   std::shared_ptr<TsMemSegment> CurrentMemSegmentAndAllocateRow(uint32_t row_num) const {
     std::shared_lock lock(segment_lock_);
