@@ -213,6 +213,7 @@ func (n *insertNode) startExec(params runParams) error {
 		}
 		rowVals := make([]tree.Datums, 0)
 		for {
+			var row tree.Datums
 			// Advance one individual row.
 			if next, err := n.source.Next(params); !next {
 				if err != nil {
@@ -221,16 +222,21 @@ func (n *insertNode) startExec(params runParams) error {
 				break
 			}
 			if rowidIdx == -1 {
-				rowVals = append(rowVals, n.source.Values())
+				row = make(tree.Datums, len(n.run.ti.tableDesc().Columns))
+				copy(row, n.source.Values())
 			} else if rowidIdx == len(n.run.ti.tableDesc().Columns)-1 {
 				// column[a, b, rowid]
-				rowVals = append(rowVals, n.source.Values()[:rowidIdx])
+				row = make(tree.Datums, len(n.run.ti.tableDesc().Columns)-1)
+				copy(row, n.source.Values()[:rowidIdx])
 			} else {
 				// column[a, rowid, b]
-				rowVals = append(rowVals, n.source.Values()[:rowidIdx], n.source.Values()[rowidIdx+1:])
+				row = make(tree.Datums, len(n.run.ti.tableDesc().Columns)-1)
+				copy(row[:rowidIdx], n.source.Values()[:rowidIdx])
+				copy(row[rowidIdx:], n.source.Values()[rowidIdx+1:])
 			}
 
 			n.run.rowCount++
+			rowVals = append(rowVals, row)
 		}
 		err = ape.DuckInsert(params.ctx, params.ExecCfg().ApEngine, dbDesc.Name, n.run.ti.tableDesc().Name, rowVals)
 		if err != nil {
