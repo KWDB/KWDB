@@ -192,7 +192,7 @@ class TsLastBlock : public TsBlock {
       info.row_count = block_info_->nrow;
 
       std::unique_ptr<TsColumnBlock> colblock;
-      s = TsColumnBlock::ParseCompressedColumnData(schema[col_id], result, info, &colblock);
+      s = TsColumnBlock::ParseColumnData(schema[col_id], result, info, &colblock);
       if (s == FAIL) {
         LOG_ERROR("can not parse column data, col_id %d", col_id);
         return FAIL;
@@ -217,9 +217,9 @@ class TsLastBlock : public TsBlock {
       if (s == FAIL) {
         return FAIL;
       }
-      bool ok = mgr.DecompressData(result, nullptr, block_info_->nrow, &entity_ids_);
+      entity_ids_ = TsSliceGuard{result};
       *entity_ids = reinterpret_cast<TSEntityID*>(entity_ids_.data());
-      return ok ? SUCCESS : FAIL;
+      return SUCCESS;
     }
 
     KStatus GetLSN(TS_LSN** lsn) {
@@ -236,9 +236,9 @@ class TsLastBlock : public TsBlock {
       if (s == FAIL) {
         return FAIL;
       }
-      bool ok = mgr.DecompressData(result, nullptr, block_info_->nrow, &lsn_);
+      lsn_ = TsSliceGuard{result};
       *lsn = reinterpret_cast<TS_LSN*>(lsn_.data());
-      return ok ? SUCCESS : FAIL;
+      return SUCCESS;
     }
 
     KStatus GetTimestamps(timestamp64** timestamps) {
@@ -256,9 +256,9 @@ class TsLastBlock : public TsBlock {
       if (s == FAIL) {
         return FAIL;
       }
-      bool ok = mgr.DecompressData(result, nullptr, block_info_->nrow, &timestamps_);
+      timestamps_ = TsSliceGuard{result};
       *timestamps = reinterpret_cast<timestamp64*>(timestamps_.data());
-      return ok ? SUCCESS : FAIL;
+      return SUCCESS;
     }
   };
 
