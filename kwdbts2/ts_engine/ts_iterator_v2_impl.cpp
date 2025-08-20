@@ -188,8 +188,8 @@ inline bool TsStorageIteratorV2Impl::IsFilteredOut(timestamp64 begin_ts, timesta
   return  (!is_reversed_ && begin_ts > ts) || (is_reversed_ && end_ts < ts);
 }
 
-KStatus TsStorageIteratorV2Impl::getBlockSpanMinValue(std::shared_ptr<TsBlockSpan> block_span,
-                                                      uint32_t col_id, uint32_t type, void*& min) {
+KStatus TsStorageIteratorV2Impl::getBlockSpanMinMaxValue(std::shared_ptr<TsBlockSpan>& block_span, uint32_t col_id,
+                                                          uint32_t type, void*& min, void*& max) {
   TsBitmap bitmap;
   char* value = nullptr;
   auto s = block_span->GetFixLenColAddr(col_id, &value, bitmap);
@@ -197,7 +197,6 @@ KStatus TsStorageIteratorV2Impl::getBlockSpanMinValue(std::shared_ptr<TsBlockSpa
     LOG_ERROR("GetFixLenColAddr failed.");
     return s;
   }
-  min = nullptr;
   uint32_t row_num = block_span->GetRowNum();
   int32_t size = block_span->GetColSize(col_id);
   for (int row_idx = 0; row_idx < row_num; ++row_idx) {
@@ -211,27 +210,6 @@ KStatus TsStorageIteratorV2Impl::getBlockSpanMinValue(std::shared_ptr<TsBlockSpa
     } else if (cmp(min, current, type, size) > 0) {
       memcpy(min, current, size);
     }
-  }
-  return KStatus::SUCCESS;
-}
-
-KStatus TsStorageIteratorV2Impl::getBlockSpanMaxValue(std::shared_ptr<TsBlockSpan> block_span,
-                                                      uint32_t col_id, uint32_t type, void*& max) {
-  TsBitmap bitmap;
-  char* value = nullptr;
-  auto s = block_span->GetFixLenColAddr(col_id, &value, bitmap);
-  if (s != KStatus::SUCCESS) {
-    LOG_ERROR("GetFixLenColAddr failed.");
-    return s;
-  }
-  max = nullptr;
-  uint32_t row_num = block_span->GetRowNum();
-  int32_t size = block_span->GetColSize(col_id);
-  for (int row_idx = 0; row_idx < row_num; ++row_idx) {
-    if (bitmap[row_idx] != DataFlags::kValid) {
-      continue;
-    }
-    void* current = reinterpret_cast<void*>((intptr_t)(value + row_idx * size));
     if (max == nullptr) {
       max = malloc(size);
       memcpy(max, current, size);
@@ -242,8 +220,9 @@ KStatus TsStorageIteratorV2Impl::getBlockSpanMaxValue(std::shared_ptr<TsBlockSpa
   return KStatus::SUCCESS;
 }
 
-KStatus TsStorageIteratorV2Impl::getBlockSpanVarMinValue(std::shared_ptr<TsBlockSpan> block_span,
-                                                         uint32_t col_id, uint32_t type, TSSlice& min) {
+KStatus TsStorageIteratorV2Impl::getBlockSpanVarMinMaxValue(std::shared_ptr<TsBlockSpan>& block_span,
+                                                            uint32_t col_id, uint32_t type, TSSlice& min,
+                                                            TSSlice& max) {
   KStatus ret;
   std::vector<string> var_rows;
   uint32_t row_num = block_span->GetRowNum();
@@ -259,7 +238,6 @@ KStatus TsStorageIteratorV2Impl::getBlockSpanVarMinValue(std::shared_ptr<TsBlock
       var_rows.emplace_back(slice.data, slice.len);
     }
   }
-  min = {nullptr, 0};
   if (!var_rows.empty()) {
     auto min_it = std::min_element(var_rows.begin(), var_rows.end());
     if (min.data) {
@@ -274,29 +252,6 @@ KStatus TsStorageIteratorV2Impl::getBlockSpanVarMinValue(std::shared_ptr<TsBlock
       min.data = static_cast<char*>(malloc(min.len));
       memcpy(min.data, min_it->c_str(), min.len);
     }
-  }
-  return KStatus::SUCCESS;
-}
-
-KStatus TsStorageIteratorV2Impl::getBlockSpanVarMaxValue(std::shared_ptr<TsBlockSpan> block_span,
-                                                         uint32_t col_id, uint32_t type, TSSlice& max) {
-  KStatus ret;
-  std::vector<string> var_rows;
-  uint32_t row_num = block_span->GetRowNum();
-  for (int row_idx = 0; row_idx < row_num; ++row_idx) {
-    TSSlice slice;
-    DataFlags flag;
-    ret = block_span->GetVarLenTypeColAddr(row_idx, col_id, flag, slice);
-    if (ret != KStatus::SUCCESS) {
-      LOG_ERROR("GetVarLenTypeColAddr failed.");
-      return ret;
-    }
-    if (flag == DataFlags::kValid) {
-      var_rows.emplace_back(slice.data, slice.len);
-    }
-  }
-  max = {nullptr, 0};
-  if (!var_rows.empty()) {
     auto max_it = std::max_element(var_rows.begin(), var_rows.end());
     if (max.data) {
       string current_max({max.data, max.len});
@@ -306,7 +261,6 @@ KStatus TsStorageIteratorV2Impl::getBlockSpanVarMaxValue(std::shared_ptr<TsBlock
       }
     }
     if (max.data == nullptr) {
-      // Can we use the memory in var_rows?
       max.len = max_it->length();
       max.data = static_cast<char*>(malloc(max.len));
       memcpy(max.data, max_it->c_str(), max_it->length());
@@ -316,9 +270,6 @@ KStatus TsStorageIteratorV2Impl::getBlockSpanVarMaxValue(std::shared_ptr<TsBlock
 }
 
 KStatus TsStorageIteratorV2Impl::isBlockFiltered(std::shared_ptr<TsBlockSpan>& block_span, bool& is_filtered) {
-  // if (!block_span->HasPreAgg()) {
-  //   return false;
-  // }
   is_filtered = false;
   KStatus ret;
   for (const auto& filter : block_filter_) {
@@ -410,8 +361,7 @@ KStatus TsStorageIteratorV2Impl::isBlockFiltered(std::shared_ptr<TsBlockSpan>& b
             return KStatus::FAIL;
           }
         } else {
-          ret = getBlockSpanMinValue(block_span, col_id, attrs_[col_id].type, min_addr);
-          ret = getBlockSpanMaxValue(block_span, col_id, attrs_[col_id].type, max_addr);
+          ret = getBlockSpanMinMaxValue(block_span, col_id, attrs_[col_id].type, min_addr, max_addr);
           is_new = true;
         }
         if (!min_addr || !max_addr) continue;
@@ -493,15 +443,10 @@ KStatus TsStorageIteratorV2Impl::isBlockFiltered(std::shared_ptr<TsBlockSpan>& b
           max.data = var_pre_max.data;
         } else {
           TSSlice var_pre_min{nullptr, 0};
-          ret = getBlockSpanVarMinValue(block_span, col_id, attrs_[col_id].type, var_pre_min);
-          if (ret != KStatus::SUCCESS) {
-            LOG_ERROR("GetVarPreMin failed.");
-            return KStatus::FAIL;
-          }
           TSSlice var_pre_max{nullptr, 0};
-          ret = getBlockSpanVarMaxValue(block_span, col_id, attrs_[col_id].type, var_pre_max);
+          ret = getBlockSpanVarMinMaxValue(block_span, col_id, attrs_[col_id].type, var_pre_min, var_pre_max);
           if (ret != KStatus::SUCCESS) {
-            LOG_ERROR("GetVarPreMax failed.");
+            LOG_ERROR("getBlockSpanVarMinValue failed.");
             return KStatus::FAIL;
           }
           if (!var_pre_min.data || !var_pre_max.data) continue;
@@ -540,7 +485,7 @@ KStatus TsStorageIteratorV2Impl::ScanEntityBlockSpans(timestamp64 ts) {
     if (!block_filter_.empty()) {
       uint32_t size = ts_block_spans_.size();
       for (uint32_t i = 0; i < size; ++i) {
-        auto block_span = ts_block_spans_.front();
+        auto block_span = std::move(ts_block_spans_.front());
         ts_block_spans_.pop_front();
         if (!block_span->GetRowNum()) {
           continue;
@@ -552,7 +497,7 @@ KStatus TsStorageIteratorV2Impl::ScanEntityBlockSpans(timestamp64 ts) {
           return KStatus::FAIL;
         }
         if (is_filtered) continue;
-        ts_block_spans_.push_back(block_span);
+        ts_block_spans_.push_back(std::move(block_span));
       }
     }
   }
@@ -1212,13 +1157,12 @@ KStatus TsAggIteratorV2Impl::UpdateAggregation(bool can_remove_last_candidate) {
   std::shared_ptr<TsBlockSpan> dedup_block_span;
   bool is_finished = false;
   while (iter.Next(dedup_block_span, &is_finished) == KStatus::SUCCESS && !is_finished) {
-    ts_block_spans.push_back(dedup_block_span);
+    ts_block_spans.push_back(std::move(dedup_block_span));
   }
   ts_block_spans_.clear();
   if (ts_block_spans.empty()) {
     return KStatus::SUCCESS;
   }
-  dedup_block_span = nullptr;
 
   int block_span_idx = 0;
   if (!cur_first_col_idxs_.empty() || has_first_row_col_) {
