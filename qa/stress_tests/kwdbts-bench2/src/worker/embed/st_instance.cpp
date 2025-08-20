@@ -528,6 +528,9 @@ void FillPayloaderBuilderData(TSRowPayloadBuilder& pay_build, int32_t primary_ta
       int length = 0;
       {
         int store_value = ((start_ts + j * time_inc) / time_inc) % 11 + i;
+        if (i == 0) {
+          store_value = start_ts + j * time_inc;
+        }
         TSSlice ret = genValue4Col((DATATYPE)data_schema[i].type, data_schema[i].size, store_value);
         addr = ret.data;
         length = ret.len;
@@ -563,6 +566,9 @@ void genPayloadData(std::vector<TagInfo> tag_schema, std::vector<AttributeInfo> 
       int length = 0;
       {
         int store_value = ((start_ts + j * time_inc) / time_inc) % 11 + i;
+        if (i == 0) {
+          store_value = start_ts + j * time_inc;
+        }
         TSSlice ret = genValue4Col((DATATYPE)data_schema[i].type, data_schema[i].size, store_value);
         addr = ret.data;
         length = ret.len;

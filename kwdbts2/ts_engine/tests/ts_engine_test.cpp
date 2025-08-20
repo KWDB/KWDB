@@ -158,7 +158,6 @@ TEST_F(TsEngineV2Test, InsertMulitMemSeg2) {
       ASSERT_EQ(s, KStatus::SUCCESS);
       ts += 1000;
     }
-    engine_->SwitchMemSegments(j);
   }
 }
 
@@ -194,7 +193,6 @@ TEST_F(TsEngineV2Test, CreateCheckpoint){
       ASSERT_EQ(s, KStatus::SUCCESS);
       ts += 1000;
     }
-    engine_->SwitchMemSegments(j);
   }
   s = engine_->CreateCheckpoint(&ctx);
   ASSERT_EQ(s , KStatus::SUCCESS);
@@ -233,7 +231,6 @@ TEST_F(TsEngineV2Test, Recover){
       ASSERT_EQ(s, KStatus::SUCCESS);
       ts += 1000;
     }
-    engine_->SwitchMemSegments(j);
   }
   s = engine_->CreateCheckpoint(&ctx);
   ASSERT_EQ(s , KStatus::SUCCESS);

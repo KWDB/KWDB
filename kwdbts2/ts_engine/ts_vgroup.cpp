@@ -50,12 +50,12 @@ TsVGroup::TsVGroup(EngineOptions* engine_options, uint32_t vgroup_id, TsEngineSc
                    std::shared_mutex* engine_mutex, bool enable_compact_thread)
     : vgroup_id_(vgroup_id),
       schema_mgr_(schema_mgr),
-      mem_segment_mgr_(this),
       path_(fs::path(engine_options->db_path) / VGroupDirName(vgroup_id)),
       max_entity_id_(0),
       engine_options_(engine_options),
       engine_wal_level_mutex_(engine_mutex),
       version_manager_(std::make_unique<TsVersionManager>(engine_options->io_env, path_)),
+      mem_segment_mgr_(std::make_unique<TsMemSegmentManager>(this, version_manager_.get())),
       enable_compact_thread_(enable_compact_thread) {}
 
 TsVGroup::~TsVGroup() {
@@ -92,7 +92,7 @@ KStatus TsVGroup::Init(kwdbContext_p ctx) {
 KStatus TsVGroup::SetReady() {
   TsVersionUpdate update;
   std::list<std::shared_ptr<TsMemSegment>> mems;
-  mem_segment_mgr_.GetAllMemSegments(&mems);
+  mem_segment_mgr_->GetAllMemSegments(&mems);
   update.SetValidMemSegments(mems);
   return version_manager_->ApplyUpdate(&update);
 }
@@ -131,29 +131,12 @@ KStatus TsVGroup::PutData(kwdbContext_p ctx, TSTableID table_id, uint64_t mtr_id
   if (engine_options_->wal_level != WALMode::OFF && !write_wal && !engine_options_->use_raft_log_as_wal) {
     current_lsn = wal_manager_->FetchCurrentLSN();
   }
-  std::list<TSMemSegRowData> rows;
-  auto s = mem_segment_mgr_.PutData(*payload, entity_id, current_lsn, &rows);
+  auto s = mem_segment_mgr_->PutData(*payload, entity_id, current_lsn);
   if (s == KStatus::FAIL) {
     LOG_ERROR("mem_segment_mgr_.PutData Failed.")
     return FAIL;
   }
-  // creating partition directory while inserting data into memroy.
-  s = makeSurePartitionExist(table_id, rows);
-  if (s == KStatus::FAIL) {
-    LOG_ERROR("makeSurePartitionExist Failed.")
-    return FAIL;
-  }
     // update vgroup entity_id.
-  {
-    timestamp64 max_ts = INT64_MIN;
-    for (auto row : rows) {
-      if (max_ts < row.ts) {
-        max_ts = row.ts;
-      }
-    }
-    UpdateEntityAndMaxTs(table_id, max_ts, entity_id);
-    UpdateEntityLatestRow(entity_id, max_ts);
-  }
   return KStatus::SUCCESS;
 }
 
@@ -255,20 +238,21 @@ TsEngineSchemaManager* TsVGroup::GetSchemaMgr() const {
 // if at here, inserting and deleting at same time. maybe sql exec over, data all exist.
 // but restart service, data all disappeared.
 // solution: 1. delete item not store in partition. 2. creating partition before wal insert.
-KStatus TsVGroup::makeSurePartitionExist(TSTableID table_id, const std::list<TSMemSegRowData>& rows) {
-  std::shared_ptr<kwdbts::TsTableSchemaManager> tb_schema_mgr;
-  auto s = schema_mgr_->GetTableSchemaMgr(table_id, tb_schema_mgr);
-  if (s != KStatus::SUCCESS) {
-    LOG_ERROR("GetTableSchemaMgr failed. table[%lu]", table_id);
-    return s;
-  }
-  auto ts_type = tb_schema_mgr->GetTsColDataType();
-  for (auto& row : rows) {
-    auto p_time = convertTsToPTime(row.ts, ts_type);
-    version_manager_->AddPartition(row.database_id, p_time);
-  }
-  return KStatus::SUCCESS;
-}
+
+// KStatus TsVGroup::makeSurePartitionExist(TSTableID table_id, const std::list<TSMemSegRowData>& rows) {
+//   std::shared_ptr<kwdbts::TsTableSchemaManager> tb_schema_mgr;
+//   auto s = schema_mgr_->GetTableSchemaMgr(table_id, tb_schema_mgr);
+//   if (s != KStatus::SUCCESS) {
+//     LOG_ERROR("GetTableSchemaMgr failed. table[%lu]", table_id);
+//     return s;
+//   }
+//   auto ts_type = tb_schema_mgr->GetTsColDataType();
+//   for (auto& row : rows) {
+//     auto p_time = convertTsToPTime(row.ts, ts_type);
+//     version_manager_->AddPartition(row.database_id, p_time);
+//   }
+//   return KStatus::SUCCESS;
+// }
 
 KStatus TsVGroup::redoPut(kwdbContext_p ctx, kwdbts::TS_LSN log_lsn, const TSSlice& payload) {
   TsRawPayload p{payload};
@@ -313,16 +297,10 @@ KStatus TsVGroup::redoPut(kwdbContext_p ctx, kwdbts::TS_LSN log_lsn, const TSSli
   }
 
   if (payload_data_flag == DataTagFlag::DATA_AND_TAG || payload_data_flag == DataTagFlag::DATA_ONLY) {
-    std::list<TSMemSegRowData> rows;
-    s = mem_segment_mgr_.PutData(payload, entity_id, log_lsn, &rows);
+    s = mem_segment_mgr_->PutData(payload, entity_id, log_lsn);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("failed putdata.");
       return s;
-    }
-    s = makeSurePartitionExist(table_id, rows);
-    if (s == KStatus::FAIL) {
-      LOG_ERROR("makeSurePartitionExist Failed.")
-      return FAIL;
     }
   }
   return s;
@@ -593,11 +571,6 @@ KStatus TsVGroup::Compact() {
 }
 
 KStatus TsVGroup::FlushImmSegment(const std::shared_ptr<TsMemSegment>& mem_seg) {
-  if (!mem_seg->SetFlushing()) {
-    LOG_ERROR("cannot set status for mem segment.");
-    return KStatus::FAIL;
-  }
-
   TsIOEnv* env = &TsMMapIOEnv::GetInstance();
 
   std::unordered_map<std::shared_ptr<const TsPartitionVersion>, TsLastSegmentBuilder> builders;
@@ -766,10 +739,9 @@ KStatus TsVGroup::FlushImmSegment(const std::shared_ptr<TsMemSegment>& mem_seg) 
     update.SetMaxLSN(v.GetMaxLSN());
   }
 
-  mem_seg->SetDeleting();
-  mem_segment_mgr_.RemoveMemSegment(mem_seg);
+  mem_segment_mgr_->RemoveMemSegment(mem_seg);
   std::list<std::shared_ptr<TsMemSegment>> mems;
-  mem_segment_mgr_.GetAllMemSegments(&mems);
+  mem_segment_mgr_->GetAllMemSegments(&mems);
   update.SetValidMemSegments(mems);
 
   version_manager_->ApplyUpdate(&update);
