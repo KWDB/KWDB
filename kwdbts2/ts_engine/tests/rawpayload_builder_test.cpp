@@ -109,7 +109,7 @@ class TestRowPayloadBuilder : public testing::Test {
   }
 
   void CheckPayload(const TSSlice &raw, KTimestamp primary_tag, int data_count) {
-    TsRawPayload pay(raw, data_schema_);
+    TsRawPayload pay(raw, &data_schema_);
     ASSERT_EQ(pay.GetRowCount(), data_count);
     ASSERT_EQ(pay.GetTableID(), table_id_);
     ASSERT_EQ(pay.GetTableVersion(), table_version_);

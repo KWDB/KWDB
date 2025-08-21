@@ -1223,7 +1223,7 @@ KStatus TsVGroup::undoPut(kwdbContext_p ctx, TS_LSN log_lsn, TSSlice payload) {
   }
   std::vector<AttributeInfo> metric_schema;
   tb_schema_mgr->GetColumnsExcludeDropped(metric_schema, tbl_version);
-  TsRawPayload p(payload, metric_schema);
+  TsRawPayload p(payload, &metric_schema);
   TSEntityID entity_id;
   s = getEntityIdByPTag(ctx, table_id, primary_key, &entity_id);
   if (s != KStatus::SUCCESS) {

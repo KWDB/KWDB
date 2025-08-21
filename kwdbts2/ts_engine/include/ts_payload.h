@@ -27,11 +27,11 @@ namespace kwdbts {
 
 class TsRawPayloadRowParser {
  private:
-  const std::vector<AttributeInfo> schema_;
+  const std::vector<AttributeInfo>* schema_ = nullptr;
   std::vector<int> col_offset_;
 
  public:
-  explicit TsRawPayloadRowParser(std::vector<AttributeInfo> data_schema);
+  explicit TsRawPayloadRowParser(const std::vector<AttributeInfo>* data_schema);
   ~TsRawPayloadRowParser() {}
 
   bool IsColNull(const TSSlice& row_data, int col_id) {
@@ -92,7 +92,7 @@ class TsRawPayload {
 
  private:
   TSSlice payload_;
-  const std::vector<AttributeInfo>& metric_schema_;
+  const std::vector<AttributeInfo>* metric_schema_ = nullptr;
   TsRawPayloadRowParser row_parser_;
   TSSlice primary_key_;
   TSSlice tag_datas_;
@@ -100,7 +100,7 @@ class TsRawPayload {
   bool can_parse_ = false;
 
  public:
-  explicit TsRawPayload(const TSSlice &raw, const std::vector<AttributeInfo>& data_schema = std::vector<AttributeInfo>());
+  explicit TsRawPayload(const TSSlice &raw, const std::vector<AttributeInfo>* data_schema = nullptr);
 
   // rangeGroupID --> hashPoint
   uint32_t GetHashPoint() {

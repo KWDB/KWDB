@@ -317,6 +317,7 @@ class TsWriteBatchDataWorker : public TsBatchDataWorker {
   };
   std::unique_ptr<TsAppendOnlyFile> w_file_;
   KLatch w_file_latch_;
+  uint32_t w_file_no_ = 0;
 
   KStatus GetTagPayload(uint32_t table_version, TSSlice* data, std::string& tag_payload_str);
 
