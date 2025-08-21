@@ -271,8 +271,9 @@ namespace kwdbts {
   }
 
   KStatus DuckdbExec::Next(kwdbContext_p ctx, k_int32 id, TsNextRetState nextState, APRespInfo *resp) {
+    KStatus ret = KStatus::FAIL;
 #if 1
-    if (res_.success) {
+    if (setup_ && res_.success) {
       resp->ret = 1;
       if (res_.row_count != 0) {
         resp->code = 1;
@@ -282,7 +283,9 @@ namespace kwdbts {
         res_.row_count = 0;
       } else {
         resp->code = -1;
+        setup_ = false;
       }
+      ret = KStatus::SUCCESS;
     } else {
       resp->ret = 1;
       resp->code = 2202;
@@ -297,6 +300,7 @@ namespace kwdbts {
 #else
     resp->ret = 1;
 #endif
+    return ret;
   }
 
   void DuckdbExec::Clear(kwdbContext_p ctx) {
@@ -334,7 +338,7 @@ namespace kwdbts {
         }
 
         switch(res->types[col_idx].id()) {
-          case LogicalTypeId::BOOLEAN:{
+          case LogicalTypeId::BOOLEAN: {
             // write the length of col value
             if (ee_sendint(info, 1, 4) != SUCCESS) {
               Return(FAIL);

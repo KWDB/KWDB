@@ -66,7 +66,7 @@ namespace kwdbts {
 	  DatabaseWrapper * db_;
 	  Connection *connect_;
     mutex context_lock_;
-    bool setup_;
+    bool setup_=false;
     ExecutionResult res_;
   };
 }
