@@ -790,6 +790,8 @@ type DatumWithPlaceHolderIdx struct {
 // Placeholder represents a named placeholder.
 type Placeholder struct {
 	Idx PlaceholderIdx
+	// Just for trigger NEW/OLD.
+	IsTrigger bool
 
 	typeAnnotation
 }

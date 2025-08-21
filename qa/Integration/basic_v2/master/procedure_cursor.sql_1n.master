@@ -1277,17 +1277,19 @@ SQLSTATE: 42704
 ERROR: procedure "test_set25" does not exist
 SQLSTATE: 42704
 > CREATE PROCEDURE test_set26()BEGIN DECLARE x INT;SET x = NULL;SELECT x;END;
-ERROR: value type unknown doesn't match type int4 of column "x"
-SQLSTATE: 42804
+CREATE PROCEDURE
 > CALL test_set26();
-ERROR: procedure "test_set26" does not exist
-SQLSTATE: 42704
+   x
+--------
+  NULL
+(1 row)
 > CALL test_set26();
-ERROR: procedure "test_set26" does not exist
-SQLSTATE: 42704
+   x
+--------
+  NULL
+(1 row)
 > DROP PROCEDURE test_set26;
-ERROR: procedure "test_set26" does not exist
-SQLSTATE: 42704
+DROP PROCEDURE
 > CREATE PROCEDURE test_set27()BEGIN DECLARE x INT DEFAULT 5;SET x = DEFAULT;SELECT x;END;
 ERROR: DEFAULT can only appear in a VALUES list within INSERT or on the right side of a SET
 SQLSTATE: 42601
@@ -1496,10 +1498,10 @@ DROP PROCEDURE
 > CREATE PROCEDURE test_procedure_my_rel.test_limit(i1 INT8) BEGIN DECLARE i2 INT ;DECLARE val1 TIMESTAMP;SELECT count(*) INTO i2 FROM test_procedure_my_ts.t1;DECLARE cur1 CURSOR FOR SELECT k_timestamp FROM test_procedure_my_ts.t1;OPEN cur1; WHILE i1 <= i2  do fetch cur1 into val1;SET i1 = i1 + 1;ENDWHILE;END;
 CREATE PROCEDURE
 > CALL test_procedure_my_rel.test_limit(1);
-ERROR: variable val1 type timestamp not save type timestamptz(9) 
+ERROR: variable val1 type timestamp not save type timestamptz(3) 
 SQLSTATE: 42804
 > CALL test_procedure_my_rel.test_limit(1);
-ERROR: variable val1 type timestamp not save type timestamptz(9) 
+ERROR: variable val1 type timestamp not save type timestamptz(3) 
 SQLSTATE: 42804
 > drop database test_procedure_my_ts cascade;
 DROP DATABASE

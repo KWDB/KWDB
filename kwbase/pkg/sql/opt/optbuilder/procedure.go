@@ -12,6 +12,7 @@
 package optbuilder
 
 import (
+	"strings"
 	"time"
 
 	"gitee.com/kwbasedb/kwbase/pkg/sql/opt"
@@ -304,6 +305,7 @@ func (b *Builder) buildDeclareVar(dv tree.DeclareVar, inScope *scope) memo.ProcC
 		Typ:     dv.Typ,
 		Default: typedExp,
 		Idx:     nextIdx,
+		Mode:    tree.DeclareValue,
 	}}
 	b.synthesizeDeclareColumn(inScope, dv.VarName, dv.Typ, typedExp, nextIdx, dv.IsParameter, overWrite)
 	return declComm
@@ -352,12 +354,46 @@ func (b *Builder) buildProcSet(procSet *tree.ProcSet, inScope *scope) memo.ProcC
 			break
 		}
 	}
+	mode := tree.InternalValue
 	if col == nil {
-		panic(sqlbase.NewUndefinedVarColumnError(procSet.Name))
+		report := true
+		// if we are in trigger compilation, replace new/old expr with placeholder expr
+		if b.insideObjectDef.HasFlags(InsideTriggerDef) {
+			colName := strings.Split(procSet.Name, ".")
+			if len(colName) == 2 {
+				if strings.ToLower(colName[0]) == triggerColNew {
+					triTab := b.TriggerInfo.TriggerTab[b.TriggerInfo.CurTriggerTabID]
+					if triTab.CurActionTime == tree.TriggerActionTimeAfter {
+						panic(pgerror.Newf(pgcode.InvalidObjectDefinition, "Updating of NEW row is not allowed in after trigger"))
+					}
+					for index, v := range triTab.ColMetas {
+						if colName[1] == v.Name {
+							idx := index
+							b.TriggerInfo.TriggerNewOldTyp |= newCol
+							if b.isTriggerUpdate() {
+								idx += int(opt.ColumnID(len(triTab.ColMetas)))
+							}
+							col = &scopeColumn{name: tree.Name(procSet.Name), typ: v.Type, realIdx: idx}
+							mode = tree.ExternalValue
+							report = false
+							break
+						}
+					}
+				}
+				if strings.ToLower(colName[0]) == triggerColOld {
+					panic(pgerror.Newf(pgcode.InvalidObjectDefinition, "Updating of OLD row is not allowed in trigger"))
+				}
+			}
+		}
+		if report {
+			panic(sqlbase.NewUndefinedVarColumnError(procSet.Name))
+		}
 	}
 	typedExp = b.buildSQLExpr(procSet.Value, col.typ, inScope)
 	// Type check the input column against the corresponding column.
-	if !typedExp.ResolvedType().Equivalent(col.typ) {
+	if typedExp == tree.DNull {
+		// do nothing
+	} else if !typedExp.ResolvedType().Equivalent(col.typ) {
 		panic(pgerror.Newf(pgcode.DatatypeMismatch,
 			"value type %s doesn't match type %s of column %q",
 			typedExp.ResolvedType(), col.typ, tree.ErrNameString(string(col.name))))
@@ -367,6 +403,8 @@ func (b *Builder) buildProcSet(procSet *tree.ProcSet, inScope *scope) memo.ProcC
 		Name:    tree.Name(procSet.Name),
 		Typ:     col.typ,
 		Default: typedExp,
+		Idx:     col.realIdx,
+		Mode:    mode,
 	}}
 
 	return declComm
@@ -427,22 +465,37 @@ func (b *Builder) buildProcedureTransaction(stmt tree.Statement) memo.ProcComman
 func (b *Builder) buildIntoCommand(
 	selInto tree.Statement, targets tree.SelectIntoTargets, inScope *scope,
 ) memo.ProcCommand {
-	stmtComm := &memo.IntoCommand{}
+	intoComm := &memo.IntoCommand{}
 	// ids represents variables' idx which will be assigned by INTO
-	var ids []int
+	var intoHelper []tree.IntoHelper
 	for _, target := range targets {
+		if b.insideObjectDef.HasFlags(InsideTriggerDef) {
+			tarStr := strings.ToLower(target.DeclareVar)
+			if strings.Contains(tarStr, "new.") {
+				panic(pgerror.New(pgcode.FeatureNotSupported, "Updating of NEW row is not allowed in SELECT...INTO"))
+			}
+			if strings.Contains(tarStr, "old.") {
+				panic(pgerror.New(pgcode.FeatureNotSupported, "Updating of OLD row is not allowed in trigger"))
+			}
+		}
 		found := false
 		for _, col := range inScope.cols {
-			if string(col.name) == target.DeclareVar {
-				ids = append(ids, b.factory.Metadata().ColumnMeta(col.id).RealIdx)
+			if target.DeclareVar != "" && string(col.name) == target.DeclareVar {
+				intoHelper = append(intoHelper, tree.ProdureDeclareValue(b.factory.Metadata().ColumnMeta(col.id).RealIdx))
 				found = true
 				break
 			}
 		}
 		if !found {
-			panic(pgerror.Newf(
-				pgcode.UndefinedObject, "%s does not exist", target.DeclareVar,
-			))
+			varName := strings.ToLower(target.Udv.VarName)
+			if varName == "" || varName[0] != '@' {
+				if varName == "" {
+					panic(pgerror.Newf(pgcode.Syntax, "'%s' does not exist", target.DeclareVar))
+				} else {
+					panic(pgerror.Newf(pgcode.Syntax, "invalid user defined var name '%s'", varName))
+				}
+			}
+			intoHelper = append(intoHelper, tree.ProdureUDFValue(varName))
 		}
 	}
 	outScope := b.buildStmtAtRoot(selInto, nil, inScope)
@@ -451,11 +504,12 @@ func (b *Builder) buildIntoCommand(
 			pgcode.Syntax, "The used SELECT statements have a different number of columns",
 		))
 	}
-	stmtComm.Name = selInto.String()
-	stmtComm.PhysicalProp = outScope.makePhysicalProps()
-	stmtComm.Body = outScope.expr
-	stmtComm.Idx = ids
-	return stmtComm
+
+	intoComm.Name = selInto.String()
+	intoComm.PhysicalProp = outScope.makePhysicalProps()
+	intoComm.Body = outScope.expr
+	intoComm.IntoValue = intoHelper
+	return intoComm
 }
 
 // buildSQLExpr type-checks and builds the given SQL expression into a

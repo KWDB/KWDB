@@ -463,7 +463,6 @@ func (b *Builder) buildScalar(
 	case *tree.ParenExpr:
 		// Treat ParenExpr as if it wasn't present.
 		return b.buildScalar(t.TypedInnerExpr(), inScope, outScope, outCol, colRefs)
-
 	case *tree.Placeholder:
 		if !b.KeepPlaceholders && b.evalCtx.HasPlaceholders() {
 			b.HadPlaceholders = true

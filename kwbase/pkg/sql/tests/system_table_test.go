@@ -157,6 +157,10 @@ func TestSystemTableLiterals(t *testing.T) {
 		}
 		require.NoError(t, gen.ValidateTable())
 
+		if test.pkg.NextTriggerID == 0 {
+			test.pkg.NextTriggerID = 1
+		}
+
 		if !proto.Equal(&test.pkg, &gen) {
 			diff := strings.Join(pretty.Diff(&test.pkg, &gen), "\n")
 			t.Errorf("%s table descriptor generated from CREATE TABLE statement does not match "+

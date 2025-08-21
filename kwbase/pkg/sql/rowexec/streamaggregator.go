@@ -63,6 +63,9 @@ type streamAggregator struct {
 	groupWindowColID   int32
 	groupWindowTsColID int32
 	groupWindowID      []int32
+
+	// isSlidingWindowCompleted is true when all windows completed.
+	isSlidingWindowCompleted bool
 }
 
 var _ execinfra.Processor = &streamAggregator{}
@@ -143,6 +146,7 @@ func newStreamAggregator(
 	streamAgg.streamMemMonitor = &monitor
 
 	streamAgg.streamBucketsAcc = streamAgg.streamMemMonitor.MakeBoundAccount()
+	streamAgg.isSlidingWindowCompleted = true
 
 	return streamAgg, nil
 }
@@ -202,49 +206,63 @@ func (streamAgg *streamAggregator) accumulateRows() (
 ) {
 	var identity string
 	for {
-		row, meta := streamAgg.input.Next()
-		if meta != nil {
-			if meta.Err != nil {
-				streamAgg.MoveToDraining(nil /* err */)
-				return aggStateUnknown, nil, meta
+		var row sqlbase.EncDatumRow
+		var meta *execinfrapb.ProducerMetadata
+		if streamAgg.isSlidingWindowCompleted {
+			row, meta = streamAgg.input.Next()
+			if meta != nil {
+				if meta.Err != nil {
+					streamAgg.MoveToDraining(nil /* err */)
+					return aggStateUnknown, nil, meta
+				}
+				return aggAccumulating, nil, meta
 			}
-			return aggAccumulating, nil, meta
+		} else {
+			row = nil
 		}
 
 		if row != nil {
 			identity = streamAgg.extractBucketIdentity(row)
-		} else {
-			// force closes the Agg window based on MAX_DELAY option
-			streamAgg.forceEmitRow()
+			if streamAgg.currentBucketIdentity != identity || streamAgg.currentBucket == nil {
+				bucket, ok := streamAgg.streamBuckets[identity]
+				if ok {
+					streamAgg.currentBucket = bucket
+				} else {
+					streamAgg.currentBucket = &streamBucket{}
+					streamAgg.streamBuckets[identity] = streamAgg.currentBucket
 
-			if len(streamAgg.forceEmitRows) != 0 {
-				return aggForceEmittingRows, nil, nil
+					// add memory used by identity and streamBucket struct
+					if streamAgg.streamBucketBaseSize == 0 {
+						streamAgg.streamBucketBaseSize = streamBucketBaseSize(streamAgg.EvalCtx, row)
+					}
+					bucketFixedSize := streamAgg.streamBucketBaseSize + int64(unsafe.Sizeof(identity))
+
+					if err := streamAgg.streamBucketsAcc.Grow(streamAgg.PbCtx(), bucketFixedSize); err != nil {
+						streamAgg.MoveToDraining(errors.Wrap(err, "the limitation of stream BUFFER_SIZE has been reached") /* err */)
+						return aggStateUnknown, nil, nil
+					}
+				}
+
+				streamAgg.currentBucketIdentity = identity
 			}
-			continue
+
+			streamAgg.currentBucket.forceCloseTime = timeutil.Now().UTC().Add(streamAgg.streamOpts.MaxDelay)
+		} else {
+			streamAgg.isSlidingWindowCompleted = streamAgg.slidingWindowCompleted()
+			// force closes the Agg window based on MAX_DELAY option
+			if streamAgg.isSlidingWindowCompleted {
+				streamAgg.forceEmitRow()
+				if len(streamAgg.forceEmitRows) != 0 {
+					//streamAgg.forceCloseWindow = false
+					return aggForceEmittingRows, nil, nil
+				}
+
+				continue
+			}
 		}
 
-		if streamAgg.currentBucketIdentity != identity || streamAgg.currentBucket == nil {
-			bucket, ok := streamAgg.streamBuckets[identity]
-			if ok {
-				streamAgg.currentBucket = bucket
-			} else {
-				streamAgg.currentBucket = &streamBucket{}
-				streamAgg.streamBuckets[identity] = streamAgg.currentBucket
-				streamAgg.currentBucket.forceCloseTime = timeutil.Now().UTC().Add(streamAgg.streamOpts.MaxDelay)
-
-				// add memory used by identity and streamBucket struct
-				if streamAgg.streamBucketBaseSize == 0 {
-					streamAgg.streamBucketBaseSize = streamBucketBaseSize(streamAgg.EvalCtx, row)
-				}
-				bucketFixedSize := streamAgg.streamBucketBaseSize + int64(unsafe.Sizeof(identity))
-
-				if err := streamAgg.streamBucketsAcc.Grow(streamAgg.PbCtx(), bucketFixedSize); err != nil {
-					streamAgg.MoveToDraining(errors.Wrap(err, "the limitation of stream BUFFER_SIZE has been reached") /* err */)
-					return aggStateUnknown, nil, nil
-				}
-			}
-
-			streamAgg.currentBucketIdentity = identity
+		if streamAgg.currentBucket == nil {
+			continue
 		}
 
 		// WINDOW Function cases
@@ -293,12 +311,6 @@ func (streamAgg *streamAggregator) accumulateRows() (
 			case tree.EventWindow:
 				if streamAgg.EvalCtx.GroupWindow.EventWindowHelper.IgnoreFlag {
 					streamAgg.EvalCtx.GroupWindow.EventWindowHelper.IgnoreFlag = false
-					continue
-				}
-			case tree.TimeWindow:
-				if (streamAgg.streamGroupWindow.timeWindowHelper.reading ||
-					streamAgg.streamGroupWindow.timeWindowHelper.noMatch) &&
-					streamAgg.EvalCtx.GroupWindow.TimeWindowHelper.IsSlide {
 					continue
 				}
 			default:
@@ -422,6 +434,69 @@ func (streamAgg *streamAggregator) emitRow() (
 	streamAgg.currentBucket.bucket = nil
 
 	return streamAgg.getAggResults(bucket)
+}
+
+// slidingWindowCompleted returns false when there is still a sliding window that is uncompleted,
+// indicates that the calculation needs to continue.
+// it returns true when the non-sliding window function or all windows have finished calculating,
+// indicates that there is no need to continue the calculation.
+func (streamAgg *streamAggregator) slidingWindowCompleted() bool {
+	switch streamAgg.EvalCtx.GroupWindow.GroupWindowFunc {
+	case tree.CountWindow:
+		if !streamAgg.EvalCtx.GroupWindow.CountWindowHelper.IsSlide {
+			return true
+		}
+
+		currentTime := timeutil.Now().UTC()
+		for key, value := range streamAgg.streamBuckets {
+			if value == nil || value.bucket == nil {
+				continue
+			}
+
+			// The number of rows in the queue exceeds the window capacity.
+			if value.groupWindow.getRowsLength() >= streamAgg.FlowCtx.EvalCtx.GroupWindow.CountWindowHelper.WindowNum {
+				streamAgg.currentBucketIdentity = key
+				streamAgg.currentBucket = value
+				return false
+			}
+
+			// The number of rows in the queue more than zero when forceCloseTime coming.
+			if currentTime.After(value.forceCloseTime) && value.groupWindow.getRowsLength() > 0 {
+				streamAgg.currentBucketIdentity = key
+				streamAgg.currentBucket = value
+				return false
+			}
+		}
+	case tree.TimeWindow:
+		if !streamAgg.EvalCtx.GroupWindow.TimeWindowHelper.IsSlide {
+			return true
+		}
+
+		currentTime := timeutil.Now().UTC()
+		for key, value := range streamAgg.streamBuckets {
+			if value == nil || value.bucket == nil {
+				continue
+			}
+
+			// The number of rows in the queue can slided.
+			if value.groupWindow.timeWindowHelper.canSlide {
+				streamAgg.currentBucketIdentity = key
+				streamAgg.currentBucket = value
+				return false
+			}
+
+			// The number of rows in the queue more than zero.
+			if currentTime.After(value.forceCloseTime) && value.groupWindow.getRowsLength() > 0 {
+				streamAgg.currentBucketIdentity = key
+				streamAgg.currentBucket = value
+				return false
+			}
+		}
+	default:
+		return true
+	}
+
+	return true
 }
 
 func (streamAgg *streamAggregator) forceEmitRow() {
@@ -559,8 +634,6 @@ func (streamAgg *streamAggregator) accumulateRow(row sqlbase.EncDatumRow) error 
 		if err := streamAgg.streamBucketsAcc.Grow(streamAgg.PbCtx(), streamAgg.streamAggFuncSize); err != nil {
 			return errors.Wrap(err, "the limitation of stream BUFFER_SIZE has been reached")
 		}
-
-		streamAgg.currentBucket.forceCloseTime = timeutil.Now().UTC().Add(streamAgg.streamOpts.MaxDelay)
 	}
 
 	return streamAgg.accumulateRowIntoBucket(row, nil /* groupKey */, streamAgg.currentBucket.bucket)

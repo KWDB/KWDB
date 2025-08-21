@@ -204,6 +204,16 @@ func (n *renameTableNode) startExec(params runParams) error {
 	}
 
 	descID := tableDesc.GetID()
+	for i := range tableDesc.GetTriggers() {
+		ct, err := reParseCreateTrigger(&tableDesc.GetTriggers()[i])
+		if err != nil {
+			return err
+		}
+		ct.TableName = *newTn
+		fmtCtx := tree.NewFmtCtx(tree.FmtParsable)
+		fmtCtx.FormatNode(ct)
+		tableDesc.Triggers[i].TriggerBody = fmtCtx.CloseAndGetString()
+	}
 
 	renameDetails := sqlbase.TableDescriptor_NameInfo{
 		ParentID:       prevDbDesc.ID,

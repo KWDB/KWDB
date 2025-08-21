@@ -18,6 +18,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/cdc/cdcpb"
 	"gitee.com/kwbasedb/kwbase/pkg/security"
 	"gitee.com/kwbasedb/kwbase/pkg/settings"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/opt/memo"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgcode"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgerror"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/privilege"
@@ -186,7 +187,7 @@ func (n *createStreamNode) startExec(params runParams) (err error) {
 		return err
 	}
 
-	query, hasAgg, err := fixOriginalQuery(n.n.Query, sourceTableInfo)
+	originalQuery, err := makeOriginalQuery(n.n.Query, sourceTableInfo)
 	if err != nil {
 		return err
 	}
@@ -195,18 +196,13 @@ func (n *createStreamNode) startExec(params runParams) (err error) {
 		return err
 	}
 
-	originalQuery := sqlutil.StreamSink{
-		SQL:    query,
-		HasAgg: hasAgg,
-	}
-
 	para := sqlutil.StreamParameters{
 		SourceTableID: sourceTableID,
 		SourceTable:   *sourceTableInfo,
 		TargetTable:   *targetTableInfo,
 		TargetTableID: targetTableID,
 		Options:       *options,
-		StreamSink:    originalQuery,
+		StreamSink:    *originalQuery,
 	}
 
 	// build plan of stream query, get result types.
@@ -220,7 +216,7 @@ func (n *createStreamNode) startExec(params runParams) (err error) {
 		Name:       "FakeName",
 		Parameters: marshaledStreamParas.String(),
 	}
-	physicalPlan, err := createPlanForStream(params.ctx, params, n.n.Query.String(), tempMetadata, hasAgg)
+	physicalPlan, err := createPlanForStream(params.ctx, params, n.n.Query.String(), tempMetadata, originalQuery.HasAgg)
 	if err != nil {
 		return err
 	}
@@ -343,29 +339,42 @@ func (n *createStreamNode) Values() tree.Datums { return tree.Datums{} }
 
 func (n *createStreamNode) Close(context.Context) {}
 
-// fixOriginalQuery repairs the table names in the SQL to full paths(database.schema.table).
+// makeOriginalQuery repairs the table names in the SQL to full paths(database.schema.table).
 // It also adds 'where 1=1' when the WHERE clause is missing.
-func fixOriginalQuery(
+func makeOriginalQuery(
 	query *tree.Select, sourceTableInfo *cdcpb.CDCTableInfo,
-) (string, bool, error) {
+) (*sqlutil.StreamSink, error) {
 	selectClause, ok := query.Select.(*tree.SelectClause)
 	if !ok {
-		return "", false, errors.Errorf("invalid stream query: %s", query.String())
+		return nil, errors.Errorf("invalid stream query: %s", query.String())
 	}
 
-	hasAgg := false
+	streamSink := &sqlutil.StreamSink{}
+
 	if len(selectClause.GroupBy) != 0 {
-		hasAgg = true
+		streamSink.HasAgg = true
+		expr := selectClause.GroupBy[0]
+		switch selectClause.GroupBy[0].(type) {
+		case *tree.FuncExpr:
+			funcExpr := expr.(*tree.FuncExpr)
+			streamSink.Function = funcExpr.Func.FunctionName()
+			switch streamSink.Function {
+			case memo.CountWindow:
+				streamSink.HasSlide = len(funcExpr.Exprs) == 2
+			case memo.TimeWindow:
+				streamSink.HasSlide = len(funcExpr.Exprs) == 3
+			}
+		}
 	}
 
 	// check and fix FROM clause
 	if len(selectClause.From.Tables) != 1 {
-		return "", hasAgg, errors.Errorf("stream only supports single table query")
+		return nil, errors.Errorf("stream only supports single table query")
 	}
 
 	tableName, ok := getSourceTableName(query)
 	if !ok {
-		return "", hasAgg, errors.Errorf("failed to extract table name from stream query")
+		return nil, errors.Errorf("failed to extract table name from stream query")
 	}
 
 	tableName.ExplicitCatalog = true
@@ -384,6 +393,6 @@ func fixOriginalQuery(
 	}
 
 	sourceTableInfo.Filter = selectClause.Where.Expr.String()
-
-	return selectClause.String(), hasAgg, nil
+	streamSink.SQL = selectClause.String()
+	return streamSink, nil
 }

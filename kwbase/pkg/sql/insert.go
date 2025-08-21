@@ -56,6 +56,9 @@ type insertNode struct {
 	columns sqlbase.ResultColumns
 
 	run insertRun
+
+	//trigger is the processing logic structure of a trigger.
+	trigger triggerHelper
 }
 
 // insertRun contains the run-time state of insertNode during local execution.
@@ -242,13 +245,28 @@ func (n *insertNode) BatchedNext(params runParams) (bool, error) {
 			break
 		}
 
+		// execute (BEFORE INSERT) stmts in triggers
+		oldValues := n.source.Values()
+		if n.trigger.NeedExecuteBeforeTrigger() {
+			if err := n.trigger.ExecuteBeforeIns(params, &oldValues); err != nil {
+				return false, err
+			}
+		}
+
 		// Process the insertion for the current source row, potentially
 		// accumulating the result row for later.
-		if err := n.run.processSourceRow(params, n.source.Values()); err != nil {
+		if err := n.run.processSourceRow(params, oldValues); err != nil {
 			return false, err
 		}
 
 		n.run.rowCount++
+
+		if n.trigger.NeedExecuteAfterTrigger() {
+			// execute (AFTER INSERT) stmts in triggers
+			if err := n.trigger.ExecuteAfterIns(params, &oldValues); err != nil {
+				return false, err
+			}
+		}
 		// Are we done yet with the current batch?
 		if n.run.ti.curBatchSize() >= n.run.ti.maxBatchSize {
 			break
@@ -286,7 +304,7 @@ func (n *insertNode) BatchedNext(params runParams) (bool, error) {
 // BatchedCount implements the batchedPlanNode interface.
 func (n *insertNode) BatchedCount() int { return n.run.rowCount }
 
-// BatchedCount implements the batchedPlanNode interface.
+// BatchedValues implements the batchedPlanNode interface.
 func (n *insertNode) BatchedValues(rowIdx int) tree.Datums { return n.run.rows.At(rowIdx) }
 
 func (n *insertNode) Close(ctx context.Context) {

@@ -32,15 +32,11 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/opt/cat"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/opt/exec"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/opt/memo"
-	"gitee.com/kwbasedb/kwbase/pkg/sql/opt/norm"
-	"gitee.com/kwbasedb/kwbase/pkg/sql/opt/props/physical"
-	"gitee.com/kwbasedb/kwbase/pkg/sql/opt/xform"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqltelemetry"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 	"gitee.com/kwbasedb/kwbase/pkg/util/treeprinter"
-	"github.com/cockroachdb/errors"
 )
 
 func (b *Builder) buildCreateProcedure(cp *memo.CreateProcedureExpr) (execPlan, error) {
@@ -63,83 +59,18 @@ func (b *Builder) buildCallProcedure(cp *memo.CallProcedureExpr) (execPlan, erro
 	var root exec.Node
 	var err error
 
-	var o xform.Optimizer
-	// this function needs to be passed to the execution phase of the procedure, which is
-	// used to replace the variables in the memo expression with constants, perform optimization
-	// and finally generate the exec plan.
-	fn := func(expr memo.RelExpr, pr *physical.Required, src []*exec.LocalVariable) (exec.Plan, error) {
-		o.Init(b.evalCtx, b.catalog)
-		o.Memo().SetWhiteList(b.mem.GetWhiteList())
-		f := o.Factory()
-
-		// Copy the right expression into a new memo, replacing each bound column
-		// with the corresponding value from the left row.
-		var replaceFn norm.ReplaceFunc
-		replaceFn = func(e opt.Expr) opt.Expr {
-			switch t := e.(type) {
-			case *memo.VariableExpr:
-				meta := b.mem.Metadata().ColumnMeta(t.Col)
-				if meta.IsDeclaredInsideProcedure {
-
-					return f.ConstructConstVal(src[meta.RealIdx].Data, &src[meta.RealIdx].Typ)
-				}
-			case *memo.TSInsertExpr:
-				for i := range t.InputRows {
-					t.ActualRows[i] = make([]tree.Expr, len(t.InputRows[i]))
-					for j := range t.InputRows[i] {
-						if v, ok := t.InputRows[i][j].(*tree.IndexedVar); ok && v.IsDeclare {
-							t.RunInsideProcedure = true
-							// replace indexVal to Datum
-							t.ActualRows[i][j] = src[v.Idx].Data
-						} else {
-							t.ActualRows[i][j] = t.InputRows[i][j]
-						}
-					}
-				}
-			case *memo.TSDeleteExpr:
-				for i := range t.InputRows {
-					t.ActualRows[i] = make([]tree.Expr, len(t.InputRows[i]))
-					for j := range t.InputRows[i] {
-						if v, ok := t.InputRows[i][j].(*tree.IndexedVar); ok && v.IsDeclare {
-							t.RunInsideProcedure = true
-							// replace indexVal to Datum
-							t.ActualRows[i][j] = src[v.Idx].Data
-						} else {
-							t.ActualRows[i][j] = t.InputRows[i][j]
-						}
-					}
-				}
-			}
-			return f.CopyAndReplaceDefault(e, replaceFn)
-		}
-		f.CopyAndReplace(expr, pr, replaceFn)
-
-		newRightSide, err := o.Optimize()
-		if err != nil {
-			return nil, err
-		}
-
-		eb := New(b.factory, f.Memo(), b.catalog, newRightSide, b.evalCtx)
-		eb.disableTelemetry = true
-		plan, err := eb.Build(false)
-		if err != nil {
-			if errors.IsAssertionFailure(err) {
-				// Enhance the error with the EXPLAIN (OPT, VERBOSE) of the inner
-				// expression.
-				fmtFlags := memo.ExprFmtHideQualifications | memo.ExprFmtHideScalars | memo.ExprFmtHideTypes
-				explainOpt := o.FormatExpr(newRightSide, fmtFlags)
-				err = errors.WithDetailf(err, "newStmt:\n%s", explainOpt)
-			}
-			return nil, err
-		}
-
-		return plan, nil
-	}
-
-	root, err = b.factory.ConstructCallProcedure(cp.ProcName, cp.ProcCall, cp.ProcComm, fn, b.buildProcedureScalarExpr)
+	root, err = b.factory.ConstructCallProcedure(cp.ProcName, cp.ProcCall, cp.ProcComm, b.replaceMemoBeforePlanning, b.buildProcedureScalarExpr)
 	if err != nil {
 		return execPlan{}, err
 	}
+	ep := execPlan{root: root}
+
+	return ep, err
+}
+
+func (b *Builder) buildCreateTrigger(ct *memo.CreateTriggerExpr) (execPlan, error) {
+	var root exec.Node
+	root, err := b.factory.ConstructCreateTrigger(ct.Syntax, ct.Deps)
 	ep := execPlan{root: root}
 
 	return ep, err

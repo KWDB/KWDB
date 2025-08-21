@@ -50,6 +50,9 @@ type updateNode struct {
 	columns sqlbase.ResultColumns
 
 	run updateRun
+
+	//trigger is the processing logic structure of a trigger.
+	trigger triggerHelper
 }
 
 // updateRun contains the run-time state of updateNode during local execution.
@@ -176,6 +179,7 @@ func (u *updateNode) BatchedNext(params runParams) (bool, error) {
 	if u.run.rows != nil {
 		u.run.rows.Clear(params.ctx)
 	}
+
 	// Now consume/accumulate the rows for this batch.
 	lastBatch := false
 	for {
@@ -192,13 +196,54 @@ func (u *updateNode) BatchedNext(params runParams) (bool, error) {
 			break
 		}
 
-		// Process the update for the current source row, potentially
-		// accumulating the result row for later.
-		if err := u.processSourceRow(params, u.source.Values()); err != nil {
-			return false, err
-		}
+		if u.trigger.NeedExecuteTrigger() {
+			// execute (BEFORE UPDATE) stmts in triggers
+			tableColNum := len(u.run.tu.ru.FetchCols)
+			//updateColIdx := getUpdateColIdx(u.run.tu.ru.FetchCols, u.run.updateColsIdx)
+			oldValues := make(tree.Datums, 2*tableColNum)
+			tmp := u.source.Values()
+			// init old column values
+			for i := 0; i < tableColNum; i++ {
+				oldValues[i] = tmp[i]
+			}
+			// init new column values by old column
+			for i := tableColNum; i < 2*tableColNum; i++ {
+				oldValues[i] = tmp[i-tableColNum]
+			}
+			// update new colum values from source
+			for i, v := range u.run.tu.ru.UpdateCols {
+				oldValues[tableColNum+u.run.tu.ru.FetchColIDtoRowIndex[v.ID]] = tmp[tableColNum+i]
+			}
 
-		u.run.rowCount++
+			if err := u.trigger.ExecuteBeforeIns(params, &oldValues); err != nil {
+				return false, err
+			}
+
+			// Process the update for the current source row, potentially
+			// accumulating the result row for later.
+
+			// update colum values after desc
+			for i, v := range u.run.tu.ru.UpdateCols {
+				tmp[tableColNum+i] = oldValues[tableColNum+u.run.tu.ru.FetchColIDtoRowIndex[v.ID]]
+			}
+
+			if err := u.processSourceRow(params, tmp); err != nil {
+				return false, err
+			}
+
+			u.run.rowCount++
+
+			// execute (AFTER UPDATE) stmts in triggers
+			if err := u.trigger.ExecuteAfterIns(params, &oldValues); err != nil {
+				return false, err
+			}
+		} else {
+			if err := u.processSourceRow(params, u.source.Values()); err != nil {
+				return false, err
+			}
+
+			u.run.rowCount++
+		}
 
 		// Are we done yet with the current batch?
 		if u.run.tu.curBatchSize() >= u.run.tu.maxBatchSize {

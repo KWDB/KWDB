@@ -28,6 +28,7 @@ retrieving SQL data for kwdb_internal.kv_store_status... writing: debug/kwdb_int
 retrieving SQL data for kwdb_internal.kwdb_attributes... writing: debug/kwdb_internal.kwdb_attributes.txt
 retrieving SQL data for kwdb_internal.kwdb_functions... writing: debug/kwdb_internal.kwdb_functions.txt
 retrieving SQL data for kwdb_internal.kwdb_schedules... writing: debug/kwdb_internal.kwdb_schedules.txt
+retrieving SQL data for kwdb_internal.kwdb_triggers... writing: debug/kwdb_internal.kwdb_triggers.txt
 retrieving SQL data for kwdb_internal.kwdb_procedures... writing: debug/kwdb_internal.kwdb_procedures.txt
 retrieving SQL data for kwdb_internal.kwdb_streams... writing: debug/kwdb_internal.kwdb_streams.txt
 retrieving SQL data for kwdb_internal.schema_changes... writing: debug/kwdb_internal.schema_changes.txt
