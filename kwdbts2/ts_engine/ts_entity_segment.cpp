@@ -239,7 +239,7 @@ KStatus TsEntityBlock::GetMetricColValue(uint32_t row_idx, uint32_t col_idx, TSS
   assert(col_idx < column_blocks_.size() - 1);
   assert(row_idx < n_rows_);
 
-  if (!metric_schema_.empty() && isVarLenType(metric_schema_[col_idx].type)) {
+  if (metric_schema_ != nullptr && isVarLenType((*metric_schema_)[col_idx].type)) {
     char* ptr = column_blocks_[col_idx + 1].buffer.data();
     uint32_t offset = 0;
     if (row_idx != 0) {
@@ -250,7 +250,7 @@ KStatus TsEntityBlock::GetMetricColValue(uint32_t row_idx, uint32_t col_idx, TSS
     value.data = column_blocks_[col_idx + 1].buffer.data() + var_offsets_len + offset;
     value.len = next_row_offset - offset;
   } else {
-    size_t d_size = col_idx == 0 ? 8 : static_cast<DATATYPE>(metric_schema_[col_idx].size);
+    size_t d_size = col_idx == 0 ? 8 : static_cast<DATATYPE>((*metric_schema_)[col_idx].size);
     value.data = column_blocks_[col_idx + 1].buffer.data() + row_idx * d_size;
     value.len = d_size;
   }
@@ -276,15 +276,15 @@ KStatus TsEntityBlock::LoadLSNColData(TSSlice buffer) {
   return KStatus::SUCCESS;
 }
 
-KStatus TsEntityBlock::LoadColData(int32_t col_idx, const std::vector<AttributeInfo>& metric_schema,
+KStatus TsEntityBlock::LoadColData(int32_t col_idx, const std::vector<AttributeInfo>* metric_schema,
                                          TSSlice buffer) {
   assert(block_info_.col_block_offset.size() == n_cols_);
   assert(column_blocks_.size() == n_cols_);
   assert(column_blocks_.size() > col_idx + 1);
-  bool is_var_type = col_idx > 0 && isVarLenType(metric_schema[col_idx].type);
-  bool is_not_null = col_idx <= 0 || metric_schema[col_idx].isFlag(AINFO_NOT_NULL);
+  bool is_var_type = col_idx > 0 && isVarLenType((*metric_schema)[col_idx].type);
+  bool is_not_null = col_idx <= 0 || (*metric_schema)[col_idx].isFlag(AINFO_NOT_NULL);
   const auto& mgr = CompressorManager::GetInstance();
-  if (metric_schema_.empty()) {
+  if (metric_schema_ == nullptr) {
     metric_schema_ = metric_schema;
   }
 
@@ -354,9 +354,9 @@ KStatus TsEntityBlock::LoadAggInfo(TSSlice buffer) {
   return KStatus::SUCCESS;
 }
 
-KStatus TsEntityBlock::LoadAllData(const std::vector<AttributeInfo>& metric_schema, TSSlice buffer) {
+KStatus TsEntityBlock::LoadAllData(const std::vector<AttributeInfo>* metric_schema, TSSlice buffer) {
   metric_schema_ = metric_schema;
-  assert(n_cols_ == metric_schema.size() + 1);
+  assert(n_cols_ == metric_schema->size() + 1);
   // block info(col offsets)
   LoadBlockInfo(buffer);
   assert(block_info_.col_block_offset.size() == n_cols_);
@@ -435,7 +435,7 @@ KStatus TsEntityBlock::GetRowSpans(const std::vector<STScanRange>& spans,
   return KStatus::SUCCESS;
 }
 
-KStatus TsEntityBlock::GetColAddr(uint32_t col_id, const std::vector<AttributeInfo>& schema,
+KStatus TsEntityBlock::GetColAddr(uint32_t col_id, const std::vector<AttributeInfo>* schema,
                      char** value) {
   if (!HasDataCached(col_id)) {
     KStatus s = entity_segment_->GetColumnBlock(col_id, schema, this);
@@ -448,7 +448,7 @@ KStatus TsEntityBlock::GetColAddr(uint32_t col_id, const std::vector<AttributeIn
   return KStatus::SUCCESS;
 }
 
-KStatus TsEntityBlock::GetColBitmap(uint32_t col_id, const std::vector<AttributeInfo>& schema,
+KStatus TsEntityBlock::GetColBitmap(uint32_t col_id, const std::vector<AttributeInfo>* schema,
                                           TsBitmap& bitmap) {
   if (!HasDataCached(col_id)) {
     KStatus s = entity_segment_->GetColumnBlock(col_id, schema, this);
@@ -461,7 +461,7 @@ KStatus TsEntityBlock::GetColBitmap(uint32_t col_id, const std::vector<Attribute
   return KStatus::SUCCESS;
 }
 
-KStatus TsEntityBlock::GetValueSlice(int row_num, int col_id, const std::vector<AttributeInfo>& schema,
+KStatus TsEntityBlock::GetValueSlice(int row_num, int col_id, const std::vector<AttributeInfo>* schema,
                                            TSSlice& value) {
   if (!HasDataCached(col_id)) {
     KStatus s = entity_segment_->GetColumnBlock(col_id, schema, this);
@@ -473,7 +473,7 @@ KStatus TsEntityBlock::GetValueSlice(int row_num, int col_id, const std::vector<
   return GetMetricColValue(row_num, col_id, value);
 }
 
-bool TsEntityBlock::IsColNull(int row_num, int col_id, const std::vector<AttributeInfo>& schema) {
+bool TsEntityBlock::IsColNull(int row_num, int col_id, const std::vector<AttributeInfo>* schema) {
   if (!HasDataCached(col_id)) {
     KStatus s = entity_segment_->GetColumnBlock(col_id, schema, this);
     if (s != KStatus::SUCCESS) {
@@ -683,7 +683,7 @@ inline KStatus TsEntitySegment::GetBlockData(TsEntityBlock* block, std::string& 
   return KStatus::SUCCESS;
 }
 
-KStatus TsEntitySegment::GetColumnBlock(int32_t col_idx, const std::vector<AttributeInfo>& metric_schema,
+KStatus TsEntitySegment::GetColumnBlock(int32_t col_idx, const std::vector<AttributeInfo>* metric_schema,
                                        TsEntityBlock* block) {
   // init block info
   if (block->GetBlockInfo().col_block_offset.empty()) {

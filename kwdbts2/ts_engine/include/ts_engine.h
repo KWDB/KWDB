@@ -63,7 +63,6 @@ class TSEngineV2Impl : public TSEngine {
   std::mutex snapshot_mutex_;
   std::shared_mutex wal_level_mutex_;
   std::unordered_map<uint64_t, TsRangeImgrationInfo> snapshots_;
-  TsLSNFlushManager flush_mgr_;
   std::unique_ptr<WALMgr> wal_mgr_ = nullptr;
   std::map<uint64_t, uint64_t> range_indexes_map_;
   std::unique_ptr<WALMgr> wal_sys_ = nullptr;
@@ -277,14 +276,6 @@ class TSEngineV2Impl : public TSEngine {
 
   WALMode GetWalMode() {
     return static_cast<WALMode>(options_.wal_level);
-  }
-
-  KStatus SwitchMemSegments(TS_LSN lsn) {
-    return flush_mgr_.FlushMemSegment(lsn);
-  }
-
-  TS_LSN GetFinishedLSN() {
-    return flush_mgr_.GetFinishedLSN();
   }
 
   std::unique_ptr<TsEngineSchemaManager>& GetEngineSchemaManager() {

@@ -39,13 +39,13 @@ class TsBlock {
   virtual uint32_t GetTableVersion() = 0;
   virtual size_t GetRowNum() = 0;
   // if has three rows, this return three value for certain column using col-based storege struct.
-  virtual KStatus GetColAddr(uint32_t col_id, const std::vector<AttributeInfo>& schema,
+  virtual KStatus GetColAddr(uint32_t col_id, const std::vector<AttributeInfo>* schema,
                              char** value) = 0;
-  virtual KStatus GetColBitmap(uint32_t col_id, const std::vector<AttributeInfo>& schema,
+  virtual KStatus GetColBitmap(uint32_t col_id, const std::vector<AttributeInfo>* schema,
                                TsBitmap& bitmap) = 0;
-  virtual KStatus GetValueSlice(int row_num, int col_id, const std::vector<AttributeInfo>& schema,
+  virtual KStatus GetValueSlice(int row_num, int col_id, const std::vector<AttributeInfo>* schema,
                                 TSSlice& value) = 0;
-  virtual bool IsColNull(int row_num, int col_id, const std::vector<AttributeInfo>& schema) = 0;
+  virtual bool IsColNull(int row_num, int col_id, const std::vector<AttributeInfo>* schema) = 0;
   // if just get timestamp , this function return fast.
   virtual timestamp64 GetTS(int row_num) = 0;
 
@@ -72,7 +72,7 @@ class TsBlock {
   virtual KStatus GetVarPreMax(uint32_t blk_col_idx, TSSlice& pre_max);
   virtual KStatus GetVarPreMin(uint32_t blk_col_idx, TSSlice& pre_min);
   KStatus UpdateFirstLastCandidates(const std::vector<k_uint32>& ts_scan_cols,
-                                                const std::vector<AttributeInfo>& schema,
+                                                const std::vector<AttributeInfo>* schema,
                                                 std::vector<k_uint32>& first_col_idxs,
                                                 std::vector<k_uint32>& last_col_idxs,
                                                 std::vector<AggCandidate>& candidates);
@@ -86,7 +86,7 @@ class TsBlockSpan {
   int start_row_ = 0, nrow_ = 0;
   bool has_pre_agg_{false};
   std::shared_ptr<TsTableSchemaManager> tbl_schema_mgr_;
-  std::vector<AttributeInfo> scan_attrs_{};
+  const std::vector<AttributeInfo>* scan_attrs_ = nullptr;
 
  public:
   std::unique_ptr<TSBlkDataTypeConvert> convert_ = nullptr;
@@ -110,7 +110,7 @@ class TsBlockSpan {
 
   TsBlockSpan(uint32_t vgroup_id, TSEntityID entity_id, std::shared_ptr<TsBlock> block, int start, int nrow,
               const std::shared_ptr<TsTableSchemaManager>& tbl_schema_mgr,
-              uint32_t scan_version, std::vector<AttributeInfo>& scan_attrs);
+              uint32_t scan_version, const std::vector<AttributeInfo>* scan_attrs);
 
   bool operator<(const TsBlockSpan& other) const;
   void operator=(TsBlockSpan& other) = delete;
@@ -128,7 +128,7 @@ class TsBlockSpan {
   TSEntityID GetEntityID() const { return entity_id_; }
   int GetRowNum() const { return nrow_; }
   int GetStartRow() const { return start_row_; }
-  int GetColCount() const { return scan_attrs_.size(); }
+  int GetColCount() const { return scan_attrs_->size(); }
   std::shared_ptr<TsBlock> GetTsBlock() const { return block_; }
   TSTableID GetTableID() const { return block_->GetTableId(); }
   uint32_t GetTableVersion() const { return block_->GetTableVersion(); }
@@ -172,13 +172,13 @@ class TsBlockSpan {
 
   bool IsColExist(uint32_t scan_idx) {
     if (!convert_) {
-      return scan_idx <= scan_attrs_.size() - 1;
+      return scan_idx <= scan_attrs_->size() - 1;
     }
     return convert_->IsColExist(scan_idx);
   }
   bool IsColNotNull(uint32_t scan_idx) {
     if (!convert_) {
-      return scan_attrs_[scan_idx].isFlag(AINFO_NOT_NULL);
+      return (*scan_attrs_)[scan_idx].isFlag(AINFO_NOT_NULL);
     }
     return convert_->IsColNotNull(scan_idx);
   }
@@ -190,19 +190,19 @@ class TsBlockSpan {
   }
   bool IsVarLenType(uint32_t scan_idx) {
     if (!convert_) {
-      return isVarLenType(scan_attrs_[scan_idx].type);
+      return isVarLenType((*scan_attrs_)[scan_idx].type);
     }
     return convert_->IsVarLenType(scan_idx);
   }
   int32_t GetColSize(uint32_t scan_idx) {
     if (!convert_) {
-      return scan_attrs_[scan_idx].size;
+      return (*scan_attrs_)[scan_idx].size;
     }
     return convert_->GetColSize(scan_idx);
   }
   int32_t GetColType(uint32_t scan_idx) {
     if (!convert_) {
-      return scan_attrs_[scan_idx].type;
+      return (*scan_attrs_)[scan_idx].type;
     }
     return convert_->GetColType(scan_idx);
   }
@@ -226,10 +226,10 @@ class TsBlockSpan {
   }
   KStatus GetPreSum(uint32_t scan_idx, void* &pre_sum, bool& is_overflow) {
     if (!convert_) {
-      int32_t size = scan_attrs_[scan_idx].size;
+      int32_t size = (*scan_attrs_)[scan_idx].size;
       return block_->GetPreSum(scan_idx, size, pre_sum, is_overflow);
     }
-    int32_t size = convert_->version_conv_->blk_attrs_[scan_idx].size;
+    int32_t size = (*convert_->version_conv_->blk_attrs_)[scan_idx].size;
     return convert_->GetPreSum(scan_idx, size, pre_sum, is_overflow);
   }
   KStatus GetPreMax(uint32_t scan_idx, void* &pre_max) {
@@ -240,10 +240,10 @@ class TsBlockSpan {
   }
   KStatus GetPreMin(uint32_t scan_idx, void* &pre_min) {
     if (!convert_) {
-      int32_t size = scan_attrs_[scan_idx].size;
+      int32_t size = (*scan_attrs_)[scan_idx].size;
       return block_->GetPreMin(scan_idx, size, pre_min);
     }
-    int32_t size = convert_->version_conv_->blk_attrs_[scan_idx].size;
+    int32_t size = (*convert_->version_conv_->blk_attrs_)[scan_idx].size;
     return convert_->GetPreMin(scan_idx, size, pre_min);
   }
   KStatus GetVarPreMax(uint32_t scan_idx, TSSlice& pre_max) {
@@ -260,7 +260,7 @@ class TsBlockSpan {
   }
 
   KStatus UpdateFirstLastCandidates(const std::vector<k_uint32>& ts_scan_cols,
-                                                const std::vector<AttributeInfo>& schema,
+                                                const std::vector<AttributeInfo>* schema,
                                                 std::vector<k_uint32>& first_col_idxs,
                                                 std::vector<k_uint32>& last_col_idxs,
                                                 std::vector<AggCandidate>& candidates) {

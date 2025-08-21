@@ -87,8 +87,8 @@ TEST_F(TsEntitySegmentTest, simpleInsert) {
     for (int i = 0; i < 10; ++i) {
       TSEntityID dev_id = 1 + i * 123;
       auto payload = GenRowPayload(metric_schema, tag_schema, table_id, 1, 1 + i * 123, 103 + i * 1000, 123, 1);
-      TsRawPayloadRowParser parser{metric_schema};
-      TsRawPayload p{payload, metric_schema};
+      TsRawPayloadRowParser parser{&metric_schema};
+      TsRawPayload p{payload, &metric_schema};
       auto ptag = p.GetPrimaryTag();
 
       vgroup->PutData(&ctx, table_id, 0, &ptag, dev_id, &payload, false);
@@ -310,8 +310,8 @@ TEST_F(TsEntitySegmentTest, simpleInsertDoubleCompact) {
       auto metric_schema = i % 2 == 0 ? metric_schema1 : metric_schema2;
       auto tag_schema = i % 2 == 0 ? tag_schema1 : tag_schema2;
       auto payload = GenRowPayload(metric_schema, tag_schema, table_id, 1, 1 + i * 123, 103 + i * 1000, 123, 1);
-      TsRawPayloadRowParser parser{metric_schema};
-      TsRawPayload p{payload, metric_schema};
+      TsRawPayloadRowParser parser{&metric_schema};
+      TsRawPayload p{payload, &metric_schema};
       auto ptag = p.GetPrimaryTag();
 
       vgroup->PutData(&ctx, table_id, 0, &ptag, dev_id, &payload, false);
@@ -329,8 +329,8 @@ TEST_F(TsEntitySegmentTest, simpleInsertDoubleCompact) {
       auto metric_schema = i % 2 == 0 ? metric_schema1 : metric_schema2;
       auto tag_schema = i % 2 == 0 ? tag_schema1 : tag_schema2;
       auto payload = GenRowPayload(metric_schema, tag_schema, table_id, 1, 1 + i * 123, 103 + i * 1000, 123, 1);
-      TsRawPayloadRowParser parser{metric_schema};
-      TsRawPayload p{payload, metric_schema};
+      TsRawPayloadRowParser parser{&metric_schema};
+      TsRawPayload p{payload, &metric_schema};
       auto ptag = p.GetPrimaryTag();
 
       vgroup->PutData(&ctx, table_id, 0, &ptag, dev_id, &payload, false);
@@ -558,8 +558,8 @@ TEST_F(TsEntitySegmentTest, TestEntityMinMaxRowNum) {
   {
     for (int i = 0; i < 10; ++i) {
       auto payload = GenRowPayload(metric_schema, tag_schema, table_id, 1, dev_ids[i], row_nums[i], 1 + 10000 * i, 1);
-      TsRawPayloadRowParser parser{metric_schema};
-      TsRawPayload p{payload, metric_schema};
+      TsRawPayloadRowParser parser{&metric_schema};
+      TsRawPayload p{payload, &metric_schema};
       auto ptag = p.GetPrimaryTag();
 
       vgroup->PutData(&ctx, table_id, 0, &ptag, dev_ids[i], &payload, false);
@@ -645,8 +645,8 @@ TEST_F(TsEntitySegmentTest, simpleCount) {
     for (int i = 1; i <= 10; ++i) {
       TSEntityID dev_id = i;
       auto payload = GenRowPayload(metric_schema, tag_schema, table_id, 1, dev_id, 11 + i * 1000, 100, 1);
-      TsRawPayloadRowParser parser{metric_schema};
-      TsRawPayload p{payload, metric_schema};
+      TsRawPayloadRowParser parser{&metric_schema};
+      TsRawPayload p{payload, &metric_schema};
       auto ptag = p.GetPrimaryTag();
 
       vgroup->PutData(&ctx, table_id, 0, &ptag, dev_id, &payload, false);
@@ -657,8 +657,8 @@ TEST_F(TsEntitySegmentTest, simpleCount) {
     for (int i = 1; i <= 10; ++i) {
       TSEntityID dev_id = i;
       auto payload = GenRowPayload(metric_schema, tag_schema, table_id, 1, dev_id, 11 + i * 1000, 10000 * 86400, 1);
-      TsRawPayloadRowParser parser{metric_schema};
-      TsRawPayload p{payload, metric_schema};
+      TsRawPayloadRowParser parser{&metric_schema};
+      TsRawPayload p{payload, &metric_schema};
       auto ptag = p.GetPrimaryTag();
 
       vgroup->PutData(&ctx, table_id, 0, &ptag, dev_id, &payload, false);
