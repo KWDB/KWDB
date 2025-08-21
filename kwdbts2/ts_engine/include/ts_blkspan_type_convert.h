@@ -56,7 +56,11 @@ class TSBlkDataTypeConvert {
     alloc_mems_.clear();
   }
 
+  TSBlkDataTypeConvert(const TSBlkDataTypeConvert& src, TsBlockSpan& desc_blk_span);
+
   KStatus Init();
+
+  std::unique_ptr<TSBlkDataTypeConvert> NewConvertOnlyChangeBlockSpan();
 
   void SetStartRowIdx(uint32_t start_row_idx) {
     start_row_idx_ = start_row_idx;

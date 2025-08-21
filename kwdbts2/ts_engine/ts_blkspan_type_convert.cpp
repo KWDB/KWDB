@@ -77,6 +77,14 @@ KStatus TSBlkDataTypeConvert::Init() {
   return SUCCESS;
 }
 
+TSBlkDataTypeConvert::TSBlkDataTypeConvert(const TSBlkDataTypeConvert& src, TsBlockSpan& desc_blk_span) :
+  block_(desc_blk_span.block_.get()),
+  start_row_idx_(desc_blk_span.start_row_),
+  row_num_(desc_blk_span.nrow_), scan_version_(src.scan_version_),
+  version_conv_(src.version_conv_),
+  tbl_schema_mgr_(src.tbl_schema_mgr_),
+  key_(src.key_) {}
+
 // copyed from TsTimePartition::ConvertDataTypeToMem
 int TSBlkDataTypeConvert::ConvertDataTypeToMem(uint32_t scan_col, int32_t new_type_size,
                          void* old_mem, uint16_t old_var_len, std::shared_ptr<void>* new_mem) {

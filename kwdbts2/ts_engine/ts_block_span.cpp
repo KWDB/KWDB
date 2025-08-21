@@ -62,7 +62,7 @@ TsBlockSpan::TsBlockSpan(TSEntityID entity_id, std::shared_ptr<TsBlock> block, i
   assert(nrow_ >= 1);
   uint32_t scan_version = scan_schema->GetVersionNUm();
   if (block_->GetTableVersion() != scan_version) {
-    convert_ = std::make_unique<TSBlkDataTypeConvert>(*this, tbl_schema_mgr,
+    convert_ = std::make_shared<TSBlkDataTypeConvert>(*this, tbl_schema_mgr,
                                                     scan_version == 0 ? block->GetTableVersion() : scan_version);
     auto s = convert_->Init();
     if (s != SUCCESS) {
@@ -85,7 +85,7 @@ TsBlockSpan::TsBlockSpan(TSEntityID entity_id, std::shared_ptr<TsBlock> block, i
     scan_version = block_->GetTableVersion();
   } else {
     if (block_->GetTableVersion() != scan_version) {
-      convert_ = std::make_unique<TSBlkDataTypeConvert>(*this, tbl_schema_mgr,
+      convert_ = std::make_shared<TSBlkDataTypeConvert>(*this, tbl_schema_mgr,
                                                       scan_version == 0 ? block->GetTableVersion() : scan_version);
       auto s = convert_->Init();
       if (s != SUCCESS) {
@@ -142,6 +142,21 @@ TsBlockSpan::TsBlockSpan(uint32_t vgroup_id, TSEntityID entity_id, std::shared_p
     auto s = convert_->Init();
     if (s != SUCCESS) {
       LOG_ERROR("convert_ Init failed!");
+    }
+  }
+  has_pre_agg_ = block_->HasPreAgg(start_row_, nrow_);
+}
+
+TsBlockSpan::TsBlockSpan(const TsBlockSpan& src, std::shared_ptr<TsBlock> block, int start, int nrow) :
+  block_(block), vgroup_id_(src.vgroup_id_), entity_id_(src.entity_id_), start_row_(start), nrow_(nrow),
+  tbl_schema_mgr_(src.tbl_schema_mgr_), scan_attrs_(src.scan_attrs_) {
+  if (src.block_->GetTableVersion() == block_->GetTableVersion()) {
+    if (src.convert_ != nullptr) {
+      convert_ = std::make_unique<TSBlkDataTypeConvert>(*(src.convert_.get()), *this);
+    }
+  } else {
+    if ((*scan_attrs_)[0].version != block_->GetTableVersion()) {
+      convert_ = std::make_unique<TSBlkDataTypeConvert>(*(src.convert_.get()), *this);
     }
   }
   has_pre_agg_ = block_->HasPreAgg(start_row_, nrow_);
