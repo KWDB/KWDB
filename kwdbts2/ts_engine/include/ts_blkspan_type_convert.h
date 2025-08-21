@@ -72,15 +72,15 @@ class TSBlkDataTypeConvert {
   bool IsColExist(uint32_t scan_idx) { return version_conv_->blk_cols_extended_[scan_idx] != UINT32_MAX; }
   bool IsSameType(uint32_t scan_idx) {
     auto blk_col_idx = version_conv_->blk_cols_extended_[scan_idx];
-    return isSameType(version_conv_->blk_attrs_[blk_col_idx], version_conv_->scan_attrs_[scan_idx]);
+    return isSameType((*version_conv_->blk_attrs_)[blk_col_idx], (*version_conv_->scan_attrs_)[scan_idx]);
   }
   bool IsColNotNull(uint32_t scan_idx) {
     auto blk_col_idx = version_conv_->blk_cols_extended_[scan_idx];
-    return version_conv_->blk_attrs_[blk_col_idx].isFlag(AINFO_NOT_NULL);
+    return (*version_conv_->blk_attrs_)[blk_col_idx].isFlag(AINFO_NOT_NULL);
   }
-  bool IsVarLenType(uint32_t scan_idx) { return isVarLenType(version_conv_->scan_attrs_[scan_idx].type); }
-  int32_t GetColSize(uint32_t scan_idx) { return version_conv_->scan_attrs_[scan_idx].size; }
-  int32_t GetColType(uint32_t scan_idx) { return version_conv_->scan_attrs_[scan_idx].type; }
+  bool IsVarLenType(uint32_t scan_idx) { return isVarLenType((*version_conv_->scan_attrs_)[scan_idx].type); }
+  int32_t GetColSize(uint32_t scan_idx) { return (*version_conv_->scan_attrs_)[scan_idx].size; }
+  int32_t GetColType(uint32_t scan_idx) { return (*version_conv_->scan_attrs_)[scan_idx].type; }
 
   // dest type is fixed len datatype.
   KStatus GetFixLenColAddr(uint32_t scan_idx, char** value, TsBitmap& bitmap, bool bitmap_required = true);

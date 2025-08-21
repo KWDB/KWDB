@@ -135,6 +135,10 @@ func buildOpaque(
 		plan, err = p.DropFunction(ctx, n)
 	case *tree.DropProcedure:
 		plan, err = p.DropProcedure(ctx, n)
+	case *tree.DropTrigger:
+		plan, err = p.DropTrigger(ctx, n)
+	case *tree.ShowTriggers:
+		plan, err = p.ShowTriggers(ctx, n)
 	case *tree.DropView:
 		plan, err = p.DropView(ctx, n)
 	case *tree.DropSequence:
@@ -155,6 +159,8 @@ func buildOpaque(
 		plan, err = p.RenameColumn(ctx, n)
 	case *tree.RenameDatabase:
 		plan, err = p.RenameDatabase(ctx, n)
+	case *tree.RenameTrigger:
+		plan, err = p.RenameTrigger(ctx, n)
 	case *tree.RenameIndex:
 		plan, err = p.RenameIndex(ctx, n)
 	case *tree.RenameTable:
@@ -253,6 +259,8 @@ func init() {
 		&tree.DropSequence{},
 		&tree.DropFunction{},
 		&tree.DropProcedure{},
+		&tree.DropTrigger{},
+		&tree.ShowTriggers{},
 		&tree.DropAudit{},
 		&tree.ImportPortal{},
 		&tree.Grant{},
@@ -260,6 +268,7 @@ func init() {
 		&tree.RefreshMaterializedView{},
 		&tree.RenameColumn{},
 		&tree.RenameDatabase{},
+		&tree.RenameTrigger{},
 		&tree.RenameIndex{},
 		&tree.RenameTable{},
 		&tree.ResumeSchedule{},

@@ -245,6 +245,26 @@ func (node *DropProcedure) Format(ctx *FmtCtx) {
 	}
 }
 
+// DropTrigger represents a DROP TRIGGER command.
+type DropTrigger struct {
+	Name     Name
+	IfExists bool
+	Table    TableName
+}
+
+// Format implements the NodeFormatter interface.
+func (node *DropTrigger) Format(ctx *FmtCtx) {
+	ctx.WriteString("DROP TRIGGER ")
+	if node.IfExists {
+		ctx.WriteString("IF EXISTS ")
+		ctx.FormatNode(&node.Name)
+	} else {
+		ctx.FormatNode(&node.Name)
+	}
+	ctx.WriteString(" ON ")
+	ctx.FormatNode(&node.Table)
+}
+
 // DropAudit represents a DROP AUDIT statement.
 type DropAudit struct {
 	Names    NameList

@@ -162,6 +162,10 @@ type Table interface {
 
 	// GetTableType return which type the table is.
 	GetTableType() tree.TableType
+
+	// GetTriggers returns the definition of trigger
+	GetTriggers(event tree.TriggerEvent) []TriggerMeta
+
 	// GetTagMeta get name and type of all tags.
 	GetTagMeta() []TagMeta
 
@@ -173,6 +177,17 @@ type Table interface {
 
 	// GetTSHashNum return hash num of ts table
 	GetTSHashNum() uint64
+}
+
+// TriggerMeta stores trigger's metadata in cat.Table
+type TriggerMeta struct {
+	TriggerID   tree.ID
+	TriggerName string
+	// Trigger action time： BEFORE｜AFTER
+	ActionTime tree.TriggerActionTime
+	// Trigger event：INSERT｜DELETE｜UPDATE
+	Event tree.TriggerEvent
+	Body  string
 }
 
 // TagMeta record name and type of all child table of stable.

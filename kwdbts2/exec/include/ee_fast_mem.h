@@ -19,9 +19,10 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <algorithm>
 
 namespace kwdbts {
-
+constexpr std::size_t kAvx2VectorSize = 32;
 #define ALWAYS_INLINE __attribute__((always_inline))
 
 ALWAYS_INLINE inline int memcmp_inlined(const void* __restrict _lhs, const void* __restrict _rhs, size_t size) {
@@ -222,23 +223,23 @@ ALWAYS_INLINE inline void memcpy_inlined(void* __restrict _dst, const void* __re
 
         while (size >= 256) {
           __m256i c0 = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(src));
-          __m256i c1 = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(src + 32));
-          __m256i c2 = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(src + 64));
-          __m256i c3 = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(src + 96));
-          __m256i c4 = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(src + 128));
-          __m256i c5 = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(src + 160));
-          __m256i c6 = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(src + 192));
-          __m256i c7 = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(src + 224));
+          __m256i c1 = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(src + kAvx2VectorSize));
+          __m256i c2 = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(src + kAvx2VectorSize * 2));
+          __m256i c3 = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(src + kAvx2VectorSize * 3));
+          __m256i c4 = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(src + kAvx2VectorSize * 4));
+          __m256i c5 = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(src + kAvx2VectorSize * 5));
+          __m256i c6 = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(src + kAvx2VectorSize * 6));
+          __m256i c7 = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(src + kAvx2VectorSize * 7));
           src += 256;
 
           _mm256_store_si256((reinterpret_cast<__m256i*>(dst)), c0);
-          _mm256_store_si256((reinterpret_cast<__m256i*>(dst + 32)), c1);
-          _mm256_store_si256((reinterpret_cast<__m256i*>(dst + 64)), c2);
-          _mm256_store_si256((reinterpret_cast<__m256i*>(dst + 96)), c3);
-          _mm256_store_si256((reinterpret_cast<__m256i*>(dst + 128)), c4);
-          _mm256_store_si256((reinterpret_cast<__m256i*>(dst + 160)), c5);
-          _mm256_store_si256((reinterpret_cast<__m256i*>(dst + 192)), c6);
-          _mm256_store_si256((reinterpret_cast<__m256i*>(dst + 224)), c7);
+          _mm256_store_si256((reinterpret_cast<__m256i*>(dst + kAvx2VectorSize)), c1);
+          _mm256_store_si256((reinterpret_cast<__m256i*>(dst + kAvx2VectorSize * 2)), c2);
+          _mm256_store_si256((reinterpret_cast<__m256i*>(dst + kAvx2VectorSize * 3)), c3);
+          _mm256_store_si256((reinterpret_cast<__m256i*>(dst + kAvx2VectorSize * 4)), c4);
+          _mm256_store_si256((reinterpret_cast<__m256i*>(dst + kAvx2VectorSize * 5)), c5);
+          _mm256_store_si256((reinterpret_cast<__m256i*>(dst + kAvx2VectorSize * 6)), c6);
+          _mm256_store_si256((reinterpret_cast<__m256i*>(dst + kAvx2VectorSize * 7)), c7);
           dst += 256;
 
           size -= 256;
@@ -381,9 +382,9 @@ ALWAYS_INLINE inline const uint8_t* memchr_inlined(const void* __restrict src, u
         uint32_t first_match;  // Stores the position of the first set bit
 // Use appropriate bit scan function based on mask size
 #if defined(_M_X64) && sizeof(mask) == 8
-        _BitScanForward64(reinterpret_cast<unsigned long*>(&first_match), mask);  // NOLINT
+        _BitScanForward64(reinterpret_cast<uint32_t*>(&first_match), mask);  // NOLINT
 #else
-        _BitScanForward(reinterpret_cast<unsigned long*>(&first_match), mask);  // NOLINT
+        _BitScanForward(reinterpret_cast<uint32_t*>(&first_match), mask);  // NOLINT
 #endif
 #else
         // Select corresponding built-in function based on mask width
@@ -406,15 +407,16 @@ ALWAYS_INLINE inline const uint8_t* memchr_inlined(const void* __restrict src, u
       while (size > 32) {
         const __m256i vec = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(ptr));
         const __m256i eq_mask = _mm256_cmpeq_epi8(vec, target);
-        const unsigned int mask = static_cast<unsigned int>(_mm256_movemask_epi8(eq_mask));
+        const uint32_t mask = static_cast<uint32_t>(_mm256_movemask_epi8(eq_mask));
 
         if (mask != 0) {
           // Find first set bit using compiler intrinsic
 #ifdef _MSC_VER
-          unsigned long first_match;  // NOLINT
-          _BitScanForward(&first_match, mask);
+          std::uint32_t bit_pos;
+          _BitScanForward(reinterpret_cast<uint32_t*>(&bit_pos), mask);
+          const std::uint32_t first_match = bit_pos;
 #else
-          const unsigned int first_match = __builtin_ctz(mask);
+          const uint32_t first_match = __builtin_ctz(mask);
 #endif
           return &ptr[first_match];
         }

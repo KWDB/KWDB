@@ -328,7 +328,8 @@ KStatus TsWriteBatchDataWorker::Init(kwdbContext_p ctx) {
     }
   }
   TsIOEnv* env = &TsMMapIOEnv::GetInstance();
-  std::string file_path = ts_engine_->GetDbDir() + "/temp_db_/" + std::to_string(job_id_) + ".data";
+  std::string file_path = ts_engine_->GetDbDir() + "/temp_db_/" + std::to_string(job_id_)
+                          + ".data." + std::to_string(w_file_no_++);
   if (env->NewAppendOnlyFile(file_path, &w_file_, true, -1) != KStatus::SUCCESS) {
     LOG_ERROR("TsWriteBatchDataWorker::Init NewAppendOnlyFile failed, file_path=%s", file_path.c_str())
     return KStatus::FAIL;
@@ -491,8 +492,13 @@ KStatus TsWriteBatchDataWorker::Write(kwdbContext_p ctx, TSTableID table_id, uin
       MUTEX_UNLOCK(&w_file_latch_);
     });
     if (is_finished_) {
-      LOG_ERROR("TsWriteBatchDataWorker::Write job[%lu] is finished", job_id_);
-      return KStatus::FAIL;
+      TsIOEnv* env = &TsMMapIOEnv::GetInstance();
+      std::string file_path = ts_engine_->GetDbDir() + "/temp_db_/" + std::to_string(job_id_)
+                              + ".data." + std::to_string(w_file_no_++);
+      if (env->NewAppendOnlyFile(file_path, &w_file_, true, -1) != KStatus::SUCCESS) {
+        LOG_ERROR("TsWriteBatchDataWorker::Init NewAppendOnlyFile failed, file_path=%s", file_path.c_str())
+        return KStatus::FAIL;
+      }
     }
     s = w_file_->Append(header_data);
     if (s != KStatus::SUCCESS) {
@@ -502,6 +508,13 @@ KStatus TsWriteBatchDataWorker::Write(kwdbContext_p ctx, TSTableID table_id, uin
     s = w_file_->Append(new_block_data);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("TsWriteBatchDataWorker::Write append content failed");
+      return KStatus::FAIL;
+    }
+  }
+  if (is_finished_) {
+    s = Finish(ctx);
+    if (s != KStatus::SUCCESS) {
+      LOG_ERROR("TsWriteBatchDataWorker::Finish failed");
       return KStatus::FAIL;
     }
   }
