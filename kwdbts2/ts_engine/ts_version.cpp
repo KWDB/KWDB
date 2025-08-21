@@ -635,9 +635,10 @@ void TsPartitionVersion::ResetStatus() const {
 }
 
 KStatus TsPartitionVersion::NeedVacuumEntitySegment(const fs::path& root_path,
-  TsEngineSchemaManager* schema_manager, bool& need_vacuum) const {
+  TsEngineSchemaManager* schema_manager, bool& need_vacuum, bool& need_compact) const {
+  need_vacuum = false;
+  need_compact = false;
   if (entity_segment_ == nullptr) {
-    need_vacuum = false;
     return SUCCESS;
   }
   timestamp64 latest_mtime = 0;
@@ -653,14 +654,13 @@ KStatus TsPartitionVersion::NeedVacuumEntitySegment(const fs::path& root_path,
   }
   if (!has_files) {
     LOG_WARN("No regular files found in directory [%s]", root_path.c_str());
-    need_vacuum = false;
     return SUCCESS;
   }
   // Temporarily add environment variables to control vacuum
   const char *vacuum_minutes_char = getenv("KW_VACUUM_TIME");
   uint32_t vacuum_interval = 0;
   if (vacuum_minutes_char) {
-    char *endptr;
+    char* endptr;
     vacuum_interval = strtol(vacuum_minutes_char, &endptr, 10);
     assert(*endptr == '\0');
   }
@@ -669,9 +669,9 @@ KStatus TsPartitionVersion::NeedVacuumEntitySegment(const fs::path& root_path,
   float diff_latest_now = (now.time_since_epoch().count() - latest_mtime) / 60;
   vacuum_interval = vacuum_interval != 0 ? vacuum_interval : vacuum_minutes;
   if (diff_latest_now < vacuum_interval) {
-    need_vacuum = false;
     return SUCCESS;
   }
+  need_compact = true;
 
   bool has_del_info;
   // todo(liangbo01) get entity segment min and max lsn.

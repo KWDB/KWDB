@@ -2035,8 +2035,8 @@ uint64_t begin_hash, uint64_t end_hash, const KwTsSpan& ts_span, uint64_t* snaps
     LOG_ERROR("GetRangeRowCount [%lu] failed.", table_id);
     return s;
   }
-  LOG_INFO("CreateSnapshotForRead range hash[%lu ~ %lu], ts[%ld ~ %ld] need imgrating rows[%lu].",
-      begin_hash, end_hash, ts_span.begin, ts_span.end, count);
+  LOG_INFO("CreateSnapshotForRead version[%u] range hash[%lu ~ %lu], ts[%ld ~ %ld] need imgrating rows[%lu].",
+      ts_snapshot_info.table_version, begin_hash, end_hash, ts_span.begin, ts_span.end, count);
   return KStatus::SUCCESS;
 }
 KStatus TSEngineV2Impl::CreateSnapshotForWrite(kwdbContext_p ctx, const KTableKey& table_id,
