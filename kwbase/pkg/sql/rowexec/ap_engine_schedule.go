@@ -203,14 +203,14 @@ func (ttr *ApEngineSchedule) Next() (sqlbase.EncDatumRow, *execinfrapb.ProducerM
 // NextPgWire get data for short circuit go pg encoding.
 func (ttr *ApEngineSchedule) NextPgWire() (val []byte, code int, err error) {
 	for ttr.State == execinfra.StateRunning {
-		var tsQueryInfo = tse.TsQueryInfo{
+		var queryInfo = ape.QueryInfo{
 			ID:       int(ttr.sid),
 			Handle:   ttr.handle,
 			Buf:      []byte(cmdExecNext),
 			TimeZone: ttr.timeZone,
 		}
 
-		respInfo, err := ttr.FlowCtx.Cfg.TsEngine.NextTsFlowPgWire(&(ttr.Ctx), tsQueryInfo)
+		respInfo, err := ttr.FlowCtx.Cfg.ApEngine.NextFlowPgWire(&(ttr.Ctx), queryInfo)
 
 		// Handle response codes
 		switch respInfo.Code {

@@ -7058,6 +7058,9 @@ func (dsp *DistSQLPlanner) FinalizePlan(planCtx *PlanningCtx, plan *PhysicalPlan
 	if !plan.UseOriginalFlow {
 		plan.Commandlimit = uint32(planCtx.EvalContext().SessionData.CommandLimit)
 	}
+	if planCtx.apSelect {
+		plan.UseQueryShortCircuit = physicalplan.UseQueryShortCircuitForSingle
+	}
 	planCtx.EvalContext().SessionData.CommandLimit = 0
 }
 

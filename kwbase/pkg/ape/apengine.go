@@ -134,6 +134,13 @@ func (r *ApEngine) NextFlow(
 	return r.Execute(ctx, C.MQ_TYPE_DML_NEXT, queryInfo)
 }
 
+// NextFlowPgWire drive timing execution plan, receive execution results
+func (r *ApEngine) NextFlowPgWire(
+	ctx *context.Context, queryInfo QueryInfo,
+) (respInfo QueryInfo, err error) {
+	return r.Execute(ctx, C.MQ_TYPE_DML_PG_RESULT, queryInfo)
+}
+
 // Execute call the engine dml interface to issue a request and return the result
 func (r *ApEngine) Execute(
 	ctx *context.Context, tp C.EnMqType, queryInfo QueryInfo,

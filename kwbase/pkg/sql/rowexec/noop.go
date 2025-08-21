@@ -118,31 +118,58 @@ func newNoopProcessor(
 // RunShortCircuit is part of the Processor interface.
 func (n *noopProcessor) RunShortCircuit(ctx context.Context, ttr execinfra.TSReader) error {
 	// start a goroutine to receive local data.
-	go func() {
-		ttr := ttr.(*TsTableReader)
-		dst := ttr.Out.Output()
-		defer dst.ProducerDone()
-		ttr.Start(ctx)
-		for {
-			rev, code, err := ttr.NextPgWire()
-			if err != nil {
-				meta := &execinfrapb.ProducerMetadata{Err: err}
-				dst.Push(nil, meta)
-				return
-			}
+	if ttr1, ok := ttr.(*TsTableReader); ok {
+		go func() {
+			dst := ttr1.Out.Output()
+			defer dst.ProducerDone()
+			ttr1.Start(ctx)
+			for {
+				rev, code, err := ttr1.NextPgWire()
+				if err != nil {
+					meta := &execinfrapb.ProducerMetadata{Err: err}
+					dst.Push(nil, meta)
+					return
+				}
 
-			if code == -1 {
-				return
-			}
+				if code == -1 {
+					return
+				}
 
-			err = n.Push(ctx, rev)
-			if err != nil {
-				meta := &execinfrapb.ProducerMetadata{Err: err}
-				dst.Push(nil, meta)
-				return
+				err = n.Push(ctx, rev)
+				if err != nil {
+					meta := &execinfrapb.ProducerMetadata{Err: err}
+					dst.Push(nil, meta)
+					return
+				}
 			}
-		}
-	}()
+		}()
+	} else {
+		ttr2 := ttr.(*ApEngineSchedule)
+		go func() {
+			dst := ttr2.Out.Output()
+			defer dst.ProducerDone()
+			ttr2.Start(ctx)
+			for {
+				rev, code, err := ttr2.NextPgWire()
+				if err != nil {
+					meta := &execinfrapb.ProducerMetadata{Err: err}
+					dst.Push(nil, meta)
+					return
+				}
+
+				if code == -1 {
+					return
+				}
+
+				err = n.Push(ctx, rev)
+				if err != nil {
+					meta := &execinfrapb.ProducerMetadata{Err: err}
+					dst.Push(nil, meta)
+					return
+				}
+			}
+		}()
+	}
 
 	ctx = n.Start(ctx)
 	dst := n.Out.Output()

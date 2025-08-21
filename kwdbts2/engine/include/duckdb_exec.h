@@ -18,6 +18,7 @@
 #include "kwdb_type.h"
 #include "libkwdbts2.h"
 #include "ee_pb_plan.pb.h"
+#include "ee_global.h"
 
 using namespace duckdb;
 using duckdb::DatabaseWrapper;
@@ -34,6 +35,8 @@ namespace kwdbts {
 		std::vector<std::string> column_names;
 		std::vector<duckdb::LogicalType> column_types;
 		std::vector<duckdb::DataChunk> data_chunks;
+    void* value;
+    uint32_t len;
 		idx_t row_count;
 
 		ExecutionResult() : success(false), row_count(0) {}
@@ -50,13 +53,20 @@ namespace kwdbts {
     static KStatus ExecQuery(kwdbContext_p ctx, APQueryInfo *req, APRespInfo *resp);
 
     KStatus Setup(kwdbContext_p ctx, k_char *message, k_uint32 len, k_int32 id, k_int32 uniqueID, APRespInfo *resp);
+    KStatus Next(kwdbContext_p ctx, k_int32 id, TsNextRetState nextState, APRespInfo *resp);
 
-    ExecutionResult ExecuteCustomPlan();
+    void Clear(kwdbContext_p ctx);
+
+    ExecutionResult ExecuteCustomPlan(kwdbContext_p ctx, const string &table_name);
 
   private:
+    void ReInit(const string &db_name);
+
     FlowSpec *fspecs_;
 	  DatabaseWrapper * db_;
 	  Connection *connect_;
     mutex context_lock_;
+    bool setup_;
+    ExecutionResult res_;
   };
 }

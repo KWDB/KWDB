@@ -109,32 +109,33 @@ namespace kwdbts {
   DuckdbExec::DuckdbExec(void *db, void *connect) {
     auto wrapper = reinterpret_cast<DatabaseWrapper *>(db);
 		db_ = wrapper;
-//    auto &scheduler = duckdb::TaskScheduler::GetScheduler(*wrapper->database->instance);
-//    scheduler.ExecuteTasks(3);
-
-    // conn->context get client context
-//    Connection *conn = reinterpret_cast<Connection *>(connect);
-//		connect_ = conn;
-
     DuckDB db1("/root/go/src/gitee.com/kwbasedb/kwbase/local/tpch");
     connect_ = new Connection(db1);
-    ClientContext& context = *connect_->context.get();
-    // 获取所有表并打印信息
-//    connect_->BeginTransaction();
-//    auto res = connect_->Query("show tables;");
-//    printf("数据库中共有 %s：\n", res->ToString().c_str());
-//    connect_->Commit();
-
     fspecs_ = new FlowSpec();
   }
 
   DuckdbExec::~DuckdbExec() {
     if (connect_ != nullptr) {
       delete connect_;
+      connect_ = nullptr;
     }
     if (fspecs_ != nullptr) {
       delete fspecs_;
+      fspecs_ = nullptr;
     }
+  }
+
+  void DuckdbExec::ReInit(const string &db_name) {
+    if (db_name.empty()) {
+      return;
+    }
+
+    if (connect_ != nullptr) {
+      delete connect_;
+      connect_ = nullptr;
+    }
+    DuckDB db1("/root/go/src/gitee.com/kwbasedb/kwbase/local/" + db_name);
+    connect_ = new Connection(db1);
   }
 
   KStatus DuckdbExec::ExecQuery(kwdbContext_p ctx, APQueryInfo *req, APRespInfo *resp) {
@@ -169,10 +170,8 @@ namespace kwdbts {
         handle = static_cast<kwdbts::DuckdbExec *>(static_cast<void *>(req->handle));
       }
       //    ctx->dml_exec_handle = handle;
-
       switch (type) {
-        case EnMqType::MQ_TYPE_DML_SETUP:
-        {
+        case EnMqType::MQ_TYPE_DML_SETUP: {
 //          handle->thd_->SetSQL(std::string(req->sql.data, req->sql.len));
           ret = handle->Setup(ctx, message, len, id, uniqueID, resp);
           if (ret != KStatus::SUCCESS) {
@@ -181,8 +180,8 @@ namespace kwdbts {
           break;
         }
         case EnMqType::MQ_TYPE_DML_CLOSE:
-          //        handle->ClearTsScans(ctx);
-          //        delete handle;
+          handle->Clear(ctx);
+          delete handle;
           resp->ret = 1;
           resp->tp = req->tp;
           break;
@@ -192,41 +191,18 @@ namespace kwdbts {
           resp->code = 0;
           resp->handle = handle;
           break;
-        case EnMqType::MQ_TYPE_DML_NEXT:
-          //        ret = handle->Next(ctx, id, TsNextRetState::DML_NEXT, resp);
-        {
-#if 0
-          auto res = handle->ExecuteCustomPlan();
-          if (res.success) {
-            resp->ret = 1;
-            resp->code = 1;
-            resp->tp = req->tp;
-          } else {
-            resp->ret = 1;
-            resp->code = 2202;
-            resp->len = res.error_message.size() + 1;
-            if (resp->len > 0) {
-              resp->value = malloc(resp->len);
-              if (resp->value != nullptr) {
-                memcpy(resp->value, res.error_message.c_str(), resp->len);
-              }
-            }
-          }
-#else
-          resp->ret = 1;
-#endif
+        case EnMqType::MQ_TYPE_DML_NEXT: {
+          ret = handle->Next(ctx, id, TsNextRetState::DML_NEXT, resp);
           break;
         }
-
-        case EnMqType::MQ_TYPE_DML_PG_RESULT:
-          //        ret = handle->Next(ctx, id, TsNextRetState::DML_PG_RESULT, resp);
-          resp->ret = 1;
-          resp->code = 1;
-          resp->tp = req->tp;
+        case EnMqType::MQ_TYPE_DML_PG_RESULT: {
+          ret = handle->Next(ctx, id, TsNextRetState::DML_PG_RESULT, resp);
           break;
-        case EnMqType::MQ_TYPE_DML_VECTORIZE_NEXT:
-          //        ret = handle->Next(ctx, id, TsNextRetState::DML_VECTORIZE_NEXT, resp);
+        }
+        case EnMqType::MQ_TYPE_DML_VECTORIZE_NEXT: {
+          ret = handle->Next(ctx, id, TsNextRetState::DML_VECTORIZE_NEXT, resp);
           break;
+        }
         case EnMqType::MQ_TYPE_DML_PUSH:
           // push relational data from ME to AE for multiple model processing
           //        ret = handle->PushRelData(ctx, req, resp);
@@ -245,6 +221,10 @@ namespace kwdbts {
 
   KStatus DuckdbExec::Setup(kwdbContext_p ctx, k_char *message, k_uint32 len, k_int32 id, k_int32 uniqueID,
                             APRespInfo *resp) {
+    if (setup_) {
+      return KStatus::FAIL;
+    }
+    setup_ = true;
     KStatus ret = KStatus::FAIL;
     resp->tp = EnMqType::MQ_TYPE_DML_SETUP;
     resp->ret = 0;
@@ -253,16 +233,6 @@ namespace kwdbts {
     resp->unique_id = uniqueID;
     resp->handle = static_cast<char *>(static_cast<void *>(this));
     do {
-//      if (tsscan_head_ && tsscan_head_->id == id) {
-//        ClearTsScans(ctx);
-//      }
-//      CreateTsScan(ctx, &tsScan);
-//      if (!tsScan) {
-//        EEPgErrorInfo::SetPgErrorInfo(ERRCODE_OUT_OF_MEMORY, "Insufficient memory");
-//        break;
-//      }
-//      tsScan->id = id;
-//      tsScan->unique_id = uniqueID;
       bool proto_parse = false;
       try {
         proto_parse = fspecs_->ParseFromArray(message, len);
@@ -284,31 +254,393 @@ namespace kwdbts {
             auto apReader = proc.core().aptablereader();
             if (apReader.has_db_name() && !apReader.db_name().empty()) {
               printf("db is %s, ", apReader.db_name().c_str());
+              ReInit(apReader.db_name());
             }
             printf("table is %s \n", apReader.table_name().c_str());
+
+            res_ = ExecuteCustomPlan(ctx, apReader.table_name());
           }
         }
       }
-//      ret = tsScan->processors->Init(ctx, tsScan->fspecs);
-//      if (KStatus::SUCCESS != ret) {
-//        break;
-//      }
-      // LOG_ERROR("execute sql: %s, query_id = %ld", thd_->sql_.c_str(), brpc_info_.query_id_);
-//      if (tsscan_head_ == nullptr) {
-//        tsscan_head_ = tsScan;
-//        tsscan_end_ = tsscan_head_;
-//      } else {
-//        tsscan_end_->next = tsScan;
-//        tsscan_end_ = tsScan;
-//      }
       resp->ret = 1;
       ret = KStatus::SUCCESS;
     } while (0);
     if (resp->ret == 0) {
-//      DestroyTsScan(tsScan);
-//      DisposeError(ctx, resp);
     }
     return ret;
+  }
+
+  KStatus DuckdbExec::Next(kwdbContext_p ctx, k_int32 id, TsNextRetState nextState, APRespInfo *resp) {
+#if 1
+    if (res_.success) {
+      resp->ret = 1;
+      if (res_.row_count != 0) {
+        resp->code = 1;
+        resp->value = res_.value;
+        resp->len = res_.len;
+        resp->row_num = res_.row_count;
+        res_.row_count = 0;
+      } else {
+        resp->code = -1;
+      }
+    } else {
+      resp->ret = 1;
+      resp->code = 2202;
+      resp->len = res_.error_message.size() + 1;
+      if (resp->len > 0) {
+        resp->value = malloc(resp->len);
+        if (resp->value != nullptr) {
+          memcpy(resp->value, res_.error_message.c_str(), resp->len);
+        }
+      }
+    }
+#else
+    resp->ret = 1;
+#endif
+  }
+
+  void DuckdbExec::Clear(kwdbContext_p ctx) {
+    if (res_.value != nullptr) {
+      free(res_.value);
+    }
+  }
+  const char val_str_t[1]={'t'};
+  const char val_str_f[1]={'f'};
+
+  KStatus PGResultData(kwdbContext_p ctx, MaterializedQueryResult * res, const EE_StringInfo& info) {
+    EnterFunc();
+    k_uint32 temp_len = info->len;
+    char* temp_addr = nullptr;
+
+    if (ee_appendBinaryStringInfo(info, "D0000", 5) != SUCCESS) {
+      Return(FAIL);
+    }
+
+    // write column quantity
+    if (ee_sendint(info, res->ColumnCount(), 2) != SUCCESS) {
+      Return(FAIL);
+    }
+
+    auto &coll = res->Collection();
+    for (auto &row : coll.Rows()) {
+      for (idx_t col_idx = 0; col_idx < coll.ColumnCount(); col_idx++) {
+        auto val = row.GetValue(col_idx);
+        if (val.IsNull()) {
+          // write a negative value to indicate that the column is NULL
+          if (ee_sendint(info, -1, 4) != SUCCESS) {
+            Return(FAIL);
+          }
+          continue;
+        }
+
+        switch(res->types[col_idx].id()) {
+          case LogicalTypeId::BOOLEAN:{
+            // write the length of col value
+            if (ee_sendint(info, 1, 4) != SUCCESS) {
+              Return(FAIL);
+            }
+            auto res = BooleanValue::Get(val);
+            if (res) {
+              // write string
+              if (ee_appendBinaryStringInfo(info, val_str_t, 1) != SUCCESS) {
+                Return(FAIL);
+              }
+            } else {
+              if (ee_appendBinaryStringInfo(info, val_str_f, 1) != SUCCESS) {
+                Return(FAIL);
+              }
+            }
+            break;
+          }
+          case LogicalTypeId::TINYINT:
+          case LogicalTypeId::SMALLINT:
+          case LogicalTypeId::INTEGER:
+          case LogicalTypeId::BIGINT: {
+            auto val_char = val.ToString();
+            auto len = val_char.length();
+            if (ee_sendint(info, len, 4) != SUCCESS) {
+              Return(FAIL);
+            }
+            // write string format
+            if (ee_appendBinaryStringInfo(info, val_char.c_str(), len) != SUCCESS) {
+              Return(FAIL);
+            }
+            break;
+          }
+          default:{
+            auto val_char = val.ToString();
+            auto len = val_char.length();
+            if (ee_sendint(info, len, 4) != SUCCESS) {
+              Return(FAIL);
+            }
+            // write string format
+            if (ee_appendBinaryStringInfo(info, val_char.c_str(), len) != SUCCESS) {
+              Return(FAIL);
+            }
+            break;
+          }
+        }
+      }
+    }
+
+//    for (k_uint32 col = 0; col < col_num_; ++col) {
+//      // get col value
+//      KWDBTypeFamily return_type = col_info_[col].return_type;
+//      switch (return_type) {
+//        case KWDBTypeFamily::StringFamily: {
+//          k_uint16 val_len;
+//          DatumPtr raw = GetData(row, col, val_len);
+//          std::string val_str = std::string{static_cast<char*>(raw), val_len};
+//
+//          // write the length of col value
+//          if (ee_sendint(info, val_str.length(), 4) != SUCCESS) {
+//            Return(FAIL);
+//          }
+//          // write string
+//          if (ee_appendBinaryStringInfo(info, val_str.c_str(), val_str.length()) != SUCCESS) {
+//            Return(FAIL);
+//          }
+//        } break;
+//        case KWDBTypeFamily::BytesFamily: {
+//          k_uint16 len;
+//          DatumPtr raw = GetData(row, col, len);
+//          std::string val_str = std::string{static_cast<char*>(raw), len};
+//
+//          // use format of varbinary
+//          std::string bytes_f;
+//          bytes_f.append("\\x");
+//          char tmp[3] = {0};
+//          for (u_char c : val_str) {
+//            snprintf(tmp, sizeof(tmp), "%02x", c);
+//            bytes_f.append(tmp, 2);
+//          }
+//          if (ee_sendint(info, bytes_f.size(), 4) != SUCCESS) {
+//            Return(FAIL);
+//          }
+//          if (ee_appendBinaryStringInfo(info, bytes_f.c_str(), bytes_f.size()) != SUCCESS) {
+//            Return(FAIL);
+//          }
+//        } break;
+//        case KWDBTypeFamily::TimestampFamily:
+//        case KWDBTypeFamily::TimestampTZFamily: {
+//          char ts_format_buf[64] = {0};
+//          // format timestamps as strings
+//          k_int64 val;
+//          DatumPtr raw = GetData(row, col);
+//          std::memcpy(&val, raw, sizeof(k_int64));
+//          CKTime ck_time = getCKTime(val, col_info_[col].storage_type, ctx->timezone);
+//          k_uint8 format_len = format_timestamp(ck_time, return_type, ctx, ts_format_buf);
+//          // write the length of column value
+//          if (ee_sendint(info, format_len, 4) != SUCCESS) {
+//            Return(FAIL);
+//          }
+//          // write string format
+//          if (ee_appendBinaryStringInfo(info, ts_format_buf, format_len) != SUCCESS) {
+//            Return(FAIL);
+//          }
+//        } break;
+//        case KWDBTypeFamily::FloatFamily: {
+//          k_char buf[50] = {0};
+//          k_int32 n = 0;
+//
+//          DatumPtr raw = GetData(row, col);
+//          k_double64 d;
+//          if (col_info_[col].storage_type == roachpb::DataType::FLOAT) {
+//            k_float32 val32;
+//            std::memcpy(&val32, raw, sizeof(k_float32));
+//            d = (k_double64)val32;
+//            n = snprintf(buf, sizeof(buf), "%.6f", d);
+//          } else {
+//            std::memcpy(&d, raw, sizeof(k_double64));
+//            n = snprintf(buf, sizeof(buf), "%.17g", d);
+//          }
+//
+//          if (std::isnan(d)) {
+//            buf[0] = 'N';
+//            buf[1] = 'a';
+//            buf[2] = 'N';
+//            n = 3;
+//          }
+//          // write the length of column value
+//          if (ee_sendint(info, n, 4) != SUCCESS) {
+//            Return(FAIL);
+//          }
+//
+//          // write string format
+//          if (ee_appendBinaryStringInfo(info, buf, n) != SUCCESS) {
+//            Return(FAIL);
+//          }
+//        } break;
+//        case KWDBTypeFamily::DecimalFamily: {
+//          switch (col_info_[col].storage_type) {
+//            case roachpb::DataType::SMALLINT: {
+//              DatumPtr ptr = GetData(row, col);
+//              if (PgEncodeDecimal<k_int16>(ptr, info) != SUCCESS) {
+//                Return(FAIL);
+//              }
+//              break;
+//            }
+//            case roachpb::DataType::INT: {
+//              DatumPtr ptr = GetData(row, col);
+//              if (PgEncodeDecimal<k_int32>(ptr, info) != SUCCESS) {
+//                Return(FAIL);
+//              }
+//              break;
+//            }
+//            case roachpb::DataType::TIMESTAMP:
+//            case roachpb::DataType::TIMESTAMPTZ:
+//            case roachpb::DataType::TIMESTAMP_MICRO:
+//            case roachpb::DataType::TIMESTAMP_NANO:
+//            case roachpb::DataType::TIMESTAMPTZ_MICRO:
+//            case roachpb::DataType::TIMESTAMPTZ_NANO:
+//            case roachpb::DataType::DATE:
+//            case roachpb::DataType::BIGINT: {
+//              DatumPtr ptr = GetData(row, col);
+//              if (PgEncodeDecimal<k_int64>(ptr, info) != SUCCESS) {
+//                Return(FAIL);
+//              }
+//              break;
+//            }
+//            case roachpb::DataType::FLOAT: {
+//              DatumPtr ptr = GetData(row, col);
+//              if (PgEncodeDecimal<k_float32>(ptr, info) != SUCCESS) {
+//                Return(FAIL);
+//              }
+//              break;
+//            }
+//            case roachpb::DataType::DOUBLE: {
+//              DatumPtr ptr = GetData(row, col);
+//              if (PgEncodeDecimal<k_double64>(ptr, info) != SUCCESS) {
+//                Return(FAIL);
+//              }
+//              break;
+//            }
+//            case roachpb::DataType::DECIMAL: {
+//              DatumPtr ptr = GetData(row, col);
+//              k_bool is_double = *reinterpret_cast<k_bool*>(ptr);
+//              if (is_double) {
+//                PgEncodeDecimal<k_double64>(ptr + sizeof(k_bool), info);
+//              } else {
+//                PgEncodeDecimal<k_int64>(ptr + sizeof(k_bool), info);
+//              }
+//              break;
+//            }
+//            default: {
+//              LOG_ERROR("Unsupported Decimal type for encoding: %d ", col_info_[col].storage_type)
+//              EEPgErrorInfo::SetPgErrorInfo(ERRCODE_INDETERMINATE_DATATYPE, "unsupported data type");
+//              break;
+//            }
+//          }
+//        } break;
+//        case KWDBTypeFamily::IntervalFamily: {
+//          time_t ms;
+//          DatumPtr raw = GetData(row, col);
+//          std::memcpy(&ms, raw, sizeof(k_int64));
+//          char buf[32] = {0};
+//          struct KWDuration duration;
+//          size_t n;
+//          switch (col_info_[col].storage_type) {
+//            case roachpb::TIMESTAMP_MICRO:
+//            case roachpb::TIMESTAMPTZ_MICRO:
+//              n = duration.format_pg_result(ms, buf, 32, 1000);
+//              break;
+//            case roachpb::TIMESTAMP_NANO:
+//            case roachpb::TIMESTAMPTZ_NANO:
+//              n = duration.format_pg_result(ms, buf, 32, 1);
+//              break;
+//            default:
+//              n = duration.format_pg_result(ms, buf, 32, 1000000);
+//              break;
+//          }
+//
+//          // write the length of column value
+//          if (ee_sendint(info, n, 4) != SUCCESS) {
+//            Return(FAIL);
+//          }
+//          // write string format
+//          if (ee_appendBinaryStringInfo(info, buf, n) != SUCCESS) {
+//            Return(FAIL);
+//          }
+//        } break;
+//        case KWDBTypeFamily::DateFamily: {
+//          char ts_format_buf[64] = {0};
+//          // format timestamps as strings
+//          k_int64 val;
+//          DatumPtr raw = GetData(row, col);
+//          std::memcpy(&val, raw, sizeof(k_int64));
+//          CKTime ck_time = getCKTime(val, col_info_[col].storage_type, ctx->timezone);
+//          tm ts{};
+//          gmtime_r(&ck_time.t_timespec.tv_sec, &ts);
+//          strftime(ts_format_buf, 32, "%F %T", &ts);
+//          k_uint8 format_len = strlen(ts_format_buf);
+//          format_len = strlen(ts_format_buf);
+//          // write the length of column value
+//          if (ee_sendint(info, format_len, 4) != SUCCESS) {
+//            Return(FAIL);
+//          }
+//          // write string format
+//          if (ee_appendBinaryStringInfo(info, ts_format_buf, format_len) != SUCCESS) {
+//            Return(FAIL);
+//          }
+//        } break;
+//        case KWDBTypeFamily::IntFamily: {
+//          DatumPtr raw = GetData(row, col);
+//          k_int64 val;
+//          switch (col_info_[col].storage_type) {
+//            case roachpb::DataType::BIGINT:
+//            case roachpb::DataType::TIMESTAMP:
+//            case roachpb::DataType::TIMESTAMPTZ:
+//            case roachpb::DataType::TIMESTAMP_MICRO:
+//            case roachpb::DataType::TIMESTAMP_NANO:
+//            case roachpb::DataType::TIMESTAMPTZ_MICRO:
+//            case roachpb::DataType::TIMESTAMPTZ_NANO:
+//            case roachpb::DataType::DATE:
+//              std::memcpy(&val, raw, sizeof(k_int64));
+//              break;
+//            case roachpb::DataType::SMALLINT:
+//              k_int16 val16;
+//              std::memcpy(&val16, raw, sizeof(k_int16));
+//              val = val16;
+//              break;
+//            default:
+//              k_int32 val32;
+//              std::memcpy(&val32, raw, sizeof(k_int32));
+//              val = val32;
+//              break;
+//          }
+//
+//          char val_char[32];
+//          k_int32 len = fastIntToString(val, val_char);
+//          if (ee_sendint(info, len, 4) != SUCCESS) {
+//            Return(FAIL);
+//          }
+//          // write string format
+//          if (ee_appendBinaryStringInfo(info, val_char, len) != SUCCESS) {
+//            Return(FAIL);
+//          }
+//        } break;
+//        default: {
+//          // write the length of column value
+//          k_int64 val;
+//          DatumPtr raw = GetData(row, col);
+//          std::memcpy(&val, raw, sizeof(k_int64));
+//          char val_char[32];
+//          k_int32 len = fastIntToString(val, val_char);
+//          if (ee_sendint(info, len, 4) != SUCCESS) {
+//            Return(FAIL);
+//          }
+//          // write string format
+//          if (ee_appendBinaryStringInfo(info, val_char, len) != SUCCESS) {
+//            Return(FAIL);
+//          }
+//        } break;
+//      }
+//    }
+
+    temp_addr = &info->data[temp_len + 1];
+    k_uint32 n32 = be32toh(info->len - temp_len - 1);
+    memcpy(temp_addr, &n32, 4);
+    Return(SUCCESS);
   }
 
   KStatus EncodingValue(kwdbContext_p ctx, Value &val, const EE_StringInfo& info, LogicalType &return_types) {
@@ -571,25 +903,25 @@ namespace kwdbts {
     Return(ret);
   }
 
-  KStatus Encoding(kwdbContext_p ctx, bool use_query_short_circuit, k_int64* command_limit,
-                   std::atomic<k_int64>* count_for_limit, MaterializedQueryResult * res,
-                   char* &encoding_buf_, k_uint32 &encoding_len_, vector<LogicalType> &return_types) {
+  KStatus Encoding(kwdbContext_p ctx, MaterializedQueryResult * res, char* &encoding_buf_, k_uint32 &encoding_len_) {
     KStatus st = KStatus::SUCCESS;
     EE_StringInfo msgBuffer = ee_makeStringInfo();
     if (msgBuffer == nullptr) {
       return KStatus::FAIL;
     }
 
-    auto &coll = res->Collection();
-    for (auto &row : coll.Rows()) {
-      for (idx_t col_idx = 0; col_idx < coll.ColumnCount(); col_idx++) {
-        auto val = row.GetValue(col_idx);
-        st = EncodingValue(ctx, val, msgBuffer, return_types[col_idx]);
-        if (st == KStatus::FAIL) {
-          break;
-        }
-      }
-    }
+    st = PGResultData(ctx, res, msgBuffer);
+
+//    auto &coll = res->Collection();
+//    for (auto &row : coll.Rows()) {
+//      for (idx_t col_idx = 0; col_idx < coll.ColumnCount(); col_idx++) {
+//        auto val = row.GetValue(col_idx);
+//        st = PGResultData(ctx, res, msgBuffer);
+//        if (st == KStatus::FAIL) {
+//          break;
+//        }
+//      }
+//    }
 
     if (st == SUCCESS) {
       encoding_buf_ = msgBuffer->data;
@@ -601,7 +933,7 @@ namespace kwdbts {
     return st;
   }
 
-	ExecutionResult DuckdbExec::ExecuteCustomPlan() {
+	ExecutionResult DuckdbExec::ExecuteCustomPlan(kwdbContext_p ctx, const string &table_name) {
 		ExecutionResult result;
 		if (!connect_ || !connect_->context) {
 			result.error_message = "Database not open";
@@ -615,7 +947,6 @@ namespace kwdbts {
       auto& context = *connect_->context.get();
       std::string db_name = "tpch";
       auto& catalog = Catalog::GetCatalog(context, db_name);
-      std::string table_name = "region";
 
       auto entry = catalog.GetEntry(context, CatalogType::TABLE_ENTRY, "main",
                                     table_name, OnEntryNotFound::RETURN_NULL);
@@ -680,18 +1011,13 @@ namespace kwdbts {
       switch (query_result->type) {
         case QueryResultType::MATERIALIZED_RESULT: {
           auto res = dynamic_cast<MaterializedQueryResult*>(query_result.get());
-          printf("result is %s\n", res->ToString().c_str());
-          auto &coll = res->Collection();
-//          result += "[ Rows: " + to_string(coll.Count()) + "]\n";
-          for (auto &row : coll.Rows()) {
-            for (idx_t col_idx = 0; col_idx < coll.ColumnCount(); col_idx++) {
-              if (col_idx > 0) {
-//                result += "\t";
-              }
-              auto val = row.GetValue(col_idx);
-//              result += val.IsNull() ? "NULL" : StringUtil::Replace(val.ToString(), string("\0", 1), "\\0");
-            }
-//            result += "\n";
+          char* encoding_buf_;
+          k_uint32 encoding_len_;
+          auto ret = Encoding(ctx, res, encoding_buf_, encoding_len_);
+          if (ret == KStatus::SUCCESS) {
+            result.value = encoding_buf_;
+            result.len = encoding_len_;
+            result.row_count = res->RowCount();
           }
           break;
         }
@@ -701,26 +1027,8 @@ namespace kwdbts {
           break;
       }
 
-//      // 6. 提取结果数据（从QueryResult中读取）
-//      auto& materialized_result = query_result->Materialize();  // 物化结果集
-//      result.row_count = materialized_result->RowCount();
-//      // 修正：根据实际ExecutionResult结构调整成员
-//      result.success = true;
-//
-//      // 示例：读取结果数据（按行读取）
-//      Vector row;
-//      idx_t row_idx = 0;
-//      while (materialized_result->Next(row)) {
-//        // 读取第0列数据（根据实际类型处理）
-//        auto val = row.GetValue(0);
-//        if (val.type().id() == LogicalTypeId::INTEGER) {
-//          // 假设ExecutionResult有存储数据的容器（如rows）
-//          result.rows.push_back(std::to_string(val.GetValue<int32_t>()));
-//        }
-//        row_idx++;
-//      }
-
       connect_->Commit();
+      result.success = true;
 			return result;
 		} catch (const Exception& e) {
 			result.error_message = e.what();
