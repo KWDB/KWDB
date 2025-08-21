@@ -321,7 +321,7 @@ inline k_double64 getExtract(k_int64 intvalue, String strvalue, roachpb::DataTyp
   if (returntype == KWDBTypeFamily::TimestampTZFamily) {
     ckTime.t_timespec.tv_sec += ckTime.t_abbv;
   }
-  gmtime_r(&ckTime.t_timespec.tv_sec, &ltm);
+  ToGMT(ckTime.t_timespec.tv_sec, ltm);
   KString item = replaceTimeUnit({strvalue.getptr(), strvalue.length_});
   if (item == "ns") {
     return ckTime.t_timespec.tv_nsec;
