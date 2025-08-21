@@ -311,7 +311,8 @@ namespace kwdbts {
   const char val_str_t[1]={'t'};
   const char val_str_f[1]={'f'};
 
-  KStatus PGResultData(kwdbContext_p ctx, MaterializedQueryResult * res, const EE_StringInfo& info) {
+  KStatus PGResultDataForOneRow(kwdbContext_p ctx, const ColumnDataRow row, vector<LogicalType> &types,
+                                k_int32 col_count, const EE_StringInfo& info) {
     EnterFunc();
     k_uint32 temp_len = info->len;
     char* temp_addr = nullptr;
@@ -321,325 +322,69 @@ namespace kwdbts {
     }
 
     // write column quantity
-    if (ee_sendint(info, res->ColumnCount(), 2) != SUCCESS) {
+    if (ee_sendint(info, col_count, 2) != SUCCESS) {
       Return(FAIL);
     }
 
-    auto &coll = res->Collection();
-    for (auto &row : coll.Rows()) {
-      for (idx_t col_idx = 0; col_idx < coll.ColumnCount(); col_idx++) {
-        auto val = row.GetValue(col_idx);
-        if (val.IsNull()) {
-          // write a negative value to indicate that the column is NULL
-          if (ee_sendint(info, -1, 4) != SUCCESS) {
+    for (idx_t col_idx = 0; col_idx < col_count; col_idx++) {
+      auto val = row.GetValue(col_idx);
+      if (val.IsNull()) {
+        // write a negative value to indicate that the column is NULL
+        if (ee_sendint(info, -1, 4) != SUCCESS) {
+          Return(FAIL);
+        }
+        continue;
+      }
+
+      switch(types[col_idx].id()) {
+        case LogicalTypeId::BOOLEAN: {
+          // write the length of col value
+          if (ee_sendint(info, 1, 4) != SUCCESS) {
             Return(FAIL);
           }
-          continue;
+          auto res = BooleanValue::Get(val);
+          if (res) {
+            // write string
+            if (ee_appendBinaryStringInfo(info, val_str_t, 1) != SUCCESS) {
+              Return(FAIL);
+            }
+          } else {
+            if (ee_appendBinaryStringInfo(info, val_str_f, 1) != SUCCESS) {
+              Return(FAIL);
+            }
+          }
+          break;
         }
-
-        switch(res->types[col_idx].id()) {
-          case LogicalTypeId::BOOLEAN: {
-            // write the length of col value
-            if (ee_sendint(info, 1, 4) != SUCCESS) {
-              Return(FAIL);
-            }
-            auto res = BooleanValue::Get(val);
-            if (res) {
-              // write string
-              if (ee_appendBinaryStringInfo(info, val_str_t, 1) != SUCCESS) {
-                Return(FAIL);
-              }
-            } else {
-              if (ee_appendBinaryStringInfo(info, val_str_f, 1) != SUCCESS) {
-                Return(FAIL);
-              }
-            }
-            break;
+        case LogicalTypeId::TINYINT:
+        case LogicalTypeId::SMALLINT:
+        case LogicalTypeId::INTEGER:
+        case LogicalTypeId::BIGINT: {
+          auto val_char = val.ToString();
+          auto len = val_char.length();
+          if (ee_sendint(info, len, 4) != SUCCESS) {
+            Return(FAIL);
           }
-          case LogicalTypeId::TINYINT:
-          case LogicalTypeId::SMALLINT:
-          case LogicalTypeId::INTEGER:
-          case LogicalTypeId::BIGINT: {
-            auto val_char = val.ToString();
-            auto len = val_char.length();
-            if (ee_sendint(info, len, 4) != SUCCESS) {
-              Return(FAIL);
-            }
-            // write string format
-            if (ee_appendBinaryStringInfo(info, val_char.c_str(), len) != SUCCESS) {
-              Return(FAIL);
-            }
-            break;
+          // write string format
+          if (ee_appendBinaryStringInfo(info, val_char.c_str(), len) != SUCCESS) {
+            Return(FAIL);
           }
-          default:{
-            auto val_char = val.ToString();
-            auto len = val_char.length();
-            if (ee_sendint(info, len, 4) != SUCCESS) {
-              Return(FAIL);
-            }
-            // write string format
-            if (ee_appendBinaryStringInfo(info, val_char.c_str(), len) != SUCCESS) {
-              Return(FAIL);
-            }
-            break;
+          break;
+        }
+        default:{
+          auto val_char = val.ToString();
+          auto len = val_char.length();
+          if (ee_sendint(info, len, 4) != SUCCESS) {
+            Return(FAIL);
           }
+          // write string format
+          if (ee_appendBinaryStringInfo(info, val_char.c_str(), len) != SUCCESS) {
+            Return(FAIL);
+          }
+          break;
         }
       }
     }
 
-//    for (k_uint32 col = 0; col < col_num_; ++col) {
-//      // get col value
-//      KWDBTypeFamily return_type = col_info_[col].return_type;
-//      switch (return_type) {
-//        case KWDBTypeFamily::StringFamily: {
-//          k_uint16 val_len;
-//          DatumPtr raw = GetData(row, col, val_len);
-//          std::string val_str = std::string{static_cast<char*>(raw), val_len};
-//
-//          // write the length of col value
-//          if (ee_sendint(info, val_str.length(), 4) != SUCCESS) {
-//            Return(FAIL);
-//          }
-//          // write string
-//          if (ee_appendBinaryStringInfo(info, val_str.c_str(), val_str.length()) != SUCCESS) {
-//            Return(FAIL);
-//          }
-//        } break;
-//        case KWDBTypeFamily::BytesFamily: {
-//          k_uint16 len;
-//          DatumPtr raw = GetData(row, col, len);
-//          std::string val_str = std::string{static_cast<char*>(raw), len};
-//
-//          // use format of varbinary
-//          std::string bytes_f;
-//          bytes_f.append("\\x");
-//          char tmp[3] = {0};
-//          for (u_char c : val_str) {
-//            snprintf(tmp, sizeof(tmp), "%02x", c);
-//            bytes_f.append(tmp, 2);
-//          }
-//          if (ee_sendint(info, bytes_f.size(), 4) != SUCCESS) {
-//            Return(FAIL);
-//          }
-//          if (ee_appendBinaryStringInfo(info, bytes_f.c_str(), bytes_f.size()) != SUCCESS) {
-//            Return(FAIL);
-//          }
-//        } break;
-//        case KWDBTypeFamily::TimestampFamily:
-//        case KWDBTypeFamily::TimestampTZFamily: {
-//          char ts_format_buf[64] = {0};
-//          // format timestamps as strings
-//          k_int64 val;
-//          DatumPtr raw = GetData(row, col);
-//          std::memcpy(&val, raw, sizeof(k_int64));
-//          CKTime ck_time = getCKTime(val, col_info_[col].storage_type, ctx->timezone);
-//          k_uint8 format_len = format_timestamp(ck_time, return_type, ctx, ts_format_buf);
-//          // write the length of column value
-//          if (ee_sendint(info, format_len, 4) != SUCCESS) {
-//            Return(FAIL);
-//          }
-//          // write string format
-//          if (ee_appendBinaryStringInfo(info, ts_format_buf, format_len) != SUCCESS) {
-//            Return(FAIL);
-//          }
-//        } break;
-//        case KWDBTypeFamily::FloatFamily: {
-//          k_char buf[50] = {0};
-//          k_int32 n = 0;
-//
-//          DatumPtr raw = GetData(row, col);
-//          k_double64 d;
-//          if (col_info_[col].storage_type == roachpb::DataType::FLOAT) {
-//            k_float32 val32;
-//            std::memcpy(&val32, raw, sizeof(k_float32));
-//            d = (k_double64)val32;
-//            n = snprintf(buf, sizeof(buf), "%.6f", d);
-//          } else {
-//            std::memcpy(&d, raw, sizeof(k_double64));
-//            n = snprintf(buf, sizeof(buf), "%.17g", d);
-//          }
-//
-//          if (std::isnan(d)) {
-//            buf[0] = 'N';
-//            buf[1] = 'a';
-//            buf[2] = 'N';
-//            n = 3;
-//          }
-//          // write the length of column value
-//          if (ee_sendint(info, n, 4) != SUCCESS) {
-//            Return(FAIL);
-//          }
-//
-//          // write string format
-//          if (ee_appendBinaryStringInfo(info, buf, n) != SUCCESS) {
-//            Return(FAIL);
-//          }
-//        } break;
-//        case KWDBTypeFamily::DecimalFamily: {
-//          switch (col_info_[col].storage_type) {
-//            case roachpb::DataType::SMALLINT: {
-//              DatumPtr ptr = GetData(row, col);
-//              if (PgEncodeDecimal<k_int16>(ptr, info) != SUCCESS) {
-//                Return(FAIL);
-//              }
-//              break;
-//            }
-//            case roachpb::DataType::INT: {
-//              DatumPtr ptr = GetData(row, col);
-//              if (PgEncodeDecimal<k_int32>(ptr, info) != SUCCESS) {
-//                Return(FAIL);
-//              }
-//              break;
-//            }
-//            case roachpb::DataType::TIMESTAMP:
-//            case roachpb::DataType::TIMESTAMPTZ:
-//            case roachpb::DataType::TIMESTAMP_MICRO:
-//            case roachpb::DataType::TIMESTAMP_NANO:
-//            case roachpb::DataType::TIMESTAMPTZ_MICRO:
-//            case roachpb::DataType::TIMESTAMPTZ_NANO:
-//            case roachpb::DataType::DATE:
-//            case roachpb::DataType::BIGINT: {
-//              DatumPtr ptr = GetData(row, col);
-//              if (PgEncodeDecimal<k_int64>(ptr, info) != SUCCESS) {
-//                Return(FAIL);
-//              }
-//              break;
-//            }
-//            case roachpb::DataType::FLOAT: {
-//              DatumPtr ptr = GetData(row, col);
-//              if (PgEncodeDecimal<k_float32>(ptr, info) != SUCCESS) {
-//                Return(FAIL);
-//              }
-//              break;
-//            }
-//            case roachpb::DataType::DOUBLE: {
-//              DatumPtr ptr = GetData(row, col);
-//              if (PgEncodeDecimal<k_double64>(ptr, info) != SUCCESS) {
-//                Return(FAIL);
-//              }
-//              break;
-//            }
-//            case roachpb::DataType::DECIMAL: {
-//              DatumPtr ptr = GetData(row, col);
-//              k_bool is_double = *reinterpret_cast<k_bool*>(ptr);
-//              if (is_double) {
-//                PgEncodeDecimal<k_double64>(ptr + sizeof(k_bool), info);
-//              } else {
-//                PgEncodeDecimal<k_int64>(ptr + sizeof(k_bool), info);
-//              }
-//              break;
-//            }
-//            default: {
-//              LOG_ERROR("Unsupported Decimal type for encoding: %d ", col_info_[col].storage_type)
-//              EEPgErrorInfo::SetPgErrorInfo(ERRCODE_INDETERMINATE_DATATYPE, "unsupported data type");
-//              break;
-//            }
-//          }
-//        } break;
-//        case KWDBTypeFamily::IntervalFamily: {
-//          time_t ms;
-//          DatumPtr raw = GetData(row, col);
-//          std::memcpy(&ms, raw, sizeof(k_int64));
-//          char buf[32] = {0};
-//          struct KWDuration duration;
-//          size_t n;
-//          switch (col_info_[col].storage_type) {
-//            case roachpb::TIMESTAMP_MICRO:
-//            case roachpb::TIMESTAMPTZ_MICRO:
-//              n = duration.format_pg_result(ms, buf, 32, 1000);
-//              break;
-//            case roachpb::TIMESTAMP_NANO:
-//            case roachpb::TIMESTAMPTZ_NANO:
-//              n = duration.format_pg_result(ms, buf, 32, 1);
-//              break;
-//            default:
-//              n = duration.format_pg_result(ms, buf, 32, 1000000);
-//              break;
-//          }
-//
-//          // write the length of column value
-//          if (ee_sendint(info, n, 4) != SUCCESS) {
-//            Return(FAIL);
-//          }
-//          // write string format
-//          if (ee_appendBinaryStringInfo(info, buf, n) != SUCCESS) {
-//            Return(FAIL);
-//          }
-//        } break;
-//        case KWDBTypeFamily::DateFamily: {
-//          char ts_format_buf[64] = {0};
-//          // format timestamps as strings
-//          k_int64 val;
-//          DatumPtr raw = GetData(row, col);
-//          std::memcpy(&val, raw, sizeof(k_int64));
-//          CKTime ck_time = getCKTime(val, col_info_[col].storage_type, ctx->timezone);
-//          tm ts{};
-//          gmtime_r(&ck_time.t_timespec.tv_sec, &ts);
-//          strftime(ts_format_buf, 32, "%F %T", &ts);
-//          k_uint8 format_len = strlen(ts_format_buf);
-//          format_len = strlen(ts_format_buf);
-//          // write the length of column value
-//          if (ee_sendint(info, format_len, 4) != SUCCESS) {
-//            Return(FAIL);
-//          }
-//          // write string format
-//          if (ee_appendBinaryStringInfo(info, ts_format_buf, format_len) != SUCCESS) {
-//            Return(FAIL);
-//          }
-//        } break;
-//        case KWDBTypeFamily::IntFamily: {
-//          DatumPtr raw = GetData(row, col);
-//          k_int64 val;
-//          switch (col_info_[col].storage_type) {
-//            case roachpb::DataType::BIGINT:
-//            case roachpb::DataType::TIMESTAMP:
-//            case roachpb::DataType::TIMESTAMPTZ:
-//            case roachpb::DataType::TIMESTAMP_MICRO:
-//            case roachpb::DataType::TIMESTAMP_NANO:
-//            case roachpb::DataType::TIMESTAMPTZ_MICRO:
-//            case roachpb::DataType::TIMESTAMPTZ_NANO:
-//            case roachpb::DataType::DATE:
-//              std::memcpy(&val, raw, sizeof(k_int64));
-//              break;
-//            case roachpb::DataType::SMALLINT:
-//              k_int16 val16;
-//              std::memcpy(&val16, raw, sizeof(k_int16));
-//              val = val16;
-//              break;
-//            default:
-//              k_int32 val32;
-//              std::memcpy(&val32, raw, sizeof(k_int32));
-//              val = val32;
-//              break;
-//          }
-//
-//          char val_char[32];
-//          k_int32 len = fastIntToString(val, val_char);
-//          if (ee_sendint(info, len, 4) != SUCCESS) {
-//            Return(FAIL);
-//          }
-//          // write string format
-//          if (ee_appendBinaryStringInfo(info, val_char, len) != SUCCESS) {
-//            Return(FAIL);
-//          }
-//        } break;
-//        default: {
-//          // write the length of column value
-//          k_int64 val;
-//          DatumPtr raw = GetData(row, col);
-//          std::memcpy(&val, raw, sizeof(k_int64));
-//          char val_char[32];
-//          k_int32 len = fastIntToString(val, val_char);
-//          if (ee_sendint(info, len, 4) != SUCCESS) {
-//            Return(FAIL);
-//          }
-//          // write string format
-//          if (ee_appendBinaryStringInfo(info, val_char, len) != SUCCESS) {
-//            Return(FAIL);
-//          }
-//        } break;
-//      }
-//    }
 
     temp_addr = &info->data[temp_len + 1];
     k_uint32 n32 = be32toh(info->len - temp_len - 1);
@@ -914,18 +659,13 @@ namespace kwdbts {
       return KStatus::FAIL;
     }
 
-    st = PGResultData(ctx, res, msgBuffer);
-
-//    auto &coll = res->Collection();
-//    for (auto &row : coll.Rows()) {
-//      for (idx_t col_idx = 0; col_idx < coll.ColumnCount(); col_idx++) {
-//        auto val = row.GetValue(col_idx);
-//        st = PGResultData(ctx, res, msgBuffer);
-//        if (st == KStatus::FAIL) {
-//          break;
-//        }
-//      }
-//    }
+    auto &coll = res->Collection();
+    for (auto &row : coll.Rows()) {
+      st = PGResultDataForOneRow(ctx, row, res->types, coll.ColumnCount(), msgBuffer);
+      if (st == KStatus::FAIL) {
+        break;
+      }
+    }
 
     if (st == SUCCESS) {
       encoding_buf_ = msgBuffer->data;
