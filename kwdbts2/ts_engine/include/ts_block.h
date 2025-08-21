@@ -85,11 +85,10 @@ class TsBlockSpan {
   TSEntityID entity_id_ = 0;
   int start_row_ = 0, nrow_ = 0;
   bool has_pre_agg_{false};
-  std::shared_ptr<TsTableSchemaManager> tbl_schema_mgr_;
   const std::vector<AttributeInfo>* scan_attrs_ = nullptr;
 
  public:
-  std::unique_ptr<TSBlkDataTypeConvert> convert_ = nullptr;
+  std::shared_ptr<TSBlkDataTypeConvert> convert_ = nullptr;
 
   friend TSBlkDataTypeConvert;
 

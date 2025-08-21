@@ -9,6 +9,8 @@
 // MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
 // See the Mulan PSL v2 for more details.
 
+#include <memory>
+#include <vector>
 #include "ts_agg.h"
 #include "ts_block.h"
 #include "ts_blkspan_type_convert.h"
@@ -57,12 +59,11 @@ TsBlockSpan::TsBlockSpan(TSEntityID entity_id, std::shared_ptr<TsBlock> block, i
     : block_(block),
       entity_id_(entity_id),
       start_row_(start),
-      nrow_(nrow),
-      tbl_schema_mgr_(tbl_schema_mgr) {
+      nrow_(nrow) {
   assert(nrow_ >= 1);
   uint32_t scan_version = scan_schema->GetVersionNUm();
   if (block_->GetTableVersion() != scan_version) {
-    convert_ = std::make_unique<TSBlkDataTypeConvert>(*this, tbl_schema_mgr,
+    convert_ = std::make_shared<TSBlkDataTypeConvert>(*this, tbl_schema_mgr,
                                                     scan_version == 0 ? block->GetTableVersion() : scan_version);
     auto s = convert_->Init();
     if (s != SUCCESS) {
@@ -78,8 +79,7 @@ TsBlockSpan::TsBlockSpan(TSEntityID entity_id, std::shared_ptr<TsBlock> block, i
     : block_(block),
       entity_id_(entity_id),
       start_row_(start),
-      nrow_(nrow),
-      tbl_schema_mgr_(tbl_schema_mgr) {
+      nrow_(nrow) {
   assert(nrow_ >= 1);
   if (scan_version == 0) {
     scan_version = block_->GetTableVersion();
@@ -94,7 +94,7 @@ TsBlockSpan::TsBlockSpan(TSEntityID entity_id, std::shared_ptr<TsBlock> block, i
     }
   }
   std::shared_ptr<MMapMetricsTable> scan_metric;
-  auto s = tbl_schema_mgr_->GetMetricSchema(scan_version, &scan_metric);
+  auto s = tbl_schema_mgr->GetMetricSchema(scan_version, &scan_metric);
   if (s != SUCCESS) {
     LOG_ERROR("GetMetricSchema failed. table id [%u], table version [%lu]", scan_version, block->GetTableId());
   }
@@ -109,8 +109,7 @@ TsBlockSpan::TsBlockSpan(uint32_t vgroup_id, TSEntityID entity_id, std::shared_p
       vgroup_id_(vgroup_id),
       entity_id_(entity_id),
       start_row_(start),
-      nrow_(nrow),
-      tbl_schema_mgr_(tbl_schema_mgr) {
+      nrow_(nrow) {
   assert(nrow_ >= 1);
   uint32_t scan_version = scan_schema->GetVersionNUm();
   if (block_->GetTableVersion() != scan_version) {
@@ -133,7 +132,6 @@ TsBlockSpan::TsBlockSpan(uint32_t vgroup_id, TSEntityID entity_id, std::shared_p
       entity_id_(entity_id),
       start_row_(start),
       nrow_(nrow),
-      tbl_schema_mgr_(tbl_schema_mgr),
       scan_attrs_(scan_attrs) {
   assert(nrow_ >= 1);
   if (block_->GetTableVersion() != scan_version) {
@@ -149,7 +147,7 @@ TsBlockSpan::TsBlockSpan(uint32_t vgroup_id, TSEntityID entity_id, std::shared_p
 
 TsBlockSpan::TsBlockSpan(const TsBlockSpan& src, std::shared_ptr<TsBlock> block, int start, int nrow) :
   block_(block), vgroup_id_(src.vgroup_id_), entity_id_(src.entity_id_), start_row_(start), nrow_(nrow),
-  tbl_schema_mgr_(src.tbl_schema_mgr_), scan_attrs_(src.scan_attrs_) {
+  scan_attrs_(src.scan_attrs_) {
   if (src.block_->GetTableVersion() == block_->GetTableVersion()) {
     if (src.convert_ != nullptr) {
       convert_ = std::make_unique<TSBlkDataTypeConvert>(*(src.convert_.get()), *this);
@@ -486,9 +484,7 @@ KStatus TsBlockSpan::GetCount(uint32_t scan_idx, uint32_t& count) {
 void TsBlockSpan::SplitFront(int row_num, shared_ptr<TsBlockSpan>& front_span) {
   assert(row_num <= nrow_);
   assert(block_ != nullptr);
-  front_span = make_shared<TsBlockSpan>(vgroup_id_, entity_id_, block_, start_row_, row_num, tbl_schema_mgr_,
-                        convert_ == nullptr ? block_->GetTableVersion() : convert_->version_conv_->scan_version_,
-                        scan_attrs_);
+  front_span = make_shared<TsBlockSpan>(*this, block_, start_row_, row_num);
   // change current span info
   start_row_ += row_num;
   nrow_ -= row_num;
@@ -502,10 +498,7 @@ void TsBlockSpan::SplitFront(int row_num, shared_ptr<TsBlockSpan>& front_span) {
 void TsBlockSpan::SplitBack(int row_num, shared_ptr<TsBlockSpan>& back_span) {
   assert(row_num <= nrow_);
   assert(block_ != nullptr);
-  back_span = make_shared<TsBlockSpan>(vgroup_id_, entity_id_, block_, start_row_ + nrow_ - row_num,
-                                  row_num, tbl_schema_mgr_,
-                      convert_ == nullptr ? block_->GetTableVersion() : convert_->version_conv_->scan_version_,
-                                  scan_attrs_);
+  back_span = make_shared<TsBlockSpan>(*this, block_, start_row_ + nrow_ - row_num, row_num);
   // change current span info
   nrow_ -= row_num;
   has_pre_agg_ = false;
