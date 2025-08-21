@@ -308,13 +308,13 @@ TEST_F(TestWALManagerV2, TestWALInsertData) {
   wal_->ReadWALLog(redo_logs, wal_->GetFirstLSN(), wal_->FetchCurrentLSN(), ignore);
   EXPECT_EQ(redo_logs.size(), 1);
 
-  auto* redo = reinterpret_cast<DeleteLogTagsEntry*>(redo_logs[0]);
+  auto* redo = reinterpret_cast<InsertLogMetricsEntry*>(redo_logs[0]);
   EXPECT_EQ(redo->getType(), WALLogType::INSERT);
   EXPECT_EQ(redo->getTableType(), WALTableType::DATA);
   EXPECT_EQ(redo->getXID(), mtr_id);
   EXPECT_EQ(redo->getVGroupID(), vgroup_id);
-  EXPECT_EQ(redo->getPrimaryTag().len, p_tag.size());
-  EXPECT_EQ(redo->getTags().len, payload_data.len);
+  EXPECT_EQ(redo->getPrimaryTag().size(), p_tag.size());
+  EXPECT_EQ(redo->getPayload().len, payload_data.len);
 
   for (auto& l : redo_logs) {
     delete l;
