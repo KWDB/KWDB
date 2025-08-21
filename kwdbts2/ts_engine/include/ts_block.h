@@ -89,7 +89,7 @@ class TsBlockSpan {
   const std::vector<AttributeInfo>* scan_attrs_ = nullptr;
 
  public:
-  std::shared_ptr<TSBlkDataTypeConvert> convert_ = nullptr;
+  std::unique_ptr<TSBlkDataTypeConvert> convert_ = nullptr;
 
   friend TSBlkDataTypeConvert;
 
