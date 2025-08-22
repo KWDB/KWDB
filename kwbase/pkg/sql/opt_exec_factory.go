@@ -1514,6 +1514,7 @@ func (ef *execFactory) ConstructInsert(
 	checkOrdSet exec.CheckOrdinalSet,
 	allowAutoCommit bool,
 	skipFKChecks bool,
+	triggerCommands exec.TriggerExecute,
 ) (exec.Node, error) {
 	ctx := ef.planner.extendedEvalCtx.Context
 
@@ -1545,6 +1546,11 @@ func (ef *execFactory) ConstructInsert(
 		return nil, err
 	}
 
+	beforeTriggerBlocks, afterTriggerBlocks, fn, err := ef.getTriggerInstructions(table, triggerCommands, tree.TriggerEventInsert)
+	if err != nil {
+		return nil, err
+	}
+
 	// Regular path for INSERT.
 	ins := insertNodePool.Get().(*insertNode)
 	*ins = insertNode{
@@ -1553,6 +1559,11 @@ func (ef *execFactory) ConstructInsert(
 			ti:         tableInserter{ri: ri},
 			checkOrds:  checkOrdSet,
 			insertCols: ri.InsertCols,
+		},
+		trigger: triggerHelper{
+			beforeIns: beforeTriggerBlocks,
+			afterIns:  afterTriggerBlocks,
+			fn:        fn,
 		},
 	}
 
@@ -1738,6 +1749,7 @@ func (ef *execFactory) ConstructUpdate(
 	passthrough sqlbase.ResultColumns,
 	allowAutoCommit bool,
 	skipFKChecks bool,
+	triggerCommands exec.TriggerExecute,
 ) (exec.Node, error) {
 	ctx := ef.planner.extendedEvalCtx.Context
 
@@ -1788,6 +1800,11 @@ func (ef *execFactory) ConstructUpdate(
 		return nil, err
 	}
 
+	beforeTriggerBlocks, afterTriggerBlocks, fn, err := ef.getTriggerInstructions(table, triggerCommands, tree.TriggerEventUpdate)
+	if err != nil {
+		return nil, err
+	}
+
 	// updateColsIdx inverts the mapping of UpdateCols to FetchCols. See
 	// the explanatory comments in updateRun.
 	updateColsIdx := make(map[sqlbase.ColumnID]int, len(ru.UpdateCols))
@@ -1811,6 +1828,11 @@ func (ef *execFactory) ConstructUpdate(
 			updateValues:   make(tree.Datums, len(ru.UpdateCols)),
 			updateColsIdx:  updateColsIdx,
 			numPassthrough: len(passthrough),
+		},
+		trigger: triggerHelper{
+			beforeIns: beforeTriggerBlocks,
+			afterIns:  afterTriggerBlocks,
+			fn:        fn,
 		},
 	}
 
@@ -2002,6 +2024,7 @@ func (ef *execFactory) ConstructDelete(
 	returnColOrdSet exec.ColumnOrdinalSet,
 	allowAutoCommit bool,
 	skipFKChecks bool,
+	triggerCommands exec.TriggerExecute,
 ) (exec.Node, error) {
 	ctx := ef.planner.extendedEvalCtx.Context
 
@@ -2022,10 +2045,18 @@ func (ef *execFactory) ConstructDelete(
 		return nil, err
 	}
 
-	fastPathInterleaved := canDeleteFastInterleaved(tabDesc, fkTables)
-	if fastPathNode, ok := maybeCreateDeleteFastNode(
-		ctx, input.(planNode), tabDesc, fkTables, fastPathInterleaved, rowsNeeded); ok {
-		return fastPathNode, nil
+	// disable FastPath if we need to handle trigger
+	isNeedTrigger := false
+	if triggerCommands != nil {
+		isNeedTrigger = len(triggerCommands.GetCommands().Bodys) != 0
+	}
+
+	if !isNeedTrigger {
+		fastPathInterleaved := canDeleteFastInterleaved(tabDesc, fkTables)
+		if fastPathNode, ok := maybeCreateDeleteFastNode(
+			ctx, input.(planNode), tabDesc, fkTables, fastPathInterleaved, rowsNeeded); ok {
+			return fastPathNode, nil
+		}
 	}
 
 	checkFKs := row.CheckFKs
@@ -2050,12 +2081,22 @@ func (ef *execFactory) ConstructDelete(
 		return nil, err
 	}
 
+	beforeTriggerBlocks, afterTriggerBlocks, fn, err := ef.getTriggerInstructions(table, triggerCommands, tree.TriggerEventDelete)
+	if err != nil {
+		return nil, err
+	}
+
 	// Now make a delete node. We use a pool.
 	del := deleteNodePool.Get().(*deleteNode)
 	*del = deleteNode{
 		source: input.(planNode),
 		run: deleteRun{
 			td: tableDeleter{rd: rd, alloc: &ef.planner.alloc},
+		},
+		trigger: triggerHelper{
+			beforeIns: beforeTriggerBlocks,
+			afterIns:  afterTriggerBlocks,
+			fn:        fn,
 		},
 	}
 
@@ -2145,6 +2186,14 @@ func (ef *execFactory) ConstructCreateTable(
 	return nd, nil
 }
 
+// ConstructCreateTrigger is part of the exec.Factory interface.
+func (ef *execFactory) ConstructCreateTrigger(
+	ct *tree.CreateTrigger, deps opt.ViewDeps,
+) (exec.Node, error) {
+	nd := &createTriggerNode{n: ct}
+	return nd, nil
+}
+
 func (ef *execFactory) ConstructCreateProcedure(
 	cp *tree.CreateProcedure, schema cat.Schema, deps opt.ViewDeps,
 ) (exec.Node, error) {
@@ -2228,7 +2277,7 @@ func (ef *execFactory) buildInstruction(
 		ins := NewCloseCursorIns(t.Name)
 		return ins, nil
 	case *memo.DeclareVarCommand:
-		ins := NewSetIns(string(t.Col.Name), t.Col.Typ, t.Col.Default)
+		ins := NewSetIns(string(t.Col.Name), t.Col.Idx, t.Col.Typ, t.Col.Default, t.Col.Mode)
 		return ins, nil
 	case *memo.DeclCursorCommand:
 		var cur Cursor
@@ -2263,7 +2312,7 @@ func (ef *execFactory) buildInstruction(
 		return ins, nil
 	case *memo.IntoCommand:
 		stmt := *NewStmtIns(t.Name, t.Body, tree.Rows, t.PhysicalProp)
-		ins := NewIntoIns(stmt, t.Idx)
+		ins := NewIntoIns(stmt, t.IntoValue)
 		return ins, nil
 	case *memo.LeaveCommand:
 		return &LeaveIns{labelName: t.Label}, nil
@@ -3719,4 +3768,78 @@ func (ef *execFactory) ProcessTSInsertWithSort(
 		return tsInsert, true
 	}
 	return struct{}{}, false
+}
+
+func (ef *execFactory) getTriggerInstructions(
+	table cat.Table, triggerCommands exec.TriggerExecute, event tree.TriggerEvent,
+) (beforeTriggerIns, afterTriggerIns Instruction, fn exec.ProcedurePlanFn, err error) {
+	if len(table.GetTriggers(event)) > 0 {
+		// convert procCommand to Instructions, which is executed in BatchNext()
+		beforeTriggerIns, afterTriggerIns, err = ef.makeTriggerBlockIns(table, triggerCommands.GetCommands(), triggerCommands.GetScalarFn(), event)
+		if err != nil {
+			return nil, nil, fn, err
+		}
+		fn = triggerCommands.GetFn()
+	}
+	return beforeTriggerIns, afterTriggerIns, fn, err
+}
+
+// makeTriggerBlockIns converts procCommand to Instructions, which is executed in BatchNext()
+// Parameters:
+// table: metadata of the table which is bounded to the trigger
+// procComms: Commands which describes all sql stmts in a trigger
+// scalarFn: helper function which creates typedExpr
+// event: trigger event, e.g. INSERT/DELETE/UPDATE
+//
+// Returns:
+// beforeTriggerIns: converted from procComms, should be executed before DML execution
+// afterTriggerIns: converted from procComms, should be executed after DML execution
+func (ef *execFactory) makeTriggerBlockIns(
+	table cat.Table,
+	procComms memo.ArrayCommand,
+	scalarFn exec.BuildScalarFn,
+	event tree.TriggerEvent,
+) (beforeTriggerIns, afterTriggerIns Instruction, err error) {
+	var beforeTriggerInst []Instruction
+	var afterTriggerInst []Instruction
+
+	eventTriggers := table.GetTriggers(event)
+	if len(eventTriggers) > 0 {
+		// convert procCommand to Instructions, which is executed in BatchNext(),
+		// extinguish BEFORE and AFTER
+		beforeIdx := 0
+		for _, trig := range eventTriggers {
+			if trig.ActionTime == tree.TriggerActionTimeBefore {
+				beforeIdx++
+			} else {
+				break
+			}
+		}
+		for _, v := range procComms.Bodys[:beforeIdx] {
+			ins, err := ef.buildInstruction(v, scalarFn)
+			if err != nil {
+				return nil, nil, err
+			}
+			beforeTriggerInst = append(beforeTriggerInst, ins)
+		}
+		if len(beforeTriggerInst) != 0 {
+			beforeTriggerBlocks := BlockIns{}
+			beforeTriggerBlocks.childs = beforeTriggerInst
+			beforeTriggerIns = &beforeTriggerBlocks
+		}
+
+		for _, v := range procComms.Bodys[beforeIdx:] {
+			ins, err := ef.buildInstruction(v, scalarFn)
+			if err != nil {
+				return nil, nil, err
+			}
+			afterTriggerInst = append(afterTriggerInst, ins)
+		}
+		if len(afterTriggerInst) != 0 {
+			afterTriggerBlocks := BlockIns{}
+			afterTriggerBlocks.childs = afterTriggerInst
+			afterTriggerIns = &afterTriggerBlocks
+		}
+	}
+	return beforeTriggerIns, afterTriggerIns, nil
 }

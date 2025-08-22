@@ -1383,6 +1383,32 @@ CREATE TABLE
     )
 primary attributes (hostname);
 CREATE TABLE
+> create table stream_db_fvt_out.cpu_avg_agg8
+(
+    w_begin              timestamptz(6) not null,
+    w_end                timestamptz(6) not null,
+    w_begin1             timestamptz(6) not null,
+    w_end1               timestamptz(6) not null,
+    usage_user_avg       bigint    not null,
+    usage_system_avg     bigint    not null,
+    count                bigint    not null
+) attributes (
+    hostname char(30) not null
+    )
+primary attributes (hostname);
+CREATE TABLE
+> create table stream_db_fvt_out.cpu_avg_agg9
+(
+    w_begin              timestamp(6) not null,
+    w_end                timestamptz(6) not null,
+    usage_user_avg       bigint    not null,
+    usage_system_avg     bigint    not null,
+    count                bigint    not null
+) attributes (
+    hostname char(30) not null
+    )
+primary attributes (hostname);
+CREATE TABLE
 > create table stream_db_fvt_out1.cpu_avg_agg1
 (
     w_begin              timestamptz(6)   not null,
@@ -1483,6 +1509,10 @@ CREATE STREAM
 CREATE STREAM
 > CREATE STREAM cpu_stream_agg_ts_7 INTO stream_db_fvt_out.cpu_avg_agg7 WITH OPTIONS(recalculate_delay_rounds='1',MAX_RETRIES='3',PROCESS_HISTORY='on',IGNORE_EXPIRED='on', MAX_DELAY='5s',SYNC_TIME='3s',BUFFER_SIZE='1024kib',checkpoint_interval='2s',heartbeat_interval='1s') AS SELECT first(k_timestamp), last(k_timestamp), avg(usage_user), avg(usage_system), count(*), hostname FROM stream_db_fvt.cpu_agg WHERE usage_system>0 GROUP BY hostname;
 ERROR: missing time_bucket or window function in GROUP BY cluster
+> CREATE STREAM cpu_stream_agg_ts_8 INTO stream_db_fvt_out.cpu_avg_agg8 WITH OPTIONS(recalculate_delay_rounds='30',MAX_RETRIES='3',PROCESS_HISTORY='on',IGNORE_EXPIRED='on', MAX_DELAY='5s',SYNC_TIME='3s',BUFFER_SIZE='1024kib',checkpoint_interval='2s',heartbeat_interval='1s') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end,first_row(k_timestamp) as w_begin1, last_row(k_timestamp) as w_end1, avg(usage_user) as usage_user_avg, avg(usage_system) as usage_system_avg, count(*) as count, hostname as hostname FROM stream_db_fvt.cpu_agg WHERE usage_system+usage_system>0 GROUP BY TIME_WINDOW(k_timestamp, '1m','30s'), hostname;
+CREATE STREAM
+> CREATE STREAM cpu_stream_agg_ts_9 INTO stream_db_fvt_out.cpu_avg_agg9 WITH OPTIONS(recalculate_delay_rounds='30',MAX_RETRIES='3',PROCESS_HISTORY='on',IGNORE_EXPIRED='on', MAX_DELAY='10s',SYNC_TIME='5s',BUFFER_SIZE='1024kib',checkpoint_interval='2s',heartbeat_interval='1s') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, avg(usage_system) as usage_system_avg, hostname as hostname, count(*) as count, avg(usage_user) as usage_user_avg FROM stream_db_fvt.cpu_agg WHERE abs(usage_system)>0 GROUP BY COUNT_WINDOW(5,3), hostname;
+CREATE STREAM
 > CREATE STREAM cpu_stream_agg_rel_1 INTO stream_db_fvt_out1.cpu_avg_agg1 WITH OPTIONS(recalculate_delay_rounds='1',MAX_RETRIES='3',PROCESS_HISTORY='off',IGNORE_EXPIRED='on', MAX_DELAY='5s',SYNC_TIME='3s',BUFFER_SIZE='1024kib',checkpoint_interval='2s',heartbeat_interval='1s') AS SELECT first(k_timestamp), last(k_timestamp), avg(usage_user), avg(usage_system), count(*), hostname FROM stream_db_fvt.cpu_agg WHERE usage_system>0 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
 CREATE STREAM
 > CREATE STREAM cpu_stream_agg_rel_2 INTO stream_db_fvt_out1.cpu_avg_agg2 WITH OPTIONS(recalculate_delay_rounds='1',MAX_RETRIES='3',PROCESS_HISTORY='off',IGNORE_EXPIRED='on', MAX_DELAY='5s',SYNC_TIME='3s',BUFFER_SIZE='1024kib',checkpoint_interval='2s',heartbeat_interval='1s') AS SELECT first_row(k_timestamp) as w_begin, last_row(k_timestamp) as w_end, avg(usage_user) as usage_user_avg, avg(usage_system) as usage_system_avg, count(*) as count, hostname as hostname FROM stream_db_fvt.cpu_agg WHERE usage_system>0 GROUP BY TIME_WINDOW(k_timestamp, '1m'), hostname;
@@ -1530,7 +1560,7 @@ INSERT 1
 > INSERT INTO stream_db_fvt.cpu_agg
 values ('2023-05-31 10:00:26', 58, 44, 24, 61, 22, 63, 6, 44, 80, 38, 'host_1', '', '', '', '', '', '', '', '', '');
 INSERT 1
-> select pg_sleep(15);
+> select pg_sleep(25);
   pg_sleep
 ------------
     true
@@ -1594,6 +1624,32 @@ INSERT 1
   w_begin | w_end | usage_user_avg | usage_system_avg | count | hostname
 ----------+-------+----------------+------------------+-------+-----------
 (0 rows)
+> select * from stream_db_fvt_out.cpu_avg_agg8 order by hostname, w_begin;
+           w_begin          |           w_end           |             w_begin1             |              w_end1              | usage_user_avg | usage_system_avg | count | hostname
+----------------------------+---------------------------+----------------------------------+----------------------------------+----------------+------------------+-------+-----------
+  2023-05-31 09:59:30+00:00 | 2023-05-31 10:00:30+00:00 | 2023-05-31 10:00:00.123457+00:00 | 2023-05-31 10:00:10.123457+00:00 |             58 |               32 |     2 | host_0
+  2023-05-31 10:00:00+00:00 | 2023-05-31 10:01:00+00:00 | 2023-05-31 10:00:00.123457+00:00 | 2023-05-31 10:00:10.123457+00:00 |             58 |               32 |     2 | host_0
+  2023-05-31 10:00:30+00:00 | 2023-05-31 10:01:30+00:00 | 2023-05-31 10:01:00.123457+00:00 | 2023-05-31 10:01:20.123457+00:00 |             58 |               59 |     3 | host_0
+  2023-05-31 10:01:00+00:00 | 2023-05-31 10:02:00+00:00 | 2023-05-31 10:01:00.123457+00:00 | 2023-05-31 10:01:20.123457+00:00 |             58 |               59 |     3 | host_0
+  2023-05-31 10:09:30+00:00 | 2023-05-31 10:10:30+00:00 | 2023-05-31 10:10:00.123457+00:00 | 2023-05-31 10:10:00.123457+00:00 |             58 |                3 |     1 | host_0
+  2023-05-31 10:10:00+00:00 | 2023-05-31 10:11:00+00:00 | 2023-05-31 10:10:00.123457+00:00 | 2023-05-31 10:10:00.123457+00:00 |             58 |                3 |     1 | host_0
+  2023-05-31 10:29:30+00:00 | 2023-05-31 10:30:30+00:00 | 2023-05-31 10:30:00+00:00        | 2023-05-31 10:30:00+00:00        |             58 |                3 |     1 | host_0
+  2023-05-31 10:30:00+00:00 | 2023-05-31 10:31:00+00:00 | 2023-05-31 10:30:00+00:00        | 2023-05-31 10:30:00+00:00        |             58 |                3 |     1 | host_0
+  2023-05-31 09:59:30+00:00 | 2023-05-31 10:00:30+00:00 | 2023-05-31 10:00:20.123457+00:00 | 2023-05-31 10:00:20.123457+00:00 |             58 |               44 |     1 | host_1
+  2023-05-31 10:00:00+00:00 | 2023-05-31 10:01:00+00:00 | 2023-05-31 10:00:20.123457+00:00 | 2023-05-31 10:00:20.123457+00:00 |             58 |               44 |     1 | host_1
+  2023-05-31 10:19:30+00:00 | 2023-05-31 10:20:30+00:00 | 2023-05-31 10:20:00+00:00        | 2023-05-31 10:20:00+00:00        |             58 |                3 |     1 | host_1
+  2023-05-31 10:20:00+00:00 | 2023-05-31 10:21:00+00:00 | 2023-05-31 10:20:00+00:00        | 2023-05-31 10:20:00+00:00        |             58 |                3 |     1 | host_1
+(12 rows)
+> select * from stream_db_fvt_out.cpu_avg_agg9 order by hostname, w_begin;
+              w_begin              |              w_end               | usage_user_avg | usage_system_avg | count | hostname
+-----------------------------------+----------------------------------+----------------+------------------+-------+-----------
+  2023-05-31 10:00:00.123457+00:00 | 2023-05-31 10:00:50.123457+00:00 |             58 |               46 |     5 | host_0
+  2023-05-31 10:00:40.123457+00:00 | 2023-05-31 10:01:20.123457+00:00 |             58 |               60 |     5 | host_0
+  2023-05-31 10:01:10.123457+00:00 | 2023-05-31 10:30:00+00:00        |             58 |               43 |     4 | host_0
+  2023-05-31 10:30:00+00:00        | 2023-05-31 10:30:00+00:00        |             58 |                3 |     1 | host_0
+  2023-05-31 10:00:20.123457+00:00 | 2023-05-31 10:20:00+00:00        |             58 |               25 |     4 | host_1
+  2023-05-31 10:20:00+00:00        | 2023-05-31 10:20:00+00:00        |             58 |                3 |     1 | host_1
+(6 rows)
 > select * from stream_db_fvt_out1.cpu_avg_agg1 order by w_begin, hostname;
               w_begin              |              w_end               | usage_user_avg | usage_system_avg | count | hostname
 -----------------------------------+----------------------------------+----------------+------------------+-------+-----------

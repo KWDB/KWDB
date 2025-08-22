@@ -84,10 +84,10 @@ BRStatus DataStreamMgr::TransmitChunk(const PTransmitChunkParams& request,
   const KProcessorId& dest_processor_id = request.dest_processor();
   std::shared_ptr<DataStreamRecvr> recvr = FindRecvr(query_id, dest_processor_id);
   if (recvr == nullptr) {
-    LOG_ERROR(
-        "TransmitChunk failed, recvr is nullptr, query_id=%ld, "
-        "dest_processor_id=%d",
-        query_id, dest_processor_id);
+    // LOG_ERROR(
+    //     "TransmitChunk failed, recvr is nullptr, query_id=%ld, "
+    //     "dest_processor_id=%d",
+    //     query_id, dest_processor_id);
     return BRStatus::NotFoundRecv("recvr is nullptr");
   }
 
@@ -111,10 +111,10 @@ BRStatus DataStreamMgr::SendExecStatus(const PSendExecStatus& request) {
   const KProcessorId& dest_processor_id = request.dest_processor();
   std::shared_ptr<DataStreamRecvr> recvr = FindRecvr(query_id, dest_processor_id);
   if (recvr == nullptr) {
-    LOG_ERROR(
-        "SendExecStatus failed, recvr is nullptr, query_id=%ld, "
-        "dest_processor_id=%d",
-        query_id, dest_processor_id);
+    // LOG_ERROR(
+    //     "SendExecStatus failed, recvr is nullptr, query_id=%ld, "
+    //     "dest_processor_id=%d",
+    //     query_id, dest_processor_id);
     return BRStatus::NotFoundRecv("recvr is nullptr");
   }
 

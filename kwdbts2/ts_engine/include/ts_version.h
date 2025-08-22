@@ -128,7 +128,7 @@ class TsPartitionVersion {
   bool TrySetBusy(PartitionStatus desired) const;
   void ResetStatus() const;
   KStatus NeedVacuumEntitySegment(const fs::path& root_path,
-    TsEngineSchemaManager* schema_manager, bool& need_vacuum) const;
+    TsEngineSchemaManager* schema_manager, bool& need_vacuum, bool& need_compact) const;
 };
 
 class TsVGroupVersion {

@@ -56,6 +56,7 @@ var (
 	errNoTable           = pgerror.New(pgcode.InvalidName, "no table specified")
 	errNoProcedure       = pgerror.New(pgcode.InvalidName, "no procedure specified")
 	errNoMatch           = pgerror.New(pgcode.UndefinedObject, "no object matched")
+	errEmptyTriggerName  = pgerror.New(pgcode.Syntax, "empty trigger name")
 )
 
 // DefaultUserDBs is a set of the databases which are present in a new cluster.

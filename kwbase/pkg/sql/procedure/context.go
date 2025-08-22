@@ -50,6 +50,9 @@ type SpExecContext struct {
 
 	// Fn saves function that optimize and build
 	Fn exec.ProcedurePlanFn
+
+	// TriggerReplaceValues is the interface for trigger replacement.
+	TriggerReplaceValues exec.PlaceHolderExecute
 }
 
 // Init execute context
@@ -94,31 +97,34 @@ func (c *SpExecContext) Inherit(src *SpExecContext) {
 	c.procedureTxn = src.procedureTxn
 	c.continueExec = src.continueExec
 	c.Fn = src.Fn
+	c.TriggerReplaceValues = src.TriggerReplaceValues
 }
 
 // InheritResult execute context
 func (c *SpExecContext) InheritResult(src *SpExecContext) {
 	c.results = src.results
 	c.continueExec = src.continueExec
-}
-
-// FindVariable finds local variable
-func (c *SpExecContext) FindVariable(name string) int {
-	if idx, ok := c.localVarMap[name]; ok {
-		return idx
-	}
-	return -1
+	c.TriggerReplaceValues = src.TriggerReplaceValues
 }
 
 // AddVariable adds  a local variable
-func (c *SpExecContext) AddVariable(name string, v *exec.LocalVariable) {
-	c.localVarMap[name] = len(c.localVariable)
+func (c *SpExecContext) AddVariable(v *exec.LocalVariable) {
+	if idx, ok := c.localVarMap[v.Name]; ok {
+		c.localVariable[idx] = v
+		return
+	}
+	c.localVarMap[v.Name] = len(c.localVariable)
 	c.localVariable = append(c.localVariable, v)
 }
 
 // SetVariable sets a local variable
 func (c *SpExecContext) SetVariable(idx int, v *tree.Datum) {
 	c.localVariable[idx].Data = *v
+}
+
+// SetExternalVariable sets a external variable
+func (c *SpExecContext) SetExternalVariable(idx int, v *tree.Datum) {
+	c.TriggerReplaceValues.SetValue(tree.PlaceholderIdx(idx), *v)
 }
 
 // GetVariableName gets the local variable name.
@@ -136,39 +142,45 @@ func (c *SpExecContext) SetVariableType(idx int, typ types.T) {
 	c.localVariable[idx].Typ = typ
 }
 
+// IntoDeclareVar sets local variable
+func (c *SpExecContext) IntoDeclareVar(idx int, vs tree.Datum, columns sqlbase.ResultColumn) error {
+	if idx >= len(c.localVariable) {
+		return pgerror.Newf(pgcode.StringDataLengthMismatch,
+			"idx %v of variable exceeds the maximum of localVariable %v", idx, len(c.localVariable))
+	}
+
+	// an error needs to be reported if it is not a null value and the column types are not equal
+	if !c.localVariable[idx].Typ.Equivalent(vs.ResolvedType()) && vs != tree.DNull {
+		var originTypeStr string
+		// the precision of TimestampTZFamily or TimestampFamily needs to be obtained from the original information of the column
+		if (vs.ResolvedType().InternalType.Family == types.TimestampTZFamily ||
+			vs.ResolvedType().InternalType.Family == types.TimestampFamily) &&
+			columns.Typ.InternalType.Precision > 0 {
+			originTypeStr = columns.Typ.String()
+		} else {
+			originTypeStr = vs.ResolvedType().String()
+		}
+		return pgerror.Newf(pgcode.DatatypeMismatch, "variable %s type %s not save type %s ",
+			c.localVariable[idx].Name, c.localVariable[idx].Typ.String(), originTypeStr)
+	}
+
+	variableName := c.GetVariableName(idx)
+	// check value by type
+	value, err := sqlbase.LimitValueWidth(&c.localVariable[idx].Typ, vs, &variableName)
+	if err != nil {
+		return err
+	}
+	c.localVariable[idx].Data = value
+	return nil
+}
+
 // SetVariables sets local variables
 func (c *SpExecContext) SetVariables(
 	idxs []int, vs tree.Datums, columns sqlbase.ResultColumns,
 ) error {
 	for i, idx := range idxs {
-		if idx >= len(c.localVariable) {
-			return pgerror.Newf(pgcode.StringDataLengthMismatch, "idx %v of variable exceeds the maximum of localVariable %v", idx, len(c.localVariable))
-		}
-		if c.localVariable[idx].Typ.Equivalent(vs[i].ResolvedType()) || vs[i] == tree.DNull {
-			variableName := c.GetVariableName(idx)
-			// check value by type
-			value, err := sqlbase.LimitValueWidth(&c.localVariable[idx].Typ, vs[i], &variableName)
-			if err != nil {
-				return err
-			}
-			c.localVariable[idx].Data = value
-		} else {
-			for k, v := range c.localVarMap {
-				if v == idx {
-					if len(columns) > i {
-						var originTypeStr string
-						if (vs[i].ResolvedType().InternalType.Family == types.TimestampTZFamily || vs[i].ResolvedType().InternalType.Family == types.TimestampFamily) && columns[i].Typ.InternalType.Precision > 0 {
-							originTypeStr = columns[i].Typ.String()
-						} else {
-							originTypeStr = vs[i].ResolvedType().String()
-						}
-						return pgerror.Newf(pgcode.DatatypeMismatch, "variable %s type %s not save type %s ", k, c.localVariable[idx].Typ.String(),
-							originTypeStr)
-					}
-					return pgerror.Newf(pgcode.DatatypeMismatch, "variable %s type %s not save type %s ", k, c.localVariable[idx].Typ.String(),
-						vs[i].ResolvedType().String())
-				}
-			}
+		if err := c.IntoDeclareVar(idx, vs[i], columns[i]); err != nil {
+			return err
 		}
 	}
 	return nil

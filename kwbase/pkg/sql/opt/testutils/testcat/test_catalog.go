@@ -794,6 +794,11 @@ func (tt *Table) GetTableType() tree.TableType {
 	return 0
 }
 
+// GetTriggers returns the definition of trigger
+func (tt *Table) GetTriggers(event tree.TriggerEvent) []cat.TriggerMeta {
+	return nil
+}
+
 // GetTSVersion return ts_version.
 func (tt *Table) GetTSVersion() uint32 {
 	return 0

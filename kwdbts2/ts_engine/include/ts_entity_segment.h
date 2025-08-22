@@ -204,7 +204,7 @@ class TsEntityBlock : public TsBlock {
   uint32_t table_id_ = 0;
   uint32_t table_version_ = 0;
   uint64_t entity_id_ = 0;
-  std::vector<AttributeInfo> metric_schema_;
+  const std::vector<AttributeInfo>* metric_schema_ = nullptr;
 
   TsEntitySegmentBlockInfo block_info_;
   std::vector<TsEntitySegmentColumnBlock> column_blocks_;
@@ -264,7 +264,7 @@ class TsEntityBlock : public TsBlock {
 
   KStatus LoadLSNColData(TSSlice buffer);
 
-  KStatus LoadColData(int32_t col_idx, const std::vector<AttributeInfo>& metric_schema, TSSlice buffer);
+  KStatus LoadColData(int32_t col_idx, const std::vector<AttributeInfo>* metric_schema, TSSlice buffer);
 
   KStatus LoadAggData(int32_t col_idx, TSSlice buffer);
 
@@ -272,17 +272,17 @@ class TsEntityBlock : public TsBlock {
 
   KStatus LoadAggInfo(TSSlice buffer);
 
-  KStatus LoadAllData(const std::vector<AttributeInfo>& metric_schema, TSSlice buffer);
+  KStatus LoadAllData(const std::vector<AttributeInfo>* metric_schema, TSSlice buffer);
 
   KStatus GetRowSpans(const std::vector<STScanRange>& spans, std::vector<std::pair<int, int>>& row_spans);
 
-  KStatus GetColAddr(uint32_t col_id, const std::vector<AttributeInfo>& schema, char** value) override;
+  KStatus GetColAddr(uint32_t col_id, const std::vector<AttributeInfo>* schema, char** value) override;
 
-  KStatus GetColBitmap(uint32_t col_id, const std::vector<AttributeInfo>& schema, TsBitmap& bitmap) override;
+  KStatus GetColBitmap(uint32_t col_id, const std::vector<AttributeInfo>* schema, TsBitmap& bitmap) override;
 
-  KStatus GetValueSlice(int row_num, int col_id, const std::vector<AttributeInfo>& schema, TSSlice& value) override;
+  KStatus GetValueSlice(int row_num, int col_id, const std::vector<AttributeInfo>* schema, TSSlice& value) override;
 
-  bool IsColNull(int row_num, int col_id, const std::vector<AttributeInfo>& schema) override;
+  bool IsColNull(int row_num, int col_id, const std::vector<AttributeInfo>* schema) override;
 
   timestamp64 GetTS(int row_num) override;
 
@@ -343,7 +343,7 @@ class TsEntitySegment : public TsSegmentBase, public enable_shared_from_this<TsE
 
   KStatus GetBlockData(TsEntityBlock* block, std::string& data);
 
-  KStatus GetColumnBlock(int32_t col_idx, const std::vector<AttributeInfo>& metric_schema, TsEntityBlock* block);
+  KStatus GetColumnBlock(int32_t col_idx, const std::vector<AttributeInfo>* metric_schema, TsEntityBlock* block);
 
   KStatus GetAggData(TsEntityBlock *block, std::string& data);
 

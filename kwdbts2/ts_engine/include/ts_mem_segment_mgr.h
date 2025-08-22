@@ -118,8 +118,8 @@ class TsMemSegBlock : public TsBlock {
     *max_ts = max_ts_;
   }
   size_t GetRowNum() override { return row_data_.size(); }
-  KStatus GetValueSlice(int row_num, int col_id, const std::vector<AttributeInfo>& schema, TSSlice& value) override;
-  bool IsColNull(int row_num, int col_id, const std::vector<AttributeInfo>& schema) override;
+  KStatus GetValueSlice(int row_num, int col_id, const std::vector<AttributeInfo>* schema, TSSlice& value) override;
+  bool IsColNull(int row_num, int col_id, const std::vector<AttributeInfo>* schema) override;
 
   // if just get timestamp , this function return fast.
   timestamp64 GetTS(int row_num) override {
@@ -152,9 +152,9 @@ class TsMemSegBlock : public TsBlock {
     return &row_data_[row_num]->lsn;
   }
 
-  KStatus GetColBitmap(uint32_t col_id, const std::vector<AttributeInfo>& schema, TsBitmap& bitmap) override;
+  KStatus GetColBitmap(uint32_t col_id, const std::vector<AttributeInfo>* schema, TsBitmap& bitmap) override;
 
-  KStatus GetColAddr(uint32_t col_id, const std::vector<AttributeInfo>& schema, char** value) override;
+  KStatus GetColAddr(uint32_t col_id, const std::vector<AttributeInfo>* schema, char** value) override;
 
   KStatus GetCompressDataFromFile(uint32_t table_version, int32_t nrow, std::string& data) override {
     return KStatus::FAIL;

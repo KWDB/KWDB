@@ -3201,7 +3201,6 @@ func TestUnimplementedSyntax(t *testing.T) {
 		{`CREATE SERVER a`, 0, `create server`, ``},
 		{`CREATE SUBSCRIPTION a`, 0, `create subscription`, ``},
 		{`CREATE TEXT SEARCH a`, 7821, `create text`, ``},
-		{`CREATE TRIGGER a`, 28296, `create`, ``},
 
 		{`DROP AGGREGATE a`, 0, `drop aggregate`, ``},
 		{`DROP CAST a`, 0, `drop cast`, ``},
@@ -3219,7 +3218,6 @@ func TestUnimplementedSyntax(t *testing.T) {
 		{`DROP SERVER a`, 0, `drop server`, ``},
 		{`DROP SUBSCRIPTION a`, 0, `drop subscription`, ``},
 		{`DROP TEXT SEARCH a`, 7821, `drop text`, ``},
-		{`DROP TRIGGER a`, 28296, `drop`, ``},
 		{`DROP TYPE a`, 27793, `drop type`, ``},
 
 		{`DISCARD PLANS`, 0, `discard plans`, ``},

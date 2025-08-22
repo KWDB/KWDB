@@ -95,6 +95,17 @@ func (b *Builder) buildUpdate(upd *tree.Update, inScope *scope) (outScope *scope
 		panic(sqlbase.TemplateAndInstanceUnsupportedError("update"))
 	}
 
+	if b.insideObjectDef.HasFlags(InsideTriggerDef) {
+		if tab.GetTableType() != tree.RelationalTable {
+			panic(pgerror.Newf(pgcode.InvalidCatalogName, "unsupported table type: %s in trigger", tree.TableTypeName(tab.GetTableType())))
+		}
+		if upd.Returning != nil {
+			if _, ok := upd.Returning.(*tree.ReturningExprs); ok {
+				panic(pgerror.Newf(pgcode.FeatureNotSupported, "RETURNING with values is not supported in triggers"))
+			}
+		}
+	}
+
 	if tab.GetTableType() == tree.TimeseriesTable {
 		_, ok := upd.Returning.(*tree.NoReturningClause)
 		if upd.OrderBy != nil || len(upd.From) != 0 || upd.Limit != nil || !ok || upd.With != nil || upd.Where == nil {
@@ -132,7 +143,7 @@ func (b *Builder) buildUpdate(upd *tree.Update, inScope *scope) (outScope *scope
 
 	// Build each of the SET expressions.
 	mb.addUpdateCols(upd.Exprs)
-	if b.insideProcDef {
+	if b.insideObjectDef.HasFlags(InsideProcedureDef) {
 		colOrds := make([]int, 0)
 		for _, colID := range mb.targetColList {
 			colOrds = append(colOrds, mb.tabID.ColumnOrdinal(colID))
@@ -147,10 +158,10 @@ func (b *Builder) buildUpdate(upd *tree.Update, inScope *scope) (outScope *scope
 		case *tree.ReturningExprs:
 			returning = *t
 		case *tree.ReturningIntoClause:
-			if b.insideProcDef {
+			if b.insideObjectDef.HasAnyFlags(InsideProcedureDef | InsideTriggerDef) {
 				returning = t.SelectClause
 			} else {
-				panic(pgerror.Newf(pgcode.FeatureNotSupported, "returning into clause not in procedure is unsupported"))
+				panic(pgerror.Newf(pgcode.FeatureNotSupported, "returning into clause not in procedure/trigger is unsupported"))
 			}
 		}
 		mb.buildUpdate(returning)
@@ -382,6 +393,10 @@ func (mb *mutationBuilder) buildUpdate(returning tree.ReturningExprs) {
 			private.PassthroughCols = append(private.PassthroughCols, col.id)
 		}
 	}
+
+	// get triggers and buildProcCommand for trigger body.
+	private.TriggerCommands = mb.buildProcCommandForTriggers(tree.TriggerEventUpdate)
+
 	mb.outScope.expr = mb.b.factory.ConstructUpdate(mb.outScope.expr, mb.checks, private)
 	mb.buildReturning(returning)
 }
@@ -497,7 +512,7 @@ func (b *Builder) buildTSUpdate(
 	if err := mb.addTSUpdateCols(upd.Exprs, exprs); err != nil {
 		panic(err)
 	}
-	if b.insideProcDef {
+	if b.insideObjectDef.HasFlags(InsideProcedureDef) {
 		colOrds := make([]int, 0)
 		for _, colID := range mb.targetColList {
 			colOrds = append(colOrds, mb.tabID.ColumnOrdinal(colID))

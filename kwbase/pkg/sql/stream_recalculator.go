@@ -21,6 +21,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/security"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfra"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfrapb"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/opt/memo"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlutil"
@@ -108,20 +109,60 @@ func (q *splitWindowQueue) DequeueSplitWindow() *splitWindow {
 
 // recalculatorStmts defines ths SQL for recalculated groupWindow.
 type recalculatorStmts struct {
-	singleInsertStmt                                string
-	batchInsertStmt                                 string
-	historicalRecordsProcessingStmt                 string
-	recalculateStmt                                 string
+	singleInsertStmt string
+	batchInsertStmt  string
+	// stmt for unprocessed rows, for example,
+	// SELECT first(k_timestamp), last(k_timestamp), avg(usage_user), avg(usage_system), count(*), hostname
+	// FROM benchmark.public.cpu
+	// WHERE (k_timestamp >= $1 AND k_timestamp <= $2  AND hostname = $3 ) AND  usage_user > 0
+	// GROUP BY event_window(usage_user > 50, usage_system < 20), hostname
+	historicalRecordsProcessingStmt string
+	recalculateStmt                 string
+	// stmt to extract the timestamp of last record, for example,
+	// SELECT last(k_timestamp), hostname FROM benchmark.cpu WHERE k_timestamp <= $1 GROUP BY hostname
 	startTimestampStmtOfHistoricalRowsOnSourceTable string
-	endTimestampStmtOfHistoricalRowsOnSourceTable   string
-	historicalRowsOfLastWindowStmtOfOnSourceTable   string
 
-	lastWindowBeginningStmtOnTargetTable  string
+	// stmt to extract the last timestamp, for example,
+	// SELECT last(k_timestamp), hostname FROM benchmark.cpu GROUP BY hostname
+	endTimestampStmtOfHistoricalRowsOnSourceTable string
+
+	// stmt to read rows in last window,
+	// SELECT * FROM benchmark.cpu WHERE hostname=$1 AND timestamp >= $1
+	historicalRowsOfLastWindowStmtOfOnSourceTable string
+
+	// stmt for unprocessed rows, for example,
+	// SELECT first(k_timestamp), last(k_timestamp), avg(usage_user), avg(usage_system), count(*), hostname
+	// FROM benchmark.public.cpu
+	// WHERE (k_timestamp == $1  AND hostname = $3 ) AND  usage_user > 0
+	// GROUP BY event_window(usage_user > 50, usage_system < 20), hostname
+	rangeSplitTimeWindowTimestampOnSourceTable string
+
+	// stmt to extract the last ending timestamp of the split count window from target table, for example,
+	// SELECT last(w_end) FROM benchmark.cpu_avg WHERE w_begin <= $1 AND hostname = $2
+	lastCountWindowEndingStmtOnTargetTable string
+
+	// stmt to extract the beginning timestamp of the split count window from target table, for example,
+	// SELECT first(w_begin) FROM benchmark.cpu_avg WHERE w_end = $1 AND hostname = $2
+	splitCountWindowBeginningStmtOnTargetTable string
+
+	// stmt to extract the beginning timestamp of the last window from target table, for example,
+	// SELECT last(w_begin),hostname FROM benchmark.cpu_avg group by hostname
+	lastWindowBeginningStmtOnTargetTable string
+
+	// stmt to extract the beginning timestamp of the split window from target table, for example,
+	// SELECT last(w_begin) FROM benchmark.cpu_avg WHERE w_begin <= $1 AND hostname = $2
 	splitWindowBeginningStmtOnTargetTable string
-	splitWindowEndStmtOnTargetTable       string
+
+	// stmt to extract the end timestamp of the split window from target table, for example,
+	// SELECT first(w_end) FROM benchmark.cpu_avg WHERE w_end > $1 AND hostname = $2
+	splitWindowEndStmtOnTargetTable string
+
+	// stmt to extract the end timestamp of the split window from target table, for example,
+	// SELECT last(w_end) FROM benchmark.cpu_avg WHERE w_begin <= $1 AND w_end >= $1 AND hostname = $2
+	inWindowEndStmtOnTargetTable string
+
 	deleteScopeDetermineStmtOnTargetTable string
 	deleteStmtOnTargetTable               string
-	inWindowEndStmtOnTargetTable          string
 }
 
 // streamRecalculator is used for historical data processing and splitWindow recalculation in stream computing.
@@ -135,8 +176,11 @@ type streamRecalculator struct {
 	uncompletedSplitWindowQueue splitWindowQueue
 	// notifyCh starts recalculating after receives signal.
 	notifyCh chan bool
-	// streamParameters is praameters of stream.
+	// streamParameters is parameters of stream.
 	streamParameters *sqlutil.StreamParameters
+
+	// streamSink stores the information stream query.
+	streamSink *sqlutil.StreamSink
 	// orderingColumnIDs are the primary tags IDs.
 	orderingColumnIDs []uint32
 	// tableID is ID of source table.
@@ -186,12 +230,14 @@ func newRecalculator(
 	flowCtx *execinfra.FlowCtx,
 	spec *execinfrapb.StreamReaderSpec,
 	paras *sqlutil.StreamParameters,
-	recalculateDelayRound int,
+	streamSink *sqlutil.StreamSink,
+	streamOpts *sqlutil.ParsedStreamOptions,
 ) *streamRecalculator {
 	sr := &streamRecalculator{
 		ctx:                        ctx,
 		notifyCh:                   make(chan bool, 1),
 		streamParameters:           paras,
+		streamSink:                 streamSink,
 		orderingColumnIDs:          spec.OrderingColumnIDs,
 		cdcColNames:                spec.CDCColumns.CDCColumnNames,
 		cdcColTypes:                spec.CDCColumns.CDCTypes,
@@ -203,8 +249,8 @@ func newRecalculator(
 		flowCtx:                    flowCtx,
 		executor:                   flowCtx.Cfg.Executor,
 		distInternalExecutor:       flowCtx.Cfg.CDCCoordinator.DistInternalExecutor(),
-		recalculateDelayRound:      recalculateDelayRound,
-		expiredProcessDelayCounter: recalculateDelayRound,
+		recalculateDelayRound:      streamOpts.RecalculateDelayRounds,
+		expiredProcessDelayCounter: streamOpts.RecalculateDelayRounds,
 	}
 
 	err := constructStmts(sr)
@@ -214,7 +260,7 @@ func newRecalculator(
 
 	sr.expiredScopes = make(map[string]*expiredScope)
 
-	sr.defaultStartTimestamp = constructTimestampDatum(0, sr.targetColTypes[0])
+	sr.defaultStartTimestamp = constructTimestampDatum(sqlutil.InvalidWaterMark, sr.targetColTypes[0])
 
 	sr.recalculateParams = make([]interface{}, len(sr.orderingColumnIDs)+2)
 	sr.targetTableName = fmt.Sprintf(
@@ -235,6 +281,7 @@ func (sr *streamRecalculator) Run(ctx context.Context) error {
 			if splitWindow == nil {
 				return nil
 			}
+
 			if err := sr.calculate(splitWindow); err != nil {
 				return err
 			}
@@ -341,7 +388,11 @@ func (sr *streamRecalculator) recalculateRows(
 		for _, row := range rows {
 			// the second output of the agg stream query is the close timestamp of the agg window.
 			endTimestamp := row[1]
-			if previousEndTimestamp.Compare(sr.flowCtx.EvalCtx, endTimestamp) == -1 {
+			startTimestamp := row[0]
+			if !sr.streamSink.HasSlide && previousEndTimestamp.Compare(sr.flowCtx.EvalCtx, endTimestamp) == -1 {
+				filteredRows = append(filteredRows, row)
+			} else if sr.streamSink.HasSlide && endTimestamp.Compare(sr.flowCtx.EvalCtx, splitWindow.endPoint) < 1 &&
+				startTimestamp.Compare(sr.flowCtx.EvalCtx, splitWindow.startPoint) > -1 {
 				filteredRows = append(filteredRows, row)
 			}
 			previousEndTimestamp = endTimestamp
@@ -382,7 +433,7 @@ func (sr *streamRecalculator) updateAllSplitWindowEndTimestamp() error {
 	return finalErr
 }
 
-// updateSplitWindowTimestamp update the end timestamp of the SplitWindow.
+// updateSplitWindowTimestamp update the beginning and ending timestamp of the SplitWindow.
 func (sr *streamRecalculator) updateSplitWindowTimestamp(splitWindow *splitWindow) error {
 	if splitWindow.startPoint != tree.DNull &&
 		splitWindow.startPoint.Compare(sr.flowCtx.EvalCtx, sr.defaultStartTimestamp) == 0 {
@@ -399,6 +450,23 @@ func (sr *streamRecalculator) updateSplitWindowTimestamp(splitWindow *splitWindo
 	endTimestamp, err := sr.extractSplitWindowEndTimestampOnTargetTable(splitWindow.splitRow)
 	if err != nil {
 		return err
+	}
+
+	if sr.isSlideTimeWindow() {
+		_, endWindowTimestamp, err := sr.extractSplitTimeWindowTimestampOnSourceTable(splitWindow.splitRow)
+		if err != nil {
+			return err
+		}
+		var row tree.Datums
+		row = splitWindow.splitRow
+		row[0] = endWindowTimestamp
+		endTimestamp1, err := sr.extractWindowEndTimestampOnTargetTable(row)
+		if err != nil {
+			return err
+		}
+		if endTimestamp1 != tree.DNull {
+			endTimestamp = endWindowTimestamp
+		}
 	}
 
 	if endTimestamp != tree.DNull {
@@ -458,6 +526,7 @@ func (sr *streamRecalculator) HandleHistoryRows() error {
 			return err
 		}
 	}
+
 	if lowWaterMark == sqlutil.InvalidWaterMark {
 		// process all rows
 		for _, row := range lastRows {
@@ -467,6 +536,7 @@ func (sr *streamRecalculator) HandleHistoryRows() error {
 			}
 		}
 	} else {
+		// get the first timestamp before lowWaterMark from source table
 		firstRows, err := sr.extractFirstTimestampOfHistoricalRows(lowWaterMark)
 		if err != nil {
 			return err
@@ -478,14 +548,18 @@ func (sr *streamRecalculator) HandleHistoryRows() error {
 	}
 
 	if sr.streamParameters.StreamSink.HasAgg {
-		// handle the split agg window
-		for _, row := range lastRows {
-			if len(row) > 0 && row[0] == tree.DNull {
-				continue
-			}
+		// handle the split agg window from historical and realtime data.
+		// CountWindow recalculates the split window,
+		// which will affect all subsequent windows in a deferred manner, so it is not recalculated here.
+		if sr.streamSink.Function != memo.CountWindow {
+			for _, row := range lastRows {
+				if len(row) > 0 && row[0] == tree.DNull {
+					continue
+				}
 
-			if err := sr.handleSplitWindow(row); err != nil {
-				return err
+				if err := sr.handleSplitWindow(row); err != nil {
+					return err
+				}
 			}
 		}
 
@@ -565,6 +639,7 @@ func (sr *streamRecalculator) processHistoryRows(row tree.Datums) error {
 func (sr *streamRecalculator) processUnprocessedRows(
 	firstRows []tree.Datums, lastRows []tree.Datums,
 ) error {
+	var err error
 	var unprocessedSplitWindows []*splitWindow
 	firstMap := make(map[string]tree.Datums)
 	lastMap := make(map[string]tree.Datums)
@@ -585,9 +660,18 @@ func (sr *streamRecalculator) processUnprocessedRows(
 		}
 
 		if firstRow, ok := firstMap[key]; ok {
-			beginningTimestamp, err := sr.extractSplitWindowBeginningTimestampOnTargetTable(firstRow)
-			if err != nil {
-				return err
+			var beginningTimestamp tree.Datum
+			// The split timeWindow with a sliding window may need to move forward to find the beginning.
+			if sr.isSlideTimeWindow() {
+				beginningTimestamp, _, err = sr.extractSplitTimeWindowTimestampOnSourceTable(firstRow)
+				if err != nil {
+					return err
+				}
+			} else {
+				beginningTimestamp, err = sr.extractSplitWindowBeginningTimestampOnTargetTable(firstRow)
+				if err != nil {
+					return err
+				}
 			}
 
 			if beginningTimestamp != tree.DNull {
@@ -595,10 +679,18 @@ func (sr *streamRecalculator) processUnprocessedRows(
 			}
 		}
 
+		if sr.isSlideTimeWindow() {
+			_, endTimestamp, err := sr.extractSplitTimeWindowTimestampOnSourceTable(lastRow)
+			if err != nil {
+				return err
+			}
+
+			splitWindow.endPoint = endTimestamp
+		}
+
 		unprocessedSplitWindows = append(unprocessedSplitWindows, splitWindow)
 	}
 
-	var err error
 	params := make([]interface{}, len(sr.orderingColumnIDs)+2)
 	for _, splitWindow := range unprocessedSplitWindows {
 		err = sr.recalculateRows(splitWindow, params)
@@ -607,27 +699,47 @@ func (sr *streamRecalculator) processUnprocessedRows(
 	return err
 }
 
-// handleSplitWindow calculates the start and end times of the split window caused by the input row
-// and puts the constructed split window into the queue.
-func (sr *streamRecalculator) handleSplitWindow(row tree.Datums) error {
-	beginningTimestamp, err := sr.extractSplitWindowBeginningTimestampOnTargetTable(row)
+// handleSplitWindow calculators the beginning and ending of split window
+// from splitRow of historical and realtime data.
+// It also adds the split window caused by the history and realtime rows to splitWindowQueue.
+func (sr *streamRecalculator) handleSplitWindow(splitRow tree.Datums) error {
+	beginningTimestamp, err := sr.extractSplitWindowBeginningTimestampOnTargetTable(splitRow)
 	if err != nil {
 		return err
+	}
+
+	endTimestamp, err := sr.extractSplitWindowEndTimestampOnTargetTable(splitRow)
+	if err != nil {
+		return err
+	}
+
+	if sr.isSlideTimeWindow() {
+		beginWindowTimestamp, endWindowTimestamp, err := sr.extractSplitTimeWindowTimestampOnSourceTable(splitRow)
+		if err != nil {
+			return err
+		}
+
+		row := splitRow
+		row[0] = endWindowTimestamp
+		endTimestamp1, err := sr.extractWindowEndTimestampOnTargetTable(row)
+		if err != nil {
+			return err
+		}
+		if endTimestamp1 != tree.DNull {
+			endTimestamp = endWindowTimestamp
+		}
+
+		beginningTimestamp = beginWindowTimestamp
 	}
 
 	if beginningTimestamp == tree.DNull {
 		beginningTimestamp = sr.defaultStartTimestamp
 	}
 
-	endTimestamp, err := sr.extractSplitWindowEndTimestampOnTargetTable(row)
-	if err != nil {
-		return err
-	}
-
 	splitWindow := &splitWindow{
 		startPoint: beginningTimestamp,
 		endPoint:   endTimestamp,
-		splitRow:   row,
+		splitRow:   splitRow,
 	}
 
 	sr.addSplitWindow(splitWindow)
@@ -639,9 +751,45 @@ func (sr *streamRecalculator) handleSplitWindow(row tree.Datums) error {
 // and puts the constructed split window into the queue.
 func (sr *streamRecalculator) handleSplitWindowWithScope(scope *expiredScope) error {
 	scope.row[0] = scope.startPoint
+	// The non-sliding window function moves forward to find the starting time of a written window
+	// as the starting time for split window
 	beginningTimestamp, err := sr.extractSplitWindowBeginningTimestampOnTargetTable(scope.row)
 	if err != nil {
 		return err
+	}
+
+	if sr.isSlideTimeWindow() {
+		// For sliding time window functions, you cannot simply look back for a window
+		// as the starting point for split window like with regular window functions;
+		// instead, it needs to calculate the starting time for split window according to its own rules.
+		beginWindowTimestamp, _, err := sr.extractSplitTimeWindowTimestampOnSourceTable(scope.row)
+		if err != nil {
+			return err
+		}
+
+		if beginningTimestamp.Compare(sr.flowCtx.EvalCtx, beginWindowTimestamp) == 1 {
+			beginningTimestamp = beginWindowTimestamp
+		}
+	}
+
+	if sr.isSlideCountWindow() {
+		// For sliding count window functions, you cannot simply look back for a window
+		// as the starting point for split window like with regular window functions;
+		// instead, it needs to calculate the starting time for split window according to its own rules.
+		last, err := sr.extractLastEndingTimestampOnTargetTable(scope.row)
+		if err != nil {
+			return err
+		}
+
+		row := scope.row
+		if last != tree.DNull {
+			row[0] = last
+		}
+
+		beginningTimestamp, err = sr.extractSplitCountWindowBeginningTimestampOnTargetTable(row)
+		if err != nil {
+			return err
+		}
 	}
 
 	if beginningTimestamp == tree.DNull {
@@ -649,9 +797,24 @@ func (sr *streamRecalculator) handleSplitWindowWithScope(scope *expiredScope) er
 	}
 
 	scope.row[0] = scope.endPoint
+	// The non-sliding window function finds the end time of a written window backwards
+	// as the end time of the split window
 	endTimestamp, err := sr.extractSplitWindowEndTimestampOnTargetTable(scope.row)
 	if err != nil {
 		return err
+	}
+
+	if sr.isSlideTimeWindow() {
+		// The sliding time window function also has its own special rules when calculating
+		// the end time of the split window.
+		_, endWindowTimestamp, err := sr.extractSplitTimeWindowTimestampOnSourceTable(scope.row)
+		if err != nil {
+			return err
+		}
+
+		if endTimestamp.Compare(sr.flowCtx.EvalCtx, endWindowTimestamp) == -1 {
+			endTimestamp = endWindowTimestamp
+		}
 	}
 
 	splitWindow := &splitWindow{
@@ -767,9 +930,8 @@ func (sr *streamRecalculator) loadExpiredTime(last time.Time) (time.Time, error)
 // loadRowsInLastWindow read rows from the source table
 // that falls within the last window of the target table.
 func (sr *streamRecalculator) loadRowsInLastWindow() ([]tree.Datums, error) {
-	res := make([]tree.Datums, 0)
-	if !sr.streamParameters.TargetTable.IsTsTable {
-		return res, nil
+	if sr.isSlideCountWindow() {
+		return sr.loadRowsInLastCountWindow()
 	}
 
 	rows, err := sr.distInternalExecutor.QueryEx(
@@ -785,9 +947,10 @@ func (sr *streamRecalculator) loadRowsInLastWindow() ([]tree.Datums, error) {
 	}
 
 	if len(rows) == 0 {
-		return res, nil
+		return nil, nil
 	}
 
+	res := make([]tree.Datums, 0)
 	for _, row := range rows {
 		params := make([]interface{}, len(row))
 		for idx, col := range row {
@@ -811,7 +974,55 @@ func (sr *streamRecalculator) loadRowsInLastWindow() ([]tree.Datums, error) {
 	}
 
 	return res, nil
+}
 
+// loadRowsInLastCountWindow read rows from the source table
+// that falls within the last window of the target table.
+func (sr *streamRecalculator) loadRowsInLastCountWindow() ([]tree.Datums, error) {
+	res := make([]tree.Datums, 0)
+	if !sr.streamParameters.TargetTable.IsTsTable {
+		return res, nil
+	}
+
+	lastRows, err := sr.extractLastTimestampOfHistoricalRows()
+	if err != nil {
+		return res, err
+	}
+
+	if len(lastRows) == 1 && len(lastRows[0]) > 0 && lastRows[0][0] == tree.DNull {
+		return res, nil
+	}
+
+	for _, lastRow := range lastRows {
+		params := make([]interface{}, len(lastRow))
+		for idx, col := range lastRow {
+			params[idx] = col
+		}
+		first, err := sr.extractSplitCountWindowBeginningTimestampOnTargetTable(lastRow)
+
+		if first == tree.DNull {
+			continue
+		}
+
+		params[0] = first
+
+		pRows, err := sr.distInternalExecutor.QueryEx(
+			sr.ctx,
+			"stream-load-rows-after-begin-of-last-window",
+			nil,
+			sqlbase.InternalExecutorSessionDataOverride{User: security.RootUser},
+			sr.historicalRowsOfLastWindowStmtOfOnSourceTable,
+			params...,
+		)
+
+		if err != nil {
+			return nil, err
+		}
+
+		res = append(res, pRows...)
+	}
+
+	return res, nil
 }
 
 // extractLastTimestampOfHistoricalRows extracts the last timestamp of historical rows from source table.
@@ -832,6 +1043,8 @@ func (sr *streamRecalculator) extractLastTimestampOfHistoricalRows() ([]tree.Dat
 }
 
 // extractFirstTimestampOfHistoricalRows extracts the first timestamp of historical rows from source table.
+// stmt to extract the timestamp of last record, for example,
+// SELECT last(k_timestamp), hostname FROM benchmark.cpu WHERE k_timestamp <= $1 GROUP BY hostname
 func (sr *streamRecalculator) extractFirstTimestampOfHistoricalRows(
 	waterMark int64,
 ) ([]tree.Datums, error) {
@@ -855,6 +1068,8 @@ func (sr *streamRecalculator) extractFirstTimestampOfHistoricalRows(
 
 // extractSplitWindowBeginningTimestampOnTargetTable extracts the start time of the window
 // where the split row resides from the target table.
+// stmt to extract the beginning timestamp of the split window from target table, for example,
+// SELECT last(w_begin) FROM benchmark.cpu_avg WHERE w_begin <= $1 AND hostname = $2
 func (sr *streamRecalculator) extractSplitWindowBeginningTimestampOnTargetTable(
 	splitRow tree.Datums,
 ) (tree.Datum, error) {
@@ -880,8 +1095,10 @@ func (sr *streamRecalculator) extractSplitWindowBeginningTimestampOnTargetTable(
 	return row[0], nil
 }
 
-// extractSplitWindowBeginningTimestampOnTargetTable extracts the end time of the window
+// extractSplitWindowEndTimestampOnTargetTable extracts the end time of the window
 // where the split row resides from the target table.
+// stmt to extract the end timestamp of the split window from target table, for example,
+// SELECT first(w_end) FROM benchmark.cpu_avg WHERE w_end > $1 AND hostname = $2
 func (sr *streamRecalculator) extractSplitWindowEndTimestampOnTargetTable(
 	splitRow tree.Datums,
 ) (tree.Datum, error) {
@@ -905,6 +1122,130 @@ func (sr *streamRecalculator) extractSplitWindowEndTimestampOnTargetTable(
 	}
 
 	return row[0], nil
+}
+
+// extractSplitWindowEndTimestampOnTargetTable extracts the end time of the window
+// where the split row resides from the target table.
+// stmt to extract the end timestamp of the split window from target table, for example,
+// SELECT first(w_end) FROM benchmark.cpu_avg WHERE w_end > $1 AND hostname = $2
+func (sr *streamRecalculator) extractWindowEndTimestampOnTargetTable(
+	splitRow tree.Datums,
+) (tree.Datum, error) {
+	params := make([]interface{}, len(splitRow))
+
+	for idx, col := range splitRow {
+		params[idx] = col
+	}
+
+	row, err := sr.distInternalExecutor.QueryRowEx(
+		sr.ctx,
+		"stream-extract-split-window-end",
+		nil,
+		sqlbase.InternalExecutorSessionDataOverride{User: security.RootUser},
+		sr.inWindowEndStmtOnTargetTable,
+		params...,
+	)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return row[0], nil
+}
+
+// extractSplitCountWindowBeginningTimestampOnTargetTable extracts the start time of the count window
+// where the split row resides from the target table.
+// stmt to extract the beginning timestamp of the split count window from target table, for example,
+// SELECT first(w_begin) FROM benchmark.cpu_avg WHERE w_begin = $1 AND hostname = $2
+func (sr *streamRecalculator) extractSplitCountWindowBeginningTimestampOnTargetTable(
+	splitRow tree.Datums,
+) (tree.Datum, error) {
+	params := make([]interface{}, len(splitRow))
+
+	for idx, col := range splitRow {
+		params[idx] = col
+	}
+
+	row, err := sr.distInternalExecutor.QueryRowEx(
+		sr.ctx,
+		"stream-extract-split-window-beginning",
+		nil,
+		sqlbase.InternalExecutorSessionDataOverride{User: security.RootUser},
+		sr.splitCountWindowBeginningStmtOnTargetTable,
+		params...,
+	)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return row[0], nil
+}
+
+// extractSplitTimeWindowTimestampOnSourceTable extracts the start and end time of the time window
+// where the split row resides from the source table.
+func (sr *streamRecalculator) extractSplitTimeWindowTimestampOnSourceTable(
+	splitRow tree.Datums,
+) (tree.Datum, tree.Datum, error) {
+	params := make([]interface{}, len(splitRow))
+
+	for idx, col := range splitRow {
+		params[idx] = col
+	}
+
+	rows, err := sr.distInternalExecutor.QueryEx(
+		sr.ctx,
+		"stream-extract-split-window-range",
+		nil,
+		sqlbase.InternalExecutorSessionDataOverride{User: security.RootUser},
+		sr.rangeSplitTimeWindowTimestampOnSourceTable,
+		params...,
+	)
+
+	if err != nil {
+		return nil, nil, err
+	}
+
+	length := len(rows)
+	if length == 0 {
+		return tree.DNull, tree.DNull, nil
+	}
+
+	return rows[0][0], rows[length-1][1], nil
+}
+
+// extractLastEndingTimestampOnTargetTable extracts the start and end time of the count window
+// where the split row resides from the source table.
+// stmt to extract the last ending timestamp of the split count window from target table, for example,
+// SELECT last(w_end) FROM benchmark.cpu_avg WHERE w_begin <= $1 AND hostname = $2
+func (sr *streamRecalculator) extractLastEndingTimestampOnTargetTable(
+	splitRow tree.Datums,
+) (tree.Datum, error) {
+	params := make([]interface{}, len(splitRow))
+
+	for idx, col := range splitRow {
+		params[idx] = col
+	}
+
+	rows, err := sr.distInternalExecutor.QueryEx(
+		sr.ctx,
+		"stream-extract-split-window-range",
+		nil,
+		sqlbase.InternalExecutorSessionDataOverride{User: security.RootUser},
+		sr.lastCountWindowEndingStmtOnTargetTable,
+		params...,
+	)
+
+	if err != nil {
+		return nil, err
+	}
+
+	length := len(rows)
+	if length == 0 {
+		return tree.DNull, nil
+	}
+
+	return rows[0][0], nil
 }
 
 // persistResults writes the recalculated results to the target table and ignores errors
@@ -1037,6 +1378,7 @@ func (sr *streamRecalculator) deleteRows(rows []tree.Datums, splitWindow *splitW
 	}
 
 	rowCount = len(invalidRows)
+
 	if rowCount <= 0 {
 		return nil
 	}
@@ -1104,34 +1446,40 @@ func (sr *streamRecalculator) isTsTable() bool {
 // constructStmts constructs the SQL statements for window recalculation.
 func constructStmts(sr *streamRecalculator) error {
 	var sb strings.Builder
+	var sb1 strings.Builder
 
 	sourceTable := sr.streamParameters.SourceTable
 	originalQuery := sr.streamParameters.StreamSink.SQL
 
 	// on CREATE STREAM phase, a 'WHERE 1=1' will be added if it has no 'WHERE' clause in the stream query.
 	stmt := strings.Split(originalQuery, "WHERE")
-
+	//colList := strings.Replace(stmt[0], "SELECT ", fmt.Sprintf("SELECT first(%s),last(%s),", sourceTable.TsColumnName, sourceTable.TsColumnName), 1)
 	// stmt for historical rows, for example,
 	// SELECT first(k_timestamp), last(k_timestamp), avg(usage_user), avg(usage_system), count(*), hostname
 	// FROM benchmark.public.cpu  WHERE (k_timestamp <= $1, hostname =$2) AND  usage_user > 0
 	// GROUP BY event_window(usage_user > 50, usage_system < 20), hostname
 	sb.WriteString(stmt[0])
+	sb1.WriteString(stmt[0])
 
 	timestampCondition := fmt.Sprintf(" WHERE (%s <= $1 ", sourceTable.TsColumnName)
 	sb.WriteString(timestampCondition)
+	sb1.WriteString(fmt.Sprintf(" WHERE (%s = $1 ", sourceTable.TsColumnName))
 
 	primaryTagCondition := " AND %s = $%d "
 
 	if sr.isIncludePrimaryTag {
 		for idx, pTag := range sr.streamParameters.SourceTable.PrimaryTagCols {
 			sb.WriteString(fmt.Sprintf(primaryTagCondition, pTag, idx+2))
+			sb1.WriteString(fmt.Sprintf(primaryTagCondition, pTag, idx+2))
 		}
 	}
 	sb.WriteString(") AND ")
+	sb1.WriteString(") AND ")
 	sb.WriteString(stmt[1])
+	sb1.WriteString(stmt[1])
 
 	sr.historicalRecordsProcessingStmt = sb.String()
-
+	sr.rangeSplitTimeWindowTimestampOnSourceTable = sb1.String()
 	// stmt for unprocessed rows, for example,
 	// SELECT first(k_timestamp), last(k_timestamp), avg(usage_user), avg(usage_system), count(*), hostname
 	// FROM benchmark.public.cpu
@@ -1147,9 +1495,9 @@ func constructStmts(sr *streamRecalculator) error {
 			sb.WriteString(fmt.Sprintf(primaryTagCondition, pTag, idx+3))
 		}
 	}
+
 	sb.WriteString(") AND ")
 	sb.WriteString(stmt[1])
-
 	sr.recalculateStmt = sb.String()
 
 	originalFilter := sr.streamParameters.SourceTable.Filter
@@ -1203,7 +1551,7 @@ func constructStmts(sr *streamRecalculator) error {
 	}
 
 	// stmt to read rows in last window,
-	// SELECT * FROM benchmark.cpu WHERE hostname=$1
+	// SELECT * FROM benchmark.cpu WHERE hostname=$1 AND timestamp >= $1
 	sb.Reset()
 	colNames := strings.Join(sr.cdcColNames, ",")
 	if sr.isIncludePrimaryTag {
@@ -1262,6 +1610,58 @@ func constructStmts(sr *streamRecalculator) error {
 		)
 	}
 
+	// stmt to extract the beginning timestamp of the split count window from target table, for example,
+	// SELECT first(w_begin) FROM benchmark.cpu_avg WHERE w_end = $1 AND hostname = $2
+	sb.Reset()
+	if sr.isIncludePrimaryTag {
+		for idx, pTag := range sr.streamParameters.SourceTable.PrimaryTagCols {
+			sb.WriteString(fmt.Sprintf(primaryTagCondition, pTag, idx+2))
+		}
+
+		sr.splitCountWindowBeginningStmtOnTargetTable = fmt.Sprintf(
+			`SELECT first(%s) FROM %s.%s WHERE %s = $1 %s`,
+			sr.streamParameters.TargetStartColName,
+			sr.streamParameters.TargetTable.Database,
+			sr.streamParameters.TargetTable.Table,
+			sr.streamParameters.TargetEndColName,
+			sb.String(),
+		)
+	} else {
+		sr.splitCountWindowBeginningStmtOnTargetTable = fmt.Sprintf(
+			`SELECT first(%s) FROM %s.%s WHERE %s = $1`,
+			sr.streamParameters.TargetStartColName,
+			sr.streamParameters.TargetTable.Database,
+			sr.streamParameters.TargetTable.Table,
+			sr.streamParameters.TargetEndColName,
+		)
+	}
+
+	// stmt to extract the last ending timestamp of the split count window from target table, for example,
+	// SELECT last(w_end) FROM benchmark.cpu_avg WHERE w_begin <= $1 AND hostname = $2
+	sb.Reset()
+	if sr.isIncludePrimaryTag {
+		for idx, pTag := range sr.streamParameters.SourceTable.PrimaryTagCols {
+			sb.WriteString(fmt.Sprintf(primaryTagCondition, pTag, idx+2))
+		}
+
+		sr.lastCountWindowEndingStmtOnTargetTable = fmt.Sprintf(
+			`SELECT last(%s) FROM %s.%s WHERE %s <= $1 %s`,
+			sr.streamParameters.TargetEndColName,
+			sr.streamParameters.TargetTable.Database,
+			sr.streamParameters.TargetTable.Table,
+			sr.streamParameters.TargetStartColName,
+			sb.String(),
+		)
+	} else {
+		sr.lastCountWindowEndingStmtOnTargetTable = fmt.Sprintf(
+			`SELECT last(%s) FROM %s.%s WHERE %s <= $1`,
+			sr.streamParameters.TargetStartColName,
+			sr.streamParameters.TargetTable.Database,
+			sr.streamParameters.TargetTable.Table,
+			sr.streamParameters.TargetEndColName,
+		)
+	}
+
 	// stmt to extract the beginning timestamp of the split window from target table, for example,
 	// SELECT last(w_begin) FROM benchmark.cpu_avg WHERE w_begin <= $1 AND hostname = $2
 	sb.Reset()
@@ -1284,34 +1684,6 @@ func constructStmts(sr *streamRecalculator) error {
 			sr.streamParameters.TargetStartColName,
 			sr.streamParameters.TargetTable.Database,
 			sr.streamParameters.TargetTable.Table,
-			sr.streamParameters.TargetStartColName,
-		)
-	}
-
-	// stmt to extract the ending timestamp of the close window from target table, for example,
-	// SELECT last(w_end) FROM benchmark.cpu_avg WHERE w_end > $1 AND hostname = $2
-	sb.Reset()
-	if sr.isIncludePrimaryTag {
-		for idx, pTag := range sr.streamParameters.SourceTable.PrimaryTagCols {
-			sb.WriteString(fmt.Sprintf(primaryTagCondition, pTag, idx+3))
-		}
-
-		sr.inWindowEndStmtOnTargetTable = fmt.Sprintf(
-			`SELECT last(%s) FROM %s.%s WHERE %s > $1 AND %s <= $2 %s`,
-			sr.streamParameters.TargetEndColName,
-			sr.streamParameters.TargetTable.Database,
-			sr.streamParameters.TargetTable.Table,
-			sr.streamParameters.TargetEndColName,
-			sr.streamParameters.TargetStartColName,
-			sb.String(),
-		)
-	} else {
-		sr.inWindowEndStmtOnTargetTable = fmt.Sprintf(
-			`SELECT last(%s) FROM %s.%s WHERE %s > $1 AND %s <= $2`,
-			sr.streamParameters.TargetEndColName,
-			sr.streamParameters.TargetTable.Database,
-			sr.streamParameters.TargetTable.Table,
-			sr.streamParameters.TargetEndColName,
 			sr.streamParameters.TargetStartColName,
 		)
 	}
@@ -1342,6 +1714,32 @@ func constructStmts(sr *streamRecalculator) error {
 		)
 	}
 
+	// stmt to extract the ending timestamp of the close slide window from target table, for example,
+	// SELECT first(w_begin) FROM benchmark.cpu_avg WHERE w_begin >= $1 AND hostname = $2
+	sb.Reset()
+	if sr.isIncludePrimaryTag {
+		for idx, pTag := range sr.streamParameters.SourceTable.PrimaryTagCols {
+			sb.WriteString(fmt.Sprintf(primaryTagCondition, pTag, idx+2))
+		}
+
+		sr.inWindowEndStmtOnTargetTable = fmt.Sprintf(
+			`SELECT last(%s) FROM %s.%s WHERE %s >= $1 %s`,
+			sr.streamParameters.TargetStartColName,
+			sr.streamParameters.TargetTable.Database,
+			sr.streamParameters.TargetTable.Table,
+			sr.streamParameters.TargetStartColName,
+			sb.String(),
+		)
+	} else {
+		sr.inWindowEndStmtOnTargetTable = fmt.Sprintf(
+			`SELECT last(%s) FROM %s.%s WHERE %s >= $1`,
+			sr.streamParameters.TargetEndColName,
+			sr.streamParameters.TargetTable.Database,
+			sr.streamParameters.TargetTable.Table,
+			sr.streamParameters.TargetStartColName,
+		)
+	}
+
 	// stmt to determine delete scopes and delete records from target table.
 	// the DELETE statement on ts table cannot use WHERE clause includes metrics conditions,
 	// so we have to run SELECT statement to determine the DELETE scopes and then DELETE them.
@@ -1355,13 +1753,14 @@ func constructStmts(sr *streamRecalculator) error {
 		}
 
 		sr.deleteScopeDetermineStmtOnTargetTable = fmt.Sprintf(
-			`SELECT %s FROM %s.%s WHERE (%s >= $1 AND %s <= $2 ) %s`,
+			`SELECT %s FROM %s.%s WHERE (%s >= $1 AND %s <= $2 ) %s order by %s`,
 			sr.streamParameters.TargetStartColName,
 			sr.streamParameters.TargetTable.Database,
 			sr.streamParameters.TargetTable.Table,
 			sr.streamParameters.TargetStartColName,
 			sr.streamParameters.TargetEndColName,
 			sb.String(),
+			sr.streamParameters.TargetStartColName,
 		)
 
 		sr.deleteStmtOnTargetTable = fmt.Sprintf(
@@ -1374,12 +1773,13 @@ func constructStmts(sr *streamRecalculator) error {
 		)
 	} else {
 		sr.deleteScopeDetermineStmtOnTargetTable = fmt.Sprintf(
-			`SELECT %s FROM %s.%s WHERE %s >= $1 AND %s <= $2`,
+			`SELECT %s FROM %s.%s WHERE %s >= $1 AND %s <= $2  order by %s`,
 			sr.streamParameters.TargetStartColName,
 			sr.streamParameters.TargetTable.Database,
 			sr.streamParameters.TargetTable.Table,
 			sr.streamParameters.TargetStartColName,
 			sr.streamParameters.TargetEndColName,
+			sr.streamParameters.TargetStartColName,
 		)
 
 		sr.deleteStmtOnTargetTable = fmt.Sprintf(
@@ -1392,6 +1792,14 @@ func constructStmts(sr *streamRecalculator) error {
 	}
 
 	return nil
+}
+
+func (sr *streamRecalculator) isSlideTimeWindow() bool {
+	return sr.streamSink.HasSlide && sr.streamSink.Function == memo.TimeWindow
+}
+
+func (sr *streamRecalculator) isSlideCountWindow() bool {
+	return sr.streamSink.HasSlide && sr.streamSink.Function == memo.CountWindow
 }
 
 // constructTimestampDatum constructs the tree.Datum using the input watermark (milliseconds)

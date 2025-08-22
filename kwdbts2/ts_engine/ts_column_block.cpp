@@ -114,7 +114,7 @@ bool TsColumnBlock::GetCompressedData(std::string* out, TsColumnCompressInfo* in
   return true;
 }
 
-KStatus TsColumnBlock::ParseColumnData(const AttributeInfo col_schema, TSSlice compressed_data,
+KStatus TsColumnBlock::ParseColumnData(const AttributeInfo& col_schema, TSSlice compressed_data,
                                                  const TsColumnCompressInfo& info,
                                                  std::unique_ptr<TsColumnBlock>* colblock) {
   assert(compressed_data.len == info.bitmap_len + info.fixdata_len + info.vardata_len);

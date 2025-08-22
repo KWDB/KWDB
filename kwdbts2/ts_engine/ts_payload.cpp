@@ -16,28 +16,29 @@ namespace kwdbts {
 
 static inline bool __isVarType(int type) { return ((type == VARSTRING) || (type == VARBINARY)); }
 
-TsRawPayloadRowParser::TsRawPayloadRowParser(std::vector<AttributeInfo> data_schema)
+TsRawPayloadRowParser::TsRawPayloadRowParser(const std::vector<AttributeInfo>* data_schema)
     : schema_(data_schema) {
-  auto bitmap_len = (schema_.size() + 7) / 8;
+  size_t col_size = schema_ != nullptr ? schema_->size() : 0;
+  auto bitmap_len = (col_size + 7) / 8;
   int cur_offset = bitmap_len;
-  col_offset_.resize(schema_.size());
-  for (size_t i = 0; i < schema_.size(); i++) {
+  col_offset_.resize(col_size);
+  for (size_t i = 0; i < col_size; i++) {
     col_offset_[i] = cur_offset;
-    if (__isVarType(schema_[i].type)) {
+    if (__isVarType((*schema_)[i].type)) {
       cur_offset += 8;
     } else {
-      cur_offset += schema_[i].size;
+      cur_offset += (*schema_)[i].size;
     }
   }
 }
 
 bool TsRawPayloadRowParser::GetColValueAddr(const TSSlice& row_data, int col_id,
                                             TSSlice* col_data) {
-  assert(col_id < schema_.size());
+  assert(col_id < schema_->size());
   assert(row_data.len > col_offset_[col_id]);
-  if (!__isVarType(schema_[col_id].type)) {
+  if (!__isVarType((*schema_)[col_id].type)) {
     col_data->data = row_data.data + col_offset_[col_id];
-    col_data->len = schema_[col_id].size;
+    col_data->len = (*schema_)[col_id].size;
   } else {
     size_t actual_offset = KUint64(row_data.data + col_offset_[col_id]);
     col_data->len = KUint16(row_data.data + actual_offset);
@@ -46,7 +47,7 @@ bool TsRawPayloadRowParser::GetColValueAddr(const TSSlice& row_data, int col_id,
   return true;
 }
 
-TsRawPayload::TsRawPayload(const TSSlice& raw, const std::vector<AttributeInfo>& data_schema)
+TsRawPayload::TsRawPayload(const TSSlice& raw, const std::vector<AttributeInfo>* data_schema)
     : payload_(raw), metric_schema_(data_schema), row_parser_(data_schema) {
   assert(raw.len > header_size_);
   uint16_t ptag_len = KUint16(payload_.data + header_size_);
@@ -72,7 +73,7 @@ TsRawPayload::TsRawPayload(const TSSlice& raw, const std::vector<AttributeInfo>&
     }
     assert(mem - payload_.data == payload_.len);
   }
-  can_parse_ = !metric_schema_.empty();
+  can_parse_ = metric_schema_ != nullptr;
 }
 
 }  // namespace kwdbts

@@ -48,11 +48,11 @@ func (b *Builder) buildCreateView(cv *tree.CreateView, inScope *scope) (outScope
 	//  - get the fully resolved names into the AST, and
 	//  - collect the view dependencies in b.viewDeps.
 	// The result is not otherwise used.
-	b.insideViewDef = true
+	b.insideObjectDef.SetFlags(InsideViewDef)
 	b.trackViewDeps = true
 	b.qualifyDataSourceNamesInAST = true
 	defer func() {
-		b.insideViewDef = false
+		b.insideObjectDef.ClearFlags(InsideViewDef)
 		b.trackViewDeps = false
 		b.viewDeps = nil
 		b.qualifyDataSourceNamesInAST = false

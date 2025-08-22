@@ -18,6 +18,36 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/types"
 )
 
+const triggerColNew = "new"
+const triggerColOld = "old"
+
+// IntoValueType is state of into value type
+type IntoValueType int
+
+const (
+	// IntoDeclareValue Default
+	IntoDeclareValue IntoValueType = iota
+	// IntoUDFValue Commit
+	IntoUDFValue
+)
+
+// IntoHelper represents the definition of into value.
+type IntoHelper struct {
+	Type            IntoValueType
+	UDFValueName    string // for UDV, use variable name to do semantic check by checking session data
+	DeclareValueIdx int    // for declared variable in procedure, use idx(in instruction) to identify local variable
+}
+
+// ProdureUDFValue produres user define value into helper
+func ProdureUDFValue(name string) IntoHelper {
+	return IntoHelper{Type: IntoUDFValue, UDFValueName: name}
+}
+
+// ProdureDeclareValue produres declare value into helper
+func ProdureDeclareValue(idx int) IntoHelper {
+	return IntoHelper{Type: IntoDeclareValue, DeclareValueIdx: idx}
+}
+
 // CreateProcedure represents the definition of stored procedures.
 type CreateProcedure struct {
 	Name         TableName
@@ -322,6 +352,13 @@ type ProcSet struct {
 func (node *ProcSet) Format(ctx *FmtCtx) {
 	f := ctx.flags
 	ctx.WriteString("SET ")
+	colName := strings.Split(node.Name, ".")
+	if len(colName) == 2 {
+		triggerCol := strings.ToLower(colName[0])
+		if triggerCol == triggerColNew || triggerCol == triggerColOld {
+			f.SetFlags(FmtBareIdentifiers)
+		}
+	}
 	lex.EncodeRestrictedSQLIdent(&ctx.Buffer, node.Name, f.EncodeFlags())
 	ctx.WriteString(" = ")
 	ctx.FormatNode(node.Value)

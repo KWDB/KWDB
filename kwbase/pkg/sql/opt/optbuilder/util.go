@@ -919,7 +919,7 @@ type InstanceTabName struct {
 // If the name does not resolve to a table, then resolveDataSource raises an error.
 func (b *Builder) lookupDataSource(tn *tree.TableName) (cat.DataSource, cat.DataSourceName) {
 	var flags cat.Flags
-	if b.insideViewDef || b.insideProcDef {
+	if b.insideObjectDef.HasAnyFlags(InsideViewDef | InsideProcedureDef | InsideTriggerDef) {
 		// Avoid taking table leases when we're creating a view.
 		flags.AvoidDescriptorCaches = true
 	}
@@ -938,7 +938,7 @@ func (b *Builder) resolveDataSource(
 	tn *tree.TableName, priv privilege.Kind,
 ) (cat.DataSource, cat.DataSourceName) {
 	var flags cat.Flags
-	if b.insideViewDef || b.insideProcDef {
+	if b.insideObjectDef.HasAnyFlags(InsideViewDef | InsideProcedureDef | InsideTriggerDef) {
 		// Avoid taking table leases when we're creating a view.
 		flags.AvoidDescriptorCaches = true
 	}
@@ -964,7 +964,7 @@ func (b *Builder) resolveDataSource(
 // error.
 func (b *Builder) resolveDataSourceRef(ref *tree.TableRef, priv privilege.Kind) cat.DataSource {
 	var flags cat.Flags
-	if b.insideViewDef || b.insideProcDef {
+	if b.insideObjectDef.HasAnyFlags(InsideViewDef | InsideProcedureDef | InsideTriggerDef) {
 		// Avoid taking table leases when we're creating a view.
 		flags.AvoidDescriptorCaches = true
 	}

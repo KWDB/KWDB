@@ -242,7 +242,7 @@ func (p *Parser) scanOneStmt() (sql string, tokens []sqlSymType, done bool) {
 		preValID = lval.id
 		p.scanner.scan(&lval)
 		curValID := lval.id
-		if preValID == CREATE && curValID == PROCEDURE {
+		if preValID == CREATE && (curValID == PROCEDURE || curValID == TRIGGER) {
 			p.scanner.isCreateProc = true
 		}
 		// TODO: Perhaps TRANSACTION BEGIN need to be processed

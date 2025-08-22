@@ -958,7 +958,7 @@ KStatus HashAggregateOperator::accumulateRows(kwdbContext_p ctx) {
         code = EEIteratorErrCode::EE_OK;
         break;
       }
-      LOG_ERROR("Failed to fetch data from child operator, return code = %d.\n", code);
+      // LOG_ERROR("Failed to fetch data from child operator, return code = %d.\n", code);
       Return(KStatus::FAIL);
     }
     // LOG_ERROR("begin to print HashAggregateOperator child chunk data :");
