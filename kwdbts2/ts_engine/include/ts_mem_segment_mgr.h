@@ -203,7 +203,13 @@ class TsMemSegmentManager {
     segment_.clear();
   }
 
-  std::shared_ptr<TsMemSegment> SwitchMemSegment();
+  std::shared_ptr<TsMemSegment> CurrentMemSegment() const {
+    std::shared_lock lock(segment_lock_);
+    return cur_mem_seg_;
+  }
+
+  // std::shared_ptr<TsMemSegment> SwitchMemSegment();
+  bool SwitchMemSegment(TsMemSegment* expected_old_mem_seg);
 
   void RemoveMemSegment(const std::shared_ptr<TsMemSegment>& mem_seg);
 

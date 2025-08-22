@@ -65,8 +65,7 @@ class TsVersionTest : public testing::Test {
 TEST_F(TsVersionTest, EncodeDecodeTest) {
   {
     TsVersionUpdate update;
-    std::list<std::shared_ptr<TsMemSegment>> mem{nullptr, nullptr, nullptr};
-    update.SetValidMemSegments(mem);
+    update.AddMemSegment(nullptr);
     auto encoded = update.EncodeToString();
     EXPECT_EQ(encoded.size(), 0);
   }

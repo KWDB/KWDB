@@ -98,8 +98,6 @@ class TsVGroup {
 
   KStatus Init(kwdbContext_p ctx);
 
-  KStatus SetReady();
-
   KStatus CreateTable(kwdbContext_p ctx, const KTableKey& table_id, roachpb::CreateTsTable* meta);
 
   KStatus PutData(kwdbContext_p ctx, TSTableID table_id, uint64_t mtr_id, TSSlice* primary_tag, TSEntityID entity_id,
@@ -161,12 +159,12 @@ class TsVGroup {
 
   // flush all mem segment data into last segment.
   KStatus Flush() {
-    std::shared_ptr<TsMemSegment> imm_segment = mem_segment_mgr_->SwitchMemSegment();
-    assert(imm_segment.get() != nullptr);
-
-    // Flush imm segment.
-    KStatus s = FlushImmSegment(imm_segment);
-    return s;
+    auto current = mem_segment_mgr_->CurrentMemSegment();
+    if (mem_segment_mgr_->SwitchMemSegment(current.get())) {
+      // Flush imm segment.
+      return FlushImmSegment(current);
+    }
+    return SUCCESS;
   }
 
   uint64_t GetMtrIDByTsxID(const char* ts_trans_id) {

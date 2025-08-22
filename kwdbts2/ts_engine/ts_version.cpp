@@ -269,7 +269,13 @@ KStatus TsVersionManager::ApplyUpdate(TsVersionUpdate *update) {
     // switch memsegment operation will not persist to disk, process it as fast as possible
     std::unique_lock lk{mu_};
     auto new_vgroup_version = std::make_unique<TsVGroupVersion>(*current_);
-    new_vgroup_version->valid_memseg_ = std::make_shared<MemSegList>(update->valid_memseg_);
+    new_vgroup_version->valid_memseg_ = std::make_unique<MemSegList>(*current_->valid_memseg_);
+    if (update->has_del_mem_segments_) {
+      new_vgroup_version->valid_memseg_->remove(update->del_memseg_);
+    }
+    if (update->has_new_mem_segments_) {
+      new_vgroup_version->valid_memseg_->push_back(update->new_memseg_);
+    }
     for (auto [par_id, par] : new_vgroup_version->partitions_) {
       auto new_partition_version = std::make_unique<TsPartitionVersion>(*par);
       new_partition_version->valid_memseg_ = new_vgroup_version->valid_memseg_;
@@ -316,8 +322,14 @@ KStatus TsVersionManager::ApplyUpdate(TsVersionUpdate *update) {
     }
   }
 
-  if (update->has_mem_segments_) {
-    new_vgroup_version->valid_memseg_ = std::make_shared<MemSegList>(update->valid_memseg_);
+  if (update->has_new_mem_segments_ || update->has_del_mem_segments_) {
+    new_vgroup_version->valid_memseg_ = std::make_unique<MemSegList>(*current_->valid_memseg_);
+    if (update->has_del_mem_segments_) {
+      new_vgroup_version->valid_memseg_->remove(update->del_memseg_);
+    }
+    if (update->has_new_mem_segments_) {
+      new_vgroup_version->valid_memseg_->push_back(update->new_memseg_);
+    }
   }
   // looping over all partitions
   for (auto [par_id, par] : new_vgroup_version->partitions_) {
@@ -327,7 +339,7 @@ KStatus TsVersionManager::ApplyUpdate(TsVersionUpdate *update) {
       new_partition_version->memory_only_ = false;
     }
 
-    if (update->has_mem_segments_) {
+    if (update->has_new_mem_segments_ || update->has_del_mem_segments_) {
       new_partition_version->valid_memseg_ = new_vgroup_version->valid_memseg_;
     }
 
@@ -399,7 +411,7 @@ KStatus TsVersionManager::ApplyUpdate(TsVersionUpdate *update) {
   }
   current_ = std::move(new_vgroup_version);
   lk.unlock();
-  LOG_DEBUG("%s: %s", this->root_path_.filename().c_str(), update->DebugStr().c_str());
+  // LOG_DEBUG("%s: %s", this->root_path_.filename().c_str(), update->DebugStr().c_str());
   return SUCCESS;
 }
 
@@ -1146,13 +1158,13 @@ static std::ostream &operator<<(std::ostream &os, const EntitySegmentHandleInfo 
 std::string TsVersionUpdate::DebugStr() const {
   std::stringstream ss;
   ss << "update:";
-  if (has_mem_segments_) {
-    ss << "mem_segments(" << valid_memseg_.size() << "):{";
-    for (const auto &mem_segment : valid_memseg_) {
-      ss << mem_segment.get() << " ";
-    }
-    ss << "};";
-  }
+  // if (has_mem_segments_) {
+  //   ss << "mem_segments(" << valid_memseg_.size() << "):{";
+  //   for (const auto &mem_segment : valid_memseg_) {
+  //     ss << mem_segment.get() << " ";
+  //   }
+  //   ss << "};";
+  // }
   for (auto par_id : updated_partitions_) {
     if (partitions_created_.find(par_id) != partitions_created_.end()) {
       ss << "+";

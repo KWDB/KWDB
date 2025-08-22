@@ -22,6 +22,7 @@
 #include <utility>
 #include "kwdb_type.h"
 #include "settings.h"
+#include "ts_flush_manager.h"
 #include "ts_payload.h"
 #include "ee_global.h"
 #include "ee_executor.h"
@@ -108,6 +109,7 @@ TSEngineV2Impl::TSEngineV2Impl(const EngineOptions& engine_options)
     }
     assert(*endptr == '\0');
   }
+  TsFlushJobPool::GetInstance().Start();
 }
 
 TSEngineV2Impl::~TSEngineV2Impl() {
@@ -115,6 +117,7 @@ TSEngineV2Impl::~TSEngineV2Impl() {
 #ifndef WITH_TESTS
   BrMgr::GetInstance().Destroy();
 #endif
+  TsFlushJobPool::GetInstance().StopAndWait();
   vgroups_.clear();
   SafeDeletePointer(tables_cache_);
 }
@@ -277,14 +280,6 @@ KStatus TSEngineV2Impl::Init(kwdbContext_p ctx) {
   if (s == KStatus::FAIL) {
     LOG_ERROR("Recover fail.")
     return s;
-  }
-  // TODO(zzr): Recover TsVersion for each VGroup.
-  // After WAL RedoPut, TsVersion should be updated.
-  for (auto vgroup : vgroups_) {
-    s = vgroup->SetReady();
-    if (s == FAIL) {
-      return FAIL;
-    }
   }
   return KStatus::SUCCESS;
 }
