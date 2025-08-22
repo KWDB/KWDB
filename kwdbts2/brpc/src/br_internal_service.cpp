@@ -64,9 +64,9 @@ void BoxServiceBase<T>::TransmitChunkInternal(google::protobuf::RpcController* c
   st.toProtobuf(response->mutable_status());
 
   DeferOp defer([&]() {
-    if (st.code() != BRStatusCode::OK) {
-      LOG_ERROR("TransmitChunk failed, status: %s", std::string(st.message()).c_str());
-    }
+    // if (st.code() != BRStatusCode::OK) {
+    //   LOG_ERROR("TransmitChunk failed, status: %s", std::string(st.message()).c_str());
+    // }
     if (wrapped_done != nullptr) {
       st.toProtobuf(response->mutable_status());
       wrapped_done->Run();

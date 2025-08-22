@@ -266,6 +266,10 @@ KStatus RouterOutboundOperator::Channel::AddRowsSelective(
   return KStatus::SUCCESS;
 }
 
+RouterOutboundOperator::RouterOutboundOperator(const RouterOutboundOperator& other, int32_t processor_id)
+    : OutboundOperator(other, processor_id) {
+}
+
 RouterOutboundOperator::RouterOutboundOperator(TsFetcherCollection* collection,
                                                TSOutputRouterSpec* spec,
                                                TABLE* table)
@@ -370,7 +374,7 @@ EEIteratorErrCode RouterOutboundOperator::Start(kwdbContext_p ctx) {
   EnterFunc();
   EEIteratorErrCode ret = OutboundOperator::Start(ctx);
   if (ret != EEIteratorErrCode::EE_OK) {
-    LOG_ERROR("RouterOutboundOperator::Start failed\n");
+    // LOG_ERROR("RouterOutboundOperator::Start failed\n");
     Return(ret);
   }
   buffer_->IncrSinker();
@@ -641,15 +645,15 @@ BaseOperator* RouterOutboundOperator::Clone() {
   if (input == nullptr) {
     return nullptr;
   }
-  BaseOperator* iter =
-      NewIterator<RouterOutboundOperator>(collection_, spec_, table_);
+
+  BaseOperator* iter = NewIterator<RouterOutboundOperator>(*this, this->processor_id_);
   if (nullptr != iter) {
     iter->AddDependency(input);
   } else {
     delete input;
   }
 
-  dynamic_cast<RouterOutboundOperator *>(iter)->SetCollected(is_collected_);
+  dynamic_cast<RouterOutboundOperator*>(iter)->SetCollected(is_collected_);
 
   return iter;
 }
