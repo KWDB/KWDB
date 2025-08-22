@@ -27,10 +27,10 @@ namespace kwdbts {
 
 TsEngineSchemaManager::TsEngineSchemaManager(const string& schema_root_path) :
     schema_root_path_(schema_root_path), mgrs_rw_latch_(RWLATCH_ID_SCHEMA_MGRS_RWLOCK) {
-  auto exists = IsExists(schema_root_path);
+  auto exists = IsExists(schema_root_path_);
   if (exists == false) {
     ErrorInfo error_info;
-    MakeDirectory(schema_root_path, error_info);
+    MakeDirectory(schema_root_path_, error_info);
   }
 }
 
@@ -42,15 +42,15 @@ KStatus TsEngineSchemaManager::Init(kwdbContext_p ctx) {
   // init table schema manager
   std::regex num_regex("^[0-9]+$");
   try {
-    if (!filesystem::exists(schema_root_path_)) {
-      LOG_ERROR("Schema directory does not exist: %s.", schema_root_path_.c_str());
+    if (!fs::exists(schema_root_path_)) {
+      LOG_ERROR("Schema directory does not exist: %s", schema_root_path_.c_str());
       return KStatus::FAIL;
     }
     if (!table_schema_mgrs_.empty()) {
-      LOG_WARN("Table schema managers is not empty before initialized.");
+      LOG_WARN("Table schema managers is not empty before initialized");
       table_schema_mgrs_.clear();
     }
-    for (const auto& table_entry : filesystem::directory_iterator(schema_root_path_)) {
+    for (const auto& table_entry : fs::directory_iterator(schema_root_path_)) {
       if (table_entry.is_directory()) {
         std::string dir_name = table_entry.path().filename().string();
         if (std::regex_match(dir_name, num_regex)) {
@@ -64,10 +64,10 @@ KStatus TsEngineSchemaManager::Init(kwdbContext_p ctx) {
         }
       }
     }
-  } catch (const filesystem::filesystem_error& e) {
-    LOG_ERROR("Filesystem error: %s.", e.what());
+  } catch (const fs::filesystem_error& e) {
+    LOG_ERROR("Filesystem error: %s", e.what());
   } catch (const std::exception& e) {
-    LOG_ERROR("Error: %s.", e.what());
+    LOG_ERROR("Error: %s", e.what());
   }
   return KStatus::SUCCESS;
 }

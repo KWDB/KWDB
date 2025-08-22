@@ -1568,22 +1568,26 @@ KStatus TsVGroup::Vacuum() {
       auto partition_id = partition->GetPartitionIdentifier();
       auto root_path = this->GetPath() / PartitionDirName(partition_id);
       bool need_vacuum = false;
-      s = partition->NeedVacuumEntitySegment(root_path, schema_mgr_, need_vacuum);
-      if (s != KStatus::SUCCESS) {
+      bool need_compact = false;
+      s = partition->NeedVacuumEntitySegment(root_path, schema_mgr_, need_vacuum, need_compact);
+      if (s != SUCCESS) {
         LOG_ERROR("NeedVacuumEntitySegment failed.");
         continue;
+      }
+      if (need_compact) {
+        // force compact historical partition
+        s = PartitionCompact(partition, true);
+        if (s != SUCCESS) {
+          LOG_ERROR("PartitionCompact failed, [%s]", partition->GetPartitionIdentifierStr().c_str());
+          continue;
+        }
       }
       if (!need_vacuum) {
         LOG_DEBUG("no need vacuum partition [%s]", partition->GetPartitionIdentifierStr().c_str());
         continue;
       }
 
-      // force compact historical partition
-      s = PartitionCompact(partition, true);
-      if (s != KStatus::SUCCESS) {
-        LOG_ERROR("PartitionCompact failed.");
-        continue;
-      }
+
       if (!partition->TrySetBusy(PartitionStatus::Vacuuming)) {
         continue;
       }

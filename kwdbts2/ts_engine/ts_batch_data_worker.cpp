@@ -309,8 +309,8 @@ KStatus TsReadBatchDataWorker::Read(kwdbContext_p ctx, TSSlice* data, uint32_t* 
   *row_num = cur_block_span->GetRowNum();
   data->data = cur_batch_data_.data_.data();
   data->len = cur_batch_data_.data_.size();
-  LOG_INFO("current batch data read success, job_id[%lu], table_id[%lu], table_version[%lu], row_num[%u]",
-           job_id_, table_id_, table_version_, *row_num);
+  LOG_INFO("current batch data read success, job_id[%lu], table_id[%lu], table_version[%lu], block_version[%u] row_num[%u]",
+           job_id_, table_id_, table_version_, cur_block_span->GetTableVersion(), *row_num);
   return s;
 }
 
