@@ -98,7 +98,6 @@ TEST_F(ConcurrentRWTest, FlushOnly) {
     stop = true;
   };
 
-  DATATYPE ts_col_type = table_schema_mgr_->GetTsColDataType();
   auto QueryWork = [&](std::promise<QueryResult>& promise) {
     QueryResult result;
     TsStorageIterator* ts_iter;
@@ -106,8 +105,15 @@ TEST_F(ConcurrentRWTest, FlushOnly) {
     std::vector<k_uint32> scan_cols = {0, 1};
     std::vector<Sumfunctype> scan_agg_types;
     do {
-      ASSERT_EQ(vgroup_->GetIterator(ctx_, {1}, {ts_span}, {}, ts_col_type, scan_cols, scan_cols, {}, scan_agg_types,
-                                    table_schema_mgr_, 1, &ts_iter, vgroup_, {}, false, false),
+      std::shared_ptr<MMapMetricsTable> schema;
+      ASSERT_EQ(table_schema_mgr_->GetMetricSchema(1, &schema), KStatus::SUCCESS);
+      std::vector<uint32_t> entity_ids = {1};
+      std::vector<KwTsSpan> ts_spans = {ts_span};
+      std::vector<BlockFilter> block_filter = {};
+      std::vector<k_int32> agg_extend_cols = {};
+      std::vector<timestamp64> ts_points = {};
+      ASSERT_EQ(vgroup_->GetIterator(ctx_, entity_ids, ts_spans, block_filter, scan_cols, scan_cols, agg_extend_cols, scan_agg_types,
+                                    table_schema_mgr_, schema, &ts_iter, vgroup_, ts_points, false, false),
                 KStatus::SUCCESS);
       ResultSet res{(k_uint32)scan_cols.size()};
       k_uint32 count = 0;
@@ -190,11 +196,20 @@ TEST_F(ConcurrentRWTest, CompactOnly) {
     do {
       TsStorageIterator* ts_iter;
       KwTsSpan ts_span = {INT64_MIN, INT64_MAX};
-      DATATYPE ts_col_type = table_schema_mgr_->GetTsColDataType();
+
+      std::shared_ptr<MMapMetricsTable> schema;
+      ASSERT_EQ(table_schema_mgr_->GetMetricSchema(1, &schema), KStatus::SUCCESS);
+      std::vector<uint32_t> entity_ids = {1};
+      std::vector<KwTsSpan> ts_spans = {ts_span};
+      std::vector<BlockFilter> block_filter = {};
+      std::vector<k_int32> agg_extend_cols = {};
+      std::vector<timestamp64> ts_points = {};
+
       std::vector<k_uint32> scan_cols = {0, 1};
       std::vector<Sumfunctype> scan_agg_types;
-      ASSERT_EQ(vgroup->GetIterator(ctx_, {1}, {ts_span}, {}, ts_col_type, scan_cols, scan_cols, {}, scan_agg_types,
-                                    table_schema_mgr_, 1, &ts_iter, vgroup, {}, false, false),
+      ASSERT_EQ(vgroup->GetIterator(ctx_, entity_ids, ts_spans, block_filter, scan_cols, scan_cols, agg_extend_cols,
+                                    scan_agg_types, table_schema_mgr_, schema, &ts_iter, vgroup,
+                                    ts_points, false, false),
                 KStatus::SUCCESS);
       ResultSet res{(k_uint32)scan_cols.size()};
       k_uint32 count = 0;
