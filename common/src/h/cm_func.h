@@ -28,7 +28,7 @@ KTimestamp getCurrentTime();
 const char *GetFileName(const char *path);
 
 // Convert time_t to gmtime.
-inline void ToGMT(time_t ts, tm &tm);
+void ToGMT(time_t ts, tm &tm);
 
 #ifdef K_DEBUG
 #define EnterFunc()                                                                              \

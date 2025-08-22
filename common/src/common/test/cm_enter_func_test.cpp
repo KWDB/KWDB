@@ -112,4 +112,17 @@ TEST(TestKWDB64FMT, normal) {
   snprintf(buf, sizeof(buf), "%" K_INT64_FMT "\n", i64Var);
   EXPECT_STREQ(buf, "-1234567890123456789\n");
 }
+
+TEST(TestToGMT, correctness) {
+  time_t ts = 0;
+  tm kw_tm;
+  tm glibc_tm;
+  for (int i = 0; i < 62; ++i) {
+    ToGMT(ts, kw_tm);
+    gmtime_r(&ts, &glibc_tm);
+    EXPECT_EQ(kw_tm, glibc_tm);
+    ts += 1;
+    ts *= 2;
+  }
+}
 }  //  namespace kwdbts
