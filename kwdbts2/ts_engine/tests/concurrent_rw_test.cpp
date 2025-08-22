@@ -427,6 +427,7 @@ TEST_F(ConcurrentRWTest, RandomFlush) {
       delete ts_iter;
       result.count.push_back(sum);
       result.expect.push_back(write_count);
+      std::this_thread::yield();
     } while (stop != true);
     promise.set_value(std::move(result));
   };

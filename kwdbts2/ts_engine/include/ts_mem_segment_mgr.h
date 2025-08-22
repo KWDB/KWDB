@@ -41,6 +41,7 @@ class TsMemSegment : public TsSegmentBase, public enable_shared_from_this<TsMemS
   std::atomic<uint32_t> row_idx_{1};
   std::atomic<uint32_t> intent_row_num_{0};
   std::atomic<uint32_t> written_row_num_{0};
+  std::atomic<uint32_t> payload_mem_usage_{0};
   std::atomic<TsMemSegmentStatus> status_{MEM_SEGMENT_IDLE};
   TsMemSegIndex skiplist_;
 
@@ -55,6 +56,7 @@ class TsMemSegment : public TsSegmentBase, public enable_shared_from_this<TsMemS
 
   void Traversal(std::function<bool(TSMemSegRowData* row)> func, bool waiting_done = false);
 
+  uint32_t GetPayloadMemUsage() { return payload_mem_usage_.load(std::memory_order_relaxed); }
   size_t Size() { return skiplist_.GetAllocator().MemoryAllocatedBytes(); }
 
   uint32_t GetRowNum() { return intent_row_num_.load(); }
@@ -187,8 +189,6 @@ class TsMemSegmentManager {
   std::shared_ptr<TsMemSegment> cur_mem_seg_{nullptr};
   std::list<std::shared_ptr<TsMemSegment>> segment_;
   mutable std::shared_mutex segment_lock_;
-
-  std::atomic_int memory_usage_{0};
 
   std::shared_ptr<TsMemSegment> CurrentMemSegmentAndAllocateRow(uint32_t row_num) const {
     std::shared_lock lock(segment_lock_);

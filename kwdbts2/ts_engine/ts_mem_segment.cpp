@@ -15,6 +15,7 @@
 #include <list>
 #include <memory>
 #include <mutex>
+#include <stdexcept>
 #include <utility>
 #include <vector>
 
@@ -159,7 +160,6 @@ KStatus TsMemSegmentManager::PutData(const TSSlice& payload, TSEntityID entity_i
       cur_mem_seg->AllocRowNum(0 - (row_num - i));
       return KStatus::FAIL;
     }
-    memory_usage_.fetch_add(row_data.row_data.len);
 
     if (row_ts > max_ts) {
       max_ts = row_ts;
@@ -168,15 +168,9 @@ KStatus TsMemSegmentManager::PutData(const TSSlice& payload, TSEntityID entity_i
   vgroup_->UpdateEntityAndMaxTs(table_id, max_ts, entity_id);
   vgroup_->UpdateEntityLatestRow(entity_id, max_ts);
 
-  auto current_memory_usage = memory_usage_.load();
-
-  if (current_memory_usage > EngineOptions::mem_segment_max_size) {
-    if (memory_usage_.compare_exchange_strong(current_memory_usage, 0)) {
-      if (this->SwitchMemSegment(cur_mem_seg.get())) {
-        if (cur_mem_seg->GetRowNum() > 0) {
-          TsFlushJobPool::GetInstance().AddFlushJob(vgroup_, cur_mem_seg);
-        }
-      }
+  if (cur_mem_seg->GetPayloadMemUsage() > EngineOptions::mem_segment_max_size) {
+    if (this->SwitchMemSegment(cur_mem_seg.get())) {
+      TsFlushJobPool::GetInstance().AddFlushJob(vgroup_, cur_mem_seg);
     }
   }
   return KStatus::SUCCESS;
@@ -261,6 +255,7 @@ bool TsMemSegment::AppendOneRow(TSMemSegRowData& row) {
   auto ok = skiplist_.InsertRowData(row, row_idx_.fetch_add(1));
   if (ok) {
     written_row_num_.fetch_add(1);
+    payload_mem_usage_.fetch_add(row.row_data.len, std::memory_order_relaxed);
   } else {
     LOG_ERROR("insert failed. duplicated rows.");
   }

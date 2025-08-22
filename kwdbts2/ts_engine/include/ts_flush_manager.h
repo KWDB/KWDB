@@ -50,7 +50,7 @@ class TsFlushJobPool {
     }
 
     // wait all threads
-    queue_cv_.notify_all();
+    queue_non_empty_cv_.notify_all();
     for (auto& worker : workers_) {
       worker.join();
     }
@@ -78,7 +78,8 @@ class TsFlushJobPool {
   int kMaxConcurrentJobNum = EngineOptions::vgroup_max_num * 2;
   std::vector<std::thread> workers_;
 
-  std::condition_variable queue_cv_;
+  std::condition_variable queue_non_empty_cv_;
+  std::condition_variable queue_non_full_cv_;
   std::condition_variable stop_cv_;
   std::atomic_int bg_running_jobs_ = 0;
   std::mutex job_mutex_;
@@ -89,11 +90,12 @@ class TsFlushJobPool {
   void WorkerFunc() {
     while (true) {
       std::unique_lock lk{job_mutex_};
-      queue_cv_.wait(lk, [this]() { return !jobs_.empty(); });
+      queue_non_empty_cv_.wait(lk, [this]() { return !jobs_.empty(); });
       auto job = jobs_.front();
       bg_running_jobs_++;
       jobs_.pop_front();
       lk.unlock();
+      queue_non_full_cv_.notify_one();
       if (job.vgroup == nullptr) {
         // found sentinel, just break;
         break;
@@ -139,24 +141,17 @@ class TsFlushJobPool {
     job_info.vgroup = vgroup;
     job_info.imm_segment = mem_segment;
 
-    while (true) {
-      size_t job_size = 0;
-      {
-        std::unique_lock lk{job_mutex_};
-        job_size = jobs_.size();
-      }
-      if (job_size >= kMaxConcurrentJobNum) {
-        LOG_INFO("Flush job queue is full, wait for a job to finish");
-        std::this_thread::sleep_for(1s);
-      } else {
-        break;
-      }
-    }
-    if (stop_flag_.load() != true) {
+    {
       std::unique_lock lk{job_mutex_};
-      jobs_.push_back(job_info);
+      if (jobs_.size() >= kMaxConcurrentJobNum) {
+        LOG_INFO("Flush job queue is full, wait for a job to finish, %p", job_info.imm_segment.get());
+        queue_non_full_cv_.wait(lk, [this]() { return jobs_.size() < kMaxConcurrentJobNum; });
+      }
+      if (stop_flag_.load() != true) {
+        jobs_.push_back(job_info);
+      }
     }
-    queue_cv_.notify_one();
+    queue_non_empty_cv_.notify_one();
   }
 
   void StopAndWait() {
