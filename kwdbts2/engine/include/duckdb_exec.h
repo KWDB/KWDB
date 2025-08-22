@@ -12,18 +12,23 @@
 #pragma once
 
 #include "duckdb.h"
-#include "duckdb/main/capi/capi_internal.hpp"
-#include "duckdb/main/connection.hpp"
 #include "cm_assert.h"
 #include "kwdb_type.h"
 #include "libkwdbts2.h"
 #include "ee_pb_plan.pb.h"
 #include "ee_global.h"
 
+#include "duckdb/main/capi/capi_internal.hpp"
+#include "duckdb/main/client_context.hpp"
+#include "duckdb/main/connection.hpp"
+#include "duckdb/main/prepared_statement_data.hpp"
+
 using namespace duckdb;
 using duckdb::DatabaseWrapper;
 
 namespace kwdbts {
+
+  struct EmptyStruct {};
 
   class KWThdContext;
 	bool checkDuckdbParam(void *db, void *connect);
@@ -47,7 +52,7 @@ namespace kwdbts {
     DuckdbExec(void *db, void *connect);
     ~DuckdbExec();
 
-		void Init(){}
+    void Init(){}
 
     // dml exec query func
     static KStatus ExecQuery(kwdbContext_p ctx, APQueryInfo *req, APRespInfo *resp);
@@ -59,12 +64,25 @@ namespace kwdbts {
 
     ExecutionResult ExecuteCustomPlan(kwdbContext_p ctx, const string &table_name);
 
+    duckdb::shared_ptr<PreparedStatementData>
+    ConvertFlowToPhysicalPlan();
+
+    ExecutionResult PrepareExecutePlan(kwdbContext_p ctx);
+
+    KStatus AttachDBs();
+
+    KStatus AttachDB(const std::string db_name, std::map<std::string, EmptyStruct> &db_map);
+
+    KStatus DetachDB(duckdb::vector<std::string> dbs);
+
   private:
     void ReInit(const string &db_name);
 
     FlowSpec *fspecs_;
-	  DatabaseWrapper * db_;
-	  Connection *connect_;
+    std::string db_path_;
+    DatabaseWrapper * db_;
+    Connection *connect_;
+    std::string sql_;
     mutex context_lock_;
     bool setup_=false;
     ExecutionResult res_;

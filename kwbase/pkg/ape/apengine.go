@@ -161,6 +161,7 @@ func (r *ApEngine) Execute(
 	cQueryInfo.relation_ctx = C.uint64_t(uintptr(unsafe.Pointer(ctx)))
 	cQueryInfo.db = r.db.Ptr
 	cQueryInfo.connection = r.Connection.Ptr
+	cQueryInfo.db_path = (*C.char)(C.CBytes([]byte(r.DbPath)))
 	cTsSlice := C.TSSlice{
 		data: (*C.char)(C.CBytes([]byte(queryInfo.SQL))),
 		len:  C.size_t(len(queryInfo.SQL)),

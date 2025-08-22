@@ -1320,7 +1320,12 @@ func initAPTableReaderSpec(
 	n *scanNode, planCtx *PlanningCtx, indexVarMap []int,
 ) (*execinfrapb.APTableReaderSpec, execinfrapb.PostProcessSpec, error) {
 	s := physicalplan.NewAPTableReaderSpec()
-	*s = execinfrapb.APTableReaderSpec{TableName: n.desc.Name}
+	dbName := ""
+	database, _ := getDatabaseDescByID(planCtx.ctx, planCtx.planner.txn, n.desc.ParentID)
+	if database != nil {
+		dbName = database.Name
+	}
+	*s = execinfrapb.APTableReaderSpec{DbName: dbName, TableName: n.desc.Name}
 
 	//indexIdx, err := getIndexIdx(n)
 	//if err != nil {

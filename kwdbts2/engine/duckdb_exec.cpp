@@ -18,6 +18,7 @@
 #include "duckdb/execution/operator/scan/physical_table_scan.hpp" // 确保包含此类定义
 
 
+#include "duckdb/main/attached_database.hpp"
 #include "duckdb/main/database.hpp"
 #include "duckdb/main/prepared_statement_data.hpp"
 #include "duckdb/main/client_context.hpp"
@@ -108,9 +109,9 @@ namespace kwdbts {
 
   DuckdbExec::DuckdbExec(void *db, void *connect) {
     auto wrapper = reinterpret_cast<DatabaseWrapper *>(db);
-		db_ = wrapper;
-    DuckDB db1("/root/go/src/gitee.com/kwbasedb/kwbase/local/tpch");
-    connect_ = new Connection(db1);
+    db_ = wrapper;
+    // DuckDB db1("/root/go/src/gitee.com/kwbasedb/kwbase/local/tpch");
+    connect_ = new Connection(*db_->database);
     fspecs_ = new FlowSpec();
   }
 
@@ -134,7 +135,7 @@ namespace kwdbts {
       delete connect_;
       connect_ = nullptr;
     }
-    DuckDB db1("/root/go/src/gitee.com/kwbasedb/kwbase/local/" + db_name);
+    DuckDB db1(db_path_ + "/" + db_name);
     connect_ = new Connection(db1);
   }
 
@@ -165,6 +166,7 @@ namespace kwdbts {
       if (!req->handle) {
         handle = new kwdbts::DuckdbExec(req->db, req->connection);
         handle->Init();
+        handle->db_path_ = req->db_path;
         req->handle = static_cast<char *>(static_cast<void *>(handle));
       } else {
         handle = static_cast<kwdbts::DuckdbExec *>(static_cast<void *>(req->handle));
@@ -173,6 +175,9 @@ namespace kwdbts {
       switch (type) {
         case EnMqType::MQ_TYPE_DML_SETUP: {
 //          handle->thd_->SetSQL(std::string(req->sql.data, req->sql.len));
+          if (req->sql.data) {
+            handle->sql_ = std::string(req->sql.data);
+          }
           ret = handle->Setup(ctx, message, len, id, uniqueID, resp);
           if (ret != KStatus::SUCCESS) {
 //            handle->ClearTsScans(ctx);
@@ -245,23 +250,25 @@ namespace kwdbts {
         EEPgErrorInfo::SetPgErrorInfo(ERRCODE_INVALID_PARAMETER_VALUE, "Invalid physical plan");
         break;
       }
-      auto gate = fspecs_->gateway();
-      printf("gate is %d \n", gate);
-      for (size_t i=0; i < fspecs_->processors_size(); i++) {
-        auto proc = fspecs_->processors(i);
-        if (proc.has_core()) {
-          if (proc.core().has_aptablereader()){
-            auto apReader = proc.core().aptablereader();
-            if (apReader.has_db_name() && !apReader.db_name().empty()) {
-              printf("db is %s, ", apReader.db_name().c_str());
-              ReInit(apReader.db_name());
-            }
-            printf("table is %s \n", apReader.table_name().c_str());
+//      auto gate = fspecs_->gateway();
+//      printf("gate is %d \n", gate);
+//      for (size_t i=0; i < fspecs_->processors_size(); i++) {
+//        auto proc = fspecs_->processors(i);
+//        if (proc.has_core()) {
+//          if (proc.core().has_aptablereader()){
+//            auto apReader = proc.core().aptablereader();
+//            if (apReader.has_db_name() && !apReader.db_name().empty()) {
+//              printf("db is %s, ", apReader.db_name().c_str());
+//              //ReInit(apReader.db_name());
+//            }
+//            printf("table is %s \n", apReader.table_name().c_str());
+//
+//            res_ = ExecuteCustomPlan(ctx, apReader.table_name());
+//          }
+//        }
+//      }
+      res_  = PrepareExecutePlan(ctx);
 
-            res_ = ExecuteCustomPlan(ctx, apReader.table_name());
-          }
-        }
-      }
       resp->ret = 1;
       ret = KStatus::SUCCESS;
     } while (0);
@@ -784,5 +791,213 @@ namespace kwdbts {
 			return result;
 		}
 	}
+
+  KStatus DuckdbExec::AttachDBs() {
+    KStatus ret = KStatus::SUCCESS;
+    // get all database
+    std::map<std::string, EmptyStruct> db_map;
+    auto init_dbs = db_->database->instance->GetDatabaseManager().GetDatabases();
+    for(auto& init_db : init_dbs) {
+      auto name = init_db.get().GetName();
+      db_map[name] = {};
+    }
+
+    connect_->BeginTransaction();
+    for (size_t i=0; i < fspecs_->processors_size(); i++) {
+      const ProcessorSpec &proc = fspecs_->processors(i);
+      if (proc.has_core() && proc.core().has_aptablereader()) {
+        auto apReader = proc.core().aptablereader();
+        auto db_name = apReader.db_name().c_str();
+        if (db_map.find(db_name) == db_map.end()) {
+          // attach database
+          auto attach_ret = AttachDB(db_name,db_map);
+          if (attach_ret == KStatus::FAIL) {
+            connect_->Rollback();
+            return attach_ret;
+          }
+        }
+      }
+    }
+    connect_->Commit();
+    return ret;
+  }
+
+  KStatus DuckdbExec::AttachDB(const std::string db_name, std::map<std::string, EmptyStruct> &db_map) {
+    KStatus ret = KStatus::SUCCESS;
+    DatabaseManager& db_manager = DatabaseManager::Get(*db_->database->instance);
+    auto attach_info = make_uniq<AttachInfo>();
+    attach_info->name = db_name;
+    attach_info->path = db_path_ + "/" + db_name;
+    attach_info->on_conflict = OnCreateConflict::IGNORE_ON_CONFLICT;
+    AttachOptions options(attach_info, duckdb::AccessMode::AUTOMATIC);
+    auto attached_db = db_manager.AttachDatabase(*connect_->context, *attach_info, options);
+    const auto storage_options = attach_info->GetStorageOptions();
+    attached_db->Initialize(*connect_->context, storage_options);
+    if (!options.default_table.name.empty()) {
+      attached_db->GetCatalog().SetDefaultTable(options.default_table.schema, options.default_table.name);
+    }
+    attached_db->FinalizeLoad(*connect_->context);
+    if (attached_db) {
+      db_map[db_name] = {};
+    } else {
+      ret = KStatus::FAIL;
+    }
+    return ret;
+  }
+
+  KStatus DuckdbExec::DetachDB(duckdb::vector<std::string> dbs) {
+    KStatus ret = KStatus::SUCCESS;
+    for (auto &db : dbs)  {
+      DatabaseManager& db_manager = DatabaseManager::Get(*db_->database->instance);
+      connect_->BeginTransaction();
+      db_manager.DetachDatabase(*connect_->context, db, duckdb::OnEntryNotFound::RETURN_NULL);
+      connect_->Commit();
+    }
+    return ret;
+  }
+
+  duckdb::shared_ptr<PreparedStatementData>
+  DuckdbExec::ConvertFlowToPhysicalPlan() {
+    StatementType statement_type = StatementType::SELECT_STATEMENT;
+    auto result = make_shared_ptr<PreparedStatementData>(statement_type);
+
+    PhysicalPlanGenerator physical_planner(*connect_->context);
+    physical_planner.InitPhysicalPlan();
+    StatementProperties properties;
+    duckdb::vector<string> res_names;
+
+    auto physical_plan = make_uniq<PhysicalPlan>(Allocator::Get(*connect_->context));
+
+    // printf("processor size: %d \n", fspecs_->processors_size());
+    for (size_t i=0; i < fspecs_->processors_size(); i++) {
+      const ProcessorSpec &proc = fspecs_->processors(i);
+      if (proc.has_core() && proc.core().has_aptablereader()) {
+        auto apReader = proc.core().aptablereader();
+        const PostProcessSpec &post = proc.post();
+        if (post.output_columns_size() > 0 && post.output_columns_size() != post.output_types_size()) {
+          return result;
+        }
+        auto db_name = "";
+        if (apReader.has_db_name() && !apReader.db_name().empty()) {
+          db_name = apReader.db_name().c_str();
+        }
+        auto table_name = "";
+        if (apReader.has_table_name() && !apReader.table_name().empty()) {
+          table_name = apReader.table_name().c_str();
+        } else {
+          return result;
+        }
+        optional_ptr<Catalog> catalog;
+        if (strcmp(db_name, "") == 0) {
+          catalog = Catalog::GetCatalog(*connect_->context, db_->database->instance->GetDatabaseManager().GetDefaultDatabase(*connect_->context));
+        } else {
+          catalog = Catalog::GetCatalog(*connect_->context, db_name);
+        }
+        auto &schema = catalog->GetSchema(*connect_->context, "main");
+        auto entry = schema.GetEntry(catalog->GetCatalogTransaction(*connect_->context), CatalogType::TABLE_ENTRY, table_name);
+        auto &table = entry->Cast<TableCatalogEntry>();
+        properties.RegisterDBRead(table.ParentCatalog(), *connect_->context);
+
+        duckdb::vector<LogicalType> types;
+        duckdb::vector<string> names;
+        duckdb::vector<ColumnIndex> column_ids;
+        if (post.output_columns_size() <= 0 && post.output_types_size() == table.GetColumns().LogicalColumnCount()) {
+          for (auto &col : table.GetColumns().Logical()) {
+            types.push_back(col.Type());
+            names.push_back(col.Name());
+            res_names.push_back(col.Name());
+            column_t column_index;
+            column_index = col.Oid();
+            column_ids.emplace_back(column_index);
+          }
+        } else {
+          // stars
+          for (auto& out_col : post.output_columns()) {
+            auto index = LogicalIndex(out_col);
+            auto &col = table.GetColumn(index);
+            types.push_back(col.Type());
+            names.push_back(col.Name());
+            res_names.push_back(col.Name());
+            column_t column_index;
+            column_index = col.Oid();
+            column_ids.emplace_back(column_index);
+          }
+        }
+
+        duckdb::unique_ptr<FunctionData> bind_data;
+        auto scan_function = table.GetScanFunction(*connect_->context, bind_data);
+
+        virtual_column_map_t virtual_columns;
+        if (scan_function.get_virtual_columns) {
+          virtual_columns = scan_function.get_virtual_columns(*connect_->context, bind_data.get());
+        } else {
+          virtual_columns = table.GetVirtualColumns();
+        }
+
+        duckdb::unique_ptr<TableFilterSet> table_filters;
+        // map<idx_t, unique_ptr<TableFilter>> filters;
+        // table_filters->filters = std::move(filters);
+        ExtraOperatorInfo extra_info;
+        duckdb::vector<Value> parameters;
+        duckdb::vector<idx_t> projection_ids;
+
+        auto &table_scan = physical_planner.Make<PhysicalTableScan>(
+                types, scan_function, std::move(bind_data), types, column_ids, projection_ids, names,
+                std::move(table_filters), 0, std::move(extra_info), std::move(parameters), std::move(virtual_columns));
+
+        physical_plan = physical_planner.GetPhysicalPlan();
+        physical_plan->SetRoot(table_scan);
+      }
+    }
+
+    physical_plan->Root().Verify();
+    result->physical_plan = std::move(physical_plan);
+    result->properties = properties;
+    result->names = res_names;
+    result->types = result->physical_plan->Root().types;
+
+    return result;
+  }
+
+  ExecutionResult DuckdbExec::PrepareExecutePlan(kwdbContext_p ctx) {
+    ExecutionResult result;
+    if (!connect_ || !connect_->context) {
+      result.error_message = "database not open";
+      return result;
+    }
+
+    auto attach_ret = AttachDBs();
+    if (attach_ret == KStatus::FAIL) {
+      result.error_message = "attach database failed";
+      return result;
+    }
+    connect_->BeginTransaction();
+    auto prepared = ConvertFlowToPhysicalPlan();
+    if (!prepared->physical_plan) {
+      connect_->Rollback();
+      result.error_message = "convert physical plan failed";
+      return result;
+    }
+    auto qurry_result = connect_->KWQuery(sql_, prepared);
+    if (qurry_result->HasError()) {
+      connect_->Rollback();
+      //DetachDB(attach_ret);
+      result.error_message = qurry_result->GetError();
+      return result;
+    } else {
+      result.success = true;
+      connect_->Commit();
+    }
+    char* encoding_buf_;
+    k_uint32 encoding_len_;
+    auto ret = Encoding(ctx, qurry_result.get(), encoding_buf_, encoding_len_);
+    if (ret == KStatus::SUCCESS) {
+      result.value = encoding_buf_;
+      result.len = encoding_len_;
+      result.row_count = qurry_result->RowCount();
+    }
+   // DetachDB(attach_ret);
+    return result;
+  }
 
 }
