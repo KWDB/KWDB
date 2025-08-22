@@ -638,9 +638,7 @@ KStatus TsPartitionVersion::NeedVacuumEntitySegment(const fs::path& root_path,
   TsEngineSchemaManager* schema_manager, bool& need_vacuum, bool& need_compact) const {
   need_vacuum = false;
   need_compact = false;
-  if (entity_segment_ == nullptr) {
-    return SUCCESS;
-  }
+
   timestamp64 latest_mtime = 0;
   bool has_files = false;
   for (const auto& entry : fs::directory_iterator(root_path)) {
@@ -672,7 +670,9 @@ KStatus TsPartitionVersion::NeedVacuumEntitySegment(const fs::path& root_path,
     return SUCCESS;
   }
   need_compact = true;
-
+  if (entity_segment_ == nullptr) {
+    return SUCCESS;
+  }
   bool has_del_info;
   // todo(liangbo01) get entity segment min and max lsn.
   KwLSNSpan span{0, UINT64_MAX};
