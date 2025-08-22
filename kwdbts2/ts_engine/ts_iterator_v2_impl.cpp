@@ -121,7 +121,7 @@ TsStorageIteratorV2Impl::TsStorageIteratorV2Impl(std::shared_ptr<TsVGroup>& vgro
                                                  std::vector<KwTsSpan>& ts_spans, std::vector<BlockFilter>& block_filter,
                                                  DATATYPE ts_col_type, std::vector<k_uint32>& kw_scan_cols,
                                                  std::vector<k_uint32>& ts_scan_cols,
-                                                 std::shared_ptr<TsTableSchemaManager> table_schema_mgr,
+                                                 std::shared_ptr<TsTableSchemaManager>& table_schema_mgr,
                                                  uint32_t table_version) {
   vgroup_ = vgroup;
   entity_ids_ = entity_ids;
@@ -146,7 +146,7 @@ KStatus TsStorageIteratorV2Impl::Init(bool is_reversed) {
   }
   attrs_ = schema_->getSchemaInfoExcludeDropped();
   table_id_ = table_schema_mgr_->GetTableId();
-  db_id_ = vgroup_->GetEngineSchemaMgr()->GetDBIDByTableID(table_id_);
+  db_id_ = table_schema_mgr_->GetDbID();
 
   auto current = vgroup_->CurrentVersion();
   ts_partitions_ = current->GetPartitions(db_id_, ts_spans_, ts_col_type_);
@@ -512,7 +512,7 @@ TsSortedRawDataIteratorV2Impl::TsSortedRawDataIteratorV2Impl(std::shared_ptr<TsV
                                                               DATATYPE ts_col_type,
                                                               std::vector<k_uint32>& kw_scan_cols,
                                                               std::vector<k_uint32>& ts_scan_cols,
-                                                              std::shared_ptr<TsTableSchemaManager> table_schema_mgr,
+                                                              std::shared_ptr<TsTableSchemaManager>& table_schema_mgr,
                                                               uint32_t table_version,
                                                               SortOrder order_type) :
                           TsStorageIteratorV2Impl::TsStorageIteratorV2Impl(vgroup, entity_ids, ts_spans, block_filter,
@@ -608,8 +608,9 @@ TsAggIteratorV2Impl::TsAggIteratorV2Impl(std::shared_ptr<TsVGroup>& vgroup, vect
                                          std::vector<KwTsSpan>& ts_spans, std::vector<BlockFilter>& block_filter,
                                          DATATYPE ts_col_type, std::vector<k_uint32>& kw_scan_cols,
                                          std::vector<k_uint32>& ts_scan_cols, std::vector<k_int32>& agg_extend_cols,
-                                         std::vector<Sumfunctype>& scan_agg_types, std::vector<timestamp64>& ts_points,
-                                         std::shared_ptr<TsTableSchemaManager> table_schema_mgr, uint32_t table_version)
+                                         std::vector<Sumfunctype>& scan_agg_types,
+                                         const std::vector<timestamp64>& ts_points,
+                                         std::shared_ptr<TsTableSchemaManager>& table_schema_mgr, uint32_t table_version)
     : TsStorageIteratorV2Impl::TsStorageIteratorV2Impl(vgroup, entity_ids, ts_spans, block_filter, ts_col_type,
                                                        kw_scan_cols, ts_scan_cols, table_schema_mgr, table_version),
       scan_agg_types_(scan_agg_types),

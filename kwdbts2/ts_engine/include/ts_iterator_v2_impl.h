@@ -48,7 +48,7 @@ class TsStorageIteratorV2Impl : public TsStorageIterator {
   TsStorageIteratorV2Impl(std::shared_ptr<TsVGroup>& vgroup, vector<uint32_t>& entity_ids,
                           std::vector<KwTsSpan>& ts_spans, std::vector<BlockFilter>& block_filter, DATATYPE ts_col_type,
                           std::vector<k_uint32>& kw_scan_cols, std::vector<k_uint32>& ts_scan_cols,
-                          std::shared_ptr<TsTableSchemaManager> table_schema_mgr, uint32_t table_version);
+                          std::shared_ptr<TsTableSchemaManager>& table_schema_mgr, uint32_t table_version);
   ~TsStorageIteratorV2Impl();
 
   KStatus Init(bool is_reversed) override;
@@ -94,7 +94,7 @@ class TsSortedRawDataIteratorV2Impl : public TsStorageIteratorV2Impl {
                                 std::vector<KwTsSpan>& ts_spans, std::vector<BlockFilter>& block_filter,
                                 DATATYPE ts_col_type, std::vector<k_uint32>& kw_scan_cols,
                                 std::vector<k_uint32>& ts_scan_cols,
-                                std::shared_ptr<TsTableSchemaManager> table_schema_mgr, uint32_t table_version,
+                                std::shared_ptr<TsTableSchemaManager>& table_schema_mgr, uint32_t table_version,
                                 SortOrder order_type = ASC);
   ~TsSortedRawDataIteratorV2Impl();
 
@@ -114,8 +114,9 @@ class TsAggIteratorV2Impl : public TsStorageIteratorV2Impl {
                       std::vector<KwTsSpan>& ts_spans, std::vector<BlockFilter>& block_filter, DATATYPE ts_col_type,
                       std::vector<k_uint32>& kw_scan_cols, std::vector<k_uint32>& ts_scan_cols,
                       std::vector<k_int32>& agg_extend_cols,
-                      std::vector<Sumfunctype>& scan_agg_types, std::vector<timestamp64>& ts_points,
-                      std::shared_ptr<TsTableSchemaManager> table_schema_mgr, uint32_t table_version);
+                      std::vector<Sumfunctype>& scan_agg_types,
+                      const std::vector<timestamp64>& ts_points,
+                      std::shared_ptr<TsTableSchemaManager>& table_schema_mgr, uint32_t table_version);
   ~TsAggIteratorV2Impl();
 
   KStatus Init(bool is_reversed) override;
