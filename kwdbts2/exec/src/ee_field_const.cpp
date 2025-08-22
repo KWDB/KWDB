@@ -10,6 +10,7 @@
 // See the Mulan PSL v2 for more details.
 
 #include "ee_field_const.h"
+#include "cm_func.h"
 
 #include <iomanip>
 #include <iostream>

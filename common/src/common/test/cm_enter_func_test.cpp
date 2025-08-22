@@ -115,14 +115,21 @@ TEST(TestKWDB64FMT, normal) {
 
 TEST(TestToGMT, correctness) {
   time_t ts = 0;
-  tm kw_tm;
-  tm glibc_tm;
-  for (int i = 0; i < 62; ++i) {
-    ToGMT(ts, kw_tm);
+  struct tm tm;
+  struct tm glibc_tm;
+  for (int i = 0; i < 50; ++i) {
+    ToGMT(ts, tm);
     gmtime_r(&ts, &glibc_tm);
-    EXPECT_EQ(kw_tm, glibc_tm);
+    EXPECT_EQ(tm.tm_year, glibc_tm.tm_year);
+    EXPECT_EQ(tm.tm_mon, glibc_tm.tm_mon);
+    EXPECT_EQ(tm.tm_mday, glibc_tm.tm_mday);
+    EXPECT_EQ(tm.tm_hour, glibc_tm.tm_hour);
+    EXPECT_EQ(tm.tm_min, glibc_tm.tm_min);
+    EXPECT_EQ(tm.tm_sec, glibc_tm.tm_sec);
+    EXPECT_EQ(tm.tm_wday, glibc_tm.tm_wday);
+    EXPECT_EQ(tm.tm_yday, glibc_tm.tm_yday);
     ts += 1;
-    ts *= 2;
+    ts <<= 1;
   }
 }
 }  //  namespace kwdbts

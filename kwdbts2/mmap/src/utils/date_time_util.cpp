@@ -14,6 +14,7 @@
 #include "utils/date_time_util.h"
 #include "utils/big_table_utils.h"
 #include "utils/string_utils.h"
+#include "cm_func.h"
 
 #if defined(__GNUC__) && __GNUC__ >= 4
 #define LIKELY(x)   (__builtin_expect((x), 1))
@@ -1172,7 +1173,7 @@ string nowString() {
   char buffer[64];
 
   time(&rawtime);
-  ToGMT(&rawtime, &lt);
+  ToGMT(rawtime, lt);
   strftime(buffer, sizeof(buffer)-1, "[%Y-%m-%d %H:%M:%S]", &lt);
   return string(buffer);
 }

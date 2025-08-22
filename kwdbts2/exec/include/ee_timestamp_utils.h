@@ -17,6 +17,7 @@
 #include <algorithm>
 
 #include "kwdb_type.h"
+#include "cm_func.h"
 
 namespace kwdbts {
 
