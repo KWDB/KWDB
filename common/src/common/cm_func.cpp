@@ -77,7 +77,12 @@ static const k_uint32 MAGIC_NUMBER_6 = 1461;
 void ToGMT(time_t ts, tm &tm) {
   tm.tm_isdst = 0;
   time_t days = ts / DAY_SECONDS;
-  k_uint32 seconds = ts % DAY_SECONDS;
+  k_int32 seconds = ts % DAY_SECONDS;
+
+  if ((int)seconds < 0) {
+    --days;
+    seconds += 86400;
+  }
 
   tm.tm_sec = seconds % MINUTE_SECONDS;
   seconds /= MINUTE_SECONDS;
@@ -92,12 +97,18 @@ void ToGMT(time_t ts, tm &tm) {
   tm.tm_wday = t2;
   t1 = (days << 2) + MAGIC_NUMBER_1;
   t2 = t1 / MAGIC_NUMBER_4;
+  if (t1 % MAGIC_NUMBER_4 < 0) {
+    --t2;
+  }
   --t2;
   days += t2;
   t2 >>= 2;
   days -= t2;
   t2 = (days << 2) + MAGIC_NUMBER_2;
   t1 = t2 / MAGIC_NUMBER_6;
+  if (t2 % MAGIC_NUMBER_6 < 0) {
+    --t1;
+  }
   k_uint32 year_days = days - YEAR_DAYS * t1 - (t1 >> 2) + MAGIC_NUMBER_3;
 
   k_uint32 num;
