@@ -185,20 +185,20 @@ func (n *dropTableNode) startExec(params runParams) error {
 			n.n.Names[0].ExplicitCatalog = true
 			dropStmt := n.n.String()
 			conn := params.p.DistSQLPlanner().distSQLSrv.ServerConfig.ApEngine.Connection
-			dbPath := params.p.DistSQLPlanner().distSQLSrv.ServerConfig.ApEngine.DbPath
+			//dbPath := params.p.DistSQLPlanner().distSQLSrv.ServerConfig.ApEngine.DbPath
 			var res duckdb.Result
 			defer duckdb.DestroyResult(&res)
-			attachStmt := fmt.Sprintf(`ATTACH '%s' AS %s`, dbPath+"/"+string(n.n.Names[0].CatalogName), n.n.Names[0].CatalogName)
-			detachStmt := fmt.Sprintf(`DETACH %s`, n.n.Names[0].CatalogName)
-			if duckdb.Query(*conn, attachStmt, &res) == duckdb.StateError {
-				return pgerror.Newf(pgcode.Warning, "attach database %s failed", n.n.Names[0].CatalogName)
-			}
+			//attachStmt := fmt.Sprintf(`ATTACH '%s' AS %s`, dbPath+"/"+string(n.n.Names[0].CatalogName), n.n.Names[0].CatalogName)
+			//detachStmt := fmt.Sprintf(`DETACH %s`, n.n.Names[0].CatalogName)
+			//if duckdb.Query(*conn, attachStmt, &res) == duckdb.StateError {
+			//	return pgerror.Newf(pgcode.Warning, "attach database %s failed", n.n.Names[0].CatalogName)
+			//}
 			if duckdb.Query(*conn, dropStmt, &res) == duckdb.StateError {
-				return pgerror.Newf(pgcode.Warning, "create column based table failed")
+				return pgerror.Newf(pgcode.Warning, "drop ap table %s failed: %s", n.n.Names.String(), duckdb.ResultError(&res))
 			}
-			if duckdb.Query(*conn, detachStmt, &res) == duckdb.StateError {
-				return pgerror.Newf(pgcode.Warning, "detach database %s failed", n.n.Names[0].CatalogName)
-			}
+			//if duckdb.Query(*conn, detachStmt, &res) == duckdb.StateError {
+			//	return pgerror.Newf(pgcode.Warning, "detach database %s failed", n.n.Names[0].CatalogName)
+			//}
 		}
 		params.p.SetAuditTarget(uint32(droppedDesc.ID), droppedDesc.GetName(), droppedViews)
 	}

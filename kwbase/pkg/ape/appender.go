@@ -68,12 +68,12 @@ func DuckInsert(ctx context.Context, r *ApEngine, dbName, tabName string, rowVal
 	if err := a.Close(); err != nil {
 		return pgerror.Newf(pgcode.Internal, "could not flush and close appender: %s", err.Error())
 	}
-	var res duck.Result
-	query := fmt.Sprintf("SELECT * FROM %s", tabName)
-	duck.Query(conn, query, &res)
-	count := duck.RowCount(&res)
-	fmt.Printf("select count= %s:%d\n", tabName, int(count))
-	fmt.Println("DuckInsert done")
+	//var res duck.Result
+	//query := fmt.Sprintf("SELECT * FROM %s", tabName)
+	//duck.Query(conn, query, &res)
+	//count := duck.RowCount(&res)
+	//fmt.Printf("select count= %s:%d\n", tabName, int(count))
+	//fmt.Println("DuckInsert done")
 	return nil
 }
 
