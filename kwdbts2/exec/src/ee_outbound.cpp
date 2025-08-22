@@ -14,7 +14,6 @@
 #include "ee_outbound_op.h"
 #include "ee_inbound_op.h"
 #include "ee_exec_pool.h"
-
 namespace kwdbts {
 
 OutboundOperator::OutboundOperator(TsFetcherCollection* collection, TSOutputRouterSpec* spec, TABLE *table)
@@ -104,7 +103,7 @@ EEIteratorErrCode OutboundOperator::Start(kwdbContext_p ctx) {
   for (auto i = 0; i < sz; ++i) {
     code = childrens_[i]->Start(ctx);
     if (EEIteratorErrCode::EE_OK!= code) {
-      LOG_ERROR("OutboundOperator Start child failed.");
+      // LOG_ERROR("OutboundOperator Start child failed.");
       Return(code);
     }
   }
