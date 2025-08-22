@@ -1,147 +1,131 @@
 --basic test tag smallint
 drop database if exists test_alter cascade;
 create ts database test_alter;
-create table test_alter.t1(k_timestamp timestamptz not null,e1 int2) tags (ptag smallint not null, attr1 smallint,attr2 smallint, attr3 smallint, attr4 smallint)primary tags(ptag);
-
-insert into test_alter.t1(k_timestamp,e1,ptag, attr1,attr2, attr3, attr4) values(1672531211001, 1, 1, 32767, 32767, 32767, 32767);
-select * from test_alter.t1 order by k_timestamp,ptag;
-
+create table test_alter.test1(k_timestamp timestamptz not null,e1 int2) tags (ptag smallint not null, attr1 smallint,attr2 smallint, attr3 smallint, attr4 smallint)primary tags(ptag);
+insert into test_alter.test1(k_timestamp,e1,ptag, attr1,attr2, attr3, attr4) values(1672531211001, 1, 1, 32767, 32767, 32767, 32767);
+select * from test_alter.test1 order by k_timestamp,ptag;
 --case1 tag smallint -> int
-alter table test_alter.t1 alter tag attr1 type int;
+alter table test_alter.test1 alter tag attr1 type int;
 select pg_sleep(1);
-insert into test_alter.t1(k_timestamp,e1,ptag, attr1) values(1672531211002, 1, 2, 2147483647);
-select k_timestamp,e1,ptag, attr1 from test_alter.t1 order by k_timestamp,ptag;
-
+insert into test_alter.test1(k_timestamp,e1,ptag, attr1) values(1672531211002, 1, 2, 2147483647);
+select k_timestamp,e1,ptag, attr1 from test_alter.test1 order by k_timestamp,ptag;
 --case2 tag smallint -> bigint
-alter table test_alter.t1 alter tag attr2 type bigint;
+alter table test_alter.test1 alter tag attr2 type bigint;
 select pg_sleep(1);
-insert into test_alter.t1(k_timestamp,e1,ptag, attr2) values(1672531211003, 1, 3, 9223372036854775807);
-select k_timestamp,e1,ptag, attr2 from test_alter.t1 order by k_timestamp,ptag;
-
+insert into test_alter.test1(k_timestamp,e1,ptag, attr2) values(1672531211003, 1, 3, 9223372036854775807);
+select k_timestamp,e1,ptag, attr2 from test_alter.test1 order by k_timestamp,ptag;
 --case3 tag smallint -> varchar -> char -> varchar -> float
-alter table test_alter.t1 alter tag attr3 type varchar(32);
+alter table test_alter.test1 alter tag attr3 type varchar(32);
 select pg_sleep(1);
-insert into test_alter.t1(k_timestamp,e1,ptag, attr3) values(1672531211004, 1, 4, '9223372036854775808');
-select k_timestamp,e1,ptag, attr3 from test_alter.t1 order by k_timestamp,ptag;
+insert into test_alter.test1(k_timestamp,e1,ptag, attr3) values(1672531211004, 1, 4, '9223372036854775808');
+select k_timestamp,e1,ptag, attr3 from test_alter.test1 order by k_timestamp,ptag;
 
-alter table test_alter.t1 alter tag attr3 type char(32);
+alter table test_alter.test1 alter tag attr3 type char(32);
 select pg_sleep(1);
-select k_timestamp,e1,ptag, attr3 from test_alter.t1 order by k_timestamp,ptag;
-alter table test_alter.t1 alter tag attr3 type varchar(32);
+select k_timestamp,e1,ptag, attr3 from test_alter.test1 order by k_timestamp,ptag;
+alter table test_alter.test1 alter tag attr3 type varchar(32);
 select pg_sleep(1);
-select k_timestamp,e1,ptag, attr3 from test_alter.t1 order by k_timestamp,ptag;
-alter table test_alter.t1 alter tag attr3 type float8;
+select k_timestamp,e1,ptag, attr3 from test_alter.test1 order by k_timestamp,ptag;
+alter table test_alter.test1 alter tag attr3 type float8;
 select pg_sleep(1);
-select k_timestamp,e1,ptag, attr3 from test_alter.t1 order by k_timestamp,ptag;
+select k_timestamp,e1,ptag, attr3 from test_alter.test1 order by k_timestamp,ptag;
+
 
 --basic test tag int/bigint
-drop database if exists test_alter cascade;
-create ts database test_alter;
-create table test_alter.t1(k_timestamp timestamptz not null,e1 int2) tags (ptag smallint not null, attr1 int, attr2 int, attr3 int, attr4 int)primary tags(ptag);
-insert into test_alter.t1(k_timestamp,e1,ptag, attr1,attr2, attr3, attr4) values(1672531211001, 1, 1, 2147483647, 2147483647, 2147483647, 2147483647);
-select * from test_alter.t1 order by k_timestamp,ptag;
-
+create table test_alter.test2(k_timestamp timestamptz not null,e1 int2) tags (ptag smallint not null, attr1 int, attr2 int, attr3 int, attr4 int)primary tags(ptag);
+insert into test_alter.test2(k_timestamp,e1,ptag, attr1,attr2, attr3, attr4) values(1672531211001, 1, 1, 2147483647, 2147483647, 2147483647, 2147483647);
+select * from test_alter.test2 order by k_timestamp,ptag;
 --case4 tag int -> bigint
-alter table test_alter.t1 alter tag attr1 type bigint;
+alter table test_alter.test2 alter tag attr1 type bigint;
 select pg_sleep(1);
-insert into test_alter.t1(k_timestamp,e1,ptag, attr1) values(1672531211002, 1, 2, 9223372036854775807);
-select k_timestamp,e1,ptag, attr1 from test_alter.t1 order by k_timestamp,ptag;
-
+insert into test_alter.test2(k_timestamp,e1,ptag, attr1) values(1672531211002, 1, 2, 9223372036854775807);
+select k_timestamp,e1,ptag, attr1 from test_alter.test2 order by k_timestamp,ptag;
 --case5 tag int -> varchar
-alter table test_alter.t1 alter tag attr2 type varchar(32);
+alter table test_alter.test2 alter tag attr2 type varchar(32);
 select pg_sleep(1);
-insert into test_alter.t1(k_timestamp,e1,ptag, attr2) values(1672531211003, 1, 3, '9223372036854775808');
-select k_timestamp,e1,ptag, attr2 from test_alter.t1 order by k_timestamp,ptag;
-
+insert into test_alter.test2(k_timestamp,e1,ptag, attr2) values(1672531211003, 1, 3, '9223372036854775808');
+select k_timestamp,e1,ptag, attr2 from test_alter.test2 order by k_timestamp,ptag;
 --case6 tag bigint -> varchar
-alter table test_alter.t1 alter tag attr1 type varchar(32);
+alter table test_alter.test2 alter tag attr1 type varchar(32);
 select pg_sleep(1);
-insert into test_alter.t1(k_timestamp,e1,ptag, attr1) values(1672531211004, 1, 4, '9223372036854775809');
-select k_timestamp,e1,ptag, attr1 from test_alter.t1 order by k_timestamp,ptag;
+insert into test_alter.test2(k_timestamp,e1,ptag, attr1) values(1672531211004, 1, 4, '9223372036854775809');
+select k_timestamp,e1,ptag, attr1 from test_alter.test2 order by k_timestamp,ptag;
+
 
 --basic test tag float/double
-drop database if exists test_alter cascade;
-create ts database test_alter;
-create table test_alter.t1(k_timestamp timestamptz not null,e1 int2) tags (ptag smallint not null, attr1 float4, attr2 float4, attr3 float4, attr4 float4)primary tags(ptag);
-insert into test_alter.t1(k_timestamp,e1,ptag, attr1,attr2, attr3, attr4) values(1672531211001, 1, 1, 2.712882, 2.712882, 2.712882, 2.712882);
-select * from test_alter.t1 order by k_timestamp,ptag;
-
+create table test_alter.test3(k_timestamp timestamptz not null,e1 int2) tags (ptag smallint not null, attr1 float4, attr2 float4, attr3 float4, attr4 float4)primary tags(ptag);
+insert into test_alter.test3(k_timestamp,e1,ptag, attr1,attr2, attr3, attr4) values(1672531211001, 1, 1, 2.712882, 2.712882, 2.712882, 2.712882);
+select * from test_alter.test3 order by k_timestamp,ptag;
 --case7 tag float -> double
-alter table test_alter.t1 alter tag attr1 type double;
+alter table test_alter.test3 alter tag attr1 type double;
 select pg_sleep(1);
-insert into test_alter.t1(k_timestamp,e1,ptag, attr1) values(1672531211002, 1, 2, 3.14159267890796);
-select k_timestamp,e1,ptag, attr1 from test_alter.t1 order by k_timestamp,ptag;
-
+insert into test_alter.test3(k_timestamp,e1,ptag, attr1) values(1672531211002, 1, 2, 3.14159267890796);
+select k_timestamp,e1,ptag, attr1 from test_alter.test3 order by k_timestamp,ptag;
 --case8 tag float -> varchar
-alter table test_alter.t1 alter tag attr2 type varchar(32);
+alter table test_alter.test3 alter tag attr2 type varchar(32);
 select pg_sleep(1);
-insert into test_alter.t1(k_timestamp,e1,ptag, attr2) values(1672531211003, 1, 3, '3.14159267890797');
-select k_timestamp,e1,ptag, attr2 from test_alter.t1 order by k_timestamp,ptag;
-
+insert into test_alter.test3(k_timestamp,e1,ptag, attr2) values(1672531211003, 1, 3, '3.14159267890797');
+select k_timestamp,e1,ptag, attr2 from test_alter.test3 order by k_timestamp,ptag;
 --case9 tag double -> varchar
-alter table test_alter.t1 alter tag attr1 type varchar(32);
+alter table test_alter.test3 alter tag attr1 type varchar(32);
 select pg_sleep(1);
-insert into test_alter.t1(k_timestamp,e1,ptag, attr1) values(1672531211004, 1, 4, '3.14159267890798');
-select k_timestamp,e1,ptag, attr1 from test_alter.t1 order by k_timestamp,ptag;
+insert into test_alter.test3(k_timestamp,e1,ptag, attr1) values(1672531211004, 1, 4, '3.14159267890798');
+select k_timestamp,e1,ptag, attr1 from test_alter.test3 where k_timestamp >= '2023-01-01 00:00:11.002' order by k_timestamp,ptag;
 
 --basic test tag char/nchar/varchar
-drop database if exists test_alter cascade;
-create ts database test_alter;
-create table test_alter.t1(k_timestamp timestamptz not null,e1 int2) tags (ptag smallint not null, attr1 char(50),attr2 char(50), attr3 nchar(50), attr4 nchar(50))primary tags(ptag);
-insert into test_alter.t1(k_timestamp,e1,ptag, attr1,attr2, attr3, attr4) values(1672531211001, 1, 1, 'test时间精度通用查询测试！！！@TEST1', 'test时间精度通用查询测试！！！@TEST1', 'test时间精度通用查询测试！！！@TEST1', 'test时间精度通用查询测试！！！@TEST1');
-select * from test_alter.t1 order by k_timestamp,ptag;
+create table test_alter.test4(k_timestamp timestamptz not null,e1 int2) tags (ptag smallint not null, attr1 char(50),attr2 char(50), attr3 nchar(50), attr4 nchar(50))primary tags(ptag);
+insert into test_alter.test4(k_timestamp,e1,ptag, attr1,attr2, attr3, attr4) values(1672531211001, 1, 1, 'test时间精度通用查询测试！！！@TEST1', 'test时间精度通用查询测试！！！@TEST1', 'test时间精度通用查询测试！！！@TEST1', 'test时间精度通用查询测试！！！@TEST1');
+select * from test_alter.test4 order by k_timestamp,ptag;
 
 --case10 char -> char -> nchar
-alter table test_alter.t1 alter tag attr1 type char(100);
+alter table test_alter.test4 alter tag attr1 type char(100);
 select pg_sleep(1);
-insert into test_alter.t1(k_timestamp,e1,ptag, attr1) values(1672531211008, 1, 8, 'test时间精度通用查询测试！！！@TEST8');
-select k_timestamp,e1,ptag, attr1 from test_alter.t1 order by k_timestamp,ptag;
-alter table test_alter.t1 alter tag attr1 type nchar(50);
+insert into test_alter.test4(k_timestamp,e1,ptag, attr1) values(1672531211008, 1, 8, 'test时间精度通用查询测试！！！@TEST8');
+select k_timestamp,e1,ptag, attr1 from test_alter.test4 order by k_timestamp,ptag;
+alter table test_alter.test4 alter tag attr1 type nchar(50);
 select pg_sleep(1);
-insert into test_alter.t1(k_timestamp,e1,ptag, attr1) values(1672531211002, 1, 2, 'test时间精度通用查询测试！！！@TEST2');
-select k_timestamp,e1,ptag, attr1 from test_alter.t1 order by k_timestamp,ptag;
+insert into test_alter.test4(k_timestamp,e1,ptag, attr1) values(1672531211002, 1, 2, 'test时间精度通用查询测试！！！@TEST2');
+select k_timestamp,e1,ptag, attr1 from test_alter.test4 order by k_timestamp,ptag;
 
 --case11 char -> varchar
-alter table test_alter.t1 alter tag attr2 type varchar(50);
+alter table test_alter.test4 alter tag attr2 type varchar(50);
 select pg_sleep(1);
-insert into test_alter.t1(k_timestamp,e1,ptag, attr2) values(1672531211003, 1, 3, 'test时间精度通用查询测试！！！@TEST3');
-select k_timestamp,e1,ptag, attr2 from test_alter.t1 order by k_timestamp,ptag;
+insert into test_alter.test4(k_timestamp,e1,ptag, attr2) values(1672531211003, 1, 3, 'test时间精度通用查询测试！！！@TEST3');
+select k_timestamp,e1,ptag, attr2 from test_alter.test4 order by k_timestamp,ptag;
 
 --case12 nchar -> nchar -> char
-alter table test_alter.t1 alter tag attr3 type nchar(60);
+alter table test_alter.test4 alter tag attr3 type nchar(60);
 select pg_sleep(1);
-insert into test_alter.t1(k_timestamp,e1,ptag, attr3) values(1672531211009, 1, 9, 'test时间精度通用查询测试！！！@TEST9');
-select k_timestamp,e1,ptag, attr3 from test_alter.t1 order by k_timestamp,ptag;
-alter table test_alter.t1 alter tag attr3 type char(250);
+insert into test_alter.test4(k_timestamp,e1,ptag, attr3) values(1672531211009, 1, 9, 'test时间精度通用查询测试！！！@TEST9');
+select k_timestamp,e1,ptag, attr3 from test_alter.test4 order by k_timestamp,ptag;
+alter table test_alter.test4 alter tag attr3 type char(250);
 select pg_sleep(1);
-insert into test_alter.t1(k_timestamp,e1,ptag, attr3) values(1672531211004, 1, 4, 'test时间精度通用查询测试！！！@TEST4');
-select k_timestamp,e1,ptag, attr3 from test_alter.t1 order by k_timestamp,ptag;
+insert into test_alter.test4(k_timestamp,e1,ptag, attr3) values(1672531211004, 1, 4, 'test时间精度通用查询测试！！！@TEST4');
+select k_timestamp,e1,ptag, attr3 from test_alter.test4 order by k_timestamp,ptag;
 
 --case13 nchar -> varchar
-alter table test_alter.t1 alter tag attr4 type varchar(200);
+alter table test_alter.test4 alter tag attr4 type varchar(200);
 select pg_sleep(1);
-insert into test_alter.t1(k_timestamp,e1,ptag, attr4) values(1672531211005, 1, 5, 'test时间精度通用查询测试！！！@TEST5');
-select k_timestamp,e1,ptag, attr4 from test_alter.t1 order by k_timestamp,ptag;
+insert into test_alter.test4(k_timestamp,e1,ptag, attr4) values(1672531211005, 1, 5, 'test时间精度通用查询测试！！！@TEST5');
+select k_timestamp,e1,ptag, attr4 from test_alter.test4 order by k_timestamp,ptag;
 
 --case14 varchar -> varchar -> char
-alter table test_alter.t1 alter tag attr2 type varchar(60);
+alter table test_alter.test4 alter tag attr2 type varchar(60);
 select pg_sleep(1);
-insert into test_alter.t1(k_timestamp,e1,ptag, attr2) values(1672531211010, 1, 10, 'test时间精度通用查询测试！！！@TEST10');
-select k_timestamp,e1,ptag, attr2 from test_alter.t1 order by k_timestamp,ptag;
-alter table test_alter.t1 alter tag attr2 type char(100);
+insert into test_alter.test4(k_timestamp,e1,ptag, attr2) values(1672531211010, 1, 10, 'test时间精度通用查询测试！！！@TEST10');
+select k_timestamp,e1,ptag, attr2 from test_alter.test4 order by k_timestamp,ptag;
+alter table test_alter.test4 alter tag attr2 type char(100);
 select pg_sleep(1);
-insert into test_alter.t1(k_timestamp,e1,ptag, attr2) values(1672531211006, 1, 6, 'test时间精度通用查询测试！！！@TEST6');
-select k_timestamp,e1,ptag, attr2 from test_alter.t1 order by k_timestamp,ptag;
+insert into test_alter.test4(k_timestamp,e1,ptag, attr2) values(1672531211006, 1, 6, 'test时间精度通用查询测试！！！@TEST6');
+select k_timestamp,e1,ptag, attr2 from test_alter.test4 order by k_timestamp,ptag;
 
 --case15 varchar -> nchar
-alter table test_alter.t1 alter tag attr4 type nchar(200);
+alter table test_alter.test4 alter tag attr4 type nchar(200);
 select pg_sleep(1);
-insert into test_alter.t1(k_timestamp,e1,ptag, attr4) values(1672531211007, 1, 7, 'test时间精度通用查询测试！！！@TEST7');
-select k_timestamp,e1,ptag, attr4 from test_alter.t1 order by k_timestamp,ptag;
+insert into test_alter.test4(k_timestamp,e1,ptag, attr4) values(1672531211007, 1, 7, 'test时间精度通用查询测试！！！@TEST7');
+select k_timestamp,e1,ptag, attr4 from test_alter.test4 order by k_timestamp,ptag;
 
 --basic test tag varchar->numeric
-drop database if exists test_alter cascade;
-create ts database test_alter;
 create table test_alter.t1(k_timestamp timestamptz not null,e1 int2) tags (ptag smallint not null, attr1 varchar(32),attr2 varchar(32), attr3 varchar(32), attr4 varchar(32), attr5 varchar(32))primary tags(ptag);
 insert into test_alter.t1(k_timestamp,e1,ptag, attr1,attr2, attr3, attr4,attr5)values(1672531211001, 1, 1, '-32768', '-2147483648', '-9223372036854775808', '-2.712882', '-3.14159267890796');
 select * from test_alter.t1 order by k_timestamp,ptag;
