@@ -198,6 +198,15 @@ func (n *createDatabaseNode) startExec(params runParams) error {
 		if duckdb.OpenExt(dsn, &db, config, &errMsg) == duckdb.StateError {
 			return pgerror.Newf(pgcode.Warning, errMsg)
 		}
+		conn := params.p.DistSQLPlanner().distSQLSrv.ServerConfig.ApEngine.Connection
+		var res duckdb.Result
+		defer duckdb.DestroyResult(&res)
+		attachStmt := fmt.Sprintf(`ATTACH '%s' AS %s`, dbPath+"/"+desc.Name, desc.Name)
+		if desc.Name != "tpch" {
+			if duckdb.Query(*conn, attachStmt, &res) == duckdb.StateError {
+				return pgerror.Newf(pgcode.Warning, "attach database %s failed: %s", desc.Name, duckdb.ResultError(&res))
+			}
+		}
 	}
 	log.Infof(params.ctx, "create database %s finished, type: %s, id: %d", desc.Name, tree.EngineName(n.n.EngineType), desc.ID)
 	return nil
