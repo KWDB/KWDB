@@ -44,7 +44,7 @@ inline KStatus TsBlock::GetVarPreMin(uint32_t blk_col_idx, TSSlice& pre_min) {
 }
 
 inline KStatus TsBlock::UpdateFirstLastCandidates(const std::vector<k_uint32>& ts_scan_cols,
-                                                const std::vector<AttributeInfo>& schema,
+                                                const std::vector<AttributeInfo>* schema,
                                                 std::vector<k_uint32>& first_col_idxs,
                                                 std::vector<k_uint32>& last_col_idxs,
                                                 std::vector<AggCandidate>& candidates) {
@@ -69,7 +69,7 @@ TsBlockSpan::TsBlockSpan(TSEntityID entity_id, std::shared_ptr<TsBlock> block, i
       LOG_ERROR("convert_ Init failed!");
     }
   }
-  scan_attrs_ = scan_schema->getSchemaInfoExcludeDropped();
+  scan_attrs_ = static_cast<const vector<AttributeInfo>*>(&scan_schema->getSchemaInfoExcludeDropped());
   has_pre_agg_ = block_->HasPreAgg(start_row_, nrow_);
 }
 
@@ -94,7 +94,7 @@ TsBlockSpan::TsBlockSpan(TSEntityID entity_id, std::shared_ptr<TsBlock> block, i
   if (s != SUCCESS) {
     LOG_ERROR("GetMetricSchema failed. table id [%u], table version [%lu]", scan_version, block->GetTableId());
   }
-  scan_attrs_ = scan_metric->getSchemaInfoExcludeDropped();
+  scan_attrs_ = static_cast<const vector<AttributeInfo>*>(&scan_metric->getSchemaInfoExcludeDropped());
   has_pre_agg_ = block_->HasPreAgg(start_row_, nrow_);
 }
 
@@ -117,13 +117,13 @@ TsBlockSpan::TsBlockSpan(uint32_t vgroup_id, TSEntityID entity_id, std::shared_p
       LOG_ERROR("convert_ Init failed!");
     }
   }
-  scan_attrs_ = scan_schema->getSchemaInfoExcludeDropped();
+  scan_attrs_ = static_cast<const vector<AttributeInfo>*>(&scan_schema->getSchemaInfoExcludeDropped());
   has_pre_agg_ = block_->HasPreAgg(start_row_, nrow_);
 }
 
 TsBlockSpan::TsBlockSpan(uint32_t vgroup_id, TSEntityID entity_id, std::shared_ptr<TsBlock> block, int start, int nrow,
                          const std::shared_ptr<TsTableSchemaManager>& tbl_schema_mgr,
-                         uint32_t scan_version, std::vector<AttributeInfo>& scan_attrs)
+                         uint32_t scan_version, const std::vector<AttributeInfo>* scan_attrs)
     : block_(block),
       vgroup_id_(vgroup_id),
       entity_id_(entity_id),
@@ -165,11 +165,11 @@ KStatus TsBlockSpan::BuildCompressedData(std::string& data) {
   const auto& mgr = CompressorManager::GetInstance();
   // init col offsets
   uint32_t block_data_begin_offset = data.size();
-  size_t col_offsets_len = (scan_attrs_.size() + 1) * sizeof(uint32_t);
+  size_t col_offsets_len = (scan_attrs_->size() + 1) * sizeof(uint32_t);
   std::vector<uint32_t> col_offset((col_offsets_len / sizeof(uint32_t)), 0);
   data.append(reinterpret_cast<char*>(col_offset.data()), col_offsets_len);
   std::string agg_data;
-  size_t agg_col_offsets_len = scan_attrs_.size() * sizeof(uint32_t);
+  size_t agg_col_offsets_len = scan_attrs_->size() * sizeof(uint32_t);
   std::vector<uint32_t> agg_col_offset((col_offsets_len / sizeof(uint32_t)), 0);
   agg_data.append(reinterpret_cast<char*>(agg_col_offset.data()), agg_col_offsets_len);
   // init lsn col data
@@ -190,11 +190,11 @@ KStatus TsBlockSpan::BuildCompressedData(std::string& data) {
     memcpy(data.data() + block_data_begin_offset, &column_block_offset, sizeof(uint32_t));
   }
   // init column block data && column agg data
-  for (uint32_t scan_idx = 0; scan_idx < scan_attrs_.size(); ++scan_idx) {
+  for (uint32_t scan_idx = 0; scan_idx < scan_attrs_->size(); ++scan_idx) {
     bool has_bitmap = scan_idx > 0;
-    DATATYPE d_type = scan_idx != 0 ? static_cast<DATATYPE>(scan_attrs_[scan_idx].type)
+    DATATYPE d_type = scan_idx != 0 ? static_cast<DATATYPE>((*scan_attrs_)[scan_idx].type)
                       : DATATYPE::TIMESTAMP64;
-    int32_t d_size = scan_attrs_[scan_idx].size;
+    int32_t d_size = (*scan_attrs_)[scan_idx].size;
     bool is_var_col = isVarLenType(d_type);
     TsBitmap* b = nullptr;
     TsBitmap bitmap;
@@ -314,9 +314,9 @@ KStatus TsBlockSpan::BuildCompressedData(std::string& data) {
       // sum: 1 byte is_overflow + 8 byte result (int64_t or double)
       sum.resize(9, '\0');
 
-      DATATYPE type = static_cast<DATATYPE>(scan_attrs_[scan_idx].type);
+      DATATYPE type = static_cast<DATATYPE>((*scan_attrs_)[scan_idx].type);
       AggCalculatorV2 aggCalc(fixed_col_value_addr, b, type, d_size, nrow_);
-      auto is_not_null = scan_attrs_[scan_idx].isFlag(AINFO_NOT_NULL);
+      auto is_not_null = (*scan_attrs_)[scan_idx].isFlag(AINFO_NOT_NULL);
       *reinterpret_cast<bool *>(sum.data()) = aggCalc.CalcAggForFlush(is_not_null, count, max.data(),
                                                                       min.data(), sum.data() + 1);
       if (0 != count) {
@@ -395,7 +395,7 @@ KStatus TsBlockSpan::GetColBitmap(uint32_t scan_idx, TsBitmap& bitmap) {
 KStatus TsBlockSpan::GetFixLenColAddr(uint32_t scan_idx, char** value, TsBitmap& bitmap, bool bitmap_required) {
   if (!convert_) {
     TsBitmap blk_bitmap;
-    if (!scan_attrs_[scan_idx].isFlag(AINFO_NOT_NULL)) {
+    if (!(*scan_attrs_)[scan_idx].isFlag(AINFO_NOT_NULL)) {
       auto s = block_->GetColBitmap(scan_idx, scan_attrs_, blk_bitmap);
       if (s != KStatus::SUCCESS) {
         LOG_ERROR("GetColBitmap failed. col id [%u]", scan_idx);
@@ -413,7 +413,7 @@ KStatus TsBlockSpan::GetFixLenColAddr(uint32_t scan_idx, char** value, TsBitmap&
       LOG_ERROR("GetColAddr failed. col id [%u]", scan_idx);
       return s;
     }
-    if (!scan_attrs_[scan_idx].isFlag(AINFO_NOT_NULL)) {
+    if (!(*scan_attrs_)[scan_idx].isFlag(AINFO_NOT_NULL)) {
       if (scan_idx == 0 && nrow_ == block_->GetRowNum()) {
         bitmap = blk_bitmap;
       } else {
@@ -423,7 +423,7 @@ KStatus TsBlockSpan::GetFixLenColAddr(uint32_t scan_idx, char** value, TsBitmap&
         }
       }
     }
-    *value = blk_value + scan_attrs_[scan_idx].size * start_row_;
+    *value = blk_value + (*scan_attrs_)[scan_idx].size * start_row_;
     return SUCCESS;
   }
   return convert_->GetFixLenColAddr(scan_idx, value, bitmap, bitmap_required);

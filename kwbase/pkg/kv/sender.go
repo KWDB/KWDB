@@ -300,7 +300,8 @@ type TxnSender interface {
 	// using ConfigureStepping(SteppingEnabled).
 	//
 	// The method is idempotent.
-	Step(context.Context) error
+	// the timestamp must be updated when the second parameter is true.
+	Step(context.Context, bool) error
 
 	// ConfigureStepping sets the sequencing point behavior.
 	//

@@ -80,9 +80,8 @@ TableScanOperator::TableScanOperator(const TableScanOperator& other, int32_t pro
 }
 
 TableScanOperator::~TableScanOperator() {
-  SafeDeletePointer(handler_);
-  SafeDeletePointer(helper_);
-  SafeDeletePointer(row_batch_);
+  auto ctx = ContextManager::GetThreadContext();
+  Reset(ctx);
 }
 
 EEIteratorErrCode TableScanOperator::Init(kwdbContext_p ctx) {
@@ -242,6 +241,9 @@ EEIteratorErrCode TableScanOperator::Next(kwdbContext_p ctx, DataChunkPtr& chunk
 
 EEIteratorErrCode TableScanOperator::Reset(kwdbContext_p ctx) {
   EnterFunc();
+  SafeDeletePointer(handler_);
+  SafeDeletePointer(helper_);
+  SafeDeletePointer(row_batch_);
   Return(EEIteratorErrCode::EE_OK);
 }
 

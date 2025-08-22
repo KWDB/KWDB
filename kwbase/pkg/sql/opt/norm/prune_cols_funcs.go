@@ -191,8 +191,21 @@ func neededMutationFetchCols(
 		// to compose the keys of rows to delete. Include mutation indexes, since
 		// it is necessary to delete rows even from indexes that are being added
 		// or dropped.
+		var fetchCols opt.ColSet
+		for ord, col := range private.FetchCols {
+			if col != 0 {
+				fetchCols.Add(tabMeta.MetaID.ColumnID(ord))
+			}
+		}
+
 		for i, n := 0, tabMeta.Table.DeletableIndexCount(); i < n; i++ {
 			cols.UnionWith(tabMeta.IndexKeyColumns(i))
+			// to support NEW/OLD in trigger, fetch all cols
+			if tmp, ok := private.TriggerCommands.(*memo.ArrayCommand); ok {
+				if len(tmp.Bodys) > 0 {
+					addFamilyCols(fetchCols)
+				}
+			}
 		}
 	}
 

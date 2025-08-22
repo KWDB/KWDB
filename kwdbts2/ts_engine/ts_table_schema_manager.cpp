@@ -162,7 +162,8 @@ std::shared_ptr<MMapMetricsTable> TsTableSchemaManager::open(uint32_t ts_version
 }
 
 bool TsTableSchemaManager::IsSchemaDirsExist() {
-  return IsExists(table_path_ + "/" + metric_schema_path_) && IsExists(table_path_ + "/" + tag_schema_path_);
+  return IsExists(fs::path(table_path_) / fs::path(metric_schema_path_)) &&
+         IsExists(fs::path(table_path_) / fs::path(tag_schema_path_));
 }
 
 KStatus TsTableSchemaManager::Init() {
@@ -418,9 +419,10 @@ KStatus TsTableSchemaManager::GetTagMeta(uint32_t version, std::vector<TagInfo>&
 
 KStatus TsTableSchemaManager::GetMetricSchema(uint32_t version,
                                               std::shared_ptr<MMapMetricsTable>* schema) {
-  *schema = getMetricsTable(version);
+  auto dst_version = version == 0 ? cur_version_ : version;
+  *schema = getMetricsTable(dst_version);
   if (*schema == nullptr) {
-    LOG_WARN("schema version [%u] does not exists", version);
+    LOG_WARN("schema version [%u] does not exists", dst_version);
     return FAIL;
   }
   return SUCCESS;

@@ -47,13 +47,13 @@ namespace kwdbts {
 
 unsigned seed = std::chrono::system_clock::now().time_since_epoch().count();
 std::mt19937 gen(seed);
-const char schema_directory[]= "schema/";
+const char schema_directory[]= "schema";
 
 TSEngineV2Impl::TSEngineV2Impl(const EngineOptions& engine_options)
     : options_(engine_options),
       read_batch_workers_lock_(RWLATCH_ID_READ_BATCH_DATA_JOB_RWLOCK),
       write_batch_workers_lock_(RWLATCH_ID_WRITE_BATCH_DATA_JOB_RWLOCK),
-      insert_tag_lock_(RWLATCH_ID_ENGINE_INSERT_TAG_RWLOCK) {
+      insert_tag_lock_(EngineOptions::vgroup_max_num * 2 , RWLATCH_ID_ENGINE_INSERT_TAG_RWLOCK) {
   LogInit();
   tables_cache_ = new SharedLruUnorderedMap<KTableKey, TsTable>(EngineOptions::table_cache_capacity_, true);
   char* vgroup_num = getenv("KW_VGROUP_NUM");
@@ -525,19 +525,17 @@ KStatus TSEngineV2Impl::InsertTagData(kwdbContext_p ctx, const KTableKey& table_
                                       bool write_wal, uint32_t& vgroup_id, TSEntityID& entity_id, uint16_t* inc_entity_cnt) {
   bool new_tag;
   TSSlice primary_key = TsRawPayload::GetPrimaryKeyFromSlice(payload_data);
-  RW_LATCH_S_LOCK(&insert_tag_lock_);
   KStatus s = schema_mgr_->GetVGroup(ctx, table_id, primary_key, &vgroup_id, &entity_id, &new_tag);
   if (s != KStatus::SUCCESS) {
-    RW_LATCH_UNLOCK(&insert_tag_lock_);
     return s;
   }
-  RW_LATCH_UNLOCK(&insert_tag_lock_);
   auto vgroup = GetVGroupByID(ctx, vgroup_id);
   assert(vgroup != nullptr);
   if (new_tag) {
-    RW_LATCH_X_LOCK(&insert_tag_lock_);
+    uint64_t hash_point = t1ha1_le(primary_key.data, primary_key.len);
+    insert_tag_lock_.WrLock(hash_point);
     Defer defer{[&](){
-      RW_LATCH_UNLOCK(&insert_tag_lock_);
+      insert_tag_lock_.Unlock(hash_point);
     }};
     s = schema_mgr_->GetVGroup(ctx, table_id, primary_key, &vgroup_id, &entity_id, &new_tag);
     if (s != KStatus::SUCCESS) {
@@ -2035,8 +2033,8 @@ uint64_t begin_hash, uint64_t end_hash, const KwTsSpan& ts_span, uint64_t* snaps
     LOG_ERROR("GetRangeRowCount [%lu] failed.", table_id);
     return s;
   }
-  LOG_INFO("CreateSnapshotForRead range hash[%lu ~ %lu], ts[%ld ~ %ld] need imgrating rows[%lu].",
-      begin_hash, end_hash, ts_span.begin, ts_span.end, count);
+  LOG_INFO("CreateSnapshotForRead version[%u] range hash[%lu ~ %lu], ts[%ld ~ %ld] need imgrating rows[%lu].",
+      ts_snapshot_info.table_version, begin_hash, end_hash, ts_span.begin, ts_span.end, count);
   return KStatus::SUCCESS;
 }
 KStatus TSEngineV2Impl::CreateSnapshotForWrite(kwdbContext_p ctx, const KTableKey& table_id,
