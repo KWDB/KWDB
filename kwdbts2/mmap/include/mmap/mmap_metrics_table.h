@@ -64,6 +64,10 @@ class MMapMetricsTable : public TSObject, public TsTableObject {
     return cols_info_exclude_dropped_;
   }
 
+  DATATYPE GetTsColDataType() {
+    return (DATATYPE)cols_info_exclude_dropped_[0].type;
+  }
+
   inline uint32_t GetVersionNUm() {
     return meta_data_->schema_version;
   }
