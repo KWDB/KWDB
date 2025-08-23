@@ -117,21 +117,21 @@ static std::vector<KwTsSpan> SortAndMergeSpan(const std::vector<KwTsSpan>& ts_sp
   return merged_spans;
 }
 
-TsStorageIteratorV2Impl::TsStorageIteratorV2Impl(std::shared_ptr<TsVGroup>& vgroup, vector<uint32_t>& entity_ids,
+TsStorageIteratorV2Impl::TsStorageIteratorV2Impl(const std::shared_ptr<TsVGroup>& vgroup, vector<uint32_t>& entity_ids,
                                                  std::vector<KwTsSpan>& ts_spans, std::vector<BlockFilter>& block_filter,
-                                                 DATATYPE ts_col_type, std::vector<k_uint32>& kw_scan_cols,
+                                                 std::vector<k_uint32>& kw_scan_cols,
                                                  std::vector<k_uint32>& ts_scan_cols,
-                                                 std::shared_ptr<TsTableSchemaManager> table_schema_mgr,
-                                                 uint32_t table_version) {
+                                                 std::shared_ptr<TsTableSchemaManager>& table_schema_mgr,
+                                                 std::shared_ptr<MMapMetricsTable>& schema) {
   vgroup_ = vgroup;
   entity_ids_ = entity_ids;
   ts_spans_ = SortAndMergeSpan(ts_spans);
   block_filter_ = block_filter;
-  ts_col_type_ = ts_col_type;
+  ts_col_type_ = schema->GetTsColDataType();
   ts_scan_cols_ = ts_scan_cols;
   kw_scan_cols_ = kw_scan_cols;
   table_schema_mgr_ = table_schema_mgr;
-  table_version_ = table_version;
+  schema_ = std::move(schema);
 }
 
 TsStorageIteratorV2Impl::~TsStorageIteratorV2Impl() {
@@ -139,14 +139,9 @@ TsStorageIteratorV2Impl::~TsStorageIteratorV2Impl() {
 
 KStatus TsStorageIteratorV2Impl::Init(bool is_reversed) {
   is_reversed_ = is_reversed;
-  auto ret = table_schema_mgr_->GetMetricSchema(table_version_, &schema_);
-  if (ret != KStatus::SUCCESS) {
-    LOG_ERROR("schema version [%u] does not exists", table_version_);
-    return FAIL;
-  }
   attrs_ = schema_->getSchemaInfoExcludeDropped();
   table_id_ = table_schema_mgr_->GetTableId();
-  db_id_ = vgroup_->GetEngineSchemaMgr()->GetDBIDByTableID(table_id_);
+  db_id_ = table_schema_mgr_->GetDbID();
 
   auto current = vgroup_->CurrentVersion();
   ts_partitions_ = current->GetPartitions(db_id_, ts_spans_, ts_col_type_);
@@ -505,19 +500,18 @@ KStatus TsStorageIteratorV2Impl::ScanEntityBlockSpans(timestamp64 ts) {
   return KStatus::SUCCESS;
 }
 
-TsSortedRawDataIteratorV2Impl::TsSortedRawDataIteratorV2Impl(std::shared_ptr<TsVGroup>& vgroup,
+TsSortedRawDataIteratorV2Impl::TsSortedRawDataIteratorV2Impl(const std::shared_ptr<TsVGroup>& vgroup,
                                                               vector<uint32_t>& entity_ids,
                                                               std::vector<KwTsSpan>& ts_spans,
                                                               std::vector<BlockFilter>& block_filter,
-                                                              DATATYPE ts_col_type,
                                                               std::vector<k_uint32>& kw_scan_cols,
                                                               std::vector<k_uint32>& ts_scan_cols,
-                                                              std::shared_ptr<TsTableSchemaManager> table_schema_mgr,
-                                                              uint32_t table_version,
+                                                              std::shared_ptr<TsTableSchemaManager>& table_schema_mgr,
+                                                              std::shared_ptr<MMapMetricsTable>& schema,
                                                               SortOrder order_type) :
                           TsStorageIteratorV2Impl::TsStorageIteratorV2Impl(vgroup, entity_ids, ts_spans, block_filter,
-                                                                           ts_col_type, kw_scan_cols, ts_scan_cols,
-                                                                           table_schema_mgr, table_version) {
+                                                                           kw_scan_cols, ts_scan_cols,
+                                                                           table_schema_mgr, schema) {
 }
 
 TsSortedRawDataIteratorV2Impl::~TsSortedRawDataIteratorV2Impl() {
@@ -604,14 +598,16 @@ KStatus TsSortedRawDataIteratorV2Impl::Next(ResultSet* res, k_uint32* count, boo
   }
 }
 
-TsAggIteratorV2Impl::TsAggIteratorV2Impl(std::shared_ptr<TsVGroup>& vgroup, vector<uint32_t>& entity_ids,
+TsAggIteratorV2Impl::TsAggIteratorV2Impl(const std::shared_ptr<TsVGroup>& vgroup, vector<uint32_t>& entity_ids,
                                          std::vector<KwTsSpan>& ts_spans, std::vector<BlockFilter>& block_filter,
-                                         DATATYPE ts_col_type, std::vector<k_uint32>& kw_scan_cols,
+                                         std::vector<k_uint32>& kw_scan_cols,
                                          std::vector<k_uint32>& ts_scan_cols, std::vector<k_int32>& agg_extend_cols,
-                                         std::vector<Sumfunctype>& scan_agg_types, std::vector<timestamp64>& ts_points,
-                                         std::shared_ptr<TsTableSchemaManager> table_schema_mgr, uint32_t table_version)
-    : TsStorageIteratorV2Impl::TsStorageIteratorV2Impl(vgroup, entity_ids, ts_spans, block_filter, ts_col_type,
-                                                       kw_scan_cols, ts_scan_cols, table_schema_mgr, table_version),
+                                         std::vector<Sumfunctype>& scan_agg_types,
+                                         const std::vector<timestamp64>& ts_points,
+                                         std::shared_ptr<TsTableSchemaManager>& table_schema_mgr,
+                                         std::shared_ptr<MMapMetricsTable>& schema)
+    : TsStorageIteratorV2Impl::TsStorageIteratorV2Impl(vgroup, entity_ids, ts_spans, block_filter,
+                                                       kw_scan_cols, ts_scan_cols, table_schema_mgr, schema),
       scan_agg_types_(scan_agg_types),
       last_ts_points_(ts_points),
       agg_extend_cols_{agg_extend_cols} {}
@@ -1943,11 +1939,6 @@ KStatus TsOffsetIteratorV2Impl::Init(bool is_reversed) {
   comparator_.is_reversed = is_reversed_;
   decltype(p_times_) t_map(comparator_);
   p_times_.swap(t_map);
-  auto ret = table_schema_mgr_->GetMetricSchema(table_version_, &schema_);
-  if (ret != KStatus::SUCCESS) {
-    LOG_ERROR("schema version [%u] does not exists", table_version_);
-    return FAIL;
-  }
   attrs_ = schema_->getSchemaInfoExcludeDropped();
   db_id_ = table_schema_mgr_->GetDbID();
   table_id_ = table_schema_mgr_->GetTableId();
