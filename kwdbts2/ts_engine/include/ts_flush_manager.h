@@ -144,7 +144,7 @@ class TsFlushJobPool {
     {
       std::unique_lock lk{job_mutex_};
       if (jobs_.size() >= kMaxConcurrentJobNum) {
-        LOG_INFO("Flush job queue is full, wait for a job to finish, %p", job_info.imm_segment.get());
+        LOG_INFO("Flush job queue is full, wait for a job to finish");
         queue_non_full_cv_.wait(lk, [this]() { return jobs_.size() < kMaxConcurrentJobNum; });
       }
       if (stop_flag_.load() != true) {
