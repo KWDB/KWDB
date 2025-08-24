@@ -119,7 +119,7 @@ KStatus pg_result_data(kwdbContext_p ctx, EE_StringInfo strinfo,
           sec += ctx->timezone * 3600;
         }
         tm ts{};
-        gmtime_r(&sec, &ts);
+        ToGMT(sec, ts);
         strftime(ts_format_buf, 32, "%F %T", &ts);
         k_uint8 format_len = strlen(ts_format_buf);
         if (ms != 0) {

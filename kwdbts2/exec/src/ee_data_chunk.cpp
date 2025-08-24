@@ -1059,7 +1059,7 @@ KStatus DataChunk::EncodingValue(kwdbContext_p ctx, k_uint32 row, k_uint32 col, 
       k_int64 seconds = msec / 1000;
       time_t rawtime = (time_t) seconds;
       tm timeinfo;
-      gmtime_r(&rawtime, &timeinfo);
+      ToGMT(rawtime, timeinfo);
 
       stm.tm_year = timeinfo.tm_year;
       stm.tm_mon = timeinfo.tm_mon;
@@ -1107,7 +1107,7 @@ static inline k_uint8 format_timestamp(const CKTime& ck_time, KWDBTypeFamily ret
 
   // sec
   tm ts{};
-  gmtime_r(&adjusted_time.t_timespec.tv_sec, &ts);
+  ToGMT(adjusted_time.t_timespec.tv_sec, ts);
 
   // buf
   char* p = buf;
@@ -1280,30 +1280,6 @@ KStatus DataChunk::PgResultData(kwdbContext_p ctx, k_uint32 row, const EE_String
         DatumPtr raw = GetData(row, col);
         std::memcpy(&val, raw, sizeof(k_int64));
         CKTime ck_time = getCKTime(val, col_info_[col].storage_type, ctx->timezone);
-        // if (return_type == KWDBTypeFamily::TimestampTZFamily) {
-        //   ck_time.t_timespec.tv_sec += ck_time.t_abbv;
-        // }
-        // tm ts{};
-        // gmtime_r(&ck_time.t_timespec.tv_sec, &ts);
-        // strftime(ts_format_buf, 32, "%F %T", &ts);
-        // k_uint8 format_len = strlen(ts_format_buf);
-        // if (ck_time.t_timespec.tv_nsec != 0) {
-        //   snprintf(&ts_format_buf[format_len], sizeof(char[11]), ".%09ld", ck_time.t_timespec.tv_nsec);
-        // }
-        // format_len = strlen(ts_format_buf);
-        // // encode the time Zone Information
-        // if (return_type == KWDBTypeFamily::TimestampTZFamily) {
-        //   const char* timezoneFormat;
-        //   auto timezoneAbs = std::abs(ctx->timezone);
-        //   if (ctx->timezone >= 0) {
-        //     timezoneFormat = "+%02d:00";
-        //     timezoneAbs = ctx->timezone;
-        //   } else {
-        //     timezoneFormat = "-%02d:00";
-        //   }
-        //   snprintf(&ts_format_buf[format_len], sizeof(char[7]), timezoneFormat, timezoneAbs);
-        // }
-        // format_len = strlen(ts_format_buf);
         k_uint8 format_len = format_timestamp(ck_time, return_type, ctx, ts_format_buf);
         // write the length of column value
         if (ee_sendint(info, format_len, 4) != SUCCESS) {
@@ -1445,7 +1421,7 @@ KStatus DataChunk::PgResultData(kwdbContext_p ctx, k_uint32 row, const EE_String
         std::memcpy(&val, raw, sizeof(k_int64));
         CKTime ck_time = getCKTime(val, col_info_[col].storage_type, ctx->timezone);
         tm ts{};
-        gmtime_r(&ck_time.t_timespec.tv_sec, &ts);
+        ToGMT(ck_time.t_timespec.tv_sec, ts);
         strftime(ts_format_buf, 32, "%F %T", &ts);
         k_uint8 format_len = strlen(ts_format_buf);
         format_len = strlen(ts_format_buf);

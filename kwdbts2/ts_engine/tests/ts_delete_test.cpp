@@ -54,12 +54,18 @@ class TestV2DeleteTest : public ::testing::Test {
 
   void CheckRowCount(std::shared_ptr<TsTableSchemaManager> table_schema_mgr, std::shared_ptr<TsVGroup>& entity_v_group, uint32_t entity_id, KwTsSpan& ts_span, uint64_t expect) {
     TsStorageIterator* ts_iter;
-    DATATYPE ts_col_type = table_schema_mgr->GetTsColDataType();
     std::vector<k_uint32> scan_cols = {0, 1, 2};
     std::vector<Sumfunctype> scan_agg_types;
-    auto s = entity_v_group->GetIterator(ctx_, {entity_id}, {ts_span}, {}, ts_col_type,
-                        scan_cols, scan_cols, {}, scan_agg_types, table_schema_mgr,
-                        1, &ts_iter, entity_v_group, {}, false, false);
+    std::shared_ptr<MMapMetricsTable> schema;
+    ASSERT_EQ(table_schema_mgr->GetMetricSchema(1, &schema), KStatus::SUCCESS);
+    std::vector<uint32_t> entity_ids = {entity_id};
+    std::vector<KwTsSpan> ts_spans = {ts_span};
+    std::vector<BlockFilter> block_filter = {};
+    std::vector<k_int32> agg_extend_cols = {};
+    std::vector<timestamp64> ts_points = {};
+    auto s = entity_v_group->GetIterator(ctx_, entity_ids, ts_spans, block_filter,
+                        scan_cols, scan_cols, agg_extend_cols, scan_agg_types, table_schema_mgr,
+                        schema, &ts_iter, entity_v_group, ts_points, false, false);
     ASSERT_EQ(s, KStatus::SUCCESS);
 
     ResultSet res{(k_uint32) scan_cols.size()};
