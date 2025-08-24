@@ -126,7 +126,7 @@ static k_int64 getDateTrunc(k_bool is_unit_const, k_bool type_scale_multi_or_div
     ck_time.t_timespec.tv_sec += ck_time.t_abbv;
     original_timestamp += time_diff;
   }
-  gmtime_r(&ck_time.t_timespec.tv_sec, &ltm);
+  ToGMT(ck_time.t_timespec.tv_sec, ltm);
   if (type_scale != 1) {
     // multi
     if (type_scale_multi_or_divde) {
@@ -1809,7 +1809,7 @@ k_int64 FieldFuncTimeBucket::ValInt() {
     // use 0000-01-01 00:00:00 as start
     std::time_t tt = (std::time_t)original_timestamp / 1000;
     struct std::tm tm;
-    gmtime_r(&tt, &tm);
+    ToGMT(tt, tm);
     tm.tm_sec = 0;
     tm.tm_min = 0;
     tm.tm_hour = 0;
@@ -1953,7 +1953,7 @@ char *FieldFuncCurrentDate::get_ptr(RowBatch *batch) {
 k_int64 FieldFuncCurrentDate::ValInt() {
   time_t t = time(nullptr);
   struct tm ltm;
-  gmtime_r(&t, &ltm);
+  ToGMT(t, ltm);
   ltm.tm_hour = 0;
   ltm.tm_min = 0;
   ltm.tm_sec = 0;
@@ -1966,7 +1966,7 @@ String FieldFuncCurrentDate::ValStr() {
   char buffer[80];
   time_t t = time(nullptr);
   struct tm ltm;
-  gmtime_r(&t, &ltm);
+  ToGMT(t, ltm);
   strftime(buffer, 80, "%Y-%m-%d", &ltm);
   String s(80);
   snprintf(s.ptr_, 80 + 1, "%s", buffer);
@@ -1985,7 +1985,7 @@ char *FieldFuncCurrentTimeStamp::get_ptr(RowBatch *batch) {
   auto ns_since_epoch = std::chrono::duration_cast<std::chrono::nanoseconds>(duration_since_epoch).count();
   time_t t = time(nullptr);
   struct tm ltm;
-  gmtime_r(&t, &ltm);
+  ToGMT(t, ltm);
   ns_since_epoch += (ltm.tm_gmtoff - time_zone_ * 3600) * 1000000000;
   // add precision handle
   if (arg_count_ > 0) {
@@ -2018,7 +2018,7 @@ k_int64 FieldFuncCurrentTimeStamp::ValInt() {
           .count();
   time_t t = time(nullptr);
   struct tm ltm;
-  gmtime_r(&t, &ltm);
+  ToGMT(t, ltm);
   ns_since_epoch += (ltm.tm_gmtoff - time_zone_ * 3600) * 1000000000;
   // add precision handle
   if (arg_count_ > 0) {
@@ -2248,7 +2248,7 @@ String FieldFuncTimeOfDay::ValStr() {
   String s(kArraySize);
   struct tm t;
   memset(&t, 0, sizeof(t));
-  gmtime_r(&timestamp, &t);
+  ToGMT(timestamp, t);
   t.tm_gmtoff = time_zone * 3600;
   std::strftime(s.ptr_, kArraySize, "%a %b %d %H:%M:%S.xxxxxxxxx %Y %z", &t);
   std::string formattedTime(s.ptr_);
@@ -2293,7 +2293,7 @@ char *FieldFuncExpStrftime::get_ptr(RowBatch *batch) {
 
       CKTime ck_time = getCKTime(args_[0]->ValInt(ptr), args_[0]->get_storage_type(), 0);
       struct tm ltm;
-      gmtime_r(&ck_time.t_timespec.tv_sec, &ltm);
+      ToGMT(ck_time.t_timespec.tv_sec, ltm);
       const int kArraySize = this->storage_len_;
       String s(kArraySize);
       try {
@@ -2338,7 +2338,7 @@ String FieldFuncExpStrftime::ValStr() {
   CKTime ck_time =
       getCKTime(args_[0]->ValInt(), args_[0]->get_storage_type(), 0);
   struct tm ltm;
-  gmtime_r(&ck_time.t_timespec.tv_sec, &ltm);
+  ToGMT(ck_time.t_timespec.tv_sec, ltm);
   const int kArraySize = this->storage_len_;
   String s(kArraySize);
   try {

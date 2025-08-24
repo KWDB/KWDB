@@ -55,7 +55,7 @@ KStatus LogWriterFile::FormatAndOut(const LogItem *pItem) {
   k_int32 usec = pItem->time_stamp % 1000000;
   localtime_r(&sec, &tm);
 #ifdef WITH_TESTS
-  gmtime_r(&sec, &tm);
+  ToGMT(sec, tm);
 #endif
   // [D/I/W/E/F][YYMMDD HH:MM:SS.usec] [gettid()] [file:line] LogMsg
   fprintf(p_file_, "%s%02d%02d%2d %02d:%02d:%02d.%06d %ld %s:%d %s\n",
