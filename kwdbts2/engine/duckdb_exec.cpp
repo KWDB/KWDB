@@ -107,11 +107,14 @@ namespace kwdbts {
         std::move(extra_info), parameters, virtual_columns);
   }
 
-  DuckdbExec::DuckdbExec(void *db, void *connect) {
+  DuckdbExec::DuckdbExec(void *db, void *connect, std::string db_path) {
     auto wrapper = reinterpret_cast<DatabaseWrapper *>(db);
     db_ = wrapper;
-    // DuckDB db1("/root/go/src/gitee.com/kwbasedb/kwbase/local/tpch");
-    connect_ = new Connection(*db_->database);
+    db_path_ = std::move(db_path);
+    DuckDB init_db(db_path_ + "/tpch");
+    connect_ = new Connection(init_db);
+    init_db_ = make_shared_ptr<DuckDB>(init_db);
+    //connect_ = new Connection(*db_->database);
     fspecs_ = new FlowSpec();
   }
 
@@ -164,9 +167,9 @@ namespace kwdbts {
 
       kwdbts::DuckdbExec *handle = nullptr;
       if (!req->handle) {
-        handle = new kwdbts::DuckdbExec(req->db, req->connection);
+        handle = new kwdbts::DuckdbExec(req->db, req->connection, std::string(req->db_path.data, req->db_path.len));
         handle->Init();
-        handle->db_path_ = req->db_path;
+
         req->handle = static_cast<char *>(static_cast<void *>(handle));
       } else {
         handle = static_cast<kwdbts::DuckdbExec *>(static_cast<void *>(req->handle));
@@ -176,7 +179,7 @@ namespace kwdbts {
         case EnMqType::MQ_TYPE_DML_SETUP: {
 //          handle->thd_->SetSQL(std::string(req->sql.data, req->sql.len));
           if (req->sql.data) {
-            handle->sql_ = std::string(req->sql.data);
+            handle->sql_ = std::string(req->sql.data, req->sql.len);
           }
           ret = handle->Setup(ctx, message, len, id, uniqueID, resp);
           if (ret != KStatus::SUCCESS) {
@@ -884,50 +887,59 @@ namespace kwdbts {
     KStatus ret = KStatus::SUCCESS;
     // get all database
     std::map<std::string, EmptyStruct> db_map;
-    auto init_dbs = db_->database->instance->GetDatabaseManager().GetDatabases();
+    auto init_dbs = init_db_->instance->GetDatabaseManager().GetDatabases();
     for(auto& init_db : init_dbs) {
       auto name = init_db.get().GetName();
       db_map[name] = {};
     }
 
     connect_->BeginTransaction();
-    for (size_t i=0; i < fspecs_->processors_size(); i++) {
-      const ProcessorSpec &proc = fspecs_->processors(i);
-      if (proc.has_core() && proc.core().has_aptablereader()) {
-        auto apReader = proc.core().aptablereader();
-        auto db_name = apReader.db_name().c_str();
-        if (db_map.find(db_name) == db_map.end()) {
-          // attach database
-          auto attach_ret = AttachDB(db_name,db_map);
-          if (attach_ret == KStatus::FAIL) {
-            connect_->Rollback();
-            return attach_ret;
+    try {
+      for (size_t i=0; i < fspecs_->processors_size(); i++) {
+        const ProcessorSpec &proc = fspecs_->processors(i);
+        if (proc.has_core() && proc.core().has_aptablereader()) {
+          auto apReader = proc.core().aptablereader();
+          auto db_name = apReader.db_name();
+          if (db_map.find(db_name) == db_map.end()) {
+            // attach database
+            auto attach_ret = AttachDB(db_name, db_map);
+            if (attach_ret == KStatus::FAIL) {
+              connect_->Rollback();
+              return attach_ret;
+            }
           }
         }
       }
+      connect_->Commit();
+    } catch (const Exception& e) {
+      connect_->Rollback();
+      return KStatus::FAIL;
     }
-    connect_->Commit();
     return ret;
   }
 
-  KStatus DuckdbExec::AttachDB(const std::string db_name, std::map<std::string, EmptyStruct> &db_map) {
+  KStatus DuckdbExec::AttachDB(std::string &db_name, std::map<std::string, EmptyStruct> &db_map) {
     KStatus ret = KStatus::SUCCESS;
-    DatabaseManager& db_manager = DatabaseManager::Get(*db_->database->instance);
-    auto attach_info = make_uniq<AttachInfo>();
-    attach_info->name = db_name;
-    attach_info->path = db_path_ + "/" + db_name;
-    attach_info->on_conflict = OnCreateConflict::IGNORE_ON_CONFLICT;
-    AttachOptions options(attach_info, duckdb::AccessMode::AUTOMATIC);
-    auto attached_db = db_manager.AttachDatabase(*connect_->context, *attach_info, options);
-    const auto storage_options = attach_info->GetStorageOptions();
-    attached_db->Initialize(*connect_->context, storage_options);
-    if (!options.default_table.name.empty()) {
-      attached_db->GetCatalog().SetDefaultTable(options.default_table.schema, options.default_table.name);
-    }
-    attached_db->FinalizeLoad(*connect_->context);
-    if (attached_db) {
-      db_map[db_name] = {};
-    } else {
+    try {
+      DatabaseManager& db_manager = DatabaseManager::Get(*connect_->context);
+      auto attach_info = make_uniq<AttachInfo>();
+      attach_info->name = db_name;
+      attach_info->path = db_path_ + "/" + db_name;
+      //attach_info->on_conflict = OnCreateConflict::IGNORE_ON_CONFLICT;
+      AttachOptions options(attach_info, duckdb::AccessMode::AUTOMATIC);
+      auto attached_db = db_manager.AttachDatabase(*connect_->context, *attach_info, options);
+      const auto storage_options = attach_info->GetStorageOptions();
+      attached_db->Initialize(*connect_->context, storage_options);
+      if (!options.default_table.name.empty()) {
+        attached_db->GetCatalog().SetDefaultTable(options.default_table.schema, options.default_table.name);
+      }
+      attached_db->FinalizeLoad(*connect_->context);
+      if (attached_db) {
+        db_map[db_name] = {};
+      } else {
+        ret = KStatus::FAIL;
+      }
+    } catch (const Exception& e) {
       ret = KStatus::FAIL;
     }
     return ret;
@@ -957,7 +969,7 @@ namespace kwdbts {
     auto physical_plan = make_uniq<PhysicalPlan>(Allocator::Get(*connect_->context));
 
     // printf("processor size: %d \n", fspecs_->processors_size());
-    for (size_t i=0; i < fspecs_->processors_size(); i++) {
+    for (int i=0; i < fspecs_->processors_size(); i++) {
       const ProcessorSpec &proc = fspecs_->processors(i);
       if (proc.has_core() && proc.core().has_aptablereader()) {
         auto apReader = proc.core().aptablereader();
@@ -965,9 +977,11 @@ namespace kwdbts {
         if (post.output_columns_size() > 0 && post.output_columns_size() != post.output_types_size()) {
           return result;
         }
-        auto db_name = "";
+        std::string db_name;
         if (apReader.has_db_name() && !apReader.db_name().empty()) {
-          db_name = apReader.db_name().c_str();
+          db_name = apReader.db_name();
+        } else {
+          db_name = init_db_->instance->GetDatabaseManager().GetDefaultDatabase(*connect_->context);
         }
         auto table_name = "";
         if (apReader.has_table_name() && !apReader.table_name().empty()) {
@@ -976,11 +990,7 @@ namespace kwdbts {
           return result;
         }
         optional_ptr<Catalog> catalog;
-        if (strcmp(db_name, "") == 0) {
-          catalog = Catalog::GetCatalog(*connect_->context, db_->database->instance->GetDatabaseManager().GetDefaultDatabase(*connect_->context));
-        } else {
-          catalog = Catalog::GetCatalog(*connect_->context, db_name);
-        }
+        catalog = Catalog::GetCatalog(*connect_->context, db_name);
         auto &schema = catalog->GetSchema(*connect_->context, "main");
         auto entry = schema.GetEntry(catalog->GetCatalogTransaction(*connect_->context), CatalogType::TABLE_ENTRY, table_name);
         auto &table = entry->Cast<TableCatalogEntry>();
@@ -1060,30 +1070,37 @@ namespace kwdbts {
       return result;
     }
     connect_->BeginTransaction();
-    auto prepared = ConvertFlowToPhysicalPlan();
-    if (!prepared->physical_plan) {
+    try {
+      auto prepared = ConvertFlowToPhysicalPlan();
+      if (!prepared->physical_plan) {
+        connect_->Rollback();
+        result.error_message = "convert physical plan failed";
+        return result;
+      }
+      auto qurry_result = connect_->KWQuery(sql_, prepared);
+      if (qurry_result->HasError()) {
+        connect_->Rollback();
+        //DetachDB(attach_ret);
+        result.error_message = qurry_result->GetError();
+        return result;
+      } else {
+        result.success = true;
+        connect_->Commit();
+      }
+      char* encoding_buf_;
+      k_uint32 encoding_len_;
+      auto ret = Encoding(ctx, qurry_result.get(), encoding_buf_, encoding_len_);
+      if (ret == KStatus::SUCCESS) {
+        result.value = encoding_buf_;
+        result.len = encoding_len_;
+        result.row_count = qurry_result->RowCount();
+      }
+    } catch (const Exception& e) {
+      result.error_message = e.what();
       connect_->Rollback();
-      result.error_message = "convert physical plan failed";
       return result;
     }
-    auto qurry_result = connect_->KWQuery(sql_, prepared);
-    if (qurry_result->HasError()) {
-      connect_->Rollback();
-      //DetachDB(attach_ret);
-      result.error_message = qurry_result->GetError();
-      return result;
-    } else {
-      result.success = true;
-      connect_->Commit();
-    }
-    char* encoding_buf_;
-    k_uint32 encoding_len_;
-    auto ret = Encoding(ctx, qurry_result.get(), encoding_buf_, encoding_len_);
-    if (ret == KStatus::SUCCESS) {
-      result.value = encoding_buf_;
-      result.len = encoding_len_;
-      result.row_count = qurry_result->RowCount();
-    }
+
    // DetachDB(attach_ret);
     return result;
   }

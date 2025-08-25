@@ -49,7 +49,7 @@ namespace kwdbts {
 
   class DuckdbExec {
   public:
-    DuckdbExec(void *db, void *connect);
+    DuckdbExec(void *db, void *connect, std::string db_path);
     ~DuckdbExec();
 
     void Init(){}
@@ -71,7 +71,7 @@ namespace kwdbts {
 
     KStatus AttachDBs();
 
-    KStatus AttachDB(const std::string db_name, std::map<std::string, EmptyStruct> &db_map);
+    KStatus AttachDB(std::string &db_name, std::map<std::string, EmptyStruct> &db_map);
 
     KStatus DetachDB(duckdb::vector<std::string> dbs);
 
@@ -81,6 +81,7 @@ namespace kwdbts {
     FlowSpec *fspecs_;
     std::string db_path_;
     DatabaseWrapper * db_;
+    duckdb::shared_ptr<DuckDB> init_db_;
     Connection *connect_;
     std::string sql_;
     mutex context_lock_;

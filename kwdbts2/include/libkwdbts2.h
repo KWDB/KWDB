@@ -232,7 +232,7 @@ typedef struct _APQueryInfo {
   DataInfo vectorize_data;
   void *db;
   void *connection;
-  char* db_path;
+  TSSlice db_path;
 } APQueryInfo;
 
 typedef APQueryInfo APRespInfo;
