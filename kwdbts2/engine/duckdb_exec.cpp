@@ -399,6 +399,88 @@ namespace kwdbts {
     Return(SUCCESS);
   }
 
+  KStatus PGResultDataForOneChunk(kwdbContext_p ctx, const DataChunk &chunk, vector<LogicalType> &types,
+                                k_int32 col_count, const EE_StringInfo& info) {
+    EnterFunc();
+    k_uint32 temp_len = info->len;
+    char* temp_addr = nullptr;
+
+    if (ee_appendBinaryStringInfo(info, "D0000", 5) != SUCCESS) {
+      Return(FAIL);
+    }
+
+    // write column quantity
+    if (ee_sendint(info, col_count, 2) != SUCCESS) {
+      Return(FAIL);
+    }
+
+    for (idx_t row = 0; row < chunk.size(); row++) {
+      for (idx_t col = 0; col < chunk.ColumnCount(); col++) {
+        auto val = chunk.GetValue(col, row);
+        if (val.IsNull()) {
+          // write a negative value to indicate that the column is NULL
+          if (ee_sendint(info, -1, 4) != SUCCESS) {
+            Return(FAIL);
+          }
+          continue;
+        }
+
+        switch(types[col].id()) {
+          case LogicalTypeId::BOOLEAN: {
+            // write the length of col value
+            if (ee_sendint(info, 1, 4) != SUCCESS) {
+              Return(FAIL);
+            }
+            auto res = BooleanValue::Get(val);
+            if (res) {
+              // write string
+              if (ee_appendBinaryStringInfo(info, val_str_t, 1) != SUCCESS) {
+                Return(FAIL);
+              }
+            } else {
+              if (ee_appendBinaryStringInfo(info, val_str_f, 1) != SUCCESS) {
+                Return(FAIL);
+              }
+            }
+            break;
+          }
+          case LogicalTypeId::TINYINT:
+          case LogicalTypeId::SMALLINT:
+          case LogicalTypeId::INTEGER:
+          case LogicalTypeId::BIGINT: {
+            auto val_char = val.ToString();
+            auto len = val_char.length();
+            if (ee_sendint(info, len, 4) != SUCCESS) {
+              Return(FAIL);
+            }
+            // write string format
+            if (ee_appendBinaryStringInfo(info, val_char.c_str(), len) != SUCCESS) {
+              Return(FAIL);
+            }
+            break;
+          }
+          default:{
+            auto val_char = val.ToString();
+            auto len = val_char.length();
+            if (ee_sendint(info, len, 4) != SUCCESS) {
+              Return(FAIL);
+            }
+            // write string format
+            if (ee_appendBinaryStringInfo(info, val_char.c_str(), len) != SUCCESS) {
+              Return(FAIL);
+            }
+            break;
+          }
+        }
+      }
+    }
+
+    temp_addr = &info->data[temp_len + 1];
+    k_uint32 n32 = be32toh(info->len - temp_len - 1);
+    memcpy(temp_addr, &n32, 4);
+    Return(SUCCESS);
+  }
+
   KStatus EncodingValue(kwdbContext_p ctx, Value &val, const EE_StringInfo& info, LogicalType &return_types) {
     EnterFunc();
     KStatus ret = KStatus::SUCCESS;
@@ -667,6 +749,12 @@ namespace kwdbts {
     }
 
     auto &coll = res->Collection();
+    // for (auto &chunk : coll.Chunks()) {
+    //   st = PGResultDataForOneChunk(ctx, chunk, res->types, coll.ColumnCount(), msgBuffer);
+    //   if (st == KStatus::FAIL) {
+    //     break;
+    //   }
+    // }
     for (auto &row : coll.Rows()) {
       st = PGResultDataForOneRow(ctx, row, res->types, coll.ColumnCount(), msgBuffer);
       if (st == KStatus::FAIL) {
