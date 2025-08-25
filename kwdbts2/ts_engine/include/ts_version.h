@@ -142,8 +142,10 @@ class TsVGroupVersion {
   TS_LSN max_lsn_ = 0;
 
  public:
+  TsVGroupVersion() : valid_memseg_(std::make_shared<MemSegList>()) {}
   std::vector<std::shared_ptr<const TsPartitionVersion>> GetPartitions(uint32_t dbid,
-    const std::vector<KwTsSpan>& ts_spans, DATATYPE ts_type) const;
+                                                                       const std::vector<KwTsSpan> &ts_spans,
+                                                                       DATATYPE ts_type) const;
 
   std::vector<std::shared_ptr<const TsPartitionVersion>> GetPartitionsToCompact() const;
 
@@ -185,8 +187,11 @@ class TsVersionUpdate {
   bool has_delete_lastseg_ = false;
   std::map<PartitionIdentifier, std::set<uint64_t>> delete_lastsegs_;
 
-  bool has_mem_segments_ = false;
-  std::list<std::shared_ptr<TsMemSegment>> valid_memseg_;
+  // std::list<std::shared_ptr<TsMemSegment>> valid_memseg_;
+  bool has_new_mem_segments_ = false;
+  std::shared_ptr<TsMemSegment> new_memseg_;
+  bool has_del_mem_segments_ = false;
+  std::shared_ptr<TsMemSegment> del_memseg_;
 
   bool has_entity_segment_ = false;
   bool delete_all_prev_entity_segment_ = false;
@@ -207,14 +212,14 @@ class TsVersionUpdate {
   bool NeedRecordFileNumber() const { return has_new_lastseg_ || has_entity_segment_ || has_delete_lastseg_; }
   bool NeedRecord() const { return need_record_; }
   bool MemSegmentsOnly() const {
-    return has_mem_segments_ && !has_new_partition_ && !has_new_lastseg_ && !has_delete_lastseg_ &&
-           !has_entity_segment_ && !has_next_file_number_;
+    return (has_new_mem_segments_ || has_del_mem_segments_) && !has_new_partition_ && !has_new_lastseg_ &&
+           !has_delete_lastseg_ && !has_entity_segment_ && !has_next_file_number_;
   }
 
  public:
   bool Empty() const {
-    return !(has_new_partition_ || has_new_lastseg_ || has_delete_lastseg_ || has_mem_segments_ ||
-             has_entity_segment_ || has_max_lsn_);
+    return !(has_new_partition_ || has_new_lastseg_ || has_delete_lastseg_ || has_new_mem_segments_ ||
+             has_del_mem_segments_ || has_entity_segment_ || has_max_lsn_);
   }
 
   void PartitionDirCreated(const PartitionIdentifier &partition_id) {
@@ -245,9 +250,14 @@ class TsVersionUpdate {
     need_record_ = true;
   }
 
-  void SetValidMemSegments(const std::list<std::shared_ptr<TsMemSegment>> &mem) {
-    valid_memseg_ = mem;
-    has_mem_segments_ = true;
+  void RemoveMemSegment(std::shared_ptr<TsMemSegment> mem) {
+    has_del_mem_segments_ = true;
+    del_memseg_ = std::move(mem);
+  }
+
+  void AddMemSegment(std::shared_ptr<TsMemSegment> mem) {
+    has_new_mem_segments_ = true;
+    new_memseg_ = std::move(mem);
   }
 
   void SetEntitySegment(const PartitionIdentifier &partition_id, EntitySegmentHandleInfo info, bool delete_all_prev_files) {

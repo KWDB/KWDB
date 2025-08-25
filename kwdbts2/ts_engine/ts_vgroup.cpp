@@ -35,6 +35,7 @@
 #include "ts_entity_segment.h"
 #include "ts_entity_segment_builder.h"
 #include "ts_filename.h"
+#include "ts_flush_manager.h"
 #include "ts_io.h"
 #include "ts_iterator_v2_impl.h"
 #include "ts_lastsegment_builder.h"
@@ -86,15 +87,14 @@ KStatus TsVGroup::Init(kwdbContext_p ctx) {
   }
   UpdateAtomicLSN();
 
-  return KStatus::SUCCESS;
-}
-
-KStatus TsVGroup::SetReady() {
-  TsVersionUpdate update;
   std::list<std::shared_ptr<TsMemSegment>> mems;
   mem_segment_mgr_->GetAllMemSegments(&mems);
-  update.SetValidMemSegments(mems);
-  return version_manager_->ApplyUpdate(&update);
+  for (const auto& m : mems) {
+    TsVersionUpdate update;
+    update.AddMemSegment(m);
+    version_manager_->ApplyUpdate(&update);
+  }
+  return KStatus::SUCCESS;
 }
 
 KStatus TsVGroup::CreateTable(kwdbContext_p ctx, const KTableKey& table_id, roachpb::CreateTsTable* meta) {
@@ -740,9 +740,7 @@ KStatus TsVGroup::FlushImmSegment(const std::shared_ptr<TsMemSegment>& mem_seg) 
   }
 
   mem_segment_mgr_->RemoveMemSegment(mem_seg);
-  std::list<std::shared_ptr<TsMemSegment>> mems;
-  mem_segment_mgr_->GetAllMemSegments(&mems);
-  update.SetValidMemSegments(mems);
+  update.RemoveMemSegment(mem_seg);
 
   version_manager_->ApplyUpdate(&update);
   return KStatus::SUCCESS;
