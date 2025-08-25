@@ -1320,8 +1320,8 @@ KStatus TSEngineV2Impl::GetMetaData(kwdbContext_p ctx, const KTableKey& table_id
   ts_table->set_hash_num(table->GetHashNum());
 
   // Get table data schema.
-  std::vector<AttributeInfo> data_schema;
-  s = table_v2->GetSchemaManager()->GetColumnsIncludeDropped(data_schema, cur_table_version);
+  const std::vector<AttributeInfo>* data_schema{nullptr};
+  s = table_v2->GetSchemaManager()->GetColumnsIncludeDroppedPtr(&data_schema, cur_table_version);
   if (s == KStatus::FAIL) {
     LOG_ERROR("GetDataSchemaIncludeDropped failed during GetMetaData, table id is %ld.", table_id)
     return s;
@@ -1340,7 +1340,7 @@ KStatus TSEngineV2Impl::GetMetaData(kwdbContext_p ctx, const KTableKey& table_id
   }
   std::vector<TagInfo> tag_schema_info = tag_version->getIncludeDroppedSchemaInfos();
   // Use data schema and tag schema to construct meta.
-  s = table->GenerateMetaSchema(ctx, meta, data_schema, tag_schema_info, cur_table_version);
+  s = table->GenerateMetaSchema(ctx, meta, *data_schema, tag_schema_info, cur_table_version);
   if (s == KStatus::FAIL) {
     LOG_ERROR("generateMetaSchema failed during GetMetaData, table id is %ld.", table_id)
     return s;

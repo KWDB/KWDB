@@ -634,8 +634,8 @@ KStatus TsVGroup::FlushImmSegment(const std::shared_ptr<TsMemSegment>& mem_seg) 
       return KStatus::FAIL;
     }
 
-    std::vector<AttributeInfo> info;
-    s = table_schema_manager->GetColumnsExcludeDropped(info, span->GetTableVersion());
+    const std::vector<AttributeInfo>* info{nullptr};
+    s = table_schema_manager->GetColumnsExcludeDroppedPtr(&info, span->GetTableVersion());
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("cannot get table[%lu] version[%u] schema info.", table_id, table_version);
       return KStatus::FAIL;
@@ -643,8 +643,8 @@ KStatus TsVGroup::FlushImmSegment(const std::shared_ptr<TsMemSegment>& mem_seg) 
 
     std::shared_ptr<TsBlockSpan> current_span = span;
     while (current_span != nullptr && current_span->GetRowNum() != 0) {
-      timestamp64 first_ts = convertTsToPTime(current_span->GetFirstTS(), static_cast<DATATYPE>(info[0].type));
-      timestamp64 last_ts = convertTsToPTime(current_span->GetLastTS(), static_cast<DATATYPE>(info[0].type));
+      timestamp64 first_ts = convertTsToPTime(current_span->GetFirstTS(), static_cast<DATATYPE>((*info)[0].type));
+      timestamp64 last_ts = convertTsToPTime(current_span->GetLastTS(), static_cast<DATATYPE>((*info)[0].type));
       auto partition = current->GetPartition(table_schema_manager->GetDbID(), first_ts);
       if (partition == nullptr) {
         LOG_WARN("cannot find partition: retry later.")
@@ -691,7 +691,7 @@ KStatus TsVGroup::FlushImmSegment(const std::shared_ptr<TsMemSegment>& mem_seg) 
         int split_idx = *std::upper_bound(IndexRange{0}, IndexRange(current_span->GetRowNum()), partition->GetEndTime(),
                                           [&](timestamp64 val, int idx) {
                                             return val <= convertTsToPTime(current_span->GetTS(idx),
-                                                                          static_cast<DATATYPE>(info[0].type));
+                                                                          static_cast<DATATYPE>((*info)[0].type));
                                           });
 
         std::shared_ptr<TsBlockSpan> front_span;
@@ -1219,9 +1219,9 @@ KStatus TsVGroup::undoPut(kwdbContext_p ctx, TS_LSN log_lsn, TSSlice payload) {
     LOG_ERROR("GetTableSchemaMgr failed.");
     return s;
   }
-  std::vector<AttributeInfo> metric_schema;
-  tb_schema_mgr->GetColumnsExcludeDropped(metric_schema, tbl_version);
-  TsRawPayload p(payload, &metric_schema);
+  const std::vector<AttributeInfo>* metric_schema{nullptr};
+  tb_schema_mgr->GetColumnsExcludeDroppedPtr(&metric_schema, tbl_version);
+  TsRawPayload p(payload, metric_schema);
   TSEntityID entity_id;
   s = getEntityIdByPTag(ctx, table_id, primary_key, &entity_id);
   if (s != KStatus::SUCCESS) {

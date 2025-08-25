@@ -65,17 +65,17 @@ class TsMetricBlockBuilder {
   // TODO(zzr): avoid copy schema;
   // Note: DO NOT USE const reference. If so, col_schemas_ may point to an object created on
   // stack and will be destroyed after the function returns.
-  const std::vector<AttributeInfo> col_schemas_;
+  const std::vector<AttributeInfo>* col_schemas_{nullptr};
   std::vector<std::unique_ptr<TsColumnBlockBuilder>> column_block_builders_;
 
   int count_ = 0;
   std::vector<TS_LSN> lsn_buffer_;
 
  public:
-  explicit TsMetricBlockBuilder(const std::vector<AttributeInfo>& col_schemas)
-      : col_schemas_(col_schemas), column_block_builders_(col_schemas_.size()) {
-    for (size_t i = 0; i < col_schemas.size(); i++) {
-      column_block_builders_[i] = std::make_unique<TsColumnBlockBuilder>(col_schemas_[i]);
+  explicit TsMetricBlockBuilder(const std::vector<AttributeInfo>* col_schemas)
+      : col_schemas_(col_schemas), column_block_builders_(col_schemas_->size()) {
+    for (size_t i = 0; i < col_schemas->size(); i++) {
+      column_block_builders_[i] = std::make_unique<TsColumnBlockBuilder>((*col_schemas_)[i]);
     }
   }
 

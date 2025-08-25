@@ -60,7 +60,7 @@ TsBlockSpan::TsBlockSpan(TSEntityID entity_id, std::shared_ptr<TsBlock> block, i
       nrow_(nrow),
       tbl_schema_mgr_(tbl_schema_mgr) {
   assert(nrow_ >= 1);
-  uint32_t scan_version = scan_schema->GetVersionNUm();
+  uint32_t scan_version = scan_schema->GetVersionNum();
   if (block_->GetTableVersion() != scan_version) {
     convert_ = std::make_unique<TSBlkDataTypeConvert>(*this, tbl_schema_mgr,
                                                     scan_version == 0 ? block->GetTableVersion() : scan_version);
@@ -108,7 +108,7 @@ TsBlockSpan::TsBlockSpan(uint32_t vgroup_id, TSEntityID entity_id, std::shared_p
       nrow_(nrow),
       tbl_schema_mgr_(tbl_schema_mgr) {
   assert(nrow_ >= 1);
-  uint32_t scan_version = scan_schema->GetVersionNUm();
+  uint32_t scan_version = scan_schema->GetVersionNum();
   if (block_->GetTableVersion() != scan_version) {
     convert_ = std::make_unique<TSBlkDataTypeConvert>(*this, tbl_schema_mgr,
                                                     scan_version == 0 ? block->GetTableVersion() : scan_version);
