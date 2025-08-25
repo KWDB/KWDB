@@ -25,16 +25,6 @@
 #include "th_kwdb_dynamic_thread_pool.h"
 #include "ee_exec_pool.h"
 #include "st_tier.h"
-#include "duckdb_exec.h"
-
-#include "duckdb/catalog/catalog_entry/table_catalog_entry.hpp"
-#include "duckdb/common/enums/statement_type.hpp"
-#include "duckdb/common/extra_operator_info.hpp"
-#include "duckdb/execution/operator/scan/physical_table_scan.hpp"
-#include "duckdb/main/client_context.hpp"
-#include "duckdb/main/connection.hpp"
-#include "duckdb/main/database.hpp"
-#include "duckdb/main/prepared_statement_data.hpp"
 
 #ifndef KWBASE_OSS
 #include "ts_config_autonomy.h"
@@ -45,7 +35,6 @@ extern DedupRule g_dedup_rule;
 extern std::shared_mutex g_settings_mutex;
 extern bool g_go_start_service;
 
-using namespace duckdb;
 namespace kwdbts {
 int32_t EngineOptions::iot_interval  = 864000;
 string EngineOptions::home_;  // NOLINT
