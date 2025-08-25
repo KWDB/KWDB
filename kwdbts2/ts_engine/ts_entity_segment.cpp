@@ -61,6 +61,10 @@ KStatus TsEntitySegmentEntityItemFile::GetEntityItem(uint64_t entity_id, TsEntit
     return s;
   }
   entity_item = *reinterpret_cast<TsEntityItem *>(result.data);
+  if (entity_item.table_id == 0) {
+    is_exist = false;
+    return SUCCESS;
+  }
   is_exist = true;
   return s;
 }
@@ -163,8 +167,6 @@ KStatus TsEntitySegmentMetaManager::GetBlockSpans(const TsBlockItemFilterParams&
     return s;
   }
   if (filter.table_id != entity_item.table_id) {
-    LOG_WARN("entity id [%lu], filter table id [%lu], real table id[%lu]",
-              filter.entity_id, filter.table_id, entity_item.table_id);
     return SUCCESS;
   }
   uint64_t last_blk_id = entity_item.cur_block_id;

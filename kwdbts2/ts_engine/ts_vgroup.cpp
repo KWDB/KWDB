@@ -1612,7 +1612,7 @@ KStatus TsVGroup::Vacuum() {
         bool found = false;
         s = entity_segment->GetEntityItem(entity_id, entity_item, found);
         if (s != SUCCESS) {
-          LOG_ERROR("Vacuum failed, GetEntityItem failed")
+          LOG_ERROR("Vacuum failed, GetEntityItem [%u] failed", entity_id)
           return s;
         }
         if (!found || 0 == entity_item.cur_block_id) {
