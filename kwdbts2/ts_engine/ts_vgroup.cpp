@@ -128,7 +128,7 @@ KStatus TsVGroup::PutData(kwdbContext_p ctx, TSTableID table_id, uint64_t mtr_id
     current_lsn = LSNInc();
   }
   // TODO(limeng04): import and export current lsn that temporarily use wal
-  if (engine_options_->wal_level != WALMode::OFF && !write_wal && !engine_options_->use_raft_log_as_wal) {
+  if (EnableWAL() && !write_wal) {
     current_lsn = wal_manager_->FetchCurrentLSN();
   }
   auto s = mem_segment_mgr_->PutData(*payload, entity_id, current_lsn);
@@ -786,8 +786,13 @@ KStatus TsVGroup::GetBlockSpans(TSTableID table_id, uint32_t entity_id, KwTsSpan
   auto ts_partitions = current->GetPartitions(db_id, ts_spans, ts_col_type);
   std::shared_ptr<MMapMetricsTable> metric_schema = table_schema_mgr->GetCurrentMetricsTable();
   for (int32_t index = 0; index < ts_partitions.size(); ++index) {
-    TsScanFilterParams filter{db_id, table_id, vgroup_id_, entity_id,
-                              ts_col_type, wal_manager_->FetchCurrentLSN(), ts_spans};
+    TS_LSN lsn;
+    if (EnableWAL()) {
+      lsn = wal_manager_->FetchCurrentLSN();
+    } else {
+      lsn = LSNInc();
+    }
+    TsScanFilterParams filter{db_id, table_id, vgroup_id_, entity_id, ts_col_type, lsn, ts_spans};
     auto partition_version = ts_partitions[index];
     std::list<std::shared_ptr<TsBlockSpan>> cur_block_span;
     auto s = partition_version->GetBlockSpans(filter, &cur_block_span, table_schema_mgr, metric_schema);
@@ -1552,7 +1557,12 @@ KStatus TsVGroup::MtrRollback(kwdbContext_p ctx, uint64_t& mtr_id, bool is_skip,
 
 KStatus TsVGroup::Vacuum() {
   KStatus s = KStatus::SUCCESS;
-  auto cur_lsn = wal_manager_->FetchCurrentLSN();
+  TS_LSN cur_lsn;
+  if (EnableWAL()) {
+    cur_lsn = wal_manager_->FetchCurrentLSN();
+  } else {
+    cur_lsn = LSNInc();
+  }
   auto now = std::chrono::time_point_cast<std::chrono::seconds>(std::chrono::system_clock::now());
   auto current = version_manager_->Current();
   auto all_partitions = current->GetPartitions();
