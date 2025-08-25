@@ -51,6 +51,9 @@ type deleteNode struct {
 	columns sqlbase.ResultColumns
 
 	run deleteRun
+
+	//trigger is the processing logic structure of a trigger.
+	trigger triggerHelper
 }
 
 // deleteRun contains the run-time state of deleteNode during local execution.
@@ -135,15 +138,28 @@ func (d *deleteNode) BatchedNext(params runParams) (bool, error) {
 			}
 			break
 		}
+		oldValues := d.source.Values()
+		if d.trigger.NeedExecuteBeforeTrigger() {
+			// execute (BEFORE DELETE) stmts in triggers
+			if err := d.trigger.ExecuteBeforeIns(params, &oldValues); err != nil {
+				return false, err
+			}
+		}
 
 		// Process the deletion of the current source row,
 		// potentially accumulating the result row for later.
-		if err := d.processSourceRow(params, d.source.Values()); err != nil {
+		if err := d.processSourceRow(params, oldValues); err != nil {
 			return false, err
 		}
 
 		d.run.rowCount++
 
+		if d.trigger.NeedExecuteAfterTrigger() {
+			// execute (AFTER DELETE) stmts in triggers
+			if err := d.trigger.ExecuteAfterIns(params, &oldValues); err != nil {
+				return false, err
+			}
+		}
 		// Are we done yet with the current batch?
 		if d.run.td.curBatchSize() >= d.run.td.maxBatchSize {
 			break

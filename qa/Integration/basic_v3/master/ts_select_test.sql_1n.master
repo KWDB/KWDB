@@ -59,10 +59,10 @@ INSERT 2
 -------+--------
   1000 |  1000
 (1 row)
-> select e1, attr2 from test_ts.ts_table order by attr2 desc limit 1 offset 1;
+> select e1, attr2 from test_ts.ts_table order by time desc limit 1 offset 1;
    e1  |  attr2
 -------+----------
-  2000 | 1000000
+  1000 | 1000000
 (1 row)
 > select e1, e2, e3, case e1 when 1000 then 10 when 2000 then 20 end as result from test_ts.ts_table where e3 < 300000000000000000;
    e1  |   e2    |         e3         | result

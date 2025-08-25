@@ -14,6 +14,7 @@
 #include "utils/date_time_util.h"
 #include "utils/big_table_utils.h"
 #include "utils/string_utils.h"
+#include "cm_func.h"
 
 #if defined(__GNUC__) && __GNUC__ >= 4
 #define LIKELY(x)   (__builtin_expect((x), 1))
@@ -124,7 +125,7 @@ uint32_t now() {
 BasicDateTime::BasicDateTime(const string &fmt) {
   time_t t = time(NULL);
   struct tm ts;
-  gmtime_r(&t, &ts);
+  ToGMT(t, ts);
 
   cur_year_ = ts.tm_year + 1900;
   // set valid and set invalid when conversion goes bad for save time.
@@ -172,7 +173,7 @@ int BasicDateTime::days(int year, int month, int day) const {
 void BasicDateTime::now(void *dt) {
     time_t t = time(NULL);
     struct tm ts;
-    gmtime_r(&t, &ts);
+    ToGMT(t, ts);
     setDateTime(ts, dt);
 }
 
@@ -283,7 +284,7 @@ void Time::setYMD() {
   time_t t;
   time(&t);
   struct tm tm_now;
-  gmtime_r(&t, &tm_now);
+  ToGMT(t, tm_now);
   setYMD(tm_now);
 }
 
@@ -314,7 +315,7 @@ bool Time::setDateTime(const char *str,  void *dt) {
       time_t t;
       time(&t);
       struct tm tm_now;
-      gmtime_r(&t, &tm_now);
+      ToGMT(t, tm_now);
       ts.tm_year = tm_now.tm_year;
       ts.tm_mon = tm_now.tm_mon;
       ts.tm_mday = tm_now.tm_mday;
@@ -740,49 +741,49 @@ timestamp64 TimeStampDateTime::toTimeStamp64(void *d, int prec)
 
 int TimeStampDateTime::dayNumber(void *dt){
     time_t tt = (time_t)(*(timestamp *)dt);
-    gmtime_r(&tt, &stm_);
+    ToGMT(tt, stm_);
     return days(stm_.tm_year + 1900, stm_.tm_mon + 1, stm_.tm_mday);
 }
 
 int TimeStampDateTime::secondNumber(void *dt){
     time_t tt = (time_t)(*(timestamp *)dt);
-    gmtime_r(&tt, &stm_);
+    ToGMT(tt, stm_);
     return seconds(stm_.tm_hour, stm_.tm_min, stm_.tm_sec);
 }
 
 int TimeStampDateTime::year(void *d) {
   time_t tt = (time_t)(*(timestamp *)d);
-  gmtime_r(&tt, &stm_);
+  ToGMT(tt, stm_);
   return stm_.tm_year + 1900;
 }
 
 int TimeStampDateTime::month(void *d) {
   time_t tt = (time_t)(*(timestamp *)d);
-  gmtime_r(&tt, &stm_);
+  ToGMT(tt, stm_);
   return stm_.tm_mon + 1;
 }
 
 int TimeStampDateTime::day(void *d) {
   time_t tt = (time_t)(*(timestamp *)d);
-  gmtime_r(&tt, &stm_);
+  ToGMT(tt, stm_);
   return stm_.tm_mday;
 }
 
 int TimeStampDateTime::hour(void *d) {
   time_t tt = (time_t)(*(timestamp *)d);
-  gmtime_r(&tt, &stm_);
+  ToGMT(tt, stm_);
   return stm_.tm_hour;
 }
 
 int TimeStampDateTime::minute(void *d) {
   time_t tt = (time_t)(*(timestamp *)d);
-  gmtime_r(&tt, &stm_);
+  ToGMT(tt, stm_);
   return stm_.tm_min;
 }
 
 int TimeStampDateTime::second(void *d) {
   time_t tt = (time_t)(*(timestamp *)d);
-  gmtime_r(&tt, &stm_);
+  ToGMT(tt, stm_);
   return stm_.tm_sec;
 }
 
@@ -800,7 +801,7 @@ int TimeStampDateTime::strformat(void *dt, char *s, size_t max,
   struct tm ts;
   // adjust to local time zone
   time_t tt = (time_t)(*(timestamp *)dt);
-  gmtime_r(&tt, &ts);
+  ToGMT(tt, ts);
   return strftime(s, max, fmt_str.c_str(), &ts);
 }
 
@@ -814,7 +815,7 @@ BasicDateTime * TimeStampDateTime::clone() const
  */
 void TimeStampDateTime::addMonth(int64_t n, void *dt) {
   time_t tt = (time_t)(*(timestamp *)dt);
-  gmtime_r(&tt, &stm_);
+  ToGMT(tt, stm_);
   int tm_total_months = stm_.tm_mon + n;
   int tm_years_diff = tm_total_months / 12;
   int tm_months_diff = tm_total_months % 12;
@@ -955,57 +956,57 @@ timestamp64 TimeStamp64DateTime::toTimeStamp64(void *d, int prec) {
 
 int TimeStamp64DateTime::dayNumber(void *dt){
     time_t tt = (time_t)toTimestampSecond(*(timestamp64 *)dt, multiple_);
-    gmtime_r(&tt, &stm_);
+    ToGMT(tt, stm_);
     return days(stm_.tm_year + 1900, stm_.tm_mon + 1, stm_.tm_mday);
 }
 
 int TimeStamp64DateTime::secondNumber(void *dt){
     time_t tt = (time_t)toTimestampSecond(*(timestamp64 *)dt, multiple_);
-    gmtime_r(&tt, &stm_);
+    ToGMT(tt, stm_);
     return seconds(stm_.tm_hour, stm_.tm_min, stm_.tm_sec)*multiple_
            +(*(timestamp64 *)dt)%multiple_;
 }
 
 int64_t TimeStamp64DateTime::milliSecondNumber(void *dt) {
   time_t tt = (time_t)toTimestampSecond(*(timestamp64 *)dt, multiple_);
-  gmtime_r(&tt, &stm_);
+  ToGMT(tt, stm_);
   int64_t secs = seconds(stm_.tm_hour, stm_.tm_min, stm_.tm_sec);
   return (int64_t)secs*multiple_ + (*(int64_t *)dt)%multiple_;
 }
 
 int TimeStamp64DateTime::year(void *d) {
   time_t tt = (time_t)toTimestampSecond(*(timestamp64 *)d, multiple_);
-  gmtime_r(&tt, &stm_);
+  ToGMT(tt, stm_);
   return stm_.tm_year + 1900;
 }
 
 int TimeStamp64DateTime::month(void *d) {
   time_t tt = (time_t)toTimestampSecond(*(timestamp64 *)d, multiple_);
-  gmtime_r(&tt, &stm_);
+  ToGMT(tt, stm_);
   return stm_.tm_mon + 1;
 }
 
 int TimeStamp64DateTime::day(void *d) {
   time_t tt = (time_t)toTimestampSecond(*(timestamp64 *)d, multiple_);
-  gmtime_r(&tt, &stm_);
+  ToGMT(tt, stm_);
   return stm_.tm_mday;
 }
 
 int TimeStamp64DateTime::hour(void *d) {
   time_t tt = (time_t)toTimestampSecond(*(timestamp64 *)d, multiple_);
-  gmtime_r(&tt, &stm_);
+  ToGMT(tt, stm_);
   return stm_.tm_hour;
 }
 
 int TimeStamp64DateTime::minute(void *d) {
   time_t tt = (time_t)toTimestampSecond(*(timestamp64 *)d, multiple_);
-  gmtime_r(&tt, &stm_);
+  ToGMT(tt, stm_);
   return stm_.tm_min;
 }
 
 int TimeStamp64DateTime::second(void *d) {
   time_t tt = (time_t)toTimestampSecond(*(timestamp64 *)d, multiple_);
-  gmtime_r(&tt, &stm_);
+  ToGMT(tt, stm_);
   return stm_.tm_sec;
 }
 
@@ -1014,7 +1015,7 @@ int TimeStamp64DateTime::second(void *d) {
 
 void TimeStamp64DateTime::addMonth(int64_t n, void *dt) {
   time_t tt = (time_t) toTimestampSecond(*(timestamp64*) dt, multiple_);
-  gmtime_r(&tt, &stm_);
+  ToGMT(tt, stm_);
   int tm_total_months = stm_.tm_mon + n;
   int tm_years_diff = tm_total_months / 12;
   int tm_months_diff = tm_total_months % 12;
@@ -1051,7 +1052,7 @@ int TimeStamp64DateTime::strformat(void *dt, char *s, size_t max,
   time_t tt = *(timestamp64 *)dt / multiple_;
   
   // adjust to local time zone
-  gmtime_r(&tt, &stm_);
+  ToGMT(tt, stm_);
   int len = strftime(s, max, fmt_str.c_str(), &stm_);
 
   // TODO: Refactor code to add virtual function needDecimal() in class
@@ -1172,7 +1173,7 @@ string nowString() {
   char buffer[64];
 
   time(&rawtime);
-  gmtime_r(&rawtime, &lt);
+  ToGMT(rawtime, lt);
   strftime(buffer, sizeof(buffer)-1, "[%Y-%m-%d %H:%M:%S]", &lt);
   return string(buffer);
 }

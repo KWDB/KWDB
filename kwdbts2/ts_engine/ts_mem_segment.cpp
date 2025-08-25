@@ -11,9 +11,11 @@
 
 #include <atomic>
 #include <cstdint>
+#include <iostream>
 #include <list>
 #include <memory>
 #include <mutex>
+#include <stdexcept>
 #include <utility>
 #include <vector>
 
@@ -37,26 +39,51 @@ TsMemSegmentManager::TsMemSegmentManager(TsVGroup* vgroup, TsVersionManager* ver
 }
 
 // WAL CreateCheckPoint call this function to persistent metric datas.
-std::shared_ptr<TsMemSegment> TsMemSegmentManager::SwitchMemSegment() {
-  std::shared_ptr<TsMemSegment> ret;
+// std::shared_ptr<TsMemSegment> TsMemSegmentManager::SwitchMemSegment() {
+//   TsVersionUpdate update;
+//   std::shared_ptr<TsMemSegment> ret;
+//   {
+//     std::unique_lock lock{segment_lock_};
+//     ret = cur_mem_seg_;
+//     cur_mem_seg_ = TsMemSegment::Create(EngineOptions::mem_segment_max_height);
+//     update.AddMemSegment(cur_mem_seg_);
+//     segment_.push_back(cur_mem_seg_);
+//   }
+//   auto row_num = ret->GetRowNum();
+//   uint32_t new_heigh = log2(row_num);
+//   if (EngineOptions::mem_segment_max_height < new_heigh) {
+//     EngineOptions::mem_segment_max_height = new_heigh;
+//   }
+
+//   version_manager_->ApplyUpdate(&update);
+//   return ret;
+// }
+
+bool TsMemSegmentManager::SwitchMemSegment(TsMemSegment* expected_old_mem_seg) {
   {
-    std::unique_lock lock{segment_lock_};
-    ret = cur_mem_seg_;
-    cur_mem_seg_ = TsMemSegment::Create(EngineOptions::mem_segment_max_height);
-    segment_.push_back(cur_mem_seg_);
+    std::shared_lock lock(segment_lock_);
+    if (cur_mem_seg_.get() != expected_old_mem_seg) {
+      return false;
+    }
   }
-  auto row_num = ret->GetRowNum();
+  std::unique_lock lock{segment_lock_};
+  if (cur_mem_seg_.get() != expected_old_mem_seg) {
+    return false;
+  }
+
+  auto row_num = cur_mem_seg_->GetRowNum();
+  cur_mem_seg_ = TsMemSegment::Create(EngineOptions::mem_segment_max_height);
+
+  TsVersionUpdate update;
+  update.AddMemSegment(cur_mem_seg_);
+  segment_.push_back(cur_mem_seg_);
   uint32_t new_heigh = log2(row_num);
   if (EngineOptions::mem_segment_max_height < new_heigh) {
     EngineOptions::mem_segment_max_height = new_heigh;
   }
 
-  TsVersionUpdate update;
-  std::list<std::shared_ptr<TsMemSegment>> memsegs;
-  GetAllMemSegments(&memsegs);
-  update.SetValidMemSegments(memsegs);
   version_manager_->ApplyUpdate(&update);
-  return ret;
+  return true;
 }
 
 void TsMemSegmentManager::RemoveMemSegment(const std::shared_ptr<TsMemSegment>& mem_seg) {
@@ -124,8 +151,9 @@ KStatus TsMemSegmentManager::PutData(const TSSlice& payload, TSEntityID entity_i
     }
     auto p_time = convertTsToPTime(row_ts, ts_type);
     version_manager_->AddPartition(db_id, p_time);
-    // TODO(Yongyan): Somebody needs to update lsn later.
-    row_data.SetData(row_ts, lsn, pd.GetRowData(i));
+
+    auto payload_row_data = pd.GetRowData(i);
+    row_data.SetData(row_ts, lsn, payload_row_data);
     bool ret = cur_mem_seg->AppendOneRow(row_data);
     if (!ret) {
       LOG_ERROR("failed to AppendOneRow for table [%lu]", row_data.table_id);
@@ -140,17 +168,9 @@ KStatus TsMemSegmentManager::PutData(const TSSlice& payload, TSEntityID entity_i
   vgroup_->UpdateEntityAndMaxTs(table_id, max_ts, entity_id);
   vgroup_->UpdateEntityLatestRow(entity_id, max_ts);
 
-
-
-  if (cur_mem_seg->GetMemSegmentSize() > EngineOptions::mem_segment_max_size) {
-    // prepare to switch, add lock
-    {
-      std::unique_lock lk{put_lock_};
-      // check again
-      if (cur_mem_seg->GetMemSegmentSize() > EngineOptions::mem_segment_max_size) {
-        std::shared_ptr<TsMemSegment> segments = this->SwitchMemSegment();
-        TsFlushJobPool::GetInstance().AddFlushJob(vgroup_, segments);
-      }
+  if (cur_mem_seg->GetPayloadMemUsage() > EngineOptions::mem_segment_max_size) {
+    if (this->SwitchMemSegment(cur_mem_seg.get())) {
+      TsFlushJobPool::GetInstance().AddFlushJob(vgroup_, cur_mem_seg);
     }
   }
   return KStatus::SUCCESS;
@@ -235,6 +255,7 @@ bool TsMemSegment::AppendOneRow(TSMemSegRowData& row) {
   auto ok = skiplist_.InsertRowData(row, row_idx_.fetch_add(1));
   if (ok) {
     written_row_num_.fetch_add(1);
+    payload_mem_usage_.fetch_add(row.row_data.len, std::memory_order_relaxed);
   } else {
     LOG_ERROR("insert failed. duplicated rows.");
   }

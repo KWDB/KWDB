@@ -124,13 +124,9 @@ type Builder struct {
 	// (if any).
 	subquery *subquery
 
-	// If set, we are processing a view definition; in this case, catalog caches
+	// If set, we are processing a view/procedure/trigger definition; in this case, catalog caches
 	// are disabled and certain statements (like mutations) are disallowed.
-	insideViewDef bool
-
-	// If set, we are processing a function definition; in this case catalog caches
-	// are disabled and only statements whitelisted are allowed.
-	insideProcDef bool
+	insideObjectDef DefinitionFlags
 
 	// If set, we are trying to compile a condition which contains Subquery expr inside
 	// a procedure, it should not be allowed.
@@ -186,6 +182,62 @@ type Builder struct {
 	IsProcStatementTypeRows bool
 	// OutPutCols records output columns
 	OutPutCols []scopeColumn
+	// TriggerBuilder contains some fields that are only used to build trigger.
+	TriggerInfo *TriggerBuilder
+}
+
+// TriggerBuilder contains some elements that are only used to build trigger.
+type TriggerBuilder struct {
+	// TriggerTab records the TriggerTab information of all tables containing triggers involved in the entire compilation phase.
+	TriggerTab map[cat.StableID]TriggerTab
+	// CurTriggerTabID represents the currently compiled table ID acts as the key in the TriggerTab map.
+	CurTriggerTabID cat.StableID
+	// TriggerNewOldTyp marks whether new/old appears in the body statement of the trigger.
+	TriggerNewOldTyp colNewOldType
+}
+
+const (
+	// InsideViewDef is used in View.
+	InsideViewDef uint8 = 1 << iota // 00000001
+	// InsideProcedureDef is used in procedure.
+	InsideProcedureDef // 00000010
+	// InsideTriggerDef is used in trigger.
+	InsideTriggerDef // 00000100
+)
+
+// DefinitionFlags is a universal flag.
+type DefinitionFlags struct {
+	flags uint8
+}
+
+// SetFlags set one or multiple flags
+func (d *DefinitionFlags) SetFlags(flags uint8) {
+	d.flags |= flags
+}
+
+// ClearFlags clear one or multiple flags
+func (d *DefinitionFlags) ClearFlags(flags uint8) {
+	d.flags &^= flags
+}
+
+// HasFlags checks whether all the specified flags are included.
+func (d *DefinitionFlags) HasFlags(flags uint8) bool {
+	return d.flags&flags == flags
+}
+
+// HasAnyFlags checks whether any of the specified flags are included.
+func (d *DefinitionFlags) HasAnyFlags(flags uint8) bool {
+	return d.flags&flags != 0
+}
+
+// ToggleFlags Toggle the state of one or more flags.
+func (d *DefinitionFlags) ToggleFlags(flags uint8) {
+	d.flags ^= flags
+}
+
+// GetFlags get all current flags
+func (d *DefinitionFlags) GetFlags() uint8 {
+	return d.flags
 }
 
 // TSBuilder holds the information in the semantic parsing process of the ts table.
@@ -216,14 +268,15 @@ func New(
 	stmt tree.Statement,
 ) *Builder {
 	return &Builder{
-		factory:   factory,
-		stmt:      stmt,
-		ctx:       ctx,
-		semaCtx:   semaCtx,
-		evalCtx:   evalCtx,
-		catalog:   catalog,
-		TSInfo:    &TSBuilder{},
-		TableType: make(map[tree.TableType]int),
+		factory:     factory,
+		stmt:        stmt,
+		ctx:         ctx,
+		semaCtx:     semaCtx,
+		evalCtx:     evalCtx,
+		catalog:     catalog,
+		TSInfo:      &TSBuilder{},
+		TableType:   make(map[tree.TableType]int),
+		TriggerInfo: &TriggerBuilder{TriggerTab: make(map[cat.StableID]TriggerTab)},
 	}
 }
 
@@ -323,7 +376,7 @@ func (b *Builder) buildStmtAtRoot(
 func (b *Builder) buildStmt(
 	stmt tree.Statement, desiredTypes []*types.T, inScope *scope,
 ) (outScope *scope) {
-	if b.insideViewDef {
+	if b.insideObjectDef.HasFlags(InsideViewDef) {
 		// A black list of statements that can't be used from inside a view.
 		switch stmt := stmt.(type) {
 		case *tree.Delete, *tree.Insert, *tree.Update, *tree.CreateTable, *tree.CreateView,
@@ -335,7 +388,7 @@ func (b *Builder) buildStmt(
 		}
 	}
 
-	if b.insideProcDef {
+	if b.insideObjectDef.HasFlags(InsideProcedureDef) {
 		switch stmt := stmt.(type) {
 		case *tree.Insert, *tree.Update, *tree.Delete:
 		case *tree.Select, tree.SelectStatement:
@@ -346,6 +399,14 @@ func (b *Builder) buildStmt(
 
 		default:
 			panic(unimplemented.Newf("Stored Procedures", "%s usage inside a Stored Procedure definition", stmt.StatementTag()))
+		}
+	}
+
+	if b.insideObjectDef.HasFlags(InsideTriggerDef) {
+		switch stmt := stmt.(type) {
+		case *tree.Select, *tree.Insert, *tree.Update, *tree.Delete:
+		default:
+			panic(unimplemented.Newf("Triggers", "%s usage inside a Trigger definition", stmt.StatementTag()))
 		}
 	}
 
@@ -384,7 +445,10 @@ func (b *Builder) buildStmt(
 
 	case *tree.CallProcedure:
 		return b.buildCallProcedure(stmt, inScope)
-
+	case *tree.CreateTrigger:
+		return b.buildCreateTrigger(stmt, inScope)
+	case *tree.CreateTriggerPG:
+		return b.buildCreateTriggerPG(stmt, inScope)
 	case *tree.Explain:
 		return b.buildExplain(stmt, inScope)
 

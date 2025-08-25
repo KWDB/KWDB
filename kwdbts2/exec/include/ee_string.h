@@ -103,6 +103,36 @@ struct String {
     return false;
   }
 
+  bool copy_string(const String &str) {
+    /**
+     * @brief Copies content from source string to current string object
+     *
+     * Copies the entire content of the source string (including null
+     * terminator) into the internal buffer of the current String object.
+     * Requires the current object to have sufficient pre-allocated memory
+     * (alloc_length_ >= source length + 1) and dynamic memory allocation flag
+     * (is_alloc_ == true) to succeed.
+     *
+     * @param[in] str Source String object containing data to copy
+     * @return bool True if copy succeeds, false otherwise
+     * @retval true Memory allocation is sufficient and copy completed
+     * @retval false Insufficient memory or non-dynamically allocated buffer
+     *
+     * @note 1. Copies full content including length_ bytes of data and null
+     * terminator
+     *       2. Ensure current object has completed memory allocation before
+     * calling
+     *       3. Null terminator is copied even if source string length is 0
+     */
+    const size_t length = str.length_ + 1;
+    if ((alloc_length_ < length) || (!is_alloc_)) {
+      return false;
+    }
+    std::memcpy(ptr_, str.ptr_, length);
+    length_ = str.length_;
+    return true;
+  }
+
   k_char *ptr_{nullptr};
   size_t length_{0};
   k_uint32 alloc_length_{0};

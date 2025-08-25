@@ -185,6 +185,12 @@ func NewUndefinedProcedureError(name tree.NodeFormatter) error {
 		"procedure %q does not exist", tree.ErrString(name))
 }
 
+// NewUndefinedTriggerError creates an error that represents a missing trigger.
+func NewUndefinedTriggerError(name tree.NodeFormatter) error {
+	return pgerror.Newf(pgcode.UndefinedObject,
+		"trigger %q does not exist", tree.ErrString(name))
+}
+
 // NewUndefinedColumnError creates an error that represents a missing database column.
 func NewUndefinedColumnError(name string) error {
 	return pgerror.Newf(pgcode.UndefinedColumn, "column %q does not exist", name)

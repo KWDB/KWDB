@@ -62,4 +62,73 @@ void SetObjectColNull(char *bitmap, k_uint32 col_index) {
   bitmap[idx] |= (1 << bit);
 }
 
+static const k_uint32 DAY_SECONDS = 86400;
+static const k_uint32 YEAR_DAYS = 365;
+static const k_uint8  MINUTE_SECONDS = 60;
+static const k_uint8  HOUR_MINUTES = 60;
+static const k_uint8  WEEK_DAYS = 7;
+static const k_uint32 MAGIC_NUMBER_1 = 102032;
+static const k_uint32 MAGIC_NUMBER_2 = 102035;
+static const k_uint32 MAGIC_NUMBER_3 = 25568;
+static const k_uint32 MAGIC_NUMBER_4 = 146097;
+static const k_uint32 MAGIC_NUMBER_5 = 153;
+static const k_uint32 MAGIC_NUMBER_6 = 1461;
+
+void ToGMT(time_t ts, tm &tm) {
+  tm.tm_isdst = 0;
+  time_t days = ts / DAY_SECONDS;
+  k_int32 seconds = ts % DAY_SECONDS;
+
+  if ((int)seconds < 0) {
+    --days;
+    seconds += 86400;
+  }
+
+  tm.tm_sec = seconds % MINUTE_SECONDS;
+  seconds /= MINUTE_SECONDS;
+  tm.tm_min = seconds % HOUR_MINUTES;
+  tm.tm_hour = seconds / HOUR_MINUTES;
+
+  time_t t1, t2;
+  t2 = (days + 4) % WEEK_DAYS;
+  if (t2 < 0) {
+    t2 += WEEK_DAYS;
+  }
+  tm.tm_wday = t2;
+  t1 = (days << 2) + MAGIC_NUMBER_1;
+  t2 = t1 / MAGIC_NUMBER_4;
+  if (t1 % MAGIC_NUMBER_4 < 0) {
+    --t2;
+  }
+  --t2;
+  days += t2;
+  t2 >>= 2;
+  days -= t2;
+  t2 = (days << 2) + MAGIC_NUMBER_2;
+  t1 = t2 / MAGIC_NUMBER_6;
+  if (t2 % MAGIC_NUMBER_6 < 0) {
+    --t1;
+  }
+  k_uint32 year_days = days - YEAR_DAYS * t1 - (t1 >> 2) + MAGIC_NUMBER_3;
+
+  k_uint32 num;
+  num = year_days * 5 + 8;
+  tm.tm_mon = num / MAGIC_NUMBER_5;
+  num %= MAGIC_NUMBER_5;
+
+  tm.tm_mday = 1 + num / 5;
+  if (tm.tm_mon >= 12) {
+    tm.tm_mon -= 12;
+    ++t1;
+    year_days -= YEAR_DAYS + 1;
+  } else {
+    if (!((t1 & 3) == 0 && (sizeof(time_t) <= 4 || t1 % 100 != 0 || (t1 + 300) % 400 == 0))) {
+      --year_days;
+    }
+  }
+  tm.tm_yday = year_days;
+  tm.tm_year = t1;
+  return;
+}
+
 }  //  namespace kwdbts

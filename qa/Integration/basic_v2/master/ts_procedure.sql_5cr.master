@@ -1770,7 +1770,7 @@ DROP PROCEDURE
 > CREATE PROCEDURE test_procedure_my_rel.test_limit(i1 INT8) BEGIN DECLARE i2 INT ;DECLARE val1 TIMESTAMP; DECLARE val2 INT2; DECLARE val3 VARCHAR; DECLARE val4 INT2; DECLARE val5 VARCHAR; SELECT count(*) INTO i2 FROM test_procedure_my_ts.t1;DECLARE cur1 CURSOR FOR SELECT k_timestamp FROM test_procedure_my_ts.t1;DECLARE cur2 CURSOR FOR SELECT e1          FROM test_procedure_my_ts.t1;DECLARE cur3 CURSOR FOR SELECT e3          FROM test_procedure_my_ts.t1;DECLARE cur4 CURSOR FOR SELECT code1       FROM test_procedure_my_ts.t1;DECLARE cur5 CURSOR FOR SELECT code2       FROM test_procedure_my_ts.t1;OPEN cur1;OPEN cur2;OPEN cur3;OPEN cur4;OPEN cur5; WHILE i1 <= i2  do fetch cur1 into val1;fetch cur2 into val2;fetch cur3 into val3;fetch cur4 into val4; fetch cur5 into val5; SET i1 = i1 + 1; ENDWHILE; END;
 CREATE PROCEDURE
 > CALL test_procedure_my_rel.test_limit(1);
-ERROR: variable val1 type timestamp not save type timestamptz(9) 
+ERROR: variable val1 type timestamp not save type timestamptz(3) 
 SQLSTATE: 42804
 > ALTER TABLE test_procedure_my_ts.t1 RENAME TO test_procedure_my_ts.t2;
 ERROR: cannot rename timeseries table "test_procedure_my_ts.public.t1" because procedure "test_procedure_my_rel.public.test_limit" depends on it

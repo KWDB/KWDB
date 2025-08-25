@@ -189,7 +189,7 @@ func (b *Builder) buildDataSource(
 		return outScope
 
 	case *tree.StatementSource:
-		if b.insideProcDef {
+		if b.insideObjectDef.HasFlags(InsideProcedureDef) {
 			panic(unimplemented.New("Stored Procedures",
 				"statement source (square bracket syntax) within Stored Procedure"))
 		}
@@ -747,7 +747,7 @@ func (b *Builder) buildCTEs(with *tree.With, inScope *scope) (outScope *scope) {
 	if with == nil {
 		return inScope
 	}
-	if b.insideProcDef {
+	if b.insideObjectDef.HasFlags(InsideProcedureDef) {
 		panic(unimplemented.New("Stored Procedures", "CTE usage inside a Stored Procedure"))
 	}
 

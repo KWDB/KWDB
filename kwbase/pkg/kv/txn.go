@@ -1462,14 +1462,16 @@ func (txn *Txn) Active() bool {
 //
 // In step-wise execution, reads operate at a snapshot established at
 // the last step, instead of the latest write if not yet enabled.
-func (txn *Txn) Step(ctx context.Context) error {
+//
+// the timestamp must be updated when the second parameter is true.
+func (txn *Txn) Step(ctx context.Context, canUpdateTS bool) error {
 	if txn.typ != RootTxn {
 		return errors.WithContextTags(
 			errors.AssertionFailedf("txn.Step() only allowed in RootTxn"), ctx)
 	}
 	txn.mu.Lock()
 	defer txn.mu.Unlock()
-	return txn.mu.sender.Step(ctx)
+	return txn.mu.sender.Step(ctx, canUpdateTS)
 }
 
 // ConfigureStepping configures step-wise execution in the
