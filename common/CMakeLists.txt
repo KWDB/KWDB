@@ -147,6 +147,59 @@ set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 set(LIBRARY_OUTPUT_PATH ${CMAKE_BINARY_DIR}/lib)
 
+
+function(generate_proto protofile)
+  message(STATUS "protofile:${protofile}")
+  get_filename_component(protofolder ${protofile} PATH)
+  get_filename_component(protoname ${protofile} NAME_WLE)
+  message(STATUS "protoname:${protoname}")
+  if (EXISTS "${protofolder}/${protoname}.pb.cc")
+      message("${protoname}.pb.cc is exists")
+      message("mkdir -p ${CMAKE_BINARY_DIR}/tmp")
+      message("cp -arf ${protofile} ${CMAKE_BINARY_DIR}/tmp/${protoname}.proto")
+      message("${PROTOBUF_C} ${CMAKE_BINARY_DIR}/tmp/${protoname}.proto --cpp_out=${CMAKE_BINARY_DIR}/tmp -I ${CMAKE_BINARY_DIR}/tmp -I ${protofolder}")
+      EXECUTE_PROCESS(
+          COMMAND mkdir -p ${CMAKE_BINARY_DIR}/tmp
+          COMMAND cp -arf ${protofile} ${CMAKE_BINARY_DIR}/tmp/
+          COMMAND ${PROTOBUF_C} ${CMAKE_BINARY_DIR}/tmp/${protoname}.proto --cpp_out=${CMAKE_BINARY_DIR}/tmp -I ${CMAKE_BINARY_DIR}/tmp -I ${protofolder}
+      )
+      message("check diff file ${CMAKE_BINARY_DIR}/tmp/${protoname}.pb.cc ${protofolder}/${protoname}.pb.cc")
+      EXECUTE_PROCESS(
+	      COMMAND diff ${CMAKE_BINARY_DIR}/tmp/${protoname}.pb.cc ${protofolder}/${protoname}.pb.cc
+	      COMMAND diff ${CMAKE_BINARY_DIR}/tmp/${protoname}.pb.h ${protofolder}/${protoname}.pb.h
+	      RESULT_VARIABLE changed
+	      OUTPUT_QUIET
+	      )
+      if ( ${changed} EQUAL 1)
+	      message(STATUS "${protofile} has changed")
+        EXECUTE_PROCESS(
+            COMMAND ${PROTOBUF_C} ${protofile} --cpp_out=${protofolder} -I ${protofolder}
+        )
+      else()
+	      message(STATUS "${protofile} has nothing to be done")
+      endif()
+      EXECUTE_PROCESS(
+         COMMAND rm -rf ${CMAKE_BINARY_DIR}/tmp
+      )
+  else()
+      message("${protoname}.pb.cc does not exist")
+      EXECUTE_PROCESS(
+          COMMAND ${PROTOBUF_C} ${protofile} --cpp_out=${protofolder} -I ${protofolder}
+      )
+  endif()
+endfunction(generate_proto)
+
+# Generate C++ files from proto files
+file(GLOB_RECURSE NART_PROTOS_EE
+  src/roachpb/ee_pb_plan.proto)
+file(GLOB_RECURSE NART_PROTOS_META
+  src/roachpb/me_metadata.proto)
+file(GLOB_RECURSE NART_PROTOS_BR
+  src/roachpb/br_internal_service.proto)
+generate_proto(${NART_PROTOS_META})
+generate_proto(${NART_PROTOS_EE})
+generate_proto(${NART_PROTOS_BR})
+
 file(GLOB COMMON_SRC
         src/mem/*.cpp
         src/log/*.cpp
@@ -155,7 +208,8 @@ file(GLOB COMMON_SRC
         src/common/*.cpp
         src/data_struct/*.cpp
         src/latch/*.cpp
-        src/thread/*.cpp)
+        src/thread/*.cpp
+        src/roachpb/*.cc)
 
 list(FILTER COMMON_SRC EXCLUDE REGEX ".*/test/.*")
 
@@ -165,6 +219,7 @@ add_library(${COMMON_LIB} SHARED ${COMMON_SRC})
 target_include_directories(${COMMON_LIB}
         PUBLIC src/h
         PRIVATE src/include
+        PRIVATE src/roachpb
         PRIVATE ../kwdbts2/common/include
         PUBLIC ../kwdbts2/latch/include
         ../kwdbts2/third_party/gtest-1.8.1/fused-src
@@ -181,6 +236,7 @@ if (KMALLOC_OVERRIDE)
     target_include_directories(${COMMON_OVERRIDE_LIB}
             PUBLIC src/h
             PRIVATE src/include
+            PRIVATE src/roachpb
             PRIVATE ../kwdbts2/common/include
             ../kwdbts2/third_party/gtest-1.8.1/fused-src
             )
@@ -224,6 +280,7 @@ if (WITH_TESTS)
         target_include_directories(${tname}
                 PUBLIC src/h
                 PRIVATE src/include
+                PRIVATE src/roachpb
                 PRIVATE ../kwdbts2/common/include
                 PRIVATE src/mem/test/h
                 ../kwdbts2/third_party/gtest-1.8.1/fused-src

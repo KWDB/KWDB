@@ -69,21 +69,6 @@ bool EngineOptions::is_single_node_ = false;
 int EngineOptions::table_cache_capacity_ = 1000;
 std::atomic<int64_t> kw_used_anon_memory_size;
 
-  APEngineImpl::APEngineImpl(kwdbContext_p ctx) {
-  }
-
-  KStatus APEngineImpl::OpenEngine(kwdbContext_p ctx, APEngine** engine) {
-    auto* engineImpl = new APEngineImpl(ctx);
-    *engine = engineImpl;
-    return KStatus::SUCCESS;
-  }
-
-  KStatus APEngineImpl::Execute(kwdbContext_p ctx, APQueryInfo* req, APRespInfo* resp) {
-    KStatus ret = DuckdbExec::ExecQuery(ctx, req, resp);
-    return ret;
-  }
-
-
 void EngineOptions::init() {
   char * env_var = getenv(ENV_KW_HOME);
   if (env_var) {

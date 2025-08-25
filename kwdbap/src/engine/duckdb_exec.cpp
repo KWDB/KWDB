@@ -30,13 +30,25 @@
 #include "duckdb/execution/executor.hpp"
 #include "duckdb/execution/operator/helper/physical_batch_collector.hpp"
 
-#include "ee_global.h"
 #include "lg_api.h"
 #include "cm_func.h"
-#include "ee_string_info.h"
-#include "ee_encoding.h"
 
 namespace kwdbts {
+
+  APEngineImpl::APEngineImpl(kwdbContext_p ctx) {
+  }
+
+  KStatus APEngineImpl::OpenEngine(kwdbContext_p ctx, APEngine** engine) {
+    auto* engineImpl = new APEngineImpl(ctx);
+    *engine = engineImpl;
+    return KStatus::SUCCESS;
+  }
+
+  KStatus APEngineImpl::Execute(kwdbContext_p ctx, APQueryInfo* req, APRespInfo* resp) {
+    KStatus ret = DuckdbExec::ExecQuery(ctx, req, resp);
+    return ret;
+  }
+
   bool checkDuckdbParam(void *db, void *connect) {
     auto database = static_cast<duckdb_database>(db);
     if (!database) {

@@ -14,9 +14,7 @@
 #include "duckdb.h"
 #include "cm_assert.h"
 #include "kwdb_type.h"
-#include "libkwdbts2.h"
 #include "ee_pb_plan.pb.h"
-#include "ee_global.h"
 
 #include "duckdb/main/capi/capi_internal.hpp"
 #include "duckdb/main/client_context.hpp"
@@ -27,6 +25,18 @@ using namespace duckdb;
 using duckdb::DatabaseWrapper;
 
 namespace kwdbts {
+
+  /**
+ * @brief APEngineImpl
+ */
+  class APEngineImpl : public APEngine {
+   public:
+    APEngineImpl(kwdbContext_p ctx);
+
+    static KStatus OpenEngine(kwdbContext_p ctx, APEngine** engine);
+
+    KStatus Execute(kwdbContext_p ctx, APQueryInfo* req, APRespInfo* resp) override;
+  };
 
   struct EmptyStruct {};
 

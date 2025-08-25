@@ -541,33 +541,7 @@ struct TSEngine {
   virtual void AlterTableCacheCapacity(int capacity) = 0;
 };
 
-struct APEngine {
-  virtual ~APEngine() {}
-
-  /**
- * @brief  calculate pushdown
- * @param[in] req
- * @param[out]  resp
- *
- * @return KStatus
- */
-  virtual KStatus Execute(kwdbContext_p ctx, APQueryInfo* req, APRespInfo* resp) = 0;
-};
-
 namespace kwdbts {
-
-  /**
- * @brief APEngineImpl
- */
-  class APEngineImpl : public APEngine {
-   public:
-    APEngineImpl(kwdbContext_p ctx);
-
-    static KStatus OpenEngine(kwdbContext_p ctx, APEngine** engine);
-
-    KStatus Execute(kwdbContext_p ctx, APQueryInfo* req, APRespInfo* resp) override;
-  };
-
 /**
  * @brief TSEngineImpl
  */

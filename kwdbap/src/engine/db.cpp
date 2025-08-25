@@ -16,20 +16,54 @@
 #include <thread>
 
 #include "duckdb.hpp"
+#include "duckdb_exec.h"
 
-TSStatus APOpen(APEngine** engine, TSSlice dir, APOptions options) {
-  *engine = new APEngine();
-  (*engine)->db = new duckdb::DuckDB({dir.data, dir.len});
-  return TSStatus{nullptr, 0};
-}
+// TSStatus APOpen(APEngine** engine, TSSlice dir, APOptions options) {
+//   *engine = new APEngine();
+//   (*engine)->db = new duckdb::DuckDB({dir.data, dir.len});
+//   return TSStatus{nullptr, 0};
+// }
 
-TSStatus APClose(APEngine* engine) {
-  if(engine){
-    if(engine->db){
-      delete (duckdb::DuckDB *)(engine->db);
-    }
-    delete engine;
+// TSStatus APClose(APEngine* engine) {
+//   if(engine){
+//     if(engine->db){
+//       delete (duckdb::DuckDB *)(engine->db);
+//     }
+//     delete engine;
+//   }
+//   return TSStatus{nullptr, 0};
+// }
+
+
+TSStatus APOpen(APEngine** engine) {
+  kwdbContext_t context;
+  kwdbContext_p ctx = &context;
+  KStatus s = InitServerKWDBContext(ctx);
+  if (s != KStatus::SUCCESS) {
+    return ToTsStatus("InitServerKWDBContext Error!");
   }
-  return TSStatus{nullptr, 0};
+
+  APEngine* apEngine;
+  s = APEngineImpl::OpenEngine(ctx, &apEngine);
+  if (s == KStatus::FAIL) {
+    return ToTsStatus("OpenEngine Internal Error!");
+  }
+  *engine = apEngine;
+  return kTsSuccess;
 }
-Gitee - 基于 Git 的代码托管和研发协作平台
+
+TSStatus APExecQuery(APEngine* engine, APQueryInfo* req, APRespInfo* resp) {
+  kwdbContext_t context;
+  kwdbContext_p ctx_p = &context;
+  KStatus s = InitServerKWDBContext(ctx_p);
+  if (s != KStatus::SUCCESS) {
+    return ToTsStatus("InitServerKWDBContext Error!");
+  }
+  s = engine->Execute(ctx_p, req, resp);
+  if (s != KStatus::SUCCESS) {
+    return ToTsStatus("Execute Error!");
+  }
+
+  LOG_ERROR("MQ_TYPE_DML_PG_RESULT = %d, code = %d", resp->ret, resp->code);
+  return kTsSuccess;
+}
