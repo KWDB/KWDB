@@ -305,8 +305,8 @@ KStatus TsEntityBlock::LoadColData(int32_t col_idx, const std::vector<AttributeI
     TsBitmap* bitmap = is_not_null ? nullptr : &column_blocks_[col_idx + 1].bitmap;
     bool ok = mgr.DecompressData(data, bitmap, n_rows_, &plain);
     if (!ok) {
-      LOG_ERROR("block segment column[%u] data decompress failed, entity segment is [%s]", col_idx + 1,
-                GetEntitySegmentPath().c_str());
+      LOG_ERROR("block segment column[%u] data decompress failed, entity segment is [%s], handle info %s", col_idx + 1,
+                GetEntitySegmentPath().c_str(), GetHandleInfoStr().c_str());
       return KStatus::FAIL;
     }
     // save decompressed col block data
@@ -644,6 +644,10 @@ std::string TsEntityBlock::GetEntitySegmentPath() {
   return entity_segment_->GetPath();
 }
 
+std::string TsEntityBlock::GetHandleInfoStr() {
+  return entity_segment_->GetHandleInfoStr();
+}
+
 TsEntitySegment::TsEntitySegment(const fs::path& root, EntitySegmentHandleInfo info)
     : dir_path_(root), meta_mgr_(root, info), block_file_(root, info), agg_file_(root, info), info_(info) {
   Open();
@@ -779,5 +783,13 @@ KStatus TsEntitySegment::GetColumnAgg(int32_t col_idx, TsEntityBlock *block) {
   }
 
   return KStatus::SUCCESS;
+}
+
+std::string TsEntitySegment::GetHandleInfoStr() {
+  string str = "{" + std::to_string(info_.header_e_file_number) + ", "
+                + std::to_string(info_.header_b_info.file_number) + ", "
+                + std::to_string(info_.datablock_info.file_number) + ", "
+                + std::to_string(info_.agg_info.file_number) + "}";
+  return str;
 }
 }  //  namespace kwdbts

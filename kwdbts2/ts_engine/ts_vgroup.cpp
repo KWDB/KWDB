@@ -1598,12 +1598,15 @@ KStatus TsVGroup::Vacuum() {
         continue;
       }
 
-      LOG_INFO("Vacuum partition [vgroup_%d]-[%ld, %ld) begin", vgroup_id_, partition->GetStartTime(),
-                                                                partition->GetEndTime() - 1);
       auto max_entity_id = entity_segment->GetEntityNum();
 
       auto vacuumer = std::make_unique<TsEntitySegmentVacuumer>(root_path, this->version_manager_.get());
       vacuumer->Open();
+      auto handle_info = vacuumer->GetHandleInfo();
+      LOG_INFO("Vacuum partition [vgroup_%d]-[%ld, %ld) begin, handle info {%lu, %lu, %lu, %lu}",
+                vgroup_id_, partition->GetStartTime(), partition->GetEndTime() - 1,
+                handle_info.header_e_file_number, handle_info.header_b_info.file_number,
+                handle_info.datablock_info.file_number, handle_info.agg_info.file_number);
 
       auto mem_segments = partition->GetAllMemSegments();
       std::list<std::pair<TSEntityID, TS_LSN>> entity_max_lsn;
