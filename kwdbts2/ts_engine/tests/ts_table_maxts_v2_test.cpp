@@ -68,8 +68,8 @@ TEST_F(TestTsTableMaxTSV2, InsertOneRecord) {
   s = engine_->GetTableSchemaMgr(ctx_, table_id, table_schema_mgr);
   ASSERT_EQ(s , KStatus::SUCCESS);
 
-  std::vector<AttributeInfo> metric_schema;
-  s = table_schema_mgr->GetMetricMeta(1, metric_schema);
+  const std::vector<AttributeInfo>* metric_schema{nullptr};
+  s = table_schema_mgr->GetMetricMeta(1, &metric_schema);
   ASSERT_EQ(s , KStatus::SUCCESS);
 
   std::vector<TagInfo> tag_schema;
@@ -77,7 +77,7 @@ TEST_F(TestTsTableMaxTSV2, InsertOneRecord) {
   ASSERT_EQ(s , KStatus::SUCCESS);
 
   timestamp64 start_ts = 8640000;
-  auto payload = GenRowPayload(metric_schema, tag_schema ,table_id, 1, 1, 1, start_ts);
+  auto payload = GenRowPayload(*metric_schema, tag_schema ,table_id, 1, 1, 1, start_ts);
   uint16_t inc_entity_cnt;
   uint32_t inc_unordered_cnt;
   DedupResult dedup_result{0, 0, 0, TSSlice {nullptr, 0}};
@@ -110,8 +110,8 @@ TEST_F(TestTsTableMaxTSV2, InsertManyTags) {
   s = engine_->GetTableSchemaMgr(ctx_, table_id, table_schema_mgr);
   ASSERT_EQ(s , KStatus::SUCCESS);
 
-  std::vector<AttributeInfo> metric_schema;
-  s = table_schema_mgr->GetMetricMeta(1, metric_schema);
+  const std::vector<AttributeInfo>* metric_schema;
+  s = table_schema_mgr->GetMetricMeta(1, &metric_schema);
   ASSERT_EQ(s , KStatus::SUCCESS);
 
   std::vector<TagInfo> tag_schema;
@@ -124,7 +124,7 @@ TEST_F(TestTsTableMaxTSV2, InsertManyTags) {
   uint32_t inc_unordered_cnt;
   DedupResult dedup_result{0, 0, 0, TSSlice {nullptr, 0}};
   for (size_t i = 1; i <= entity_num; ++i) {
-    auto payload = GenRowPayload(metric_schema, tag_schema ,table_id, 1, i, 1, start_ts - i);
+    auto payload = GenRowPayload(*metric_schema, tag_schema ,table_id, 1, i, 1, start_ts - i);
     s = engine_->PutData(ctx_, table_id, 0, &payload, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
     free(payload.data);
     ASSERT_EQ(s, KStatus::SUCCESS);
@@ -155,8 +155,8 @@ TEST_F(TestTsTableMaxTSV2, InsertManyTags1) {
   s = engine_->GetTableSchemaMgr(ctx_, table_id, table_schema_mgr);
   ASSERT_EQ(s , KStatus::SUCCESS);
 
-  std::vector<AttributeInfo> metric_schema;
-  s = table_schema_mgr->GetMetricMeta(1, metric_schema);
+  const std::vector<AttributeInfo>* metric_schema{nullptr};
+  s = table_schema_mgr->GetMetricMeta(1, &metric_schema);
   ASSERT_EQ(s , KStatus::SUCCESS);
 
   std::vector<TagInfo> tag_schema;
@@ -169,7 +169,7 @@ TEST_F(TestTsTableMaxTSV2, InsertManyTags1) {
   uint32_t inc_unordered_cnt;
   DedupResult dedup_result{0, 0, 0, TSSlice {nullptr, 0}};
   for (size_t i = 1; i <= entity_num; ++i) {
-    auto payload = GenRowPayload(metric_schema, tag_schema ,table_id, 1, i, 1, start_ts + i);
+    auto payload = GenRowPayload(*metric_schema, tag_schema ,table_id, 1, i, 1, start_ts + i);
     s = engine_->PutData(ctx_, table_id, 0, &payload, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
     free(payload.data);
     ASSERT_EQ(s, KStatus::SUCCESS);
@@ -201,8 +201,8 @@ TEST_F(TestTsTableMaxTSV2, restart) {
   s = engine_->GetTableSchemaMgr(ctx_, table_id, table_schema_mgr);
   ASSERT_EQ(s , KStatus::SUCCESS);
 
-  std::vector<AttributeInfo> metric_schema;
-  s = table_schema_mgr->GetMetricMeta(1, metric_schema);
+  const std::vector<AttributeInfo>* metric_schema{nullptr};
+  s = table_schema_mgr->GetMetricMeta(1, &metric_schema);
   ASSERT_EQ(s , KStatus::SUCCESS);
 
   std::vector<TagInfo> tag_schema;
@@ -215,7 +215,7 @@ TEST_F(TestTsTableMaxTSV2, restart) {
   uint32_t inc_unordered_cnt;
   DedupResult dedup_result{0, 0, 0, TSSlice {nullptr, 0}};
   for (size_t i = 1; i <= entity_num; ++i) {
-    auto payload = GenRowPayload(metric_schema, tag_schema ,table_id, 1, i, 1, start_ts + i);
+    auto payload = GenRowPayload(*metric_schema, tag_schema ,table_id, 1, i, 1, start_ts + i);
     s = engine_->PutData(ctx_, table_id, 0, &payload, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
     free(payload.data);
     ASSERT_EQ(s, KStatus::SUCCESS);
@@ -261,8 +261,8 @@ TEST_F(TestTsTableMaxTSV2, deleteSomeData) {
   s = engine_->GetTableSchemaMgr(ctx_, table_id, table_schema_mgr);
   ASSERT_EQ(s , KStatus::SUCCESS);
 
-  std::vector<AttributeInfo> metric_schema;
-  s = table_schema_mgr->GetMetricMeta(1, metric_schema);
+  const std::vector<AttributeInfo>* metric_schema{nullptr};
+  s = table_schema_mgr->GetMetricMeta(1, &metric_schema);
   ASSERT_EQ(s , KStatus::SUCCESS);
 
   std::vector<TagInfo> tag_schema;
@@ -275,7 +275,7 @@ TEST_F(TestTsTableMaxTSV2, deleteSomeData) {
   uint32_t inc_unordered_cnt;
   DedupResult dedup_result{0, 0, 0, TSSlice {nullptr, 0}};
   for (size_t i = 1; i <= entity_num; ++i) {
-    auto payload = GenRowPayload(metric_schema, tag_schema ,table_id, 1, i, 1, start_ts + i);
+    auto payload = GenRowPayload(*metric_schema, tag_schema ,table_id, 1, i, 1, start_ts + i);
     s = engine_->PutData(ctx_, table_id, 0, &payload, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
     free(payload.data);
     ASSERT_EQ(s, KStatus::SUCCESS);

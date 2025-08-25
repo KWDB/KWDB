@@ -60,8 +60,8 @@ class OperatorTestBase : public ::testing::Test {
     std::shared_ptr<kwdbts::TsTableSchemaManager> schema_mgr;
     KStatus s = engine_->GetTableSchemaMgr(ctx_, table_id_, schema_mgr);
     EXPECT_EQ(s, KStatus::SUCCESS);
-    std::vector<AttributeInfo> metric_schema;
-    s = schema_mgr->GetMetricMeta(1, metric_schema);
+    const std::vector<AttributeInfo>* metric_schema{nullptr};
+    s = schema_mgr->GetMetricMeta(1, &metric_schema);
     EXPECT_EQ(s, KStatus::SUCCESS);
     std::vector<TagInfo> tag_schema;
     s = schema_mgr->GetTagMeta(1, tag_schema);
@@ -69,7 +69,7 @@ class OperatorTestBase : public ::testing::Test {
     int entity_num = 3;
     int entity_rows = 10;
     int start_ts = 1000;
-    auto pay_load = GenRowPayload(metric_schema, tag_schema, table_id_, 1, entity_num, entity_rows, start_ts);
+    auto pay_load = GenRowPayload(*metric_schema, tag_schema, table_id_, 1, entity_num, entity_rows, start_ts);
     uint16_t inc_entity_cnt;
     uint32_t inc_unordered_cnt;
     DedupResult dedup_result{0, 0, 0, TSSlice{nullptr, 0}};

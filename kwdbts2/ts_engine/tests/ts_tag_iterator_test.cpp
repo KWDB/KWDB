@@ -66,8 +66,8 @@ TEST_F(TestEngine, tagiterator) {
   s = ts_engine_->GetTableSchemaMgr(ctx_, cur_table_id, table_schema_mgr);
   ASSERT_EQ(s , KStatus::SUCCESS);
 
-  std::vector<AttributeInfo> metric_schema;
-  s = table_schema_mgr->GetMetricMeta(1, metric_schema);
+  const std::vector<AttributeInfo>* metric_schema{nullptr};
+  s = table_schema_mgr->GetMetricMeta(1, &metric_schema);
   ASSERT_EQ(s , KStatus::SUCCESS);
 
   std::vector<TagInfo> tag_schema;
@@ -76,7 +76,7 @@ TEST_F(TestEngine, tagiterator) {
 
   KTimestamp start_ts1 = 3600;
   TSSlice data_value{};
-  data_value = GenRowPayload(metric_schema, tag_schema ,cur_table_id, 1, start_ts1, 1, start_ts1);
+  data_value = GenRowPayload(*metric_schema, tag_schema ,cur_table_id, 1, start_ts1, 1, start_ts1);
 
   TSTableID ts_id(cur_table_id);
   uint16_t inc_entity_cnt;
