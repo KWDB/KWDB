@@ -32,22 +32,21 @@ class TsBlock;
 // notice: make sure block_ no free, while TSBlkSpanDataTypeConvert exists.
 class TSBlkDataTypeConvert {
  private:
-  TsBlock* block_ = nullptr;
-  uint32_t start_row_idx_ = 0;
-  uint32_t row_num_ = 0;
   std::list<char*> alloc_mems_;
 
  public:
+  uint32_t block_version_ = 0;
   uint32_t scan_version_ = 0;
   std::shared_ptr<SchemaVersionConv> version_conv_;
   std::shared_ptr<TsTableSchemaManager> tbl_schema_mgr_;
   uint64_t key_;
+  const std::vector<AttributeInfo>* scan_attrs_ = nullptr;
 
  public:
   TSBlkDataTypeConvert() = default;
 
-  explicit TSBlkDataTypeConvert(TsBlockSpan& blk_span,
-                                const std::shared_ptr<TsTableSchemaManager>& tbl_schema_mgr, uint32_t scan_version);
+  explicit TSBlkDataTypeConvert(uint32_t block_version, uint32_t scan_version,
+                                const std::shared_ptr<TsTableSchemaManager>& tbl_schema_mgr);
 
   ~TSBlkDataTypeConvert() {
     for (auto mem : alloc_mems_) {
@@ -61,14 +60,6 @@ class TSBlkDataTypeConvert {
   KStatus Init();
 
   std::unique_ptr<TSBlkDataTypeConvert> NewConvertOnlyChangeBlockSpan();
-
-  void SetStartRowIdx(uint32_t start_row_idx) {
-    start_row_idx_ = start_row_idx;
-  }
-
-  void SetRowNum(uint32_t row_num) {
-    row_num_ = row_num;
-  }
 
   int ConvertDataTypeToMem(uint32_t scan_col, int32_t new_type_size, void* old_mem, uint16_t old_var_len,
                            std::shared_ptr<void>* new_mem);
@@ -87,17 +78,18 @@ class TSBlkDataTypeConvert {
   int32_t GetColType(uint32_t scan_idx) { return (*version_conv_->scan_attrs_)[scan_idx].type; }
 
   // dest type is fixed len datatype.
-  KStatus GetFixLenColAddr(uint32_t scan_idx, char** value, TsBitmap& bitmap, bool bitmap_required = true);
+  KStatus GetFixLenColAddr(TsBlockSpan* blk_span, uint32_t scan_idx, char** value,
+    TsBitmap& bitmap, bool bitmap_required = true);
   // dest type is varlen datatype.
-  KStatus GetVarLenTypeColAddr(uint32_t row_idx, uint32_t scan_idx, DataFlags& flag, TSSlice& data);
-  KStatus GetColBitmap(uint32_t scan_idx, TsBitmap& bitmap);
-  KStatus getColBitmapConverted(uint32_t scan_idx, TsBitmap& bitmap);
-  KStatus GetPreCount(uint32_t scan_idx, uint16_t& count);
-  KStatus GetPreSum(uint32_t scan_idx, int32_t size, void* &pre_sum, bool& is_overflow);
-  KStatus GetPreMax(uint32_t scan_idx, void* &pre_max);
-  KStatus GetPreMin(uint32_t scan_idx, int32_t size, void* &pre_min);
-  KStatus GetVarPreMax(uint32_t scan_idx, TSSlice& pre_max);
-  KStatus GetVarPreMin(uint32_t scan_idx, TSSlice& pre_min);
+  KStatus GetVarLenTypeColAddr(TsBlockSpan* blk_span, uint32_t row_idx, uint32_t scan_idx, DataFlags& flag, TSSlice& data);
+  KStatus GetColBitmap(TsBlockSpan* blk_span, uint32_t scan_idx, TsBitmap& bitmap);
+  KStatus getColBitmapConverted(TsBlockSpan* blk_span, uint32_t scan_idx, TsBitmap& bitmap);
+  KStatus GetPreCount(TsBlockSpan* blk_span, uint32_t scan_idx, uint16_t& count);
+  KStatus GetPreSum(TsBlockSpan* blk_span, uint32_t scan_idx, int32_t size, void* &pre_sum, bool& is_overflow);
+  KStatus GetPreMax(TsBlockSpan* blk_span, uint32_t scan_idx, void* &pre_max);
+  KStatus GetPreMin(TsBlockSpan* blk_span, uint32_t scan_idx, int32_t size, void* &pre_min);
+  KStatus GetVarPreMax(TsBlockSpan* blk_span, uint32_t scan_idx, TSSlice& pre_max);
+  KStatus GetVarPreMin(TsBlockSpan* blk_span, uint32_t scan_idx, TSSlice& pre_min);
 };
 
 

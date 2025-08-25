@@ -85,34 +85,29 @@ class TsBlockSpan {
   TSEntityID entity_id_ = 0;
   int start_row_ = 0, nrow_ = 0;
   bool has_pre_agg_{false};
-  const std::vector<AttributeInfo>* scan_attrs_ = nullptr;
+  const std::vector<AttributeInfo>* scan_attrs_;  // used only if block version equals scan version.
 
  public:
-  std::shared_ptr<TSBlkDataTypeConvert> convert_ = nullptr;
+  std::shared_ptr<TSBlkDataTypeConvert> convert_;
 
   friend TSBlkDataTypeConvert;
 
  public:
   TsBlockSpan() = default;
 
-  TsBlockSpan(TSEntityID entity_id, std::shared_ptr<TsBlock> block, int start, int nrow,
-              const std::shared_ptr<TsTableSchemaManager>& tbl_schema_mgr,
-              std::shared_ptr<MMapMetricsTable>& scan_schema);
-
-  TsBlockSpan(TSEntityID entity_id, std::shared_ptr<TsBlock> block, int start, int nrow,
-              const std::shared_ptr<TsTableSchemaManager>& tbl_schema_mgr,
-              uint32_t scan_version);
-
   TsBlockSpan(uint32_t vgroup_id, TSEntityID entity_id, std::shared_ptr<TsBlock> block, int start, int nrow,
-              const std::shared_ptr<TsTableSchemaManager>& tbl_schema_mgr,
-              std::shared_ptr<MMapMetricsTable>& scan_schema);
-
-  TsBlockSpan(uint32_t vgroup_id, TSEntityID entity_id, std::shared_ptr<TsBlock> block, int start, int nrow,
-              const std::shared_ptr<TsTableSchemaManager>& tbl_schema_mgr,
+              std::shared_ptr<TSBlkDataTypeConvert>& convert,
               uint32_t scan_version, const std::vector<AttributeInfo>* scan_attrs);
 
-  TsBlockSpan(const TsBlockSpan& src, std::shared_ptr<TsBlock> block, int start, int nrow);
+  TsBlockSpan(const TsBlockSpan& src, std::shared_ptr<TsBlock> block, int start, int nrow, TSEntityID entity_id = 0);
 
+  static KStatus GenDataConvert(uint32_t blk_version, uint32_t scan_version,
+    const std::shared_ptr<TsTableSchemaManager>& tbl_schema_mgr, std::shared_ptr<TSBlkDataTypeConvert>& ret);
+
+  static KStatus MakeNewBlockSpan(TsBlockSpan* src_blk_span, uint32_t vgroup_id,
+    TSEntityID entity_id, std::shared_ptr<TsBlock> block, int start, int nrow,
+    uint32_t scan_version, const std::vector<AttributeInfo>* scan_attrs,
+    const std::shared_ptr<TsTableSchemaManager>& tbl_schema_mgr, std::shared_ptr<TsBlockSpan>& ret);
   bool operator<(const TsBlockSpan& other) const;
   void operator=(TsBlockSpan& other) = delete;
 
@@ -223,7 +218,7 @@ class TsBlockSpan {
     if (!convert_) {
       return block_->GetPreCount(scan_idx, count);
     }
-    return convert_->GetPreCount(scan_idx, count);
+    return convert_->GetPreCount(this, scan_idx, count);
   }
   KStatus GetPreSum(uint32_t scan_idx, void* &pre_sum, bool& is_overflow) {
     if (!convert_) {
@@ -231,13 +226,13 @@ class TsBlockSpan {
       return block_->GetPreSum(scan_idx, size, pre_sum, is_overflow);
     }
     int32_t size = (*convert_->version_conv_->blk_attrs_)[scan_idx].size;
-    return convert_->GetPreSum(scan_idx, size, pre_sum, is_overflow);
+    return convert_->GetPreSum(this, scan_idx, size, pre_sum, is_overflow);
   }
   KStatus GetPreMax(uint32_t scan_idx, void* &pre_max) {
     if (!convert_) {
       return block_->GetPreMax(scan_idx, pre_max);
     }
-    return convert_->GetPreMax(scan_idx, pre_max);
+    return convert_->GetPreMax(this, scan_idx, pre_max);
   }
   KStatus GetPreMin(uint32_t scan_idx, void* &pre_min) {
     if (!convert_) {
@@ -245,19 +240,19 @@ class TsBlockSpan {
       return block_->GetPreMin(scan_idx, size, pre_min);
     }
     int32_t size = (*convert_->version_conv_->blk_attrs_)[scan_idx].size;
-    return convert_->GetPreMin(scan_idx, size, pre_min);
+    return convert_->GetPreMin(this, scan_idx, size, pre_min);
   }
   KStatus GetVarPreMax(uint32_t scan_idx, TSSlice& pre_max) {
     if (!convert_) {
       return block_->GetVarPreMax(scan_idx, pre_max);
     }
-    return convert_->GetVarPreMax(scan_idx, pre_max);
+    return convert_->GetVarPreMax(this, scan_idx, pre_max);
   }
   KStatus GetVarPreMin(uint32_t scan_idx, TSSlice& pre_min) {
     if (!convert_) {
       return block_->GetVarPreMin(scan_idx, pre_min);
     }
-    return convert_->GetVarPreMin(scan_idx, pre_min);
+    return convert_->GetVarPreMin(this, scan_idx, pre_min);
   }
 
   KStatus UpdateFirstLastCandidates(const std::vector<k_uint32>& ts_scan_cols,
@@ -276,9 +271,6 @@ class TsBlockSpan {
     assert(row_num <= nrow_);
     assert(block_ != nullptr);
     nrow_ -= row_num;
-    if (convert_) {
-      convert_->SetRowNum(nrow_);
-    }
   }
 
   void TrimFront(int row_num) {
@@ -286,10 +278,6 @@ class TsBlockSpan {
     assert(block_ != nullptr);
     start_row_ += row_num;
     nrow_ -= row_num;
-    if (convert_) {
-      convert_->SetStartRowIdx(start_row_);
-      convert_->SetRowNum(nrow_);
-    }
   }
 };
 }  // namespace kwdbts

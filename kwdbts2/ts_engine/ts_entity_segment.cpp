@@ -181,14 +181,15 @@ KStatus TsEntitySegmentMetaManager::GetBlockSpans(const TsBlockItemFilterParams&
     if (IsTsLsnInSpans(cur_blk_item->min_ts, cur_blk_item->min_lsn, filter.spans_) &&
         IsTsLsnInSpans(cur_blk_item->max_ts, cur_blk_item->max_lsn, filter.spans_)) {
       std::shared_ptr<TsEntityBlock> block = std::make_shared<TsEntityBlock>(filter.table_id, cur_blk_item, blk_segment);
-      if (template_blk_span != nullptr) {
-        block_spans.push_front(make_shared<TsBlockSpan>(*template_blk_span, std::move(block), 0, block->GetRowNum()));
-      } else {
-        auto cur_blk_span = make_shared<TsBlockSpan>(filter.vgroup_id, filter.entity_id, std::move(block), 0,
-                                                      block->GetRowNum(), tbl_schema_mgr, scan_schema);
-        template_blk_span = cur_blk_span.get();
-        block_spans.push_front(std::move(cur_blk_span));
+      std::shared_ptr<TsBlockSpan> cur_blk_span;
+      s = TsBlockSpan::MakeNewBlockSpan(template_blk_span, filter.vgroup_id, filter.entity_id, block, 0, block->GetRowNum(),
+        scan_schema->GetVersionNUm(), &(scan_schema->getSchemaInfoExcludeDropped()), tbl_schema_mgr, cur_blk_span);
+      if (s != KStatus::SUCCESS) {
+        LOG_ERROR("MakeNewBlockSpan failed, entity_id=%lu, blk_id=%lu", filter.entity_id, last_blk_id);
+        return s;
       }
+      template_blk_span = cur_blk_span.get();
+      block_spans.push_front(std::move(cur_blk_span));
     } else if (IsTsLsnSpanCrossSpans(filter.spans_, {cur_blk_item->min_ts, cur_blk_item->max_ts},
                               {cur_blk_item->min_lsn, cur_blk_item->max_lsn})) {
       std::shared_ptr<TsEntityBlock> block = std::make_shared<TsEntityBlock>(filter.table_id, cur_blk_item,
@@ -203,16 +204,16 @@ KStatus TsEntitySegmentMetaManager::GetBlockSpans(const TsBlockItemFilterParams&
         if (row_spans[i].second <= 0) {
           continue;
         }
-        if (template_blk_span != nullptr) {
-          block_spans.push_front(make_shared<TsBlockSpan>(*template_blk_span, block,
-            row_spans[i].first, row_spans[i].second));
-        } else {
-          auto cur_blk_span = make_shared<TsBlockSpan>(filter.vgroup_id, filter.entity_id, block, row_spans[i].first,
-                                                        row_spans[i].second, tbl_schema_mgr,
-                                                        scan_schema);
-          template_blk_span = cur_blk_span.get();
-          block_spans.push_front(std::move(cur_blk_span));
+        std::shared_ptr<TsBlockSpan> cur_blk_span;
+        s = TsBlockSpan::MakeNewBlockSpan(template_blk_span, filter.vgroup_id, filter.entity_id, block,
+          row_spans[i].first, row_spans[i].second,
+          scan_schema->GetVersionNUm(), &(scan_schema->getSchemaInfoExcludeDropped()), tbl_schema_mgr, cur_blk_span);
+        if (s != KStatus::SUCCESS) {
+          LOG_ERROR("MakeNewBlockSpan failed, entity_id=%lu, blk_id=%lu", filter.entity_id, last_blk_id);
+          return s;
         }
+        template_blk_span = cur_blk_span.get();
+        block_spans.push_front(std::move(cur_blk_span));
         // Because block item traverses from back to front, use push_front
       }
     }
