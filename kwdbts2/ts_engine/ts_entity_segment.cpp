@@ -305,7 +305,8 @@ KStatus TsEntityBlock::LoadColData(int32_t col_idx, const std::vector<AttributeI
     TsBitmap* bitmap = is_not_null ? nullptr : &column_blocks_[col_idx + 1].bitmap;
     bool ok = mgr.DecompressData(data, bitmap, n_rows_, &plain);
     if (!ok) {
-      LOG_ERROR("block segment column[%u] data decompress failed", col_idx + 1);
+      LOG_ERROR("block segment column[%u] data decompress failed, entity segment is [%s]", col_idx + 1,
+                GetEntitySegmentPath().c_str());
       return KStatus::FAIL;
     }
     // save decompressed col block data
@@ -637,6 +638,10 @@ inline KStatus TsEntityBlock::GetVarPreMin(uint32_t blk_col_idx, TSSlice& pre_mi
   pre_min.len = *reinterpret_cast<uint32_t*>(pre_agg + sizeof(uint16_t) + sizeof(uint32_t));
   pre_min.data = pre_agg + sizeof(uint16_t) + sizeof(uint32_t) * 2 + max_len;
   return KStatus::SUCCESS;
+}
+
+std::string TsEntityBlock::GetEntitySegmentPath() {
+  return entity_segment_->GetPath();
 }
 
 TsEntitySegment::TsEntitySegment(const fs::path& root, EntitySegmentHandleInfo info)
