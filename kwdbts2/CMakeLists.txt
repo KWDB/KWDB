@@ -137,51 +137,6 @@ add_definitions(-DTHREAD_SAFE)
 # add_definitions(-DNDEBUG)
 add_definitions(-DNEW_COUNT)
 
-# try to do some estimate on parallel digree used by make -j
-# first, check total memory, assuming we can have one compile job for every 4GB mem
-# second, take nproc result.  We take the smaller one as -j parameter
-execute_process(
-    COMMAND bash -c "free -t -g | tail -n 1 | awk '{print $2}' | xargs -I {} expr {} / 4"
-    RESULT_VARIABLE result1
-    OUTPUT_VARIABLE value1
-    ERROR_VARIABLE error_output1
-)
-
-execute_process(
-    COMMAND nproc
-    RESULT_VARIABLE result2
-    OUTPUT_VARIABLE value2
-    ERROR_VARIABLE error_output1
-)
-
-# taking a pretty big value as init
-set(DEDUCTED_PARALLEL_DEGREE "1024")
-
-# if result1 is 0, assign the result to DEDUCTED_PARALLEL_DEGREE
-if (${result1} EQUAL 0)
-    string(STRIP "${value1}" value1)
-    math(EXPR mem_by_four "${value1}")
-    message(STATUS "Parallel degree estimation by memory is ${mem_by_four}")
-    set(DEDUCTED_PARALLEL_DEGREE ${mem_by_four})
-endif ()
-
-# if nproc returns, and if it's smaller than current value, take it
-if (${result2} EQUAL 0)
-    string(STRIP "${value2}" value2)
-    math(EXPR proc_num "${value2}")
-    message(STATUS "Parallel degree by nproc is ${proc_num}")
-    if (${DEDUCTED_PARALLEL_DEGREE} GREATER ${proc_num})
-      set(DEDUCTED_PARALLEL_DEGREE ${proc_num})
-    endif ()
-endif ()
-
-# to prevent the original big value.  In case it's still very big
-# the above two steps fail.  Take 4 as safe value
-if (${DEDUCTED_PARALLEL_DEGREE} GREATER 1023)
-    set(DEDUCTED_PARALLEL_DEGREE 4)
-endif ()
-message(STATUS "Final decision on parallel degree is: ${DEDUCTED_PARALLEL_DEGREE}")
-
 FIND_PACKAGE(OpenMP REQUIRED)
 if(OPENMP_FOUND)
     message("OPENMP FOUND")
@@ -210,39 +165,13 @@ ExternalProject_Add(
         ${CMAKE_COMMAND} -E copy_directory "${BRPC_SOURCE_DIR}" "${BRPC_BUILD_DIR}"
         COMMAND cd "${BRPC_BUILD_DIR}" && sh ./config_brpc.sh --headers=/usr/include "--libs=/usr/lib /usr/lib64"
     BUILD_COMMAND
-        cd "${BRPC_BUILD_DIR}" && make -j${DEDUCTED_PARALLEL_DEGREE}
+        cd "${BRPC_BUILD_DIR}" && $(MAKE) -j4
     BUILD_IN_SOURCE 0
     INSTALL_COMMAND
         ${CMAKE_COMMAND} -E make_directory "${BRPC_OUTPUT_DIR}/include"
         COMMAND ${CMAKE_COMMAND} -E make_directory "${BRPC_OUTPUT_DIR}/lib"
         COMMAND ${CMAKE_COMMAND} -E copy_directory "${BRPC_BUILD_DIR}/output/include" "${BRPC_OUTPUT_DIR}/include"
         COMMAND ${CMAKE_COMMAND} -E copy_directory "${BRPC_BUILD_DIR}/output/lib" "${BRPC_OUTPUT_DIR}/lib"
-)
-
-
-# duckdb setup
-set(DUCKDB_VERSION 1.3.2)
-set(DUCKDB_SOURCE_DIR "${PROJECT_SOURCE_DIR}/third_party/duckdb-${DUCKDB_VERSION}")
-set(DUCKDB_BUILD_DIR "${DUCKDB_SOURCE_DIR}/build")
-if ("${CMAKE_BUILD_TYPE}" STREQUAL "Debug")
-    set(DUCKDB_PREFIX_DIR "${DUCKDB_BUILD_DIR}/debug")
-    set(DUCKDB_BUILD_TYPE "debug")
-else ()
-    set(DUCKDB_PREFIX_DIR "${DUCKDB_BUILD_DIR}/release")
-    set(DUCKDB_BUILD_TYPE "release")
-endif ()
-set(DUCKDB_OUTPUT_DIR "${DUCKDB_PREFIX_DIR}")
-message(STATUS "Setting up duckdb from source: ${DUCKDB_SOURCE_DIR} in ${DUCKDB_BUILD_TYPE} mode")
-
-ExternalProject_Add(
-    duckdb
-    SOURCE_DIR "${DUCKDB_SOURCE_DIR}"
-    PREFIX "${DUCKDB_PREFIX_DIR}"
-    BINARY_DIR "${DUCKDB_BUILD_DIR}"
-    BUILD_COMMAND
-        cd "${DUCKDB_SOURCE_DIR}" && make "${DUCKDB_BUILD_TYPE}" -j
-    # the below line is intended to bypass the "install" action driven by explicit "install" target
-    INSTALL_COMMAND ""
 )
 
 set(MODULE_NAME kwdbts2)
@@ -308,7 +237,6 @@ set(TS_INCLUDE
         ../common/src/include
         third_party/gtest-1.8.1/fused-src
         third_party/brpc-1.9.0/src
-        ${DUCKDB_SOURCE_DIR}/src/include
         ${BRPC_OUTPUT_DIR}/include
         include
         roachpb
@@ -319,7 +247,6 @@ set(TS_INCLUDE
         exec/include
         statistic/include
         brpc/include
-        ${DUCKDB_PREFIX_DIR}/src/include
         )
 if (NOT KWBASE_OSS)
     list(APPEND TS_INCLUDE icl/autonomy/include)
@@ -358,40 +285,12 @@ if (ENABLE_COVERAGE)
   list(APPEND KWDBTS2_SERVER_LIB_SRC ${KWDBTS2_SERVER_EXEC_SRCS})
 endif()
 # Add the server module source files to the dynamic library
-add_library(${KWDBTS2_SERVER_LIB} SHARED ${KWDBTS2_SERVER_LIB_SRC} engine/duckdb_exec.cpp)
+add_library(${KWDBTS2_SERVER_LIB} SHARED ${KWDBTS2_SERVER_LIB_SRC})
 
-# Set brpc and duckdb library dependency
+# Set brpc library dependency
 add_dependencies(${KWDBTS2_SERVER_LIB} brpc)
-add_dependencies(${KWDBTS2_SERVER_LIB} duckdb)
-# the asan and ubsan checking in duckdb is disable.  One might need to turn on this
-# in case he needs this testing.
-# if ("${CMAKE_BUILD_TYPE}" STREQUAL "Debug")
-#     target_link_libraries(${KWDBTS2_SERVER_LIB} PRIVATE ubsan asan)
-# endif ()
 target_link_libraries(${KWDBTS2_SERVER_LIB} PRIVATE ${BRPC_OUTPUT_DIR}/lib/libbrpc.a)
-target_link_libraries(${KWDBTS2_SERVER_LIB} PRIVATE
-        -Wl,--whole-archive
-        ${DUCKDB_PREFIX_DIR}/tools/sqlite3_api_wrapper/libsqlite3_api_wrapper_static.a
-        ${DUCKDB_PREFIX_DIR}/src/libduckdb_static.a
-        ${DUCKDB_PREFIX_DIR}/third_party/utf8proc/libduckdb_utf8proc.a
-        ${DUCKDB_PREFIX_DIR}/third_party/mbedtls/libduckdb_mbedtls.a
-        ${DUCKDB_PREFIX_DIR}/third_party/libpg_query/libduckdb_pg_query.a
-        ${DUCKDB_PREFIX_DIR}/third_party/fmt/libduckdb_fmt.a
-        ${DUCKDB_PREFIX_DIR}/third_party/re2/libduckdb_re2.a
-        ${DUCKDB_PREFIX_DIR}/third_party/fastpforlib/libduckdb_fastpforlib.a
-        ${DUCKDB_PREFIX_DIR}/third_party/hyperloglog/libduckdb_hyperloglog.a
-        ${DUCKDB_PREFIX_DIR}/third_party/yyjson/libduckdb_yyjson.a
-        ${DUCKDB_PREFIX_DIR}/third_party/miniz/libduckdb_miniz.a
-        ${DUCKDB_PREFIX_DIR}/third_party/skiplist/libduckdb_skiplistlib.a
-        ${DUCKDB_PREFIX_DIR}/third_party/zstd/libduckdb_zstd.a
-        ${DUCKDB_PREFIX_DIR}/third_party/fsst/libduckdb_fsst.a
-        ${DUCKDB_PREFIX_DIR}/extension/jemalloc/libjemalloc_extension.a
-        ${DUCKDB_PREFIX_DIR}/extension/core_functions/libcore_functions_extension.a
-        ${DUCKDB_PREFIX_DIR}/extension/parquet/libparquet_extension.a
-        ${DUCKDB_PREFIX_DIR}/extension/mysql_scanner/libmysql_scanner_extension.a
-        -Wl,--no-whole-archive
-        )
-target_link_libraries(${KWDBTS2_SERVER_LIB} PRIVATE gflags ssl lz4 mysqlclient)
+target_link_libraries(${KWDBTS2_SERVER_LIB} PRIVATE gflags ssl lz4)
 
 # Import the header files required by the server module
 target_include_directories(${KWDBTS2_SERVER_LIB} PRIVATE
@@ -484,10 +383,4 @@ add_custom_target(cov
 add_custom_target(memcheck
     COMMAND ${CMAKE_COMMAND} -E copy ${PROJECT_SOURCE_DIR}/shell/code_memcheck.sh ${CMAKE_BINARY_DIR}
     COMMAND ${CMAKE_BINARY_DIR}/code_memcheck.sh ${CMAKE_BINARY_DIR}
-)
-
-add_custom_target(
-    clean-all
-    COMMAND make -C "${PROJECT_SOURCE_DIR}/../kwbase/" clean
-    COMMAND make -C "${DUCKDB_SOURCE_DIR}"  clean
 )

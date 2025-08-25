@@ -1,0 +1,88 @@
+name: MySQL Tests
+on: [push, pull_request,repository_dispatch, merge_group]
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.head_ref || '' }}-${{ github.base_ref || '' }}-${{ github.ref != 'refs/heads/main' || github.sha }}
+  cancel-in-progress: true
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  macos:
+    name: MySQL tests (${{ matrix.osx_build_arch }})
+    runs-on: macos-latest
+    strategy:
+      matrix:
+        # Add commits/tags to build against other DuckDB versions
+        duckdb_version: [ '<submodule_version>' ]
+        vcpkg_version: [ '2023.10.19' ]
+        vcpkg_triplet: [ 'x64-osx' ]
+        include:
+          - vcpkg_triplet: 'x64-osx'
+            osx_build_arch: 'x86_64'
+            duckdb_arch: 'osx_amd64'
+
+    env:
+      VCPKG_TARGET_TRIPLET: ${{ matrix.vcpkg_triplet }}
+      OSX_BUILD_ARCH: ${{ matrix.osx_build_arch }}
+      GEN: Ninja
+      VCPKG_TOOLCHAIN_PATH: ${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake
+
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+          submodules: 'true'
+
+      - name: Install
+        run: |
+          brew install ninja
+          brew install autoconf
+          brew install automake
+          brew install autoconf-archive
+          brew install libevent
+          brew install jemalloc
+          brew install mysql
+          brew services start mysql
+          touch build.ninja
+
+      - name: Setup Ccache
+        uses: hendrikmuhs/ccache-action@v1.2.11 # Note: pinned due to GLIBC incompatibility in later releases
+        with:
+          key: ${{ github.job }}-${{ matrix.duckdb_version }}
+          save: ${{ github.ref == 'refs/heads/main' || github.repository != 'duckdb/duckdb' }}
+
+      - uses: actions/setup-python@v2
+        with:
+          python-version: '3.11'
+
+      - name: Setup vcpkg
+        uses: lukka/run-vcpkg@v11.1
+        with:
+          vcpkgGitCommitId: 5e5d0e1cd7785623065e77eff011afdeec1a3574
+
+      - name: Setup MySQL
+        if: ${{ matrix.osx_build_arch == 'x86_64'}}
+        run: |
+          mysql -u root < test/test_data.sql
+          mysql -u root -e "SELECT 42"
+
+      - name: Build extension
+        shell: bash
+        run: |
+          make release
+
+      - name: Test Extension
+        if: ${{ matrix.osx_build_arch == 'x86_64'}}
+        shell: bash
+        env:
+          MYSQL_TEST_DATABASE_AVAILABLE: 1
+        run: |
+          make test
+
+      - name: Log Errors
+        if: failure()
+        shell: bash
+        run: |
+          cat /Users/runner/work/duckdb_mysql/duckdb_mysql/vcpkg/buildtrees/libmysql/*.log
+          cat /Users/runner/work/duckdb_mysql/duckdb_mysql/build/release/*.log

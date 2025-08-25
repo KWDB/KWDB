@@ -1,0 +1,13 @@
+# name: test/sql/attach_database_size.test
+# description: Test fetching the database size
+# group: [sql]
+
+require mysql_scanner
+
+require-env MYSQL_TEST_DATABASE_AVAILABLE
+
+statement ok
+ATTACH 'host=localhost user=root port=0 database=mysqlscanner' AS s (TYPE MYSQL_SCANNER)
+
+statement ok
+PRAGMA database_size

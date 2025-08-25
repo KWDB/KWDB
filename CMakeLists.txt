@@ -58,10 +58,8 @@ if (CMAKE_COMPILER_IS_GNUCC)
     endif()
 endif()
 
-if (NOT DEFINED CMAKE_CXX_STANDARD)
-    # We require a C++17 compliant compiler
-    set(CMAKE_CXX_STANDARD 17)
-endif ()
+# We require a C++17 compliant compiler
+set(CMAKE_CXX_STANDARD 17)
 
 if (NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE Debug CACHE STRING "Build Type" FORCE)
@@ -223,6 +221,8 @@ message(STATUS "Build with OPENSSL:${WITH_OPENSSL}")
 add_subdirectory(common)
 # compile kwdbts2
 add_subdirectory(kwdbts2)
+# compile kwdbap
+add_subdirectory(kwdbap)
 
 # compile kwbase
 if (BUILD_KWBASE)
@@ -241,7 +241,7 @@ if (BUILD_KWBASE)
         ${PARALLEL_LEVEL}
         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/kwbase
         COMMENT "====== compile kwbase ======"
-        DEPENDS kwdbts2 common
+        DEPENDS kwdbts2 common kwdbap
         )
 endif()
 

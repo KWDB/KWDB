@@ -1,0 +1,20 @@
+# name: test/sql/scan_bool.test
+# description: Test scanning tables with booleans
+# group: [sql]
+
+require mysql_scanner
+
+require-env MYSQL_TEST_DATABASE_AVAILABLE
+
+statement ok
+ATTACH 'host=localhost user=root port=0 database=mysqlscanner' AS msql (TYPE MYSQL_SCANNER)
+
+statement ok
+USE msql
+
+query I
+SELECT * FROM booleans
+----
+0
+1
+NULL
