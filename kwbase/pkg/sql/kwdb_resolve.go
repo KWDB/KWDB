@@ -11,7 +11,7 @@
 
 package sql
 
-// #cgo CPPFLAGS: -I../../../kwdbts2/include
+// #cgo CPPFLAGS: -I../../../kwdbts2/include -I../../../common/src/include
 // #cgo LDFLAGS: -lkwdbts2 -lcommon  -lstdc++
 // #cgo LDFLAGS: -lprotobuf
 // #cgo linux LDFLAGS: -lrt -lpthread

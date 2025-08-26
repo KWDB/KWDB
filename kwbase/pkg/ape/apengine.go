@@ -24,7 +24,7 @@
 // See the Mulan PSL v2 for more details.
 package ape
 
-// #cgo CPPFLAGS: -I../../../kwdbap/src/include
+// #cgo CPPFLAGS: -I../../../kwdbap/src/include -I../../../common/src/include
 // #cgo LDFLAGS: -lduckdb -lcommon  -lstdc++
 // #cgo LDFLAGS: -lprotobuf
 // #cgo linux LDFLAGS: -lrt -lpthread
