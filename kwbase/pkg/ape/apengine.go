@@ -37,14 +37,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 	"strconv"
 	"unsafe"
 
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgcode"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgerror"
 	"gitee.com/kwbasedb/kwbase/pkg/util/stop"
-	"gitee.com/kwbasedb/kwbase/pkg/util/syncutil"
 	duck "github.com/duckdb-go-bindings"
 )
 
@@ -54,8 +52,6 @@ type ApEngine struct {
 	dbStruct   *C.APEngine
 	Connection *duck.Connection
 	DbPath     string
-	mu         syncutil.Mutex
-	dbMap      map[string]*duck.Database
 }
 
 // QueryInfo the parameter and return value passed by the query
@@ -92,25 +88,13 @@ func NewApEngine(stopper *stop.Stopper, dbPath string) (*ApEngine, error) {
 		Connection: &connection,
 		DbPath:     dbPath,
 		dbStruct:   dbStruct,
-		dbMap:      make(map[string]*duck.Database),
 	}, nil
 }
 
 // Close close TsEngine
 func (r *ApEngine) Close() {
-	r.mu.Lock()
-	defer r.mu.Unlock()
 	duck.Close(r.db)
 	duck.Disconnect(r.Connection)
-	if r.dbMap != nil {
-		for key, db := range r.dbMap {
-			if db != nil {
-				duck.Close(db)
-			}
-			delete(r.dbMap, key)
-		}
-		r.dbMap = nil
-	}
 }
 
 // InitHandle corresponding to init ts handle
@@ -210,27 +194,14 @@ func (r *ApEngine) Execute(
 
 // CreateConnection create new coneection with ap engine.
 func (r *ApEngine) CreateConnection(dbName string) (*duck.Connection, error) {
-	dbPath := r.DbPath + "/" + dbName
-	_, err := os.Stat(dbPath)
-	if os.IsNotExist(err) {
-		return nil, fmt.Errorf("database %s not exist", dbName)
-	}
-	var db *duck.Database
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	db, ok := r.dbMap[dbName]
-	if !ok {
-		db = &duck.Database{}
-		state := duck.Open(dbPath, db)
-		if state != duck.StateSuccess {
-			return nil, errors.New("failed to open the ap database")
-		}
-		r.dbMap[dbName] = db
-	}
 	conn := duck.Connection{}
-	state := duck.Connect(*db, &conn)
+	state := duck.Connect(*r.db, &conn)
 	if state != duck.StateSuccess {
 		return nil, errors.New("failed to connect to ap database")
+	}
+	if dbName != "" {
+		r.Exec(&conn, fmt.Sprintf("ATTACH '%s/%s'", r.DbPath, dbName))
+		r.Exec(&conn, fmt.Sprintf("USE '%s'", dbName))
 	}
 	return &conn, nil
 }
