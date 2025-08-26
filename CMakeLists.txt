@@ -241,7 +241,7 @@ if (BUILD_KWBASE)
         ${PARALLEL_LEVEL}
         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/kwbase
         COMMENT "====== compile kwbase ======"
-        DEPENDS kwdbts2 common kwdbap
+        DEPENDS kwdbts2 common duckdb
         )
 endif()
 
