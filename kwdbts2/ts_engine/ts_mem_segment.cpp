@@ -92,7 +92,7 @@ void TsMemSegmentManager::RemoveMemSegment(const std::shared_ptr<TsMemSegment>& 
 }
 
 bool TsMemSegmentManager::GetMetricSchemaAndMeta(TSTableID table_id, uint32_t version,
-                                                 std::vector<AttributeInfo>& schema, DATATYPE* ts_type,
+                                                 const std::vector<AttributeInfo>** schema, DATATYPE* ts_type,
                                                  LifeTime* lifetime) {
   std::shared_ptr<kwdbts::TsTableSchemaManager> schema_mgr;
   auto s = vgroup_->GetEngineSchemaMgr()->GetTableSchemaMgr(table_id, schema_mgr);
@@ -100,7 +100,7 @@ bool TsMemSegmentManager::GetMetricSchemaAndMeta(TSTableID table_id, uint32_t ve
     LOG_ERROR("cannot found table [%lu] schema manager.", table_id);
     return false;
   }
-  s = schema_mgr->GetColumnsExcludeDropped(schema, version);
+  s = schema_mgr->GetColumnsExcludeDroppedPtr(schema, version);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("cannot found table [%lu] with version[%u].", table_id, version);
     return false;
@@ -121,10 +121,10 @@ KStatus TsMemSegmentManager::PutData(const TSSlice& payload, TSEntityID entity_i
   auto table_id = TsRawPayload::GetTableIDFromSlice(payload);
   auto table_version = TsRawPayload::GetTableVersionFromSlice(payload);
   // get column info and life time
-  std::vector<AttributeInfo> schema;
+  const std::vector<AttributeInfo>* schema{nullptr};
   LifeTime life_time{};
   DATATYPE ts_type;
-  if (!GetMetricSchemaAndMeta(table_id, table_version, schema, &ts_type, &life_time)) {
+  if (!GetMetricSchemaAndMeta(table_id, table_version, &schema, &ts_type, &life_time)) {
     LOG_ERROR("GetMetricSchemaAndMeta failed.");
     return KStatus::FAIL;
   }
@@ -137,7 +137,7 @@ KStatus TsMemSegmentManager::PutData(const TSSlice& payload, TSEntityID entity_i
 
   uint32_t db_id = vgroup_->GetEngineSchemaMgr()->GetDBIDByTableID(table_id);
   TSMemSegRowData row_data(db_id, table_id, table_version, entity_id);
-  TsRawPayload pd(payload, &schema);
+  TsRawPayload pd(payload, schema);
   uint32_t row_num = pd.GetRowCount();
 
   auto cur_mem_seg = CurrentMemSegmentAndAllocateRow(row_num);

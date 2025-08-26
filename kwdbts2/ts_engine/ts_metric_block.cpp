@@ -63,8 +63,8 @@ KStatus TsMetricBlockBuilder::PutBlockSpan(std::shared_ptr<TsBlockSpan> span) {
     auto lsn_addr = span->GetLSNAddr(i);
     lsn_buffer_.push_back(*lsn_addr);
   }
-  for (int icol = 0; icol < col_schemas_.size(); icol++) {
-    if (isVarLenType(col_schemas_[icol].type)) {
+  for (int icol = 0; icol < col_schemas_->size(); icol++) {
+    if (isVarLenType((*col_schemas_)[icol].type)) {
       // looping row by row to copy data
       for (int irow = 0; irow < row_count; irow++) {
         DataFlags flag;
@@ -85,7 +85,7 @@ KStatus TsMetricBlockBuilder::PutBlockSpan(std::shared_ptr<TsBlockSpan> span) {
       }
       TSSlice s_data;
       s_data.data = data;
-      s_data.len = col_schemas_[icol].size * row_count;
+      s_data.len = (*col_schemas_)[icol].size * row_count;
       column_block_builders_[icol]->AppendFixLenData(s_data, row_count, bitmap);
     }
   }

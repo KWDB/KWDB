@@ -44,8 +44,8 @@ KStatus TsLastSegmentBuilder::PutBlockSpan(std::shared_ptr<TsBlockSpan> span) {
       if (s == FAIL) {
         return FAIL;
       }
-      std::vector<AttributeInfo> col_schema;
-      s = table_schema_mgr->GetColumnsExcludeDropped(col_schema, span->GetTableVersion());
+      const std::vector<AttributeInfo>* col_schema{nullptr};
+      s = table_schema_mgr->GetColumnsExcludeDroppedPtr(&col_schema, span->GetTableVersion());
       if (s == FAIL) {
         return FAIL;
       }

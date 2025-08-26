@@ -690,7 +690,7 @@ KStatus TsPartitionVersion::NeedVacuumEntitySegment(const fs::path& root_path,
   KwLSNSpan span{0, UINT64_MAX};
   auto s = del_info_->HasValidDelItem(span, has_del_info);
   if (s != KStatus::SUCCESS) {
-    LOG_ERROR("HasValidDelItem failed.");
+    LOG_ERROR("HasValidDelItem failed");
     return s;
   }
   need_vacuum = has_del_info;
@@ -701,9 +701,12 @@ KStatus TsPartitionVersion::NeedVacuumEntitySegment(const fs::path& root_path,
       TsEntityItem entity_item;
       bool found = false;
       s = entity_segment_->GetEntityItem(entity_id, entity_item, found);
-      if (s != SUCCESS || !found) {
-        LOG_ERROR("NeedVacuumEntitySegment failed: GetEntityItem failed");
-        return s;
+      if (s != KStatus::SUCCESS) {
+        LOG_WARN("GetEntityItem failed, entity id [%u]", entity_id);
+        continue;
+      }
+      if (!found) {
+        continue;
       }
       if (traversed_table.count(entity_item.table_id) == 0) {
         std::shared_ptr<TsTableSchemaManager> tb_schema_mgr{nullptr};

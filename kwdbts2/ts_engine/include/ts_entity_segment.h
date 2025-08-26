@@ -305,6 +305,9 @@ class TsEntityBlock : public TsBlock {
   KStatus GetPreMin(uint32_t blk_col_idx, int32_t size, void*& pre_max) override;
   KStatus GetVarPreMax(uint32_t blk_col_idx, TSSlice& pre_max) override;
   KStatus GetVarPreMin(uint32_t blk_col_idx, TSSlice& pre_min) override;
+
+  std::string GetEntitySegmentPath();
+  std::string GetHandleInfoStr();
 };
 
 class TsEntitySegment : public TsSegmentBase, public enable_shared_from_this<TsEntitySegment> {
@@ -359,6 +362,9 @@ class TsEntitySegment : public TsSegmentBase, public enable_shared_from_this<TsE
     block_file_.MarkDelete();
     agg_file_.MarkDelete();
   }
+
+  std::string GetPath() { return dir_path_; }
+  std::string GetHandleInfoStr();
 };
 
 }  // namespace kwdbts
