@@ -533,7 +533,8 @@ KStatus TsLastSegment::GetBlockSpans(std::list<shared_ptr<TsBlockSpan>>& block_s
       auto uppder_idx = *std::upper_bound(IndexRange{start}, IndexRange{nrow}, current_entity,
                                           [&](TSEntityID val, int idx) { return val < entities[idx]; });
       block_spans.emplace_back(
-          make_shared<TsBlockSpan>(current_entity, block, start, uppder_idx - start, tbl_schema_mgr, 0));
+          make_shared<TsBlockSpan>(current_entity, block, start, uppder_idx - start,
+                                   tbl_schema_mgr, block->GetTableVersion()));
       prev_end = uppder_idx;
     }
   }
