@@ -61,6 +61,10 @@ KStatus TsEntitySegmentEntityItemFile::GetEntityItem(uint64_t entity_id, TsEntit
     return s;
   }
   entity_item = *reinterpret_cast<TsEntityItem *>(result.data);
+  if (entity_item.table_id == 0) {
+    is_exist = false;
+    return SUCCESS;
+  }
   is_exist = true;
   return s;
 }
@@ -163,8 +167,6 @@ KStatus TsEntitySegmentMetaManager::GetBlockSpans(const TsBlockItemFilterParams&
     return s;
   }
   if (filter.table_id != entity_item.table_id) {
-    LOG_WARN("entity id [%lu], filter table id [%lu], real table id[%lu]",
-              filter.entity_id, filter.table_id, entity_item.table_id);
     return SUCCESS;
   }
   uint64_t last_blk_id = entity_item.cur_block_id;
@@ -183,7 +185,7 @@ KStatus TsEntitySegmentMetaManager::GetBlockSpans(const TsBlockItemFilterParams&
       std::shared_ptr<TsEntityBlock> block = std::make_shared<TsEntityBlock>(filter.table_id, cur_blk_item, blk_segment);
       std::shared_ptr<TsBlockSpan> cur_blk_span;
       s = TsBlockSpan::MakeNewBlockSpan(template_blk_span, filter.vgroup_id, filter.entity_id, block, 0, block->GetRowNum(),
-        scan_schema->GetVersionNUm(), &(scan_schema->getSchemaInfoExcludeDropped()), tbl_schema_mgr, cur_blk_span);
+        scan_schema->GetVersionNum(), &(scan_schema->getSchemaInfoExcludeDropped()), tbl_schema_mgr, cur_blk_span);
       if (s != KStatus::SUCCESS) {
         LOG_ERROR("MakeNewBlockSpan failed, entity_id=%lu, blk_id=%lu", filter.entity_id, last_blk_id);
         return s;
@@ -207,7 +209,7 @@ KStatus TsEntitySegmentMetaManager::GetBlockSpans(const TsBlockItemFilterParams&
         std::shared_ptr<TsBlockSpan> cur_blk_span;
         s = TsBlockSpan::MakeNewBlockSpan(template_blk_span, filter.vgroup_id, filter.entity_id, block,
           row_spans[i].first, row_spans[i].second,
-          scan_schema->GetVersionNUm(), &(scan_schema->getSchemaInfoExcludeDropped()), tbl_schema_mgr, cur_blk_span);
+          scan_schema->GetVersionNum(), &(scan_schema->getSchemaInfoExcludeDropped()), tbl_schema_mgr, cur_blk_span);
         if (s != KStatus::SUCCESS) {
           LOG_ERROR("MakeNewBlockSpan failed, entity_id=%lu, blk_id=%lu", filter.entity_id, last_blk_id);
           return s;
@@ -317,7 +319,8 @@ KStatus TsEntityBlock::LoadColData(int32_t col_idx, const std::vector<AttributeI
     TsBitmap* bitmap = is_not_null ? nullptr : &column_blocks_[col_idx + 1].bitmap;
     bool ok = mgr.DecompressData(data, bitmap, n_rows_, &plain);
     if (!ok) {
-      LOG_ERROR("block segment column[%u] data decompress failed", col_idx + 1);
+      LOG_ERROR("block segment column[%u] data decompress failed, entity segment is [%s], handle info %s", col_idx + 1,
+                GetEntitySegmentPath().c_str(), GetHandleInfoStr().c_str());
       return KStatus::FAIL;
     }
     // save decompressed col block data
@@ -651,6 +654,14 @@ inline KStatus TsEntityBlock::GetVarPreMin(uint32_t blk_col_idx, TSSlice& pre_mi
   return KStatus::SUCCESS;
 }
 
+std::string TsEntityBlock::GetEntitySegmentPath() {
+  return entity_segment_->GetPath();
+}
+
+std::string TsEntityBlock::GetHandleInfoStr() {
+  return entity_segment_->GetHandleInfoStr();
+}
+
 TsEntitySegment::TsEntitySegment(const fs::path& root, EntitySegmentHandleInfo info)
     : dir_path_(root), meta_mgr_(root, info), block_file_(root, info), agg_file_(root, info), info_(info) {
   Open();
@@ -786,5 +797,13 @@ KStatus TsEntitySegment::GetColumnAgg(int32_t col_idx, TsEntityBlock *block) {
   }
 
   return KStatus::SUCCESS;
+}
+
+std::string TsEntitySegment::GetHandleInfoStr() {
+  string str = "{" + std::to_string(info_.header_e_file_number) + ", "
+                + std::to_string(info_.header_b_info.file_number) + ", "
+                + std::to_string(info_.datablock_info.file_number) + ", "
+                + std::to_string(info_.agg_info.file_number) + "}";
+  return str;
 }
 }  //  namespace kwdbts

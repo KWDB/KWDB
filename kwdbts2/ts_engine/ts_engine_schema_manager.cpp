@@ -227,6 +227,7 @@ KStatus TsEngineSchemaManager::GetTableList(std::vector<TSTableID>* table_ids) {
 
 KStatus TsEngineSchemaManager::GetTableSchemaMgr(TSTableID tbl_id,
                                                  std::shared_ptr<TsTableSchemaManager>& tb_schema_mgr) {
+  assert(tbl_id != 0);
   rdLock();
   auto it = table_schema_mgrs_.find(tbl_id);
   if (it == table_schema_mgrs_.end()) {

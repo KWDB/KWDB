@@ -71,15 +71,15 @@ TEST_F(TsBatchDataWorkerTest, TestTsBatchDataWorker) {
   s = engine_->GetTableSchemaMgr(ctx_, table_id, schema_mgr);
   ASSERT_EQ(s , KStatus::SUCCESS);
 
-  std::vector<AttributeInfo> metric_schema;
-  s = schema_mgr->GetMetricMeta(1, metric_schema);
+  const std::vector<AttributeInfo>* metric_schema{nullptr};
+  s = schema_mgr->GetMetricMeta(1, &metric_schema);
   ASSERT_EQ(s , KStatus::SUCCESS);
   std::vector<TagInfo> tag_schema;
   s = schema_mgr->GetTagMeta(1, tag_schema);
   ASSERT_EQ(s , KStatus::SUCCESS);
-  ASSERT_EQ(metric_schema.size(), metric_type.size());
+  ASSERT_EQ(metric_schema->size(), metric_type.size());
   timestamp64 start_ts = 10086000;
-  auto pay_load = GenRowPayload(metric_schema, tag_schema ,table_id, 1, 1, 1000, start_ts);
+  auto pay_load = GenRowPayload(*metric_schema, tag_schema ,table_id, 1, 1, 1000, start_ts);
   uint16_t inc_entity_cnt;
   uint32_t inc_unordered_cnt;
   DedupResult dedup_result{0, 0, 0, TSSlice {nullptr, 0}};

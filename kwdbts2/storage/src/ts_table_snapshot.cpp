@@ -712,7 +712,7 @@ KStatus TsSnapshotConsumerByBlock::GenEmptyTagForPrimaryKey(kwdbContext_p ctx,
 KStatus TsSnapshotConsumerByBlock::CopyBlockToPartitionTable(kwdbContext_p ctx, TsTimePartition* p_table,
                                                               EntityID entity_id, const TsBlockFullData& block) {
   BlockItem *blk_item;
-  int err_code = p_table->allocateBlockItem(entity_id, &blk_item, version_schema_->GetVersionNUm());
+  int err_code = p_table->allocateBlockItem(entity_id, &blk_item, version_schema_->GetVersionNum());
   if (err_code < 0) {
     LOG_ERROR("cannot allocate new block item");
     return KStatus::FAIL;

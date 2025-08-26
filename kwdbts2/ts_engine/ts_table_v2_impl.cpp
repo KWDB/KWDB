@@ -47,8 +47,8 @@ KStatus TsTableV2Impl::PutData(kwdbContext_p ctx, TsVGroup* v_group, TSSlice* pa
                           DedupResult* dedup_result, const DedupRule& dedup_rule, bool write_wal) {
   assert(payload_num == 1);
   auto version = TsRawPayload::GetTableVersionFromSlice(*payload);
-  std::vector<AttributeInfo> metric_schema;
-  table_schema_mgr_->GetColumnsExcludeDropped(metric_schema, version);
+  const std::vector<AttributeInfo>* metric_schema{nullptr};
+  table_schema_mgr_->GetColumnsExcludeDroppedPtr(&metric_schema, version);
   uint8_t payload_data_flag = TsRawPayload::GetRowTypeFromSlice(*payload);
   if (payload_data_flag == DataTagFlag::TAG_ONLY) {
     LOG_DEBUG("tag only. so no need putdata.");
@@ -478,13 +478,13 @@ KwTsSpan ts_span, uint64_t mtr_id) {
 KStatus TsTableV2Impl::GetAvgTableRowSize(kwdbContext_p ctx, uint64_t* row_size) {
   // fixed tuple length of one row.
   size_t row_length = 0;
-  std::vector<AttributeInfo> schemas;
-  auto s = table_schema_mgr_->GetColumnsExcludeDropped(schemas);
+  const std::vector<AttributeInfo>* schemas{nullptr};
+  auto s = table_schema_mgr_->GetColumnsExcludeDroppedPtr(&schemas);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("GetAvgTableRowSize failed. at getting schema.");
     return s;
   }
-  for (auto& col : schemas) {
+  for (auto& col : *schemas) {
     if (col.type == DATATYPE::VARSTRING || col.type == DATATYPE::VARBINARY) {
       row_length += col.max_len;
     } else {

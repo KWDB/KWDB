@@ -51,7 +51,7 @@ class ConcurrentRWTest : public testing::Test {
 
   std::unique_ptr<TsEngineSchemaManager> schema_mgr_;
   std::shared_ptr<TsTableSchemaManager> table_schema_mgr_;
-  std::vector<AttributeInfo> metric_schema_;
+  const std::vector<AttributeInfo>* metric_schema_{nullptr};
   std::vector<TagInfo> tag_schema_;
 
   std::shared_ptr<TsVGroup> vgroup_;
@@ -68,7 +68,7 @@ class ConcurrentRWTest : public testing::Test {
 
     ASSERT_EQ(schema_mgr_->CreateTable(ctx_, 1, table_id, &meta), SUCCESS);
     ASSERT_EQ(schema_mgr_->GetTableSchemaMgr(table_id, table_schema_mgr_), KStatus::SUCCESS);
-    ASSERT_EQ(table_schema_mgr_->GetMetricMeta(1, metric_schema_), KStatus::SUCCESS);
+    ASSERT_EQ(table_schema_mgr_->GetMetricMeta(1, &metric_schema_), KStatus::SUCCESS);
     ASSERT_EQ(table_schema_mgr_->GetTagMeta(1, tag_schema_), KStatus::SUCCESS);
 
     std::shared_mutex wal_level_mutex;
@@ -92,9 +92,9 @@ TEST_F(ConcurrentRWTest, FlushOnly) {
   int total_row = npayload * nrow;
 
   for (int i = 0; i < npayload; ++i) {
-    auto payload = GenRowPayload(metric_schema_, tag_schema_, table_id, 1, 1, nrow, 1000 * i, 1);
-    TsRawPayloadRowParser parser{&metric_schema_};
-    TsRawPayload p{payload, &metric_schema_};
+    auto payload = GenRowPayload(*metric_schema_, tag_schema_, table_id, 1, 1, nrow, 1000 * i, 1);
+    TsRawPayloadRowParser parser{metric_schema_};
+    TsRawPayload p{payload, metric_schema_};
     auto ptag = p.GetPrimaryTag();
     vgroup_->PutData(ctx_, table_id, 0, &ptag, 1, &payload, false);
     free(payload.data);
@@ -189,9 +189,9 @@ TEST_F(ConcurrentRWTest, CompactOnly) {
   auto vgroup = vgroup_;
 
   for (int i = 0; i < nlast_segment; ++i) {
-    auto payload = GenRowPayload(metric_schema_, tag_schema_, table_id, 1, 1, nrow_per_last_segment, 10000000 * i, 1);
-    TsRawPayloadRowParser parser{&metric_schema_};
-    TsRawPayload p{payload, &metric_schema_};
+    auto payload = GenRowPayload(*metric_schema_, tag_schema_, table_id, 1, 1, nrow_per_last_segment, 10000000 * i, 1);
+    TsRawPayloadRowParser parser{metric_schema_};
+    TsRawPayload p{payload, metric_schema_};
     auto ptag = p.GetPrimaryTag();
 
     vgroup->PutData(ctx_, table_id, 0, &ptag, 1, &payload, false);
@@ -302,7 +302,7 @@ TEST_F(ConcurrentRWTest, SwitchMem) {
   std::atomic_int atomic_count{0};
 
   for (int i = 0; i < npayload; ++i) {
-    auto payload = GenRowPayload(metric_schema_, tag_schema_, table_id, 1, 1, nrow, 1000 * i, 1);
+    auto payload = GenRowPayload(*metric_schema_, tag_schema_, table_id, 1, 1, nrow, 1000 * i, 1);
     payloads[i] = payload;
   }
 
@@ -400,7 +400,7 @@ TEST_F(ConcurrentRWTest, RandomFlush) {
   std::atomic_int atomic_count{0};
 
   for (int i = 0; i < npayload; ++i) {
-    auto payload = GenRowPayload(metric_schema_, tag_schema_, table_id, 1, 1, nrow, 1000 * i, 1);
+    auto payload = GenRowPayload(*metric_schema_, tag_schema_, table_id, 1, 1, nrow, 1000 * i, 1);
     payloads[i] = payload;
   }
 

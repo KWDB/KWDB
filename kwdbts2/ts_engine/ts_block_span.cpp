@@ -55,7 +55,6 @@ inline KStatus TsBlock::UpdateFirstLastCandidates(const std::vector<k_uint32>& t
   return KStatus::SUCCESS;
 }
 
-
 KStatus TsBlockSpan::GenDataConvert(uint32_t blk_version, uint32_t scan_version,
   const std::shared_ptr<TsTableSchemaManager>& tbl_schema_mgr, std::shared_ptr<TSBlkDataTypeConvert>& ret) {
   assert(blk_version > 0);
