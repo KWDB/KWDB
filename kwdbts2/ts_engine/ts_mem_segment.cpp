@@ -154,12 +154,7 @@ KStatus TsMemSegmentManager::PutData(const TSSlice& payload, TSEntityID entity_i
 
     auto payload_row_data = pd.GetRowData(i);
     row_data.SetData(row_ts, lsn, payload_row_data);
-    bool ret = cur_mem_seg->AppendOneRow(row_data);
-    if (!ret) {
-      LOG_ERROR("failed to AppendOneRow for table [%lu]", row_data.table_id);
-      cur_mem_seg->AllocRowNum(0 - (row_num - i));
-      return KStatus::FAIL;
-    }
+    cur_mem_seg->AppendOneRow(row_data);
 
     if (row_ts > max_ts) {
       max_ts = row_ts;
@@ -251,15 +246,10 @@ inline bool TsMemSegBlock::IsColNull(int row_num, int col_id, const std::vector<
   return parser_->IsColNull(row_data_[row_num]->row_data, col_id);
 }
 
-bool TsMemSegment::AppendOneRow(TSMemSegRowData& row) {
-  auto ok = skiplist_.InsertRowData(row);
-  if (ok) {
-    written_row_num_.fetch_add(1);
-    payload_mem_usage_.fetch_add(row.row_data.len, std::memory_order_relaxed);
-  } else {
-    LOG_ERROR("insert failed. duplicated rows.");
-  }
-  return  ok;
+void TsMemSegment::AppendOneRow(TSMemSegRowData& row) {
+  skiplist_.InsertRowData(row);
+  written_row_num_.fetch_add(1);
+  payload_mem_usage_.fetch_add(row.row_data.len, std::memory_order_relaxed);
 }
 
 bool TsMemSegment::HasEntityRows(const TsScanFilterParams& filter) {

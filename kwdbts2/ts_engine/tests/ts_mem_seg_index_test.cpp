@@ -23,8 +23,8 @@ using namespace kwdbts;
 
 void InsertDuplicateTest(TsMemSegIndex &skiplist, int data) {
   TSMemSegRowData row{1, 1, 1, 1};
-  row.SetData(1, 1, TSSlice{reinterpret_cast<char*>(&data), sizeof(data)});
-  ASSERT_EQ(skiplist.InsertRowData(row), true);
+  row.SetData(1, 1, TSSlice{reinterpret_cast<char *>(&data), sizeof(data)});
+  skiplist.InsertRowData(row);
 }
 
 TEST(TsMemSegIndexTest, InsertDuplicateKeys) {

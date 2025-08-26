@@ -185,7 +185,7 @@ class TsMemSegIndex {
 
   void InsertWithCAS(const char* key);
 
-  bool InsertRowData(const TSMemSegRowData& row);
+  void InsertRowData(const TSMemSegRowData& row);
 
   inline TSMemSegRowData* ParseKey(const char* key) {
     return compare_.DecodeKeyValue(key);

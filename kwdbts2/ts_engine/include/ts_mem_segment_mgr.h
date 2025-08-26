@@ -62,7 +62,7 @@ class TsMemSegment : public TsSegmentBase, public enable_shared_from_this<TsMemS
 
   inline void AllocRowNum(uint32_t row_num) { intent_row_num_.fetch_add(row_num); }
 
-  bool AppendOneRow(TSMemSegRowData& row);
+  void AppendOneRow(TSMemSegRowData& row);
 
   bool HasEntityRows(const TsScanFilterParams& filter);
 

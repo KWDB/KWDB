@@ -57,12 +57,10 @@ SkipListSplice* TsMemSegIndex::AllocateSkiplistSplice() {
   return splice;
 }
 
-bool TsMemSegIndex::InsertRowData(const TSMemSegRowData& row) {
+void TsMemSegIndex::InsertRowData(const TSMemSegRowData& row) {
   size_t malloc_size = sizeof(TSMemSegRowData) + row.row_data.len + TSMemSegRowData::GetKeyLen();
   char* buf = AllocateKeyValue(malloc_size);
-  if (buf == nullptr) {
-    return false;
-  }
+  assert(buf != nullptr);
   TSMemSegRowData* cur_row = reinterpret_cast<TSMemSegRowData*>(buf + TSMemSegRowData::GetKeyLen());
   memcpy(cur_row, &row, sizeof(TSMemSegRowData));
   cur_row->row_data.data = buf + sizeof(TSMemSegRowData) + TSMemSegRowData::GetKeyLen();
@@ -70,7 +68,6 @@ bool TsMemSegIndex::InsertRowData(const TSMemSegRowData& row) {
   memcpy(cur_row->row_data.data, row.row_data.data, row.row_data.len);
   cur_row->GenKey(buf);
   InsertWithCAS(buf);
-  return true;
 }
 
 void TsMemSegIndex::InsertWithCAS(const char* key) {
