@@ -252,7 +252,7 @@ inline bool TsMemSegBlock::IsColNull(int row_num, int col_id, const std::vector<
 }
 
 bool TsMemSegment::AppendOneRow(TSMemSegRowData& row) {
-  auto ok = skiplist_.InsertRowData(row, row_idx_.fetch_add(1));
+  auto ok = skiplist_.InsertRowData(row);
   if (ok) {
     written_row_num_.fetch_add(1);
     payload_mem_usage_.fetch_add(row.row_data.len, std::memory_order_relaxed);

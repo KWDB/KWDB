@@ -38,7 +38,6 @@ class TsMemSegment : public TsSegmentBase, public enable_shared_from_this<TsMemS
   friend class TsMemSegmentManager;
 
  private:
-  std::atomic<uint32_t> row_idx_{1};
   std::atomic<uint32_t> intent_row_num_{0};
   std::atomic<uint32_t> written_row_num_{0};
   std::atomic<uint32_t> payload_mem_usage_{0};

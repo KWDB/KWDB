@@ -30,7 +30,6 @@ struct TSMemSegRowData {
   TSEntityID entity_id;
   timestamp64 ts;
   TS_LSN lsn;
-  uint32_t row_idx_in_mem_seg;
   uint32_t database_id;
   TSSlice row_data;
 
@@ -53,7 +52,7 @@ struct TSMemSegRowData {
     row_data = crow_data;
   }
   static constexpr size_t GetKeyLen() {
-    return 4 + 8 + 4 + 8 + 8 + 8 + 4;
+    return 8 + 4 + 8 + 8 + 8 + 4;
   }
 
 #define HTOBEFUNC(buf, value, size) { \
@@ -70,7 +69,6 @@ struct TSMemSegRowData {
     uint64_t cts = ts - INT64_MIN;
     HTOBEFUNC(buf, htobe64(cts), sizeof(cts));
     HTOBEFUNC(buf, htobe64(lsn), sizeof(lsn));
-    HTOBEFUNC(buf, htobe32(row_idx_in_mem_seg), sizeof(row_idx_in_mem_seg));
     HTOBEFUNC(buf, htobe32(database_id), sizeof(database_id));
   }
 
@@ -187,7 +185,7 @@ class TsMemSegIndex {
 
   void InsertWithCAS(const char* key);
 
-  bool InsertRowData(const TSMemSegRowData& row, uint32_t row_idx);
+  bool InsertRowData(const TSMemSegRowData& row);
 
   inline TSMemSegRowData* ParseKey(const char* key) {
     return compare_.DecodeKeyValue(key);
