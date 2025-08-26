@@ -137,6 +137,51 @@ add_definitions(-DTHREAD_SAFE)
 # add_definitions(-DNDEBUG)
 add_definitions(-DNEW_COUNT)
 
+# try to do some estimate on parallel digree used by make -j
+# first, check total memory, assuming we can have one compile job for every 4GB mem
+# second, take nproc result.  We take the smaller one as -j parameter
+execute_process(
+    COMMAND bash -c "free -t -g | tail -n 1 | awk '{print $2}' | xargs -I {} expr {} / 4"
+    RESULT_VARIABLE result1
+    OUTPUT_VARIABLE value1
+    ERROR_VARIABLE error_output1
+)
+
+execute_process(
+    COMMAND nproc
+    RESULT_VARIABLE result2
+    OUTPUT_VARIABLE value2
+    ERROR_VARIABLE error_output1
+)
+
+# taking a pretty big value as init
+set(DEDUCTED_PARALLEL_DEGREE "1024")
+
+# if result1 is 0, assign the result to DEDUCTED_PARALLEL_DEGREE
+if (${result1} EQUAL 0)
+    string(STRIP "${value1}" value1)
+    math(EXPR mem_by_four "${value1}")
+    message(STATUS "Parallel degree estimation by memory is ${mem_by_four}")
+    set(DEDUCTED_PARALLEL_DEGREE ${mem_by_four})
+endif ()
+
+# if nproc returns, and if it's smaller than current value, take it
+if (${result2} EQUAL 0)
+    string(STRIP "${value2}" value2)
+    math(EXPR proc_num "${value2}")
+    message(STATUS "Parallel degree by nproc is ${proc_num}")
+    if (${DEDUCTED_PARALLEL_DEGREE} GREATER ${proc_num})
+      set(DEDUCTED_PARALLEL_DEGREE ${proc_num})
+    endif ()
+endif ()
+
+# to prevent the original big value.  In case it's still very big
+# the above two steps fail.  Take 4 as safe value
+if (${DEDUCTED_PARALLEL_DEGREE} GREATER 1023)
+    set(DEDUCTED_PARALLEL_DEGREE 4)
+endif ()
+message(STATUS "Final decision on parallel degree is: ${DEDUCTED_PARALLEL_DEGREE}")
+
 FIND_PACKAGE(OpenMP REQUIRED)
 if(OPENMP_FOUND)
     message("OPENMP FOUND")
@@ -165,7 +210,7 @@ ExternalProject_Add(
         ${CMAKE_COMMAND} -E copy_directory "${BRPC_SOURCE_DIR}" "${BRPC_BUILD_DIR}"
         COMMAND cd "${BRPC_BUILD_DIR}" && sh ./config_brpc.sh --headers=/usr/include "--libs=/usr/lib /usr/lib64"
     BUILD_COMMAND
-        cd "${BRPC_BUILD_DIR}" && $(MAKE) -j4
+        cd "${BRPC_BUILD_DIR}" && $(MAKE) -j${DEDUCTED_PARALLEL_DEGREE}
     BUILD_IN_SOURCE 0
     INSTALL_COMMAND
         ${CMAKE_COMMAND} -E make_directory "${BRPC_OUTPUT_DIR}/include"

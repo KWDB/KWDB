@@ -24,14 +24,14 @@
 // See the Mulan PSL v2 for more details.
 package ape
 
-// #cgo CPPFLAGS: -I../../../kwdbap/include
+// #cgo CPPFLAGS: -I../../../kwdbap/src/include
 // #cgo LDFLAGS: -lduckdb -lcommon  -lstdc++
 // #cgo LDFLAGS: -lprotobuf
 // #cgo linux LDFLAGS: -lrt -lpthread
 //
 // #include <stdlib.h>
 // #include <string.h>
-// #include <libkwdbts2.h>
+// #include <libkwdbap.h>
 import "C"
 import (
 	"context"

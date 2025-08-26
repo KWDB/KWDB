@@ -17,7 +17,9 @@
 
 #include "duckdb.hpp"
 #include "duckdb_exec.h"
+#include "ee_comm_def.h"
 
+using namespace kwdbts;
 // TSStatus APOpen(APEngine** engine, TSSlice dir, APOptions options) {
 //   *engine = new APEngine();
 //   (*engine)->db = new duckdb::DuckDB({dir.data, dir.len});
@@ -33,7 +35,6 @@
 //   }
 //   return TSStatus{nullptr, 0};
 // }
-
 
 TSStatus APOpen(APEngine** engine) {
   kwdbContext_t context;
@@ -64,6 +65,10 @@ TSStatus APExecQuery(APEngine* engine, APQueryInfo* req, APRespInfo* resp) {
     return ToTsStatus("Execute Error!");
   }
 
-  LOG_ERROR("MQ_TYPE_DML_PG_RESULT = %d, code = %d", resp->ret, resp->code);
+  // LOG_ERROR("MQ_TYPE_DML_PG_RESULT = %d, code = %d", resp->ret, resp->code);
   return kTsSuccess;
+}
+
+void TSFree(void* ptr) {
+  free(ptr);
 }

@@ -96,6 +96,7 @@ else()
   add_subdirectory(storage)
   add_subdirectory(transaction)
   add_subdirectory(verification)
+  add_subdirectory(engine)
 
   set(DUCKDB_LINK_LIBS
       ${DUCKDB_SYSTEM_LIBS}

@@ -12,7 +12,7 @@
 
 #include <cmath>
 
-#include "ee_global.h"
+#include "ee_comm_def.h"
 #include "pgcode.h"
 
 namespace kwdbts {

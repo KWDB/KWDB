@@ -224,5 +224,4 @@ class ValueEncoding {
   // encode Null---Null
   static void EncodeNullValue(CKSlice *slice, k_uint32 colID);
 };
-};  // namespace kwdbts
-
+}  // namespace kwdbts

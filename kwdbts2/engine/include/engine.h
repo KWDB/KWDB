@@ -30,26 +30,6 @@
 #include "br_mgr.h"
 
 using namespace kwdbts; // NOLINT
-const TSStatus kTsSuccess = {NULL, 0};
-
-inline TSStatus ToTsStatus(const char* s, size_t len) {
-  TSStatus result;
-  result.len = len;
-  result.data = static_cast<char*>(malloc(result.len));
-  memcpy(result.data, s, len);
-  return result;
-}
-
-inline TSStatus ToTsStatus(std::string s) {
-  if (s.empty()) {
-    return kTsSuccess;
-  }
-  TSStatus result;
-  result.len = s.size();
-  result.data = static_cast<char*>(malloc(result.len));
-  memcpy(result.data, s.data(), s.size());
-  return result;
-}
 
 // class kwdbts::TsTable;
 /**

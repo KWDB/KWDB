@@ -30,8 +30,12 @@
 #include "duckdb/execution/executor.hpp"
 #include "duckdb/execution/operator/helper/physical_batch_collector.hpp"
 
+#include "kwdb_type.h"
 #include "lg_api.h"
+#include "ee_comm_def.h"
 #include "cm_func.h"
+#include "ee_string_info.h"
+#include "ee_encoding.h"
 
 namespace kwdbts {
 

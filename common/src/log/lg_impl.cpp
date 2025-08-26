@@ -28,11 +28,11 @@
 namespace kwdbts {
 
 std::unordered_map<std::string, LogSeverity> LogLevelMap = {
-  {"DEBUG", LogSeverity::DEBUG},
-  {"INFO", LogSeverity::INFO},
-  {"WARN", LogSeverity::WARN},
-  {"ERROR", LogSeverity::ERROR},
-  {"FATAL", LogSeverity::FATAL}
+  {"DEBUG", LogSeverity::LG_DEBUG},
+  {"INFO", LogSeverity::LG_INFO},
+  {"WARN", LogSeverity::LG_WARN},
+  {"ERROR", LogSeverity::LG_ERROR},
+  {"FATAL", LogSeverity::LG_FATAL}
 };
 
 KStatus Logger::Init() { return KStatus::SUCCESS; }
@@ -220,7 +220,7 @@ LogSeverity Logger::getLogLevelByName(std::string&& log_level) {
   if (it != LogLevelMap.end()) {
     return it->second;
   }
-  return LogSeverity::DEBUG;
+  return LogSeverity::LG_DEBUG;
 }
 
 LogSeverity Logger::getLogLevelByMod(KwdbModule mod, KString *str) {
@@ -238,7 +238,7 @@ LogSeverity Logger::getLogLevelByMod(KwdbModule mod, KString *str) {
       for (subMod = strtok_r(modAndLevel, sep2, &brkb); subMod != nullptr; subMod = strtok_r(nullptr, sep2, &brkb)) {
         if (count == 1) {
           if (strlen(subMod) > 1) {
-            return WARN;
+            return LG_WARN;
           }
           snprintf(level, sizeof(level), "%s", subMod);
         }
@@ -246,23 +246,23 @@ LogSeverity Logger::getLogLevelByMod(KwdbModule mod, KString *str) {
       }
       k_int32 ret = atoi(level);
       if (ret > 4 || ret < 0) {
-        return WARN;
+        return LG_WARN;
       }
       switch (ret) {
         case 1:
-          return INFO;
+          return LG_INFO;
         case 2:
-          return WARN;
+          return LG_WARN;
         case 3:
-          return ERROR;
+          return LG_ERROR;
         case 4:
-          return FATAL;
+          return LG_FATAL;
         default:
-          return DEBUG;
+          return LG_DEBUG;
       }
     }
   }
-  return WARN;
+  return LG_WARN;
 }
 
 k_bool Logger::SetLogModLevel() {

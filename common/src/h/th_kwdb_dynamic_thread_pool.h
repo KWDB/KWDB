@@ -33,7 +33,7 @@ namespace kwdbts {
 #define TH_TRACE_4(...) kwdbts::TRACER.Trace(ctx, __FILE__, __LINE__, 4, __VA_ARGS__)
 
 // These are the output interfaces without context.
-#define LOG_TH_WARN(...) kwdbts::LOGGER.Log(kwdbts::WARN, gettid(), __FILE__, __LINE__, __VA_ARGS__)
+#define LOG_TH_WARN(...) kwdbts::LOGGER.Log(kwdbts::LG_WARN, gettid(), __FILE__, __LINE__, __VA_ARGS__)
 #define TRACE_TH_WARN(...) kwdbts::TRACER.Trace(nullptr, __FILE__, __LINE__, 3, __VA_ARGS__)
 
 class KWDBDynamicThreadPool;

@@ -15,6 +15,7 @@
 #include "cm_assert.h"
 #include "kwdb_type.h"
 #include "ee_pb_plan.pb.h"
+#include "ee_comm_def.h"
 
 #include "duckdb/main/capi/capi_internal.hpp"
 #include "duckdb/main/client_context.hpp"
@@ -24,9 +25,22 @@
 using namespace duckdb;
 using duckdb::DatabaseWrapper;
 
-namespace kwdbts {
+
+struct APEngine {
+  virtual ~APEngine() {}
 
   /**
+ * @brief  calculate pushdown
+ * @param[in] req
+ * @param[out]  resp
+ *
+ * @return KStatus
+ */
+  virtual kwdbts::KStatus Execute(kwdbts::kwdbContext_p ctx, APQueryInfo* req, APRespInfo* resp) = 0;
+};
+namespace kwdbts {
+  
+ /**
  * @brief APEngineImpl
  */
   class APEngineImpl : public APEngine {

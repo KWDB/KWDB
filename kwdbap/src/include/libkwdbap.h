@@ -16,33 +16,17 @@
 #include <stdint.h>
 #include <pthread.h>
 
+#include "libcommon.h"
 // APIs used by CGO
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
+/*
 typedef struct {
   void* db;
 } APEngine;
-
-// A TSSlice contains read-only data that does not need to be freed.
-typedef struct {
-  char* data;
-  size_t len;
-} TSSlice;
-
-// A TSString is structurally identical to a DBSlice, but the data it
-// contains must be freed via a call to free().
-typedef struct {
-  char* data;
-  size_t len;
-} TSString;
-
-// A TSStatus is an alias for TSString and is used to indicate that
-// the return value indicates the success or failure of an
-// operation. If TSStatus.data == NULL the operation succeeded.
-typedef TSString TSStatus;
 
 typedef enum LgSeverity {
   UNKNOWN_K = 0, INFO_K, WARN_K, ERROR_K, FATAL_K, NONE_K, DEFAULT_K
@@ -64,24 +48,12 @@ typedef struct {
   TSSlice cluster_id;
 } APOptions;
 
-// TSStatus APOpen(APEngine** engine, TSSlice dir, APOptions options);
+TSStatus APOpen(APEngine** engine, TSSlice dir, APOptions options);
 
-// TSStatus APClose(APEngine* engine);
+TSStatus APClose(APEngine* engine);
+*/
 
-
-struct APEngine {
-  virtual ~APEngine() {}
-
-  /**
- * @brief  calculate pushdown
- * @param[in] req
- * @param[out]  resp
- *
- * @return KStatus
- */
-  virtual KStatus Execute(kwdbContext_p ctx, APQueryInfo* req, APRespInfo* resp) = 0;
-};
-
+typedef struct APEngine APEngine;
 
 typedef struct _APQueryInfo {
   EnMqType tp;
@@ -100,7 +72,6 @@ typedef struct _APQueryInfo {
   void* relBatchData;
   int32_t relRowCount;
   TSSlice sql;
-  DataInfo vectorize_data;
   void *db;
   void *connection;
   TSSlice db_path;
@@ -111,6 +82,8 @@ typedef APQueryInfo APRespInfo;
 TSStatus APOpen(APEngine** engine);
 
 TSStatus APExecQuery(APEngine* engine, APQueryInfo* req, APRespInfo* resp);
+
+void TSFree(void* ptr);
 
 #ifdef __cplusplus
 }  // extern "C"

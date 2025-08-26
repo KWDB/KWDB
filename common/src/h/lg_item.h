@@ -46,7 +46,7 @@ typedef struct LogItem {
   // Used to distinguish between LOG information and TRACE information
   ItemType itemType;
   // log statement for the input
-  char buf[0];
+  char buf[1];
 } LogItem;
 
 }  // namespace kwdbts

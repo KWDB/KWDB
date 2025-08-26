@@ -26,7 +26,7 @@ namespace kwdbts {
  * @param ... sunch as input for printf（fmt,...）
  */
 #define LOG_INFO(...)                                                     \
-  kwdbts::LOGGER.Log(kwdbts::INFO, gettid(), __FILE__, __LINE__, __VA_ARGS__); \
+  kwdbts::LOGGER.Log(kwdbts::LG_INFO, gettid(), __FILE__, __LINE__, __VA_ARGS__); \
   LOG_INFO_SPAN(__VA_ARGS__);
 
 /*!
@@ -34,7 +34,7 @@ namespace kwdbts {
  * @param ... sunch as input for printf（fmt,...）
  */
 #define LOG_WARN(...)                                                     \
-  kwdbts::LOGGER.Log(kwdbts::WARN, gettid(), __FILE__, __LINE__, __VA_ARGS__); \
+  kwdbts::LOGGER.Log(kwdbts::LG_WARN, gettid(), __FILE__, __LINE__, __VA_ARGS__); \
   LOG_WARN_SPAN(__VA_ARGS__);
 
 /*!
@@ -42,7 +42,7 @@ namespace kwdbts {
  * @param ... sunch as input for printf（fmt,...）
  */
 #define LOG_ERROR(...)                                                     \
-  kwdbts::LOGGER.Log(kwdbts::ERROR, gettid(), __FILE__, __LINE__, __VA_ARGS__); \
+  kwdbts::LOGGER.Log(kwdbts::LG_ERROR, gettid(), __FILE__, __LINE__, __VA_ARGS__); \
   LOG_ERROR_SPAN(__VA_ARGS__);
 
 /*!
@@ -52,7 +52,7 @@ namespace kwdbts {
  * @param ... sunch as input for printf（fmt,...）
  */
 #define LOG_FATAL(...)                                                     \
-  kwdbts::LOGGER.Log(kwdbts::FATAL, gettid(), __FILE__, __LINE__, __VA_ARGS__); \
+  kwdbts::LOGGER.Log(kwdbts::LG_FATAL, gettid(), __FILE__, __LINE__, __VA_ARGS__); \
   LOG_ERROR_SPAN(__VA_ARGS__);
 
 /*!
@@ -60,7 +60,7 @@ namespace kwdbts {
  * @param ... sunch as input for printf（fmt,...）
  */
 #ifdef K_DEBUG
-#define LOG_DEBUG(...) kwdbts::LOGGER.Log(kwdbts::DEBUG, gettid(), __FILE__, __LINE__, __VA_ARGS__)
+#define LOG_DEBUG(...) kwdbts::LOGGER.Log(kwdbts::LG_DEBUG, gettid(), __FILE__, __LINE__, __VA_ARGS__)
 #else
 #define LOG_DEBUG(...)
 #endif

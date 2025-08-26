@@ -18,7 +18,7 @@ namespace kwdbts {
  */
 const char *SeverityToStr(LogSeverity severity) {
   static const char *severity_to_str[] = { "D", "I", "W", "E", "F"};
-  if (severity > LogSeverity::FATAL) {
+  if (severity > LogSeverity::LG_FATAL) {
     return nullptr;
   }
   return severity_to_str[severity];

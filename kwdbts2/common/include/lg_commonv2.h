@@ -28,12 +28,12 @@ struct TsEngineLogOption {
 
 // @since kwbase/pkg/util/log/log.proto:18 enum Severity
 static std::map<LgSeverity, LogSeverity> kLgSeverityMap = {
-    {LgSeverity::UNKNOWN_K, LogSeverity::DEBUG},
-    {LgSeverity::INFO_K, LogSeverity::INFO},
-    {LgSeverity::WARN_K, LogSeverity::WARN},
-    {LgSeverity::ERROR_K, LogSeverity::ERROR},
-    {LgSeverity::FATAL_K, LogSeverity::FATAL},
-    {LgSeverity::NONE_K, LogSeverity::DEBUG},
-    {LgSeverity::DEFAULT_K, LogSeverity::INFO},
+    {LgSeverity::UNKNOWN_K, LogSeverity::LG_DEBUG},
+    {LgSeverity::INFO_K, LogSeverity::LG_INFO},
+    {LgSeverity::WARN_K, LogSeverity::LG_WARN},
+    {LgSeverity::ERROR_K, LogSeverity::LG_ERROR},
+    {LgSeverity::FATAL_K, LogSeverity::LG_FATAL},
+    {LgSeverity::NONE_K, LogSeverity::LG_DEBUG},
+    {LgSeverity::DEFAULT_K, LogSeverity::LG_INFO},
 };
 }  // namespace kwdbts

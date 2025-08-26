@@ -143,7 +143,7 @@ class Logger {
   std::atomic<LoggerStatus> LOGGER_STATUS_ = INIT;
   k_int32 writer_type_ = OFF;
   KString device_;
-  LogSeverity m_log_serverity_ = LogSeverity::DEBUG;
+  LogSeverity m_log_serverity_ = LogSeverity::LG_DEBUG;
   LogSeverity severity_of_module_[MAX_MODULE + 1];
   LogWriter* log_writer_ = nullptr;
   k_bool writer_inited_ = false;
