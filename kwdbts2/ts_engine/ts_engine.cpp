@@ -12,6 +12,7 @@
 #include "ts_engine.h"
 
 #include <dirent.h>
+#include <execution>
 #include <cstdint>
 #include <cstdio>
 #include <vector>
@@ -571,7 +572,6 @@ KStatus TSEngineV2Impl::PutData(kwdbContext_p ctx, const KTableKey& table_id, ui
   std::shared_ptr<kwdbts::TsTable> ts_table;
   ErrorInfo err_info;
   TSEntityID entity_id;
-  size_t payload_size = 0;
   dedup_result->payload_num = payload_num;
   dedup_result->dedup_rule = static_cast<int>(EngineOptions::g_dedup_rule);
   for (size_t i = 0; i < payload_num; i++) {
@@ -1063,6 +1063,26 @@ KStatus TSEngineV2Impl::TSxRollback(kwdbContext_p ctx, const KTableKey& table_id
   return KStatus::SUCCESS;
 }
 
+KStatus TSEngineV2Impl::ParallelRemoveChkFiles(kwdbContext_p ctx) {
+  std::atomic<KStatus> finalResult = KStatus::SUCCESS;
+  std::mutex logMutex;
+
+  std::for_each(std::execution::par, vgroups_.begin(), vgroups_.end(),
+                [&](const auto& vgrp) {
+                  if (finalResult.load() == KStatus::FAIL) return;
+
+                  KStatus s = vgrp->RemoveChkFile(ctx);
+                  if (s == KStatus::FAIL) {
+                    finalResult.store(KStatus::FAIL);
+                    std::lock_guard<std::mutex> lock(logMutex);
+                    LOG_ERROR("Failed to update vgroup checkpoint lsn.");
+                  }
+                }
+  );
+
+  return finalResult.load();
+}
+
 KStatus TSEngineV2Impl::CreateCheckpoint(kwdbContext_p ctx) {
   // use raft log
   if (options_.use_raft_log_as_wal) {
@@ -1281,12 +1301,10 @@ KStatus TSEngineV2Impl::CreateCheckpoint(kwdbContext_p ctx) {
   }
 
   // 7. remove vgroup wal file.
-  for (const auto &vgrp : vgroups_) {
-    s = vgrp->RemoveChkFile(ctx);
-    if (s == KStatus::FAIL) {
-      LOG_ERROR("Failed to update vgroup checkpoint lsn.")
-      return s;
-    }
+  s = ParallelRemoveChkFiles(ctx);
+  if (s == KStatus::FAIL) {
+    LOG_ERROR("Failed to ParallelRemoveChkFiles.")
+    return s;
   }
 
   // 8. remove old chk file
