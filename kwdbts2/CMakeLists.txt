@@ -210,7 +210,7 @@ ExternalProject_Add(
         ${CMAKE_COMMAND} -E copy_directory "${BRPC_SOURCE_DIR}" "${BRPC_BUILD_DIR}"
         COMMAND cd "${BRPC_BUILD_DIR}" && sh ./config_brpc.sh --headers=/usr/include "--libs=/usr/lib /usr/lib64"
     BUILD_COMMAND
-        cd "${BRPC_BUILD_DIR}" && $(MAKE) -j${DEDUCTED_PARALLEL_DEGREE}
+        cd "${BRPC_BUILD_DIR}" && make -j${DEDUCTED_PARALLEL_DEGREE}
     BUILD_IN_SOURCE 0
     INSTALL_COMMAND
         ${CMAKE_COMMAND} -E make_directory "${BRPC_OUTPUT_DIR}/include"
