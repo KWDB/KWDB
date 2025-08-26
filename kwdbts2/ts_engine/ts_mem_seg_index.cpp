@@ -77,7 +77,6 @@ void TsMemSegIndex::InsertWithCAS(const char* key) {
   cur_splice.prev_ = prev;
   cur_splice.next_ = next_node;
   SkipListNode* x = reinterpret_cast<SkipListNode*>(const_cast<char*>(key)) - 1;
-  const TSMemSegRowData* key_decoded = compare_.DecodeKeyValue(key);
   int sl_height = x->UnstashHeight();
   assert(sl_height >= 1 && sl_height <= kMaxHeight_);
 
@@ -95,7 +94,7 @@ void TsMemSegIndex::InsertWithCAS(const char* key) {
   cur_splice.next_[max_height] = nullptr;
   cur_splice.height_ = max_height;
 
-  RecomputeSpliceLevels(key_decoded, &cur_splice, max_height);
+  RecomputeSpliceLevels(key, &cur_splice, max_height);
 
   bool splice_valid = true;
   {
@@ -106,21 +105,17 @@ void TsMemSegIndex::InsertWithCAS(const char* key) {
           // insert success
           break;
         }
-        FindSpliceForLevel<false>(key_decoded, cur_splice.prev_[i], nullptr, i, &cur_splice.prev_[i],
-                                  &cur_splice.next_[i]);
+        FindSpliceForLevel<false>(key, cur_splice.prev_[i], nullptr, i, &cur_splice.prev_[i], &cur_splice.next_[i]);
       }
     }
   }
 }
 
-void TsMemSegIndex::RecomputeSpliceLevels(const TSMemSegRowData*& key,
-                                          SkipListSplice* splice,
-                                          int recompute_level) {
+void TsMemSegIndex::RecomputeSpliceLevels(const char* key, SkipListSplice* splice, int recompute_level) {
   assert(recompute_level > 0);
   assert(recompute_level <= splice->height_);
   for (int i = recompute_level - 1; i >= 0; --i) {
-    FindSpliceForLevel<true>(key, splice->prev_[i + 1], splice->next_[i + 1], i,
-                       &splice->prev_[i], &splice->next_[i]);
+    FindSpliceForLevel<true>(key, splice->prev_[i + 1], splice->next_[i + 1], i, &splice->prev_[i], &splice->next_[i]);
   }
 }
 
@@ -136,39 +131,37 @@ int TsMemSegIndex::RandomHeight() {
   return sl_height;
 }
 
-bool TsMemSegIndex::IsKeyAfterNode(const char* key, SkipListNode* n) const {
-  assert(n != head_node_);
-  return (n != nullptr) && (compare_(n->Key(), key) <= 0);
-}
-
-bool TsMemSegIndex::IsKeyAfterNode(const TSMemSegRowData*& key, SkipListNode* n) const {
-  assert(n != head_node_);
-  return (n != nullptr) && (compare_(n->Key(), key) <= 0);
-}
-
 SkipListNode* TsMemSegIndex::FindGreaterOrEqual(const char* key) const {
-  SkipListNode* x = head_node_;
-  const TSMemSegRowData* key_decoded = compare_.DecodeKeyValue(key);
   int level = GetMaxHeight() - 1;
-  SkipListNode* last_bigger_node = nullptr;
-  while (true) {
-    SkipListNode* next_node = x->Next(level);
-    if (next_node != nullptr) {
-      PREFETCH(next_node->Next(level), 0, 1);
-    }
-    assert(x == head_node_ || IsKeyAfterNode(key_decoded, x));
-    assert(x == head_node_ || next_node == nullptr || IsKeyAfterNode(next_node->Key(), x));
-    int cmp = (next_node == nullptr || next_node == last_bigger_node) ? 1 : compare_(next_node->Key(), key_decoded);
-    if (cmp == 0 || (cmp > 0 && level == 0)) {
-      return next_node;
-    } else if (cmp < 0) {
-      x = next_node;
-    } else {
-      last_bigger_node = next_node;
-      level--;
+  // SkipListNode* x = head_node_;
+  // SkipListNode* last_bigger_node = nullptr;
+  // while (true) {
+  //   SkipListNode* next_node = x->Next(level);
+  //   if (next_node != nullptr) {
+  //     PREFETCH(next_node->Next(level), 0, 1);
+  //   }
+  //   // assert(x == head_node_ || IsKeyAfterNode(key, x));
+  //   // assert(x == head_node_ || next_node == nullptr || IsKeyAfterNode(next_node->Key(), x));
+  //   int cmp = (next_node == nullptr || next_node == last_bigger_node) ? 1 : compare_(next_node->Key(), key);
+  //   if (cmp == 0 || (cmp > 0 && level == 0)) {
+  //     return next_node;
+  //   } else if (cmp < 0) {
+  //     x = next_node;
+  //   } else {
+  //     last_bigger_node = next_node;
+  //     level--;
+  //   }
+  // }
+
+  SkipListNode* lhs = head_node_;
+  for (; level >= 0; level--) {
+    SkipListNode* rhs = lhs->Next(level);
+    while (rhs != nullptr && compare_(rhs->Key(), key) < 0) {
+      lhs = rhs;
+      rhs = lhs->Next(level);
     }
   }
+  return lhs->Next(0);
 }
-
 
 }  //  namespace kwdbts

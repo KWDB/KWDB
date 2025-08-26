@@ -21,9 +21,9 @@
 
 using namespace kwdbts;
 
-void InsertDuplicateTest(TsMemSegIndex &skiplist, int data) {
-  TSMemSegRowData row{1, 1, 1, 1};
-  row.SetData(1, 1, TSSlice{reinterpret_cast<char *>(&data), sizeof(data)});
+void InsertDuplicateTest(TsMemSegIndex &skiplist, int data, int id = 1) {
+  TSMemSegRowData row(id, id, id, id);
+  row.SetData(id, id, TSSlice{reinterpret_cast<char *>(&data), sizeof(data)});
   skiplist.InsertRowData(row);
 }
 
@@ -50,4 +50,60 @@ TEST(TsMemSegIndexTest, InsertDuplicateKeys) {
     ++i;
   }
   ASSERT_EQ(i, 10000);
+}
+
+SkiplistIterator SeekHelper(TsMemSegIndex &skiplist, int id) {
+  SkiplistIterator iter(&skiplist);
+  char keybuf[TSMemSegRowData::GetKeyLen() + sizeof(TSMemSegRowData)];
+  TSMemSegRowData *key = new (keybuf) TSMemSegRowData(id, id, id, id);
+  key->SetData(id, id, TSSlice{nullptr, 0});
+  key->GenKey(keybuf);
+  iter.Seek(keybuf);
+  return iter;
+}
+
+TEST(TsMemSegIndexTest, InsertDuplicateKeysAndSeek) {
+  TsMemSegIndex skiplist;
+  std::default_random_engine rng{0};
+
+  int n = 5000;
+  int nbatch = 10;
+  std::vector<std::vector<int>> insert_data(nbatch);
+  for (int i = 0; i < nbatch; ++i) {
+    insert_data[i].resize(n);
+    std::iota(insert_data[i].begin(), insert_data[i].end(), i * n);
+    std::shuffle(insert_data[i].begin(), insert_data[i].end(), rng);
+  }
+
+  for (int i = 0; i < nbatch; ++i) {
+    for (int j = 0; j < n; ++j) {
+      InsertDuplicateTest(skiplist, insert_data[i][j], i);
+    }
+  }
+  {
+    SkiplistIterator iter(&skiplist);
+    iter.SeekToFirst();
+    int cnt = 0;
+    while (iter.Valid()) {
+      iter.Next();
+      ++cnt;
+    }
+    ASSERT_EQ(cnt, nbatch * n);
+  }
+  {
+    auto it = SeekHelper(skiplist, 5);
+    ASSERT_TRUE(it.Valid());
+
+    auto end = SeekHelper(skiplist, 6);
+
+    int idx = 0;
+    while (it.Valid() && it != end) {
+      auto row_data = skiplist.ParseKey(it.key());
+      int data = *reinterpret_cast<int *>(row_data->row_data.data);
+      ASSERT_EQ(data, insert_data[5][idx]);
+      it.Next();
+      ++idx;
+    }
+    ASSERT_EQ(idx, n);
+  }
 }

@@ -92,10 +92,6 @@ struct TSRowDataComparator {
   }
 
   int operator()(const char* a, const char* b) const { return memcmp(a, b, TSMemSegRowData::GetKeyLen()); }
-
-  int operator()(const char* a, const TSMemSegRowData* b) const {
-    return memcmp(a, reinterpret_cast<const char*>(b) - TSMemSegRowData::GetKeyLen(), TSMemSegRowData::GetKeyLen());
-  }
 };
 
 // skiplist node, one node is one row data.
@@ -207,19 +203,13 @@ class TsMemSegIndex {
     return (compare_(a, b) < 0);
   }
 
-  // Return true if key is greater than the data stored in "n".  Null n
-  // is considered infinite.  n should not be head_node_.
-  inline bool IsKeyAfterNode(const char* key, SkipListNode* n) const;
-  inline bool IsKeyAfterNode(const TSMemSegRowData*& key, SkipListNode* n) const;
-
   SkipListNode* FindGreaterOrEqual(const char* key) const;
 
   template <bool prefetch_before>
-  inline void FindSpliceForLevel(const TSMemSegRowData*& key, SkipListNode* before, SkipListNode* after, int level,
-                          SkipListNode** out_prev, SkipListNode** out_next);
+  inline void FindSpliceForLevel(const char* key, SkipListNode* before, SkipListNode* after, int level,
+                                 SkipListNode** out_prev, SkipListNode** out_next);
 
-  inline void RecomputeSpliceLevels(const TSMemSegRowData*& key, SkipListSplice* splice,
-                             int recompute_level);
+  inline void RecomputeSpliceLevels(const char* key, SkipListSplice* splice, int recompute_level);
 
   friend SkiplistIterator;
 };
@@ -251,13 +241,13 @@ class SkiplistIterator {
   inline void Seek(const char* target) { node_ = list_->FindGreaterOrEqual(target); }
 
   inline void SeekToFirst() { node_ = list_->head_node_->Next(0); }
+
+  inline bool operator!=(const SkiplistIterator& other) const { return node_ != other.node_; }
 };
 
 template <bool prefetch_before>
-void TsMemSegIndex::FindSpliceForLevel(const TSMemSegRowData*& key,
-                                    SkipListNode* before, SkipListNode* after,
-                                    int level, SkipListNode** out_prev,
-                                    SkipListNode** out_next) {
+void TsMemSegIndex::FindSpliceForLevel(const char* key, SkipListNode* before, SkipListNode* after, int level,
+                                       SkipListNode** out_prev, SkipListNode** out_next) {
   while (true) {
     SkipListNode* next = before->Next(level);
     if (next != nullptr) {
@@ -268,7 +258,8 @@ void TsMemSegIndex::FindSpliceForLevel(const TSMemSegRowData*& key,
         PREFETCH(next->Next(level - 1), 0, 1);
       }
     }
-    if (next == after || !IsKeyAfterNode(key, next)) {
+    // we will break only if next > key
+    if (next == after || compare_(next->Key(), key) > 0) {
       // found it
       *out_prev = before;
       *out_next = next;
