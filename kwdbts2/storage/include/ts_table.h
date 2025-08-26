@@ -578,6 +578,8 @@ class TsTable {
  protected:
   using TsTableEntityGrpsRwLatch = KRWLatch;
   TsTableEntityGrpsRwLatch* entity_groups_mtx_;
+  using TsTableVersionRwLatch = KRWLatch;
+  TsTableVersionRwLatch* table_version_rw_lock_;
 
  private:
   using TsTableSnapshotLatch = KLatch;
