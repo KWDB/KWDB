@@ -4488,14 +4488,12 @@ may increase either contention or retry errors, or both.`,
 				{"conn_info", types.String},
 				{"extern_db_name", types.String},
 				{"type", types.String},
-				{"target_db_name", types.String},
 			}, ReturnType: tree.FixedReturnType(types.Int),
 			Fn: func(evalCtx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
 				connInfo := strings.ToLower(string(tree.MustBeDString(args[0])))
 				externDB := strings.ToLower(string(tree.MustBeDString(args[1])))
 				dbType := strings.ToLower(string(tree.MustBeDString(args[2])))
-				targetDB := strings.ToLower(string(tree.MustBeDString(args[3])))
-				conn, err := evalCtx.Planner.GetApEngine().(*ape.ApEngine).CreateConnection(targetDB)
+				conn, err := evalCtx.Planner.GetApEngine().(*ape.ApEngine).CreateConnection("")
 				if err != nil {
 					return nil, err
 				}
