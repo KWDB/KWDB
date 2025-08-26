@@ -84,37 +84,7 @@ struct TSMemSegRowData {
     return this->table_id == b->table_id;
   }
 
-  inline int Compare(const TSMemSegRowData& b) const {
-    auto ret = memcmp(skip_list_key_, b.skip_list_key_, GetKeyLen());
-    // auto ret_1 = 0;
-    // while (true) {
-    //   if (database_id != b->database_id) {
-    //     ret_1 = database_id > b->database_id ? 1 : -1;
-    //     break;
-    //   }
-    //   if (table_id != b->table_id) {
-    //     ret_1 = table_id > b->table_id ? 1 : -1;
-    //     break;
-    //   }
-    //   if (table_version != b->table_version) {
-    //     ret_1 = table_version> b->table_version ? 1 : -1;
-    //      break;
-    //   }
-    //   if (entity_id != b->entity_id) {
-    //     ret_1 = entity_id > b->entity_id ? 1 : -1;
-    //     break;
-    //   }
-    //   if (ts != b->ts) {
-    //     ret_1 = ts > b->ts ? 1 : -1;
-    //     break;
-    //   }
-    //   if (lsn != b->lsn)
-    //     ret_1 = lsn > b->lsn ? 1 : -1;
-    //   break;
-    // }
-    // assert(ret * ret_1 >= 0);
-    return ret;
-  }
+  inline int Compare(const TSMemSegRowData& b) const { return memcmp(skip_list_key_, b.skip_list_key_, GetKeyLen()); }
 };
 #pragma pack()
 
@@ -123,17 +93,10 @@ struct TSRowDataComparator {
     return reinterpret_cast<TSMemSegRowData*>(const_cast<char*>(b + TSMemSegRowData::GetKeyLen()));
   }
 
-  int operator()(const char* a, const char* b) const {
-    return memcmp(a, b, TSMemSegRowData::GetKeyLen());
-    // auto a_row = DecodeKeyValue(a);
-    // auto b_row = DecodeKeyValue(b);
-    // return a_row->Compare(b_row);
-  }
+  int operator()(const char* a, const char* b) const { return memcmp(a, b, TSMemSegRowData::GetKeyLen()); }
 
   int operator()(const char* a, const TSMemSegRowData* b) const {
     return memcmp(a, reinterpret_cast<const char*>(b) - TSMemSegRowData::GetKeyLen(), TSMemSegRowData::GetKeyLen());
-    // auto a_row = DecodeKeyValue(a);
-    // return a_row->Compare(b);
   }
 };
 
@@ -168,7 +131,7 @@ struct SkipListNode {
 
   bool CASNext(int n, SkipListNode* expected, SkipListNode* x) {
     assert(n >= 0);
-    return (&next_[0] - n)->compare_exchange_strong(expected, x);
+    return (&next_[0] - n)->compare_exchange_strong(expected, x, std::memory_order_release);
   }
 
   SkipListNode* NoBarrier_Next(int n) {
@@ -222,7 +185,7 @@ class TsMemSegIndex {
 
   inline SkipListSplice* AllocateSkiplistSplice();
 
-  inline bool InsertWithCAS(const char* key);
+  void InsertWithCAS(const char* key);
 
   bool InsertRowData(const TSMemSegRowData& row, uint32_t row_idx);
 
@@ -302,14 +265,11 @@ void TsMemSegIndex::FindSpliceForLevel(const TSMemSegRowData*& key,
     if (next != nullptr) {
       PREFETCH(next->Next(level), 0, 1);
     }
-    if (prefetch_before == true) {
+    if constexpr (prefetch_before == true) {
       if (next != nullptr && level > 0) {
-        PREFETCH(next->Next(level-1), 0, 1);
+        PREFETCH(next->Next(level - 1), 0, 1);
       }
     }
-    assert(before == head_node_ || next == nullptr ||
-           IsKeyAfterNode(next->Key(), before));
-    assert(before == head_node_ || IsKeyAfterNode(key, before));
     if (next == after || !IsKeyAfterNode(key, next)) {
       // found it
       *out_prev = before;
