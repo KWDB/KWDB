@@ -535,12 +535,14 @@ func constructCopyAndRun(
 	if state != duck.StateSuccess {
 		return false, 0, errors.New("failed to opend the ap database")
 	}
+	defer duck.Close(&db)
 
 	connection := duck.Connection{}
 	state = duck.Connect(db, &connection)
 	if state != duck.StateSuccess {
 		return false, 0, errors.New("failed to connect to ap database")
 	}
+	defer duck.Disconnect(&connection)
 
 	start := time.Now()
 	state = duck.Query(connection, stmt, &res)
