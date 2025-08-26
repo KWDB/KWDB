@@ -303,6 +303,8 @@ class WALMgr {
    */
   KStatus ReadWALLog(std::vector<LogEntry*>& logs, TS_LSN start_lsn, TS_LSN end_lsn, std::vector<uint64_t>& end_chk);
 
+  KStatus ReadUncommittedWALLog(std::vector<LogEntry*>& logs, TS_LSN start_lsn, TS_LSN end_lsn,
+                                        std::vector<uint64_t>& end_chk, const std::vector<uint64_t>& uncommitted_xid);
 
   TS_LSN GetFirstLSN();
 
@@ -324,6 +326,8 @@ class WALMgr {
    * @return
    */
   KStatus ReadWALLogForMtr(uint64_t mtr_trans_id, std::vector<LogEntry*>& logs, std::vector<uint64_t>& end_chk);
+
+  KStatus ReadUncommittedTxnID(std::vector<uint64_t>& uncommitted_xid);
 
   /**
    *  Read the relevant log entry according to the TS Transaction ID.

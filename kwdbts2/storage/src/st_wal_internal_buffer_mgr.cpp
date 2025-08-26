@@ -455,6 +455,250 @@ KStatus WALBufferMgr::readWALLogs(std::vector<LogEntry*>& log_entries, TS_LSN st
   return SUCCESS;
 }
 
+KStatus WALBufferMgr::readUncommittedTxnID(std::vector<uint64_t>& uncommitted_id, TS_LSN start_lsn, TS_LSN end_lsn) {
+  if (end_lsn <= start_lsn || end_lsn > getCurrentLsn()) {
+    return SUCCESS;
+  }
+
+  uint64_t start_block = file_mgr_->GetBlockNoFromLsn(start_lsn);
+  uint64_t end_block = file_mgr_->GetBlockNoFromLsn(end_lsn);
+
+  // Read WAL entry blocks form disk.
+  std::vector<EntryBlock*> blocks;
+  if (start_block < buffer_[begin_block_index_].getBlockNo()) {
+    file_mgr_->readEntryBlocks(blocks, start_block, buffer_[begin_block_index_].getBlockNo() - 1);
+  }
+
+  std::queue<EntryBlock*> read_queue;
+
+  // if the blocks is not empty, merge it when the writing buffer_.
+  if (!blocks.empty()) {
+    for (auto block : blocks) {
+      read_queue.push(block);
+    }
+  }
+
+  if (read_queue.empty() || buffer_[begin_block_index_].getBlockNo() == read_queue.back()->getBlockNo() + 1) {
+    uint64_t index = begin_block_index_;
+    do {
+      if (buffer_[index].getBlockNo() >= start_block) {
+        read_queue.push(&buffer_[index]);
+      }
+      index = nextBlockIndex(index);
+    } while (buffer_[index].getBlockNo() <= end_block);
+  }
+
+  TS_LSN current_offset = start_lsn;
+  TS_LSN current_lsn;
+
+  KStatus status;
+  do {
+    uint64_t x_id = 0;
+    current_lsn = current_offset;
+    char* read_buf;
+
+    auto current_block = read_queue.front();
+    size_t offset_in_block = current_offset - file_mgr_->GetLSNFromBlockNo(current_block->getBlockNo());
+    if (offset_in_block == LOG_BLOCK_MAX_LOG_SIZE) {
+      read_queue.pop();
+      if (!read_queue.empty()) {
+        current_block = read_queue.front();
+        current_offset = file_mgr_->GetLSNFromBlockNo(current_block->getBlockNo());
+        current_lsn = current_offset;
+      } else {
+        status = FAIL;
+        break;
+      }
+    }
+
+    status = readBytes(current_offset, read_queue, 1, read_buf);
+    if (status == FAIL) {
+      delete[] read_buf;
+      read_buf = nullptr;
+      LOG_ERROR("Failed to parse the WAL log.")
+      break;
+    }
+
+    WALLogType typ;
+    memcpy(&typ, read_buf, LogEntry::LOG_TYPE_SIZE);
+    delete[] read_buf;
+    read_buf = nullptr;
+
+    std::vector<LogEntry*> log_entries;
+    switch (typ) {
+      case WALLogType::INSERT: {
+        status = readInsertLog(log_entries, current_lsn, 0, current_offset, read_queue, false);
+        for (auto log : log_entries) {
+          delete log;
+        }
+        log_entries.clear();
+        break;
+      }
+      case WALLogType::DELETE: {
+        status = readDeleteLog(log_entries, current_lsn, 0, current_offset, read_queue, false);
+        for (auto log : log_entries) {
+          delete log;
+        }
+        log_entries.clear();
+        break;
+      }
+      case WALLogType::CREATE_INDEX: {
+        status = readCreateIndexLog(log_entries, current_lsn, 0, current_offset, read_queue);
+        for (auto log : log_entries) {
+          delete log;
+        }
+        log_entries.clear();
+        break;
+      }
+      case WALLogType::DROP_INDEX: {
+        status = readDropIndexLog(log_entries, current_lsn, 0, current_offset, read_queue);
+        for (auto log : log_entries) {
+          delete log;
+        }
+        log_entries.clear();
+        break;
+      }
+      case WALLogType::CHECKPOINT: {
+        status = readCheckpointLog(log_entries, current_lsn, 0, current_offset, read_queue);
+        for (auto log : log_entries) {
+          delete log;
+        }
+        log_entries.clear();
+        break;
+      }
+      case WALLogType::MTR_BEGIN: {
+        x_id = current_lsn;
+        uncommitted_id.emplace_back(x_id);
+        current_offset += MTRBeginEntry::header_length;
+        break;
+      }
+      case WALLogType::MTR_COMMIT:
+      case WALLogType::MTR_ROLLBACK: {
+        char tsx_id[LogEntry::TS_TRANS_ID_LEN];
+        status = readBytes(current_offset, read_queue, sizeof(x_id) + LogEntry::TS_TRANS_ID_LEN,
+                           read_buf);
+        if (status == FAIL) {
+          delete[] read_buf;
+          read_buf = nullptr;
+          LOG_ERROR("Failed to parse the WAL log.")
+          break;
+        }
+
+        if (x_id != current_lsn) {
+          memcpy(&x_id, read_buf, sizeof(x_id));
+        }
+        memcpy(tsx_id, read_buf + sizeof(x_id), LogEntry::TS_TRANS_ID_LEN);
+        delete[] read_buf;
+        read_buf = nullptr;
+        uncommitted_id.erase(std::remove(uncommitted_id.begin(), uncommitted_id.end(), x_id), uncommitted_id.end());
+        break;
+      }
+      case UPDATE: {
+        status = readUpdateLog(log_entries, current_lsn, 0, current_offset, read_queue, false);
+        for (auto log : log_entries) {
+          delete log;
+        }
+        log_entries.clear();
+        break;
+      }
+      case TS_BEGIN:
+        x_id = current_lsn;
+      case TS_COMMIT:
+      case TS_ROLLBACK: {
+        current_offset += sizeof(x_id) + TTREntry::TS_TRANS_ID_LEN;
+        break;
+      }
+      case DDL_CREATE: {
+        status = readDDLCreateLog(log_entries, current_lsn, 0, current_offset, read_queue);
+        if (status == FAIL) {
+          delete[] read_buf;
+          read_buf = nullptr;
+          LOG_ERROR("Failed to parse the WAL log.")
+        }
+        for (auto log : log_entries) {
+          delete log;
+        }
+        log_entries.clear();
+        break;
+      }
+      case DDL_ALTER_COLUMN: {
+        status = readDDLAlterLog(log_entries, current_lsn, 0, current_offset, read_queue);
+        if (status == FAIL) {
+          delete[] read_buf;
+          read_buf = nullptr;
+          LOG_ERROR("Failed to parse the WAL log.")
+        }
+        for (auto log : log_entries) {
+          delete log;
+        }
+        log_entries.clear();
+        break;
+      }
+      case DDL_DROP: {
+        current_offset += sizeof(x_id) + sizeof(uint64_t);
+        break;
+      }
+      case RANGE_SNAPSHOT: {
+        current_offset += SnapshotEntry::header_length;
+        break;
+      }
+      case WALLogType::SNAPSHOT_TMP_DIRCTORY:
+      {
+        status = readBytes(current_offset, read_queue, TempDirectoryEntry::header_length, read_buf);
+        if (status == FAIL) {
+          delete[] read_buf;
+          read_buf = nullptr;
+          LOG_ERROR("Failed to parse the WAL log.")
+          break;
+        }
+        size_t length;
+        char* read_loc = read_buf;
+        memcpy(&x_id, read_loc, sizeof(x_id));
+        read_loc += sizeof(x_id);
+        memcpy(&length, read_loc, sizeof(length));
+        delete[] read_buf;
+        read_buf = nullptr;
+        current_offset += length;
+        break;
+      }
+      case WALLogType::END_CHECKPOINT: {
+        status = readBytes(current_offset, read_queue, EndCheckpointEntry::fixed_length - sizeof(WALLogType), read_buf);
+        if (status == FAIL) {
+          delete[] read_buf;
+          read_buf = nullptr;
+          LOG_ERROR("Failed to parse the WAL log.")
+          break;
+        }
+        uint64_t lsn_len;
+        int location = sizeof(uint64_t);
+        memcpy(&lsn_len, read_buf + location, sizeof(EndCheckpointEntry::lsn_len_));
+        delete[] read_buf;
+        read_buf = nullptr;
+        current_offset += lsn_len;
+      }
+        break;
+      case DB_SETTING:
+//        break;
+      default:
+        break;
+    }
+    if (status == FAIL) {
+      LOG_ERROR("Failed to parse the WAL log.")
+      break;
+    }
+  } while (current_offset < end_lsn);
+
+  for (auto block : blocks) {
+    delete block;
+  }
+
+  if (status == FAIL) {
+    LOG_ERROR("Failed to parse the WAL log.")
+    return status;
+  }
+  return SUCCESS;
+}
+
 KStatus WALBufferMgr::readBytes(TS_LSN& start_offset,
                                 std::queue<EntryBlock*>& read_queue,
                                 size_t length, char*& res) {

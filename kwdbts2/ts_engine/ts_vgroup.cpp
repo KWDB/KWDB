@@ -178,7 +178,8 @@ KStatus TsVGroup::RemoveChkFile(kwdbContext_p ctx) {
   return SUCCESS;
 }
 
-KStatus TsVGroup::ReadWALLogFromLastCheckpoint(kwdbContext_p ctx, std::vector<LogEntry*>& logs, TS_LSN& last_lsn) {
+KStatus TsVGroup::ReadWALLogFromLastCheckpoint(kwdbContext_p ctx, std::vector<LogEntry*>& logs, TS_LSN& last_lsn,
+                                               std::vector<uint64_t> uncommitted_xid) {
   // 1. read chk wal log
   // 2. switch new file
   wal_manager_->Lock();
@@ -200,7 +201,7 @@ KStatus TsVGroup::ReadWALLogFromLastCheckpoint(kwdbContext_p ctx, std::vector<Lo
   // new tmp wal mgr to read chk wal file
   WALMgr tmp_wal = WALMgr(engine_options_->db_path, VGroupDirName(vgroup_id_), engine_options_, true);
   tmp_wal.InitForChk(ctx, meta);
-  s = tmp_wal.ReadWALLog(logs, first_lsn, last_lsn, ignore);
+  s = tmp_wal.ReadUncommittedWALLog(logs, first_lsn, last_lsn, ignore, uncommitted_xid);
   return s;
 }
 

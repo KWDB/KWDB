@@ -1178,12 +1178,24 @@ KStatus TSEngineV2Impl::CreateCheckpoint(kwdbContext_p ctx) {
   }
   if (vgroup_lsn.empty()) {
     LOG_INFO("Cannot detect the end checkpoint wal, skipping this file's content.")
+    for (auto& log : logs) {
+      delete log;
+    }
     logs.clear();
   }
 
   s = wal_mgr_->SwitchNextFile();
   if (s == KStatus::FAIL) {
     LOG_ERROR("Failed to switch chk file.")
+    return s;
+  }
+
+  // read mtr id first, only read uncommitted txn from all vgroups.
+  auto vgroup_mtr = GetVGroupByID(ctx, 1);
+  std::vector<uint64_t> uncommitted_xid;
+  s = vgroup_mtr->GetWALManager()->ReadUncommittedTxnID(uncommitted_xid);
+  if (s == KStatus::FAIL) {
+    LOG_ERROR("Failed to ReadUncommittedTxnID.")
     return s;
   }
 
@@ -1194,7 +1206,7 @@ KStatus TSEngineV2Impl::CreateCheckpoint(kwdbContext_p ctx) {
     if (vgrp->GetVGroupID() <= vgroup_lsn.size()) {
       lsn = vgroup_lsn[vgrp->GetVGroupID() - 1];
     }
-    if (vgrp->ReadWALLogFromLastCheckpoint(ctx, vlogs, lsn) == KStatus::FAIL) {
+    if (vgrp->ReadWALLogFromLastCheckpoint(ctx, vlogs, lsn, uncommitted_xid) == KStatus::FAIL) {
       LOG_ERROR("Failed to ReadWALLogFromLastCheckpoint from vgroup : %d", vgrp->GetVGroupID())
       return KStatus::FAIL;
     }
@@ -1241,7 +1253,6 @@ KStatus TSEngineV2Impl::CreateCheckpoint(kwdbContext_p ctx) {
     LOG_ERROR("Failed to WriteIncompleteWAL.")
     return KStatus::FAIL;
   }
-  rewrite.clear();
 
   // 5. trig all vgroup flush
   for (const auto &vgrp : vgroups_) {
