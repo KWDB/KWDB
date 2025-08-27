@@ -194,6 +194,20 @@ TEST_F(TsEngineV2Test, CreateCheckpoint){
       ts += 1000;
     }
   }
+
+  s = engine_->CreateCheckpoint(&ctx);
+  ASSERT_EQ(s , KStatus::SUCCESS);
+
+  for (size_t j = 0; j < 5; j++) {
+    for (int i = 0; i < 10000; ++i) {
+      auto pay_load = GenRowPayload(*metric_schema, tag_schema , table_id, 1, 1, 1, ts);
+      s = engine_->PutData(ctx_, table_id, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
+      free(pay_load.data);
+      ASSERT_EQ(s, KStatus::SUCCESS);
+      ts += 1000;
+    }
+  }
+
   s = engine_->CreateCheckpoint(&ctx);
   ASSERT_EQ(s , KStatus::SUCCESS);
 }
@@ -235,6 +249,16 @@ TEST_F(TsEngineV2Test, Recover){
 
   s = engine_->CreateCheckpoint(&ctx);
   ASSERT_EQ(s , KStatus::SUCCESS);
+
+  for (size_t j = 0; j < 5; j++) {
+    for (int i = 0; i < 10000; ++i) {
+      auto pay_load = GenRowPayload(*metric_schema, tag_schema , table_id, 1, 1, 1, ts);
+      s = engine_->PutData(ctx_, table_id, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
+      free(pay_load.data);
+      ASSERT_EQ(s, KStatus::SUCCESS);
+      ts += 1000;
+    }
+  }
 
   s = engine_->Recover(&ctx);
   ASSERT_EQ(s , KStatus::SUCCESS);
