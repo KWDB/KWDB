@@ -1480,7 +1480,7 @@ KStatus TsTable::GetTagSchemaIncludeDropped(kwdbContext_p ctx, RangeGroup range,
 }
 
 KStatus TsTable::GenerateMetaSchema(kwdbContext_p ctx, roachpb::CreateTsTable* meta,
-                                         std::vector<AttributeInfo>& metric_schema,
+                                    const std::vector<AttributeInfo>& metric_schema,
                                          std::vector<TagInfo>& tag_schema,
                                          uint32_t schema_version) {
   EnterFunc()

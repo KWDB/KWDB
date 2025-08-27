@@ -25,21 +25,11 @@
 
 using namespace kwdbts;  // NOLINT
 
-TsBlockSpan::TsBlockSpan(TSEntityID entity_id, std::shared_ptr<TsBlock> block, int start, int nrow,
-                         const std::shared_ptr<TsTableSchemaManager>& tbl_schema_mgr, uint32_t scan_version)
-    : block_(block), entity_id_(entity_id), start_row_(start), nrow_(nrow) {
-  if (block_->GetTableVersion() != scan_version) {
-    convert_ = std::make_unique<TSBlkDataTypeConvert>();
-    auto s = convert_->Init();
-    if (s != SUCCESS) {
-      LOG_ERROR("convert_ Init failed!");
-    }
-  }
-}
+std::shared_ptr<TSBlkDataTypeConvert> empty_convert = nullptr;
 
 void TsBlockSpan::SplitFront(int row_num, shared_ptr<TsBlockSpan>& front_span) {
   EXPECT_TRUE(row_num <= nrow_);
-  front_span = make_shared<TsBlockSpan>(entity_id_, block_, start_row_, row_num, nullptr, 1);
+  front_span = make_shared<TsBlockSpan>(0, entity_id_, block_, start_row_, row_num, empty_convert, 1, nullptr);
   // change current span info
   start_row_ += row_num;
   nrow_ -= row_num;
@@ -47,7 +37,7 @@ void TsBlockSpan::SplitFront(int row_num, shared_ptr<TsBlockSpan>& front_span) {
 
 void TsBlockSpan::SplitBack(int row_num, shared_ptr<TsBlockSpan>& back_span) {
   EXPECT_TRUE(row_num <= nrow_);
-  back_span = make_shared<TsBlockSpan>(entity_id_, block_, start_row_ + nrow_ - row_num, row_num, nullptr, 1);
+  back_span = make_shared<TsBlockSpan>(0, entity_id_, block_, start_row_ + nrow_ - row_num, row_num, empty_convert, 1, nullptr);
   // change current span info
   nrow_ -= row_num;
 }
@@ -101,18 +91,18 @@ class TsBlockSpanSortedIteratorTest : public ::testing::Test {
 
   shared_ptr<TsBlockSpan> GenBlockWithSpan(std::vector<timestamp64> tss, TS_LSN lsn) {
     auto block = AddBlockWithTs(tss, lsn);
-    return std::make_shared<TsBlockSpan>(1, block, 0, tss.size(), nullptr, 1);
+    return std::make_shared<TsBlockSpan>(0, 1, block, 0, tss.size(), empty_convert, 1, nullptr);
   }
   shared_ptr<TsBlockSpan> GenBlockWithSpan1(timestamp64 start, int interval, int num, TS_LSN lsn) {
     if (num == 0) {
-      return std::make_shared<TsBlockSpan>(1, nullptr, 0, 0, nullptr, 1);
+      return std::make_shared<TsBlockSpan>(0, 1, nullptr, 0, 0, empty_convert, 1, nullptr);
     }
     std::vector<timestamp64> tss;
     for (size_t i = 0; i < num; i++) {
       tss.push_back(start + i * interval);
     }
     auto block = AddBlockWithTs(tss, lsn);
-    return std::make_shared<TsBlockSpan>(1, block, 0, tss.size(), nullptr, 1);
+    return std::make_shared<TsBlockSpan>(0, 1, block, 0, tss.size(), empty_convert, 1, nullptr);
   }
 };
 

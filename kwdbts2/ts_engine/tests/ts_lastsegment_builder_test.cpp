@@ -44,7 +44,7 @@ std::vector<roachpb::DataType> dtypes{DataType::TIMESTAMP, DataType::INT,    Dat
 struct R {
   std::unique_ptr<TsLastSegmentBuilder> builder;
   std::shared_ptr<TsEngineSchemaManager> schema_mgr;
-  std::vector<AttributeInfo> metric_schema;
+  const std::vector<AttributeInfo>* metric_schema{nullptr};
   std::vector<TagInfo> tag_schema;
   std::shared_ptr<TsMemSegment> memseg;
 };
@@ -89,8 +89,8 @@ void LastSegmentReadWriteTest::BuilderWithBasicCheck(TSTableID table_id, int nro
     s = mgr->GetTableSchemaMgr(table_id, schema_mgr);
     ASSERT_EQ(s, KStatus::SUCCESS);
 
-    std::vector<AttributeInfo> metric_schema;
-    s = schema_mgr->GetMetricMeta(1, metric_schema);
+    const std::vector<AttributeInfo>* metric_schema{nullptr};
+    s = schema_mgr->GetMetricMeta(1, &metric_schema);
     ASSERT_EQ(s, KStatus::SUCCESS);
     std::vector<TagInfo> tag_schema;
     s = schema_mgr->GetTagMeta(1, tag_schema);
@@ -99,15 +99,15 @@ void LastSegmentReadWriteTest::BuilderWithBasicCheck(TSTableID table_id, int nro
     std::unique_ptr<TsAppendOnlyFile> last_segment;
     env->NewAppendOnlyFile(filename, &last_segment);
     TsLastSegmentBuilder builder(mgr.get(), std::move(last_segment), 0);
-    auto payload = GenRowPayload(metric_schema, tag_schema, table_id, 1, 1, nrow, 123);
-    TsRawPayloadRowParser parser{&metric_schema};
-    TsRawPayload p{payload, &metric_schema};
+    auto payload = GenRowPayload(*metric_schema, tag_schema, table_id, 1, 1, nrow, 123);
+    TsRawPayloadRowParser parser{metric_schema};
+    TsRawPayload p{payload, metric_schema};
 
     auto memseg = TsMemSegment::Create(12);
 
     auto table_id = TsRawPayload::GetTableIDFromSlice(payload);
     auto table_version = TsRawPayload::GetTableVersionFromSlice(payload);
-    TsRawPayload pd(payload, &metric_schema);
+    TsRawPayload pd(payload, metric_schema);
     uint32_t row_num = pd.GetRowCount();
     memseg->AllocRowNum(row_num);
     for (size_t i = 0; i < row_num; i++) {
@@ -231,8 +231,8 @@ R LastSegmentReadWriteTest::GenBuilders(TSTableID table_id) {
   std::shared_ptr<TsTableSchemaManager> schema_mgr;
   s = mgr->GetTableSchemaMgr(table_id, schema_mgr);
 
-  std::vector<AttributeInfo> metric_schema;
-  s = schema_mgr->GetMetricMeta(1, metric_schema);
+  const std::vector<AttributeInfo>* metric_schema{nullptr};
+  s = schema_mgr->GetMetricMeta(1, &metric_schema);
   std::vector<TagInfo> tag_schema;
   s = schema_mgr->GetTagMeta(1, tag_schema);
 
@@ -269,8 +269,8 @@ struct FOO<T(Args...)> {
 };
 
 void PushPayloadToBuilder(R *builder, TSSlice *payload, TSTableID table_id, uint32_t version, TSEntityID entity_id) {
-  TsRawPayloadRowParser parser{&builder->metric_schema};
-  TsRawPayload p{*payload, &builder->metric_schema};
+  TsRawPayloadRowParser parser{builder->metric_schema};
+  TsRawPayload p{*payload, builder->metric_schema};
 
   auto memseg = builder->memseg;
 
@@ -381,7 +381,7 @@ TEST_F(LastSegmentReadWriteTest, IteratorTest1) {
   std::vector<TSEntityID> dev_ids{1, 3, 5, 19, 1239};
   std::vector<FOO<decltype(GenRowPayloadWrapper)>::type> payloads;
   for (auto dev_id : dev_ids) {
-    auto payload = GenRowPayloadWrapper(res.metric_schema, res.tag_schema, table_id, table_version,
+    auto payload = GenRowPayloadWrapper(*res.metric_schema, res.tag_schema, table_id, table_version,
                                         dev_id, nrow_per_block / 2, start_ts, interval);
     PushPayloadToBuilder(&res, payload.get(), table_id, 1, dev_id);
     payloads.push_back(std::move(payload));
@@ -511,7 +511,7 @@ TEST_F(LastSegmentReadWriteTest, IteratorTest2) {
   for (int i = 0; i < dev_ids.size(); ++i) {
     auto dev_id = dev_ids[i];
     auto nrow = nrows[i];
-    auto payload = GenRowPayloadWrapper(res.metric_schema, res.tag_schema, table_id, table_version,
+    auto payload = GenRowPayloadWrapper(*res.metric_schema, res.tag_schema, table_id, table_version,
                                         dev_id, nrow, start_ts, interval);
     PushPayloadToBuilder(&res, payload.get(), table_id, 1, dev_id);
     payloads.push_back(std::move(payload));
@@ -572,12 +572,12 @@ TEST_F(LastSegmentReadWriteTest, IteratorTest2) {
     TsBitmap bitmap;
     // TODO(zqh): hide the following code temporarily
     for (int icol = 0; icol < dtypes.size(); ++icol) {
-      if (!isVarLenType(res.metric_schema[icol].type)) {
+      if (!isVarLenType((*res.metric_schema)[icol].type)) {
         auto ret = s->GetFixLenColAddr(icol, &value, bitmap);
         ASSERT_EQ(ret, KStatus::SUCCESS);
         for (int i = 0; i < s->GetRowNum(); ++i) {
           TSSlice val;
-          val.len = res.metric_schema[icol].size;
+          val.len = (*res.metric_schema)[icol].size;
           val.data = value + val.len * i;
           checker_funcs[dtypes[icol]](val);
         }
@@ -682,7 +682,7 @@ TEST_F(LastSegmentReadWriteTest, DISABLED_IteratorTest3) {
   auto nrow = 100000;
   std::vector<FOO<decltype(GenRowPayloadWrapper)>::type> payloads;
   for (int dev_id = 0; dev_id < max_entity_id; ++dev_id) {
-    auto payload = GenRowPayloadWrapper(res.metric_schema, res.tag_schema, table_id, table_version,
+    auto payload = GenRowPayloadWrapper(*res.metric_schema, res.tag_schema, table_id, table_version,
                                         dev_id, nrow, start_ts, interval);
     PushPayloadToBuilder(&res, payload.get(), table_id, 1, dev_id);
     payloads.push_back(std::move(payload));

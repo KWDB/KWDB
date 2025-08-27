@@ -70,7 +70,7 @@ void TsMemSegmentManager::RemoveMemSegment(const std::shared_ptr<TsMemSegment>& 
 }
 
 bool TsMemSegmentManager::GetMetricSchemaAndMeta(TSTableID table_id, uint32_t version,
-                                                 std::vector<AttributeInfo>& schema, DATATYPE* ts_type,
+                                                 const std::vector<AttributeInfo>** schema, DATATYPE* ts_type,
                                                  LifeTime* lifetime) {
   std::shared_ptr<kwdbts::TsTableSchemaManager> schema_mgr;
   auto s = vgroup_->GetEngineSchemaMgr()->GetTableSchemaMgr(table_id, schema_mgr);
@@ -78,7 +78,7 @@ bool TsMemSegmentManager::GetMetricSchemaAndMeta(TSTableID table_id, uint32_t ve
     LOG_ERROR("cannot found table [%lu] schema manager.", table_id);
     return false;
   }
-  s = schema_mgr->GetColumnsExcludeDropped(schema, version);
+  s = schema_mgr->GetColumnsExcludeDroppedPtr(schema, version);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("cannot found table [%lu] with version[%u].", table_id, version);
     return false;
@@ -99,10 +99,10 @@ KStatus TsMemSegmentManager::PutData(const TSSlice& payload, TSEntityID entity_i
   auto table_id = TsRawPayload::GetTableIDFromSlice(payload);
   auto table_version = TsRawPayload::GetTableVersionFromSlice(payload);
   // get column info and life time
-  std::vector<AttributeInfo> schema;
+  const std::vector<AttributeInfo>* schema{nullptr};
   LifeTime life_time{};
   DATATYPE ts_type;
-  if (!GetMetricSchemaAndMeta(table_id, table_version, schema, &ts_type, &life_time)) {
+  if (!GetMetricSchemaAndMeta(table_id, table_version, &schema, &ts_type, &life_time)) {
     LOG_ERROR("GetMetricSchemaAndMeta failed.");
     return KStatus::FAIL;
   }
@@ -115,7 +115,7 @@ KStatus TsMemSegmentManager::PutData(const TSSlice& payload, TSEntityID entity_i
 
   uint32_t db_id = vgroup_->GetEngineSchemaMgr()->GetDBIDByTableID(table_id);
   // TSMemSegRowData row_data(db_id, table_id, table_version, entity_id);
-  TsRawPayload pd(payload, &schema);
+  TsRawPayload pd(payload, schema);
   uint32_t row_num = pd.GetRowCount();
 
   auto cur_mem_seg = CurrentMemSegmentAndAllocateRow(row_num);
@@ -379,18 +379,23 @@ KStatus TsMemSegment::GetBlockSpans(std::list<shared_ptr<TsBlockSpan>>& blocks, 
       }
     }
   }
-
+  std::shared_ptr<TSBlkDataTypeConvert> empty_convert = nullptr;
   for (auto& mem_blk : mem_blocks) {
     auto table_id = mem_blk->GetTableId();
-    std::shared_ptr<TsTableSchemaManager> table_schema_mgr;
-    auto s = schema_mgr->GetTableSchemaMgr(table_id, table_schema_mgr);
+    auto version = mem_blk->GetTableVersion();
+    std::shared_ptr<TsTableSchemaManager> tbl_schema_mgr;
+    auto s = schema_mgr->GetTableSchemaMgr(table_id, tbl_schema_mgr);
     if (s == FAIL) {
       LOG_ERROR("can not get table schema manager for table_id[%lu].", table_id);
       return s;
     }
-    auto version = mem_blk->GetTableVersion();
-    blocks.push_back(std::make_shared<TsBlockSpan>(mem_blk->GetEntityId(), std::move(mem_blk), 0, mem_blk->GetRowNum(),
-                                                   table_schema_mgr, version));
+    std::shared_ptr<MMapMetricsTable> scan_metric = nullptr;
+    s = tbl_schema_mgr->GetMetricSchema(version, &scan_metric);
+    if (s != SUCCESS) {
+      LOG_ERROR("GetMetricSchema failed. table id [%u], table version [%lu]", version, table_id);
+    }
+    blocks.push_back(std::make_shared<TsBlockSpan>(0, mem_blk->GetEntityId(), std::move(mem_blk), 0, mem_blk->GetRowNum(),
+                                                  empty_convert, version, &(scan_metric->getSchemaInfoExcludeDropped())));
   }
   return SUCCESS;
 }
@@ -449,9 +454,18 @@ KStatus TsMemSegment::GetBlockSpans(const TsBlockItemFilterParams& filter, std::
       }
     }
   }
+  TsBlockSpan* template_blk_span = nullptr;
   for (auto& mem_blk : mem_blocks) {
-    blocks.push_back(make_shared<TsBlockSpan>(filter.vgroup_id, mem_blk->GetEntityId(), mem_blk, 0,
-                                              mem_blk->GetRowNum(), tbl_schema_mgr, scan_schema));
+    std::shared_ptr<TsBlockSpan> cur_span;
+    auto s = TsBlockSpan::MakeNewBlockSpan(template_blk_span, filter.vgroup_id, filter.entity_id, mem_blk, 0,
+                                  mem_blk->GetRowNum(), scan_schema->GetVersionNum(),
+                                  &(scan_schema->getSchemaInfoExcludeDropped()), tbl_schema_mgr, cur_span);
+    if (s != KStatus::SUCCESS) {
+      LOG_ERROR("TsBlockSpan::GenDataConvertfailed, entity_id=%lu.", filter.entity_id);
+        return s;
+    }
+    template_blk_span = cur_span.get();
+    blocks.push_back(std::move(cur_span));
   }
   return KStatus::SUCCESS;
 }

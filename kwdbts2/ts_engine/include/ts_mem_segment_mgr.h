@@ -222,7 +222,7 @@ class TsMemSegmentManager {
 
   KStatus PutData(const TSSlice& payload, TSEntityID entity_id, TS_LSN lsn);
 
-  bool GetMetricSchemaAndMeta(TSTableID table_id_, uint32_t version, std::vector<AttributeInfo>& schema,
+  bool GetMetricSchemaAndMeta(TSTableID table_id_, uint32_t version, const std::vector<AttributeInfo>** schema,
                               DATATYPE* ts_type, LifeTime* lifetime = nullptr);
 };
 

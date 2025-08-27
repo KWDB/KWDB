@@ -66,8 +66,8 @@ TEST_F(TestV2Iterator, basic) {
     s = engine_->GetTableSchemaMgr(ctx_, table_id, table_schema_mgr);
     ASSERT_EQ(s , KStatus::SUCCESS);
 
-    std::vector<AttributeInfo> metric_schema;
-    s = table_schema_mgr->GetMetricMeta(1, metric_schema);
+    const std::vector<AttributeInfo>* metric_schema{nullptr};
+    s = table_schema_mgr->GetMetricMeta(1, &metric_schema);
     ASSERT_EQ(s , KStatus::SUCCESS);
 
     std::vector<TagInfo> tag_schema;
@@ -75,7 +75,7 @@ TEST_F(TestV2Iterator, basic) {
     ASSERT_EQ(s , KStatus::SUCCESS);
 
     timestamp64 start_ts = 3600;
-    auto pay_load = GenRowPayload(metric_schema, tag_schema ,table_id, 1, 1, 1, start_ts);
+    auto pay_load = GenRowPayload(*metric_schema, tag_schema ,table_id, 1, 1, 1, start_ts);
     uint16_t inc_entity_cnt;
     uint32_t inc_unordered_cnt;
     DedupResult dedup_result{0, 0, 0, TSSlice {nullptr, 0}};
@@ -137,8 +137,8 @@ TEST_F(TestV2Iterator, mulitEntity) {
     s = engine_->GetTableSchemaMgr(ctx_, table_id, table_schema_mgr);
     ASSERT_EQ(s , KStatus::SUCCESS);
 
-    std::vector<AttributeInfo> metric_schema;
-    s = table_schema_mgr->GetMetricMeta(1, metric_schema);
+    const std::vector<AttributeInfo>* metric_schema{nullptr};
+    s = table_schema_mgr->GetMetricMeta(1, &metric_schema);
     ASSERT_EQ(s , KStatus::SUCCESS);
 
     std::vector<TagInfo> tag_schema;
@@ -153,7 +153,7 @@ TEST_F(TestV2Iterator, mulitEntity) {
     uint32_t inc_unordered_cnt;
     DedupResult dedup_result{0, 0, 0, TSSlice {nullptr, 0}};
     for (size_t i = 0; i < entity_num; i++) {
-      auto pay_load = GenRowPayload(metric_schema, tag_schema ,table_id, 1, 1 + i, entity_row_num, start_ts + 1 + i, interval);
+      auto pay_load = GenRowPayload(*metric_schema, tag_schema ,table_id, 1, 1 + i, entity_row_num, start_ts + 1 + i, interval);
       s = engine_->PutData(ctx_, table_id, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
       free(pay_load.data);
       ASSERT_EQ(s, KStatus::SUCCESS);
@@ -205,8 +205,8 @@ TEST_F(TestV2Iterator, multiDBAndEntity) {
     auto s = engine_->GetTableSchemaMgr(ctx_, table_id, table_schema_mgr);
     ASSERT_EQ(s , KStatus::SUCCESS);
 
-    std::vector<AttributeInfo> metric_schema;
-    s = table_schema_mgr->GetMetricMeta(1, metric_schema);
+    const std::vector<AttributeInfo>* metric_schema{nullptr};
+    s = table_schema_mgr->GetMetricMeta(1, &metric_schema);
     ASSERT_EQ(s , KStatus::SUCCESS);
 
     std::vector<TagInfo> tag_schema;
@@ -221,7 +221,7 @@ TEST_F(TestV2Iterator, multiDBAndEntity) {
     uint32_t inc_unordered_cnt;
     DedupResult dedup_result{0, 0, 0, TSSlice {nullptr, 0}};
     for (size_t i = 0; i < entity_num; i++) {
-      auto pay_load = GenRowPayload(metric_schema, tag_schema ,table_id + i % db_num, 1, 1 + i, entity_row_num, start_ts + 1 + i, interval);
+      auto pay_load = GenRowPayload(*metric_schema, tag_schema ,table_id + i % db_num, 1, 1 + i, entity_row_num, start_ts + 1 + i, interval);
       s = engine_->PutData(ctx_, table_id, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
       free(pay_load.data);
       ASSERT_EQ(s, KStatus::SUCCESS);
@@ -287,8 +287,8 @@ TEST_F(TestV2Iterator, mulitEntityCount) {
   s = engine_->GetTableSchemaMgr(ctx_, table_id, table_schema_mgr);
   ASSERT_EQ(s , KStatus::SUCCESS);
 
-  std::vector<AttributeInfo> metric_schema;
-  s = table_schema_mgr->GetMetricMeta(1, metric_schema);
+  const std::vector<AttributeInfo>* metric_schema{nullptr};
+  s = table_schema_mgr->GetMetricMeta(1, &metric_schema);
   ASSERT_EQ(s , KStatus::SUCCESS);
 
   std::vector<TagInfo> tag_schema;
@@ -303,14 +303,14 @@ TEST_F(TestV2Iterator, mulitEntityCount) {
   uint32_t inc_unordered_cnt;
   DedupResult dedup_result{0, 0, 0, TSSlice {nullptr, 0}};
   for (size_t i = 0; i < entity_num; i++) {
-    auto pay_load = GenRowPayload(metric_schema, tag_schema ,table_id, 1, 1 + i, entity_row_num, start_ts + 1 + i, interval);
+    auto pay_load = GenRowPayload(*metric_schema, tag_schema ,table_id, 1, 1 + i, entity_row_num, start_ts + 1 + i, interval);
     s = engine_->PutData(ctx_, table_id, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
     free(pay_load.data);
     ASSERT_EQ(s, KStatus::SUCCESS);
   }
   start_ts += 10000 * 86400;
   for (size_t i = 0; i < entity_num; i++) {
-    auto pay_load = GenRowPayload(metric_schema, tag_schema ,table_id, 1, 1 + i, entity_row_num, start_ts + 1 + i, interval);
+    auto pay_load = GenRowPayload(*metric_schema, tag_schema ,table_id, 1, 1 + i, entity_row_num, start_ts + 1 + i, interval);
     s = engine_->PutData(ctx_, table_id, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
     free(pay_load.data);
     ASSERT_EQ(s, KStatus::SUCCESS);
@@ -381,8 +381,8 @@ TEST_F(TestV2Iterator, mulitEntityDeleteCount) {
   s = engine_->GetTableSchemaMgr(ctx_, table_id, table_schema_mgr);
   ASSERT_EQ(s , KStatus::SUCCESS);
 
-  std::vector<AttributeInfo> metric_schema;
-  s = table_schema_mgr->GetMetricMeta(1, metric_schema);
+  const std::vector<AttributeInfo>* metric_schema;
+  s = table_schema_mgr->GetMetricMeta(1, &metric_schema);
   ASSERT_EQ(s , KStatus::SUCCESS);
 
   std::vector<TagInfo> tag_schema;
@@ -397,7 +397,7 @@ TEST_F(TestV2Iterator, mulitEntityDeleteCount) {
   uint32_t inc_unordered_cnt;
   DedupResult dedup_result{0, 0, 0, TSSlice {nullptr, 0}};
   for (size_t i = 0; i < entity_num; i++) {
-    auto pay_load = GenRowPayload(metric_schema, tag_schema ,table_id, 1, 1 + i,
+    auto pay_load = GenRowPayload(*metric_schema, tag_schema ,table_id, 1, 1 + i,
                                   entity_row_num, start_ts + 1 + i, interval);
     s = engine_->PutData(ctx_, table_id, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
     s = engine_->PutData(ctx_, table_id, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
@@ -406,7 +406,7 @@ TEST_F(TestV2Iterator, mulitEntityDeleteCount) {
   }
   start_ts += 10000 * 86400;
   for (size_t i = 0; i < entity_num; i++) {
-    auto pay_load = GenRowPayload(metric_schema, tag_schema ,table_id, 1, 1 + i,
+    auto pay_load = GenRowPayload(*metric_schema, tag_schema ,table_id, 1, 1 + i,
                                   entity_row_num, start_ts + 1 + i, interval);
     s = engine_->PutData(ctx_, table_id, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
     s = engine_->PutData(ctx_, table_id, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);

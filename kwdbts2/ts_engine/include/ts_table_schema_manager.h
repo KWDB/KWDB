@@ -114,7 +114,10 @@ class TsTableSchemaManager {
 
   KStatus GetColumnsIncludeDropped(std::vector<AttributeInfo>& schema, uint32_t ts_version = 0);
 
-  KStatus GetMetricMeta(uint32_t version, std::vector<AttributeInfo>& info);
+  KStatus GetColumnsExcludeDroppedPtr(const std::vector<AttributeInfo>** schema, uint32_t ts_version = 0);
+  KStatus GetColumnsIncludeDroppedPtr(const std::vector<AttributeInfo>** schema, uint32_t ts_version = 0);
+
+  KStatus GetMetricMeta(uint32_t version, const std::vector<AttributeInfo>** info);
 
   KStatus GetTagMeta(uint32_t version, std::vector<TagInfo>& info);
 

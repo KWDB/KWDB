@@ -96,8 +96,8 @@ TEST_F(TestV2DeleteTest, basicDelete) {
   s = engine_->GetTableSchemaMgr(ctx_, table_id, table_schema_mgr);
   ASSERT_EQ(s , KStatus::SUCCESS);
 
-  std::vector<AttributeInfo> metric_schema;
-  s = table_schema_mgr->GetMetricMeta(1, metric_schema);
+  const std::vector<AttributeInfo>* metric_schema;
+  s = table_schema_mgr->GetMetricMeta(1, &metric_schema);
   ASSERT_EQ(s , KStatus::SUCCESS);
 
   std::vector<TagInfo> tag_schema;
@@ -106,7 +106,7 @@ TEST_F(TestV2DeleteTest, basicDelete) {
 
   timestamp64 start_ts = 3600;
   int row_num = 100;
-  auto pay_load = GenRowPayload(metric_schema, tag_schema ,table_id, 1, 1, row_num, start_ts);
+  auto pay_load = GenRowPayload(*metric_schema, tag_schema ,table_id, 1, 1, row_num, start_ts);
   uint16_t inc_entity_cnt;
   uint32_t inc_unordered_cnt;
   DedupResult dedup_result{0, 0, 0, TSSlice {nullptr, 0}};
@@ -149,8 +149,8 @@ TEST_F(TestV2DeleteTest, MultiInsertAndDelete) {
   s = engine_->GetTableSchemaMgr(ctx_, table_id, table_schema_mgr);
   ASSERT_EQ(s , KStatus::SUCCESS);
 
-  std::vector<AttributeInfo> metric_schema;
-  s = table_schema_mgr->GetMetricMeta(1, metric_schema);
+  const std::vector<AttributeInfo>* metric_schema;
+  s = table_schema_mgr->GetMetricMeta(1, &metric_schema);
   ASSERT_EQ(s , KStatus::SUCCESS);
 
   std::vector<TagInfo> tag_schema;
@@ -161,7 +161,7 @@ TEST_F(TestV2DeleteTest, MultiInsertAndDelete) {
   int row_num = 100;
   int insert_times = 3;
   for (size_t i = 0; i < insert_times; i++) {
-    auto pay_load = GenRowPayload(metric_schema, tag_schema ,table_id, 1, 1, row_num, start_ts + row_num * 1000 * i);
+    auto pay_load = GenRowPayload(*metric_schema, tag_schema ,table_id, 1, 1, row_num, start_ts + row_num * 1000 * i);
     uint16_t inc_entity_cnt;
     uint32_t inc_unordered_cnt;
     DedupResult dedup_result{0, 0, 0, TSSlice {nullptr, 0}};
@@ -208,8 +208,8 @@ TEST_F(TestV2DeleteTest, InsertAndDeleteAndInsert) {
   s = engine_->GetTableSchemaMgr(ctx_, table_id, table_schema_mgr);
   ASSERT_EQ(s , KStatus::SUCCESS);
 
-  std::vector<AttributeInfo> metric_schema;
-  s = table_schema_mgr->GetMetricMeta(1, metric_schema);
+  const std::vector<AttributeInfo>* metric_schema;
+  s = table_schema_mgr->GetMetricMeta(1, &metric_schema);
   ASSERT_EQ(s , KStatus::SUCCESS);
 
   std::vector<TagInfo> tag_schema;
@@ -219,7 +219,7 @@ TEST_F(TestV2DeleteTest, InsertAndDeleteAndInsert) {
   timestamp64 start_ts = 3600;
   int row_num = 3;
   int del_num = 1;
-  auto pay_load = GenRowPayload(metric_schema, tag_schema ,table_id, 1, 1, row_num, start_ts);
+  auto pay_load = GenRowPayload(*metric_schema, tag_schema ,table_id, 1, 1, row_num, start_ts);
   uint16_t inc_entity_cnt;
   uint32_t inc_unordered_cnt;
   DedupResult dedup_result{0, 0, 0, TSSlice {nullptr, 0}};
@@ -266,8 +266,8 @@ TEST_F(TestV2DeleteTest, undoDelete) {
   s = engine_->GetTableSchemaMgr(ctx_, table_id, table_schema_mgr);
   ASSERT_EQ(s , KStatus::SUCCESS);
 
-  std::vector<AttributeInfo> metric_schema;
-  s = table_schema_mgr->GetMetricMeta(1, metric_schema);
+  const std::vector<AttributeInfo>* metric_schema;
+  s = table_schema_mgr->GetMetricMeta(1, &metric_schema);
   ASSERT_EQ(s , KStatus::SUCCESS);
 
   std::vector<TagInfo> tag_schema;
@@ -276,7 +276,7 @@ TEST_F(TestV2DeleteTest, undoDelete) {
 
   timestamp64 start_ts = 3600;
   int row_num = 3;
-  auto pay_load = GenRowPayload(metric_schema, tag_schema ,table_id, 1, 1, row_num, start_ts);
+  auto pay_load = GenRowPayload(*metric_schema, tag_schema ,table_id, 1, 1, row_num, start_ts);
   uint16_t inc_entity_cnt;
   uint32_t inc_unordered_cnt;
   DedupResult dedup_result{0, 0, 0, TSSlice {nullptr, 0}};
@@ -326,8 +326,8 @@ TEST_F(TestV2DeleteTest, undoPutAndRedoPut) {
   s = engine_->GetTableSchemaMgr(ctx_, table_id, table_schema_mgr);
   ASSERT_EQ(s , KStatus::SUCCESS);
 
-  std::vector<AttributeInfo> metric_schema;
-  s = table_schema_mgr->GetMetricMeta(1, metric_schema);
+  const std::vector<AttributeInfo>* metric_schema;
+  s = table_schema_mgr->GetMetricMeta(1, &metric_schema);
   ASSERT_EQ(s , KStatus::SUCCESS);
 
   std::vector<TagInfo> tag_schema;
@@ -336,7 +336,7 @@ TEST_F(TestV2DeleteTest, undoPutAndRedoPut) {
 
   timestamp64 start_ts = 3600;
   int row_num = 3;
-  auto pay_load = GenRowPayload(metric_schema, tag_schema ,table_id, 1, 1, row_num, start_ts);
+  auto pay_load = GenRowPayload(*metric_schema, tag_schema ,table_id, 1, 1, row_num, start_ts);
   uint16_t inc_entity_cnt;
   uint32_t inc_unordered_cnt;
   DedupResult dedup_result{0, 0, 0, TSSlice {nullptr, 0}};

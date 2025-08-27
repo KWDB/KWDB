@@ -9,6 +9,10 @@
 // MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
 // See the Mulan PSL v2 for more details.
 
+#include <memory>
+#include <vector>
+#include <utility>
+#include <string>
 #include "ts_agg.h"
 #include "ts_block.h"
 #include "ts_blkspan_type_convert.h"
@@ -51,95 +55,64 @@ inline KStatus TsBlock::UpdateFirstLastCandidates(const std::vector<k_uint32>& t
   return KStatus::SUCCESS;
 }
 
-TsBlockSpan::TsBlockSpan(TSEntityID entity_id, std::shared_ptr<TsBlock> block, int start, int nrow,
-                         const std::shared_ptr<TsTableSchemaManager>& tbl_schema_mgr,
-                         std::shared_ptr<MMapMetricsTable>& scan_schema)
-    : block_(block),
-      entity_id_(entity_id),
-      start_row_(start),
-      nrow_(nrow),
-      tbl_schema_mgr_(tbl_schema_mgr) {
-  assert(nrow_ >= 1);
-  uint32_t scan_version = scan_schema->GetVersionNUm();
-  if (block_->GetTableVersion() != scan_version) {
-    convert_ = std::make_unique<TSBlkDataTypeConvert>(*this, tbl_schema_mgr,
-                                                    scan_version == 0 ? block->GetTableVersion() : scan_version);
-    auto s = convert_->Init();
+KStatus TsBlockSpan::GenDataConvert(uint32_t blk_version, uint32_t scan_version,
+  const std::shared_ptr<TsTableSchemaManager>& tbl_schema_mgr, std::shared_ptr<TSBlkDataTypeConvert>& ret) {
+  assert(blk_version > 0);
+  if (scan_version > 0 && blk_version != scan_version) {
+    ret = std::make_shared<TSBlkDataTypeConvert>(blk_version, scan_version, tbl_schema_mgr);
+    auto s = ret->Init();
     if (s != SUCCESS) {
-      LOG_ERROR("convert_ Init failed!");
+      LOG_ERROR("GenDataConvert Init failed!");
+      return KStatus::FAIL;
     }
+  } else {
+    ret = nullptr;
   }
-  scan_attrs_ = static_cast<const vector<AttributeInfo>*>(&scan_schema->getSchemaInfoExcludeDropped());
-  has_pre_agg_ = block_->HasPreAgg(start_row_, nrow_);
+  return KStatus::SUCCESS;
 }
 
-TsBlockSpan::TsBlockSpan(TSEntityID entity_id, std::shared_ptr<TsBlock> block, int start, int nrow,
-                         const std::shared_ptr<TsTableSchemaManager>& tbl_schema_mgr, uint32_t scan_version)
-    : block_(block),
-      entity_id_(entity_id),
-      start_row_(start),
-      nrow_(nrow),
-      tbl_schema_mgr_(tbl_schema_mgr) {
-  assert(nrow_ >= 1);
-  if (block_->GetTableVersion() != scan_version) {
-    convert_ = std::make_unique<TSBlkDataTypeConvert>(*this, tbl_schema_mgr,
-                                                    scan_version == 0 ? block->GetTableVersion() : scan_version);
-    auto s = convert_->Init();
-    if (s != SUCCESS) {
-      LOG_ERROR("convert_ Init failed!");
+KStatus TsBlockSpan::MakeNewBlockSpan(TsBlockSpan* src_blk_span, uint32_t vgroup_id,
+  TSEntityID entity_id, std::shared_ptr<TsBlock> block, int start, int nrow,
+  uint32_t scan_version, const std::vector<AttributeInfo>* scan_attrs,
+  const std::shared_ptr<TsTableSchemaManager>& tbl_schema_mgr, std::shared_ptr<TsBlockSpan>& ret) {
+  if (src_blk_span == nullptr ||
+     (src_blk_span->block_->GetTableVersion() != block->GetTableVersion())) {
+    std::shared_ptr<TSBlkDataTypeConvert> convert = nullptr;
+    auto s = TsBlockSpan::GenDataConvert(block->GetTableVersion(), scan_version, tbl_schema_mgr, convert);
+    if (s != KStatus::SUCCESS) {
+      LOG_ERROR("TsBlockSpan::MakeNewBlockSpan, entity_id=%lu", entity_id);
+      return s;
     }
+    ret = std::make_shared<TsBlockSpan>(vgroup_id, entity_id, block, start,
+                                        nrow, convert, scan_version, scan_attrs);
+  } else {
+    ret = std::make_shared<TsBlockSpan>(*src_blk_span, block, start, nrow, entity_id);
   }
-  std::shared_ptr<MMapMetricsTable> scan_metric;
-  auto s = tbl_schema_mgr_->GetMetricSchema(scan_version, &scan_metric);
-  if (s != SUCCESS) {
-    LOG_ERROR("GetMetricSchema failed. table id [%u], table version [%lu]", scan_version, block->GetTableId());
-  }
-  scan_attrs_ = static_cast<const vector<AttributeInfo>*>(&scan_metric->getSchemaInfoExcludeDropped());
-  has_pre_agg_ = block_->HasPreAgg(start_row_, nrow_);
+  return KStatus::SUCCESS;
 }
 
 TsBlockSpan::TsBlockSpan(uint32_t vgroup_id, TSEntityID entity_id, std::shared_ptr<TsBlock> block, int start, int nrow,
-                         const std::shared_ptr<TsTableSchemaManager>& tbl_schema_mgr,
-                         std::shared_ptr<MMapMetricsTable>& scan_schema)
-    : block_(block),
-      vgroup_id_(vgroup_id),
-      entity_id_(entity_id),
-      start_row_(start),
-      nrow_(nrow),
-      tbl_schema_mgr_(tbl_schema_mgr) {
-  assert(nrow_ >= 1);
-  uint32_t scan_version = scan_schema->GetVersionNUm();
-  if (block_->GetTableVersion() != scan_version) {
-    convert_ = std::make_unique<TSBlkDataTypeConvert>(*this, tbl_schema_mgr,
-                                                    scan_version == 0 ? block->GetTableVersion() : scan_version);
-    auto s = convert_->Init();
-    if (s != SUCCESS) {
-      LOG_ERROR("convert_ Init failed!");
-    }
-  }
-  scan_attrs_ = static_cast<const vector<AttributeInfo>*>(&scan_schema->getSchemaInfoExcludeDropped());
-  has_pre_agg_ = block_->HasPreAgg(start_row_, nrow_);
-}
-
-TsBlockSpan::TsBlockSpan(uint32_t vgroup_id, TSEntityID entity_id, std::shared_ptr<TsBlock> block, int start, int nrow,
-                         const std::shared_ptr<TsTableSchemaManager>& tbl_schema_mgr,
+                         std::shared_ptr<TSBlkDataTypeConvert>& convert,
                          uint32_t scan_version, const std::vector<AttributeInfo>* scan_attrs)
     : block_(block),
       vgroup_id_(vgroup_id),
       entity_id_(entity_id),
       start_row_(start),
       nrow_(nrow),
-      tbl_schema_mgr_(tbl_schema_mgr),
-      scan_attrs_(scan_attrs) {
+      scan_attrs_(scan_attrs), convert_(convert) {
   assert(nrow_ >= 1);
-  if (block_->GetTableVersion() != scan_version) {
-    convert_ = std::make_unique<TSBlkDataTypeConvert>(*this, tbl_schema_mgr,
-                                                    scan_version == 0 ? block->GetTableVersion() : scan_version);
-    auto s = convert_->Init();
-    if (s != SUCCESS) {
-      LOG_ERROR("convert_ Init failed!");
-    }
+  if (convert == nullptr) {
+    assert(block->GetTableVersion() == scan_version);
+  } else {
+    assert(convert->scan_version_ == scan_version && convert->block_version_ == block_->GetTableVersion());
   }
+  has_pre_agg_ = block_->HasPreAgg(start_row_, nrow_);
+}
+
+TsBlockSpan::TsBlockSpan(const TsBlockSpan& src, std::shared_ptr<TsBlock> block, int start, int nrow, TSEntityID e_id) :
+  block_(block), vgroup_id_(src.vgroup_id_), entity_id_(e_id == 0 ? src.entity_id_ : e_id),
+  start_row_(start), nrow_(nrow), scan_attrs_(src.scan_attrs_), convert_(src.convert_) {
+  assert(src.block_->GetTableVersion() == block_->GetTableVersion());
   has_pre_agg_ = block_->HasPreAgg(start_row_, nrow_);
 }
 
@@ -389,7 +362,7 @@ KStatus TsBlockSpan::GetColBitmap(uint32_t scan_idx, TsBitmap& bitmap) {
     }
     return SUCCESS;
   }
-  return convert_->GetColBitmap(scan_idx, bitmap);
+  return convert_->GetColBitmap(this, scan_idx, bitmap);
 }
 
 KStatus TsBlockSpan::GetFixLenColAddr(uint32_t scan_idx, char** value, TsBitmap& bitmap, bool bitmap_required) {
@@ -426,7 +399,7 @@ KStatus TsBlockSpan::GetFixLenColAddr(uint32_t scan_idx, char** value, TsBitmap&
     *value = blk_value + (*scan_attrs_)[scan_idx].size * start_row_;
     return SUCCESS;
   }
-  return convert_->GetFixLenColAddr(scan_idx, value, bitmap, bitmap_required);
+  return convert_->GetFixLenColAddr(this, scan_idx, value, bitmap, bitmap_required);
 }
 
 KStatus TsBlockSpan::GetVarLenTypeColAddr(uint32_t row_idx, uint32_t scan_idx, DataFlags& flag, TSSlice& data) {
@@ -451,7 +424,7 @@ KStatus TsBlockSpan::GetVarLenTypeColAddr(uint32_t row_idx, uint32_t scan_idx, D
     data = orig_value;
     return KStatus::SUCCESS;
   }
-  return convert_->GetVarLenTypeColAddr(row_idx, scan_idx, flag, data);
+  return convert_->GetVarLenTypeColAddr(this, row_idx, scan_idx, flag, data);
 }
 
 KStatus TsBlockSpan::GetCount(uint32_t scan_idx, uint32_t& count) {
@@ -467,32 +440,20 @@ KStatus TsBlockSpan::GetCount(uint32_t scan_idx, uint32_t& count) {
 void TsBlockSpan::SplitFront(int row_num, shared_ptr<TsBlockSpan>& front_span) {
   assert(row_num <= nrow_);
   assert(block_ != nullptr);
-  front_span = make_shared<TsBlockSpan>(vgroup_id_, entity_id_, block_, start_row_, row_num, tbl_schema_mgr_,
-                        convert_ == nullptr ? block_->GetTableVersion() : convert_->version_conv_->scan_version_,
-                        scan_attrs_);
+  front_span = make_shared<TsBlockSpan>(*this, block_, start_row_, row_num);
   // change current span info
   start_row_ += row_num;
   nrow_ -= row_num;
   has_pre_agg_ = false;
-  if (convert_) {
-    convert_->SetStartRowIdx(start_row_);
-    convert_->SetRowNum(nrow_);
-  }
 }
 
 void TsBlockSpan::SplitBack(int row_num, shared_ptr<TsBlockSpan>& back_span) {
   assert(row_num <= nrow_);
   assert(block_ != nullptr);
-  back_span = make_shared<TsBlockSpan>(vgroup_id_, entity_id_, block_, start_row_ + nrow_ - row_num,
-                                  row_num, tbl_schema_mgr_,
-                      convert_ == nullptr ? block_->GetTableVersion() : convert_->version_conv_->scan_version_,
-                                  scan_attrs_);
+  back_span = make_shared<TsBlockSpan>(*this, block_, start_row_ + nrow_ - row_num, row_num);
   // change current span info
   nrow_ -= row_num;
   has_pre_agg_ = false;
-  if (convert_) {
-    convert_->SetRowNum(nrow_);
-  }
 }
 
 }  // namespace kwdbts

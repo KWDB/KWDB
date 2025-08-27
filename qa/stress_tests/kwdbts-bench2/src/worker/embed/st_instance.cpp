@@ -359,7 +359,7 @@ void constructRoachpbTable(roachpb::CreateTsTable* meta, uint64_t table_id, cons
   // first column name: k_timestamp
   roachpb::KWDBKTSColumn* column = meta->mutable_k_column()->Add();
   column->set_storage_type(roachpb::DataType::TIMESTAMPTZ);
-  column->set_storage_len(16);
+  column->set_storage_len(8);
   column->set_column_id(1);
   column->set_name("k_timestamp");
 
@@ -397,7 +397,7 @@ bool checkColValue(const std::vector<AttributeInfo>& data_schema, const ResultSe
     char* tmp = reinterpret_cast<char*>(batch->mem);
     char* batch_addr = tmp;
     for (size_t r = 0; r < ret_cnt; r++) {
-      int value = ((KTimestamp(ts_bach_mem + r * 16)) / time_inc) % 11 + i;
+      int value = ((KTimestamp(ts_bach_mem + r * 8)) / time_inc) % 11 + i;
       bool check_col_ok = true;
       switch (data_schema[i].type) {
         case DATATYPE::TIMESTAMP64:

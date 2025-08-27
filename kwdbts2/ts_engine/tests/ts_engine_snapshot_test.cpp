@@ -85,13 +85,13 @@ class TestEngineSnapshotImgrate : public ::testing::Test {
     std::shared_ptr<kwdbts::TsTableSchemaManager> schema_mgr;
     KStatus s = ts_e->GetTableSchemaMgr(ctx_, table_id, schema_mgr);
     EXPECT_EQ(s, KStatus::SUCCESS);
-    std::vector<AttributeInfo> metric_schema;
-    s = schema_mgr->GetMetricMeta(1, metric_schema);
+    const std::vector<AttributeInfo>* metric_schema{nullptr};
+    s = schema_mgr->GetMetricMeta(1, &metric_schema);
     EXPECT_EQ(s , KStatus::SUCCESS);
     std::vector<TagInfo> tag_schema;
     s = schema_mgr->GetTagMeta(1, tag_schema);
     EXPECT_EQ(s , KStatus::SUCCESS);
-    auto pay_load = GenRowPayload(metric_schema, tag_schema ,table_id, 1, dev_id, num, start_ts);
+    auto pay_load = GenRowPayload(*metric_schema, tag_schema ,table_id, 1, dev_id, num, start_ts);
     uint16_t inc_entity_cnt;
     uint32_t inc_unordered_cnt;
     DedupResult dedup_result{0, 0, 0, TSSlice {nullptr, 0}};

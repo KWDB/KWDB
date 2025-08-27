@@ -152,14 +152,14 @@ TEST_F(TestWALManagerV2, TestWALInsertTag) {
   s = mgr->GetTableSchemaMgr(table_id, schema_mgr);
   EXPECT_EQ(s, KStatus::SUCCESS);
 
-  std::vector<AttributeInfo> metric_schema;
-  s = schema_mgr->GetMetricMeta(1, metric_schema);
+  const std::vector<AttributeInfo>* metric_schema{nullptr};
+  s = schema_mgr->GetMetricMeta(1, &metric_schema);
   EXPECT_EQ(s, KStatus::SUCCESS);
   std::vector<TagInfo> tag_schema;
   s = schema_mgr->GetTagMeta(1, tag_schema);
   EXPECT_EQ(s, KStatus::SUCCESS);
 
-  auto payload_data = GenRowPayload(metric_schema, tag_schema, table_id, 1, 1, 1, 123);
+  auto payload_data = GenRowPayload(*metric_schema, tag_schema, table_id, 1, 1, 1, 123);
   s = wal_->WriteInsertWAL(ctx, mtr_id, 0, 0, payload_data, vgroup_id, table_id);
   EXPECT_EQ(s, KStatus::SUCCESS);
 
@@ -196,15 +196,15 @@ TEST_F(TestWALManagerV2, TestWALUpdateTag) {
   s = mgr->GetTableSchemaMgr(table_id, schema_mgr);
   EXPECT_EQ(s, KStatus::SUCCESS);
 
-  std::vector<AttributeInfo> metric_schema;
-  s = schema_mgr->GetMetricMeta(1, metric_schema);
+  const std::vector<AttributeInfo>* metric_schema={nullptr};
+  s = schema_mgr->GetMetricMeta(1, &metric_schema);
   EXPECT_EQ(s, KStatus::SUCCESS);
   std::vector<TagInfo> tag_schema;
   s = schema_mgr->GetTagMeta(1, tag_schema);
   EXPECT_EQ(s, KStatus::SUCCESS);
 
-  auto new_payload_data = GenRowPayload(metric_schema, tag_schema, table_id, 1, 1, 1, 123);
-  auto old_payload_data = GenRowPayload(metric_schema, tag_schema, table_id, 1, 1, 1, 123);
+  auto new_payload_data = GenRowPayload(*metric_schema, tag_schema, table_id, 1, 1, 1, 123);
+  auto old_payload_data = GenRowPayload(*metric_schema, tag_schema, table_id, 1, 1, 1, 123);
   s = wal_->WriteUpdateWAL(ctx, mtr_id, 0, 0, new_payload_data, old_payload_data, vgroup_id, table_id);
   EXPECT_EQ(s, KStatus::SUCCESS);
 
@@ -244,14 +244,14 @@ TEST_F(TestWALManagerV2, TestWALDeleteTag) {
   s = mgr->GetTableSchemaMgr(table_id, schema_mgr);
   EXPECT_EQ(s, KStatus::SUCCESS);
 
-  std::vector<AttributeInfo> metric_schema;
-  s = schema_mgr->GetMetricMeta(1, metric_schema);
+  const std::vector<AttributeInfo>* metric_schema{nullptr};
+  s = schema_mgr->GetMetricMeta(1, &metric_schema);
   EXPECT_EQ(s, KStatus::SUCCESS);
   std::vector<TagInfo> tag_schema;
   s = schema_mgr->GetTagMeta(1, tag_schema);
   EXPECT_EQ(s, KStatus::SUCCESS);
 
-  auto payload_data = GenRowPayload(metric_schema, tag_schema, table_id, 1, 1, 1, 123);
+  auto payload_data = GenRowPayload(*metric_schema, tag_schema, table_id, 1, 1, 1, 123);
   s = wal_->WriteDeleteTagWAL(ctx, mtr_id, p_tag, 0, 0, payload_data, vgroup_id, table_id);
   EXPECT_EQ(s, KStatus::SUCCESS);
 
