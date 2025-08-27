@@ -363,4 +363,5 @@ message StreamAggregatorSpec{
 message APTableReaderSpec {
   optional string db_name = 1 [(gogoproto.nullable) = false];
   optional string table_name = 2 [(gogoproto.nullable) = false];
+  optional string schema_name = 3 [(gogoproto.nullable) = false];
 }

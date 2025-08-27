@@ -1005,9 +1005,15 @@ namespace kwdbts {
         } else {
           return result;
         }
+        auto schema_name = "";
+        if (apReader.has_schema_name() && !apReader.schema_name().empty()) {
+          schema_name = apReader.schema_name().c_str();
+        } else {
+          schema_name = "main";
+        }
         optional_ptr<Catalog> catalog;
         catalog = Catalog::GetCatalog(*connect_->context, db_name);
-        auto &schema = catalog->GetSchema(*connect_->context, "main");
+        auto &schema = catalog->GetSchema(*connect_->context, schema_name);
         auto entry = schema.GetEntry(catalog->GetCatalogTransaction(*connect_->context), CatalogType::TABLE_ENTRY, table_name);
         auto &table = entry->Cast<TableCatalogEntry>();
         properties.RegisterDBRead(table.ParentCatalog(), *connect_->context);
