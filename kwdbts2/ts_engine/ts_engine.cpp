@@ -12,7 +12,7 @@
 #include "ts_engine.h"
 
 #include <dirent.h>
-#include <execution>
+#include <future>
 #include <cstdint>
 #include <cstdio>
 #include <vector>
@@ -1064,24 +1064,27 @@ KStatus TSEngineV2Impl::TSxRollback(kwdbContext_p ctx, const KTableKey& table_id
   return KStatus::SUCCESS;
 }
 
+KStatus TSEngineV2Impl::RemoveChkFile(kwdbContext_p ctx, uint32_t vgroup_id) {
+  auto vgroup = GetVGroupByID(ctx, vgroup_id);
+  return vgroup->RemoveChkFile(ctx);
+}
+
 KStatus TSEngineV2Impl::ParallelRemoveChkFiles(kwdbContext_p ctx) {
-  std::atomic<KStatus> finalResult = KStatus::SUCCESS;
-  std::mutex logMutex;
+  std::vector<std::future<KStatus >> res;
 
-  std::for_each(std::execution::par, vgroups_.begin(), vgroups_.end(),
-                [&](const auto& vgrp) {
-                  if (finalResult.load() == KStatus::FAIL) return;
+  for (auto vgroup : vgroups_) {
+    res.emplace_back(std::async(std::launch::async,
+                                    [this, ctx, vgroup_id = vgroup->GetVGroupID()]
+                                    { return RemoveChkFile(ctx, vgroup_id); }));
+  }
 
-                  KStatus s = vgrp->RemoveChkFile(ctx);
-                  if (s == KStatus::FAIL) {
-                    finalResult.store(KStatus::FAIL);
-                    std::lock_guard<std::mutex> lock(logMutex);
-                    LOG_ERROR("Failed to update vgroup checkpoint lsn.");
-                  }
-                }
-  );
-
-  return finalResult.load();
+  for (int i = 0; i < res.size(); i++) {
+    if (res[i].get() != KStatus::SUCCESS) {
+      LOG_ERROR("Failed to ParallelRemoveChkFiles")
+      return KStatus::FAIL;
+    }
+  }
+  return KStatus::SUCCESS;
 }
 
 KStatus TSEngineV2Impl::CreateCheckpoint(kwdbContext_p ctx) {

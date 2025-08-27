@@ -306,6 +306,8 @@ class TSEngineV2Impl : public TSEngine {
     return options_.wal_level != WALMode::OFF && !options_.use_raft_log_as_wal;
   }
 
+  KStatus RemoveChkFile(kwdbContext_p ctx, uint32_t vgroup_id);
+
   KStatus ParallelRemoveChkFiles(kwdbContext_p ctx);
 
  private:
