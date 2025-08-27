@@ -572,6 +572,7 @@ KStatus TSEngineV2Impl::PutData(kwdbContext_p ctx, const KTableKey& table_id, ui
   std::shared_ptr<kwdbts::TsTable> ts_table;
   ErrorInfo err_info;
   TSEntityID entity_id;
+  size_t payload_size = 0;
   dedup_result->payload_num = payload_num;
   dedup_result->dedup_rule = static_cast<int>(EngineOptions::g_dedup_rule);
   for (size_t i = 0; i < payload_num; i++) {
