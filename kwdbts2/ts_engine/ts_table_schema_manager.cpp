@@ -109,6 +109,8 @@ KStatus TsTableSchemaManager::alterTableCol(kwdbContext_p ctx, AlterType alter_t
 
 KStatus TsTableSchemaManager::AlterTable(kwdbContext_p ctx, AlterType alter_type, roachpb::KWDBKTSColumn* column,
                                          uint32_t cur_version, uint32_t new_version, string& msg) {
+  RW_LATCH_X_LOCK(&table_version_rw_lock_);
+  Defer defer{[&]() { RW_LATCH_UNLOCK(&table_version_rw_lock_); }};
   AttributeInfo attr_info;
   KStatus s = parseAttrInfo(*column, attr_info, false);
   if (s != SUCCESS) {
@@ -137,6 +139,8 @@ KStatus TsTableSchemaManager::AlterTable(kwdbContext_p ctx, AlterType alter_type
 
 KStatus TsTableSchemaManager::UndoAlterTable(kwdbContext_p ctx, AlterType alter_type, roachpb::KWDBKTSColumn* column,
                        uint32_t cur_version, uint32_t new_version) {
+  RW_LATCH_X_LOCK(&table_version_rw_lock_);
+  Defer defer{[&]() { RW_LATCH_UNLOCK(&table_version_rw_lock_); }};
   ErrorInfo err_info;
   auto s = UndoAlterCol(cur_version, new_version);
   if (s != SUCCESS) {

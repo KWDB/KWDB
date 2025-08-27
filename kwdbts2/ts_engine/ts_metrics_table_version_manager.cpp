@@ -268,25 +268,27 @@ KStatus MetricsVersionManager::RemoveAll() {
 KStatus MetricsVersionManager::UndoAlterCol(uint32_t old_version, uint32_t new_version) {
   wrLock();
   Defer defer([&]() { unLock(); });
-  if (cur_metric_version_ == old_version) {
-    return SUCCESS;
-  }
-  if (cur_metric_version_ == new_version) {
-    // Get the previous version of root table
-    auto bt = GetMetricsTable(old_version, false);
-    // Clear the current version of the data
-    metric_tables_.erase(new_version);
-    cur_metric_table_->remove();
-    cur_metric_table_.reset();
-    // Update the latest version information
-    cur_metric_table_ = bt;
-    cur_metric_version_ = old_version;
-    partition_interval_ = bt->partitionInterval();
-  } else if (cur_metric_version_ < old_version) {
-    LOG_ERROR("incorrect version: current table version is [%u], but roll back to version is [%u]",
+  LOG_INFO("UndoAlterCol begin, table id [%lu], old version [%u], new version [%u]", table_id_, old_version, new_version);
+  if (cur_metric_version_ < old_version) {
+    LOG_ERROR("UndoAlterCol Unexpected error: current version is [%u], but want to roll back to version [%u]",
               cur_metric_version_, old_version);
     return FAIL;
   }
+
+  auto new_bt = GetMetricsTable(new_version, false);
+  if (new_bt != nullptr) {
+    metric_tables_.erase(new_version);
+    if (cur_metric_table_->GetVersionNum() == new_version) {
+      cur_metric_table_.reset();
+    }
+    new_bt->remove();
+  }
+
+  auto old_bt = GetMetricsTable(old_version, false);
+  cur_metric_table_ = old_bt;
+  cur_metric_version_ = old_version;
+  partition_interval_ = old_bt->partitionInterval();
+  LOG_INFO("UndoAlterCol succeed, table id [%lu], old version [%u], new version [%u]", table_id_, old_version, new_version);
   return SUCCESS;
 }
 
