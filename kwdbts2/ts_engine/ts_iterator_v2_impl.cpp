@@ -1799,14 +1799,12 @@ KStatus TsOffsetIteratorV2Impl::divideBlockSpans(timestamp64 begin_ts, timestamp
           min_ts = max_ts = cur_ts;
         } else if (is_lower_part && ((is_reversed_ && cur_ts <= mid_ts) || (!is_reversed_ && cur_ts > mid_ts))) {
           *lower_cnt += (j - first_row);
-          lower_block_span.push_back(make_shared<TsBlockSpan>(vgroup_id, entity_id, block, first_row, j - first_row,
-                                                              table_schema_mgr_, schema_));
+          lower_block_span.push_back(make_shared<TsBlockSpan>(*block_span, block, first_row, j - first_row));
           first_row = j;
           is_lower_part = false;
           min_ts = max_ts = cur_ts;
         } else if (!is_lower_part && ((is_reversed_ && cur_ts > mid_ts) || (!is_reversed_ && cur_ts <= mid_ts))) {
-          filter_block_spans_.push_back(make_shared<TsBlockSpan>(vgroup_id, entity_id, block, first_row, j - first_row,
-                                                                 table_schema_mgr_, schema_));
+          filter_block_spans_.push_back(make_shared<TsBlockSpan>(*block_span, block, first_row, j - first_row));
           first_row = j;
           is_lower_part = true;
           min_ts = max_ts = cur_ts;
@@ -1818,13 +1816,11 @@ KStatus TsOffsetIteratorV2Impl::divideBlockSpans(timestamp64 begin_ts, timestamp
       if (first_row < start_row + row_num) {
         if (is_lower_part) {
           *lower_cnt += (start_row + row_num - first_row);
-          lower_block_span.push_back(make_shared<TsBlockSpan>(vgroup_id, entity_id, block, first_row,
-                                                              start_row + row_num - first_row,
-                                                              table_schema_mgr_, schema_));
+          lower_block_span.push_back(make_shared<TsBlockSpan>(*block_span, block, first_row,
+                                                              start_row + row_num - first_row));
         } else {
-          filter_block_spans_.push_back(make_shared<TsBlockSpan>(vgroup_id, entity_id, block, first_row,
-                                                                 start_row + row_num - first_row,
-                                                                 table_schema_mgr_, schema_));
+          filter_block_spans_.push_back(make_shared<TsBlockSpan>(*block_span, block, first_row,
+                                                                 start_row + row_num - first_row));
         }
       }
     }
