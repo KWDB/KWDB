@@ -1321,11 +1321,12 @@ func initAPTableReaderSpec(
 ) (*execinfrapb.APTableReaderSpec, execinfrapb.PostProcessSpec, error) {
 	s := physicalplan.NewAPTableReaderSpec()
 	dbName := ""
+	schemaName := ""
 	database, _ := getDatabaseDescByID(planCtx.ctx, planCtx.planner.txn, n.desc.ParentID)
 	if database != nil {
 		dbName = database.Name
 	}
-	*s = execinfrapb.APTableReaderSpec{DbName: dbName, TableName: n.desc.Name}
+	*s = execinfrapb.APTableReaderSpec{DbName: dbName, SchemaName: schemaName, TableName: n.desc.Name}
 
 	//indexIdx, err := getIndexIdx(n)
 	//if err != nil {
