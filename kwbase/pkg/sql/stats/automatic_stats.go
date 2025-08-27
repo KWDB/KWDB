@@ -135,33 +135,6 @@ var AutomaticStatisticsMinStaleRows = func() *settings.IntSetting {
 	return s
 }()
 
-// AutomaticTsStatisticsFractionStaleRows controls the cluster setting for
-// the target fraction of rows in a ts table's a set of primary tags / tags that
-// should be stale before statistics on that table are refreshed,
-// in addition to the constant value AutomaticStatisticsMinStaleRows.
-var AutomaticTsStatisticsFractionStaleRows = func() *settings.FloatSetting {
-	s := settings.RegisterNonNegativeFloatSetting(
-		"sql.stats.automatic_ts_collection.fraction_stale_rows",
-		"target fraction of stale rows per timeseries table that will trigger a statistics refresh",
-		0.1,
-	)
-	s.SetVisibility(settings.Public)
-	return s
-}()
-
-// AutomaticTsStatisticsMinStaleRows controls the cluster setting for the target
-// number of rows that should be updated before a timeseries table is refreshed, in
-// addition to the fraction AutomaticStatisticsFractionStaleRows.
-var AutomaticTsStatisticsMinStaleRows = func() *settings.IntSetting {
-	s := settings.RegisterNonNegativeIntSetting(
-		"sql.stats.automatic_ts_collection.min_stale_rows",
-		"target minimum number of stale rows per timeseries table that will trigger a statistics refresh",
-		100,
-	)
-	s.SetVisibility(settings.Public)
-	return s
-}()
-
 // AutomaticTsUnorderedFractionStaleRows controls the cluster setting for
 // the target fraction of unordered rows in a ts table that should be stale before statistics on that table are refreshed,
 // in addition to the constant value AutomaticTsUnorderedMinStaleRows.
