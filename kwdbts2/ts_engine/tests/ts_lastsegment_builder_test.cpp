@@ -107,14 +107,14 @@ void LastSegmentReadWriteTest::BuilderWithBasicCheck(TSTableID table_id, int nro
 
     auto table_id = TsRawPayload::GetTableIDFromSlice(payload);
     auto table_version = TsRawPayload::GetTableVersionFromSlice(payload);
-    TSMemSegRowData row_data(1, table_id, table_version, 1);
     TsRawPayload pd(payload, &metric_schema);
     uint32_t row_num = pd.GetRowCount();
     memseg->AllocRowNum(row_num);
     for (size_t i = 0; i < row_num; i++) {
       auto row_ts = pd.GetTS(i);
       // TODO(Yongyan): Somebody needs to update lsn later.
-      row_data.SetData(row_ts, 0, pd.GetRowData(i));
+      TSMemSegRowData *row_data = memseg->AllocOneRow(1, table_id, table_version, 1, pd.GetRowData(i));
+      row_data->SetData(row_ts, 0);
       memseg->AppendOneRow(row_data);
     }
 
@@ -274,13 +274,13 @@ void PushPayloadToBuilder(R *builder, TSSlice *payload, TSTableID table_id, uint
 
   auto memseg = builder->memseg;
 
-  TSMemSegRowData row_data(1, table_id, version, entity_id);
   uint32_t row_num = p.GetRowCount();
   memseg->AllocRowNum(row_num);
   for (size_t i = 0; i < row_num; i++) {
     auto row_ts = p.GetTS(i);
     // TODO(Yongyan): Somebody needs to update lsn later.
-    row_data.SetData(row_ts, 0, p.GetRowData(i));
+    TSMemSegRowData *row_data = memseg->AllocOneRow(1, table_id, version, entity_id, p.GetRowData(i));
+    row_data->SetData(row_ts, 0);
     memseg->AppendOneRow(row_data);
   }
 }

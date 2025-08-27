@@ -11,11 +11,18 @@
 #pragma once
 
 #include <assert.h>
+#include <endian.h>
 #include <stdlib.h>
+#include <sys/types.h>
 #include <algorithm>
 #include <atomic>
+#include <cstdint>
+#include <cstring>
+#include <limits>
 #include <type_traits>
 
+#include "data_type.h"
+#include "libkwdbts2.h"
 #include "ts_arena.h"
 
 namespace kwdbts {
@@ -23,72 +30,61 @@ namespace kwdbts {
 #define PREFETCH(addr, rw, locality) __builtin_prefetch(addr, rw, locality)
 
 // store row-based data struct for certain entity.
-#pragma pack(1)
 struct TSMemSegRowData {
+  // the flowing fields WILL BE used to sort and in big-endian order.
+ private:
+  uint64_t entity_id = 0;
+  uint64_t ts = 0;
+  uint64_t lsn = 0;
+
+  // the following fields WILL NOT BE used to sort and in little-endian order.
+ private:
   TSTableID table_id;
   uint32_t table_version;
-  TSEntityID entity_id;
-  timestamp64 ts;
-  TS_LSN lsn;
   uint32_t database_id;
   TSSlice row_data;
 
  private:
-  char* skip_list_key_;
+  TS_LSN little_endian_lsn = 0;
 
  public:
-  TSMemSegRowData(uint32_t db_id, TSTableID tbl_id, uint32_t tbl_version, TSEntityID en_id) {
-    database_id = db_id;
-    table_id = tbl_id;
-    table_version = tbl_version;
-    entity_id = en_id;
-  }
-  inline bool operator<(const TSMemSegRowData& b) const {
-    return Compare(b) < 0;
-  }
-  void SetData(timestamp64 cts, TS_LSN clsn, const TSSlice& crow_data) {
-    ts = cts;
-    lsn = clsn;
-    row_data = crow_data;
-  }
-  static constexpr size_t GetKeyLen() {
-    return 8 + 4 + 8 + 8 + 8 + 4;
-  }
+  TSMemSegRowData(uint32_t db_id, TSTableID tbl_id, uint32_t tbl_version, TSEntityID en_id)
+      : entity_id(htobe64(en_id)), table_id(tbl_id), table_version(tbl_version), database_id(db_id) {}
 
-#define HTOBEFUNC(buf, value, size) { \
-  auto tmp = value; \
-  memcpy(buf, &tmp, size); \
-  buf += size; \
-}
+  void SetRowData(const TSSlice& crow_data) { row_data = crow_data; }
+  void SetData(timestamp64 cts, TS_LSN clsn) {
+    ts = htobe64(cts - INT64_MIN);
+    lsn = htobe64(clsn);
+    little_endian_lsn = clsn;
+  }
+  static constexpr size_t GetKeyLen() { return offsetof(TSMemSegRowData, table_id); }
 
-  void GenKey(char* buf) {
-    skip_list_key_ = buf;
-    HTOBEFUNC(buf, htobe64(table_id), sizeof(table_id));
-    HTOBEFUNC(buf, htobe32(table_version), sizeof(table_version));
-    HTOBEFUNC(buf, htobe64(entity_id), sizeof(entity_id));
-    uint64_t cts = ts - INT64_MIN;
-    HTOBEFUNC(buf, htobe64(cts), sizeof(cts));
-    HTOBEFUNC(buf, htobe64(lsn), sizeof(lsn));
-    HTOBEFUNC(buf, htobe32(database_id), sizeof(database_id));
-  }
+  TSEntityID GetEntityId() const { return be64toh(entity_id); }
+  timestamp64 GetTS() const { return static_cast<timestamp64>(be64toh(ts)) + INT64_MIN; }
+  TS_LSN GetLSN() const { return little_endian_lsn; }
+  const TS_LSN* GetLSNAddr() const { return &little_endian_lsn; }
 
-  inline bool SameEntityAndTableVersion(TSMemSegRowData* b) {
-    return memcmp(this, b, 20) == 0;
-  }
-  inline bool SameEntityAndTs(TSMemSegRowData* b) {
-    return entity_id == b->entity_id && ts == b->ts;
-  }
-  inline bool SameTableId(TSMemSegRowData* b) {
-    return this->table_id == b->table_id;
-  }
+  TSTableID GetTableId() const { return table_id; }
+  uint32_t GetTableVersion() const { return table_version; }
+  uint32_t GetDatabaseId() const { return database_id; }
+  TSSlice GetRowData() const { return row_data; }
 
-  inline int Compare(const TSMemSegRowData& b) const { return memcmp(skip_list_key_, b.skip_list_key_, GetKeyLen()); }
+  inline bool SameEntityAndTableVersion(const TSMemSegRowData* b) const {
+    return this->entity_id == b->entity_id && this->table_version == b->table_version;
+  }
+  inline bool SameEntityAndTs(const TSMemSegRowData* b) const {
+    return std::memcmp(this, b, offsetof(TSMemSegRowData, lsn)) == 0;
+  }
+  inline bool SameTableId(const TSMemSegRowData* b) const { return this->table_id == b->table_id; }
 };
-#pragma pack()
+
+static_assert(sizeof(TSMemSegRowData) == 64, "TSMemSegRowData size is not 64");
+static_assert(std::has_unique_object_representations_v<TSMemSegRowData>,
+              "TSMemSegRowData has some uninitialized padding");
 
 struct TSRowDataComparator {
-  inline TSMemSegRowData* DecodeKeyValue(const char* b) const {
-    return reinterpret_cast<TSMemSegRowData*>(const_cast<char*>(b + TSMemSegRowData::GetKeyLen()));
+  inline const TSMemSegRowData* DecodeKeyValue(const char* b) const {
+    return reinterpret_cast<const TSMemSegRowData*>(b);
   }
 
   int operator()(const char* a, const char* b) const { return memcmp(a, b, TSMemSegRowData::GetKeyLen()); }
@@ -181,9 +177,13 @@ class TsMemSegIndex {
 
   void InsertWithCAS(const char* key);
 
-  void InsertRowData(const TSMemSegRowData& row);
+  // use replacement new outside of this class.
+  TSMemSegRowData* AllocateMemSegRowData(uint32_t db_id, TSTableID tbl_id, uint32_t tbl_version, TSEntityID en_id,
+                                         TSSlice row_data);
 
-  inline TSMemSegRowData* ParseKey(const char* key) {
+  void InsertRowData(const TSMemSegRowData* row);
+
+  inline const TSMemSegRowData* ParseKey(const char* key) {
     return compare_.DecodeKeyValue(key);
   }
 
@@ -239,6 +239,7 @@ class SkiplistIterator {
   }
 
   inline void Seek(const char* target) { node_ = list_->FindGreaterOrEqual(target); }
+  inline void Seek(const TSMemSegRowData* target) { this->Seek(reinterpret_cast<const char*>(target)); }
 
   inline void SeekToFirst() { node_ = list_->head_node_->Next(0); }
 

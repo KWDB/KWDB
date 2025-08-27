@@ -219,7 +219,7 @@ void TsLastSegmentBuilder::BlockIndexCollector::Collect(TsBlockSpan* span) {
   TS_LSN min_lsn = std::numeric_limits<TS_LSN>::max();
   TS_LSN max_lsn = std::numeric_limits<TS_LSN>::min();
   for (int i = 0; i < span->GetRowNum(); ++i) {
-    TS_LSN* lsn_addr = span->GetLSNAddr(i);
+    const TS_LSN* lsn_addr = span->GetLSNAddr(i);
     min_lsn = std::min(min_lsn, *lsn_addr);
     max_lsn = std::max(max_lsn, *lsn_addr);
   }

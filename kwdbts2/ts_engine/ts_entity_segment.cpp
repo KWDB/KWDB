@@ -513,7 +513,7 @@ inline TS_LSN TsEntityBlock::GetLastLSN() {
   return last_lsn_;
 }
 
-inline uint64_t* TsEntityBlock::GetLSNAddr(int row_num) {
+inline const uint64_t* TsEntityBlock::GetLSNAddr(int row_num) {
   if (!HasDataCached(-1)) {
     KStatus s = entity_segment_->GetColumnBlock(-1, {}, this);
     if (s != KStatus::SUCCESS) {

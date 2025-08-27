@@ -21,10 +21,29 @@
 
 using namespace kwdbts;
 
-void InsertDuplicateTest(TsMemSegIndex &skiplist, int data, int id = 1) {
-  TSMemSegRowData row(id, id, id, id);
-  row.SetData(id, id, TSSlice{reinterpret_cast<char *>(&data), sizeof(data)});
+void InsertHelper(TsMemSegIndex &skiplist, int data, int id = 1) {
+  TSMemSegRowData *row =
+      skiplist.AllocateMemSegRowData(id, id, id, id, TSSlice{reinterpret_cast<char *>(&data), sizeof(data)});
+  row->SetData(id, id);
   skiplist.InsertRowData(row);
+}
+
+SkiplistIterator SeekHelper(TsMemSegIndex &skiplist, int id) {
+  SkiplistIterator iter(&skiplist);
+  TSMemSegRowData key(id, id, id, id);
+  key.SetData(id, id);
+  iter.Seek(reinterpret_cast<const char *>(&key));
+  return iter;
+}
+
+TEST(TsMemSegIndexTest, InsertAndSeekOne) {
+  TsMemSegIndex skiplist;
+  InsertHelper(skiplist, 1);
+  auto iter = SeekHelper(skiplist, 1);
+  ASSERT_TRUE(iter.Valid());
+  auto row_data = skiplist.ParseKey(iter.key());
+  int data = *reinterpret_cast<int *>(row_data->GetRowData().data);
+  ASSERT_EQ(data, 1);
 }
 
 TEST(TsMemSegIndexTest, InsertDuplicateKeys) {
@@ -36,7 +55,7 @@ TEST(TsMemSegIndexTest, InsertDuplicateKeys) {
   std::shuffle(insert_data.begin(), insert_data.end(), std::default_random_engine{0});
 
   for (int i = 0; i < 10000; ++i) {
-    InsertDuplicateTest(skiplist, insert_data[i]);
+    InsertHelper(skiplist, insert_data[i]);
   }
 
   SkiplistIterator iter(&skiplist);
@@ -44,7 +63,7 @@ TEST(TsMemSegIndexTest, InsertDuplicateKeys) {
   int i = 0;
   while (iter.Valid()) {
     auto row_data = skiplist.ParseKey(iter.key());
-    int data = *reinterpret_cast<int *>(row_data->row_data.data);
+    int data = *reinterpret_cast<int *>(row_data->GetRowData().data);
     ASSERT_EQ(data, insert_data[i]);
     iter.Next();
     ++i;
@@ -52,15 +71,7 @@ TEST(TsMemSegIndexTest, InsertDuplicateKeys) {
   ASSERT_EQ(i, 10000);
 }
 
-SkiplistIterator SeekHelper(TsMemSegIndex &skiplist, int id) {
-  SkiplistIterator iter(&skiplist);
-  char keybuf[TSMemSegRowData::GetKeyLen() + sizeof(TSMemSegRowData)];
-  TSMemSegRowData *key = new (keybuf) TSMemSegRowData(id, id, id, id);
-  key->SetData(id, id, TSSlice{nullptr, 0});
-  key->GenKey(keybuf);
-  iter.Seek(keybuf);
-  return iter;
-}
+
 
 TEST(TsMemSegIndexTest, InsertDuplicateKeysAndSeek) {
   TsMemSegIndex skiplist;
@@ -77,7 +88,7 @@ TEST(TsMemSegIndexTest, InsertDuplicateKeysAndSeek) {
 
   for (int i = 0; i < nbatch; ++i) {
     for (int j = 0; j < n; ++j) {
-      InsertDuplicateTest(skiplist, insert_data[i][j], i);
+      InsertHelper(skiplist, insert_data[i][j], i);
     }
   }
   {
@@ -99,7 +110,7 @@ TEST(TsMemSegIndexTest, InsertDuplicateKeysAndSeek) {
     int idx = 0;
     while (it.Valid() && it != end) {
       auto row_data = skiplist.ParseKey(it.key());
-      int data = *reinterpret_cast<int *>(row_data->row_data.data);
+      int data = *reinterpret_cast<int *>(row_data->GetRowData().data);
       ASSERT_EQ(data, insert_data[5][idx]);
       it.Next();
       ++idx;

@@ -10,6 +10,8 @@
 // See the Mulan PSL v2 for more details.
 
 #include "ts_mem_seg_index.h"
+#include <algorithm>
+#include "libkwdbts2.h"
 
 namespace kwdbts {
 
@@ -57,17 +59,20 @@ SkipListSplice* TsMemSegIndex::AllocateSkiplistSplice() {
   return splice;
 }
 
-void TsMemSegIndex::InsertRowData(const TSMemSegRowData& row) {
-  size_t malloc_size = sizeof(TSMemSegRowData) + row.row_data.len + TSMemSegRowData::GetKeyLen();
+TSMemSegRowData* TsMemSegIndex::AllocateMemSegRowData(uint32_t db_id, TSTableID tbl_id, uint32_t tbl_version,
+                                                      TSEntityID en_id, TSSlice row_data) {
+  size_t malloc_size = sizeof(TSMemSegRowData) + row_data.len;
   char* buf = AllocateKeyValue(malloc_size);
   assert(buf != nullptr);
-  TSMemSegRowData* cur_row = reinterpret_cast<TSMemSegRowData*>(buf + TSMemSegRowData::GetKeyLen());
-  memcpy(cur_row, &row, sizeof(TSMemSegRowData));
-  cur_row->row_data.data = buf + sizeof(TSMemSegRowData) + TSMemSegRowData::GetKeyLen();
-  cur_row->row_data.len = row.row_data.len;
-  memcpy(cur_row->row_data.data, row.row_data.data, row.row_data.len);
-  cur_row->GenKey(buf);
-  InsertWithCAS(buf);
+  std::copy(row_data.data, row_data.data + row_data.len, buf + sizeof(TSMemSegRowData));
+  TSMemSegRowData* data = new (buf) TSMemSegRowData(db_id, tbl_id, tbl_version, en_id);
+  data->SetRowData(TSSlice{buf + sizeof(TSMemSegRowData), row_data.len});
+  return data;
+}
+
+void TsMemSegIndex::InsertRowData(const TSMemSegRowData* row) {
+  const char* key = reinterpret_cast<const char*>(row);
+  InsertWithCAS(key);
 }
 
 void TsMemSegIndex::InsertWithCAS(const char* key) {
@@ -133,26 +138,6 @@ int TsMemSegIndex::RandomHeight() {
 
 SkipListNode* TsMemSegIndex::FindGreaterOrEqual(const char* key) const {
   int level = GetMaxHeight() - 1;
-  // SkipListNode* x = head_node_;
-  // SkipListNode* last_bigger_node = nullptr;
-  // while (true) {
-  //   SkipListNode* next_node = x->Next(level);
-  //   if (next_node != nullptr) {
-  //     PREFETCH(next_node->Next(level), 0, 1);
-  //   }
-  //   // assert(x == head_node_ || IsKeyAfterNode(key, x));
-  //   // assert(x == head_node_ || next_node == nullptr || IsKeyAfterNode(next_node->Key(), x));
-  //   int cmp = (next_node == nullptr || next_node == last_bigger_node) ? 1 : compare_(next_node->Key(), key);
-  //   if (cmp == 0 || (cmp > 0 && level == 0)) {
-  //     return next_node;
-  //   } else if (cmp < 0) {
-  //     x = next_node;
-  //   } else {
-  //     last_bigger_node = next_node;
-  //     level--;
-  //   }
-  // }
-
   SkipListNode* lhs = head_node_;
   for (; level >= 0; level--) {
     SkipListNode* rhs = lhs->Next(level);

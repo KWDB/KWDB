@@ -91,7 +91,8 @@ class TsBlockSpanSortedIteratorTest : public ::testing::Test {
       row_datas_.push_back(row);
       KTimestamp(row) = tss[i];
       KUint64(row + 8) = lsn;
-      data->SetData(tss[i], lsn, {row, 16});
+      data->SetData(tss[i], lsn);
+      data->SetRowData(TSSlice{row, 16});
       bool ok = cur_block->InsertRow(data);
       EXPECT_TRUE(ok);
     }

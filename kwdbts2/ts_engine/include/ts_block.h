@@ -57,7 +57,7 @@ class TsBlock {
 
   virtual TS_LSN GetLastLSN() = 0;
 
-  virtual uint64_t* GetLSNAddr(int row_num) = 0;
+  virtual const uint64_t* GetLSNAddr(int row_num) = 0;
 
   virtual KStatus GetCompressDataFromFile(uint32_t table_version, int32_t nrow, std::string& data) = 0;
 
@@ -161,7 +161,7 @@ class TsBlockSpan {
       return *block_->GetLSNAddr(start_row_ + nrow_ - 1);
     }
   }
-  uint64_t* GetLSNAddr(int row_idx) const { return block_->GetLSNAddr(start_row_ + row_idx); }
+  const uint64_t* GetLSNAddr(int row_idx) const { return block_->GetLSNAddr(start_row_ + row_idx); }
 
   // convert value to compressed entity block data
   KStatus BuildCompressedData(std::string& data);

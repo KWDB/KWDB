@@ -219,7 +219,7 @@ KStatus TsEntityBlockBuilder::Append(shared_ptr<TsBlockSpan> span, bool& is_full
     }
     if (!is_var_col) {
       if (col_idx == 0) {
-        char* lsn_col_value = reinterpret_cast<char *>(span->GetLSNAddr(0));
+        const char* lsn_col_value = reinterpret_cast<const char*>(span->GetLSNAddr(0));
         block.buffer.append(lsn_col_value, written_rows * d_size);
       } else if (col_idx != 1) {
         block.buffer.append(col_val, written_rows * d_size);

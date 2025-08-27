@@ -343,13 +343,13 @@ class TsLastBlock : public TsBlock {
     return block_index_.last_lsn;
   }
 
-  inline uint64_t* GetLSNAddr(int row_num) override {
+  inline const uint64_t* GetLSNAddr(int row_num) override {
     auto seq_nos = GetLSN();
     if (seq_nos == nullptr) {
       LOG_ERROR("cannot get lsn addr");
       return nullptr;
     }
-    return const_cast<uint64_t*>(&seq_nos[row_num]);
+    return &seq_nos[row_num];
   }
 
   inline KStatus GetCompressDataFromFile(uint32_t table_version, int32_t nrow, std::string& data) override {

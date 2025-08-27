@@ -11,17 +11,16 @@
 
 #include <atomic>
 #include <cstdint>
-#include <iostream>
 #include <list>
 #include <memory>
 #include <mutex>
-#include <stdexcept>
 #include <utility>
 #include <vector>
 
 #include "data_type.h"
 #include "kwdb_type.h"
 #include "ts_flush_manager.h"
+#include "ts_mem_seg_index.h"
 #include "ts_mem_segment_mgr.h"
 #include "ts_table_schema_manager.h"
 #include "ts_version.h"
@@ -37,27 +36,6 @@ TsMemSegmentManager::TsMemSegmentManager(TsVGroup* vgroup, TsVersionManager* ver
       cur_mem_seg_(TsMemSegment::Create(EngineOptions::mem_segment_max_height)) {
   segment_.push_back(cur_mem_seg_);
 }
-
-// WAL CreateCheckPoint call this function to persistent metric datas.
-// std::shared_ptr<TsMemSegment> TsMemSegmentManager::SwitchMemSegment() {
-//   TsVersionUpdate update;
-//   std::shared_ptr<TsMemSegment> ret;
-//   {
-//     std::unique_lock lock{segment_lock_};
-//     ret = cur_mem_seg_;
-//     cur_mem_seg_ = TsMemSegment::Create(EngineOptions::mem_segment_max_height);
-//     update.AddMemSegment(cur_mem_seg_);
-//     segment_.push_back(cur_mem_seg_);
-//   }
-//   auto row_num = ret->GetRowNum();
-//   uint32_t new_heigh = log2(row_num);
-//   if (EngineOptions::mem_segment_max_height < new_heigh) {
-//     EngineOptions::mem_segment_max_height = new_heigh;
-//   }
-
-//   version_manager_->ApplyUpdate(&update);
-//   return ret;
-// }
 
 bool TsMemSegmentManager::SwitchMemSegment(TsMemSegment* expected_old_mem_seg) {
   {
@@ -136,7 +114,7 @@ KStatus TsMemSegmentManager::PutData(const TSSlice& payload, TSEntityID entity_i
   }
 
   uint32_t db_id = vgroup_->GetEngineSchemaMgr()->GetDBIDByTableID(table_id);
-  TSMemSegRowData row_data(db_id, table_id, table_version, entity_id);
+  // TSMemSegRowData row_data(db_id, table_id, table_version, entity_id);
   TsRawPayload pd(payload, &schema);
   uint32_t row_num = pd.GetRowCount();
 
@@ -152,8 +130,8 @@ KStatus TsMemSegmentManager::PutData(const TSSlice& payload, TSEntityID entity_i
     auto p_time = convertTsToPTime(row_ts, ts_type);
     version_manager_->AddPartition(db_id, p_time);
 
-    auto payload_row_data = pd.GetRowData(i);
-    row_data.SetData(row_ts, lsn, payload_row_data);
+    TSMemSegRowData* row_data = cur_mem_seg->AllocOneRow(db_id, table_id, table_version, entity_id, pd.GetRowData(i));
+    row_data->SetData(row_ts, lsn);
     cur_mem_seg->AppendOneRow(row_data);
 
     if (row_ts > max_ts) {
@@ -180,7 +158,7 @@ KStatus TsMemSegBlock::GetColBitmap(uint32_t col_id, const std::vector<Attribute
   bitmap.SetCount(row_data_.size());
   for (int i = 0; i < row_data_.size(); i++) {
     auto row = row_data_[i];
-    if (parser_->IsColNull(row->row_data, col_id)) {
+    if (parser_->IsColNull(row->GetRowData(), col_id)) {
       bitmap[i] = DataFlags::kNull;
     }
   }
@@ -210,8 +188,8 @@ KStatus TsMemSegBlock::GetColAddr(uint32_t col_id, const std::vector<AttributeIn
   char* cur_offset = col_based_mem;
   for (int i = 0; i < row_data_.size(); i++) {
     auto row = row_data_[i];
-    if (!parser_->IsColNull(row->row_data, col_id)) {
-      auto ok = parser_->GetColValueAddr(row->row_data, col_id, &value_slice);
+    if (!parser_->IsColNull(row->GetRowData(), col_id)) {
+      auto ok = parser_->GetColValueAddr(row->GetRowData(), col_id, &value_slice);
       if (!ok) {
         LOG_ERROR("GetColValueAddr failed.");
         return KStatus::FAIL;
@@ -231,7 +209,7 @@ inline KStatus TsMemSegBlock::GetValueSlice(int row_num, int col_id, const std::
   if (parser_ == nullptr) {
     parser_ = std::make_unique<TsRawPayloadRowParser>(schema);
   }
-  auto ok = parser_->GetColValueAddr(row_data_[row_num]->row_data, col_id, &value);
+  auto ok = parser_->GetColValueAddr(row_data_[row_num]->GetRowData(), col_id, &value);
   if (!ok) {
     return KStatus::FAIL;
   }
@@ -243,95 +221,85 @@ inline bool TsMemSegBlock::IsColNull(int row_num, int col_id, const std::vector<
   if (parser_ == nullptr) {
     parser_ = std::make_unique<TsRawPayloadRowParser>(schema);
   }
-  return parser_->IsColNull(row_data_[row_num]->row_data, col_id);
+  return parser_->IsColNull(row_data_[row_num]->GetRowData(), col_id);
 }
 
-void TsMemSegment::AppendOneRow(TSMemSegRowData& row) {
+void TsMemSegment::AppendOneRow(TSMemSegRowData* row) {
   skiplist_.InsertRowData(row);
   written_row_num_.fetch_add(1);
-  payload_mem_usage_.fetch_add(row.row_data.len, std::memory_order_relaxed);
+  payload_mem_usage_.fetch_add(row->GetRowData().len, std::memory_order_relaxed);
 }
 
-bool TsMemSegment::HasEntityRows(const TsScanFilterParams& filter) {
-  SkiplistIterator iter(&skiplist_);
-  char key[TSMemSegRowData::GetKeyLen() + sizeof(TSMemSegRowData)];
-  uint32_t cur_version = 1;
-  while (true) {
-    TSMemSegRowData* begin = new (key + TSMemSegRowData::GetKeyLen())
-        TSMemSegRowData(filter.db_id_, filter.table_id_, cur_version, filter.entity_id_);
-    begin->SetData(INT64_MIN, 0, {nullptr, 0});
-    begin->GenKey(key);
-    iter.Seek(reinterpret_cast<char*>(&key));
-    bool scan_over = false;
-    while (iter.Valid()) {
-      auto cur_row = skiplist_.ParseKey(iter.key());
-      assert(cur_row != nullptr);
-      if (!cur_row->SameTableId(begin)) {
-        scan_over = true;
-        break;
-      }
-      if (cur_row->entity_id > filter.entity_id_) {
-        cur_version = cur_row->table_version + 1;
-        break;
-      }
-      if (cur_row->entity_id < filter.entity_id_) {
-        cur_version = cur_row->table_version;
-        break;
-      }
-      if (checkTimestampWithSpans(filter.ts_spans_, cur_row->ts, cur_row->ts)
-            == TimestampCheckResult::FullyContained) {
-        return true;
-      }
-      iter.Next();
-    }
-    if (scan_over || !iter.Valid()) {
-      break;
-    }
-  }
-  return false;
-}
+// bool TsMemSegment::HasEntityRows(const TsScanFilterParams& filter) {
+//   SkiplistIterator iter(&skiplist_);
+//   char key[TSMemSegRowData::GetKeyLen() + sizeof(TSMemSegRowData)];
+//   uint32_t cur_version = 1;
+//   while (true) {
+//     TSMemSegRowData* begin = new (key + TSMemSegRowData::GetKeyLen())
+//         TSMemSegRowData(filter.db_id_, filter.table_id_, cur_version, filter.entity_id_);
+//     begin->SetData(INT64_MIN, 0, {nullptr, 0});
+//     begin->GenKey(key);
+//     iter.Seek(reinterpret_cast<char*>(&key));
+//     bool scan_over = false;
+//     while (iter.Valid()) {
+//       auto cur_row = skiplist_.ParseKey(iter.key());
+//       assert(cur_row != nullptr);
+//       if (!cur_row->SameTableId(begin)) {
+//         scan_over = true;
+//         break;
+//       }
+//       if (cur_row->entity_id > filter.entity_id_) {
+//         cur_version = cur_row->table_version + 1;
+//         break;
+//       }
+//       if (cur_row->entity_id < filter.entity_id_) {
+//         cur_version = cur_row->table_version;
+//         break;
+//       }
+//       if (checkTimestampWithSpans(filter.ts_spans_, cur_row->ts, cur_row->ts)
+//             == TimestampCheckResult::FullyContained) {
+//         return true;
+//       }
+//       iter.Next();
+//     }
+//     if (scan_over || !iter.Valid()) {
+//       break;
+//     }
+//   }
+//   return false;
+// }
 
-bool TsMemSegment::GetEntityRows(const TsBlockItemFilterParams& filter, std::list<TSMemSegRowData*>* rows) {
+bool TsMemSegment::GetEntityRows(const TsBlockItemFilterParams& filter, std::list<const TSMemSegRowData*>* rows) {
   rows->clear();
-  SkiplistIterator iter(&skiplist_);
-  char key[TSMemSegRowData::GetKeyLen() + sizeof(TSMemSegRowData)];
-  uint32_t cur_version = 1;
-  while (true) {
-    TSMemSegRowData* begin = new (key + TSMemSegRowData::GetKeyLen())
-        TSMemSegRowData(filter.db_id, filter.table_id, cur_version, filter.entity_id);
-    begin->SetData(INT64_MIN, 0, {nullptr, 0});
-    begin->GenKey(key);
-    iter.Seek(reinterpret_cast<char*>(&key));
-    bool scan_over = false;
-    while (iter.Valid()) {
-      auto cur_row = skiplist_.ParseKey(iter.key());
-      assert(cur_row != nullptr);
-      if (!cur_row->SameTableId(begin)) {
-        scan_over = true;
-        break;
-      }
-      if (cur_row->entity_id > filter.entity_id) {
-        cur_version = cur_row->table_version + 1;
-        break;
-      }
-      if (cur_row->entity_id < filter.entity_id) {
-        cur_version = cur_row->table_version;
-        break;
-      }
-      if (IsTsLsnInSpans(cur_row->ts, cur_row->lsn, filter.spans_)) {
-        rows->push_back(cur_row);
+
+  for (const auto& span : filter.spans_) {
+    SkiplistIterator iter(&skiplist_);
+    SkiplistIterator end(&skiplist_);
+
+    {
+      TSMemSegRowData key_begin(filter.db_id, filter.table_id, 0, filter.entity_id);
+      key_begin.SetData(span.ts_span.begin, 0);
+      iter.Seek(reinterpret_cast<char*>(&key_begin));
+
+      TSMemSegRowData key_end(filter.db_id, filter.table_id, 0, filter.entity_id);
+      // because the span is right-closed, we need to add 1 to the end timestamp
+      key_end.SetData(span.ts_span.end + 1, 0);
+      end.Seek(reinterpret_cast<char*>(&key_end));
+    }
+
+    while (iter != end) {
+      const TSMemSegRowData* row_data = skiplist_.ParseKey(iter.key());
+      auto lsn = row_data->GetLSN();
+      if (lsn <= span.lsn_span.end && lsn >= span.lsn_span.begin) {
+        rows->push_back(row_data);
       }
       iter.Next();
     }
-    if (scan_over || !iter.Valid()) {
-      break;
-    }
   }
-
   return true;
 }
 
-bool TsMemSegment::GetAllEntityRows(std::list<TSMemSegRowData*>* rows) {
+bool TsMemSegment::GetAllEntityRows(std::list<const TSMemSegRowData*>* rows) {
   rows->clear();
   SkiplistIterator iter(&skiplist_);
   iter.SeekToFirst();
@@ -342,32 +310,6 @@ bool TsMemSegment::GetAllEntityRows(std::list<TSMemSegRowData*>* rows) {
     iter.Next();
   }
   return true;
-}
-
-void TsMemSegment::Traversal(std::function<bool(TSMemSegRowData* row)> func, bool waiting_done) {
-  if (waiting_done) {
-    int re_try_times = 0;
-    while (intent_row_num_.load() != written_row_num_.load()) {
-      if (++re_try_times % 10 == 0)
-        LOG_WARN("TsMemSegment intent_row_num_[%u] != written_row_num_[%u], sleep 1ms. times[%d].",
-                 intent_row_num_.load(), written_row_num_.load(), re_try_times);
-      usleep(1000);
-    }
-  }
-
-  bool run_ok = true;
-  SkiplistIterator iter(&skiplist_);
-  iter.SeekToFirst();
-  while (iter.Valid()) {
-    auto cur_row = skiplist_.ParseKey(iter.key());
-    assert(cur_row != nullptr);
-    auto ok = func(cur_row);
-    if (!ok) {
-      // exec failed. no need run left.
-      return;
-    }
-    iter.Next();
-  }
 }
 
 KStatus TsMemSegment::GetBlockSpans(std::list<shared_ptr<TsBlockSpan>>& blocks, TsEngineSchemaManager* schema_mgr) {
@@ -386,9 +328,9 @@ KStatus TsMemSegment::GetBlockSpans(std::list<shared_ptr<TsBlockSpan>>& blocks, 
 
   auto self = shared_from_this();
   if (EngineOptions::g_dedup_rule == DedupRule::OVERRIDE) {
-    TSMemSegRowData* last_row_data = nullptr;
+    const TSMemSegRowData* last_row_data = nullptr;
     for (; iter.Valid(); iter.Next()) {
-      TSMemSegRowData* cur_row = skiplist_.ParseKey(iter.key());
+      const TSMemSegRowData* cur_row = skiplist_.ParseKey(iter.key());
       assert(cur_row != nullptr);
       if (last_row_data == nullptr || last_row_data->SameEntityAndTs(cur_row)) {
         last_row_data = cur_row;
@@ -411,9 +353,9 @@ KStatus TsMemSegment::GetBlockSpans(std::list<shared_ptr<TsBlockSpan>>& blocks, 
       }
     }
   } else if (EngineOptions::g_dedup_rule == DedupRule::DISCARD) {
-    TSMemSegRowData* last_row_data = nullptr;
+    const TSMemSegRowData* last_row_data = nullptr;
     for (; iter.Valid(); iter.Next()) {
-      TSMemSegRowData* cur_row = skiplist_.ParseKey(iter.key());
+      const TSMemSegRowData* cur_row = skiplist_.ParseKey(iter.key());
       assert(cur_row != nullptr);
       if (last_row_data == nullptr || !last_row_data->SameEntityAndTs(cur_row)) {
         if (current_memblock == nullptr || !current_memblock->InsertRow(cur_row)) {
@@ -427,7 +369,7 @@ KStatus TsMemSegment::GetBlockSpans(std::list<shared_ptr<TsBlockSpan>>& blocks, 
     }
   } else {  // KEEP
     for (; iter.Valid(); iter.Next()) {
-      TSMemSegRowData* cur_row = skiplist_.ParseKey(iter.key());
+      const TSMemSegRowData* cur_row = skiplist_.ParseKey(iter.key());
       assert(cur_row != nullptr);
       if (current_memblock == nullptr || !current_memblock->InsertRow(cur_row)) {
         auto p = std::make_unique<TsMemSegBlock>(self);
@@ -456,7 +398,7 @@ KStatus TsMemSegment::GetBlockSpans(std::list<shared_ptr<TsBlockSpan>>& blocks, 
 KStatus TsMemSegment::GetBlockSpans(const TsBlockItemFilterParams& filter, std::list<shared_ptr<TsBlockSpan>>& blocks,
                                     std::shared_ptr<TsTableSchemaManager>& tbl_schema_mgr,
                                     std::shared_ptr<MMapMetricsTable>& scan_schema) {
-  std::list<kwdbts::TSMemSegRowData*> row_datas;
+  std::list<const kwdbts::TSMemSegRowData*> row_datas;
   bool ok = GetEntityRows(filter, &row_datas);
   if (!ok) {
     LOG_ERROR("GetBlockSpans failed in GetEntityRows.");
@@ -466,7 +408,7 @@ KStatus TsMemSegment::GetBlockSpans(const TsBlockItemFilterParams& filter, std::
   std::shared_ptr<TsMemSegBlock> cur_blk_item = nullptr;
   auto self = shared_from_this();
   if (EngineOptions::g_dedup_rule == DedupRule::OVERRIDE) {
-    TSMemSegRowData* last_row_data = nullptr;
+    const TSMemSegRowData* last_row_data = nullptr;
     for (auto& row : row_datas) {
       if (last_row_data == nullptr || last_row_data->SameEntityAndTs(row)) {
         last_row_data = row;
@@ -487,7 +429,7 @@ KStatus TsMemSegment::GetBlockSpans(const TsBlockItemFilterParams& filter, std::
       }
     }
   } else if (EngineOptions::g_dedup_rule == DedupRule::DISCARD) {
-    TSMemSegRowData* last_row_data = nullptr;
+    const TSMemSegRowData* last_row_data = nullptr;
     for (auto& row : row_datas) {
       if (last_row_data == nullptr || !last_row_data->SameEntityAndTs(row)) {
         if (cur_blk_item == nullptr || !cur_blk_item->InsertRow(row)) {
