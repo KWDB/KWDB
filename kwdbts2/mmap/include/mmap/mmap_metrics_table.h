@@ -76,7 +76,7 @@ class MMapMetricsTable : public TSObject, public TsTableObject {
     return static_cast<DATATYPE>(cols_info_exclude_dropped_[0].type);
   }
 
-  inline uint32_t GetVersionNum() {
+  inline uint32_t GetVersion() {
     return meta_data_->schema_version;
   }
 
