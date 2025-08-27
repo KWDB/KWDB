@@ -41,6 +41,7 @@ class TsMemSegment : public TsSegmentBase, public enable_shared_from_this<TsMemS
   std::atomic<uint32_t> row_idx_{1};
   std::atomic<uint32_t> intent_row_num_{0};
   std::atomic<uint32_t> written_row_num_{0};
+  std::atomic<uint32_t> payload_mem_usage_{0};
   std::atomic<TsMemSegmentStatus> status_{MEM_SEGMENT_IDLE};
   TsMemSegIndex skiplist_;
 
@@ -55,6 +56,7 @@ class TsMemSegment : public TsSegmentBase, public enable_shared_from_this<TsMemS
 
   void Traversal(std::function<bool(TSMemSegRowData* row)> func, bool waiting_done = false);
 
+  uint32_t GetPayloadMemUsage() { return payload_mem_usage_.load(std::memory_order_relaxed); }
   size_t Size() { return skiplist_.GetAllocator().MemoryAllocatedBytes(); }
 
   uint32_t GetRowNum() { return intent_row_num_.load(); }
@@ -187,7 +189,6 @@ class TsMemSegmentManager {
   std::shared_ptr<TsMemSegment> cur_mem_seg_{nullptr};
   std::list<std::shared_ptr<TsMemSegment>> segment_;
   mutable std::shared_mutex segment_lock_;
-  mutable std::mutex put_lock_;
 
   std::shared_ptr<TsMemSegment> CurrentMemSegmentAndAllocateRow(uint32_t row_num) const {
     std::shared_lock lock(segment_lock_);
@@ -202,7 +203,13 @@ class TsMemSegmentManager {
     segment_.clear();
   }
 
-  std::shared_ptr<TsMemSegment> SwitchMemSegment();
+  std::shared_ptr<TsMemSegment> CurrentMemSegment() const {
+    std::shared_lock lock(segment_lock_);
+    return cur_mem_seg_;
+  }
+
+  // std::shared_ptr<TsMemSegment> SwitchMemSegment();
+  bool SwitchMemSegment(TsMemSegment* expected_old_mem_seg);
 
   void RemoveMemSegment(const std::shared_ptr<TsMemSegment>& mem_seg);
 
@@ -213,7 +220,7 @@ class TsMemSegmentManager {
 
   KStatus PutData(const TSSlice& payload, TSEntityID entity_id, TS_LSN lsn);
 
-  bool GetMetricSchemaAndMeta(TSTableID table_id_, uint32_t version, std::vector<AttributeInfo>& schema,
+  bool GetMetricSchemaAndMeta(TSTableID table_id_, uint32_t version, const std::vector<AttributeInfo>** schema,
                               DATATYPE* ts_type, LifeTime* lifetime = nullptr);
 };
 

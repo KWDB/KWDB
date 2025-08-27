@@ -10,6 +10,7 @@
 // See the Mulan PSL v2 for more details.
 
 #include "ee_field_const.h"
+#include "cm_func.h"
 
 #include <iomanip>
 #include <iostream>
@@ -147,7 +148,7 @@ k_int64 getInterval(KString *value_, k_int64 *orgVal, k_bool negative) {
   struct tm ltm;
   k_int64 orgMS = *orgVal % 1000;
   k_int64 orgt = (*orgVal) / 1000;
-  gmtime_r(&orgt, &ltm);
+  ToGMT(orgt, ltm);
   k_int32 YorH, MorM, DorS, startPos;
   YorH = MorM = DorS = startPos = 0;
   k_bool dayStyle = getYMDFormInterval(value_, &startPos, &YorH, &MorM, &DorS);

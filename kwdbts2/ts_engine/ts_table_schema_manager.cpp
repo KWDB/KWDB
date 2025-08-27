@@ -23,10 +23,10 @@ inline string IdToSchemaPath(const KTableKey& table_id, uint32_t ts_version) {
 
 int TsTableSchemaManager::getColumnIndex(const AttributeInfo& attr_info) {
   int col_no = -1;
-  std::vector<AttributeInfo> schema_info;
-  GetColumnsIncludeDropped(schema_info);
-  for (int i = 0; i < schema_info.size(); ++i) {
-    if ((schema_info[i].id == attr_info.id) && (!schema_info[i].isFlag(AINFO_DROPPED))) {
+  const std::vector<AttributeInfo>* schema_info{nullptr};
+  GetColumnsIncludeDroppedPtr(&schema_info);
+  for (int i = 0; i < schema_info->size(); ++i) {
+    if ((*schema_info)[i].id == attr_info.id && !(*schema_info)[i].isFlag(AINFO_DROPPED)) {
       col_no = i;
       break;
     }
@@ -162,7 +162,8 @@ std::shared_ptr<MMapMetricsTable> TsTableSchemaManager::open(uint32_t ts_version
 }
 
 bool TsTableSchemaManager::IsSchemaDirsExist() {
-  return IsExists(table_path_ + "/" + metric_schema_path_) && IsExists(table_path_ + "/" + tag_schema_path_);
+  return IsExists(fs::path(table_path_) / fs::path(metric_schema_path_)) &&
+         IsExists(fs::path(table_path_) / fs::path(tag_schema_path_));
 }
 
 KStatus TsTableSchemaManager::Init() {
@@ -332,13 +333,13 @@ KStatus TsTableSchemaManager::parseMetaToSchema(roachpb::CreateTsTable* meta,
 KStatus TsTableSchemaManager::GetMeta(kwdbContext_p ctx, TSTableID table_id, uint32_t version,
                                       roachpb::CreateTsTable* meta) {
   // Traverse metric schema and use attribute info to construct metric column info of meta.
-  std::vector<AttributeInfo> metric_meta;
-  auto s = GetMetricMeta(version, metric_meta);
+  const std::vector<AttributeInfo>* metric_meta{nullptr};
+  auto s = GetMetricMeta(version, &metric_meta);
   if (s != SUCCESS) {
     LOG_ERROR("GetMetricSchema failed.");
     return s;
   }
-  for (auto col_var : metric_meta) {
+  for (auto col_var : *metric_meta) {
     // meta's column pointer.
     roachpb::KWDBKTSColumn* col = meta->add_k_column();
     if (!ParseToColumnInfo(col_var, *col)) {
@@ -388,8 +389,28 @@ KStatus TsTableSchemaManager::GetColumnsIncludeDropped(std::vector<AttributeInfo
   return SUCCESS;
 }
 
-KStatus TsTableSchemaManager::GetMetricMeta(uint32_t version, std::vector<AttributeInfo>& info) {
-  return GetColumnsExcludeDropped(info, version);
+KStatus TsTableSchemaManager::GetColumnsExcludeDroppedPtr(const std::vector<AttributeInfo>** schema, uint32_t ts_version) {
+  auto schema_table = getMetricsTable(ts_version);
+  if (!schema_table) {
+    LOG_ERROR("Table [%lu] schema version [%u] does not exists", table_id_, ts_version);
+    return FAIL;
+  }
+  *schema = schema_table->getSchemaInfoExcludeDroppedPtr();
+  return SUCCESS;
+}
+
+KStatus TsTableSchemaManager::GetColumnsIncludeDroppedPtr(const std::vector<AttributeInfo>** schema, uint32_t ts_version) {
+  auto schema_table = getMetricsTable(ts_version);
+  if (!schema_table) {
+    LOG_ERROR("Table [%lu] schema version [%u] does not exists", table_id_, ts_version);
+    return FAIL;
+  }
+  *schema = schema_table->getSchemaInfoIncludeDroppedPtr();
+  return SUCCESS;
+}
+
+KStatus TsTableSchemaManager::GetMetricMeta(uint32_t version, const std::vector<AttributeInfo>** info) {
+  return GetColumnsExcludeDroppedPtr(info, version);
 }
 
 KStatus TsTableSchemaManager::GetTagMeta(uint32_t version, std::vector<TagInfo>& info) {
@@ -418,9 +439,10 @@ KStatus TsTableSchemaManager::GetTagMeta(uint32_t version, std::vector<TagInfo>&
 
 KStatus TsTableSchemaManager::GetMetricSchema(uint32_t version,
                                               std::shared_ptr<MMapMetricsTable>* schema) {
-  *schema = getMetricsTable(version);
+  auto dst_version = version == 0 ? cur_version_ : version;
+  *schema = getMetricsTable(dst_version);
   if (*schema == nullptr) {
-    LOG_WARN("schema version [%u] does not exists", version);
+    LOG_WARN("schema version [%u] does not exists", dst_version);
     return FAIL;
   }
   return SUCCESS;

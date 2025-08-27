@@ -41,7 +41,7 @@ EEIteratorErrCode LocalInboundOperator::Next(kwdbContext_p ctx, DataChunkPtr& ch
   EEIteratorErrCode code = EEIteratorErrCode::EE_OK;
   PullChunk(ctx, chunk);
   if (pg_info_.code > 0) {
-    LOG_ERROR("LocalInboundOperator next error code is %d, error msg is %s", pg_info_.code, pg_info_.msg);
+    // LOG_ERROR("LocalInboundOperator next error code is %d, error msg is %s", pg_info_.code, pg_info_.msg);
     EEPgErrorInfo::SetPgErrorInfo(pg_info_.code, pg_info_.msg);
     Return(EEIteratorErrCode::EE_ERROR);
   }

@@ -12,19 +12,16 @@
 #pragma once
 
 #include <algorithm>
+#include <atomic>
 #include <condition_variable>
 #include <deque>
-#include <list>
-#include <map>
 #include <memory>
 #include <mutex>
 #include <thread>
-#include <utility>
 #include <vector>
 
 #include "kwdb_type.h"
 #include "settings.h"
-#include "ts_common.h"
 #include "ts_vgroup.h"
 
 namespace kwdbts {
@@ -33,6 +30,7 @@ class TsMemSegment;
 class TsFlushJobPool {
  private:
   TsFlushJobPool() {
+    kMaxConcurrentJobNum = kMaxConcurrentJobNum < 8 ? 8 : kMaxConcurrentJobNum;
     for (int i = 0; i < kMaxConcurrentJobNum; i++) {
       workers_.emplace_back([this] { this->WorkerFunc(); });
     }
@@ -52,7 +50,7 @@ class TsFlushJobPool {
     }
 
     // wait all threads
-    cv_.notify_all();
+    queue_non_empty_cv_.notify_all();
     for (auto& worker : workers_) {
       worker.join();
     }
@@ -80,24 +78,32 @@ class TsFlushJobPool {
   int kMaxConcurrentJobNum = EngineOptions::vgroup_max_num * 2;
   std::vector<std::thread> workers_;
 
-  std::condition_variable cv_;
+  std::condition_variable queue_non_empty_cv_;
+  std::condition_variable queue_non_full_cv_;
+  std::condition_variable stop_cv_;
+  std::atomic_int bg_running_jobs_ = 0;
   std::mutex job_mutex_;
 
+  std::atomic_bool stop_flag_{false};
   KStatus job_status_ = KStatus::SUCCESS;
 
   void WorkerFunc() {
     while (true) {
       std::unique_lock lk{job_mutex_};
-      cv_.wait(lk, [this]() { return !jobs_.empty(); });
+      queue_non_empty_cv_.wait(lk, [this]() { return !jobs_.empty(); });
       auto job = jobs_.front();
+      bg_running_jobs_++;
       jobs_.pop_front();
       lk.unlock();
+      queue_non_full_cv_.notify_one();
       if (job.vgroup == nullptr) {
         // found sentinel, just break;
         break;
       }
 
       BackgroundFlushJob(&job);
+      bg_running_jobs_--;
+      stop_cv_.notify_one();
       if (job.status == JOB_CREATED) {
         // retry again
         AddFlushJob(job.vgroup, job.imm_segment);
@@ -135,24 +141,29 @@ class TsFlushJobPool {
     job_info.vgroup = vgroup;
     job_info.imm_segment = mem_segment;
 
-    while (true) {
-      size_t job_size = 0;
-      {
-        std::unique_lock lk{job_mutex_};
-        job_size = jobs_.size();
-      }
-      if (job_size >= kMaxConcurrentJobNum) {
-        LOG_INFO("Flush job queue is full, wait for a job to finish");
-        std::this_thread::sleep_for(1s);
-      } else {
-        break;
-      }
-    }
     {
       std::unique_lock lk{job_mutex_};
-      jobs_.push_back(job_info);
+      if (jobs_.size() >= kMaxConcurrentJobNum) {
+        LOG_INFO("Flush job queue is full, wait for a job to finish");
+        queue_non_full_cv_.wait(lk, [this]() { return jobs_.size() < kMaxConcurrentJobNum; });
+      }
+      if (stop_flag_.load() != true) {
+        jobs_.push_back(job_info);
+      }
     }
-    cv_.notify_one();
+    queue_non_empty_cv_.notify_one();
+  }
+
+  void StopAndWait() {
+    stop_flag_.store(true);
+    std::unique_lock lk{job_mutex_};
+    stop_cv_.wait(lk, [this]() { return jobs_.empty() && bg_running_jobs_.load() == 0; });
+  }
+
+  void Start() {
+    stop_flag_.store(false);
+    job_status_ = KStatus::SUCCESS;
+    jobs_.clear();
   }
 
   KStatus GetBackGroundStatus() const { return job_status_; }

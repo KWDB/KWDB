@@ -269,7 +269,13 @@ KStatus TsVersionManager::ApplyUpdate(TsVersionUpdate *update) {
     // switch memsegment operation will not persist to disk, process it as fast as possible
     std::unique_lock lk{mu_};
     auto new_vgroup_version = std::make_unique<TsVGroupVersion>(*current_);
-    new_vgroup_version->valid_memseg_ = std::make_shared<MemSegList>(update->valid_memseg_);
+    new_vgroup_version->valid_memseg_ = std::make_unique<MemSegList>(*current_->valid_memseg_);
+    if (update->has_del_mem_segments_) {
+      new_vgroup_version->valid_memseg_->remove(update->del_memseg_);
+    }
+    if (update->has_new_mem_segments_) {
+      new_vgroup_version->valid_memseg_->push_back(update->new_memseg_);
+    }
     for (auto [par_id, par] : new_vgroup_version->partitions_) {
       auto new_partition_version = std::make_unique<TsPartitionVersion>(*par);
       new_partition_version->valid_memseg_ = new_vgroup_version->valid_memseg_;
@@ -316,8 +322,14 @@ KStatus TsVersionManager::ApplyUpdate(TsVersionUpdate *update) {
     }
   }
 
-  if (update->has_mem_segments_) {
-    new_vgroup_version->valid_memseg_ = std::make_shared<MemSegList>(update->valid_memseg_);
+  if (update->has_new_mem_segments_ || update->has_del_mem_segments_) {
+    new_vgroup_version->valid_memseg_ = std::make_unique<MemSegList>(*current_->valid_memseg_);
+    if (update->has_del_mem_segments_) {
+      new_vgroup_version->valid_memseg_->remove(update->del_memseg_);
+    }
+    if (update->has_new_mem_segments_) {
+      new_vgroup_version->valid_memseg_->push_back(update->new_memseg_);
+    }
   }
   // looping over all partitions
   for (auto [par_id, par] : new_vgroup_version->partitions_) {
@@ -327,7 +339,7 @@ KStatus TsVersionManager::ApplyUpdate(TsVersionUpdate *update) {
       new_partition_version->memory_only_ = false;
     }
 
-    if (update->has_mem_segments_) {
+    if (update->has_new_mem_segments_ || update->has_del_mem_segments_) {
       new_partition_version->valid_memseg_ = new_vgroup_version->valid_memseg_;
     }
 
@@ -399,7 +411,7 @@ KStatus TsVersionManager::ApplyUpdate(TsVersionUpdate *update) {
   }
   current_ = std::move(new_vgroup_version);
   lk.unlock();
-  LOG_DEBUG("%s: %s", this->root_path_.filename().c_str(), update->DebugStr().c_str());
+  // LOG_DEBUG("%s: %s", this->root_path_.filename().c_str(), update->DebugStr().c_str());
   return SUCCESS;
 }
 
@@ -635,11 +647,10 @@ void TsPartitionVersion::ResetStatus() const {
 }
 
 KStatus TsPartitionVersion::NeedVacuumEntitySegment(const fs::path& root_path,
-  TsEngineSchemaManager* schema_manager, bool& need_vacuum) const {
-  if (entity_segment_ == nullptr) {
-    need_vacuum = false;
-    return SUCCESS;
-  }
+  TsEngineSchemaManager* schema_manager, bool& need_vacuum, bool& need_compact) const {
+  need_vacuum = false;
+  need_compact = false;
+
   timestamp64 latest_mtime = 0;
   bool has_files = false;
   for (const auto& entry : fs::directory_iterator(root_path)) {
@@ -653,14 +664,13 @@ KStatus TsPartitionVersion::NeedVacuumEntitySegment(const fs::path& root_path,
   }
   if (!has_files) {
     LOG_WARN("No regular files found in directory [%s]", root_path.c_str());
-    need_vacuum = false;
     return SUCCESS;
   }
   // Temporarily add environment variables to control vacuum
   const char *vacuum_minutes_char = getenv("KW_VACUUM_TIME");
   uint32_t vacuum_interval = 0;
   if (vacuum_minutes_char) {
-    char *endptr;
+    char* endptr;
     vacuum_interval = strtol(vacuum_minutes_char, &endptr, 10);
     assert(*endptr == '\0');
   }
@@ -669,16 +679,18 @@ KStatus TsPartitionVersion::NeedVacuumEntitySegment(const fs::path& root_path,
   float diff_latest_now = (now.time_since_epoch().count() - latest_mtime) / 60;
   vacuum_interval = vacuum_interval != 0 ? vacuum_interval : vacuum_minutes;
   if (diff_latest_now < vacuum_interval) {
-    need_vacuum = false;
     return SUCCESS;
   }
-
+  need_compact = true;
+  if (entity_segment_ == nullptr) {
+    return SUCCESS;
+  }
   bool has_del_info;
   // todo(liangbo01) get entity segment min and max lsn.
   KwLSNSpan span{0, UINT64_MAX};
   auto s = del_info_->HasValidDelItem(span, has_del_info);
   if (s != KStatus::SUCCESS) {
-    LOG_ERROR("HasValidDelItem failed.");
+    LOG_ERROR("HasValidDelItem failed");
     return s;
   }
   need_vacuum = has_del_info;
@@ -689,9 +701,12 @@ KStatus TsPartitionVersion::NeedVacuumEntitySegment(const fs::path& root_path,
       TsEntityItem entity_item;
       bool found = false;
       s = entity_segment_->GetEntityItem(entity_id, entity_item, found);
-      if (s != SUCCESS || !found) {
-        LOG_ERROR("NeedVacuumEntitySegment failed: GetEntityItem failed");
-        return s;
+      if (s != KStatus::SUCCESS) {
+        LOG_WARN("GetEntityItem failed, entity id [%u]", entity_id);
+        continue;
+      }
+      if (!found) {
+        continue;
       }
       if (traversed_table.count(entity_item.table_id) == 0) {
         std::shared_ptr<TsTableSchemaManager> tb_schema_mgr{nullptr};
@@ -1146,13 +1161,13 @@ static std::ostream &operator<<(std::ostream &os, const EntitySegmentHandleInfo 
 std::string TsVersionUpdate::DebugStr() const {
   std::stringstream ss;
   ss << "update:";
-  if (has_mem_segments_) {
-    ss << "mem_segments(" << valid_memseg_.size() << "):{";
-    for (const auto &mem_segment : valid_memseg_) {
-      ss << mem_segment.get() << " ";
-    }
-    ss << "};";
-  }
+  // if (has_mem_segments_) {
+  //   ss << "mem_segments(" << valid_memseg_.size() << "):{";
+  //   for (const auto &mem_segment : valid_memseg_) {
+  //     ss << mem_segment.get() << " ";
+  //   }
+  //   ss << "};";
+  // }
   for (auto par_id : updated_partitions_) {
     if (partitions_created_.find(par_id) != partitions_created_.end()) {
       ss << "+";

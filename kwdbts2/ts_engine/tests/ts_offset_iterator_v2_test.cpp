@@ -69,8 +69,8 @@ TEST_F(TestOffsetIteratorV2, basic) {
   s = engine_->GetTableSchemaMgr(ctx_, table_id, table_schema_mgr);
   ASSERT_EQ(s , KStatus::SUCCESS);
 
-  std::vector<AttributeInfo> metric_schema;
-  s = table_schema_mgr->GetMetricMeta(1, metric_schema);
+  const std::vector<AttributeInfo>* metric_schema{nullptr};
+  s = table_schema_mgr->GetMetricMeta(1, &metric_schema);
   ASSERT_EQ(s , KStatus::SUCCESS);
 
   std::vector<TagInfo> tag_schema;
@@ -78,7 +78,7 @@ TEST_F(TestOffsetIteratorV2, basic) {
   ASSERT_EQ(s , KStatus::SUCCESS);
 
   timestamp64 start_ts = 3600 * 1000;
-  auto payload = GenRowPayload(metric_schema, tag_schema ,table_id, 1, 1, 10000, start_ts, 10);
+  auto payload = GenRowPayload(*metric_schema, tag_schema ,table_id, 1, 1, 10000, start_ts, 10);
   uint16_t inc_entity_cnt;
   uint32_t inc_unordered_cnt;
   DedupResult dedup_result{0, 0, 0, TSSlice {nullptr, 0}};
@@ -188,8 +188,8 @@ TEST_F(TestOffsetIteratorV2, multi_partition) {
   s = engine_->GetTableSchemaMgr(ctx_, table_id, table_schema_mgr);
   ASSERT_EQ(s , KStatus::SUCCESS);
 
-  std::vector<AttributeInfo> metric_schema;
-  s = table_schema_mgr->GetMetricMeta(1, metric_schema);
+  const std::vector<AttributeInfo>* metric_schema{nullptr};
+  s = table_schema_mgr->GetMetricMeta(1, &metric_schema);
   ASSERT_EQ(s , KStatus::SUCCESS);
 
   std::vector<TagInfo> tag_schema;
@@ -197,7 +197,7 @@ TEST_F(TestOffsetIteratorV2, multi_partition) {
   ASSERT_EQ(s , KStatus::SUCCESS);
 
   timestamp64 start_ts1 = 864000 * 1000;
-  auto payload1 = GenRowPayload(metric_schema, tag_schema ,table_id, 1, 1, 10000, start_ts1, 10);
+  auto payload1 = GenRowPayload(*metric_schema, tag_schema ,table_id, 1, 1, 10000, start_ts1, 10);
   uint16_t inc_entity_cnt;
   uint32_t inc_unordered_cnt;
   DedupResult dedup_result{0, 0, 0, TSSlice {nullptr, 0}};
@@ -206,13 +206,13 @@ TEST_F(TestOffsetIteratorV2, multi_partition) {
   ASSERT_EQ(s, KStatus::SUCCESS);
 
   timestamp64 start_ts2 = 2.0 * 864000 * 1000;
-  auto payload2 = GenRowPayload(metric_schema, tag_schema ,table_id, 1, 1, 10000, start_ts2, 10);
+  auto payload2 = GenRowPayload(*metric_schema, tag_schema ,table_id, 1, 1, 10000, start_ts2, 10);
   s = engine_->PutData(ctx_, table_id, 0, &payload2, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
   free(payload2.data);
   ASSERT_EQ(s, KStatus::SUCCESS);
 
   timestamp64 start_ts3 = 3.0 * 864000 * 1000;
-  auto payload3 = GenRowPayload(metric_schema, tag_schema ,table_id, 1, 1, 10000, start_ts3, 10);
+  auto payload3 = GenRowPayload(*metric_schema, tag_schema ,table_id, 1, 1, 10000, start_ts3, 10);
   s = engine_->PutData(ctx_, table_id, 0, &payload3, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
   free(payload3.data);
   ASSERT_EQ(s, KStatus::SUCCESS);
@@ -319,8 +319,8 @@ TEST_F(TestOffsetIteratorV2, extreme) {
   s = engine_->GetTableSchemaMgr(ctx_, table_id, table_schema_mgr);
   ASSERT_EQ(s , KStatus::SUCCESS);
 
-  std::vector<AttributeInfo> metric_schema;
-  s = table_schema_mgr->GetMetricMeta(1, metric_schema);
+  const std::vector<AttributeInfo>* metric_schema{nullptr};
+  s = table_schema_mgr->GetMetricMeta(1, &metric_schema);
   ASSERT_EQ(s , KStatus::SUCCESS);
 
   std::vector<TagInfo> tag_schema;
@@ -328,7 +328,7 @@ TEST_F(TestOffsetIteratorV2, extreme) {
   ASSERT_EQ(s , KStatus::SUCCESS);
 
   timestamp64 start_ts1 = 3600 * 1000;
-  auto payload1 = GenRowPayload(metric_schema, tag_schema ,table_id, 1, 1, 2, start_ts1, 10);
+  auto payload1 = GenRowPayload(*metric_schema, tag_schema ,table_id, 1, 1, 2, start_ts1, 10);
   uint16_t inc_entity_cnt;
   uint32_t inc_unordered_cnt;
   DedupResult dedup_result{0, 0, 0, TSSlice {nullptr, 0}};
@@ -391,7 +391,7 @@ TEST_F(TestOffsetIteratorV2, extreme) {
   delete iter1;
 
   timestamp64 start_ts2 = 3600 * 1000 + 20;
-  auto payload2 = GenRowPayload(metric_schema, tag_schema ,table_id, 1, 1, 10000, start_ts2, 10);
+  auto payload2 = GenRowPayload(*metric_schema, tag_schema ,table_id, 1, 1, 10000, start_ts2, 10);
   s = engine_->PutData(ctx_, table_id, 0, &payload2, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
   free(payload2.data);
   ASSERT_EQ(s, KStatus::SUCCESS);

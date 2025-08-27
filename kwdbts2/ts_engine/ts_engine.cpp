@@ -23,6 +23,7 @@
 #include <utility>
 #include "kwdb_type.h"
 #include "settings.h"
+#include "ts_flush_manager.h"
 #include "ts_payload.h"
 #include "ee_global.h"
 #include "ee_executor.h"
@@ -48,7 +49,7 @@ namespace kwdbts {
 
 unsigned seed = std::chrono::system_clock::now().time_since_epoch().count();
 std::mt19937 gen(seed);
-const char schema_directory[]= "schema/";
+const char schema_directory[]= "schema";
 
 TSEngineV2Impl::TSEngineV2Impl(const EngineOptions& engine_options)
     : options_(engine_options),
@@ -109,6 +110,7 @@ TSEngineV2Impl::TSEngineV2Impl(const EngineOptions& engine_options)
     }
     assert(*endptr == '\0');
   }
+  TsFlushJobPool::GetInstance().Start();
 }
 
 TSEngineV2Impl::~TSEngineV2Impl() {
@@ -116,18 +118,19 @@ TSEngineV2Impl::~TSEngineV2Impl() {
 #ifndef WITH_TESTS
   BrMgr::GetInstance().Destroy();
 #endif
+  TsFlushJobPool::GetInstance().StopAndWait();
   vgroups_.clear();
   SafeDeletePointer(tables_cache_);
 }
 
 KStatus TSEngineV2Impl::FlushVGroups(kwdbContext_p ctx) {
-  // for (auto vgroup : vgroups_) {
-  //   KStatus s = vgroup->Flush();
-  //   if (s == KStatus::FAIL) {
-  //     LOG_ERROR("Failed to flush metric file.")
-  //     return s;
-  //   }
-  // }
+  for (auto vgroup : vgroups_) {
+    KStatus s = vgroup->Flush();
+    if (s == KStatus::FAIL) {
+      LOG_ERROR("Failed to flush metric file.")
+      return s;
+    }
+  }
   return KStatus::SUCCESS;
 }
 
@@ -278,14 +281,6 @@ KStatus TSEngineV2Impl::Init(kwdbContext_p ctx) {
   if (s == KStatus::FAIL) {
     LOG_ERROR("Recover fail.")
     return s;
-  }
-  // TODO(zzr): Recover TsVersion for each VGroup.
-  // After WAL RedoPut, TsVersion should be updated.
-  for (auto vgroup : vgroups_) {
-    s = vgroup->SetReady();
-    if (s == FAIL) {
-      return FAIL;
-    }
   }
   return KStatus::SUCCESS;
 }
@@ -1358,8 +1353,8 @@ KStatus TSEngineV2Impl::GetMetaData(kwdbContext_p ctx, const KTableKey& table_id
   ts_table->set_hash_num(table->GetHashNum());
 
   // Get table data schema.
-  std::vector<AttributeInfo> data_schema;
-  s = table_v2->GetSchemaManager()->GetColumnsIncludeDropped(data_schema, cur_table_version);
+  const std::vector<AttributeInfo>* data_schema{nullptr};
+  s = table_v2->GetSchemaManager()->GetColumnsIncludeDroppedPtr(&data_schema, cur_table_version);
   if (s == KStatus::FAIL) {
     LOG_ERROR("GetDataSchemaIncludeDropped failed during GetMetaData, table id is %ld.", table_id)
     return s;
@@ -1378,7 +1373,7 @@ KStatus TSEngineV2Impl::GetMetaData(kwdbContext_p ctx, const KTableKey& table_id
   }
   std::vector<TagInfo> tag_schema_info = tag_version->getIncludeDroppedSchemaInfos();
   // Use data schema and tag schema to construct meta.
-  s = table->GenerateMetaSchema(ctx, meta, data_schema, tag_schema_info, cur_table_version);
+  s = table->GenerateMetaSchema(ctx, meta, *data_schema, tag_schema_info, cur_table_version);
   if (s == KStatus::FAIL) {
     LOG_ERROR("generateMetaSchema failed during GetMetaData, table id is %ld.", table_id)
     return s;
@@ -2066,8 +2061,8 @@ uint64_t begin_hash, uint64_t end_hash, const KwTsSpan& ts_span, uint64_t* snaps
     LOG_ERROR("GetRangeRowCount [%lu] failed.", table_id);
     return s;
   }
-  LOG_INFO("CreateSnapshotForRead range hash[%lu ~ %lu], ts[%ld ~ %ld] need imgrating rows[%lu].",
-      begin_hash, end_hash, ts_span.begin, ts_span.end, count);
+  LOG_INFO("CreateSnapshotForRead version[%u] range hash[%lu ~ %lu], ts[%ld ~ %ld] need imgrating rows[%lu].",
+      ts_snapshot_info.table_version, begin_hash, end_hash, ts_span.begin, ts_span.end, count);
   return KStatus::SUCCESS;
 }
 KStatus TSEngineV2Impl::CreateSnapshotForWrite(kwdbContext_p ctx, const KTableKey& table_id,

@@ -84,7 +84,7 @@ k_char *EE_MemPoolMalloc(kwdbts::EE_PoolInfoDataPtr pstPoolMsg, k_size_t iMalloc
     pstTemPtr->iDataIndex = pstTemPtr->iDataIndex % pstPoolMsg->iNumOfSumBlock;
     pstTemPtr->iNumOfFreeBlock--;
   } else {
-    LOG_ERROR("buffer pool malloc failed, malloc out of memory iMallocLen: %ld\n", iMallocLen);
+    // LOG_ERROR("buffer pool malloc failed, malloc out of memory iMallocLen: %ld\n", iMallocLen);
   }
 
   return data;

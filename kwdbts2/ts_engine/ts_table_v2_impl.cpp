@@ -47,8 +47,8 @@ KStatus TsTableV2Impl::PutData(kwdbContext_p ctx, TsVGroup* v_group, TSSlice* pa
                           DedupResult* dedup_result, const DedupRule& dedup_rule, bool write_wal) {
   assert(payload_num == 1);
   auto version = TsRawPayload::GetTableVersionFromSlice(*payload);
-  std::vector<AttributeInfo> metric_schema;
-  table_schema_mgr_->GetColumnsExcludeDropped(metric_schema, version);
+  const std::vector<AttributeInfo>* metric_schema{nullptr};
+  table_schema_mgr_->GetColumnsExcludeDroppedPtr(&metric_schema, version);
   uint8_t payload_data_flag = TsRawPayload::GetRowTypeFromSlice(*payload);
   if (payload_data_flag == DataTagFlag::TAG_ONLY) {
     LOG_DEBUG("tag only. so no need putdata.");
@@ -158,7 +158,14 @@ KStatus TsTableV2Impl::GetNormalIterator(kwdbContext_p ctx, const IteratorParams
     }
   }};
 
-  auto& actual_cols = table_schema_mgr_->GetIdxForValidCols(params.table_version);
+  std::shared_ptr<MMapMetricsTable> metric_schema;
+  auto ret = table_schema_mgr_->GetMetricSchema(params.table_version, &metric_schema);
+  if (ret != KStatus::SUCCESS) {
+    LOG_ERROR("schema version [%u] does not exists", params.table_version);
+    return FAIL;
+  }
+
+  auto& actual_cols = metric_schema->getIdxForValidCols();
   std::vector<k_uint32> ts_scan_cols;
   for (auto col : params.scan_cols) {
     if (col >= actual_cols.size()) {
@@ -171,7 +178,6 @@ KStatus TsTableV2Impl::GetNormalIterator(kwdbContext_p ctx, const IteratorParams
     ts_scan_cols.emplace_back(actual_cols[col]);
   }
 
-  DATATYPE ts_col_type = table_schema_mgr_->GetTsColDataType();
   std::map<uint32_t, std::vector<EntityID>> vgroup_ids;
   for (auto& entity : params.entity_ids) {
     vgroup_ids[entity.subGroupId - 1].push_back(entity.entityId);
@@ -195,9 +201,10 @@ KStatus TsTableV2Impl::GetNormalIterator(kwdbContext_p ctx, const IteratorParams
       acceptable_ts = now.time_since_epoch().count() - life_time.ts;
       updateTsSpan(acceptable_ts * life_time.precision, params.ts_spans);
     }
-    s = vgroup->GetIterator(ctx, vgroup_ids[vgroup_iter.first], params.ts_spans, params.block_filter, ts_col_type,
+    std::shared_ptr<MMapMetricsTable> schema = metric_schema;
+    s = vgroup->GetIterator(ctx, vgroup_ids[vgroup_iter.first], params.ts_spans, params.block_filter,
                             params.scan_cols, ts_scan_cols, params.agg_extend_cols,
-                            params.scan_agg_types, table_schema_mgr_, params.table_version,
+                            params.scan_agg_types, table_schema_mgr_, schema,
                             &ts_iter, vgroup, params.ts_points, params.reverse, params.sorted);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("cannot create iterator for vgroup[%u].", vgroup_iter.first);
@@ -213,8 +220,14 @@ KStatus TsTableV2Impl::GetNormalIterator(kwdbContext_p ctx, const IteratorParams
 }
 
 KStatus TsTableV2Impl::GetOffsetIterator(kwdbContext_p ctx, const IteratorParams &params, TsIterator** iter) {
-  DATATYPE ts_col_type = table_schema_mgr_->GetTsColDataType();
-  auto& actual_cols = table_schema_mgr_->GetIdxForValidCols(params.table_version);
+  std::shared_ptr<MMapMetricsTable> metric_schema;
+  auto ret = table_schema_mgr_->GetMetricSchema(params.table_version, &metric_schema);
+  if (ret != KStatus::SUCCESS) {
+    LOG_ERROR("schema version [%u] does not exists", params.table_version);
+    return FAIL;
+  }
+
+  auto& actual_cols = metric_schema->getIdxForValidCols();
   std::vector<k_uint32> ts_scan_cols;
   for (auto col : params.scan_cols) {
     if (col >= actual_cols.size()) {
@@ -246,9 +259,11 @@ KStatus TsTableV2Impl::GetOffsetIterator(kwdbContext_p ctx, const IteratorParams
     }
   }
 
-  TsOffsetIteratorV2Impl* ts_iter = new TsOffsetIteratorV2Impl(vgroups, vgroup_ids, params.ts_spans, ts_col_type,
+  std::shared_ptr<MMapMetricsTable> schema = metric_schema;
+
+  TsOffsetIteratorV2Impl* ts_iter = new TsOffsetIteratorV2Impl(vgroups, vgroup_ids, params.ts_spans,
                                                                params.scan_cols, ts_scan_cols, table_schema_mgr_,
-                                                               params.table_version, params.offset, params.limit);
+                                                               schema, params.offset, params.limit);
   KStatus s = ts_iter->Init(params.reverse);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("TsOffsetIteratorV2Impl Init failed")
@@ -463,13 +478,13 @@ KwTsSpan ts_span, uint64_t mtr_id) {
 KStatus TsTableV2Impl::GetAvgTableRowSize(kwdbContext_p ctx, uint64_t* row_size) {
   // fixed tuple length of one row.
   size_t row_length = 0;
-  std::vector<AttributeInfo> schemas;
-  auto s = table_schema_mgr_->GetColumnsExcludeDropped(schemas);
+  const std::vector<AttributeInfo>* schemas{nullptr};
+  auto s = table_schema_mgr_->GetColumnsExcludeDroppedPtr(&schemas);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("GetAvgTableRowSize failed. at getting schema.");
     return s;
   }
-  for (auto& col : schemas) {
+  for (auto& col : *schemas) {
     if (col.type == DATATYPE::VARSTRING || col.type == DATATYPE::VARBINARY) {
       row_length += col.max_len;
     } else {

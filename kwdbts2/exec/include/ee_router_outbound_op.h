@@ -100,8 +100,8 @@ class RouterOutboundOperator : public OutboundOperator {
     k_bool is_send_last_chunk_{false};
   };
 
-  RouterOutboundOperator(TsFetcherCollection* collection,
-                         TSOutputRouterSpec* spec, TABLE* table);
+  RouterOutboundOperator(TsFetcherCollection* collection, TSOutputRouterSpec* spec, TABLE* table);
+  RouterOutboundOperator(const RouterOutboundOperator& other, int32_t processor_id);
   ~RouterOutboundOperator();
 
   KStatus PushChunk(DataChunkPtr& chunk, k_int32 stream_id,

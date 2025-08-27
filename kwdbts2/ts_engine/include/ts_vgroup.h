@@ -98,8 +98,6 @@ class TsVGroup {
 
   KStatus Init(kwdbContext_p ctx);
 
-  KStatus SetReady();
-
   KStatus CreateTable(kwdbContext_p ctx, const KTableKey& table_id, roachpb::CreateTsTable* meta);
 
   KStatus PutData(kwdbContext_p ctx, TSTableID table_id, uint64_t mtr_id, TSSlice* primary_tag, TSEntityID entity_id,
@@ -161,12 +159,12 @@ class TsVGroup {
 
   // flush all mem segment data into last segment.
   KStatus Flush() {
-    std::shared_ptr<TsMemSegment> imm_segment = mem_segment_mgr_->SwitchMemSegment();
-    assert(imm_segment.get() != nullptr);
-
-    // Flush imm segment.
-    KStatus s = FlushImmSegment(imm_segment);
-    return s;
+    auto current = mem_segment_mgr_->CurrentMemSegment();
+    if (mem_segment_mgr_->SwitchMemSegment(current.get())) {
+      // Flush imm segment.
+      return FlushImmSegment(current);
+    }
+    return SUCCESS;
   }
 
   uint64_t GetMtrIDByTsxID(const char* ts_trans_id) {
@@ -194,15 +192,15 @@ class TsVGroup {
 
   KStatus ReadWALLogForMtr(uint64_t mtr_trans_id, std::vector<LogEntry*>& logs);
 
-  KStatus GetIterator(kwdbContext_p ctx, vector<uint32_t> entity_ids,
-                      std::vector<KwTsSpan> ts_spans, std::vector<BlockFilter> block_filter, DATATYPE ts_col_type,
-                      std::vector<k_uint32> scan_cols, std::vector<k_uint32> ts_scan_cols,
-                      std::vector<k_int32> agg_extend_cols,
-                      std::vector<Sumfunctype> scan_agg_types,
-                      std::shared_ptr<TsTableSchemaManager> table_schema_mgr,
-                      uint32_t table_version, TsStorageIterator** iter,
-                      std::shared_ptr<TsVGroup> vgroup,
-                      std::vector<timestamp64> ts_points, bool reverse, bool sorted);
+  KStatus GetIterator(kwdbContext_p ctx, vector<uint32_t>& entity_ids,
+                      std::vector<KwTsSpan>& ts_spans, std::vector<BlockFilter>& block_filter,
+                      std::vector<k_uint32>& scan_cols, std::vector<k_uint32>& ts_scan_cols,
+                      std::vector<k_int32>& agg_extend_cols,
+                      std::vector<Sumfunctype>& scan_agg_types,
+                      std::shared_ptr<TsTableSchemaManager>& table_schema_mgr,
+                      std::shared_ptr<MMapMetricsTable>& schema, TsStorageIterator** iter,
+                      const std::shared_ptr<TsVGroup>& vgroup,
+                      const std::vector<timestamp64>& ts_points, bool reverse, bool sorted);
 
   KStatus GetBlockSpans(TSTableID table_id, uint32_t entity_id, KwTsSpan ts_span, DATATYPE ts_col_type,
                         std::shared_ptr<TsTableSchemaManager> table_schema_mgr, uint32_t table_version,

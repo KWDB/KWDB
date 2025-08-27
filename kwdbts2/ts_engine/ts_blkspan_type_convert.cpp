@@ -14,6 +14,7 @@
 #include <cstdint>
 #include <cstring>
 #include <string>
+#include <vector>
 #include <algorithm>
 #include "ts_blkspan_type_convert.h"
 #include "ts_bitmap.h"
@@ -24,22 +25,19 @@
 
 namespace kwdbts {
 
-TSBlkDataTypeConvert::TSBlkDataTypeConvert(TsBlockSpan& blk_span,
-                                           const std::shared_ptr<TsTableSchemaManager>& tbl_schema_mgr,
-                                           uint32_t scan_version)
-  : block_(blk_span.block_.get()), start_row_idx_(blk_span.start_row_), row_num_(blk_span.nrow_),
-    scan_version_(scan_version), tbl_schema_mgr_(tbl_schema_mgr) { }
+TSBlkDataTypeConvert::TSBlkDataTypeConvert(uint32_t block_version, uint32_t scan_version,
+                                           const std::shared_ptr<TsTableSchemaManager>& tbl_schema_mgr)
+  : block_version_(block_version), scan_version_(scan_version), tbl_schema_mgr_(tbl_schema_mgr) { }
 
 KStatus TSBlkDataTypeConvert::Init() {
   if (tbl_schema_mgr_) {
-    const auto blk_version = block_->GetTableVersion();
-    key_ = (static_cast<uint64_t>(blk_version) << 32) + scan_version_;
+    key_ = (static_cast<uint64_t>(block_version_) << 32) + scan_version_;
     auto res = tbl_schema_mgr_->FindVersionConv(key_, &version_conv_);
     if (!res) {
       std::shared_ptr<MMapMetricsTable> blk_metric;
-      KStatus s = tbl_schema_mgr_->GetMetricSchema(blk_version, &blk_metric);
+      KStatus s = tbl_schema_mgr_->GetMetricSchema(block_version_, &blk_metric);
       if (s != SUCCESS) {
-        LOG_ERROR("GetMetricSchema failed. table version [%u]", blk_version);
+        LOG_ERROR("GetMetricSchema failed. table version [%u]", block_version_);
         return FAIL;
       }
       std::shared_ptr<MMapMetricsTable> scan_metric;
@@ -134,9 +132,10 @@ int TSBlkDataTypeConvert::ConvertDataTypeToMem(uint32_t scan_col, int32_t new_ty
   return 0;
 }
 
-KStatus TSBlkDataTypeConvert::GetColBitmap(uint32_t scan_idx, TsBitmap& bitmap) {
+KStatus TSBlkDataTypeConvert::GetColBitmap(TsBlockSpan* blk_span, uint32_t scan_idx, TsBitmap& bitmap) {
+  assert(blk_span->GetTableVersion() == block_version_);
   auto blk_col_idx = version_conv_->blk_cols_extended_[scan_idx];
-  bitmap.SetCount(row_num_);
+  bitmap.SetCount(blk_span->nrow_);
   if (blk_col_idx == UINT32_MAX) {
     bitmap.SetAll(DataFlags::kNull);
     return SUCCESS;
@@ -144,7 +143,7 @@ KStatus TSBlkDataTypeConvert::GetColBitmap(uint32_t scan_idx, TsBitmap& bitmap) 
   if (isVarLenType((*version_conv_->blk_attrs_)[blk_col_idx].type) &&
       !isVarLenType((*version_conv_->scan_attrs_)[scan_idx].type)) {
     char* value = nullptr;
-    auto ret = getColBitmapConverted(scan_idx, bitmap);
+    auto ret = getColBitmapConverted(blk_span, scan_idx, bitmap);
     if (ret != KStatus::SUCCESS) {
       LOG_ERROR("getColBitmapConverted failed.");
       return ret;
@@ -152,42 +151,43 @@ KStatus TSBlkDataTypeConvert::GetColBitmap(uint32_t scan_idx, TsBitmap& bitmap) 
     return SUCCESS;
   }
   TsBitmap blk_bitmap;
-  auto s = block_->GetColBitmap(blk_col_idx, version_conv_->blk_attrs_, blk_bitmap);
-  for (int i = 0; i < row_num_; i++) {
-    bitmap[i] = blk_bitmap[start_row_idx_ + i];
+  auto s = blk_span->block_->GetColBitmap(blk_col_idx, version_conv_->blk_attrs_, blk_bitmap);
+  for (int i = 0; i < blk_span->nrow_; i++) {
+    bitmap[i] = blk_bitmap[blk_span->start_row_ + i];
   }
   return s;
 }
 
-KStatus TSBlkDataTypeConvert::getColBitmapConverted(uint32_t scan_idx, TsBitmap &bitmap) {
+KStatus TSBlkDataTypeConvert::getColBitmapConverted(TsBlockSpan* blk_span, uint32_t scan_idx, TsBitmap &bitmap) {
+  assert(blk_span->GetTableVersion() == block_version_);
   auto dest_attr = (*version_conv_->scan_attrs_)[scan_idx];
   uint32_t dest_type_size = dest_attr.size;
   auto blk_col_idx = version_conv_->blk_cols_extended_[scan_idx];
   TsBitmap blk_bitmap;
-  auto s = block_->GetColBitmap(blk_col_idx, version_conv_->blk_attrs_, blk_bitmap);
+  auto s = blk_span->block_->GetColBitmap(blk_col_idx, version_conv_->blk_attrs_, blk_bitmap);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("GetColBitmap failed. col id [%u]", blk_col_idx);
     return s;
   }
 
-  bitmap.SetCount(row_num_);
+  bitmap.SetCount(blk_span->nrow_);
 
-  char* allc_mem = reinterpret_cast<char*>(malloc(dest_type_size * row_num_));
+  char* allc_mem = reinterpret_cast<char*>(malloc(dest_type_size * blk_span->nrow_));
   if (allc_mem == nullptr) {
-    LOG_ERROR("malloc failed. alloc size: %u", dest_type_size * row_num_);
+    LOG_ERROR("malloc failed. alloc size: %u", dest_type_size * blk_span->nrow_);
     return KStatus::SUCCESS;
   }
-  memset(allc_mem, 0, dest_type_size * row_num_);
+  memset(allc_mem, 0, dest_type_size * blk_span->nrow_);
   Defer defer([&]() { free(allc_mem); });
 
-  for (size_t i = 0; i < row_num_; i++) {
-    int block_row_idx = start_row_idx_ + i;
+  for (size_t i = 0; i < blk_span->nrow_; i++) {
+    int block_row_idx = blk_span->start_row_ + i;
     bitmap[i] = blk_bitmap[block_row_idx];
     if (bitmap[i] != DataFlags::kValid) {
       continue;
     }
     TSSlice orig_value;
-    s = block_->GetValueSlice(block_row_idx, blk_col_idx, version_conv_->blk_attrs_, orig_value);
+    s = blk_span->block_->GetValueSlice(block_row_idx, blk_col_idx, version_conv_->blk_attrs_, orig_value);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("GetValueSlice failed. rowidx[%lu] colid[%u]", i, blk_col_idx);
       return s;
@@ -201,31 +201,40 @@ KStatus TSBlkDataTypeConvert::getColBitmapConverted(uint32_t scan_idx, TsBitmap 
   return KStatus::SUCCESS;
 }
 
-KStatus TSBlkDataTypeConvert::GetPreCount(uint32_t scan_idx, uint16_t &count) {
-  return block_->GetPreCount(version_conv_->blk_cols_extended_[scan_idx], count);
+KStatus TSBlkDataTypeConvert::GetPreCount(TsBlockSpan* blk_span, uint32_t scan_idx, uint16_t &count) {
+  assert(blk_span->GetTableVersion() == block_version_);
+  return blk_span->block_->GetPreCount(version_conv_->blk_cols_extended_[scan_idx], count);
 }
 
-KStatus TSBlkDataTypeConvert::GetPreSum(uint32_t scan_idx, int32_t size, void *&pre_sum, bool &is_overflow) {
-  return block_->GetPreSum(version_conv_->blk_cols_extended_[scan_idx], size, pre_sum, is_overflow);
+KStatus TSBlkDataTypeConvert::GetPreSum(TsBlockSpan* blk_span, uint32_t scan_idx, int32_t size,
+  void *&pre_sum, bool &is_overflow) {
+  assert(blk_span->GetTableVersion() == block_version_);
+  return blk_span->block_->GetPreSum(version_conv_->blk_cols_extended_[scan_idx], size, pre_sum, is_overflow);
 }
 
-KStatus TSBlkDataTypeConvert::GetPreMax(uint32_t scan_idx, void *&pre_max) {
-  return block_->GetPreMax(version_conv_->blk_cols_extended_[scan_idx], pre_max);
+KStatus TSBlkDataTypeConvert::GetPreMax(TsBlockSpan* blk_span, uint32_t scan_idx, void *&pre_max) {
+  assert(blk_span->GetTableVersion() == block_version_);
+  return blk_span->block_->GetPreMax(version_conv_->blk_cols_extended_[scan_idx], pre_max);
 }
 
-KStatus TSBlkDataTypeConvert::GetPreMin(uint32_t scan_idx, int32_t size, void *&pre_min) {
-  return block_->GetPreMin(version_conv_->blk_cols_extended_[scan_idx], size, pre_min);
+KStatus TSBlkDataTypeConvert::GetPreMin(TsBlockSpan* blk_span, uint32_t scan_idx, int32_t size, void *&pre_min) {
+  assert(blk_span->GetTableVersion() == block_version_);
+  return blk_span->block_->GetPreMin(version_conv_->blk_cols_extended_[scan_idx], size, pre_min);
 }
 
-KStatus TSBlkDataTypeConvert::GetVarPreMax(uint32_t scan_idx, TSSlice &pre_max) {
-  return block_->GetVarPreMax(version_conv_->blk_cols_extended_[scan_idx], pre_max);
+KStatus TSBlkDataTypeConvert::GetVarPreMax(TsBlockSpan* blk_span, uint32_t scan_idx, TSSlice &pre_max) {
+  assert(blk_span->GetTableVersion() == block_version_);
+  return blk_span->block_->GetVarPreMax(version_conv_->blk_cols_extended_[scan_idx], pre_max);
 }
 
-KStatus TSBlkDataTypeConvert::GetVarPreMin(uint32_t scan_idx, TSSlice &pre_min) {
-  return block_->GetVarPreMin(version_conv_->blk_cols_extended_[scan_idx], pre_min);
+KStatus TSBlkDataTypeConvert::GetVarPreMin(TsBlockSpan* blk_span, uint32_t scan_idx, TSSlice &pre_min) {
+  assert(blk_span->GetTableVersion() == block_version_);
+  return blk_span->block_->GetVarPreMin(version_conv_->blk_cols_extended_[scan_idx], pre_min);
 }
 
-KStatus TSBlkDataTypeConvert::GetFixLenColAddr(uint32_t scan_idx, char** value, TsBitmap& bitmap, bool bitmap_required) {
+KStatus TSBlkDataTypeConvert::GetFixLenColAddr(TsBlockSpan* blk_span, uint32_t scan_idx, char** value,
+  TsBitmap& bitmap, bool bitmap_required) {
+  assert(blk_span->GetTableVersion() == block_version_);
   if (!IsColExist(scan_idx)) {
     *value = nullptr;
     return SUCCESS;
@@ -236,56 +245,57 @@ KStatus TSBlkDataTypeConvert::GetFixLenColAddr(uint32_t scan_idx, char** value, 
   auto blk_col_idx = version_conv_->blk_cols_extended_[scan_idx];
   TsBitmap blk_bitmap;
   if (!(*version_conv_->blk_attrs_)[scan_idx].isFlag(AINFO_NOT_NULL)) {
-    auto s = block_->GetColBitmap(blk_col_idx, version_conv_->blk_attrs_, blk_bitmap);
+    auto s = blk_span->block_->GetColBitmap(blk_col_idx, version_conv_->blk_attrs_, blk_bitmap);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("GetColBitmap failed. col id [%u]", blk_col_idx);
       return s;
     }
-    bitmap.SetCount(row_num_);
+    bitmap.SetCount(blk_span->nrow_);
   } else {
     if (bitmap_required) {
-      bitmap.SetCount(row_num_);
+      bitmap.SetCount(blk_span->nrow_);
     }
   }
 
   if (IsSameType(scan_idx)) {
     char* blk_value;
-    auto s = block_->GetColAddr(blk_col_idx, version_conv_->blk_attrs_, &blk_value);
+    auto s = blk_span->block_->GetColAddr(blk_col_idx, version_conv_->blk_attrs_, &blk_value);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("GetColAddr failed. col id [%u]", blk_col_idx);
       return s;
     }
     if (!(*version_conv_->blk_attrs_)[scan_idx].isFlag(AINFO_NOT_NULL)) {
-      if (start_row_idx_ == 0 && row_num_ == block_->GetRowNum()) {
+      if (blk_span->start_row_ == 0 && blk_span->nrow_ == blk_span->block_->GetRowNum()) {
         bitmap = blk_bitmap;
       } else {
-        for (size_t i = 0; i < row_num_; i++) {
-          DataFlags flag = blk_bitmap[start_row_idx_+ i];
+        for (size_t i = 0; i < blk_span->nrow_; i++) {
+          DataFlags flag = blk_bitmap[blk_span->start_row_ + i];
           bitmap[i] = flag;
         }
       }
     }
-    *value = blk_value + dest_type_size * start_row_idx_;
+    *value = blk_value + dest_type_size * blk_span->start_row_;
   } else {
-    char* allc_mem = reinterpret_cast<char*>(malloc(dest_type_size * row_num_));
+    char* allc_mem = reinterpret_cast<char*>(malloc(dest_type_size * blk_span->nrow_));
     if (allc_mem == nullptr) {
-      LOG_ERROR("malloc failed. alloc size: %u", dest_type_size * row_num_);
+      LOG_ERROR("malloc failed. alloc size: %u", dest_type_size * blk_span->nrow_);
       return FAIL;
     }
-    memset(allc_mem, 0, dest_type_size * row_num_);
+    memset(allc_mem, 0, dest_type_size * blk_span->nrow_);
     alloc_mems_.push_back(allc_mem);
 
-    for (size_t i = 0; i < row_num_; i++) {
+    for (size_t i = 0; i < blk_span->nrow_; i++) {
       if (!(*version_conv_->blk_attrs_)[scan_idx].isFlag(AINFO_NOT_NULL)) {
-        bitmap[i] = blk_bitmap[start_row_idx_+ i];
+        bitmap[i] = blk_bitmap[blk_span->start_row_ + i];
         if (bitmap[i] != DataFlags::kValid) {
           continue;
         }
       }
       TSSlice orig_value;
-      auto s = block_->GetValueSlice(start_row_idx_+ i, blk_col_idx, version_conv_->blk_attrs_, orig_value);
+      auto s = blk_span->block_->GetValueSlice(blk_span->start_row_ + i,
+        blk_col_idx, version_conv_->blk_attrs_, orig_value);
       if (s != KStatus::SUCCESS) {
-        LOG_ERROR("GetValueSlice failed. rowidx[%lu] colid[%u]", start_row_idx_+ i, blk_col_idx);
+        LOG_ERROR("GetValueSlice failed. rowidx[%lu] colid[%u]", blk_span->start_row_ + i, blk_col_idx);
         return s;
       }
       std::shared_ptr<void> new_mem;
@@ -303,25 +313,26 @@ KStatus TSBlkDataTypeConvert::GetFixLenColAddr(uint32_t scan_idx, char** value, 
   return KStatus::SUCCESS;
 }
 
-KStatus TSBlkDataTypeConvert::GetVarLenTypeColAddr(uint32_t row_idx, uint32_t scan_idx,
+KStatus TSBlkDataTypeConvert::GetVarLenTypeColAddr(TsBlockSpan* blk_span, uint32_t row_idx, uint32_t scan_idx,
                                                    DataFlags& flag, TSSlice& data) {
   auto dest_type = (*version_conv_->scan_attrs_)[scan_idx];
   auto blk_col_idx = version_conv_->blk_cols_extended_[scan_idx];
   assert(isVarLenType(dest_type.type));
-  assert(row_idx < row_num_);
+  assert(row_idx < blk_span->nrow_);
+  assert(blk_span->GetTableVersion() == block_version_);
   TsBitmap blk_bitmap;
-  auto s = block_->GetColBitmap(blk_col_idx, version_conv_->blk_attrs_, blk_bitmap);
+  auto s = blk_span->block_->GetColBitmap(blk_col_idx, version_conv_->blk_attrs_, blk_bitmap);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("GetColBitmap failed. col id [%u]", blk_col_idx);
     return s;
   }
-  flag = blk_bitmap[start_row_idx_+ row_idx];
+  flag = blk_bitmap[blk_span->start_row_ + row_idx];
   if (flag != DataFlags::kValid) {
     data = {nullptr, 0};
     return KStatus::SUCCESS;
   }
   TSSlice orig_value;
-  s = block_->GetValueSlice(start_row_idx_ + row_idx, blk_col_idx, version_conv_->blk_attrs_, orig_value);
+  s = blk_span->block_->GetValueSlice(blk_span->start_row_ + row_idx, blk_col_idx, version_conv_->blk_attrs_, orig_value);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("GetValueSlice failed. rowidx[%u] colid[%u]", row_idx, blk_col_idx);
     return s;

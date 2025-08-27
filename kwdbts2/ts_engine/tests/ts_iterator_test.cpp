@@ -66,8 +66,8 @@ TEST_F(TestV2Iterator, basic) {
     s = engine_->GetTableSchemaMgr(ctx_, table_id, table_schema_mgr);
     ASSERT_EQ(s , KStatus::SUCCESS);
 
-    std::vector<AttributeInfo> metric_schema;
-    s = table_schema_mgr->GetMetricMeta(1, metric_schema);
+    const std::vector<AttributeInfo>* metric_schema{nullptr};
+    s = table_schema_mgr->GetMetricMeta(1, &metric_schema);
     ASSERT_EQ(s , KStatus::SUCCESS);
 
     std::vector<TagInfo> tag_schema;
@@ -75,7 +75,7 @@ TEST_F(TestV2Iterator, basic) {
     ASSERT_EQ(s , KStatus::SUCCESS);
 
     timestamp64 start_ts = 3600;
-    auto pay_load = GenRowPayload(metric_schema, tag_schema ,table_id, 1, 1, 1, start_ts);
+    auto pay_load = GenRowPayload(*metric_schema, tag_schema ,table_id, 1, 1, 1, start_ts);
     uint16_t inc_entity_cnt;
     uint32_t inc_unordered_cnt;
     DedupResult dedup_result{0, 0, 0, TSSlice {nullptr, 0}};
@@ -96,9 +96,17 @@ TEST_F(TestV2Iterator, basic) {
         std::vector<k_uint32> scan_cols = {0, 1, 2};
         std::vector<Sumfunctype> scan_agg_types;
 
-        s = vgroup->GetIterator(ctx_, {entity_id}, {ts_span}, {}, ts_col_type,
-                            scan_cols, scan_cols, {}, scan_agg_types, table_schema_mgr,
-                            1, &ts_iter, vgroup, {}, false, false);
+        std::shared_ptr<MMapMetricsTable> schema;
+        ASSERT_EQ(table_schema_mgr->GetMetricSchema(1, &schema), KStatus::SUCCESS);
+        std::vector<uint32_t> entity_ids = {entity_id};
+        std::vector<KwTsSpan> ts_spans = {ts_span};
+        std::vector<BlockFilter> block_filter = {};
+        std::vector<k_int32> agg_extend_cols = {};
+        std::vector<timestamp64> ts_points = {};
+
+        s = vgroup->GetIterator(ctx_, entity_ids, ts_spans, block_filter,
+                            scan_cols, scan_cols, agg_extend_cols, scan_agg_types, table_schema_mgr,
+                            schema, &ts_iter, vgroup, ts_points, false, false);
         ASSERT_EQ(s, KStatus::SUCCESS);
 
         ResultSet res{(k_uint32) scan_cols.size()};
@@ -129,8 +137,8 @@ TEST_F(TestV2Iterator, mulitEntity) {
     s = engine_->GetTableSchemaMgr(ctx_, table_id, table_schema_mgr);
     ASSERT_EQ(s , KStatus::SUCCESS);
 
-    std::vector<AttributeInfo> metric_schema;
-    s = table_schema_mgr->GetMetricMeta(1, metric_schema);
+    const std::vector<AttributeInfo>* metric_schema{nullptr};
+    s = table_schema_mgr->GetMetricMeta(1, &metric_schema);
     ASSERT_EQ(s , KStatus::SUCCESS);
 
     std::vector<TagInfo> tag_schema;
@@ -145,7 +153,7 @@ TEST_F(TestV2Iterator, mulitEntity) {
     uint32_t inc_unordered_cnt;
     DedupResult dedup_result{0, 0, 0, TSSlice {nullptr, 0}};
     for (size_t i = 0; i < entity_num; i++) {
-      auto pay_load = GenRowPayload(metric_schema, tag_schema ,table_id, 1, 1 + i, entity_row_num, start_ts + 1 + i, interval);
+      auto pay_load = GenRowPayload(*metric_schema, tag_schema ,table_id, 1, 1 + i, entity_row_num, start_ts + 1 + i, interval);
       s = engine_->PutData(ctx_, table_id, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
       free(pay_load.data);
       ASSERT_EQ(s, KStatus::SUCCESS);
@@ -157,10 +165,18 @@ TEST_F(TestV2Iterator, mulitEntity) {
       DATATYPE ts_col_type = table_schema_mgr->GetTsColDataType();
       std::vector<k_uint32> scan_cols = {0, 1, 2};
       std::vector<Sumfunctype> scan_agg_types;
+
       for (k_uint32 entity_id = 1; entity_id <= vgroup->GetMaxEntityID(); entity_id++) {
-        s = vgroup->GetIterator(ctx_, {entity_id}, {ts_span}, {}, ts_col_type,
-                          scan_cols, scan_cols, {}, scan_agg_types, table_schema_mgr,
-                          1, &ts_iter, vgroup, {}, false, false);
+        std::shared_ptr<MMapMetricsTable> schema;
+        ASSERT_EQ(table_schema_mgr->GetMetricSchema(1, &schema), KStatus::SUCCESS);
+        std::vector<uint32_t> entity_ids = {entity_id};
+        std::vector<KwTsSpan> ts_spans = {ts_span};
+        std::vector<BlockFilter> block_filter = {};
+        std::vector<k_int32> agg_extend_cols = {};
+        std::vector<timestamp64> ts_points = {};
+        s = vgroup->GetIterator(ctx_, entity_ids, ts_spans, block_filter,
+                          scan_cols, scan_cols, agg_extend_cols, scan_agg_types, table_schema_mgr,
+                          schema, &ts_iter, vgroup, ts_points, false, false);
         ASSERT_EQ(s, KStatus::SUCCESS);
         ResultSet res{(k_uint32) scan_cols.size()};
         k_uint32 count;
@@ -189,8 +205,8 @@ TEST_F(TestV2Iterator, multiDBAndEntity) {
     auto s = engine_->GetTableSchemaMgr(ctx_, table_id, table_schema_mgr);
     ASSERT_EQ(s , KStatus::SUCCESS);
 
-    std::vector<AttributeInfo> metric_schema;
-    s = table_schema_mgr->GetMetricMeta(1, metric_schema);
+    const std::vector<AttributeInfo>* metric_schema{nullptr};
+    s = table_schema_mgr->GetMetricMeta(1, &metric_schema);
     ASSERT_EQ(s , KStatus::SUCCESS);
 
     std::vector<TagInfo> tag_schema;
@@ -205,7 +221,7 @@ TEST_F(TestV2Iterator, multiDBAndEntity) {
     uint32_t inc_unordered_cnt;
     DedupResult dedup_result{0, 0, 0, TSSlice {nullptr, 0}};
     for (size_t i = 0; i < entity_num; i++) {
-      auto pay_load = GenRowPayload(metric_schema, tag_schema ,table_id + i % db_num, 1, 1 + i, entity_row_num, start_ts + 1 + i, interval);
+      auto pay_load = GenRowPayload(*metric_schema, tag_schema ,table_id + i % db_num, 1, 1 + i, entity_row_num, start_ts + 1 + i, interval);
       s = engine_->PutData(ctx_, table_id, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
       free(pay_load.data);
       ASSERT_EQ(s, KStatus::SUCCESS);
@@ -223,9 +239,16 @@ TEST_F(TestV2Iterator, multiDBAndEntity) {
         for (size_t db_id = 1; db_id <= db_num; db_id++) {
           s = engine_->GetTableSchemaMgr(ctx_, table_id + db_id - 1, table_schema_mgr);
           ASSERT_EQ(s , KStatus::SUCCESS);
-          s = vgroup->GetIterator(ctx_, {entity_id}, {ts_span}, {}, ts_col_type,
-                          scan_cols, scan_cols, {}, scan_agg_types, table_schema_mgr,
-                          1, &ts_iter, vgroup, {}, false, false);
+          std::shared_ptr<MMapMetricsTable> schema;
+          ASSERT_EQ(table_schema_mgr->GetMetricSchema(1, &schema), KStatus::SUCCESS);
+          std::vector<uint32_t> entity_ids = {entity_id};
+          std::vector<KwTsSpan> ts_spans = {ts_span};
+          std::vector<BlockFilter> block_filter = {};
+          std::vector<k_int32> agg_extend_cols = {};
+          std::vector<timestamp64> ts_points = {};
+          s = vgroup->GetIterator(ctx_, entity_ids, ts_spans, block_filter,
+                          scan_cols, scan_cols, agg_extend_cols, scan_agg_types, table_schema_mgr,
+                          schema, &ts_iter, vgroup, ts_points, false, false);
           ASSERT_EQ(s, KStatus::SUCCESS);
           ResultSet res{(k_uint32) scan_cols.size()};
           k_uint32 count;
@@ -264,8 +287,8 @@ TEST_F(TestV2Iterator, mulitEntityCount) {
   s = engine_->GetTableSchemaMgr(ctx_, table_id, table_schema_mgr);
   ASSERT_EQ(s , KStatus::SUCCESS);
 
-  std::vector<AttributeInfo> metric_schema;
-  s = table_schema_mgr->GetMetricMeta(1, metric_schema);
+  const std::vector<AttributeInfo>* metric_schema{nullptr};
+  s = table_schema_mgr->GetMetricMeta(1, &metric_schema);
   ASSERT_EQ(s , KStatus::SUCCESS);
 
   std::vector<TagInfo> tag_schema;
@@ -280,14 +303,14 @@ TEST_F(TestV2Iterator, mulitEntityCount) {
   uint32_t inc_unordered_cnt;
   DedupResult dedup_result{0, 0, 0, TSSlice {nullptr, 0}};
   for (size_t i = 0; i < entity_num; i++) {
-    auto pay_load = GenRowPayload(metric_schema, tag_schema ,table_id, 1, 1 + i, entity_row_num, start_ts + 1 + i, interval);
+    auto pay_load = GenRowPayload(*metric_schema, tag_schema ,table_id, 1, 1 + i, entity_row_num, start_ts + 1 + i, interval);
     s = engine_->PutData(ctx_, table_id, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
     free(pay_load.data);
     ASSERT_EQ(s, KStatus::SUCCESS);
   }
   start_ts += 10000 * 86400;
   for (size_t i = 0; i < entity_num; i++) {
-    auto pay_load = GenRowPayload(metric_schema, tag_schema ,table_id, 1, 1 + i, entity_row_num, start_ts + 1 + i, interval);
+    auto pay_load = GenRowPayload(*metric_schema, tag_schema ,table_id, 1, 1 + i, entity_row_num, start_ts + 1 + i, interval);
     s = engine_->PutData(ctx_, table_id, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
     free(pay_load.data);
     ASSERT_EQ(s, KStatus::SUCCESS);
@@ -297,7 +320,6 @@ TEST_F(TestV2Iterator, mulitEntityCount) {
     ASSERT_EQ(vgroup->Flush(), KStatus::SUCCESS);
     TsStorageIterator* ts_iter;
     KwTsSpan ts_span = {INT64_MIN, INT64_MAX};
-    DATATYPE ts_col_type = table_schema_mgr->GetTsColDataType();
     std::vector<k_uint32> scan_cols = {0};
     std::vector<Sumfunctype> scan_agg_types = {Sumfunctype::COUNT};
 
@@ -316,9 +338,16 @@ TEST_F(TestV2Iterator, mulitEntityCount) {
       }
     }
     for (k_uint32 entity_id = 1; entity_id <= vgroup->GetMaxEntityID(); entity_id++) {
-      s = vgroup->GetIterator(ctx_, {entity_id}, {ts_span}, {}, ts_col_type,
-                              scan_cols, scan_cols, {}, scan_agg_types, table_schema_mgr,
-                              1, &ts_iter, vgroup, {}, false, false);
+      std::shared_ptr<MMapMetricsTable> schema;
+      ASSERT_EQ(table_schema_mgr->GetMetricSchema(1, &schema), KStatus::SUCCESS);
+      std::vector<uint32_t> entity_ids = {entity_id};
+      std::vector<KwTsSpan> ts_spans = {ts_span};
+      std::vector<BlockFilter> block_filter = {};
+      std::vector<k_int32> agg_extend_cols = {};
+      std::vector<timestamp64> ts_points = {};
+      s = vgroup->GetIterator(ctx_, entity_ids, ts_spans, block_filter,
+                              scan_cols, scan_cols, agg_extend_cols, scan_agg_types, table_schema_mgr,
+                              schema, &ts_iter, vgroup, ts_points, false, false);
       ASSERT_EQ(s, KStatus::SUCCESS);
       ResultSet res{(k_uint32) scan_cols.size()};
       k_uint32 count;
@@ -352,8 +381,8 @@ TEST_F(TestV2Iterator, mulitEntityDeleteCount) {
   s = engine_->GetTableSchemaMgr(ctx_, table_id, table_schema_mgr);
   ASSERT_EQ(s , KStatus::SUCCESS);
 
-  std::vector<AttributeInfo> metric_schema;
-  s = table_schema_mgr->GetMetricMeta(1, metric_schema);
+  const std::vector<AttributeInfo>* metric_schema;
+  s = table_schema_mgr->GetMetricMeta(1, &metric_schema);
   ASSERT_EQ(s , KStatus::SUCCESS);
 
   std::vector<TagInfo> tag_schema;
@@ -368,7 +397,7 @@ TEST_F(TestV2Iterator, mulitEntityDeleteCount) {
   uint32_t inc_unordered_cnt;
   DedupResult dedup_result{0, 0, 0, TSSlice {nullptr, 0}};
   for (size_t i = 0; i < entity_num; i++) {
-    auto pay_load = GenRowPayload(metric_schema, tag_schema ,table_id, 1, 1 + i,
+    auto pay_load = GenRowPayload(*metric_schema, tag_schema ,table_id, 1, 1 + i,
                                   entity_row_num, start_ts + 1 + i, interval);
     s = engine_->PutData(ctx_, table_id, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
     s = engine_->PutData(ctx_, table_id, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
@@ -377,7 +406,7 @@ TEST_F(TestV2Iterator, mulitEntityDeleteCount) {
   }
   start_ts += 10000 * 86400;
   for (size_t i = 0; i < entity_num; i++) {
-    auto pay_load = GenRowPayload(metric_schema, tag_schema ,table_id, 1, 1 + i,
+    auto pay_load = GenRowPayload(*metric_schema, tag_schema ,table_id, 1, 1 + i,
                                   entity_row_num, start_ts + 1 + i, interval);
     s = engine_->PutData(ctx_, table_id, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
     s = engine_->PutData(ctx_, table_id, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
@@ -391,11 +420,17 @@ TEST_F(TestV2Iterator, mulitEntityDeleteCount) {
     DATATYPE ts_col_type = table_schema_mgr->GetTsColDataType();
     std::vector<k_uint32> scan_cols = {0};
     std::vector<Sumfunctype> scan_agg_types = {Sumfunctype::COUNT};
-
     for (k_uint32 entity_id = 1; entity_id <= vgroup->GetMaxEntityID(); entity_id++) {
-      s = vgroup->GetIterator(ctx_, {entity_id}, {ts_span}, {}, ts_col_type,
-                              scan_cols, scan_cols, {}, scan_agg_types, table_schema_mgr,
-                              1, &ts_iter, vgroup, {}, false, false);
+      std::shared_ptr<MMapMetricsTable> schema;
+      ASSERT_EQ(table_schema_mgr->GetMetricSchema(1, &schema), KStatus::SUCCESS);
+      std::vector<uint32_t> entity_ids = {entity_id};
+      std::vector<KwTsSpan> ts_spans = {ts_span};
+      std::vector<BlockFilter> block_filter = {};
+      std::vector<k_int32> agg_extend_cols = {};
+      std::vector<timestamp64> ts_points = {};
+      s = vgroup->GetIterator(ctx_, entity_ids, ts_spans, block_filter,
+                              scan_cols, scan_cols, agg_extend_cols, scan_agg_types, table_schema_mgr,
+                              schema, &ts_iter, vgroup, ts_points, false, false);
       ASSERT_EQ(s, KStatus::SUCCESS);
       ResultSet res{(k_uint32) scan_cols.size()};
       k_uint32 count;
@@ -451,9 +486,16 @@ TEST_F(TestV2Iterator, mulitEntityDeleteCount) {
       }
     }
     for (k_uint32 entity_id = 1; entity_id <= vgroup->GetMaxEntityID(); entity_id++) {
-      s = vgroup->GetIterator(ctx_, {entity_id}, {ts_span}, {}, ts_col_type,
-                              scan_cols, scan_cols, {}, scan_agg_types, table_schema_mgr,
-                              1, &ts_iter, vgroup, {}, false, false);
+      std::shared_ptr<MMapMetricsTable> schema;
+      ASSERT_EQ(table_schema_mgr->GetMetricSchema(1, &schema), KStatus::SUCCESS);
+      std::vector<uint32_t> entity_ids = {entity_id};
+      std::vector<KwTsSpan> ts_spans = {ts_span};
+      std::vector<BlockFilter> block_filter = {};
+      std::vector<k_int32> agg_extend_cols = {};
+      std::vector<timestamp64> ts_points = {};
+      s = vgroup->GetIterator(ctx_, entity_ids, ts_spans, block_filter,
+                              scan_cols, scan_cols, agg_extend_cols, scan_agg_types, table_schema_mgr,
+                              schema, &ts_iter, vgroup, ts_points, false, false);
       ASSERT_EQ(s, KStatus::SUCCESS);
       ResultSet res{(k_uint32) scan_cols.size()};
       k_uint32 count;
@@ -505,11 +547,17 @@ TEST_F(TestV2Iterator, mulitEntityDeleteCount) {
         ASSERT_EQ(count_header.valid_count, entity_row_num);
       }
     }
-
     for (k_uint32 entity_id = 1; entity_id <= vgroup->GetMaxEntityID(); entity_id++) {
-      s = vgroup->GetIterator(ctx_, {entity_id}, {ts_span}, {}, ts_col_type,
-                              scan_cols, scan_cols, {}, scan_agg_types, table_schema_mgr,
-                              1, &ts_iter, vgroup, {}, false, false);
+      std::shared_ptr<MMapMetricsTable> schema;
+      ASSERT_EQ(table_schema_mgr->GetMetricSchema(1, &schema), KStatus::SUCCESS);
+      std::vector<uint32_t> entity_ids = {entity_id};
+      std::vector<KwTsSpan> ts_spans = {ts_span};
+      std::vector<BlockFilter> block_filter = {};
+      std::vector<k_int32> agg_extend_cols = {};
+      std::vector<timestamp64> ts_points = {};
+      s = vgroup->GetIterator(ctx_, entity_ids, ts_spans, block_filter,
+                              scan_cols, scan_cols, agg_extend_cols, scan_agg_types, table_schema_mgr,
+                              schema, &ts_iter, vgroup, ts_points, false, false);
       ASSERT_EQ(s, KStatus::SUCCESS);
       ResultSet res{(k_uint32) scan_cols.size()};
       k_uint32 count;

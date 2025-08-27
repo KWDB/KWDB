@@ -183,7 +183,7 @@ inline KStatus timestamptzToString(Field *field, char *output, k_uint32 length, 
   time_t time = static_cast<time_t>(timestamp / type_scale) + time_zone * 3600;
   struct tm local_time;
   memset(&local_time, 0, sizeof(local_time));
-  gmtime_r(&time, &local_time);
+  ToGMT(time, local_time);
 
   char buffer[30] = {0};
   std::strftime(buffer, 30, "%04Y-%m-%d %H:%M:%S", &local_time);
@@ -221,7 +221,7 @@ inline KStatus GetPtrTimestamptzToString(k_int64 timestamp, char *output, k_uint
   time_t time = static_cast<time_t>(timestamp / type_scale) + time_zone * 3600;
   struct tm local_time;
   memset(&local_time, 0, sizeof(local_time));
-  gmtime_r(&time, &local_time);
+  ToGMT(time, local_time);
 
   char buffer[30] = {0};
   std::strftime(buffer, 30, "%04Y-%m-%d %H:%M:%S", &local_time);

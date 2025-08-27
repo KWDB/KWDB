@@ -41,14 +41,14 @@ class TsEntitySegmentTest : public ::testing::Test {
   kwdbContext_t ctx;
 
   void CreateTable(TSTableID table_id, const std::vector<DataType> &metric_types,
-                   std::vector<AttributeInfo> *metric_schema, std::vector<TagInfo> *tag_schema,
+                   const std::vector<AttributeInfo>** metric_schema, std::vector<TagInfo> *tag_schema,
                    std::shared_ptr<TsTableSchemaManager> &schema_mgr) {
     CreateTsTable meta;
 
     ConstructRoachpbTableWithTypes(&meta, table_id, metric_types);
     ASSERT_EQ(mgr->CreateTable(nullptr, 1, table_id, &meta), SUCCESS);
     ASSERT_EQ(mgr->GetTableSchemaMgr(table_id, schema_mgr), KStatus::SUCCESS);
-    ASSERT_EQ(schema_mgr->GetMetricMeta(1, *metric_schema), KStatus::SUCCESS);
+    ASSERT_EQ(schema_mgr->GetMetricMeta(1, metric_schema), KStatus::SUCCESS);
     ASSERT_EQ(schema_mgr->GetTagMeta(1, *tag_schema), KStatus::SUCCESS);
   }
 
@@ -79,16 +79,16 @@ TEST_F(TsEntitySegmentTest, simpleInsert) {
   TSTableID table_id = 123;
   std::vector<DataType> metric_types{DataType::TIMESTAMP, DataType::INT, DataType::DOUBLE, DataType::BIGINT,
                                      DataType::VARCHAR};
-  std::vector<AttributeInfo> metric_schema;
+  const std::vector<AttributeInfo>* metric_schema{nullptr};
   std::vector<TagInfo> tag_schema;
   std::shared_ptr<TsTableSchemaManager> schema_mgr;
   CreateTable(table_id, metric_types, &metric_schema, &tag_schema, schema_mgr);
   {
     for (int i = 0; i < 10; ++i) {
       TSEntityID dev_id = 1 + i * 123;
-      auto payload = GenRowPayload(metric_schema, tag_schema, table_id, 1, 1 + i * 123, 103 + i * 1000, 123, 1);
-      TsRawPayloadRowParser parser{&metric_schema};
-      TsRawPayload p{payload, &metric_schema};
+      auto payload = GenRowPayload(*metric_schema, tag_schema, table_id, 1, 1 + i * 123, 103 + i * 1000, 123, 1);
+      TsRawPayloadRowParser parser{metric_schema};
+      TsRawPayload p{payload, metric_schema};
       auto ptag = p.GetPrimaryTag();
 
       vgroup->PutData(&ctx, table_id, 0, &ptag, dev_id, &payload, false);
@@ -282,7 +282,7 @@ TEST_F(TsEntitySegmentTest, simpleInsertDoubleCompact) {
   int64_t last_row_num = 0;
   {
     TSTableID table_id1 = 123;
-    std::vector<AttributeInfo> metric_schema1;
+    const std::vector<AttributeInfo>* metric_schema1;
     std::vector<TagInfo> tag_schema1;
     std::shared_ptr<TsTableSchemaManager> schema_mgr1;
     std::vector<DataType> metric_types1{DataType::TIMESTAMP, DataType::INT, DataType::DOUBLE, DataType::BIGINT,
@@ -290,7 +290,7 @@ TEST_F(TsEntitySegmentTest, simpleInsertDoubleCompact) {
     CreateTable(table_id1, metric_types1, &metric_schema1, &tag_schema1, schema_mgr1);
 
     TSTableID table_id2 = 124;
-    std::vector<AttributeInfo> metric_schema2;
+    const std::vector<AttributeInfo>* metric_schema2;
     std::vector<TagInfo> tag_schema2;
     std::shared_ptr<TsTableSchemaManager> schema_mgr2;
     std::vector<DataType> metric_types2{DataType::TIMESTAMP, DataType::BIGINT, DataType::VARCHAR};
@@ -309,9 +309,9 @@ TEST_F(TsEntitySegmentTest, simpleInsertDoubleCompact) {
       TSTableID table_id = i % 2 == 0 ? table_id1 : table_id2;
       auto metric_schema = i % 2 == 0 ? metric_schema1 : metric_schema2;
       auto tag_schema = i % 2 == 0 ? tag_schema1 : tag_schema2;
-      auto payload = GenRowPayload(metric_schema, tag_schema, table_id, 1, 1 + i * 123, 103 + i * 1000, 123, 1);
-      TsRawPayloadRowParser parser{&metric_schema};
-      TsRawPayload p{payload, &metric_schema};
+      auto payload = GenRowPayload(*metric_schema, tag_schema, table_id, 1, 1 + i * 123, 103 + i * 1000, 123, 1);
+      TsRawPayloadRowParser parser{metric_schema};
+      TsRawPayload p{payload, metric_schema};
       auto ptag = p.GetPrimaryTag();
 
       vgroup->PutData(&ctx, table_id, 0, &ptag, dev_id, &payload, false);
@@ -328,9 +328,9 @@ TEST_F(TsEntitySegmentTest, simpleInsertDoubleCompact) {
       TSTableID table_id = i % 2 == 0 ? table_id1 : table_id2;
       auto metric_schema = i % 2 == 0 ? metric_schema1 : metric_schema2;
       auto tag_schema = i % 2 == 0 ? tag_schema1 : tag_schema2;
-      auto payload = GenRowPayload(metric_schema, tag_schema, table_id, 1, 1 + i * 123, 103 + i * 1000, 123, 1);
-      TsRawPayloadRowParser parser{&metric_schema};
-      TsRawPayload p{payload, &metric_schema};
+      auto payload = GenRowPayload(*metric_schema, tag_schema, table_id, 1, 1 + i * 123, 103 + i * 1000, 123, 1);
+      TsRawPayloadRowParser parser{metric_schema};
+      TsRawPayload p{payload, metric_schema};
       auto ptag = p.GetPrimaryTag();
 
       vgroup->PutData(&ctx, table_id, 0, &ptag, dev_id, &payload, false);
@@ -372,7 +372,7 @@ TEST_F(TsEntitySegmentTest, simpleInsertDoubleCompact) {
           char *ts_col;
           s = block_span->GetFixLenColAddr(0, &ts_col, bitmap);
           std::vector<char *> col_values;
-          col_values.resize(metric_schema.size() - 1);
+          col_values.resize(metric_schema->size() - 1);
           s = block_span->GetFixLenColAddr(1, &col_values[0], bitmap);
           if (i % 2 == 0) {
             EXPECT_EQ(s, KStatus::SUCCESS);
@@ -422,7 +422,7 @@ TEST_F(TsEntitySegmentTest, simpleInsertDoubleCompact) {
           s = block_span->GetFixLenColAddr(0, &ts_col, bitmap);
           EXPECT_EQ(s, KStatus::SUCCESS);
           std::vector<char *> col_values;
-          col_values.resize(metric_schema.size() - 1);
+          col_values.resize(metric_schema->size() - 1);
           s = block_span->GetFixLenColAddr(1, &col_values[0], bitmap);
           EXPECT_EQ(s, KStatus::SUCCESS);
           if (i % 2 == 0) {
@@ -472,7 +472,7 @@ TEST_F(TsEntitySegmentTest, simpleInsertDoubleCompact) {
           char *ts_col;
           s = block_span->GetFixLenColAddr(0, &ts_col, bitmap);
           std::vector<char *> col_values;
-          col_values.resize(metric_schema.size() - 1);
+          col_values.resize(metric_schema->size() - 1);
           s = block_span->GetFixLenColAddr(1, &col_values[0], bitmap);
           EXPECT_EQ(s, KStatus::SUCCESS);
           if (i % 2 == 0) {
@@ -548,7 +548,7 @@ TEST_F(TsEntitySegmentTest, TestEntityMinMaxRowNum) {
   TSTableID table_id = 123;
   std::vector<DataType> metric_types{DataType::TIMESTAMP, DataType::INT, DataType::DOUBLE, DataType::BIGINT,
                                      DataType::VARCHAR};
-  std::vector<AttributeInfo> metric_schema;
+  const std::vector<AttributeInfo>* metric_schema;
   std::vector<TagInfo> tag_schema;
   std::shared_ptr<TsTableSchemaManager> schema_mgr;
   CreateTable(table_id, metric_types, &metric_schema, &tag_schema, schema_mgr);
@@ -557,9 +557,9 @@ TEST_F(TsEntitySegmentTest, TestEntityMinMaxRowNum) {
   std::vector<int> row_nums = {700, 800, 10, 20, 1500, 1400, 2001, 1999, 4000, 3000};
   {
     for (int i = 0; i < 10; ++i) {
-      auto payload = GenRowPayload(metric_schema, tag_schema, table_id, 1, dev_ids[i], row_nums[i], 1 + 10000 * i, 1);
-      TsRawPayloadRowParser parser{&metric_schema};
-      TsRawPayload p{payload, &metric_schema};
+      auto payload = GenRowPayload(*metric_schema, tag_schema, table_id, 1, dev_ids[i], row_nums[i], 1 + 10000 * i, 1);
+      TsRawPayloadRowParser parser{metric_schema};
+      TsRawPayload p{payload, metric_schema};
       auto ptag = p.GetPrimaryTag();
 
       vgroup->PutData(&ctx, table_id, 0, &ptag, dev_ids[i], &payload, false);
@@ -627,7 +627,7 @@ TEST_F(TsEntitySegmentTest, simpleCount) {
   int64_t last_row_num = 0;
   {
     TSTableID table_id = 123;
-    std::vector<AttributeInfo> metric_schema;
+    const std::vector<AttributeInfo>* metric_schema;
     std::vector<TagInfo> tag_schema;
     std::shared_ptr<TsTableSchemaManager> schema_mgr;
     std::vector<DataType> metric_types{DataType::TIMESTAMP, DataType::INT, DataType::DOUBLE, DataType::BIGINT,
@@ -644,9 +644,9 @@ TEST_F(TsEntitySegmentTest, simpleCount) {
 
     for (int i = 1; i <= 10; ++i) {
       TSEntityID dev_id = i;
-      auto payload = GenRowPayload(metric_schema, tag_schema, table_id, 1, dev_id, 11 + i * 1000, 100, 1);
-      TsRawPayloadRowParser parser{&metric_schema};
-      TsRawPayload p{payload, &metric_schema};
+      auto payload = GenRowPayload(*metric_schema, tag_schema, table_id, 1, dev_id, 11 + i * 1000, 100, 1);
+      TsRawPayloadRowParser parser{metric_schema};
+      TsRawPayload p{payload, metric_schema};
       auto ptag = p.GetPrimaryTag();
 
       vgroup->PutData(&ctx, table_id, 0, &ptag, dev_id, &payload, false);
@@ -656,9 +656,9 @@ TEST_F(TsEntitySegmentTest, simpleCount) {
 
     for (int i = 1; i <= 10; ++i) {
       TSEntityID dev_id = i;
-      auto payload = GenRowPayload(metric_schema, tag_schema, table_id, 1, dev_id, 11 + i * 1000, 10000 * 86400, 1);
-      TsRawPayloadRowParser parser{&metric_schema};
-      TsRawPayload p{payload, &metric_schema};
+      auto payload = GenRowPayload(*metric_schema, tag_schema, table_id, 1, dev_id, 11 + i * 1000, 10000 * 86400, 1);
+      TsRawPayloadRowParser parser{metric_schema};
+      TsRawPayload p{payload, metric_schema};
       auto ptag = p.GetPrimaryTag();
 
       vgroup->PutData(&ctx, table_id, 0, &ptag, dev_id, &payload, false);

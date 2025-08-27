@@ -114,7 +114,10 @@ class TsTableSchemaManager {
 
   KStatus GetColumnsIncludeDropped(std::vector<AttributeInfo>& schema, uint32_t ts_version = 0);
 
-  KStatus GetMetricMeta(uint32_t version, std::vector<AttributeInfo>& info);
+  KStatus GetColumnsExcludeDroppedPtr(const std::vector<AttributeInfo>** schema, uint32_t ts_version = 0);
+  KStatus GetColumnsIncludeDroppedPtr(const std::vector<AttributeInfo>** schema, uint32_t ts_version = 0);
+
+  KStatus GetMetricMeta(uint32_t version, const std::vector<AttributeInfo>** info);
 
   KStatus GetTagMeta(uint32_t version, std::vector<TagInfo>& info);
 
@@ -172,6 +175,8 @@ class TsTableSchemaManager {
   bool IsExistTableVersion(uint32_t version);
 
   std::shared_ptr<MMapMetricsTable> GetCurrentMetricsTable() {
+    auto cur_metric_version = metric_mgr_->GetCurrentMetricsVersion();
+    assert(cur_version_ == cur_metric_version);
     return metric_mgr_->GetCurrentMetricsTable();
   }
 
