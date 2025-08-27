@@ -1186,13 +1186,13 @@ func (b *Builder) convertFilterToColumnSpans(
 	// we deal with first span
 	firstSpan := constraint.Spans.Get(0)
 	if filterType, ok := getFilterType(*firstSpan); ok {
-		*columnSpans.FilterType = filterType
 		// if filterType is TSBlockFilter_T_NOTNULL and not TSBlockFilter_T_NULL,
 		// we need not build span, AE can deal with filter through filterType.
-		return &columnSpans, nil
+		*columnSpans.FilterType = filterType
+	} else {
+		firstColumnSpan := convertSpanToColumnSpan(*firstSpan)
+		columnSpans.ColumnSpan = append(columnSpans.ColumnSpan, &firstColumnSpan)
 	}
-	firstColumnSpan := convertSpanToColumnSpan(*firstSpan)
-	columnSpans.ColumnSpan = append(columnSpans.ColumnSpan, &firstColumnSpan)
 	// if otherSpans exists, we need deal with it.
 	if constraint.Spans.Count() > 1 {
 		for i := 1; i < constraint.Spans.Count(); i++ {

@@ -727,6 +727,28 @@ func GetBlockFilter(expr opt.Expr, tabID opt.TableID, memo *Memo) FiltersExpr {
 	return blockFilter
 }
 
+// check if the filter type can be converted to blockfilter
+func checkFilterTypeSupported(cond opt.Expr) bool {
+	switch cond.(type) {
+	// support >, <, =, >=, <=, between.. and... , in, not in, is null, is not null.
+	case *GtExpr, *LtExpr, *EqExpr, *GeExpr, *LeExpr, *InExpr, *NotInExpr, *IsExpr, *IsNotExpr:
+		return true
+	default:
+		childCount := cond.ChildCount()
+		if childCount > 0 {
+			for i := 0; i < childCount; i++ {
+				childFlag := checkFilterTypeSupported(cond.Child(i))
+				if !childFlag {
+					return false
+				}
+			}
+			// all sub-expr types can be converted to blockfilter
+			return true
+		}
+	}
+	return false
+}
+
 func shouldAddBlockFilter(filter FiltersItem, tabID opt.TableID, memo *Memo) bool {
 	// TightConstraints is true if filter can be converted to constraints and filter is exactly equivalent to the constraints.
 	// filters can convert to blockFilter if TightConstraints is true
@@ -736,6 +758,11 @@ func shouldAddBlockFilter(filter FiltersItem, tabID opt.TableID, memo *Memo) boo
 		filter.scalar.Constraints.Constraint(0).Columns.Count() <= 0 {
 		return false
 	}
+
+	if !checkFilterTypeSupported(filter.Condition) {
+		return false
+	}
+
 	// we only need to use firstConstraints,
 	// as otherConstraints is currently unused in the code and reserved for future feature extensions.
 	// since a filter can only operate on a single column, we only get first column.
