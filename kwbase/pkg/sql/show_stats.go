@@ -70,10 +70,6 @@ func (p *planner) ShowTableStats(ctx context.Context, n *tree.ShowTableStats) (p
 		return nil, err
 	}
 
-	if desc.IsTSTable() && !createTsStats.Get(&p.execCfg.Settings.SV) {
-		return nil, sqlbase.TSUnsupportedError("show stats")
-	}
-
 	if err := p.CheckAnyPrivilege(ctx, desc); err != nil {
 		return nil, err
 	}

@@ -2763,11 +2763,13 @@ func SetTsFlushedIndexForAllReplicas(ctx context.Context) error {
 			log.Warningf(ctx, "r%d is uninitialized", repl.RangeID)
 			continue
 		}
-		repl.mu.tsFlushedIndex = repl.mu.tsPrepareFlushedIndex
-		log.VEventf(ctx, 3, "set flushed index of r%d to %d", repl.RangeID, repl.mu.tsFlushedIndex)
-		if err := repl.mu.stateLoader.SetTsFlushedIndex(ctx, repl.Engine(), repl.mu.tsFlushedIndex); err != nil {
-			repl.mu.Unlock()
-			return err
+		if repl.mu.tsFlushedIndex < repl.mu.tsPrepareFlushedIndex {
+			repl.mu.tsFlushedIndex = repl.mu.tsPrepareFlushedIndex
+			log.VEventf(ctx, 3, "set flushed index of r%d to %d", repl.RangeID, repl.mu.tsFlushedIndex)
+			if err := repl.mu.stateLoader.SetTsFlushedIndex(ctx, repl.Engine(), repl.mu.tsFlushedIndex); err != nil {
+				repl.mu.Unlock()
+				return err
+			}
 		}
 		repl.mu.Unlock()
 	}
