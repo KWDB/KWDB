@@ -2505,6 +2505,85 @@ INSERT 1
   varchar  中文1
   varchar  中文1
 (10 rows)
+> CREATE TABLE test_block_filter.t11(
+ k_timestamp TIMESTAMPTZ NOT NULL,
+ e4 FLOAT4,
+ e11 CHAR)
+ATTRIBUTES (
+ code1 INT2 NOT NULL)
+PRIMARY TAGS(code1);
+CREATE TABLE
+> INSERT INTO test_block_filter.t11 VALUES('2002-2-22 10:48:12.899',-99999999991.9999999991,'t',2);
+INSERT 1
+> INSERT INTO test_block_filter.t11 VALUES('2004-12-31 12:10:10.911',-23000088.665120604,'T',3);
+INSERT 1
+> INSERT INTO test_block_filter.t11 VALUES('2008-2-29 2:10:10.111',-43000079.07812032,'1',4);
+INSERT 1
+> INSERT INTO test_block_filter.t11 VALUES('2012-02-29 1:10:10.000',43000079.07812032,'1',5);
+INSERT 1
+> explain select e11 from test_block_filter.t11 where e11 = '1' or e11 is null;
+      tree     |       field       |         description
+---------------+-------------------+-------------------------------
+               | distributed       | true
+               | vectorized        | false
+  synchronizer |                   |
+   └── ts scan |                   |
+               | ts-table          | t11
+               | access mode       | metaTable
+               | filter            | (e11 = '1') OR (e11 IS NULL)
+               | block filter[e11] | NULL ; ['1' - '1']
+(8 rows)
+> explain select e11 from test_block_filter.t11 where e11 like e'\\\\\\\\';
+      tree     |    field    |     description
+---------------+-------------+-----------------------
+               | distributed | true
+               | vectorized  | false
+  synchronizer |             |
+   └── ts scan |             |
+               | ts-table    | t11
+               | access mode | metaTable
+               | filter      | e11 LIKE e'\\\\\\\\'
+(7 rows)
+> CREATE TABLE test_block_filter.t12(
+ k_timestamp TIMESTAMPTZ NOT NULL,
+ e1 timestamptz(9) not null,
+ e2 timestamp(9) not null,
+ e3 timestamptz(6) not null,
+ e4 timestamp(6) not null)
+ATTRIBUTES (
+ code1 INT2 NOT NULL)
+PRIMARY TAGS(code1);
+CREATE TABLE
+> INSERT INTO test_block_filter.t12 VALUES ('2023-01-01 07:58:12.459372', '1970-1-1 08:0:0','1970-1-1 08:0:0', '1970-1-1 08:0:02', '1970-1-1 08:0:01',1);
+INSERT 1
+> explain select * from test_block_filter.t12 where e1 = '1970-01-01 08:00:00' and e2 = '1970-01-01 08:00:00';
+      tree     |      field       |                                description
+---------------+------------------+----------------------------------------------------------------------------
+               | distributed      | true
+               | vectorized       | false
+  synchronizer |                  |
+   └── ts scan |                  |
+               | ts-table         | t12
+               | access mode      | tableTableMeta
+               | filter           | (e1 = '1970-01-01 08:00:00+00:00') AND (e2 = '1970-01-01 08:00:00+00:00')
+               | block filter[e1] | [28800000000000 - 28800000000000]
+               | block filter[e2] | [28800000000000 - 28800000000000]
+(9 rows)
+> explain select * from test_block_filter.t12 where e3 = '1970-01-01 08:00:00' and e4 = '1970-01-01 08:00:00';
+      tree     |      field       |                                description
+---------------+------------------+----------------------------------------------------------------------------
+               | distributed      | true
+               | vectorized       | false
+  synchronizer |                  |
+   └── ts scan |                  |
+               | ts-table         | t12
+               | access mode      | tableTableMeta
+               | filter           | (e3 = '1970-01-01 08:00:00+00:00') AND (e4 = '1970-01-01 08:00:00+00:00')
+               | block filter[e3] | [28800000000 - 28800000000]
+               | block filter[e4] | [28800000000 - 28800000000]
+(9 rows)
+> use defaultdb;
+SET
 > SET CLUSTER SETTING ts.rows_per_block.max_limit=1000;
 SET CLUSTER SETTING
 > drop database test_block_filter cascade;

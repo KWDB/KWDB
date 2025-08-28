@@ -1198,7 +1198,6 @@ order by e1;
    │                          | ts-table            | t1
    │                          | access mode         | tableTableMeta
    │                          | filter              | ((((e4 LIKE '4%') OR (e4 LIKE '5%')) AND (e2 < @S1)) AND ((e3 > 30) OR (e3 < 20))) AND ((e5 > 50.0) OR (tag1 = 101))
-   │                          | block filter[e4]    | ['4' - '6')
    │                          | block filter[e3]    | [ - 19]; [31 - ]
    ├── subquery               |                     |
    │    │                     | id                  | @S1
@@ -1228,7 +1227,7 @@ order by e1;
                               | ts-table            | t1
                               | access mode         | metaTable
                               | use statistic       | true
-(42 rows)
+(41 rows)
 > SELECT * FROM t1
 WHERE
         e1 > (SELECT AVG(e1) FROM t1) AND e2 < (SELECT MAX(e2) FROM t1)
@@ -1630,7 +1629,6 @@ order by e1;
    │                          | ts-table            | t1
    │                          | access mode         | metaTable
    │                          | filter              | e4 LIKE '4%'
-   │                          | block filter[e4]    | ['4' - '5')
    ├── subquery               |                     |
    │    │                     | id                  | @S5
    │    │                     | original sql        | (SELECT avg(e1) FROM t1)
@@ -1659,7 +1657,7 @@ order by e1;
                               | ts-table            | t1
                               | access mode         | metaTable
                               | use statistic       | true
-(90 rows)
+(89 rows)
 > SELECT * FROM t1
 WHERE
             abs(e1 - (SELECT AVG(e1) FROM t1)) < 5 AND e2 > 20 AND e3 < (SELECT MAX(e3) FROM t1)
