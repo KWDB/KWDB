@@ -650,7 +650,9 @@ KStatus TsPartitionVersion::NeedVacuumEntitySegment(const fs::path& root_path,
   TsEngineSchemaManager* schema_manager, bool& need_vacuum, bool& need_compact) const {
   need_vacuum = false;
   need_compact = false;
-
+  if (last_segments_.size() == 0 && entity_segment_ == nullptr) {
+    return SUCCESS;
+  }
   timestamp64 latest_mtime = 0;
   bool has_files = false;
   for (const auto& entry : fs::directory_iterator(root_path)) {
@@ -681,7 +683,9 @@ KStatus TsPartitionVersion::NeedVacuumEntitySegment(const fs::path& root_path,
   if (diff_latest_now < vacuum_interval) {
     return SUCCESS;
   }
-  need_compact = true;
+  if (last_segments_.size() != 0) {
+    need_compact = true;
+  }
   if (entity_segment_ == nullptr) {
     return SUCCESS;
   }

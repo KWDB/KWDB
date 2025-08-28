@@ -278,7 +278,7 @@ KStatus MetricsVersionManager::UndoAlterCol(uint32_t old_version, uint32_t new_v
   auto new_bt = GetMetricsTable(new_version, false);
   if (new_bt != nullptr) {
     metric_tables_.erase(new_version);
-    if (cur_metric_table_->GetVersionNum() == new_version) {
+    if (cur_metric_table_->GetVersion() == new_version) {
       cur_metric_table_.reset();
     }
     new_bt->remove();

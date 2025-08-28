@@ -1672,7 +1672,8 @@ KStatus TsVGroup::Vacuum() {
 
         std::list<shared_ptr<TsBlockSpan>> block_spans;
         std::shared_ptr<MMapMetricsTable> metric_schema;
-        s = tb_schema_mgr->GetMetricSchema(0, &metric_schema);
+        auto scan_version = tb_schema_mgr->GetCurrentVersion();
+        s = tb_schema_mgr->GetMetricSchema(scan_version, &metric_schema);
         if (s != SUCCESS) {
           LOG_ERROR("Vacuum failed, GetMetricSchema failed")
           return s;
@@ -1697,7 +1698,7 @@ KStatus TsVGroup::Vacuum() {
 
           TsEntitySegmentBlockItem blk_item;
           blk_item.entity_id = entity_item.entity_id;
-          blk_item.table_version = block_span->GetTableVersion();
+          blk_item.table_version = scan_version;
           blk_item.n_cols = block_span->GetColCount() + 1;
           blk_item.n_rows = block_span->GetRowNum();
           blk_item.min_ts = block_span->GetFirstTS();
