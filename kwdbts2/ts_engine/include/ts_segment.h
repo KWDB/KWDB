@@ -65,10 +65,28 @@ class TsSegmentBase {
   virtual ~TsSegmentBase() {}
 };
 
+inline bool IsTsLsnInScanSpan(timestamp64 ts, TS_LSN lsn, const STScanRange& span) {
+  if (ts >= span.ts_span.begin && ts <= span.ts_span.end &&
+      lsn >= span.lsn_span.begin && lsn <= span.lsn_span.end) {
+    return true;
+  }
+  return false;
+}
+
 inline bool IsTsLsnInSpans(timestamp64 ts, TS_LSN lsn, const std::vector<STScanRange>& spans) {
   for (auto& span : spans) {
-    if (ts >= span.ts_span.begin && ts <= span.ts_span.end &&
-        lsn >= span.lsn_span.begin && lsn <= span.lsn_span.end) {
+    if (IsTsLsnInScanSpan(ts, lsn, span)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+inline bool IsTsLsnSpanInSpans(const std::vector<STScanRange>& spans,
+                                KwTsSpan ts_span, KwLSNSpan lsn_span) {
+  for (auto& span : spans) {
+    if (IsTsLsnInScanSpan(ts_span.begin, lsn_span.begin, span) &&
+        IsTsLsnInScanSpan(ts_span.end, lsn_span.end, span)) {
       return true;
     }
   }
