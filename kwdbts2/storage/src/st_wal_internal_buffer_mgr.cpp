@@ -527,7 +527,7 @@ KStatus WALBufferMgr::readUncommittedTxnID(std::vector<uint64_t>& uncommitted_id
     std::vector<LogEntry*> log_entries;
     switch (typ) {
       case WALLogType::INSERT: {
-        status = readInsertLog(log_entries, current_lsn, 0, current_offset, read_queue, false);
+        status = readInsertLog(log_entries, current_lsn, 1, current_offset, read_queue, false);
         for (auto log : log_entries) {
           delete log;
         }
@@ -535,7 +535,7 @@ KStatus WALBufferMgr::readUncommittedTxnID(std::vector<uint64_t>& uncommitted_id
         break;
       }
       case WALLogType::DELETE: {
-        status = readDeleteLog(log_entries, current_lsn, 0, current_offset, read_queue, false);
+        status = readDeleteLog(log_entries, current_lsn, 1, current_offset, read_queue, false);
         for (auto log : log_entries) {
           delete log;
         }
@@ -543,7 +543,7 @@ KStatus WALBufferMgr::readUncommittedTxnID(std::vector<uint64_t>& uncommitted_id
         break;
       }
       case WALLogType::CREATE_INDEX: {
-        status = readCreateIndexLog(log_entries, current_lsn, 0, current_offset, read_queue);
+        status = readCreateIndexLog(log_entries, current_lsn, 1, current_offset, read_queue);
         for (auto log : log_entries) {
           delete log;
         }
@@ -551,7 +551,7 @@ KStatus WALBufferMgr::readUncommittedTxnID(std::vector<uint64_t>& uncommitted_id
         break;
       }
       case WALLogType::DROP_INDEX: {
-        status = readDropIndexLog(log_entries, current_lsn, 0, current_offset, read_queue);
+        status = readDropIndexLog(log_entries, current_lsn, 1, current_offset, read_queue);
         for (auto log : log_entries) {
           delete log;
         }
@@ -559,7 +559,7 @@ KStatus WALBufferMgr::readUncommittedTxnID(std::vector<uint64_t>& uncommitted_id
         break;
       }
       case WALLogType::CHECKPOINT: {
-        status = readCheckpointLog(log_entries, current_lsn, 0, current_offset, read_queue);
+        status = readCheckpointLog(log_entries, current_lsn, 1, current_offset, read_queue);
         for (auto log : log_entries) {
           delete log;
         }
@@ -594,7 +594,7 @@ KStatus WALBufferMgr::readUncommittedTxnID(std::vector<uint64_t>& uncommitted_id
         break;
       }
       case UPDATE: {
-        status = readUpdateLog(log_entries, current_lsn, 0, current_offset, read_queue, false);
+        status = readUpdateLog(log_entries, current_lsn, 1, current_offset, read_queue, false);
         for (auto log : log_entries) {
           delete log;
         }
@@ -609,7 +609,7 @@ KStatus WALBufferMgr::readUncommittedTxnID(std::vector<uint64_t>& uncommitted_id
         break;
       }
       case DDL_CREATE: {
-        status = readDDLCreateLog(log_entries, current_lsn, 0, current_offset, read_queue);
+        status = readDDLCreateLog(log_entries, current_lsn, 1, current_offset, read_queue);
         if (status == FAIL) {
           delete[] read_buf;
           read_buf = nullptr;
@@ -622,7 +622,7 @@ KStatus WALBufferMgr::readUncommittedTxnID(std::vector<uint64_t>& uncommitted_id
         break;
       }
       case DDL_ALTER_COLUMN: {
-        status = readDDLAlterLog(log_entries, current_lsn, 0, current_offset, read_queue);
+        status = readDDLAlterLog(log_entries, current_lsn, 1, current_offset, read_queue);
         if (status == FAIL) {
           delete[] read_buf;
           read_buf = nullptr;

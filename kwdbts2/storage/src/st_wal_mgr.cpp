@@ -837,7 +837,8 @@ KStatus WALMgr::ReadWALLogForMtr(uint64_t mtr_trans_id, std::vector<LogEntry*>& 
 
 KStatus WALMgr::ReadUncommittedTxnID(std::vector<uint64_t>& uncommitted_xid) {
   file_mgr_->Lock();
-  KStatus status = buffer_mgr_->readUncommittedTxnID(uncommitted_xid, meta_.checkpoint_lsn, meta_.current_lsn);
+  auto first_lsn = file_mgr_->readHeaderBlock().getFirstLSN();
+  KStatus status = buffer_mgr_->readUncommittedTxnID(uncommitted_xid, first_lsn, meta_.current_lsn);
   file_mgr_->Unlock();
   if (status == FAIL) {
     LOG_ERROR("Failed to readUncommittedTxnID");
