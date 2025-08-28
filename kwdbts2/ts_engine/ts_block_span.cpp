@@ -78,7 +78,7 @@ KStatus TsBlockSpan::MakeNewBlockSpan(TsBlockSpan* src_blk_span, uint32_t vgroup
   if (src_blk_span == nullptr ||
      (src_blk_span->block_->GetTableVersion() != block->GetTableVersion())) {
     std::shared_ptr<TSBlkDataTypeConvert> convert = nullptr;
-    auto s = TsBlockSpan::GenDataConvert(block->GetTableVersion(), scan_version, tbl_schema_mgr, convert);
+    auto s = GenDataConvert(block->GetTableVersion(), scan_version, tbl_schema_mgr, convert);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("TsBlockSpan::MakeNewBlockSpan, entity_id=%lu", entity_id);
       return s;
@@ -106,14 +106,14 @@ TsBlockSpan::TsBlockSpan(uint32_t vgroup_id, TSEntityID entity_id, std::shared_p
   } else {
     assert(convert->scan_version_ == scan_version && convert->block_version_ == block_->GetTableVersion());
   }
-  has_pre_agg_ = block_->HasPreAgg(start_row_, nrow_);
+  has_pre_agg_ = block_->HasPreAgg(start_row_, nrow_) && convert_ == nullptr;
 }
 
 TsBlockSpan::TsBlockSpan(const TsBlockSpan& src, std::shared_ptr<TsBlock> block, int start, int nrow, TSEntityID e_id) :
   block_(block), vgroup_id_(src.vgroup_id_), entity_id_(e_id == 0 ? src.entity_id_ : e_id),
   start_row_(start), nrow_(nrow), scan_attrs_(src.scan_attrs_), convert_(src.convert_) {
   assert(src.block_->GetTableVersion() == block_->GetTableVersion());
-  has_pre_agg_ = block_->HasPreAgg(start_row_, nrow_);
+  has_pre_agg_ = block_->HasPreAgg(start_row_, nrow_) && convert_ == nullptr;
 }
 
 bool TsBlockSpan::operator<(const TsBlockSpan& other) const {
@@ -330,7 +330,7 @@ KStatus TsBlockSpan::GetCompressData(std::string& data) {
   if (!convert_) {
     table_version = block_->GetTableVersion();
   } else {
-    table_version = convert_->version_conv_->scan_version_;
+    table_version = convert_->scan_version_;
   }
   KStatus s = block_->GetCompressDataFromFile(table_version, nrow_, data);
   if (s == KStatus::SUCCESS) {
