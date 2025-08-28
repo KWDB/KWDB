@@ -3177,15 +3177,16 @@ func (s *Server) attachAllApDatabase(ctx context.Context) error {
 			return err
 		}
 		defer s.apEngine.DestroyConnection(conn)
-		dbPath := s.apEngine.DbPath
 		descs, err := sql.GetAllDatabaseDescriptors(ctx, txn)
 		if err != nil {
 			return err
 		}
 		for _, desc := range descs {
 			if desc.EngineType == tree.EngineTypeAP {
-				attachStmt := fmt.Sprintf(`ATTACH '%s' AS %s`, dbPath+"/"+desc.Name, desc.Name)
-				_ = s.apEngine.Exec(conn, attachStmt)
+				err = s.apEngine.AttachDatabase(conn, desc.Name)
+				if err != nil {
+					return err
+				}
 			}
 		}
 		return nil

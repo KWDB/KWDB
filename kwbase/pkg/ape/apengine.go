@@ -37,6 +37,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"strconv"
 	"unsafe"
 
@@ -45,6 +46,9 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/util/stop"
 	duck "github.com/duckdb-go-bindings"
 )
+
+// defaultApDatabase will be attach when ap engine init
+const defaultApDatabase = "tpch"
 
 type ApEngine struct {
 	stopper    *stop.Stopper
@@ -70,7 +74,7 @@ type QueryInfo struct {
 func NewApEngine(stopper *stop.Stopper, dbPath string) (*ApEngine, error) {
 	db := duck.Database{}
 	var state duck.State
-	state = duck.Open(dbPath+"/tpch", &db)
+	state = duck.Open(dbPath+"/"+defaultApDatabase, &db)
 	if state != duck.StateSuccess {
 		return nil, errors.New("failed to open the ap database")
 	}
@@ -221,5 +225,34 @@ func (r *ApEngine) Exec(conn *duck.Connection, stmt string) error {
 		return pgerror.New(pgcode.Warning, errMsg)
 	}
 	duck.DestroyResult(&res)
+	return nil
+}
+
+// AttachDatabase execute attach sql in input connection.
+func (r *ApEngine) AttachDatabase(conn *duck.Connection, dbName string) error {
+	if dbName == defaultApDatabase {
+		return nil
+	}
+	attachStmt := fmt.Sprintf(`ATTACH '%s' AS %s`, r.DbPath+"/"+dbName, dbName)
+	err := r.Exec(conn, attachStmt)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+// DetachDatabase execute detach sql in input connection.
+func (r *ApEngine) DetachDatabase(conn *duck.Connection, dbName string) error {
+	if dbName == defaultApDatabase {
+		return nil
+	}
+	detachStmt := fmt.Sprintf(`DETACH %s`, dbName)
+	err := r.Exec(conn, detachStmt)
+	if err != nil {
+		return err
+	}
+	if err := os.Remove(r.DbPath + "/" + dbName); err != nil {
+		return err
+	}
 	return nil
 }

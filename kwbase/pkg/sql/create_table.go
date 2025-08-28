@@ -62,7 +62,6 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/util/hlc"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 	"github.com/cockroachdb/errors"
-	duckdb "github.com/duckdb-go-bindings"
 	"github.com/lib/pq/oid"
 )
 
@@ -697,23 +696,16 @@ func (n *createTableNode) startExec(params runParams) error {
 		n.n.Table.ExplicitSchema = true
 		n.n.Table.ExplicitCatalog = true
 		createStmt := n.n.String()
-		conn := params.p.DistSQLPlanner().distSQLSrv.ServerConfig.ApEngine.Connection
-		//dbPath := parzams.p.DistSQLPlanner().distSQLSrv.ServerConfig.ApEngine.DbPath
-		var res duckdb.Result
-		defer duckdb.DestroyResult(&res)
-		//attachStmt := fmt.Sprintf(`ATTACH '%s' AS %s`, dbPath+"/"+n.dbDesc.Name, n.dbDesc.Name)
-		//detachStmt := fmt.Sprintf(`DETACH %s`, n.dbDesc.Name)
-		//if n.dbDesc.Name != "tpch" {
-		//	if duckdb.Query(*conn, attachStmt, &res) == duckdb.StateError {
-		//		return pgerror.Newf(pgcode.Warning, "attach database %s failed: %s", n.dbDesc.Name, duckdb.ResultError(&res))
-		//	}
-		//}
-		if duckdb.Query(*conn, createStmt, &res) == duckdb.StateError {
-			return pgerror.Newf(pgcode.Warning, "create ap table %s failed: %s", n.n.Table.String(), duckdb.ResultError(&res))
+		apEngine := params.p.DistSQLPlanner().distSQLSrv.ServerConfig.ApEngine
+		conn, err := apEngine.CreateConnection("")
+		if err != nil {
+			return err
 		}
-		//if duckdb.Query(*conn, detachStmt, &res) == duckdb.StateError {
-		//	return pgerror.Newf(pgcode.Warning, "detach database %s failed", n.dbDesc.Name)
-		//}
+		defer apEngine.DestroyConnection(conn)
+		err = apEngine.Exec(conn, createStmt)
+		if err != nil {
+			return pgerror.Newf(pgcode.Warning, "create ap table %s failed: %s", n.n.Table.String(), err.Error())
+		}
 	}
 	if desc.IsTSTable() {
 		if err = createAndExecCreateTSTableJob(params, desc, n); err != nil {
