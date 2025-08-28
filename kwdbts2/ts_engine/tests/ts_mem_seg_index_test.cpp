@@ -118,3 +118,24 @@ TEST(TsMemSegIndexTest, InsertDuplicateKeysAndSeek) {
     ASSERT_EQ(idx, n);
   }
 }
+
+TEST(TsMemSegIndexTest, InsertAndSeekMultiple) {
+  TsMemSegIndex skiplist;
+  for (int i = 0; i < 1000; ++i) {
+    InsertHelper(skiplist, i, i * i);
+  }
+
+  std::vector<int> seek_ids = {1, 4, 81, 82};
+  std::vector<int> expected_ids = {1, 4, 81, 100};
+  std::vector<int> expected_data = {1, 2, 9, 10};
+
+  for (int i = 0; i < seek_ids.size(); ++i) {
+    auto iter = SeekHelper(skiplist, seek_ids[i]);
+    ASSERT_TRUE(iter.Valid());
+    auto row_data = skiplist.ParseKey(iter.key());
+    ASSERT_EQ(row_data->GetEntityId(), expected_ids[i]);
+    ASSERT_EQ(row_data->GetLSN(), expected_ids[i]);
+    int data = *reinterpret_cast<int *>(row_data->GetRowData().data);
+    ASSERT_EQ(data, expected_data[i]);
+  }
+}

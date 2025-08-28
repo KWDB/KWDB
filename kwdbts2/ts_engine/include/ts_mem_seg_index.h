@@ -53,14 +53,17 @@ struct TSMemSegRowData {
 
   void SetRowData(const TSSlice& crow_data) { row_data = crow_data; }
   void SetData(timestamp64 cts, TS_LSN clsn) {
-    ts = htobe64(cts - INT64_MIN);
+    // the following line has undefined behavior, see: https://godbolt.org/z/1e567j4G5
+    // ts = htobe64(cts - INT64_MIN);
+
+    ts = htobe64(static_cast<uint64_t>(cts) ^ (1ULL << 63));
     lsn = htobe64(clsn);
     little_endian_lsn = clsn;
   }
   static constexpr size_t GetKeyLen() { return offsetof(TSMemSegRowData, table_id); }
 
   TSEntityID GetEntityId() const { return be64toh(entity_id); }
-  timestamp64 GetTS() const { return static_cast<timestamp64>(be64toh(ts)) + INT64_MIN; }
+  timestamp64 GetTS() const { return static_cast<timestamp64>(be64toh(ts) ^ (1ULL << 63)); }
   TS_LSN GetLSN() const { return little_endian_lsn; }
   const TS_LSN* GetLSNAddr() const { return &little_endian_lsn; }
 
