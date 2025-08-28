@@ -200,8 +200,10 @@ func (r *ApEngine) CreateConnection(dbName string) (*duck.Connection, error) {
 		return nil, errors.New("failed to connect to ap database")
 	}
 	if dbName != "" {
-		r.Exec(&conn, fmt.Sprintf("ATTACH '%s/%s'", r.DbPath, dbName))
-		r.Exec(&conn, fmt.Sprintf("USE '%s'", dbName))
+		if err := r.Exec(&conn, fmt.Sprintf("USE '%s'", dbName)); err != nil {
+			duck.Disconnect(&conn)
+			return nil, err
+		}
 	}
 	return &conn, nil
 }
@@ -213,8 +215,8 @@ func (r *ApEngine) DestroyConnection(conn *duck.Connection) {
 // Exec execute sql in input connection.
 func (r *ApEngine) Exec(conn *duck.Connection, stmt string) error {
 	var res duck.Result
-	state1 := duck.Query(*conn, stmt, &res)
-	if state1 != duck.StateSuccess {
+	state := duck.Query(*conn, stmt, &res)
+	if state != duck.StateSuccess {
 		errMsg := duck.ResultError(&res)
 		return pgerror.New(pgcode.Warning, errMsg)
 	}
