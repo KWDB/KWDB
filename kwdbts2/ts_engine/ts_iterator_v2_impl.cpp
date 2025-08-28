@@ -269,195 +269,212 @@ KStatus TsStorageIteratorV2Impl::isBlockFiltered(std::shared_ptr<TsBlockSpan>& b
   KStatus ret;
   for (const auto& filter : block_filter_) {
     uint32_t col_id = filter.colID;
-    if (!block_span->IsColExist(col_id)) {
-      // No data for this column in this block span.
-      if (filter.filterType == BlockFilterType::BFT_NULL) {
-        continue;
-      }
-      is_filtered = true;
-      return KStatus::SUCCESS;
-    }
     BlockFilterType filter_type = filter.filterType;
     std::vector<FilterSpan> filter_spans = filter.spans;
-    if (filter.filterType == BlockFilterType::BFT_NULL) {
-      if (block_span->IsColNotNull(col_id)) {
-        is_filtered = true;
-        return KStatus::SUCCESS;
-      }
-      if (block_span->HasPreAgg()) {
-        // Use pre agg to calculate count
-        uint16_t pre_count{0};
-        ret = block_span->GetPreCount(col_id, pre_count);
-        if (ret != KStatus::SUCCESS) {
-          return KStatus::FAIL;
-        }
-        if (pre_count == block_span->GetRowNum()) {
-          is_filtered = true;
-          return KStatus::SUCCESS;
-        }
-      } else {
-        uint32_t col_count{0};
-        ret = block_span->GetCount(col_id, col_count);
-        if (ret != KStatus::SUCCESS) {
-          return KStatus::FAIL;
-        }
-        if (col_count == block_span->GetRowNum()) {
-          is_filtered = true;
-          return KStatus::SUCCESS;
-        }
-      }
-    } else if (filter.filterType == BlockFilterType::BFT_NOTNULL) {
-      if (block_span->HasPreAgg()) {
-        // Use pre agg to calculate count
-        uint16_t pre_count{0};
-        ret = block_span->GetPreCount(col_id, pre_count);
-        if (ret != KStatus::SUCCESS) {
-          return KStatus::FAIL;
-        }
-        if (!pre_count) {
-          is_filtered = true;
-          return KStatus::SUCCESS;
-        }
-      } else {
-        uint32_t col_count{0};
-        ret = block_span->GetCount(col_id, col_count);
-        if (ret != KStatus::SUCCESS) {
-          return KStatus::FAIL;
-        }
-        if (!col_count) {
-          is_filtered = true;
-          return KStatus::SUCCESS;
-        }
-      }
-    } else if (filter.filterType == BlockFilterType::BFT_SPAN) {
-      SpanValue min, max;
-      void* min_addr{nullptr};
-      void* max_addr{nullptr};
-      bool is_new = false;
-      Defer defer{[&]() {
-        if (is_new) {
-          if (isVarLenType(attrs_[col_id].type)) {
-            free(min.data);
-            free(max.data);
+    switch (filter_type) {
+      case BlockFilterType::BFT_NULL:
+      case BlockFilterType::BFT_NOTNULL: {
+        if (filter_type == BlockFilterType::BFT_NULL) {
+          bool is_all_not_null = false;
+          if (!block_span->IsColExist(col_id)) {
+            break;
+          } else if (block_span->IsColNotNull(col_id)) {
+            is_all_not_null = true;
+          } else if (block_span->HasPreAgg()) {
+            // Use pre agg to calculate count
+            uint16_t pre_count{0};
+            ret = block_span->GetPreCount(col_id, pre_count);
+            if (ret != KStatus::SUCCESS) {
+              return KStatus::FAIL;
+            }
+            if (pre_count == block_span->GetRowNum()) {
+              is_all_not_null = true;
+            }
           } else {
-            free(min_addr);
-            free(max_addr);
+            uint32_t col_count{0};
+            ret = block_span->GetCount(col_id, col_count);
+            if (ret != KStatus::SUCCESS) {
+              return KStatus::FAIL;
+            }
+            if (col_count == block_span->GetRowNum()) {
+              is_all_not_null = true;
+            }
           }
+          if (is_all_not_null && filter.spans.empty()) {
+            is_filtered = true;
+            return KStatus::SUCCESS;
+          }
+          if (!is_all_not_null) break;
+        } else {
+          bool is_all_null = false;
+          if (!block_span->IsColExist(col_id)) {
+            is_all_null = true;
+          } else if (block_span->HasPreAgg()) {
+            // Use pre agg to calculate count
+            uint16_t pre_count{0};
+            ret = block_span->GetPreCount(col_id, pre_count);
+            if (ret != KStatus::SUCCESS) {
+              return KStatus::FAIL;
+            }
+            if (!pre_count) {
+              is_all_null = true;
+            }
+          } else {
+            uint32_t col_count{0};
+            ret = block_span->GetCount(col_id, col_count);
+            if (ret != KStatus::SUCCESS) {
+              return KStatus::FAIL;
+            }
+            if (!col_count) {
+              is_all_null = true;
+            }
+          }
+          if (is_all_null && filter.spans.empty()) {
+            is_filtered = true;
+            return KStatus::SUCCESS;
+          }
+          if (!is_all_null) break;
         }
-      }};
-      if (!isVarLenType(attrs_[col_id].type)) {
-        if (block_span->HasPreAgg()) {
-          ret = block_span->GetPreMin(col_id, min_addr);
-          if (ret != KStatus::SUCCESS) {
-            return KStatus::FAIL;
+        [[fallthrough]];
+      }
+      case BlockFilterType::BFT_SPAN: {
+        if (!block_span->IsColExist(col_id)) {
+          // No data for this column in this block span.
+          is_filtered = true;
+          return KStatus::SUCCESS;
+        }
+        SpanValue min, max;
+        void* min_addr{nullptr};
+        void* max_addr{nullptr};
+        bool is_new = false;
+        Defer defer{[&]() {
+          if (is_new) {
+            if (isVarLenType(attrs_[col_id].type)) {
+              free(min.data);
+              free(max.data);
+            } else {
+              free(min_addr);
+              free(max_addr);
+            }
           }
-          ret = block_span->GetPreMax(col_id, max_addr);
-          if (ret != KStatus::SUCCESS) {
-            return KStatus::FAIL;
+        }};
+        if (!isVarLenType(attrs_[col_id].type)) {
+          if (block_span->HasPreAgg()) {
+            ret = block_span->GetPreMin(col_id, min_addr);
+            if (ret != KStatus::SUCCESS) {
+              return KStatus::FAIL;
+            }
+            ret = block_span->GetPreMax(col_id, max_addr);
+            if (ret != KStatus::SUCCESS) {
+              return KStatus::FAIL;
+            }
+          } else {
+            ret = getBlockSpanMinMaxValue(block_span, col_id, attrs_[col_id].type, min_addr, max_addr);
+            is_new = true;
+          }
+          if (!min_addr || !max_addr) continue;
+
+          switch (attrs_[col_id].type) {
+            case DATATYPE::BYTE:
+            case DATATYPE::BOOL: {
+              min.data = static_cast<char*>(min_addr);
+              max.data = static_cast<char*>(max_addr);
+              min.len = max.len = attrs_[col_id].size;
+              break;
+            }
+            case DATATYPE::BINARY:
+            case DATATYPE::CHAR:
+            case DATATYPE::STRING: {
+              min.data = static_cast<char*>(min_addr);
+              max.data = static_cast<char*>(max_addr);
+              min.len = strlen(min.data);
+              max.len = strlen(max.data);
+              break;
+            }
+            case DATATYPE::INT8: {
+              min.ival = (k_int64)(*(static_cast<k_int8*>(min_addr)));
+              max.ival = (k_int64)(*(static_cast<k_int8*>(max_addr)));
+              break;
+            }
+            case DATATYPE::INT16: {
+              min.ival = (k_int64)(*(static_cast<k_int16*>(min_addr)));
+              max.ival = (k_int64)(*(static_cast<k_int16*>(max_addr)));
+              break;
+            }
+            case DATATYPE::INT32:
+            case DATATYPE::TIMESTAMP: {
+              min.ival = (k_int64)(*(static_cast<k_int32*>(min_addr)));
+              max.ival = (k_int64)(*(static_cast<k_int32*>(max_addr)));
+              break;
+            }
+            case DATATYPE::INT64:
+            case DATATYPE::TIMESTAMP64:
+            case DATATYPE::TIMESTAMP64_MICRO:
+            case DATATYPE::TIMESTAMP64_NANO: {
+              min.ival = *static_cast<k_int64*>(min_addr);
+              max.ival = *static_cast<k_int64*>(max_addr);
+              break;
+            }
+            case DATATYPE::FLOAT: {
+              min.dval = static_cast<double>(*static_cast<float*>(min_addr));
+              max.dval = static_cast<double>(*static_cast<float*>(max_addr));
+              break;
+            }
+            case DATATYPE::DOUBLE: {
+              min.dval = *static_cast<double*>(min_addr);
+              max.dval = *static_cast<double*>(max_addr);
+              break;
+            }
+            default:
+              break;
           }
         } else {
-          ret = getBlockSpanMinMaxValue(block_span, col_id, attrs_[col_id].type, min_addr, max_addr);
-          is_new = true;
+          bool is_var_string = (attrs_[col_id].type == DATATYPE::VARSTRING);
+          if (block_span->HasPreAgg()) {
+            TSSlice var_pre_min{nullptr, 0};
+            ret = block_span->GetVarPreMin(col_id, var_pre_min);
+            if (ret != KStatus::SUCCESS) {
+              LOG_ERROR("GetVarPreMin failed.");
+              return KStatus::FAIL;
+            }
+            TSSlice var_pre_max{nullptr, 0};
+            ret = block_span->GetVarPreMax(col_id, var_pre_max);
+            if (ret != KStatus::SUCCESS) {
+              LOG_ERROR("GetVarPreMax failed.");
+              return KStatus::FAIL;
+            }
+            if (!var_pre_min.data || !var_pre_max.data) continue;
+
+            min.len = is_var_string ? (var_pre_min.len - 1) : var_pre_min.len;
+            min.data = var_pre_min.data;
+            max.len = is_var_string ? (var_pre_max.len - 1) : var_pre_max.len;
+            max.data = var_pre_max.data;
+          } else {
+            TSSlice var_pre_min{nullptr, 0};
+            TSSlice var_pre_max{nullptr, 0};
+            ret = getBlockSpanVarMinMaxValue(block_span, col_id, attrs_[col_id].type, var_pre_min, var_pre_max);
+            if (ret != KStatus::SUCCESS) {
+              LOG_ERROR("getBlockSpanVarMinValue failed.");
+              return KStatus::FAIL;
+            }
+            if (!var_pre_min.data || !var_pre_max.data) continue;
+
+            min.len = is_var_string ? (var_pre_min.len - 1) : var_pre_min.len;
+            min.data = var_pre_min.data;
+            max.len = is_var_string ? (var_pre_max.len - 1) : var_pre_max.len;
+            max.data = var_pre_max.data;
+
+            is_new = true;
+          }
         }
-        if (!min_addr || !max_addr) continue;
-
-        switch (attrs_[col_id].type) {
-          case DATATYPE::BYTE:
-          case DATATYPE::BOOL: {
-            min.data = static_cast<char*>(min_addr);
-            max.data = static_cast<char*>(max_addr);
-            min.len = max.len = attrs_[col_id].size;
-            break;
-          }
-          case DATATYPE::BINARY:
-          case DATATYPE::CHAR:
-          case DATATYPE::STRING: {
-            min.data = static_cast<char*>(min_addr);
-            max.data = static_cast<char*>(max_addr);
-            min.len = strlen(min.data);
-            max.len = strlen(max.data);
-            break;
-          }
-          case DATATYPE::INT8: {
-            min.ival = (k_int64)(*(static_cast<k_int8*>(min_addr)));
-            max.ival = (k_int64)(*(static_cast<k_int8*>(max_addr)));
-            break;
-          }
-          case DATATYPE::INT16: {
-            min.ival = (k_int64)(*(static_cast<k_int16*>(min_addr)));
-            max.ival = (k_int64)(*(static_cast<k_int16*>(max_addr)));
-            break;
-          }
-          case DATATYPE::INT32:
-          case DATATYPE::TIMESTAMP: {
-            min.ival = (k_int64)(*(static_cast<k_int32*>(min_addr)));
-            max.ival = (k_int64)(*(static_cast<k_int32*>(max_addr)));
-            break;
-          }
-          case DATATYPE::INT64:
-          case DATATYPE::TIMESTAMP64:
-          case DATATYPE::TIMESTAMP64_MICRO:
-          case DATATYPE::TIMESTAMP64_NANO: {
-            min.ival = *static_cast<k_int64*>(min_addr);
-            max.ival = *static_cast<k_int64*>(max_addr);
-            break;
-          }
-          case DATATYPE::FLOAT: {
-            min.dval = static_cast<double>(*static_cast<float*>(min_addr));
-            max.dval = static_cast<double>(*static_cast<float*>(max_addr));
-            break;
-          }
-          case DATATYPE::DOUBLE: {
-            min.dval = *static_cast<double*>(min_addr);
-            max.dval = *static_cast<double*>(max_addr);
-            break;
-          }
-          default:
-            break;
+        if (!matchesFilterRange(filter, min, max, (DATATYPE)attrs_[col_id].type)) {
+          is_filtered = true;
+          return KStatus::SUCCESS;
         }
-      } else {
-        bool is_var_string = (attrs_[col_id].type == DATATYPE::VARSTRING);
-        if (block_span->HasPreAgg()) {
-          TSSlice var_pre_min{nullptr, 0};
-          ret = block_span->GetVarPreMin(col_id, var_pre_min);
-          if (ret != KStatus::SUCCESS) {
-            LOG_ERROR("GetVarPreMin failed.");
-            return KStatus::FAIL;
-          }
-          TSSlice var_pre_max{nullptr, 0};
-          ret = block_span->GetVarPreMax(col_id, var_pre_max);
-          if (ret != KStatus::SUCCESS) {
-            LOG_ERROR("GetVarPreMax failed.");
-            return KStatus::FAIL;
-          }
-          if (!var_pre_min.data || !var_pre_max.data) continue;
-
-          min.len = is_var_string ? (var_pre_min.len - 1) : var_pre_min.len;
-          min.data = var_pre_min.data;
-          max.len = is_var_string ? (var_pre_max.len - 1) : var_pre_max.len;
-          max.data = var_pre_max.data;
-        } else {
-          TSSlice var_pre_min{nullptr, 0};
-          TSSlice var_pre_max{nullptr, 0};
-          ret = getBlockSpanVarMinMaxValue(block_span, col_id, attrs_[col_id].type, var_pre_min, var_pre_max);
-          if (ret != KStatus::SUCCESS) {
-            LOG_ERROR("getBlockSpanVarMinValue failed.");
-            return KStatus::FAIL;
-          }
-          if (!var_pre_min.data || !var_pre_max.data) continue;
-
-          min.len = is_var_string ? (var_pre_min.len - 1) : var_pre_min.len;
-          min.data = var_pre_min.data;
-          max.len = is_var_string ? (var_pre_max.len - 1) : var_pre_max.len;
-          max.data = var_pre_max.data;
-
-          is_new = true;
-        }
+        break;
       }
-      if (!matchesFilterRange(filter, min, max, (DATATYPE)attrs_[col_id].type)) {
-        is_filtered = true;
-        return KStatus::SUCCESS;
-      }
+      default:
+        break;
     }
   }
   return KStatus::SUCCESS;

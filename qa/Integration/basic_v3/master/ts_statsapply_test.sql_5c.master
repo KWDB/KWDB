@@ -1622,8 +1622,7 @@ CREATE TABLE
                                                                       | ts-table                 | part
                                                                       | access mode              | metaTable
                                                                       | filter                   | p_name LIKE 'steel%'
-                                                                      | block filter[p_name]     | ['steel' - 'steem')
-(72 rows)
+(71 rows)
 > explain select
             s_name,
             count(*) as numwait
@@ -3574,14 +3573,13 @@ CREATE STATISTICS
                   │                                                        | ts-table                 | part
                   │                                                        | access mode              | metaTable
                   │                                                        | filter                   | p_name LIKE 'steel%'
-                  │                                                        | block filter[p_name]     | ['steel' - 'steem')
                   └── synchronizer                                         |                          |
                        └── ts scan                                         |                          |
                                                                            | ts-table                 | nation
                                                                            | access mode              | metaTable
                                                                            | filter                   | n_name = 'MOZAMBIQUE'
                                                                            | block filter[n_name]     | ['MOZAMBIQUE' - 'MOZAMBIQUE']
-(66 rows)
+(65 rows)
 > explain select
             s_name,
             count(*) as numwait
