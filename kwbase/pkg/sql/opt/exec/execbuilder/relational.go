@@ -54,6 +54,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/util/errorutil/unimplemented"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 	"github.com/cockroachdb/errors"
+	"github.com/lib/pq/oid"
 )
 
 type execPlan struct {
@@ -1173,6 +1174,7 @@ func (b *Builder) convertFilterToColumnSpans(
 	var err error
 	// since a filter can only operate on a single column, we only get first column.
 	*columnSpans.ColID, err = b.mem.GetPhyColIDByMetaID(constraint.Columns.Get(0).ID())
+	colType := b.mem.Metadata().ColumnMeta(constraint.Columns.Get(0).ID()).Type
 	if err != nil {
 		return nil, err
 	}
@@ -1190,14 +1192,14 @@ func (b *Builder) convertFilterToColumnSpans(
 		// we need not build span, AE can deal with filter through filterType.
 		*columnSpans.FilterType = filterType
 	} else {
-		firstColumnSpan := convertSpanToColumnSpan(*firstSpan)
+		firstColumnSpan := convertSpanToColumnSpan(*firstSpan, colType)
 		columnSpans.ColumnSpan = append(columnSpans.ColumnSpan, &firstColumnSpan)
 	}
 	// if otherSpans exists, we need deal with it.
 	if constraint.Spans.Count() > 1 {
 		for i := 1; i < constraint.Spans.Count(); i++ {
 			otherSpan := constraint.Spans.Get(i)
-			otherColumnSpan := convertSpanToColumnSpan(*otherSpan)
+			otherColumnSpan := convertSpanToColumnSpan(*otherSpan, colType)
 			columnSpans.ColumnSpan = append(columnSpans.ColumnSpan, &otherColumnSpan)
 		}
 	}
@@ -1222,17 +1224,17 @@ func getFilterType(span constraint.Span) (execinfrapb.TSBlockFilterType, bool) {
 // startKey is the beginning boundary of the span;
 // endKey is the terminating boundary of the span;
 // boundary indicates whether the interval is open or closed.
-func convertSpanToColumnSpan(span constraint.Span) execinfrapb.TSBlockFilter_Span {
+func convertSpanToColumnSpan(span constraint.Span, typ *types.T) execinfrapb.TSBlockFilter_Span {
 	var columnSpan execinfrapb.TSBlockFilter_Span
 	if !span.StartKey().IsEmpty() && !span.StartKey().IsNull() {
 		columnSpan.Start = new(string)
-		*columnSpan.Start = makeSpanKey(span.StartKey().Value(0))
+		*columnSpan.Start = makeSpanKey(span.StartKey().Value(0), typ)
 		columnSpan.StartBoundary = new(execinfrapb.TSBlockFilter_Span_SpanBoundary)
 		*columnSpan.StartBoundary = makeSpanBoundary(span.StartBoundary())
 	}
 	if !span.EndKey().IsEmpty() {
 		columnSpan.End = new(string)
-		*columnSpan.End = makeSpanKey(span.EndKey().Value(0))
+		*columnSpan.End = makeSpanKey(span.EndKey().Value(0), typ)
 		columnSpan.EndBoundary = new(execinfrapb.TSBlockFilter_Span_SpanBoundary)
 		*columnSpan.EndBoundary = makeSpanBoundary(span.EndBoundary())
 	}
@@ -1244,12 +1246,30 @@ const (
 )
 
 // make start and end, construct the start and end of ColumnSpan based on different types.
-func makeSpanKey(datum tree.Datum) (key string) {
+func makeSpanKey(datum tree.Datum, typ *types.T) (key string) {
 	switch s := datum.(type) {
 	case *tree.DTimestampTZ:
-		key = strconv.FormatInt(s.UnixMilli(), 10)
+		// if DTimestampTZ has precision, it needs to be converted to timestamp with the precision.
+		if typ.InternalType.Oid == oid.T_timestamptz {
+			if typ.InternalType.Precision == 9 {
+				key = strconv.FormatInt(s.UnixNano(), 10)
+			} else if typ.InternalType.Precision == 6 {
+				key = strconv.FormatInt(s.UnixMicro(), 10)
+			} else {
+				key = strconv.FormatInt(s.UnixMilli(), 10)
+			}
+		}
 	case *tree.DTimestamp:
-		key = strconv.FormatInt(s.UnixMilli(), 10)
+		// if DTimestamp has precision, it needs to be converted to timestamp with the precision.
+		if typ.InternalType.Oid == oid.T_timestamp {
+			if typ.InternalType.Precision == 9 {
+				key = strconv.FormatInt(s.UnixNano(), 10)
+			} else if typ.InternalType.Precision == 6 {
+				key = strconv.FormatInt(s.UnixMicro(), 10)
+			} else {
+				key = strconv.FormatInt(s.UnixMilli(), 10)
+			}
+		}
 	case *tree.DFloat:
 		// The constraint specifies that a value of 0 is represented as 1e-324,
 		// which introduces precision errors. Therefore, validation must be

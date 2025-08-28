@@ -730,8 +730,8 @@ func GetBlockFilter(expr opt.Expr, tabID opt.TableID, memo *Memo) FiltersExpr {
 // check if the filter type can be converted to blockfilter
 func checkFilterTypeSupported(cond opt.Expr) bool {
 	switch cond.(type) {
-	// support >, <, =, >=, <=, between.. and... , in, not in, is null, is not null.
-	case *GtExpr, *LtExpr, *EqExpr, *GeExpr, *LeExpr, *InExpr, *NotInExpr, *IsExpr, *IsNotExpr:
+	// support !=, >, <, =, >=, <=, between.. and... , in, not in, is null, is not null.
+	case *NeExpr, *GtExpr, *LtExpr, *EqExpr, *GeExpr, *LeExpr, *InExpr, *NotInExpr, *IsExpr, *IsNotExpr:
 		return true
 	default:
 		childCount := cond.ChildCount()
