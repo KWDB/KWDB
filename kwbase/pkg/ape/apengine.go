@@ -51,11 +51,11 @@ import (
 const defaultApDatabase = "tpch"
 
 type ApEngine struct {
-	stopper    *stop.Stopper
-	db         *duck.Database
-	dbStruct   *C.APEngine
-	Connection *duck.Connection
-	DbPath     string
+	stopper      *stop.Stopper
+	db           *duck.Database
+	dbStruct     *C.APEngine
+	internalConn *duck.Connection
+	DbPath       string
 }
 
 // QueryInfo the parameter and return value passed by the query
@@ -87,50 +87,50 @@ func NewApEngine(stopper *stop.Stopper, dbPath string) (*ApEngine, error) {
 	var dbStruct *C.APEngine
 	C.APOpen(&dbStruct)
 	return &ApEngine{
-		stopper:    stopper,
-		db:         &db,
-		Connection: &connection,
-		DbPath:     dbPath,
-		dbStruct:   dbStruct,
+		stopper:      stopper,
+		db:           &db,
+		internalConn: &connection,
+		DbPath:       dbPath,
+		dbStruct:     dbStruct,
 	}, nil
 }
 
 // Close close TsEngine
 func (r *ApEngine) Close() {
 	duck.Close(r.db)
-	duck.Disconnect(r.Connection)
+	duck.Disconnect(r.internalConn)
 }
 
 // InitHandle corresponding to init ts handle
 func (r *ApEngine) InitHandle(
 	ctx *context.Context, queryInfo QueryInfo,
 ) (respInfo QueryInfo, err error) {
-	return r.Execute(ctx, C.MQ_TYPE_DML_INIT, queryInfo)
+	return r.internalExecute(ctx, C.MQ_TYPE_DML_INIT, queryInfo)
 }
 
 // SetupFlow send timing execution plan and receive execution results
 func (r *ApEngine) SetupFlow(
 	ctx *context.Context, queryInfo QueryInfo,
 ) (respInfo QueryInfo, err error) {
-	return r.Execute(ctx, C.MQ_TYPE_DML_SETUP, queryInfo)
+	return r.internalExecute(ctx, C.MQ_TYPE_DML_SETUP, queryInfo)
 }
 
 // NextFlow drive timing execution plan, receive execution results
 func (r *ApEngine) NextFlow(
 	ctx *context.Context, queryInfo QueryInfo,
 ) (respInfo QueryInfo, err error) {
-	return r.Execute(ctx, C.MQ_TYPE_DML_NEXT, queryInfo)
+	return r.internalExecute(ctx, C.MQ_TYPE_DML_NEXT, queryInfo)
 }
 
 // NextFlowPgWire drive timing execution plan, receive execution results
 func (r *ApEngine) NextFlowPgWire(
 	ctx *context.Context, queryInfo QueryInfo,
 ) (respInfo QueryInfo, err error) {
-	return r.Execute(ctx, C.MQ_TYPE_DML_PG_RESULT, queryInfo)
+	return r.internalExecute(ctx, C.MQ_TYPE_DML_PG_RESULT, queryInfo)
 }
 
-// Execute call the engine dml interface to issue a request and return the result
-func (r *ApEngine) Execute(
+// internalExecute call the engine dml interface to issue a request and return the result
+func (r *ApEngine) internalExecute(
 	ctx *context.Context, tp C.EnMqType, queryInfo QueryInfo,
 ) (respInfo QueryInfo, err error) {
 	if len(queryInfo.Buf) == 0 {
@@ -148,7 +148,7 @@ func (r *ApEngine) Execute(
 	cQueryInfo.time_zone = C.int(queryInfo.TimeZone)
 	cQueryInfo.relation_ctx = C.uint64_t(uintptr(unsafe.Pointer(ctx)))
 	cQueryInfo.db = r.db.Ptr
-	cQueryInfo.connection = r.Connection.Ptr
+	cQueryInfo.connection = r.internalConn.Ptr
 	cDBPathSlice := C.TSSlice{
 		data: (*C.char)(C.CBytes([]byte(r.DbPath))),
 		len:  C.size_t(len(r.DbPath)),

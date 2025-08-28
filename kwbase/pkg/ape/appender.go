@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgcode"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgerror"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
@@ -55,7 +56,12 @@ func DuckInsert(ctx context.Context, r *ApEngine, dbName, tabName string, rowVal
 	//defer func() {
 	//	duck.Disconnect(&conn)
 	//}()
-	a, err := NewAppender(r.Connection, dbName, "main", tabName)
+	conn, err := r.CreateConnection(dbName)
+	if err != nil {
+		return pgerror.Newf(pgcode.Internal, "could not create new connection: %s", err.Error())
+	}
+	defer r.DestroyConnection(conn)
+	a, err := NewAppender(conn, dbName, "main", tabName)
 	if err != nil {
 		return pgerror.Newf(pgcode.Internal, "could not create new appender: %s", err.Error())
 	}
