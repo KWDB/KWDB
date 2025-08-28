@@ -40,22 +40,22 @@ type DataChunk struct {
 
 func DuckInsert(ctx context.Context, r *ApEngine, dbName, tabName string, rowVals []tree.Datums) error {
 	fmt.Println("DuckInsert start")
-	db := duck.Database{}
-	var state duck.State
-	state = duck.Open(r.DbPath+"/"+dbName, &db)
-	if state != duck.StateSuccess {
-		return errors.New(fmt.Sprintf("failed to opend the ap database \"%s\"" + dbName))
-	}
-
-	conn := duck.Connection{}
-	state = duck.Connect(db, &conn)
-	if state != duck.StateSuccess {
-		return pgerror.Newf(pgcode.Internal, "failed to connect to ap database \"%s\""+dbName)
-	}
-	defer func() {
-		duck.Disconnect(&conn)
-	}()
-	a, err := NewAppender(&conn, dbName, "main", tabName)
+	//db := duck.Database{}
+	//var state duck.State
+	//state = duck.Open(r.DbPath+"/"+dbName, &db)
+	//if state != duck.StateSuccess {
+	//	return errors.New(fmt.Sprintf("failed to opend the ap database \"%s\"" + dbName))
+	//}
+	//
+	//conn := duck.Connection{}
+	//state = duck.Connect(db, &conn)
+	//if state != duck.StateSuccess {
+	//	return pgerror.Newf(pgcode.Internal, "failed to connect to ap database \"%s\""+dbName)
+	//}
+	//defer func() {
+	//	duck.Disconnect(&conn)
+	//}()
+	a, err := NewAppender(r.Connection, dbName, "main", tabName)
 	if err != nil {
 		return pgerror.Newf(pgcode.Internal, "could not create new appender: %s", err.Error())
 	}
