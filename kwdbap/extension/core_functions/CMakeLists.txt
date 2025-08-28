@@ -15,8 +15,9 @@ set(PARAMETERS "-warnings")
 build_loadable_extension(core_functions ${PARAMETERS} ${CORE_FUNCTION_FILES})
 target_link_libraries(core_functions_loadable_extension duckdb_skiplistlib)
 
-install(
-  TARGETS core_functions_extension
-  EXPORT "${DUCKDB_EXPORT_SET}"
-  LIBRARY DESTINATION "${INSTALL_LIB_DIR}"
-  ARCHIVE DESTINATION "${INSTALL_LIB_DIR}")
+# install(
+#   TARGETS core_functions_extension
+#   EXPORT "${DUCKDB_EXPORT_SET}"
+#   LIBRARY DESTINATION "${INSTALL_LIB_DIR}"
+#   # ARCHIVE DESTINATION "${INSTALL_LIB_DIR}"
+# )
