@@ -121,6 +121,8 @@ func (n *createDatabaseNode) startExec(params runParams) error {
 	log.Infof(params.ctx, "create database %s start, type: %s", n.n.Name, tree.EngineName(n.n.EngineType))
 	desc := makeDatabaseDesc(n.n)
 	desc.EngineType = n.n.EngineType
+	desc.ApDatabaseType = n.n.ApDatabaseType
+	desc.AttachInfo = n.n.AttachInfo
 
 	// deal with the retentions of ts database
 	if n.n.TSDatabase.DownSampling != nil {
@@ -190,7 +192,7 @@ func (n *createDatabaseNode) startExec(params runParams) error {
 			return err
 		}
 		defer apEngine.DestroyConnection(conn)
-		err = apEngine.AttachDatabase(conn, desc.Name)
+		err = apEngine.AttachDatabase(conn, desc.Name, desc.ApDatabaseType, desc.AttachInfo)
 		if err != nil {
 			return err
 		}

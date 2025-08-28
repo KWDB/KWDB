@@ -3183,7 +3183,7 @@ func (s *Server) attachAllApDatabase(ctx context.Context) error {
 		}
 		for _, desc := range descs {
 			if desc.EngineType == tree.EngineTypeAP {
-				err = s.apEngine.AttachDatabase(conn, desc.Name)
+				err = s.apEngine.AttachDatabase(conn, desc.Name, desc.ApDatabaseType, desc.AttachInfo)
 				if err != nil {
 					return err
 				}

@@ -43,6 +43,7 @@ import (
 
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgcode"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgerror"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 	"gitee.com/kwbasedb/kwbase/pkg/util/stop"
 	duck "github.com/duckdb-go-bindings"
 )
@@ -229,11 +230,19 @@ func (r *ApEngine) Exec(conn *duck.Connection, stmt string) error {
 }
 
 // AttachDatabase execute attach sql in input connection.
-func (r *ApEngine) AttachDatabase(conn *duck.Connection, dbName string) error {
-	if dbName == defaultApDatabase {
-		return nil
+func (r *ApEngine) AttachDatabase(conn *duck.Connection, dbName string, dbType tree.ApDatabaseType, attachInfo string) error {
+	var attachStmt string
+	switch dbType {
+	case tree.ApDatabaseTypeDuckDB:
+		if dbName == defaultApDatabase {
+			return nil
+		}
+		attachStmt = fmt.Sprintf(`ATTACH '%s' AS %s`, r.DbPath+"/"+dbName, dbName)
+	case tree.ApDatabaseTypeMysql:
+		attachStmt = fmt.Sprintf("ATTACH '%s' AS %s (TYPE mysql_scanner)", attachInfo, dbName)
+	default:
+		return pgerror.Newf(pgcode.Warning, "invalid ap database type:%d", dbType)
 	}
-	attachStmt := fmt.Sprintf(`ATTACH '%s' AS %s`, r.DbPath+"/"+dbName, dbName)
 	err := r.Exec(conn, attachStmt)
 	if err != nil {
 		return err
@@ -242,7 +251,7 @@ func (r *ApEngine) AttachDatabase(conn *duck.Connection, dbName string) error {
 }
 
 // DetachDatabase execute detach sql in input connection.
-func (r *ApEngine) DetachDatabase(conn *duck.Connection, dbName string) error {
+func (r *ApEngine) DetachDatabase(conn *duck.Connection, dbName string, dbType tree.ApDatabaseType) error {
 	if dbName == defaultApDatabase {
 		return nil
 	}
@@ -251,8 +260,15 @@ func (r *ApEngine) DetachDatabase(conn *duck.Connection, dbName string) error {
 	if err != nil {
 		return err
 	}
-	if err := os.Remove(r.DbPath + "/" + dbName); err != nil {
-		return err
+	switch dbType {
+	case tree.ApDatabaseTypeDuckDB:
+		if err := os.Remove(r.DbPath + "/" + dbName); err != nil {
+			return err
+		}
+	case tree.ApDatabaseTypeMysql:
+		return nil
+	default:
+		return pgerror.Newf(pgcode.Warning, "invalid ap database type:%d", dbType)
 	}
 	return nil
 }

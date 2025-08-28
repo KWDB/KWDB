@@ -310,7 +310,7 @@ func (n *dropDatabaseNode) startExec(params runParams) error {
 			return err
 		}
 		defer apEngine.DestroyConnection(conn)
-		err = apEngine.DetachDatabase(conn, n.dbDesc.Name)
+		err = apEngine.DetachDatabase(conn, n.dbDesc.Name, n.dbDesc.ApDatabaseType)
 		if err != nil {
 			return pgerror.Newf(pgcode.Warning, "detach database %s failed: %s", n.dbDesc.Name, err.Error())
 		}
