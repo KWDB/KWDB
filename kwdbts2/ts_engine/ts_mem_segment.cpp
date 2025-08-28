@@ -11,6 +11,7 @@
 
 #include <atomic>
 #include <cstdint>
+#include <cstdio>
 #include <list>
 #include <memory>
 #include <mutex>
@@ -274,21 +275,24 @@ bool TsMemSegment::GetEntityRows(const TsBlockItemFilterParams& filter, std::lis
 
   for (const auto& span : filter.spans_) {
     SkiplistIterator iter(&skiplist_);
-    SkiplistIterator end(&skiplist_);
 
     {
       TSMemSegRowData key_begin(filter.db_id, filter.table_id, 0, filter.entity_id);
       key_begin.SetData(span.ts_span.begin, 0);
-      iter.Seek(reinterpret_cast<char*>(&key_begin));
-
-      TSMemSegRowData key_end(filter.db_id, filter.table_id, 0, filter.entity_id);
-      // because the span is right-closed, we need to add 1 to the end timestamp
-      key_end.SetData(span.ts_span.end + 1, 0);
-      end.Seek(reinterpret_cast<char*>(&key_end));
+      iter.Seek(&key_begin);
     }
 
-    while (iter != end) {
+    while (iter.Valid()) {
       const TSMemSegRowData* row_data = skiplist_.ParseKey(iter.key());
+      if (row_data->GetTableId() != filter.table_id) {
+        break;
+      }
+      if (row_data->GetEntityId() != filter.entity_id) {
+        break;
+      }
+      if (row_data->GetTS() > span.ts_span.end) {
+        break;
+      }
       auto lsn = row_data->GetLSN();
       if (lsn <= span.lsn_span.end && lsn >= span.lsn_span.begin) {
         rows->push_back(row_data);
