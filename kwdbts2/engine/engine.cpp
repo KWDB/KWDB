@@ -1688,6 +1688,7 @@ KStatus TSEngineImpl::GetWalLevel(kwdbContext_p ctx, uint8_t* wal_level) {
 
 KStatus TSEngineImpl::SetUseRaftLogAsWAL(kwdbContext_p ctx, bool use) {
   options_.use_raft_log_as_wal = use;
+  LOG_INFO("set use_raft_log_as_wal to %d", use)
   return KStatus::SUCCESS;
 }
 

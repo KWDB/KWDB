@@ -287,7 +287,7 @@ var DeDuplicateRule = settings.RegisterPublicStringSetting(
 var TsRaftLogCombineWAL = settings.RegisterPublicBoolSetting(
 	"ts.raftlog_combine_wal.enabled",
 	"combine raft log and wal to reduce write amplification, but still ensure data consistency",
-	true,
+	false,
 )
 
 // TsRaftLogSyncPeriod determine the sync interval of ts raft logs.
@@ -508,7 +508,8 @@ func (r *TsEngine) Open(rangeIndex []roachpb.RangeIndex) error {
 // SetRaftLogCombinedWAL set the state of TsRaftLogCombineWAL to AE
 func (r *TsEngine) SetRaftLogCombinedWAL(combined bool) {
 	if r.tdb != nil {
-		_ = C.TsSetUseRaftLogAsWAL(r.tdb, C.bool(combined))
+		status := C.TsSetUseRaftLogAsWAL(r.tdb, C.bool(combined))
+		_ = statusToError(status)
 	}
 }
 

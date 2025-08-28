@@ -10,7 +10,7 @@ SET CLUSTER SETTING
 > SHOW CLUSTER SETTING ts.raftlog_combine_wal.enabled; 
   ts.raftlog_combine_wal.enabled
 ----------------------------------
-               true
+              false
 (1 row)
 > import database csv data ("nodelocal://1/tsdb1");
   job_id |  status   | fraction_completed |  rows  | abandon_rows | reject_rows | note
