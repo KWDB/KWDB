@@ -16,6 +16,7 @@
 #include "libkwdbts2.h"
 #include "ts_io.h"
 #include "ts_file_vector_index.h"
+#include "ts_hash_latch.h"
 
 namespace kwdbts {
 
@@ -48,11 +49,11 @@ class TsPartitionEntityCountManager {
   TsMMapAllocFile mmap_alloc_;
   // get offset of first index node.
   VectorIndexForFile<uint64_t> index_;
-  KRWLatch* rw_lock_{nullptr};
+  TsHashLatch count_lock_;
 
  public:
   explicit TsPartitionEntityCountManager(std::string path);
-  ~TsPartitionEntityCountManager();
+  ~TsPartitionEntityCountManager() {}
   KStatus Open();
   KStatus AddFlushEntityAgg(TsEntityFlushInfo& info);
   KStatus SetEntityCountInValid(TSEntityID e_id, const KwTsSpan& ts_range);

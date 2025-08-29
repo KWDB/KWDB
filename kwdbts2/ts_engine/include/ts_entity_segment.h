@@ -295,7 +295,7 @@ class TsEntityBlock : public TsBlock {
 
   TS_LSN GetLastLSN() override;
 
-  uint64_t* GetLSNAddr(int row_num) override;
+  const uint64_t* GetLSNAddr(int row_num) override;
 
   KStatus GetCompressDataFromFile(uint32_t table_version, int32_t nrow, std::string& data) override;
 

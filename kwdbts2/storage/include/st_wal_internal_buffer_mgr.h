@@ -90,6 +90,8 @@ class WALBufferMgr {
   KStatus readWALLogs(std::vector<LogEntry*>& log_entries, TS_LSN start_lsn, TS_LSN end_lsn, std::vector<uint64_t>& end_chk,
                       uint64_t txn_id = 0, bool for_chk = false);
 
+  KStatus readUncommittedTxnID(std::vector<uint64_t>& log_entries, TS_LSN start_lsn, TS_LSN end_lsn);
+
   /**
    * Cache specified length bytes from current EntryBlock.
    * @param[in,out] start_offset Start offset

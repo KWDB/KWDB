@@ -186,7 +186,7 @@ class TsVGroup {
 
   KStatus RemoveChkFile(kwdbContext_p ctx);
 
-  KStatus ReadWALLogFromLastCheckpoint(kwdbContext_p ctx, std::vector<LogEntry*>& logs, TS_LSN& last_lsn);
+  KStatus ReadWALLogFromLastCheckpoint(kwdbContext_p ctx, std::vector<LogEntry*>& logs, TS_LSN& last_lsn, std::vector<uint64_t> uncommitted_xid);
 
   KStatus ReadLogFromLastCheckpoint(kwdbContext_p ctx, std::vector<LogEntry*>& logs, TS_LSN& last_lsn);
 
@@ -231,7 +231,7 @@ class TsVGroup {
   KStatus GetEntitySegmentBuilder(std::shared_ptr<const TsPartitionVersion>& partition,
                                   std::shared_ptr<TsEntitySegmentBuilder>& builder);
 
-  KStatus WriteBatchData(kwdbContext_p ctx, TSTableID tbl_id, uint32_t table_version, TSEntityID entity_id,
+  KStatus WriteBatchData(TSTableID tbl_id, uint32_t table_version, TSEntityID entity_id,
                          timestamp64 p_time, TS_LSN lsn, TSSlice data);
 
   KStatus FinishWriteBatchData();

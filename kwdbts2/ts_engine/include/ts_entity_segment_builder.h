@@ -221,6 +221,7 @@ class TsEntitySegmentBuilder {
 
   std::deque<std::shared_ptr<TsBlockSpan>> cached_spans_;
   size_t cached_count_ = 0;
+  std::list<TsEntityFlushInfo> flush_infos_;
 
  public:
   explicit TsEntitySegmentBuilder(const std::string& root_path, TsEngineSchemaManager* schema_manager,
@@ -285,12 +286,15 @@ class TsEntitySegmentBuilder {
 
   KStatus Compact(bool call_by_vacuum, TsVersionUpdate* update);
 
-  KStatus WriteBatch(TSTableID tbl_id, uint32_t entity_id, uint32_t table_version, TS_LSN lsn,
-                     TSSlice data, TsEntityFlushInfo* info);
+  KStatus WriteBatch(TSTableID tbl_id, uint32_t entity_id, uint32_t table_version, TS_LSN lsn, TSSlice data);
 
   KStatus WriteBatchFinish(TsVersionUpdate* update);
 
-  void WriteBatchCancel(std::shared_ptr<const TsVGroupVersion> current);
+  void WriteBatchCancel();
+
+  std::list<TsEntityFlushInfo> FlushInfos() {
+    return flush_infos_;
+  }
 };
 
 class TsEntitySegmentVacuumer {

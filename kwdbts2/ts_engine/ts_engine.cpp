@@ -12,6 +12,7 @@
 #include "ts_engine.h"
 
 #include <dirent.h>
+#include <future>
 #include <cstdint>
 #include <cstdio>
 #include <vector>
@@ -1058,6 +1059,29 @@ KStatus TSEngineV2Impl::TSxRollback(kwdbContext_p ctx, const KTableKey& table_id
   return KStatus::SUCCESS;
 }
 
+KStatus TSEngineV2Impl::RemoveChkFile(kwdbContext_p ctx, uint32_t vgroup_id) {
+  auto vgroup = GetVGroupByID(ctx, vgroup_id);
+  return vgroup->RemoveChkFile(ctx);
+}
+
+KStatus TSEngineV2Impl::ParallelRemoveChkFiles(kwdbContext_p ctx) {
+  std::vector<std::future<KStatus >> res;
+
+  for (auto vgroup : vgroups_) {
+    res.emplace_back(std::async(std::launch::async,
+                                    [this, ctx, vgroup_id = vgroup->GetVGroupID()]
+                                    { return RemoveChkFile(ctx, vgroup_id); }));
+  }
+
+  for (int i = 0; i < res.size(); i++) {
+    if (res[i].get() != KStatus::SUCCESS) {
+      LOG_ERROR("Failed to ParallelRemoveChkFiles")
+      return KStatus::FAIL;
+    }
+  }
+  return KStatus::SUCCESS;
+}
+
 KStatus TSEngineV2Impl::CreateCheckpoint(kwdbContext_p ctx) {
   // use raft log
   if (options_.use_raft_log_as_wal) {
@@ -1154,7 +1178,6 @@ KStatus TSEngineV2Impl::CreateCheckpoint(kwdbContext_p ctx) {
     return KStatus::SUCCESS;
   }
   std::vector<LogEntry*> logs;
-  std::vector<LogEntry*> rewrite;
   std::unordered_map<uint32_t, uint64_t> vgrp_lsn;
   KStatus s;
   Defer defer{[&]() {
@@ -1173,6 +1196,9 @@ KStatus TSEngineV2Impl::CreateCheckpoint(kwdbContext_p ctx) {
   }
   if (vgroup_lsn.empty()) {
     LOG_INFO("Cannot detect the end checkpoint wal, skipping this file's content.")
+    for (auto& log : logs) {
+      delete log;
+    }
     logs.clear();
   }
 
@@ -1182,14 +1208,23 @@ KStatus TSEngineV2Impl::CreateCheckpoint(kwdbContext_p ctx) {
     return s;
   }
 
-  // 2. read wal log from all vgroup
+  // 2.read mtr id first, only read uncommitted txn from all vgroups.
+  auto vgroup_mtr = GetVGroupByID(ctx, 1);
+  std::vector<uint64_t> uncommitted_xid;
+  s = vgroup_mtr->GetWALManager()->ReadUncommittedTxnID(uncommitted_xid);
+  if (s == KStatus::FAIL) {
+    LOG_ERROR("Failed to ReadUncommittedTxnID.")
+    return s;
+  }
+
+  // 3. read wal log from all vgroup
   for (const auto &vgrp : vgroups_) {
     std::vector<LogEntry *> vlogs;
     TS_LSN lsn = 0;
     if (vgrp->GetVGroupID() <= vgroup_lsn.size()) {
       lsn = vgroup_lsn[vgrp->GetVGroupID() - 1];
     }
-    if (vgrp->ReadWALLogFromLastCheckpoint(ctx, vlogs, lsn) == KStatus::FAIL) {
+    if (vgrp->ReadWALLogFromLastCheckpoint(ctx, vlogs, lsn, uncommitted_xid) == KStatus::FAIL) {
       LOG_ERROR("Failed to ReadWALLogFromLastCheckpoint from vgroup : %d", vgrp->GetVGroupID())
       return KStatus::FAIL;
     }
@@ -1198,45 +1233,12 @@ KStatus TSEngineV2Impl::CreateCheckpoint(kwdbContext_p ctx) {
 
     logs.insert(logs.end(), vlogs.begin(), vlogs.end());
   }
-  // 3. merge chk log and wal log
-  std::vector<uint64_t> commit;
 
-  for (auto log : logs) {
-    switch (log->getType()) {
-      case MTR_COMMIT :
-      case MTR_ROLLBACK: {
-        commit.emplace_back(log->getXID());
-      }
-      default:
-        continue;
-    }
-  }
-
-  for (auto log : logs) {
-    bool skip = false;
-    for (auto xid : commit) {
-      if (log->getXID() == xid) {
-        skip = true;
-        break;
-      }
-    }
-    if (!skip) {
-      if (log->getType() == WALLogType::INSERT ||
-          log->getType() == WALLogType::UPDATE ||
-          log->getType() == WALLogType::DELETE ||
-          log->getType() == WALLogType::MTR_BEGIN) {
-        if (!EngineOptions::isSingleNode()) {
-          rewrite.emplace_back(log);
-        }
-      }
-    }
-  }
-
-  if (wal_mgr_->WriteIncompleteWAL(ctx, rewrite) == KStatus::FAIL) {
+  // 4. rewrite incomplete wal
+  if (wal_mgr_->WriteIncompleteWAL(ctx, logs) == KStatus::FAIL) {
     LOG_ERROR("Failed to WriteIncompleteWAL.")
     return KStatus::FAIL;
   }
-  rewrite.clear();
 
   // 5. trig all vgroup flush
   for (const auto &vgrp : vgroups_) {
@@ -1265,12 +1267,10 @@ KStatus TSEngineV2Impl::CreateCheckpoint(kwdbContext_p ctx) {
   }
 
   // 7. remove vgroup wal file.
-  for (const auto &vgrp : vgroups_) {
-    s = vgrp->RemoveChkFile(ctx);
-    if (s == KStatus::FAIL) {
-      LOG_ERROR("Failed to update vgroup checkpoint lsn.")
-      return s;
-    }
+  s = ParallelRemoveChkFiles(ctx);
+  if (s == KStatus::FAIL) {
+    LOG_ERROR("Failed to ParallelRemoveChkFiles.")
+    return s;
   }
 
   // 8. remove old chk file
@@ -1496,19 +1496,13 @@ KStatus TSEngineV2Impl::WriteBatchData(kwdbContext_p ctx, TSTableID table_id, ui
 KStatus TSEngineV2Impl::CancelBatchJob(kwdbContext_p ctx, uint64_t job_id) {
   // handle write worker
   {
-    std::shared_ptr<TsBatchDataWorker> worker = nullptr;
-    RW_LATCH_S_LOCK(&write_batch_workers_lock_);
+    RW_LATCH_X_LOCK(&write_batch_workers_lock_);
     auto write_it = write_batch_data_workers_.find(job_id);
     if (write_it != write_batch_data_workers_.end()) {
-      worker = write_it->second;
-    }
-    RW_LATCH_UNLOCK(&write_batch_workers_lock_);
-    if (worker != nullptr) {
       write_it->second->Cancel(ctx);
-      LOG_INFO("Cancel write batch data, job_id[%lu]", job_id);
     }
-    RW_LATCH_X_LOCK(&write_batch_workers_lock_);
     write_batch_data_workers_.erase(job_id);
+    LOG_INFO("Cancel write batch data, job_id[%lu]", job_id);
     RW_LATCH_UNLOCK(&write_batch_workers_lock_);
   }
   // handle read worker
@@ -1530,22 +1524,17 @@ KStatus TSEngineV2Impl::CancelBatchJob(kwdbContext_p ctx, uint64_t job_id) {
 KStatus TSEngineV2Impl::BatchJobFinish(kwdbContext_p ctx, uint64_t job_id) {
   // handle write worker
   {
-    std::shared_ptr<TsBatchDataWorker> worker = nullptr;
-    RW_LATCH_S_LOCK(&write_batch_workers_lock_);
+    RW_LATCH_X_LOCK(&write_batch_workers_lock_);
     auto write_it = write_batch_data_workers_.find(job_id);
     if (write_it != write_batch_data_workers_.end()) {
-      worker = write_it->second;
-    }
-    RW_LATCH_UNLOCK(&write_batch_workers_lock_);
-    if (worker != nullptr) {
-      if (worker->Finish(ctx) != KStatus::SUCCESS) {
-        LOG_INFO("Finish write batch data failed, job_id[%lu]", job_id);
-      } else {
-        LOG_INFO("Finish write batch data succeeded, job_id[%lu]", job_id);
+      while (write_it->second.use_count() > 1) {
+        LOG_INFO("Waiting for write batch data to finish, job_id[%lu]", job_id);
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
       }
+      write_it->second->Finish(ctx);
     }
-    RW_LATCH_X_LOCK(&write_batch_workers_lock_);
     write_batch_data_workers_.erase(job_id);
+    LOG_INFO("Finish write batch data succeeded, job_id[%lu]", job_id);
     RW_LATCH_UNLOCK(&write_batch_workers_lock_);
   }
   // handle read worker

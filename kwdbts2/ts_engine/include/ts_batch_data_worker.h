@@ -233,6 +233,7 @@ class TsBatchDataWorker {
  protected:
   uint64_t job_id_;
   bool is_finished_ = false;
+  bool is_canceled_ = false;
 
  public:
   explicit TsBatchDataWorker(uint64_t job_id) : job_id_(job_id) {}
@@ -258,7 +259,7 @@ class TsBatchDataWorker {
   }
 
   virtual void Cancel(kwdbContext_p ctx) {
-    is_finished_ = true;
+    is_canceled_ = true;
   }
 };
 
@@ -317,7 +318,6 @@ class TsWriteBatchDataWorker : public TsBatchDataWorker {
   };
   std::unique_ptr<TsAppendOnlyFile> w_file_;
   KLatch w_file_latch_;
-  uint32_t w_file_no_ = 0;
 
   KStatus GetTagPayload(uint32_t table_version, TSSlice* data, std::string& tag_payload_str);
 
@@ -325,14 +325,11 @@ class TsWriteBatchDataWorker : public TsBatchDataWorker {
 
  public:
   TsWriteBatchDataWorker(TSEngineV2Impl* ts_engine, uint64_t job_id);
+  ~TsWriteBatchDataWorker();
 
   KStatus Init(kwdbContext_p ctx) override;
 
   KStatus Write(kwdbContext_p ctx, TSTableID table_id, uint32_t table_version, TSSlice* data, uint32_t* row_num) override;
-
-  KStatus Finish(kwdbContext_p ctx) override;
-
-  void Cancel(kwdbContext_p ctx) override;
 };
 
 }  // namespace kwdbts

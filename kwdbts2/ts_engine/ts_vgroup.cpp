@@ -178,7 +178,8 @@ KStatus TsVGroup::RemoveChkFile(kwdbContext_p ctx) {
   return SUCCESS;
 }
 
-KStatus TsVGroup::ReadWALLogFromLastCheckpoint(kwdbContext_p ctx, std::vector<LogEntry*>& logs, TS_LSN& last_lsn) {
+KStatus TsVGroup::ReadWALLogFromLastCheckpoint(kwdbContext_p ctx, std::vector<LogEntry*>& logs, TS_LSN& last_lsn,
+                                               std::vector<uint64_t> uncommitted_xid) {
   // 1. read chk wal log
   // 2. switch new file
   wal_manager_->Lock();
@@ -200,7 +201,7 @@ KStatus TsVGroup::ReadWALLogFromLastCheckpoint(kwdbContext_p ctx, std::vector<Lo
   // new tmp wal mgr to read chk wal file
   WALMgr tmp_wal = WALMgr(engine_options_->db_path, VGroupDirName(vgroup_id_), engine_options_, true);
   tmp_wal.InitForChk(ctx, meta);
-  s = tmp_wal.ReadWALLog(logs, first_lsn, last_lsn, ignore);
+  s = tmp_wal.ReadUncommittedWALLog(logs, first_lsn, last_lsn, ignore, uncommitted_xid);
   return s;
 }
 
@@ -614,16 +615,19 @@ KStatus TsVGroup::FlushImmSegment(const std::shared_ptr<TsMemSegment>& mem_seg) 
   std::shared_ptr<const TsPartitionVersion> cur_partition = nullptr;
   timestamp64 min_ts = INT64_MAX;
   timestamp64 max_ts = INT64_MIN;
+  std::vector<std::pair<std::shared_ptr<const TsPartitionVersion>, TsEntityFlushInfo>> flush_infos;
 
   for (auto span : sorted_spans) {
     if (cur_entity != span->GetEntityID()) {
-      if (cur_entity != 0) {
+      if (cur_entity != 0 && entity_row_num > 0) {
         TsEntityFlushInfo entity_flush_info = {cur_entity, min_ts, max_ts, entity_row_num, ""};
-        cur_partition->GetCountManager()->AddFlushEntityAgg(entity_flush_info);
+        flush_infos.push_back({cur_partition, entity_flush_info});
       }
       cur_entity = span->GetEntityID();
       entity_row_num = 0;
       cur_partition = nullptr;
+      min_ts = INT64_MAX;
+      max_ts = INT64_MIN;
     }
     auto table_id = span->GetTableID();
     auto table_version = span->GetTableVersion();
@@ -672,18 +676,23 @@ KStatus TsVGroup::FlushImmSegment(const std::shared_ptr<TsMemSegment>& mem_seg) 
         cur_partition = partition;
         min_ts = current_span->GetFirstTS();
       } else if (cur_partition->GetPartitionIdentifier() != partition->GetPartitionIdentifier()) {
-        TsEntityFlushInfo entity_flush_info = {cur_entity, min_ts, max_ts, entity_row_num, ""};
-        cur_partition->GetCountManager()->AddFlushEntityAgg(entity_flush_info);
+        if (entity_row_num > 0) {
+          TsEntityFlushInfo entity_flush_info = {cur_entity, min_ts, max_ts, entity_row_num, ""};
+          flush_infos.push_back({cur_partition, entity_flush_info});
+        }
         cur_partition = partition;
         entity_row_num = 0;
         min_ts = current_span->GetFirstTS();
+        max_ts = min_ts;
       }
       std::shared_ptr<TsBlockSpan> span_to_flush;
       if (last_ts < partition->GetEndTime()) {
         // all the data in this span is whithin the current partition, no need to split.
         span_to_flush = std::move(current_span);
         current_span = nullptr;
-        max_ts = span_to_flush->GetLastTS();
+        if (max_ts < span_to_flush->GetLastTS()) {
+          max_ts = span_to_flush->GetLastTS();
+        }
         entity_row_num += span_to_flush->GetRowNum();
       } else {
         // split the span into two parts.
@@ -697,7 +706,9 @@ KStatus TsVGroup::FlushImmSegment(const std::shared_ptr<TsMemSegment>& mem_seg) 
         std::shared_ptr<TsBlockSpan> front_span;
         current_span->SplitFront(split_idx, front_span);
         span_to_flush = std::move(front_span);
-        max_ts = span_to_flush->GetLastTS();
+        if (max_ts < span_to_flush->GetLastTS()) {
+          max_ts = span_to_flush->GetLastTS();
+        }
         entity_row_num += span_to_flush->GetRowNum();
       }
 
@@ -727,7 +738,7 @@ KStatus TsVGroup::FlushImmSegment(const std::shared_ptr<TsMemSegment>& mem_seg) 
   }
   if (entity_row_num != 0) {
     TsEntityFlushInfo entity_flush_info = {cur_entity, min_ts, max_ts, entity_row_num, ""};
-    cur_partition->GetCountManager()->AddFlushEntityAgg(entity_flush_info);
+    flush_infos.push_back({cur_partition, entity_flush_info});
   }
 
   for (auto& [k, v] : builders) {
@@ -743,6 +754,9 @@ KStatus TsVGroup::FlushImmSegment(const std::shared_ptr<TsMemSegment>& mem_seg) 
   update.RemoveMemSegment(mem_seg);
 
   version_manager_->ApplyUpdate(&update);
+  for (auto& [k, v] : flush_infos) {
+    k->GetCountManager()->AddFlushEntityAgg(v);
+  }
   return KStatus::SUCCESS;
 }
 
@@ -1108,7 +1122,7 @@ KStatus TsVGroup::GetEntitySegmentBuilder(std::shared_ptr<const TsPartitionVersi
   return KStatus::SUCCESS;
 }
 
-KStatus TsVGroup::WriteBatchData(kwdbContext_p ctx, TSTableID tbl_id, uint32_t table_version,
+KStatus TsVGroup::WriteBatchData(TSTableID tbl_id, uint32_t table_version,
                                  TSEntityID entity_id, timestamp64 p_time, TS_LSN lsn, TSSlice data) {
   auto current = version_manager_->Current();
   uint32_t database_id = schema_mgr_->GetDBIDByTableID(tbl_id);
@@ -1133,8 +1147,7 @@ KStatus TsVGroup::WriteBatchData(kwdbContext_p ctx, TSTableID tbl_id, uint32_t t
     LOG_ERROR("GetEntitySegmentBuilder failed.");
     return s;
   }
-  TsEntityFlushInfo flush_info{};
-  s = builder->WriteBatch(tbl_id, entity_id, table_version, lsn, data, &flush_info);
+  s = builder->WriteBatch(tbl_id, entity_id, table_version, lsn, data);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("WriteBatch failed.");
     return s;
@@ -1142,20 +1155,15 @@ KStatus TsVGroup::WriteBatchData(kwdbContext_p ctx, TSTableID tbl_id, uint32_t t
 
   ResetEntityLatestRow(entity_id, INT64_MAX);
   ResetEntityMaxTs(tbl_id, INT64_MAX, entity_id);
-
-  s = partition->GetCountManager()->AddFlushEntityAgg(flush_info);
-  if (s != KStatus::SUCCESS) {
-    LOG_ERROR("AddFlushEntityAgg failed.");
-  }
   return KStatus::SUCCESS;
 }
 
 KStatus TsVGroup::FinishWriteBatchData() {
   TsVersionUpdate update;
-  std::set<PartitionIdentifier> partition_ids;
+  std::map<PartitionIdentifier, std::list<TsEntityFlushInfo>> partition_ids;
   bool success = true;
   for (auto& kv : write_batch_segment_builders_) {
-    partition_ids.insert(kv.first);
+    partition_ids.insert({kv.first, kv.second->FlushInfos()});
     KStatus s = kv.second->WriteBatchFinish(&update);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("Finish entity segment builder failed");
@@ -1166,23 +1174,26 @@ KStatus TsVGroup::FinishWriteBatchData() {
   if (success) {
     version_manager_->ApplyUpdate(&update);
   }
-  for (auto p_id : partition_ids) {
-    auto partition = version_manager_->Current()->GetPartition(std::get<0>(p_id), std::get<1>(p_id));
+  for (auto& [k, v] : partition_ids) {
+    auto partition = version_manager_->Current()->GetPartition(std::get<0>(k), std::get<1>(k));
     partition->ResetStatus();
+    auto count_manager = partition->GetCountManager();
+    for (auto& info : v) {
+      count_manager->AddFlushEntityAgg(info);
+    }
   }
   return KStatus::SUCCESS;
 }
 
 KStatus TsVGroup::CancelWriteBatchData() {
   std::set<PartitionIdentifier> partition_ids;
-  auto current = version_manager_->Current();
   for (auto& kv : write_batch_segment_builders_) {
     partition_ids.insert(kv.first);
-    kv.second->WriteBatchCancel(current);
+    kv.second->WriteBatchCancel();
   }
   write_batch_segment_builders_.clear();
   for (auto p_id : partition_ids) {
-    auto partition = current->GetPartition(std::get<0>(p_id), std::get<1>(p_id));
+    auto partition = version_manager_->Current()->GetPartition(std::get<0>(p_id), std::get<1>(p_id));
     partition->ResetStatus();
   }
   return KStatus::SUCCESS;

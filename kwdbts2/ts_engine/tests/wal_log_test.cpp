@@ -274,3 +274,50 @@ TEST_F(TestWALManagerV2, TestWALDeleteTag) {
   }
   free(payload_data.data);
 }
+
+TEST_F(TestWALManagerV2, TestWALInsertData) {
+  kwdbContext_p ctx{};
+  uint64_t mtr_id = 1;
+  uint64_t vgroup_id = 66;
+  uint64_t table_id = 77;
+  string p_tag = "11111";
+
+  CreateTsTable meta;
+  ConstructRoachpbTableWithTypes(&meta, table_id, dtypes);
+  auto s = mgr->CreateTable(nullptr, 1, table_id, &meta);
+  EXPECT_EQ(s, KStatus::SUCCESS);
+  std::shared_ptr<TsTableSchemaManager> schema_mgr;
+  s = mgr->GetTableSchemaMgr(table_id, schema_mgr);
+  EXPECT_EQ(s, KStatus::SUCCESS);
+
+  const std::vector<AttributeInfo>* metric_schema={nullptr};
+  s = schema_mgr->GetMetricMeta(1, &metric_schema);
+  EXPECT_EQ(s, KStatus::SUCCESS);
+  std::vector<TagInfo> tag_schema;
+  s = schema_mgr->GetTagMeta(1, tag_schema);
+  EXPECT_EQ(s, KStatus::SUCCESS);
+
+  auto payload_data = GenRowPayload(*metric_schema, tag_schema, table_id, 1, 1, 1, 123);
+  uint64_t entry_lsn = 0;
+  TSSlice ptag = TSSlice{p_tag.data(), p_tag.size()};
+  s = wal_->WriteInsertWAL(ctx, mtr_id, 0, 0, ptag, payload_data, entry_lsn, vgroup_id);
+  EXPECT_EQ(s, KStatus::SUCCESS);
+
+  vector<LogEntry*> redo_logs;
+  std::vector<uint64_t> ignore;
+  wal_->ReadWALLog(redo_logs, wal_->GetFirstLSN(), wal_->FetchCurrentLSN(), ignore);
+  EXPECT_EQ(redo_logs.size(), 1);
+
+  auto* redo = reinterpret_cast<InsertLogMetricsEntry*>(redo_logs[0]);
+  EXPECT_EQ(redo->getType(), WALLogType::INSERT);
+  EXPECT_EQ(redo->getTableType(), WALTableType::DATA);
+  EXPECT_EQ(redo->getXID(), mtr_id);
+  EXPECT_EQ(redo->getVGroupID(), vgroup_id);
+  EXPECT_EQ(redo->getPrimaryTag().size(), p_tag.size());
+  EXPECT_EQ(redo->getPayload().len, payload_data.len);
+
+  for (auto& l : redo_logs) {
+    delete l;
+  }
+  free(payload_data.data);
+}
