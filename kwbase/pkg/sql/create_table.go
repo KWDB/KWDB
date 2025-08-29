@@ -62,6 +62,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/util/hlc"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 	"github.com/cockroachdb/errors"
+	"github.com/jackc/pgx"
 	"github.com/lib/pq/oid"
 )
 
@@ -691,7 +692,16 @@ func (n *createTableNode) startExec(params runParams) error {
 	}
 	if desc.IsColumnBasedTable() {
 		if schemaID == keys.PublicSchemaID {
-			n.n.Table.SchemaName = tree.MainSchemaName
+			switch n.dbDesc.ApDatabaseType {
+			case tree.ApDatabaseTypeDuckDB:
+				n.n.Table.SchemaName = tree.MainSchemaName
+			case tree.ApDatabaseTypeMysql:
+				config, err := pgx.ParseDSN(n.dbDesc.AttachInfo)
+				if err != nil {
+					return err
+				}
+				n.n.Table.SchemaName = tree.Name(config.Database)
+			}
 		}
 		n.n.Table.ExplicitSchema = true
 		n.n.Table.ExplicitCatalog = true
