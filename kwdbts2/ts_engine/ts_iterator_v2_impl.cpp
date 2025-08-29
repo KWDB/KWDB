@@ -640,12 +640,10 @@ KStatus TsAggIteratorV2Impl::Init(bool is_reversed) {
   if (s != KStatus::SUCCESS) {
     return s;
   }
-  /* if a col is not null type, we can change the first/last to first_row/last_row to speed up the aggregation
-   * which also can be done during query optimization.
-   */
 
-  final_agg_data_.resize(kw_scan_cols_.size(), TSSlice{nullptr, 0});
-  is_overflow_.reserve(kw_scan_cols_.size());
+  final_agg_data_.resize(kw_scan_cols_.size());
+  final_agg_buffer_is_new_.resize(kw_scan_cols_.size(), true);
+  is_overflow_.resize(kw_scan_cols_.size());
 
   has_first_row_col_ = false;
   has_last_row_col_ = false;
@@ -653,6 +651,7 @@ KStatus TsAggIteratorV2Impl::Init(bool is_reversed) {
     switch (scan_agg_types_[i]) {
       case Sumfunctype::LAST:
       case Sumfunctype::LASTTS: {
+          final_agg_buffer_is_new_[i] = (scan_agg_types_[i] == Sumfunctype::LAST && isVarLenType(attrs_[kw_scan_cols_[i]].type)) ? true : false;
           if ((last_ts_points_.empty() || last_ts_points_[i] == TsMaxMilliTimestamp ||
                last_ts_points_[i] == TsMaxMicroTimestamp) && attrs_[kw_scan_cols_[i]].isFlag(AINFO_NOT_NULL)) {
             if (scan_agg_types_[i] == Sumfunctype::LAST) {
@@ -675,6 +674,7 @@ KStatus TsAggIteratorV2Impl::Init(bool is_reversed) {
         break;
       case Sumfunctype::FIRST:
       case Sumfunctype::FIRSTTS: {
+          final_agg_buffer_is_new_[i] = (scan_agg_types_[i] == Sumfunctype::FIRST && isVarLenType(attrs_[kw_scan_cols_[i]].type)) ? true : false;
           if (attrs_[kw_scan_cols_[i]].isFlag(AINFO_NOT_NULL)) {
             if (scan_agg_types_[i] == Sumfunctype::FIRST) {
               scan_agg_types_[i] = Sumfunctype::FIRST_ROW;
@@ -709,16 +709,24 @@ KStatus TsAggIteratorV2Impl::Init(bool is_reversed) {
         }
         break;
       case Sumfunctype::LAST_ROW:
+        has_last_row_col_ = true;
+        final_agg_buffer_is_new_[i] = isVarLenType(attrs_[kw_scan_cols_[i]].type) ? true : false;
+        break;
       case Sumfunctype::LASTROWTS:
         has_last_row_col_ = true;
+        final_agg_buffer_is_new_[i] = false;
         break;
       case Sumfunctype::FIRST_ROW:
+        has_first_row_col_ = true;
+        final_agg_buffer_is_new_[i] = isVarLenType(attrs_[kw_scan_cols_[i]].type) ? true : false;
+        break;
       case Sumfunctype::FIRSTROWTS:
         has_first_row_col_ = true;
+        final_agg_buffer_is_new_[i] = false;
         break;
       case Sumfunctype::MAX_EXTEND:
       case Sumfunctype::MIN_EXTEND:
-        // Do nothing here, will handle it after all max/min are done.
+        final_agg_buffer_is_new_[i] = isVarLenType(attrs_[agg_extend_cols_[i]].type) ? true : false;
         break;
       default:
         LOG_ERROR("Agg function type is not supported in storage engine: %d.", scan_agg_types_[i]);
@@ -753,6 +761,7 @@ KStatus TsAggIteratorV2Impl::Init(bool is_reversed) {
     }
   }
   candidates_.resize(kw_scan_cols_.size());
+
   first_last_only_agg_ = (count_col_idxs_.size() + sum_col_idxs_.size() + max_col_idxs_.size() + min_col_idxs_.size() == 0);
 
   // This partition sort can be removed if the partitions got from ts version manager are sorted.
@@ -789,8 +798,7 @@ KStatus TsAggIteratorV2Impl::Next(ResultSet* res, k_uint32* count, bool* is_fini
     return KStatus::SUCCESS;
   }
 
-  final_agg_data_.clear();
-  final_agg_data_.resize(kw_scan_cols_.size(), TSSlice{nullptr, 0});
+  std::fill(final_agg_data_.begin(), final_agg_data_.end(), TSSlice{nullptr, 0});
 
   cur_first_col_idxs_ = first_col_idxs_;
   cur_last_col_idxs_ = last_col_idxs_;
@@ -803,8 +811,7 @@ KStatus TsAggIteratorV2Impl::Next(ResultSet* res, k_uint32* count, bool* is_fini
     candidates_[last_col_idx].ts = INT64_MIN;
   }
 
-  is_overflow_.clear();
-  is_overflow_.resize(kw_scan_cols_.size(), false);
+  std::fill(is_overflow_.begin(), is_overflow_.end(), false);
 
   for (auto count_col_idx : count_col_idxs_) {
     final_agg_data_[count_col_idx].len = sizeof(uint64_t);
@@ -869,7 +876,7 @@ KStatus TsAggIteratorV2Impl::Next(ResultSet* res, k_uint32* count, bool* is_fini
       b = new AggBatch(nullptr, 0, nullptr);
     } else if (!isVarLenType(attrs_[col_idx].type) || scan_agg_types_[i] == Sumfunctype::COUNT) {
       b = new AggBatch(slice.data, 1, nullptr);
-      b->is_new = true;
+      b->is_new = final_agg_buffer_is_new_[i];
       b->is_overflow = is_overflow_[i];
     } else {
       std::shared_ptr<void> ptr(slice.data, free);
@@ -972,16 +979,16 @@ KStatus TsAggIteratorV2Impl::Aggregate() {
       }
       continue;
     }
-    const auto& c = (agg_type == Sumfunctype::MAX_EXTEND) ?
-                    candidates_[max_map_[kw_scan_cols_[i]]] :
-                      (agg_type == Sumfunctype::MIN_EXTEND) ?
-                      candidates_[min_map_[kw_scan_cols_[i]]] :
-                        (agg_type == Sumfunctype::FIRST || agg_type == Sumfunctype::FIRSTTS) ?
-                        candidates_[first_map_[kw_scan_cols_[i]]] :
-                          ((agg_type == Sumfunctype::LAST || agg_type == Sumfunctype::LASTTS) ?
-                          candidates_[last_ts_points_.empty() ? last_map_[kw_scan_cols_[i]] : i] :
-                            ((agg_type == Sumfunctype::FIRST_ROW || agg_type == Sumfunctype::FIRSTROWTS) ?
-                              first_row_candidate_ : last_row_candidate_));
+    auto& c = ((agg_type == Sumfunctype::LAST_ROW || agg_type == Sumfunctype::LASTROWTS) ?
+                last_row_candidate_ :
+                  (agg_type == Sumfunctype::LAST || agg_type == Sumfunctype::LASTTS) ?
+                  candidates_[last_ts_points_.empty() ? last_map_[kw_scan_cols_[i]] : i] :
+                    (agg_type == Sumfunctype::FIRST_ROW || agg_type == Sumfunctype::FIRSTROWTS) ?
+                    first_row_candidate_ :
+                      (agg_type == Sumfunctype::FIRST || agg_type == Sumfunctype::FIRSTTS) ?
+                      candidates_[first_map_[kw_scan_cols_[i]]] :
+                        (agg_type == Sumfunctype::MAX_EXTEND) ?
+                        candidates_[max_map_[kw_scan_cols_[i]]] : candidates_[min_map_[kw_scan_cols_[i]]]);
     const k_uint32 col_idx = (agg_type == Sumfunctype::MAX_EXTEND || agg_type == Sumfunctype::MIN_EXTEND) ?
                              agg_extend_cols_[i] : kw_scan_cols_[i];
     if (final_agg_data_[i].data) {
@@ -995,6 +1002,17 @@ KStatus TsAggIteratorV2Impl::Aggregate() {
       final_agg_data_[i].data = static_cast<char*>(malloc(sizeof(timestamp64)));
       memcpy(final_agg_data_[i].data, &c.ts, sizeof(timestamp64));
       final_agg_data_[i].len = sizeof(timestamp64);
+      /* crash with following code to avoid malloc and memcpy.
+      char* value = nullptr;
+      TsBitmap bitmap;
+      auto ret = c.blk_span->GetFixLenColAddr(0, &value, bitmap, false);
+      if (ret != KStatus::SUCCESS) {
+        return ret;
+      }
+
+      final_agg_data_[i].len = c.blk_span->GetColSize(0);
+      final_agg_data_[i].data = value + c.row_idx * final_agg_data_[i].len;
+      */
     } else {
       if (!c.blk_span->IsColExist(col_idx)) {
         if (agg_type == Sumfunctype::FIRST_ROW || agg_type == Sumfunctype::LAST_ROW) {
@@ -1016,10 +1034,7 @@ KStatus TsAggIteratorV2Impl::Aggregate() {
             final_agg_data_[i] = {nullptr, 0};
           } else {
             final_agg_data_[i].len = c.blk_span->GetColSize(col_idx);
-            final_agg_data_[i].data = static_cast<char*>(malloc(final_agg_data_[i].len));
-            memcpy(final_agg_data_[i].data,
-                  value + c.row_idx * final_agg_data_[i].len,
-                  final_agg_data_[i].len);
+            final_agg_data_[i].data = value + c.row_idx * final_agg_data_[i].len;
           }
         } else {
           TSSlice slice;

@@ -153,6 +153,7 @@ class TsAggIteratorV2Impl : public TsStorageIteratorV2Impl {
   std::vector<k_int32> agg_extend_cols_;
 
   std::vector<TSSlice> final_agg_data_;
+  std::vector<bool> final_agg_buffer_is_new_;
   std::vector<AggCandidate> candidates_;
   std::vector<bool> is_overflow_;
   std::vector<k_uint32> first_col_idxs_;
