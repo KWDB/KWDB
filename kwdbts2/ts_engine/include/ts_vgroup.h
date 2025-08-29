@@ -231,7 +231,7 @@ class TsVGroup {
   KStatus GetEntitySegmentBuilder(std::shared_ptr<const TsPartitionVersion>& partition,
                                   std::shared_ptr<TsEntitySegmentBuilder>& builder);
 
-  KStatus WriteBatchData(kwdbContext_p ctx, TSTableID tbl_id, uint32_t table_version, TSEntityID entity_id,
+  KStatus WriteBatchData(TSTableID tbl_id, uint32_t table_version, TSEntityID entity_id,
                          timestamp64 p_time, TS_LSN lsn, TSSlice data);
 
   KStatus FinishWriteBatchData();

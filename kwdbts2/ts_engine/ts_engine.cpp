@@ -1496,19 +1496,13 @@ KStatus TSEngineV2Impl::WriteBatchData(kwdbContext_p ctx, TSTableID table_id, ui
 KStatus TSEngineV2Impl::CancelBatchJob(kwdbContext_p ctx, uint64_t job_id) {
   // handle write worker
   {
-    std::shared_ptr<TsBatchDataWorker> worker = nullptr;
-    RW_LATCH_S_LOCK(&write_batch_workers_lock_);
+    RW_LATCH_X_LOCK(&write_batch_workers_lock_);
     auto write_it = write_batch_data_workers_.find(job_id);
     if (write_it != write_batch_data_workers_.end()) {
-      worker = write_it->second;
-    }
-    RW_LATCH_UNLOCK(&write_batch_workers_lock_);
-    if (worker != nullptr) {
       write_it->second->Cancel(ctx);
-      LOG_INFO("Cancel write batch data, job_id[%lu]", job_id);
     }
-    RW_LATCH_X_LOCK(&write_batch_workers_lock_);
     write_batch_data_workers_.erase(job_id);
+    LOG_INFO("Cancel write batch data, job_id[%lu]", job_id);
     RW_LATCH_UNLOCK(&write_batch_workers_lock_);
   }
   // handle read worker
@@ -1530,22 +1524,17 @@ KStatus TSEngineV2Impl::CancelBatchJob(kwdbContext_p ctx, uint64_t job_id) {
 KStatus TSEngineV2Impl::BatchJobFinish(kwdbContext_p ctx, uint64_t job_id) {
   // handle write worker
   {
-    std::shared_ptr<TsBatchDataWorker> worker = nullptr;
-    RW_LATCH_S_LOCK(&write_batch_workers_lock_);
+    RW_LATCH_X_LOCK(&write_batch_workers_lock_);
     auto write_it = write_batch_data_workers_.find(job_id);
     if (write_it != write_batch_data_workers_.end()) {
-      worker = write_it->second;
-    }
-    RW_LATCH_UNLOCK(&write_batch_workers_lock_);
-    if (worker != nullptr) {
-      if (worker->Finish(ctx) != KStatus::SUCCESS) {
-        LOG_INFO("Finish write batch data failed, job_id[%lu]", job_id);
-      } else {
-        LOG_INFO("Finish write batch data succeeded, job_id[%lu]", job_id);
+      while (write_it->second.use_count() > 1) {
+        LOG_INFO("Waiting for write batch data to finish, job_id[%lu]", job_id);
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
       }
+      write_it->second->Finish(ctx);
     }
-    RW_LATCH_X_LOCK(&write_batch_workers_lock_);
     write_batch_data_workers_.erase(job_id);
+    LOG_INFO("Finish write batch data succeeded, job_id[%lu]", job_id);
     RW_LATCH_UNLOCK(&write_batch_workers_lock_);
   }
   // handle read worker

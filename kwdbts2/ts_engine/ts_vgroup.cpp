@@ -1121,7 +1121,7 @@ KStatus TsVGroup::GetEntitySegmentBuilder(std::shared_ptr<const TsPartitionVersi
   return KStatus::SUCCESS;
 }
 
-KStatus TsVGroup::WriteBatchData(kwdbContext_p ctx, TSTableID tbl_id, uint32_t table_version,
+KStatus TsVGroup::WriteBatchData(TSTableID tbl_id, uint32_t table_version,
                                  TSEntityID entity_id, timestamp64 p_time, TS_LSN lsn, TSSlice data) {
   auto current = version_manager_->Current();
   uint32_t database_id = schema_mgr_->GetDBIDByTableID(tbl_id);
