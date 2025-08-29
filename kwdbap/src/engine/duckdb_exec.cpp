@@ -127,10 +127,8 @@ namespace kwdbts {
     auto wrapper = reinterpret_cast<DatabaseWrapper *>(db);
     db_ = wrapper;
     db_path_ = std::move(db_path);
-    DuckDB init_db(db_path_ + "/tpch");
-    connect_ = new Connection(init_db);
-    init_db_ = make_shared_ptr<DuckDB>(init_db);
-    //connect_ = new Connection(*db_->database);
+    init_db_ = db_->database;
+    connect_ = new Connection(*db_->database);
     fspecs_ = new FlowSpec();
   }
 
