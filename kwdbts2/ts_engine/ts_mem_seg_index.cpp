@@ -10,6 +10,8 @@
 // See the Mulan PSL v2 for more details.
 
 #include "ts_mem_seg_index.h"
+#include <algorithm>
+#include "libkwdbts2.h"
 
 namespace kwdbts {
 
@@ -57,30 +59,29 @@ SkipListSplice* TsMemSegIndex::AllocateSkiplistSplice() {
   return splice;
 }
 
-bool TsMemSegIndex::InsertRowData(const TSMemSegRowData& row, uint32_t row_idx) {
-  size_t malloc_size = sizeof(TSMemSegRowData) + row.row_data.len + TSMemSegRowData::GetKeyLen();
+TSMemSegRowData* TsMemSegIndex::AllocateMemSegRowData(uint32_t db_id, TSTableID tbl_id, uint32_t tbl_version,
+                                                      TSEntityID en_id, TSSlice row_data) {
+  size_t malloc_size = sizeof(TSMemSegRowData) + row_data.len;
   char* buf = AllocateKeyValue(malloc_size);
-  if (buf != nullptr) {
-    TSMemSegRowData* cur_row = reinterpret_cast<TSMemSegRowData*>(buf + +TSMemSegRowData::GetKeyLen());
-    memcpy(cur_row, &row, sizeof(TSMemSegRowData));
-    cur_row->row_data.data = buf + sizeof(TSMemSegRowData) + TSMemSegRowData::GetKeyLen();
-    cur_row->row_data.len = row.row_data.len;
-    cur_row->row_idx_in_mem_seg = row_idx;
-    memcpy(cur_row->row_data.data, row.row_data.data, row.row_data.len);
-    cur_row->GenKey(buf);
-    return InsertWithCAS(buf);
-  }
-  return false;
+  assert(buf != nullptr);
+  std::copy(row_data.data, row_data.data + row_data.len, buf + sizeof(TSMemSegRowData));
+  TSMemSegRowData* data = new (buf) TSMemSegRowData(db_id, tbl_id, tbl_version, en_id);
+  data->SetRowData(TSSlice{buf + sizeof(TSMemSegRowData), row_data.len});
+  return data;
 }
 
-bool TsMemSegIndex::InsertWithCAS(const char* key) {
+void TsMemSegIndex::InsertRowData(const TSMemSegRowData* row) {
+  const char* key = reinterpret_cast<const char*>(row);
+  InsertWithCAS(key);
+}
+
+void TsMemSegIndex::InsertWithCAS(const char* key) {
   SkipListNode* prev[kMaxPossibleHeight];
   SkipListNode* next_node[kMaxPossibleHeight];
   SkipListSplice cur_splice;
   cur_splice.prev_ = prev;
   cur_splice.next_ = next_node;
   SkipListNode* x = reinterpret_cast<SkipListNode*>(const_cast<char*>(key)) - 1;
-  const TSMemSegRowData* key_decoded = compare_.DecodeKeyValue(key);
   int sl_height = x->UnstashHeight();
   assert(sl_height >= 1 && sl_height <= kMaxHeight_);
 
@@ -94,88 +95,32 @@ bool TsMemSegIndex::InsertWithCAS(const char* key) {
   }
   assert(max_height <= kMaxPossibleHeight);
 
-  int recompute_height = 0;
-  if (cur_splice.height_ < max_height) {
-    cur_splice.prev_[max_height] = head_node_;
-    cur_splice.next_[max_height] = nullptr;
-    cur_splice.height_ = max_height;
-    recompute_height = max_height;
-  } else {
-    while (recompute_height < max_height) {
-      if (cur_splice.prev_[recompute_height]->Next(recompute_height) != cur_splice.next_[recompute_height]) {
-        ++recompute_height;
-      } else if (cur_splice.prev_[recompute_height] != head_node_ &&
-                 !IsKeyAfterNode(key_decoded, cur_splice.prev_[recompute_height])) {
-        recompute_height = max_height;
-      } else if (IsKeyAfterNode(key_decoded, cur_splice.next_[recompute_height])) {
-        recompute_height = max_height;
-      } else {
-        break;
-      }
-    }
-  }
-  assert(recompute_height <= max_height);
-  if (recompute_height > 0) {
-    RecomputeSpliceLevels(key_decoded, &cur_splice, recompute_height);
-  }
+  cur_splice.prev_[max_height] = head_node_;
+  cur_splice.next_[max_height] = nullptr;
+  cur_splice.height_ = max_height;
+
+  RecomputeSpliceLevels(key, &cur_splice, max_height);
 
   bool splice_valid = true;
   {
     for (int i = 0; i < sl_height; ++i) {
       while (true) {
-        if (UNLIKELY(i == 0 && cur_splice.next_[i] != nullptr &&
-                    compare_(x->Key(), cur_splice.next_[i]->Key()) >= 0)) {
-          // duplicate
-          return false;
-        }
-        if (UNLIKELY(i == 0 && cur_splice.prev_[i] != head_node_ &&
-                    compare_(cur_splice.prev_[i]->Key(), x->Key()) >= 0)) {
-          // duplicate
-          return false;
-        }
-        assert(cur_splice.next_[i] == nullptr ||  compare_(x->Key(), cur_splice.next_[i]->Key()) < 0);
-        assert(cur_splice.prev_[i] == head_node_ || compare_(cur_splice.prev_[i]->Key(), x->Key()) < 0);
         x->NoBarrier_SetNext(i, cur_splice.next_[i]);
         if (cur_splice.prev_[i]->CASNext(i, cur_splice.next_[i], x)) {
           // insert success
           break;
         }
-        FindSpliceForLevel<false>(key_decoded, cur_splice.prev_[i], nullptr, i,
-                                  &cur_splice.prev_[i], &cur_splice.next_[i]);
-        if (i > 0) {
-          splice_valid = false;
-        }
+        FindSpliceForLevel<false>(key, cur_splice.prev_[i], nullptr, i, &cur_splice.prev_[i], &cur_splice.next_[i]);
       }
     }
   }
-  if (splice_valid) {
-    for (int i = 0; i < sl_height; ++i) {
-      cur_splice.prev_[i] = x;
-    }
-    assert(cur_splice.prev_[cur_splice.height_] == head_node_);
-    assert(cur_splice.next_[cur_splice.height_] == nullptr);
-    for (int i = 0; i < cur_splice.height_; ++i) {
-      assert(cur_splice.next_[i] == nullptr || compare_(key, cur_splice.next_[i]->Key()) < 0);
-      assert(cur_splice.prev_[i] == head_node_ || compare_(cur_splice.prev_[i]->Key(), key) <= 0);
-      assert(cur_splice.next_[i + 1] == cur_splice.next_[i] || cur_splice.next_[i + 1] == nullptr ||
-             compare_(cur_splice.next_[i]->Key(), cur_splice.next_[i + 1]->Key()) < 0);
-      assert(cur_splice.prev_[i + 1] == cur_splice.prev_[i] || cur_splice.prev_[i + 1] == head_node_ ||
-             compare_(cur_splice.prev_[i + 1]->Key(), cur_splice.prev_[i]->Key()) < 0);
-    }
-  } else {
-    cur_splice.height_ = 0;
-  }
-  return true;
 }
 
-void TsMemSegIndex::RecomputeSpliceLevels(const TSMemSegRowData*& key,
-                                          SkipListSplice* splice,
-                                          int recompute_level) {
+void TsMemSegIndex::RecomputeSpliceLevels(const char* key, SkipListSplice* splice, int recompute_level) {
   assert(recompute_level > 0);
   assert(recompute_level <= splice->height_);
   for (int i = recompute_level - 1; i >= 0; --i) {
-    FindSpliceForLevel<true>(key, splice->prev_[i + 1], splice->next_[i + 1], i,
-                       &splice->prev_[i], &splice->next_[i]);
+    FindSpliceForLevel<true>(key, splice->prev_[i + 1], splice->next_[i + 1], i, &splice->prev_[i], &splice->next_[i]);
   }
 }
 
@@ -191,39 +136,17 @@ int TsMemSegIndex::RandomHeight() {
   return sl_height;
 }
 
-bool TsMemSegIndex::IsKeyAfterNode(const char* key, SkipListNode* n) const {
-  assert(n != head_node_);
-  return (n != nullptr) && (compare_(n->Key(), key) < 0);
-}
-
-bool TsMemSegIndex::IsKeyAfterNode(const TSMemSegRowData*& key, SkipListNode* n) const {
-  assert(n != head_node_);
-  return (n != nullptr) && (compare_(n->Key(), key) < 0);
-}
-
 SkipListNode* TsMemSegIndex::FindGreaterOrEqual(const char* key) const {
-  SkipListNode* x = head_node_;
-  const TSMemSegRowData* key_decoded = compare_.DecodeKeyValue(key);
   int level = GetMaxHeight() - 1;
-  SkipListNode* last_bigger_node = nullptr;
-  while (true) {
-    SkipListNode* next_node = x->Next(level);
-    if (next_node != nullptr) {
-      PREFETCH(next_node->Next(level), 0, 1);
-    }
-    assert(x == head_node_ || IsKeyAfterNode(key_decoded, x));
-    assert(x == head_node_ || next_node == nullptr || IsKeyAfterNode(next_node->Key(), x));
-    int cmp = (next_node == nullptr || next_node == last_bigger_node) ? 1 : compare_(next_node->Key(), key_decoded);
-    if (cmp == 0 || (cmp > 0 && level == 0)) {
-      return next_node;
-    } else if (cmp < 0) {
-      x = next_node;
-    } else {
-      last_bigger_node = next_node;
-      level--;
+  SkipListNode* lhs = head_node_;
+  for (; level >= 0; level--) {
+    SkipListNode* rhs = lhs->Next(level);
+    while (rhs != nullptr && compare_(rhs->Key(), key) < 0) {
+      lhs = rhs;
+      rhs = lhs->Next(level);
     }
   }
+  return lhs->Next(0);
 }
-
 
 }  //  namespace kwdbts

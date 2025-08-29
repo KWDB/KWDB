@@ -38,7 +38,6 @@ class TsMemSegment : public TsSegmentBase, public enable_shared_from_this<TsMemS
   friend class TsMemSegmentManager;
 
  private:
-  std::atomic<uint32_t> row_idx_{1};
   std::atomic<uint32_t> intent_row_num_{0};
   std::atomic<uint32_t> written_row_num_{0};
   std::atomic<uint32_t> payload_mem_usage_{0};
@@ -54,8 +53,6 @@ class TsMemSegment : public TsSegmentBase, public enable_shared_from_this<TsMemS
   }
   ~TsMemSegment() {}
 
-  void Traversal(std::function<bool(TSMemSegRowData* row)> func, bool waiting_done = false);
-
   uint32_t GetPayloadMemUsage() { return payload_mem_usage_.load(std::memory_order_relaxed); }
   size_t Size() { return skiplist_.GetAllocator().MemoryAllocatedBytes(); }
 
@@ -63,13 +60,18 @@ class TsMemSegment : public TsSegmentBase, public enable_shared_from_this<TsMemS
 
   inline void AllocRowNum(uint32_t row_num) { intent_row_num_.fetch_add(row_num); }
 
-  bool AppendOneRow(TSMemSegRowData& row);
+  TSMemSegRowData* AllocOneRow(uint32_t db_id, TSTableID tbl_id, uint32_t tbl_version, TSEntityID en_id,
+                               TSSlice row_data) {
+    return skiplist_.AllocateMemSegRowData(db_id, tbl_id, tbl_version, en_id, row_data);
+  }
 
-  bool HasEntityRows(const TsScanFilterParams& filter);
+  void AppendOneRow(TSMemSegRowData* row);
 
-  bool GetEntityRows(const TsBlockItemFilterParams& filter, std::list<TSMemSegRowData*>* rows);
+  // bool HasEntityRows(const TsScanFilterParams& filter);
 
-  bool GetAllEntityRows(std::list<TSMemSegRowData*>* rows);
+  bool GetEntityRows(const TsBlockItemFilterParams& filter, std::list<const TSMemSegRowData*>* rows);
+
+  bool GetAllEntityRows(std::list<const TSMemSegRowData*>* rows);
 
   inline uint32_t GetMemSegmentSize() { return skiplist_.GetAllocator().MemoryAllocatedBytes(); }
 
@@ -82,7 +84,7 @@ class TsMemSegment : public TsSegmentBase, public enable_shared_from_this<TsMemS
 class TsMemSegBlock : public TsBlock {
  private:
   std::shared_ptr<TsMemSegment> mem_seg_;
-  std::vector<TSMemSegRowData*> row_data_;
+  std::vector<const TSMemSegRowData*> row_data_;
   timestamp64 min_ts_{INVALID_TS};
   timestamp64 max_ts_{INVALID_TS};
   std::unique_ptr<TsRawPayloadRowParser> parser_ = nullptr;
@@ -103,15 +105,15 @@ class TsMemSegBlock : public TsBlock {
 
   TSEntityID GetEntityId() {
     assert(row_data_.size() > 0);
-    return row_data_[0]->entity_id;
+    return row_data_[0]->GetEntityId();
   }
   TSTableID GetTableId() override {
     assert(row_data_.size() > 0);
-    return row_data_[0]->table_id;
+    return row_data_[0]->GetTableId();
   }
   uint32_t GetTableVersion() override {
     assert(row_data_.size() > 0);
-    return row_data_[0]->table_version;
+    return row_data_[0]->GetTableVersion();
   }
   void GetTSRange(timestamp64* min_ts, timestamp64* max_ts) {
     *min_ts = min_ts_;
@@ -124,32 +126,32 @@ class TsMemSegBlock : public TsBlock {
   // if just get timestamp , this function return fast.
   timestamp64 GetTS(int row_num) override {
     assert(row_data_.size() > row_num);
-    return row_data_[row_num]->ts;
+    return row_data_[row_num]->GetTS();
   }
 
   timestamp64 GetFirstTS() override {
     assert(row_data_.size() > 0);
-    return row_data_[0]->ts;
+    return row_data_[0]->GetTS();
   }
 
   timestamp64 GetLastTS() override {
     assert(row_data_.size() > 0);
-    return row_data_[row_data_.size() - 1]->ts;
+    return row_data_[row_data_.size() - 1]->GetTS();
   }
 
   TS_LSN GetFirstLSN() override {
     assert(row_data_.size() > 0);
-    return row_data_[0]->lsn;
+    return row_data_[0]->GetLSN();
   }
 
   TS_LSN GetLastLSN() override {
     assert(row_data_.size() > 0);
-    return row_data_[row_data_.size() - 1]->lsn;
+    return row_data_[row_data_.size() - 1]->GetLSN();
   }
 
-  uint64_t* GetLSNAddr(int row_num) override {
+  const uint64_t* GetLSNAddr(int row_num) override {
     assert(row_data_.size() > row_num);
-    return &row_data_[row_num]->lsn;
+    return row_data_[row_num]->GetLSNAddr();
   }
 
   KStatus GetColBitmap(uint32_t col_id, const std::vector<AttributeInfo>* schema, TsBitmap& bitmap) override;
@@ -160,7 +162,7 @@ class TsMemSegBlock : public TsBlock {
     return KStatus::FAIL;
   }
 
-  bool InsertRow(TSMemSegRowData* row) {
+  bool InsertRow(const TSMemSegRowData* row) {
     bool can_insert = true;
     if (row_data_.size() != 0) {
       auto first = row_data_.front();
@@ -170,11 +172,11 @@ class TsMemSegBlock : public TsBlock {
     }
     if (can_insert) {
       row_data_.push_back(row);
-      if (min_ts_ == INVALID_TS || min_ts_ > row->ts) {
-        min_ts_ = row->ts;
+      if (min_ts_ == INVALID_TS || min_ts_ > row->GetTS()) {
+        min_ts_ = row->GetTS();
       }
-      if (max_ts_ == INVALID_TS || max_ts_ < row->ts) {
-        max_ts_ = row->ts;
+      if (max_ts_ == INVALID_TS || max_ts_ < row->GetTS()) {
+        max_ts_ = row->GetTS();
       }
     }
     return can_insert;
