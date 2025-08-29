@@ -791,6 +791,21 @@ KStatus WALMgr::ReadWALLog(std::vector<LogEntry*>& logs, TS_LSN start_lsn, TS_LS
   return status;
 }
 
+KStatus WALMgr::ReadUncommittedWALLog(std::vector<LogEntry*>& logs, TS_LSN start_lsn, TS_LSN end_lsn,
+                           std::vector<uint64_t>& end_chk, const std::vector<uint64_t>& uncommitted_xid) {
+  KStatus status = KStatus::SUCCESS;
+  file_mgr_->Lock();
+  for (auto x_id : uncommitted_xid) {
+    status = buffer_mgr_->readWALLogs(logs, start_lsn, end_lsn, end_chk, x_id);
+    if (status == KStatus::FAIL) {
+      LOG_ERROR("Failed to readWALLogs with txn_id : %d", x_id)
+      return status;
+    }
+  }
+  file_mgr_->Unlock();
+  return status;
+}
+
 KStatus WALMgr::ReadWALLogAndSwitchFile(std::vector<LogEntry*>& logs, TS_LSN start_lsn, TS_LSN end_lsn,
                                         std::vector<uint64_t>& end_chk) {
   file_mgr_->Lock();
@@ -814,6 +829,20 @@ KStatus WALMgr::ReadWALLogForMtr(uint64_t mtr_trans_id, std::vector<LogEntry*>& 
   file_mgr_->Unlock();
   if (status == FAIL) {
     LOG_ERROR("Failed to read the WAL log with transaction id %lu", mtr_trans_id)
+    return FAIL;
+  }
+
+  return SUCCESS;
+}
+
+KStatus WALMgr::ReadUncommittedTxnID(std::vector<uint64_t>& uncommitted_xid) {
+  file_mgr_->Lock();
+  auto first_lsn = GetFirstLSN();
+  auto last_lsn = FetchCurrentLSN();
+  KStatus status = buffer_mgr_->readUncommittedTxnID(uncommitted_xid, first_lsn, last_lsn);
+  file_mgr_->Unlock();
+  if (status == FAIL) {
+    LOG_ERROR("Failed to readUncommittedTxnID");
     return FAIL;
   }
 

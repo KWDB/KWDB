@@ -186,7 +186,7 @@ class TsVGroup {
 
   KStatus RemoveChkFile(kwdbContext_p ctx);
 
-  KStatus ReadWALLogFromLastCheckpoint(kwdbContext_p ctx, std::vector<LogEntry*>& logs, TS_LSN& last_lsn);
+  KStatus ReadWALLogFromLastCheckpoint(kwdbContext_p ctx, std::vector<LogEntry*>& logs, TS_LSN& last_lsn, std::vector<uint64_t> uncommitted_xid);
 
   KStatus ReadLogFromLastCheckpoint(kwdbContext_p ctx, std::vector<LogEntry*>& logs, TS_LSN& last_lsn);
 
