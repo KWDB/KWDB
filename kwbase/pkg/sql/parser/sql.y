@@ -737,7 +737,7 @@ func (u *sqlSymUnion) caseWhens() []*tree.CaseWhen {
 %token <str> LOCALTIME LOCALTIMESTAMP LOCATION LOCKED LOGIN LOOKUP LOOP LOW LSHIFT
 %token <str> ACTIVETIME LUA
 
-%token <str> M MATCH MATERIALIZED MB MEMCAPACITY MEMORY MERGE MICROSECOND MILLISECOND MINVALUE MAXVALUE MINUTE MON MONTH MS
+%token <str> M MATCH MATERIALIZED MB MEMCAPACITY MEMORY MERGE MICROSECOND MILLISECOND MINVALUE MAXVALUE MINUTE MON MONTH MS MYSQL
 
 %token <str> NAN NAME NAMES NANOSECOND NATURAL NCHAR NEVER NEXT NO NOCREATEROLE NOLOGIN NO_INDEX_JOIN
 %token <str> NONE NORMAL NOT NOTHING NOTNULL NOWAIT NS NULL NULLIF NULLS NUMERIC NVARCHAR
@@ -861,6 +861,8 @@ func (u *sqlSymUnion) caseWhens() []*tree.CaseWhen {
 %type <tree.Statement> alter_rename_sequence_stmt
 %type <tree.Statement> alter_sequence_options_stmt
 
+%type <str> attach_info
+
 %type <tree.Statement> backup_stmt
 %type <tree.Statement> begin_stmt
 
@@ -893,6 +895,7 @@ func (u *sqlSymUnion) caseWhens() []*tree.CaseWhen {
 %type <tree.Statement> create_database_stmt
 %type <tree.Statement> create_ts_database_stmt
 %type <tree.Statement> create_ap_database_stmt
+%type <tree.Statement> create_mysql_database_stmt
 %type <tree.Statement> create_index_stmt
 %type <tree.Statement> create_role_stmt
 %type <tree.Statement> create_schema_stmt
@@ -2731,6 +2734,7 @@ create_ddl_stmt:
   create_changefeed_stmt
 | create_ts_database_stmt // EXTEND WITH HELP: CREATE TS DATABASE
 | create_ap_database_stmt // EXTEND WITH HELP: CREATE AP DATABASE
+| create_mysql_database_stmt // EXTEND WITH HELP: CREATE MYSQL DATABASE
 | create_database_stmt // EXTEND WITH HELP: CREATE DATABASE
 | create_index_stmt    // EXTEND WITH HELP: CREATE INDEX
 | create_schema_stmt   // EXTEND WITH HELP: CREATE SCHEMA
@@ -8009,10 +8013,36 @@ create_ap_database_stmt:
   		$$.val = &tree.CreateDatabase{
 				Name: tree.Name($4),
 				EngineType: tree.EngineTypeAP,
+				ApDatabaseType: tree.ApDatabaseTypeDuckDB,
 				Comment: $5,
       }
   	}
 | CREATE AP DATABASE error // SHOW HELP: CREATE AP DATABASE
+
+attach_info:
+  name
+| /* EMPTY */
+  {
+    $$ = ""
+  }
+
+
+// %Help: CREATE MYSQL DATABASE - create a new mysql database in AP engine
+// %Category: DDL
+// %Text:
+// CREATE MYSQL DATABASE <name> ( <attachinfo> ) [COMMENT <comment>]
+create_mysql_database_stmt:
+	CREATE MYSQL DATABASE database_name '(' attach_info ')' opt_comment_clause
+  	{
+  		$$.val = &tree.CreateDatabase{
+				Name: tree.Name($4),
+				EngineType: tree.EngineTypeAP,
+				ApDatabaseType: tree.ApDatabaseTypeMysql,
+				AttachInfo: $6,
+				Comment: $8,
+			}
+ 		}
+| CREATE MYSQL DATABASE error // SHOW HELP: CREATE MYSQL DATABASE
 
 opt_template_clause:
   TEMPLATE opt_equal non_reserved_word_or_sconst
@@ -12987,6 +13017,7 @@ unreserved_keyword:
 | MON
 | MONTH
 | MS
+| MYSQL
 | NAMES
 | NAN
 | NANOSECOND

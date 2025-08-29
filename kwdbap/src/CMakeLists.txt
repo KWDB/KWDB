@@ -73,11 +73,11 @@ if(AMALGAMATION_BUILD)
   link_threads(duckdb_static PUBLIC)
   link_extension_libraries(duckdb_static PUBLIC)
 
-  install(FILES "${PROJECT_SOURCE_DIR}/src/amalgamation/duckdb.hpp"
-                "${PROJECT_SOURCE_DIR}/src/include/duckdb.h"
-          DESTINATION "${INSTALL_INCLUDE_DIR}")
-  install(FILES "${PROJECT_SOURCE_DIR}/src/include/duckdb/common/winapi.hpp"
-          DESTINATION "${INSTALL_INCLUDE_DIR}/duckdb/common")
+  # install(FILES "${PROJECT_SOURCE_DIR}/src/amalgamation/duckdb.hpp"
+  #               "${PROJECT_SOURCE_DIR}/src/include/duckdb.h"
+  #         DESTINATION "${INSTALL_INCLUDE_DIR}")
+  # install(FILES "${PROJECT_SOURCE_DIR}/src/include/duckdb/common/winapi.hpp"
+  #         DESTINATION "${INSTALL_INCLUDE_DIR}/duckdb/common")
 
 else()
 
@@ -152,21 +152,21 @@ else()
     duckdb_static PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
                          $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
 
-  install(
-    DIRECTORY "${PROJECT_SOURCE_DIR}/src/include/duckdb"
-    DESTINATION "${INSTALL_INCLUDE_DIR}"
-    FILES_MATCHING
-    PATTERN "*.hpp"
-    PATTERN "*.ipp")
-  install(FILES "${PROJECT_SOURCE_DIR}/src/include/duckdb.hpp"
-                "${PROJECT_SOURCE_DIR}/src/include/duckdb.h"
-          DESTINATION "${INSTALL_INCLUDE_DIR}")
+  # install(
+  #   DIRECTORY "${PROJECT_SOURCE_DIR}/src/include/duckdb"
+  #   DESTINATION "${INSTALL_INCLUDE_DIR}"
+  #   FILES_MATCHING
+  #   PATTERN "*.hpp"
+  #   PATTERN "*.ipp")
+  # install(FILES "${PROJECT_SOURCE_DIR}/src/include/duckdb.hpp"
+  #               "${PROJECT_SOURCE_DIR}/src/include/duckdb.h"
+  #         DESTINATION "${INSTALL_INCLUDE_DIR}")
 
 endif()
 
 install(
-  TARGETS duckdb duckdb_static
+  TARGETS duckdb 
   EXPORT "${DUCKDB_EXPORT_SET}"
   LIBRARY DESTINATION "${INSTALL_LIB_DIR}"
-  ARCHIVE DESTINATION "${INSTALL_LIB_DIR}"
+  # ARCHIVE DESTINATION "${INSTALL_LIB_DIR}"
   RUNTIME DESTINATION "${INSTALL_BIN_DIR}")

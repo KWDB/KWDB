@@ -52,8 +52,9 @@ target_include_directories(${TARGET_NAME}_loadable_extension
                            PRIVATE include ${MYSQL_INCLUDE_DIR})
 target_link_libraries(${TARGET_NAME}_loadable_extension ${MYSQL_LIBRARIES})
 
-install(
-  TARGETS mysql_scanner_extension
-  EXPORT "${DUCKDB_EXPORT_SET}"
-  LIBRARY DESTINATION "${INSTALL_LIB_DIR}"
-  ARCHIVE DESTINATION "${INSTALL_LIB_DIR}")
+# install(
+#   TARGETS mysql_scanner_extension
+#   EXPORT "${DUCKDB_EXPORT_SET}"
+#   LIBRARY DESTINATION "${INSTALL_LIB_DIR}"
+# #   ARCHIVE DESTINATION "${INSTALL_LIB_DIR}"
+# )

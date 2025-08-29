@@ -82,8 +82,9 @@ set(PARAMETERS "-warnings")
 build_loadable_extension(parquet ${PARAMETERS} ${PARQUET_EXTENSION_FILES})
 target_link_libraries(parquet_loadable_extension duckdb_mbedtls duckdb_zstd)
 
-install(
-  TARGETS parquet_extension
-  EXPORT "${DUCKDB_EXPORT_SET}"
-  LIBRARY DESTINATION "${INSTALL_LIB_DIR}"
-  ARCHIVE DESTINATION "${INSTALL_LIB_DIR}")
+# install(
+#   TARGETS parquet_extension
+#   EXPORT "${DUCKDB_EXPORT_SET}"
+#   LIBRARY DESTINATION "${INSTALL_LIB_DIR}"
+#   # ARCHIVE DESTINATION "${INSTALL_LIB_DIR}"
+# )

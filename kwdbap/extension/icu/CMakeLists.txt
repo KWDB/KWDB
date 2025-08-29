@@ -42,8 +42,9 @@ build_loadable_extension(icu ${PARAMETERS} ${ICU_EXTENSION_FILES})
 if(NOT WITH_INTERNAL_ICU)
   target_link_libraries(icu_loadable_extension ICU::i18n ICU::uc ICU::data)
 endif()
-install(
-  TARGETS icu_extension
-  EXPORT "${DUCKDB_EXPORT_SET}"
-  LIBRARY DESTINATION "${INSTALL_LIB_DIR}"
-  ARCHIVE DESTINATION "${INSTALL_LIB_DIR}")
+# install(
+#   TARGETS icu_extension
+#   EXPORT "${DUCKDB_EXPORT_SET}"
+#   LIBRARY DESTINATION "${INSTALL_LIB_DIR}"
+#   # ARCHIVE DESTINATION "${INSTALL_LIB_DIR}"
+# )

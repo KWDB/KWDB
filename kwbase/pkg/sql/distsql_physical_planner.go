@@ -68,6 +68,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/util/timeutil"
 	"gitee.com/kwbasedb/kwbase/pkg/util/uuid"
 	"github.com/cockroachdb/errors"
+	"github.com/jackc/pgx"
 	"github.com/lib/pq/oid"
 )
 
@@ -1322,9 +1323,18 @@ func initAPTableReaderSpec(
 	s := physicalplan.NewAPTableReaderSpec()
 	dbName := ""
 	schemaName := ""
-	database, _ := getDatabaseDescByID(planCtx.ctx, planCtx.planner.txn, n.desc.ParentID)
-	if database != nil {
-		dbName = database.Name
+	dbDesc, _ := getDatabaseDescByID(planCtx.ctx, planCtx.planner.txn, n.desc.ParentID)
+	if dbDesc != nil {
+		dbName = dbDesc.Name
+		switch dbDesc.ApDatabaseType {
+		case tree.ApDatabaseTypeDuckDB:
+		case tree.ApDatabaseTypeMysql:
+			config, err := pgx.ParseDSN(dbDesc.AttachInfo)
+			if err != nil {
+				return nil, execinfrapb.PostProcessSpec{}, err
+			}
+			schemaName = config.Database
+		}
 	}
 	*s = execinfrapb.APTableReaderSpec{DbName: dbName, SchemaName: schemaName, TableName: n.desc.Name}
 

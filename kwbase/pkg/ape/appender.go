@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgcode"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgerror"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
@@ -40,22 +41,27 @@ type DataChunk struct {
 
 func DuckInsert(ctx context.Context, r *ApEngine, dbName, tabName string, rowVals []tree.Datums) error {
 	fmt.Println("DuckInsert start")
-	db := duck.Database{}
-	var state duck.State
-	state = duck.Open(r.DbPath+"/"+dbName, &db)
-	if state != duck.StateSuccess {
-		return errors.New(fmt.Sprintf("failed to opend the ap database \"%s\"" + dbName))
+	//db := duck.Database{}
+	//var state duck.State
+	//state = duck.Open(r.DbPath+"/"+dbName, &db)
+	//if state != duck.StateSuccess {
+	//	return errors.New(fmt.Sprintf("failed to opend the ap database \"%s\"" + dbName))
+	//}
+	//
+	//conn := duck.Connection{}
+	//state = duck.Connect(db, &conn)
+	//if state != duck.StateSuccess {
+	//	return pgerror.Newf(pgcode.Internal, "failed to connect to ap database \"%s\""+dbName)
+	//}
+	//defer func() {
+	//	duck.Disconnect(&conn)
+	//}()
+	conn, err := r.CreateConnection(dbName)
+	if err != nil {
+		return pgerror.Newf(pgcode.Internal, "could not create new connection: %s", err.Error())
 	}
-
-	conn := duck.Connection{}
-	state = duck.Connect(db, &conn)
-	if state != duck.StateSuccess {
-		return pgerror.Newf(pgcode.Internal, "failed to connect to ap database \"%s\""+dbName)
-	}
-	defer func() {
-		duck.Disconnect(&conn)
-	}()
-	a, err := NewAppender(&conn, dbName, "main", tabName)
+	defer r.DestroyConnection(conn)
+	a, err := NewAppender(conn, dbName, "main", tabName)
 	if err != nil {
 		return pgerror.Newf(pgcode.Internal, "could not create new appender: %s", err.Error())
 	}

@@ -40,7 +40,6 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqltelemetry"
 	"gitee.com/kwbasedb/kwbase/pkg/util/errorutil/unimplemented"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
-	duckdb "github.com/duckdb-go-bindings"
 )
 
 // MaxTSDBNameLength represents the maximum length of ts database name.
@@ -122,6 +121,8 @@ func (n *createDatabaseNode) startExec(params runParams) error {
 	log.Infof(params.ctx, "create database %s start, type: %s", n.n.Name, tree.EngineName(n.n.EngineType))
 	desc := makeDatabaseDesc(n.n)
 	desc.EngineType = n.n.EngineType
+	desc.ApDatabaseType = n.n.ApDatabaseType
+	desc.AttachInfo = n.n.AttachInfo
 
 	// deal with the retentions of ts database
 	if n.n.TSDatabase.DownSampling != nil {
@@ -185,27 +186,15 @@ func (n *createDatabaseNode) startExec(params runParams) error {
 		}
 	}
 	if desc.EngineType == tree.EngineTypeAP {
-		dbPath := params.p.DistSQLPlanner().distSQLSrv.ServerConfig.ApEngine.DbPath
-		var config duckdb.Config
-		dsn := dbPath + "/" + desc.Name
-		defer duckdb.DestroyConfig(&config)
-		if duckdb.CreateConfig(&config) == duckdb.StateError {
-			return pgerror.Newf(pgcode.Warning, "create config failed")
+		apEngine := params.p.DistSQLPlanner().distSQLSrv.ServerConfig.ApEngine
+		conn, err := apEngine.CreateConnection("")
+		if err != nil {
+			return err
 		}
-		var db duckdb.Database
-		defer duckdb.Close(&db)
-		var errMsg string
-		if duckdb.OpenExt(dsn, &db, config, &errMsg) == duckdb.StateError {
-			return pgerror.Newf(pgcode.Warning, errMsg)
-		}
-		conn := params.p.DistSQLPlanner().distSQLSrv.ServerConfig.ApEngine.Connection
-		var res duckdb.Result
-		defer duckdb.DestroyResult(&res)
-		attachStmt := fmt.Sprintf(`ATTACH '%s' AS %s`, dbPath+"/"+desc.Name, desc.Name)
-		if desc.Name != "tpch" {
-			if duckdb.Query(*conn, attachStmt, &res) == duckdb.StateError {
-				return pgerror.Newf(pgcode.Warning, "attach database %s failed: %s", desc.Name, duckdb.ResultError(&res))
-			}
+		defer apEngine.DestroyConnection(conn)
+		err = apEngine.AttachDatabase(conn, desc.Name, desc.ApDatabaseType, desc.AttachInfo)
+		if err != nil {
+			return err
 		}
 	}
 	log.Infof(params.ctx, "create database %s finished, type: %s, id: %d", desc.Name, tree.EngineName(n.n.EngineType), desc.ID)

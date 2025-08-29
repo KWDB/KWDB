@@ -27,6 +27,7 @@ package sql
 import (
 	"context"
 	"fmt"
+
 	"gitee.com/kwbasedb/kwbase/pkg/keys"
 	"gitee.com/kwbasedb/kwbase/pkg/security"
 	"gitee.com/kwbasedb/kwbase/pkg/server/telemetry"
@@ -40,7 +41,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 	"gitee.com/kwbasedb/kwbase/pkg/util/timeutil"
 	"github.com/cockroachdb/errors"
-	duckdb "github.com/duckdb-go-bindings"
+	"github.com/jackc/pgx"
 )
 
 type dropTableNode struct {
@@ -179,26 +180,34 @@ func (n *dropTableNode) startExec(params runParams) error {
 		}
 		if droppedDesc.IsColumnBasedTable() {
 			if droppedDesc.GetParentSchemaID() == keys.PublicSchemaID {
-				n.n.Names[0].SchemaName = tree.MainSchemaName
+				dbDesc, err := getDatabaseDescByID(ctx, params.p.txn, droppedDesc.ParentID)
+				if err != nil {
+					return err
+				}
+				switch dbDesc.ApDatabaseType {
+				case tree.ApDatabaseTypeDuckDB:
+					n.n.Names[0].SchemaName = tree.MainSchemaName
+				case tree.ApDatabaseTypeMysql:
+					config, err := pgx.ParseDSN(dbDesc.AttachInfo)
+					if err != nil {
+						return err
+					}
+					n.n.Names[0].SchemaName = tree.Name(config.Database)
+				}
 			}
 			n.n.Names[0].ExplicitSchema = true
 			n.n.Names[0].ExplicitCatalog = true
 			dropStmt := n.n.String()
-			conn := params.p.DistSQLPlanner().distSQLSrv.ServerConfig.ApEngine.Connection
-			//dbPath := params.p.DistSQLPlanner().distSQLSrv.ServerConfig.ApEngine.DbPath
-			var res duckdb.Result
-			defer duckdb.DestroyResult(&res)
-			//attachStmt := fmt.Sprintf(`ATTACH '%s' AS %s`, dbPath+"/"+string(n.n.Names[0].CatalogName), n.n.Names[0].CatalogName)
-			//detachStmt := fmt.Sprintf(`DETACH %s`, n.n.Names[0].CatalogName)
-			//if duckdb.Query(*conn, attachStmt, &res) == duckdb.StateError {
-			//	return pgerror.Newf(pgcode.Warning, "attach database %s failed", n.n.Names[0].CatalogName)
-			//}
-			if duckdb.Query(*conn, dropStmt, &res) == duckdb.StateError {
-				return pgerror.Newf(pgcode.Warning, "drop ap table %s failed: %s", n.n.Names.String(), duckdb.ResultError(&res))
+			apEngine := params.p.DistSQLPlanner().distSQLSrv.ServerConfig.ApEngine
+			conn, err := apEngine.CreateConnection("")
+			if err != nil {
+				return err
 			}
-			//if duckdb.Query(*conn, detachStmt, &res) == duckdb.StateError {
-			//	return pgerror.Newf(pgcode.Warning, "detach database %s failed", n.n.Names[0].CatalogName)
-			//}
+			defer apEngine.DestroyConnection(conn)
+			err = apEngine.Exec(conn, dropStmt)
+			if err != nil {
+				return pgerror.Newf(pgcode.Warning, "drop ap table %s failed: %s", n.n.Names.String(), err.Error())
+			}
 		}
 		params.p.SetAuditTarget(uint32(droppedDesc.ID), droppedDesc.GetName(), droppedViews)
 	}

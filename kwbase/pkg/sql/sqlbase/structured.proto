@@ -1211,6 +1211,9 @@ message DatabaseDescriptor {
   optional int64 engine_type = 5 [(gogoproto.nullable) = false,
     (gogoproto.casttype) = "gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree.EngineType"];
   optional TSDB ts_db = 6 [(gogoproto.nullable) = false];
+  optional int64 ap_database_type = 7 [(gogoproto.nullable) = false,
+    (gogoproto.casttype) = "gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree.ApDatabaseType"];
+  optional string attach_info = 8 [(gogoproto.nullable) = false];
 }
 
 message TSDB {

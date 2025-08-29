@@ -948,7 +948,7 @@ func NewServer(cfg Config, stopper *stop.Stopper) (*Server, error) {
 
 		ExecLogger: log.NewSecondaryLogger(
 			loggerCtx, nil /* dirName */, "sql-exec",
-			true           /* enableGc */, false /*forceSyncWrites*/, true, /* enableMsgCount */
+			true /* enableGc */, false /*forceSyncWrites*/, true, /* enableMsgCount */
 		),
 
 		// Note: the auth logger uses sync writes because we don't want an
@@ -962,7 +962,7 @@ func NewServer(cfg Config, stopper *stop.Stopper) (*Server, error) {
 		// would be a good reason to invest into a syslog sink for logs.
 		AuthLogger: log.NewSecondaryLogger(
 			loggerCtx, nil /* dirName */, "auth",
-			true           /* enableGc */, true /*forceSyncWrites*/, true, /* enableMsgCount */
+			true /* enableGc */, true /*forceSyncWrites*/, true, /* enableMsgCount */
 		),
 
 		// AuditLogger syncs to disk for the same reason as AuthLogger.
@@ -1945,7 +1945,7 @@ func (s *Server) Start(ctx context.Context) error {
 	// init sync period
 	storage.SetSyncPeriod(tse.TsRaftLogSyncPeriod.Get(&s.st.SV))
 
-	err = s.StartApEngine()
+	err = s.StartApEngine(ctx)
 	if err != nil {
 		return err
 	}
@@ -2301,6 +2301,8 @@ func (s *Server) Start(ctx context.Context) error {
 	// Delete all orphaned table leases created by a prior instance of this
 	// node. This also uses SQL.
 	s.leaseMgr.DeleteOrphanedLeases(timeThreshold)
+
+	s.attachAllApDatabase(ctx)
 
 	log.Event(ctx, "server ready")
 
@@ -3167,8 +3169,35 @@ func goFlushed() C.int {
 	return 0
 }
 
+// attachAllApDatabase attach all ap database in ap engine.
+func (s *Server) attachAllApDatabase(ctx context.Context) error {
+	if err := s.db.Txn(ctx, func(ctx context.Context, txn *kv.Txn) error {
+		conn, err := s.apEngine.CreateConnection("")
+		if err != nil {
+			return err
+		}
+		defer s.apEngine.DestroyConnection(conn)
+		descs, err := sql.GetAllDatabaseDescriptors(ctx, txn)
+		if err != nil {
+			return err
+		}
+		for _, desc := range descs {
+			if desc.EngineType == tree.EngineTypeAP {
+				err = s.apEngine.AttachDatabase(conn, desc.Name, desc.ApDatabaseType, desc.AttachInfo)
+				if err != nil {
+					return err
+				}
+			}
+		}
+		return nil
+	}); err != nil {
+		return err
+	}
+	return nil
+}
+
 // StartApEngine start ap engine.
-func (s *Server) StartApEngine() error {
+func (s *Server) StartApEngine(ctx context.Context) error {
 	var err error
 	dbPath := ""
 	if len(s.cfg.Stores.Specs) != 0 {

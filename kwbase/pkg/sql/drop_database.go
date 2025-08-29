@@ -26,9 +26,6 @@ package sql
 
 import (
 	"context"
-	"fmt"
-	duckdb "github.com/duckdb-go-bindings"
-	"os"
 
 	"gitee.com/kwbasedb/kwbase/pkg/config"
 	"gitee.com/kwbasedb/kwbase/pkg/jobs/jobspb"
@@ -307,16 +304,15 @@ func (n *dropDatabaseNode) startExec(params runParams) error {
 	}
 
 	if n.dbDesc.EngineType == tree.EngineTypeAP {
-		dbPath := params.p.DistSQLPlanner().distSQLSrv.ApEngine.DbPath
-		if err := os.Remove(dbPath + "/" + n.dbDesc.Name); err != nil {
+		apEngine := params.p.DistSQLPlanner().distSQLSrv.ServerConfig.ApEngine
+		conn, err := apEngine.CreateConnection("")
+		if err != nil {
 			return err
 		}
-		conn := params.p.DistSQLPlanner().distSQLSrv.ServerConfig.ApEngine.Connection
-		var res duckdb.Result
-		defer duckdb.DestroyResult(&res)
-		detachStmt := fmt.Sprintf(`DETACH %s`, n.dbDesc.Name)
-		if duckdb.Query(*conn, detachStmt, &res) == duckdb.StateError {
-			return pgerror.Newf(pgcode.Warning, "detach database %s failed: %s", n.dbDesc.Name, duckdb.ResultError(&res))
+		defer apEngine.DestroyConnection(conn)
+		err = apEngine.DetachDatabase(conn, n.dbDesc.Name, n.dbDesc.ApDatabaseType)
+		if err != nil {
+			return pgerror.Newf(pgcode.Warning, "detach database %s failed: %s", n.dbDesc.Name, err.Error())
 		}
 	}
 	// Log Drop Database event. This is an auditable log event and is recorded
