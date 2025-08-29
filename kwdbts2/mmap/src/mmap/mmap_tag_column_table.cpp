@@ -1079,6 +1079,8 @@ int MMapTagColumnTable::getColumnsByRownum(size_t row, const std::vector<uint32_
     }
     if (UNLIKELY(batch == nullptr)) {
       LOG_WARN("GetTagBatchRecord result is nullptr, skip this col[%u]", col_idx);
+      Batch* batch = new(std::nothrow) kwdbts::TagBatch(0, nullptr, 1);
+      res->push_back(idx, batch);
       continue;
     }
     res->push_back(idx, batch);
@@ -1112,6 +1114,8 @@ int MMapTagColumnTable::getColumnsFromAll(const std::vector<uint32_t>& src_scan_
         }
         if (UNLIKELY(batch == nullptr)) {
           LOG_WARN("GetTagBatchRecord result is nullptr, skip this col[%u]", col_idx);
+          Batch* batch = new(std::nothrow) kwdbts::TagBatch(0, nullptr, 1);
+          res->push_back(idx, batch);
           continue;
         }
         res->push_back(idx, batch);
