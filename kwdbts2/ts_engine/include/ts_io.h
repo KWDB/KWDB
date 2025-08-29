@@ -241,6 +241,7 @@ class TsMMapAllocFile : public FileWithIndex {
     char reserved[104];
   };
   static_assert(sizeof(FileHeader) == 128, "wrong size of FileHeader, please check compatibility.");
+  // static_assert(std::has_unique_object_representations_v<FileHeader>, "padding in struct FileHeader");
 
   std::string path_;
   int fd_ = -1;
