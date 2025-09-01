@@ -186,16 +186,18 @@ func (n *createDatabaseNode) startExec(params runParams) error {
 		}
 	}
 	if desc.EngineType == tree.EngineTypeAP {
-		apEngine := params.p.DistSQLPlanner().distSQLSrv.ServerConfig.ApEngine
-		conn, err := apEngine.CreateConnection("")
-		if err != nil {
-			return err
+		if desc.ApDatabaseType == tree.ApDatabaseTypeDuckDB {
+			attachStmt := fmt.Sprintf("ATTACH '%s' AS %s (TYPE mysql_scanner)", desc.AttachInfo, desc.Name)
+			if err := params.p.DistSQLPlanner().distSQLSrv.ServerConfig.GetAPEngine().ExecSqlInDB(
+				params.extendedEvalCtx.SessionData.Database, attachStmt); err != nil {
+				return err
+			}
+		} else {
+			if err := params.p.DistSQLPlanner().distSQLSrv.ServerConfig.GetAPEngine().CreateDB(desc.Name); err != nil {
+				return err
+			}
 		}
-		defer apEngine.DestroyConnection(conn)
-		err = apEngine.AttachDatabase(conn, desc.Name, desc.ApDatabaseType, desc.AttachInfo)
-		if err != nil {
-			return err
-		}
+
 	}
 	log.Infof(params.ctx, "create database %s finished, type: %s, id: %d", desc.Name, tree.EngineName(n.n.EngineType), desc.ID)
 	return nil

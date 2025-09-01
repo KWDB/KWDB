@@ -28,6 +28,7 @@ import (
 	"context"
 	"fmt"
 
+	"gitee.com/kwbasedb/kwbase/pkg/engine/tse"
 	"gitee.com/kwbasedb/kwbase/pkg/kv"
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver/abortspan"
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver/concurrency"
@@ -37,7 +38,6 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/storage"
 	"gitee.com/kwbasedb/kwbase/pkg/storage/cloud"
 	"gitee.com/kwbasedb/kwbase/pkg/storage/enginepb"
-	"gitee.com/kwbasedb/kwbase/pkg/tse"
 	"gitee.com/kwbasedb/kwbase/pkg/util/hlc"
 	"gitee.com/kwbasedb/kwbase/pkg/util/limit"
 	"gitee.com/kwbasedb/kwbase/pkg/util/uuid"

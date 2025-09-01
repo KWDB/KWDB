@@ -27,6 +27,7 @@ package server
 import (
 	"context"
 	"fmt"
+	"gitee.com/kwbasedb/kwbase/pkg/engine"
 	"net"
 	"sort"
 	"time"
@@ -36,6 +37,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/clusterversion"
 	"gitee.com/kwbasedb/kwbase/pkg/config"
 	"gitee.com/kwbasedb/kwbase/pkg/config/zonepb"
+	"gitee.com/kwbasedb/kwbase/pkg/engine/tse"
 	"gitee.com/kwbasedb/kwbase/pkg/gossip"
 	"gitee.com/kwbasedb/kwbase/pkg/keys"
 	"gitee.com/kwbasedb/kwbase/pkg/kv"
@@ -50,7 +52,6 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
 	"gitee.com/kwbasedb/kwbase/pkg/storage"
-	"gitee.com/kwbasedb/kwbase/pkg/tse"
 	"gitee.com/kwbasedb/kwbase/pkg/util"
 	"gitee.com/kwbasedb/kwbase/pkg/util/growstack"
 	"gitee.com/kwbasedb/kwbase/pkg/util/grpcutil"
@@ -371,7 +372,7 @@ func (n *Node) start(
 	localityAddress []roachpb.LocalityAddress,
 	nodeDescriptorCallback func(descriptor roachpb.NodeDescriptor),
 	startMode string,
-	setTse func() (*tse.TsEngine, error),
+	setTse func() (*engine.Helper, error),
 ) error {
 	if err := clusterversion.Initialize(ctx, cv.Version, &n.storeCfg.Settings.SV); err != nil {
 		return err
@@ -615,7 +616,7 @@ func (n *Node) bootstrapStores(
 	ctx context.Context,
 	emptyEngines []storage.Engine,
 	stopper *stop.Stopper,
-	setTse func() (*tse.TsEngine, error),
+	setTse func() (*engine.Helper, error),
 ) error {
 	if n.clusterID.Get() == uuid.Nil {
 		return errors.New("ClusterID missing during store bootstrap of auxiliary store")

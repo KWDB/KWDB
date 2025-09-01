@@ -33,6 +33,7 @@ import (
 	"fmt"
 	"math"
 
+	"gitee.com/kwbasedb/kwbase/pkg/engine/tse"
 	"gitee.com/kwbasedb/kwbase/pkg/kv"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfra"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfrapb"
@@ -42,7 +43,6 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/types"
-	"gitee.com/kwbasedb/kwbase/pkg/tse"
 	"gitee.com/kwbasedb/kwbase/pkg/util/humanizeutil"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 	"gitee.com/kwbasedb/kwbase/pkg/util/mon"
@@ -675,7 +675,7 @@ func (h *batchLookupJoiner) PushTsFlow(chunk *tse.DataChunkGo) batchLookupJoiner
 	if chunk != nil {
 		tsQueryInfo.RowCount = int(chunk.RowCount)
 	}
-	pushErr := h.FlowCtx.Cfg.TsEngine.PushTsFlow(&(h.Ctx), tsQueryInfo)
+	pushErr := h.FlowCtx.Cfg.GetTSEngine().PushTsFlow(&(h.Ctx), tsQueryInfo)
 	if pushErr != nil {
 		log.Warning(h.PbCtx(), pushErr)
 	}

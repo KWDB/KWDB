@@ -54,7 +54,7 @@
 #include "utils/datetime.hpp"
 
 namespace duckdb_libpgquery {
-#define DEFAULT_SCHEMA "main"
+#define DEFAULT_SCHEMA "public"
 
 /*
  * Location tracking support --- simpler than bison's default, since we only

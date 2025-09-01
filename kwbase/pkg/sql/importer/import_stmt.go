@@ -50,7 +50,6 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/util/tracing"
 	"gitee.com/kwbasedb/kwbase/pkg/util/uuid"
 	"github.com/cockroachdb/errors"
-	duck "github.com/duckdb-go-bindings"
 )
 
 const (
@@ -307,7 +306,7 @@ func importPlanHook(
 
 					descKey := sqlbase.MakeDescMetadataKey(tableDesc.GetParentID())
 					desc := &sqlbase.Descriptor{}
-					
+
 					_, err := p.ExtendedEvalContext().Txn.GetProtoTs(ctx, descKey, desc)
 					if err != nil {
 						return err
@@ -686,31 +685,31 @@ func (r *importResumer) apResume(
 	cfg *sql.ExecutorConfig,
 	resultsCh chan<- tree.Datums,
 ) error {
-	conn, err := cfg.DistSQLSrv.ApEngine.CreateConnection(details.DatabaseName)
+	err := cfg.DistSQLSrv.GetAPEngine().CreateConnection(details.DatabaseName)
 	if err != nil {
 		return err
 	}
-	defer cfg.DistSQLSrv.ApEngine.DestroyConnection(conn)
 
-	var queryRes duck.Result
-	var format string
-	if details.Format.Format == roachpb.IOFileFormat_MYSQL {
-		format = "mysql"
-	}
-	queryStmt := fmt.Sprintf("SELECT count(*) FROM duckdb_databases WHERE database_name='%s' AND type='%s'", details.SrcDatabaseName, format)
-	queryState := duck.Query(*conn, queryStmt, &queryRes)
-	if queryState != duck.StateSuccess {
-		errMsg := duck.ResultError(&queryRes)
-		return pgerror.New(pgcode.Warning, errMsg)
-	}
-	num := duck.ValueInt64(&queryRes, 0, 0)
-	duck.DestroyResult(&queryRes)
-	if num == 0 {
-		errors.New("source database is not exist")
-	}
+	// todo add c++ interface to check
+	//var queryRes duck.Result
+	//var format string
+	//if details.Format.Format == roachpb.IOFileFormat_MYSQL {
+	//	format = "mysql"
+	//}
+	//queryStmt := fmt.Sprintf("SELECT count(*) FROM duckdb_databases WHERE database_name='%s' AND type='%s'", details.SrcDatabaseName, format)
+	//queryState := cfg.DistSQLSrv.GetAPEngine().ExecSql(queryStmt, &queryRes)
+	//if queryState != duck.StateSuccess {
+	//	errMsg := duck.ResultError(&queryRes)
+	//	return pgerror.New(pgcode.Warning, errMsg)
+	//}
+	//num := duck.ValueInt64(&queryRes, 0, 0)
+	//duck.DestroyResult(&queryRes)
+	//if num == 0 {
+	//	errors.New("source database is not exist")
+	//}
 
 	copyStmt := fmt.Sprintf("COPY FROM DATABASE %s TO %s", details.SrcDatabaseName, details.DatabaseName)
-	err = cfg.DistSQLSrv.ApEngine.Exec(conn, copyStmt)
+	err = cfg.DistSQLSrv.GetAPEngine().ExecSql(copyStmt)
 	if err != nil {
 		return err
 	}

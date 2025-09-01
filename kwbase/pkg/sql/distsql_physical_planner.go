@@ -34,6 +34,7 @@ import (
 	"sort"
 	"strings"
 
+	"gitee.com/kwbasedb/kwbase/pkg/engine/tse"
 	"gitee.com/kwbasedb/kwbase/pkg/gossip"
 	"gitee.com/kwbasedb/kwbase/pkg/keys"
 	"gitee.com/kwbasedb/kwbase/pkg/kv"
@@ -773,7 +774,7 @@ func (p *PlanningCtx) GetTsDop() int32 {
 	// Returns the parallel num estimated based on statistics
 	// and system resource(number of wait threads in the execution pool)
 	if memo := p.planner.curPlan.mem; memo != nil {
-		waitThreadNum, err := p.planner.ExecCfg().TsEngine.TSGetWaitThreadNum()
+		waitThreadNum, err := p.planner.ExecCfg().EngineHelper.GetTSEngine().(*tse.TsEngine).TSGetWaitThreadNum()
 		if err != nil {
 			return sqlbase.DefaultDop
 		}

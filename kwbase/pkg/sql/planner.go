@@ -238,6 +238,11 @@ func (p *planner) ExecutorConfig() interface{} {
 	return p.execCfg
 }
 
+// GetApEngine is part of the Planner interface.
+func (p *planner) GetApEngine() interface{} {
+	return p.execCfg.DistSQLSrv.EngineHelper.GetAPEngine()
+}
+
 func (ctx *extendedEvalContext) setSessionID(sessionID ClusterWideID) {
 	ctx.SessionID = sessionID
 }

@@ -18,6 +18,7 @@ import (
 
 	"gitee.com/kwbasedb/kwbase/pkg/col/coldata"
 	"gitee.com/kwbasedb/kwbase/pkg/col/coltypes"
+	"gitee.com/kwbasedb/kwbase/pkg/engine/tse"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/colexec/execerror"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/colexec/typeconv"
@@ -26,7 +27,6 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/rowexec"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/types"
-	"gitee.com/kwbasedb/kwbase/pkg/tse"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 	"gitee.com/kwbasedb/kwbase/pkg/util/protoutil"
 	"gitee.com/kwbasedb/kwbase/pkg/util/syncutil"
@@ -185,12 +185,12 @@ func (tro *TsReaderOp) Init() {
 			Handle:   tsHandle,
 			TimeZone: timezone,
 		}
-		respInfo, setupErr := tro.FlowCtx.Cfg.TsEngine.SetupTsFlow(&(tro.Ctx), tsQueryInfo)
+		respInfo, setupErr := tro.FlowCtx.Cfg.EngineHelper.GetTSEngine().(*tse.TsEngine).SetupTsFlow(&(tro.Ctx), tsQueryInfo)
 		if setupErr != nil {
 			var tsCloseInfo tse.TsQueryInfo
 			tsCloseInfo.Handle = respInfo.Handle
 			tsCloseInfo.Buf = []byte("close tsflow")
-			closeErr := tro.FlowCtx.Cfg.TsEngine.CloseTsFlow(&(tro.Ctx), tsCloseInfo)
+			closeErr := tro.FlowCtx.Cfg.EngineHelper.GetTSEngine().(*tse.TsEngine).CloseTsFlow(&(tro.Ctx), tsCloseInfo)
 			if closeErr != nil {
 				// log.Warning(tro, closeErr)
 			}
@@ -236,7 +236,7 @@ func (tro *TsReaderOp) Next(ctx context.Context) coldata.Batch {
 				}
 			}
 
-			respInfo, err := tro.FlowCtx.Cfg.TsEngine.NextVectorizedTsFlow(&(tro.Ctx), tsQueryInfo, &tro.Rcv)
+			respInfo, err := tro.FlowCtx.Cfg.EngineHelper.GetTSEngine().(*tse.TsEngine).NextVectorizedTsFlow(&(tro.Ctx), tsQueryInfo, &tro.Rcv)
 			if tro.collected {
 				if sp := opentracing.SpanFromContext(ctx); sp != nil {
 					tro.statsList = tse.AddStatsList(respInfo.Fetcher, tro.statsList)
@@ -325,7 +325,7 @@ func (tro *TsReaderOp) NextPgWire() (val []byte, code int, err error) {
 			}
 		}
 	}
-	respInfo, err := tro.FlowCtx.Cfg.TsEngine.NextTsFlowPgWire(&(tro.Ctx), tsQueryInfo)
+	respInfo, err := tro.FlowCtx.Cfg.EngineHelper.GetTSEngine().(*tse.TsEngine).NextTsFlowPgWire(&(tro.Ctx), tsQueryInfo)
 	if tro.collected {
 		if sp := opentracing.SpanFromContext(tro.Ctx); sp != nil {
 			tro.statsList = tse.AddStatsList(respInfo.Fetcher, tro.statsList)
@@ -356,7 +356,7 @@ func (tro *TsReaderOp) cleanup(ctx context.Context) {
 		var tsCloseInfo tse.TsQueryInfo
 		tsCloseInfo.Handle = tro.tsHandle
 		tsCloseInfo.Buf = []byte("close tsflow")
-		closeErr := tro.FlowCtx.Cfg.TsEngine.CloseTsFlow(&(tro.Ctx), tsCloseInfo)
+		closeErr := tro.FlowCtx.Cfg.EngineHelper.GetTSEngine().(*tse.TsEngine).CloseTsFlow(&(tro.Ctx), tsCloseInfo)
 		if closeErr != nil {
 			log.Warning(ctx, closeErr)
 		}

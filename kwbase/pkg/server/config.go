@@ -37,6 +37,9 @@ import (
 
 	"gitee.com/kwbasedb/kwbase/pkg/base"
 	"gitee.com/kwbasedb/kwbase/pkg/config/zonepb"
+	"gitee.com/kwbasedb/kwbase/pkg/engine"
+	"gitee.com/kwbasedb/kwbase/pkg/engine/ape"
+	"gitee.com/kwbasedb/kwbase/pkg/engine/tse"
 	"gitee.com/kwbasedb/kwbase/pkg/gossip/resolver"
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
@@ -45,7 +48,6 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/storage"
 	"gitee.com/kwbasedb/kwbase/pkg/storage/enginepb"
 	"gitee.com/kwbasedb/kwbase/pkg/ts"
-	"gitee.com/kwbasedb/kwbase/pkg/tse"
 	"gitee.com/kwbasedb/kwbase/pkg/util"
 	"gitee.com/kwbasedb/kwbase/pkg/util/envutil"
 	"gitee.com/kwbasedb/kwbase/pkg/util/humanizeutil"
@@ -680,21 +682,21 @@ func (cfg *Config) CreateEngines(ctx context.Context) (Engines, error) {
 // CreateTsEngine create ts engine
 func (cfg *Config) CreateTsEngine(
 	ctx context.Context, stopper *stop.Stopper, clusterID string,
-) (*tse.TsEngine, error) {
-
+) (engine.Helper, error) {
+	var helper engine.Helper
 	threadPoolSize, err := strconv.Atoi(cfg.ThreadPoolSize)
 	if err != nil {
-		return nil, err
+		return helper, err
 	}
 
 	taskQueueSize, err := strconv.Atoi(cfg.TaskQueueSize)
 	if err != nil {
-		return nil, err
+		return helper, err
 	}
 
 	bufferPoolSize, err := strconv.Atoi(cfg.BufferPoolSize)
 	if err != nil {
-		return nil, err
+		return helper, err
 	}
 
 	//TODO Use the rocksdb store directory +tsdb suffix
@@ -711,9 +713,19 @@ func (cfg *Config) CreateTsEngine(
 	}
 	tsDB, err := tse.NewTsEngine(ctx, tsConfig, stopper)
 	if err != nil {
-		return nil, err
+		return helper, err
 	}
-	return tsDB, nil
+	helper.SetTSEngine(tsDB)
+
+	apConfig := ape.EngineConfig{
+		Dir: cfg.TsStores.Specs[0].Path + "/apdb",
+	}
+	apDB, err1 := ape.NewApEngine(stopper, apConfig)
+	if err1 != nil {
+		return helper, err1
+	}
+	helper.SetAPEngine(apDB)
+	return helper, nil
 }
 
 // InitNode parses node attributes and initializes the gossip bootstrap

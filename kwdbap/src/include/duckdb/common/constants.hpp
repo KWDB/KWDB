@@ -28,7 +28,7 @@ using std::move;
 #endif
 
 // NOTE: there is a copy of this in the Postgres' parser grammar (gram.y)
-#define DEFAULT_SCHEMA  "main"
+#define DEFAULT_SCHEMA  "public"
 #define INVALID_SCHEMA  ""
 #define INVALID_CATALOG ""
 #define SYSTEM_CATALOG  "system"

@@ -23,7 +23,7 @@
 
 package tse
 
-// #cgo CPPFLAGS: -I../../../kwdbts2/include -I../../../common/src/include
+// #cgo CPPFLAGS: -I../../../../kwdbts2/include -I../../../../common/src/include
 // #cgo LDFLAGS: -lkwdbts2 -lcommon  -lstdc++
 // #cgo LDFLAGS: -lprotobuf
 // #cgo linux LDFLAGS: -lrt -lpthread
@@ -512,6 +512,10 @@ func (r *TsEngine) SetRaftLogCombinedWAL(combined bool) {
 	}
 }
 
+func (r *TsEngine) CreateTable(tableID uint64, hashNum uint64, meta []byte, rangeGroups []api.RangeGroup) error {
+	return r.CreateTsTable(tableID, hashNum, meta, rangeGroups)
+}
+
 // CreateTsTable create ts table
 func (r *TsEngine) CreateTsTable(
 	tableID uint64, hashNum uint64, meta []byte, rangeGroups []api.RangeGroup,
@@ -548,6 +552,10 @@ func (r *TsEngine) GetMetaData(tableID uint64, rangeGroup api.RangeGroup) ([]byt
 	defer C.free(unsafe.Pointer(tableMeta.data))
 	meta := cSliceToGoBytes(tableMeta)
 	return meta, nil
+}
+
+func (r *TsEngine) TableExist(tableID uint64) (bool, error) {
+	return r.TSIsTsTableExist(tableID)
 }
 
 // TSIsTsTableExist checks if ts table exists.

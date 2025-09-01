@@ -27,12 +27,12 @@ package rowexec
 import (
 	"context"
 
+	"gitee.com/kwbasedb/kwbase/pkg/engine/tse"
 	"gitee.com/kwbasedb/kwbase/pkg/kv"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfra"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfrapb"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/types"
-	"gitee.com/kwbasedb/kwbase/pkg/tse"
 	"github.com/pkg/errors"
 )
 
@@ -114,83 +114,84 @@ func (tct *tsAlterTable) InitProcessorProcedure(txn *kv.Txn) {}
 func (tct *tsAlterTable) Start(ctx context.Context) context.Context {
 	ctx = tct.StartInternal(ctx, tsAlterColumnProcName)
 	tct.nodeID = int32(tct.FlowCtx.NodeID)
+	engine := tct.FlowCtx.Cfg.GetTSEngine()
 	switch tct.tsOperator {
 	case execinfrapb.OperatorType_TsCreateTagIndex:
-		if err := tct.FlowCtx.Cfg.TsEngine.TransBegin(tct.tableID, tct.txnID); err != nil {
+		if err := engine.TransBegin(tct.tableID, tct.txnID); err != nil {
 			tct.alterTsColumnSuccess = false
 			tct.err = err
 			return ctx
 		}
-		if err := tct.FlowCtx.Cfg.TsEngine.CreateNormalTagIndex(tct.tableID, uint64(tct.idxID), tct.currentTSVersion, tct.newTSVersion, tct.txnID, tct.tagColumns); err != nil {
+		if err := engine.CreateNormalTagIndex(tct.tableID, uint64(tct.idxID), tct.currentTSVersion, tct.newTSVersion, tct.txnID, tct.tagColumns); err != nil {
 			tct.alterTsColumnSuccess = false
 			tct.err = err
 			return ctx
 		}
 		tct.alterTsColumnSuccess = true
 	case execinfrapb.OperatorType_TsDropTagIndex:
-		if err := tct.FlowCtx.Cfg.TsEngine.TransBegin(tct.tableID, tct.txnID); err != nil {
+		if err := engine.TransBegin(tct.tableID, tct.txnID); err != nil {
 			tct.alterTsColumnSuccess = false
 			tct.err = err
 			return ctx
 		}
-		if err := tct.FlowCtx.Cfg.TsEngine.DropNormalTagIndex(tct.tableID, uint64(tct.idxID), tct.currentTSVersion, tct.newTSVersion, tct.txnID); err != nil {
+		if err := engine.DropNormalTagIndex(tct.tableID, uint64(tct.idxID), tct.currentTSVersion, tct.newTSVersion, tct.txnID); err != nil {
 			tct.alterTsColumnSuccess = false
 			tct.err = err
 			return ctx
 		}
 		tct.alterTsColumnSuccess = true
 	case execinfrapb.OperatorType_TsAddColumn:
-		if err := tct.FlowCtx.Cfg.TsEngine.TransBegin(tct.tableID, tct.txnID); err != nil {
+		if err := engine.TransBegin(tct.tableID, tct.txnID); err != nil {
 			tct.alterTsColumnSuccess = false
 			tct.err = err
 			return ctx
 		}
-		if err := tct.FlowCtx.Cfg.TsEngine.AddTSColumn(tct.tableID, tct.currentTSVersion, tct.newTSVersion, tct.txnID, tct.columnMeta); err != nil {
+		if err := engine.AddTSColumn(tct.tableID, tct.currentTSVersion, tct.newTSVersion, tct.txnID, tct.columnMeta); err != nil {
 			tct.alterTsColumnSuccess = false
 			tct.err = err
 			return ctx
 		}
 		tct.alterTsColumnSuccess = true
 	case execinfrapb.OperatorType_TsDropColumn:
-		if err := tct.FlowCtx.Cfg.TsEngine.TransBegin(tct.tableID, tct.txnID); err != nil {
+		if err := engine.TransBegin(tct.tableID, tct.txnID); err != nil {
 			tct.alterTsColumnSuccess = false
 			tct.err = err
 			return ctx
 		}
-		if err := tct.FlowCtx.Cfg.TsEngine.DropTSColumn(tct.tableID, tct.currentTSVersion, tct.newTSVersion, tct.txnID, tct.columnMeta); err != nil {
+		if err := engine.DropTSColumn(tct.tableID, tct.currentTSVersion, tct.newTSVersion, tct.txnID, tct.columnMeta); err != nil {
 			tct.alterTsColumnSuccess = false
 			tct.err = err
 			return ctx
 		}
 		tct.alterTsColumnSuccess = true
 	case execinfrapb.OperatorType_TsAlterPartitionInterval:
-		if err := tct.FlowCtx.Cfg.TsEngine.AlterPartitionInterval(tct.tableID, tct.partitionInterval); err != nil {
+		if err := engine.AlterPartitionInterval(tct.tableID, tct.partitionInterval); err != nil {
 			tct.alterTsColumnSuccess = false
 			tct.err = err
 			return ctx
 		}
 		tct.alterTsColumnSuccess = true
 	case execinfrapb.OperatorType_TsCommit:
-		if err := tct.FlowCtx.Cfg.TsEngine.TransCommit(tct.tableID, tct.txnID); err != nil {
+		if err := engine.TransCommit(tct.tableID, tct.txnID); err != nil {
 			tct.alterTsColumnSuccess = false
 			tct.err = err
 			return ctx
 		}
 		tct.alterTsColumnSuccess = true
 	case execinfrapb.OperatorType_TsRollback:
-		if err := tct.FlowCtx.Cfg.TsEngine.TransRollback(tct.tableID, tct.txnID); err != nil {
+		if err := engine.TransRollback(tct.tableID, tct.txnID); err != nil {
 			tct.alterTsColumnSuccess = false
 			tct.err = err
 			return ctx
 		}
 		tct.alterTsColumnSuccess = true
 	case execinfrapb.OperatorType_TsAlterType:
-		if err := tct.FlowCtx.Cfg.TsEngine.TransBegin(tct.tableID, tct.txnID); err != nil {
+		if err := engine.TransBegin(tct.tableID, tct.txnID); err != nil {
 			tct.alterTsColumnSuccess = false
 			tct.err = err
 			return ctx
 		}
-		if err := tct.FlowCtx.Cfg.TsEngine.AlterTSColumnType(tct.tableID, tct.currentTSVersion, tct.newTSVersion, tct.txnID, tct.columnMeta, tct.oriColumnMeta); err != nil {
+		if err := engine.AlterTSColumnType(tct.tableID, tct.currentTSVersion, tct.newTSVersion, tct.txnID, tct.columnMeta, tct.oriColumnMeta); err != nil {
 			tct.alterTsColumnSuccess = false
 			tct.err = err
 			return ctx

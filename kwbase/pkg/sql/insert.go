@@ -26,9 +26,9 @@ package sql
 
 import (
 	"context"
-	"gitee.com/kwbasedb/kwbase/pkg/ape"
 	"sync"
 
+	"gitee.com/kwbasedb/kwbase/pkg/engine/ape"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/rowcontainer"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
@@ -238,7 +238,7 @@ func (n *insertNode) startExec(params runParams) error {
 			n.run.rowCount++
 			rowVals = append(rowVals, row)
 		}
-		err = ape.DuckInsert(params.ctx, params.ExecCfg().ApEngine, dbDesc.Name, n.run.ti.tableDesc().Name, rowVals)
+		err = ape.DuckInsert(params.ctx, params.ExecCfg().EngineHelper.GetAPEngine().(*ape.Engine), dbDesc.Name, n.run.ti.tableDesc().Name, rowVals)
 		if err != nil {
 			return err
 		}
