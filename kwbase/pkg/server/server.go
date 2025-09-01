@@ -53,12 +53,14 @@ import (
 	"time"
 	"unsafe"
 
-	"gitee.com/kwbasedb/kwbase/pkg/ape"
 	"gitee.com/kwbasedb/kwbase/pkg/base"
 	"gitee.com/kwbasedb/kwbase/pkg/blobs"
 	"gitee.com/kwbasedb/kwbase/pkg/blobs/blobspb"
 	"gitee.com/kwbasedb/kwbase/pkg/cdc"
 	"gitee.com/kwbasedb/kwbase/pkg/clusterversion"
+	"gitee.com/kwbasedb/kwbase/pkg/engine"
+	"gitee.com/kwbasedb/kwbase/pkg/engine/ape"
+	"gitee.com/kwbasedb/kwbase/pkg/engine/tse"
 	"gitee.com/kwbasedb/kwbase/pkg/gossip"
 	"gitee.com/kwbasedb/kwbase/pkg/jobs"
 	"gitee.com/kwbasedb/kwbase/pkg/jobs/jobspb"
@@ -112,7 +114,6 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/storage/enginepb"
 	"gitee.com/kwbasedb/kwbase/pkg/ts"
 	"gitee.com/kwbasedb/kwbase/pkg/tscoord"
-	"gitee.com/kwbasedb/kwbase/pkg/tse"
 	"gitee.com/kwbasedb/kwbase/pkg/util"
 	"gitee.com/kwbasedb/kwbase/pkg/util/envutil"
 	"gitee.com/kwbasedb/kwbase/pkg/util/hlc"
@@ -247,6 +248,16 @@ func (mux *safeServeMux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	mux.mu.RUnlock()
 }
 
+// GetTSEngine gets ts engine
+func (s *Server) GetTSEngine() *tse.TsEngine {
+	return s.engineHelper.GetTSEngine().(*tse.TsEngine)
+}
+
+// GetAPEngine gets ap engine
+func (s *Server) GetAPEngine() *ape.Engine {
+	return s.engineHelper.GetAPEngine().(*ape.Engine)
+}
+
 // Server is the kwbase server node.
 type Server struct {
 	nodeIDContainer base.NodeIDContainer
@@ -295,11 +306,11 @@ type Server struct {
 	replicationReporter    *reports.Reporter
 	temporaryObjectCleaner *sql.TemporaryObjectCleaner
 	engines                Engines
-	tsEngine               *tse.TsEngine
+	engineHelper           engine.Helper
 	tseDB                  *tscoord.DB
-	apEngine               *ape.ApEngine
-	internalMemMetrics     sql.MemoryMetrics
-	adminMemMetrics        sql.MemoryMetrics
+	//apEngine               *ape.ApEngine
+	internalMemMetrics sql.MemoryMetrics
+	adminMemMetrics    sql.MemoryMetrics
 	// sqlMemMetrics are used to track memory usage of sql sessions.
 	sqlMemMetrics           sql.MemoryMetrics
 	protectedtsProvider     protectedts.Provider
@@ -1897,24 +1908,23 @@ func (s *Server) Start(ctx context.Context) error {
 	// than the timestamp used to create the bootstrap schema.
 	timeThreshold := s.clock.Now().WallTime
 
-	setTse := func() (*tse.TsEngine, error) {
+	setTse := func() (*engine.Helper, error) {
 		if s.cfg.Stores.Specs != nil && s.cfg.Stores.Specs[0].Path != "" && !s.cfg.ForbidCatchCoreDump {
-			s.tsEngine, err = s.cfg.CreateTsEngine(ctx, s.stopper, s.ClusterID().String())
+			s.engineHelper, err = s.cfg.CreateTsEngine(ctx, s.stopper, s.ClusterID().String())
 			if err != nil {
 				return nil, errors.Wrap(err, "failed to create ts engine")
 			}
-			s.stopper.AddCloser(s.tsEngine)
-			s.node.tsEngine = s.tsEngine
-			s.execCfg.TsEngine = s.tsEngine
-			s.execCfg.ApEngine = s.apEngine
+			s.stopper.AddCloser(s.GetTSEngine())
+			s.node.tsEngine = s.GetTSEngine()
+			s.execCfg.EngineHelper = s.engineHelper
 
-			s.node.storeCfg.TsEngine = s.tsEngine
-			s.distSQLServer.ServerConfig.TsEngine = s.tsEngine
+			s.node.storeCfg.EngineHelper = s.engineHelper
+			s.distSQLServer.ServerConfig.EngineHelper = s.engineHelper
 
 			if !GetSingleNodeModeFlag(s.cfg.ModeFlag) {
 				tse.TsRaftLogCombineWAL.SetOnChange(&s.st.SV, func() {
 					combined := tse.TsRaftLogCombineWAL.Get(&s.st.SV)
-					s.tsEngine.SetRaftLogCombinedWAL(combined)
+					s.GetTSEngine().SetRaftLogCombinedWAL(combined)
 					if !combined {
 						if err := kvserver.ClearReplicasAndResetFlushedIndex(ctx); err != nil {
 							log.Warningf(ctx, "failed clear flushed index for replicas, err: %+v", err)
@@ -1929,7 +1939,7 @@ func (s *Server) Start(ctx context.Context) error {
 
 			tsDBCfg := tscoord.TsDBConfig{
 				KvDB:         s.db,
-				TsEngine:     s.tsEngine,
+				EngineHelper: s.engineHelper,
 				Sender:       s.distSender,
 				RPCContext:   s.rpcContext,
 				Gossip:       s.gossip,
@@ -1940,7 +1950,7 @@ func (s *Server) Start(ctx context.Context) error {
 			// s.node.storeCfg.TseDB = s.tseDB
 			s.distSQLServer.ServerConfig.TseDB = s.tseDB
 		}
-		return s.tsEngine, nil
+		return &s.engineHelper, nil
 	}
 	// init sync period
 	storage.SetSyncPeriod(tse.TsRaftLogSyncPeriod.Get(&s.st.SV))
@@ -1967,7 +1977,7 @@ func (s *Server) Start(ctx context.Context) error {
 	); err != nil {
 		return err
 	}
-	sql.Init(s.db, s.tsEngine)
+	sql.Init(s.db, s.GetTSEngine())
 
 	// close tsEngine will use rocksDB, so close rocksDB after close tsEngine.
 	s.stopper.AddCloser(&s.engines)
@@ -3172,23 +3182,41 @@ func goFlushed() C.int {
 // attachAllApDatabase attach all ap database in ap engine.
 func (s *Server) attachAllApDatabase(ctx context.Context) error {
 	if err := s.db.Txn(ctx, func(ctx context.Context, txn *kv.Txn) error {
-		conn, err := s.apEngine.CreateConnection("")
-		if err != nil {
-			return err
-		}
-		defer s.apEngine.DestroyConnection(conn)
 		descs, err := sql.GetAllDatabaseDescriptors(ctx, txn)
 		if err != nil {
 			return err
 		}
+		var apDBs []string
+		type AttachInfo struct {
+			asName     string
+			attachInfo string
+		}
+		var apMysqlAttachs []AttachInfo
 		for _, desc := range descs {
 			if desc.EngineType == tree.EngineTypeAP {
-				err = s.apEngine.AttachDatabase(conn, desc.Name, desc.ApDatabaseType, desc.AttachInfo)
-				if err != nil {
-					return err
+				if desc.ApDatabaseType == tree.ApDatabaseTypeDuckDB {
+					apDBs = append(apDBs, desc.Name)
+				} else if desc.ApDatabaseType == tree.ApDatabaseTypeMysql {
+					apMysqlAttachs = append(apMysqlAttachs, AttachInfo{asName: desc.Name, attachInfo: desc.AttachInfo})
 				}
 			}
 		}
+
+		if len(apDBs) > 0 {
+			err = s.GetAPEngine().AttachDatabase(apDBs)
+			if err != nil {
+				return err
+			}
+		}
+
+		for _, v := range apMysqlAttachs {
+			attachStmt := fmt.Sprintf("ATTACH '%s' AS %s (TYPE mysql_scanner)", v.attachInfo, v.asName)
+			err = s.GetAPEngine().ExecSql(attachStmt)
+			if err != nil {
+				return err
+			}
+		}
+
 		return nil
 	}); err != nil {
 		return err
@@ -3199,15 +3227,17 @@ func (s *Server) attachAllApDatabase(ctx context.Context) error {
 // StartApEngine start ap engine.
 func (s *Server) StartApEngine(ctx context.Context) error {
 	var err error
+	var apEngine *ape.Engine
 	dbPath := ""
 	if len(s.cfg.Stores.Specs) != 0 {
 		dbPath = s.cfg.Stores.Specs[0].Path
 	}
-	s.apEngine, err = ape.NewApEngine(s.stopper, dbPath)
+	apEngine, err = ape.NewApEngine(s.stopper, ape.EngineConfig{Dir: dbPath})
 	if err != nil {
 		return errors.Wrap(err, "failed to create ap engine")
 	}
-	s.stopper.AddCloser(s.apEngine)
-	s.distSQLServer.ServerConfig.ApEngine = s.apEngine
+	s.stopper.AddCloser(apEngine)
+	s.engineHelper.SetAPEngine(apEngine)
+	s.distSQLServer.ServerConfig.EngineHelper = s.engineHelper
 	return nil
 }

@@ -530,7 +530,7 @@ func constructCopyAndRun(
 	var res duck.Result
 	db := duck.Database{}
 
-	path := flowCtx.Cfg.ApEngine.DbPath + "/" + spec.Table.DbName
+	path := flowCtx.Cfg.GetAPEngine().GetDBPath() + "/" + spec.Table.DbName
 	state = duck.Open(path, &db)
 	if state != duck.StateSuccess {
 		return false, 0, errors.New("failed to opend the ap database")

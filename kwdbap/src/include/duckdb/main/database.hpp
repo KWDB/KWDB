@@ -79,7 +79,9 @@ public:
 	                                                    AttachOptions &options);
 
 	void AddExtensionInfo(const string &name, const ExtensionLoadedInfo &info);
-
+  
+  DBConfig &GetConfig();
+  
 private:
 	void Initialize(const char *path, DBConfig *config);
 	void LoadExtensionSettings();

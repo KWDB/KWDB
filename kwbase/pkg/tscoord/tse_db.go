@@ -26,13 +26,14 @@ package tscoord
 import (
 	"context"
 
+	"gitee.com/kwbasedb/kwbase/pkg/engine"
+	"gitee.com/kwbasedb/kwbase/pkg/engine/tse"
 	"gitee.com/kwbasedb/kwbase/pkg/gossip"
 	"gitee.com/kwbasedb/kwbase/pkg/kv"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
 	"gitee.com/kwbasedb/kwbase/pkg/rpc"
 	"gitee.com/kwbasedb/kwbase/pkg/server/serverpb"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
-	"gitee.com/kwbasedb/kwbase/pkg/tse"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 	"gitee.com/kwbasedb/kwbase/pkg/util/stop"
 )
@@ -51,7 +52,7 @@ type TsSender struct {
 type TsDBConfig struct {
 	KvDB         *kv.DB
 	Sender       kv.Sender
-	TsEngine     *tse.TsEngine
+	EngineHelper engine.Helper
 	RPCContext   *rpc.Context
 	Gossip       *gossip.Gossip
 	Stopper      *stop.Stopper
@@ -187,7 +188,7 @@ func NewDB(cfg TsDBConfig) *DB {
 	tsDB := DB{
 		kdb: cfg.KvDB,
 		tss: &TsSender{
-			tsEngine:     cfg.TsEngine,
+			tsEngine:     cfg.EngineHelper.GetTSEngine().(*tse.TsEngine),
 			wrapped:      cfg.Sender,
 			rpcContext:   cfg.RPCContext,
 			gossip:       cfg.Gossip,

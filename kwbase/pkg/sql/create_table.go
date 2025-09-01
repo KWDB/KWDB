@@ -706,14 +706,7 @@ func (n *createTableNode) startExec(params runParams) error {
 		n.n.Table.ExplicitSchema = true
 		n.n.Table.ExplicitCatalog = true
 		createStmt := n.n.String()
-		apEngine := params.p.DistSQLPlanner().distSQLSrv.ServerConfig.ApEngine
-		conn, err := apEngine.CreateConnection("")
-		if err != nil {
-			return err
-		}
-		defer apEngine.DestroyConnection(conn)
-		err = apEngine.Exec(conn, createStmt)
-		if err != nil {
+		if err := params.p.DistSQLPlanner().distSQLSrv.ServerConfig.GetAPEngine().ExecSqlInDB(n.dbDesc.Name, createStmt); err != nil {
 			return pgerror.Newf(pgcode.Warning, "create ap table %s failed: %s", n.n.Table.String(), err.Error())
 		}
 	}

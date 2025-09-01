@@ -198,14 +198,7 @@ func (n *dropTableNode) startExec(params runParams) error {
 			n.n.Names[0].ExplicitSchema = true
 			n.n.Names[0].ExplicitCatalog = true
 			dropStmt := n.n.String()
-			apEngine := params.p.DistSQLPlanner().distSQLSrv.ServerConfig.ApEngine
-			conn, err := apEngine.CreateConnection("")
-			if err != nil {
-				return err
-			}
-			defer apEngine.DestroyConnection(conn)
-			err = apEngine.Exec(conn, dropStmt)
-			if err != nil {
+			if err := params.p.DistSQLPlanner().distSQLSrv.ServerConfig.GetAPEngine().ExecSqlInDB("tpch", dropStmt); err != nil {
 				return pgerror.Newf(pgcode.Warning, "drop ap table %s failed: %s", n.n.Names.String(), err.Error())
 			}
 		}

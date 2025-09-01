@@ -2804,7 +2804,7 @@ func (s *adminServer) GetAlertThreshold(
 func (s *adminServer) CreateTSTable(
 	ctx context.Context, req *serverpb.CreateTSTableRequest,
 ) (*serverpb.CreateTSTableResponse, error) {
-	exist, _ := s.server.tsEngine.TSIsTsTableExist(req.TableID)
+	exist, _ := s.server.GetTSEngine().TSIsTsTableExist(req.TableID)
 	if !exist {
 		err := s.createTSTable(ctx, req.TableID, req.HashNum, req.Meta)
 		if err != nil {
@@ -2819,7 +2819,7 @@ func (s *adminServer) createTSTable(
 	ctx context.Context, tableID uint64, hashNum uint64, meta []byte,
 ) error {
 	rangeGroups := []api.RangeGroup{{RangeGroupID: 1}}
-	err := s.server.tsEngine.CreateTsTable(tableID, hashNum, meta, rangeGroups)
+	err := s.server.GetTSEngine().CreateTsTable(tableID, hashNum, meta, rangeGroups)
 	if err != nil {
 		log.Errorf(ctx, "CreateTSTable failed %v", tableID)
 		return err

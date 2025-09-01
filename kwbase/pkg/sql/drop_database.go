@@ -304,15 +304,10 @@ func (n *dropDatabaseNode) startExec(params runParams) error {
 	}
 
 	if n.dbDesc.EngineType == tree.EngineTypeAP {
-		apEngine := params.p.DistSQLPlanner().distSQLSrv.ServerConfig.ApEngine
-		conn, err := apEngine.CreateConnection("")
-		if err != nil {
-			return err
-		}
-		defer apEngine.DestroyConnection(conn)
-		err = apEngine.DetachDatabase(conn, n.dbDesc.Name, n.dbDesc.ApDatabaseType)
-		if err != nil {
-			return pgerror.Newf(pgcode.Warning, "detach database %s failed: %s", n.dbDesc.Name, err.Error())
+		if err := params.p.DistSQLPlanner().distSQLSrv.GetAPEngine().DropDatabase(
+			params.extendedEvalCtx.SessionData.Database, n.dbDesc.Name,
+			n.dbDesc.ApDatabaseType == tree.ApDatabaseTypeDuckDB); err != nil {
+			return pgerror.Newf(pgcode.Warning, "use database %s failed: %s", n.dbDesc.Name, err.Error())
 		}
 	}
 	// Log Drop Database event. This is an auditable log event and is recorded

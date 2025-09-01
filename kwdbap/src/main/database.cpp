@@ -502,6 +502,10 @@ void DatabaseInstance::AddExtensionInfo(const string &name, const ExtensionLoade
 	loaded_extensions_info[name].load_info = make_uniq<ExtensionLoadedInfo>(info);
 }
 
+DBConfig &DatabaseInstance::GetConfig() {
+  return config;
+}
+
 idx_t DuckDB::NumberOfThreads() {
 	return instance->NumberOfThreads();
 }

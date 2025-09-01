@@ -38,6 +38,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/base"
 	"gitee.com/kwbasedb/kwbase/pkg/config"
 	"gitee.com/kwbasedb/kwbase/pkg/config/zonepb"
+	"gitee.com/kwbasedb/kwbase/pkg/engine/tse"
 	"gitee.com/kwbasedb/kwbase/pkg/gossip"
 	"gitee.com/kwbasedb/kwbase/pkg/keys"
 	"gitee.com/kwbasedb/kwbase/pkg/kv"
@@ -59,7 +60,6 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/storage/enginepb"
 	"gitee.com/kwbasedb/kwbase/pkg/ts"
 	"gitee.com/kwbasedb/kwbase/pkg/tscoord"
-	"gitee.com/kwbasedb/kwbase/pkg/tse"
 	"gitee.com/kwbasedb/kwbase/pkg/util"
 	"gitee.com/kwbasedb/kwbase/pkg/util/hlc"
 	"gitee.com/kwbasedb/kwbase/pkg/util/metric"
@@ -512,7 +512,7 @@ func (ts *TestServer) Engines() []storage.Engine {
 
 // TSEngine returns the TestServer's tsEngine.
 func (ts *TestServer) TSEngine() *tse.TsEngine {
-	return ts.tsEngine
+	return ts.GetTSEngine()
 }
 
 // ServingRPCAddr returns the server's RPC address. Should be used by clients.

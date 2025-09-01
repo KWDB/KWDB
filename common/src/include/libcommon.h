@@ -41,8 +41,16 @@ typedef enum _EnMqType {
   MQ_TYPE_DML_PG_RESULT,
   MQ_TYPE_DML_VECTORIZE_NEXT,
   MQ_TYPE_DML_INIT,
+  MQ_TYPE_DML_QUERY,
   MQ_TYPE_MAX
 } EnMqType;
+
+typedef enum _EnDBOperateType {
+  DB_CREATE,
+  DB_ATTACH,
+  DB_DETACH,
+  DB_MAX
+} EnDBOperateType;
 
 // TsFetcher collect information in explain analyse
 typedef struct {

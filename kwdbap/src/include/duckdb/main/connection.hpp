@@ -87,7 +87,7 @@ public:
     //! Input is physical_plan.
     //! Issues a query to the database and materializes the result (if necessary). Always returns a
     //! MaterializedQueryResult.
-    DUCKDB_API unique_ptr<MaterializedQueryResult> KWQuery(const string &query, shared_ptr<PreparedStatementData> &prepared);
+  DUCKDB_API unique_ptr<MaterializedQueryResult> KWQuery(const string &query, shared_ptr<PreparedStatementData> &prepared);
 	//! Issues a query to the database and materializes the result (if necessary). Always returns a
 	//! MaterializedQueryResult.
 	DUCKDB_API unique_ptr<MaterializedQueryResult> Query(unique_ptr<SQLStatement> statement);

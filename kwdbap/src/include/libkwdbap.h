@@ -77,11 +77,33 @@ typedef struct _APQueryInfo {
   TSSlice db_path;
 } APQueryInfo;
 
+typedef struct _APString {
+  char* value;
+  uint32_t len;
+} APString;
+
+typedef struct _APAppender {
+  void* value;
+} * APAppender;
+
 typedef APQueryInfo APRespInfo;
 
-TSStatus APOpen(APEngine** engine);
+TSStatus APOpen(APEngine** engine, APString *path);
+
+TSStatus APClose(APEngine* engine);
 
 TSStatus APExecQuery(APEngine* engine, APQueryInfo* req, APRespInfo* resp);
+
+TSStatus APExecSQL(APEngine* engine, APString* sql, APRespInfo* resp);
+
+TSStatus APDatabaseOperate(APEngine* engine, APString* name, EnDBOperateType type);
+
+TSStatus APDropDatabase(APEngine* engine, APString* current_db_name, APString* drop_db_name);
+
+TSStatus APCreateAppender(APEngine* engine, APString *catalog, APString *schema, APString *table,
+                          APAppender *out_appender);
+
+uint64_t APAppenderColumnCount(APAppender out_appender);
 
 void TSFree(void* ptr);
 

@@ -33,12 +33,11 @@ package rowexec
 import "C"
 import (
 	"context"
-	"gitee.com/kwbasedb/kwbase/pkg/tse"
 	"math/rand"
 	"sync"
 	"unsafe"
 
-	"gitee.com/kwbasedb/kwbase/pkg/ape"
+	"gitee.com/kwbasedb/kwbase/pkg/engine/ape"
 	"gitee.com/kwbasedb/kwbase/pkg/kv"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfra"
@@ -66,6 +65,7 @@ type ApEngineSchedule struct {
 
 	value0 bool
 	rowNum int
+	engine *ape.Engine
 }
 
 var _ execinfra.Processor = &ApEngineSchedule{}
@@ -91,6 +91,7 @@ func NewAPEngineSchedule(
 		sid:    sid,
 		handle: nil,
 		value0: len(typs) == 0,
+		engine: flowCtx.Cfg.EngineHelper.GetAPEngine().(*ape.Engine),
 	}
 
 	if sp := opentracing.SpanFromContext(flowCtx.EvalCtx.Ctx()); sp != nil && tracing.IsRecording(sp) {
@@ -116,31 +117,15 @@ func NewAPEngineSchedule(
 	); err != nil {
 		return nil, err
 	}
-	if err := ttr.initTableReader(ctx, processors); err != nil {
-		return nil, err
-	}
+
+	ttr.processors = processors
+
 	ttr.StartInternal(ctx, tsTableReaderProcName)
 	if err := ttr.setupFlow(ttr.Ctx); err != nil {
 		return nil, err
 	}
 
 	return ttr, nil
-}
-
-func (ttr *ApEngineSchedule) initTableReader(
-	ctx context.Context, processors []execinfrapb.ProcessorSpec,
-) error {
-	var info ape.QueryInfo
-	info.Handle = nil
-	info.Buf = []byte("init ap handle")
-	respInfo, err := ttr.FlowCtx.Cfg.ApEngine.InitHandle(&ctx, info)
-	if err != nil {
-		log.Warning(ctx, err)
-		return err
-	}
-	ttr.handle = respInfo.Handle
-	ttr.processors = processors
-	return nil
 }
 
 // NewFlowSpec get ap flow spec.
@@ -170,7 +155,7 @@ func (ttr *ApEngineSchedule) Next() (sqlbase.EncDatumRow, *execinfrapb.ProducerM
 			}
 
 			// Execute query to get next batch of data
-			respInfo, err := ttr.FlowCtx.Cfg.ApEngine.NextFlow(&(ttr.Ctx), queryInfo)
+			respInfo, err := ttr.engine.NextFlow(&(ttr.Ctx), queryInfo)
 			// Handle response codes
 			switch respInfo.Code {
 			case -1: // End of data
@@ -210,7 +195,7 @@ func (ttr *ApEngineSchedule) NextPgWire() (val []byte, code int, err error) {
 			TimeZone: ttr.timeZone,
 		}
 
-		respInfo, err := ttr.FlowCtx.Cfg.ApEngine.NextFlowPgWire(&(ttr.Ctx), queryInfo)
+		respInfo, err := ttr.engine.NextFlowPgWire(&(ttr.Ctx), queryInfo)
 
 		// Handle response codes
 		switch respInfo.Code {
@@ -248,10 +233,10 @@ func (ttr *ApEngineSchedule) cleanup(ctx context.Context) {
 // DropHandle is to close ap handle.
 func (ttr *ApEngineSchedule) DropHandle(ctx context.Context) {
 	if ttr.handle != nil {
-		var tsCloseInfo tse.TsQueryInfo
-		tsCloseInfo.Handle = ttr.handle
-		tsCloseInfo.Buf = []byte("close tsflow")
-		closeErr := ttr.FlowCtx.Cfg.TsEngine.CloseTsFlow(&(ttr.Ctx), tsCloseInfo)
+		var CloseInfo ape.QueryInfo
+		CloseInfo.Handle = ttr.handle
+		CloseInfo.Buf = []byte("close flow")
+		closeErr := ttr.engine.CloseFlow(&(ttr.Ctx), CloseInfo)
 		if closeErr != nil {
 			log.Warning(ctx, closeErr)
 		}
@@ -293,7 +278,7 @@ func (ttr *ApEngineSchedule) setupFlow(ctx context.Context) error {
 		SQL:      ttr.EvalCtx.Planner.GetStmt(),
 	}
 
-	respInfo, err := ttr.FlowCtx.Cfg.ApEngine.SetupFlow(&(ttr.Ctx), queryInfo)
+	respInfo, err := ttr.engine.SetupFlow(&(ttr.Ctx), queryInfo)
 	if err != nil {
 		if ttr.FlowCtx != nil {
 			ttr.FlowCtx.TsHandleBreak = true
