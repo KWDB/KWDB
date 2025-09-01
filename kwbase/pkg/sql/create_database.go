@@ -186,7 +186,7 @@ func (n *createDatabaseNode) startExec(params runParams) error {
 		}
 	}
 	if desc.EngineType == tree.EngineTypeAP {
-		if desc.ApDatabaseType == tree.ApDatabaseTypeDuckDB {
+		if desc.ApDatabaseType == tree.ApDatabaseTypeMysql {
 			attachStmt := fmt.Sprintf("ATTACH '%s' AS %s (TYPE mysql_scanner)", desc.AttachInfo, desc.Name)
 			if err := params.p.DistSQLPlanner().distSQLSrv.ServerConfig.GetAPEngine().ExecSqlInDB(
 				params.extendedEvalCtx.SessionData.Database, attachStmt); err != nil {

@@ -56,7 +56,7 @@ func DuckInsert(ctx context.Context, r *Engine, dbName, tabName string, rowVals 
 	defer func() {
 		duck.Disconnect(&conn)
 	}()
-	a, err := NewAppender(&conn, dbName, "main", tabName)
+	a, err := NewAppender(&conn, dbName, tree.PublicSchema, tabName)
 	if err != nil {
 		return pgerror.Newf(pgcode.Internal, "could not create new appender: %s", err.Error())
 	}
