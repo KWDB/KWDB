@@ -145,6 +145,7 @@ KStatus APEngineImpl::Query(const char* stmt, APRespInfo* resp) {
           memcpy(resp->value, errString.c_str(), resp->len);
         }
       }
+      return FAIL;
     }
     resp->row_num = res->RowCount();
     resp->ret = 1;
@@ -158,6 +159,7 @@ KStatus APEngineImpl::Query(const char* stmt, APRespInfo* resp) {
         memcpy(resp->value, e.what(), resp->len);
       }
     }
+    return FAIL;
   } catch (const std::exception& e) {
     resp->ret = 0;
     resp->code = 2202;
@@ -168,6 +170,7 @@ KStatus APEngineImpl::Query(const char* stmt, APRespInfo* resp) {
         memcpy(resp->value, e.what(), resp->len);
       }
     }
+    return FAIL;
   }
 
   return SUCCESS;

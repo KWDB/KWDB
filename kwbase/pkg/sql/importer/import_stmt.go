@@ -691,22 +691,18 @@ func (r *importResumer) apResume(
 	}
 
 	// todo add c++ interface to check
-	//var queryRes duck.Result
-	//var format string
-	//if details.Format.Format == roachpb.IOFileFormat_MYSQL {
-	//	format = "mysql"
-	//}
-	//queryStmt := fmt.Sprintf("SELECT count(*) FROM duckdb_databases WHERE database_name='%s' AND type='%s'", details.SrcDatabaseName, format)
-	//queryState := cfg.DistSQLSrv.GetAPEngine().ExecSql(queryStmt, &queryRes)
-	//if queryState != duck.StateSuccess {
-	//	errMsg := duck.ResultError(&queryRes)
-	//	return pgerror.New(pgcode.Warning, errMsg)
-	//}
-	//num := duck.ValueInt64(&queryRes, 0, 0)
-	//duck.DestroyResult(&queryRes)
-	//if num == 0 {
-	//	errors.New("source database is not exist")
-	//}
+	var num int
+	var format string
+	if details.Format.Format == roachpb.IOFileFormat_MYSQL {
+		format = "mysql"
+	}
+	queryStmt := fmt.Sprintf("SELECT count(*) FROM duckdb_databases WHERE database_name='%s' AND type='%s'", details.SrcDatabaseName, format)
+	if err := cfg.DistSQLSrv.GetAPEngine().ExecSqlForResult(queryStmt, &num); err != nil {
+		return err
+	}
+	if num == 0 {
+		return pgerror.New(pgcode.Warning, "source database is not exist")
+	}
 
 	copyStmt := fmt.Sprintf("COPY FROM DATABASE %s TO %s", details.SrcDatabaseName, details.DatabaseName)
 	err = cfg.DistSQLSrv.GetAPEngine().ExecSql(copyStmt)
