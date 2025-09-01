@@ -1882,39 +1882,37 @@ func TestShowJobWhenComplete(t *testing.T) {
 		}
 		group := ctxgroup.WithContext(ctx)
 		group.GoCtx(func(ctx context.Context) error {
-			for cnt := 0; cnt < 86400; cnt++ {
-				time.Sleep(1 * time.Second)
-				rows, err := db.QueryContext(ctx,
-					`SELECT job_id, status
-				 FROM [SHOW JOBS] WHERE job_id IN ($1, $2) AND finished IS NOT NULL`,
-					*jobs[0].ID(), *jobs[1].ID())
-				if err != nil {
+			rows, err := db.QueryContext(ctx,
+				`SELECT job_id, status
+				 FROM [SHOW JOBS WHEN COMPLETE (SELECT $1 UNION SELECT $2)]`,
+				*jobs[0].ID(), *jobs[1].ID())
+			if err != nil {
+				return err
+			}
+			var cnt int
+			for rows.Next() {
+				if err := rows.Scan(&out.id, &out.status); err != nil {
 					return err
 				}
-				var cnt int
-				for rows.Next() {
-					if err := rows.Scan(&out.id, &out.status); err != nil {
-						return err
-					}
-					cnt += 1
-					switch out.id {
-					case *jobs[0].ID():
-					case *jobs[1].ID():
-						// SHOW JOBS WHEN COMPLETE finishes only after all jobs are
-						// canceled.
-						if out.status != "canceled" {
-							continue
-						}
-					default:
+				cnt += 1
+				switch out.id {
+				case *jobs[0].ID():
+				case *jobs[1].ID():
+					// SHOW JOBS WHEN COMPLETE finishes only after all jobs are
+					// canceled.
+					if out.status != "canceled" {
 						return errors.Errorf(
-							"Expected either id:%d or id:%d but got: %d",
-							*jobs[0].ID(), *jobs[1].ID(), out.id)
+							"Expected status 'canceled' but got '%s'",
+							out.status)
 					}
+				default:
+					return errors.Errorf(
+						"Expected either id:%d or id:%d but got: %d",
+						*jobs[0].ID(), *jobs[1].ID(), out.id)
 				}
-				if cnt != 2 {
-					continue
-				}
-				return nil
+			}
+			if cnt != 2 {
+				return errors.Errorf("Expected 2 results but found %d", cnt)
 			}
 			return nil
 		})
