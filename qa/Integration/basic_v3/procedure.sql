@@ -787,3 +787,31 @@ CREATE PROCEDURE test_procedure_my_rel.test_input_5(a INT2,b INT4,c INT8)
 CALL test_procedure_my_rel.test_input_5(99.99,-1981.389,1982.193);
 CALL test_procedure_my_rel.test_input_5(99.99,-1981.389,1982.193);
 DROP DATABASE IF EXISTS test_procedure_my_rel CASCADE;
+
+--【存储过程】查询存储过程时未对UDF进行过滤
+-- https://e.gitee.com/kaiwuDB/projects/507629/bugs/list?issue=ICV6L0
+CREATE TS DATABASE power;
+USE power;
+CREATE TABLE power.consumption (k_timestamp timestamp not null,c1 int,c2 int) tags (site int not null)primary tags(site);
+INSERT INTO power.consumption VALUES('2024-1-1 1:00:00',1,2,1),( '2024-1-1 1:00:00',2,4,1),('2024-1-1 2:00:00',6,3,1),('2024-1-1 5:00:00',8,12,1),('2024-1-1 5:00:00',0,3,1);
+select * from power.consumption order by k_timestamp;
+CREATE FUNCTION calculate_growth_rate(previous_consumption int, current_consumption int)
+    RETURNS FLOAT
+    LANGUAGE LUA
+BEGIN
+'function calculate_growth_rate(previous_consumption, current_consumption)
+if previous_consumption == 0 then
+return nil
+end
+return(current_consumption -previous_consumption)/ previous_consumption
+end'
+END;
+
+CREATE PROCEDURE power.pro1()
+    $$ BEGIN declare a int;set a=-1;set a=a+1;SELECT a;END $$;
+show create procedure pro1;
+
+DROP PROCEDURE power.pro1;
+DROP FUNCTION calculate_growth_rate;
+DROP TABLE power.consumption;
+DROP DATABASE power;
