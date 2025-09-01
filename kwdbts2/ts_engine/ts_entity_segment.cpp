@@ -508,6 +508,7 @@ timestamp64 TsEntityBlock::GetTS(int row_num) {
     KStatus s = entity_segment_->GetColumnBlock(0, {}, this);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("block segment column[0] data load failed");
+      // Should not return s as timestamp64, we need to refactor the code later
       return s;
     }
   }
