@@ -401,6 +401,10 @@ func GetAllProcDescByParentID(
 	}
 	var descs []sqlbase.ProcedureDescriptor
 	for i := range rows {
+		routineType := int(tree.MustBeDInt(rows[i][5]))
+		if routineType != int(sqlbase.Procedure) {
+			continue
+		}
 		var desc sqlbase.ProcedureDescriptor
 		val := tree.MustBeDBytes(rows[i][3])
 		if err := protoutil.Unmarshal([]byte(val), &desc); err != nil {
@@ -424,6 +428,10 @@ func GetAllProcDesc(ctx context.Context, txn *kv.Txn) ([]sqlbase.ProcedureDescri
 	}
 	var descs []sqlbase.ProcedureDescriptor
 	for i := range rows {
+		routineType := int(tree.MustBeDInt(rows[i][5]))
+		if routineType != int(sqlbase.Procedure) {
+			continue
+		}
 		var desc sqlbase.ProcedureDescriptor
 		val := tree.MustBeDBytes(rows[i][3])
 		if err := protoutil.Unmarshal([]byte(val), &desc); err != nil {
