@@ -26,9 +26,9 @@ package sql
 
 import (
 	"context"
-	"gitee.com/kwbasedb/kwbase/pkg/ape"
 	"sync"
 
+	"gitee.com/kwbasedb/kwbase/pkg/ape"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/rowcontainer"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"

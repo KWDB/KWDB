@@ -467,7 +467,7 @@ ClientContext::ConvertFlowToPhysicalPlan(ClientContextLock &lock, const string &
     flows.push_back(std::move(flowSpecs));
 
     auto &catalog = Catalog::GetCatalog(*this, database);
-    auto &schema = catalog.GetSchema(*this, "main");
+    auto &schema = catalog.GetSchema(*this, "public");
     auto entry = schema.GetEntry(catalog.GetCatalogTransaction(*this), CatalogType::TABLE_ENTRY, table);
     auto &in_table = entry->Cast<TableCatalogEntry>();
 

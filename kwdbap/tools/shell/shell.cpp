@@ -4157,7 +4157,7 @@ MetadataResult SetUTF8Mode(ShellState &state, const char **azArg, idx_t nArg) {
 #endif
 
 static const MetadataCommand metadata_commands[] = {
-    {"backup", 0, nullptr, "?DB? FILE", "Backup DB (default \"main\") to FILE", 3},
+    {"backup", 0, nullptr, "?DB? FILE", "Backup DB (default \"public\") to FILE", 3},
     {"bail", 2, ToggleBail, "on|off", "Stop after hitting an error.  Default OFF", 3},
     {"binary", 2, ToggleBinary, "on|off", "Turn binary output on or off.  Default OFF", 3},
     {"cd", 2, ChangeDirectory, "DIRECTORY", "Change the working directory to DIRECTORY", 0},
@@ -4205,7 +4205,7 @@ static const MetadataCommand metadata_commands[] = {
     {"read", 2, ReadFromFile, "FILE", "Read input from FILE", 3},
     {"rows", 1, SetRowRendering, "", "Row-wise rendering of query results (default)", 0},
     {"restore", 0, nullptr, "", "", 3},
-    {"save", 0, nullptr, "?DB? FILE", "Backup DB (default \"main\") to FILE", 3},
+    {"save", 0, nullptr, "?DB? FILE", "Backup DB (default \"public\") to FILE", 3},
     {"safe_mode", 0, EnableSafeMode, "", "enable safe-mode", 0},
     {"separator", 0, SetSeparator, "COL ?ROW?", "Change the column and row separators", 0},
     {"schema", 0, DisplaySchemas, "?PATTERN?", "Show the CREATE statements matching PATTERN", 0},

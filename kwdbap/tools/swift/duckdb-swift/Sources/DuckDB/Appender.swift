@@ -71,7 +71,7 @@ public final class Appender {
   ///
   /// - Parameter connection: the connection through which rows should be
   ///   appended
-  /// - Parameter schema: the database schema (defaults to `main`)
+  /// - Parameter schema: the database schema (defaults to `public`)
   /// - Parameter table: the table to append to
   /// - Throws: ``DatabaseError/appenderFailedToInitialize(reason:)`` if the
   ///   appender failed to instantiate

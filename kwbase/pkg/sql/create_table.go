@@ -694,7 +694,7 @@ func (n *createTableNode) startExec(params runParams) error {
 		if schemaID == keys.PublicSchemaID {
 			switch n.dbDesc.ApDatabaseType {
 			case tree.ApDatabaseTypeDuckDB:
-				n.n.Table.SchemaName = tree.MainSchemaName
+				n.n.Table.SchemaName = tree.PublicSchemaName
 			case tree.ApDatabaseTypeMysql:
 				config, err := pgx.ParseDSN(n.dbDesc.AttachInfo)
 				if err != nil {

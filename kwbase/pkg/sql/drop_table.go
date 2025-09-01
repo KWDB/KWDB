@@ -186,7 +186,7 @@ func (n *dropTableNode) startExec(params runParams) error {
 				}
 				switch dbDesc.ApDatabaseType {
 				case tree.ApDatabaseTypeDuckDB:
-					n.n.Names[0].SchemaName = tree.MainSchemaName
+					n.n.Names[0].SchemaName = tree.PublicSchemaName
 				case tree.ApDatabaseTypeMysql:
 					config, err := pgx.ParseDSN(dbDesc.AttachInfo)
 					if err != nil {

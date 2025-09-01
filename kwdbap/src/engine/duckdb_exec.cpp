@@ -804,7 +804,7 @@ namespace kwdbts {
       std::string db_name = "tpch";
       auto& catalog = Catalog::GetCatalog(context, db_name);
 
-      auto entry = catalog.GetEntry(context, CatalogType::TABLE_ENTRY, "main",
+      auto entry = catalog.GetEntry(context, CatalogType::TABLE_ENTRY, "public",
                                     table_name, OnEntryNotFound::RETURN_NULL);
       if (!entry) {
         connect_->Rollback();
@@ -1007,7 +1007,7 @@ namespace kwdbts {
         if (apReader.has_schema_name() && !apReader.schema_name().empty()) {
           schema_name = apReader.schema_name().c_str();
         } else {
-          schema_name = "main";
+          schema_name = "public";
         }
         optional_ptr<Catalog> catalog;
         catalog = Catalog::GetCatalog(*connect_->context, db_name);

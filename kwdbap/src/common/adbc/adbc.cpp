@@ -216,7 +216,7 @@ AdbcStatusCode ConnectionGetTableSchema(struct AdbcConnection *connection, const
 	}
 	if (db_schema == nullptr || strlen(db_schema) == 0) {
 		// if schema is not set, we use the default schema
-		db_schema = "main";
+		db_schema = "public";
 	}
 	if (table_name == nullptr) {
 		SetError(error, "AdbcConnectionGetTableSchema: must provide table_name");
