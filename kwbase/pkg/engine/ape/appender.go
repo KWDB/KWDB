@@ -40,7 +40,7 @@ type DataChunk struct {
 }
 
 func DuckInsert(ctx context.Context, r *Engine, dbName, tabName string, rowVals []tree.Datums) error {
-	fmt.Println("DuckInsert start")
+	// fmt.Println("DuckInsert start")
 	db := duck.Database{}
 	var state duck.State
 	state = duck.Open(r.GetDBPath()+"/"+dbName, &db)
@@ -55,6 +55,7 @@ func DuckInsert(ctx context.Context, r *Engine, dbName, tabName string, rowVals 
 	}
 	defer func() {
 		duck.Disconnect(&conn)
+		duck.Close(&db)
 	}()
 	a, err := NewAppender(&conn, dbName, tree.PublicSchema, tabName)
 	if err != nil {
