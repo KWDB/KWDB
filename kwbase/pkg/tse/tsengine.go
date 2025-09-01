@@ -1549,7 +1549,7 @@ func (r *TsEngine) DeleteData(
 // CompressTsTable compress partitions with maximum time<=ts
 func (r *TsEngine) CompressTsTable(tableID uint64, ts int64) error {
 	if r == nil {
-		return errors.New("ts engine is nil")
+		return nil
 	}
 	r.checkOrWaitForOpen()
 	status := C.TSCompressTsTable(r.tdb, C.TSTableID(tableID), C.int64_t(ts))
@@ -1573,7 +1573,7 @@ func (r *TsEngine) CompressImmediately(ctx context.Context, tableID uint64) erro
 // Vacuum vacuum partitions
 func (r *TsEngine) Vacuum() error {
 	if r == nil {
-		return errors.New("ts engine is nil")
+		return nil
 	}
 	r.checkOrWaitForOpen()
 	status := C.TSVacuum(r.tdb)
@@ -1596,7 +1596,7 @@ func (r *TsEngine) CountTsTable(tableID uint64) error {
 // DeleteExpiredData delete expired data from time partitions that fall completely within the [min_int64, end) interval
 func (r *TsEngine) DeleteExpiredData(tableID uint64, _ int64, end int64) error {
 	if r == nil {
-		return errors.New("ts engine is nil")
+		return nil
 	}
 	r.checkOrWaitForOpen()
 	if end == math.MinInt64 {
@@ -1612,7 +1612,7 @@ func (r *TsEngine) DeleteExpiredData(tableID uint64, _ int64, end int64) error {
 // TsTableAutonomy Autonomous Evaluation
 func (r *TsEngine) TsTableAutonomy(tableID uint64) error {
 	if r == nil {
-		return errors.New("ts engine is nil")
+		return nil
 	}
 	r.checkOrWaitForOpen()
 	status := C.TSTableAutonomy(r.tdb, C.TSTableID(tableID))
