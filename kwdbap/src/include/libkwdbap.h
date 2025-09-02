@@ -54,6 +54,7 @@ TSStatus APClose(APEngine* engine);
 */
 
 typedef struct APEngine APEngine;
+typedef struct APEngine *APEnginePtr;
 
 typedef struct _APQueryInfo {
   EnMqType tp;
@@ -86,9 +87,13 @@ typedef struct _APAppender {
   void* value;
 } * APAppender;
 
+typedef struct _APConnection {
+  void *internal_ptr;
+} * APConnectionPtr;
+
 typedef APQueryInfo APRespInfo;
 
-TSStatus APOpen(APEngine** engine, APString *path);
+TSStatus APOpen(APEngine** engine, APConnectionPtr *out, APString *path);
 
 TSStatus APClose(APEngine* engine);
 

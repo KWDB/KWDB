@@ -59,7 +59,7 @@ class APEngineImpl : public APEngine {
  public:
   explicit APEngineImpl(kwdbContext_p ctx, const char* db_path);
 
-  static KStatus OpenEngine(kwdbContext_p ctx, APEngine** engine, const char* path);
+  static KStatus OpenEngine(kwdbContext_p ctx, APEngine** engine, APConnectionPtr *out, const char* path);
 
   KStatus DatabaseOperate(const char* name, EnDBOperateType type) override;
 
