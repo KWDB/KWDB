@@ -330,13 +330,11 @@ func (r *Engine) ExecSql(stmt string) error {
 	CString.len = (C.uint32_t)(len(stmt))
 	status := C.APExecSQL(r.dbStruct, &CString, &retInfo)
 	if err := statusToError(status); err != nil {
+		if innErr := getErrorString(&retInfo); innErr != nil {
+			return innErr
+		}
 		return err
 	}
-
-	if err := getErrorString(&retInfo); err != nil {
-		return err
-	}
-
 	return nil
 }
 
@@ -348,10 +346,9 @@ func (r *Engine) ExecSqlForResult(stmt string, count *int) error {
 	CString.len = (C.uint32_t)(len(stmt))
 	status := C.APExecSQL(r.dbStruct, &CString, &retInfo)
 	if err := statusToError(status); err != nil {
-		return err
-	}
-
-	if err := getErrorString(&retInfo); err != nil {
+		if innErr := getErrorString(&retInfo); innErr != nil {
+			return innErr
+		}
 		return err
 	}
 
