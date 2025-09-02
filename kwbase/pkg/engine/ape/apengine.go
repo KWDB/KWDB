@@ -296,13 +296,63 @@ func (r *Engine) CreateConnection(dbName string) error {
 func (r *Engine) DestroyConnection() {
 }
 
+func getErrorString(rep *C.APQueryInfo) error {
+	if rep.code > 1 {
+		if unsafe.Pointer(rep.value) != nil {
+			tmp := C.GoBytes(unsafe.Pointer(rep.value), C.int(rep.len))
+			C.TSFree(unsafe.Pointer(rep.value))
+
+			strCode := make([]byte, 5)
+			code := rep.code
+			for i := 0; i < 5; i++ {
+				strCode[i] = byte(((code) & 0x3F) + '0')
+				code = code >> 6
+			}
+			return pgerror.Newf(string(strCode), string(tmp))
+		} else {
+			return fmt.Errorf("error Code: %s", strconv.Itoa(int(rep.code)))
+		}
+	} else if rep.ret < 1 {
+		return fmt.Errorf("unknown error")
+	}
+
+	return nil
+}
+
 func (r *Engine) ExecSql(stmt string) error {
 	var retInfo C.APRespInfo
 	var CString C.APString
 	CString.value = (*C.char)(C.CBytes([]byte(stmt)))
 	CString.len = (C.uint32_t)(len(stmt))
-	_, err := C.APExecSQL(r.dbStruct, &CString, &retInfo)
-	return err
+	status := C.APExecSQL(r.dbStruct, &CString, &retInfo)
+	if err := statusToError(status); err != nil {
+		return err
+	}
+
+	if err := getErrorString(&retInfo); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// ExecSqlForResult gets exec sql result
+func (r *Engine) ExecSqlForResult(stmt string, count *int) error {
+	var retInfo C.APRespInfo
+	var CString C.APString
+	CString.value = (*C.char)(C.CBytes([]byte(stmt)))
+	CString.len = (C.uint32_t)(len(stmt))
+	status := C.APExecSQL(r.dbStruct, &CString, &retInfo)
+	if err := statusToError(status); err != nil {
+		return err
+	}
+
+	if err := getErrorString(&retInfo); err != nil {
+		return err
+	}
+
+	*count = int(retInfo.row_num)
+	return nil
 }
 
 func (r *Engine) dbOperate(dbName string, op C.EnDBOperateType) error {
