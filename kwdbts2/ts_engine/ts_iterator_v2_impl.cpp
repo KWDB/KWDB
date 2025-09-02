@@ -1004,6 +1004,7 @@ KStatus TsAggIteratorV2Impl::Aggregate() {
       final_agg_data_[i].data = static_cast<char*>(malloc(sizeof(timestamp64)));
       memcpy(final_agg_data_[i].data, &c.ts, sizeof(timestamp64));
       final_agg_data_[i].len = sizeof(timestamp64);
+      final_agg_buffer_is_new_[i] = true;
       /* crash with following code to avoid malloc and memcpy.
       char* value = nullptr;
       TsBitmap bitmap;
