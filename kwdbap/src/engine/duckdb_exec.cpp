@@ -84,7 +84,7 @@ KStatus DetachDB(DatabaseManager& db_manager, ClientContext &context, string db_
 APEngineImpl::APEngineImpl(kwdbContext_p ctx, const char* db_path):db_path_(db_path) {
 }
 
-KStatus APEngineImpl::OpenEngine(kwdbContext_p ctx, APEngine** engine, const char* path) {
+KStatus APEngineImpl::OpenEngine(kwdbContext_p ctx, APEngine** engine, APConnectionPtr *out, const char* path) {
   auto* engineImpl = new APEngineImpl(ctx, path);
   string defaultDB = string(path) + "/defaultdb";
   DuckDB db(defaultDB);
@@ -92,6 +92,7 @@ KStatus APEngineImpl::OpenEngine(kwdbContext_p ctx, APEngine** engine, const cha
   engineImpl->conn_ = conn;
   engineImpl->instance_ = db.instance;
   *engine = engineImpl;
+  *out = reinterpret_cast<APConnectionPtr>(conn.get());
   return KStatus::SUCCESS;
 }
 
@@ -132,6 +133,7 @@ KStatus APEngineImpl::Execute(kwdbContext_p ctx, APQueryInfo* req, APRespInfo* r
 }
 
 KStatus APEngineImpl::Query(const char* stmt, APRespInfo* resp) {
+  conn_->BeginTransaction();
   try {
     auto res = conn_->Query(stmt);
     if (res->HasError()) {
@@ -145,6 +147,7 @@ KStatus APEngineImpl::Query(const char* stmt, APRespInfo* resp) {
           memcpy(resp->value, errString.c_str(), resp->len);
         }
       }
+      conn_->Commit();
       return FAIL;
     }
     resp->row_num = res->RowCount();
@@ -159,6 +162,7 @@ KStatus APEngineImpl::Query(const char* stmt, APRespInfo* resp) {
         memcpy(resp->value, e.what(), resp->len);
       }
     }
+    conn_->Commit();
     return FAIL;
   } catch (const std::exception& e) {
     resp->ret = 0;
@@ -170,9 +174,11 @@ KStatus APEngineImpl::Query(const char* stmt, APRespInfo* resp) {
         memcpy(resp->value, e.what(), resp->len);
       }
     }
+    conn_->Commit();
     return FAIL;
   }
-
+  
+  conn_->Commit();
   return SUCCESS;
 }
 
