@@ -9,12 +9,9 @@
 // MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
 // See the Mulan PSL v2 for more details.
 
+#include <iostream>
 #include "ee_field_const.h"
 #include "cm_func.h"
-
-#include <iomanip>
-#include <iostream>
-#include <sstream>
 
 namespace kwdbts {
 

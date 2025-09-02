@@ -290,7 +290,7 @@ var DeDuplicateRule = settings.RegisterPublicStringSetting(
 var TsRaftLogCombineWAL = settings.RegisterPublicBoolSetting(
 	"ts.raftlog_combine_wal.enabled",
 	"combine raft log and wal to reduce write amplification, but still ensure data consistency",
-	true,
+	false,
 )
 
 // TsRaftLogSyncPeriod determine the sync interval of ts raft logs.
@@ -457,7 +457,8 @@ func (r *TsEngine) Open(rangeIndex []roachpb.RangeIndex) error {
 // SetRaftLogCombinedWAL set the state of TsRaftLogCombineWAL to AE
 func (r *TsEngine) SetRaftLogCombinedWAL(combined bool) {
 	if r.tdb != nil {
-		_ = C.TsSetUseRaftLogAsWAL(r.tdb, C.bool(combined))
+		status := C.TsSetUseRaftLogAsWAL(r.tdb, C.bool(combined))
+		_ = statusToError(status)
 	}
 }
 
@@ -1547,6 +1548,9 @@ func (r *TsEngine) DeleteData(
 
 // CompressTsTable compress partitions with maximum time<=ts
 func (r *TsEngine) CompressTsTable(tableID uint64, ts int64) error {
+	if r == nil {
+		return nil
+	}
 	r.checkOrWaitForOpen()
 	status := C.TSCompressTsTable(r.tdb, C.TSTableID(tableID), C.int64_t(ts))
 	if err := statusToError(status); err != nil {
@@ -1568,6 +1572,9 @@ func (r *TsEngine) CompressImmediately(ctx context.Context, tableID uint64) erro
 
 // Vacuum vacuum partitions
 func (r *TsEngine) Vacuum() error {
+	if r == nil {
+		return nil
+	}
 	r.checkOrWaitForOpen()
 	status := C.TSVacuum(r.tdb)
 	if err := statusToError(status); err != nil {
@@ -1588,6 +1595,9 @@ func (r *TsEngine) CountTsTable(tableID uint64) error {
 
 // DeleteExpiredData delete expired data from time partitions that fall completely within the [min_int64, end) interval
 func (r *TsEngine) DeleteExpiredData(tableID uint64, _ int64, end int64) error {
+	if r == nil {
+		return nil
+	}
 	r.checkOrWaitForOpen()
 	if end == math.MinInt64 {
 		return nil
@@ -1601,6 +1611,9 @@ func (r *TsEngine) DeleteExpiredData(tableID uint64, _ int64, end int64) error {
 
 // TsTableAutonomy Autonomous Evaluation
 func (r *TsEngine) TsTableAutonomy(tableID uint64) error {
+	if r == nil {
+		return nil
+	}
 	r.checkOrWaitForOpen()
 	status := C.TSTableAutonomy(r.tdb, C.TSTableID(tableID))
 	if err := statusToError(status); err != nil {

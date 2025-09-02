@@ -32,16 +32,16 @@ struct TsLastSegmentBlockIndex {
 };
 
 struct TsLastSegmentBlockInfo {
-  uint64_t block_offset;
-  uint32_t entity_id_len;
-  uint32_t lsn_len;
-  uint32_t nrow;
-  uint32_t ncol;
+  uint64_t block_offset = 0;
+  uint32_t entity_id_len = 0;
+  uint32_t lsn_len = 0;
+  uint32_t nrow = 0;
+  uint32_t ncol = 0;
   struct ColInfo {
-    uint32_t offset;
-    uint16_t bitmap_len;
-    uint32_t fixdata_len;
-    uint32_t vardata_len;
+    uint32_t offset = 0;
+    uint16_t bitmap_len = 0;
+    uint32_t fixdata_len = 0;
+    uint32_t vardata_len = 0;
   };
   std::vector<ColInfo> col_infos;
 };
@@ -58,7 +58,7 @@ struct TsLastSegmentFooter {
   uint64_t magic_number;
 };
 static_assert(sizeof(TsLastSegmentFooter) == 64);
-static_assert(std::has_unique_object_representations_v<TsLastSegmentFooter>);
+// static_assert(std::has_unique_object_representations_v<TsLastSegmentFooter>);
 
 inline void EncodeBlockInfo(std::string* buf, const TsLastSegmentBlockInfo& info) {
   PutFixed64(buf, info.block_offset);

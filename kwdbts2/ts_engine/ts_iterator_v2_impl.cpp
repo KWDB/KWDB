@@ -651,7 +651,8 @@ KStatus TsAggIteratorV2Impl::Init(bool is_reversed) {
     switch (scan_agg_types_[i]) {
       case Sumfunctype::LAST:
       case Sumfunctype::LASTTS: {
-          final_agg_buffer_is_new_[i] = (scan_agg_types_[i] == Sumfunctype::LAST && isVarLenType(attrs_[kw_scan_cols_[i]].type)) ? true : false;
+          final_agg_buffer_is_new_[i] = (scan_agg_types_[i] == Sumfunctype::LAST &&
+                                        isVarLenType(attrs_[kw_scan_cols_[i]].type)) ? true : false;
           if ((last_ts_points_.empty() || last_ts_points_[i] == TsMaxMilliTimestamp ||
                last_ts_points_[i] == TsMaxMicroTimestamp) && attrs_[kw_scan_cols_[i]].isFlag(AINFO_NOT_NULL)) {
             if (scan_agg_types_[i] == Sumfunctype::LAST) {
@@ -674,7 +675,8 @@ KStatus TsAggIteratorV2Impl::Init(bool is_reversed) {
         break;
       case Sumfunctype::FIRST:
       case Sumfunctype::FIRSTTS: {
-          final_agg_buffer_is_new_[i] = (scan_agg_types_[i] == Sumfunctype::FIRST && isVarLenType(attrs_[kw_scan_cols_[i]].type)) ? true : false;
+          final_agg_buffer_is_new_[i] = (scan_agg_types_[i] == Sumfunctype::FIRST &&
+                                        isVarLenType(attrs_[kw_scan_cols_[i]].type)) ? true : false;
           if (attrs_[kw_scan_cols_[i]].isFlag(AINFO_NOT_NULL)) {
             if (scan_agg_types_[i] == Sumfunctype::FIRST) {
               scan_agg_types_[i] = Sumfunctype::FIRST_ROW;

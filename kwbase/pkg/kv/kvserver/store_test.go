@@ -3373,10 +3373,13 @@ func TestUpdateTsFlushedIndex(t *testing.T) {
 		initialized    bool
 		tsFlushedIndex uint64
 		appliedIndex   uint64
+		expectedIndex  uint64
 	}{
-		{repl: &Replica{store: s, RangeID: 1}, initialized: true, appliedIndex: 18},
-		{repl: &Replica{store: s, RangeID: 2}, initialized: false, appliedIndex: 13},
-		{repl: &Replica{store: s, RangeID: 3}, initialized: true, appliedIndex: 17},
+		{repl: &Replica{store: s, RangeID: 1}, initialized: true, tsFlushedIndex: 16, appliedIndex: 18, expectedIndex: 18},
+		{repl: &Replica{store: s, RangeID: 2}, initialized: false, tsFlushedIndex: 15, appliedIndex: 13, expectedIndex: 15},
+		{repl: &Replica{store: s, RangeID: 3}, initialized: true, tsFlushedIndex: 15, appliedIndex: 17, expectedIndex: 17},
+		// special case, flushedIndex is greater than preparedIndex.
+		{repl: &Replica{store: s, RangeID: 4}, initialized: true, tsFlushedIndex: 17, appliedIndex: 15, expectedIndex: 17},
 	}
 	for _, testRepl := range testReplicas {
 		r := testRepl.repl
@@ -3387,8 +3390,12 @@ func TestUpdateTsFlushedIndex(t *testing.T) {
 		if testRepl.initialized {
 			r.mu.state.Desc.EndKey = roachpb.RKey("b")
 		}
+		r.mu.tsFlushedIndex = testRepl.tsFlushedIndex
 		r.mu.state.RaftAppliedIndex = testRepl.appliedIndex
 		r.mu.stateLoader = stateloader.Make(r.RangeID)
+		if err := r.mu.stateLoader.SetTsFlushedIndex(ctx, r.Engine(), testRepl.tsFlushedIndex); err != nil {
+			t.Fatalf("set ts flushed index failed: %s", err)
+		}
 		nodeReplicas.mu.replicas[r.RangeID] = r
 	}
 	if err := SetTsPrepareFlushedIndexForAllReplicas(ctx); err != nil {
@@ -3403,8 +3410,8 @@ func TestUpdateTsFlushedIndex(t *testing.T) {
 			if err != nil {
 				t.Fatalf("load ts flushed index failed: %s", err)
 			}
-			if tsFlushedIndex == testRepl.appliedIndex {
-				t.Errorf("unexpected %d", tsFlushedIndex)
+			if tsFlushedIndex != testRepl.tsFlushedIndex {
+				t.Errorf("expected %d, but found %d", testRepl.tsFlushedIndex, tsFlushedIndex)
 			}
 		} else {
 			if testRepl.repl.mu.tsPrepareFlushedIndex != 0 {
@@ -3417,21 +3424,36 @@ func TestUpdateTsFlushedIndex(t *testing.T) {
 		t.Fatalf("set ts flushed index failed: %s", err)
 	}
 	for _, testRepl := range testReplicas {
-		if testRepl.initialized {
-			if testRepl.repl.mu.tsFlushedIndex != testRepl.repl.mu.tsPrepareFlushedIndex {
-				t.Errorf("expected %d, but found %d", testRepl.repl.mu.tsPrepareFlushedIndex, testRepl.repl.mu.tsFlushedIndex)
-			}
-			tsFlushedIndex, err := testRepl.repl.mu.stateLoader.LoadTsFlushedIndex(ctx, testRepl.repl.Engine())
-			if err != nil {
-				t.Fatalf("load ts flushed index failed: %s", err)
-			}
-			if tsFlushedIndex != testRepl.repl.mu.tsPrepareFlushedIndex {
-				t.Errorf("expected %d, but found %d", testRepl.repl.mu.tsPrepareFlushedIndex, tsFlushedIndex)
-			}
-		} else {
-			if testRepl.repl.mu.tsFlushedIndex != 0 {
-				t.Errorf("expected 0, but found %d", testRepl.repl.mu.tsFlushedIndex)
-			}
+		if testRepl.repl.mu.tsFlushedIndex != testRepl.expectedIndex {
+			t.Errorf("expected %d, but found %d", testRepl.expectedIndex, testRepl.repl.mu.tsFlushedIndex)
+		}
+		tsFlushedIndex, err := testRepl.repl.mu.stateLoader.LoadTsFlushedIndex(ctx, testRepl.repl.Engine())
+		if err != nil {
+			t.Fatalf("load ts flushed index failed: %s", err)
+		}
+		if tsFlushedIndex != testRepl.expectedIndex {
+			t.Errorf("expected %d, but found %d", testRepl.expectedIndex, tsFlushedIndex)
+		}
+	}
+
+	for _, testRepl := range testReplicas {
+		if !testRepl.initialized {
+			testRepl.repl.mu.state.Desc.EndKey = roachpb.RKey("b")
+		}
+	}
+	if err := SetTsFlushedIndexForAllReplicas(ctx); err != nil {
+		t.Fatalf("set ts flushed index failed: %s", err)
+	}
+	for _, testRepl := range testReplicas {
+		if testRepl.repl.mu.tsFlushedIndex != testRepl.expectedIndex {
+			t.Errorf("expected %d, but found %d", testRepl.expectedIndex, testRepl.repl.mu.tsFlushedIndex)
+		}
+		tsFlushedIndex, err := testRepl.repl.mu.stateLoader.LoadTsFlushedIndex(ctx, testRepl.repl.Engine())
+		if err != nil {
+			t.Fatalf("load ts flushed index failed: %s", err)
+		}
+		if tsFlushedIndex != testRepl.expectedIndex {
+			t.Errorf("expected %d, but found %d", testRepl.expectedIndex, tsFlushedIndex)
 		}
 	}
 

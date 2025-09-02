@@ -60,8 +60,8 @@ bool RemoveDirContents(const string& dir_path, ErrorInfo& error_info) {
 
 bool MakeDirectory(const fs::path& dir_path, ErrorInfo& error_info) {
   std::error_code ec;
-  if (std::filesystem::exists(dir_path, ec)) {
-    if (std::filesystem::is_directory(dir_path, ec)) {
+  if (fs::exists(dir_path, ec)) {
+    if (fs::is_directory(dir_path, ec)) {
       return true;
     }
     error_info.errcode = KWEOTHER;
@@ -69,7 +69,7 @@ bool MakeDirectory(const fs::path& dir_path, ErrorInfo& error_info) {
     LOG_ERROR("MakeDirectory [%s] failed: %s", dir_path.string().c_str(), error_info.errmsg.c_str());
     return false;
   }
-  if (!std::filesystem::create_directories(dir_path, ec)) {
+  if (!fs::create_directories(dir_path, ec)) {
     error_info.errcode = errnumToErrorCode(ec.value());
     error_info.errmsg = ec.message();
     LOG_ERROR("MakeDirectory [%s] failed: %s", dir_path.string().c_str(), error_info.errmsg.c_str());

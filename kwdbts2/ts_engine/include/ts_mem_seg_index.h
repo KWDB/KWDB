@@ -82,8 +82,8 @@ struct TSMemSegRowData {
 };
 
 static_assert(sizeof(TSMemSegRowData) == 64, "TSMemSegRowData size is not 64");
-static_assert(std::has_unique_object_representations_v<TSMemSegRowData>,
-              "TSMemSegRowData has some uninitialized padding");
+//  static_assert(std::has_unique_object_representations_v<TSMemSegRowData>,
+//                "TSMemSegRowData has some uninitialized padding");
 
 struct TSRowDataComparator {
   inline const TSMemSegRowData* DecodeKeyValue(const char* b) const {

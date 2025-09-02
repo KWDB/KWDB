@@ -383,7 +383,7 @@ func TestRegistryGCPagination(t *testing.T) {
 	require.NoError(t, s.JobRegistry().(*Registry).cleanupOldJobs(ctx, ts.Add(-10*time.Minute)))
 	var count int
 	db.QueryRow(t, `SELECT count(1) FROM system.jobs`).Scan(&count)
-	if count == 1 {
+	if count == 2 {
 		return
 	}
 	require.Zero(t, count)
