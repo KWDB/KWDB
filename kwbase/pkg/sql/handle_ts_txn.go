@@ -36,6 +36,9 @@ type tsTxnResumer struct {
 func (r *tsTxnResumer) Resume(
 	ctx context.Context, phs interface{}, resultsCh chan<- tree.Datums,
 ) error {
+	if phs == nil {
+		return nil
+	}
 	p := phs.(PlanHookState).(*planner)
 	// handle ts txn record in job, and this job will be always running
 	for timer := time.NewTimer(0); ; {
