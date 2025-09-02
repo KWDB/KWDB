@@ -187,6 +187,18 @@ func NewProcessor(
 		}
 		return newCreateTsTable(flowCtx, processorID, core.TsCreate, post, outputs[0])
 	}
+	if core.ApCreateTable != nil {
+		if err := checkNumInOut(inputs, outputs, 0, 1); err != nil {
+			return nil, err
+		}
+		return newCreateAPTable(flowCtx, processorID, core.ApCreateTable, post, outputs[0])
+	}
+	if core.ApCreateDatabase != nil {
+		if err := checkNumInOut(inputs, outputs, 0, 1); err != nil {
+			return nil, err
+		}
+		return newCreateAPDatabase(flowCtx, processorID, core.ApCreateDatabase, post, outputs[0])
+	}
 	if core.TsPro != nil {
 		if err := checkNumInOut(inputs, outputs, 0, 1); err != nil {
 			return nil, err

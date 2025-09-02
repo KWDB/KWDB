@@ -547,7 +547,8 @@ func (rc *RowChannel) Push(
 	consumerStatus := ConsumerStatus(
 		atomic.LoadUint32((*uint32)(&rc.ConsumerStatus)))
 	if meta != nil && (meta.TsInsert != nil || meta.TsDelete != nil || meta.TsTagUpdate != nil ||
-		meta.TsCreate != nil || meta.TsPro != nil || meta.TsAlterColumn != nil) {
+		meta.TsCreate != nil || meta.TsPro != nil || meta.TsAlterColumn != nil ||
+		meta.APCreateTable != nil || meta.APCreateDatabase != nil) {
 		consumerStatus = DrainRequested
 	}
 	switch consumerStatus {

@@ -112,6 +112,16 @@ func (*TsCreateTableProSpec) summary() (string, []string) {
 }
 
 // summary implements the diagramCellType interface.
+func (*APCreateDatabaseProSpec) summary() (string, []string) {
+	return "APCreateDatabase", []string{}
+}
+
+// summary implements the diagramCellType interface.
+func (*APCreateTableProSpec) summary() (string, []string) {
+	return "APCreateTable", []string{}
+}
+
+// summary implements the diagramCellType interface.
 func (*TsProSpec) summary() (string, []string) {
 	return "TsProSpec", []string{}
 }

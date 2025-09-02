@@ -146,6 +146,8 @@ message ProcessorCoreUnion {
   optional StreamReaderSpec streamReader = 44;
   optional StreamAggregatorSpec streamAggregator = 45;
   optional APTableReaderSpec apTableReader = 46;
+  optional APCreateDatabaseProSpec apCreateDatabase = 47;
+  optional APCreateTableProSpec apCreateTable = 48;
   reserved 6, 12;
 }
 
