@@ -28,7 +28,7 @@ class TestTsTable : public TestBigTableInstance {
   TestTsTable() {
     ctx_ = &context_;
     InitServerKWDBContext(ctx_);
-    table_ = new TsTable(ctx_, kDbPath, 10086);
+    table_ = new TsTableImpl(ctx_, kDbPath, 10086);
   }
 
   ~TestTsTable() {
@@ -281,7 +281,7 @@ TEST_F(TestTsTable, SharedLruUnorderedMap) {
   tables_cache.Init();
 
   for (KTableKey table_id = 1; table_id <= 100; table_id++) {
-    std::shared_ptr<TsTable> t = std::make_shared<TsTable>(ctx_, "abc", table_id);
+    std::shared_ptr<TsTableImpl> t = std::make_shared<TsTableImpl>(ctx_, "abc", table_id);
     tables_cache.Put(table_id, t);
   }
   ASSERT_EQ(tables_cache.Size(), lru_size);
@@ -291,7 +291,7 @@ TEST_F(TestTsTable, SharedLruUnorderedMap) {
 
   std::vector<std::shared_ptr<TsTable>> tmp_vector;
   for (KTableKey table_id = 1; table_id <= 100; table_id++) {
-    std::shared_ptr<TsTable> t = std::make_shared<TsTable>(ctx_, "abc", table_id);
+    std::shared_ptr<TsTableImpl> t = std::make_shared<TsTableImpl>(ctx_, "abc", table_id);
     tmp_vector.push_back(t);
     tables_cache.Put(table_id, t);
   }
@@ -306,7 +306,7 @@ TEST_F(TestTsTable, SharedLruUnorderedMap) {
 
   {
     KTableKey table_id = 1;
-    std::shared_ptr<TsTable> t = std::make_shared<TsTable>(ctx_, "abc", table_id);
+    std::shared_ptr<TsTableImpl> t = std::make_shared<TsTableImpl>(ctx_, "abc", table_id);
     tmp_vector.push_back(t);
     tables_cache.Put(table_id, t);
   }

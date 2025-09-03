@@ -15,7 +15,7 @@
 #include <string>
 #include <vector>
 
-#include "engine.h"
+#include "ts_engine.h"
 #include "libkwdbts2.h"
 
 extern bool g_go_start_service;
@@ -23,19 +23,25 @@ namespace kwdbts {
 
 RangeGroup test_range{default_entitygroup_id_in_dist_v2, 0};
 
-TSEngine* CreateTestTsEngine(kwdbContext_p ctx, const string& db_path) {
+TSEngineV2Impl* CreateTestTsEngine(kwdbContext_p ctx, const string& db_path) {
   EngineOptions opts;
   opts.wal_level = 0;
   opts.db_path = db_path;
-  auto* ts_engine = static_cast<TSEngine*>(ctx->ts_engine);
-  TSEngineImpl::OpenTSEngine(ctx, db_path, opts, &ts_engine);
+  system(("rm -rf " + db_path + "/*").c_str());
+  auto* ts_engine = new TSEngineV2Impl(opts);
+  auto s = ts_engine->Init(ctx);
+  EXPECT_EQ(s, KStatus::SUCCESS);
   ctx->ts_engine = ts_engine;
   g_go_start_service = false;
+  KWDBDynamicThreadPool::GetThreadPool().Init(1, ctx);
   return ts_engine;
 }
 
 void CloseTestTsEngine(kwdbContext_p ctx) {
-  auto* ts_engine = static_cast<TSEngine*>(ctx->ts_engine);
-  TSEngineImpl::CloseTSEngine(ctx, ts_engine);
+  auto* ts_engine = static_cast<TSEngineV2Impl*>(ctx->ts_engine);
+  if (ts_engine) {
+    delete ts_engine;
+  }
+  KWDBDynamicThreadPool::GetThreadPool().Stop();
 }
 }  // namespace kwdbts

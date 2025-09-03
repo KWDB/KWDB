@@ -26,6 +26,9 @@
 #include "mmap_tag_column_table.h"
 #include "mmap_tag_version_manager.h"
 #include "mmap_tag_column_table_aux.h"
+#include "column_utils.h"
+#include "ts_payload.h"
+
 
 extern uint32_t k_entity_group_id_size;
 extern uint32_t k_per_null_bitmap_size;
@@ -36,6 +39,8 @@ using TableVersion = uint32_t;
 using TagPartitionTable = MMapTagColumnTable;
 
 #define INVALID_COL_IDX UINT32_MAX
+
+const string TAG_VERSION_NAME = "tag_version";
 
 class TagPartitionTableManager;
 
@@ -68,7 +73,8 @@ class TagTable {
 
   virtual ~TagTable();
 
-  int create(const vector<TagInfo> &schema, uint32_t table_version, ErrorInfo &err_info);
+  int create(const vector<TagInfo> &schema, uint32_t table_version, const std::vector<roachpb::NTagIndexInfo>& idx_info,
+             ErrorInfo &err_info);
 
   int open(ErrorInfo &err_info);
 
@@ -79,11 +85,17 @@ class TagTable {
   // check ptag exist
   bool hasPrimaryKey(const char* primary_tag_val, int len);
 
+  // get max entity id
+  void GetMaxEntityIdByVGroupId(uint32_t vgroup_id, uint32_t& entity_id);
+  // get entity id list
+  void GetEntityIdListByVGroupId(uint32_t vgroup_id, std::vector<uint32_t>& entity_id_list);
+
   // insert tag record
   int InsertTagRecord(kwdbts::Payload &payload, int32_t sub_group_id, int32_t entity_id);
-
+  int InsertTagRecord(kwdbts::TsRawPayload &payload, int32_t sub_group_id, int32_t entity_id);
   // update tag record
   int UpdateTagRecord(kwdbts::Payload &payload, int32_t sub_group_id, int32_t entity_id, ErrorInfo& err_info);
+  int UpdateTagRecord(kwdbts::TsRawPayload &payload, int32_t sub_group_id, int32_t entity_id, ErrorInfo& err_info);
 
   /**
   * @brief Query tag through the index of the primary tag and normal tag.
@@ -131,6 +143,10 @@ class TagTable {
 
   inline TagPartitionTableManager* GetTagPartitionTableManager() {return m_partition_mgr_;}
 
+  KStatus GetMeta(uint64_t table_id, uint32_t table_version, roachpb::CreateTsTable* meta);
+
+  KStatus Init();
+
   // wal
   void sync_with_lsn(kwdbts::TS_LSN lsn);
 
@@ -151,6 +167,8 @@ class TagTable {
 		    const TSSlice& primary_tag, TSSlice& tags);
   int UpdateForRedo(uint32_t group_id, uint32_t entity_id,
                     const TSSlice& primary_tag, kwdbts::Payload &payload);
+  int UpdateForRedo(uint32_t group_id, uint32_t entity_id,
+                    const TSSlice& primary_tag, kwdbts::TsRawPayload &payload);
   int UpdateForUndo(uint32_t group_id, uint32_t entity_id, uint64_t hash_num,
                     const TSSlice& primary_tag, const TSSlice& old_tag);
 
@@ -251,11 +269,15 @@ protected:
   std::map<uint32_t, TagPartitionTable*> m_partition_tables_;
 
 public:
-  explicit TagPartitionTableManager (const std::string& db_path, const std::string& tbl_sub_path, uint32_t table_id, uint32_t entity_group_id) :
-      m_db_path_(db_path), m_tbl_sub_path_(tbl_sub_path), m_table_id_(table_id),m_entity_group_id_(entity_group_id),
-      rw_latch_(RWLATCH_ID_TAG_TABLE_PARTITION_MGR_RWLOCK) {
-        m_table_prefix_name_ = std::to_string(table_id) + ".tag" + ".pt";
-      }
+ explicit TagPartitionTableManager(const std::string& db_path, const std::string& tbl_sub_path, uint32_t table_id,
+                                   uint32_t entity_group_id)
+     : rw_latch_(RWLATCH_ID_TAG_TABLE_PARTITION_MGR_RWLOCK),
+       m_db_path_(db_path),
+       m_tbl_sub_path_(tbl_sub_path),
+       m_table_id_(table_id),
+       m_entity_group_id_(entity_group_id) {
+   m_table_prefix_name_ = std::to_string(table_id) + ".tag" + ".pt";
+ }
 
   virtual ~TagPartitionTableManager();
 

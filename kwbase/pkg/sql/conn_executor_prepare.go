@@ -561,7 +561,7 @@ func (ex *connExecutor) execPreparedirectBind(
 				return err
 			}
 
-			if !evalCtx.StartSinglenode {
+			if !evalCtx.StartSinglenode || ex.kwengineversion == "2" {
 				//start mode
 				di.PayloadNodeMap = make(map[int]*sqlbase.PayloadForDistTSInsert, 1)
 				if err = BuildRowBytesForPrepareTsInsert(
@@ -570,8 +570,8 @@ func (ex *connExecutor) execPreparedirectBind(
 					return err
 				}
 
-			} else {
-				// start-single-node mode
+			} else if ex.kwengineversion == "1" {
+				// single-node KW_ENGINE_VERSION=1 (Column-stored)(default value is 1)
 				priTagValMap := BuildPreparepriTagValMap(bindCmd.Args, di)
 				di.PayloadNodeMap = make(map[int]*sqlbase.PayloadForDistTSInsert, 1)
 				for _, priTagRowIdx := range priTagValMap {
@@ -588,6 +588,8 @@ func (ex *connExecutor) execPreparedirectBind(
 					di.ColIndexs,
 					ex.server.GetCFG().CDCCoordinator,
 				)
+			} else {
+				return pgerror.Newf(pgcode.InvalidName, "Error KW_ENGINE_VERSION %s", ex.kwengineversion)
 			}
 
 			numCols := len(ps.Columns)

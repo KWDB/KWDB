@@ -32,6 +32,7 @@ typedef struct {
 // operation. If TSStatus.data == NULL the operation succeeded.
 typedef TSString TSStatus;
 typedef uint64_t TSTableID;
+typedef uint64_t TSEntityID;
 typedef int64_t KTimestamp;
 
 // distribute moudule RangeGroup
@@ -109,9 +110,6 @@ typedef struct TsLogOptions {
 // TSOptions contains local database options.
 typedef struct {
   uint8_t wal_level;
-  uint16_t wal_file_size;
-  uint16_t wal_file_in_group;
-  uint16_t wal_buffer_size;
   bool must_exist;
   bool read_only;
   TSSlice extra_options;
@@ -122,6 +120,7 @@ typedef struct {
   bool is_single_node;
   TSSlice brpc_addr;
   TSSlice cluster_id;
+  const char* engine_version;
 } TSOptions;
 
 typedef enum _EnMqType {
@@ -213,12 +212,6 @@ TSStatus TSOpen(TSEngine** engine, TSSlice dir, TSOptions options, AppliedRangeI
 
 TSStatus TSCreateTsTable(TSEngine* engine, TSTableID tableId, TSSlice meta, RangeGroups range_groups);
 
-TSStatus TSGetRangeGroups(TSEngine* engine, TSTableID table_id, RangeGroups *range_groups);
-
-TSStatus TSUpdateRangeGroup(TSEngine* engine, TSTableID table_id, RangeGroups range_groups);
-
-TSStatus TSCreateRangeGroup(TSEngine* engine, TSTableID table_id, TSSlice schema, RangeGroups range_groups);
-
 TSStatus TSDropTsTable(TSEngine* engine, TSTableID tableId);
 
 TSStatus TSDropResidualTsTable(TSEngine* engine);
@@ -248,7 +241,7 @@ TSStatus TSCompressTsTable(TSEngine* engine, TSTableID table_id, KTimestamp ts);
  */
 TSStatus TSCompressImmediately(TSEngine* engine, uint64_t goCtxPtr, TSTableID table_id);
 
-TSStatus TSVacuumTsTable(TSEngine* engine, TSTableID table_id, uint32_t ts_version);
+TSStatus TSVacuum(TSEngine* engine);
 
 /**
  * @brief Migrate table partition to another tiering level if hot and cold data tiering is configured
@@ -270,6 +263,10 @@ TSStatus TSPutEntity(TSEngine *engine, TSTableID tableId, TSSlice *payload, size
 TSStatus TSPutData(TSEngine* engine, TSTableID tableId, TSSlice* payload, size_t payload_num, RangeGroup range_group,
                    uint64_t mtr_id, uint16_t* inc_entity_cnt, uint32_t* inc_unordered_cnt, DedupResult* dedup_result,
                    bool writeWAL);
+
+TSStatus TSPutDataExplicit(TSEngine* engine, TSTableID tableId, TSSlice* payload, size_t payload_num, RangeGroup range_group,
+                   uint64_t mtr_id, uint16_t* inc_entity_cnt, uint32_t* inc_unordered_cnt, DedupResult* dedup_result,
+                   bool writeWAL, const char* tsx_id);
 
 TSStatus TSExecQuery(TSEngine* engine, QueryInfo* req, RespInfo* resp, TsFetcher* fetchers, void* fetcher);
 
@@ -295,6 +292,16 @@ TSStatus TSMtrBegin(TSEngine* engine, TSTableID table_id, uint64_t range_group_i
 TSStatus TSMtrCommit(TSEngine* engine, TSTableID table_id, uint64_t range_group_id, uint64_t mtr_id);
 
 TSStatus TSMtrRollback(TSEngine* engine, TSTableID table_id, uint64_t range_group_id, uint64_t mtr_id);
+
+
+TSStatus TSMtrBeginExplicit(TSEngine* engine, TSTableID table_id, uint64_t range_group_id,
+                    uint64_t range_id, uint64_t index, uint64_t* mtr_id, const char* tsx_id);
+
+TSStatus TSMtrCommitExplicit(TSEngine* engine, TSTableID table_id, uint64_t range_group_id, uint64_t mtr_id,
+                     const char* tsx_id);
+
+TSStatus TSMtrRollbackExplicit(TSEngine* engine, TSTableID table_id, uint64_t range_group_id, uint64_t mtr_id,
+                       const char* tsx_id);
 
 TSStatus TSxBegin(TSEngine* engine, TSTableID tableId, char* transaction_id);
 
@@ -351,6 +358,11 @@ TSStatus TSGetDataVolumeHalfTS(TSEngine* engine, TSTableID table_id, uint64_t be
 TSStatus TSPutDataByRowType(TSEngine* engine, TSTableID table_id, TSSlice* payload_row, size_t payload_num,
                             RangeGroup range_group, uint64_t mtr_id, uint16_t* inc_entity_cnt,
                             uint32_t* inc_unordered_cnt, DedupResult* dedup_result, bool writeWAL);
+
+TSStatus TSPutDataByRowTypeExplicit(TSEngine* engine, TSTableID table_id, TSSlice* payload_row, size_t payload_num,
+                                    RangeGroup range_group, uint64_t mtr_id, uint16_t* inc_entity_cnt,
+                                    uint32_t* inc_unordered_cnt, DedupResult* dedup_result, bool writeWAL,
+                                    const char* tsx_id);
 
 TSStatus TsTestGetAndAddSchemaVersion(TSEngine* engine, TSTableID table_id, uint64_t version);
 
@@ -423,6 +435,16 @@ TSStatus TSWriteSnapshotSuccess(TSEngine* engine, TSTableID table_id, uint64_t s
  */
 TSStatus TSWriteSnapshotRollback(TSEngine* engine, TSTableID table_id, uint64_t snapshot_id);
 
+TSStatus TSReadBatchData(TSEngine* engine, TSTableID table_id, uint64_t table_version, uint64_t begin_hash,
+                         uint64_t end_hash, KwTsSpan ts_span, uint64_t job_id, TSSlice* data, uint32_t* row_num);
+
+TSStatus TSWriteBatchData(TSEngine* engine, TSTableID table_id, uint64_t table_version, uint64_t job_id,
+                          TSSlice* data, uint32_t* row_num);
+
+TSStatus CancelBatchJob(TSEngine* engine, uint64_t job_id);
+
+TSStatus BatchJobFinish(TSEngine* engine, uint64_t job_id);
+
 /**
  * @brief Delete snapshot object
  * @param[in] table_id id of the time series table
@@ -447,6 +469,8 @@ TSStatus TSAlterColumnType(TSEngine* engine, TSTableID table_id, char* transacti
                            TSSlice new_column, TSSlice origin_column, uint32_t cur_version, uint32_t new_version);
 
 TSStatus TSAlterPartitionInterval(TSEngine* engine, TSTableID table_id, uint64_t partition_interval);
+
+TSStatus TSAlterLifetime(TSEngine* engine, TSTableID table_id, uint64_t partition_interval);
 
 void UpdateTsTraceConfig(TSSlice cfg);
 /**
@@ -504,6 +528,8 @@ TSStatus TsGetWalLevel(TSEngine* engine, uint8_t *wal_level);
 TSStatus TsSetUseRaftLogAsWAL(TSEngine* engine, bool use);
 
 TSStatus TSCountTsTable(TSEngine* engine, TSTableID table_id);
+
+TSStatus TSFlushVGroups(TSEngine* engine);
 
 bool __attribute__((weak)) isCanceledCtx(uint64_t goCtxPtr);
 

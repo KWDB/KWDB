@@ -39,7 +39,7 @@ namespace kwdbts {
 
 class TsEntityGroup;
 class TsStorageIterator;
-class TagIterator;
+class BaseEntityIterator;
 class MetaIterator;
 class EntityGroupTagIterator;
 class EntityGroupMetaIterator;
@@ -50,7 +50,7 @@ const uint64_t default_entitygroup_id_in_dist_v2 = 1;
 
 class TsTable {
  public:
-  TsTable() = delete;
+  TsTable();
 
   TsTable(kwdbContext_p ctx, const string& db_path, const KTableKey& table_id);
 
@@ -68,7 +68,7 @@ class TsTable {
     return this->entity_bt_manager_ != nullptr;
   }
 
-  KStatus CheckAndAddSchemaVersion(kwdbContext_p ctx, const KTableKey& table_id, uint64_t version);
+  virtual KStatus CheckAndAddSchemaVersion(kwdbContext_p ctx, const KTableKey& table_id, uint64_t version);
 
   /**
    * @brief Query Table Column Definition
@@ -96,7 +96,8 @@ class TsTable {
                                     uint32_t table_version);
 
   // convert schema info to protobuf
-  KStatus GenerateMetaSchema(kwdbContext_p ctx, roachpb::CreateTsTable* meta, std::vector<AttributeInfo>& metric_schema,
+  KStatus GenerateMetaSchema(kwdbContext_p ctx, roachpb::CreateTsTable* meta,
+                             const std::vector<AttributeInfo>& metric_schema,
                              std::vector<TagInfo>& tag_schema, uint32_t schema_version);
   /**
    * @brief get table id
@@ -286,7 +287,7 @@ class TsTable {
   KStatus GetEntityIndexWithRowNum(kwdbContext_p ctx, uint64_t begin_hash, uint64_t end_hash,
                                   std::vector<std::pair<int, EntityResultIndex>> &entity_tag);
 
-  KStatus GetAvgTableRowSize(kwdbContext_p ctx, uint64_t* row_size);
+  virtual KStatus GetAvgTableRowSize(kwdbContext_p ctx, uint64_t* row_size);
 
   virtual KStatus GetDataVolume(kwdbContext_p ctx, uint64_t begin_hash, uint64_t end_hash,
                                 const KwTsSpan& ts_span, uint64_t* volume);
@@ -301,7 +302,8 @@ class TsTable {
    *
    * @return KStatus
    */
-  KStatus DeleteTotalRange(kwdbContext_p ctx, uint64_t begin_hash, uint64_t end_hash, KwTsSpan ts_span, uint64_t mtr_id);
+  virtual KStatus DeleteTotalRange(kwdbContext_p ctx, uint64_t begin_hash, uint64_t end_hash,
+                                    KwTsSpan ts_span, uint64_t mtr_id);
 
   /**
    * @brief row-based payload convert to col-based payload
@@ -319,7 +321,7 @@ class TsTable {
    *
    * @return KStatus
    */
-  KStatus GetRangeRowCount(kwdbContext_p ctx, uint64_t begin_hash, uint64_t end_hash,
+  virtual KStatus GetRangeRowCount(kwdbContext_p ctx, uint64_t begin_hash, uint64_t end_hash,
                             KwTsSpan ts_span, uint64_t* count);
 
   /**
@@ -426,18 +428,23 @@ class TsTable {
              const std::vector<uint32_t>& scan_tags, ResultSet* res, uint32_t* count,
              uint32_t table_version);
 
+  virtual KStatus GetEntityIdByHashSpan(kwdbContext_p ctx, const HashIdSpan& hash_span,
+                                        vector<EntityResultIndex>& entity_store) {
+    return KStatus::SUCCESS;
+  }
+
   /**
    * @brief Create an iterator TsStorageIterator for Tag tables
    * @param[in] scan_tags tag index
-   * @param[out] TagIterator**
+   * @param[out] BaseEntityIterator**
    */
   virtual KStatus GetTagIterator(kwdbContext_p ctx,
                                  std::vector<uint32_t> scan_tags,
                                  const std::unordered_set<uint32_t> hps,
-                                 TagIterator** iter, k_uint32 table_version);
+                                 BaseEntityIterator** iter, k_uint32 table_version);
 
   KStatus GetTagIterator(kwdbContext_p ctx, std::vector<uint32_t> scan_tags,
-                                TagIterator** iter, k_uint32 table_version) {
+                                BaseEntityIterator** iter, k_uint32 table_version) {
     return GetTagIterator(ctx, scan_tags, {}, iter, table_version);
   }
   /**
@@ -494,11 +501,11 @@ class TsTable {
 
   virtual uint64_t GetPartitionInterval();
 
-  void SetDropped();
+  virtual void SetDropped();
 
-  bool IsDropped();
+  virtual bool IsDropped();
 
-  uint64_t partitionInterval() {
+  virtual uint64_t partitionInterval() {
     return entity_bt_manager_->GetPartitionInterval();
   }
 
@@ -506,9 +513,9 @@ class TsTable {
     return entity_bt_manager_;
   }
 
-  KStatus GetEntityNum(kwdbContext_p ctx, uint64_t* entity_num);
+  virtual KStatus GetEntityNum(kwdbContext_p ctx, uint64_t* entity_num);
 
-  KStatus GetDataRowNum(kwdbContext_p ctx, const KwTsSpan& ts_span, uint64_t* row_num);
+  virtual KStatus GetDataRowNum(kwdbContext_p ctx, const KwTsSpan& ts_span, uint64_t* row_num);
 
   /**
     * @brief clean ts table
@@ -522,6 +529,8 @@ class TsTable {
   }
 
   virtual uint64_t GetHashNum();
+
+  virtual KStatus GetLastRowEntity(kwdbContext_p ctx, EntityResultIndex& entity_id);
 
   struct SubgroupEntities{
     uint64_t entity_group_id;
@@ -539,7 +548,7 @@ class TsTable {
   uint64_t hash_num_ = 0;
 
 //  MMapTagColumnTable* tag_bt_;
-  MMapRootTableManager* entity_bt_manager_;
+  MMapRootTableManager* entity_bt_manager_{nullptr};
 
   std::unordered_map<uint64_t, std::shared_ptr<TsEntityGroup>> entity_groups_{};
 
@@ -565,8 +574,6 @@ class TsTable {
                               const std::vector<roachpb::NTagIndexInfo>& idx_info = {});
 
  public:
-  KStatus GetLastRowEntity(EntityResultIndex& entity_id);
-
   static MMapRootTableManager* CreateMMapRootTableManager(string& db_path, string& tbl_sub_path, KTableKey table_id,
                                                           vector<AttributeInfo>& schema, uint32_t table_version,
                                                           uint64_t partition_interval, ErrorInfo& err_info,
@@ -577,13 +584,13 @@ class TsTable {
 
  protected:
   using TsTableEntityGrpsRwLatch = KRWLatch;
-  TsTableEntityGrpsRwLatch* entity_groups_mtx_;
+  TsTableEntityGrpsRwLatch* entity_groups_mtx_{nullptr};
   using TsTableVersionRwLatch = KRWLatch;
   TsTableVersionRwLatch* table_version_rw_lock_;
 
  private:
   using TsTableSnapshotLatch = KLatch;
-  TsTableSnapshotLatch* snapshot_manage_mtx_;
+  TsTableSnapshotLatch* snapshot_manage_mtx_{nullptr};
 
   void latchLock() {
     MUTEX_LOCK(snapshot_manage_mtx_);
@@ -592,6 +599,16 @@ class TsTable {
   void latchUnlock() {
     MUTEX_UNLOCK(snapshot_manage_mtx_);
   }
+};
+
+class TsTableImpl : public TsTable {
+ public:
+  TsTableImpl() = delete;
+
+  TsTableImpl(kwdbContext_p ctx, const std::string &db_path,
+              const KTableKey &table_id);
+
+  ~TsTableImpl() override;
 };
 
 // PutAfterProcessInfo records the information that needs to be processed after writing.

@@ -1,0 +1,159 @@
+> create user u1;
+CREATE USER
+> create user u2;
+CREATE USER
+> create user u3;
+CREATE USER
+> create ts database test;
+CREATE TS DATABASE
+> use test;
+SET
+> create table test.t1(k_timestamp timestamptz not null,  usage_user INT8,
+                      usage_system INT8,
+                      usage_idle INT8,
+                      usage_nice INT8,
+                      usage_iowait INT8 ,
+                      usage_irq INT8 ,
+                      usage_softirq INT8 ,
+                      usage_steal INT8 ,
+                      usage_guest INT8 ,
+                      usage_guest_nice INT8
+) TAGS (
+     hostname VARCHAR(30) NOT NULL) PRIMARY TAGS(hostname);
+CREATE TABLE
+> insert into test.t1 values('2024-01-01 00:00:01+00:00',null,null,null,null,null,null,null,null,null,null,'host_0');
+INSERT 1
+> insert into test.t1 values('2024-01-02 00:00:01+00:00',null,null,null,null,null,null,null,null,null,null,'host_0');
+INSERT 1
+> create table test.t2(k_timestamp timestamptz not null,  usage_user INT8,
+                     usage_system INT8,
+                     usage_idle INT8,
+                     usage_nice INT8,
+                     usage_iowait INT8 ,
+                     usage_irq INT8 ,
+                     usage_softirq INT8 ,
+                     usage_steal INT8 ,
+                     usage_guest INT8 ,
+                     usage_guest_nice INT8
+) TAGS (
+     hostname VARCHAR(30) NOT NULL) PRIMARY TAGS(hostname);
+CREATE TABLE
+> insert into test.t2 values('2024-01-01 00:00:01+00:00',null,null,null,null,null,null,null,null,null,null,'host_0');
+INSERT 1
+> insert into test.t2 values('2024-01-02 00:00:01+00:00',null,null,null,null,null,null,null,null,null,null,'host_0');
+INSERT 1
+> grant select on database test to u1;
+GRANT
+> grant delete on table test.public.t1 to u2;
+GRANT
+> grant delete on table test.public.t2 to u2;
+GRANT
+> grant insert on database test to u3;
+GRANT
+> export into csv "nodelocal://1/db" from database test with privileges;
+  result
+-----------
+  succeed
+(1 row)
+> use defaultdb;
+SET
+> drop database test cascade;
+DROP DATABASE
+> import database csv data ("nodelocal://1//db") with privileges;
+  job_id |  status   | fraction_completed | rows | abandon_rows | reject_rows | note
+---------+-----------+--------------------+------+--------------+-------------+-------
+  -      | succeeded |                  1 |    4 | 0            | 0           | None
+(1 row)
+> show grants on database test;
+  database_name |    schema_name     | grantee | privilege_type
+----------------+--------------------+---------+-----------------
+  test          | information_schema | admin   | ALL
+  test          | information_schema | root    | ALL
+  test          | information_schema | u1      | SELECT
+  test          | information_schema | u3      | INSERT
+  test          | kwdb_internal      | admin   | ALL
+  test          | kwdb_internal      | root    | ALL
+  test          | kwdb_internal      | u1      | SELECT
+  test          | kwdb_internal      | u3      | INSERT
+  test          | pg_catalog         | admin   | ALL
+  test          | pg_catalog         | root    | ALL
+  test          | pg_catalog         | u1      | SELECT
+  test          | pg_catalog         | u3      | INSERT
+  test          | public             | admin   | ALL
+  test          | public             | root    | ALL
+  test          | public             | u1      | SELECT
+  test          | public             | u3      | INSERT
+(16 rows)
+> show grants on table test.public.t1;
+  database_name | schema_name | table_name | grantee | privilege_type
+----------------+-------------+------------+---------+-----------------
+  test          | public      | t1         | admin   | ALL
+  test          | public      | t1         | root    | ALL
+  test          | public      | t1         | u2      | DELETE
+(3 rows)
+> show grants on table test.public.t2;
+  database_name | schema_name | table_name | grantee | privilege_type
+----------------+-------------+------------+---------+-----------------
+  test          | public      | t2         | admin   | ALL
+  test          | public      | t2         | root    | ALL
+  test          | public      | t2         | u2      | DELETE
+(3 rows)
+> use defaultdb;
+SET
+> drop database test cascade;
+DROP DATABASE
+> create ts database test;
+CREATE TS DATABASE
+> use test;
+SET
+> create table test.t1(k_timestamp timestamptz not null,  usage_user INT8,
+                     usage_system INT8,
+                     usage_idle INT8,
+                     usage_nice INT8,
+                     usage_iowait INT8 ,
+                     usage_irq INT8 ,
+                     usage_softirq INT8 ,
+                     usage_steal INT8 ,
+                     usage_guest INT8 ,
+                     usage_guest_nice INT8
+) TAGS (
+     hostname VARCHAR(30) NOT NULL) PRIMARY TAGS(hostname);
+CREATE TABLE
+> insert into test.t1 values('2024-01-01 00:00:01+00:00',null,null,null,null,null,null,null,null,null,null,'host_0');
+INSERT 1
+> insert into test.t1 values('2024-01-02 00:00:01+00:00',null,null,null,null,null,null,null,null,null,null,'host_0');
+INSERT 1
+> grant delete on table test.public.t1 to u2;
+GRANT
+> grant select on table test.public.t1 to u3;
+GRANT
+> export into csv "nodelocal://1/test" from table test.t1 with privileges;
+  result
+-----------
+  succeed
+(1 row)
+> drop table t1;
+DROP TABLE
+> import into test.t1 csv data ("nodelocal://1/test") with privileges;
+ERROR: 'WITH PRIVILEGES' can only be used for the 'IMPORT CREATE USING' and 'IMPORT DATABASE', the current syntax is 'IMPORT INTO'
+> import table create using "nodelocal://1/test/meta.sql" csv data ("nodelocal://1/test") with privileges;
+  job_id |  status   | fraction_completed | rows | abandon_rows | reject_rows | note
+---------+-----------+--------------------+------+--------------+-------------+-------
+  -      | succeeded |                  1 |    2 | 0            | 0           | None
+(1 row)
+> show grants on table test.public.t1;
+  database_name | schema_name | table_name | grantee | privilege_type
+----------------+-------------+------------+---------+-----------------
+  test          | public      | t1         | admin   | ALL
+  test          | public      | t1         | root    | ALL
+  test          | public      | t1         | u2      | DELETE
+  test          | public      | t1         | u3      | SELECT
+(4 rows)
+> drop database test cascade;
+DROP DATABASE
+> drop user u1;
+DROP USER 1
+> drop user u2;
+DROP USER 1
+> drop user u3;
+DROP USER 1

@@ -37,7 +37,7 @@ system         RELATIONAL
 test           RELATIONAL
 
 query TT
-SELECT job_type, status FROM [SHOW JOBS] WHERE job_type != 'SYNC META CACHE'
+SELECT job_type, status FROM [SHOW JOBS] WHERE job_type != 'SYNC META CACHE' AND job_type != 'TS TXN'
 ----
 RESTART HISTORY     succeeded
 SCHEMA CHANGE       succeeded

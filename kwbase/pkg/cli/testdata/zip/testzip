@@ -32,6 +32,7 @@ retrieving SQL data for kwdb_internal.kwdb_triggers... writing: debug/kwdb_inter
 retrieving SQL data for kwdb_internal.kwdb_procedures... writing: debug/kwdb_internal.kwdb_procedures.txt
 retrieving SQL data for kwdb_internal.kwdb_streams... writing: debug/kwdb_internal.kwdb_streams.txt
 retrieving SQL data for kwdb_internal.schema_changes... writing: debug/kwdb_internal.schema_changes.txt
+retrieving SQL data for kwdb_internal.ts_inflight_transactions... writing: debug/kwdb_internal.ts_inflight_transactions.txt
 retrieving SQL data for kwdb_internal.partitions... writing: debug/kwdb_internal.partitions.txt
 retrieving SQL data for kwdb_internal.zones... writing: debug/kwdb_internal.zones.txt
 requesting nodes... writing: debug/nodes.json

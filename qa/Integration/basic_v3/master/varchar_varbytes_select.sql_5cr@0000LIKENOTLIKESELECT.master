@@ -1,0 +1,52 @@
+> select e1 from test_SELECT_col.t1 where color Like 'red' ORDER BY k_timestamp;
+    e1
+----------
+       0
+   20002
+   32767
+  -32768
+   32050
+   32767
+(6 rows)
+> select e1 from test_SELECT_col.t1 where color NOT Like 'red' ORDER BY k_timestamp;
+    e1
+----------
+   20002
+   30003
+  -10001
+  -20002
+  -30003
+  -30004
+  -30005
+  -30006
+  -30007
+  -30008
+  -30009
+  -30010
+(12 rows)
+> select e1 from test_SELECT_col.t1 where flag=true ORDER BY k_timestamp;
+  e1
+------
+(0 rows)
+> select e1 from test_SELECT_col.t1 where flag=false ORDER BY k_timestamp;
+    e1
+----------
+       0
+   20002
+   20002
+   30003
+  -10001
+  -20002
+  -30003
+  -30004
+  -30005
+  -30006
+  -30007
+  -30008
+  -30009
+  -30010
+   32767
+  -32768
+   32050
+   32767
+(18 rows)

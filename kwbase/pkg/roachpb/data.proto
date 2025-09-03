@@ -326,6 +326,7 @@ enum TransactionStatus {
   // ABORTED state are deleted and are never made visible to other
   // transactions.
   ABORTED = 2;
+  PREPARED = 4;
 }
 
 message ObservedTimestamp {
@@ -335,6 +336,22 @@ message ObservedTimestamp {
 
   int32 node_id = 1 [(gogoproto.customname) = "NodeID", (gogoproto.casttype) = "NodeID"];
   util.hlc.Timestamp timestamp = 2 [(gogoproto.nullable) = false];
+}
+
+message TsTxnRecord {
+  bytes id = 1 [(gogoproto.customname) = "ID",
+    (gogoproto.customtype) = "gitee.com/kwbasedb/kwbase/pkg/util/uuid.UUID",
+    (gogoproto.nullable) = false];
+  util.hlc.Timestamp last_heartbeat        = 2  [(gogoproto.nullable) = false];
+  TransactionStatus status = 3;
+  repeated Span spans = 4 [(gogoproto.nullable) = false];
+}
+
+message TsTransaction {
+  option (gogoproto.equal) = true;
+  bytes id = 1 [(gogoproto.customname) = "ID",
+    (gogoproto.customtype) = "gitee.com/kwbasedb/kwbase/pkg/util/uuid.UUID",
+    (gogoproto.nullable) = false];
 }
 
 // A Transaction is a unit of work performed on the database.

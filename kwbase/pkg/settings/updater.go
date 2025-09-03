@@ -24,7 +24,7 @@
 package settings
 
 // #cgo CPPFLAGS: -I../../../kwdbts2/include
-// #cgo LDFLAGS: -lkwdbts2 -lcommon  -lstdc++
+// #cgo LDFLAGS: -lkwdbts2 -lrocksdb -lcommon -lsnappy -lm  -lstdc++
 // #cgo LDFLAGS: -lprotobuf
 // #cgo linux LDFLAGS: -lrt -lpthread
 //
@@ -157,6 +157,10 @@ func (u updater) Set(key, rawValue string, vt string) error {
 		if key == "ts.wal.file_size" || key == "ts.wal.buffer_size" {
 			fileSize := strconv.Itoa(i >> 20)
 			C.TSSetClusterSetting(goToTSSlice([]byte(key)), goToTSSlice([]byte(fileSize)))
+		}
+		if key == "ts.wal.wal_level" {
+			walLevel := strconv.Itoa(i)
+			C.TSSetClusterSetting(goToTSSlice([]byte(key)), goToTSSlice([]byte(walLevel)))
 		}
 		return setting.set(u.sv, int64(i))
 	case *FloatSetting:

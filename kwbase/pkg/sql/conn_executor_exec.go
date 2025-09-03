@@ -1213,7 +1213,7 @@ func (ex *connExecutor) makeExecPlan(ctx context.Context, planner *planner) erro
 				"can not use multi-statement transactions involving a schema change under weak isolation levels")
 		}
 	}
-
+	planner.Kwengineversion = ex.kwengineversion
 	if err := planner.makeOptimizerPlan(ctx); err != nil {
 		// Capture stmt hint error. If it is an embedded hint, return err directly
 		if strings.Contains(err.Error(), `Stmt Hint Err:`) && planner.EvalContext().HintStmtEmbed {

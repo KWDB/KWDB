@@ -57,6 +57,7 @@ session_variables             SYSTEM VIEW
 table_columns                 SYSTEM VIEW
 table_indexes                 SYSTEM VIEW
 tables                        SYSTEM VIEW
+ts_inflight_transactions      SYSTEM VIEW
 zones                         SYSTEM VIEW
 
 statement ok

@@ -118,9 +118,10 @@ class TsTimePartition : public TSObject {
                                                   bool lazy_open, ErrorInfo& err_info);
 
  public:
-  explicit TsTimePartition(MMapRootTableManager*& root_table_manager, uint16_t config_subgroup_entities) :
-    TSObject(), root_table_manager_(root_table_manager),
-    entity_item_latch_(ENTITY_ITEM_LATCH_BUCKET_NUM, LATCH_ID_ENTITY_ITEM_MUTEX) {
+  explicit TsTimePartition(MMapRootTableManager*& root_table_manager, uint16_t config_subgroup_entities)
+      : TSObject(),
+        entity_item_latch_(ENTITY_ITEM_LATCH_BUCKET_NUM, LATCH_ID_ENTITY_ITEM_MUTEX),
+        root_table_manager_(root_table_manager) {
     meta_manager_.max_entities_per_subgroup = config_subgroup_entities;
     vacuum_query_lock_ = new TsTimePartitionRWLatch(RWLATCH_ID_MMAP_PARTITION_TABLE_RWLOCK);
     active_segment_lock_ = new TsTimePartitionLatch(LATCH_ID_MMAP_PARTITION_TABLE_SEGMENTS_MUTEX);

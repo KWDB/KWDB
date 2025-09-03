@@ -24,7 +24,7 @@
 package tse
 
 // #cgo CPPFLAGS: -I../../../kwdbts2/include
-// #cgo LDFLAGS: -lkwdbts2 -lcommon  -lstdc++
+// #cgo LDFLAGS: -lkwdbts2 -lrocksdb -lcommon -lsnappy -lm  -lstdc++
 // #cgo LDFLAGS: -lprotobuf
 // #cgo linux LDFLAGS: -lrt -lpthread
 //
@@ -38,7 +38,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"math"
-	"os"
 	"strconv"
 	"time"
 	"unsafe"
@@ -90,6 +89,9 @@ const (
 	// Day is one day to hours
 	Day = 24 * Hour
 )
+
+// KwEngineVersion indicates which verson storage engine to use
+var KwEngineVersion = envutil.EnvOrDefaultString("KW_ENGINE_VERSION", "2")
 
 // TsPayloadSizeLimit is the max size of per payload.
 var TsPayloadSizeLimit = settings.RegisterNonNegativeIntSetting(
@@ -269,6 +271,7 @@ type TsEngine struct {
 	tdb     *C.TSEngine
 	opened  bool
 	openCh  chan struct{}
+	Version string
 }
 
 // IsSingleNode Returns whether TsEngine is started in singleNode mode
@@ -297,50 +300,14 @@ var TsRaftLogSyncPeriod = settings.RegisterPublicDurationSetting(
 	10*time.Second,
 )
 
-// TsWALFlushInterval indicates the WAL flush interval of TsEngine
-var TsWALFlushInterval = settings.RegisterPublicDurationSetting(
-	"ts.wal.flush_interval",
-	"ts WAL flush interval in TsEngine. when 0, wal will be flushed on wrote. when -1, WAL is disable.",
-	0,
-)
+// TsWALLevelClusterSettingName is the name of the ts wal level cluster setting.
+const TsWALLevelClusterSettingName = "ts.wal.wal_level"
 
-// TsWALBufferSize indicates the WAL buffer size of TsEngine
-var TsWALBufferSize = settings.RegisterValidatedByteSizeSetting(
-	"ts.wal.buffer_size",
-	"ts WAL buffer size, default 4Mib",
-	4<<20,
-	func(v int64) error {
-		if v < 4<<20 {
-			return errors.Errorf("WAL buffer size can not less than 4(Mib)")
-		}
-		return nil
-	},
-)
-
-// TsWALFileSize indicates the WAL file size of TsEngine
-var TsWALFileSize = settings.RegisterPublicValidatedByteSizeSetting(
-	"ts.wal.file_size",
-	"ts WAL file size, default 64Mib",
-	64<<20,
-	func(v int64) error {
-		if v < 64<<20 {
-			return errors.Errorf("WAL file size must more than 64(Mib)")
-		}
-		return nil
-	},
-)
-
-// TsWALFilesInGroup indicates the WAL file num of in one entity group
-var TsWALFilesInGroup = settings.RegisterPublicValidatedIntSetting(
-	"ts.wal.files_in_group",
-	"ts WAL files num of a entity group in TsEngine, default 3",
-	3,
-	func(v int64) error {
-		if v < 3 {
-			return errors.Errorf("WAL files num in group must more than 3")
-		}
-		return nil
-	},
+// TsWALLevel indicates the WAL level
+var TsWALLevel = settings.RegisterPublicIntSetting(
+	TsWALLevelClusterSettingName,
+	"ts WAL level, default 2(flush)",
+	2,
 )
 
 // TsWALCheckpointInterval indicates the wal checkpoint interval of TsEngine
@@ -393,6 +360,7 @@ func NewTsEngine(
 		stopper: stopper,
 		cfg:     cfg,
 		openCh:  make(chan struct{}),
+		Version: KwEngineVersion,
 	}
 	return r, nil
 }
@@ -413,25 +381,7 @@ func (r *TsEngine) checkOrWaitForOpen() {
 
 // Open opens the ts engine.
 func (r *TsEngine) Open(rangeIndex []roachpb.RangeIndex) error {
-	var walLevel uint8
-
-	interval := TsWALFlushInterval.Get(&r.cfg.Settings.SV)
-	if interval < 0 {
-		walLevel = 0
-	} else if interval >= 0 && interval <= 200*time.Millisecond {
-		walLevel = 2
-	} else {
-		walLevel = 1
-	}
-	if _, ok := envutil.EnvString("KW_WAL_LEVEL", 0); ok {
-		if err := os.Setenv("KW_WAL_LEVEL", fmt.Sprintf("%d", walLevel)); err != nil {
-			return errors.Wrapf(err, "failed adjust env KW_WAL_LEVEL to %d", walLevel)
-		}
-	}
-
-	walBufferSize := TsWALBufferSize.Get(&r.cfg.Settings.SV) >> 20
-	walFileSize := TsWALFileSize.Get(&r.cfg.Settings.SV) >> 20
-	walFilesInGroup := TsWALFilesInGroup.Get(&r.cfg.Settings.SV)
+	walLevel := TsWALLevel.Get(&r.cfg.Settings.SV)
 
 	traceLevel := SQLTimeseriesTrace.Get(&r.cfg.Settings.SV)
 	optLog := C.TsLogOptions{
@@ -442,21 +392,22 @@ func (r *TsEngine) Open(rangeIndex []roachpb.RangeIndex) error {
 		Trace_on_off_list:         goToTSSlice([]byte(traceLevel)),
 	}
 
+	cEngineVersion := C.CString(r.Version)
+	defer C.free(unsafe.Pointer(cEngineVersion))
+
 	if len(rangeIndex) == 0 {
 		status := C.TSOpen(&r.tdb, goToTSSlice([]byte(r.cfg.Dir)),
 			C.TSOptions{
-				wal_level:         C.uint8_t(walLevel),
-				wal_buffer_size:   C.uint16_t(uint16(walBufferSize)),
-				wal_file_size:     C.uint16_t(uint16(walFileSize)),
-				wal_file_in_group: C.uint16_t(uint16(walFilesInGroup)),
-				extra_options:     goToTSSlice(r.cfg.ExtraOptions),
-				thread_pool_size:  C.uint16_t(uint16(r.cfg.ThreadPoolSize)),
-				task_queue_size:   C.uint16_t(uint16(r.cfg.TaskQueueSize)),
-				buffer_pool_size:  C.uint32_t(uint32(r.cfg.BufferPoolSize)),
-				lg_opts:           optLog,
-				is_single_node:    C.bool(r.cfg.IsSingleNode),
-				brpc_addr:         goToTSSlice([]byte(r.cfg.BRPCAddr)),
-				cluster_id:        goToTSSlice([]byte(r.cfg.ClusterID)),
+				wal_level:        C.uint8_t(walLevel),
+				extra_options:    goToTSSlice(r.cfg.ExtraOptions),
+				thread_pool_size: C.uint16_t(uint16(r.cfg.ThreadPoolSize)),
+				task_queue_size:  C.uint16_t(uint16(r.cfg.TaskQueueSize)),
+				buffer_pool_size: C.uint32_t(uint32(r.cfg.BufferPoolSize)),
+				lg_opts:          optLog,
+				is_single_node:   C.bool(r.cfg.IsSingleNode),
+				brpc_addr:        goToTSSlice([]byte(r.cfg.BRPCAddr)),
+				cluster_id:       goToTSSlice([]byte(r.cfg.ClusterID)),
+				engine_version:   cEngineVersion,
 			},
 			nil,
 			C.uint64_t(0))
@@ -474,18 +425,16 @@ func (r *TsEngine) Open(rangeIndex []roachpb.RangeIndex) error {
 
 		status := C.TSOpen(&r.tdb, goToTSSlice([]byte(r.cfg.Dir)),
 			C.TSOptions{
-				wal_level:         C.uint8_t(walLevel),
-				wal_buffer_size:   C.uint16_t(uint16(walBufferSize)),
-				wal_file_size:     C.uint16_t(uint16(walFileSize)),
-				wal_file_in_group: C.uint16_t(uint16(walFilesInGroup)),
-				extra_options:     goToTSSlice(r.cfg.ExtraOptions),
-				thread_pool_size:  C.uint16_t(uint16(r.cfg.ThreadPoolSize)),
-				task_queue_size:   C.uint16_t(uint16(r.cfg.TaskQueueSize)),
-				buffer_pool_size:  C.uint32_t(uint32(r.cfg.BufferPoolSize)),
-				lg_opts:           optLog,
-				is_single_node:    C.bool(r.cfg.IsSingleNode),
-				brpc_addr:         goToTSSlice([]byte(r.cfg.BRPCAddr)),
-				cluster_id:        goToTSSlice([]byte(r.cfg.ClusterID)),
+				wal_level:        C.uint8_t(walLevel),
+				extra_options:    goToTSSlice(r.cfg.ExtraOptions),
+				thread_pool_size: C.uint16_t(uint16(r.cfg.ThreadPoolSize)),
+				task_queue_size:  C.uint16_t(uint16(r.cfg.TaskQueueSize)),
+				buffer_pool_size: C.uint32_t(uint32(r.cfg.BufferPoolSize)),
+				lg_opts:          optLog,
+				is_single_node:   C.bool(r.cfg.IsSingleNode),
+				brpc_addr:        goToTSSlice([]byte(r.cfg.BRPCAddr)),
+				cluster_id:       goToTSSlice([]byte(r.cfg.ClusterID)),
+				engine_version:   cEngineVersion,
 			},
 			&appliedRangeIndex[0],
 			C.uint64_t(len(appliedRangeIndex)))
@@ -582,6 +531,20 @@ func (r *TsEngine) DropLeftTsTableGarbage() error {
 	return nil
 }
 
+// TSFlushVGroups flush v-groups after import
+func (r *TsEngine) TSFlushVGroups() error {
+	r.checkOrWaitForOpen()
+	status := C.TSFlushVGroups(r.tdb)
+	if err := statusToError(status); err != nil {
+		// retry once
+		retryStatus := C.TSFlushVGroups(r.tdb)
+		if err := statusToError(retryStatus); err != nil {
+			return errors.Wrap(err, "could not flush v-groups")
+		}
+	}
+	return nil
+}
+
 // AddTSColumn adds column for ts table.
 func (r *TsEngine) AddTSColumn(
 	tableID uint64, currentTSVersion, newTSVersion uint32, transactionID []byte, colMeta []byte,
@@ -639,6 +602,16 @@ func (r *TsEngine) DropNormalTagIndex(
 	status := C.TSDropNormalTagIndex(r.tdb, C.TSTableID(tableID), C.uint64_t(indexID), (*C.char)(unsafe.Pointer(&transactionID[0])), C.uint32_t(curVersion), C.uint32_t(newVersion))
 	if err := statusToError(status); err != nil {
 		return errors.Wrap(err, "could not DropNormalTagIndex")
+	}
+	return nil
+}
+
+// AlterLifetime alter lifetime interval for this table.
+func (r *TsEngine) AlterLifetime(tableID uint64, lifeTime uint64) error {
+	r.checkOrWaitForOpen()
+	status := C.TSAlterLifetime(r.tdb, C.TSTableID(tableID), C.uint64_t(lifeTime))
+	if err := statusToError(status); err != nil {
+		return errors.Wrap(err, "failed to set table lifetime")
 	}
 	return nil
 }
@@ -719,7 +692,7 @@ func (r *TsEngine) PutEntity(
 
 // PutData write in tag data and write in ts data
 func (r *TsEngine) PutData(
-	tableID uint64, payload [][]byte, tsTxnID uint64, writeWAL bool,
+	tableID uint64, payload [][]byte, tsTxnID uint64, writeWAL bool, transactionID []byte,
 ) (DedupResult, EntitiesAffect, error) {
 	if len(payload) == 0 {
 		return DedupResult{}, EntitiesAffect{}, errors.New("payload is nul")
@@ -749,8 +722,28 @@ func (r *TsEngine) PutData(
 	var affect EntitiesAffect
 	var entitiesAffected C.uint16_t
 	var unorderedAffected C.uint32_t
-	status := C.TSPutData(r.tdb, C.TSTableID(tableID), &cTsSlice[0], (C.size_t)(len(cTsSlice)), cRangeGroup, C.uint64_t(tsTxnID),
-		&entitiesAffected, &unorderedAffected, &dedupResult, C.bool(writeWAL))
+	var status C.TSStatus
+	if r.Version == "2" {
+		if transactionID != nil {
+			cstr := C.CString(string(transactionID))
+			defer C.free(unsafe.Pointer(cstr))
+			status = C.TSPutDataByRowTypeExplicit(r.tdb, C.TSTableID(tableID), &cTsSlice[0], (C.size_t)(len(cTsSlice)), cRangeGroup, C.uint64_t(tsTxnID),
+				&entitiesAffected, &unorderedAffected, &dedupResult, C.bool(writeWAL), cstr)
+		} else {
+			status = C.TSPutDataByRowType(r.tdb, C.TSTableID(tableID), &cTsSlice[0], (C.size_t)(len(cTsSlice)), cRangeGroup, C.uint64_t(tsTxnID),
+				&entitiesAffected, &unorderedAffected, &dedupResult, C.bool(writeWAL))
+		}
+	} else {
+		if transactionID != nil {
+			cstr := C.CString(string(transactionID))
+			defer C.free(unsafe.Pointer(cstr))
+			status = C.TSPutDataExplicit(r.tdb, C.TSTableID(tableID), &cTsSlice[0], (C.size_t)(len(cTsSlice)), cRangeGroup, C.uint64_t(tsTxnID),
+				&entitiesAffected, &unorderedAffected, &dedupResult, C.bool(writeWAL), cstr)
+		} else {
+			status = C.TSPutData(r.tdb, C.TSTableID(tableID), &cTsSlice[0], (C.size_t)(len(cTsSlice)), cRangeGroup, C.uint64_t(tsTxnID),
+				&entitiesAffected, &unorderedAffected, &dedupResult, C.bool(writeWAL))
+		}
+	}
 	if err := statusToError(status); err != nil {
 		return DedupResult{}, EntitiesAffect{}, errors.Wrap(err, "could not PutData")
 	}
@@ -768,7 +761,13 @@ func (r *TsEngine) PutData(
 
 // PutRowData 行存tags值和时序数据写入
 func (r *TsEngine) PutRowData(
-	tableID uint64, headerPrefix []byte, payload [][]byte, size int32, tsTxnID uint64, writeWAL bool,
+	tableID uint64,
+	headerPrefix []byte,
+	payload [][]byte,
+	size int32,
+	tsTxnID uint64,
+	writeWAL bool,
+	transactionID []byte,
 ) (DedupResult, EntitiesAffect, error) {
 	if len(payload) == 0 {
 		return DedupResult{}, EntitiesAffect{}, errors.New("payload is nul")
@@ -783,8 +782,7 @@ func (r *TsEngine) PutRowData(
 	const dataLen = 4       // length of data_len in HeaderPrefix. The location is at the end of HeaderPrefix
 
 	headerLen := len(headerPrefix)
-	cTsSlice.len = C.size_t(int(size) + headerLen + dataLen)
-	cTsSlice.data = (*C.char)(C.malloc(cTsSlice.len))
+	cTsSlice.data = (*C.char)(C.malloc(C.size_t(int(size) + headerLen + dataLen)))
 	if cTsSlice.data == nil {
 		return DedupResult{}, EntitiesAffect{}, errors.New("failed malloc")
 	}
@@ -813,10 +811,13 @@ func (r *TsEngine) PutRowData(
 		// need to check whether the payload size exceeds limit, so calculate it before add the row to payload.
 		payloadSize += partLen
 		if payloadSize > int(sizeLimit) {
+			payloadSize -= partLen
 			// fill data_len
-			*(*int32)(unsafe.Pointer(dataPtr)) = int32(payloadSize - partLen)
+			*(*int32)(unsafe.Pointer(dataPtr)) = int32(payloadSize)
 			// fill row_num
 			*(*int32)(unsafe.Pointer(uintptr(unsafe.Pointer(cTsSlice.data)) + rowNumOffset)) = int32(partRowCnt)
+			// set tsSlice len
+			cTsSlice.len = C.size_t(payloadSize + headerLen + dataLen)
 			var dedupResult C.DedupResult
 			var entitiesAffected C.uint16_t
 			var unorderedAffected C.uint32_t
@@ -843,11 +844,21 @@ func (r *TsEngine) PutRowData(
 	*(*int32)(unsafe.Pointer(dataPtr)) = int32(payloadSize)
 	// fill row_num
 	*(*int32)(unsafe.Pointer(uintptr(unsafe.Pointer(cTsSlice.data)) + rowNumOffset)) = int32(partRowCnt)
+	// set tsSlice len
+	cTsSlice.len = C.size_t(payloadSize + headerLen + dataLen)
 	var dedupResult C.DedupResult
 	var entitiesAffected C.uint16_t
 	var unorderedAffected C.uint32_t
-	status := C.TSPutDataByRowType(r.tdb, C.TSTableID(tableID), &cTsSlice, (C.size_t)(1), cRangeGroup, C.uint64_t(tsTxnID),
-		&entitiesAffected, &unorderedAffected, &dedupResult, C.bool(writeWAL))
+	var status C.TSStatus
+	if transactionID != nil {
+		cstr := C.CString(string(transactionID))
+		defer C.free(unsafe.Pointer(cstr))
+		status = C.TSPutDataByRowTypeExplicit(r.tdb, C.TSTableID(tableID), &cTsSlice, (C.size_t)(1), cRangeGroup, C.uint64_t(tsTxnID),
+			&entitiesAffected, &unorderedAffected, &dedupResult, C.bool(writeWAL), cstr)
+	} else {
+		status = C.TSPutDataByRowType(r.tdb, C.TSTableID(tableID), &cTsSlice, (C.size_t)(1), cRangeGroup, C.uint64_t(tsTxnID),
+			&entitiesAffected, &unorderedAffected, &dedupResult, C.bool(writeWAL))
+	}
 	if err := statusToError(status); err != nil {
 		return DedupResult{}, EntitiesAffect{}, errors.Wrap(err, "could not PutData")
 	}
@@ -1507,6 +1518,11 @@ func (r *TsEngine) DeleteData(
 
 	cTsSpans := make([]C.KwTsSpan, len(tsSpans))
 	for i := 0; i < len(tsSpans); i++ {
+		// todo(liangbo01) ts span invaild, ignore it.
+		if tsSpans[i].TsStart > tsSpans[i].TsEnd {
+			log.Infof(context.TODO(), "DeleteData ignore ts_span [%s ~ %s]", tsSpans[i].TsStart, tsSpans[i].TsEnd)
+			continue
+		}
 		cTsSpans[i].begin = C.int64_t(tsSpans[i].TsStart)
 		cTsSpans[i].end = C.int64_t(tsSpans[i].TsEnd)
 	}
@@ -1532,6 +1548,9 @@ func (r *TsEngine) DeleteData(
 
 // CompressTsTable compress partitions with maximum time<=ts
 func (r *TsEngine) CompressTsTable(tableID uint64, ts int64) error {
+	if r == nil {
+		return nil
+	}
 	r.checkOrWaitForOpen()
 	status := C.TSCompressTsTable(r.tdb, C.TSTableID(tableID), C.int64_t(ts))
 	if err := statusToError(status); err != nil {
@@ -1551,12 +1570,15 @@ func (r *TsEngine) CompressImmediately(ctx context.Context, tableID uint64) erro
 	return nil
 }
 
-// VacuumTsTable vacuum partitions after compress
-func (r *TsEngine) VacuumTsTable(tableID uint64, tsVersion uint32) error {
+// Vacuum vacuum partitions
+func (r *TsEngine) Vacuum() error {
+	if r == nil {
+		return nil
+	}
 	r.checkOrWaitForOpen()
-	status := C.TSVacuumTsTable(r.tdb, C.TSTableID(tableID), C.uint32_t(tsVersion))
+	status := C.TSVacuum(r.tdb)
 	if err := statusToError(status); err != nil {
-		return errors.Wrap(err, "failed to vacuum ts table")
+		return errors.Wrap(err, "failed to vacuum ts storage")
 	}
 	return nil
 }
@@ -1573,6 +1595,9 @@ func (r *TsEngine) CountTsTable(tableID uint64) error {
 
 // DeleteExpiredData delete expired data from time partitions that fall completely within the [min_int64, end) interval
 func (r *TsEngine) DeleteExpiredData(tableID uint64, _ int64, end int64) error {
+	if r == nil {
+		return nil
+	}
 	r.checkOrWaitForOpen()
 	if end == math.MinInt64 {
 		return nil
@@ -1586,6 +1611,9 @@ func (r *TsEngine) DeleteExpiredData(tableID uint64, _ int64, end int64) error {
 
 // TsTableAutonomy Autonomous Evaluation
 func (r *TsEngine) TsTableAutonomy(tableID uint64) error {
+	if r == nil {
+		return nil
+	}
 	r.checkOrWaitForOpen()
 	status := C.TSTableAutonomy(r.tdb, C.TSTableID(tableID))
 	if err := statusToError(status); err != nil {
@@ -1794,12 +1822,20 @@ func (r *TsEngine) DeleteSnapshot(tableID uint64, snapshotID uint64) error {
 
 // MtrBegin BEGIN a TS mini-transaction
 func (r *TsEngine) MtrBegin(
-	tableID uint64, rangeGroupID uint64, rangeID uint64, index uint64,
+	tableID uint64, rangeGroupID uint64, rangeID uint64, index uint64, transactionID []byte,
 ) (uint64, error) {
 	r.checkOrWaitForOpen()
 	var miniTransID C.uint64_t
-	status := C.TSMtrBegin(r.tdb, C.TSTableID(tableID), C.uint64_t(rangeGroupID), C.uint64_t(rangeID),
-		C.uint64_t(index), &miniTransID)
+	var status C.TSStatus
+	if transactionID != nil {
+		cstr := C.CString(string(transactionID))
+		defer C.free(unsafe.Pointer(cstr))
+		status = C.TSMtrBeginExplicit(r.tdb, C.TSTableID(tableID), C.uint64_t(rangeGroupID), C.uint64_t(rangeID),
+			C.uint64_t(index), &miniTransID, cstr)
+	} else {
+		status = C.TSMtrBegin(r.tdb, C.TSTableID(tableID), C.uint64_t(rangeGroupID), C.uint64_t(rangeID),
+			C.uint64_t(index), &miniTransID)
+	}
 	if err := statusToError(status); err != nil {
 		return 0, errors.Wrap(err, "failed to BEGIN a TS mini-transaction")
 	}
@@ -1807,9 +1843,18 @@ func (r *TsEngine) MtrBegin(
 }
 
 // MtrCommit COMMIT a TS mini-transaction
-func (r *TsEngine) MtrCommit(tableID uint64, rangeGroupID uint64, miniTransID uint64) error {
+func (r *TsEngine) MtrCommit(
+	tableID uint64, rangeGroupID uint64, miniTransID uint64, transactionID []byte,
+) error {
 	r.checkOrWaitForOpen()
-	status := C.TSMtrCommit(r.tdb, C.TSTableID(tableID), C.uint64_t(rangeGroupID), C.uint64_t(miniTransID))
+	var status C.TSStatus
+	if transactionID != nil {
+		cstr := C.CString(string(transactionID))
+		defer C.free(unsafe.Pointer(cstr))
+		status = C.TSMtrCommitExplicit(r.tdb, C.TSTableID(tableID), C.uint64_t(rangeGroupID), C.uint64_t(miniTransID), cstr)
+	} else {
+		status = C.TSMtrCommit(r.tdb, C.TSTableID(tableID), C.uint64_t(rangeGroupID), C.uint64_t(miniTransID))
+	}
 	if err := statusToError(status); err != nil {
 		return errors.Wrap(err, "failed to COMMIT a TS mini-transaction")
 	}
@@ -1817,9 +1862,18 @@ func (r *TsEngine) MtrCommit(tableID uint64, rangeGroupID uint64, miniTransID ui
 }
 
 // MtrRollback ROLLBACK a TS mini-transaction
-func (r *TsEngine) MtrRollback(tableID uint64, rangeGroupID uint64, miniTransID uint64) error {
+func (r *TsEngine) MtrRollback(
+	tableID uint64, rangeGroupID uint64, miniTransID uint64, transactionID []byte,
+) error {
 	r.checkOrWaitForOpen()
-	status := C.TSMtrRollback(r.tdb, C.TSTableID(tableID), C.uint64_t(rangeGroupID), C.uint64_t(miniTransID))
+	var status C.TSStatus
+	if transactionID != nil {
+		cstr := C.CString(string(transactionID))
+		defer C.free(unsafe.Pointer(cstr))
+		status = C.TSMtrRollbackExplicit(r.tdb, C.TSTableID(tableID), C.uint64_t(rangeGroupID), C.uint64_t(miniTransID), cstr)
+	} else {
+		status = C.TSMtrRollback(r.tdb, C.TSTableID(tableID), C.uint64_t(rangeGroupID), C.uint64_t(miniTransID))
+	}
 	if err := statusToError(status); err != nil {
 		return errors.Wrap(err, "failed to ROLLBACK a TS mini-transaction")
 	}
@@ -1895,34 +1949,18 @@ func (r *TsEngine) manageWAL() {
 		defer flushTimer.Stop()
 		defer checkpointTimer.Stop()
 
-		flushInterval := TsWALFlushInterval.Get(&r.cfg.Settings.SV)
 		checkpointInterval := TsWALCheckpointInterval.Get(&r.cfg.Settings.SV)
-		flushTimer.Reset(flushInterval)
 		checkpointTimer.Reset(checkpointInterval)
 
 		for {
 			select {
 			case <-r.stopper.ShouldStop():
 				return
-			case <-flushTimer.C:
-				if flushInterval <= 200*time.Millisecond {
-					continue
-				}
-				flushTimer.Read = true
-				_ = r.FlushBuffer()
-				flushTimer.Reset(flushInterval)
 			case <-checkpointTimer.C:
 				checkpointInterval = TsWALCheckpointInterval.Get(&r.cfg.Settings.SV)
 				checkpointTimer.Read = true
 				_ = r.Checkpoint()
 				checkpointTimer.Reset(checkpointInterval)
-
-				newFlushInterval := TsWALFlushInterval.Get(&r.cfg.Settings.SV)
-				if flushInterval != newFlushInterval {
-					flushInterval = newFlushInterval
-					flushTimer.Read = true
-					flushTimer.Reset(flushInterval)
-				}
 			}
 		}
 	})

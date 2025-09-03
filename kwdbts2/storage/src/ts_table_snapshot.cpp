@@ -444,7 +444,7 @@ KStatus TsSnapshotConsumer::beginMtrOfEntityGroup(kwdbContext_p ctx) {
     return s;
   }
   // default entitygroup use for storing new entities.
-  entities_result_idx_.push_back({default_entitygroup_id_in_dist_v2, 0, 0, nullptr});
+  entities_result_idx_.push_back({default_entitygroup_id_in_dist_v2, 0, 0, nullptr, 0});
   // allocate mtr id of all entitygroups , for snapshot writing atomic.
   std::shared_ptr<kwdbts::TsEntityGroup> cur_egrp;
   for (auto& entity : entities_result_idx_) {
@@ -712,7 +712,7 @@ KStatus TsSnapshotConsumerByBlock::GenEmptyTagForPrimaryKey(kwdbContext_p ctx,
 KStatus TsSnapshotConsumerByBlock::CopyBlockToPartitionTable(kwdbContext_p ctx, TsTimePartition* p_table,
                                                               EntityID entity_id, const TsBlockFullData& block) {
   BlockItem *blk_item;
-  int err_code = p_table->allocateBlockItem(entity_id, &blk_item, version_schema_->GetVersionNUm());
+  int err_code = p_table->allocateBlockItem(entity_id, &blk_item, version_schema_->GetVersion());
   if (err_code < 0) {
     LOG_ERROR("cannot allocate new block item");
     return KStatus::FAIL;

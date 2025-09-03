@@ -1,0 +1,141 @@
+> CREATE TS DATABASE test_impexp;
+CREATE TS DATABASE
+> create table test_impexp.ds_tb( k_timestamp timestamptz not null, e1 int2  not null, e2 int, e3 int8 not null, e4 float4, e5 float8 not null, e6 bool, e7 timestamptz not null, e8 char(1023), e9 nchar(255) not null, e10 nchar(200), e11 char not null, e12 nchar(200), e13 nchar not null, e14 nchar(200), e15 nchar(200) not null, e16 varbytes(200), e17 nchar(200) not null, e18 nchar(200),e19 varbytes not null, e20 varbytes(1023), e21 varbytes(200) not null, e22 varbytes(200) ) ATTRIBUTES (code1 int2 not null,code2 int,code3 int8,flag BOOL not null,val1 float4,val2 float8,location nchar(200),color nchar(200) not null,name varbytes,state varbytes(1023),tall varbytes(200),screen varbytes(200),age CHAR,sex CHAR(1023),year NCHAR,type NCHAR(254)) primary tags(code1,flag,color);
+CREATE TABLE
+> use test_impexp;
+SET
+> INSERT INTO ds_tb values('2023-12-12 12:00:00.000+00:00',1,null,1000,null,100.0,null,'2020-1-7 12:00:00.000',null,'test时间精度通用查询测试,！！！@TEST1',null,'t',null,'中',null,'test时间精度通用查询测试,！！！@TEST1',null,'test时间精度通用查询测试,！！！@TEST1',null,b'\xaa',null,'test时间精度通用查询测试',null, 1, 2, 3, false, 1.1, 1.2,'a', 'red', 'T','China', 'a', 'b', '1', '女', '1', 'pria');
+INSERT 1
+> select * from test_impexp.ds_tb;
+         k_timestamp        | e1 |  e2  |  e3  |  e4  | e5  |  e6  |            e7             |  e8  |                  e9                   | e10  | e11 | e12  | e13 | e14  |                  e15                  | e16  |                  e17                  | e18  | e19  | e20  |                                  e21                                   | e22  | code1 | code2 | code3 | flag  | val1 | val2 | location | color | name |    state     | tall | screen | age | sex | year | type
+----------------------------+----+------+------+------+-----+------+---------------------------+------+---------------------------------------+------+-----+------+-----+------+---------------------------------------+------+---------------------------------------+------+------+------+------------------------------------------------------------------------+------+-------+-------+-------+-------+------+------+----------+-------+------+--------------+------+--------+-----+-----+------+-------
+  2023-12-12 12:00:00+00:00 |  1 | NULL | 1000 | NULL | 100 | NULL | 2020-01-07 12:00:00+00:00 | NULL | test时间精度通用查询测试,！！！@TEST1 | NULL | t   | NULL | 中  | NULL | test时间精度通用查询测试,！！！@TEST1 | NULL | test时间精度通用查询测试,！！！@TEST1 | NULL | \xaa | NULL | \x74657374e697b6e997b4e7b2bee5baa6e9809ae794a8e69fa5e8afa2e6b58be8af95 | NULL |     1 |     2 |     3 | false |  1.1 |  1.2 | a        | red   | \x54 | \x4368696e61 | \x61 | \x62   |   1 | 女  | 1    | pria
+(1 row)
+> EXPORT INTO CSV "nodelocal://01/nullasbasic" FROM TABLE test_impexp.ds_tb;
+  result
+-----------
+  succeed
+(1 row)
+> EXPORT INTO CSV "nodelocal://01/nullasNULL" FROM TABLE test_impexp.ds_tb with nullas='NULL';
+  result
+-----------
+  succeed
+(1 row)
+> EXPORT INTO CSV "nodelocal://01/nullasNull" FROM TABLE test_impexp.ds_tb with nullas='Null';
+  result
+-----------
+  succeed
+(1 row)
+> EXPORT INTO CSV "nodelocal://01/nullasnull" FROM TABLE test_impexp.ds_tb with nullas='null';
+  result
+-----------
+  succeed
+(1 row)
+> EXPORT INTO CSV "nodelocal://01/nullasSlashN" FROM TABLE test_impexp.ds_tb with nullas='\N';
+  result
+-----------
+  succeed
+(1 row)
+> EXPORT INTO CSV "nodelocal://01/mutilOption" FROM TABLE test_impexp.ds_tb with nullas='NULL',nullas='\N';
+ERROR: specifying the same option "nullas" is not supported
+> create table test_impexp.ds_tb1 ( k_timestamp timestamptz not null, e1 int2  not null, e2 int, e3 int8 not null, e4 float4, e5 float8 not null, e6 bool, e7 timestamptz not null, e8 char(1023), e9 nchar(255) not null, e10 nchar(200), e11 char not null, e12 nchar(200), e13 nchar not null, e14 nchar(200), e15 nchar(200) not null, e16 varbytes(200), e17 nchar(200) not null, e18 nchar(200),e19 varbytes not null, e20 varbytes(1023), e21 varbytes(200) not null, e22 varbytes(200) ) ATTRIBUTES (code1 int2 not null,code2 int,code3 int8,flag BOOL not null,val1 float4,val2 float8,location nchar(200),color nchar(200) not null,name varbytes,state varbytes(1023),tall varbytes(200),screen varbytes(200),age CHAR,sex CHAR(1023),year NCHAR,type NCHAR(254)) primary tags(code1,flag,color);
+CREATE TABLE
+> create table test_impexp.ds_tb2 ( k_timestamp timestamptz not null, e1 int2  not null, e2 int, e3 int8 not null, e4 float4, e5 float8 not null, e6 bool, e7 timestamptz not null, e8 char(1023), e9 nchar(255) not null, e10 nchar(200), e11 char not null, e12 nchar(200), e13 nchar not null, e14 nchar(200), e15 nchar(200) not null, e16 varbytes(200), e17 nchar(200) not null, e18 nchar(200),e19 varbytes not null, e20 varbytes(1023), e21 varbytes(200) not null, e22 varbytes(200) ) ATTRIBUTES (code1 int2 not null,code2 int,code3 int8,flag BOOL not null,val1 float4,val2 float8,location nchar(200),color nchar(200) not null,name varbytes,state varbytes(1023),tall varbytes(200),screen varbytes(200),age CHAR,sex CHAR(1023),year NCHAR,type NCHAR(254)) primary tags(code1,flag,color);
+CREATE TABLE
+> create table test_impexp.ds_tb3 ( k_timestamp timestamptz not null, e1 int2  not null, e2 int, e3 int8 not null, e4 float4, e5 float8 not null, e6 bool, e7 timestamptz not null, e8 char(1023), e9 nchar(255) not null, e10 nchar(200), e11 char not null, e12 nchar(200), e13 nchar not null, e14 nchar(200), e15 nchar(200) not null, e16 varbytes(200), e17 nchar(200) not null, e18 nchar(200),e19 varbytes not null, e20 varbytes(1023), e21 varbytes(200) not null, e22 varbytes(200) ) ATTRIBUTES (code1 int2 not null,code2 int,code3 int8,flag BOOL not null,val1 float4,val2 float8,location nchar(200),color nchar(200) not null,name varbytes,state varbytes(1023),tall varbytes(200),screen varbytes(200),age CHAR,sex CHAR(1023),year NCHAR,type NCHAR(254)) primary tags(code1,flag,color);
+CREATE TABLE
+> create table test_impexp.ds_tb4 ( k_timestamp timestamptz not null, e1 int2  not null, e2 int, e3 int8 not null, e4 float4, e5 float8 not null, e6 bool, e7 timestamptz not null, e8 char(1023), e9 nchar(255) not null, e10 nchar(200), e11 char not null, e12 nchar(200), e13 nchar not null, e14 nchar(200), e15 nchar(200) not null, e16 varbytes(200), e17 nchar(200) not null, e18 nchar(200),e19 varbytes not null, e20 varbytes(1023), e21 varbytes(200) not null, e22 varbytes(200) ) ATTRIBUTES (code1 int2 not null,code2 int,code3 int8,flag BOOL not null,val1 float4,val2 float8,location nchar(200),color nchar(200) not null,name varbytes,state varbytes(1023),tall varbytes(200),screen varbytes(200),age CHAR,sex CHAR(1023),year NCHAR,type NCHAR(254)) primary tags(code1,flag,color);
+CREATE TABLE
+> create table test_impexp.ds_tb5 ( k_timestamp timestamptz not null, e1 int2  not null, e2 int, e3 int8 not null, e4 float4, e5 float8 not null, e6 bool, e7 timestamptz not null, e8 char(1023), e9 nchar(255) not null, e10 nchar(200), e11 char not null, e12 nchar(200), e13 nchar not null, e14 nchar(200), e15 nchar(200) not null, e16 varbytes(200), e17 nchar(200) not null, e18 nchar(200),e19 varbytes not null, e20 varbytes(1023), e21 varbytes(200) not null, e22 varbytes(200) ) ATTRIBUTES (code1 int2 not null,code2 int,code3 int8,flag BOOL not null,val1 float4,val2 float8,location nchar(200),color nchar(200) not null,name varbytes,state varbytes(1023),tall varbytes(200),screen varbytes(200),age CHAR,sex CHAR(1023),year NCHAR,type NCHAR(254)) primary tags(code1,flag,color);
+CREATE TABLE
+> import into test_impexp.ds_tb1 csv data ("nodelocal://01/nullasNULL/") with nullif="NULL";
+  job_id |  status   | fraction_completed | rows | abandon_rows | reject_rows | note
+---------+-----------+--------------------+------+--------------+-------------+-------
+  -      | succeeded |                  1 |    1 | 0            | 0           | None
+(1 row)
+> import INTO test_impexp.ds_tb2 CSV data ("nodelocal://01/nullasNull/") with nullif='Null';
+  job_id |  status   | fraction_completed | rows | abandon_rows | reject_rows | note
+---------+-----------+--------------------+------+--------------+-------------+-------
+  -      | succeeded |                  1 |    1 | 0            | 0           | None
+(1 row)
+> import INTO test_impexp.ds_tb3 CSV data ("nodelocal://01/nullasnull/") with nullif='null';
+  job_id |  status   | fraction_completed | rows | abandon_rows | reject_rows | note
+---------+-----------+--------------------+------+--------------+-------------+-------
+  -      | succeeded |                  1 |    1 | 0            | 0           | None
+(1 row)
+> import INTO test_impexp.ds_tb4 CSV data ("nodelocal://01/nullasSlashN/") with nullif='\N';
+  job_id |  status   | fraction_completed | rows | abandon_rows | reject_rows | note
+---------+-----------+--------------------+------+--------------+-------------+-------
+  -      | succeeded |                  1 |    1 | 0            | 0           | None
+(1 row)
+> import INTO test_impexp.ds_tb5 CSV data ("nodelocal://01/nullasbasic/");
+  job_id |  status   | fraction_completed | rows | abandon_rows | reject_rows | note
+---------+-----------+--------------------+------+--------------+-------------+-------
+  -      | succeeded |                  1 |    1 | 0            | 0           | None
+(1 row)
+> import INTO test_impexp.ds_tb5 CSV data ("nodelocal://01/nullasbasic/") with nullif='NULL',nullif='\N';;
+ERROR: specifying the same option "nullif" is not supported
+> select * from test_impexp.ds_tb1;
+         k_timestamp        | e1 |  e2  |  e3  |  e4  | e5  |  e6  |            e7             |  e8  |                  e9                   | e10  | e11 | e12  | e13 | e14  |                  e15                  | e16  |                  e17                  | e18  | e19  | e20  |                                  e21                                   | e22  | code1 | code2 | code3 | flag  | val1 | val2 | location | color | name |    state     | tall | screen | age | sex | year | type
+----------------------------+----+------+------+------+-----+------+---------------------------+------+---------------------------------------+------+-----+------+-----+------+---------------------------------------+------+---------------------------------------+------+------+------+------------------------------------------------------------------------+------+-------+-------+-------+-------+------+------+----------+-------+------+--------------+------+--------+-----+-----+------+-------
+  2023-12-12 12:00:00+00:00 |  1 | NULL | 1000 | NULL | 100 | NULL | 2020-01-07 12:00:00+00:00 | NULL | test时间精度通用查询测试,！！！@TEST1 | NULL | t   | NULL | 中  | NULL | test时间精度通用查询测试,！！！@TEST1 | NULL | test时间精度通用查询测试,！！！@TEST1 | NULL | \xaa | NULL | \x74657374e697b6e997b4e7b2bee5baa6e9809ae794a8e69fa5e8afa2e6b58be8af95 | NULL |     1 |     2 |     3 | false |  1.1 |  1.2 | a        | red   | \x54 | \x4368696e61 | \x61 | \x62   |   1 | 女  | 1    | pria
+(1 row)
+> select * from test_impexp.ds_tb2;
+         k_timestamp        | e1 |  e2  |  e3  |  e4  | e5  |  e6  |            e7             |  e8  |                  e9                   | e10  | e11 | e12  | e13 | e14  |                  e15                  | e16  |                  e17                  | e18  | e19  | e20  |                                  e21                                   | e22  | code1 | code2 | code3 | flag  | val1 | val2 | location | color | name |    state     | tall | screen | age | sex | year | type
+----------------------------+----+------+------+------+-----+------+---------------------------+------+---------------------------------------+------+-----+------+-----+------+---------------------------------------+------+---------------------------------------+------+------+------+------------------------------------------------------------------------+------+-------+-------+-------+-------+------+------+----------+-------+------+--------------+------+--------+-----+-----+------+-------
+  2023-12-12 12:00:00+00:00 |  1 | NULL | 1000 | NULL | 100 | NULL | 2020-01-07 12:00:00+00:00 | NULL | test时间精度通用查询测试,！！！@TEST1 | NULL | t   | NULL | 中  | NULL | test时间精度通用查询测试,！！！@TEST1 | NULL | test时间精度通用查询测试,！！！@TEST1 | NULL | \xaa | NULL | \x74657374e697b6e997b4e7b2bee5baa6e9809ae794a8e69fa5e8afa2e6b58be8af95 | NULL |     1 |     2 |     3 | false |  1.1 |  1.2 | a        | red   | \x54 | \x4368696e61 | \x61 | \x62   |   1 | 女  | 1    | pria
+(1 row)
+> select * from test_impexp.ds_tb3;
+         k_timestamp        | e1 |  e2  |  e3  |  e4  | e5  |  e6  |            e7             |  e8  |                  e9                   | e10  | e11 | e12  | e13 | e14  |                  e15                  | e16  |                  e17                  | e18  | e19  | e20  |                                  e21                                   | e22  | code1 | code2 | code3 | flag  | val1 | val2 | location | color | name |    state     | tall | screen | age | sex | year | type
+----------------------------+----+------+------+------+-----+------+---------------------------+------+---------------------------------------+------+-----+------+-----+------+---------------------------------------+------+---------------------------------------+------+------+------+------------------------------------------------------------------------+------+-------+-------+-------+-------+------+------+----------+-------+------+--------------+------+--------+-----+-----+------+-------
+  2023-12-12 12:00:00+00:00 |  1 | NULL | 1000 | NULL | 100 | NULL | 2020-01-07 12:00:00+00:00 | NULL | test时间精度通用查询测试,！！！@TEST1 | NULL | t   | NULL | 中  | NULL | test时间精度通用查询测试,！！！@TEST1 | NULL | test时间精度通用查询测试,！！！@TEST1 | NULL | \xaa | NULL | \x74657374e697b6e997b4e7b2bee5baa6e9809ae794a8e69fa5e8afa2e6b58be8af95 | NULL |     1 |     2 |     3 | false |  1.1 |  1.2 | a        | red   | \x54 | \x4368696e61 | \x61 | \x62   |   1 | 女  | 1    | pria
+(1 row)
+> select * from test_impexp.ds_tb4;
+         k_timestamp        | e1 |  e2  |  e3  |  e4  | e5  |  e6  |            e7             |  e8  |                  e9                   | e10  | e11 | e12  | e13 | e14  |                  e15                  | e16  |                  e17                  | e18  | e19  | e20  |                                  e21                                   | e22  | code1 | code2 | code3 | flag  | val1 | val2 | location | color | name |    state     | tall | screen | age | sex | year | type
+----------------------------+----+------+------+------+-----+------+---------------------------+------+---------------------------------------+------+-----+------+-----+------+---------------------------------------+------+---------------------------------------+------+------+------+------------------------------------------------------------------------+------+-------+-------+-------+-------+------+------+----------+-------+------+--------------+------+--------+-----+-----+------+-------
+  2023-12-12 12:00:00+00:00 |  1 | NULL | 1000 | NULL | 100 | NULL | 2020-01-07 12:00:00+00:00 | NULL | test时间精度通用查询测试,！！！@TEST1 | NULL | t   | NULL | 中  | NULL | test时间精度通用查询测试,！！！@TEST1 | NULL | test时间精度通用查询测试,！！！@TEST1 | NULL | \xaa | NULL | \x74657374e697b6e997b4e7b2bee5baa6e9809ae794a8e69fa5e8afa2e6b58be8af95 | NULL |     1 |     2 |     3 | false |  1.1 |  1.2 | a        | red   | \x54 | \x4368696e61 | \x61 | \x62   |   1 | 女  | 1    | pria
+(1 row)
+> select * from test_impexp.ds_tb5;
+         k_timestamp        | e1 |  e2  |  e3  |  e4  | e5  |  e6  |            e7             |  e8  |                  e9                   | e10  | e11 | e12  | e13 | e14  |                  e15                  | e16  |                  e17                  | e18  | e19  | e20  |                                  e21                                   | e22  | code1 | code2 | code3 | flag  | val1 | val2 | location | color | name |    state     | tall | screen | age | sex | year | type
+----------------------------+----+------+------+------+-----+------+---------------------------+------+---------------------------------------+------+-----+------+-----+------+---------------------------------------+------+---------------------------------------+------+------+------+------------------------------------------------------------------------+------+-------+-------+-------+-------+------+------+----------+-------+------+--------------+------+--------+-----+-----+------+-------
+  2023-12-12 12:00:00+00:00 |  1 | NULL | 1000 | NULL | 100 | NULL | 2020-01-07 12:00:00+00:00 | NULL | test时间精度通用查询测试,！！！@TEST1 | NULL | t   | NULL | 中  | NULL | test时间精度通用查询测试,！！！@TEST1 | NULL | test时间精度通用查询测试,！！！@TEST1 | NULL | \xaa | NULL | \x74657374e697b6e997b4e7b2bee5baa6e9809ae794a8e69fa5e8afa2e6b58be8af95 | NULL |     1 |     2 |     3 | false |  1.1 |  1.2 | a        | red   | \x54 | \x4368696e61 | \x61 | \x62   |   1 | 女  | 1    | pria
+(1 row)
+> EXPORT INTO CSV "nodelocal://01/nullasNULLresult" FROM TABLE test_impexp.ds_tb1;
+  result
+-----------
+  succeed
+(1 row)
+> EXPORT INTO CSV "nodelocal://01/nullasNullresult" FROM TABLE test_impexp.ds_tb2;
+  result
+-----------
+  succeed
+(1 row)
+> EXPORT INTO CSV "nodelocal://01/nullasnullresult" FROM TABLE test_impexp.ds_tb3;
+  result
+-----------
+  succeed
+(1 row)
+> EXPORT INTO CSV "nodelocal://01/nullasSlashNresult" FROM TABLE test_impexp.ds_tb4;
+  result
+-----------
+  succeed
+(1 row)
+> EXPORT INTO CSV "nodelocal://01/nullasbasicresult" FROM TABLE test_impexp.ds_tb5;
+  result
+-----------
+  succeed
+(1 row)
+> drop table test_impexp.ds_tb1;
+DROP TABLE
+> drop table test_impexp.ds_tb2;
+DROP TABLE
+> drop table test_impexp.ds_tb3;
+DROP TABLE
+> drop table test_impexp.ds_tb4;
+DROP TABLE
+> drop table test_impexp.ds_tb5;
+DROP TABLE
+> use defaultdb;
+SET
+> drop database test_impexp;
+DROP DATABASE

@@ -1,0 +1,51 @@
+> select  
+  ref_6.cur_tool_z_len as c0, 
+  subq_0.c1 as c1, 
+  cast(nullif(ref_8.allrenergy1_b,
+    ref_5.rallenergy_c) as int4) as c2, 
+  ref_2.servo_load as c3, 
+  ref_2.prog_seq_num as c4, 
+  ref_2.cur_tool_len as c5
+from 
+  public.t_cnc as ref_0
+          left join public.t_electmeter as ref_1
+          on (ref_1.rallenergy_a is NULL)
+        left join public.t_cnc as ref_2
+            right join public.t_cnc as ref_3
+                inner join public.t_electmeter as ref_4
+                on (ref_4.k_timestamp < cast(null as "timestamp"))
+              inner join public.t_electmeter as ref_5
+              on (true)
+            on (cast(null as jsonb) != (select pg_catalog.json_agg(k_timestamp) from public.t_electmeter)
+                  )
+          inner join public.t_cnc as ref_6
+          on (ref_2.k_timestamp IS NOT DISTINCT FROM cast(null as "timestamp"))
+        on (cast(null as text) IS NOT DISTINCT FROM cast(null as text))
+      left join (select  
+              ref_7.sprog_num as c0, 
+              ref_7.mprog_num as c1
+            from 
+              public.t_cnc as ref_7
+            where (ref_7.mach_pos is NULL) 
+              or ((cast(null as _date) <= cast(null as _date)) 
+                and (cast(null as int8) != cast(null as "numeric")))
+            limit 70) as subq_0
+        right join public.t_electmeter as ref_8
+        on (((false) 
+              or (cast(null as _jsonb) <= cast(null as _jsonb))) 
+            and (cast(null as "numeric") <= cast(null as int8)))
+      on ((ref_5.powerl_b is NULL) 
+          and ((cast(null as _float8) >= cast(null as _float8)) 
+            and (ref_6.feed_set_speed is not NULL)))
+    left join public.t_electmeter as ref_9
+    on (pg_catalog.array_remove(
+          cast((select pg_catalog.array_agg(vol_a) from public.t_electmeter)
+             as _float8),
+          cast(ref_1.powerl_a as float8)) IS DISTINCT FROM (select pg_catalog.array_agg(vol_a) from public.t_electmeter)
+          )
+where true
+limit 61;
+   c0  |  c1  |  c2  |  c3  |  c4  |  c5
+-------+------+------+------+------+-------
+  NULL | NULL | NULL | NULL | NULL | NULL
+(1 row)

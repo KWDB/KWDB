@@ -1,0 +1,968 @@
+> set cluster setting sql.query_cache.enabled=false;
+SET CLUSTER SETTING
+> drop database if EXISTS test;
+DROP DATABASE
+> drop database if EXISTS test_ts;
+DROP DATABASE
+> drop database if EXISTS test_sts;
+DROP DATABASE
+> create database test;
+CREATE DATABASE
+> use test;
+SET
+> create table test1(col1 smallint, col2 int, col3 bigint, col4 float, col5 bool, col6 varchar);
+CREATE TABLE
+> insert into test1 values(1000,1000000,100000000000000000,100000000000000000.101,true, 'test_c1'), (2000,2000000,200000000000000000,200000000000000000.202,true, 'test_c2');
+INSERT 2
+> create table test2(time timestamptz, col1 smallint, col2 int, col3 bigint, col4 float, col5 bool, col6 varchar);
+CREATE TABLE
+> create ts database test_ts;
+CREATE TS DATABASE
+> use test_ts;
+SET
+> create table ts_table
+(time timestamp not null, e1 smallint, e2 int, e3 bigint, e4 float, e5 bool, e6 varchar)
+attributes (attr1 smallint not null, attr2 int, attr3 bigint, attr4 float, attr5 bool, attr6 varchar)
+primary attributes (attr1);
+CREATE TABLE
+> insert into ts_table values('2023-05-31 10:00:00', 1000,1000000,100000000000000000,100000000000000000.101,true, 'test_ts1', 1000, 1000000, 1000000000, 100.11, false, 'test_attr_ts'), ('2023-05-31 11:00:00', 2000,2000000,200000000000000000,200000000000000000.202,true, 'test_ts1', 1000, 1000000, 1000000000, 100.11, false, 'test_attr_ts');
+INSERT 2
+> insert into ts_table(time, e1, e2, e3, e4, e5, e6, attr1, attr2, attr3, attr4, attr5, attr6) select time, e1, e2, e3, e4, e5, e6, attr1+2000, attr2, attr3, attr4, attr5, attr6 from ts_table;
+INSERT 2
+> insert into ts_table(time, e1, e2, e3, e4, e5, e6, attr1, attr2, attr3, attr4, attr5, attr6) select time, e1, e2, e3, e4, e5, e6, attr1+2000, attr2, attr3, attr4, attr5, attr6 from ts_table;
+INSERT 4
+> insert into ts_table(time, e1, e2, e3, e4, e5, e6, attr1, attr2, attr3, attr4, attr5, attr6) select time, e1, e2, e3, e4, e5, e6, attr1+2000, attr2, attr3, attr4, attr5, attr6 from ts_table;
+INSERT 6
+> insert into ts_table(time, e1, e2, e3, e4, e5, e6, attr1, attr2, attr3, attr4, attr5, attr6) select time, e1, e2, e3, e4, e5, e6, attr1+2000, attr2, attr3, attr4, attr5, attr6 from ts_table;
+INSERT 8
+> insert into ts_table(time, e1, e2, e3, e4, e5, e6, attr1, attr2, attr3, attr4, attr5, attr6) select time, e1, e2, e3, e4, e5, e6, attr1+2000, attr2, attr3, attr4, attr5, attr6 from ts_table;
+INSERT 10
+> insert into ts_table(time, e1, e2, e3, e4, e5, e6, attr1, attr2, attr3, attr4, attr5, attr6) select time, e1, e2, e3, e4, e5, e6, attr1+2000, attr2, attr3, attr4, attr5, attr6 from ts_table;
+INSERT 12
+> insert into ts_table(time, e1, e2, e3, e4, e5, e6, attr1, attr2, attr3, attr4, attr5, attr6) select time, e1, e2, e3, e4, e5, e6, attr1+2000, attr2, attr3, attr4, attr5, attr6 from ts_table;
+INSERT 14
+> insert into ts_table(time, e1, e2, e3, e4, e5, e6, attr1, attr2, attr3, attr4, attr5, attr6) select time, e1, e2, e3, e4, e5, e6, attr1+2000, attr2, attr3, attr4, attr5, attr6 from ts_table;
+INSERT 16
+> create table ts_table2
+(time timestamp not null, e1 smallint, e2 int, e3 bigint, e4 float, e5 bool, e6 varchar)
+attributes (attr1 smallint not null, attr2 int, attr3 bigint, attr4 float, attr5 bool, attr6 varchar)
+primary attributes (attr1);
+CREATE TABLE
+> create table ts_table3
+(time timestamp not null, e1 smallint, e2 int, e3 bigint, e4 float, e5 bool, e6 varchar)
+attributes (attr1 smallint not null, attr2 int, attr3 bigint, attr4 float, attr5 bool, attr6 varchar)
+primary attributes (attr1);
+CREATE TABLE
+> insert into ts_table3 values('2023-06-01 10:00:00', 1000,1000000,100000000000000000,100000000000000000.101,true, 'test_ts1', 1000, 1000000, 1000000000, 100.11, false, 'test_attr_ts'), ('2023-06-01 11:00:00', 2000,2000000,200000000000000000,200000000000000000.202,true, 'test_ts1', 1000, 1000000, 1000000000, 100.11, false, 'test_attr_ts');
+INSERT 2
+> insert into test.test2(time, col1, col2, col3, col4, col5, col6) select b.time, e1, col2, e3, col4, e5, col6 from test.test1, test_ts.ts_table b;
+INSERT 36
+> insert into test.test2(time, col1, col2, col3, col4, col5, col6) select b.time, e1, col2, e3, col4, e5, col6 from test.test1 as a join test_ts.ts_table as b on a.col1=b.e1 where b.e2=1000000;
+INSERT 9
+> insert into test.test2(time, col1) (select b.time, e1 from test.test1 as a join test_ts.ts_table as b on a.col1=b.e1 where a.col1=1000 order by e1 desc limit 1);
+INSERT 1
+> insert into test.test2(time, col1, col2, col3, col4, col5, col6) select b.time, e1, col2, e3, col4, e5, col6 from test.test1, test_ts.ts_table b where col1 between 1000 and 2000;
+INSERT 36
+> insert into test.test2(time, col1, col2, col3, col4, col5, col6) select b.time, e1, col2, e3, col4, e5, col6 from test.test1, test_ts.ts_table b where col1+100 < 2000;
+INSERT 18
+> insert into test.test2(time, col1, col2, col3, col4, col5, col6) select b.time, e1, col2, e3, col4, e5, col6 from test.test1, test_ts.ts_table b where e2 not in (2000000, 3000000);
+INSERT 18
+> insert into test.test2(time, col1, col2, col3, col4, col5, col6) select b.time, e1, col2, e3, col4, e5, col6 from test.test1, test_ts.ts_table b where e6 like '%tes%';
+INSERT 36
+> select count(*) from test_ts.ts_table2;
+  count
+---------
+      0
+(1 row)
+> insert into test_ts.ts_table2 select * from test_ts.ts_table;
+INSERT 18
+> insert into test_ts.ts_table2 select * from test_ts.ts_table where e2=1000000;
+INSERT 9
+> insert into test_ts.ts_table2 (select * from test_ts.ts_table order by e1 desc limit 1 offset 1);
+INSERT 1
+> insert into test_ts.ts_table2(time, e1) (select time, e1 from test_ts.ts_table group by time, e1 having time < '2023-08-16 00:00:00' and e1 < 2000);
+ERROR: insert failed, reason:null value in column "attr1" violates not-null constraint
+> insert into test_ts.ts_table2 select * from test_ts.ts_table where e1 between 1000 and 2000;
+INSERT 18
+> insert into test_ts.ts_table2 select * from test_ts.ts_table where e1+100 < 2000;
+INSERT 9
+> insert into test_ts.ts_table2 select * from test_ts.ts_table where e2 not in (2000000, 3000000);
+INSERT 9
+> insert into test_ts.ts_table2 select * from test_ts.ts_table where e6 like '%tes%';
+INSERT 18
+> select count(*) from test_ts.ts_table2;
+  count
+---------
+     18
+(1 row)
+> insert into test_ts.ts_table2 select * from test_ts.ts_table intersect select * from test_ts.ts_table3;
+INSERT 0
+> insert into test_ts.ts_table2 select * from (select * from test_ts.ts_table union (select * from test_ts.ts_table3 union select * from test_ts.ts_table)) as t where t.e1+1000 < 3000;
+INSERT 10
+> insert into test_ts.ts_table2 select * from (select * from test_ts.ts_table union (select * from test_ts.ts_table3 union select * from test_ts.ts_table)) as t where t.e1*10 = 1;
+INSERT 0
+> insert into test_ts.ts_table2 select * from (select * from test_ts.ts_table union (select * from test_ts.ts_table3 union select * from test_ts.ts_table)) as t where t.e1%10 = 1;
+INSERT 0
+> insert into test_ts.ts_table2 select * from (select * from test_ts.ts_table union (select * from test_ts.ts_table3 union select * from test_ts.ts_table)) as t where t.e1<<1 < 1000;
+INSERT 0
+> insert into test_ts.ts_table2 select * from (select * from test_ts.ts_table union (select * from test_ts.ts_table3 union select * from test_ts.ts_table)) as t where t.e1 in (2000, 3000) and t.e6 like '%tes%' order by e2 desc limit 1 offset 1;
+INSERT 1
+> insert into test_ts.ts_table2 select * from (select * from test_ts.ts_table union (select * from test_ts.ts_table3 union select * from test_ts.ts_table)) as t where t.e1+1000 < 3000 order by e2 desc limit 1 offset 1;
+INSERT 1
+> insert into test_ts.ts_table2 select * from (select * from test_ts.ts_table union (select * from test_ts.ts_table3 union select * from test_ts.ts_table)) as t where t.e1-1000 < 3000 order by e2 desc limit 1 offset 1;
+INSERT 1
+> insert into test_ts.ts_table2 select * from (select * from test_ts.ts_table union (select * from test_ts.ts_table3 union select * from test_ts.ts_table)) as t where t.e1*10 = 1 order by e2 desc limit 1 offset 1;
+INSERT 0
+> insert into test_ts.ts_table2 select * from (select * from test_ts.ts_table union (select * from test_ts.ts_table3 union select * from test_ts.ts_table)) as t where t.e1%10 = 1 order by e2 desc limit 1 offset 1;
+INSERT 0
+> insert into test_ts.ts_table2 select * from (select * from test_ts.ts_table union (select * from test_ts.ts_table3 union select * from test_ts.ts_table)) as t where t.e1<<1 < 1000 order by e2 desc limit 1 offset 1;
+INSERT 0
+> insert into test_ts.ts_table2 select * from test_ts.ts_table where e1 in (select e1 from test_ts.ts_table3);
+INSERT 18
+> insert into test_ts.ts_table2 select * from test_ts.ts_table where e1 in (select e1 from test_ts.ts_table3 group by e1 having e1 < 3000);
+INSERT 18
+> insert into test_ts.ts_table2 select * from test_ts.ts_table where e1 in (select e1 from test_ts.ts_table3) order by e3 desc limit 1 offset 1;
+INSERT 1
+> insert into test_ts.ts_table2 select * from test_ts.ts_table where e1 in (select e1 from test_ts.ts_table3 where e1 between 1000 and 2000 group by e1 having e1 < 3000);
+INSERT 18
+> insert into test_ts.ts_table2 select * from test_ts.ts_table where e1 in (select e1 from test_ts.ts_table3 where e6 like '%tes%' group by e1 having e1 < 3000);
+INSERT 18
+> insert into test_ts.ts_table2 select * from test_ts.ts_table where e1 in (select e1 from test_ts.ts_table3 where e1+10 > 1000 group by e1 having e1 < 3000);
+INSERT 18
+> insert into test_ts.ts_table2 select * from test_ts.ts_table where e1 in (select e1 from test_ts.ts_table3 where e1-10 > 1000 group by e1 having e1 < 3000);
+INSERT 9
+> insert into test_ts.ts_table2 select * from test_ts.ts_table where e1 in (select e1 from test_ts.ts_table3 where e1*10 > 1000 group by e1 having e1 < 3000);
+INSERT 18
+> insert into test_ts.ts_table2 select * from test_ts.ts_table where e1 in (select e1 from test_ts.ts_table3 where e1%10 = 1 group by e1 having e1 < 3000);
+INSERT 0
+> insert into test_ts.ts_table2 select * from test_ts.ts_table where e1 in (select e1 from test_ts.ts_table3 where e1<<1 = 1 group by e1 having e1 < 3000);
+INSERT 0
+> insert into test_ts.ts_table2 select * from test_ts.ts_table where e1 in (select e1 from test_ts.ts_table3 where e1 between 1000 and 2000 order by e3 desc limit 1 offset 1);
+INSERT 9
+> insert into test_ts.ts_table2 select * from test_ts.ts_table where e1 in (select e1 from test_ts.ts_table3 where e6 like '%tes%' order by e3 desc limit 1 offset 1);
+INSERT 9
+> insert into test_ts.ts_table2 select * from test_ts.ts_table where e1 in (select e1 from test_ts.ts_table3) and e1 between 1000 and 2000 order by e2 desc limit 1 offset 1;
+INSERT 1
+> insert into test_ts.ts_table2 select * from test_ts.ts_table where e1 in (select e1 from test_ts.ts_table3) and e1-10 > 1000 order by e2 desc limit 1 offset 1;
+INSERT 1
+> insert into test_ts.ts_table2 select * from test_ts.ts_table where e1 in (select e1 from test_ts.ts_table3) and e1*10 > 1000 order by e2 desc limit 1 offset 1;
+INSERT 1
+> insert into test_ts.ts_table2 select * from test_ts.ts_table3 where e1 in (select e1 from test_ts.ts_table group by e1 having e1 < 3000);
+INSERT 2
+> insert into test_ts.ts_table2 select * from test_ts.ts_table3 where e1 in (select e1 from test_ts.ts_table order by e3 desc limit 1 offset 1);
+INSERT 1
+> insert into test_ts.ts_table2 select * from test_ts.ts_table3 where e1 in (select e1 from test_ts.ts_table) order by e3 desc limit 1 offset 1;
+INSERT 1
+> insert into test_ts.ts_table2 select * from test_ts.ts_table3 where e1 in (select e1 from test_ts.ts_table where e2 = (select e2 from test_ts.ts_table3 where e6='test_c1' limit 1));
+INSERT 0
+> insert into test_ts.ts_table2 select * from test_ts.ts_table3 where e1 in (select e1 from test_ts.ts_table where e2 = (select e2 from test_ts.ts_table3 where e6='test_c1' limit 1)) order by e3 desc limit 1 offset 1;
+INSERT 0
+> insert into test_ts.ts_table2 select * from test_ts.ts_table3 where e1 in (select e1 from test_ts.ts_table where e1 between 1000 and 2000 group by e1 having e1 < 3000);
+INSERT 2
+> insert into test_ts.ts_table2 select * from test_ts.ts_table3 where e1 in (select e1 from test_ts.ts_table where e1+10 > 1000 group by e1 having e1 < 3000);
+INSERT 2
+> insert into test_ts.ts_table2 select * from test_ts.ts_table3 where e1 in (select e1 from test_ts.ts_table where e1-10 > 1000 group by e1 having e1 < 3000);
+INSERT 1
+> insert into test_ts.ts_table2 select * from test_ts.ts_table3 where e1 in (select e1 from test_ts.ts_table where e1*10 > 1000 group by e1 having e1 < 3000);
+INSERT 2
+> insert into test_ts.ts_table2 select * from test_ts.ts_table3 where e1 in (select e1 from test_ts.ts_table where e1 between 1000 and 2000 order by e3 desc limit 1 offset 1);
+INSERT 1
+> insert into test_ts.ts_table2 select * from test_ts.ts_table3 where e1 in (select e1 from test_ts.ts_table where e1+10 > 1000 order by e3 desc limit 1 offset 1);
+INSERT 1
+> insert into test_ts.ts_table2 select * from test_ts.ts_table3 where e1 in (select e1 from test_ts.ts_table where e1*10 > 1000 order by e3 desc limit 1 offset 1);
+INSERT 1
+> insert into test_ts.ts_table2 select * from test_ts.ts_table3 where e1 in (select e1 from test_ts.ts_table) and e1 between 1000 and 2000 order by e2 desc limit 1 offset 1;
+INSERT 1
+> insert into test_ts.ts_table2 select * from test_ts.ts_table3 where e1 in (select e1 from test_ts.ts_table) and e1+10 > 1000 order by e2 desc limit 1 offset 1;
+INSERT 1
+> insert into test_ts.ts_table2 select * from test_ts.ts_table3 where e1 in (select e1 from test_ts.ts_table) and e1-10 > 1000 order by e2 desc limit 1 offset 1;
+INSERT 0
+> insert into test_ts.ts_table2 select * from test_ts.ts_table3 where e1 in (select e1 from test_ts.ts_table) and e1*10 > 1000 order by e2 desc limit 1 offset 1;
+INSERT 1
+> insert into test_ts.ts_table2 select * from test_ts.ts_table3 as t1 where e1 in (select e1 from test_ts.ts_table group by e1 having e1 < 2000);
+INSERT 1
+> insert into test_ts.ts_table2 select * from test_ts.ts_table3 as t1 where e1 in (select e1 from test_ts.ts_table where e1 between 1000 and 2000 group by e1 having e1 < 2000);
+INSERT 1
+> insert into test_ts.ts_table2 select * from test_ts.ts_table3 as t1 where e1 in (select e1 from test_ts.ts_table group by e1 having e1 < 2000);
+INSERT 1
+> insert into test_ts.ts_table2 select * from test_ts.ts_table3 as t1 where e1 in (select e1 from test_ts.ts_table where e1*10>1000 and t1.e2/1000 < 2000 group by e1 having e1 < 2000);
+INSERT 1
+> insert into test_ts.ts_table2 select * from test_ts.ts_table3 as t1 where e1 in (select e1 from test_ts.ts_table where e1 between 1000 and 2000 order by e3 desc limit 1 offset 1);
+INSERT 1
+> insert into test_ts.ts_table2 select * from test_ts.ts_table3 as t1 where e1 in (select e1 from test_ts.ts_table order by e3 desc limit 1 offset 1);
+INSERT 1
+> insert into test_ts.ts_table2 select * from test_ts.ts_table3 as t1 where e1 in (select e1 from test_ts.ts_table where e1*10>1000 and t1.e2/1000 < 2000 order by e3 desc limit 1 offset 1);
+INSERT 0
+> insert into test_ts.ts_table2 select * from test_ts.ts_table3 where e1 in (select m.e1 from test_ts.ts_table as m join test_ts.ts_table3 as n on m.e3=n.e3);
+INSERT 2
+> insert into test_ts.ts_table2 select * from test_ts.ts_table3 where e1 in (select m.e1 from test_ts.ts_table as m join test_ts.ts_table3 as n on m.e3=n.e3 where m.e2 > 10000 group by m.e1 having m.e1 < 2000);
+INSERT 1
+> insert into test_ts.ts_table2 select * from test_ts.ts_table3 where e1 in (select m.e1 from test_ts.ts_table as m join test_ts.ts_table3 as n on m.e3=n.e3 order by m.e3 desc limit 1 offset 1);
+INSERT 1
+> insert into test_ts.ts_table2 select * from test_ts.ts_table3 where e1 in (select m.e1 from test_ts.ts_table as m join test_ts.ts_table3 as n on m.e3=n.e3) order by e3 desc limit 1 offset 1;
+INSERT 1
+> insert into test_ts.ts_table2 select * from test_ts.ts_table3 where e1 in (select m.e1 from test_ts.ts_table as m join test_ts.ts_table3 as n on m.e3=n.e3 where m.e2 between 1000000 and 2000000 group by m.e1 having m.e1 < 2000);
+INSERT 1
+> insert into test_ts.ts_table2 select * from test_ts.ts_table3 where e1 in (select m.e1 from test_ts.ts_table as m join test_ts.ts_table3 as n on m.e3=n.e3 where m.e2+1000 > 1000000 group by m.e1 having m.e1 < 2000);
+INSERT 1
+> insert into test_ts.ts_table2 select * from test_ts.ts_table3 where e1 in (select m.e1 from test_ts.ts_table as m join test_ts.ts_table3 as n on m.e3=n.e3 where m.e2-1000 > 10000 group by m.e1 having m.e1 < 2000);
+INSERT 1
+> insert into test_ts.ts_table2 select * from test_ts.ts_table3 where e1 in (select m.e1 from test_ts.ts_table as m join test_ts.ts_table3 as n on m.e3=n.e3 where m.e2*1000 > 1000000 group by m.e1 having m.e1 < 2000);
+INSERT 1
+> insert into test_ts.ts_table2 select * from test_ts.ts_table3 where e1 in (select m.e1 from test_ts.ts_table as m join test_ts.ts_table3 as n on m.e3=n.e3 where m.e2 between 1000000 and 2000000 order by m.e3 desc limit 1 offset 1);
+INSERT 1
+> insert into test_ts.ts_table2 select * from test_ts.ts_table3 where e1 in (select m.e1 from test_ts.ts_table as m join test_ts.ts_table3 as n on m.e3=n.e3 where m.e2+1000 > 1000000 order by m.e3 desc limit 1 offset 1);
+INSERT 1
+> insert into test_ts.ts_table2 select * from test_ts.ts_table3 where e1 in (select m.e1 from test_ts.ts_table as m join test_ts.ts_table3 as n on m.e3=n.e3 where m.e2-1000 > 1000000 order by m.e3 desc limit 1 offset 1);
+INSERT 1
+> insert into test_ts.ts_table2 select * from test_ts.ts_table3 where e1 in (select m.e1 from test_ts.ts_table as m join test_ts.ts_table3 as n on m.e3=n.e3 where m.e2*1000 > 1000000 order by m.e3 desc limit 1 offset 1);
+INSERT 1
+> insert into test_ts.ts_table2 select * from test_ts.ts_table as t1 where exists (select e1 from test_ts.ts_table3 as t2 where t1.e1=t2.e1 group by e1 having e1 < 2000);
+INSERT 9
+> insert into test_ts.ts_table2 select * from test_ts.ts_table as t1 where exists (select e1 from test_ts.ts_table3 as t2 where t1.e1=t2.e1 order by e3 desc limit 10 offset 1);
+INSERT 0
+> insert into test_ts.ts_table2 select * from test_ts.ts_table as t1 where exists (select e1 from test_ts.ts_table3 as t2 where t1.e1=t2.e1) order by e3 desc limit 10 offset 1;
+INSERT 10
+> insert into test_ts.ts_table2 select * from test_ts.ts_table as m where e1 in (select e1 from (select e1 as e1 from test_ts.ts_table3 where m.e1 < 10000) as n where m.e1=n.e1);
+INSERT 18
+> insert into test_ts.ts_table2 select * from test_ts.ts_table as m where e1 in (select e1 from (select e1 as e1 from test_ts.ts_table3 where m.e1 < 10000) as n where m.e1=n.e1 group by e1 having e1 < 2000);
+INSERT 9
+> insert into test_ts.ts_table2 select * from test_ts.ts_table as m where e1 in (select e1 from (select e1 as e1 from test_ts.ts_table3 where m.e1 < 10000) as n where m.e1=n.e1 order by e3 desc limit 10 offset 1);
+INSERT 0
+> insert into test_ts.ts_table2 select * from test_ts.ts_table as m where e1 in (select e1 from (select e1 as e1 from test_ts.ts_table3 where m.e1 < 10000 group by e1 having e1 < 2000) as n where m.e1=n.e1);
+INSERT 9
+> insert into test_ts.ts_table2 select * from test_ts.ts_table as m where e1 in (select e1 from (select e1 as e1 from test_ts.ts_table3 where m.e1 < 10000 order by e3 desc limit 10 offset 1) as n where m.e1=n.e1);
+INSERT 9
+> insert into test_ts.ts_table2 select * from test_ts.ts_table as m where e1 in (select e1 from (select e1 as e1 from test_ts.ts_table3 where m.e1 < 10000) as n where m.e1=n.e1 and e1 between 1000 and 2000 group by e1 having e1 < 2000);
+INSERT 9
+> insert into test_ts.ts_table2 select * from test_ts.ts_table as m where e1 in (select e1 from (select e1 as e1 from test_ts.ts_table3 where m.e1 < 10000) as n where m.e1=n.e1 and e1+100 > 1000 and e2-100<2000000 group by e1 having e1 < 2000);
+INSERT 9
+> insert into test_ts.ts_table2 select * from test_ts.ts_table as m where e1 in (select e1 from (select e1 as e1 from test_ts.ts_table3 where m.e1 < 10000) as n where m.e1=n.e1 and e1*100 > 1000 and e2/100<2000000 group by e1 having e1 < 2000);
+INSERT 9
+> insert into test_ts.ts_table2 select * from test_ts.ts_table as m where e1 in (select e1 from (select e1 as e1 from test_ts.ts_table3 where m.e1 < 10000) as n where m.e1=n.e1 and e1 between 1000 and 2000 order by e3 desc limit 10 offset 1);
+INSERT 0
+> insert into test_ts.ts_table2 select * from test_ts.ts_table as m where e1 in (select e1 from (select e1 as e1 from test_ts.ts_table3 where m.e1 < 10000) as n where m.e1=n.e1 and e1+100 > 1000 and e2-100<2000000 order by e3 desc limit 10 offset 1);
+INSERT 0
+> insert into test_ts.ts_table2 select * from test_ts.ts_table as m where e1 in (select e1 from (select e1 as e1 from test_ts.ts_table3 where m.e1 < 10000) as n where m.e1=n.e1 and e1*100 > 1000 and e2/100<2000000 order by e3 desc limit 10 offset 1);
+INSERT 0
+> insert into test_ts.ts_table2 select t1.time, t1.e1, t1.e2, t1.e3, t2.e4, t2.e5, t2.e6 from test_ts.ts_table as t1 join test_ts.ts_table3 as t2 on t1.e1=t2.e1;
+ERROR: insert failed, reason:null value in column "attr1" violates not-null constraint
+> insert into test_ts.ts_table2 select t1.time, t1.e1, t1.e2, t1.e3, t2.e4, t2.e5, t2.e6, t1.attr1 from test_ts.ts_table as t1 join test_ts.ts_table3 as t2 on t1.e1=t2.e1 where t1.e2 < 3000000 and t2.e4 > 1000.101;
+INSERT 18
+> insert into test_ts.ts_table2 select t1.time, t1.e1, t1.e2, t1.e3, t2.e4, t2.e5, t2.e6, t1.attr1 from test_ts.ts_table as t1 join test_ts.ts_table3 as t2 on t1.e1=t2.e1 order by t1.e3 desc limit 10 offset 1;
+INSERT 10
+> insert into test_ts.ts_table2 select t1.time, t1.e1, t1.e2, t1.e3, t2.e4, t2.e5, t2.e6, t1.attr1 from test_ts.ts_table as t1 left join test_ts.ts_table3 as t2 on t1.e1=t2.e1;
+INSERT 18
+> insert into test_ts.ts_table2 select t1.time, t1.e1, t1.e2, t1.e3, t2.e4, t2.e5, t2.e6, t1.attr1 from test_ts.ts_table as t1 left join test_ts.ts_table3 as t2 on t1.e1=t2.e1 where t1.e2 < 3000000 and t2.e4 > 1000.101;
+INSERT 18
+> insert into test_ts.ts_table2 select t1.time, t1.e1, t1.e2, t1.e3, t2.e4, t2.e5, t2.e6, t1.attr1 from test_ts.ts_table as t1 left join test_ts.ts_table3 as t2 on t1.e1=t2.e1 order by t1.e3 desc limit 10 offset 1;
+INSERT 10
+> insert into test_ts.ts_table2 select t1.time, t1.e1, t1.e2, t1.e3, t2.e4, t2.e5, t2.e6, t1.attr1 from test_ts.ts_table as t1 right join test_ts.ts_table3 as t2 on t1.e1=t2.e1 where t1.e2 < 3000000 and t2.e4 > 1000.101;
+INSERT 18
+> insert into test_ts.ts_table2 select t1.time, t1.e1, t1.e2, t1.e3, t2.e4, t2.e5, t2.e6, t1.attr1 from test_ts.ts_table as t1 full join test_ts.ts_table3 as t2 on t1.e1=t2.e1 where t1.e2 < 3000000 and t2.e4 > 1000.101;
+INSERT 18
+> insert into test_ts.ts_table2 select t1.time, t1.e1, t1.e2, t1.e3, t2.e4, t2.e5, t2.e6, t1.attr1 from test_ts.ts_table as t1, test_ts.ts_table3 as t2 where t1.e2 < 3000000 and t2.e4 > 1000.101;
+INSERT 36
+> insert into test_ts.ts_table2 select t1.time, t1.e1, t1.e2, t1.e3, t2.e4, t2.e5, t2.e6, t1.attr1 from test_ts.ts_table as t1, test_ts.ts_table3 as t2 order by t1.e3 desc limit 10 offset 1;
+INSERT 10
+> insert into test_ts.ts_table2 select t1.time, t1.e1, t1.e2, t1.e3, t2.e4, t2.e5, t2.e6, t1.attr1 from test_ts.ts_table as t1, test_ts.ts_table3 as t2 order by t2.e3 desc limit 10 offset 1;
+INSERT 10
+> insert into test_ts.ts_table2 select t1.time, t1.e1, t1.e2, t1.e3, t2.e4, t2.e5, t2.e6, t1.attr1 from test_ts.ts_table as t1, test_ts.ts_table3 as t2 where t1.e1=t2.e1 and t1.e1+100 > 2000 and t1.e1-100<2000;
+INSERT 9
+> insert into test_ts.ts_table2 select t1.time, t1.e1, t1.e2, t1.e3, t2.e4, t2.e5, t2.e6, t1.attr1 from test_ts.ts_table as t1, test_ts.ts_table3 as t2 where t1.e1=t2.e1 and t1.e1*100 > 2000 and t1.e1/100<2000;
+INSERT 18
+> use test;
+SET
+> create table test_r(time timestamptz, e1 smallint, e2 int, e3 bigint, e4 float, e5 bool, e6 varchar, attr1 smallint not null, attr2 int, attr3 bigint, attr4 float, attr5 bool, attr6 varchar);
+CREATE TABLE
+> use test_ts;
+SET
+> insert into test.test_r select * from test_ts.ts_table;
+INSERT 18
+> insert into test.test_r select * from test_ts.ts_table where e2=1000000;
+INSERT 9
+> insert into test.test_r (select * from test_ts.ts_table order by e1 desc limit 1 offset 1);
+INSERT 1
+> insert into test.test_r select * from test_ts.ts_table where e1 between 1000 and 2000;
+INSERT 18
+> insert into test.test_r select * from test_ts.ts_table where e1+100 < 2000;
+INSERT 9
+> insert into test.test_r select * from test_ts.ts_table where e2 not in (2000000, 3000000);
+INSERT 9
+> insert into test.test_r select * from test_ts.ts_table where e6 like '%tes%';
+INSERT 18
+> select count(*) from test.test_r;
+  count
+---------
+     82
+(1 row)
+> insert into test.test_r select * from test_ts.ts_table UNION select * from test_ts.ts_table3;
+INSERT 20
+> insert into test.test_r select * from (select * from test_ts.ts_table union (select * from test_ts.ts_table3 union select * from test_ts.ts_table)) as t where t.e1 in (2000, 3000) and t.e6 like '%tes%';
+INSERT 10
+> insert into test.test_r select * from (select * from test_ts.ts_table union (select * from test_ts.ts_table3 union select * from test_ts.ts_table)) as t where t.e1+1000 < 3000;
+INSERT 10
+> insert into test.test_r select * from (select * from test_ts.ts_table union (select * from test_ts.ts_table3 union select * from test_ts.ts_table)) as t where t.e1-1000 < 3000;
+INSERT 20
+> insert into test.test_r select * from (select * from test_ts.ts_table union (select * from test_ts.ts_table3 union select * from test_ts.ts_table)) as t where t.e1*10 = 1;
+INSERT 0
+> insert into test.test_r select * from (select * from test_ts.ts_table union (select * from test_ts.ts_table3 union select * from test_ts.ts_table)) as t where t.e1%10 = 1;
+INSERT 0
+> insert into test.test_r select * from (select * from test_ts.ts_table union (select * from test_ts.ts_table3 union select * from test_ts.ts_table)) as t where t.e1<<1 < 1000;
+INSERT 0
+> insert into test.test_r select * from (select * from test_ts.ts_table union (select * from test_ts.ts_table3 union select * from test_ts.ts_table)) as t where t.e1 in (2000, 3000) and t.e6 like '%tes%' order by e2 desc limit 1 offset 1;
+INSERT 1
+> insert into test.test_r select * from (select * from test_ts.ts_table union (select * from test_ts.ts_table3 union select * from test_ts.ts_table)) as t where t.e1+1000 < 3000 order by e2 desc limit 1 offset 1;
+INSERT 1
+> insert into test.test_r select * from (select * from test_ts.ts_table union (select * from test_ts.ts_table3 union select * from test_ts.ts_table)) as t where t.e1-1000 < 3000 order by e2 desc limit 1 offset 1;
+INSERT 1
+> insert into test.test_r select * from (select * from test_ts.ts_table union (select * from test_ts.ts_table3 union select * from test_ts.ts_table)) as t where t.e1*10 = 1 order by e2 desc limit 1 offset 1;
+INSERT 0
+> insert into test.test_r select * from (select * from test_ts.ts_table union (select * from test_ts.ts_table3 union select * from test_ts.ts_table)) as t where t.e1%10 = 1 order by e2 desc limit 1 offset 1;
+INSERT 0
+> insert into test.test_r select * from (select * from test_ts.ts_table union (select * from test_ts.ts_table3 union select * from test_ts.ts_table)) as t where t.e1<<1 < 1000 order by e2 desc limit 1 offset 1;
+INSERT 0
+> insert into test.test_r select * from test_ts.ts_table where e1 in (select e1 from test_ts.ts_table3);
+INSERT 18
+> insert into test.test_r select * from test_ts.ts_table where e1 in (select e1 from test_ts.ts_table3 group by e1 having e1 < 3000);
+INSERT 18
+> insert into test.test_r select * from test_ts.ts_table where e1 in (select e1 from test_ts.ts_table3) order by e3 desc limit 1 offset 1;
+INSERT 1
+> insert into test.test_r select * from test_ts.ts_table where e1 in (select e1 from test_ts.ts_table3 where e1 between 1000 and 2000 group by e1 having e1 < 3000);
+INSERT 18
+> insert into test.test_r select * from test_ts.ts_table where e1 in (select e1 from test_ts.ts_table3 where e6 like '%tes%' group by e1 having e1 < 3000);
+INSERT 18
+> insert into test.test_r select * from test_ts.ts_table where e1 in (select e1 from test_ts.ts_table3 where e1+10 > 1000 group by e1 having e1 < 3000);
+INSERT 18
+> insert into test.test_r select * from test_ts.ts_table where e1 in (select e1 from test_ts.ts_table3 where e1-10 > 1000 group by e1 having e1 < 3000);
+INSERT 9
+> insert into test.test_r select * from test_ts.ts_table where e1 in (select e1 from test_ts.ts_table3 where e1*10 > 1000 group by e1 having e1 < 3000);
+INSERT 18
+> insert into test.test_r select * from test_ts.ts_table where e1 in (select e1 from test_ts.ts_table3 where e1%10 = 1 group by e1 having e1 < 3000);
+INSERT 0
+> insert into test.test_r select * from test_ts.ts_table where e1 in (select e1 from test_ts.ts_table3 where e1<<1 = 1 group by e1 having e1 < 3000);
+INSERT 0
+> insert into test.test_r select * from test_ts.ts_table where e1 in (select e1 from test_ts.ts_table3 where e1 between 1000 and 2000 order by e3 desc limit 1 offset 1);
+INSERT 9
+> insert into test.test_r select * from test_ts.ts_table where e1 in (select e1 from test_ts.ts_table3 where e6 like '%tes%' order by e3 desc limit 1 offset 1);
+INSERT 9
+> insert into test.test_r select * from test_ts.ts_table where e1 in (select e1 from test_ts.ts_table3) and e1 between 1000 and 2000 order by e2 desc limit 1 offset 1;
+INSERT 1
+> insert into test.test_r select * from test_ts.ts_table where e1 in (select e1 from test_ts.ts_table3) and e1-10 > 1000 order by e2 desc limit 1 offset 1;
+INSERT 1
+> insert into test.test_r select * from test_ts.ts_table where e1 in (select e1 from test_ts.ts_table3) and e1*10 > 1000 order by e2 desc limit 1 offset 1;
+INSERT 1
+> insert into test.test_r select * from test_ts.ts_table3 where e1 in (select e1 from test_ts.ts_table group by e1 having e1 < 3000);
+INSERT 2
+> insert into test.test_r select * from test_ts.ts_table3 where e1 in (select e1 from test_ts.ts_table order by e3 desc limit 1 offset 1);
+INSERT 1
+> insert into test.test_r select * from test_ts.ts_table3 where e1 in (select e1 from test_ts.ts_table) order by e3 desc limit 1 offset 1;
+INSERT 1
+> insert into test.test_r select * from test_ts.ts_table3 where e1 in (select e1 from test_ts.ts_table where e2 = (select e2 from test_ts.ts_table3 where e6='test_c1' limit 1));
+INSERT 0
+> insert into test.test_r select * from test_ts.ts_table3 where e1 in (select e1 from test_ts.ts_table where e2 = (select e2 from test_ts.ts_table3 where e6='test_c1' limit 1)) order by e3 desc limit 1 offset 1;
+INSERT 0
+> insert into test.test_r select * from test_ts.ts_table3 where e1 in (select e1 from test_ts.ts_table where e1 between 1000 and 2000 group by e1 having e1 < 3000);
+INSERT 2
+> insert into test.test_r select * from test_ts.ts_table3 where e1 in (select e1 from test_ts.ts_table where e1+10 > 1000 group by e1 having e1 < 3000);
+INSERT 2
+> insert into test.test_r select * from test_ts.ts_table3 where e1 in (select e1 from test_ts.ts_table where e1-10 > 1000 group by e1 having e1 < 3000);
+INSERT 1
+> insert into test.test_r select * from test_ts.ts_table3 where e1 in (select e1 from test_ts.ts_table where e1*10 > 1000 group by e1 having e1 < 3000);
+INSERT 2
+> insert into test.test_r select * from test_ts.ts_table3 where e1 in (select e1 from test_ts.ts_table where e1 between 1000 and 2000 order by e3 desc limit 1 offset 1);
+INSERT 1
+> insert into test.test_r select * from test_ts.ts_table3 where e1 in (select e1 from test_ts.ts_table where e1+10 > 1000 order by e3 desc limit 1 offset 1);
+INSERT 1
+> insert into test.test_r select * from test_ts.ts_table3 where e1 in (select e1 from test_ts.ts_table where e1*10 > 1000 order by e3 desc limit 1 offset 1);
+INSERT 1
+> insert into test.test_r select * from test_ts.ts_table3 where e1 in (select e1 from test_ts.ts_table) and e1 between 1000 and 2000 order by e2 desc limit 1 offset 1;
+INSERT 1
+> insert into test.test_r select * from test_ts.ts_table3 where e1 in (select e1 from test_ts.ts_table) and e1+10 > 1000 order by e2 desc limit 1 offset 1;
+INSERT 1
+> insert into test.test_r select * from test_ts.ts_table3 where e1 in (select e1 from test_ts.ts_table) and e1-10 > 1000 order by e2 desc limit 1 offset 1;
+INSERT 0
+> insert into test.test_r select * from test_ts.ts_table3 where e1 in (select e1 from test_ts.ts_table) and e1*10 > 1000 order by e2 desc limit 1 offset 1;
+INSERT 1
+> insert into test.test_r select * from test_ts.ts_table3 as t1 where e1 in (select e1 from test_ts.ts_table where e1<1000 and t1.e2 > 2000000);
+INSERT 0
+> insert into test.test_r select * from test_ts.ts_table3 as t1 where e1 in (select e1 from test_ts.ts_table group by e1 having e1 < 2000);
+INSERT 1
+> insert into test.test_r select * from test_ts.ts_table3 as t1 where e1 in (select e1 from test_ts.ts_table where e1 between 1000 and 2000 group by e1 having e1 < 2000);
+INSERT 1
+> insert into test.test_r select * from test_ts.ts_table3 as t1 where e1 in (select e1 from test_ts.ts_table group by e1 having e1 < 2000);
+INSERT 1
+> insert into test.test_r select * from test_ts.ts_table3 as t1 where e1 in (select e1 from test_ts.ts_table where e1*10>1000 and t1.e2/1000 < 2000 group by e1 having e1 < 2000);
+INSERT 1
+> insert into test.test_r select * from test_ts.ts_table3 as t1 where e1 in (select e1 from test_ts.ts_table where e1 between 1000 and 2000 order by e3 desc limit 1 offset 1);
+INSERT 1
+> insert into test.test_r select * from test_ts.ts_table3 as t1 where e1 in (select e1 from test_ts.ts_table order by e3 desc limit 1 offset 1);
+INSERT 1
+> insert into test.test_r select * from test_ts.ts_table3 as t1 where e1 in (select e1 from test_ts.ts_table where e1*10>1000 and t1.e2/1000 < 2000 order by e3 desc limit 1 offset 1);
+INSERT 0
+> insert into test.test_r select * from test_ts.ts_table3 where e1 in (select m.e1 from test_ts.ts_table as m join test_ts.ts_table3 as n on m.e3=n.e3);
+INSERT 2
+> insert into test.test_r select * from test_ts.ts_table3 where e1 in (select m.e1 from test_ts.ts_table as m join test_ts.ts_table3 as n on m.e3=n.e3 where m.e2 > 10000 group by m.e1 having m.e1 < 2000);
+INSERT 1
+> insert into test.test_r select * from test_ts.ts_table3 where e1 in (select m.e1 from test_ts.ts_table as m join test_ts.ts_table3 as n on m.e3=n.e3 order by m.e3 desc limit 1 offset 1);
+INSERT 1
+> insert into test.test_r select * from test_ts.ts_table3 where e1 in (select m.e1 from test_ts.ts_table as m join test_ts.ts_table3 as n on m.e3=n.e3) order by e3 desc limit 1 offset 1;
+INSERT 1
+> insert into test.test_r select * from test_ts.ts_table3 where e1 in (select m.e1 from test_ts.ts_table as m join test_ts.ts_table3 as n on m.e3=n.e3 where m.e2 between 1000000 and 2000000 group by m.e1 having m.e1 < 2000);
+INSERT 1
+> insert into test.test_r select * from test_ts.ts_table3 where e1 in (select m.e1 from test_ts.ts_table as m join test_ts.ts_table3 as n on m.e3=n.e3 where m.e2+1000 > 1000000 group by m.e1 having m.e1 < 2000);
+INSERT 1
+> insert into test.test_r select * from test_ts.ts_table3 where e1 in (select m.e1 from test_ts.ts_table as m join test_ts.ts_table3 as n on m.e3=n.e3 where m.e2-1000 > 10000 group by m.e1 having m.e1 < 2000);
+INSERT 1
+> insert into test.test_r select * from test_ts.ts_table3 where e1 in (select m.e1 from test_ts.ts_table as m join test_ts.ts_table3 as n on m.e3=n.e3 where m.e2*1000 > 1000000 group by m.e1 having m.e1 < 2000);
+INSERT 1
+> insert into test.test_r select * from test_ts.ts_table3 where e1 in (select m.e1 from test_ts.ts_table as m join test_ts.ts_table3 as n on m.e3=n.e3 where m.e2 between 1000000 and 2000000 order by m.e3 desc limit 1 offset 1);
+INSERT 1
+> insert into test.test_r select * from test_ts.ts_table3 where e1 in (select m.e1 from test_ts.ts_table as m join test_ts.ts_table3 as n on m.e3=n.e3 where m.e2+1000 > 1000000 order by m.e3 desc limit 1 offset 1);
+INSERT 1
+> insert into test.test_r select * from test_ts.ts_table3 where e1 in (select m.e1 from test_ts.ts_table as m join test_ts.ts_table3 as n on m.e3=n.e3 where m.e2-1000 > 1000000 order by m.e3 desc limit 1 offset 1);
+INSERT 1
+> insert into test.test_r select * from test_ts.ts_table3 where e1 in (select m.e1 from test_ts.ts_table as m join test_ts.ts_table3 as n on m.e3=n.e3 where m.e2*1000 > 1000000 order by m.e3 desc limit 1 offset 1);
+INSERT 1
+> insert into test.test_r select * from test_ts.ts_table as t1 where exists (select e1 from test_ts.ts_table3 as t2 where t1.e1=t2.e1 group by e1 having e1 < 2000);
+INSERT 9
+> insert into test.test_r select * from test_ts.ts_table as t1 where exists (select e1 from test_ts.ts_table3 as t2 where t1.e1=t2.e1 order by e3 desc limit 10 offset 1);
+INSERT 0
+> insert into test.test_r select * from test_ts.ts_table as t1 where exists (select e1 from test_ts.ts_table3 as t2 where t1.e1=t2.e1) order by e3 desc limit 10 offset 1;
+INSERT 10
+> insert into test.test_r select * from test_ts.ts_table as m where e1 in (select e1 from (select e1 as e1 from test_ts.ts_table3 where m.e1 < 10000) as n where m.e1=n.e1);
+INSERT 18
+> insert into test.test_r select * from test_ts.ts_table as m where e1 in (select e1 from (select e1 as e1 from test_ts.ts_table3 where m.e1 < 10000) as n where m.e1=n.e1 group by e1 having e1 < 2000);
+INSERT 9
+> insert into test.test_r select * from test_ts.ts_table as m where e1 in (select e1 from (select e1 as e1 from test_ts.ts_table3 where m.e1 < 10000) as n where m.e1=n.e1 order by e3 desc limit 10 offset 1);
+INSERT 0
+> insert into test.test_r select * from test_ts.ts_table as m where e1 in (select e1 from (select e1 as e1 from test_ts.ts_table3 where m.e1 < 10000 group by e1 having e1 < 2000) as n where m.e1=n.e1);
+INSERT 9
+> insert into test.test_r select * from test_ts.ts_table as m where e1 in (select e1 from (select e1 as e1 from test_ts.ts_table3 where m.e1 < 10000 order by e3 desc limit 10 offset 1) as n where m.e1=n.e1);
+INSERT 9
+> insert into test.test_r select * from test_ts.ts_table as m where e1 in (select e1 from (select e1 as e1 from test_ts.ts_table3 where m.e1 < 10000) as n where m.e1=n.e1 and e1 between 1000 and 2000 group by e1 having e1 < 2000);
+INSERT 9
+> insert into test.test_r select * from test_ts.ts_table as m where e1 in (select e1 from (select e1 as e1 from test_ts.ts_table3 where m.e1 < 10000) as n where m.e1=n.e1 and e1+100 > 1000 and e2-100<2000000 group by e1 having e1 < 2000);
+INSERT 9
+> insert into test.test_r select * from test_ts.ts_table as m where e1 in (select e1 from (select e1 as e1 from test_ts.ts_table3 where m.e1 < 10000) as n where m.e1=n.e1 and e1*100 > 1000 and e2/100<2000000 group by e1 having e1 < 2000);
+INSERT 9
+> insert into test.test_r select * from test_ts.ts_table as m where e1 in (select e1 from (select e1 as e1 from test_ts.ts_table3 where m.e1 < 10000) as n where m.e1=n.e1 and e1 between 1000 and 2000 order by e3 desc limit 10 offset 1);
+INSERT 0
+> insert into test.test_r select * from test_ts.ts_table as m where e1 in (select e1 from (select e1 as e1 from test_ts.ts_table3 where m.e1 < 10000) as n where m.e1=n.e1 and e1+100 > 1000 and e2-100<2000000 order by e3 desc limit 10 offset 1);
+INSERT 0
+> insert into test.test_r select * from test_ts.ts_table as m where e1 in (select e1 from (select e1 as e1 from test_ts.ts_table3 where m.e1 < 10000) as n where m.e1=n.e1 and e1*100 > 1000 and e2/100<2000000 order by e3 desc limit 10 offset 1);
+INSERT 0
+> insert into test.test_r select t1.time, t1.e1, t1.e2, t1.e3, t2.e4, t2.e5, t2.e6 from test_ts.ts_table as t1 join test_ts.ts_table3 as t2 on t1.e1=t2.e1;
+ERROR: null value in column "attr1" violates not-null constraint
+SQLSTATE: 23502
+> insert into test.test_r select t1.time, t1.e1, t1.e2, t1.e3, t2.e4, t2.e5, t2.e6, t1.attr1 from test_ts.ts_table as t1 join test_ts.ts_table3 as t2 on t1.e1=t2.e1 where t1.e2 < 3000000 and t2.e4 > 1000.101;
+INSERT 18
+> insert into test.test_r select t1.time, t1.e1, t1.e2, t1.e3, t2.e4, t2.e5, t2.e6, t1.attr1 from test_ts.ts_table as t1 join test_ts.ts_table3 as t2 on t1.e1=t2.e1 order by t1.e3 desc limit 10 offset 1;
+INSERT 10
+> insert into test.test_r select t1.time, t1.e1, t1.e2, t1.e3, t2.e4, t2.e5, t2.e6, t1.attr1 from test_ts.ts_table as t1 left join test_ts.ts_table3 as t2 on t1.e1=t2.e1;
+INSERT 18
+> insert into test.test_r select t1.time, t1.e1, t1.e2, t1.e3, t2.e4, t2.e5, t2.e6, t1.attr1 from test_ts.ts_table as t1 left join test_ts.ts_table3 as t2 on t1.e1=t2.e1 where t1.e2 < 3000000 and t2.e4 > 1000.101;
+INSERT 18
+> insert into test.test_r select t1.time, t1.e1, t1.e2, t1.e3, t2.e4, t2.e5, t2.e6, t1.attr1 from test_ts.ts_table as t1 left join test_ts.ts_table3 as t2 on t1.e1=t2.e1 order by t1.e3 desc limit 10 offset 1;
+INSERT 10
+> insert into test.test_r select t2.time, t1.e1, t1.e2, t1.e3, t2.e4, t2.e5, t2.e6, t2.attr1 from test_ts.ts_table as t1 right join test_ts.ts_table3 as t2 on t1.e1=t2.e1;
+INSERT 18
+> insert into test.test_r select t1.time, t1.e1, t1.e2, t1.e3, t2.e4, t2.e5, t2.e6, t1.attr1 from test_ts.ts_table as t1 right join test_ts.ts_table3 as t2 on t1.e1=t2.e1 where t1.e2 < 3000000 and t2.e4 > 1000.101;
+INSERT 18
+> insert into test.test_r select t1.time, t1.e1, t1.e2, t1.e3, t2.e4, t2.e5, t2.e6, t1.attr1 from test_ts.ts_table as t1 full join test_ts.ts_table3 as t2 on t1.e1=t2.e1 where t1.e2 < 3000000 and t2.e4 > 1000.101;
+INSERT 18
+> insert into test.test_r select t1.time, t1.e1, t1.e2, t1.e3, t2.e4, t2.e5, t2.e6, t1.attr1 from test_ts.ts_table as t1, test_ts.ts_table3 as t2 where t1.e2 < 3000000 and t2.e4 > 1000.101;
+INSERT 36
+> insert into test.test_r select t1.time, t1.e1, t1.e2, t1.e3, t2.e4, t2.e5, t2.e6, t1.attr1 from test_ts.ts_table as t1, test_ts.ts_table3 as t2 order by t1.e3 desc limit 10 offset 1;
+INSERT 10
+> insert into test.test_r select t1.time, t1.e1, t1.e2, t1.e3, t2.e4, t2.e5, t2.e6, t1.attr1 from test_ts.ts_table as t1, test_ts.ts_table3 as t2 order by t2.e3 desc limit 10 offset 1;
+INSERT 10
+> insert into test.test_r select t1.time, t1.e1, t1.e2, t1.e3, t2.e4, t2.e5, t2.e6, t1.attr1 from test_ts.ts_table as t1, test_ts.ts_table3 as t2 where t1.e1=t2.e1 and t1.e1+100 > 2000 and t1.e1-100<2000;
+INSERT 9
+> insert into test.test_r select t1.time, t1.e1, t1.e2, t1.e3, t2.e4, t2.e5, t2.e6, t1.attr1 from test_ts.ts_table as t1, test_ts.ts_table3 as t2 where t1.e1=t2.e1 and t1.e1*100 > 2000 and t1.e1/100<2000;
+INSERT 18
+> use test_ts;
+SET
+> create table ts_table4
+(time timestamp not null, e1 smallint, e2 int, e3 bigint, e4 float, e5 bool, e6 varchar)
+    attributes (attr1 smallint not null, attr2 int, attr3 bigint, attr4 float, attr5 bool, attr6 varchar)
+primary attributes (attr1);
+CREATE TABLE
+> insert into test_ts.ts_table4 select 100, t1.e1, t1.e2, t1.e3, t2.e4, t2.e5, t2.e6, t1.attr1, t1.attr2 from test_ts.ts_table as t1 join test.test_r as t2 on t1.e1=t2.e1;
+ERROR: first column must be timestamp when the target table is table of time series
+SQLSTATE: 42804
+> insert into test_ts.ts_table4 select * from test_ts.ts_table UNION select * from test.test_r;
+INSERT 58
+> insert into test_ts.ts_table4 (select * from test_ts.ts_table order by time) UNION (select * from test.test_r order by e1);
+INSERT 58
+> insert into test_ts.ts_table4 (select * from test_ts.ts_table where e1 > 100) UNION (select * from test.test_r where e2 > 1000);
+INSERT 58
+> insert into test_ts.ts_table4 (select * from test_ts.ts_table where e1 in (select e1 from ts_table2)) UNION (select * from test.test_r where e2 in (select e2 from ts_table2));
+INSERT 58
+> insert into test_ts.ts_table4 (select * from test_ts.ts_table where e1 in (select e1 from ts_table2 where e1 > 100)) UNION (select * from test.test_r where e2 in (select e2 from ts_table2 where e2 > 1000));
+INSERT 58
+> insert into test_ts.ts_table4 (select * from test_ts.ts_table where e1 in (select e1 from ts_table2 order by e1)) UNION (select * from test.test_r where e2 in (select e2 from ts_table2 order by e2));
+INSERT 58
+> insert into test_ts.ts_table4 (select * from test_ts.ts_table where e1 in (select e1 from ts_table2 group by e1 order by e1)) UNION (select * from test.test_r where e2 in (select e2 from ts_table2 group by e2 order by e2));
+INSERT 58
+> insert into test_ts.ts_table4 (select * from test_ts.ts_table where e1 in (select e1 from ts_table2 group by e1 having e1 > 100 order by e1)) UNION (select * from test.test_r where e2 in (select e2 from ts_table2 group by e2 having e2 > 1000 order by e2));
+INSERT 58
+> insert into test_ts.ts_table4 (select * from test_ts.ts_table where e1 in (select t1.e1 from ts_table2 t1 join ts_table3 t2 on t1.time=t2.time)) UNION (select * from test.test_r where e2 in (select e2 from ts_table2 t1 join test.test1 t2 on t1.e1=t2.col1));
+INSERT 58
+> insert into test_ts.ts_table4 (select * from test_ts.ts_table where e1 in (select t1.e1 from ts_table2 t1 join ts_table3 t2 on t1.time=t2.time where t1.e1 > 100)) UNION (select * from test.test_r where e2 in (select e2 from ts_table2 t1 join test.test1 t2 on t1.e1=t2.col1 where t1.e2 > 1000));
+INSERT 58
+> insert into test_ts.ts_table4 (select * from test_ts.ts_table where e1 in (select t1.e1 from ts_table2 t1 join ts_table3 t2 on t1.time=t2.time order by t1.e1)) UNION (select * from test.test_r where e2 in (select e2 from ts_table2 t1 join test.test1 t2 on t1.e1=t2.col1 order by t1.e1));
+INSERT 58
+> insert into test_ts.ts_table4 (select * from test_ts.ts_table where e1 in (select t1.e1 from ts_table2 t1 join ts_table3 t2 on t1.time=t2.time group by t1.e1 order by t1.e1)) UNION (select * from test.test_r where e2 in (select e2 from ts_table2 t1 join test.test1 t2 on t1.e1=t2.col1 group by t1.e2 order by t1.e2));
+INSERT 58
+> insert into test_ts.ts_table4 (select * from test_ts.ts_table where e1 in (select t1.e1 from ts_table2 t1 join ts_table3 t2 on t1.time=t2.time group by t1.e1 having t1.e1 > 100 order by t1.e1)) UNION (select * from test.test_r where e2 in (select e2 from ts_table2 t1 join test.test1 t2 on t1.e1=t2.col1 group by t1.e2 having t1.e2 > 1000 order by t1.e2));
+INSERT 58
+> insert into test_ts.ts_table4 (select * from test_ts.ts_table where exists (select e1 from ts_table2)) UNION (select * from test.test_r where exists (select e2 from ts_table2));
+INSERT 58
+> insert into test_ts.ts_table4 (select * from test_ts.ts_table where exists (select e1 from ts_table2 where e1 > 100)) UNION (select * from test.test_r where exists (select e2 from ts_table2 where e2 > 1000));
+INSERT 58
+> insert into test_ts.ts_table4 (select * from test_ts.ts_table where exists (select e1 from ts_table2 order by e1)) UNION (select * from test.test_r where exists (select e2 from ts_table2 order by e2));
+INSERT 58
+> insert into test_ts.ts_table4 (select * from test_ts.ts_table where exists (select e1 from ts_table2 group by e1 order by e1)) UNION (select * from test.test_r where exists (select e2 from ts_table2 group by e2 order by e2));
+INSERT 58
+> insert into test_ts.ts_table4 (select * from test_ts.ts_table where exists (select e1 from ts_table2 group by e1 having e1 > 100 order by e1)) UNION (select * from test.test_r where exists (select e2 from ts_table2 group by e2 having e2 > 1000 order by e2));
+INSERT 58
+> insert into test_ts.ts_table4 (select * from test_ts.ts_table where exists (select t1.e1 from ts_table2 t1 join ts_table3 t2 on t1.time=t2.time)) UNION (select * from test.test_r where exists (select e2 from ts_table2 t1 join test.test1 t2 on t1.e1=t2.col1));
+INSERT 58
+> insert into test_ts.ts_table4 (select * from test_ts.ts_table where exists (select t1.e1 from ts_table2 t1 join ts_table3 t2 on t1.time=t2.time where t1.e1 > 100)) UNION (select * from test.test_r where exists (select e2 from ts_table2 t1 join test.test1 t2 on t1.e1=t2.col1 where t1.e2 > 1000));
+INSERT 58
+> insert into test_ts.ts_table4 (select * from test_ts.ts_table where exists (select t1.e1 from ts_table2 t1 join ts_table3 t2 on t1.time=t2.time order by t1.e1)) UNION (select * from test.test_r where exists (select e2 from ts_table2 t1 join test.test1 t2 on t1.e1=t2.col1 order by t1.e1));
+INSERT 58
+> insert into test_ts.ts_table4 (select * from test_ts.ts_table where exists (select t1.e1 from ts_table2 t1 join ts_table3 t2 on t1.time=t2.time group by t1.e1 order by t1.e1)) UNION (select * from test.test_r where exists (select e2 from ts_table2 t1 join test.test1 t2 on t1.e1=t2.col1 group by t1.e2 order by t1.e2));
+INSERT 58
+> insert into test_ts.ts_table4 (select * from test_ts.ts_table where exists (select t1.e1 from ts_table2 t1 join ts_table3 t2 on t1.time=t2.time group by t1.e1 having t1.e1 > 100 order by t1.e1)) UNION (select * from test.test_r where exists (select e2 from ts_table2 t1 join test.test1 t2 on t1.e1=t2.col1 group by t1.e2 having t1.e2 > 1000 order by t1.e2));
+INSERT 58
+> insert into test_ts.ts_table4 select t1.time, t1.e1, t1.e2, t1.e3, t2.e4, t2.e5, t2.e6, t1.attr1, t1.attr2 from test_ts.ts_table as t1 join test.test_r as t2 on t1.e1=t2.e1;
+INSERT 5598
+> insert into test_ts.ts_table4 select t1.time, t1.e1, t1.e2, t1.e3, t2.e4, t2.e5, t2.e6, t1.attr1, t1.attr2 from test_ts.ts_table as t1 join test.test_r as t2 on t1.e1=t2.e1 where t1.e2 < 3000000 and t2.e4 > 1000.101;
+INSERT 5598
+> insert into test_ts.ts_table4 select t1.time, t1.e1, t1.e2, t1.e3, t2.e4, t2.e5, t2.e6, t1.attr1, t1.attr2 from test_ts.ts_table as t1 join test.test_r as t2 on t1.e1=t2.e1 order by t1.e3 desc limit 10 offset 1;
+INSERT 10
+> insert into test_ts.ts_table4 select t1.time, t1.e1, t1.e2, t1.e3, t2.e4, t2.e5, t2.e6, t1.attr1, t1.attr2 from test_ts.ts_table as t1 join test.test_r as t2 on t1.e1=t2.e1 where t1.e1 in (select e1 from ts_table2);
+INSERT 5598
+> insert into test_ts.ts_table4 select t1.time, t1.e1, t1.e2, t1.e3, t2.e4, t2.e5, t2.e6, t1.attr1, t1.attr2 from test_ts.ts_table as t1 join test.test_r as t2 on t1.e1=t2.e1 where t1.e1 in (select e1 from ts_table2 where e1 > 100);
+INSERT 5598
+> insert into test_ts.ts_table4 select t1.time, t1.e1, t1.e2, t1.e3, t2.e4, t2.e5, t2.e6, t1.attr1, t1.attr2 from test_ts.ts_table as t1 join test.test_r as t2 on t1.e1=t2.e1 where t1.e1 in (select e1 from ts_table2 order by e1);
+INSERT 5598
+> insert into test_ts.ts_table4 select t1.time, t1.e1, t1.e2, t1.e3, t2.e4, t2.e5, t2.e6, t1.attr1, t1.attr2 from test_ts.ts_table as t1 join test.test_r as t2 on t1.e1=t2.e1 where t1.e1 in (select e1 from ts_table2 group by e1 order by e1);
+INSERT 5598
+> insert into test_ts.ts_table4 select t1.time, t1.e1, t1.e2, t1.e3, t2.e4, t2.e5, t2.e6, t1.attr1, t1.attr2 from test_ts.ts_table as t1 join test.test_r as t2 on t1.e1=t2.e1 where t1.e1 in (select e1 from ts_table2 group by e1 having e1 > 100 order by e1);
+INSERT 5598
+> insert into test_ts.ts_table4 select t1.time, t1.e1, t1.e2, t1.e3, t2.e4, t2.e5, t2.e6, t1.attr1, t1.attr2 from test_ts.ts_table as t1 join test.test_r as t2 on t1.e1=t2.e1 where exists (select e1 from ts_table2);
+INSERT 5598
+> insert into test_ts.ts_table4 select t1.time, t1.e1, t1.e2, t1.e3, t2.e4, t2.e5, t2.e6, t1.attr1, t1.attr2 from test_ts.ts_table as t1 join test.test_r as t2 on t1.e1=t2.e1 where exists (select e1 from ts_table2 where e1 > 100);
+INSERT 5598
+> insert into test_ts.ts_table4 select t1.time, t1.e1, t1.e2, t1.e3, t2.e4, t2.e5, t2.e6, t1.attr1, t1.attr2 from test_ts.ts_table as t1 join test.test_r as t2 on t1.e1=t2.e1 where exists (select e1 from ts_table2 order by e1);
+INSERT 5598
+> insert into test_ts.ts_table4 select t1.time, t1.e1, t1.e2, t1.e3, t2.e4, t2.e5, t2.e6, t1.attr1, t1.attr2 from test_ts.ts_table as t1 join test.test_r as t2 on t1.e1=t2.e1 where exists (select e1 from ts_table2 group by e1 order by e1);
+INSERT 5598
+> insert into test_ts.ts_table4 select t1.time, t1.e1, t1.e2, t1.e3, t2.e4, t2.e5, t2.e6, t1.attr1, t1.attr2 from test_ts.ts_table as t1 join test.test_r as t2 on t1.e1=t2.e1 where exists (select e1 from ts_table2 group by e1 having e1 > 100 order by e1);
+INSERT 5598
+> insert into test_ts.ts_table4 select t1.time, t1.e1, t1.e2, t1.e3, t2.e4, t2.e5, t2.e6, t1.attr1, t1.attr2 from test_ts.ts_table as t1 left join test.test_r as t2 on t1.e1=t2.e1;
+INSERT 5598
+> insert into test_ts.ts_table4 select t1.time, t1.e1, t1.e2, t1.e3, t2.e4, t2.e5, t2.e6, t1.attr1, t1.attr2 from test_ts.ts_table as t1 left join test.test_r as t2 on t1.e1=t2.e1 where t1.e2 < 3000000 and t2.e4 > 1000.101;
+INSERT 5598
+> insert into test_ts.ts_table4 select t1.time, t1.e1, t1.e2, t1.e3, t2.e4, t2.e5, t2.e6, t1.attr1, t1.attr2 from test_ts.ts_table as t1 left join test.test_r as t2 on t1.e1=t2.e1 order by t1.e3 desc limit 10 offset 1;
+INSERT 10
+> insert into test_ts.ts_table4 select t1.time, t1.e1, t1.e2, t1.e3, t2.e4, t2.e5, t2.e6, t1.attr1, t1.attr2 from test_ts.ts_table as t1 left join test.test_r as t2 on t1.e1=t2.e1 where t1.e1 in (select e1 from ts_table2);
+INSERT 5598
+> insert into test_ts.ts_table4 select t1.time, t1.e1, t1.e2, t1.e3, t2.e4, t2.e5, t2.e6, t1.attr1, t1.attr2 from test_ts.ts_table as t1 left join test.test_r as t2 on t1.e1=t2.e1 where t1.e1 in (select e1 from ts_table2 where e1 > 100);
+INSERT 5598
+> insert into test_ts.ts_table4 select t1.time, t1.e1, t1.e2, t1.e3, t2.e4, t2.e5, t2.e6, t1.attr1, t1.attr2 from test_ts.ts_table as t1 left join test.test_r as t2 on t1.e1=t2.e1 where t1.e1 in (select e1 from ts_table2 order by e1);
+INSERT 5598
+> insert into test_ts.ts_table4 select t1.time, t1.e1, t1.e2, t1.e3, t2.e4, t2.e5, t2.e6, t1.attr1, t1.attr2 from test_ts.ts_table as t1 left join test.test_r as t2 on t1.e1=t2.e1 where t1.e1 in (select e1 from ts_table2 group by e1 order by e1);
+INSERT 5598
+> insert into test_ts.ts_table4 select t1.time, t1.e1, t1.e2, t1.e3, t2.e4, t2.e5, t2.e6, t1.attr1, t1.attr2 from test_ts.ts_table as t1 left join test.test_r as t2 on t1.e1=t2.e1 where t1.e1 in (select e1 from ts_table2 group by e1 having e1 > 100 order by e1);
+INSERT 5598
+> insert into test_ts.ts_table4 select t1.time, t1.e1, t1.e2, t1.e3, t2.e4, t2.e5, t2.e6, t1.attr1, t1.attr2 from test_ts.ts_table as t1 left join test.test_r as t2 on t1.e1=t2.e1 where exists (select e1 from ts_table2);
+INSERT 5598
+> insert into test_ts.ts_table4 select t1.time, t1.e1, t1.e2, t1.e3, t2.e4, t2.e5, t2.e6, t1.attr1, t1.attr2 from test_ts.ts_table as t1 left join test.test_r as t2 on t1.e1=t2.e1 where exists (select e1 from ts_table2 where e1 > 100);
+INSERT 5598
+> insert into test_ts.ts_table4 select t1.time, t1.e1, t1.e2, t1.e3, t2.e4, t2.e5, t2.e6, t1.attr1, t1.attr2 from test_ts.ts_table as t1 left join test.test_r as t2 on t1.e1=t2.e1 where exists (select e1 from ts_table2 order by e1);
+INSERT 5598
+> insert into test_ts.ts_table4 select t1.time, t1.e1, t1.e2, t1.e3, t2.e4, t2.e5, t2.e6, t1.attr1, t1.attr2 from test_ts.ts_table as t1 left join test.test_r as t2 on t1.e1=t2.e1 where exists (select e1 from ts_table2 group by e1 order by e1);
+INSERT 5598
+> insert into test_ts.ts_table4 select t1.time, t1.e1, t1.e2, t1.e3, t2.e4, t2.e5, t2.e6, t1.attr1, t1.attr2 from test_ts.ts_table as t1 left join test.test_r as t2 on t1.e1=t2.e1 where exists (select e1 from ts_table2 group by e1 having e1 > 100 order by e1);
+INSERT 5598
+> insert into test_ts.ts_table4 select t2.time, t1.e1, t1.e2, t1.e3, t2.e4, t2.e5, t2.e6, t2.attr1, t1.attr2 from test_ts.ts_table as t1 right join test.test_r as t2 on t1.e1=t2.e1;
+INSERT 5598
+> insert into test_ts.ts_table4 select t1.time, t1.e1, t1.e2, t1.e3, t2.e4, t2.e5, t2.e6, t1.attr1, t1.attr2 from test_ts.ts_table as t1 right join test.test_r as t2 on t1.e1=t2.e1 where t1.e2 < 3000000 and t2.e4 > 1000.101;
+INSERT 5598
+> insert into test_ts.ts_table4 select t1.time, t1.e1, t1.e2, t1.e3, t2.e4, t2.e5, t2.e6, t1.attr1, t1.attr2 from test_ts.ts_table as t1 right join test.test_r as t2 on t1.e1=t2.e1 order by t1.e3 desc limit 10 offset 1;
+INSERT 10
+> insert into test_ts.ts_table4 select t1.time, t1.e1, t1.e2, t1.e3, t2.e4, t2.e5, t2.e6, t1.attr1, t1.attr2 from test_ts.ts_table as t1 right join test.test_r as t2 on t1.e1=t2.e1 where t1.e1 in (select col1 from test.test1);
+INSERT 5598
+> insert into test_ts.ts_table4 select t1.time, t1.e1, t1.e2, t1.e3, t2.e4, t2.e5, t2.e6, t1.attr1, t1.attr2 from test_ts.ts_table as t1 right join test.test_r as t2 on t1.e1=t2.e1 where t1.e1 in (select col1 from test.test1 where col1 > 100);
+INSERT 5598
+> insert into test_ts.ts_table4 select t1.time, t1.e1, t1.e2, t1.e3, t2.e4, t2.e5, t2.e6, t1.attr1, t1.attr2 from test_ts.ts_table as t1 right join test.test_r as t2 on t1.e1=t2.e1 where t1.e1 in (select col1 from test.test1 order by col1);
+INSERT 5598
+> insert into test_ts.ts_table4 select t1.time, t1.e1, t1.e2, t1.e3, t2.e4, t2.e5, t2.e6, t1.attr1, t1.attr2 from test_ts.ts_table as t1 right join test.test_r as t2 on t1.e1=t2.e1 where t1.e1 in (select col1 from test.test1 group by col1 order by col1);
+INSERT 5598
+> insert into test_ts.ts_table4 select t1.time, t1.e1, t1.e2, t1.e3, t2.e4, t2.e5, t2.e6, t1.attr1, t1.attr2 from test_ts.ts_table as t1 right join test.test_r as t2 on t1.e1=t2.e1 where t1.e1 in (select col1 from test.test1 group by col1 having col1 > 100 order by col1);
+INSERT 5598
+> insert into test_ts.ts_table4 select t1.time, t1.e1, t1.e2, t1.e3, t2.e4, t2.e5, t2.e6, t1.attr1, t1.attr2 from test_ts.ts_table as t1 right join test.test_r as t2 on t1.e1=t2.e1 where exists (select col1 from test.test1);
+INSERT 5598
+> insert into test_ts.ts_table4 select t1.time, t1.e1, t1.e2, t1.e3, t2.e4, t2.e5, t2.e6, t1.attr1, t1.attr2 from test_ts.ts_table as t1 right join test.test_r as t2 on t1.e1=t2.e1 where exists (select col1 from test.test1 where col1 > 100);
+INSERT 5598
+> insert into test_ts.ts_table4 select t1.time, t1.e1, t1.e2, t1.e3, t2.e4, t2.e5, t2.e6, t1.attr1, t1.attr2 from test_ts.ts_table as t1 right join test.test_r as t2 on t1.e1=t2.e1 where exists (select col1 from test.test1 order by col1);
+INSERT 5598
+> insert into test_ts.ts_table4 select t1.time, t1.e1, t1.e2, t1.e3, t2.e4, t2.e5, t2.e6, t1.attr1, t1.attr2 from test_ts.ts_table as t1 right join test.test_r as t2 on t1.e1=t2.e1 where exists (select col1 from test.test1 group by col1 order by col1);
+INSERT 5598
+> insert into test_ts.ts_table4 select t1.time, t1.e1, t1.e2, t1.e3, t2.e4, t2.e5, t2.e6, t1.attr1, t1.attr2 from test_ts.ts_table as t1 right join test.test_r as t2 on t1.e1=t2.e1 where exists (select col1 from test.test1 group by col1 having col1 > 100 order by col1);
+INSERT 5598
+> insert into test_ts.ts_table4 select t2.time, t1.e1, t1.e2, t1.e3, t2.e4, t2.e5, t2.e6, t2.attr1, t1.attr2 from test_ts.ts_table as t1 full join test.test_r as t2 on t1.e1=t2.e1;
+INSERT 5598
+> insert into test_ts.ts_table4 select t1.time, t1.e1, t1.e2, t1.e3, t2.e4, t2.e5, t2.e6, t1.attr1, t1.attr2 from test_ts.ts_table as t1 full join test.test_r as t2 on t1.e1=t2.e1 where t1.e2 < 3000000 and t2.e4 > 1000.101;
+INSERT 5598
+> insert into test_ts.ts_table4 select t1.time, t1.e1, t1.e2, t1.e3, t2.e4, t2.e5, t2.e6, t1.attr1, t1.attr2 from test_ts.ts_table as t1 full join test.test_r as t2 on t1.e1=t2.e1 order by t1.e3 desc limit 10 offset 1;
+INSERT 10
+> insert into test_ts.ts_table4 select t1.time, t1.e1, t1.e2, t1.e3, t2.e4, t2.e5, t2.e6, t1.attr1, t1.attr2 from test_ts.ts_table as t1 full join test.test_r as t2 on t1.e1=t2.e1 where t1.e1 in (select col1 from test.test1);
+INSERT 5598
+> insert into test_ts.ts_table4 select t1.time, t1.e1, t1.e2, t1.e3, t2.e4, t2.e5, t2.e6, t1.attr1, t1.attr2 from test_ts.ts_table as t1 full join test.test_r as t2 on t1.e1=t2.e1 where t1.e1 in (select col1 from test.test1 where col1 > 100);
+INSERT 5598
+> insert into test_ts.ts_table4 select t1.time, t1.e1, t1.e2, t1.e3, t2.e4, t2.e5, t2.e6, t1.attr1, t1.attr2 from test_ts.ts_table as t1 full join test.test_r as t2 on t1.e1=t2.e1 where t1.e1 in (select col1 from test.test1 order by col1);
+INSERT 5598
+> insert into test_ts.ts_table4 select t1.time, t1.e1, t1.e2, t1.e3, t2.e4, t2.e5, t2.e6, t1.attr1, t1.attr2 from test_ts.ts_table as t1 full join test.test_r as t2 on t1.e1=t2.e1 where t1.e1 in (select col1 from test.test1 group by col1 order by col1);
+INSERT 5598
+> insert into test_ts.ts_table4 select t1.time, t1.e1, t1.e2, t1.e3, t2.e4, t2.e5, t2.e6, t1.attr1, t1.attr2 from test_ts.ts_table as t1 full join test.test_r as t2 on t1.e1=t2.e1 where t1.e1 in (select col1 from test.test1 group by col1 having col1 > 100 order by col1);
+INSERT 5598
+> insert into test_ts.ts_table4 select t1.time, t1.e1, t1.e2, t1.e3, t2.e4, t2.e5, t2.e6, t1.attr1, t1.attr2 from test_ts.ts_table as t1 full join test.test_r as t2 on t1.e1=t2.e1 where exists (select col1 from test.test1);
+INSERT 5598
+> insert into test_ts.ts_table4 select t1.time, t1.e1, t1.e2, t1.e3, t2.e4, t2.e5, t2.e6, t1.attr1, t1.attr2 from test_ts.ts_table as t1 full join test.test_r as t2 on t1.e1=t2.e1 where exists (select col1 from test.test1 where col1 > 100);
+INSERT 5598
+> insert into test_ts.ts_table4 select t1.time, t1.e1, t1.e2, t1.e3, t2.e4, t2.e5, t2.e6, t1.attr1, t1.attr2 from test_ts.ts_table as t1 full join test.test_r as t2 on t1.e1=t2.e1 where exists (select col1 from test.test1 order by col1);
+INSERT 5598
+> insert into test_ts.ts_table4 select t1.time, t1.e1, t1.e2, t1.e3, t2.e4, t2.e5, t2.e6, t1.attr1, t1.attr2 from test_ts.ts_table as t1 full join test.test_r as t2 on t1.e1=t2.e1 where exists (select col1 from test.test1 group by col1 order by col1);
+INSERT 5598
+> insert into test_ts.ts_table4 select t1.time, t1.e1, t1.e2, t1.e3, t2.e4, t2.e5, t2.e6, t1.attr1, t1.attr2 from test_ts.ts_table as t1 full join test.test_r as t2 on t1.e1=t2.e1 where exists (select col1 from test.test1 group by col1 having col1 > 100 order by col1);
+INSERT 5598
+> insert into test_ts.ts_table4 select * from test_ts.ts_table union (select * from test.test_r union select * from test_ts.ts_table2);
+INSERT 58
+> insert into test_ts.ts_table4 (select * from test_ts.ts_table where e1 > 100) union (select * from test.test_r union select * from test_ts.ts_table2);
+INSERT 58
+> insert into test_ts.ts_table4 (select * from test_ts.ts_table order by e1) union (select * from test.test_r union select * from test_ts.ts_table2);
+INSERT 58
+> insert into test_ts.ts_table4 (select * from test_ts.ts_table where e1 in (select e1 from ts_table3)) union (select * from test.test_r union select * from test_ts.ts_table2);
+INSERT 58
+> insert into test_ts.ts_table4 (select * from test_ts.ts_table where e1 in (select e1 from ts_table3 where e1 > 100)) union (select * from test.test_r union select * from test_ts.ts_table2);
+INSERT 58
+> insert into test_ts.ts_table4 (select * from test_ts.ts_table where e1 in (select e1 from ts_table3 order by e1)) union (select * from test.test_r union select * from test_ts.ts_table2);
+INSERT 58
+> insert into test_ts.ts_table4 (select * from test_ts.ts_table where e1 in (select e1 from ts_table3 group by e1 order by e1)) union (select * from test.test_r union select * from test_ts.ts_table2);
+INSERT 58
+> insert into test_ts.ts_table4 (select * from test_ts.ts_table where e1 in (select e1 from ts_table3 group by e1 having e1 > 100 order by e1)) union (select * from test.test_r union select * from test_ts.ts_table2);
+INSERT 58
+> insert into test_ts.ts_table4 (select * from test_ts.ts_table where e1 in (select t1.e1 from ts_table2 t1 join ts_table3 t2 on t1.time=t2.time)) union (select * from test.test_r union select * from test_ts.ts_table2);
+INSERT 58
+> insert into test_ts.ts_table4 (select * from test_ts.ts_table where e1 in (select t1.e1 from ts_table2 t1 join ts_table3 t2 on t1.time=t2.time where t1.e1 > 100)) union (select * from test.test_r union select * from test_ts.ts_table2);
+INSERT 58
+> insert into test_ts.ts_table4 (select * from test_ts.ts_table where e1 in (select t1.e1 from ts_table2 t1 join ts_table3 t2 on t1.time=t2.time order by t1.e1)) union (select * from test.test_r union select * from test_ts.ts_table2);
+INSERT 58
+> insert into test_ts.ts_table4 (select * from test_ts.ts_table where e1 in (select t1.e1 from ts_table2 t1 join ts_table3 t2 on t1.time=t2.time group by t1.e1 order by t1.e1)) union (select * from test.test_r union select * from test_ts.ts_table2);
+INSERT 58
+> insert into test_ts.ts_table4 (select * from test_ts.ts_table where e1 in (select t1.e1 from ts_table2 t1 join ts_table3 t2 on t1.time=t2.time group by t1.e1 having t1.e1 > 100 order by t1.e1)) union (select * from test.test_r union select * from test_ts.ts_table2);
+INSERT 58
+> insert into test_ts.ts_table4 (select * from test_ts.ts_table where exists (select e1 from ts_table3)) union (select * from test.test_r union select * from test_ts.ts_table2);
+INSERT 58
+> insert into test_ts.ts_table4 (select * from test_ts.ts_table where exists (select e1 from ts_table3 where e1 > 100)) union (select * from test.test_r union select * from test_ts.ts_table2);
+INSERT 58
+> insert into test_ts.ts_table4 (select * from test_ts.ts_table where exists (select e1 from ts_table3 order by e1)) union (select * from test.test_r union select * from test_ts.ts_table2);
+INSERT 58
+> insert into test_ts.ts_table4 (select * from test_ts.ts_table where exists (select e1 from ts_table3 group by e1 order by e1)) union (select * from test.test_r union select * from test_ts.ts_table2);
+INSERT 58
+> insert into test_ts.ts_table4 (select * from test_ts.ts_table where exists (select e1 from ts_table3 group by e1 having e1 > 100 order by e1)) union (select * from test.test_r union select * from test_ts.ts_table2);
+INSERT 58
+> insert into test_ts.ts_table4 (select * from test_ts.ts_table where exists (select t1.e1 from ts_table2 t1 join ts_table3 t2 on t1.time=t2.time)) union (select * from test.test_r union select * from test_ts.ts_table2);
+INSERT 58
+> insert into test_ts.ts_table4 (select * from test_ts.ts_table where exists (select t1.e1 from ts_table2 t1 join ts_table3 t2 on t1.time=t2.time where t1.e1 > 100)) union (select * from test.test_r union select * from test_ts.ts_table2);
+INSERT 58
+> insert into test_ts.ts_table4 (select * from test_ts.ts_table where exists (select t1.e1 from ts_table2 t1 join ts_table3 t2 on t1.time=t2.time order by t1.e1)) union (select * from test.test_r union select * from test_ts.ts_table2);
+INSERT 58
+> insert into test_ts.ts_table4 (select * from test_ts.ts_table where exists (select t1.e1 from ts_table2 t1 join ts_table3 t2 on t1.time=t2.time group by t1.e1 order by t1.e1)) union (select * from test.test_r union select * from test_ts.ts_table2);
+INSERT 58
+> insert into test_ts.ts_table4 (select * from test_ts.ts_table where exists (select t1.e1 from ts_table2 t1 join ts_table3 t2 on t1.time=t2.time group by t1.e1 having t1.e1 > 100 order by t1.e1)) union (select * from test.test_r union select * from test_ts.ts_table2);
+INSERT 58
+> insert into test_ts.ts_table4 select * from test_ts.ts_table union (select t1.time, t1.e1, t1.e2, t1.e3, t1.e4, t1.e5, t1.e6, t2.attr1, t2.attr2, t2.attr3, t2.attr4, t2.attr5, t2.attr6 from test.test_r t1 join test_ts.ts_table2 t2 on t1.e1=t2.e1);
+INSERT 54
+> insert into test_ts.ts_table4 select * from test_ts.ts_table union (select t1.time, t1.e1, t1.e2, t1.e3, t1.e4, t1.e5, t1.e6, t2.attr1, t2.attr2, t2.attr3, t2.attr4, t2.attr5, t2.attr6 from test.test_r t1 join test_ts.ts_table2 t2 on t1.e1=t2.e1);
+INSERT 54
+> insert into test_ts.ts_table4 (select * from test_ts.ts_table where e1 > 100) union (select t1.time, t1.e1, t1.e2, t1.e3, t1.e4, t1.e5, t1.e6, t2.attr1, t2.attr2, t2.attr3, t2.attr4, t2.attr5, t2.attr6 from test.test_r t1 join test_ts.ts_table2 t2 on t1.e1=t2.e1);
+INSERT 54
+> insert into test_ts.ts_table4 (select * from test_ts.ts_table order by e1) union (select t1.time, t1.e1, t1.e2, t1.e3, t1.e4, t1.e5, t1.e6, t2.attr1, t2.attr2, t2.attr3, t2.attr4, t2.attr5, t2.attr6 from test.test_r t1 join test_ts.ts_table2 t2 on t1.e1=t2.e1);
+INSERT 54
+> insert into test_ts.ts_table4 (select * from test_ts.ts_table where e1 in (select e1 from ts_table3)) union (select t1.time, t1.e1, t1.e2, t1.e3, t1.e4, t1.e5, t1.e6, t2.attr1, t2.attr2, t2.attr3, t2.attr4, t2.attr5, t2.attr6 from test.test_r t1 join test_ts.ts_table2 t2 on t1.e1=t2.e1);
+INSERT 54
+> insert into test_ts.ts_table4 (select * from test_ts.ts_table where e1 in (select e1 from ts_table3 where e1 > 100)) union (select * from test.test_r union select * from test_ts.ts_table2);
+INSERT 58
+> insert into test_ts.ts_table4 (select * from test_ts.ts_table where e1 in (select e1 from ts_table3 order by e1)) union (select t1.time, t1.e1, t1.e2, t1.e3, t1.e4, t1.e5, t1.e6, t2.attr1, t2.attr2, t2.attr3, t2.attr4, t2.attr5, t2.attr6 from test.test_r t1 join test_ts.ts_table2 t2 on t1.e1=t2.e1);
+INSERT 54
+> insert into test_ts.ts_table4 (select * from test_ts.ts_table where e1 in (select e1 from ts_table3 group by e1 order by e1)) union (select t1.time, t1.e1, t1.e2, t1.e3, t1.e4, t1.e5, t1.e6, t2.attr1, t2.attr2, t2.attr3, t2.attr4, t2.attr5, t2.attr6 from test.test_r t1 join test_ts.ts_table2 t2 on t1.e1=t2.e1);
+INSERT 54
+> insert into test_ts.ts_table4 (select * from test_ts.ts_table where e1 in (select e1 from ts_table3 group by e1 having e1 > 100 order by e1)) union (select t1.time, t1.e1, t1.e2, t1.e3, t1.e4, t1.e5, t1.e6, t2.attr1, t2.attr2, t2.attr3, t2.attr4, t2.attr5, t2.attr6 from test.test_r t1 join test_ts.ts_table2 t2 on t1.e1=t2.e1);
+INSERT 54
+> insert into test_ts.ts_table4 (select * from test_ts.ts_table where e1 in (select t1.e1 from ts_table2 t1 join ts_table3 t2 on t1.time=t2.time)) union (select t1.time, t1.e1, t1.e2, t1.e3, t1.e4, t1.e5, t1.e6, t2.attr1, t2.attr2, t2.attr3, t2.attr4, t2.attr5, t2.attr6 from test.test_r t1 join test_ts.ts_table2 t2 on t1.e1=t2.e1);
+INSERT 54
+> insert into test_ts.ts_table4 (select * from test_ts.ts_table where e1 in (select t1.e1 from ts_table2 t1 join ts_table3 t2 on t1.time=t2.time where t1.e1 > 100)) union (select t1.time, t1.e1, t1.e2, t1.e3, t1.e4, t1.e5, t1.e6, t2.attr1, t2.attr2, t2.attr3, t2.attr4, t2.attr5, t2.attr6 from test.test_r t1 join test_ts.ts_table2 t2 on t1.e1=t2.e1);
+INSERT 54
+> insert into test_ts.ts_table4 (select * from test_ts.ts_table where e1 in (select t1.e1 from ts_table2 t1 join ts_table3 t2 on t1.time=t2.time order by t1.e1)) union (select t1.time, t1.e1, t1.e2, t1.e3, t1.e4, t1.e5, t1.e6, t2.attr1, t2.attr2, t2.attr3, t2.attr4, t2.attr5, t2.attr6 from test.test_r t1 join test_ts.ts_table2 t2 on t1.e1=t2.e1);
+INSERT 54
+> insert into test_ts.ts_table4 (select * from test_ts.ts_table where e1 in (select t1.e1 from ts_table2 t1 join ts_table3 t2 on t1.time=t2.time group by t1.e1 order by t1.e1)) union (select t1.time, t1.e1, t1.e2, t1.e3, t1.e4, t1.e5, t1.e6, t2.attr1, t2.attr2, t2.attr3, t2.attr4, t2.attr5, t2.attr6 from test.test_r t1 join test_ts.ts_table2 t2 on t1.e1=t2.e1);
+INSERT 54
+> insert into test_ts.ts_table4 (select * from test_ts.ts_table where e1 in (select t1.e1 from ts_table2 t1 join ts_table3 t2 on t1.time=t2.time group by t1.e1 having t1.e1 > 100 order by t1.e1)) union (select t1.time, t1.e1, t1.e2, t1.e3, t1.e4, t1.e5, t1.e6, t2.attr1, t2.attr2, t2.attr3, t2.attr4, t2.attr5, t2.attr6 from test.test_r t1 join test_ts.ts_table2 t2 on t1.e1=t2.e1);
+INSERT 54
+> insert into test_ts.ts_table4 (select * from test_ts.ts_table where exists (select e1 from ts_table3)) union (select t1.time, t1.e1, t1.e2, t1.e3, t1.e4, t1.e5, t1.e6, t2.attr1, t2.attr2, t2.attr3, t2.attr4, t2.attr5, t2.attr6 from test.test_r t1 join test_ts.ts_table2 t2 on t1.e1=t2.e1);
+INSERT 54
+> insert into test_ts.ts_table4 (select * from test_ts.ts_table where exists (select e1 from ts_table3 where e1 > 100)) union (select t1.time, t1.e1, t1.e2, t1.e3, t1.e4, t1.e5, t1.e6, t2.attr1, t2.attr2, t2.attr3, t2.attr4, t2.attr5, t2.attr6 from test.test_r t1 join test_ts.ts_table2 t2 on t1.e1=t2.e1);
+INSERT 54
+> insert into test_ts.ts_table4 (select * from test_ts.ts_table where exists (select e1 from ts_table3 order by e1)) union (select t1.time, t1.e1, t1.e2, t1.e3, t1.e4, t1.e5, t1.e6, t2.attr1, t2.attr2, t2.attr3, t2.attr4, t2.attr5, t2.attr6 from test.test_r t1 join test_ts.ts_table2 t2 on t1.e1=t2.e1);
+INSERT 54
+> insert into test_ts.ts_table4 (select * from test_ts.ts_table where exists (select e1 from ts_table3 group by e1 order by e1)) union (select t1.time, t1.e1, t1.e2, t1.e3, t1.e4, t1.e5, t1.e6, t2.attr1, t2.attr2, t2.attr3, t2.attr4, t2.attr5, t2.attr6 from test.test_r t1 join test_ts.ts_table2 t2 on t1.e1=t2.e1);
+INSERT 54
+> insert into test_ts.ts_table4 (select * from test_ts.ts_table where exists (select e1 from ts_table3 group by e1 having e1 > 100 order by e1)) union (select t1.time, t1.e1, t1.e2, t1.e3, t1.e4, t1.e5, t1.e6, t2.attr1, t2.attr2, t2.attr3, t2.attr4, t2.attr5, t2.attr6 from test.test_r t1 join test_ts.ts_table2 t2 on t1.e1=t2.e1);
+INSERT 54
+> insert into test_ts.ts_table4 (select * from test_ts.ts_table where exists (select t1.e1 from ts_table2 t1 join ts_table3 t2 on t1.time=t2.time)) union (select t1.time, t1.e1, t1.e2, t1.e3, t1.e4, t1.e5, t1.e6, t2.attr1, t2.attr2, t2.attr3, t2.attr4, t2.attr5, t2.attr6 from test.test_r t1 join test_ts.ts_table2 t2 on t1.e1=t2.e1);
+INSERT 54
+> insert into test_ts.ts_table4 (select * from test_ts.ts_table where exists (select t1.e1 from ts_table2 t1 join ts_table3 t2 on t1.time=t2.time where t1.e1 > 100)) union (select t1.time, t1.e1, t1.e2, t1.e3, t1.e4, t1.e5, t1.e6, t2.attr1, t2.attr2, t2.attr3, t2.attr4, t2.attr5, t2.attr6 from test.test_r t1 join test_ts.ts_table2 t2 on t1.e1=t2.e1);
+INSERT 54
+> insert into test_ts.ts_table4 (select * from test_ts.ts_table where exists (select t1.e1 from ts_table2 t1 join ts_table3 t2 on t1.time=t2.time order by t1.e1)) union (select t1.time, t1.e1, t1.e2, t1.e3, t1.e4, t1.e5, t1.e6, t2.attr1, t2.attr2, t2.attr3, t2.attr4, t2.attr5, t2.attr6 from test.test_r t1 join test_ts.ts_table2 t2 on t1.e1=t2.e1);
+INSERT 54
+> insert into test_ts.ts_table4 (select * from test_ts.ts_table where exists (select t1.e1 from ts_table2 t1 join ts_table3 t2 on t1.time=t2.time group by t1.e1 order by t1.e1)) union (select t1.time, t1.e1, t1.e2, t1.e3, t1.e4, t1.e5, t1.e6, t2.attr1, t2.attr2, t2.attr3, t2.attr4, t2.attr5, t2.attr6 from test.test_r t1 join test_ts.ts_table2 t2 on t1.e1=t2.e1);
+INSERT 54
+> insert into test_ts.ts_table4 (select * from test_ts.ts_table where exists (select t1.e1 from ts_table2 t1 join ts_table3 t2 on t1.time=t2.time group by t1.e1 having t1.e1 > 100 order by t1.e1)) union (select t1.time, t1.e1, t1.e2, t1.e3, t1.e4, t1.e5, t1.e6, t2.attr1, t2.attr2, t2.attr3, t2.attr4, t2.attr5, t2.attr6 from test.test_r t1 join test_ts.ts_table2 t2 on t1.e1=t2.e1);
+INSERT 54
+> insert into test_ts.ts_table4 select t1.time, t1.e1, t1.e2, t1.e3, t2.e4, t2.e5, t2.e6, t1.attr1, t2.attr2 from test_ts.ts_table as t1 join (select * from test_ts.ts_table2 as t3 join test.test_r as t4 on t3.e1=t4.e1) as t2 on t1.e1=t2.e1;
+INSERT 55980
+> insert into test_ts.ts_table4 select t1.time, t1.e1, t1.e2, t1.e3, t2.e4, t2.e5, t2.e6, t1.attr1, t2.attr2 from test_ts.ts_table as t1 join (select * from test_ts.ts_table2 as t3 join test.test_r as t4 on t3.e1=t4.e1) as t2 on t1.e1=t2.e1 where t1.e2 < 3000000 and t2.e4 > 1000.101;
+INSERT 55980
+> insert into test_ts.ts_table4 select t1.time, t1.e1, t1.e2, t1.e3, t2.e4, t2.e5, t2.e6, t1.attr1, t2.attr2 from test_ts.ts_table as t1 join (select * from test_ts.ts_table2 as t3 join test.test_r as t4 on t3.e1=t4.e1) as t2 on t1.e1=t2.e1 order by t1.e3 desc limit 10 offset 1;
+INSERT 10
+> insert into test_ts.ts_table4 select t1.time, t1.e1, t1.e2, t1.e3, t2.e4, t2.e5, t2.e6, t1.attr1, t2.attr2 from test_ts.ts_table as t1 join (select * from test_ts.ts_table2 as t3 join test.test_r as t4 on t3.e1=t4.e1) as t2 on t1.e1=t2.e1 where t1.e1 in (select e1 from ts_table2);
+INSERT 55980
+> insert into test_ts.ts_table4 select t1.time, t1.e1, t1.e2, t1.e3, t2.e4, t2.e5, t2.e6, t1.attr1, t2.attr2 from test_ts.ts_table as t1 join (select * from test_ts.ts_table2 as t3 join test.test_r as t4 on t3.e1=t4.e1) as t2 on t1.e1=t2.e1 where t1.e1 in (select e1 from ts_table2 where e1 > 100);
+INSERT 55980
+> insert into test_ts.ts_table4 select t1.time, t1.e1, t1.e2, t1.e3, t2.e4, t2.e5, t2.e6, t1.attr1, t2.attr2 from test_ts.ts_table as t1 join (select * from test_ts.ts_table2 as t3 join test.test_r as t4 on t3.e1=t4.e1) as t2 on t1.e1=t2.e1 where t1.e1 in (select e1 from ts_table2 order by e1);
+INSERT 55980
+> insert into test_ts.ts_table4 select t1.time, t1.e1, t1.e2, t1.e3, t2.e4, t2.e5, t2.e6, t1.attr1, t2.attr2 from test_ts.ts_table as t1 join (select * from test_ts.ts_table2 as t3 join test.test_r as t4 on t3.e1=t4.e1) as t2 on t1.e1=t2.e1 where t1.e1 in (select e1 from ts_table2 group by e1 order by e1);
+INSERT 55980
+> insert into test_ts.ts_table4 select t1.time, t1.e1, t1.e2, t1.e3, t2.e4, t2.e5, t2.e6, t1.attr1, t2.attr2 from test_ts.ts_table as t1 join (select * from test_ts.ts_table2 as t3 join test.test_r as t4 on t3.e1=t4.e1) as t2 on t1.e1=t2.e1 where t1.e1 in (select e1 from ts_table2 group by e1 having e1 > 100 order by e1);
+INSERT 55980
+> insert into test_ts.ts_table4 select t1.time, t1.e1, t1.e2, t1.e3, t2.e4, t2.e5, t2.e6, t1.attr1, t2.attr2 from test_ts.ts_table as t1 join (select * from test_ts.ts_table2 as t3 join test.test_r as t4 on t3.e1=t4.e1) as t2 on t1.e1=t2.e1 where exists (select e1 from ts_table2);
+INSERT 55980
+> insert into test_ts.ts_table4 select t1.time, t1.e1, t1.e2, t1.e3, t2.e4, t2.e5, t2.e6, t1.attr1, t2.attr2 from test_ts.ts_table as t1 join (select * from test_ts.ts_table2 as t3 join test.test_r as t4 on t3.e1=t4.e1) as t2 on t1.e1=t2.e1 where exists (select e1 from ts_table2 where e1 > 100);
+INSERT 55980
+> insert into test_ts.ts_table4 select t1.time, t1.e1, t1.e2, t1.e3, t2.e4, t2.e5, t2.e6, t1.attr1, t2.attr2 from test_ts.ts_table as t1 join (select * from test_ts.ts_table2 as t3 join test.test_r as t4 on t3.e1=t4.e1) as t2 on t1.e1=t2.e1 where exists (select e1 from ts_table2 order by e1);
+INSERT 55980
+> insert into test_ts.ts_table4 select t1.time, t1.e1, t1.e2, t1.e3, t2.e4, t2.e5, t2.e6, t1.attr1, t2.attr2 from test_ts.ts_table as t1 join (select * from test_ts.ts_table2 as t3 join test.test_r as t4 on t3.e1=t4.e1) as t2 on t1.e1=t2.e1 where exists (select e1 from ts_table2 group by e1 order by e1);
+INSERT 55980
+> insert into test_ts.ts_table4 select t1.time, t1.e1, t1.e2, t1.e3, t2.e4, t2.e5, t2.e6, t1.attr1, t2.attr2 from test_ts.ts_table as t1 join (select * from test_ts.ts_table2 as t3 join test.test_r as t4 on t3.e1=t4.e1) as t2 on t1.e1=t2.e1 where exists (select e1 from ts_table2 group by e1 having e1 > 100 order by e1);
+INSERT 55980
+> insert into ts_table4(time,attr1,attr2) with with_table as (select now(), t1.attr1, t1.attr2 from ts_table as t1 join test.test1 as t2 on t1.e1=t2.col1) select * from with_table;
+INSERT 18
+> insert into ts_table4(time,attr1,attr2) with with_table as (select time, attr1, attr2 from test_ts.ts_table UNION select time, attr1, attr2 from test.test_r) select * from with_table;
+INSERT 40
+> insert into test_ts.ts_table2 select * from test.test2;
+ERROR: insert relational data into time series table is not supported
+SQLSTATE: 01000
+> use test_ts;
+SET
+> create table ts_table5
+(time timestamp not null, e1 smallint, e2 int, e3 bigint, e4 float, e5 bool, e6 varchar)
+    attributes (attr1 smallint not null, attr2 int, attr3 bigint, attr4 float, attr5 bool, attr6 varchar, attr7 char(10))
+primary attributes (attr1);
+CREATE TABLE
+> insert into ts_table5 select *, 'test' from ts_table;
+INSERT 18
+> insert into ts_table5(time, attr1) select '2019-01-01 00:00:00', 111;
+INSERT 1
+> use test;
+SET
+> create table test3(col1 smallint, col2 int, col3 bigint, col4 float, col5 bool, col6 varchar, col7 char(10));
+CREATE TABLE
+> insert into test3 select *, 'test' from test1;
+INSERT 2
+> insert into test_ts.ts_table2 select last(*) from test_ts.ts_table;
+INSERT 1
+> insert into test_ts.ts_table2 select first(*) from test_ts.ts_table;
+INSERT 1
+> create table test_ts.t1(ts timestamp not null, a int, b int) tags(tag1 int not null) primary tags(tag1);
+CREATE TABLE
+> insert into test_ts.t1 values(now(), 1, 2, 1);
+INSERT 1
+> insert into test_ts.t1 values(now(), 1, 2, 2);
+INSERT 1
+> insert into test_ts.t1 values(now(), 1, 2, 3);
+INSERT 1
+> insert into test_ts.t1 values(now(), 1, 2, 4);
+INSERT 1
+> insert into test_ts.t1 values(now(), 1, 2, 5);
+INSERT 1
+> insert into test_ts.t1 select now(), a+1, b+1, tag1+5 from test_ts.t1;
+INSERT 5
+> set cluster setting sql.query_cache.enabled=default;
+SET CLUSTER SETTING
+> use defaultdb;
+SET
+> drop database test CASCADE;
+DROP DATABASE
+> drop database test_ts CASCADE;
+DROP DATABASE
+> DROP DATABASE if EXISTS test_41454;
+DROP DATABASE
+> CREATE ts DATABASE test_41454;
+CREATE TS DATABASE
+> CREATE TABLE test_41454.t1(
+   k_timestamp TIMESTAMPTZ NOT NULL,
+   id INT NOT NULL,
+   e20 VARBYTES(60))
+ATTRIBUTES (code1 INT2 not null) PRIMARY TAGS(code1);
+CREATE TABLE
+> INSERT INTO test_41454.t1 VALUES(1574618710110,1, e'\\\\\\\\',0);
+INSERT 1
+> INSERT INTO test_41454.t1 select * from test_41454.t1;
+INSERT 1
+> INSERT INTO test_41454.t1 select * from test_41454.t1;
+INSERT 1
+> INSERT INTO test_41454.t1 select * from test_41454.t1;
+INSERT 1
+> use defaultdb;
+SET
+> DROP DATABASE test_41454 cascade;
+DROP DATABASE
+> drop DATABASE if EXISTS rdb cascade;
+DROP DATABASE
+> CREATE DATABASE rdb;
+CREATE DATABASE
+> CREATE TABLE rdb.DeviceModel (ModelID int PRIMARY KEY, TypeID int, ModelName varchar(100), TypeName varchar(100) );
+CREATE TABLE
+> INSERT INTO rdb.DeviceModel (modelID, TypeID, ModelName,TypeName) SELECT x,1,'电表模型' || x::string, '电表'FROM generate_series(1,5) AS t(x);
+INSERT 5
+> INSERT INTO rdb.DeviceModel (modelID, TypeID, ModelName,TypeName) SELECT x,2,'变压器模型' || x::string, '变压器'FROM generate_series(6,10) AS t(x);
+INSERT 5
+> CREATE TABLE rdb.Device (deviceID INT PRIMARY KEY, modelID INT, installDate DATE, location VARCHAR(255), FOREIGN KEY (modelID) REFERENCES rdb.DeviceModel(modelID) );
+CREATE TABLE
+> INSERT into rdb.Device values(001,1,'2023-07-01','area1');
+INSERT 1
+> drop DATABASE if EXISTS tsdb cascade;
+DROP DATABASE
+> create ts DATABASE tsdb;
+CREATE TS DATABASE
+> CREATE TABLE tsdb.MonitoringCenter (ts TIMESTAMP not NULL, deviceID INT, status INT )attributes (location varchar(64) not null,type varchar(64) not null) primary tags (location,type);
+CREATE TABLE
+> CREATE TABLE tsdb.MeterSuper (ts TIMESTAMP not NULL, current FLOAT, voltage FLOAT, frequency FLOAT ) TAGS (deviceID INT not null,modelId INT not null) primary tags(deviceID,modelId);
+CREATE TABLE
+> CREATE TABLE tsdb.TransformerSuper (ts TIMESTAMP not null , current FLOAT, voltage FLOAT, frequency FLOAT, temperature FLOAT ) TAGS (deviceID INT not null,modelId INT not null) primary tags(deviceID,modelId);
+CREATE TABLE
+> INSERT INTO tsdb.monitoringcenter (ts, deviceid, status,location ,type) VALUES ('2023-07-05 22:38:26.11338', 1, 0,'beijing','监控中心');
+INSERT 1
+> INSERT INTO tsdb.monitoringcenter (ts, deviceid, status,location ,type) VALUES ('2023-07-06 11:00:42.791143', 1, -1,'beijing','监控中心');
+INSERT 1
+> INSERT INTO tsdb.monitoringcenter (ts, deviceid, status,location ,type) VALUES ('2023-07-06 22:58:45.671859', 1, 0,'beijing','监控中心');
+INSERT 1
+> INSERT INTO tsdb.MeterSuper (ts, current, voltage, frequency,deviceID,modelId) VALUES ('2023-07-04 06:27:51.654464', 97.25713913816207, 26.53653537452584, 59.68516830762937,001,1);
+INSERT 1
+> INSERT INTO tsdb.MeterSuper (ts, current, voltage, frequency,deviceID,modelId) VALUES ('2023-07-04 07:58:44.764399', 54.64648538064836, 179.50441188259816, 34.32643932424028,001,1);
+INSERT 1
+> INSERT INTO tsdb.MeterSuper (ts, current, voltage, frequency,deviceID,modelId) VALUES ('2023-07-04 08:44:58.150451', 97.52317154385821, 142.78404506758108, 54.913649019124904,001,1);
+INSERT 1
+> INSERT INTO tsdb.MeterSuper (ts, current, voltage, frequency,deviceID,modelId) VALUES ('2023-07-04 08:48:31.620917', 6.7019976369053325, 159.66962665206353, 3.7610600073811895,001,1);
+INSERT 1
+> INSERT INTO tsdb.TransformerSuper (ts, current, voltage, frequency, temperature,deviceID,modelId) VALUES ('2023-07-04 02:03:44.702792', 86.20626630222539, 129.42725295589923, 1.0633598257731336, 37.37828253222176,011,6);
+INSERT 1
+> INSERT INTO tsdb.TransformerSuper (ts, current, voltage, frequency, temperature,deviceID,modelId) VALUES ('2023-07-04 05:26:14.559362', 14.505999679192882, 74.11525328361705, 22.63067143224916, 0.9062073778700608,011,6);
+INSERT 1
+> CREATE TABLE tsdb.t1 (ts TIMESTAMP NOT NULL, modelname VARCHAR(100) NULL, status INT4 NULL)
+    TAGS (deviceid INT4 NOT NULL)
+PRIMARY TAGS(deviceid);
+CREATE TABLE
+> INSERT INTO tsdb.t1(ts, deviceid, modelname, status) SELECT '2022-02-02', deviceID, ModelName, status
+FROM (
+         SELECT d.deviceID, dm.ModelName, mc.status, 'MonitoringCenter' as source
+         FROM rdb.Device AS d
+                  JOIN rdb.DeviceModel AS dm ON d.modelID = dm.ModelID
+                  JOIN tsdb.MonitoringCenter AS mc ON d.deviceID = mc.deviceID
+         WHERE d.deviceID IN (
+             SELECT deviceID
+             FROM tsdb.MonitoringCenter
+             WHERE status = 0
+         )
+
+         UNION
+
+         SELECT ms.deviceID, dm.ModelName, NULL AS status, 'MeterSuper' as source
+         FROM tsdb.MeterSuper AS ms
+                  JOIN rdb.DeviceModel AS dm ON ms.modelID = dm.ModelID
+                  JOIN rdb.Device AS d ON ms.deviceID = d.deviceID
+         WHERE ms.voltage > (
+             SELECT AVG(voltage)
+             FROM tsdb.MeterSuper
+         )
+
+         UNION
+
+         SELECT ts.deviceID, dm.ModelName, NULL AS status, 'TransformerSuper' as source
+         FROM tsdb.TransformerSuper AS ts
+                  JOIN rdb.DeviceModel AS dm ON ts.modelID = dm.ModelID
+                  JOIN rdb.Device AS d ON ts.deviceID = d.deviceID
+         WHERE ts.temperature > (
+             SELECT MAX(temperature)
+             FROM tsdb.TransformerSuper
+         )
+     ) AS combined_results
+ORDER BY deviceID, ModelName, status ASC;
+INSERT 3
+> SELECT * FROM tsdb.t1 ORDER BY ts, deviceid, modelname, status;
+             ts             | modelname | status | deviceid
+----------------------------+-----------+--------+-----------
+  2022-02-02 00:00:00+00:00 | 电表模型1 |      0 |        1
+(1 row)
+> use defaultdb;
+SET
+> drop database tsdb CASCADE;
+DROP DATABASE
+> drop database rdb CASCADE;
+DROP DATABASE
+> create ts database test;
+CREATE TS DATABASE
+> CREATE TABLE test.test1 (
+    timest TIMESTAMPTZ NOT NULL,
+    column1 FLOAT8 NOT NULL,
+    column2 VARCHAR(10) NOT NULL
+) TAGS (
+    fcid INT4 NOT NULL,
+    fctype VARCHAR(30) 
+) PRIMARY TAGS(fcid);
+CREATE TABLE
+> CREATE TABLE test.test2 (
+    timest TIMESTAMPTZ NOT NULL,
+    column1 FLOAT8 NOT NULL,
+    loadtime TIMESTAMPTZ
+) TAGS (
+    fcid INT4 NOT NULL,
+    fctype VARCHAR(30) 
+) PRIMARY TAGS(fcid);
+CREATE TABLE
+> WITH time_ranges AS (
+    SELECT 
+        DATE_TRUNC('hour', CURRENT_TIMESTAMP) + 
+        (FLOOR(EXTRACT(MINUTE FROM CURRENT_TIMESTAMP) / 15) * 15) * INTERVAL '1 minute' - INTERVAL '15 minutes' AS start_time,
+        DATE_TRUNC('hour', CURRENT_TIMESTAMP) + 
+        (FLOOR(EXTRACT(MINUTE FROM CURRENT_TIMESTAMP) / 15) * 15) * INTERVAL '1 minute' AS end_time
+)
+INSERT INTO test.test2 
+SELECT time_bucket_gapfill(timest, '15m') AS tt, 
+       interpolate(avg(column1),PREV),
+       current_timestamp,
+       fcid,
+       fctype  
+FROM test.test1, time_ranges
+WHERE timest >= start_time AND timest < end_time
+GROUP BY tt,fcid,fctype 
+ORDER BY tt,fctype;
+INSERT 0
+> drop database test CASCADE;
+DROP DATABASE

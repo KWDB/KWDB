@@ -36,17 +36,18 @@ enum WALLogType : uint8_t {
   DDL_ALTER_COLUMN = 23,
   RANGE_SNAPSHOT = 24,
   SNAPSHOT_TMP_DIRCTORY = 25,
-  PARTITION_TIER_CHANGE = 26,
 //  DDL_ALTER_TAG = 11,
 //  INDEX = 99,
   CREATE_INDEX = 27,
   DROP_INDEX = 28,
+  END_CHECKPOINT = 29,
   DB_SETTING = 100
 };
 
 enum WALTableType : uint8_t {
   DATA = 0,
-  TAG = 1
+  TAG = 1,
+  DATA_V2 = 2,
 };
 
 enum AlterType : uint8_t {
@@ -57,10 +58,8 @@ enum AlterType : uint8_t {
 };
 
 struct WALMeta {
-  uint16_t current_file_no;
   TS_LSN current_lsn;
   TS_LSN block_flush_to_disk_lsn;
-  uint16_t checkpoint_file_no;
   uint32_t current_checkpoint_no;
   TS_LSN checkpoint_lsn;
 }__attribute__((packed));

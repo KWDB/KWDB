@@ -1,0 +1,2059 @@
+> drop database if exists procedure_ts_db;
+DROP DATABASE
+> create ts database procedure_ts_db;
+CREATE TS DATABASE
+> use procedure_ts_db;
+SET
+> create table t1(k_timestamp timestamp not null,a int, b int)tags(size int not null)primary tags(size);
+CREATE TABLE
+> create table t2(k_timestamp timestamp not null,a int, b int, c int)tags(size int not null)primary tags(size);
+CREATE TABLE
+> insert into t1 values ('2000-1-1',1, 2, 1), ('2000-1-2',3, 4,2);
+INSERT 2
+> insert into t2 values ('2000-1-1',1, 2, 3,1), ('2000-1-2',4, 5, 6,2);
+INSERT 2
+> create table t3(k_timestamp timestamp not null,a int, b int, c int)tags(size int not null)primary tags(size);
+CREATE TABLE
+> create table t4(k_timestamp timestamp not null,a int)tags(size int not null)primary tags(size);
+CREATE TABLE
+> insert into t3 values ('2000-1-10',7, 8, 9, 1);
+INSERT 1
+> create procedure test_cur1() begin declare cur cursor for select * from t1 order by k_timestamp;open cur;close cur;end;
+CREATE PROCEDURE
+> call test_cur1();
+--
+(0 rows)
+> call test_cur1();
+--
+(0 rows)
+> drop procedure test_cur1;
+DROP PROCEDURE
+> create procedure test_cur2() begin open cur;end;
+ERROR: variable name: cur does not exist
+SQLSTATE: 42704
+> call test_cur2();
+ERROR: procedure "test_cur2" does not exist
+SQLSTATE: 42704
+> call test_cur2();
+ERROR: procedure "test_cur2" does not exist
+SQLSTATE: 42704
+> drop procedure test_cur2;
+ERROR: procedure "test_cur2" does not exist
+SQLSTATE: 42704
+> create procedure test_cur3() begin declare a int;declare cur cursor for select a,b from t1 order by k_timestamp;open cur;fetch cur into a;close cur;end;
+CREATE PROCEDURE
+> call test_cur3();
+ERROR: the number of columns fetched does not match the number of variables, cols: 2, variables:1
+SQLSTATE: 24000
+> call test_cur3();
+ERROR: the number of columns fetched does not match the number of variables, cols: 2, variables:1
+SQLSTATE: 24000
+> drop procedure test_cur3;
+DROP PROCEDURE
+> create procedure test_cur4() begin declare a int;declare b int;declare cur cursor for select a,b from t1 order by k_timestamp;open cur;fetch cur into a,b;close cur;select a,b;end;
+CREATE PROCEDURE
+> call test_cur4();
+  a | b
+----+----
+  1 | 2
+(1 row)
+> call test_cur4();
+  a | b
+----+----
+  1 | 2
+(1 row)
+> drop procedure test_cur4;
+DROP PROCEDURE
+> create procedure test_cur4_2() begin declare a int;declare b int;declare cur cursor for select a,b from t3 order by k_timestamp;open cur;fetch cur into a,b;close cur;select a,b;end;
+CREATE PROCEDURE
+> call test_cur4_2();
+  a | b
+----+----
+  7 | 8
+(1 row)
+> call test_cur4_2();
+  a | b
+----+----
+  7 | 8
+(1 row)
+> drop procedure test_cur4_2;
+DROP PROCEDURE
+> create procedure test_cur5()begin declare a int;declare cur cursor for select a from t1;fetch cur into a;end;
+CREATE PROCEDURE
+> call test_cur5();
+ERROR: cursor cur is not open
+SQLSTATE: 24000
+> call test_cur5();
+ERROR: cursor cur is not open
+SQLSTATE: 24000
+> drop procedure test_cur5;
+DROP PROCEDURE
+> create procedure test_cur6()begin declare cur cursor for select 1;open cur;close cur;close cur;end;
+CREATE PROCEDURE
+> call test_cur6();
+ERROR: cursor cur is already close
+SQLSTATE: 24000
+> call test_cur6();
+ERROR: cursor cur is already close
+SQLSTATE: 24000
+> drop procedure test_cur6;
+DROP PROCEDURE
+> create procedure test_cur7()begin declare done int default 1;declare a int;declare b int;declare cur cursor for select a,b from t1 order by k_timestamp;declare continue handler for not found set done=1;declare flag int; set flag = 1;open cur;LABEL my_loop: WHILE flag > 0 DO fetch cur into a,b;if done!=0 then select a,b; endif;if a=3 then set flag = -1; endif;ENDWHILE my_loop;close cur;end;
+CREATE PROCEDURE
+> call test_cur7();
+  a | b
+----+----
+  1 | 2
+(1 row)
+  a | b
+----+----
+  3 | 4
+(1 row)
+> call test_cur7();
+  a | b
+----+----
+  1 | 2
+(1 row)
+  a | b
+----+----
+  3 | 4
+(1 row)
+> drop procedure test_cur7;
+DROP PROCEDURE
+> create procedure test_cur8()begin declare done1 int default 0;declare done2 int default 0;declare a int;declare b int;declare cur1 cursor for select a,b from t1 order by k_timestamp;declare cur2 cursor for select a,b,c from t2 order by k_timestamp;declare continue handler for not found set done1=1;open cur1;open cur2;fetch cur1 into a,b;fetch cur2 into a,b,b;close cur1;close cur2;end;
+CREATE PROCEDURE
+> call test_cur8();
+--
+(0 rows)
+> call test_cur8();
+--
+(0 rows)
+> drop procedure test_cur8;
+DROP PROCEDURE
+> create procedure test_cur9(val int)begin declare a int;declare cur cursor for select a from t1 where a > val order by k_timestamp;open cur;fetch cur into a;select a;close cur;end;
+CREATE PROCEDURE
+> call test_cur9(0);
+  a
+-----
+  1
+(1 row)
+> call test_cur9(0);
+  a
+-----
+  1
+(1 row)
+> drop procedure test_cur9;
+DROP PROCEDURE
+> CREATE PROCEDURE test_cur11() BEGIN CLOSE non_exist_cur;END;
+ERROR: variable name: non_exist_cur does not exist
+SQLSTATE: 42704
+> CALL test_cur11();
+ERROR: procedure "test_cur11" does not exist
+SQLSTATE: 42704
+> CALL test_cur11();
+ERROR: procedure "test_cur11" does not exist
+SQLSTATE: 42704
+> DROP PROCEDURE test_cur11;
+ERROR: procedure "test_cur11" does not exist
+SQLSTATE: 42704
+> CREATE PROCEDURE test_cur12()BEGIN DECLARE a INT;DECLARE cur CURSOR FOR SELECT a,b FROM t1;OPEN cur;FETCH cur INTO a;  CLOSE cur;END;
+CREATE PROCEDURE
+> CALL test_cur12();
+ERROR: the number of columns fetched does not match the number of variables, cols: 2, variables:1
+SQLSTATE: 24000
+> CALL test_cur12();
+ERROR: the number of columns fetched does not match the number of variables, cols: 2, variables:1
+SQLSTATE: 24000
+> DROP PROCEDURE test_cur12;
+DROP PROCEDURE
+> CREATE PROCEDURE test_cur13()BEGIN DECLARE a INT;DECLARE cur CURSOR FOR SELECT a FROM t1;FETCH cur INTO a;END;
+CREATE PROCEDURE
+> CALL test_cur13();
+ERROR: cursor cur is not open
+SQLSTATE: 24000
+> CALL test_cur13();
+ERROR: cursor cur is not open
+SQLSTATE: 24000
+> DROP PROCEDURE test_cur13;
+DROP PROCEDURE
+> CREATE PROCEDURE test_cur14()BEGIN DECLARE a INT;DECLARE cur CURSOR FOR SELECT a FROM t1;OPEN cur;FETCH cur INTO a;END;
+CREATE PROCEDURE
+> CALL test_cur14();
+--
+(0 rows)
+> CALL test_cur14();
+--
+(0 rows)
+> DROP PROCEDURE test_cur14;
+DROP PROCEDURE
+> CREATE PROCEDURE test_cur15()BEGIN DECLARE done INT DEFAULT 0;DECLARE cur CURSOR FOR SELECT a FROM t1 order by k_timestamp;DECLARE CONTINUE HANDLER FOR NOT FOUND SET done = 1;OPEN cur;FETCH cur INTO done;CLOSE cur;END;
+CREATE PROCEDURE
+> CALL test_cur15();
+--
+(0 rows)
+> CALL test_cur15();
+--
+(0 rows)
+> DROP PROCEDURE test_cur15;
+DROP PROCEDURE
+> CREATE PROCEDURE test_cur18()BEGIN DECLARE done INT DEFAULT 0;DECLARE a INT;DECLARE cur CURSOR FOR SELECT a FROM t1 order by k_timestamp;DECLARE CONTINUE HANDLER FOR NOT FOUND SET done = 1;OPEN cur;FETCH cur INTO a;select a;FETCH cur INTO a;select a;FETCH cur INTO a;select a;FETCH cur INTO a;select a;CLOSE cur;END;
+CREATE PROCEDURE
+> CALL test_cur18();
+  a
+-----
+  1
+(1 row)
+  a
+-----
+  3
+(1 row)
+  a
+-----
+  3
+(1 row)
+  a
+-----
+  3
+(1 row)
+> CALL test_cur18();
+  a
+-----
+  1
+(1 row)
+  a
+-----
+  3
+(1 row)
+  a
+-----
+  3
+(1 row)
+  a
+-----
+  3
+(1 row)
+> DROP PROCEDURE test_cur18;
+DROP PROCEDURE
+> CREATE PROCEDURE test_cur19() BEGIN DECLARE a INT;DECLARE b INT;DECLARE c INT;DECLARE cur CURSOR FOR SELECT a,b FROM t2 order by k_timestamp;OPEN cur;FETCH cur INTO a,b;CLOSE cur;END;
+CREATE PROCEDURE
+> CALL test_cur19();
+--
+(0 rows)
+> CALL test_cur19();
+--
+(0 rows)
+> DROP PROCEDURE test_cur19;
+DROP PROCEDURE
+> CREATE PROCEDURE test_cur20() BEGIN  DECLARE x INT;DECLARE cur CURSOR FOR SELECT 1;DECLARE CONTINUE HANDLER FOR NOT FOUND SET x=1;END;
+CREATE PROCEDURE
+> CALL test_cur20();
+--
+(0 rows)
+> CALL test_cur20();
+--
+(0 rows)
+> DROP PROCEDURE test_cur20;
+DROP PROCEDURE
+> CREATE PROCEDURE test_cur22()BEGIN DECLARE a INT;DECLARE cur CURSOR FOR SELECT a FROM t3;OPEN cur;FETCH cur INTO a;CLOSE cur;END;
+CREATE PROCEDURE
+> CALL test_cur22();
+--
+(0 rows)
+> CALL test_cur22();
+--
+(0 rows)
+> DROP PROCEDURE test_cur22;
+DROP PROCEDURE
+> CREATE PROCEDURE test_cur23()BEGIN DECLARE done INT DEFAULT 0;DECLARE a INT;DECLARE b INT;DECLARE cur CURSOR FOR SELECT a,b FROM t1 order by k_timestamp;DECLARE CONTINUE HANDLER FOR NOT FOUND SET done=1;OPEN cur;FETCH cur INTO a,b;SELECT done;FETCH cur INTO a,b;SELECT done;FETCH cur INTO a,b;SELECT done;CLOSE cur;SELECT done;END;
+CREATE PROCEDURE
+> CALL test_cur23();
+  done
+--------
+     0
+(1 row)
+  done
+--------
+     0
+(1 row)
+  done
+--------
+     1
+(1 row)
+  done
+--------
+     1
+(1 row)
+> CALL test_cur23();
+  done
+--------
+     0
+(1 row)
+  done
+--------
+     0
+(1 row)
+  done
+--------
+     1
+(1 row)
+  done
+--------
+     1
+(1 row)
+> DROP PROCEDURE test_cur23;
+DROP PROCEDURE
+> CREATE PROCEDURE test_cur24()BEGIN DECLARE a1 INT;DECLARE a2 INT;DECLARE cur1 CURSOR FOR SELECT a FROM t1 order by k_timestamp;DECLARE cur2 CURSOR FOR SELECT a FROM t2  order by k_timestamp;OPEN cur1;FETCH cur1 INTO a1;OPEN cur2;FETCH cur2 INTO a2;CLOSE cur1;CLOSE cur2;select a1,a2;END;
+CREATE PROCEDURE
+> CALL test_cur24();
+  a1 | a2
+-----+-----
+   1 |  1
+(1 row)
+> CALL test_cur24();
+  a1 | a2
+-----+-----
+   1 |  1
+(1 row)
+> DROP PROCEDURE test_cur24;
+DROP PROCEDURE
+> CREATE PROCEDURE test_cur25()BEGIN DECLARE a INT; DECLARE cur CURSOR FOR SELECT a FROM t1 order by k_timestamp;OPEN cur;FETCH cur INTO a;CLOSE cur;END;
+CREATE PROCEDURE
+> CALL test_cur25();
+--
+(0 rows)
+> CALL test_cur25();
+--
+(0 rows)
+> DROP PROCEDURE test_cur25;
+DROP PROCEDURE
+> CREATE PROCEDURE test_cur26()BEGIN DECLARE done INT DEFAULT 0;DECLARE cur CURSOR FOR SELECT a FROM t1 order by k_timestamp;DECLARE CONTINUE HANDLER FOR NOT FOUND BEGIN CLOSE cur;SET done=1;ENDHANDLER;OPEN cur;FETCH cur INTO done;FETCH cur INTO done;END;
+ERROR: variable name: cur does not exist
+SQLSTATE: 42704
+> CALL test_cur26();
+ERROR: procedure "test_cur26" does not exist
+SQLSTATE: 42704
+> CALL test_cur26();
+ERROR: procedure "test_cur26" does not exist
+SQLSTATE: 42704
+> DROP PROCEDURE test_cur26;
+ERROR: procedure "test_cur26" does not exist
+SQLSTATE: 42704
+> CREATE PROCEDURE test_cur27()BEGIN DECLARE a INT;DECLARE cur CURSOR FOR SELECT 1;OPEN cur;FETCH cur INTO a;select a;CLOSE cur;END;
+CREATE PROCEDURE
+> CALL test_cur27();
+  a
+-----
+  1
+(1 row)
+> CALL test_cur27();
+  a
+-----
+  1
+(1 row)
+> DROP PROCEDURE test_cur27;
+DROP PROCEDURE
+> CREATE PROCEDURE test_cur29() BEGIN DECLARE x INT;DECLARE cur CURSOR FOR SELECT a FROM t1 order by k_timestamp;OPEN cur;FETCH cur INTO x;CLOSE cur;select x;end;
+CREATE PROCEDURE
+> CALL test_cur29();
+  x
+-----
+  1
+(1 row)
+> CALL test_cur29();
+  x
+-----
+  1
+(1 row)
+> DROP PROCEDURE test_cur29;
+DROP PROCEDURE
+> CREATE PROCEDURE test_cur30()BEGIN START TRANSACTION;DECLARE cur CURSOR FOR SELECT a FROM t1 order by k_timestamp;OPEN cur;COMMIT; CLOSE cur;END;
+CREATE PROCEDURE
+> CALL test_cur30();
+--
+(0 rows)
+> CALL test_cur30();
+--
+(0 rows)
+> DROP PROCEDURE test_cur30;
+DROP PROCEDURE
+> CREATE PROCEDURE test_cur31()BEGIN DECLARE a VARCHAR(10);DECLARE cur CURSOR FOR SELECT a FROM t1 order by k_timestamp;OPEN cur;FETCH cur INTO a;CLOSE cur;END;
+CREATE PROCEDURE
+> CALL test_cur31();
+ERROR: variable a type varchar not save type int 
+SQLSTATE: 42804
+> CALL test_cur31();
+ERROR: variable a type varchar not save type int 
+SQLSTATE: 42804
+> DROP PROCEDURE test_cur31;
+DROP PROCEDURE
+> CREATE PROCEDURE test_cur32()BEGIN DECLARE "select" CURSOR FOR SELECT 1;OPEN "select";CLOSE "select";END;
+CREATE PROCEDURE
+> CALL test_cur32();
+--
+(0 rows)
+> CALL test_cur32();
+--
+(0 rows)
+> DROP PROCEDURE test_cur32;
+DROP PROCEDURE
+> CREATE PROCEDURE test_cur33()BEGIN DECLARE a INT;DECLARE b INT;DECLARE cnt INT DEFAULT 0;DECLARE cur CURSOR FOR SELECT a,b FROM t1 order by k_timestamp;DECLARE CONTINUE HANDLER FOR NOT FOUND SET cnt=-1;OPEN cur;FETCH cur INTO a,b;SET cnt=cnt+1;CLOSE cur;SELECT cnt;END;
+CREATE PROCEDURE
+> CALL test_cur33();
+  cnt
+-------
+    1
+(1 row)
+> CALL test_cur33();
+  cnt
+-------
+    1
+(1 row)
+> DROP PROCEDURE test_cur33;
+DROP PROCEDURE
+> CREATE PROCEDURE test_cur35() BEGIN DECLARE cur CURSOR;END;
+ERROR: at or near ";": syntax error
+SQLSTATE: 42601
+DETAIL: source SQL:
+CREATE PROCEDURE test_cur35() BEGIN DECLARE cur CURSOR;END
+                                                      ^
+HINT: try \h CREATE PROCEDURE
+> CALL test_cur35();
+ERROR: procedure "test_cur35" does not exist
+SQLSTATE: 42704
+> CALL test_cur35();
+ERROR: procedure "test_cur35" does not exist
+SQLSTATE: 42704
+> DROP PROCEDURE test_cur35;
+ERROR: procedure "test_cur35" does not exist
+SQLSTATE: 42704
+> CREATE PROCEDURE test_cur36()BEGIN DECLARE cur CURSOR FOR SELECT abs(0.1);DECLARE i INT DEFAULT 0;label myloop: WHILE i < 5 DO OPEN cur;CLOSE cur;SET i = i + 1;ENDWHILE myloop;select i;END;
+CREATE PROCEDURE
+> CALL test_cur36();
+  i
+-----
+  5
+(1 row)
+> CALL test_cur36();
+  i
+-----
+  5
+(1 row)
+> DROP PROCEDURE test_cur36;
+DROP PROCEDURE
+> CREATE PROCEDURE test_cur37()BEGIN DECLARE cur CURSOR FOR SELECT 1;OPEN cur;CLOSE cur;END;
+CREATE PROCEDURE
+> CALL test_cur37();
+--
+(0 rows)
+> CALL test_cur37();
+--
+(0 rows)
+> DROP PROCEDURE test_cur37;
+DROP PROCEDURE
+> CREATE PROCEDURE test_cur39()BEGIN DECLARE cur CURSOR FOR SELECT * FROM system.user_defined_routine;OPEN cur;CLOSE cur;END;
+CREATE PROCEDURE
+> CALL test_cur39();
+--
+(0 rows)
+> CALL test_cur39();
+--
+(0 rows)
+> DROP PROCEDURE test_cur39;
+DROP PROCEDURE
+> CREATE PROCEDURE test_cur40()BEGIN DECLARE a INT;DECLARE cur CURSOR FOR SELECT a FROM t1 ORDER BY a DESC;OPEN cur;FETCH cur INTO a;CLOSE cur;SELECT a; END;
+CREATE PROCEDURE
+> CALL test_cur40();
+  a
+-----
+  3
+(1 row)
+> CALL test_cur40();
+  a
+-----
+  3
+(1 row)
+> DROP PROCEDURE test_cur40;
+DROP PROCEDURE
+> create procedure p1()
+begin
+select * from t1 order by k_timestamp;
+select * from t2 order by k_timestamp;
+select * from t3 order by k_timestamp;
+declare out_o_entry_d timestamp(3);
+SELECT CURRENT_TIMESTAMP(3) INTO out_o_entry_d;
+select out_o_entry_d;
+end ;
+CREATE PROCEDURE
+> call p1();
+         k_timestamp        | a | b | size
+----------------------------+---+---+-------
+  2000-01-01 00:00:00+00:00 | 1 | 2 |    1
+  2000-01-02 00:00:00+00:00 | 3 | 4 |    2
+(2 rows)
+         k_timestamp        | a | b | c | size
+----------------------------+---+---+---+-------
+  2000-01-01 00:00:00+00:00 | 1 | 2 | 3 |    1
+  2000-01-02 00:00:00+00:00 | 4 | 5 | 6 |    2
+(2 rows)
+         k_timestamp        | a | b | c | size
+----------------------------+---+---+---+-------
+  2000-01-10 00:00:00+00:00 | 7 | 8 | 9 |    1
+(1 row)
+(error encountered after some results were delivered)
+ERROR: variable out_o_entry_d type timestamp(3) not save type timestamptz(9) 
+SQLSTATE: 42804
+> drop procedure p1;
+DROP PROCEDURE
+> create procedure p2() begin declare out_o_entry_d timestamp(3); SELECT CURRENT_TIMESTAMP(3) INTO out_o_entry_d;select out_o_entry_d;end ;
+CREATE PROCEDURE
+> call p2();
+ERROR: variable out_o_entry_d type timestamp(3) not save type timestamptz(9) 
+SQLSTATE: 42804
+> drop procedure p2;
+DROP PROCEDURE
+> create procedure p4() begin select * from t1 order by k_timestamp; select * from t2 order by k_timestamp;declare out_o_entry_d timestamp(3); SELECT CURRENT_TIMESTAMP(3) INTO out_o_entry_d; select out_o_entry_d; end ;
+CREATE PROCEDURE
+> call p4();
+         k_timestamp        | a | b | size
+----------------------------+---+---+-------
+  2000-01-01 00:00:00+00:00 | 1 | 2 |    1
+  2000-01-02 00:00:00+00:00 | 3 | 4 |    2
+(2 rows)
+         k_timestamp        | a | b | c | size
+----------------------------+---+---+---+-------
+  2000-01-01 00:00:00+00:00 | 1 | 2 | 3 |    1
+  2000-01-02 00:00:00+00:00 | 4 | 5 | 6 |    2
+(2 rows)
+(error encountered after some results were delivered)
+ERROR: variable out_o_entry_d type timestamp(3) not save type timestamptz(9) 
+SQLSTATE: 42804
+> drop procedure p4;
+DROP PROCEDURE
+> create procedure p5() begin select * from t3; select * from t4;end ;
+CREATE PROCEDURE
+> call p5();
+         k_timestamp        | a | b | c | size
+----------------------------+---+---+---+-------
+  2000-01-10 00:00:00+00:00 | 7 | 8 | 9 |    1
+(1 row)
+> drop procedure p5;
+DROP PROCEDURE
+> create procedure p6() begin select * from t3; declare out_o_entry_d timestamp(3); SELECT CURRENT_TIMESTAMP(3) INTO out_o_entry_d; select out_o_entry_d; end;
+CREATE PROCEDURE
+> call p6();
+         k_timestamp        | a | b | c | size
+----------------------------+---+---+---+-------
+  2000-01-10 00:00:00+00:00 | 7 | 8 | 9 |    1
+(1 row)
+(error encountered after some results were delivered)
+ERROR: variable out_o_entry_d type timestamp(3) not save type timestamptz(9) 
+SQLSTATE: 42804
+> drop procedure p6;
+DROP PROCEDURE
+> create procedure p7() begin select * from t3 order by k_timestamp; select * from t1 order by k_timestamp;declare out_o_entry_d timestamp(3);SELECT CURRENT_TIMESTAMP(3) INTO out_o_entry_d;select out_o_entry_d;end ;
+CREATE PROCEDURE
+> call p7();
+         k_timestamp        | a | b | c | size
+----------------------------+---+---+---+-------
+  2000-01-10 00:00:00+00:00 | 7 | 8 | 9 |    1
+(1 row)
+         k_timestamp        | a | b | size
+----------------------------+---+---+-------
+  2000-01-01 00:00:00+00:00 | 1 | 2 |    1
+  2000-01-02 00:00:00+00:00 | 3 | 4 |    2
+(2 rows)
+(error encountered after some results were delivered)
+ERROR: variable out_o_entry_d type timestamp(3) not save type timestamptz(9) 
+SQLSTATE: 42804
+> drop procedure p7;
+DROP PROCEDURE
+> create procedure p8() begin select * from t3 order by k_timestamp; select * from t1 order by k_timestamp; end ;
+CREATE PROCEDURE
+> call p8();
+         k_timestamp        | a | b | c | size
+----------------------------+---+---+---+-------
+  2000-01-10 00:00:00+00:00 | 7 | 8 | 9 |    1
+(1 row)
+         k_timestamp        | a | b | size
+----------------------------+---+---+-------
+  2000-01-01 00:00:00+00:00 | 1 | 2 |    1
+  2000-01-02 00:00:00+00:00 | 3 | 4 |    2
+(2 rows)
+> drop procedure p8;
+DROP PROCEDURE
+> create procedure p9() begin select * from t2 order by k_timestamp; select * from t1 order by k_timestamp; end;
+CREATE PROCEDURE
+> call p9();
+         k_timestamp        | a | b | c | size
+----------------------------+---+---+---+-------
+  2000-01-01 00:00:00+00:00 | 1 | 2 | 3 |    1
+  2000-01-02 00:00:00+00:00 | 4 | 5 | 6 |    2
+(2 rows)
+         k_timestamp        | a | b | size
+----------------------------+---+---+-------
+  2000-01-01 00:00:00+00:00 | 1 | 2 |    1
+  2000-01-02 00:00:00+00:00 | 3 | 4 |    2
+(2 rows)
+> drop procedure p9;
+DROP PROCEDURE
+> create procedure p2() begin declare a int;declare d int; set d = 10; select a,b,d from t1 order by k_timestamp; end;
+CREATE PROCEDURE
+> call p2();
+  a | b | d
+----+---+-----
+  1 | 2 | 10
+  3 | 4 | 10
+(2 rows)
+> drop procedure p2;
+DROP PROCEDURE
+> create procedure p3() begin declare a int;declare d int; set d = 10; select a,b,d from t1 where d < 10 order by k_timestamp; end;
+CREATE PROCEDURE
+> call p3();
+--
+(0 rows)
+> drop procedure p3;
+DROP PROCEDURE
+> create procedure p4() begin declare a int;declare d int; set d = 5; select a,b,d from t1 where d < 10 order by k_timestamp; end;
+CREATE PROCEDURE
+> call p4();
+  a | b | d
+----+---+----
+  1 | 2 | 5
+  3 | 4 | 5
+(2 rows)
+> drop procedure p4;
+DROP PROCEDURE
+> CREATE PROCEDURE p3(a INT4)  BEGIN DECLARE b INT4; declare c int4;declare c1 cursor for select a from t1 order by k_timestamp; open c1;fetch c1 into b;fetch c1 into c;close c1 ;select b;select c;END;
+CREATE PROCEDURE
+> call p3(1);
+  b
+-----
+  1
+(1 row)
+  c
+-----
+  3
+(1 row)
+> drop procedure p3;
+DROP PROCEDURE
+> create procedure test10(a int, b int) begin select * from t1 order by k_timestamp;select * from t2 order by k_timestamp; end;
+CREATE PROCEDURE
+> call test10(1,2);
+         k_timestamp        | a | b | size
+----------------------------+---+---+-------
+  2000-01-01 00:00:00+00:00 | 1 | 2 |    1
+  2000-01-02 00:00:00+00:00 | 3 | 4 |    2
+(2 rows)
+         k_timestamp        | a | b | c | size
+----------------------------+---+---+---+-------
+  2000-01-01 00:00:00+00:00 | 1 | 2 | 3 |    1
+  2000-01-02 00:00:00+00:00 | 4 | 5 | 6 |    2
+(2 rows)
+> drop procedure test10;
+DROP PROCEDURE
+> create procedure test20(a int, b int) begin select 1;select 2; end;
+CREATE PROCEDURE
+> call test20(1,2);
+  ?column?
+------------
+         1
+(1 row)
+  ?column?
+------------
+         2
+(1 row)
+> drop procedure test20;
+DROP PROCEDURE
+> create procedure test() label test: begin declare a int default 0; declare b int default 0; declare err int default 0; declare exit HANDLER FOR NOT FOUND,SQLEXCEPTION BEGIN SET err = -1;SELECT a,b;ROLLBACK;ENDHANDLER;START TRANSACTION;set a = 10;select a, b, 'this is t1 values' from t1 order by k_timestamp;insert into t1 values ('2000-1-3',5, 6,3);label my_loop:WHILE b <= 10 DO declare d int;set d = b + 2;if d > 9 then select *, 'this is t1 values in while' from t1 order by k_timestamp; leave my_loop;elsif b > 5 then select *, 'this is t2 values in while' from t2 order by k_timestamp; endif; set b = b + 1; ENDWHILE; IF err = 0 THEN SELECT a,b , 'this is procedure values'; select *, 'this is t1 values' from t1 order by k_timestamp;ENDIF;COMMIT; end;
+CREATE PROCEDURE
+> call test();
+  a | b |     ?column?
+----+---+--------------------
+  1 | 2 | this is t1 values
+  3 | 4 | this is t1 values
+(2 rows)
+         k_timestamp        | a | b | c | size |          ?column?
+----------------------------+---+---+---+------+-----------------------------
+  2000-01-01 00:00:00+00:00 | 1 | 2 | 3 |    1 | this is t2 values in while
+  2000-01-02 00:00:00+00:00 | 4 | 5 | 6 |    2 | this is t2 values in while
+(2 rows)
+         k_timestamp        | a | b | c | size |          ?column?
+----------------------------+---+---+---+------+-----------------------------
+  2000-01-01 00:00:00+00:00 | 1 | 2 | 3 |    1 | this is t2 values in while
+  2000-01-02 00:00:00+00:00 | 4 | 5 | 6 |    2 | this is t2 values in while
+(2 rows)
+         k_timestamp        | a | b | size |          ?column?
+----------------------------+---+---+------+-----------------------------
+  2000-01-01 00:00:00+00:00 | 1 | 2 |    1 | this is t1 values in while
+  2000-01-02 00:00:00+00:00 | 3 | 4 |    2 | this is t1 values in while
+  2000-01-03 00:00:00+00:00 | 5 | 6 |    3 | this is t1 values in while
+(3 rows)
+  a  | b |         ?column?
+-----+---+---------------------------
+  10 | 8 | this is procedure values
+(1 row)
+         k_timestamp        | a | b | size |     ?column?
+----------------------------+---+---+------+--------------------
+  2000-01-01 00:00:00+00:00 | 1 | 2 |    1 | this is t1 values
+  2000-01-02 00:00:00+00:00 | 3 | 4 |    2 | this is t1 values
+  2000-01-03 00:00:00+00:00 | 5 | 6 |    3 | this is t1 values
+(3 rows)
+> drop procedure test;
+DROP PROCEDURE
+> create procedure p5() begin declare d int; set d = 10; insert into t1 values ('2000-1-4',1,1,1); if row_count() > 0 then select * from t1 order by k_timestamp;endif; end;
+CREATE PROCEDURE
+> call p5();
+--
+(0 rows)
+> drop procedure p5;
+DROP PROCEDURE
+> create procedure p5() begin declare d int; set d = 10; insert into t1 values ('2000-1-4',1,1,1); select * from t1 order by k_timestamp; end;
+CREATE PROCEDURE
+> call p5();
+         k_timestamp        | a | b | size
+----------------------------+---+---+-------
+  2000-01-01 00:00:00+00:00 | 1 | 2 |    1
+  2000-01-02 00:00:00+00:00 | 3 | 4 |    2
+  2000-01-03 00:00:00+00:00 | 5 | 6 |    3
+  2000-01-04 00:00:00+00:00 | 1 | 1 |    1
+(4 rows)
+> drop procedure p5;
+DROP PROCEDURE
+> create procedure test8() begin declare a int; declare d int; set a =1; LABEL my_loop: while a<3 do select d; set a=a+1;LEAVE my_loop;endwhile my_loop;end;
+CREATE PROCEDURE
+> call test8();
+   d
+--------
+  NULL
+(1 row)
+> drop procedure test8;
+DROP PROCEDURE
+> create procedure test4() begin declare a int;declare b int default 0;set a = 10; declare continue HANDLER FOR NOT FOUND set b = 9; WHILE b <= 10 DO declare d int;set d = b + 2;if d > 9 then select * from t1 order by k_timestamp; elsif b > 5 then select * from t2 order by k_timestamp; elsif b <= 4 then select * from t3 order by k_timestamp; endif;set b = b + 1; ENDWHILE; end;
+CREATE PROCEDURE
+> call test4();
+         k_timestamp        | a | b | c | size
+----------------------------+---+---+---+-------
+  2000-01-10 00:00:00+00:00 | 7 | 8 | 9 |    1
+(1 row)
+         k_timestamp        | a | b | c | size
+----------------------------+---+---+---+-------
+  2000-01-10 00:00:00+00:00 | 7 | 8 | 9 |    1
+(1 row)
+         k_timestamp        | a | b | c | size
+----------------------------+---+---+---+-------
+  2000-01-10 00:00:00+00:00 | 7 | 8 | 9 |    1
+(1 row)
+         k_timestamp        | a | b | c | size
+----------------------------+---+---+---+-------
+  2000-01-10 00:00:00+00:00 | 7 | 8 | 9 |    1
+(1 row)
+         k_timestamp        | a | b | c | size
+----------------------------+---+---+---+-------
+  2000-01-10 00:00:00+00:00 | 7 | 8 | 9 |    1
+(1 row)
+         k_timestamp        | a | b | c | size
+----------------------------+---+---+---+-------
+  2000-01-01 00:00:00+00:00 | 1 | 2 | 3 |    1
+  2000-01-02 00:00:00+00:00 | 4 | 5 | 6 |    2
+(2 rows)
+         k_timestamp        | a | b | c | size
+----------------------------+---+---+---+-------
+  2000-01-01 00:00:00+00:00 | 1 | 2 | 3 |    1
+  2000-01-02 00:00:00+00:00 | 4 | 5 | 6 |    2
+(2 rows)
+         k_timestamp        | a | b | size
+----------------------------+---+---+-------
+  2000-01-01 00:00:00+00:00 | 1 | 2 |    1
+  2000-01-02 00:00:00+00:00 | 3 | 4 |    2
+  2000-01-03 00:00:00+00:00 | 5 | 6 |    3
+  2000-01-04 00:00:00+00:00 | 1 | 1 |    1
+(4 rows)
+         k_timestamp        | a | b | size
+----------------------------+---+---+-------
+  2000-01-01 00:00:00+00:00 | 1 | 2 |    1
+  2000-01-02 00:00:00+00:00 | 3 | 4 |    2
+  2000-01-03 00:00:00+00:00 | 5 | 6 |    3
+  2000-01-04 00:00:00+00:00 | 1 | 1 |    1
+(4 rows)
+         k_timestamp        | a | b | size
+----------------------------+---+---+-------
+  2000-01-01 00:00:00+00:00 | 1 | 2 |    1
+  2000-01-02 00:00:00+00:00 | 3 | 4 |    2
+  2000-01-03 00:00:00+00:00 | 5 | 6 |    3
+  2000-01-04 00:00:00+00:00 | 1 | 1 |    1
+(4 rows)
+> drop procedure test4;
+DROP PROCEDURE
+> create procedure test6() begin declare a int;declare b int default 0;set a = 10; declare continue HANDLER FOR NOT FOUND set b = 9; WHILE b <= 10 DO declare d int;set d = b + 2;if d > 9 then select * from t1 order by k_timestamp; elsif b > 5 then select * from t2 order by k_timestamp; elsif b <= 4 then select * from t3 order by k_timestamp; endif;set b = b + 1; ENDWHILE; end;
+CREATE PROCEDURE
+> call test6();
+         k_timestamp        | a | b | c | size
+----------------------------+---+---+---+-------
+  2000-01-10 00:00:00+00:00 | 7 | 8 | 9 |    1
+(1 row)
+         k_timestamp        | a | b | c | size
+----------------------------+---+---+---+-------
+  2000-01-10 00:00:00+00:00 | 7 | 8 | 9 |    1
+(1 row)
+         k_timestamp        | a | b | c | size
+----------------------------+---+---+---+-------
+  2000-01-10 00:00:00+00:00 | 7 | 8 | 9 |    1
+(1 row)
+         k_timestamp        | a | b | c | size
+----------------------------+---+---+---+-------
+  2000-01-10 00:00:00+00:00 | 7 | 8 | 9 |    1
+(1 row)
+         k_timestamp        | a | b | c | size
+----------------------------+---+---+---+-------
+  2000-01-10 00:00:00+00:00 | 7 | 8 | 9 |    1
+(1 row)
+         k_timestamp        | a | b | c | size
+----------------------------+---+---+---+-------
+  2000-01-01 00:00:00+00:00 | 1 | 2 | 3 |    1
+  2000-01-02 00:00:00+00:00 | 4 | 5 | 6 |    2
+(2 rows)
+         k_timestamp        | a | b | c | size
+----------------------------+---+---+---+-------
+  2000-01-01 00:00:00+00:00 | 1 | 2 | 3 |    1
+  2000-01-02 00:00:00+00:00 | 4 | 5 | 6 |    2
+(2 rows)
+         k_timestamp        | a | b | size
+----------------------------+---+---+-------
+  2000-01-01 00:00:00+00:00 | 1 | 2 |    1
+  2000-01-02 00:00:00+00:00 | 3 | 4 |    2
+  2000-01-03 00:00:00+00:00 | 5 | 6 |    3
+  2000-01-04 00:00:00+00:00 | 1 | 1 |    1
+(4 rows)
+         k_timestamp        | a | b | size
+----------------------------+---+---+-------
+  2000-01-01 00:00:00+00:00 | 1 | 2 |    1
+  2000-01-02 00:00:00+00:00 | 3 | 4 |    2
+  2000-01-03 00:00:00+00:00 | 5 | 6 |    3
+  2000-01-04 00:00:00+00:00 | 1 | 1 |    1
+(4 rows)
+         k_timestamp        | a | b | size
+----------------------------+---+---+-------
+  2000-01-01 00:00:00+00:00 | 1 | 2 |    1
+  2000-01-02 00:00:00+00:00 | 3 | 4 |    2
+  2000-01-03 00:00:00+00:00 | 5 | 6 |    3
+  2000-01-04 00:00:00+00:00 | 1 | 1 |    1
+(4 rows)
+> drop procedure test6;
+DROP PROCEDURE
+> create procedure test7() begin declare a int;declare b int default 0;set a = 10; declare continue HANDLER FOR SQLEXCEPTION set b = 9; WHILE b <= 10 DO declare d int;set d = b + 2;if d > 9 then select * from t1 order by k_timestamp; elsif b > 5 then select * from t2 order by k_timestamp; elsif b <= 4 then select * from t3 order by k_timestamp; endif;set b = b + 1; ENDWHILE; end;
+CREATE PROCEDURE
+> call test7();
+         k_timestamp        | a | b | c | size
+----------------------------+---+---+---+-------
+  2000-01-10 00:00:00+00:00 | 7 | 8 | 9 |    1
+(1 row)
+         k_timestamp        | a | b | c | size
+----------------------------+---+---+---+-------
+  2000-01-10 00:00:00+00:00 | 7 | 8 | 9 |    1
+(1 row)
+         k_timestamp        | a | b | c | size
+----------------------------+---+---+---+-------
+  2000-01-10 00:00:00+00:00 | 7 | 8 | 9 |    1
+(1 row)
+         k_timestamp        | a | b | c | size
+----------------------------+---+---+---+-------
+  2000-01-10 00:00:00+00:00 | 7 | 8 | 9 |    1
+(1 row)
+         k_timestamp        | a | b | c | size
+----------------------------+---+---+---+-------
+  2000-01-10 00:00:00+00:00 | 7 | 8 | 9 |    1
+(1 row)
+         k_timestamp        | a | b | c | size
+----------------------------+---+---+---+-------
+  2000-01-01 00:00:00+00:00 | 1 | 2 | 3 |    1
+  2000-01-02 00:00:00+00:00 | 4 | 5 | 6 |    2
+(2 rows)
+         k_timestamp        | a | b | c | size
+----------------------------+---+---+---+-------
+  2000-01-01 00:00:00+00:00 | 1 | 2 | 3 |    1
+  2000-01-02 00:00:00+00:00 | 4 | 5 | 6 |    2
+(2 rows)
+         k_timestamp        | a | b | size
+----------------------------+---+---+-------
+  2000-01-01 00:00:00+00:00 | 1 | 2 |    1
+  2000-01-02 00:00:00+00:00 | 3 | 4 |    2
+  2000-01-03 00:00:00+00:00 | 5 | 6 |    3
+  2000-01-04 00:00:00+00:00 | 1 | 1 |    1
+(4 rows)
+         k_timestamp        | a | b | size
+----------------------------+---+---+-------
+  2000-01-01 00:00:00+00:00 | 1 | 2 |    1
+  2000-01-02 00:00:00+00:00 | 3 | 4 |    2
+  2000-01-03 00:00:00+00:00 | 5 | 6 |    3
+  2000-01-04 00:00:00+00:00 | 1 | 1 |    1
+(4 rows)
+         k_timestamp        | a | b | size
+----------------------------+---+---+-------
+  2000-01-01 00:00:00+00:00 | 1 | 2 |    1
+  2000-01-02 00:00:00+00:00 | 3 | 4 |    2
+  2000-01-03 00:00:00+00:00 | 5 | 6 |    3
+  2000-01-04 00:00:00+00:00 | 1 | 1 |    1
+(4 rows)
+> drop procedure test7;
+DROP PROCEDURE
+> create procedure p1() begin declare a int;declare b int; set b = 10; select b; end;
+CREATE PROCEDURE
+> call p1();
+  b
+------
+  10
+(1 row)
+> drop procedure p1;
+DROP PROCEDURE
+> create procedure test91() begin declare a int default 0;declare b int default 0; WHILE b <= 5 do declare d int;set d = b + 2; select a,b,d from t1 order by k_timestamp; set b = b +1;  ENDWHILE; end;
+CREATE PROCEDURE
+> call test91();
+  a | b | d
+----+---+----
+  1 | 2 | 2
+  3 | 4 | 2
+  5 | 6 | 2
+  1 | 1 | 2
+(4 rows)
+  a | b | d
+----+---+----
+  1 | 2 | 3
+  3 | 4 | 3
+  5 | 6 | 3
+  1 | 1 | 3
+(4 rows)
+  a | b | d
+----+---+----
+  1 | 2 | 4
+  3 | 4 | 4
+  5 | 6 | 4
+  1 | 1 | 4
+(4 rows)
+  a | b | d
+----+---+----
+  1 | 2 | 5
+  3 | 4 | 5
+  5 | 6 | 5
+  1 | 1 | 5
+(4 rows)
+  a | b | d
+----+---+----
+  1 | 2 | 6
+  3 | 4 | 6
+  5 | 6 | 6
+  1 | 1 | 6
+(4 rows)
+  a | b | d
+----+---+----
+  1 | 2 | 7
+  3 | 4 | 7
+  5 | 6 | 7
+  1 | 1 | 7
+(4 rows)
+> drop procedure test91;
+DROP PROCEDURE
+> create procedure test92() begin declare a int;declare d int; set d = 10; select a,b,d from t1 order by k_timestamp; end;
+CREATE PROCEDURE
+> call test92();
+  a | b | d
+----+---+-----
+  1 | 2 | 10
+  3 | 4 | 10
+  5 | 6 | 10
+  1 | 1 | 10
+(4 rows)
+> drop procedure test92;
+DROP PROCEDURE
+> create procedure test30() begin declare a int;declare b int default 0;set a = 10;WHILE b <= 10 DO declare d int;set d = b + 2;if d > 9 then select a,b,d from t1 order by k_timestamp; elsif b > 5 then select a,b,c,d from t2 order by k_timestamp; endif;set b = b + 1; ENDWHILE; end;
+CREATE PROCEDURE
+> call test30();
+  a | b | c | d
+----+---+---+----
+  1 | 2 | 3 | 8
+  4 | 5 | 6 | 8
+(2 rows)
+  a | b | c | d
+----+---+---+----
+  1 | 2 | 3 | 9
+  4 | 5 | 6 | 9
+(2 rows)
+  a | b | d
+----+---+-----
+  1 | 2 | 10
+  3 | 4 | 10
+  5 | 6 | 10
+  1 | 1 | 10
+(4 rows)
+  a | b | d
+----+---+-----
+  1 | 2 | 11
+  3 | 4 | 11
+  5 | 6 | 11
+  1 | 1 | 11
+(4 rows)
+  a | b | d
+----+---+-----
+  1 | 2 | 12
+  3 | 4 | 12
+  5 | 6 | 12
+  1 | 1 | 12
+(4 rows)
+> drop procedure test30;
+DROP PROCEDURE
+> create procedure test31() begin declare a int;declare b int default 0;set a = 10;WHILE b <= 10 DO declare d int;set d = b + 2;if d > 9 then select a,b,d from t1 order by k_timestamp; elsif b > 5 then select a,b,c,d from t2 order by k_timestamp; endif;set b = b + 1; ENDWHILE; end;
+CREATE PROCEDURE
+> call test31();
+  a | b | c | d
+----+---+---+----
+  1 | 2 | 3 | 8
+  4 | 5 | 6 | 8
+(2 rows)
+  a | b | c | d
+----+---+---+----
+  1 | 2 | 3 | 9
+  4 | 5 | 6 | 9
+(2 rows)
+  a | b | d
+----+---+-----
+  1 | 2 | 10
+  3 | 4 | 10
+  5 | 6 | 10
+  1 | 1 | 10
+(4 rows)
+  a | b | d
+----+---+-----
+  1 | 2 | 11
+  3 | 4 | 11
+  5 | 6 | 11
+  1 | 1 | 11
+(4 rows)
+  a | b | d
+----+---+-----
+  1 | 2 | 12
+  3 | 4 | 12
+  5 | 6 | 12
+  1 | 1 | 12
+(4 rows)
+> drop procedure test31;
+DROP PROCEDURE
+> CREATE PROCEDURE test_variables() BEGIN DECLARE var1 INT;DECLARE var2 VARCHAR(20); SET var1 = 10; SET var2 = 'Hello'; SELECT var1 + 5, CONCAT(var2, ' World'); end;
+CREATE PROCEDURE
+> call test_variables();
+  ?column? |   concat
+-----------+--------------
+        15 | Hello World
+(1 row)
+> drop procedure test_variables;
+DROP PROCEDURE
+> create procedure test_cursor() label test: begin declare a int; DECLARE done INT DEFAULT 0; DECLARE cur CURSOR FOR SELECT a FROM t1 order by k_timestamp; declare continue HANDLER FOR NOT FOUND BEGIN SET done = 1; select 'result get all' as print; ENDHANDLER; OPEN cur; label read_loop: while done = 0 DO declare b int; FETCH cur INTO b; SELECT b; ENDWHILE read_loop; CLOSE cur; end ;
+CREATE PROCEDURE
+> call test_cursor();
+  b
+-----
+  1
+(1 row)
+  b
+-----
+  3
+(1 row)
+  b
+-----
+  5
+(1 row)
+  b
+-----
+  1
+(1 row)
+      print
+------------------
+  result get all
+(1 row)
+   b
+--------
+  NULL
+(1 row)
+> drop procedure test_cursor;
+DROP PROCEDURE
+> CREATE TABLE employees(k_timestamp timestamp not null, id int, name VARCHAR(100),age INT, salary float8)tags(size int not null)primary tags(size);
+CREATE TABLE
+> INSERT INTO employees (k_timestamp,name, age, salary,size) VALUES ('2000-1-1','test1', 1, 2.2, 1);
+INSERT 1
+> INSERT INTO employees (k_timestamp,name, age, salary,size) VALUES ('2000-1-2','test2', 2, 2.2, 2);
+INSERT 1
+> INSERT INTO employees (k_timestamp,name, age, salary,size) VALUES ('2000-1-3','test3', 3, 2.2, 3);
+INSERT 1
+> CREATE PROCEDURE add1(emp_age INT, age int) BEGIN declare var_done int; declare var_age int; set var_age = 1; DECLARE cur CURSOR FOR SELECT age FROM employees order by k_timestamp; DECLARE CONTINUE HANDLER FOR NOT FOUND SET var_done = 1; OPEN cur; LABEL my_loop: WHILE var_age > 0 DO FETCH cur INTO var_age; IF var_done = 1 THEN LEAVE my_loop; ENDIF; select var_age; ENDWHILE; CLOSE cur; END;
+CREATE PROCEDURE
+> call add1(1,2);
+  var_age
+-----------
+        1
+(1 row)
+  var_age
+-----------
+        2
+(1 row)
+  var_age
+-----------
+        3
+(1 row)
+> drop procedure add1;
+DROP PROCEDURE
+> CREATE PROCEDURE add2(emp_age INT, age int) BEGIN declare var_done int; declare var_age int; set var_age = 1; DECLARE cur CURSOR FOR SELECT age FROM employees order by k_timestamp; DECLARE CONTINUE HANDLER FOR NOT FOUND SET var_done = 1; OPEN cur; LABEL my_loop: WHILE var_age > 0 DO FETCH cur INTO var_age; IF var_done = 1 THEN LEAVE my_loop; ENDIF; select var_age; ENDWHILE; CLOSE cur; END;
+CREATE PROCEDURE
+> call add2(1,2);
+  var_age
+-----------
+        1
+(1 row)
+  var_age
+-----------
+        2
+(1 row)
+  var_age
+-----------
+        3
+(1 row)
+> drop procedure add2;
+DROP PROCEDURE
+> CREATE PROCEDURE add3(emp_age INT, age int) BEGIN declare var_done int; declare var_age int; set var_age = 1; DECLARE cur CURSOR FOR SELECT age FROM employees order by k_timestamp; DECLARE CONTINUE HANDLER FOR NOT FOUND SET var_done = 1; OPEN cur; LABEL my_loop: WHILE var_age > 0 DO FETCH cur INTO var_age; IF var_done = 1 THEN LEAVE my_loop; ENDIF; select var_age; ENDWHILE; CLOSE cur; END;
+CREATE PROCEDURE
+> call add3(1,2);
+  var_age
+-----------
+        1
+(1 row)
+  var_age
+-----------
+        2
+(1 row)
+  var_age
+-----------
+        3
+(1 row)
+> drop procedure add3;
+DROP PROCEDURE
+> CREATE PROCEDURE add4(emp_age INT, age int) BEGIN declare var_done int; declare var_age int; set var_age = 1; declare var_name int; DECLARE cur CURSOR FOR SELECT age FROM employees order by k_timestamp; DECLARE CONTINUE HANDLER FOR NOT FOUND SET var_done = 1; OPEN cur; LABEL my_loop: WHILE var_age > 0 DO FETCH cur INTO var_age, var_name; IF var_done = 1 THEN LEAVE my_loop; ENDIF; select var_age; ENDWHILE my_loop; CLOSE cur; INSERT INTO employees VALUES ('2000-1-4',5,'test4', 111, 3.2,5); END;
+CREATE PROCEDURE
+> call add4(1,2);
+ERROR: the number of columns fetched does not match the number of variables, cols: 1, variables:2
+SQLSTATE: 24000
+> drop procedure add4;
+DROP PROCEDURE
+> CREATE PROCEDURE add5(emp_age INT, age int) BEGIN declare var_done int; declare var_age int; set var_age = 1; declare var_name int; DECLARE cur CURSOR FOR SELECT age FROM employees order by k_timestamp; DECLARE CONTINUE HANDLER FOR NOT FOUND SET var_done = 1; OPEN cur; LABEL my_loop: WHILE var_age > 0 DO FETCH cur INTO var_age; IF var_done = 1 THEN LEAVE my_loop; ENDIF; select var_age; ENDWHILE my_loop; CLOSE cur; INSERT INTO employees VALUES ('2000-1-5',6,'test5', 111, 3.2,5); END;
+CREATE PROCEDURE
+> call add5(1,2);
+  var_age
+-----------
+        1
+(1 row)
+  var_age
+-----------
+        2
+(1 row)
+  var_age
+-----------
+        3
+(1 row)
+> drop procedure add5;
+DROP PROCEDURE
+> create procedure add6() label test:begin  declare a int default 0; declare b int default 0; declare err int default 0; declare exit HANDLER FOR NOT FOUND,SQLEXCEPTION BEGIN SET err = -1; SELECT a,b; ROLLBACK; ENDHANDLER; START TRANSACTION; set a = 10; select a, b from t1 order by k_timestamp; label my_loop: WHILE b <= 10 DO declare d int; set d = b + 2; if d > 9 then select * from t1 order by k_timestamp; leave my_loop; elsif b > 5 then select * from t2 order by k_timestamp; endif; set b = b + 1; ENDWHILE; IF err = 0 THEN SELECT a,b; COMMIT; ENDIF; end;
+CREATE PROCEDURE
+> call add6();
+  a | b
+----+----
+  1 | 2
+  3 | 4
+  5 | 6
+  1 | 1
+(4 rows)
+         k_timestamp        | a | b | c | size
+----------------------------+---+---+---+-------
+  2000-01-01 00:00:00+00:00 | 1 | 2 | 3 |    1
+  2000-01-02 00:00:00+00:00 | 4 | 5 | 6 |    2
+(2 rows)
+         k_timestamp        | a | b | c | size
+----------------------------+---+---+---+-------
+  2000-01-01 00:00:00+00:00 | 1 | 2 | 3 |    1
+  2000-01-02 00:00:00+00:00 | 4 | 5 | 6 |    2
+(2 rows)
+         k_timestamp        | a | b | size
+----------------------------+---+---+-------
+  2000-01-01 00:00:00+00:00 | 1 | 2 |    1
+  2000-01-02 00:00:00+00:00 | 3 | 4 |    2
+  2000-01-03 00:00:00+00:00 | 5 | 6 |    3
+  2000-01-04 00:00:00+00:00 | 1 | 1 |    1
+(4 rows)
+  a  | b
+-----+----
+  10 | 8
+(1 row)
+> drop procedure add6;
+DROP PROCEDURE
+> drop table employees;
+DROP TABLE
+> create procedure p1() begin declare exit HANDLER FOR NOT FOUND,SQLEXCEPTION BEGIN SET err = -1; SELECT err,out_ol_supply_w_ids, out_i_ids, out_ol_quantities, out_item_names, out_supply_quantities, out_brand_generic, out_prices, out_amounts,out_total_amount,out_c_credit,out_c_discount,out_c_last, out_o_id,out_d_tax,out_o_entry_d,out_w_tax; ROLLBACK; ENDHANDLER; end;
+ERROR: variable "err" does not exist
+SQLSTATE: 42703
+> drop procedure p1;
+ERROR: procedure "p1" does not exist
+SQLSTATE: 42704
+> CREATE PROCEDURE p3(a INT4) BEGIN DECLARE b INT4 default 0; declare c int4 default 0;declare c1 cursor for select a from t1 order by k_timestamp; open c1;fetch c1 into b;fetch c1 into c;close c1 ;select b;select c;END;
+CREATE PROCEDURE
+> call p3(1);
+  b
+-----
+  1
+(1 row)
+  c
+-----
+  3
+(1 row)
+> drop procedure p3;
+DROP PROCEDURE
+> drop table if exists bmsql_item;
+DROP TABLE
+> create table bmsql_item (
+                            k_timestamp timestamp not null,
+                            i_id integer not null,
+                            i_name varchar(24),
+                            i_price float8,
+                            i_data varchar(50),
+                            i_im_id integer)tags(size int not null)primary tags(size);
+CREATE TABLE
+> insert into bmsql_item values('2000-1-1',23793, 'EYgGREs95keggHoKSWZYp', 96.63, 'abmFWK6MwPyDUSWgp0furfZurJP', 4567,1);
+INSERT 1
+> DROP PROCEDURE IF EXISTS bmsql_proc_new_order;
+DROP PROCEDURE
+> CREATE PROCEDURE bmsql_proc_new_order(
+    in_w_id int,
+    in_d_id int,
+    in_c_id int,
+    in_o_ol_cnt int,
+    in_o_all_local int,
+    in_ol_i_id_array varchar(512),
+    in_ol_supply_w_id_array varchar(512),
+    in_ol_quantity varchar(512))
+BEGIN
+	declare var_i_price float default NULL;
+	declare var_i_name varchar(24) default NULL;
+	declare var_ol_number int default 1;
+START TRANSACTION;
+WHILE var_ol_number <= in_o_ol_cnt DO
+SELECT i_price, i_name AS bg INTO var_i_price, var_i_name FROM bmsql_item WHERE i_id = 23793 order by k_timestamp;
+SET var_ol_number= var_ol_number+1;
+	ENDWHILE;
+COMMIT;
+END ;
+CREATE PROCEDURE
+> call bmsql_proc_new_order(1, 3, 236, 2, 1, '23793,33231,34317,42513,42513,49887,50697,58887,66991,67565,70673,87404,96719', '1,1,1,1,1,1,1,1,1,1,1,1,1', '7,8,4,8,7,2,7,6,5,2,8,4,1');
+CALL PROCEDURE
+> drop procedure bmsql_proc_new_order;
+DROP PROCEDURE
+> drop table bmsql_item;
+DROP TABLE
+> create table test_order (
+                            k_timestamp timestamp not null,
+                            no_w_id integer not null,
+                            no_d_id integer not null,
+                            no_o_id integer not null
+)tags(size int not null) primary tags(size);
+CREATE TABLE
+> DROP PROCEDURE IF EXISTS bmsql_proc_del;
+DROP PROCEDURE
+> CREATE PROCEDURE bmsql_proc_del()
+BEGIN
+	declare i int default 1;
+	declare del_o_id int;
+delete from test_order where 1=1;
+WHILE i < 3 DO
+select del_o_id;
+set i = i+1;
+	ENDWHILE;
+END ;
+CREATE PROCEDURE
+> call bmsql_proc_del();
+  del_o_id
+------------
+  NULL
+(1 row)
+  del_o_id
+------------
+  NULL
+(1 row)
+> drop procedure bmsql_proc_del;
+DROP PROCEDURE
+> drop table test_order;
+DROP TABLE
+> drop database procedure_db cascade;
+ERROR: database "procedure_db" does not exist
+SQLSTATE: 3D000
+> DROP DATABASE IF EXISTS db cascade;
+DROP DATABASE
+> create PROCEDURE prc_declare() begin declare counts1 string;declare counts2 int; declare counts3 int; set counts1 ='10a'; set counts2 ='123'; set counts3 ='10'; SELECT counts1, (counts2+counts3); end;
+CREATE PROCEDURE
+> CALL prc_declare();
+  counts1 | ?column?
+----------+-----------
+  10a     |      133
+(1 row)
+> DROP PROCEDURE prc_declare;
+DROP PROCEDURE
+> create PROCEDURE prc_declare() begin SELECT counts1; end;
+ERROR: column "counts1" does not exist
+SQLSTATE: 42703
+> create PROCEDURE prc_declare() begin SELECT '0'; end;
+CREATE PROCEDURE
+> CALL prc_declare();
+  ?column?
+------------
+  0
+(1 row)
+> DROP PROCEDURE prc_declare;
+DROP PROCEDURE
+> create PROCEDURE prc_declare() begin set counts1 ='10a'; set counts2 ='tesr'; set counts3 ='10'; SELECT counts1 ; SELECT counts2 ; SELECT counts3 ; end;
+ERROR: variable "counts1" does not exist
+SQLSTATE: 42703
+> create PROCEDURE prc_declare() begin set counts1 ='10a'; set counts2 ='tesr'; set counts3 ='10'; SELECT counts1, (counts2+counts3);end;
+ERROR: variable "counts1" does not exist
+SQLSTATE: 42703
+> create PROCEDURE prc_declare() begin set counts1 ='10a';set counts1 ='10a';set counts3 ='10';SELECT 1; end;
+ERROR: variable "counts1" does not exist
+SQLSTATE: 42703
+> create PROCEDURE prc_declare() begin declare counts1 int;declare counts2 int;declare counts3 int; SELECT counts1*(counts2+counts3); SELECT '10', 999, 'abc'; SELECT counts1*(counts2+counts3-1)-counts1%counts3 - counts2*1+1; end;
+CREATE PROCEDURE
+> CALL prc_declare();
+  ?column?
+------------
+      NULL
+(1 row)
+  ?column? | ?column? | ?column?
+-----------+----------+-----------
+  10       |      999 | abc
+(1 row)
+  ?column?
+------------
+      NULL
+(1 row)
+> DROP PROCEDURE prc_declare;
+DROP PROCEDURE
+> create PROCEDURE prc_declare(a INT) begin declare counts int; set counts = 1; set a =10; set a =11; SELECT a+counts ;end;
+CREATE PROCEDURE
+> CALL prc_declare(1);
+  ?column?
+------------
+        12
+(1 row)
+> DROP PROCEDURE prc_declare;
+DROP PROCEDURE
+> create PROCEDURE prc_declare(a INT) begin declare counts int; set counts = 1; SELECT a+counts ; end;
+CREATE PROCEDURE
+> CALL prc_declare(1);
+  ?column?
+------------
+         2
+(1 row)
+> DROP PROCEDURE prc_declare;
+DROP PROCEDURE
+> create PROCEDURE prc_declare(a INT) begin declare counts int;declare a int;set counts = 1; SELECT a+counts; end;
+CREATE PROCEDURE
+> CALL prc_declare(2);
+  ?column?
+------------
+      NULL
+(1 row)
+> DROP PROCEDURE prc_declare;
+DROP PROCEDURE
+> create PROCEDURE prc_declare() begin declare a1 INT default 9223372036854775807; SELECT a1 ;end;
+CREATE PROCEDURE
+> CALL prc_declare();
+ERROR: integer out of range for type int4 (column "a1")
+SQLSTATE: 22003
+> DROP PROCEDURE prc_declare;
+DROP PROCEDURE
+> create PROCEDURE prc_declare() begin declare a1 timestamp default 9223372036854775807; SELECT a1 ;end;
+ERROR: expected DEFAULT expression to have type timestamp, but '9223372036854775807' has type int
+> create PROCEDURE prc_declare() begin declare a1 timestamp default '2020-01-02 10:00:00'; SELECT a1 ;end;
+CREATE PROCEDURE
+> CALL prc_declare();
+             a1
+-----------------------------
+  2020-01-02 10:00:00+00:00
+(1 row)
+> DROP PROCEDURE prc_declare;
+DROP PROCEDURE
+> create PROCEDURE prc_declare() begin declare a1 timestamp(9) default '2020-01-02 10:00:00.123456789'; SELECT a1 ;end;
+CREATE PROCEDURE
+> CALL prc_declare();
+                  a1
+---------------------------------------
+  2020-01-02 10:00:00.123456789+00:00
+(1 row)
+> DROP PROCEDURE prc_declare;
+DROP PROCEDURE
+> create PROCEDURE prc_declare() begin declare a1 timestamp(3) default '2020-01-02 10:00:00.123456789'; SELECT a1 ;end;
+CREATE PROCEDURE
+> CALL prc_declare();
+               a1
+---------------------------------
+  2020-01-02 10:00:00.123+00:00
+(1 row)
+> DROP PROCEDURE prc_declare;
+DROP PROCEDURE
+> create PROCEDURE prc_declare(b timestamp) begin declare a1 TIMESTAMP default now()+b; SELECT a1 ;end;
+ERROR: variable sub-expressions are not allowed in DEFAULT
+SQLSTATE: 42601
+> create PROCEDURE prc_declare() begin declare a1 INT default 9223372036854775808; SELECT a1 ;end;
+ERROR: numeric constant out of int64 range
+SQLSTATE: 22003
+> create PROCEDURE prc_declare() begin declare a1 DECIMAL(1,1)  default 3.21; SELECT a1 ;end;
+CREATE PROCEDURE
+> call prc_declare();
+ERROR: type DECIMAL(1,1) (column "a1"): value with precision 1, scale 1 must round to an absolute value less than 1
+SQLSTATE: 22003
+> DROP PROCEDURE prc_declare;
+DROP PROCEDURE
+> create PROCEDURE prc_declare() begin declare a1 INT default null; SELECT a1 ;end;
+CREATE PROCEDURE
+> CALL prc_declare();
+   a1
+--------
+  NULL
+(1 row)
+> DROP PROCEDURE prc_declare;
+DROP PROCEDURE
+> DROP PROCEDURE IF EXISTS fun_LOOP_TEST2;
+DROP PROCEDURE
+> DROP TABLE IF EXISTS prc_tab;
+DROP TABLE
+> CREATE TABLE prc_tab(k_timestamp timestamp not null,loop_test2 float)tags(size int not null)primary tags(size);
+CREATE TABLE
+> create PROCEDURE LOOP_TEST2(m INT) BEGIN DECLARE n float default 1; DECLARE l float default 1.0; WHILE l < 10 DO set n = n+1;  select n; set l = m*n; select l;  ENDWHILE;  END;
+CREATE PROCEDURE
+> CALL LOOP_TEST2(1);
+  n
+-----
+  2
+(1 row)
+  l
+-----
+  2
+(1 row)
+  n
+-----
+  3
+(1 row)
+  l
+-----
+  3
+(1 row)
+  n
+-----
+  4
+(1 row)
+  l
+-----
+  4
+(1 row)
+  n
+-----
+  5
+(1 row)
+  l
+-----
+  5
+(1 row)
+  n
+-----
+  6
+(1 row)
+  l
+-----
+  6
+(1 row)
+  n
+-----
+  7
+(1 row)
+  l
+-----
+  7
+(1 row)
+  n
+-----
+  8
+(1 row)
+  l
+-----
+  8
+(1 row)
+  n
+-----
+  9
+(1 row)
+  l
+-----
+  9
+(1 row)
+  n
+------
+  10
+(1 row)
+  l
+------
+  10
+(1 row)
+> SELECT * FROM prc_tab;
+  k_timestamp | loop_test2 | size
+--------------+------------+-------
+(0 rows)
+> CALL LOOP_TEST2(100);
+  n
+-----
+  2
+(1 row)
+   l
+-------
+  200
+(1 row)
+> SELECT * FROM prc_tab;
+  k_timestamp | loop_test2 | size
+--------------+------------+-------
+(0 rows)
+> DROP TABLE prc_tab;
+DROP TABLE
+> DROP PROCEDURE LOOP_TEST2;
+DROP PROCEDURE
+> CREATE TABLE test (k_timestamp timestamp not null,a INT,b int)tags(size int not null)primary tags(size);
+CREATE TABLE
+> INSERT INTO test values('2000-1-1',1,1,1),('2000-1-2',1,2,2),('2000-1-3',1,3,3),('2000-1-4',1,4,4),('2000-1-5',1,5,5);
+INSERT 5
+> CREATE PROCEDURE if_test1(c INT) begin IF c is null THEN select a from test order by k_timestamp; ELSIF c < 5 THEN select b from test order by k_timestamp; ELSE select a,b from test order by k_timestamp; ENDIF; END;
+CREATE PROCEDURE
+> call if_test1(null);
+  a
+-----
+  1
+  1
+  1
+  1
+  1
+(5 rows)
+> SELECT * from test order by k_timestamp;
+         k_timestamp        | a | b | size
+----------------------------+---+---+-------
+  2000-01-01 00:00:00+00:00 | 1 | 1 |    1
+  2000-01-02 00:00:00+00:00 | 1 | 2 |    2
+  2000-01-03 00:00:00+00:00 | 1 | 3 |    3
+  2000-01-04 00:00:00+00:00 | 1 | 4 |    4
+  2000-01-05 00:00:00+00:00 | 1 | 5 |    5
+(5 rows)
+> call if_test1(0);
+  b
+-----
+  1
+  2
+  3
+  4
+  5
+(5 rows)
+> SELECT * from test order by k_timestamp;
+         k_timestamp        | a | b | size
+----------------------------+---+---+-------
+  2000-01-01 00:00:00+00:00 | 1 | 1 |    1
+  2000-01-02 00:00:00+00:00 | 1 | 2 |    2
+  2000-01-03 00:00:00+00:00 | 1 | 3 |    3
+  2000-01-04 00:00:00+00:00 | 1 | 4 |    4
+  2000-01-05 00:00:00+00:00 | 1 | 5 |    5
+(5 rows)
+> call if_test1(1);
+  b
+-----
+  1
+  2
+  3
+  4
+  5
+(5 rows)
+> SELECT * from test order by k_timestamp;
+         k_timestamp        | a | b | size
+----------------------------+---+---+-------
+  2000-01-01 00:00:00+00:00 | 1 | 1 |    1
+  2000-01-02 00:00:00+00:00 | 1 | 2 |    2
+  2000-01-03 00:00:00+00:00 | 1 | 3 |    3
+  2000-01-04 00:00:00+00:00 | 1 | 4 |    4
+  2000-01-05 00:00:00+00:00 | 1 | 5 |    5
+(5 rows)
+> call if_test1(5);
+  a | b
+----+----
+  1 | 1
+  1 | 2
+  1 | 3
+  1 | 4
+  1 | 5
+(5 rows)
+> SELECT * from test order by k_timestamp;
+         k_timestamp        | a | b | size
+----------------------------+---+---+-------
+  2000-01-01 00:00:00+00:00 | 1 | 1 |    1
+  2000-01-02 00:00:00+00:00 | 1 | 2 |    2
+  2000-01-03 00:00:00+00:00 | 1 | 3 |    3
+  2000-01-04 00:00:00+00:00 | 1 | 4 |    4
+  2000-01-05 00:00:00+00:00 | 1 | 5 |    5
+(5 rows)
+> call if_test1(6);
+  a | b
+----+----
+  1 | 1
+  1 | 2
+  1 | 3
+  1 | 4
+  1 | 5
+(5 rows)
+> SELECT * from test order by k_timestamp;
+         k_timestamp        | a | b | size
+----------------------------+---+---+-------
+  2000-01-01 00:00:00+00:00 | 1 | 1 |    1
+  2000-01-02 00:00:00+00:00 | 1 | 2 |    2
+  2000-01-03 00:00:00+00:00 | 1 | 3 |    3
+  2000-01-04 00:00:00+00:00 | 1 | 4 |    4
+  2000-01-05 00:00:00+00:00 | 1 | 5 |    5
+(5 rows)
+> DROP PROCEDURE if_test1;
+DROP PROCEDURE
+> DROP TABLE test;
+DROP TABLE
+> DROP TABLE IF EXISTS test;
+DROP TABLE
+> DROP PROCEDURE IF EXISTS if_test1;
+DROP PROCEDURE
+> CREATE TABLE test (k_timestamp timestamp not null,a INT,b int)tags(size int not null)primary tags(size);
+CREATE TABLE
+> INSERT INTO test values('2000-1-1',1,1,1),('2000-1-2',1,2,2),('2000-1-3',1,3,3),('2000-1-4',1,4,4),('2000-1-5',1,5,5);
+INSERT 5
+> CREATE PROCEDURE if_test1(c INT) BEGIN IF c is null THEN select a from test order by k_timestamp; ELSIF c = 3 THEN select b from test order by k_timestamp; ELSIF c = 3 THEN select a,b from test order by k_timestamp; ENDIF; END;
+CREATE PROCEDURE
+> call if_test1(null);
+  a
+-----
+  1
+  1
+  1
+  1
+  1
+(5 rows)
+> SELECT * from test order by k_timestamp;
+         k_timestamp        | a | b | size
+----------------------------+---+---+-------
+  2000-01-01 00:00:00+00:00 | 1 | 1 |    1
+  2000-01-02 00:00:00+00:00 | 1 | 2 |    2
+  2000-01-03 00:00:00+00:00 | 1 | 3 |    3
+  2000-01-04 00:00:00+00:00 | 1 | 4 |    4
+  2000-01-05 00:00:00+00:00 | 1 | 5 |    5
+(5 rows)
+> call if_test1(0);
+--
+(0 rows)
+> SELECT * from test order by k_timestamp;
+         k_timestamp        | a | b | size
+----------------------------+---+---+-------
+  2000-01-01 00:00:00+00:00 | 1 | 1 |    1
+  2000-01-02 00:00:00+00:00 | 1 | 2 |    2
+  2000-01-03 00:00:00+00:00 | 1 | 3 |    3
+  2000-01-04 00:00:00+00:00 | 1 | 4 |    4
+  2000-01-05 00:00:00+00:00 | 1 | 5 |    5
+(5 rows)
+> call if_test1(1);
+--
+(0 rows)
+> SELECT * from test order by k_timestamp;
+         k_timestamp        | a | b | size
+----------------------------+---+---+-------
+  2000-01-01 00:00:00+00:00 | 1 | 1 |    1
+  2000-01-02 00:00:00+00:00 | 1 | 2 |    2
+  2000-01-03 00:00:00+00:00 | 1 | 3 |    3
+  2000-01-04 00:00:00+00:00 | 1 | 4 |    4
+  2000-01-05 00:00:00+00:00 | 1 | 5 |    5
+(5 rows)
+> call if_test1(3);
+  b
+-----
+  1
+  2
+  3
+  4
+  5
+(5 rows)
+> SELECT * from test order by k_timestamp;
+         k_timestamp        | a | b | size
+----------------------------+---+---+-------
+  2000-01-01 00:00:00+00:00 | 1 | 1 |    1
+  2000-01-02 00:00:00+00:00 | 1 | 2 |    2
+  2000-01-03 00:00:00+00:00 | 1 | 3 |    3
+  2000-01-04 00:00:00+00:00 | 1 | 4 |    4
+  2000-01-05 00:00:00+00:00 | 1 | 5 |    5
+(5 rows)
+> call if_test1(5);
+--
+(0 rows)
+> SELECT * from test order by k_timestamp;
+         k_timestamp        | a | b | size
+----------------------------+---+---+-------
+  2000-01-01 00:00:00+00:00 | 1 | 1 |    1
+  2000-01-02 00:00:00+00:00 | 1 | 2 |    2
+  2000-01-03 00:00:00+00:00 | 1 | 3 |    3
+  2000-01-04 00:00:00+00:00 | 1 | 4 |    4
+  2000-01-05 00:00:00+00:00 | 1 | 5 |    5
+(5 rows)
+> DROP PROCEDURE if_test1;
+DROP PROCEDURE
+> DROP TABLE test;
+DROP TABLE
+> DROP TABLE IF EXISTS test;
+DROP TABLE
+> DROP PROCEDURE IF EXISTS loop_test1;
+DROP PROCEDURE
+> CREATE TABLE test (k_timestamp timestamp not null,a INT)tags(size int not null)primary tags(size);
+CREATE TABLE
+> CREATE PROCEDURE loop_test1() BEGIN DECLARE c INT default 1; label my_loop: WHILE 1 DO SELECT * from test order by k_timestamp; IF c>5 THEN leave my_loop; ENDIF; set c=c+1; ENDWHILE; END;
+CREATE PROCEDURE
+> call loop_test1();
+--
+(0 rows)
+> select * from test;
+  k_timestamp | a | size
+--------------+---+-------
+(0 rows)
+> DROP PROCEDURE loop_test1;
+DROP PROCEDURE
+> DROP TABLE test;
+DROP TABLE
+> DROP DATABASE IF EXISTS db cascade;
+DROP DATABASE
+> DROP DATABASE IF EXISTS test_procedure_my_ts CASCADE;
+DROP DATABASE
+> CREATE TS DATABASE test_procedure_my_ts;
+CREATE TS DATABASE
+> DROP DATABASE IF EXISTS test_procedure_my_rel CASCADE;
+DROP DATABASE
+> CREATE DATABASE test_procedure_my_rel;
+CREATE DATABASE
+> CREATE TABLE test_procedure_my_ts.t1(
+    k_timestamp TIMESTAMPTZ NOT NULL, 
+    id INT NOT NULL,
+    e1 INT2,
+    e2 INT2,
+    e3 VARCHAR)
+TAGS (
+    code1 INT2 NOT NULL,
+    code2 VARCHAR) 
+PRIMARY TAGS(code1);
+CREATE TABLE
+> INSERT INTO test_procedure_my_ts.t1 VALUES('2024-1-1 08:00:00.1'  ,1,1,1,'a',1,'a');
+INSERT 1
+> INSERT INTO test_procedure_my_ts.t1 VALUES('2024-2-1 16:00:00.01' ,2,2,2,'b',2,'b');
+INSERT 1
+> INSERT INTO test_procedure_my_ts.t1 VALUES('2024-3-1 23:59:59.999',3,3,3,'c',3,'c');
+INSERT 1
+> CREATE TABLE test_procedure_my_rel.t2(
+    k_timestamp TIMESTAMPTZ NOT NULL, 
+    id INT NOT NULL,
+    e1 INT2,
+    e2 INT2,
+    e3 VARCHAR,
+    code1 INT2 NOT NULL,
+    code2 VARCHAR) ;
+CREATE TABLE
+> DROP PROCEDURE IF EXISTS test_procedure_my_rel.test_limit;
+DROP PROCEDURE
+> CREATE PROCEDURE test_procedure_my_rel.test_limit(i1 INT8) BEGIN DECLARE i2 INT ;DECLARE val1 TIMESTAMP; DECLARE val2 INT2; DECLARE val3 VARCHAR; DECLARE val4 INT2; DECLARE val5 VARCHAR; SELECT count(*) INTO i2 FROM test_procedure_my_ts.t1;DECLARE cur1 CURSOR FOR SELECT k_timestamp FROM test_procedure_my_ts.t1;DECLARE cur2 CURSOR FOR SELECT e1          FROM test_procedure_my_ts.t1;DECLARE cur3 CURSOR FOR SELECT e3          FROM test_procedure_my_ts.t1;DECLARE cur4 CURSOR FOR SELECT code1       FROM test_procedure_my_ts.t1;DECLARE cur5 CURSOR FOR SELECT code2       FROM test_procedure_my_ts.t1;OPEN cur1;OPEN cur2;OPEN cur3;OPEN cur4;OPEN cur5; WHILE i1 <= i2  do fetch cur1 into val1;fetch cur2 into val2;fetch cur3 into val3;fetch cur4 into val4; fetch cur5 into val5; SET i1 = i1 + 1; ENDWHILE; END;
+CREATE PROCEDURE
+> CALL test_procedure_my_rel.test_limit(1);
+ERROR: variable val1 type timestamp not save type timestamptz(3) 
+SQLSTATE: 42804
+> ALTER TABLE test_procedure_my_ts.t1 RENAME TO test_procedure_my_ts.t2;
+ERROR: cannot rename timeseries table "test_procedure_my_ts.public.t1" because procedure "test_procedure_my_rel.public.test_limit" depends on it
+SQLSTATE: 2BP01
+HINT: you can drop test_procedure_my_rel.public.test_limit instead.
+> DROP TABLE test_procedure_my_ts.t1;
+ERROR: cannot drop timeseries table "t1" because procedure "test_procedure_my_rel.public.test_limit" depends on it
+SQLSTATE: 2BP01
+HINT: you can drop test_procedure_my_rel.public.test_limit instead.
+> DROP PROCEDURE test_procedure_my_rel.test_limit;
+DROP PROCEDURE
+> use defaultdb;
+SET
+> DROP DATABASE test_procedure_my_ts CASCADE;
+DROP DATABASE
+> DROP DATABASE test_procedure_my_rel CASCADE;
+DROP DATABASE
+> DROP DATABASE IF EXISTS test_procedure_my_load_rel CASCADE;
+DROP DATABASE
+> CREATE DATABASE test_procedure_my_load_rel;
+CREATE DATABASE
+> DROP DATABASE IF EXISTS test_procedure_my_load_ts CASCADE;
+DROP DATABASE
+> CREATE TS DATABASE test_procedure_my_load_ts;
+CREATE TS DATABASE
+> CREATE TABLE test_procedure_my_load_ts.test1(
+                                                k_timestamp TIMESTAMPTZ NOT NULL,
+                                                id INT NOT NULL,
+                                                e1 INT2,
+                                                e2 INT2,
+                                                e3 VARCHAR)
+    TAGS(
+code1 INT2 NOT NULL,
+code2 VARCHAR,
+code3 VARCHAR)
+PRIMARY TAGS (code1);
+CREATE TABLE
+> INSERT INTO test_procedure_my_load_ts.test1 VALUES('2024-1-1 08:00:00.1' ,1,1,1,'a',1,'a','a');
+INSERT 1
+> INSERT INTO test_procedure_my_load_ts.test1 VALUES('2024-2-1 16:00:00.01' ,2,2,2,'b',2,'b','b');
+INSERT 1
+> INSERT INTO test_procedure_my_load_ts.test1 VALUES('2024-3-1 23:59:59.999',3,3,3,'c',3,'c','c');
+INSERT 1
+> CREATE TABLE test_procedure_my_load_ts.test2(
+                                                k_timestamp TIMESTAMPTZ NOT NULL,
+                                                id INT NOT NULL,
+                                                e1 INT2,
+                                                e2 INT2,
+                                                e3 VARCHAR)
+    TAGS(
+code1 INT2 NOT NULL,
+code2 VARCHAR,
+code3 VARCHAR)
+PRIMARY TAGS (code1);
+CREATE TABLE
+> DROP PROCEDURE IF EXISTS test_procedure_my_load_rel.test_load;
+DROP PROCEDURE
+> CREATE PROCEDURE test_procedure_my_load_rel.test_load(i1 INT8)BEGIN DECLARE i2 INT ;DECLARE val1 TIMESTAMPTZ;DECLARE val2 INT2;DECLARE val3 VARCHAR;DECLARE val4 INT2;DECLARE val5 VARCHAR;SELECT count(*) INTO i2 FROM test_procedure_my_load_ts.test1;DECLARE cur1 CURSOR FOR SELECT k_timestamp FROM test_procedure_my_load_ts.test1 ORDER BY id;DECLARE cur2 CURSOR FOR SELECT e1          FROM test_procedure_my_load_ts.test1 ORDER BY id;DECLARE cur3 CURSOR FOR SELECT e3          FROM test_procedure_my_load_ts.test1 ORDER BY id;DECLARE cur4 CURSOR FOR SELECT code1       FROM test_procedure_my_load_ts.test1 ORDER BY id;DECLARE cur5 CURSOR FOR SELECT code2       FROM test_procedure_my_load_ts.test1 ORDER BY id;OPEN cur1;OPEN cur2;OPEN cur3;OPEN cur4;OPEN cur5;WHILE i1 <= i2  do fetch cur1 into val1;fetch cur2 into val2;fetch cur3 into val3;fetch cur4 into val4;fetch cur5 into val5;INSERT INTO test_procedure_my_load_ts.test2 VALUES(val1,i1,val2,val2,val3,val4,val5,val5);SET i1 = i1 + 1;ENDWHILE;END;
+CREATE PROCEDURE
+> CALL test_procedure_my_load_rel.test_load(1);
+--
+(0 rows)
+> SHOW CREATE PROCEDURE test_procedure_my_load_rel.test_load;
+  procedure_name |                                                   procedure_body
+-----------------+---------------------------------------------------------------------------------------------------------------------
+  test_load      | CREATE PROCEDURE test_procedure_my_load_rel.public.test_load(i1 INT8)
+                 | BEGIN
+                 |     DECLARE i2 INT4;
+                 |     DECLARE val1 TIMESTAMPTZ;
+                 |     DECLARE val2 INT2;
+                 |     DECLARE val3 VARCHAR;
+                 |     DECLARE val4 INT2;
+                 |     DECLARE val5 VARCHAR;
+                 |     SELECT count(*) INTO i2 FROM test_procedure_my_load_ts.public.test1;
+                 |     DECLARE cur1 CURSOR FOR SELECT k_timestamp FROM test_procedure_my_load_ts.public.test1 ORDER BY id;
+                 |     DECLARE cur2 CURSOR FOR SELECT e1 FROM test_procedure_my_load_ts.public.test1 ORDER BY id;
+                 |     DECLARE cur3 CURSOR FOR SELECT e3 FROM test_procedure_my_load_ts.public.test1 ORDER BY id;
+                 |     DECLARE cur4 CURSOR FOR SELECT code1 FROM test_procedure_my_load_ts.public.test1 ORDER BY id;
+                 |     DECLARE cur5 CURSOR FOR SELECT code2 FROM test_procedure_my_load_ts.public.test1 ORDER BY id;
+                 |     OPEN cur1;
+                 |     OPEN cur2;
+                 |     OPEN cur3;
+                 |     OPEN cur4;
+                 |     OPEN cur5;
+                 |     WHILE i1 <= i2 DO
+                 |         FETCH cur1 INTO val1;
+                 |         FETCH cur2 INTO val2;
+                 |         FETCH cur3 INTO val3;
+                 |         FETCH cur4 INTO val4;
+                 |         FETCH cur5 INTO val5;
+                 |         INSERT INTO test_procedure_my_load_ts.public.test2 VALUES (val1, i1, val2, val2, val3, val4, val5, val5);
+                 |         SET i1 = i1 + 1;
+                 |     ENDWHILE;
+                 | END
+(1 row)
+> drop procedure test_procedure_my_load_rel.test_load;
+DROP PROCEDURE
+> SELECT * FROM test_procedure_my_load_ts.test1 ORDER BY id;
+           k_timestamp          | id | e1 | e2 | e3 | code1 | code2 | code3
+--------------------------------+----+----+----+----+-------+-------+--------
+  2024-01-01 08:00:00.1+00:00   |  1 |  1 |  1 | a  |     1 | a     | a
+  2024-02-01 16:00:00.01+00:00  |  2 |  2 |  2 | b  |     2 | b     | b
+  2024-03-01 23:59:59.999+00:00 |  3 |  3 |  3 | c  |     3 | c     | c
+(3 rows)
+> SELECT * FROM test_procedure_my_load_ts.test2 ORDER BY id;
+           k_timestamp          | id | e1 | e2 | e3 | code1 | code2 | code3
+--------------------------------+----+----+----+----+-------+-------+--------
+  2024-01-01 08:00:00.1+00:00   |  1 |  1 |  1 | a  |     1 | a     | a
+  2024-02-01 16:00:00.01+00:00  |  2 |  2 |  2 | b  |     2 | b     | b
+  2024-03-01 23:59:59.999+00:00 |  3 |  3 |  3 | c  |     3 | c     | c
+(3 rows)
+> DROP DATABASE test_procedure_my_load_rel CASCADE;
+DROP DATABASE
+> DROP DATABASE test_procedure_my_load_ts CASCADE;
+DROP DATABASE
+> CREATE DATABASE test_procedure_dxy;
+CREATE DATABASE
+> CREATE TABLE test_procedure_dxy.t1(
+                                      tp  TIMESTAMPTZ NOT NULL,
+                                      id  INT NOT NULL,
+                                      e1  INT2,
+                                      e2  INT,
+                                      e3  INT8,
+                                      e4  FLOAT4,
+                                      e5  FLOAT8,
+                                      e6  BOOL,
+                                      e7  TIMESTAMP,
+                                      e8  CHAR(1023),
+                                      e9  NCHAR(255),
+                                      e10 VARCHAR(4096),
+                                      e11 CHAR,
+                                      e12 NCHAR,
+                                      e13 NVARCHAR(4096),
+                                      e14 VARBYTES,
+                                      e15 VARCHAR,
+                                      e16 NVARCHAR,
+                                      e17 BLOB,
+                                      e18 CLOB
+);
+CREATE TABLE
+> INSERT INTO test_procedure_dxy.t1 VALUES('1970-01-01 00:00:00+00:00'    ,1 , 0     ,0          ,0                   ,0                      ,0                          ,true ,'1970-01-01 00:00:00+00:00'    ,''                                       ,''                                     ,''                                      ,''   ,''                                      ,''   ,''                                       ,''                                       ,''                                    ,''                                    ,''                                    );
+INSERT 1
+> INSERT INTO test_procedure_dxy.t1 VALUES('1970-1-1 00:00:00.001'        ,2 , 0     ,0          ,0                   ,0                      ,0                          ,true ,'1970-01-01 00:16:39.999+00:00','          '                             ,'          '                           ,'          '                            ,' '  ,' '                            ,' '  ,' '                                      ,'          '                             ,'          '                          ,'          '                          ,'          '                          );
+INSERT 1
+> INSERT INTO test_procedure_dxy.t1 VALUES('1976-10-20 12:00:12.123+00:00',3 , 10001 ,10000001   ,100000000001        ,-1047200.00312001      ,-1109810.113011921         ,true ,'2021-03-01 12:00:00.909+00:00','test数据库语法查询测试！！！@TEST3-8'   ,'test数据库语法查询测试！！！@TEST3-9' ,'test数据库语法查询测试！！！@TEST3-10' ,'t'  ,'2' ,'中' ,'test数据库语法查询测试！！！@TEST3-14'  ,'test数据库语法查询测试！！！@TEST3-15'  ,'test数据库语法查询测试！TEST3-16xaa' ,'test数据库语法查询测试！TEST3-16xaa' ,'test数据库语法查询测试！TEST3-16xaa' );
+INSERT 1
+> INSERT INTO test_procedure_dxy.t1 VALUES('1979-2-28 11:59:01.999'       ,4 , 20002 ,20000002   ,200000000002        ,-20873209.0220322201   ,-22012110.113011921        ,false,'1970-01-01 00:00:00.123+00:00','test数据库语法查询测试！！！@TEST4-8'   ,'test数据库语法查询测试！！！@TEST4-9' ,'test数据库语法查询测试！！！@TEST4-10' ,'t'  ,'2' ,'中' ,'test数据库语法查询测试！！！@TEST4-14'  ,'test数据库语法查询测试！！！@TEST4-15'  ,'test数据库语法查询测试！TEST4-16xaa' ,'test数据库语法查询测试！TEST4-16xaa' ,'test数据库语法查询测试！TEST4-16xaa' );
+INSERT 1
+> INSERT INTO test_procedure_dxy.t1 VALUES('1980-01-31 19:01:01+00:00'    ,5 , 30003 ,30000003   ,300000000003        ,-33472098.11312001     ,-39009810.333011921        ,true ,'2015-3-12 10:00:00.234'       ,'test数据库语法查询测试！！！@TEST5-8'   ,'test数据库语法查询测试！！！@TEST5-9' ,'test数据库语法查询测试！！！@TEST5-10' ,'t'  ,'2' ,'中' ,'test数据库语法查询测试！！！@TEST5-14'  ,'test数据库语法查询测试！！！@TEST5-15'  ,'test数据库语法查询测试！TEST5-16xaa' ,'test数据库语法查询测试！TEST5-16xaa' ,'test数据库语法查询测试！TEST5-16xaa' );
+INSERT 1
+> INSERT INTO test_procedure_dxy.t1 VALUES('1980-02-10 01:14:51.09+00:00' ,6 , -10001,10000001   ,-100000000001       ,1047200.00312001       ,1109810.113011921          ,false,'2023-6-23 05:00:00.55'        ,'test数据库语法查询测试！！！@TEST6-8'   ,'test数据库语法查询测试！！！@TEST6-9' ,'test数据库语法查询测试！！！@TEST6-10' ,'t'  ,'2' ,'中' ,'test数据库语法查询测试！！！@TEST6-14'  ,'test数据库语法查询测试！！！@TEST6-15'  ,'test数据库语法查询测试！TEST6-16xaa' ,'xaaxbbxcc'                           ,'xaaxbbxcc'                           );
+INSERT 1
+> INSERT INTO test_procedure_dxy.t1 VALUES('1980-02-10 01:48:11.029+00:00',7 , -20002,20000002   ,-200000000002       ,20873209.0220322201    ,22012110.113011921         ,true ,'2016-07-17 20:12:00.12+00:00' ,'test数据库语法查询测试！！！@TEST7-8'   ,'test数据库语法查询测试！！！@TEST7-9' ,'test数据库语法查询测试！！！@TEST7-10' ,'t'  ,'2' ,'中' ,'test数据库语法查询测试！！！@TEST7-14'  ,'test数据库语法查询测试！！！@TEST7-15'  ,'test数据库语法查询测试！TEST7-16xaa' ,'010101010101011010101010101010101010','010101010101011010101010101010101010');
+INSERT 1
+> INSERT INTO test_procedure_dxy.t1 VALUES('1980-02-10 01:48:22.501+00:00',8 , -30003,30000003   ,-300000000003       ,33472098.11312001      ,39009810.333011921         ,false,'1970-01-01 01:16:05.476+00:00','test数据库语法查询测试！！！@TEST8-8'   ,'test数据库语法查询测试！！！@TEST8-9' ,'test数据库语法查询测试！！！@TEST8-10' ,'t'  ,'2' ,'中' ,'test数据库语法查询测试！！！@TEST8-14'  ,'test数据库语法查询测试！！！@TEST8-15'  ,'test数据库语法查询测试！TEST8-16xaa' ,'test数据库语法查询测试！TEST8-16xaa' ,'test数据库语法查询测试！TEST8-16xaa' );
+INSERT 1
+> INSERT INTO test_procedure_dxy.t1 VALUES('2001-12-09 09:48:12.3+00:00'  ,9 , null  ,null       ,null                ,null                   ,null                       ,null ,null                           ,null                                     ,null                                   ,null                                    ,null ,null                                    ,null ,null                                     ,null                                     ,null                                  ,null                                  ,null                                  );
+INSERT 1
+> INSERT INTO test_procedure_dxy.t1 VALUES('2002-2-22 10:48:12.899'       ,10,32767  ,-2147483648,9223372036854775807 ,-99999999991.9999999991,9999999999991.999999999991 ,true ,'2020-10-01 12:00:01+00:00'    ,'test数据库语法查询测试！！！@TEST10-8'  ,'test数据库语法查询测试！！！@TEST10-9','test数据库语法查询测试！！！@TEST10-10','t'  ,'2','中' ,'test数据库语法查询测试！！！@TEST10-14' ,'test数据库语法查询测试！！！@TEST10-15' ,'test数据库语法查询测试！TEST10-16xaa','110101010101011010101010101010101010','110101010101011010101010101010101010');
+INSERT 1
+> INSERT INTO test_procedure_dxy.t1 VALUES('2003-10-1 11:48:12.1'         ,11,-32768 ,2147483647 ,-9223372036854775808,99999999991.9999999991 ,-9999999999991.999999999991,false,'1970-11-25 09:23:07.421+00:00','test数据库语法查询测试！！！@TEST11-8'  ,'test数据库语法查询测试！！！@TEST11-9','test数据库语法查询测试！！！@TEST11-10','t'  ,'2','中' ,'test数据库语法查询测试！！！@TEST11-14' ,'test数据库语法查询测试！！！@TEST11-15' ,'test数据库语法查询测试！TEST11-16xaa','test数据库语法查询测试！TEST11-16xaa','test数据库语法查询测试！TEST11-16xaa');
+INSERT 1
+> INSERT INTO test_procedure_dxy.t1 VALUES('2004-09-09 00:00:00.9+00:00'  ,12,12000  ,12000000   ,120000000000        ,-12000021.003125       ,-122209810.1131921         ,true ,'2129-3-1 12:00:00.011'        ,'aaaaaabbbbbbcccccc'                     ,'aaaaaabbbbbbcccccc'                   ,'aaaaaabbbbbbcccccc'                    ,'t'  ,'c'                    ,'z'  ,'aaaaaabbbbbbcccccc'                     ,'aaaaaabbbbbbcccccc'                     ,'aaaaaabbbbbbcccccc'                  ,'aaaaaabbbbbbcccccc'                  ,'aaaaaabbbbbbcccccc'                  );
+INSERT 1
+> INSERT INTO test_procedure_dxy.t1 VALUES('2004-12-31 12:10:10.911+00:00',13,23000  ,23000000   ,230000000000        ,-23000088.665120604    ,-122209810.1131921         ,true ,'2020-12-31 23:59:59.999'      ,'SSSSSSDDDDDDKKKKKK'                     ,'SSSSSSDDDDDDKKKKKK'                   ,'SSSSSSDDDDDDKKKKKK'                    ,'T'  ,'K'                    ,'B'  ,'SSSSSSDDDDDDKKKKKK'                     ,'SSSSSSDDDDDDKKKKKK'                     ,'SSSSSSDDDDDDKKKKKK'                  ,'SSSSSSDDDDDDKKKKKK'                  ,'SSSSSSDDDDDDKKKKKK'                  );
+INSERT 1
+> INSERT INTO test_procedure_dxy.t1 VALUES('2008-2-29 2:10:10.111'        ,14,32767  ,34000000   ,340000000000        ,-43000079.07812032     ,-122209810.1131921         ,true ,'1975-3-11 00:00:00.0'         ,'1234567890987654321'                    ,'1234567890987654321'                  ,'1234567890987654321'                   ,'1'  ,'1'                   ,'2'  ,'1234567890987654321'                    ,'1234567890987654321'                    ,'1234567890987654321'                 ,'1234567890987654321'                 ,'1234567890987654321'                 );
+INSERT 1
+> INSERT INTO test_procedure_dxy.t1 VALUES('2012-02-29 1:10:10.000'       ,15,-32767 ,-34000000  ,-340000000000       ,43000079.07812032      ,122209810.1131921          ,true ,'2099-9-1 11:01:00.111'        ,'数据库语法查询测试'                     ,'数据库语法查询测试'                   ,'数据库语法查询测试'                    ,'1'  ,'数'                    ,'2'  ,'数据库语法查询测试'                     ,'数据库语法查询测试'                     ,'数据库语法查询测试'                  ,'数据库语法查询测试'                  ,'数据库语法查询测试'                  );
+INSERT 1
+> SELECT COUNT(*) FROM test_procedure_dxy.t1;
+  count
+---------
+     15
+(1 row)
+> CREATE PROCEDURE test_procedure_dxy.pro4(a CHAR(1)) BEGIN UPDATE test_procedure_dxy.t1 SET e1=1234 WHERE e8='test数据库语法查询测试！！！@TEST8-8' RETURNING e8 INTO a;SELECT a;END;
+CREATE PROCEDURE
+> CALL test_procedure_dxy.pro4('1');
+ERROR: value too long for type CHAR (column "a")
+SQLSTATE: 22001
+> DROP PROCEDURE test_procedure_dxy.pro4;
+DROP PROCEDURE
+> CREATE PROCEDURE test_procedure_dxy.pro5(a INT2) BEGIN UPDATE test_procedure_dxy.t1 SET e3=9223372036854775806 WHERE id=9 RETURNING e3 INTO a;SELECT a;END;
+CREATE PROCEDURE
+> CALL test_procedure_dxy.pro5(1);
+ERROR: integer out of range for type int2 (column "a")
+SQLSTATE: 22003
+> DROP PROCEDURE test_procedure_dxy.pro5;
+DROP PROCEDURE
+> CREATE PROCEDURE test_procedure_dxy.pro6(a INT2)BEGIN delete from test_procedure_dxy.t1 where e3=9223372036854775806 RETURNING e3 INTO a;SELECT a;END;
+CREATE PROCEDURE
+> CALL test_procedure_dxy.pro6(1);
+ERROR: integer out of range for type int2 (column "a")
+SQLSTATE: 22003
+> DROP PROCEDURE test_procedure_dxy.pro6;
+DROP PROCEDURE
+> CREATE TABLE test_procedure_dxy.test1(
+                                               k_ts TIMESTAMPTZ NOT NULL,
+                                               id INT NOT NULL,
+                                               e1 timestamp,
+                                               e2 timestamptz);
+CREATE TABLE
+> INSERT INTO test_procedure_dxy.test1 VALUES('2024-3-1 23:59:59.999',3,'2024-3-1 23:59:59.999','2024-3-1 23:59:59.999');
+INSERT 1
+> CREATE PROCEDURE test_procedure_dxy.pro7() BEGIN DECLARE test1 TIMESTAMP(1); DECLARE test2 TIMESTAMPtz(1); SELECT e1, e2 INTO test1, test2 FROM test_procedure_dxy.test1; SELECT test1, test2;END;
+CREATE PROCEDURE
+> CALL test_procedure_dxy.pro7();
+            test1           |           test2
+----------------------------+----------------------------
+  2024-03-02 00:00:00+00:00 | 2024-03-02 00:00:00+00:00
+(1 row)
+> DROP PROCEDURE test_procedure_dxy.pro7;
+DROP PROCEDURE
+> CREATE PROCEDURE test_procedure_dxy.pro8() BEGIN DECLARE test1 TIMESTAMP(1); DECLARE test2 TIMESTAMPtz(1); UPDATE test_procedure_dxy.test1 set k_ts = '2024-6-1 23:59:59.999' where id = 3 returning e1, e2 INTO test1, test2; SELECT test1, test2;END;
+CREATE PROCEDURE
+> CALL test_procedure_dxy.pro8();
+            test1           |           test2
+----------------------------+----------------------------
+  2024-03-02 00:00:00+00:00 | 2024-03-02 00:00:00+00:00
+(1 row)
+> DROP PROCEDURE test_procedure_dxy.pro8;
+DROP PROCEDURE
+> CREATE PROCEDURE test_procedure_dxy.pro9() BEGIN DECLARE test1 TIMESTAMP(1); DECLARE test2 TIMESTAMPtz(1); DELETE FROM test_procedure_dxy.test1 where id = 3 returning e1, e2 INTO test1, test2; SELECT test1, test2;END;
+CREATE PROCEDURE
+> CALL test_procedure_dxy.pro9();
+            test1           |           test2
+----------------------------+----------------------------
+  2024-03-02 00:00:00+00:00 | 2024-03-02 00:00:00+00:00
+(1 row)
+> DROP PROCEDURE test_procedure_dxy.pro9;
+DROP PROCEDURE
+> DROP DATABASE test_procedure_dxy CASCADE;
+DROP DATABASE
+> DROP DATABASE IF EXISTS test_procedure_my_rel_tz CASCADE;
+DROP DATABASE
+> DROP DATABASE IF EXISTS test_procedure_my_ts_tz CASCADE;
+DROP DATABASE
+> CREATE DATABASE test_procedure_my_rel_tz ;
+CREATE DATABASE
+> CREATE TS DATABASE test_procedure_my_ts_tz ;
+CREATE TS DATABASE
+> CREATE TABLE test_procedure_my_ts_tz.test1(
+                                              k_ts TIMESTAMPTZ NOT NULL,
+                                              id INT NOT NULL,
+                                              e1 timestamp,
+                                              e2 timestamptz,
+                                              e3 timestamptz(3),
+                                              e4 timestamp(6))
+    TAGS (
+code1 INT2 NOT NULL)
+PRIMARY TAGS(code1);
+CREATE TABLE
+> INSERT INTO test_procedure_my_ts_tz.test1 VALUES('2024-1-1 08:00:00.1' ,1,'2024-1-1 08:00:00.1' ,'2024-1-1 08:00:00.1' ,'2024-1-1 08:00:00.1' ,'2024-1-1 08:00:00.1' ,1);
+INSERT 1
+> INSERT INTO test_procedure_my_ts_tz.test1 VALUES('2024-2-1 16:00:00.01' ,2,'2024-2-1 16:00:00.01' ,'2024-2-1 16:00:00.01' ,'2024-2-1 16:00:00.01' ,'2024-2-1 16:00:00.01' ,2);
+INSERT 1
+> INSERT INTO test_procedure_my_ts_tz.test1 VALUES('2024-3-1 23:59:59.999',3,'2024-3-1 23:59:59.999','2024-3-1 23:59:59.999','2024-3-1 23:59:59.999','2024-3-1 23:59:59.999',3);
+INSERT 1
+> CREATE TABLE test_procedure_my_rel_tz.test1(
+                                               k_ts TIMESTAMPTZ NOT NULL,
+                                               id INT NOT NULL,
+                                               e1 timestamp,
+                                               e2 timestamptz,
+                                               e3 timestamptz(3),
+                                               e4 timestamp(6),
+                                               code1 INT2 NOT NULL);
+CREATE TABLE
+> INSERT INTO test_procedure_my_rel_tz.test1 VALUES('2024-1-1 08:00:00.1' ,1,'2024-1-1 08:00:00.1' ,'2024-1-1 08:00:00.1' ,'2024-1-1 08:00:00.1' ,'2024-1-1 08:00:00.1' ,1);
+INSERT 1
+> INSERT INTO test_procedure_my_rel_tz.test1 VALUES('2024-2-1 16:00:00.01' ,2,'2024-2-1 16:00:00.01' ,'2024-2-1 16:00:00.01' ,'2024-2-1 16:00:00.01' ,'2024-2-1 16:00:00.01' ,2);
+INSERT 1
+> INSERT INTO test_procedure_my_rel_tz.test1 VALUES('2024-3-1 23:59:59.999',3,'2024-3-1 23:59:59.999','2024-3-1 23:59:59.999','2024-3-1 23:59:59.999','2024-3-1 23:59:59.999',3);
+INSERT 1
+> DROP PROCEDURE IF EXISTS test_procedure_my_rel_tz.test_declare_test;
+DROP PROCEDURE
+> CREATE PROCEDURE test_procedure_my_rel_tz.test_declare_test(i1 INT)BEGIN DECLARE test TIMESTAMP ;SELECT  k_ts INTO test FROM test_procedure_my_ts_tz.test1 WHERE id = i1;SELECT test;END;
+CREATE PROCEDURE
+> CALL test_procedure_my_rel_tz.test_declare_test(1);
+ERROR: variable test type timestamp not save type timestamptz(3) 
+SQLSTATE: 42804
+> drop procedure test_procedure_my_rel_tz.test_declare_test;
+DROP PROCEDURE
+> DROP DATABASE test_procedure_my_rel_tz CASCADE;
+DROP DATABASE
+> DROP DATABASE test_procedure_my_ts_tz CASCADE;
+DROP DATABASE

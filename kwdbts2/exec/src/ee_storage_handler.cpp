@@ -288,7 +288,7 @@ EEIteratorErrCode StorageHandler::TsStatisticCacheNext(kwdbContext_p ctx) {
   KWThdContext *thd = current_thd;
   if (entities_.empty()) {
     EntityResultIndex entity;
-    KStatus ret = ts_table_->GetLastRowEntity(entity);
+    KStatus ret = ts_table_->GetLastRowEntity(ctx, entity);
     if (KStatus::FAIL == ret) {
       code = EEIteratorErrCode::EE_ERROR;
       Return(code);
@@ -515,6 +515,16 @@ EEIteratorErrCode StorageHandler::GetNextTagData(kwdbContext_p ctx, ScanRowBatch
   return code;
 }
 
+inline bool EntityLessThan(EntityResultIndex& x, EntityResultIndex& y) {
+  if (x.entityGroupId == y.entityGroupId) {
+    if (x.subGroupId == y.subGroupId) {
+      return x.entityId < y.entityId;
+    }
+    return x.subGroupId < y.subGroupId;
+  }
+  return x.subGroupId < y.subGroupId;
+}
+
 EEIteratorErrCode StorageHandler::NewTsIterator(kwdbContext_p ctx) {
   EnterFunc();
   KStatus ret = FAIL;
@@ -551,6 +561,8 @@ EEIteratorErrCode StorageHandler::NewTsIterator(kwdbContext_p ctx) {
       }
     }
 
+    std::sort(entities_.begin(), entities_.end(), EntityLessThan);
+
     IteratorParams params = {
       .entity_ids = entities_,
       .ts_spans = ts_spans,
@@ -566,11 +578,8 @@ EEIteratorErrCode StorageHandler::NewTsIterator(kwdbContext_p ctx) {
       .limit = table_->limit_,
     };
 
-    if (this->table_->GetRelTagJoinColumnIndexes().size() > 0) {
-      ret = ts_table_->GetIteratorInOrder(ctx, params, &ts_iterator);
-    } else {
-      ret = ts_table_->GetIterator(ctx, params, &ts_iterator);
-    }
+    ret = ts_table_->GetIterator(ctx, params, &ts_iterator);
+
     if (KStatus::FAIL == ret) {
       code = EEIteratorErrCode::EE_ERROR;
       EEPgErrorInfo::SetPgErrorInfo(ERRCODE_FETCH_DATA_FAILED,
@@ -586,17 +595,15 @@ EEIteratorErrCode StorageHandler::NewTagIterator(kwdbContext_p ctx) {
   EnterFunc();
   KStatus ret = FAIL;
   if (EngineOptions::isSingleNode()) {
-      if (read_mode_ == TSTableReadMode::metaTable) {
-        MetaIterator *meta = nullptr;
-        ret = ts_table_->GetMetaIterator(ctx, &meta, table_->table_version_);
-        tag_iterator = meta;
-      } else {
-        TagIterator *tag = nullptr;
-        ret = ts_table_->GetTagIterator(ctx, table_->scan_tags_, &tag, table_->table_version_);
-        tag_iterator = tag;
-      }
+    BaseEntityIterator* iter = nullptr;
+    if (read_mode_ == TSTableReadMode::metaTable) {
+        ret = ts_table_->GetTagIterator(ctx, {}, &iter, table_->table_version_);
+    } else {
+        ret = ts_table_->GetTagIterator(ctx, table_->scan_tags_, &iter, table_->table_version_);
+    }
+    tag_iterator = iter;
   } else {
-    TagIterator *tag = nullptr;
+    BaseEntityIterator *tag = nullptr;
     ret = ts_table_->GetTagIterator(ctx, table_->scan_tags_, table_->hash_points_, &tag, table_->table_version_);
     tag_iterator = tag;
   }

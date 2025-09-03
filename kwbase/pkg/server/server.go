@@ -25,7 +25,7 @@
 package server
 
 // #cgo CPPFLAGS: -I../../../kwdbts2/include
-// #cgo LDFLAGS: -lkwdbts2 -lcommon  -lstdc++
+// #cgo LDFLAGS: -lkwdbts2 -lrocksdb -lcommon -lsnappy -lm  -lstdc++
 // #cgo LDFLAGS: -lprotobuf
 // #cgo linux LDFLAGS: -lrt -lpthread
 //
@@ -110,7 +110,6 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/storage/cloud"
 	"gitee.com/kwbasedb/kwbase/pkg/storage/enginepb"
 	"gitee.com/kwbasedb/kwbase/pkg/ts"
-	"gitee.com/kwbasedb/kwbase/pkg/tscoord"
 	"gitee.com/kwbasedb/kwbase/pkg/tse"
 	"gitee.com/kwbasedb/kwbase/pkg/util"
 	"gitee.com/kwbasedb/kwbase/pkg/util/envutil"
@@ -295,7 +294,7 @@ type Server struct {
 	temporaryObjectCleaner *sql.TemporaryObjectCleaner
 	engines                Engines
 	tsEngine               *tse.TsEngine
-	tseDB                  *tscoord.DB
+	tseDB                  *kvcoord.DB
 	internalMemMetrics     sql.MemoryMetrics
 	adminMemMetrics        sql.MemoryMetrics
 	// sqlMemMetrics are used to track memory usage of sql sessions.
@@ -1924,7 +1923,7 @@ func (s *Server) Start(ctx context.Context) error {
 				})
 			}
 
-			tsDBCfg := tscoord.TsDBConfig{
+			tsDBCfg := kvcoord.TsDBConfig{
 				KvDB:         s.db,
 				TsEngine:     s.tsEngine,
 				Sender:       s.distSender,
@@ -1932,8 +1931,10 @@ func (s *Server) Start(ctx context.Context) error {
 				Gossip:       s.gossip,
 				Stopper:      s.stopper,
 				IsSingleNode: GetSingleNodeModeFlag(s.cfg.ModeFlag),
+				Setting:      s.ClusterSettings(),
+				NodeID:       s.NodeID(),
 			}
-			s.tseDB = tscoord.NewDB(tsDBCfg)
+			s.tseDB = kvcoord.NewDB(tsDBCfg)
 			// s.node.storeCfg.TseDB = s.tseDB
 			s.distSQLServer.ServerConfig.TseDB = s.tseDB
 		}
@@ -2209,7 +2210,9 @@ func (s *Server) Start(ctx context.Context) error {
 	if err := sql.InitScheduleForKWDB(ctx, s.db, s.internalExecutor); err != nil {
 		return err
 	}
-
+	if err := sql.InitTsTxnJob(ctx, s.db, s.internalExecutor, s.jobRegistry); err != nil {
+		return err
+	}
 	if err := sql.InitCompressInterval(ctx, s.internalExecutor); err != nil {
 		return err
 	}
@@ -2305,11 +2308,11 @@ func (s *Server) Start(ctx context.Context) error {
 		func() (jobs.ScheduledJobExecutor, error) {
 			return &sql.ScheduledCompressExecutor{}, nil
 		})
-	jobs.RegisterScheduledJobExecutorFactory(
-		sql.RetentionExecutorName,
-		func() (jobs.ScheduledJobExecutor, error) {
-			return &sql.ScheduledRetentionExecutor{}, nil
-		})
+	//jobs.RegisterScheduledJobExecutorFactory(
+	//	sql.RetentionExecutorName,
+	//	func() (jobs.ScheduledJobExecutor, error) {
+	//		return &sql.ScheduledRetentionExecutor{}, nil
+	//	})
 	jobs.RegisterScheduledJobExecutorFactory(
 		sql.SQLExecutorName,
 		func() (jobs.ScheduledJobExecutor, error) {

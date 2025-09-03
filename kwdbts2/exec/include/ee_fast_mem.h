@@ -338,7 +338,7 @@ ALWAYS_INLINE inline void memswap_inlined(void* __restrict a, void* __restrict b
     // Fallback using temporary buffer for non-AVX2
     uint8_t temp[16];
     while (size > 0) {
-      const size_t chunk = std::min(size, sizeof(temp));
+      const size_t chunk = std::min(size, sizeof(temp));  // NOLINT
       std::memcpy(temp, ptr_a, chunk);
       std::memcpy(ptr_a, ptr_b, chunk);
       std::memcpy(ptr_b, temp, chunk);
@@ -382,9 +382,9 @@ ALWAYS_INLINE inline const uint8_t* memchr_inlined(const void* __restrict src, u
         uint32_t first_match;  // Stores the position of the first set bit
 // Use appropriate bit scan function based on mask size
 #if defined(_M_X64) && sizeof(mask) == 8
-        _BitScanForward64(reinterpret_cast<uint32_t*>(&first_match), mask);
+        _BitScanForward64(reinterpret_cast<uint32_t*>(&first_match), mask);  // NOLINT
 #else
-        _BitScanForward(reinterpret_cast<uint32_t*>(&first_match), mask);
+        _BitScanForward(reinterpret_cast<uint32_t*>(&first_match), mask);  // NOLINT
 #endif
 #else
         // Select corresponding built-in function based on mask width

@@ -21,6 +21,7 @@
 #include "st_worker.h"
 #include "st_meta.h"
 #include "ts_table.h"
+#include "ts_table_v2_impl.h"
 
 using namespace kwdbts;
 
@@ -48,7 +49,16 @@ KBStatus StWriteWorker::do_work(KTimestamp  new_ts) {
     return KBStatus::Invalid("no table to run");
   }
   // traverse table, execute write
+  KStatus stat;
   uint32_t w_table = table_ids_[table_i];
+  TableSchemaCache& table_schema = table_schemas_[table_i];
+  if (table_schema.data_schema.size() == 0) {
+    stat = st_inst_->GetSchemaInfo(ctx, w_table, &table_schema.tag_schema, &table_schema.data_schema);
+    if (stat != KStatus::SUCCESS) {
+      return KBStatus::NOT_FOUND("st_inst_->GetSchemaInfo failed. tbl:" + std::to_string(w_table));
+    }
+  }
+  
   table_i++;
   if (table_i >= table_ids_.size()) {
     table_i = 0;
@@ -60,19 +70,24 @@ KBStatus StWriteWorker::do_work(KTimestamp  new_ts) {
     _entity_i++;
   }
   KBStatus s;
-  KStatus stat;
   KTimestamp wr_ts = new_ts;
   k_uint32 p_len = 0;
   TSSlice payload;
   {
     KWDB_START();
-    std::vector<TagInfo> tag_schema;
-    std::vector<AttributeInfo> data_schema;
-    stat = st_inst_->GetSchemaInfo(ctx, w_table, &tag_schema, &data_schema);
-    if (stat != KStatus::SUCCESS) {
-      return KBStatus::NOT_FOUND("st_inst_->GetSchemaInfo failed. tbl:" + std::to_string(w_table));
+    if (params_.engine_version == "2") {
+      if (table_schema.build == nullptr) {
+        table_schema.build = std::make_shared<TSRowPayloadBuilder>(table_schema.tag_schema, table_schema.data_schema, params_.BATCH_NUM);
+      } else {
+        table_schema.build->Reset();
+      }
+      FillPayloaderBuilderData(*(table_schema.build.get()), entity_tag, wr_ts, params_.BATCH_NUM, params_.time_inc);
+      table_schema.build->Build(w_table, 1, &payload);
+      // genRowBasedPayloadData(table_schema.tag_schema, table_schema.data_schema, w_table, 1, entity_tag, wr_ts, params_.BATCH_NUM, params_.time_inc, &payload);
+    } else {
+      genPayloadData(table_schema.tag_schema, table_schema.data_schema, entity_tag, wr_ts, params_.BATCH_NUM, params_.time_inc, &payload);
     }
-    genPayloadData(tag_schema, data_schema, entity_tag, wr_ts, params_.BATCH_NUM, params_.time_inc, &payload);
+
     KWDB_DURATION(_row_prepare_time);
   }
 
@@ -90,7 +105,7 @@ KBStatus StWriteWorker::do_work(KTimestamp  new_ts) {
     s = dump_zstatus("PutData", ctx, stat);
     KWDB_DURATION(_row_put_time);
   }
-  delete[] payload.data;
+  free(payload.data);
   _row_sum += params_.BATCH_NUM;
   return s;
 }
@@ -178,53 +193,110 @@ KBStatus StScanWorker::do_work(KTimestamp  new_ts) {
 
   KWDB_START();
 
-  std::shared_ptr<TsTable> ts_table;
+  uint32_t entity_index = 1;
+  KwTsSpan ts_span = {INT64_MIN, INT64_MAX};
+  std::vector<KwTsSpan> ts_spans;
+  ts_spans.push_back(ts_span);
+  std::vector<k_uint32> scan_cols;
+  std::vector<AttributeInfo> data_schema;
   KBStatus s;
+  std::vector<Sumfunctype> scan_agg_types;
+  std::shared_ptr<TsTable> ts_table;
   auto stat = st_inst_->GetTSEngine()->GetTsTable(ctx, r_table, ts_table);
   s = dump_zstatus("GetTsTable", ctx, stat);
   if (s.isNotOK()) {
     return s;
   }
-  auto ts_type = ts_table->GetRootTableManager()->GetTsColDataType();
-  std::shared_ptr<TsEntityGroup> tbl_range;
-  stat = ts_table->GetEntityGroup(ctx, st_inst_->rangeGroup(), &tbl_range);
-  uint32_t entity_index = 1;
-  KwTsSpan ts_span = {int64_t(start_ts_), GetTimeNow()};
-  std::vector<KwTsSpan> ts_spans;
-  ts_spans.push_back(ts_span);
-  std::vector<k_uint32> scan_cols;
-  std::vector<AttributeInfo> data_schema;
-  stat = ts_table->GetDataSchemaExcludeDropped(ctx, &data_schema);
-  for (size_t i = 0; i < data_schema.size(); i++) {
-    scan_cols.push_back(i);
-  }
-
-  std::vector<Sumfunctype> scan_agg_types;
-  TsStorageIterator* iter;
-  SubGroupID group_id = 1;
-
-  vector<uint32_t> entity_ids = {entity_index};
-  stat = tbl_range->GetIterator(ctx, group_id, entity_ids, ts_spans, {}, ts_type, scan_cols, scan_cols, {}, scan_agg_types, 1, &iter, tbl_range,
-                      {}, false, false);
-  s = dump_zstatus("GetIterator", ctx, stat);
-  if (s.isNotOK()) {
-    return s;
-  }
-
-  ResultSet res;
-  uint32_t count = 0;
-  bool is_finished = false;
-  do {
-    stat = iter->Next(&res, &count, &is_finished);
-    s = dump_zstatus("IteratorNext", ctx, stat);
+  if (st_inst_->IsV2()) {
+    auto tablev2 = dynamic_pointer_cast<TsTableV2Impl>(ts_table);
+    auto tbl_version = tablev2->GetSchemaManager()->GetCurrentVersion();
+    tablev2->GetSchemaManager()->GetColumnsExcludeDropped(data_schema, tbl_version);
+    for (size_t i = 0; i < data_schema.size(); i++) {
+      scan_cols.push_back(i);
+    }
+    EntityResultIndex e_idx{1, entity_index, 1};
+    TsIterator* iter = nullptr;
+    Defer defer{[&]() {
+      if (iter != nullptr) {
+        delete iter;
+      }
+    }};
+    ctx->ts_engine = st_inst_->GetTSEngine();
+    std::vector<EntityResultIndex> entity_ids = {e_idx};
+    std::vector<BlockFilter> block_filter;
+    std::vector<k_int32> agg_extend_cols;
+    IteratorParams params = {
+        .entity_ids = entity_ids,
+        .ts_spans = ts_spans,
+        .block_filter = block_filter,
+        .scan_cols = scan_cols,
+        .agg_extend_cols = agg_extend_cols,
+        .scan_agg_types = scan_agg_types,
+        .table_version = tbl_version,
+        .ts_points = {},
+        .reverse = false,
+        .sorted = false,
+        .offset = 0,
+        .limit = 0,
+    };
+    auto status = tablev2->GetNormalIterator(ctx, params, &iter);
+    s = dump_zstatus("GetIterator", ctx, status);
     if (s.isNotOK()) {
       return s;
     }
-    if (count > 0 && !checkColValue(data_schema, res, count, params_.time_inc)) {
-      return KBStatus(StatusCode::RError, "colume value check failed.");
+    uint32_t count = 0;
+    bool is_finished = false;
+    do {
+      ResultSet res;
+      res.setColumnNum(scan_cols.size());
+      status = iter->Next(&res, &count);
+      s = dump_zstatus("IteratorNext", ctx, status);
+      if (s.isNotOK()) {
+        return s;
+      }
+      if (count > 0 && !checkColValue(data_schema, res, count, params_.time_inc)) {
+        return KBStatus(StatusCode::RError, "colume value check failed.");
+      }
+      _scan_rows.add(count);
+    } while (count > 0);
+  } else {
+    auto ts_type = ts_table->GetRootTableManager()->GetTsColDataType();
+    std::shared_ptr<TsEntityGroup> tbl_range;
+    stat = ts_table->GetEntityGroup(ctx, st_inst_->rangeGroup(), &tbl_range);
+    stat = ts_table->GetDataSchemaExcludeDropped(ctx, &data_schema);
+    for (size_t i = 0; i < data_schema.size(); i++) {
+      scan_cols.push_back(i);
     }
-    _scan_rows.add(count);
-  } while (!is_finished);
+    vector<uint32_t> entity_ids = {entity_index};
+    SubGroupID group_id = 1;
+    TsStorageIterator* iter = nullptr;
+    Defer defer{[&]() {
+      if (iter != nullptr) {
+        delete iter;
+      }
+    }};
+    stat = tbl_range->GetIterator(ctx, group_id, entity_ids, ts_spans, {}, ts_type, scan_cols, scan_cols, {}, scan_agg_types, 1, &iter, tbl_range,
+                        {}, false, false);
+    s = dump_zstatus("GetIterator", ctx, stat);
+    if (s.isNotOK()) {
+      return s;
+    }
+    ResultSet res;
+    res.setColumnNum(scan_cols.size());
+    uint32_t count = 0;
+    bool is_finished = false;
+    do {
+      stat = iter->Next(&res, &count, &is_finished);
+      s = dump_zstatus("IteratorNext", ctx, stat);
+      if (s.isNotOK()) {
+        return s;
+      }
+      if (count > 0 && !checkColValue(data_schema, res, count, params_.time_inc)) {
+        return KBStatus(StatusCode::RError, "colume value check failed.");
+      }
+      _scan_rows.add(count);
+    } while (!is_finished);
+  }
 
   KWDB_DURATION(_scan_time);
 

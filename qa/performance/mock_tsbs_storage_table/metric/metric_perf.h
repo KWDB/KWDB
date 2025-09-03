@@ -35,7 +35,7 @@ class MetricTablePerformance final {
   }
 
   int create(uint64_t table_id) {
-    table_ = new TsTable(ctx_, filesystem::path(home_) / filesystem::path(dbname_), table_id);
+    table_ = new TsTableImplctx_, filesystem::path(home_) / filesystem::path(dbname_), table_id);
     table_->Init(ctx_);
     table_->DropAll(ctx_);
 
@@ -58,7 +58,7 @@ class MetricTablePerformance final {
   }
 
   int open(uint64_t table_id) {
-    table_ = new TsTable(ctx_, filesystem::path(home_) / filesystem::path(dbname_), table_id);
+    table_ = new TsTableImpl(ctx_, filesystem::path(home_) / filesystem::path(dbname_), table_id);
     auto s = table_->Init(ctx_);
     if (s != KStatus::SUCCESS) {
       cerr << "Init failed" << endl;
@@ -98,7 +98,7 @@ class MetricTablePerformance final {
     for (auto i = 0; i < tag_.size(); ++i) {
       scan_tags.emplace_back(i);
     }
-    TagIterator *iter;
+    BaseEntityIterator *iter;
     auto s = table_->GetTagIterator(ctx, scan_tags, &iter);
     if (s != KStatus::SUCCESS) {
       cerr << "GetTagIterator failed" << endl;
