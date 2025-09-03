@@ -44,9 +44,11 @@ import (
 
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/hashrouter/api"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgcode"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgerror"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 	"gitee.com/kwbasedb/kwbase/pkg/util/stop"
+	duck "github.com/duckdb-go-bindings"
 	"github.com/pkg/errors"
 )
 
@@ -290,16 +292,30 @@ func (r *Engine) Execute(
 }
 
 // CreateConnection create new connection with ap engine.
-func (r *Engine) CreateConnection(dbName string) error {
-	if dbName != "" {
-		if err := r.ExecSql(fmt.Sprintf("USE '%s'", dbName)); err != nil {
-			return err
-		}
+func (r *Engine) CreateConnection() (*duck.Connection, error) {
+	conn := duck.Connection{}
+	db := duck.Database{Ptr: r.db}
+	state := duck.Connect(db, &conn)
+	if state != duck.StateSuccess {
+		return nil, errors.New("failed to connect to ap database")
 	}
-	return nil
+	return &conn, nil
 }
 
-func (r *Engine) DestroyConnection() {
+func (r *Engine) DestroyConnection(conn *duck.Connection) {
+	duck.Disconnect(conn)
+}
+
+// Exec execute sql in input connection.
+func (r *Engine) Exec(conn *duck.Connection, stmt string) error {
+	var res duck.Result
+	state := duck.Query(*conn, stmt, &res)
+	if state != duck.StateSuccess {
+		errMsg := duck.ResultError(&res)
+		return pgerror.New(pgcode.Warning, errMsg)
+	}
+	duck.DestroyResult(&res)
+	return nil
 }
 
 func getErrorString(rep *C.APQueryInfo) error {

@@ -78,9 +78,14 @@ func (tct *apCreateDatabase) Start(ctx context.Context) context.Context {
 
 	log.Infof(ctx, "create ap database:%s, nodeID:%d ", tct.db.Name, tct.FlowCtx.Cfg.NodeID.Get())
 	if tct.db.ApDatabaseType == tree.ApDatabaseTypeMysql {
+		conn, err := tct.FlowCtx.Cfg.GetAPEngine().CreateConnection()
+		if err != nil {
+			return ctx
+		}
+		defer tct.FlowCtx.Cfg.GetAPEngine().DestroyConnection(conn)
 		attachStmt := fmt.Sprintf("ATTACH '%s' AS %s (TYPE mysql_scanner)", tct.db.AttachInfo, tct.db.Name)
-		if err := tct.FlowCtx.Cfg.GetAPEngine().ExecSqlInDB(
-			tct.FlowCtx.EvalCtx.SessionData.Database, attachStmt); err != nil {
+		if err := tct.FlowCtx.Cfg.GetAPEngine().Exec(
+			conn, attachStmt); err != nil {
 			tct.createSuccess = false
 			tct.err = err
 			return ctx

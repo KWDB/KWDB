@@ -3208,10 +3208,14 @@ func (s *Server) attachAllApDatabase(ctx context.Context) error {
 				return err
 			}
 		}
-
+		conn, err := s.GetAPEngine().CreateConnection()
+		if err != nil {
+			return err
+		}
+		defer s.GetAPEngine().DestroyConnection(conn)
 		for _, v := range apMysqlAttachs {
 			attachStmt := fmt.Sprintf("ATTACH '%s' AS %s (TYPE mysql_scanner)", v.attachInfo, v.asName)
-			err = s.GetAPEngine().ExecSql(attachStmt)
+			err = s.GetAPEngine().Exec(conn, attachStmt)
 			if err != nil {
 				return err
 			}
