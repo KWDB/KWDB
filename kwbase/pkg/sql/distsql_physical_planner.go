@@ -1324,6 +1324,7 @@ func initAPTableReaderSpec(
 	s := physicalplan.NewAPTableReaderSpec()
 	dbName := ""
 	schemaName := ""
+	scanColumns := make([]uint32, 0)
 	dbDesc, _ := getDatabaseDescByID(planCtx.ctx, planCtx.planner.txn, n.desc.ParentID)
 	if dbDesc != nil {
 		dbName = dbDesc.Name
@@ -1337,7 +1338,7 @@ func initAPTableReaderSpec(
 			schemaName = config.Database
 		}
 	}
-	*s = execinfrapb.APTableReaderSpec{DbName: dbName, SchemaName: schemaName, TableName: n.desc.Name}
+	*s = execinfrapb.APTableReaderSpec{DbName: dbName, SchemaName: schemaName, TableName: n.desc.Name, ScanColumns: scanColumns}
 
 	//indexIdx, err := getIndexIdx(n)
 	//if err != nil {
@@ -1651,6 +1652,8 @@ func (dsp *DistSQLPlanner) createTableReaders(
 				outCols[i] = uint32(tableOrdinal(n.desc, id, n.colCfg.visibility))
 			}
 		}
+		p.Processors[pIdx].Spec.Core.ApTableReader.ScanColumns = outCols
+
 		planToStreamColMap := make([]int, len(n.cols))
 		descColumnIDs := make([]sqlbase.ColumnID, 0, len(n.desc.Columns))
 		for i := range n.desc.Columns {
