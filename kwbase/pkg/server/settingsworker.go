@@ -27,7 +27,6 @@ package server
 import (
 	"bytes"
 	"context"
-
 	"gitee.com/kwbasedb/kwbase/pkg/keys"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
 	"gitee.com/kwbasedb/kwbase/pkg/settings"
@@ -142,12 +141,21 @@ func (s *Server) refreshSettings() {
 				// This affects all start modes, and some immediate ops may block to wait
 				// for opening of tsengine. It depends on the speed of refreshing cluster
 				// setting, usually quick enough. We will optimize it later if necessary.
-				if s.tsEngine == nil {
-					log.Warningf(ctx, "ts engine is not creted")
-				} else if !s.tsEngine.IsOpen() {
+				if !s.engineHelper.TSEngineCreated() {
+					log.Warningf(ctx, "ts engine is not created")
+				} else if !s.GetTSEngine().IsOpen() {
 					log.Infof(ctx, "try open ts engine")
-					if err := s.tsEngine.Open(s.node.Descriptor.RangeIndex); err != nil {
+					if err := s.GetTSEngine().Open(s.node.Descriptor.RangeIndex); err != nil {
 						panic(errors.Errorf("failed create tsEngine, err: %+v", err))
+					}
+				}
+
+				if !s.engineHelper.APEngineCreated() {
+					log.Warningf(ctx, "ap engine is not created")
+				} else if !s.GetAPEngine().IsOpen() {
+					log.Infof(ctx, "try open ap engine")
+					if err := s.GetAPEngine().Open(s.node.Descriptor.RangeIndex); err != nil {
+						panic(errors.Errorf("failed create ap Engine, err: %+v", err))
 					}
 				}
 			case <-s.stopper.ShouldStop():

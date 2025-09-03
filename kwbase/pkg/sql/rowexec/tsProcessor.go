@@ -107,7 +107,7 @@ func (tp *tsProcessor) Start(ctx context.Context) context.Context {
 			if err != nil {
 				break
 			}
-			_, err = tp.FlowCtx.Cfg.TsEngine.DeleteEntities(uint64(toDrop.TemplateID), 1, [][]byte{primaryTag}, true, 0)
+			_, err = tp.FlowCtx.Cfg.GetTSEngine().DeleteEntities(uint64(toDrop.TemplateID), 1, [][]byte{primaryTag}, true, 0)
 			if err != nil {
 				break
 			}
@@ -115,7 +115,7 @@ func (tp *tsProcessor) Start(ctx context.Context) context.Context {
 	case execinfrapb.OperatorType_TsDropTsTable:
 		errPrefix = "drop timeseries table failed, reason:%s"
 		for _, toDrop := range tp.dropMEInfo {
-			err = tp.FlowCtx.Cfg.TsEngine.DropTsTable(uint64(toDrop.TableID))
+			err = tp.FlowCtx.Cfg.GetTSEngine().DropTsTable(uint64(toDrop.TableID))
 			if err != nil {
 				break
 			}
@@ -123,7 +123,7 @@ func (tp *tsProcessor) Start(ctx context.Context) context.Context {
 	case execinfrapb.OperatorType_TsDeleteExpiredData:
 		errPrefix = "Delete Expired Data Failed, reason:%s"
 		for _, toDrop := range tp.dropMEInfo {
-			err = tp.FlowCtx.Cfg.TsEngine.DeleteExpiredData(uint64(toDrop.TableID), toDrop.StartTs, toDrop.EndTs)
+			err = tp.FlowCtx.Cfg.GetTSEngine().DeleteExpiredData(uint64(toDrop.TableID), toDrop.StartTs, toDrop.EndTs)
 			if err != nil {
 				log.Errorf(context.Background(), "Delete Expired Data Failed, tableID:%d, reason:%s \n", toDrop.TableID, err.Error())
 			}
@@ -131,7 +131,7 @@ func (tp *tsProcessor) Start(ctx context.Context) context.Context {
 	case execinfrapb.OperatorType_TsCompressTsTable:
 		errPrefix = "Compress TS Table Failed, reason:%s"
 		for _, toDrop := range tp.dropMEInfo {
-			err = tp.FlowCtx.Cfg.TsEngine.CompressTsTable(uint64(toDrop.TableID), toDrop.CompressTs)
+			err = tp.FlowCtx.Cfg.GetTSEngine().CompressTsTable(uint64(toDrop.TableID), toDrop.CompressTs)
 			if err != nil {
 				log.Errorf(context.Background(), "Compress TS Table Failed, tableID:%d, reason:%s \n", toDrop.TableID, err.Error())
 			}
@@ -140,7 +140,7 @@ func (tp *tsProcessor) Start(ctx context.Context) context.Context {
 		errPrefix = "Compress data manually failed, reason:%s"
 		for _, toDrop := range tp.dropMEInfo {
 			if toDrop.IsTSTable {
-				err = tp.FlowCtx.Cfg.TsEngine.CompressImmediately(tp.Ctx, uint64(toDrop.TableID))
+				err = tp.FlowCtx.Cfg.GetTSEngine().CompressImmediately(tp.Ctx, uint64(toDrop.TableID))
 				if err != nil {
 					log.Errorf(ctx, "Compress Table Failed, tableID:%d, reason:%s", toDrop.TableID, err.Error())
 				}
@@ -150,7 +150,7 @@ func (tp *tsProcessor) Start(ctx context.Context) context.Context {
 	case execinfrapb.OperatorType_TsAutonomy:
 		errPrefix = "Autonomy TS Table Failed, reason:%s"
 		for _, table := range tp.dropMEInfo {
-			err = tp.FlowCtx.Cfg.TsEngine.TsTableAutonomy(uint64(table.TableID))
+			err = tp.FlowCtx.Cfg.GetTSEngine().TsTableAutonomy(uint64(table.TableID))
 			if err != nil {
 				log.Errorf(context.Background(), "Autonomy TS Table Failed, tableID:%d, reason:%s \n", table.TableID, err.Error())
 			}
@@ -158,7 +158,7 @@ func (tp *tsProcessor) Start(ctx context.Context) context.Context {
 	case execinfrapb.OperatorType_TsVacuum:
 		errPrefix = "Vacuum TS Table Failed, reason:%s"
 		for _, table := range tp.dropMEInfo {
-			err = tp.FlowCtx.Cfg.TsEngine.VacuumTsTable(uint64(table.TableID), table.TsVersion)
+			err = tp.FlowCtx.Cfg.GetTSEngine().VacuumTsTable(uint64(table.TableID), table.TsVersion)
 			if err != nil {
 				log.Errorf(context.Background(), "Vacuum TS Table Failed, tableID:%d, reason:%s \n", table.TableID, err.Error())
 			}
@@ -166,7 +166,7 @@ func (tp *tsProcessor) Start(ctx context.Context) context.Context {
 	case execinfrapb.OperatorType_TsCount:
 		errPrefix = "Count TS Table Failed, reason:%s"
 		for _, table := range tp.dropMEInfo {
-			err = tp.FlowCtx.Cfg.TsEngine.CountTsTable(uint64(table.TableID))
+			err = tp.FlowCtx.Cfg.GetTSEngine().CountTsTable(uint64(table.TableID))
 			if err != nil {
 				log.Errorf(context.Background(), "Count TS Table Failed, tableID:%d, reason:%s \n", table.TableID, err.Error())
 			}

@@ -25,6 +25,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"gitee.com/kwbasedb/kwbase/pkg/engine/tse"
 	"gitee.com/kwbasedb/kwbase/pkg/kv"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfra"
@@ -34,7 +35,6 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/types"
 	"gitee.com/kwbasedb/kwbase/pkg/storage/cloud"
-	"gitee.com/kwbasedb/kwbase/pkg/tse"
 	"gitee.com/kwbasedb/kwbase/pkg/util/ctxgroup"
 	"gitee.com/kwbasedb/kwbase/pkg/util/encoding/csv"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
@@ -764,7 +764,7 @@ func (t *timeSeriesImportInfo) ingest(
 				}
 			}
 		}
-		resp, _, err := t.flowCtx.Cfg.TsEngine.PutData(uint64(t.tbID), [][]byte{payload}, uint64(0), t.writeWAL)
+		resp, _, err := t.flowCtx.Cfg.GetTSEngine().PutData(uint64(t.tbID), [][]byte{payload}, uint64(0), t.writeWAL)
 		if err != nil {
 			for i := range datums {
 				cols := datums[i]

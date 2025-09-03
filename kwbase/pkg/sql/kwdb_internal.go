@@ -39,6 +39,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/build"
 	"gitee.com/kwbasedb/kwbase/pkg/clusterversion"
 	"gitee.com/kwbasedb/kwbase/pkg/config/zonepb"
+	"gitee.com/kwbasedb/kwbase/pkg/engine/tse"
 	"gitee.com/kwbasedb/kwbase/pkg/gossip"
 	"gitee.com/kwbasedb/kwbase/pkg/jobs"
 	"gitee.com/kwbasedb/kwbase/pkg/keys"
@@ -4000,7 +4001,7 @@ CREATE TABLE kwdb_internal.kwdb_tse_info (
 `,
 	populate: func(ctx context.Context, p *planner, dbContext *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
 
-		walLevel, err := p.ExecCfg().TsEngine.GetWalLevel()
+		walLevel, err := p.ExecCfg().EngineHelper.GetTSEngine().(*tse.TsEngine).GetWalLevel()
 		if err != nil {
 			return err
 		}

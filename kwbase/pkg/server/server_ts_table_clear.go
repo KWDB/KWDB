@@ -39,7 +39,7 @@ func (s *Server) startTSTableGC(ctx context.Context) {
 		for {
 			select {
 			case <-timer.C:
-				err := s.tsEngine.DropLeftTsTableGarbage()
+				err := s.GetTSEngine().DropLeftTsTableGarbage()
 				if err != nil {
 					log.Error(ctx, err)
 				}

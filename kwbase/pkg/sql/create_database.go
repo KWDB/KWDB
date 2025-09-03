@@ -29,6 +29,7 @@ import (
 	"fmt"
 	"strings"
 
+	"gitee.com/kwbasedb/kwbase/pkg/jobs/jobspb"
 	"gitee.com/kwbasedb/kwbase/pkg/keys"
 	"gitee.com/kwbasedb/kwbase/pkg/security"
 	"gitee.com/kwbasedb/kwbase/pkg/server/telemetry"
@@ -40,6 +41,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqltelemetry"
 	"gitee.com/kwbasedb/kwbase/pkg/util/errorutil/unimplemented"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
+	"github.com/cockroachdb/errors"
 )
 
 // MaxTSDBNameLength represents the maximum length of ts database name.
@@ -121,6 +123,8 @@ func (n *createDatabaseNode) startExec(params runParams) error {
 	log.Infof(params.ctx, "create database %s start, type: %s", n.n.Name, tree.EngineName(n.n.EngineType))
 	desc := makeDatabaseDesc(n.n)
 	desc.EngineType = n.n.EngineType
+	desc.ApDatabaseType = n.n.ApDatabaseType
+	desc.AttachInfo = n.n.AttachInfo
 
 	// deal with the retentions of ts database
 	if n.n.TSDatabase.DownSampling != nil {
@@ -184,15 +188,27 @@ func (n *createDatabaseNode) startExec(params runParams) error {
 		}
 	}
 	if desc.EngineType == tree.EngineTypeAP {
-		apEngine := params.p.DistSQLPlanner().distSQLSrv.ServerConfig.ApEngine
-		conn, err := apEngine.CreateConnection("")
+		// Create a Job to perform the second stage of ts DDL.
+		syncDetail := jobspb.SyncMetaCacheDetails{
+			Type:     createKwdbAPDatabase,
+			Database: desc,
+		}
+		jobID, err := params.p.createTSSchemaChangeJob(params.ctx, syncDetail, tree.AsStringWithFQNames(n.n, params.Ann()), params.p.txn)
 		if err != nil {
+			return errors.Wrap(err, "createSyncMetaCacheJob failed")
+		}
+		// Actively commit a transaction, and read/write system table operations
+		// need to be performed before this.
+		if err := params.p.txn.Commit(params.ctx); err != nil {
 			return err
 		}
-		defer apEngine.DestroyConnection(conn)
-		err = apEngine.AttachDatabase(conn, desc.Name)
-		if err != nil {
-			return err
+		// After the transaction commits successfully, execute the Job and wait for it to complete.
+		if err = params.ExecCfg().JobRegistry.Run(
+			params.ctx,
+			params.extendedEvalCtx.InternalExecutor.(*InternalExecutor),
+			[]int64{jobID},
+		); err != nil {
+			return errors.Wrap(err, "createSyncMetaCacheJob run failed")
 		}
 	}
 	log.Infof(params.ctx, "create database %s finished, type: %s, id: %d", desc.Name, tree.EngineName(n.n.EngineType), desc.ID)

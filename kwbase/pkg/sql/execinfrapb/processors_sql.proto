@@ -183,6 +183,8 @@ enum OperatorType {
   TsDropTagIndex = 24;
   TsAlterTagIndex = 25;
   TsCount = 26;
+  APCreateDatabase = 27;
+  APCreateTable = 28;
 }
 
 // TsInsertSelSpec build payLoads for TsInsert
@@ -260,6 +262,15 @@ message TsCreateTableProSpec {
   optional uint64 tsTableID = 1[(gogoproto.nullable) = false];
   optional bytes meta = 2;
   optional uint64 hashNum = 3[(gogoproto.nullable) = false];
+}
+
+message APCreateDatabaseProSpec {
+  optional sqlbase.DatabaseDescriptor database = 1 [(gogoproto.nullable) = false];
+}
+
+message APCreateTableProSpec {
+  optional string dbName = 1[(gogoproto.nullable) = false];
+  optional string createStatement = 2 [(gogoproto.nullable) = false];
 }
 
 message TsProSpec {

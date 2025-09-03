@@ -28,10 +28,11 @@ package execinfra
 
 import (
 	"context"
-
-	"gitee.com/kwbasedb/kwbase/pkg/ape"
 	"gitee.com/kwbasedb/kwbase/pkg/base"
 	"gitee.com/kwbasedb/kwbase/pkg/cdc/cdcpb"
+	"gitee.com/kwbasedb/kwbase/pkg/engine"
+	"gitee.com/kwbasedb/kwbase/pkg/engine/ape"
+	"gitee.com/kwbasedb/kwbase/pkg/engine/tse"
 	"gitee.com/kwbasedb/kwbase/pkg/gossip"
 	"gitee.com/kwbasedb/kwbase/pkg/jobs"
 	"gitee.com/kwbasedb/kwbase/pkg/kv"
@@ -51,7 +52,6 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/storage/cloud"
 	"gitee.com/kwbasedb/kwbase/pkg/storage/fs"
 	"gitee.com/kwbasedb/kwbase/pkg/tscoord"
-	"gitee.com/kwbasedb/kwbase/pkg/tse"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 	"gitee.com/kwbasedb/kwbase/pkg/util/mon"
 	"gitee.com/kwbasedb/kwbase/pkg/util/stop"
@@ -118,6 +118,16 @@ var SettingWorkMemBytes = settings.RegisterByteSizeSetting(
 	64*1024*1024, /* 64MB */
 )
 
+// GetTSEngine gets ts engine
+func (c *ServerConfig) GetTSEngine() *tse.TsEngine {
+	return c.EngineHelper.GetTSEngine().(*tse.TsEngine)
+}
+
+// GetAPEngine gets ap engine
+func (c *ServerConfig) GetAPEngine() *ape.Engine {
+	return c.EngineHelper.GetAPEngine().(*ape.Engine)
+}
+
 // ServerConfig encompasses the configuration required to create a
 // DistSQLServer.
 type ServerConfig struct {
@@ -158,11 +168,8 @@ type ServerConfig struct {
 	// working set is larger than can be stored in memory.
 	TempFS fs.FS
 
-	// TsEngine is a ts engine
-	TsEngine *tse.TsEngine
-
-	// ApEngine is a ap engine
-	ApEngine *ape.ApEngine
+	// EngineHelper is a ts engine
+	EngineHelper engine.Helper
 
 	// StatsRefresher is a refresher of statistic
 	StatsRefresher *stats.Refresher

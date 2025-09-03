@@ -1595,11 +1595,6 @@ if(NOT CLANG_TIDY)
   endif()
 endif()
 
-# Write the export set for build and install tree
-# install(EXPORT "${DUCKDB_EXPORT_SET}" DESTINATION "${INSTALL_CMAKE_DIR}")
-export(EXPORT "${DUCKDB_EXPORT_SET}"
-       FILE "${PROJECT_BINARY_DIR}/${DUCKDB_EXPORT_SET}.cmake")
-
 # Only write the cmake package configuration if the templates exist
 set(CMAKE_CONFIG_TEMPLATE "${CMAKE_CURRENT_SOURCE_DIR}/DuckDBConfig.cmake.in")
 set(CMAKE_CONFIG_VERSION_TEMPLATE

@@ -76,6 +76,8 @@ const (
 	dropTagIndex
 	alterTagIndex
 	count
+	createKwdbAPDatabase
+	createKwdbAPTable
 )
 
 // tsSchemaChangeResumer implements the jobs.Resumer interface for syncMetaCache
@@ -308,7 +310,17 @@ func (sw *TSSchemaChangeWorker) handleResult(
 			if syncErr != nil {
 				log.Infof(ctx, "TS SchemaChange job(create table) failed, reason: %s", syncErr.Error())
 			}
-			//updateErr = p.handleCreateTSTable(ctx, d.SNTable, syncErr)
+		//updateErr = p.handleCreateTSTable(ctx, d.SNTable, syncErr)
+		case createKwdbAPTable:
+			if syncErr != nil {
+				log.Infof(ctx, "create ap table job failed, reason: %s", syncErr.Error())
+			}
+			updateErr = p.handleCreateAPTable(ctx, d.SNTable, syncErr)
+		case createKwdbAPDatabase:
+			if syncErr != nil {
+				log.Infof(ctx, "create ap database job failed, reason: %s", syncErr.Error())
+			}
+			updateErr = p.handleCreateAPDatabase(ctx, d.Database, syncErr)
 		//case dropKwdbTsTable:
 		//	updateErr = p.handleDropTsTable(ctx, d.SNTable, sw.jobRegistry, syncErr)
 		//case dropKwdbTsDatabase:
@@ -681,6 +693,71 @@ func (p *planner) handleCreateInsTable(
 	return updateErr
 }
 
+// handleCreateAPTable processes metadata based on the result of AE execution.
+// If create table success, change tableState to PUBLIC.
+// If create table fails, rollback the metadata.
+func (p *planner) handleCreateAPTable(
+	ctx context.Context, tab sqlbase.TableDescriptor, syncErr error,
+) error {
+	updateErr := p.ExecCfg().DB.Txn(ctx, func(ctx context.Context, txn *kv.Txn) error {
+		p.txn = txn
+		tableDesc := sqlbase.NewMutableExistingTableDescriptor(tab)
+		// if create table success, chang table state to public.
+		// else if create table failed, delete table descriptor.
+		if syncErr != nil {
+			b := p.txn.NewBatch()
+			// remove table from namespace
+			if txnErr := sqlbase.RemoveObjectNamespaceEntry(
+				ctx, p.txn, tableDesc.GetParentID(), keys.PublicSchemaID, tableDesc.Name, false,
+			); txnErr != nil {
+				return txnErr
+			}
+			// remove descriptor
+			descKey := sqlbase.MakeDescMetadataKey(tableDesc.ID)
+			b.Del(descKey)
+			if txnErr := p.txn.Run(ctx, b); txnErr != nil {
+				return txnErr
+			}
+		} else {
+			tableDesc.State = sqlbase.TableDescriptor_PUBLIC
+			if txnErr := p.writeTableDesc(ctx, tableDesc); txnErr != nil {
+				return txnErr
+			}
+		}
+		return nil
+	})
+	return updateErr
+}
+
+// handleCreateAPDatabase processes metadata based on the result of AE execution.
+// If create database fails, rollback the metadata.
+func (p *planner) handleCreateAPDatabase(
+	ctx context.Context, db sqlbase.DatabaseDescriptor, syncErr error,
+) error {
+	updateErr := p.ExecCfg().DB.Txn(ctx, func(ctx context.Context, txn *kv.Txn) error {
+		p.txn = txn
+		// if create table success, chang table state to public.
+		// else if create table failed, delete table descriptor.
+		if syncErr != nil {
+			b := p.txn.NewBatch()
+			// remove table from namespace
+			if txnErr := sqlbase.RemoveObjectNamespaceEntry(
+				ctx, p.txn, keys.RootNamespaceID, keys.RootNamespaceID, db.Name, false,
+			); txnErr != nil {
+				return txnErr
+			}
+			// remove descriptor
+			descKey := sqlbase.MakeDescMetadataKey(db.ID)
+			b.Del(descKey)
+			if txnErr := p.txn.Run(ctx, b); txnErr != nil {
+				return txnErr
+			}
+		}
+		return nil
+	})
+	return updateErr
+}
+
 // handleCreateTSTable processes metadata based on the result of AE execution.
 // If create table success, change tableState to PUBLIC.
 // If create table fails, rollback the metadata.
@@ -839,6 +916,28 @@ func (sw *TSSchemaChangeWorker) makeAndRunDistPlan(
 		var nodeList []roachpb.NodeID
 		var retErr error
 		nodeList, retErr = api.GetTableNodeIDs(ctx, sw.db, uint32(d.SNTable.GetID()), d.SNTable.TsTable.HashNum)
+		if retErr != nil {
+			return retErr
+		}
+		log.Infof(ctx, "create table on nodes list: %v", nodeList)
+		newPlanNode = &tsDDLNode{d: d, nodeID: nodeList}
+	case createKwdbAPDatabase:
+		log.Infof(ctx, "%s job start, name: %s, id: %d, jobID: %d",
+			opType, d.Database.Name, d.Database.ID, sw.job.ID())
+		var nodeList []roachpb.NodeID
+		var retErr error
+		nodeList, retErr = api.GetHealthyNodeIDs(ctx)
+		if retErr != nil {
+			return retErr
+		}
+		log.Infof(ctx, "create ap database on nodes list: %v", nodeList)
+		newPlanNode = &tsDDLNode{d: d, nodeID: nodeList}
+	case createKwdbAPTable:
+		log.Infof(ctx, "%s job start, name: %s, id: %d, jobID: %d",
+			opType, d.SNTable.Name, d.SNTable.ID, sw.job.ID())
+		var nodeList []roachpb.NodeID
+		var retErr error
+		nodeList, retErr = api.GetHealthyNodeIDs(ctx)
 		if retErr != nil {
 			return retErr
 		}
@@ -1094,6 +1193,10 @@ func getDDLOpType(op int32) string {
 		return "drop tag index"
 	case count:
 		return "count"
+	case createKwdbAPDatabase:
+		return "create ap database"
+	case createKwdbAPTable:
+		return "create ap table"
 	}
 	return ""
 }

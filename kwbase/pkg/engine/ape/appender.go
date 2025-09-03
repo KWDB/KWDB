@@ -39,29 +39,26 @@ type DataChunk struct {
 	size int
 }
 
-func DuckInsert(ctx context.Context, r *ApEngine, dbName, tabName string, rowVals []tree.Datums) error {
-	fmt.Println("DuckInsert start")
-	//db := duck.Database{}
-	//var state duck.State
-	//state = duck.Open(r.DbPath+"/"+dbName, &db)
+func DuckInsert(ctx context.Context, r *Engine, dbName, tabName string, rowVals []tree.Datums) error {
+	// fmt.Println("DuckInsert start")
+	db := duck.Database{Ptr: r.db}
+	var state duck.State
+	//state = duck.Open(r.GetDBPath()+"/"+dbName, &db)
 	//if state != duck.StateSuccess {
 	//	return errors.New(fmt.Sprintf("failed to opend the ap database \"%s\"" + dbName))
 	//}
 	//
-	//conn := duck.Connection{}
-	//state = duck.Connect(db, &conn)
-	//if state != duck.StateSuccess {
-	//	return pgerror.Newf(pgcode.Internal, "failed to connect to ap database \"%s\""+dbName)
-	//}
-	//defer func() {
-	//	duck.Disconnect(&conn)
-	//}()
-	conn, err := r.CreateConnection(dbName)
-	if err != nil {
-		return pgerror.Newf(pgcode.Internal, "could not create new connection: %s", err.Error())
+	conn := duck.Connection{}
+	state = duck.Connect(db, &conn)
+	if state != duck.StateSuccess {
+		return pgerror.Newf(pgcode.Internal, "failed to connect to ap database \"%s\""+dbName)
 	}
-	defer r.DestroyConnection(conn)
-	a, err := NewAppender(conn, dbName, "main", tabName)
+	defer func() {
+		duck.Disconnect(&conn)
+		//	duck.Close(&db)
+	}()
+	//conn := duck.Connection{Ptr: r.conn}
+	a, err := NewAppender(&conn, dbName, tree.PublicSchema, tabName)
 	if err != nil {
 		return pgerror.Newf(pgcode.Internal, "could not create new appender: %s", err.Error())
 	}

@@ -2894,9 +2894,6 @@ type EvalPlanner interface {
 
 	// GetStmt return stmt
 	GetStmt() string
-
-	// GetApEngine returns ap engine.
-	GetApEngine() interface{}
 }
 
 // EvalSessionAccessor is a limited interface to access session variables.

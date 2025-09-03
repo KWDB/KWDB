@@ -34,6 +34,7 @@ import (
 	"sort"
 	"strings"
 
+	"gitee.com/kwbasedb/kwbase/pkg/engine/tse"
 	"gitee.com/kwbasedb/kwbase/pkg/gossip"
 	"gitee.com/kwbasedb/kwbase/pkg/keys"
 	"gitee.com/kwbasedb/kwbase/pkg/kv"
@@ -68,6 +69,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/util/timeutil"
 	"gitee.com/kwbasedb/kwbase/pkg/util/uuid"
 	"github.com/cockroachdb/errors"
+	"github.com/jackc/pgx"
 	"github.com/lib/pq/oid"
 )
 
@@ -772,7 +774,7 @@ func (p *PlanningCtx) GetTsDop() int32 {
 	// Returns the parallel num estimated based on statistics
 	// and system resource(number of wait threads in the execution pool)
 	if memo := p.planner.curPlan.mem; memo != nil {
-		waitThreadNum, err := p.planner.ExecCfg().TsEngine.TSGetWaitThreadNum()
+		waitThreadNum, err := p.planner.ExecCfg().EngineHelper.GetTSEngine().(*tse.TsEngine).TSGetWaitThreadNum()
 		if err != nil {
 			return sqlbase.DefaultDop
 		}
@@ -1322,11 +1324,21 @@ func initAPTableReaderSpec(
 	s := physicalplan.NewAPTableReaderSpec()
 	dbName := ""
 	schemaName := ""
-	database, _ := getDatabaseDescByID(planCtx.ctx, planCtx.planner.txn, n.desc.ParentID)
-	if database != nil {
-		dbName = database.Name
+	scanColumns := make([]uint32, 0)
+	dbDesc, _ := getDatabaseDescByID(planCtx.ctx, planCtx.planner.txn, n.desc.ParentID)
+	if dbDesc != nil {
+		dbName = dbDesc.Name
+		switch dbDesc.ApDatabaseType {
+		case tree.ApDatabaseTypeDuckDB:
+		case tree.ApDatabaseTypeMysql:
+			config, err := pgx.ParseDSN(dbDesc.AttachInfo)
+			if err != nil {
+				return nil, execinfrapb.PostProcessSpec{}, err
+			}
+			schemaName = config.Database
+		}
 	}
-	*s = execinfrapb.APTableReaderSpec{DbName: dbName, SchemaName: schemaName, TableName: n.desc.Name}
+	*s = execinfrapb.APTableReaderSpec{DbName: dbName, SchemaName: schemaName, TableName: n.desc.Name, ScanColumns: scanColumns}
 
 	//indexIdx, err := getIndexIdx(n)
 	//if err != nil {
@@ -1640,6 +1652,8 @@ func (dsp *DistSQLPlanner) createTableReaders(
 				outCols[i] = uint32(tableOrdinal(n.desc, id, n.colCfg.visibility))
 			}
 		}
+		p.Processors[pIdx].Spec.Core.ApTableReader.ScanColumns = outCols
+
 		planToStreamColMap := make([]int, len(n.cols))
 		descColumnIDs := make([]sqlbase.ColumnID, 0, len(n.desc.Columns))
 		for i := range n.desc.Columns {
@@ -2961,6 +2975,17 @@ func (dsp *DistSQLPlanner) createTSDDL(planCtx *PlanningCtx, n *tsDDLNode) (Phys
 			tsCreate.HashNum = n.d.SNTable.TsTable.HashNum
 			proc.Spec.Core = execinfrapb.ProcessorCoreUnion{TsCreate: tsCreate}
 			p.TsOperator = execinfrapb.OperatorType_TsCreateTable
+		case createKwdbAPDatabase:
+			var apCreateDatabase = &execinfrapb.APCreateDatabaseProSpec{}
+			apCreateDatabase.Database = n.d.Database
+			proc.Spec.Core = execinfrapb.ProcessorCoreUnion{ApCreateDatabase: apCreateDatabase}
+			p.TsOperator = execinfrapb.OperatorType_APCreateDatabase
+		case createKwdbAPTable:
+			var apCreateTable = &execinfrapb.APCreateTableProSpec{}
+			apCreateTable.DbName = n.d.Database.Name
+			apCreateTable.CreateStatement = n.d.APStatement
+			proc.Spec.Core = execinfrapb.ProcessorCoreUnion{ApCreateTable: apCreateTable}
+			p.TsOperator = execinfrapb.OperatorType_APCreateTable
 		//case dropKwdbTsTable, dropKwdbInsTable, dropKwdbTsDatabase:
 		//	var tsDrop = &execinfrapb.TsProSpec{}
 		//	tsDrop.DropMEInfo = n.d.DropMEInfo

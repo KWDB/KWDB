@@ -958,6 +958,20 @@ func (r *DistSQLReceiver) Push(
 				r.resultWriter.SetError(err)
 			}
 		}
+		if meta.APCreateDatabase != nil {
+			r.status = execinfra.ConsumerClosed
+			if !meta.APCreateDatabase.CreateSuccess {
+				err := errors.Newf("create ap database failed, reason:%s", meta.APCreateDatabase.CreateErr)
+				r.resultWriter.SetError(err)
+			}
+		}
+		if meta.APCreateTable != nil {
+			r.status = execinfra.ConsumerClosed
+			if !meta.APCreateTable.CreateSuccess {
+				err := errors.Newf("create ap table failed, reason:%s", meta.APCreateTable.CreateErr)
+				r.resultWriter.SetError(err)
+			}
+		}
 		if meta.TsPro != nil {
 			r.status = execinfra.ConsumerClosed
 			if !meta.TsPro.Success {

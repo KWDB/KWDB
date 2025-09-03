@@ -62,6 +62,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/util/hlc"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 	"github.com/cockroachdb/errors"
+	"github.com/jackc/pgx"
 	"github.com/lib/pq/oid"
 )
 
@@ -518,6 +519,9 @@ func (n *createTableNode) startExec(params runParams) error {
 			desc.TsTable.PartitionInterval = n.dbDesc.TsDb.PartitionInterval
 		}
 	}
+	if desc.IsColumnBasedTable() {
+		desc.State = sqlbase.TableDescriptor_ADD
+	}
 
 	// Descriptor written to store here.
 	if err := params.p.createDescriptorWithID(
@@ -691,20 +695,43 @@ func (n *createTableNode) startExec(params runParams) error {
 	}
 	if desc.IsColumnBasedTable() {
 		if schemaID == keys.PublicSchemaID {
-			n.n.Table.SchemaName = tree.MainSchemaName
+			switch n.dbDesc.ApDatabaseType {
+			case tree.ApDatabaseTypeDuckDB:
+				n.n.Table.SchemaName = tree.PublicSchemaName
+			case tree.ApDatabaseTypeMysql:
+				config, err := pgx.ParseDSN(n.dbDesc.AttachInfo)
+				if err != nil {
+					return err
+				}
+				n.n.Table.SchemaName = tree.Name(config.Database)
+			}
 		}
 		n.n.Table.ExplicitSchema = true
 		n.n.Table.ExplicitCatalog = true
 		createStmt := n.n.String()
-		apEngine := params.p.DistSQLPlanner().distSQLSrv.ServerConfig.ApEngine
-		conn, err := apEngine.CreateConnection("")
+		// Create a Job to perform the second stage of ts DDL.
+		syncDetail := jobspb.SyncMetaCacheDetails{
+			Type:        createKwdbAPTable,
+			SNTable:     desc.TableDescriptor,
+			Database:    *n.dbDesc,
+			APStatement: createStmt,
+		}
+		jobID, err := params.p.createTSSchemaChangeJob(params.ctx, syncDetail, tree.AsStringWithFQNames(n.n, params.Ann()), params.p.txn)
 		if err != nil {
+			return errors.Wrap(err, "createSyncMetaCacheJob failed")
+		}
+		// Actively commit a transaction, and read/write system table operations
+		// need to be performed before this.
+		if err := params.p.txn.Commit(params.ctx); err != nil {
 			return err
 		}
-		defer apEngine.DestroyConnection(conn)
-		err = apEngine.Exec(conn, createStmt)
-		if err != nil {
-			return pgerror.Newf(pgcode.Warning, "create ap table %s failed: %s", n.n.Table.String(), err.Error())
+		// After the transaction commits successfully, execute the Job and wait for it to complete.
+		if err = params.ExecCfg().JobRegistry.Run(
+			params.ctx,
+			params.extendedEvalCtx.InternalExecutor.(*InternalExecutor),
+			[]int64{jobID},
+		); err != nil {
+			return errors.Wrap(err, "createSyncMetaCacheJob run failed")
 		}
 	}
 	if desc.IsTSTable() {

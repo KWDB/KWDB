@@ -38,13 +38,13 @@ import (
 	"time"
 	"unsafe"
 
+	"gitee.com/kwbasedb/kwbase/pkg/engine/tse"
 	"gitee.com/kwbasedb/kwbase/pkg/kv"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfra"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfrapb"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/types"
-	"gitee.com/kwbasedb/kwbase/pkg/tse"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 	"gitee.com/kwbasedb/kwbase/pkg/util/protoutil"
 	"gitee.com/kwbasedb/kwbase/pkg/util/syncutil"
@@ -194,7 +194,7 @@ func (ttr *TsTableReader) initTableReader(
 	var info tse.TsQueryInfo
 	info.Handle = nil
 	info.Buf = []byte("init ts handle")
-	respInfo, err := ttr.FlowCtx.Cfg.TsEngine.InitTsHandle(&ctx, info)
+	respInfo, err := ttr.FlowCtx.Cfg.EngineHelper.GetTSEngine().(*tse.TsEngine).InitTsHandle(&ctx, info)
 	if err != nil {
 		log.Warning(ctx, err)
 		return err
@@ -253,7 +253,7 @@ func (ttr *TsTableReader) Next() (sqlbase.EncDatumRow, *execinfrapb.ProducerMeta
 			}
 
 			// Execute query to get next batch of data
-			respInfo, err := ttr.FlowCtx.Cfg.TsEngine.NextTsFlow(&(ttr.Ctx), tsQueryInfo)
+			respInfo, err := ttr.FlowCtx.Cfg.EngineHelper.GetTSEngine().(*tse.TsEngine).NextTsFlow(&(ttr.Ctx), tsQueryInfo)
 			// Collect statistics (if enabled)
 			if ttr.collected {
 				ttr.updateStatsList(&respInfo)
@@ -304,7 +304,7 @@ func (ttr *TsTableReader) NextPgWire() (val []byte, code int, err error) {
 			ttr.initStatsCollector(&tsQueryInfo)
 		}
 
-		respInfo, err := ttr.FlowCtx.Cfg.TsEngine.NextTsFlowPgWire(&(ttr.Ctx), tsQueryInfo)
+		respInfo, err := ttr.FlowCtx.Cfg.EngineHelper.GetTSEngine().(*tse.TsEngine).NextTsFlowPgWire(&(ttr.Ctx), tsQueryInfo)
 
 		// Collect statistics (if enabled)
 		if ttr.collected {
@@ -365,7 +365,7 @@ func (ttr *TsTableReader) DropHandle(ctx context.Context) {
 		var tsCloseInfo tse.TsQueryInfo
 		tsCloseInfo.Handle = ttr.tsHandle
 		tsCloseInfo.Buf = []byte("close tsflow")
-		closeErr := ttr.FlowCtx.Cfg.TsEngine.CloseTsFlow(&(ttr.Ctx), tsCloseInfo)
+		closeErr := ttr.FlowCtx.Cfg.EngineHelper.GetTSEngine().(*tse.TsEngine).CloseTsFlow(&(ttr.Ctx), tsCloseInfo)
 		if closeErr != nil {
 			log.Warning(ctx, closeErr)
 		}
@@ -412,7 +412,7 @@ func (ttr *TsTableReader) setupTsFlow(ctx context.Context) error {
 		SQL:      ttr.EvalCtx.Planner.GetStmt(),
 	}
 
-	respInfo, err := ttr.FlowCtx.Cfg.TsEngine.SetupTsFlow(&(ttr.Ctx), tsQueryInfo)
+	respInfo, err := ttr.FlowCtx.Cfg.EngineHelper.GetTSEngine().(*tse.TsEngine).SetupTsFlow(&(ttr.Ctx), tsQueryInfo)
 	if err != nil {
 		if ttr.FlowCtx != nil {
 			ttr.FlowCtx.TsHandleBreak = true

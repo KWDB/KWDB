@@ -28,7 +28,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"gitee.com/kwbasedb/kwbase/pkg/ape"
 	"net"
 	"net/url"
 	"reflect"
@@ -41,6 +40,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/base"
 	"gitee.com/kwbasedb/kwbase/pkg/config"
 	"gitee.com/kwbasedb/kwbase/pkg/config/zonepb"
+	"gitee.com/kwbasedb/kwbase/pkg/engine"
 	"gitee.com/kwbasedb/kwbase/pkg/gossip"
 	"gitee.com/kwbasedb/kwbase/pkg/jobs"
 	"gitee.com/kwbasedb/kwbase/pkg/kv"
@@ -68,7 +68,6 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/stats"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/types"
-	"gitee.com/kwbasedb/kwbase/pkg/tse"
 	"gitee.com/kwbasedb/kwbase/pkg/util/bitarray"
 	"gitee.com/kwbasedb/kwbase/pkg/util/duration"
 	"gitee.com/kwbasedb/kwbase/pkg/util/errorutil/unimplemented"
@@ -682,11 +681,8 @@ type ExecutorConfig struct {
 	// TSWhiteListMap bo_white_list to map
 	TSWhiteListMap *sqlbase.WhiteListMap
 
-	// TsEngine is a ts engine
-	TsEngine *tse.TsEngine
-
-	// ApEngine is a ap engine
-	ApEngine *ape.ApEngine
+	// EngineHelper is a ts engine
+	EngineHelper engine.Helper
 
 	// UDFCache is user defined functions
 	UDFCache *UDFCache

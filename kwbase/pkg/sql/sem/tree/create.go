@@ -73,6 +73,16 @@ func EngineName(e EngineType) string {
 	return engine
 }
 
+// ApDatabaseType specifies type of database in ap engine.
+type ApDatabaseType int
+
+const (
+	// ApDatabaseTypeDuckDB represents a duckdb database in ap engine.
+	ApDatabaseTypeDuckDB ApDatabaseType = 0
+	// ApDatabaseTypeMysql represents a mysql database in ap engine.
+	ApDatabaseTypeMysql ApDatabaseType = 1
+)
+
 // TSDatabase represents information about the timing database.
 type TSDatabase struct {
 	// DownSampling rules when create ts database including retentions, keep duration and method
@@ -82,25 +92,34 @@ type TSDatabase struct {
 
 // CreateDatabase represents a CREATE DATABASE statement.
 type CreateDatabase struct {
-	IfNotExists bool
-	Name        Name
-	Template    string
-	Encoding    string
-	Collate     string
-	CType       string
-	EngineType  EngineType
-	TSDatabase  TSDatabase
-	Comment     string
+	IfNotExists    bool
+	Name           Name
+	Template       string
+	Encoding       string
+	Collate        string
+	CType          string
+	EngineType     EngineType
+	ApDatabaseType ApDatabaseType
+	AttachInfo     string
+	TSDatabase     TSDatabase
+	Comment        string
 }
 
 // Format implements the NodeFormatter interface.
 func (node *CreateDatabase) Format(ctx *FmtCtx) {
 	ctx.WriteString("CREATE ")
-	if node.EngineType == EngineTypeTimeseries {
+
+	switch node.EngineType {
+	case EngineTypeTimeseries:
 		ctx.WriteString("TS ")
-	} else if node.EngineType == EngineTypeAP {
-		ctx.WriteString("AP ")
+	case EngineTypeAP:
+		if node.ApDatabaseType == ApDatabaseTypeDuckDB {
+			ctx.WriteString("AP ")
+		} else if node.ApDatabaseType == ApDatabaseTypeMysql {
+			ctx.WriteString("MYSQL ")
+		}
 	}
+
 	ctx.WriteString("DATABASE ")
 	if node.IfNotExists {
 		ctx.WriteString("IF NOT EXISTS ")
@@ -122,7 +141,9 @@ func (node *CreateDatabase) Format(ctx *FmtCtx) {
 		ctx.WriteString(" LC_CTYPE = ")
 		lex.EncodeSQLStringWithFlags(&ctx.Buffer, node.CType, ctx.flags.EncodeFlags())
 	}
-	if node.EngineType == EngineTypeTimeseries {
+
+	switch node.EngineType {
+	case EngineTypeTimeseries:
 		if node.TSDatabase.DownSampling != nil {
 			ctx.FormatNode(node.TSDatabase.DownSampling)
 		}
@@ -131,7 +152,14 @@ func (node *CreateDatabase) Format(ctx *FmtCtx) {
 			ctx.Printf("%d", node.TSDatabase.PartitionInterval.Value)
 			ctx.WriteString(node.TSDatabase.PartitionInterval.Unit)
 		}
+	case EngineTypeAP:
+		if node.ApDatabaseType == ApDatabaseTypeMysql {
+			ctx.WriteString("('")
+			ctx.WriteString(node.AttachInfo)
+			ctx.WriteString("')")
+		}
 	}
+
 	if node.Comment != "" {
 		ctx.WriteString(" COMMENT = ")
 		lex.EncodeSQLStringWithFlags(&ctx.Buffer, node.Comment, ctx.flags.EncodeFlags())

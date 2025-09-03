@@ -105,7 +105,7 @@ func (tct *tsCreateTable) Start(ctx context.Context) context.Context {
 
 	log.Infof(ctx, "tct.tableID:", tct.tableID, "rangeGroups:", rangeGroups, "nodeID", tct.FlowCtx.Cfg.NodeID.Get())
 	if len(rangeGroups) != 0 {
-		if err := tct.FlowCtx.Cfg.TsEngine.CreateTsTable(tct.tableID, tct.hashNum, tct.meta, rangeGroups); err != nil {
+		if err := tct.FlowCtx.Cfg.GetTSEngine().CreateTsTable(tct.tableID, tct.hashNum, tct.meta, rangeGroups); err != nil {
 			tct.createTaTableSuccess = false
 			tct.err = err
 			return ctx
