@@ -461,7 +461,7 @@ func (dsp *DistSQLPlanner) addStreamAggregators(
 		// No GROUP BY, or we have a single stream. Use a single final aggregator.
 		// If the previous stage was all on a single node, put the final
 		// aggregator there. Otherwise, bring the results back on this node.
-		dsp.addStreamSingleGroupState(p, prevStageNode, finalAggsSpec, finalAggsPost, finalOutTypes)
+		dsp.addStreamSingleGroupState(planCtx, p, prevStageNode, finalAggsSpec, finalAggsPost, finalOutTypes)
 	} else {
 		return errors.Errorf("stream is not running in distributed mode")
 	}
@@ -471,6 +471,7 @@ func (dsp *DistSQLPlanner) addStreamAggregators(
 
 // addSingleGroupState add single group state for stream aggregation
 func (dsp *DistSQLPlanner) addStreamSingleGroupState(
+	planCtx *PlanningCtx,
 	p *PhysicalPlan,
 	prevStageNode roachpb.NodeID,
 	finalAggsSpec execinfrapb.StreamAggregatorSpec,
@@ -486,5 +487,6 @@ func (dsp *DistSQLPlanner) addStreamSingleGroupState(
 		execinfrapb.ProcessorCoreUnion{StreamAggregator: &finalAggsSpec},
 		finalAggsPost,
 		finalOutTypes,
+		planCtx.apSelect,
 	)
 }
