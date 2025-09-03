@@ -576,7 +576,8 @@ KStatus APParseQuery::ConstructAPExpr(ClientContext &context,
         type_args.push_back(std::move(*head_node));
         type_args.push_back(std::move(current_node));
 
-        auto tmp_expr = make_uniq<BoundFunctionExpression>(type_func.return_type, type_func, std::move(type_args), nullptr);
+        auto tmp_expr =
+            make_uniq<BoundFunctionExpression>(type_func.return_type, type_func, std::move(type_args), nullptr);
         *head_node = std::move(tmp_expr);
         (*i)++;
         return SUCCESS;
@@ -623,7 +624,8 @@ KStatus APParseQuery::ConstructAPExpr(ClientContext &context,
           if (ret != SUCCESS) {
             return ret;
           }
-          if (node_list_[*i]->operators == CLOSING_BRACKET || node_list_[*i]->operators == AND) {
+          if (*i < node_list_.size() && (node_list_[*i]->operators == CLOSING_BRACKET
+              || node_list_[*i]->operators == AND)) {
             (*i)--;
             return ret;
           }
