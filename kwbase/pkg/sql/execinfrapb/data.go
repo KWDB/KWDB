@@ -235,6 +235,10 @@ type ProducerMetadata struct {
 	TsPro *RemoteProducerMetadata_TSPro
 	// TsAlterColumn used to alter ts column
 	TsAlterColumn *RemoteProducerMetadata_TSAlterColumn
+	// APCreateDatabase represents create ap database
+	APCreateDatabase *RemoteProducerMetadata_APCreateDatabase
+	// APCreateTable represents create ap table
+	APCreateTable *RemoteProducerMetadata_APCreateTable
 }
 
 var (
@@ -315,6 +319,10 @@ func RemoteProducerMetaToLocalMeta(
 		meta.TsPro = v.TsPro_
 	case *RemoteProducerMetadata_TsAlterColumn:
 		meta.TsAlterColumn = v.TsAlterColumn
+	case *RemoteProducerMetadata_ApCreateDatabase_:
+		meta.APCreateDatabase = v.ApCreateDatabase_
+	case *RemoteProducerMetadata_ApCreateTable_:
+		meta.APCreateTable = v.ApCreateTable_
 	default:
 		return *meta, false
 	}
@@ -382,6 +390,14 @@ func LocalMetaToRemoteProducerMeta(
 	} else if meta.TsAlterColumn != nil {
 		rpm.Value = &RemoteProducerMetadata_TsAlterColumn{
 			TsAlterColumn: meta.TsAlterColumn,
+		}
+	} else if meta.APCreateTable != nil {
+		rpm.Value = &RemoteProducerMetadata_ApCreateTable_{
+			ApCreateTable_: meta.APCreateTable,
+		}
+	} else if meta.APCreateDatabase != nil {
+		rpm.Value = &RemoteProducerMetadata_ApCreateDatabase_{
+			ApCreateDatabase_: meta.APCreateDatabase,
 		}
 	} else {
 		rpm.Value = &RemoteProducerMetadata_Error{

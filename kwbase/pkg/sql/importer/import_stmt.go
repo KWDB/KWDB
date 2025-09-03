@@ -685,10 +685,11 @@ func (r *importResumer) apResume(
 	cfg *sql.ExecutorConfig,
 	resultsCh chan<- tree.Datums,
 ) error {
-	err := cfg.DistSQLSrv.GetAPEngine().CreateConnection(details.DatabaseName)
+	conn, err := cfg.DistSQLSrv.GetAPEngine().CreateConnection()
 	if err != nil {
 		return err
 	}
+	defer cfg.DistSQLSrv.GetAPEngine().DestroyConnection(conn)
 
 	// todo add c++ interface to check
 	var num int
@@ -705,7 +706,7 @@ func (r *importResumer) apResume(
 	}
 
 	copyStmt := fmt.Sprintf("COPY FROM DATABASE %s TO %s", details.SrcDatabaseName, details.DatabaseName)
-	err = cfg.DistSQLSrv.GetAPEngine().ExecSql(copyStmt)
+	err = cfg.DistSQLSrv.GetAPEngine().Exec(conn, copyStmt)
 	if err != nil {
 		return err
 	}

@@ -44,9 +44,11 @@ import (
 
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/hashrouter/api"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgcode"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgerror"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 	"gitee.com/kwbasedb/kwbase/pkg/util/stop"
+	duck "github.com/duckdb-go-bindings"
 	"github.com/pkg/errors"
 )
 
@@ -57,6 +59,7 @@ type Engine struct {
 	stopper  *stop.Stopper
 	opened   bool
 	dbStruct *C.APEngine
+	db       unsafe.Pointer
 	conn     unsafe.Pointer
 	cfg      EngineConfig
 	attachDB map[string]struct{}
@@ -169,13 +172,14 @@ func (r *Engine) Open(rangeIndex []roachpb.RangeIndex) error {
 	CString.value = (*C.char)(C.CBytes([]byte(r.cfg.Dir)))
 	CString.len = (C.uint32_t)(len(r.cfg.Dir))
 	var conn C.APConnectionPtr
-	status := C.APOpen(&r.dbStruct, &conn, &CString)
+	var db C.duckdb_database
+	status := C.APOpen(&r.dbStruct, &conn, &db, &CString)
 	if err := statusToError(status); err != nil {
 		return errors.Wrap(err, "could not open engine instance")
 	}
 
 	r.conn = unsafe.Pointer(conn)
-
+	r.db = unsafe.Pointer(db)
 	r.opened = true
 	return nil
 }
@@ -288,16 +292,30 @@ func (r *Engine) Execute(
 }
 
 // CreateConnection create new connection with ap engine.
-func (r *Engine) CreateConnection(dbName string) error {
-	if dbName != "" {
-		if err := r.ExecSql(fmt.Sprintf("USE '%s'", dbName)); err != nil {
-			return err
-		}
+func (r *Engine) CreateConnection() (*duck.Connection, error) {
+	conn := duck.Connection{}
+	db := duck.Database{Ptr: r.db}
+	state := duck.Connect(db, &conn)
+	if state != duck.StateSuccess {
+		return nil, errors.New("failed to connect to ap database")
 	}
-	return nil
+	return &conn, nil
 }
 
-func (r *Engine) DestroyConnection() {
+func (r *Engine) DestroyConnection(conn *duck.Connection) {
+	duck.Disconnect(conn)
+}
+
+// Exec execute sql in input connection.
+func (r *Engine) Exec(conn *duck.Connection, stmt string) error {
+	var res duck.Result
+	state := duck.Query(*conn, stmt, &res)
+	if state != duck.StateSuccess {
+		errMsg := duck.ResultError(&res)
+		return pgerror.New(pgcode.Warning, errMsg)
+	}
+	duck.DestroyResult(&res)
+	return nil
 }
 
 func getErrorString(rep *C.APQueryInfo) error {
@@ -330,13 +348,11 @@ func (r *Engine) ExecSql(stmt string) error {
 	CString.len = (C.uint32_t)(len(stmt))
 	status := C.APExecSQL(r.dbStruct, &CString, &retInfo)
 	if err := statusToError(status); err != nil {
+		if innerErr := getErrorString(&retInfo); innerErr != nil {
+			return innerErr
+		}
 		return err
 	}
-
-	if err := getErrorString(&retInfo); err != nil {
-		return err
-	}
-
 	return nil
 }
 
@@ -348,10 +364,9 @@ func (r *Engine) ExecSqlForResult(stmt string, count *int) error {
 	CString.len = (C.uint32_t)(len(stmt))
 	status := C.APExecSQL(r.dbStruct, &CString, &retInfo)
 	if err := statusToError(status); err != nil {
-		return err
-	}
-
-	if err := getErrorString(&retInfo); err != nil {
+		if innerErr := getErrorString(&retInfo); innerErr != nil {
+			return innerErr
+		}
 		return err
 	}
 

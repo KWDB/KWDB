@@ -37,7 +37,7 @@ using namespace kwdbts;
 //   return TSStatus{nullptr, 0};
 // }
 
-TSStatus APOpen(APEngine** engine, APConnectionPtr *out, APString* path) {
+TSStatus APOpen(APEngine** engine, APConnectionPtr *out, duckdb_database *out_db, APString* path) {
   kwdbContext_t context;
   kwdbContext_p ctx = &context;
   KStatus s = InitServerKWDBContext(ctx);
@@ -49,7 +49,7 @@ TSStatus APOpen(APEngine** engine, APConnectionPtr *out, APString* path) {
   char tmp[256];
   memset(tmp, 0, 256);
   memcpy(tmp, path->value, path->len);
-  s = APEngineImpl::OpenEngine(ctx, &apEngine, out, tmp);
+  s = APEngineImpl::OpenEngine(ctx, &apEngine, out, out_db, tmp);
   if (s == KStatus::FAIL) {
     return ToTsStatus("OpenEngine Internal Error!");
   }
