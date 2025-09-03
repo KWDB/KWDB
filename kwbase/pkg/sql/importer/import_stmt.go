@@ -685,13 +685,6 @@ func (r *importResumer) apResume(
 	cfg *sql.ExecutorConfig,
 	resultsCh chan<- tree.Datums,
 ) error {
-	conn, err := cfg.DistSQLSrv.GetAPEngine().CreateConnection()
-	if err != nil {
-		return err
-	}
-	defer cfg.DistSQLSrv.GetAPEngine().DestroyConnection(conn)
-
-	// todo add c++ interface to check
 	var num int
 	var format string
 	if details.Format.Format == roachpb.IOFileFormat_MYSQL {
@@ -706,7 +699,7 @@ func (r *importResumer) apResume(
 	}
 
 	copyStmt := fmt.Sprintf("COPY FROM DATABASE %s TO %s", details.SrcDatabaseName, details.DatabaseName)
-	err = cfg.DistSQLSrv.GetAPEngine().Exec(conn, copyStmt)
+	err := cfg.DistSQLSrv.GetAPEngine().ExecSql(copyStmt)
 	if err != nil {
 		return err
 	}
