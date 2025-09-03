@@ -57,6 +57,7 @@ type Engine struct {
 	stopper  *stop.Stopper
 	opened   bool
 	dbStruct *C.APEngine
+	db       unsafe.Pointer
 	conn     unsafe.Pointer
 	cfg      EngineConfig
 	attachDB map[string]struct{}
@@ -169,13 +170,14 @@ func (r *Engine) Open(rangeIndex []roachpb.RangeIndex) error {
 	CString.value = (*C.char)(C.CBytes([]byte(r.cfg.Dir)))
 	CString.len = (C.uint32_t)(len(r.cfg.Dir))
 	var conn C.APConnectionPtr
-	status := C.APOpen(&r.dbStruct, &conn, &CString)
+	var db C.duckdb_database
+	status := C.APOpen(&r.dbStruct, &conn, &db, &CString)
 	if err := statusToError(status); err != nil {
 		return errors.Wrap(err, "could not open engine instance")
 	}
 
 	r.conn = unsafe.Pointer(conn)
-
+	r.db = unsafe.Pointer(db)
 	r.opened = true
 	return nil
 }

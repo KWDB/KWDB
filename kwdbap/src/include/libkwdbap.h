@@ -17,6 +17,7 @@
 #include <pthread.h>
 
 #include "libcommon.h"
+#include "duckdb.h"
 // APIs used by CGO
 
 #ifdef __cplusplus
@@ -93,7 +94,7 @@ typedef struct _APConnection {
 
 typedef APQueryInfo APRespInfo;
 
-TSStatus APOpen(APEngine** engine, APConnectionPtr *out, APString *path);
+TSStatus APOpen(APEngine** engine, APConnectionPtr *out, duckdb_database *out_db, APString *path);
 
 TSStatus APClose(APEngine* engine);
 

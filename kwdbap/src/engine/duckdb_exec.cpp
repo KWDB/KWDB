@@ -84,13 +84,32 @@ KStatus DetachDB(DatabaseManager& db_manager, ClientContext &context, string db_
 APEngineImpl::APEngineImpl(kwdbContext_p ctx, const char* db_path):db_path_(db_path) {
 }
 
-KStatus APEngineImpl::OpenEngine(kwdbContext_p ctx, APEngine** engine, APConnectionPtr *out, const char* path) {
+KStatus APEngineImpl::OpenEngine(kwdbContext_p ctx, APEngine** engine, APConnectionPtr *out, duckdb_database *out_db,
+                                 const char* path) {
   auto* engineImpl = new APEngineImpl(ctx, path);
   string defaultDB = string(path) + "/defaultdb";
-  DuckDB db(defaultDB);
-  auto conn = std::make_shared<Connection>(db);
+  auto wrapper = new DatabaseWrapper();
+  try {
+    DBConfig default_config;
+    DBConfig *db_config = &default_config;
+    wrapper->database = duckdb::make_shared_ptr<DuckDB>(defaultDB.c_str(), db_config);
+  } catch (std::exception &ex) {
+//    if (out_error) {
+      ErrorData parsed_error(ex);
+      printf("open ap engine error is %s \n", parsed_error.Message().c_str());
+//    }
+    delete wrapper;
+    return KStatus::FAIL;
+  } catch (...) {  // LCOV_EXCL_START
+    printf("open ap engine error unknow\n");
+    delete wrapper;
+    return KStatus::FAIL;
+  }  // LCOV_EXCL_STOP
+  
+  *out_db = reinterpret_cast<duckdb_database>(wrapper);
+  auto conn = std::make_shared<Connection>(*wrapper->database);
   engineImpl->conn_ = conn;
-  engineImpl->instance_ = db.instance;
+  engineImpl->instance_ = wrapper->database->instance;
   *engine = engineImpl;
   *out = reinterpret_cast<APConnectionPtr>(conn.get());
   return KStatus::SUCCESS;
