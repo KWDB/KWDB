@@ -126,7 +126,7 @@ KStatus EntryBlock::readBytes(size_t& offset, char*& res, size_t length,
   }
   res = KNEW char[length];
   if (res == nullptr) {
-    LOG_ERROR("Failed to malloc memory.")
+    LOG_ERROR("Failed to malloc memory, length:%ld", length)
     return FAIL;
   }
 
@@ -169,6 +169,10 @@ void HeaderBlock::setCheckpointInfo(TS_LSN checkpoint_lsn,
   checkpoint_no_ = checkpoint_no;
 }
 
+void HeaderBlock::setFirstLSN(TS_LSN first_lsn) {
+  first_lsn_ = first_lsn;
+}
+
 char* HeaderBlock::encode() {
   char* value = KNEW char[BLOCK_SIZE];
   if (value == nullptr) {
@@ -191,7 +195,7 @@ char* HeaderBlock::encode() {
   std::memcpy(value + offset, &start_lsn_, sizeof(start_lsn_));
   offset += sizeof(start_lsn_);
 
-  std::memcpy(value + offset, &first_lsn_, sizeof(start_lsn_));
+  std::memcpy(value + offset, &first_lsn_, sizeof(first_lsn_));
   offset += sizeof(first_lsn_);
 
   std::memcpy(value + offset, &checkpoint_lsn_,

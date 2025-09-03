@@ -1,0 +1,114 @@
+> use defaultdb;drop database if exists test_select_tag cascade;
+DROP DATABASE
+> create ts database test_select_tag;
+CREATE TS DATABASE
+> create table test_select_tag.tb(k_timestamp timestamptz not null,e1 timestamptz,e2 int2,e3 int,e4 int8,e5 float4,e6 float8,e7 bool,e8 char,e9 char(100),e10 nchar,e11 nchar(255),e12 varchar,e13 varchar(254),e14 varchar(4096),e15 nchar(100),e16 nchar(255),e17 nchar(255),e18 varbytes,e19 varbytes(100),e20 varbytes(200),e21 varbytes(254),e22 varbytes(200)) tags (t1 int2 not null,t2 int,t3 int8,t4 bool not null,t5 float4,t6 float8,t7 char,t8 char(100) not null,t9 nchar,t10 nchar(254),t11 varchar,t12 varchar(128) not null,t13 varbytes,t14 varbytes(100),t15 varbytes(100),t16 varbytes(200)) primary tags(t1,t4,t8,t12);
+CREATE TABLE
+> create table test_select_tag.tb2(k_timestamp timestamptz not null,e1 timestamptz,e2 int2,e3 int,e4 int8,e5 float4,e6 float8,e7 bool,e8 char,e9 char(100),e10 nchar,e11 nchar(255),e12 varchar,e13 varchar(254),e14 varchar(4096),e15 nchar(100),e16 nchar(255),e17 nchar(255),e18 varbytes,e19 varbytes(100),e20 varbytes(200),e21 varbytes(254),e22 varbytes(200)) tags (t1 int2,t2 int not null,t3 int8,t4 bool,t5 float4,t6 float8,t7 char not null,t8 char(100),t9 nchar not null,t10 nchar(254) not null,t11 varchar,t12 varchar(128),t13 varbytes,t14 varbytes(100),t15 varbytes(100),t16 varbytes(200)) primary tags(t2,t7,t9,t10);
+CREATE TABLE
+> select t1,t2,t3 from test_select_tag.tb order by k_timestamp;
+  t1 | t2 | t3
+-----+----+-----
+(0 rows)
+> select t4,t5 from test_select_tag.tb order by k_timestamp;
+  t4 | t5
+-----+-----
+(0 rows)
+> select t6 from test_select_tag.tb order by k_timestamp;
+  t6
+------
+(0 rows)
+> select t7,t8 from test_select_tag.tb order by k_timestamp;
+  t7 | t8
+-----+-----
+(0 rows)
+> select t9,t10 from test_select_tag.tb order by k_timestamp;
+  t9 | t10
+-----+------
+(0 rows)
+> select t11,t12 from test_select_tag.tb order by k_timestamp;
+  t11 | t12
+------+------
+(0 rows)
+> select t1,t5,t6,t7,t10,t11 from test_select_tag.tb order by k_timestamp;
+  t1 | t5 | t6 | t7 | t10 | t11
+-----+----+----+----+-----+------
+(0 rows)
+> select e2,t1,t8 from test_select_tag.tb order by k_timestamp;
+  e2 | t1 | t8
+-----+----+-----
+(0 rows)
+> select k_timestamp,e1,t1,t2,t3 from test_select_tag.tb order by k_timestamp;
+  k_timestamp | e1 | t1 | t2 | t3
+--------------+----+----+----+-----
+(0 rows)
+> select e2,e3,e4,t4,t5 from test_select_tag.tb order by k_timestamp;
+  e2 | e3 | e4 | t4 | t5
+-----+----+----+----+-----
+(0 rows)
+> select e5,e6,t6 from test_select_tag.tb order by k_timestamp;
+  e5 | e6 | t6
+-----+----+-----
+(0 rows)
+> select e7,e8,t7,t8 from test_select_tag.tb order by k_timestamp;
+  e7 | e8 | t7 | t8
+-----+----+----+-----
+(0 rows)
+> select e9,e10,t9,t10 from test_select_tag.tb order by k_timestamp;
+  e9 | e10 | t9 | t10
+-----+-----+----+------
+(0 rows)
+> select e11,e12,t11,t12 from test_select_tag.tb order by k_timestamp;
+  e11 | e12 | t11 | t12
+------+-----+-----+------
+(0 rows)
+> select e15,e16,t5,t6 from test_select_tag.tb order by k_timestamp;
+  e15 | e16 | t5 | t6
+------+-----+----+-----
+(0 rows)
+> select e17,t1,t5,t6,t7,t10,t11 from test_select_tag.tb order by k_timestamp;
+  e17 | t1 | t5 | t6 | t7 | t10 | t11
+------+----+----+----+----+-----+------
+(0 rows)
+> select e12,e2,t1,t8 from test_select_tag.tb order by k_timestamp;
+  e12 | e2 | t1 | t8
+------+----+----+-----
+(0 rows)
+> select t1,t2,t4,t6,t8,t12 from test_select_tag.tb order by k_timestamp;
+  t1 | t2 | t4 | t6 | t8 | t12
+-----+----+----+----+----+------
+(0 rows)
+> select t2,t7,t9,t10,t8 from test_select_tag.tb2 order by k_timestamp;
+  t2 | t7 | t9 | t10 | t8
+-----+----+----+-----+-----
+(0 rows)
+> select t1,t4,t8,t12 from test_select_tag.tb order by k_timestamp;
+  t1 | t4 | t8 | t12
+-----+----+----+------
+(0 rows)
+> select t2,t7,t9,t10 from test_select_tag.tb2 order by k_timestamp;
+  t2 | t7 | t9 | t10
+-----+----+----+------
+(0 rows)
+> select k_timestamp,e1,t1,t4,t8,t12 from test_select_tag.tb order by k_timestamp;
+  k_timestamp | e1 | t1 | t4 | t8 | t12
+--------------+----+----+----+----+------
+(0 rows)
+> select e2,e3,e4,t2,t7,t9,t11 from test_select_tag.tb2 order by k_timestamp;
+  e2 | e3 | e4 | t2 | t7 | t9 | t11
+-----+----+----+----+----+----+------
+(0 rows)
+> select k_timestamp,e1,e3,t4,t6,t8,t12 from test_select_tag.tb order by k_timestamp;
+  k_timestamp | e1 | e3 | t4 | t6 | t8 | t12
+--------------+----+----+----+----+----+------
+(0 rows)
+> select e4,e6,t2,t7,t8,t11 from test_select_tag.tb2 order by k_timestamp;
+  e4 | e6 | t2 | t7 | t8 | t11
+-----+----+----+----+----+------
+(0 rows)
+> drop table test_select_tag.tb cascade;
+DROP TABLE
+> drop table test_select_tag.tb2 cascade;
+DROP TABLE
+> use defaultdb;drop database test_select_tag cascade;
+DROP DATABASE

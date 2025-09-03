@@ -598,6 +598,8 @@ type unqualifiedIntSizer interface {
 	GetPreparedStatement(PreparedStatementName string) (*sql.PreparedStatement, bool)
 
 	GetTsSupportBatch() bool
+
+	GetEngineVersion() string
 }
 
 type fixedIntSizer struct {
@@ -614,6 +616,10 @@ func (f fixedIntSizer) GetTsinsertdirect() bool {
 
 func (f fixedIntSizer) GetTsSupportBatch() bool {
 	return false
+}
+
+func (f fixedIntSizer) GetEngineVersion() string {
+	return "0"
 }
 
 func (f fixedIntSizer) GetTsSessionData() *sessiondata.SessionData {
@@ -971,11 +977,11 @@ func (c *conn) handleSimpleQuery(
 				*r = commandResult{conn: c, typ: commandComplete}
 
 				// According to the node mode processing
-				if !evalCtx.StartSinglenode {
+				if !evalCtx.StartSinglenode || unqis.GetEngineVersion() == "2" {
 					// start
 					err = sql.GetPayloadMapForMuiltNode(
 						ctx, ptCtx, dit, &di, stmts, evalCtx, table, cfg)
-				} else {
+				} else if unqis.GetEngineVersion() == "1" {
 					// single node mode
 					if di.InputValues, err = sql.GetInputValues(ctx, ptCtx, &dit.ColsDesc, &di, stmts); err != nil {
 						return err
@@ -991,6 +997,8 @@ func (c *conn) handleSimpleQuery(
 					}
 					di.PayloadNodeMap[int(evalCtx.NodeID)].CDCData = sql.BuildCDCDataForDirectInsert(
 						&evalCtx, uint64(dit.TabID), dit.ColsDesc, di.InputValues, di.ColIndexs, cfg.CDCCoordinator)
+				} else {
+					return pgerror.Newf(pgcode.InvalidName, "Error KW_ENGINE_VERSION %s", unqis.GetEngineVersion())
 				}
 
 				if err != nil {
@@ -1003,7 +1011,13 @@ func (c *conn) handleSimpleQuery(
 				}
 
 				// Send insert_direct information
-				return Send(ctx, unqis, evalCtx, r, stmts, di, c, timeReceived, startParse, endParse)
+				if err = Send(ctx, unqis, evalCtx, r, stmts, di, c, timeReceived, startParse, endParse); err != nil {
+					return err
+				}
+				if r.Err() != nil {
+					return r.err
+				}
+				return nil
 			}); err != nil {
 				return c.stmtBuf.Push(ctx, sql.SendError{Err: err})
 			}

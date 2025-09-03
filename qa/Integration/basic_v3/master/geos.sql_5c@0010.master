@@ -1,0 +1,26 @@
+> create ts database test_geometry;
+CREATE TS DATABASE
+> use test_geometry;
+SET
+> create table test_geometry.t1 (k_timestamp timestamptz not null,
+  e1 geometry not null) ATTRIBUTES (
+code1 int2 not null,
+code2 int4) PRIMARY TAGS(code1);
+CREATE TABLE
+> show create table test_geometry.t1;
+        table_name        |             create_statement
+--------------------------+-------------------------------------------
+  test_geometry.public.t1 | CREATE TABLE t1 (
+                          |     k_timestamp TIMESTAMPTZ(3) NOT NULL,
+                          |     e1 GEOMETRY NOT NULL
+                          | ) TAGS (
+                          |     code1 INT2 NOT NULL,
+                          |     code2 INT4 ) PRIMARY TAGS(code1)
+                          |     retentions 0s
+                          |     activetime 1d
+                          |     partition interval 10d
+(1 row)
+> set sql_safe_updates = false;
+SET
+> drop database if exists test_geometry cascade;
+DROP DATABASE

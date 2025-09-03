@@ -29,8 +29,6 @@ class TestDB : public ::testing::Test {
     rmdir(kDbPath.c_str());
     opts_.wal_level = 0;
     opts_.wal_buffer_size = 1;
-    opts_.wal_file_size = 4;
-    opts_.wal_file_in_group = 3;
     opts_.thread_pool_size = 2;
     opts_.task_queue_size = 10;
     opts_.lg_opts = TsLogOptions{};
@@ -53,6 +51,7 @@ class TestDB : public ::testing::Test {
   void OpenDB() {
     TSSlice s_path{kDbPath.data(), kDbPath.size()};
     opts_.lg_opts.Dir = s_path;
+    opts_.engine_version = "1";
     TSStatus s = TSOpen(&ts_db_, s_path, opts_, nullptr, 1);
     ASSERT_EQ(s.data, nullptr);
     free(s.data);

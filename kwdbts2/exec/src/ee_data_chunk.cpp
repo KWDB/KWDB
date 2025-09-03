@@ -1059,7 +1059,7 @@ KStatus DataChunk::EncodingValue(kwdbContext_p ctx, k_uint32 row, k_uint32 col, 
       k_int64 seconds = msec / 1000;
       time_t rawtime = (time_t) seconds;
       tm timeinfo;
-      gmtime_r(&rawtime, &timeinfo);
+      ToGMT(rawtime, timeinfo);
 
       stm.tm_year = timeinfo.tm_year;
       stm.tm_mon = timeinfo.tm_mon;
@@ -1107,7 +1107,7 @@ static inline k_uint8 format_timestamp(const CKTime& ck_time, KWDBTypeFamily ret
 
   // sec
   tm ts{};
-  gmtime_r(&adjusted_time.t_timespec.tv_sec, &ts);
+  ToGMT(adjusted_time.t_timespec.tv_sec, ts);
 
   // buf
   char* p = buf;
@@ -1280,30 +1280,6 @@ KStatus DataChunk::PgResultData(kwdbContext_p ctx, k_uint32 row, const EE_String
         DatumPtr raw = GetData(row, col);
         std::memcpy(&val, raw, sizeof(k_int64));
         CKTime ck_time = getCKTime(val, col_info_[col].storage_type, ctx->timezone);
-        // if (return_type == KWDBTypeFamily::TimestampTZFamily) {
-        //   ck_time.t_timespec.tv_sec += ck_time.t_abbv;
-        // }
-        // tm ts{};
-        // gmtime_r(&ck_time.t_timespec.tv_sec, &ts);
-        // strftime(ts_format_buf, 32, "%F %T", &ts);
-        // k_uint8 format_len = strlen(ts_format_buf);
-        // if (ck_time.t_timespec.tv_nsec != 0) {
-        //   snprintf(&ts_format_buf[format_len], sizeof(char[11]), ".%09ld", ck_time.t_timespec.tv_nsec);
-        // }
-        // format_len = strlen(ts_format_buf);
-        // // encode the time Zone Information
-        // if (return_type == KWDBTypeFamily::TimestampTZFamily) {
-        //   const char* timezoneFormat;
-        //   auto timezoneAbs = std::abs(ctx->timezone);
-        //   if (ctx->timezone >= 0) {
-        //     timezoneFormat = "+%02d:00";
-        //     timezoneAbs = ctx->timezone;
-        //   } else {
-        //     timezoneFormat = "-%02d:00";
-        //   }
-        //   snprintf(&ts_format_buf[format_len], sizeof(char[7]), timezoneFormat, timezoneAbs);
-        // }
-        // format_len = strlen(ts_format_buf);
         k_uint8 format_len = format_timestamp(ck_time, return_type, ctx, ts_format_buf);
         // write the length of column value
         if (ee_sendint(info, format_len, 4) != SUCCESS) {
@@ -1445,7 +1421,7 @@ KStatus DataChunk::PgResultData(kwdbContext_p ctx, k_uint32 row, const EE_String
         std::memcpy(&val, raw, sizeof(k_int64));
         CKTime ck_time = getCKTime(val, col_info_[col].storage_type, ctx->timezone);
         tm ts{};
-        gmtime_r(&ck_time.t_timespec.tv_sec, &ts);
+        ToGMT(ck_time.t_timespec.tv_sec, ts);
         strftime(ts_format_buf, 32, "%F %T", &ts);
         k_uint8 format_len = strlen(ts_format_buf);
         format_len = strlen(ts_format_buf);
@@ -1780,24 +1756,18 @@ KStatus DataChunk::AddRecordByColumn(kwdbContext_p ctx, RowBatch* row_batch, Fie
         case roachpb::DataType::FLOAT:
         case roachpb::DataType::DOUBLE: {
           k_uint32 len = field->get_storage_length();
-          if (0 == field->get_num()) {
+          k_uint32 col_offset = count_ * col_info_[col].fixed_storage_len + col_offset_[col];
+          row_batch->CopyColumnData(field->getColIdxInRs(), data_ + col_offset, len, field->get_column_type(),
+                                    field->get_storage_type());
+          if (field->is_allow_null()) {
             for (int row = 0; row < row_batch->Count(); ++row) {
-              k_int64 val = field->ValInt();
-              InsertData(count_ + row, col, reinterpret_cast<char*>(&val), len);
-              row_batch->NextLine();
-            }
-          } else {
-            k_uint32 col_offset = count_ * col_info_[col].fixed_storage_len + col_offset_[col];
-            row_batch->CopyColumnData(field->getColIdxInRs(), data_ + col_offset, len, field->get_column_type(),
-                                      field->get_storage_type());
-
-            for (int row = 0; row < row_batch->Count(); ++row) {
-              if (field->CheckNull()) {
+              if (field->is_nullable()) {
                 SetNull(count_ + row, col);
               }
               row_batch->NextLine();
             }
           }
+
           break;
         }
         case roachpb::DataType::CHAR:
@@ -1846,7 +1816,7 @@ KStatus DataChunk::AddRecordByColumnWithSelection(kwdbContext_p ctx, RowBatch* r
     row_batch->ResetLine();
     const k_uint32 total_rows = row_batch->Count();
     const auto storage_len = field->get_storage_length();
-    const auto offset_storage_len = (field->get_num() == 0) ? storage_len + 8 : storage_len;
+    const auto offset_storage_len = storage_len;
     const auto col_idx_in_rs = field->getColIdxInRs();
     const auto column_type = field->get_column_type();
     const bool is_tag =

@@ -133,6 +133,7 @@ var kwdbInternal = virtualSchema{
 		sqlbase.CrdbInternalKWDBObjectRetentionID:       kwdbInternalKWDBObjectRetention,
 		sqlbase.CrdbInternalKWDBStreamsTableID:          kwdbInternalKWDBStreamTable,
 		sqlbase.CrdbInternalTSEInfoID:                   kwdbInternalTSEngineInfo,
+		sqlbase.CrdbInternalTSTransactionRecordID:       kwdbInternalTSTransactionRecord,
 	},
 	validWithNoDatabaseContext: true,
 }
@@ -4154,6 +4155,45 @@ CREATE TABLE kwdb_internal.kwdb_streams (
 				return err
 			}
 		}
+		return nil
+	},
+}
+
+var kwdbInternalTSTransactionRecord = virtualSchemaTable{
+	comment: "kwdb show info of ts engine",
+	schema: `
+CREATE TABLE kwdb_internal.ts_inflight_transactions (
+    id UUID,
+    last_heartbeat TIMESTAMP,
+    status STRING
+)
+`,
+	populate: func(ctx context.Context, p *planner, dbContext *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+
+		startKey := roachpb.Key(keys.MakeTablePrefix(keys.TsTxnTableID))
+		endKey := startKey.PrefixEnd()
+		keyValues, err := p.ExecCfg().DB.Scan(ctx, startKey, endKey, 0)
+		if err != nil {
+			return err
+		}
+		for _, keyValue := range keyValues {
+			if !keyValue.Exists() {
+				continue
+			}
+			var res roachpb.TsTxnRecord
+			if err = protoutil.Unmarshal(keyValue.ValueBytes(), &res); err != nil {
+				return err
+			}
+			txnID := tree.NewDUuid(tree.DUuid{UUID: res.ID})
+			if err := addRow(
+				txnID,
+				tree.MakeDTimestamp(res.LastHeartbeat.GoTime(), time.Microsecond),
+				tree.NewDString(res.Status.String()),
+			); err != nil {
+				return err
+			}
+		}
+
 		return nil
 	},
 }

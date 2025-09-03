@@ -15,6 +15,8 @@
 #include <th_kwdb_dynamic_thread_pool.h>
 #include "payload_builder.h"
 #include "sys_utils.h"
+#include "ts_table_schema_manager.h"
+#include "ts_payload.h"
 
 extern DedupRule g_dedup_rule_;
 
@@ -30,17 +32,38 @@ uint64_t StInstance::rangeGroup() {
 
 KStatus StInstance::GetSchemaInfo(kwdbContext_p ctx, uint32_t table_id,
  std::vector<TagInfo>* tag_schema, std::vector<AttributeInfo>* data_schema) {
-  std::shared_ptr<kwdbts::TsTable> tags_table;
-  KStatus s = ts_engine_->GetTsTable(ctx, table_id, tags_table);
-  if (s != KStatus::SUCCESS) {
+  if (params_.engine_version == "2") {
+    std::shared_ptr<kwdbts::TsTableSchemaManager> schema;
+    KStatus s = ts_engine_->GetTableSchemaMgr(ctx, table_id, schema);
+    if (s != KStatus::SUCCESS) {
+      return s;
+    }
+    auto version = schema->GetCurrentVersion();
+    std::shared_ptr<MMapMetricsTable> schema_tbl;
+    s = schema->GetMetricSchema(version, &schema_tbl);
+    if (s != KStatus::SUCCESS) {
+      return s;
+    }
+    *data_schema = schema_tbl->getSchemaInfoExcludeDropped();
+    s = schema->GetTagMeta(version, *tag_schema);
+    if (s != KStatus::SUCCESS) {
+      return s;
+    }
+    return KStatus::SUCCESS;
+  } else {
+    std::shared_ptr<kwdbts::TsTable> tags_table;
+    KStatus s = ts_engine_->GetTsTable(ctx, table_id, tags_table);
+    if (s != KStatus::SUCCESS) {
+      return s;
+    }
+    s = tags_table->GetTagSchema(ctx, test_range, tag_schema);
+    if (s != KStatus::SUCCESS) {
+      return s;
+    }
+    s = tags_table->GetDataSchemaExcludeDropped(ctx, data_schema);
     return s;
   }
-  s = tags_table->GetTagSchema(ctx, test_range, tag_schema);
-  if (s != KStatus::SUCCESS) {
-    return s;
-  }
-  s = tags_table->GetDataSchemaExcludeDropped(ctx, data_schema);
-  return s;
+  return KStatus::FAIL;
 }
 
 void StInstance::ParseInputParams() {
@@ -63,9 +86,7 @@ void StInstance::ParseInputParams() {
 }
 
 void StInstance::SetInputParams(const std::string& key, const std::string& value) {
-  if (key == "KW_WAL_LEVEL") {
-    ts_opts_.wal_level = atoi(value.c_str());
-  } else if (key == "KW_IOT_INTERVAL") {
+  if (key == "KW_IOT_INTERVAL") {
     setenv("KW_IOT_INTERVAL", value.c_str(), 1);
   } else if (key == "KW_PARTITION_ROWS") {
     setenv("KW_PARTITION_ROWS", value.c_str(), 0);
@@ -120,9 +141,7 @@ KBStatus StInstance::Init(BenchParams params, std::vector<uint32_t> table_ids_) 
   }
 
   // initialize TSEngine
-  ts_opts_.wal_file_size = 64;
-  ts_opts_.wal_file_in_group = 3;
-  ts_opts_.wal_buffer_size = 4;
+  ts_opts_.engine_version = params_.engine_version.c_str();
   ts_opts_.thread_pool_size = 0;
   ts_opts_.lg_opts.LogFileVerbosityThreshold = LgSeverity::INFO_K;
   auto index = new AppliedRangeIndex[1]{AppliedRangeIndex{1, 1}};
@@ -150,7 +169,7 @@ KBStatus StInstance::Init(BenchParams params, std::vector<uint32_t> table_ids_) 
     StMetaBuilder::constructRoachpbTable(&meta, table_id, params_);
     table_metas.push_back(meta);
     std::vector<RangeGroup> ranges{test_range};
-    KStatus s = ts_engine_->CreateTsTable(g_contet_p, table_id, &meta, ranges);
+    KStatus s = ts_engine_->CreateTsTable(g_contet_p, table_id, &meta, ranges, false);
     if (s != kwdbts::KStatus::SUCCESS) {
       log_ERROR("CreateKObjectTable fail");
     }
@@ -317,7 +336,7 @@ TsTable* CreateTable(kwdbts::kwdbContext_p ctx, roachpb::CreateTsTable* meta, st
       metric_schema.push_back(std::move(col_var));
     }
   }
-  TsTable* table = new TsTable(ctx, db_path, meta->ts_table().ts_table_id());
+  TsTableImpl* table = new TsTableImpl(ctx, db_path, meta->ts_table().ts_table_id());
   s = table->Create(ctx, metric_schema, meta->ts_table().partition_interval());
   assert(s == KStatus::SUCCESS);
   std::shared_ptr<TsEntityGroup> table_range;
@@ -340,7 +359,7 @@ void constructRoachpbTable(roachpb::CreateTsTable* meta, uint64_t table_id, cons
   // first column name: k_timestamp
   roachpb::KWDBKTSColumn* column = meta->mutable_k_column()->Add();
   column->set_storage_type(roachpb::DataType::TIMESTAMPTZ);
-  column->set_storage_len(16);
+  column->set_storage_len(8);
   column->set_column_id(1);
   column->set_name("k_timestamp");
 
@@ -378,7 +397,7 @@ bool checkColValue(const std::vector<AttributeInfo>& data_schema, const ResultSe
     char* tmp = reinterpret_cast<char*>(batch->mem);
     char* batch_addr = tmp;
     for (size_t r = 0; r < ret_cnt; r++) {
-      int value = ((KTimestamp(ts_bach_mem + r * 16)) / time_inc) % 11 + i;
+      int value = ((KTimestamp(ts_bach_mem + r * 8)) / time_inc) % 11 + i;
       bool check_col_ok = true;
       switch (data_schema[i].type) {
         case DATATYPE::TIMESTAMP64:
@@ -435,12 +454,8 @@ bool checkColValue(const std::vector<AttributeInfo>& data_schema, const ResultSe
 TSSlice genValue4Col(DATATYPE type, int size, int store_value) {
   char* addr = nullptr;
   size_t length = 0;
-  string str_value = intToString(store_value);
+  string str_value;
   switch (type) {
-    case DATATYPE::TIMESTAMP64_LSN:
-      std::cout << "cannot run here . exit." << std::endl;
-      exit(-1);
-      break;
     case DATATYPE::TIMESTAMP64:
       length = sizeof(uint64_t);
       addr = new char[length];
@@ -469,6 +484,7 @@ TSSlice genValue4Col(DATATYPE type, int size, int store_value) {
       length = size;
       addr = new char[length];
       memset(addr, 0, length);
+      str_value = intToString(store_value);
       strncpy(addr, str_value.c_str(), str_value.length());
       break;
     case DATATYPE::VARSTRING:
@@ -476,12 +492,57 @@ TSSlice genValue4Col(DATATYPE type, int size, int store_value) {
       length = size;
       addr = new char[length];
       memset(addr, 0, length);
+      str_value = intToString(store_value);
       strncpy(addr, str_value.c_str(), str_value.length());
       break;
     default:
       break;
   }
   return TSSlice{addr, length};
+}
+
+void genRowBasedPayloadData(std::vector<TagInfo> tag_schema, std::vector<AttributeInfo> data_schema, TSTableID table_id, uint32_t version,
+ int32_t primary_tag, KTimestamp start_ts, int count, int time_inc, TSSlice *payload) {
+  TSRowPayloadBuilder pay_build(tag_schema, data_schema, count);
+  FillPayloaderBuilderData(pay_build, primary_tag, start_ts, count, time_inc);
+  pay_build.Build(table_id, version, payload);
+}
+
+void FillPayloaderBuilderData(TSRowPayloadBuilder& pay_build, int32_t primary_tag, KTimestamp start_ts, int count, int time_inc) {
+  auto& tag_schema = pay_build.GetTagSchema();
+  auto& data_schema = pay_build.GetMetricSchema();
+  TSSlice pri_val = genValue4Col((DATATYPE)tag_schema[0].m_data_type, tag_schema[0].m_size, primary_tag);
+  pay_build.SetTagValue(0, pri_val.data, pri_val.len);
+  for (size_t i = 1; i < tag_schema.size(); i++) {
+    int store_value = i + 10;
+    TSSlice val = genValue4Col((DATATYPE)tag_schema[i].m_data_type, tag_schema[i].m_size, store_value);
+    if (val.data) {
+      pay_build.SetTagValue(i, val.data, val.len);
+      delete[] val.data;
+    }
+  }
+
+  for (size_t j = 0; j < count; j++) {
+    for (size_t i = 0; i < data_schema.size(); i++) {
+      char* addr = nullptr;
+      int length = 0;
+      {
+        int store_value = ((start_ts + j * time_inc) / time_inc) % 11 + i;
+        if (i == 0) {
+          store_value = start_ts + j * time_inc;
+        }
+        TSSlice ret = genValue4Col((DATATYPE)data_schema[i].type, data_schema[i].size, store_value);
+        addr = ret.data;
+        length = ret.len;
+      }
+      
+      if (addr) {
+        pay_build.SetColumnValue(j, i, addr, length);
+        delete[] addr;
+        addr = nullptr;
+      }
+    }
+  }
 }
 
 void genPayloadData(std::vector<TagInfo> tag_schema, std::vector<AttributeInfo> data_schema,
@@ -503,13 +564,11 @@ void genPayloadData(std::vector<TagInfo> tag_schema, std::vector<AttributeInfo> 
     for (size_t i = 0; i < data_schema.size(); i++) {
       char* addr = nullptr;
       int length = 0;
-      if (data_schema[i].type == DATATYPE::TIMESTAMP64_LSN) {
-        length = sizeof(uint64_t) * 2;
-        addr = new char[length];
-        KTimestamp(addr) = (start_ts + j * time_inc);
-        KTimestamp(addr + 8) = 1;
-      } else {
+      {
         int store_value = ((start_ts + j * time_inc) / time_inc) % 11 + i;
+        if (i == 0) {
+          store_value = start_ts + j * time_inc;
+        }
         TSSlice ret = genValue4Col((DATATYPE)data_schema[i].type, data_schema[i].size, store_value);
         addr = ret.data;
         length = ret.len;

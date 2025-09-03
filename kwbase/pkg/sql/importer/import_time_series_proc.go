@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"math"
 	"net/url"
 	"path/filepath"
 	"reflect"
@@ -29,6 +30,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfra"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfrapb"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/hashrouter/api"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/opt/exec/execbuilder"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
@@ -117,6 +119,37 @@ func runTimeSeriesImport(
 	if tsInfo.hasSwap {
 		return nil, errors.Errorf("Import failed due to incorrect delimiter used, or the CSV file: %s, contains line breaks. "+
 			"The imported database/table needs to be deleted and REIMPORT with thread_concurrency='1' or correct delimiter.", tsInfo.filename)
+	}
+	if err == nil {
+		log.Infof(ctx, "Start flush v-group")
+		// start-single-node
+		if flowCtx.EvalCtx.StartSinglenode {
+			if err := flowCtx.Cfg.TsEngine.TSFlushVGroups(); err != nil {
+				return nil, err
+			}
+		} else {
+			// start-single-replica && start
+			ba := flowCtx.Txn.NewBatch()
+			startKey := sqlbase.MakeTsHashPointKey(spec.Table.Desc.ID, uint64(0), spec.Table.Desc.TsTable.HashNum)
+			endKey := sqlbase.MakeTsRangeKey(spec.Table.Desc.ID, api.HashParamV2, math.MaxInt64, spec.Table.Desc.TsTable.HashNum)
+			// make TsImportFlushRequest
+			ba.AddRawRequest(&roachpb.TsImportFlushRequest{
+				RequestHeader: roachpb.RequestHeader{
+					Key:    startKey,
+					EndKey: endKey,
+				},
+			})
+			err = flowCtx.Cfg.TseDB.Run(ctx, ba)
+			if err != nil {
+				return nil, err
+			}
+			for respsID := range ba.RawResponse().Responses {
+				resp := ba.RawResponse().Responses[respsID].GetInner().(*roachpb.TsImportFlushResponse)
+				if !resp.IsSuccess {
+					return nil, errors.Errorf("Flush v-group failed")
+				}
+			}
+		}
 	}
 	return &roachpb.BulkOpSummary{TimeSeriesCounts: tsInfo.result.seq, RejectedCounts: tsInfo.RejectedCount, AbandonCounts: tsInfo.AbandonCount}, err
 }
@@ -739,8 +772,8 @@ func (t *timeSeriesImportInfo) ingest(
 		return nil
 	}
 
-	// In StartSingleNode, use column payloads and write storage directly
-	if t.flowCtx.EvalCtx.StartSinglenode {
+	// single-node KW_ENGINE_VERSION=1 (列存)(默认值为1)
+	if t.flowCtx.EvalCtx.StartSinglenode && t.flowCtx.EvalCtx.Kwengineversion == "1" {
 		payload, primaryTagVal, tolerantErr, err := t.BuildPayloadForTsImportStartSingleNode(
 			t.flowCtx.EvalCtx,
 			t.txn,
@@ -764,7 +797,7 @@ func (t *timeSeriesImportInfo) ingest(
 				}
 			}
 		}
-		resp, _, err := t.flowCtx.Cfg.TsEngine.PutData(uint64(t.tbID), [][]byte{payload}, uint64(0), t.writeWAL)
+		resp, _, err := t.flowCtx.Cfg.TsEngine.PutData(uint64(t.tbID), [][]byte{payload}, uint64(0), t.writeWAL, nil)
 		if err != nil {
 			for i := range datums {
 				cols := datums[i]
@@ -777,8 +810,6 @@ func (t *timeSeriesImportInfo) ingest(
 		return err
 	}
 
-	// In StartDistributeMode, use row payloads and write storage through distributed layers
-	ba := t.txn.NewBatch()
 	payloadNodeMap, tolerantErr, err := t.BuildPayloadForTsImportStartDistributeMode(
 		t.flowCtx.EvalCtx,
 		t.txn,
@@ -801,6 +832,25 @@ func (t *timeSeriesImportInfo) ingest(
 			}
 		}
 	}
+
+	// start && single-node KW_ENGINE_VERSION=2 (行存)
+	if t.flowCtx.EvalCtx.StartSinglenode && t.flowCtx.EvalCtx.Kwengineversion == "2" {
+		for _, val := range payloadNodeMap[int(t.flowCtx.EvalCtx.NodeID)].PerNodePayloads {
+			resp, _, err := t.flowCtx.Cfg.TsEngine.PutData(uint64(t.tbID), [][]byte{val.Payload}, uint64(0), t.writeWAL, nil)
+			if err != nil {
+				for i := range datums {
+					cols := datums[i]
+					rowString := tree.ConvertDatumsToStr(cols, ',')
+					t.handleCoruptedResult(ctx, rowString, err)
+				}
+				return err
+			}
+			t.handleDedupResp(ctx, resp, false, int64(len(datums)), datums, string(val.PrimaryTagKey))
+			return err
+		}
+	}
+
+	ba := t.txn.NewBatch()
 	for _, val := range payloadNodeMap[int(t.flowCtx.EvalCtx.NodeID)].PerNodePayloads {
 		ba.AddRawRequest(&roachpb.TsRowPutRequest{
 			RequestHeader: roachpb.RequestHeader{

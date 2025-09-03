@@ -153,6 +153,8 @@ class ExecPool {
     return instance;
   }
   k_bool IsFull();
+  k_bool IsInited();
+  k_bool IsStopped();
 
   k_bool IsEmpty() { return task_queue_.empty(); }
 

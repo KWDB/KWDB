@@ -1,0 +1,28 @@
+> create ts database test_geometry;
+CREATE TS DATABASE
+> create table test_geometry.tb(k_timestamptz timestamptz not null ,e1 geometry , e2  geometry ) tags(tag1 int not null) primary  tags(tag1);
+CREATE TABLE
+> insert into test_geometry.tb values('2023-05-01 10:10', 'Point(0.0 0.0)', 'Linestring(1.0 1.0, 2.0 2.0)',1);
+INSERT 1
+> insert into test_geometry.tb values('2023-05-01 10:11', 'Point(0.0 0.0)', 'Polygon((1.0 1.0, 2.0 2.0, 3.0 2.0, 1.0 1.0))',2);
+INSERT 1
+> insert into test_geometry.tb values('2023-05-01 10:12', 'Linestring(1.0 1.0, 2.0 2.0)','Polygon((1 1,60 90,0 0,1 1))',1);
+INSERT 1
+> select * from test_geometry.tb order by k_timestamptz;
+        k_timestamptz       |              e1              |                      e2                       | tag1
+----------------------------+------------------------------+-----------------------------------------------+-------
+  2023-05-01 10:10:00+00:00 | Point(0.0 0.0)               | Linestring(1.0 1.0, 2.0 2.0)                  |    1
+  2023-05-01 10:11:00+00:00 | Point(0.0 0.0)               | Polygon((1.0 1.0, 2.0 2.0, 3.0 2.0, 1.0 1.0)) |    2
+  2023-05-01 10:12:00+00:00 | Linestring(1.0 1.0, 2.0 2.0) | Polygon((1 1,60 90,0 0,1 1))                  |    1
+(3 rows)
+> select ST_Distance(e1,e2) from test_geometry.tb order by k_timestamptz;
+     st_distance
+----------------------
+  1.4142135623730951
+  1.4142135623730951
+                   0
+(3 rows)
+> drop table test_geometry.tb;
+DROP TABLE
+> drop database test_geometry CASCADE;
+DROP DATABASE

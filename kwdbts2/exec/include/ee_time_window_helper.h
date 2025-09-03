@@ -78,7 +78,7 @@ class TimeWindowHelper : public WindowHelper {
   bool ProcessWindow(ScanRowBatch *rowbatch, bool &next_window) override {
     KTimestampTz ts = *static_cast<
         KTimestampTz *>(static_cast<void *>(rowbatch->GetData(
-        0, sizeof(KTimestampTz) + 8,
+        0, sizeof(KTimestampTz),
         roachpb::KWDBKTSColumn::ColumnType::KWDBKTSColumn_ColumnType_TYPE_DATA,
         roachpb::DataType::TIMESTAMP)));
     ts /= type_scale_;

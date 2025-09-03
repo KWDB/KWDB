@@ -345,9 +345,8 @@ Field *FieldLonglong::field_to_copy() {
 
 char *FieldTimestampTZ::get_ptr() {
   if (false == is_chunk_) {
-    return static_cast<char *>(current_thd->GetRowBatch()->GetData(
-        col_idx_in_rs_, 0 == num_ ? storage_len_ + 8 : storage_len_,
-        column_type_, storage_type_));
+    return static_cast<char *>(
+        current_thd->GetRowBatch()->GetData(col_idx_in_rs_, storage_len_, column_type_, storage_type_));
   } else {
     return static_cast<char *>(current_thd->GetDataChunk()->GetData(num_));
   }
@@ -656,7 +655,7 @@ char *FieldSumStatisticTagSum::get_ptr() {
 }
 
 k_bool FieldSumStatisticTagSum::is_nullable() {
-  return args_[0]->is_nullable() ||
+  return args_[0]->CheckNull() ||
          current_thd->GetRowBatch()->IsNull(num_, column_type_);
 }
 
@@ -665,7 +664,7 @@ Field *FieldSumStatisticTagSum::field_to_copy() {
 }
 
 k_bool FieldSumStatisticTagSum::is_over_flow() {
-  if (args_[0]->is_nullable()) {
+  if (args_[0]->CheckNull()) {
     return false;
   }
   k_int64 count = 0;
@@ -684,7 +683,7 @@ k_bool FieldSumStatisticTagSum::is_over_flow() {
 k_int64 FieldSumStatisticTagSum::ValInt() { return ValInt(get_ptr()); }
 
 k_int64 FieldSumStatisticTagSum::ValInt(char *ptr) {
-  if (args_[0]->is_nullable()) {
+  if (args_[0]->CheckNull()) {
     return 0;
   }
   k_int64 count = 0;
@@ -698,7 +697,7 @@ k_int64 FieldSumStatisticTagSum::ValInt(char *ptr) {
 k_double64 FieldSumStatisticTagSum::ValReal() { return ValReal(get_ptr()); }
 
 k_double64 FieldSumStatisticTagSum::ValReal(char *ptr) {
-  if (args_[0]->is_nullable()) {
+  if (args_[0]->CheckNull()) {
     return 0;
   }
   // for (size_t i = 0; i < arg_count_; ++i) {
@@ -731,7 +730,7 @@ Field *FieldSumStatisticTagCount::field_to_copy() {
 k_int64 FieldSumStatisticTagCount::ValInt() { return ValInt(get_ptr()); }
 
 k_int64 FieldSumStatisticTagCount::ValInt(char *ptr) {
-  if (args_[0]->is_nullable()) {
+  if (args_[0]->CheckNull()) {
     return 0;
   }
   k_int64 val = 0;
@@ -742,7 +741,7 @@ k_int64 FieldSumStatisticTagCount::ValInt(char *ptr) {
 k_double64 FieldSumStatisticTagCount::ValReal() { return ValReal(get_ptr()); }
 
 k_double64 FieldSumStatisticTagCount::ValReal(char *ptr) {
-  if (args_[0]->is_nullable()) {
+  if (args_[0]->CheckNull()) {
     return 0;
   }
   k_int64 val = 0;
@@ -820,7 +819,7 @@ k_bool FieldFunc::is_nullable() { return field_is_nullable(); }
 
 k_bool FieldFunc::field_is_nullable() {
   for (k_uint32 i = 0; i < arg_count_; ++i) {
-    if (args_[i]->is_nullable()) {
+    if (args_[i]->CheckNull()) {
       return true;
     }
   }

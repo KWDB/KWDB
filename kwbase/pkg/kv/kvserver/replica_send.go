@@ -787,7 +787,10 @@ func (r *Replica) checkBatchRequest(ba *roachpb.BatchRequest, isReadOnly bool) e
 			*roachpb.TsDeleteRequest,
 			*roachpb.TsDeleteEntityRequest,
 			*roachpb.TsDeleteMultiEntitiesDataRequest,
-			*roachpb.TsTagUpdateRequest:
+			*roachpb.TsTagUpdateRequest,
+			*roachpb.TsCommitRequest,
+			*roachpb.TsRollbackRequest,
+			*roachpb.TsImportFlushRequest:
 		default:
 			return errors.Errorf("%v mode is only available to reads", ba.ReadConsistency)
 		}

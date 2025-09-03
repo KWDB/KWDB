@@ -20,4 +20,6 @@ namespace kwdbts {
 KStatus InitExecutor(kwdbContext_p ctx, const EngineOptions &options);
 // destory executor when the instance is destoried
 KStatus DestoryExecutor();
+// get thread num info
+KStatus GetWaitThreadNum(kwdbContext_p ctx, void *resp);
 };  // namespace kwdbts

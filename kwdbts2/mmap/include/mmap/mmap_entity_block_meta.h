@@ -199,7 +199,7 @@ struct BlockItem {
   char user_defined[4];      // reserved for user-defined information.
 
   MetricRowID getRowID(uint32_t offset) {
-    return std::move(MetricRowID{block_id, offset});
+    return MetricRowID{block_id, offset};
   }
 
   void CopyMetricMetaInfo(const BlockItem& blk_item) {

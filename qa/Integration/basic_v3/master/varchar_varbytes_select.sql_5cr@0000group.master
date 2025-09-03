@@ -1,0 +1,24 @@
+> select code2 from test_SELECT_col.t1 group by code2 ORDER BY k_timestamp;
+ERROR: column "k_timestamp" must appear in the GROUP BY clause or be used in an aggregate function
+SQLSTATE: 42803
+> select e2 from test_SELECT_col.t1 group by e2 ORDER BY k_timestamp;
+ERROR: column "k_timestamp" must appear in the GROUP BY clause or be used in an aggregate function
+SQLSTATE: 42803
+> select code1 from test_SELECT_col.t1 group by code1,code2,code1+code2 ORDER BY k_timestamp;
+ERROR: column "k_timestamp" must appear in the GROUP BY clause or be used in an aggregate function
+SQLSTATE: 42803
+> SELECT max(e2) FROM test_SELECT_col.t1 GROUP BY e2 ORDER BY k_timestamp ORDER BY k_timestamp;---BUG
+ERROR: at or near "order": syntax error
+SQLSTATE: 42601
+DETAIL: source SQL:
+SELECT max(e2) FROM test_SELECT_col.t1 GROUP BY e2 ORDER BY k_timestamp ORDER BY k_timestamp
+                                                                        ^
+> SELECT e1+e2 FROM test_SELECT_col.t1 GROUP BY e1+e2 ORDER BY k_timestamp;
+ERROR: column "k_timestamp" must appear in the GROUP BY clause or be used in an aggregate function
+SQLSTATE: 42803
+> SELECT count(e2) FROM test_SELECT_col.t1 GROUP BY e2 ORDER BY k_timestamp;
+ERROR: column "k_timestamp" must appear in the GROUP BY clause or be used in an aggregate function
+SQLSTATE: 42803
+> select code1 from test_SELECT_col.t1 GROUP BY code1,e1 ORDER BY k_timestamp;
+ERROR: column "k_timestamp" must appear in the GROUP BY clause or be used in an aggregate function
+SQLSTATE: 42803

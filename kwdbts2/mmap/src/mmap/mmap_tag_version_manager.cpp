@@ -85,7 +85,7 @@ TagVersionObject* TagTableVersionManager::GetVersionObject(uint32_t table_versio
      return version_obj->second;
   }
   unLock();
-  LOG_ERROR("Get Tag MetaData Object failed. table_version: %u ", table_version);
+  LOG_WARN("Get Tag MetaData Object failed. table_version: %u ", table_version);
   return nullptr;
 }
 

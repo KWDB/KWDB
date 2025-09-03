@@ -39,20 +39,19 @@ import (
 type tsAlterTable struct {
 	execinfra.ProcessorBase
 
-	tsOperator       execinfrapb.OperatorType
-	columnMeta       []byte
-	oriColumnMeta    []byte
-	tableID          uint64
-	idxID            uint32
-	tagColumns       []uint32
-	txnID            []byte
-	currentTSVersion uint32
-	newTSVersion     uint32
-
-	partitionInterval uint64
-	compressInterval  []byte
-	vacuumInterval    []byte
-
+	tsOperator           execinfrapb.OperatorType
+	columnMeta           []byte
+	oriColumnMeta        []byte
+	tableID              uint64
+	idxID                uint32
+	tagColumns           []uint32
+	txnID                []byte
+	currentTSVersion     uint32
+	newTSVersion         uint32
+	partitionInterval    uint64
+	compressInterval     []byte
+	vacuumInterval       []byte
+	retentions           uint64
 	notFirst             bool
 	alterTsColumnSuccess bool
 	err                  error
@@ -84,6 +83,7 @@ func newTsAlterColumn(
 		partitionInterval: tst.PartitionInterval,
 		compressInterval:  tst.CompressInterval,
 		vacuumInterval:    tst.VacuumInterval,
+		retentions:        tst.Retentions,
 	}
 	if err := tat.Init(
 		tat,
@@ -158,6 +158,13 @@ func (tct *tsAlterTable) Start(ctx context.Context) context.Context {
 			return ctx
 		}
 		if err := tct.FlowCtx.Cfg.TsEngine.DropTSColumn(tct.tableID, tct.currentTSVersion, tct.newTSVersion, tct.txnID, tct.columnMeta); err != nil {
+			tct.alterTsColumnSuccess = false
+			tct.err = err
+			return ctx
+		}
+		tct.alterTsColumnSuccess = true
+	case execinfrapb.OperatorType_TsAlterRetentions:
+		if err := tct.FlowCtx.Cfg.TsEngine.AlterLifetime(tct.tableID, tct.retentions); err != nil {
 			tct.alterTsColumnSuccess = false
 			tct.err = err
 			return ctx

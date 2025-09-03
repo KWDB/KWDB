@@ -325,9 +325,9 @@ class TsSubEntityGroup : public TSObject {
 
   inline string partitionTblSubPath(timestamp64 p_time) {
     if (p_time >= 0) {
-      return std::move(tbl_sub_path_ + std::to_string(p_time) + "/");
+      return tbl_sub_path_ + std::to_string(p_time) + "/";
     } else {
-      return std::move(tbl_sub_path_ + "m"+ std::to_string(abs(p_time)) + "/");
+      return tbl_sub_path_ + "m"+ std::to_string(abs(p_time)) + "/";
     }
   }
 

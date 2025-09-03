@@ -1,0 +1,132 @@
+> SELECT e11>=e13 FROM test_SELECT_col.t1 ORDER BY k_timestamp;
+  ?column?
+------------
+   false
+   false
+   false
+   false
+    true
+   false
+    true
+    true
+    true
+    true
+    true
+    true
+    true
+    true
+   false
+   false
+   false
+   false
+(18 rows)
+> SELECT e1<=e3 FROM test_SELECT_col.t1 ORDER BY k_timestamp;
+  ?column?
+------------
+    true
+    true
+   false
+   false
+   false
+   false
+   false
+   false
+   false
+   false
+   false
+   false
+   false
+   false
+    true
+   false
+   false
+    true
+(18 rows)
+> SELECT e4!=e5 FROM test_SELECT_col.t1 ORDER BY k_timestamp;
+  ?column?
+------------
+   false
+    true
+    true
+    true
+    true
+    true
+    true
+    true
+    true
+    true
+    true
+    true
+    true
+    true
+    true
+    true
+    true
+    NULL
+(18 rows)
+> SELECT e8<=e9 FROM test_SELECT_col.t1 ORDER BY k_timestamp;
+  ?column?
+------------
+    true
+    true
+    true
+    true
+    true
+    true
+    true
+    true
+    true
+    true
+    true
+    true
+    true
+    true
+    true
+    true
+    true
+    NULL
+(18 rows)
+> SELECT e10<=e11 FROM test_SELECT_col.t1 ORDER BY k_timestamp;
+  ?column?
+------------
+   false
+   false
+   false
+   false
+    true
+   false
+   false
+    true
+    true
+   false
+   false
+   false
+   false
+    true
+   false
+   false
+   false
+    NULL
+(18 rows)
+> SELECT e16<=e20 FROM test_SELECT_col.t1 ORDER BY k_timestamp;
+  ?column?
+------------
+   false
+   false
+   false
+   false
+    true
+    true
+    true
+    true
+    true
+    true
+    true
+    true
+    true
+    true
+   false
+   false
+   false
+    NULL
+(18 rows)

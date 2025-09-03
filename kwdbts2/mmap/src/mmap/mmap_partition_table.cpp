@@ -15,11 +15,6 @@
 #include <atomic>
 #include <sys/mman.h>
 #include <stdexcept>
-#if defined(__GNUC__) && (__GNUC__ < 8)
-  #include <experimental/filesystem>
-#else
-  #include <filesystem>
-#endif
 #include <st_config.h>
 
 #include "cm_func.h"
@@ -1512,10 +1507,10 @@ int TsTimePartition::UndoPut(uint32_t entity_id, kwdbts::TS_LSN lsn, uint64_t st
       block_item_id = block_item->prev_block_id;
       continue;
     }
-    if (!isTsWithLSNType((DATATYPE)segment_tbl->getSchemaInfo()[0].type)) {
-      LOG_ERROR("The data type in the first column is not TIMESTAMP64_LSN.");
-      return KWEDATATYPEMISMATCH;
-    }
+    // if (!isTsWithLSNType((DATATYPE)segment_tbl->getSchemaInfo()[0].type)) {
+    //   LOG_ERROR("The data type in the first column is not TIMESTAMP64_LSN.");
+    //   return KWEDATATYPEMISMATCH;
+    // }
 
     // scan all data in blockitem
     k_uint32 row_count = block_item->publish_row_count;
@@ -2106,7 +2101,7 @@ int TsTimePartition::updatePayloadUsingDedup(uint32_t entity_id, const BlockSpan
   if (payload->dedup_rule_ == DedupRule::KEEP) {
     return err_code;
   }
-  bool ts_with_lsn = isTsWithLSNType((DATATYPE)(payload->GetSchemaInfo()[0].type));
+  bool ts_with_lsn = false;
 
   void* ts_begin = payload->GetColumnAddr(0, 0);
   dedup_info.need_dup = true;
@@ -2358,7 +2353,7 @@ int TsTimePartition::ConvertDataTypeToMem(DATATYPE old_type, DATATYPE new_type, 
       }
     } else {
       uint16_t var_len = *reinterpret_cast<uint16_t*>(old_var_mem.get());
-      std::string var_value((char*)old_var_mem.get() + MMapStringColumn::kStringLenLen);
+      std::string var_value((char*)old_var_mem.get() + kStringLenLen);
       convertStrToFixed(var_value, new_type, (char*) temp_new_mem, var_len, err_info);
     }
     std::shared_ptr<void> ptr(temp_new_mem, free);
@@ -2370,20 +2365,20 @@ int TsTimePartition::ConvertDataTypeToMem(DATATYPE old_type, DATATYPE new_type, 
     } else {
       if (old_type == VARSTRING) {
         auto old_len = *reinterpret_cast<uint16_t*>(old_var_mem.get()) - 1;
-        char* var_data = static_cast<char*>(std::malloc(old_len + MMapStringColumn::kStringLenLen));
-        memset(var_data, 0, old_len + MMapStringColumn::kStringLenLen);
+        char* var_data = static_cast<char*>(std::malloc(old_len + kStringLenLen));
+        memset(var_data, 0, old_len + kStringLenLen);
         *reinterpret_cast<uint16_t*>(var_data) = old_len;
-        memcpy(var_data + MMapStringColumn::kStringLenLen,
-               (char*) old_var_mem.get() + MMapStringColumn::kStringLenLen, old_len);
+        memcpy(var_data + kStringLenLen,
+               (char*) old_var_mem.get() + kStringLenLen, old_len);
         std::shared_ptr<void> ptr(var_data, free);
         *new_mem = ptr;
       } else {
         auto old_len = *reinterpret_cast<uint16_t*>(old_var_mem.get());
-        char* var_data = static_cast<char*>(std::malloc(old_len + MMapStringColumn::kStringLenLen + 1));
-        memset(var_data, 0, old_len + MMapStringColumn::kStringLenLen + 1);
+        char* var_data = static_cast<char*>(std::malloc(old_len + kStringLenLen + 1));
+        memset(var_data, 0, old_len + kStringLenLen + 1);
         *reinterpret_cast<uint16_t*>(var_data) = old_len + 1;
-        memcpy(var_data + MMapStringColumn::kStringLenLen,
-               (char*) old_var_mem.get() + MMapStringColumn::kStringLenLen, old_len);
+        memcpy(var_data + kStringLenLen,
+               (char*) old_var_mem.get() + kStringLenLen, old_len);
         std::shared_ptr<void> ptr(var_data, free);
         *new_mem = ptr;
       }

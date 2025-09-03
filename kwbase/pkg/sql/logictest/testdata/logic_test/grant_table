@@ -103,6 +103,7 @@ test           kwdb_internal       session_variables                  NULL      
 test           kwdb_internal       table_columns                      NULL            public   SELECT
 test           kwdb_internal       table_indexes                      NULL            public   SELECT
 test           kwdb_internal       tables                             NULL            public   SELECT
+test           kwdb_internal       ts_inflight_transactions           NULL            public   SELECT
 test           kwdb_internal       zones                              NULL            public   SELECT
 test           pg_catalog          NULL                               NULL            admin    ALL
 test           pg_catalog          NULL                               NULL            root     ALL

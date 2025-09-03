@@ -15,6 +15,7 @@
 #include <vector>
 #include "libkwdbts2.h"
 #include "ts_common.h"
+#include "ts_io.h"
 
 namespace kwdbts {
 
@@ -24,8 +25,8 @@ namespace kwdbts {
 
 enum WALMode : uint8_t {
   OFF = 0,
-  ON = 1,
-  SYNC = 2,
+  SYNC = 1,
+  FLUSH = 2,
   BYRL = 3    // by raft log
 };
 
@@ -42,13 +43,10 @@ struct EngineOptions {
   static void init();
 
   std::string db_path;
-  // WAL work level: 0:off, 1:on, 2:sync, default is sync.
-  uint8_t wal_level = WALMode::SYNC;
+  // WAL work level: 0:off, 1:sync, 2:flush, default is flush.
+  uint8_t wal_level = WALMode::FLUSH;
   // whether use raft log as WAL
   bool use_raft_log_as_wal = false;
-  // WAL file size, default is 64Mb
-  uint16_t wal_file_size = 64;
-  uint16_t wal_file_in_group = 3;
   uint16_t wal_buffer_size = 4;
   uint16_t thread_pool_size = 10;
   uint16_t task_queue_size = 1024;
@@ -57,7 +55,7 @@ struct EngineOptions {
   std::string cluster_id = "00000000-0000-0000-0000-000000000000";
   // 1MiB / 4KiB(BLOCK_SIZE) = 256
   [[nodiscard]] uint32_t GetBlockNumPerFile() const {
-    return wal_file_size * 256 - 1;
+    return UINT32_MAX;
   }
   bool wal_archive = false;
   char* wal_archive_command = nullptr;
@@ -89,6 +87,19 @@ struct EngineOptions {
   static int64_t max_anon_memory_size() {return max_anon_memory_size_;}
   static const string & home() { return home_; }
   static bool isSingleNode() {return is_single_node_;}
+
+  // V2
+  static int vgroup_max_num;
+  static DedupRule g_dedup_rule;
+  static size_t mem_segment_max_size;
+  static int32_t mem_segment_max_height;
+  static uint32_t max_last_segment_num;
+  static uint32_t max_compact_num;
+  static size_t max_rows_per_block;
+  static size_t min_rows_per_block;
+  static int64_t partition_interval;
+
+  TsIOEnv* io_env = &TsMMapIOEnv::GetInstance();
 };
 extern std::atomic<int64_t> kw_used_anon_memory_size;
 
