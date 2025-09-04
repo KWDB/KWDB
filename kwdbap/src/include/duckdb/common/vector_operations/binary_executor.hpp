@@ -11,6 +11,7 @@
 #include "duckdb/common/exception.hpp"
 #include "duckdb/common/types/vector.hpp"
 #include "duckdb/common/vector_operations/vector_operations.hpp"
+#include "duckdb/common/vector_operations/simd_utils.hpp"
 
 #include <functional>
 
@@ -216,6 +217,7 @@ struct BinaryExecutor {
 	}
 
 	template <class LEFT_TYPE, class RIGHT_TYPE, class RESULT_TYPE, class OPWRAPPER, class OP, class FUNC>
+	DUCKDB_INLINE_MODE
 	static void ExecuteGeneric(Vector &left, Vector &right, Vector &result, idx_t count, FUNC fun) {
 		UnifiedVectorFormat ldata, rdata;
 
@@ -224,6 +226,15 @@ struct BinaryExecutor {
 
 		result.SetVectorType(VectorType::FLAT_VECTOR);
 		auto result_data = FlatVector::GetData<RESULT_TYPE>(result);
+		#ifdef DUCKDB_USE_VECTORIZED_CODE
+        if (count%DEFAULT_SIMD_BATCH_SIZE == 0 && ldata.validity.AllValid() && rdata.validity.AllValid()) {
+           // Try to perform the SIMD calculation and return directly if it succeeds.
+           if (TryExecuteSIMD<LEFT_TYPE, RIGHT_TYPE, RESULT_TYPE, OP>(
+               ldata, rdata, result_data, count)) {
+               return;
+            }
+        }
+        #endif
 		ExecuteGenericLoop<LEFT_TYPE, RIGHT_TYPE, RESULT_TYPE, OPWRAPPER, OP, FUNC>(
 		    UnifiedVectorFormat::GetData<LEFT_TYPE>(ldata), UnifiedVectorFormat::GetData<RIGHT_TYPE>(rdata),
 		    result_data, ldata.sel, rdata.sel, count, ldata.validity, rdata.validity, FlatVector::Validity(result),

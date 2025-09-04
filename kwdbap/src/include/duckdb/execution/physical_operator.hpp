@@ -22,6 +22,8 @@
 #include "duckdb/common/enums/order_preservation_type.hpp"
 #include "duckdb/common/case_insensitive_map.hpp"
 #include "duckdb/execution/partition_info.hpp"
+#include "ee_rpc_parser.h"
+#include "ee_pb_plan.pb.h"
 
 namespace duckdb {
 class Event;
@@ -64,6 +66,32 @@ public:
 	unique_ptr<GlobalOperatorState> op_state;
 	//! Lock for (re)setting any of the operator states
 	mutex lock;
+	kwdbts::BrpcMessage rpc_info_;
+
+public:
+  bool InitBrpcSpec(const kwdbts::TSProcessorSpec& tsProcessorSpec) {
+    return rpc_info_.InitBrpcSpec(tsProcessorSpec);
+  }
+
+	bool HasRemoteInput() const {
+		return rpc_info_.is_remote_input_;
+	}
+
+  bool HasLocalInput() const {
+		return rpc_info_.is_local_input_;
+	}
+
+  bool HasRoutorOutput() const {
+		return rpc_info_.is_routor_output_;
+	}
+
+  bool HasLocalOutput() const {
+		return rpc_info_.is_local_output_;
+	}
+
+  bool HasByHashOutput() const {
+		return rpc_info_.is_remote_input_ && rpc_info_.is_routor_output_;
+	}
 
 public:
 	virtual string GetName() const;

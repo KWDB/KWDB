@@ -12,6 +12,8 @@
 #pragma once
 
 #include <vector>
+#include <string>
+#include <memory>
 #include <unordered_map>
 #include <set>
 
@@ -25,6 +27,52 @@
  */
 
 namespace kwdbts {
+
+
+
+class BrpcMessage {
+ public:
+  bool InitBrpcSpec(const TSProcessorSpec &tsProcessorSpec);
+
+  struct OrderInfo {
+    std::vector<bool> asc_order_;
+    std::vector<k_uint32> order_column_ids_;
+    std::vector<k_bool> null_first_;
+  };
+
+  struct StreamInfo {
+    kwdbts::StreamEndpointType endpoint_type_;
+    k_int32 stream_id_;
+    k_int32 target_node_id_;
+    k_int32 dest_processor_id_;
+  };
+
+  struct InputSyncSpec {
+    kwdbts::TSInputSyncSpec_Type type_;
+    OrderInfo order_info_;
+    std::vector<StreamInfo> stream_info_vec_;
+  };
+
+  struct OutputRouterSpec {
+    kwdbts::TSOutputRouterSpec_Type type_;
+    std::vector<StreamInfo> stream_info_vec_;
+    std::vector<k_uint32> group_cols_;
+  };
+
+ private:
+  void InitInputSyncSpec(const TSProcessorSpec &tsProcessorSpec);
+
+  void InitOutputRouterSpec(const TSProcessorSpec &tsProcessorSpec);
+
+ public:
+  std::vector<InputSyncSpec> remote_spec_vec_;
+  std::vector<OutputRouterSpec> routor_spec_vec_;
+  bool is_remote_input_{false};
+  bool is_local_input_{false};
+  bool is_routor_output_{false};
+  bool is_local_output_{false};
+};
+
 
 
 class RpcSpecResolve {

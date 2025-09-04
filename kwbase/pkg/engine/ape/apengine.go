@@ -314,8 +314,26 @@ func (r *Engine) Exec(conn *duck.Connection, stmt string) error {
 		errMsg := duck.ResultError(&res)
 		return pgerror.New(pgcode.Warning, errMsg)
 	}
-	duck.DestroyResult(&res)
+	defer duck.DestroyResult(&res)
 	return nil
+}
+
+// QueryStringRows query sql in input connection.
+func (r *Engine) QueryStringRows(conn *duck.Connection, stmt string) ([]string, error) {
+	var res duck.Result
+	state := duck.Query(*conn, stmt, &res)
+	if state != duck.StateSuccess {
+		errMsg := duck.ResultError(&res)
+		return nil, pgerror.New(pgcode.Warning, errMsg)
+	}
+	defer duck.DestroyResult(&res)
+	count := duck.RowCount(&res)
+	result := make([]string, 0)
+	for i := duck.IdxT(0); i < count; i++ {
+		str := duck.ValueTovarchar(&res, 0, i)
+		result = append(result, str)
+	}
+	return result, nil
 }
 
 func getErrorString(rep *C.APQueryInfo) error {
