@@ -597,5 +597,36 @@ SELECT e3 FROM test_block_filter.t1 WHERE e3>'test时间精度通用查询测试
 select e4 from test_block_filter.t1 where e4 is not null and e4 in('varchar  中文1');
 select e4 from test_block_filter.t1 where e4 is not null and e4 <= 'varchar  中文1';
 
+-- bugfix ICUNY1 ICUNSE
+CREATE TABLE test_block_filter.t11(
+ k_timestamp TIMESTAMPTZ NOT NULL,
+ e4 FLOAT4,
+ e11 CHAR)
+ATTRIBUTES (
+ code1 INT2 NOT NULL)
+PRIMARY TAGS(code1);
+INSERT INTO test_block_filter.t11 VALUES('2002-2-22 10:48:12.899',-99999999991.9999999991,'t',2);
+INSERT INTO test_block_filter.t11 VALUES('2004-12-31 12:10:10.911',-23000088.665120604,'T',3);
+INSERT INTO test_block_filter.t11 VALUES('2008-2-29 2:10:10.111',-43000079.07812032,'1',4);
+INSERT INTO test_block_filter.t11 VALUES('2012-02-29 1:10:10.000',43000079.07812032,'1',5);
+
+explain select e11 from test_block_filter.t11 where e11 = '1' or e11 is null;
+explain select e11 from test_block_filter.t11 where e11 like e'\\\\\\\\';
+
+CREATE TABLE test_block_filter.t12(
+ k_timestamp TIMESTAMPTZ NOT NULL,
+ e1 timestamptz(9) not null,
+ e2 timestamp(9) not null,
+ e3 timestamptz(6) not null,
+ e4 timestamp(6) not null)
+ATTRIBUTES (
+ code1 INT2 NOT NULL)
+PRIMARY TAGS(code1);
+
+INSERT INTO test_block_filter.t12 VALUES ('2023-01-01 07:58:12.459372', '1970-1-1 08:0:0','1970-1-1 08:0:0', '1970-1-1 08:0:02', '1970-1-1 08:0:01',1);
+explain select * from test_block_filter.t12 where e1 = '1970-01-01 08:00:00' and e2 = '1970-01-01 08:00:00';
+explain select * from test_block_filter.t12 where e3 = '1970-01-01 08:00:00' and e4 = '1970-01-01 08:00:00';
+
+use defaultdb;
 SET CLUSTER SETTING ts.rows_per_block.max_limit=1000;
 drop database test_block_filter cascade;

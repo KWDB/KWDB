@@ -728,6 +728,8 @@ func GetBlockFilter(expr opt.Expr, tabID opt.TableID, memo *Memo) FiltersExpr {
 }
 
 // check if the filter type can be converted to blockfilter
+// blockFilter only supports the following types of expr:
+// !=, >, <, =, >=, <=, between.. and... , in, not in, is null, is not null.
 func checkFilterTypeSupported(cond opt.Expr) bool {
 	switch cond.(type) {
 	// support !=, >, <, =, >=, <=, between.. and... , in, not in, is null, is not null.

@@ -30,6 +30,7 @@ import (
 	"fmt"
 	"math"
 	"strconv"
+	"time"
 
 	"gitee.com/kwbasedb/kwbase/pkg/server/telemetry"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfrapb"
@@ -1224,6 +1225,7 @@ func getFilterType(span constraint.Span) (execinfrapb.TSBlockFilterType, bool) {
 // startKey is the beginning boundary of the span;
 // endKey is the terminating boundary of the span;
 // boundary indicates whether the interval is open or closed.
+// typ is column type of expr
 func convertSpanToColumnSpan(span constraint.Span, typ *types.T) execinfrapb.TSBlockFilter_Span {
 	var columnSpan execinfrapb.TSBlockFilter_Span
 	if !span.StartKey().IsEmpty() && !span.StartKey().IsNull() {
@@ -1245,28 +1247,58 @@ const (
 	zeroFloat = 1e-20
 )
 
+// convert Nanosecond time to double
+func unixNanoAsUint64(t time.Time) float64 {
+	sec := float64(t.Unix())
+	nsec := float64(t.Nanosecond())
+	return sec*1e9 + nsec
+}
+
+// convert Microsecond time to double
+func unixMicroAsUint64(t time.Time) float64 {
+	sec := float64(t.Unix())
+	nsec := float64(t.Nanosecond())
+	return sec*1e6 + nsec
+}
+
+// convert Millisecond time to double
+func unixMilliAsUint64(t time.Time) float64 {
+	sec := float64(t.Unix())
+	nsec := float64(t.Nanosecond())
+	return sec*1e3 + nsec
+}
+
+// check if the timestamp is out of range
+func checkTimeOverflow(inTime float64) bool {
+	if inTime < float64(math.MinInt64) || inTime > float64(math.MaxInt64) {
+		panic(pgerror.New(pgcode.InvalidParameterValue, "Timestamp/TimestampTZ out of range"))
+	}
+	return true
+}
+
 // make start and end, construct the start and end of ColumnSpan based on different types.
+// typ is column type of expr
 func makeSpanKey(datum tree.Datum, typ *types.T) (key string) {
 	switch s := datum.(type) {
 	case *tree.DTimestampTZ:
 		// if DTimestampTZ has precision, it needs to be converted to timestamp with the precision.
 		if typ.InternalType.Oid == oid.T_timestamptz {
-			if typ.InternalType.Precision == 9 {
+			if typ.InternalType.Precision == 9 && checkTimeOverflow(unixNanoAsUint64(s.Time)) {
 				key = strconv.FormatInt(s.UnixNano(), 10)
-			} else if typ.InternalType.Precision == 6 {
+			} else if typ.InternalType.Precision == 6 && checkTimeOverflow(unixMicroAsUint64(s.Time)) {
 				key = strconv.FormatInt(s.UnixMicro(), 10)
-			} else {
+			} else if checkTimeOverflow(unixMilliAsUint64(s.Time)) {
 				key = strconv.FormatInt(s.UnixMilli(), 10)
 			}
 		}
 	case *tree.DTimestamp:
 		// if DTimestamp has precision, it needs to be converted to timestamp with the precision.
 		if typ.InternalType.Oid == oid.T_timestamp {
-			if typ.InternalType.Precision == 9 {
+			if typ.InternalType.Precision == 9 && checkTimeOverflow(unixNanoAsUint64(s.Time)) {
 				key = strconv.FormatInt(s.UnixNano(), 10)
-			} else if typ.InternalType.Precision == 6 {
+			} else if typ.InternalType.Precision == 6 && checkTimeOverflow(unixMicroAsUint64(s.Time)) {
 				key = strconv.FormatInt(s.UnixMicro(), 10)
-			} else {
+			} else if checkTimeOverflow(unixMilliAsUint64(s.Time)) {
 				key = strconv.FormatInt(s.UnixMilli(), 10)
 			}
 		}
