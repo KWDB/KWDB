@@ -27,6 +27,7 @@ package flowinfra
 import (
 	"container/list"
 	"context"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfrapb"
 	"time"
 
 	"gitee.com/kwbasedb/kwbase/pkg/settings"
@@ -63,6 +64,10 @@ type FlowScheduler struct {
 		queue            *list.List
 		flowSchedulerAcc *mon.BoundAccount
 	}
+
+	mu1 struct {
+		tsFlowMap map[execinfrapb.FlowID]Flow
+	}
 }
 
 // flowWithCtx stores a flow to run and a context to run it with.
@@ -91,6 +96,7 @@ func NewFlowScheduler(
 	fs.mu.queue = list.New()
 	fs.mu.maxRunningFlows = int(settingMaxRunningFlows.Get(&settings.SV))
 	fs.mu.flowSchedulerAcc = acc
+	fs.mu1.tsFlowMap = make(map[execinfrapb.FlowID]Flow)
 	settingMaxRunningFlows.SetOnChange(&settings.SV, func() {
 		fs.mu.Lock()
 		fs.mu.maxRunningFlows = int(settingMaxRunningFlows.Get(&settings.SV))
@@ -155,6 +161,32 @@ func (fs *FlowScheduler) ScheduleFlow(ctx context.Context, f Flow, specMemUsage 
 			return nil
 
 		})
+}
+
+func (fs *FlowScheduler) AddTsFlow(ctx context.Context, f Flow, specMemUsage int64) error {
+	return fs.stopper.RunTaskWithErr(
+		ctx, "flowinfra.FlowScheduler: scheduling flow", func(ctx context.Context) error {
+			fs.mu.Lock()
+			defer fs.mu.Unlock()
+			if err := fs.mu.flowSchedulerAcc.Grow(ctx, specMemUsage); err != nil {
+				log.Errorf(ctx, "remote flow exec failed, reason:%s. flow queue length: %d.\n", err.Error(), fs.mu.queue.Len())
+				return err
+			}
+			f.SetFlowSpecMemSize(specMemUsage)
+			log.VEventf(ctx, 1, "flow scheduler enqueuing tsFlowMap %s to be run later", f.GetID())
+			fs.mu1.tsFlowMap[f.GetID()] = f
+			return nil
+		})
+}
+
+func (fs *FlowScheduler) GetTsFlow(fid execinfrapb.FlowID) Flow {
+	fs.mu.Lock()
+	defer fs.mu.Unlock()
+	if f, ok := fs.mu1.tsFlowMap[fid]; ok {
+		delete(fs.mu1.tsFlowMap, fid)
+		return f
+	}
+	return nil
 }
 
 // Start launches the main loop of the scheduler.

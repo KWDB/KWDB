@@ -129,6 +129,16 @@ func (ds *MockDistSQLServer) SetupFlow(
 	return nil, nil
 }
 
+// SetupFlowOnly is part of the DistSQLServer interface.
+func (ds *MockDistSQLServer) SetupFlowOnly(ctx context.Context, request *SetupFlowRequest) (*SimpleResponse, error) {
+	return nil, nil
+}
+
+// RunFlowOnly is part of the DistSQLServer interface.
+func (ds *MockDistSQLServer) RunFlowOnly(ctx context.Context, request *RunFlowRequest) (*SimpleResponse, error) {
+	return nil, nil
+}
+
 // FlowStream is part of the DistSQLServer interface.
 func (ds *MockDistSQLServer) FlowStream(stream DistSQL_FlowStreamServer) error {
 	donec := make(chan error)

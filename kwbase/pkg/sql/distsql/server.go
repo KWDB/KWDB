@@ -547,6 +547,58 @@ func (ds *ServerImpl) SetupFlow(
 	return &execinfrapb.SimpleResponse{}, nil
 }
 
+// SetupFlowOnly is part of the DistSQLServer interface.
+func (ds *ServerImpl) SetupFlowOnly(
+	ctx context.Context, req *execinfrapb.SetupFlowRequest,
+) (*execinfrapb.SimpleResponse, error) {
+	log.VEventf(ctx, 1, "received SetupFlowOnly request from n%v for flow %v", req.Flow.Gateway, req.Flow.FlowID)
+	parentSpan := opentracing.SpanFromContext(ctx)
+
+	// Note: the passed context will be canceled when this RPC completes, so we
+	// can't associate it with the flow.
+	ctx = ds.AnnotateCtx(context.Background())
+	ctx, f, err := ds.setupFlow(ctx, parentSpan, &ds.memMonitor, req, nil, LocalState{})
+	if err == nil {
+		err = ds.flowScheduler.AddTsFlow(ctx, f, 0)
+	}
+
+	if err != nil {
+		// We return flow deployment errors in the response so that they are
+		// packaged correctly over the wire. If we return them directly to this
+		// function, they become part of an rpc error.
+		return &execinfrapb.SimpleResponse{Error: execinfrapb.NewError(ctx, err)}, nil
+	}
+	return &execinfrapb.SimpleResponse{}, nil
+}
+
+// RunFlowOnly is part of the DistSQLServer interface.
+func (ds *ServerImpl) RunFlowOnly(
+	ctx context.Context, req *execinfrapb.RunFlowRequest,
+) (*execinfrapb.SimpleResponse, error) {
+
+	// Note: the passed context will be canceled when this RPC completes, so we
+	// can't associate it with the flow.
+	ctx = ds.AnnotateCtx(context.Background())
+
+	f := ds.flowScheduler.GetTsFlow(req.FlowID)
+	if f == nil {
+		return &execinfrapb.SimpleResponse{
+			Error: execinfrapb.NewError(ctx, errors.Newf("flow missing, flowid:%v", req.FlowID)),
+		}, nil
+	}
+	log.VEventf(ctx, 1, "received RunFlowOnly request, flow %v", f.GetID())
+
+	err := ds.flowScheduler.ScheduleFlow(ctx, f, f.GetFlowSpecMemSize())
+
+	if err != nil {
+		// We return flow deployment errors in the response so that they are
+		// packaged correctly over the wire. If we return them directly to this
+		// function, they become part of an rpc error.
+		return &execinfrapb.SimpleResponse{Error: execinfrapb.NewError(ctx, err)}, nil
+	}
+	return &execinfrapb.SimpleResponse{}, nil
+}
+
 func (ds *ServerImpl) flowStreamInt(
 	ctx context.Context, stream execinfrapb.DistSQL_FlowStreamServer,
 ) error {
