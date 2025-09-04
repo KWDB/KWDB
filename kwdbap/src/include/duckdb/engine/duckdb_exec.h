@@ -115,7 +115,7 @@ class DuckdbExec {
 
   ExecutionResult ExecuteCustomPlan(kwdbContext_p ctx, const std::string &table_name);
 
-  unique_ptr <PhysicalPlan> ConvertFlowToPhysicalPlan(unique_ptr <PhysicalPlan> in_plan);
+  unique_ptr <PhysicalPlan> ConvertFlowToPhysicalPlan(unique_ptr <PhysicalPlan> in_plan, int *start_idx);
 
   ExecutionResult PrepareExecutePlan(kwdbContext_p ctx);
 
