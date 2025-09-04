@@ -336,4 +336,6 @@ type CDCCoordinator interface {
 	// DistInternalExecutor is used to run SQL with DistSQLAuto mode.
 	DistInternalExecutor() sqlutil.InternalExecutor
 	SetDistInternalExecutor(executor sqlutil.InternalExecutor)
+	// HasTask checks whether the specified instance has task in CDC.
+	HasTask(instanceType cdcpb.TSCDCInstanceType, tableID uint64, instanceID uint64) bool
 }

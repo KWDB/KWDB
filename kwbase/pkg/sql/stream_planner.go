@@ -15,9 +15,11 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"gitee.com/kwbasedb/kwbase/pkg/cdc/cdcpb"
 	"gitee.com/kwbasedb/kwbase/pkg/security"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfra"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/opt/memo"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgcode"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgerror"
@@ -26,6 +28,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlutil"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/types"
+	"gitee.com/kwbasedb/kwbase/pkg/util/retry"
 	"github.com/cockroachdb/errors"
 )
 
@@ -926,4 +929,27 @@ func createColumnMap(
 	}
 
 	return columnMap, tsColName, primaryTagCount
+}
+
+// waitCDCStatusChanged waits the cdc status changed.
+func waitCDCStatusChanged(
+	ctx context.Context,
+	cdc execinfra.CDCCoordinator,
+	tableID, instanceID uint64,
+	instanceType cdcpb.TSCDCInstanceType,
+	enabled bool,
+) {
+	opts := retry.Options{
+		InitialBackoff: 100 * time.Millisecond,
+		Multiplier:     2,
+		MaxBackoff:     500 * time.Millisecond,
+		MaxRetries:     5,
+	}
+
+	for r := retry.StartWithCtx(ctx, opts); r.Next(); {
+		cdcEnabled := cdc.HasTask(instanceType, tableID, instanceID)
+		if (enabled && cdcEnabled) || (!enabled && !cdcEnabled) {
+			return
+		}
+	}
 }
