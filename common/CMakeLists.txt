@@ -213,18 +213,99 @@ file(GLOB COMMON_SRC
 
 list(FILTER COMMON_SRC EXCLUDE REGEX ".*/test/.*")
 
+# Build brpc external project in common module
+message(STATUS "Building brpc from source in common module: ${PROJECT_SOURCE_DIR}/third_party/brpc-1.9.0")
+
+set(BRPC_VERSION 1.9.0)
+set(BRPC_SOURCE_DIR "${PROJECT_SOURCE_DIR}/third_party/brpc-${BRPC_VERSION}")
+set(BRPC_PREFIX_DIR "${CMAKE_CURRENT_BINARY_DIR}/brpc-${BRPC_VERSION}")
+set(BRPC_BUILD_DIR "${BRPC_PREFIX_DIR}/build")
+set(BRPC_OUTPUT_DIR "${BRPC_PREFIX_DIR}/output")
+
+# try to do some estimate on parallel degree used by make -j
+# first, check total memory, assuming we can have one compile job for every 4GB mem
+# second, take nproc result. We take the smaller one as -j parameter
+execute_process(
+    COMMAND bash -c "free -t -g | tail -n 1 | awk '{print $2}' | xargs -I {} expr {} / 4"
+    RESULT_VARIABLE result1
+    OUTPUT_VARIABLE value1
+    ERROR_VARIABLE error_output1
+)
+
+execute_process(
+    COMMAND nproc
+    RESULT_VARIABLE result2
+    OUTPUT_VARIABLE value2
+    ERROR_VARIABLE error_output1
+)
+
+# taking a pretty big value as init
+set(DEDUCTED_PARALLEL_DEGREE "1024")
+
+# if result1 is 0, assign the result to DEDUCTED_PARALLEL_DEGREE
+if (${result1} EQUAL 0)
+    string(STRIP "${value1}" value1)
+    math(EXPR mem_by_four "${value1}")
+    message(STATUS "Parallel degree estimation by memory is ${mem_by_four}")
+    set(DEDUCTED_PARALLEL_DEGREE ${mem_by_four})
+endif ()
+
+# if nproc returns, and if it's smaller than current value, take it
+if (${result2} EQUAL 0)
+    string(STRIP "${value2}" value2)
+    math(EXPR proc_num "${value2}")
+    message(STATUS "Parallel degree by nproc is ${proc_num}")
+    if (${DEDUCTED_PARALLEL_DEGREE} GREATER ${proc_num})
+      set(DEDUCTED_PARALLEL_DEGREE ${proc_num})
+    endif ()
+endif ()
+
+# to prevent the original big value. In case it's still very big
+# the above two steps fail. Take 4 as safe value
+if (${DEDUCTED_PARALLEL_DEGREE} GREATER 1023)
+    set(DEDUCTED_PARALLEL_DEGREE 4)
+endif ()
+message(STATUS "Final decision on parallel degree for brpc is: ${DEDUCTED_PARALLEL_DEGREE}")
+
+include(ExternalProject)
+
+ExternalProject_Add(
+    brpc
+    SOURCE_DIR "${BRPC_SOURCE_DIR}"
+    PREFIX "${BRPC_PREFIX_DIR}"
+    BINARY_DIR "${BRPC_BUILD_DIR}"
+    CONFIGURE_COMMAND
+        ${CMAKE_COMMAND} -E copy_directory "${BRPC_SOURCE_DIR}" "${BRPC_BUILD_DIR}"
+        COMMAND cd "${BRPC_BUILD_DIR}" && sh ./config_brpc.sh --headers=/usr/include "--libs=/usr/lib /usr/lib64"
+    BUILD_COMMAND
+        cd "${BRPC_BUILD_DIR}" && make -j${DEDUCTED_PARALLEL_DEGREE}
+    BUILD_IN_SOURCE 0
+    INSTALL_COMMAND
+        ${CMAKE_COMMAND} -E make_directory "${BRPC_OUTPUT_DIR}/include"
+        COMMAND ${CMAKE_COMMAND} -E make_directory "${BRPC_OUTPUT_DIR}/lib"
+        COMMAND ${CMAKE_COMMAND} -E copy_directory "${BRPC_BUILD_DIR}/output/include" "${BRPC_OUTPUT_DIR}/include"
+        COMMAND ${CMAKE_COMMAND} -E copy_directory "${BRPC_BUILD_DIR}/output/lib" "${BRPC_OUTPUT_DIR}/lib"
+)
+
 # common
 set(COMMON_LIB common)
 add_library(${COMMON_LIB} SHARED ${COMMON_SRC})
 target_include_directories(${COMMON_LIB}
-        PUBLIC src/h
-        PRIVATE src/include
-        PRIVATE src/roachpb
-        PRIVATE ../kwdbts2/common/include
-        PUBLIC ../kwdbts2/latch/include
-        ../kwdbts2/third_party/gtest-1.8.1/fused-src
+        PUBLIC 
+            src/h
+            ${BRPC_OUTPUT_DIR}/include
+            third_party/brpc-1.9.0/src
+            third_party/gtest-1.8.1/fused-src
+            ../kwdbts2/latch/include
+        PRIVATE 
+            src/include
+            src/roachpb
+            ../kwdbts2/common/include
         )
-target_link_libraries(${COMMON_LIB} protobuf dl)
+
+# Set brpc library dependency for common lib
+add_dependencies(${COMMON_LIB} brpc)
+target_link_libraries(${COMMON_LIB} ${BRPC_OUTPUT_DIR}/lib/libbrpc.a gflags ssl lz4 protobuf dl)
 
 if (KMALLOC_OVERRIDE)
     set(COMMON_SRC_OVERRIDE ${COMMON_SRC})
@@ -232,22 +313,27 @@ if (KMALLOC_OVERRIDE)
 
     set(COMMON_OVERRIDE_LIB common_override)
     add_library(${COMMON_OVERRIDE_LIB} SHARED ${COMMON_SRC_OVERRIDE})
+    add_dependencies(${COMMON_OVERRIDE_LIB} brpc)
     target_compile_definitions(${COMMON_OVERRIDE_LIB} PUBLIC KMALLOC_OVERRIDE)
     target_include_directories(${COMMON_OVERRIDE_LIB}
-            PUBLIC src/h
-            PRIVATE src/include
-            PRIVATE src/roachpb
-            PRIVATE ../kwdbts2/common/include
-            ../kwdbts2/third_party/gtest-1.8.1/fused-src
+            PUBLIC 
+                src/h
+                ${BRPC_OUTPUT_DIR}/include
+                third_party/brpc-1.9.0/src
+            PRIVATE 
+                src/include
+                src/roachpb
+                ../kwdbts2/common/include
+                third_party/gtest-1.8.1/fused-src
             )
-    target_link_libraries(${COMMON_OVERRIDE_LIB} protobuf dl)
+    target_link_libraries(${COMMON_OVERRIDE_LIB} ${BRPC_OUTPUT_DIR}/lib/libbrpc.a gflags ssl lz4 protobuf dl)
 endif()
 
 # Compile and generate test case executables
 option(WITH_TESTS "build with tests" ON)
 message(STATUS "Build with tests:${WITH_TESTS}")
 
-add_subdirectory(../kwdbts2/third_party/gtest-1.8.1/fused-src/gtest gtest.out)
+add_subdirectory(third_party/gtest-1.8.1/fused-src/gtest gtest.out)
 
 if (WITH_TESTS)
     set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/tests)
@@ -283,7 +369,8 @@ if (WITH_TESTS)
                 PRIVATE src/roachpb
                 PRIVATE ../kwdbts2/common/include
                 PRIVATE src/mem/test/h
-                ../kwdbts2/third_party/gtest-1.8.1/fused-src
+                third_party/gtest-1.8.1/fused-src
+                third_party/brpc-1.9.0/src
                 )
         if (KMALLOC_INSTRUMENTATION)
             set_target_properties(${tname} PROPERTIES COMPILE_FLAGS
@@ -309,3 +396,4 @@ install(TARGETS ${COMMON_LIB} ${COMMON_OVERRIDE_LIB}
         RUNTIME DESTINATION bin
         LIBRARY DESTINATION lib
         ARCHIVE DESTINATION lib)
+
