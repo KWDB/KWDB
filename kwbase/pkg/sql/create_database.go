@@ -42,6 +42,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/util/errorutil/unimplemented"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 	"github.com/cockroachdb/errors"
+	"github.com/jackc/pgx"
 )
 
 // MaxTSDBNameLength represents the maximum length of ts database name.
@@ -188,27 +189,62 @@ func (n *createDatabaseNode) startExec(params runParams) error {
 		}
 	}
 	if desc.EngineType == tree.EngineTypeAP {
-		// Create a Job to perform the second stage of ts DDL.
-		syncDetail := jobspb.SyncMetaCacheDetails{
-			Type:     createKwdbAPDatabase,
-			Database: desc,
-		}
-		jobID, err := params.p.createTSSchemaChangeJob(params.ctx, syncDetail, tree.AsStringWithFQNames(n.n, params.Ann()), params.p.txn)
-		if err != nil {
-			return errors.Wrap(err, "createSyncMetaCacheJob failed")
-		}
-		// Actively commit a transaction, and read/write system table operations
-		// need to be performed before this.
-		if err := params.p.txn.Commit(params.ctx); err != nil {
-			return err
-		}
-		// After the transaction commits successfully, execute the Job and wait for it to complete.
-		if err = params.ExecCfg().JobRegistry.Run(
-			params.ctx,
-			params.extendedEvalCtx.InternalExecutor.(*InternalExecutor),
-			[]int64{jobID},
-		); err != nil {
-			return errors.Wrap(err, "createSyncMetaCacheJob run failed")
+		switch desc.ApDatabaseType {
+		case tree.ApDatabaseTypeDuckDB:
+			// Create a Job to perform the second stage of ts DDL.
+			syncDetail := jobspb.SyncMetaCacheDetails{
+				Type:     createKwdbAPDatabase,
+				Database: desc,
+			}
+			jobID, err := params.p.createTSSchemaChangeJob(params.ctx, syncDetail, tree.AsStringWithFQNames(n.n, params.Ann()), params.p.txn)
+			if err != nil {
+				return errors.Wrap(err, "createSyncMetaCacheJob failed")
+			}
+			// Actively commit a transaction, and read/write system table operations
+			// need to be performed before this.
+			if err := params.p.txn.Commit(params.ctx); err != nil {
+				return err
+			}
+			// After the transaction commits successfully, execute the Job and wait for it to complete.
+			if err = params.ExecCfg().JobRegistry.Run(
+				params.ctx,
+				params.extendedEvalCtx.InternalExecutor.(*InternalExecutor),
+				[]int64{jobID},
+			); err != nil {
+				return errors.Wrap(err, "createSyncMetaCacheJob run failed")
+			}
+		case tree.ApDatabaseTypeMysql:
+			// attach mysql database in ap engine
+			apEngine := params.p.DistSQLPlanner().distSQLSrv.ServerConfig.GetAPEngine()
+			conn, err := apEngine.CreateConnection()
+			if err != nil {
+				return err
+			}
+			defer apEngine.DestroyConnection(conn)
+			attachStmt := fmt.Sprintf("ATTACH '%s' AS %s (TYPE mysql_scanner)", desc.AttachInfo, desc.Name)
+			if err := apEngine.Exec(conn, attachStmt); err != nil {
+				return err
+			}
+			// commit database to prepare create table
+			params.p.txn.Commit(params.ctx)
+			// find all tables in mysql database
+			queryTable := fmt.Sprintf("select sql from duckdb_tables where database_name='%s'", desc.Name)
+			createSqls, err := apEngine.QueryStringRows(conn, queryTable)
+			if err != nil {
+				return err
+			}
+			// create table
+			config, err := pgx.ParseDSN(desc.AttachInfo)
+			if err != nil {
+				return err
+			}
+			mysqlSchema := tree.Name(config.Database).Normalize()
+			for _, createSql := range createSqls {
+				createStmt := strings.Replace(createSql, fmt.Sprintf("CREATE TABLE %s", mysqlSchema), fmt.Sprintf("CREATE TABLE IF NOT EXISTS %s.public", desc.Name), 1)
+				if _, err := params.ExecCfg().InternalExecutor.Exec(params.ctx, "create table", nil, createStmt); err != nil {
+					return err
+				}
+			}
 		}
 	}
 	log.Infof(params.ctx, "create database %s finished, type: %s, id: %d", desc.Name, tree.EngineName(n.n.EngineType), desc.ID)
