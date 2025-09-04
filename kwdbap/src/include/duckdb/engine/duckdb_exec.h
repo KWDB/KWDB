@@ -134,6 +134,7 @@ class DuckdbExec {
                                                         std::map<idx_t, idx_t> &col_map);
 
   unique_ptr <PhysicalPlan> CreateAPTableScan(const int *i);
+  unique_ptr <PhysicalPlan> CreateAPAggregator(unique_ptr<PhysicalPlan> input_plan, const int *i);
 
   unique_ptr <PhysicalPlan> AddAPFilters(unique_ptr <PhysicalPlan> plan,
                                          const PostProcessSpec &post,

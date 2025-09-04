@@ -1116,6 +1116,8 @@ unique_ptr <PhysicalPlan> DuckdbExec::ConvertFlowToPhysicalPlan(unique_ptr <Phys
     const ProcessorSpec &proc = fspecs_->processors(i);
     if (proc.has_core() && proc.core().has_aptablereader()) {
       in_plan = CreateAPTableScan(&i);
+    } else if (proc.has_core() && proc.core().has_apaggregator()) {
+      in_plan = CreateAPAggregator(std::move(in_plan), &i);
     }
   }
   return in_plan;
