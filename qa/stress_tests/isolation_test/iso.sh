@@ -22,6 +22,7 @@ INSTALL_DIR=$BIN_DIR
 QA_TEST_DIR=$QA_DIR/stress_tests/isolation_test
 
 LISTEN_PORTS=(26257 26258 26259 26260 26261)
+BRPC_PORTS=(27257 27258 27259 27260 27261)
 HTTP_PORTS=(8081 8082 8083 8084 8085)
 STORE_DIRS=("$DEPLOY_DIR/kwbase-data1" "$DEPLOY_DIR/kwbase-data2" "$DEPLOY_DIR/kwbase-data3" "$DEPLOY_DIR/kwbase-data4" "$DEPLOY_DIR/kwbase-data5")
 JOIN_ADDR="127.0.0.1:26257"
@@ -32,6 +33,7 @@ SLEEP_START=10
 start_node() {
     local index=$1
     local listen_port=${LISTEN_PORTS[$index]}
+    local brpc_port=${BRPC_PORTS[$index]}
     local http_port=${HTTP_PORTS[$index]}
     local store=${STORE_DIRS[$index]}
     echo "Starting KaiwuDB node ${store}"
@@ -39,6 +41,7 @@ start_node() {
         start --insecure \
         --listen-addr=127.0.0.1:"${listen_port}" \
         --http-addr=127.0.0.1:"${http_port}" \
+        --brpc-addr=127.0.0.1:"${brpc_port}" \
         --store=${store} \
         --max-offset="${MAX_OFFSET}" \
         --join="${JOIN_ADDR}" \
@@ -61,6 +64,7 @@ start_single_node() {
     ${KWBIN} \
             start-single-node --insecure \
             --listen-addr=127.0.0.1:26257 \
+            --brpc-addr=127.0.0.1:27257 \
             --http-addr=127.0.0.1:8080 \
             --store=$DEPLOY_DIR/kwbase-data \
             --background
