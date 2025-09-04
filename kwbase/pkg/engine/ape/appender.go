@@ -11,8 +11,8 @@ import (
 	duck "github.com/duckdb-go-bindings"
 )
 
-// Appender holds the DuckDB appender. It allows efficient bulk loading into a DuckDB database.
-type Appender struct {
+// ApAppender holds the DuckDB appender. It allows efficient bulk loading into a DuckDB database.
+type ApAppender struct {
 	conn     *duck.Connection
 	schema   string
 	table    string
@@ -40,25 +40,20 @@ type DataChunk struct {
 }
 
 func DuckInsert(ctx context.Context, r *Engine, dbName, tabName string, rowVals []tree.Datums) error {
-	// fmt.Println("DuckInsert start")
-	//db := duck.Database{}
-	//var state duck.State
-	//state = duck.Open(r.GetDBPath()+"/"+dbName, &db)
-	//if state != duck.StateSuccess {
-	//	return errors.New(fmt.Sprintf("failed to opend the ap database \"%s\"" + dbName))
-	//}
-	//
-	//conn := duck.Connection{}
-	//state = duck.Connect(db, &conn)
-	//if state != duck.StateSuccess {
-	//	return pgerror.Newf(pgcode.Internal, "failed to connect to ap database \"%s\""+dbName)
-	//}
-	//defer func() {
-	//	duck.Disconnect(&conn)
-	//	duck.Close(&db)
-	//}()
-	conn := duck.Connection{Ptr: r.conn}
-	a, err := NewAppender(&conn, dbName, tree.PublicSchema, tabName)
+	// conn, err := NewDuckConn(r, dbName)
+	// if err != nil {
+	// 	return pgerror.Newf(pgcode.Internal, "could not create ap engine connection to \"%s\": %s", dbName, err.Error())
+	// }
+	// defer func() {
+	// 	duck.Disconnect(conn)
+	// 	// duck.Close(&db)
+	// }()
+	// conn := duck.Connection{Ptr: r.conn}
+	conn, index, err := r.getDuckConn(dbName, tree.PublicSchema, tabName)
+	if index < 0 {
+		return pgerror.Newf(pgcode.Internal, "could not get a valid appender: %s", err.Error())
+	}
+	a, err := NewAppender(conn, dbName, tree.PublicSchema, tabName)
 	if err != nil {
 		return pgerror.Newf(pgcode.Internal, "could not create new appender: %s", err.Error())
 	}
@@ -71,6 +66,9 @@ func DuckInsert(ctx context.Context, r *Engine, dbName, tabName string, rowVals 
 	if err := a.Close(); err != nil {
 		return pgerror.Newf(pgcode.Internal, "could not flush and close appender: %s", err.Error())
 	}
+	if err = r.returnDuckConn(dbName, index); err != nil {
+		return pgerror.Newf(pgcode.Internal, "could not return appender: %s", err.Error())
+	}
 	//var res duck.Result
 	//query := fmt.Sprintf("SELECT * FROM %s", tabName)
 	//duck.Query(conn, query, &res)
@@ -80,18 +78,41 @@ func DuckInsert(ctx context.Context, r *Engine, dbName, tabName string, rowVals 
 	return nil
 }
 
+// NewDuckCon creates a conn obj
+func NewDuckConn(r *Engine, dbName string) (*duck.Connection, error) {
+	// db := r.attachDB[dbName].(duck.Dabase)
+	var state duck.State
+
+	if r.testDB == nil {
+		db := duck.Database{}
+		state = duck.Open(r.GetDBPath()+"/"+dbName, &db)
+		if state != duck.StateSuccess {
+			return nil, errors.New(fmt.Sprintf("failed to opend the ap database %s" + dbName))
+		}
+		r.testDB = &db
+	}
+
+	conn := duck.Connection{}
+	state = duck.Connect(*r.testDB, &conn)
+	if state != duck.StateSuccess {
+		return nil, pgerror.Newf(pgcode.Internal, "failed to connect to ap database \"%s\""+dbName)
+	}
+	return &conn, nil
+}
+
 // NewAppender returns a new Appender from a DuckDB driver connection.
-func NewAppender(driverConn *duck.Connection, catalog, schema, table string) (*Appender, error) {
+func NewAppender(driverConn *duck.Connection, catalog, schema, table string) (*ApAppender, error) {
 
 	var appender duck.Appender
-	state := duck.AppenderCreateExt(*driverConn, catalog, schema, table, &appender)
+	// state := duck.AppenderCreateExt(*driverConn, catalog, schema, table, &appender)
+	state := duck.AppenderCreate(*driverConn, schema, table, &appender)
 	if state == duck.StateError {
 		err := duck.AppenderError(appender)
 		duck.AppenderDestroy(&appender)
 		return nil, errors.New(err)
 	}
 
-	a := &Appender{
+	a := &ApAppender{
 		conn:     driverConn,
 		schema:   schema,
 		table:    table,
@@ -268,7 +289,7 @@ func apEngineErr(msg string) error {
 }
 
 // AppendRow loads a row of values into the appender. The values are provided as separate arguments.
-func (a *Appender) AppendRow(args tree.Datums) error {
+func (a *ApAppender) AppendRow(args tree.Datums) error {
 	if a.closed {
 		return getError(errAppenderAppendAfterClose, nil)
 	}
@@ -281,7 +302,7 @@ func (a *Appender) AppendRow(args tree.Datums) error {
 	return nil
 }
 
-func (a *Appender) appendRowSlice(args tree.Datums) error {
+func (a *ApAppender) appendRowSlice(args tree.Datums) error {
 	// Early-out, if the number of args does not match the column count.
 	if len(args) != len(a.types) {
 		return fmt.Errorf("%s: expected %d, got %d", columnCountErrMsg, len(args), len(a.types))
@@ -306,7 +327,7 @@ func (a *Appender) appendRowSlice(args tree.Datums) error {
 	return nil
 }
 
-func (a *Appender) appendDataChunk() error {
+func (a *ApAppender) appendDataChunk() error {
 	if a.rowCount == 0 {
 		// Nothing to append.
 		return nil
@@ -326,7 +347,7 @@ func (a *Appender) appendDataChunk() error {
 
 // Close the appender. This will flush the appender to the underlying table.
 // It is vital to call this when you are done with the appender to avoid leaking memory.
-func (a *Appender) Close() error {
+func (a *ApAppender) Close() error {
 	if a.closed {
 		return getError(errAppenderDoubleClose, nil)
 	}

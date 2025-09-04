@@ -47,6 +47,8 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgerror"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 	"gitee.com/kwbasedb/kwbase/pkg/util/stop"
+	"gitee.com/kwbasedb/kwbase/pkg/util/syncutil"
+	duck "github.com/duckdb-go-bindings"
 	"github.com/pkg/errors"
 )
 
@@ -60,6 +62,11 @@ type Engine struct {
 	conn     unsafe.Pointer
 	cfg      EngineConfig
 	attachDB map[string]struct{}
+
+	testDB *duck.Database
+	// appender cache
+	cmu       syncutil.RWMutex
+	connCache map[string]*cachedConnList
 }
 
 // EngineConfig configuration of Engine
@@ -128,6 +135,19 @@ func NewApEngine(stopper *stop.Stopper, cfg EngineConfig) (*Engine, error) {
 	eg.stopper = stopper
 	eg.cfg = cfg
 	eg.attachDB = make(map[string]struct{})
+	eg.connCache = make(map[string]*cachedConnList)
+
+	var db duck.Database
+
+	state := duck.Open(eg.GetDBPath()+"/ap_db", &db)
+	if state != duck.StateSuccess {
+		fmt.Printf("failed to opend the ap database ap_db")
+		eg.testDB = nil
+	} else {
+		eg.testDB = &db
+
+	}
+
 	return &eg, nil
 }
 
@@ -437,6 +457,133 @@ func (r *Engine) DropDatabase(currentDB string, dropDB string, rm bool) error {
 		if _, err := os.Stat(filePath); err != nil {
 			_ = os.Remove(filePath)
 		}
+	}
+
+	return nil
+}
+
+// fixed dbname and tabName for now
+type connCacheEntry struct {
+	mu struct {
+		syncutil.Mutex
+	}
+	// entry *ApAppender
+	con   *duck.Connection
+	inUse bool
+	code  int
+}
+type cachedConnList struct {
+	mu struct {
+		syncutil.RWMutex
+		connList []*connCacheEntry
+	}
+}
+
+// this func guarantees returned list is not nil
+func (r *Engine) getListByDB(dbName string) (list *cachedConnList, err error) {
+	var connList *cachedConnList
+	var ok bool
+	r.cmu.RLock()
+	connList, ok = r.connCache[dbName]
+	r.cmu.RUnlock()
+	if !ok {
+		// no list created under this dbName, create a new list
+		r.cmu.Lock()
+		connList, ok = r.connCache[dbName]
+		if ok {
+			// someone else created a list for us, go ahead to grab entry
+
+		} else {
+			// still empty list under Engine, create one
+			list := &cachedConnList{}
+			list.mu.connList = []*connCacheEntry{}
+			// 	mu: {
+			// 		applist: []*connCacheEntry{},
+			// 	},
+			// }
+			r.connCache[dbName] = list
+			connList, ok = r.connCache[dbName]
+		}
+		r.cmu.Unlock()
+	}
+	return connList, nil
+}
+
+func (r *Engine) lookForExistingCacheFromList(clist *cachedConnList) (dcon *duck.Connection, index int, err error) {
+	// func (r *Engine) lookForExistingCacheFromList(clist *cachedConnList) (app *ApAppender, index int, err error) {
+	// scan one after take readlock
+	clist.mu.RLock()
+	defer clist.mu.RUnlock()
+	for i := 0; i < len(clist.mu.connList); i++ {
+		entry := clist.mu.connList[i]
+		entry.mu.Lock()
+		defer entry.mu.Unlock()
+		if entry.inUse == false {
+			entry.inUse = true
+			return entry.con, i, nil
+		}
+	}
+	return nil, -1, fmt.Errorf("Cache list exhausted before finding an empty entry")
+}
+
+// func (r *Engine) GetAppender(dbName, schemaName, tabname string) (app *ApAppender, index int, err error) {
+func (r *Engine) getDuckConn(dbName, schemaName, tabname string) (dcon *duck.Connection, index int, err error) {
+	cachedList, err := r.getListByDB(dbName)
+	if err != nil {
+		return nil, -1, err
+	}
+	// peek at the existing list
+	item, index, err := r.lookForExistingCacheFromList(cachedList)
+	if index >= 0 && err == nil {
+		// fmt.Printf("Reusing element # %d in cache\n", index)
+		return item, index, nil
+	}
+
+	// we didn't find a valid cache so far, create one and add it to list
+	conn, err := NewDuckConn(r, dbName)
+	if err != nil {
+		return nil, -1, err
+	}
+
+	cachedList.mu.Lock()
+	defer cachedList.mu.Unlock()
+	index = len(cachedList.mu.connList)
+	ent := connCacheEntry{
+		con:   conn,
+		inUse: true,
+		code:  index,
+	}
+	cachedList.mu.connList = append(cachedList.mu.connList, &ent)
+	if len(cachedList.mu.connList) > 100 {
+		fmt.Printf("Too big conn caching queue %d\n", len(cachedList.mu.connList))
+	}
+	// fmt.Printf("Adding element # %d to cached list under DB %s\n", index, dbName)
+
+	return ent.con, index, nil
+
+}
+
+func (r *Engine) returnDuckConn(dbName string, index int) error {
+	r.cmu.RLock()
+	connList, ok := r.connCache[dbName]
+	r.cmu.RUnlock()
+	if !ok {
+		return fmt.Errorf("Invalid appender to return, invalid database name: %s", dbName)
+
+	} else {
+		connList.mu.RLock()
+		if index+1 > len(connList.mu.connList) {
+			return fmt.Errorf("Invalid index vs cache list length: %d vs %d", index, len(connList.mu.connList)-1)
+		}
+		ent := connList.mu.connList[index]
+		ent.mu.Lock()
+		connList.mu.RUnlock()
+		if ent.code != index {
+			return fmt.Errorf("Invalid secret code: %d vs %d", ent.code, index)
+		}
+		ent.inUse = false
+		ent.mu.Unlock()
+		// fmt.Printf("Returning element # %d to cached list\n", index)
 	}
 
 	return nil
