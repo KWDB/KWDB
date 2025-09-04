@@ -22,8 +22,10 @@ using namespace duckdb;
 
 namespace kwdbts {
 
-unique_ptr<PhysicalPlan> DuckdbExec::CreateAPAggregator(unique_ptr<PhysicalPlan> input_plan, const int *i) {
-    auto physical_plan = make_uniq<PhysicalPlan>(Allocator::Get(*connect_->context));
+unique_ptr<PhysicalPlan> DuckdbExec::CreateAPAggregator(int *i) {
+    // auto physical_plan = make_uniq<PhysicalPlan>(Allocator::Get(*connect_->context));
+    (*i)--;
+    auto input_plan = ConvertFlowToPhysicalPlan(i);
     const ProcessorSpec &proc = fspecs_->processors(*i);
     if (proc.has_core() && proc.core().has_apaggregator()) {
         auto apAggregator = proc.core().apaggregator();
@@ -60,7 +62,7 @@ unique_ptr<PhysicalPlan> DuckdbExec::CreateAPAggregator(unique_ptr<PhysicalPlan>
                 // todo: current type is not correct
                 auto &res = physical_planner_ -> Make<PhysicalUngroupedAggregate>(table_scan.returned_types, std::move(expressions), 0);
                 res.children.push_back(proj);
-                physical_plan->SetRoot(res);
+                input_plan->SetRoot(res);
                 break;
             }
             default: {
@@ -111,6 +113,6 @@ unique_ptr<PhysicalPlan> DuckdbExec::CreateAPAggregator(unique_ptr<PhysicalPlan>
         //   physical_plan->SetRoot(res);
         // }
     }
-    return physical_plan;
+    return input_plan;
 }
 }
