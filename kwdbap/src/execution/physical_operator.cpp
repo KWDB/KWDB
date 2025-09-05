@@ -134,6 +134,16 @@ ProgressData PhysicalOperator::GetProgress(ClientContext &context, GlobalSourceS
 }
 // LCOV_EXCL_STOP
 
+
+SinkCombineResultType PhysicalOperator::KWDB_Combine(ExecutionContext &context, OperatorSinkCombineInput &input, int &remd) {
+  SinkCombineResultType result_type = Combine(context, input);
+  std::lock_guard<std::mutex> guard(lock);
+  --total_tasks_;
+  remd = total_tasks_;
+
+  return result_type;
+}
+
 //===--------------------------------------------------------------------===//
 // Sink
 //===--------------------------------------------------------------------===//

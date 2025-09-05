@@ -190,35 +190,6 @@ if(OPENMP_FOUND)
     set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${OpenMP_EXE_LINKER_FLAGS}")
 endif()
 
-# Build brpc external project
-message(STATUS "Building brpc from source: ${PROJECT_SOURCE_DIR}/third_party/brpc-1.9.0")
-
-set(BRPC_VERSION 1.9.0)
-set(BRPC_SOURCE_DIR "${PROJECT_SOURCE_DIR}/third_party/brpc-${BRPC_VERSION}")
-set(BRPC_PREFIX_DIR "${CMAKE_CURRENT_BINARY_DIR}/brpc-${BRPC_VERSION}")
-set(BRPC_BUILD_DIR "${BRPC_PREFIX_DIR}/build")
-set(BRPC_OUTPUT_DIR "${BRPC_PREFIX_DIR}/output")
-
-include(ExternalProject)
-
-ExternalProject_Add(
-    brpc
-    SOURCE_DIR "${BRPC_SOURCE_DIR}"
-    PREFIX "${BRPC_PREFIX_DIR}"
-    BINARY_DIR "${BRPC_BUILD_DIR}"
-    CONFIGURE_COMMAND
-        ${CMAKE_COMMAND} -E copy_directory "${BRPC_SOURCE_DIR}" "${BRPC_BUILD_DIR}"
-        COMMAND cd "${BRPC_BUILD_DIR}" && sh ./config_brpc.sh --headers=/usr/include "--libs=/usr/lib /usr/lib64"
-    BUILD_COMMAND
-        cd "${BRPC_BUILD_DIR}" && make -j${DEDUCTED_PARALLEL_DEGREE}
-    BUILD_IN_SOURCE 0
-    INSTALL_COMMAND
-        ${CMAKE_COMMAND} -E make_directory "${BRPC_OUTPUT_DIR}/include"
-        COMMAND ${CMAKE_COMMAND} -E make_directory "${BRPC_OUTPUT_DIR}/lib"
-        COMMAND ${CMAKE_COMMAND} -E copy_directory "${BRPC_BUILD_DIR}/output/include" "${BRPC_OUTPUT_DIR}/include"
-        COMMAND ${CMAKE_COMMAND} -E copy_directory "${BRPC_BUILD_DIR}/output/lib" "${BRPC_OUTPUT_DIR}/lib"
-)
-
 set(MODULE_NAME kwdbts2)
 set(KWDBTS2_SERVER_LIB kwdbts2)
 
@@ -229,9 +200,8 @@ set(TS_INCLUDE
         ../common/src/h
         ../common/src/include
         ../common/src/roachpb
-        third_party/gtest-1.8.1/fused-src
-        third_party/brpc-1.9.0/src
-        ${BRPC_OUTPUT_DIR}/include
+        ../common/src/brpc/include
+        ../common/third_party/gtest-1.8.1/fused-src
         include
         engine/include
         common/include
@@ -239,7 +209,6 @@ set(TS_INCLUDE
         mmap/include
         exec/include
         statistic/include
-        brpc/include
         )
 if (NOT KWBASE_OSS)
     list(APPEND TS_INCLUDE icl/autonomy/include)
@@ -254,7 +223,6 @@ file(GLOB_RECURSE KWDBTS2_SERVER_LIB_SRC
         mmap/src/*.cpp
         mmap/src/lib/*.c
         statistic/src/*.cpp
-        brpc/src/*.cpp
         )
 else ()
     file(GLOB_RECURSE KWDBTS2_SERVER_LIB_SRC
@@ -266,7 +234,6 @@ else ()
             mmap/src/lib/*.c
             statistic/src/*.cpp
             icl/autonomy/src/*.cpp
-            brpc/src/*.cpp
     )
 endif()
 list(FILTER KWDBTS2_SERVER_LIB_SRC EXCLUDE REGEX ".*/tests/.*")
@@ -278,16 +245,13 @@ endif()
 # Add the server module source files to the dynamic library
 add_library(${KWDBTS2_SERVER_LIB} SHARED ${KWDBTS2_SERVER_LIB_SRC})
 
-# Set brpc library dependency
-add_dependencies(${KWDBTS2_SERVER_LIB} brpc)
-target_link_libraries(${KWDBTS2_SERVER_LIB} PRIVATE ${BRPC_OUTPUT_DIR}/lib/libbrpc.a)
-target_link_libraries(${KWDBTS2_SERVER_LIB} PRIVATE gflags ssl lz4)
+# Link to common library
+target_link_libraries(${KWDBTS2_SERVER_LIB} PRIVATE common)
 
 # Import the header files required by the server module
 target_include_directories(${KWDBTS2_SERVER_LIB} PRIVATE
     ${PROTOBUF_INCLUDE_DIR}
     ${TS_INCLUDE}
-    ${BRPC_OUTPUT_DIR}/include
 	)
 
 # Compile and generate test case executables
@@ -304,7 +268,6 @@ if (WITH_TESTS)
               exec/tests/*.cpp
               engine/tests/*.cpp
               statistic/tests/*.cpp
-              brpc/tests/*.cpp
               )
   else ()
       file(GLOB_RECURSE KWDBTS2_SERVER_TEST_SRC
@@ -314,7 +277,6 @@ if (WITH_TESTS)
               engine/tests/*.cpp
               statistic/tests/*.cpp
               icl/autonomy/tests/*.cpp
-              brpc/tests/*.cpp
       )
   endif()
   foreach (tsrc ${KWDBTS2_SERVER_TEST_SRC})
@@ -337,7 +299,7 @@ if (WITH_TESTS)
         target_include_directories(${tname}
                 PRIVATE ${TS_INCLUDE}
                 ${PROTOBUF_INCLUDE_DIR}
-                third_party/gtest-1.8.1/fused-src
+                ../common/third_party/gtest-1.8.1/fused-src
                 )
 
         target_link_libraries(${tname} PRIVATE ${KWDBTS2_SERVER_LIB} ${PROTOBUF_LIB} common gtest dl rt)

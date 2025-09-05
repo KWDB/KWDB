@@ -23,8 +23,8 @@ add_subdirectory(${ZDP}/kwdbts2 kwdbts2)
 set(INCLUDE
     ${ZDP}/common/src/h
     ${ZDP}/common/src/include
-    ${ZDP}/kwdbts2/third_party/gtest-1.8.1/fused-src
-    ${ZDP}/kwdbts2/third_party/phmap
+    ${ZDP}/common/third_party/gtest-1.8.1/fused-src
+    ${ZDP}/common/third_party/phmap
     ${ZDP}/kwdbts2/include
     ${ZDP}/kwdbts2/roachpb
     ${ZDP}/kwdbts2/engine/include

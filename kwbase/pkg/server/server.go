@@ -2312,8 +2312,6 @@ func (s *Server) Start(ctx context.Context) error {
 	// node. This also uses SQL.
 	s.leaseMgr.DeleteOrphanedLeases(timeThreshold)
 
-	s.attachAllApDatabase(ctx)
-
 	log.Event(ctx, "server ready")
 
 	s.stopper.RunWorker(workersCtx, func(workersCtx context.Context) {
@@ -3205,19 +3203,19 @@ func (s *Server) attachAllApDatabase(ctx context.Context) error {
 		if len(apDBs) > 0 {
 			err = s.GetAPEngine().AttachDatabase(apDBs)
 			if err != nil {
-				return err
+				return errors.Wrapf(err, "failed to attach ap database %s", apDBs)
 			}
 		}
 		conn, err := s.GetAPEngine().CreateConnection()
 		if err != nil {
-			return err
+			return errors.Wrapf(err, "failed to create ap connection")
 		}
 		defer s.GetAPEngine().DestroyConnection(conn)
 		for _, v := range apMysqlAttachs {
 			attachStmt := fmt.Sprintf("ATTACH '%s' AS %s (TYPE mysql_scanner)", v.attachInfo, v.asName)
 			err = s.GetAPEngine().Exec(conn, attachStmt)
 			if err != nil {
-				return err
+				return errors.Wrapf(err, "failed to attach mysql database %s, attach info: %s", v.asName, v.attachInfo)
 			}
 		}
 

@@ -27,6 +27,7 @@ package server
 import (
 	"bytes"
 	"context"
+
 	"gitee.com/kwbasedb/kwbase/pkg/keys"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
 	"gitee.com/kwbasedb/kwbase/pkg/settings"
@@ -156,6 +157,9 @@ func (s *Server) refreshSettings() {
 					log.Infof(ctx, "try open ap engine")
 					if err := s.GetAPEngine().Open(s.node.Descriptor.RangeIndex); err != nil {
 						panic(errors.Errorf("failed create ap Engine, err: %+v", err))
+					}
+					if err := s.attachAllApDatabase(ctx); err != nil {
+						panic(errors.Errorf("failed attach ap database, err: %+v", err))
 					}
 				}
 			case <-s.stopper.ShouldStop():

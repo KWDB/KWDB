@@ -5373,6 +5373,42 @@ create_table_stmt:
       Comment: $15,
     }
   }
+| CREATE opt_temp_create_table TABLE table_name create_as_opt_col_list opt_table_with AS FROM table_name opt_create_table_on_commit opt_comment_clause
+  {
+    name := $4.unresolvedObjectName().ToTableName()
+    srcName := $9.unresolvedObjectName().ToTableName()
+    $$.val = &tree.CreateTable{
+      Table: name,
+      IfNotExists: false,
+      Interleave: nil,
+      Defs: tree.TableDefs(nil),
+      AsSource: nil,
+      StorageParams: $6.storageParams(),
+      OnCommit: $10.createTableOnCommitSetting(),
+      Temporary: $2.persistenceType(),
+      Comment: $11,
+      SrcTable: srcName,
+      AsFrom: true,
+    }
+  }
+| CREATE opt_temp_create_table TABLE IF NOT EXISTS table_name create_as_opt_col_list opt_table_with AS FROM table_name opt_create_table_on_commit opt_comment_clause
+  {
+    name := $7.unresolvedObjectName().ToTableName()
+    srcName := $12.unresolvedObjectName().ToTableName()
+    $$.val = &tree.CreateTable{
+      Table: name,
+      IfNotExists: true,
+      Interleave: nil,
+      Defs: tree.TableDefs(nil),
+      AsSource: nil,
+      StorageParams: $9.storageParams(),
+      OnCommit: $13.createTableOnCommitSetting(),
+      Temporary: $2.persistenceType(),
+      Comment: $14,
+      SrcTable: srcName,
+      AsFrom: true,
+    }
+  }
 
 opt_table_with:
   /* EMPTY */

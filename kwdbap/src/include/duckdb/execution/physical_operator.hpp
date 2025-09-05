@@ -66,32 +66,37 @@ public:
 	unique_ptr<GlobalOperatorState> op_state;
 	//! Lock for (re)setting any of the operator states
 	mutex lock;
-	kwdbts::BrpcMessage rpc_info_;
+  kwdbts::BrpcMessage rpc_info_;
+  int total_tasks_{0};
 
-public:
+ public:
   bool InitBrpcSpec(const kwdbts::TSProcessorSpec& tsProcessorSpec) {
     return rpc_info_.InitBrpcSpec(tsProcessorSpec);
   }
 
-	bool HasRemoteInput() const {
-		return rpc_info_.is_remote_input_;
-	}
+  bool HasRemoteInput() const {
+    return rpc_info_.is_remote_input_;
+  }
 
   bool HasLocalInput() const {
-		return rpc_info_.is_local_input_;
-	}
+    return rpc_info_.is_local_input_;
+  }
 
   bool HasRoutorOutput() const {
-		return rpc_info_.is_routor_output_;
-	}
+    return rpc_info_.is_routor_output_;
+  }
 
   bool HasLocalOutput() const {
-		return rpc_info_.is_local_output_;
-	}
+    return rpc_info_.is_local_output_;
+  }
 
   bool HasByHashOutput() const {
-		return rpc_info_.is_remote_input_ && rpc_info_.is_routor_output_;
-	}
+    return rpc_info_.is_remote_input_ && rpc_info_.is_routor_output_;
+  }
+
+  void SetTotalTasks(int total_tasks) {
+    total_tasks_ = total_tasks;
+  }
 
 public:
 	virtual string GetName() const;
@@ -193,6 +198,8 @@ public:
 
 public:
 	// Sink interface
+
+  SinkCombineResultType KWDB_Combine(ExecutionContext &context, OperatorSinkCombineInput &input, int &remd);
 
 	//! The sink method is called constantly with new input, as long as new input is available. Note that this method
 	//! CAN be called in parallel, proper locking is needed when accessing dat

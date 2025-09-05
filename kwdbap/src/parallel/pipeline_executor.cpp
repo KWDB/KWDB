@@ -371,7 +371,8 @@ PipelineExecuteResult PipelineExecutor::PushFinalize() {
 		return PipelineExecuteResult::INTERRUPTED;
 	}
 #endif
-	auto result = pipeline.sink->Combine(context, combine_input);
+	int remd = 0;
+	auto result = pipeline.sink->KWDB_Combine(context, combine_input, remd);
 
 	if (result == SinkCombineResultType::BLOCKED) {
 		return PipelineExecuteResult::INTERRUPTED;
