@@ -23,7 +23,7 @@
 #include "br_object_pool.h"
 #include "br_pass_through_chunk_buffer.h"
 #include "ee_data_chunk.h"
-#include "ee_defer.h"
+#include "br_defer.h"
 #include "ee_sort_chunk_merger.h"
 #include "kwdb_type.h"
 

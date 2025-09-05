@@ -20,7 +20,7 @@
 #include "br_internal_service.h"
 #include "br_mgr.h"
 #include "ee_block_compress.h"
-#include "ee_defer.h"
+#include "br_defer.h"
 #include "ee_fast_string.h"
 #include "ee_new_slice.h"
 #include "ee_protobuf_serde.h"
