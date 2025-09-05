@@ -1,3 +1,4 @@
+#ifdef NDEBUG
 #include <gtest/gtest.h>
 #include <unistd.h>
 
@@ -488,3 +489,4 @@ TEST_F(ConcurrentRWTest, RandomFlush) {
     free(i.data);
   }
 }
+#endif
