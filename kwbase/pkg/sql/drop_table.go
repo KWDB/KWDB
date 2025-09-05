@@ -41,7 +41,6 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 	"gitee.com/kwbasedb/kwbase/pkg/util/timeutil"
 	"github.com/cockroachdb/errors"
-	"github.com/jackc/pgx"
 )
 
 type dropTableNode struct {
@@ -180,20 +179,7 @@ func (n *dropTableNode) startExec(params runParams) error {
 		}
 		if droppedDesc.IsColumnBasedTable() {
 			if droppedDesc.GetParentSchemaID() == keys.PublicSchemaID {
-				dbDesc, err := getDatabaseDescByID(ctx, params.p.txn, droppedDesc.ParentID)
-				if err != nil {
-					return err
-				}
-				switch dbDesc.ApDatabaseType {
-				case tree.ApDatabaseTypeDuckDB:
-					n.n.Names[0].SchemaName = tree.PublicSchemaName
-				case tree.ApDatabaseTypeMysql:
-					config, err := pgx.ParseDSN(dbDesc.AttachInfo)
-					if err != nil {
-						return err
-					}
-					n.n.Names[0].SchemaName = tree.Name(config.Database)
-				}
+				n.n.Names[0].SchemaName = tree.PublicSchemaName
 			}
 			n.n.Names[0].ExplicitSchema = true
 			n.n.Names[0].ExplicitCatalog = true
