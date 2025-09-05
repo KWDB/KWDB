@@ -80,8 +80,6 @@ cleanup_single_node() {
   rm -rf $DEPLOY_DIR
 }
 
-trap cleanup_single_node EXIT
-
 cd "${INSTALL_DIR}"
 echo "Starting KaiwuDB nodes..."
 start_single_node &
@@ -92,6 +90,10 @@ sleep "${SLEEP_START}"
 cd "${QA_TEST_DIR}"
 echo "Running tests..."
 make test
+
+cleanup_single_node
+echo "Waiting for KaiwuDB to STOP..."
+sleep "${SLEEP_START}"
 
 wait
 
