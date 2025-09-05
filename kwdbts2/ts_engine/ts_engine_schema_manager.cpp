@@ -11,7 +11,6 @@
 
 #include "ts_engine_schema_manager.h"
 
-#include <iostream>
 #include <memory>
 #include <regex>
 
@@ -51,7 +50,7 @@ KStatus TsEngineSchemaManager::Init(kwdbContext_p ctx) {
       table_schema_mgrs_.clear();
     }
     for (const auto& table_entry : fs::directory_iterator(schema_root_path_)) {
-      if (table_entry.is_directory()) {
+      if (fs::is_directory(table_entry)) {
         std::string dir_name = table_entry.path().filename().string();
         if (std::regex_match(dir_name, num_regex)) {
           auto table_id = atoi(dir_name.c_str());

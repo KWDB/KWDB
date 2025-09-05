@@ -656,7 +656,7 @@ KStatus TsPartitionVersion::NeedVacuumEntitySegment(const fs::path& root_path,
   timestamp64 latest_mtime = 0;
   bool has_files = false;
   for (const auto& entry : fs::directory_iterator(root_path)) {
-    if (entry.is_regular_file() && entry.path().filename() != DEL_FILE_NAME) {
+    if (fs::is_regular_file(entry) && entry.path().filename() != DEL_FILE_NAME) {
       auto mtime = ModifyTime(entry.path());
       if (!has_files || mtime > latest_mtime) {
         latest_mtime = mtime;
