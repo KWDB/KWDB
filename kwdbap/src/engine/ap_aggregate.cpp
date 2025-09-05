@@ -22,96 +22,70 @@ using namespace duckdb;
 
 namespace kwdbts {
 
+    vector<unique_ptr<duckdb::Expression>> CopyChildren(
+    const vector<unique_ptr<duckdb::Expression>> &children) {
+        vector<unique_ptr<duckdb::Expression>> result;
+        result.reserve(children.size());
+        for (auto &child : children) {
+            result.push_back(child->Copy());  // 每个元素调用 Copy()
+        }
+        return result;
+    }
+
 unique_ptr<PhysicalPlan> DuckdbExec::CreateAPAggregator(int *i) {
-    // auto physical_plan = make_uniq<PhysicalPlan>(Allocator::Get(*connect_->context));
+    const ProcessorSpec &proc = fspecs_->processors(*i);
     (*i)--;
     auto input_plan = ConvertFlowToPhysicalPlan(i);
-    const ProcessorSpec &proc = fspecs_->processors(*i);
     if (proc.has_core() && proc.core().has_apaggregator()) {
         auto apAggregator = proc.core().apaggregator();
         const PostProcessSpec &post = proc.post();
-        if (post.output_columns_size() > 0 && post.output_columns_size() != post.output_types_size()) {
-            return nullptr;
-        }
+        // if (post.output_columns_size() > 0 && post.output_columns_size() != post.output_types_size()) {
+        //     return nullptr;
+        // }
         if (input_plan->Root().type != PhysicalOperatorType::TABLE_SCAN) {
-            throw InvalidInputException("Operator is not a table scan");
+            throw InvalidInputException("operator is not a table scan");
         }
         auto &table_scan = input_plan->Root().Cast<PhysicalTableScan>();
         vector<unique_ptr<duckdb::Expression>> children;
         for (auto idx : table_scan.projection_ids) {
             children.push_back(make_uniq<BoundReferenceExpression>(table_scan.returned_types[idx], idx));
         }
+
+        // auto ref_copy = CopyChildren(children);
         auto &proj = physical_planner_ -> Make<PhysicalProjection>(table_scan.returned_types, std::move(children), 0);
         proj.children.push_back(input_plan->Root());
 
-        switch (apAggregator.aggregations()[0].func()) {
-            case TSAggregatorSpec_Func_SUM: {
-                vector<unique_ptr<duckdb::Expression>> expressions;
+        vector<unique_ptr<duckdb::Expression>> expressions;
+        for (auto &agg : apAggregator.aggregations()) {
+            switch (agg.func()) {
+                case TSAggregatorSpec_Func_SUM: {
+                    std::string sum_func = "sum";
+                    EntryLookupInfo lookup_info(CatalogType::AGGREGATE_FUNCTION_ENTRY, sum_func);
+                    auto entry_retry = CatalogEntryRetriever(*connect_->context);
+                    auto func_entry = entry_retry.GetEntry("", "", lookup_info, OnEntryNotFound::RETURN_NULL);
+                    auto &func = func_entry->Cast<AggregateFunctionCatalogEntry>();
+                    unique_ptr<duckdb::Expression> filter;
+                    unique_ptr<FunctionData> bind_info;
+                    auto aggr_type = AggregateType::NON_DISTINCT;
 
-                std::string sum_func = "sum";
-                EntryLookupInfo lookup_info(CatalogType::AGGREGATE_FUNCTION_ENTRY, sum_func);
-                auto entry_retry = CatalogEntryRetriever(*connect_->context);
-                auto func_entry = entry_retry.GetEntry("", "", lookup_info, OnEntryNotFound::RETURN_NULL);
-                auto &func = func_entry->Cast<AggregateFunctionCatalogEntry>();
-                unique_ptr<duckdb::Expression> filter;
-                unique_ptr<FunctionData> bind_info;
-                auto aggr_type = AggregateType::NON_DISTINCT;
+                    vector<unique_ptr<duckdb::Expression>> ref;
+                    for (auto idx : agg.col_idx()) {
+                        ref.push_back(make_uniq<BoundReferenceExpression>(table_scan.returned_types[idx], idx));
+                    }
 
-                auto agg_expr = make_uniq<BoundAggregateExpression>(func.functions.GetFunctionByArguments(*connect_->context, {LogicalType::INTEGER}), std::move(children), std::move(filter), std::move(bind_info), aggr_type);
-                expressions.push_back(std::move(agg_expr));
-                // todo: current type is not correct
-                auto &res = physical_planner_ -> Make<PhysicalUngroupedAggregate>(table_scan.returned_types, std::move(expressions), 0);
-                res.children.push_back(proj);
-                input_plan->SetRoot(res);
-                break;
+                    auto agg_expr = make_uniq<BoundAggregateExpression>(func.functions.GetFunctionByArguments(*connect_->context, {LogicalType::INTEGER}), std::move(ref), std::move(filter), std::move(bind_info), aggr_type);
+                    expressions.push_back(std::move(agg_expr));
+                    break;
+                }
+                default: {
+                    throw InvalidInputException("unsupported agg function");
+                }
             }
-            default: {
-                throw InvalidInputException("unsupported agg function");
-            }
-
         }
-
-        //
-        //
-        // vector<unique_ptr<duckdb::Expression>> expressions;
-        //
-        // if (apAggregator.aggregations()[0].func() == TSAggregatorSpec_Func_SUM) {
-        //   vector<unique_ptr<duckdb::Expression>> children;
-        //   auto expr = make_uniq<BoundReferenceExpression>(LogicalType::INTEGER, 0);
-        //   children.push_back(std::move(expr));
-        //
-        //   std::string sum_func = "sum";
-        //   EntryLookupInfo lookup_info(CatalogType::AGGREGATE_FUNCTION_ENTRY, sum_func);
-        //   auto entry_retry = CatalogEntryRetriever(*connect_->context);
-        //   auto func_entry = entry_retry.GetEntry("", "", lookup_info, OnEntryNotFound::RETURN_NULL);
-        //   auto &func = func_entry->Cast<AggregateFunctionCatalogEntry>();
-        //
-        //   unique_ptr<duckdb::Expression> filter;
-        //   unique_ptr<FunctionData> bind_info;
-        //   auto aggr_type = AggregateType::NON_DISTINCT;
-        //
-        //   auto agg_expr = make_uniq<BoundAggregateExpression>(func.functions.GetFunctionByArguments(*connect_->context, {LogicalType::INTEGER}), std::move(children), std::move(filter), std::move(bind_info), aggr_type);
-        //   expressions.push_back(std::move(agg_expr));
-        //
-        //   vector<unique_ptr<duckdb::Expression>> exprs_copy;
-        //   for (auto &aggr : expressions) {
-        //     auto &bound_aggr = aggr->Cast<BoundAggregateExpression>();
-        //     for (auto &child : bound_aggr.children) {
-        //       auto ref = make_uniq<BoundReferenceExpression>(child->return_type, 0);
-        //       exprs_copy.push_back(std::move(child));
-        //       child = std::move(ref);
-        //     }
-        //   }
-        //
-        //
-        //   auto &proj = physical_planner.Make<PhysicalProjection>(result_types, std::move(exprs_copy), 0);
-        //   proj.children.push_back(physical_plan->Root());
-        //
-        //   auto &res = physical_planner.Make<PhysicalUngroupedAggregate>(result_types, std::move(expressions), 0);
-        //   res.children.push_back(proj);
-        //   physical_plan = physical_planner.GetPhysicalPlan();
-        //   physical_plan->SetRoot(res);
-        // }
+        // todo: current type is not correct
+        auto &res = physical_planner_ -> Make<PhysicalUngroupedAggregate>(table_scan.returned_types, std::move(expressions), 0);
+        res.children.push_back(proj);
+        input_plan->SetRoot(res);
     }
     return input_plan;
 }

@@ -1152,7 +1152,7 @@ unique_ptr<PhysicalPlan> DuckdbExec::ConvertFlowToPhysicalPlan(int* start_idx) {
   if (proc.has_core() && proc.core().has_aptablereader()) {
     physical_plan = CreateAPTableScan(start_idx);
   } else if (proc.has_core() && proc.core().has_apaggregator()) {
-    physical_plan = CreateAPAggregator(std::move(physical_plan), start_idx);
+    physical_plan = CreateAPAggregator(start_idx);
   }
   return physical_plan;
 }
@@ -1187,7 +1187,7 @@ ExecutionResult DuckdbExec::PrepareExecutePlan(kwdbContext_p ctx) {
       return result;
     }
     auto start_idx = fspecs_->processors_size() -1;
-    auto res_plan = ConvertFlowToPhysicalPlan(std::move(init_physical_plan), &start_idx);
+    auto res_plan = ConvertFlowToPhysicalPlan(&start_idx);
     prepared->physical_plan = physical_planner_->GetPhysicalPlan();
     prepared->physical_plan->SetRoot(res_plan->Root());
     if (!prepared->physical_plan) {
