@@ -32,8 +32,6 @@ namespace kwdbts {
 
 class BrpcMessage {
  public:
-  bool InitBrpcSpec(const TSProcessorSpec &tsProcessorSpec);
-
   struct OrderInfo {
     std::vector<bool> asc_order_;
     std::vector<k_uint32> order_column_ids_;
@@ -58,6 +56,10 @@ class BrpcMessage {
     std::vector<StreamInfo> stream_info_vec_;
     std::vector<k_uint32> group_cols_;
   };
+
+  bool InitBrpcSpec(const TSProcessorSpec &tsProcessorSpec);
+
+  
 
  private:
   void InitInputSyncSpec(const TSProcessorSpec &tsProcessorSpec);
