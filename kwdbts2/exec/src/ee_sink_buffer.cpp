@@ -275,12 +275,12 @@ KStatus OutboundBuffer::AttemptSendRpc(const k_int64& instance_id,
 
           if (0 != status.status_code()) {
             is_completing_ = true;
-            const auto& dest_addr = context.brpc_dest_addrs;
-            LOG_ERROR(
-                "transmit chunk rpc failed [target_node_id={%ld}] "
-                "[dest={%s}:{%d}] detail:{%s}",
-                ctx.instance_id, dest_addr.hostname_.c_str(), dest_addr.port_,
-                status.error_msgs(0).c_str());
+            // const auto& dest_addr = context.brpc_dest_addrs;
+            // LOG_ERROR(
+            //     "transmit chunk rpc failed [target_node_id={%ld}] "
+            //     "[dest={%s}:{%d}] detail:{%s}",
+            //     ctx.instance_id, dest_addr.hostname_.c_str(), dest_addr.port_,
+            //     status.error_msgs(0).c_str());
           } else {
             static_cast<void>(AttemptSendRpc(ctx.instance_id, [&]() {
               UpdateSendWindow(ctx.instance_id, ctx.seq);

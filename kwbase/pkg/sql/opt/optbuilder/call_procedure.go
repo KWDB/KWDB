@@ -12,8 +12,6 @@
 package optbuilder
 
 import (
-	"fmt"
-
 	"gitee.com/kwbasedb/kwbase/pkg/sql/opt/memo"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/parser"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgcode"
@@ -24,14 +22,14 @@ import (
 
 func (b *Builder) buildCallProcedure(cp *tree.CallProcedure, inScope *scope) (outScope *scope) {
 	b.DisableMemoReuse = true
-	b.insideProcDef = true
+	b.insideObjectDef.SetFlags(InsideProcedureDef)
 	b.trackViewDeps = true
 	b.qualifyDataSourceNamesInAST = true
 
 	// reset fields which is used specifically while compiling procedure
 	// and recover panic
 	defer func() {
-		b.insideProcDef = false
+		b.insideObjectDef.ClearFlags(InsideProcedureDef)
 		b.trackViewDeps = false
 		b.viewDeps = nil
 		b.qualifyDataSourceNamesInAST = false
@@ -72,7 +70,6 @@ func (b *Builder) buildCallProcedure(cp *tree.CallProcedure, inScope *scope) (ou
 	// get AST from metadata
 	procStmt, err := parser.ParseOne(source.BodyStr)
 	if err != nil {
-		fmt.Println(source.BodyStr)
 		panic(err)
 	}
 	createProcStmt, ok := procStmt.AST.(*tree.CreateProcedure)

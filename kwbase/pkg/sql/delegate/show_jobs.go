@@ -69,12 +69,20 @@ func (d *delegator) delegateShowJobs(n *tree.ShowJobs) (tree.Statement, error) {
 	sqlStmt := fmt.Sprintf("%s %s %s", selectClause, whereClause, orderbyClause)
 	if n.Block {
 		sqlStmt = fmt.Sprintf(
-			`SELECT * FROM [%s]
-			 WHERE
-			    IF(finished IS NULL,
-			      IF(pg_sleep(1), kwdb_internal.force_retry('24h'), 0),
-			      0
-			    ) = 0`, sqlStmt)
+			`WITH jobs AS (SELECT * FROM [%s]),
+       sleep_and_restart_if_unfinished AS (
+              SELECT IF(pg_sleep(1), kwdb_internal.force_retry('24h'), 1)
+                     = 0 AS timed_out
+                FROM (SELECT job_id FROM jobs WHERE finished IS NULL LIMIT 1)
+             ),
+       fail_if_slept_too_long AS (
+                SELECT kwdb_internal.force_error('55000', 'timed out waiting for jobs')
+                  FROM sleep_and_restart_if_unfinished
+                 WHERE timed_out
+              )
+SELECT *
+  FROM jobs
+ WHERE NOT EXISTS(SELECT * FROM fail_if_slept_too_long)`, sqlStmt)
 	}
 	if n.Name != "" {
 		queryRow := `SELECT schedule_id FROM system.scheduled_jobs WHERE schedule_name = $1`

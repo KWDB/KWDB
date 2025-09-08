@@ -655,6 +655,22 @@ func (u *sqlSymUnion) caseWhens() []*tree.CaseWhen {
     return u.val.([]*tree.CaseWhen)
 }
 
+func (u *sqlSymUnion) triggerActionTime() tree.TriggerActionTime {
+  return u.val.(tree.TriggerActionTime)
+}
+
+func (u *sqlSymUnion) triggerEvent() tree.TriggerEvent {
+  return u.val.(tree.TriggerEvent)
+}
+
+func (u *sqlSymUnion) triggerOrder() *tree.TriggerOrder {
+  return u.val.(*tree.TriggerOrder)
+}
+
+func (u *sqlSymUnion) triggerBody() tree.TriggerBody {
+  return u.val.(tree.TriggerBody)
+}
+
 //func (u *sqlSymUnion) childTableDef() tree.ChildTableDef {
 //    return u.val.(tree.ChildTableDef)
 //}
@@ -680,7 +696,7 @@ func (u *sqlSymUnion) caseWhens() []*tree.CaseWhen {
 // below; search this file for "Keyword category lists".
 
 // Ordinary key words in alphabetical order.
-%token <str> ABORT ACTION ADD ADMIN AGGREGATE AUDIT AUDITS
+%token <str> ABORT ACTION ADD ADMIN AFTER AGGREGATE AUDIT AUDITS
 %token <str> ALL ALTER ANALYSE ANALYZE AND AND_AND ANY ANNOTATE_TYPE AP APPLICATIONS ARRAY AS ASC
 %token <str> ASYMMETRIC ASSIGN AT ATTRIBUTE ATTRIBUTES AUTHORIZATION AUTOMATIC
 
@@ -688,7 +704,7 @@ func (u *sqlSymUnion) caseWhens() []*tree.CaseWhen {
 %token <str> USE_INDEX_ONLY IGNORE_INDEX_ONLY CAR_HINT JOIN_HINT NO_JOIN_HINT ORDER_JOIN HASH_JOIN MERGE_JOIN GROUP_HINT
 %token <str> LOOKUP_JOIN DISALLOW_HASH_JOIN DISALLOW_MERGE_JOIN DISALLOW_LOOKUP_JOIN LEADING_TABLE NO_SYNCHRONIZER_GROUP RELATIONAL_GROUP
 
-%token <str> BACKUP BEGIN BETWEEN BIGINT BIGSERIAL BIT
+%token <str> BACKUP BEFORE BEGIN BETWEEN BIGINT BIGSERIAL BIT
 %token <str> BUCKET_COUNT
 %token <str> BLOB BOOL BOOLEAN BOTH BUNDLE BY BYTEA BYTES
 
@@ -705,7 +721,7 @@ func (u *sqlSymUnion) caseWhens() []*tree.CaseWhen {
 %token <str> DEALLOCATE DEFERRABLE DEFERRED DELETE DESC DEVICE
 %token <str> DICT DISCARD DISTINCT DO DOMAIN DOUBLE DROP DISABLE
 
-%token <str> ELSIF ENDIF ENDWHILE ENDCASE ENDLOOP ENDHANDLER
+%token <str> EACH ELSIF ENDIF ENDWHILE ENDCASE ENDLOOP ENDHANDLER
 %token <str> ELSE ENCODING END ENDPOINT ENDTIME ENUM ESCAPE ESTIMATED EXCEPT EXCLUDE ENABLE
 %token <str> EXISTS EXECUTE EXPERIMENTAL
 %token <str> EXPERIMENTAL_FINGERPRINTS EXPERIMENTAL_REPLICA
@@ -714,7 +730,7 @@ func (u *sqlSymUnion) caseWhens() []*tree.CaseWhen {
 
 %token <str> FALSE FAMILY FETCH FETCHVAL FETCHTEXT FETCHVAL_PATH FETCHTEXT_PATH FAIL
 %token <str> FILTERPARAM FILTERTYPE FILES FILTER
-%token <str> FIRST FIRSTTS FIRST_ROW FIRST_ROW_TS FLOAT FLOAT4 FLOAT8 FLOORDIV FOLLOWING FOR FORCE_INDEX FOREIGN FROM FULL FUNCTION FUNCTIONS
+%token <str> FIRST FIRSTTS FIRST_ROW FIRST_ROW_TS FLOAT FLOAT4 FLOAT8 FLOORDIV FOLLOWS FOLLOWING FOR FORCE_INDEX FOREIGN FROM FULL FUNCTION FUNCTIONS
 
 %token <str> GB GEOMETRY GLOBAL GRANT GRANTS GREATEST GROUP GROUPING GROUPS
 
@@ -746,7 +762,7 @@ func (u *sqlSymUnion) caseWhens() []*tree.CaseWhen {
 %token <str> ORDER ORDINALITY OTHERS OUT INOUT OUTER OVER OVERLAPS OVERLAY OWNED OPERATOR
 
 %token <str> PARENT PARTIAL PARTITION PARTITIONS PASSWORD PAUSE PHYSICAL PLACING
-%token <str> PLAN PLANS POSITION PRECEDING PRECISION PREPARE PRESERVE PRIMARY PRIORITY
+%token <str> PLAN PLANS POSITION PRECEDES PRECEDING PRECISION PREPARE PRESERVE PRIMARY PRIORITY
 %token <str> PROCEDURAL PUBLIC PUBLICATION PROCEDURE PROCEDURES
 
 %token <str> QUERIES QUERY
@@ -766,7 +782,7 @@ func (u *sqlSymUnion) caseWhens() []*tree.CaseWhen {
 %token <str> SYMMETRIC SYNTAX SYSTEM SUBSCRIPTION
 
 %token <str> TABLE TABLES TAG TAGS TAG_TABLE TAG_ONLY TEMP TEMPLATE TEMPORARY TESTING_RELOCATE EXPERIMENTAL_RELOCATE TEXT THEN
-%token <str> TIES TIME TIMETZ TIMESTAMP TIMESTAMPTZ TINYINT TO THROTTLING TRAILING TRACE TRANSACTION TREAT TRIGGER TRIM TRUE
+%token <str> TIES TIME TIMETZ TIMESTAMP TIMESTAMPTZ TINYINT TO THROTTLING TRAILING TRACE TRANSACTION TREAT TRIGGER TRIGGERS TRIM TRUE
 %token <str> TRUNCATE TRUSTED TYPE
 %token <str> TRACING TS
 
@@ -822,6 +838,7 @@ func (u *sqlSymUnion) caseWhens() []*tree.CaseWhen {
 %type <tree.Statement> alter_role_stmt
 %type <tree.Statement> alter_audit_stmt
 %type <tree.Statement> alter_procedure_stmt
+%type <tree.Statement> alter_trigger_stmt
 
 // ALTER RANGE
 %type <tree.Statement> alter_zone_range_stmt
@@ -874,6 +891,7 @@ func (u *sqlSymUnion) caseWhens() []*tree.CaseWhen {
 %type <tree.Statement> close_cursor_stmt fetch_cursor_stmt open_cursor_stmt
 %type <tree.Statement> declare_stmt proc_if_stmt proc_while_stmt
 %type <tree.Statement> proc_set_stmt proc_leave_stmt
+%type <tree.Statement> trigger_if_stmt trigger_while_stmt
 
 // SCRUB
 %type <tree.Statement> scrub_stmt
@@ -909,6 +927,7 @@ func (u *sqlSymUnion) caseWhens() []*tree.CaseWhen {
 %type <tree.Statement> create_view_stmt
 %type <tree.Statement> create_sequence_stmt
 %type <tree.Statement> create_procedure_stmt
+%type <tree.Statement> create_trigger_stmt
 %type <tree.Statement> create_function_stmt
 %type <tree.Statement> create_audit_stmt
 
@@ -927,6 +946,7 @@ func (u *sqlSymUnion) caseWhens() []*tree.CaseWhen {
 %type <tree.Statement> drop_role_stmt
 %type <tree.Statement> drop_schema_stmt
 %type <tree.Statement> drop_procedure_stmt
+%type <tree.Statement> drop_trigger_stmt
 %type <tree.Statement> drop_stream_stmt
 %type <tree.Statement> drop_table_stmt
 %type <tree.Statement> drop_view_stmt
@@ -948,6 +968,7 @@ func (u *sqlSymUnion) caseWhens() []*tree.CaseWhen {
 %type <tree.Statement> pause_stmt
 %type <tree.Statement> pause_schedule_stmt
 %type <tree.Statement> procedure_body_stmt
+%type <tree.Statement> trigger_body_stmt
 %type <tree.Statement> proc_handler_one_stmt
 %type <tree.Statement> rebalance_stmt
 %type <tree.Statement> release_stmt
@@ -1003,6 +1024,7 @@ func (u *sqlSymUnion) caseWhens() []*tree.CaseWhen {
 %type <tree.Statement> show_syntax_stmt
 %type <tree.Statement> show_tables_stmt
 %type <tree.Statement> show_procedures_stmt
+%type <tree.Statement> show_triggers_stmt
 %type <tree.Statement> show_trace_stmt
 %type <tree.Statement> show_transaction_stmt
 %type <tree.Statement> show_users_stmt
@@ -1264,6 +1286,11 @@ func (u *sqlSymUnion) caseWhens() []*tree.CaseWhen {
 %type <str> unreserved_keyword type_func_name_keyword kwbasedb_extra_type_func_name_keyword
 %type <str> col_name_keyword reserved_keyword kwbasedb_extra_reserved_keyword extra_var_value
 
+// Trigger relevant components.
+%type <tree.TriggerActionTime> trigger_action_time
+%type <tree.TriggerEvent> trigger_event
+%type <*tree.TriggerOrder> opt_trigger_order
+
 %type <tree.ConstraintTableDef> table_constraint constraint_elem create_as_constraint_def create_as_constraint_elem
 %type <tree.TableDef> index_def
 %type <tree.TableDef> family_def
@@ -1284,9 +1311,12 @@ func (u *sqlSymUnion) caseWhens() []*tree.CaseWhen {
 %type <[]*tree.ProcedureParameter> parameter_list
 %type <*tree.ProcedureParameter> parameter
 //%type <tree.ProcDirection> opt_direction
-%type <[]tree.Statement> proc_stmt_list opt_stmt_else while_body
-%type <tree.Statement> opt_procedure_block proc_handler_body
+%type <[]tree.Statement> proc_stmt_list opt_stmt_else while_body trigger_stmt_list
+%type <tree.Statement> opt_procedure_block proc_handler_body trigger_body
 %type <[]tree.ElseIf> opt_stmt_elsifs
+
+%type <[]tree.Statement> trigger_while_body opt_trigger_stmt_else
+%type <[]tree.ElseIf> opt_trigger_stmt_elsifs
 
 %type <empty> within_group_clause
 %type <tree.Expr> filter_clause
@@ -1442,6 +1472,7 @@ alter_ddl_stmt:
 | alter_partition_stmt
 | alter_schedule_stmt  // EXTEND WITH HELP: ALTER SCHEDULE
 | alter_procedure_stmt // EXTEND WITH HELP: ALTER PROCEDURE
+| alter_trigger_stmt   // EXTEND WITH HELP: ALTER TRIGGER
 | alter_stream_stmt		 // EXTEND WITH HELP: ALTER STREAM
 
 // %Help: ALTER TABLE - change the definition of a table
@@ -2175,6 +2206,19 @@ alter_procedure_stmt:
 	}
 | ALTER PROCEDURE error // SHOW HELP: ALTER PROCEDURE
 
+// %Help: ALTER TRIGGER - change the name of a trigger
+// %Category: DDL
+// %Text:
+// ALTER TRIGGER <trigger_name> ON <table_name> RENAME TO <trigger_name>
+//
+alter_trigger_stmt:
+  ALTER TRIGGER name ON table_name RENAME TO name
+	{
+	  name := $5.unresolvedObjectName().ToTableName()
+		$$.val = &tree.RenameTrigger{Name: tree.Name($3), Table: name, NewName: tree.Name($8)}
+	}
+| ALTER TRIGGER error // SHOW HELP: ALTER TRIGGER
+
 
 // %Help: ALTER AUDIT - change the definition of an audit
 // %Category: DDL
@@ -2695,7 +2739,6 @@ create_unsupported:
 | CREATE SERVER error { return unimplemented(sqllex, "create server") }
 | CREATE SUBSCRIPTION error { return unimplemented(sqllex, "create subscription") }
 | CREATE TEXT error { return unimplementedWithIssueDetail(sqllex, 7821, "create text") }
-| CREATE TRIGGER error { return unimplementedWithIssueDetail(sqllex, 28296, "create") }
 
 opt_or_replace:
   OR REPLACE {}
@@ -2728,7 +2771,6 @@ drop_unsupported:
 | DROP SUBSCRIPTION error { return unimplemented(sqllex, "drop subscription") }
 | DROP TEXT error { return unimplementedWithIssueDetail(sqllex, 7821, "drop text") }
 | DROP TYPE error { return unimplementedWithIssueDetail(sqllex, 27793, "drop type") }
-| DROP TRIGGER error { return unimplementedWithIssueDetail(sqllex, 28296, "drop") }
 
 create_ddl_stmt:
   create_changefeed_stmt
@@ -2748,6 +2790,16 @@ create_ddl_stmt:
 | create_view_stmt     // EXTEND WITH HELP: CREATE VIEW
 | create_sequence_stmt // EXTEND WITH HELP: CREATE SEQUENCE
 | create_function_stmt // EXTEND WITH HELP: CREATE FUNCTION
+| create_trigger_stmt
+
+trigger_body_stmt:
+  insert_stmt
+| update_stmt
+| delete_stmt
+| proc_set_stmt
+| trigger_if_stmt
+| trigger_while_stmt
+| simple_select_into_clause
 
 procedure_body_stmt:
  select_stmt
@@ -3112,6 +3164,7 @@ drop_ddl_stmt:
 | drop_stream_stmt   // EXTEND WITH HELP: DROP STREAM
 | drop_function_stmt // EXTEND WITH HELP: DROP FUNCTION
 | drop_procedure_stmt // EXTEND WITH HELP: DROP PROCEDURE
+| drop_trigger_stmt  // EXTEND WITH HELP: DROP TRIGGER
 
 // %Help: DROP VIEW - remove a view
 // %Category: DDL
@@ -3276,6 +3329,31 @@ schema_name_list:
   {
     $$.val = append($1.strs(), $3)
   }
+
+// %Help: DROP TRIGGER - drop a trigger on table
+// %Category: DDL
+// %Text: DROP TRIGGER [IF EXISTS] <trigger_name> ON table_name
+// %SeeAlso: CREATE TRIGGER, SHOW TRIGGERS, SHOW CREATE TRIGGER
+drop_trigger_stmt:
+	DROP TRIGGER name ON table_name
+	{
+		tableName := $5.unresolvedObjectName().ToTableName()
+		$$.val = &tree.DropTrigger{
+			Name: tree.Name($3),
+			IfExists: false,
+			Table: tableName,
+		}
+	}
+| DROP TRIGGER IF EXISTS name ON table_name
+  {
+  	tableName := $7.unresolvedObjectName().ToTableName()
+		$$.val = &tree.DropTrigger{
+			Name: tree.Name($5),
+			IfExists: true,
+			Table: tableName,
+		}
+  }
+| DROP TRIGGER error // SHOW HELP: DROP TRIGGER
 
 // %Help: DROP PROCEDURE - drop a procedure
 // %Category: DDL
@@ -4109,6 +4187,7 @@ show_stmt:
 | show_syntax_stmt          // EXTEND WITH HELP: SHOW SYNTAX
 | show_tables_stmt          // EXTEND WITH HELP: SHOW TABLES
 | show_procedures_stmt      // EXTEND WITH HELP: SHOW PROCEDURES
+| show_triggers_stmt        // EXTEND WITH HELP: SHOW TRIGGERS
 | show_trace_stmt           // EXTEND WITH HELP: SHOW TRACE
 | show_transaction_stmt     // EXTEND WITH HELP: SHOW TRANSACTION
 | show_users_stmt           // EXTEND WITH HELP: SHOW USERS
@@ -4664,6 +4743,19 @@ show_applications_stmt:
   }
 | SHOW APPLICATIONS error // SHOW HELP: SHOW APPLICATIONS
 
+// %Help: SHOW TRIGGERS - list triggers on a table
+// %Category: DDL
+// %Text: SHOW TRIGGERS
+// %SeeAlso: CREATE TRIGGER, DROP TRIGGER
+show_triggers_stmt:
+	SHOW TRIGGERS FROM table_name
+	{
+		$$.val = &tree.ShowTriggers {
+			Table: $4.unresolvedObjectName(),
+		}
+	}
+| SHOW TRIGGERS error // SHOW HELP: SHOW TRIGGERS
+
 // %Help: SHOW PROCEDURES - list procedures
 // %Category: DDL
 // %Text: SHOW PROCEDURES
@@ -4828,6 +4920,11 @@ show_create_stmt:
     name := $4.unresolvedObjectName().ToTableName()
     $$.val = &tree.ShowCreateProcedure{Name: name}
   }
+| SHOW CREATE TRIGGER name ON table_name
+	{
+		tab := $6.unresolvedObjectName().ToTableName()
+		$$.val = &tree.ShowCreateTrigger{Name: tree.Name($4), TabName: tab}
+	}
 | SHOW CREATE error // SHOW HELP: SHOW CREATE
 
 create_kw:
@@ -6616,6 +6713,141 @@ opt_with_schedule_options:
     $$.val = nil
   }
 
+// %Help: CREATE TRIGGER - define a new trigger
+// %Category: DDL
+// %Text:
+// CREATE TRIGGER [IF NOT EXISTS] trigger_name
+// trigger_time trigger_event
+// ON tbl_name FOR EACH ROW
+// [trigger_order]
+// trigger_body
+create_trigger_stmt:
+  CREATE TRIGGER name trigger_action_time trigger_event ON table_name FOR EACH ROW
+  opt_trigger_order trigger_body
+  {
+  	name := $7.unresolvedObjectName().ToTableName()
+		body := $12.triggerBody()
+
+		if body.BodyStr != "" {
+		  $$.val = &tree.CreateTriggerPG{
+				Name: tree.Name($3),
+				IfNotExists: false,
+				ActionTime: $4.triggerActionTime(),
+				Event: $5.triggerEvent(),
+				TableName: name,
+				Order: $11.triggerOrder(),
+				BodyStr: body.BodyStr,
+		  }
+		} else {
+		  $$.val = &tree.CreateTrigger{
+				Name: tree.Name($3),
+				IfNotExists: false,
+				ActionTime: $4.triggerActionTime(),
+				Event: $5.triggerEvent(),
+				TableName: name,
+				Order: $11.triggerOrder(),
+				Body: body,
+		  }
+		}
+  }
+| CREATE TRIGGER IF NOT EXISTS name trigger_action_time trigger_event ON table_name FOR EACH ROW
+    opt_trigger_order trigger_body
+    {
+    	name := $10.unresolvedObjectName().ToTableName()
+  		body := $15.triggerBody()
+
+  		if body.BodyStr != "" {
+  		  $$.val = &tree.CreateTriggerPG{
+  				Name: tree.Name($6),
+  				IfNotExists: true,
+  				ActionTime: $7.triggerActionTime(),
+  				Event: $8.triggerEvent(),
+  				TableName: name,
+  				Order: $14.triggerOrder(),
+  				BodyStr: body.BodyStr,
+  		  }
+  		} else {
+  		  $$.val = &tree.CreateTrigger{
+					Name: tree.Name($6),
+					IfNotExists: true,
+					ActionTime: $7.triggerActionTime(),
+					Event: $8.triggerEvent(),
+					TableName: name,
+					Order: $14.triggerOrder(),
+					Body: body,
+				}
+  		}
+    }
+| CREATE TRIGGER error // SHOW HELP: CREATE TRIGGER
+
+trigger_action_time:
+  BEFORE { $$.val = tree.TriggerActionTimeBefore }
+| AFTER { $$.val = tree.TriggerActionTimeAfter }
+
+trigger_event:
+  INSERT
+  {
+    $$.val = tree.TriggerEventInsert
+  }
+| DELETE
+  {
+    $$.val = tree.TriggerEventDelete
+  }
+| UPDATE
+  {
+    $$.val = tree.TriggerEventUpdate
+  }
+
+opt_trigger_order:
+  FOLLOWS name
+  {
+    $$.val = &tree.TriggerOrder{
+    	OrderType: tree.TriggerOrderTypeFollow,
+    	OtherTrigger: tree.Name($2),
+    }
+  }
+| PRECEDES name
+	{
+    $$.val = &tree.TriggerOrder{
+    	OrderType: tree.TriggerOrderTypePrecede,
+    	OtherTrigger: tree.Name($2),
+    }
+  }
+| /* empty */ %prec VALUES
+	{
+		$$.val = (*tree.TriggerOrder)(nil)
+	}
+
+trigger_body:
+	trigger_body_stmt
+	{
+		$$.val = tree.TriggerBody{
+			Body: []tree.Statement{$1.stmt()},
+		}
+	}
+|	BEGIN trigger_stmt_list END
+  {
+    $$.val = tree.TriggerBody{
+			Body: $2.stmts(),
+		}
+  }
+| SCONST
+  {
+    $$.val = tree.TriggerBody{
+      BodyStr: $1,
+    }
+  }
+
+trigger_stmt_list:
+  /* empty */ %prec VALUES
+  {
+    $$.val = []tree.Statement(nil)
+  }
+| trigger_stmt_list trigger_body_stmt ';'
+  {
+    $$.val = append($1.stmts(), $2.stmt())
+  }
+
 // %Help: CREATE PROCEDURE - define a new procedure
 // %Category: DDL
 // %Text:
@@ -6947,6 +7179,62 @@ open_cursor_stmt:
 			Command: tree.OpenCursor,
 		}
 	}
+
+trigger_if_stmt:
+	IF a_expr THEN trigger_stmt_list opt_trigger_stmt_elsifs opt_trigger_stmt_else ENDIF
+	{
+		$$.val = &tree.ProcIf{
+			Condition: $2.expr(),
+			ThenBody: $4.stmts(),
+			ElseIfList: $5.elseIf(),
+			ElseBody: $6.stmts(),
+		}
+	}
+
+opt_trigger_stmt_elsifs:
+	opt_trigger_stmt_elsifs ELSIF a_expr THEN trigger_stmt_list
+	{
+		newStmt := tree.ElseIf{
+			Condition: $3.expr(),
+			Stmts: $5.stmts(),
+		}
+		$$.val = append($1.elseIf(), newStmt)
+	}
+| /* EMPTY */
+	{
+		$$.val = []tree.ElseIf(nil)
+	}
+
+opt_trigger_stmt_else:
+	/* empty */
+	{
+		$$.val = []tree.Statement(nil)
+	}
+| ELSE trigger_stmt_list
+	{
+		$$.val = $2.stmts()
+	}
+
+trigger_while_stmt:
+	opt_loop_label WHILE a_expr DO trigger_while_body opt_label
+	{
+		loopLabel, loopEndLabel := $1, $6
+		if err := checkLoopLabels(loopLabel, loopEndLabel); err != nil {
+			return setErr(sqllex, err)
+		}
+		$$.val = &tree.ProcWhile{
+		  Label: $1,
+			Condition: $3.expr(),
+			Body: $5.stmts(),
+		}
+	}
+
+trigger_while_body:
+ trigger_stmt_list ENDWHILE
+ {
+   $$.val = $1.stmts()
+ }
+
 
 // %Help: CREATE FUNCTION - create a new function
 // %Category: DDL
@@ -12883,6 +13171,7 @@ unreserved_keyword:
 | ACTIVETIME
 | ADD
 | ADMIN
+| AFTER
 | AGGREGATE
 | ALTER
 | AP
@@ -12893,6 +13182,7 @@ unreserved_keyword:
 | AUTOMATIC
 | AUTHORIZATION
 | BACKUP
+| BEFORE
 | BEGIN
 | BIGSERIAL
 | BLOB
@@ -12978,6 +13268,7 @@ unreserved_keyword:
 | FIRST_ROW_TS
 | FLOAT4
 | FLOAT8
+| FOLLOWS
 | FOLLOWING
 | FORCE_INDEX
 | FUNCTION
@@ -13091,6 +13382,7 @@ unreserved_keyword:
 | PHYSICAL
 | PLAN
 | PLANS
+| PRECEDES
 | PRECEDING
 | PREPARE
 | PRESERVE
@@ -13189,6 +13481,7 @@ unreserved_keyword:
 | TRACE
 | TRANSACTION
 | TRIGGER
+| TRIGGERS
 | TRUNCATE
 | TRUSTED
 | TS
@@ -13379,6 +13672,7 @@ reserved_keyword:
 | DESC
 | DISTINCT
 | DO
+| EACH
 | ELSE
 | ELSIF
 | END

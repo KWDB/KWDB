@@ -1,0 +1,986 @@
+> create ts database test_geometry;
+CREATE TS DATABASE
+> create table test_geometry.t1 (k_timestamp timestamptz not null,
+  e1 geometry) ATTRIBUTES (
+code1 int2 not null,
+code2 int4) PRIMARY TAGS(code1);
+CREATE TABLE
+> show create table test_geometry.t1;
+        table_name        |           create_statement
+--------------------------+----------------------------------------
+  test_geometry.public.t1 | CREATE TABLE t1 (
+                          |     k_timestamp TIMESTAMPTZ NOT NULL,
+                          |     e1 GEOMETRY NULL
+                          | ) TAGS (
+                          |     code1 INT2 NOT NULL,
+                          |     code2 INT4 ) PRIMARY TAGS(code1)
+(1 row)
+> set sql_safe_updates = false;
+SET
+> drop database if exists test_geometry cascade;
+DROP DATABASE
+> create ts database test_geometry;
+CREATE TS DATABASE
+> create table test_geometry.t1 (k_timestamp timestamptz not null,
+  e1 geometry) ATTRIBUTES (
+code1 int2 not null,
+code2 int4) PRIMARY TAGS(code1);
+CREATE TABLE
+> show columns from test_geometry.t1;
+  column_name |  data_type  | is_nullable | column_default | generation_expression |  indices  | is_hidden | is_tag
+--------------+-------------+-------------+----------------+-----------------------+-----------+-----------+---------
+  k_timestamp | TIMESTAMPTZ |    false    | NULL           |                       | {primary} |   false   | false
+  e1          | GEOMETRY    |    true     | NULL           |                       | {}        |   false   | false
+  code1       | INT2        |    false    | NULL           |                       | {}        |   false   |  true
+  code2       | INT4        |    true     | NULL           |                       | {}        |   false   |  true
+(4 rows)
+> set sql_safe_updates = false;
+SET
+> drop database if exists test_geometry cascade;
+DROP DATABASE
+> create ts database test_geometry;
+CREATE TS DATABASE
+> create table test_geometry.t1 (k_timestamp timestamptz not null,
+  e1 int not null) ATTRIBUTES (
+code1 int2 not null,
+code2 geometry ) PRIMARY TAGS(code1);
+ERROR: unsupported tag type geometry in timeseries table
+SQLSTATE: 42809
+> show create table test_geometry.t1;
+ERROR: relation "test_geometry.t1" does not exist
+SQLSTATE: 42P01
+> set sql_safe_updates = false;
+SET
+> drop database if exists test_geometry cascade;
+DROP DATABASE
+> create ts database test_geometry;
+CREATE TS DATABASE
+> create table test_geometry.t1 (k_timestamp timestamptz not null,
+  e1 int not null) ATTRIBUTES (
+code1 int2 not null,
+code2 geometry ) PRIMARY TAGS(code1);
+ERROR: unsupported tag type geometry in timeseries table
+SQLSTATE: 42809
+> show columns from test_geometry.t1;
+ERROR: relation "test_geometry.t1" does not exist
+SQLSTATE: 42P01
+> set sql_safe_updates = false;
+SET
+> drop database if exists test_geometry cascade;
+DROP DATABASE
+> create ts database test_geometry;
+CREATE TS DATABASE
+> create table test_geometry.t1 (k_timestamp timestamptz not null,
+  e1 int not null) ATTRIBUTES (
+code1 int2 not null,
+code2 geometry ) PRIMARY TAGS(code1);
+ERROR: unsupported tag type geometry in timeseries table
+SQLSTATE: 42809
+> show tags from test_geometry.t1;
+ERROR: relation "test_geometry.t1" does not exist
+SQLSTATE: 42P01
+> set sql_safe_updates = false;
+SET
+> drop database if exists test_geometry cascade;
+DROP DATABASE
+> create ts database test_geometry;
+CREATE TS DATABASE
+> create table test_geometry.t1 (k_timestamp timestamptz not null,
+  e1 int not null) ATTRIBUTES (
+code1 geometry not null,
+code2 int ) PRIMARY TAGS(code1);
+ERROR: unsupported tag type geometry in timeseries table
+SQLSTATE: 42809
+> show create table test_geometry.t1;
+ERROR: relation "test_geometry.t1" does not exist
+SQLSTATE: 42P01
+> set sql_safe_updates = false;
+SET
+> drop database if exists test_geometry cascade;
+DROP DATABASE
+> create ts database test_geometry;
+CREATE TS DATABASE
+> create table test_geometry.t1 (k_timestamp timestamptz not null,
+  e1 int not null) ATTRIBUTES (
+code1 geometry not null,
+code2 int ) PRIMARY TAGS(code1);
+ERROR: unsupported tag type geometry in timeseries table
+SQLSTATE: 42809
+> show columns from test_geometry.t1;
+ERROR: relation "test_geometry.t1" does not exist
+SQLSTATE: 42P01
+> set sql_safe_updates = false;
+SET
+> drop database if exists test_geometry cascade;
+DROP DATABASE
+> create ts database test_geometry;
+CREATE TS DATABASE
+> create table test_geometry.t1 (k_timestamp timestamptz not null,
+  e1 int not null) ATTRIBUTES (
+code1 geometry not null,
+code2 int ) PRIMARY TAGS(code1);
+ERROR: unsupported tag type geometry in timeseries table
+SQLSTATE: 42809
+> show tags from test_geometry.t1;
+ERROR: relation "test_geometry.t1" does not exist
+SQLSTATE: 42P01
+> set sql_safe_updates = false;
+SET
+> drop database if exists test_geometry cascade;
+DROP DATABASE
+> create ts database test_geometry;
+CREATE TS DATABASE
+> create table test_geometry.t1 (k_timestamp timestamptz not null,
+  e1 geometry) ATTRIBUTES (
+code1 int2 not null,
+code2 int4) PRIMARY TAGS(code1);
+CREATE TABLE
+> create table test_geometry.t2 (k_timestamp timestamptz not null,
+  e1 geometry null) ATTRIBUTES (
+code1 int2 not null,
+code2 int4) PRIMARY TAGS(code1);
+CREATE TABLE
+> show create table test_geometry.t1;
+        table_name        |           create_statement
+--------------------------+----------------------------------------
+  test_geometry.public.t1 | CREATE TABLE t1 (
+                          |     k_timestamp TIMESTAMPTZ NOT NULL,
+                          |     e1 GEOMETRY NULL
+                          | ) TAGS (
+                          |     code1 INT2 NOT NULL,
+                          |     code2 INT4 ) PRIMARY TAGS(code1)
+(1 row)
+> show create table test_geometry.t2;
+        table_name        |           create_statement
+--------------------------+----------------------------------------
+  test_geometry.public.t2 | CREATE TABLE t2 (
+                          |     k_timestamp TIMESTAMPTZ NOT NULL,
+                          |     e1 GEOMETRY NULL
+                          | ) TAGS (
+                          |     code1 INT2 NOT NULL,
+                          |     code2 INT4 ) PRIMARY TAGS(code1)
+(1 row)
+> set sql_safe_updates = false;
+SET
+> drop database if exists test_geometry cascade;
+DROP DATABASE
+> create ts database test_geometry;
+CREATE TS DATABASE
+> use test_geometry;
+SET
+> create table test_geometry.t1 (k_timestamp timestamptz not null,
+  e1 geometry not null) ATTRIBUTES (
+code1 int2 not null,
+code2 int4) PRIMARY TAGS(code1);
+CREATE TABLE
+> show create table test_geometry.t1;
+        table_name        |           create_statement
+--------------------------+----------------------------------------
+  test_geometry.public.t1 | CREATE TABLE t1 (
+                          |     k_timestamp TIMESTAMPTZ NOT NULL,
+                          |     e1 GEOMETRY NOT NULL
+                          | ) TAGS (
+                          |     code1 INT2 NOT NULL,
+                          |     code2 INT4 ) PRIMARY TAGS(code1)
+(1 row)
+> set sql_safe_updates = false;
+SET
+> drop database if exists test_geometry cascade;
+DROP DATABASE
+> create ts database test_geometry;
+CREATE TS DATABASE
+> create table test_geometry.t1 (k_timestamp timestamptz not null,
+  e1 int) ATTRIBUTES (
+code1 int2 not null,
+code2 geometry) PRIMARY TAGS(code1);
+ERROR: unsupported tag type geometry in timeseries table
+SQLSTATE: 42809
+> create table test_geometry.t2 (k_timestamp timestamptz not null,
+  e1 int) ATTRIBUTES (
+code1 int2 not null,
+code2 geometry null) PRIMARY TAGS(code1);
+ERROR: unsupported tag type geometry in timeseries table
+SQLSTATE: 42809
+> show create table test_geometry.t1;
+ERROR: relation "test_geometry.t1" does not exist
+SQLSTATE: 42P01
+> show create table test_geometry.t2;
+ERROR: relation "test_geometry.t2" does not exist
+SQLSTATE: 42P01
+> set sql_safe_updates = false;
+SET
+> drop database if exists test_geometry cascade;
+DROP DATABASE
+> create ts database test_geometry;
+CREATE TS DATABASE
+> create table test_geometry.t1 (k_timestamp timestamptz not null,
+  e1 int) ATTRIBUTES (
+code1 int2 not null,
+code2 geometry not null) PRIMARY TAGS(code1);
+ERROR: unsupported tag type geometry in timeseries table
+SQLSTATE: 42809
+> show create table test_geometry.t1;
+ERROR: relation "test_geometry.t1" does not exist
+SQLSTATE: 42P01
+> set sql_safe_updates = false;
+SET
+> drop database if exists test_geometry cascade;
+DROP DATABASE
+> create ts database test_geometry;
+CREATE TS DATABASE
+> create table test_geometry.t1 (k_timestamp timestamptz not null,
+ e1 int2 not null,
+ e2 smallint not null,
+ e3 int4,
+ e4 int,
+ e5 integer,
+ e6 int8 not null,
+ e7 float4,
+ e8 real,
+ e9 float8 not null,
+ e10 float,
+ e11 double,
+ e12 double precision,
+ e13 bool,
+ e14 boolean,
+ e15 timestamp not null,
+ e16 timestamptz not null,
+ e17 char not null,
+ e18 char(1023),
+ e19 character not null,
+ e20 character(1023),
+ e21 nchar not null,
+ e22 nchar(255) not null,
+ e23 varchar,
+ e24 varchar(4096),
+ e25 varchar(255),
+ e26 nvarchar,
+ e27 nvarchar(255) not null,
+ e28 nvarchar(4096) not null,
+ e29 bytes not null,
+ e30 bytes(1023),
+ e31 varbytes,
+ e32 varbytes(4096) not null,
+ e33 varbytes(254),
+ e34 geometry
+ ) ATTRIBUTES (
+ code1 int2 not null,
+ code2 int2) PRIMARY TAGS(code1);
+CREATE TABLE
+> SELECT * FROM test_geometry.t1;
+  k_timestamp | e1 | e2 | e3 | e4 | e5 | e6 | e7 | e8 | e9 | e10 | e11 | e12 | e13 | e14 | e15 | e16 | e17 | e18 | e19 | e20 | e21 | e22 | e23 | e24 | e25 | e26 | e27 | e28 | e29 | e30 | e31 | e32 | e33 | e34 | code1 | code2
+--------------+----+----+----+----+----+----+----+----+----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-------+--------
+(0 rows)
+> drop database if exists test_geometry cascade;
+DROP DATABASE
+> CREATE TS DATABASE test_geometry;
+CREATE TS DATABASE
+> CREATE TABLE test_geometry.tb1(k_timestamp timestamptz not null,
+e1 int2,
+e2 int,
+e3 int8,
+e4 float,
+e5 float8,
+e6 bool,
+e7 timestamp,
+e8 char(1023),
+e9 nchar(255),
+e10 varchar(4096),
+e11 char,
+e12 varchar(255),
+e13 nchar,
+e14 varchar,
+e15 nvarchar(4096),
+e16 varbytes,
+e17 nvarchar(255),
+e18 nvarchar,
+e19 bytes,
+e20 bytes(1023),
+e21 varbytes(4096),
+e22 varbytes(254),
+e23 timestamptz)
+TAGS (code1 bool not null, code2 smallint, code3 int, code4 bigint, code5 int2, code6 int4, code7 int8, code8 float, code9 real, code10 float4, code11 float8, code12 double, code13 char, code14 char(128), code15 nchar, code16 nchar(128), code17 varchar, code18 varchar(128), code19 bytes, code20 bytes(128), code21 varbytes, code22 varbytes(128), code23 timestamp, code24 timestamptz, code25 nvarchar, code26 nvarchar(128),code27 geometry) primary tags (code1);
+ERROR: unsupported tag type timestamp in timeseries table
+SQLSTATE: 42809
+> SHOW CREATE TABLE test_geometry.tb1;
+ERROR: relation "test_geometry.tb1" does not exist
+SQLSTATE: 42P01
+> SELECT * FROM test_geometry.tb1;
+ERROR: relation "test_geometry.tb1" does not exist
+SQLSTATE: 42P01
+> DROP DATABASE test_geometry CASCADE;
+DROP DATABASE
+> create ts database test_geometry;
+CREATE TS DATABASE
+> create table test_geometry.tb(k_timestamptz timestamptz not null ,e1 geometry , e2  geometry ) tags(tag1 int not null) primary  tags(tag1);
+CREATE TABLE
+> insert into test_geometry.tb values('2023-05-01 10:10', 'Point(0.0 0.0)','Point(0.0 0.0)',0);
+INSERT 1
+> insert into test_geometry.tb values('2023-05-01 10:11', 'Point(0 0)','Point(1 1)',1);
+INSERT 1
+> insert into test_geometry.tb values('2023-05-01 10:12', 'Point(-1 -1)','Point(0 -1)',2);
+INSERT 1
+> insert into test_geometry.tb values('2023-05-01 10:13', 'Point(-32768 -1)','Point(0 -1)',3);
+INSERT 1
+> insert into test_geometry.tb values('2023-05-01 10:14', 'Point(-1 -1)','Point(0 32767)',4);
+INSERT 1
+> insert into test_geometry.tb values('2023-05-01 10:15', 'Point(-2147483648 -2147483648)','Point(0 2147483647)',5);
+INSERT 1
+> insert into test_geometry.tb values('2023-05-01 10:16', 'Point(-9223372036854775807 -1)','Point(0 9223372036854775807)',6);
+INSERT 1
+> insert into test_geometry.tb values('2023-05-01 10:17', 'Point(1000.101156789 1000.101156789)','Point(0 -2000.2022)',7);
+INSERT 1
+> insert into test_geometry.tb values('2023-05-01 10:18', 'Point(-32767.111156 -1)','Point(0 -32767.111156)',8);
+INSERT 1
+> insert into test_geometry.tb values('2023-05-01 10:19', 'Point(1.2345678911111 -1)','Point(0 2147483646.6789)',9);
+INSERT 1
+> insert into test_geometry.tb values('2023-05-01 10:20', 'Point(-1.0000000 -1.0000)','Point(0 9223372036854775806.12345)',10);
+INSERT 1
+> insert into test_geometry.tb values('2023-05-01 10:21', 'Point(0.0000000 0.0000)','Point(600000.606066666 9223372036854775806.12345)',11);
+INSERT 1
+> select * from test_geometry.tb order by k_timestamptz;
+        k_timestamptz       |                  e1                  |                        e2                         | tag1
+----------------------------+--------------------------------------+---------------------------------------------------+-------
+  2023-05-01 10:10:00+00:00 | Point(0.0 0.0)                       | Point(0.0 0.0)                                    |    0
+  2023-05-01 10:11:00+00:00 | Point(0 0)                           | Point(1 1)                                        |    1
+  2023-05-01 10:12:00+00:00 | Point(-1 -1)                         | Point(0 -1)                                       |    2
+  2023-05-01 10:13:00+00:00 | Point(-32768 -1)                     | Point(0 -1)                                       |    3
+  2023-05-01 10:14:00+00:00 | Point(-1 -1)                         | Point(0 32767)                                    |    4
+  2023-05-01 10:15:00+00:00 | Point(-2147483648 -2147483648)       | Point(0 2147483647)                               |    5
+  2023-05-01 10:16:00+00:00 | Point(-9223372036854775807 -1)       | Point(0 9223372036854775807)                      |    6
+  2023-05-01 10:17:00+00:00 | Point(1000.101156789 1000.101156789) | Point(0 -2000.2022)                               |    7
+  2023-05-01 10:18:00+00:00 | Point(-32767.111156 -1)              | Point(0 -32767.111156)                            |    8
+  2023-05-01 10:19:00+00:00 | Point(1.2345678911111 -1)            | Point(0 2147483646.6789)                          |    9
+  2023-05-01 10:20:00+00:00 | Point(-1.0000000 -1.0000)            | Point(0 9223372036854775806.12345)                |   10
+  2023-05-01 10:21:00+00:00 | Point(0.0000000 0.0000)              | Point(600000.606066666 9223372036854775806.12345) |   11
+(12 rows)
+> select ST_Distance(e1,e2) from test_geometry.tb order by k_timestamptz;
+       st_distance
+--------------------------
+                       0
+      1.4142135623730951
+                       1
+                   32768
+       32768.00001525879
+  4.801919416602803e+09
+  1.3043817825332783e+19
+       3162.597438272857
+       46338.98589521578
+  2.1474836476789e+09
+  9.223372036854776e+18
+  9.223372036854776e+18
+(12 rows)
+> drop table test_geometry.tb;
+DROP TABLE
+> drop database test_geometry CASCADE;
+DROP DATABASE
+> create ts database test_geometry;
+CREATE TS DATABASE
+> create table test_geometry.tb(k_timestamptz timestamptz not null ,e1 geometry , e2  geometry ) tags(tag1 int not null) primary  tags(tag1);
+CREATE TABLE
+> insert into test_geometry.tb values('2023-05-01 10:10', 'Linestring(0.0 0.0,0.0 0.0)','Linestring(1.0 1.0, 2.0 2.0)',0);
+INSERT 1
+> insert into test_geometry.tb values('2023-05-01 10:11', 'Linestring(0 0,1 1)','Linestring(1 1,60 90)',1);
+INSERT 1
+> insert into test_geometry.tb values('2023-05-01 10:12', 'Linestring(-1 -1,0.0 0.0)','Linestring(0 -1,1 1)',2);
+INSERT 1
+> insert into test_geometry.tb values('2023-05-01 10:13', 'Linestring(-32768 -1,1 32768)','Linestring(0 -1,1000 1000)',3);
+INSERT 1
+> insert into test_geometry.tb values('2023-05-01 10:14', 'Linestring(-1 -1,0 32767)','Linestring(0 32767,-1 -1)',4);
+INSERT 1
+> insert into test_geometry.tb values('2023-05-01 10:15', 'Linestring(-2147483648 -2147483648,0 2147483647)','Linestring(0 2147483647,-2147483648 -214748364)',5);
+INSERT 1
+> insert into test_geometry.tb values('2023-05-01 10:16', 'Linestring(-9223372036854775807 -1,0 9223372036854775807)','Linestring(0 9223372036854775807,-9223372036854775807 -1)',6);
+INSERT 1
+> insert into test_geometry.tb values('2023-05-01 10:17', 'Linestring(1000.101156789 1000.101156789,0 -2000.2022)','Linestring(0 -2000.2022,1000.101156789 1000.101156789)',7);
+INSERT 1
+> insert into test_geometry.tb values('2023-05-01 10:18', 'Linestring(-32767.111156 -1,0 -32767.111156)','Linestring(0 -32767.111156,-32767.111156 -1)',8);
+INSERT 1
+> insert into test_geometry.tb values('2023-05-01 10:19', 'Linestring(1.2345678911111 -1,0 2147483646.6789)','Linestring(0 2147483646.6789,1.2345678911111 -1)',9);
+INSERT 1
+> insert into test_geometry.tb values('2023-05-01 10:20', 'Linestring(-1.0000000 -1.0000,0 9223372036854775806.12345)','Linestring(0 9223372036854775806.12345,-1.0000000 -1.0000)',10);
+INSERT 1
+> insert into test_geometry.tb values('2023-05-01 10:21', 'Linestring(0.0000000 0.0000,1.435243 7.673421)','Linestring(600000.606066666 9223372036854775806.12345,0.0000000 0.0000)',11);
+INSERT 1
+> insert into test_geometry.tb values('2023-05-01 10:22', 'Linestring(0 0,1 1,2 3,3 3,4 4,5 5,6 6,9 9,111 445,999 999999)','Linestring(0.0 0.0,1.0 2.0,3.0 4.0,5.0 5.0,6.0 7.0,8.0 9.0,11.0 15.0,45.0 22.0,0.1111 0.0,9.0 0.0,0.0 0.0)',1);
+INSERT 1
+> select * from test_geometry.tb order by k_timestamptz;
+        k_timestamptz       |                               e1                               |                                                     e2                                                     | tag1
+----------------------------+----------------------------------------------------------------+------------------------------------------------------------------------------------------------------------+-------
+  2023-05-01 10:10:00+00:00 | Linestring(0.0 0.0,0.0 0.0)                                    | Linestring(1.0 1.0, 2.0 2.0)                                                                               |    0
+  2023-05-01 10:11:00+00:00 | Linestring(0 0,1 1)                                            | Linestring(1 1,60 90)                                                                                      |    1
+  2023-05-01 10:12:00+00:00 | Linestring(-1 -1,0.0 0.0)                                      | Linestring(0 -1,1 1)                                                                                       |    2
+  2023-05-01 10:13:00+00:00 | Linestring(-32768 -1,1 32768)                                  | Linestring(0 -1,1000 1000)                                                                                 |    3
+  2023-05-01 10:14:00+00:00 | Linestring(-1 -1,0 32767)                                      | Linestring(0 32767,-1 -1)                                                                                  |    4
+  2023-05-01 10:15:00+00:00 | Linestring(-2147483648 -2147483648,0 2147483647)               | Linestring(0 2147483647,-2147483648 -214748364)                                                            |    5
+  2023-05-01 10:16:00+00:00 | Linestring(-9223372036854775807 -1,0 9223372036854775807)      | Linestring(0 9223372036854775807,-9223372036854775807 -1)                                                  |    6
+  2023-05-01 10:17:00+00:00 | Linestring(1000.101156789 1000.101156789,0 -2000.2022)         | Linestring(0 -2000.2022,1000.101156789 1000.101156789)                                                     |    7
+  2023-05-01 10:18:00+00:00 | Linestring(-32767.111156 -1,0 -32767.111156)                   | Linestring(0 -32767.111156,-32767.111156 -1)                                                               |    8
+  2023-05-01 10:19:00+00:00 | Linestring(1.2345678911111 -1,0 2147483646.6789)               | Linestring(0 2147483646.6789,1.2345678911111 -1)                                                           |    9
+  2023-05-01 10:20:00+00:00 | Linestring(-1.0000000 -1.0000,0 9223372036854775806.12345)     | Linestring(0 9223372036854775806.12345,-1.0000000 -1.0000)                                                 |   10
+  2023-05-01 10:21:00+00:00 | Linestring(0.0000000 0.0000,1.435243 7.673421)                 | Linestring(600000.606066666 9223372036854775806.12345,0.0000000 0.0000)                                    |   11
+  2023-05-01 10:22:00+00:00 | Linestring(0 0,1 1,2 3,3 3,4 4,5 5,6 6,9 9,111 445,999 999999) | Linestring(0.0 0.0,1.0 2.0,3.0 4.0,5.0 5.0,6.0 7.0,8.0 9.0,11.0 15.0,45.0 22.0,0.1111 0.0,9.0 0.0,0.0 0.0) |    1
+(13 rows)
+> select ST_Distance(e1,e2) from test_geometry.tb order by k_timestamptz;
+     st_distance
+----------------------
+  1.4142135623730951
+                   0
+   0.447213595499958
+  23169.767899139602
+                   0
+                   0
+                   0
+                   0
+                   0
+                   0
+                   0
+                   0
+                   0
+(13 rows)
+> drop table test_geometry.tb;
+DROP TABLE
+> drop database test_geometry CASCADE;
+DROP DATABASE
+> create ts database test_geometry;
+CREATE TS DATABASE
+> create table test_geometry.tb(k_timestamptz timestamptz not null ,e1 geometry , e2  geometry ) tags(tag1 int not null) primary  tags(tag1);
+CREATE TABLE
+> insert into test_geometry.tb values('2023-05-01 10:10', 'Polygon((0.0 0.0,0.0 0.0,0.0 0.0))','Polygon((1.0 1.0,2.0 2.0, 1.0 1.0))',0);
+ERROR: value 'Polygon((0.0 0.0,0.0 0.0,0.0 0.0))' is invalid for type GEOMETRY
+SQLSTATE: 22000
+> insert into test_geometry.tb values('2023-05-01 10:10', 'Polygon((1.0 1.0, 2.0 2.0, 3.0 2.0, 1.0 1.0))','Polygon((1.0 1.0,  3.0 2.0, 1.0 1.0))',0);
+ERROR: value 'Polygon((1.0 1.0,  3.0 2.0, 1.0 1.0))' is invalid for type GEOMETRY
+SQLSTATE: 22000
+> insert into test_geometry.tb values('2023-05-01 10:11', 'Polygon((0 0,1 1,60 90,0 0))','Polygon((1 1,60 90,0 0,1 1))',1);
+INSERT 1
+> insert into test_geometry.tb values('2023-05-01 10:12', 'Polygon((-1 -1,0.0 0.0,0 -1,-1 -1))','Polygon((0 -1,1 1,1000 1000,0 -1))',2);
+INSERT 1
+> insert into test_geometry.tb values('2023-05-01 10:13', 'Polygon((-32768 -1,1 32768,0.0 0.0,-32768 -1))','Polygon((0 -1,1000 1000,0 32767,0 -1))',3);
+INSERT 1
+> insert into test_geometry.tb values('2023-05-01 10:14', 'Polygon((-1 -1,0 32767,0 2147483647,-2147483648 -2147483648,-1 -1))','Polygon((0 32767,0 2147483647,-1 -1,0.0 0.0,0 32767))',4);
+INSERT 1
+> insert into test_geometry.tb values('2023-05-01 10:15', 'Polygon((-2147483648 -2147483648,0 2147483647,0.0 0.0,-2147483648 -2147483648))','Polygon((60 90,0 2147483647,-2147483648 -214748364,60 90))',5);
+INSERT 1
+> insert into test_geometry.tb values('2023-05-01 10:16', 'Polygon((-9223372036854775807 -1,0 9223372036854775807,0.0,-9223372036854775807 -1))','Polygon((0 -2000.2022,0 9223372036854775807,-9223372036854775807 -1,0 -2000.2022))',6);
+ERROR: value 'Polygon((-9223372036854775807 -1,0 9223372036854775807,0.0,-9223372036854775807 -1))' is invalid for type GEOMETRY
+SQLSTATE: 22000
+> insert into test_geometry.tb values('2023-05-01 10:17', 'Polygon((1000.101156789 0,0 -2000.2022,60 90,1000.101156789 0))','Polygon((0 -2000.2022,1000.101156789 1000.101156789,-32767.111156 -1,0 -2000.2022))',7);
+INSERT 1
+> insert into test_geometry.tb values('2023-05-01 10:18', 'Polygon((-32767.111156 -1,0 -32767.111156,-1.0000000 -1.0000,-32767.111156 -1))','Polygon((0 -32767.111156,-32767.111156 -1,1000 1000,0 -32767.111156))',8);
+INSERT 1
+> insert into test_geometry.tb values('2023-05-01 10:19', 'Polygon((1.2345678911111 -1,0 2147483646.6789,1.435243 7.673421,1.2345678911111 -1))','Polygon((0 2147483646.6789,1.2345678911111 -1,1.435243 7.673421,0 2147483646.6789))',9);
+INSERT 1
+> insert into test_geometry.tb values('2023-05-01 10:20', 'Polygon((-1.0000000 -1.0000,0 9223372036854775806.12345,600000.606066666 9223372036854775806.12345,-1.0000000 -1.0000))','Polygon((0 9223372036854775806.12345,-1.0000000 -1.0000,1.435243 7.673421,0 9223372036854775806.12345))',10);
+INSERT 1
+> insert into test_geometry.tb values('2023-05-01 10:22', 'Polygon((0 0,1 1,2 3,3 3,4 4,5 5,6 6,9 9,111 445,999 999999,0 0))','Polygon((0.0 0.0,1.0 2.0,3.0 4.0,5.0 5.0,6.0 7.0,8.0 9.0,11.0 15.0,45.0 22.0,0.1111 0.0,9.0 0.0,0.0 0.0))',1);
+INSERT 1
+> select * from test_geometry.tb order by k_timestamptz;
+        k_timestamptz       |                                                           e1                                                            |                                                    e2                                                     | tag1
+----------------------------+-------------------------------------------------------------------------------------------------------------------------+-----------------------------------------------------------------------------------------------------------+-------
+  2023-05-01 10:11:00+00:00 | Polygon((0 0,1 1,60 90,0 0))                                                                                            | Polygon((1 1,60 90,0 0,1 1))                                                                              |    1
+  2023-05-01 10:12:00+00:00 | Polygon((-1 -1,0.0 0.0,0 -1,-1 -1))                                                                                     | Polygon((0 -1,1 1,1000 1000,0 -1))                                                                        |    2
+  2023-05-01 10:13:00+00:00 | Polygon((-32768 -1,1 32768,0.0 0.0,-32768 -1))                                                                          | Polygon((0 -1,1000 1000,0 32767,0 -1))                                                                    |    3
+  2023-05-01 10:14:00+00:00 | Polygon((-1 -1,0 32767,0 2147483647,-2147483648 -2147483648,-1 -1))                                                     | Polygon((0 32767,0 2147483647,-1 -1,0.0 0.0,0 32767))                                                     |    4
+  2023-05-01 10:15:00+00:00 | Polygon((-2147483648 -2147483648,0 2147483647,0.0 0.0,-2147483648 -2147483648))                                         | Polygon((60 90,0 2147483647,-2147483648 -214748364,60 90))                                                |    5
+  2023-05-01 10:17:00+00:00 | Polygon((1000.101156789 0,0 -2000.2022,60 90,1000.101156789 0))                                                         | Polygon((0 -2000.2022,1000.101156789 1000.101156789,-32767.111156 -1,0 -2000.2022))                       |    7
+  2023-05-01 10:18:00+00:00 | Polygon((-32767.111156 -1,0 -32767.111156,-1.0000000 -1.0000,-32767.111156 -1))                                         | Polygon((0 -32767.111156,-32767.111156 -1,1000 1000,0 -32767.111156))                                     |    8
+  2023-05-01 10:19:00+00:00 | Polygon((1.2345678911111 -1,0 2147483646.6789,1.435243 7.673421,1.2345678911111 -1))                                    | Polygon((0 2147483646.6789,1.2345678911111 -1,1.435243 7.673421,0 2147483646.6789))                       |    9
+  2023-05-01 10:20:00+00:00 | Polygon((-1.0000000 -1.0000,0 9223372036854775806.12345,600000.606066666 9223372036854775806.12345,-1.0000000 -1.0000)) | Polygon((0 9223372036854775806.12345,-1.0000000 -1.0000,1.435243 7.673421,0 9223372036854775806.12345))   |   10
+  2023-05-01 10:22:00+00:00 | Polygon((0 0,1 1,2 3,3 3,4 4,5 5,6 6,9 9,111 445,999 999999,0 0))                                                       | Polygon((0.0 0.0,1.0 2.0,3.0 4.0,5.0 5.0,6.0 7.0,8.0 9.0,11.0 15.0,45.0 22.0,0.1111 0.0,9.0 0.0,0.0 0.0)) |    1
+(10 rows)
+> select ST_Distance(e1,e2) from test_geometry.tb order by k_timestamptz;
+  st_distance
+---------------
+            0
+            0
+            0
+            0
+            0
+            0
+            0
+            0
+            0
+            0
+(10 rows)
+> drop table test_geometry.tb;
+DROP TABLE
+> drop database test_geometry CASCADE;
+DROP DATABASE
+> create ts database test_geometry;
+CREATE TS DATABASE
+> create table test_geometry.tb(k_timestamptz timestamptz not null ,e1 geometry , e2  geometry ) tags(tag1 int not null) primary  tags(tag1);
+CREATE TABLE
+> insert into test_geometry.tb values('2023-05-01 10:10', 'Point(0.0 0.0)', 'Linestring(1.0 1.0, 2.0 2.0)',1);
+INSERT 1
+> insert into test_geometry.tb values('2023-05-01 10:11', 'Point(0.0 0.0)', 'Polygon((1.0 1.0, 2.0 2.0, 3.0 2.0, 1.0 1.0))',2);
+INSERT 1
+> insert into test_geometry.tb values('2023-05-01 10:12', 'Linestring(1.0 1.0, 2.0 2.0)','Polygon((1 1,60 90,0 0,1 1))',1);
+INSERT 1
+> select * from test_geometry.tb order by k_timestamptz;
+        k_timestamptz       |              e1              |                      e2                       | tag1
+----------------------------+------------------------------+-----------------------------------------------+-------
+  2023-05-01 10:10:00+00:00 | Point(0.0 0.0)               | Linestring(1.0 1.0, 2.0 2.0)                  |    1
+  2023-05-01 10:11:00+00:00 | Point(0.0 0.0)               | Polygon((1.0 1.0, 2.0 2.0, 3.0 2.0, 1.0 1.0)) |    2
+  2023-05-01 10:12:00+00:00 | Linestring(1.0 1.0, 2.0 2.0) | Polygon((1 1,60 90,0 0,1 1))                  |    1
+(3 rows)
+> select ST_Distance(e1,e2) from test_geometry.tb order by k_timestamptz;
+     st_distance
+----------------------
+  1.4142135623730951
+  1.4142135623730951
+                   0
+(3 rows)
+> drop table test_geometry.tb;
+DROP TABLE
+> drop database test_geometry CASCADE;
+DROP DATABASE
+> create ts database test_geometry;
+CREATE TS DATABASE
+> create table test_geometry.tb(k_timestamptz timestamptz not null ,e1 geometry , e2  geometry ) tags(tag1 int not null) primary  tags(tag1);
+CREATE TABLE
+> insert into test_geometry.tb(e1,e2,tag1)values('Point(0.0 0.0)','Linestring(1.0 1.0, 2.0 2.0)',1);
+ERROR: null value in column "k_timestamptz" violates not-null constraint
+SQLSTATE: 23502
+> insert into test_geometry.tb(e1,tag1)values('Point(1.0 0.0)',2);
+ERROR: null value in column "k_timestamptz" violates not-null constraint
+SQLSTATE: 23502
+> insert into test_geometry.tb(tag1)values(3);
+INSERT 1
+> select * from test_geometry.tb order by tag1;
+  k_timestamptz | e1 | e2 | tag1
+----------------+----+----+-------
+(0 rows)
+> show tag values from test_geometry.tb;
+  tag1
+--------
+     3
+(1 row)
+> drop table test_geometry.tb;
+DROP TABLE
+> drop database test_geometry CASCADE;
+DROP DATABASE
+> create ts database test_geometry;
+CREATE TS DATABASE
+> create table test_geometry.tb(k_timestamptz timestamptz not null ,e1 geometry , e2  geometry ) tags(tag1 int not null) primary  tags(tag1);
+CREATE TABLE
+> insert into test_geometry.tb(k_timestamptz,e1,e2,tag1)values('2023-05-01 10:12','Point(0.0 0.0)','Linestring(1.0 1.0, 2.0 2.0)',1);
+INSERT 1
+> insert into test_geometry.tb(k_timestamptz,e1,e2,tag1)values('2023-05-01 10:13','Point(1.0 1.0)','Linestring(3.0 3.0, 4.0 4.0)',1);
+INSERT 1
+> insert into test_geometry.tb(e2,tag1)values('Linestring(4.0 4.0, 5.0 5.0)' ,1);
+ERROR: null value in column "k_timestamptz" violates not-null constraint
+SQLSTATE: 23502
+> select * from test_geometry.tb order by tag1;
+        k_timestamptz       |       e1       |              e2              | tag1
+----------------------------+----------------+------------------------------+-------
+  2023-05-01 10:12:00+00:00 | Point(0.0 0.0) | Linestring(1.0 1.0, 2.0 2.0) |    1
+  2023-05-01 10:13:00+00:00 | Point(1.0 1.0) | Linestring(3.0 3.0, 4.0 4.0) |    1
+(2 rows)
+> show tag values from test_geometry.tb;
+  tag1
+--------
+     1
+(1 row)
+> drop table test_geometry.tb;
+DROP TABLE
+> drop database test_geometry CASCADE;
+DROP DATABASE
+> create ts database test_geometry;
+CREATE TS DATABASE
+> create table test_geometry.tb(k_timestamptz timestamptz not null ,e1 geometry , e2  geometry ) tags(tag1 int not null) primary  tags(tag1);
+CREATE TABLE
+> insert into test_geometry.tb(k_timestamptz,e1,e2,tag1,tag1)values('2023-05-01 10:12','Point(0.0 0.0)','Linestring(1.0 1.0, 2.0 2.0)',1,2);
+ERROR: multiple assignments to the same column "tag1"
+SQLSTATE: 42701
+> insert into test_geometry.tb(k_timestamptz,e1,e1,tag1)values('2023-05-01 10:12','Point(0.0 0.0)','Linestring(1.0 1.0, 2.0 2.0)',2);
+ERROR: multiple assignments to the same column "e1"
+SQLSTATE: 42701
+> select * from test_geometry.tb order by tag1;
+  k_timestamptz | e1 | e2 | tag1
+----------------+----+----+-------
+(0 rows)
+> show tag values from test_geometry.tb;
+  tag1
+--------
+(0 rows)
+> drop table test_geometry.tb;
+DROP TABLE
+> drop database test_geometry CASCADE;
+DROP DATABASE
+> create ts database test_geometry;
+CREATE TS DATABASE
+> create table test_geometry.tb(k_timestamptz timestamptz not null ,e1 geometry , e2  geometry ) tags(tag1 int not null,tag2 int) primary  tags(tag1);
+CREATE TABLE
+> insert into test_geometry.tb(k_timestamptz,e1,e2,tag1)values('2023-05-01 10:12','Point(0.0 0.0)','Linestring(1.0 1.0, 2.0 2.0)',1.2);
+ERROR: could not resolve "1.2" as a INT4 type
+SQLSTATE: 42804
+> insert into test_geometry.tb(k_timestamptz,e1,e2,tag1)values('2023-05-01 10:12','Point(0.0 0.0)','abc',1);
+ERROR: value 'abc' is invalid for type GEOMETRY
+SQLSTATE: 22000
+> select * from test_geometry.tb order by tag1;
+  k_timestamptz | e1 | e2 | tag1 | tag2
+----------------+----+----+------+-------
+(0 rows)
+> show tag values from test_geometry.tb;
+  tag1 | tag2
+-------+-------
+(0 rows)
+> drop table test_geometry.tb;
+DROP TABLE
+> drop database test_geometry CASCADE;
+DROP DATABASE
+> USE defaultdb;
+SET
+> DROP DATABASE IF EXISTS test_SELECT_col_geo cascade;
+DROP DATABASE
+> CREATE ts DATABASE test_SELECT_col_geo;
+CREATE TS DATABASE
+> USE defaultdb;DROP DATABASE IF EXISTS test_SELECT_col_geo cascade;
+DROP DATABASE
+> CREATE ts DATABASE test_SELECT_col_geo;
+CREATE TS DATABASE
+> CREATE TABLE test_SELECT_col_geo.t1(
+  k_timestamp timestamptz NOT NULL,
+  a1 geometry ,
+  b1 geometry ,
+  c1 geometry ,
+  a2 geometry ,
+  b2 geometry ,
+  c2 geometry
+  ) ATTRIBUTES (code1 int2 NOT NULL) primary tags(code1);
+CREATE TABLE
+> INSERT INTO test_SELECT_col_geo.t1 VALUES(now(),'Point(0.0 0.0)', 'Linestring(1.0 1.0, 2.0 2.0)', 'Polygon((1.0 1.0, 2.0 2.0, 3.0 2.0, 1.0 1.0))','Point(0.0 0.0)', 'Linestring(1.0 1.0, 5.0 5.0)','Polygon((4.0 1.0, 2.0 2.0, 3.0 2.0, 4.0 1.0))',1);
+INSERT 1
+> INSERT INTO test_SELECT_col_geo.t1 VALUES(now(),'Point(0.0 2.0)', 'Linestring(1.0 1.0, 4.0 4.0)', 'Polygon((5.0 6.0, 2.0 2.0, 3.0 2.0, 5.0 6.0))','Point( 6.6 1.3)', 'Linestring(1.1 1.0, 4.0 4.0)','Polygon((4.0 1.8, 2.0 2.8, 3.0 2.8, 4.0 1.8))',2);
+INSERT 1
+> INSERT INTO test_SELECT_col_geo.t1 VALUES(now(),'Point(0.0 3.0)', 'Linestring(1.0 1.0, 2.0 3.0)', 'Polygon((7.0 7.0, 2.0 5.0, 3.0 1.0, 7.0 7.0))','Point(1.0 2.0)', 'Linestring(1.2 1.2, 8.0 8.0)','Polygon((5.6 1.0, 2.2 2.2, 3.3 2.0, 5.6 1.0))',3);
+INSERT 1
+> INSERT INTO test_SELECT_col_geo.t1 VALUES(now(),'Point(0.0 4.0)', 'Linestring(4.0 6.0, 5.0 1.0)', 'Polygon((1.0 4.0, 2.1 2.6, 3.1 2.2, 1.0 4.0))','Point(4.1 7.8)', 'Linestring(1.2 3.0, 5.0 5.0)','Polygon((4.0 1.0, 2.0 2.0, 3.0 2.0, 3.0 3.0, 4.0 1.0))',4);
+INSERT 1
+> INSERT INTO test_SELECT_col_geo.t1 VALUES(now(),'Point(0.0 5.0)', 'Linestring(7.0 3.0, 2.0 0.0)', 'Polygon((2.0 7.0, 2.4 6.0, 5.0 2.8, 2.0 7.0))','Point(5.6 6.5)', 'Linestring(1.4 4.0, 6.0 5.2)','Polygon((4.0 1.0, 2.0 8.0, 8.0 2.0, 5.0 0.0, 4.0 1.0))',5);
+INSERT 1
+> INSERT INTO test_SELECT_col_geo.t1 VALUES(now(),'Point(1.0 3.0)', 'Linestring(4.0 1.0, 7.0 7.0)', 'Polygon((3.0 8.0, 5.0 3.6, 3.0 5.0, 3.0 8.0))','Point(8.1 1.2)', 'Linestring(6.0 4.0, 5.7 5.4)','Polygon((4.0 1.0, 2.0 2.0, 3.0 2.0, 5.0 1.0, 4.0 1.0))',6);
+INSERT 1
+> INSERT INTO test_SELECT_col_geo.t1 VALUES(now(),'Point(1.0 8.0)', 'Linestring(4.0 2.0, 5.0 5.0)', 'Polygon((5.0 2.0, 7.8 2.0, 7.0 4.1, 5.0 2.0))','Point(3.3 1.9)', 'Linestring(7.0 1.0, 3.2 4.5)','Polygon((4.0 0.0, 2.0 8.0, 0.0 4.0, 4.0 0.0))',7);
+INSERT 1
+> INSERT INTO test_SELECT_col_geo.t1(k_timestamp,a1,b1,c1,a2,b2,c2,code1) VALUES(2021681353000,'Point(2.5 3.6)', 'Linestring(1.0 1.5, 2.6 3.8)', 'Polygon((4.0 5.0, 1.5 7.0, 3.9 2.0, 4.0 5.0))','Point(11.5 12.0)', 'Linestring(3.0 8.0, 5.4 8.0)','Polygon((3.0 1.0, 3.0 2.0, 2.0 2.0, 2.0 1.0, 2.5 0.0, 3.0 1.0))',8);
+INSERT 1
+> INSERT INTO test_SELECT_col_geo.t1(k_timestamp,a1,code1) VALUES(2021684953000,'Point(0.0 0.0)',9);
+INSERT 1
+> INSERT INTO test_SELECT_col_geo.t1(k_timestamp,a2,code1) VALUES(2021688553000,'Point(1.0 1.0)',10);
+INSERT 1
+> INSERT INTO test_SELECT_col_geo.t1(k_timestamp,b1,code1) VALUES(2021774953000,'Linestring(1.0 1.0, 2.0 2.0)',11);
+INSERT 1
+> INSERT INTO test_SELECT_col_geo.t1(c1,code1) VALUES('Polygon((5.6 1.0, 2.2 2.2, 3.3 2.0, 5.6 1.0))',12);
+ERROR: null value in column "k_timestamp" violates not-null constraint
+SQLSTATE: 23502
+> INSERT INTO test_SELECT_col_geo.t1(code1) VALUES(13);
+INSERT 1
+> SELECT a1,b1,c1,a2,b2,c2,code1 FROM test_SELECT_col_geo.t1 order by k_timestamp;
+        a1       |              b1              |                      c1                       |        a2        |              b2              |                               c2                                | code1
+-----------------+------------------------------+-----------------------------------------------+------------------+------------------------------+-----------------------------------------------------------------+--------
+  Point(0.0 0.0) | Linestring(1.0 1.0, 2.0 2.0) | Polygon((1.0 1.0, 2.0 2.0, 3.0 2.0, 1.0 1.0)) | Point(0.0 0.0)   | Linestring(1.0 1.0, 5.0 5.0) | Polygon((4.0 1.0, 2.0 2.0, 3.0 2.0, 4.0 1.0))                   |     1
+  Point(0.0 2.0) | Linestring(1.0 1.0, 4.0 4.0) | Polygon((5.0 6.0, 2.0 2.0, 3.0 2.0, 5.0 6.0)) | Point( 6.6 1.3)  | Linestring(1.1 1.0, 4.0 4.0) | Polygon((4.0 1.8, 2.0 2.8, 3.0 2.8, 4.0 1.8))                   |     2
+  Point(0.0 3.0) | Linestring(1.0 1.0, 2.0 3.0) | Polygon((7.0 7.0, 2.0 5.0, 3.0 1.0, 7.0 7.0)) | Point(1.0 2.0)   | Linestring(1.2 1.2, 8.0 8.0) | Polygon((5.6 1.0, 2.2 2.2, 3.3 2.0, 5.6 1.0))                   |     3
+  Point(0.0 4.0) | Linestring(4.0 6.0, 5.0 1.0) | Polygon((1.0 4.0, 2.1 2.6, 3.1 2.2, 1.0 4.0)) | Point(4.1 7.8)   | Linestring(1.2 3.0, 5.0 5.0) | Polygon((4.0 1.0, 2.0 2.0, 3.0 2.0, 3.0 3.0, 4.0 1.0))          |     4
+  Point(0.0 5.0) | Linestring(7.0 3.0, 2.0 0.0) | Polygon((2.0 7.0, 2.4 6.0, 5.0 2.8, 2.0 7.0)) | Point(5.6 6.5)   | Linestring(1.4 4.0, 6.0 5.2) | Polygon((4.0 1.0, 2.0 8.0, 8.0 2.0, 5.0 0.0, 4.0 1.0))          |     5
+  Point(1.0 3.0) | Linestring(4.0 1.0, 7.0 7.0) | Polygon((3.0 8.0, 5.0 3.6, 3.0 5.0, 3.0 8.0)) | Point(8.1 1.2)   | Linestring(6.0 4.0, 5.7 5.4) | Polygon((4.0 1.0, 2.0 2.0, 3.0 2.0, 5.0 1.0, 4.0 1.0))          |     6
+  Point(1.0 8.0) | Linestring(4.0 2.0, 5.0 5.0) | Polygon((5.0 2.0, 7.8 2.0, 7.0 4.1, 5.0 2.0)) | Point(3.3 1.9)   | Linestring(7.0 1.0, 3.2 4.5) | Polygon((4.0 0.0, 2.0 8.0, 0.0 4.0, 4.0 0.0))                   |     7
+  Point(2.5 3.6) | Linestring(1.0 1.5, 2.6 3.8) | Polygon((4.0 5.0, 1.5 7.0, 3.9 2.0, 4.0 5.0)) | Point(11.5 12.0) | Linestring(3.0 8.0, 5.4 8.0) | Polygon((3.0 1.0, 3.0 2.0, 2.0 2.0, 2.0 1.0, 2.5 0.0, 3.0 1.0)) |     8
+  Point(0.0 0.0) | NULL                         | NULL                                          | NULL             | NULL                         | NULL                                                            |     9
+  NULL           | NULL                         | NULL                                          | Point(1.0 1.0)   | NULL                         | NULL                                                            |    10
+  NULL           | Linestring(1.0 1.0, 2.0 2.0) | NULL                                          | NULL             | NULL                         | NULL                                                            |    11
+(11 rows)
+> SELECT k_timestamp,a1,b1,c1,a2,b2,c2 FROM test_SELECT_col_geo.t1 WHERE k_timestamp > now() order by k_timestamp;
+         k_timestamp        |       a1       |              b1              |                      c1                       |        a2        |              b2              |                               c2
+----------------------------+----------------+------------------------------+-----------------------------------------------+------------------+------------------------------+------------------------------------------------------------------
+  2034-01-24 02:09:13+00:00 | Point(2.5 3.6) | Linestring(1.0 1.5, 2.6 3.8) | Polygon((4.0 5.0, 1.5 7.0, 3.9 2.0, 4.0 5.0)) | Point(11.5 12.0) | Linestring(3.0 8.0, 5.4 8.0) | Polygon((3.0 1.0, 3.0 2.0, 2.0 2.0, 2.0 1.0, 2.5 0.0, 3.0 1.0))
+  2034-01-24 03:09:13+00:00 | Point(0.0 0.0) | NULL                         | NULL                                          | NULL             | NULL                         | NULL
+  2034-01-24 04:09:13+00:00 | NULL           | NULL                         | NULL                                          | Point(1.0 1.0)   | NULL                         | NULL
+  2034-01-25 04:09:13+00:00 | NULL           | Linestring(1.0 1.0, 2.0 2.0) | NULL                                          | NULL             | NULL                         | NULL
+(4 rows)
+> SELECT code1,a1,b1,c1,a2,b2,c2 FROM test_SELECT_col_geo.t1 order by k_timestamp;
+  code1 |       a1       |              b1              |                      c1                       |        a2        |              b2              |                               c2
+--------+----------------+------------------------------+-----------------------------------------------+------------------+------------------------------+------------------------------------------------------------------
+      1 | Point(0.0 0.0) | Linestring(1.0 1.0, 2.0 2.0) | Polygon((1.0 1.0, 2.0 2.0, 3.0 2.0, 1.0 1.0)) | Point(0.0 0.0)   | Linestring(1.0 1.0, 5.0 5.0) | Polygon((4.0 1.0, 2.0 2.0, 3.0 2.0, 4.0 1.0))
+      2 | Point(0.0 2.0) | Linestring(1.0 1.0, 4.0 4.0) | Polygon((5.0 6.0, 2.0 2.0, 3.0 2.0, 5.0 6.0)) | Point( 6.6 1.3)  | Linestring(1.1 1.0, 4.0 4.0) | Polygon((4.0 1.8, 2.0 2.8, 3.0 2.8, 4.0 1.8))
+      3 | Point(0.0 3.0) | Linestring(1.0 1.0, 2.0 3.0) | Polygon((7.0 7.0, 2.0 5.0, 3.0 1.0, 7.0 7.0)) | Point(1.0 2.0)   | Linestring(1.2 1.2, 8.0 8.0) | Polygon((5.6 1.0, 2.2 2.2, 3.3 2.0, 5.6 1.0))
+      4 | Point(0.0 4.0) | Linestring(4.0 6.0, 5.0 1.0) | Polygon((1.0 4.0, 2.1 2.6, 3.1 2.2, 1.0 4.0)) | Point(4.1 7.8)   | Linestring(1.2 3.0, 5.0 5.0) | Polygon((4.0 1.0, 2.0 2.0, 3.0 2.0, 3.0 3.0, 4.0 1.0))
+      5 | Point(0.0 5.0) | Linestring(7.0 3.0, 2.0 0.0) | Polygon((2.0 7.0, 2.4 6.0, 5.0 2.8, 2.0 7.0)) | Point(5.6 6.5)   | Linestring(1.4 4.0, 6.0 5.2) | Polygon((4.0 1.0, 2.0 8.0, 8.0 2.0, 5.0 0.0, 4.0 1.0))
+      6 | Point(1.0 3.0) | Linestring(4.0 1.0, 7.0 7.0) | Polygon((3.0 8.0, 5.0 3.6, 3.0 5.0, 3.0 8.0)) | Point(8.1 1.2)   | Linestring(6.0 4.0, 5.7 5.4) | Polygon((4.0 1.0, 2.0 2.0, 3.0 2.0, 5.0 1.0, 4.0 1.0))
+      7 | Point(1.0 8.0) | Linestring(4.0 2.0, 5.0 5.0) | Polygon((5.0 2.0, 7.8 2.0, 7.0 4.1, 5.0 2.0)) | Point(3.3 1.9)   | Linestring(7.0 1.0, 3.2 4.5) | Polygon((4.0 0.0, 2.0 8.0, 0.0 4.0, 4.0 0.0))
+      8 | Point(2.5 3.6) | Linestring(1.0 1.5, 2.6 3.8) | Polygon((4.0 5.0, 1.5 7.0, 3.9 2.0, 4.0 5.0)) | Point(11.5 12.0) | Linestring(3.0 8.0, 5.4 8.0) | Polygon((3.0 1.0, 3.0 2.0, 2.0 2.0, 2.0 1.0, 2.5 0.0, 3.0 1.0))
+      9 | Point(0.0 0.0) | NULL                         | NULL                                          | NULL             | NULL                         | NULL
+     10 | NULL           | NULL                         | NULL                                          | Point(1.0 1.0)   | NULL                         | NULL
+     11 | NULL           | Linestring(1.0 1.0, 2.0 2.0) | NULL                                          | NULL             | NULL                         | NULL
+(11 rows)
+> SELECT a1 FROM test_SELECT_col_geo.t1 order by k_timestamp;
+        a1
+------------------
+  Point(0.0 0.0)
+  Point(0.0 2.0)
+  Point(0.0 3.0)
+  Point(0.0 4.0)
+  Point(0.0 5.0)
+  Point(1.0 3.0)
+  Point(1.0 8.0)
+  Point(2.5 3.6)
+  Point(0.0 0.0)
+  NULL
+  NULL
+(11 rows)
+> SELECT b1 FROM test_SELECT_col_geo.t1 order by k_timestamp;
+               b1
+--------------------------------
+  Linestring(1.0 1.0, 2.0 2.0)
+  Linestring(1.0 1.0, 4.0 4.0)
+  Linestring(1.0 1.0, 2.0 3.0)
+  Linestring(4.0 6.0, 5.0 1.0)
+  Linestring(7.0 3.0, 2.0 0.0)
+  Linestring(4.0 1.0, 7.0 7.0)
+  Linestring(4.0 2.0, 5.0 5.0)
+  Linestring(1.0 1.5, 2.6 3.8)
+  NULL
+  NULL
+  Linestring(1.0 1.0, 2.0 2.0)
+(11 rows)
+> SELECT c1 FROM test_SELECT_col_geo.t1 order by k_timestamp;
+                       c1
+-------------------------------------------------
+  Polygon((1.0 1.0, 2.0 2.0, 3.0 2.0, 1.0 1.0))
+  Polygon((5.0 6.0, 2.0 2.0, 3.0 2.0, 5.0 6.0))
+  Polygon((7.0 7.0, 2.0 5.0, 3.0 1.0, 7.0 7.0))
+  Polygon((1.0 4.0, 2.1 2.6, 3.1 2.2, 1.0 4.0))
+  Polygon((2.0 7.0, 2.4 6.0, 5.0 2.8, 2.0 7.0))
+  Polygon((3.0 8.0, 5.0 3.6, 3.0 5.0, 3.0 8.0))
+  Polygon((5.0 2.0, 7.8 2.0, 7.0 4.1, 5.0 2.0))
+  Polygon((4.0 5.0, 1.5 7.0, 3.9 2.0, 4.0 5.0))
+  NULL
+  NULL
+  NULL
+(11 rows)
+> SELECT a2 FROM test_SELECT_col_geo.t1 order by k_timestamp;
+         a2
+--------------------
+  Point(0.0 0.0)
+  Point( 6.6 1.3)
+  Point(1.0 2.0)
+  Point(4.1 7.8)
+  Point(5.6 6.5)
+  Point(8.1 1.2)
+  Point(3.3 1.9)
+  Point(11.5 12.0)
+  NULL
+  Point(1.0 1.0)
+  NULL
+(11 rows)
+> SELECT b2 FROM test_SELECT_col_geo.t1 order by k_timestamp;
+               b2
+--------------------------------
+  Linestring(1.0 1.0, 5.0 5.0)
+  Linestring(1.1 1.0, 4.0 4.0)
+  Linestring(1.2 1.2, 8.0 8.0)
+  Linestring(1.2 3.0, 5.0 5.0)
+  Linestring(1.4 4.0, 6.0 5.2)
+  Linestring(6.0 4.0, 5.7 5.4)
+  Linestring(7.0 1.0, 3.2 4.5)
+  Linestring(3.0 8.0, 5.4 8.0)
+  NULL
+  NULL
+  NULL
+(11 rows)
+> SELECT c2 FROM test_SELECT_col_geo.t1 order by k_timestamp;
+                                c2
+-------------------------------------------------------------------
+  Polygon((4.0 1.0, 2.0 2.0, 3.0 2.0, 4.0 1.0))
+  Polygon((4.0 1.8, 2.0 2.8, 3.0 2.8, 4.0 1.8))
+  Polygon((5.6 1.0, 2.2 2.2, 3.3 2.0, 5.6 1.0))
+  Polygon((4.0 1.0, 2.0 2.0, 3.0 2.0, 3.0 3.0, 4.0 1.0))
+  Polygon((4.0 1.0, 2.0 8.0, 8.0 2.0, 5.0 0.0, 4.0 1.0))
+  Polygon((4.0 1.0, 2.0 2.0, 3.0 2.0, 5.0 1.0, 4.0 1.0))
+  Polygon((4.0 0.0, 2.0 8.0, 0.0 4.0, 4.0 0.0))
+  Polygon((3.0 1.0, 3.0 2.0, 2.0 2.0, 2.0 1.0, 2.5 0.0, 3.0 1.0))
+  NULL
+  NULL
+  NULL
+(11 rows)
+> SELECT a1,b1,c1,a2,b2,c2,code1 FROM test_SELECT_col_geo.t1 WHERE k_timestamp IS NULL order by k_timestamp;
+  a1 | b1 | c1 | a2 | b2 | c2 | code1
+-----+----+----+----+----+----+--------
+(0 rows)
+> SELECT a1,b1,c1,a2,b2,c2,code1 FROM test_SELECT_col_geo.t1 WHERE k_timestamp IS NOT NULL order by k_timestamp;
+        a1       |              b1              |                      c1                       |        a2        |              b2              |                               c2                                | code1
+-----------------+------------------------------+-----------------------------------------------+------------------+------------------------------+-----------------------------------------------------------------+--------
+  Point(0.0 0.0) | Linestring(1.0 1.0, 2.0 2.0) | Polygon((1.0 1.0, 2.0 2.0, 3.0 2.0, 1.0 1.0)) | Point(0.0 0.0)   | Linestring(1.0 1.0, 5.0 5.0) | Polygon((4.0 1.0, 2.0 2.0, 3.0 2.0, 4.0 1.0))                   |     1
+  Point(0.0 2.0) | Linestring(1.0 1.0, 4.0 4.0) | Polygon((5.0 6.0, 2.0 2.0, 3.0 2.0, 5.0 6.0)) | Point( 6.6 1.3)  | Linestring(1.1 1.0, 4.0 4.0) | Polygon((4.0 1.8, 2.0 2.8, 3.0 2.8, 4.0 1.8))                   |     2
+  Point(0.0 3.0) | Linestring(1.0 1.0, 2.0 3.0) | Polygon((7.0 7.0, 2.0 5.0, 3.0 1.0, 7.0 7.0)) | Point(1.0 2.0)   | Linestring(1.2 1.2, 8.0 8.0) | Polygon((5.6 1.0, 2.2 2.2, 3.3 2.0, 5.6 1.0))                   |     3
+  Point(0.0 4.0) | Linestring(4.0 6.0, 5.0 1.0) | Polygon((1.0 4.0, 2.1 2.6, 3.1 2.2, 1.0 4.0)) | Point(4.1 7.8)   | Linestring(1.2 3.0, 5.0 5.0) | Polygon((4.0 1.0, 2.0 2.0, 3.0 2.0, 3.0 3.0, 4.0 1.0))          |     4
+  Point(0.0 5.0) | Linestring(7.0 3.0, 2.0 0.0) | Polygon((2.0 7.0, 2.4 6.0, 5.0 2.8, 2.0 7.0)) | Point(5.6 6.5)   | Linestring(1.4 4.0, 6.0 5.2) | Polygon((4.0 1.0, 2.0 8.0, 8.0 2.0, 5.0 0.0, 4.0 1.0))          |     5
+  Point(1.0 3.0) | Linestring(4.0 1.0, 7.0 7.0) | Polygon((3.0 8.0, 5.0 3.6, 3.0 5.0, 3.0 8.0)) | Point(8.1 1.2)   | Linestring(6.0 4.0, 5.7 5.4) | Polygon((4.0 1.0, 2.0 2.0, 3.0 2.0, 5.0 1.0, 4.0 1.0))          |     6
+  Point(1.0 8.0) | Linestring(4.0 2.0, 5.0 5.0) | Polygon((5.0 2.0, 7.8 2.0, 7.0 4.1, 5.0 2.0)) | Point(3.3 1.9)   | Linestring(7.0 1.0, 3.2 4.5) | Polygon((4.0 0.0, 2.0 8.0, 0.0 4.0, 4.0 0.0))                   |     7
+  Point(2.5 3.6) | Linestring(1.0 1.5, 2.6 3.8) | Polygon((4.0 5.0, 1.5 7.0, 3.9 2.0, 4.0 5.0)) | Point(11.5 12.0) | Linestring(3.0 8.0, 5.4 8.0) | Polygon((3.0 1.0, 3.0 2.0, 2.0 2.0, 2.0 1.0, 2.5 0.0, 3.0 1.0)) |     8
+  Point(0.0 0.0) | NULL                         | NULL                                          | NULL             | NULL                         | NULL                                                            |     9
+  NULL           | NULL                         | NULL                                          | Point(1.0 1.0)   | NULL                         | NULL                                                            |    10
+  NULL           | Linestring(1.0 1.0, 2.0 2.0) | NULL                                          | NULL             | NULL                         | NULL                                                            |    11
+(11 rows)
+> SELECT a1,b1,c1,a2,b2,c2,code1 FROM test_SELECT_col_geo.t1 WHERE a1 IS NOT NULL order by k_timestamp;
+        a1       |              b1              |                      c1                       |        a2        |              b2              |                               c2                                | code1
+-----------------+------------------------------+-----------------------------------------------+------------------+------------------------------+-----------------------------------------------------------------+--------
+  Point(0.0 0.0) | Linestring(1.0 1.0, 2.0 2.0) | Polygon((1.0 1.0, 2.0 2.0, 3.0 2.0, 1.0 1.0)) | Point(0.0 0.0)   | Linestring(1.0 1.0, 5.0 5.0) | Polygon((4.0 1.0, 2.0 2.0, 3.0 2.0, 4.0 1.0))                   |     1
+  Point(0.0 2.0) | Linestring(1.0 1.0, 4.0 4.0) | Polygon((5.0 6.0, 2.0 2.0, 3.0 2.0, 5.0 6.0)) | Point( 6.6 1.3)  | Linestring(1.1 1.0, 4.0 4.0) | Polygon((4.0 1.8, 2.0 2.8, 3.0 2.8, 4.0 1.8))                   |     2
+  Point(0.0 3.0) | Linestring(1.0 1.0, 2.0 3.0) | Polygon((7.0 7.0, 2.0 5.0, 3.0 1.0, 7.0 7.0)) | Point(1.0 2.0)   | Linestring(1.2 1.2, 8.0 8.0) | Polygon((5.6 1.0, 2.2 2.2, 3.3 2.0, 5.6 1.0))                   |     3
+  Point(0.0 4.0) | Linestring(4.0 6.0, 5.0 1.0) | Polygon((1.0 4.0, 2.1 2.6, 3.1 2.2, 1.0 4.0)) | Point(4.1 7.8)   | Linestring(1.2 3.0, 5.0 5.0) | Polygon((4.0 1.0, 2.0 2.0, 3.0 2.0, 3.0 3.0, 4.0 1.0))          |     4
+  Point(0.0 5.0) | Linestring(7.0 3.0, 2.0 0.0) | Polygon((2.0 7.0, 2.4 6.0, 5.0 2.8, 2.0 7.0)) | Point(5.6 6.5)   | Linestring(1.4 4.0, 6.0 5.2) | Polygon((4.0 1.0, 2.0 8.0, 8.0 2.0, 5.0 0.0, 4.0 1.0))          |     5
+  Point(1.0 3.0) | Linestring(4.0 1.0, 7.0 7.0) | Polygon((3.0 8.0, 5.0 3.6, 3.0 5.0, 3.0 8.0)) | Point(8.1 1.2)   | Linestring(6.0 4.0, 5.7 5.4) | Polygon((4.0 1.0, 2.0 2.0, 3.0 2.0, 5.0 1.0, 4.0 1.0))          |     6
+  Point(1.0 8.0) | Linestring(4.0 2.0, 5.0 5.0) | Polygon((5.0 2.0, 7.8 2.0, 7.0 4.1, 5.0 2.0)) | Point(3.3 1.9)   | Linestring(7.0 1.0, 3.2 4.5) | Polygon((4.0 0.0, 2.0 8.0, 0.0 4.0, 4.0 0.0))                   |     7
+  Point(2.5 3.6) | Linestring(1.0 1.5, 2.6 3.8) | Polygon((4.0 5.0, 1.5 7.0, 3.9 2.0, 4.0 5.0)) | Point(11.5 12.0) | Linestring(3.0 8.0, 5.4 8.0) | Polygon((3.0 1.0, 3.0 2.0, 2.0 2.0, 2.0 1.0, 2.5 0.0, 3.0 1.0)) |     8
+  Point(0.0 0.0) | NULL                         | NULL                                          | NULL             | NULL                         | NULL                                                            |     9
+(9 rows)
+> SELECT a1,b1,c1,a2,b2,c2,code1 FROM test_SELECT_col_geo.t1 WHERE a1 IS NOT NULL and b1 is NULL order by k_timestamp;
+        a1       |  b1  |  c1  |  a2  |  b2  |  c2  | code1
+-----------------+------+------+------+------+------+--------
+  Point(0.0 0.0) | NULL | NULL | NULL | NULL | NULL |     9
+(1 row)
+> SELECT a1,b1,c1,a2,b2,c2,code1 FROM test_SELECT_col_geo.t1 WHERE a1 IS NOT NULL or b1 is NOT NULL order by k_timestamp;
+        a1       |              b1              |                      c1                       |        a2        |              b2              |                               c2                                | code1
+-----------------+------------------------------+-----------------------------------------------+------------------+------------------------------+-----------------------------------------------------------------+--------
+  Point(0.0 0.0) | Linestring(1.0 1.0, 2.0 2.0) | Polygon((1.0 1.0, 2.0 2.0, 3.0 2.0, 1.0 1.0)) | Point(0.0 0.0)   | Linestring(1.0 1.0, 5.0 5.0) | Polygon((4.0 1.0, 2.0 2.0, 3.0 2.0, 4.0 1.0))                   |     1
+  Point(0.0 2.0) | Linestring(1.0 1.0, 4.0 4.0) | Polygon((5.0 6.0, 2.0 2.0, 3.0 2.0, 5.0 6.0)) | Point( 6.6 1.3)  | Linestring(1.1 1.0, 4.0 4.0) | Polygon((4.0 1.8, 2.0 2.8, 3.0 2.8, 4.0 1.8))                   |     2
+  Point(0.0 3.0) | Linestring(1.0 1.0, 2.0 3.0) | Polygon((7.0 7.0, 2.0 5.0, 3.0 1.0, 7.0 7.0)) | Point(1.0 2.0)   | Linestring(1.2 1.2, 8.0 8.0) | Polygon((5.6 1.0, 2.2 2.2, 3.3 2.0, 5.6 1.0))                   |     3
+  Point(0.0 4.0) | Linestring(4.0 6.0, 5.0 1.0) | Polygon((1.0 4.0, 2.1 2.6, 3.1 2.2, 1.0 4.0)) | Point(4.1 7.8)   | Linestring(1.2 3.0, 5.0 5.0) | Polygon((4.0 1.0, 2.0 2.0, 3.0 2.0, 3.0 3.0, 4.0 1.0))          |     4
+  Point(0.0 5.0) | Linestring(7.0 3.0, 2.0 0.0) | Polygon((2.0 7.0, 2.4 6.0, 5.0 2.8, 2.0 7.0)) | Point(5.6 6.5)   | Linestring(1.4 4.0, 6.0 5.2) | Polygon((4.0 1.0, 2.0 8.0, 8.0 2.0, 5.0 0.0, 4.0 1.0))          |     5
+  Point(1.0 3.0) | Linestring(4.0 1.0, 7.0 7.0) | Polygon((3.0 8.0, 5.0 3.6, 3.0 5.0, 3.0 8.0)) | Point(8.1 1.2)   | Linestring(6.0 4.0, 5.7 5.4) | Polygon((4.0 1.0, 2.0 2.0, 3.0 2.0, 5.0 1.0, 4.0 1.0))          |     6
+  Point(1.0 8.0) | Linestring(4.0 2.0, 5.0 5.0) | Polygon((5.0 2.0, 7.8 2.0, 7.0 4.1, 5.0 2.0)) | Point(3.3 1.9)   | Linestring(7.0 1.0, 3.2 4.5) | Polygon((4.0 0.0, 2.0 8.0, 0.0 4.0, 4.0 0.0))                   |     7
+  Point(2.5 3.6) | Linestring(1.0 1.5, 2.6 3.8) | Polygon((4.0 5.0, 1.5 7.0, 3.9 2.0, 4.0 5.0)) | Point(11.5 12.0) | Linestring(3.0 8.0, 5.4 8.0) | Polygon((3.0 1.0, 3.0 2.0, 2.0 2.0, 2.0 1.0, 2.5 0.0, 3.0 1.0)) |     8
+  Point(0.0 0.0) | NULL                         | NULL                                          | NULL             | NULL                         | NULL                                                            |     9
+  NULL           | Linestring(1.0 1.0, 2.0 2.0) | NULL                                          | NULL             | NULL                         | NULL                                                            |    11
+(10 rows)
+> SELECT a1,b1,c1,a2,b2,c2,code1 FROM test_SELECT_col_geo.t1 WHERE a1 IS NOT NULL OR b1 IS NULL order by k_timestamp;
+        a1       |              b1              |                      c1                       |        a2        |              b2              |                               c2                                | code1
+-----------------+------------------------------+-----------------------------------------------+------------------+------------------------------+-----------------------------------------------------------------+--------
+  Point(0.0 0.0) | Linestring(1.0 1.0, 2.0 2.0) | Polygon((1.0 1.0, 2.0 2.0, 3.0 2.0, 1.0 1.0)) | Point(0.0 0.0)   | Linestring(1.0 1.0, 5.0 5.0) | Polygon((4.0 1.0, 2.0 2.0, 3.0 2.0, 4.0 1.0))                   |     1
+  Point(0.0 2.0) | Linestring(1.0 1.0, 4.0 4.0) | Polygon((5.0 6.0, 2.0 2.0, 3.0 2.0, 5.0 6.0)) | Point( 6.6 1.3)  | Linestring(1.1 1.0, 4.0 4.0) | Polygon((4.0 1.8, 2.0 2.8, 3.0 2.8, 4.0 1.8))                   |     2
+  Point(0.0 3.0) | Linestring(1.0 1.0, 2.0 3.0) | Polygon((7.0 7.0, 2.0 5.0, 3.0 1.0, 7.0 7.0)) | Point(1.0 2.0)   | Linestring(1.2 1.2, 8.0 8.0) | Polygon((5.6 1.0, 2.2 2.2, 3.3 2.0, 5.6 1.0))                   |     3
+  Point(0.0 4.0) | Linestring(4.0 6.0, 5.0 1.0) | Polygon((1.0 4.0, 2.1 2.6, 3.1 2.2, 1.0 4.0)) | Point(4.1 7.8)   | Linestring(1.2 3.0, 5.0 5.0) | Polygon((4.0 1.0, 2.0 2.0, 3.0 2.0, 3.0 3.0, 4.0 1.0))          |     4
+  Point(0.0 5.0) | Linestring(7.0 3.0, 2.0 0.0) | Polygon((2.0 7.0, 2.4 6.0, 5.0 2.8, 2.0 7.0)) | Point(5.6 6.5)   | Linestring(1.4 4.0, 6.0 5.2) | Polygon((4.0 1.0, 2.0 8.0, 8.0 2.0, 5.0 0.0, 4.0 1.0))          |     5
+  Point(1.0 3.0) | Linestring(4.0 1.0, 7.0 7.0) | Polygon((3.0 8.0, 5.0 3.6, 3.0 5.0, 3.0 8.0)) | Point(8.1 1.2)   | Linestring(6.0 4.0, 5.7 5.4) | Polygon((4.0 1.0, 2.0 2.0, 3.0 2.0, 5.0 1.0, 4.0 1.0))          |     6
+  Point(1.0 8.0) | Linestring(4.0 2.0, 5.0 5.0) | Polygon((5.0 2.0, 7.8 2.0, 7.0 4.1, 5.0 2.0)) | Point(3.3 1.9)   | Linestring(7.0 1.0, 3.2 4.5) | Polygon((4.0 0.0, 2.0 8.0, 0.0 4.0, 4.0 0.0))                   |     7
+  Point(2.5 3.6) | Linestring(1.0 1.5, 2.6 3.8) | Polygon((4.0 5.0, 1.5 7.0, 3.9 2.0, 4.0 5.0)) | Point(11.5 12.0) | Linestring(3.0 8.0, 5.4 8.0) | Polygon((3.0 1.0, 3.0 2.0, 2.0 2.0, 2.0 1.0, 2.5 0.0, 3.0 1.0)) |     8
+  Point(0.0 0.0) | NULL                         | NULL                                          | NULL             | NULL                         | NULL                                                            |     9
+  NULL           | NULL                         | NULL                                          | Point(1.0 1.0)   | NULL                         | NULL                                                            |    10
+(10 rows)
+> SELECT a1,b1,c1,a2,b2,c2,code1 FROM test_SELECT_col_geo.t1 WHERE a1 IS NOT NULL AND b1 IS NULL AND a2 IS NOT NULL AND b2 IS NULL AND c1 IS NOT NULL AND c2 IS NULL order by k_timestamp;
+  a1 | b1 | c1 | a2 | b2 | c2 | code1
+-----+----+----+----+----+----+--------
+(0 rows)
+> SELECT concat(a1,b1) FROM test_SELECT_col_geo.t1 where concat(a1,b1) IS NULL order by k_timestamp;
+  concat
+----------
+  NULL
+  NULL
+  NULL
+(3 rows)
+> select a1,b1,c1,a2,b2,c2,code1 from test_select_col_geo.t1 where st_equals(a1,a2) order by k_timestamp;
+        a1       |              b1              |                      c1                       |       a2       |              b2              |                      c2                       | code1
+-----------------+------------------------------+-----------------------------------------------+----------------+------------------------------+-----------------------------------------------+--------
+  Point(0.0 0.0) | Linestring(1.0 1.0, 2.0 2.0) | Polygon((1.0 1.0, 2.0 2.0, 3.0 2.0, 1.0 1.0)) | Point(0.0 0.0) | Linestring(1.0 1.0, 5.0 5.0) | Polygon((4.0 1.0, 2.0 2.0, 3.0 2.0, 4.0 1.0)) |     1
+(1 row)
+> select a1,b1,c1,a2,b2,c2,code1 from test_select_col_geo.t1 where st_distance(a1,c1) < 10 order by k_timestamp;
+        a1       |              b1              |                      c1                       |        a2        |              b2              |                               c2                                | code1
+-----------------+------------------------------+-----------------------------------------------+------------------+------------------------------+-----------------------------------------------------------------+--------
+  Point(0.0 0.0) | Linestring(1.0 1.0, 2.0 2.0) | Polygon((1.0 1.0, 2.0 2.0, 3.0 2.0, 1.0 1.0)) | Point(0.0 0.0)   | Linestring(1.0 1.0, 5.0 5.0) | Polygon((4.0 1.0, 2.0 2.0, 3.0 2.0, 4.0 1.0))                   |     1
+  Point(0.0 2.0) | Linestring(1.0 1.0, 4.0 4.0) | Polygon((5.0 6.0, 2.0 2.0, 3.0 2.0, 5.0 6.0)) | Point( 6.6 1.3)  | Linestring(1.1 1.0, 4.0 4.0) | Polygon((4.0 1.8, 2.0 2.8, 3.0 2.8, 4.0 1.8))                   |     2
+  Point(0.0 3.0) | Linestring(1.0 1.0, 2.0 3.0) | Polygon((7.0 7.0, 2.0 5.0, 3.0 1.0, 7.0 7.0)) | Point(1.0 2.0)   | Linestring(1.2 1.2, 8.0 8.0) | Polygon((5.6 1.0, 2.2 2.2, 3.3 2.0, 5.6 1.0))                   |     3
+  Point(0.0 4.0) | Linestring(4.0 6.0, 5.0 1.0) | Polygon((1.0 4.0, 2.1 2.6, 3.1 2.2, 1.0 4.0)) | Point(4.1 7.8)   | Linestring(1.2 3.0, 5.0 5.0) | Polygon((4.0 1.0, 2.0 2.0, 3.0 2.0, 3.0 3.0, 4.0 1.0))          |     4
+  Point(0.0 5.0) | Linestring(7.0 3.0, 2.0 0.0) | Polygon((2.0 7.0, 2.4 6.0, 5.0 2.8, 2.0 7.0)) | Point(5.6 6.5)   | Linestring(1.4 4.0, 6.0 5.2) | Polygon((4.0 1.0, 2.0 8.0, 8.0 2.0, 5.0 0.0, 4.0 1.0))          |     5
+  Point(1.0 3.0) | Linestring(4.0 1.0, 7.0 7.0) | Polygon((3.0 8.0, 5.0 3.6, 3.0 5.0, 3.0 8.0)) | Point(8.1 1.2)   | Linestring(6.0 4.0, 5.7 5.4) | Polygon((4.0 1.0, 2.0 2.0, 3.0 2.0, 5.0 1.0, 4.0 1.0))          |     6
+  Point(1.0 8.0) | Linestring(4.0 2.0, 5.0 5.0) | Polygon((5.0 2.0, 7.8 2.0, 7.0 4.1, 5.0 2.0)) | Point(3.3 1.9)   | Linestring(7.0 1.0, 3.2 4.5) | Polygon((4.0 0.0, 2.0 8.0, 0.0 4.0, 4.0 0.0))                   |     7
+  Point(2.5 3.6) | Linestring(1.0 1.5, 2.6 3.8) | Polygon((4.0 5.0, 1.5 7.0, 3.9 2.0, 4.0 5.0)) | Point(11.5 12.0) | Linestring(3.0 8.0, 5.4 8.0) | Polygon((3.0 1.0, 3.0 2.0, 2.0 2.0, 2.0 1.0, 2.5 0.0, 3.0 1.0)) |     8
+(8 rows)
+> SELECT a1+a2 FROM test_SELECT_col_geo.t1 ORDER BY k_timestamp;
+ERROR: unsupported binary operator: <geometry> + <geometry>
+SQLSTATE: 22023
+> SELECT b1+c2 FROM test_SELECT_col_geo.t1 ORDER BY k_timestamp;
+ERROR: unsupported binary operator: <geometry> + <geometry>
+SQLSTATE: 22023
+> SELECT a1+NULL FROM test_SELECT_col_geo.t1 ORDER BY k_timestamp;
+ERROR: unsupported binary operator: <geometry> + <unknown>
+SQLSTATE: 22023
+> SELECT b1-b2 FROM test_SELECT_col_geo.t1 ORDER BY k_timestamp;
+ERROR: unsupported binary operator: <geometry> - <geometry>
+SQLSTATE: 22023
+> SELECT c1-NULL FROM test_SELECT_col_geo.t1 ORDER BY k_timestamp;
+ERROR: unsupported binary operator: <geometry> - <unknown>
+SQLSTATE: 22023
+> SELECT a1*c2 FROM test_SELECT_col_geo.t1 ORDER BY k_timestamp;
+ERROR: unsupported binary operator: <geometry> * <geometry>
+SQLSTATE: 22023
+> SELECT b2*NULL FROM test_SELECT_col_geo.t1 ORDER BY k_timestamp;
+ERROR: unsupported binary operator: <geometry> * <unknown>
+SQLSTATE: 22023
+> SELECT a1/c2 FROM test_SELECT_col_geo.t1 ORDER BY k_timestamp;
+ERROR: unsupported binary operator: <geometry> / <geometry>
+SQLSTATE: 22023
+> SELECT c1/0 FROM test_SELECT_col_geo.t1 ORDER BY k_timestamp;
+ERROR: unsupported binary operator: <geometry> / <int>
+SQLSTATE: 22023
+> SELECT a1/NULL FROM test_SELECT_col_geo.t1 ORDER BY k_timestamp;
+ERROR: unsupported binary operator: <geometry> / <unknown>
+SQLSTATE: 22023
+> SELECT b1//b2 FROM test_SELECT_col_geo.t1 ORDER BY k_timestamp;
+ERROR: unsupported binary operator: <geometry> // <geometry>
+SQLSTATE: 22023
+> SELECT a1//8 FROM test_SELECT_col_geo.t1 ORDER BY k_timestamp;
+ERROR: unsupported binary operator: <geometry> // <int>
+SQLSTATE: 22023
+> SELECT b1//0 FROM test_SELECT_col_geo.t1 ORDER BY k_timestamp;
+ERROR: unsupported binary operator: <geometry> // <int>
+SQLSTATE: 22023
+> SELECT c1//NULL FROM test_SELECT_col_geo.t1 ORDER BY k_timestamp;
+ERROR: unsupported binary operator: <geometry> // <unknown>
+SQLSTATE: 22023
+> SELECT c1%c2 FROM test_SELECT_col_geo.t1 ORDER BY k_timestamp;
+ERROR: unsupported binary operator: <geometry> % <geometry>
+SQLSTATE: 22023
+> SELECT b1%2 FROM test_SELECT_col_geo.t1 ORDER BY k_timestamp;
+ERROR: unsupported binary operator: <geometry> % <int>
+SQLSTATE: 22023
+> SELECT a1%NULL FROM test_SELECT_col_geo.t1 ORDER BY k_timestamp;
+ERROR: unsupported binary operator: <geometry> % <unknown>
+SQLSTATE: 22023
+> SELECT a1^2 FROM test_SELECT_col_geo.t1 ORDER BY k_timestamp;
+ERROR: unsupported binary operator: <geometry> ^ <int>
+SQLSTATE: 22023
+> SELECT b1^0 FROM test_SELECT_col_geo.t1 ORDER BY k_timestamp;
+ERROR: unsupported binary operator: <geometry> ^ <int>
+SQLSTATE: 22023
+> SELECT c1^NULL FROM test_SELECT_col_geo.t1 ORDER BY k_timestamp;
+ERROR: unsupported binary operator: <geometry> ^ <unknown>
+SQLSTATE: 22023
+> SELECT a1^9223372036854775807 FROM test_SELECT_col_geo.t1 ORDER BY k_timestamp;
+ERROR: unsupported binary operator: <geometry> ^ <int>
+SQLSTATE: 22023
+> SELECT c1&c2 FROM test_SELECT_col_geo.t1 ORDER BY k_timestamp;
+ERROR: unsupported binary operator: <geometry> & <geometry>
+SQLSTATE: 22023
+> SELECT a1&b2 FROM test_SELECT_col_geo.t1 ORDER BY k_timestamp;
+ERROR: unsupported binary operator: <geometry> & <geometry>
+SQLSTATE: 22023
+> SELECT b1||b2 FROM test_SELECT_col_geo.t1 ORDER BY k_timestamp;
+                          ?column?
+------------------------------------------------------------
+  Linestring(1.0 1.0, 2.0 2.0)Linestring(1.0 1.0, 5.0 5.0)
+  Linestring(1.0 1.0, 4.0 4.0)Linestring(1.1 1.0, 4.0 4.0)
+  Linestring(1.0 1.0, 2.0 3.0)Linestring(1.2 1.2, 8.0 8.0)
+  Linestring(4.0 6.0, 5.0 1.0)Linestring(1.2 3.0, 5.0 5.0)
+  Linestring(7.0 3.0, 2.0 0.0)Linestring(1.4 4.0, 6.0 5.2)
+  Linestring(4.0 1.0, 7.0 7.0)Linestring(6.0 4.0, 5.7 5.4)
+  Linestring(4.0 2.0, 5.0 5.0)Linestring(7.0 1.0, 3.2 4.5)
+  Linestring(1.0 1.5, 2.6 3.8)Linestring(3.0 8.0, 5.4 8.0)
+  NULL
+  NULL
+  NULL
+(11 rows)
+> drop database test_SELECT_col_geo cascade;
+DROP DATABASE

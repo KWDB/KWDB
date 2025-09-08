@@ -114,96 +114,102 @@ INSERT 10
                | access mode | tableTableMeta
 (8 rows)
 > explain select ptag1, sum(t1) from only_tag.table1 group by ptag1;
-      tree     |    field    |  description
----------------+-------------+-----------------
-               | distributed | true
-               | vectorized  | false
-  group        |             |
-   │           | engine type | time series
-   │           | aggregate 0 | ptag1
-   │           | aggregate 1 | sum(t1)
-   │           | group by    | ptag1
-   └── ts scan |             |
-               | ts-table    | table1
-               | only tag    | true
-               | access mode | tableTableMeta
-(11 rows)
-> explain select sum(t1) from only_tag.table1 group by ptag1;
-        tree        |    field    |  description
---------------------+-------------+-----------------
-                    | distributed | true
-                    | vectorized  | false
-  render            |             |
-   │                | engine type | time series
-   │                | sum         | sum
-   └── group        |             |
-        │           | engine type | time series
-        │           | aggregate 0 | ptag1
-        │           | aggregate 1 | sum(t1)
-        │           | group by    | ptag1
-        └── ts scan |             |
-                    | ts-table    | table1
-                    | only tag    | true
-                    | access mode | tableTableMeta
+      tree     |        field        |  description
+---------------+---------------------+-----------------
+               | distributed         | true
+               | vectorized          | false
+  group        |                     |
+   │           | engine type         | time series
+   │           | aggregate 0         | ptag1
+   │           | aggregate 1         | sum(t1)
+   │           | group by            | ptag1
+   │           | pushLocalAggToScan  | true
+   │           | addSynchronizer     | true
+   │           | pruneFinalAgg       | true
+   └── ts scan |                     |
+               | ts-table            | table1
+               | access mode         | tableTableMeta
+               | use statistic       | true
 (14 rows)
+> explain select sum(t1) from only_tag.table1 group by ptag1;
+           tree          |        field        |  description
+-------------------------+---------------------+-----------------
+                         | distributed         | true
+                         | vectorized          | false
+  synchronizer           |                     |
+   └── render            |                     |
+        │                | engine type         | time series
+        │                | sum                 | sum
+        └── group        |                     |
+             │           | engine type         | time series
+             │           | aggregate 0         | ptag1
+             │           | aggregate 1         | sum(t1)
+             │           | group by            | ptag1
+             │           | pushLocalAggToScan  | true
+             │           | pruneFinalAgg       | true
+             └── ts scan |                     |
+                         | ts-table            | table1
+                         | access mode         | tableTableMeta
+                         | use statistic       | true
+(17 rows)
 > explain select ptag1, t1, sum(t2) from only_tag.table1 group by ptag1, t1;
-      tree     |    field    |  description
----------------+-------------+-----------------
-               | distributed | true
-               | vectorized  | false
-  group        |             |
-   │           | engine type | time series
-   │           | aggregate 0 | ptag1
-   │           | aggregate 1 | t1
-   │           | aggregate 2 | sum(t2)
-   │           | group by    | ptag1, t1
-   └── ts scan |             |
-               | ts-table    | table1
-               | only tag    | true
-               | access mode | tableTableMeta
+      tree     |      field       |  description
+---------------+------------------+-----------------
+               | distributed      | true
+               | vectorized       | false
+  group        |                  |
+   │           | engine type      | time series
+   │           | aggregate 0      | ptag1
+   │           | aggregate 1      | t1
+   │           | aggregate 2      | sum(t2)
+   │           | group by         | ptag1, t1
+   │           | addSynchronizer  | true
+   └── ts scan |                  |
+               | ts-table         | table1
+               | access mode      | tableTableMeta
 (12 rows)
 > explain select ptag1, t1, t2, sum(t3) from only_tag.table1 group by ptag1, t1, t2;
-      tree     |    field    |  description
----------------+-------------+-----------------
-               | distributed | true
-               | vectorized  | false
-  group        |             |
-   │           | engine type | time series
-   │           | aggregate 0 | ptag1
-   │           | aggregate 1 | t1
-   │           | aggregate 2 | t2
-   │           | aggregate 3 | sum(t3)
-   │           | group by    | ptag1, t1, t2
-   └── ts scan |             |
-               | ts-table    | table1
-               | only tag    | true
-               | access mode | tableTableMeta
+      tree     |      field       |  description
+---------------+------------------+-----------------
+               | distributed      | true
+               | vectorized       | false
+  group        |                  |
+   │           | engine type      | time series
+   │           | aggregate 0      | ptag1
+   │           | aggregate 1      | t1
+   │           | aggregate 2      | t2
+   │           | aggregate 3      | sum(t3)
+   │           | group by         | ptag1, t1, t2
+   │           | addSynchronizer  | true
+   └── ts scan |                  |
+               | ts-table         | table1
+               | access mode      | tableTableMeta
 (13 rows)
 > explain select ptag1, sum(t1), sum(t2), sum(t3) from only_tag.table1 group by ptag1, t1, t2, t3;
-        tree        |    field    |    description
---------------------+-------------+--------------------
-                    | distributed | true
-                    | vectorized  | false
-  render            |             |
-   │                | engine type | time series
-   │                | ptag1       | ptag1
-   │                | sum         | sum
-   │                | sum         | sum
-   │                | sum         | sum
-   └── group        |             |
-        │           | engine type | time series
-        │           | aggregate 0 | ptag1
-        │           | aggregate 1 | t1
-        │           | aggregate 2 | t2
-        │           | aggregate 3 | t3
-        │           | aggregate 4 | sum(t1)
-        │           | aggregate 5 | sum(t2)
-        │           | aggregate 6 | sum(t3)
-        │           | group by    | ptag1, t1, t2, t3
-        └── ts scan |             |
-                    | ts-table    | table1
-                    | only tag    | true
-                    | access mode | tableTableMeta
+        tree        |      field       |    description
+--------------------+------------------+--------------------
+                    | distributed      | true
+                    | vectorized       | false
+  render            |                  |
+   │                | engine type      | time series
+   │                | ptag1            | ptag1
+   │                | sum              | sum
+   │                | sum              | sum
+   │                | sum              | sum
+   └── group        |                  |
+        │           | engine type      | time series
+        │           | aggregate 0      | ptag1
+        │           | aggregate 1      | t1
+        │           | aggregate 2      | t2
+        │           | aggregate 3      | t3
+        │           | aggregate 4      | sum(t1)
+        │           | aggregate 5      | sum(t2)
+        │           | aggregate 6      | sum(t3)
+        │           | group by         | ptag1, t1, t2, t3
+        │           | addSynchronizer  | true
+        └── ts scan |                  |
+                    | ts-table         | table1
+                    | access mode      | tableTableMeta
 (22 rows)
 > explain select ptag1 from only_tag.table1 where ptag1 = 100 group by ptag1;
       tree     |     field      | description
@@ -374,542 +380,542 @@ INSERT 10
                | ptag filter[0] | ptag1 = 100
 (10 rows)
 > explain select ptag1, sum(t1+t2) from only_tag.table1 group by ptag1;
-        tree        |    field    |  description
---------------------+-------------+-----------------
-                    | distributed | true
-                    | vectorized  | false
-  group             |             |
-   │                | engine type | time series
-   │                | aggregate 0 | ptag1
-   │                | aggregate 1 | sum(t1 + t2)
-   │                | group by    | ptag1
-   └── render       |             |
-        │           | engine type | time series
-        │           | t1 + t2     | t1 + t2
-        │           | ptag1       | ptag1
-        └── ts scan |             |
-                    | ts-table    | table1
-                    | only tag    | true
-                    | access mode | tableTableMeta
+        tree        |      field       |  description
+--------------------+------------------+-----------------
+                    | distributed      | true
+                    | vectorized       | false
+  group             |                  |
+   │                | engine type      | time series
+   │                | aggregate 0      | ptag1
+   │                | aggregate 1      | sum(t1 + t2)
+   │                | group by         | ptag1
+   │                | addSynchronizer  | true
+   └── render       |                  |
+        │           | engine type      | time series
+        │           | t1 + t2          | t1 + t2
+        │           | ptag1            | ptag1
+        └── ts scan |                  |
+                    | ts-table         | table1
+                    | access mode      | tableTableMeta
 (15 rows)
 > explain select sum(t1+t2) from only_tag.table1 group by ptag1;
-           tree          |    field    |  description
--------------------------+-------------+-----------------
-                         | distributed | true
-                         | vectorized  | false
-  render                 |             |
-   │                     | engine type | time series
-   │                     | sum         | sum
-   └── group             |             |
-        │                | engine type | time series
-        │                | aggregate 0 | ptag1
-        │                | aggregate 1 | sum(t1 + t2)
-        │                | group by    | ptag1
-        └── render       |             |
-             │           | engine type | time series
-             │           | t1 + t2     | t1 + t2
-             │           | ptag1       | ptag1
-             └── ts scan |             |
-                         | ts-table    | table1
-                         | only tag    | true
-                         | access mode | tableTableMeta
+           tree          |      field       |  description
+-------------------------+------------------+-----------------
+                         | distributed      | true
+                         | vectorized       | false
+  render                 |                  |
+   │                     | engine type      | time series
+   │                     | sum              | sum
+   └── group             |                  |
+        │                | engine type      | time series
+        │                | aggregate 0      | ptag1
+        │                | aggregate 1      | sum(t1 + t2)
+        │                | group by         | ptag1
+        │                | addSynchronizer  | true
+        └── render       |                  |
+             │           | engine type      | time series
+             │           | t1 + t2          | t1 + t2
+             │           | ptag1            | ptag1
+             └── ts scan |                  |
+                         | ts-table         | table1
+                         | access mode      | tableTableMeta
 (18 rows)
 > explain select ptag1, sum(t1+t2) from only_tag.table1 group by ptag1, t1;
-           tree          |    field    |  description
--------------------------+-------------+-----------------
-                         | distributed | true
-                         | vectorized  | false
-  render                 |             |
-   │                     | engine type | time series
-   │                     | ptag1       | ptag1
-   │                     | sum         | sum
-   └── group             |             |
-        │                | engine type | time series
-        │                | aggregate 0 | ptag1
-        │                | aggregate 1 | t1
-        │                | aggregate 2 | sum(t1 + t2)
-        │                | group by    | ptag1, t1
-        └── render       |             |
-             │           | engine type | time series
-             │           | t1 + t2     | t1 + t2
-             │           | ptag1       | ptag1
-             │           | t1          | t1
-             └── ts scan |             |
-                         | ts-table    | table1
-                         | only tag    | true
-                         | access mode | tableTableMeta
+           tree          |      field       |  description
+-------------------------+------------------+-----------------
+                         | distributed      | true
+                         | vectorized       | false
+  render                 |                  |
+   │                     | engine type      | time series
+   │                     | ptag1            | ptag1
+   │                     | sum              | sum
+   └── group             |                  |
+        │                | engine type      | time series
+        │                | aggregate 0      | ptag1
+        │                | aggregate 1      | t1
+        │                | aggregate 2      | sum(t1 + t2)
+        │                | group by         | ptag1, t1
+        │                | addSynchronizer  | true
+        └── render       |                  |
+             │           | engine type      | time series
+             │           | t1 + t2          | t1 + t2
+             │           | ptag1            | ptag1
+             │           | t1               | t1
+             └── ts scan |                  |
+                         | ts-table         | table1
+                         | access mode      | tableTableMeta
 (21 rows)
 > explain select ptag1, sum(t1+t2) from only_tag.table1 group by ptag1, t1, t2;
-           tree          |    field    |  description
--------------------------+-------------+-----------------
-                         | distributed | true
-                         | vectorized  | false
-  render                 |             |
-   │                     | engine type | time series
-   │                     | ptag1       | ptag1
-   │                     | sum         | sum
-   └── group             |             |
-        │                | engine type | time series
-        │                | aggregate 0 | ptag1
-        │                | aggregate 1 | t1
-        │                | aggregate 2 | t2
-        │                | aggregate 3 | sum(t1 + t2)
-        │                | group by    | ptag1, t1, t2
-        └── render       |             |
-             │           | engine type | time series
-             │           | t1 + t2     | t1 + t2
-             │           | ptag1       | ptag1
-             │           | t1          | t1
-             │           | t2          | t2
-             └── ts scan |             |
-                         | ts-table    | table1
-                         | only tag    | true
-                         | access mode | tableTableMeta
+           tree          |      field       |  description
+-------------------------+------------------+-----------------
+                         | distributed      | true
+                         | vectorized       | false
+  render                 |                  |
+   │                     | engine type      | time series
+   │                     | ptag1            | ptag1
+   │                     | sum              | sum
+   └── group             |                  |
+        │                | engine type      | time series
+        │                | aggregate 0      | ptag1
+        │                | aggregate 1      | t1
+        │                | aggregate 2      | t2
+        │                | aggregate 3      | sum(t1 + t2)
+        │                | group by         | ptag1, t1, t2
+        │                | addSynchronizer  | true
+        └── render       |                  |
+             │           | engine type      | time series
+             │           | t1 + t2          | t1 + t2
+             │           | ptag1            | ptag1
+             │           | t1               | t1
+             │           | t2               | t2
+             └── ts scan |                  |
+                         | ts-table         | table1
+                         | access mode      | tableTableMeta
 (23 rows)
 > explain select ptag1, sum(t1+t2+t3) from only_tag.table1 group by ptag1, t1, t2, t3;
-           tree          |     field      |     description
--------------------------+----------------+----------------------
-                         | distributed    | true
-                         | vectorized     | false
-  render                 |                |
-   │                     | engine type    | time series
-   │                     | ptag1          | ptag1
-   │                     | sum            | sum
-   └── group             |                |
-        │                | engine type    | time series
-        │                | aggregate 0    | ptag1
-        │                | aggregate 1    | t1
-        │                | aggregate 2    | t2
-        │                | aggregate 3    | t3
-        │                | aggregate 4    | sum((t1 + t2) + t3)
-        │                | group by       | ptag1, t1, t2, t3
-        └── render       |                |
-             │           | engine type    | time series
-             │           | (t1 + t2) + t3 | t3 + (t1 + t2)
-             │           | ptag1          | ptag1
-             │           | t1             | t1
-             │           | t2             | t2
-             │           | t3             | t3
-             └── ts scan |                |
-                         | ts-table       | table1
-                         | only tag       | true
-                         | access mode    | tableTableMeta
+           tree          |      field       |     description
+-------------------------+------------------+----------------------
+                         | distributed      | true
+                         | vectorized       | false
+  render                 |                  |
+   │                     | engine type      | time series
+   │                     | ptag1            | ptag1
+   │                     | sum              | sum
+   └── group             |                  |
+        │                | engine type      | time series
+        │                | aggregate 0      | ptag1
+        │                | aggregate 1      | t1
+        │                | aggregate 2      | t2
+        │                | aggregate 3      | t3
+        │                | aggregate 4      | sum((t1 + t2) + t3)
+        │                | group by         | ptag1, t1, t2, t3
+        │                | addSynchronizer  | true
+        └── render       |                  |
+             │           | engine type      | time series
+             │           | (t1 + t2) + t3   | t3 + (t1 + t2)
+             │           | ptag1            | ptag1
+             │           | t1               | t1
+             │           | t2               | t2
+             │           | t3               | t3
+             └── ts scan |                  |
+                         | ts-table         | table1
+                         | access mode      | tableTableMeta
 (25 rows)
 > explain select sum(t1+t2) from only_tag.table1 group by ptag1 having sum(t1) > 3000;
-             tree             |    field    |  description
-------------------------------+-------------+-----------------
-                              | distributed | true
-                              | vectorized  | false
-  render                      |             |
-   │                          | engine type | time series
-   │                          | sum         | sum
-   └── filter                 |             |
-        │                     | engine type | time series
-        │                     | filter      | sum > 3000
-        └── group             |             |
-             │                | engine type | time series
-             │                | aggregate 0 | ptag1
-             │                | aggregate 1 | sum(t1 + t2)
-             │                | aggregate 2 | sum(t1)
-             │                | group by    | ptag1
-             └── render       |             |
-                  │           | engine type | time series
-                  │           | t1 + t2     | t1 + t2
-                  │           | ptag1       | ptag1
-                  │           | t1          | t1
-                  └── ts scan |             |
-                              | ts-table    | table1
-                              | only tag    | true
-                              | access mode | tableTableMeta
+             tree             |      field       |  description
+------------------------------+------------------+-----------------
+                              | distributed      | true
+                              | vectorized       | false
+  render                      |                  |
+   │                          | engine type      | time series
+   │                          | sum              | sum
+   └── filter                 |                  |
+        │                     | engine type      | time series
+        │                     | filter           | sum > 3000
+        └── group             |                  |
+             │                | engine type      | time series
+             │                | aggregate 0      | ptag1
+             │                | aggregate 1      | sum(t1 + t2)
+             │                | aggregate 2      | sum(t1)
+             │                | group by         | ptag1
+             │                | addSynchronizer  | true
+             └── render       |                  |
+                  │           | engine type      | time series
+                  │           | t1 + t2          | t1 + t2
+                  │           | ptag1            | ptag1
+                  │           | t1               | t1
+                  └── ts scan |                  |
+                              | ts-table         | table1
+                              | access mode      | tableTableMeta
 (23 rows)
 > explain select sum(t1+t2) from only_tag.table1 group by ptag1 having sum(t1) > 3000;
-             tree             |    field    |  description
-------------------------------+-------------+-----------------
-                              | distributed | true
-                              | vectorized  | false
-  render                      |             |
-   │                          | engine type | time series
-   │                          | sum         | sum
-   └── filter                 |             |
-        │                     | engine type | time series
-        │                     | filter      | sum > 3000
-        └── group             |             |
-             │                | engine type | time series
-             │                | aggregate 0 | ptag1
-             │                | aggregate 1 | sum(t1 + t2)
-             │                | aggregate 2 | sum(t1)
-             │                | group by    | ptag1
-             └── render       |             |
-                  │           | engine type | time series
-                  │           | t1 + t2     | t1 + t2
-                  │           | ptag1       | ptag1
-                  │           | t1          | t1
-                  └── ts scan |             |
-                              | ts-table    | table1
-                              | only tag    | true
-                              | access mode | tableTableMeta
+             tree             |      field       |  description
+------------------------------+------------------+-----------------
+                              | distributed      | true
+                              | vectorized       | false
+  render                      |                  |
+   │                          | engine type      | time series
+   │                          | sum              | sum
+   └── filter                 |                  |
+        │                     | engine type      | time series
+        │                     | filter           | sum > 3000
+        └── group             |                  |
+             │                | engine type      | time series
+             │                | aggregate 0      | ptag1
+             │                | aggregate 1      | sum(t1 + t2)
+             │                | aggregate 2      | sum(t1)
+             │                | group by         | ptag1
+             │                | addSynchronizer  | true
+             └── render       |                  |
+                  │           | engine type      | time series
+                  │           | t1 + t2          | t1 + t2
+                  │           | ptag1            | ptag1
+                  │           | t1               | t1
+                  └── ts scan |                  |
+                              | ts-table         | table1
+                              | access mode      | tableTableMeta
 (23 rows)
 > explain select sum(t1+t2) from only_tag.table1 group by ptag1, t1 having sum(t1) > 3000;
-             tree             |    field    |  description
-------------------------------+-------------+-----------------
-                              | distributed | true
-                              | vectorized  | false
-  render                      |             |
-   │                          | engine type | time series
-   │                          | sum         | sum
-   └── filter                 |             |
-        │                     | engine type | time series
-        │                     | filter      | sum > 3000
-        └── group             |             |
-             │                | engine type | time series
-             │                | aggregate 0 | ptag1
-             │                | aggregate 1 | t1
-             │                | aggregate 2 | sum(t1 + t2)
-             │                | aggregate 3 | sum(t1)
-             │                | group by    | ptag1, t1
-             └── render       |             |
-                  │           | engine type | time series
-                  │           | t1 + t2     | t1 + t2
-                  │           | ptag1       | ptag1
-                  │           | t1          | t1
-                  └── ts scan |             |
-                              | ts-table    | table1
-                              | only tag    | true
-                              | access mode | tableTableMeta
+             tree             |      field       |  description
+------------------------------+------------------+-----------------
+                              | distributed      | true
+                              | vectorized       | false
+  render                      |                  |
+   │                          | engine type      | time series
+   │                          | sum              | sum
+   └── filter                 |                  |
+        │                     | engine type      | time series
+        │                     | filter           | sum > 3000
+        └── group             |                  |
+             │                | engine type      | time series
+             │                | aggregate 0      | ptag1
+             │                | aggregate 1      | t1
+             │                | aggregate 2      | sum(t1 + t2)
+             │                | aggregate 3      | sum(t1)
+             │                | group by         | ptag1, t1
+             │                | addSynchronizer  | true
+             └── render       |                  |
+                  │           | engine type      | time series
+                  │           | t1 + t2          | t1 + t2
+                  │           | ptag1            | ptag1
+                  │           | t1               | t1
+                  └── ts scan |                  |
+                              | ts-table         | table1
+                              | access mode      | tableTableMeta
 (24 rows)
 > explain select sum(t1+t2) from only_tag.table1 group by ptag1, t1, t2 having sum(t1) > 3000;
-             tree             |    field    |  description
-------------------------------+-------------+-----------------
-                              | distributed | true
-                              | vectorized  | false
-  render                      |             |
-   │                          | engine type | time series
-   │                          | sum         | sum
-   └── filter                 |             |
-        │                     | engine type | time series
-        │                     | filter      | sum > 3000
-        └── group             |             |
-             │                | engine type | time series
-             │                | aggregate 0 | ptag1
-             │                | aggregate 1 | t1
-             │                | aggregate 2 | t2
-             │                | aggregate 3 | sum(t1 + t2)
-             │                | aggregate 4 | sum(t1)
-             │                | group by    | ptag1, t1, t2
-             └── render       |             |
-                  │           | engine type | time series
-                  │           | t1 + t2     | t1 + t2
-                  │           | ptag1       | ptag1
-                  │           | t1          | t1
-                  │           | t2          | t2
-                  └── ts scan |             |
-                              | ts-table    | table1
-                              | only tag    | true
-                              | access mode | tableTableMeta
+             tree             |      field       |  description
+------------------------------+------------------+-----------------
+                              | distributed      | true
+                              | vectorized       | false
+  render                      |                  |
+   │                          | engine type      | time series
+   │                          | sum              | sum
+   └── filter                 |                  |
+        │                     | engine type      | time series
+        │                     | filter           | sum > 3000
+        └── group             |                  |
+             │                | engine type      | time series
+             │                | aggregate 0      | ptag1
+             │                | aggregate 1      | t1
+             │                | aggregate 2      | t2
+             │                | aggregate 3      | sum(t1 + t2)
+             │                | aggregate 4      | sum(t1)
+             │                | group by         | ptag1, t1, t2
+             │                | addSynchronizer  | true
+             └── render       |                  |
+                  │           | engine type      | time series
+                  │           | t1 + t2          | t1 + t2
+                  │           | ptag1            | ptag1
+                  │           | t1               | t1
+                  │           | t2               | t2
+                  └── ts scan |                  |
+                              | ts-table         | table1
+                              | access mode      | tableTableMeta
 (26 rows)
 > explain select sum(t1+t2+t3) from only_tag.table1 group by ptag1, t1, t2, t3 having sum(t1) > 3000;
-             tree             |     field      |     description
-------------------------------+----------------+----------------------
-                              | distributed    | true
-                              | vectorized     | false
-  render                      |                |
-   │                          | engine type    | time series
-   │                          | sum            | sum
-   └── filter                 |                |
-        │                     | engine type    | time series
-        │                     | filter         | sum > 3000
-        └── group             |                |
-             │                | engine type    | time series
-             │                | aggregate 0    | ptag1
-             │                | aggregate 1    | t1
-             │                | aggregate 2    | t2
-             │                | aggregate 3    | t3
-             │                | aggregate 4    | sum((t1 + t2) + t3)
-             │                | aggregate 5    | sum(t1)
-             │                | group by       | ptag1, t1, t2, t3
-             └── render       |                |
-                  │           | engine type    | time series
-                  │           | (t1 + t2) + t3 | t3 + (t1 + t2)
-                  │           | ptag1          | ptag1
-                  │           | t1             | t1
-                  │           | t2             | t2
-                  │           | t3             | t3
-                  └── ts scan |                |
-                              | ts-table       | table1
-                              | only tag       | true
-                              | access mode    | tableTableMeta
+             tree             |      field       |     description
+------------------------------+------------------+----------------------
+                              | distributed      | true
+                              | vectorized       | false
+  render                      |                  |
+   │                          | engine type      | time series
+   │                          | sum              | sum
+   └── filter                 |                  |
+        │                     | engine type      | time series
+        │                     | filter           | sum > 3000
+        └── group             |                  |
+             │                | engine type      | time series
+             │                | aggregate 0      | ptag1
+             │                | aggregate 1      | t1
+             │                | aggregate 2      | t2
+             │                | aggregate 3      | t3
+             │                | aggregate 4      | sum((t1 + t2) + t3)
+             │                | aggregate 5      | sum(t1)
+             │                | group by         | ptag1, t1, t2, t3
+             │                | addSynchronizer  | true
+             └── render       |                  |
+                  │           | engine type      | time series
+                  │           | (t1 + t2) + t3   | t3 + (t1 + t2)
+                  │           | ptag1            | ptag1
+                  │           | t1               | t1
+                  │           | t2               | t2
+                  │           | t3               | t3
+                  └── ts scan |                  |
+                              | ts-table         | table1
+                              | access mode      | tableTableMeta
 (28 rows)
 > explain select ptag1, sum(t1+t2) as sm from only_tag.table1 where ptag1 = 100 and t1 > 1000 group by ptag1 order by sm;
-           tree          |     field      |     description
--------------------------+----------------+----------------------
-                         | distributed    | true
-                         | vectorized     | false
-  render                 |                |
-   │                     | engine type    | time series
-   │                     | ptag1          | any_not_null
-   │                     | sm             | sum
-   └── group             |                |
-        │                | engine type    | time series
-        │                | aggregate 0    | sum(t1 + t2)
-        │                | aggregate 1    | any_not_null(ptag1)
-        └── render       |                |
-             │           | engine type    | time series
-             │           | t1 + t2        | t1 + t2
-             │           | ptag1          | ptag1
-             └── ts scan |                |
-                         | ts-table       | table1
-                         | only tag       | true
-                         | access mode    | tagIndexTable
-                         | tag filter[0]  | t1 > 1000
-                         | ptag filter[0] | ptag1 = 100
+           tree          |      field       |     description
+-------------------------+------------------+----------------------
+                         | distributed      | true
+                         | vectorized       | false
+  render                 |                  |
+   │                     | engine type      | time series
+   │                     | ptag1            | any_not_null
+   │                     | sm               | sum
+   └── group             |                  |
+        │                | engine type      | time series
+        │                | aggregate 0      | sum(t1 + t2)
+        │                | aggregate 1      | any_not_null(ptag1)
+        │                | addSynchronizer  | true
+        └── render       |                  |
+             │           | engine type      | time series
+             │           | t1 + t2          | t1 + t2
+             │           | ptag1            | ptag1
+             └── ts scan |                  |
+                         | ts-table         | table1
+                         | access mode      | tagIndexTable
+                         | tag filter[0]    | t1 > 1000
+                         | ptag filter[0]   | ptag1 = 100
 (20 rows)
 > explain select ptag1, sum(t1+t2) as sm from only_tag.table1 where ptag1 = 100 and t1 > 1000 group by ptag1, t1 order by sm;
-             tree             |     field      |     description
-------------------------------+----------------+----------------------
-                              | distributed    | true
-                              | vectorized     | false
-  sort                        |                |
-   │                          | engine type    | time series
-   │                          | order          | +sm
-   └── render                 |                |
-        │                     | engine type    | time series
-        │                     | ptag1          | any_not_null
-        │                     | sm             | sum
-        └── group             |                |
-             │                | engine type    | time series
-             │                | aggregate 0    | t1
-             │                | aggregate 1    | sum(t1 + t2)
-             │                | aggregate 2    | any_not_null(ptag1)
-             │                | group by       | t1
-             └── render       |                |
-                  │           | engine type    | time series
-                  │           | t1 + t2        | t1 + t2
-                  │           | ptag1          | ptag1
-                  │           | t1             | t1
-                  └── ts scan |                |
-                              | ts-table       | table1
-                              | only tag       | true
-                              | access mode    | tagIndexTable
-                              | tag filter[0]  | t1 > 1000
-                              | ptag filter[0] | ptag1 = 100
+             tree             |      field       |     description
+------------------------------+------------------+----------------------
+                              | distributed      | true
+                              | vectorized       | false
+  sort                        |                  |
+   │                          | engine type      | time series
+   │                          | order            | +sm
+   └── render                 |                  |
+        │                     | engine type      | time series
+        │                     | ptag1            | any_not_null
+        │                     | sm               | sum
+        └── group             |                  |
+             │                | engine type      | time series
+             │                | aggregate 0      | t1
+             │                | aggregate 1      | sum(t1 + t2)
+             │                | aggregate 2      | any_not_null(ptag1)
+             │                | group by         | t1
+             │                | addSynchronizer  | true
+             └── render       |                  |
+                  │           | engine type      | time series
+                  │           | t1 + t2          | t1 + t2
+                  │           | ptag1            | ptag1
+                  │           | t1               | t1
+                  └── ts scan |                  |
+                              | ts-table         | table1
+                              | access mode      | tagIndexTable
+                              | tag filter[0]    | t1 > 1000
+                              | ptag filter[0]   | ptag1 = 100
 (26 rows)
 > explain select ptag1, sum(t1+t2) as sm from only_tag.table1 where ptag1 = 100 and t1 > 1000 group by ptag1, t1, t2 order by sm;
-             tree             |     field      |     description
-------------------------------+----------------+----------------------
-                              | distributed    | true
-                              | vectorized     | false
-  sort                        |                |
-   │                          | engine type    | time series
-   │                          | order          | +sm
-   └── render                 |                |
-        │                     | engine type    | time series
-        │                     | ptag1          | any_not_null
-        │                     | sm             | sum
-        └── group             |                |
-             │                | engine type    | time series
-             │                | aggregate 0    | t1
-             │                | aggregate 1    | t2
-             │                | aggregate 2    | sum(t1 + t2)
-             │                | aggregate 3    | any_not_null(ptag1)
-             │                | group by       | t1, t2
-             └── render       |                |
-                  │           | engine type    | time series
-                  │           | t1 + t2        | t1 + t2
-                  │           | ptag1          | ptag1
-                  │           | t1             | t1
-                  │           | t2             | t2
-                  └── ts scan |                |
-                              | ts-table       | table1
-                              | only tag       | true
-                              | access mode    | tagIndexTable
-                              | tag filter[0]  | t1 > 1000
-                              | ptag filter[0] | ptag1 = 100
+             tree             |      field       |     description
+------------------------------+------------------+----------------------
+                              | distributed      | true
+                              | vectorized       | false
+  sort                        |                  |
+   │                          | engine type      | time series
+   │                          | order            | +sm
+   └── render                 |                  |
+        │                     | engine type      | time series
+        │                     | ptag1            | any_not_null
+        │                     | sm               | sum
+        └── group             |                  |
+             │                | engine type      | time series
+             │                | aggregate 0      | t1
+             │                | aggregate 1      | t2
+             │                | aggregate 2      | sum(t1 + t2)
+             │                | aggregate 3      | any_not_null(ptag1)
+             │                | group by         | t1, t2
+             │                | addSynchronizer  | true
+             └── render       |                  |
+                  │           | engine type      | time series
+                  │           | t1 + t2          | t1 + t2
+                  │           | ptag1            | ptag1
+                  │           | t1               | t1
+                  │           | t2               | t2
+                  └── ts scan |                  |
+                              | ts-table         | table1
+                              | access mode      | tagIndexTable
+                              | tag filter[0]    | t1 > 1000
+                              | ptag filter[0]   | ptag1 = 100
 (28 rows)
 > explain select ptag1, sum(t1+t2) as sm from only_tag.table1 where ptag1 = 100 and t1 > 1000 group by ptag1, t1, t2, t3 order by sm;
-             tree             |     field      |     description
-------------------------------+----------------+----------------------
-                              | distributed    | true
-                              | vectorized     | false
-  sort                        |                |
-   │                          | engine type    | time series
-   │                          | order          | +sm
-   └── render                 |                |
-        │                     | engine type    | time series
-        │                     | ptag1          | any_not_null
-        │                     | sm             | sum
-        └── group             |                |
-             │                | engine type    | time series
-             │                | aggregate 0    | t1
-             │                | aggregate 1    | t2
-             │                | aggregate 2    | t3
-             │                | aggregate 3    | sum(t1 + t2)
-             │                | aggregate 4    | any_not_null(ptag1)
-             │                | group by       | t1, t2, t3
-             └── render       |                |
-                  │           | engine type    | time series
-                  │           | t1 + t2        | t1 + t2
-                  │           | ptag1          | ptag1
-                  │           | t1             | t1
-                  │           | t2             | t2
-                  │           | t3             | t3
-                  └── ts scan |                |
-                              | ts-table       | table1
-                              | only tag       | true
-                              | access mode    | tagIndexTable
-                              | tag filter[0]  | t1 > 1000
-                              | ptag filter[0] | ptag1 = 100
+             tree             |      field       |     description
+------------------------------+------------------+----------------------
+                              | distributed      | true
+                              | vectorized       | false
+  sort                        |                  |
+   │                          | engine type      | time series
+   │                          | order            | +sm
+   └── render                 |                  |
+        │                     | engine type      | time series
+        │                     | ptag1            | any_not_null
+        │                     | sm               | sum
+        └── group             |                  |
+             │                | engine type      | time series
+             │                | aggregate 0      | t1
+             │                | aggregate 1      | t2
+             │                | aggregate 2      | t3
+             │                | aggregate 3      | sum(t1 + t2)
+             │                | aggregate 4      | any_not_null(ptag1)
+             │                | group by         | t1, t2, t3
+             │                | addSynchronizer  | true
+             └── render       |                  |
+                  │           | engine type      | time series
+                  │           | t1 + t2          | t1 + t2
+                  │           | ptag1            | ptag1
+                  │           | t1               | t1
+                  │           | t2               | t2
+                  │           | t3               | t3
+                  └── ts scan |                  |
+                              | ts-table         | table1
+                              | access mode      | tagIndexTable
+                              | tag filter[0]    | t1 > 1000
+                              | ptag filter[0]   | ptag1 = 100
 (30 rows)
 > explain select ptag1, sum(t1+t2) as sm from only_tag.table1 where t1 > 1000 group by ptag1 order by sm limit 2 offset 1;
-                tree               |     field     |  description
------------------------------------+---------------+-----------------
-                                   | distributed   | true
-                                   | vectorized    | false
-  limit                            |               |
-   │                               | engine type   | time series
-   │                               | offset        | 1
-   └── limit                       |               |
-        │                          | engine type   | time series
-        │                          | count         | 3
-        └── sort                   |               |
-             │                     | engine type   | time series
-             │                     | order         | +sm
-             └── group             |               |
-                  │                | engine type   | time series
-                  │                | aggregate 0   | ptag1
-                  │                | aggregate 1   | sum(t1 + t2)
-                  │                | group by      | ptag1
-                  └── render       |               |
-                       │           | engine type   | time series
-                       │           | t1 + t2       | t1 + t2
-                       │           | ptag1         | ptag1
-                       └── ts scan |               |
-                                   | ts-table      | table1
-                                   | only tag      | true
-                                   | access mode   | tableTableMeta
-                                   | tag filter[0] | t1 > 1000
+                tree               |      field       |  description
+-----------------------------------+------------------+-----------------
+                                   | distributed      | true
+                                   | vectorized       | false
+  limit                            |                  |
+   │                               | engine type      | time series
+   │                               | offset           | 1
+   └── limit                       |                  |
+        │                          | engine type      | time series
+        │                          | count            | 3
+        └── sort                   |                  |
+             │                     | engine type      | time series
+             │                     | order            | +sm
+             └── group             |                  |
+                  │                | engine type      | time series
+                  │                | aggregate 0      | ptag1
+                  │                | aggregate 1      | sum(t1 + t2)
+                  │                | group by         | ptag1
+                  │                | addSynchronizer  | true
+                  └── render       |                  |
+                       │           | engine type      | time series
+                       │           | t1 + t2          | t1 + t2
+                       │           | ptag1            | ptag1
+                       └── ts scan |                  |
+                                   | ts-table         | table1
+                                   | access mode      | tableTableMeta
+                                   | tag filter[0]    | t1 > 1000
 (25 rows)
 > explain select ptag1, sum(t1+t2) as sm from only_tag.table1 where t1 > 1000 group by ptag1, t1 order by sm limit 2 offset 1;
-                  tree                  |     field     |  description
-----------------------------------------+---------------+-----------------
-                                        | distributed   | true
-                                        | vectorized    | false
-  render                                |               |
-   │                                    | engine type   | time series
-   │                                    | ptag1         | ptag1
-   │                                    | sm            | sum
-   └── limit                            |               |
-        │                               | engine type   | time series
-        │                               | offset        | 1
-        └── limit                       |               |
-             │                          | engine type   | time series
-             │                          | count         | 3
-             └── sort                   |               |
-                  │                     | engine type   | time series
-                  │                     | order         | +sum
-                  └── group             |               |
-                       │                | engine type   | time series
-                       │                | aggregate 0   | ptag1
-                       │                | aggregate 1   | t1
-                       │                | aggregate 2   | sum(t1 + t2)
-                       │                | group by      | ptag1, t1
-                       └── render       |               |
-                            │           | engine type   | time series
-                            │           | t1 + t2       | t1 + t2
-                            │           | ptag1         | ptag1
-                            │           | t1            | t1
-                            └── ts scan |               |
-                                        | ts-table      | table1
-                                        | only tag      | true
-                                        | access mode   | tableTableMeta
-                                        | tag filter[0] | t1 > 1000
+                  tree                  |      field       |  description
+----------------------------------------+------------------+-----------------
+                                        | distributed      | true
+                                        | vectorized       | false
+  render                                |                  |
+   │                                    | engine type      | time series
+   │                                    | ptag1            | ptag1
+   │                                    | sm               | sum
+   └── limit                            |                  |
+        │                               | engine type      | time series
+        │                               | offset           | 1
+        └── limit                       |                  |
+             │                          | engine type      | time series
+             │                          | count            | 3
+             └── sort                   |                  |
+                  │                     | engine type      | time series
+                  │                     | order            | +sum
+                  └── group             |                  |
+                       │                | engine type      | time series
+                       │                | aggregate 0      | ptag1
+                       │                | aggregate 1      | t1
+                       │                | aggregate 2      | sum(t1 + t2)
+                       │                | group by         | ptag1, t1
+                       │                | addSynchronizer  | true
+                       └── render       |                  |
+                            │           | engine type      | time series
+                            │           | t1 + t2          | t1 + t2
+                            │           | ptag1            | ptag1
+                            │           | t1               | t1
+                            └── ts scan |                  |
+                                        | ts-table         | table1
+                                        | access mode      | tableTableMeta
+                                        | tag filter[0]    | t1 > 1000
 (31 rows)
 > explain select ptag1, sum(t1+t2) as sm from only_tag.table1 where t1 > 1000 group by ptag1, t1, t2 order by sm limit 2 offset 1;
-                  tree                  |     field     |  description
-----------------------------------------+---------------+-----------------
-                                        | distributed   | true
-                                        | vectorized    | false
-  render                                |               |
-   │                                    | engine type   | time series
-   │                                    | ptag1         | ptag1
-   │                                    | sm            | sum
-   └── limit                            |               |
-        │                               | engine type   | time series
-        │                               | offset        | 1
-        └── limit                       |               |
-             │                          | engine type   | time series
-             │                          | count         | 3
-             └── sort                   |               |
-                  │                     | engine type   | time series
-                  │                     | order         | +sum
-                  └── group             |               |
-                       │                | engine type   | time series
-                       │                | aggregate 0   | ptag1
-                       │                | aggregate 1   | t1
-                       │                | aggregate 2   | t2
-                       │                | aggregate 3   | sum(t1 + t2)
-                       │                | group by      | ptag1, t1, t2
-                       └── render       |               |
-                            │           | engine type   | time series
-                            │           | t1 + t2       | t1 + t2
-                            │           | ptag1         | ptag1
-                            │           | t1            | t1
-                            │           | t2            | t2
-                            └── ts scan |               |
-                                        | ts-table      | table1
-                                        | only tag      | true
-                                        | access mode   | tableTableMeta
-                                        | tag filter[0] | t1 > 1000
+                  tree                  |      field       |  description
+----------------------------------------+------------------+-----------------
+                                        | distributed      | true
+                                        | vectorized       | false
+  render                                |                  |
+   │                                    | engine type      | time series
+   │                                    | ptag1            | ptag1
+   │                                    | sm               | sum
+   └── limit                            |                  |
+        │                               | engine type      | time series
+        │                               | offset           | 1
+        └── limit                       |                  |
+             │                          | engine type      | time series
+             │                          | count            | 3
+             └── sort                   |                  |
+                  │                     | engine type      | time series
+                  │                     | order            | +sum
+                  └── group             |                  |
+                       │                | engine type      | time series
+                       │                | aggregate 0      | ptag1
+                       │                | aggregate 1      | t1
+                       │                | aggregate 2      | t2
+                       │                | aggregate 3      | sum(t1 + t2)
+                       │                | group by         | ptag1, t1, t2
+                       │                | addSynchronizer  | true
+                       └── render       |                  |
+                            │           | engine type      | time series
+                            │           | t1 + t2          | t1 + t2
+                            │           | ptag1            | ptag1
+                            │           | t1               | t1
+                            │           | t2               | t2
+                            └── ts scan |                  |
+                                        | ts-table         | table1
+                                        | access mode      | tableTableMeta
+                                        | tag filter[0]    | t1 > 1000
 (33 rows)
 > explain select ptag1, sum(t1+t2) as sm from only_tag.table1 where t1 > 1000 group by ptag1, t1, t2, t3 order by sm limit 2 offset 1;
-                  tree                  |     field     |    description
-----------------------------------------+---------------+--------------------
-                                        | distributed   | true
-                                        | vectorized    | false
-  render                                |               |
-   │                                    | engine type   | time series
-   │                                    | ptag1         | ptag1
-   │                                    | sm            | sum
-   └── limit                            |               |
-        │                               | engine type   | time series
-        │                               | offset        | 1
-        └── limit                       |               |
-             │                          | engine type   | time series
-             │                          | count         | 3
-             └── sort                   |               |
-                  │                     | engine type   | time series
-                  │                     | order         | +sum
-                  └── group             |               |
-                       │                | engine type   | time series
-                       │                | aggregate 0   | ptag1
-                       │                | aggregate 1   | t1
-                       │                | aggregate 2   | t2
-                       │                | aggregate 3   | t3
-                       │                | aggregate 4   | sum(t1 + t2)
-                       │                | group by      | ptag1, t1, t2, t3
-                       └── render       |               |
-                            │           | engine type   | time series
-                            │           | t1 + t2       | t1 + t2
-                            │           | ptag1         | ptag1
-                            │           | t1            | t1
-                            │           | t2            | t2
-                            │           | t3            | t3
-                            └── ts scan |               |
-                                        | ts-table      | table1
-                                        | only tag      | true
-                                        | access mode   | tableTableMeta
-                                        | tag filter[0] | t1 > 1000
+                  tree                  |      field       |    description
+----------------------------------------+------------------+--------------------
+                                        | distributed      | true
+                                        | vectorized       | false
+  render                                |                  |
+   │                                    | engine type      | time series
+   │                                    | ptag1            | ptag1
+   │                                    | sm               | sum
+   └── limit                            |                  |
+        │                               | engine type      | time series
+        │                               | offset           | 1
+        └── limit                       |                  |
+             │                          | engine type      | time series
+             │                          | count            | 3
+             └── sort                   |                  |
+                  │                     | engine type      | time series
+                  │                     | order            | +sum
+                  └── group             |                  |
+                       │                | engine type      | time series
+                       │                | aggregate 0      | ptag1
+                       │                | aggregate 1      | t1
+                       │                | aggregate 2      | t2
+                       │                | aggregate 3      | t3
+                       │                | aggregate 4      | sum(t1 + t2)
+                       │                | group by         | ptag1, t1, t2, t3
+                       │                | addSynchronizer  | true
+                       └── render       |                  |
+                            │           | engine type      | time series
+                            │           | t1 + t2          | t1 + t2
+                            │           | ptag1            | ptag1
+                            │           | t1               | t1
+                            │           | t2               | t2
+                            │           | t3               | t3
+                            └── ts scan |                  |
+                                        | ts-table         | table1
+                                        | access mode      | tableTableMeta
+                                        | tag filter[0]    | t1 > 1000
 (35 rows)
 > explain select distinct ptag1 from only_tag.table2;
-        tree        |    field    |  description
---------------------+-------------+-----------------
-                    | distributed | true
-                    | vectorized  | false
-  distinct          |             |
-   │                | distinct on | ptag1
-   └── synchronizer |             |
-        └── ts scan |             |
-                    | ts-table    | table2
-                    | access mode | tableTableMeta
+      tree     |    field    |  description
+---------------+-------------+-----------------
+               | distributed | true
+               | vectorized  | false
+  distinct     |             |
+   │           | distinct on | ptag1
+   └── ts scan |             |
+               | ts-table    | table2
+               | only tag    | true
+               | access mode | tableTableMeta
 (8 rows)
 > explain select distinct ptag1, t1 from only_tag.table2;
       tree     |    field    |  description
@@ -948,16 +954,16 @@ INSERT 10
                | access mode | tableTableMeta
 (8 rows)
 > explain select ptag1 from only_tag.table2 group by ptag1;
-        tree        |    field    |  description
---------------------+-------------+-----------------
-                    | distributed | true
-                    | vectorized  | false
-  distinct          |             |
-   │                | distinct on | ptag1
-   └── synchronizer |             |
-        └── ts scan |             |
-                    | ts-table    | table2
-                    | access mode | tableTableMeta
+      tree     |    field    |  description
+---------------+-------------+-----------------
+               | distributed | true
+               | vectorized  | false
+  distinct     |             |
+   │           | distinct on | ptag1
+   └── ts scan |             |
+               | ts-table    | table2
+               | only tag    | true
+               | access mode | tableTableMeta
 (8 rows)
 > explain select ptag1, t1 from only_tag.table2 group by ptag1, t1;
       tree     |    field    |  description
@@ -1011,81 +1017,81 @@ INSERT 10
                | access mode      | tableTableMeta
 (11 rows)
 > explain select ptag1, t1, sum(t2) from only_tag.table2 group by ptag1, t1;
-      tree     |    field    |  description
----------------+-------------+-----------------
-               | distributed | true
-               | vectorized  | false
-  group        |             |
-   │           | engine type | time series
-   │           | aggregate 0 | ptag1
-   │           | aggregate 1 | t1
-   │           | aggregate 2 | sum(t2)
-   │           | group by    | ptag1, t1
-   └── ts scan |             |
-               | ts-table    | table2
-               | only tag    | true
-               | access mode | tableTableMeta
-(12 rows)
+      tree     |        field        |  description
+---------------+---------------------+-----------------
+               | distributed         | true
+               | vectorized          | false
+  group        |                     |
+   │           | engine type         | time series
+   │           | aggregate 0         | ptag1
+   │           | aggregate 1         | t1
+   │           | aggregate 2         | sum(t2)
+   │           | group by            | ptag1, t1
+   │           | pushLocalAggToScan  | true
+   │           | addSynchronizer     | true
+   │           | pruneFinalAgg       | true
+   └── ts scan |                     |
+               | ts-table            | table2
+               | access mode         | tableTableMeta
+               | use statistic       | true
+(15 rows)
 > explain select ptag1, t1, t2, sum(t3) from only_tag.table2 group by ptag1, t1, t2;
-      tree     |    field    |  description
----------------+-------------+-----------------
-               | distributed | true
-               | vectorized  | false
-  group        |             |
-   │           | engine type | time series
-   │           | aggregate 0 | ptag1
-   │           | aggregate 1 | t1
-   │           | aggregate 2 | t2
-   │           | aggregate 3 | sum(t3)
-   │           | group by    | ptag1, t1, t2
-   └── ts scan |             |
-               | ts-table    | table2
-               | only tag    | true
-               | access mode | tableTableMeta
+      tree     |      field       |  description
+---------------+------------------+-----------------
+               | distributed      | true
+               | vectorized       | false
+  group        |                  |
+   │           | engine type      | time series
+   │           | aggregate 0      | ptag1
+   │           | aggregate 1      | t1
+   │           | aggregate 2      | t2
+   │           | aggregate 3      | sum(t3)
+   │           | group by         | ptag1, t1, t2
+   │           | addSynchronizer  | true
+   └── ts scan |                  |
+               | ts-table         | table2
+               | access mode      | tableTableMeta
 (13 rows)
 > explain select ptag1, sum(t1), sum(t2), sum(t3) from only_tag.table2 group by ptag1, t1, t2, t3;
-        tree        |    field    |    description
---------------------+-------------+--------------------
-                    | distributed | true
-                    | vectorized  | false
-  render            |             |
-   │                | engine type | time series
-   │                | ptag1       | ptag1
-   │                | sum         | sum
-   │                | sum         | sum
-   │                | sum         | sum
-   └── group        |             |
-        │           | engine type | time series
-        │           | aggregate 0 | ptag1
-        │           | aggregate 1 | t1
-        │           | aggregate 2 | t2
-        │           | aggregate 3 | t3
-        │           | aggregate 4 | sum(t1)
-        │           | aggregate 5 | sum(t2)
-        │           | aggregate 6 | sum(t3)
-        │           | group by    | ptag1, t1, t2, t3
-        └── ts scan |             |
-                    | ts-table    | table2
-                    | only tag    | true
-                    | access mode | tableTableMeta
+        tree        |      field       |    description
+--------------------+------------------+--------------------
+                    | distributed      | true
+                    | vectorized       | false
+  render            |                  |
+   │                | engine type      | time series
+   │                | ptag1            | ptag1
+   │                | sum              | sum
+   │                | sum              | sum
+   │                | sum              | sum
+   └── group        |                  |
+        │           | engine type      | time series
+        │           | aggregate 0      | ptag1
+        │           | aggregate 1      | t1
+        │           | aggregate 2      | t2
+        │           | aggregate 3      | t3
+        │           | aggregate 4      | sum(t1)
+        │           | aggregate 5      | sum(t2)
+        │           | aggregate 6      | sum(t3)
+        │           | group by         | ptag1, t1, t2, t3
+        │           | addSynchronizer  | true
+        └── ts scan |                  |
+                    | ts-table         | table2
+                    | access mode      | tableTableMeta
 (22 rows)
 > explain select ptag1 from only_tag.table2 where ptag1 = 100 group by ptag1;
-           tree          |     field     |  description
--------------------------+---------------+-----------------
-                         | distributed   | true
-                         | vectorized    | false
-  limit                  |               |
-   │                     | engine type   | time series
-   │                     | count         | 1
-   └── synchronizer      |               |
-        └── limit        |               |
-             │           | engine type   | time series
-             │           | count         | 1
-             └── ts scan |               |
-                         | ts-table      | table2
-                         | access mode   | tableTableMeta
-                         | tag filter[0] | ptag1 = 100
-(13 rows)
+      tree     |     field     |  description
+---------------+---------------+-----------------
+               | distributed   | true
+               | vectorized    | false
+  limit        |               |
+   │           | engine type   | time series
+   │           | count         | 1
+   └── ts scan |               |
+               | ts-table      | table2
+               | only tag      | true
+               | access mode   | tableTableMeta
+               | tag filter[0] | ptag1 = 100
+(10 rows)
 > explain select ptag1, t1 from only_tag.table2 where ptag1 = 100 group by ptag1, t1;
       tree     |     field     |  description
 ---------------+---------------+-----------------
@@ -1126,26 +1132,23 @@ INSERT 10
                | tag filter[0] | ptag1 = 100
 (9 rows)
 > explain select ptag1 from only_tag.table2 where ptag1 = 100 and t1 > 1000 group by ptag1;
-             tree             |     field     |  description
-------------------------------+---------------+-----------------
-                              | distributed   | true
-                              | vectorized    | false
-  render                      |               |
-   │                          | engine type   | time series
-   │                          | ptag1         | ptag1
-   └── limit                  |               |
-        │                     | engine type   | time series
-        │                     | count         | 1
-        └── synchronizer      |               |
-             └── limit        |               |
-                  │           | engine type   | time series
-                  │           | count         | 1
-                  └── ts scan |               |
-                              | ts-table      | table2
-                              | access mode   | tableTableMeta
-                              | tag filter[0] | t1 > 1000
-                              | tag filter[1] | ptag1 = 100
-(17 rows)
+        tree        |     field     |  description
+--------------------+---------------+-----------------
+                    | distributed   | true
+                    | vectorized    | false
+  render            |               |
+   │                | engine type   | time series
+   │                | ptag1         | ptag1
+   └── limit        |               |
+        │           | engine type   | time series
+        │           | count         | 1
+        └── ts scan |               |
+                    | ts-table      | table2
+                    | only tag      | true
+                    | access mode   | tableTableMeta
+                    | tag filter[0] | t1 > 1000
+                    | tag filter[1] | ptag1 = 100
+(14 rows)
 > explain select ptag1, t1 from only_tag.table2 where ptag1 = 100 and t1 > 1000 group by ptag1, t1;
       tree     |     field     |  description
 ---------------+---------------+-----------------
@@ -1208,85 +1211,85 @@ INSERT 10
                     | access mode      | tableTableMeta
 (15 rows)
 > explain select ptag1, sum(t1+t2) from only_tag.table2 group by ptag1, t1;
-           tree          |    field    |  description
--------------------------+-------------+-----------------
-                         | distributed | true
-                         | vectorized  | false
-  render                 |             |
-   │                     | engine type | time series
-   │                     | ptag1       | ptag1
-   │                     | sum         | sum
-   └── group             |             |
-        │                | engine type | time series
-        │                | aggregate 0 | ptag1
-        │                | aggregate 1 | t1
-        │                | aggregate 2 | sum(t1 + t2)
-        │                | group by    | ptag1, t1
-        └── render       |             |
-             │           | engine type | time series
-             │           | t1 + t2     | t1 + t2
-             │           | ptag1       | ptag1
-             │           | t1          | t1
-             └── ts scan |             |
-                         | ts-table    | table2
-                         | only tag    | true
-                         | access mode | tableTableMeta
+           tree          |      field       |  description
+-------------------------+------------------+-----------------
+                         | distributed      | true
+                         | vectorized       | false
+  render                 |                  |
+   │                     | engine type      | time series
+   │                     | ptag1            | ptag1
+   │                     | sum              | sum
+   └── group             |                  |
+        │                | engine type      | time series
+        │                | aggregate 0      | ptag1
+        │                | aggregate 1      | t1
+        │                | aggregate 2      | sum(t1 + t2)
+        │                | group by         | ptag1, t1
+        │                | addSynchronizer  | true
+        └── render       |                  |
+             │           | engine type      | time series
+             │           | t1 + t2          | t1 + t2
+             │           | ptag1            | ptag1
+             │           | t1               | t1
+             └── ts scan |                  |
+                         | ts-table         | table2
+                         | access mode      | tableTableMeta
 (21 rows)
 > explain select ptag1, sum(t1+t2) from only_tag.table2 group by ptag1, t1, t2;
-           tree          |    field    |  description
--------------------------+-------------+-----------------
-                         | distributed | true
-                         | vectorized  | false
-  render                 |             |
-   │                     | engine type | time series
-   │                     | ptag1       | ptag1
-   │                     | sum         | sum
-   └── group             |             |
-        │                | engine type | time series
-        │                | aggregate 0 | ptag1
-        │                | aggregate 1 | t1
-        │                | aggregate 2 | t2
-        │                | aggregate 3 | sum(t1 + t2)
-        │                | group by    | ptag1, t1, t2
-        └── render       |             |
-             │           | engine type | time series
-             │           | t1 + t2     | t1 + t2
-             │           | ptag1       | ptag1
-             │           | t1          | t1
-             │           | t2          | t2
-             └── ts scan |             |
-                         | ts-table    | table2
-                         | only tag    | true
-                         | access mode | tableTableMeta
+           tree          |      field       |  description
+-------------------------+------------------+-----------------
+                         | distributed      | true
+                         | vectorized       | false
+  render                 |                  |
+   │                     | engine type      | time series
+   │                     | ptag1            | ptag1
+   │                     | sum              | sum
+   └── group             |                  |
+        │                | engine type      | time series
+        │                | aggregate 0      | ptag1
+        │                | aggregate 1      | t1
+        │                | aggregate 2      | t2
+        │                | aggregate 3      | sum(t1 + t2)
+        │                | group by         | ptag1, t1, t2
+        │                | addSynchronizer  | true
+        └── render       |                  |
+             │           | engine type      | time series
+             │           | t1 + t2          | t1 + t2
+             │           | ptag1            | ptag1
+             │           | t1               | t1
+             │           | t2               | t2
+             └── ts scan |                  |
+                         | ts-table         | table2
+                         | access mode      | tableTableMeta
 (23 rows)
 > explain select ptag1, sum(t1+t2+t3) from only_tag.table2 group by ptag1, t1, t2, t3;
-           tree          |     field      |     description
--------------------------+----------------+----------------------
-                         | distributed    | true
-                         | vectorized     | false
-  render                 |                |
-   │                     | engine type    | time series
-   │                     | ptag1          | ptag1
-   │                     | sum            | sum
-   └── group             |                |
-        │                | engine type    | time series
-        │                | aggregate 0    | ptag1
-        │                | aggregate 1    | t1
-        │                | aggregate 2    | t2
-        │                | aggregate 3    | t3
-        │                | aggregate 4    | sum((t1 + t2) + t3)
-        │                | group by       | ptag1, t1, t2, t3
-        └── render       |                |
-             │           | engine type    | time series
-             │           | (t1 + t2) + t3 | t3 + (t1 + t2)
-             │           | ptag1          | ptag1
-             │           | t1             | t1
-             │           | t2             | t2
-             │           | t3             | t3
-             └── ts scan |                |
-                         | ts-table       | table2
-                         | only tag       | true
-                         | access mode    | tableTableMeta
+           tree          |      field       |     description
+-------------------------+------------------+----------------------
+                         | distributed      | true
+                         | vectorized       | false
+  render                 |                  |
+   │                     | engine type      | time series
+   │                     | ptag1            | ptag1
+   │                     | sum              | sum
+   └── group             |                  |
+        │                | engine type      | time series
+        │                | aggregate 0      | ptag1
+        │                | aggregate 1      | t1
+        │                | aggregate 2      | t2
+        │                | aggregate 3      | t3
+        │                | aggregate 4      | sum((t1 + t2) + t3)
+        │                | group by         | ptag1, t1, t2, t3
+        │                | addSynchronizer  | true
+        └── render       |                  |
+             │           | engine type      | time series
+             │           | (t1 + t2) + t3   | t3 + (t1 + t2)
+             │           | ptag1            | ptag1
+             │           | t1               | t1
+             │           | t2               | t2
+             │           | t3               | t3
+             └── ts scan |                  |
+                         | ts-table         | table2
+                         | access mode      | tableTableMeta
 (25 rows)
 > explain select ptag1, sum(t1+t2) from only_tag.table2 group by ptag1 having sum(t1) > 3000;
              tree             |      field       |  description
@@ -1344,97 +1347,97 @@ INSERT 10
                               | access mode      | tableTableMeta
 (23 rows)
 > explain select ptag1, sum(t1+t2) from only_tag.table2 group by ptag1, t1 having sum(t1) > 3000;
-             tree             |    field    |  description
-------------------------------+-------------+-----------------
-                              | distributed | true
-                              | vectorized  | false
-  render                      |             |
-   │                          | engine type | time series
-   │                          | ptag1       | ptag1
-   │                          | sum         | sum
-   └── filter                 |             |
-        │                     | engine type | time series
-        │                     | filter      | sum > 3000
-        └── group             |             |
-             │                | engine type | time series
-             │                | aggregate 0 | ptag1
-             │                | aggregate 1 | t1
-             │                | aggregate 2 | sum(t1 + t2)
-             │                | aggregate 3 | sum(t1)
-             │                | group by    | ptag1, t1
-             └── render       |             |
-                  │           | engine type | time series
-                  │           | t1 + t2     | t1 + t2
-                  │           | ptag1       | ptag1
-                  │           | t1          | t1
-                  └── ts scan |             |
-                              | ts-table    | table2
-                              | only tag    | true
-                              | access mode | tableTableMeta
+             tree             |      field       |  description
+------------------------------+------------------+-----------------
+                              | distributed      | true
+                              | vectorized       | false
+  render                      |                  |
+   │                          | engine type      | time series
+   │                          | ptag1            | ptag1
+   │                          | sum              | sum
+   └── filter                 |                  |
+        │                     | engine type      | time series
+        │                     | filter           | sum > 3000
+        └── group             |                  |
+             │                | engine type      | time series
+             │                | aggregate 0      | ptag1
+             │                | aggregate 1      | t1
+             │                | aggregate 2      | sum(t1 + t2)
+             │                | aggregate 3      | sum(t1)
+             │                | group by         | ptag1, t1
+             │                | addSynchronizer  | true
+             └── render       |                  |
+                  │           | engine type      | time series
+                  │           | t1 + t2          | t1 + t2
+                  │           | ptag1            | ptag1
+                  │           | t1               | t1
+                  └── ts scan |                  |
+                              | ts-table         | table2
+                              | access mode      | tableTableMeta
 (25 rows)
 > explain select ptag1, sum(t1+t2) from only_tag.table2 group by ptag1, t1, t2 having sum(t1) > 3000;
-             tree             |    field    |  description
-------------------------------+-------------+-----------------
-                              | distributed | true
-                              | vectorized  | false
-  render                      |             |
-   │                          | engine type | time series
-   │                          | ptag1       | ptag1
-   │                          | sum         | sum
-   └── filter                 |             |
-        │                     | engine type | time series
-        │                     | filter      | sum > 3000
-        └── group             |             |
-             │                | engine type | time series
-             │                | aggregate 0 | ptag1
-             │                | aggregate 1 | t1
-             │                | aggregate 2 | t2
-             │                | aggregate 3 | sum(t1 + t2)
-             │                | aggregate 4 | sum(t1)
-             │                | group by    | ptag1, t1, t2
-             └── render       |             |
-                  │           | engine type | time series
-                  │           | t1 + t2     | t1 + t2
-                  │           | ptag1       | ptag1
-                  │           | t1          | t1
-                  │           | t2          | t2
-                  └── ts scan |             |
-                              | ts-table    | table2
-                              | only tag    | true
-                              | access mode | tableTableMeta
+             tree             |      field       |  description
+------------------------------+------------------+-----------------
+                              | distributed      | true
+                              | vectorized       | false
+  render                      |                  |
+   │                          | engine type      | time series
+   │                          | ptag1            | ptag1
+   │                          | sum              | sum
+   └── filter                 |                  |
+        │                     | engine type      | time series
+        │                     | filter           | sum > 3000
+        └── group             |                  |
+             │                | engine type      | time series
+             │                | aggregate 0      | ptag1
+             │                | aggregate 1      | t1
+             │                | aggregate 2      | t2
+             │                | aggregate 3      | sum(t1 + t2)
+             │                | aggregate 4      | sum(t1)
+             │                | group by         | ptag1, t1, t2
+             │                | addSynchronizer  | true
+             └── render       |                  |
+                  │           | engine type      | time series
+                  │           | t1 + t2          | t1 + t2
+                  │           | ptag1            | ptag1
+                  │           | t1               | t1
+                  │           | t2               | t2
+                  └── ts scan |                  |
+                              | ts-table         | table2
+                              | access mode      | tableTableMeta
 (27 rows)
 > explain select ptag1, sum(t1+t2+t3) from only_tag.table2 group by ptag1, t1, t2, t3 having sum(t1) > 3000;
-             tree             |     field      |     description
-------------------------------+----------------+----------------------
-                              | distributed    | true
-                              | vectorized     | false
-  render                      |                |
-   │                          | engine type    | time series
-   │                          | ptag1          | ptag1
-   │                          | sum            | sum
-   └── filter                 |                |
-        │                     | engine type    | time series
-        │                     | filter         | sum > 3000
-        └── group             |                |
-             │                | engine type    | time series
-             │                | aggregate 0    | ptag1
-             │                | aggregate 1    | t1
-             │                | aggregate 2    | t2
-             │                | aggregate 3    | t3
-             │                | aggregate 4    | sum((t1 + t2) + t3)
-             │                | aggregate 5    | sum(t1)
-             │                | group by       | ptag1, t1, t2, t3
-             └── render       |                |
-                  │           | engine type    | time series
-                  │           | (t1 + t2) + t3 | t3 + (t1 + t2)
-                  │           | ptag1          | ptag1
-                  │           | t1             | t1
-                  │           | t2             | t2
-                  │           | t3             | t3
-                  └── ts scan |                |
-                              | ts-table       | table2
-                              | only tag       | true
-                              | access mode    | tableTableMeta
+             tree             |      field       |     description
+------------------------------+------------------+----------------------
+                              | distributed      | true
+                              | vectorized       | false
+  render                      |                  |
+   │                          | engine type      | time series
+   │                          | ptag1            | ptag1
+   │                          | sum              | sum
+   └── filter                 |                  |
+        │                     | engine type      | time series
+        │                     | filter           | sum > 3000
+        └── group             |                  |
+             │                | engine type      | time series
+             │                | aggregate 0      | ptag1
+             │                | aggregate 1      | t1
+             │                | aggregate 2      | t2
+             │                | aggregate 3      | t3
+             │                | aggregate 4      | sum((t1 + t2) + t3)
+             │                | aggregate 5      | sum(t1)
+             │                | group by         | ptag1, t1, t2, t3
+             │                | addSynchronizer  | true
+             └── render       |                  |
+                  │           | engine type      | time series
+                  │           | (t1 + t2) + t3   | t3 + (t1 + t2)
+                  │           | ptag1            | ptag1
+                  │           | t1               | t1
+                  │           | t2               | t2
+                  │           | t3               | t3
+                  └── ts scan |                  |
+                              | ts-table         | table2
+                              | access mode      | tableTableMeta
 (29 rows)
 > explain select ptag1, sum(t1+t2) as sm from only_tag.table2 where ptag1 = 100 and t1 > 1000 group by ptag1 order by sm;
            tree          |      field       |     description
@@ -1461,100 +1464,100 @@ INSERT 10
                          | tag filter[1]    | ptag1 = 100
 (20 rows)
 > explain select ptag1, sum(t1+t2) as sm from only_tag.table2 where ptag1 = 100 and t1 > 1000 group by ptag1, t1 order by sm;
-             tree             |     field     |     description
-------------------------------+---------------+----------------------
-                              | distributed   | true
-                              | vectorized    | false
-  sort                        |               |
-   │                          | engine type   | time series
-   │                          | order         | +sm
-   └── render                 |               |
-        │                     | engine type   | time series
-        │                     | ptag1         | any_not_null
-        │                     | sm            | sum
-        └── group             |               |
-             │                | engine type   | time series
-             │                | aggregate 0   | t1
-             │                | aggregate 1   | sum(t1 + t2)
-             │                | aggregate 2   | any_not_null(ptag1)
-             │                | group by      | t1
-             └── render       |               |
-                  │           | engine type   | time series
-                  │           | t1 + t2       | t1 + t2
-                  │           | ptag1         | ptag1
-                  │           | t1            | t1
-                  └── ts scan |               |
-                              | ts-table      | table2
-                              | only tag      | true
-                              | access mode   | tableTableMeta
-                              | tag filter[0] | t1 > 1000
-                              | tag filter[1] | ptag1 = 100
+             tree             |      field       |     description
+------------------------------+------------------+----------------------
+                              | distributed      | true
+                              | vectorized       | false
+  sort                        |                  |
+   │                          | engine type      | time series
+   │                          | order            | +sm
+   └── render                 |                  |
+        │                     | engine type      | time series
+        │                     | ptag1            | any_not_null
+        │                     | sm               | sum
+        └── group             |                  |
+             │                | engine type      | time series
+             │                | aggregate 0      | t1
+             │                | aggregate 1      | sum(t1 + t2)
+             │                | aggregate 2      | any_not_null(ptag1)
+             │                | group by         | t1
+             │                | addSynchronizer  | true
+             └── render       |                  |
+                  │           | engine type      | time series
+                  │           | t1 + t2          | t1 + t2
+                  │           | ptag1            | ptag1
+                  │           | t1               | t1
+                  └── ts scan |                  |
+                              | ts-table         | table2
+                              | access mode      | tableTableMeta
+                              | tag filter[0]    | t1 > 1000
+                              | tag filter[1]    | ptag1 = 100
 (26 rows)
 > explain select ptag1, sum(t1+t2) as sm from only_tag.table2 where ptag1 = 100 and t1 > 1000 group by ptag1, t1, t2 order by sm;
-             tree             |     field     |     description
-------------------------------+---------------+----------------------
-                              | distributed   | true
-                              | vectorized    | false
-  sort                        |               |
-   │                          | engine type   | time series
-   │                          | order         | +sm
-   └── render                 |               |
-        │                     | engine type   | time series
-        │                     | ptag1         | any_not_null
-        │                     | sm            | sum
-        └── group             |               |
-             │                | engine type   | time series
-             │                | aggregate 0   | t1
-             │                | aggregate 1   | t2
-             │                | aggregate 2   | sum(t1 + t2)
-             │                | aggregate 3   | any_not_null(ptag1)
-             │                | group by      | t1, t2
-             └── render       |               |
-                  │           | engine type   | time series
-                  │           | t1 + t2       | t1 + t2
-                  │           | ptag1         | ptag1
-                  │           | t1            | t1
-                  │           | t2            | t2
-                  └── ts scan |               |
-                              | ts-table      | table2
-                              | only tag      | true
-                              | access mode   | tableTableMeta
-                              | tag filter[0] | t1 > 1000
-                              | tag filter[1] | ptag1 = 100
+             tree             |      field       |     description
+------------------------------+------------------+----------------------
+                              | distributed      | true
+                              | vectorized       | false
+  sort                        |                  |
+   │                          | engine type      | time series
+   │                          | order            | +sm
+   └── render                 |                  |
+        │                     | engine type      | time series
+        │                     | ptag1            | any_not_null
+        │                     | sm               | sum
+        └── group             |                  |
+             │                | engine type      | time series
+             │                | aggregate 0      | t1
+             │                | aggregate 1      | t2
+             │                | aggregate 2      | sum(t1 + t2)
+             │                | aggregate 3      | any_not_null(ptag1)
+             │                | group by         | t1, t2
+             │                | addSynchronizer  | true
+             └── render       |                  |
+                  │           | engine type      | time series
+                  │           | t1 + t2          | t1 + t2
+                  │           | ptag1            | ptag1
+                  │           | t1               | t1
+                  │           | t2               | t2
+                  └── ts scan |                  |
+                              | ts-table         | table2
+                              | access mode      | tableTableMeta
+                              | tag filter[0]    | t1 > 1000
+                              | tag filter[1]    | ptag1 = 100
 (28 rows)
 > explain select ptag1, sum(t1+t2) as sm from only_tag.table2 where ptag1 = 100 and t1 > 1000 group by ptag1, t1, t2, t3 order by sm;
-             tree             |     field     |     description
-------------------------------+---------------+----------------------
-                              | distributed   | true
-                              | vectorized    | false
-  sort                        |               |
-   │                          | engine type   | time series
-   │                          | order         | +sm
-   └── render                 |               |
-        │                     | engine type   | time series
-        │                     | ptag1         | any_not_null
-        │                     | sm            | sum
-        └── group             |               |
-             │                | engine type   | time series
-             │                | aggregate 0   | t1
-             │                | aggregate 1   | t2
-             │                | aggregate 2   | t3
-             │                | aggregate 3   | sum(t1 + t2)
-             │                | aggregate 4   | any_not_null(ptag1)
-             │                | group by      | t1, t2, t3
-             └── render       |               |
-                  │           | engine type   | time series
-                  │           | t1 + t2       | t1 + t2
-                  │           | ptag1         | ptag1
-                  │           | t1            | t1
-                  │           | t2            | t2
-                  │           | t3            | t3
-                  └── ts scan |               |
-                              | ts-table      | table2
-                              | only tag      | true
-                              | access mode   | tableTableMeta
-                              | tag filter[0] | t1 > 1000
-                              | tag filter[1] | ptag1 = 100
+             tree             |      field       |     description
+------------------------------+------------------+----------------------
+                              | distributed      | true
+                              | vectorized       | false
+  sort                        |                  |
+   │                          | engine type      | time series
+   │                          | order            | +sm
+   └── render                 |                  |
+        │                     | engine type      | time series
+        │                     | ptag1            | any_not_null
+        │                     | sm               | sum
+        └── group             |                  |
+             │                | engine type      | time series
+             │                | aggregate 0      | t1
+             │                | aggregate 1      | t2
+             │                | aggregate 2      | t3
+             │                | aggregate 3      | sum(t1 + t2)
+             │                | aggregate 4      | any_not_null(ptag1)
+             │                | group by         | t1, t2, t3
+             │                | addSynchronizer  | true
+             └── render       |                  |
+                  │           | engine type      | time series
+                  │           | t1 + t2          | t1 + t2
+                  │           | ptag1            | ptag1
+                  │           | t1               | t1
+                  │           | t2               | t2
+                  │           | t3               | t3
+                  └── ts scan |                  |
+                              | ts-table         | table2
+                              | access mode      | tableTableMeta
+                              | tag filter[0]    | t1 > 1000
+                              | tag filter[1]    | ptag1 = 100
 (30 rows)
 > explain select ptag1, sum(t1+t2) as sm from only_tag.table2 where t1 > 1000 group by ptag1 order by sm limit 2 offset 1;
                 tree               |      field       |  description
@@ -1586,115 +1589,115 @@ INSERT 10
                                    | tag filter[0]    | t1 > 1000
 (25 rows)
 > explain select ptag1, sum(t1+t2) as sm from only_tag.table2 where t1 > 1000 group by ptag1, t1 order by sm limit 2 offset 1;
-                  tree                  |     field     |  description
-----------------------------------------+---------------+-----------------
-                                        | distributed   | true
-                                        | vectorized    | false
-  render                                |               |
-   │                                    | engine type   | time series
-   │                                    | ptag1         | ptag1
-   │                                    | sm            | sum
-   └── limit                            |               |
-        │                               | engine type   | time series
-        │                               | offset        | 1
-        └── limit                       |               |
-             │                          | engine type   | time series
-             │                          | count         | 3
-             └── sort                   |               |
-                  │                     | engine type   | time series
-                  │                     | order         | +sum
-                  └── group             |               |
-                       │                | engine type   | time series
-                       │                | aggregate 0   | ptag1
-                       │                | aggregate 1   | t1
-                       │                | aggregate 2   | sum(t1 + t2)
-                       │                | group by      | ptag1, t1
-                       └── render       |               |
-                            │           | engine type   | time series
-                            │           | t1 + t2       | t1 + t2
-                            │           | ptag1         | ptag1
-                            │           | t1            | t1
-                            └── ts scan |               |
-                                        | ts-table      | table2
-                                        | only tag      | true
-                                        | access mode   | tableTableMeta
-                                        | tag filter[0] | t1 > 1000
+                  tree                  |      field       |  description
+----------------------------------------+------------------+-----------------
+                                        | distributed      | true
+                                        | vectorized       | false
+  render                                |                  |
+   │                                    | engine type      | time series
+   │                                    | ptag1            | ptag1
+   │                                    | sm               | sum
+   └── limit                            |                  |
+        │                               | engine type      | time series
+        │                               | offset           | 1
+        └── limit                       |                  |
+             │                          | engine type      | time series
+             │                          | count            | 3
+             └── sort                   |                  |
+                  │                     | engine type      | time series
+                  │                     | order            | +sum
+                  └── group             |                  |
+                       │                | engine type      | time series
+                       │                | aggregate 0      | ptag1
+                       │                | aggregate 1      | t1
+                       │                | aggregate 2      | sum(t1 + t2)
+                       │                | group by         | ptag1, t1
+                       │                | addSynchronizer  | true
+                       └── render       |                  |
+                            │           | engine type      | time series
+                            │           | t1 + t2          | t1 + t2
+                            │           | ptag1            | ptag1
+                            │           | t1               | t1
+                            └── ts scan |                  |
+                                        | ts-table         | table2
+                                        | access mode      | tableTableMeta
+                                        | tag filter[0]    | t1 > 1000
 (31 rows)
 > explain select ptag1, sum(t1+t2) as sm from only_tag.table2 where t1 > 1000 group by ptag1, t1, t2 order by sm limit 2 offset 1;
-                  tree                  |     field     |  description
-----------------------------------------+---------------+-----------------
-                                        | distributed   | true
-                                        | vectorized    | false
-  render                                |               |
-   │                                    | engine type   | time series
-   │                                    | ptag1         | ptag1
-   │                                    | sm            | sum
-   └── limit                            |               |
-        │                               | engine type   | time series
-        │                               | offset        | 1
-        └── limit                       |               |
-             │                          | engine type   | time series
-             │                          | count         | 3
-             └── sort                   |               |
-                  │                     | engine type   | time series
-                  │                     | order         | +sum
-                  └── group             |               |
-                       │                | engine type   | time series
-                       │                | aggregate 0   | ptag1
-                       │                | aggregate 1   | t1
-                       │                | aggregate 2   | t2
-                       │                | aggregate 3   | sum(t1 + t2)
-                       │                | group by      | ptag1, t1, t2
-                       └── render       |               |
-                            │           | engine type   | time series
-                            │           | t1 + t2       | t1 + t2
-                            │           | ptag1         | ptag1
-                            │           | t1            | t1
-                            │           | t2            | t2
-                            └── ts scan |               |
-                                        | ts-table      | table2
-                                        | only tag      | true
-                                        | access mode   | tableTableMeta
-                                        | tag filter[0] | t1 > 1000
+                  tree                  |      field       |  description
+----------------------------------------+------------------+-----------------
+                                        | distributed      | true
+                                        | vectorized       | false
+  render                                |                  |
+   │                                    | engine type      | time series
+   │                                    | ptag1            | ptag1
+   │                                    | sm               | sum
+   └── limit                            |                  |
+        │                               | engine type      | time series
+        │                               | offset           | 1
+        └── limit                       |                  |
+             │                          | engine type      | time series
+             │                          | count            | 3
+             └── sort                   |                  |
+                  │                     | engine type      | time series
+                  │                     | order            | +sum
+                  └── group             |                  |
+                       │                | engine type      | time series
+                       │                | aggregate 0      | ptag1
+                       │                | aggregate 1      | t1
+                       │                | aggregate 2      | t2
+                       │                | aggregate 3      | sum(t1 + t2)
+                       │                | group by         | ptag1, t1, t2
+                       │                | addSynchronizer  | true
+                       └── render       |                  |
+                            │           | engine type      | time series
+                            │           | t1 + t2          | t1 + t2
+                            │           | ptag1            | ptag1
+                            │           | t1               | t1
+                            │           | t2               | t2
+                            └── ts scan |                  |
+                                        | ts-table         | table2
+                                        | access mode      | tableTableMeta
+                                        | tag filter[0]    | t1 > 1000
 (33 rows)
 > explain select ptag1, sum(t1+t2) as sm from only_tag.table2 where t1 > 1000 group by ptag1, t1, t2, t3 order by sm limit 2 offset 1;
-                  tree                  |     field     |    description
-----------------------------------------+---------------+--------------------
-                                        | distributed   | true
-                                        | vectorized    | false
-  render                                |               |
-   │                                    | engine type   | time series
-   │                                    | ptag1         | ptag1
-   │                                    | sm            | sum
-   └── limit                            |               |
-        │                               | engine type   | time series
-        │                               | offset        | 1
-        └── limit                       |               |
-             │                          | engine type   | time series
-             │                          | count         | 3
-             └── sort                   |               |
-                  │                     | engine type   | time series
-                  │                     | order         | +sum
-                  └── group             |               |
-                       │                | engine type   | time series
-                       │                | aggregate 0   | ptag1
-                       │                | aggregate 1   | t1
-                       │                | aggregate 2   | t2
-                       │                | aggregate 3   | t3
-                       │                | aggregate 4   | sum(t1 + t2)
-                       │                | group by      | ptag1, t1, t2, t3
-                       └── render       |               |
-                            │           | engine type   | time series
-                            │           | t1 + t2       | t1 + t2
-                            │           | ptag1         | ptag1
-                            │           | t1            | t1
-                            │           | t2            | t2
-                            │           | t3            | t3
-                            └── ts scan |               |
-                                        | ts-table      | table2
-                                        | only tag      | true
-                                        | access mode   | tableTableMeta
-                                        | tag filter[0] | t1 > 1000
+                  tree                  |      field       |    description
+----------------------------------------+------------------+--------------------
+                                        | distributed      | true
+                                        | vectorized       | false
+  render                                |                  |
+   │                                    | engine type      | time series
+   │                                    | ptag1            | ptag1
+   │                                    | sm               | sum
+   └── limit                            |                  |
+        │                               | engine type      | time series
+        │                               | offset           | 1
+        └── limit                       |                  |
+             │                          | engine type      | time series
+             │                          | count            | 3
+             └── sort                   |                  |
+                  │                     | engine type      | time series
+                  │                     | order            | +sum
+                  └── group             |                  |
+                       │                | engine type      | time series
+                       │                | aggregate 0      | ptag1
+                       │                | aggregate 1      | t1
+                       │                | aggregate 2      | t2
+                       │                | aggregate 3      | t3
+                       │                | aggregate 4      | sum(t1 + t2)
+                       │                | group by         | ptag1, t1, t2, t3
+                       │                | addSynchronizer  | true
+                       └── render       |                  |
+                            │           | engine type      | time series
+                            │           | t1 + t2          | t1 + t2
+                            │           | ptag1            | ptag1
+                            │           | t1               | t1
+                            │           | t2               | t2
+                            │           | t3               | t3
+                            └── ts scan |                  |
+                                        | ts-table         | table2
+                                        | access mode      | tableTableMeta
+                                        | tag filter[0]    | t1 > 1000
 (35 rows)
 > select distinct ptag1 from only_tag.table1 ORDER by ptag1;
   ptag1
@@ -1787,7 +1790,7 @@ INSERT 10
 > select ptag1, sum(t1) from only_tag.table1 group by ptag1 ORDER by ptag1;
   ptag1 | sum
 --------+-------
-    100 | 1000
+    100 | 2000
     200 | 2000
     300 | 3000
     400 | 4000
@@ -1798,7 +1801,7 @@ INSERT 10
 > select ptag1, t1, sum(t2) from only_tag.table1 group by ptag1, t1 ORDER by ptag1;
   ptag1 |  t1  |  sum
 --------+------+--------
-    100 | 1000 | 10000
+    100 | 1000 | 20000
     200 | 2000 | 20000
     300 | 3000 | 30000
     400 | 4000 | 40000
@@ -1809,7 +1812,7 @@ INSERT 10
 > select ptag1, t1, t2, sum(t3) from only_tag.table1 group by ptag1, t1, t2 ORDER by ptag1;
   ptag1 |  t1  |  t2   |  sum
 --------+------+-------+--------
-    100 | 1000 | 10000 | 10000
+    100 | 1000 | 10000 | 20000
     200 | 2000 | 20000 | 20000
     300 | 3000 | 30000 | 30000
     400 | 4000 | 40000 | 40000
@@ -1820,7 +1823,7 @@ INSERT 10
 > select ptag1, sum(t1), sum(t2), sum(t3) from only_tag.table1 group by ptag1, t1, t2, t3 ORDER by ptag1;
   ptag1 | sum  |  sum  |  sum
 --------+------+-------+--------
-    100 | 1000 | 10000 | 10000
+    100 | 2000 | 20000 | 20000
     200 | 2000 | 20000 | 20000
     300 | 3000 | 30000 | 30000
     400 | 4000 | 40000 | 40000
@@ -1911,7 +1914,7 @@ INSERT 10
 > select ptag1, sum(t1+t2) from only_tag.table1 group by ptag1 ORDER by ptag1;
   ptag1 |  sum
 --------+--------
-    100 | 11000
+    100 | 22000
     200 | 22000
     300 | 33000
     400 | 44000
@@ -1922,7 +1925,7 @@ INSERT 10
 > select ptag1, sum(t1+t2) from only_tag.table1 group by ptag1, t1 ORDER by ptag1;
   ptag1 |  sum
 --------+--------
-    100 | 11000
+    100 | 22000
     200 | 22000
     300 | 33000
     400 | 44000
@@ -1933,7 +1936,7 @@ INSERT 10
 > select ptag1, sum(t1+t2) from only_tag.table1 group by ptag1, t1, t2 ORDER by ptag1;
   ptag1 |  sum
 --------+--------
-    100 | 11000
+    100 | 22000
     200 | 22000
     300 | 33000
     400 | 44000
@@ -1944,7 +1947,7 @@ INSERT 10
 > select ptag1, sum(t1+t2+t3) from only_tag.table1 group by ptag1, t1, t2, t3 ORDER by ptag1;
   ptag1 |  sum
 --------+---------
-    100 |  21000
+    100 |  42000
     200 |  42000
     300 |  63000
     400 |  84000
@@ -2138,7 +2141,7 @@ INSERT 10
 > select ptag1, t1, sum(t2) from only_tag.table2 group by ptag1, t1 ORDER by ptag1;
   ptag1 |  t1  |  sum
 --------+------+--------
-    100 | 1000 | 10000
+    100 | 1000 | 20000
     200 | 2000 | 20000
     300 | 3000 | 30000
     400 | 4000 | 40000
@@ -2149,7 +2152,7 @@ INSERT 10
 > select ptag1, t1, t2, sum(t3) from only_tag.table2 group by ptag1, t1, t2 ORDER by ptag1;
   ptag1 |  t1  |  t2   |  sum
 --------+------+-------+--------
-    100 | 1000 | 10000 | 10000
+    100 | 1000 | 10000 | 20000
     200 | 2000 | 20000 | 20000
     300 | 3000 | 30000 | 30000
     400 | 4000 | 40000 | 40000
@@ -2160,7 +2163,7 @@ INSERT 10
 > select ptag1, sum(t1), sum(t2), sum(t3) from only_tag.table2 group by ptag1, t1, t2, t3 ORDER by ptag1;
   ptag1 | sum  |  sum  |  sum
 --------+------+-------+--------
-    100 | 1000 | 10000 | 10000
+    100 | 2000 | 20000 | 20000
     200 | 2000 | 20000 | 20000
     300 | 3000 | 30000 | 30000
     400 | 4000 | 40000 | 40000
@@ -2222,7 +2225,7 @@ INSERT 10
 > select ptag1, sum(t1+t2) from only_tag.table2 group by ptag1, t1 ORDER by ptag1;
   ptag1 |  sum
 --------+--------
-    100 | 11000
+    100 | 22000
     200 | 22000
     300 | 33000
     400 | 44000
@@ -2233,7 +2236,7 @@ INSERT 10
 > select ptag1, sum(t1+t2) from only_tag.table2 group by ptag1, t1, t2 ORDER by ptag1;
   ptag1 |  sum
 --------+--------
-    100 | 11000
+    100 | 22000
     200 | 22000
     300 | 33000
     400 | 44000
@@ -2244,7 +2247,7 @@ INSERT 10
 > select ptag1, sum(t1+t2+t3) from only_tag.table2 group by ptag1, t1, t2, t3 ORDER by ptag1;
   ptag1 |  sum
 --------+---------
-    100 |  21000
+    100 |  42000
     200 |  42000
     300 |  63000
     400 |  84000
@@ -2337,27 +2340,27 @@ INSERT 10
     400 | 44000
 (2 rows)
 > explain select avg(t1), sum(t2), count(t3) from only_tag.table3 where t1+t2 > 3000 and t3 < 80000 group by ptag1;
-           tree          |     field     |    description
--------------------------+---------------+---------------------
-                         | distributed   | true
-                         | vectorized    | false
-  render                 |               |
-   │                     | avg           | avg
-   │                     | sum           | sum
-   │                     | count         | count
-   └── group             |               |
-        │                | aggregate 0   | ptag1
-        │                | aggregate 1   | avg(t1)
-        │                | aggregate 2   | sum(t2)
-        │                | aggregate 3   | count(t3)
-        │                | group by      | ptag1
-        └── filter       |               |
-             │           | filter        | (t1 + t2) > 3000.0
-             └── ts scan |               |
-                         | ts-table      | table3
-                         | only tag      | true
-                         | access mode   | tableTableMeta
-                         | tag filter[0] | t3 < 80000.0
+             tree             |    field    |    description
+------------------------------+-------------+---------------------
+                              | distributed | true
+                              | vectorized  | false
+  render                      |             |
+   │                          | avg         | avg
+   │                          | sum         | sum
+   │                          | count       | count
+   └── group                  |             |
+        │                     | aggregate 0 | ptag1
+        │                     | aggregate 1 | avg(t1)
+        │                     | aggregate 2 | sum(t2)
+        │                     | aggregate 3 | count(t3)
+        │                     | group by    | ptag1
+        └── filter            |             |
+             │                | filter      | (t1 + t2) > 3000.0
+             └── synchronizer |             |
+                  └── ts scan |             |
+                              | ts-table    | table3
+                              | access mode | tableTableMeta
+                              | filter      | t3 < 80000.0
 (19 rows)
 > select avg(t1), sum(t2), count(t3) from only_tag.table3 where t1+t2 > 3000 and t3 < 80000 group by ptag1 order by avg(t1);
   avg  |  sum  | count

@@ -241,6 +241,7 @@ class TsFirstLastRow {
  */
 class TsStorageIterator {
  public:
+  TsStorageIterator();
   TsStorageIterator(std::shared_ptr<TsEntityGroup>& entity_group, uint64_t entity_group_id, uint32_t subgroup_id,
                     const vector<uint32_t>& entity_ids, const std::vector<KwTsSpan>& ts_spans,
                     const std::vector<BlockFilter>& block_filter, DATATYPE ts_col_type,
@@ -273,7 +274,7 @@ class TsStorageIterator {
    */
   virtual KStatus Next(ResultSet* res, k_uint32* count, bool* is_finished, timestamp64 ts = INVALID_TS) = 0;
 
-  bool IsDisordered() {
+  virtual bool IsDisordered() {
     TsSubGroupPTIterator cur_iter(partition_table_iter_.get());
     cur_iter.Reset();
     while (true) {
@@ -306,11 +307,11 @@ class TsStorageIterator {
   bool getCurBlockSpan(BlockItem* cur_block, std::shared_ptr<MMapSegmentTable>& segment_tbl, uint32_t* first_row,
                        uint32_t* count);
 
-  void fetchBlockItems(k_uint32 entity_id);
+  KStatus fetchBlockItems(k_uint32 entity_id);
 
   bool matchesFilterRange(const BlockFilter& filter, SpanValue min, SpanValue max, DATATYPE datatype);
 
-  bool isBlockFiltered(BlockItem* block_item);
+  KStatus isBlockFiltered(BlockItem* block_item, bool& is_filtered);
 
   void nextEntity() {
     cur_block_item_ = nullptr;
@@ -351,6 +352,8 @@ class TsStorageIterator {
   bool is_reversed_ = false;
   // need sorting
   bool sort_flag_ = false;
+  // todo(liangbo) set lsn parameter.
+  TS_LSN scan_lsn_{UINT64_MAX};
 };
 
 // used for raw data queries
@@ -692,6 +695,16 @@ class TsTableIterator : public TsIterator {
   std::vector<TsStorageIterator*> iterators_;
 };
 
+struct TimestampComparator {
+  bool is_reversed = false;
+  TimestampComparator() {}
+  explicit TimestampComparator(bool reversed) : is_reversed(reversed) {}
+
+  bool operator()(const timestamp64& a, const timestamp64& b) const {
+    return is_reversed ? a > b : a < b;
+  }
+};
+
 class TsOffsetIterator : public TsIterator {
  public:
   TsOffsetIterator(std::shared_ptr<TsEntityGroup>& entity_group, uint64_t entity_group_id,
@@ -725,15 +738,12 @@ class TsOffsetIterator : public TsIterator {
 
   inline void GetTerminationTime() {
     switch (ts_col_type_) {
-      case TIMESTAMP64_LSN:
       case TIMESTAMP64:
         t_time_ = 10;
         break;
-      case TIMESTAMP64_LSN_MICRO:
       case TIMESTAMP64_MICRO:
         t_time_ = 10000;
         break;
-      case TIMESTAMP64_LSN_NANO:
       case TIMESTAMP64_NANO:
         t_time_ = 10000000;
         break;
@@ -748,7 +758,8 @@ class TsOffsetIterator : public TsIterator {
   uint64_t entity_group_id_{0};
   std::map<SubGroupID, std::vector<EntityID>> entity_ids_;
   // map<timestamp, {subgroup_id}>
-  map<timestamp64, vector<uint32_t>> p_times_;
+  TimestampComparator comparator_;
+  map<timestamp64, vector<uint32_t>, TimestampComparator> p_times_;
   map<timestamp64, vector<uint32_t>>::iterator p_time_it_;
   // unordered_map<subgroup_id, TsSubGroupPTIterator>
   unordered_map<uint32_t, std::shared_ptr<TsSubGroupPTIterator>> partition_table_iter_;

@@ -15,9 +15,11 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"gitee.com/kwbasedb/kwbase/pkg/cdc/cdcpb"
 	"gitee.com/kwbasedb/kwbase/pkg/security"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfra"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/opt/memo"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgcode"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgerror"
@@ -26,6 +28,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlutil"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/types"
+	"gitee.com/kwbasedb/kwbase/pkg/util/retry"
 	"github.com/cockroachdb/errors"
 )
 
@@ -330,13 +333,13 @@ func (p *planner) checkStreamQuery(query *tree.Select, tableDesc *MutableTableDe
 func (p *planner) checkStreamAggQuery(
 	selectClause *tree.SelectClause, tableDesc *MutableTableDescriptor,
 ) error {
-	funcName, err := p.checkStreamQueryGroupBy(selectClause, tableDesc)
+	funcName, timeWindowHasSlide, err := p.checkStreamQueryGroupBy(selectClause, tableDesc)
 	if err != nil {
 		return err
 	}
 
 	if err := p.checkStreamQueryBeginAndEndClause(
-		selectClause, tableDesc.Columns[0].Name, funcName); err != nil {
+		selectClause, tableDesc.Columns[0].Name, funcName, timeWindowHasSlide); err != nil {
 		return err
 	}
 
@@ -365,7 +368,7 @@ func (p *planner) checkStreamAggQuery(
 
 // checkStreamQueryBeginAndEndClause verifies the query with begin and end of stream.
 func (p *planner) checkStreamQueryBeginAndEndClause(
-	selectClause *tree.SelectClause, tsTimestampColName, funcName string,
+	selectClause *tree.SelectClause, tsTimestampColName, funcName string, timeWindowHasSlide bool,
 ) error {
 	if len(selectClause.Exprs) <= 2 {
 		return errors.Errorf("invalid stream query: %s", selectClause.String())
@@ -381,14 +384,25 @@ func (p *planner) checkStreamQueryBeginAndEndClause(
 	errNotFirstRow := errors.Errorf(
 		"the first select clause of stream query must be the first_row(%s) of aggregation function %s",
 		tsTimestampColName, funcName)
+	errNotFirst := errors.Errorf(
+		"the first select clause of stream query must be the first(%s) of aggregation function %s with slide",
+		tsTimestampColName, funcName)
 	errNotLastFunc := errors.Errorf(
 		"the second select clause of stream query must be the end-timestamp of aggregation, for example last(%s)/last_row(%s)",
 		tsTimestampColName, tsTimestampColName)
 	errNotLastRow := errors.Errorf(
 		"the second select clause of stream query must be the last_row(%s) of aggregation function %s",
 		tsTimestampColName, funcName)
+	errNotLast := errors.Errorf(
+		"the second select clause of stream query must be the last(%s) of aggregation function %s with slide",
+		tsTimestampColName, funcName)
 	isTimeWindow := funcName == memo.TimeWindow
+
 	buildFirstError := func() error {
+		if timeWindowHasSlide {
+			return errNotFirst
+		}
+
 		if isTimeWindow {
 			return errNotFirstRow
 		}
@@ -397,6 +411,10 @@ func (p *planner) checkStreamQueryBeginAndEndClause(
 	}
 
 	buildLastError := func() error {
+		if timeWindowHasSlide {
+			return errNotLast
+		}
+
 		if isTimeWindow {
 			return errNotLastRow
 		}
@@ -412,7 +430,9 @@ func (p *planner) checkStreamQueryBeginAndEndClause(
 
 	firstFunName := firstFunc.Func.FunctionReference.FunctionName()
 
-	if funcName == memo.TimeWindow && firstFunName != "first_row" {
+	if timeWindowHasSlide && firstFunName != "first" {
+		return buildFirstError()
+	} else if funcName == memo.TimeWindow && firstFunName != "first_row" && !timeWindowHasSlide {
 		return buildFirstError()
 	} else if !(firstFunName == "first" || firstFunName == "first_row" || firstFunName == "time_bucket") {
 		return buildFirstError()
@@ -438,7 +458,9 @@ func (p *planner) checkStreamQueryBeginAndEndClause(
 
 	lastFunName := lastFunc.Func.FunctionReference.FunctionName()
 
-	if funcName == memo.TimeWindow && lastFunName != "last_row" {
+	if timeWindowHasSlide && lastFunName != "last" {
+		return buildFirstError()
+	} else if funcName == memo.TimeWindow && lastFunName != "last_row" && !timeWindowHasSlide {
 		return buildLastError()
 	} else if !(lastFunName == "last" || lastFunName == "last_row") {
 		return buildLastError()
@@ -478,18 +500,19 @@ func (p *planner) checkStreamQueryDistinct(exprs tree.Exprs) error {
 // checkStreamQueryGroupBy verifies the query with Group of stream.
 func (p *planner) checkStreamQueryGroupBy(
 	selectClause *tree.SelectClause, tableDesc *MutableTableDescriptor,
-) (string, error) {
+) (string, bool, error) {
 	var funcName string
 	if len(selectClause.GroupBy) == 0 {
-		return funcName, nil
+		return funcName, false, nil
 	}
 
 	if selectClause.Having != nil {
-		return funcName, errors.Errorf("unsupported having expr: %s", selectClause.Having.Expr.String())
+		return funcName, false, errors.Errorf("unsupported having expr: %s", selectClause.Having.Expr.String())
 	}
 
 	var groupByColumns []string
 	includeRequiredFunction := false
+	timeWindowHasSlide := false
 
 	for _, expr := range selectClause.GroupBy {
 		switch expr.(type) {
@@ -499,19 +522,22 @@ func (p *planner) checkStreamQueryGroupBy(
 			switch funcName {
 			case tree.FuncTimeBucket, memo.StateWindow, memo.CountWindow, memo.TimeWindow, memo.EventWindow, memo.SessionWindow:
 				includeRequiredFunction = true
+				if funcName == memo.TimeWindow && len(funcExpr.Exprs) == 3 {
+					timeWindowHasSlide = true
+				}
 			default:
-				return funcName, errors.Errorf("unsupported group by function in stream query: %s", funcName)
+				return funcName, timeWindowHasSlide, errors.Errorf("unsupported group by function in stream query: %s", funcName)
 			}
 		case *tree.UnresolvedName:
 			funcExpr := expr.(*tree.UnresolvedName)
 			groupByColumns = append(groupByColumns, funcExpr.String())
 		default:
-			return funcName, errors.Errorf("unsupported group by clause in stream query: %s", selectClause)
+			return funcName, timeWindowHasSlide, errors.Errorf("unsupported group by clause in stream query: %s", selectClause)
 		}
 	}
 
 	if !includeRequiredFunction {
-		return funcName, errors.Errorf("missing time_bucket or window function in GROUP BY cluster")
+		return funcName, timeWindowHasSlide, errors.Errorf("missing time_bucket or window function in GROUP BY cluster")
 	}
 
 	primaryTags := make(map[string]string)
@@ -523,21 +549,21 @@ func (p *planner) checkStreamQueryGroupBy(
 	}
 
 	if len(groupByColumns) == 0 {
-		return funcName, nil
+		return funcName, timeWindowHasSlide, nil
 	}
 
 	for _, col := range groupByColumns {
 		_, ok := primaryTags[col]
 		if !ok {
-			return funcName, errors.Errorf("the group by column %q of stream query is not a primary tag", col)
+			return funcName, timeWindowHasSlide, errors.Errorf("the group by column %q of stream query is not a primary tag", col)
 		}
 	}
 
 	if len(groupByColumns) != len(primaryTags) {
-		return funcName, errors.Errorf("should include all primary tags in stream query: %s", selectClause)
+		return funcName, timeWindowHasSlide, errors.Errorf("should include all primary tags in stream query: %s", selectClause)
 	}
 
-	return funcName, nil
+	return funcName, timeWindowHasSlide, nil
 }
 
 // checkStreamTargetTableInfo verifies the target table.
@@ -903,4 +929,27 @@ func createColumnMap(
 	}
 
 	return columnMap, tsColName, primaryTagCount
+}
+
+// waitCDCStatusChanged waits the cdc status changed.
+func waitCDCStatusChanged(
+	ctx context.Context,
+	cdc execinfra.CDCCoordinator,
+	tableID, instanceID uint64,
+	instanceType cdcpb.TSCDCInstanceType,
+	enabled bool,
+) {
+	opts := retry.Options{
+		InitialBackoff: 100 * time.Millisecond,
+		Multiplier:     2,
+		MaxBackoff:     500 * time.Millisecond,
+		MaxRetries:     5,
+	}
+
+	for r := retry.StartWithCtx(ctx, opts); r.Next(); {
+		cdcEnabled := cdc.HasTask(instanceType, tableID, instanceID)
+		if (enabled && cdcEnabled) || (!enabled && !cdcEnabled) {
+			return
+		}
+	}
 }

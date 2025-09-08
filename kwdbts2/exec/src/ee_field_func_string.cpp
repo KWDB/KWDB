@@ -919,7 +919,9 @@ char *FieldFuncInitCap::get_ptr(RowBatch *batch) {
     case roachpb::DataType::NVARCHAR:
     case roachpb::DataType::BINARY:
     case roachpb::DataType::VARBINARY: {
-      strvalue_ = args_[0]->ValStr(ptr);
+      String s1 = args_[0]->ValStr(ptr);
+      strvalue_ = String(s1.length());
+      strvalue_.copy_string(s1);
       strvalue_.ptr_[0] = std::toupper(strvalue_.ptr_[0]);
       break;
     }
@@ -952,8 +954,10 @@ String FieldFuncInitCap::ValStr() {
     }
 
     String s1 = args_[0]->ValStr();
-    s1.ptr_[0] = std::toupper(s1.ptr_[0]);
-    return s1;
+    String result(s1.length());
+    result.copy_string(s1);
+    result.ptr_[0] = std::toupper(result.ptr_[0]);
+    return result;
   }
 }
 

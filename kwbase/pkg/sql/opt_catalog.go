@@ -401,6 +401,10 @@ func GetAllProcDescByParentID(
 	}
 	var descs []sqlbase.ProcedureDescriptor
 	for i := range rows {
+		routineType := int(tree.MustBeDInt(rows[i][5]))
+		if routineType != int(sqlbase.Procedure) {
+			continue
+		}
 		var desc sqlbase.ProcedureDescriptor
 		val := tree.MustBeDBytes(rows[i][3])
 		if err := protoutil.Unmarshal([]byte(val), &desc); err != nil {
@@ -424,6 +428,10 @@ func GetAllProcDesc(ctx context.Context, txn *kv.Txn) ([]sqlbase.ProcedureDescri
 	}
 	var descs []sqlbase.ProcedureDescriptor
 	for i := range rows {
+		routineType := int(tree.MustBeDInt(rows[i][5]))
+		if routineType != int(sqlbase.Procedure) {
+			continue
+		}
 		var desc sqlbase.ProcedureDescriptor
 		val := tree.MustBeDBytes(rows[i][3])
 		if err := protoutil.Unmarshal([]byte(val), &desc); err != nil {
@@ -889,6 +897,24 @@ type optTable struct {
 // GetTableType return which type the table is.
 func (ot *optTable) GetTableType() tree.TableType {
 	return ot.desc.TableType
+}
+
+// GetTriggers returns the definition of trigger
+func (ot *optTable) GetTriggers(event tree.TriggerEvent) []cat.TriggerMeta {
+	res := make([]cat.TriggerMeta, 0)
+	for _, trig := range ot.desc.Triggers {
+		if trig.Event != sqlbase.TriggerEvent(event) {
+			continue
+		}
+		res = append(res, cat.TriggerMeta{
+			TriggerID:   tree.ID(trig.ID),
+			TriggerName: trig.Name,
+			ActionTime:  tree.TriggerActionTime(trig.ActionTime),
+			Event:       tree.TriggerEvent(trig.Event),
+			Body:        trig.TriggerBody,
+		})
+	}
+	return res
 }
 
 // GetTSVersion return ts_version.
@@ -1669,6 +1695,24 @@ func (ot *optVirtualTable) GetParentID() tree.ID {
 // GetTableType return which type the table is.
 func (ot *optVirtualTable) GetTableType() tree.TableType {
 	return ot.desc.TableType
+}
+
+// GetTriggers returns the definition of trigger
+func (ot *optVirtualTable) GetTriggers(event tree.TriggerEvent) []cat.TriggerMeta {
+	res := make([]cat.TriggerMeta, 0)
+	for _, trig := range ot.desc.Triggers {
+		if trig.Event != sqlbase.TriggerEvent(event) {
+			continue
+		}
+		res = append(res, cat.TriggerMeta{
+			TriggerID:   tree.ID(trig.ID),
+			TriggerName: trig.Name,
+			ActionTime:  tree.TriggerActionTime(trig.ActionTime),
+			Event:       tree.TriggerEvent(trig.Event),
+			Body:        trig.TriggerBody,
+		})
+	}
+	return res
 }
 
 // GetTSVersion return ts_version.

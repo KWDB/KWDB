@@ -1,0 +1,484 @@
+> SELECT e1 FROM test_SELECT_col.t1 order by k_timestamp;
+    e1
+----------
+       0
+   20002
+   20002
+   30003
+  -10001
+  -20002
+  -30003
+  -30004
+  -30005
+  -30006
+  -30007
+  -30008
+  -30009
+  -30010
+   32767
+  -32768
+   32050
+   32767
+(18 rows)
+> SELECT e2 FROM test_SELECT_col.t1 order by k_timestamp;
+      e2
+---------------
+            0
+      1000002
+      2000003
+      3000000
+     -3000003
+     -2000002
+     -1000001
+     -1000001
+     -1000001
+     -1000001
+     -1000001
+     -1000001
+     -1000001
+     -1000001
+   2147483647
+  -2147483648
+  NULL
+  NULL
+(18 rows)
+> SELECT e3 FROM test_SELECT_col.t1 order by k_timestamp;
+           e3
+------------------------
+                     0
+           20000000002
+          -30000000003
+          -40000000004
+          -40000000004
+          -30000000003
+          -10000000001
+          -10000000001
+          -10000000001
+          -10000000001
+          -10000000001
+          -10000000001
+          -10000000001
+          -10000000001
+   9223372036854775807
+  -9223372036854775808
+                  4000
+   9223372036854775807
+(18 rows)
+> SELECT e4 FROM test_SELECT_col.t1 order by k_timestamp;
+        e4
+-------------------
+                0
+  1.0472e+06
+     22845.869141
+     39845.871094
+    -39845.871094
+    -29845.869141
+    -19845.869141
+    -19845.869141
+    -19845.869141
+    -19845.869141
+    -19845.869141
+    -19845.869141
+    -19845.869141
+    -19845.869141
+      9845.870117
+  9.842323456e+09
+      9845.870117
+  NULL
+(18 rows)
+> SELECT e5 FROM test_SELECT_col.t1 order by k_timestamp;
+            e5
+--------------------------
+                       0
+                 -109810
+              200.123456
+             -200.123456
+             -200.123456
+             -200.123456
+             -200.123456
+             -200.123456
+             -200.123456
+             -200.123456
+             -200.123456
+             -200.123456
+             -200.123456
+             -200.123456
+              200.123456
+              200.123456
+              200.123456
+  2.0435435343430125e+13
+(18 rows)
+> SELECT e6 FROM test_SELECT_col.t1 order by k_timestamp;
+   e6
+--------
+  true
+  true
+  true
+  true
+  true
+  true
+  true
+  true
+  true
+  true
+  true
+  true
+  true
+  true
+  true
+  true
+  true
+  NULL
+(18 rows)
+> SELECT e7 FROM test_SELECT_col.t1 order by k_timestamp;
+             e7
+-----------------------------
+  2020-01-01 12:00:00+00:00
+  2020-01-01 12:00:00+00:00
+  2020-01-01 12:00:00+00:00
+  2020-01-01 12:00:00+00:00
+  2020-01-01 12:00:00+00:00
+  2020-01-01 12:00:00+00:00
+  2020-01-01 12:00:00+00:00
+  2020-01-01 12:00:00+00:00
+  2020-01-01 12:00:00+00:00
+  2020-01-01 12:00:00+00:00
+  2020-01-01 12:00:00+00:00
+  2020-01-01 12:00:00+00:00
+  2020-01-01 12:00:00+00:00
+  2020-01-01 12:00:00+00:00
+  2020-01-01 12:00:00+00:00
+  2020-01-01 12:00:00+00:00
+  2020-01-01 12:00:00+00:00
+  2020-01-01 12:00:00+00:00
+(18 rows)
+> SELECT e8 FROM test_SELECT_col.t1 order by k_timestamp;
+                     e8
+--------------------------------------------
+  test时间精度通用查询测试！！！@TEST1
+  test时间精度通用查询测试！！！@TEST1
+  test时间精度通用查询测试！！！@TEST1
+  test时间精度通用查询测试！！！@TEST1
+
+  \0test时间精度通用查询！！！@TEST1\0\0\0
+
+  \
+  \
+  \\
+  \\
+  \\\\
+  \\\\
+
+  test时间精度通用查询测试！！！@TEST1
+  test时间精度通用查询测试！！！@TEST1
+  test时间精度通用查询测试！！！@TEST1
+  NULL
+(18 rows)
+> SELECT e9 FROM test_SELECT_col.t1 order by k_timestamp;
+                     e9
+--------------------------------------------
+  test时间精度通用查询测试！！！@TEST1
+  test时间精度通用查询测试！！！@TEST1
+  test时间精度通用查询测试！！！@TEST1
+  test时间精度通用查询测试！！！@TEST1
+
+  \0test时间精度通用查询！！！@TEST1\0\0\0
+
+  \
+  \
+  \\
+  \\
+  \\\\
+  \\\\
+
+  test时间精度通用查询测试！！！@TEST1
+  test时间精度通用查询测试！！！@TEST1
+  test时间精度通用查询测试！！！@TEST1
+  test时间精度通用查询测试！！！@TEST1
+(18 rows)
+> SELECT e10 FROM test_SELECT_col.t1 order by k_timestamp;
+                    e10
+--------------------------------------------
+  test时间精度通用查询测试！！！@TEST1
+  test时间精度通用查询测试！！！@TEST1
+  test时间精度通用查询测试！！！@TEST1
+  test时间精度通用查询测试！！！@TEST1
+
+  \0test时间精度通用查询！！！@TEST1\0\0\0
+
+  \
+  \
+  \\
+  \\
+  \\\\
+  \\\\
+
+  test时间精度通用查询测试！！！@TEST1
+  test时间精度通用查询测试！！！@TEST1
+  test时间精度通用查询测试！！！@TEST1\0
+  NULL
+(18 rows)
+> SELECT e11 FROM test_SELECT_col.t1 order by k_timestamp;
+  e11
+-------
+  t
+  t
+  t
+  t
+
+    0
+
+  \
+  \
+  \
+  \
+  \
+  \
+  \
+  t
+  t
+  t
+  t
+(18 rows)
+> SELECT e12 FROM test_SELECT_col.t1 order by k_timestamp;
+                    e12
+--------------------------------------------
+  test时间精度通用查询测试！！！@TEST1
+  test时间精度通用查询测试！！！@TEST1
+  test时间精度通用查询测试！！！@TEST1
+  test时间精度通用查询测试！！！@TEST1
+
+  \0test时间精度通用查询！！！@TEST1\0\0\0
+
+  \
+  \
+  \\
+  \\
+  \\\\
+  \\\\
+
+  test时间精度通用查询测试！！！@TEST1
+  test时间精度通用查询测试！！！@TEST1
+  test时间精度通用查询测试！！！@TEST1
+  NULL
+(18 rows)
+> SELECT e13 FROM test_SELECT_col.t1 order by k_timestamp;
+  e13
+-------
+  中
+  中
+  中
+  中
+
+  \
+
+  \
+  \
+  \
+  \
+  \
+  \
+  \
+  中
+  中
+  中
+  中
+(18 rows)
+> SELECT e14 FROM test_SELECT_col.t1 order by k_timestamp;
+                    e14
+--------------------------------------------
+  test时间精度通用查询测试！！！@TEST1
+  test时间精度通用查询测试！！！@TEST1
+  test时间精度通用查询测试！！！@TEST1
+  test时间精度通用查询测试！！！@TEST1
+
+  \0test时间精度通用查询！！！@TEST1\0\0\0
+
+  \
+  \
+  \\
+  \\
+  \\\\
+  \\\\
+
+  test时间精度通用查询测试！！！@TEST1
+  test时间精度通用查询测试！！！@TEST1
+  test时间精度通用查询测试！！！@TEST1
+  NULL
+(18 rows)
+> SELECT e15 FROM test_SELECT_col.t1 order by k_timestamp;
+                  e15
+----------------------------------------
+  test时间精度通用查询测试！！！@TEST1
+  test时间精度通用查询测试！！！@TEST1
+  test时间精度通用查询测试！！！@TEST1
+  test时间精度通用查询测试！！！@TEST1
+
+  \0test时间精度通用查询！！！@TEST1
+
+  \
+  \
+  \\
+  \\
+  \\\\
+  \\\\
+
+  test时间精度通用查询测试！！！@TEST1
+  test时间精度通用查询测试！！！@TEST1
+  test时间精度通用查询测试！！！@TEST1
+  test时间精度通用查询测试！！！@TEST1
+(18 rows)
+> SELECT e16 FROM test_SELECT_col.t1 order by k_timestamp;
+                                              e16
+------------------------------------------------------------------------------------------------
+  \x74657374e697b6e997b4e7b2bee5baa6e9809ae794a8e69fa5e8afa2e6b58be8af95efbc815445535431786161
+  \x74657374e697b6e997b4e7b2bee5baa6e9809ae794a8e69fa5e8afa2e6b58be8af95efbc815445535431786161
+  \x74657374e697b6e997b4e7b2bee5baa6e9809ae794a8e69fa5e8afa2e6b58be8af95efbc815445535431786161
+  \x74657374e697b6e997b4e7b2bee5baa6e9809ae794a8e69fa5e8afa2e6b58be8af95efbc815445535431786161
+  \x
+  \x3074657374e697b6e997b4e7b2bee5baa6e9809ae794a8e69fa5e8afa2efbc81efbc81efbc81405445535431
+  \x2020202020
+  \x5c
+  \x5c
+  \x5c
+  \x5c
+  \x5c5c
+  \x5c5c
+  \x2020
+  \x74657374e697b6e997b4e7b2bee5baa6e9809ae794a8e69fa5e8afa2e6b58be8af95efbc815445535431786161
+  \x74657374e697b6e997b4e7b2bee5baa6e9809ae794a8e69fa5e8afa2e6b58be8af95efbc815445535431786161
+  \x74657374e697b6e997b4e7b2bee5baa6e9809ae794a8e69fa5e8afa2e6b58be8af95efbc815445535431786161
+  NULL
+(18 rows)
+> SELECT e17 FROM test_SELECT_col.t1 order by k_timestamp;
+                    e17
+--------------------------------------------
+  test时间精度通用查询测试！！！@TEST1
+  test时间精度通用查询测试！！！@TEST1
+  test时间精度通用查询测试！！！@TEST1
+  test时间精度通用查询测试！！！@TEST1
+
+  \0test时间精度通用查询！！！@TEST1\0\0\0
+
+  \
+  \
+  \\
+  \\
+  \\\\
+  \\\\
+
+  test时间精度通用查询测试！！！@TEST1
+  test时间精度通用查询测试！！！@TEST1
+  test时间精度通用查询测试！！！@TEST1
+  test时间精度通用查询测试！！！@TEST1
+(18 rows)
+> SELECT e18 FROM test_SELECT_col.t1 order by k_timestamp;
+                    e18
+--------------------------------------------
+  test时间精度通用查询测试！！！@TEST1
+  test时间精度通用查询测试！！！@TEST1
+  test时间精度通用查询测试！！！@TEST1
+  test时间精度通用查询测试！！！@TEST1
+
+  \0test时间精度通用查询！！！@TEST1\0\0\0
+
+  \
+  \
+  \\
+  \\
+  \\\\
+  \\\\
+
+  test时间精度通用查询测试！！！@TEST1
+  test时间精度通用查询测试！！！@TEST1
+  test时间精度通用查询测试！！！@TEST1
+  NULL
+(18 rows)
+> SELECT e19 FROM test_SELECT_col.t1 order by k_timestamp;
+  e19
+--------
+  \xaa
+  \xaa
+  \xaa
+  \xaa
+  \x
+  \x30
+  \x20
+  \x30
+  \x30
+  \x30
+  \x30
+  \x30
+  \x30
+  \x30
+  \xaa
+  \xaa
+  \xaa
+  \x62
+(18 rows)
+> SELECT e20 FROM test_SELECT_col.t1 order by k_timestamp;
+                                                e20
+----------------------------------------------------------------------------------------------------
+  \x74657374e697b6e997b4e7b2bee5baa6e9809ae794a8e69fa5e8afa2e6b58be8af95
+  \x74657374e697b6e997b4e7b2bee5baa6e9809ae794a8e69fa5e8afa2e6b58be8af95
+  \x74657374e697b6e997b4e7b2bee5baa6e9809ae794a8e69fa5e8afa2e6b58be8af95
+  \x74657374e697b6e997b4e7b2bee5baa6e9809ae794a8e69fa5e8afa2e6b58be8af95
+  \x
+  \x3074657374e697b6e997b4e7b2bee5baa6e9809ae794a8e69fa5e8afa2efbc81efbc81efbc81405445535431303030
+  \x2020202020
+  \x5c
+  \x5c
+  \x5c
+  \x5c
+  \x5c5c
+  \x5c5c
+  \x2020
+  \x74657374e697b6e997b4e7b2bee5baa6e9809ae794a8e69fa5e8afa2e6b58be8af95
+  \x74657374e697b6e997b4e7b2bee5baa6e9809ae794a8e69fa5e8afa2e6b58be8af95
+  \x74657374e697b6e997b4e7b2bee5baa6e9809ae794a8e69fa5e8afa2e6b58be8af95
+  NULL
+(18 rows)
+> SELECT e21 FROM test_SELECT_col.t1 order by k_timestamp;
+                                                  e21
+--------------------------------------------------------------------------------------------------------
+  \x74657374e697b6e997b4e7b2bee5baa6e9809ae794a8e69fa5e8afa2e6b58be8af95
+  \x74657374e697b6e997b4e7b2bee5baa6e9809ae794a8e69fa5e8afa2e6b58be8af95
+  \x74657374e697b6e997b4e7b2bee5baa6e9809ae794a8e69fa5e8afa2e6b58be8af95
+  \x74657374e697b6e997b4e7b2bee5baa6e9809ae794a8e69fa5e8afa2e6b58be8af95
+  \x
+  \x3074657374e697b6e997b4e7b2bee5baa6e9809ae794a8e69fa5e8afa2efbc81efbc81efbc81405445535431
+  \x2020202020
+  \x5c
+  \x5c
+  \x5c
+  \x5c
+  \x5c5c
+  \x5c5c
+  \x2020
+  \x74657374e697b6e997b4e7b2bee5baa6e9809ae794a8e69fa5e8afa2e6b58be8af95
+  \x74657374e697b6e997b4e7b2bee5baa6e9809ae794a8e69fa5e8afa2e6b58be8af95
+  \x74657374e697b6e997b4e7b2bee5baa6e9809ae794a8e69fa5e8afa2e6b58be8af95
+  \x74657374e697b6e997b4e7b2bee5baa6e9809ae794a8e69fa5e8afa2e6b58be8af95efbc81efbc81efbc81405445535431
+(18 rows)
+> SELECT e22 FROM test_SELECT_col.t1 order by k_timestamp;
+                                             e22
+----------------------------------------------------------------------------------------------
+  \x74657374e697b6e997b4e7b2bee5baa6e9809ae794a8e69fa5e8afa2e6b58be8af95
+  \x74657374e697b6e997b4e7b2bee5baa6e9809ae794a8e69fa5e8afa2e6b58be8af95
+  \x74657374e697b6e997b4e7b2bee5baa6e9809ae794a8e69fa5e8afa2e6b58be8af95
+  \x74657374e697b6e997b4e7b2bee5baa6e9809ae794a8e69fa5e8afa2e6b58be8af95
+  \x
+  \x3074657374e697b6e997b4e7b2bee5baa6e9809ae794a8e69fa5e8afa2efbc81efbc81efbc81405445535431
+  \x2020202020
+  \x5c
+  \x5c
+  \x5c
+  \x5c
+  \x5c5c
+  \x5c5c
+  \x2020
+  \x74657374e697b6e997b4e7b2bee5baa6e9809ae794a8e69fa5e8afa2e6b58be8af95
+  \x74657374e697b6e997b4e7b2bee5baa6e9809ae794a8e69fa5e8afa2e6b58be8af95
+  \x74657374e697b6e997b4e7b2bee5baa6e9809ae794a8e69fa5e8afa2e6b58be8af95
+  NULL
+(18 rows)

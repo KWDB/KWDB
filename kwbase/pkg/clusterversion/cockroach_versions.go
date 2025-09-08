@@ -76,6 +76,7 @@ const (
 	Version20_1
 	VersionMaterializedViews
 	VersionUDR
+	VersionTrigger
 
 	// Add new versions here (step one of two).
 )
@@ -485,6 +486,10 @@ var versionsSingleton = keyedVersions([]keyedVersion{
 	{
 		Key:     VersionUDR,
 		Version: roachpb.Version{Major: 20, Minor: 1, Unstable: 2},
+	},
+	{
+		Key:     VersionTrigger,
+		Version: roachpb.Version{Major: 20, Minor: 1, Unstable: 3},
 	},
 
 	// Add new versions here (step two of two).

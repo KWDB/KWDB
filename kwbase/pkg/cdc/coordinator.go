@@ -475,3 +475,24 @@ func (c *Coordinator) constructNormalTagStmt(
 
 	return tagQueryStmt
 }
+
+// HasTask checks whether the specified instance has task in CDC.
+// instanceType, the type of instance, such as Stream, Pipe, Publication, and Subscription.
+// tableID, the table id in the instance.
+// instanceID, the id of the instance.
+func (c *Coordinator) HasTask(
+	instanceType cdcpb.TSCDCInstanceType, tableID uint64, instanceID uint64,
+) bool {
+	tableGroup, ok := c.cdcTaskGroups[instanceType]
+	if !ok {
+		return false
+	}
+
+	pubGroup, ok := tableGroup[tableID]
+	if !ok {
+		return false
+	}
+
+	_, ok = pubGroup[instanceID]
+	return ok
+}

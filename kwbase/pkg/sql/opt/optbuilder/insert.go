@@ -204,7 +204,17 @@ func (b *Builder) buildInsert(ins *tree.Insert, inScope *scope) (outScope *scope
 	if tblTyp == tree.TemplateTable && !opt.CheckTsProperty(b.TSInfo.TSProp, TSPropInsertCreateTable) {
 		panic(pgerror.Newf(pgcode.FeatureNotSupported, "cannot insert into a TEMPLATE table, table name: %v", tab.Name()))
 	}
-	if b.insideProcDef {
+	if b.insideObjectDef.HasFlags(InsideTriggerDef) {
+		if tab.GetTableType() != tree.RelationalTable {
+			panic(pgerror.Newf(pgcode.InvalidCatalogName, "unsupported table type: %s in trigger", tree.TableTypeName(tab.GetTableType())))
+		}
+		if ins.Returning != nil {
+			if _, ok := ins.Returning.(*tree.ReturningExprs); ok {
+				panic(pgerror.Newf(pgcode.FeatureNotSupported, "RETURNING with values is not supported in triggers"))
+			}
+		}
+	}
+	if b.insideObjectDef.HasFlags(InsideProcedureDef) {
 		colOrds := make([]int, 0)
 		if ins.Columns != nil {
 			for i := range ins.Columns {
@@ -301,6 +311,9 @@ func (b *Builder) buildInsert(ins *tree.Insert, inScope *scope) (outScope *scope
 	}
 
 	if ins.OnConflict != nil {
+		if b.insideObjectDef.HasFlags(InsideTriggerDef) {
+			panic(pgerror.Newf(pgcode.FeatureNotSupported, "INSERT ... ON CONFLICT is not supported in trigger definition"))
+		}
 		// UPSERT and INDEX ON CONFLICT will read from the table to check for
 		// duplicates.
 		b.checkPrivilege(depName, tab, privilege.SELECT)
@@ -390,10 +403,10 @@ func (b *Builder) buildInsert(ins *tree.Insert, inScope *scope) (outScope *scope
 		case *tree.ReturningExprs:
 			returning = *t
 		case *tree.ReturningIntoClause:
-			if b.insideProcDef {
+			if b.insideObjectDef.HasAnyFlags(InsideProcedureDef | InsideTriggerDef) {
 				returning = t.SelectClause
 			} else {
-				panic(pgerror.Newf(pgcode.FeatureNotSupported, "returning into clause not in procedure is unsupported"))
+				panic(pgerror.Newf(pgcode.FeatureNotSupported, "returning into clause not in procedure/trigger is unsupported"))
 			}
 		}
 	}
@@ -923,6 +936,10 @@ func (mb *mutationBuilder) buildInsert(returning tree.ReturningExprs) {
 	mb.buildFKChecksForInsert()
 
 	private := mb.makeMutationPrivate(returning != nil)
+
+	// get triggers and buildProcCommand for trigger body.
+	private.TriggerCommands = mb.buildProcCommandForTriggers(tree.TriggerEventInsert)
+
 	mb.outScope.expr = mb.b.factory.ConstructInsert(mb.outScope.expr, mb.checks, private)
 
 	mb.buildReturning(returning)
@@ -1337,6 +1354,7 @@ func (mb *mutationBuilder) buildUpsert(returning tree.ReturningExprs) {
 	mb.buildFKChecksForUpsert()
 
 	private := mb.makeMutationPrivate(returning != nil)
+
 	mb.outScope.expr = mb.b.factory.ConstructUpsert(mb.outScope.expr, mb.checks, private)
 
 	mb.buildReturning(returning)

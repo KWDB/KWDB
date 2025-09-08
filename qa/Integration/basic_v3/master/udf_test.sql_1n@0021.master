@@ -1,0 +1,39 @@
+> CREATE FUNCTION test21(s1 char)
+    RETURNS char
+    LANGUAGE LUA
+BEGIN
+'function test21(s1)
+    s1 = "\\"
+    return s1, ""
+end'
+END;
+ERROR: The return statement in the function body of test21 can only contain one return value
+> CREATE FUNCTION test21(s1 int)
+    RETURNS char
+    LANGUAGE LUA
+BEGIN
+'function test21(s1)
+    if s1 == 1 then
+      return "",""
+    else
+      return "123"
+    end
+    return "123"
+end'
+END;
+ERROR: The return statement in the function body of test21 can only contain one return value
+> CREATE FUNCTION test21(s1 int)
+    RETURNS char
+    LANGUAGE LUA
+BEGIN
+'function test21(s1)
+    while i <= 5 do
+      i = i + 1
+      if i == 3 then
+         return "123",""
+      end
+    end
+    return "123"
+end'
+END;
+ERROR: The return statement in the function body of test21 can only contain one return value

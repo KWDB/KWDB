@@ -267,6 +267,7 @@ kwdb_internal       kwdb_procedures
 kwdb_internal       kwdb_retention
 kwdb_internal       kwdb_schedules
 kwdb_internal       kwdb_streams
+kwdb_internal       kwdb_triggers
 kwdb_internal       kwdb_tse_info
 kwdb_internal       leases
 kwdb_internal       node_build_info
@@ -287,6 +288,7 @@ kwdb_internal       session_variables
 kwdb_internal       table_columns
 kwdb_internal       table_indexes
 kwdb_internal       tables
+kwdb_internal       ts_inflight_transactions
 kwdb_internal       zones
 pg_catalog          pg_am
 pg_catalog          pg_attrdef
@@ -420,6 +422,7 @@ kwdb_procedures
 kwdb_retention
 kwdb_schedules
 kwdb_streams
+kwdb_triggers
 kwdb_tse_info
 leases
 node_build_info
@@ -440,6 +443,7 @@ session_variables
 table_columns
 table_indexes
 tables
+ts_inflight_transactions
 zones
 pg_am
 pg_attrdef
@@ -521,6 +525,7 @@ zones
 xyz
 views
 user_privileges
+ts_inflight_transactions
 tables
 tables
 table_privileges
@@ -580,6 +585,7 @@ system         kwdb_internal       kwdb_procedures                    SYSTEM VIE
 system         kwdb_internal       kwdb_retention                     SYSTEM VIEW  NO                  1        1283818853
 system         kwdb_internal       kwdb_schedules                     SYSTEM VIEW  NO                  1        1283818853
 system         kwdb_internal       kwdb_streams                       SYSTEM VIEW  NO                  1        1283818853
+system         kwdb_internal       kwdb_triggers                      SYSTEM VIEW  NO                  1        1283818853
 system         kwdb_internal       kwdb_tse_info                      SYSTEM VIEW  NO                  1        1283818853
 system         kwdb_internal       leases                             SYSTEM VIEW  NO                  1        1283818853
 system         kwdb_internal       node_build_info                    SYSTEM VIEW  NO                  1        1283818853
@@ -600,6 +606,7 @@ system         kwdb_internal       session_variables                  SYSTEM VIE
 system         kwdb_internal       table_columns                      SYSTEM VIEW  NO                  1        1283818853
 system         kwdb_internal       table_indexes                      SYSTEM VIEW  NO                  1        1283818853
 system         kwdb_internal       tables                             SYSTEM VIEW  NO                  1        1283818853
+system         kwdb_internal       ts_inflight_transactions           SYSTEM VIEW  NO                  1        1283818853
 system         kwdb_internal       zones                              SYSTEM VIEW  NO                  1        1283818853
 system         pg_catalog          pg_am                              SYSTEM VIEW  NO                  1        3758982608
 system         pg_catalog          pg_attrdef                         SYSTEM VIEW  NO                  1        3758982608
@@ -1816,6 +1823,7 @@ NULL     public   system         kwdb_internal       kwdb_procedures            
 NULL     public   system         kwdb_internal       kwdb_retention                     SELECT          NULL          YES
 NULL     public   system         kwdb_internal       kwdb_schedules                     SELECT          NULL          YES
 NULL     public   system         kwdb_internal       kwdb_streams                       SELECT          NULL          YES
+NULL     public   system         kwdb_internal       kwdb_triggers                      SELECT          NULL          YES
 NULL     public   system         kwdb_internal       kwdb_tse_info                      SELECT          NULL          YES
 NULL     public   system         kwdb_internal       leases                             SELECT          NULL          YES
 NULL     public   system         kwdb_internal       node_build_info                    SELECT          NULL          YES
@@ -1836,6 +1844,7 @@ NULL     public   system         kwdb_internal       session_variables          
 NULL     public   system         kwdb_internal       table_columns                      SELECT          NULL          YES
 NULL     public   system         kwdb_internal       table_indexes                      SELECT          NULL          YES
 NULL     public   system         kwdb_internal       tables                             SELECT          NULL          YES
+NULL     public   system         kwdb_internal       ts_inflight_transactions           SELECT          NULL          YES
 NULL     public   system         kwdb_internal       zones                              SELECT          NULL          YES
 NULL     public   system         pg_catalog          pg_am                              SELECT          NULL          YES
 NULL     public   system         pg_catalog          pg_attrdef                         SELECT          NULL          YES

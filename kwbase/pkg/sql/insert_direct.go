@@ -413,11 +413,7 @@ func parserString2Int(
 
 // BuildPayload is used to BuildPayloadForTsInsert
 func BuildPayload(
-	evalCtx *tree.EvalContext,
-	priTagRowIdx []int,
-	di *DirectInsert,
-	dit DirectInsertTable,
-	cfg *ExecutorConfig,
+	evalCtx *tree.EvalContext, priTagRowIdx []int, di *DirectInsert, dit DirectInsertTable,
 ) error {
 	payload, _, err := execbuilder.BuildPayloadForTsInsert(
 		evalCtx,
@@ -438,9 +434,6 @@ func BuildPayload(
 	primaryTagKey := sqlbase.MakeTsPrimaryTagKey(sqlbase.ID(dit.TabID), hashPoints)
 	BuildPerNodePayloads(di.PayloadNodeMap, []roachpb.NodeID{evalCtx.NodeID}, payload, priTagRowIdx, primaryTagKey, dit.HashNum)
 
-	di.PayloadNodeMap[int(evalCtx.NodeID)].CDCData = buildCDCDataForDirectInsert(
-		evalCtx, uint64(dit.TabID), dit.ColsDesc, di.InputValues, di.ColIndexs, cfg.CDCCoordinator)
-
 	return nil
 }
 
@@ -452,7 +445,6 @@ func BuildPreparePayload(
 	di *DirectInsert,
 	dit DirectInsertTable,
 	qargs [][]byte,
-	cfg *ExecutorConfig,
 ) error {
 	payload, _, err := execbuilder.BuildPreparePayloadForTsInsert(
 		evalCtx,
@@ -474,8 +466,7 @@ func BuildPreparePayload(
 	hashPoints := sqlbase.DecodeHashPointFromPayload(payload)
 	primaryTagKey := sqlbase.MakeTsPrimaryTagKey(sqlbase.ID(dit.TabID), hashPoints)
 	BuildPerNodePayloads(di.PayloadNodeMap, []roachpb.NodeID{1}, payload, priTagRowIdx, primaryTagKey, dit.HashNum)
-	di.PayloadNodeMap[int(evalCtx.NodeID)].CDCData = buildCDCDataForDirectInsert(
-		evalCtx, uint64(dit.TabID), dit.ColsDesc, di.InputValues, di.ColIndexs, cfg.CDCCoordinator)
+
 	return nil
 }
 
@@ -645,7 +636,21 @@ func BuildRowBytesForPrepareTsInsert(
 			arg := Args[argIdx]
 			argLen := len(arg)
 			switch col.Type.Oid() {
-			case oid.T_varchar, types.T_nvarchar, oid.T_varbytea:
+			case oid.T_varchar:
+				vardataOffset := varDataOffset - bitmapOffset
+				binary.LittleEndian.PutUint32(Payload[offset:], uint32(vardataOffset))
+
+				addSize := argLen + execbuilder.VarDataLenSize + 1 // \0
+				if varDataOffset+addSize > len(Payload) {
+					newPayload := make([]byte, len(Payload)+addSize)
+					copy(newPayload, Payload)
+					Payload = newPayload
+				}
+				binary.LittleEndian.PutUint16(Payload[varDataOffset:], uint16(argLen+1)) // \0
+				copy(Payload[varDataOffset+execbuilder.VarDataLenSize:], arg)
+				varDataOffset += addSize
+
+			case types.T_nvarchar, oid.T_varbytea:
 				vardataOffset := varDataOffset - bitmapOffset
 				binary.LittleEndian.PutUint32(Payload[offset:], uint32(vardataOffset))
 
@@ -723,47 +728,76 @@ func BuildRowBytesForPrepareTsInsert(
 
 		hashPoints := sqlbase.DecodeHashPointFromPayload(payload)
 		primaryTagKey := sqlbase.MakeTsPrimaryTagKey(table.ID, hashPoints)
+		if !evalCtx.StartSinglenode {
+			groupLen := len(priTagRowIdx)
+			groupBytes := make([][]byte, groupLen)
+			groupTimes := make([]int64, groupLen)
+			valueSize := int32(0)
+			minTs := rowTimestamps[priTagRowIdx[0]]
+			maxTs := minTs
 
-		groupLen := len(priTagRowIdx)
-		groupBytes := make([][]byte, groupLen)
-		groupTimes := make([]int64, groupLen)
-		valueSize := int32(0)
-		minTs := rowTimestamps[priTagRowIdx[0]]
-		maxTs := minTs
+			for i, idx := range priTagRowIdx {
+				groupBytes[i] = rowBytes[idx]
+				ts := rowTimestamps[idx]
+				groupTimes[i] = ts
+				valueSize += int32(len(groupBytes[i]))
 
-		for i, idx := range priTagRowIdx {
-			groupBytes[i] = rowBytes[idx]
-			ts := rowTimestamps[idx]
-			groupTimes[i] = ts
-			valueSize += int32(len(groupBytes[i]))
-
-			if ts < minTs {
-				minTs = ts
+				if ts < minTs {
+					minTs = ts
+				}
+				if ts > maxTs {
+					maxTs = ts
+				}
 			}
-			if ts > maxTs {
-				maxTs = ts
+
+			hashNum := Dit.HashNum
+			allPayloads = append(allPayloads, &sqlbase.SinglePayloadInfo{
+				Payload:       payload,
+				RowNum:        uint32(groupLen),
+				PrimaryTagKey: primaryTagKey,
+				RowBytes:      groupBytes,
+				RowTimestamps: groupTimes,
+				StartKey:      sqlbase.MakeTsRangeKey(table.ID, uint64(hashPoints[0]), minTs, hashNum),
+				EndKey:        sqlbase.MakeTsRangeKey(table.ID, uint64(hashPoints[0]), maxTs+1, hashNum),
+				ValueSize:     valueSize,
+				HashNum:       hashNum,
+			})
+		} else {
+			valueSize := int32(0)
+			rowNum := uint32(0)
+			for i := range priTagRowIdx {
+				valueSize += int32(len(rowBytes[i]))
+				rowNum++
 			}
+
+			payloadSize := int32(len(payload)) + valueSize + 4
+			payloadBytes := make([]byte, payloadSize)
+			copy(payloadBytes, payload)
+			offset := len(payload)
+			binary.LittleEndian.PutUint32(payloadBytes[offset:], uint32(valueSize))
+			offset += 4
+			for _, idx := range priTagRowIdx {
+				copy(payloadBytes[offset:], rowBytes[idx])
+				offset += len(rowBytes[idx])
+			}
+
+			binary.LittleEndian.PutUint32(payloadBytes[38:], uint32(rowNum))
+
+			hashNum := Dit.HashNum
+			allPayloads = append(allPayloads, &sqlbase.SinglePayloadInfo{
+				Payload:       payloadBytes,
+				RowNum:        uint32(len(priTagRowIdx)),
+				PrimaryTagKey: primaryTagKey,
+				HashNum:       hashNum,
+			})
 		}
-
-		hashNum := Dit.HashNum
-		allPayloads = append(allPayloads, &sqlbase.SinglePayloadInfo{
-			Payload:       payload,
-			RowNum:        uint32(groupLen),
-			PrimaryTagKey: primaryTagKey,
-			RowBytes:      groupBytes,
-			RowTimestamps: groupTimes,
-			StartKey:      sqlbase.MakeTsRangeKey(table.ID, uint64(hashPoints[0]), minTs, hashNum),
-			EndKey:        sqlbase.MakeTsRangeKey(table.ID, uint64(hashPoints[0]), maxTs+1, hashNum),
-			ValueSize:     valueSize,
-			HashNum:       hashNum,
-		})
 	}
 
 	di.PayloadNodeMap[int(evalCtx.NodeID)] = &sqlbase.PayloadForDistTSInsert{
 		NodeID:          nodeID,
 		PerNodePayloads: allPayloads,
 	}
-	di.PayloadNodeMap[int(evalCtx.NodeID)].CDCData = buildCDCDataForDirectInsert(
+	di.PayloadNodeMap[int(evalCtx.NodeID)].CDCData = BuildCDCDataForDirectInsert(
 		&evalCtx, uint64(table.ID), table.Columns, di.InputValues, di.ColIndexs, cfg.CDCCoordinator)
 	return nil
 }
@@ -1140,12 +1174,7 @@ func computeColumnSize(cols *[]*sqlbase.ColumnDescriptor) (int, int, error) {
 		case oid.T_int4, oid.T_float4:
 			colSize += 4
 		case oid.T_int8, oid.T_float8, oid.T_timestamp, oid.T_timestamptz:
-			if !col.IsTagCol() && i == 0 {
-				// The first timestamp column in the data column needs to reserve 16 bytes for LSN
-				colSize += sqlbase.FirstTsDataColSize
-			} else {
-				colSize += 8
-			}
+			colSize += 8
 		case oid.T_bool:
 			colSize++
 		case oid.T_char, types.T_nchar, oid.T_text, oid.T_bpchar, oid.T_bytea, types.T_geometry:
@@ -1666,49 +1695,77 @@ func GetPayloadMapForMuiltNode(
 		// Make primaryTag key.
 		hashPoints := sqlbase.DecodeHashPointFromPayload(payload)
 		primaryTagKey := sqlbase.MakeTsPrimaryTagKey(table.ID, hashPoints)
+		if !evalCtx.StartSinglenode {
+			rowCount := len(priTagRowIdx)
+			groupRowBytes := make([][]byte, rowCount)
+			groupRowTime := make([]int64, rowCount)
 
-		rowCount := len(priTagRowIdx)
-		groupRowBytes := make([][]byte, rowCount)
-		groupRowTime := make([]int64, rowCount)
+			minTs, maxTs := int64(math.MaxInt64), int64(math.MinInt64)
+			var valueSize int32
 
-		minTs, maxTs := int64(math.MaxInt64), int64(math.MinInt64)
-		var valueSize int32
+			for i, idx := range priTagRowIdx {
+				groupRowBytes[i] = rowBytes[idx]
+				ts := rowTimestamps[idx]
+				groupRowTime[i] = ts
 
-		for i, idx := range priTagRowIdx {
-			groupRowBytes[i] = rowBytes[idx]
-			ts := rowTimestamps[idx]
-			groupRowTime[i] = ts
-
-			if ts > maxTs {
-				maxTs = ts
+				if ts > maxTs {
+					maxTs = ts
+				}
+				if ts < minTs {
+					minTs = ts
+				}
+				valueSize += int32(len(groupRowBytes[i]))
 			}
-			if ts < minTs {
-				minTs = ts
-			}
-			valueSize += int32(len(groupRowBytes[i]))
-		}
 
-		hashPoint := uint64(hashPoints[0])
-		var startKey, endKey roachpb.Key
-		if di.PArgs.RowType == execbuilder.OnlyTag {
-			startKey = sqlbase.MakeTsHashPointKey(tabID, hashPoint, hashNum)
-			endKey = sqlbase.MakeTsRangeKey(tabID, hashPoint, math.MaxInt64, hashNum)
+			hashPoint := uint64(hashPoints[0])
+			var startKey, endKey roachpb.Key
+			if di.PArgs.RowType == execbuilder.OnlyTag {
+				startKey = sqlbase.MakeTsHashPointKey(tabID, hashPoint, hashNum)
+				endKey = sqlbase.MakeTsRangeKey(tabID, hashPoint, math.MaxInt64, hashNum)
+			} else {
+				startKey = sqlbase.MakeTsRangeKey(tabID, hashPoint, minTs, hashNum)
+				endKey = sqlbase.MakeTsRangeKey(tabID, hashPoint, maxTs+1, hashNum)
+			}
+
+			allPayloads = append(allPayloads, &sqlbase.SinglePayloadInfo{
+				Payload:       payload,
+				RowNum:        uint32(rowCount),
+				PrimaryTagKey: primaryTagKey,
+				RowBytes:      groupRowBytes,
+				RowTimestamps: groupRowTime,
+				StartKey:      startKey,
+				EndKey:        endKey,
+				ValueSize:     valueSize,
+				HashNum:       hashNum,
+			})
 		} else {
-			startKey = sqlbase.MakeTsRangeKey(tabID, hashPoint, minTs, hashNum)
-			endKey = sqlbase.MakeTsRangeKey(tabID, hashPoint, maxTs+1, hashNum)
-		}
+			valueSize := int32(0)
+			rowNum := uint32(0)
+			for _, idx := range priTagRowIdx {
+				valueSize += int32(len(rowBytes[idx]))
+				rowNum++
+			}
 
-		allPayloads = append(allPayloads, &sqlbase.SinglePayloadInfo{
-			Payload:       payload,
-			RowNum:        uint32(rowCount),
-			PrimaryTagKey: primaryTagKey,
-			RowBytes:      groupRowBytes,
-			RowTimestamps: groupRowTime,
-			StartKey:      startKey,
-			EndKey:        endKey,
-			ValueSize:     valueSize,
-			HashNum:       hashNum,
-		})
+			payloadSize := int32(len(payload)) + valueSize + 4
+			payloadBytes := make([]byte, payloadSize)
+			copy(payloadBytes, payload)
+			offset := len(payload)
+			binary.LittleEndian.PutUint32(payloadBytes[offset:], uint32(valueSize))
+			offset += 4
+			for _, idx := range priTagRowIdx {
+				copy(payloadBytes[offset:], rowBytes[idx])
+				offset += len(rowBytes[idx])
+			}
+
+			binary.LittleEndian.PutUint32(payloadBytes[38:], uint32(rowNum))
+
+			allPayloads = append(allPayloads, &sqlbase.SinglePayloadInfo{
+				Payload:       payloadBytes,
+				RowNum:        uint32(len(priTagRowIdx)),
+				PrimaryTagKey: primaryTagKey,
+				HashNum:       hashNum,
+			})
+		}
 	}
 
 	di.PayloadNodeMap = map[int]*sqlbase.PayloadForDistTSInsert{
@@ -1718,7 +1775,7 @@ func GetPayloadMapForMuiltNode(
 		},
 	}
 
-	di.PayloadNodeMap[int(evalCtx.NodeID)].CDCData = buildCDCDataForDirectInsert(
+	di.PayloadNodeMap[int(evalCtx.NodeID)].CDCData = BuildCDCDataForDirectInsert(
 		&evalCtx, uint64(tabID), table.Columns, inputValues, di.ColIndexs, cfg.CDCCoordinator)
 
 	return nil
@@ -2117,8 +2174,8 @@ func boolFormatBinary(Args [][]byte, idx int) error {
 	return pgerror.Newf(pgcode.Syntax, "unsupported binary bool: %x", Args[idx])
 }
 
-// buildCDCDataForDirectInsert builds DirectInsert data for cdc.
-func buildCDCDataForDirectInsert(
+// BuildCDCDataForDirectInsert builds DirectInsert data for cdc.
+func BuildCDCDataForDirectInsert(
 	evalCtx *tree.EvalContext,
 	tableID uint64,
 	columns []sqlbase.ColumnDescriptor,

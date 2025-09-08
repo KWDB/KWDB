@@ -190,7 +190,7 @@ KStatus convertValueType2Newblk(std::shared_ptr<MMapSegmentTable> segment_tbl, B
         // vartype cloumn to fixed-len column type
         for (k_uint32 i = 0; i < cur_block_item->publish_row_count; ++i) {
           std::shared_ptr<void> old_mem = segment_tbl->varColumnAddrByBlk(cur_block_item->block_id, i, col_id);
-          std::string v_value((char*) old_mem.get() + MMapStringColumn::kStringLenLen, KUint16(old_mem.get()));
+          std::string v_value((char*) old_mem.get() + kStringLenLen, KUint16(old_mem.get()));
           convertStrToFixed(v_value, (DATATYPE)new_type.type, value + i * new_type.size, KUint16(old_mem.get()), err_info);
         }
       }
@@ -256,9 +256,9 @@ KStatus ConvertToFixedLen(std::shared_ptr<MMapSegmentTable> segment_tbl, char* v
       std::shared_ptr<void> old_mem = segment_tbl->varColumnAddrByBlk(block_id, start_row + i - 1, col_idx);
       std::string v_value;
       if (old_type == DATATYPE::VARBINARY) {
-        v_value = std::string((char*) old_mem.get() + MMapStringColumn::kStringLenLen, KUint16(old_mem.get()));
+        v_value = std::string((char*) old_mem.get() + kStringLenLen, KUint16(old_mem.get()));
       } else {
-        v_value = std::string((char*) old_mem.get() + MMapStringColumn::kStringLenLen, KUint16(old_mem.get()) - 1);
+        v_value = std::string((char*) old_mem.get() + kStringLenLen, KUint16(old_mem.get()) - 1);
       }
       ErrorInfo err_info;
       if (convertStrToFixed(v_value, new_type, value + i * new_len, KUint16(old_mem.get()), err_info) < 0) {
@@ -287,21 +287,21 @@ std::shared_ptr<void> ConvertToVarLen(std::shared_ptr<MMapSegmentTable> segment_
     if (old_type == VARSTRING) {
       auto old_data = segment_tbl->varColumnAddrByBlk(block_id, row_idx, col_idx);
       auto old_len = KUint16(old_data.get()) - 1;
-      char* var_data = static_cast<char*>(std::malloc(old_len + MMapStringColumn::kStringLenLen));
-      memset(var_data, 0, old_len + MMapStringColumn::kStringLenLen);
+      char* var_data = static_cast<char*>(std::malloc(old_len + kStringLenLen));
+      memset(var_data, 0, old_len + kStringLenLen);
       KUint16(var_data) = old_len;
-      memcpy(var_data + MMapStringColumn::kStringLenLen,
-             (char*) old_data.get() + MMapStringColumn::kStringLenLen, old_len);
+      memcpy(var_data + kStringLenLen,
+             (char*) old_data.get() + kStringLenLen, old_len);
       std::shared_ptr<void> ptr(var_data, free);
       data = ptr;
     } else {
       auto old_data = segment_tbl->varColumnAddrByBlk(block_id, row_idx, col_idx);
       auto old_len = KUint16(old_data.get());
-      char* var_data = static_cast<char*>(std::malloc(old_len + MMapStringColumn::kStringLenLen + 1));
-      memset(var_data, 0, old_len + MMapStringColumn::kStringLenLen + 1);
+      char* var_data = static_cast<char*>(std::malloc(old_len + kStringLenLen + 1));
+      memset(var_data, 0, old_len + kStringLenLen + 1);
       KUint16(var_data) = old_len + 1;
-      memcpy(var_data + MMapStringColumn::kStringLenLen,
-             (char*) old_data.get() + MMapStringColumn::kStringLenLen, old_len);
+      memcpy(var_data + kStringLenLen,
+             (char*) old_data.get() + kStringLenLen, old_len);
       std::shared_ptr<void> ptr(var_data, free);
       data = ptr;
     }

@@ -134,7 +134,7 @@ int TagColumn::getColumnValue(size_t row,  void *data) const {
     size_t loc = *reinterpret_cast<size_t*>(rowAddrNoNullBitmap(row));
     char *rec_ptr = m_str_file_->getStringAddr(loc);
     uint16_t len = *reinterpret_cast<uint16_t*>(rec_ptr);
-    memcpy(data, rec_ptr + MMapStringColumn::kStringLenLen, len);
+    memcpy(data, rec_ptr + kStringLenLen, len);
   } else {
     memcpy(data, rowAddrNoNullBitmap(row), m_attr_.m_size);
   }
@@ -974,6 +974,40 @@ void MMapTagColumnTable::getEntityIdGroupId(TagTableRowID row, uint32_t& entity_
   return ;
 }
 
+void MMapTagColumnTable::getMaxEntityIdByVGroupId(uint32_t vgroup_id, uint32_t& entity_id) {
+  startRead();
+  uint32_t max_entity_id = 0;
+  for (int row = 1; row <= this->size(); row++) {
+    uint32_t group_id;
+    if (isValidRow(row)) {
+      char* rec_ptr = entityIdStoreAddr(row);
+      memcpy(&max_entity_id, rec_ptr, sizeof(uint32_t));
+      memcpy(&group_id, rec_ptr + sizeof(entity_id), sizeof(uint32_t));
+      if (group_id == vgroup_id && max_entity_id > entity_id) {
+        entity_id = max_entity_id;
+      }
+    }
+  }
+  stopRead();
+}
+
+void MMapTagColumnTable::getEntityIdListByVGroupId(uint32_t vgroup_id, std::vector<uint32_t>& entity_id_list) {
+  startRead();
+  uint32_t entity_id = 0;
+  for (int row = 1; row <= this->size(); row++) {
+    uint32_t group_id;
+    if (isValidRow(row)) {
+      char* rec_ptr = entityIdStoreAddr(row);
+      memcpy(&entity_id, rec_ptr, sizeof(uint32_t));
+      memcpy(&group_id, rec_ptr + sizeof(uint32_t), sizeof(uint32_t));
+      if (group_id == vgroup_id) {
+        entity_id_list.emplace_back(entity_id);
+      }
+    }
+  }
+  stopRead();
+}
+
 int MMapTagColumnTable::getEntityIdByRownum(size_t row, std::vector<kwdbts::EntityResultIndex>* entityIdList) {
   uint32_t entity_id;
   uint32_t subgroup_id;
@@ -981,11 +1015,15 @@ int MMapTagColumnTable::getEntityIdByRownum(size_t row, std::vector<kwdbts::Enti
   record_ptr = entityIdStoreAddr(row);
   memcpy(&entity_id, record_ptr, sizeof(uint32_t));
   memcpy(&subgroup_id, record_ptr + sizeof(entity_id), sizeof(uint32_t));
+  char* mem = static_cast<char *>(std::malloc(primaryTagSize()));
+  memcpy(mem, record_ptr + k_entity_group_id_size, primaryTagSize());
+  std::shared_ptr<void> mem_ptr(mem, free);
   // LOG_DEBUG("entityid: %u, groupid: %u", entity_id, subgroup_id);
   entityIdList->emplace_back(std::move(kwdbts::EntityResultIndex(m_meta_data_->m_entitygroup_id,
                                                                  entity_id,
                                                                  subgroup_id,
-                                                                 record_ptr + k_entity_group_id_size)));
+                                                                 mem_ptr,
+                                                                 primaryTagSize())));
   return 0;
 }
 
@@ -1005,11 +1043,15 @@ void MMapTagColumnTable::getHashedEntityIdByRownum(size_t row, uint32_t hps,
   record_ptr = entityIdStoreAddr(row);
   memcpy(&entity_id, record_ptr, sizeof(uint32_t));
   memcpy(&subgroup_id, record_ptr + sizeof(entity_id), sizeof(uint32_t));
+  char* mem = static_cast<char *>(std::malloc(primaryTagSize()));
+  memcpy(mem, record_ptr + k_entity_group_id_size, primaryTagSize());
+  std::shared_ptr<void> mem_ptr(mem, free);
   // LOG_DEBUG("entityid: %u, groupid: %u, hashid: %u", entity_id, subgroup_id, hps);
   entityIdList->emplace_back(std::move(kwdbts::EntityResultIndex{m_meta_data_->m_entitygroup_id,
                                                                  entity_id,
                                                                  subgroup_id, hps,
-                                                                 record_ptr + k_entity_group_id_size
+                                                                 mem_ptr,
+                                                                 primaryTagSize()
                                                                  }));
   return ;
 }
@@ -1037,6 +1079,8 @@ int MMapTagColumnTable::getColumnsByRownum(size_t row, const std::vector<uint32_
     }
     if (UNLIKELY(batch == nullptr)) {
       LOG_WARN("GetTagBatchRecord result is nullptr, skip this col[%u]", col_idx);
+      Batch* batch = new(std::nothrow) kwdbts::TagBatch(0, nullptr, 1);
+      res->push_back(idx, batch);
       continue;
     }
     res->push_back(idx, batch);
@@ -1070,6 +1114,8 @@ int MMapTagColumnTable::getColumnsFromAll(const std::vector<uint32_t>& src_scan_
         }
         if (UNLIKELY(batch == nullptr)) {
           LOG_WARN("GetTagBatchRecord result is nullptr, skip this col[%u]", col_idx);
+          Batch* batch = new(std::nothrow) kwdbts::TagBatch(0, nullptr, 1);
+          res->push_back(idx, batch);
           continue;
         }
         res->push_back(idx, batch);
@@ -1120,7 +1166,7 @@ kwdbts::Batch* MMapTagColumnTable::GetTagBatchRecordWithNoConvert(size_t start_r
   } else {
     // var tag data
     uint32_t var_total_len = std::max((m_cols_[col]->attributeInfo().m_length / 2 + 
-                                       MMapStringColumn::kStringLenLen) * data_count,
+                                       kStringLenLen) * data_count,
                                        k_default_block_size);
     var_data = reinterpret_cast<char*>(std::malloc(var_total_len));
     memset(var_data, 0x00, var_total_len);
@@ -1151,7 +1197,7 @@ kwdbts::Batch* MMapTagColumnTable::GetTagBatchRecordWithNoConvert(size_t start_r
         m_cols_[col]->varRdLock();
         char* var_data_ptr = m_cols_[col]->getVarValueAddrByOffset(var_start_offset);
         uint16_t var_len = *reinterpret_cast<uint16_t*>(var_data_ptr);
-        var_batch->writeDataIncludeLen(row_idx, var_data_ptr, var_len + MMapStringColumn::kStringLenLen);
+        var_batch->writeDataIncludeLen(row_idx, var_data_ptr, var_len + kStringLenLen);
         m_cols_[col]->varUnLock();
       }
     }  // end for
@@ -1226,9 +1272,9 @@ kwdbts::Batch* MMapTagColumnTable::convertToFixedLen(size_t start_row, size_t en
         char* var_data_ptr = m_cols_[col]->getVarValueAddrByOffset(var_offset);
         uint16_t var_len = *reinterpret_cast<uint16_t*>(var_data_ptr);
         if (old_data_type == DATATYPE::VARSTRING) {
-          var_len -= MMapStringColumn::kEndCharacterLen;
+          var_len -= kEndCharacterLen;
         }
-        var_data_ptr += MMapStringColumn::kStringLenLen;
+        var_data_ptr += kStringLenLen;
         if (convertStrToFixed(var_data_ptr, new_data_type, batch->getRowAddr(row_idx), var_len, err_info) < 0) {
           LOG_WARN("convert [%lu] value failed. %s", row, err_info.errmsg.c_str());
           err_info.errcode = 0;
@@ -1264,7 +1310,7 @@ kwdbts::Batch* MMapTagColumnTable::convertToVarLen(size_t start_row, size_t end_
 
   uint32_t row_count = end_row - start_row;
   uint32_t var_total_len = std::max((m_cols_[col]->attributeInfo().m_length / 2 + 
-                                       MMapStringColumn::kStringLenLen) * row_count,
+                                       kStringLenLen) * row_count,
                                        k_default_block_size);
   char* var_data = reinterpret_cast<char*>(std::malloc(var_total_len));
   memset(var_data, 0x00, var_total_len);
@@ -1290,7 +1336,7 @@ kwdbts::Batch* MMapTagColumnTable::convertToVarLen(size_t start_row, size_t end_
         err_info.errcode = 0;
         return nullptr;
       }
-      char dest_data[result_schema.m_length + MMapStringColumn::kStringLenLen + 1] = {0x00};
+      char dest_data[result_schema.m_length + kStringLenLen + 1] = {0x00};
       uint32_t row_idx = 0;
       int data_len = 0;
       char* rec_ptr = nullptr;
@@ -1335,7 +1381,7 @@ kwdbts::Batch* MMapTagColumnTable::convertToVarLen(size_t start_row, size_t end_
           m_cols_[col]->varRdLock();
           char* var_data_ptr = m_cols_[col]->getVarValueAddrByOffset(var_start_offset);
           uint16_t var_len = *reinterpret_cast<uint16_t*>(var_data_ptr);
-          var_batch->writeDataIncludeLen(row_idx, var_data_ptr, var_len + MMapStringColumn::kStringLenLen);
+          var_batch->writeDataIncludeLen(row_idx, var_data_ptr, var_len + kStringLenLen);
           m_cols_[col]->varUnLock();
         }
       }  // end for
@@ -1360,7 +1406,7 @@ kwdbts::Batch* MMapTagColumnTable::convertToVarLen(size_t start_row, size_t end_
         m_cols_[col]->varRdLock();
         char* var_data_ptr = m_cols_[col]->getVarValueAddrByOffset(var_start_offset);
         uint16_t var_len = *reinterpret_cast<uint16_t*>(var_data_ptr);
-        var_batch->writeDataIncludeLen(row_idx, var_data_ptr, var_len + MMapStringColumn::kStringLenLen);
+        var_batch->writeDataIncludeLen(row_idx, var_data_ptr, var_len + kStringLenLen);
         m_cols_[col]->varUnLock();
       }
     }  // end for

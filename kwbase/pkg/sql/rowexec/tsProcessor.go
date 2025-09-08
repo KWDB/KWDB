@@ -156,12 +156,10 @@ func (tp *tsProcessor) Start(ctx context.Context) context.Context {
 			}
 		}
 	case execinfrapb.OperatorType_TsVacuum:
-		errPrefix = "Vacuum TS Table Failed, reason:%s"
-		for _, table := range tp.dropMEInfo {
-			err = tp.FlowCtx.Cfg.GetTSEngine().VacuumTsTable(uint64(table.TableID), table.TsVersion)
-			if err != nil {
-				log.Errorf(context.Background(), "Vacuum TS Table Failed, tableID:%d, reason:%s \n", table.TableID, err.Error())
-			}
+		errPrefix = "Vacuum Failed, reason:%s"
+		err = tp.FlowCtx.Cfg.GetTSEngine().Vacuum()
+		if err != nil {
+			log.Errorf(context.Background(), "Vacuum Failed, reason:%s \n", err.Error())
 		}
 	case execinfrapb.OperatorType_TsCount:
 		errPrefix = "Count TS Table Failed, reason:%s"

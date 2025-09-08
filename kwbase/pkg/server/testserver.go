@@ -59,7 +59,6 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/storage"
 	"gitee.com/kwbasedb/kwbase/pkg/storage/enginepb"
 	"gitee.com/kwbasedb/kwbase/pkg/ts"
-	"gitee.com/kwbasedb/kwbase/pkg/tscoord"
 	"gitee.com/kwbasedb/kwbase/pkg/util"
 	"gitee.com/kwbasedb/kwbase/pkg/util/hlc"
 	"gitee.com/kwbasedb/kwbase/pkg/util/metric"
@@ -382,7 +381,7 @@ func (ts *TestServer) DB() *kv.DB {
 }
 
 // TseDB returns the client.DB instance used by the TestServer.
-func (ts *TestServer) TseDB() *tscoord.DB {
+func (ts *TestServer) TseDB() *kvcoord.DB {
 	if ts != nil {
 		return ts.tseDB
 	}

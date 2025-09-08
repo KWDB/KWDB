@@ -504,6 +504,15 @@ message CreateStatsProgress {
 
 }
 
+// TsTxnDetails are used for handling the ts txn record.
+message TsTxnDetails {
+
+}
+
+message TsTxnProgress {
+
+}
+
 // ScheduleJobDetails are used for the sql schedule job, which is triggered
 // when user create sql schedule and then we will create a job to execute sql
 // by schedule.
@@ -635,6 +644,7 @@ message Payload {
     SqlScheduleDetails sqlSchedule = 28;
     ReplicaRebanalceDetails replicaRebalance = 29;
     StreamDetails stream = 30;
+    TsTxnDetails tsTxn = 31;
   }
 }
 
@@ -662,6 +672,7 @@ message Progress {
     SqlScheduleProgress sqlSchedule = 22;
     ReplicaRebanalceProgress replicaRebalance = 23;
     StreamProgress stream = 24;
+    TsTxnProgress tsTxn = 25;
   }
 }
 
@@ -689,6 +700,7 @@ enum Type {
   SQL_SCHEDULE = 17 [(gogoproto.enumvalue_customname) = "TypeSqlSchedule"];
   REPLICA_REBALANCE = 18 [(gogoproto.enumvalue_customname) = "TypeReplicaRebanalce"];
   STREAM = 19 [(gogoproto.enumvalue_customname) = "TypeStream"];
+  TS_TXN = 20 [(gogoproto.enumvalue_customname) = "TypeTsTxn"];
 }
 
 message Job {

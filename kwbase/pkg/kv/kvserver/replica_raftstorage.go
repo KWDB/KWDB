@@ -1220,8 +1220,20 @@ func (r *Replica) applySnapshot(
 	r.mu.lastIndex = s.RaftAppliedIndex
 	r.mu.lastTerm = lastTerm
 	r.mu.raftLogSize = raftLogSize
+	// set tsFlushedIndex
 	if inSnap.IsTSSnapshot && tse.TsRaftLogCombineWAL.Get(&r.store.ClusterSettings().SV) {
-		r.mu.tsFlushedIndex = s.TruncatedState.Index
+		if r.mu.tsFlushedIndex < s.TruncatedState.Index {
+			r.mu.tsFlushedIndex = s.TruncatedState.Index
+			if err := r.mu.stateLoader.SetTsFlushedIndex(ctx, r.store.Engine(), s.TruncatedState.Index); err != nil {
+				return errors.Wrapf(err, "unable to write tsFlushedIndex to unreplicated SST writer")
+			}
+		}
+		// if it is learner, it should be added to nodeReplicas because it was not added when created.
+		if snapType == SnapshotRequest_LEARNER {
+			r.mu.Unlock()
+			AddReplicaOnNode(r)
+			r.mu.Lock()
+		}
 	}
 	// Update the store stats for the data in the snapshot.
 	r.store.metrics.subtractMVCCStats(*r.mu.state.Stats)

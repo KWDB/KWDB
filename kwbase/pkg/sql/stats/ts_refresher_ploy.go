@@ -359,8 +359,9 @@ func (r *Refresher) HandleTsTagStats(
 		collectSortHistogram = targetUnorderedRows > affected.unorderedAffected
 	}
 
-	targetEntitiesRows := int64(rowCount*AutomaticTsStatisticsFractionStaleRows.Get(&r.st.SV)) +
-		AutomaticTsStatisticsMinStaleRows.Get(&r.st.SV)
+	// Tag table uses a threshold based on the fraction of rows*1/2 and a minimum number of rows threshold*1/5
+	targetEntitiesRows := int64(rowCount*AutomaticStatisticsFractionStaleRows.Get(&r.st.SV))/2 +
+		AutomaticStatisticsMinStaleRows.Get(&r.st.SV)/5
 	if !mustRefresh && affected.entitiesAffected < math.MaxInt32 && (targetEntitiesRows > affected.entitiesAffected && !collectSortHistogram) {
 		// No refresh is happening this time.
 		return

@@ -3092,6 +3092,13 @@ func (dsp *DistSQLPlanner) createTSDDL(planCtx *PlanningCtx, n *tsDDLNode) (Phys
 			tsAlter.PartitionInterval = n.d.SNTable.TsTable.PartitionInterval
 			proc.Spec.Core = execinfrapb.ProcessorCoreUnion{TsAlter: tsAlter}
 			p.TsOperator = tsAlter.TsOperator
+		case alterKwdbAlterRetentions:
+			var tsAlter = &execinfrapb.TsAlterProSpec{}
+			tsAlter.TsOperator = execinfrapb.OperatorType_TsAlterRetentions
+			tsAlter.TsTableID = uint64(n.d.SNTable.ID)
+			tsAlter.Retentions = n.d.SNTable.TsTable.Lifetime
+			proc.Spec.Core = execinfrapb.ProcessorCoreUnion{TsAlter: tsAlter}
+			p.TsOperator = tsAlter.TsOperator
 		case alterCompressInterval:
 			var tsAlter = &execinfrapb.TsAlterProSpec{}
 			tsAlter.TsOperator = execinfrapb.OperatorType_TsAlterCompressInterval

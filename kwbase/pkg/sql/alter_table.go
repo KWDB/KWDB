@@ -1464,7 +1464,32 @@ func (n *alterTableNode) startExec(params runParams) error {
 			var downsampling []string
 			downsampling = append(downsampling, timeInputToString(t.TimeInput))
 			n.tableDesc.TsTable.Downsampling = downsampling
-			descriptorChanged = true
+			//descriptorChanged = true
+			// Create a Job to perform the second stage of ts DDL.
+			syncDetail := jobspb.SyncMetaCacheDetails{
+				Type:    alterKwdbAlterRetentions,
+				SNTable: n.tableDesc.TableDescriptor,
+			}
+			jobID, err := params.p.createTSSchemaChangeJob(params.ctx, syncDetail, tree.AsStringWithFQNames(n.n, params.Ann()), params.p.txn)
+			if err != nil {
+				return err
+			}
+			// Actively commit a transaction, and read/write system table operations
+			// need to be performed before this.
+			if err = params.p.txn.Commit(params.ctx); err != nil {
+				return err
+			}
+			// After the transaction commits successfully, execute the Job and wait for it to complete.
+			if err = params.p.ExecCfg().JobRegistry.Run(
+				params.ctx,
+				params.p.extendedEvalCtx.InternalExecutor.(*InternalExecutor),
+				[]int64{jobID},
+			); err != nil {
+				return err
+			}
+			log.Infof(params.ctx, "alter ts table %s 1st txn finished, id: %d, content: %s", n.n.Table.String(), n.tableDesc.ID, n.n.Cmds)
+
+			return nil
 
 		case *tree.AlterTableSetActivetime:
 			if n.tableDesc.TableType == tree.RelationalTable {

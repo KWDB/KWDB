@@ -63,6 +63,7 @@ const (
 	alterKwdbDropColumn
 	alterKwdbAlterColumnType
 	alterKwdbAlterPartitionInterval
+	alterKwdbAlterRetentions
 	compress
 	deleteExpiredData
 	alterCompressInterval
@@ -367,6 +368,14 @@ func (sw *TSSchemaChangeWorker) handleResult(
 				d.SNTable.TsTable.PartitionIntervalInput,
 				syncErr,
 			)
+		case alterKwdbAlterRetentions:
+			updateErr = p.handleAlterRetentions(
+				ctx,
+				d.SNTable.ID,
+				d.SNTable.TsTable.Lifetime,
+				d.SNTable.TsTable.Downsampling,
+				syncErr,
+			)
 		case alterKwdbSetTagValue:
 			// prepare instance table metadata being modified
 			insTable := sqlbase.InstNameSpace{
@@ -455,6 +464,26 @@ func (p *planner) handleAlterPartitionInterval(
 			if syncErr == nil {
 				tableDesc.TsTable.PartitionInterval = partitionInterval
 				tableDesc.TsTable.PartitionIntervalInput = input
+			}
+			return nil
+		},
+		func(txn *kv.Txn) error { return nil })
+	return updateDescErr
+}
+
+// handleAlterRetentions restore time-series table metadata is available,
+// and the time-series engine completes setting the Retentions.
+func (p *planner) handleAlterRetentions(
+	ctx context.Context, tableID sqlbase.ID, lifeTime uint64, downsampling []string, syncErr error,
+) error {
+	_, updateDescErr := p.ExecCfg().LeaseManager.Publish(
+		ctx,
+		tableID,
+		func(tableDesc *sqlbase.MutableTableDescriptor) error {
+			tableDesc.State = sqlbase.TableDescriptor_PUBLIC
+			if syncErr == nil {
+				tableDesc.TsTable.Lifetime = lifeTime
+				tableDesc.TsTable.Downsampling = downsampling
 			}
 			return nil
 		},
@@ -894,7 +923,7 @@ func (sw *TSSchemaChangeWorker) makeAndRunDistPlan(
 		txnID := strconv.AppendInt([]byte{}, *sw.job.ID(), 10)
 		miniTxn := tsTxn{txnID: txnID, txnEvent: txnStart}
 		newPlanNode = &tsDDLNode{d: d, nodeID: nodeList, tsTxn: miniTxn}
-	case alterKwdbAlterPartitionInterval:
+	case alterKwdbAlterPartitionInterval, alterKwdbAlterRetentions:
 		log.Infof(ctx, "%s job start, name: %s, id: %d, jobID: %d, current tsVersion: %d", opType, d.SNTable.Name, d.SNTable.ID, sw.job.ID(), int(d.SNTable.TsTable.TsVersion))
 		// Get all healthy nodes.
 		var nodeList []roachpb.NodeID
@@ -1003,14 +1032,8 @@ func (sw *TSSchemaChangeWorker) makeAndRunDistPlan(
 			allNodePayloadInfos: [][]*sqlbase.SinglePayloadInfo{payInfo},
 		}
 		newPlanNode = tsIns
-	case compress, deleteExpiredData, autonomy, vacuum, count:
+	case compress, deleteExpiredData, autonomy, count:
 		log.Infof(ctx, "%s job start, jobID: %d", opType, *sw.job.ID())
-		if d.Type == vacuum {
-			if !tsAutoVacuum.Get(&sw.execCfg.Settings.SV) {
-				log.Infof(ctx, "%s job skip, jobID: %d", opType, *sw.job.ID())
-				return nil
-			}
-		}
 		var desc []sqlbase.TableDescriptor
 		var allDesc []sqlbase.DescriptorProto
 		nodeList, err := api.GetHealthyNodeIDs(ctx)
@@ -1029,7 +1052,7 @@ func (sw *TSSchemaChangeWorker) makeAndRunDistPlan(
 		for _, table := range allDesc {
 			tableDesc, ok := table.(*sqlbase.TableDescriptor)
 			// can not compress table if table has mutations
-			if d.Type == compress || d.Type == vacuum {
+			if d.Type == compress {
 				if ok && tableDesc.IsTSTable() && tableDesc.State == sqlbase.TableDescriptor_PUBLIC && len(tableDesc.Mutations) == 0 {
 					desc = append(desc, *tableDesc)
 				}
@@ -1043,6 +1066,18 @@ func (sw *TSSchemaChangeWorker) makeAndRunDistPlan(
 			return nil
 		}
 		newPlanNode = &operateDataNode{d.Type, nodeList, desc}
+	case vacuum:
+		log.Infof(ctx, "%s job start, jobID: %d", opType, *sw.job.ID())
+		if !tsAutoVacuum.Get(&sw.execCfg.Settings.SV) {
+			log.Infof(ctx, "%s job skip, jobID: %d", opType, *sw.job.ID())
+			return nil
+		}
+		nodeList, err := api.GetHealthyNodeIDs(ctx)
+		if err != nil {
+			return err
+		}
+		newPlanNode = &operateDataNode{d.Type, nodeList, nil}
+
 	default:
 		return pgerror.Newf(pgcode.FeatureNotSupported, "unsupported feature for now: %s", opType)
 	}
@@ -1203,6 +1238,8 @@ func getDDLOpType(op int32) string {
 		return "alter column type"
 	case alterKwdbAlterPartitionInterval:
 		return "alter partition interval"
+	case alterKwdbAlterRetentions:
+		return "alter retentions"
 	case compress:
 		return "compress"
 	case compressAll:
@@ -1390,6 +1427,13 @@ func (sw *TSSchemaChangeWorker) handleMutationForTSTable(
 				if !isSucceeded {
 					if err := tableDesc.AddIndex(*mutableIdx, false); err != nil {
 						return err
+					}
+				} else {
+					for j, idxEntry := range tableDesc.Indexes {
+						if idxEntry.ID == mutableIdx.ID {
+							tableDesc.Indexes = append(tableDesc.Indexes[:j], tableDesc.Indexes[j+1:]...)
+							break
+						}
 					}
 				}
 				tableDesc.MaybeIncrementTSVersion(ctx, isSucceeded)

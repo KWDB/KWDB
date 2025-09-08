@@ -88,12 +88,12 @@ size_t MMapStringColumn::push_back(const void *str, int len) {
     return -1;
   }
   size_t loc = size();
-  if (incSize_(len + MMapStringColumn::kStringLenLen + 1) == 0) {
+  if (incSize_(len + kStringLenLen) == 0) {
     unsigned char *vsp = reinterpret_cast<unsigned char *>(offsetAddr(str_file_.memAddr(), loc));
-    size() += mmap_strlcpy(reinterpret_cast<char*>((intptr_t) vsp + MMapStringColumn::kStringLenLen),
+    size() += mmap_strlcpy(reinterpret_cast<char*>((intptr_t) vsp + kStringLenLen),
                            reinterpret_cast<const char*>(str), len);
-    size() += MMapStringColumn::kStringLenLen + 1;  // 1: char end character.
-    *(reinterpret_cast<uint16_t *>(vsp)) = len + 1;
+    size() += kStringLenLen + 1;  // 1: char end character.
+    *(reinterpret_cast<uint16_t *>(vsp)) = len;
   } else {
     loc = static_cast<size_t>(-1);
   }
@@ -108,10 +108,10 @@ size_t MMapStringColumn::push_back_binary(const void *data, int len) {
     return -1;
   }
   size_t loc = size();
-  if (incSize_(len + MMapStringColumn::kStringLenLen) == 0) {
+  if (incSize_(len + kStringLenLen) == 0) {
     unsigned char *vsp = (unsigned char *)offsetAddr(str_file_.memAddr(), loc);
-    memcpy(vsp + MMapStringColumn::kStringLenLen, data, len);
-    size() += len + MMapStringColumn::kStringLenLen;
+    memcpy(vsp + kStringLenLen, data, len);
+    size() += len + kStringLenLen;
     *(reinterpret_cast<uint16_t *>(vsp)) = len;
   } else {
     loc = static_cast<size_t>(-1);
@@ -188,11 +188,11 @@ size_t MMapStringColumn::stringToAddr(const string &str) {
   }
   size_t loc = size();
   size_t len = str.size();
-  if (incSize_(len + MMapStringColumn::kStringLenLen) == 0) {
+  if (incSize_(len + kStringLenLen) == 0) {
     unsigned char *vsp = (unsigned char *)offsetAddr(str_file_.memAddr(), loc);
-    memcpy(reinterpret_cast<char *>((intptr_t)vsp + MMapStringColumn::kStringLenLen), str.c_str(), len);
+    memcpy(reinterpret_cast<char *>((intptr_t)vsp + kStringLenLen), str.c_str(), len);
     *(reinterpret_cast<uint32_t *>(vsp)) = len;
-    size() += len + MMapStringColumn::kStringLenLen + 1;
+    size() += len + kStringLenLen + 1;
   } else {
     loc = static_cast<size_t>(-1);
   }
@@ -214,20 +214,20 @@ int MMapStringColumn::trim(size_t loc) {
 int MMapStringColumn::push_back_nolock(const void *str, int len) {
   MUTEX_LOCK(m_strfile_mutex_);
   size_t start_offset = size();
-  int err_code = incSize_(len + MMapStringColumn::kStringLenLen + 1);
+  int err_code = incSize_(len + kStringLenLen);
   if (err_code < 0) {
     MUTEX_UNLOCK(m_strfile_mutex_);
     return -1;
   }
-  size() = start_offset + len + MMapStringColumn::kStringLenLen + 1;
+  size() = start_offset + len + kStringLenLen;
   MUTEX_UNLOCK(m_strfile_mutex_);
   rdLock();
   unsigned char *vsp = reinterpret_cast<unsigned char *>(offsetAddr(str_file_.memAddr(), start_offset));
   if (len > 0) {
-    memcpy(reinterpret_cast<char *>((intptr_t) vsp + MMapStringColumn::kStringLenLen),
+    memcpy(reinterpret_cast<char *>((intptr_t) vsp + kStringLenLen),
            reinterpret_cast<const char *>(str), len);
   }
-  *(reinterpret_cast<uint16_t *>(vsp)) = len + 1;
+  *(reinterpret_cast<uint16_t *>(vsp)) = len;
   unLock();
   return start_offset;
 }

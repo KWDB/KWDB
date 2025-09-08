@@ -12,13 +12,6 @@
 #include <lg_api.h>
 #include <dirent.h>
 #include <map>
-#if defined(__GNUC__) && (__GNUC__ < 8)
-  #include <experimental/filesystem>
-  namespace fs = std::experimental::filesystem;
-#else
-  #include <filesystem>
-  namespace fs = std::filesystem;
-#endif
 #include "st_subgroup.h"
 #include "st_config.h"
 #include "sys_utils.h"

@@ -72,7 +72,7 @@ func (n *alterStreamNode) startExec(params runParams) (err error) {
 	var job *jobs.Job
 	var currentStatus jobs.Status
 	if n.jobID != 0 {
-		job, _ = params.p.execCfg.JobRegistry.LoadJob(params.ctx, n.jobID)
+		job, _ = params.p.execCfg.JobRegistry.LoadJobWithTxn(params.ctx, n.jobID, params.p.txn)
 	}
 
 	if job != nil {
@@ -145,23 +145,36 @@ func (n *alterStreamNode) startExec(params runParams) (err error) {
 
 	// alter status 'on' to 'off'
 	if parameters.Options.Enable == sqlutil.StreamOptOff {
-		params.ExecCfg().CDCCoordinator.StopCDCByLocal(
-			n.StreamMetadata.sourceTableID, n.StreamMetadata.id, cdcpb.TSCDCInstanceType_Stream,
-		)
 		if job == nil {
 			return nil
 		}
-		if job.CheckTerminalStatus(params.ctx) {
-			return nil
-		}
+
+		// Close the job by closing the CDC
+		params.ExecCfg().CDCCoordinator.StopCDCByLocal(
+			n.StreamMetadata.sourceTableID, n.StreamMetadata.id, cdcpb.TSCDCInstanceType_Stream,
+		)
+		waitCDCStatusChanged(params.ctx,
+			params.p.ExecCfg().CDCCoordinator,
+			parameters.SourceTableID,
+			n.StreamMetadata.id,
+			cdcpb.TSCDCInstanceType_Stream,
+			false)
 
 		// stop the running stream job
-		if !job.CheckTerminalStatus(params.ctx) {
-			err = params.p.execCfg.JobRegistry.CancelRequested(params.ctx, params.p.txn, *job.ID())
-			if err != nil {
-				return err
-			}
-		} else {
+		status, err := job.CurrentStatus(params.ctx)
+		if err != nil {
+			return err
+		}
+
+		// After CDC is closed, the job status is usually StatusFailed,
+		// and if the job status is not StatusFailed, CancelRequested is used to close it,
+		// which usually takes 30 seconds.
+		switch status {
+		case jobs.StatusFailed, jobs.StatusSucceeded, jobs.StatusCanceled:
+			return nil
+		case jobs.StatusRunning, jobs.StatusPending:
+			return params.p.execCfg.JobRegistry.CancelRequested(params.ctx, params.p.txn, *job.ID())
+		default:
 			return errors.Errorf("stream %q is stopping, current status is %s.", n.name, currentStatus)
 		}
 	}

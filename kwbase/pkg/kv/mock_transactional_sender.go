@@ -113,6 +113,11 @@ func (m *MockTransactionalSender) TxnStatus() roachpb.TransactionStatus {
 	return m.txn.Status
 }
 
+// Transaction is part of the TxnSender interface.
+func (m *MockTransactionalSender) Transaction() roachpb.Transaction {
+	return m.txn
+}
+
 // SetUserPriority is part of the TxnSender interface.
 func (m *MockTransactionalSender) SetUserPriority(pri roachpb.UserPriority) error {
 	m.txn.Priority = roachpb.MakePriority(pri)
@@ -230,7 +235,7 @@ func (m *MockTransactionalSender) PrepareRetryableError(ctx context.Context, msg
 }
 
 // Step is part of the TxnSender interface.
-func (m *MockTransactionalSender) Step(_ context.Context) error {
+func (m *MockTransactionalSender) Step(_ context.Context, _ bool) error {
 	// At least one test (e.g sql/TestPortalsDestroyedOnTxnFinish) requires
 	// the ability to run simple statements that do not access storage,
 	// and that requires a non-panicky Step().

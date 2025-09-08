@@ -27,7 +27,7 @@ void WindowHelper::MaterializeRow(KWThdContext *thd, DataChunk *chunk,
       continue;
     }
     // dispose null
-    if (field->is_nullable()) {
+    if (field->CheckNull()) {
       chunk->SetNull(count, col);
       continue;
     }

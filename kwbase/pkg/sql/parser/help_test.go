@@ -464,6 +464,10 @@ func TestContextualHelp(t *testing.T) {
 		{`CREATE PROCEDURE blah ??`, `CREATE PROCEDURE`},
 		{`DROP PROCEDURE blah ??`, `DROP PROCEDURE`},
 		{`SHOW PROCEDURES ??`, `SHOW PROCEDURES`},
+		{`ALTER TRIGGER blah ??`, `ALTER TRIGGER`},
+		{`CREATE TRIGGER blah ??`, `CREATE TRIGGER`},
+		{`DROP TRIGGER blah ??`, `DROP TRIGGER`},
+		{`SHOW TRIGGERS ??`, `SHOW TRIGGERS`},
 	}
 
 	// The following checks that the test definition above exercises all

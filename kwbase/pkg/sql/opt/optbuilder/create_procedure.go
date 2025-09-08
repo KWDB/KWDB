@@ -22,12 +22,12 @@ import (
 
 func (b *Builder) buildCreateProcedure(cv *tree.CreateProcedure, inScope *scope) (outScope *scope) {
 	b.DisableMemoReuse = true
-	b.insideProcDef = true
+	b.insideObjectDef.SetFlags(InsideProcedureDef)
 	b.trackViewDeps = true
 	b.qualifyDataSourceNamesInAST = true
 
 	defer func() {
-		b.insideProcDef = false
+		b.insideObjectDef.ClearFlags(InsideProcedureDef)
 		b.trackViewDeps = false
 		b.viewDeps = nil
 		b.qualifyDataSourceNamesInAST = false

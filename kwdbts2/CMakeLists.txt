@@ -210,7 +210,7 @@ ExternalProject_Add(
         ${CMAKE_COMMAND} -E copy_directory "${BRPC_SOURCE_DIR}" "${BRPC_BUILD_DIR}"
         COMMAND cd "${BRPC_BUILD_DIR}" && sh ./config_brpc.sh --headers=/usr/include "--libs=/usr/lib /usr/lib64"
     BUILD_COMMAND
-        cd "${BRPC_BUILD_DIR}" && make -j${DEDUCTED_PARALLEL_DEGREE}
+        cd "${BRPC_BUILD_DIR}" && $(MAKE) -j${DEDUCTED_PARALLEL_DEGREE}
     BUILD_IN_SOURCE 0
     INSTALL_COMMAND
         ${CMAKE_COMMAND} -E make_directory "${BRPC_OUTPUT_DIR}/include"
@@ -224,6 +224,81 @@ set(KWDBTS2_SERVER_LIB kwdbts2)
 
 set(LIBRARY_OUTPUT_PATH ${CMAKE_BINARY_DIR}/lib)
 
+function(generate_proto protofile)
+  message(STATUS "protofile:${protofile}")
+  get_filename_component(protofolder ${protofile} PATH)
+  get_filename_component(protoname ${protofile} NAME_WLE)
+  message(STATUS "protoname:${protoname}")
+  if (EXISTS "${protofolder}/${protoname}.pb.cc")
+      message("${protoname}.pb.cc is exists")
+      message("mkdir -p ${CMAKE_BINARY_DIR}/tmp")
+      message("cp -arf ${protofile} ${CMAKE_BINARY_DIR}/tmp/${protoname}.proto")
+      message("${PROTOBUF_C} ${CMAKE_BINARY_DIR}/tmp/${protoname}.proto --cpp_out=${CMAKE_BINARY_DIR}/tmp -I ${CMAKE_BINARY_DIR}/tmp -I ${protofolder}")
+      EXECUTE_PROCESS(
+          COMMAND mkdir -p ${CMAKE_BINARY_DIR}/tmp
+          COMMAND cp -arf ${protofile} ${CMAKE_BINARY_DIR}/tmp/
+          COMMAND ${PROTOBUF_C} ${CMAKE_BINARY_DIR}/tmp/${protoname}.proto --cpp_out=${CMAKE_BINARY_DIR}/tmp -I ${CMAKE_BINARY_DIR}/tmp -I ${protofolder}
+      )
+      message("check diff file ${CMAKE_BINARY_DIR}/tmp/${protoname}.pb.cc ${protofolder}/${protoname}.pb.cc")
+      EXECUTE_PROCESS(
+	      COMMAND diff ${CMAKE_BINARY_DIR}/tmp/${protoname}.pb.cc ${protofolder}/${protoname}.pb.cc
+	      COMMAND diff ${CMAKE_BINARY_DIR}/tmp/${protoname}.pb.h ${protofolder}/${protoname}.pb.h
+	      RESULT_VARIABLE changed
+	      OUTPUT_QUIET
+	      )
+      if ( ${changed} EQUAL 1)
+	      message(STATUS "${protofile} has changed")
+        EXECUTE_PROCESS(
+            COMMAND ${PROTOBUF_C} ${protofile} --cpp_out=${protofolder} -I ${protofolder}
+        )
+      else()
+	      message(STATUS "${protofile} has nothing to be done")
+      endif()
+      EXECUTE_PROCESS(
+         COMMAND rm -rf ${CMAKE_BINARY_DIR}/tmp
+      )
+  else()
+      message("${protoname}.pb.cc does not exist")
+      EXECUTE_PROCESS(
+          COMMAND ${PROTOBUF_C} ${protofile} --cpp_out=${protofolder} -I ${protofolder}
+      )
+  endif()
+endfunction(generate_proto)
+
+# Generate C++ files from proto files
+file(GLOB_RECURSE NART_PROTOS_EE
+  ../common/src/roachpb/ee_pb_plan.proto)
+file(GLOB_RECURSE NART_PROTOS_META
+  ../common/src/roachpb/me_metadata.proto)
+file(GLOB_RECURSE NART_PROTOS_BR
+  ../common/src/roachpb/br_internal_service.proto)
+generate_proto(${NART_PROTOS_META})
+generate_proto(${NART_PROTOS_EE})
+generate_proto(${NART_PROTOS_BR})
+
+# Build third-party libraries
+set(THIRD_PARTY_DIR ${CMAKE_CURRENT_BINARY_DIR}/third_party)
+
+# Snappy
+set(SNAPPY_INSTALL_DIR ${THIRD_PARTY_DIR}/snappy_install)
+set(SNAPPY_CMAKE_ARGS
+  -DCMAKE_INSTALL_PREFIX=${SNAPPY_INSTALL_DIR}
+  -DCMAKE_INSTALL_LIBDIR=lib
+  -DCMAKE_CXX_STANDARD=17
+  -DSNAPPY_BUILD_TESTS=OFF
+  -DCMAKE_POSITION_INDEPENDENT_CODE=ON
+  -DCMAKE_BUILD_TYPE=Release
+)
+
+ExternalProject_Add(
+  snappy
+  PREFIX ${THIRD_PARTY_DIR}/snappy_build
+  SOURCE_DIR ${CMAKE_CURRENT_LIST_DIR}/../kwbase/c-deps/snappy
+  CMAKE_ARGS ${SNAPPY_CMAKE_ARGS}
+)
+set(SNAPPY_INCLUDE ${SNAPPY_INSTALL_DIR}/include)
+set(SNAPPY_LIB ${SNAPPY_INSTALL_DIR}/lib/libsnappy.a)
+
 # include file of kwdbts2
 set(TS_INCLUDE
         ../common/src/h
@@ -234,11 +309,13 @@ set(TS_INCLUDE
         ${BRPC_OUTPUT_DIR}/include
         include
         engine/include
+        ts_engine/include
         common/include
         storage/include
         mmap/include
         exec/include
         statistic/include
+        ${SNAPPY_INCLUDE}
         brpc/include
         )
 if (NOT KWBASE_OSS)
@@ -251,6 +328,7 @@ file(GLOB_RECURSE KWDBTS2_SERVER_LIB_SRC
         exec/src/*.cpp
         storage/src/*.cpp
         engine/*.cpp
+        ts_engine/*.cpp
         mmap/src/*.cpp
         mmap/src/lib/*.c
         statistic/src/*.cpp
@@ -262,6 +340,7 @@ else ()
             exec/src/*.cpp
             storage/src/*.cpp
             engine/*.cpp
+            ts_engine/*.cpp
             mmap/src/*.cpp
             mmap/src/lib/*.c
             statistic/src/*.cpp
@@ -277,6 +356,10 @@ if (ENABLE_COVERAGE)
 endif()
 # Add the server module source files to the dynamic library
 add_library(${KWDBTS2_SERVER_LIB} SHARED ${KWDBTS2_SERVER_LIB_SRC})
+add_dependencies(${KWDBTS2_SERVER_LIB} snappy)
+target_link_libraries(${KWDBTS2_SERVER_LIB}
+  PRIVATE ${SNAPPY_LIB}
+)
 
 # Set brpc library dependency
 add_dependencies(${KWDBTS2_SERVER_LIB} brpc)
@@ -290,6 +373,31 @@ target_include_directories(${KWDBTS2_SERVER_LIB} PRIVATE
     ${BRPC_OUTPUT_DIR}/include
 	)
 
+set_target_properties(${KWDBTS2_SERVER_LIB} PROPERTIES
+  COMPILE_FLAGS " -fno-plt"
+  POSITION_INDEPENDENT_CODE ON
+)
+
+include(CheckCXXCompilerFlag)
+set(STV3_CXX_BASIC_FLAGS "-Werror -Wfatal-errors -Wall -Wextra -Wno-sign-compare -Wno-unused-parameter -Wno-unused-variable -Wno-strict-aliasing")
+set(STV3_CXX_EXTRA_FLAGS "-Wno-overloaded-virtual -Wnon-virtual-dtor -Winit-self -Wuninitialized -Wno-return-local-addr -Wpointer-arith")
+
+
+CHECK_CXX_COMPILER_FLAG(${STV3_CXX_BASIC_FLAGS} CXX_BASIC_WARNING_FLAGS)
+if(CXX_BASIC_WARNING_FLAGS)
+    set(STV3_CXX_FLAGS ${STV3_CXX_BASIC_FLAGS})
+endif()
+
+CHECK_CXX_COMPILER_FLAG(${STV3_CXX_EXTRA_FLAGS} CXX_EXTRA_WARNING_FLAGS)
+if(CXX_EXTRA_WARNING_FLAGS)
+    set(STV3_CXX_FLAGS "${STV3_CXX_FLAGS} ${STV3_CXX_EXTRA_FLAGS}")
+endif()
+
+file(GLOB_RECURSE STV3_SRC ts_engine/*cpp)
+set_source_files_properties(${STV3_SRC} PROPERTIES
+ COMPILE_FLAGS "${STV3_CXX_FLAGS}"
+)
+
 # Compile and generate test case executables
 if (WITH_TESTS)
   set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/tests)
@@ -300,9 +408,10 @@ if (WITH_TESTS)
   if (KWBASE_OSS)
       file(GLOB_RECURSE KWDBTS2_SERVER_TEST_SRC
               mmap/tests/*.cpp
-              storage/tests/*.cpp
+              #storage/tests/*.cpp
               exec/tests/*.cpp
-              engine/tests/*.cpp
+              #engine/tests/*.cpp
+              ts_engine/tests/*.cpp
               statistic/tests/*.cpp
               brpc/tests/*.cpp
               )
@@ -312,6 +421,7 @@ if (WITH_TESTS)
               storage/tests/*.cpp
               exec/tests/*.cpp
               engine/tests/*.cpp
+              ts_engine/tests/*.cpp
               statistic/tests/*.cpp
               icl/autonomy/tests/*.cpp
               brpc/tests/*.cpp
@@ -349,7 +459,7 @@ if (WITH_TESTS)
                 )
     endif()
     #end make test[i]
-    add_test(NAME ${tname} 
+    add_test(NAME ${tname}
       COMMAND ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${tname}.dir/${tname}
       WORKING_DIRECTORY ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${tname}.dir)
     add_dependencies(check ${tname})
@@ -360,7 +470,6 @@ endif ()
 if (CMAKE_COMPILER_IS_GNUCC AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS 9.1)
         target_link_libraries(${KWDBTS2_SERVER_LIB} PRIVATE stdc++fs)
 endif ()
-
 INSTALL(TARGETS ${KWDBTS2_SERVER_LIB}
         DESTINATION ${CMAKE_INSTALL_PREFIX}/lib)
 

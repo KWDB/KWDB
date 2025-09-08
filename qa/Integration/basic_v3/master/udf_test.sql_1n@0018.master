@@ -1,0 +1,16 @@
+> CREATE FUNCTION t1(a int)
+    RETURNs int
+    LANGUAGE LUA
+BEGIN
+'function t1(a)
+    local c = a * 100000000
+    return c
+end'
+END;
+ERROR: function named 't1' already exists. Please choose a different name
+SQLSTATE: 42710
+> select t1(1,2);
+ERROR: unknown signature: t1(INT8, INT8)
+SQLSTATE: 42883
+> drop function t1;
+DROP FUNCTION

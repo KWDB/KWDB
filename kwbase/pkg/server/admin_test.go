@@ -1427,8 +1427,8 @@ func TestAdminAPIJobs(t *testing.T) {
 	}{
 		{"jobs", append([]int64{5, 4, 3, 2, 1}, existingIDs...), []int64{5}},
 		{"jobs?limit=1", []int64{5}, []int64{5}},
-		{"jobs?status=running", []int64{4, 2, 1}, []int64{}},
-		{"jobs?status=succeeded", append([]int64{5, 3}, existingIDs...), []int64{5}},
+		{"jobs?status=running", append([]int64{4, 2, 1}, existingIDs[1]), []int64{}},
+		{"jobs?status=succeeded", append([]int64{5, 3}, existingIDs[0]), []int64{5}},
 		{"jobs?status=pending", []int64{}, []int64{}},
 		{"jobs?status=garbage", []int64{}, []int64{}},
 		{fmt.Sprintf("jobs?type=%d", jobspb.TypeBackup), []int64{5, 3, 2}, []int64{5}},

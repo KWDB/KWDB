@@ -72,10 +72,12 @@ func (b *Builder) constructProject(input memo.RelExpr, cols []scopeColumn) memo.
 
 // constructProjectInAggExtend needs to passthrough the cols which can apply extend.
 // eg: group :  max_extend(e3,e1),max(e3)
-//       |
-//     render :  e1,e3
-//       |
-//     tsscan :  ts,e1,e2,e3,...
+//
+//	  |
+//	render :  e1,e3
+//	  |
+//	tsscan :  ts,e1,e2,e3,...
+//
 // input always is TSSanExpr, cols are the cols need to project or passthrough, set
 // is the col ids which can apply extend.
 func (b *Builder) constructProjectInAggExtend(
@@ -267,7 +269,7 @@ func (b *Builder) analyzeSelectList(
 					}
 
 					aliases, exprs := b.expandStar(e.Expr, inScope, false)
-					if b.insideViewDef || b.insideProcDef {
+					if b.insideObjectDef.HasAnyFlags(InsideViewDef | InsideProcedureDef | InsideTriggerDef) {
 						expanded = true
 						for _, expr := range exprs {
 							switch col := expr.(type) {
@@ -326,7 +328,7 @@ func (b *Builder) analyzeSelectList(
 			alias = Gapfill
 		}
 		b.addColumn(outScope, alias, texpr, false)
-		if (b.insideViewDef || b.insideProcDef) && !expanded {
+		if b.insideObjectDef.HasAnyFlags(InsideViewDef|InsideProcedureDef|InsideTriggerDef) && !expanded {
 			expansions = append(expansions, e)
 		}
 	}
@@ -335,7 +337,7 @@ func (b *Builder) analyzeSelectList(
 			inScope.setAggExtendFlag(existNonAggCol)
 		}
 	}
-	if b.insideViewDef || b.insideProcDef {
+	if b.insideObjectDef.HasAnyFlags(InsideViewDef | InsideProcedureDef | InsideTriggerDef) {
 		*selects = expansions
 	}
 }

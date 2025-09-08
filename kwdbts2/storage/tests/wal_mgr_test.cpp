@@ -220,7 +220,8 @@ TEST_F(TestWALManager, TestWALInsert) {
   EXPECT_EQ(lsn, wal_->FetchCheckpointLSN());
 
   vector<LogEntry*> redo_logs;
-  wal_->ReadWALLog(redo_logs, wal_->FetchCheckpointLSN(), wal_->FetchCurrentLSN());
+  std::vector<uint64_t> ignore;
+  wal_->ReadWALLog(redo_logs, wal_->FetchCheckpointLSN(), wal_->FetchCurrentLSN(), ignore);
 
   EXPECT_EQ(redo_logs.size(), 2);
 
@@ -276,7 +277,8 @@ TEST_F(TestWALManager, TestWALDeleteData) {
   EXPECT_EQ(s, KStatus::SUCCESS);
 
   vector<LogEntry*> redo_logs;
-  wal_->ReadWALLog(redo_logs, wal_->FetchCheckpointLSN(), wal_->FetchCurrentLSN());
+  std::vector<uint64_t> ignore;
+  wal_->ReadWALLog(redo_logs, wal_->FetchCheckpointLSN(), wal_->FetchCurrentLSN(), ignore);
 
   EXPECT_EQ(redo_logs.size(), 1);
 
@@ -309,7 +311,8 @@ TEST_F(TestWALManager, TestWALDeleteTag) {
   EXPECT_EQ(s, KStatus::SUCCESS);
 
   vector<LogEntry*> redo_logs;
-  wal_->ReadWALLog(redo_logs, wal_->FetchCheckpointLSN(), wal_->FetchCurrentLSN());
+  std::vector<uint64_t> ignore;
+  wal_->ReadWALLog(redo_logs, wal_->FetchCheckpointLSN(), wal_->FetchCurrentLSN(), ignore);
 
   EXPECT_EQ(redo_logs.size(), 1);
 
@@ -336,7 +339,8 @@ TEST_F(TestWALManager, TestWALMTR) {
   EXPECT_EQ(s, KStatus::SUCCESS);
 
   vector<LogEntry*> redo_logs;
-  wal_->ReadWALLog(redo_logs, wal_->FetchCheckpointLSN(), wal_->FetchCurrentLSN());
+  std::vector<uint64_t> ignore;
+  wal_->ReadWALLog(redo_logs, wal_->FetchCheckpointLSN(), wal_->FetchCurrentLSN(), ignore);
   EXPECT_EQ(redo_logs.size(), 1);
 
   auto* redo = reinterpret_cast<MTREntry*>(redo_logs[0]);
@@ -381,7 +385,8 @@ TEST_F(TestWALManager, TestWALMTRRollback) {
   EXPECT_EQ(s, KStatus::SUCCESS);
 
   vector<LogEntry*> undo_logs;
-  wal_->ReadWALLogForMtr(x_id, undo_logs);
+  std::vector<uint64_t> ignore;
+  wal_->ReadWALLogForMtr(x_id, undo_logs, ignore);
   EXPECT_EQ(undo_logs.size(), 3);
 
   delete[] data_value;
@@ -399,7 +404,8 @@ TEST_F(TestWALManager, TestWALTTR) {
   EXPECT_EQ(s, KStatus::SUCCESS);
 
   vector<LogEntry*> redo_logs;
-  wal_->ReadWALLog(redo_logs, wal_->FetchCheckpointLSN(), wal_->FetchCurrentLSN());
+  std::vector<uint64_t> ignore;
+  wal_->ReadWALLog(redo_logs, wal_->FetchCheckpointLSN(), wal_->FetchCurrentLSN(), ignore);
   EXPECT_EQ(redo_logs.size(), 1);
 
   auto* redo = reinterpret_cast<TTREntry*>(redo_logs[0]);
@@ -425,7 +431,8 @@ TEST_F(TestWALManager, TestWALDDL) {
   EXPECT_EQ(s, KStatus::SUCCESS);
 
   vector<LogEntry*> redo_logs;
-  wal_->ReadWALLog(redo_logs, wal_->FetchCheckpointLSN(), wal_->FetchCurrentLSN());
+  std::vector<uint64_t> ignore;
+  wal_->ReadWALLog(redo_logs, wal_->FetchCheckpointLSN(), wal_->FetchCurrentLSN(), ignore);
   EXPECT_EQ(redo_logs.size(), 2);
 
   auto* redo1 = reinterpret_cast<DDLCreateEntry*>(redo_logs[0]);
@@ -452,7 +459,8 @@ TEST_F(TestWALManager, TestWALCheckpoint) {
   EXPECT_EQ(s, KStatus::SUCCESS);
 
   vector<LogEntry*> redo_logs;
-  wal_->ReadWALLog(redo_logs, wal_->FetchCheckpointLSN(), wal_->FetchCurrentLSN());
+  std::vector<uint64_t> ignore;
+  wal_->ReadWALLog(redo_logs, wal_->FetchCheckpointLSN(), wal_->FetchCurrentLSN(), ignore);
   EXPECT_EQ(redo_logs.size(), 1);
 
   auto* redo = reinterpret_cast<CheckpointEntry*>(redo_logs[0]);
@@ -465,9 +473,10 @@ TEST_F(TestWALManager, TestWALCheckpoint) {
 
 TEST_F(TestWALManager, TestWALRead) {
   vector<LogEntry*> redo_logs;
-  wal_->ReadWALLog(redo_logs, wal_->FetchCheckpointLSN(), wal_->FetchCheckpointLSN());
+  std::vector<uint64_t> ignore;
+  wal_->ReadWALLog(redo_logs, wal_->FetchCheckpointLSN(), wal_->FetchCheckpointLSN(), ignore);
   EXPECT_EQ(redo_logs.size(), 0);
-  wal_->ReadWALLog(redo_logs, wal_->FetchCheckpointLSN(), wal_->FetchCurrentLSN() + 100);
+  wal_->ReadWALLog(redo_logs, wal_->FetchCheckpointLSN(), wal_->FetchCurrentLSN() + 100, ignore);
   EXPECT_EQ(redo_logs.size(), 0);
 
   AddInsertWal(0);
@@ -489,15 +498,14 @@ TEST_F(TestWALManager, TestWALRead) {
 
   AddMtrWal(WALLogType::MTR_COMMIT, x_id);
 
-
-  wal_->ReadWALLog(redo_logs, wal_->FetchCheckpointLSN(), wal_->FetchCurrentLSN());
+  wal_->ReadWALLog(redo_logs, wal_->FetchCheckpointLSN(), wal_->FetchCurrentLSN(), ignore);
   EXPECT_EQ(redo_logs.size(), 29);
   for (auto& l : redo_logs) {
     delete l;
   }
 
   redo_logs.clear();
-  wal_->ReadWALLog(redo_logs, x_id, wal_->FetchCurrentLSN());
+  wal_->ReadWALLog(redo_logs, x_id, wal_->FetchCurrentLSN(), ignore);
   EXPECT_EQ(redo_logs.size(), 27);
   for (auto& l : redo_logs) {
     delete l;
@@ -556,8 +564,6 @@ TEST_F(TestWALManager, TestWALRollbackRead) {
 TEST_F(TestWALManager, TestWALSyncInsert) {
   opts_.wal_level = 2;
   opts_.wal_buffer_size = 1;
-  opts_.wal_file_size = 2;
-  opts_.wal_file_in_group = 10;
   auto wal2 = new WALMgr(kDbPath + "/", table_id_, kTestRange.range_group_id + 1, &opts_);
   wal2->Init(ctx_);
 
@@ -589,7 +595,8 @@ TEST_F(TestWALManager, TestWALSyncInsert) {
   }
 
   vector<LogEntry*> redo_logs;
-  wal2->ReadWALLog(redo_logs, wal2->FetchCheckpointLSN(), wal2->FetchCurrentLSN());
+  std::vector<uint64_t> ignore;
+  wal2->ReadWALLog(redo_logs, wal2->FetchCheckpointLSN(), wal2->FetchCurrentLSN(), ignore);
   EXPECT_EQ(redo_logs.size(), payload_num * 2);
   for (auto& l : redo_logs) {
     delete l;

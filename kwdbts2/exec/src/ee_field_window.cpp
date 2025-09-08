@@ -18,7 +18,7 @@
 namespace kwdbts {
 
 k_bool FieldFuncStateWindow::is_nullable() {
-  if (args_[0]->is_nullable()) {
+  if (args_[0]->CheckNull()) {
     return true;
   }
   return false;
@@ -60,11 +60,11 @@ k_int64 FieldFuncStateWindow::ValInt() {
 
 k_bool FieldFuncEventWindow::is_nullable() {
   if (begin_) {
-    if (args_[1]->is_nullable()) {
+    if (args_[1]->CheckNull()) {
       return true;
     }
   } else {
-    if (args_[0]->is_nullable() || args_[1]->is_nullable()) {
+    if (args_[0]->CheckNull() || args_[1]->CheckNull()) {
       return true;
     }
     if (args_[0]->ValInt() <= 0) {

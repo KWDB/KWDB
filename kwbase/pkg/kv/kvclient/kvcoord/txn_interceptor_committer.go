@@ -28,10 +28,12 @@ import (
 	"context"
 	"sync"
 
+	"gitee.com/kwbasedb/kwbase/pkg/kv"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
 	"gitee.com/kwbasedb/kwbase/pkg/settings"
 	"gitee.com/kwbasedb/kwbase/pkg/settings/cluster"
 	"gitee.com/kwbasedb/kwbase/pkg/util"
+	"gitee.com/kwbasedb/kwbase/pkg/util/hlc"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 	"gitee.com/kwbasedb/kwbase/pkg/util/stop"
 )
@@ -61,12 +63,12 @@ var parallelCommitsEnabled = settings.RegisterBoolSetting(
 //
 // Parallel commits works by defining a committed transaction as a transaction
 // that meets one of the two following commit conditions:
-// 1. a transaction is *explicitly committed* if it has a transaction record with
-//    a COMMITTED status
-// 2. a transaction is *implicitly committed* if it has a transaction record with
-//    a STAGING status and intents written for all writes declared as "in-flight"
-//    on the transaction record at equal or lower timestamps than the transaction
-//    record's commit timestamp
+//  1. a transaction is *explicitly committed* if it has a transaction record with
+//     a COMMITTED status
+//  2. a transaction is *implicitly committed* if it has a transaction record with
+//     a STAGING status and intents written for all writes declared as "in-flight"
+//     on the transaction record at equal or lower timestamps than the transaction
+//     record's commit timestamp
 //
 // A transaction may move from satisfying the implicit commit condition to
 // satisfying the explicit commit condition. This is desirable because it moves
@@ -99,20 +101,20 @@ var parallelCommitsEnabled = settings.RegisterBoolSetting(
 // satisfied and the transaction is still in-progress (and could still be
 // committed or aborted at a later time). There are a number of reasons why
 // some of the requests in the final batch may have failed:
-// - intent writes: these requests may fail to write an intent due to a logical
+//   - intent writes: these requests may fail to write an intent due to a logical
 //     error like a ConditionFailedError. They also could have succeeded at writing
 //     an intent but failed to write it at the desired timestamp because they ran
 //     into the timestamp cache or another committed value. In the first case, the
 //     txnCommitter will receive an error. In the second, it will generate one in
 //     needTxnRetryAfterStaging.
-// - query intents: these requests may fail because they discover that one of the
+//   - query intents: these requests may fail because they discover that one of the
 //     previously issued writes has failed; either because it never left an intent
 //     or because it left one at too high of a timestamp. In this case, the request
 //     will return an error because the requests all have the ErrorIfMissing option
 //     set. It will also prevent the write from ever succeeding in the future, which
 //     ensures that the transaction will never suddenly become implicitly committed
 //     at a later point due to the write eventually succeeding (e.g. after a replay).
-// - end txn: this request may fail with a TransactionRetryError for any number of
+//   - end txn: this request may fail with a TransactionRetryError for any number of
 //     reasons, such as if the transaction's provisional commit timestamp has been
 //     pushed past its read timestamp. In all of these cases, an error will be
 //     returned and the transaction record will not be staged.
@@ -536,4 +538,154 @@ func cloneWithStatus(txn *roachpb.Transaction, s roachpb.TransactionStatus) *roa
 	clone := txn.Clone()
 	clone.Status = s
 	return clone
+}
+
+// tsTxnCommitter finalizes the ts insert transaction by handling the response
+// and deciding to commit or rollback. It finalizes the TS transaction by sending
+// tsInsert/tsCommit/tsRollback request, writing status records (PREPARED,
+// COMMITTED, ABORTED) and coordinating with the TS heartbeater to stop
+// heartbeat activity upon completion.
+type tsTxnCommitter struct {
+	wrapped kv.Sender             // The next sender to forward requests to.
+	txn     *kv.Txn               // Used for scanning and writing ts txn record.
+	tsTxn   roachpb.TsTransaction // TS transaction metadata.
+	ranges  *roachpb.Spans        // The key spans written during the transaction.
+	setting *cluster.Settings
+	NodeID  roachpb.NodeID
+	clock   *hlc.Clock
+}
+
+// SendLocked implements the lockedSender interface.
+// It sends a batch request during a TS insert transaction.
+// It wraps the original send call and adds logic to finalize
+// the TS transaction based on the response outcome.
+//
+// If the batch succeeds, it writes a PREPARED txn record and sends a commit request.
+// If the batch fails, it sends a rollback request and marks the transaction as ABORTED.
+// All outcomes are explicitly persisted via WriteTxnRecord.
+//
+// It also signals the tsTxnHeartbeater to stop by sending a TxnSignal on completion.
+func (tc *tsTxnCommitter) SendLocked(
+	ctx context.Context, ba roachpb.BatchRequest,
+) (*roachpb.BatchResponse, *roachpb.Error) {
+
+	// Send the original batch request.
+	br, pErr := tc.wrapped.Send(ctx, ba)
+
+	var record roachpb.TsTxnRecord
+	record.ID = tc.tsTxn.ID
+	record.Spans = append(record.Spans, *tc.ranges...)
+
+	if pErr != nil {
+		// On failure, attempt rollback.
+		rollbackErr := tc.sendRollbackRequest(ctx, tc.tsTxn, record.Spans, 0)
+		if rollbackErr != nil {
+			log.Errorf(ctx, "txn %v rollback failed, will be retried in background\n", record.ID)
+			return nil, rollbackErr
+		}
+		// Mark txn as aborted and persist.
+		record.Status = roachpb.ABORTED
+		record.LastHeartbeat = tc.clock.Now()
+		log.VEventf(ctx, 2, "txn %v rollback success and update ts txn record\n", record.ID)
+		if err := tc.txn.DB().WriteTsTxnRecord(ctx, &record); err != nil {
+			return nil, roachpb.NewError(err)
+		}
+		return nil, pErr
+	}
+
+	// On success, mark as prepared.
+	record.Status = roachpb.PREPARED
+	record.LastHeartbeat = tc.clock.Now()
+	log.VEventf(ctx, 2, "txn %v prepare success and update ts txn record\n", record.ID)
+	if err := tc.txn.DB().WriteTsTxnRecord(ctx, &record); err != nil {
+		return nil, roachpb.NewError(err)
+	}
+	// Send commit request.
+	pErr = tc.sendCommitRequest(ctx, tc.tsTxn, record.Spans, 0)
+	if pErr != nil {
+		log.Errorf(ctx, "txn %v commit failed, will be retried in background\n", record.ID)
+		return br, nil
+	}
+
+	// Mark as committed and persist.
+	record.Status = roachpb.COMMITTED
+	record.LastHeartbeat = tc.clock.Now()
+	log.VEventf(ctx, 2, "txn %v commit success and update ts txn record\n", record.ID)
+	if err := tc.txn.DB().WriteTsTxnRecord(ctx, &record); err != nil {
+		log.Errorf(ctx, "txn %v update txn record to commit failed, will be retried in background\n", record.ID)
+		return br, nil
+	}
+
+	return br, pErr
+}
+
+// sendRollbackRequest constructs and sends a TsRollbackRequest for each span
+// involved in the transaction. It retries up to 5 times if it encounters errors.
+//
+// This is used when the original batch request fails and the transaction needs
+// to be explicitly aborted.
+func (tc *tsTxnCommitter) sendRollbackRequest(
+	ctx context.Context, txn roachpb.TsTransaction, spans roachpb.Spans, retry int,
+) *roachpb.Error {
+	ba := roachpb.BatchRequest{}
+	ba.TsTransaction = &txn
+
+	// Add a rollback request for each span.
+	for _, span := range spans {
+		ba.Add(&roachpb.TsRollbackRequest{
+			RequestHeader: roachpb.RequestHeader{
+				Key:    span.Key,
+				EndKey: span.EndKey,
+			},
+			TsTransaction: &roachpb.TsTransaction{ID: txn.ID},
+		})
+	}
+
+	ba.Header.ReadConsistency = roachpb.READ_UNCOMMITTED
+	log.VEventf(ctx, 2, "txn %v attempt to rollback %v time\n", txn.ID, retry)
+
+	_, pErr := tc.wrapped.Send(ctx, ba)
+	if pErr != nil && retry < 5 {
+		retry++
+		// Retry recursively.
+		if err := tc.sendRollbackRequest(ctx, txn, spans, retry); err != nil {
+			return err
+		}
+	}
+	return pErr
+}
+
+// sendCommitRequest constructs and sends a TsCommitRequest for each span
+// involved in the transaction. It retries up to 5 times if it encounters errors.
+//
+// This is called after a successful prepare phase to finalize the commit.
+func (tc *tsTxnCommitter) sendCommitRequest(
+	ctx context.Context, txn roachpb.TsTransaction, spans roachpb.Spans, retry int,
+) *roachpb.Error {
+	ba := roachpb.BatchRequest{}
+	ba.TsTransaction = &txn
+
+	// Add a commit request for each span.
+	for _, span := range spans {
+		ba.Add(&roachpb.TsCommitRequest{
+			RequestHeader: roachpb.RequestHeader{
+				Key:    span.Key,
+				EndKey: span.EndKey,
+			},
+			TsTransaction: &roachpb.TsTransaction{ID: txn.ID},
+		})
+	}
+
+	ba.Header.ReadConsistency = roachpb.READ_UNCOMMITTED
+	log.VEventf(ctx, 2, "txn %v attempt to commit %v time\n", txn.ID, retry)
+
+	_, pErr := tc.wrapped.Send(ctx, ba)
+	if pErr != nil && retry < 5 {
+		retry++
+		// Retry recursively.
+		if err := tc.sendCommitRequest(ctx, txn, spans, retry); err != nil {
+			return err
+		}
+	}
+	return pErr
 }

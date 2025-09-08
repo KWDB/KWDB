@@ -14,6 +14,7 @@ SCRIPT_NAME=$(basename ${0})
 
 source $QA_DIR/Integration/execute_regression_sql_v2.sh
 topologies=${@:-5c 5cr}
+export KW_ENGINE_VERSION=1
 execute_regression_sql_distribute_v2 ${topologies}
 
 if [ $? = 1 ]; then

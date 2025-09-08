@@ -422,6 +422,7 @@ const (
 	EventLogTableID            = 56
 	ScheduledJobsTableID       = 57
 	UDRTableID                 = 58
+	TsTxnTableID               = 59 // TsTxnTableID used for ts transaction record
 	KWDBCDCWatermarkTableID    = 60
 	KWDBStreamsTableID         = 61
 	// CommentType is type for system.comments

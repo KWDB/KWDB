@@ -855,6 +855,16 @@ func (desc *TableDescriptor) IsVirtualTable() bool {
 	return IsVirtualTable(desc.ID)
 }
 
+// GetTriggerByName returns triggerDesc by name.
+func (desc *TableDescriptor) GetTriggerByName(name string) *TriggerDescriptor {
+	for i := 0; i < len(desc.Triggers); i++ {
+		if desc.Triggers[i].Name == name {
+			return &desc.Triggers[i]
+		}
+	}
+	return nil
+}
+
 // GetParentSchemaID returns the ParentSchemaID if the descriptor has
 // one. If the descriptor was created before the field was added, then the
 // descriptor belongs to a table under the `public` physical schema. The static
@@ -1341,6 +1351,9 @@ func (desc *MutableTableDescriptor) initIDs() {
 	}
 	if desc.NextMutationID == InvalidMutationID {
 		desc.NextMutationID = 1
+	}
+	if desc.NextTriggerID == 0 {
+		desc.NextTriggerID = 1
 	}
 }
 
@@ -2568,6 +2581,89 @@ func (desc *MutableTableDescriptor) AddColumn(col *ColumnDescriptor) {
 	desc.Columns = append(desc.Columns, *col)
 }
 
+// AddTriggerDesc adds a trigger to the table and reorder all triggerDesc if necessary.
+func (desc *MutableTableDescriptor) AddTriggerDesc(
+	trigDesc *TriggerDescriptor, Order *tree.TriggerOrder,
+) error {
+	// no follows/precedes
+	if Order == nil {
+		if len(desc.Triggers) == 0 {
+			trigDesc.TriggerOrder = 1
+			desc.Triggers = append(desc.Triggers, *trigDesc)
+			return nil
+		}
+		// reorder triggers
+		switch trigDesc.ActionTime {
+		case TriggerActionTime_BEFORE:
+			// order: before triggers + new trigger + after triggers
+			if desc.Triggers[len(desc.Triggers)-1].ActionTime == TriggerActionTime_BEFORE {
+				trigDesc.TriggerOrder = uint32(len(desc.Triggers) + 1)
+				desc.Triggers = append(desc.Triggers, *trigDesc)
+				return nil
+			}
+			idx := 0
+			for i := 0; i < len(desc.Triggers); i++ {
+				if desc.Triggers[i].ActionTime != TriggerActionTime_BEFORE {
+					idx = i
+					break
+				}
+			}
+			trigDesc.TriggerOrder = uint32(idx + 1)
+			desc.Triggers = append(desc.Triggers[:idx],
+				append([]TriggerDescriptor{*trigDesc}, desc.Triggers[idx:]...)...)
+			for i := idx + 1; i < len(desc.Triggers); i++ {
+				desc.Triggers[i].TriggerOrder++
+			}
+
+		case TriggerActionTime_AFTER:
+			// order: before triggers + after triggers + new trigger
+			trigDesc.TriggerOrder = uint32(len(desc.Triggers) + 1)
+			desc.Triggers = append(desc.Triggers, *trigDesc)
+		default:
+			return pgerror.Newf(pgcode.InvalidObjectDefinition, "unknown trigger action time")
+		}
+		return nil
+	}
+
+	referencedTrig := desc.GetTriggerByName(string(Order.OtherTrigger))
+	if referencedTrig == nil {
+		return pgerror.Newf(pgcode.UndefinedObject, "trigger \"%s\" does not exist", string(Order.OtherTrigger))
+	}
+	// validate actionTime, for example, an after trigger cannot precede a before trigger
+	if referencedTrig.ActionTime != trigDesc.ActionTime || referencedTrig.Event != trigDesc.Event {
+		return pgerror.Newf(
+			pgcode.InvalidObjectDefinition,
+			"referenced trigger \"%s\" for the given action time and event type does not exist",
+			string(Order.OtherTrigger))
+	}
+
+	// if oderType is not nil, we must reorder triggers
+	switch Order.OrderType {
+	case tree.TriggerOrderTypeFollow:
+		// for example: create trig1 follows trig2
+		// order: others trigger + trig2 + trig1 + other triggers
+		trigDesc.TriggerOrder = referencedTrig.TriggerOrder + 1
+		if int(referencedTrig.TriggerOrder) == len(desc.Triggers) {
+			desc.Triggers = append(desc.Triggers, *trigDesc)
+		} else {
+			desc.Triggers = append(desc.Triggers[:referencedTrig.TriggerOrder],
+				append([]TriggerDescriptor{*trigDesc}, desc.Triggers[referencedTrig.TriggerOrder:]...)...)
+		}
+	case tree.TriggerOrderTypePrecede:
+		// for example: create trig2 precedes trig1
+		// order: others trigger + trig2 + trig1 + other triggers
+		trigDesc.TriggerOrder = referencedTrig.TriggerOrder
+		desc.Triggers = append(desc.Triggers[:referencedTrig.TriggerOrder-1],
+			append([]TriggerDescriptor{*trigDesc}, desc.Triggers[referencedTrig.TriggerOrder-1:]...)...)
+	default:
+		return pgerror.Newf(pgcode.InvalidObjectDefinition, "unknown trigger action time")
+	}
+	for i := int(trigDesc.TriggerOrder); i < len(desc.Triggers); i++ {
+		desc.Triggers[i].TriggerOrder++
+	}
+	return nil
+}
+
 // AddFamily adds a family to the table.
 func (desc *MutableTableDescriptor) AddFamily(fam ColumnFamilyDescriptor) {
 	desc.Families = append(desc.Families, fam)
@@ -2852,19 +2948,31 @@ func (desc *TableDescriptor) FindIndexByName(name string) (*IndexDescriptor, boo
 	if desc.IsPhysicalTable() && desc.PrimaryIndex.Name == name {
 		return &desc.PrimaryIndex, false, nil
 	}
-	for i := range desc.Indexes {
-		idx := &desc.Indexes[i]
-		if idx.Name == name {
-			return idx, false, nil
-		}
-	}
+	var index, mutationIdx *IndexDescriptor
+	isDropped := false
 	for _, m := range desc.Mutations {
 		if idx := m.GetIndex(); idx != nil {
 			if idx.Name == name {
-				return idx, m.Direction == DescriptorMutation_DROP, nil
+				isDropped = m.Direction == DescriptorMutation_DROP
+				mutationIdx = idx
+				break
 			}
 		}
 	}
+	for i := range desc.Indexes {
+		idx := &desc.Indexes[i]
+		if idx.Name == name {
+			index = idx
+			break
+		}
+	}
+
+	if index != nil {
+		return index, isDropped, nil
+	} else if mutationIdx != nil {
+		return mutationIdx, isDropped, nil
+	}
+
 	return nil, false, fmt.Errorf("index %q does not exist", name)
 }
 
