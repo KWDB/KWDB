@@ -6,7 +6,7 @@
 	path = kwbase/c-deps
 	url = https://gitee.com/kwdb/kw-cdeps.git
 	branch = 2.0-master
-[submodule "common/third_party"]
-	path = common/third_party
+[submodule "kwdbts2/third_party"]
+	path = kwdbts2/third_party
 	url = https://gitee.com/kwdb/kw-third_party.git
 	branch = 2.0-master

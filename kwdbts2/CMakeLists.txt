@@ -190,6 +190,35 @@ if(OPENMP_FOUND)
     set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${OpenMP_EXE_LINKER_FLAGS}")
 endif()
 
+# Build brpc external project
+message(STATUS "Building brpc from source: ${PROJECT_SOURCE_DIR}/third_party/brpc-1.9.0")
+
+set(BRPC_VERSION 1.9.0)
+set(BRPC_SOURCE_DIR "${PROJECT_SOURCE_DIR}/third_party/brpc-${BRPC_VERSION}")
+set(BRPC_PREFIX_DIR "${CMAKE_CURRENT_BINARY_DIR}/brpc-${BRPC_VERSION}")
+set(BRPC_BUILD_DIR "${BRPC_PREFIX_DIR}/build")
+set(BRPC_OUTPUT_DIR "${BRPC_PREFIX_DIR}/output")
+
+include(ExternalProject)
+
+ExternalProject_Add(
+    brpc
+    SOURCE_DIR "${BRPC_SOURCE_DIR}"
+    PREFIX "${BRPC_PREFIX_DIR}"
+    BINARY_DIR "${BRPC_BUILD_DIR}"
+    CONFIGURE_COMMAND
+        ${CMAKE_COMMAND} -E copy_directory "${BRPC_SOURCE_DIR}" "${BRPC_BUILD_DIR}"
+        COMMAND cd "${BRPC_BUILD_DIR}" && sh ./config_brpc.sh --headers=/usr/include "--libs=/usr/lib /usr/lib64"
+    BUILD_COMMAND
+        cd "${BRPC_BUILD_DIR}" && make -j${DEDUCTED_PARALLEL_DEGREE}
+    BUILD_IN_SOURCE 0
+    INSTALL_COMMAND
+        ${CMAKE_COMMAND} -E make_directory "${BRPC_OUTPUT_DIR}/include"
+        COMMAND ${CMAKE_COMMAND} -E make_directory "${BRPC_OUTPUT_DIR}/lib"
+        COMMAND ${CMAKE_COMMAND} -E copy_directory "${BRPC_BUILD_DIR}/output/include" "${BRPC_OUTPUT_DIR}/include"
+        COMMAND ${CMAKE_COMMAND} -E copy_directory "${BRPC_BUILD_DIR}/output/lib" "${BRPC_OUTPUT_DIR}/lib"
+)
+
 set(MODULE_NAME kwdbts2)
 set(KWDBTS2_SERVER_LIB kwdbts2)
 
@@ -200,7 +229,9 @@ set(TS_INCLUDE
         ../common/src/h
         ../common/src/include
         ../common/src/roachpb
-        ../common/third_party/gtest-1.8.1/fused-src
+        third_party/gtest-1.8.1/fused-src
+        third_party/brpc-1.9.0/src
+        ${BRPC_OUTPUT_DIR}/include
         include
         engine/include
         common/include
@@ -247,13 +278,16 @@ endif()
 # Add the server module source files to the dynamic library
 add_library(${KWDBTS2_SERVER_LIB} SHARED ${KWDBTS2_SERVER_LIB_SRC})
 
-# Link to common library
-target_link_libraries(${KWDBTS2_SERVER_LIB} PRIVATE common)
+# Set brpc library dependency
+add_dependencies(${KWDBTS2_SERVER_LIB} brpc)
+target_link_libraries(${KWDBTS2_SERVER_LIB} PRIVATE ${BRPC_OUTPUT_DIR}/lib/libbrpc.a)
+target_link_libraries(${KWDBTS2_SERVER_LIB} PRIVATE gflags ssl lz4)
 
 # Import the header files required by the server module
 target_include_directories(${KWDBTS2_SERVER_LIB} PRIVATE
     ${PROTOBUF_INCLUDE_DIR}
     ${TS_INCLUDE}
+    ${BRPC_OUTPUT_DIR}/include
 	)
 
 # Compile and generate test case executables
@@ -303,7 +337,7 @@ if (WITH_TESTS)
         target_include_directories(${tname}
                 PRIVATE ${TS_INCLUDE}
                 ${PROTOBUF_INCLUDE_DIR}
-                ../common/third_party/gtest-1.8.1/fused-src
+                third_party/gtest-1.8.1/fused-src
                 )
 
         target_link_libraries(${tname} PRIVATE ${KWDBTS2_SERVER_LIB} ${PROTOBUF_LIB} common gtest dl rt)
