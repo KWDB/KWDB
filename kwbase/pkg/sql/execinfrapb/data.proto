@@ -344,6 +344,18 @@ message RemoteProducerMetadata {
     optional string create_err = 2 [(gogoproto.nullable) = false];
   }
 
+  // Distributed ap database drop return identifier
+  message APDropDatabase {
+    optional bool drop_success = 1 [(gogoproto.nullable) = false];
+    optional string drop_err = 2 [(gogoproto.nullable) = false];
+  }
+
+  // Distributed ap table drop return identifier
+  message APDropTable {
+    optional bool drop_success = 1 [(gogoproto.nullable) = false];
+    optional string drop_err = 2 [(gogoproto.nullable) = false];
+  }
+
   // Distributed timing operation return identifier
   message TSPro {
     optional bool success = 1 [(gogoproto.nullable) = false];
@@ -375,6 +387,8 @@ message RemoteProducerMetadata {
     TSTagUpdate ts_tag_update_ = 15;
     APCreateDatabase ap_create_database_ = 16;
     APCreateTable ap_create_table_ = 17;
+    APDropDatabase ap_drop_database_ = 18;
+    APDropTable ap_drop_table_ = 19;
   }
   reserved 6;
 }

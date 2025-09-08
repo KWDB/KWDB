@@ -185,6 +185,8 @@ enum OperatorType {
   TsCount = 26;
   APCreateDatabase = 27;
   APCreateTable = 28;
+  APDropDatabase = 29;
+  APDropTable = 30;
 }
 
 // TsInsertSelSpec build payLoads for TsInsert
@@ -271,6 +273,16 @@ message APCreateDatabaseProSpec {
 message APCreateTableProSpec {
   optional string dbName = 1[(gogoproto.nullable) = false];
   optional string createStatement = 2 [(gogoproto.nullable) = false];
+}
+
+message APDropDatabaseProSpec {
+  optional string currentDB = 1[(gogoproto.nullable) = false];
+  optional string dropDB = 2 [(gogoproto.nullable) = false];
+  optional bool rm = 3 [(gogoproto.nullable) = false];
+}
+
+message APDropTableProSpec {
+  optional string dropStatement = 1[(gogoproto.nullable) = false];
 }
 
 message TsProSpec {

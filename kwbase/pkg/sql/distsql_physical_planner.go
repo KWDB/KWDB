@@ -2976,6 +2976,18 @@ func (dsp *DistSQLPlanner) createTSDDL(planCtx *PlanningCtx, n *tsDDLNode) (Phys
 			apCreateTable.CreateStatement = n.d.APStatement
 			proc.Spec.Core = execinfrapb.ProcessorCoreUnion{ApCreateTable: apCreateTable}
 			p.TsOperator = execinfrapb.OperatorType_APCreateTable
+		case dropKwdbAPDatabase:
+			var apDropDatabase = &execinfrapb.APDropDatabaseProSpec{}
+			apDropDatabase.CurrentDB = n.d.DropAPDatabase.CurrentDb
+			apDropDatabase.DropDB = n.d.DropAPDatabase.DropDb
+			apDropDatabase.Rm = n.d.DropAPDatabase.Rm
+			proc.Spec.Core = execinfrapb.ProcessorCoreUnion{ApDropDatabase: apDropDatabase}
+			p.TsOperator = execinfrapb.OperatorType_APDropDatabase
+		case dropKwdbAPTable:
+			var apDropTable = &execinfrapb.APDropTableProSpec{}
+			apDropTable.DropStatement = n.d.APStatement
+			proc.Spec.Core = execinfrapb.ProcessorCoreUnion{ApDropTable: apDropTable}
+			p.TsOperator = execinfrapb.OperatorType_APDropTable
 		//case dropKwdbTsTable, dropKwdbInsTable, dropKwdbTsDatabase:
 		//	var tsDrop = &execinfrapb.TsProSpec{}
 		//	tsDrop.DropMEInfo = n.d.DropMEInfo

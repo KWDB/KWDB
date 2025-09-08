@@ -1109,6 +1109,20 @@ func (r *DistSQLReceiver) Push(
 				r.resultWriter.SetError(err)
 			}
 		}
+		if meta.APDropDatabase != nil {
+			r.status = execinfra.ConsumerClosed
+			if !meta.APDropDatabase.DropSuccess {
+				err := errors.Newf("drop ap database failed, reason:%s", meta.APDropDatabase.DropErr)
+				r.resultWriter.SetError(err)
+			}
+		}
+		if meta.APDropTable != nil {
+			r.status = execinfra.ConsumerClosed
+			if !meta.APDropTable.DropSuccess {
+				err := errors.Newf("drop ap table failed, reason:%s", meta.APDropTable.DropErr)
+				r.resultWriter.SetError(err)
+			}
+		}
 		if meta.TsPro != nil {
 			r.status = execinfra.ConsumerClosed
 			if !meta.TsPro.Success {

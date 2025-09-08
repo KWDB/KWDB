@@ -467,7 +467,7 @@ func (r *Engine) DropDatabase(currentDB string, dropDB string, rm bool) error {
 
 	if rm {
 		filePath := r.cfg.Dir + "/" + dropDB
-		if _, err := os.Stat(filePath); err != nil {
+		if _, err := os.Stat(filePath); err == nil {
 			_ = os.Remove(filePath)
 		}
 	}

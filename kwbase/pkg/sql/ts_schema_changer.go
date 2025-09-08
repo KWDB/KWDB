@@ -78,6 +78,8 @@ const (
 	count
 	createKwdbAPDatabase
 	createKwdbAPTable
+	dropKwdbAPDatabase
+	dropKwdbAPTable
 )
 
 // tsSchemaChangeResumer implements the jobs.Resumer interface for syncMetaCache
@@ -321,6 +323,14 @@ func (sw *TSSchemaChangeWorker) handleResult(
 				log.Infof(ctx, "create ap database job failed, reason: %s", syncErr.Error())
 			}
 			updateErr = p.handleCreateAPDatabase(ctx, d.Database, syncErr)
+		case dropKwdbAPDatabase:
+			if syncErr != nil {
+				log.Infof(ctx, "drop ap database job failed, reason: %s", syncErr.Error())
+			}
+		case dropKwdbAPTable:
+			if syncErr != nil {
+				log.Infof(ctx, "drop ap database job failed, reason: %s", syncErr.Error())
+			}
 		//case dropKwdbTsTable:
 		//	updateErr = p.handleDropTsTable(ctx, d.SNTable, sw.jobRegistry, syncErr)
 		//case dropKwdbTsDatabase:
@@ -943,6 +953,28 @@ func (sw *TSSchemaChangeWorker) makeAndRunDistPlan(
 		}
 		log.Infof(ctx, "create table on nodes list: %v", nodeList)
 		newPlanNode = &tsDDLNode{d: d, nodeID: nodeList}
+	case dropKwdbAPDatabase:
+		log.Infof(ctx, "%s job start, name: %s, id: %d, jobID: %d",
+			opType, d.Database.Name, d.Database.ID, sw.job.ID())
+		var nodeList []roachpb.NodeID
+		var retErr error
+		nodeList, retErr = api.GetHealthyNodeIDs(ctx)
+		if retErr != nil {
+			return retErr
+		}
+		log.Infof(ctx, "drop ap database on nodes list: %v", nodeList)
+		newPlanNode = &tsDDLNode{d: d, nodeID: nodeList}
+	case dropKwdbAPTable:
+		log.Infof(ctx, "%s job start, name: %s, id: %d, jobID: %d",
+			opType, d.SNTable.Name, d.SNTable.ID, sw.job.ID())
+		var nodeList []roachpb.NodeID
+		var retErr error
+		nodeList, retErr = api.GetHealthyNodeIDs(ctx)
+		if retErr != nil {
+			return retErr
+		}
+		log.Infof(ctx, "drop ap table on nodes list: %v", nodeList)
+		newPlanNode = &tsDDLNode{d: d, nodeID: nodeList}
 	//case dropKwdbInsTable:
 	//	log.Infof(ctx, "%s job start, name: %s, id: %d, jobID: %d",
 	//		opType, d.SNTable.Name, d.SNTable.ID, sw.job.ID())
@@ -1197,6 +1229,10 @@ func getDDLOpType(op int32) string {
 		return "create ap database"
 	case createKwdbAPTable:
 		return "create ap table"
+	case dropKwdbAPDatabase:
+		return "drop ap database"
+	case dropKwdbAPTable:
+		return "drop ap table"
 	}
 	return ""
 }

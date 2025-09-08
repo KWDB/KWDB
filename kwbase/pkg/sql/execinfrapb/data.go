@@ -239,6 +239,10 @@ type ProducerMetadata struct {
 	APCreateDatabase *RemoteProducerMetadata_APCreateDatabase
 	// APCreateTable represents create ap table
 	APCreateTable *RemoteProducerMetadata_APCreateTable
+	// APDropDatabase represents drop ap database
+	APDropDatabase *RemoteProducerMetadata_APDropDatabase
+	// APDropTable represents drop ap table
+	APDropTable *RemoteProducerMetadata_APDropTable
 }
 
 var (
@@ -323,6 +327,10 @@ func RemoteProducerMetaToLocalMeta(
 		meta.APCreateDatabase = v.ApCreateDatabase_
 	case *RemoteProducerMetadata_ApCreateTable_:
 		meta.APCreateTable = v.ApCreateTable_
+	case *RemoteProducerMetadata_ApDropDatabase_:
+		meta.APDropDatabase = v.ApDropDatabase_
+	case *RemoteProducerMetadata_ApDropTable_:
+		meta.APDropTable = v.ApDropTable_
 	default:
 		return *meta, false
 	}
@@ -398,6 +406,14 @@ func LocalMetaToRemoteProducerMeta(
 	} else if meta.APCreateDatabase != nil {
 		rpm.Value = &RemoteProducerMetadata_ApCreateDatabase_{
 			ApCreateDatabase_: meta.APCreateDatabase,
+		}
+	} else if meta.APDropDatabase != nil {
+		rpm.Value = &RemoteProducerMetadata_ApDropDatabase_{
+			ApDropDatabase_: meta.APDropDatabase,
+		}
+	} else if meta.APDropTable != nil {
+		rpm.Value = &RemoteProducerMetadata_ApDropTable_{
+			ApDropTable_: meta.APDropTable,
 		}
 	} else {
 		rpm.Value = &RemoteProducerMetadata_Error{

@@ -541,6 +541,13 @@ message SyncMetaCacheDetails {
   // CreateOrAlterTagIndex is currently used for create/alter tag index of TS table.
   sqlbase.IndexDescriptor create_or_alter_tag_index = 14 [(gogoproto.nullable) = false,(gogoproto.customname) = "CreateOrAlterTagIndex"];
   string apStatement = 15 [(gogoproto.customname) = "APStatement"];
+  DropAPDatabase drop_ap_database = 16 [(gogoproto.nullable) = false, (gogoproto.customname) = "DropAPDatabase"];
+}
+
+message DropAPDatabase {
+  string current_db = 1;
+  string drop_db = 2;
+  bool rm = 3;
 }
 
 message SetTag {
