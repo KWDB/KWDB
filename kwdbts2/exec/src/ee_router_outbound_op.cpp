@@ -19,7 +19,7 @@
 #include "br_internal_service_recoverable_stub.h"
 #include "ee_cancel_checker.h"
 #include "ee_combined_group_key.h"
-#include "br_defer.h"
+#include "ee_defer.h"
 #include "ee_dml_exec.h"
 #include "ee_global.h"
 #include "ee_inbound_op.h"
