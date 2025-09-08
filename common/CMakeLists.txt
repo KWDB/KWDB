@@ -209,8 +209,7 @@ file(GLOB COMMON_SRC
         src/data_struct/*.cpp
         src/latch/*.cpp
         src/thread/*.cpp
-        src/roachpb/*.cc
-        src/brpc/src/*.cpp)
+        src/roachpb/*.cc)
 
 list(FILTER COMMON_SRC EXCLUDE REGEX ".*/test/.*")
 
@@ -294,18 +293,10 @@ add_library(${COMMON_LIB} SHARED ${COMMON_SRC})
 target_include_directories(${COMMON_LIB}
         PUBLIC 
             src/h
-            src/brpc/include
             ${BRPC_OUTPUT_DIR}/include
             third_party/brpc-1.9.0/src
             third_party/gtest-1.8.1/fused-src
             ../kwdbts2/latch/include
-            ../kwdbts2/exec/include
-            ../kwdbts2/engine/include
-            ../kwdbts2/common/include
-            ../kwdbts2/include
-            ../kwdbts2/storage/include
-            ../kwdbts2/mmap/include
-            ../kwdbts2/statistic/include
         PRIVATE 
             src/include
             src/roachpb
@@ -327,12 +318,8 @@ if (KMALLOC_OVERRIDE)
     target_include_directories(${COMMON_OVERRIDE_LIB}
             PUBLIC 
                 src/h
-                src/brpc/include
                 ${BRPC_OUTPUT_DIR}/include
                 third_party/brpc-1.9.0/src
-                ../kwdbts2/exec/include
-                ../kwdbts2/engine/include
-                ../kwdbts2/common/include
             PRIVATE 
                 src/include
                 src/roachpb
@@ -358,7 +345,6 @@ if (WITH_TESTS)
             src/common/test/*.cpp
             src/data_struct/test/*.cpp
             src/thread/test/*.cpp
-            src/brpc/tests/*.cpp
             )
 
     if (K_DO_NOT_SHIP)
@@ -379,12 +365,9 @@ if (WITH_TESTS)
         add_executable(${tname} ${tsrc})
         target_include_directories(${tname}
                 PUBLIC src/h
-                PUBLIC src/brpc/include
                 PRIVATE src/include
                 PRIVATE src/roachpb
                 PRIVATE ../kwdbts2/common/include
-                PRIVATE ../kwdbts2/exec/include
-                PRIVATE ../kwdbts2/engine/include
                 PRIVATE src/mem/test/h
                 third_party/gtest-1.8.1/fused-src
                 third_party/brpc-1.9.0/src

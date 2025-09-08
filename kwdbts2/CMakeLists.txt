@@ -200,7 +200,6 @@ set(TS_INCLUDE
         ../common/src/h
         ../common/src/include
         ../common/src/roachpb
-        ../common/src/brpc/include
         ../common/third_party/gtest-1.8.1/fused-src
         include
         engine/include
@@ -209,6 +208,7 @@ set(TS_INCLUDE
         mmap/include
         exec/include
         statistic/include
+        brpc/include
         )
 if (NOT KWBASE_OSS)
     list(APPEND TS_INCLUDE icl/autonomy/include)
@@ -223,6 +223,7 @@ file(GLOB_RECURSE KWDBTS2_SERVER_LIB_SRC
         mmap/src/*.cpp
         mmap/src/lib/*.c
         statistic/src/*.cpp
+        brpc/src/*.cpp
         )
 else ()
     file(GLOB_RECURSE KWDBTS2_SERVER_LIB_SRC
@@ -234,6 +235,7 @@ else ()
             mmap/src/lib/*.c
             statistic/src/*.cpp
             icl/autonomy/src/*.cpp
+            brpc/src/*.cpp
     )
 endif()
 list(FILTER KWDBTS2_SERVER_LIB_SRC EXCLUDE REGEX ".*/tests/.*")
@@ -268,6 +270,7 @@ if (WITH_TESTS)
               exec/tests/*.cpp
               engine/tests/*.cpp
               statistic/tests/*.cpp
+              brpc/tests/*.cpp
               )
   else ()
       file(GLOB_RECURSE KWDBTS2_SERVER_TEST_SRC
@@ -277,6 +280,7 @@ if (WITH_TESTS)
               engine/tests/*.cpp
               statistic/tests/*.cpp
               icl/autonomy/tests/*.cpp
+              brpc/tests/*.cpp
       )
   endif()
   foreach (tsrc ${KWDBTS2_SERVER_TEST_SRC})
