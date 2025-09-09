@@ -490,7 +490,7 @@ func (h ConnectionHandler) SendDTI(
 	r CommandResult,
 	di DirectInsert,
 	stmts parser.Statements,
-) (useDeepRule bool, dedupRule int64, dedupRows int64) {
+) (useDeepRule bool, dedupRule int64, dedupRows int64, err error) {
 	h.ex.metrics.StartedStatementCounters.QueryCount.Inc()
 	h.ex.metrics.StartedStatementCounters.InsertCount.Inc()
 	if !evalCtx.StartSinglenode {
@@ -504,6 +504,9 @@ func (h ConnectionHandler) SendDTI(
 		"insert stmt")
 	defer sp.Finish()
 	useDeepRule, dedupRule, dedupRows = h.ex.SendDirectTsInsert(ctx, evalCtx, r, di.PayloadNodeMap)
+	if err = r.Err(); err != nil {
+		return
+	}
 	endtime := timeutil.Now()
 	var tempStmt Statement
 	var flags planFlags
@@ -1653,7 +1656,12 @@ func (ex *connExecutor) execCmd(ctx context.Context) error {
 			ex.metrics.StartedStatementCounters.QueryCount.Inc()
 			ex.metrics.StartedStatementCounters.InsertCount.Inc()
 			ex.SendDirectTsInsert(ctx, &portal.Stmt.PrepareInsertDirect.EvalContext, portal.Stmt.PrepareInsertDirect.stmtRes, portal.Stmt.PrepareInsertDirect.payloadNodeMap)
-			err = portal.Stmt.Insertdirectstmt.ErrorInfo
+			if err = portal.Stmt.Insertdirectstmt.ErrorInfo; err != nil {
+				return err
+			}
+			if err = portal.Stmt.PrepareInsertDirect.stmtRes.Err(); err != nil {
+				return err
+			}
 			stmtRes.IncrementRowsAffected(int(portal.Stmt.Insertdirectstmt.RowsAffected))
 
 			var tempStmt Statement
@@ -2892,6 +2900,11 @@ func (ex *connExecutor) SendDirectTsInsert(
 	res CommandResult,
 	payloadNodeMap map[int]*sqlbase.PayloadForDistTSInsert,
 ) (useDeepRule bool, dedupRule int64, dedupRows int64) {
+	readOnly := sqlbase.ReadOnly.Get(ex.planner.execCfg.SV())
+	if readOnly || sqlbase.ReadOnlyInternal {
+		res.SetError(errors.New("cannot execute ts insert in a read-only transaction"))
+		return
+	}
 	tsIns := tsInsertNodePool.Get().(*tsInsertNode)
 	for _, payloadVals := range payloadNodeMap {
 		tsIns.nodeIDs = append(tsIns.nodeIDs, payloadVals.NodeID)

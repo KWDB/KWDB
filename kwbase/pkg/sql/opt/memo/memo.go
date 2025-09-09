@@ -1326,13 +1326,22 @@ func (m *Memo) projectExprFillStatistic(
 // gp is the GroupingPrivate of (memo.GroupByExpr / memo.ScalarGroupByExpr).
 func (m *Memo) tsScanFillStatistic(tsScan *TSScanExpr, gp *GroupingPrivate) {
 	allColsPrimary := true
-	gp.GroupingCols.ForEach(func(colID opt.ColumnID) {
+
+	// fill the grouping with ptag from the tagfilter.
+	// do this because some time the grouping col will be reduced in RBO,
+	// causing can not use statistic optimization.
+	tempSet := gp.GroupingCols.Copy()
+	for _, v := range tsScan.TagFilter {
+		addTagToGrouping(&tempSet, v, m.Metadata())
+	}
+
+	tempSet.ForEach(func(colID opt.ColumnID) {
 		colMeta := m.Metadata().ColumnMeta(colID)
 		allColsPrimary = allColsPrimary && colMeta.IsPrimaryTag()
 	})
 
 	tableMeta := m.Metadata().TableMeta(tsScan.Table)
-	if !allColsPrimary || (gp.GroupingCols.Len() != 0 && gp.GroupingCols.Len() != tableMeta.PrimaryTagCount) ||
+	if !allColsPrimary || (tempSet.Len() != 0 && tempSet.Len() != tableMeta.PrimaryTagCount) ||
 		tsScan.HintType.OnlyTag() {
 		return
 	}
@@ -1345,6 +1354,21 @@ func (m *Memo) tsScanFillStatistic(tsScan *TSScanExpr, gp *GroupingPrivate) {
 
 	tsScan.ScanAggs = true
 	gp.OptFlags |= opt.UseStatistic
+}
+
+// addTagToGrouping adds ptag which in tagfilter to the grouping.
+// such as "WHERE device = 'Device01' GROUP BY item" is equl to"WHERE device = 'Device01' GROUP BY device, item",
+// it should be changed because the "WHERE device = 'Device01' GROUP BY device, item" can use the statistic.
+func addTagToGrouping(set *opt.ColSet, expr opt.Expr, md *opt.Metadata) {
+	if v, ok := expr.(*VariableExpr); ok {
+		if md.ColumnMeta(v.Col).IsPrimaryTag() {
+			set.Add(v.Col)
+			return
+		}
+	}
+	for i := 0; i < expr.ChildCount(); i++ {
+		addTagToGrouping(set, expr.Child(i), md)
+	}
 }
 
 // tsScanFillStatistic fill filter's statistics.
