@@ -9,7 +9,7 @@
 // MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
 // See the Mulan PSL v2 for more details.
 
-#include "duckdb/engine/duckdb_exec.h"
+#include "duckdb/engine/plan_transform.h"
 #include "duckdb/engine/ap_parse_query.h"
 
 #include "duckdb/catalog/catalog.hpp"
@@ -48,11 +48,9 @@
 
 using namespace duckdb;
 
-namespace kwdbts {
-
-unique_ptr<PhysicalPlan> DuckdbExec::AddAPFilters(unique_ptr<PhysicalPlan> physical_plan,
-                                                  const PostProcessSpec &post,
-                                                  TableCatalogEntry &table, std::map<idx_t, idx_t> &col_map) {
+namespace kwdbap {
+  PhyPlanPtr TransFormPlan::AddAPFilters(PhyPlanPtr physical_plan, const PostProcessSpec &post,
+                                         TableCatalogEntry &table, IdxMap &col_map) {
   auto filter_expr = post.filter().expr();
   physical_plan = VerifyProjectionByTableScan(std::move(physical_plan), col_map);
 
@@ -62,7 +60,7 @@ unique_ptr<PhysicalPlan> DuckdbExec::AddAPFilters(unique_ptr<PhysicalPlan> physi
     return nullptr;
   }
   //auto &proj = projection.Cast<PhysicalProjection>();
-  auto &filter = physical_planner_->Make<PhysicalFilter>(physical_plan->Root().types,
+  auto &filter = physical_plan->Make<PhysicalFilter>(physical_plan->Root().types,
                                                          std::move(expressions),
                                                          physical_plan->Root().estimated_cardinality);
   filter.children.push_back(physical_plan->Root());
@@ -71,8 +69,7 @@ unique_ptr<PhysicalPlan> DuckdbExec::AddAPFilters(unique_ptr<PhysicalPlan> physi
   return physical_plan;
 }
 
-unique_ptr<PhysicalPlan> DuckdbExec::VerifyProjectionByTableScan(unique_ptr<PhysicalPlan> plan,
-                                                                 std::map<idx_t, idx_t> &col_map) {
+PhyPlanPtr TransFormPlan::VerifyProjectionByTableScan(PhyPlanPtr plan, IdxMap &col_map) {
   auto ret = FAIL;
   auto &scan = plan->Root().Cast<PhysicalTableScan>();
 
@@ -105,7 +102,7 @@ unique_ptr<PhysicalPlan> DuckdbExec::VerifyProjectionByTableScan(unique_ptr<Phys
   }
 
   auto &child_proj =
-      physical_planner_->Make<PhysicalProjection>(proj_types, std::move(expressions), scan.estimated_cardinality);
+      plan->Make<PhysicalProjection>(proj_types, std::move(expressions), scan.estimated_cardinality);
   child_proj.children.push_back(scan);
 
   // build result_proj
@@ -137,7 +134,7 @@ unique_ptr<PhysicalPlan> DuckdbExec::VerifyProjectionByTableScan(unique_ptr<Phys
   }
 
   auto &result_proj =
-      physical_planner_->Make<PhysicalProjection>(result_proj_types,
+      plan->Make<PhysicalProjection>(result_proj_types,
                                                   std::move(result_expressions),
                                                   scan.estimated_cardinality);
   result_proj.children.push_back(child_proj);

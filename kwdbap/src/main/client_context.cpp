@@ -182,6 +182,38 @@ void ClientContext::ProcessError(ErrorData &error, const string &query) const {
 	}
 }
 
+bool ClientContext::AttachDB(std::string name, std::string path) {
+  bool ret = false;
+  try {
+    DatabaseManager& manager = DatabaseManager::Get(*this);
+    auto existing_db = manager.GetDatabase(*this, name);
+    if (existing_db) {
+      //      auto &cfg = existing_db->GetDatabase().GetConfig();
+      //      if (cfg.options.database_path != path) {
+      //
+      //      }
+      return ret;
+    }
+    auto attach_info = make_uniq<AttachInfo>();
+    attach_info->name = name;
+    attach_info->path = path + "/" + name;
+    //  attach_info->on_conflict = OnCreateConflict::IGNORE_ON_CONFLICT;
+    AttachOptions options(attach_info, duckdb::AccessMode::AUTOMATIC);
+    auto attached_db = manager.AttachDatabase(*this, *attach_info, options);
+    const auto storage_options = attach_info->GetStorageOptions();
+    attached_db->Initialize(*this, storage_options);
+    if (!options.default_table.name.empty()) {
+      attached_db->GetCatalog().SetDefaultTable(options.default_table.schema,
+                                                options.default_table.name);
+    }
+    attached_db->FinalizeLoad(*this);
+    ret = true;
+  } catch (const Exception& e) {
+    printf("attach catch error %s\n", e.what());
+  }
+  return ret;
+}
+
 template <class T>
 unique_ptr<T> ClientContext::ErrorResult(ErrorData error, const string &query) {
 	ProcessError(error, query);
