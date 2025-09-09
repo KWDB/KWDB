@@ -47,43 +47,65 @@ unique_ptr<PhysicalPlan> DuckdbExec::CreateAPAggregator(int *i) {
         }
         auto &table_scan = input_plan->Root().Cast<PhysicalTableScan>();
         vector<unique_ptr<duckdb::Expression>> children;
+        // todo: 需要根据实际情况构建投影，比如下层返回a,b, 本层实际上要返回sum(a),sum(b),a
         for (auto idx : table_scan.projection_ids) {
             children.push_back(make_uniq<BoundReferenceExpression>(table_scan.returned_types[idx], idx));
         }
-
         // auto ref_copy = CopyChildren(children);
         auto &proj = physical_planner_ -> Make<PhysicalProjection>(table_scan.returned_types, std::move(children), 0);
         proj.children.push_back(input_plan->Root());
 
         vector<unique_ptr<duckdb::Expression>> expressions;
+        vector<LogicalType> agg_returned_types;
         for (auto &agg : apAggregator.aggregations()) {
+            std::string func_name = "";
             switch (agg.func()) {
                 case TSAggregatorSpec_Func_SUM: {
-                    std::string sum_func = "sum";
-                    EntryLookupInfo lookup_info(CatalogType::AGGREGATE_FUNCTION_ENTRY, sum_func);
-                    auto entry_retry = CatalogEntryRetriever(*connect_->context);
-                    auto func_entry = entry_retry.GetEntry("", "", lookup_info, OnEntryNotFound::RETURN_NULL);
-                    auto &func = func_entry->Cast<AggregateFunctionCatalogEntry>();
-                    unique_ptr<duckdb::Expression> filter;
-                    unique_ptr<FunctionData> bind_info;
-                    auto aggr_type = AggregateType::NON_DISTINCT;
-
-                    vector<unique_ptr<duckdb::Expression>> ref;
-                    for (auto idx : agg.col_idx()) {
-                        ref.push_back(make_uniq<BoundReferenceExpression>(table_scan.returned_types[idx], idx));
-                    }
-
-                    auto agg_expr = make_uniq<BoundAggregateExpression>(func.functions.GetFunctionByArguments(*connect_->context, {LogicalType::INTEGER}), std::move(ref), std::move(filter), std::move(bind_info), aggr_type);
-                    expressions.push_back(std::move(agg_expr));
+                    func_name = "sum";
+                    break;
+                }
+                case TSAggregatorSpec_Func_AVG: {
+                    func_name = "avg";
+                    break;
+                }
+                case TSAggregatorSpec_Func_COUNT: {
+                    func_name = "count";
+                    break;
+                }
+                case TSAggregatorSpec_Func_MAX: {
+                    func_name = "max";
+                    break;
+                }
+                case TSAggregatorSpec_Func_MIN: {
+                    func_name = "min";
                     break;
                 }
                 default: {
                     throw InvalidInputException("unsupported agg function");
                 }
             }
+            EntryLookupInfo lookup_info(CatalogType::AGGREGATE_FUNCTION_ENTRY, func_name);
+            auto entry_retry = CatalogEntryRetriever(*connect_->context);
+            auto func_entry = entry_retry.GetEntry("", "", lookup_info, OnEntryNotFound::RETURN_NULL);
+            if (!func_entry) {
+                throw std::runtime_error("Aggregate function not found: " + func_name);
+            }
+            auto &func = func_entry->Cast<AggregateFunctionCatalogEntry>();
+            unique_ptr<duckdb::Expression> filter;
+            unique_ptr<FunctionData> bind_info;
+            auto aggr_type = AggregateType::NON_DISTINCT;
+
+            vector<unique_ptr<duckdb::Expression>> ref;
+            for (auto idx : agg.col_idx()) {
+                ref.push_back(make_uniq<BoundReferenceExpression>(table_scan.returned_types[idx], idx));
+                auto agg_func = func.functions.GetFunctionByArguments(*connect_->context, {table_scan.returned_types[idx]});
+                auto agg_expr = make_uniq<BoundAggregateExpression>(agg_func, std::move(ref), std::move(filter), std::move(bind_info), aggr_type);
+                agg_returned_types.push_back(agg_expr->return_type);
+                expressions.push_back(std::move(agg_expr));
+            }
+
         }
-        // todo: current type is not correct
-        auto &res = physical_planner_ -> Make<PhysicalUngroupedAggregate>(table_scan.returned_types, std::move(expressions), 0);
+        auto &res = physical_planner_ -> Make<PhysicalUngroupedAggregate>(agg_returned_types, std::move(expressions), 0);
         res.children.push_back(proj);
         input_plan->SetRoot(res);
     }
