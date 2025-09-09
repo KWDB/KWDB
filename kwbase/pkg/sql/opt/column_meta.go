@@ -94,6 +94,9 @@ type ColumnMeta struct {
 	// RealIdx is only used when IsDeclaredInsideProcedure is true, which indicates the index of
 	// variables declared inside a procedure(starts from zero)
 	RealIdx int
+	// Name is the ColName of this column, which is used to do semantic check for NEW/OLD expr in
+	// trigger.
+	Name string
 }
 
 // IsNormalCol identify this column as a normal column

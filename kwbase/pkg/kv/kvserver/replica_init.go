@@ -177,26 +177,25 @@ func (r *Replica) loadRaftMuLockedReplicaMuLocked(
 	if r.isTsLocked() {
 		// if we use the mode that raft log combines with WAL to guarantee the data integrity,
 		// we need to adjust applied index with ts flushed index.
-		var hasTsFlushedIndex bool
-		if isInit {
-			// start node, TsRaftLogCombineWAL is unavailable yet, check r.mu.tsFlushedIndex
-			r.mu.tsFlushedIndex, err = r.mu.stateLoader.LoadTsFlushedIndex(ctx, r.Engine())
-			if err != nil {
-				return err
-			}
-			hasTsFlushedIndex = r.mu.tsFlushedIndex > 0
-		} else {
-			// create replica, r.mu.tsFlushedIndex is not set and TsRaftLogCombineWAL
-			// is available, directly check TsRaftLogCombineWAL
-			hasTsFlushedIndex = tse.TsRaftLogCombineWAL.Get(&r.store.ClusterSettings().SV)
-			if hasTsFlushedIndex && r.mu.tsFlushedIndex == 0 {
-				// just created, set r.mu.state.TruncatedState.Index to r.mu.tsFlushedIndex
-				r.mu.tsFlushedIndex = r.mu.state.TruncatedState.Index
-				if err := r.mu.stateLoader.SetTsFlushedIndex(ctx, r.Engine(), r.mu.tsFlushedIndex); err != nil {
-					log.Warningf(ctx, "failed SetTsFlushedIndex, err: %v", err)
-				}
-			}
+		hasTsFlushedIndex := tse.TsRaftLogCombineWAL.Get(&r.store.ClusterSettings().SV)
+		r.mu.tsFlushedIndex, err = r.mu.stateLoader.LoadTsFlushedIndex(ctx, r.Engine())
+		if err != nil {
+			return err
 		}
+		if hasTsFlushedIndex && r.mu.tsFlushedIndex == 0 {
+			if isInit {
+				// it is start period, the range was created and tsFlushed should already be set.
+				log.Warningf(ctx, "tsFlushedIndex is not set when created")
+			}
+			// init r.mu.state.TruncatedState.Index to r.mu.tsFlushedIndex
+			r.mu.tsFlushedIndex = r.mu.state.TruncatedState.Index
+			if err := r.mu.stateLoader.SetTsFlushedIndex(ctx, r.Engine(), r.mu.tsFlushedIndex); err != nil {
+				log.Warningf(ctx, "failed SetTsFlushedIndex, err: %v", err)
+			}
+		} else {
+			hasTsFlushedIndex = r.mu.tsFlushedIndex > 0
+		}
+
 		hs, err := r.mu.stateLoader.LoadHardState(ctx, r.store.Engine())
 		// For uninitialized ranges, membership is unknown at this point.
 		if err != nil {

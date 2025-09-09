@@ -30,6 +30,9 @@ import (
 	"strconv"
 	"strings"
 
+	"gitee.com/kwbasedb/kwbase/pkg/sql/parser"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgcode"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgerror"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/types"
@@ -356,4 +359,18 @@ func (p *planner) ShowCreate(
 	}
 
 	return stmt, err
+}
+
+// reParseCreateTrigger returns a valid SQL representation of the CREATE
+// TRIGGER statement used to create the given trigger.
+func reParseCreateTrigger(desc *sqlbase.TriggerDescriptor) (*tree.CreateTrigger, error) {
+	newStmt, err := parser.Parse(desc.TriggerBody)
+	if err != nil {
+		return nil, err
+	}
+	ct, ok := newStmt[0].AST.(*tree.CreateTrigger)
+	if !ok {
+		return nil, pgerror.Newf(pgcode.Syntax, "cannot parse \"%s\" as CREATE TRIGGER statement", newStmt[0].AST.String())
+	}
+	return ct, nil
 }

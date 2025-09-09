@@ -66,6 +66,8 @@ KStatus TagPartitionIterator::Next(std::vector<EntityResultIndex>* entity_id_lis
           }
           if (UNLIKELY(batch == nullptr)) {
             LOG_WARN("GetTagBatchRecord result is nullptr, skip this col[%u]", col_idx);
+            Batch* batch = new(std::nothrow) kwdbts::TagBatch(0, nullptr, row_num - start_row);
+            res->push_back(idx, batch);
             continue;
           }
           res->push_back(idx, batch);
@@ -114,6 +116,8 @@ success_end:
       }
       if (UNLIKELY(batch == nullptr)) {
         LOG_WARN("GetTagBatchRecord result is nullptr, skip this col[%u]", col_idx);
+        Batch* batch = new(std::nothrow) kwdbts::TagBatch(0, nullptr, row_num - start_row);
+        res->push_back(idx, batch);
         continue;
       }
       res->push_back(idx, batch);

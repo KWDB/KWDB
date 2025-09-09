@@ -15,6 +15,7 @@ import (
 	"context"
 
 	"gitee.com/kwbasedb/kwbase/pkg/cdc/cdcpb"
+	"gitee.com/kwbasedb/kwbase/pkg/jobs"
 	"gitee.com/kwbasedb/kwbase/pkg/security"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgcode"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgerror"
@@ -70,7 +71,7 @@ func (p *planner) removeTableStreams(
 		"load-streams",
 		p.txn,
 		sqlbase.InternalExecutorSessionDataOverride{User: security.RootUser},
-		`SELECT id,job_id FROM system.kwdb_streams WHERE source_table_id = $1 OR target_table_id = $1`,
+		`SELECT id,job_id,source_table_id FROM system.kwdb_streams WHERE source_table_id = $1 OR target_table_id = $1`,
 		tableDesc.ID,
 	)
 	if err != nil {
@@ -84,8 +85,9 @@ func (p *planner) removeTableStreams(
 	for _, row := range rows {
 		streamID := uint64(tree.MustBeDInt(row[0]))
 		jobID := int64(tree.MustBeDInt(row[1]))
+		tableID := int64(tree.MustBeDInt(row[2]))
 
-		if err = p.removeStream(ctx, jobID, streamID, uint64(tableDesc.ID)); err != nil {
+		if err = p.removeStream(ctx, jobID, streamID, uint64(tableID)); err != nil {
 			return err
 		}
 	}
@@ -97,14 +99,22 @@ func (p *planner) removeStream(
 	ctx context.Context, jobID int64, streamID uint64, tableID uint64,
 ) error {
 	if jobID != 0 {
+		// Close the job by closing the CDC
 		p.ExecCfg().CDCCoordinator.StopCDCByLocal(tableID, streamID, cdcpb.TSCDCInstanceType_Stream)
-		job, err := p.execCfg.JobRegistry.LoadJob(ctx, jobID)
+		waitCDCStatusChanged(ctx, p.ExecCfg().CDCCoordinator, tableID, streamID, cdcpb.TSCDCInstanceType_Stream, false)
+
+		job, err := p.execCfg.JobRegistry.LoadJobWithTxn(ctx, jobID, p.txn)
 		if err != nil {
 			return err
 		}
 
-		if !job.CheckTerminalStatus(ctx) {
-			_ = p.execCfg.JobRegistry.CancelRequested(ctx, nil, jobID)
+		// After CDC is closed, the job status is usually StatusFailed,
+		// and if the job status is not StatusFailed, CancelRequested is used to close it,
+		// which usually takes 30 seconds.
+		if status, err := job.CurrentStatus(ctx); err == nil {
+			if status == jobs.StatusRunning || status == jobs.StatusPending {
+				_ = p.execCfg.JobRegistry.CancelRequested(ctx, p.txn, jobID)
+			}
 		}
 	}
 
@@ -131,6 +141,7 @@ func (p *planner) removeStream(
 	); err != nil {
 		return err
 	}
+
 	return nil
 }
 

@@ -79,7 +79,16 @@ type runnerRequest struct {
 	flowReq    *execinfrapb.SetupFlowRequest
 	nodeID     roachpb.NodeID
 	resultChan chan<- runnerResult
+	runType    RunnerType
 }
+
+type RunnerType int
+
+const (
+	runnerOrigin RunnerType = iota
+	runnerOnlySetup
+	runnerOnlyRun
+)
 
 // runnerResult is returned by a worker (via a channel) for each received
 // request.
@@ -97,7 +106,19 @@ func (req runnerRequest) run() {
 	} else {
 		client := execinfrapb.NewDistSQLClient(conn)
 		// TODO(radu): do we want a timeout here?
-		resp, err := client.SetupFlow(req.ctx, req.flowReq)
+		var resp = &execinfrapb.SimpleResponse{}
+		var err error
+		switch req.runType {
+		case runnerOrigin:
+			resp, err = client.SetupFlow(req.ctx, req.flowReq)
+		case runnerOnlySetup:
+			resp, err = client.SetupFlowOnly(req.ctx, req.flowReq)
+		case runnerOnlyRun:
+			runResp := &execinfrapb.RunFlowRequest{
+				FlowID: req.flowReq.Flow.FlowID,
+			}
+			resp, err = client.RunFlowOnly(req.ctx, runResp)
+		}
 		if err != nil {
 			res.err = err
 		} else {
@@ -194,7 +215,7 @@ func (dsp *DistSQLPlanner) setupFlows(
 		}
 	}
 	if usePipeline {
-		return dsp.setupPipeFlows(ctx, evalCtx, setupReq, flows, thisNodeID, recv, localState, resultChan)
+		return dsp.setupPipeFlowsForTest(ctx, evalCtx, setupReq, flows, thisNodeID, recv, localState, resultChan)
 	}
 
 	if evalCtx.SessionData.VectorizeMode != sessiondata.VectorizeOff {
@@ -378,6 +399,122 @@ func (dsp *DistSQLPlanner) setupPipeFlows(
 	}
 
 	return ctx, flow, nil
+}
+
+// setupPipeFlowsForTest setup all flows, first setup gateway flow,
+// After all flow setups are completed, proceed with executing the flow.
+func (dsp *DistSQLPlanner) setupPipeFlowsForTest(
+	ctx context.Context,
+	evalCtx *extendedEvalContext,
+	setupReq execinfrapb.SetupFlowRequest,
+	flows map[roachpb.NodeID]*execinfrapb.FlowSpec,
+	thisNodeID roachpb.NodeID,
+	recv *DistSQLReceiver,
+	localState distsql.LocalState,
+	resultChan chan runnerResult,
+) (context.Context, flowinfra.Flow, error) {
+	// Set up the flow on this node.
+	localReq := setupReq
+	localReq.Flow = *flows[thisNodeID]
+	defer physicalplan.ReleaseSetupFlowRequest(&localReq)
+	ctx, flow, err := dsp.distSQLSrv.SetupLocalSyncFlow(ctx, evalCtx.Mon, &localReq, recv, localState)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	err = setupRemoteFlow(ctx, flows, thisNodeID, setupReq, dsp, resultChan)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	err = runRemoteFlow(ctx, flows, thisNodeID, setupReq, dsp, resultChan)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	for nodeID, flowSpec := range flows {
+		if nodeID == thisNodeID {
+			// Skip this node.
+			continue
+		}
+		req := setupReq
+		req.Flow = *flowSpec
+		defer physicalplan.ReleaseSetupFlowRequest(&req)
+	}
+	return ctx, flow, nil
+}
+
+func setupRemoteFlow(
+	ctx context.Context,
+	flows map[roachpb.NodeID]*execinfrapb.FlowSpec,
+	thisNodeID roachpb.NodeID,
+	setupReq execinfrapb.SetupFlowRequest,
+	dsp *DistSQLPlanner,
+	resultChan chan runnerResult,
+) error {
+	return sendRemoteFlowInfo(ctx, flows, thisNodeID, setupReq, dsp, resultChan, runnerOnlySetup)
+}
+
+func runRemoteFlow(
+	ctx context.Context,
+	flows map[roachpb.NodeID]*execinfrapb.FlowSpec,
+	thisNodeID roachpb.NodeID,
+	setupReq execinfrapb.SetupFlowRequest,
+	dsp *DistSQLPlanner,
+	resultChan chan runnerResult,
+) error {
+	return sendRemoteFlowInfo(ctx, flows, thisNodeID, setupReq, dsp, resultChan, runnerOnlyRun)
+}
+
+func sendRemoteFlowInfo(
+	ctx context.Context,
+	flows map[roachpb.NodeID]*execinfrapb.FlowSpec,
+	thisNodeID roachpb.NodeID,
+	setupReq execinfrapb.SetupFlowRequest,
+	dsp *DistSQLPlanner,
+	resultChan chan runnerResult,
+	runType RunnerType,
+) error {
+	for nodeID, flowSpec := range flows {
+		if nodeID == thisNodeID {
+			// Skip this node.
+			continue
+		}
+		req := setupReq
+		req.Flow = *flowSpec
+		runReq := runnerRequest{
+			ctx:        ctx,
+			nodeDialer: dsp.nodeDialer,
+			flowReq:    &req,
+			nodeID:     nodeID,
+			resultChan: resultChan,
+			runType:    runType,
+		}
+
+		// Send out a request to the workers; if no worker is available, run
+		// directly.
+		select {
+		case dsp.runnerChan <- runReq:
+		default:
+			runReq.run()
+		}
+	}
+
+	var firstErr error
+	// Now wait for all the flows to be scheduled on remote nodes. Note that we
+	// are not waiting for the flows themselves to complete.
+	for i := 0; i < len(flows)-1; i++ {
+		res := <-resultChan
+		if firstErr == nil {
+			firstErr = res.err
+		}
+		// TODO(radu): accumulate the flows that we failed to set up and move them
+		// into the local flow.
+	}
+	if firstErr != nil {
+		return firstErr
+	}
+	return nil
 }
 
 // Run executes a physical plan. The plan should have been finalized using
@@ -972,6 +1109,20 @@ func (r *DistSQLReceiver) Push(
 				r.resultWriter.SetError(err)
 			}
 		}
+		if meta.APDropDatabase != nil {
+			r.status = execinfra.ConsumerClosed
+			if !meta.APDropDatabase.DropSuccess {
+				err := errors.Newf("drop ap database failed, reason:%s", meta.APDropDatabase.DropErr)
+				r.resultWriter.SetError(err)
+			}
+		}
+		if meta.APDropTable != nil {
+			r.status = execinfra.ConsumerClosed
+			if !meta.APDropTable.DropSuccess {
+				err := errors.Newf("drop ap table failed, reason:%s", meta.APDropTable.DropErr)
+				r.resultWriter.SetError(err)
+			}
+		}
 		if meta.TsPro != nil {
 			r.status = execinfra.ConsumerClosed
 			if !meta.TsPro.Success {
@@ -1441,7 +1592,7 @@ func (dsp *DistSQLPlanner) PlanAndRunPostqueries(
 		// We place a sequence point before every postquery, so
 		// that each subsequent postquery can observe the writes
 		// by the previous step.
-		if err := planner.Txn().Step(ctx); err != nil {
+		if err := planner.Txn().Step(ctx, true); err != nil {
 			recv.SetError(err)
 			return false
 		}

@@ -1,0 +1,56 @@
+create ts database db1;
+CREATE TABLE db1.ts_t1(k_timestamp timestamptz NOT NULL, e1 int2, e2 int, e3 int8, e4 float4, e5 float8, e6 bool, e7 timestamptz, e8 char(1023), e9 nchar(255), e10 char(810), e11 char, e12 char(812), e13 nchar, e14 char(814), e15 nchar(215), e16 char(816), e17 nchar(217), e18 char(418), e19 varchar(256), e20 char(420), e21 char(221) , e22 char(422) ,i1_1 SMALLINT NULL, i1_2 SMALLINT NULL,i1_3 SMALLINT NULL,i1_4 SMALLINT NULL,i2_1 INT NULL,i2_2 INT NULL,f1_1 FLOAT4 NULL,f1_2 FLOAT4 NULL,f1 FLOAT8 NULL,f2 FLOAT8 NULL,c1_1 CHAR NULL,c1_2 CHAR NULL,c1_3 CHAR NULL,c1_4 CHAR NULL,n1_1 NCHAR NULL,n1_2 NCHAR NULL,n1_3 NCHAR NULL,n1_4 NCHAR NULL,nv1_1 NVARCHAR NULL,nv1_2 NVARCHAR NULL,nv1_3 NVARCHAR NULL,nv1_4 NVARCHAR NULL,v1_1 VARCHAR NULL,v1_2 VARCHAR NULL,v1_3 VARCHAR NULL,v1_4 VARCHAR NULL,v1_5 VARCHAR NULL,v1_6 VARCHAR NULL,v1_7 VARCHAR NULL,v1_8 VARCHAR NULL,v1_9 VARCHAR NULL,t1_1 TIMESTAMP NULL,tz_1 TIMESTAMPtz NULL) ATTRIBUTES (code1 int NOT NULL,flag int NOT NULL,color nchar(200) NOT NULL,t1 smallint,t2 int,t3 bigint,t4 float,t5 double) primary tags(code1,flag,color) activetime 10s;
+INSERT INTO db1.ts_t1 (k_timestamp, e2, e3, e4, e5, e6, e7, e8, e9, e10, e11, e12, e13, e14, e15, e16, e17, e18, e19, e20, e21, e22, code1,  flag, color) VALUES ('2024-06-01 00:00:00.000',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,800,800,'color');
+INSERT INTO db1.ts_t1 (k_timestamp, e2, e3, e4, e5, e6, e7, e8, e9, e10, e11, e12, e13, e14, e15, e16, e17, e18, e19, e20, e21, e22, code1,  flag, color) VALUES ('2024-06-01 01:00:00.000',100,100,1.88,1.88,1,'2024-06-14 01:47:56.286+00:00','e1','e1','e1','1','1','1','1','1','1','1','1','1','1','1','1',800,800,'color');
+INSERT INTO db1.ts_t1 (k_timestamp, e2, e3, e4, e5, e6, e7, e8, e9, e10, e11, e12, e13, e14, e15, e16, e17, e18, e19, e20, e21, e22, code1,  flag, color) VALUES ('2024-06-01 02:00:00.000',800,800,8.88,8.88,0,'2024-06-14 02:47:56.286+00:00','e8','e9','e10','8','e12','8','e14','e15','e16','e17','e18','e19','e20','e21','e22',800,800,'color');
+select * from db1.ts_t1 where k_timestamp >= '2024-06-01 00:00:00.000' and k_timestamp <= '2024-06-01 02:00:00.000';
+ALTER TABLE db1.ts_t1 ADD COLUMN ac1 INT8 NULL;
+ALTER TABLE db1.ts_t1 ADD COLUMN ac2 INT4 NULL;
+ALTER TABLE db1.ts_t1 ADD COLUMN ac3 INT2 NULL;
+ALTER TABLE db1.ts_t1 ADD COLUMN ac4 FLOAT4 NULL;
+ALTER TABLE db1.ts_t1 ADD COLUMN ac5 FLOAT8 NULL;
+ALTER TABLE db1.ts_t1 ADD COLUMN ac6 BOOL NULL;
+ALTER TABLE db1.ts_t1 ADD COLUMN ac7 TIMESTAMP NULL;
+ALTER TABLE db1.ts_t1 ADD COLUMN ac8 CHAR(50) NULL;
+ALTER TABLE db1.ts_t1 ADD COLUMN ac9 NCHAR(50) NULL;
+ALTER TABLE db1.ts_t1 ADD COLUMN ac10 VARCHAR(50) NULL;
+ALTER TABLE db1.ts_t1 ADD COLUMN ac11 CHAR NULL;
+ALTER TABLE db1.ts_t1 ADD COLUMN ac12 NCHAR NULL;
+ALTER TABLE db1.ts_t1 ADD COLUMN ac13 VARCHAR NULL;
+ALTER TABLE db1.ts_t1 ADD COLUMN ac16 TIMESTAMPTZ NULL;
+ALTER TABLE db1.ts_t1 ADD COLUMN ac17 NVARCHAR NULL;
+ALTER TABLE db1.ts_t1 ADD COLUMN ac18 NVARCHAR(50) NULL;
+ALTER TABLE db1.ts_t1 ADD COLUMN ac19 VARBYTES NULL;
+ALTER TABLE db1.ts_t1 ADD COLUMN ac20 VARBYTES(50) NULL;
+ALTER TABLE db1.ts_t1 ADD COLUMN ac21 geometry NULL;
+--alter后插入数据等操作
+INSERT INTO db1.ts_t1(k_timestamp,ac1,ac2,ac3,ac4,ac5,ac6,ac7,ac8,ac9,ac10,ac11,ac12,ac13,ac16,ac17,ac18,ac19,ac20,ac21,code1,flag,color)values('2024-06-03 01:00:00.000',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,1,1,'a');
+INSERT INTO db1.ts_t1(k_timestamp,ac1,ac2,ac3,ac4,ac5,ac6,ac7,ac8,ac9,ac10,ac11,ac12,ac13,ac16,ac17,ac18,ac19,ac20,ac21,code1,flag,color)
+values('2024-06-03 01:00:01.000',1,1,1,1.1,1.1,true,'2024-06-03 01:00:01.000','1ac8','1ac9','1ac10','1','1','1ac13','2024-06-03 01:00:01.000','1ac17','1ac18','1ac19','1ac20','Point(0.0 0.0)',1,1,'a');
+INSERT INTO db1.ts_t1(k_timestamp,ac1,ac2,ac3,ac4,ac5,ac6,ac7,ac8,ac9,ac10,ac11,ac12,ac13,ac16,ac17,ac18,ac19,ac20,ac21,code1,flag,color)values('2024-06-03 01:00:02.000',3,3,3,3.3,3.3,false,'2024-06-03 01:00:02.000','3ac8','3ac9','3ac10','3','3','3ac13','2024-06-03 01:00:02.000','3ac17','3ac18','3ac19','3ac20','LineString(1.0 1.0, 2.0 2.0)',3,3,'a');
+INSERT INTO db1.ts_t1(k_timestamp,ac1,ac2,ac3,ac4,ac5,ac6,ac7,ac8,ac9,ac10,ac11,ac12,ac13,ac16,ac17,ac18,ac19,ac20,ac21,code1,flag,color)values('2024-06-03 01:00:03.000',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,1,1,'a');
+select * from db1.ts_t1 where k_timestamp >= '2024-06-03 01:00:00.000' and k_timestamp <= '2024-06-03 01:00:03.000' order by k_timestamp;
+select count(*) from db1.ts_t1 where k_timestamp >= '2024-06-03 01:00:00.000' and k_timestamp <= '2024-06-03 01:00:03.000';
+
+select k_timestamp,ac6 from db1.ts_t1 where k_timestamp >= '2024-06-03 01:00:00.000' and k_timestamp <= '2024-06-03 01:00:03.000' order by k_timestamp;
+select count(ac6),max(ac6),min(ac6),first(ac6),last(ac6),first_row(ac6),last_row(ac6) from db1.ts_t1 where k_timestamp >= '2024-06-03 01:00:00.000' and k_timestamp <= '2024-06-03 01:00:03.000';
+select k_timestamp,ac7 from db1.ts_t1 where k_timestamp >= '2024-06-03 01:00:00.000' and k_timestamp <= '2024-06-03 01:00:03.000' order by k_timestamp;
+select count(ac7),max(ac7),min(ac7),first(ac7),last(ac7),first_row(ac7),last_row(ac7) from db1.ts_t1 where k_timestamp >= '2024-06-03 01:00:00.000' and k_timestamp <= '2024-06-03 01:00:03.000';
+select k_timestamp,ac8 from db1.ts_t1 where k_timestamp >= '2024-06-03 01:00:00.000' and k_timestamp <= '2024-06-03 01:00:03.000' order by k_timestamp;
+select count(ac8),max(ac8),min(ac8),first(ac8),last(ac8),first_row(ac8),last_row(ac8) from db1.ts_t1 where k_timestamp >= '2024-06-03 01:00:00.000' and k_timestamp <= '2024-06-03 01:00:03.000';
+select k_timestamp,ac9 from db1.ts_t1 where k_timestamp >= '2024-06-03 01:00:00.000' and k_timestamp <= '2024-06-03 01:00:03.000' order by k_timestamp;
+select count(ac9),max(ac9),min(ac9),first(ac9),last(ac9),first_row(ac9),last_row(ac9) from db1.ts_t1 where k_timestamp >= '2024-06-03 01:00:00.000' and k_timestamp <= '2024-06-03 01:00:03.000';
+
+select k_timestamp,ac10 from db1.ts_t1 where k_timestamp >= '2024-06-03 01:00:00.000' and k_timestamp <= '2024-06-03 01:00:03.000' order by k_timestamp;
+select count(ac10),max(ac10),min(ac10),first(ac10),last(ac10),first_row(ac10),last_row(ac10) from db1.ts_t1 where k_timestamp >= '2024-06-03 01:00:00.000' and k_timestamp <= '2024-06-03 01:00:03.000';
+select k_timestamp,ac11 from db1.ts_t1 where k_timestamp >= '2024-06-03 01:00:00.000' and k_timestamp <= '2024-06-03 01:00:03.000' order by k_timestamp;
+select count(ac11),max(ac11),min(ac11),first(ac11),last(ac11),first_row(ac11),last_row(ac11) from db1.ts_t1 where k_timestamp >= '2024-06-03 01:00:00.000' and k_timestamp <= '2024-06-03 01:00:03.000';
+select k_timestamp,ac12 from db1.ts_t1 where k_timestamp >= '2024-06-03 01:00:00.000' and k_timestamp <= '2024-06-03 01:00:03.000' order by k_timestamp;
+select count(ac12),max(ac12),min(ac12),first(ac12),last(ac12),first_row(ac12),last_row(ac12) from db1.ts_t1 where k_timestamp >= '2024-06-03 01:00:00.000' and k_timestamp <= '2024-06-03 01:00:03.000';
+select k_timestamp,ac13 from db1.ts_t1 where k_timestamp >= '2024-06-03 01:00:00.000' and k_timestamp <= '2024-06-03 01:00:03.000' order by k_timestamp;
+select count(ac13),max(ac13),min(ac13),first(ac13),last(ac13),first_row(ac13),last_row(ac13) from db1.ts_t1 where k_timestamp >= '2024-06-03 01:00:00.000' and k_timestamp <= '2024-06-03 01:00:03.000';
+select k_timestamp,ac16 from db1.ts_t1 where k_timestamp >= '2024-06-03 01:00:00.000' and k_timestamp <= '2024-06-03 01:00:03.000' order by k_timestamp;
+select count(ac16),max(ac16),min(ac16),first(ac16),last(ac16),first_row(ac16),last_row(ac16) from db1.ts_t1 where k_timestamp >= '2024-06-03 01:00:00.000' and k_timestamp <= '2024-06-03 01:00:03.000';
+select k_timestamp,ac17 from db1.ts_t1 where k_timestamp >= '2024-06-03 01:00:00.000' and k_timestamp <= '2024-06-03 01:00:03.000' order by k_timestamp;
+select count(ac17),max(ac17),min(ac17),first(ac17),last(ac17),first_row(ac17),last_row(ac17) from db1.ts_t1 where k_timestamp >= '2024-06-03 01:00:00.000' and k_timestamp <= '2024-06-03 01:00:03.000';
+drop database db1 cascade;

@@ -12,6 +12,7 @@ void PipelineEvent::Schedule() {
 	try {
 		pipeline->Schedule(event);
 		D_ASSERT(total_tasks > 0);
+		pipeline->sink->SetTotalTasks(total_tasks);
 	} catch (std::exception &ex) {
 		executor.PushError(ErrorData(ex));
 	} catch (...) { // LCOV_EXCL_START

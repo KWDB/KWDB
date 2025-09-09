@@ -631,7 +631,7 @@ TEST_F(TestEngineWAL, updateTag) {
   ASSERT_EQ(ts_engine_->GetTsTable(ctx_, cur_table_id, ts_table), KStatus::SUCCESS);
   std::vector<EntityResultIndex> entity_id_list;
   std::vector<k_uint32> scan_tags = {1, 2};
-  TagIterator *iter;
+  BaseEntityIterator *iter;
   std::unordered_set<uint32_t> hps;
   make_hashpoint(&hps);
   ASSERT_EQ(ts_table->GetTagIterator(ctx_, scan_tags, hps, &iter, 1), KStatus::SUCCESS);

@@ -64,7 +64,7 @@ build: .ALWAYS_REBUILD | bin/.submodules-initialized
 ################################################################
 cpplint: .ALWAYS_REBUILD
 	$(info ========== $@ ==========)
-	cpplint --recursive --exclude=kwdbts2/mmap --exclude=common/third_party \
+	cpplint --recursive --exclude=kwdbts2/mmap --exclude=kwdbts2/third_party \
 		--exclude=kwdbts2/roachpb --exclude=kwdbts2/**/tests \
 		--filter=-build/c++11,-build/include_subdir,-runtime/references,-readability/fn_size \
 		--linelength=125 $(BASEDIR)/kwdbts2

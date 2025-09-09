@@ -87,12 +87,6 @@ class TsTierPartitionManager {
 
  private:
   std::string parsePartitionDirToOneLevel(const std::string& partition_full_path);
-  // begin transaction and write log.
-  KStatus writeWAL(const std::string &link_path, const std::string &tier_path, uint64_t& mtr_id);
-  // commit transaction
-  KStatus commitWAL(uint64_t& mtr_id);
-  // rollback transaction
-  KStatus rollbackWAL(uint64_t& mtr_id);
 
  private:
   LoggedTsEntityGroup* wal_mgr_{nullptr};

@@ -128,11 +128,13 @@ var kwdbInternal = virtualSchema{
 		sqlbase.CrdbInternalKWDBAttributeValueTableID:   kwdbInternalKWDBAttributeValueTable,
 		sqlbase.CrdbInternalKWDBFunctionsTableID:        kwdbInternalKWDBFunctionsTable,
 		sqlbase.KwdbInternalKWDBProceduresTableID:       kwdbInternalKWDBProceduresTable,
+		sqlbase.KwdbInternalKWDBTriggersTableID:         kwdbInternalKWDBTriggersTable,
 		sqlbase.CrdbInternalKWDBSchedulesTableID:        kwdbInternalKWDBSchedulesTable,
 		sqlbase.CrdbInternalKWDBObjectCreateStatementID: kwdbInternalKWDBObjectCreateStatement,
 		sqlbase.CrdbInternalKWDBObjectRetentionID:       kwdbInternalKWDBObjectRetention,
 		sqlbase.CrdbInternalKWDBStreamsTableID:          kwdbInternalKWDBStreamTable,
 		sqlbase.CrdbInternalTSEInfoID:                   kwdbInternalTSEngineInfo,
+		sqlbase.CrdbInternalTSTransactionRecordID:       kwdbInternalTSTransactionRecord,
 	},
 	validWithNoDatabaseContext: true,
 }
@@ -2752,6 +2754,51 @@ CREATE TABLE kwdb_internal.kwdb_procedures (
 	},
 }
 
+// kwdbInternalKWDBTriggersTable exposes local information about the triggers.
+var kwdbInternalKWDBTriggersTable = virtualSchemaTable{
+	comment: "kwdb triggers info",
+	schema: `
+CREATE TABLE kwdb_internal.kwdb_triggers (
+  trigger_id        INT8 NOT NULL,
+  trigger_name      STRING NOT NULL,
+  database_name     STRING NOT NULL,
+  schema_name       STRING NOT NULL,
+  table_name        STRING NOT NULL,
+  table_id          INT8 NOT NULL,
+  create_statement  STRING
+)
+`,
+	populate: func(ctx context.Context, p *planner, dbContext *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+
+		return forEachTableDescWithTableLookupInternal(ctx, p, dbContext, virtualOnce, true, /*allowAdding*/
+			func(db *DatabaseDescriptor, scName string, table *TableDescriptor, lCtx tableLookupFn) error {
+				parentNameStr := tree.DNull
+				if db != nil {
+					parentNameStr = tree.NewDString(db.Name)
+				}
+				scNameStr := tree.NewDString(scName)
+
+				descID := tree.NewDInt(tree.DInt(table.ID))
+				for i := range table.Triggers {
+					trigger := table.Triggers[i]
+
+					if err := addRow(
+						tree.NewDInt(tree.DInt(trigger.ID)),
+						tree.NewDString(trigger.Name),
+						parentNameStr,
+						scNameStr,
+						tree.NewDString(table.Name),
+						descID,
+						tree.NewDString(trigger.TriggerBody),
+					); err != nil {
+						return err
+					}
+				}
+				return nil
+			})
+	},
+}
+
 // kwdbInternalKWDBSchedulesTable
 var kwdbInternalKWDBSchedulesTable = virtualSchemaTable{
 	comment: "kwdb schedules info",
@@ -4109,6 +4156,45 @@ CREATE TABLE kwdb_internal.kwdb_streams (
 				return err
 			}
 		}
+		return nil
+	},
+}
+
+var kwdbInternalTSTransactionRecord = virtualSchemaTable{
+	comment: "kwdb show info of ts engine",
+	schema: `
+CREATE TABLE kwdb_internal.ts_inflight_transactions (
+    id UUID,
+    last_heartbeat TIMESTAMP,
+    status STRING
+)
+`,
+	populate: func(ctx context.Context, p *planner, dbContext *DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+
+		startKey := roachpb.Key(keys.MakeTablePrefix(keys.TsTxnTableID))
+		endKey := startKey.PrefixEnd()
+		keyValues, err := p.ExecCfg().DB.Scan(ctx, startKey, endKey, 0)
+		if err != nil {
+			return err
+		}
+		for _, keyValue := range keyValues {
+			if !keyValue.Exists() {
+				continue
+			}
+			var res roachpb.TsTxnRecord
+			if err = protoutil.Unmarshal(keyValue.ValueBytes(), &res); err != nil {
+				return err
+			}
+			txnID := tree.NewDUuid(tree.DUuid{UUID: res.ID})
+			if err := addRow(
+				txnID,
+				tree.MakeDTimestamp(res.LastHeartbeat.GoTime(), time.Microsecond),
+				tree.NewDString(res.Status.String()),
+			); err != nil {
+				return err
+			}
+		}
+
 		return nil
 	},
 }

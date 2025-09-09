@@ -713,13 +713,12 @@ k_bool FieldInList::compare(Field **fields) {
     for (k_uint32 j = 0; j < count_; ++j) {
       Field *field = fields[j];
       Field *arg = args[j];
-      if (arg->is_nullable() || field->is_nullable()) {
+      if (arg->CheckNull() || field->CheckNull()) {
         ret = -1;
         continue;
       }
       cmp.set_cmp_func(&field, &arg);
-      if (cmp.compare(nullptr, nullptr, field->is_nullable(),
-                      arg->is_nullable()) != 0) {
+      if (cmp.compare(nullptr, nullptr, false, false) != 0) {
         ret = 1;
         break;
       } else {

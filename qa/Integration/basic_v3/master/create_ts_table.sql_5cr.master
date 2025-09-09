@@ -1,0 +1,480 @@
+> create ts database test;
+CREATE TS DATABASE
+> create table test.t1 (k_timestamp timestamp not null,ser_id timestamp(6) not null ,logon_date float not null)attributes (t1_attribute varchar not null) primary tags(t1_attribute);
+ERROR: timeseries table can not use timestamp type with precision
+SQLSTATE: 42611
+> create table test.t1 (k_timestamp timestamp not null,ser_id timestamptz(6) not null ,logon_date float not null)attributes (t1_attribute varchar not null) primary tags(t1_attribute);
+ERROR: timeseries table can not use timestamptz type with precision
+SQLSTATE: 42611
+> create table test.t1 (k_timestamp timestamp not null,ser_id timestamptz(7) not null ,logon_date float not null)attributes (t1_attribute varchar not null) primary tags(t1_attribute);
+ERROR: at or near ")": syntax error: precision 7 out of range
+SQLSTATE: 42601
+DETAIL: source SQL:
+create table test.t1 (k_timestamp timestamp not null,ser_id timestamptz(7) not null ,logon_date float not null)attributes (t1_attribute varchar not null) primary tags(t1_attribute)
+                                                                         ^
+> create table test.logon (k_timestamp timestamp not null,ser_id INT4 not null ,logon_date float not null)attributes (t1_attribute varchar not null) primary tags(t1_attribute);
+CREATE TABLE
+> create table test.sjgx03(k_timestamp timestamp not null,A VARCHAR(10) not null,B VARCHAR(10) not null)attributes (t1_attribute varchar not null) primary tags(t1_attribute);
+CREATE TABLE
+> create table test.sjcx01(k_timestamp timestamp not null,A INT4 not null,B INT4 not null,C VARCHAR(10) not null,D VARCHAR(10) not null)attributes (t1_attribute varchar not null) primary tags(t1_attribute);
+CREATE TABLE
+> insert into test.sjcx01 values (1681111110000,1,1,'A','DFFDARG', 'qqq'),(1681111110000,6,3,'B','ABCDEFV', 'qqq'),(1681111110000,4,1,'C','VDWFSF', 'qqq'),(1681111110000,6,4,'D','GDSDFDS', 'qqq'),(1681111110000,8,3,'E','DFDSFFF', 'qqq'),(1681111110000,11,5,'F','DFSFFDS', 'qqq'),(1681111110000,1,13,'G','FGACFG', 'qqq'),(1681111110000,0,21,'H','DDDVF', 'qqq'),(1681111110000,NULL,NULL,NULL,NULL, 'qqq');
+ERROR: null value in column "a" violates not-null constraint
+SQLSTATE: 23502
+> insert into test.sjcx01 values (1681111110000,1,1,'A','DFFDARG', 'qqq'),(1681111110000,6,3,'B','ABCDEFV', 'qqq'),(1681111110000,4,1,'C','VDWFSF', 'qqq'),(1681111110000,6,4,'D','GDSDFDS', 'qqq'),(1681111110000,8,3,'E','DFDSFFF', 'qqq'),(1681111110000,11,5,'F','DFSFFDS', 'qqq'),(1681111110000,1,13,'G','FGACFG', 'qqq'),(1681111110000,0,21,'H','DDDVF', 'qqq');
+INSERT 8
+> create table test.ti(dt timestamp not null ,id int4 not null)attributes (t1_attribute varchar not null) primary tags(t1_attribute);
+CREATE TABLE
+> drop database test cascade;
+DROP DATABASE
+> create ts database test;
+CREATE TS DATABASE
+> create table test.sjcx01(k_timestamp timestamp not null,A INT4 not null,B INT4 not null,C VARCHAR(10) not null,D VARCHAR(10) not null)attributes (t1_attribute varchar not null) primary tags(t1_attribute);
+CREATE TABLE
+> insert into test.sjcx01 values (1681111110000,1,1,'A','DFFDARG', 'qqq'),(1681111110000,6,3,'B','ABCDEFV', 'qqq'),(1681111110000,4,1,'C','VDWFSF', 'qqq'),(1681111110000,6,4,'D','GDSDFDS', 'qqq'),(1681111110000,8,3,'E','DFDSFFF', 'qqq'),(1681111110000,11,5,'F','DFSFFDS', 'qqq'),(1681111110000,1,13,'G','FGACFG', 'qqq'),(1681111110000,0,21,'H','DDDVF', 'qqq'),(1681111110000,NULL,NULL,NULL,NULL, 'qqq');
+ERROR: null value in column "a" violates not-null constraint
+SQLSTATE: 23502
+> insert into test.sjcx01 values (1681111110000,1,1,'A','DFFDARG', 'qqq'),(1681111110000,6,3,'B','ABCDEFV', 'qqq'),(1681111110000,4,1,'C','VDWFSF', 'qqq'),(1681111110000,6,4,'D','GDSDFDS', 'qqq'),(1681111110000,8,3,'E','DFDSFFF', 'qqq'),(1681111110000,11,5,'F','DFSFFDS', 'qqq'),(1681111110000,1,13,'G','FGACFG', 'qqq'),(1681111110000,0,21,'H','DDDVF', 'qqq');
+INSERT 8
+> show create TABLE test.sjcx01;
+      table_name     |                          create_statement
+---------------------+---------------------------------------------------------------------
+  test.public.sjcx01 | CREATE TABLE sjcx01 (
+                     |     k_timestamp TIMESTAMPTZ NOT NULL,
+                     |     a INT4 NOT NULL,
+                     |     b INT4 NOT NULL,
+                     |     c VARCHAR(10) NOT NULL,
+                     |     d VARCHAR(10) NOT NULL
+                     | ) TAGS (
+                     |     t1_attribute VARCHAR(64) NOT NULL ) PRIMARY TAGS(t1_attribute)
+(1 row)
+> create ts database db;
+CREATE TS DATABASE
+> drop database db;
+DROP DATABASE
+> drop database test cascade;
+DROP DATABASE
+> create ts database test;
+CREATE TS DATABASE
+> USE TEST;
+SET
+> create table test.sjcx01(k_timestamp timestamp not null,A INT4 not null,B INT4 not null,C VARCHAR(10) not null ,D VARCHAR(10) not null) attributes (t1_attribute varchar not null) primary tags(t1_attribute);
+CREATE TABLE
+> insert into test.sjcx01 values (1681111110000,1,1,'A','DFFDARG', 'qqq'),(1681111110000,6,3,'B','ABCDEFV', 'qqq'),(1681111110000,4,1,'C','VDWFSF', 'qqq'),(1681111110000,6,4,'D','GDSDFDS', 'qqq'),(1681111110000,8,3,'E','DFDSFFF', 'qqq'),(1681111110000,11,5,'F','DFSFFDS', 'qqq'),(1681111110000,1,13,'G','FGACFG', 'qqq'),(1681111110000,0,21,'H','DDDVF', 'qqq'),(1681111110000,NULL,NULL,NULL,NULL, 'qqq');
+ERROR: null value in column "a" violates not-null constraint
+SQLSTATE: 23502
+> show create table test.sjcx01;
+      table_name     |                          create_statement
+---------------------+---------------------------------------------------------------------
+  test.public.sjcx01 | CREATE TABLE sjcx01 (
+                     |     k_timestamp TIMESTAMPTZ NOT NULL,
+                     |     a INT4 NOT NULL,
+                     |     b INT4 NOT NULL,
+                     |     c VARCHAR(10) NOT NULL,
+                     |     d VARCHAR(10) NOT NULL
+                     | ) TAGS (
+                     |     t1_attribute VARCHAR(64) NOT NULL ) PRIMARY TAGS(t1_attribute)
+(1 row)
+> show create table test.sjcx01;
+      table_name     |                          create_statement
+---------------------+---------------------------------------------------------------------
+  test.public.sjcx01 | CREATE TABLE sjcx01 (
+                     |     k_timestamp TIMESTAMPTZ NOT NULL,
+                     |     a INT4 NOT NULL,
+                     |     b INT4 NOT NULL,
+                     |     c VARCHAR(10) NOT NULL,
+                     |     d VARCHAR(10) NOT NULL
+                     | ) TAGS (
+                     |     t1_attribute VARCHAR(64) NOT NULL ) PRIMARY TAGS(t1_attribute)
+(1 row)
+> drop table test.sjcx01;
+DROP TABLE
+> drop database test cascade;
+DROP DATABASE
+> create ts database test;
+CREATE TS DATABASE
+> create table test.S(k_timestamp timestamp not null,A INT4 not null)attributes (t1_attribute varchar not null) primary tags(t1_attribute);
+CREATE TABLE
+> create table test.S1(k_timestamp timestamp not null,A INT4 not null,b INT4 not null)attributes (t1_attribute varchar not null) primary tags(t1_attribute);
+CREATE TABLE
+> create table test.S2(k_timestamp timestamp not null,A INT4 not null)attributes (t1_attribute varchar not null) primary tags(t1_attribute);
+CREATE TABLE
+> drop database test cascade;
+DROP DATABASE
+> drop database test cascade;
+ERROR: database "test" does not exist
+SQLSTATE: 3D000
+> create ts database test;
+CREATE TS DATABASE
+> create ts database 1;
+ERROR: at or near "1": syntax error
+SQLSTATE: 42601
+DETAIL: source SQL:
+create ts database 1
+                   ^
+HINT: try \h CREATE DATABASE
+> create ts database 1.0;
+ERROR: at or near "1.0": syntax error
+SQLSTATE: 42601
+DETAIL: source SQL:
+create ts database 1.0
+                   ^
+HINT: try \h CREATE DATABASE
+> create ts database 1.23;
+ERROR: at or near "1.23": syntax error
+SQLSTATE: 42601
+DETAIL: source SQL:
+create ts database 1.23
+                   ^
+HINT: try \h CREATE DATABASE
+> create ts database -1.23;
+ERROR: at or near "-": syntax error
+SQLSTATE: 42601
+DETAIL: source SQL:
+create ts database -1.23
+                   ^
+HINT: try \h CREATE DATABASE
+> create ts database '-1.23';
+ERROR: at or near "-1.23": syntax error
+SQLSTATE: 42601
+DETAIL: source SQL:
+create ts database '-1.23'
+                   ^
+HINT: try \h CREATE DATABASE
+> create ts database '-1';
+ERROR: at or near "-1": syntax error
+SQLSTATE: 42601
+DETAIL: source SQL:
+create ts database '-1'
+                   ^
+HINT: try \h CREATE DATABASE
+> create ts database 123123131388888888888888888888888888888888888888888888888888123132;
+ERROR: at or near "123123131388888888888888888888888888888888888888888888888888123132": syntax error
+SQLSTATE: 42601
+DETAIL: source SQL:
+create ts database 123123131388888888888888888888888888888888888888888888888888123132
+                   ^
+HINT: try \h CREATE DATABASE
+> create ts database '一二三';
+ERROR: at or near "一二三": syntax error
+SQLSTATE: 42601
+DETAIL: source SQL:
+create ts database '一二三'
+                   ^
+HINT: try \h CREATE DATABASE
+> create ts database a;
+CREATE TS DATABASE
+> create ts database 'a';
+ERROR: at or near "a": syntax error
+SQLSTATE: 42601
+DETAIL: source SQL:
+create ts database 'a'
+                   ^
+HINT: try \h CREATE DATABASE
+> create ts database "a";
+ERROR: database "a" already exists
+SQLSTATE: 42P04
+> create ts database 's';
+ERROR: at or near "s": syntax error
+SQLSTATE: 42601
+DETAIL: source SQL:
+create ts database 's'
+                   ^
+HINT: try \h CREATE DATABASE
+> create ts database "q";
+CREATE TS DATABASE
+> create ts database 1+1;
+ERROR: at or near "1": syntax error
+SQLSTATE: 42601
+DETAIL: source SQL:
+create ts database 1+1
+                   ^
+HINT: try \h CREATE DATABASE
+> create ts database 2021-1-1;
+ERROR: at or near "2021": syntax error
+SQLSTATE: 42601
+DETAIL: source SQL:
+create ts database 2021-1-1
+                   ^
+HINT: try \h CREATE DATABASE
+> create ts database 2021-1-5 11:15:45;
+ERROR: at or near "2021": syntax error
+SQLSTATE: 42601
+DETAIL: source SQL:
+create ts database 2021-1-5 11:15:45
+                   ^
+HINT: try \h CREATE DATABASE
+> create ts database '2021-1-5 11:15:45';
+ERROR: at or near "2021-1-5 11:15:45": syntax error
+SQLSTATE: 42601
+DETAIL: source SQL:
+create ts database '2021-1-5 11:15:45'
+                   ^
+HINT: try \h CREATE DATABASE
+> create ts database now();
+ERROR: at or near "(": syntax error
+SQLSTATE: 42601
+DETAIL: source SQL:
+create ts database now()
+                      ^
+> create ts database 1670976000;
+ERROR: at or near "1670976000": syntax error
+SQLSTATE: 42601
+DETAIL: source SQL:
+create ts database 1670976000
+                   ^
+HINT: try \h CREATE DATABASE
+> create ts database !;
+ERROR: at or near "!": syntax error
+SQLSTATE: 42601
+DETAIL: source SQL:
+create ts database !
+                   ^
+HINT: try \h CREATE DATABASE
+> create ts database @;
+ERROR: at or near "@": syntax error
+SQLSTATE: 42601
+DETAIL: source SQL:
+create ts database @
+                   ^
+HINT: try \h CREATE DATABASE
+> create ts database '#';
+ERROR: at or near "#": syntax error
+SQLSTATE: 42601
+DETAIL: source SQL:
+create ts database '#'
+                   ^
+HINT: try \h CREATE DATABASE
+> create ts database $;
+ERROR: at or near "$": syntax error
+SQLSTATE: 42601
+DETAIL: source SQL:
+create ts database $
+                   ^
+HINT: try \h CREATE DATABASE
+> create ts database '"';
+ERROR: at or near """: syntax error
+SQLSTATE: 42601
+DETAIL: source SQL:
+create ts database '"'
+                   ^
+HINT: try \h CREATE DATABASE
+> create ts database '♠';
+ERROR: at or near "♠": syntax error
+SQLSTATE: 42601
+DETAIL: source SQL:
+create ts database '♠'
+                   ^
+HINT: try \h CREATE DATABASE
+> create ts database '--';
+ERROR: at or near "--": syntax error
+SQLSTATE: 42601
+DETAIL: source SQL:
+create ts database '--'
+                   ^
+HINT: try \h CREATE DATABASE
+> show  databases;
+  database_name | engine_type
+----------------+--------------
+  a             | TIME SERIES
+  defaultdb     | RELATIONAL
+  postgres      | RELATIONAL
+  q             | TIME SERIES
+  system        | RELATIONAL
+  test          | TIME SERIES
+(6 rows)
+> drop database '!';
+ERROR: at or near "!": syntax error
+SQLSTATE: 42601
+DETAIL: source SQL:
+drop database '!'
+              ^
+HINT: try \h DROP DATABASE
+> drop database '#';
+ERROR: at or near "#": syntax error
+SQLSTATE: 42601
+DETAIL: source SQL:
+drop database '#'
+              ^
+HINT: try \h DROP DATABASE
+> drop database '$';
+ERROR: at or near "$": syntax error
+SQLSTATE: 42601
+DETAIL: source SQL:
+drop database '$'
+              ^
+HINT: try \h DROP DATABASE
+> drop database '-';
+ERROR: at or near "-": syntax error
+SQLSTATE: 42601
+DETAIL: source SQL:
+drop database '-'
+              ^
+HINT: try \h DROP DATABASE
+> drop database '--';
+ERROR: at or near "--": syntax error
+SQLSTATE: 42601
+DETAIL: source SQL:
+drop database '--'
+              ^
+HINT: try \h DROP DATABASE
+> drop database '-1';
+ERROR: at or near "-1": syntax error
+SQLSTATE: 42601
+DETAIL: source SQL:
+drop database '-1'
+              ^
+HINT: try \h DROP DATABASE
+> drop database 1;
+ERROR: at or near "1": syntax error
+SQLSTATE: 42601
+DETAIL: source SQL:
+drop database 1
+              ^
+HINT: try \h DROP DATABASE
+> drop database 1670976000;
+ERROR: at or near "1670976000": syntax error
+SQLSTATE: 42601
+DETAIL: source SQL:
+drop database 1670976000
+              ^
+HINT: try \h DROP DATABASE
+> drop database 2021;
+ERROR: at or near "2021": syntax error
+SQLSTATE: 42601
+DETAIL: source SQL:
+drop database 2021
+              ^
+HINT: try \h DROP DATABASE
+> drop database '@';
+ERROR: at or near "@": syntax error
+SQLSTATE: 42601
+DETAIL: source SQL:
+drop database '@'
+              ^
+HINT: try \h DROP DATABASE
+> drop database test cascade;
+DROP DATABASE
+> drop database a;
+DROP DATABASE
+> drop database kaiwudb;
+ERROR: database "kaiwudb" does not exist
+SQLSTATE: 3D000
+> drop database now;
+ERROR: database "now" does not exist
+SQLSTATE: 3D000
+> drop database 'null';
+ERROR: at or near "null": syntax error
+SQLSTATE: 42601
+DETAIL: source SQL:
+drop database 'null'
+              ^
+HINT: try \h DROP DATABASE
+> drop database q;
+DROP DATABASE
+> drop database s;
+ERROR: database "s" does not exist
+SQLSTATE: 3D000
+> drop database '♠';
+ERROR: at or near "♠": syntax error
+SQLSTATE: 42601
+DETAIL: source SQL:
+drop database '♠'
+              ^
+HINT: try \h DROP DATABASE
+> show  databases;
+  database_name | engine_type
+----------------+--------------
+  defaultdb     | RELATIONAL
+  postgres      | RELATIONAL
+  system        | RELATIONAL
+(3 rows)
+> drop database test cascade;
+ERROR: database "test" does not exist
+SQLSTATE: 3D000
+> create ts database test;
+CREATE TS DATABASE
+> create table test.TB(k_timestamp timestamp not null,A INT4 not null,B FLOAT not null)attributes (t1_attribute varchar not null) primary tags(t1_attribute);
+CREATE TABLE
+> drop database test cascade;
+DROP DATABASE
+> show databases;
+  database_name | engine_type
+----------------+--------------
+  defaultdb     | RELATIONAL
+  postgres      | RELATIONAL
+  system        | RELATIONAL
+(3 rows)
+> drop database test cascade;
+ERROR: database "test" does not exist
+SQLSTATE: 3D000
+> create ts database DB;
+CREATE TS DATABASE
+> drop database DB;
+DROP DATABASE
+> create ts database DB;
+CREATE TS DATABASE
+> drop database DB CASCADE;
+DROP DATABASE
+> create ts database DB;
+CREATE TS DATABASE
+> drop database DB;
+DROP DATABASE
+> create ts database test;
+CREATE TS DATABASE
+> create ts database test2;
+CREATE TS DATABASE
+> create ts database pre;
+CREATE TS DATABASE
+> create table test.et1(k_timestamp timestamp not null,a INT2 not null)attributes (t1_attribute varchar not null) primary tags(t1_attribute);
+CREATE TABLE
+> create table test.et2(k_timestamp timestamp not null,a INT not null)attributes (t1_attribute varchar  not null) primary tags(t1_attribute);
+CREATE TABLE
+> create table test.et3(k_timestamp timestamp not null,a bool not null)attributes (t1_attribute varchar  not null) primary tags(t1_attribute);
+CREATE TABLE
+> create table test.et4(k_timestamp timestamp not null,a float not null)attributes (t1_attribute varchar  not null) primary tags(t1_attribute);
+CREATE TABLE
+> create table test.et5(k_timestamp timestamp not null,a int8 not null)attributes (t1_attribute varchar  not null) primary tags(t1_attribute);
+CREATE TABLE
+> create table test.et6(k_timestamp timestamp not null,a float8 not null)attributes (t1_attribute varchar  not null) primary tags(t1_attribute);
+CREATE TABLE
+> create table test.et7(k_timestamp timestamp not null,a timestamp not null)attributes (t1_attribute varchar  not null) primary tags(t1_attribute);
+CREATE TABLE
+> create table test.et8(k_timestamp timestamp not null,a char(1023) not null)attributes (t1_attribute varchar  not null) primary tags(t1_attribute);
+CREATE TABLE
+> create table test.et9(k_timestamp timestamp not null,a nchar(255) not null)attributes (t1_attribute varchar  not null);
+CREATE TABLE
+> create table test.et10(k_timestamp timestamp not null,a varchar(4096) not null)attributes (t1_attribute varchar  not null) primary tags(t1_attribute);
+CREATE TABLE
+> create table test.et11(k_timestamp timestamp not null,a char not null)attributes (t1_attribute varchar  not null) primary tags(t1_attribute);
+CREATE TABLE
+> create table test.et12(k_timestamp timestamp not null,a char(255) not null)attributes (t1_attribute varchar  not null) primary tags(t1_attribute);
+CREATE TABLE
+> create table test.et13(k_timestamp timestamp not null,a nchar not null)attributes (t1_attribute varchar  not null) primary tags(t1_attribute);
+CREATE TABLE
+> create table test.et14(k_timestamp timestamp not null,a varchar(128) not null)attributes (t1_attribute varchar  not null) primary tags(t1_attribute);
+CREATE TABLE
+> create table test.et15(k_timestamp timestamp not null,a nvarchar(4096) not null)attributes (t1_attribute varchar  not null) primary tags(t1_attribute);
+CREATE TABLE
+> create table test.et16(k_timestamp timestamp not null,a varbytes not null)attributes (t1_attribute varchar  not null) primary tags(t1_attribute);
+CREATE TABLE
+> create table test.et17(k_timestamp timestamp not null,a nvarchar(255) not null)attributes (t1_attribute varchar  not null) primary tags(t1_attribute);
+CREATE TABLE
+> create table test.et18(k_timestamp timestamp not null,a nvarchar(128) not null)attributes (t1_attribute varchar  not null) primary tags(t1_attribute);
+CREATE TABLE
+> create table test.et19(k_timestamp timestamp not null,a bytes not null)attributes (t1_attribute varchar  not null) primary tags(t1_attribute);
+CREATE TABLE
+> create table test.et20(k_timestamp timestamp not null,a bytes(1023) not null)attributes (t1_attribute varchar  not null) primary tags(t1_attribute);
+CREATE TABLE
+> create table test.et21(k_timestamp timestamp not null,a varbytes(4096) not null)attributes (t1_attribute varchar  not null) primary tags(t1_attribute);
+CREATE TABLE
+> create table test.et22(k_timestamp timestamp not null,a varbytes(254) not null)attributes (t1_attribute varchar  not null) primary tags(t1_attribute);
+CREATE TABLE
+> create table test.atll(k_timestamp timestamp not null,e0 int not null ,e1 int2  not null ,e2 int  not null , e3 bool  not null ,e4 float  not null ,e5 int8  not null ,e6 float8  not null ,e7 timestamp  not null ,e8 char(1023)  not null ,e9 nchar(255)  not null ,e10 varchar(4096)  not null ,e11 char  not null ,e12 char(255)  not null ,e13 nchar  not null ,e14 varchar(128)  not null ,                e15 nvarchar(4096)  not null , e16 varbytes  not null ,e17 nvarchar(255)  not null ,e18 nvarchar(128)   not null ,                e19 bytes  not null ,e20 bytes(1023)  not null ,e21 varbytes(4096)  not null ,e22 varbytes(254)  not null )attributes (t1_attribute varchar  not null) primary tags(t1_attribute);
+CREATE TABLE
+> drop database test cascade;
+DROP DATABASE
+> drop database test2;
+DROP DATABASE
+> drop database pre;
+DROP DATABASE

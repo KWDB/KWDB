@@ -1,0 +1,294 @@
+> create ts database test_select_function;
+CREATE TS DATABASE
+> create table test_select_function.tb(k_timestamp timestamptz not null,e1 timestamptz,e2 int2,e3 int,e4 int8,e5 float4,e6 float8,e7 bool,e8 char,e9 char(100),e10 nchar,e11 nchar(255),e12 char(100),e13 nchar(100),e14 char(100),e15 nchar(100),e16 nchar(255),e17 nchar(255),e18 varbytes,e19 varbytes(100),e20 varbytes(200),e21 varbytes(254),e22 varbytes(200)) tags (t1 int2 not null,t2 int,t3 int8,t4 bool not null,t5 float4,t6 float8,t7 char,t8 char(100) not null,t9 nchar,t10 nchar(254),t11 char(100),t12 nchar(100) not null,t13 varbytes,t14 varbytes(100),t15 varbytes(100),t16 varbytes(200)) primary tags(t1,t4,t8,t12);
+CREATE TABLE
+> SELECT MAX(k_timestamp) AS max_k_timestamp,MIN(k_timestamp) AS min_k_timestamp,COUNT(k_timestamp) AS count_k_timestamp,MAX(e5) AS max_e1,MIN(e5) AS min_e1,SUM(e5) AS sum_e1,AVG(e5) AS avg_e1,COUNT(e5) AS count_e1,MAX(e2) AS max_e2,MIN(e2) AS min_e2,SUM(e2) AS sum_e2,AVG(e2) AS avg_e2,COUNT(e2) AS count_e2,MAX(e3) AS max_e3,MIN(e3) AS min_e3,SUM(e3) AS sum_e3,AVG(e3) AS avg_e3,COUNT(e3) AS count_e3,
+       MAX(e4) AS max_e4,MIN(e4) AS min_e4,SUM(e4) AS sum_e4,AVG(e4) AS avg_e4,COUNT(e4) AS count_e4,MAX(e5) AS max_e5,MIN(e5) AS min_e5,SUM(e5) AS sum_e5,AVG(e5) AS avg_e5,COUNT(e5) AS count_e5,MAX(e6) AS max_e6,MIN(e6) AS min_e6,COUNT(e6) AS count_e6,MAX(e7) AS max_e7,MIN(e7) AS min_e7,COUNT(e7) AS count_e7,MAX(e8) AS max_e8,MIN(e8) AS min_e8,COUNT(e8) AS count_e8,MAX(e9) AS max_e9,MIN(e9) AS min_e9,COUNT(e9) AS count_e9,
+       MAX(e10) AS max_e10,MIN(e10) AS min_e10,COUNT(e10) AS count_e10,MAX(e11) AS max_e11,MIN(e11) AS min_e11,COUNT(e11) AS count_e11,MAX(e12) AS max_e12,MIN(e12) AS min_e12,COUNT(e12) AS count_e12,MAX(e13) AS max_e13,MIN(e13) AS min_e13,COUNT(e13) AS count_e13,MAX(e14) AS max_e14,MIN(e14) AS min_e14,COUNT(e14) AS count_e14,MAX(e15) AS max_e15,MIN(e15) AS min_e15,COUNT(e15) AS count_e15,
+       MAX(e16) AS max_e16,MIN(e16) AS min_e16,COUNT(e16) AS count_e16,MAX(e17) AS max_e17,MIN(e17) AS min_e17,COUNT(e17) AS count_e17,MAX(e18) AS max_e18,MIN(e18) AS min_e18,COUNT(e18) AS count_e18,COUNT(e19) AS count_e19,MAX(e20) AS max_e20,MIN(e20) AS min_e20,COUNT(e20) AS count_e20,MAX(e21) AS max_e21,MIN(e21) AS min_e21,COUNT(e21) AS count_e21,MAX(e22) AS max_e22,MIN(e22) AS min_e22,COUNT(e22) AS count_e22,
+       MAX(t1) AS max_code1,MIN(t1) AS min_code1,SUM(t1) AS sum_code1,AVG(t1) AS avg_code1,COUNT(t1) AS count_code1,MAX(t2) AS max_code2,MIN(t2) AS min_code2,SUM(t2) AS sum_code2,AVG(t2) AS avg_code2,COUNT(t2) AS count_code2,MAX(t3) AS max_code3,MIN(t3) AS min_code3,SUM(t3) AS sum_code3,AVG(t3) AS avg_code3,COUNT(t3) AS count_code3,MAX(t4) AS max_flag,MIN(t4) AS min_flag,COUNT(t4) AS count_flag,MAX(t5) AS max_val1,MIN(t5) AS min_val1,SUM(t5) AS sum_val1,AVG(t5) AS avg_val1,COUNT(t5) AS count_val1,MAX(t6) AS max_val2,MIN(t6) AS min_val2,SUM(t6) AS sum_val2,AVG(t6) AS avg_val2,COUNT(t6) AS count_val2,MAX(t7) AS max_location,MIN(t7) AS min_location,COUNT(t7) AS count_location,MAX(t8) AS max_color,MIN(t8) AS min_color,COUNT(t8) AS count_color,COUNT(t9) AS count_name,COUNT(t9) AS count_state,MAX(t9) AS max_tall,MIN(t9) AS min_tall,COUNT(t9) AS count_tall,MAX(t9) AS max_screen,MIN(t9) AS min_screen,COUNT(t9) AS count_screen,MAX(t10) AS max_age,MIN(t10) AS min_age,COUNT(t10) AS count_age,MAX(t11) AS max_sex,MIN(t11) AS min_sex,COUNT(t11) AS count_sex,
+       MAX(t12) AS max_year,MIN(t12) AS min_year,COUNT(t12) AS count_year,MAX(t13) AS max_type,MIN(t13) AS min_type,COUNT(t13) AS count_type FROM test_select_function.tb;
+  max_k_timestamp | min_k_timestamp | count_k_timestamp | max_e1 | min_e1 | sum_e1 | avg_e1 | count_e1 | max_e2 | min_e2 | sum_e2 | avg_e2 | count_e2 | max_e3 | min_e3 | sum_e3 | avg_e3 | count_e3 | max_e4 | min_e4 | sum_e4 | avg_e4 | count_e4 | max_e5 | min_e5 | sum_e5 | avg_e5 | count_e5 | max_e6 | min_e6 | count_e6 | max_e7 | min_e7 | count_e7 | max_e8 | min_e8 | count_e8 | max_e9 | min_e9 | count_e9 | max_e10 | min_e10 | count_e10 | max_e11 | min_e11 | count_e11 | max_e12 | min_e12 | count_e12 | max_e13 | min_e13 | count_e13 | max_e14 | min_e14 | count_e14 | max_e15 | min_e15 | count_e15 | max_e16 | min_e16 | count_e16 | max_e17 | min_e17 | count_e17 | max_e18 | min_e18 | count_e18 | count_e19 | max_e20 | min_e20 | count_e20 | max_e21 | min_e21 | count_e21 | max_e22 | min_e22 | count_e22 | max_code1 | min_code1 | sum_code1 | avg_code1 | count_code1 | max_code2 | min_code2 | sum_code2 | avg_code2 | count_code2 | max_code3 | min_code3 | sum_code3 | avg_code3 | count_code3 | max_flag | min_flag | count_flag | max_val1 | min_val1 | sum_val1 | avg_val1 | count_val1 | max_val2 | min_val2 | sum_val2 | avg_val2 | count_val2 | max_location | min_location | count_location | max_color | min_color | count_color | count_name | count_state | max_tall | min_tall | count_tall | max_screen | min_screen | count_screen | max_age | min_age | count_age | max_sex | min_sex | count_sex | max_year | min_year | count_year | max_type | min_type | count_type
+------------------+-----------------+-------------------+--------+--------+--------+--------+----------+--------+--------+--------+--------+----------+--------+--------+--------+--------+----------+--------+--------+--------+--------+----------+--------+--------+--------+--------+----------+--------+--------+----------+--------+--------+----------+--------+--------+----------+--------+--------+----------+---------+---------+-----------+---------+---------+-----------+---------+---------+-----------+---------+---------+-----------+---------+---------+-----------+---------+---------+-----------+---------+---------+-----------+---------+---------+-----------+---------+---------+-----------+-----------+---------+---------+-----------+---------+---------+-----------+---------+---------+-----------+-----------+-----------+-----------+-----------+-------------+-----------+-----------+-----------+-----------+-------------+-----------+-----------+-----------+-----------+-------------+----------+----------+------------+----------+----------+----------+----------+------------+----------+----------+----------+----------+------------+--------------+--------------+----------------+-----------+-----------+-------------+------------+-------------+----------+----------+------------+------------+------------+--------------+---------+---------+-----------+---------+---------+-----------+----------+----------+------------+----------+----------+-------------
+  NULL            | NULL            |                 0 | NULL   | NULL   | NULL   | NULL   |        0 | NULL   | NULL   | NULL   | NULL   |        0 | NULL   | NULL   | NULL   | NULL   |        0 |   NULL |   NULL | NULL   | NULL   |        0 | NULL   | NULL   | NULL   | NULL   |        0 | NULL   | NULL   |        0 |  NULL  |  NULL  |        0 | NULL   | NULL   |        0 | NULL   | NULL   |        0 | NULL    | NULL    |         0 | NULL    | NULL    |         0 | NULL    | NULL    |         0 | NULL    | NULL    |         0 | NULL    | NULL    |         0 | NULL    | NULL    |         0 | NULL    | NULL    |         0 | NULL    | NULL    |         0 | NULL    | NULL    |         0 |         0 | NULL    | NULL    |         0 | NULL    | NULL    |         0 | NULL    | NULL    |         0 | NULL      | NULL      | NULL      | NULL      |           0 | NULL      | NULL      | NULL      | NULL      |           0 |      NULL |      NULL | NULL      | NULL      |           0 |   NULL   |   NULL   |          0 | NULL     | NULL     | NULL     | NULL     |          0 | NULL     | NULL     | NULL     | NULL     |          0 | NULL         | NULL         |              0 | NULL      | NULL      |           0 |          0 |           0 | NULL     | NULL     |          0 | NULL       | NULL       |            0 | NULL    | NULL    |         0 | NULL    | NULL    |         0 | NULL     | NULL     |          0 | NULL     | NULL     |          0
+(1 row)
+> drop database test_select_function cascade;
+DROP DATABASE
+> set cluster setting sql.add_white_list='';
+ERROR: wrong number of parameters
+> set cluster setting sql.delete_white_list='';
+ERROR: wrong number of parameters
+> reset cluster setting sql.add_white_list;
+ERROR: unsupport reset add_white_list
+> reset cluster setting sql.delete_white_list;
+ERROR: unsupport reset delete_white_list
+> create ts database test;
+CREATE TS DATABASE
+> create table test.tb(k_timestamp timestamptz not null, e1 int2) tags (code1 int2 not null) primary tags(code1);
+CREATE TABLE
+> insert into test.tb values('2024-02-18 06:25:17.353+00:00', 1, 1);
+INSERT 1
+> select * from test.tb limit 10;
+           k_timestamp          | e1 | code1
+--------------------------------+----+--------
+  2024-02-18 06:25:17.353+00:00 |  1 |     1
+(1 row)
+> drop database test cascade;
+DROP DATABASE
+> create ts database loc;
+CREATE TS DATABASE
+> create table loc.tb(k_timestamp timestamptz not null, e1 int2) tags (code1 int2 not null) primary tags(code1);
+CREATE TABLE
+> insert into loc.tb values('2024-02-18 06:25:17.353+00:00', 1, 1);
+INSERT 1
+> select k_timestamp from loc.tb;
+           k_timestamp
+---------------------------------
+  2024-02-18 06:25:17.353+00:00
+(1 row)
+> set time zone 'Asia/Shanghai';
+SET
+> select k_timestamp from loc.tb;
+           k_timestamp
+---------------------------------
+  2024-02-18 14:25:17.353+08:00
+(1 row)
+> set time zone 'America/New_York';
+SET
+> select k_timestamp from loc.tb;
+           k_timestamp
+---------------------------------
+  2024-02-18 01:25:17.353-05:00
+(1 row)
+> set time zone 0;
+SET
+> select k_timestamp from loc.tb;
+           k_timestamp
+---------------------------------
+  2024-02-18 06:25:17.353+00:00
+(1 row)
+> set time zone 8;
+SET
+> select k_timestamp from loc.tb;
+           k_timestamp
+---------------------------------
+  2024-02-18 14:25:17.353+08:00
+(1 row)
+> drop database loc cascade;
+DROP DATABASE
+> create ts database test;
+CREATE TS DATABASE
+> create table test.tvar(k_timestamp timestamptz not null, e1 int)tags(code1 int not null, tag1 varchar(32),tag2 varchar(32)) primary tags(code1);
+CREATE TABLE
+> insert into test.tvar values('2024-02-18 06:25:17.351+00:00', 1, 1,'tag1','tag2');
+INSERT 1
+> insert into test.tvar(k_timestamp, e1,code1) values('2024-02-18 06:25:17.352+00:00', 1, 2);
+INSERT 1
+> insert into test.tvar(k_timestamp, e1,code1) values('2024-02-18 06:25:17.353+00:00', 1, 3);
+INSERT 1
+> select * from test.tvar order by k_timestamp;
+           k_timestamp          | e1 | code1 | tag1 | tag2
+--------------------------------+----+-------+------+-------
+  2024-02-18 14:25:17.351+08:00 |  1 |     1 | tag1 | tag2
+  2024-02-18 14:25:17.352+08:00 |  1 |     2 | NULL | NULL
+  2024-02-18 14:25:17.353+08:00 |  1 |     3 | NULL | NULL
+(3 rows)
+> delete from test.tvar where code1 = 3;
+DELETE 1
+> select * from test.tvar order by k_timestamp;
+           k_timestamp          | e1 | code1 | tag1 | tag2
+--------------------------------+----+-------+------+-------
+  2024-02-18 14:25:17.351+08:00 |  1 |     1 | tag1 | tag2
+  2024-02-18 14:25:17.352+08:00 |  1 |     2 | NULL | NULL
+(2 rows)
+> drop database test cascade;
+DROP DATABASE
+> create ts database test;
+CREATE TS DATABASE
+> create table test.tvar(k_timestamp timestamptz not null, e1 int)tags(code1 int not null, tag1 varchar(32),tag2 varchar(32)) primary tags(code1);
+CREATE TABLE
+> insert into test.tvar(k_timestamp, e1,code1) values('2024-02-18 06:25:17.351+00:00', 1, 1);
+INSERT 1
+> insert into test.tvar(k_timestamp, e1,code1) values('2024-02-18 06:25:17.352+00:00', 1, 2);
+INSERT 1
+> insert into test.tvar(k_timestamp, e1,code1) values('2024-02-18 06:25:17.353+00:00', 1, 3);
+INSERT 1
+> select * from test.tvar order by k_timestamp;
+           k_timestamp          | e1 | code1 | tag1 | tag2
+--------------------------------+----+-------+------+-------
+  2024-02-18 14:25:17.351+08:00 |  1 |     1 | NULL | NULL
+  2024-02-18 14:25:17.352+08:00 |  1 |     2 | NULL | NULL
+  2024-02-18 14:25:17.353+08:00 |  1 |     3 | NULL | NULL
+(3 rows)
+> drop database test cascade;
+DROP DATABASE
+> create ts database test_select_timebucket;
+CREATE TS DATABASE
+> create table test_select_timebucket.tb(k_timestamp timestamptz not null,e1 timestamptz,e2 int2,e3 int,e4 int8,e5 float4,e6 float8,e7 bool,e8 char,e9 char(100),e10 nchar,e11 nchar(255),e12 varchar,e13 varchar(254),e14 varchar(4096),e15 nchar(100),e16 nchar(255),e17 nchar(255),e18 varbytes,e19 varbytes(100),e20 varbytes(200),e21 varbytes(254),e22 varbytes(200)) tags (t1 int2 not null,t2 int,t3 int8,t4 bool not null,t5 float4,t6 float8,t7 char,t8 char(100) not null,t9 nchar,t10 nchar(254),t11 varchar,t12 varchar(128) not null,t13 varbytes,t14 varbytes(100),t15 varbytes(100),t16 varbytes(200)) primary tags(t1,t4,t8,t12);
+CREATE TABLE
+> insert into test_select_timebucket.tb values ('2020-11-06 17:10:23','1970-01-01 08:00:00',700,7000,70000,700000.707,7000000.1010101,true,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,1,null,7000,false,70.7077,700.5675675,'a','test测试！！！@TEST1','e','\a',null,'vvvaa64_1','b','test测试1023_1','vwwws测试_1','aaabbb');
+INSERT 1
+> insert into test_select_timebucket.tb values ('2020-11-06 17:10:55.123','2019-12-06 18:10:23',100,3000,40000,600000.60612,4000000.4040404,false,' ',' ',' ',' ',' ',' ',' ',null,'','','','','','',null,-32768,-2147483648,-9223372036854775808,false,-9223372036854775807.12345,100.111111,'b','test测试！！！@TEST1 ','','test测试！TEST1xaa','\0test查询  @TEST1\0','e','y','test@@测试！1023_1','vwwws测试_1','cccddde');
+INSERT 1
+> insert into test_select_timebucket.tb values ('2022-05-01 12:10:25','2020-05-01 20:30:00',500,5000,50000,-500000.505,-5000000.505055,true,'h', 'ar2  ', 'c', 'r255测试2()&^%{}','\\', 'v255测试1cdf~#   ', 'lengthis4096  测试%&!','ar-1', 'ar255()&^%{}  ','6_1测试1&^%{} ','y', 's1023_1','ytes_2', null,b'\xcc\xcc\xdd\xdd',4,400,4000,false,50.555,500.578578,'d','\test测试！！！@TEST1','e','test测试！T  EST1xaa','查询查询 ',e'\\','e','es1023_2','s_ 4','ww4096_2');
+INSERT 1
+> insert into test_select_timebucket.tb values ('2022-05-01 12:10:23.456','2020-05-01 17:00:00',500,5000,60000,500000.505555,5000000.505055,false,'c','test测试！！！@TEST1 ','n','类型测试1()*  ','testTest  ','e','40964096 ','@TEST1  ','abc255测试1()*&^%{}','deg4096测试1(','b','查询1023_2','tes_测试1',b'\xaa\xbb\xcc',b'\xaa\xaa\xbb\xbb',32767,2147483647,9223372036854775807,true,9223372036854775806.12345,500.578578,'','     ',' ','abc','\0test查询！！！@TEST1\0','64_3','t','es1023_2','f','tes4096_2');
+INSERT 1
+> insert into test_select_timebucket.tb values ('2022-05-01 12:10:31.22','2020-05-01 22:30:11',500,5000,50000,-500000.505,-5000000.505055,true,'h', 'ar2  ', 'c', 'r255测试2()&^%{}','\', 'v2551cdf~#   ', '  测试%&!','ar-1', 'ar255()*&^%{}  ','6_1测试1&^%{} ','y', 's1023_1','ytes_2', null,b'\xcc\xcc\xdd\xdd',4,300,300,false,60.666,600.678,'','\test测试！！！@TEST1',' ','test测试！T  EST1xaa','查询查询 ',e'\\','','    ','','  ');
+INSERT 1
+> insert into test_select_timebucket.tb values ('2023-05-10 09:08:19.22','2021-05-10 09:04:18.223',600,6000,60000,600000.666,666660.101011,true,'r', 'a r3', 'a', 'r255测试1(){}','varchar  中文1', null, 'hof4096查询test%%&!   ',null, 'ar255{}', 'ar4096测试1%{}','e','es1023_0', null, b'\xbb\xee\xff', null,5,null,6000,true,60.6066,600.123455,'a','test测试！！！@TEST1','e',e'\a',null,'测试测试 ','b','test测试10_1','vwwws中文_1',null);
+INSERT 1
+> insert into test_select_timebucket.tb values ('2023-05-10 09:15:15.783','2021-06-10 06:04:15.183',500,5000,60000,500000.505555,5000000.505055,false,'c','test测试！！！@TEST1 ','n','类型测试1()*  ',null,null,'测试测试 ','@TEST1  ','abc255测试1()*&^%{}','deg4096测试1(','b','查询1023_2','tes_测试1',b'\xaa\xaa\xaa',b'\xbb\xcc\xbb\xbb',7,200,2000,true,-10.123,500.578578,'c','test测试！！！@TEST1  ','g','abc','\0test查询！！！@TEST1\0','64_3','t','es1023_2','f','tes4096_2');
+INSERT 1
+> insert into test_select_timebucket.tb values ('2023-05-10 09:08:18.223','2021-06-01 10:00:00',100,3000,40000,600000.60612,4000000.4040404,false,'r', '\a r3', 'a', 'r255测试1{}','varchar  中文1', null, 'hof4096查询test%&!   ',null, 'ar255{}', 'ar96测试1%{}','e','es1023_0', null, b'\xcc\xee\xdd', null,6,100,1000,false,-10.123,100.111111,'b','\TEST1 ','f','测试！TEST1xaa','5555 5','  bdbd','y','test@测试！10_1','vwwws_1','cddde');
+INSERT 1
+> select k_timestamp from test_select_timebucket.tb order by k_timestamp;
+           k_timestamp
+---------------------------------
+  2020-11-06 17:10:23+08:00
+  2020-11-06 17:10:55.123+08:00
+  2022-05-01 12:10:23.456+08:00
+  2022-05-01 12:10:25+08:00
+  2022-05-01 12:10:31.22+08:00
+  2023-05-10 09:08:18.223+08:00
+  2023-05-10 09:08:19.22+08:00
+  2023-05-10 09:15:15.783+08:00
+(8 rows)
+> select time_bucket(k_timestamp, '10s') as tb from test_select_timebucket.tb group by tb order by tb;
+             tb
+-----------------------------
+  2020-11-06 17:10:20+08:00
+  2020-11-06 17:10:50+08:00
+  2022-05-01 12:10:20+08:00
+  2022-05-01 12:10:30+08:00
+  2023-05-10 09:08:10+08:00
+  2023-05-10 09:15:10+08:00
+(6 rows)
+> drop database test_select_timebucket cascade;
+DROP DATABASE
+> DROP DATABASE IF exists test_time_addsub cascade;
+DROP DATABASE
+> CREATE ts DATABASE test_time_addsub;
+CREATE TS DATABASE
+> CREATE TABLE test_time_addsub.t1(
+                                    k_timestamp TIMESTAMPTZ NOT NULL,
+                                    id INT NOT NULL,
+                                    e1 INT2,
+                                    e2 INT,
+                                    e3 INT8,
+                                    e4 FLOAT4,
+                                    e5 FLOAT8,
+                                    e6 BOOL,
+                                    e7 TIMESTAMPTZ,
+                                    e8 CHAR(1023),
+                                    e9 NCHAR(255),
+                                    e10 VARCHAR(4096),
+                                    e11 CHAR,
+                                    e12 CHAR(255),
+                                    e13 NCHAR,
+                                    e14 NVARCHAR(4096),
+                                    e15 VARCHAR(1023),
+                                    e16 NVARCHAR(200),
+                                    e17 NCHAR(255),
+                                    e18 CHAR(200),
+                                    e19 VARBYTES,
+                                    e20 varbytes(60),
+                                    e21 VARCHAR,
+                                    e22 NVARCHAR)
+    ATTRIBUTES (code1 INT2 NOT NULL,code2 INT,code3 INT8,code4 FLOAT4 ,code5 FLOAT8,code6 BOOL,code7 VARCHAR,code8 VARCHAR(128) NOT NULL,code9 varbytes,code10 varbytes(60),code11 VARCHAR,code12 VARCHAR(60),code13 CHAR(2),code14 CHAR(1023) NOT NULL,code15 NCHAR,code16 NCHAR(254) NOT NULL)
+PRIMARY TAGS(code1,code14,code8,code16);
+CREATE TABLE
+> INSERT INTO test_time_addsub.t1 VALUES(0,1,0,0,0,0,0,true,0,'','','','','','','','','','','','','','','',0,0,0,0,0,false,'','','','','','','','','','');
+INSERT 1
+> INSERT INTO test_time_addsub.t1 VALUES(1,2,0,0,0,0,0,true,999999,'          ','          ','          ',' ','          ',' ',' ','          ','          ','          ',' ',' ','          ','          ','          ',0,0,0,0,0,TRUE,'          ',' ',' ','          ','          ','          ','  ','          ',' ','          ');
+INSERT 1
+> INSERT INTO test_time_addsub.t1 VALUES('1976-10-20 12:00:12.123',3,10001,10000001,100000000001,-1047200.00312001,-1109810.113011921,true,'2021-3-1 12:00:00.909','test数据库语法查询测试！！！@TEST3-8','test数据库语法查询测试！！！@TEST3-9','test数据库语法查询测试！！！@TEST3-10','t','test数据库语法查询测试！！！@TEST3-12','中','test数据库语法查询测试！！！@TEST3-14','test数据库语法查询测试！！！@TEST3-15','test数据库语法查询测试！TEST3-16xaa','test数据库语法查询测试！！！@TEST3-17','test数据库语法查询测试！！！@TEST3-18',b'\xca','test数据库语法查询测试！！！@TEST3-20','test数据库语法查询测试！！！@TEST3-21','test数据库语法查询测试！！！@TEST3-22',-10001,10000001,-100000000001,1047200.00312001,-1109810.113011921,false,'test数据库语法查询测试！！！@TEST3-7','test数据库语法查询测试！！！@TEST3-8',b'\xaa','test数据库语法查询测试！！！@TEST3-10','test数据库语法查询测试！！！@TEST3-11','test数据库语法查询测试！！！@TEST3-12','t3','test数据库语法查询测试！！！@TEST3-14','中','test数据库语法查询测试！！！@TEST3-16');
+INSERT 1
+> INSERT INTO test_time_addsub.t1 VALUES('1979-2-28 11:59:01.999',4,20002,20000002,200000000002,-20873209.0220322201,-22012110.113011921,false,123,'test数据库语法查询测试！！！@TEST4-8','test数据库语法查询测试！！！@TEST4-9','test数据库语法查询测试！！！@TEST4-10','t','test数据库语法查询测试！！！@TEST4-12','中','test数据库语法查询测试！！！@TEST4-14','test数据库语法查询测试！！！@TEST4-15','test数据库语法查询测试！TEST4-16xaa','test数据库语法查询测试！！！@TEST4-17','test数据库语法查询测试！！！@TEST4-18',b'\xca','test数据库语法查询测试！！！@TEST4-20','test数据库语法查询测试！！！@TEST4-21','test数据库语法查询测试！！！@TEST4-22',20002,-20000002,200000000002,-20873209.0220322201,22012110.113011921,true,'test数据库语法查询测试！！！@TEST4-7','test数据库语法查询测试！！！@TEST4-8',b'\xbb','test数据库语法查询测试！！！@TEST4-10','test数据库语法查询测试！！！@TEST4-11','test数据库语法查询测试！！！@TEST4-12','t3','test数据库语法查询测试！！！@TEST4-14','中','test数据库语法查询测试！！！@TEST4-16');
+INSERT 1
+> INSERT INTO test_time_addsub.t1 VALUES(318193261000,5,30003,30000003,300000000003,-33472098.11312001,-39009810.333011921,true,'2015-3-12 10:00:00.234','test数据库语法查询测试！！！@TEST5-8','test数据库语法查询测试！！！@TEST5-9','test数据库语法查询测试！！！@TEST5-10','t','test数据库语法查询测试！！！@TEST5-12','中','test数据库语法查询测试！！！@TEST5-14','test数据库语法查询测试！！！@TEST5-15','test数据库语法查询测试！TEST5-16xaa','test数据库语法查询测试！！！@TEST5-17','test数据库语法查询测试！！！@TEST5-18',b'\xca','test数据库语法查询测试！！！@TEST5-20','test数据库语法查询测试！！！@TEST5-21','test数据库语法查询测试！！！@TEST5-22',-30003,30000003,-300000000003,33472098.11312001,-39009810.333011921,false,'test数据库语法查询测试！！！@TEST5-7','test数据库语法查询测试！！！@TEST5-8',b'\xcc','test数据库语法查询测试！！！@TEST5-10','test数据库语法查询测试！！！@TEST5-11','test数据库语法查询测试！！！@TEST5-12','t3','test数据库语法查询测试！！！@TEST5-14','中','test数据库语法查询测试！！！@TEST5-16');
+INSERT 1
+> INSERT INTO test_time_addsub.t1 VALUES(318993291090,6,-10001,10000001,-100000000001,1047200.00312001,1109810.113011921,false,'2023-6-23 05:00:00.55','test数据库语法查询测试！！！@TEST6-8','test数据库语法查询测试！！！@TEST6-9','test数据库语法查询测试！！！@TEST6-10','t','test数据库语法查询测试！！！@TEST6-12','中','test数据库语法查询测试！！！@TEST6-14','test数据库语法查询测试！！！@TEST6-15','test数据库语法查询测试！TEST6-16xaa','test数据库语法查询测试！！！@TEST6-17','test数据库语法查询测试！！！@TEST6-18',b'\xca','test数据库语法查询测试！！！@TEST6-20','test数据库语法查询测试！！！@TEST6-21','test数据库语法查询测试！！！@TEST6-22',10001,-10000001,100000000001,424721.022311,4909810.11301191,true,'test数据库语法查询测试！！！@TEST6-7','test数据库语法查询测试！！！@TEST6-8',b'\xdd','test数据库语法查询测试！！！@TEST6-10','test数据库语法查询测试！！！@TEST6-11','test数据库语法查询测试！！！@TEST6-12','t3','test数据库语法查询测试！！！@TEST6-14','中','test数据库语法查询测试！！！@TEST6-16');
+INSERT 1
+> INSERT INTO test_time_addsub.t1 VALUES(318995291029,7,-20002,20000002,-200000000002,20873209.0220322201,22012110.113011921,true,'2016-7-17 20:12:00.12','test数据库语法查询测试！！！@TEST7-8','test数据库语法查询测试！！！@TEST7-9','test数据库语法查询测试！！！@TEST7-10','t','test数据库语法查询测试！！！@TEST7-12','中','test数据库语法查询测试！！！@TEST7-14','test数据库语法查询测试！！！@TEST7-15','test数据库语法查询测试！TEST7-16xaa','test数据库语法查询测试！！！@TEST7-17','test数据库语法查询测试！！！@TEST7-18',b'\xca','test数据库语法查询测试！！！@TEST7-20','test数据库语法查询测试！！！@TEST7-21','test数据库语法查询测试！！！@TEST7-22',-20002,20000002,-200000000002,555500.0055505,55505532.553015321,false,'test数据库语法查询测试！！！@TEST7-7','test数据库语法查询测试！！！@TEST7-8',b'\xee','test数据库语法查询测试！！！@TEST7-10','test数据库语法查询测试！！！@TEST7-11','test数据库语法查询测试！！！@TEST7-12','t3','test数据库语法查询测试！！！@TEST7-14','中','test数据库语法查询测试！！！@TEST7-16');
+INSERT 1
+> INSERT INTO test_time_addsub.t1 VALUES(318995302501,8,-30003,30000003,-300000000003,33472098.11312001,39009810.333011921,false,4565476,'test数据库语法查询测试！！！@TEST8-8','test数据库语法查询测试！！！@TEST8-9','test数据库语法查询测试！！！@TEST8-10','t','test数据库语法查询测试！！！@TEST8-12','中','test数据库语法查询测试！！！@TEST8-14','test数据库语法查询测试！！！@TEST8-15','test数据库语法查询测试！TEST8-16xaa','test数据库语法查询测试！！！@TEST8-17','test数据库语法查询测试！！！@TEST8-18',b'\xca','test数据库语法查询测试！！！@TEST8-20','test数据库语法查询测试！！！@TEST8-21','test数据库语法查询测试！！！@TEST8-22',30003,-30000003,300000000003,6900.0012345,6612.1215,true,'test数据库语法查询测试！！！@TEST8-7','test数据库语法查询测试！！！@TEST8-8',b'\xff','test数据库语法查询测试！！！@TEST8-10','test数据库语法查询测试！！！@TEST8-11','test数据库语法查询测试！！！@TEST8-12','t3','test数据库语法查询测试！！！@TEST8-14','中','test数据库语法查询测试！！！@TEST8-16');
+INSERT 1
+> INSERT INTO test_time_addsub.t1 VALUES('2001-12-9 09:48:12.30',9,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,30000,null,null,null,null,true,null,'test数据库语法查询测试！！！@TESTnull',null,null,null,null,null,'test数据库语法查询测试！！！@TESTnull',null,'test数据库语法查询测试！！！@TESTnull');
+INSERT 1
+> INSERT INTO test_time_addsub.t1 VALUES('2002-2-22 10:48:12.899',10,32767,-2147483648,9223372036854775807,-99999999991.9999999991,9999999999991.999999999991,true,'2020-10-1 12:00:01.0','test数据库语法查询测试！！！@TEST10-8','test数据库语法查询测试！！！@TEST10-9','test数据库语法查询测试！！！@TEST10-10','t','test数据库语法查询测试！！！@TEST10-12','中','test数据库语法查询测试！！！@TEST10-14','test数据库语法查询测试！！！@TEST10-15','test数据库语法查询测试！TEST10-16xaa','test数据库语法查询测试！！！@TEST10-17','test数据库语法查询测试！！！@TEST10-18',b'\xca','test数据库语法查询测试！！！@TEST10-20','test数据库语法查询测试！！！@TEST10-21','test数据库语法查询测试！！！@TEST10-22',1,111,1111111,1472011.12345,1109810.113011921,false,'test数据库语法查询测试！！！@TEST10-7','test数据库语法查询测试！！！@TEST10-8',b'\xcc','test数据库语法查询测试！！！@TEST10-10','test数据库语法查询测试！！！@TEST10-11','test数据库语法查询测试！！！@TEST10-12','t3','test数据库语法查询测试！！！@TEST10-14','中','test数据库语法查询测试！！！@TEST10-16');
+INSERT 1
+> INSERT INTO test_time_addsub.t1 VALUES('2003-10-1 11:48:12.1',11,-32768,2147483647,-9223372036854775808,99999999991.9999999991,-9999999999991.999999999991,false,28372987421,'test数据库语法查询测试！！！@TEST11-8','test数据库语法查询测试！！！@TEST11-9','test数据库语法查询测试！！！@TEST11-10','t','test数据库语法查询测试！！！@TEST11-12','中','test数据库语法查询测试！！！@TEST11-14','test数据库语法查询测试！！！@TEST11-15','test数据库语法查询测试！TEST11-16xaa','test数据库语法查询测试！！！@TEST11-17','test数据库语法查询测试！！！@TEST11-18',b'\xca','test数据库语法查询测试！！！@TEST11-20','test数据库语法查询测试！！！@TEST11-21','test数据库语法查询测试！！！@TEST11-22',2,222,2222222,2221398001.0312001,2309810.89781,true,'test数据库语法查询测试！！！@TEST11-7','test数据库语法查询测试！！！@TEST11-8',b'\xcc','test数据库语法查询测试！！！@TEST11-10','test数据库语法查询测试！！！@TEST11-11','test数据库语法查询测试！！！@TEST11-12','t3','test数据库语法查询测试！！！@TEST11-14','中','test数据库语法查询测试！！！@TEST11-16');
+INSERT 1
+> INSERT INTO test_time_addsub.t1 VALUES('2004-9-9 00:00:00.9',12,12000,12000000,120000000000,-12000021.003125,-122209810.1131921,true,'2129-3-1 12:00:00.011','aaaaaabbbbbbcccccc','aaaaaabbbbbbcccccc','aaaaaabbbbbbcccccc','t','aaaaaabbbbbbcccccc','z','aaaaaabbbbbbcccccc','aaaaaabbbbbbcccccc','aaaaaabbbbbbcccccc','aaaaaabbbbbbcccccc','aaaaaabbbbbbcccccc','c','aaaaaabbbbbbcccccc','aaaaaabbbbbbcccccc','aaaaaabbbbbbcccccc',-10001,-10000001,-100000000001,1047200.00312001,1109810.113011921,false,'aaaaaabbbbbbcccccc','b','z','aaaaaabbbbbbcccccc','aaaaaabbbbbbcccccc','aaaaaabbbbbbcccccc','ty','aaaaaabbbbbbcccccc','u','aaaaaabbbbbbcccccc');
+INSERT 1
+> INSERT INTO test_time_addsub.t1 VALUES('2004-12-31 12:10:10.911',13,23000,23000000,230000000000,-23000088.665120604,-122209810.1131921,true,'2020-12-31 23:59:59.999','SSSSSSDDDDDDKKKKKK','SSSSSSDDDDDDKKKKKK','SSSSSSDDDDDDKKKKKK','T','SSSSSSDDDDDDKKKKKK','B','SSSSSSDDDDDDKKKKKK','SSSSSSDDDDDDKKKKKK','SSSSSSDDDDDDKKKKKK','SSSSSSDDDDDDKKKKKK','SSSSSSDDDDDDKKKKKK','V','SSSSSSDDDDDDKKKKKK','SSSSSSDDDDDDKKKKKK','SSSSSSDDDDDDKKKKKK',20002,20000002,200000000002,1047200.00312001,1109810.113011921,false,'SSSSSSDDDDDDKKKKKK','O','P','SSSSSSDDDDDDKKKKKK','SSSSSSDDDDDDKKKKKK','SSSSSSDDDDDDKKKKKK','WL','SSSSSSDDDDDDKKKKKK','N','SSSSSSDDDDDDKKKKKK');
+INSERT 1
+> INSERT INTO test_time_addsub.t1 VALUES('2008-2-29 2:10:10.111',14,32767,34000000,340000000000,-43000079.07812032,-122209810.1131921,true,'1975-3-11 00:00:00.0','1234567890987654321','1234567890987654321','1234567890987654321','1','1234567890987654321','2','1234567890987654321','1234567890987654321','1234567890987654321','1234567890987654321','1234567890987654321','9','1234567890987654321','1234567890987654321','1234567890987654321',-10001,-10000001,-100000000001,1047200.00312001,1109810.113011921,false,'1234567890987654321','8','7','1234567890987654321','1234567890987654321','1234567890987654321','65','1234567890987654321','4','1234567890987654321');
+INSERT 1
+> INSERT INTO test_time_addsub.t1 VALUES('2012-02-29 1:10:10.000',15,-32767,-34000000,-340000000000,43000079.07812032,122209810.1131921,true,'2099-9-1 11:01:00.111','数据库语法查询测试','数据库语法查询测试','数据库语法查询测试','1','数据库语法查询测试','2','数据库语法查询测试','数据库语法查询测试','数据库语法查询测试','数据库语法查询测试','数据库语法查询测试','9','数据库语法查询测试','数据库语法查询测试','数据库语法查询测试',10001,10000001,100000000001,-1047200.00312001,-1109810.113011921,true,'数据库语法查询测试','8','7','数据库语法查询测试','数据库语法查询测试','数据库语法查询测试','65','数据库语法查询测试','4','数据库语法查询测试');
+INSERT 1
+> INSERT INTO test_time_addsub.t1 VALUES(1344618710110,16,11111,-11111111,111111111111,-11111.11111,11111111.11111111,false,'2017-12-11 09:10:00.200',e'\'',e'\'',e'\'',e'\'',e'\'',e'\'',e'\'',e'\'',e'\'',e'\'',e'\'',e'\'',e'\'',e'\'',e'\'',0,0,0,0,0,false,e'\'',e'\'',e'\'',e'\'',e'\'',e'\'',e'\'',e'\'',e'\'',e'\'');
+INSERT 1
+> INSERT INTO test_time_addsub.t1 VALUES(1374618710110,17,-11111,11111111,-111111111111,11111.11111,-11111111.11111111,true,'2036-2-3 10:10:00.089',e'\ ',e'\ ',e'\ ',e'\ ',e'\ ',e'\ ',e'\ ',e'\ ',e'\ ',e'\ ',e'\ ',e'\ ',e'\ ',e'\ ',e'\ ',0,0,0,0,0,false,e'\ ',e'\ ',e'\ ',e'\ ',e'\ ',e'\ ',e'\ ',e'\ ',e'\ ',e'\ ');
+INSERT 1
+> INSERT INTO test_time_addsub.t1 VALUES(1574618710110,18,22222,-22222222,222222222222,-22222.22222,22222222.22222222,false,'2012-1-1 12:12:00.049' ,e'\\\\\\\\',e'\\\\\\\\',e'\\\\\\\\',e'\\',e'\\\\\\\\',e'\\',e'\\\\\\\\',e'\\\\\\\\',e'\\\\\\\\',e'\\\\\\\\',e'\\\\\\\\',e'\ ',e'\\\\\\\\',e'\\\\\\\\',e'\\\\\\\\',0,0,0,0,0,false,e'\\\\\\\\',e'\\\\\\\\',e'\ ',e'\\\\\\\\',e'\\\\\\\\',e'\\\\\\\\',e'\\',e'\\\\\\\\',e'\\',e'\\\\\\\\');
+INSERT 1
+> INSERT INTO test_time_addsub.t1 VALUES(1874618710110,19,-22222,22222222,-222222222222,22222.22222,-22222222.22222222,true,'1980-6-27 19:17:00.123','\\\\\\\\' ,'\\\\\\\\' ,'\\\\\\\\' ,'\'  ,'\\\\\\\\' ,'\'  ,'\\\\\\\\' ,'\\\\\\\\' ,'\\\\\\\\' ,'\\\\\\\\' ,'\\\\\\\\' ,' '  ,'\\\\\\\\' ,'\\\\\\\\' ,'\\\\\\\\' ,0,0,0,0,0,false,'\\\\\\\\' ,'\\\\\\\\' ,' '  ,'\\\\\\\\' ,'\\\\\\\\' ,'\\\\\\\\' ,'\ ' ,'\\\\\\\\' ,'\'  ,'\\\\\\\\');
+INSERT 1
+> INSERT INTO test_time_addsub.t1 VALUES(9223372036000,20,-1,1,-1,1.125,-2.125,false,'2020-1-1 12:00:00.000','\0\0中文te@@~eng TE./。\0\\0\0' ,'\0\0中文te@@~eng TE./。\0\\0\0' ,'\0\0中文te@@~eng TE./。\0\\0\0' ,'\'  ,'\0\0中文te@@~eng TE./。\0\\0\0' ,'\'  ,'\0\0中文te@@~eng TE./。\0\\0\0' ,'\0\0中文te@@~eng TE./。\0\\0\0' ,'\0\0中文te@@~eng TE./。\0\\0\0' ,'\0\0中文te@@~eng TE./。\0\\0\0' ,'\0\0中文te@@~eng TE./。\0\\0\0' ,' '  ,'中文te@@~eng TE./' ,'\0\0中文te@@~eng TE./。\0\\0\0' ,'\0\0中文te@@~eng TE./。\0\\0\0' ,0,0,0,0,0,false,'\0\0中文te@@~eng TE./。\0\\0\0' ,'\0\0中文te@@~eng TE./。\0\\0\0' ,' ','中文te@@~eng TE./。' ,'\0\0中文te@@~eng TE./。\0\\0\0' ,'\0\0中文te@@~eng TE./。\0\\0\0' ,'\ ' ,'\0\0中文te@@~eng TE./。\0\\0\0' ,'\'  ,'\0\0中文te@@~eng TE./。\0\\0\0');
+INSERT 1
+> SELECT k_timestamp FROM test_time_addsub.t1 GROUP BY k_timestamp HAVING k_timestamp+1month >'2020-1-1 12:00:00' ORDER BY k_timestamp;
+          k_timestamp
+--------------------------------
+  2029-05-28 07:25:10.11+08:00
+  2262-04-12 07:47:16+08:00
+(2 rows)
+> SELECT * FROM test_time_addsub.t1 WHERE id > 1 AND k_timestamp >= '2004-9-9 00:00:00.9' AND k_timestamp < '2012-02-29 1:10:10.000' order by id;
+           k_timestamp          | id |  e1   |    e2    |      e3      |       e4       |           e5           |  e6  |              e7               |         e8          |         e9          |         e10         | e11 |         e12         | e13 |         e14         |         e15         |         e16         |         e17         |         e18         | e19  |                   e20                    |         e21         |         e22         | code1  |   code2   |     code3     |   code4    |         code5         | code6 |        code7        | code8 | code9 |                  code10                  |       code11        |       code12        | code13 |       code14        | code15 |       code16
+--------------------------------+----+-------+----------+--------------+----------------+------------------------+------+-------------------------------+---------------------+---------------------+---------------------+-----+---------------------+-----+---------------------+---------------------+---------------------+---------------------+---------------------+------+------------------------------------------+---------------------+---------------------+--------+-----------+---------------+------------+-----------------------+-------+---------------------+-------+-------+------------------------------------------+---------------------+---------------------+--------+---------------------+--------+----------------------
+  2004-09-09 00:00:00.9+08:00   | 12 | 12000 | 12000000 | 120000000000 | -1.2000021e+07 | -1.222098101131921e+08 | true | 2129-03-01 12:00:00.011+08:00 | aaaaaabbbbbbcccccc  | aaaaaabbbbbbcccccc  | aaaaaabbbbbbcccccc  | t   | aaaaaabbbbbbcccccc  | z   | aaaaaabbbbbbcccccc  | aaaaaabbbbbbcccccc  | aaaaaabbbbbbcccccc  | aaaaaabbbbbbcccccc  | aaaaaabbbbbbcccccc  | \x63 | \x616161616161626262626262636363636363   | aaaaaabbbbbbcccccc  | aaaaaabbbbbbcccccc  | -10001 | -10000001 | -100000000001 | 1.0472e+06 | 1.109810113011921e+06 | false | aaaaaabbbbbbcccccc  | b     | \x7a  | \x616161616161626262626262636363636363   | aaaaaabbbbbbcccccc  | aaaaaabbbbbbcccccc  | ty     | aaaaaabbbbbbcccccc  | u      | aaaaaabbbbbbcccccc
+  2004-12-31 12:10:10.911+08:00 | 13 | 23000 | 23000000 | 230000000000 | -2.3000088e+07 | -1.222098101131921e+08 | true | 2020-12-31 23:59:59.999+08:00 | SSSSSSDDDDDDKKKKKK  | SSSSSSDDDDDDKKKKKK  | SSSSSSDDDDDDKKKKKK  | T   | SSSSSSDDDDDDKKKKKK  | B   | SSSSSSDDDDDDKKKKKK  | SSSSSSDDDDDDKKKKKK  | SSSSSSDDDDDDKKKKKK  | SSSSSSDDDDDDKKKKKK  | SSSSSSDDDDDDKKKKKK  | \x56 | \x5353535353534444444444444b4b4b4b4b4b   | SSSSSSDDDDDDKKKKKK  | SSSSSSDDDDDDKKKKKK  |  20002 |  20000002 |  200000000002 | 1.0472e+06 | 1.109810113011921e+06 | false | SSSSSSDDDDDDKKKKKK  | O     | \x50  | \x5353535353534444444444444b4b4b4b4b4b   | SSSSSSDDDDDDKKKKKK  | SSSSSSDDDDDDKKKKKK  | WL     | SSSSSSDDDDDDKKKKKK  | N      | SSSSSSDDDDDDKKKKKK
+  2008-02-29 02:10:10.111+08:00 | 14 | 32767 | 34000000 | 340000000000 | -4.300008e+07  | -1.222098101131921e+08 | true | 1975-03-11 00:00:00+08:00     | 1234567890987654321 | 1234567890987654321 | 1234567890987654321 |   1 | 1234567890987654321 | 2   | 1234567890987654321 | 1234567890987654321 | 1234567890987654321 | 1234567890987654321 | 1234567890987654321 | \x39 | \x31323334353637383930393837363534333231 | 1234567890987654321 | 1234567890987654321 | -10001 | -10000001 | -100000000001 | 1.0472e+06 | 1.109810113011921e+06 | false | 1234567890987654321 | 8     | \x37  | \x31323334353637383930393837363534333231 | 1234567890987654321 | 1234567890987654321 |     65 | 1234567890987654321 | 4      | 1234567890987654321
+(3 rows)
+> SELECT * FROM test_time_addsub.t1 WHERE id > 1 AND k_timestamp >= '2004-9-9 00:00:00.9' AND k_timestamp < '2012-02-29 1:10:10.000' order by id;
+           k_timestamp          | id |  e1   |    e2    |      e3      |       e4       |           e5           |  e6  |              e7               |         e8          |         e9          |         e10         | e11 |         e12         | e13 |         e14         |         e15         |         e16         |         e17         |         e18         | e19  |                   e20                    |         e21         |         e22         | code1  |   code2   |     code3     |   code4    |         code5         | code6 |        code7        | code8 | code9 |                  code10                  |       code11        |       code12        | code13 |       code14        | code15 |       code16
+--------------------------------+----+-------+----------+--------------+----------------+------------------------+------+-------------------------------+---------------------+---------------------+---------------------+-----+---------------------+-----+---------------------+---------------------+---------------------+---------------------+---------------------+------+------------------------------------------+---------------------+---------------------+--------+-----------+---------------+------------+-----------------------+-------+---------------------+-------+-------+------------------------------------------+---------------------+---------------------+--------+---------------------+--------+----------------------
+  2004-09-09 00:00:00.9+08:00   | 12 | 12000 | 12000000 | 120000000000 | -1.2000021e+07 | -1.222098101131921e+08 | true | 2129-03-01 12:00:00.011+08:00 | aaaaaabbbbbbcccccc  | aaaaaabbbbbbcccccc  | aaaaaabbbbbbcccccc  | t   | aaaaaabbbbbbcccccc  | z   | aaaaaabbbbbbcccccc  | aaaaaabbbbbbcccccc  | aaaaaabbbbbbcccccc  | aaaaaabbbbbbcccccc  | aaaaaabbbbbbcccccc  | \x63 | \x616161616161626262626262636363636363   | aaaaaabbbbbbcccccc  | aaaaaabbbbbbcccccc  | -10001 | -10000001 | -100000000001 | 1.0472e+06 | 1.109810113011921e+06 | false | aaaaaabbbbbbcccccc  | b     | \x7a  | \x616161616161626262626262636363636363   | aaaaaabbbbbbcccccc  | aaaaaabbbbbbcccccc  | ty     | aaaaaabbbbbbcccccc  | u      | aaaaaabbbbbbcccccc
+  2004-12-31 12:10:10.911+08:00 | 13 | 23000 | 23000000 | 230000000000 | -2.3000088e+07 | -1.222098101131921e+08 | true | 2020-12-31 23:59:59.999+08:00 | SSSSSSDDDDDDKKKKKK  | SSSSSSDDDDDDKKKKKK  | SSSSSSDDDDDDKKKKKK  | T   | SSSSSSDDDDDDKKKKKK  | B   | SSSSSSDDDDDDKKKKKK  | SSSSSSDDDDDDKKKKKK  | SSSSSSDDDDDDKKKKKK  | SSSSSSDDDDDDKKKKKK  | SSSSSSDDDDDDKKKKKK  | \x56 | \x5353535353534444444444444b4b4b4b4b4b   | SSSSSSDDDDDDKKKKKK  | SSSSSSDDDDDDKKKKKK  |  20002 |  20000002 |  200000000002 | 1.0472e+06 | 1.109810113011921e+06 | false | SSSSSSDDDDDDKKKKKK  | O     | \x50  | \x5353535353534444444444444b4b4b4b4b4b   | SSSSSSDDDDDDKKKKKK  | SSSSSSDDDDDDKKKKKK  | WL     | SSSSSSDDDDDDKKKKKK  | N      | SSSSSSDDDDDDKKKKKK
+  2008-02-29 02:10:10.111+08:00 | 14 | 32767 | 34000000 | 340000000000 | -4.300008e+07  | -1.222098101131921e+08 | true | 1975-03-11 00:00:00+08:00     | 1234567890987654321 | 1234567890987654321 | 1234567890987654321 |   1 | 1234567890987654321 | 2   | 1234567890987654321 | 1234567890987654321 | 1234567890987654321 | 1234567890987654321 | 1234567890987654321 | \x39 | \x31323334353637383930393837363534333231 | 1234567890987654321 | 1234567890987654321 | -10001 | -10000001 | -100000000001 | 1.0472e+06 | 1.109810113011921e+06 | false | 1234567890987654321 | 8     | \x37  | \x31323334353637383930393837363534333231 | 1234567890987654321 | 1234567890987654321 |     65 | 1234567890987654321 | 4      | 1234567890987654321
+(3 rows)
+> SELECT * FROM test_time_addsub.t1 WHERE id > 1 AND k_timestamp >= '2004-9-9 00:00:00.9' AND k_timestamp < '2012-02-29 1:10:10.000' order by id;
+           k_timestamp          | id |  e1   |    e2    |      e3      |       e4       |           e5           |  e6  |              e7               |         e8          |         e9          |         e10         | e11 |         e12         | e13 |         e14         |         e15         |         e16         |         e17         |         e18         | e19  |                   e20                    |         e21         |         e22         | code1  |   code2   |     code3     |   code4    |         code5         | code6 |        code7        | code8 | code9 |                  code10                  |       code11        |       code12        | code13 |       code14        | code15 |       code16
+--------------------------------+----+-------+----------+--------------+----------------+------------------------+------+-------------------------------+---------------------+---------------------+---------------------+-----+---------------------+-----+---------------------+---------------------+---------------------+---------------------+---------------------+------+------------------------------------------+---------------------+---------------------+--------+-----------+---------------+------------+-----------------------+-------+---------------------+-------+-------+------------------------------------------+---------------------+---------------------+--------+---------------------+--------+----------------------
+  2004-09-09 00:00:00.9+08:00   | 12 | 12000 | 12000000 | 120000000000 | -1.2000021e+07 | -1.222098101131921e+08 | true | 2129-03-01 12:00:00.011+08:00 | aaaaaabbbbbbcccccc  | aaaaaabbbbbbcccccc  | aaaaaabbbbbbcccccc  | t   | aaaaaabbbbbbcccccc  | z   | aaaaaabbbbbbcccccc  | aaaaaabbbbbbcccccc  | aaaaaabbbbbbcccccc  | aaaaaabbbbbbcccccc  | aaaaaabbbbbbcccccc  | \x63 | \x616161616161626262626262636363636363   | aaaaaabbbbbbcccccc  | aaaaaabbbbbbcccccc  | -10001 | -10000001 | -100000000001 | 1.0472e+06 | 1.109810113011921e+06 | false | aaaaaabbbbbbcccccc  | b     | \x7a  | \x616161616161626262626262636363636363   | aaaaaabbbbbbcccccc  | aaaaaabbbbbbcccccc  | ty     | aaaaaabbbbbbcccccc  | u      | aaaaaabbbbbbcccccc
+  2004-12-31 12:10:10.911+08:00 | 13 | 23000 | 23000000 | 230000000000 | -2.3000088e+07 | -1.222098101131921e+08 | true | 2020-12-31 23:59:59.999+08:00 | SSSSSSDDDDDDKKKKKK  | SSSSSSDDDDDDKKKKKK  | SSSSSSDDDDDDKKKKKK  | T   | SSSSSSDDDDDDKKKKKK  | B   | SSSSSSDDDDDDKKKKKK  | SSSSSSDDDDDDKKKKKK  | SSSSSSDDDDDDKKKKKK  | SSSSSSDDDDDDKKKKKK  | SSSSSSDDDDDDKKKKKK  | \x56 | \x5353535353534444444444444b4b4b4b4b4b   | SSSSSSDDDDDDKKKKKK  | SSSSSSDDDDDDKKKKKK  |  20002 |  20000002 |  200000000002 | 1.0472e+06 | 1.109810113011921e+06 | false | SSSSSSDDDDDDKKKKKK  | O     | \x50  | \x5353535353534444444444444b4b4b4b4b4b   | SSSSSSDDDDDDKKKKKK  | SSSSSSDDDDDDKKKKKK  | WL     | SSSSSSDDDDDDKKKKKK  | N      | SSSSSSDDDDDDKKKKKK
+  2008-02-29 02:10:10.111+08:00 | 14 | 32767 | 34000000 | 340000000000 | -4.300008e+07  | -1.222098101131921e+08 | true | 1975-03-11 00:00:00+08:00     | 1234567890987654321 | 1234567890987654321 | 1234567890987654321 |   1 | 1234567890987654321 | 2   | 1234567890987654321 | 1234567890987654321 | 1234567890987654321 | 1234567890987654321 | 1234567890987654321 | \x39 | \x31323334353637383930393837363534333231 | 1234567890987654321 | 1234567890987654321 | -10001 | -10000001 | -100000000001 | 1.0472e+06 | 1.109810113011921e+06 | false | 1234567890987654321 | 8     | \x37  | \x31323334353637383930393837363534333231 | 1234567890987654321 | 1234567890987654321 |     65 | 1234567890987654321 | 4      | 1234567890987654321
+(3 rows)
+> DROP DATABASE test_time_addsub cascade;
+DROP DATABASE
+> create ts database ts_db1;
+CREATE TS DATABASE
+> create table ts_db1.ts_table1(k_timestamp timestamp NOT NULL, value int)
+attributes(tag1 varchar(4) not null , tag2 varchar(4))
+primary tags(tag1);
+CREATE TABLE
+> insert into ts_db1.ts_table1 values('2001-12-9 09:48:12.30', 1, 'AAAA', 'BBBB');
+INSERT 1
+> insert into ts_db1.ts_table1 values('2001-12-9 10:48:12.30', 2, 'AAAA', 'BBBB');
+INSERT 1
+> select
+(select last(t.k_timestamp)
+from ts_db1.ts_table1 t
+where t.tag1 = 'AAAA')::int8 -
+(select t.k_timestamp
+from ts_db1.ts_table1 t
+where t.tag1 = 'AAAA'
+order by t.k_timestamp desc limit 1 offset 1)::int8
+as diff_ms;
+  diff_ms
+-----------
+  3600000
+(1 row)
+> DROP DATABASE ts_db1 cascade;
+DROP DATABASE

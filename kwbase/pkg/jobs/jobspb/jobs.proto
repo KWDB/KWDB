@@ -504,6 +504,15 @@ message CreateStatsProgress {
 
 }
 
+// TsTxnDetails are used for handling the ts txn record.
+message TsTxnDetails {
+
+}
+
+message TsTxnProgress {
+
+}
+
 // ScheduleJobDetails are used for the sql schedule job, which is triggered
 // when user create sql schedule and then we will create a job to execute sql
 // by schedule.
@@ -541,6 +550,13 @@ message SyncMetaCacheDetails {
   // CreateOrAlterTagIndex is currently used for create/alter tag index of TS table.
   sqlbase.IndexDescriptor create_or_alter_tag_index = 14 [(gogoproto.nullable) = false,(gogoproto.customname) = "CreateOrAlterTagIndex"];
   string apStatement = 15 [(gogoproto.customname) = "APStatement"];
+  DropAPDatabase drop_ap_database = 16 [(gogoproto.nullable) = false, (gogoproto.customname) = "DropAPDatabase"];
+}
+
+message DropAPDatabase {
+  string current_db = 1;
+  string drop_db = 2;
+  bool rm = 3;
 }
 
 message SetTag {
@@ -628,6 +644,7 @@ message Payload {
     SqlScheduleDetails sqlSchedule = 28;
     ReplicaRebanalceDetails replicaRebalance = 29;
     StreamDetails stream = 30;
+    TsTxnDetails tsTxn = 31;
   }
 }
 
@@ -655,6 +672,7 @@ message Progress {
     SqlScheduleProgress sqlSchedule = 22;
     ReplicaRebanalceProgress replicaRebalance = 23;
     StreamProgress stream = 24;
+    TsTxnProgress tsTxn = 25;
   }
 }
 
@@ -682,6 +700,7 @@ enum Type {
   SQL_SCHEDULE = 17 [(gogoproto.enumvalue_customname) = "TypeSqlSchedule"];
   REPLICA_REBALANCE = 18 [(gogoproto.enumvalue_customname) = "TypeReplicaRebanalce"];
   STREAM = 19 [(gogoproto.enumvalue_customname) = "TypeStream"];
+  TS_TXN = 20 [(gogoproto.enumvalue_customname) = "TypeTsTxn"];
 }
 
 message Job {

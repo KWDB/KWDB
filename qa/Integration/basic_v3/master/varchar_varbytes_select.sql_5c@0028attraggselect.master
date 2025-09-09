@@ -1,0 +1,29 @@
+> SELECT last(e2),code1 FROM test_SELECT_col.t1 WHERE e2 NOT IN(100000) GROUP BY code1  order by k_timestamp;
+ERROR: column "k_timestamp" must appear in the GROUP BY clause or be used in an aggregate function
+SQLSTATE: 42803
+> SELECT min(e2), code1 FROM test_SELECT_col.t1 WHERE e2 NOT IN(100000) GROUP BY code1 order by k_timestamp;
+ERROR: column "k_timestamp" must appear in the GROUP BY clause or be used in an aggregate function
+SQLSTATE: 42803
+> SELECT max(e2), code1 FROM test_SELECT_col.t1 WHERE e2 NOT IN(100000) GROUP BY code1 order by k_timestamp;
+ERROR: column "k_timestamp" must appear in the GROUP BY clause or be used in an aggregate function
+SQLSTATE: 42803
+> SELECT count(e2), code1 FROM test_SELECT_col.t1 WHERE e2 NOT IN(100000) GROUP BY code1 order by k_timestamp;
+ERROR: column "k_timestamp" must appear in the GROUP BY clause or be used in an aggregate function
+SQLSTATE: 42803
+> SELECT count(distinct e2), code1 FROM test_SELECT_col.t1 WHERE e2 NOT IN(100000) GROUP BY code1 order by k_timestamp;
+ERROR: column "k_timestamp" must appear in the GROUP BY clause or be used in an aggregate function
+SQLSTATE: 42803
+> SELECT sum(e2), code1 FROM test_SELECT_col.t1 WHERE e2 NOT IN(100000) GROUP BY code1 order by k_timestamp;
+ERROR: column "k_timestamp" must appear in the GROUP BY clause or be used in an aggregate function
+SQLSTATE: 42803
+> SELECT avg(e2), code1 FROM test_SELECT_col.t1 WHERE e2 NOT IN(100000) GROUP BY code1 order by k_timestamp;
+ERROR: column "k_timestamp" must appear in the GROUP BY clause or be used in an aggregate function
+SQLSTATE: 42803
+> SELECT stddev(e2), code1 FROM test_SELECT_col.t1 WHERE e2 NOT IN(100000) GROUP BY code1 order by k_timestamp;
+ERROR: column "k_timestamp" must appear in the GROUP BY clause or be used in an aggregate function
+SQLSTATE: 42803
+> SELECT variance(e2), code1 FROM test_SELECT_col.t1 WHERE e2 NOT IN(100000) GROUP BY code1 order by k_timestamp;
+ERROR: column "k_timestamp" must appear in the GROUP BY clause or be used in an aggregate function
+SQLSTATE: 42803
+> drop database test_SELECT_col cascade;
+DROP DATABASE

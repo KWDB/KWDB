@@ -68,6 +68,9 @@ bool ChangeSumType(DATATYPE type, void* base, void** new_base) {
   return true;
 }
 
+TsStorageIterator::TsStorageIterator() {
+}
+
 TsStorageIterator::TsStorageIterator(std::shared_ptr<TsEntityGroup>& entity_group, uint64_t entity_group_id,
                                      uint32_t subgroup_id, const vector<uint32_t>& entity_ids,
                                      const std::vector<KwTsSpan>& ts_spans,
@@ -92,22 +95,35 @@ TsStorageIterator::~TsStorageIterator() {
     delete segment_iter_;
     segment_iter_ = nullptr;
   }
-  entity_group_->DropUnlock();
+  if (entity_group_) {
+    entity_group_->DropUnlock();
+  }
 }
 
-void TsStorageIterator::fetchBlockItems(k_uint32 entity_id) {
-  cur_partition_table_->GetAllBlockItems(entity_id, block_item_queue_, is_reversed_);
+KStatus TsStorageIterator::fetchBlockItems(k_uint32 entity_id) {
+  if (cur_partition_table_->GetAllBlockItems(entity_id, block_item_queue_, is_reversed_) != 0) {
+    LOG_ERROR("GetAllBlockItems failed, entityid is %u", entity_id);
+    return KStatus::FAIL;
+  }
   if (!block_filter_.empty()) {
     uint32_t size = block_item_queue_.size();
     for (int i = 0; i < size; ++i) {
       BlockItem* cur_block = block_item_queue_.front();
       block_item_queue_.pop_front();
-      if (!cur_block->publish_row_count || isBlockFiltered(cur_block)) {
+      if (!cur_block->publish_row_count) {
         continue;
       }
+      bool is_filtered = false;
+      KStatus ret = isBlockFiltered(cur_block, is_filtered);
+      if (ret != KStatus::SUCCESS) {
+        LOG_ERROR("isBlockFiltered failed, entityid is %u, blockid is %u", cur_block->entity_id, cur_block->block_id);
+        return KStatus::FAIL;
+      }
+      if (is_filtered) continue;
       block_item_queue_.push_back(cur_block);
     }
   }
+  return KStatus::SUCCESS;
 }
 
 bool TsStorageIterator::matchesFilterRange(const BlockFilter& filter, SpanValue min, SpanValue max, DATATYPE datatype) {
@@ -145,10 +161,7 @@ bool TsStorageIterator::matchesFilterRange(const BlockFilter& filter, SpanValue 
       case DATATYPE::TIMESTAMP:
       case DATATYPE::TIMESTAMP64:
       case DATATYPE::TIMESTAMP64_MICRO:
-      case DATATYPE::TIMESTAMP64_NANO:
-      case DATATYPE::TIMESTAMP64_LSN:
-      case DATATYPE::TIMESTAMP64_LSN_MICRO:
-      case DATATYPE::TIMESTAMP64_LSN_NANO: {
+      case DATATYPE::TIMESTAMP64_NANO: {
         min_res = (min.ival > filter_span.end.ival) ? 1 : ((min.ival < filter_span.end.ival) ? -1 : 0);
         max_res = (max.ival > filter_span.start.ival) ? 1 : ((max.ival < filter_span.start.ival) ? -1 : 0);
         break;
@@ -180,9 +193,10 @@ bool TsStorageIterator::matchesFilterRange(const BlockFilter& filter, SpanValue 
   return false;
 }
 
-bool TsStorageIterator::isBlockFiltered(BlockItem* block_item) {
+KStatus TsStorageIterator::isBlockFiltered(BlockItem* block_item, bool& is_filtered) {
+  is_filtered = false;
   if (!block_item->is_agg_res_available) {
-    return false;
+    return KStatus::SUCCESS;
   }
   for (const auto& filter : block_filter_) {
     uint32_t col_id = filter.colID;
@@ -194,12 +208,23 @@ bool TsStorageIterator::isBlockFiltered(BlockItem* block_item) {
                 block_item->block_id, cur_partition_table_->GetPath().c_str());
       return KStatus::FAIL;
     }
+    if (!segment_tbl->isColExist(col_id)) {
+      if (filter_type == BlockFilterType::BFT_NULL) {
+        continue;
+      }
+      is_filtered = true;
+      return KStatus::SUCCESS;
+    }
     if (filter.filterType == BlockFilterType::BFT_NULL) {
-      if (segment_tbl->isAllNotNullValue(block_item->block_id, block_item->publish_row_count, {filter.colID}))
-        return true;
+      if (segment_tbl->isAllNotNullValue(block_item->block_id, block_item->publish_row_count, {filter.colID})) {
+        is_filtered = true;
+        return KStatus::SUCCESS;
+      }
     } else if (filter.filterType == BlockFilterType::BFT_NOTNULL) {
-      if (segment_tbl->isAllNullValue(block_item->block_id, block_item->publish_row_count, {filter.colID}))
-        return true;
+      if (segment_tbl->isAllNullValue(block_item->block_id, block_item->publish_row_count, {filter.colID})) {
+        is_filtered = true;
+        return KStatus::SUCCESS;
+      }
     } else if (filter.filterType == BlockFilterType::BFT_SPAN) {
       void* min_addr = segment_tbl->columnAggAddr(block_item->block_id, col_id, Sumfunctype::MIN);
       void* max_addr = segment_tbl->columnAggAddr(block_item->block_id, col_id, Sumfunctype::MAX);
@@ -251,12 +276,6 @@ bool TsStorageIterator::isBlockFiltered(BlockItem* block_item) {
           max.ival = *static_cast<k_int64*>(max_addr);
           break;
         }
-        case DATATYPE::TIMESTAMP64_LSN:
-        case DATATYPE::TIMESTAMP64_LSN_MICRO:
-        case DATATYPE::TIMESTAMP64_LSN_NANO: {
-          min.ival = (*(static_cast<TimeStamp64LSN*>(min_addr))).ts64;
-          max.ival = (*(static_cast<TimeStamp64LSN*>(max_addr))).ts64;
-        }
         case DATATYPE::FLOAT: {
           min.dval = static_cast<double>(*static_cast<float*>(min_addr));
           max.dval = static_cast<double>(*static_cast<float*>(max_addr));
@@ -275,24 +294,25 @@ bool TsStorageIterator::isBlockFiltered(BlockItem* block_item) {
           k_int32 min_len = *(reinterpret_cast<uint16_t*>(min_agg_addr.get()));
           min.len = is_var_string ? min_len - 1 : min_len;
           min.data = static_cast<char*>(malloc(min.len));
-          memcpy(min.data, reinterpret_cast<char*>(min_agg_addr.get()) + MMapStringColumn::kStringLenLen, min.len);
+          memcpy(min.data, reinterpret_cast<char*>(min_agg_addr.get()) + kStringLenLen, min.len);
 
           std::shared_ptr<void> max_agg_addr = segment_tbl->varColumnAggAddr(row_id, col_id, Sumfunctype::MAX);
           k_int32 max_len = *(reinterpret_cast<uint16_t*>(max_agg_addr.get()));
           max.len = is_var_string ? max_len - 1 : max_len;
           max.data = static_cast<char*>(malloc(max.len));
-          memcpy(max.data, reinterpret_cast<char*>(max_agg_addr.get()) + MMapStringColumn::kStringLenLen, max.len);
+          memcpy(max.data, reinterpret_cast<char*>(max_agg_addr.get()) + kStringLenLen, max.len);
           break;
         }
         default:
           break;
       }
       if (!matchesFilterRange(filter, min, max, (DATATYPE)attrs_[col_id].type)) {
-        return true;
+        is_filtered = true;
+        return KStatus::SUCCESS;
       }
     }
   }
-  return false;
+  return KStatus::SUCCESS;
 }
 
 KStatus TsStorageIterator::Init(bool is_reversed) {
@@ -340,7 +360,11 @@ int TsStorageIterator::nextBlockItem(k_uint32 entity_id, timestamp64 ts) {
         // all partition table scan over.
         return NextBlkStatus::scan_over;
       }
-      fetchBlockItems(entity_id);
+      s = fetchBlockItems(entity_id);
+      if (s != KStatus::SUCCESS) {
+        LOG_ERROR("fetchBlockItems failed.");
+        return NextBlkStatus::error;
+      }
       continue;
     }
     cur_block_item_ = block_item_queue_.front();
@@ -2424,6 +2448,9 @@ TsOffsetIterator::~TsOffsetIterator() {
 KStatus TsOffsetIterator::Init(bool is_reversed) {
   GetTerminationTime();
   is_reversed_ = is_reversed;
+  comparator_.is_reversed = is_reversed_;
+  decltype(p_times_) t_map(comparator_);
+  p_times_.swap(t_map);
   auto sub_grp_mgr = entity_group_->GetSubEntityGroupManager();
   if (sub_grp_mgr == nullptr) {
     LOG_ERROR("can not found sub entitygroup manager for entitygroup [%lu].", entity_group_id_);

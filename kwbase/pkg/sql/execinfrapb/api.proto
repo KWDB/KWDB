@@ -187,6 +187,13 @@ message ConsumerHandshake {
                                             (gogoproto.casttype) = "DistSQLVersion"];
 }
 
+message RunFlowRequest {
+  optional bytes flow_id = 1 [(gogoproto.nullable) = false,
+    (gogoproto.customname) = "FlowID",
+    (gogoproto.customtype) = "FlowID"];
+
+}
+
 service DistSQL {
   // RunSyncFlow instantiates a flow and streams back results of that flow.
   // The request must contain one flow, and that flow must have a single mailbox
@@ -196,6 +203,10 @@ service DistSQL {
   // SetupFlow instantiates a flow (subgraphs of a distributed SQL
   // computation) on the receiving node.
   rpc SetupFlow(SetupFlowRequest) returns (SimpleResponse) {}
+
+  rpc SetupFlowOnly(SetupFlowRequest) returns (SimpleResponse) {}
+
+  rpc RunFlowOnly(RunFlowRequest) returns (SimpleResponse) {}
 
   // FlowStream is used to push a stream of messages that is part of a flow. The
   // first message will have a StreamHeader which identifies the flow and the

@@ -1,0 +1,64 @@
+> create ts database test_geometry;
+CREATE TS DATABASE
+> create table test_geometry.tb(k_timestamptz timestamptz not null ,e1 geometry , e2  geometry ) tags(tag1 int not null) primary  tags(tag1);
+CREATE TABLE
+> insert into test_geometry.tb values('2023-05-01 10:10', 'Point(0.0 0.0)','Point(0.0 0.0)',0);
+INSERT 1
+> insert into test_geometry.tb values('2023-05-01 10:11', 'Point(0 0)','Point(1 1)',1);
+INSERT 1
+> insert into test_geometry.tb values('2023-05-01 10:12', 'Point(-1 -1)','Point(0 -1)',2);
+INSERT 1
+> insert into test_geometry.tb values('2023-05-01 10:13', 'Point(-32768 -1)','Point(0 -1)',3);
+INSERT 1
+> insert into test_geometry.tb values('2023-05-01 10:14', 'Point(-1 -1)','Point(0 32767)',4);
+INSERT 1
+> insert into test_geometry.tb values('2023-05-01 10:15', 'Point(-2147483648 -2147483648)','Point(0 2147483647)',5);
+INSERT 1
+> insert into test_geometry.tb values('2023-05-01 10:16', 'Point(-9223372036854775807 -1)','Point(0 9223372036854775807)',6);
+INSERT 1
+> insert into test_geometry.tb values('2023-05-01 10:17', 'Point(1000.101156789 1000.101156789)','Point(0 -2000.2022)',7);
+INSERT 1
+> insert into test_geometry.tb values('2023-05-01 10:18', 'Point(-32767.111156 -1)','Point(0 -32767.111156)',8);
+INSERT 1
+> insert into test_geometry.tb values('2023-05-01 10:19', 'Point(1.2345678911111 -1)','Point(0 2147483646.6789)',9);
+INSERT 1
+> insert into test_geometry.tb values('2023-05-01 10:20', 'Point(-1.0000000 -1.0000)','Point(0 9223372036854775806.12345)',10);
+INSERT 1
+> insert into test_geometry.tb values('2023-05-01 10:21', 'Point(0.0000000 0.0000)','Point(600000.606066666 9223372036854775806.12345)',11);
+INSERT 1
+> select * from test_geometry.tb order by k_timestamptz;
+        k_timestamptz       |                  e1                  |                        e2                         | tag1
+----------------------------+--------------------------------------+---------------------------------------------------+-------
+  2023-05-01 10:10:00+00:00 | Point(0.0 0.0)                       | Point(0.0 0.0)                                    |    0
+  2023-05-01 10:11:00+00:00 | Point(0 0)                           | Point(1 1)                                        |    1
+  2023-05-01 10:12:00+00:00 | Point(-1 -1)                         | Point(0 -1)                                       |    2
+  2023-05-01 10:13:00+00:00 | Point(-32768 -1)                     | Point(0 -1)                                       |    3
+  2023-05-01 10:14:00+00:00 | Point(-1 -1)                         | Point(0 32767)                                    |    4
+  2023-05-01 10:15:00+00:00 | Point(-2147483648 -2147483648)       | Point(0 2147483647)                               |    5
+  2023-05-01 10:16:00+00:00 | Point(-9223372036854775807 -1)       | Point(0 9223372036854775807)                      |    6
+  2023-05-01 10:17:00+00:00 | Point(1000.101156789 1000.101156789) | Point(0 -2000.2022)                               |    7
+  2023-05-01 10:18:00+00:00 | Point(-32767.111156 -1)              | Point(0 -32767.111156)                            |    8
+  2023-05-01 10:19:00+00:00 | Point(1.2345678911111 -1)            | Point(0 2147483646.6789)                          |    9
+  2023-05-01 10:20:00+00:00 | Point(-1.0000000 -1.0000)            | Point(0 9223372036854775806.12345)                |   10
+  2023-05-01 10:21:00+00:00 | Point(0.0000000 0.0000)              | Point(600000.606066666 9223372036854775806.12345) |   11
+(12 rows)
+> select ST_Distance(e1,e2) from test_geometry.tb order by k_timestamptz;
+       st_distance
+--------------------------
+                       0
+      1.4142135623730951
+                       1
+                   32768
+       32768.00001525879
+  4.801919416602803e+09
+  1.3043817825332783e+19
+       3162.597438272857
+       46338.98589521578
+  2.1474836476789e+09
+  9.223372036854776e+18
+  9.223372036854776e+18
+(12 rows)
+> drop table test_geometry.tb;
+DROP TABLE
+> drop database test_geometry CASCADE;
+DROP DATABASE

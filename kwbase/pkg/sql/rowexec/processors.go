@@ -199,6 +199,18 @@ func NewProcessor(
 		}
 		return newCreateAPDatabase(flowCtx, processorID, core.ApCreateDatabase, post, outputs[0])
 	}
+	if core.ApDropDatabase != nil {
+		if err := checkNumInOut(inputs, outputs, 0, 1); err != nil {
+			return nil, err
+		}
+		return newDropAPDatabase(flowCtx, processorID, core.ApDropDatabase, post, outputs[0])
+	}
+	if core.ApDropTable != nil {
+		if err := checkNumInOut(inputs, outputs, 0, 1); err != nil {
+			return nil, err
+		}
+		return newDropAPTable(flowCtx, processorID, core.ApDropTable, post, outputs[0])
+	}
 	if core.TsPro != nil {
 		if err := checkNumInOut(inputs, outputs, 0, 1); err != nil {
 			return nil, err

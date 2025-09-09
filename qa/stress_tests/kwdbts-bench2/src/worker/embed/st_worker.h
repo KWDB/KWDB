@@ -16,7 +16,6 @@
 #pragma once
 
 #include <cm_kwdb_context.h>
-#include <engine.h>
 #include <settings.h>
 #include <cm_trace_plugin.h>
 #include <utility>

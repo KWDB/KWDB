@@ -48,6 +48,9 @@ class TransFormPlan {
   PhyPlanPtr AddAPFilters(PhyPlanPtr plan, const kwdbts::PostProcessSpec &post, duckdb::TableCatalogEntry &table,
                           IdxMap &col_map);
   
+  PhyPlanPtr TransFormAggregator(const kwdbts::PostProcessSpec& post, const kwdbts::ProcessorCoreUnion& core,
+                                 std::vector<duckdb::unique_ptr<duckdb::PhysicalPlan>> &child);
+  
 //  duckdb::unique_ptr<duckdb::PhysicalPlan> physical_planner_;
 
  private:

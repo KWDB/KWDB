@@ -158,6 +158,9 @@ type TxnSender interface {
 	// TxnStatus exports the txn's status.
 	TxnStatus() roachpb.TransactionStatus
 
+	// Transaction returns the transaction.
+	Transaction() roachpb.Transaction
+
 	// CreateSavepoint establishes a savepoint.
 	// This method is only valid when called on RootTxns.
 	//
@@ -297,7 +300,8 @@ type TxnSender interface {
 	// using ConfigureStepping(SteppingEnabled).
 	//
 	// The method is idempotent.
-	Step(context.Context) error
+	// the timestamp must be updated when the second parameter is true.
+	Step(context.Context, bool) error
 
 	// ConfigureStepping sets the sequencing point behavior.
 	//

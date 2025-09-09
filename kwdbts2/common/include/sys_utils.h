@@ -12,6 +12,26 @@
 
 #pragma once
 
+#if defined(__has_include)
+  #if __has_include(<filesystem>)
+    #include <filesystem>
+    namespace fs = std::filesystem;
+  #elif __has_include(<experimental/filesystem>)
+    #include <experimental/filesystem>
+    namespace fs = std::experimental::filesystem;
+  #else
+    #error "No <filesystem> or <experimental/filesystem> available"
+  #endif
+#else
+  #if defined(__GNUC__) && (__GNUC__ < 8)
+    #include <experimental/filesystem>
+    namespace fs = std::experimental::filesystem;
+  #else
+    #include <filesystem>
+    namespace fs = std::filesystem;
+  #endif
+#endif
+
 #include <string>
 #include <vector>
 #include "lg_api.h"
@@ -24,7 +44,7 @@ extern int64_t g_free_space_alert_threshold;
  * @param path The path of file or directory
  * @return false/true
  */
-bool IsExists(const string& path);
+bool IsExists(const fs::path& path);
 
 /**
  * @brief Remove file or directory
@@ -46,7 +66,7 @@ bool RemoveDirContents(const string& dir_path, ErrorInfo& error_info = getDummyE
  * @param dir_path The path of directory
  * @return true/false
  */
-bool MakeDirectory(const string& dir_path, ErrorInfo& error_info = getDummyErrorInfo());
+bool MakeDirectory(const fs::path& dir_path, ErrorInfo& error_info = getDummyErrorInfo());
 
 /**
  * @brief Get the modify time of file
@@ -61,10 +81,6 @@ std::time_t ModifyTime(const std::string& filePath);
  * @return true/false
  */
 bool System(const string& cmd,  bool print_log = true, ErrorInfo& error_info = getDummyErrorInfo());
-/**
- * @brief Get the file size of file
- * @param filePath The path of file
- * @return file size
 
 /**
  * @brief Move the files in one directory to another directory

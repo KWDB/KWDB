@@ -64,6 +64,11 @@ func (b *Builder) buildCreateTable(ct *tree.CreateTable, inScope *scope) (outSco
 	ct.Table.TableNamePrefix = resName
 	schID := b.factory.Metadata().AddSchema(sch)
 
+	if ct.AsFrom {
+		_, srcRseName := b.resolveSchemaForCreate(&ct.SrcTable, tree.ColumnBasedTable)
+		ct.SrcTable.TableNamePrefix = srcRseName
+	}
+
 	// HoistConstraints normalizes any column constraints in the CreateTable AST
 	// node.
 	ct.HoistConstraints()

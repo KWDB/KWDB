@@ -1576,6 +1576,7 @@ objoid      classoid    objsubid  description
 4294967253  4294967219  0         kwdb show retentions
 4294967176  4294967219  0         kwdb schedules info
 4294967252  4294967219  0         kwdb streams info
+4294967173  4294967219  0         kwdb triggers info
 4294967251  4294967219  0         kwdb show info of ts engine
 4294967276  4294967219  0         acquired table leases (RAM; local node only)
 4294967293  4294967219  0         detailed identification strings (RAM, local node only)
@@ -1595,6 +1596,7 @@ objoid      classoid    objsubid  description
 4294967262  4294967219  0         details for all columns accessible by current user in current database (KV scan)
 4294967261  4294967219  0         indexes accessible by current user in current database (KV scan)
 4294967260  4294967219  0         table descriptors accessible by current user, including non-public and virtual (KV scan; expensive!)
+4294967172  4294967219  0         kwdb show info of ts engine
 4294967258  4294967219  0         decoded zone configurations from system.zones (KV scan)
 4294967226  4294967219  0         index access methods (incomplete)
 4294967225  4294967219  0         column default values

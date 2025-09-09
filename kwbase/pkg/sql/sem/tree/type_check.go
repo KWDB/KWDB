@@ -56,6 +56,8 @@ type SemaContext struct {
 
 	// Placeholders relates placeholder names to their type and, later, value.
 	Placeholders PlaceholderInfo
+	// TriggerColHolders relates column names to their type and, later, value for trigger's NEW/OLD.
+	TriggerColHolders PlaceholderInfo
 
 	// IVarContainer is used to resolve the types of IndexedVars.
 	IVarContainer IndexedVarContainer
@@ -217,6 +219,10 @@ func MakeSemaContext() SemaContext {
 func (sc *SemaContext) isUnresolvedPlaceholder(expr Expr) bool {
 	if sc == nil {
 		return false
+	}
+	p, ok := expr.(*Placeholder)
+	if ok && p.IsTrigger {
+		return sc.TriggerColHolders.IsUnresolvedPlaceholder(expr)
 	}
 	return sc.Placeholders.IsUnresolvedPlaceholder(expr)
 }
@@ -1626,6 +1632,31 @@ func (expr *Placeholder) TypeCheck(ctx *SemaContext, desired *types.T) (TypedExp
 	// when there are no available values for the placeholders yet, because
 	// during Execute all placeholders are replaced from the AST before type
 	// checking.
+	if expr.IsTrigger {
+		if typ, ok, err := ctx.TriggerColHolders.Type(expr.Idx); err != nil {
+			return expr, err
+		} else if ok {
+			if !desired.Equivalent(typ) {
+				typ = desired
+			}
+			// We call SetType regardless of the above condition to inform the
+			// placeholder struct that this placeholder is locked to its type and cannot
+			// be overridden again.
+			if err := ctx.TriggerColHolders.SetType(expr.Idx, typ); err != nil {
+				return nil, err
+			}
+			expr.typ = typ
+			return expr, nil
+		}
+		if desired.IsAmbiguous() {
+			return nil, placeholderTypeAmbiguityError(expr.Idx)
+		}
+		if err := ctx.TriggerColHolders.SetType(expr.Idx, desired); err != nil {
+			return nil, err
+		}
+		expr.typ = desired
+		return expr, nil
+	}
 	if typ, ok, err := ctx.Placeholders.Type(expr.Idx); err != nil {
 		return expr, err
 	} else if ok {

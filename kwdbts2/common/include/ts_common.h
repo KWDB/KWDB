@@ -11,6 +11,7 @@
 
 #pragma once
 
+#include <cstdint>
 #include <list>
 #include <map>
 #include <memory>
@@ -36,6 +37,9 @@ class BlockItem;
 class MMapSegmentTable;
 
 extern uint32_t k_per_null_bitmap_size;
+
+inline constexpr int kStringLenLen = sizeof(uint16_t);
+inline constexpr int kEndCharacterLen = sizeof(char);
 
 template <class T>
 class Defer {
@@ -85,6 +89,14 @@ enum class VacuumStatus {
   CANCEL,
   FINISH,
   FAILED
+};
+
+enum class DedupRule {
+  KEEP = 0,      // not deduplicate
+  OVERRIDE = 1,  // deduplicate by row
+  REJECT = 2,    // reject duplicate rows
+  DISCARD = 3,   // ignore duplicate rows
+  MERGE = 4,     // duplicate by column
 };
 
 enum SortOrder {
@@ -273,10 +285,10 @@ struct VarTagBatch : public Batch {
   }
 
   int writeDataExcludeLen(uint32_t row_idx, void* data, uint16_t var_len) {
-    if (next_record_ptr_ + var_len + MMapStringColumn::kStringLenLen + MMapStringColumn::kEndCharacterLen > var_end_) {
+    if (next_record_ptr_ + var_len + kStringLenLen + kEndCharacterLen > var_end_) {
       size_t total_realloc_size = std::max(2 * total_size_, (uint32_t)var_len +
-                                                            MMapStringColumn::kStringLenLen +
-                                                            MMapStringColumn::kEndCharacterLen);
+                                                            kStringLenLen +
+                                                            kEndCharacterLen);
       var_data_ = reinterpret_cast<char*>(std::malloc(total_realloc_size));
       if (nullptr == var_data_) {
         LOG_ERROR("VarTagBatch out of memory. total size: %u extend size: %lu", total_size_, total_realloc_size);
@@ -289,14 +301,14 @@ struct VarTagBatch : public Batch {
     }
     var_data_ptrs_[row_idx] = next_record_ptr_;
 
-    *reinterpret_cast<uint16_t*>(next_record_ptr_) = var_len + MMapStringColumn::kEndCharacterLen;
-    next_record_ptr_ += MMapStringColumn::kStringLenLen;
+    *reinterpret_cast<uint16_t*>(next_record_ptr_) = var_len + kEndCharacterLen;
+    next_record_ptr_ += kStringLenLen;
 
     memcpy(next_record_ptr_, data, var_len);
     next_record_ptr_ += var_len;
 
     *next_record_ptr_ = 0x00;
-    next_record_ptr_ += MMapStringColumn::kEndCharacterLen;
+    next_record_ptr_ += kEndCharacterLen;
     return 0;
   }
 
@@ -392,18 +404,22 @@ struct EntityResultIndex {
   EntityResultIndex() {}
   EntityResultIndex(uint64_t entityGroupId, uint32_t entityId, uint32_t subGroupId):
                       entityGroupId(entityGroupId), entityId(entityId), subGroupId(subGroupId) {}
-  EntityResultIndex(uint64_t entityGroupId, uint32_t entityId, uint32_t subGroupId, void* mem) :
-                     entityGroupId(entityGroupId), entityId(entityId), subGroupId(subGroupId), mem(mem) {}
-  EntityResultIndex(uint64_t entityGroupId, uint32_t entityId, uint32_t subGroupId, uint32_t hash_point, void* mem) :
+  EntityResultIndex(uint64_t entityGroupId, uint32_t entityId, uint32_t subGroupId,
+                    std::shared_ptr<void> mem, size_t p_tags_size) :
                      entityGroupId(entityGroupId), entityId(entityId), subGroupId(subGroupId),
-                     hash_point(hash_point), mem(mem) {}
+                     mem(mem), p_tags_size(p_tags_size) {}
+  EntityResultIndex(uint64_t entityGroupId, uint32_t entityId, uint32_t subGroupId, uint32_t hash_point,
+                    std::shared_ptr<void> mem, size_t p_tags_size) :
+                     entityGroupId(entityGroupId), entityId(entityId), subGroupId(subGroupId),
+                     hash_point(hash_point), mem(mem), p_tags_size(p_tags_size) {}
   uint64_t entityGroupId{0};
   uint32_t entityId{0};
   uint32_t subGroupId{0};
   uint32_t hash_point{0};
   uint32_t index{0};
   uint32_t ts_version{0};
-  void* mem{nullptr};  // primaryTags address
+  std::shared_ptr<void> mem{nullptr};  // primaryTags address
+  size_t p_tags_size{0};
 
   bool equalsWithoutMem(const EntityResultIndex& entity_index) {
     if (entityId != entity_index.entityId ||
@@ -486,6 +502,56 @@ inline timestamp64 intersectLength(timestamp64 start1, timestamp64 end1, timesta
   // Otherwise, the intersection length is the difference between minEnd and maxStart
   return min_end - max_start;
 }
+// compare two values
+inline int cmp(void* l, void* r, int32_t type, int32_t size) {
+  switch (type) {
+    case DATATYPE::INT8:
+    case DATATYPE::BYTE:
+    case DATATYPE::CHAR:
+    case DATATYPE::BOOL:
+    case DATATYPE::BINARY: {
+      k_int32 ret = memcmp(l, r, size);
+      return ret;
+    }
+    case DATATYPE::INT16: {
+      k_int16 lv = *(static_cast<k_int16*>(l));
+      k_int16 rv = *(static_cast<k_int16*>(r));
+      return lv == rv ? 0 : (lv > rv ? 1 : -1);
+    }
+    case DATATYPE::INT32:
+    case DATATYPE::TIMESTAMP: {
+      k_int32 lv = *(static_cast<k_int32*>(l));
+      k_int32 rv = *(static_cast<k_int32*>(r));
+      return lv == rv ? 0 : (lv > rv ? 1 : -1);
+    }
+    case DATATYPE::INT64:
+    case DATATYPE::TIMESTAMP64:
+    case DATATYPE::TIMESTAMP64_MICRO:
+    case DATATYPE::TIMESTAMP64_NANO: {
+      k_int64 lv = *(static_cast<k_int64*>(l));
+      k_int64 rv = *(static_cast<k_int64*>(r));
+      return lv == rv ? 0 : (lv > rv ? 1 : -1);
+    }
+    case DATATYPE::FLOAT: {
+      float lv = *(static_cast<float*>(l));
+      float rv = *(static_cast<float*>(r));
+      return lv == rv ? 0 : (lv > rv ? 1 : -1);
+    }
+    case DATATYPE::DOUBLE: {
+      double lv = *(static_cast<double*>(l));
+      double rv = *(static_cast<double*>(r));
+      return lv == rv ? 0 : (lv > rv ? 1 : -1);
+    }
+    case DATATYPE::STRING: {
+      k_int32 ret = strncmp(static_cast<char*>(l), static_cast<char*>(r), size);
+      return ret;
+    }
+      break;
+    default:
+      break;
+  }
+  return false;
+}
 
 enum class TimestampCheckResult {
   FullyContained = 0,
@@ -519,15 +585,7 @@ inline void getMaxAndMinTs(std::vector<KwTsSpan>& spans, timestamp64* min_ts,
 }
 
 inline bool isTsType(DATATYPE type) {
-  if (type == TIMESTAMP || type == TIMESTAMP64 || type == TIMESTAMP64_MICRO || type == TIMESTAMP64_NANO
-      || type == TIMESTAMP64_LSN || type == TIMESTAMP64_LSN_MICRO || type == TIMESTAMP64_LSN_NANO) {
-    return true;
-  }
-  return false;
-}
-
-inline bool isTsWithLSNType(DATATYPE type) {
-  if (type == TIMESTAMP64_LSN || type == TIMESTAMP64_LSN_MICRO || type == TIMESTAMP64_LSN_NANO) {
+  if (type == TIMESTAMP || type == TIMESTAMP64 || type == TIMESTAMP64_MICRO || type == TIMESTAMP64_NANO) {
     return true;
   }
   return false;
@@ -1046,15 +1104,12 @@ inline timestamp64 convertTsToPTime(timestamp64 ts, DATATYPE ts_type) {
   }
   int64_t precision = 0;
   switch (ts_type) {
-    case TIMESTAMP64_LSN:
     case TIMESTAMP64:
       precision = 1000;
       break;
-    case TIMESTAMP64_LSN_MICRO:
     case TIMESTAMP64_MICRO:
       precision = 1000000;
       break;
-    case TIMESTAMP64_LSN_NANO:
     case TIMESTAMP64_NANO:
       precision = 1000000000;
       break;
@@ -1083,15 +1138,12 @@ inline timestamp64 convertSecondToPrecisionTS(timestamp64 ts, DATATYPE ts_type) 
   }
   int64_t precision = 0;
   switch (ts_type) {
-    case TIMESTAMP64_LSN:
     case TIMESTAMP64:
       precision = 1000;
       break;
-    case TIMESTAMP64_LSN_MICRO:
     case TIMESTAMP64_MICRO:
       precision = 1000000;
       break;
-    case TIMESTAMP64_LSN_NANO:
     case TIMESTAMP64_NANO:
       precision = 1000000000;
       break;
@@ -1099,7 +1151,12 @@ inline timestamp64 convertSecondToPrecisionTS(timestamp64 ts, DATATYPE ts_type) 
       assert(false);
       break;
   }
-  return ts * precision;
+  int64_t ret;
+  bool overflow = __builtin_smull_overflow(ts, precision, &ret);
+  if (!overflow) {
+    return ret;
+  }
+  return ts > 0 ? INT64_MAX : INT64_MIN;
 }
 
 inline timestamp64 convertMSToPrecisionTS(timestamp64 ts, DATATYPE ts_type) {
@@ -1108,15 +1165,12 @@ inline timestamp64 convertMSToPrecisionTS(timestamp64 ts, DATATYPE ts_type) {
   }
   int64_t precision = 0;
   switch (ts_type) {
-    case TIMESTAMP64_LSN:
     case TIMESTAMP64:
       precision = 1;
       break;
-    case TIMESTAMP64_LSN_MICRO:
     case TIMESTAMP64_MICRO:
       precision = 1000;
       break;
-    case TIMESTAMP64_LSN_NANO:
     case TIMESTAMP64_NANO:
       precision = 1000000;
       break;
@@ -1124,7 +1178,12 @@ inline timestamp64 convertMSToPrecisionTS(timestamp64 ts, DATATYPE ts_type) {
       assert(false);
       break;
   }
-  return ts * precision;
+  int64_t ret;
+  bool overflow = __builtin_smull_overflow(ts, precision, &ret);
+  if (!overflow) {
+    return ret;
+  }
+  return ts > 0 ? INT64_MAX : INT64_MIN;
 }
 
 inline uint32_t GetConsistentHashId(const char* data, size_t length, uint64_t hash_num) {

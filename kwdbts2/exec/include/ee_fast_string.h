@@ -29,7 +29,7 @@ namespace kwdbts {
 
 class QuickString {
  public:
-  enum { kinline_buf_initial_capacity = 32 };
+  enum { kInlineBufInitialCapacity = 32 };
 
   QuickString() : data_(inline_initial_buffer_) {
   }
@@ -104,7 +104,7 @@ class QuickString {
     std::swap(len_, other.len_);
     std::swap(capacity_, other.capacity_);
     std::swap(data_, other.data_);
-    std::swap_ranges(inline_initial_buffer_, inline_initial_buffer_ + kinline_buf_initial_capacity,
+    std::swap_ranges(inline_initial_buffer_, inline_initial_buffer_ + kInlineBufInitialCapacity,
                      other.inline_initial_buffer_);
   }
 
@@ -223,7 +223,7 @@ class QuickString {
  public:
   size_t len_{0};
   uint8_t* data_;
-  uint8_t inline_initial_buffer_[kinline_buf_initial_capacity];
-  size_t capacity_{kinline_buf_initial_capacity};
+  uint8_t inline_initial_buffer_[kInlineBufInitialCapacity];  // NOLINT
+  size_t capacity_{kInlineBufInitialCapacity};
 };
 }  // namespace kwdbts

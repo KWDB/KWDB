@@ -35,6 +35,12 @@ extern DedupRule g_dedup_rule;
 extern std::shared_mutex g_settings_mutex;
 extern bool g_go_start_service;
 
+KStatus TSEngine::Execute(kwdbContext_p ctx, QueryInfo* req, RespInfo* resp) {
+  ctx->ts_engine = this;
+  KStatus ret = DmlExec::ExecQuery(ctx, req, resp);
+  return ret;
+}
+
 namespace kwdbts {
 int32_t EngineOptions::iot_interval  = 864000;
 string EngineOptions::home_;  // NOLINT
@@ -117,9 +123,9 @@ KStatus TSEngineImpl::CreateTsTable(kwdbContext_p ctx, const KTableKey& table_id
   UpdateSetting(ctx);
   switch (options_.wal_level) {
   case WALMode::OFF:
-    table = std::make_shared<TsTable>(ctx, options_.db_path, table_id);
+    table = std::make_shared<TsTableImpl>(ctx, options_.db_path, table_id);
     break;
-  case WALMode::ON:
+  case WALMode::FLUSH:
   case WALMode::SYNC:
   {
     if (not_get_table) {
@@ -207,7 +213,7 @@ KStatus TSEngineImpl::CreateTsTable(kwdbContext_p ctx, const KTableKey& table_id
           return s;
       }
   }
-  LOG_INFO("Table %ld create NTAG index success.", table_id)
+  LOG_INFO("Table %lu create NTAG index success.", table_id)
 
 #ifndef KWBASE_OSS
   TsConfigAutonomy::UpdateTableStatisticInfo(ctx, table, true);
@@ -331,9 +337,9 @@ KStatus TSEngineImpl::GetTsTable(kwdbContext_p ctx, const KTableKey& table_id, s
       UpdateSetting(ctx);
       switch (options_.wal_level) {
         case WALMode::OFF:
-          table = std::make_shared<TsTable>(ctx, options_.db_path, table_id);
+          table = std::make_shared<TsTableImpl>(ctx, options_.db_path, table_id);
           break;
-        case WALMode::ON:
+        case WALMode::FLUSH:
         case WALMode::SYNC:
           table = std::make_shared<LoggedTsTable>(ctx, options_.db_path, table_id, &options_);
           break;
@@ -501,7 +507,8 @@ KStatus TSEngineImpl::PutEntity(kwdbContext_p ctx, const KTableKey &table_id, ui
 
 KStatus TSEngineImpl::PutData(kwdbContext_p ctx, const KTableKey& table_id, uint64_t range_group_id,
                               TSSlice* payload, int payload_num, uint64_t mtr_id, uint16_t* inc_entity_cnt,
-                              uint32_t* inc_unordered_cnt, DedupResult* dedup_result, bool writeWAL) {
+                              uint32_t* inc_unordered_cnt, DedupResult* dedup_result, bool writeWAL,
+                              const char* tsx_id) {
   std::shared_ptr<TsTable> table;
   KStatus s;
   s = GetTsTable(ctx, table_id, table);
@@ -601,12 +608,6 @@ KStatus TSEngineImpl::GetBatchRepr(kwdbContext_p ctx, TSSlice* batch) {
 
 KStatus TSEngineImpl::ApplyBatchRepr(kwdbContext_p ctx, TSSlice* batch) {
   return KStatus::SUCCESS;
-}
-
-KStatus TSEngineImpl::Execute(kwdbContext_p ctx, QueryInfo* req, RespInfo* resp) {
-  ctx->ts_engine = this;
-  KStatus ret = DmlExec::ExecQuery(ctx, req, resp);
-  return ret;
 }
 
 KStatus TSEngineImpl::LogInit() {
@@ -722,7 +723,7 @@ KStatus TSEngineImpl::checkpoint(kwdbts::kwdbContext_p ctx) {
 }
 
 KStatus TSEngineImpl::CreateCheckpoint(kwdbts::kwdbContext_p ctx) {
-  if (options_.wal_level == 0) {
+  if (options_.wal_level == 0 && !options_.use_raft_log_as_wal) {
     return KStatus::SUCCESS;
   }
   LOG_DEBUG("creating checkpoint ...");
@@ -766,6 +767,9 @@ KStatus TSEngineImpl::CreateCheckpointForTable(kwdbts::kwdbContext_p ctx, TSTabl
 }
 
 KStatus TSEngineImpl::recover(kwdbts::kwdbContext_p ctx) {
+  if (options_.wal_level == WALMode::OFF || options_.use_raft_log_as_wal) {
+    return KStatus::SUCCESS;
+  }
   /*
   *   DDL alter table crash recovery logic, always enabled
   * 1. The log only contains the beginning, indicating that the storage alter has not been performed and the copy has not received a successful message.
@@ -791,7 +795,8 @@ KStatus TSEngineImpl::recover(kwdbts::kwdbContext_p ctx) {
     }
   }};
 
-  s = wal_sys_->ReadWALLog(redo_logs, checkpoint_lsn, current_lsn);
+  std::vector<uint64_t> ignore;
+  s = wal_sys_->ReadWALLog(redo_logs, checkpoint_lsn, current_lsn, ignore);
   if (s == KStatus::FAIL && !redo_logs.empty()) {
     LOG_ERROR("Failed to read the TS Engine WAL logs.")
 #ifdef WITH_TESTS
@@ -823,7 +828,7 @@ KStatus TSEngineImpl::recover(kwdbts::kwdbContext_p ctx) {
           case WALLogType::DDL_ALTER_COLUMN: {
             DDLEntry* ddl_log = reinterpret_cast<DDLEntry*>(incomplete[mtr_id]);
             uint64_t table_id = ddl_log->getObjectID();
-            TsTable table = TsTable(ctx, options_.db_path, table_id);
+            TsTableImpl table = TsTableImpl(ctx, options_.db_path, table_id);
             std::unordered_map<uint64_t, int8_t> range_groups;
             s = table.Init(ctx, range_groups);
             if (s == KStatus::FAIL) {
@@ -851,7 +856,7 @@ KStatus TSEngineImpl::recover(kwdbts::kwdbContext_p ctx) {
           case WALLogType::CREATE_INDEX: {
             CreateIndexEntry* index_log = reinterpret_cast<CreateIndexEntry*>(incomplete[mtr_id]);
             uint64_t table_id = index_log->getObjectID();
-            TsTable table = TsTable(ctx, options_.db_path, table_id);
+            TsTableImpl table = TsTableImpl(ctx, options_.db_path, table_id);
             std::unordered_map<uint64_t, int8_t> range_groups;
             s = table.Init(ctx, range_groups);
             if (s == KStatus::FAIL) {
@@ -879,7 +884,7 @@ KStatus TSEngineImpl::recover(kwdbts::kwdbContext_p ctx) {
           case WALLogType::DROP_INDEX: {
             DropIndexEntry* index_log = reinterpret_cast<DropIndexEntry*>(incomplete[mtr_id]);
             uint64_t table_id = index_log->getObjectID();
-            TsTable table = TsTable(ctx, options_.db_path, table_id);
+            TsTableImpl table = TsTableImpl(ctx, options_.db_path, table_id);
             std::unordered_map<uint64_t, int8_t> range_groups;
             s = table.Init(ctx, range_groups);
             if (s == KStatus::FAIL) {
@@ -940,7 +945,7 @@ KStatus TSEngineImpl::recover(kwdbts::kwdbContext_p ctx) {
       case WALLogType::CREATE_INDEX: {
         CreateIndexEntry* index_log = reinterpret_cast<CreateIndexEntry*>(wal_log.second);
         uint64_t table_id = index_log->getObjectID();
-        TsTable table = TsTable(ctx, options_.db_path, table_id);
+        TsTableImpl table = TsTableImpl(ctx, options_.db_path, table_id);
         std::unordered_map<uint64_t, int8_t> range_groups;
         s = table.Init(ctx, range_groups);
         if (s == KStatus::FAIL) {
@@ -967,7 +972,7 @@ KStatus TSEngineImpl::recover(kwdbts::kwdbContext_p ctx) {
       case WALLogType::DROP_INDEX: {
         DropIndexEntry* index_log = reinterpret_cast<DropIndexEntry*>(wal_log.second);
         uint64_t table_id = index_log->getObjectID();
-        TsTable table = TsTable(ctx, options_.db_path, table_id);
+        TsTableImpl table = TsTableImpl(ctx, options_.db_path, table_id);
         std::unordered_map<uint64_t, int8_t> range_groups;
         s = table.Init(ctx, range_groups);
         if (s == KStatus::FAIL) {
@@ -1094,7 +1099,7 @@ KStatus TSEngineImpl::FlushBuffer(kwdbContext_p ctx) {
 }
 
 KStatus TSEngineImpl::TSMtrBegin(kwdbContext_p ctx, const KTableKey& table_id, uint64_t range_group_id,
-                                 uint64_t range_id, uint64_t index, uint64_t& mtr_id) {
+                                 uint64_t range_id, uint64_t index, uint64_t& mtr_id, const char* tsx_id) {
   if (options_.wal_level == 0 || options_.wal_level == 3) {
     mtr_id = 0;
     return KStatus::SUCCESS;
@@ -1141,7 +1146,7 @@ KStatus TSEngineImpl::TSMtrBegin(kwdbContext_p ctx, const KTableKey& table_id, u
 }
 
 KStatus TSEngineImpl::TSMtrCommit(kwdbContext_p ctx, const KTableKey& table_id,
-                                  uint64_t range_group_id, uint64_t mtr_id) {
+                                  uint64_t range_group_id, uint64_t mtr_id, const char* tsx_id) {
   if (options_.wal_level == 0 || options_.wal_level == 3) {
     return KStatus::SUCCESS;
   }
@@ -1186,7 +1191,7 @@ KStatus TSEngineImpl::TSMtrCommit(kwdbContext_p ctx, const KTableKey& table_id,
 }
 
 KStatus TSEngineImpl::TSMtrRollback(kwdbContext_p ctx, const KTableKey& table_id,
-                                    uint64_t range_group_id, uint64_t mtr_id) {
+                                    uint64_t range_group_id, uint64_t mtr_id, bool skip_log, const char* tsx_id) {
   if (options_.wal_level == 0 || options_.wal_level == 3 || mtr_id == 0) {
     return KStatus::SUCCESS;
   }
@@ -1261,7 +1266,7 @@ KStatus TSEngineImpl::TSxCommit(kwdbContext_p ctx, const KTableKey& table_id, ch
   if (mtr_id != 0) {
     if (tsx_manager_sys_->TSxCommit(ctx, transaction_id) == KStatus::FAIL) {
       LOG_ERROR("TSxCommit failed, system wal failed, table id: %lu", table_id)
-      return s;
+      return KStatus::FAIL;
     }
   }
 
@@ -1293,7 +1298,7 @@ KStatus TSEngineImpl::TSxRollback(kwdbContext_p ctx, const KTableKey& table_id, 
   if (mtr_id == 0) {
     if (checkpoint(ctx) == KStatus::FAIL) {
       LOG_ERROR("TSxCommit failed, system wal checkpoint failed, table id: %lu", table_id)
-      return s;
+      return KStatus::FAIL;
     }
 
     return KStatus::SUCCESS;
@@ -1312,7 +1317,8 @@ KStatus TSEngineImpl::TSxRollback(kwdbContext_p ctx, const KTableKey& table_id, 
   }
 
   std::vector<LogEntry*> logs;
-  s = wal_sys_->ReadWALLogForMtr(mtr_id, logs);
+  std::vector<uint64_t> ignore;
+  s = wal_sys_->ReadWALLogForMtr(mtr_id, logs, ignore);
   if (s == KStatus::FAIL && !logs.empty()) {
     for (auto log : logs) {
       delete log;
@@ -1446,16 +1452,6 @@ KStatus TSEngineImpl::UpdateSetting(kwdbContext_p ctx) {
     LOG_INFO("update wal buffer size to %hu Mib", options_.wal_buffer_size)
   }
 
-  if (GetClusterSetting(ctx, "ts.wal.file_size", &value) == SUCCESS) {
-    options_.wal_file_size = std::stoll(value);
-    LOG_INFO("update wal file size to %hu Mib", options_.wal_file_size)
-  }
-
-  if (GetClusterSetting(ctx, "ts.wal.files_in_group", &value) == SUCCESS) {
-    options_.wal_file_in_group = std::stoll(value);
-    LOG_INFO("update wal file num in group to %hu", options_.wal_file_in_group)
-  }
-
   return KStatus::SUCCESS;
 }
 
@@ -1481,6 +1477,7 @@ KStatus TSEngineImpl::AddColumn(kwdbContext_p ctx, const KTableKey& table_id, ch
   KStatus s = GetTsTable(ctx, table_id, table, true, err_info, cur_version);
   if (s == KStatus::FAIL) {
     err_msg = "Table does not exist";
+    LOG_ERROR("Get ts table failed, table id: %lu, error: %s", table_id, err_info.errmsg.c_str());
     return s;
   }
 
@@ -1498,11 +1495,14 @@ KStatus TSEngineImpl::AddColumn(kwdbContext_p ctx, const KTableKey& table_id, ch
   s = wal_sys_->WriteDDLAlterWAL(ctx, x_id, table_id, AlterType::ADD_COLUMN, cur_version, new_version, column);
   if (s != KStatus::SUCCESS) {
     err_msg = "Write WAL error";
+    LOG_ERROR(err_msg.c_str());
     return s;
   }
 
   s = table->AlterTable(ctx, AlterType::ADD_COLUMN, &column_meta, cur_version, new_version, err_msg);
   if (s != KStatus::SUCCESS) {
+    LOG_ERROR("Add column failed, table id: %lu, cur_version: %d, new_version: %d, error message: %s",
+              table_id, cur_version, new_version, err_msg.c_str());
     return s;
   }
 
@@ -1515,6 +1515,7 @@ KStatus TSEngineImpl::DropColumn(kwdbContext_p ctx, const KTableKey& table_id, c
   std::shared_ptr<TsTable> table;
   KStatus s = GetTsTable(ctx, table_id, table, true, err_info, cur_version);
   if (s == KStatus::FAIL) {
+    LOG_ERROR("Get ts table failed, table id: %lu, error: %s", table_id, err_info.errmsg.c_str());
     return s;
   }
 
@@ -1531,11 +1532,15 @@ KStatus TSEngineImpl::DropColumn(kwdbContext_p ctx, const KTableKey& table_id, c
   // Write Alter DDL into WAL, which type is DROP_COLUMN.
   s = wal_sys_->WriteDDLAlterWAL(ctx, x_id, table_id, AlterType::DROP_COLUMN, cur_version, new_version, column);
   if (s == KStatus::FAIL) {
+    err_msg = "Write WAL error";
+    LOG_ERROR(err_msg.c_str());
     return s;
   }
 
   s = table->AlterTable(ctx, AlterType::DROP_COLUMN, &column_meta, cur_version, new_version, err_msg);
   if (s != KStatus::SUCCESS) {
+    LOG_ERROR("Drop column failed, table id: %lu, cur_version: %d, new_version: %d, error message: %s",
+              table_id, cur_version, new_version, err_msg.c_str());
     return s;
   }
 
@@ -1577,6 +1582,7 @@ KStatus TSEngineImpl::AlterColumnType(kwdbContext_p ctx, const KTableKey& table_
   std::shared_ptr<TsTable> table;
   KStatus s = GetTsTable(ctx, table_id, table, true, err_info, cur_version);
   if (s == KStatus::FAIL) {
+    LOG_ERROR("Get ts table failed, table id: %lu, error: %s", table_id, err_info.errmsg.c_str());
     return s;
   }
 
@@ -1586,6 +1592,8 @@ KStatus TSEngineImpl::AlterColumnType(kwdbContext_p ctx, const KTableKey& table_
   // Write Alter DDL into WAL, which type is ALTER_COLUMN_TYPE.
   s = wal_sys_->WriteDDLAlterWAL(ctx, x_id, table_id, AlterType::ALTER_COLUMN_TYPE, cur_version, new_version, origin_column);
   if (s == KStatus::FAIL) {
+    err_msg = "Write WAL error";
+    LOG_ERROR(err_msg.c_str());
     return s;
   }
 
@@ -1597,6 +1605,8 @@ KStatus TSEngineImpl::AlterColumnType(kwdbContext_p ctx, const KTableKey& table_
   }
   s = table->AlterTable(ctx, AlterType::ALTER_COLUMN_TYPE, &new_col_meta, cur_version, new_version, err_msg);
   if (s != KStatus::SUCCESS) {
+    LOG_ERROR("Alter column type failed, table id: %lu, cur_version: %d, new_version: %d, error message: %s.",
+              table_id, cur_version, new_version, err_msg.c_str());
     return s;
   }
 
@@ -1617,7 +1627,7 @@ KStatus TSEngineImpl::CreateNormalTagIndex(kwdbContext_p ctx, const KTableKey& t
                                            const char* transaction_id, const uint32_t cur_version,
                                            const uint32_t new_version,
                                            const std::vector<uint32_t/* tag column id*/> &index_schema) {
-    LOG_INFO("TSEngine CreateNormalTagIndex start, table id:%ld, index id:%ld, cur_version:%d, new_version:%d.",
+    LOG_INFO("TSEngine CreateNormalTagIndex start, table id:%lu, index id:%lu, cur_version:%d, new_version:%d.",
               table_id, index_id, cur_version, new_version)
     std::shared_ptr<TsTable> table;
     ErrorInfo err_info;
@@ -1641,7 +1651,7 @@ KStatus TSEngineImpl::CreateNormalTagIndex(kwdbContext_p ctx, const KTableKey& t
 KStatus TSEngineImpl::DropNormalTagIndex(kwdbContext_p ctx, const KTableKey& table_id, const uint64_t index_id,
                                          const char* transaction_id,  const uint32_t cur_version,
                                          const uint32_t new_version) {
-    LOG_INFO("TSEngine DropNormalTagIndex start, table id:%ld, index id:%ld, cur_version:%d, new_version:%d.",
+    LOG_INFO("TSEngine DropNormalTagIndex start, table id:%lu, index id:%lu, cur_version:%d, new_version:%d.",
              table_id, index_id, cur_version, new_version)
     std::shared_ptr<TsTable> table;
     ErrorInfo err_info;
@@ -1687,62 +1697,12 @@ KStatus TSEngineImpl::GetWalLevel(kwdbContext_p ctx, uint8_t* wal_level) {
 
 KStatus TSEngineImpl::SetUseRaftLogAsWAL(kwdbContext_p ctx, bool use) {
   options_.use_raft_log_as_wal = use;
+  LOG_INFO("set use_raft_log_as_wal to %d", use)
   return KStatus::SUCCESS;
 }
 
-int AggCalculator::cmp(void* l, void* r) {
-  switch (type_) {
-    case DATATYPE::INT8:
-    case DATATYPE::BYTE:
-    case DATATYPE::CHAR:
-    case DATATYPE::BOOL:
-    case DATATYPE::BINARY: {
-      return memcmp(l, r, size_);
-    }
-    case DATATYPE::INT16: {
-      k_int16 l_val = *(static_cast<k_int16*>(l));
-      k_int16 r_val = *(static_cast<k_int16*>(r));
-      return (l_val > r_val) ? 1 : ((l_val < r_val) ? -1 : 0);
-    }
-    case DATATYPE::INT32:
-    case DATATYPE::TIMESTAMP: {
-      k_int32 l_val = *(static_cast<k_int32*>(l));
-      k_int32 r_val = *(static_cast<k_int32*>(r));
-      return (l_val > r_val) ? 1 : ((l_val < r_val) ? -1 : 0);
-    }
-    case DATATYPE::INT64:
-    case DATATYPE::TIMESTAMP64:
-    case DATATYPE::TIMESTAMP64_MICRO:
-    case DATATYPE::TIMESTAMP64_NANO: {
-      timestamp64 l_val = *(static_cast<k_int64*>(l));
-      timestamp64 r_val = *(static_cast<k_int64*>(r));
-      return (l_val > r_val) ? 1 : ((l_val < r_val) ? -1 : 0);
-    }
-    case DATATYPE::TIMESTAMP64_LSN:
-    case DATATYPE::TIMESTAMP64_LSN_MICRO:
-    case DATATYPE::TIMESTAMP64_LSN_NANO: {
-      timestamp64 l_val = (*(static_cast<TimeStamp64LSN*>(l))).ts64;
-      timestamp64 r_val = (*(static_cast<TimeStamp64LSN*>(r))).ts64;
-      return (l_val > r_val) ? 1 : ((l_val < r_val) ? -1 : 0);
-    }
-    case DATATYPE::FLOAT: {
-      float l_val = *(static_cast<float*>(l));
-      float r_val = *(static_cast<float*>(r));
-      return (l_val > r_val) ? 1 : ((l_val < r_val) ? -1 : 0);
-    }
-    case DATATYPE::DOUBLE: {
-      double l_val = *(static_cast<double*>(l));
-      double r_val = *(static_cast<double*>(r));
-      return (l_val > r_val) ? 1 : ((l_val < r_val) ? -1 : 0);
-    }
-    case DATATYPE::STRING: {
-      k_int32 ret = strncmp(static_cast<char*>(l), static_cast<char*>(r), size_);
-      return ret;
-    }
-    default:
-      break;
-  }
-  return false;
+KStatus TSEngineImpl::FlushVGroups(kwdbContext_p ctx) {
+  return SUCCESS;
 }
 
 bool AggCalculator::isnull(size_t row) {
@@ -1770,11 +1730,11 @@ void* AggCalculator::GetMax(void* base, bool need_to_new) {
       continue;
     }
     void* current = reinterpret_cast<void*>((intptr_t) (mem_) + i * size_);
-    if (!max || cmp(current, max) > 0) {
+    if (!max || cmp(current, max, type_, size_) > 0) {
       max = current;
     }
   }
-  if (base && cmp(base, max) > 0) {
+  if (base && cmp(base, max, type_, size_) > 0) {
     max = base;
   }
   if (need_to_new && max) {
@@ -1792,11 +1752,11 @@ void* AggCalculator::GetMin(void* base, bool need_to_new) {
       continue;
     }
     void* current = reinterpret_cast<void*>((intptr_t) (mem_) + i * size_);
-    if (!min || cmp(current, min) < 0) {
+    if (!min || cmp(current, min, type_, size_) < 0) {
       min = current;
     }
   }
-  if (base && cmp(base, min) < 0) {
+  if (base && cmp(base, min, type_, size_) < 0) {
     min = base;
   }
   if (need_to_new && min) {
@@ -1805,36 +1765,6 @@ void* AggCalculator::GetMin(void* base, bool need_to_new) {
     min = new_min;
   }
   return min;
-}
-
-template<class T>
-bool AddAggInteger(T& a, T b) {
-  T c;
-  if (__builtin_add_overflow(a, b, &c)) {
-    return true;
-  }
-  a = a + b;
-  return false;
-}
-
-template<class T1, class T2>
-bool AddAggInteger(T1& a, T2 b) {
-  T1 c;
-  if (__builtin_add_overflow(a, b, &c)) {
-    return true;
-  }
-  a = a + b;
-  return false;
-}
-
-template<class T1, class T2>
-void AddAggFloat(T1& a, T2 b) {
-  a = a + b;
-}
-
-template<class T>
-void SubAgg(T& a, T b) {
-  a = a - b;
 }
 
 void* AggCalculator::changeBaseType(void* base) {
@@ -1984,10 +1914,10 @@ bool AggCalculator::CalAllAgg(void* min_base, void* max_base, void* sum_base, vo
     }
 
     void* current = reinterpret_cast<void*>((intptr_t) (mem_) + i * size_);
-    if (!max || cmp(current, max) > 0) {
+    if (!max || cmp(current, max, type_, size_) > 0) {
       max = current;
     }
-    if (!min || cmp(current, min) < 0) {
+    if (!min || cmp(current, min, type_, size_) < 0) {
       min = current;
     }
     if (isSumType(type_)) {
@@ -2020,7 +1950,6 @@ bool AggCalculator::CalAllAgg(void* min_base, void* max_base, void* sum_base, vo
           break;
         case DATATYPE::TIMESTAMP:
         case DATATYPE::TIMESTAMP64:
-        case DATATYPE::TIMESTAMP64_LSN:
           break;
         default:
           break;
@@ -2084,8 +2013,8 @@ std::shared_ptr<void> VarColAggCalculator::GetMax(bool& base_changed, std::share
   }
 
   uint16_t len = *(reinterpret_cast<uint16_t*>(max));
-  void* data = std::malloc(len + MMapStringColumn::kStringLenLen);
-  memcpy(data, max, len + MMapStringColumn::kStringLenLen);
+  void* data = std::malloc(len + kStringLenLen);
+  memcpy(data, max, len + kStringLenLen);
   std::shared_ptr<void> ptr(data, free);
   return ptr;
 }
@@ -2107,8 +2036,8 @@ std::shared_ptr<void> VarColAggCalculator::GetMin(bool& base_changed, std::share
     min = base.get();
   }
   uint16_t len = *(reinterpret_cast<uint16_t*>(min));
-  void* data = std::malloc(len + MMapStringColumn::kStringLenLen);
-  memcpy(data, min, len + MMapStringColumn::kStringLenLen);
+  void* data = std::malloc(len + kStringLenLen);
+  memcpy(data, min, len + kStringLenLen);
   std::shared_ptr<void> ptr(data, free);
   return ptr;
 }
@@ -2197,7 +2126,6 @@ void AggCalculator::UndoAgg(void* min_base, void* max_base, void* sum_base, void
           break;
         case DATATYPE::TIMESTAMP:
         case DATATYPE::TIMESTAMP64:
-        case DATATYPE::TIMESTAMP64_LSN:
           break;
         default:
           break;

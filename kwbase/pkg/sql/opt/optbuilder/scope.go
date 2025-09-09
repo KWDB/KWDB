@@ -1077,6 +1077,55 @@ func (s *scope) VisitPre(expr tree.Expr) (recurse bool, newExpr tree.Expr) {
 		return false, makeUntypedTuple(labels, exprs)
 
 	case *tree.UnresolvedName:
+		// if we are in trigger compilation, replace new/old expr with placeholder expr
+		if s.builder.insideObjectDef.HasFlags(InsideTriggerDef) && t.NumParts == 2 {
+			found := false
+			if strings.ToLower(t.Parts[1]) == triggerColNew {
+				// Perform semantic validation on NEW.col values using column information stored in the builder
+				for index, v := range s.builder.TriggerInfo.TriggerTab[s.builder.TriggerInfo.CurTriggerTabID].ColMetas {
+					if t.Parts[0] == v.Name {
+						found = true
+						// avoid placeholder being optimized, maintain the placeholder until the execution phase for replacement.
+						s.builder.KeepPlaceholders = true
+						// Record the occurrence of the new.col expression in the current compilation phase for upper-layer validation of new/old compliance.
+						// For example, insert can only use new
+						s.builder.TriggerInfo.TriggerNewOldTyp |= newCol
+						idx := index
+						if s.builder.isTriggerUpdate() {
+							// For update operations, special handling is required for the NEW row values in triggers.
+							idx += int(opt.ColumnID(len(s.builder.TriggerInfo.TriggerTab[s.builder.TriggerInfo.CurTriggerTabID].ColMetas)))
+							for idx+1 > len(s.builder.semaCtx.TriggerColHolders.PlaceholderTypesInfo.Types) {
+								s.builder.semaCtx.TriggerColHolders.PlaceholderTypesInfo.Types = append(s.builder.semaCtx.TriggerColHolders.PlaceholderTypesInfo.Types, v.Type)
+							}
+						}
+						return false, &tree.Placeholder{
+							Idx:       tree.PlaceholderIdx(idx),
+							IsTrigger: true,
+						}
+					}
+				}
+				if !found {
+					panic(pgerror.Newf(pgcode.UndefinedColumn, "column new.%s not found", t.Parts[0]))
+				}
+			}
+			if strings.ToLower(t.Parts[1]) == triggerColOld {
+				// Perform semantic validation on OLD.col values using column information stored in the builder
+				for index, v := range s.builder.TriggerInfo.TriggerTab[s.builder.TriggerInfo.CurTriggerTabID].ColMetas {
+					if t.Parts[0] == v.Name {
+						found = true
+						s.builder.KeepPlaceholders = true
+						s.builder.TriggerInfo.TriggerNewOldTyp |= oldCol
+						return false, &tree.Placeholder{
+							Idx:       tree.PlaceholderIdx(index),
+							IsTrigger: true,
+						}
+					}
+				}
+				if !found {
+					panic(pgerror.Newf(pgcode.UndefinedColumn, "column old.%s not found", t.Parts[0]))
+				}
+			}
+		}
 		vn, err := t.NormalizeVarName()
 		if err != nil {
 			panic(err)
@@ -1085,6 +1134,55 @@ func (s *scope) VisitPre(expr tree.Expr) (recurse bool, newExpr tree.Expr) {
 		return ok, colI
 
 	case *tree.ColumnItem:
+		// if we are in trigger compilation, replace new/old expr with placeholder expr
+		if s.builder.insideObjectDef.HasFlags(InsideTriggerDef) && t.TableName != nil && t.TableName.NumParts == 1 {
+			found := false
+			if strings.ToLower(t.TableName.Parts[0]) == triggerColNew {
+				// Perform semantic validation on NEW.col values using column information stored in the builder
+				for index, v := range s.builder.TriggerInfo.TriggerTab[s.builder.TriggerInfo.CurTriggerTabID].ColMetas {
+					if t.Column() == v.Name {
+						found = true
+						// avoid placeholder being optimized, maintain the placeholder until the execution phase for replacement.
+						s.builder.KeepPlaceholders = true
+						// Record the occurrence of the new.col expression in the current compilation phase for upper-layer validation of new/old compliance.
+						// For example, insert can only use new
+						s.builder.TriggerInfo.TriggerNewOldTyp |= newCol
+						idx := index
+						if s.builder.isTriggerUpdate() {
+							// For update operations, special handling is required for the NEW row values in triggers.
+							idx += int(opt.ColumnID(len(s.builder.TriggerInfo.TriggerTab[s.builder.TriggerInfo.CurTriggerTabID].ColMetas)))
+							for idx+1 > len(s.builder.semaCtx.TriggerColHolders.PlaceholderTypesInfo.Types) {
+								s.builder.semaCtx.TriggerColHolders.PlaceholderTypesInfo.Types = append(s.builder.semaCtx.TriggerColHolders.PlaceholderTypesInfo.Types, v.Type)
+							}
+						}
+						return false, &tree.Placeholder{
+							Idx:       tree.PlaceholderIdx(idx),
+							IsTrigger: true,
+						}
+					}
+				}
+				if !found {
+					panic(pgerror.Newf(pgcode.UndefinedColumn, "column new.%s not found", t.Column()))
+				}
+			}
+			if strings.ToLower(t.TableName.Parts[0]) == triggerColOld {
+				// Perform semantic validation on OLD.col values using column information stored in the builder
+				for index, v := range s.builder.TriggerInfo.TriggerTab[s.builder.TriggerInfo.CurTriggerTabID].ColMetas {
+					if t.Column() == v.Name {
+						found = true
+						s.builder.KeepPlaceholders = true
+						s.builder.TriggerInfo.TriggerNewOldTyp |= oldCol
+						return false, &tree.Placeholder{
+							Idx:       tree.PlaceholderIdx(index),
+							IsTrigger: true,
+						}
+					}
+				}
+				if !found {
+					panic(pgerror.Newf(pgcode.UndefinedColumn, "column old.%s not found", t.Column()))
+				}
+			}
+		}
 		colI, err := t.Resolve(s.builder.ctx, s)
 		if err != nil {
 			panic(err)

@@ -451,6 +451,7 @@ func (p *PhysicalPlan) addNoopForGatewayNode(nodeID roachpb.NodeID) {
 		}},
 		execinfrapb.PostProcessSpec{OutputTypes: p.ResultTypes},
 		p.ResultTypes,
+		false,
 	)
 	if len(p.ResultRouters) != 1 {
 		panic(fmt.Sprintf("%d results after single group stage", len(p.ResultRouters)))
@@ -731,7 +732,12 @@ func (p *PhysicalPlan) AddSingleGroupStage(
 	core execinfrapb.ProcessorCoreUnion,
 	post execinfrapb.PostProcessSpec,
 	outputTypes []types.T,
+	apSelect bool,
 ) {
+	engineType := 0
+	if apSelect {
+		engineType = 1
+	}
 	proc := Processor{
 		Node: nodeID,
 		Spec: execinfrapb.ProcessorSpec{
@@ -745,6 +751,7 @@ func (p *PhysicalPlan) AddSingleGroupStage(
 				Type: execinfrapb.OutputRouterSpec_PASS_THROUGH,
 			}},
 			StageID: p.NewStageID(),
+			Engine:  int32(engineType),
 		},
 	}
 
@@ -1820,6 +1827,7 @@ func (p *PhysicalPlan) AddLimit(
 		execinfrapb.ProcessorCoreUnion{Noop: &execinfrapb.NoopCoreSpec{}},
 		post,
 		p.ResultTypes,
+		false,
 	)
 
 	if limitZero {

@@ -1404,6 +1404,8 @@ type CreateTable struct {
 	PartitionInterval *TimeInput
 	Comment           string
 	HashNum           int64
+	SrcTable          TableName
+	AsFrom            bool
 }
 
 // Retention including Resolution and KeepDuration
@@ -1499,6 +1501,9 @@ func (node *CreateTable) FormatBody(ctx *FmtCtx) {
 		}
 		ctx.WriteString(" AS ")
 		ctx.FormatNode(node.AsSource)
+	} else if node.AsFrom {
+		ctx.WriteString(" AS FROM ")
+		ctx.FormatNode(&node.SrcTable)
 	} else if node.TableType == TemplateTable || node.TableType == TimeseriesTable {
 		ctx.WriteString(" (")
 		for i, def := range node.Defs {

@@ -41,8 +41,9 @@ import (
 // The counter is accessed atomically.
 //
 // Bit layout (LSB to MSB):
-//  bits 0  - 31: index into array
-//  bits 32 - 63: lease index offset
+//
+//	bits 0  - 31: index into array
+//	bits 32 - 63: lease index offset
 type propBufCnt uint64
 
 // propBufCntReq is a request to atomically update the proposal buffer's
@@ -54,13 +55,13 @@ type propBufCnt uint64
 // consists of requests that want to increment only the counter's array index
 // by one. These are represented like:
 //
-//   0 0 0 ..[63 times].. 1
+//	0 0 0 ..[63 times].. 1
 //
 // The second variant consists of requests that want to increment the counter's
 // array index by one and want to increment the counter's lease index offset by
 // one. These are represented like:
 //
-//   0 0 0 ..[31 times].. 1 0 0 0 ..[31 times].. 1
+//	0 0 0 ..[31 times].. 1 0 0 0 ..[31 times].. 1
 //
 // Representing requests like this allows them to be atomically added directly
 // to the proposal buffer counter to reserve an array index and optionally
@@ -498,7 +499,10 @@ func (b *propBuf) FlushLockedWithRaftGroup(raftGroup *raft.RawNode) (int, error)
 					*roachpb.TsDeleteRequest,
 					*roachpb.TsDeleteEntityRequest,
 					*roachpb.TsTagUpdateRequest,
-					*roachpb.TsDeleteMultiEntitiesDataRequest:
+					*roachpb.TsDeleteMultiEntitiesDataRequest,
+					*roachpb.TsCommitRequest,
+					*roachpb.TsRollbackRequest,
+					*roachpb.TsImportFlushRequest:
 					needPropose = true
 				default:
 					continue

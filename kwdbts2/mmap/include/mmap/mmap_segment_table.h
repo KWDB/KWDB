@@ -332,12 +332,7 @@ class MMapSegmentTable : public TSObject, public TsTableObject {
       return true;
     }
     TimeStamp64LSN cur_ts(columnAddr({blk_item->block_id, cur_row}, 0));
-    if (isTsWithLSNType((DATATYPE)(cols_info_include_dropped_[0].type))) {
-      // lsn = 0, means this row space is not filled with data.
-      if (cur_ts.lsn == 0) {
-        return false;
-      }
-    } else {
+    {
       // ts = 0, means this row space is not filled with data.
       if (cur_ts.ts64 == 0) {
         return false;
@@ -355,12 +350,7 @@ class MMapSegmentTable : public TSObject, public TsTableObject {
     }
     for (uint32_t i = 1; i <= blk_item->publish_row_count; ++i) {
       TimeStamp64LSN cur_ts(columnAddr({blk_item->block_id, i}, 0));
-      if (isTsWithLSNType((DATATYPE)(cols_info_include_dropped_[0].type))) {
-        // lsn = 0, means this row space is not filled with data.
-        if (cur_ts.lsn == 0) {
-          return true;
-        }
-      } else {
+      {
         // ts = 0, means this row space is not filled with data.
         if (cur_ts.ts64 == 0) {
           return true;
@@ -494,8 +484,8 @@ class MMapSegmentTable : public TSObject, public TsTableObject {
       m_str_file_->rdLock();
       char* data = m_str_file_->getStringAddr(offset);
       uint16_t len = *(reinterpret_cast<uint16_t*>(data));
-      void* var_data = std::malloc(len + MMapStringColumn::kStringLenLen);
-      memcpy(var_data, data, len + MMapStringColumn::kStringLenLen);
+      void* var_data = std::malloc(len + kStringLenLen);
+      memcpy(var_data, data, len + kStringLenLen);
       std::shared_ptr<void> ptr(var_data, free);
       m_str_file_->unLock();
       return ptr;
@@ -512,8 +502,8 @@ class MMapSegmentTable : public TSObject, public TsTableObject {
       m_str_file_->rdLock();
       char* data = m_str_file_->getStringAddr(offset);
       uint16_t len = *(reinterpret_cast<uint16_t*>(data));
-      void* var_data = std::malloc(len + MMapStringColumn::kStringLenLen);
-      memcpy(var_data, data, len + MMapStringColumn::kStringLenLen);
+      void* var_data = std::malloc(len + kStringLenLen);
+      memcpy(var_data, data, len + kStringLenLen);
       std::shared_ptr<void> ptr(var_data, free);
       m_str_file_->unLock();
       return ptr;
@@ -537,8 +527,8 @@ class MMapSegmentTable : public TSObject, public TsTableObject {
       m_str_file_->rdLock();
       char* data = m_str_file_->getStringAddr(offset);
       uint16_t len = *(reinterpret_cast<uint16_t*>(data));
-      void* var_data = std::malloc(len + MMapStringColumn::kStringLenLen);
-      memcpy(var_data, data, len + MMapStringColumn::kStringLenLen);
+      void* var_data = std::malloc(len + kStringLenLen);
+      memcpy(var_data, data, len + kStringLenLen);
       std::shared_ptr<void> ptr(var_data, free);
       m_str_file_->unLock();
       return ptr;

@@ -21,6 +21,7 @@ namespace kwdbts {
 // base const class
 class FieldConst : public Field {
  public:
+  using Field::get_ptr;
   FieldConst(roachpb::DataType datatype, k_uint32 length)
       : Field(-1, datatype, length, FIELD_CONSTANT) {}
 

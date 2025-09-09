@@ -21,12 +21,6 @@ TransFormPlan::TransFormPlan(duckdb::ClientContext &context, std::string &db_pat
   db_path_ = db_path;
 }
 
-duckdb::unique_ptr<duckdb::PhysicalPlan> TransFormAggregator(
-    const ProcessorSpec& procSpec, const PostProcessSpec& post, const ProcessorCoreUnion& core,
-    std::vector<duckdb::unique_ptr<duckdb::PhysicalPlan>> &child) {
-  return nullptr;
-}
-
 duckdb::unique_ptr<duckdb::PhysicalPlan> TransFormPlan::TransFormPhysicalPlan(
       const ProcessorSpec& procSpec, const PostProcessSpec& post, const ProcessorCoreUnion& core,
       std::vector<duckdb::unique_ptr<duckdb::PhysicalPlan>> &child) {
@@ -34,7 +28,7 @@ duckdb::unique_ptr<duckdb::PhysicalPlan> TransFormPlan::TransFormPhysicalPlan(
   if (core.has_aptablereader()) {
     return TransFormTableScan(procSpec, post, core);
   } else if (core.has_aggregator()) {
-    return TransFormAggregator(procSpec, post, core, child);
+    return TransFormAggregator(post, core, child);
   }
   EEPgErrorInfo::SetPgErrorInfo(ERRCODE_INVALID_PARAMETER_VALUE, "Invalid operator type");
   return nullptr;

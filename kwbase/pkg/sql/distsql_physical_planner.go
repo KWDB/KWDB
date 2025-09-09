@@ -69,7 +69,6 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/util/timeutil"
 	"gitee.com/kwbasedb/kwbase/pkg/util/uuid"
 	"github.com/cockroachdb/errors"
-	"github.com/jackc/pgx"
 	"github.com/lib/pq/oid"
 )
 
@@ -1328,15 +1327,6 @@ func initAPTableReaderSpec(
 	dbDesc, _ := getDatabaseDescByID(planCtx.ctx, planCtx.planner.txn, n.desc.ParentID)
 	if dbDesc != nil {
 		dbName = dbDesc.Name
-		switch dbDesc.ApDatabaseType {
-		case tree.ApDatabaseTypeDuckDB:
-		case tree.ApDatabaseTypeMysql:
-			config, err := pgx.ParseDSN(dbDesc.AttachInfo)
-			if err != nil {
-				return nil, execinfrapb.PostProcessSpec{}, err
-			}
-			schemaName = config.Database
-		}
 	}
 	*s = execinfrapb.APTableReaderSpec{DbName: dbName, SchemaName: schemaName, TableName: n.desc.Name, ScanColumns: scanColumns}
 
@@ -2986,6 +2976,18 @@ func (dsp *DistSQLPlanner) createTSDDL(planCtx *PlanningCtx, n *tsDDLNode) (Phys
 			apCreateTable.CreateStatement = n.d.APStatement
 			proc.Spec.Core = execinfrapb.ProcessorCoreUnion{ApCreateTable: apCreateTable}
 			p.TsOperator = execinfrapb.OperatorType_APCreateTable
+		case dropKwdbAPDatabase:
+			var apDropDatabase = &execinfrapb.APDropDatabaseProSpec{}
+			apDropDatabase.CurrentDB = n.d.DropAPDatabase.CurrentDb
+			apDropDatabase.DropDB = n.d.DropAPDatabase.DropDb
+			apDropDatabase.Rm = n.d.DropAPDatabase.Rm
+			proc.Spec.Core = execinfrapb.ProcessorCoreUnion{ApDropDatabase: apDropDatabase}
+			p.TsOperator = execinfrapb.OperatorType_APDropDatabase
+		case dropKwdbAPTable:
+			var apDropTable = &execinfrapb.APDropTableProSpec{}
+			apDropTable.DropStatement = n.d.APStatement
+			proc.Spec.Core = execinfrapb.ProcessorCoreUnion{ApDropTable: apDropTable}
+			p.TsOperator = execinfrapb.OperatorType_APDropTable
 		//case dropKwdbTsTable, dropKwdbInsTable, dropKwdbTsDatabase:
 		//	var tsDrop = &execinfrapb.TsProSpec{}
 		//	tsDrop.DropMEInfo = n.d.DropMEInfo
@@ -3088,6 +3090,13 @@ func (dsp *DistSQLPlanner) createTSDDL(planCtx *PlanningCtx, n *tsDDLNode) (Phys
 			tsAlter.TsOperator = execinfrapb.OperatorType_TsAlterPartitionInterval
 			tsAlter.TsTableID = uint64(n.d.SNTable.ID)
 			tsAlter.PartitionInterval = n.d.SNTable.TsTable.PartitionInterval
+			proc.Spec.Core = execinfrapb.ProcessorCoreUnion{TsAlter: tsAlter}
+			p.TsOperator = tsAlter.TsOperator
+		case alterKwdbAlterRetentions:
+			var tsAlter = &execinfrapb.TsAlterProSpec{}
+			tsAlter.TsOperator = execinfrapb.OperatorType_TsAlterRetentions
+			tsAlter.TsTableID = uint64(n.d.SNTable.ID)
+			tsAlter.Retentions = n.d.SNTable.TsTable.Lifetime
 			proc.Spec.Core = execinfrapb.ProcessorCoreUnion{TsAlter: tsAlter}
 			p.TsOperator = tsAlter.TsOperator
 		case alterCompressInterval:
@@ -4522,6 +4531,7 @@ func (dsp *DistSQLPlanner) addSingleGroupState(
 	finalAggsSpec execinfrapb.AggregatorSpec,
 	finalAggsPost execinfrapb.PostProcessSpec,
 	finalOutTypes []types.T,
+	apSelect bool,
 ) {
 	node := dsp.nodeDesc.NodeID
 	if prevStageNode != 0 {
@@ -4532,6 +4542,7 @@ func (dsp *DistSQLPlanner) addSingleGroupState(
 		execinfrapb.ProcessorCoreUnion{Aggregator: &finalAggsSpec},
 		finalAggsPost,
 		finalOutTypes,
+		apSelect,
 	)
 }
 
@@ -4681,7 +4692,7 @@ func (dsp *DistSQLPlanner) addAggregators(
 		// No GROUP BY, or we have a single stream. Use a single final aggregator.
 		// If the previous stage was all on a single node, put the final
 		// aggregator there. Otherwise, bring the results back on this node.
-		dsp.addSingleGroupState(p, prevStageNode, finalAggsSpec, finalAggsPost, finalOutTypes)
+		dsp.addSingleGroupState(p, prevStageNode, finalAggsSpec, finalAggsPost, finalOutTypes, planCtx.apSelect)
 	} else {
 		// We distribute (by group columns) to multiple processors.
 		dsp.setupMultiAggFinalState(planCtx, p, finalOutTypes, &n.reqOrdering, finalAggsSpec, finalAggsPost)
@@ -4841,7 +4852,7 @@ func (dsp *DistSQLPlanner) addTSAggregators(
 
 				// get all data to gateway node compute agg
 				// when ts group, cannot use shuffle data for twice agg.
-				dsp.addSingleGroupState(p, prevStageNode, finalAggsSpec, finalAggsPost, finalOutTypes)
+				dsp.addSingleGroupState(p, prevStageNode, finalAggsSpec, finalAggsPost, finalOutTypes, planCtx.apSelect)
 				//if 0 == len(finalAggsSpec.GroupCols) {
 				//	dsp.addSingleGroupState(p, prevStageNode, finalAggsSpec, finalAggsPost, finalOutTypes)
 				//} else {
@@ -4937,6 +4948,7 @@ func (dsp *DistSQLPlanner) createPlanForIndexJoin(
 			execinfrapb.ProcessorCoreUnion{JoinReader: &joinReaderSpec},
 			post,
 			colTypes,
+			planCtx.apSelect,
 		)
 	}
 	return plan, nil
@@ -6170,7 +6182,7 @@ func (dsp *DistSQLPlanner) createPlanForDistinct(
 	}
 
 	// TODO(arjun): We could distribute this final stage by hash.
-	plan.AddSingleGroupStage(dsp.nodeDesc.NodeID, distinctSpec, execinfrapb.PostProcessSpec{}, plan.ResultTypes)
+	plan.AddSingleGroupStage(dsp.nodeDesc.NodeID, distinctSpec, execinfrapb.PostProcessSpec{}, plan.ResultTypes, planCtx.apSelect)
 
 	return plan, nil
 }
@@ -6201,7 +6213,7 @@ func (dsp *DistSQLPlanner) createPlanForOrdinality(
 
 	// WITH ORDINALITY never gets distributed so that the gateway node can
 	// always number each row in order.
-	plan.AddSingleGroupStage(dsp.nodeDesc.NodeID, ordinalitySpec, execinfrapb.PostProcessSpec{}, outputTypes)
+	plan.AddSingleGroupStage(dsp.nodeDesc.NodeID, ordinalitySpec, execinfrapb.PostProcessSpec{}, outputTypes, planCtx.apSelect)
 
 	return plan, nil
 }
@@ -6257,7 +6269,7 @@ func (dsp *DistSQLPlanner) createPlanForProjectSet(
 	// filtered), we could try to detect these cases and use AddNoGroupingStage
 	// instead.
 	outputTypes := append(plan.ResultTypes, projectSetSpec.GeneratedColumns...)
-	plan.AddSingleGroupStage(dsp.nodeDesc.NodeID, spec, execinfrapb.PostProcessSpec{}, outputTypes)
+	plan.AddSingleGroupStage(dsp.nodeDesc.NodeID, spec, execinfrapb.PostProcessSpec{}, outputTypes, planCtx.apSelect)
 
 	// Add generated columns to PlanToStreamColMap.
 	for i := range projectSetSpec.GeneratedColumns {
@@ -6439,7 +6451,7 @@ func (dsp *DistSQLPlanner) createPlanForSetOp(
 				Distinct: &execinfrapb.DistinctSpec{DistinctColumns: streamCols},
 			}
 			p.AddSingleGroupStage(
-				dsp.nodeDesc.NodeID, distinctSpec, execinfrapb.PostProcessSpec{}, p.ResultTypes)
+				dsp.nodeDesc.NodeID, distinctSpec, execinfrapb.PostProcessSpec{}, p.ResultTypes, planCtx.apSelect)
 		} else {
 			// With UNION ALL, we can end up with multiple streams on the same node.
 			// We don't want to have unnecessary routers and cross-node streams, so
@@ -6466,6 +6478,7 @@ func (dsp *DistSQLPlanner) createPlanForSetOp(
 					execinfrapb.ProcessorCoreUnion{Noop: &execinfrapb.NoopCoreSpec{}},
 					execinfrapb.PostProcessSpec{OutputTypes: p.ResultTypes},
 					p.ResultTypes,
+					planCtx.apSelect,
 				)
 			}
 		}
@@ -6599,14 +6612,14 @@ func (dsp *DistSQLPlanner) createPlanForUnion(
 	}
 
 	if len(rightPlan.PlanToStreamColMap) > 0 {
-		return dsp.createPlanForOrderedTSScanSetOpImp(leftPlan, rightPlan)
+		return dsp.createPlanForOrderedTSScanSetOpImp(planCtx, leftPlan, rightPlan)
 	}
 
 	return leftPlan, nil
 }
 
 func (dsp *DistSQLPlanner) createPlanForOrderedTSScanSetOpImp(
-	leftPlan, rightPlan PhysicalPlan,
+	planCtx *PlanningCtx, leftPlan, rightPlan PhysicalPlan,
 ) (PhysicalPlan, error) {
 	planToStreamColMap := leftPlan.PlanToStreamColMap
 	streamCols := make([]uint32, 0, len(planToStreamColMap))
@@ -6669,6 +6682,7 @@ func (dsp *DistSQLPlanner) createPlanForOrderedTSScanSetOpImp(
 			execinfrapb.ProcessorCoreUnion{Noop: &execinfrapb.NoopCoreSpec{}},
 			execinfrapb.PostProcessSpec{OutputTypes: p.ResultTypes},
 			p.ResultTypes,
+			planCtx.apSelect,
 		)
 	}
 
@@ -6753,6 +6767,7 @@ func (dsp *DistSQLPlanner) createPlanForWindow(
 					execinfrapb.ProcessorCoreUnion{Windower: &windowerSpec},
 					execinfrapb.PostProcessSpec{},
 					newResultTypes,
+					planCtx.apSelect,
 				)
 			}
 
@@ -7011,6 +7026,7 @@ func (dsp *DistSQLPlanner) FinalizePlan(planCtx *PlanningCtx, plan *PhysicalPlan
 			}},
 			execinfrapb.PostProcessSpec{OutputTypes: plan.ResultTypes},
 			plan.ResultTypes,
+			planCtx.apSelect,
 		)
 		if len(plan.ResultRouters) != 1 {
 			panic(fmt.Sprintf("%d results after single group stage", len(plan.ResultRouters)))
@@ -7027,6 +7043,7 @@ func (dsp *DistSQLPlanner) FinalizePlan(planCtx *PlanningCtx, plan *PhysicalPlan
 			}},
 			execinfrapb.PostProcessSpec{OutputTypes: plan.ResultTypes},
 			plan.ResultTypes,
+			false,
 		)
 	}
 
@@ -7040,6 +7057,7 @@ func (dsp *DistSQLPlanner) FinalizePlan(planCtx *PlanningCtx, plan *PhysicalPlan
 			},
 			execinfrapb.PostProcessSpec{},
 			plan.ResultTypes,
+			planCtx.apSelect,
 		)
 		plan.Processors[plan.ResultRouters[0]].LogicalSequenceID = []uint64{0}
 	}

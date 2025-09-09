@@ -62,7 +62,6 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/util/hlc"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 	"github.com/cockroachdb/errors"
-	"github.com/jackc/pgx"
 	"github.com/lib/pq/oid"
 )
 
@@ -485,6 +484,32 @@ func (n *createTableNode) startExec(params runParams) error {
 			desc.State = sqlbase.TableDescriptor_ADD
 		}
 	} else {
+		if n.n.AsFrom {
+			if n.n.TableType != tree.ColumnBasedTable {
+				return errors.Errorf("only table in ap engine support create as from\n")
+			}
+			srcDesc, err := params.p.ResolveMutableTableDescriptor(
+				params.ctx, &n.n.SrcTable, true, ResolveRequireTableDesc,
+			)
+			if err != nil {
+				return err
+			}
+			for _, col := range srcDesc.Columns {
+				var d *tree.ColumnTableDef
+				var ok bool
+				if col.Name == "rowid" {
+					continue
+				}
+				var tableDef tree.TableDef = &tree.ColumnTableDef{Name: tree.Name(col.Name), Type: &col.Type}
+				if d, ok = tableDef.(*tree.ColumnTableDef); !ok {
+					return errors.Errorf("failed to cast type to ColumnTableDef\n")
+				}
+				d.Nullable.Nullability = tree.SilentNull
+				n.n.Defs = append(n.n.Defs, tableDef)
+			}
+			n.n.SrcTable.ExplicitSchema = true
+			n.n.SrcTable.ExplicitCatalog = true
+		}
 		affected = make(map[sqlbase.ID]*sqlbase.MutableTableDescriptor)
 		desc, err = makeTableDesc(params, n.n, n.dbDesc.ID, schemaID, childID, creationTime, privs, affected, isTemporary)
 		if err != nil {
@@ -695,16 +720,7 @@ func (n *createTableNode) startExec(params runParams) error {
 	}
 	if desc.IsColumnBasedTable() {
 		if schemaID == keys.PublicSchemaID {
-			switch n.dbDesc.ApDatabaseType {
-			case tree.ApDatabaseTypeDuckDB:
-				n.n.Table.SchemaName = tree.PublicSchemaName
-			case tree.ApDatabaseTypeMysql:
-				config, err := pgx.ParseDSN(n.dbDesc.AttachInfo)
-				if err != nil {
-					return err
-				}
-				n.n.Table.SchemaName = tree.Name(config.Database)
-			}
+			n.n.Table.SchemaName = tree.PublicSchemaName
 		}
 		n.n.Table.ExplicitSchema = true
 		n.n.Table.ExplicitCatalog = true
@@ -1772,8 +1788,6 @@ func checkAndMakeTSColDesc(
 		return nil, err
 	}
 	if isFirstTSCol {
-		// The first timestamp column in the data column needs to reserve 16 bytes for LSN
-		(*col).TsCol.StorageLen = sqlbase.FirstTsDataColSize
 		// Add a unique constraint to the first column of the timeseries table to prevent a validate error
 		tsPK := sqlbase.IndexDescriptor{
 			Unique:           true,

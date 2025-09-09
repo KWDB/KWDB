@@ -248,11 +248,7 @@ KStatus TABLE::InitField(kwdbContext_p ctx, const TSCol &col, k_uint32 index,
   (*field)->set_storage_type(sql_type);
   (*field)->set_allow_null(col.nullable());
   if (col.has_storage_len()) {
-    if (0 == index) {
-      (*field)->set_storage_length(col.storage_len() - sizeof(k_int64));
-    } else {
-      (*field)->set_storage_length(col.storage_len());
-    }
+    (*field)->set_storage_length(col.storage_len());
   }
   if (col.has_col_offset()) (*field)->set_column_offset(col.col_offset());
   if (col.has_variable_length_type())

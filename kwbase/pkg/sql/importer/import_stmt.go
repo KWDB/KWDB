@@ -23,6 +23,7 @@ import (
 	"sync/atomic"
 
 	"gitee.com/kwbasedb/kwbase/pkg/clusterversion"
+	"gitee.com/kwbasedb/kwbase/pkg/engine/tse"
 	"gitee.com/kwbasedb/kwbase/pkg/jobs"
 	"gitee.com/kwbasedb/kwbase/pkg/jobs/jobspb"
 	"gitee.com/kwbasedb/kwbase/pkg/jobs/jobsprotectedts"
@@ -668,6 +669,7 @@ func (r *importResumer) Resume(
 	} else {
 		p.ExtendedEvalContext().EvalContext.StartSinglenode = true
 	}
+	p.ExtendedEvalContext().EvalContext.Kwengineversion = tse.KwEngineVersion
 	cfg := p.ExecCfg()
 	if details.Format.Format == roachpb.IOFileFormat_MYSQL {
 		return r.apResume(ctx, p, details, cfg, resultsCh)

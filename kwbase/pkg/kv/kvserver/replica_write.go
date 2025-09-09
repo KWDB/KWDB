@@ -320,9 +320,9 @@ func (r *Replica) executeWriteTSBatch(
 	if r.store.nodeDesc.StartMode == base.StartSingleReplicaCmdName {
 		br = &roachpb.BatchResponse{}
 		br.Responses = make([]roachpb.ResponseUnion, len(ba.Requests))
-		tableID, rangeGroupID, tsTxnID, err := r.stageTsBatchRequest(ctx, ba, br.Responses, true, nil)
-		if err == nil && tsTxnID != 0 {
-			err = r.store.TsEngine.MtrCommit(tableID, rangeGroupID, tsTxnID)
+		tableID, rangeGroupID, tsTxnID, needAutoCommit, err := r.stageTsBatchRequest(ctx, ba, br.Responses, true, nil)
+		if err == nil && tsTxnID != 0 && needAutoCommit {
+			err = r.store.TsEngine.MtrCommit(tableID, rangeGroupID, tsTxnID, nil)
 		}
 		r.readOnlyCmdMu.RUnlock()
 		if err != nil {

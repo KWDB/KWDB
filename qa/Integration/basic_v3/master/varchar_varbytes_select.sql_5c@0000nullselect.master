@@ -1,0 +1,108 @@
+> SELECT e1*e2 FROM test_SELECT_col.t1 where e1*e2 IS NULL order by k_timestamp;---BUG
+  ?column?
+------------
+      NULL
+      NULL
+(2 rows)
+> SELECT e1,e2 FROM test_SELECT_col.t1 where e1*e2=0 order by k_timestamp;
+  e1 | e2
+-----+-----
+   0 |  0
+(1 row)
+> SELECT e1,e2 FROM test_SELECT_col.t1 where e1+e2=e1 order by k_timestamp;
+  e1 | e2
+-----+-----
+   0 |  0
+(1 row)
+> SELECT e1,e2 FROM test_SELECT_col.t1 where e1+e2=10000 order by k_timestamp;
+  e1 | e2
+-----+-----
+(0 rows)
+> SELECT e1*e2 FROM test_SELECT_col.t1 where e1*e2 IS NOT NULL order by k_timestamp;
+     ?column?
+------------------
+               0
+     20002040004
+     40004060006
+     90009000000
+     30003030003
+     40004040004
+     30003030003
+     30004030004
+     30005030005
+     30006030006
+     30007030007
+     30008030008
+     30009030009
+     30010030010
+  70366596661249
+  70368744177664
+(16 rows)
+> SELECT e1+e2 FROM test_SELECT_col.t1 where e1+e2 IS NULL order by k_timestamp;---BUG
+  ?column?
+------------
+      NULL
+      NULL
+(2 rows)
+> SELECT e1+e2 FROM test_SELECT_col.t1 where e1+e2 IS NOT NULL order by k_timestamp;---BUG
+   ?column?
+---------------
+            0
+      1020004
+      2020005
+      3030003
+     -3010004
+     -2020004
+     -1030004
+     -1030005
+     -1030006
+     -1030007
+     -1030008
+     -1030009
+     -1030010
+     -1030011
+   2147516414
+  -2147516416
+(16 rows)
+> SELECT e1-e2 FROM test_SELECT_col.t1 where e1-e2 IS NULL order by k_timestamp;---BUG
+  ?column?
+------------
+      NULL
+      NULL
+(2 rows)
+> SELECT e1-e2 FROM test_SELECT_col.t1 where e1-e2 IS NOT NULL order by k_timestamp;---BUG
+   ?column?
+---------------
+            0
+      -980000
+     -1980001
+     -2969997
+      2990002
+      1980000
+       969998
+       969997
+       969996
+       969995
+       969994
+       969993
+       969992
+       969991
+  -2147450880
+   2147450880
+(16 rows)
+> SELECT e1/e2 FROM test_SELECT_col.t1 where e1/e2 IS NULL order by k_timestamp;---BUG
+ERROR: division undefined
+> SELECT e1/e2 FROM test_SELECT_col.t1 where e1/e2 IS NOT NULL order by k_timestamp;---BUG
+ERROR: division undefined
+> SELECT e1//e2 FROM test_SELECT_col.t1 where e1//e2 IS NULL order by k_timestamp;---BUG
+ERROR: division by zero
+SQLSTATE: 22012
+> SELECT e1//e2 FROM test_SELECT_col.t1 where e1//e2 IS NOT NULL order by k_timestamp;
+ERROR: division by zero
+SQLSTATE: 22012
+> SELECT e1%e2 FROM test_SELECT_col.t1 where e1%e2 IS NULL order by k_timestamp;
+ERROR: zero modulus
+SQLSTATE: 22012
+> SELECT e1%e2 FROM test_SELECT_col.t1 where e1%e2 IS NOT NULL order by k_timestamp;
+ERROR: zero modulus
+SQLSTATE: 22012

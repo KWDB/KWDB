@@ -67,6 +67,17 @@ func (b *Builder) buildDelete(del *tree.Delete, inScope *scope) (outScope *scope
 			"cannot specify a list of column IDs with DELETE"))
 	}
 
+	if b.insideObjectDef.HasFlags(InsideTriggerDef) {
+		if tab.GetTableType() != tree.RelationalTable {
+			panic(pgerror.Newf(pgcode.InvalidCatalogName, "unsupported table type: %s in trigger", tree.TableTypeName(tab.GetTableType())))
+		}
+		if del.Returning != nil {
+			if _, ok := del.Returning.(*tree.ReturningExprs); ok {
+				panic(pgerror.Newf(pgcode.FeatureNotSupported, "RETURNING with values is not supported in triggers"))
+			}
+		}
+	}
+
 	// Check Select permission as well, since existing values must be read.
 	b.checkPrivilege(depName, tab, privilege.SELECT)
 
@@ -111,10 +122,10 @@ func (b *Builder) buildDelete(del *tree.Delete, inScope *scope) (outScope *scope
 		case *tree.ReturningExprs:
 			returning = *t
 		case *tree.ReturningIntoClause:
-			if b.insideProcDef {
+			if b.insideObjectDef.HasAnyFlags(InsideProcedureDef | InsideTriggerDef) {
 				returning = t.SelectClause
 			} else {
-				panic(pgerror.Newf(pgcode.FeatureNotSupported, "returning into clause not in procedure is unsupported"))
+				panic(pgerror.Newf(pgcode.FeatureNotSupported, "returning into clause not in procedure/trigger is unsupported"))
 			}
 		}
 		mb.buildDelete(returning)
@@ -131,6 +142,10 @@ func (mb *mutationBuilder) buildDelete(returning tree.ReturningExprs) {
 	mb.buildFKChecksForDelete()
 
 	private := mb.makeMutationPrivate(returning != nil)
+
+	// get triggers and buildProcCommand for trigger body.
+	private.TriggerCommands = mb.buildProcCommandForTriggers(tree.TriggerEventDelete)
+
 	mb.outScope.expr = mb.b.factory.ConstructDelete(mb.outScope.expr, mb.checks, private)
 
 	mb.buildReturning(returning)
@@ -608,14 +623,14 @@ func checkComExpr(
 				var start, end int64
 				switch op {
 				case tree.GT:
-					if time > upperLimitOfTimestamp {
+					if time >= upperLimitOfTimestamp {
 						start = upperLimitOfTimestamp
 					} else {
 						start = time + 1
 					}
 					end = upperLimitOfTimestamp
 				case tree.GE:
-					if time > upperLimitOfTimestamp {
+					if time >= upperLimitOfTimestamp {
 						start = upperLimitOfTimestamp
 					} else {
 						if isExceed {
@@ -629,14 +644,14 @@ func checkComExpr(
 					start, end = time, time
 				case tree.LE:
 					start = lowerLimitOfTimestamp
-					if time < lowerLimitOfTimestamp {
+					if time <= lowerLimitOfTimestamp {
 						end = lowerLimitOfTimestamp
 					} else {
 						end = time
 					}
 				case tree.LT:
 					start = lowerLimitOfTimestamp
-					if time < lowerLimitOfTimestamp {
+					if time <= lowerLimitOfTimestamp {
 						end = lowerLimitOfTimestamp
 					} else {
 						if isExceed {
@@ -646,7 +661,7 @@ func checkComExpr(
 						}
 					}
 				case tree.NE:
-					if time < lowerLimitOfTimestamp || time > upperLimitOfTimestamp || isExceed {
+					if time <= lowerLimitOfTimestamp || time >= upperLimitOfTimestamp || isExceed {
 						start, end = lowerLimitOfTimestamp, upperLimitOfTimestamp
 					} else {
 						spans = append(spans, opt.TsSpan{
@@ -694,7 +709,7 @@ func checkComExpr(
 				switch op {
 				case tree.GT:
 					start = lowerLimitOfTimestamp
-					if time < lowerLimitOfTimestamp {
+					if time <= lowerLimitOfTimestamp {
 						end = lowerLimitOfTimestamp
 					} else {
 						if isExceed {
@@ -705,7 +720,7 @@ func checkComExpr(
 					}
 				case tree.GE:
 					start = lowerLimitOfTimestamp
-					if time < lowerLimitOfTimestamp {
+					if time <= lowerLimitOfTimestamp {
 						end = lowerLimitOfTimestamp
 					} else {
 						end = time
@@ -713,7 +728,7 @@ func checkComExpr(
 				case tree.EQ:
 					start, end = time, time
 				case tree.LE:
-					if time > upperLimitOfTimestamp {
+					if time >= upperLimitOfTimestamp {
 						start = upperLimitOfTimestamp
 					} else {
 						if isExceed {
@@ -724,14 +739,14 @@ func checkComExpr(
 					}
 					end = upperLimitOfTimestamp
 				case tree.LT:
-					if time > upperLimitOfTimestamp {
+					if time >= upperLimitOfTimestamp {
 						start = upperLimitOfTimestamp
 					} else {
 						start = time + 1
 					}
 					end = upperLimitOfTimestamp
 				case tree.NE:
-					if time < lowerLimitOfTimestamp || time > upperLimitOfTimestamp || isExceed {
+					if time <= lowerLimitOfTimestamp || time >= upperLimitOfTimestamp || isExceed {
 						start, end = lowerLimitOfTimestamp, upperLimitOfTimestamp
 					} else {
 						spans = append(spans, opt.TsSpan{

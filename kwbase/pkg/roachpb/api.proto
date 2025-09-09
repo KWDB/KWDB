@@ -266,6 +266,21 @@ message TsRowPutRequest {
   repeated int64 timestamps = 5;
   bool closeWAL = 6;
   uint64  hashNum = 7;
+  TsTransaction ts_transaction = 8 ;
+}
+
+// A TsImportFlushRequest is the argument to flush data after import
+message TsImportFlushRequest {
+  option (gogoproto.equal) = true;
+
+  RequestHeader header = 1 [(gogoproto.nullable) = false, (gogoproto.embed) = true];
+}
+
+// A TsImportFlushResponse is the return status
+message TsImportFlushResponse {
+  ResponseHeader header = 1 [(gogoproto.nullable) = false, (gogoproto.embed) = true];
+
+  bool IsSuccess = 2;
 }
 
 // A TsRowPutResponse is the return value for inserting row values to TS DB
@@ -284,6 +299,7 @@ message TsPutTagRequest {
 
   RequestHeader header = 1 [(gogoproto.nullable) = false, (gogoproto.embed) = true];
   Value value = 2 [(gogoproto.nullable) = false];
+  TsTransaction ts_transaction = 3 ;
 }
 
 // A TsPutTagResponse is the return value for TsPutTagRequest
@@ -292,6 +308,30 @@ message TsPutTagResponse {
 
   int64 dedupRule = 2;
   bytes discardBitmap = 3;
+}
+
+// A TsCommitRequest is the argument to insert value to TS DB in single node mode(MPP)
+message TsCommitRequest {
+  option (gogoproto.equal) = true;
+
+  RequestHeader header = 1 [(gogoproto.nullable) = false, (gogoproto.embed) = true];
+  TsTransaction ts_transaction = 2 ;
+}
+
+message TsCommitResponse {
+  ResponseHeader header = 1 [(gogoproto.nullable) = false, (gogoproto.embed) = true];
+}
+
+// A TsRollbackRequest is the argument to insert value to TS DB in single node mode(MPP)
+message TsRollbackRequest {
+  option (gogoproto.equal) = true;
+
+  RequestHeader header = 1 [(gogoproto.nullable) = false, (gogoproto.embed) = true];
+  TsTransaction ts_transaction = 2 ;
+}
+
+message TsRollbackResponse {
+  ResponseHeader header = 1 [(gogoproto.nullable) = false, (gogoproto.embed) = true];
 }
 
 // A TsSpan is the span of timestamps
@@ -2042,6 +2082,9 @@ message RequestUnion {
     TsTagUpdateRequest ts_tag_update = 59;
     TsDeleteMultiEntitiesDataRequest ts_delete_multi_entities_data = 60;
     TsPutTagRequest ts_put_tag = 61;
+    TsCommitRequest ts_commit = 62;
+    TsRollbackRequest ts_rollback = 63;
+    TsImportFlushRequest ts_import_flush = 64;
   }
   reserved 8, 15, 23, 25, 27;
 }
@@ -2102,6 +2145,9 @@ message ResponseUnion {
     TsTagUpdateResponse ts_tag_update = 59;
     TsDeleteMultiEntitiesDataResponse ts_delete_multi_entities_data = 60;
     TsPutTagResponse ts_put_tag = 61;
+    TsCommitResponse ts_commit = 62;
+    TsRollbackResponse ts_rollback = 63;
+    TsImportFlushResponse ts_import_flush = 64;
   }
   reserved 8, 15, 23, 25, 27, 28;
 }
@@ -2251,6 +2297,8 @@ message Header {
   bool can_forward_read_timestamp = 16;
 
   bool should_log_logical_op = 17 ;
+
+  TsTransaction ts_transaction = 18 ;
 
   reserved 7, 12, 14;
 }

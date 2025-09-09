@@ -30,7 +30,7 @@ class TestTsTableMaxTS : public testing::Test {
     setenv("KW_IOT_INTERVAL", "36000", 1);
     ctx_ = &context_;
     InitServerKWDBContext(ctx_);
-    table_ = new TsTable(ctx_, db_name_, 10086);
+    table_ = new TsTableImpl(ctx_, db_name_, 10086);
     roachpb::CreateTsTable meta;
     ConstructRoachpbTable(&meta);
     for (int i = 0; i < meta.k_column_size(); i++) {
@@ -64,7 +64,7 @@ class TestTsTableMaxTS : public testing::Test {
 
   void RestartTable() {
     delete table_;
-    table_ = new TsTable(ctx_, db_name_, 10086);
+    table_ = new TsTableImpl(ctx_, db_name_, 10086);
     ErrorInfo err_info;
     std::unordered_map<k_uint64, int8_t> range_groups;
     range_groups[1] = 0;

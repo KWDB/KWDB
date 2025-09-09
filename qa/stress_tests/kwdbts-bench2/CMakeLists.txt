@@ -113,6 +113,7 @@ set(embed_includes worker ${PROTOBUF_INCLUDE_DIR} src/worker
         ${KWDBTS_PROJ_DIR}/mmap/include
         ${KWDBTS_PROJ_DIR}/common/include
         ${KWDBTS_PROJ_DIR}/engine/include
+        ${KWDBTS_PROJ_DIR}/ts_engine/include
         ${KWDBTS_PROJ_DIR}/storage/include
         ${KWDBTS_PROJ_DIR}/roachpb
         ${KWDBTS_PROJ_DIR}/latch/include
@@ -127,7 +128,7 @@ aux_source_directory(src/worker WORKER_SRCS)
 
 aux_source_directory(src/worker/embed EMBED_SRCS)
 add_executable(kdp_bench src/kdp_bench.cpp ${WORKER_SRCS} ${EMBED_SRCS})
-target_include_directories(kdp_bench PRIVATE ${embed_includes} )
+target_include_directories(kdp_bench PRIVATE ${embed_includes})
 target_link_libraries(kdp_bench PUBLIC kwdbts2 protobuf common ssl atomic)
 
 INSTALL(FILES

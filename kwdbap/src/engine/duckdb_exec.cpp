@@ -1086,17 +1086,20 @@ KStatus DuckdbExec::DetachDB(duckdb::vector<std::string> dbs) {
   return ret;
 }
 
-unique_ptr<PhysicalPlan> DuckdbExec::ConvertFlowToPhysicalPlan(
-    unique_ptr<PhysicalPlan> in_plan, int* start_idx) {
+unique_ptr<PhysicalPlan> DuckdbExec::ConvertFlowToPhysicalPlan(int* start_idx) {
 //  printf("processor size: %d \n", fspecs_->processors_size());
-//  if (*start_idx >= fspecs_->processors_size()) {
-//    return in_plan;
-//  }
-//  const ProcessorSpec& proc = fspecs_->processors(*start_idx);
-//  if (proc.has_core() && proc.core().has_aptablereader()) {
-//    in_plan = CreateAPTableScan(start_idx);
-//  }
-  return in_plan;
+////  unique_ptr<PhysicalPlan> physical_plan;
+////  if (*start_idx >= fspecs_->processors_size()) {
+////    return physical_plan;
+////  }
+////  const ProcessorSpec& proc = fspecs_->processors(*start_idx);
+////  if (proc.has_core() && proc.core().has_aptablereader()) {
+////    physical_plan = CreateAPTableScan(start_idx);
+////  } else if (proc.has_core() && proc.core().has_apaggregator()) {
+////    physical_plan = CreateAPAggregator(start_idx);
+////  }
+////  return physical_plan;
+  return nullptr;
 }
 
 ExecutionResult DuckdbExec::PrepareExecutePlan(kwdbContext_p ctx) {

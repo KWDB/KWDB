@@ -379,6 +379,7 @@ type Factory interface {
 		checkCols CheckOrdinalSet,
 		allowAutoCommit bool,
 		skipFKChecks bool,
+		triggerCommands TriggerExecute,
 	) (Node, error)
 
 	// ConstructTSInsert creates a node that implements an TIME SERIES INSERT statement.
@@ -468,6 +469,7 @@ type Factory interface {
 		passthrough sqlbase.ResultColumns,
 		allowAutoCommit bool,
 		skipFKChecks bool,
+		triggerCommands TriggerExecute,
 	) (Node, error)
 
 	// ConstructUpsert creates a node that implements an INSERT..ON CONFLICT or
@@ -539,6 +541,7 @@ type Factory interface {
 		returnCols ColumnOrdinalSet,
 		allowAutoCommit bool,
 		skipFKChecks bool,
+		triggerCommands TriggerExecute,
 	) (Node, error)
 
 	// ConstructDeleteRange creates a node that efficiently deletes contiguous
@@ -550,7 +553,10 @@ type Factory interface {
 		maxReturnedKeys int, allowAutoCommit bool) (Node, error)
 
 	ConstructCreateProcedure(cp *tree.CreateProcedure, schema cat.Schema, deps opt.ViewDeps) (Node, error)
+
 	ConstructCallProcedure(procName string, procCall string, procComm memo.ProcComms, fn ProcedurePlanFn, scalarFn BuildScalarFn) (Node, error)
+
+	ConstructCreateTrigger(ct *tree.CreateTrigger, deps opt.ViewDeps) (Node, error)
 
 	// ConstructCreateTable returns a node that implements a CREATE TABLE
 	// statement.
@@ -818,6 +824,73 @@ type LocalVariable struct {
 	Data tree.Datum
 	// Typ saves variable type
 	Typ types.T
+	// Name saves variable name
+	Name string
+}
+
+// TriggerExecute stores information related to trigger execution.
+type TriggerExecute interface {
+	// GetCommands returns all commands
+	GetCommands() memo.ArrayCommand
+	// SetCommands set commands into TriggerCommand
+	SetCommands(command memo.ArrayCommand)
+	// SetFn set replaceFn
+	SetFn(fn ProcedurePlanFn)
+	// GetFn returns replaceFn
+	GetFn() ProcedurePlanFn
+	// SetScalarFn set ScalarFn used in execution phase
+	SetScalarFn(fn BuildScalarFn)
+	// GetScalarFn returns ScalarFn
+	GetScalarFn() BuildScalarFn
+}
+
+// TriggerCommand stores information related to trigger execution.
+type TriggerCommand struct {
+	ProcComms memo.ArrayCommand
+	Fn        ProcedurePlanFn
+	ScalarFn  BuildScalarFn
+}
+
+// GetCommands returns all commands
+func (t *TriggerCommand) GetCommands() memo.ArrayCommand {
+	return t.ProcComms
+}
+
+// SetCommands set commands into TriggerCommand
+func (t *TriggerCommand) SetCommands(command memo.ArrayCommand) {
+	t.ProcComms = command
+}
+
+// SetFn set replaceFn
+func (t *TriggerCommand) SetFn(fn ProcedurePlanFn) {
+	t.Fn = fn
+}
+
+// GetFn returns replaceFn
+func (t *TriggerCommand) GetFn() ProcedurePlanFn {
+	return t.Fn
+}
+
+// SetScalarFn set ScalarFn used in execution phase
+func (t *TriggerCommand) SetScalarFn(fn BuildScalarFn) {
+	t.ScalarFn = fn
+}
+
+// GetScalarFn returns ScalarFn
+func (t *TriggerCommand) GetScalarFn() BuildScalarFn {
+	return t.ScalarFn
+}
+
+// PlaceHolderExecute for procedure execute placeholder expr
+type PlaceHolderExecute interface {
+	// GetValue get placeholder value
+	GetValue(index tree.PlaceholderIdx) tree.Datum
+
+	// SetValue set placeholder value
+	SetValue(index tree.PlaceholderIdx, v tree.Datum)
+
+	// GetMaxIndex gets placeholder max index number
+	GetMaxIndex() int
 }
 
 // InsertFastPathMaxRows is the maximum number of rows for which we can use the
