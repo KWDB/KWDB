@@ -99,6 +99,11 @@ unique_ptr<PhysicalPlan> DuckdbExec::CreateAPAggregator(int *i) {
             for (auto idx : agg.col_idx()) {
                 ref.push_back(make_uniq<BoundReferenceExpression>(table_scan.returned_types[idx], idx));
                 auto agg_func = func.functions.GetFunctionByArguments(*connect_->context, {table_scan.returned_types[idx]});
+                if (agg_func.bind) {
+                    bind_info = agg_func.bind(*connect_->context, agg_func, ref);
+                    // we may have lost some arguments in the bind
+                    ref.resize(MinValue(agg_func.arguments.size(), ref.size()));
+                }
                 auto agg_expr = make_uniq<BoundAggregateExpression>(agg_func, std::move(ref), std::move(filter), std::move(bind_info), aggr_type);
                 agg_returned_types.push_back(agg_expr->return_type);
                 expressions.push_back(std::move(agg_expr));
