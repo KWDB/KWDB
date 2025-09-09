@@ -133,8 +133,9 @@ class TagVersionObject {
   MMapFile*  m_data_file_{nullptr};
 
  public:
-  explicit TagVersionObject(const std::string& db_path, const std::string& tbl_sub_path, uint32_t table_id, TableVersion table_version): 
-       m_db_path_(db_path),m_tbl_sub_path_(tbl_sub_path),m_table_id_(table_id), m_table_version_(table_version) {
+  explicit TagVersionObject(const std::string& db_path, const std::string& tbl_sub_path, uint32_t table_id,
+                            TableVersion table_version)
+      : m_db_path_(db_path), m_tbl_sub_path_(tbl_sub_path), m_table_version_(table_version), m_table_id_(table_id) {
     m_file_name_ = std::to_string(m_table_id_) + ".tag" + ".mt" + "_" + std::to_string(m_table_version_);
   }
 

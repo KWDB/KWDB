@@ -136,6 +136,10 @@ define MutationPrivate {
     # FKFallback is true if we need to fall back to the legacy path for FK
     # checks / cascades.
     FKFallback bool
+
+    # ProcComm stores statements to be executed which is triggered by triggers
+    # related to this table.
+    TriggerCommands ProcComms
 }
 
 # Update evaluates a relational input expression that fetches existing rows from

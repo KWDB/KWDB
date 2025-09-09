@@ -2976,6 +2976,18 @@ func (dsp *DistSQLPlanner) createTSDDL(planCtx *PlanningCtx, n *tsDDLNode) (Phys
 			apCreateTable.CreateStatement = n.d.APStatement
 			proc.Spec.Core = execinfrapb.ProcessorCoreUnion{ApCreateTable: apCreateTable}
 			p.TsOperator = execinfrapb.OperatorType_APCreateTable
+		case dropKwdbAPDatabase:
+			var apDropDatabase = &execinfrapb.APDropDatabaseProSpec{}
+			apDropDatabase.CurrentDB = n.d.DropAPDatabase.CurrentDb
+			apDropDatabase.DropDB = n.d.DropAPDatabase.DropDb
+			apDropDatabase.Rm = n.d.DropAPDatabase.Rm
+			proc.Spec.Core = execinfrapb.ProcessorCoreUnion{ApDropDatabase: apDropDatabase}
+			p.TsOperator = execinfrapb.OperatorType_APDropDatabase
+		case dropKwdbAPTable:
+			var apDropTable = &execinfrapb.APDropTableProSpec{}
+			apDropTable.DropStatement = n.d.APStatement
+			proc.Spec.Core = execinfrapb.ProcessorCoreUnion{ApDropTable: apDropTable}
+			p.TsOperator = execinfrapb.OperatorType_APDropTable
 		//case dropKwdbTsTable, dropKwdbInsTable, dropKwdbTsDatabase:
 		//	var tsDrop = &execinfrapb.TsProSpec{}
 		//	tsDrop.DropMEInfo = n.d.DropMEInfo
@@ -3078,6 +3090,13 @@ func (dsp *DistSQLPlanner) createTSDDL(planCtx *PlanningCtx, n *tsDDLNode) (Phys
 			tsAlter.TsOperator = execinfrapb.OperatorType_TsAlterPartitionInterval
 			tsAlter.TsTableID = uint64(n.d.SNTable.ID)
 			tsAlter.PartitionInterval = n.d.SNTable.TsTable.PartitionInterval
+			proc.Spec.Core = execinfrapb.ProcessorCoreUnion{TsAlter: tsAlter}
+			p.TsOperator = tsAlter.TsOperator
+		case alterKwdbAlterRetentions:
+			var tsAlter = &execinfrapb.TsAlterProSpec{}
+			tsAlter.TsOperator = execinfrapb.OperatorType_TsAlterRetentions
+			tsAlter.TsTableID = uint64(n.d.SNTable.ID)
+			tsAlter.Retentions = n.d.SNTable.TsTable.Lifetime
 			proc.Spec.Core = execinfrapb.ProcessorCoreUnion{TsAlter: tsAlter}
 			p.TsOperator = tsAlter.TsOperator
 		case alterCompressInterval:

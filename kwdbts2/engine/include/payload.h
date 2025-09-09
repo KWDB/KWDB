@@ -31,14 +31,6 @@ class MMapRootTableManager;
 
 namespace kwdbts {
 
-enum class DedupRule {
-  KEEP = 0,      // not deduplicate
-  OVERRIDE = 1,  // deduplicate by row
-  REJECT = 2,    // reject duplicate rows
-  DISCARD = 3,   // ignore duplicate rows
-  MERGE = 4,     // duplicate by column
-};
-
 struct MergeValueInfo {
   AttributeInfo attr;  // segment attribute info
   std::shared_ptr<void> value;  // segment merge value
@@ -92,6 +84,8 @@ class Payload {
 
   Payload(const std::vector<AttributeInfo>& schema, const std::vector<uint32_t>& valid_cols, TSSlice data);
 
+  Payload(const std::vector<AttributeInfo>& schema, TSSlice data);
+
   ~Payload() {
     if (rec_helper_) delete rec_helper_;
     delete []col_offsets_;
@@ -106,21 +100,25 @@ class Payload {
     return primary_key;
   }
 
-  static uint32_t GetTsVsersionFromPayload(TSSlice* payload) {
+  static uint32_t GetTsVsersionFromPayload(const TSSlice* payload) {
     return *reinterpret_cast<uint32_t*> (payload->data + Payload::ts_version_offset_);
   }
 
-  static uint32_t GetRowCountFromPayload(TSSlice* payload) {
+  static uint32_t GetRowCountFromPayload(const TSSlice* payload) {
     return *reinterpret_cast<int32_t*> (payload->data + Payload::row_num_offset_);
   }
 
-  static uint32_t GetTsVersionFromPayload(TSSlice* payload) {
+  static uint32_t GetTsVersionFromPayload(const TSSlice* payload) {
     return *reinterpret_cast<uint32_t*> (payload->data + ts_version_offset_);
   }
 
   // payload version
   uint32_t GetPayloadVersion() {
     return *reinterpret_cast<uint32_t*> (slice_.data + payload_version_offset_);
+  }
+
+  uint32_t GetDbId() {
+    return *reinterpret_cast<uint32_t*> (slice_.data + db_id_offset_);
   }
 
   int64_t GetTableId() {
@@ -250,19 +248,12 @@ class Payload {
 
   // update payload rows lsn
   void SetLsn(TS_LSN lsn) {
-    if (!isTsWithLSNType((DATATYPE)(schema_[0].type))) return;
-    for (int i = 0; i < GetRowCount(); i++) {
-      TimeStamp64LSN* ts_lsn = reinterpret_cast<TimeStamp64LSN*>(GetColumnAddr(i, 0));
-      ts_lsn->lsn = lsn;
-    }
+    lsn_ = lsn;
   }
 
   // get lsn from first row.
   bool GetLsn(TS_LSN& lsn) {
-    if (!isTsWithLSNType((DATATYPE)(schema_[0].type))) return false;
-    if (GetRowCount() <= 0) return false;
-    TimeStamp64LSN* ts_lsn = reinterpret_cast<TimeStamp64LSN*>(GetColumnAddr(0, 0));
-    lsn = ts_lsn->lsn;
+    lsn = lsn_;
     return true;
   }
 
@@ -283,7 +274,7 @@ class Payload {
     return false;
   }
 
-  inline const int32_t GetTagLen() { return tag_len_; }
+  inline int32_t GetTagLen() { return tag_len_; }
 
   inline char* GetTagAddr() {
     return reinterpret_cast<char*> (slice_.data + tag_offset_);
@@ -323,7 +314,7 @@ class Payload {
         if (IsNull(col, row)) {
           os << s_NULL << ' ';
         } else if (schema_[col].type == VARSTRING) {
-          os << std::string(GetVarColumnAddr(row, col) + MMapStringColumn::kStringLenLen, GetVarColumnLen(row, col)) << ' ';
+          os << std::string(GetVarColumnAddr(row, col) + kStringLenLen, GetVarColumnLen(row, col)) << ' ';
         } else {
           os << rec_helper_->columnToString(col, GetColumnAddr(row, col)) << ' ';
         }
@@ -354,6 +345,7 @@ class Payload {
   int32_t* col_offsets_;
   RecordHelper* rec_helper_{nullptr};
   std::vector<std::map<MetricRowID, std::shared_ptr<void>>> var_merge_values_;
+  TS_LSN lsn_{0};
 
  public:
   DedupRule dedup_rule_ = DedupRule::OVERRIDE;

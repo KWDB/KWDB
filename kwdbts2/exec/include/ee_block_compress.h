@@ -29,7 +29,7 @@ class BlockCompressor {
   }
 
   virtual ~BlockCompressor() = default;
-  
+
   // Calculate the maximum compressed length of the input data.
   virtual size_t CalculateMaxCompressedLength(size_t len) const = 0;
   // Compress the input data.

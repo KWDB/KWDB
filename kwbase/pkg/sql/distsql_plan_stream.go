@@ -129,9 +129,6 @@ func (dsp *DistSQLPlanner) planAndRunCreateStream(
 		localPlanner.ExtendedEvalContext().Tracing,
 	)
 	defer recv.Release()
-	defer func(streamResultWriter *StreamReceiver) {
-		_ = streamResultWriter.checkpoint()
-	}(streamResultWriter)
 
 	dsp.Run(planCtx, txn, &physPlan, recv, evalCtx, finishedSetupFn)()
 

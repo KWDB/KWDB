@@ -19,6 +19,8 @@
 #include <set>
 #include <shared_mutex>
 #include <unordered_map>
+#include <utility>
+#include <vector>
 
 #include "br_global.h"
 #include "br_pass_through_chunk_buffer.h"

@@ -1,0 +1,63 @@
+> create ts database test;
+CREATE TS DATABASE
+> CREATE TABLE test.t_data(ts timestamp(6) NOT NULL, value VARCHAR(16)) TAGS (device VARCHAR(16) not NULL, item VARCHAR(16) not NULL,tag1 int, tag2 int) PRIMARY TAGS(device, item);
+CREATE TABLE
+> explain SELECT last(value) AS value, device, item FROM test.t_data WHERE device = 'Device01' GROUP BY device, item;
+        tree        |        field        |     description
+--------------------+---------------------+-----------------------
+                    | distributed         | true
+                    | vectorized          | false
+  render            |                     |
+   │                | engine type         | time series
+   │                | value               | last
+   │                | device              | any_not_null
+   │                | item                | item
+   └── group        |                     |
+        │           | engine type         | time series
+        │           | aggregate 0         | item
+        │           | aggregate 1         | last(value, ts)
+        │           | aggregate 2         | any_not_null(device)
+        │           | group by            | item
+        │           | pushLocalAggToScan  | true
+        │           | addSynchronizer     | true
+        │           | pruneFinalAgg       | true
+        └── ts scan |                     |
+                    | ts-table            | t_data
+                    | access mode         | tableTableMeta
+                    | use statistic       | true
+                    | tag filter[0]       | device = 'Device01'
+(21 rows)
+> explain SELECT last(value) AS value, device, item FROM test.t_data WHERE device = 'Device01' and tag1=11 GROUP BY device, item;
+           tree          |        field        |     description
+-------------------------+---------------------+-----------------------
+                         | distributed         | true
+                         | vectorized          | false
+  render                 |                     |
+   │                     | engine type         | time series
+   │                     | value               | last
+   │                     | device              | any_not_null
+   │                     | item                | item
+   └── group             |                     |
+        │                | engine type         | time series
+        │                | aggregate 0         | item
+        │                | aggregate 1         | last(value, ts)
+        │                | aggregate 2         | any_not_null(device)
+        │                | group by            | item
+        │                | pushLocalAggToScan  | true
+        │                | addSynchronizer     | true
+        │                | pruneFinalAgg       | true
+        └── render       |                     |
+             │           | engine type         | time series
+             │           | ts                  | ts
+             │           | value               | value
+             │           | device              | device
+             │           | item                | item
+             └── ts scan |                     |
+                         | ts-table            | t_data
+                         | access mode         | tableTableMeta
+                         | use statistic       | true
+                         | tag filter[0]       | tag1 = 11
+                         | tag filter[1]       | device = 'Device01'
+(28 rows)
+> drop database test cascade;
+DROP DATABASE

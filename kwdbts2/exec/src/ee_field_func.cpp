@@ -126,7 +126,7 @@ static k_int64 getDateTrunc(k_bool is_unit_const, k_bool type_scale_multi_or_div
     ck_time.t_timespec.tv_sec += ck_time.t_abbv;
     original_timestamp += time_diff;
   }
-  gmtime_r(&ck_time.t_timespec.tv_sec, &ltm);
+  ToGMT(ck_time.t_timespec.tv_sec, ltm);
   if (type_scale != 1) {
     // multi
     if (type_scale_multi_or_divde) {
@@ -210,7 +210,7 @@ char *FieldFuncPlus::get_ptr(RowBatch *batch) {
   doublevalue_ = 0.0;
 
   for (size_t i = 0; i < arg_count_; ++i) {
-    if (!args_[i]->is_nullable()) {
+    if (!args_[i]->CheckNull()) {
       char *ptr = args_[i]->get_ptr(batch);
       if (ptr == nullptr) {
         EEPgErrorInfo::SetPgErrorInfo(ERRCODE_INVALID_TEXT_REPRESENTATION,
@@ -277,7 +277,7 @@ k_int64 FieldFuncPlus::ValInt() {
   } else {
     k_int64 val = 0;
     for (size_t i = 0; i < arg_count_; ++i) {
-      if (!args_[i]->is_nullable()) {
+      if (!args_[i]->CheckNull()) {
         if (args_[i]->get_field_type() == FIELD_INTERVAL) {
           if (i == 0) {
             val = args_[1]->ValInt();
@@ -312,7 +312,7 @@ k_double64 FieldFuncPlus::ValReal() {
   } else {
     k_double64 val = 0;
     for (size_t i = 0; i < arg_count_; ++i) {
-      if (!args_[i]->is_nullable()) val += args_[i]->ValReal();
+      if (!args_[i]->CheckNull()) val += args_[i]->ValReal();
     }
 
     return val;
@@ -326,7 +326,7 @@ String FieldFuncPlus::ValStr() {
   } else {
     std::string val = "";
     for (size_t i = 0; i < arg_count_; ++i) {
-      if (!args_[i]->is_nullable()) {
+      if (!args_[i]->CheckNull()) {
         String s1 = args_[i]->ValStr();
         val += std::string(s1.getptr(), s1.length_);
       }
@@ -354,7 +354,7 @@ char *FieldFuncMinus::get_ptr(RowBatch *batch) {
   intvalue_ = 0;
   doublevalue_ = 0;
   for (size_t i = 0; i < arg_count_; ++i) {
-    if (!args_[i]->is_nullable()) {
+    if (!args_[i]->CheckNull()) {
       char *ptr = args_[i]->get_ptr(batch);
       if (ptr == nullptr) {
         EEPgErrorInfo::SetPgErrorInfo(ERRCODE_INVALID_TEXT_REPRESENTATION,
@@ -498,7 +498,7 @@ char *FieldFuncMult::get_ptr(RowBatch *batch) {
   intvalue_ = 1;
   doublevalue_ = 1;
   for (size_t i = 0; i < arg_count_; ++i) {
-    if (!args_[i]->is_nullable()) {
+    if (!args_[i]->CheckNull()) {
       char *ptr = args_[i]->get_ptr(batch);
       if (ptr == nullptr) {
         EEPgErrorInfo::SetPgErrorInfo(ERRCODE_INVALID_TEXT_REPRESENTATION,
@@ -592,7 +592,7 @@ char *FieldFuncDivide::get_ptr(RowBatch *batch) {
   doublevalue_ = args_[0]->ValReal(ptr);
 
   for (size_t i = 1; i < arg_count_; ++i) {
-    if (!args_[i]->is_nullable()) {
+    if (!args_[i]->CheckNull()) {
       ptr = args_[i]->get_ptr(batch);
       if (ptr == nullptr) {
         EEPgErrorInfo::SetPgErrorInfo(ERRCODE_INVALID_TEXT_REPRESENTATION,
@@ -670,7 +670,7 @@ Field *FieldFuncDivide::field_to_copy() {
 
 k_bool FieldFuncDivide::field_is_nullable() {
   for (k_uint32 i = 0; i < arg_count_; ++i) {
-    if (args_[i]->is_nullable()) {
+    if (args_[i]->CheckNull()) {
       return true;
     } else if (i != 0 && FLT_EQUAL(args_[i]->ValReal(), 0.0)) {
       if (FLT_EQUAL(args_[0]->ValReal(), 0.0)) {
@@ -692,7 +692,7 @@ char *FieldFuncDividez::get_ptr(RowBatch *batch) {
   KStatus err = SUCCESS;
 
   for (size_t i = 0; i < arg_count_; ++i) {
-    if (!args_[i]->is_nullable()) {
+    if (!args_[i]->CheckNull()) {
       char *ptr = args_[i]->get_ptr(batch);
       if (ptr == nullptr) {
         EEPgErrorInfo::SetPgErrorInfo(ERRCODE_INVALID_TEXT_REPRESENTATION,
@@ -810,7 +810,7 @@ Field *FieldFuncDividez::field_to_copy() {
 
 k_bool FieldFuncDividez::field_is_nullable() {
   for (k_uint32 i = 0; i < arg_count_; ++i) {
-    if (args_[i]->is_nullable()) {
+    if (args_[i]->CheckNull()) {
       return true;
     } else if (i != 0 && FLT_EQUAL(args_[i]->ValReal(), 0.0)) {
       EEPgErrorInfo::SetPgErrorInfo(ERRCODE_DIVISION_BY_ZERO,
@@ -828,7 +828,7 @@ char *FieldFuncRemainder::get_ptr(RowBatch *batch) {
   k_double64 doubleValue = 0;
 
   for (size_t i = 0; i < 2; ++i) {
-    if (!args_[i]->is_nullable()) {
+    if (!args_[i]->CheckNull()) {
       char *ptr = args_[i]->get_ptr(batch);
       if (ptr == nullptr) {
         EEPgErrorInfo::SetPgErrorInfo(ERRCODE_INVALID_TEXT_REPRESENTATION,
@@ -924,7 +924,7 @@ char *FieldFuncPercent::get_ptr(RowBatch *batch) {
   k_bool is_double = false;
 
   for (size_t i = 0; i < arg_count_; ++i) {
-    if (!args_[i]->is_nullable()) {
+    if (!args_[i]->CheckNull()) {
       char *ptr = args_[i]->get_ptr(batch);
       if (ptr == nullptr) {
         EEPgErrorInfo::SetPgErrorInfo(ERRCODE_INVALID_TEXT_REPRESENTATION,
@@ -1063,7 +1063,7 @@ Field *FieldFuncPercent::field_to_copy() {
 
 k_bool FieldFuncPercent::field_is_nullable() {
   for (k_uint32 i = 0; i < arg_count_; ++i) {
-    if (args_[i]->is_nullable()) {
+    if (args_[i]->CheckNull()) {
       return true;
     } else if (i != 0 && FLT_EQUAL(args_[i]->ValReal(), 0.0)) {
       EEPgErrorInfo::SetPgErrorInfo(ERRCODE_DIVISION_BY_ZERO, "zero modulus");
@@ -1080,7 +1080,7 @@ char *FieldFuncPower::get_ptr(RowBatch * batch) {
   k_int64 res = 0;
 
   for (size_t i = 0; i < arg_count_; ++i) {
-    if (!args_[i]->is_nullable()) {
+    if (!args_[i]->CheckNull()) {
       char *ptr = args_[i]->get_ptr(batch);
       if (ptr == nullptr) {
         EEPgErrorInfo::SetPgErrorInfo(ERRCODE_INVALID_TEXT_REPRESENTATION,
@@ -1183,7 +1183,7 @@ char *FieldFuncMod::get_ptr(RowBatch *batch) {
   k_bool first = true;
   k_int64 val = 0;
   for (size_t i = 0; i < arg_count_; ++i) {
-    if (!args_[i]->is_nullable()) {
+    if (!args_[i]->CheckNull()) {
       char *ptr = args_[i]->get_ptr(batch);
       if (ptr == nullptr) {
         EEPgErrorInfo::SetPgErrorInfo(ERRCODE_INVALID_TEXT_REPRESENTATION,
@@ -1281,7 +1281,7 @@ char *FieldFuncAndCal::get_ptr(RowBatch *batch) {
   k_int64 result = 1;
   k_int64 val = 0;
   for (size_t i = 0; i < arg_count_; ++i) {
-    if (!args_[i]->is_nullable()) {
+    if (!args_[i]->CheckNull()) {
       char *ptr = args_[i]->get_ptr(batch);
       if (ptr == nullptr) {
         EEPgErrorInfo::SetPgErrorInfo(ERRCODE_INVALID_TEXT_REPRESENTATION,
@@ -1379,7 +1379,7 @@ char *FieldFuncOrCal::get_ptr(RowBatch *batch) {
   k_int64 result = 1;
   k_int64 val = 0;
   for (size_t i = 0; i < arg_count_; ++i) {
-    if (!args_[i]->is_nullable()) {
+    if (!args_[i]->CheckNull()) {
       char *ptr = args_[i]->get_ptr(batch);
       if (ptr == nullptr) {
         EEPgErrorInfo::SetPgErrorInfo(ERRCODE_INVALID_TEXT_REPRESENTATION,
@@ -1476,7 +1476,7 @@ char *FieldFuncNotCal::get_ptr(RowBatch *batch) {
   k_int64 result = 1;
   k_int64 val = 0;
   for (size_t i = 0; i < arg_count_; ++i) {
-    if (!args_[i]->is_nullable()) {
+    if (!args_[i]->CheckNull()) {
       char *ptr = args_[i]->get_ptr(batch);
       if (ptr == nullptr) {
         EEPgErrorInfo::SetPgErrorInfo(ERRCODE_INVALID_TEXT_REPRESENTATION,
@@ -1565,7 +1565,7 @@ char *FieldFuncLeftShift::get_ptr(RowBatch *batch) {
   k_int64 result = 1;
   k_int64 val = 0;
   for (size_t i = 0; i < arg_count_; ++i) {
-    if (!args_[i]->is_nullable()) {
+    if (!args_[i]->CheckNull()) {
       char *ptr = args_[i]->get_ptr(batch);
       if (ptr == nullptr) {
         EEPgErrorInfo::SetPgErrorInfo(ERRCODE_INVALID_TEXT_REPRESENTATION,
@@ -1671,7 +1671,7 @@ char *FieldFuncRightShift::get_ptr(RowBatch *batch) {
   k_int64 result = 1;
   k_int64 val = 0;
   for (size_t i = 0; i < arg_count_; ++i) {
-    if (!args_[i]->is_nullable()) {
+    if (!args_[i]->CheckNull()) {
       char *ptr = args_[i]->get_ptr(batch);
       if (ptr == nullptr) {
         EEPgErrorInfo::SetPgErrorInfo(ERRCODE_INVALID_TEXT_REPRESENTATION,
@@ -1809,7 +1809,7 @@ k_int64 FieldFuncTimeBucket::ValInt() {
     // use 0000-01-01 00:00:00 as start
     std::time_t tt = (std::time_t)original_timestamp / 1000;
     struct std::tm tm;
-    gmtime_r(&tt, &tm);
+    ToGMT(tt, tm);
     tm.tm_sec = 0;
     tm.tm_min = 0;
     tm.tm_hour = 0;
@@ -1953,7 +1953,7 @@ char *FieldFuncCurrentDate::get_ptr(RowBatch *batch) {
 k_int64 FieldFuncCurrentDate::ValInt() {
   time_t t = time(nullptr);
   struct tm ltm;
-  gmtime_r(&t, &ltm);
+  ToGMT(t, ltm);
   ltm.tm_hour = 0;
   ltm.tm_min = 0;
   ltm.tm_sec = 0;
@@ -1966,7 +1966,7 @@ String FieldFuncCurrentDate::ValStr() {
   char buffer[80];
   time_t t = time(nullptr);
   struct tm ltm;
-  gmtime_r(&t, &ltm);
+  ToGMT(t, ltm);
   strftime(buffer, 80, "%Y-%m-%d", &ltm);
   String s(80);
   snprintf(s.ptr_, 80 + 1, "%s", buffer);
@@ -1985,7 +1985,7 @@ char *FieldFuncCurrentTimeStamp::get_ptr(RowBatch *batch) {
   auto ns_since_epoch = std::chrono::duration_cast<std::chrono::nanoseconds>(duration_since_epoch).count();
   time_t t = time(nullptr);
   struct tm ltm;
-  gmtime_r(&t, &ltm);
+  ToGMT(t, ltm);
   ns_since_epoch += (ltm.tm_gmtoff - time_zone_ * 3600) * 1000000000;
   // add precision handle
   if (arg_count_ > 0) {
@@ -2018,7 +2018,7 @@ k_int64 FieldFuncCurrentTimeStamp::ValInt() {
           .count();
   time_t t = time(nullptr);
   struct tm ltm;
-  gmtime_r(&t, &ltm);
+  ToGMT(t, ltm);
   ns_since_epoch += (ltm.tm_gmtoff - time_zone_ * 3600) * 1000000000;
   // add precision handle
   if (arg_count_ > 0) {
@@ -2132,10 +2132,10 @@ k_bool FieldFuncDateTrunc::is_nullable() {
   if (is_null_value_) {
     return true;
   }
-  if (!is_unit_const_ && args_[0]->is_nullable()) {
+  if (!is_unit_const_ && args_[0]->CheckNull()) {
     return true;
   }
-  if (args_[1]->is_nullable()) {
+  if (args_[1]->CheckNull()) {
     return true;
   }
   return false;
@@ -2248,7 +2248,7 @@ String FieldFuncTimeOfDay::ValStr() {
   String s(kArraySize);
   struct tm t;
   memset(&t, 0, sizeof(t));
-  gmtime_r(&timestamp, &t);
+  ToGMT(timestamp, t);
   t.tm_gmtoff = time_zone * 3600;
   std::strftime(s.ptr_, kArraySize, "%a %b %d %H:%M:%S.xxxxxxxxx %Y %z", &t);
   std::string formattedTime(s.ptr_);
@@ -2293,7 +2293,7 @@ char *FieldFuncExpStrftime::get_ptr(RowBatch *batch) {
 
       CKTime ck_time = getCKTime(args_[0]->ValInt(ptr), args_[0]->get_storage_type(), 0);
       struct tm ltm;
-      gmtime_r(&ck_time.t_timespec.tv_sec, &ltm);
+      ToGMT(ck_time.t_timespec.tv_sec, ltm);
       const int kArraySize = this->storage_len_;
       String s(kArraySize);
       try {
@@ -2338,7 +2338,7 @@ String FieldFuncExpStrftime::ValStr() {
   CKTime ck_time =
       getCKTime(args_[0]->ValInt(), args_[0]->get_storage_type(), 0);
   struct tm ltm;
-  gmtime_r(&ck_time.t_timespec.tv_sec, &ltm);
+  ToGMT(ck_time.t_timespec.tv_sec, ltm);
   const int kArraySize = this->storage_len_;
   String s(kArraySize);
   try {
@@ -2769,7 +2769,7 @@ Field *FieldFuncCase::field_to_copy() {
 
 k_bool FieldFuncCase::is_nullable() {
   for (k_int32 i = 0; i < arg_count_; i++) {
-    if (!args_[i]->is_nullable()) {
+    if (!args_[i]->CheckNull()) {
       return KFALSE;
     }
   }
@@ -2891,7 +2891,7 @@ Field *FieldFuncThen::field_to_copy() {
 k_bool FieldFuncThen::is_nullable() {
   if (arg_count_ > 1) {
     if (args_[0]->ValInt()) {
-      return args_[1]->is_nullable();
+      return args_[1]->CheckNull();
     }
   }
   return KTRUE;
@@ -3446,7 +3446,7 @@ Field *FieldFuncFnv64a::field_to_copy() {
 
 char *FieldFuncCoalesce::get_ptr(RowBatch *batch) {
   KStatus err = SUCCESS;
-  k_bool is_nullable = args_[0]->is_nullable();
+  k_bool is_nullable = args_[0]->CheckNull();
   char *ptr = nullptr;
   char *ptrResult = nullptr;
 
@@ -3546,7 +3546,7 @@ k_int64 FieldFuncCoalesce::ValInt() {
   if (ptr) {
     return FieldFunc::ValInt(ptr);
   }
-  if (args_[0]->is_nullable()) {
+  if (args_[0]->CheckNull()) {
     return args_[1]->ValInt();
   }
   return args_[0]->ValInt();
@@ -3557,7 +3557,7 @@ k_double64 FieldFuncCoalesce::ValReal() {
   if (ptr) {
     return FieldFunc::ValReal(ptr);
   }
-  if (args_[0]->is_nullable()) {
+  if (args_[0]->CheckNull()) {
     return args_[1]->ValReal();
   }
   return args_[0]->ValReal();
@@ -3568,7 +3568,7 @@ String FieldFuncCoalesce::ValStr() {
   if (ptr) {
     return FieldFunc::ValStr(ptr);
   }
-  if (args_[0]->is_nullable()) {
+  if (args_[0]->CheckNull()) {
     String s1 = args_[1]->ValStr();
     std::string destStr = std::string(s1.ptr_, s1.length_);
     if (this->storage_type_ == roachpb::DataType::BINARY) {
@@ -3602,7 +3602,7 @@ Field *FieldFuncCoalesce::field_to_copy() {
 }
 
 k_bool FieldFuncCoalesce::is_nullable() {
-  if (args_[0]->is_nullable() && args_[1]->is_nullable()) {
+  if (args_[0]->CheckNull() && args_[1]->CheckNull()) {
     return true;
   }
   return false;
@@ -3741,7 +3741,7 @@ Field *FieldFuncDiff::field_to_copy() {
 }
 
 k_bool FieldFuncDiff::is_nullable() {
-  if (args_[0]->is_nullable()) {
+  if (args_[0]->CheckNull()) {
     return true;
   }
   return false;

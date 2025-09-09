@@ -130,21 +130,21 @@ ALTER TABLE
                | tag filter[1] | attr1 < 1000
 (8 rows)
 > explain select attr2 from test_ts.order_table where attr1 < 2000 group by attr2 having attr2 < 3000000;
-           tree          |     field     |   description
--------------------------+---------------+------------------
-                         | distributed   | true
-                         | vectorized    | false
-  distinct               |               |
-   │                     | distinct on   | attr2
-   └── render            |               |
-        │                | engine type   | time series
-        │                | attr2         | attr2
-        └── synchronizer |               |
-             └── ts scan |               |
-                         | ts-table      | order_table
-                         | access mode   | tableTableMeta
-                         | tag filter[0] | attr2 < 3000000
-                         | tag filter[1] | attr1 < 2000
+        tree        |     field     |   description
+--------------------+---------------+------------------
+                    | distributed   | true
+                    | vectorized    | false
+  distinct          |               |
+   │                | distinct on   | attr2
+   └── render       |               |
+        │           | engine type   | time series
+        │           | attr2         | attr2
+        └── ts scan |               |
+                    | ts-table      | order_table
+                    | only tag      | true
+                    | access mode   | tableTableMeta
+                    | tag filter[0] | attr2 < 3000000
+                    | tag filter[1] | attr1 < 2000
 (13 rows)
 > explain select e1 from test_ts.order_table order by e1;
         tree        |    field    | description
@@ -387,21 +387,21 @@ ALTER TABLE
           | tag filter[1] | attr1 < 1000
 (7 rows)
 > explain select attr2 from test_ts.order_table where attr1 < 2000 group by attr2 having attr2 < 3000000;
-           tree          |     field     |   description
--------------------------+---------------+------------------
-                         | distributed   | true
-                         | vectorized    | false
-  distinct               |               |
-   │                     | distinct on   | attr2
-   └── render            |               |
-        │                | engine type   | time series
-        │                | attr2         | attr2
-        └── synchronizer |               |
-             └── ts scan |               |
-                         | ts-table      | order_table
-                         | access mode   | tableTableMeta
-                         | tag filter[0] | attr2 < 3000000
-                         | tag filter[1] | attr1 < 2000
+        tree        |     field     |   description
+--------------------+---------------+------------------
+                    | distributed   | true
+                    | vectorized    | false
+  distinct          |               |
+   │                | distinct on   | attr2
+   └── render       |               |
+        │           | engine type   | time series
+        │           | attr2         | attr2
+        └── ts scan |               |
+                    | ts-table      | order_table
+                    | only tag      | true
+                    | access mode   | tableTableMeta
+                    | tag filter[0] | attr2 < 3000000
+                    | tag filter[1] | attr1 < 2000
 (13 rows)
 > explain select e1 from test_ts.unordered_table order by e1;
         tree        |    field    |   description

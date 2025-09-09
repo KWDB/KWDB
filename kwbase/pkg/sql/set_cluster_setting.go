@@ -34,6 +34,7 @@ import (
 
 	"gitee.com/kwbasedb/kwbase/pkg/engine/tse"
 	"gitee.com/kwbasedb/kwbase/pkg/kv"
+	"gitee.com/kwbasedb/kwbase/pkg/kv/kvclient/kvcoord"
 	//mgr "gitee.com/kwbasedb/kwbase/pkg/replicationmgr"
 	"gitee.com/kwbasedb/kwbase/pkg/security"
 	"gitee.com/kwbasedb/kwbase/pkg/server/telemetry"
@@ -276,6 +277,9 @@ var CheckClusterSetting = map[string]CheckOperation{
 	"ts.table_cache.capacity":                     checkTsTableCacheCapacity,
 }
 
+// TsTxnAtomicityClusterSettingName is the name of the ts txn atomicity cluster setting.
+const TsTxnAtomicityClusterSettingName = "ts.txn.atomicity_enabled"
+
 func (n *setClusterSettingNode) startExec(params runParams) error {
 	//if n.name == mgr.ClusterSettingReplicaRole &&
 	//	!strings.Contains(params.SessionData().ApplicationName, mgr.SettingReplicaRoleOpName) {
@@ -410,6 +414,17 @@ func (n *setClusterSettingNode) startExec(params runParams) error {
 				break
 			}
 			telemetry.Inc(sqltelemetry.VecModeCounter(validatedExecMode.String()))
+		case TsTxnAtomicityClusterSettingName:
+			tsWalLevel := tse.TsWALLevel.Get(&n.st.SV)
+			if expectedEncodedValue == "true" && (tsWalLevel != 1 && tsWalLevel != 2) {
+				return pgerror.Newf(pgcode.InvalidParameterValue,
+					"cannot enable ts.txn.atomicity_enabled=true when ts.wal.wal_level is %v; atomicity requires WAL level 1, 2", tsWalLevel)
+			}
+		case tse.TsWALLevelClusterSettingName:
+			if kvcoord.TsTxnAtomicityEnabled.Get(&n.st.SV) && (expectedEncodedValue == "0" || expectedEncodedValue == "4") {
+				return pgerror.Newf(pgcode.InvalidParameterValue,
+					"ts.wal.wal_level cannot be set to %v when ts.txn.atomicity_enabled is true", expectedEncodedValue)
+			}
 		}
 
 		params.p.SetAuditTarget(0, n.name, nil)

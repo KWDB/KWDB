@@ -28,6 +28,7 @@ import (
 	"context"
 	"fmt"
 
+	"gitee.com/kwbasedb/kwbase/pkg/jobs/jobspb"
 	"gitee.com/kwbasedb/kwbase/pkg/keys"
 	"gitee.com/kwbasedb/kwbase/pkg/security"
 	"gitee.com/kwbasedb/kwbase/pkg/server/telemetry"
@@ -184,8 +185,28 @@ func (n *dropTableNode) startExec(params runParams) error {
 			n.n.Names[0].ExplicitSchema = true
 			n.n.Names[0].ExplicitCatalog = true
 			dropStmt := n.n.String()
-			if err := params.p.DistSQLPlanner().distSQLSrv.ServerConfig.GetAPEngine().ExecSqlInDB("tpch", dropStmt); err != nil {
-				return pgerror.Newf(pgcode.Warning, "drop ap table %s failed: %s", n.n.Names.String(), err.Error())
+			// Create a Job to perform the second stage of ts DDL.
+			syncDetail := jobspb.SyncMetaCacheDetails{
+				Type:        dropKwdbAPTable,
+				SNTable:     droppedDesc.TableDescriptor,
+				APStatement: dropStmt,
+			}
+			jobID, err := params.p.createTSSchemaChangeJob(params.ctx, syncDetail, tree.AsStringWithFQNames(n.n, params.Ann()), params.p.txn)
+			if err != nil {
+				return errors.Wrap(err, "createSyncMetaCacheJob failed")
+			}
+			// Actively commit a transaction, and read/write system table operations
+			// need to be performed before this.
+			if err := params.p.txn.Commit(params.ctx); err != nil {
+				return err
+			}
+			// After the transaction commits successfully, execute the Job and wait for it to complete.
+			if err = params.ExecCfg().JobRegistry.Run(
+				params.ctx,
+				params.extendedEvalCtx.InternalExecutor.(*InternalExecutor),
+				[]int64{jobID},
+			); err != nil {
+				return errors.Wrap(err, "createSyncMetaCacheJob run failed")
 			}
 		}
 		params.p.SetAuditTarget(uint32(droppedDesc.ID), droppedDesc.GetName(), droppedViews)

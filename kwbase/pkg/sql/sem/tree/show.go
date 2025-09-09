@@ -132,6 +132,17 @@ func (node *ShowBackup) Format(ctx *FmtCtx) {
 	}
 }
 
+// ShowTriggers represents a SHOW TRIGGERS statement.
+type ShowTriggers struct {
+	Table *UnresolvedObjectName
+}
+
+// Format implements the NodeFormatter interface.
+func (node *ShowTriggers) Format(ctx *FmtCtx) {
+	ctx.WriteString("SHOW TRIGGERS FROM ")
+	ctx.FormatNode(node.Table)
+}
+
 // ShowColumns represents a SHOW COLUMNS statement.
 type ShowColumns struct {
 	Table       *UnresolvedObjectName
@@ -645,6 +656,20 @@ type ShowCreateProcedure struct {
 func (node *ShowCreateProcedure) Format(ctx *FmtCtx) {
 	ctx.WriteString("SHOW CREATE PROCEDURE ")
 	ctx.FormatNode(&node.Name)
+}
+
+// ShowCreateTrigger represents a SHOW CREATE TRIGGER statement.
+type ShowCreateTrigger struct {
+	Name    Name
+	TabName TableName
+}
+
+// Format implements the NodeFormatter interface.
+func (node *ShowCreateTrigger) Format(ctx *FmtCtx) {
+	ctx.WriteString("SHOW CREATE TRIGGER ")
+	ctx.FormatNode(&node.Name)
+	ctx.WriteString(" ON ")
+	ctx.FormatNode(&node.TabName)
 }
 
 // ShowSyntax represents a SHOW SYNTAX statement.

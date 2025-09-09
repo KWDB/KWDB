@@ -46,6 +46,7 @@ package rowexec
 import (
 	"context"
 	"encoding/binary"
+	"strings"
 	"time"
 
 	"gitee.com/kwbasedb/kwbase/pkg/kv"
@@ -144,6 +145,7 @@ func (tri *tsInserter) Start(ctx context.Context) context.Context {
 func startForSingleMode(ctx context.Context, tri *tsInserter) context.Context {
 	ctx = tri.StartInternal(ctx, tsInsertProcName)
 	ba := tri.FlowCtx.Txn.NewBatch()
+	ba.SetIsTsInsert(true)
 
 	insertRowSum := 0
 	for i, pl := range tri.payload {
@@ -201,6 +203,7 @@ const rowTypeOffset = 42
 func startForDistributeMode(ctx context.Context, tri *tsInserter) context.Context {
 	ctx = tri.StartInternal(ctx, tsInsertProcName)
 	ba := tri.FlowCtx.Txn.NewBatch()
+	ba.SetIsTsInsert(true)
 
 	insertRowSum := 0
 	for i, pl := range tri.payloadForDistributeMode {
@@ -706,14 +709,16 @@ func newTsInserterWithCDC(
 }
 
 func (tri *tsInserterWithCDC) Start(ctx context.Context) context.Context {
-	var res context.Context
 	if !tri.EvalCtx.StartDistributeMode {
-		res = startForSingleMode(ctx, &tri.tsInserter)
+		ctx = startForSingleMode(ctx, &tri.tsInserter)
 	} else {
-		res = startForDistributeMode(ctx, &tri.tsInserter)
+		ctx = startForDistributeMode(ctx, &tri.tsInserter)
 	}
 
-	tri.FlowCtx.Cfg.CDCCoordinator.SendRows(&tri.cdcData)
+	// context error cannot confirm whether the result is saved to disk, so it is still sent.
+	if tri.err == nil || strings.Contains(tri.err.Error(), ctx.Err().Error()) {
+		tri.FlowCtx.Cfg.CDCCoordinator.SendRows(&tri.cdcData)
+	}
 
-	return res
+	return ctx
 }

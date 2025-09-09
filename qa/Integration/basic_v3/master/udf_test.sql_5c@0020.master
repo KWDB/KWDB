@@ -1,0 +1,22 @@
+> drop function max;
+ERROR: unknown function 'max' when dropping function
+SQLSTATE: 42883
+> drop function min;
+ERROR: unknown function 'min' when dropping function
+SQLSTATE: 42883
+> drop function sum;
+ERROR: unknown function 'sum' when dropping function
+SQLSTATE: 42883
+> drop function count;
+ERROR: unknown function 'count' when dropping function
+SQLSTATE: 42883
+> drop function now;
+ERROR: unknown function 'now' when dropping function
+SQLSTATE: 42883
+> drop function last_row;
+ERROR: unknown function 'last_row' when dropping function
+SQLSTATE: 42883
+> SHOW FUNCTIONS;
+  function_name
+-----------------
+(0 rows)

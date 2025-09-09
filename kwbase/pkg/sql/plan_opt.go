@@ -86,7 +86,7 @@ func (p *planner) prepareUsingOptimizer(ctx context.Context) (planFlags, error) 
 		*tree.Grant, *tree.GrantRole,
 		*tree.Prepare, *tree.PauseSchedule,
 		*tree.RebalanceTsData,
-		*tree.ReleaseSavepoint, *tree.RenameColumn, *tree.RenameDatabase,
+		*tree.ReleaseSavepoint, *tree.RenameColumn, *tree.RenameDatabase, *tree.RenameTrigger,
 		*tree.RenameIndex, *tree.RenameTable, *tree.Revoke, *tree.RevokeRole, *tree.ResumeSchedule,
 		*tree.ReplicateSetSecondary, *tree.ReplicateSetRole,
 		*tree.ReplicationControl,
@@ -203,7 +203,7 @@ func (p *planner) makeOptimizerPlan(ctx context.Context) error {
 	if p.ExecCfg().StartMode != StartSingleNode {
 		p.EvalContext().StartDistributeMode = true
 	}
-
+	p.EvalContext().Kwengineversion = p.Kwengineversion
 	opc := &p.optPlanningCtx
 	opc.reset()
 

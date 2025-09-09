@@ -1,0 +1,22 @@
+CREATE ts database test_query;
+CREATE TABLE test_query.d1(
+k_timestamp timestamp not null,
+e1 int not null ,
+e2 bool not null ,
+e3 float not null ,
+e4 timestamp not null ,
+e5 nchar(255) not null ,
+e6 varchar(4096) not null ,
+e7 varbytes not null ,
+e8 varbytes(1023) not null ,
+e9 varbytes(254) not null)
+tags (ptag int not null, att_test_1 int,att_test_2 bool,att_test_4 varchar(10) ) primary tags (ptag);
+
+
+INSERT INTO test_query.d1 VALUES(20000,1,true,12345.123456789,'2023-4-6 12:00:00.000','test时间精度通用查询测试！！！@TEST1','test时间精度通用查询测试！！！@TEST1','test时间精度通用查询测试！TEST1xaa',b'\xaa','test时间精度通用查询测试', 1, null, null, null);
+INSERT INTO test_query.d1 VALUES(30000,2,true,12345.123456789,'2023-4-6 12:00:00.000','test时间精度通用查询测试！！！@TEST1','test时间精度通用查询测试！！！@TEST1','test时间精度通用查询测试！TEST1xaa',b'\xaa','test时间精度通用查询测试', 1, null, null, null);
+INSERT INTO test_query.d1 VALUES(40000,3,true,12345.123456789,'2023-4-6 12:00:00.000','test时间精度通用查询测试！！！@TEST1','test时间精度通用查询测试！！！@TEST1','test时间精度通用查询测试！TEST1xaa',b'\xaa','test时间精度通用查询测试', 1, null, null, null);
+
+select count(distinct att_test_2) FROM test_query.d1;
+
+drop database test_query cascade;

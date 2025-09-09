@@ -164,6 +164,7 @@ EEIteratorErrCode NoopOperator::Close(kwdbContext_p ctx) {
 
 EEIteratorErrCode NoopOperator::Reset(kwdbContext_p ctx) {
   EnterFunc();
+  childrens_[0]->Reset(ctx);
   Return(EEIteratorErrCode::EE_OK);
 }
 

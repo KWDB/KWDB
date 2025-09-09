@@ -148,6 +148,8 @@ message ProcessorCoreUnion {
   optional APTableReaderSpec apTableReader = 46;
   optional APCreateDatabaseProSpec apCreateDatabase = 47;
   optional APCreateTableProSpec apCreateTable = 48;
+  optional APDropDatabaseProSpec apDropDatabase = 49;
+  optional APDropTableProSpec apDropTable = 50;
   reserved 6, 12;
 }
 

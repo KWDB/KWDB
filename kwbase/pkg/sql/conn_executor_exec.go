@@ -733,7 +733,7 @@ func (ex *connExecutor) execStmtInOpenState(
 	// well as in-between very stage of cascading actions.
 	// This TODO can be removed when the cascading code is reorganized
 	// accordingly and the missing call to Step() is introduced.
-	if err := ex.state.mu.txn.Step(ctx); err != nil {
+	if err := ex.state.mu.txn.Step(ctx, true); err != nil {
 		return makeErrEvent(err)
 	}
 
@@ -741,6 +741,7 @@ func (ex *connExecutor) execStmtInOpenState(
 		return makeErrEvent(err)
 	}
 	p.extendedEvalCtx.Placeholders = &p.semaCtx.Placeholders
+	p.extendedEvalCtx.TriggerColHolders = &p.semaCtx.TriggerColHolders
 	p.extendedEvalCtx.Annotations = &p.semaCtx.Annotations
 	ex.phaseTimes[plannerStartExecStmt] = timeutil.Now()
 	p.stmt = &stmt
@@ -1212,7 +1213,7 @@ func (ex *connExecutor) makeExecPlan(ctx context.Context, planner *planner) erro
 				"can not use multi-statement transactions involving a schema change under weak isolation levels")
 		}
 	}
-
+	planner.Kwengineversion = ex.kwengineversion
 	if err := planner.makeOptimizerPlan(ctx); err != nil {
 		// Capture stmt hint error. If it is an embedded hint, return err directly
 		if strings.Contains(err.Error(), `Stmt Hint Err:`) && planner.EvalContext().HintStmtEmbed {
@@ -1357,6 +1358,7 @@ func (ex *connExecutor) execWithDistSQLEngine(
 		evalCtxFactory = func() *extendedEvalContext {
 			ex.resetEvalCtx(&factoryEvalCtx, planner.txn, planner.ExtendedEvalContext().StmtTimestamp)
 			factoryEvalCtx.Placeholders = &planner.semaCtx.Placeholders
+			factoryEvalCtx.TriggerColHolders = &planner.semaCtx.TriggerColHolders
 			factoryEvalCtx.Annotations = &planner.semaCtx.Annotations
 			// Query diagnostics can change the Context; make sure we are using the
 			// same one.
@@ -2068,7 +2070,7 @@ func (ex *connExecutor) dispatchReadCommittedStmtToExecutionEngine(
 			return err
 		}
 		// todo: ex.state.mu.txn.Step(ctx, false /* allowReadTimestampStep */);
-		if err := ex.state.mu.txn.Step(ctx); err != nil {
+		if err := ex.state.mu.txn.Step(ctx, true); err != nil {
 			return err
 		}
 		ex.state.mu.autoRetryCounter++

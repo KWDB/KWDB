@@ -35,6 +35,7 @@ import (
 	"unicode/utf8"
 
 	"gitee.com/kwbasedb/kwbase/pkg/config"
+	"gitee.com/kwbasedb/kwbase/pkg/engine/tse"
 	"gitee.com/kwbasedb/kwbase/pkg/jobs"
 	"gitee.com/kwbasedb/kwbase/pkg/kv"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
@@ -73,6 +74,9 @@ import (
 // transaction or session monitor before the monitor starts explicitly
 // logging overall usage growth in the log.
 var noteworthyMemoryUsageBytes = envutil.EnvOrDefaultInt64("KWBASE_NOTEWORTHY_SESSION_MEMORY_USAGE", 1024*1024)
+
+// kwEngineVersion indicates which verson storage engine to use
+var kwEngineVersion = tse.KwEngineVersion
 
 // A connExecutor is in charge of executing queries received on a given client
 // connection. The connExecutor implements a state machine (dictated by the
@@ -541,6 +545,11 @@ func (h ConnectionHandler) GetTsSupportBatch() bool {
 	return h.ex.sessionData.TsSupportBatch
 }
 
+// GetEngineVersion get TsSupportBatch status
+func (h ConnectionHandler) GetEngineVersion() string {
+	return h.ex.kwengineversion
+}
+
 // GetTsZone constructs a ParseTimeContext that returns the given values.
 func (h ConnectionHandler) GetTsZone() time.Time {
 	return h.ex.state.sqlTimestamp.In(h.ex.sessionData.DataConversion.Location)
@@ -704,14 +713,15 @@ func (s *Server) newConnExecutor(
 	)
 
 	ex := &connExecutor{
-		server:      s,
-		metrics:     srvMetrics,
-		stmtBuf:     stmtBuf,
-		clientComm:  clientComm,
-		mon:         &sessionRootMon,
-		sessionMon:  &sessionMon,
-		sessionData: sd,
-		dataMutator: sdMutator,
+		server:          s,
+		metrics:         srvMetrics,
+		stmtBuf:         stmtBuf,
+		clientComm:      clientComm,
+		mon:             &sessionRootMon,
+		sessionMon:      &sessionMon,
+		sessionData:     sd,
+		dataMutator:     sdMutator,
+		kwengineversion: kwEngineVersion,
 		state: txnState{
 			mon:     &txnMon,
 			connCtx: ctx,
@@ -1076,6 +1086,8 @@ func (ex *connExecutor) close(ctx context.Context, closeType closeType) {
 }
 
 type connExecutor struct {
+	kwengineversion string
+
 	_ util.NoCopy
 
 	// The server to which this connExecutor is attached. The reference is used
@@ -2323,6 +2335,7 @@ func (ex *connExecutor) resetEvalCtx(evalCtx *extendedEvalContext, txn *kv.Txn, 
 	evalCtx.StmtTimestamp = stmtTS
 	evalCtx.TxnTimestamp = ex.state.sqlTimestamp
 	evalCtx.Placeholders = nil
+	evalCtx.TriggerColHolders = nil
 	evalCtx.Annotations = nil
 	evalCtx.IVarContainer = nil
 	evalCtx.Context = ex.Ctx()
@@ -2912,6 +2925,11 @@ func (ex *connExecutor) SendDirectTsInsert(
 	res CommandResult,
 	payloadNodeMap map[int]*sqlbase.PayloadForDistTSInsert,
 ) (useDeepRule bool, dedupRule int64, dedupRows int64) {
+	readOnly := sqlbase.ReadOnly.Get(ex.planner.execCfg.SV())
+	if readOnly || sqlbase.ReadOnlyInternal {
+		res.SetError(errors.New("cannot execute ts insert in a read-only transaction"))
+		return
+	}
 	var tsInsNode planNode
 	// When CDCData is not empty, it signifies that the insert operation includes data that needs to be pushed.
 	// As a result, a tsInsertWithCDCNode is generated to replace the normal insert process's tsInsertNode.

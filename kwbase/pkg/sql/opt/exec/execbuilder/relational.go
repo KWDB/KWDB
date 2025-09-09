@@ -30,6 +30,7 @@ import (
 	"fmt"
 	"math"
 	"strconv"
+	"time"
 
 	"gitee.com/kwbasedb/kwbase/pkg/server/telemetry"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfrapb"
@@ -54,6 +55,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/util/errorutil/unimplemented"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 	"github.com/cockroachdb/errors"
+	"github.com/lib/pq/oid"
 )
 
 type execPlan struct {
@@ -356,6 +358,9 @@ func (b *Builder) buildRelational(e memo.RelExpr) (execPlan, error) {
 	case *memo.CreateProcedureExpr:
 		ep, err = b.buildCreateProcedure(t)
 
+	case *memo.CreateTriggerExpr:
+		ep, err = b.buildCreateTrigger(t)
+
 	case *memo.CreateTableExpr:
 		ep, err = b.buildCreateTable(t)
 
@@ -538,6 +543,12 @@ func (b *Builder) constructValues(rows [][]tree.TypedExpr, cols opt.ColList) (ex
 	}
 
 	return ep, nil
+}
+
+// hasTriggers returns whether input table has triggers with specific trigger event
+// binding on it
+func (b *Builder) hasTriggers(table opt.TableID, event tree.TriggerEvent) bool {
+	return len(b.mem.Metadata().Table(table).GetTriggers(event)) > 0
 }
 
 // getColumns returns the set of column ordinals in the table for the set of
@@ -1164,6 +1175,7 @@ func (b *Builder) convertFilterToColumnSpans(
 	var err error
 	// since a filter can only operate on a single column, we only get first column.
 	*columnSpans.ColID, err = b.mem.GetPhyColIDByMetaID(constraint.Columns.Get(0).ID())
+	colType := b.mem.Metadata().ColumnMeta(constraint.Columns.Get(0).ID()).Type
 	if err != nil {
 		return nil, err
 	}
@@ -1177,18 +1189,18 @@ func (b *Builder) convertFilterToColumnSpans(
 	// we deal with first span
 	firstSpan := constraint.Spans.Get(0)
 	if filterType, ok := getFilterType(*firstSpan); ok {
-		*columnSpans.FilterType = filterType
 		// if filterType is TSBlockFilter_T_NOTNULL and not TSBlockFilter_T_NULL,
 		// we need not build span, AE can deal with filter through filterType.
-		return &columnSpans, nil
+		*columnSpans.FilterType = filterType
+	} else {
+		firstColumnSpan := convertSpanToColumnSpan(*firstSpan, colType)
+		columnSpans.ColumnSpan = append(columnSpans.ColumnSpan, &firstColumnSpan)
 	}
-	firstColumnSpan := convertSpanToColumnSpan(*firstSpan)
-	columnSpans.ColumnSpan = append(columnSpans.ColumnSpan, &firstColumnSpan)
 	// if otherSpans exists, we need deal with it.
 	if constraint.Spans.Count() > 1 {
 		for i := 1; i < constraint.Spans.Count(); i++ {
 			otherSpan := constraint.Spans.Get(i)
-			otherColumnSpan := convertSpanToColumnSpan(*otherSpan)
+			otherColumnSpan := convertSpanToColumnSpan(*otherSpan, colType)
 			columnSpans.ColumnSpan = append(columnSpans.ColumnSpan, &otherColumnSpan)
 		}
 	}
@@ -1213,17 +1225,18 @@ func getFilterType(span constraint.Span) (execinfrapb.TSBlockFilterType, bool) {
 // startKey is the beginning boundary of the span;
 // endKey is the terminating boundary of the span;
 // boundary indicates whether the interval is open or closed.
-func convertSpanToColumnSpan(span constraint.Span) execinfrapb.TSBlockFilter_Span {
+// typ is column type of expr
+func convertSpanToColumnSpan(span constraint.Span, typ *types.T) execinfrapb.TSBlockFilter_Span {
 	var columnSpan execinfrapb.TSBlockFilter_Span
 	if !span.StartKey().IsEmpty() && !span.StartKey().IsNull() {
 		columnSpan.Start = new(string)
-		*columnSpan.Start = makeSpanKey(span.StartKey().Value(0))
+		*columnSpan.Start = makeSpanKey(span.StartKey().Value(0), typ)
 		columnSpan.StartBoundary = new(execinfrapb.TSBlockFilter_Span_SpanBoundary)
 		*columnSpan.StartBoundary = makeSpanBoundary(span.StartBoundary())
 	}
 	if !span.EndKey().IsEmpty() {
 		columnSpan.End = new(string)
-		*columnSpan.End = makeSpanKey(span.EndKey().Value(0))
+		*columnSpan.End = makeSpanKey(span.EndKey().Value(0), typ)
 		columnSpan.EndBoundary = new(execinfrapb.TSBlockFilter_Span_SpanBoundary)
 		*columnSpan.EndBoundary = makeSpanBoundary(span.EndBoundary())
 	}
@@ -1234,13 +1247,61 @@ const (
 	zeroFloat = 1e-20
 )
 
+// convert Nanosecond time to double
+func unixNanoAsUint64(t time.Time) float64 {
+	sec := float64(t.Unix())
+	nsec := float64(t.Nanosecond())
+	return sec*1e9 + nsec
+}
+
+// convert Microsecond time to double
+func unixMicroAsUint64(t time.Time) float64 {
+	sec := float64(t.Unix())
+	nsec := float64(t.Nanosecond())
+	return sec*1e6 + nsec
+}
+
+// convert Millisecond time to double
+func unixMilliAsUint64(t time.Time) float64 {
+	sec := float64(t.Unix())
+	nsec := float64(t.Nanosecond())
+	return sec*1e3 + nsec
+}
+
+// check if the timestamp is out of range
+func checkTimeOverflow(inTime float64) bool {
+	if inTime < float64(math.MinInt64) || inTime > float64(math.MaxInt64) {
+		panic(pgerror.New(pgcode.InvalidParameterValue, "Timestamp/TimestampTZ out of range"))
+	}
+	return true
+}
+
 // make start and end, construct the start and end of ColumnSpan based on different types.
-func makeSpanKey(datum tree.Datum) (key string) {
+// typ is column type of expr
+func makeSpanKey(datum tree.Datum, typ *types.T) (key string) {
 	switch s := datum.(type) {
 	case *tree.DTimestampTZ:
-		key = strconv.FormatInt(s.UnixMilli(), 10)
+		// if DTimestampTZ has precision, it needs to be converted to timestamp with the precision.
+		if typ.InternalType.Oid == oid.T_timestamptz {
+			if typ.InternalType.Precision == 9 && checkTimeOverflow(unixNanoAsUint64(s.Time)) {
+				key = strconv.FormatInt(s.UnixNano(), 10)
+			} else if typ.InternalType.Precision == 6 && checkTimeOverflow(unixMicroAsUint64(s.Time)) {
+				key = strconv.FormatInt(s.UnixMicro(), 10)
+			} else if checkTimeOverflow(unixMilliAsUint64(s.Time)) {
+				key = strconv.FormatInt(s.UnixMilli(), 10)
+			}
+		}
 	case *tree.DTimestamp:
-		key = strconv.FormatInt(s.UnixMilli(), 10)
+		// if DTimestamp has precision, it needs to be converted to timestamp with the precision.
+		if typ.InternalType.Oid == oid.T_timestamp {
+			if typ.InternalType.Precision == 9 && checkTimeOverflow(unixNanoAsUint64(s.Time)) {
+				key = strconv.FormatInt(s.UnixNano(), 10)
+			} else if typ.InternalType.Precision == 6 && checkTimeOverflow(unixMicroAsUint64(s.Time)) {
+				key = strconv.FormatInt(s.UnixMicro(), 10)
+			} else if checkTimeOverflow(unixMilliAsUint64(s.Time)) {
+				key = strconv.FormatInt(s.UnixMilli(), 10)
+			}
+		}
 	case *tree.DFloat:
 		// The constraint specifies that a value of 0 is represented as 1e-324,
 		// which introduces precision errors. Therefore, validation must be

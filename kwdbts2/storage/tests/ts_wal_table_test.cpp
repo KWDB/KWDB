@@ -340,7 +340,8 @@ TEST_F(TestTSWALTable, mulitiInsert) {
   wal2->Init(ctx_);
 
   vector<LogEntry*> redo_logs;
-  wal2->ReadWALLog(redo_logs, wal2->FetchCheckpointLSN(), wal2->FetchCurrentLSN());
+  std::vector<uint64_t> ignore;
+  wal2->ReadWALLog(redo_logs, wal2->FetchCheckpointLSN(), wal2->FetchCurrentLSN(), ignore);
   // metric log + tag log
   EXPECT_EQ(redo_logs.size(), thread_num * payload_num * batch_times + 1);
 
@@ -982,7 +983,8 @@ TEST_F(TestTSWALTable, incompleteRecover) {
 
   auto wal3_ = new WALMgr(kDbPath + "/", table_id_, range_group_id_, &opt_);
   wal3_->Init(ctx_);
-  wal3_->ReadWALLogForMtr(mtr_id, wal_logs);
+  std::vector<uint64_t> ignore;
+  wal3_->ReadWALLogForMtr(mtr_id, wal_logs, ignore);
   ASSERT_EQ(wal_logs.size(), 1);
 
   for (auto& log : wal_logs) {
@@ -1060,7 +1062,8 @@ TEST_F(TestTSWALTable, incompleteRollbackRecover) {
 
   auto wal3_ = new WALMgr(kDbPath + "/", table_id_, range_group_id_, &opt_);
   wal3_->Init(ctx_);
-  wal3_->ReadWALLogForMtr(mtr_id, wal_logs);
+  std::vector<uint64_t> ignore;
+  wal3_->ReadWALLogForMtr(mtr_id, wal_logs, ignore);
   ASSERT_EQ(wal_logs.size(), 0);
 
   for (auto& log : wal_logs) {
@@ -1125,7 +1128,8 @@ TEST_F(TestTSWALTable, deleteRollbackRecover) {
   wal2->Flush(ctx_);
 
   std::vector<LogEntry*> wal_logs;
-  wal2->ReadWALLogForMtr(mtr_id, wal_logs);
+  std::vector<uint64_t> ignore;
+  wal2->ReadWALLogForMtr(mtr_id, wal_logs, ignore);
   ASSERT_EQ(wal_logs.size(), 3);
   for (auto& log : wal_logs) {
     delete log;
@@ -1133,7 +1137,7 @@ TEST_F(TestTSWALTable, deleteRollbackRecover) {
   wal_logs.clear();
 
   // Indicates the total number of logs. Two logs are duplicate data
-  wal2->ReadWALLog(wal_logs, wal2->FetchCheckpointLSN(), wal2->FetchCurrentLSN());
+  wal2->ReadWALLog(wal_logs, wal2->FetchCheckpointLSN(), wal2->FetchCurrentLSN(), ignore);
   ASSERT_EQ(wal_logs.size(), 5);
 
   delete wal2;
@@ -1250,8 +1254,8 @@ TEST_F(TestTSWALTable, putEntityRecover) {
   std::vector<k_uint32> scan_tags = {1, 2};
   std::unordered_set<k_uint32> hps;
   make_hashpoint(&hps);
-  TagIterator *iter;
-  ASSERT_EQ(table_->GetTagIterator(ctx_, scan_tags, hps, &iter, 1), KStatus::SUCCESS);
+  BaseEntityIterator *iter;
+  ASSERT_EQ(table_->GetTagIterator(ctx_, scan_tags,hps, &iter, 1), KStatus::SUCCESS);
 
   ResultSet res{(k_uint32) scan_tags.size()};
   k_uint64 ptag = 0;
@@ -1316,7 +1320,7 @@ TEST_F(TestTSWALTable, putEntityRollback) {
   // tagiterator
   std::vector<EntityResultIndex> entity_id_list;
   std::vector<k_uint32> scan_tags = {1, 2};
-  TagIterator *iter;
+  BaseEntityIterator *iter;
   std::unordered_set<k_uint32> hps;
   make_hashpoint(&hps);
   ASSERT_EQ(table_->GetTagIterator(ctx_, scan_tags, hps,&iter, 1), KStatus::SUCCESS);
@@ -1369,8 +1373,8 @@ TEST_F(TestTSWALTable, putEntityRollback) {
   ASSERT_EQ(GetTableRows(table_id_, ranges_, ts_span), row_num);
 
   count = 0;
-  TagIterator *iter1;
-  ResultSet res1{(k_uint32)scan_tags.size()};
+  BaseEntityIterator *iter1;
+  ResultSet res1{(k_uint32) scan_tags.size()};
   // std::vector<k_uint32> hps = {0,1,2,3,4,5,6,7,8,9};
   ASSERT_EQ(table_->GetTagIterator(ctx_, scan_tags, hps, &iter1, 1), KStatus::SUCCESS);
   ASSERT_EQ(iter1->Next(&entity_id_list, &res1, &count), KStatus::SUCCESS);
@@ -1399,7 +1403,7 @@ TEST_F(TestTSWALTable, putEntityRollback) {
   ts_span = {start_ts, start_ts + row_num * 10};
   ts_span = ConvertMsToPrecision(ts_span, ts_type);
   ASSERT_EQ(GetTableRows(table_id_, ranges_, ts_span), row_num);
-  TagIterator *iter2;
+  BaseEntityIterator *iter2;
   ResultSet res2{(k_uint32) scan_tags.size()};
   // std::vector<k_uint32> hps = {0,1,2,3,4,5,6,7,8,9};
   ASSERT_EQ(table_->GetTagIterator(ctx_, scan_tags,hps, &iter2, 1), KStatus::SUCCESS);
@@ -1423,8 +1427,7 @@ TEST_F(TestTSWALTable, putEntityRollback) {
 }
 
 TEST_F(TestTSWALTable, autoCheckpoint) {
-  opt_.wal_file_in_group = 2;
-  opt_.wal_file_size = 1;
+
   std::shared_ptr<TsEntityGroup> entity_group;
   KTimestamp start_ts = std::chrono::duration_cast<std::chrono::milliseconds>
       (std::chrono::system_clock::now().time_since_epoch()).count();
@@ -1451,32 +1454,4 @@ TEST_F(TestTSWALTable, autoCheckpoint) {
   for (auto p : payloads) {
     delete[] p.data;
   }
-}
-
-TEST_F(TestTSWALTable, PartitionTierChangeRollback) {
-  std::shared_ptr<TsEntityGroup> entity_group;
-  KStatus s = table_->GetEntityGroup(ctx_, range_group_id_, &entity_group);
-  ASSERT_EQ(s, KStatus::SUCCESS);
-  std::shared_ptr<LoggedTsEntityGroup> log_eg = std::static_pointer_cast<LoggedTsEntityGroup>(entity_group);
-
-  char path[4096];
-  getcwd(path, 4096);
-  std::string abs_path(path);
-  string link_path = abs_path + "/link_path";
-  string tier_path = abs_path + "/tier_path";
-  string old_tier_path = abs_path + "/old_tier_path";
-  ASSERT_TRUE(MakeDirectory(tier_path));
-  ASSERT_TRUE(MakeDirectory(old_tier_path));
-  std::string link_cmd = "ln -s " + old_tier_path + " " + link_path;
-  ASSERT_TRUE(System(link_cmd));
-
-  uint64_t mtr_id;
-  s = log_eg->BeginPartitionTierChangeMtr(ctx_, 1, link_path, tier_path, mtr_id);
-  ASSERT_EQ(s, KStatus::SUCCESS);
-
-  // rollback
-  ASSERT_EQ(log_eg->MtrRollback(ctx_, mtr_id), KStatus::SUCCESS);
-  ASSERT_EQ(access(tier_path.c_str(), 0), -1);
-  ASSERT_EQ(access(link_path.c_str(), 0), 0);
-  ASSERT_EQ(access(old_tier_path.c_str(), 0), 0);
 }

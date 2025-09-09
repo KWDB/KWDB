@@ -1,0 +1,56 @@
+> CREATE FUNCTION singleQuotes(s1 char)
+    RETURNS char
+    LANGUAGE LUA
+BEGIN
+'function singleQuotes(s1)
+    s1 = ''''
+    return s1
+end'
+END;
+CREATE FUNCTION
+> CREATE FUNCTION singleQuotes(s1 char)
+    RETURNS char
+    LANGUAGE LUA
+BEGIN
+'function singleQuotes(s1)
+    s1 = ''
+    return s1
+end'
+END;
+ERROR: function named 'singlequotes' already exists. Please choose a different name
+SQLSTATE: 42710
+> CREATE FUNCTION singleQuotes(s1 char)
+    RETURNS char
+    LANGUAGE LUA
+BEGIN
+'function singleQuotes(s1)
+    s1 = "\"
+    return s1
+end'
+END;
+ERROR: function named 'singlequotes' already exists. Please choose a different name
+SQLSTATE: 42710
+> CREATE FUNCTION singleQuotes(s1 char)
+    RETURNS char
+    LANGUAGE LUA
+BEGIN
+'function singleQuotes(s1)
+    s1 = "\\"
+    return s1
+end'
+END;
+ERROR: function named 'singlequotes' already exists. Please choose a different name
+SQLSTATE: 42710
+> CREATE FUNCTION singleQuotes(s1 char)
+    RETURNS char
+    LANGUAGE LUA
+BEGIN
+'function singleQuotes(s1)
+    s1 = \
+    return s1
+end'
+END;
+ERROR: function named 'singlequotes' already exists. Please choose a different name
+SQLSTATE: 42710
+> DROP FUNCTION singleQuotes;
+DROP FUNCTION

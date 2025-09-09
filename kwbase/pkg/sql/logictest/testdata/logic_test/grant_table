@@ -82,6 +82,7 @@ test           kwdb_internal       kwdb_procedures                    NULL      
 test           kwdb_internal       kwdb_retention                     NULL            public   SELECT
 test           kwdb_internal       kwdb_schedules                     NULL            public   SELECT
 test           kwdb_internal       kwdb_streams                       NULL            public   SELECT
+test           kwdb_internal       kwdb_triggers                      NULL            public   SELECT
 test           kwdb_internal       kwdb_tse_info                      NULL            public   SELECT
 test           kwdb_internal       leases                             NULL            public   SELECT
 test           kwdb_internal       node_build_info                    NULL            public   SELECT
@@ -102,6 +103,7 @@ test           kwdb_internal       session_variables                  NULL      
 test           kwdb_internal       table_columns                      NULL            public   SELECT
 test           kwdb_internal       table_indexes                      NULL            public   SELECT
 test           kwdb_internal       tables                             NULL            public   SELECT
+test           kwdb_internal       ts_inflight_transactions           NULL            public   SELECT
 test           kwdb_internal       zones                              NULL            public   SELECT
 test           pg_catalog          NULL                               NULL            admin    ALL
 test           pg_catalog          NULL                               NULL            root     ALL

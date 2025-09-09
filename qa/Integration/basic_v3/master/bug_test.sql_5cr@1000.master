@@ -1,0 +1,4 @@
+> use defaultdb;
+SET
+> drop database test cascade;
+DROP DATABASE

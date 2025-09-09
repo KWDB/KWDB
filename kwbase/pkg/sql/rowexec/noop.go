@@ -349,6 +349,32 @@ func (n *noopProcessor) handleMetaForTs(meta *execinfrapb.ProducerMetadata) (Nee
 				}
 			}
 		}
+	case execinfrapb.OperatorType_APDropDatabase:
+		if n.InputNum > 1 {
+			if meta != nil {
+				if meta.APDropDatabase.DropSuccess {
+					n.recordNum++
+				} else {
+					return false
+				}
+				if n.recordNum < n.InputNum {
+					return true
+				}
+			}
+		}
+	case execinfrapb.OperatorType_APDropTable:
+		if n.InputNum > 1 {
+			if meta != nil {
+				if meta.APDropTable.DropSuccess {
+					n.recordNum++
+				} else {
+					return false
+				}
+				if n.recordNum < n.InputNum {
+					return true
+				}
+			}
+		}
 	case execinfrapb.OperatorType_TsDeleteMultiEntitiesData:
 		if n.InputNum > 1 {
 			if meta.TsDelete != nil {

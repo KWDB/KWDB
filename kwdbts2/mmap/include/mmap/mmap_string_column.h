@@ -34,8 +34,6 @@ class MMapStringColumn {
   MMapFile str_file_;
 
  public:
-  static const int kStringLenLen = sizeof(uint16_t);
-  static const int kEndCharacterLen = sizeof(char);
   MMapStringColumn() = delete;
   MMapStringColumn(latch_id_t latch_id, rwlatch_id_t rwlatch_id);
 

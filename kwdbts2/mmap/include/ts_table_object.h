@@ -43,7 +43,7 @@ struct TSTableFileMetadata {
   int struct_version;       ///< object structure version number
   int struct_type;          ///< structure type
   uint32_t schema_version;       ///< data version number
-  uint64_t life_time ;          /// unit: second, over time data will be deleted.
+  uint64_t db_id ;          /// database id
   uint64_t partition_interval;  /// unit: second
   int cols_num;                    ///< number of cols.
   uint32_t schema_version_of_latest_data;  // table version of the last data
@@ -62,7 +62,7 @@ struct TSTableFileMetadata {
   off_t record_size;        ///< size of record (in bytes).
   off_t description;        ///< Description.
   int encoding;             ///< Encoding scheme.
-  int32_t reserved_3;
+  int32_t precision;        // precision of life time
   bool is_dropped;
   char reserved[12];
   // Updatable data, start from 512 bytes for recoverability.
@@ -77,7 +77,7 @@ struct TSTableFileMetadata {
   size_t actul_size;        ///< Actual table size.
   // Possibly depreciated
   size_t checksum;          ///< Weak checksum.
-  size_t life_cycle;
+  int64_t life_time;         // life time: second type
   char reserved_7[60];
   timestamp64 min_ts;       // minimum timestamp partition
   timestamp64 max_ts;       // maximum timestamp partition
@@ -105,7 +105,6 @@ class TsTableObject {
   string tbl_sub_path_;
 
   vector<AttributeInfo> cols_info_include_dropped_;
-
   vector<AttributeInfo> cols_info_exclude_dropped_;
   // Index for valid columns, and the index number is corresponding to cols_info_include_dropped_
   vector<uint32_t> idx_for_valid_cols_;

@@ -301,6 +301,7 @@ func (f *stubFactory) ConstructInsert(
 	checks exec.CheckOrdinalSet,
 	allowAutoCommit bool,
 	skipFKChecks bool,
+	triggerCommands exec.TriggerExecute,
 ) (exec.Node, error) {
 	return struct{}{}, nil
 }
@@ -373,6 +374,7 @@ func (f *stubFactory) ConstructUpdate(
 	passthrough sqlbase.ResultColumns,
 	allowAutoCommit bool,
 	skipFKChecks bool,
+	triggerCommands exec.TriggerExecute,
 ) (exec.Node, error) {
 	return struct{}{}, nil
 }
@@ -399,6 +401,7 @@ func (f *stubFactory) ConstructDelete(
 	returnCols exec.ColumnOrdinalSet,
 	allowAutoCommit bool,
 	skipFKChecks bool,
+	triggerCommands exec.TriggerExecute,
 ) (exec.Node, error) {
 	return struct{}{}, nil
 }
@@ -409,6 +412,12 @@ func (f *stubFactory) ConstructDeleteRange(
 	indexConstraint *constraint.Constraint,
 	maxReturnedKeys int,
 	allowAutoCommit bool,
+) (exec.Node, error) {
+	return struct{}{}, nil
+}
+
+func (f *stubFactory) ConstructCreateTrigger(
+	cp *tree.CreateTrigger, deps opt.ViewDeps,
 ) (exec.Node, error) {
 	return struct{}{}, nil
 }

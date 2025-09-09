@@ -1,0 +1,148 @@
+> create ts database test;
+CREATE TS DATABASE
+> use test;
+SET
+> CREATE TABLE cpu (
+         k_timestamp TIMESTAMPTZ NOT NULL,
+         usage_user INT8,
+         usage_system CHAR(20),
+         usage_idle INT8,
+         usage_nice INT8,
+         usage_iowait INT8,
+         usage_irq INT8,
+         usage_softirq INT8,
+         usage_steal INT8,
+         usage_guest INT8,
+         usage_guest_nice INT8
+) TAGS (
+        hostname CHAR(30) NOT NULL,
+        region CHAR(30),
+        datacenter CHAR(30),
+        rack CHAR(30),
+        os CHAR(30),
+        arch CHAR(30),
+        team CHAR(30),
+        service CHAR(30),
+        service_version CHAR(30),
+        service_environment CHAR(30) ) PRIMARY TAGS(hostname);
+CREATE TABLE
+> INSERT INTO cpu VALUES('2016-01-01 00:00:00+00:00', 0, '1', 2, 3, 4, 5, 6, 7, 8, 9, 'host_5', 'us-west-1', 'us-west-a', '0', 'Ubuntu15.10', 'x86_a',  'A', '1', '2', 'ENV');
+INSERT 1
+> INSERT INTO cpu VALUES('2020-01-01 00:00:00+00:00', 1, '2', 3, 4, 5, 6, 7, 8, 9, 0, 'host_555', 'us-west-2', 'us-west-b', '1', 'Ubuntu16.10', 'x86_b',  'B', '2', '3', 'ENV2');
+INSERT 1
+> INSERT INTO cpu VALUES('2024-01-01 00:00:00+00:00', NULL, NULL, NULL, NULL, NULL, NULL,  NULL, NULL, NULL, NULL, 'host_55555',  NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+INSERT 1
+> INSERT INTO cpu VALUES('2028-01-01 00:00:00+00:00', NULL, NULL, NULL, NULL, NULL, NULL,  NULL, NULL, NULL, NULL, 'host_55556',  NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+INSERT 1
+> EXPORT INTO CSV "nodelocal://1/tbtest5/csv1" FROM SELECT k_timestamp, usage_user, hostname, os FROM cpu WHERE hostname > 'host_4' AND k_timestamp > '1997-01-01' AND os > 'Ubuntu15' AND usage_user > -1;
+  result
+-----------
+  succeed
+(1 row)
+> EXPORT INTO CSV "nodelocal://1/tbtest5/csv2" FROM SELECT k_timestamp, usage_user, hostname, os FROM cpu WHERE hostname > 'host_4' AND k_timestamp < '2020-01-01' AND NOT os > 'Ubuntu15.10' OR usage_user > 0;
+  result
+-----------
+  succeed
+(1 row)
+> EXPORT INTO CSV "nodelocal://1/tbtest5/csv3" FROM SELECT k_timestamp, usage_user, hostname, os FROM cpu WHERE hostname IS NOT NULL AND k_timestamp IS NOT NULL AND os IS NULL AND usage_user IS NULL;
+  result
+-----------
+  succeed
+(1 row)
+> EXPORT INTO CSV "nodelocal://1/tbtest5/csv4" FROM SELECT k_timestamp, usage_user, hostname, os FROM cpu WHERE hostname LIKE '%5' AND os LIKE 'Ubuntu%' AND usage_system LIKE '_';
+  result
+-----------
+  succeed
+(1 row)
+> EXPORT INTO CSV "nodelocal://1/tbtest5/csv5" FROM SELECT k_timestamp, usage_user, hostname, os FROM cpu WHERE hostname IN ('host_5', 'host_555') AND k_timestamp IN ('2016-01-01', '2020-01-01', '2024-01-01') AND os IN ('Ubuntu15.10', 'Ubuntu16.10') AND usage_user IN (0, 1, 2);
+  result
+-----------
+  succeed
+(1 row)
+> EXPORT INTO CSV "nodelocal://1/tbtest5/csv6" FROM SELECT k_timestamp, usage_user, hostname, os FROM cpu WHERE k_timestamp BETWEEN '2007-01-01' AND '2027-01-01' AND hostname BETWEEN 'host_0' AND 'host_666' AND os BETWEEN 'Ubuntu15' AND 'Ubuntu17' AND usage_user BETWEEN '0' AND '1';
+  result
+-----------
+  succeed
+(1 row)
+> CREATE TABLE cpu1 (k_timestamp TIMESTAMPTZ NOT NULL, usage_user INT8) TAGS (hostname CHAR(30) NOT NULL, os CHAR(30)) PRIMARY TAGS(hostname);
+CREATE TABLE
+> CREATE TABLE cpu2 (k_timestamp TIMESTAMPTZ NOT NULL, usage_user INT8) TAGS (hostname CHAR(30) NOT NULL, os CHAR(30)) PRIMARY TAGS(hostname);
+CREATE TABLE
+> CREATE TABLE cpu3 (k_timestamp TIMESTAMPTZ NOT NULL, usage_user INT8) TAGS (hostname CHAR(30) NOT NULL, os CHAR(30)) PRIMARY TAGS(hostname);
+CREATE TABLE
+> CREATE TABLE cpu4 (k_timestamp TIMESTAMPTZ NOT NULL, usage_user INT8) TAGS (hostname CHAR(30) NOT NULL, os CHAR(30)) PRIMARY TAGS(hostname);
+CREATE TABLE
+> CREATE TABLE cpu5 (k_timestamp TIMESTAMPTZ NOT NULL, usage_user INT8) TAGS (hostname CHAR(30) NOT NULL, os CHAR(30)) PRIMARY TAGS(hostname);
+CREATE TABLE
+> CREATE TABLE cpu6 (k_timestamp TIMESTAMPTZ NOT NULL, usage_user INT8) TAGS (hostname CHAR(30) NOT NULL, os CHAR(30)) PRIMARY TAGS(hostname);
+CREATE TABLE
+> IMPORT INTO cpu1 CSV DATA ('nodelocal://1/tbtest5/csv1');
+  job_id |  status   | fraction_completed | rows | abandon_rows | reject_rows | note
+---------+-----------+--------------------+------+--------------+-------------+-------
+  -      | succeeded |                  1 |    2 | 0            | 0           | None
+(1 row)
+> IMPORT INTO cpu2 CSV DATA ('nodelocal://1/tbtest5/csv2');
+  job_id |  status   | fraction_completed | rows | abandon_rows | reject_rows | note
+---------+-----------+--------------------+------+--------------+-------------+-------
+  -      | succeeded |                  1 |    2 | 0            | 0           | None
+(1 row)
+> IMPORT INTO cpu3 CSV DATA ('nodelocal://1/tbtest5/csv3');
+  job_id |  status   | fraction_completed | rows | abandon_rows | reject_rows | note
+---------+-----------+--------------------+------+--------------+-------------+-------
+  -      | succeeded |                  1 |    2 | 0            | 0           | None
+(1 row)
+> IMPORT INTO cpu4 CSV DATA ('nodelocal://1/tbtest5/csv4');
+  job_id |  status   | fraction_completed | rows | abandon_rows | reject_rows | note
+---------+-----------+--------------------+------+--------------+-------------+-------
+  -      | succeeded |                  1 |    2 | 0            | 0           | None
+(1 row)
+> IMPORT INTO cpu5 CSV DATA ('nodelocal://1/tbtest5/csv5');
+  job_id |  status   | fraction_completed | rows | abandon_rows | reject_rows | note
+---------+-----------+--------------------+------+--------------+-------------+-------
+  -      | succeeded |                  1 |    2 | 0            | 0           | None
+(1 row)
+> IMPORT INTO cpu6 CSV DATA ('nodelocal://1/tbtest5/csv6');
+  job_id |  status   | fraction_completed | rows | abandon_rows | reject_rows | note
+---------+-----------+--------------------+------+--------------+-------------+-------
+  -      | succeeded |                  1 |    2 | 0            | 0           | None
+(1 row)
+> SELECT * FROM cpu1 order by hostname;
+         k_timestamp        | usage_user | hostname |     os
+----------------------------+------------+----------+--------------
+  2016-01-01 00:00:00+00:00 |          0 | host_5   | Ubuntu15.10
+  2020-01-01 00:00:00+00:00 |          1 | host_555 | Ubuntu16.10
+(2 rows)
+> SELECT * FROM cpu2 order by hostname;
+         k_timestamp        | usage_user | hostname |     os
+----------------------------+------------+----------+--------------
+  2016-01-01 00:00:00+00:00 |          0 | host_5   | Ubuntu15.10
+  2020-01-01 00:00:00+00:00 |          1 | host_555 | Ubuntu16.10
+(2 rows)
+> SELECT * FROM cpu3 order by hostname;
+         k_timestamp        | usage_user |  hostname  |  os
+----------------------------+------------+------------+-------
+  2024-01-01 00:00:00+00:00 |       NULL | host_55555 | NULL
+  2028-01-01 00:00:00+00:00 |       NULL | host_55556 | NULL
+(2 rows)
+> SELECT * FROM cpu4 order by hostname;
+         k_timestamp        | usage_user | hostname |     os
+----------------------------+------------+----------+--------------
+  2016-01-01 00:00:00+00:00 |          0 | host_5   | Ubuntu15.10
+  2020-01-01 00:00:00+00:00 |          1 | host_555 | Ubuntu16.10
+(2 rows)
+> SELECT * FROM cpu5 order by hostname;
+         k_timestamp        | usage_user | hostname |     os
+----------------------------+------------+----------+--------------
+  2016-01-01 00:00:00+00:00 |          0 | host_5   | Ubuntu15.10
+  2020-01-01 00:00:00+00:00 |          1 | host_555 | Ubuntu16.10
+(2 rows)
+> SELECT * FROM cpu6 order by hostname;
+         k_timestamp        | usage_user | hostname |     os
+----------------------------+------------+----------+--------------
+  2016-01-01 00:00:00+00:00 |          0 | host_5   | Ubuntu15.10
+  2020-01-01 00:00:00+00:00 |          1 | host_555 | Ubuntu16.10
+(2 rows)
+> use defaultdb;
+SET
+> drop database test cascade;
+DROP DATABASE

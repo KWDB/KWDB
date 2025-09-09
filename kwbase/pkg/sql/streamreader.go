@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"gitee.com/kwbasedb/kwbase/pkg/cdc/cdcpb"
+	"gitee.com/kwbasedb/kwbase/pkg/engine/tse"
 	"gitee.com/kwbasedb/kwbase/pkg/jobs/jobspb"
 	"gitee.com/kwbasedb/kwbase/pkg/kv"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
@@ -24,6 +25,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfra"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfrapb"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/rowexec"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlutil"
 	"gitee.com/kwbasedb/kwbase/pkg/util/ctxgroup"
@@ -49,6 +51,8 @@ type streamReaderProcessor struct {
 	execinfra.ProcessorBase
 	// spec is the object processed by this processor.
 	spec *execinfrapb.StreamReaderSpec
+	// streamParameters is parameters of stream.
+	streamParameters *sqlutil.StreamParameters
 	// errCh is used to receive and uniformly handle all errors within the processor.
 	errCh chan error
 	// notifyCh receives signals for the next row of data.
@@ -62,8 +66,8 @@ type streamReaderProcessor struct {
 	sourceTableID uint64
 	// instanceID is stream ID.
 	instanceID uint64
-	// hasAgg indicates that the current stream has aggregations.
-	hasAgg bool
+	// streamSink stores the information stream query.
+	streamSink *sqlutil.StreamSink
 
 	// streamOpts is options of stream.
 	streamOpts *sqlutil.ParsedStreamOptions
@@ -115,6 +119,7 @@ func newStreamReaderProcessor(
 	post *execinfrapb.PostProcessSpec,
 	output execinfra.RowReceiver,
 ) (execinfra.Processor, error) {
+	var err error
 	s := &streamReaderProcessor{
 		spec: spec, lowWaterMark: sqlutil.InvalidWaterMark,
 	}
@@ -140,17 +145,17 @@ func newStreamReaderProcessor(
 	s.notifyCh = make(chan bool, 1)
 	s.watermarkCache = make(map[int32]*LocalWatermark)
 
-	streamPara, err := sqlutil.ParseStreamParameters(spec.Metadata.Parameters)
+	s.streamParameters, err = sqlutil.ParseStreamParameters(spec.Metadata.Parameters)
 	if err != nil {
 		return nil, err
 	}
 
-	streamOpts, err := sqlutil.ParseStreamOpts(&streamPara.Options)
+	streamOpts, err := sqlutil.ParseStreamOpts(&s.streamParameters.Options)
 	if err != nil {
 		return nil, err
 	}
 
-	s.hasAgg = streamPara.StreamSink.HasAgg
+	s.streamSink = &s.streamParameters.StreamSink
 	s.streamOpts = streamOpts
 
 	s.heartbeatTimeout = sqlutil.TimeoutFactor * s.streamOpts.HeartbeatInterval.Milliseconds()
@@ -208,20 +213,10 @@ func (s *streamReaderProcessor) Start(ctx context.Context) context.Context {
 	s.sourceTableID = streamPara.SourceTableID
 	s.instanceID = s.spec.Metadata.ID
 
-	s.recalculator = newRecalculator(s.Ctx, s.FlowCtx, s.spec, streamPara, s.streamOpts.RecalculateDelayRounds)
-	s.rowBuffer = newStreamReaderRowBuffer(s.FlowCtx, s.spec, s.ordering, s.streamOpts, s.recalculator, s.hasAgg)
-
-	if s.hasAgg {
-		// Read the last window in the target table as the expiredTime.
-		// Data before this expiredTime line needs to be recalculated.
-		s.expiredTime, err = s.recalculator.loadExpiredTime(s.expiredTime)
-		if err != nil {
-			s.MoveToDraining(err)
-			return ctx
-		}
-		s.lowWaterMark = timeutil.ToUnixMilli(s.expiredTime)
-		s.emitTimestamp = s.expiredTime
-	}
+	s.recalculator = newRecalculator(
+		s.Ctx, s.FlowCtx, s.spec, streamPara, s.streamSink, s.streamOpts)
+	s.rowBuffer = newStreamReaderRowBuffer(
+		s.FlowCtx, s.spec, s.ordering, s.streamOpts, s.recalculator, s.streamSink.HasAgg)
 
 	// process potential unprocessed rows, including historical rows
 	if s.streamOpts.ProcessHistory {
@@ -233,13 +228,34 @@ func (s *streamReaderProcessor) Start(ctx context.Context) context.Context {
 		}
 	}
 
+	var rowsResend []tree.Datums
+	if s.streamSink.HasAgg {
+		// Read the last window in the target table as the expiredTime.
+		// Data before this expiredTime needs to be recalculated.
+		s.expiredTime, err = s.recalculator.loadExpiredTime(s.expiredTime)
+		if err != nil {
+			s.MoveToDraining(err)
+			return ctx
+		}
+		s.lowWaterMark = timeutil.ToUnixMilli(s.expiredTime)
+		s.emitTimestamp = s.expiredTime
+
+		if s.needResendLastWindow() {
+			rowsResend, err = s.recalculator.loadRowsInLastWindow()
+			if err != nil {
+				s.MoveToDraining(err)
+				return ctx
+			}
+		}
+	}
+
 	s.startAsyncTasks(ctx, s.spec.Metadata, jobDetails.ActiveNodeList)
 	log.Infof(s.Ctx, "successful to start stream %q.", s.spec.Metadata.Name)
 
-	if s.hasAgg && s.streamOpts.ProcessHistory {
+	if len(rowsResend) > 0 {
 		// resend rows in last window,
 		// prevent the split-windows of historical data and real-time data.
-		if err = s.resendRowsInLastWindow(ctx); err != nil {
+		if err = s.resendRowsInLastWindow(ctx, rowsResend); err != nil {
 			s.errCh <- err
 			s.cancel()
 			s.notifyNext()
@@ -252,18 +268,15 @@ func (s *streamReaderProcessor) Start(ctx context.Context) context.Context {
 // resendRowsInLastWindow reads the data of the last window in the source table from the target table
 // and sends it to the real-time streamAggregator
 // to prevent the split-windows of historical data and real-time data.
-func (s *streamReaderProcessor) resendRowsInLastWindow(ctx context.Context) error {
-	rows, err := s.recalculator.loadRowsInLastWindow()
-	if err != nil {
-		return err
-	}
-
+func (s *streamReaderProcessor) resendRowsInLastWindow(
+	ctx context.Context, rows []tree.Datums,
+) error {
 	for _, row := range rows {
 		encRow := make(sqlbase.EncDatumRow, len(row))
 		for i, col := range row {
 			encRow[i] = sqlbase.EncDatum{Datum: col}
 		}
-		if err = s.rowBuffer.AddRowOutput(ctx, encRow); err != nil {
+		if err := s.rowBuffer.AddRowOutput(ctx, encRow); err != nil {
 			return err
 		}
 	}
@@ -444,7 +457,7 @@ func (s *streamReaderProcessor) Next() (sqlbase.EncDatumRow, *execinfrapb.Produc
 			s.MoveToDraining(err)
 			break
 		case <-s.notifyCh:
-			if s.hasAgg {
+			if s.streamSink.HasAgg {
 				// notified by checkpoint to trigger the stream aggregator's MAX_DELAY checking
 				return nil, nil
 			}
@@ -474,7 +487,7 @@ func (s *streamReaderProcessor) Next() (sqlbase.EncDatumRow, *execinfrapb.Produc
 					break
 				}
 
-				if s.hasAgg {
+				if s.streamSink.HasAgg {
 					return nil, nil
 				}
 			}
@@ -598,7 +611,7 @@ func (s *streamReaderProcessor) checkpoint() error {
 
 	defer s.notifyNext()
 
-	lowWaterMark, err := s.extractGlobalLowWaterMark()
+	lowWaterMark, err := s.extractGlobalHighWaterMark()
 	if err != nil {
 		return err
 	}
@@ -665,9 +678,9 @@ func (s *streamReaderProcessor) close() {
 	}
 }
 
-// extractGlobalLowWaterMark computes the global low-water mark.
-//  1. Use math.MinInt64 as InvalidWaterMark, and it will be ignored when computing the global low-water mark.
-//  2. Use the smallest local low-water mark as the global low-water mark.
+// extractGlobalHighWaterMark computes the global low-water mark.
+//  1. Use math.MinInt64 as InvalidWaterMark, and it will be ignored when computing the global high-water mark.
+//  2. Use the biggest local low-water mark as the global high-water mark.
 //  3. If no data has been captured, the value of local low-water mark is InvalidWaterMark.
 //  4. If data has been captured by a gateway node, the value of local low-water mark rises to a non-zero value.
 //  5. The valid local low-water mark will be sent to streamReaderProcessor using Heartbeat.
@@ -675,10 +688,10 @@ func (s *streamReaderProcessor) close() {
 //  7. The watermarkCache stores the local low-water marks received from each node,
 //  8. The watermarkCache also records the receiving time of each local low-water mark.
 //  9. Use HeartbeatInterval * MaxRetries as the heartbeatTimeout.
-//  10.If it failed to receive a valid low-water mark more than heartbeatTimeout, the streamReaderProcessor will
+//     10.If it failed to receive a valid low-water mark more than heartbeatTimeout, the streamReaderProcessor will
 //     return an error and the current stream job will be terminated.
-func (s *streamReaderProcessor) extractGlobalLowWaterMark() (int64, error) {
-	var globalWaterMark int64 = math.MaxInt64
+func (s *streamReaderProcessor) extractGlobalHighWaterMark() (int64, error) {
+	var globalWaterMark int64 = math.MinInt64
 	{
 		s.waterMarkMutex.Lock()
 		defer s.waterMarkMutex.Unlock()
@@ -698,13 +711,13 @@ func (s *streamReaderProcessor) extractGlobalLowWaterMark() (int64, error) {
 			if newWatermark == sqlutil.InvalidWaterMark {
 				continue
 			}
-			if newWatermark < globalWaterMark {
+			if newWatermark > globalWaterMark {
 				globalWaterMark = newWatermark
 				watermark.LocalWatermark = sqlutil.InvalidWaterMark
 			}
 		}
 	}
-	if globalWaterMark != math.MaxInt64 {
+	if globalWaterMark != math.MinInt64 {
 		return globalWaterMark, nil
 	}
 
@@ -728,4 +741,24 @@ func (s *streamReaderProcessor) InitProcessorProcedure(txn *kv.Txn) {
 		s.State = execinfra.StateRunning
 		s.Out.SetRowIdx(0)
 	}
+}
+
+// needResendLastWindow returns true when resent data can be used to resolve the split window
+// between historical and real-time data.
+// Relationship tables, time windows with sliding, and time series tables where deduplication rules
+// is not "override" or "merge" are not supported.
+func (s *streamReaderProcessor) needResendLastWindow() bool {
+	if !s.streamSink.HasAgg ||
+		!s.streamOpts.ProcessHistory ||
+		!s.streamParameters.TargetTable.IsTsTable ||
+		s.recalculator.isSlideTimeWindow() {
+		return false
+	}
+
+	deRule := tse.DeDuplicateRule.Get(&s.FlowCtx.Cfg.Settings.SV)
+	if deRule != "merge" && deRule != "override" {
+		return false
+	}
+
+	return true
 }

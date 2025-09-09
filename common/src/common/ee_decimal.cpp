@@ -197,7 +197,7 @@ k_uint64 CKBigInt2::pow(k_uint32 b, k_uint32 n) {
       p *= b;
     }
     b *= b;
-    n >> 1;
+    n >>= 1;
   }
 
   return p;

@@ -64,6 +64,7 @@ func (p *planner) AlterTSDatabase(ctx context.Context, n *tree.AlterTSDatabase) 
 			return nil, pgerror.Newf(pgcode.InvalidParameterValue, "lifetime is out of range: %d", lifeTime)
 		}
 	}
+
 	if n.PartitionInterval != nil {
 		switch n.PartitionInterval.Unit {
 		case "s", "second", "m", "minute", "h", "hour":
@@ -76,7 +77,12 @@ func (p *planner) AlterTSDatabase(ctx context.Context, n *tree.AlterTSDatabase) 
 			return nil, pgerror.Newf(pgcode.InvalidParameterValue, "partition interval is out of range %d, the time range is [1day, 1000year]", partitionInterval)
 		}
 	}
-	return &alterTSDatabaseNode{n: n, lifeTime: lifeTime, partitionInterval: partitionInterval, databaseDesc: dbDesc}, nil
+	return &alterTSDatabaseNode{
+		n:                 n,
+		lifeTime:          lifeTime,
+		partitionInterval: partitionInterval,
+		databaseDesc:      dbDesc,
+	}, nil
 }
 
 func (n *alterTSDatabaseNode) startExec(params runParams) error {

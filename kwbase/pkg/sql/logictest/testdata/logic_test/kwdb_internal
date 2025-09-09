@@ -36,6 +36,7 @@ kwdb_procedures               SYSTEM VIEW
 kwdb_retention                SYSTEM VIEW
 kwdb_schedules                SYSTEM VIEW
 kwdb_streams                  SYSTEM VIEW
+kwdb_triggers                 SYSTEM VIEW
 kwdb_tse_info                 SYSTEM VIEW
 leases                        SYSTEM VIEW
 node_build_info               SYSTEM VIEW
@@ -56,6 +57,7 @@ session_variables             SYSTEM VIEW
 table_columns                 SYSTEM VIEW
 table_indexes                 SYSTEM VIEW
 tables                        SYSTEM VIEW
+ts_inflight_transactions      SYSTEM VIEW
 zones                         SYSTEM VIEW
 
 statement ok

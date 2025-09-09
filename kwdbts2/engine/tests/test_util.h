@@ -425,18 +425,6 @@ void fillTSIntoPayload(Payload &p, int col_id, DATATYPE type, int count,  bool r
       is_lsn = false;
       precision = 1000000;
       break;
-    case DATATYPE::TIMESTAMP64_LSN:
-      is_lsn = true;
-      precision = 1;
-      break;
-    case DATATYPE::TIMESTAMP64_LSN_MICRO:
-      is_lsn = true;
-      precision = 1000;
-      break;
-    case DATATYPE::TIMESTAMP64_LSN_NANO:
-      is_lsn = true;
-      precision = 1000000;
-      break;
     default:
       break;
   }
@@ -476,18 +464,6 @@ void fillTSData(DATATYPE type,  KTimestamp m_ts, char* dest_ts) {
       break;
     case DATATYPE::TIMESTAMP64_NANO:
       is_lsn = false;
-      precision = 1000000;
-      break;
-    case DATATYPE::TIMESTAMP64_LSN:
-      is_lsn = true;
-      precision = 1;
-      break;
-    case DATATYPE::TIMESTAMP64_LSN_MICRO:
-      is_lsn = true;
-      precision = 1000;
-      break;
-    case DATATYPE::TIMESTAMP64_LSN_NANO:
-      is_lsn = true;
       precision = 1000000;
       break;
     default:
@@ -870,18 +846,6 @@ void checkTSData(KTimestamp a_ts, KTimestamp e_ts, DATATYPE type) {
       break;
     case DATATYPE::TIMESTAMP64_NANO:
       is_lsn = false;
-      precision = 1000000;
-      break;
-    case DATATYPE::TIMESTAMP64_LSN:
-      is_lsn = true;
-      precision = 1;
-      break;
-    case DATATYPE::TIMESTAMP64_LSN_MICRO:
-      is_lsn = true;
-      precision = 1000;
-      break;
-    case DATATYPE::TIMESTAMP64_LSN_NANO:
-      is_lsn = true;
       precision = 1000000;
       break;
     default:

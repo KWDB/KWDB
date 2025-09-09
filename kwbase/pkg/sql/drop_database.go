@@ -302,12 +302,34 @@ func (n *dropDatabaseNode) startExec(params runParams) error {
 	if err := p.removeDbComment(ctx, n.dbDesc.ID); err != nil {
 		return err
 	}
-
 	if n.dbDesc.EngineType == tree.EngineTypeAP {
-		if err := params.p.DistSQLPlanner().distSQLSrv.GetAPEngine().DropDatabase(
-			params.extendedEvalCtx.SessionData.Database, n.dbDesc.Name,
-			n.dbDesc.ApDatabaseType == tree.ApDatabaseTypeDuckDB); err != nil {
-			return pgerror.Newf(pgcode.Warning, "use database %s failed: %s", n.dbDesc.Name, err.Error())
+		dropAPDatabase := jobspb.DropAPDatabase{
+			CurrentDb: params.extendedEvalCtx.SessionData.Database,
+			DropDb:    n.dbDesc.Name,
+			Rm:        n.dbDesc.ApDatabaseType == tree.ApDatabaseTypeDuckDB,
+		}
+		// Create a Job to perform the second stage of ts DDL.
+		syncDetail := jobspb.SyncMetaCacheDetails{
+			Type:           dropKwdbAPDatabase,
+			Database:       *n.dbDesc,
+			DropAPDatabase: dropAPDatabase,
+		}
+		jobID, err := params.p.createTSSchemaChangeJob(params.ctx, syncDetail, tree.AsStringWithFQNames(n.n, params.Ann()), params.p.txn)
+		if err != nil {
+			return errors.Wrap(err, "createSyncMetaCacheJob failed")
+		}
+		// Actively commit a transaction, and read/write system table operations
+		// need to be performed before this.
+		if err := params.p.txn.Commit(params.ctx); err != nil {
+			return err
+		}
+		// After the transaction commits successfully, execute the Job and wait for it to complete.
+		if err = params.ExecCfg().JobRegistry.Run(
+			params.ctx,
+			params.extendedEvalCtx.InternalExecutor.(*InternalExecutor),
+			[]int64{jobID},
+		); err != nil {
+			return errors.Wrap(err, "createSyncMetaCacheJob run failed")
 		}
 	}
 	// Log Drop Database event. This is an auditable log event and is recorded

@@ -64,13 +64,14 @@ struct BenchParams {
   int64_t time_start = 0;
   // data ts add mode. 0: ordered. 1: using current max ts.
   int ts_add_mode = 1;
-  // timestamp increment, default to 10 ms
-  int time_inc = 10;
+  // timestamp increment, default to 1 ms
+  int time_inc = 1;
   // the proportion of unordered data written
   int dis_int = 0;
   int dis_ext = 0;
   std::vector<int> tag_types;
   std::string engine_params;
+  std::string engine_version = "2";
 };
 }
 
@@ -200,6 +201,7 @@ struct ParseUtil {
         {"retentions_time",  required_argument, NULL, 'v'},  // retentions time for table, in seconds
         {"compress_time",  required_argument, NULL, 'w'},  // compress time for table, in seconds
         {"engine_params",  required_argument, NULL, 'x'},  // sotrage engine parameters.
+        {"engine_version",  required_argument, NULL, 'y'},  // sotrage engine version.
         {0, 0, 0, 0}  // to prevent inputting null values
     };
 
@@ -302,7 +304,10 @@ struct ParseUtil {
           break;
         case 'x': {
           params->engine_params = std::string(argv[optind - 1]);
-
+          break;
+        }
+        case 'y': {
+          params->engine_version = std::string(argv[optind - 1]);
           break;
         }
 

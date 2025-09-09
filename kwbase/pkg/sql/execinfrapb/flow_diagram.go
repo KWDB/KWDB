@@ -122,6 +122,16 @@ func (*APCreateTableProSpec) summary() (string, []string) {
 }
 
 // summary implements the diagramCellType interface.
+func (*APDropDatabaseProSpec) summary() (string, []string) {
+	return "APDropDatabase", []string{}
+}
+
+// summary implements the diagramCellType interface.
+func (*APDropTableProSpec) summary() (string, []string) {
+	return "APDropTable", []string{}
+}
+
+// summary implements the diagramCellType interface.
 func (*TsProSpec) summary() (string, []string) {
 	return "TsProSpec", []string{}
 }
@@ -1343,31 +1353,36 @@ func PrintBlockFilter(filter TSBlockFilter) string {
 	//buf.WriteString(": ")
 	if *filter.FilterType == TSBlockFilter_T_NOTNULL {
 		buf.WriteString("NOT NULL ")
+		if len(filter.ColumnSpan) > 0 {
+			buf.WriteString("; ")
+		}
 	} else if *filter.FilterType == TSBlockFilter_T_NULL {
 		buf.WriteString("NULL ")
-	} else {
-		for i, span := range filter.ColumnSpan {
-			if i > 0 {
-				buf.WriteString("; ")
-			}
-			if span.StartBoundary == nil || (span.StartBoundary != nil && *span.StartBoundary == TSBlockFilter_Span_IncludeBoundary) {
-				buf.WriteString("[")
-			} else {
-				buf.WriteString("(")
-			}
-			if span.Start != nil {
-				buf.WriteString(*span.Start)
-			}
-			buf.WriteString(" - ")
-			if span.End != nil {
-				buf.WriteString(*span.End)
-			}
-			if span.EndBoundary == nil || (span.EndBoundary != nil && *span.EndBoundary == TSBlockFilter_Span_IncludeBoundary) {
-				buf.WriteString("]")
-			} else {
-				buf.WriteString(")")
-			}
+		if len(filter.ColumnSpan) > 0 {
+			buf.WriteString("; ")
+		}
+	}
 
+	for i, span := range filter.ColumnSpan {
+		if i > 0 {
+			buf.WriteString("; ")
+		}
+		if span.StartBoundary == nil || (span.StartBoundary != nil && *span.StartBoundary == TSBlockFilter_Span_IncludeBoundary) {
+			buf.WriteString("[")
+		} else {
+			buf.WriteString("(")
+		}
+		if span.Start != nil {
+			buf.WriteString(*span.Start)
+		}
+		buf.WriteString(" - ")
+		if span.End != nil {
+			buf.WriteString(*span.End)
+		}
+		if span.EndBoundary == nil || (span.EndBoundary != nil && *span.EndBoundary == TSBlockFilter_Span_IncludeBoundary) {
+			buf.WriteString("]")
+		} else {
+			buf.WriteString(")")
 		}
 	}
 	return buf.String()

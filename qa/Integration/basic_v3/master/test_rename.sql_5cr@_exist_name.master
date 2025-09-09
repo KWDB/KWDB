@@ -1,0 +1,17 @@
+> DROP DATABASE IF EXISTS test CASCADE;
+DROP DATABASE
+> CREATE TS DATABASE test ;
+CREATE TS DATABASE
+> CREATE TABLE test.tb1 (k_timestamp timestamptz not null, e1 int2 , e2 int4 , e3 double) tags (code1 bool not null, code2 int2 not null, code3 double) primary tags (code1, code2);
+CREATE TABLE
+> ALTER TABLE test.tb1 RENAME TAG code1 to code2;
+ERROR: can not rename primary tag name: code1
+SQLSTATE: 42809
+> ALTER TABLE test.tb1 RENAME TAG code3 to e1;
+ERROR: column/tag name "e1" already exists
+> ALTER TABLE test.tb1 RENAME COLUMN e1 to e2;
+ERROR: column/tag name "e2" already exists
+> ALTER TABLE test.tb1 RENAME COLUMN e1 to code1;
+ERROR: column/tag name "code1" already exists
+> drop database test;
+DROP DATABASE

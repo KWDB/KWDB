@@ -44,6 +44,9 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/opt"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/opt/exec"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/opt/memo"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/opt/norm"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/opt/props/physical"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/opt/xform"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/parser"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgcode"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgerror"
@@ -104,9 +107,11 @@ func (b *Builder) buildMutationInput(
 }
 
 func (b *Builder) buildInsert(ins *memo.InsertExpr) (execPlan, error) {
+
 	if ep, ok, err := b.tryBuildFastPathInsert(ins); err != nil || ok {
 		return ep, err
 	}
+
 	// Construct list of columns that only contains columns that need to be
 	// inserted (e.g. delete-only mutation columns don't need to be inserted).
 	colList := make(opt.ColList, 0, len(ins.InsertCols)+len(ins.CheckCols))
@@ -124,6 +129,20 @@ func (b *Builder) buildInsert(ins *memo.InsertExpr) (execPlan, error) {
 	returnOrds := ordinalSetFromColList(ins.ReturnCols)
 	// If we planned FK checks, disable the execution code for FK checks.
 	disableExecFKs := !ins.FKFallback
+
+	// assign trigger execution related info to triggerCommands
+	var triggerCommands exec.TriggerExecute
+	if b.hasTriggers(ins.Table, tree.TriggerEventInsert) {
+		Command, ok := ins.TriggerCommands.(*memo.ArrayCommand)
+		if !ok {
+			return execPlan{}, errors.New("arrayCommand error")
+		}
+		triggerCommands = &exec.TriggerCommand{}
+		triggerCommands.SetCommands(*Command)
+		triggerCommands.SetFn(b.replaceMemoBeforePlanning)
+		triggerCommands.SetScalarFn(b.buildProcedureScalarExpr)
+	}
+
 	node, err := b.factory.ConstructInsert(
 		input.root,
 		tab,
@@ -132,6 +151,7 @@ func (b *Builder) buildInsert(ins *memo.InsertExpr) (execPlan, error) {
 		checkOrds,
 		b.allowAutoCommit && len(ins.Checks) == 0,
 		disableExecFKs,
+		triggerCommands,
 	)
 	if err != nil {
 		return execPlan{}, err
@@ -305,7 +325,7 @@ func BuildInputForTSInsert(
 	}
 
 	// For insert in distributed cluster mode, the line format payload needs to be constructed.
-	if evalCtx.StartDistributeMode {
+	if evalCtx.StartDistributeMode || evalCtx.Kwengineversion == "2" {
 		payloadNodeMap, err := BuildRowBytesForTsInsert(evalCtx, InputRows, inputDatums, dataCols, colIndexs, pArgs, dbID, tabID, hashNum)
 		if isStream && err == nil {
 			cdcData, maxTime := cdcCoordinator.CaptureData(evalCtx, uint64(tabID), columns, inputDatums, colIndexs)
@@ -875,7 +895,32 @@ func (ts *TsPayload) FillColData(
 		case types.T_nchar:
 			copy(ts.payload[offset:], *v)
 
-		case oid.T_varchar, types.T_nvarchar:
+		case oid.T_varchar:
+			if IsPrimaryTagCol {
+				copy(ts.payload[offset:], *v)
+			} else {
+				//copy len
+				dataOffset := 0
+				if IsTagCol {
+					dataOffset = independentOffset - ts.header.otherTagBitmapOffset
+				} else {
+					dataOffset = independentOffset - columnBitmapOffset
+				}
+				binary.LittleEndian.PutUint32(ts.payload[offset:], uint32(dataOffset))
+				addSize := len(*v) + VarDataLenSize + 1 // \0
+				if independentOffset+addSize > len(ts.payload) {
+					// grow payload size
+					newPayload := make([]byte, len(ts.payload)+addSize)
+					copy(newPayload, ts.payload)
+					ts.payload = newPayload
+				}
+				// next var column offset
+				binary.LittleEndian.PutUint16(ts.payload[independentOffset:], uint16(len(*v)+1)) // \0
+				copy(ts.payload[independentOffset+VarDataLenSize:], *v)
+				independentOffset += addSize
+			}
+
+		case types.T_nvarchar:
 			if IsPrimaryTagCol {
 				copy(ts.payload[offset:], *v)
 			} else {
@@ -1118,44 +1163,74 @@ func (ts *TsPayload) BuildRowBytesForTsImport(
 		// Make primaryTag key.
 		hashPoints := sqlbase.DecodeHashPointFromPayload(payload)
 		primaryTagKey := sqlbase.MakeTsPrimaryTagKey(sqlbase.ID(tableID), hashPoints)
-		groupRowBytes := make([][]byte, len(priTagRowIdx))
-		groupRowTime := make([]int64, len(priTagRowIdx))
-		// TsRowPutRequest need min and max timestamp.
-		minTimestamp := int64(math.MaxInt64)
-		maxTimeStamp := int64(math.MinInt64)
-		valueSize := int32(0)
-		for i, idx := range priTagRowIdx {
-			groupRowBytes[i] = rowBytes[idx]
-			groupRowTime[i] = rowTimestamps[idx]
-			if rowTimestamps[idx] > maxTimeStamp {
-				maxTimeStamp = rowTimestamps[idx]
+		if !evalCtx.StartSinglenode {
+			groupRowBytes := make([][]byte, len(priTagRowIdx))
+			groupRowTime := make([]int64, len(priTagRowIdx))
+			// TsRowPutRequest need min and max timestamp.
+			minTimestamp := int64(math.MaxInt64)
+			maxTimeStamp := int64(math.MinInt64)
+			valueSize := int32(0)
+			for i, idx := range priTagRowIdx {
+				groupRowBytes[i] = rowBytes[idx]
+				groupRowTime[i] = rowTimestamps[idx]
+				if rowTimestamps[idx] > maxTimeStamp {
+					maxTimeStamp = rowTimestamps[idx]
+				}
+				if rowTimestamps[idx] < minTimestamp {
+					minTimestamp = rowTimestamps[idx]
+				}
+				valueSize += int32(len(groupRowBytes[i]))
 			}
-			if rowTimestamps[idx] < minTimestamp {
-				minTimestamp = rowTimestamps[idx]
+			var startKey roachpb.Key
+			var endKey roachpb.Key
+			if pArgs.RowType == OnlyTag {
+				startKey = sqlbase.MakeTsHashPointKey(sqlbase.ID(tableID), uint64(hashPoints[0]), hashNum)
+				endKey = sqlbase.MakeTsRangeKey(sqlbase.ID(tableID), uint64(hashPoints[0]), math.MaxInt64, hashNum)
+			} else {
+				startKey = sqlbase.MakeTsRangeKey(sqlbase.ID(tableID), uint64(hashPoints[0]), minTimestamp, hashNum)
+				endKey = sqlbase.MakeTsRangeKey(sqlbase.ID(tableID), uint64(hashPoints[0]), maxTimeStamp+1, hashNum)
 			}
-			valueSize += int32(len(groupRowBytes[i]))
-		}
-		var startKey roachpb.Key
-		var endKey roachpb.Key
-		if pArgs.RowType == OnlyTag {
-			startKey = sqlbase.MakeTsHashPointKey(sqlbase.ID(tableID), uint64(hashPoints[0]), hashNum)
-			endKey = sqlbase.MakeTsRangeKey(sqlbase.ID(tableID), uint64(hashPoints[0]), math.MaxInt64, hashNum)
+			allPayloads[count] = &sqlbase.SinglePayloadInfo{
+				Payload:       payload,
+				RowNum:        uint32(len(priTagRowIdx)),
+				PrimaryTagKey: primaryTagKey,
+				RowBytes:      groupRowBytes,
+				RowTimestamps: groupRowTime,
+				StartKey:      startKey,
+				EndKey:        endKey,
+				ValueSize:     valueSize,
+				HashNum:       hashNum,
+			}
+			count++
 		} else {
-			startKey = sqlbase.MakeTsRangeKey(sqlbase.ID(tableID), uint64(hashPoints[0]), minTimestamp, hashNum)
-			endKey = sqlbase.MakeTsRangeKey(sqlbase.ID(tableID), uint64(hashPoints[0]), maxTimeStamp+1, hashNum)
+			valueSize := int32(0)
+			rowNum := uint32(0)
+			for _, idx := range priTagRowIdx {
+				valueSize += int32(len(rowBytes[idx]))
+				rowNum++
+			}
+
+			payloadSize := int32(len(payload)) + valueSize + 4
+			payloadBytes := make([]byte, payloadSize)
+			copy(payloadBytes, payload)
+			offset := len(payload)
+			binary.LittleEndian.PutUint32(payloadBytes[offset:], uint32(valueSize))
+			offset += 4
+			for _, idx := range priTagRowIdx {
+				copy(payloadBytes[offset:], rowBytes[idx])
+				offset += len(rowBytes[idx])
+			}
+
+			binary.LittleEndian.PutUint32(payloadBytes[38:], uint32(rowNum))
+
+			allPayloads[count] = &sqlbase.SinglePayloadInfo{
+				Payload:       payloadBytes,
+				RowNum:        uint32(len(priTagRowIdx)),
+				PrimaryTagKey: primaryTagKey,
+				HashNum:       hashNum,
+			}
+			count++
 		}
-		allPayloads[count] = &sqlbase.SinglePayloadInfo{
-			Payload:       payload,
-			RowNum:        uint32(len(priTagRowIdx)),
-			PrimaryTagKey: primaryTagKey,
-			RowBytes:      groupRowBytes,
-			RowTimestamps: groupRowTime,
-			StartKey:      startKey,
-			EndKey:        endKey,
-			ValueSize:     valueSize,
-			HashNum:       hashNum,
-		}
-		count++
 	}
 	for id, err := range rowIDMapError {
 		if err != nil {
@@ -1510,46 +1585,76 @@ func BuildRowBytesForTsInsert(
 		// Make primaryTag key.
 		hashPoints := sqlbase.DecodeHashPointFromPayload(payload)
 		primaryTagKey := sqlbase.MakeTsPrimaryTagKey(sqlbase.ID(tableID), hashPoints)
-		groupRowBytes := make([][]byte, len(priTagRowIdx))
-		groupRowTime := make([]int64, len(priTagRowIdx))
-		// TsRowPutRequest need min and max timestamp.
-		minTimestamp := int64(math.MaxInt64)
-		maxTimeStamp := int64(math.MinInt64)
-		valueSize := int32(0)
-		for i, idx := range priTagRowIdx {
-			groupRowBytes[i] = rowBytes[idx]
-			groupRowTime[i] = rowTimestamps[idx]
-			if rowTimestamps[idx] > maxTimeStamp {
-				maxTimeStamp = rowTimestamps[idx]
+		if evalCtx.StartDistributeMode {
+			groupRowBytes := make([][]byte, len(priTagRowIdx))
+			groupRowTime := make([]int64, len(priTagRowIdx))
+			// TsRowPutRequest need min and max timestamp.
+			minTimestamp := int64(math.MaxInt64)
+			maxTimeStamp := int64(math.MinInt64)
+			valueSize := int32(0)
+			for i, idx := range priTagRowIdx {
+				groupRowBytes[i] = rowBytes[idx]
+				groupRowTime[i] = rowTimestamps[idx]
+				if rowTimestamps[idx] > maxTimeStamp {
+					maxTimeStamp = rowTimestamps[idx]
+				}
+				if rowTimestamps[idx] < minTimestamp {
+					minTimestamp = rowTimestamps[idx]
+				}
+				valueSize += int32(len(groupRowBytes[i]))
+				//fmt.Printf("-------rowBytes------\n")
+				//fmt.Printf("row[%d]:%v\n", i, groupRowBytes[i])
 			}
-			if rowTimestamps[idx] < minTimestamp {
-				minTimestamp = rowTimestamps[idx]
+			var startKey roachpb.Key
+			var endKey roachpb.Key
+			if pArgs.RowType == OnlyTag {
+				startKey = sqlbase.MakeTsHashPointKey(sqlbase.ID(tableID), uint64(hashPoints[0]), hashNum)
+				endKey = sqlbase.MakeTsRangeKey(sqlbase.ID(tableID), uint64(hashPoints[0]), math.MaxInt64, hashNum)
+			} else {
+				startKey = sqlbase.MakeTsRangeKey(sqlbase.ID(tableID), uint64(hashPoints[0]), minTimestamp, hashNum)
+				endKey = sqlbase.MakeTsRangeKey(sqlbase.ID(tableID), uint64(hashPoints[0]), maxTimeStamp+1, hashNum)
 			}
-			valueSize += int32(len(groupRowBytes[i]))
-			//fmt.Printf("-------rowBytes------\n")
-			//fmt.Printf("row[%d]:%v\n", i, groupRowBytes[i])
-		}
-		var startKey roachpb.Key
-		var endKey roachpb.Key
-		if pArgs.RowType == OnlyTag {
-			startKey = sqlbase.MakeTsHashPointKey(sqlbase.ID(tableID), uint64(hashPoints[0]), hashNum)
-			endKey = sqlbase.MakeTsRangeKey(sqlbase.ID(tableID), uint64(hashPoints[0]), math.MaxInt64, hashNum)
+			allPayloads[count] = &sqlbase.SinglePayloadInfo{
+				Payload:       payload,
+				RowNum:        uint32(len(priTagRowIdx)),
+				PrimaryTagKey: primaryTagKey,
+				RowBytes:      groupRowBytes,
+				RowTimestamps: groupRowTime,
+				StartKey:      startKey,
+				EndKey:        endKey,
+				ValueSize:     valueSize,
+				HashNum:       hashNum,
+			}
+			count++
 		} else {
-			startKey = sqlbase.MakeTsRangeKey(sqlbase.ID(tableID), uint64(hashPoints[0]), minTimestamp, hashNum)
-			endKey = sqlbase.MakeTsRangeKey(sqlbase.ID(tableID), uint64(hashPoints[0]), maxTimeStamp+1, hashNum)
+			valueSize := int32(0)
+			rowNum := uint32(0)
+			for _, idx := range priTagRowIdx {
+				valueSize += int32(len(rowBytes[idx]))
+				rowNum++
+			}
+
+			payloadSize := int32(len(payload)) + valueSize + 4
+			payloadBytes := make([]byte, payloadSize)
+			copy(payloadBytes, payload)
+			offset := len(payload)
+			binary.LittleEndian.PutUint32(payloadBytes[offset:], uint32(valueSize))
+			offset += 4
+			for _, idx := range priTagRowIdx {
+				copy(payloadBytes[offset:], rowBytes[idx])
+				offset += len(rowBytes[idx])
+			}
+
+			binary.LittleEndian.PutUint32(payloadBytes[38:], uint32(rowNum))
+
+			allPayloads[count] = &sqlbase.SinglePayloadInfo{
+				Payload:       payloadBytes,
+				RowNum:        uint32(len(priTagRowIdx)),
+				PrimaryTagKey: primaryTagKey,
+				HashNum:       hashNum,
+			}
+			count++
 		}
-		allPayloads[count] = &sqlbase.SinglePayloadInfo{
-			Payload:       payload,
-			RowNum:        uint32(len(priTagRowIdx)),
-			PrimaryTagKey: primaryTagKey,
-			RowBytes:      groupRowBytes,
-			RowTimestamps: groupRowTime,
-			StartKey:      startKey,
-			EndKey:        endKey,
-			ValueSize:     valueSize,
-			HashNum:       hashNum,
-		}
-		count++
 	}
 	payloadNodeMap := make(map[int]*sqlbase.PayloadForDistTSInsert)
 	payloadNodeMap[int(evalCtx.NodeID)] = &sqlbase.PayloadForDistTSInsert{
@@ -1631,29 +1736,17 @@ func BuildPreparePayloadForTsInsert(
 	binary.LittleEndian.PutUint32(payload[offset:], uint32(rowNum))
 	offset += RowNumSize
 
-	if evalCtx.StartSinglenode {
-		if pArgs.DataColNum == 0 {
-			// without data column
-			payload[offset] = byte(2)
-		} else if pArgs.AllTagNum == 0 {
-			// only data column
-			payload[offset] = byte(1)
-		} else {
-			// both tag And data
-			payload[offset] = byte(0)
-		}
-	} else {
-		switch pArgs.RowType {
-		case BothTagAndData:
-			payload[offset] = RowType[BothTagAndData]
-		case OnlyData:
-			payload[offset] = RowType[OnlyData]
-		case OnlyTag:
-			payload[offset] = RowType[OnlyTag]
-		default:
-			payload[offset] = RowType[BothTagAndData]
-		}
+	switch pArgs.RowType {
+	case BothTagAndData:
+		payload[offset] = RowType[BothTagAndData]
+	case OnlyData:
+		payload[offset] = RowType[OnlyData]
+	case OnlyTag:
+		payload[offset] = RowType[OnlyTag]
+	default:
+		payload[offset] = RowType[BothTagAndData]
 	}
+
 	offset++
 
 	// primaryTag len
@@ -2044,12 +2137,7 @@ func ComputeColumnSize(cols []*sqlbase.ColumnDescriptor) (int, int, error) {
 		case oid.T_int4, oid.T_float4:
 			colSize += 4
 		case oid.T_int8, oid.T_float8, oid.T_timestamp, oid.T_timestamptz:
-			if !col.IsTagCol() && i == 0 {
-				// The first timestamp column in the data column needs to reserve 16 bytes for LSN
-				colSize += sqlbase.FirstTsDataColSize
-			} else {
-				colSize += 8
-			}
+			colSize += 8
 		case oid.T_bool:
 			colSize++
 		case oid.T_char, types.T_nchar, oid.T_text, oid.T_bpchar, oid.T_bytea, types.T_geometry:
@@ -2393,6 +2481,10 @@ func (b *Builder) tryBuildFastPathInsert(ins *memo.InsertExpr) (_ execPlan, ok b
 		return execPlan{}, false, nil
 	}
 
+	if len(b.mem.Metadata().Table(ins.Table).GetTriggers(tree.TriggerEventInsert)) > 0 {
+		return execPlan{}, false, nil
+	}
+
 	// Conditions from ConstructFastPathInsert:
 	//
 	//  - there are no other mutations in the statement, and the output of the
@@ -2582,6 +2674,19 @@ func (b *Builder) buildUpdate(upd *memo.UpdateExpr) (execPlan, error) {
 		}
 	}
 
+	// assign trigger execution related info to triggerCommands
+	var triggerCommands exec.TriggerExecute
+	if b.hasTriggers(upd.Table, tree.TriggerEventUpdate) {
+		Command, ok := upd.TriggerCommands.(*memo.ArrayCommand)
+		if !ok {
+			return execPlan{}, errors.New("arrayCommand error")
+		}
+		triggerCommands = &exec.TriggerCommand{}
+		triggerCommands.SetCommands(*Command)
+		triggerCommands.SetFn(b.replaceMemoBeforePlanning)
+		triggerCommands.SetScalarFn(b.buildProcedureScalarExpr)
+	}
+
 	disableExecFKs := !upd.FKFallback
 	node, err := b.factory.ConstructUpdate(
 		input.root,
@@ -2593,6 +2698,7 @@ func (b *Builder) buildUpdate(upd *memo.UpdateExpr) (execPlan, error) {
 		passthroughCols,
 		b.allowAutoCommit && len(upd.Checks) == 0,
 		disableExecFKs,
+		triggerCommands,
 	)
 	if err != nil {
 		return execPlan{}, err
@@ -2706,6 +2812,19 @@ func (b *Builder) buildDelete(del *memo.DeleteExpr) (execPlan, error) {
 		return execPlan{}, err
 	}
 
+	// assign trigger execution related info to triggerCommands
+	var triggerCommands exec.TriggerExecute
+	if b.hasTriggers(del.Table, tree.TriggerEventDelete) {
+		Command, ok := del.TriggerCommands.(*memo.ArrayCommand)
+		if !ok {
+			return execPlan{}, errors.New("arrayCommand error")
+		}
+		triggerCommands = &exec.TriggerCommand{}
+		triggerCommands.SetCommands(*Command)
+		triggerCommands.SetFn(b.replaceMemoBeforePlanning)
+		triggerCommands.SetScalarFn(b.buildProcedureScalarExpr)
+	}
+
 	// Construct the Delete node.
 	md := b.mem.Metadata()
 	tab := md.Table(del.Table)
@@ -2719,6 +2838,7 @@ func (b *Builder) buildDelete(del *memo.DeleteExpr) (execPlan, error) {
 		returnColOrds,
 		b.allowAutoCommit && len(del.Checks) == 0,
 		disableExecFKs,
+		triggerCommands,
 	)
 	if err != nil {
 		return execPlan{}, err
@@ -2993,6 +3113,10 @@ func (b *Builder) canUseDeleteRange(del *memo.DeleteExpr) bool {
 	if tab.InboundForeignKeyCount() > 0 {
 		// If the table is referenced by other tables' foreign keys, no fast path
 		// is possible, because the integrity of those references must be checked.
+		return false
+	}
+
+	if len(b.mem.Metadata().Table(del.Table).GetTriggers(tree.TriggerEventDelete)) > 0 {
 		return false
 	}
 
@@ -3391,4 +3515,90 @@ func (b *Builder) shouldApplyImplicitLockingToUpsertInput(ups *memo.UpsertExpr) 
 // expression trees and apply a row-level locking mode.
 func (b *Builder) shouldApplyImplicitLockingToDeleteInput(del *memo.DeleteExpr) bool {
 	return false
+}
+
+// replaceMemoBeforePlanning needs to be passed to the execution phase of the procedure/trigger, which is
+// used to replace the variables in the memo expression with constants, perform optimization
+// and finally generate the exec plan.
+//
+//		e.g. create procedure ... {
+//		    Declare var1 int;
+//		    set var1 = 10;
+//		    select * from t where a=var1;
+//	 }
+//
+// In this case, this helper function need to replace var1 with corresponding scalar value, and then do
+// optimization in the same way.
+func (b *Builder) replaceMemoBeforePlanning(
+	expr memo.RelExpr, pr *physical.Required, src []*exec.LocalVariable,
+) (exec.Plan, error) {
+
+	var o xform.Optimizer
+	o.Init(b.evalCtx, b.catalog)
+	o.Memo().SetWhiteList(b.mem.GetWhiteList())
+	f := o.Factory()
+
+	// Copy the right expression into a new memo, replacing each bound column
+	// with the corresponding value from the left row.
+	var replaceFn norm.ReplaceFunc
+	replaceFn = func(e opt.Expr) opt.Expr {
+		switch t := e.(type) {
+		case *memo.VariableExpr:
+			meta := b.mem.Metadata().ColumnMeta(t.Col)
+			if meta.IsDeclaredInsideProcedure {
+
+				return f.ConstructConstVal(src[meta.RealIdx].Data, &src[meta.RealIdx].Typ)
+			}
+		case *memo.TSInsertExpr:
+			for i := range t.InputRows {
+				t.ActualRows[i] = make([]tree.Expr, len(t.InputRows[i]))
+				for j := range t.InputRows[i] {
+					if v, ok := t.InputRows[i][j].(*tree.IndexedVar); ok && v.IsDeclare {
+						t.RunInsideProcedure = true
+						// replace indexVal to Datum
+						t.ActualRows[i][j] = src[v.Idx].Data
+					} else {
+						t.ActualRows[i][j] = t.InputRows[i][j]
+					}
+				}
+			}
+		case *memo.TSDeleteExpr:
+			for i := range t.InputRows {
+				t.ActualRows[i] = make([]tree.Expr, len(t.InputRows[i]))
+				for j := range t.InputRows[i] {
+					if v, ok := t.InputRows[i][j].(*tree.IndexedVar); ok && v.IsDeclare {
+						t.RunInsideProcedure = true
+						// replace indexVal to Datum
+						t.ActualRows[i][j] = src[v.Idx].Data
+					} else {
+						t.ActualRows[i][j] = t.InputRows[i][j]
+					}
+				}
+			}
+		}
+
+		return f.CopyAndReplaceDefault(e, replaceFn)
+	}
+	f.CopyAndReplace(expr, pr, replaceFn)
+
+	newRightSide, err := o.Optimize()
+	if err != nil {
+		return nil, err
+	}
+
+	eb := New(b.factory, f.Memo(), b.catalog, newRightSide, b.evalCtx)
+	eb.disableTelemetry = true
+	plan, err := eb.Build(false)
+	if err != nil {
+		if errors.IsAssertionFailure(err) {
+			// Enhance the error with the EXPLAIN (OPT, VERBOSE) of the inner
+			// expression.
+			fmtFlags := memo.ExprFmtHideQualifications | memo.ExprFmtHideScalars | memo.ExprFmtHideTypes
+			explainOpt := o.FormatExpr(newRightSide, fmtFlags)
+			err = errors.WithDetailf(err, "newStmt:\n%s", explainOpt)
+		}
+		return nil, err
+	}
+
+	return plan, nil
 }

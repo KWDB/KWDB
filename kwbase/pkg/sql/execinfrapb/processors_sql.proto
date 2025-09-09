@@ -183,8 +183,11 @@ enum OperatorType {
   TsDropTagIndex = 24;
   TsAlterTagIndex = 25;
   TsCount = 26;
-  APCreateDatabase = 27;
-  APCreateTable = 28;
+  TsAlterRetentions = 27;
+  APCreateDatabase = 28;
+  APCreateTable = 29;
+  APDropDatabase = 30;
+  APDropTable = 31;
 }
 
 // TsInsertSelSpec build payLoads for TsInsert
@@ -273,6 +276,16 @@ message APCreateTableProSpec {
   optional string createStatement = 2 [(gogoproto.nullable) = false];
 }
 
+message APDropDatabaseProSpec {
+  optional string currentDB = 1[(gogoproto.nullable) = false];
+  optional string dropDB = 2 [(gogoproto.nullable) = false];
+  optional bool rm = 3 [(gogoproto.nullable) = false];
+}
+
+message APDropTableProSpec {
+  optional string dropStatement = 1[(gogoproto.nullable) = false];
+}
+
 message TsProSpec {
   optional OperatorType TsOperator = 1 [(gogoproto.nullable) = false];
   repeated sqlbase.DeleteMeMsg DropMEInfo = 2 [(gogoproto.nullable) = false];
@@ -291,6 +304,7 @@ message TsAlterProSpec {
   optional bytes vacuumInterval = 10;
   optional uint32 tagIndexID = 11 [(gogoproto.nullable) = false];
   repeated uint32 tagIndexColumns = 12;
+  optional uint64 retentions = 13 [(gogoproto.nullable) = false];
 }
 
 // IndexSkipTableReaderSpec is the specification for a table reader that

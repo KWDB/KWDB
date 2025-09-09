@@ -1,0 +1,395 @@
+> CREATE ts DATABASE d_lifetime RETENTIONS 100000000000000 YEAR;
+ERROR: retention 100000000000000year is out of range
+SQLSTATE: 22023
+> CREATE ts DATABASE d_lifetime RETENTIONS 1001Y;
+ERROR: retention 1001y is out of range
+SQLSTATE: 22023
+> CREATE ts DATABASE d_lifetime RETENTIONS 13000MONTH;
+ERROR: retention 13000month is out of range
+SQLSTATE: 22023
+> CREATE ts DATABASE d_lifetime RETENTIONS 13000MON;
+ERROR: retention 13000mon is out of range
+SQLSTATE: 22023
+> CREATE ts DATABASE d_lifetime RETENTIONS 100000000000000W;
+ERROR: retention 100000000000000w is out of range
+SQLSTATE: 22023
+> CREATE ts DATABASE d_lifetime RETENTIONS 100000000000000WEEK;
+ERROR: retention 100000000000000week is out of range
+SQLSTATE: 22023
+> CREATE ts DATABASE d_lifetime RETENTIONS 100000000000000DAY;
+ERROR: retention 100000000000000day is out of range
+SQLSTATE: 22023
+> CREATE ts DATABASE d_lifetime RETENTIONS 100000000000000D;
+ERROR: retention 100000000000000d is out of range
+SQLSTATE: 22023
+> CREATE ts DATABASE d_lifetime RETENTIONS 100000000000000H;
+ERROR: retention 100000000000000h is out of range
+SQLSTATE: 22023
+> CREATE ts DATABASE d_lifetime RETENTIONS 100000000000000HOUR;
+ERROR: retention 100000000000000hour is out of range
+SQLSTATE: 22023
+> CREATE ts DATABASE d_lifetime RETENTIONS 100000000000000M;
+ERROR: retention 100000000000000m is out of range
+SQLSTATE: 22023
+> CREATE ts DATABASE d_lifetime RETENTIONS 100000000000000MINUTE;
+ERROR: retention 100000000000000minute is out of range
+SQLSTATE: 22023
+> CREATE ts DATABASE d_lifetime RETENTIONS 100000000000000S;
+ERROR: retention 100000000000000s is out of range
+SQLSTATE: 22023
+> CREATE ts DATABASE d_lifetime RETENTIONS 100000000000000SECOND;
+ERROR: retention 100000000000000second is out of range
+SQLSTATE: 22023
+> create ts database tsdb Retentions 10d;
+CREATE TS DATABASE
+> create table tsdb.t(ts timestamp not null, a int) tags(ptag int not null) primary tags(ptag); --t: 10d
+CREATE TABLE
+> create table tsdb.t1(ts timestamp not null, a int) tags(ptag int not null) primary tags(ptag) Retentions 15d;  --t1: 15d
+CREATE TABLE
+> SELECT RETENTIONS from tsdb.information_schema.schemata where schema_name='public' order by RETENTIONS;
+  retentions
+--------------
+      864000
+(1 row)
+> SHOW RETENTIONS ON TABLE tsdb.t;
+  name | retentions | sample
+-------+------------+---------
+  t    | NULL       | NULL
+(1 row)
+> SHOW RETENTIONS ON TABLE tsdb.t1;
+  name | retentions | sample
+-------+------------+---------
+  t1   | 15d        | NULL
+(1 row)
+> SELECT LIFETIME from kwdb_internal.kwdb_retention where table_name = 't';
+  lifetime
+------------
+    864000
+(1 row)
+> SELECT LIFETIME from kwdb_internal.kwdb_retention where table_name = 't1';
+  lifetime
+------------
+   1296000
+(1 row)
+> alter ts database tsdb set Retentions = 15d; -- tsdb, t1: 15d, t:10d
+ALTER TS DATABASE
+> SELECT RETENTIONS from tsdb.information_schema.schemata where schema_name='public' order by RETENTIONS;
+  retentions
+--------------
+     1296000
+(1 row)
+> SHOW RETENTIONS ON TABLE tsdb.t;
+  name | retentions | sample
+-------+------------+---------
+  t    | NULL       | NULL
+(1 row)
+> SHOW RETENTIONS ON TABLE tsdb.t1;
+  name | retentions | sample
+-------+------------+---------
+  t1   | 15d        | NULL
+(1 row)
+> SELECT LIFETIME from kwdb_internal.kwdb_retention where table_name = 't';
+  lifetime
+------------
+    864000
+(1 row)
+> SELECT LIFETIME from kwdb_internal.kwdb_retention where table_name = 't1';
+  lifetime
+------------
+   1296000
+(1 row)
+> alter ts database tsdb set Retentions = 20d;  -- tsdb：20d，t:10 t1:15d
+ALTER TS DATABASE
+> SELECT RETENTIONS from tsdb.information_schema.schemata where schema_name='public' order by RETENTIONS;
+  retentions
+--------------
+     1728000
+(1 row)
+> SHOW RETENTIONS ON TABLE tsdb.t;
+  name | retentions | sample
+-------+------------+---------
+  t    | NULL       | NULL
+(1 row)
+> SHOW RETENTIONS ON TABLE tsdb.t1;
+  name | retentions | sample
+-------+------------+---------
+  t1   | 15d        | NULL
+(1 row)
+> SELECT LIFETIME from kwdb_internal.kwdb_retention where table_name = 't';
+  lifetime
+------------
+    864000
+(1 row)
+> SELECT LIFETIME from kwdb_internal.kwdb_retention where table_name = 't1';
+  lifetime
+------------
+   1296000
+(1 row)
+> alter table tsdb.t1 set Retentions = 25d;  -- t1: 25d
+ALTER TABLE
+> create table tsdb.t2(ts timestamp not null, a int) tags(ptag int not null) primary tags(ptag); --t2: 20d
+CREATE TABLE
+> SHOW RETENTIONS ON TABLE tsdb.t1;
+  name | retentions | sample
+-------+------------+---------
+  t1   | 25d        | NULL
+(1 row)
+> SHOW RETENTIONS ON TABLE tsdb.t2;
+  name | retentions | sample
+-------+------------+---------
+  t2   | NULL       | NULL
+(1 row)
+> SELECT LIFETIME from kwdb_internal.kwdb_retention where table_name = 't1';
+  lifetime
+------------
+   2160000
+(1 row)
+> SELECT LIFETIME from kwdb_internal.kwdb_retention where table_name = 't2';
+  lifetime
+------------
+   1728000
+(1 row)
+> DROP database tsdb;
+DROP DATABASE
+> create ts database test1;
+CREATE TS DATABASE
+> CREATE TABLE test1.t1(k_timestamp TIMESTAMP not null, a int, b int, c int, d int) TAGS (tag1 int not null) PRIMARY TAGS (tag1) retentions 1m;
+CREATE TABLE
+> insert into test1.t1 values('2024-01-24 10:33:36',101, 2, 3, 5, 1);
+INSERT 1
+> insert into test1.t1 values('2024-01-24 10:33:37',101, 2, 3, 5, 1);
+INSERT 1
+> insert into test1.t1 values('2024-01-24 10:33:38',101, 2, 3, 5, 1);
+INSERT 1
+> insert into test1.t1 values('2024-01-24 10:33:39',101, 2, 3, 5, 1);
+INSERT 1
+> insert into test1.t1 values('2024-01-24 10:33:40',101, 2, 3, 5, 1);
+INSERT 1
+> insert into test1.t1 values('1900-01-01 01:01:01',101, 2, 3, 5, 1);
+INSERT 1
+> insert into test1.t1 values('1930-01-01 01:01:01',101, 2, 3, 5, 1);
+INSERT 1
+> insert into test1.t1 values('1900-05-01 01:01:01',101, 2, 3, 5, 1);
+INSERT 1
+> select count(*) from test1.t1;
+  count
+---------
+      0
+(1 row)
+> create ts database tsdb;
+CREATE TS DATABASE
+> create table tsdb.t(ts timestamp not null, a int) tags(ptag int not null) primary tags(ptag); --t: 0
+CREATE TABLE
+> SELECT LIFETIME from kwdb_internal.kwdb_retention where table_name = 't';
+  lifetime
+------------
+         0
+(1 row)
+> show create table tsdb.t;
+   table_name   |              create_statement
+----------------+----------------------------------------------
+  tsdb.public.t | CREATE TABLE t (
+                |     ts TIMESTAMPTZ(3) NOT NULL,
+                |     a INT4 NULL
+                | ) TAGS (
+                |     ptag INT4 NOT NULL ) PRIMARY TAGS(ptag)
+                |     retentions 0s
+                |     activetime 1d
+                |     partition interval 10d
+(1 row)
+> create table tsdb.t1(ts timestamp not null, a int) tags(ptag int not null) primary tags(ptag) activetime 100d;
+CREATE TABLE
+> create table tsdb.t2(ts timestamp not null, a int) tags(ptag int not null) primary tags(ptag) activetime 1000Y;
+CREATE TABLE
+> create table tsdb.t3(ts timestamp not null, a int) tags(ptag int not null) primary tags(ptag) activetime 1001YEAR;
+ERROR: active time 1001year is invalid
+SQLSTATE: 22023
+> create table tsdb.t3(ts timestamp not null, a int) tags(ptag int not null) primary tags(ptag) activetime 1000month;
+CREATE TABLE
+> show create table tsdb.t1;
+    table_name   |              create_statement
+-----------------+----------------------------------------------
+  tsdb.public.t1 | CREATE TABLE t1 (
+                 |     ts TIMESTAMPTZ(3) NOT NULL,
+                 |     a INT4 NULL
+                 | ) TAGS (
+                 |     ptag INT4 NOT NULL ) PRIMARY TAGS(ptag)
+                 |     retentions 0s
+                 |     activetime 100d
+                 |     partition interval 10d
+(1 row)
+> show create table tsdb.t2;
+    table_name   |              create_statement
+-----------------+----------------------------------------------
+  tsdb.public.t2 | CREATE TABLE t2 (
+                 |     ts TIMESTAMPTZ(3) NOT NULL,
+                 |     a INT4 NULL
+                 | ) TAGS (
+                 |     ptag INT4 NOT NULL ) PRIMARY TAGS(ptag)
+                 |     retentions 0s
+                 |     activetime 1000y
+                 |     partition interval 10d
+(1 row)
+> show create table tsdb.t3;
+    table_name   |              create_statement
+-----------------+----------------------------------------------
+  tsdb.public.t3 | CREATE TABLE t3 (
+                 |     ts TIMESTAMPTZ(3) NOT NULL,
+                 |     a INT4 NULL
+                 | ) TAGS (
+                 |     ptag INT4 NOT NULL ) PRIMARY TAGS(ptag)
+                 |     retentions 0s
+                 |     activetime 1000month
+                 |     partition interval 10d
+(1 row)
+> alter table tsdb.t1 set activetime = 100000s;
+ALTER TABLE
+> alter table tsdb.t2 set activetime = 100000000000000WEEK;
+ERROR: active time 100000000000000 week is invalid
+SQLSTATE: 22023
+> alter table tsdb.t3 set activetime = 10hour;
+ALTER TABLE
+> show create table tsdb.t1;
+    table_name   |              create_statement
+-----------------+----------------------------------------------
+  tsdb.public.t1 | CREATE TABLE t1 (
+                 |     ts TIMESTAMPTZ(3) NOT NULL,
+                 |     a INT4 NULL
+                 | ) TAGS (
+                 |     ptag INT4 NOT NULL ) PRIMARY TAGS(ptag)
+                 |     retentions 0s
+                 |     activetime 100000s
+                 |     partition interval 10d
+(1 row)
+> show create table tsdb.t2;
+    table_name   |              create_statement
+-----------------+----------------------------------------------
+  tsdb.public.t2 | CREATE TABLE t2 (
+                 |     ts TIMESTAMPTZ(3) NOT NULL,
+                 |     a INT4 NULL
+                 | ) TAGS (
+                 |     ptag INT4 NOT NULL ) PRIMARY TAGS(ptag)
+                 |     retentions 0s
+                 |     activetime 1000y
+                 |     partition interval 10d
+(1 row)
+> show create table tsdb.t3;
+    table_name   |              create_statement
+-----------------+----------------------------------------------
+  tsdb.public.t3 | CREATE TABLE t3 (
+                 |     ts TIMESTAMPTZ(3) NOT NULL,
+                 |     a INT4 NULL
+                 | ) TAGS (
+                 |     ptag INT4 NOT NULL ) PRIMARY TAGS(ptag)
+                 |     retentions 0s
+                 |     activetime 10hour
+                 |     partition interval 10d
+(1 row)
+> drop database tsdb;
+DROP DATABASE
+> CREATE TS DATABASE ts_db8 retentions 10year;
+CREATE TS DATABASE
+> use ts_db8;
+SET
+> create TABLE tb(k_timestamp timestamptz not null,e1 timestamp ,e2 smallint ,e3 int ,e4 bigint ,e5 float ,e6 float ,e7 char(5) ,e8 bool ,e9 varbytes(10)) ATTRIBUTES (code1 int not null) primary tags(code1);
+CREATE TABLE
+> INSERT into tb VALUES( '2024-01-28 00:01:45.137+00:00', 1111111111000,1000,1000000,100000000000000000,100000000000000000.101,100000000000000000.10101010101,'testb',true,'1010100011',1);
+INSERT 1
+> INSERT into tb VALUES( '2024-01-28 00:02:45.137+00:00', 2222222222000,2000,2000000,200000000000000000,200000000000000000.101,100000000000000000.10101010101,'testb',true,'1010100011',1);
+INSERT 1
+> INSERT into tb VALUES( '2024-01-28 00:03:45.137+00:00', 3333333333000,3000,3000000,300000000000000000,300000000000000000.101,100000000000000000.10101010101,'testb',true,'1010100011',1);
+INSERT 1
+> INSERT into tb VALUES( '2024-01-28 00:04:45.137+00:00', 4444444444000,4000,4000000,400000000000000000,400000000000000000.101,100000000000000000.10101010101,'testb',true,'1010100011',1);
+INSERT 1
+> INSERT into tb VALUES( '2024-01-28 00:05:45.137+00:00', 5555555555000,5000,5000000,500000000000000000,500000000000000000.101,100000000000000000.10101010101,'testb',true,'1010100011',1);
+INSERT 1
+> INSERT into tb VALUES( '2024-01-28 00:06:45.137+00:00', 6666666666000,1000,1000000,100000000000000000,100000000000000000.101,100000000000000000.10101010101,'testb',true,'1010100011',1);
+INSERT 1
+> INSERT into tb VALUES( '2024-01-28 00:07:45.137+00:00', 7777777777000,2000,2000000,200000000000000000,200000000000000000.101,100000000000000000.10101010101,'testb',true,'1010100011',1);
+INSERT 1
+> INSERT into tb VALUES( '2024-01-28 00:08:45.137+00:00', 3333333333000,3000,3000000,300000000000000000,300000000000000000.101,100000000000000000.10101010101,'testb',true,'1010100011',1);
+INSERT 1
+> INSERT into tb VALUES( '2024-01-28 00:09:45.137+00:00', 4444444444000,4000,4000000,400000000000000000,400000000000000000.101,100000000000000000.10101010101,'testb',true,'1010100011',1);
+INSERT 1
+> INSERT into tb VALUES( '2024-01-28 00:10:45.137+00:00', 5555555555000,5000,5000000,500000000000000000,500000000000000000.101,100000000000000000.10101010101,'testb',true,'1010100011',1);
+INSERT 1
+> INSERT into tb VALUES( '0000-01-01 00:00:00.000+00:00', 3333333333000,3000,3000000,300000000000000000,300000000000000000.101,100000000000000000.10101010101,'testb',true,'1010100011',1);
+INSERT 1
+> INSERT into tb VALUES( '0010-01-01 00:09:45.137+00:00', 4444444444000,4000,4000000,400000000000000000,400000000000000000.101,100000000000000000.10101010101,'testb',true,'1010100011',1);
+INSERT 1
+> INSERT into tb VALUES( '0020-01-28 00:10:45.137+00:00', 5555555555000,5000,5000000,500000000000000000,500000000000000000.101,100000000000000000.10101010101,'testb',true,'1010100011',1);
+INSERT 1
+> select count(*) from tb;
+  count
+---------
+     10
+(1 row)
+> CREATE TS DATABASE test_lifetime;
+CREATE TS DATABASE
+> create table test_lifetime.tb(
+k_timestamp timestamptz not null,
+e1 int2 not null,
+e2 int,
+e3 int8 not null,
+e4 float4,
+e5 float8 not null,
+e6 bool,
+e7 timestamptz not null,
+e8 char(1023),
+e9 nchar(255) not null,
+e10 nchar(200),
+e11 char not null,
+e12 nchar(200),
+e13 nchar not null,
+e14 nchar(200),
+e15 nchar(200) not null,
+e16 varbytes(200),
+e17 nchar(200) not null,
+e18 nchar(200),e19 varbytes not null,
+e20 varbytes(1023),
+e21 varbytes(200) not null,
+e22 varbytes(200)
+) ATTRIBUTES (code1 int2 not null,code2 int,code3 int8,flag BOOL not null,val1 float4,val2 float8,location nchar(200),color nchar(200) not null,name varbytes,state varbytes(1023),tall varbytes(200),screen varbytes(200),age CHAR,sex CHAR(1023),year NCHAR,type NCHAR(254)) primary tags(code1,flag,color) RETENTIONS 10YEAR;
+CREATE TABLE
+> INSERT INTO test_lifetime.tb VALUES('2000-01-02 01:01:00+00:00',0,0,0,0,0,true,'2020-1-1 12:00:00.000','test时间精度通用查询测试！！！@TEST1','test时间精度通用查询测试！！！@TEST1','test时间精度通用查询测试！！！@TEST1','t','test时间精度通用查询测试！！！@TEST1','中','test时间精度通用查询测试！！！@TEST1','test时间精度通用查询测试！！！@TEST1','test时间精度通用查询测试！TEST1xaa','test时间精度通用查询测试！！！@TEST1','test时间精度通用查询测试！！！@TEST1',b'\xaa','test时间精度通用查询测试','test时间精度通用查询测试','test时间精度通用查询测试',100,200,300,false,100.0,200.0,'beijing','red',b'\x26','fuluolidazhou','160','big','2','社会性别女','1','cuteandlovely');
+INSERT 1
+> INSERT INTO test_lifetime.tb VALUES('2000-01-02 01:02:00+00:00',20002,1000002,20000000002,1047200.0000,-109810.0,true,'2020-1-1 12:00:00.000','test时间精度通用查询测试！！！@TEST1','test时间精度通用查询测试！！！@TEST1','test时间精度通用查询测试！！！@TEST1','t','test时间精度通用查询测试！！！@TEST1','中','test时间精度通用查询测试！！！@TEST1','test时间精度通用查询测试！！！@TEST1','test时间精度通用查询测试！TEST1xaa','test时间精度通用查询测试！！！@TEST1','test时间精度通用查询测试！！！@TEST1',b'\xaa','test时间精度通用查询测试','test时间精度通用查询测试','test时间精度通用查询测试',200,200,300,false,100.0,200.0,'beijing','red',b'\x26','fuluolidazhou','160','big','2','社会性别女','1','cuteandlovely');
+INSERT 1
+> INSERT INTO test_lifetime.tb values('2024-02-02 01:02:00+00:00',5,null,1000,null,100.0,null,'2020-1-7 12:00:00.000',null,'test时间精度通用查询测试,！！！@TEST1',null,'t',null,'中',null,'test时间精度通用查询测试,！！！@TEST1',null,'test时间精度通用查询测试,！！！@TEST1',null,b'\xaa',null,'test时间精度通用查询测试',null, 1, 2, 3, false, 1.1, 1.2,'a', 'red', 'T','China', 'a', 'b', '1', '女', '1', 'pria');
+INSERT 1
+> INSERT INTO test_lifetime.tb VALUES('2024-02-02 01:01:00+00:00',-10001,-3000003,-40000000004,-39845.87,-200.123456,true,'2020-1-1 12:00:00.000','','','','','','','','','','','','','','','',400,400,100,false,400.0,300.0,'','','','','','','','','','');
+INSERT 1
+> INSERT INTO test_lifetime.tb values('1024-02-02 01:02:00+00:00',5,null,1000,null,100.0,null,'2020-1-7 12:00:00.000',null,'test时间精度通用查询测试,！！！@TEST1',null,'t',null,'中',null,'test时间精度通用查询测试,！！！@TEST1',null,'test时间精度通用查询测试,！！！@TEST1',null,b'\xaa',null,'test时间精度通用查询测试',null, 1, 2, 3, false, 1.1, 1.2,'a', 'red', 'T','China', 'a', 'b', '1', '女', '1', 'pria');
+INSERT 1
+> INSERT INTO test_lifetime.tb VALUES('1124-02-02 01:01:00+00:00',-10001,-3000003,-40000000004,-39845.87,-200.123456,true,'2020-1-1 12:00:00.000','','','','','','','','','','','','','','','',400,400,100,false,400.0,300.0,'','','','','','','','','','');
+INSERT 1
+> SELECT k_timestamp FROM test_lifetime.tb order by k_timestamp;
+         k_timestamp
+-----------------------------
+  2024-02-02 01:01:00+00:00
+  2024-02-02 01:02:00+00:00
+(2 rows)
+> ALTER TABLE test_lifetime.tb SET RETENTIONS=1week;
+ALTER TABLE
+> select count(*) from test1.t1;
+  count
+---------
+      0
+(1 row)
+> drop database test1;
+DROP DATABASE
+> select count(*) from tb;
+  count
+---------
+     10
+(1 row)
+> drop DATABASE ts_db8;
+DROP DATABASE
+> SELECT k_timestamp FROM test_lifetime.tb order by k_timestamp;
+  k_timestamp
+---------------
+(0 rows)
+> DROP TABLE test_lifetime.tb;
+DROP TABLE
+> DROP DATABASE test_lifetime CASCADE;
+DROP DATABASE

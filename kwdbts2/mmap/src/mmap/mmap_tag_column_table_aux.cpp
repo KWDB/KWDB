@@ -160,8 +160,8 @@ TagTuplePack* MMapTagColumnTable::GenTagPack(TagTableRowID row) {
   
           m_cols_[col]->varRdLock();
           char* var_data_ptr = m_cols_[col]->getVarValueAddrByOffset(var_start_offset);
-          valLen = *reinterpret_cast<uint16_t*>(var_data_ptr) - MMapStringColumn::kEndCharacterLen;
-          valPtr = var_data_ptr + MMapStringColumn::kStringLenLen;
+          valLen = *reinterpret_cast<uint16_t*>(var_data_ptr) - kEndCharacterLen;
+          valPtr = var_data_ptr + kStringLenLen;
           if (packer->fillData(valPtr, valLen) < 0) {
             LOG_ERROR("TagTuplePack fillData failed.");
             delete packer;

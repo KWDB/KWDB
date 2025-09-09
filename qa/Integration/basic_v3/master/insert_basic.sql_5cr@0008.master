@@ -1,0 +1,107 @@
+> drop database if exists test_insert2 cascade;
+DROP DATABASE
+> create ts database test_insert2;
+CREATE TS DATABASE
+> create table test_insert2.t1(ts timestamptz not null,e1 timestamp,e2 int2)tags (tag1 int not null)primary tags(tag1);
+CREATE TABLE
+> insert into test_insert2.t1 values('2022-02-02 11:11:11+00','2024-02-02 11:11:11+00', 1, 111);
+INSERT 1
+> insert into test_insert2.t1 values('2022-02-02 11:11:12+00','2024-02-02 11:11:11+00', 2, 111);
+INSERT 1
+> insert into test_insert2.t1 values('2022-02-02 11:11:13+00','2024-02-02 11:11:11+00', 3, 111);
+INSERT 1
+> select * from test_insert2.t1 order by ts;
+             ts             |            e1             | e2 | tag1
+----------------------------+---------------------------+----+-------
+  2022-02-02 11:11:11+00:00 | 2024-02-02 11:11:11+00:00 |  1 |  111
+  2022-02-02 11:11:12+00:00 | 2024-02-02 11:11:11+00:00 |  2 |  111
+  2022-02-02 11:11:13+00:00 | 2024-02-02 11:11:11+00:00 |  3 |  111
+(3 rows)
+> set time zone 8;
+SET
+> delete from test_insert2.t1 where ts = '2022-02-02 11:11:11+00';
+DELETE 1
+> select * from test_insert2.t1 order by ts;
+             ts             |            e1             | e2 | tag1
+----------------------------+---------------------------+----+-------
+  2022-02-02 19:11:12+08:00 | 2024-02-02 11:11:11+00:00 |  2 |  111
+  2022-02-02 19:11:13+08:00 | 2024-02-02 11:11:11+00:00 |  3 |  111
+(2 rows)
+> insert into test_insert2.t1 values('2022-02-02 11:11:14+00','2024-02-02 12:11:11+00', 4, 222);
+INSERT 1
+> insert into test_insert2.t1 values('2022-02-02 19:11:15','2024-02-02 12:11:11+00', 5, 222);
+INSERT 1
+> insert into test_insert2.t1 values('2022-02-02 19:11:16','2024-02-02 12:11:11+00', 6, 222);
+INSERT 1
+> select * from test_insert2.t1 order by ts;
+             ts             |            e1             | e2 | tag1
+----------------------------+---------------------------+----+-------
+  2022-02-02 19:11:12+08:00 | 2024-02-02 11:11:11+00:00 |  2 |  111
+  2022-02-02 19:11:13+08:00 | 2024-02-02 11:11:11+00:00 |  3 |  111
+  2022-02-02 19:11:14+08:00 | 2024-02-02 12:11:11+00:00 |  4 |  222
+  2022-02-02 19:11:15+08:00 | 2024-02-02 12:11:11+00:00 |  5 |  222
+  2022-02-02 19:11:16+08:00 | 2024-02-02 12:11:11+00:00 |  6 |  222
+(5 rows)
+> set time zone 1;
+SET
+> select * from test_insert2.t1 order by ts;
+             ts             |            e1             | e2 | tag1
+----------------------------+---------------------------+----+-------
+  2022-02-02 12:11:12+01:00 | 2024-02-02 11:11:11+00:00 |  2 |  111
+  2022-02-02 12:11:13+01:00 | 2024-02-02 11:11:11+00:00 |  3 |  111
+  2022-02-02 12:11:14+01:00 | 2024-02-02 12:11:11+00:00 |  4 |  222
+  2022-02-02 12:11:15+01:00 | 2024-02-02 12:11:11+00:00 |  5 |  222
+  2022-02-02 12:11:16+01:00 | 2024-02-02 12:11:11+00:00 |  6 |  222
+(5 rows)
+> delete from test_insert2.t1 where ts = '2022-02-02 11:11:14+00';
+DELETE 1
+> delete from test_insert2.t1 where ts = '2022-02-02 12:11:12';
+DELETE 1
+> delete from test_insert2.t1 where ts = '2022-02-02 12:11:15';
+DELETE 1
+> select * from test_insert2.t1 order by ts;
+             ts             |            e1             | e2 | tag1
+----------------------------+---------------------------+----+-------
+  2022-02-02 12:11:13+01:00 | 2024-02-02 11:11:11+00:00 |  3 |  111
+  2022-02-02 12:11:16+01:00 | 2024-02-02 12:11:11+00:00 |  6 |  222
+(2 rows)
+> delete from test_insert2.t1 where ts < '2022-02-02 12:11:14';
+DELETE 1
+> delete from test_insert2.t1 where ts > '2022-02-02 11:11:15+00';
+DELETE 1
+> select * from test_insert2.t1 order by ts;
+  ts | e1 | e2 | tag1
+-----+----+----+-------
+(0 rows)
+> drop table test_insert2.t1;
+DROP TABLE
+> drop database if exists test_insert2 cascade;
+DROP DATABASE
+> drop database if exists test_insert2 cascade;
+DROP DATABASE
+> create ts database test_insert2;
+CREATE TS DATABASE
+> CREATE TABLE test_insert2.t1(
+ k_timestamp TIMESTAMPTZ NOT NULL,
+ id INT NOT NULL)
+ATTRIBUTES (
+ code1 INT2 NOT NULL,
+ code8 VARCHAR(128) NOT NULL,
+ code14 CHAR(1023) NOT NULL,
+ code16 NCHAR(254) NOT NULL)
+PRIMARY TAGS(code1,code14,code8,code16);
+CREATE TABLE
+> insert into test_insert2.t1 (k_timestamp,id,code1,code8,code14,code16) values
+ (0,1,1,'aa','bb','cc'),
+ (1000,1,1,'a','abb','cc'),
+ (2000,1,1,'a','a','bbcc');
+INSERT 3
+> select k_timestamp,id,code1,code8,code14,code16 from test_insert2.t1 order by k_timestamp;
+         k_timestamp        | id | code1 | code8 | code14 | code16
+----------------------------+----+-------+-------+--------+---------
+  1970-01-01 01:00:00+01:00 |  1 |     1 | aa    | bb     | cc
+  1970-01-01 01:00:01+01:00 |  1 |     1 | a     | abb    | cc
+  1970-01-01 01:00:02+01:00 |  1 |     1 | a     | a      | bbcc
+(3 rows)
+> drop database if exists test_insert2 cascade;
+DROP DATABASE

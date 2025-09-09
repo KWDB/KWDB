@@ -74,6 +74,7 @@ struct ColumnInfo {
 
 class IChunk {
  public:
+  virtual ~IChunk() = default;
   /**
    * @brief Check whether it is null at (row, col)
    * @param[in] row
