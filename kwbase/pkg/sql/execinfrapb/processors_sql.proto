@@ -283,7 +283,8 @@ message APDropDatabaseProSpec {
 }
 
 message APDropTableProSpec {
-  optional string dropStatement = 1[(gogoproto.nullable) = false];
+  optional string dropStatement = 1 [(gogoproto.nullable) = false];
+  optional string dbName = 2 [(gogoproto.nullable) = false];
 }
 
 message TsProSpec {

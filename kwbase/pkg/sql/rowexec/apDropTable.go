@@ -25,6 +25,7 @@ import (
 type apDropTable struct {
 	execinfra.ProcessorBase
 
+	dbName        string
 	dropStatement string
 
 	notFirst         bool
@@ -44,7 +45,7 @@ func newDropAPTable(
 	post *execinfrapb.PostProcessSpec,
 	output execinfra.RowReceiver,
 ) (*apDropTable, error) {
-	tct := &apDropTable{dropStatement: apt.DropStatement}
+	tct := &apDropTable{dropStatement: apt.DropStatement, dbName: apt.DbName}
 	if err := tct.Init(
 		tct,
 		post,
@@ -75,7 +76,7 @@ func (tct *apDropTable) Start(ctx context.Context) context.Context {
 	ctx = tct.StartInternal(ctx, apDropTableProcName)
 
 	log.Infof(ctx, "%s, nodeID:%d ", tct.dropStatement, tct.FlowCtx.Cfg.NodeID.Get())
-	if err := tct.FlowCtx.Cfg.GetAPEngine().ExecSqlInDB("tpch", tct.dropStatement); err != nil {
+	if err := tct.FlowCtx.Cfg.GetAPEngine().ExecSqlInDB(tct.dbName, tct.dropStatement); err != nil {
 		tct.dropTableSuccess = false
 		tct.err = err
 		return ctx

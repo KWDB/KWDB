@@ -719,9 +719,6 @@ func (n *createTableNode) startExec(params runParams) error {
 		}
 	}
 	if desc.IsColumnBasedTable() {
-		if schemaID == keys.PublicSchemaID {
-			n.n.Table.SchemaName = tree.PublicSchemaName
-		}
 		n.n.Table.ExplicitSchema = true
 		n.n.Table.ExplicitCatalog = true
 		createStmt := n.n.String()

@@ -179,16 +179,18 @@ func (n *dropTableNode) startExec(params runParams) error {
 			return err
 		}
 		if droppedDesc.IsColumnBasedTable() {
-			if droppedDesc.GetParentSchemaID() == keys.PublicSchemaID {
-				n.n.Names[0].SchemaName = tree.PublicSchemaName
-			}
 			n.n.Names[0].ExplicitSchema = true
 			n.n.Names[0].ExplicitCatalog = true
 			dropStmt := n.n.String()
+			db, err := getDatabaseDescByID(ctx, params.p.Txn(), droppedDesc.GetParentID())
+			if err != nil {
+				return err
+			}
 			// Create a Job to perform the second stage of ts DDL.
 			syncDetail := jobspb.SyncMetaCacheDetails{
 				Type:        dropKwdbAPTable,
 				SNTable:     droppedDesc.TableDescriptor,
+				Database:    *db,
 				APStatement: dropStmt,
 			}
 			jobID, err := params.p.createTSSchemaChangeJob(params.ctx, syncDetail, tree.AsStringWithFQNames(n.n, params.Ann()), params.p.txn)
