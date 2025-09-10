@@ -258,6 +258,9 @@ func (c *CustomFuncs) GenerateConstrainedScans(
 	var iter scanIndexIter
 	md := c.e.mem.Metadata()
 	tabMeta := md.TableMeta(scanPrivate.Table)
+	if tabMeta.Table.GetTableType() == tree.ColumnBasedTable {
+		return
+	}
 	iter.init(c.e.mem, scanPrivate)
 	for iter.next() {
 		// We only consider the partition values when a particular index can otherwise

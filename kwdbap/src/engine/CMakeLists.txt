@@ -7,9 +7,9 @@ add_library_unity(
         ap_table_scan.cpp
         ap_filters.cpp
         ap_aggregate.cpp
+        ap_projection.cpp
         ap_processors.cpp
-        plan_transform.cpp
-        )
+        plan_transform.cpp)
 set(ALL_OBJECT_FILES
         ${ALL_OBJECT_FILES} $<TARGET_OBJECTS:duckdb_engine>
         PARENT_SCOPE)
