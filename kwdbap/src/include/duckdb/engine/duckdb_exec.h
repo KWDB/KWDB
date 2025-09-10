@@ -23,6 +23,7 @@
 #include "duckdb/main/client_context.hpp"
 #include "duckdb/main/connection.hpp"
 #include "duckdb/main/prepared_statement_data.hpp"
+#include "duckdb/engine/ap_processors.h"
 
 using namespace duckdb;
 using duckdb::DatabaseWrapper;
@@ -78,8 +79,6 @@ class APEngineImpl : public APEngine {
   std::string db_path_;
 };
 
-struct EmptyStruct {};
-
 class KWThdContext;
 
 // 执行结果结构
@@ -121,29 +120,10 @@ class DuckdbExec {
 
   KStatus AttachDBs();
 
-  KStatus DetachDB(vector <std::string> dbs);
-
-  duckdb::vector<unique_ptr < duckdb::Expression>>
-  BuildAPExpr(
-  const std::string &str, TableCatalogEntry
-  &table,
-  std::map<idx_t, idx_t> &col_map
-  );
-
-  unique_ptr <PhysicalPlan> VerifyProjectionByTableScan(unique_ptr <PhysicalPlan> plan,
-                                                        std::map<idx_t, idx_t> &col_map);
-
-  unique_ptr <PhysicalPlan> CreateAPTableScan(const int *i);
-  unique_ptr <PhysicalPlan> CreateAPAggregator(int *i);
-
-  unique_ptr <PhysicalPlan> AddAPFilters(unique_ptr <PhysicalPlan> plan,
-                                         const PostProcessSpec &post,
-                                         TableCatalogEntry &table, std::map<idx_t, idx_t> &col_map);
+  KStatus DetachDB(vector<std::string> dbs);
 
  private:
-  void ReInit(const std::string &db_name);
-
-  FlowSpec *fspecs_;
+  
   std::string db_path_;
   DatabaseInstance *instance_;
   Connection *connect_;
@@ -151,9 +131,8 @@ class DuckdbExec {
   std::mutex context_lock_;
 
   // physical plan
-  StatementProperties *properties_;
   vector <std::string> *res_names_;
-  PhysicalPlanGenerator *physical_planner_;
+  unique_ptr<kwdbap::Processors> processors_;
 
   // result
   bool setup_ = false;

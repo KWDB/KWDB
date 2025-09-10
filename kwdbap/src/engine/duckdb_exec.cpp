@@ -10,7 +10,7 @@
 // Mulan PSL v2 for more details.
 
 #include "duckdb/engine/duckdb_exec.h"
-
+#include "libkwdbap.h"
 #include "cm_func.h"
 #include "duckdb/catalog/catalog.hpp"
 #include "duckdb/catalog/catalog_entry/scalar_function_catalog_entry.hpp"
@@ -53,10 +53,10 @@ uint64_t AppenderColumnCount(APAppender out_appender) {
 }
 
 namespace kwdbts {
-KStatus AttachDB(DatabaseManager& manager, ClientContext& context,
-                 std::string name, std::string path) {
+KStatus AttachDB(ClientContext& context, std::string name, std::string path) {
   KStatus ret = KStatus::SUCCESS;
   try {
+    DatabaseManager& manager = DatabaseManager::Get(context);
     auto existing_db = manager.GetDatabase(context, name);
     if (existing_db) {
       //      auto &cfg = existing_db->GetDatabase().GetConfig();
@@ -136,8 +136,7 @@ KStatus APEngineImpl::DatabaseOperate(const char* name, EnDBOperateType type) {
   switch (type) {
     case DB_CREATE:
     case DB_ATTACH: {
-      ret = AttachDB(instance_->GetDatabaseManager(), *conn_->context.get(),
-                     name, db_path_);
+      ret = conn_->context->AttachDB(name, db_path_) ? KStatus::SUCCESS:KStatus::FAIL;
       break;
     }
     case DB_DETACH: {
@@ -298,40 +297,18 @@ unique_ptr<PhysicalTableScan> CreateTableScanOperator(
 
 DuckdbExec::DuckdbExec(std::string db_path) {
   db_path_ = std::move(db_path);
-  fspecs_ = new FlowSpec();
 }
 
 DuckdbExec::~DuckdbExec() {
-  if (connect_ != nullptr) {
-    delete connect_;
-    connect_ = nullptr;
-  }
-  if (fspecs_ != nullptr) {
-    delete fspecs_;
-    fspecs_ = nullptr;
-  }
 }
 
 void DuckdbExec::Init(void* instance, void* connect) {
   instance_ = static_cast<DatabaseInstance*>(instance);
   connect_ = static_cast<Connection*>(connect);
+  processors_ = make_uniq<kwdbap::Processors>(*connect_->context.get(), db_path_);
 }
 
-void DuckdbExec::ReInit(const string& db_name) {
-  if (db_name.empty()) {
-    return;
-  }
-
-  if (connect_ != nullptr) {
-    delete connect_;
-    connect_ = nullptr;
-  }
-  DuckDB db1(db_path_ + "/" + db_name);
-  connect_ = new Connection(db1);
-}
-
-KStatus DuckdbExec::ExecQuery(kwdbContext_p ctx, APQueryInfo* req,
-                              APRespInfo* resp) {
+KStatus DuckdbExec::ExecQuery(kwdbContext_p ctx, APQueryInfo* req, APRespInfo* resp) {
   EnterFunc();
   KWAssertNotNull(req);
   KStatus ret = KStatus::FAIL;
@@ -344,14 +321,7 @@ KStatus DuckdbExec::ExecQuery(kwdbContext_p ctx, APQueryInfo* req,
   k_int32 uniqueID = req->unique_id;
 
   try {
-    if (!req->handle && type != EnMqType::MQ_TYPE_DML_INIT &&
-        type != EnMqType::MQ_TYPE_DML_SETUP) {
-      Return(ret);
-    }
-
-    if (type == EnMqType::MQ_TYPE_DML_INIT &&
-        !checkDuckdbParam(req->db, req->connection)) {
-      resp->ret = 0;
+    if (!req->handle && type != EnMqType::MQ_TYPE_DML_SETUP) {
       Return(ret);
     }
 
@@ -385,12 +355,6 @@ KStatus DuckdbExec::ExecQuery(kwdbContext_p ctx, APQueryInfo* req,
         delete handle;
         resp->ret = 1;
         resp->tp = req->tp;
-        break;
-      case EnMqType::MQ_TYPE_DML_INIT:
-        resp->ret = 1;
-        resp->tp = req->tp;
-        resp->code = 0;
-        resp->handle = handle;
         break;
       case EnMqType::MQ_TYPE_DML_NEXT: {
         ret = handle->Next(ctx, id, TsNextRetState::DML_NEXT, resp);
@@ -433,44 +397,24 @@ KStatus DuckdbExec::Setup(kwdbContext_p ctx, k_char* message, k_uint32 len,
   resp->len = 0;
   resp->unique_id = uniqueID;
   resp->handle = static_cast<char*>(static_cast<void*>(this));
-  do {
-    bool proto_parse = false;
+  if (nullptr != connect_ && nullptr != connect_->context.get()) {
     try {
-      proto_parse = fspecs_->ParseFromArray(message, len);
-    } catch (...) {
-      LOG_ERROR("Throw exception where parsing physical plan.");
-      proto_parse = false;
+      connect_->BeginTransaction();
+      if (KStatus::SUCCESS == processors_->Init(message, len)) {
+        res_ = PrepareExecutePlan(ctx);
+      } else {
+        connect_->Rollback();
+      }
+    } catch (const Exception& e) {
+      auto error = e.what();
+      printf("DuckdbExec::Setup catch error %s \n", error);
+      connect_->Rollback();
     }
-    if (!proto_parse) {
-      LOG_ERROR("Parse physical plan err when query setup.");
-      EEPgErrorInfo::SetPgErrorInfo(ERRCODE_INVALID_PARAMETER_VALUE,
-                                    "Invalid physical plan");
-      break;
-    }
-    //      auto gate = fspecs_->gateway();
-    //      printf("gate is %d \n", gate);
-    //      for (size_t i=0; i < fspecs_->processors_size(); i++) {
-    //        auto proc = fspecs_->processors(i);
-    //        if (proc.has_core()) {
-    //          if (proc.core().has_aptablereader()){
-    //            auto apReader = proc.core().aptablereader();
-    //            if (apReader.has_db_name() && !apReader.db_name().empty()) {
-    //              printf("db is %s, ", apReader.db_name().c_str());
-    //              //ReInit(apReader.db_name());
-    //            }
-    //            printf("table is %s \n", apReader.table_name().c_str());
-    //
-    //            res_ = ExecuteCustomPlan(ctx, apReader.table_name());
-    //          }
-    //        }
-    //      }
-    res_ = PrepareExecutePlan(ctx);
-
+    
     resp->ret = 1;
     ret = KStatus::SUCCESS;
-  } while (0);
-  if (resp->ret == 0) {
   }
+ 
   return ret;
 }
 
@@ -1101,30 +1045,30 @@ KStatus DuckdbExec::AttachDBs() {
     dbs.insert(name);
   }
 
-  connect_->BeginTransaction();
+//  connect_->BeginTransaction();
   DatabaseManager& db_manager = DatabaseManager::Get(*connect_->context);
   try {
-    for (int i = 0; i < fspecs_->processors_size(); i++) {
-      const ProcessorSpec& proc = fspecs_->processors(i);
-      if (proc.has_core() && proc.core().has_aptablereader()) {
-        auto apReader = proc.core().aptablereader();
-        auto db_name = apReader.db_name();
-        if (dbs.find(db_name) == dbs.end()) {
-          // attach database
-          auto attach_ret =
-              AttachDB(db_manager, *connect_->context, db_name, db_path_);
-          if (attach_ret == KStatus::FAIL) {
-            connect_->Rollback();
-            return attach_ret;
-          }
-
-          dbs.insert(db_name);
-        }
-      }
-    }
-    connect_->Commit();
+//    for (int i = 0; i < fspecs_->processors_size(); i++) {
+//      const ProcessorSpec& proc = fspecs_->processors(i);
+//      if (proc.has_core() && proc.core().has_aptablereader()) {
+//        auto apReader = proc.core().aptablereader();
+//        auto db_name = apReader.db_name();
+//        if (dbs.find(db_name) == dbs.end()) {
+//          // attach database
+//          auto attach_ret =
+//              AttachDB(db_manager, *connect_->context, db_name, db_path_);
+//          if (attach_ret == KStatus::FAIL) {
+//            connect_->Rollback();
+//            return attach_ret;
+//          }
+//
+//          dbs.insert(db_name);
+//        }
+//      }
+//    }
+//    connect_->Commit();
   } catch (const Exception& e) {
-    connect_->Rollback();
+//    connect_->Rollback();
     return KStatus::FAIL;
   }
   return ret;
@@ -1143,68 +1087,39 @@ KStatus DuckdbExec::DetachDB(duckdb::vector<std::string> dbs) {
 }
 
 unique_ptr<PhysicalPlan> DuckdbExec::ConvertFlowToPhysicalPlan(int* start_idx) {
-  printf("processor size: %d \n", fspecs_->processors_size());
-  unique_ptr<PhysicalPlan> physical_plan;
-  if (*start_idx >= fspecs_->processors_size()) {
-    return physical_plan;
-  }
-  const ProcessorSpec& proc = fspecs_->processors(*start_idx);
-  if (proc.has_core() && proc.core().has_aptablereader()) {
-    physical_plan = CreateAPTableScan(start_idx);
-  } else if (proc.has_core() && proc.core().has_apaggregator()) {
-    physical_plan = CreateAPAggregator(start_idx);
-  }
-  return physical_plan;
+//  printf("processor size: %d \n", fspecs_->processors_size());
+////  unique_ptr<PhysicalPlan> physical_plan;
+////  if (*start_idx >= fspecs_->processors_size()) {
+////    return physical_plan;
+////  }
+////  const ProcessorSpec& proc = fspecs_->processors(*start_idx);
+////  if (proc.has_core() && proc.core().has_aptablereader()) {
+////    physical_plan = CreateAPTableScan(start_idx);
+////  } else if (proc.has_core() && proc.core().has_apaggregator()) {
+////    physical_plan = CreateAPAggregator(start_idx);
+////  }
+////  return physical_plan;
+  return nullptr;
 }
 
 ExecutionResult DuckdbExec::PrepareExecutePlan(kwdbContext_p ctx) {
   ExecutionResult result;
-  if (!connect_ || !connect_->context) {
-    result.error_message = "database not open";
-    return result;
-  }
-
-  auto attach_ret = AttachDBs();
-  if (attach_ret == KStatus::FAIL) {
-    result.error_message = "attach database failed";
-    return result;
-  }
-  connect_->BeginTransaction();
   try {
     StatementType statement_type = StatementType::SELECT_STATEMENT;
     auto prepared = make_shared_ptr<PreparedStatementData>(statement_type);
-    PhysicalPlanGenerator physical_planner(*connect_->context);
-    StatementProperties properties;
-    properties_ = &properties;
-    duckdb::vector<string> res_names;
-    res_names_ = &res_names;
-    physical_planner_ = &physical_planner;
-    physical_planner_->InitPhysicalPlan();
-    auto init_physical_plan =
-        make_uniq<PhysicalPlan>(Allocator::Get(*connect_->context));
-    if (fspecs_->processors_size() <= 0) {
-      result.error_message = "processors is null";
-      return result;
-    }
-    auto start_idx = fspecs_->processors_size() -1;
-    auto res_plan = ConvertFlowToPhysicalPlan(&start_idx);
-    prepared->physical_plan = physical_planner_->GetPhysicalPlan();
-    prepared->physical_plan->SetRoot(res_plan->Root());
+    prepared->physical_plan = processors_->GetPlan();
     if (!prepared->physical_plan) {
       connect_->Rollback();
       result.error_message = "convert physical plan failed";
       return result;
     }
     prepared->physical_plan->Root().Verify();
-    prepared->properties = *properties_;
-    prepared->names = *res_names_;
     prepared->types = prepared->physical_plan->Root().types;
-
-    auto qurry_result = connect_->KWQuery(sql_, prepared);
-    if (qurry_result->HasError()) {
+    prepared->names.resize(prepared->types.size());
+    auto query_result = connect_->KWQuery(sql_, prepared);
+    if (query_result->HasError()) {
       connect_->Rollback();
-      // DetachDB(attach_ret);
-      result.error_message = qurry_result->GetError();
+      result.error_message = query_result->GetError();
       return result;
     } else {
       result.success = true;
@@ -1212,50 +1127,19 @@ ExecutionResult DuckdbExec::PrepareExecutePlan(kwdbContext_p ctx) {
     }
     char* encoding_buf_;
     k_uint32 encoding_len_;
-    auto ret = Encoding(ctx, qurry_result.get(), encoding_buf_, encoding_len_);
+    auto ret = Encoding(ctx, query_result.get(), encoding_buf_, encoding_len_);
     if (ret == KStatus::SUCCESS) {
       result.value = encoding_buf_;
       result.len = encoding_len_;
-      result.row_count = qurry_result->RowCount();
+      result.row_count = query_result->RowCount();
     }
   } catch (const Exception& e) {
     result.error_message = e.what();
     connect_->Rollback();
     return result;
   }
-
-  // DetachDB(attach_ret);
+  
   return result;
 }
 
-vector<unique_ptr<duckdb::Expression>> DuckdbExec::BuildAPExpr(
-    const std::string& str, TableCatalogEntry& table,
-    std::map<idx_t, idx_t>& col_map) {
-  KStatus ret = SUCCESS;
-  auto max_query_size = 0;
-  auto max_parser_depth = 0;
-  auto tokens_ptr = std::make_shared<Tokens>(
-      str.data(), str.data() + str.size(), max_query_size);
-  IParser::Pos pos(tokens_ptr, max_parser_depth);
-  APParseQuery parser(str, pos);
-  auto node_list = parser.APParseImpl();  // expr tree
-  size_t i = 0;
-  vector<unique_ptr<duckdb::Expression>> expressions;
-  while (i < node_list.size()) {
-    unique_ptr<duckdb::Expression> expr;
-    auto construct_ret =
-        parser.ConstructAPExpr(*connect_->context, table, &i, &expr, col_map);
-    if (construct_ret != SUCCESS) {
-      expressions.clear();
-      return expressions;
-    }
-    expressions.emplace_back(std::move(expr));
-  }
-  //    if (nullptr == *expr) {
-  //      EEPgErrorInfo::SetPgErrorInfo(ERRCODE_INVALID_PARAMETER_VALUE,
-  //      "Invalid expr"); LOG_ERROR("Parse expr failed, expr is: %s",
-  //      str.c_str()); ret = KStatus::FAIL;
-  //    }
-  return expressions;
-}
 }  // namespace kwdbts

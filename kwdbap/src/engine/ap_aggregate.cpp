@@ -20,40 +20,38 @@
 
 using namespace duckdb;
 
-namespace kwdbts {
+namespace kwdbap {
 
-    vector<unique_ptr<duckdb::Expression>> CopyChildren(
-    const vector<unique_ptr<duckdb::Expression>> &children) {
-        vector<unique_ptr<duckdb::Expression>> result;
-        result.reserve(children.size());
-        for (auto &child : children) {
-            result.push_back(child->Copy());  // 每个元素调用 Copy()
-        }
-        return result;
+vector<unique_ptr<duckdb::Expression>> CopyChildren(
+const vector<unique_ptr<duckdb::Expression>> &children) {
+    vector<unique_ptr<duckdb::Expression>> result;
+    result.reserve(children.size());
+    for (auto &child : children) {
+        result.push_back(child->Copy());  // 每个元素调用 Copy()
     }
+    return result;
+}
 
-unique_ptr<PhysicalPlan> DuckdbExec::CreateAPAggregator(int *i) {
-    const ProcessorSpec &proc = fspecs_->processors(*i);
-    (*i)--;
-    auto input_plan = ConvertFlowToPhysicalPlan(i);
-    if (proc.has_core() && proc.core().has_apaggregator()) {
-        auto apAggregator = proc.core().apaggregator();
-        const PostProcessSpec &post = proc.post();
+unique_ptr<PhysicalPlan> TransFormPlan::TransFormAggregator(const kwdbts::PostProcessSpec& post,
+    const kwdbts::ProcessorCoreUnion& core, std::vector<duckdb::unique_ptr<duckdb::PhysicalPlan>> &child) {
+    auto physical_plan = make_uniq<PhysicalPlan>(Allocator::Get(*context_));
+    if (core.has_aggregator()) {
+        auto apAggregator = core.aggregator();
         // if (post.output_columns_size() > 0 && post.output_columns_size() != post.output_types_size()) {
         //     return nullptr;
         // }
-        if (input_plan->Root().type != PhysicalOperatorType::TABLE_SCAN) {
-            throw InvalidInputException("operator is not a table scan");
-        }
-        auto &table_scan = input_plan->Root().Cast<PhysicalTableScan>();
+        // if (input_plan->Root().type != PhysicalOperatorType::TABLE_SCAN) {
+        //     throw InvalidInputException("operator is not a table scan");
+        // }
+        auto &table_scan = child[0]->Root().Cast<PhysicalTableScan>();
         vector<unique_ptr<duckdb::Expression>> children;
         // todo: 需要根据实际情况构建投影，比如下层返回a,b, 本层实际上要返回sum(a),sum(b),a
         for (auto idx : table_scan.projection_ids) {
             children.push_back(make_uniq<BoundReferenceExpression>(table_scan.returned_types[idx], idx));
         }
         // auto ref_copy = CopyChildren(children);
-        auto &proj = physical_planner_ -> Make<PhysicalProjection>(table_scan.returned_types, std::move(children), 0);
-        proj.children.push_back(input_plan->Root());
+        auto &proj = physical_plan->Make<PhysicalProjection>(table_scan.returned_types, std::move(children), 0);
+        proj.children.push_back(child[0]->Root());
 
         vector<unique_ptr<duckdb::Expression>> expressions;
         vector<LogicalType> agg_returned_types;
@@ -85,7 +83,7 @@ unique_ptr<PhysicalPlan> DuckdbExec::CreateAPAggregator(int *i) {
                 }
             }
             EntryLookupInfo lookup_info(CatalogType::AGGREGATE_FUNCTION_ENTRY, func_name);
-            auto entry_retry = CatalogEntryRetriever(*connect_->context);
+            auto entry_retry = CatalogEntryRetriever(*context_);
             auto func_entry = entry_retry.GetEntry("", "", lookup_info, OnEntryNotFound::RETURN_NULL);
             if (!func_entry) {
                 throw std::runtime_error("Aggregate function not found: " + func_name);
@@ -98,9 +96,9 @@ unique_ptr<PhysicalPlan> DuckdbExec::CreateAPAggregator(int *i) {
             vector<unique_ptr<duckdb::Expression>> ref;
             for (auto idx : agg.col_idx()) {
                 ref.push_back(make_uniq<BoundReferenceExpression>(table_scan.returned_types[idx], idx));
-                auto agg_func = func.functions.GetFunctionByArguments(*connect_->context, {table_scan.returned_types[idx]});
+                auto agg_func = func.functions.GetFunctionByArguments(*context_, {table_scan.returned_types[idx]});
                 if (agg_func.bind) {
-                    bind_info = agg_func.bind(*connect_->context, agg_func, ref);
+                    bind_info = agg_func.bind(*context_, agg_func, ref);
                     // we may have lost some arguments in the bind
                     ref.resize(MinValue(agg_func.arguments.size(), ref.size()));
                 }
@@ -110,10 +108,12 @@ unique_ptr<PhysicalPlan> DuckdbExec::CreateAPAggregator(int *i) {
             }
 
         }
-        auto &res = physical_planner_ -> Make<PhysicalUngroupedAggregate>(agg_returned_types, std::move(expressions), 0);
+        auto &res = physical_plan->Make<PhysicalUngroupedAggregate>(agg_returned_types, std::move(expressions), 0);
         res.children.push_back(proj);
-        input_plan->SetRoot(res);
+        unique_ptr<PhysicalPlan> ret;
+        ret->SetRoot(res);
+        return ret;
     }
-    return input_plan;
+  return nullptr;
 }
 }

@@ -291,7 +291,7 @@ PhysicalOperator &PhysicalPlanGenerator::CreatePlan(LogicalAggregate &op) {
 	return group_by;
 }
 
-PhysicalOperator &PhysicalPlanGenerator::ExtractAggregateExpressions(PhysicalOperator &child,
+PhysicalOperator &PhysicalPlanGenerator::ExtractAggregateExpressions(PhysicalOperator &child1,
                                                                      vector<unique_ptr<Expression>> &aggregates,
                                                                      vector<unique_ptr<Expression>> &groups) {
 	vector<unique_ptr<Expression>> expressions;
@@ -328,10 +328,10 @@ PhysicalOperator &PhysicalPlanGenerator::ExtractAggregateExpressions(PhysicalOpe
 		}
 	}
 	if (expressions.empty()) {
-		return child;
+		return child1;
 	}
-	auto &proj = Make<PhysicalProjection>(std::move(types), std::move(expressions), child.estimated_cardinality);
-	proj.children.push_back(child);
+	auto &proj = Make<PhysicalProjection>(std::move(types), std::move(expressions), child1.estimated_cardinality);
+	proj.children.push_back(child1);
 	return proj;
 }
 
