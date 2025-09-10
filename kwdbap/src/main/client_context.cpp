@@ -192,7 +192,7 @@ bool ClientContext::AttachDB(std::string name, std::string path) {
       //      if (cfg.options.database_path != path) {
       //
       //      }
-      return ret;
+      return true;
     }
     auto attach_info = make_uniq<AttachInfo>();
     attach_info->name = name;

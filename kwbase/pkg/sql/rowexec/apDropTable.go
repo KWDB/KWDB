@@ -75,7 +75,7 @@ func (tct *apDropTable) Start(ctx context.Context) context.Context {
 	ctx = tct.StartInternal(ctx, apDropTableProcName)
 
 	log.Infof(ctx, "%s, nodeID:%d ", tct.dropStatement, tct.FlowCtx.Cfg.NodeID.Get())
-	if err := tct.FlowCtx.Cfg.GetAPEngine().ExecSqlInDB("tpch", tct.dropStatement); err != nil {
+	if err := tct.FlowCtx.Cfg.GetAPEngine().ExecSqlInDB(tct.FlowCtx.EvalCtx.SessionData.Database, tct.dropStatement); err != nil {
 		tct.dropTableSuccess = false
 		tct.err = err
 		return ctx

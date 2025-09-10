@@ -130,8 +130,8 @@ KStatus APEngineImpl::OpenEngine(kwdbContext_p ctx, APEngine** engine,
 }
 
 KStatus APEngineImpl::DatabaseOperate(const char* name, EnDBOperateType type) {
-  //  DuckDB defaultDB(path);
   KStatus ret = KStatus::FAIL;
+  auto lock = make_uniq<ClientContextLock>(context_lock_);
   conn_->BeginTransaction();
   switch (type) {
     case DB_CREATE:
@@ -154,7 +154,10 @@ KStatus APEngineImpl::DatabaseOperate(const char* name, EnDBOperateType type) {
 
 KStatus APEngineImpl::DropDatabase(const char* current, const char* name) {
   //  DuckDB defaultDB(path);
+  auto lock = make_uniq<ClientContextLock>(context_lock_);
+  conn_->BeginTransaction();
   DetachDB(instance_->GetDatabaseManager(), *conn_->context.get(), name);
+  conn_->Commit();
   return KStatus::SUCCESS;
 }
 
@@ -162,11 +165,15 @@ KStatus APEngineImpl::Execute(kwdbContext_p ctx, APQueryInfo* req,
                               APRespInfo* resp) {
   req->db = instance_.get();
   req->connection = conn_.get();
+  auto lock = make_uniq<ClientContextLock>(context_lock_);
+  conn_->BeginTransaction();
   KStatus ret = DuckdbExec::ExecQuery(ctx, req, resp);
+  conn_->Commit();
   return ret;
 }
 
 KStatus APEngineImpl::Query(const char* stmt, APRespInfo* resp) {
+  auto lock = make_uniq<ClientContextLock>(context_lock_);
   conn_->BeginTransaction();
   try {
     auto res = conn_->Query(stmt);
@@ -399,11 +406,8 @@ KStatus DuckdbExec::Setup(kwdbContext_p ctx, k_char* message, k_uint32 len,
   resp->handle = static_cast<char*>(static_cast<void*>(this));
   if (nullptr != connect_ && nullptr != connect_->context.get()) {
     try {
-      connect_->BeginTransaction();
       if (KStatus::SUCCESS == processors_->Init(message, len)) {
         res_ = PrepareExecutePlan(ctx);
-      } else {
-        connect_->Rollback();
       }
     } catch (const Exception& e) {
       auto error = e.what();
@@ -1044,8 +1048,7 @@ KStatus DuckdbExec::AttachDBs() {
     auto name = init_db.get().GetName();
     dbs.insert(name);
   }
-
-//  connect_->BeginTransaction();
+  
   DatabaseManager& db_manager = DatabaseManager::Get(*connect_->context);
   try {
 //    for (int i = 0; i < fspecs_->processors_size(); i++) {
@@ -1066,7 +1069,6 @@ KStatus DuckdbExec::AttachDBs() {
 //        }
 //      }
 //    }
-//    connect_->Commit();
   } catch (const Exception& e) {
 //    connect_->Rollback();
     return KStatus::FAIL;
@@ -1076,13 +1078,11 @@ KStatus DuckdbExec::AttachDBs() {
 
 KStatus DuckdbExec::DetachDB(duckdb::vector<std::string> dbs) {
   KStatus ret = KStatus::SUCCESS;
-  connect_->BeginTransaction();
   for (auto& db : dbs) {
     DatabaseManager& db_manager = instance_->GetDatabaseManager();
     db_manager.DetachDatabase(*connect_->context, db,
                               duckdb::OnEntryNotFound::RETURN_NULL);
   }
-  connect_->Commit();
   return ret;
 }
 
@@ -1123,7 +1123,6 @@ ExecutionResult DuckdbExec::PrepareExecutePlan(kwdbContext_p ctx) {
       return result;
     } else {
       result.success = true;
-      connect_->Commit();
     }
     char* encoding_buf_;
     k_uint32 encoding_len_;

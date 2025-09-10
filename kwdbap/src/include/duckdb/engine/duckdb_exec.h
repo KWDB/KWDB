@@ -77,6 +77,7 @@ class APEngineImpl : public APEngine {
   std::shared_ptr<duckdb::Connection> conn_;
   duckdb::shared_ptr<duckdb::DatabaseInstance> instance_;
   std::string db_path_;
+  std::mutex context_lock_;
 };
 
 class KWThdContext;
