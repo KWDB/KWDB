@@ -32,9 +32,57 @@ const vector<unique_ptr<duckdb::Expression>> &children) {
     return result;
 }
 
+// PhysicalOperator TransFormPlan::InitAggregateExpressions(PhysicalOperator &child1,
+//                                                                      vector<unique_ptr<duckdb::Expression>> &aggregates,
+//                                                                      vector<unique_ptr<duckdb::Expression>> &groups,
+//                                                                      kwdbts::TSAggregatorSpec agg_spec) {
+//     vector<unique_ptr<duckdb::Expression>> expressions;
+//     vector<LogicalType> types;
+//
+//     // bind sorted aggregates
+//     for (auto &aggr : aggregates) {
+//         auto &bound_aggr = aggr->Cast<BoundAggregateExpression>();
+//         if (bound_aggr.order_bys) {
+//             // sorted aggregate!
+//             FunctionBinder::BindSortedAggregate(context, bound_aggr, groups);
+//         }
+//     }
+//
+//     for (auto &group : agg_spec.group_cols())
+//
+//     for (auto &group : groups) {
+//         auto ref = make_uniq<BoundReferenceExpression>(group->return_type, expressions.size());
+//         types.push_back(group->return_type);
+//         expressions.push_back(std::move(group));
+//         group = std::move(ref);
+//     }
+//     for (auto &aggr : aggregates) {
+//         auto &bound_aggr = aggr->Cast<BoundAggregateExpression>();
+//         for (auto &child : bound_aggr.children) {
+//             auto ref = make_uniq<BoundReferenceExpression>(child->return_type, expressions.size());
+//             types.push_back(child->return_type);
+//             expressions.push_back(std::move(child));
+//             child = std::move(ref);
+//         }
+//         if (bound_aggr.filter) {
+//             auto &filter = bound_aggr.filter;
+//             auto ref = make_uniq<BoundReferenceExpression>(filter->return_type, expressions.size());
+//             types.push_back(filter->return_type);
+//             expressions.push_back(std::move(filter));
+//             bound_aggr.filter = std::move(ref);
+//         }
+//     }
+//     if (expressions.empty()) {
+//         return child1;
+//     }
+//     auto &proj = Make<PhysicalProjection>(std::move(types), std::move(expressions), child1.estimated_cardinality);
+//     proj.children.push_back(child1);
+//     return proj;
+// }
+
 unique_ptr<PhysicalPlan> TransFormPlan::TransFormAggregator(const kwdbts::PostProcessSpec& post,
     const kwdbts::ProcessorCoreUnion& core, std::vector<duckdb::unique_ptr<duckdb::PhysicalPlan>> &child) {
-    auto physical_plan = make_uniq<PhysicalPlan>(Allocator::Get(*context_));
+    // auto physical_plan = make_uniq<PhysicalPlan>(Allocator::Get(*context_));
     if (core.has_aggregator()) {
         auto apAggregator = core.aggregator();
         // if (post.output_columns_size() > 0 && post.output_columns_size() != post.output_types_size()) {
@@ -50,7 +98,7 @@ unique_ptr<PhysicalPlan> TransFormPlan::TransFormAggregator(const kwdbts::PostPr
             children.push_back(make_uniq<BoundReferenceExpression>(table_scan.returned_types[idx], idx));
         }
         // auto ref_copy = CopyChildren(children);
-        auto &proj = physical_plan->Make<PhysicalProjection>(table_scan.returned_types, std::move(children), 0);
+        auto &proj = child[0]->Make<PhysicalProjection>(table_scan.returned_types, std::move(children), 0);
         proj.children.push_back(child[0]->Root());
 
         vector<unique_ptr<duckdb::Expression>> expressions;
@@ -108,11 +156,10 @@ unique_ptr<PhysicalPlan> TransFormPlan::TransFormAggregator(const kwdbts::PostPr
             }
 
         }
-        auto &res = physical_plan->Make<PhysicalUngroupedAggregate>(agg_returned_types, std::move(expressions), 0);
+        auto &res = child[0]->Make<PhysicalUngroupedAggregate>(agg_returned_types, std::move(expressions), 0);
         res.children.push_back(proj);
-        unique_ptr<PhysicalPlan> ret;
-        ret->SetRoot(res);
-        return ret;
+        child[0]->SetRoot(res);
+        return std::move(child[0]);
     }
   return nullptr;
 }

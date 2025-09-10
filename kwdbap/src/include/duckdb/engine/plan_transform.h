@@ -50,6 +50,10 @@ class TransFormPlan {
   
   PhyPlanPtr TransFormAggregator(const kwdbts::PostProcessSpec& post, const kwdbts::ProcessorCoreUnion& core,
                                  std::vector<duckdb::unique_ptr<duckdb::PhysicalPlan>> &child);
+  duckdb::PhysicalOperator InitAggregateExpressions(duckdb::PhysicalOperator &child1,
+                                                                     duckdb::vector<duckdb::unique_ptr<duckdb::Expression>> &aggregates,
+                                                                     duckdb::vector<duckdb::unique_ptr<duckdb::Expression>> &groups,
+                                                                     kwdbts::TSAggregatorSpec agg_spec);
   
 //  duckdb::unique_ptr<duckdb::PhysicalPlan> physical_planner_;
 

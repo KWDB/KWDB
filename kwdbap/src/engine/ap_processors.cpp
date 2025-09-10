@@ -133,7 +133,7 @@ duckdb::unique_ptr<duckdb::PhysicalPlan> Processors::BuildOperatorImp(const Proc
     Finish = true;
     for (auto m = 0; m < procSpec.input_size(); m++) {
       for (auto n = 0; n < procSpec.input(m).streams_size(); n++) {
-        auto iter = inputSrc.find(procSpec.output(m).streams(n).stream_id());
+        auto iter = inputSrc.find(procSpec.input(m).streams(n).stream_id());
         if (iter == inputSrc.end()) {
           // not finish
           Finish = false;
