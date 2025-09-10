@@ -1,47 +1,43 @@
 // Copyright (c) 2022-present, Shanghai Yunxi Technology Co, Ltd.
 //
 // This software (KWDB) is licensed under Mulan PSL v2.
-// You can use this software according to the terms and conditions of the Mulan PSL v2.
-// You may obtain a copy of Mulan PSL v2 at:
+// You can use this software according to the terms and conditions of the Mulan
+// PSL v2. You may obtain a copy of Mulan PSL v2 at:
 //          http://license.coscl.org.cn/MulanPSL2
-// THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND,
-// EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT,
-// MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
-// See the Mulan PSL v2 for more details.
+// THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY
+// KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO
+// NON-INFRINGEMENT, MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE. See the
+// Mulan PSL v2 for more details.
 
 #include "duckdb/engine/ap_parse_query.h"
-#include "duckdb/engine/duckdb_exec.h"
 
+#include "cm_func.h"
 #include "duckdb/catalog/catalog.hpp"
-#include "duckdb/catalog/catalog_entry/table_catalog_entry.hpp"
-#include "duckdb/function/function_set.hpp"
-#include "duckdb/function/table_function.hpp"
-#include "duckdb/common/extra_operator_info.hpp" // 包含 ExtraOperatorInfo 定义
-#include "duckdb/execution/operator/scan/physical_table_scan.hpp" // 确保包含此类定义
-
-#include "duckdb/catalog/entry_lookup_info.hpp"
 #include "duckdb/catalog/catalog_entry/scalar_function_catalog_entry.hpp"
+#include "duckdb/catalog/catalog_entry/table_catalog_entry.hpp"
+#include "duckdb/catalog/entry_lookup_info.hpp"
+#include "duckdb/common/extra_operator_info.hpp"  // 包含 ExtraOperatorInfo 定义
+#include "duckdb/engine/duckdb_exec.h"
 #include "duckdb/execution/executor.hpp"
 #include "duckdb/execution/operator/helper/physical_batch_collector.hpp"
+#include "duckdb/execution/operator/scan/physical_table_scan.hpp"  // 确保包含此类定义
+#include "duckdb/function/function_set.hpp"
+#include "duckdb/function/table_function.hpp"
 #include "duckdb/main/attached_database.hpp"
+#include "duckdb/main/client_context.hpp"
 #include "duckdb/main/database.hpp"
 #include "duckdb/main/prepared_statement_data.hpp"
-#include "duckdb/main/client_context.hpp"
-
 #include "duckdb/planner/expression/bound_cast_expression.hpp"
 #include "duckdb/planner/expression/bound_comparison_expression.hpp"
 #include "duckdb/planner/expression/bound_constant_expression.hpp"
 #include "duckdb/planner/expression/bound_function_expression.hpp"
 #include "duckdb/planner/expression/bound_reference_expression.hpp"
-
-#include "kwdb_type.h"
-#include "lg_api.h"
-#include "cm_func.h"
-
 #include "ee_comm_def.h"
 #include "ee_encoding.h"
 #include "ee_iparser.h"
 #include "ee_string_info.h"
+#include "kwdb_type.h"
+#include "lg_api.h"
 
 namespace kwdbts {
 std::string parseUnicode2Utf8(const std::string &str) {
@@ -143,8 +139,8 @@ char *forward2TimeStringEnd(char *str) {
 int64_t strnatoi(char *num, int32_t len) {
   int64_t ret = 0, i, dig, base = 1;
 
-  if (len > (int32_t) strlen(num)) {
-    len = (int32_t) strlen(num);
+  if (len > (int32_t)strlen(num)) {
+    len = (int32_t)strlen(num);
   }
 
   if ((len > 2) && (num[0] == '0') && ((num[1] == 'x') || (num[1] == 'X'))) {
@@ -177,7 +173,7 @@ int64_t strnatoi(char *num, int32_t len) {
 bool checkTzPresent(KString &str) {
   int32_t len = str.length();
   char *seg = forward2TimeStringEnd(str.data());
-  int32_t seg_len = len - (int32_t) (seg - str.c_str());
+  int32_t seg_len = len - (int32_t)(seg - str.c_str());
 
   char *c = &seg[seg_len - 1];
   for (int32_t i = 0; i < seg_len; ++i) {
@@ -215,7 +211,7 @@ KStatus parseTimezone(char *str, int64_t *tzOffset) {
 
   char *sep = strchr(&str[i], ':');
   if (sep != NULL) {
-    int32_t len = (int32_t) (sep - &str[i]);
+    int32_t len = (int32_t)(sep - &str[i]);
 
     hour = strnatoi(&str[i], len);
     i += len + 1;
@@ -254,7 +250,7 @@ int32_t parseFraction(char *str, char **end) {
 
   const int32_t NANO_SEC_FRACTION_LEN = 9;
 
-  int32_t factor[9] = {1, 10, 100, 1000, 10000,
+  int32_t factor[9] = {1,      10,      100,      1000,     10000,
                        100000, 1000000, 10000000, 100000000};
   int32_t times = 1;
 
@@ -280,7 +276,8 @@ int32_t parseFraction(char *str, char **end) {
   return fraction;
 }
 
-KStatus parseTimeWithTz(KString timestr, k_int64 scale, k_int64 *time, char delim) {
+KStatus parseTimeWithTz(KString timestr, k_int64 scale, k_int64 *time,
+                        char delim) {
   // int64_t factor = TSDB_TICK_PER_SECOND(timePrec);
   int64_t factor = 1000 * scale;
   int64_t tzOffset = 0;
@@ -392,7 +389,8 @@ static inline bool validateTm(struct tm *pTm) {
   return true;
 }
 
-KStatus parseLocaltimeDst(KString timestr, k_int64 scale, k_int64 *utime, char delim) {
+KStatus parseLocaltimeDst(KString timestr, k_int64 scale, k_int64 *utime,
+                          char delim) {
   *utime = 0;
   struct tm tm;
   memset(&tm, 0, sizeof(tm));
@@ -456,7 +454,8 @@ KStatus kwdbParseTime(KString &timestr, k_int64 scale, k_int64 *utime) {
   }
 }
 
-KStatus convertStringToTimestamp(KString inputData, k_int64 scale, k_int64 *timeVal) {
+KStatus convertStringToTimestamp(KString inputData, k_int64 scale,
+                                 k_int64 *timeVal) {
   // int32_t charLen = varDataLen(inputData);
   if (inputData.empty()) {
     return FAIL;
@@ -471,8 +470,7 @@ KStatus convertStringToTimestamp(KString inputData, k_int64 scale, k_int64 *time
 }
 
 KStatus APParseQuery::ConstructAPExpr(ClientContext &context,
-                                      TableCatalogEntry &table,
-                                      std::size_t *i,
+                                      TableCatalogEntry &table, std::size_t *i,
                                       unique_ptr<duckdb::Expression> *head_node,
                                       std::map<idx_t, idx_t> &col_map) {
   unique_ptr<duckdb::Expression> current_node;
@@ -489,7 +487,7 @@ KStatus APParseQuery::ConstructAPExpr(ClientContext &context,
       }
       case OPENING_BRACKET: {
         (*i)++;
-        while (node_list_[*i]->operators != CLOSING_BRACKET) {
+        while (*i < node_list_.size() && node_list_[*i]->operators != CLOSING_BRACKET) {
           ret = ConstructAPExpr(context, table, i, &current_node, col_map);
           if (ret != SUCCESS) {
             return ret;
@@ -500,44 +498,48 @@ KStatus APParseQuery::ConstructAPExpr(ClientContext &context,
         return SUCCESS;
       }
       case LESS: {
-        auto tmp_expr = make_uniq<BoundComparisonExpression>(ExpressionType::COMPARE_LESSTHAN, nullptr, nullptr);
+        auto tmp_expr = make_uniq<BoundComparisonExpression>(
+            ExpressionType::COMPARE_LESSTHAN, nullptr, nullptr);
         tmp_expr->left = std::move(*head_node);
         *head_node = std::move(tmp_expr);
         (*i)++;
         return SUCCESS;
       }
       case GREATER: {
-        auto tmp_expr = make_uniq<BoundComparisonExpression>(ExpressionType::COMPARE_GREATERTHAN, nullptr, nullptr);
+        auto tmp_expr = make_uniq<BoundComparisonExpression>(
+            ExpressionType::COMPARE_GREATERTHAN, nullptr, nullptr);
         tmp_expr->left = std::move(*head_node);
         *head_node = std::move(tmp_expr);
         (*i)++;
         return SUCCESS;
       }
       case EQUALS: {
-        auto tmp_expr = make_uniq<BoundComparisonExpression>(ExpressionType::COMPARE_EQUAL, nullptr, nullptr);
+        auto tmp_expr = make_uniq<BoundComparisonExpression>(
+            ExpressionType::COMPARE_EQUAL, nullptr, nullptr);
         tmp_expr->left = std::move(*head_node);
         *head_node = std::move(tmp_expr);
         (*i)++;
         return SUCCESS;
       }
       case NOT_EQUALS: {
-        auto tmp_expr = make_uniq<BoundComparisonExpression>(ExpressionType::COMPARE_NOTEQUAL, nullptr, nullptr);
+        auto tmp_expr = make_uniq<BoundComparisonExpression>(
+            ExpressionType::COMPARE_NOTEQUAL, nullptr, nullptr);
         tmp_expr->left = std::move(*head_node);
         *head_node = std::move(tmp_expr);
         (*i)++;
         return SUCCESS;
       }
       case LESS_OR_EQUALS: {
-        auto tmp_expr =
-            make_uniq<BoundComparisonExpression>(ExpressionType::COMPARE_LESSTHANOREQUALTO, nullptr, nullptr);
+        auto tmp_expr = make_uniq<BoundComparisonExpression>(
+            ExpressionType::COMPARE_LESSTHANOREQUALTO, nullptr, nullptr);
         tmp_expr->left = std::move(*head_node);
         *head_node = std::move(tmp_expr);
         (*i)++;
         return SUCCESS;
       }
       case GREATER_OR_EQUALS: {
-        auto tmp_expr =
-            make_uniq<BoundComparisonExpression>(ExpressionType::COMPARE_GREATERTHANOREQUALTO, nullptr, nullptr);
+        auto tmp_expr = make_uniq<BoundComparisonExpression>(
+            ExpressionType::COMPARE_GREATERTHANOREQUALTO, nullptr, nullptr);
         tmp_expr->left = std::move(*head_node);
         *head_node = std::move(tmp_expr);
         (*i)++;
@@ -545,12 +547,14 @@ KStatus APParseQuery::ConstructAPExpr(ClientContext &context,
       }
       case In: {
         if (node_list_[*i]->is_negative) {
-          auto tmp_expr = make_uniq<BoundComparisonExpression>(ExpressionType::COMPARE_NOT_IN, nullptr, nullptr);
+          auto tmp_expr = make_uniq<BoundComparisonExpression>(
+              ExpressionType::COMPARE_NOT_IN, nullptr, nullptr);
           tmp_expr->left = std::move(*head_node);
           *head_node = std::move(tmp_expr);
           (*i)++;
         } else {
-          auto tmp_expr = make_uniq<BoundComparisonExpression>(ExpressionType::COMPARE_IN, nullptr, nullptr);
+          auto tmp_expr = make_uniq<BoundComparisonExpression>(
+              ExpressionType::COMPARE_IN, nullptr, nullptr);
           tmp_expr->left = std::move(*head_node);
           *head_node = std::move(tmp_expr);
           (*i)++;
@@ -561,23 +565,36 @@ KStatus APParseQuery::ConstructAPExpr(ClientContext &context,
         std::string plus = "+";
         EntryLookupInfo lookup_info(CatalogType::SCALAR_FUNCTION_ENTRY, plus);
         auto entry_retry = CatalogEntryRetriever(context);
-        auto func_entry = entry_retry.GetEntry("", "", lookup_info, OnEntryNotFound::RETURN_NULL);
+        auto func_entry = entry_retry.GetEntry("", "", lookup_info,
+                                               OnEntryNotFound::RETURN_NULL);
         auto &func = func_entry->Cast<ScalarFunctionCatalogEntry>();
         (*i)++;
-        if (ConstructAPExpr(context, table, i, &current_node, col_map)) {
+        if (ConstructAPExpr(context, table, i, &current_node, col_map) !=
+            SUCCESS) {
           return FAIL;
         }
         vector<LogicalType> in_type;
         in_type.push_back(head_node->get()->return_type);
         in_type.push_back(current_node->return_type);
-        auto type_func = func.functions.GetFunctionByArguments(context, in_type);
+        auto type_func =
+            func.functions.GetFunctionByArguments(context, in_type);
         auto return_type = head_node->get()->return_type;
+        if (head_node->get()->return_type != type_func.return_type) {
+          *head_node = BoundCastExpression::AddCastToType(
+              context, std::move(*head_node), type_func.return_type,
+              head_node->get()->return_type.id() == LogicalTypeId::ENUM);
+        }
+        if (current_node.get()->return_type != type_func.return_type) {
+          current_node = BoundCastExpression::AddCastToType(
+              context, std::move(current_node), type_func.return_type,
+              current_node.get()->return_type.id() == LogicalTypeId::ENUM);
+        }
         vector<unique_ptr<duckdb::Expression>> type_args;
         type_args.push_back(std::move(*head_node));
         type_args.push_back(std::move(current_node));
 
-        auto tmp_expr =
-            make_uniq<BoundFunctionExpression>(type_func.return_type, type_func, std::move(type_args), nullptr);
+        auto tmp_expr = make_uniq<BoundFunctionExpression>(
+            type_func.return_type, type_func, std::move(type_args), nullptr);
         *head_node = std::move(tmp_expr);
         (*i)++;
         return SUCCESS;
@@ -597,37 +614,37 @@ KStatus APParseQuery::ConstructAPExpr(ClientContext &context,
         return FAIL;
       }
       if (node_list_[*i]->operators == COMMA) {
-        //current_node->args.push_back(expr_ptr);
+        // current_node->args.push_back(expr_ptr);
         (*i)++;
       }
     }
     if (expr_ptr != nullptr) {
-      //current_node->args.push_back(expr_ptr);
+      // current_node->args.push_back(expr_ptr);
     }
     (*i)++;
     *head_node = std::move(current_node);
     return SUCCESS;
   } else {
     switch (node_list_[*i]->operators) {
-      case CAST:(*i)++;
+      case CAST:
+        (*i)++;
         *head_node = std::move(current_node);
         return SUCCESS;
         break;
       case COLUMN_TYPE: {
         auto origin_node = node_list_[*i];
-        auto index = LogicalIndex(origin_node.get()->value.number.column_id - 1);
+        auto index =
+            LogicalIndex(origin_node.get()->value.number.column_id - 1);
         auto &col = table.GetColumn(index);
-        current_node = make_uniq<BoundReferenceExpression>(col.Name(), col.Type(), col_map[index.index]);
+        current_node = make_uniq<BoundReferenceExpression>(
+            col.Name(), col.Type(), col_map[index.index]);
         (*i)++;
-        while (*i < node_list_.size()) {
-          ret = ConstructAPExpr(context, table, i, &current_node, col_map);
-          if (ret != SUCCESS) {
-            return ret;
-          }
-          if (*i < node_list_.size() && (node_list_[*i]->operators == CLOSING_BRACKET
-              || node_list_[*i]->operators == AND)) {
-            (*i)--;
-            return ret;
+        while (*i < node_list_.size() &&
+               node_list_[*i]->operators != CLOSING_BRACKET &&
+               node_list_[*i]->operators != AND) {
+          if (ConstructAPExpr(context, table, i, &current_node, col_map) !=
+              SUCCESS) {
+            return FAIL;
           }
         }
         *head_node = std::move(current_node);
@@ -637,24 +654,28 @@ KStatus APParseQuery::ConstructAPExpr(ClientContext &context,
         auto int_value = node_list_[*i]->value.number.int_type;
         unique_ptr<BoundConstantExpression> int_expr;
         if (int_value >= INT16_MIN && int_value <= INT16_MAX) {
-          int_expr = make_uniq<BoundConstantExpression>(Value::SMALLINT((int16_t) int_value));
+          int_expr = make_uniq<BoundConstantExpression>(
+              Value::SMALLINT((int16_t)int_value));
         } else if (int_value >= INT32_MIN && int_value <= INT32_MAX) {
-          int_expr = make_uniq<BoundConstantExpression>(Value::INTEGER((int32_t) int_value));
+          int_expr = make_uniq<BoundConstantExpression>(
+              Value::INTEGER((int32_t)int_value));
         } else if (int_value >= INT64_MIN && int_value <= INT64_MAX) {
-          int_expr = make_uniq<BoundConstantExpression>(Value::BIGINT((int64_t) int_value));
+          int_expr = make_uniq<BoundConstantExpression>(
+              Value::BIGINT((int64_t)int_value));
         }
-        auto &comparsion_expr = head_node->get()->Cast<BoundComparisonExpression>();
+        auto &comparsion_expr =
+            head_node->get()->Cast<BoundComparisonExpression>();
         if (int_expr->return_type != comparsion_expr.left->return_type) {
-          comparsion_expr.left = BoundCastExpression::AddCastToType(context,
-                                                                    std::move(comparsion_expr.left),
-                                                                    int_expr->return_type,
-                                                                    int_expr->return_type.id() == LogicalTypeId::ENUM);
+          comparsion_expr.left = BoundCastExpression::AddCastToType(
+              context, std::move(comparsion_expr.left), int_expr->return_type,
+              int_expr->return_type.id() == LogicalTypeId::ENUM);
         }
         comparsion_expr.right = std::move(int_expr);
         (*i)++;
         return SUCCESS;
       }
-      default:break;
+      default:
+        break;
     }
   }
   return FAIL;
@@ -730,7 +751,7 @@ k_bool APParseQuery::ParseNumber(k_int64 factor) {
         node_list_.push_back(std::make_shared<Element>(ele));
         return true;
       } else if (read_buffer.find("FALSE") != std::string::npos ||
-          read_buffer.find("false") != std::string::npos) {
+                 read_buffer.find("false") != std::string::npos) {
         value = 0;
         auto ele = Element(value);
         ele.SetType(INT_TYPE);
@@ -816,7 +837,8 @@ k_bool APParseQuery::ParseNumber(k_int64 factor) {
           } else {  // default or 3
             scale = 1;
           }
-          if (convertStringToTimestamp(read_buffer, scale, &tz) != SUCCESS) return false;
+          if (convertStringToTimestamp(read_buffer, scale, &tz) != SUCCESS)
+            return false;
           auto ele = Element(tz);
           ele.SetType(ele_type);
           node_list_.push_back(std::make_shared<Element>(ele));
@@ -838,7 +860,8 @@ k_bool APParseQuery::ParseNumber(k_int64 factor) {
           } else {  // default or 3
             scale = 1;
           }
-          if (convertStringToTimestamp(read_buffer, scale, &tz) != SUCCESS) return false;
+          if (convertStringToTimestamp(read_buffer, scale, &tz) != SUCCESS)
+            return false;
           auto ele = Element(tz);
           ele.SetType(ele_type);
           node_list_.push_back(std::make_shared<Element>(ele));
@@ -850,7 +873,7 @@ k_bool APParseQuery::ParseNumber(k_int64 factor) {
           node_list_.push_back(std::make_shared<Element>(ele));
           return true;
         } else if (current_type == TokenType::StringLiteral &&
-            data_str.find("STRING") != std::string::npos) {
+                   data_str.find("STRING") != std::string::npos) {
           read_buffer =
               parseUnicode2Utf8(read_buffer.substr(1, read_buffer.size() - 2));
           auto ele = Element(read_buffer);
@@ -858,7 +881,7 @@ k_bool APParseQuery::ParseNumber(k_int64 factor) {
           node_list_.push_back(std::make_shared<Element>(ele));
           return true;
         } else if (current_type == TokenType::StringLiteral &&
-            data_str.find("BYTES") != std::string::npos) {
+                   data_str.find("BYTES") != std::string::npos) {
           read_buffer =
               parseHex2String(read_buffer.substr(1, read_buffer.size() - 2));
           auto ele = Element(read_buffer);
@@ -1178,9 +1201,10 @@ k_bool APParseQuery::ParseSingleExpr() {
         node_list_.push_back(std::make_shared<Element>(ALL, true));
         break;
       }
-      default:return false;
+      default:
+        return false;
     }
   }
   return true;
 }
-}
+}  // namespace kwdbts

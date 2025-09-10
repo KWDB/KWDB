@@ -414,11 +414,11 @@ KStatus DuckdbExec::Setup(kwdbContext_p ctx, k_char* message, k_uint32 len,
       printf("DuckdbExec::Setup catch error %s \n", error);
       connect_->Rollback();
     }
-    
+
     resp->ret = 1;
     ret = KStatus::SUCCESS;
   }
- 
+
   return ret;
 }
 
@@ -1048,7 +1048,7 @@ KStatus DuckdbExec::AttachDBs() {
     auto name = init_db.get().GetName();
     dbs.insert(name);
   }
-  
+
   DatabaseManager& db_manager = DatabaseManager::Get(*connect_->context);
   try {
 //    for (int i = 0; i < fspecs_->processors_size(); i++) {
@@ -1121,9 +1121,9 @@ ExecutionResult DuckdbExec::PrepareExecutePlan(kwdbContext_p ctx) {
       connect_->Rollback();
       result.error_message = query_result->GetError();
       return result;
-    } else {
-      result.success = true;
     }
+    result.success = true;
+    
     char* encoding_buf_;
     k_uint32 encoding_len_;
     auto ret = Encoding(ctx, query_result.get(), encoding_buf_, encoding_len_);
@@ -1137,7 +1137,7 @@ ExecutionResult DuckdbExec::PrepareExecutePlan(kwdbContext_p ctx) {
     connect_->Rollback();
     return result;
   }
-  
+
   return result;
 }
 
