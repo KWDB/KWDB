@@ -77,6 +77,7 @@ INSERT 2
                          | distributed | true
                          | vectorized  | false
   render                 |             |
+   │                     | engine type | time series
    │                     | extract     | 0.0
    └── distinct          |             |
         │                | distinct on | e1
@@ -84,7 +85,7 @@ INSERT 2
              └── ts scan |             |
                          | ts-table    | ts_table
                          | access mode | metaTable
-(10 rows)
+(11 rows)
 > explain select extract('second', '2024-01-01 00:00:00'::timestamp) from test_ts.ts_table order by e1 desc limit 1 offset 1;
                 tree               |    field    | description
 -----------------------------------+-------------+--------------
@@ -1220,6 +1221,7 @@ INSERT 2
                               | distributed | true
                               | vectorized  | false
   render                      |             |
+   │                          | engine type | time series
    │                          | extract     | 0.0
    └── distinct               |             |
         │                     | distinct on | e1
@@ -1231,7 +1233,7 @@ INSERT 2
                               | ts-table    | ts_table
                               | access mode | metaTable
                               | filter      | "time" < '2023-12-31 23:00:00+00:00'
-(14 rows)
+(15 rows)
 > explain select extract('second', '2024-01-01 00:00:00'::timestamp) from ts_table where time < date_trunc('hour', '2024-01-01 00:00:00'::timestamp-1h) order by e1 desc limit 1;
              tree             |    field    |             description
 ------------------------------+-------------+---------------------------------------
@@ -1456,6 +1458,7 @@ INSERT 2
                          | distributed      | true
                          | vectorized       | false
   render                 |                  |
+   │                     | engine type      | time series
    │                     | extract          | 2025.0
    └── distinct          |                  |
         │                | distinct on      | e1
@@ -1465,7 +1468,7 @@ INSERT 2
                          | access mode      | metaTable
                          | filter           | e1 < 3000
                          | block filter[e1] | [ - 2999]
-(12 rows)
+(13 rows)
 > explain select extract('year', localtimestamp()) from test_ts.ts_table order by e1 desc limit 1 offset 1;
                 tree               |    field    | description
 -----------------------------------+-------------+--------------

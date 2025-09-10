@@ -103,10 +103,10 @@ EEIteratorErrCode TsStatisticScanParser::ParserRender(kwdbContext_p ctx,
 
   // resolve render
   for (k_int32 i = 0; i < renders_size_; ++i) {
-    std::string str = post_->renders(i);
+    Expression render_expr = post_->render_exprs(i);
     // binary tree
     ExprPtr expr;
-    code = BuildBinaryTree(ctx, str, &expr);
+    code = BuildBinaryTree(ctx, render_expr.expr(), &expr);
     if (EEIteratorErrCode::EE_OK != code) {
       break;
     }

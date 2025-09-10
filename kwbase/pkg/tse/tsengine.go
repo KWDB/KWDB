@@ -115,8 +115,8 @@ const (
 )
 
 // TsGetNameValue get name of tsProcessor.
-func TsGetNameValue(this *execinfrapb.TSProcessorCoreUnion) int8 {
-	if this.TableReader != nil {
+func TsGetNameValue(this *execinfrapb.ProcessorCoreUnion) int8 {
+	if this.TsTableReader != nil {
 		return TsTableReaderName
 	}
 	if this.Aggregator != nil {
@@ -128,16 +128,16 @@ func TsGetNameValue(this *execinfrapb.TSProcessorCoreUnion) int8 {
 	if this.Sorter != nil {
 		return TsSorterName
 	}
-	if this.StatisticReader != nil {
+	if this.TsStatisticReader != nil {
 		return TsStatisticReaderName
 	}
-	if this.Synchronizer != nil {
+	if this.TsSynchronizer != nil {
 		return TsSynchronizerName
 	}
 	if this.Sampler != nil {
 		return TsSamplerName
 	}
-	if this.TagReader != nil {
+	if this.TsTagReader != nil {
 		return TsTagReaderName
 	}
 	if this.Distinct != nil {
@@ -2036,7 +2036,7 @@ func cSliceToUnsafeGoBytes(s C.TSSlice) []byte {
 }
 
 // NewTsFetcher init tsFetcher
-func NewTsFetcher(specs []execinfrapb.TSProcessorSpec) []C.TsFetcher {
+func NewTsFetcher(specs []execinfrapb.ProcessorSpec) []C.TsFetcher {
 	i := 0
 	tsFetchers := make([]C.TsFetcher, len(specs))
 	for j := len(specs) - 1; j >= 0; j-- {

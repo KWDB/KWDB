@@ -1259,11 +1259,6 @@ func (m *Memo) dealWithGroupBy(src RelExpr, child RelExpr, ret *aggCrossEngCheck
 		m.setSynchronizerForChild(child, &ret.commonRet.hasAddSynchronizer)
 	}
 
-	// agg has distinct, need add distinct spec gather all data to gateway
-	if ret.hasDistinct {
-		ret.commonRet.execInTSEngine = false
-	}
-
 	// do nothing when group by can not execute in ts engine.
 	if !ret.commonRet.execInTSEngine {
 		return
@@ -1722,11 +1717,9 @@ func (m *Memo) CheckWhiteListAndAddSynchronizeImp(src *RelExpr) (ret CrossEngChe
 
 		if retAgg.commonRet.execInTSEngine {
 			if m.CheckFlag(opt.SingleMode) {
-				source.SetEngineTS()
 				retAgg.commonRet.canDiffExecInAE = false
-			} else {
-				retAgg.commonRet.execInTSEngine = false
 			}
+			source.SetEngineTS()
 			if !retAgg.commonRet.hasAddSynchronizer {
 				if !ok {
 					source.Input.SetAddSynchronizer()

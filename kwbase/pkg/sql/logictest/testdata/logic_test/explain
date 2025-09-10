@@ -7,7 +7,7 @@ CREATE TABLE t (a INT PRIMARY KEY)
 query T
 SELECT url FROM [EXPLAIN (DISTSQL) SELECT * FROM (SELECT avg(a) OVER () FROM t)]
 ----
-eJyUkE1LwzAYx-9-ivA_tRLZumNOG1qlMNfZjimMHmLzMApdU5PUF0a_u6wZ6ISJHp__2y9kD_tSQyCP5_H1inWmZrdZes828dNyPksWLLhJ8lX-MA_ZMXLpA8HxlK_bQIYsXccZC0LvubAAR6MVLeSOLMQGEQqO1uiSrNXmIO2HQKLeIcYcVdN27iAXHKU2BLGHq1xNEFjJ55oykorMaAwORU5W9TDrpq2pdtJ8gCNvZWMFu0LRc-jOfQ1aJ7cEEfX879DHqlH6jcwoOiXO1nfBNArBkXZOsOnkLG7yH1xGttWNpRPYueVxX3CQ2pL_R6s7U9LS6HLA-DMdeoOgyDrvRv5IGm8dHvi9HP1anvwoF_3FZwAAAP__Ysu2sg==
+eJyUkE9LwzAYxu9-ivCeWolsHZ5y2tAqhbnNtkxh9BCblxHokpik6hj97rKmBzeY6PF9_uT5kQO49wYYFOk8vStJaxvykC-fyCZ9Xc1n2YJE91lRFs_zmAyR6xCIhpN_bCMek-U6zUkUB8_HFVBQWuCC79AB20ACFQVjdY3OaXuUDn0gE1_AxhSkMq0_yhWFWlsEdgAvfYPAoORvDebIBdrRGCgI9Fw2_bN-aqzccbsHCoXhyjFyAxSWrTetL_cGHSNS-VuoOgq6V4cR5_kWgSUd_TvIi1RCf6IdJacUs_VjNE3iMMzIdHKOILCWO95cpJj8hyJHZ7RyeMJw6eVxV1FAscXw5U63tsaV1XU_E86A2gsCnQ9uEo5MBesI-LOc_FqenJWr7uo7AAD__25jxeA=
 
 # Test that explaining a query that contains a subquery the result of which is
 # needed to make the physical plan is rejected. See #40677.

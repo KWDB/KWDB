@@ -458,46 +458,48 @@ INSERT 1
 ------
 (0 rows)
 > explain select e1 from d1.t1 as t2 where    (t2.e1 in (select t3.e1 from d1.t1 as t3))    and    ((e2 > 0 or (select max(e2) from d1.t1) is not null))    order by e1;
-                  tree                  |        field        |          description
-----------------------------------------+---------------------+--------------------------------
-                                        | distributed         | true
-                                        | vectorized          | false
-  root                                  |                     |
-   ├── render                           |                     |
-   │    │                               | e1                  | e1
-   │    └── sort                        |                     |
-   │         │                          | order               | +e1
-   │         └── hash-join              |                     |
-   │              │                     | type                | inner
-   │              │                     | equality            | (e1) = (e1)
-   │              │                     | right cols are key  |
-   │              ├── filter            |                     |
-   │              │    │                | filter              | (e2 > 0) OR (@S1 IS NOT NULL)
-   │              │    └── synchronizer |                     |
-   │              │         └── ts scan |                     |
-   │              │                     | ts-table            | t1
-   │              │                     | access mode         | metaTable
-   │              └── distinct          |                     |
-   │                   │                | distinct on         | e1
-   │                   └── synchronizer |                     |
-   │                        └── ts scan |                     |
-   │                                    | ts-table            | t1
-   │                                    | access mode         | metaTable
-   └── subquery                         |                     |
-        │                               | id                  | @S1
-        │                               | original sql        | (SELECT max(e2) FROM d1.t1)
-        │                               | exec mode           | one row
-        └── group                       |                     |
-             │                          | engine type         | time series
-             │                          | aggregate 0         | max(e2)
-             │                          | scalar              |
-             │                          | pushLocalAggToScan  | true
-             │                          | addSynchronizer     | true
-             └── ts scan                |                     |
-                                        | ts-table            | t1
-                                        | access mode         | metaTable
-                                        | use statistic       | true
-(37 rows)
+                  tree                  |         field         |            description
+----------------------------------------+-----------------------+-------------------------------------
+                                        | distributed           | true
+                                        | vectorized            | false
+  root                                  |                       |
+   ├── render                           |                       |
+   │    │                               | e1                    | e1
+   │    └── sort                        |                       |
+   │         │                          | order                 | +e1
+   │         └── hash-join              |                       |
+   │              │                     | type                  | inner
+   │              │                     | equality              | (e1) = (e1)
+   │              │                     | right cols are key    |
+   │              ├── filter            |                       |
+   │              │    │                | filter                | (e2 > 0) OR (@S1 IS NOT NULL)
+   │              │    └── synchronizer |                       |
+   │              │         └── ts scan |                       |
+   │              │                     | ts-table              | t1
+   │              │                     | access mode           | metaTable
+   │              └── distinct          |                       |
+   │                   │                | distinct on           | e1
+   │                   └── synchronizer |                       |
+   │                        └── ts scan |                       |
+   │                                    | ts-table              | t1
+   │                                    | access mode           | metaTable
+   └── subquery                         |                       |
+        │                               | id                    | @S1
+        │                               | original sql          | (SELECT max(e2) FROM d1.t1)
+        │                               | exec mode             | one row
+        └── group                       |                       |
+             │                          | engine type           | time series
+             │                          | aggregate 0           | max(e2)
+             │                          | scalar                |
+             │                          | pushLocalAggToScan    | true
+             │                          | addSynchronizer       | true
+             └── ts scan                |                       |
+                                        | ts-table              | t1
+                                        | access mode           | metaTable
+                                        | use statistic         | true
+                                        |                       |
+  warning messages                      | multi-model fall back | join on time-series metrics column
+(39 rows)
 > select e1 from d1.t1 as t2 where    (t2.e1 in (select t3.e1 from d1.t1 as t3))    and    ((e2 > 0 or (select max(e2) from d1.t1) is not null))    order by e1;
   e1
 ------
@@ -572,33 +574,35 @@ INSERT 1
   15
 (5 rows)
 > explain select e1 from d1.t1 as t2 where    e1 in (select e1 from d1.t1 where    (abs(e1) > 3 or length(e4) < 2 or trunc(e5) = 2)    and    (to_english(e1) = 'one-one' and sin(e5) = 0)    order by e1)  and e2 > 0 order by e1;
-                tree               |      field       |                                  description
------------------------------------+------------------+---------------------------------------------------------------------------------
-                                   | distributed      | true
-                                   | vectorized       | false
-  sort                             |                  |
-   │                               | order            | +e1
-   └── render                      |                  |
-        │                          | e1               | e1
-        └── hash-join              |                  |
-             │                     | type             | semi
-             │                     | equality         | (e1) = (e1)
-             ├── filter            |                  |
-             │    │                | filter           | to_english(e1) = 'one-one'
-             │    └── synchronizer |                  |
-             │         └── ts scan |                  |
-             │                     | ts-table         | t1
-             │                     | access mode      | metaTable
-             │                     | filter           | e2 > 0
-             │                     | block filter[e2] | [1 - ]
-             └── filter            |                  |
-                  │                | filter           | to_english(e1) = 'one-one'
-                  └── synchronizer |                  |
-                       └── ts scan |                  |
-                                   | ts-table         | t1
-                                   | access mode      | metaTable
-                                   | filter           | (((abs(e1) > 3) OR (length(e4) < 2)) OR (trunc(e5) = 2.0)) AND (sin(e5) = 0.0)
-(24 rows)
+                tree               |         field         |                                  description
+-----------------------------------+-----------------------+---------------------------------------------------------------------------------
+                                   | distributed           | true
+                                   | vectorized            | false
+  sort                             |                       |
+   │                               | order                 | +e1
+   └── render                      |                       |
+        │                          | e1                    | e1
+        └── hash-join              |                       |
+             │                     | type                  | semi
+             │                     | equality              | (e1) = (e1)
+             ├── filter            |                       |
+             │    │                | filter                | to_english(e1) = 'one-one'
+             │    └── synchronizer |                       |
+             │         └── ts scan |                       |
+             │                     | ts-table              | t1
+             │                     | access mode           | metaTable
+             │                     | filter                | e2 > 0
+             │                     | block filter[e2]      | [1 - ]
+             └── filter            |                       |
+                  │                | filter                | to_english(e1) = 'one-one'
+                  └── synchronizer |                       |
+                       └── ts scan |                       |
+                                   | ts-table              | t1
+                                   | access mode           | metaTable
+                                   | filter                | (((abs(e1) > 3) OR (length(e4) < 2)) OR (trunc(e5) = 2.0)) AND (sin(e5) = 0.0)
+                                   |                       |
+  warning messages                 | multi-model fall back | join on time-series metrics column
+(26 rows)
 > select e1 from d1.t1 as t2 where    e1 in (select e1 from d1.t1 where    (abs(e1) > 3 or length(e4) < 2 or trunc(e5) = 2)    and    (to_english(e1) = 'one-one' and sin(e5) = 0)    order by e1)  and e2 > 0 order by e1;
   e1
 ------
@@ -728,31 +732,33 @@ INSERT 1
   11
 (1 row)
 > explain select e1 from d1.t1 as t2 where    (t2.e1 in (select t3.e1 from d1.t1 as t3))    and     (to_english(e1) = 'one-one' or sin(e5) > -1)     order by e1;
-                tree               |       field        |                   description
------------------------------------+--------------------+---------------------------------------------------
-                                   | distributed        | true
-                                   | vectorized         | false
-  render                           |                    |
-   │                               | e1                 | e1
-   └── sort                        |                    |
-        │                          | order              | +e1
-        └── hash-join              |                    |
-             │                     | type               | inner
-             │                     | equality           | (e1) = (e1)
-             │                     | right cols are key |
-             ├── filter            |                    |
-             │    │                | filter             | (to_english(e1) = 'one-one') OR (sin(e5) > -1.0)
-             │    └── synchronizer |                    |
-             │         └── ts scan |                    |
-             │                     | ts-table           | t1
-             │                     | access mode        | metaTable
-             └── distinct          |                    |
-                  │                | distinct on        | e1
-                  └── synchronizer |                    |
-                       └── ts scan |                    |
-                                   | ts-table           | t1
-                                   | access mode        | metaTable
-(22 rows)
+                tree               |         field         |                   description
+-----------------------------------+-----------------------+---------------------------------------------------
+                                   | distributed           | true
+                                   | vectorized            | false
+  render                           |                       |
+   │                               | e1                    | e1
+   └── sort                        |                       |
+        │                          | order                 | +e1
+        └── hash-join              |                       |
+             │                     | type                  | inner
+             │                     | equality              | (e1) = (e1)
+             │                     | right cols are key    |
+             ├── filter            |                       |
+             │    │                | filter                | (to_english(e1) = 'one-one') OR (sin(e5) > -1.0)
+             │    └── synchronizer |                       |
+             │         └── ts scan |                       |
+             │                     | ts-table              | t1
+             │                     | access mode           | metaTable
+             └── distinct          |                       |
+                  │                | distinct on           | e1
+                  └── synchronizer |                       |
+                       └── ts scan |                       |
+                                   | ts-table              | t1
+                                   | access mode           | metaTable
+                                   |                       |
+  warning messages                 | multi-model fall back | join on time-series metrics column
+(24 rows)
 > select e1 from d1.t1 as t2 where    (t2.e1 in (select t3.e1 from d1.t1 as t3))    and     (to_english(e1) = 'one-one' or sin(e5) > -1)     order by e1;
   e1
 ------

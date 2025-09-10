@@ -80,7 +80,7 @@ WHERE mt.measure_tag = li.pipeline_name
 GROUP BY li.pipeline_name, li.pipe_start, li.pipe_end;
            tree          |            field            |                                   description
 -------------------------+-----------------------------+-----------------------------------------------------------------------------------
-                         | distributed                 | false
+                         | distributed                 | true
                          | vectorized                  | false
   batch-lookup-join      |                             |
    │                     | type                        | inner

@@ -1726,7 +1726,7 @@ ORDER BY
 LIMIT 1;
                       tree                      |         field         |                          description
 ------------------------------------------------+-----------------------+-----------------------------------------------------------------
-                                                | distributed           | false
+                                                | distributed           | true
                                                 | vectorized            | false
   render                                        |                       |
    └── limit                                    |                       |
@@ -1958,7 +1958,7 @@ WHERE
     AND pti.create_user_id > 0;
                  tree                 |       field       |                        description
 --------------------------------------+-------------------+------------------------------------------------------------
-                                      | distributed       | false
+                                      | distributed       | true
                                       | vectorized        | false
   batch-lookup-join                   |                   |
    │                                  | type              | inner
@@ -2057,7 +2057,7 @@ ORDER BY
     timebucket;
                     tree                   |         field         |                          description
 -------------------------------------------+-----------------------+-----------------------------------------------------------------
-                                           | distributed           | false
+                                           | distributed           | true
                                            | vectorized            | false
   render                                   |                       |
    └── sort                                |                       |
@@ -2159,7 +2159,7 @@ WHERE
     AND pzm.contract_email = 'ningmeng0823@hotmail.com';
              tree             |      field       |                 description
 ------------------------------+------------------+----------------------------------------------
-                              | distributed      | false
+                              | distributed      | true
                               | vectorized       | false
   render                      |                  |
    └── batch-lookup-join      |                  |
@@ -2217,7 +2217,7 @@ WHERE
     AND pzm.contract_email = 'ningmeng0823@hotmail.com');
            tree          |      field       |                 description
 -------------------------+------------------+----------------------------------------------
-                         | distributed      | false
+                         | distributed      | true
                          | vectorized       | false
   batch-lookup-join      |                  |
    │                     | type             | inner
@@ -2255,7 +2255,7 @@ WHERE
     AND pzm.contract_mobile = opcdata.channel);
            tree          |      field       |                            description
 -------------------------+------------------+---------------------------------------------------------------------
-                         | distributed      | false
+                         | distributed      | true
                          | vectorized       | false
   batch-lookup-join      |                  |
    │                     | type             | inner
@@ -2300,7 +2300,7 @@ ORDER BY opcdata."time"
 LIMIT 100;
                    tree                   |       field       |                                     description
 ------------------------------------------+-------------------+---------------------------------------------------------------------------------------
-                                          | distributed       | false
+                                          | distributed       | true
                                           | vectorized        | false
   render                                  |                   |
    └── limit                              |                   |
@@ -2400,7 +2400,7 @@ ORDER BY
     timebucket;
                          tree                        |         field         |                          description
 -----------------------------------------------------+-----------------------+-----------------------------------------------------------------
-                                                     | distributed           | false
+                                                     | distributed           | true
                                                      | vectorized            | false
   render                                             |                       |
    └── sort                                          |                       |
@@ -2528,7 +2528,7 @@ ORDER BY
     timebucket desc;
                      tree                    |      field       |                 description
 ---------------------------------------------+------------------+----------------------------------------------
-                                             | distributed      | false
+                                             | distributed      | true
                                              | vectorized       | false
   render                                     |                  |
    └── sort                                  |                  |
@@ -2622,7 +2622,7 @@ ORDER BY
     timebucket;
              tree             |      field       |            description
 ------------------------------+------------------+------------------------------------
-                              | distributed      | false
+                              | distributed      | true
                               | vectorized       | false
   sort                        |                  |
    │                          | order            | +timebucket

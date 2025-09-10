@@ -425,7 +425,9 @@ EEIteratorErrCode StorageHandler::NextTagDataChunk(kwdbContext_p ctx, Field *tag
     }
   }
   tag_rowbatch_->SetPipeEntityNum(ctx, 1);
-
+  if (code != EEIteratorErrCode::EE_OK) {
+    Return(code);
+  }
   // Init a data chunk
   data_chunk = std::make_unique<DataChunk>(col_info, col_info_size, tag_rowbatch_->Count());
   if (data_chunk->Initialize() != true) {

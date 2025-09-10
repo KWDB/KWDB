@@ -53,7 +53,6 @@ void BoxServiceRetryableClosureStub::TransmitChunk(::google::protobuf::RpcContro
 
 KStatus BoxServiceRetryableClosureStub::ResetChannel(const std::string& protocol) {
   std::lock_guard<std::mutex> l(mutex_);
-
   brpc::ChannelOptions options;
   options.connect_timeout_ms = 30000;
   if (protocol == "http") {

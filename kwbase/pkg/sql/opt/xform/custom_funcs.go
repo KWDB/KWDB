@@ -3057,9 +3057,6 @@ func (c *CustomFuncs) GenerateTagTSScans(
 
 // CanApplyOutsideIn checks if join expr can apply the GenerateBatchLookUpJoin exploration rule.
 func (c *CustomFuncs) CanApplyOutsideIn(left, right memo.RelExpr, on memo.FiltersExpr) bool {
-	if c.e.evalCtx.StartDistributeMode {
-		return false
-	}
 	if !opt.CheckOptMode(opt.TSQueryOptMode.Get(&c.e.evalCtx.Settings.SV), opt.OutsideInUseCBO) {
 		return false
 	}

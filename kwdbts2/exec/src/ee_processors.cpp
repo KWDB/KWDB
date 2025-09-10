@@ -99,7 +99,7 @@ static void DebugPrint(const TSFlowSpec *fspec) {
   LOG_ERROR("TSFlowSpec processors size = %d\n", fspec->processors_size());
   for (k_int32 i = 0; i < fspec->processors_size(); ++i) {
     const TSProcessorSpec &procSpec = fspec->processors(i);
-    const TSPostProcessSpec &post = procSpec.post();
+    const PostProcessSpec &post = procSpec.post();
     const TSProcessorCoreUnion &core = procSpec.core();
     // optional int32 processor_id = 5;
     if (procSpec.has_processor_id()) {
@@ -300,7 +300,7 @@ KStatus Processors::BuildOperator(kwdbContext_p ctx) {
   bool only_operator = (1 == processor_size ? true : false);
   for (k_int32 i = 0; i < processor_size; ++i) {
     const TSProcessorSpec& procSpec = fspec_->processors(i);
-    const TSPostProcessSpec& post = procSpec.post();
+    const PostProcessSpec& post = procSpec.post();
     const TSProcessorCoreUnion& core = procSpec.core();
     k_int32 processor_id = procSpec.processor_id();
     if (core.has_tagreader()) {
@@ -324,7 +324,7 @@ KStatus Processors::BuildOperator(kwdbContext_p ctx) {
       oper->SetUseQueryShortCircuit(fspec_->usequeryshortcircuit());
     }
 
-    command_limit_ = post.commandlimit();
+    // command_limit_ = post.commandlimit();
     operators_.push_back(oper);
     std::set<k_int32> &input_stream_ids = oper->GetInputStreamIds();
     for (auto id : input_stream_ids) {

@@ -45,7 +45,7 @@ type TsReaderOp struct {
 	tsHandle unsafe.Pointer
 	// The output streamID of the topmost operator in the temporal flow
 	sid              execinfrapb.StreamID
-	tsProcessorSpecs []execinfrapb.TSProcessorSpec
+	tsProcessorSpecs []execinfrapb.ProcessorSpec
 	timeZone         int
 	collected        bool
 	statsList        []tse.TsFetcherStats
@@ -90,7 +90,7 @@ func NewTsReaderOp(
 	flowCtx *execinfra.FlowCtx,
 	types []types.T,
 	sid execinfrapb.StreamID,
-	tsProcessorSpecs []execinfrapb.TSProcessorSpec,
+	tsProcessorSpecs []execinfrapb.ProcessorSpec,
 	tsInfo execinfrapb.TsInfo,
 ) Operator {
 	tro := &TsReaderOp{sid: sid, tsProcessorSpecs: tsProcessorSpecs, tsHandle: nil,
@@ -147,7 +147,7 @@ func (tro *TsReaderOp) Init() {
 		}
 
 		// The set of operators on the ts flow.
-		var tsSpecs []execinfrapb.TSProcessorSpec
+		var tsSpecs []execinfrapb.ProcessorSpec
 
 		tsTopProcessorIndex := outPutMap[tro.sid]
 		tsSpecs = append(tsSpecs, tsProcessorSpecs[tsTopProcessorIndex])
@@ -160,7 +160,6 @@ func (tro *TsReaderOp) Init() {
 		for j := len(tsSpecs) - 1; j >= 0; j-- {
 			tsFlowSpec.Processors = append(tsFlowSpec.Processors, tsSpecs[j])
 		}
-		tsFlowSpec.IsDist = tro.tsInfo.IsDist
 		tsFlowSpec.Processors[len(tsFlowSpec.Processors)-1].FinalTsProcessor = true
 		msg, err := protoutil.Marshal(tsFlowSpec)
 		if err != nil {

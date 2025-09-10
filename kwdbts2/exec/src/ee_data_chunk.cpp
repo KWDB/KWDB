@@ -2026,7 +2026,12 @@ bool DataChunk::SetEncodingBuf(const unsigned char *buf, k_uint32 len) {
 }
 
 KStatus DataChunk::InsertEntities(TagRowBatch* tag_row_batch) {
-  return tag_row_batch->GetEntities(&entity_indexs_);
+  if (EngineOptions::isSingleNode()) {
+    return tag_row_batch->GetEntities(&entity_indexs_);
+  } else {
+    entity_indexs_ = tag_row_batch->entity_indexs_;
+    return SUCCESS;
+  }
 }
 
 EntityResultIndex& DataChunk::GetEntityIndex(k_uint32 row) {

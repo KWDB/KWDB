@@ -62,6 +62,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/util/tracing"
 	"gitee.com/kwbasedb/kwbase/pkg/util/uuid"
 	"github.com/cockroachdb/errors"
+	"github.com/lib/pq/oid"
 	"github.com/opentracing/opentracing-go"
 )
 
@@ -131,8 +132,10 @@ func (dsp *DistSQLPlanner) initRunners() {
 // find TsProcessors in flows
 func findTSProcessors(flows map[roachpb.NodeID]*execinfrapb.FlowSpec) bool {
 	for _, v := range flows {
-		if v.TsProcessors != nil || len(v.TsProcessors) > 0 {
-			return true
+		for _, p := range v.Processors {
+			if p.ExecInTSEngine() {
+				return true
+			}
 		}
 	}
 	return false
@@ -194,10 +197,10 @@ func (dsp *DistSQLPlanner) setupFlows(
 		}
 	}
 	if usePipeline {
-		return dsp.setupPipeFlows(ctx, evalCtx, setupReq, flows, thisNodeID, recv, localState, resultChan)
+		return dsp.setupPipeFlows(ctx, evalCtx, setupReq, flows, thisNodeID, recv, localState, resultChan, plan)
 	}
 
-	if evalCtx.SessionData.VectorizeMode != sessiondata.VectorizeOff {
+	if evalCtx.SessionData.VectorizeMode != sessiondata.VectorizeOff && !usePipeline {
 		if !vectorizeThresholdMet && (evalCtx.SessionData.VectorizeMode == sessiondata.VectorizeAuto) {
 			// Vectorization is not justified for this flow because the expected
 			// amount of data is too small and the overhead of pre-allocating data
@@ -221,6 +224,15 @@ func (dsp *DistSQLPlanner) setupFlows(
 				tmpClusterID = nil
 			}
 			for _, spec := range flows {
+				tsProcessors := make([]execinfrapb.ProcessorSpec, 0)
+				relProcessors := make([]execinfrapb.ProcessorSpec, 0)
+				for _, p := range spec.Processors {
+					if p.ExecInTSEngine() {
+						tsProcessors = append(tsProcessors, p)
+					} else {
+						relProcessors = append(relProcessors, p)
+					}
+				}
 				if _, err := colflow.SupportsVectorized(
 					ctx, &execinfra.FlowCtx{
 						EvalCtx: &evalCtx.EvalContext,
@@ -231,7 +243,7 @@ func (dsp *DistSQLPlanner) setupFlows(
 							VecFDSemaphore: dsp.distSQLSrv.VecFDSemaphore,
 						},
 						NodeID: -1,
-					}, spec.Processors, spec.TsProcessors, fuseOpt, recv,
+					}, relProcessors, tsProcessors, fuseOpt, recv,
 				); err != nil {
 					// Vectorization attempt failed with an error.
 					returnVectorizationSetupError := false
@@ -308,6 +320,7 @@ func (dsp *DistSQLPlanner) setupFlows(
 	// Set up the flow on this node.
 	localReq := setupReq
 	localReq.Flow = *flows[thisNodeID]
+
 	defer physicalplan.ReleaseSetupFlowRequest(&localReq)
 	ctx, flow, err := dsp.distSQLSrv.SetupLocalSyncFlow(ctx, evalCtx.Mon, &localReq, recv, localState)
 	if err != nil {
@@ -315,6 +328,121 @@ func (dsp *DistSQLPlanner) setupFlows(
 	}
 
 	return ctx, flow, nil
+}
+
+// reverseCopy reverses an array
+func reverseCopy(s []execinfrapb.ProcessorSpec) []execinfrapb.ProcessorSpec {
+	length := len(s)
+	reversed := make([]execinfrapb.ProcessorSpec, length)
+	for i := 0; i < length; i++ {
+		reversed[i] = s[length-1-i]
+	}
+	return reversed
+}
+
+// getChildProcessors recursively get the local child input of the operator
+// and adds it to newChildProcessors
+func (dsp *DistSQLPlanner) getChildProcessors(
+	plan *PhysicalPlan,
+	newChildProcessors *[]execinfrapb.ProcessorSpec,
+	idxs []physicalplan.ProcessorIdx,
+	nodeID roachpb.NodeID,
+) {
+	for _, idx := range idxs {
+		if plan.Processors[idx].Node == nodeID {
+			src := plan.Processors[idx].Spec
+			dst := execinfrapb.ProcessorSpec{
+				Input:            src.Input,
+				Core:             src.Core,
+				Output:           nil,
+				Post:             src.Post,
+				StageID:          src.StageID,
+				ProcessorID:      src.ProcessorID,
+				FinalTsProcessor: src.FinalTsProcessor,
+				Engine:           src.Engine,
+			}
+			if src.Output != nil {
+				dst.Output = make([]execinfrapb.OutputRouterSpec, len(src.Output))
+				for i, srcOutput := range src.Output {
+					dst.Output[i].Type = srcOutput.Type
+					dst.Output[i].HashColumns = srcOutput.HashColumns
+					dst.Output[i].RangeRouterSpec = srcOutput.RangeRouterSpec
+					dst.Output[i].DisableBuffering = srcOutput.DisableBuffering
+
+					if srcOutput.Streams != nil {
+						dst.Output[i].Streams = make([]execinfrapb.StreamEndpointSpec, len(srcOutput.Streams))
+						for j, srcOutputStream := range srcOutput.Streams {
+							dst.Output[i].Streams[j] = srcOutputStream
+						}
+					}
+				}
+			}
+			if dst.Core.TsTagReader != nil {
+				old := dst.Core.TsTagReader
+				dst.Core.TsTagReader = &execinfrapb.TSTagReaderSpec{
+					TableID:        old.TableID,
+					ColMetas:       old.ColMetas,
+					PrimaryTags:    old.PrimaryTags,
+					AccessMode:     old.AccessMode,
+					TableVersion:   old.TableVersion,
+					RangeSpans:     nil,
+					RelationalCols: old.RelationalCols,
+					ProbeColids:    old.ProbeColids,
+					HashColids:     old.HashColids,
+					OnlyTag:        old.OnlyTag,
+					UnionType:      old.UnionType,
+					TagIndexIDs:    old.TagIndexIDs,
+					TagIndexes:     old.TagIndexes,
+				}
+			}
+
+			*newChildProcessors = append(*newChildProcessors, dst)
+		}
+	}
+
+	newIdxs := make([]physicalplan.ProcessorIdx, 0)
+	for _, s := range plan.Streams {
+		for _, idx := range idxs {
+			if s.DestProcessor == idx && plan.Processors[s.SourceProcessor].Node == nodeID {
+				newIdxs = append(newIdxs, s.SourceProcessor)
+			}
+		}
+	}
+	if len(newIdxs) != 0 {
+		dsp.getChildProcessors(plan, newChildProcessors, newIdxs, nodeID)
+	}
+	return
+}
+
+// needInputProcessors determines whether the ts summary operator needs to supplement local input
+func needInputProcessors(p execinfrapb.ProcessorSpec) bool {
+	needOp := false
+	if p.Core.Noop != nil {
+		hasUnknown := false
+		for _, typ := range p.Post.OutputTypes {
+			if typ.Oid() == oid.T_unknown {
+				hasUnknown = true
+				break
+			}
+		}
+		if p.Post.Filter.Expr != "" ||
+			p.Post.Limit != 0 ||
+			p.Post.Offset != 0 ||
+			p.Post.Projection ||
+			hasUnknown {
+			needOp = true
+		}
+	}
+	if p.Core.Sorter != nil {
+		needOp = true
+	}
+	if p.Core.Aggregator != nil {
+		needOp = true
+	}
+	if p.Core.Distinct != nil {
+		needOp = true
+	}
+	return needOp
 }
 
 // setupPipeFlows setup all flows, first setup gateway flow.
@@ -327,7 +455,70 @@ func (dsp *DistSQLPlanner) setupPipeFlows(
 	recv *DistSQLReceiver,
 	localState distsql.LocalState,
 	resultChan chan runnerResult,
+	plan *PhysicalPlan,
 ) (context.Context, flowinfra.Flow, error) {
+	// TODO(haokaiwei): the restrictions here need to be removed in the future.
+	// If the timing engine of the gateway node only contains a summary operator,
+	// and this summary operator has no local input, then we need to
+	// add a series of child operators as its input for this timing summary operator.
+	// Otherwise, the operator construction will fail
+	appendProcessors := make([]execinfrapb.ProcessorSpec, 0)
+	for position, p := range flows[thisNodeID].Processors {
+		pIdx := physicalplan.ProcessorIdx(-1)
+		for i, pp := range plan.Processors {
+			if pp.Spec.ProcessorID == p.ProcessorID {
+				pIdx = physicalplan.ProcessorIdx(i)
+			}
+		}
+		if pIdx == -1 {
+			continue
+		}
+		childProcessors := make([]execinfrapb.ProcessorSpec, 0)
+		childIdxs := make([]physicalplan.ProcessorIdx, 0)
+		hasRemoteChilds := false
+		hasLocalChilds := false
+		needOp := false
+		if p.ExecInTSEngine() {
+			needOp = needInputProcessors(p)
+			for _, s := range plan.Streams {
+				if s.DestProcessor == pIdx {
+					childIdxs = append(childIdxs, s.SourceProcessor)
+				}
+			}
+			for _, idx := range childIdxs {
+				if plan.Processors[idx].Node != thisNodeID {
+					hasRemoteChilds = true
+				} else {
+					hasLocalChilds = true
+				}
+			}
+			if needOp && hasRemoteChilds && !hasLocalChilds {
+				singleChildIdxs := []physicalplan.ProcessorIdx{childIdxs[0]}
+				dsp.getChildProcessors(plan, &childProcessors, singleChildIdxs, plan.Processors[childIdxs[0]].Node)
+
+				newStream := execinfrapb.StreamEndpointSpec{
+					Type:          execinfrapb.StreamEndpointType_LOCAL,
+					StreamID:      execinfrapb.StreamID(len(plan.Streams) + position),
+					TargetNodeID:  thisNodeID,
+					DestProcessor: p.ProcessorID,
+				}
+
+				flows[thisNodeID].Processors[position].Input[0].Streams = append(flows[thisNodeID].Processors[position].Input[0].Streams, newStream)
+				childProcessors[0].Output[0].Streams = []execinfrapb.StreamEndpointSpec{newStream}
+				childProcessors[0].Output[0].Type = execinfrapb.OutputRouterSpec_PASS_THROUGH
+				childProcessors[0].FinalTsProcessor = false
+
+				childProcessors = reverseCopy(childProcessors)
+				appendProcessors = append(appendProcessors, childProcessors...)
+			}
+		}
+	}
+	if len(appendProcessors) != 0 {
+		appendProcessors = append(appendProcessors, flows[thisNodeID].Processors...)
+		flows[thisNodeID].Processors = appendProcessors
+		flows[thisNodeID].TsInfo.IsDist = true
+	}
+
 	// Set up the flow on this node.
 	localReq := setupReq
 	localReq.Flow = *flows[thisNodeID]
@@ -472,7 +663,7 @@ func (dsp *DistSQLPlanner) GetFlow(
 
 	vectorizedThresholdMet := !planCtx.hasBatchLookUpJoin && supportVectorizedThreshold &&
 		plan.MaxEstimatedRowCount >= evalCtx.SessionData.VectorizeRowCountThreshold &&
-		plan.UseQueryShortCircuit == physicalplan.ForbidQueryShortCircuit
+		!plan.UseQueryShortCircuit
 
 	if len(flows) == 1 {
 		// We ended up planning everything locally, regardless of whether we
@@ -488,11 +679,13 @@ func (dsp *DistSQLPlanner) GetFlow(
 		finishedSetupFn()
 	}
 
+	isTS := findTSProcessors(flows)
+
 	// Check that flows that were forced to be planned locally also have no concurrency.
 	// This is important, since these flows are forced to use the RootTxn (since
 	// they might have mutations), and the RootTxn does not permit concurrency.
 	// For such flows, we were supposed to have fused everything.
-	if txn != nil && planCtx.isLocal && flow.ConcurrentExecution() && !CheckTSEngine(&flows) {
+	if txn != nil && planCtx.isLocal && flow.ConcurrentExecution() && !CheckTSEngine(&flows) && !isTS {
 		recv.SetError(errors.AssertionFailedf(
 			"unexpected concurrency for a flow that was forced to be planned locally"))
 		return flow, ctx
@@ -591,8 +784,10 @@ func printLogForPlanDiagram(planCtx *PlanningCtx, flows map[roachpb.NodeID]*exec
 // CheckTSEngine checks that whether exists ts engine flow
 func CheckTSEngine(flows *map[roachpb.NodeID]*execinfrapb.FlowSpec) bool {
 	for _, f := range *flows {
-		if f.TsProcessors != nil {
-			return true
+		for _, p := range f.Processors {
+			if p.ExecInTSEngine() {
+				return true
+			}
 		}
 	}
 	return false
@@ -1258,7 +1453,6 @@ func (dsp *DistSQLPlanner) planAndRunSubquery(
 	}
 	subqueryPlanCtx.runningSubquery = true
 	dsp.FinalizePlan(subqueryPlanCtx, &subqueryPhysPlan)
-	subqueryPhysPlan.UseOriginalFlow = true
 	// TODO(arjun): #28264: We set up a row container, wrap it in a row
 	// receiver, and use it and serialize the results of the subquery. The type
 	// of the results stored in the container depends on the type of the subquery.

@@ -1726,7 +1726,7 @@ ORDER BY
 LIMIT 1;
                       tree                      |         field         |                          description
 ------------------------------------------------+-----------------------+-----------------------------------------------------------------
-                                                | distributed           | false
+                                                | distributed           | true
                                                 | vectorized            | false
   render                                        |                       |
    └── limit                                    |                       |
@@ -1958,7 +1958,7 @@ WHERE
     AND pti.create_user_id > 0;
                  tree                 |       field       |                        description
 --------------------------------------+-------------------+------------------------------------------------------------
-                                      | distributed       | false
+                                      | distributed       | true
                                       | vectorized        | false
   batch-lookup-join                   |                   |
    │                                  | type              | inner
@@ -2057,7 +2057,7 @@ ORDER BY
     timebucket;
                     tree                   |         field         |                          description
 -------------------------------------------+-----------------------+-----------------------------------------------------------------
-                                           | distributed           | false
+                                           | distributed           | true
                                            | vectorized            | false
   render                                   |                       |
    └── sort                                |                       |
@@ -2159,7 +2159,7 @@ WHERE
     AND pzm.contract_email = 'ningmeng0823@hotmail.com';
              tree             |      field       |                 description
 ------------------------------+------------------+----------------------------------------------
-                              | distributed      | false
+                              | distributed      | true
                               | vectorized       | false
   render                      |                  |
    └── batch-lookup-join      |                  |
@@ -2217,7 +2217,7 @@ WHERE
     AND pzm.contract_email = 'ningmeng0823@hotmail.com');
            tree          |      field       |                 description
 -------------------------+------------------+----------------------------------------------
-                         | distributed      | false
+                         | distributed      | true
                          | vectorized       | false
   batch-lookup-join      |                  |
    │                     | type             | inner
@@ -2255,7 +2255,7 @@ WHERE
     AND pzm.contract_mobile = opcdata.channel);
            tree          |      field       |                            description
 -------------------------+------------------+---------------------------------------------------------------------
-                         | distributed      | false
+                         | distributed      | true
                          | vectorized       | false
   batch-lookup-join      |                  |
    │                     | type             | inner
@@ -2300,7 +2300,7 @@ ORDER BY opcdata."time"
 LIMIT 100;
                    tree                   |       field       |                                     description
 ------------------------------------------+-------------------+---------------------------------------------------------------------------------------
-                                          | distributed       | false
+                                          | distributed       | true
                                           | vectorized        | false
   render                                  |                   |
    └── limit                              |                   |
@@ -2400,7 +2400,7 @@ ORDER BY
     timebucket;
                          tree                        |         field         |                          description
 -----------------------------------------------------+-----------------------+-----------------------------------------------------------------
-                                                     | distributed           | false
+                                                     | distributed           | true
                                                      | vectorized            | false
   render                                             |                       |
    └── sort                                          |                       |
@@ -2437,7 +2437,6 @@ ORDER BY
                        │                             | table                 | plat_tijiancard_item_relation@tijian_id_relation
                        │                             | spans                 | /"AX5X4MOWmHcpSHXnzJWe"-/"AX5X4MOWmHcpSHXnzJWe"/PrefixEnd
                        └── group                     |                       |
-                            │                        | engine type           | time series
                             │                        | aggregate 0           | datatype
                             │                        | aggregate 1           | device
                             │                        | aggregate 2           | company_id
@@ -2465,7 +2464,7 @@ ORDER BY
                                       └── ts scan    |                       |
                                                      | ts-table              | opcdata449600
                                                      | access mode           | hashRelScan
-(65 rows)
+(64 rows)
 > SELECT 
     time_bucket(opcdata."time", '200s') AS timebucket,
     SUM(opcdata."value") / COUNT(opcdata."value") + MAX(opcdata."value") - MIN(opcdata."value") as avg_val,
@@ -2528,7 +2527,7 @@ ORDER BY
     timebucket desc;
                      tree                    |      field       |                 description
 ---------------------------------------------+------------------+----------------------------------------------
-                                             | distributed      | false
+                                             | distributed      | true
                                              | vectorized       | false
   render                                     |                  |
    └── sort                                  |                  |
@@ -2622,7 +2621,7 @@ ORDER BY
     timebucket;
              tree             |      field       |            description
 ------------------------------+------------------+------------------------------------
-                              | distributed      | false
+                              | distributed      | true
                               | vectorized       | false
   sort                        |                  |
    │                          | order            | +timebucket

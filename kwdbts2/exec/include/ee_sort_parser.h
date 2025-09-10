@@ -20,7 +20,7 @@ namespace kwdbts {
 
 class TsSortParser : public TsOperatorParser {
  public:
-  TsSortParser(TSSorterSpec *spec, TSPostProcessSpec *post, TABLE *table)
+  TsSortParser(TSSorterSpec *spec, PostProcessSpec *post, TABLE *table)
       : TsOperatorParser(post, table), spec_(spec) {}
 
   ~TsSortParser() {}

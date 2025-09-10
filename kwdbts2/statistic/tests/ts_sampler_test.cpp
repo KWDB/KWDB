@@ -52,9 +52,9 @@
 //     CreateSketches(sampler);
 // }
 
-// void CreateKWDBPostProcessSpec(std::shared_ptr<TSPostProcessSpec>* post) {
-//     post->reset(KNEW TSPostProcessSpec());
-//     TSPostProcessSpec *spec = post->get();
+// void CreateKWDBPostProcessSpec(std::shared_ptr<PostProcessSpec>* post) {
+//     post->reset(KNEW PostProcessSpec());
+//     PostProcessSpec *spec = post->get();
 //     for (k_int32 i = 0; i < 8; ++i) {
 //         // spec->add_tscols();
 //         spec->add_outputcols(i);
@@ -80,11 +80,11 @@
 //     std::shared_ptr<TABLE> table_;
 //     std::shared_ptr<TSTagReaderSpec> tagReaderSpec_;
 //     std::shared_ptr<TSReaderSpec> readerSpec_;
-//     std::shared_ptr<TSPostProcessSpec> post_;
+//     std::shared_ptr<PostProcessSpec> post_;
 //     std::shared_ptr<TSSamplerSpec> samplerSpec_;
 //     std::unique_ptr<BaseOperator> input_;
 //     std::shared_ptr<TagScanIterator> tagScanIterator_;
-//     std::shared_ptr<TSPostProcessSpec> tagpost_;
+//     std::shared_ptr<PostProcessSpec> tagpost_;
 
 //     static void SetUpTestCase() {}
 

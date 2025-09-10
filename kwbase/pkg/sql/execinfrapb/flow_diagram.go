@@ -83,11 +83,6 @@ func (*NoopCoreSpec) summary() (string, []string) {
 }
 
 // summary implements the diagramCellType interface.
-func (*TSNoopSpec) summary() (string, []string) {
-	return "No-op", []string{}
-}
-
-// summary implements the diagramCellType interface.
 func (mts *MetadataTestSenderSpec) summary() (string, []string) {
 	return "MetadataTestSender", []string{mts.ID}
 }
@@ -651,54 +646,6 @@ func (post *PostProcessSpec) summary() []string {
 	return post.summaryWithPrefix("")
 }
 
-// summary implements the diagramCellType interface.
-func (post *TSPostProcessSpec) summary() []string {
-	var res []string
-	if post.Filter != "" {
-		res = append(res, fmt.Sprintf("Filter: %s", post.Filter))
-	}
-
-	if post.Projection {
-		outputColumns := "None"
-		if len(post.OutputColumns) > 0 {
-			outputColumns = colListStr(post.OutputColumns)
-		}
-		res = append(res, fmt.Sprintf("Out: %s", outputColumns))
-	}
-
-	if len(post.Renders) > 0 {
-		var buf bytes.Buffer
-		buf.WriteString("Render: ")
-		for i, expr := range post.Renders {
-			if i > 0 {
-				buf.WriteString(", ")
-			}
-			// Remove any spaces in the expression (makes things more compact
-			// and it's easier to visually separate expressions).
-			buf.WriteString(strings.Replace(expr, " ", "", -1))
-		}
-		res = append(res, buf.String())
-	}
-
-	for _, val := range post.OutputTypes {
-		res = append(res, fmt.Sprintf("outtype: %s", val.String()))
-	}
-	if post.Limit != 0 || post.Offset != 0 {
-		var buf bytes.Buffer
-		if post.Limit != 0 {
-			fmt.Fprintf(&buf, "Limit %d", post.Limit)
-		}
-		if post.Offset != 0 {
-			if buf.Len() != 0 {
-				buf.WriteByte(' ')
-			}
-			fmt.Fprintf(&buf, "Offset %d", post.Offset)
-		}
-		res = append(res, buf.String())
-	}
-	return res
-}
-
 // prefix is prepended to every line outputted to disambiguate processors
 // (namely InterleavedReaderJoiner) that have multiple PostProcessors.
 func (post *PostProcessSpec) summaryWithPrefix(prefix string) []string {
@@ -738,6 +685,10 @@ func (post *PostProcessSpec) summaryWithPrefix(prefix string) []string {
 			fmt.Fprintf(&buf, "%sOffset %d", prefix, post.Offset)
 		}
 		res = append(res, buf.String())
+	}
+
+	for _, v := range post.OutputTypes {
+		res = append(res, fmt.Sprintf("%sOutputTypes: %s", prefix, v.String()))
 	}
 	return res
 }
@@ -916,70 +867,15 @@ func generateDiagramData(
 	inPorts := make(map[StreamID]diagramEdge)
 	syncResponseNode := -1
 
-	i := 0
 	pIdx := 0
 	for n := range flows {
-		if len(flows[n].TsProcessors) != 0 {
-			for _, p := range flows[n].TsProcessors {
-				proc := diagramProcessor{NodeIdx: len(flows) + i}
-				proc.Core.Title, proc.Core.Details = p.Core.GetValue().(diagramCellType).summary()
-				proc.Core.Title += fmt.Sprintf("/%d", p.ProcessorID)
-				proc.processorID = p.ProcessorID
-				proc.Core.Details = append(proc.Core.Details, p.Post.summary()...)
-
-				if len(p.Input) > 1 || (len(p.Input) == 1 && len(p.Input[0].Streams) > 1) {
-					proc.Inputs = make([]diagramCell, len(p.Input))
-					for i, s := range p.Input {
-						proc.Inputs[i].Title, proc.Inputs[i].Details = s.summary(showInputTypes)
-					}
-				} else {
-					proc.Inputs = []diagramCell{}
-				}
-
-				// Add entries in the map for the inputs.
-				for i, input := range p.Input {
-					val := diagramEdge{
-						DestProc: pIdx,
-					}
-					if len(proc.Inputs) > 0 {
-						val.DestInput = i + 1
-					}
-					for _, stream := range input.Streams {
-						inPorts[stream.StreamID] = val
-					}
-				}
-
-				for _, r := range p.Output {
-					for _, o := range r.Streams {
-						if o.Type == StreamEndpointType_SYNC_RESPONSE {
-							if syncResponseNode != -1 && syncResponseNode != n {
-								return nil, errors.Errorf("multiple nodes with SyncResponse")
-							}
-							syncResponseNode = n
-						}
-					}
-				}
-
-				// We need explicit routers if we have multiple outputs, or if the one
-				// output has multiple input streams.
-				if len(p.Output) > 1 || (len(p.Output) == 1 && len(p.Output[0].Streams) > 1) {
-					proc.Outputs = make([]diagramCell, len(p.Output))
-					for i, r := range p.Output {
-						proc.Outputs[i].Title, proc.Outputs[i].Details = r.summary()
-					}
-				} else {
-					proc.Outputs = []diagramCell{}
-				}
-				d.Processors = append(d.Processors, proc)
-				pIdx++
-			}
-			i++
-		}
-
 		for _, p := range flows[n].Processors {
 			proc := diagramProcessor{NodeIdx: n}
 			proc.Core.Title, proc.Core.Details = p.Core.GetValue().(diagramCellType).summary()
 			proc.Core.Title += fmt.Sprintf("/%d", p.ProcessorID)
+			if p.ExecInTSEngine() {
+				proc.Core.Title += "-TS"
+			}
 			proc.processorID = p.ProcessorID
 			proc.Core.Details = append(proc.Core.Details, p.Post.summary()...)
 
@@ -1033,7 +929,6 @@ func generateDiagramData(
 			pIdx++
 		}
 	}
-	i = 0
 	if syncResponseNode != -1 {
 		d.Processors = append(d.Processors, diagramProcessor{
 			NodeIdx: syncResponseNode,
@@ -1050,35 +945,6 @@ func generateDiagramData(
 	// Produce the edges.
 	pIdx = 0
 	for n := range flows {
-		if len(flows[n].TsProcessors) != 0 {
-			for _, p := range flows[n].TsProcessors {
-				for i, output := range p.Output {
-					srcOutput := 0
-					if len(d.Processors[pIdx].Outputs) > 0 {
-						srcOutput = i + 1
-					}
-					for _, o := range output.Streams {
-						edge := diagramEdge{
-							SourceProc:   pIdx,
-							SourceOutput: srcOutput,
-							streamID:     o.StreamID,
-						}
-						if o.Type == StreamEndpointType_SYNC_RESPONSE {
-							edge.DestProc = len(d.Processors) - 1
-						} else {
-							to, ok := inPorts[o.StreamID]
-							if !ok {
-								return nil, errors.Errorf("stream %d has no destination", o.StreamID)
-							}
-							edge.DestProc = to.DestProc
-							edge.DestInput = to.DestInput
-						}
-						d.Edges = append(d.Edges, edge)
-					}
-				}
-				pIdx++
-			}
-		}
 		for _, p := range flows[n].Processors {
 			for i, output := range p.Output {
 				srcOutput := 0
@@ -1126,15 +992,12 @@ func GeneratePlanDiagram(
 	sort.Ints(nodeIDs)
 
 	flowSlice := make([]FlowSpec, len(nodeIDs))
-	nodeNames := make([]string, len(nodeIDs))
+	nodeNames := make([]string, 0)
 	for i, nVal := range nodeIDs {
 		n := roachpb.NodeID(nVal)
 		flowSlice[i] = *flows[n]
-		nodeNames[i] = n.String()
-	}
-	for n := range flowSlice {
-		if len(flowSlice[n].TsProcessors) != 0 {
-			nodeNames = append(nodeNames, "agent"+nodeNames[n])
+		if len(flowSlice[i].Processors) != 0 {
+			nodeNames = append(nodeNames, n.String())
 		}
 	}
 
@@ -1239,23 +1102,8 @@ func DisplayFlowSpec(flow FlowSpec) (string, bool) {
 	var buf bytes.Buffer
 	isQuery := false
 
-	// construct message of AE processor.
-	if flow.TsProcessors != nil {
-		isQuery = true
-		buf.WriteString("=====AE:=====\n")
-	}
-	for _, v := range flow.TsProcessors {
-		res := getSpecMessage(
-			v.Core.GetValue().(diagramCellType),
-			strings.Join(v.Post.summary(), ","),
-			v.Input,
-			v.Output,
-			v.ProcessorID)
-		buf.WriteString(res)
-	}
-
 	// construct message of ME processor.
-	buf.WriteString("=====ME:=====\n")
+	buf.WriteString("==========\n")
 	for _, v := range flow.Processors {
 		if v.Core.TableReader != nil {
 			isQuery = true

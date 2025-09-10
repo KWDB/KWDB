@@ -34,6 +34,7 @@ import (
 
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/colflow"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfrapb"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/flowinfra"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/opt/memo"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/rowexec"
@@ -277,7 +278,16 @@ func populateExplain(
 				if nodeID == thisNodeID && !isDistSQL {
 					fuseOpt = flowinfra.FuseAggressively
 				}
-				_, err := colflow.SupportsVectorized(params.ctx, flowCtx, flow.Processors, flow.TsProcessors, fuseOpt, nil /* output */)
+				tsProcessors := make([]execinfrapb.ProcessorSpec, 0)
+				relProcessors := make([]execinfrapb.ProcessorSpec, 0)
+				for _, p := range flow.Processors {
+					if p.ExecInTSEngine() {
+						tsProcessors = append(tsProcessors, p)
+					} else {
+						relProcessors = append(relProcessors, p)
+					}
+				}
+				_, err := colflow.SupportsVectorized(params.ctx, flowCtx, relProcessors, tsProcessors, fuseOpt, nil /* output */)
 				isVec = isVec && (err == nil)
 				if !isVec {
 					break

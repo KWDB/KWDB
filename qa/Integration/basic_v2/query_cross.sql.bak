@@ -1719,7 +1719,7 @@ SELECT d.location,
 FROM rdb.Device d
 JOIN tsdb.MeterSuper m ON d.deviceID = m.deviceID
 WHERE d.modelID = (SELECT modelID FROM rdb.DeviceModel WHERE ModelName = '电表模型1')
-ORDER BY d.location ASC;
+ORDER BY d.location, m.current ASC;
 
 
 --Get the model names and corresponding temperature values of devices whose status is 0 and current is less than 100, and sort them in descending order by temperature value:

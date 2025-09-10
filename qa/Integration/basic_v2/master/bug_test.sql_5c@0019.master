@@ -91,6 +91,7 @@ INSERT 3
                          | distributed | true
                          | vectorized  | false
   limit                  |             |
+   │                     | engine type | time series
    │                     | count       | 10
    └── distinct          |             |
         │                | distinct on | e1
@@ -98,7 +99,7 @@ INSERT 3
              └── ts scan |             |
                          | ts-table    | ts_table
                          | access mode | metaTable
-(10 rows)
+(11 rows)
 > explain select distinct On(e2) e1 from (select * from ts_table order by e1 desc) group by e1 limit 10;
 ERROR: column "e2" must appear in the GROUP BY clause or be used in an aggregate function
 SQLSTATE: 42803

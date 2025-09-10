@@ -3451,20 +3451,20 @@ ORDER BY DeviceCount DESC;
 FROM rdb.Device d
 JOIN tsdb.MeterSuper m ON d.deviceID = m.deviceID
 WHERE d.modelID = (SELECT modelID FROM rdb.DeviceModel WHERE ModelName = '电表模型1')
-ORDER BY d.location ASC;
+ORDER BY d.location, m.current ASC;
   location |     current
 -----------+-------------------
-  area1    | 51.3657007868602
   area1    | 11.3623350383022
-  area1    |  83.497262058816
+  area1    | 51.3657007868602
   area1    | 69.6333622281017
+  area1    |  83.497262058816
   area1    | 92.1571660223094
   area1    | 93.3225547467301
   area1    | 99.4678675025397
-  area2    | 38.7726102322915
   area2    |  8.0020595087802
   area2    | 21.2326354535832
   area2    |  27.444401746537
+  area2    | 38.7726102322915
 (11 rows)
 > SELECT dm.ModelName,
 t.temperature AS Temperature

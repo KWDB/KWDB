@@ -73,7 +73,7 @@ type TsTableReader struct {
 	tsHandle         unsafe.Pointer
 	Rev              []byte
 	sid              execinfrapb.StreamID
-	tsProcessorSpecs []execinfrapb.TSProcessorSpec
+	tsProcessorSpecs []execinfrapb.ProcessorSpec
 	timeZone         int
 
 	value0 bool
@@ -110,7 +110,7 @@ func NewTsTableReader(
 	typs []types.T,
 	output execinfra.RowReceiver,
 	sid execinfrapb.StreamID,
-	tsProcessorSpecs []execinfrapb.TSProcessorSpec,
+	tsProcessorSpecs []execinfrapb.ProcessorSpec,
 	tsInfo execinfrapb.TsInfo,
 ) (*TsTableReader, error) {
 	ttr := &TsTableReader{
@@ -119,7 +119,6 @@ func NewTsTableReader(
 		tsInfo:   tsInfo,
 		value0:   len(typs) == 0,
 	}
-
 	if sp := opentracing.SpanFromContext(flowCtx.EvalCtx.Ctx()); sp != nil && tracing.IsRecording(sp) {
 		ttr.collected = true
 		ttr.FinishTrace = ttr.outputStatsToTrace
@@ -144,7 +143,7 @@ func NewTsTableReader(
 	); err != nil {
 		return nil, err
 	}
-	if err := ttr.initTableReader(ctx, tsProcessorSpecs); err != nil {
+	if err := ttr.initTableReader(ctx, tsProcessorSpecs, sid, flowCtx); err != nil {
 		return nil, err
 	}
 	ttr.StartInternal(ctx, tsTableReaderProcName)
@@ -156,40 +155,16 @@ func NewTsTableReader(
 }
 
 func (ttr *TsTableReader) initTableReader(
-	ctx context.Context, tsProcessorSpecs []execinfrapb.TSProcessorSpec,
+	ctx context.Context,
+	tsProcessorSpecs []execinfrapb.ProcessorSpec,
+	sid execinfrapb.StreamID,
+	flowCtx *execinfra.FlowCtx,
 ) error {
 
-	if ttr.tsInfo.UseAeGather {
-		ttr.initPipelineTableReader(tsProcessorSpecs)
-	} else {
-		// ts processor output StreamID map
-		outPutMap := make(map[execinfrapb.StreamID]int)
-
-		// The timing operator has only one input and one output,
-		// and each input and output has only one stream.
-		for i, proc := range tsProcessorSpecs {
-			if proc.Output != nil {
-				outPutMap[proc.Output[0].Streams[0].StreamID] = i
-			}
-
-		}
-
-		// The set of operators on the ts flow.
-		var tsSpecs []execinfrapb.TSProcessorSpec
-
-		tsTopProcessorIndex := outPutMap[ttr.sid]
-		tsSpecs = append(tsSpecs, tsProcessorSpecs[tsTopProcessorIndex])
-		for tsProcessorSpecs[tsTopProcessorIndex].Input != nil {
-			if tsProcessorSpecs[tsTopProcessorIndex].Core.TableReader != nil {
-				ttr.tsTableReaderID = tsProcessorSpecs[tsTopProcessorIndex].Core.TableReader.TsTablereaderId
-			}
-			streamID := tsProcessorSpecs[tsTopProcessorIndex].Input[0].Streams[0].StreamID
-			tsTopProcessorIndex = outPutMap[streamID]
-			tsSpecs = append(tsSpecs, tsProcessorSpecs[tsTopProcessorIndex])
-		}
-		for j := len(tsSpecs) - 1; j >= 0; j-- {
-			ttr.tsProcessorSpecs = append(ttr.tsProcessorSpecs, tsSpecs[j])
-		}
+	// setup ts flow.
+	err := ttr.SetupTsFlow(sid, tsProcessorSpecs)
+	if err != nil {
+		return err
 	}
 	var info tse.TsQueryInfo
 	info.Handle = nil
@@ -205,11 +180,13 @@ func (ttr *TsTableReader) initTableReader(
 }
 
 // initPipelineTableReader fill ttr.tsProcessorSpecs
-func (ttr *TsTableReader) initPipelineTableReader(tsProcessorSpecs []execinfrapb.TSProcessorSpec) {
+func (ttr *TsTableReader) initPipelineTableReader(
+	tsProcessorSpecs []execinfrapb.ProcessorSpec,
+) error {
 	for _, tsp := range tsProcessorSpecs {
 		if tsp.Core.TableReader != nil {
 			// blj cannot use pipeline
-			ttr.tsTableReaderID = tsp.Core.TableReader.TsTablereaderId
+			ttr.tsTableReaderID = tsp.Core.TsTableReader.TsTablereaderId
 		}
 		ttr.tsProcessorSpecs = append(ttr.tsProcessorSpecs, tsp)
 	}
@@ -218,6 +195,59 @@ func (ttr *TsTableReader) initPipelineTableReader(tsProcessorSpecs []execinfrapb
 		log.Infof(ttr.PbCtx(), "nodeID:%v, tsFlowSpec.Processors:%v\n",
 			ttr.FlowCtx.NodeID, len(ttr.tsProcessorSpecs))
 	}
+	return nil
+}
+
+// SetupTsFlow connects the flowSpec of this node according to the stream
+func (ttr *TsTableReader) SetupTsFlow(
+	sid execinfrapb.StreamID, tsProcessorSpecs []execinfrapb.ProcessorSpec,
+) error {
+	// construct outStreamMap, key is outStreamID, value is input ProcessorSpec.
+	outStreamMap := constructOutStreamMap(tsProcessorSpecs)
+	// fill tsFlow.
+	if err := ttr.fillTsProcessor(sid, outStreamMap); err != nil {
+		return err
+	}
+	return nil
+}
+
+func constructOutStreamMap(
+	tsProcessorSpecs []execinfrapb.ProcessorSpec,
+) map[execinfrapb.StreamID]execinfrapb.ProcessorSpec {
+	// construct outStreamMap
+	outputMap := make(map[execinfrapb.StreamID]execinfrapb.ProcessorSpec)
+	for _, proc := range tsProcessorSpecs {
+		for _, stream := range proc.Output[0].Streams {
+			outputMap[stream.StreamID] = proc
+		}
+	}
+	return outputMap
+}
+
+func (ttr *TsTableReader) fillTsProcessor(
+	sid execinfrapb.StreamID, OutStreamMap map[execinfrapb.StreamID]execinfrapb.ProcessorSpec,
+) error {
+	topProcessor, ok := OutStreamMap[sid]
+	if !ok {
+		return errors.Errorf("cannot find streamID %v\n", sid)
+	}
+	if topProcessor.Core.TsTableReader != nil {
+		ttr.tsTableReaderID = topProcessor.Core.TsTableReader.TsTablereaderId
+	}
+	if topProcessor.Input == nil {
+		ttr.tsProcessorSpecs = append(ttr.tsProcessorSpecs, topProcessor)
+		return nil
+	}
+	for _, streamInput := range topProcessor.Input[0].Streams {
+		if streamInput.Type != execinfrapb.StreamEndpointType_REMOTE {
+			err := ttr.fillTsProcessor(streamInput.StreamID, OutStreamMap)
+			if err != nil {
+				return err
+			}
+		}
+	}
+	ttr.tsProcessorSpecs = append(ttr.tsProcessorSpecs, topProcessor)
+	return nil
 }
 
 // NewTSFlowSpec get ts flow spec.
@@ -254,6 +284,7 @@ func (ttr *TsTableReader) Next() (sqlbase.EncDatumRow, *execinfrapb.ProducerMeta
 
 			// Execute query to get next batch of data
 			respInfo, err := ttr.FlowCtx.Cfg.TsEngine.NextTsFlow(&(ttr.Ctx), tsQueryInfo)
+
 			// Collect statistics (if enabled)
 			if ttr.collected {
 				ttr.updateStatsList(&respInfo)
@@ -373,6 +404,11 @@ func (ttr *TsTableReader) DropHandle(ctx context.Context) {
 	}
 }
 
+// IsShortCircuitForPgEncode is part of the processor interface.
+func (ttr *TsTableReader) IsShortCircuitForPgEncode() bool {
+	return false
+}
+
 // setupTsFlow initializes the time series flow in the TS engine
 func (ttr *TsTableReader) setupTsFlow(ctx context.Context) error {
 	rand.Seed(timeutil.Now().UnixNano())
@@ -384,8 +420,8 @@ func (ttr *TsTableReader) setupTsFlow(ctx context.Context) error {
 	tsFlowSpec.Processors = ttr.tsProcessorSpecs
 	tsFlowSpec.BrpcAddrs = ttr.tsInfo.BrpcAddrs
 	tsFlowSpec.QueryID = ttr.tsInfo.QueryID
-	tsFlowSpec.IsDist = ttr.tsInfo.IsDist
 	tsFlowSpec.Processors[len(tsFlowSpec.Processors)-1].FinalTsProcessor = true
+	tsFlowSpec.IsDist = ttr.tsInfo.IsDist
 	tsFlowSpec.UseQueryShortCircuit = ttr.tsInfo.UseQueryShortCircuit
 
 	msg, err := protoutil.Marshal(tsFlowSpec)
@@ -562,7 +598,7 @@ const (
 )
 
 // tsGetNameValue get name of tsProcessor.
-func tsGetNameValue(this *execinfrapb.TSProcessorCoreUnion) int8 {
+func tsGetNameValue(this *execinfrapb.ProcessorCoreUnion) int8 {
 	if this.TableReader != nil {
 		return tsTableReaderName
 	}
@@ -575,16 +611,16 @@ func tsGetNameValue(this *execinfrapb.TSProcessorCoreUnion) int8 {
 	if this.Sorter != nil {
 		return tsSorterName
 	}
-	if this.StatisticReader != nil {
+	if this.TsStatisticReader != nil {
 		return tsStatisticReaderName
 	}
-	if this.Synchronizer != nil {
+	if this.TsSynchronizer != nil {
 		return tsSynchronizerName
 	}
 	if this.Sampler != nil {
 		return tsSamplerName
 	}
-	if this.TagReader != nil {
+	if this.TsTagReader != nil {
 		return tsTagReaderName
 	}
 	if this.Distinct != nil {

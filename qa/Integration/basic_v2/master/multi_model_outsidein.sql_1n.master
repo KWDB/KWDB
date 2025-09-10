@@ -1252,7 +1252,7 @@ ORDER BY wi.work_area_name,
          timebucket;
                  tree                |         field         |                                                       description
 -------------------------------------+-----------------------+--------------------------------------------------------------------------------------------------------------------------
-                                     | distributed           | false
+                                     | distributed           | true
                                      | vectorized            | false
   render                             |                       |
    └── sort                          |                       |
@@ -1349,7 +1349,7 @@ GROUP BY si.station_name
 ORDER BY si.station_name;
                tree               |         field         |               description
 ----------------------------------+-----------------------+------------------------------------------
-                                  | distributed           | false
+                                  | distributed           | true
                                   | vectorized            | false
   render                          |                       |
    └── batch-lookup-join          |                       |
@@ -1429,7 +1429,7 @@ GROUP BY si.station_name
 ORDER BY si.station_name;
              tree             |            field            |               description
 ------------------------------+-----------------------------+------------------------------------------
-                              | distributed                 | false
+                              | distributed                 | true
                               | vectorized                  | false
   batch-lookup-join           |                             |
    │                          | type                        | inner
@@ -1590,7 +1590,7 @@ ORDER BY
     wi.work_area_name, t.measure_type;
                   tree                  |       field        |                        description
 ----------------------------------------+--------------------+------------------------------------------------------------
-                                        | distributed        | false
+                                        | distributed        | true
                                         | vectorized         | false
   render                                |                    |
    └── batch-lookup-join                |                    |
@@ -1679,7 +1679,7 @@ ORDER BY
     timebucket;
                 tree               |       field       |               description
 -----------------------------------+-------------------+-------------------------------------------
-                                   | distributed       | false
+                                   | distributed       | true
                                    | vectorized        | false
   render                           |                   |
    └── batch-lookup-join           |                   |
@@ -1746,7 +1746,7 @@ GROUP BY si.station_name
 ORDER BY si.station_name;
              tree             |            field            |               description
 ------------------------------+-----------------------------+------------------------------------------
-                              | distributed                 | false
+                              | distributed                 | true
                               | vectorized                  | false
   batch-lookup-join           |                             |
    │                          | type                        | inner
@@ -1818,7 +1818,7 @@ GROUP BY t.measure_type
 ORDER BY t.measure_type;
              tree             |            field            |               description
 ------------------------------+-----------------------------+------------------------------------------
-                              | distributed                 | false
+                              | distributed                 | true
                               | vectorized                  | false
   batch-lookup-join           |                             |
    │                          | type                        | inner
@@ -1907,7 +1907,7 @@ GROUP BY wi.work_area_name,
 ORDER BY timebucket;
                  tree                |         field         |                                                       description
 -------------------------------------+-----------------------+--------------------------------------------------------------------------------------------------------------------------
-                                     | distributed           | false
+                                     | distributed           | true
                                      | vectorized            | false
   render                             |                       |
    └── sort                          |                       |
@@ -2106,7 +2106,7 @@ ORDER BY
     timebucket, s.work_area_sn;
                 tree               |       field        |                      description
 -----------------------------------+--------------------+--------------------------------------------------------
-                                   | distributed        | false
+                                   | distributed        | true
                                    | vectorized         | false
   render                           |                    |
    └── batch-lookup-join           |                    |
@@ -2190,7 +2190,7 @@ WHERE si.station_sn = t.station_sn
 AND t.k_timestamp >= '2023-07-01 01:00:00' ;
              tree             |       field       |                description
 ------------------------------+-------------------+---------------------------------------------
-                              | distributed       | false
+                              | distributed       | true
                               | vectorized        | false
   append                      |                   |
    ├── batch-lookup-join      |                   |
@@ -2298,7 +2298,7 @@ ORDER BY wi.work_area_name,
          timebucket;
                       tree                     |       field        |                                                       description
 -----------------------------------------------+--------------------+--------------------------------------------------------------------------------------------------------------------------
-                                               | distributed        | false
+                                               | distributed        | true
                                                | vectorized         | false
   render                                       |                    |
    └── sort                                    |                    |

@@ -74,7 +74,7 @@ WHERE s.expected_state is not NULL and f.state = s.expected_state
 ORDER BY f."time", s.station_sn;
                 tree               |    field    |        description
 -----------------------------------+-------------+-----------------------------
-                                   | distributed | false
+                                   | distributed | true
                                    | vectorized  | false
   render                           |             |
    └── sort                        |             |
@@ -112,7 +112,7 @@ WHERE s.expected_state != 'pending' and f.state = s.expected_state
 ORDER BY f."time";
              tree             |     field     |         description
 ------------------------------+---------------+------------------------------
-                              | distributed   | false
+                              | distributed   | true
                               | vectorized    | false
   render                      |               |
    └── sort                   |               |
@@ -147,7 +147,7 @@ WHERE f.state = s.expected_state
 ORDER BY f."time", s.station_sn;
              tree             |    field    |        description
 ------------------------------+-------------+-----------------------------
-                              | distributed | false
+                              | distributed | true
                               | vectorized  | false
   render                      |             |
    └── sort                   |             |
@@ -318,7 +318,7 @@ WHERE s.standard_val is not NULL AND f.second_val = s.standard_val
 ORDER BY f."time";
              tree             |    field    |          description
 ------------------------------+-------------+--------------------------------
-                              | distributed | false
+                              | distributed | true
                               | vectorized  | false
   render                      |             |
    └── sort                   |             |
@@ -351,7 +351,7 @@ WHERE f."value" is not NULL AND f.second_val = s.standard_val
 ORDER BY f."time";
                 tree               |        field        |          description
 -----------------------------------+---------------------+--------------------------------
-                                   | distributed         | false
+                                   | distributed         | true
                                    | vectorized          | false
   render                           |                     |
    └── sort                        |                     |
@@ -386,7 +386,7 @@ WHERE f.second_val = s.standard_val
 ORDER BY f."time";
              tree             |    field    |          description
 ------------------------------+-------------+--------------------------------
-                              | distributed | false
+                              | distributed | true
                               | vectorized  | false
   render                      |             |
    └── sort                   |             |
@@ -425,7 +425,7 @@ GROUP BY s.work_area_sn
 ORDER BY s.work_area_sn;
                   tree                  |      field       |        description
 ----------------------------------------+------------------+-----------------------------
-                                        | distributed      | false
+                                        | distributed      | true
                                         | vectorized       | false
   sort                                  |                  |
    │                                    | order            | +work_area_sn
@@ -488,7 +488,7 @@ WHERE f.state = s.expected_state
 ORDER BY f."time", s.station_sn;
              tree             |    field    |                  description
 ------------------------------+-------------+------------------------------------------------
-                              | distributed | false
+                              | distributed | true
                               | vectorized  | false
   render                      |             |
    └── sort                   |             |
@@ -597,7 +597,7 @@ GROUP BY s.work_area_sn
 ORDER BY s.work_area_sn;
                   tree                  |      field       |                     description
 ----------------------------------------+------------------+-------------------------------------------------------
-                                        | distributed      | false
+                                        | distributed      | true
                                         | vectorized       | false
   batch-lookup-join                     |                  |
    │                                    | type             | inner
@@ -669,7 +669,7 @@ WHERE t.work_area_sn = ts.adr
 ORDER BY ts."value";
                        tree                       |       field       |        description
 --------------------------------------------------+-------------------+-----------------------------
-                                                  | distributed       | false
+                                                  | distributed       | true
                                                   | vectorized        | false
   render                                          |                   |
    └── sort                                       |                   |
@@ -751,7 +751,7 @@ FROM my_timeseries_db.firegases ts,
 WHERE t.standard_avg= ts.second_val;
                 tree               |      field       |        description
 -----------------------------------+------------------+-----------------------------
-                                   | distributed      | false
+                                   | distributed      | true
                                    | vectorized       | false
   render                           |                  |
    └── batch-lookup-join           |                  |
@@ -824,7 +824,7 @@ FROM my_timeseries_db.firegases ts,
 WHERE t.standard_avg + 5 = ts.second_val;
                   tree                  |      field       |        description
 ----------------------------------------+------------------+-----------------------------
-                                        | distributed      | false
+                                        | distributed      | true
                                         | vectorized       | false
   render                                |                  |
    └── batch-lookup-join                |                  |
@@ -893,7 +893,7 @@ WHERE f.second_val = r.standard_avg
     AND f.state = r.expected_state;
                 tree               |       field       |                 description
 -----------------------------------+-------------------+----------------------------------------------
-                                   | distributed       | false
+                                   | distributed       | true
                                    | vectorized        | false
   render                           |                   |
    └── batch-lookup-join           |                   |
@@ -950,7 +950,7 @@ WHERE f.second_val = r.standard_avg
     AND f.state = r.expected_state;
                   tree                  |       field       |                     description
 ----------------------------------------+-------------------+-------------------------------------------------------
-                                        | distributed       | false
+                                        | distributed       | true
                                         | vectorized        | false
   render                                |                   |
    └── batch-lookup-join                |                   |
@@ -1013,7 +1013,7 @@ WHERE f.second_val = r.standard_avg
     AND f.state = r.expected_state;
                      tree                    |       field       |                     description
 ---------------------------------------------+-------------------+-------------------------------------------------------
-                                             | distributed       | false
+                                             | distributed       | true
                                              | vectorized        | false
   render                                     |                   |
    └── batch-lookup-join                     |                   |
@@ -1121,7 +1121,7 @@ WHERE f.int2_val = s.work_area_sn_int2
 ORDER BY f."time";
              tree             |    field    |           description
 ------------------------------+-------------+-----------------------------------
-                              | distributed | false
+                              | distributed | true
                               | vectorized  | false
   render                      |             |
    └── sort                   |             |
@@ -1151,7 +1151,7 @@ WHERE f.int4_val = s.work_area_sn_int4
 ORDER BY f."time";
              tree             |    field    |           description
 ------------------------------+-------------+-----------------------------------
-                              | distributed | false
+                              | distributed | true
                               | vectorized  | false
   render                      |             |
    └── sort                   |             |
@@ -1182,7 +1182,7 @@ WHERE f.adr = s.station_sn
 ORDER BY f."time";
              tree             |       field       |     description
 ------------------------------+-------------------+-----------------------
-                              | distributed       | false
+                              | distributed       | true
                               | vectorized        | false
   render                      |                   |
    └── sort                   |                   |
@@ -1218,7 +1218,7 @@ WHERE f.float4_val = s.standard_val_float4
 ORDER BY f."time";
              tree             |    field    |             description
 ------------------------------+-------------+---------------------------------------
-                              | distributed | false
+                              | distributed | true
                               | vectorized  | false
   render                      |             |
    └── sort                   |             |
@@ -1248,7 +1248,7 @@ WHERE f.float_val = s.standard_val_float
 ORDER BY f."time";
              tree             |    field    |            description
 ------------------------------+-------------+-------------------------------------
-                              | distributed | false
+                              | distributed | true
                               | vectorized  | false
   render                      |             |
    └── sort                   |             |
@@ -1338,7 +1338,7 @@ WHERE f.bool_val = s.bool_val
 ORDER BY f."time";
              tree             |    field    |       description
 ------------------------------+-------------+--------------------------
-                              | distributed | false
+                              | distributed | true
                               | vectorized  | false
   render                      |             |
    └── sort                   |             |
@@ -1383,7 +1383,7 @@ WHERE s.expected_state is not NULL and f.state = s.expected_state
 ORDER BY f."time", s.station_sn;
                 tree               |    field    |        description
 -----------------------------------+-------------+-----------------------------
-                                   | distributed | false
+                                   | distributed | true
                                    | vectorized  | false
   render                           |             |
    └── sort                        |             |
@@ -1421,7 +1421,7 @@ WHERE s.expected_state != 'pending' and f.state = s.expected_state
 ORDER BY f."time";
              tree             |     field     |         description
 ------------------------------+---------------+------------------------------
-                              | distributed   | false
+                              | distributed   | true
                               | vectorized    | false
   render                      |               |
    └── sort                   |               |
@@ -1456,7 +1456,7 @@ WHERE f.state = s.expected_state
 ORDER BY f."time", s.station_sn;
              tree             |    field    |        description
 ------------------------------+-------------+-----------------------------
-                              | distributed | false
+                              | distributed | true
                               | vectorized  | false
   render                      |             |
    └── sort                   |             |
@@ -1627,7 +1627,7 @@ WHERE s.standard_val is not NULL AND f.second_val = s.standard_val
 ORDER BY f."time";
              tree             |    field    |          description
 ------------------------------+-------------+--------------------------------
-                              | distributed | false
+                              | distributed | true
                               | vectorized  | false
   render                      |             |
    └── sort                   |             |
@@ -1660,7 +1660,7 @@ WHERE f."value" is not NULL AND f.second_val = s.standard_val
 ORDER BY f."time";
                 tree               |        field        |          description
 -----------------------------------+---------------------+--------------------------------
-                                   | distributed         | false
+                                   | distributed         | true
                                    | vectorized          | false
   render                           |                     |
    └── sort                        |                     |
@@ -1695,7 +1695,7 @@ WHERE f.second_val = s.standard_val
 ORDER BY f."time";
              tree             |    field    |          description
 ------------------------------+-------------+--------------------------------
-                              | distributed | false
+                              | distributed | true
                               | vectorized  | false
   render                      |             |
    └── sort                   |             |
@@ -1734,7 +1734,7 @@ GROUP BY s.work_area_sn
 ORDER BY s.work_area_sn;
                   tree                  |      field       |        description
 ----------------------------------------+------------------+-----------------------------
-                                        | distributed      | false
+                                        | distributed      | true
                                         | vectorized       | false
   sort                                  |                  |
    │                                    | order            | +work_area_sn
@@ -1797,7 +1797,7 @@ WHERE f.state = s.expected_state
 ORDER BY f."time", s.station_sn;
              tree             |    field    |                  description
 ------------------------------+-------------+------------------------------------------------
-                              | distributed | false
+                              | distributed | true
                               | vectorized  | false
   render                      |             |
    └── sort                   |             |
@@ -1906,7 +1906,7 @@ GROUP BY s.work_area_sn
 ORDER BY s.work_area_sn;
                   tree                  |      field       |                     description
 ----------------------------------------+------------------+-------------------------------------------------------
-                                        | distributed      | false
+                                        | distributed      | true
                                         | vectorized       | false
   batch-lookup-join                     |                  |
    │                                    | type             | inner
@@ -1978,7 +1978,7 @@ WHERE t.work_area_sn = ts.adr
 ORDER BY ts."value";
                        tree                       |       field       |        description
 --------------------------------------------------+-------------------+-----------------------------
-                                                  | distributed       | false
+                                                  | distributed       | true
                                                   | vectorized        | false
   render                                          |                   |
    └── sort                                       |                   |
@@ -2060,7 +2060,7 @@ FROM my_timeseries_db.firegases ts,
 WHERE t.standard_avg= ts.second_val;
                 tree               |      field       |        description
 -----------------------------------+------------------+-----------------------------
-                                   | distributed      | false
+                                   | distributed      | true
                                    | vectorized       | false
   render                           |                  |
    └── batch-lookup-join           |                  |
@@ -2133,7 +2133,7 @@ FROM my_timeseries_db.firegases ts,
 WHERE t.standard_avg + 5 = ts.second_val;
                   tree                  |      field       |        description
 ----------------------------------------+------------------+-----------------------------
-                                        | distributed      | false
+                                        | distributed      | true
                                         | vectorized       | false
   render                                |                  |
    └── batch-lookup-join                |                  |
@@ -2202,7 +2202,7 @@ WHERE f.second_val = r.standard_avg
     AND f.state = r.expected_state;
                 tree               |       field       |                 description
 -----------------------------------+-------------------+----------------------------------------------
-                                   | distributed       | false
+                                   | distributed       | true
                                    | vectorized        | false
   render                           |                   |
    └── batch-lookup-join           |                   |
@@ -2259,7 +2259,7 @@ WHERE f.second_val = r.standard_avg
     AND f.state = r.expected_state;
                   tree                  |       field       |                     description
 ----------------------------------------+-------------------+-------------------------------------------------------
-                                        | distributed       | false
+                                        | distributed       | true
                                         | vectorized        | false
   render                                |                   |
    └── batch-lookup-join                |                   |
@@ -2322,7 +2322,7 @@ WHERE f.second_val = r.standard_avg
     AND f.state = r.expected_state;
                      tree                    |       field       |                     description
 ---------------------------------------------+-------------------+-------------------------------------------------------
-                                             | distributed       | false
+                                             | distributed       | true
                                              | vectorized        | false
   render                                     |                   |
    └── batch-lookup-join                     |                   |
@@ -2376,7 +2376,7 @@ WHERE f.int2_val = s.work_area_sn_int2
 ORDER BY f."time";
              tree             |    field    |           description
 ------------------------------+-------------+-----------------------------------
-                              | distributed | false
+                              | distributed | true
                               | vectorized  | false
   render                      |             |
    └── sort                   |             |
@@ -2406,7 +2406,7 @@ WHERE f.int4_val = s.work_area_sn_int4
 ORDER BY f."time";
              tree             |    field    |           description
 ------------------------------+-------------+-----------------------------------
-                              | distributed | false
+                              | distributed | true
                               | vectorized  | false
   render                      |             |
    └── sort                   |             |
@@ -2437,7 +2437,7 @@ WHERE f.adr = s.station_sn
 ORDER BY f."time";
              tree             |       field       |     description
 ------------------------------+-------------------+-----------------------
-                              | distributed       | false
+                              | distributed       | true
                               | vectorized        | false
   render                      |                   |
    └── sort                   |                   |
@@ -2473,7 +2473,7 @@ WHERE f.float4_val = s.standard_val_float4
 ORDER BY f."time";
              tree             |    field    |             description
 ------------------------------+-------------+---------------------------------------
-                              | distributed | false
+                              | distributed | true
                               | vectorized  | false
   render                      |             |
    └── sort                   |             |
@@ -2503,7 +2503,7 @@ WHERE f.float_val = s.standard_val_float
 ORDER BY f."time";
              tree             |    field    |            description
 ------------------------------+-------------+-------------------------------------
-                              | distributed | false
+                              | distributed | true
                               | vectorized  | false
   render                      |             |
    └── sort                   |             |
@@ -2597,7 +2597,7 @@ WHERE f.bool_val = s.bool_val
 ORDER BY f."time";
              tree             |    field    |       description
 ------------------------------+-------------+--------------------------
-                              | distributed | false
+                              | distributed | true
                               | vectorized  | false
   render                      |             |
    └── sort                   |             |
@@ -2642,7 +2642,7 @@ WHERE s.expected_state is not NULL and f.state = s.expected_state
 ORDER BY f."time", s.station_sn;
                 tree               |    field    |        description
 -----------------------------------+-------------+-----------------------------
-                                   | distributed | false
+                                   | distributed | true
                                    | vectorized  | false
   render                           |             |
    └── sort                        |             |
@@ -2675,7 +2675,7 @@ WHERE f.state = s.expected_state
 ORDER BY f."time", s.station_sn;
              tree             |    field    |                  description
 ------------------------------+-------------+------------------------------------------------
-                              | distributed | false
+                              | distributed | true
                               | vectorized  | false
   render                      |             |
    └── sort                   |             |
@@ -2707,7 +2707,7 @@ WHERE f.adr = s.station_sn
 ORDER BY f."time";
              tree             |       field       |     description
 ------------------------------+-------------------+-----------------------
-                              | distributed       | false
+                              | distributed       | true
                               | vectorized        | false
   render                      |                   |
    └── sort                   |                   |
@@ -2743,7 +2743,7 @@ WHERE f.adr = s.work_area_sn
 ORDER BY f."time";
              tree             |    field    |      description
 ------------------------------+-------------+-------------------------
-                              | distributed | false
+                              | distributed | true
                               | vectorized  | false
   render                      |             |
    └── sort                   |             |
@@ -2777,7 +2777,7 @@ WHERE s.expected_state is not NULL and f.state = s.expected_state
 ORDER BY f."time", s.station_sn;
                 tree               |    field    |        description
 -----------------------------------+-------------+-----------------------------
-                                   | distributed | false
+                                   | distributed | true
                                    | vectorized  | false
   render                           |             |
    └── sort                        |             |
@@ -2815,7 +2815,7 @@ WHERE s.expected_state != 'pending' and f.state = s.expected_state
 ORDER BY f."time";
              tree             |     field     |         description
 ------------------------------+---------------+------------------------------
-                              | distributed   | false
+                              | distributed   | true
                               | vectorized    | false
   render                      |               |
    └── sort                   |               |
@@ -2850,7 +2850,7 @@ WHERE f.state = s.expected_state
 ORDER BY f."time", s.station_sn;
              tree             |    field    |        description
 ------------------------------+-------------+-----------------------------
-                              | distributed | false
+                              | distributed | true
                               | vectorized  | false
   render                      |             |
    └── sort                   |             |
@@ -3021,7 +3021,7 @@ WHERE s.standard_val is not NULL AND f.second_val = s.standard_val
 ORDER BY f."time";
              tree             |    field    |          description
 ------------------------------+-------------+--------------------------------
-                              | distributed | false
+                              | distributed | true
                               | vectorized  | false
   render                      |             |
    └── sort                   |             |
@@ -3054,7 +3054,7 @@ WHERE f."value" is not NULL AND f.second_val = s.standard_val
 ORDER BY f."time";
                 tree               |        field        |          description
 -----------------------------------+---------------------+--------------------------------
-                                   | distributed         | false
+                                   | distributed         | true
                                    | vectorized          | false
   render                           |                     |
    └── sort                        |                     |
@@ -3089,7 +3089,7 @@ WHERE f.second_val = s.standard_val
 ORDER BY f."time";
              tree             |    field    |          description
 ------------------------------+-------------+--------------------------------
-                              | distributed | false
+                              | distributed | true
                               | vectorized  | false
   render                      |             |
    └── sort                   |             |
@@ -3128,7 +3128,7 @@ GROUP BY s.work_area_sn
 ORDER BY s.work_area_sn;
                   tree                  |      field       |        description
 ----------------------------------------+------------------+-----------------------------
-                                        | distributed      | false
+                                        | distributed      | true
                                         | vectorized       | false
   sort                                  |                  |
    │                                    | order            | +work_area_sn
@@ -3191,7 +3191,7 @@ WHERE f.state = s.expected_state
 ORDER BY f."time", s.station_sn;
              tree             |    field    |                  description
 ------------------------------+-------------+------------------------------------------------
-                              | distributed | false
+                              | distributed | true
                               | vectorized  | false
   render                      |             |
    └── sort                   |             |
@@ -3300,7 +3300,7 @@ GROUP BY s.work_area_sn
 ORDER BY s.work_area_sn;
                   tree                  |      field       |                     description
 ----------------------------------------+------------------+-------------------------------------------------------
-                                        | distributed      | false
+                                        | distributed      | true
                                         | vectorized       | false
   batch-lookup-join                     |                  |
    │                                    | type             | inner
@@ -3372,7 +3372,7 @@ WHERE t.work_area_sn = ts.adr
 ORDER BY ts."value";
                        tree                       |       field       |        description
 --------------------------------------------------+-------------------+-----------------------------
-                                                  | distributed       | false
+                                                  | distributed       | true
                                                   | vectorized        | false
   render                                          |                   |
    └── sort                                       |                   |
@@ -3454,7 +3454,7 @@ FROM my_timeseries_db.firegases ts,
 WHERE t.standard_avg= ts.second_val;
                 tree               |      field       |        description
 -----------------------------------+------------------+-----------------------------
-                                   | distributed      | false
+                                   | distributed      | true
                                    | vectorized       | false
   render                           |                  |
    └── batch-lookup-join           |                  |
@@ -3527,7 +3527,7 @@ FROM my_timeseries_db.firegases ts,
 WHERE t.standard_avg + 5 = ts.second_val;
                   tree                  |      field       |        description
 ----------------------------------------+------------------+-----------------------------
-                                        | distributed      | false
+                                        | distributed      | true
                                         | vectorized       | false
   render                                |                  |
    └── batch-lookup-join                |                  |
@@ -3596,7 +3596,7 @@ WHERE f.second_val = r.standard_avg
     AND f.state = r.expected_state;
                 tree               |       field       |                 description
 -----------------------------------+-------------------+----------------------------------------------
-                                   | distributed       | false
+                                   | distributed       | true
                                    | vectorized        | false
   render                           |                   |
    └── batch-lookup-join           |                   |
@@ -3653,7 +3653,7 @@ WHERE f.second_val = r.standard_avg
     AND f.state = r.expected_state;
                   tree                  |       field       |                     description
 ----------------------------------------+-------------------+-------------------------------------------------------
-                                        | distributed       | false
+                                        | distributed       | true
                                         | vectorized        | false
   render                                |                   |
    └── batch-lookup-join                |                   |
@@ -3716,7 +3716,7 @@ WHERE f.second_val = r.standard_avg
     AND f.state = r.expected_state;
                      tree                    |       field       |                     description
 ---------------------------------------------+-------------------+-------------------------------------------------------
-                                             | distributed       | false
+                                             | distributed       | true
                                              | vectorized        | false
   render                                     |                   |
    └── batch-lookup-join                     |                   |
@@ -3770,7 +3770,7 @@ WHERE f.int2_val = s.work_area_sn_int2
 ORDER BY f."time";
              tree             |    field    |           description
 ------------------------------+-------------+-----------------------------------
-                              | distributed | false
+                              | distributed | true
                               | vectorized  | false
   render                      |             |
    └── sort                   |             |
@@ -3800,7 +3800,7 @@ WHERE f.int4_val = s.work_area_sn_int4
 ORDER BY f."time";
              tree             |    field    |           description
 ------------------------------+-------------+-----------------------------------
-                              | distributed | false
+                              | distributed | true
                               | vectorized  | false
   render                      |             |
    └── sort                   |             |
@@ -3831,7 +3831,7 @@ WHERE f.adr = s.station_sn
 ORDER BY f."time";
              tree             |       field       |     description
 ------------------------------+-------------------+-----------------------
-                              | distributed       | false
+                              | distributed       | true
                               | vectorized        | false
   render                      |                   |
    └── sort                   |                   |
@@ -3867,7 +3867,7 @@ WHERE f.float4_val = s.standard_val_float4
 ORDER BY f."time";
              tree             |    field    |             description
 ------------------------------+-------------+---------------------------------------
-                              | distributed | false
+                              | distributed | true
                               | vectorized  | false
   render                      |             |
    └── sort                   |             |
@@ -3897,7 +3897,7 @@ WHERE f.float_val = s.standard_val_float
 ORDER BY f."time";
              tree             |    field    |            description
 ------------------------------+-------------+-------------------------------------
-                              | distributed | false
+                              | distributed | true
                               | vectorized  | false
   render                      |             |
    └── sort                   |             |
@@ -3987,7 +3987,7 @@ WHERE f.bool_val = s.bool_val
 ORDER BY f."time";
              tree             |    field    |       description
 ------------------------------+-------------+--------------------------
-                              | distributed | false
+                              | distributed | true
                               | vectorized  | false
   render                      |             |
    └── sort                   |             |

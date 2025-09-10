@@ -433,7 +433,6 @@ k_bool RouterOutboundOperator::CheckReady(kwdbContext_p ctx) {
       }
       channel->CheckRecvrReady();
     }
-
     {
       std::unique_lock l(lock_);
       while (true) {
@@ -786,7 +785,6 @@ KStatus RouterOutboundOperator::PushChunk(DataChunkPtr& chunk,
         // dest bucket is no used, continue
         continue;
       }
-
       int driver_sequence = 0;
       channels_[channel_id]->AddRowsSelective(
           send_chunk, driver_sequence, channel2rownum[channel_id].data(),
@@ -798,7 +796,6 @@ KStatus RouterOutboundOperator::PushChunk(DataChunkPtr& chunk,
       if (channels_[idx]->UsePassThrougth()) {
         continue;
       }
-
       auto& channel = channels_[idx];
       k_bool real_sent = false;
       if (KStatus::SUCCESS != channel->SendOneChunk(chunk,

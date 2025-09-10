@@ -123,7 +123,7 @@ GROUP BY si.workarea_name,
                  timebucket;
                     tree                    |         field         |                                                       description
 --------------------------------------------+-----------------------+--------------------------------------------------------------------------------------------------------------------------
-                                            | distributed           | false
+                                            | distributed           | true
                                             | vectorized            | false
   render                                    |                       |
    └── group                                |                       |
