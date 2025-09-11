@@ -105,16 +105,13 @@ func (dsp *DistSQLPlanner) planAndRunCreateStream(
 
 	colTypes := sqlbase.ColTypeInfoFromColTypes(physPlan.ResultTypes)
 	rowContainer := rowcontainer.NewRowContainer(evalCtx.Mon.MakeBoundAccount(), colTypes, streamInsertBatch)
-	defer func() {
-		if rowContainer != nil {
-			rowContainer.Close(ctx)
-		}
-	}()
-
 	streamResultWriter := NewStreamResultWriter(
 		ctx, streamDetails.StreamMetadata, &streamPara, physPlan.ResultTypes, streamDetails.TargetTableColTypes,
 		rowContainer, evalCtx.ExecCfg, dsp.stopper,
 	)
+	defer func() {
+		streamResultWriter.Close()
+	}()
 
 	recv := MakeDistSQLReceiver(
 		ctx,
