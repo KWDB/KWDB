@@ -69,7 +69,7 @@ services:
     ports:
       - $g_rest_port:8080
       - $g_kwdb_port:26257
-      - $g_brpc_port:27257
+      - $g_brpc_port:$g_brpc_port
     $cpus
     ulimits:
       memlock: -1
@@ -91,7 +91,7 @@ services:
       - /bin/bash
       - -c
       - |
-        /kaiwudb/bin/kwbase  $start_type $secure_param --listen-addr=0.0.0.0:26257 --advertise-addr=$1:$g_kwdb_port --http-addr=0.0.0.0:8080 --brpc-addr=0.0.0.0:27257 --store=/kaiwudb/deploy/kaiwudb-container $encrypto_opt $opt_join
+        /kaiwudb/bin/kwbase  $start_type $secure_param --listen-addr=0.0.0.0:26257 --advertise-addr=$1:$g_kwdb_port --http-addr=0.0.0.0:8080 --brpc-addr=0.0.0.0:$g_brpc_port --store=/kaiwudb/deploy/kaiwudb-container $encrypto_opt $opt_join
 \" >/etc/kaiwudb/script/docker-compose.yml"
 }
 
