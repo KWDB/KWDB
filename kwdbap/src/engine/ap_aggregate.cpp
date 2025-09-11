@@ -33,9 +33,9 @@ const vector<unique_ptr<duckdb::Expression>> &children) {
 }
 
 // PhysicalOperator TransFormPlan::InitAggregateExpressions(PhysicalOperator &child1,
-//                                                                      vector<unique_ptr<duckdb::Expression>> &aggregates,
-//                                                                      vector<unique_ptr<duckdb::Expression>> &groups,
-//                                                                      kwdbts::TSAggregatorSpec agg_spec) {
+//                                                          vector<unique_ptr<duckdb::Expression>> &aggregates,
+//                                                          vector<unique_ptr<duckdb::Expression>> &groups,
+//                                                          kwdbts::TSAggregatorSpec agg_spec) {
 //     vector<unique_ptr<duckdb::Expression>> expressions;
 //     vector<LogicalType> types;
 //
@@ -80,87 +80,80 @@ const vector<unique_ptr<duckdb::Expression>> &children) {
 //     return proj;
 // }
 
-unique_ptr<PhysicalPlan> TransFormPlan::TransFormAggregator(const kwdbts::PostProcessSpec& post,
-    const kwdbts::ProcessorCoreUnion& core, std::vector<duckdb::unique_ptr<duckdb::PhysicalPlan>> &child) {
-    // auto physical_plan = make_uniq<PhysicalPlan>(Allocator::Get(*context_));
-    if (core.has_aggregator()) {
-        auto apAggregator = core.aggregator();
-        // if (post.output_columns_size() > 0 && post.output_columns_size() != post.output_types_size()) {
-        //     return nullptr;
-        // }
-        // if (input_plan->Root().type != PhysicalOperatorType::TABLE_SCAN) {
-        //     throw InvalidInputException("operator is not a table scan");
-        // }
-        auto &table_scan = child[0]->Root().Cast<PhysicalTableScan>();
-        vector<unique_ptr<duckdb::Expression>> children;
-        // todo: 需要根据实际情况构建投影，比如下层返回a,b, 本层实际上要返回sum(a),sum(b),a
-        for (auto idx : table_scan.projection_ids) {
-            children.push_back(make_uniq<BoundReferenceExpression>(table_scan.returned_types[idx], idx));
-        }
-        // auto ref_copy = CopyChildren(children);
-        auto &proj = child[0]->Make<PhysicalProjection>(table_scan.returned_types, std::move(children), 0);
-        proj.children.push_back(child[0]->Root());
+PhyOpRef TransFormPlan::TransFormAggregator(const kwdbts::PostProcessSpec& post, const kwdbts::ProcessorCoreUnion& core,
+                                            PhyOpRef child) {
+  auto apAggregator = core.aggregator();
+  auto &table_scan = child.Cast<PhysicalTableScan>();
+  vector<unique_ptr<duckdb::Expression>> children;
+  // todo: 需要根据实际情况构建投影，比如下层返回a,b, 本层实际上要返回sum(a),sum(b),a
+  for (auto idx : table_scan.projection_ids) {
+      children.push_back(make_uniq<BoundReferenceExpression>(table_scan.returned_types[idx], idx));
+  }
+  // auto ref_copy = CopyChildren(children);
+  auto &proj = physical_plan_->Make<PhysicalProjection>(table_scan.returned_types, std::move(children), 0);
+  proj.children.push_back(table_scan);
 
-        vector<unique_ptr<duckdb::Expression>> expressions;
-        vector<LogicalType> agg_returned_types;
-        for (auto &agg : apAggregator.aggregations()) {
-            std::string func_name = "";
-            switch (agg.func()) {
-                case TSAggregatorSpec_Func_SUM: {
-                    func_name = "sum";
-                    break;
-                }
-                case TSAggregatorSpec_Func_AVG: {
-                    func_name = "avg";
-                    break;
-                }
-                case TSAggregatorSpec_Func_COUNT: {
-                    func_name = "count";
-                    break;
-                }
-                case TSAggregatorSpec_Func_MAX: {
-                    func_name = "max";
-                    break;
-                }
-                case TSAggregatorSpec_Func_MIN: {
-                    func_name = "min";
-                    break;
-                }
-                default: {
-                    throw InvalidInputException("unsupported agg function");
-                }
-            }
-            EntryLookupInfo lookup_info(CatalogType::AGGREGATE_FUNCTION_ENTRY, func_name);
-            auto entry_retry = CatalogEntryRetriever(*context_);
-            auto func_entry = entry_retry.GetEntry("", "", lookup_info, OnEntryNotFound::RETURN_NULL);
-            if (!func_entry) {
-                throw std::runtime_error("Aggregate function not found: " + func_name);
-            }
-            auto &func = func_entry->Cast<AggregateFunctionCatalogEntry>();
-            unique_ptr<duckdb::Expression> filter;
-            unique_ptr<FunctionData> bind_info;
-            auto aggr_type = AggregateType::NON_DISTINCT;
+  vector<unique_ptr<duckdb::Expression>> expressions;
+  vector<LogicalType> agg_returned_types;
+  for (auto &agg : apAggregator.aggregations()) {
+      std::string func_name = "";
+      switch (agg.func()) {
+          case TSAggregatorSpec_Func_SUM: {
+              func_name = "sum";
+              break;
+          }
+          case TSAggregatorSpec_Func_AVG: {
+              func_name = "avg";
+              break;
+          }
+          case TSAggregatorSpec_Func_COUNT: {
+              func_name = "count";
+              break;
+          }
+          case TSAggregatorSpec_Func_MAX: {
+              func_name = "max";
+              break;
+          }
+          case TSAggregatorSpec_Func_MIN: {
+              func_name = "min";
+              break;
+          }
+          default: {
+              throw InvalidInputException("unsupported agg function");
+          }
+      }
+      EntryLookupInfo lookup_info(CatalogType::AGGREGATE_FUNCTION_ENTRY, func_name);
+      auto entry_retry = CatalogEntryRetriever(*context_);
+      auto func_entry = entry_retry.GetEntry("", "", lookup_info, OnEntryNotFound::RETURN_NULL);
+      if (!func_entry) {
+          throw std::runtime_error("Aggregate function not found: " + func_name);
+      }
+      auto &func = func_entry->Cast<AggregateFunctionCatalogEntry>();
+      unique_ptr<duckdb::Expression> filter;
+      unique_ptr<FunctionData> bind_info;
+      auto aggr_type = AggregateType::NON_DISTINCT;
 
-            vector<unique_ptr<duckdb::Expression>> ref;
-            for (auto idx : agg.col_idx()) {
-                ref.push_back(make_uniq<BoundReferenceExpression>(table_scan.returned_types[idx], idx));
-                auto agg_func = func.functions.GetFunctionByArguments(*context_, {table_scan.returned_types[idx]});
-                if (agg_func.bind) {
-                    bind_info = agg_func.bind(*context_, agg_func, ref);
-                    // we may have lost some arguments in the bind
-                    ref.resize(MinValue(agg_func.arguments.size(), ref.size()));
-                }
-                auto agg_expr = make_uniq<BoundAggregateExpression>(agg_func, std::move(ref), std::move(filter), std::move(bind_info), aggr_type);
-                agg_returned_types.push_back(agg_expr->return_type);
-                expressions.push_back(std::move(agg_expr));
-            }
+      vector<unique_ptr<duckdb::Expression>> ref;
+      for (auto idx : agg.col_idx()) {
+          ref.push_back(make_uniq<BoundReferenceExpression>(table_scan.returned_types[idx], idx));
+          auto agg_func = func.functions.GetFunctionByArguments(*context_, {table_scan.returned_types[idx]});
+          if (agg_func.bind) {
+              bind_info = agg_func.bind(*context_, agg_func, ref);
+              // we may have lost some arguments in the bind
+              ref.resize(MinValue(agg_func.arguments.size(), ref.size()));
+          }
+          auto agg_expr = make_uniq<BoundAggregateExpression>(agg_func,
+                                                              std::move(ref), std::move(filter),
+                                                              std::move(bind_info), aggr_type);
+          agg_returned_types.push_back(agg_expr->return_type);
+          expressions.push_back(std::move(agg_expr));
+      }
 
-        }
-        auto &res = child[0]->Make<PhysicalUngroupedAggregate>(agg_returned_types, std::move(expressions), 0);
-        res.children.push_back(proj);
-        child[0]->SetRoot(res);
-        return std::move(child[0]);
-    }
-  return nullptr;
+  }
+  auto &res = physical_plan_->Make<PhysicalUngroupedAggregate>(agg_returned_types,
+                                                               std::move(expressions), 0);
+  res.children.push_back(proj);
+  return res;
 }
-}
+
+}  // namespace kwdbap

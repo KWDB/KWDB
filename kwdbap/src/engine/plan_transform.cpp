@@ -11,31 +11,27 @@
 
 #include "duckdb/engine/plan_transform.h"
 
-using namespace kwdbts;
+// using namespace kwdbts;
 
 namespace kwdbap {
 
-TransFormPlan::TransFormPlan(duckdb::ClientContext& context,
-                             std::string& db_path) {
-  //  physical_planner_ =
-  //  duckdb::make_uniq<PhysicalPlan>(Allocator::Get(context));
+TransFormPlan::TransFormPlan(duckdb::ClientContext& context, duckdb::PhysicalPlan* plan, std::string& db_path) {
   context_ = &context;
   db_path_ = db_path;
+  physical_plan_ = plan;
 }
 
-duckdb::unique_ptr<duckdb::PhysicalPlan> TransFormPlan::TransFormPhysicalPlan(
-    const ProcessorSpec& procSpec, const PostProcessSpec& post,
-    const ProcessorCoreUnion& core,
-    std::vector<duckdb::unique_ptr<duckdb::PhysicalPlan>>& child) {
+PhyOpRef TransFormPlan::TransFormPhysicalPlan(const ProcessorSpec& procSpec, const PostProcessSpec& post,
+                                              const ProcessorCoreUnion& core, PhyOpRefVec &child) {
   // New operator by type
   if (core.has_aptablereader()) {
     return TransFormTableScan(procSpec, post, core);
   } else if (core.has_aggregator()) {
-    return TransFormAggregator(post, core, child);
+    return TransFormAggregator(post, core, *child[0]);
   }
   EEPgErrorInfo::SetPgErrorInfo(ERRCODE_INVALID_PARAMETER_VALUE,
                                 "Invalid operator type");
-  return nullptr;
+  throw std::runtime_error("Invalid operator type");
 }
 
 vector<unique_ptr<duckdb::Expression>> TransFormPlan::BuildAPExpr(

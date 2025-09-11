@@ -16,50 +16,44 @@
 #include <string>
 #include <vector>
 
-#include "duckdb/execution/physical_plan_generator.hpp"
 #include "ee_pb_plan.pb.h"
 #include "kwdb_type.h"
+#include "duckdb/execution/physical_plan_generator.hpp"
 
 namespace kwdbap {
-typedef duckdb::unique_ptr<duckdb::PhysicalPlan> PhyPlanPtr;
+typedef duckdb::PhysicalOperator& PhyOpRef;
 typedef std::map<idx_t, idx_t> IdxMap;
+typedef std::vector<duckdb::PhysicalOperator*> PhyOpRefVec;
 /**
  * @brief Physical plan processor
  *
  */
 class TransFormPlan {
  public:
-  explicit TransFormPlan(duckdb::ClientContext &context, std::string &db_path);
+  explicit TransFormPlan(duckdb::ClientContext &context, duckdb::PhysicalPlan* plan, std::string &db_path);
   ~TransFormPlan() {}
-
-  PhyPlanPtr TransFormPhysicalPlan(const kwdbts::ProcessorSpec &procSpec,
-                                   const kwdbts::PostProcessSpec &post,
-                                   const kwdbts::ProcessorCoreUnion &core,
-                                   std::vector<PhyPlanPtr> &child);
+  
+  PhyOpRef TransFormPhysicalPlan(const kwdbts::ProcessorSpec &procSpec, const kwdbts::PostProcessSpec &post,
+                                 const kwdbts::ProcessorCoreUnion &core, PhyOpRefVec &child);
 
  private:
-  PhyPlanPtr TransFormTableScan(const kwdbts::ProcessorSpec &procSpec,
-                                const kwdbts::PostProcessSpec &post,
-                                const kwdbts::ProcessorCoreUnion &core);
+  PhyOpRef TransFormTableScan(const kwdbts::ProcessorSpec &procSpec, const kwdbts::PostProcessSpec &post,
+                              const kwdbts::ProcessorCoreUnion &core);
 
-  duckdb::vector<duckdb::unique_ptr<duckdb::Expression>> BuildAPExpr(
-      const std::string &str, duckdb::TableCatalogEntry &table,
-      IdxMap &col_map);
+  duckdb::vector<duckdb::unique_ptr<duckdb::Expression>> BuildAPExpr(const std::string &str,
+                                                                     duckdb::TableCatalogEntry &table, IdxMap &col_map);
 
-  duckdb::vector<duckdb::column_t> GetColsFromRenderExpr(const std::string &str,
-                                            duckdb::TableCatalogEntry &table);
+  duckdb::vector<duckdb::column_t> GetColsFromRenderExpr(const std::string &str, duckdb::TableCatalogEntry &table);
 
-  static PhyPlanPtr VerifyProjectionByTableScan(PhyPlanPtr plan, IdxMap &col_map);
-
-  PhyPlanPtr AddAPFilters(PhyPlanPtr plan, const kwdbts::PostProcessSpec &post,
-                          duckdb::TableCatalogEntry &table, IdxMap &col_map);
-
-  PhyPlanPtr TransFormAggregator(
-      const kwdbts::PostProcessSpec &post,
-      const kwdbts::ProcessorCoreUnion &core,
-      std::vector<duckdb::unique_ptr<duckdb::PhysicalPlan>> &child);
-
-  PhyPlanPtr AddAPProjection(PhyPlanPtr plan,
+  PhyOpRef VerifyProjectionByTableScan(PhyOpRef plan, IdxMap &col_map);
+  
+  PhyOpRef AddAPFilters(PhyOpRef plan, const kwdbts::PostProcessSpec &post, duckdb::TableCatalogEntry &table,
+                        IdxMap &col_map);
+  
+  PhyOpRef TransFormAggregator(const kwdbts::PostProcessSpec &post, const kwdbts::ProcessorCoreUnion &core,
+                               PhyOpRef child);
+  
+  PhyOpRef AddAPProjection(PhyOpRef plan,
                              const kwdbts::PostProcessSpec &post,
                              duckdb::TableCatalogEntry &table, IdxMap &col_map);
   duckdb::PhysicalOperator InitAggregateExpressions(duckdb::PhysicalOperator &child1,
@@ -71,6 +65,7 @@ class TransFormPlan {
  private:
   duckdb::ClientContext *context_;
   std::string db_path_;
+  duckdb::PhysicalPlan* physical_plan_;
 };
 
 }  // namespace kwdbap

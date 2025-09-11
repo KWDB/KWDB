@@ -11,18 +11,15 @@
 
 #include "duckdb/engine/duckdb_exec.h"
 #include "libkwdbap.h"
-#include "cm_func.h"
 #include "duckdb/catalog/catalog.hpp"
 #include "duckdb/catalog/catalog_entry/scalar_function_catalog_entry.hpp"
 #include "duckdb/catalog/catalog_entry/table_catalog_entry.hpp"
 #include "duckdb/catalog/entry_lookup_info.hpp"
-#include "duckdb/common/extra_operator_info.hpp"  // 包含 ExtraOperatorInfo 定义
+#include "duckdb/common/extra_operator_info.hpp"
 #include "duckdb/engine/ap_parse_query.h"
 #include "duckdb/execution/executor.hpp"
 #include "duckdb/execution/operator/filter/physical_filter.hpp"
 #include "duckdb/execution/operator/helper/physical_batch_collector.hpp"
-#include "duckdb/execution/operator/projection/physical_projection.hpp"
-#include "duckdb/execution/operator/scan/physical_table_scan.hpp"  // 确保包含此类定义
 #include "duckdb/execution/operator/scan/physical_table_scan.hpp"
 #include "duckdb/function/function_set.hpp"
 #include "duckdb/function/table_function.hpp"
@@ -34,11 +31,8 @@
 #include "duckdb/planner/expression/bound_comparison_expression.hpp"
 #include "duckdb/planner/expression/bound_constant_expression.hpp"
 #include "duckdb/planner/expression/bound_reference_expression.hpp"
-#include "ee_comm_def.h"
 #include "ee_encoding.h"
-#include "ee_iparser.h"
 #include "ee_string_info.h"
-#include "kwdb_type.h"
 #include "lg_api.h"
 
 using namespace duckdb;
@@ -412,7 +406,7 @@ KStatus DuckdbExec::Setup(kwdbContext_p ctx, k_char* message, k_uint32 len,
     } catch (const Exception& e) {
       auto error = e.what();
       printf("DuckdbExec::Setup catch error %s \n", error);
-      connect_->Rollback();
+//      connect_->Rollback();
     }
 
     resp->ret = 1;

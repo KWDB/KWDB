@@ -142,6 +142,54 @@ func (ttr *ApEngineSchedule) Start(ctx context.Context) context.Context {
 	return ctx
 }
 
+// setupFlow initializes the time series flow in the ap engine
+func (ttr *ApEngineSchedule) setupFlow(ctx context.Context) error {
+	rand.Seed(timeutil.Now().UnixNano())
+	randomNumber := rand.Intn(100000) + 1
+
+	flowID := execinfrapb.FlowID{UUID: uuid.MakeV4()}
+
+	tsFlowSpec := NewFlowSpec(flowID, ttr.FlowCtx.NodeID)
+	tsFlowSpec.Processors = ttr.processors
+
+	msg, err := protoutil.Marshal(tsFlowSpec)
+	if err != nil {
+		return err
+	}
+
+	if log.V(3) {
+		log.Infof(ctx, "node: %v,\nts_physical_plan: %v\n", ttr.EvalCtx.NodeID, tsFlowSpec)
+	}
+
+	timezone, err := ttr.setupTimezone(ctx)
+	if err != nil {
+		return err
+	}
+
+	// Create query info for the ap engine
+	queryInfo := ape.QueryInfo{
+		ID:       int(ttr.sid),
+		Buf:      msg,
+		UniqueID: randomNumber,
+		Handle:   ttr.handle, // Will be set by the engine
+		TimeZone: timezone,
+		SQL:      ttr.EvalCtx.Planner.GetStmt(),
+	}
+
+	respInfo, err := ttr.engine.SetupFlow(&(ttr.Ctx), queryInfo)
+	if err != nil {
+		if ttr.FlowCtx != nil {
+			ttr.FlowCtx.TsHandleBreak = true
+		}
+		return err
+	}
+
+	// Store the handle and register it in the flow context
+	ttr.handle = respInfo.Handle
+
+	return nil
+}
+
 // Next is part of the RowSource interface.
 func (ttr *ApEngineSchedule) Next() (sqlbase.EncDatumRow, *execinfrapb.ProducerMetadata) {
 	for ttr.State == execinfra.StateRunning {
@@ -242,54 +290,6 @@ func (ttr *ApEngineSchedule) DropHandle(ctx context.Context) {
 		}
 		ttr.handle = nil
 	}
-}
-
-// setupFlow initializes the time series flow in the ap engine
-func (ttr *ApEngineSchedule) setupFlow(ctx context.Context) error {
-	rand.Seed(timeutil.Now().UnixNano())
-	randomNumber := rand.Intn(100000) + 1
-
-	flowID := execinfrapb.FlowID{UUID: uuid.MakeV4()}
-
-	tsFlowSpec := NewFlowSpec(flowID, ttr.FlowCtx.NodeID)
-	tsFlowSpec.Processors = ttr.processors
-
-	msg, err := protoutil.Marshal(tsFlowSpec)
-	if err != nil {
-		return err
-	}
-
-	if log.V(3) {
-		log.Infof(ctx, "node: %v,\nts_physical_plan: %v\n", ttr.EvalCtx.NodeID, tsFlowSpec)
-	}
-
-	timezone, err := ttr.setupTimezone(ctx)
-	if err != nil {
-		return err
-	}
-
-	// Create query info for the ap engine
-	queryInfo := ape.QueryInfo{
-		ID:       int(ttr.sid),
-		Buf:      msg,
-		UniqueID: randomNumber,
-		Handle:   ttr.handle, // Will be set by the engine
-		TimeZone: timezone,
-		SQL:      ttr.EvalCtx.Planner.GetStmt(),
-	}
-
-	respInfo, err := ttr.engine.SetupFlow(&(ttr.Ctx), queryInfo)
-	if err != nil {
-		if ttr.FlowCtx != nil {
-			ttr.FlowCtx.TsHandleBreak = true
-		}
-		return err
-	}
-
-	// Store the handle and register it in the flow context
-	ttr.handle = respInfo.Handle
-
-	return nil
 }
 
 // setupTimezone determines the timezone offset to use for the query

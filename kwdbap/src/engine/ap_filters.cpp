@@ -9,49 +9,31 @@
 // NON-INFRINGEMENT, MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE. See the
 // Mulan PSL v2 for more details.
 
-#include "cm_func.h"
-#include "duckdb/catalog/catalog.hpp"
 #include "duckdb/catalog/catalog_entry/scalar_function_catalog_entry.hpp"
 #include "duckdb/catalog/catalog_entry/table_catalog_entry.hpp"
-#include "duckdb/catalog/entry_lookup_info.hpp"
-#include "duckdb/common/extra_operator_info.hpp"  // 包含 ExtraOperatorInfo 定义
 #include "duckdb/engine/ap_parse_query.h"
 #include "duckdb/engine/plan_transform.h"
-#include "duckdb/execution/executor.hpp"
 #include "duckdb/execution/operator/filter/physical_filter.hpp"
 #include "duckdb/execution/operator/helper/physical_batch_collector.hpp"
 #include "duckdb/execution/operator/projection/physical_projection.hpp"
-#include "duckdb/execution/operator/scan/physical_table_scan.hpp"  // 确保包含此类定义
 #include "duckdb/execution/operator/scan/physical_table_scan.hpp"
 #include "duckdb/function/function_set.hpp"
 #include "duckdb/function/table_function.hpp"
 #include "duckdb/main/attached_database.hpp"
-#include "duckdb/main/client_context.hpp"
 #include "duckdb/main/database.hpp"
 #include "duckdb/main/prepared_statement_data.hpp"
-#include "duckdb/optimizer/filter_combiner.hpp"
 #include "duckdb/planner/expression/bound_cast_expression.hpp"
 #include "duckdb/planner/expression/bound_comparison_expression.hpp"
 #include "duckdb/planner/expression/bound_constant_expression.hpp"
 #include "duckdb/planner/expression/bound_reference_expression.hpp"
-#include "ee_comm_def.h"
-#include "ee_encoding.h"
-#include "ee_iparser.h"
-#include "ee_string_info.h"
-#include "kwdb_type.h"
-#include "lg_api.h"
-
-using namespace duckdb;
 
 namespace kwdbap {
-PhyPlanPtr TransFormPlan::AddAPFilters(PhyPlanPtr physical_plan,
-                                       const kwdbts::PostProcessSpec &post,
-                                       TableCatalogEntry &table,
-                                       IdxMap &col_map) {
+  PhyOpRef TransFormPlan::AddAPFilters(PhyOpRef physicalOp, const kwdbts::PostProcessSpec &post,
+                                       TableCatalogEntry &table, IdxMap &col_map) {
   vector<LogicalType> proj_types;
   vector<string> proj_names;
   vector<ColumnIndex> proj_column_ids;
-  auto &scan = physical_plan->Root().Cast<PhysicalTableScan>();
+  auto &scan = physicalOp.Cast<PhysicalTableScan>();
   if (!post.projection()) {
     if (post.render_exprs_size() <= 0) {
       proj_types = scan.returned_types;
@@ -64,7 +46,7 @@ PhyPlanPtr TransFormPlan::AddAPFilters(PhyPlanPtr physical_plan,
         auto tmp_cols = GetColsFromRenderExpr(proj_expr.expr(), table);
         expr_column_ids.insert(tmp_cols.begin(), tmp_cols.end());
       }
-      for (auto i = 0; i < scan.column_ids.size(); ++i) {
+      for (size_t i = 0; i < scan.column_ids.size(); ++i) {
         auto col_id = scan.column_ids[i];
         if (expr_column_ids.find(col_id.GetPrimaryIndex()) ==
             expr_column_ids.end()) {
@@ -86,13 +68,12 @@ PhyPlanPtr TransFormPlan::AddAPFilters(PhyPlanPtr physical_plan,
   }
 
   auto filter_expr = post.filter().expr();
-  physical_plan =
-      VerifyProjectionByTableScan(std::move(physical_plan), col_map);
+  reference<PhysicalOperator> plan = VerifyProjectionByTableScan(scan, col_map);
 
   printf("expr: %s", filter_expr.c_str());
   auto expressions = BuildAPExpr(filter_expr, table, col_map);
   if (expressions.empty()) {
-    return nullptr;
+    return physicalOp;
   }
   // auto filter_push_down = true;
   // auto combiner = FilterCombiner(*context_);
@@ -102,11 +83,9 @@ PhyPlanPtr TransFormPlan::AddAPFilters(PhyPlanPtr physical_plan,
   //   }
   // }
   // auto &proj = projection.Cast<PhysicalProjection>();
-  auto &filter = physical_plan->Make<PhysicalFilter>(
-      physical_plan->Root().types, std::move(expressions),
-      physical_plan->Root().estimated_cardinality);
-  filter.children.push_back(physical_plan->Root());
-
+  auto &filter = physical_plan_->Make<PhysicalFilter>(plan.get().types, std::move(expressions),
+      plan.get().estimated_cardinality);
+  filter.children.push_back(plan.get());
   // build result projection
   vector<unique_ptr<duckdb::Expression>> proj_exprs;
   proj_exprs.reserve(proj_column_ids.size());
@@ -117,18 +96,14 @@ PhyPlanPtr TransFormPlan::AddAPFilters(PhyPlanPtr physical_plan,
     col_map[proj_column_ids[col_idx].GetPrimaryIndex()] = col_idx;
   }
 
-  auto &res_proj = physical_plan->Make<PhysicalProjection>(
+  auto &res_proj = physical_plan_->Make<PhysicalProjection>(
       proj_types, std::move(proj_exprs), 0);
   res_proj.children.push_back(filter);
-  physical_plan->SetRoot(res_proj);
-
-  return physical_plan;
+  return res_proj;
 }
 
-PhyPlanPtr TransFormPlan::VerifyProjectionByTableScan(PhyPlanPtr plan,
-                                                      IdxMap &col_map) {
-  auto ret = kwdbts::FAIL;
-  auto &scan = plan->Root().Cast<PhysicalTableScan>();
+PhyOpRef TransFormPlan::VerifyProjectionByTableScan(PhyOpRef plan, IdxMap &col_map) {
+  auto &scan = plan.Cast<PhysicalTableScan>();
 
   // build child_proj
   const auto child_types = scan.types;
@@ -159,7 +134,7 @@ PhyPlanPtr TransFormPlan::VerifyProjectionByTableScan(PhyPlanPtr plan,
     col_map[column_ids[col_idx].GetPrimaryIndex()] = new_col_idx;
   }
 
-  auto &child_proj = plan->Make<PhysicalProjection>(
+  auto &child_proj = physical_plan_->Make<PhysicalProjection>(
       proj_types, std::move(expressions), scan.estimated_cardinality);
   child_proj.children.push_back(scan);
 
@@ -192,12 +167,11 @@ PhyPlanPtr TransFormPlan::VerifyProjectionByTableScan(PhyPlanPtr plan,
     col_map[column_ids[col_idx].GetPrimaryIndex()] = new_col_idx;
   }
 
-  auto &result_proj = plan->Make<PhysicalProjection>(
+  auto &result_proj = physical_plan_->Make<PhysicalProjection>(
       result_proj_types, std::move(result_expressions),
       scan.estimated_cardinality);
   result_proj.children.push_back(child_proj);
-  plan->SetRoot(result_proj);
-
-  return plan;
+  return result_proj;
 }
+
 }  // namespace kwdbap

@@ -22,7 +22,8 @@
 #include "duckdb/engine/plan_transform.h"
 
 namespace kwdbap {
-
+typedef duckdb::reference<duckdb::PhysicalOperator> PhyOpReference;
+typedef std::unordered_map<kwdbts::k_uint32, duckdb::PhysicalOperator*> InPutStreamSrcMap;
 /**
 * @brief Physical plan processor
 *
@@ -50,8 +51,7 @@ class Processors {
  private:
   kwdbts::KStatus BuildOperator();
   
-  duckdb::unique_ptr<duckdb::PhysicalPlan> BuildOperatorImp(const kwdbts::ProcessorSpec &procSpec,
-                        std::unordered_map<kwdbts::k_uint32, duckdb::unique_ptr<duckdb::PhysicalPlan>> &inputSrc);
+  PhyOpRef BuildOperatorImp(const kwdbts::ProcessorSpec &procSpec, InPutStreamSrcMap &inputSrc);
   
   std::shared_ptr<TransFormPlan> transFormPlan_;
   
