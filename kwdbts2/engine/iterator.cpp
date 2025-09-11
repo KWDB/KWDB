@@ -166,7 +166,13 @@ bool TsStorageIterator::matchesFilterRange(const BlockFilter& filter, SpanValue 
         max_res = (max.ival > filter_span.start.ival) ? 1 : ((max.ival < filter_span.start.ival) ? -1 : 0);
         break;
       }
-      case DATATYPE::FLOAT:
+      case DATATYPE::FLOAT: {
+        bool is_min_equal = FLT_EQUAL(min.dval, filter_span.end.dval);
+        bool is_max_equal = FLT_EQUAL(max.dval, filter_span.start.dval);
+        min_res = is_min_equal ? 0 : ((min.dval > filter_span.end.dval) ? 1 : -1);
+        max_res = is_max_equal ? 0 : ((max.dval > filter_span.start.dval) ? 1 : -1);
+        break;
+      }
       case DATATYPE::DOUBLE: {
         min_res = (min.dval > filter_span.end.dval) ? 1 : ((min.dval < filter_span.end.dval) ? -1 : 0);
         max_res = (max.dval > filter_span.start.dval) ? 1 : ((max.dval < filter_span.start.dval) ? -1 : 0);
