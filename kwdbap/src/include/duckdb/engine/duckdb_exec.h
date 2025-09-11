@@ -126,11 +126,7 @@ class DuckdbExec {
   ExecutionResult ExecuteCustomPlan(kwdbContext_p ctx,
                                     const std::string &table_name);
 
-  unique_ptr<PhysicalPlan> ConvertFlowToPhysicalPlan(int *start_idx);
-
   ExecutionResult PrepareExecutePlan(kwdbContext_p ctx);
-
-  KStatus AttachDBs();
 
   KStatus DetachDB(vector<std::string> dbs);
 

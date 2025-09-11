@@ -225,23 +225,9 @@ KStatus APEngineImpl::CreateAppender(const char* catalog, const char* schema,
   return SUCCESS;
 }
 
-bool checkDuckdbParam(void* db, void* connect) {
-  auto database = static_cast<duckdb_database>(db);
-  if (!database) {
-    return false;
-  }
-  auto connection = static_cast<duckdb_connection>(connect);
-  if (!connection) {
-    return false;
-  }
-
-  return true;
-}
-
 unique_ptr<PhysicalTableScan> CreateTableScanOperator(
     ClientContext& context, TableCatalogEntry& table_entry, string table_name,
-    const vector<ColumnIndex>& column_ids,
-    unique_ptr<TableFilterSet> table_filters = nullptr) {
+    const vector<ColumnIndex>& column_ids, unique_ptr<TableFilterSet> table_filters = nullptr) {
   // 1. 获取表扫描函数
   auto ctx = QueryErrorContext();
   EntryLookupInfo table_lookup(CatalogType::TABLE_ENTRY, table_name, nullptr,
@@ -385,8 +371,8 @@ KStatus DuckdbExec::ExecQuery(kwdbContext_p ctx, APQueryInfo* req, APRespInfo* r
   return ret;
 }
 
-KStatus DuckdbExec::Setup(kwdbContext_p ctx, k_char* message, k_uint32 len,
-                          k_int32 id, k_int32 uniqueID, APRespInfo* resp) {
+KStatus DuckdbExec::Setup(kwdbContext_p ctx, k_char* message, k_uint32 len, k_int32 id, k_int32 uniqueID,
+                          APRespInfo* resp) {
   if (setup_) {
     return KStatus::FAIL;
   }
@@ -403,21 +389,18 @@ KStatus DuckdbExec::Setup(kwdbContext_p ctx, k_char* message, k_uint32 len,
       if (KStatus::SUCCESS == processors_->Init(message, len)) {
         res_ = PrepareExecutePlan(ctx);
       }
+      resp->ret = 1;
+      ret = KStatus::SUCCESS;
     } catch (const Exception& e) {
       auto error = e.what();
       printf("DuckdbExec::Setup catch error %s \n", error);
-//      connect_->Rollback();
     }
-
-    resp->ret = 1;
-    ret = KStatus::SUCCESS;
   }
 
   return ret;
 }
 
-KStatus DuckdbExec::Next(kwdbContext_p ctx, k_int32 id,
-                         TsNextRetState nextState, APRespInfo* resp) {
+KStatus DuckdbExec::Next(kwdbContext_p ctx, k_int32 id, TsNextRetState nextState, APRespInfo* resp) {
   KStatus ret = KStatus::FAIL;
 #if 1
   if (setup_ && res_.success) {
@@ -459,8 +442,7 @@ void DuckdbExec::Clear(kwdbContext_p ctx) {
 const char val_str_t[1] = {'t'};
 const char val_str_f[1] = {'f'};
 
-KStatus PGResultDataForOneRow(kwdbContext_p ctx, const ColumnDataRow row,
-                              vector<LogicalType>& types, k_int32 col_count,
+KStatus PGResultDataForOneRow(kwdbContext_p ctx, const ColumnDataRow row, vector<LogicalType>& types, k_int32 col_count,
                               const EE_StringInfo& info) {
   EnterFunc();
   k_uint32 temp_len = info->len;
@@ -540,9 +522,8 @@ KStatus PGResultDataForOneRow(kwdbContext_p ctx, const ColumnDataRow row,
   Return(SUCCESS);
 }
 
-KStatus PGResultDataForOneChunk(kwdbContext_p ctx, const DataChunk& chunk,
-                                vector<LogicalType>& types, k_int32 col_count,
-                                const EE_StringInfo& info) {
+KStatus PGResultDataForOneChunk(kwdbContext_p ctx, const DataChunk& chunk, vector<LogicalType>& types,
+                                k_int32 col_count, const EE_StringInfo& info) {
   EnterFunc();
   k_uint32 temp_len = info->len;
   char* temp_addr = nullptr;
@@ -625,8 +606,7 @@ KStatus PGResultDataForOneChunk(kwdbContext_p ctx, const DataChunk& chunk,
   Return(SUCCESS);
 }
 
-KStatus EncodingValue(kwdbContext_p ctx, Value& val, const EE_StringInfo& info,
-                      LogicalType& return_types) {
+KStatus EncodingValue(kwdbContext_p ctx, Value& val, const EE_StringInfo& info, LogicalType& return_types) {
   EnterFunc();
   KStatus ret = KStatus::SUCCESS;
 
@@ -643,251 +623,11 @@ KStatus EncodingValue(kwdbContext_p ctx, Value& val, const EE_StringInfo& info,
     info->len = info->len + len;
     Return(ret);
   }
-
-  //    switch (return_types.id()) {
-  //      case LogicalTypeId::BOOLEAN: {
-  //        auto res = BooleanValue::Get(val);
-  //        std::memcpy(&val, val, sizeof(k_bool));
-  //        k_int32 len = ValueEncoding::EncodeComputeLenBool(0, val);
-  //        ret = ee_enlargeStringInfo(info, len);
-  //        if (ret != SUCCESS) {
-  //          break;
-  //        }
-  //
-  //        CKSlice slice{info->data + info->len, len};
-  //        ValueEncoding::EncodeBoolValue(&slice, 0, val);
-  //        info->len = info->len + len;
-  //        break;
-  //      }
-  //      case LogicalTypeId::STRING_LITERAL: {
-  //        k_uint16 val_len;
-  //        DatumPtr raw = GetData(row, col, val_len);
-  //        std::string val = std::string{static_cast<char*>(raw), val_len};
-  //        k_int32 len = ValueEncoding::EncodeComputeLenString(0, val.size());
-  //        ret = ee_enlargeStringInfo(info, len);
-  //        if (ret != SUCCESS) {
-  //          break;
-  //        }
-  //
-  //        CKSlice slice{info->data + info->len, len};
-  //        ValueEncoding::EncodeBytesValue(&slice, 0, val);
-  //        info->len = info->len + len;
-  //        break;
-  //      }
-  //      case LogicalTypeId::TIMESTAMP:
-  //      case LogicalTypeId::TIMESTAMP_TZ:{
-  //        DatumPtr raw = GetData(row, col);
-  //        k_int64 val;
-  //        std::memcpy(&val, raw, sizeof(k_int64));
-  //        CKTime ck_time = getCKTime(val, col_info_[col].storage_type,
-  //        ctx->timezone); k_int32 len = ValueEncoding::EncodeComputeLenTime(0,
-  //        ck_time); ret = ee_enlargeStringInfo(info, len); if (ret != SUCCESS)
-  //        {
-  //          break;
-  //        }
-  //
-  //        CKSlice slice{info->data + info->len, len};
-  //        ValueEncoding::EncodeTimeValue(&slice, 0, ck_time);
-  //        info->len = info->len + len;
-  //        break;
-  //      }
-  //      case LogicalTypeId::TINYINT:
-  //      case LogicalTypeId::SMALLINT:
-  //      case LogicalTypeId::INTEGER:
-  //      case LogicalTypeId::BIGINT:{
-  //        DatumPtr raw = GetData(row, col);
-  //        k_int64 val;
-  //        switch (col_info_[col].storage_type) {
-  //          case roachpb::DataType::BIGINT:
-  //          case roachpb::DataType::TIMESTAMP:
-  //          case roachpb::DataType::TIMESTAMPTZ:
-  //          case roachpb::DataType::TIMESTAMP_MICRO:
-  //          case roachpb::DataType::TIMESTAMP_NANO:
-  //          case roachpb::DataType::TIMESTAMPTZ_MICRO:
-  //          case roachpb::DataType::TIMESTAMPTZ_NANO:
-  //          case roachpb::DataType::DATE:
-  //            std::memcpy(&val, raw, sizeof(k_int64));
-  //            break;
-  //          case roachpb::DataType::SMALLINT:
-  //            k_int16 val16;
-  //            std::memcpy(&val16, raw, sizeof(k_int16));
-  //            val = val16;
-  //            break;
-  //          default:
-  //            k_int32 val32;
-  //            std::memcpy(&val32, raw, sizeof(k_int32));
-  //            val = val32;
-  //            break;
-  //        }
-  //        k_int32 len = ValueEncoding::EncodeComputeLenInt(0, val);
-  //        ret = ee_enlargeStringInfo(info, len);
-  //        if (ret != SUCCESS) {
-  //          break;
-  //        }
-  //
-  //        CKSlice slice{info->data + info->len, len};
-  //        ValueEncoding::EncodeIntValue(&slice, 0, val);
-  //        info->len = info->len + len;
-  //        break;
-  //      }
-  //      case LogicalTypeId::FLOAT:
-  //      case LogicalTypeId::DOUBLE:{
-  //        DatumPtr raw = GetData(row, col);
-  //        k_double64 val;
-  //        if (col_info_[col].storage_type == roachpb::DataType::FLOAT) {
-  //          k_float32 val32;
-  //          std::memcpy(&val32, raw, sizeof(k_float32));
-  //          val = val32;
-  //        } else {
-  //          std::memcpy(&val, raw, sizeof(k_double64));
-  //        }
-  //
-  //        k_int32 len = ValueEncoding::EncodeComputeLenFloat(0);
-  //        ret = ee_enlargeStringInfo(info, len);
-  //        if (ret != SUCCESS) {
-  //          break;
-  //        }
-  //
-  //        CKSlice slice{info->data + info->len, len};
-  //        ValueEncoding::EncodeFloatValue(&slice, 0, val);
-  //        info->len = info->len + len;
-  //        break;
-  //      }
-  //      case LogicalTypeId::DECIMAL: {
-  //        switch (col_info_[col].storage_type) {
-  //          case roachpb::DataType::SMALLINT: {
-  //            DatumPtr ptr = GetData(row, col);
-  //            EncodeDecimal<k_int16>(ptr, info);
-  //            break;
-  //          }
-  //          case roachpb::DataType::INT: {
-  //            DatumPtr ptr = GetData(row, col);
-  //            EncodeDecimal<k_int32>(ptr, info);
-  //            break;
-  //          }
-  //          case roachpb::DataType::TIMESTAMP:
-  //          case roachpb::DataType::TIMESTAMPTZ:
-  //          case roachpb::DataType::TIMESTAMP_MICRO:
-  //          case roachpb::DataType::TIMESTAMP_NANO:
-  //          case roachpb::DataType::TIMESTAMPTZ_MICRO:
-  //          case roachpb::DataType::TIMESTAMPTZ_NANO:
-  //          case roachpb::DataType::DATE:
-  //          case roachpb::DataType::BIGINT: {
-  //            DatumPtr ptr = GetData(row, col);
-  //            EncodeDecimal<k_int64>(ptr, info);
-  //            break;
-  //          }
-  //          case roachpb::DataType::FLOAT: {
-  //            DatumPtr ptr = GetData(row, col);
-  //            EncodeDecimal<k_float32>(ptr, info);
-  //            break;
-  //          }
-  //          case roachpb::DataType::DOUBLE: {
-  //            DatumPtr ptr = GetData(row, col);
-  //            EncodeDecimal<k_double64>(ptr, info);
-  //            break;
-  //          }
-  //          case roachpb::DataType::DECIMAL: {
-  //            DatumPtr ptr = GetData(row, col);
-  //            k_bool is_double = *reinterpret_cast<k_bool*>(ptr);
-  //            if (is_double) {
-  //              EncodeDecimal<k_double64>(ptr + sizeof(k_bool), info);
-  //            } else {
-  //              EncodeDecimal<k_int64>(ptr + sizeof(k_bool), info);
-  //            }
-  //            break;
-  //          }
-  //          default: {
-  //            LOG_ERROR("Unsupported Decimal type for encoding: %d ",
-  //            col_info_[col].storage_type)
-  //            EEPgErrorInfo::SetPgErrorInfo(ERRCODE_INDETERMINATE_DATATYPE,
-  //            "unsupported data type"); break;
-  //          }
-  //        }
-  //        break;
-  //      }
-  ////      case KWDBTypeFamily::IntervalFamily: {
-  ////        DatumPtr raw = GetData(row, col);
-  ////        k_int64 val;
-  ////        std::memcpy(&val, raw, sizeof(k_int64));
-  ////
-  ////        struct KWDuration duration;
-  ////        switch (col_info_[col].storage_type) {
-  ////          case roachpb::TIMESTAMP_MICRO:
-  ////          case roachpb::TIMESTAMPTZ_MICRO:
-  ////            duration.format(val, 1000);
-  ////            break;
-  ////          case roachpb::TIMESTAMP_NANO:
-  ////          case roachpb::TIMESTAMPTZ_NANO:
-  ////            duration.format(val, 1);
-  ////            break;
-  ////          default:
-  ////            duration.format(val, 1000000);
-  ////            break;
-  ////        }
-  ////        k_int32 len = ValueEncoding::EncodeComputeLenDuration(0,
-  /// duration); /        ret = ee_enlargeStringInfo(info, len); /        if
-  /// (ret
-  ///!= SUCCESS) { /          break; /        }
-  ////
-  ////        CKSlice slice{info->data + info->len, len};
-  ////        ValueEncoding::EncodeDurationValue(&slice, 0, duration);
-  ////        info->len = info->len + len;
-  ////        break;
-  ////      }
-  ////      case KWDBTypeFamily::DateFamily: {
-  ////        const int secondOfDay = 24 * 3600;
-  ////        DatumPtr raw = GetData(row, col);
-  ////        std::string date_str = std::string{static_cast<char*>(raw)};
-  ////        struct tm stm {
-  ////            0
-  ////        };
-  ////        int year, mon, day;
-  ////        k_int64 msec;
-  ////        std::memcpy(&msec, raw, sizeof(k_int64));
-  ////        k_int64 seconds = msec / 1000;
-  ////        time_t rawtime = (time_t) seconds;
-  ////        tm timeinfo;
-  ////        gmtime_r(&rawtime, &timeinfo);
-  ////
-  ////        stm.tm_year = timeinfo.tm_year;
-  ////        stm.tm_mon = timeinfo.tm_mon;
-  ////        stm.tm_mday = timeinfo.tm_mday;
-  ////        time_t val = timelocal(&stm);
-  ////        val += ctx->timezone * 60 * 60;
-  ////        val /= secondOfDay;
-  ////        k_int32 len = ValueEncoding::EncodeComputeLenInt(0, val);
-  ////        ret = ee_enlargeStringInfo(info, len);
-  ////        if (ret != SUCCESS) {
-  ////          break;
-  ////        }
-  ////
-  ////        CKSlice slice{info->data + info->len, len};
-  ////        ValueEncoding::EncodeIntValue(&slice, 0, val);
-  ////        info->len = info->len + len;
-  ////        break;
-  ////      }
-  //      default: {
-  //        DatumPtr raw = GetData(row, col);
-  //        k_int64 val;
-  //        std::memcpy(&val, raw, sizeof(k_int64));
-  //        k_int32 len = ValueEncoding::EncodeComputeLenInt(0, val);
-  //        ret = ee_enlargeStringInfo(info, len);
-  //        if (ret != SUCCESS) {
-  //          break;
-  //        }
-  //
-  //        CKSlice slice{info->data + info->len, len};
-  //        ValueEncoding::EncodeIntValue(&slice, 0, val);
-  //        info->len = info->len + len;
-  //        break;
-  //      }
-  //    }
+  
   Return(ret);
 }
 
-KStatus Encoding(kwdbContext_p ctx, MaterializedQueryResult* res,
-                 char*& encoding_buf_, k_uint32& encoding_len_) {
+KStatus Encoding(kwdbContext_p ctx, MaterializedQueryResult* res, char*& encoding_buf_, k_uint32& encoding_len_) {
   KStatus st = KStatus::SUCCESS;
   EE_StringInfo msgBuffer = ee_makeStringInfo();
   if (msgBuffer == nullptr) {
@@ -919,8 +659,7 @@ KStatus Encoding(kwdbContext_p ctx, MaterializedQueryResult* res,
   return st;
 }
 
-ExecutionResult DuckdbExec::ExecuteCustomPlan(kwdbContext_p ctx,
-                                              const string& table_name) {
+ExecutionResult DuckdbExec::ExecuteCustomPlan(kwdbContext_p ctx, const string& table_name) {
   ExecutionResult result;
   if (!connect_ || !connect_->context) {
     result.error_message = "Database not open";
@@ -1033,43 +772,6 @@ ExecutionResult DuckdbExec::ExecuteCustomPlan(kwdbContext_p ctx,
   }
 }
 
-KStatus DuckdbExec::AttachDBs() {
-  KStatus ret = KStatus::SUCCESS;
-  // get all database
-  std::unordered_set<std::string> dbs;
-  auto init_dbs = instance_->GetDatabaseManager().GetDatabases();
-  for (auto& init_db : init_dbs) {
-    auto name = init_db.get().GetName();
-    dbs.insert(name);
-  }
-
-  DatabaseManager& db_manager = DatabaseManager::Get(*connect_->context);
-  try {
-//    for (int i = 0; i < fspecs_->processors_size(); i++) {
-//      const ProcessorSpec& proc = fspecs_->processors(i);
-//      if (proc.has_core() && proc.core().has_aptablereader()) {
-//        auto apReader = proc.core().aptablereader();
-//        auto db_name = apReader.db_name();
-//        if (dbs.find(db_name) == dbs.end()) {
-//          // attach database
-//          auto attach_ret =
-//              AttachDB(db_manager, *connect_->context, db_name, db_path_);
-//          if (attach_ret == KStatus::FAIL) {
-//            connect_->Rollback();
-//            return attach_ret;
-//          }
-//
-//          dbs.insert(db_name);
-//        }
-//      }
-//    }
-  } catch (const Exception& e) {
-//    connect_->Rollback();
-    return KStatus::FAIL;
-  }
-  return ret;
-}
-
 KStatus DuckdbExec::DetachDB(duckdb::vector<std::string> dbs) {
   KStatus ret = KStatus::SUCCESS;
   for (auto& db : dbs) {
@@ -1078,22 +780,6 @@ KStatus DuckdbExec::DetachDB(duckdb::vector<std::string> dbs) {
                               duckdb::OnEntryNotFound::RETURN_NULL);
   }
   return ret;
-}
-
-unique_ptr<PhysicalPlan> DuckdbExec::ConvertFlowToPhysicalPlan(int* start_idx) {
-//  printf("processor size: %d \n", fspecs_->processors_size());
-////  unique_ptr<PhysicalPlan> physical_plan;
-////  if (*start_idx >= fspecs_->processors_size()) {
-////    return physical_plan;
-////  }
-////  const ProcessorSpec& proc = fspecs_->processors(*start_idx);
-////  if (proc.has_core() && proc.core().has_aptablereader()) {
-////    physical_plan = CreateAPTableScan(start_idx);
-////  } else if (proc.has_core() && proc.core().has_apaggregator()) {
-////    physical_plan = CreateAPAggregator(start_idx);
-////  }
-////  return physical_plan;
-  return nullptr;
 }
 
 ExecutionResult DuckdbExec::PrepareExecutePlan(kwdbContext_p ctx) {
