@@ -11,6 +11,8 @@
 
 #include "duckdb/engine/duckdb_exec.h"
 #include "libkwdbap.h"
+
+#include "cm_func.h"
 #include "duckdb/catalog/catalog.hpp"
 #include "duckdb/catalog/catalog_entry/scalar_function_catalog_entry.hpp"
 #include "duckdb/catalog/catalog_entry/table_catalog_entry.hpp"
@@ -34,6 +36,7 @@
 #include "ee_encoding.h"
 #include "ee_string_info.h"
 #include "lg_api.h"
+#include "libkwdbap.h"
 
 using namespace duckdb;
 
@@ -130,7 +133,8 @@ KStatus APEngineImpl::DatabaseOperate(const char* name, EnDBOperateType type) {
   switch (type) {
     case DB_CREATE:
     case DB_ATTACH: {
-      ret = conn_->context->AttachDB(name, db_path_) ? KStatus::SUCCESS:KStatus::FAIL;
+      ret = conn_->context->AttachDB(name, db_path_) ? KStatus::SUCCESS
+                                                     : KStatus::FAIL;
       break;
     }
     case DB_DETACH: {
@@ -282,20 +286,19 @@ unique_ptr<PhysicalTableScan> CreateTableScanOperator(
       virtual_columns);
 }
 
-DuckdbExec::DuckdbExec(std::string db_path) {
-  db_path_ = std::move(db_path);
-}
+DuckdbExec::DuckdbExec(std::string db_path) { db_path_ = std::move(db_path); }
 
-DuckdbExec::~DuckdbExec() {
-}
+DuckdbExec::~DuckdbExec() {}
 
 void DuckdbExec::Init(void* instance, void* connect) {
   instance_ = static_cast<DatabaseInstance*>(instance);
   connect_ = static_cast<Connection*>(connect);
-  processors_ = make_uniq<kwdbap::Processors>(*connect_->context.get(), db_path_);
+  processors_ =
+      make_uniq<kwdbap::Processors>(*connect_->context.get(), db_path_);
 }
 
-KStatus DuckdbExec::ExecQuery(kwdbContext_p ctx, APQueryInfo* req, APRespInfo* resp) {
+KStatus DuckdbExec::ExecQuery(kwdbContext_p ctx, APQueryInfo* req,
+                              APRespInfo* resp) {
   EnterFunc();
   KWAssertNotNull(req);
   KStatus ret = KStatus::FAIL;
@@ -623,7 +626,7 @@ KStatus EncodingValue(kwdbContext_p ctx, Value& val, const EE_StringInfo& info, 
     info->len = info->len + len;
     Return(ret);
   }
-  
+
   Return(ret);
 }
 
@@ -803,7 +806,7 @@ ExecutionResult DuckdbExec::PrepareExecutePlan(kwdbContext_p ctx) {
       return result;
     }
     result.success = true;
-    
+
     char* encoding_buf_;
     k_uint32 encoding_len_;
     auto ret = Encoding(ctx, query_result.get(), encoding_buf_, encoding_len_);

@@ -10,10 +10,26 @@
 // Mulan PSL v2 for more details.
 
 #include "duckdb/engine/plan_transform.h"
+#include "duckdb/planner/expression/bound_conjunction_expression.hpp"
 
 // using namespace kwdbts;
+using namespace duckdb;
 
 namespace kwdbap {
+
+vector<unique_ptr<duckdb::Expression>> splitAndExpr(unique_ptr<duckdb::Expression> &expr) {
+  vector<unique_ptr<duckdb::Expression>> exprs;
+  if (expr->GetExpressionType() == duckdb::ExpressionType::CONJUNCTION_AND) {
+    auto &and_expr = expr->Cast<BoundConjunctionExpression>();
+    for (auto & child : and_expr.children) {
+      auto child_exprs = splitAndExpr(child);
+      exprs.insert(exprs.end(), std::make_move_iterator(child_exprs.begin()), std::make_move_iterator(child_exprs.end()));
+    }
+  } else {
+    exprs.push_back(std::move(expr));
+  }
+  return exprs;
+}
 
 TransFormPlan::TransFormPlan(duckdb::ClientContext& context, duckdb::PhysicalPlan* plan, std::string& db_path) {
   context_ = &context;
@@ -54,7 +70,12 @@ vector<unique_ptr<duckdb::Expression>> TransFormPlan::BuildAPExpr(
       expressions.clear();
       return expressions;
     }
-    expressions.emplace_back(std::move(expr));
+    if (expr->GetExpressionType() == ExpressionType::CONJUNCTION_AND) {
+      auto tmp_exprs = splitAndExpr(expr);
+      expressions.insert(expressions.end(), std::make_move_iterator(tmp_exprs.begin()), std::make_move_iterator(tmp_exprs.end()));
+    } else {
+      expressions.push_back(std::move(expr));
+    }
   }
   return expressions;
 }

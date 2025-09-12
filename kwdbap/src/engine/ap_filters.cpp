@@ -22,14 +22,26 @@
 #include "duckdb/main/attached_database.hpp"
 #include "duckdb/main/database.hpp"
 #include "duckdb/main/prepared_statement_data.hpp"
+#include "duckdb/optimizer/filter_combiner.hpp"
+#include "duckdb/planner/expression/bound_between_expression.hpp"
 #include "duckdb/planner/expression/bound_cast_expression.hpp"
 #include "duckdb/planner/expression/bound_comparison_expression.hpp"
 #include "duckdb/planner/expression/bound_constant_expression.hpp"
+#include "duckdb/planner/expression/bound_function_expression.hpp"
 #include "duckdb/planner/expression/bound_reference_expression.hpp"
+#include "ee_comm_def.h"
+#include "ee_encoding.h"
+#include "ee_iparser.h"
+#include "ee_string_info.h"
+#include "kwdb_type.h"
+#include "lg_api.h"
+
+using namespace duckdb;
+using namespace kwdbts;
 
 namespace kwdbap {
   PhyOpRef TransFormPlan::AddAPFilters(PhyOpRef physicalOp, const kwdbts::PostProcessSpec &post,
-                                       TableCatalogEntry &table, IdxMap &col_map) {
+                                       TableCatalogEntry &table, IdxMap &col_map, std::unordered_set<idx_t> &scan_filter_idx) {
   vector<LogicalType> proj_types;
   vector<string> proj_names;
   vector<ColumnIndex> proj_column_ids;
@@ -75,13 +87,14 @@ namespace kwdbap {
   if (expressions.empty()) {
     return physicalOp;
   }
-  // auto filter_push_down = true;
-  // auto combiner = FilterCombiner(*context_);
-  // for (auto & expr : expressions) {
-  //   if (combiner.AddFilter(std::move(expr)) == FilterResult::UNSATISFIABLE) {
-  //     filter_push_down = false;
-  //   }
-  // }
+  for (auto i = 0; i < expressions.size(); ++i) {
+    auto key = scan_filter_idx.find(i);
+    if (key != scan_filter_idx.end()) {
+      expressions.erase_at(i--);
+      scan_filter_idx.erase(key);
+    }
+  }
+
   // auto &proj = projection.Cast<PhysicalProjection>();
   auto &filter = physical_plan_->Make<PhysicalFilter>(plan.get().types, std::move(expressions),
       plan.get().estimated_cardinality);
@@ -100,6 +113,179 @@ namespace kwdbap {
       proj_types, std::move(proj_exprs), 0);
   res_proj.children.push_back(filter);
   return res_proj;
+}
+
+static bool supportedFilterComparison(ExpressionType expression_type) {
+  switch (expression_type) {
+    case ExpressionType::COMPARE_EQUAL:
+    case ExpressionType::COMPARE_GREATERTHAN:
+    case ExpressionType::COMPARE_GREATERTHANOREQUALTO:
+    case ExpressionType::COMPARE_LESSTHAN:
+    case ExpressionType::COMPARE_LESSTHANOREQUALTO:
+    case ExpressionType::COMPARE_NOTEQUAL:
+      return true;
+    default:
+      return false;
+  }
+}
+
+bool typeSupportsConstantFilter(const LogicalType &type) {
+  if (TypeIsNumeric(type.InternalType())) {
+    return true;
+  }
+  if (type.InternalType() == PhysicalType::VARCHAR ||
+      type.InternalType() == PhysicalType::BOOL) {
+    return true;
+  }
+  return false;
+}
+
+bool supportedColumn(const vector<ColumnIndex> column_ids,
+                     unique_ptr<duckdb::Expression> col_ptr,
+                     ColumnIndex &result) {
+  if (col_ptr->GetExpressionClass() == ExpressionClass::BOUND_CAST) {
+    auto &cast_expr = col_ptr->Cast<BoundCastExpression>();
+    return supportedColumn(column_ids, std::move(cast_expr.child), result);
+  }
+  if (col_ptr->GetExpressionType() != ExpressionType::BOUND_REF) {
+    return false;
+  }
+  auto &col_expr = col_ptr->Cast<BoundReferenceExpression>();
+  for (auto &col_id : column_ids) {
+    if (col_expr.index == col_id.GetPrimaryIndex()) {
+      result = col_id;
+      return true;
+    }
+  }
+  return false;
+}
+
+KStatus tryPushDownFilter(unique_ptr<TableFilterSet> *table_filters,
+                          unique_ptr<duckdb::Expression> &expr,
+                          const vector<ColumnIndex> column_ids) {
+  switch (expr->GetExpressionClass()) {
+    case ExpressionClass::BOUND_COMPARISON: {
+      auto &tmp_expr = expr->Cast<BoundComparisonExpression>();
+      unique_ptr<duckdb::Expression> col_ptr;
+      unique_ptr<duckdb::Expression> value_ptr;
+      if (tmp_expr.left->GetExpressionClass() ==
+          ExpressionClass::BOUND_CONSTANT) {
+        value_ptr = std::move(tmp_expr.left);
+        col_ptr = std::move(tmp_expr.right);
+      } else {
+        value_ptr = std::move(tmp_expr.right);
+        col_ptr = std::move(tmp_expr.left);
+      }
+      auto &value_expr = value_ptr->Cast<BoundConstantExpression>();
+      if (value_expr.value.IsNull()) {
+        // no constants - already removed
+        return FAIL;
+      }
+      // check if the type is supported
+      if (!typeSupportsConstantFilter(value_expr.value.type())) {
+        // not supported
+        return FAIL;
+      }
+      if (!supportedFilterComparison(tmp_expr.GetExpressionType())) {
+        return FAIL;
+      }
+      //! Here we check if these filters are column references
+      ColumnIndex column_index;
+      if (!supportedColumn(column_ids, std::move(col_ptr), column_index)) {
+        return FAIL;
+      }
+      auto constant_filter = make_uniq<ConstantFilter>(
+          tmp_expr.GetExpressionType(), value_expr.value);
+      if (nullptr == table_filters->get()) {
+        *table_filters = make_uniq<TableFilterSet>();
+      }
+      table_filters->get()->PushFilter(column_index,
+                                       std::move(constant_filter));
+      break;
+    }
+    case ExpressionClass::BOUND_BETWEEN: {
+      auto &tmp_expr = expr->Cast<BoundBetweenExpression>();
+      //! Here we check if these filters are column references
+      ColumnIndex column_index;
+      if (!supportedColumn(column_ids, std::move(tmp_expr.input),
+                           column_index)) {
+        return FAIL;
+      }
+      auto &lower_expr = tmp_expr.lower->Cast<BoundConstantExpression>();
+      if (lower_expr.value.IsNull()) {
+        // no constants - already removed
+        return FAIL;
+      }
+      // check if the type is supported
+      if (!typeSupportsConstantFilter(lower_expr.value.type())) {
+        // not supported
+        return FAIL;
+      }
+      unique_ptr<ConstantFilter> lower_constant;
+      if (tmp_expr.lower_inclusive) {
+        lower_constant = make_uniq<ConstantFilter>(
+            ExpressionType::COMPARE_GREATERTHANOREQUALTO, lower_expr.value);
+      } else {
+        lower_constant = make_uniq<ConstantFilter>(
+            ExpressionType::COMPARE_GREATERTHAN, lower_expr.value);
+      }
+      auto &upper_expr = tmp_expr.upper->Cast<BoundConstantExpression>();
+      if (upper_expr.value.IsNull()) {
+        // no constants - already removed
+        return FAIL;
+      }
+      // check if the type is supported
+      if (!typeSupportsConstantFilter(upper_expr.value.type())) {
+        // not supported
+        return FAIL;
+      }
+      unique_ptr<ConstantFilter> upper_constant;
+      if (tmp_expr.upper_inclusive) {
+        upper_constant = make_uniq<ConstantFilter>(
+            ExpressionType::COMPARE_LESSTHANOREQUALTO, upper_expr.value);
+      } else {
+        upper_constant = make_uniq<ConstantFilter>(
+            ExpressionType::COMPARE_LESSTHAN, upper_expr.value);
+      }
+      if (nullptr == table_filters->get()) {
+        *table_filters = make_uniq<TableFilterSet>();
+      }
+      table_filters->get()->PushFilter(column_index, std::move(lower_constant));
+      table_filters->get()->PushFilter(column_index, std::move(upper_constant));
+
+      break;
+    }
+    default:
+      return FAIL;
+  }
+  return SUCCESS;
+}
+
+unique_ptr<TableFilterSet> TransFormPlan::CreateTableFilters(
+    const vector<ColumnIndex> column_ids, const PostProcessSpec &post,
+    TableCatalogEntry &table, IdxMap &col_map,
+    std::unordered_set<idx_t> &scan_filter_idx, bool &all_filter_push_scan) {
+  auto filter_expr = post.filter().expr();
+  printf("expr: %s", filter_expr.c_str());
+  auto expressions = BuildAPExpr(filter_expr, table, col_map);
+  if (expressions.empty()) {
+    return nullptr;
+  }
+  auto expr_size = expressions.size();
+  unique_ptr<TableFilterSet> table_filters;
+  idx_t idx = 0;
+  for (auto &expr : expressions) {
+    if (tryPushDownFilter(&table_filters, expr, column_ids) != SUCCESS) {
+      continue;
+    }
+    scan_filter_idx.insert(idx);
+    idx++;
+  }
+  if (scan_filter_idx.size() == expr_size) {
+    all_filter_push_scan = true;
+  }
+
+  return table_filters;
 }
 
 PhyOpRef TransFormPlan::VerifyProjectionByTableScan(PhyOpRef plan, IdxMap &col_map) {

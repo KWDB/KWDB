@@ -27,8 +27,10 @@
 #include "duckdb/main/client_context.hpp"
 #include "duckdb/main/database.hpp"
 #include "duckdb/main/prepared_statement_data.hpp"
+#include "duckdb/planner/expression/bound_between_expression.hpp"
 #include "duckdb/planner/expression/bound_cast_expression.hpp"
 #include "duckdb/planner/expression/bound_comparison_expression.hpp"
+#include "duckdb/planner/expression/bound_conjunction_expression.hpp"
 #include "duckdb/planner/expression/bound_constant_expression.hpp"
 #include "duckdb/planner/expression/bound_function_expression.hpp"
 #include "duckdb/planner/expression/bound_reference_expression.hpp"
@@ -469,6 +471,79 @@ KStatus convertStringToTimestamp(KString inputData, k_int64 scale,
   return ret;
 }
 
+KStatus makeBewteenArgs(unique_ptr<duckdb::Expression> *left_node,
+                        unique_ptr<duckdb::Expression> *right_node,
+                        unique_ptr<duckdb::Expression> *lower_ptr,
+                        unique_ptr<duckdb::Expression> *upper_ptr,
+                        unique_ptr<duckdb::Expression> *input_col) {
+  auto &lower = left_node->get()->Cast<BoundComparisonExpression>();
+  if (lower.left->GetExpressionClass() == ExpressionClass::BOUND_CONSTANT) {
+    *lower_ptr = std::move(lower.left);
+    *input_col = std::move(lower.right);
+  } else {
+    *lower_ptr = std::move(lower.right);
+    *input_col = std::move(lower.left);
+  }
+  auto &upper = right_node->get()->Cast<BoundComparisonExpression>();
+  if (upper.left->GetExpressionClass() == ExpressionClass::BOUND_CONSTANT) {
+    *upper_ptr = std::move(upper.left);
+    if (nullptr == input_col ||
+        duckdb::Expression::Equals(*input_col, upper.right)) {
+      return FAIL;
+    }
+  } else {
+    *upper_ptr = std::move(upper.right);
+    if (nullptr == input_col ||
+        !duckdb::Expression::Equals(*input_col, upper.left)) {
+      return FAIL;
+    }
+  }
+  return SUCCESS;
+}
+
+void makeConstantInt(LogicalType &col_type, k_int64 &int_value,
+                     unique_ptr<BoundConstantExpression> &int_expr) {
+  auto is_int16 = false;
+  auto is_int32 = false;
+  auto is_int64 = false;
+  if (int_value >= INT16_MIN && int_value <= INT16_MAX) {
+    is_int16 = true;
+  } else if (int_value >= INT32_MIN && int_value <= INT32_MAX) {
+    is_int32 = true;
+  } else if (int_value >= INT64_MIN && int_value <= INT64_MAX) {
+    is_int64 = true;
+  } else {
+    return;
+  }
+  switch (col_type.id()) {
+    case LogicalType::SMALLINT:
+      break;
+    case LogicalType::INTEGER: {
+      if (is_int16) {
+        is_int16 = false;
+        is_int32 = true;
+      }
+      break;
+    }
+    case LogicalType::BIGINT: {
+      is_int16 = false;
+      is_int32 = false;
+      is_int64 = true;
+      break;
+    }
+    default:
+      return;
+  }
+
+  if (is_int16) {
+    int_expr = make_uniq<BoundConstantExpression>(Value::SMALLINT(int_value));
+  } else if (is_int32) {
+    int_expr = make_uniq<BoundConstantExpression>(Value::INTEGER(int_value));
+  } else if (is_int64) {
+    int_expr = make_uniq<BoundConstantExpression>(Value::BIGINT(int_value));
+  }
+}
+
 KStatus APParseQuery::ConstructAPExpr(ClientContext &context,
                                       TableCatalogEntry &table, std::size_t *i,
                                       unique_ptr<duckdb::Expression> *head_node,
@@ -487,7 +562,8 @@ KStatus APParseQuery::ConstructAPExpr(ClientContext &context,
       }
       case OPENING_BRACKET: {
         (*i)++;
-        while (*i < node_list_.size() && node_list_[*i]->operators != CLOSING_BRACKET) {
+        while (*i < node_list_.size() &&
+               node_list_[*i]->operators != CLOSING_BRACKET) {
           ret = ConstructAPExpr(context, table, i, &current_node, col_map);
           if (ret != SUCCESS) {
             return ret;
@@ -495,6 +571,76 @@ KStatus APParseQuery::ConstructAPExpr(ClientContext &context,
         }
         (*i)++;  // Skip CLOSING_BRACKET
         *head_node = std::move(current_node);
+        return SUCCESS;
+      }
+      case AND: {
+        (*i)++;
+        ret = ConstructAPExpr(context, table, i, &current_node, col_map);
+        if (ret != SUCCESS) {
+          return ret;
+        }
+        auto head_expr = head_node->get();
+        bool lower_inclusive = false;
+        bool upper_inclusive = false;
+        bool head_lower = false;
+        bool head_upper = false;
+        bool current_lower = false;
+        bool current_upper = false;
+        if (nullptr != head_expr) {
+          auto head_type = head_expr->GetExpressionType();
+          auto current_type = current_node->GetExpressionType();
+          if (head_type == ExpressionType::COMPARE_GREATERTHAN ||
+              head_type == ExpressionType::COMPARE_GREATERTHANOREQUALTO) {
+            head_lower = true;
+            lower_inclusive =
+                head_type == ExpressionType::COMPARE_GREATERTHANOREQUALTO;
+          } else if (head_type == ExpressionType::COMPARE_LESSTHAN ||
+                     head_type == ExpressionType::COMPARE_LESSTHANOREQUALTO) {
+            head_upper = true;
+            upper_inclusive =
+                head_type == ExpressionType::COMPARE_LESSTHANOREQUALTO;
+          }
+          if (current_type == ExpressionType::COMPARE_GREATERTHAN ||
+              current_type == ExpressionType::COMPARE_GREATERTHANOREQUALTO) {
+            current_lower = true;
+            lower_inclusive =
+                current_type == ExpressionType::COMPARE_GREATERTHANOREQUALTO;
+          } else if (current_type == ExpressionType::COMPARE_LESSTHAN ||
+                     current_type ==
+                         ExpressionType::COMPARE_LESSTHANOREQUALTO) {
+            current_upper = true;
+            upper_inclusive =
+                current_type == ExpressionType::COMPARE_LESSTHANOREQUALTO;
+          }
+          unique_ptr<duckdb::Expression> lower_ptr;
+          unique_ptr<duckdb::Expression> upper_ptr;
+          unique_ptr<duckdb::Expression> input_col;
+          if (current_lower && head_upper) {
+            if (makeBewteenArgs(&current_node, head_node, &lower_ptr,
+                                &upper_ptr, &input_col) != SUCCESS) {
+              return FAIL;
+            }
+          } else if (current_upper && head_lower) {
+            if (makeBewteenArgs(head_node, &current_node, &lower_ptr,
+                                &upper_ptr, &input_col) != SUCCESS) {
+              return FAIL;
+            }
+          }
+          if (nullptr != lower_ptr && nullptr != upper_ptr &&
+              nullptr != input_col) {
+            auto between = make_uniq<BoundBetweenExpression>(
+                std::move(input_col), std::move(lower_ptr),
+                std::move(upper_ptr), lower_inclusive, upper_inclusive);
+            *head_node = std::move(between);
+          } else {
+            auto conjunction = make_uniq<BoundConjunctionExpression>(
+                ExpressionType::CONJUNCTION_AND, std::move(*head_node),
+                std::move(current_node));
+            *head_node = std::move(conjunction);
+          }
+        } else {
+          *head_node = std::move(current_node);
+        }
         return SUCCESS;
       }
       case LESS: {
@@ -637,7 +783,7 @@ KStatus APParseQuery::ConstructAPExpr(ClientContext &context,
             LogicalIndex(origin_node.get()->value.number.column_id - 1);
         auto &col = table.GetColumn(index);
         current_node = make_uniq<BoundReferenceExpression>(
-            col.Name(), col.Type(), col_map[index.index]);
+            "", col.Type(), col_map[index.index]);
         (*i)++;
         while (*i < node_list_.size() &&
                node_list_[*i]->operators != CLOSING_BRACKET &&
@@ -653,18 +799,12 @@ KStatus APParseQuery::ConstructAPExpr(ClientContext &context,
       case AstEleType::INT_TYPE: {
         auto int_value = node_list_[*i]->value.number.int_type;
         unique_ptr<BoundConstantExpression> int_expr;
-        if (int_value >= INT16_MIN && int_value <= INT16_MAX) {
-          int_expr = make_uniq<BoundConstantExpression>(
-              Value::SMALLINT((int16_t)int_value));
-        } else if (int_value >= INT32_MIN && int_value <= INT32_MAX) {
-          int_expr = make_uniq<BoundConstantExpression>(
-              Value::INTEGER((int32_t)int_value));
-        } else if (int_value >= INT64_MIN && int_value <= INT64_MAX) {
-          int_expr = make_uniq<BoundConstantExpression>(
-              Value::BIGINT((int64_t)int_value));
-        }
         auto &comparsion_expr =
             head_node->get()->Cast<BoundComparisonExpression>();
+        makeConstantInt(comparsion_expr.left->return_type, int_value, int_expr);
+        if (nullptr == int_expr) {
+          return FAIL;
+        }
         if (int_expr->return_type != comparsion_expr.left->return_type) {
           comparsion_expr.left = BoundCastExpression::AddCastToType(
               context, std::move(comparsion_expr.left), int_expr->return_type,

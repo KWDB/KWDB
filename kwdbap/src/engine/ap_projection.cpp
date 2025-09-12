@@ -36,7 +36,8 @@ PhyOpRef TransFormPlan::AddAPProjection(PhyOpRef plan, const kwdbts::PostProcess
   // build result projection
   vector<LogicalType> proj_types;
   vector<unique_ptr<duckdb::Expression>> proj_exprs;
-  if (post.projection() && post.output_columns_size() > 0) {
+  if (post.has_projection() && !post.projection() &&
+      post.render_exprs_size() > 0) {
     vector<string> proj_names;
     vector<ColumnIndex> proj_column_ids;
     for (auto &out_col : post.output_columns()) {
