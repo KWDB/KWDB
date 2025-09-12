@@ -56,10 +56,12 @@ class TransFormPlan {
   PhyOpRef AddAPProjection(PhyOpRef plan,
                              const kwdbts::PostProcessSpec &post,
                              duckdb::TableCatalogEntry &table, IdxMap &col_map);
-  duckdb::PhysicalOperator InitAggregateExpressions(duckdb::PhysicalOperator &child1,
+  PhyOpRef InitAggregateExpressions(PhyOpRef child,
                                                                      duckdb::vector<duckdb::unique_ptr<duckdb::Expression>> &aggregates,
                                                                      duckdb::vector<duckdb::unique_ptr<duckdb::Expression>> &groups,
-                                                                     kwdbts::TSAggregatorSpec agg_spec);
+                                                                     duckdb::vector<duckdb::LogicalType> &agg_returned_types,
+                                                                     const kwdbts::PostProcessSpec& post,
+                                                                     const kwdbts::ProcessorCoreUnion& core);
   //  duckdb::unique_ptr<duckdb::PhysicalPlan> physical_planner_;
 
  private:
