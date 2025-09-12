@@ -23,7 +23,9 @@
 #include <utility>
 
 #include "data_type.h"
+#include "iterator.h"
 #include "kwdb_type.h"
+#include "st_transaction_mgr.h"
 #include "st_wal_mgr.h"
 #include "ts_engine_schema_manager.h"
 #include "ts_mem_segment_mgr.h"

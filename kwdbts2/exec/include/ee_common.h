@@ -50,4 +50,6 @@ KTimestampTz TimeAddDuration(KTimestampTz ts, k_int64 duration,
 std::string parseUnicode2Utf8(const std::string &str);
 std::string parseHex2String(const std::string &hexStr);
 
+int tryAlterType(const std::string& str, DATATYPE new_type, ErrorInfo& err_info);
+
 }       // namespace kwdbts

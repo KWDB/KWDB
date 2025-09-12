@@ -205,6 +205,16 @@ class TsTableV2Impl : public TsTable {
 
   KStatus undoAlterTable(kwdbContext_p ctx, AlterType alter_type, roachpb::KWDBKTSColumn* column, uint32_t cur_version,
     uint32_t new_version) override;
+
+  static KStatus GetColAttributeInfo(kwdbContext_p ctx, const roachpb::KWDBKTSColumn& col, AttributeInfo& attr_info,
+    bool first_col);
+
+  KStatus GetMetricColumnInfo(kwdbContext_p ctx, struct AttributeInfo& attr_info, roachpb::KWDBKTSColumn& col);
+
+  KStatus GetTagColumnInfo(kwdbContext_p ctx, struct TagInfo& tag_info, roachpb::KWDBKTSColumn& col);
+
+  KStatus GenerateMetaSchema(kwdbContext_p ctx, roachpb::CreateTsTable* meta,
+    const std::vector<AttributeInfo>& metric_schema, std::vector<TagInfo>& tag_schema, uint32_t schema_version) override;
 };
 
 }  // namespace kwdbts

@@ -111,7 +111,7 @@ TEST_F(TestOffsetIteratorV2, basic) {
       .offset = 5000,
       .limit = 10,
   };
-  ASSERT_EQ(ts_table->GetEntityIndex(ctx_, 0, UINT64_MAX, entity_results), KStatus::SUCCESS);
+  // ASSERT_EQ(ts_table->GetEntityIdList(ctx_, 0, UINT64_MAX, entity_results), KStatus::SUCCESS);
   ASSERT_EQ(ts_table->GetIterator(ctx_, params, &iter1), KStatus::SUCCESS);
 
   ResultSet res{(k_uint32) scan_cols.size()};
@@ -242,7 +242,7 @@ TEST_F(TestOffsetIteratorV2, multi_partition) {
       .offset = 15000,
       .limit = 10,
   };
-  ASSERT_EQ(ts_table->GetEntityIndex(ctx_, 0, UINT64_MAX, entity_results), KStatus::SUCCESS);
+  // ASSERT_EQ(ts_table->GetEntityIndex(ctx_, 0, UINT64_MAX, entity_results), KStatus::SUCCESS);
   ASSERT_EQ(ts_table->GetIterator(ctx_, params, &iter1), KStatus::SUCCESS);
 
   ResultSet res{(k_uint32) scan_cols.size()};
@@ -361,7 +361,7 @@ TEST_F(TestOffsetIteratorV2, extreme) {
       .offset = 1,
       .limit = 1,
   };
-  ASSERT_EQ(ts_table->GetEntityIndex(ctx_, 0, UINT64_MAX, entity_results), KStatus::SUCCESS);
+  // ASSERT_EQ(ts_table->GetEntityIndex(ctx_, 0, UINT64_MAX, entity_results), KStatus::SUCCESS);
   ASSERT_EQ(ts_table->GetIterator(ctx_, params, &iter1), KStatus::SUCCESS);
 
   ResultSet res{(k_uint32) scan_cols.size()};

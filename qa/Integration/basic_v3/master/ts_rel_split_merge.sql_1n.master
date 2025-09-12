@@ -4,8 +4,6 @@ SET CLUSTER SETTING
 SET CLUSTER SETTING
 > SET CLUSTER SETTING ts.rows_per_block.max_limit = 10;
 SET CLUSTER SETTING
-> SET CLUSTER SETTING ts.blocks_per_segment.max_limit = 50;
-SET CLUSTER SETTING
 > set cluster setting server.ts_range_split_mode = 1;
 SET CLUSTER SETTING
 > CREATE TS DATABASE tsdb;

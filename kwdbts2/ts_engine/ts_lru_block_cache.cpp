@@ -10,7 +10,7 @@
 // See the Mulan PSL v2 for more details.
 
 #include <vector>
-#include "ts_LRU_block_cache.h"
+#include "ts_lru_block_cache.h"
 
 namespace kwdbts {
 

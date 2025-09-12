@@ -17,12 +17,9 @@
 #include "st_wal_internal_buffer_mgr.h"
 #include "st_wal_internal_logfile_mgr.h"
 #include "st_wal_internal_log_structure.h"
-#include "st_logged_entity_group.h"
 #include "lt_rw_latch.h"
 
 namespace kwdbts {
-
-class LoggedTsEntityGroup;
 
 /**
  * Write-Ahead-Logging Management class, each EntityGroup have a WALMgr instance; Meanwhile, The global WALMgr is

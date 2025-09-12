@@ -29,6 +29,7 @@ KStatus ConvertBlockSpanToResultSet(const std::vector<k_uint32>& kw_scan_cols, c
                                     shared_ptr<TsBlockSpan>& ts_blk_span, ResultSet* res, k_uint32* count) {
   *count = ts_blk_span->GetRowNum();
   KStatus ret;
+  std::unique_ptr<TsBitmapBase> ts_bitmap;
   for (int i = 0; i < kw_scan_cols.size(); ++i) {
     auto kw_col_idx = kw_scan_cols[i];
     Batch* batch;
@@ -37,8 +38,9 @@ KStatus ConvertBlockSpanToResultSet(const std::vector<k_uint32>& kw_scan_cols, c
       void* bitmap = nullptr;
       batch = new Batch(bitmap, *count, bitmap, 1, nullptr);
     } else {
+      bool col_not_null = attrs[kw_scan_cols[i]].isFlag(AINFO_NOT_NULL);
       unsigned char* bitmap = nullptr;
-      if (!attrs[kw_scan_cols[i]].isFlag(AINFO_NOT_NULL)) {
+      if (!col_not_null) {
         bitmap = static_cast<unsigned char*>(malloc(KW_BITMAP_SIZE(*count)));
         if (bitmap == nullptr) {
           return KStatus::FAIL;
@@ -46,33 +48,39 @@ KStatus ConvertBlockSpanToResultSet(const std::vector<k_uint32>& kw_scan_cols, c
         memset(bitmap, 0x00, KW_BITMAP_SIZE(*count));
       }
       if (!ts_blk_span->IsVarLenType(kw_col_idx)) {
-        std::unique_ptr<TsBitmapBase> ts_bitmap;
         char* value;
         ret = ts_blk_span->GetFixLenColAddr(kw_col_idx, &value, &ts_bitmap);
         if (ret != KStatus::SUCCESS) {
           LOG_ERROR("GetFixLenColAddr failed.");
           return ret;
         }
-        if (!attrs[kw_scan_cols[i]].isFlag(AINFO_NOT_NULL)) {
+        if (bitmap != nullptr && !ts_bitmap->IsAllValid()) {
           for (int row_idx = 0; row_idx < *count; ++row_idx) {
             if (ts_bitmap->At(row_idx) != DataFlags::kValid) {
               set_null_bitmap(bitmap, row_idx);
             }
           }
         }
-
         batch = new Batch(static_cast<void*>(value), *count, bitmap, 1, nullptr);
         batch->is_new = false;
       } else {
         batch = new VarColumnBatch(*count, bitmap, 1, nullptr);
-        DataFlags bitmap_var;
-        TSSlice var_data;
+        auto s = ts_blk_span->GetColBitmap(kw_col_idx, &ts_bitmap);
+        if (s != KStatus::SUCCESS) {
+          LOG_ERROR("ts_blk_span->GetColBitmap failed.");
+          return s;
+        }
         for (int row_idx = 0; row_idx < *count; ++row_idx) {
-          ret = ts_blk_span->GetVarLenTypeColAddr(row_idx, kw_col_idx, bitmap_var, var_data);
-          if (bitmap_var != DataFlags::kValid) {
+          if (ts_bitmap->At(row_idx) != DataFlags::kValid) {
             set_null_bitmap(bitmap, row_idx);
             batch->push_back(nullptr);
           } else {
+            TSSlice var_data;
+            s = ts_blk_span->GetVarLenTypeColAddr(row_idx, kw_col_idx, var_data);
+            if (s != KStatus::SUCCESS) {
+              LOG_ERROR("GetVarLenTypeColAddr failed.");
+              return s;
+            }
             char* buffer = static_cast<char*>(malloc(var_data.len + kStringLenLen));
             if (buffer == nullptr) {
               LOG_ERROR("malloc failed, cannot allocate memory, size: %lu", var_data.len + kStringLenLen);
@@ -85,7 +93,7 @@ KStatus ConvertBlockSpanToResultSet(const std::vector<k_uint32>& kw_scan_cols, c
           }
         }
       }
-      if (!attrs[kw_scan_cols[i]].isFlag(AINFO_NOT_NULL)) {
+      if (bitmap != nullptr) {
         batch->need_free_bitmap = true;
       }
     }
@@ -1314,9 +1322,10 @@ inline void TsAggIteratorV2Impl::InitSumValue(void* data, int32_t type) {
   }
 }
 
-inline void TsAggIteratorV2Impl::ConvertToDoubleIfOverflow(uint32_t col_idx, TSSlice& agg_data) {
-  if (is_overflow_[col_idx]) {
+inline void TsAggIteratorV2Impl::ConvertToDoubleIfOverflow(uint32_t col_idx, bool over_flow, TSSlice& agg_data) {
+  if (over_flow) {
     *reinterpret_cast<double*>(agg_data.data) = *reinterpret_cast<int64_t*>(agg_data.data);
+    is_overflow_[col_idx] = true;
   }
 }
 
@@ -1324,30 +1333,31 @@ inline KStatus TsAggIteratorV2Impl::AddSumNotOverflowYet(uint32_t col_idx,
                                                           int32_t type,
                                                           void* current,
                                                           TSSlice& agg_data) {
+  bool over_flow = false;
   switch (type) {
     case DATATYPE::INT8:
-      is_overflow_[col_idx] = AddAggInteger<int64_t>(
+      over_flow = AddAggInteger<int64_t>(
           *reinterpret_cast<int64_t*>(agg_data.data),
           *reinterpret_cast<int8_t*>(current));
-      ConvertToDoubleIfOverflow(col_idx, agg_data);
+      ConvertToDoubleIfOverflow(col_idx, over_flow, agg_data);
       break;
     case DATATYPE::INT16:
-      is_overflow_[col_idx] = AddAggInteger<int64_t>(
+      over_flow = AddAggInteger<int64_t>(
           *reinterpret_cast<int64_t*>(agg_data.data),
           *reinterpret_cast<int16_t*>(current));
-      ConvertToDoubleIfOverflow(col_idx, agg_data);
+      ConvertToDoubleIfOverflow(col_idx, over_flow, agg_data);
       break;
     case DATATYPE::INT32:
-      is_overflow_[col_idx] = AddAggInteger<int64_t>(
+      over_flow = AddAggInteger<int64_t>(
           *reinterpret_cast<int64_t*>(agg_data.data),
           *reinterpret_cast<int32_t*>(current));
-      ConvertToDoubleIfOverflow(col_idx, agg_data);
+      ConvertToDoubleIfOverflow(col_idx, over_flow, agg_data);
       break;
     case DATATYPE::INT64:
-      is_overflow_[col_idx] = AddAggInteger<int64_t>(
+      over_flow = AddAggInteger<int64_t>(
           *reinterpret_cast<int64_t*>(agg_data.data),
           *reinterpret_cast<int64_t*>(current));
-      ConvertToDoubleIfOverflow(col_idx, agg_data);
+      ConvertToDoubleIfOverflow(col_idx, over_flow, agg_data);
       break;
     case DATATYPE::FLOAT:
       AddAggFloat<double>(
@@ -1408,6 +1418,7 @@ KStatus TsAggIteratorV2Impl::UpdateAggregation(std::shared_ptr<TsBlockSpan>& blo
                                                 bool aggregate_first_last_cols,
                                                 bool can_remove_last_candidate) {
   KStatus ret;
+  std::unique_ptr<TsBitmapBase> bitmap;
   int row_num = block_span->GetRowNum();
 
   if (aggregate_first_last_cols) {
@@ -1423,7 +1434,6 @@ KStatus TsAggIteratorV2Impl::UpdateAggregation(std::shared_ptr<TsBlockSpan>& blo
           continue;
         }
         AggCandidate& candidate = candidates_[idx];
-        std::unique_ptr<TsBitmapBase> bitmap;
         ret = block_span->GetColBitmap(kw_col_idx, &bitmap);
         if (ret != KStatus::SUCCESS) {
           return ret;
@@ -1458,7 +1468,6 @@ KStatus TsAggIteratorV2Impl::UpdateAggregation(std::shared_ptr<TsBlockSpan>& blo
           continue;
         }
         AggCandidate& candidate = candidates_[idx];
-        std::unique_ptr<TsBitmapBase> bitmap;
         ret = block_span->GetColBitmap(kw_col_idx, &bitmap);
         if (ret != KStatus::SUCCESS) {
           return ret;
@@ -1559,7 +1568,6 @@ KStatus TsAggIteratorV2Impl::UpdateAggregation(std::shared_ptr<TsBlockSpan>& blo
       }
     } else {
       char* value = nullptr;
-      std::unique_ptr<TsBitmapBase> bitmap;
       auto s = block_span->GetFixLenColAddr(kw_col_idx, &value, &bitmap);
       if (s != KStatus::SUCCESS) {
         LOG_ERROR("GetFixLenColAddr failed.");
@@ -1567,8 +1575,10 @@ KStatus TsAggIteratorV2Impl::UpdateAggregation(std::shared_ptr<TsBlockSpan>& blo
       }
 
       int32_t size = block_span->GetColSize(kw_col_idx);
+      bool col_not_null = attrs_[kw_col_idx].isFlag(AINFO_NOT_NULL);
+      bool all_valid = bitmap->IsAllValid();
       for (int row_idx = 0; row_idx < row_num; ++row_idx) {
-        if (!attrs_[kw_col_idx].isFlag(AINFO_NOT_NULL) && bitmap->At(row_idx) != DataFlags::kValid) {
+        if (!col_not_null && !all_valid && bitmap->At(row_idx) != DataFlags::kValid) {
           continue;
         }
         void* current = reinterpret_cast<void*>((intptr_t)(value + row_idx * size));
@@ -1578,13 +1588,14 @@ KStatus TsAggIteratorV2Impl::UpdateAggregation(std::shared_ptr<TsBlockSpan>& blo
           InitAggData(agg_data);
           InitSumValue(agg_data.data, type);
         }
-        if (!is_overflow_[idx]) {
+        std::vector<bool>::reference cur_overflow = is_overflow_[idx];
+        if (!cur_overflow) {
           ret = AddSumNotOverflowYet(idx, type, current, agg_data);
           if (ret != KStatus::SUCCESS) {
             return KStatus::FAIL;
           }
         }
-        if (is_overflow_[idx]) {
+        if (cur_overflow) {
           ret = AddSumOverflow(type, current, agg_data);
           if (ret != KStatus::SUCCESS) {
             return KStatus::FAIL;
@@ -1653,7 +1664,6 @@ KStatus TsAggIteratorV2Impl::UpdateAggregation(std::shared_ptr<TsBlockSpan>& blo
     } else {
       if (!block_span->IsVarLenType(kw_col_idx)) {
         char* value = nullptr;
-        std::unique_ptr<TsBitmapBase> bitmap;
         auto s = block_span->GetFixLenColAddr(kw_col_idx, &value, &bitmap);
         if (s != KStatus::SUCCESS) {
           LOG_ERROR("GetFixLenColAddr failed.");
@@ -1780,7 +1790,6 @@ KStatus TsAggIteratorV2Impl::UpdateAggregation(std::shared_ptr<TsBlockSpan>& blo
     } else {
       if (!block_span->IsVarLenType(kw_col_idx)) {
         char* value = nullptr;
-        std::unique_ptr<TsBitmapBase> bitmap;
         auto s = block_span->GetFixLenColAddr(kw_col_idx, &value, &bitmap);
         if (s != KStatus::SUCCESS) {
           LOG_ERROR("GetFixLenColAddr failed.");

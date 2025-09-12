@@ -19,13 +19,12 @@
 #include "cm_fault_injection.h"
 #include "cm_task.h"
 #include "perf_stat.h"
-#include "lru_cache_manager.h"
 #include "st_config.h"
 #include "sys_utils.h"
 #include "ee_mempool.h"
 #include "st_tier.h"
 #include "ts_engine.h"
-#include "ts_LRU_block_cache.h"
+#include "ts_lru_block_cache.h"
 
 #ifndef KWBASE_OSS
 #include "ts_config_autonomy.h"
@@ -36,7 +35,6 @@ DedupRule g_dedup_rule = kwdbts::DedupRule::OVERRIDE;
 std::shared_mutex g_settings_mutex;
 bool g_engine_initialized = false;
 bool g_go_start_service = true;
-int g_engine_version{1};
 TSEngine* g_engine_ = nullptr;
 
 std::atomic<bool> g_is_vacuuming{false};
@@ -105,48 +103,13 @@ TSStatus TSOpen(TSEngine** engine, TSSlice dir, TSOptions options,
   }
 #endif
 
-  // check mksquashfs & unsquashfs
-  std::string cmd = "which mksquashfs > /dev/null 2>&1";
-  if (!System(cmd, false)) {
-    cerr << "mksquashfs is not installed, please install squashfs-tools\n";
-    return ToTsStatus("mksquashfs is not installed, please install squashfs-tools");
+  auto ts_engine = new TSEngineV2Impl(opts);
+  ts_engine->initRangeIndexMap(applied_indexes, range_num);
+  s = ts_engine->Init(ctx);
+  if (s != KStatus::SUCCESS) {
+    return ToTsStatus("open TSEngineV2Impl Error!");
   }
-  cmd = "which unsquashfs > /dev/null 2>&1";
-  if (!System(cmd, false)) {
-    cerr << "unsquashfs is not installed, please install squashfs-tools\n";
-    return ToTsStatus("unsquashfs is not installed, please install squashfs-tools");
-  }
-
-  // mount cnt
-  cmd = "cat /proc/mounts | grep " + opts.db_path + " | wc -l";
-  string result;
-  int ret = executeShell(cmd, result);
-  if (ret != -1) {
-    int mount_cnt = atoi(result.c_str());
-    if (mount_cnt > 0) {
-      g_cur_mount_cnt_ = mount_cnt;
-    }
-  }
-
-  TSEngine* ts_engine;
-  if (strcmp(options.engine_version, "2") == 0) {
-    g_engine_version = 2;
-    auto engine = new TSEngineV2Impl(opts);
-    engine->initRangeIndexMap(applied_indexes, range_num);
-    auto s = engine->Init(ctx);
-    if (s != KStatus::SUCCESS) {
-      return ToTsStatus("open TSEngineV2Impl Error!");
-    }
-    LOG_INFO("TSEngineV2Impl created success.");
-    ts_engine = engine;
-  } else {
-    InitCompressInfo();
-    s = TSEngineImpl::OpenTSEngine(ctx, ts_store_path, opts, &ts_engine, applied_indexes, range_num);
-    if (s == KStatus::FAIL) {
-      return ToTsStatus("OpenTSEngine Internal Error!");
-    }
-  }
-
+  LOG_INFO("TSEngineV2Impl created success.");
   *engine = ts_engine;
   g_engine_ = ts_engine;
   g_engine_initialized = true;
@@ -248,68 +211,7 @@ TSStatus TSDropResidualTsTable(TSEngine* engine) {
   return kTsSuccess;
 }
 
-TSStatus TSCompressTsTable(TSEngine* engine, TSTableID table_id, timestamp64 ts) {
-  if (g_engine_version == 2) {
-    return kTsSuccess;
-  }
-  kwdbContext_t context;
-  kwdbContext_p ctx_p = &context;
-  KStatus s = InitServerKWDBContext(ctx_p);
-  if (s != KStatus::SUCCESS) {
-    return ToTsStatus("InitServerKWDBContext Error!");
-  }
-  LOG_INFO("compress table[%lu] start, end_ts: %lu", table_id, ts);
-  std::shared_ptr<TsTable> table;
-  s = engine->GetTsTable(ctx_p, table_id, table, false);
-  if (s != KStatus::SUCCESS) {
-    LOG_INFO("The current node does not have the table[%lu], skip compress", table_id);
-    return kTsSuccess;
-  }
-  ErrorInfo err_info;
-  uint32_t compressed_num = 0;
-  s = table->Compress(ctx_p, ts, compressed_num, err_info);
-  if (s != KStatus::SUCCESS) {
-    LOG_ERROR("compress table[%lu] failed", table_id);
-    return ToTsStatus("CompressTsTable Error!");
-  }
-  LOG_INFO("compress table[%lu] end, the number of compressed segment is %u", table_id, compressed_num);
-  return kTsSuccess;
-}
-
-TSStatus TSCompressImmediately(TSEngine* engine, uint64_t goCtxPtr, TSTableID table_id) {
-  if (g_engine_version == 2) {
-    return kTsSuccess;
-  }
-  kwdbContext_t context;
-  kwdbContext_p ctx_p = &context;
-  KStatus s = InitServerKWDBContext(ctx_p);
-  ctx_p->relation_ctx = goCtxPtr;
-  if (s != KStatus::SUCCESS) {
-    return ToTsStatus("InitServerKWDBContext Error!");
-  }
-
-  LOG_INFO("compress table[%lu] start", table_id);
-  std::shared_ptr<TsTable> table;
-  s = engine->GetTsTable(ctx_p, table_id, table, false);
-  if (s != KStatus::SUCCESS) {
-    LOG_INFO("The current node does not have the table[%lu], skip compress", table_id);
-    return kTsSuccess;
-  }
-  ErrorInfo err_info;
-  uint32_t compressed_num = 0;
-  s = table->Compress(ctx_p, INT64_MAX, compressed_num, err_info);
-  if (s != KStatus::SUCCESS) {
-    LOG_ERROR("compress table[%lu] failed", table_id);
-    return ToTsStatus("compress error, reason: " + err_info.errmsg);
-  }
-  LOG_INFO("compress table[%lu] end, the number of compressed segment is %u", table_id, compressed_num);
-  return kTsSuccess;
-}
-
 TSStatus TSVacuum(TSEngine* engine) {
-  if (g_engine_version == 1) {
-    return kTsSuccess;
-  }
   bool expected = false;
   if (!g_is_vacuuming.compare_exchange_strong(expected, true)) {
     LOG_INFO("The engine is vacuuming, ignore vacuum request");
@@ -324,34 +226,6 @@ TSStatus TSVacuum(TSEngine* engine) {
 }
 
 TSStatus TSMigrateTsTable(TSEngine* engine, TSTableID table_id) {
-  if (g_engine_version == 2) {
-    return kTsSuccess;
-  }
-  if (TsTier::GetInstance().TierEnabled()) {
-    bool expected = false;
-    if (!g_is_migrating.compare_exchange_strong(expected, true)) {
-      LOG_INFO("The engine is migrating tiered storage data, ignore migrate request");
-      return kTsSuccess;
-    }
-    Defer defer([&](){ g_is_migrating.store(false); });
-    kwdbContext_t context;
-    kwdbContext_p ctx_p = &context;
-    KStatus s = InitServerKWDBContext(ctx_p);
-    if (s != KStatus::SUCCESS) {
-      return ToTsStatus("InitServerKWDBContext Error!");
-    }
-    std::shared_ptr<TsTable> table;
-    s = engine->GetTsTable(ctx_p, table_id, table, false);
-    if (s != KStatus::SUCCESS) {
-      LOG_INFO("The current node does not have the table[%lu], skip migrate", table_id);
-      return kTsSuccess;
-    }
-    s = table->TierMigrate();
-    if (s != KStatus::SUCCESS) {
-      LOG_ERROR("migrate table[%lu] failed", table_id);
-      return ToTsStatus("MigrateTsTable Error!");
-    }
-  }
   return kTsSuccess;
 }
 
@@ -744,70 +618,11 @@ void TriggerSettingCallback(const std::string& key, const std::string& value) {
       g_dedup_rule = kwdbts::DedupRule::DISCARD;
       EngineOptions::g_dedup_rule = kwdbts::DedupRule::DISCARD;
     }
-  } else if ("ts.mount.max_limit" == key) {
-    g_max_mount_cnt_ = atoi(value.c_str());
-  } else if ("ts.cached_partitions_per_subgroup.max_limit" == key) {
-    g_partition_caches_mgr.SetCapacity(atoi(value.c_str()));
-  } else if ("ts.entities_per_subgroup.max_limit" == key) {
-    CLUSTER_SETTING_MAX_ENTITIES_PER_SUBGROUP = atoi(value.c_str());
   } else if ("ts.rows_per_block.max_limit" == key) {
     CLUSTER_SETTING_MAX_ROWS_PER_BLOCK = atoi(value.c_str());
     EngineOptions::max_rows_per_block = atoi(value.c_str());
   } else if ("ts.rows_per_block.min_limit" == key) {
     EngineOptions::min_rows_per_block = atoi(value.c_str());
-  } else if ("ts.blocks_per_segment.max_limit" == key) {
-    CLUSTER_SETTING_MAX_BLOCKS_PER_SEGMENT = atoi(value.c_str());
-  } else if ("ts.compress_interval" == key) {
-    kwdbts::g_compress_interval = atoi(value.c_str());
-  } else if ("ts.compression.type" == key) {
-    CompressionType type = kwdbts::CompressionType::GZIP;
-    if ("gzip" == value) {
-      type = kwdbts::CompressionType::GZIP;
-    } else if ("lz4" == value) {
-      type = kwdbts::CompressionType::LZ4;
-    } else if ("lzma" == value) {
-      type = kwdbts::CompressionType::LZMA;
-    } else if ("lzo" == value) {
-      type = kwdbts::CompressionType::LZO;
-    } else if ("xz" == value) {
-      type = kwdbts::CompressionType::XZ;
-    } else if ("zstd" == value) {
-      type = kwdbts::CompressionType::ZSTD;
-    }
-    if (type != kwdbts::CompressionType::GZIP) {
-      if (g_mk_squashfs_option.compressions.find(type) ==
-          g_mk_squashfs_option.compressions.end()) {
-        LOG_WARN("mksquashfs does not support the %s algorithm and uses gzip by default. "
-                 "Please upgrade the mksquashfs version.", value.c_str())
-        type = kwdbts::CompressionType::GZIP;
-      } else if (g_mount_option.mount_compression_types.find(type) ==
-                 g_mount_option.mount_compression_types.end()) {
-        LOG_WARN("mount does not support the %s algorithm and uses gzip by default. "
-                 "Upgrade to a linux kernel version that supports this algorithm or map /boot:/boot if using docker",
-                 value.c_str())
-        type = kwdbts::CompressionType::GZIP;
-      }
-    }
-    if (g_mk_squashfs_option.compressions.find(type) != g_mk_squashfs_option.compressions.end()) {
-      g_compression = g_mk_squashfs_option.compressions.find(type)->second;
-    }
-  } else if ("ts.compression.level" == key) {
-    kwdbts::CompressionLevel level = kwdbts::CompressionLevel::MIDDLE;
-    if ("low" == value) {
-      level = kwdbts::CompressionLevel::LOW;
-    } else if ("middle" == value) {
-      level = kwdbts::CompressionLevel::MIDDLE;
-    } else if ("high" == value) {
-      level = kwdbts::CompressionLevel::HIGH;
-    }
-    for (auto& compression : g_mk_squashfs_option.compressions) {
-      compression.second.compression_level = level;
-    }
-    g_compression.compression_level = level;
-  } else if ("ts.vacuum_interval" == key) {
-    g_vacuum_interval = atoi(value.c_str());
-  } else if ("immediate_compression.threads" == key) {
-    g_mk_squashfs_option.processors_immediate = atoi(value.c_str());
   } else if ("ts.count.use_statistics.enabled" == key) {
     if ("true" == value) {
       CLUSTER_SETTING_COUNT_USE_STATISTICS = true;
@@ -852,7 +667,6 @@ void TriggerSettingCallback(const std::string& key, const std::string& value) {
 }
 
 void TSSetClusterSetting(TSSlice key, TSSlice value) {
-  InitCompressInfo();
   std::string key_set;
   std::string value_set;
 
@@ -890,32 +704,6 @@ void TSSetClusterSetting(TSSlice key, TSSlice value) {
     g_engine_->UpdateSetting(ctx);
   }
   return;
-}
-
-TSStatus TSDeleteExpiredData(TSEngine* engine, TSTableID table_id, KTimestamp end_ts) {
-  kwdbContext_t context;
-  kwdbContext_p ctx_p = &context;
-  KStatus s = InitServerKWDBContext(ctx_p);
-  if (s != KStatus::SUCCESS) {
-    return ToTsStatus("InitServerKWDBContext Error!");
-  }
-  ctx_p->ts_engine = engine;
-  std::shared_ptr<TsTable> ts_tb;
-  s = engine->GetTsTable(ctx_p, table_id, ts_tb, false);
-  if (s != KStatus::SUCCESS) {
-    LOG_INFO("The current node does not have the table[%lu], skip delete expired data", table_id);
-    return kTsSuccess;
-  }
-  LOG_INFO("table[%lu] delete expired data start, expired data end time[%ld]", table_id, end_ts);
-  // May be data that has expired but not deleted, so we don't care about start,
-  // just delete all data older than the end timestamp.
-  s = ts_tb->DeleteExpiredData(ctx_p, end_ts);
-  if (s != KStatus::SUCCESS) {
-    LOG_ERROR("table[%lu] delete expired data failed", table_id);
-    return ToTsStatus("TsTable delete expired data Error!");
-  }
-  LOG_INFO("table[%lu] delete expired data succeeded", table_id);
-  return kTsSuccess;
 }
 
 TSStatus TSGetAvgTableRowSize(TSEngine* engine, TSTableID table_id, uint64_t* row_size) {
@@ -1055,39 +843,14 @@ TSStatus TSPutDataByRowType(TSEngine* engine, TSTableID table_id, TSSlice* paylo
   if (s != KStatus::SUCCESS) {
     return ToTsStatus("GetTsTable Error!");
   }
-  if (g_engine_version == 1) {
-    for (size_t i = 0; i < payload_num; i++) {
-      TSSlice payload;
-      s = ts_tb->ConvertRowTypePayload(ctx_p, payload_row[i], &payload);
-      if (s != KStatus::SUCCESS) {
-        uint32_t pl_version = Payload::GetTsVsersionFromPayload(&payload_row[i]);
-        if (ts_tb->CheckAndAddSchemaVersion(ctx_p, tmp_table_id, pl_version) != KStatus::SUCCESS) {
-          LOG_ERROR("table[%lu] CheckAndAddSchemaVersion failed", tmp_table_id);
-          return ToTsStatus("CheckAndAddSchemaVersion Error!");
-        }
-        if (ts_tb->ConvertRowTypePayload(ctx_p, payload_row[i], &payload) != KStatus::SUCCESS) {
-          LOG_ERROR("table[%lu] ConvertRowTypePayload failed", tmp_table_id);
-          return ToTsStatus("ConvertRowTypePayload Error!");
-        }
-      }
-      Defer defer([&](){ free(payload.data); });
-      s = engine->PutData(ctx_p, tmp_table_id, tmp_range_group_id, &payload, payload_num, mtr_id,
-                           inc_entity_cnt, inc_unordered_cnt, dedup_result, writeWAL);
-      if (s != KStatus::SUCCESS) {
-        std::ostringstream ss;
-        ss << tmp_range_group_id;
-        return ToTsStatus("PutData Error!,RangeGroup:" + ss.str());
-      }
-    }
-  } else {
-    // todo(liangbo01) current interface dedup result no support multi-payload insert.
-    s = engine->PutData(ctx_p, tmp_table_id, tmp_range_group_id, payload_row, payload_num, mtr_id,
-                        inc_entity_cnt, inc_unordered_cnt, dedup_result, writeWAL);
-    if (s != KStatus::SUCCESS) {
-      std::ostringstream ss;
-      ss << tmp_range_group_id;
-      return ToTsStatus("PutData Error!,RangeGroup:" + ss.str());
-    }
+
+  // todo(liangbo01) current interface dedup result no support multi-payload insert.
+  s = engine->PutData(ctx_p, tmp_table_id, tmp_range_group_id, payload_row, payload_num, mtr_id,
+                      inc_entity_cnt, inc_unordered_cnt, dedup_result, writeWAL);
+  if (s != KStatus::SUCCESS) {
+    std::ostringstream ss;
+    ss << tmp_range_group_id;
+    return ToTsStatus("PutData Error!,RangeGroup:" + ss.str());
   }
   return kTsSuccess;
 }
@@ -1112,39 +875,13 @@ TSStatus TSPutDataByRowTypeExplicit(TSEngine* engine, TSTableID table_id, TSSlic
   if (s != KStatus::SUCCESS) {
     return ToTsStatus("GetTsTable Error!");
   }
-  if (g_engine_version == 1) {
-    for (size_t i = 0; i < payload_num; i++) {
-      TSSlice payload;
-      s = ts_tb->ConvertRowTypePayload(ctx_p, payload_row[i], &payload);
-      if (s != KStatus::SUCCESS) {
-        uint32_t pl_version = Payload::GetTsVsersionFromPayload(&payload_row[i]);
-        if (ts_tb->CheckAndAddSchemaVersion(ctx_p, tmp_table_id, pl_version) != KStatus::SUCCESS) {
-          LOG_ERROR("table[%lu] CheckAndAddSchemaVersion failed", tmp_table_id);
-          return ToTsStatus("CheckAndAddSchemaVersion Error!");
-        }
-        if (ts_tb->ConvertRowTypePayload(ctx_p, payload_row[i], &payload) != KStatus::SUCCESS) {
-          LOG_ERROR("table[%lu] ConvertRowTypePayload failed", tmp_table_id);
-          return ToTsStatus("ConvertRowTypePayload Error!");
-        }
-      }
-      Defer defer([&](){ free(payload.data); });
-      s = engine->PutData(ctx_p, tmp_table_id, tmp_range_group_id, &payload, payload_num, mtr_id,
-                          inc_entity_cnt, inc_unordered_cnt, dedup_result, writeWAL, tsx_id);
-      if (s != KStatus::SUCCESS) {
-        std::ostringstream ss;
-        ss << tmp_range_group_id;
-        return ToTsStatus("PutData Error!,RangeGroup:" + ss.str());
-      }
-    }
-  } else {
-    // todo(liangbo01) current interface dedup result no support multi-payload insert.
-    s = engine->PutData(ctx_p, tmp_table_id, tmp_range_group_id, payload_row, payload_num, mtr_id,
-                        inc_entity_cnt, inc_unordered_cnt, dedup_result, writeWAL, tsx_id);
-    if (s != KStatus::SUCCESS) {
-      std::ostringstream ss;
-      ss << tmp_range_group_id;
-      return ToTsStatus("PutData Error!,RangeGroup:" + ss.str());
-    }
+  // todo(liangbo01) current interface dedup result no support multi-payload insert.
+  s = engine->PutData(ctx_p, tmp_table_id, tmp_range_group_id, payload_row, payload_num, mtr_id,
+                      inc_entity_cnt, inc_unordered_cnt, dedup_result, writeWAL, tsx_id);
+  if (s != KStatus::SUCCESS) {
+    std::ostringstream ss;
+    ss << tmp_range_group_id;
+    return ToTsStatus("PutData Error!,RangeGroup:" + ss.str());
   }
   return kTsSuccess;
 }
@@ -1584,30 +1321,6 @@ TSStatus TsSetUseRaftLogAsWAL(TSEngine* engine, bool use) {
   if (s != KStatus::SUCCESS) {
     return ToTsStatus("GetWalLevel Error!");
   }
-  return kTsSuccess;
-}
-
-TSStatus TSCountTsTable(TSEngine* engine, TSTableID table_id) {
-  kwdbContext_t context;
-  kwdbContext_p ctx_p = &context;
-  KStatus s = InitServerKWDBContext(ctx_p);
-  if (s != KStatus::SUCCESS) {
-    return ToTsStatus("InitServerKWDBContext Error!");
-  }
-  LOG_DEBUG("count table[%lu] start", table_id);
-  std::shared_ptr<TsTable> table;
-  s = engine->GetTsTable(ctx_p, table_id, table, false);
-  if (s != KStatus::SUCCESS) {
-    LOG_ERROR("The current node does not have the table[%lu], skip count", table_id);
-    return kTsSuccess;
-  }
-  ErrorInfo err_info;
-  s = table->Count(ctx_p, err_info);
-  if (s != KStatus::SUCCESS) {
-    LOG_ERROR("count table[%lu] failed", table_id);
-    return ToTsStatus("CountTsTable Error!");
-  }
-  LOG_DEBUG("count table[%lu] end", table_id);
   return kTsSuccess;
 }
 

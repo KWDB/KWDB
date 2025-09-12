@@ -634,9 +634,9 @@ EEIteratorErrCode StorageHandler::NewTagIterator(kwdbContext_p ctx) {
   if (EngineOptions::isSingleNode()) {
     BaseEntityIterator* iter = nullptr;
     if (read_mode_ == TSTableReadMode::metaTable) {
-        ret = ts_table_->GetTagIterator(ctx, {}, &iter, table_->table_version_);
+        ret = ts_table_->GetTagIterator(ctx, {}, {}, &iter, table_->table_version_);
     } else {
-        ret = ts_table_->GetTagIterator(ctx, table_->scan_tags_, &iter, table_->table_version_);
+        ret = ts_table_->GetTagIterator(ctx, table_->scan_tags_, {}, &iter, table_->table_version_);
     }
     tag_iterator = iter;
   } else {

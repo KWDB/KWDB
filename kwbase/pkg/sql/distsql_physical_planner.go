@@ -2702,18 +2702,10 @@ func (dsp *DistSQLPlanner) operateTSData(
 
 	p.GateNoopInput = len(n.nodeID)
 	switch n.operateType {
-	case compress:
-		tsPro.TsOperator = execinfrapb.OperatorType_TsCompressTsTable
-	case compressAll, compressDB, compressTable:
-		tsPro.TsOperator = execinfrapb.OperatorType_TsManualCompressTable
-	case deleteExpiredData:
-		tsPro.TsOperator = execinfrapb.OperatorType_TsDeleteExpiredData
 	case autonomy:
 		tsPro.TsOperator = execinfrapb.OperatorType_TsAutonomy
 	case vacuum:
 		tsPro.TsOperator = execinfrapb.OperatorType_TsVacuum
-	case count:
-		tsPro.TsOperator = execinfrapb.OperatorType_TsCount
 	default:
 		return p, pgerror.New(pgcode.WrongObjectType, "operate type is not supported")
 	}

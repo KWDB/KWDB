@@ -24,7 +24,7 @@
 #include "ts_io.h"
 #include "ts_lastsegment_builder.h"
 #include "ts_version.h"
-#include "ts_LRU_block_cache.h"
+#include "ts_lru_block_cache.h"
 
 namespace kwdbts {
 

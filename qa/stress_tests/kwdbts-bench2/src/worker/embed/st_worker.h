@@ -22,6 +22,7 @@
 #include "../util.h"
 #include "../worker.h"
 #include "st_instance.h"
+#include "ts_table_v2_impl.h"
 
 namespace kwdbts {
 void RegisterEmbedWorker(const BenchParams& params);
@@ -51,7 +52,7 @@ class StWorker : public Worker {
     for (int i = 0; i < meta.k_column_size(); i++) {
       const auto& col = meta.k_column(i);
       struct AttributeInfo col_var;
-      TsEntityGroup::GetColAttributeInfo(ctx, col, col_var, i==0);
+      TsTableV2Impl::GetColAttributeInfo(ctx, col, col_var, i==0);
       if (col_var.isAttrType(COL_GENERAL_TAG) || col_var.isAttrType(COL_PRIMARY_TAG)) {
         tag_schema.emplace_back(std::move(col_var));
       } else {
@@ -197,7 +198,7 @@ class StSnapshotByBlockWorker : public StSnapshotWorker {
  public:
   StSnapshotByBlockWorker(const std::string& pname, const BenchParams& params, const std::vector<uint32_t>& tbl_ids) :
       StSnapshotWorker(pname, params, tbl_ids) {
-    SnapshotFactory::TestSetType(2);
+    // SnapshotFactory::TestSetType(2);
   }
 };
 

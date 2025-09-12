@@ -163,27 +163,23 @@ enum OperatorType {
   TsDeleteEntities = 4;
   TsDropDeleteEntities = 5;
   TsDropTsTable = 6;
-  TsDeleteExpiredData = 7;
-  TsCompressTsTable = 8;
-  TsAddColumn = 9;
-  TsUpdateTag = 10;
-  TsDropColumn = 11;
-  TsAlterPartitionInterval = 12;
-  TsInsertSelect = 13;
-  TsDeleteMultiEntitiesData = 14;
-  TsCommit = 15;
-  TsRollback = 16;
-  TsAlterType = 17;
-  TsAlterCompressInterval = 18;
-  TsAutonomy = 19;
-  TsManualCompressTable = 20;
-  TsVacuum = 21;
-  TsAlterVacuumInterval = 22;
-  TsCreateTagIndex = 23;
-  TsDropTagIndex = 24;
-  TsAlterTagIndex = 25;
-  TsCount = 26;
-  TsAlterRetentions = 27;
+  TsAddColumn = 7;
+  TsUpdateTag = 8;
+  TsDropColumn = 9;
+  TsAlterPartitionInterval = 10;
+  TsInsertSelect = 11;
+  TsDeleteMultiEntitiesData = 12;
+  TsCommit = 13;
+  TsRollback = 14;
+  TsAlterType = 15;
+  TsAlterCompressInterval = 16;
+  TsAutonomy = 17;
+  TsVacuum = 18;
+  TsAlterVacuumInterval = 19;
+  TsCreateTagIndex = 20;
+  TsDropTagIndex = 21;
+  TsAlterTagIndex = 22;
+  TsAlterRetentions = 23;
 }
 
 // TsInsertSelSpec build payLoads for TsInsert

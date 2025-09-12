@@ -139,7 +139,7 @@ class TsAggIteratorV2Impl : public TsStorageIteratorV2Impl {
   void InitAggData(TSSlice& agg_data);
   void InitSumValue(void* data, int32_t type);
   void UpdateTsSpans();
-  void ConvertToDoubleIfOverflow(uint32_t blk_col_idx, TSSlice& agg_data);
+  void ConvertToDoubleIfOverflow(uint32_t col_idx, bool over_flow, TSSlice& agg_data);
   KStatus AddSumNotOverflowYet(uint32_t blk_col_idx,
                                 int32_t type,
                                 void* current,

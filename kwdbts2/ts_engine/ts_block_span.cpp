@@ -408,6 +408,21 @@ KStatus TsBlockSpan::GetVarLenTypeColAddr(uint32_t row_idx, uint32_t scan_idx, D
   return convert_->GetVarLenTypeColAddr(this, row_idx, scan_idx, flag, data);
 }
 
+KStatus TsBlockSpan::GetVarLenTypeColAddr(uint32_t row_idx, uint32_t scan_idx, TSSlice& data) {
+  if (!convert_) {
+    TSSlice orig_value;
+    auto s = block_->GetValueSlice(start_row_ + row_idx, scan_idx, scan_attrs_, orig_value);
+    if (s != KStatus::SUCCESS) {
+      LOG_ERROR("GetValueSlice failed. rowidx[%u] colid[%u]", row_idx, scan_idx);
+      return s;
+    }
+    data = orig_value;
+    return KStatus::SUCCESS;
+  }
+  DataFlags flag;
+  return convert_->GetVarLenTypeColAddr(this, row_idx, scan_idx, flag, data);
+}
+
 KStatus TsBlockSpan::GetCount(uint32_t scan_idx, uint32_t& count) {
   std::unique_ptr<TsBitmapBase> bitmap;
   auto s = GetColBitmap(scan_idx, &bitmap);

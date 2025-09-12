@@ -223,24 +223,6 @@ TSStatus TSCreateNormalTagIndex(TSEngine* engine, TSTableID table_id, uint64_t i
 TSStatus TSDropNormalTagIndex(TSEngine* engine, TSTableID table_id, uint64_t index_id, char* transaction_id,
                               uint32_t cur_version, uint32_t new_version);
 
-/**
- * @brief Compress the segment whose maximum timestamp in the time series table is less than ts
- * @param[in] table_id id of the time series table
- * @param[in] ts A timestamp that needs to be compressed
- *
- * @return TSStatus
- */
-TSStatus TSCompressTsTable(TSEngine* engine, TSTableID table_id, KTimestamp ts);
-
-/**
- * @brief Compress all segments in the time series table
- * @param[in] table_id id of the time series table
- * @param[in] goCtxPtr pointer points to the context object in go layer
- *
- * @return TSStatus
- */
-TSStatus TSCompressImmediately(TSEngine* engine, uint64_t goCtxPtr, TSTableID table_id);
-
 TSStatus TSVacuum(TSEngine* engine);
 
 /**
@@ -308,14 +290,6 @@ TSStatus TSxBegin(TSEngine* engine, TSTableID tableId, char* transaction_id);
 TSStatus TSxCommit(TSEngine* engine, TSTableID tableId, char* transaction_id);
 
 TSStatus TSxRollback(TSEngine* engine, TSTableID tableId, char* transaction_id);
-
-/**
- * @brief TSDeleteExpiredData is the CGO interface that delete expired data which is older than the end_ts.
- * @param[in] table_id id of the time series table
- * @param[in] end_ts end timestamp of expired data
- * @return
- */
-TSStatus TSDeleteExpiredData(TSEngine* engine, TSTableID table_id, KTimestamp end_ts);
 
 /**
  * @brief calculate row size of this table. Approximate value
@@ -526,8 +500,6 @@ TSStatus TsGetWalLevel(TSEngine* engine, uint8_t *wal_level);
  * @return
  */
 TSStatus TsSetUseRaftLogAsWAL(TSEngine* engine, bool use);
-
-TSStatus TSCountTsTable(TSEngine* engine, TSTableID table_id);
 
 TSStatus TSFlushVGroups(TSEngine* engine);
 

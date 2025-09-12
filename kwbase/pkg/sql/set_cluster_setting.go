@@ -131,79 +131,8 @@ func (p *planner) SetClusterSetting(
 type CheckOperation func(string) error
 
 func checkTsDedupRule(encodedValue string) error {
-	if encodedValue != "merge" && encodedValue != "keep" && encodedValue != "reject" &&
-		encodedValue != "discard" && encodedValue != "override" {
+	if encodedValue != "merge" && encodedValue != "keep" && encodedValue != "discard" && encodedValue != "override" {
 		return errors.New("ts.dedup.rule setting value is not right")
-	}
-	return nil
-}
-
-func checkTsMountLimit(encodedValue string) error {
-	value, err := strconv.ParseInt(encodedValue, 10, 64)
-	if err != nil {
-		return err
-	}
-	if value < 0 || value > math.MaxInt32 {
-		return errors.New("invalid value, the range of ts.mount.max_limit is [0, 2147483647]")
-	}
-	return nil
-}
-
-func checkTsCachedPartitionsLimit(encodedValue string) error {
-	value, err := strconv.ParseInt(encodedValue, 10, 64)
-	if err != nil {
-		return err
-	}
-	if value < 0 || value > math.MaxInt32 {
-		return errors.New("invalid value, the range of ts.cached_partitions_per_subgroup.max_limit is [0, 2147483647]")
-	}
-	return nil
-}
-
-func checkTsEntitiesPerSubgroupLimit(encodedValue string) error {
-	value, err := strconv.ParseInt(encodedValue, 10, 64)
-	if err != nil {
-		return err
-	}
-	if value < 1 || value > math.MaxInt32 {
-		return errors.New("invalid value, the range of ts.entities_per_subgroup.max_limit is [1, 2147483647]")
-	}
-	return nil
-}
-
-func checkTsBlocksPerSegmentLimit(encodedValue string) error {
-	value, err := strconv.ParseInt(encodedValue, 10, 64)
-	if err != nil {
-		return err
-	}
-	if value < 1 || value > 1000000 {
-		return errors.New("invalid value, the range of ts.blocks_per_segment.max_limit is [1, 1000000]")
-	}
-	return nil
-}
-
-func checkTsCompressType(encodedValue string) error {
-	if encodedValue != "gzip" && encodedValue != "lz4" && encodedValue != "lzma" &&
-		encodedValue != "lzo" && encodedValue != "xz" && encodedValue != "zstd" {
-		return errors.New("ts.compression.type is incorrectly configured, and can be configured as: gzip, lz4, lzma, lzo, xz, and zstd")
-	}
-	return nil
-}
-
-func checkTsCompressLevel(encodedValue string) error {
-	if encodedValue != "low" && encodedValue != "middle" && encodedValue != "high" {
-		return errors.New("ts.compression.level is incorrectly configured, and can be configured as: low, middle, high")
-	}
-	return nil
-}
-
-func checkTsCompressThreads(encodedValue string) error {
-	value, err := strconv.ParseInt(encodedValue, 10, 64)
-	if err != nil {
-		return err
-	}
-	if value < 1 || value > 1000 {
-		return errors.New("invalid value, the range of compression threads should be [1, 1000]")
 	}
 	return nil
 }
@@ -317,24 +246,17 @@ func checkTsBlockCacheMaxLimit(encodedValue string) error {
 
 // CheckClusterSetting map of checking methods for saving cluster settings
 var CheckClusterSetting = map[string]CheckOperation{
-	"ts.dedup.rule":      checkTsDedupRule,
-	"ts.mount.max_limit": checkTsMountLimit,
-	"ts.cached_partitions_per_subgroup.max_limit": checkTsCachedPartitionsLimit,
-	"ts.entities_per_subgroup.max_limit":          checkTsEntitiesPerSubgroupLimit,
-	"ts.blocks_per_segment.max_limit":             checkTsBlocksPerSegmentLimit,
-	"ts.rows_per_block.max_limit":                 checkTsRowsPerBlockMaxLimit,
-	"ts.compression.type":                         checkTsCompressType,
-	"ts.compression.level":                        checkTsCompressLevel,
-	"immediate_compression.threads":               checkTsCompressThreads,
-	"ts.sql.query_opt_mode":                       checkTsQueryOptMode,
-	"ts.count.use_statistics.enabled":             checkTsCountUseStatistics,
-	"capacity.stats.period":                       checkCapacityStatsPeriod,
-	"ts.table_cache.capacity":                     checkTsTableCacheCapacity,
-	"ts.rows_per_block.min_limit":                 checkTsRowsPerBlockMinLimit,
-	"ts.compact.max_limit":                        checkTsCompactLastSegmentMaxLimit,
-	"ts.reserved_last_segment.max_limit":          checkTsReservedLastSegmentMaxLimit,
-	"ts.mem_segment_size.max_limit":               checkTsMemSegmentSizeMaxLimit,
-	"ts.block.lru_cache.max_limit":                checkTsBlockCacheMaxLimit,
+	"ts.dedup.rule":                      checkTsDedupRule,
+	"ts.rows_per_block.max_limit":        checkTsRowsPerBlockMaxLimit,
+	"ts.sql.query_opt_mode":              checkTsQueryOptMode,
+	"ts.count.use_statistics.enabled":    checkTsCountUseStatistics,
+	"capacity.stats.period":              checkCapacityStatsPeriod,
+	"ts.table_cache.capacity":            checkTsTableCacheCapacity,
+	"ts.rows_per_block.min_limit":        checkTsRowsPerBlockMinLimit,
+	"ts.compact.max_limit":               checkTsCompactLastSegmentMaxLimit,
+	"ts.reserved_last_segment.max_limit": checkTsReservedLastSegmentMaxLimit,
+	"ts.mem_segment_size.max_limit":      checkTsMemSegmentSizeMaxLimit,
+	"ts.block.lru_cache.max_limit":       checkTsBlockCacheMaxLimit,
 }
 
 // TsTxnAtomicityClusterSettingName is the name of the ts txn atomicity cluster setting.

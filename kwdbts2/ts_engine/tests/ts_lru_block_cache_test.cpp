@@ -9,7 +9,7 @@
 // MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
 // See the Mulan PSL v2 for more details.
 
-#include "ts_LRU_block_cache.h"
+#include "ts_lru_block_cache.h"
 #include <gtest/gtest.h>
 
 using namespace kwdbts;  // NOLINT

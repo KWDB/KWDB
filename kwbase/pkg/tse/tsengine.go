@@ -24,7 +24,7 @@
 package tse
 
 // #cgo CPPFLAGS: -I../../../kwdbts2/include
-// #cgo LDFLAGS: -lkwdbts2 -lrocksdb -lcommon -lsnappy -lm  -lstdc++
+// #cgo LDFLAGS: -lkwdbts2 -lcommon -lstdc++
 // #cgo LDFLAGS: -lprotobuf
 // #cgo linux LDFLAGS: -lrt -lpthread
 //
@@ -1546,30 +1546,6 @@ func (r *TsEngine) DeleteData(
 	return uint64(delCnt), nil
 }
 
-// CompressTsTable compress partitions with maximum time<=ts
-func (r *TsEngine) CompressTsTable(tableID uint64, ts int64) error {
-	if r == nil {
-		return nil
-	}
-	r.checkOrWaitForOpen()
-	status := C.TSCompressTsTable(r.tdb, C.TSTableID(tableID), C.int64_t(ts))
-	if err := statusToError(status); err != nil {
-		return errors.Wrap(err, "failed to compress ts table")
-	}
-	return nil
-}
-
-// CompressImmediately compress partitions immediately
-func (r *TsEngine) CompressImmediately(ctx context.Context, tableID uint64) error {
-	r.checkOrWaitForOpen()
-	goCtxPtr := C.uint64_t(uintptr(unsafe.Pointer(&ctx)))
-	status := C.TSCompressImmediately(r.tdb, goCtxPtr, C.TSTableID(tableID))
-	if err := statusToError(status); err != nil {
-		return errors.Wrap(err, "failed to compress ts table")
-	}
-	return nil
-}
-
 // Vacuum vacuum partitions
 func (r *TsEngine) Vacuum() error {
 	if r == nil {
@@ -1579,32 +1555,6 @@ func (r *TsEngine) Vacuum() error {
 	status := C.TSVacuum(r.tdb)
 	if err := statusToError(status); err != nil {
 		return errors.Wrap(err, "failed to vacuum ts storage")
-	}
-	return nil
-}
-
-// CountTsTable count calculate table
-func (r *TsEngine) CountTsTable(tableID uint64) error {
-	r.checkOrWaitForOpen()
-	status := C.TSCountTsTable(r.tdb, C.TSTableID(tableID))
-	if err := statusToError(status); err != nil {
-		return errors.Wrap(err, "failed to count ts table")
-	}
-	return nil
-}
-
-// DeleteExpiredData delete expired data from time partitions that fall completely within the [min_int64, end) interval
-func (r *TsEngine) DeleteExpiredData(tableID uint64, _ int64, end int64) error {
-	if r == nil {
-		return nil
-	}
-	r.checkOrWaitForOpen()
-	if end == math.MinInt64 {
-		return nil
-	}
-	status := C.TSDeleteExpiredData(r.tdb, C.TSTableID(tableID), C.int64_t(end))
-	if err := statusToError(status); err != nil {
-		return errors.Wrap(err, "failed to delete expired data")
 	}
 	return nil
 }
