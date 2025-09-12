@@ -532,6 +532,9 @@ class TsTable {
 
   virtual KStatus GetLastRowEntity(kwdbContext_p ctx, EntityResultIndex& entity_id, timestamp64& entity_last_ts);
 
+  virtual KStatus GetLastRowBatch(kwdbContext_p ctx, uint32_t table_version, std::vector<uint32_t> scan_cols,
+                                  ResultSet* res, k_uint32* count, bool& valid);
+
   struct SubgroupEntities{
     uint64_t entity_group_id;
     uint32_t subgroup_id;

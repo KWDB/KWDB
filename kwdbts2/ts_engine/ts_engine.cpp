@@ -39,6 +39,7 @@ uint32_t EngineOptions::max_compact_num = 10;
 size_t EngineOptions::max_rows_per_block = 4096;
 size_t EngineOptions::min_rows_per_block = 2048;
 int64_t EngineOptions::partition_interval = 3600 * 24 * 10;
+int32_t EngineOptions::block_cache_max_size = 1024;
 
 extern std::map<std::string, std::string> g_cluster_settings;
 extern DedupRule g_dedup_rule;
@@ -64,43 +65,6 @@ TSEngineV2Impl::TSEngineV2Impl(const EngineOptions& engine_options)
     EngineOptions::vgroup_max_num = strtol(vgroup_num, &endptr, 10);
     assert(*endptr == '\0');
   }
-  char* mem_segment_max_size = getenv("KW_MAX_SEGMENT_MAX_SIZE");
-  if (mem_segment_max_size != nullptr) {
-    char *endptr;
-    EngineOptions::mem_segment_max_size = strtol(mem_segment_max_size, &endptr, 10);
-    assert(*endptr == '\0');
-  }
-  char* mem_segment_max_height = getenv("KW_MAX_SEGMENT_MAX_HEIGHT");
-  if (mem_segment_max_height != nullptr) {
-    char *endptr;
-    EngineOptions::mem_segment_max_height = strtol(mem_segment_max_height, &endptr, 10);
-    assert(*endptr == '\0');
-  }
-  char* max_last_segment_num = getenv("KW_MAX_LAST_SEGMENT_NUM");
-  if (max_last_segment_num != nullptr) {
-    char *endptr;
-    EngineOptions::max_last_segment_num = strtol(max_last_segment_num, &endptr, 10);
-    assert(*endptr == '\0');
-  }
-  char* max_compact_num = getenv("KW_MAX_COMPACT_NUM");
-  if (max_compact_num != nullptr) {
-    char *endptr;
-    EngineOptions::max_compact_num = strtol(max_compact_num, &endptr, 10);
-    assert(*endptr == '\0');
-  }
-  char* max_rows_per_block = getenv("KW_MAX_ROWS_PER_BLOCK");
-  if (max_rows_per_block != nullptr) {
-    char *endptr;
-    EngineOptions::max_rows_per_block = strtol(max_rows_per_block, &endptr, 10);
-    assert(*endptr == '\0');
-  }
-  char* min_rows_per_block = getenv("KW_MIN_ROWS_PER_BLOCK");
-  if (min_rows_per_block != nullptr) {
-    char *endptr;
-    EngineOptions::min_rows_per_block = strtol(min_rows_per_block, &endptr, 10);
-    assert(*endptr == '\0');
-  }
-
   char* partition_interval = getenv("KW_PARTITION_INTERVAL");
   if (partition_interval != nullptr) {
     char* endptr;
@@ -637,17 +601,19 @@ KStatus TSEngineV2Impl::PutEntity(kwdbContext_p ctx, const KTableKey& table_id, 
 
     if (EnableWAL()) {
       // get old payload
-      TagTuplePack* tag_pack = tag_table->GenTagPack(primary_key.data, primary_key.len);
-      if (UNLIKELY(nullptr == tag_pack)) {
-        return KStatus::FAIL;
-      }
-      wal_level_mutex_.lock_shared();
-      s = vgroup->GetWALManager()->WriteUpdateWAL(ctx, mtr_id, 0, 0, payload_data[i], tag_pack->getData(), vgroup_id,
-                                                  table_id);
-      wal_level_mutex_.unlock_shared();
-      if (s == KStatus::FAIL) {
-        LOG_ERROR("Failed to WriteUpdateWAL while PutEntity")
-        return s;
+      if (tag_table->hasPrimaryKey(primary_key.data, primary_key.len)) {
+        TagTuplePack* tag_pack = tag_table->GenTagPack(primary_key.data, primary_key.len);
+        if (UNLIKELY(nullptr == tag_pack)) {
+          return KStatus::FAIL;
+        }
+        wal_level_mutex_.lock_shared();
+        s = vgroup->GetWALManager()->WriteUpdateWAL(ctx, mtr_id, 0, 0, payload_data[i], tag_pack->getData(), vgroup_id,
+                                                    table_id);
+        wal_level_mutex_.unlock_shared();
+        if (s == KStatus::FAIL) {
+          LOG_ERROR("Failed to WriteUpdateWAL while PutEntity")
+          return s;
+        }
       }
     }
 

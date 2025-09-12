@@ -282,6 +282,8 @@ class TsReadBatchDataWorker : public TsBatchDataWorker {
   uint32_t n_cols_ = 0;
   TsBatchData cur_batch_data_;
 
+  uint64_t total_read_ = 0;
+
   KStatus GetTagValue(kwdbContext_p ctx);
 
   KStatus AddTsBlockSpanInfo(kwdbContext_p ctx, std::shared_ptr<TsBlockSpan>& block_span);
@@ -300,6 +302,8 @@ class TsReadBatchDataWorker : public TsBatchDataWorker {
                             uint64_t end_hash, KwTsSpan ts_span);
 
   KStatus Read(kwdbContext_p ctx, TSSlice* data, uint32_t* row_num) override;
+
+  KStatus Finish(kwdbContext_p ctx) override;
 };
 
 class TsWriteBatchDataWorker : public TsBatchDataWorker {

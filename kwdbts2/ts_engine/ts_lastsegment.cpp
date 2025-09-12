@@ -277,7 +277,8 @@ class TsLastBlock : public TsBlock {
   uint32_t GetTableVersion() override { return block_index_.table_version; }
   size_t GetRowNum() override { return block_info_.nrow; }
 
-  KStatus GetColBitmap(uint32_t col_id, const std::vector<AttributeInfo>* schema, TsBitmap& bitmap) override {
+  KStatus GetColBitmap(uint32_t col_id, const std::vector<AttributeInfo>* schema,
+                       std::unique_ptr<TsBitmapBase>* bitmap) override {
     TsColumnBlock* col_block = nullptr;
     auto s = column_block_cache_->GetColumnBlock(col_id, &col_block, schema);
     if (s == FAIL) {
@@ -310,12 +311,12 @@ class TsLastBlock : public TsBlock {
   }
 
   inline bool IsColNull(int row_num, int col_id, const std::vector<AttributeInfo>* schema) override {
-    TsBitmap bitmap;
-    auto s = GetColBitmap(col_id, schema, bitmap);
+    std::unique_ptr<TsBitmapBase> bitmap;
+    auto s = GetColBitmap(col_id, schema, &bitmap);
     if (s == FAIL) {
       return false;
     }
-    return bitmap[row_num] == DataFlags::kNull;
+    return bitmap->At(row_num) == DataFlags::kNull;
   }
 
   // if just get timestamp , this function return fast.

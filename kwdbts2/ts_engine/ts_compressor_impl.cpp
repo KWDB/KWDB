@@ -583,7 +583,7 @@ bool Simple8BInt<T>::Decompress(const TSSlice &data, uint64_t count, std::string
   return __simple8b_detail::Decompress<T>(data, count, out);
 }
 
-bool CompressorManager::TwoLevelCompressor::Compress(const TSSlice &raw, const TsBitmap *bitmap,
+bool CompressorManager::TwoLevelCompressor::Compress(const TSSlice &raw, const TsBitmapBase *bitmap,
                                                      uint32_t count, std::string *out) const {
   if (IsPlain()) return false;
   std::string buf;
@@ -604,7 +604,7 @@ bool CompressorManager::TwoLevelCompressor::Compress(const TSSlice &raw, const T
   }
   return second_->Compress(data, out);
 }
-bool CompressorManager::TwoLevelCompressor::Decompress(const TSSlice &raw, const TsBitmap *bitmap,
+bool CompressorManager::TwoLevelCompressor::Decompress(const TSSlice &raw, const TsBitmapBase *bitmap,
                                                        uint32_t count, std::string *out) const {
   if (IsPlain()) return false;
   out->clear();
@@ -712,7 +712,7 @@ auto CompressorManager::GetDefaultCompressor(DATATYPE dtype) const -> TwoLevelCo
   return GetCompressor(first, second);
 }
 
-bool CompressorManager::CompressData(TSSlice input, const TsBitmap *bitmap, uint64_t count,
+bool CompressorManager::CompressData(TSSlice input, const TsBitmapBase *bitmap, uint64_t count,
                                      std::string *output, TsCompAlg first,
                                      GenCompAlg second) const {
   static_assert(sizeof(first) == sizeof(uint16_t));
@@ -754,7 +754,7 @@ bool CompressorManager::CompressVarchar(TSSlice input, std::string *output,
   return true;
 }
 
-bool CompressorManager::DecompressData(TSSlice input, const TsBitmap *bitmap, uint64_t count, TsSliceGuard *out) const {
+bool CompressorManager::DecompressData(TSSlice input, const TsBitmapBase *bitmap, uint64_t count, TsSliceGuard *out) const {
   if (input.len < 4) {
     LOG_ERROR("Invalid input length, too short");
     return false;

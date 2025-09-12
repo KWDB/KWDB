@@ -182,17 +182,6 @@ func checkTsBlocksPerSegmentLimit(encodedValue string) error {
 	return nil
 }
 
-func checkTsRowsPerBlockLimit(encodedValue string) error {
-	value, err := strconv.ParseInt(encodedValue, 10, 64)
-	if err != nil {
-		return err
-	}
-	if value < 10 || value > 1000 {
-		return errors.New("invalid value, the range of ts.rows_per_block.max_limit is [10, 1000]")
-	}
-	return nil
-}
-
 func checkTsCompressType(encodedValue string) error {
 	if encodedValue != "gzip" && encodedValue != "lz4" && encodedValue != "lzma" &&
 		encodedValue != "lzo" && encodedValue != "xz" && encodedValue != "zstd" {
@@ -260,6 +249,72 @@ func checkTsTableCacheCapacity(encodedValue string) error {
 	return nil
 }
 
+func checkTsRowsPerBlockMaxLimit(encodedValue string) error {
+	value, err := strconv.ParseInt(encodedValue, 10, 64)
+	if err != nil {
+		return err
+	}
+	if value <= 0 || value > 2147483647 {
+		return errors.New("invalid value, the range of ts.rows_per_block.max_limit is [1, 2147483647]")
+	}
+	return nil
+}
+
+func checkTsRowsPerBlockMinLimit(encodedValue string) error {
+	value, err := strconv.ParseInt(encodedValue, 10, 64)
+	if err != nil {
+		return err
+	}
+	if value <= 0 || value > 2147483647 {
+		return errors.New("invalid value, the range of ts.rows_per_block.min_limit is [1, 2147483647]")
+	}
+	return nil
+}
+
+func checkTsCompactLastSegmentMaxLimit(encodedValue string) error {
+	value, err := strconv.ParseInt(encodedValue, 10, 64)
+	if err != nil {
+		return err
+	}
+	if value <= 0 || value > 1000 {
+		return errors.New("invalid value, the range of ts.compact.max_limit is [1, 1000]")
+	}
+	return nil
+}
+
+func checkTsReservedLastSegmentMaxLimit(encodedValue string) error {
+	value, err := strconv.ParseInt(encodedValue, 10, 64)
+	if err != nil {
+		return err
+	}
+	if value <= 0 || value > 2147483647 {
+		return errors.New("invalid value, the range of ts.reserved_last_segment.max_limit is [1, 2147483647]")
+	}
+	return nil
+}
+
+func checkTsMemSegmentSizeMaxLimit(encodedValue string) error {
+	value, err := strconv.ParseInt(encodedValue, 10, 64)
+	if err != nil {
+		return err
+	}
+	if value <= 0 || value > 1099511627776 {
+		return errors.New("invalid value, the range of ts.mem_segment_size.max_limit is [1, 1099511627776]")
+	}
+	return nil
+}
+
+func checkTsBlockCacheMaxLimit(encodedValue string) error {
+	value, err := strconv.ParseInt(encodedValue, 10, 64)
+	if err != nil {
+		return err
+	}
+	if value < 0 {
+		return errors.New("invalid value, the range of ts.block.lru_cache.max_limit is [0, 9223372036854775807]")
+	}
+	return nil
+}
+
 // CheckClusterSetting map of checking methods for saving cluster settings
 var CheckClusterSetting = map[string]CheckOperation{
 	"ts.dedup.rule":      checkTsDedupRule,
@@ -267,7 +322,7 @@ var CheckClusterSetting = map[string]CheckOperation{
 	"ts.cached_partitions_per_subgroup.max_limit": checkTsCachedPartitionsLimit,
 	"ts.entities_per_subgroup.max_limit":          checkTsEntitiesPerSubgroupLimit,
 	"ts.blocks_per_segment.max_limit":             checkTsBlocksPerSegmentLimit,
-	"ts.rows_per_block.max_limit":                 checkTsRowsPerBlockLimit,
+	"ts.rows_per_block.max_limit":                 checkTsRowsPerBlockMaxLimit,
 	"ts.compression.type":                         checkTsCompressType,
 	"ts.compression.level":                        checkTsCompressLevel,
 	"immediate_compression.threads":               checkTsCompressThreads,
@@ -275,6 +330,11 @@ var CheckClusterSetting = map[string]CheckOperation{
 	"ts.count.use_statistics.enabled":             checkTsCountUseStatistics,
 	"capacity.stats.period":                       checkCapacityStatsPeriod,
 	"ts.table_cache.capacity":                     checkTsTableCacheCapacity,
+	"ts.rows_per_block.min_limit":                 checkTsRowsPerBlockMinLimit,
+	"ts.compact.max_limit":                        checkTsCompactLastSegmentMaxLimit,
+	"ts.reserved_last_segment.max_limit":          checkTsReservedLastSegmentMaxLimit,
+	"ts.mem_segment_size.max_limit":               checkTsMemSegmentSizeMaxLimit,
+	"ts.block.lru_cache.max_limit":                checkTsBlockCacheMaxLimit,
 }
 
 // TsTxnAtomicityClusterSettingName is the name of the ts txn atomicity cluster setting.

@@ -46,22 +46,22 @@ KStatus ConvertBlockSpanToResultSet(const std::vector<k_uint32>& kw_scan_cols, c
         memset(bitmap, 0x00, KW_BITMAP_SIZE(*count));
       }
       if (!ts_blk_span->IsVarLenType(kw_col_idx)) {
-        TsBitmap ts_bitmap;
+        std::unique_ptr<TsBitmapBase> ts_bitmap;
         char* value;
-        ret = ts_blk_span->GetFixLenColAddr(kw_col_idx, &value, ts_bitmap, false);
+        ret = ts_blk_span->GetFixLenColAddr(kw_col_idx, &value, &ts_bitmap);
         if (ret != KStatus::SUCCESS) {
           LOG_ERROR("GetFixLenColAddr failed.");
           return ret;
         }
         if (!attrs[kw_scan_cols[i]].isFlag(AINFO_NOT_NULL)) {
           for (int row_idx = 0; row_idx < *count; ++row_idx) {
-            if (ts_bitmap[row_idx] != DataFlags::kValid) {
+            if (ts_bitmap->At(row_idx) != DataFlags::kValid) {
               set_null_bitmap(bitmap, row_idx);
             }
           }
         }
 
-        batch = new Batch(static_cast<void *>(value), *count, bitmap, 1, nullptr);
+        batch = new Batch(static_cast<void*>(value), *count, bitmap, 1, nullptr);
         batch->is_new = false;
       } else {
         batch = new VarColumnBatch(*count, bitmap, 1, nullptr);
@@ -74,6 +74,10 @@ KStatus ConvertBlockSpanToResultSet(const std::vector<k_uint32>& kw_scan_cols, c
             batch->push_back(nullptr);
           } else {
             char* buffer = static_cast<char*>(malloc(var_data.len + kStringLenLen));
+            if (buffer == nullptr) {
+              LOG_ERROR("malloc failed, cannot allocate memory, size: %lu", var_data.len + kStringLenLen);
+              return KStatus::FAIL;
+            }
             KUint16(buffer) = var_data.len;
             memcpy(buffer + kStringLenLen, var_data.data, var_data.len);
             std::shared_ptr<void> ptr(buffer, free);
@@ -88,6 +92,7 @@ KStatus ConvertBlockSpanToResultSet(const std::vector<k_uint32>& kw_scan_cols, c
     res->push_back(i, batch);
   }
   res->entity_index = {1, (uint32_t)ts_blk_span->GetEntityID(), ts_blk_span->GetVGroupID()};
+  res->block_span = ts_blk_span;
 
   return KStatus::SUCCESS;
 }
@@ -117,13 +122,15 @@ static std::vector<KwTsSpan> SortAndMergeSpan(const std::vector<KwTsSpan>& ts_sp
   return merged_spans;
 }
 
-TsStorageIteratorV2Impl::TsStorageIteratorV2Impl(const std::shared_ptr<TsVGroup>& vgroup, vector<uint32_t>& entity_ids,
+TsStorageIteratorV2Impl::TsStorageIteratorV2Impl(const std::shared_ptr<TsVGroup>& vgroup, uint32_t version,
+                                                 vector<uint32_t>& entity_ids,
                                                  std::vector<KwTsSpan>& ts_spans, std::vector<BlockFilter>& block_filter,
                                                  std::vector<k_uint32>& kw_scan_cols,
                                                  std::vector<k_uint32>& ts_scan_cols,
                                                  std::shared_ptr<TsTableSchemaManager>& table_schema_mgr,
                                                  std::shared_ptr<MMapMetricsTable>& schema) {
   vgroup_ = vgroup;
+  table_version_ = version;
   entity_ids_ = entity_ids;
   ts_spans_ = SortAndMergeSpan(ts_spans);
   block_filter_ = block_filter;
@@ -184,10 +191,10 @@ inline bool TsStorageIteratorV2Impl::IsFilteredOut(timestamp64 begin_ts, timesta
 }
 
 KStatus TsStorageIteratorV2Impl::getBlockSpanMinMaxValue(std::shared_ptr<TsBlockSpan>& block_span, uint32_t col_id,
-                                                          uint32_t type, void*& min, void*& max) {
-  TsBitmap bitmap;
+                                                         uint32_t type, void*& min, void*& max) {
+  std::unique_ptr<TsBitmapBase> bitmap;
   char* value = nullptr;
-  auto s = block_span->GetFixLenColAddr(col_id, &value, bitmap);
+  auto s = block_span->GetFixLenColAddr(col_id, &value, &bitmap);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("GetFixLenColAddr failed.");
     return s;
@@ -195,7 +202,7 @@ KStatus TsStorageIteratorV2Impl::getBlockSpanMinMaxValue(std::shared_ptr<TsBlock
   uint32_t row_num = block_span->GetRowNum();
   int32_t size = block_span->GetColSize(col_id);
   for (int row_idx = 0; row_idx < row_num; ++row_idx) {
-    if (bitmap[row_idx] != DataFlags::kValid) {
+    if (bitmap->At(row_idx) != DataFlags::kValid) {
       continue;
     }
     void* current = reinterpret_cast<void*>((intptr_t)(value + row_idx * size));
@@ -518,6 +525,7 @@ KStatus TsStorageIteratorV2Impl::ScanEntityBlockSpans(timestamp64 ts) {
 }
 
 TsSortedRawDataIteratorV2Impl::TsSortedRawDataIteratorV2Impl(const std::shared_ptr<TsVGroup>& vgroup,
+                                                              uint32_t version,
                                                               vector<uint32_t>& entity_ids,
                                                               std::vector<KwTsSpan>& ts_spans,
                                                               std::vector<BlockFilter>& block_filter,
@@ -526,9 +534,10 @@ TsSortedRawDataIteratorV2Impl::TsSortedRawDataIteratorV2Impl(const std::shared_p
                                                               std::shared_ptr<TsTableSchemaManager>& table_schema_mgr,
                                                               std::shared_ptr<MMapMetricsTable>& schema,
                                                               SortOrder order_type) :
-                          TsStorageIteratorV2Impl::TsStorageIteratorV2Impl(vgroup, entity_ids, ts_spans, block_filter,
-                                                                           kw_scan_cols, ts_scan_cols,
-                                                                           table_schema_mgr, schema) {
+                          TsStorageIteratorV2Impl::TsStorageIteratorV2Impl(vgroup, version, entity_ids, ts_spans,
+                                                                           block_filter, kw_scan_cols,
+                                                                           ts_scan_cols, table_schema_mgr,
+                                                                           schema) {
 }
 
 TsSortedRawDataIteratorV2Impl::~TsSortedRawDataIteratorV2Impl() {
@@ -602,6 +611,9 @@ KStatus TsSortedRawDataIteratorV2Impl::Next(ResultSet* res, k_uint32* count, boo
         if (*count > 0) {
           // We are returning memory address inside TsBlockSpan, so we need to keep it until iterator is destroyed
           ts_block_spans_.push_back(block_span);
+          if (ts_block_spans_.size() > 1) {
+            ts_block_spans_.pop_front();
+          }
           // Return the result set.
           return KStatus::SUCCESS;
         }
@@ -615,7 +627,8 @@ KStatus TsSortedRawDataIteratorV2Impl::Next(ResultSet* res, k_uint32* count, boo
   }
 }
 
-TsAggIteratorV2Impl::TsAggIteratorV2Impl(const std::shared_ptr<TsVGroup>& vgroup, vector<uint32_t>& entity_ids,
+TsAggIteratorV2Impl::TsAggIteratorV2Impl(const std::shared_ptr<TsVGroup>& vgroup, uint32_t version,
+                                         vector<uint32_t>& entity_ids,
                                          std::vector<KwTsSpan>& ts_spans, std::vector<BlockFilter>& block_filter,
                                          std::vector<k_uint32>& kw_scan_cols,
                                          std::vector<k_uint32>& ts_scan_cols, std::vector<k_int32>& agg_extend_cols,
@@ -623,7 +636,7 @@ TsAggIteratorV2Impl::TsAggIteratorV2Impl(const std::shared_ptr<TsVGroup>& vgroup
                                          const std::vector<timestamp64>& ts_points,
                                          std::shared_ptr<TsTableSchemaManager>& table_schema_mgr,
                                          std::shared_ptr<MMapMetricsTable>& schema)
-    : TsStorageIteratorV2Impl::TsStorageIteratorV2Impl(vgroup, entity_ids, ts_spans, block_filter,
+    : TsStorageIteratorV2Impl::TsStorageIteratorV2Impl(vgroup, version, entity_ids, ts_spans, block_filter,
                                                        kw_scan_cols, ts_scan_cols, table_schema_mgr, schema),
       scan_agg_types_(scan_agg_types),
       last_ts_points_(ts_points),
@@ -775,13 +788,19 @@ KStatus TsAggIteratorV2Impl::Init(bool is_reversed) {
         && scan_agg_types_[0] == Sumfunctype::COUNT && kw_scan_cols_.size() == 1 && kw_scan_cols_[0] == 0);
 
   for (int i = 0; i < scan_agg_types_.size(); ++i) {
-    if (scan_agg_types_[i] != LAST_ROW && scan_agg_types_[i] != LASTROWTS) {
-      if ((scan_agg_types_[i] == LAST || scan_agg_types_[i] == LASTTS) &&
-           attrs_[kw_scan_cols_[i]].isFlag(AINFO_NOT_NULL)) {
-        continue;
-      }
-      only_last_row_ = false;
+    if (scan_agg_types_[i] == LAST_ROW || (scan_agg_types_[i] == LAST &&
+                                           attrs_[kw_scan_cols_[i]].isFlag(AINFO_NOT_NULL))) {
+      kw_last_scan_cols_.emplace_back(kw_scan_cols_[i]);
+      continue;
     }
+
+    if (scan_agg_types_[i] == LASTROWTS || (scan_agg_types_[i] == LASTTS &&
+                                            attrs_[kw_scan_cols_[i]].isFlag(AINFO_NOT_NULL))) {
+      kw_last_scan_cols_.emplace_back(0);
+      continue;
+    }
+    only_last_row_ = false;
+    break;
   }
 
   cur_entity_index_ = 0;
@@ -831,23 +850,45 @@ KStatus TsAggIteratorV2Impl::Next(ResultSet* res, k_uint32* count, bool* is_fini
   }
 
   KStatus ret;
+  bool valid = true;
   timestamp64 entity_last_ts = INVALID_TS;
+  EntityID entity_id = entity_ids_[cur_entity_index_];
+
   std::vector<KwTsSpan> ts_spans_bkup;
   std::vector<std::shared_ptr<const TsPartitionVersion>> ts_partitions_bkup;
   if (only_last_row_) {
-    ret = vgroup_->GetEntityLastRow(table_schema_mgr_, entity_ids_[cur_entity_index_], ts_spans_, entity_last_ts);
-    if (ret != KStatus::SUCCESS) {
-      LOG_ERROR("GetEntityLastRow failed.");
-      return ret;
-    }
-    if (entity_last_ts != INVALID_TS && (last_ts_points_.empty() || entity_last_ts <=
-                                         *min_element(last_ts_points_.begin(), last_ts_points_.end()))) {
-      ts_spans_bkup.swap(ts_spans_);
-      ts_partitions_bkup.swap(ts_partitions_);
-      ts_spans_.clear();
-      ts_spans_.push_back({entity_last_ts, entity_last_ts});
-      auto current = vgroup_->CurrentVersion();
-      ts_partitions_ = current->GetPartitions(db_id_, ts_spans_, ts_col_type_);
+    valid = vgroup_->isEntityLatestRowPayloadValid(entity_id);
+    if (valid) {
+      ret = vgroup_->GetEntityLastRowBatch(entity_id, table_version_, table_schema_mgr_,
+                                           ts_spans_, kw_last_scan_cols_, entity_last_ts, res);
+      if (ret != KStatus::SUCCESS) {
+        LOG_ERROR("GetEntityLastRowBatch failed.");
+        return KStatus::FAIL;
+      }
+      if (entity_last_ts != INVALID_TS && (last_ts_points_.empty() || entity_last_ts <=
+        *min_element(last_ts_points_.begin(), last_ts_points_.end()))) {
+        *count = 1;
+        res->col_num_ = kw_scan_cols_.size();
+        res->entity_index = {1, entity_id, vgroup_->GetVGroupID()};
+        ++cur_entity_index_;
+        return KStatus::SUCCESS;
+      }
+      res->clear();
+    } else {
+      ret = vgroup_->GetEntityLastRow(table_schema_mgr_, entity_ids_[cur_entity_index_], ts_spans_, entity_last_ts);
+      if (ret != KStatus::SUCCESS) {
+        LOG_ERROR("GetEntityLastRow failed.");
+        return ret;
+      }
+      if (entity_last_ts != INVALID_TS && (last_ts_points_.empty() || entity_last_ts <=
+                                           *min_element(last_ts_points_.begin(), last_ts_points_.end()))) {
+        ts_spans_bkup.swap(ts_spans_);
+        ts_partitions_bkup.swap(ts_partitions_);
+        ts_spans_.clear();
+        ts_spans_.push_back({entity_last_ts, entity_last_ts});
+        auto current = vgroup_->CurrentVersion();
+        ts_partitions_ = current->GetPartitions(db_id_, ts_spans_, ts_col_type_);
+      }
     }
   }
 
@@ -887,13 +928,13 @@ KStatus TsAggIteratorV2Impl::Next(ResultSet* res, k_uint32* count, bool* is_fini
     res->push_back(i, b);
   }
 
-  res->entity_index = {1, entity_ids_[cur_entity_index_], vgroup_->GetVGroupID()};
+  res->entity_index = {1, entity_id, vgroup_->GetVGroupID()};
   res->col_num_ = kw_scan_cols_.size();
   *count = 1;
 
   *is_finished = false;
   ++cur_entity_index_;
-  if (only_last_row_ && entity_last_ts != INVALID_TS) {
+  if (only_last_row_ && !valid && entity_last_ts != INVALID_TS) {
     ts_spans_.swap(ts_spans_bkup);
     ts_partitions_.swap(ts_partitions_bkup);
   }
@@ -1027,13 +1068,13 @@ KStatus TsAggIteratorV2Impl::Aggregate() {
       } else {
         if (!c.blk_span->IsVarLenType(col_idx)) {
           char* value = nullptr;
-          TsBitmap bitmap;
-          auto ret = c.blk_span->GetFixLenColAddr(col_idx, &value, bitmap, false);
+          std::unique_ptr<TsBitmapBase> bitmap;
+          auto ret = c.blk_span->GetFixLenColAddr(col_idx, &value, &bitmap);
           if (ret != KStatus::SUCCESS) {
             return ret;
           }
 
-          if (!attrs_[col_idx].isFlag(AINFO_NOT_NULL) && bitmap[c.row_idx] != DataFlags::kValid) {
+          if (!attrs_[col_idx].isFlag(AINFO_NOT_NULL) && bitmap->At(c.row_idx) != DataFlags::kValid) {
             final_agg_data_[i] = {nullptr, 0};
           } else {
             final_agg_data_[i].len = c.blk_span->GetColSize(col_idx);
@@ -1382,13 +1423,13 @@ KStatus TsAggIteratorV2Impl::UpdateAggregation(std::shared_ptr<TsBlockSpan>& blo
           continue;
         }
         AggCandidate& candidate = candidates_[idx];
-        TsBitmap bitmap;
-        ret = block_span->GetColBitmap(kw_col_idx, bitmap);
+        std::unique_ptr<TsBitmapBase> bitmap;
+        ret = block_span->GetColBitmap(kw_col_idx, &bitmap);
         if (ret != KStatus::SUCCESS) {
           return ret;
         }
         for (int row_idx = 0; row_idx < row_num; ++row_idx) {
-          if (bitmap[row_idx] != DataFlags::kValid) {
+          if (bitmap->At(row_idx) != DataFlags::kValid) {
             continue;
           }
           int64_t ts = block_span->GetTS(row_idx);
@@ -1417,13 +1458,13 @@ KStatus TsAggIteratorV2Impl::UpdateAggregation(std::shared_ptr<TsBlockSpan>& blo
           continue;
         }
         AggCandidate& candidate = candidates_[idx];
-        TsBitmap bitmap;
-        ret = block_span->GetColBitmap(kw_col_idx, bitmap);
+        std::unique_ptr<TsBitmapBase> bitmap;
+        ret = block_span->GetColBitmap(kw_col_idx, &bitmap);
         if (ret != KStatus::SUCCESS) {
           return ret;
         }
         for (int row_idx = row_num - 1; row_idx >= 0; --row_idx) {
-          if (bitmap[row_idx] != DataFlags::kValid) {
+          if (bitmap->At(row_idx) != DataFlags::kValid) {
             continue;
           }
           int64_t ts = block_span->GetTS(row_idx);
@@ -1518,8 +1559,8 @@ KStatus TsAggIteratorV2Impl::UpdateAggregation(std::shared_ptr<TsBlockSpan>& blo
       }
     } else {
       char* value = nullptr;
-      TsBitmap bitmap;
-      auto s = block_span->GetFixLenColAddr(kw_col_idx, &value, bitmap, false);
+      std::unique_ptr<TsBitmapBase> bitmap;
+      auto s = block_span->GetFixLenColAddr(kw_col_idx, &value, &bitmap);
       if (s != KStatus::SUCCESS) {
         LOG_ERROR("GetFixLenColAddr failed.");
         return s;
@@ -1527,7 +1568,7 @@ KStatus TsAggIteratorV2Impl::UpdateAggregation(std::shared_ptr<TsBlockSpan>& blo
 
       int32_t size = block_span->GetColSize(kw_col_idx);
       for (int row_idx = 0; row_idx < row_num; ++row_idx) {
-        if (!attrs_[kw_col_idx].isFlag(AINFO_NOT_NULL) && bitmap[row_idx] != DataFlags::kValid) {
+        if (!attrs_[kw_col_idx].isFlag(AINFO_NOT_NULL) && bitmap->At(row_idx) != DataFlags::kValid) {
           continue;
         }
         void* current = reinterpret_cast<void*>((intptr_t)(value + row_idx * size));
@@ -1612,8 +1653,8 @@ KStatus TsAggIteratorV2Impl::UpdateAggregation(std::shared_ptr<TsBlockSpan>& blo
     } else {
       if (!block_span->IsVarLenType(kw_col_idx)) {
         char* value = nullptr;
-        TsBitmap bitmap;
-        auto s = block_span->GetFixLenColAddr(kw_col_idx, &value, bitmap, false);
+        std::unique_ptr<TsBitmapBase> bitmap;
+        auto s = block_span->GetFixLenColAddr(kw_col_idx, &value, &bitmap);
         if (s != KStatus::SUCCESS) {
           LOG_ERROR("GetFixLenColAddr failed.");
           return s;
@@ -1621,7 +1662,7 @@ KStatus TsAggIteratorV2Impl::UpdateAggregation(std::shared_ptr<TsBlockSpan>& blo
 
         int32_t size = block_span->GetColSize(kw_col_idx);
         for (int row_idx = 0; row_idx < row_num; ++row_idx) {
-          if (!attrs_[kw_col_idx].isFlag(AINFO_NOT_NULL) && bitmap[row_idx] != DataFlags::kValid) {
+          if (!attrs_[kw_col_idx].isFlag(AINFO_NOT_NULL) && bitmap->At(row_idx) != DataFlags::kValid) {
             continue;
           }
           void* current = reinterpret_cast<void*>((intptr_t)(value + row_idx * size));
@@ -1739,8 +1780,8 @@ KStatus TsAggIteratorV2Impl::UpdateAggregation(std::shared_ptr<TsBlockSpan>& blo
     } else {
       if (!block_span->IsVarLenType(kw_col_idx)) {
         char* value = nullptr;
-        TsBitmap bitmap;
-        auto s = block_span->GetFixLenColAddr(kw_col_idx, &value, bitmap, false);
+        std::unique_ptr<TsBitmapBase> bitmap;
+        auto s = block_span->GetFixLenColAddr(kw_col_idx, &value, &bitmap);
         if (s != KStatus::SUCCESS) {
           LOG_ERROR("GetFixLenColAddr failed.");
           return s;
@@ -1748,7 +1789,7 @@ KStatus TsAggIteratorV2Impl::UpdateAggregation(std::shared_ptr<TsBlockSpan>& blo
 
         int32_t size = block_span->GetColSize(kw_col_idx);
         for (int row_idx = 0; row_idx < row_num; ++row_idx) {
-          if (!attrs_[kw_col_idx].isFlag(AINFO_NOT_NULL) && bitmap[row_idx] != DataFlags::kValid) {
+          if (!attrs_[kw_col_idx].isFlag(AINFO_NOT_NULL) && bitmap->At(row_idx) != DataFlags::kValid) {
             continue;
           }
           void* current = reinterpret_cast<void*>((intptr_t)(value + row_idx * size));

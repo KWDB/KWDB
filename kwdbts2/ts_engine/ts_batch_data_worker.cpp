@@ -273,6 +273,7 @@ KStatus TsReadBatchDataWorker::Read(kwdbContext_p ctx, TSSlice* data, uint32_t* 
         return s;
       }
       *row_num = 1;
+      total_read_ += *row_num;
       data->data = cur_batch_data_.data_.data();
       data->len = cur_batch_data_.data_.size();
       block_span_read_finished = true;
@@ -307,11 +308,19 @@ KStatus TsReadBatchDataWorker::Read(kwdbContext_p ctx, TSSlice* data, uint32_t* 
   }
   // set data
   *row_num = cur_block_span->GetRowNum();
+  total_read_ += *row_num;
   data->data = cur_batch_data_.data_.data();
   data->len = cur_batch_data_.data_.size();
   LOG_INFO("current batch data read success, job_id[%lu], table_id[%lu], table_version[%lu], block_version[%u] row_num[%u]",
            job_id_, table_id_, table_version_, cur_block_span->GetTableVersion(), *row_num);
   return s;
+}
+
+KStatus TsReadBatchDataWorker::Finish(kwdbContext_p ctx) {
+  is_finished_ = true;
+  LOG_INFO("Read batch data finished, job_id[%lu], table_id[%lu], table_version[%lu], ts_span[%lu, %lu], total read: %lu",
+           job_id_, table_id_, table_version_, ts_span_.begin, ts_span_.end, total_read_);
+  return KStatus::SUCCESS;
 }
 
 TsWriteBatchDataWorker::TsWriteBatchDataWorker(TSEngineV2Impl* ts_engine, uint64_t job_id)

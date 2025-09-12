@@ -69,8 +69,7 @@ KStatus TsMetricBlockBuilder::PutBlockSpan(std::shared_ptr<TsBlockSpan> span) {
       for (int irow = 0; irow < row_count; irow++) {
         DataFlags flag;
         TSSlice data;
-        auto s =
-            span->GetVarLenTypeColAddr(irow, icol, flag, data);
+        auto s = span->GetVarLenTypeColAddr(irow, icol, flag, data);
         if (s == FAIL) {
           return s;
         }
@@ -78,15 +77,15 @@ KStatus TsMetricBlockBuilder::PutBlockSpan(std::shared_ptr<TsBlockSpan> span) {
       }
     } else {
       char* data = nullptr;
-      TsBitmap bitmap;
-      auto s = span->GetFixLenColAddr(icol, &data, bitmap);
+      std::unique_ptr<TsBitmapBase> bitmap;
+      auto s = span->GetFixLenColAddr(icol, &data, &bitmap);
       if (s == FAIL) {
         return s;
       }
       TSSlice s_data;
       s_data.data = data;
       s_data.len = (*col_schemas_)[icol].size * row_count;
-      column_block_builders_[icol]->AppendFixLenData(s_data, row_count, bitmap);
+      column_block_builders_[icol]->AppendFixLenData(s_data, row_count, bitmap.get());
     }
   }
   count_ += row_count;

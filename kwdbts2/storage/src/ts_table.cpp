@@ -1216,6 +1216,11 @@ KStatus TsTable::GetLastRowEntity(kwdbContext_p ctx, EntityResultIndex& entity_i
   return KStatus::SUCCESS;
 }
 
+KStatus TsTable::GetLastRowBatch(kwdbContext_p ctx, uint32_t table_version, std::vector<uint32_t> scan_cols,
+                                 ResultSet* res, k_uint32* count, bool& valid) {
+  return KStatus::SUCCESS;
+}
+
 MMapRootTableManager* TsTable::CreateMMapRootTableManager(string& db_path, string& tbl_sub_path, KTableKey table_id,
                                                           vector<AttributeInfo>& schema, uint32_t table_version,
                                                           uint64_t partition_interval, ErrorInfo& err_info,

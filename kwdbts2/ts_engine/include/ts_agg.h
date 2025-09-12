@@ -20,7 +20,7 @@
 namespace kwdbts {
 class AggCalculatorV2 {
  public:
-  AggCalculatorV2(char* mem, TsBitmap* bitmap, DATATYPE type, int32_t size, int32_t count) :
+  AggCalculatorV2(char* mem, const TsBitmapBase* bitmap, DATATYPE type, int32_t size, int32_t count) :
       mem_(mem), bitmap_(bitmap), type_(type), size_(size), count_(count) {
     if (is_overflow_) {
       sum_type_ = (DATATYPE)DOUBLE;
@@ -55,7 +55,7 @@ class AggCalculatorV2 {
  private:
   char* mem_;
   char* pre_agg_;
-  TsBitmap* bitmap_ = nullptr;
+  const TsBitmapBase* bitmap_ = nullptr;
   DATATYPE type_;
   int32_t size_;
   uint16_t count_;

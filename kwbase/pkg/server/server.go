@@ -184,10 +184,10 @@ var (
 		"the maximum number of blocks that can be held in a segment",
 		1000)
 
-	blockRows = settings.RegisterPublicIntSetting(
+	blockMaxRows = settings.RegisterPublicIntSetting(
 		"ts.rows_per_block.max_limit",
-		"the maximum number of rows that can be held in a block item",
-		1000)
+		"the maximum number of rows that can be held in a block",
+		4096)
 
 	tsCompressionType = settings.RegisterPublicStringSetting(
 		"ts.compression.type",
@@ -221,6 +221,31 @@ var (
 			}
 			return nil
 		})
+
+	blockMinRows = settings.RegisterPublicIntSetting(
+		"ts.rows_per_block.min_limit",
+		"the minimum number of rows that can be held in a block",
+		2048)
+
+	maxCompactLastSegNum = settings.RegisterPublicIntSetting(
+		"ts.compact.max_limit",
+		"the maximum number of compacts at one time",
+		10)
+
+	maxReservedLastSegNum = settings.RegisterPublicIntSetting(
+		"ts.reserved_last_segment.max_limit",
+		"the maximum number of last segments reserved in the latest partition",
+		2)
+
+	maxMemSegmentMaxSize = settings.RegisterPublicIntSetting(
+		"ts.mem_segment_size.max_limit",
+		"the maximum size of mem segment in vgroup",
+		67108864)
+
+	maxBlockLRUCacheMaxSize = settings.RegisterPublicIntSetting(
+		"ts.block.lru_cache.max_limit",
+		"the maximum size of lru caches in the block",
+		1024)
 )
 
 // TODO(peter): Until go1.11, ServeMux.ServeHTTP was not safe to call

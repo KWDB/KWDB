@@ -431,10 +431,12 @@ struct EntityResultIndex {
   }
 };
 
+class TsBlockSpan;
 struct ResultSet {
   k_uint32 col_num_{0};
   EntityResultIndex entity_index{};
   std::vector<std::vector<const Batch*>> data;
+  std::shared_ptr<TsBlockSpan> block_span;
 
   ResultSet() = default;
 

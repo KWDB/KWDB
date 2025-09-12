@@ -202,8 +202,8 @@ KStatus TsTableV2Impl::GetNormalIterator(kwdbContext_p ctx, const IteratorParams
       updateTsSpan(acceptable_ts * life_time.precision, params.ts_spans);
     }
     std::shared_ptr<MMapMetricsTable> schema = metric_schema;
-    s = vgroup->GetIterator(ctx, vgroup_ids[vgroup_iter.first], params.ts_spans, params.block_filter,
-                            params.scan_cols, ts_scan_cols, params.agg_extend_cols,
+    s = vgroup->GetIterator(ctx, params.table_version, vgroup_ids[vgroup_iter.first], params.ts_spans,
+                            params.block_filter, params.scan_cols, ts_scan_cols, params.agg_extend_cols,
                             params.scan_agg_types, table_schema_mgr_, schema,
                             &ts_iter, vgroup, params.ts_points, params.reverse, params.sorted);
     if (s != KStatus::SUCCESS) {
@@ -809,6 +809,74 @@ KStatus TsTableV2Impl::GetLastRowEntity(kwdbContext_p ctx, EntityResultIndex& en
       entity_last_ts = cur_last_entity.first;
     }
   }
+  return KStatus::SUCCESS;
+}
+
+KStatus TsTableV2Impl::GetLastRowBatch(kwdbContext_p ctx, uint32_t table_version, std::vector<uint32_t> scan_cols,
+                                       ResultSet* res, k_uint32* count, bool& valid) {
+  *count = 0;
+  valid = true;
+  timestamp64 entity_max_ts = INT64_MIN;
+  EntityResultIndex entity_id = {0, 0, 0};
+
+  for (auto& vgroup : vgroups_) {
+    if (0 == vgroup->GetMaxEntityID()) continue;
+    // TODO(liumengzhen) problem of multiple tables exists.
+    if (!vgroup->isLastRowEntityPayloadValid(table_id_)) {
+      valid = false;
+      LOG_WARN("last payload is invalid for vgroup[%d]", vgroup->GetVGroupID());
+      return KStatus::SUCCESS;
+    }
+    pair<timestamp64, EntityID> cur_last_entity = {INT64_MIN, 0};
+    if (vgroup->GetLastRowEntity(ctx, table_schema_mgr_, cur_last_entity) != KStatus::SUCCESS) {
+      LOG_ERROR("Vgroup %d GetLastRowEntity failed.", vgroup->GetVGroupID());
+      return KStatus::FAIL;
+    }
+    if (cur_last_entity.second == 0) {
+      LOG_WARN("cannot found last row entity for vgroup[%d]", vgroup->GetVGroupID());
+      continue;
+    }
+    if (cur_last_entity.first > entity_max_ts) {
+      entity_id.entityGroupId = 1;
+      entity_id.subGroupId = vgroup->GetVGroupID();
+      entity_id.entityId = cur_last_entity.second;
+      entity_max_ts = cur_last_entity.first;
+    }
+  }
+
+  if (entity_id.equalsWithoutMem({0, 0, 0})) {
+    return KStatus::SUCCESS;
+  }
+
+  auto& actual_cols = table_schema_mgr_->GetIdxForValidCols(table_version);
+  std::vector<k_uint32> ts_scan_cols;
+  for (auto col : scan_cols) {
+    if (col >= actual_cols.size()) {
+      // In the concurrency scenario, after the storage has deleted the column, kwsql sends query again
+      LOG_ERROR("GetIterator Error : TsTable no column %d", col);
+      return KStatus::FAIL;
+    }
+    ts_scan_cols.emplace_back(actual_cols[col]);
+  }
+
+  uint32_t last_vgroup_id = entity_id.subGroupId;
+  auto vgroup = GetVGroupByID(last_vgroup_id);
+  if (!vgroup->isLastRowEntityPayloadValid(table_id_) || !vgroup->isEntityLatestRowPayloadValid(entity_id.entityId)) {
+    res->clear();
+    valid = false;
+    LOG_WARN("last payload is invalid for vgroup[%d]", vgroup->GetVGroupID());
+    return KStatus::SUCCESS;
+  }
+  timestamp64 cur_last_ts = INT64_MIN;
+  KStatus ret = vgroup->GetEntityLastRowBatch(entity_id.entityId, table_version, table_schema_mgr_,
+                                   {{INT64_MIN, INT64_MAX}}, scan_cols, cur_last_ts, res);
+  if (ret != KStatus::SUCCESS) {
+    res->clear();
+    LOG_ERROR("Vgroup %d GetLastRowBatch failed.", vgroup->GetVGroupID());
+    return KStatus::FAIL;
+  }
+  *count = 1;
+  res->entity_index = entity_id;
   return KStatus::SUCCESS;
 }
 

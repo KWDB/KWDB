@@ -284,55 +284,86 @@ EEIteratorErrCode StorageHandler::TsOffsetNext(kwdbContext_p ctx) {
 
 EEIteratorErrCode StorageHandler::TsStatisticCacheNext(kwdbContext_p ctx) {
   EnterFunc();
+  // This func only return the last row, so only one chunk can handle the row data.
+  // if already has row in row_chunk. we return EE_END_OF_RECORD directly.
+  if (total_read_rows_ > 0) {
+    Return(EEIteratorErrCode::EE_END_OF_RECORD);
+  }
   EEIteratorErrCode code = EEIteratorErrCode::EE_OK;
   KWThdContext *thd = current_thd;
-  if (entities_.empty()) {
-    timestamp64 last_ts;
-    EntityResultIndex entity;
-    KStatus ret = ts_table_->GetLastRowEntity(ctx, entity, last_ts);
-    if (KStatus::FAIL == ret) {
-      code = EEIteratorErrCode::EE_ERROR;
-      Return(code);
-    }
-    entities_.push_back(entity);
-    *ts_spans_ = {{last_ts, last_ts}};
-  }
-
-  if (entities_[0].entityId == 0) {
-    code = EEIteratorErrCode::EE_END_OF_RECORD;
-    Return(code);
-  }
-  if (nullptr == ts_iterator) {
-    IteratorParams params = {
-      .entity_ids = entities_,
-      .ts_spans = *ts_spans_,
-      .block_filter = table_->block_filters_,
-      .scan_cols = table_->scan_cols_,
-      .agg_extend_cols =  table_->agg_extends_,
-      .scan_agg_types = table_->scan_real_agg_types_,
-      .table_version = table_->table_version_,
-      .ts_points = table_->scan_real_last_ts_points_,
-      .reverse = table_->is_reverse_,
-      .sorted = table_->ordered_scan_,
-      .offset = table_->offset_,
-      .limit = table_->limit_,
-    };
-    KStatus ret = ts_table_->GetIterator(ctx, params, &ts_iterator);
-    if (KStatus::FAIL == ret) {
-      code = EEIteratorErrCode::EE_ERROR;
-      Return(code);
-    }
-  }
 
   ScanRowBatch* row_batch = static_cast<ScanRowBatch *>(current_thd->GetRowBatch());
   row_batch->Reset();
-  KStatus ret = ts_iterator->Next(&row_batch->res_, &row_batch->count_, row_batch->ts_);
+  std::vector<k_uint32> last_scan_cols = table_->scan_cols_;
+  for (size_t i = 0; i < last_scan_cols.size(); i++) {
+    if (table_->scan_real_agg_types_[i] == kwdbts::LASTROWTS) {
+      last_scan_cols[i] = 0;
+    }
+  }
+
+  bool valid = false;
+  KStatus ret = ts_table_->GetLastRowBatch(ctx, table_->table_version_, last_scan_cols,
+                                           &row_batch->res_, &row_batch->count_, valid);
   if (KStatus::FAIL == ret) {
     EEPgErrorInfo::SetPgErrorInfo(ERRCODE_FETCH_DATA_FAILED,
-                                "scanning column data fail");
-    LOG_ERROR("TsTableIterator::Next() Failed\n");
+                                  "scanning column data fail");
+    LOG_ERROR("TsTableIterator::GetLastRowBatch() Failed\n");
+
     code = EEIteratorErrCode::EE_ERROR;
     Return(code);
+  }
+  if (valid && 0 == row_batch->count_) {
+    code = EEIteratorErrCode::EE_END_OF_RECORD;
+    Return(code);
+  }
+  if (!valid) {
+    if (entities_.empty()) {
+      timestamp64 last_ts;
+      EntityResultIndex entity;
+      KStatus ret = ts_table_->GetLastRowEntity(ctx, entity, last_ts);
+      if (KStatus::FAIL == ret) {
+        code = EEIteratorErrCode::EE_ERROR;
+        Return(code);
+      }
+      entities_.push_back(entity);
+      *ts_spans_ = {{last_ts, last_ts}};
+    }
+
+    if (entities_[0].entityId == 0) {
+      code = EEIteratorErrCode::EE_END_OF_RECORD;
+      Return(code);
+    }
+    if (nullptr == ts_iterator) {
+      IteratorParams params = {
+          .entity_ids = entities_,
+          .ts_spans = *ts_spans_,
+          .block_filter = table_->block_filters_,
+          .scan_cols = table_->scan_cols_,
+          .agg_extend_cols =  table_->agg_extends_,
+          .scan_agg_types = table_->scan_real_agg_types_,
+          .table_version = table_->table_version_,
+          .ts_points = table_->scan_real_last_ts_points_,
+          .reverse = table_->is_reverse_,
+          .sorted = table_->ordered_scan_,
+          .offset = table_->offset_,
+          .limit = table_->limit_,
+      };
+      ret = ts_table_->GetIterator(ctx, params, &ts_iterator);
+      if (KStatus::FAIL == ret) {
+        code = EEIteratorErrCode::EE_ERROR;
+        Return(code);
+      }
+    }
+
+    row_batch->Reset();
+    ret = ts_iterator->Next(&row_batch->res_, &row_batch->count_, row_batch->ts_);
+    if (KStatus::FAIL == ret) {
+      EEPgErrorInfo::SetPgErrorInfo(ERRCODE_FETCH_DATA_FAILED,
+                                    "scanning column data fail");
+      LOG_ERROR("TsTableIterator::Next() Failed\n");
+      code = EEIteratorErrCode::EE_ERROR;
+      Return(code);
+    }
   }
 
   if (0 == row_batch->count_) {
@@ -341,6 +372,7 @@ EEIteratorErrCode StorageHandler::TsStatisticCacheNext(kwdbContext_p ctx) {
   }
 
   if (!table_->contain_tag_for_statistic) {
+    total_read_rows_ += row_batch->count_;
     Return(code);
   }
 
@@ -357,6 +389,7 @@ EEIteratorErrCode StorageHandler::TsStatisticCacheNext(kwdbContext_p ctx) {
   row_batch->tag_rowbatch_ = tag_rowbatch;
   tag_rowbatch->GetTagData(&(row_batch->tagdata_), &(row_batch->tag_bitmap_),
                            row_batch->res_.entity_index.index);
+  total_read_rows_ += row_batch->count_;
   Return(code);
 }
 

@@ -25,6 +25,7 @@
 #include "ee_mempool.h"
 #include "st_tier.h"
 #include "ts_engine.h"
+#include "ts_LRU_block_cache.h"
 
 #ifndef KWBASE_OSS
 #include "ts_config_autonomy.h"
@@ -751,6 +752,9 @@ void TriggerSettingCallback(const std::string& key, const std::string& value) {
     CLUSTER_SETTING_MAX_ENTITIES_PER_SUBGROUP = atoi(value.c_str());
   } else if ("ts.rows_per_block.max_limit" == key) {
     CLUSTER_SETTING_MAX_ROWS_PER_BLOCK = atoi(value.c_str());
+    EngineOptions::max_rows_per_block = atoi(value.c_str());
+  } else if ("ts.rows_per_block.min_limit" == key) {
+    EngineOptions::min_rows_per_block = atoi(value.c_str());
   } else if ("ts.blocks_per_segment.max_limit" == key) {
     CLUSTER_SETTING_MAX_BLOCKS_PER_SEGMENT = atoi(value.c_str());
   } else if ("ts.compress_interval" == key) {
@@ -821,6 +825,15 @@ void TriggerSettingCallback(const std::string& key, const std::string& value) {
     parseDurations(value);
   } else if ("ts.auto_vacuum.sleep" == key) {
     g_vacuum_sleep_time = atoll(value.c_str());
+  } else if ("ts.compact.max_limit" == key) {
+    EngineOptions::max_compact_num = atoi(value.c_str());
+  } else if ("ts.reserved_last_segment.max_limit" == key) {
+    EngineOptions::max_last_segment_num = atoi(value.c_str());
+  } else if ("ts.mem_segment_size.max_limit" == key) {
+    EngineOptions::mem_segment_max_size = atoll(value.c_str());
+  } else if ("ts.block.lru_cache.max_limit" == key) {
+    EngineOptions::block_cache_max_size = atoi(value.c_str());
+    TsLRUBlockCache::GetInstance().SetMaxBlocks(EngineOptions::block_cache_max_size);
   }
 #ifndef KWBASE_OSS
   else if ("ts.storage.autonomy.mode" == key) {  // NOLINT

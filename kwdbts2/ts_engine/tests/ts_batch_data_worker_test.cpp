@@ -152,15 +152,15 @@ TEST_F(TsBatchDataWorkerTest, TestTsBatchDataWorker) {
   ASSERT_EQ(block_spans.size(), 2);
   while (!block_spans.empty()) {
     std::shared_ptr<TsBlockSpan> block_span = block_spans.front();
-    TsBitmap bitmap;
+    std::unique_ptr<TsBitmapBase> bitmap;
     char *ts_col;
-    s = block_span->GetFixLenColAddr(0, &ts_col, bitmap);
+    s = block_span->GetFixLenColAddr(0, &ts_col, &bitmap);
     EXPECT_EQ(s, KStatus::SUCCESS);
     std::vector<char *> col_values;
     col_values.resize(2);
-    s = block_span->GetFixLenColAddr(1, &col_values[0], bitmap);
+    s = block_span->GetFixLenColAddr(1, &col_values[0], &bitmap);
     EXPECT_EQ(s, KStatus::SUCCESS);
-    s = block_span->GetFixLenColAddr(2, &col_values[1], bitmap);
+    s = block_span->GetFixLenColAddr(2, &col_values[1], &bitmap);
     EXPECT_EQ(s, KStatus::SUCCESS);
     uint64_t lsn = *(uint64_t *) (block_span->GetLSNAddr(0));
     for (int idx = 0; idx < block_span->GetRowNum(); ++idx) {

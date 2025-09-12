@@ -98,6 +98,7 @@ struct EngineOptions {
   static size_t max_rows_per_block;
   static size_t min_rows_per_block;
   static int64_t partition_interval;
+  static int32_t block_cache_max_size;
 
   TsIOEnv* io_env = &TsMMapIOEnv::GetInstance();
 };
