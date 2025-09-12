@@ -1306,6 +1306,7 @@ TsTable::TsTable(kwdbContext_p ctx, const string& db_path, const KTableKey& tabl
   is_dropped_.store(false);
   entity_groups_mtx_ = new TsTableEntityGrpsRwLatch(RWLATCH_ID_TS_TABLE_ENTITYGRPS_RWLOCK);
   snapshot_manage_mtx_ = new TsTableSnapshotLatch(LATCH_ID_TSTABLE_SNAPSHOT_MUTEX);
+  table_version_rw_lock_ = new TsTableVersionRwLatch(RWLATCH_ID_TABLE_VERSION_RWLOCK);
 }
 
 TsTable::~TsTable() {
@@ -1331,6 +1332,10 @@ TsTable::~TsTable() {
   if (snapshot_manage_mtx_) {
     delete snapshot_manage_mtx_;
     snapshot_manage_mtx_ = nullptr;
+  }
+  if (table_version_rw_lock_) {
+    delete table_version_rw_lock_;
+    table_version_rw_lock_ = nullptr;
   }
 }
 
@@ -1437,6 +1442,8 @@ KStatus TsTable::Create(kwdbContext_p ctx, vector<AttributeInfo>& metric_schema,
 
 KStatus TsTable::CheckAndAddSchemaVersion(kwdbContext_p ctx, const KTableKey& table_id, uint64_t version) {
   if (!g_go_start_service) return KStatus::SUCCESS;
+  RW_LATCH_X_LOCK(table_version_rw_lock_);
+  Defer defer{[&]() { RW_LATCH_UNLOCK(table_version_rw_lock_); }};
   if (version == entity_bt_manager_->GetCurrentTableVersion()) {
     return KStatus::SUCCESS;
   }

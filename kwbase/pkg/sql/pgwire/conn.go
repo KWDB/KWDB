@@ -1128,7 +1128,7 @@ func constructAutoAddStmts(
 				return []string{}, pgerror.Newf(pgcode.DuplicateColumn, "multiple assignments to the same column \"%s\"", string(colDef.Name))
 			}
 			// If the column does not exist, generate a ALTER ... ADD ... statement.
-			addStmts = append(addStmts, fmt.Sprintf(alterStmt, tbName.String(), typ, colDef.Name, colDef.StrType))
+			addStmts = append(addStmts, fmt.Sprintf(alterStmt, tbName.String(), typ, colDef.Name.String(), colDef.StrType))
 		} else {
 			if targetCol.IsTagCol() != colDef.IsTag {
 				return []string{}, pgerror.Newf(pgcode.DuplicateColumn, "duplicate %s name: %q", typ, colDef.Name)
@@ -1138,7 +1138,7 @@ func constructAutoAddStmts(
 				if err != nil {
 					return []string{}, err
 				}
-				if targetCol.Type.Width() < int32(num) {
+				if targetCol.Type.Width() < int32(num) && targetCol.Type.Family() != types.TimestampTZFamily {
 					if colDef.IsTag {
 						addStmts = append(addStmts, fmt.Sprintf(alterTagTypeStmt, tbName.String(), colDef.Name.String(), colDef.StrType+"("+colDef.TypeLen+")"))
 					} else {

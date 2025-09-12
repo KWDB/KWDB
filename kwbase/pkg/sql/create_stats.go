@@ -84,13 +84,6 @@ var createStatsPostEvents = settings.RegisterPublicBoolSetting(
 	false,
 )
 
-// createTsStats controls the cluster setting for whether collect statistic
-var createTsStats = settings.RegisterPublicBoolSetting(
-	"sql.ts_stats.enabled",
-	"if set, we will collect time series statistics",
-	true,
-)
-
 // SortHistogramBuckets represents sort histogram maximum bucket counts.
 const SortHistogramBuckets = 200
 
@@ -210,12 +203,6 @@ func (n *createStatsNode) checkTable(tableDesc *ImmutableTableDescriptor) error 
 		return pgerror.Newf(
 			pgcode.WrongObjectType, "cannot create statistics on instance table \"%s\"", tableDesc.Name,
 		)
-	case tree.TimeseriesTable:
-		if !createTsStats.Get(&n.p.execCfg.Settings.SV) {
-			return pgerror.Newf(
-				pgcode.WrongObjectType, "cannot create statistics on time series table \"%s\"", tableDesc.Name,
-			)
-		}
 	default:
 		return nil
 	}
