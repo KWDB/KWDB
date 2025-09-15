@@ -665,11 +665,22 @@ func (b *Builder) buildScan(scan *memo.ScanExpr) (execPlan, error) {
 		locking = forUpdateLocking
 	}
 
+	var constraintFilter tree.TypedExpr
+	if len(scan.ConstraintFilter) > 0 {
+		var err error
+		ctx := res.makeBuildScalarCtx()
+		constraintFilter, err = b.buildScalar(&ctx, &scan.ConstraintFilter)
+		if err != nil {
+			return execPlan{}, err
+		}
+	}
+
 	root, err := b.factory.ConstructScan(
 		tab,
 		tab.Index(scan.Index),
 		needed,
 		scan.Constraint,
+		constraintFilter,
 		hardLimit,
 		softLimit,
 		// HardLimit.Reverse() is taken into account by ScanIsReverse.

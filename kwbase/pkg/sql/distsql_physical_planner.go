@@ -1351,9 +1351,14 @@ func initAPTableReaderSpec(
 	if err != nil {
 		return nil, execinfrapb.PostProcessSpec{}, err
 	}
+	spanFilter, err := physicalplan.MakeExpression(n.spanFilter, planCtx, indexVarMap, true, false)
+	if err != nil {
+		return nil, execinfrapb.PostProcessSpec{}, err
+	}
 	post := execinfrapb.PostProcessSpec{
-		Filter:   filter,
-		FilterTs: filterTs,
+		Filter:     filter,
+		FilterTs:   filterTs,
+		SpanFilter: spanFilter,
 	}
 
 	if n.hardLimit != 0 {
