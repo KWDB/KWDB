@@ -1066,9 +1066,6 @@ message PostProcessSpec {
   optional Expression filter_ts = 8;
   // render_exprs for ae exec.
   repeated Expression render_exprs_ts = 9;
-  // A filtering expression which references the sapn filter. The ap engine doesn't
-  // have spans, so we use span filter as a substitute.
-  optional Expression span_filter = 10;
 }
 message ProcessorSpec {
   // In most cases, there is one input.
@@ -1109,4 +1106,5 @@ message APTableReaderSpec {
   optional string table_name = 2;
   optional string schema_name = 3;
   repeated uint32 scan_columns = 4;
+  optional Expression span_filter = 5;
 }
