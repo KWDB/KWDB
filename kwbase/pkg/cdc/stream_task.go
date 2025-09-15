@@ -221,6 +221,9 @@ func (t *StreamTask) FormatCDCRows(data []interface{}) *sqlbase.CDCPushData {
 
 // Push pushes a message to buffer and checks if it reaches the flush threshold.
 func (t *StreamTask) Push(ts int64, data [][]byte) error {
+	t.serverMu.Lock()
+	defer t.serverMu.Unlock()
+
 	evt := &cdcpb.TsChangeDataCaptureEvent{
 		Val: &cdcpb.TsChangeDataCaptureValue{Ts: ts, Val: data},
 	}
