@@ -1613,6 +1613,7 @@ CREATE TABLE
                             │                                         | filter                   | (l_shipdate >= '1993-01-01 00:00:00+00:00') AND (l_shipdate < '1994-01-01 00:00:00+00:00')
                             │                                         | block filter[l_shipdate] | [725846400000 - 757382400000]
                             └── distinct                              |                          |
+                                 │                                    | engine type              | time series
                                  │                                    | distinct on              | p_partkey
                                  └── render                           |                          |
                                       │                               | engine type              | time series
@@ -1622,7 +1623,7 @@ CREATE TABLE
                                                                       | ts-table                 | part
                                                                       | access mode              | metaTable
                                                                       | filter                   | p_name LIKE 'steel%'
-(71 rows)
+(72 rows)
 > explain select
             s_name,
             count(*) as numwait

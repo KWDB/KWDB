@@ -92,12 +92,13 @@ INSERT 3
    │                     | engine type | time series
    │                     | count       | 10
    └── distinct          |             |
+        │                | engine type | time series
         │                | distinct on | e1
         └── synchronizer |             |
              └── ts scan |             |
                          | ts-table    | ts_table
                          | access mode | metaTable
-(11 rows)
+(12 rows)
 > explain select distinct On(e2) e1 from (select * from ts_table order by e1 desc) group by e1 limit 10;
 ERROR: column "e2" must appear in the GROUP BY clause or be used in an aggregate function
 SQLSTATE: 42803

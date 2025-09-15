@@ -268,13 +268,14 @@ SET
              │                     | equality cols are key |
              │                     | parallel              |
              └── distinct          |                       |
+                  │                | engine type           | time series
                   │                | distinct on           | measure_value, sub_com_sn
                   └── synchronizer |                       |
                        └── ts scan |                       |
                                    | ts-table              | t_point
                                    | access mode           | tableTableMeta
                                    | tag filter[0]         | station_sn = 'd1'
-(20 rows)
+(21 rows)
 > select max(measure_value) from (select * from db_pipec.t_point p,pipec_r.pipeline_info pi where p.pipeline_sn=pi.pipeline_sn) p,pipec_r.station_info s where p.station_sn=s.station_sn;
   max
 --------
