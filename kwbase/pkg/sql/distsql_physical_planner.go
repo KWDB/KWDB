@@ -5245,6 +5245,10 @@ func (dsp *DistSQLPlanner) createPlanForBatchLookUpJoin(
 		return PhysicalPlan{}, err
 	}
 
+	if leftPlan.ChildIsExecInTSEngine() {
+		leftPlan.AddNoopToTsProcessors(dsp.gatewayNodeID, planCtx.isLocal, false)
+	}
+
 	rightPlan, err := dsp.createPlanForNode(planCtx, n.right.plan)
 	if err != nil {
 		return PhysicalPlan{}, err
