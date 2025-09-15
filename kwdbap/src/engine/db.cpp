@@ -73,7 +73,7 @@ TSStatus APClose(APEngine* engine) {
 TSStatus APExecQuery(APEngine* engine, APQueryInfo* req, APRespInfo* resp) {
   kwdbContext_t context;
   kwdbContext_p ctx_p = &context;
-  KStatus s = InitServerKWDBContext(ctx_p);
+  KStatus s = InitServerKWDBContext(ctx_p, req->sessionID);
   if (s != KStatus::SUCCESS) {
     return ToTsStatus("InitServerKWDBContext Error!");
   }

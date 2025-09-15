@@ -44,6 +44,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/util/envutil"
 	"gitee.com/kwbasedb/kwbase/pkg/util/hlc"
 	"gitee.com/kwbasedb/kwbase/pkg/util/mon"
+	"gitee.com/kwbasedb/kwbase/pkg/util/uint128"
 	"github.com/cockroachdb/logtags"
 	"github.com/pkg/errors"
 )
@@ -446,6 +447,11 @@ func (p *planner) EvalContext() *tree.EvalContext {
 
 func (p *planner) Tables() *TableCollection {
 	return p.extendedEvalCtx.Tables
+}
+
+// GetSessionID returns the sessionId in ExtendedEvalContext
+func (p *planner) GetSessionID() uint128.Uint128 {
+	return p.ExtendedEvalContext().SessionID.Uint128
 }
 
 // GetStmt get the sql from planner if the stmt not nil.

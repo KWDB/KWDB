@@ -33,6 +33,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/types"
 	"gitee.com/kwbasedb/kwbase/pkg/util/errorutil/unimplemented"
+	"gitee.com/kwbasedb/kwbase/pkg/util/uint128"
 	"github.com/cockroachdb/errors"
 )
 
@@ -129,6 +130,11 @@ func (ep *DummyEvalPlanner) MakeNewPlanAndRunForTsInsert(
 // GetStmt return stmt
 func (ep *DummyEvalPlanner) GetStmt() string {
 	return ""
+}
+
+// GetStmt return stmt
+func (ep *DummyEvalPlanner) GetSessionID() uint128.Uint128 {
+	return uint128.FromInts(0, 0)
 }
 
 // EvalSubquery is part of the tree.EvalPlanner interface.

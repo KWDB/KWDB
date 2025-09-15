@@ -85,6 +85,7 @@ typedef struct _kwdbContext_t: public _KContext_t {
   void *fetcher{nullptr};
   DmlExec* dml_exec_handle{nullptr};  // handle in DmlExec for multiple model processing
   k_bool *b_is_cancel{nullptr};
+  k_uint64 sessionID;
 } kwdbContext_t;
 // Defines the context structure pointer type
 typedef kwdbContext_t* kwdbContext_p;
@@ -94,6 +95,9 @@ KStatus InitKWDBContext(kwdbContext_p ctx);
 
 // initialize main thread context struct
 KStatus InitServerKWDBContext(kwdbContext_p ctx);
+
+// initialize main thread context struct, with addtional session ID
+KStatus InitServerKWDBContext(kwdbContext_p ctx, k_uint64 sessionID);
 
 //
 KStatus DestroyKWDBContext(kwdbContext_p ctx);

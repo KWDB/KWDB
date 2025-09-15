@@ -49,6 +49,16 @@ KStatus InitKWDBContext(kwdbContext_p ctx) {
   return KStatus::SUCCESS;
 }
 
+// initialize all members inside kwdbContext_t in the main thread, with additional session ID
+KStatus InitServerKWDBContext(kwdbContext_p ctx, k_uint64 sessID) {
+  if (InitServerKWDBContext(ctx) == KStatus::FAIL) {
+    return KStatus::FAIL;
+  }
+
+  ctx->sessionID = sessID;
+  return KStatus::SUCCESS;
+}
+
 // initialize all members inside kwdbContext_t in the main thread
 KStatus InitServerKWDBContext(kwdbContext_p ctx) {
   if (InitKContext(ctx) == KStatus::FAIL) {

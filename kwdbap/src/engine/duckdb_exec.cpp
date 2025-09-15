@@ -304,6 +304,7 @@ KStatus DuckdbExec::ExecQuery(kwdbContext_p ctx, APQueryInfo* req,
   KStatus ret = KStatus::FAIL;
   ctx->relation_ctx = req->relation_ctx;
   ctx->timezone = req->time_zone;
+  ctx->sessionID = req->sessionID;
   EnMqType type = req->tp;
   k_char* message = static_cast<k_char*>(req->value);
   k_uint32 len = req->len;

@@ -80,6 +80,7 @@ type QueryInfo struct {
 	Code     int
 	Handle   unsafe.Pointer
 	RowCount int
+	SessID   uint64
 	SQL      string
 }
 
@@ -243,6 +244,7 @@ func (r *Engine) Execute(
 	cQueryInfo.handle = queryInfo.Handle
 	cQueryInfo.unique_id = C.int(queryInfo.UniqueID)
 	cQueryInfo.time_zone = C.int(queryInfo.TimeZone)
+	cQueryInfo.sessionID = C.uint64_t(queryInfo.SessID)
 	cQueryInfo.relation_ctx = C.uint64_t(uintptr(unsafe.Pointer(ctx)))
 	cDBPathSlice := C.TSSlice{
 		data: (*C.char)(C.CBytes([]byte(r.cfg.Dir))),

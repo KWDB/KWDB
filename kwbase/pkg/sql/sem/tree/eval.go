@@ -57,6 +57,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/util/timeofday"
 	"gitee.com/kwbasedb/kwbase/pkg/util/timeutil"
 	"gitee.com/kwbasedb/kwbase/pkg/util/timeutil/pgdate"
+	"gitee.com/kwbasedb/kwbase/pkg/util/uint128"
 	"gitee.com/kwbasedb/kwbase/pkg/util/uuid"
 	"github.com/cockroachdb/apd"
 	"github.com/cockroachdb/errors"
@@ -2894,6 +2895,9 @@ type EvalPlanner interface {
 
 	// GetStmt return stmt
 	GetStmt() string
+
+	// douzt: tweak an inteface here
+	GetSessionID() uint128.Uint128
 }
 
 // EvalSessionAccessor is a limited interface to access session variables.

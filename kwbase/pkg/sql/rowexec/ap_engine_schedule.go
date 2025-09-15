@@ -174,6 +174,7 @@ func (ttr *ApEngineSchedule) setupFlow(ctx context.Context) error {
 		Handle:   ttr.handle, // Will be set by the engine
 		TimeZone: timezone,
 		SQL:      ttr.EvalCtx.Planner.GetStmt(),
+		SessID:   ttr.EvalCtx.Planner.GetSessionID().Hi,
 	}
 
 	respInfo, err := ttr.engine.SetupFlow(&(ttr.Ctx), queryInfo)

@@ -72,6 +72,7 @@ typedef struct _APQueryInfo {
   // only pass the rel data chunk pointer and count info to tse for multiple model processing
   // when the switch is on and the server starts with single node mode.
   void* relBatchData;
+  uint64_t sessionID;
   int32_t relRowCount;
   TSSlice sql;
   void *db;
