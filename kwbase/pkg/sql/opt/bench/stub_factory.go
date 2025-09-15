@@ -52,6 +52,7 @@ func (f *stubFactory) ConstructScan(
 	index cat.Index,
 	needed exec.ColumnOrdinalSet,
 	indexConstraint *constraint.Constraint,
+	constraintFilter tree.TypedExpr,
 	hardLimit int64,
 	softLimit int64,
 	reverse bool,

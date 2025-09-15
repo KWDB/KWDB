@@ -89,7 +89,14 @@ type scanNode struct {
 	// columns are always the last columns within cols.
 	numBackfillColumns int
 
-	spans   []roachpb.Span
+	spans []roachpb.Span
+
+	// spanFilter is the fileter corresponding to spans. The ap engine doesn't
+	// have spans, so we use span filter as a substitute. It contains
+	// tree.IndexedVar leaves generated using spanFilterVars.
+	spanFilter     tree.TypedExpr
+	spanFilterVars tree.IndexedVarHelper
+
 	reverse bool
 
 	reqOrdering ReqOrdering
@@ -424,5 +431,6 @@ func (n *scanNode) initDescDefaults(planDeps planDependencies, colCfg scanColumn
 		n.valNeededForCol.AddRange(0, len(n.cols)-1)
 	}
 	n.filterVars = tree.MakeIndexedVarHelper(n, len(n.cols))
+	n.spanFilterVars = tree.MakeIndexedVarHelper(n, len(n.cols))
 	return nil
 }
