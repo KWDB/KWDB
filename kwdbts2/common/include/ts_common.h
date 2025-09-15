@@ -1088,16 +1088,6 @@ inline string booleanToString(bool v) {
 }
 inline string tableTypeToString(int type) { return s_row; }
 
-inline int numDigit(double v) {
-  double x = std::abs(v);
-  int d = 0;
-  while (x > 1.0) {
-    x = x / 10;
-    d++;
-  }
-  return d + (v < 0);
-}
-
 inline timestamp64 convertTsToPTime(timestamp64 ts, DATATYPE ts_type) {
   if (ts == INT64_MAX || ts == INT64_MIN) {
     return ts;

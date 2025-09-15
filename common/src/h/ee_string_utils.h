@@ -30,7 +30,7 @@
 #include <string>
 #include <type_traits>
 
-namespace kwdbts {
+namespace kwdb {
 inline bool isASCII(char c) { return static_cast<unsigned char>(c) < 0x80; }
 
 inline bool isAlphaASCII(char c) {
@@ -85,4 +85,4 @@ inline const char *skipWhitespacesUTF8(const char *pos, const char *end) {
   }
   return pos;
 }
-}  // namespace kwdbts
+}  // namespace kwdb

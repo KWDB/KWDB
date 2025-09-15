@@ -12,7 +12,7 @@
 
 #include "ee_parse_query.h"
 
-#include "ee_lexer.h"
+#include "cm_lexer.h"
 #include "ee_token_iterator.h"
 #include "ee_ast_element_type.h"
 #include "gtest/gtest.h"

@@ -29,11 +29,11 @@
 #include <iostream>
 #include <memory>
 #include <vector>
-#include "ee_lexer.h"
+#include "cm_lexer.h"
 
 #define ALWAYS_INLINE __attribute__((__always_inline__))
 
-namespace kwdbts {
+namespace kwdb {
 class Tokens {
  private:
   std::vector<Token> data_;

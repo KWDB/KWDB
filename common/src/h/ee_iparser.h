@@ -13,13 +13,13 @@
 #include <memory>
 
 #include "ee_token_iterator.h"
-
-namespace kwdbts {
+using kwdbts::k_uint32;
+namespace kwdb {
 class IParser {
  public:
   /// Token iterator augmented with depth information. This allows to control
   /// recursion depth.
-  struct Pos : public kwdbts::TokenIterator {
+  struct Pos : public TokenIterator {
     k_uint32 depth = 0;
     k_uint32 max_depth = 0;
     Pos(std::shared_ptr<Tokens> tokens_, k_uint32 max_depth_)

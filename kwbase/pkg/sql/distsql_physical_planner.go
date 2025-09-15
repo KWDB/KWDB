@@ -1328,7 +1328,17 @@ func initAPTableReaderSpec(
 	if dbDesc != nil {
 		dbName = dbDesc.Name
 	}
-	*s = execinfrapb.APTableReaderSpec{DbName: dbName, SchemaName: schemaName, TableName: n.desc.Name, ScanColumns: scanColumns}
+	spanFilter, err := physicalplan.MakeExpression(n.spanFilter, planCtx, indexVarMap, true, false)
+	if err != nil {
+		return nil, execinfrapb.PostProcessSpec{}, err
+	}
+	*s = execinfrapb.APTableReaderSpec{
+		DbName:      dbName,
+		SchemaName:  schemaName,
+		TableName:   n.desc.Name,
+		ScanColumns: scanColumns,
+		SpanFilter:  spanFilter,
+	}
 
 	//indexIdx, err := getIndexIdx(n)
 	//if err != nil {

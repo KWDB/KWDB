@@ -365,4 +365,7 @@ message APTableReaderSpec {
   optional string table_name = 2 [(gogoproto.nullable) = false];
   optional string schema_name = 3 [(gogoproto.nullable) = false];
   repeated uint32 scan_columns = 4;
+  // A filtering expression which references the sapn filter. The ap engine doesn't
+  // have spans, so we use span filter as a substitute.
+  optional Expression span_filter = 5 [(gogoproto.nullable) = false];
 }

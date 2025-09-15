@@ -29,6 +29,19 @@ const char *GetFileName(const char *path);
 
 // Convert time_t to gmtime.
 void ToGMT(time_t ts, tm &tm);
+  
+inline int numDigit(double v) {
+  double x = std::abs(v);
+  int d = 0;
+  while (x > 1.0) {
+    x = x / 10;
+    d++;
+  }
+  return d + (v < 0);
+}
+
+std::string parseUnicode2Utf8(const std::string &str);
+std::string parseHex2String(const std::string &hexStr);
 
 #ifdef K_DEBUG
 #define EnterFunc()                                                                              \

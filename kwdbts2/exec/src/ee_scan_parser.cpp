@@ -13,8 +13,6 @@
 #include "ee_table.h"
 #include "ee_field.h"
 #include "cm_func.h"
-#include "ee_common.h"
-
 
 namespace kwdbts {
 

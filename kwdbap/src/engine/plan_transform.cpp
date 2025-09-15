@@ -13,7 +13,6 @@
 #include "duckdb/planner/expression/bound_conjunction_expression.hpp"
 
 // using namespace kwdbts;
-using namespace duckdb;
 
 namespace kwdbap {
 
@@ -23,7 +22,8 @@ vector<unique_ptr<duckdb::Expression>> splitAndExpr(unique_ptr<duckdb::Expressio
     auto &and_expr = expr->Cast<BoundConjunctionExpression>();
     for (auto & child : and_expr.children) {
       auto child_exprs = splitAndExpr(child);
-      exprs.insert(exprs.end(), std::make_move_iterator(child_exprs.begin()), std::make_move_iterator(child_exprs.end()));
+      exprs.insert(exprs.end(), std::make_move_iterator(child_exprs.begin()),
+                   std::make_move_iterator(child_exprs.end()));
     }
   } else {
     exprs.push_back(std::move(expr));
@@ -51,28 +51,29 @@ PhyOpRef TransFormPlan::TransFormPhysicalPlan(const ProcessorSpec& procSpec, con
 }
 
 vector<unique_ptr<duckdb::Expression>> TransFormPlan::BuildAPExpr(
-    const std::string& str, TableCatalogEntry& table,
-    std::map<idx_t, idx_t>& col_map) {
+    const std::string& str, ParseExprParam& param) {
   auto max_query_size = 0;
   auto max_parser_depth = 0;
-  auto tokens_ptr = std::make_shared<Tokens>(
+  auto tokens_ptr = std::make_shared<kwdb::Tokens>(
       str.data(), str.data() + str.size(), max_query_size);
   IParser::Pos pos(tokens_ptr, max_parser_depth);
   APParseQuery parser(str, pos);
-  auto node_list = parser.APParseImpl();  // expr tree
-  size_t i = 0;
   vector<unique_ptr<duckdb::Expression>> expressions;
+  if (!parser.ParseNode()) {
+    return expressions;
+  }
+  size_t i = 0;
+  auto node_list = parser.GetNodeList();
   while (i < node_list.size()) {
     unique_ptr<duckdb::Expression> expr;
-    auto construct_ret =
-        parser.ConstructAPExpr(*context_, table, &i, &expr, col_map);
-    if (construct_ret != SUCCESS) {
+    if (parser.ConstructTree(i, &expr, reinterpret_cast<void*>(&param)) != SUCCESS) {
       expressions.clear();
       return expressions;
     }
     if (expr->GetExpressionType() == ExpressionType::CONJUNCTION_AND) {
       auto tmp_exprs = splitAndExpr(expr);
-      expressions.insert(expressions.end(), std::make_move_iterator(tmp_exprs.begin()), std::make_move_iterator(tmp_exprs.end()));
+      expressions.insert(expressions.end(), std::make_move_iterator(tmp_exprs.begin()),
+                         std::make_move_iterator(tmp_exprs.end()));
     } else {
       expressions.push_back(std::move(expr));
     }
@@ -80,16 +81,18 @@ vector<unique_ptr<duckdb::Expression>> TransFormPlan::BuildAPExpr(
   return expressions;
 }
 
-vector<column_t> TransFormPlan::GetColsFromRenderExpr(
-    const std::string& str, TableCatalogEntry& table) {
+vector<column_t> TransFormPlan::GetColsFromRenderExpr(const std::string& str, TableCatalogEntry& table) {
   auto max_query_size = 0;
   auto max_parser_depth = 0;
-  auto tokens_ptr = std::make_shared<Tokens>(
+  auto tokens_ptr = std::make_shared<kwdb::Tokens>(
       str.data(), str.data() + str.size(), max_query_size);
   IParser::Pos pos(tokens_ptr, max_parser_depth);
   APParseQuery parser(str, pos);
-  auto node_list = parser.APParseImpl();
   vector<column_t> column_ids;
+  if (!parser.ParseNode()) {
+    return column_ids;
+  }
+  auto node_list = parser.GetNodeList();
   size_t i = 0;
   while (i < node_list.size()) {
     if (node_list[i]->operators == COLUMN_TYPE) {

@@ -16,7 +16,7 @@
 
 #include "ee_ast_element_type.h"
 #include "ee_field_common.h"
-
+using namespace kwdb;
 namespace kwdbts {
 class BinaryExpr {
  public:

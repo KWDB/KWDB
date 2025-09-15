@@ -26,7 +26,12 @@
 
 #include "kwdb_type.h"
 
-namespace kwdbts {
+using kwdbts::k_int64;
+using kwdbts::k_char;
+using kwdbts::k_bool;
+using kwdbts::k_size_t;
+
+namespace kwdb {
 #define APPLY_FOR_TOKENS(M)           \
   M(Whitespace)                       \
   M(Comment)                          \
@@ -131,8 +136,8 @@ enum class TokenType {
 
 struct Token {
   TokenType type;
-  k_int64 current_depth_;
-  k_int64 end_depth_;
+  kwdbts::k_int64 current_depth_;
+  kwdbts::k_int64 end_depth_;
   const k_char *begin;
   const k_char *end;
 

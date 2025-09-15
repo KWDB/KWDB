@@ -28,11 +28,12 @@
 #include <vector>
 
 #include "kwdb_type.h"
+using namespace kwdbts;
 /*
  * ToDo: Add interval Inet json type
  * There are only int float decimal
  */
-namespace kwdbts {
+namespace kwdb {
 union ScalarValue {
   k_uint32 column_id;
   k_int64 int_type;

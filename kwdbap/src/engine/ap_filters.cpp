@@ -29,22 +29,16 @@
 #include "duckdb/planner/expression/bound_constant_expression.hpp"
 #include "duckdb/planner/expression/bound_function_expression.hpp"
 #include "duckdb/planner/expression/bound_reference_expression.hpp"
-#include "ee_comm_def.h"
-#include "ee_encoding.h"
-#include "ee_iparser.h"
-#include "ee_string_info.h"
-#include "kwdb_type.h"
-#include "lg_api.h"
 
 using namespace duckdb;
 using namespace kwdbts;
 
 namespace kwdbap {
   PhyOpRef TransFormPlan::AddAPFilters(PhyOpRef physicalOp, const kwdbts::PostProcessSpec &post,
-                                       TableCatalogEntry &table, IdxMap &col_map, std::unordered_set<idx_t> &scan_filter_idx) {
-  vector<LogicalType> proj_types;
-  vector<string> proj_names;
-  vector<ColumnIndex> proj_column_ids;
+                                       ParseExprParam &param, std::unordered_set<idx_t> &scan_filter_idx) {
+  duckdb::vector<LogicalType> proj_types;
+  duckdb::vector<string> proj_names;
+  duckdb::vector<ColumnIndex> proj_column_ids;
   auto &scan = physicalOp.Cast<PhysicalTableScan>();
   if (!post.projection()) {
     if (post.render_exprs_size() <= 0) {
@@ -55,7 +49,7 @@ namespace kwdbap {
       std::unordered_set<column_t> expr_column_ids;
       auto proj_exprs = post.render_exprs();
       for (auto &proj_expr : proj_exprs) {
-        auto tmp_cols = GetColsFromRenderExpr(proj_expr.expr(), table);
+        auto tmp_cols = GetColsFromRenderExpr(proj_expr.expr(), param.table_);
         expr_column_ids.insert(tmp_cols.begin(), tmp_cols.end());
       }
       for (size_t i = 0; i < scan.column_ids.size(); ++i) {
@@ -72,7 +66,7 @@ namespace kwdbap {
   } else {
     for (auto &out_col : post.output_columns()) {
       auto index = LogicalIndex(out_col);
-      auto &col = table.GetColumn(index);
+      auto &col = param.table_.get().GetColumn(index);
       proj_types.push_back(col.Type());
       proj_names.push_back(col.Name());
       proj_column_ids.emplace_back(col.Oid());
@@ -80,19 +74,21 @@ namespace kwdbap {
   }
 
   auto filter_expr = post.filter().expr();
-  reference<PhysicalOperator> plan = VerifyProjectionByTableScan(scan, col_map);
+  reference<PhysicalOperator> plan = VerifyProjectionByTableScan(scan, param.col_map_);
 
-  printf("expr: %s", filter_expr.c_str());
-  auto expressions = BuildAPExpr(filter_expr, table, col_map);
-  if (expressions.empty()) {
-    return physicalOp;
-  }
-  for (auto i = 0; i < expressions.size(); ++i) {
+  printf("expr: %s \n", filter_expr.c_str());
+  auto expressions = BuildAPExpr(filter_expr, param);
+  D_ASSERT(!expressions.empty());
+  for (size_t i = 0; i < expressions.size(); ++i) {
     auto key = scan_filter_idx.find(i);
     if (key != scan_filter_idx.end()) {
       expressions.erase_at(i--);
       scan_filter_idx.erase(key);
     }
+  }
+  
+  if (expressions.empty()) {
+    return scan;
   }
 
   // auto &proj = projection.Cast<PhysicalProjection>();
@@ -103,10 +99,10 @@ namespace kwdbap {
   vector<unique_ptr<duckdb::Expression>> proj_exprs;
   proj_exprs.reserve(proj_column_ids.size());
   for (idx_t col_idx = 0; col_idx < proj_column_ids.size(); col_idx++) {
-    auto proj_idx = col_map[proj_column_ids[col_idx].GetPrimaryIndex()];
+    auto proj_idx = param.col_map_[proj_column_ids[col_idx].GetPrimaryIndex()];
     proj_exprs.emplace_back(make_uniq<BoundReferenceExpression>(
         proj_names[col_idx], proj_types[col_idx], proj_idx));
-    col_map[proj_column_ids[col_idx].GetPrimaryIndex()] = col_idx;
+    param.col_map_[proj_column_ids[col_idx].GetPrimaryIndex()] = col_idx;
   }
 
   auto &res_proj = physical_plan_->Make<PhysicalProjection>(
@@ -140,7 +136,7 @@ bool typeSupportsConstantFilter(const LogicalType &type) {
   return false;
 }
 
-bool supportedColumn(const vector<ColumnIndex> column_ids,
+bool supportedColumn(const vector<ColumnIndex> &column_ids,
                      unique_ptr<duckdb::Expression> col_ptr,
                      ColumnIndex &result) {
   if (col_ptr->GetExpressionClass() == ExpressionClass::BOUND_CAST) {
@@ -162,7 +158,7 @@ bool supportedColumn(const vector<ColumnIndex> column_ids,
 
 KStatus tryPushDownFilter(unique_ptr<TableFilterSet> *table_filters,
                           unique_ptr<duckdb::Expression> &expr,
-                          const vector<ColumnIndex> column_ids) {
+                          const vector<ColumnIndex> &column_ids) {
   switch (expr->GetExpressionClass()) {
     case ExpressionClass::BOUND_COMPARISON: {
       auto &tmp_expr = expr->Cast<BoundComparisonExpression>();
@@ -262,12 +258,11 @@ KStatus tryPushDownFilter(unique_ptr<TableFilterSet> *table_filters,
 }
 
 unique_ptr<TableFilterSet> TransFormPlan::CreateTableFilters(
-    const vector<ColumnIndex> column_ids, const PostProcessSpec &post,
-    TableCatalogEntry &table, IdxMap &col_map,
-    std::unordered_set<idx_t> &scan_filter_idx, bool &all_filter_push_scan) {
+    const vector<ColumnIndex> &column_ids, const PostProcessSpec &post,
+    ParseExprParam &param, std::unordered_set<idx_t> &scan_filter_idx, bool &all_filter_push_scan) {
   auto filter_expr = post.filter().expr();
   printf("expr: %s", filter_expr.c_str());
-  auto expressions = BuildAPExpr(filter_expr, table, col_map);
+  auto expressions = BuildAPExpr(filter_expr, param);
   if (expressions.empty()) {
     return nullptr;
   }

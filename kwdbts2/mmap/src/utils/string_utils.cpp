@@ -16,6 +16,7 @@
 #include <cstring>
 #include "utils/string_utils.h"
 #include "utils/big_table_utils.h"
+#include "cm_func.h"
 
 #if __cplusplus > 199711L
 #define register      // Deprecated in C++11.
