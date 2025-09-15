@@ -1795,8 +1795,9 @@ KStatus TsVGroup::Vacuum() {
           start_ts = (now.time_since_epoch().count() - life_time.ts) * life_time.precision;
         }
         KwTsSpan ts_span = {start_ts, end_ts};
+        std::vector<KwTsSpan> ts_spans = {ts_span};
         TsScanFilterParams filter{partition->GetDatabaseID(), entity_item.table_id, vgroup_id_,
-                                  entity_id, tb_schema_mgr->GetTsColDataType(), UINT64_MAX, {ts_span}};
+                                  entity_id, tb_schema_mgr->GetTsColDataType(), UINT64_MAX, ts_spans};
         TsBlockItemFilterParams block_data_filter;
         s = partition->getFilter(filter, block_data_filter);
         if (s != KStatus::SUCCESS) {
