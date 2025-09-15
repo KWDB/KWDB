@@ -375,10 +375,10 @@ KStatus TsEntityBlock::LoadAggData(int32_t col_idx, TSSlice buffer) {
   if (column_blocks_.size() <= col_idx + 1) {
     column_blocks_.resize(n_cols_);
   }
+  if (column_blocks_[col_idx + 1] == nullptr) {
+    CreateColumnBlock(col_idx);
+  }
   if (buffer.len > 0) {
-    if (column_blocks_[col_idx + 1] == nullptr) {
-      CreateColumnBlock(col_idx);
-    }
     column_blocks_[col_idx + 1]->agg.assign(buffer.data, buffer.len);
   }
   return KStatus::SUCCESS;
