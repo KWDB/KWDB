@@ -721,7 +721,6 @@ void makeConstantInt(LogicalType &col_type, k_int64 &int_value,
                      unique_ptr<BoundConstantExpression> &int_expr) {
   auto is_int16 = false;
   auto is_int32 = false;
-  auto is_int64 = false;
   if (int_value >= INT16_MIN && int_value <= INT16_MAX) {
     is_int16 = true;
   } else if (int_value >= INT32_MIN && int_value <= INT32_MAX) {
@@ -741,7 +740,6 @@ void makeConstantInt(LogicalType &col_type, k_int64 &int_value,
     case LogicalType::BIGINT: {
       is_int16 = false;
       is_int32 = false;
-      is_int64 = true;
       break;
     }
     default:
@@ -752,7 +750,7 @@ void makeConstantInt(LogicalType &col_type, k_int64 &int_value,
     int_expr = make_uniq<BoundConstantExpression>(Value::SMALLINT(static_cast<int16_t>(int_value)));
   } else if (is_int32) {
     int_expr = make_uniq<BoundConstantExpression>(Value::INTEGER(static_cast<int32_t>(int_value)));
-  } else if (is_int64) {
+  } else {
     int_expr = make_uniq<BoundConstantExpression>(Value::BIGINT(int_value));
   }
 }

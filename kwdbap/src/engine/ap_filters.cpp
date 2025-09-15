@@ -34,8 +34,9 @@ using namespace duckdb;
 using namespace kwdbts;
 
 namespace kwdbap {
-  PhyOpRef TransFormPlan::AddAPFilters(PhyOpRef physicalOp, const kwdbts::PostProcessSpec &post,
-                                       ParseExprParam &param, std::unordered_set<idx_t> &scan_filter_idx) {
+PhyOpRef TransFormPlan::AddAPFilters(
+    PhyOpRef physicalOp, const kwdbts::PostProcessSpec &post,
+    ParseExprParam &param, std::unordered_set<idx_t> &scan_filter_idx) {
   duckdb::vector<LogicalType> proj_types;
   duckdb::vector<string> proj_names;
   duckdb::vector<ColumnIndex> proj_column_ids;
@@ -74,11 +75,13 @@ namespace kwdbap {
   }
 
   auto filter_expr = post.filter().expr();
-  reference<PhysicalOperator> plan = VerifyProjectionByTableScan(scan, param.col_map_);
+  reference<PhysicalOperator> plan =
+      VerifyProjectionByTableScan(scan, param.col_map_);
 
   printf("expr: %s \n", filter_expr.c_str());
   auto expressions = BuildAPExpr(filter_expr, param);
-  D_ASSERT(!expressions.empty());
+  // if scan_filter_idx is not empty,
+  // we need to remove the filters that have been pushed down to the scan from the expressions.
   for (size_t i = 0; i < expressions.size(); ++i) {
     auto key = scan_filter_idx.find(i);
     if (key != scan_filter_idx.end()) {
@@ -86,13 +89,11 @@ namespace kwdbap {
       scan_filter_idx.erase(key);
     }
   }
-  
-  if (expressions.empty()) {
-    return scan;
-  }
+  D_ASSERT(!expressions.empty());
 
   // auto &proj = projection.Cast<PhysicalProjection>();
-  auto &filter = physical_plan_->Make<PhysicalFilter>(plan.get().types, std::move(expressions),
+  auto &filter = physical_plan_->Make<PhysicalFilter>(
+      plan.get().types, std::move(expressions),
       plan.get().estimated_cardinality);
   filter.children.push_back(plan.get());
   // build result projection
@@ -259,7 +260,8 @@ KStatus tryPushDownFilter(unique_ptr<TableFilterSet> *table_filters,
 
 unique_ptr<TableFilterSet> TransFormPlan::CreateTableFilters(
     const vector<ColumnIndex> &column_ids, const PostProcessSpec &post,
-    ParseExprParam &param, std::unordered_set<idx_t> &scan_filter_idx, bool &all_filter_push_scan) {
+    ParseExprParam &param, std::unordered_set<idx_t> &scan_filter_idx,
+    bool &all_filter_push_scan) {
   auto filter_expr = post.filter().expr();
   printf("expr: %s", filter_expr.c_str());
   auto expressions = BuildAPExpr(filter_expr, param);
@@ -283,7 +285,8 @@ unique_ptr<TableFilterSet> TransFormPlan::CreateTableFilters(
   return table_filters;
 }
 
-PhyOpRef TransFormPlan::VerifyProjectionByTableScan(PhyOpRef plan, IdxMap &col_map) {
+PhyOpRef TransFormPlan::VerifyProjectionByTableScan(PhyOpRef plan,
+                                                    IdxMap &col_map) {
   auto &scan = plan.Cast<PhysicalTableScan>();
 
   // build child_proj
