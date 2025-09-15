@@ -3,6 +3,7 @@ add_library_unity(
         OBJECT
         db.cpp
         duckdb_exec.cpp
+        ap_conn_cache.cpp
         ap_parse_query.cpp
         ap_table_scan.cpp
         ap_filters.cpp

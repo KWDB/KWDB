@@ -21,6 +21,7 @@
 #include "duckdb/main/connection.hpp"
 #include "duckdb/main/prepared_statement_data.hpp"
 #include "duckdb/engine/ap_processors.h"
+#include "duckdb/engine/ap_conn_cache.h"
 #include "ee_comm_def.h"
 #include "ee_pb_plan.pb.h"
 #include "kwdb_type.h"
@@ -80,11 +81,17 @@ class APEngineImpl : public APEngine {
 
   KStatus DropDatabase(const char *current, const char *name) override;
 
+  KStatus UpdateDBCache(std::string dbName);
+
+  duckdb::Connection* GetAPConnFromCache(k_uint64 sessionID, std::string dbName,
+                                           std::string userName);
+
  private:
   std::shared_ptr<duckdb::Connection> conn_;
   duckdb::shared_ptr<duckdb::DatabaseInstance> instance_;
   std::string db_path_;
   std::mutex context_lock_;
+  DConnCache c_cache;
 };
 
 class KWThdContext;

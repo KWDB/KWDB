@@ -90,7 +90,7 @@ KStatus DetachDB(DatabaseManager& db_manager, ClientContext& context,
 }
 
 APEngineImpl::APEngineImpl(kwdbContext_p ctx, const char* db_path)
-    : db_path_(db_path) {}
+    : db_path_(db_path), c_cache() {}
 
 KStatus APEngineImpl::OpenEngine(kwdbContext_p ctx, APEngine** engine,
                                  APConnectionPtr* out, duckdb_database* out_db,
@@ -159,10 +159,28 @@ KStatus APEngineImpl::DropDatabase(const char* current, const char* name) {
   return KStatus::SUCCESS;
 }
 
+KStatus APEngineImpl::UpdateDBCache(std::string dbName) {
+  
+  // to be implemented
+  return SUCCESS;
+}
+
+duckdb::Connection* APEngineImpl::GetAPConnFromCache(k_uint64 sessionID, 
+    std::string dbName, std::string userName) {
+  
+  // TODO: we need to support multiple databases, which is better to 
+  // be cached in APEngineImpl level.  (now it's a class member)
+
+  this->UpdateDBCache(dbName);  // not implemented
+
+  return c_cache.GetOrAddConn(sessionID, dbName, userName);
+}
+
 KStatus APEngineImpl::Execute(kwdbContext_p ctx, APQueryInfo* req,
                               APRespInfo* resp) {
   req->db = instance_.get();
-  req->connection = conn_.get();
+  // req->connection = conn_.get();
+  req->connection = this->GetAPConnFromCache(req->sessionID, "", "");
   auto lock = make_uniq<ClientContextLock>(context_lock_);
   conn_->BeginTransaction();
   KStatus ret = DuckdbExec::ExecQuery(ctx, req, resp);
