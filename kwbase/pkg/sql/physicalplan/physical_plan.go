@@ -2599,6 +2599,9 @@ func (p *PhysicalPlan) PushAggToStatisticReader(
 			return nil
 		}
 
+		// posIdx records the real position of each agg functions,
+		// can not use i because avg will be split into sum and count
+		posIdx := 0
 		for i, agg := range aggSpecs.Aggregations {
 			switch agg.Func {
 			case execinfrapb.AggregatorSpec_AVG:
@@ -2627,6 +2630,7 @@ func (p *PhysicalPlan) PushAggToStatisticReader(
 					return err2
 				}
 				scanPost.RenderExprs = append(scanPost.RenderExprs, expr)
+				posIdx += 2
 			case execinfrapb.AggregatorSpec_SUM:
 				v, ok := sumMap[agg.ColIdx[0]]
 				if !ok {
@@ -2635,6 +2639,7 @@ func (p *PhysicalPlan) PushAggToStatisticReader(
 				if err := addRender(v); err != nil {
 					return err
 				}
+				posIdx++
 			case execinfrapb.AggregatorSpec_COUNT:
 				v, ok := countMap[agg.ColIdx[0]]
 				if !ok {
@@ -2643,10 +2648,12 @@ func (p *PhysicalPlan) PushAggToStatisticReader(
 				if err := addRender(v); err != nil {
 					return err
 				}
+				posIdx++
 			default:
-				if err := addRender(i); err != nil {
+				if err := addRender(posIdx); err != nil {
 					return err
 				}
+				posIdx++
 			}
 		}
 

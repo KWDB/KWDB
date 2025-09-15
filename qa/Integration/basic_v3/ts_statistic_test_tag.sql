@@ -117,4 +117,19 @@ select count(e1),max(e1),sum(t2),t from t3 where ts<='2024-01-01 00:00:00.004' g
 select min(t2),max(t2),first(t2)  from t3 where ts<=' 2024-01-01 00:00:00.002';
 drop database test cascade;
 
-
+CREATE TS DATABASE stream_test;
+CREATE TABLE stream_test.vehicles (ts timestamp not null,vehicle_id varchar,speed float,lane_no int) TAGS (location int not null) PRIMARY TAGS (location);
+INSERT INTO stream_test.vehicles (ts, vehicle_id, speed, lane_no, location) VALUES
+    ('2024-01-01 09:00:00', 'V101', 65.0, 1, 1001),  
+    ('2024-01-01 09:00:02', 'V102', 67.2, 2, 1001), 
+    ('2024-01-01 09:00:03', 'V103', 63.8, 1, 1001),   
+    ('2024-01-01 09:00:10', 'V104', 70.5, 3, 1001),  
+    ('2024-01-01 09:00:15', 'V105', 68.9, 2, 1001),
+    ('2024-01-01 09:00:00', 'V101', 65.0, 1, 1002),  
+    ('2024-01-01 09:00:02', 'V102', 67.2, 2, 1002), 
+    ('2024-01-01 09:00:03', 'V103', 63.8, 1, 1002),   
+    ('2024-01-01 09:00:10', 'V104', 70.5, 3, 1002),  
+    ('2024-01-01 09:00:15', 'V105', 68.9, 2, 1002); 
+explain SELECT avg(speed) as avg_speed, min(speed) as max_speed, location FROM stream_test.vehicles group by location;
+SELECT avg(speed) as avg_speed, min(speed) as max_speed, location FROM stream_test.vehicles group by location order by location;
+drop database stream_test cascade;
