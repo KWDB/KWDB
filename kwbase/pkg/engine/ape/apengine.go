@@ -158,6 +158,11 @@ func (r *Engine) GetDBPath() string {
 	return r.cfg.Dir
 }
 
+// GetDBPtr returns db ptr
+func (r *Engine) GetDBPtr() unsafe.Pointer {
+	return r.db
+}
+
 // IsOpen returns when the ts engine has been open.
 func (r *Engine) IsOpen() bool {
 	return r.opened
