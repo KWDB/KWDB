@@ -31,8 +31,7 @@
 #include "duckdb/planner/expression/bound_reference_expression.hpp"
 
 namespace kwdbap {
-PhyOpRef TransFormPlan::AddAPProjection(PhyOpRef plan, const kwdbts::PostProcessSpec &post, TableCatalogEntry &table,
-                                        std::map<idx_t, idx_t> &col_map) {
+PhyOpRef TransFormPlan::AddAPProjection(PhyOpRef plan, const kwdbts::PostProcessSpec &post, ParseExprParam &param) {
   // build result projection
   vector<LogicalType> proj_types;
   vector<unique_ptr<duckdb::Expression>> proj_exprs;
@@ -42,21 +41,21 @@ PhyOpRef TransFormPlan::AddAPProjection(PhyOpRef plan, const kwdbts::PostProcess
     vector<ColumnIndex> proj_column_ids;
     for (auto &out_col : post.output_columns()) {
       auto index = LogicalIndex(out_col);
-      auto &col = table.GetColumn(index);
+      auto &col = param.table_.get().GetColumn(index);
       proj_types.push_back(col.Type());
       proj_names.push_back(col.Name());
       proj_column_ids.emplace_back(col.Oid());
     }
     proj_exprs.reserve(proj_column_ids.size());
     for (idx_t col_idx = 0; col_idx < proj_column_ids.size(); col_idx++) {
-      auto proj_idx = col_map[proj_column_ids[col_idx].GetPrimaryIndex()];
+      auto proj_idx = param.col_map_[proj_column_ids[col_idx].GetPrimaryIndex()];
       proj_exprs.emplace_back(make_uniq<BoundReferenceExpression>(
           proj_names[col_idx], proj_types[col_idx], proj_idx));
     }
   } else if (post.render_exprs_size() > 0) {
     for (auto &render_expr : post.render_exprs()) {
-      auto proj_expr = render_expr.expr();
-      auto expressions = BuildAPExpr(proj_expr, table, col_map);
+      const auto& proj_expr = render_expr.expr();
+      auto expressions = BuildAPExpr(proj_expr, param);
       if (expressions.empty()) {
         return plan;
       }

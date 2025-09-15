@@ -12,43 +12,29 @@
 #pragma once
 
 #include <utility>
+#include <memory>
+#include <map>
+#include <string>
+#include "cm_parse_expr.h"
 
-#include "duckdb.h"
-#include "cm_assert.h"
-#include "kwdb_type.h"
-#include "ee_pb_plan.pb.h"
-#include "ee_comm_def.h"
-#include "ee_ast_element_type.h"
-#include "ee_iparser.h"
-#include "kwdb_type.h"
+namespace kwdbap {
 
-#include "duckdb/main/capi/capi_internal.hpp"
-#include "duckdb/main/client_context.hpp"
-#include "duckdb/main/connection.hpp"
-#include "duckdb/main/prepared_statement_data.hpp"
-
-using namespace duckdb;
-
-namespace kwdbts {
-typedef std::shared_ptr<Element> ElementPtr;
-typedef std::vector<ElementPtr> Elements;
-class APParseQuery : public IParser {
+struct ParseExprParam {
  public:
-
-  explicit APParseQuery(std::string sql, Pos pos)
-      : raw_sql_(std::move(sql)), pos_(std::move(pos)) {}
-
-  KStatus ConstructAPExpr(ClientContext &context,
-                          TableCatalogEntry &table,
-                          std::size_t *i,
-                          unique_ptr<duckdb::Expression> *head_node, std::map<idx_t, idx_t> &col_map);
-  k_bool ParseNumber(k_int64 factor);
-  k_bool ParseSingleExpr();
-  Elements APParseImpl();
-
- private:
-  std::string raw_sql_;
-  kwdbts::IParser::Pos pos_;
-  Elements node_list_;
+  ParseExprParam(duckdb::TableCatalogEntry &table, duckdb::ClientContext* context, std::map<idx_t, idx_t>& col_map) :
+  table_(table), context_(context), col_map_(col_map) {}
+  duckdb::reference<duckdb::TableCatalogEntry> table_;
+  duckdb::ClientContext *context_;
+  std::map<idx_t, idx_t>& col_map_;
 };
-}
+
+class APParseQuery : public kwdb::ParseExpr {
+ public:
+  explicit APParseQuery(std::string sql, Pos pos)
+      : kwdb::ParseExpr(std::move(sql), std::move(pos)) {}
+
+
+  KStatus ConstructTree(std::size_t &i, void *head_node, void* user_data) override;
+};
+
+}  // namespace kwdbap

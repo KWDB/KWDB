@@ -10,8 +10,7 @@
 // See the Mulan PSL v2 for more details.
 
 #include "ee_base_parser.h"
-#include "ee_pb_plan.pb.h"
-#include "ee_lexer.h"
+#include "cm_lexer.h"
 #include "ee_parse_query.h"
 #include "ee_field_compare.h"
 #include "ee_field_func.h"
@@ -20,8 +19,6 @@
 #include "ee_field_typecast.h"
 #include "ee_field_window.h"
 #include "ee_kwthd_context.h"
-#include "cm_func.h"
-#include "lg_api.h"
 
 namespace kwdbts {
 
@@ -132,11 +129,10 @@ EEIteratorErrCode TsBaseParser::BuildBinaryTree(kwdbContext_p ctx, const KString
   EEIteratorErrCode code = EEIteratorErrCode::EE_OK;
   auto max_query_size = 0;
   auto max_parser_depth = 0;
-  auto tokens_ptr = std::make_shared<kwdbts::Tokens>(str.data(), str.data() + str.size(), max_query_size);
-  kwdbts::IParser::Pos pos(tokens_ptr, max_parser_depth);
+  auto tokens_ptr = std::make_shared<kwdb::Tokens>(str.data(), str.data() + str.size(), max_query_size);
+  kwdb::IParser::Pos pos(tokens_ptr, max_parser_depth);
   kwdbts::ParseQuery parser(str, pos);
-  *expr = parser.ParseImpl();  // binary tree
-  if (nullptr == *expr) {
+  if (!parser.ParseImpl(reinterpret_cast<void*>(expr), nullptr) || *expr == nullptr) {
     EEPgErrorInfo::SetPgErrorInfo(ERRCODE_INVALID_PARAMETER_VALUE, "Invalid expr");
     LOG_ERROR("Parse expr failed, expr is: %s", str.c_str());
     code = EEIteratorErrCode::EE_ERROR;

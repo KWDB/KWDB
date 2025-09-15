@@ -19,21 +19,15 @@
 #include "ee_binary_expr.h"
 #include "ee_iparser.h"
 #include "kwdb_type.h"
+#include "cm_parse_expr.h"
 
 namespace kwdbts {
-class ParseQuery : public IParser {
+class ParseQuery : public kwdb::ParseExpr {
  public:
-  using ElementPtr = std::shared_ptr<Element>;
-  using Elements = std::vector<ElementPtr>;
-  explicit ParseQuery(std::string sql, kwdbts::IParser::Pos pos)
-      : raw_sql_(std::move(sql)), pos_(pos) {}
-  k_bool ParseNumber(k_int64 factor);
-  k_bool ParseSingleExpr();
-  KStatus ConstructTree(std::size_t *i, ExprPtr *head_node);
-  ExprPtr ParseImpl();
- private:
-  std::string raw_sql_;
-  kwdbts::IParser::Pos pos_;
-  Elements node_list_;
+  explicit ParseQuery(std::string sql, kwdb::IParser::Pos pos)
+      : ParseExpr(std::move(sql), std::move(pos)) {}
+
+ protected:
+  KStatus ConstructTree(std::size_t &i, void *head_node, void* user_data) override;
 };
 }  // namespace kwdbts

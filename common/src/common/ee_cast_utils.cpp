@@ -16,9 +16,7 @@
 #include <string>
 
 #include "ee_global.h"
-#include "kwdb_type.h"
-#include "pgcode.h"
-#include "ts_common.h"
+#include "cm_func.h"
 
 namespace kwdbts {
 

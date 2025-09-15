@@ -23,13 +23,13 @@
 // See the Mulan PSL v2 for more details.
 
 
-#include "ee_lexer.h"
+#include "cm_lexer.h"
 
 #include <string>
 
 #include "ee_string_utils.h"
 
-namespace kwdbts {
+namespace kwdb {
 Token Lexer::nextToken() {
   Token res = nextTokenImpl();
   if (max_query_size_ && res.end > begin_ + max_query_size_)
