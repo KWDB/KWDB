@@ -10,6 +10,7 @@ package kwdbts;
 // directions. See sqlbase.ColumnOrdering.
 
 import "me_metadata.proto";
+import "join_type.proto";
 message TSOrdering {
 
   message Column {
@@ -174,7 +175,7 @@ message TSProcessorCoreUnion {
   optional TSAggregatorSpec aggregator = 5;
   optional DistinctSpec distinct = 7;
   reserved 8;
-  reserved 9;
+  optional HashJoinerSpec hashJoiner = 9;
   reserved 10;
   reserved 11;
   reserved 13;
@@ -1078,4 +1079,42 @@ message APTableReaderSpec {
   optional string schema_name = 3;
   repeated uint32 scan_columns = 4;
   optional Expression span_filter = 5;
+}
+
+message HashJoinerSpec {
+  // The join constraints certain columns from the left stream to equal
+  // corresponding columns on the right stream. These must have the same length.
+  repeated uint32 left_eq_columns = 1 [packed = true];
+  repeated uint32 right_eq_columns = 2 [packed = true];
+
+  // "ON" expression (in addition to the equality constraints captured by the
+  // orderings). Assuming that the left stream has N columns and the right
+  // stream has M columns, in this expression variables @1 to @N refer to
+  // columns of the left stream and variables @N to @(N+M) refer to columns in
+  // the right stream.
+  // Having "ON" expression implies no merged columns.
+  optional Expression on_expr = 5;
+
+  optional JoinType type = 6;
+
+  // If true, it is guaranteed that the left equality columns form a key for
+  // the left input. In other words, no two rows from the left input have the
+  // same set of values on the left equality columns.
+  optional bool left_eq_columns_are_key = 8;
+
+  // If true, it is guaranteed that the right equality columns form a key for
+  // the right input. In other words, no two rows from the right input have the
+  // same set of values on the right equality columns.
+  optional bool right_eq_columns_are_key = 9;
+
+  // DEPRECATED
+  //
+  // Extra merged columns that are added in case of OUTER JOINS. These
+  // columns occupy first positions in a row amd it's the left value if it's not
+  // NULL, otherwise it's the right value. In INNER JOIN case no merged columns are
+  // needed since left stream values are guaranteed to be not NULL.
+  //
+  // This has been deprecated; the distsqlrun layer still supports it for
+  // backward compatibility during upgrade.
+  optional bool merged_columns = 7;
 }

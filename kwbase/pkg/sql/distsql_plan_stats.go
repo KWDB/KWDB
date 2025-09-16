@@ -262,7 +262,6 @@ func (dsp *DistSQLPlanner) createStatsPlan(
 		execinfrapb.ProcessorCoreUnion{SampleAggregator: agg},
 		execinfrapb.PostProcessSpec{},
 		[]types.T{},
-		planCtx.apSelect,
 	)
 
 	return p, nil
@@ -429,7 +428,6 @@ func (dsp *DistSQLPlanner) createTsStatsPlan(
 		execinfrapb.ProcessorCoreUnion{SampleAggregator: agg},
 		execinfrapb.PostProcessSpec{},
 		[]types.T{},
-		planCtx.apSelect,
 	)
 	return p, nil
 }

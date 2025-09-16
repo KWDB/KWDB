@@ -9,6 +9,7 @@ add_library_unity(
         ap_aggregate.cpp
         ap_projection.cpp
         ap_processors.cpp
+        ap_hashjoin.cpp
         plan_transform.cpp)
 set(ALL_OBJECT_FILES
         ${ALL_OBJECT_FILES} $<TARGET_OBJECTS:duckdb_engine>

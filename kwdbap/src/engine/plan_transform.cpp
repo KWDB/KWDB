@@ -41,12 +41,22 @@ PhyOpRef TransFormPlan::TransFormPhysicalPlan(const TSProcessorSpec& procSpec, c
                                               const TSProcessorCoreUnion& core, PhyOpRefVec &child) {
   // New operator by type
   if (core.has_aptablereader()) {
+    printf("core.has_aptablereader() \n");
     return TransFormTableScan(procSpec, post, core);
   } else if (core.has_aggregator()) {
+    printf("core.has_aggregator() \n");
     return TransFormAggregator(post, core, *child[0]);
+  } else if (core.has_hashjoiner()) {
+    printf("core.has_hashjoiner() \n");
+    return TransFormHashJoin(post, core, *child[0], *child[1]);
+  } else if (core.has_distinct()) {
+    printf("core.has_distinct() \n");
+    return TransFormTableScan(procSpec, post, core);
+  } else if (core.has_window()) {
+    printf("core.has_window() \n");
+    return TransFormTableScan(procSpec, post, core);
   }
-  EEPgErrorInfo::SetPgErrorInfo(ERRCODE_INVALID_PARAMETER_VALUE,
-                                "Invalid operator type");
+  EEPgErrorInfo::SetPgErrorInfo(ERRCODE_INVALID_PARAMETER_VALUE,"Invalid operator type");
   throw std::runtime_error("Invalid operator type");
 }
 

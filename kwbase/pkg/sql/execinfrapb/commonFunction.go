@@ -20,3 +20,8 @@ func (s *ProcessorSpec) ExecInTSEngine() bool {
 func (s *ProcessorSpec) ExecInAPEngine() bool {
 	return s.Engine == ProcessorSpec_Analytical
 }
+
+// ExecInMEEngine returns true for execute in me
+func (s *ProcessorSpec) ExecInMEEngine() bool {
+	return s.Engine == ProcessorSpec_Relation
+}

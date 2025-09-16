@@ -11,17 +11,12 @@
 
 #include "engine.h"
 
-#include <dirent.h>
 #include <iostream>
-#include <utility>
 #include <shared_mutex>
 
 #include "ee_dml_exec.h"
-#include "sys_utils.h"
 #include "ts_table.h"
-#include "th_kwdb_dynamic_thread_pool.h"
 #include "ee_exec_pool.h"
-#include "st_tier.h"
 
 #ifndef KWBASE_OSS
 #include "ts_config_autonomy.h"
