@@ -530,11 +530,12 @@ KStatus DiskDataContainer::divideAndConquerMerge() {
   // through the Next() interface. Therefore, the last merge will be performed
   // in NextChunk()
   ReverseFile();
-  if (read_merge_infos_->batch_chunk_indexs_.size() <= (MAX_CHUNK_BATCH_NUM + 1)) {
+  size_t size = read_merge_infos_->batch_chunk_indexs_.size();
+  if (size <= MAX_CHUNK_BATCH_NUM) {
     return KStatus::SUCCESS;
   }
   k_uint32 batch_num = MAX_CHUNK_BATCH_NUM;
-  for (size_t i = 0; i < read_merge_infos_->batch_chunk_indexs_.size(); i += batch_num) {
+  for (size_t i = 0; i < size; i += batch_num) {
     k_int64 sorted_count = 0;
     ReloadReadPtr(MAX_CHUNK_BATCH_NUM, i);
     write_merge_infos_->batch_chunk_indexs_.push_back({});

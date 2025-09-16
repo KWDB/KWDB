@@ -27,7 +27,6 @@
 #include "libkwdbts2.h"
 #include "me_metadata.pb.h"
 #include "lt_rw_latch.h"
-#include "utils/compress_utils.h"
 #include "th_kwdb_dynamic_thread_pool.h"
 #include "lg_api.h"
 #include "mmap/mmap_string_column.h"
@@ -431,10 +430,12 @@ struct EntityResultIndex {
   }
 };
 
+class TsBlockSpan;
 struct ResultSet {
   k_uint32 col_num_{0};
   EntityResultIndex entity_index{};
   std::vector<std::vector<const Batch*>> data;
+  std::shared_ptr<TsBlockSpan> block_span;
 
   ResultSet() = default;
 

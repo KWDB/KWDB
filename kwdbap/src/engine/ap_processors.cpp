@@ -60,10 +60,10 @@ KStatus Processors::Init(char* message, uint32_t len) {
   return KStatus::SUCCESS;
 }
 
-PhyOpRef Processors::BuildOperatorImp(const ProcessorSpec &procSpec, InPutStreamSrcMap &inputSrc) {
-  std::vector<const kwdbts::ProcessorSpec*> procs;
+PhyOpRef Processors::BuildOperatorImp(const TSProcessorSpec &procSpec, InPutStreamSrcMap &inputSrc) {
+  std::vector<const kwdbts::TSProcessorSpec*> procs;
   const PostProcessSpec& post = procSpec.post();
-  const ProcessorCoreUnion& core = procSpec.core();
+  const TSProcessorCoreUnion& core = procSpec.core();
 //  k_int32 processor_id = procSpec.processor_id();
   PhyOpRefVec inputPlan;
   if (0 == procSpec.input_size()) {
@@ -91,10 +91,10 @@ PhyOpRef Processors::BuildOperatorImp(const ProcessorSpec &procSpec, InPutStream
 
 KStatus Processors::BuildOperator() {
   InPutStreamSrcMap inputSrc;
-  std::vector<const kwdbts::ProcessorSpec*> procs;
+  std::vector<const kwdbts::TSProcessorSpec*> procs;
   // find the child node, deal with the child node first, and then deal with yourself
   for (int i = 0; i < spec_->processors_size() - 1; ++i) {
-    const ProcessorSpec& procSpec = spec_->processors(i);
+    const TSProcessorSpec& procSpec = spec_->processors(i);
     auto &plan = BuildOperatorImp(procSpec, inputSrc);
     for (auto m = 0; m < procSpec.output_size(); m++) {
       for (auto n = 0; n < procSpec.output(m).streams_size(); n++) {
@@ -102,7 +102,7 @@ KStatus Processors::BuildOperator() {
       }
     }
   }
-  const ProcessorSpec& procSpec = spec_->processors(spec_->processors_size() - 1);
+  const TSProcessorSpec& procSpec = spec_->processors(spec_->processors_size() - 1);
   auto &plan = BuildOperatorImp(procSpec, inputSrc);
   physical_planner_->SetRoot(plan);
   return KStatus::SUCCESS;

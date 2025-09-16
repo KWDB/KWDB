@@ -312,11 +312,8 @@ func (dsp *DistSQLPlanner) createTsStatsPlan(
 	// Set output types for processors that need to push data to agents.
 	setOutputTypes := func(p *PhysicalPlan) {
 		for _, idx := range p.ResultRouters {
-			if p.Processors[idx].ExecInTSEngine {
-				p.Processors[idx].TSSpec.Post.OutputTypes = make([]types.Family, len(p.ResultTypes))
-				for i, typ := range p.ResultTypes {
-					p.Processors[idx].TSSpec.Post.OutputTypes[i] = typ.InternalType.Family
-				}
+			if p.Processors[idx].ExecInTSEngine() {
+				p.Processors[idx].Spec.Post.OutputTypes = p.ResultTypes
 			}
 		}
 	}
@@ -334,8 +331,8 @@ func (dsp *DistSQLPlanner) createTsStatsPlan(
 	extraColumns := []types.T{*types.Int, *types.Int, *types.Int, *types.Int, *types.Bytes, *types.Int, *types.Int}
 	outTypes = append(outTypes, extraColumns...)
 	p.AddTSNoGroupingStage(
-		execinfrapb.TSProcessorCoreUnion{Sampler: tsSamplerSpec},
-		execinfrapb.TSPostProcessSpec{},
+		execinfrapb.ProcessorCoreUnion{TsSampler: tsSamplerSpec},
+		execinfrapb.PostProcessSpec{},
 		outTypes,
 		execinfrapb.Ordering{},
 	)
@@ -353,7 +350,7 @@ func (dsp *DistSQLPlanner) createTsStatsPlan(
 	setOutputTypes(&p)
 
 	for i, idx := range p.ResultRouters {
-		if p.Processors[idx].ExecInTSEngine && p.Processors[idx].Node != dsp.nodeDesc.NodeID {
+		if p.Processors[idx].ExecInTSEngine() && p.Processors[idx].Node != dsp.nodeDesc.NodeID {
 			p.AddNoopImplementation(
 				execinfrapb.PostProcessSpec{}, idx, i, nil, &p.ResultTypes,
 			)

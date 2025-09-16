@@ -41,7 +41,7 @@ class WindowOperator : public BaseOperator {
   enum Rowmark { ROW_NEED_SKIP = -1, ROW_NO_NEED_SKIP = -2 };
 
   WindowOperator(TsFetcherCollection* collection,
-                 WindowerSpec* spec, TSPostProcessSpec* post, TABLE* table,
+                 WindowerSpec* spec, PostProcessSpec* post, TABLE* table,
                  int32_t processor_id);
   WindowOperator(const WindowOperator&, int32_t processor_id);
   ~WindowOperator() override;
@@ -79,7 +79,7 @@ class WindowOperator : public BaseOperator {
   k_int32 row_start_index_{ROW_NEED_SKIP};
   k_uint32 col_size_{0};
   k_uint32 count_index_{0};
-  k_uint32 limit_{0};
+  k_uint64 limit_{0};
   k_uint32 examined_rows_{0};
   k_bool is_new_partition_{false};  // for diff
   k_bool first_check_{false};

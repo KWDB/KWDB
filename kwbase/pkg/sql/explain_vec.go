@@ -115,7 +115,16 @@ func (n *explainVecNode) startExec(params runParams) error {
 		if flow.nodeID == thisNodeID && !willDistributePlan {
 			fuseOpt = flowinfra.FuseAggressively
 		}
-		opChains, err := colflow.SupportsVectorized(params.ctx, flowCtx, flow.flow.Processors, flow.flow.TsProcessors, fuseOpt, nil /* output */)
+		tsProcessors := make([]execinfrapb.ProcessorSpec, 0)
+		relProcessors := make([]execinfrapb.ProcessorSpec, 0)
+		for _, p := range flow.flow.Processors {
+			if p.ExecInTSEngine() {
+				tsProcessors = append(tsProcessors, p)
+			} else {
+				relProcessors = append(relProcessors, p)
+			}
+		}
+		opChains, err := colflow.SupportsVectorized(params.ctx, flowCtx, relProcessors, tsProcessors, fuseOpt, nil /* output */)
 		if err != nil {
 			return err
 		}

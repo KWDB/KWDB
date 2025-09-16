@@ -41,7 +41,7 @@ class HashTagScanOperator : public TagScanBaseOperator {
  public:
   HashTagScanOperator(TsFetcherCollection *collection,
                       TSTagReaderSpec* spec,
-                      TSPostProcessSpec* post,
+                      PostProcessSpec* post,
                       TABLE* table,
                       int32_t processor_id);
 

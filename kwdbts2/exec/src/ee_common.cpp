@@ -185,4 +185,54 @@ KTimestampTz TimeAddDuration(KTimestampTz ts, k_int64 duration,
   return (k_int64)(mktime(&tm) * MILLISECOND_PER_SECOND);
 }
 
+int tryAlterType(const std::string& str, DATATYPE new_type, ErrorInfo& err_info) {
+  std::size_t pos{};
+  int res = 0;
+  std::string incorrect_str = "Incorrect integer value";
+  std::string value_str = " '" + str + "'";
+  try {
+    switch (new_type) {
+    case DATATYPE::INT16 : {
+        res = std::stoi(str, &pos);
+        break;
+    }
+    case DATATYPE::INT32 : {
+        auto value = std::stoi(str, &pos);
+        break;
+    }
+    case DATATYPE::INT64 : {
+        auto value = std::stoll(str, &pos);
+        break;
+    }
+    case DATATYPE::FLOAT : {
+        incorrect_str = "Incorrect floating value";
+        auto value = std::stof(str, &pos);
+        break;
+    }
+    case DATATYPE::DOUBLE : {
+        incorrect_str = "Incorrect floating value";
+        auto value = std::stod(str, &pos);
+        break;
+    }
+    default:
+      break;
+    }
+  }
+  catch (std::invalid_argument const &ex) {
+    return err_info.setError(KWEPERM, incorrect_str + value_str);
+  }
+  catch (std::out_of_range const &ex) {
+    return err_info.setError(KWEPERM, "Out of range value" + value_str);
+  }
+  if (pos < str.size()) {
+    return err_info.setError(KWEPERM, incorrect_str + value_str);
+  }
+  if (new_type == DATATYPE::INT16) {
+    if (res > INT16_MAX || res < INT16_MIN) {
+      return err_info.setError(KWEPERM, "Out of range value" + value_str);
+    }
+  }
+  return err_info.errcode;
+}
+
 }  // namespace kwdbts

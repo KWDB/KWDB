@@ -100,7 +100,7 @@ func (f *rowBasedFlow) setupProcessors(
 	// which are fused with their consumer.
 	for i := range spec.Processors {
 		pspec := &spec.Processors[i]
-		if pspec.Engine == 1 {
+		if pspec.ExecInTSEngine() || pspec.ExecInAPEngine() {
 			continue
 		}
 		p, err := f.makeProcessor(ctx, pspec, inputSyncs[i])
@@ -133,6 +133,9 @@ func (f *rowBasedFlow) setupProcessors(
 			}
 
 			for pIdx, ps := range spec.Processors {
+				if ps.ExecInTSEngine() || pspec.ExecInAPEngine() {
+					continue
+				}
 				if pIdx <= i {
 					// Skip processors which have already been created.
 					continue
@@ -286,10 +289,14 @@ func (f *rowBasedFlow) setupInputSyncs(
 	ctx context.Context, spec *execinfrapb.FlowSpec, opt flowinfra.FuseOpt,
 ) ([][]execinfra.RowSource, error) {
 	inputSyncs := make([][]execinfra.RowSource, len(spec.Processors))
-	var processors []execinfrapb.ProcessorSpec
+	var tsProcessorSpecs []execinfrapb.ProcessorSpec
+	var apProcessors []execinfrapb.ProcessorSpec
 	for pIdx, ps := range spec.Processors {
-		if ps.Engine == 1 {
-			processors = append(processors, ps)
+		if ps.ExecInTSEngine() {
+			tsProcessorSpecs = append(tsProcessorSpecs, ps)
+			continue
+		} else if ps.ExecInAPEngine() {
+			apProcessors = append(apProcessors, ps)
 			continue
 		}
 		for _, is := range ps.Input {
@@ -309,7 +316,7 @@ func (f *rowBasedFlow) setupInputSyncs(
 					mrc := &execinfra.RowChannel{}
 					mrc.InitWithNumSenders(is.ColumnTypes, len(is.Streams))
 					for _, s := range is.Streams {
-						if err := f.setupInboundStream(ctx, s, mrc, is.ColumnTypes, spec.TsProcessors, processors, spec.TsInfo); err != nil {
+						if err := f.setupInboundStream(ctx, s, mrc, is.ColumnTypes, tsProcessorSpecs, apProcessors, spec.TsInfo); err != nil {
 							return nil, err
 						}
 					}
@@ -330,7 +337,7 @@ func (f *rowBasedFlow) setupInputSyncs(
 					}
 					rowChan := &execinfra.RowChannel{}
 					rowChan.InitWithNumSenders(is.ColumnTypes, 1 /* numSenders */)
-					if err := f.setupInboundStream(ctx, s, rowChan, is.ColumnTypes, spec.TsProcessors, processors, spec.TsInfo); err != nil {
+					if err := f.setupInboundStream(ctx, s, rowChan, is.ColumnTypes, tsProcessorSpecs, apProcessors, spec.TsInfo); err != nil {
 						return nil, err
 					}
 					streams[i] = rowChan
@@ -358,7 +365,7 @@ func (f *rowBasedFlow) setupInboundStream(
 	spec execinfrapb.StreamEndpointSpec,
 	receiver execinfra.RowReceiver,
 	typs []types.T,
-	tsProcessorSpecs []execinfrapb.TSProcessorSpec,
+	tsProcessorSpecs []execinfrapb.ProcessorSpec,
 	processors []execinfrapb.ProcessorSpec,
 	tsInfo execinfrapb.TsInfo,
 ) error {

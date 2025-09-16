@@ -17,19 +17,11 @@
 #include "ts_config_autonomy.h"
 #endif
 
-extern uint16_t CLUSTER_SETTING_MAX_ENTITIES_PER_SUBGROUP;  // SUBGROUP_ENTITIES from cluster setting
-extern uint32_t CLUSTER_SETTING_MAX_BLOCKS_PER_SEGMENT;     // PARTITION_BLOCKS from cluster setting
+
 extern uint16_t CLUSTER_SETTING_MAX_ROWS_PER_BLOCK;         // PARTITION_ROWS from cluster setting
 extern bool CLUSTER_SETTING_COUNT_USE_STATISTICS;          // COUNT_USE_STATISTICS from cluster setting
 
 namespace kwdbts {
-
-/**
- * @brief Get max entities per subgroup
- * @param max_entities_of_prev_subgroup max entities of previous subgroup
- * @return uint16_t
- */
-uint16_t GetMaxEntitiesPerSubgroup(uint16_t max_entities_of_prev_subgroup = 0);
 
 /**
  * @brief Get segment config

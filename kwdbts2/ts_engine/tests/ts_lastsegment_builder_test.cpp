@@ -123,6 +123,16 @@ void LastSegmentReadWriteTest::BuilderWithBasicCheck(TSTableID table_id, int nro
     ASSERT_EQ(s, SUCCESS);
 
     for (auto span : spans) {
+      char *value;
+      std::unique_ptr<TsBitmapBase> bitmap;
+      span->GetFixLenColAddr(0, &value, &bitmap);
+      ASSERT_EQ(bitmap->GetCount(), nrow);
+      for (int i = 0; i < nrow; i++) {
+        ASSERT_EQ(bitmap->At(i), DataFlags::kValid);
+      }
+    }
+
+    for (auto span : spans) {
       s = builder.PutBlockSpan(span);
       ASSERT_EQ(s, KStatus::SUCCESS);
     }
@@ -173,11 +183,11 @@ void LastSegmentReadWriteTest::IteratorCheck(TSTableID table_id, int expected_nr
     nrow += span->GetRowNum();
 
     char *value;
-    TsBitmap bitmap;
-    auto s = span->GetFixLenColAddr(0, &value, bitmap);
+    std::unique_ptr<TsBitmapBase> bitmap;
+    auto s = span->GetFixLenColAddr(0, &value, &bitmap);
     ASSERT_EQ(s, SUCCESS);
 
-    EXPECT_EQ(bitmap.GetCount(), span->GetRowNum());
+    EXPECT_EQ(bitmap->GetCount(), span->GetRowNum());
   }
 
   EXPECT_EQ(expected_nrow, nrow);
@@ -569,11 +579,11 @@ TEST_F(LastSegmentReadWriteTest, IteratorTest2) {
 
     
     char* value;
-    TsBitmap bitmap;
+    std::unique_ptr<TsBitmapBase> bitmap;
     // TODO(zqh): hide the following code temporarily
     for (int icol = 0; icol < dtypes.size(); ++icol) {
       if (!isVarLenType((*res.metric_schema)[icol].type)) {
-        auto ret = s->GetFixLenColAddr(icol, &value, bitmap);
+        auto ret = s->GetFixLenColAddr(icol, &value, &bitmap);
         ASSERT_EQ(ret, KStatus::SUCCESS);
         for (int i = 0; i < s->GetRowNum(); ++i) {
           TSSlice val;

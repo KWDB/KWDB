@@ -16,6 +16,7 @@ import (
 
 	"gitee.com/kwbasedb/kwbase/pkg/cdc/cdcpb"
 	"gitee.com/kwbasedb/kwbase/pkg/jobs"
+	"gitee.com/kwbasedb/kwbase/pkg/kv"
 	"gitee.com/kwbasedb/kwbase/pkg/security"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgcode"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgerror"
@@ -103,18 +104,21 @@ func (p *planner) removeStream(
 		p.ExecCfg().CDCCoordinator.StopCDCByLocal(tableID, streamID, cdcpb.TSCDCInstanceType_Stream)
 		waitCDCStatusChanged(ctx, p.ExecCfg().CDCCoordinator, tableID, streamID, cdcpb.TSCDCInstanceType_Stream, false)
 
-		job, err := p.execCfg.JobRegistry.LoadJobWithTxn(ctx, jobID, p.txn)
-		if err != nil {
-			return err
-		}
-
-		// After CDC is closed, the job status is usually StatusFailed,
-		// and if the job status is not StatusFailed, CancelRequested is used to close it,
-		// which usually takes 30 seconds.
-		if status, err := job.CurrentStatus(ctx); err == nil {
-			if status == jobs.StatusRunning || status == jobs.StatusPending {
-				_ = p.execCfg.JobRegistry.CancelRequested(ctx, p.txn, jobID)
+		if err := p.execCfg.DB.Txn(ctx, func(ctx context.Context, txn *kv.Txn) (err error) {
+			job, _ := p.execCfg.JobRegistry.LoadJobWithTxn(ctx, jobID, txn)
+			// After CDC is closed, the job status is usually StatusFailed,
+			// and if the job status is not StatusFailed, CancelRequested is used to close it,
+			// which usually takes 30 seconds.
+			if job != nil {
+				if status, err := job.WithTxn(txn).CurrentStatus(ctx); err == nil {
+					if status == jobs.StatusRunning || status == jobs.StatusPending {
+						_ = p.execCfg.JobRegistry.CancelRequested(ctx, txn, jobID)
+					}
+				}
 			}
+			return nil
+		}); err != nil {
+			return err
 		}
 	}
 

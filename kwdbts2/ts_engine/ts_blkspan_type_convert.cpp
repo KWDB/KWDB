@@ -13,6 +13,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <memory>
 #include <string>
 #include <vector>
 #include <algorithm>
@@ -132,12 +133,12 @@ int TSBlkDataTypeConvert::ConvertDataTypeToMem(uint32_t scan_col, int32_t new_ty
   return 0;
 }
 
-KStatus TSBlkDataTypeConvert::GetColBitmap(TsBlockSpan* blk_span, uint32_t scan_idx, TsBitmap& bitmap) {
+KStatus TSBlkDataTypeConvert::GetColBitmap(TsBlockSpan* blk_span, uint32_t scan_idx,
+                                           std::unique_ptr<TsBitmapBase>* bitmap) {
   assert(blk_span->GetTableVersion() == block_version_);
   auto blk_col_idx = version_conv_->blk_cols_extended_[scan_idx];
-  bitmap.SetCount(blk_span->nrow_);
   if (blk_col_idx == UINT32_MAX) {
-    bitmap.SetAll(DataFlags::kNull);
+    *bitmap = std::make_unique<TsUniformBitmap<DataFlags::kNull>>(blk_span->nrow_);
     return SUCCESS;
   }
   if (isVarLenType((*version_conv_->blk_attrs_)[blk_col_idx].type) &&
@@ -150,27 +151,27 @@ KStatus TSBlkDataTypeConvert::GetColBitmap(TsBlockSpan* blk_span, uint32_t scan_
     }
     return SUCCESS;
   }
-  TsBitmap blk_bitmap;
-  auto s = blk_span->block_->GetColBitmap(blk_col_idx, version_conv_->blk_attrs_, blk_bitmap);
-  for (int i = 0; i < blk_span->nrow_; i++) {
-    bitmap[i] = blk_bitmap[blk_span->start_row_ + i];
+  std::unique_ptr<TsBitmapBase> blk_bitmap;
+  auto s = blk_span->block_->GetColBitmap(blk_col_idx, version_conv_->blk_attrs_, &blk_bitmap);
+  if (s == FAIL) {
+    return s;
   }
+  *bitmap = blk_bitmap->Slice(blk_span->start_row_, blk_span->nrow_);
   return s;
 }
 
-KStatus TSBlkDataTypeConvert::getColBitmapConverted(TsBlockSpan* blk_span, uint32_t scan_idx, TsBitmap &bitmap) {
+KStatus TSBlkDataTypeConvert::getColBitmapConverted(TsBlockSpan* blk_span, uint32_t scan_idx,
+                                                    std::unique_ptr<TsBitmapBase>* bitmap) {
   assert(blk_span->GetTableVersion() == block_version_);
   auto dest_attr = (*version_conv_->scan_attrs_)[scan_idx];
   uint32_t dest_type_size = dest_attr.size;
   auto blk_col_idx = version_conv_->blk_cols_extended_[scan_idx];
-  TsBitmap blk_bitmap;
-  auto s = blk_span->block_->GetColBitmap(blk_col_idx, version_conv_->blk_attrs_, blk_bitmap);
+  std::unique_ptr<TsBitmapBase> blk_bitmap;
+  auto s = blk_span->block_->GetColBitmap(blk_col_idx, version_conv_->blk_attrs_, &blk_bitmap);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("GetColBitmap failed. col id [%u]", blk_col_idx);
     return s;
   }
-
-  bitmap.SetCount(blk_span->nrow_);
 
   char* allc_mem = reinterpret_cast<char*>(malloc(dest_type_size * blk_span->nrow_));
   if (allc_mem == nullptr) {
@@ -180,10 +181,12 @@ KStatus TSBlkDataTypeConvert::getColBitmapConverted(TsBlockSpan* blk_span, uint3
   memset(allc_mem, 0, dest_type_size * blk_span->nrow_);
   Defer defer([&]() { free(allc_mem); });
 
+  // bitmap.SetCount(blk_span->nrow_);
+  auto tmp_bitmap = std::make_unique<TsBitmap>(blk_span->nrow_);
   for (size_t i = 0; i < blk_span->nrow_; i++) {
     int block_row_idx = blk_span->start_row_ + i;
-    bitmap[i] = blk_bitmap[block_row_idx];
-    if (bitmap[i] != DataFlags::kValid) {
+    (*tmp_bitmap)[i] = blk_bitmap->At(block_row_idx);
+    if (tmp_bitmap->At(i) != DataFlags::kValid) {
       continue;
     }
     TSSlice orig_value;
@@ -195,9 +198,10 @@ KStatus TSBlkDataTypeConvert::getColBitmapConverted(TsBlockSpan* blk_span, uint3
     std::shared_ptr<void> new_mem;
     int err_code = ConvertDataTypeToMem(scan_idx, dest_type_size, orig_value.data, orig_value.len, &new_mem);
     if (err_code < 0) {
-      bitmap[i] = DataFlags::kNull;
+      (*tmp_bitmap)[i] = DataFlags::kNull;
     }
   }
+  *bitmap = std::move(tmp_bitmap);
   return KStatus::SUCCESS;
 }
 
@@ -233,27 +237,23 @@ KStatus TSBlkDataTypeConvert::GetVarPreMin(TsBlockSpan* blk_span, uint32_t scan_
 }
 
 KStatus TSBlkDataTypeConvert::GetFixLenColAddr(TsBlockSpan* blk_span, uint32_t scan_idx, char** value,
-  TsBitmap& bitmap, bool bitmap_required) {
+                                               std::unique_ptr<TsBitmapBase>* bitmap) {
   assert(blk_span->GetTableVersion() == block_version_);
   if (!IsColExist(scan_idx)) {
     *value = nullptr;
+    *bitmap = std::make_unique<TsUniformBitmap<DataFlags::kNull>>(blk_span->nrow_);
     return SUCCESS;
   }
 
   auto dest_attr = (*version_conv_->scan_attrs_)[scan_idx];
   uint32_t dest_type_size = dest_attr.size;
   auto blk_col_idx = version_conv_->blk_cols_extended_[scan_idx];
-  TsBitmap blk_bitmap;
+  std::unique_ptr<TsBitmapBase> blk_bitmap;
   if (!(*version_conv_->blk_attrs_)[scan_idx].isFlag(AINFO_NOT_NULL)) {
-    auto s = blk_span->block_->GetColBitmap(blk_col_idx, version_conv_->blk_attrs_, blk_bitmap);
+    auto s = blk_span->block_->GetColBitmap(blk_col_idx, version_conv_->blk_attrs_, &blk_bitmap);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("GetColBitmap failed. col id [%u]", blk_col_idx);
       return s;
-    }
-    bitmap.SetCount(blk_span->nrow_);
-  } else {
-    if (bitmap_required) {
-      bitmap.SetCount(blk_span->nrow_);
     }
   }
 
@@ -266,13 +266,12 @@ KStatus TSBlkDataTypeConvert::GetFixLenColAddr(TsBlockSpan* blk_span, uint32_t s
     }
     if (!(*version_conv_->blk_attrs_)[scan_idx].isFlag(AINFO_NOT_NULL)) {
       if (blk_span->start_row_ == 0 && blk_span->nrow_ == blk_span->block_->GetRowNum()) {
-        bitmap = blk_bitmap;
+        bitmap->swap(blk_bitmap);
       } else {
-        for (size_t i = 0; i < blk_span->nrow_; i++) {
-          DataFlags flag = blk_bitmap[blk_span->start_row_ + i];
-          bitmap[i] = flag;
-        }
+        *bitmap = blk_bitmap->Slice(blk_span->start_row_, blk_span->nrow_);
       }
+    } else {
+      *bitmap = std::make_unique<TsUniformBitmap<DataFlags::kValid>>(blk_span->nrow_);
     }
     *value = blk_value + dest_type_size * blk_span->start_row_;
   } else {
@@ -284,16 +283,17 @@ KStatus TSBlkDataTypeConvert::GetFixLenColAddr(TsBlockSpan* blk_span, uint32_t s
     memset(allc_mem, 0, dest_type_size * blk_span->nrow_);
     alloc_mems_.push_back(allc_mem);
 
+    auto tmp_bitmap = std::make_unique<TsBitmap>(blk_span->nrow_);
     for (size_t i = 0; i < blk_span->nrow_; i++) {
       if (!(*version_conv_->blk_attrs_)[scan_idx].isFlag(AINFO_NOT_NULL)) {
-        bitmap[i] = blk_bitmap[blk_span->start_row_ + i];
-        if (bitmap[i] != DataFlags::kValid) {
+        (*tmp_bitmap)[i] = blk_bitmap->At(blk_span->start_row_ + i);
+        if (tmp_bitmap->At(i) != DataFlags::kValid) {
           continue;
         }
       }
       TSSlice orig_value;
-      auto s = blk_span->block_->GetValueSlice(blk_span->start_row_ + i,
-        blk_col_idx, version_conv_->blk_attrs_, orig_value);
+      auto s =
+          blk_span->block_->GetValueSlice(blk_span->start_row_ + i, blk_col_idx, version_conv_->blk_attrs_, orig_value);
       if (s != KStatus::SUCCESS) {
         LOG_ERROR("GetValueSlice failed. rowidx[%lu] colid[%u]", blk_span->start_row_ + i, blk_col_idx);
         return s;
@@ -302,13 +302,14 @@ KStatus TSBlkDataTypeConvert::GetFixLenColAddr(TsBlockSpan* blk_span, uint32_t s
       int err_code = ConvertDataTypeToMem(scan_idx, dest_type_size, orig_value.data, orig_value.len, &new_mem);
       if (err_code < 0) {
         if (!(*version_conv_->blk_attrs_)[scan_idx].isFlag(AINFO_NOT_NULL)) {
-          bitmap[i] = DataFlags::kNull;
+          (*tmp_bitmap)[i] = DataFlags::kNull;
         }
       } else {
         memcpy(allc_mem + dest_type_size * i, new_mem.get(), dest_type_size);
       }
     }
     *value = allc_mem;
+    *bitmap = std::move(tmp_bitmap);
   }
   return KStatus::SUCCESS;
 }
@@ -320,19 +321,20 @@ KStatus TSBlkDataTypeConvert::GetVarLenTypeColAddr(TsBlockSpan* blk_span, uint32
   assert(isVarLenType(dest_type.type));
   assert(row_idx < blk_span->nrow_);
   assert(blk_span->GetTableVersion() == block_version_);
-  TsBitmap blk_bitmap;
-  auto s = blk_span->block_->GetColBitmap(blk_col_idx, version_conv_->blk_attrs_, blk_bitmap);
+  std::unique_ptr<TsBitmapBase> blk_bitmap;
+  auto s = blk_span->block_->GetColBitmap(blk_col_idx, version_conv_->blk_attrs_, &blk_bitmap);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("GetColBitmap failed. col id [%u]", blk_col_idx);
     return s;
   }
-  flag = blk_bitmap[blk_span->start_row_ + row_idx];
+  flag = blk_bitmap->At(blk_span->start_row_ + row_idx);
   if (flag != DataFlags::kValid) {
     data = {nullptr, 0};
     return KStatus::SUCCESS;
   }
   TSSlice orig_value;
-  s = blk_span->block_->GetValueSlice(blk_span->start_row_ + row_idx, blk_col_idx, version_conv_->blk_attrs_, orig_value);
+  s = blk_span->block_->GetValueSlice(blk_span->start_row_ + row_idx, blk_col_idx, version_conv_->blk_attrs_,
+                                      orig_value);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("GetValueSlice failed. rowidx[%u] colid[%u]", row_idx, blk_col_idx);
     return s;

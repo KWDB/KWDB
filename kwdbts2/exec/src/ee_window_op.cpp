@@ -23,7 +23,7 @@ namespace kwdbts {
 
 WindowOperator::WindowOperator(TsFetcherCollection* collection,
                                WindowerSpec* spec,
-                               TSPostProcessSpec* post, TABLE* table,
+                               PostProcessSpec* post, TABLE* table,
                                int32_t processor_id)
     : BaseOperator(collection, table, post, processor_id),
       spec_{spec},

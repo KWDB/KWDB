@@ -225,7 +225,7 @@ AND pzm.contract_email ='ningmeng0823@hotmail.com'
 AND pzm.contract_mobile=opcdata.channel);
            tree          |      field       |                            description
 -------------------------+------------------+---------------------------------------------------------------------
-                         | distributed      | false
+                         | distributed      | true
                          | vectorized       | false
   batch-lookup-join      |                  |
    │                     | type             | inner

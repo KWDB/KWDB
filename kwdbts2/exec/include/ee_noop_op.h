@@ -18,8 +18,8 @@
 
 namespace kwdbts {
 
-class TSPostProcessSpec;
-class TSNoopSpec;
+class PostProcessSpec;
+class NoopCoreSpec;
 
 /**
  * @brief
@@ -32,7 +32,7 @@ class NoopOperator : public BaseOperator {
    *
    * @param input
    */
-  NoopOperator(TsFetcherCollection* collection, TSNoopSpec *spec, TSPostProcessSpec *post,
+  NoopOperator(TsFetcherCollection* collection, NoopCoreSpec *spec, PostProcessSpec *post,
                TABLE *table, int32_t processor_id);
 
   NoopOperator(const NoopOperator& other, int32_t processor_id);
@@ -94,7 +94,7 @@ class NoopOperator : public BaseOperator {
 
 class PassThroughNoopOperaotr : public BaseOperator {
  public:
-  PassThroughNoopOperaotr(TsFetcherCollection* collection, TSNoopSpec *spec, TSPostProcessSpec *post,
+  PassThroughNoopOperaotr(TsFetcherCollection* collection, NoopCoreSpec *spec, PostProcessSpec *post,
                TABLE *table, int32_t processor_id);
 
   ~PassThroughNoopOperaotr() { }

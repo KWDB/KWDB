@@ -13,6 +13,7 @@
 #include "ee_global.h"
 #include "ee_pb_plan.pb.h"
 #include "ee_table.h"
+#include "ee_internal_type.h"
 #include "gtest/gtest.h"
 namespace kwdbts {
 class TestParserParam : public testing::Test {
@@ -26,7 +27,7 @@ class TestParserParam : public testing::Test {
   static void SetUpTestCase() {}
 
   static void TearDownTestCase() {}
-  void CreatePostProcessSpec(TSTagReaderSpec **spec, TSPostProcessSpec** post) {
+  void CreatePostProcessSpec(TSTagReaderSpec **spec, PostProcessSpec** post) {
     *spec = new TSTagReaderSpec();
     (*spec)->set_tableversion(1);
     TSCol* col0 = (*spec)->add_colmetas();
@@ -36,21 +37,22 @@ class TestParserParam : public testing::Test {
     col1->set_storage_type(roachpb::DataType::INT);
     col1->set_storage_len(4);
 
-    *post = KNEW TSPostProcessSpec();
+    *post = KNEW PostProcessSpec();
     (*post)->set_limit(3);
     (*post)->set_offset(1);
-    (*post)->set_filter(
-        "@2 + 3:::INT8 > 3:::INT8 AND @2 - 4:::INT8 < 5:::INT8 AND @2 == 4:::INT8 "
+    kwdbts::Expression *expr1 = new kwdbts::Expression();
+    expr1->set_expr("@2 + 3:::INT8 > 3:::INT8 AND @2 - 4:::INT8 < 5:::INT8 AND @2 == 4:::INT8 "
         "AND @2  != 'a ':::STRING AND"
         "@2 ^ 3:::INT8 > Function:::floor(@2)"
         " AND @2 % 4:::INT8 < "
         "5:::INT8 AND @2 == 4:::INT8 AND @2 LIKE 'a ':::STRING OR "
         "@2 / 2:::FLOAT >= 3:::INT8 OR @2 * 2:::INT8 <= 5:::INT8 AND @1 = "
         "'\\xbbffee':::BYTES");
-    (*post)->add_outputcols(0);
-    (*post)->add_outputcols(1);
-    (*post)->add_outputtypes(KWDBTypeFamily::IntFamily);
-    (*post)->add_outputtypes(KWDBTypeFamily::IntFamily);
+    (*post)->set_allocated_filter(expr1);
+    (*post)->add_output_columns(0);
+    (*post)->add_output_columns(1);
+    (*post)->add_output_types(MarshalToOutputType(KWDBTypeFamily::IntFamily, 4));
+    (*post)->add_output_types(MarshalToOutputType(KWDBTypeFamily::IntFamily, 4));
   }
   virtual void SetUp() {
     KDatabaseId schemaID = 1;
@@ -68,7 +70,7 @@ class TestParserParam : public testing::Test {
   }
   TABLE* table_{nullptr};
   TSTagReaderSpec *spec_{nullptr};
-  TSPostProcessSpec* post_{nullptr};
+  PostProcessSpec* post_{nullptr};
   Field* filter_{nullptr};
   Field** renders_{nullptr};
 };

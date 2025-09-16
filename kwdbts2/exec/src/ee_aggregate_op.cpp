@@ -21,7 +21,7 @@
 namespace kwdbts {
 
 BaseAggregator::BaseAggregator(TsFetcherCollection* collection, TSAggregatorSpec* spec,
-                                  TSPostProcessSpec* post, TABLE* table, int32_t processor_id)
+                                  PostProcessSpec* post, TABLE* table, int32_t processor_id)
     : BaseOperator(collection, table, post, processor_id),
       spec_{spec},
       param_(spec, post, table, this),
@@ -421,7 +421,7 @@ KStatus BaseAggregator::ResolveAggFuncs(kwdbContext_p ctx) {
           argIdx = agg.col_idx(1);
           storage_type = input_fields[argIdx]->get_storage_type();
         } else if (agg.col_idx_size() > 0) {
-          TSAggregatorSpec_Expression a = agg.arguments(0);
+          Expression a = agg.arguments(0);
           string s = *a.mutable_expr();
           if (s.find_first_of("(") == string::npos) {
             const_val = atof(s.substr(0, s.find_first_of(":::")).c_str());
@@ -463,7 +463,7 @@ KStatus BaseAggregator::ResolveAggFuncs(kwdbContext_p ctx) {
         k_uint32 len = param_.aggs_[i]->get_storage_length();
         string time = "'00:00:00.001':::INTERVAL";
         if (agg.arguments_size() > 0) {
-          TSAggregatorSpec_Expression a = agg.arguments(0);
+          Expression a = agg.arguments(0);
           time = *a.mutable_expr();
         }
         agg_func = make_unique<ElapsedAggregate>(i, argIdx, time, input_fields[argIdx]->get_storage_type(), len);
@@ -1068,7 +1068,7 @@ BaseOperator* HashAggregateOperator::Clone() {
 
 OrderedAggregateOperator::OrderedAggregateOperator(TsFetcherCollection* collection,
                                                    TSAggregatorSpec* spec,
-                                                   TSPostProcessSpec* post,
+                                                   PostProcessSpec* post,
                                                    TABLE* table,
                                                    int32_t processor_id)
     : BaseAggregator(collection, spec, post, table, processor_id) {

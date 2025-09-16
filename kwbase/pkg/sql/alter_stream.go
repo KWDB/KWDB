@@ -76,7 +76,7 @@ func (n *alterStreamNode) startExec(params runParams) (err error) {
 	}
 
 	if job != nil {
-		currentStatus, err = job.CurrentStatus(params.ctx)
+		currentStatus, err = job.WithTxn(params.p.txn).CurrentStatus(params.ctx)
 		if err != nil {
 			return err
 		}
@@ -100,7 +100,7 @@ func (n *alterStreamNode) startExec(params runParams) (err error) {
 				return nil
 			}
 		} else {
-			if job != nil && !job.CheckTerminalStatus(params.ctx) {
+			if job != nil && !job.WithTxn(params.p.txn).CheckTerminalStatus(params.ctx) {
 				return errors.Errorf("stream %q is stopping, current status is %q.", n.name, currentStatus)
 			}
 
@@ -161,7 +161,7 @@ func (n *alterStreamNode) startExec(params runParams) (err error) {
 			false)
 
 		// stop the running stream job
-		status, err := job.CurrentStatus(params.ctx)
+		status, err := job.WithTxn(params.p.txn).CurrentStatus(params.ctx)
 		if err != nil {
 			return err
 		}
@@ -186,7 +186,7 @@ func (n *alterStreamNode) startExec(params runParams) (err error) {
 
 	// alter status 'off' to 'on'
 	if parameters.Options.Enable == sqlutil.StreamOptOn {
-		if job != nil && !job.CheckTerminalStatus(params.ctx) {
+		if job != nil && !job.WithTxn(params.p.txn).CheckTerminalStatus(params.ctx) {
 			return errors.Errorf("stream %q is running, current status is %s.", n.name, currentStatus)
 		}
 

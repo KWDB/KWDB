@@ -121,16 +121,16 @@ TEST_F(TsEntitySegmentTest, simpleInsert) {
         while (!block_spans.empty()) {
           auto block_span = block_spans.front();
           block_spans.pop_front();
-          TsBitmap bitmap;
+          std::unique_ptr<TsBitmapBase> bitmap;
           char *ts_col;
-          s = block_span->GetFixLenColAddr(0, &ts_col, bitmap);
+          s = block_span->GetFixLenColAddr(0, &ts_col, &bitmap);
           std::vector<char *> col_values;
           col_values.resize(3);
-          s = block_span->GetFixLenColAddr(1, &col_values[0], bitmap);
+          s = block_span->GetFixLenColAddr(1, &col_values[0], &bitmap);
           EXPECT_EQ(s, KStatus::SUCCESS);
-          s = block_span->GetFixLenColAddr(2, &col_values[1], bitmap);
+          s = block_span->GetFixLenColAddr(2, &col_values[1], &bitmap);
           EXPECT_EQ(s, KStatus::SUCCESS);
-          s = block_span->GetFixLenColAddr(3, &col_values[2], bitmap);
+          s = block_span->GetFixLenColAddr(3, &col_values[2], &bitmap);
           EXPECT_EQ(s, KStatus::SUCCESS);
           for (int idx = 0; idx < block_span->GetRowNum(); ++idx) {
             EXPECT_EQ(block_span->GetTS(idx), 500 + row_idx + idx);
@@ -167,17 +167,17 @@ TEST_F(TsEntitySegmentTest, simpleInsert) {
         while (!block_spans.empty()) {
           auto block_span = block_spans.front();
           block_spans.pop_front();
-          TsBitmap bitmap;
+          std::unique_ptr<TsBitmapBase> bitmap;
           char *ts_col;
-          s = block_span->GetFixLenColAddr(0, &ts_col, bitmap);
+          s = block_span->GetFixLenColAddr(0, &ts_col, &bitmap);
           EXPECT_EQ(s, KStatus::SUCCESS);
           std::vector<char *> col_values;
           col_values.resize(3);
-          s = block_span->GetFixLenColAddr(1, &col_values[0], bitmap);
+          s = block_span->GetFixLenColAddr(1, &col_values[0], &bitmap);
           EXPECT_EQ(s, KStatus::SUCCESS);
-          s = block_span->GetFixLenColAddr(2, &col_values[1], bitmap);
+          s = block_span->GetFixLenColAddr(2, &col_values[1], &bitmap);
           EXPECT_EQ(s, KStatus::SUCCESS);
-          s = block_span->GetFixLenColAddr(3, &col_values[2], bitmap);
+          s = block_span->GetFixLenColAddr(3, &col_values[2], &bitmap);
           EXPECT_EQ(s, KStatus::SUCCESS);
           for (int idx = 0; idx < block_span->GetRowNum(); ++idx) {
             EXPECT_EQ(block_span->GetTS(idx), 123 + row_idx + idx);
@@ -210,16 +210,16 @@ TEST_F(TsEntitySegmentTest, simpleInsert) {
         while (!block_spans.empty()) {
           auto block_span = block_spans.front();
           block_spans.pop_front();
-          TsBitmap bitmap;
+          std::unique_ptr<TsBitmapBase> bitmap;
           char *ts_col;
-          s = block_span->GetFixLenColAddr(0, &ts_col, bitmap);
+          s = block_span->GetFixLenColAddr(0, &ts_col, &bitmap);
           std::vector<char *> col_values;
           col_values.resize(3);
-          s = block_span->GetFixLenColAddr(1, &col_values[0], bitmap);
+          s = block_span->GetFixLenColAddr(1, &col_values[0], &bitmap);
           EXPECT_EQ(s, KStatus::SUCCESS);
-          s = block_span->GetFixLenColAddr(2, &col_values[1], bitmap);
+          s = block_span->GetFixLenColAddr(2, &col_values[1], &bitmap);
           EXPECT_EQ(s, KStatus::SUCCESS);
-          s = block_span->GetFixLenColAddr(3, &col_values[2], bitmap);
+          s = block_span->GetFixLenColAddr(3, &col_values[2], &bitmap);
           EXPECT_EQ(s, KStatus::SUCCESS);
           for (int idx = 0; idx < block_span->GetRowNum(); ++idx) {
             EXPECT_EQ(block_span->GetTS(idx), 123 + row_idx + idx);
@@ -368,17 +368,17 @@ TEST_F(TsEntitySegmentTest, simpleInsertDoubleCompact) {
         while (!block_spans.empty()) {
           auto block_span = block_spans.front();
           block_spans.pop_front();
-          TsBitmap bitmap;
+          std::unique_ptr<TsBitmapBase> bitmap;
           char *ts_col;
-          s = block_span->GetFixLenColAddr(0, &ts_col, bitmap);
+          s = block_span->GetFixLenColAddr(0, &ts_col, &bitmap);
           std::vector<char *> col_values;
           col_values.resize(metric_schema->size() - 1);
-          s = block_span->GetFixLenColAddr(1, &col_values[0], bitmap);
+          s = block_span->GetFixLenColAddr(1, &col_values[0], &bitmap);
           if (i % 2 == 0) {
             EXPECT_EQ(s, KStatus::SUCCESS);
-            s = block_span->GetFixLenColAddr(2, &col_values[1], bitmap);
+            s = block_span->GetFixLenColAddr(2, &col_values[1], &bitmap);
             EXPECT_EQ(s, KStatus::SUCCESS);
-            s = block_span->GetFixLenColAddr(3, &col_values[2], bitmap);
+            s = block_span->GetFixLenColAddr(3, &col_values[2], &bitmap);
             EXPECT_EQ(s, KStatus::SUCCESS);
           }
           for (int idx = 0; idx < block_span->GetRowNum(); ++idx) {
@@ -417,18 +417,18 @@ TEST_F(TsEntitySegmentTest, simpleInsertDoubleCompact) {
         while (!block_spans.empty()) {
           auto block_span = block_spans.front();
           block_spans.pop_front();
-          TsBitmap bitmap;
+          std::unique_ptr<TsBitmapBase> bitmap;
           char *ts_col;
-          s = block_span->GetFixLenColAddr(0, &ts_col, bitmap);
+          s = block_span->GetFixLenColAddr(0, &ts_col, &bitmap);
           EXPECT_EQ(s, KStatus::SUCCESS);
           std::vector<char *> col_values;
           col_values.resize(metric_schema->size() - 1);
-          s = block_span->GetFixLenColAddr(1, &col_values[0], bitmap);
+          s = block_span->GetFixLenColAddr(1, &col_values[0], &bitmap);
           EXPECT_EQ(s, KStatus::SUCCESS);
           if (i % 2 == 0) {
-            s = block_span->GetFixLenColAddr(2, &col_values[1], bitmap);
+            s = block_span->GetFixLenColAddr(2, &col_values[1], &bitmap);
             EXPECT_EQ(s, KStatus::SUCCESS);
-            s = block_span->GetFixLenColAddr(3, &col_values[2], bitmap);
+            s = block_span->GetFixLenColAddr(3, &col_values[2], &bitmap);
             EXPECT_EQ(s, KStatus::SUCCESS);
           }
           for (int idx = 0; idx < block_span->GetRowNum(); ++idx) {
@@ -468,17 +468,17 @@ TEST_F(TsEntitySegmentTest, simpleInsertDoubleCompact) {
         while (!block_spans.empty()) {
           auto block_span = block_spans.front();
           block_spans.pop_front();
-          TsBitmap bitmap;
+          std::unique_ptr<TsBitmapBase> bitmap;
           char *ts_col;
-          s = block_span->GetFixLenColAddr(0, &ts_col, bitmap);
+          s = block_span->GetFixLenColAddr(0, &ts_col, &bitmap);
           std::vector<char *> col_values;
           col_values.resize(metric_schema->size() - 1);
-          s = block_span->GetFixLenColAddr(1, &col_values[0], bitmap);
+          s = block_span->GetFixLenColAddr(1, &col_values[0], &bitmap);
           EXPECT_EQ(s, KStatus::SUCCESS);
           if (i % 2 == 0) {
-            s = block_span->GetFixLenColAddr(2, &col_values[1], bitmap);
+            s = block_span->GetFixLenColAddr(2, &col_values[1], &bitmap);
             EXPECT_EQ(s, KStatus::SUCCESS);
-            s = block_span->GetFixLenColAddr(3, &col_values[2], bitmap);
+            s = block_span->GetFixLenColAddr(3, &col_values[2], &bitmap);
             EXPECT_EQ(s, KStatus::SUCCESS);
           }
           for (int idx = 0; idx < block_span->GetRowNum(); ++idx) {

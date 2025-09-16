@@ -20,7 +20,7 @@ class TSReaderSpec;
 
 class TsTableScanParser : public TsScanParser {
  public:
-  TsTableScanParser(TSReaderSpec* spec, TSPostProcessSpec* post, TABLE* table);
+  TsTableScanParser(TSReaderSpec* spec, PostProcessSpec* post, TABLE* table);
 
   EEIteratorErrCode ParserScanCols(kwdbContext_p ctx);
 

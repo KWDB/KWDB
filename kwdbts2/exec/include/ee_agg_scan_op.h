@@ -30,7 +30,7 @@ namespace kwdbts {
 // AggTableScanOperator is used by agg op
 class AggTableScanOperator : public TableScanOperator {
  public:
-  AggTableScanOperator(TsFetcherCollection* collection, TSReaderSpec* spec, TSPostProcessSpec* post,
+  AggTableScanOperator(TsFetcherCollection* collection, TSReaderSpec* spec, PostProcessSpec* post,
                        TABLE* table, int32_t processor_id)
       : TableScanOperator(collection, spec, post, table, processor_id),
         aggregation_spec_(spec->aggregator()),
@@ -175,7 +175,7 @@ class AggTableScanOperator : public TableScanOperator {
   // Aggregate spec
   std::vector<TSAggregatorSpec_Aggregation> aggregations_;
   const TSAggregatorSpec& aggregation_spec_;
-  const TSPostProcessSpec& aggregation_post_;
+  const PostProcessSpec& aggregation_post_;
   k_uint32* agg_source_target_col_map_{nullptr};
 
   Field** agg_renders_{nullptr};  // agg operator projection column

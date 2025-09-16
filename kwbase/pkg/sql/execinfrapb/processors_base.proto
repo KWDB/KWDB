@@ -73,12 +73,6 @@ message PostProcessSpec {
 
   // Output column type
   repeated bytes output_types = 7 [(gogoproto.nullable) = false, (gogoproto.customtype) = "gitee.com/kwbasedb/kwbase/pkg/sql/types.T"];
-
-  // fiter for ae exec.
-  optional Expression filter_ts = 8 [(gogoproto.nullable) = false];
-
-  // render_exprs for ae exec.
-  repeated Expression render_exprs_ts = 9 [(gogoproto.nullable) = false];
 }
 
 message Columns {

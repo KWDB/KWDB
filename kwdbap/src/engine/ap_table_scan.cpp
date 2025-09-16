@@ -32,8 +32,8 @@
 namespace kwdbap {
 
 PhyOpRef TransFormPlan::TransFormTableScan(
-    const kwdbts::ProcessorSpec &procSpec, const kwdbts::PostProcessSpec &post,
-    const kwdbts::ProcessorCoreUnion &core) {
+    const kwdbts::TSProcessorSpec &procSpec, const kwdbts::PostProcessSpec &post,
+    const kwdbts::TSProcessorCoreUnion &core) {
   const auto &apReader = core.aptablereader();
   if (post.output_columns_size() > 0 &&
       post.output_columns_size() != post.output_types_size()) {

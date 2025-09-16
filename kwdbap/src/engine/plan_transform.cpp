@@ -37,8 +37,8 @@ TransFormPlan::TransFormPlan(duckdb::ClientContext& context, duckdb::PhysicalPla
   physical_plan_ = plan;
 }
 
-PhyOpRef TransFormPlan::TransFormPhysicalPlan(const ProcessorSpec& procSpec, const PostProcessSpec& post,
-                                              const ProcessorCoreUnion& core, PhyOpRefVec &child) {
+PhyOpRef TransFormPlan::TransFormPhysicalPlan(const TSProcessorSpec& procSpec, const PostProcessSpec& post,
+                                              const TSProcessorCoreUnion& core, PhyOpRefVec &child) {
   // New operator by type
   if (core.has_aptablereader()) {
     return TransFormTableScan(procSpec, post, core);

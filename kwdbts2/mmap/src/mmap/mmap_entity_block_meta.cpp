@@ -14,7 +14,6 @@
 #include <mmap/mmap_entity_block_meta.h>
 #include <mmap/mmap_segment_table.h>
 #include "utils/string_utils.h"
-#include "utils/compress_utils.h"
 #include "ts_common.h"
 #include "st_config.h"
 #include "sys_utils.h"

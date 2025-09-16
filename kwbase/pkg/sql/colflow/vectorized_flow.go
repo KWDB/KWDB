@@ -246,11 +246,19 @@ func (f *vectorizedFlow) Setup(
 		diskQueueCfg,
 		f.countingSemaphore,
 	)
-	creator.tsInfo.IsDist = spec.TsInfo.IsDist
 	if f.testingKnobs.onSetupFlow != nil {
 		f.testingKnobs.onSetupFlow(creator)
 	}
-	_, err = creator.setupFlow(ctx, f.GetFlowCtx(), spec.Processors, spec.TsProcessors, opt)
+	tsProcessors := make([]execinfrapb.ProcessorSpec, 0)
+	relProcessors := make([]execinfrapb.ProcessorSpec, 0)
+	for _, p := range spec.Processors {
+		if p.ExecInTSEngine() {
+			tsProcessors = append(tsProcessors, p)
+		} else {
+			relProcessors = append(relProcessors, p)
+		}
+	}
+	_, err = creator.setupFlow(ctx, f.GetFlowCtx(), relProcessors, tsProcessors, opt)
 	if err == nil {
 		f.operatorConcurrency = creator.operatorConcurrency
 		f.streamingMemAccounts = append(f.streamingMemAccounts, creator.streamingMemAccounts...)
@@ -792,7 +800,7 @@ func (s *vectorizedFlowCreator) setupInput(
 	ctx context.Context,
 	flowCtx *execinfra.FlowCtx,
 	input execinfrapb.InputSyncSpec,
-	tsProcessorSpecs []execinfrapb.TSProcessorSpec,
+	tsProcessorSpecs []execinfrapb.ProcessorSpec,
 	opt flowinfra.FuseOpt,
 ) (op colexec.Operator, _ []execinfrapb.MetadataSource, _ error) {
 	inputStreamOps := make([]colexec.Operator, 0, len(input.Streams))
@@ -1031,7 +1039,7 @@ func (s *vectorizedFlowCreator) setupFlow(
 	ctx context.Context,
 	flowCtx *execinfra.FlowCtx,
 	processorSpecs []execinfrapb.ProcessorSpec,
-	tsProcessorSpecs []execinfrapb.TSProcessorSpec,
+	tsProcessorSpecs []execinfrapb.ProcessorSpec,
 	opt flowinfra.FuseOpt,
 ) (leaves []execinfra.OpNode, err error) {
 	if vecErr := execerror.CatchVectorizedRuntimeError(func() {
@@ -1337,7 +1345,7 @@ func SupportsVectorized(
 	ctx context.Context,
 	flowCtx *execinfra.FlowCtx,
 	processorSpecs []execinfrapb.ProcessorSpec,
-	tsProcessorSpecs []execinfrapb.TSProcessorSpec,
+	tsProcessorSpecs []execinfrapb.ProcessorSpec,
 	fuseOpt flowinfra.FuseOpt,
 	output execinfra.RowReceiver,
 ) (leaves []execinfra.OpNode, err error) {

@@ -22,9 +22,10 @@
 #include "ts_coding.h"
 #include "ts_compressor.h"
 namespace kwdbts {
-void TsColumnBlockBuilder::AppendFixLenData(TSSlice data, int count, const TsBitmap& bitmap) {
-  assert(count == bitmap.GetCount());
-  bitmap_ += bitmap;
+void TsColumnBlockBuilder::AppendFixLenData(TSSlice data, int count, const TsBitmapBase* bitmap) {
+  assert(bitmap != nullptr);
+  assert(count == bitmap->GetCount());
+  bitmap_.Append(bitmap);
   assert(!isVarLenType(col_schema_.type));
   fixlen_data_.append(data.data, data.len);
   count_ += count;
@@ -53,12 +54,14 @@ void TsColumnBlockBuilder::AppendColumnBlock(TsColumnBlock& col) {
   } else {
     this->fixlen_data_.append(col.fixlen_guard_.AsStringView());
   }
-  bitmap_ += TsBitmap{col.bitmap_guard_.AsSlice(), col.count_};
+
+  TsBitmapView bv{col.bitmap_guard_.AsSlice(), col.count_};
+  bitmap_.Append(&bv);
   count_ += col.GetRowNum();
 }
 
-KStatus TsColumnBlock::GetColBitmap(TsBitmap& bitmap) {
-  bitmap = TsBitmap{bitmap_guard_.AsSlice(), count_};
+KStatus TsColumnBlock::GetColBitmap(std::unique_ptr<TsBitmapBase>* bitmap) const {
+  *bitmap = std::make_unique<TsBitmapView>(bitmap_guard_.AsSlice(), count_);
   return SUCCESS;
 }
 

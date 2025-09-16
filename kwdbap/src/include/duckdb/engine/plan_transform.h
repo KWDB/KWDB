@@ -36,15 +36,15 @@ class TransFormPlan {
                          duckdb::PhysicalPlan *plan, std::string &db_path);
   ~TransFormPlan() = default;
 
-  PhyOpRef TransFormPhysicalPlan(const kwdbts::ProcessorSpec &procSpec,
+  PhyOpRef TransFormPhysicalPlan(const kwdbts::TSProcessorSpec &procSpec,
                                  const kwdbts::PostProcessSpec &post,
-                                 const kwdbts::ProcessorCoreUnion &core,
+                                 const kwdbts::TSProcessorCoreUnion &core,
                                  PhyOpRefVec &child);
 
  private:
-  PhyOpRef TransFormTableScan(const kwdbts::ProcessorSpec &procSpec,
+  PhyOpRef TransFormTableScan(const kwdbts::TSProcessorSpec &procSpec,
                               const kwdbts::PostProcessSpec &post,
-                              const kwdbts::ProcessorCoreUnion &core);
+                              const kwdbts::TSProcessorCoreUnion &core);
 
   duckdb::vector<duckdb::unique_ptr<duckdb::Expression>> BuildAPExpr(const std::string &str, ParseExprParam& param);
 
@@ -61,7 +61,7 @@ class TransFormPlan {
       ParseExprParam &param, std::unordered_set<idx_t> &scan_filter_idx, bool &all_filter_push_scan);
 
   PhyOpRef TransFormAggregator(const kwdbts::PostProcessSpec &post,
-                               const kwdbts::ProcessorCoreUnion &core,
+                               const kwdbts::TSProcessorCoreUnion &core,
                                PhyOpRef child);
 
   PhyOpRef AddAPProjection(PhyOpRef plan, const kwdbts::PostProcessSpec &post, ParseExprParam &param);

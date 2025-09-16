@@ -80,7 +80,7 @@ const vector<unique_ptr<duckdb::Expression>> &children) {
 //     return proj;
 // }
 
-PhyOpRef TransFormPlan::TransFormAggregator(const kwdbts::PostProcessSpec& post, const kwdbts::ProcessorCoreUnion& core,
+PhyOpRef TransFormPlan::TransFormAggregator(const kwdbts::PostProcessSpec& post, const kwdbts::TSProcessorCoreUnion& core,
                                             PhyOpRef child) {
   auto apAggregator = core.aggregator();
   auto &table_scan = child.Cast<PhysicalTableScan>();

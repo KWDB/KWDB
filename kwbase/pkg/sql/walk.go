@@ -296,7 +296,9 @@ func (v *planVisitor) visitInternal(plan planNode, name string) {
 				colCount := n.Table.ColumnCount()
 				for i := 0; i < colCount; i++ {
 					if n.Table.Column(i).ColID() == cat.StableID(*fil.ColID) {
-						v.observer.attr(name, fmt.Sprintf("block filter[%s]", n.Table.Column(i).ColName()), execinfrapb.PrintBlockFilter(*fil))
+						if v.observer.attr != nil {
+							v.observer.attr(name, fmt.Sprintf("block filter[%s]", n.Table.Column(i).ColName()), execinfrapb.PrintBlockFilter(*fil))
+						}
 						break
 					}
 				}
@@ -325,7 +327,9 @@ func (v *planVisitor) visitInternal(plan planNode, name string) {
 			for i, r := range n.render {
 				exprStr := r.String()
 				colName := n.columns[i].Name
-				v.observer.attr(name, colName, fmt.Sprintf(exprStr))
+				if v.observer.attr != nil {
+					v.observer.attr(name, colName, fmt.Sprintf(exprStr))
+				}
 				v.metadataExpr(name, "render", i, r)
 			}
 		}
@@ -376,12 +380,14 @@ func (v *planVisitor) visitInternal(plan planNode, name string) {
 			}
 		}
 		b.WriteByte(')')
-		v.observer.attr(name, "equality", b.String())
-		if n.eqColsAreKey {
-			v.observer.attr(name, "equality cols are key", "")
-		}
-		if n.CanParallelize() {
-			v.observer.attr(name, "parallel", "")
+		if v.observer.attr != nil {
+			v.observer.attr(name, "equality", b.String())
+			if n.eqColsAreKey {
+				v.observer.attr(name, "equality cols are key", "")
+			}
+			if n.CanParallelize() {
+				v.observer.attr(name, "parallel", "")
+			}
 		}
 		if v.observer.expr != nil && n.onCond != nil && n.onCond != tree.DBoolTrue {
 			v.expr(name, "pred", -1, n.onCond)
@@ -490,19 +496,23 @@ func (v *planVisitor) visitInternal(plan planNode, name string) {
 
 	case *limitNode:
 		if v.observer.expr != nil {
-			if n.engine == tree.EngineTypeTimeseries {
-				v.observer.attr(name, "engine type", "time series")
-			}
-			if n.pushLimitToAggScan {
-				v.observer.attr(name, "pushLimitToAggScan", "true")
+			if v.observer.attr != nil {
+				if n.engine == tree.EngineTypeTimeseries {
+					v.observer.attr(name, "engine type", "time series")
+				}
+				if n.pushLimitToAggScan {
+					v.observer.attr(name, "pushLimitToAggScan", "true")
+				}
 			}
 			v.expr(name, "count", -1, n.countExpr)
 			v.expr(name, "offset", -1, n.offsetExpr)
 			if n.canOpt {
-				if n.offsetExpr != nil {
-					v.observer.attr(name, "useOffsetOptimize", "true")
-				} else {
-					v.observer.attr(name, "useSorterScan", "true")
+				if v.observer.attr != nil {
+					if n.offsetExpr != nil {
+						v.observer.attr(name, "useOffsetOptimize", "true")
+					} else {
+						v.observer.attr(name, "useSorterScan", "true")
+					}
 				}
 			}
 		}
@@ -513,11 +523,12 @@ func (v *planVisitor) visitInternal(plan planNode, name string) {
 
 	case *distinctNode:
 		if v.observer.attr == nil {
+			n.plan = v.visit(n.plan)
+			break
+		} else {
 			if n.engine == tree.EngineTypeTimeseries {
 				v.observer.attr(name, engineType, ts)
 			}
-			n.plan = v.visit(n.plan)
-			break
 		}
 
 		if !n.distinctOnColIdxs.Empty() {
@@ -529,12 +540,14 @@ func (v *planVisitor) visitInternal(plan planNode, name string) {
 				buf.WriteString(columns[col].Name)
 				prefix = ", "
 			})
-			v.observer.attr(name, "distinct on", buf.String())
-			if n.nullsAreDistinct {
-				v.observer.attr(name, "nulls are distinct", "")
-			}
-			if n.errorOnDup != "" {
-				v.observer.attr(name, "error on duplicate", "")
+			if v.observer.attr != nil {
+				v.observer.attr(name, "distinct on", buf.String())
+				if n.nullsAreDistinct {
+					v.observer.attr(name, "nulls are distinct", "")
+				}
+				if n.errorOnDup != "" {
+					v.observer.attr(name, "error on duplicate", "")
+				}
 			}
 		}
 
@@ -547,7 +560,9 @@ func (v *planVisitor) visitInternal(plan planNode, name string) {
 				buf.WriteString(columns[i].Name)
 				prefix = ", "
 			}
-			v.observer.attr(name, "order key", buf.String())
+			if v.observer.attr != nil {
+				v.observer.attr(name, "order key", buf.String())
+			}
 		}
 
 		n.plan = v.visit(n.plan)
@@ -656,7 +671,9 @@ func (v *planVisitor) visitInternal(plan planNode, name string) {
 		n.rows = v.visit(n.rows)
 
 	case *tsInsertSelectNode:
-		v.observer.attr(name, "into", n.TableName)
+		if v.observer.attr != nil {
+			v.observer.attr(name, "into", n.TableName)
+		}
 		n.plan = v.visit(n.plan)
 
 	case *insertNode, *insertFastPathNode:

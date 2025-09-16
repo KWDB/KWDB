@@ -131,6 +131,9 @@ class TsTableV2Impl : public TsTable {
 
   KStatus GetLastRowEntity(kwdbContext_p ctx, EntityResultIndex& entity_id, timestamp64& entity_last_ts) override;
 
+  KStatus GetLastRowBatch(kwdbContext_p ctx, uint32_t table_version, std::vector<uint32_t> scan_cols,
+                          ResultSet* res, k_uint32* count, bool& valid) override;
+
   KStatus DropNormalTagIndex(kwdbContext_p ctx, const uint64_t transaction_id,
                              const uint32_t cur_version, const uint32_t new_version, const uint64_t index_id) override;
 
@@ -202,6 +205,16 @@ class TsTableV2Impl : public TsTable {
 
   KStatus undoAlterTable(kwdbContext_p ctx, AlterType alter_type, roachpb::KWDBKTSColumn* column, uint32_t cur_version,
     uint32_t new_version) override;
+
+  static KStatus GetColAttributeInfo(kwdbContext_p ctx, const roachpb::KWDBKTSColumn& col, AttributeInfo& attr_info,
+    bool first_col);
+
+  KStatus GetMetricColumnInfo(kwdbContext_p ctx, struct AttributeInfo& attr_info, roachpb::KWDBKTSColumn& col);
+
+  KStatus GetTagColumnInfo(kwdbContext_p ctx, struct TagInfo& tag_info, roachpb::KWDBKTSColumn& col);
+
+  KStatus GenerateMetaSchema(kwdbContext_p ctx, roachpb::CreateTsTable* meta,
+    const std::vector<AttributeInfo>& metric_schema, std::vector<TagInfo>& tag_schema, uint32_t schema_version) override;
 };
 
 }  // namespace kwdbts

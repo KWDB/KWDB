@@ -62,6 +62,13 @@ TsVGroup::TsVGroup(EngineOptions* engine_options, uint32_t vgroup_id, TsEngineSc
 TsVGroup::~TsVGroup() {
   enable_compact_thread_ = false;
   closeCompactThread();
+  for (auto it : entity_latest_row_) {
+    char* last_payload_data = it.second.last_payload.data;
+    if (last_payload_data != nullptr) {
+      free(last_payload_data);
+      last_payload_data = nullptr;
+    }
+  }
 }
 
 KStatus TsVGroup::Init(kwdbContext_p ctx) {
@@ -327,17 +334,15 @@ KStatus TsVGroup::GetLastRowEntity(kwdbContext_p ctx, std::shared_ptr<TsTableSch
       return KStatus::SUCCESS;
     }
   }
+  uint32_t db_id = table_schema_mgr->GetDbID();
   DATATYPE ts_col_type = table_schema_mgr->GetTsColDataType();
-  uint32_t db_id = GetEngineSchemaMgr()->GetDBIDByTableID(table_id);
   auto current = CurrentVersion();
   auto ts_partitions = current->GetPartitions(db_id, {{INT64_MIN, INT64_MAX}}, ts_col_type);
-  {
+  if (ts_partitions.empty()) {
     std::unique_lock<std::shared_mutex> lock(last_row_entity_mutex_);
-    if (ts_partitions.empty()) {
-      last_row_entity = {INT64_MIN, 0};
-      last_row_entity_checked_[table_id] = true;
-      return KStatus::SUCCESS;
-    }
+    last_row_entity = {INT64_MIN, 0};
+    last_row_entity_checked_[table_id] = true;
+    return KStatus::SUCCESS;
   }
   bool last_row_found = false;
   // TODO(liumengzhen) : set correct lsn
@@ -402,29 +407,28 @@ KStatus TsVGroup::GetEntityLastRow(std::shared_ptr<TsTableSchemaManager>& table_
       return KStatus::SUCCESS;
     }
     if (entity_latest_row_checked_[entity_id] == TsEntityLatestRowStatus::Valid
-        && checkTimestampWithSpans(ts_spans, entity_latest_row_[entity_id],
-                                   entity_latest_row_[entity_id]) != TimestampCheckResult::NonOverlapping) {
-      entity_last_ts = entity_latest_row_[entity_id];
+        && checkTimestampWithSpans(ts_spans, entity_latest_row_[entity_id].last_ts,
+                                   entity_latest_row_[entity_id].last_ts) != TimestampCheckResult::NonOverlapping) {
+      entity_last_ts = entity_latest_row_[entity_id].last_ts;
       return KStatus::SUCCESS;
     }
   }
+  uint32_t db_id = table_schema_mgr->GetDbID();
   KTableKey table_id = table_schema_mgr->GetTableId();
   DATATYPE ts_col_type = table_schema_mgr->GetTsColDataType();
-  uint32_t db_id = GetEngineSchemaMgr()->GetDBIDByTableID(table_id);
   auto current = CurrentVersion();
   auto ts_partitions = current->GetPartitions(db_id, {{INT64_MIN, INT64_MAX}}, ts_col_type);
   if (ts_partitions.empty()) {
     std::unique_lock<std::shared_mutex> lock(entity_latest_row_mutex_);
     entity_latest_row_checked_[entity_id] = TsEntityLatestRowStatus::Valid;
-    entity_latest_row_[entity_id] = INT64_MIN;
+    entity_latest_row_[entity_id].last_ts = INT64_MIN;
     return KStatus::SUCCESS;
   }
 
   // TODO(liumengzhen) : set correct lsn
   TS_LSN scan_lsn = UINT64_MAX;
   std::vector<KwTsSpan> spans = {{INT64_MIN, INT64_MAX}};
-  TsScanFilterParams filter{db_id, table_id, vgroup_id_, entity_id, ts_col_type,
-                            scan_lsn, spans};
+  TsScanFilterParams filter{db_id, table_id, vgroup_id_, entity_id, ts_col_type, scan_lsn, spans};
   std::shared_ptr<TsBlockSpan> last_block_span = nullptr;
   std::shared_ptr<MMapMetricsTable> metric_schema = table_schema_mgr->GetCurrentMetricsTable();
   for (int i = ts_partitions.size() - 1; i >= 0; --i) {
@@ -437,32 +441,133 @@ KStatus TsVGroup::GetEntityLastRow(std::shared_ptr<TsTableSchemaManager>& table_
     }
     if (ts_block_spans.empty()) continue;
 
-    TsBlockSpanSortedIterator iter(ts_block_spans, EngineOptions::g_dedup_rule);
-    iter.Init();
-    bool is_finished = false;
-    std::shared_ptr<TsBlockSpan> dedup_block_span;
-    std::vector<shared_ptr<TsBlockSpan>> sorted_ts_block_spans;
-    while (iter.Next(dedup_block_span, &is_finished) == KStatus::SUCCESS && !is_finished) {
-      sorted_ts_block_spans.push_back(dedup_block_span);
+    timestamp64 last_ts = INT64_MIN;
+    while (!ts_block_spans.empty()) {
+      auto block_span = ts_block_spans.front();
+      ts_block_spans.pop_front();
+      timestamp64 cur_ts = block_span->GetLastTS();
+      if (cur_ts > last_ts) {
+        last_ts = cur_ts;
+        last_block_span.swap(block_span);
+      }
     }
-    ts_block_spans.clear();
-    dedup_block_span.reset();
-
-    last_block_span = sorted_ts_block_spans.back();
-    sorted_ts_block_spans.clear();
     break;
   }
   if (last_block_span != nullptr) {
     std::unique_lock<std::shared_mutex> lock(entity_latest_row_mutex_);
-    if (!entity_latest_row_.count(entity_id) || last_block_span->GetLastTS() >= entity_latest_row_[entity_id]) {
-      entity_latest_row_[entity_id] = last_block_span->GetLastTS();
+    if (!entity_latest_row_.count(entity_id) || last_block_span->GetLastTS() >= entity_latest_row_[entity_id].last_ts) {
+      entity_latest_row_[entity_id].last_ts = last_block_span->GetLastTS();
       entity_latest_row_checked_[entity_id] = TsEntityLatestRowStatus::Valid;
     }
-    if (checkTimestampWithSpans(ts_spans, entity_latest_row_[entity_id],
-                                entity_latest_row_[entity_id]) != TimestampCheckResult::NonOverlapping) {
-      entity_last_ts = entity_latest_row_[entity_id];
+    if (checkTimestampWithSpans(ts_spans, entity_latest_row_[entity_id].last_ts,
+                                entity_latest_row_[entity_id].last_ts) != TimestampCheckResult::NonOverlapping) {
+      entity_last_ts = entity_latest_row_[entity_id].last_ts;
     }
   }
+  return KStatus::SUCCESS;
+}
+
+KStatus TsVGroup::ConvertBlockSpanToResultSet(const std::vector<k_uint32>& kw_scan_cols,
+                                              std::shared_ptr<TsBlockSpan>& ts_blk_span,
+                                              const std::vector<AttributeInfo>& attrs,
+                                              ResultSet* res) {
+  KStatus ret;
+  for (int i = 0; i < kw_scan_cols.size(); ++i) {
+    Batch* batch;
+    auto kw_col_idx = kw_scan_cols[i];
+    if (!ts_blk_span->IsColExist(kw_col_idx)) {
+      batch = new AggBatch(nullptr, 0, nullptr);
+    } else {
+      if (!ts_blk_span->IsVarLenType(kw_col_idx)) {
+        char* value;
+        std::unique_ptr<TsBitmapBase> bitmap;
+        ret = ts_blk_span->GetFixLenColAddr(kw_col_idx, &value, &bitmap);
+        if (ret != KStatus::SUCCESS) {
+          LOG_ERROR("GetFixLenColAddr failed.");
+          return ret;
+        }
+        if (!attrs[kw_scan_cols[i]].isFlag(AINFO_NOT_NULL) && bitmap->At(0) != DataFlags::kValid) {
+          batch = new AggBatch(nullptr, 0, nullptr);
+        } else {
+          char* buffer = static_cast<char*>(malloc(attrs[kw_col_idx].size));
+          memcpy(buffer, value, attrs[kw_col_idx].size);
+          batch = new AggBatch(static_cast<void*>(buffer), 1, nullptr);
+          batch->is_new = true;
+        }
+      } else {
+        TSSlice var_data;
+        DataFlags var_bitmap;
+        ret = ts_blk_span->GetVarLenTypeColAddr(0, kw_col_idx, var_bitmap, var_data);
+        if (var_bitmap != DataFlags::kValid) {
+          batch = new AggBatch(nullptr, 0, nullptr);
+        } else {
+          char* buffer = static_cast<char*>(malloc(var_data.len + kStringLenLen));
+          KUint16(buffer) = var_data.len;
+          memcpy(buffer + kStringLenLen, var_data.data, var_data.len);
+          std::shared_ptr<void> ptr(buffer, free);
+          batch = new AggBatch(ptr, 1, nullptr);
+        }
+      }
+    }
+    res->push_back(i, batch);
+  }
+  return KStatus::SUCCESS;
+}
+
+KStatus TsVGroup::GetEntityLastRowBatch(uint32_t entity_id, uint32_t scan_version,
+                                        std::shared_ptr<TsTableSchemaManager>& table_schema_mgr,
+                                        const std::vector<KwTsSpan>& ts_spans, const std::vector<k_uint32>& scan_cols,
+                                        timestamp64& entity_last_ts, ResultSet* res) {
+  TSSlice last_payload;
+  uint32_t last_version = 0;
+  timestamp64 last_ts = INVALID_TS;
+  {
+    std::shared_lock<std::shared_mutex> lock(entity_latest_row_mutex_);
+    if (entity_latest_row_checked_[entity_id] != TsEntityLatestRowStatus::Valid
+        || TimestampCheckResult::NonOverlapping == checkTimestampWithSpans(ts_spans, entity_latest_row_[entity_id].last_ts,
+                                                   entity_latest_row_[entity_id].last_ts)) {
+      return KStatus::SUCCESS;
+    }
+    last_version = entity_latest_row_[entity_id].version;
+    last_ts = entity_latest_row_[entity_id].last_ts;
+    last_payload = entity_latest_row_[entity_id].last_payload;
+  }
+
+  uint32_t db_id = table_schema_mgr->GetDbID();
+  KTableKey table_id = table_schema_mgr->GetTableId();
+  TSMemSegRowData last_row_data(db_id, table_id, last_version, entity_id);
+  // TODO(liumengzhen) : set correct lsn
+  last_row_data.SetData(last_ts, UINT64_MAX);
+  last_row_data.SetRowData(last_payload);
+  std::shared_ptr<TsMemSegBlock> mem_block = std::make_shared<TsMemSegBlock>(nullptr);
+  mem_block->InsertRow(&last_row_data);
+
+  std::shared_ptr<MMapMetricsTable> schema;
+  auto ret = table_schema_mgr->GetMetricSchema(scan_version, &schema);
+  if (ret != KStatus::SUCCESS) {
+    LOG_ERROR("GetMetricSchema failed");
+    return KStatus::FAIL;
+  }
+  const vector<AttributeInfo>& attrs = schema->getSchemaInfoExcludeDropped();
+
+  std::shared_ptr<TSBlkDataTypeConvert> convert = nullptr;
+  if (last_version != scan_version) {
+    convert = std::make_shared<TSBlkDataTypeConvert>(last_version, scan_version, table_schema_mgr);
+    KStatus s = convert->Init();
+    if (s != KStatus::SUCCESS) {
+      LOG_ERROR("TSBlkDataTypeConvert Init failed.");
+      return KStatus::FAIL;
+    }
+  }
+
+  auto block_span = std::make_shared<TsBlockSpan>(vgroup_id_, entity_id, std::move(mem_block), 0, 1,
+                                                  convert, scan_version, &attrs);
+  ret = ConvertBlockSpanToResultSet(scan_cols, block_span, attrs, res);
+  if (ret != KStatus::SUCCESS) {
+    LOG_ERROR("ConvertBlockSpanToResultSet failed");
+    return KStatus::FAIL;
+  }
+  entity_last_ts = last_ts;
   return KStatus::SUCCESS;
 }
 
@@ -771,7 +876,7 @@ KStatus TsVGroup::FlushImmSegment(const std::shared_ptr<TsMemSegment>& mem_seg) 
   return KStatus::SUCCESS;
 }
 
-KStatus TsVGroup::GetIterator(kwdbContext_p ctx, vector<uint32_t>& entity_ids,
+KStatus TsVGroup::GetIterator(kwdbContext_p ctx, uint32_t version, vector<uint32_t>& entity_ids,
                               std::vector<KwTsSpan>& ts_spans, std::vector<BlockFilter>& block_filter,
                               std::vector<k_uint32>& scan_cols, std::vector<k_uint32>& ts_scan_cols,
                               std::vector<k_int32>& agg_extend_cols,
@@ -785,11 +890,11 @@ KStatus TsVGroup::GetIterator(kwdbContext_p ctx, vector<uint32_t>& entity_ids,
   // case). TS_LSN read_lsn = GetOptimisticReadLsn();
   TsStorageIterator* ts_iter = nullptr;
   if (scan_agg_types.empty()) {
-    ts_iter = new TsSortedRawDataIteratorV2Impl(vgroup, entity_ids, ts_spans, block_filter, scan_cols,
+    ts_iter = new TsSortedRawDataIteratorV2Impl(vgroup, version, entity_ids, ts_spans, block_filter, scan_cols,
                                                 ts_scan_cols, table_schema_mgr, schema, ASC);
   } else {
     // need call Next function times: entity_ids.size(), no matter Next return what.
-    ts_iter = new TsAggIteratorV2Impl(vgroup, entity_ids, ts_spans, block_filter, scan_cols, ts_scan_cols,
+    ts_iter = new TsAggIteratorV2Impl(vgroup, version, entity_ids, ts_spans, block_filter, scan_cols, ts_scan_cols,
                                       agg_extend_cols, scan_agg_types, ts_points, table_schema_mgr, schema);
   }
   KStatus s = ts_iter->Init(reverse);
@@ -1019,6 +1124,12 @@ KStatus TsVGroup::DeleteEntity(kwdbContext_p ctx, TSTableID table_id, std::strin
   }
   TS_LSN cur_lsn = 0;
   auto tag_table = tb_schema_manager->GetTagTable();
+
+  if (!tag_table->hasPrimaryKey(p_tag.data(), p_tag.size())) {
+    LOG_ERROR("Cannot found this Primary tag.");
+    return KStatus::FAIL;
+  }
+
   if (EnableWAL()) {
     TagTuplePack* tag_pack = tag_table->GenTagPack(p_tag.data(), p_tag.size());
     if (UNLIKELY(nullptr == tag_pack)) {
@@ -1594,7 +1705,7 @@ KStatus TsVGroup::Vacuum() {
       continue;
     }
     for (int i = 0; i < partitions.size() - 1; i++) {
-      const auto& partition = partitions[i];
+      auto& partition = partitions[i];
       auto partition_id = partition->GetPartitionIdentifier();
       auto root_path = this->GetPath() / PartitionDirName(partition_id);
       bool need_vacuum = false;
@@ -1624,6 +1735,7 @@ KStatus TsVGroup::Vacuum() {
       Defer defer{[&]() {
         partition->ResetStatus();
       }};
+      partition = version_manager_->Current()->GetPartition(std::get<0>(partition_id), std::get<1>(partition_id));
 
       auto entity_segment = partition->GetEntitySegment();
       if (entity_segment == nullptr) {
@@ -1683,8 +1795,9 @@ KStatus TsVGroup::Vacuum() {
           start_ts = (now.time_since_epoch().count() - life_time.ts) * life_time.precision;
         }
         KwTsSpan ts_span = {start_ts, end_ts};
+        std::vector<KwTsSpan> ts_spans = {ts_span};
         TsScanFilterParams filter{partition->GetDatabaseID(), entity_item.table_id, vgroup_id_,
-                                  entity_id, tb_schema_mgr->GetTsColDataType(), UINT64_MAX, {ts_span}};
+                                  entity_id, tb_schema_mgr->GetTsColDataType(), UINT64_MAX, ts_spans};
         TsBlockItemFilterParams block_data_filter;
         s = partition->getFilter(filter, block_data_filter);
         if (s != KStatus::SUCCESS) {

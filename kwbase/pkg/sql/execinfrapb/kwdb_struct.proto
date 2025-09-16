@@ -15,14 +15,10 @@ package kwbase.sql.distsqlrun;
 option go_package = "execinfrapb";
 
 import "sql/execinfrapb/data.proto";
-
 import "gogoproto/gogo.proto";
-
-import "sql/types/types.proto";
-
 import "sql/sqlbase/structured.proto";
-
 import "sql/execinfrapb/processors_sql.proto";
+import "sql/execinfrapb/processors_base.proto";
 
 import "cdc/cdcpb/cdc.proto";
 
@@ -36,99 +32,6 @@ message TableDesc {
   optional uint64 tableID = 1 [(gogoproto.nullable) = false];
 
   repeated uint32 colIDs = 2 ;
-}
-
-// TSFlowSpec describes a "flow" which is a subgraph of a distributed SQL
-// computation consisting of processors and streams.
-message TSFlowSpec {
-  optional bytes flowID = 1 [(gogoproto.nullable) = false,
-    (gogoproto.customname) = "FlowID",
-    (gogoproto.customtype) = "FlowID"];
-  // The NodeID of the gateway that planned this Flow. Used for debugging.
-  optional int32 gateway = 3 [(gogoproto.nullable) = false,
-    (gogoproto.casttype) = "gitee.com/kwbasedb/kwbase/pkg/roachpb.NodeID"];
-
-  repeated TSProcessorSpec processors = 2 [(gogoproto.nullable) = false];
-  optional int64 queryID = 4[(gogoproto.nullable) = false];
-  repeated string brpcAddrs = 5;
-  optional bool isDist = 6 [(gogoproto.nullable) = false];
-  optional bool useQueryShortCircuit = 7 [(gogoproto.nullable) = false];
-}
-
-// Each processor has the following components:
-//  - one or more input synchronizers; each one merges rows between one or more
-//    input streams;
-//
-//  - a processor "core" which encapsulates the inner logic of each processor;
-//
-//  - a post-processing stage which allows "inline" post-processing on results
-//    (like projection or filtering);
-//
-//  - one or more output synchronizers; each one directs rows to one or more
-//  output streams.
-//
-//
-// == Internal columns ==
-//
-// The core outputs rows of a certain schema to the post-processing stage. We
-// call this the "internal schema" (or "internal columns") and it differs for
-// each type of core. Column indices in a PostProcessSpec refers to these
-// internal columns. Some columns may be unused by the post-processing stage;
-// processor implementations are internally optimized to not produce values for
-// such unneeded columns.
-message TSProcessorSpec {
-  // In most cases, there is one input.
-  repeated InputSyncSpec input = 1 [(gogoproto.nullable) = false];
-
-  optional TSProcessorCoreUnion core = 2 [(gogoproto.nullable) = false];
-
-  optional TSPostProcessSpec post = 3 [(gogoproto.nullable) = false];
-
-  // In most cases, there is one output.
-  repeated OutputRouterSpec output = 4 [(gogoproto.nullable) = false];
-
-  // An optional identifier that can be used to correlate processors that are
-  // part of the same stage (e.g. multiple joiners that are part of a
-  // distributed join). This has no consequence on the running of flows, but is
-  // useful for plan diagrams.
-  //optional int32 stage_id = 5 [(gogoproto.nullable) = false,
-  //                             (gogoproto.customname) = "StageID"];
-
-  // processor_id uniquely identifies a processor within a physical plan. This
-  // has no consequence on the running of flows, but is useful for plan
-  // diagrams and linking information like tracing spans and log messages to
-  // processors.
-  optional int32 processor_id = 5 [(gogoproto.nullable) = false,
-    (gogoproto.customname) = "ProcessorID"];
-  // final_ts_processor is true representing the processor is the last AE operator.
-  optional bool final_ts_processor = 6 [(gogoproto.nullable) = false];
-}
-
-message TSProcessorCoreUnion {
-  option (gogoproto.onlyone) = true;
-  optional TSReaderSpec tableReader = 1;
-
-  optional AggregatorSpec aggregator = 2;
-
-  optional TSNoopSpec noop = 3;
-
-  optional SorterSpec sorter = 4;
-
-  optional TSStatisticReaderSpec statisticReader = 5;
-
-  // optional PipeGroupSpec pipeGroup =  7;
-  optional TSSynchronizerSpec synchronizer = 8;
-
-  // collection of time series statistics
-  optional TSSamplerSpec sampler = 9;
-
-  optional TSTagReaderSpec tagReader = 10;
-
-  optional DistinctSpec distinct = 11;
-
-  optional WindowerSpec window = 12;
-
-  optional StreamReaderSpec streamReader = 13;
 }
 
 // TSSynchronizerSpec operator
@@ -157,7 +60,7 @@ enum TSTableReadMode {
 message TSBlockFilter {
   // filter type
   enum type {
-    T_SPAN = 0;  // span 
+    T_SPAN = 0;  // span
     T_NULL = 1;  // is null
     T_NOTNULL = 2; // is not null
   }
@@ -192,7 +95,7 @@ message TSReaderSpec {
 
   optional bool   reverse = 5;
   optional AggregatorSpec   aggregator = 6;
-  optional TSPostProcessSpec   aggregatorPost = 7;
+  optional PostProcessSpec   aggregatorPost = 7;
   optional bool   aggPushDown = 8;
 
   // table version
@@ -317,29 +220,6 @@ message SketchInfo {
 
   // SortedHistogram supports sorted histogram collection for entities in time series tables
   optional sqlbase.SortedHistogramInfo sortedHistogram = 7 [(gogoproto.nullable) = false];
-}
-
-message TSNoopSpec {
-}
-
-message TSPostProcessSpec {
-  // option (gogoproto.typedecl) = false;
-
-  optional uint32 limit = 1 [(gogoproto.nullable) = false];
-
-  optional uint32 offset = 2 [(gogoproto.nullable) = false];
-
-  optional string filter = 3 [(gogoproto.nullable) = false];
-
-  repeated string renders = 4;
-  // Output column index. Start at 0
-  repeated uint32 OutputColumns = 5;
-  // Output column type
-  repeated kwbase.sql.sem.types.Family outputTypes = 6;
-
-  optional bool projection = 7 [(gogoproto.nullable) = false];
-
-  optional uint32 commandlimit = 8 [(gogoproto.nullable) = false];
 }
 
 // StreamReaderSpec contains the specification for a stream metadata that will used to process the captured change data.

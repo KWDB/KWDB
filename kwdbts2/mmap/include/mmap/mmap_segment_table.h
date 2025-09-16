@@ -18,7 +18,6 @@
 #include "entity_block_meta_manager.h"
 #include "utils/date_time_util.h"
 #include "ts_table_object.h"
-#include "utils/compress_utils.h"
 #include "mmap_entity_block_meta.h"
 #include "ts_common.h"
 
@@ -621,13 +620,6 @@ class MMapSegmentTable : public TSObject, public TsTableObject {
       }
     }
     return true;
-  }
-
-  bool TryUnmountSqfs(ErrorInfo& err_info) const {
-    if(!is_compressed_) {
-      return true;
-    }
-    return umount(db_path_, tbl_sub_path_, err_info);
   }
 
   // check if column has valid value in front rows of block.

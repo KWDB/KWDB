@@ -64,7 +64,7 @@ EEIteratorErrCode AggTableScanOperator::Init(kwdbContext_p ctx) {
     }
     // extract from agg spec
     agg_param_ = new TsAggregateParser(const_cast<TSAggregatorSpec*>(&aggregation_spec_),
-                                                            const_cast<TSPostProcessSpec*>(&aggregation_post_),
+                                                            const_cast<PostProcessSpec*>(&aggregation_post_),
                                                             table_, this);
     if (nullptr == agg_param_) {
       EEPgErrorInfo::SetPgErrorInfo(ERRCODE_OUT_OF_MEMORY, "Insufficient memory");

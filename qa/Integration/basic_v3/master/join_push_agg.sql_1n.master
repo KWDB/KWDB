@@ -467,12 +467,13 @@ INSERT 1
              │                | table              | re1@primary
              │                | spans              | FULL SCAN
              └── distinct     |                    |
+                  │           | engine type        | time series
                   │           | distinct on        | tag1
                   └── ts scan |                    |
                               | ts-table           | ts1
                               | only tag           | true
                               | access mode        | tableTableMeta
-(20 rows)
+(21 rows)
 > select min(r.e1) from tsdb.ts1 ts, redb.re1 r where ts.tag1=r.e1;
   min
 -------
@@ -496,12 +497,13 @@ INSERT 1
              │                | table              | re1@primary
              │                | spans              | FULL SCAN
              └── distinct     |                    |
+                  │           | engine type        | time series
                   │           | distinct on        | tag1
                   └── ts scan |                    |
                               | ts-table           | ts1
                               | only tag           | true
                               | access mode        | tableTableMeta
-(20 rows)
+(21 rows)
 > select max(r.e1+r.e2) from tsdb.ts1 ts, redb.re1 r where ts.tag1=r.e1;
   max
 -------
@@ -525,12 +527,13 @@ INSERT 1
              │                | table              | re1@primary
              │                | spans              | FULL SCAN
              └── distinct     |                    |
+                  │           | engine type        | time series
                   │           | distinct on        | tag1
                   └── ts scan |                    |
                               | ts-table           | ts1
                               | only tag           | true
                               | access mode        | tableTableMeta
-(20 rows)
+(21 rows)
 > select min(r.e1+r.e2) from tsdb.ts1 ts, redb.re1 r where ts.tag1=r.e1;
   min
 -------
@@ -554,12 +557,13 @@ INSERT 1
              │                | table              | re1@primary
              │                | spans              | FULL SCAN
              └── distinct     |                    |
+                  │           | engine type        | time series
                   │           | distinct on        | tag1
                   └── ts scan |                    |
                               | ts-table           | ts1
                               | only tag           | true
                               | access mode        | tableTableMeta
-(20 rows)
+(21 rows)
 > select max(ts.e1) from tsdb.ts1 ts, redb.re1 r where ts.tag1=r.e1 group by r.e1;
   max
 -------
@@ -1026,12 +1030,13 @@ INSERT 1
                   │                | table              | re1@primary
                   │                | spans              | FULL SCAN
                   └── distinct     |                    |
+                       │           | engine type        | time series
                        │           | distinct on        | tag1
                        └── ts scan |                    |
                                    | ts-table           | ts1
                                    | only tag           | true
                                    | access mode        | tableTableMeta
-(23 rows)
+(24 rows)
 > select min(r.e1) from tsdb.ts1 ts, redb.re1 r where ts.tag1=r.e1 group by ts.tag1, r.e1;
   min
 -------
@@ -1058,12 +1063,13 @@ INSERT 1
                   │                | table              | re1@primary
                   │                | spans              | FULL SCAN
                   └── distinct     |                    |
+                       │           | engine type        | time series
                        │           | distinct on        | tag1
                        └── ts scan |                    |
                                    | ts-table           | ts1
                                    | only tag           | true
                                    | access mode        | tableTableMeta
-(23 rows)
+(24 rows)
 > select max(r.e1+r.e2) from tsdb.ts1 ts, redb.re1 r where ts.tag1=r.e1 group by ts.tag1, r.e1;
   max
 -------
@@ -1091,12 +1097,13 @@ INSERT 1
                   │                | table              | re1@primary
                   │                | spans              | FULL SCAN
                   └── distinct     |                    |
+                       │           | engine type        | time series
                        │           | distinct on        | tag1
                        └── ts scan |                    |
                                    | ts-table           | ts1
                                    | only tag           | true
                                    | access mode        | tableTableMeta
-(24 rows)
+(25 rows)
 > select min(r.e1+r.e2) from tsdb.ts1 ts, redb.re1 r where ts.tag1=r.e1 group by ts.tag1, r.e1;
   min
 -------
@@ -1124,12 +1131,13 @@ INSERT 1
                   │                | table              | re1@primary
                   │                | spans              | FULL SCAN
                   └── distinct     |                    |
+                       │           | engine type        | time series
                        │           | distinct on        | tag1
                        └── ts scan |                    |
                                    | ts-table           | ts1
                                    | only tag           | true
                                    | access mode        | tableTableMeta
-(24 rows)
+(25 rows)
 > select max(r.e1+r.e2) from tsdb.ts1 ts, redb.re1 r where ts.tag1=r.e1 and ts.tag2=r.e2 and ts.tag3=r.e3 group by ts.tag1, r.e1;
   max
 -------
@@ -1157,12 +1165,13 @@ INSERT 1
                   │                | table              | re1@primary
                   │                | spans              | FULL SCAN
                   └── distinct     |                    |
+                       │           | engine type        | time series
                        │           | distinct on        | tag1, tag2, tag3
                        └── ts scan |                    |
                                    | ts-table           | ts1
                                    | only tag           | true
                                    | access mode        | tableTableMeta
-(24 rows)
+(25 rows)
 > select min(r.e1+r.e2) from tsdb.ts1 ts, redb.re1 r where ts.tag1=r.e1 and ts.tag2=r.e2 and ts.tag3=r.e3;
   min
 -------
@@ -1186,12 +1195,13 @@ INSERT 1
              │                | table              | re1@primary
              │                | spans              | FULL SCAN
              └── distinct     |                    |
+                  │           | engine type        | time series
                   │           | distinct on        | tag1, tag2, tag3
                   └── ts scan |                    |
                               | ts-table           | ts1
                               | only tag           | true
                               | access mode        | tableTableMeta
-(20 rows)
+(21 rows)
 > select min(ts.e1+ts.e2) from redb.re1 r join (select * from tsdb.ts1 where tsdb.ts1.e1 > 0) ts on ts.tag1=r.e1 and ts.tag2=r.e2 group by r.e1;
   min
 -------
