@@ -108,6 +108,8 @@ PhyOpRef TransFormPlan::TransFormTableScan(
   if (add_filter) {
     bool all_filter_push_scan;
     table_filters = CreateTableFilters(column_ids, post, param, scan_filter_idx, all_filter_push_scan);
+    // if all filters can be pushed down to scan,
+    // set add_filter to false so that the APFilter will no longer be built.
     add_filter = !all_filter_push_scan;
   }
   ExtraOperatorInfo extra_info;
@@ -121,7 +123,7 @@ PhyOpRef TransFormPlan::TransFormTableScan(
   reference<PhysicalOperator> plan = table_scan;
 
   // add filters
-  if (post.has_filter() && post.filter().has_expr() && !post.filter().expr().empty()) {
+  if (add_filter) {
     plan = AddAPFilters(table_scan, post, param, scan_filter_idx);
   }
   // add projection
