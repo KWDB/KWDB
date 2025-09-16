@@ -72,7 +72,7 @@ function wait_for_kwbase() {
 
   echo "Waiting for database to be ready..."
   for ((i=0; i<retries; i++)); do
-    docker exec ${DOCKER_CONTAINER_PREFIX}-$PORT /home/inspur/install/bin/kwbase sql --insecure --host=127.0.0.1:26888 -e "set cluster setting cluster.license = 'jvzHX1u7QvMJY9fztVbX4URcI+KPz3s5xMG/6Rk9TWxkChKYejABFq8HO9qcTOrckppMncgG82eXgGQwAYwWGLc6wG3bqA6DnNsQ1OcV29uZs2PEkGPZiLEDzTEwPTHEGXhvjEs9wU0H/uI3Me2nDZi7bwcK3Z7uTRcVKOunVxUWLmr3j9Sm18UhjwVjdVPH05eyZyaUFk2CqUrj6hVZwPjZ8+mw8o1eFYGowxLp0p30CTys76zErvsine+BMnkN68egIyGbSYGwEBbh4is+qsIqtNYBWCUW6eIRimyGriginAKeg+fKRMj627qIuYqSADm9Peo7z/Rf8ZwnyjJWXr1oOAtdAdzOJfv8SUVISs3e/5/IoaBHBSw7dG3ogv1KcKx1+bN4ARdUSiLRuGWT3gRs3dc/9evUl44rqrN0m0czxIcl5HrbSRyWLcg9yxsY9Vo62hL8d/qT3EOf1K3tBeP1GZHAI6Cx7vsi1CxoJGavs5fCpnHQeyljAfoQgWwNAYudK7G2V0rVVX/Kwha7wuDDycLYz7A2fZhP4o1X9W+VKJfpd6PAjS20qVnXnkc6rguSorT2Bi3JQwowocsUwEtCzLjvv5piY+XYND+/mLCB07zltjFT4eQdvZQKCu+dPqenRAGyfuSvjjEyOzdSmISGaFCnNe8JJ3PSIOZiy4U=';" > /dev/null 2>&1
+    docker exec ${DOCKER_CONTAINER_PREFIX}-$PORT /home/inspur/install/bin/kwbase sql --insecure --host=127.0.0.1:26888 -e "set cluster setting cluster.license = '${KWBASE_LICENSE}';" > /dev/null 2>&1
     docker exec ${DOCKER_CONTAINER_PREFIX}-$PORT /home/inspur/install/bin/kwbase sql --insecure --host=127.0.0.1:26888 -e "SHOW DATABASES;" > /dev/null 2>&1
     if [ $? -eq 0 ]; then
       echo "Database is ready!"
