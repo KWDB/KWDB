@@ -66,16 +66,16 @@ void TsLRUBlockCache::Access(std::shared_ptr<TsEntityBlock>& block) {
   assert(block != nullptr);
   lock_.lock();
   if (block->pre_) {
-    block->pre_->next_ = block->next_;
-    if (block->next_) {
-      block->next_->pre_ = block->pre_;
+    head_->pre_ = std::move(block->pre_->next_);
+    block->pre_->next_ = std::move(block->next_);
+    block->next_ = std::move(head_);
+    if (block->pre_->next_) {
+      head_ = std::move(block->pre_->next_->pre_);
+      block->pre_->next_->pre_ = std::move(block->pre_);
     } else {
-      tail_ = block->pre_;
+      head_ = std::move(tail_);
+      tail_ = std::move(block->pre_);
     }
-    block->pre_ = nullptr;
-    block->next_ = head_;
-    head_->pre_ = block;
-    head_ = block;
   } else {
     // Don't need to do anything since block should be head_ or has been removed from doubly linked list.
   }
