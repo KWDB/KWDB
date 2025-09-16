@@ -40,10 +40,11 @@ PhyOpRef TransFormPlan::InitAggregateExpressions(PhyOpRef child,
                                                          vector<unique_ptr<duckdb::Expression>> &groups,
                                                          vector<LogicalType> &agg_returned_types,
                                                          const kwdbts::PostProcessSpec& post,
-                                                         const kwdbts::ProcessorCoreUnion& core) {
-    vector<unique_ptr<duckdb::Expression>> expressions;
-    vector<LogicalType> types;
-    auto &agg = core.aggregator();
+                                                         const kwdbts::TSProcessorCoreUnion& core) {
+    //
+    vector<unique_ptr<duckdb::Expression>> proj_expressions;
+    vector<LogicalType> proj_types;
+    auto &agg_spec = core.aggregator();
     // todo: bind sorted aggregates
     // for (auto &aggr : aggregates) {
     //     auto &bound_aggr = aggr->Cast<BoundAggregateExpression>();
@@ -52,18 +53,17 @@ PhyOpRef TransFormPlan::InitAggregateExpressions(PhyOpRef child,
     //         FunctionBinder::BindSortedAggregate(context, bound_aggr, groups);
     //     }
     // }
-    int idx1 = 0;
-    for (auto &group : agg.group_cols()) {
+    int agg_idx = 0;
+    for (auto &group : agg_spec.group_cols()) {
         auto ref = make_uniq<BoundReferenceExpression>(child.types[group], group);
-        // auto ref_copy = ref->Copy();
-        types.push_back(child.types[group]);
-        expressions.push_back(std::move(ref));
+        proj_types.push_back(child.types[group]);
+        proj_expressions.push_back(std::move(ref));
         agg_returned_types.push_back(child.types[group]);
-        auto ref_copy = make_uniq<BoundReferenceExpression>(child.types[group], idx1++);
+        auto ref_copy = make_uniq<BoundReferenceExpression>(child.types[group], agg_idx++);
         groups.push_back(std::move(ref_copy));
     }
 
-    for (auto &aggr : agg.aggregations()) {
+    for (auto &aggr : agg_spec.aggregations()) {
         std::string func_name = "";
         switch (aggr.func()) {
             case TSAggregatorSpec_Func_ANY_NOT_NULL: {
@@ -102,14 +102,15 @@ PhyOpRef TransFormPlan::InitAggregateExpressions(PhyOpRef child,
         auto &func = func_entry->Cast<AggregateFunctionCatalogEntry>();
         unique_ptr<duckdb::Expression> filter;
         unique_ptr<FunctionData> bind_info;
+        // todo: based on spec?
         auto aggr_type = AggregateType::NON_DISTINCT;
 
         vector<unique_ptr<duckdb::Expression>> agg_refs;
         for (auto idx : aggr.col_idx()) {
             auto proj_ref = make_uniq<BoundReferenceExpression>(child.types[idx], idx);
-            types.push_back(proj_ref->return_type);
-            expressions.push_back(std::move(proj_ref));
-            agg_refs.push_back(make_uniq<BoundReferenceExpression>(child.types[idx],idx1++));
+            proj_types.push_back(proj_ref->return_type);
+            proj_expressions.push_back(std::move(proj_ref));
+            agg_refs.push_back(make_uniq<BoundReferenceExpression>(child.types[idx],agg_idx++));
 
             auto agg_func = func.functions.GetFunctionByArguments(*context_, {child.types[idx]});
             if (agg_func.bind) {
@@ -135,22 +136,25 @@ PhyOpRef TransFormPlan::InitAggregateExpressions(PhyOpRef child,
         }
     }
 
-    if (expressions.empty()) {
+    if (proj_expressions.empty()) {
         return child;
     }
 
-    auto &proj = physical_plan_->Make<PhysicalProjection>(std::move(types), std::move(expressions), child.estimated_cardinality);
+    auto &proj = physical_plan_->Make<PhysicalProjection>(std::move(proj_types), std::move(proj_expressions), child.estimated_cardinality);
     proj.children.push_back(child);
     return proj;
 }
 
-PhyOpRef TransFormPlan::TransFormAggregator(const kwdbts::PostProcessSpec& post, const kwdbts::ProcessorCoreUnion& core,
+PhyOpRef TransFormPlan::TransFormAggregator(const kwdbts::PostProcessSpec& post, const kwdbts::TSProcessorCoreUnion& core,
                                             PhyOpRef child) {
   auto apAggregator = core.aggregator();
     vector<unique_ptr<duckdb::Expression>> aggregates;
     vector<unique_ptr<duckdb::Expression>> groups;
     vector<LogicalType> agg_returned_types;
     auto &proj = InitAggregateExpressions(child, aggregates,groups,agg_returned_types,post,core);
+
+    vector<unique_ptr<duckdb::Expression>> expressions;
+    vector<LogicalType> types;
 
     if (groups.size() == 0) {
         auto &res = physical_plan_->Make<PhysicalUngroupedAggregate>(agg_returned_types,
@@ -163,8 +167,6 @@ PhyOpRef TransFormPlan::TransFormAggregator(const kwdbts::PostProcessSpec& post,
                                                             std::move(groups), 0);
     group_by.children.push_back(proj);
 
-    vector<unique_ptr<duckdb::Expression>> expressions;
-    vector<LogicalType> types;
     if (post.projection() && post.output_columns_size() > 0) {
         for (auto col : post.output_columns()) {
             expressions.push_back(make_uniq<BoundReferenceExpression>(group_by.types[col], col));

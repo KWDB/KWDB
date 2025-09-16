@@ -87,6 +87,7 @@ func (ef *execFactory) ConstructScan(
 	index cat.Index,
 	needed exec.ColumnOrdinalSet,
 	indexConstraint *constraint.Constraint,
+	constraintFilter tree.TypedExpr,
 	hardLimit int64,
 	softLimit int64,
 	reverse bool,
@@ -130,6 +131,9 @@ func (ef *execFactory) ConstructScan(
 	scan.spans, err = sb.SpansFromConstraint(indexConstraint, needed, false /* forDelete */)
 	if err != nil {
 		return nil, err
+	}
+	if scan.desc.TableType == tree.ColumnBasedTable && constraintFilter != nil {
+		scan.spanFilter = scan.spanFilterVars.Rebind(constraintFilter, true /* alsoReset */, false /* normalizeToNonNil */)
 	}
 	for i := range reqOrdering {
 		if reqOrdering[i].ColIdx >= len(colCfg.wantedColumns) {

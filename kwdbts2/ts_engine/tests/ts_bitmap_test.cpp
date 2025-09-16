@@ -102,12 +102,19 @@ TEST(TsBitmap, View) {
 
   for (auto c : cases) {
     auto view = bm.Slice(c.start, c.count);
+    TsBitmap ref(c.count);
     for (int i = 0; i < c.count; ++i) {
-      EXPECT_EQ(view[i], flags[i + c.start]);
+      EXPECT_EQ(view->At(i), flags[i + c.start]);
+
+      ref[i] = view->At(i);
     }
 
     int nvalid = std::count(flags.begin() + c.start, flags.begin() + c.start + c.count, kwdbts::DataFlags::kValid);
-    EXPECT_EQ(view.GetValidCount(), nvalid);
+    EXPECT_EQ(view->GetValidCount(), nvalid);
+
+    auto str1 = view->GetStr();
+    auto str2 = ref.GetStr();
+    EXPECT_EQ(str1, str2);
   }
 }
 
@@ -123,12 +130,12 @@ TEST(TsBitmap, SliceOfView) {
     bm[i] = flags[i];
   }
 
-  TsBitmapView bm_v = bm.Slice(30, 300).Slice(40, 100).Slice(50, 10);
+  auto bm_v = bm.Slice(30, 300)->Slice(40, 100)->Slice(50, 10);
   for (int i = 0; i < 10; ++i) {
-    EXPECT_EQ(bm_v[i], flags[i + 30 + 40 + 50]);
+    EXPECT_EQ(bm_v->At(i), flags[i + 30 + 40 + 50]);
   }
 
-  EXPECT_EQ(bm_v.GetValidCount(),
+  EXPECT_EQ(bm_v->GetValidCount(),
             std::count(flags.begin() + 30 + 40 + 50, flags.begin() + 30 + 40 + 50 + 10, kwdbts::DataFlags::kValid));
 }
 

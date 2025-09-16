@@ -18,7 +18,7 @@
 namespace kwdbts {
 
 DistinctOperator::DistinctOperator(TsFetcherCollection* collection, DistinctSpec* spec,
-                                   TSPostProcessSpec* post, TABLE* table, int32_t processor_id)
+                                   PostProcessSpec* post, TABLE* table, int32_t processor_id)
     : BaseOperator(collection, table, post, processor_id),
       spec_{spec},
       param_(spec, post, table),

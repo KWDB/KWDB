@@ -1,4 +1,3 @@
-SET CLUSTER SETTING ts.blocks_per_segment.max_limit=100;
 SET CLUSTER SETTING ts.rows_per_block.max_limit=100;
 -- create database and table
 create ts database db1;

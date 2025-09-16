@@ -21,7 +21,6 @@
 #include <utility>
 #include "mmap/mmap_file.h"
 #include "ts_common.h"
-#include "utils/compress_utils.h"
 #include "libkwdbts2.h"
 #include "lt_rw_latch.h"
 #include "bitmap_utils.h"

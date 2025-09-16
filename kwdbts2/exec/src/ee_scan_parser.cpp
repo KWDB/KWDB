@@ -13,12 +13,10 @@
 #include "ee_table.h"
 #include "ee_field.h"
 #include "cm_func.h"
-#include "ee_common.h"
-
 
 namespace kwdbts {
 
-TsTableScanParser::TsTableScanParser(TSReaderSpec* spec, TSPostProcessSpec* post, TABLE* table)
+TsTableScanParser::TsTableScanParser(TSReaderSpec* spec, PostProcessSpec* post, TABLE* table)
     : TsScanParser(post, table) {
       spec_ = spec;
 }

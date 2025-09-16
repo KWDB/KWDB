@@ -476,11 +476,6 @@ func (h *batchLookupJoiner) pushToProbeSide() (
 			if err != nil || !valid {
 				break
 			}
-			_, err = i.Row()
-			if err != nil {
-				h.MoveToDraining(nil /* err */)
-				return bljStateUnknown, nil, meta
-			}
 			rowNums++
 			i.Next()
 		}
@@ -770,6 +765,9 @@ func (h *batchLookupJoiner) receiveNext(
 		}
 		hasNull := false
 		for _, c := range h.eqCols[side] {
+			if row[c].Datum == nil {
+				log.Error(h.Ctx, "node:%v,not lookup join problem", h.FlowCtx.NodeID)
+			}
 			if row[c].IsNull() {
 				hasNull = true
 				break

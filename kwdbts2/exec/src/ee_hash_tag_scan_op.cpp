@@ -31,7 +31,7 @@
 namespace kwdbts {
 
 HashTagScanOperator::HashTagScanOperator(TsFetcherCollection *collection,
-                                         TSTagReaderSpec* spec, TSPostProcessSpec* post,
+                                         TSTagReaderSpec* spec, PostProcessSpec* post,
                                          TABLE* table, int32_t processor_id)
     : TagScanBaseOperator(collection, table, post, processor_id),
     spec_(spec),

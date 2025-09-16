@@ -89,7 +89,7 @@ class TsMemSegBlock : public TsBlock {
   timestamp64 max_ts_{INVALID_TS};
   std::unique_ptr<TsRawPayloadRowParser> parser_ = nullptr;
   std::unordered_map<uint32_t, char*> col_based_mems_;
-  std::unordered_map<uint32_t, TsBitmap> col_bitmaps_;
+  std::unordered_map<uint32_t, std::unique_ptr<TsBitmap>> col_bitmaps_;
 
  public:
   explicit TsMemSegBlock(std::shared_ptr<TsMemSegment> mem_seg) : mem_seg_(mem_seg) {}
@@ -154,7 +154,8 @@ class TsMemSegBlock : public TsBlock {
     return row_data_[row_num]->GetLSNAddr();
   }
 
-  KStatus GetColBitmap(uint32_t col_id, const std::vector<AttributeInfo>* schema, TsBitmap& bitmap) override;
+  KStatus GetColBitmap(uint32_t col_id, const std::vector<AttributeInfo>* schema,
+                       std::unique_ptr<TsBitmapBase>* bitmap) override;
 
   KStatus GetColAddr(uint32_t col_id, const std::vector<AttributeInfo>* schema, char** value) override;
 

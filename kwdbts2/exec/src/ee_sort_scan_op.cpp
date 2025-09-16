@@ -23,7 +23,7 @@
 
 namespace kwdbts {
 
-SortScanOperator::SortScanOperator(TsFetcherCollection* collection, TSReaderSpec* spec, TSPostProcessSpec* post,
+SortScanOperator::SortScanOperator(TsFetcherCollection* collection, TSReaderSpec* spec, PostProcessSpec* post,
                                    TABLE* table, int32_t processor_id)
     : TableScanOperator(collection, spec, post, table, processor_id) {}
 

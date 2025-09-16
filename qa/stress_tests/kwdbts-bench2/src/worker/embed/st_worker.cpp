@@ -259,43 +259,6 @@ KBStatus StScanWorker::do_work(KTimestamp  new_ts) {
       }
       _scan_rows.add(count);
     } while (count > 0);
-  } else {
-    auto ts_type = ts_table->GetRootTableManager()->GetTsColDataType();
-    std::shared_ptr<TsEntityGroup> tbl_range;
-    stat = ts_table->GetEntityGroup(ctx, st_inst_->rangeGroup(), &tbl_range);
-    stat = ts_table->GetDataSchemaExcludeDropped(ctx, &data_schema);
-    for (size_t i = 0; i < data_schema.size(); i++) {
-      scan_cols.push_back(i);
-    }
-    vector<uint32_t> entity_ids = {entity_index};
-    SubGroupID group_id = 1;
-    TsStorageIterator* iter = nullptr;
-    Defer defer{[&]() {
-      if (iter != nullptr) {
-        delete iter;
-      }
-    }};
-    stat = tbl_range->GetIterator(ctx, group_id, entity_ids, ts_spans, {}, ts_type, scan_cols, scan_cols, {}, scan_agg_types, 1, &iter, tbl_range,
-                        {}, false, false);
-    s = dump_zstatus("GetIterator", ctx, stat);
-    if (s.isNotOK()) {
-      return s;
-    }
-    ResultSet res;
-    res.setColumnNum(scan_cols.size());
-    uint32_t count = 0;
-    bool is_finished = false;
-    do {
-      stat = iter->Next(&res, &count, &is_finished);
-      s = dump_zstatus("IteratorNext", ctx, stat);
-      if (s.isNotOK()) {
-        return s;
-      }
-      if (count > 0 && !checkColValue(data_schema, res, count, params_.time_inc)) {
-        return KBStatus(StatusCode::RError, "colume value check failed.");
-      }
-      _scan_rows.add(count);
-    } while (!is_finished);
   }
 
   KWDB_DURATION(_scan_time);
@@ -475,11 +438,11 @@ KBStatus StRetentionsWorker::do_work(KTimestamp  new_ts) {
   if (s.isNotOK()) {
     return s;
   }
-  stat = ts_table->DeleteExpiredData(ctx, end_ts);
-  s = dump_zstatus("DeleteExpiredData", ctx, stat);
-  if (s.isNotOK()) {
-    return s;
-  }
+  // stat = ts_table->DeleteExpiredData(ctx, end_ts);
+  // s = dump_zstatus("DeleteExpiredData", ctx, stat);
+  // if (s.isNotOK()) {
+  //   return s;
+  // }
 
   KWDB_DURATION(_retentions_time);
 

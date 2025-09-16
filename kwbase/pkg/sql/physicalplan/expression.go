@@ -160,21 +160,19 @@ func optimizeTSExpression(expr tree.Expr) tree.Expr {
 }
 
 // MakeTSExpressionForArray creates a ts engine expr string for ts engine, ts engine not support tree.expr struct
-func MakeTSExpressionForArray(expr []tree.TypedExpr, ctx ExprContext, indexVarMap []int) string {
-	tagFilter := ""
-	for _, val := range expr {
-		expr, err1 := MakeTSExpression(val.(tree.TypedExpr), ctx, indexVarMap)
-		if err1 != nil {
-			panic(err1)
-		}
-		if tagFilter == "" {
-			tagFilter = "(" + expr.Expr + ")"
+func MakeTSExpressionForArray(
+	expr []tree.TypedExpr, ctx ExprContext, indexVarMap []int,
+) (execinfrapb.Expression, error) {
+	var cond tree.TypedExpr
+	for _, v := range expr {
+		if cond == nil {
+			cond = v
 		} else {
-			tagFilter += " AND "
-			tagFilter += "(" + expr.Expr + ")"
+			cond = tree.NewTypedAndExpr(cond, v)
 		}
 	}
-	return tagFilter
+
+	return MakeTSExpression(cond, ctx, indexVarMap)
 }
 
 // MakeTSExpression creates a execinfrapb.Expression for ts engine

@@ -22,7 +22,7 @@ class TSTagReaderSpec;
 
 class TsTagScanParser : public TsScanParser {
  public:
-  TsTagScanParser(TSTagReaderSpec* spec , TSPostProcessSpec *post, TABLE *table);
+  TsTagScanParser(TSTagReaderSpec* spec , PostProcessSpec *post, TABLE *table);
 
   KStatus ParserTagSpec(kwdbContext_p ctx);
 

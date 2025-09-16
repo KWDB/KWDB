@@ -20,7 +20,6 @@
 
 namespace kwdbts {
 
-
 extern std::string EEIteratorErrCodeToString(EEIteratorErrCode code);
 
 extern std::string KWDBTypeFamilyToString(KWDBTypeFamily type);

@@ -26,8 +26,6 @@ namespace kwdbts {
 
 void constructRoachpbTable(roachpb::CreateTsTable* meta, uint64_t table_id, const BenchParams& params,
                            uint64_t partition_interval = EngineOptions::iot_interval);
-TsTable* CreateTable(kwdbts::kwdbContext_p ctx, roachpb::CreateTsTable* meta,
-                     std::string db_path, const std::vector<RangeGroup>& range_groups);
 
 void genPayloadData(std::vector<TagInfo> tag_schema, std::vector<AttributeInfo> data_schema,
                     int32_t primary_tag, KTimestamp start_ts, int count, int time_inc, TSSlice *payload);
@@ -103,68 +101,6 @@ class StInstance {
   vector<roachpb::CreateTsTable> table_metas;
   DedupRule dedup_rule_ = DedupRule::OVERRIDE;
   uint32_t snapshot_desc_table_id{32};
-};
-
-class StEngityGroupInstance {
- public:
-  StEngityGroupInstance() = default;
-  ~StEngityGroupInstance() {
-    entity_group_.reset();
-    delete table_;
-  }
-
-  static std::shared_ptr<StEngityGroupInstance> st_inst_;
-  static std::shared_mutex mutex_;
-  static StEngityGroupInstance* Get() {
-    std::lock_guard<std::shared_mutex> lk(mutex_);
-    if (st_inst_ == nullptr) {
-      st_inst_ = std::make_shared<StEngityGroupInstance>();
-    }
-    return st_inst_.get();
-  }
-
-  KBStatus Init(BenchParams params);
-
-  TsTable* GetTable() {
-    return table_;
-  }
-
-  uint64_t GetRangeGroupID() {
-    return range_group_id_;
-  }
-
-  std::shared_ptr<TsEntityGroup> GetEntityGroup() {
-    return entity_group_;
-  }
-
-  // no need so accurate.
-  void SetMaxDataTS(KTimestamp ts) {
-    if (ts > data_max_ts_) {
-      data_max_ts_ = ts;
-    }
-    if (data_min_ts_ > ts || data_min_ts_ == 0) {
-      data_min_ts_ = ts;
-    }
-  }
-
-  KTimestamp GetMinTS() {
-    return data_min_ts_;
-  }
-  KTimestamp GetMaxTS() {
-    return data_max_ts_;
-  }
-
- private:
-  int64_t table_id_{123};
-  uint64_t range_group_id_{456};
-  BenchParams params_;
-  kwdbts::kwdbContext_t g_context;
-  kwdbts::kwdbContext_p ctx;
-  TsTable* table_;
-  std::shared_ptr<TsEntityGroup> entity_group_;
-  bool inited_{false};
-  KTimestamp data_min_ts_ = 0;
-  KTimestamp data_max_ts_ = 0;
 };
 
 

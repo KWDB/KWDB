@@ -21,7 +21,7 @@ namespace kwdbts {
 
 PostAggScanOperator::PostAggScanOperator(TsFetcherCollection* collection,
                                          TSAggregatorSpec* spec,
-                                         TSPostProcessSpec* post,
+                                         PostProcessSpec* post,
                                          TABLE* table, int32_t processor_id)
     : HashAggregateOperator(collection, spec, post, table, processor_id) {}
 

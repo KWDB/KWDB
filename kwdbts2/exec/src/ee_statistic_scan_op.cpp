@@ -22,7 +22,7 @@
 namespace kwdbts {
 
 TableStatisticScanOperator::TableStatisticScanOperator(TsFetcherCollection* collection,
-    TSStatisticReaderSpec* spec, TSPostProcessSpec* post, TABLE* table, int32_t processor_id)
+    TSStatisticReaderSpec* spec, PostProcessSpec* post, TABLE* table, int32_t processor_id)
     : BaseOperator(collection, table, post, processor_id),
       schema_id_(0),
       object_id_(spec->tableid()),

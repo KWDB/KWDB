@@ -43,9 +43,6 @@ type refreshMaterializedViewNode struct {
 func (p *planner) RefreshMaterializedView(
 	ctx context.Context, n *tree.RefreshMaterializedView,
 ) (planNode, error) {
-	if !p.EvalContext().TxnImplicit {
-		return nil, pgerror.Newf(pgcode.InvalidTransactionState, "cannot refresh view in an explicit transaction")
-	}
 	desc, err := p.ResolveMutableTableDescriptorEx(ctx, n.Name, true /* required */, ResolveRequireViewDesc)
 	if err != nil {
 		return nil, err
@@ -68,6 +65,9 @@ func (p *planner) RefreshMaterializedView(
 }
 
 func (n *refreshMaterializedViewNode) startExec(params runParams) error {
+	if !params.p.EvalContext().TxnImplicit {
+		return pgerror.Newf(pgcode.InvalidTransactionState, "cannot refresh view in an explicit transaction")
+	}
 	// We refresh a materialized view by creating a new set of indexes to write
 	// the result of the view query into. The existing set of indexes will remain
 	// present and readable so that reads of the view during the refresh operation

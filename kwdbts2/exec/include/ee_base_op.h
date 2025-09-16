@@ -49,7 +49,7 @@ class BaseOperator {
   BaseOperator() {}
 
   BaseOperator(TsFetcherCollection* collection, TABLE* table,
-               TSPostProcessSpec* post, int32_t processor_id)
+               PostProcessSpec* post, int32_t processor_id)
       : table_(table),
         processor_id_(processor_id),
         post_(post),
@@ -255,12 +255,12 @@ class BaseOperator {
     return EEIteratorErrCode::EE_OK;
   }
 
+  TABLE* table_{nullptr};                         // table object
   k_int32 processor_id_{0};                      // operator ID
   std::vector<BaseOperator*> childrens_;         // input iterator
   std::vector<BaseOperator*> parent_operators_;  // parent operator
   Field** renders_{nullptr};  // the operator projection column of this layer
   k_uint32 num_{0};           // count of projected column
-  TABLE* table_{nullptr};     // table object
   // output columns of the current layer，input columns of Parent
   // operator(FieldNum)
   std::vector<Field*> output_fields_;
@@ -283,7 +283,7 @@ class BaseOperator {
   bool use_query_short_circuit_{false};
 
  public:
-  TSPostProcessSpec* post_{nullptr};
+  PostProcessSpec* post_{nullptr};
   DataChunkPtr temporary_data_chunk_;
   OperatorFetcher fetcher_;
   TsFetcherCollection* collection_{nullptr};

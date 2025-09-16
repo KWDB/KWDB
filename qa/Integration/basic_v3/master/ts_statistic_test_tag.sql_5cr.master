@@ -365,3 +365,51 @@ INSERT 1
 (1 row)
 > drop database test cascade;
 DROP DATABASE
+> CREATE TS DATABASE stream_test;
+CREATE TS DATABASE
+> CREATE TABLE stream_test.vehicles (ts timestamp not null,vehicle_id varchar,speed float,lane_no int) TAGS (location int not null) PRIMARY TAGS (location);
+CREATE TABLE
+> INSERT INTO stream_test.vehicles (ts, vehicle_id, speed, lane_no, location) VALUES
+    ('2024-01-01 09:00:00', 'V101', 65.0, 1, 1001),  
+    ('2024-01-01 09:00:02', 'V102', 67.2, 2, 1001), 
+    ('2024-01-01 09:00:03', 'V103', 63.8, 1, 1001),   
+    ('2024-01-01 09:00:10', 'V104', 70.5, 3, 1001),  
+    ('2024-01-01 09:00:15', 'V105', 68.9, 2, 1001),
+    ('2024-01-01 09:00:00', 'V101', 65.0, 1, 1002),  
+    ('2024-01-01 09:00:02', 'V102', 67.2, 2, 1002), 
+    ('2024-01-01 09:00:03', 'V103', 63.8, 1, 1002),   
+    ('2024-01-01 09:00:10', 'V104', 70.5, 3, 1002),  
+    ('2024-01-01 09:00:15', 'V105', 68.9, 2, 1002);
+INSERT 10
+> explain SELECT avg(speed) as avg_speed, min(speed) as max_speed, location FROM stream_test.vehicles group by location;
+        tree        |        field        |  description
+--------------------+---------------------+-----------------
+                    | distributed         | true
+                    | vectorized          | false
+  render            |                     |
+   │                | engine type         | time series
+   │                | avg_speed           | avg
+   │                | max_speed           | min
+   │                | location            | location
+   └── group        |                     |
+        │           | engine type         | time series
+        │           | aggregate 0         | location
+        │           | aggregate 1         | avg(speed)
+        │           | aggregate 2         | min(speed)
+        │           | group by            | location
+        │           | pushLocalAggToScan  | true
+        │           | addSynchronizer     | true
+        │           | pruneFinalAgg       | true
+        └── ts scan |                     |
+                    | ts-table            | vehicles
+                    | access mode         | tableTableMeta
+                    | use statistic       | true
+(20 rows)
+> SELECT avg(speed) as avg_speed, min(speed) as max_speed, location FROM stream_test.vehicles group by location order by location;
+  avg_speed | max_speed | location
+------------+-----------+-----------
+      67.08 |      63.8 |     1001
+      67.08 |      63.8 |     1002
+(2 rows)
+> drop database stream_test cascade;
+DROP DATABASE

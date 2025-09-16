@@ -48,10 +48,10 @@ EEIteratorErrCode TsSortParser::HandleRender(kwdbContext_p ctx, Field **render, 
   std::vector<Field *>& input_fields = input_->OutputFields();
 
   for (k_int32 i = 0; i < renders_size_; ++i) {
-    std::string str = post_->renders(i);
+    Expression render_expr = post_->render_exprs(i);
     // binary tree
     ExprPtr expr;
-    code = BuildBinaryTree(ctx, str, &expr);
+    code = BuildBinaryTree(ctx, render_expr.expr(), &expr);
     if (EEIteratorErrCode::EE_OK != code) {
       break;
     }
@@ -66,7 +66,7 @@ EEIteratorErrCode TsSortParser::HandleRender(kwdbContext_p ctx, Field **render, 
   }
 
   for (k_uint32 i = 0; i < outputcol_count_; ++i) {
-    k_uint32 tab = post_->outputcols(i);
+    k_uint32 tab = post_->output_columns(i);
     Field *field = input_fields[tab];
     if (nullptr == field) {
       code = EEIteratorErrCode::EE_ERROR;

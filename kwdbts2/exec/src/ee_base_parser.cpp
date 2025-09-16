@@ -10,8 +10,7 @@
 // See the Mulan PSL v2 for more details.
 
 #include "ee_base_parser.h"
-#include "ee_pb_plan.pb.h"
-#include "ee_lexer.h"
+#include "cm_lexer.h"
 #include "ee_parse_query.h"
 #include "ee_field_compare.h"
 #include "ee_field_func.h"
@@ -19,9 +18,8 @@
 #include "ee_field_func_string.h"
 #include "ee_field_typecast.h"
 #include "ee_field_window.h"
+#include "ee_internal_type.h"
 #include "ee_kwthd_context.h"
-#include "cm_func.h"
-#include "lg_api.h"
 
 namespace kwdbts {
 
@@ -66,10 +64,10 @@ static k_uint32 extractNumInBrackets(const std::string &input) {
 }
 
 
-TsBaseParser::TsBaseParser(TSPostProcessSpec *post, TABLE *table)
+TsBaseParser::TsBaseParser(PostProcessSpec *post, TABLE *table)
   : post_(post),
     table_(table),
-    renders_size_(post->renders_size()) {}
+    renders_size_(post->render_exprs_size()) {}
 
 TsBaseParser::~TsBaseParser() {
   for (auto it : new_fields_) {
@@ -86,7 +84,8 @@ EEIteratorErrCode TsBaseParser::ParserFilter(kwdbContext_p ctx, Field **field) {
       break;
     }
 
-    std::string filter = post_->filter();
+    Expression str = post_->filter();
+    std::string filter = str.expr();
     ee_trim(&filter);
     if (filter.empty() || 0 == filter.compare("none")) {
       break;
@@ -132,11 +131,10 @@ EEIteratorErrCode TsBaseParser::BuildBinaryTree(kwdbContext_p ctx, const KString
   EEIteratorErrCode code = EEIteratorErrCode::EE_OK;
   auto max_query_size = 0;
   auto max_parser_depth = 0;
-  auto tokens_ptr = std::make_shared<kwdbts::Tokens>(str.data(), str.data() + str.size(), max_query_size);
-  kwdbts::IParser::Pos pos(tokens_ptr, max_parser_depth);
+  auto tokens_ptr = std::make_shared<kwdb::Tokens>(str.data(), str.data() + str.size(), max_query_size);
+  kwdb::IParser::Pos pos(tokens_ptr, max_parser_depth);
   kwdbts::ParseQuery parser(str, pos);
-  *expr = parser.ParseImpl();  // binary tree
-  if (nullptr == *expr) {
+  if (!parser.ParseImpl(reinterpret_cast<void*>(expr), nullptr) || *expr == nullptr) {
     EEPgErrorInfo::SetPgErrorInfo(ERRCODE_INVALID_PARAMETER_VALUE, "Invalid expr");
     LOG_ERROR("Parse expr failed, expr is: %s", str.c_str());
     code = EEIteratorErrCode::EE_ERROR;
@@ -924,15 +922,15 @@ EEIteratorErrCode TsBaseParser::BuildOutputFields(kwdbContext_p ctx, Field **ren
       new_field->table_ = field->table_;
       if (!ignore_outputtype) {
         k_uint32 idx = outputcol_types[i];
-        if (idx >= post_->outputtypes_size()) {
-          LOG_ERROR("outputcol_types[%u] is invalid, outputtypes_size is %d", idx, post_->outputtypes_size());
+        if (idx >= post_->output_types_size()) {
+          LOG_ERROR("outputcol_types[%u] is invalid, outputtypes_size is %d", idx, post_->output_types_size());
           EEPgErrorInfo::SetPgErrorInfo(ERRCODE_INDETERMINATE_DATATYPE, "Unknown Output Field Return Type");
           code = EEIteratorErrCode::EE_ERROR;
           SafeDeletePointer(new_field);
           break;
         }
-        new_field->set_return_type(post_->outputtypes(outputcol_types[i]));
-        field->set_return_type(post_->outputtypes(outputcol_types[i]));
+        new_field->set_return_type(GetInternalOutputType(post_->output_types(outputcol_types[i])));
+        field->set_return_type(GetInternalOutputType(post_->output_types(outputcol_types[i])));
       }
       // DataChunk columns are treated as TYPEDATA
       new_field->set_column_type(::roachpb::KWDBKTSColumn::ColumnType::KWDBKTSColumn_ColumnType_TYPE_DATA);
@@ -948,9 +946,9 @@ EEIteratorErrCode TsBaseParser::BuildOutputFields(kwdbContext_p ctx, Field **ren
 }
 
 
-TsScanParser::TsScanParser(TSPostProcessSpec *post, TABLE *table)
+TsScanParser::TsScanParser(PostProcessSpec *post, TABLE *table)
   : TsBaseParser(post, table),
-    inputcols_count_(post->outputcols_size()) {}
+    inputcols_count_(post->output_columns_size()) {}
 
 TsScanParser::~TsScanParser() {
   if (inputcols_count_ > 0 && input_cols_!= nullptr) {
@@ -984,7 +982,7 @@ EEIteratorErrCode TsScanParser::ParserInputField(kwdbContext_p ctx) {
   }
 
   for (k_uint32 i = 0; i < inputcols_count_; i++) {
-    k_uint32 col_index = post_->outputcols(i);
+    k_uint32 col_index = post_->output_columns(i);
     Field* field = table_->GetFieldWithColNum(col_index);
     input_cols_[i] = field;
   }
@@ -1050,10 +1048,10 @@ EEIteratorErrCode TsScanParser::ParserRender(kwdbContext_p ctx, Field ***render,
 
   // resolve render
   for (k_int32 i = 0; i < renders_size_; ++i) {
-    std::string str = post_->renders(i);
+    Expression render_expr = post_->render_exprs(i);
     // binary tree
     ExprPtr expr;
-    code = BuildBinaryTree(ctx, str, &expr);
+    code = BuildBinaryTree(ctx, render_expr.expr(), &expr);
     if (EEIteratorErrCode::EE_OK != code) {
       break;
     }
@@ -1070,9 +1068,9 @@ EEIteratorErrCode TsScanParser::ParserRender(kwdbContext_p ctx, Field ***render,
   Return(code);
 }
 
-TsOperatorParser::TsOperatorParser(TSPostProcessSpec *post, TABLE *table)
+TsOperatorParser::TsOperatorParser(PostProcessSpec *post, TABLE *table)
   : TsBaseParser(post, table),
-    outputcol_count_(post->outputcols_size()) {}
+    outputcol_count_(post->output_columns_size()) {}
 
 
 EEIteratorErrCode TsOperatorParser::ParserRender(kwdbContext_p ctx, Field ***render, k_uint32 num) {

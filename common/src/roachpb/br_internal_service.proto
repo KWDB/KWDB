@@ -130,7 +130,7 @@ enum CompressionTypePB {
 
 message ColumnPB {
     optional int64 uncompressed_size = 1;     //
-    optional int64 compressed_size = 2;       // 
+    optional int64 compressed_size = 2;       //
     optional int64 offset = 3;                // offset in data
     optional bytes data = 4;                  // column data (compress)
 };

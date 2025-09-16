@@ -166,48 +166,16 @@ var (
 		"time series data partition interval",
 		864000)
 
-	mountMaxLimit = settings.RegisterPublicIntSetting(
-		"ts.mount.max_limit",
-		"the limit on the number of mount files compressed by the database process",
-		1000)
-
-	partitionLRUCacheLimit = settings.RegisterPublicIntSetting(
-		"ts.cached_partitions_per_subgroup.max_limit",
-		"the limit on the number of partition table lru_cache",
-		20)
-
-	subgroupEntities = settings.RegisterPublicIntSetting(
-		"ts.entities_per_subgroup.max_limit",
-		"the maximum number of entities that can be held in a subgroup",
-		500)
-
-	segmentBlocks = settings.RegisterPublicIntSetting(
-		"ts.blocks_per_segment.max_limit",
-		"the maximum number of blocks that can be held in a segment",
-		1000)
-
-	blockRows = settings.RegisterPublicIntSetting(
+	blockMaxRows = settings.RegisterPublicIntSetting(
 		"ts.rows_per_block.max_limit",
-		"the maximum number of rows that can be held in a block item",
-		1000)
+		"the maximum number of rows that can be held in a block",
+		4096)
 
-	tsCompressionType = settings.RegisterPublicStringSetting(
-		"ts.compression.type",
-		"compression algorithm for time series data",
-		"gzip")
-	tsCompressionLevel = settings.RegisterPublicStringSetting(
-		"ts.compression.level",
-		"compression level for time series data",
-		"middle")
-
-	immediateCompressionThreads = settings.RegisterPublicIntSetting(
-		"immediate_compression.threads",
-		"number of threads for immediate compression for both relation and time series data",
-		3)
 	tsCountUseRowWritten = settings.RegisterPublicBoolSetting(
 		"ts.count.use_statistics.enabled",
 		"use row written when querying count",
 		true)
+
 	tsTableCacheCapacity = settings.RegisterPublicIntSetting(
 		"ts.table_cache.capacity",
 		"maximum limit of ts table cache",
@@ -223,6 +191,31 @@ var (
 			}
 			return nil
 		})
+
+	blockMinRows = settings.RegisterPublicIntSetting(
+		"ts.rows_per_block.min_limit",
+		"the minimum number of rows that can be held in a block",
+		2048)
+
+	maxCompactLastSegNum = settings.RegisterPublicIntSetting(
+		"ts.compact.max_limit",
+		"the maximum number of compacts at one time",
+		10)
+
+	maxReservedLastSegNum = settings.RegisterPublicIntSetting(
+		"ts.reserved_last_segment.max_limit",
+		"the maximum number of last segments reserved in the latest partition",
+		2)
+
+	maxMemSegmentMaxSize = settings.RegisterPublicIntSetting(
+		"ts.mem_segment_size.max_limit",
+		"the maximum size of mem segment in vgroup",
+		67108864)
+
+	maxBlockLRUCacheMaxSize = settings.RegisterPublicIntSetting(
+		"ts.block.lru_cache.max_limit",
+		"the maximum size of lru caches in the block",
+		1024)
 )
 
 // TODO(peter): Until go1.11, ServeMux.ServeHTTP was not safe to call
@@ -2322,16 +2315,6 @@ func (s *Server) Start(ctx context.Context) error {
 	})
 
 	jobs.RegisterScheduledJobExecutorFactory(
-		sql.CompressExecutorName,
-		func() (jobs.ScheduledJobExecutor, error) {
-			return &sql.ScheduledCompressExecutor{}, nil
-		})
-	//jobs.RegisterScheduledJobExecutorFactory(
-	//	sql.RetentionExecutorName,
-	//	func() (jobs.ScheduledJobExecutor, error) {
-	//		return &sql.ScheduledRetentionExecutor{}, nil
-	//	})
-	jobs.RegisterScheduledJobExecutorFactory(
 		sql.SQLExecutorName,
 		func() (jobs.ScheduledJobExecutor, error) {
 			return &sql.ScheduledSQLExecutor{}, nil
@@ -2340,11 +2323,6 @@ func (s *Server) Start(ctx context.Context) error {
 		sql.VacuumExecutorName,
 		func() (jobs.ScheduledJobExecutor, error) {
 			return &sql.ScheduledVacuumExecutor{}, nil
-		})
-	jobs.RegisterScheduledJobExecutorFactory(
-		sql.CountExecutorName,
-		func() (jobs.ScheduledJobExecutor, error) {
-			return &sql.ScheduledCountExecutor{}, nil
 		})
 	// Start scheduled jobs daemon.
 	jobs.StartJobSchedulerDaemon(

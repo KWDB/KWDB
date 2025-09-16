@@ -125,12 +125,5 @@ else
   echo -e "${FAIL}Test failed! Will skip the rest of tests, please check $logdir${NC}"
 fi
 
-if [ ${testfilter} == "TEST_v2_integration_basic_v2.sh" ]; then
-  $QA_DIR/run_test_local_v3.sh TEST_v3_integration_basic_v3.sh ${sqlfilter} ${topologies}
-fi
-if [ ${testfilter} == "TEST_v2_integration_distribute_v2.sh" ]; then
-  $QA_DIR/run_test_local_v3.sh TEST_v3_integration_distribute_v3.sh ${sqlfilter} ${topologies}
-fi
-
 # safe exit, otherwise can't stop ci container
 exit 0

@@ -56,7 +56,7 @@ class TsColumnBlock {
   size_t GetRowNum() const { return count_; }
   const AttributeInfo& GetColSchama() const { return col_schema_; }
   char* GetColAddr() { return fixlen_guard_.data(); }
-  KStatus GetColBitmap(TsBitmap& bitmap);
+  KStatus GetColBitmap(std::unique_ptr<TsBitmapBase>* bitmap) const;
   KStatus GetValueSlice(int row_num, TSSlice& value);
 };
 
@@ -70,7 +70,7 @@ class TsColumnBlockBuilder {
 
  public:
   explicit TsColumnBlockBuilder(const AttributeInfo& col_schema) : col_schema_(col_schema) {}
-  void AppendFixLenData(TSSlice data, int count, const TsBitmap& bmap);
+  void AppendFixLenData(TSSlice data, int count, const TsBitmapBase* bitmap);
   void AppendVarLenData(TSSlice data, DataFlags flag);
 
   // TODO(zzr) make it const ref

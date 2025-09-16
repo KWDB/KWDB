@@ -33,27 +33,22 @@ KStatus Processors::Init(char* message, uint32_t len) {
     EEPgErrorInfo::SetPgErrorInfo(ERRCODE_INVALID_PARAMETER_VALUE, "Invalid init Processors");
     return KStatus::FAIL;
   }
-  
   bool proto_parse = false;
   try {
     proto_parse = spec_->ParseFromArray(message, len);
   } catch (...) {
     LOG_ERROR("Throw exception where parsing physical plan.");
   }
-  
   if (!proto_parse) {
     LOG_ERROR("Parse physical plan err when query setup.");
     EEPgErrorInfo::SetPgErrorInfo(ERRCODE_INVALID_PARAMETER_VALUE, "Invalid physical plan");
     return KStatus::FAIL;
   }
-  
-  
   // DebugPrint(fspec);
   if (spec_->processors_size() < 1) {
 //    LOG_ERROR("The flowspec has no processors.");
     return KStatus::FAIL;
   }
-  
 //  FindTopProcessorId();
   // New operator
   KStatus ret = BuildOperator();
@@ -61,18 +56,16 @@ KStatus Processors::Init(char* message, uint32_t len) {
 //    LOG_ERROR("resolve flowspec error.");
     return KStatus::FAIL;
   }
-  
   b_init_ = KTRUE;
   return KStatus::SUCCESS;
 }
-  
-PhyOpRef Processors::BuildOperatorImp(const ProcessorSpec &procSpec, InPutStreamSrcMap &inputSrc) {
-  std::vector<const kwdbts::ProcessorSpec*> procs;
+
+PhyOpRef Processors::BuildOperatorImp(const TSProcessorSpec &procSpec, InPutStreamSrcMap &inputSrc) {
+  std::vector<const kwdbts::TSProcessorSpec*> procs;
   const PostProcessSpec& post = procSpec.post();
-  const ProcessorCoreUnion& core = procSpec.core();
+  const TSProcessorCoreUnion& core = procSpec.core();
 //  k_int32 processor_id = procSpec.processor_id();
   PhyOpRefVec inputPlan;
-  auto Finish = false;
   if (0 == procSpec.input_size()) {
     // If there are no children, deal with yourself directly
   } else {
@@ -92,17 +85,16 @@ PhyOpRef Processors::BuildOperatorImp(const ProcessorSpec &procSpec, InPutStream
       }
     }
   }
-  
   // deal with self
   return transFormPlan_->TransFormPhysicalPlan(procSpec, post, core, inputPlan);
 }
 
 KStatus Processors::BuildOperator() {
   InPutStreamSrcMap inputSrc;
-  std::vector<const kwdbts::ProcessorSpec*> procs;
+  std::vector<const kwdbts::TSProcessorSpec*> procs;
   // find the child node, deal with the child node first, and then deal with yourself
   for (int i = 0; i < spec_->processors_size() - 1; ++i) {
-    const ProcessorSpec& procSpec = spec_->processors(i);
+    const TSProcessorSpec& procSpec = spec_->processors(i);
     auto &plan = BuildOperatorImp(procSpec, inputSrc);
     for (auto m = 0; m < procSpec.output_size(); m++) {
       for (auto n = 0; n < procSpec.output(m).streams_size(); n++) {
@@ -110,11 +102,9 @@ KStatus Processors::BuildOperator() {
       }
     }
   }
-  
-  const ProcessorSpec& procSpec = spec_->processors(spec_->processors_size() - 1);
+  const TSProcessorSpec& procSpec = spec_->processors(spec_->processors_size() - 1);
   auto &plan = BuildOperatorImp(procSpec, inputSrc);
   physical_planner_->SetRoot(plan);
-  
   return KStatus::SUCCESS;
 }
 
@@ -122,5 +112,4 @@ void Processors::Reset() {
   b_init_ = KFALSE;
   spec_.reset();
 }
-
-}
+}  // namespace kwdbap

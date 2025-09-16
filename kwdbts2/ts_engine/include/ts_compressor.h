@@ -128,9 +128,9 @@ class CompressorManager {
       first_algo_ = first == nullptr ? TsCompAlg::kPlain : first_algo;
       second_algo_ = second == nullptr ? GenCompAlg::kPlain : second_algo;
     }
-    bool Compress(const TSSlice& raw, const TsBitmap* bitmap, uint32_t count, std::string* out) const;
+    bool Compress(const TSSlice& raw, const TsBitmapBase* bitmap, uint32_t count, std::string* out) const;
 
-    bool Decompress(const TSSlice& raw, const TsBitmap* bitmap, uint32_t count, std::string* out) const;
+    bool Decompress(const TSSlice& raw, const TsBitmapBase* bitmap, uint32_t count, std::string* out) const;
     bool IsPlain() const { return (first_ == nullptr && second_ == nullptr); }
 
     std::tuple<TsCompAlg, GenCompAlg> GetAlgorithms() const;
@@ -154,10 +154,10 @@ class CompressorManager {
   std::tuple<TsCompAlg, GenCompAlg> GetDefaultAlgorithm(DATATYPE dtype) const;
   TwoLevelCompressor GetDefaultCompressor(DATATYPE dtype) const;
 
-  bool CompressData(TSSlice input, const TsBitmap* bitmap, uint64_t count, std::string* output,
+  bool CompressData(TSSlice input, const TsBitmapBase* bitmap, uint64_t count, std::string* output,
                     TsCompAlg fisrt, GenCompAlg second) const;
   bool CompressVarchar(TSSlice input, std::string* output, GenCompAlg alg) const;
-  bool DecompressData(TSSlice input, const TsBitmap* bitmap, uint64_t count, TsSliceGuard* out) const;
+  bool DecompressData(TSSlice input, const TsBitmapBase* bitmap, uint64_t count, TsSliceGuard* out) const;
   bool DecompressVarchar(TSSlice input, TsSliceGuard* out) const;
 };
 

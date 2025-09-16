@@ -1001,12 +1001,13 @@ INSERT 1
                   │                     | tb          | time_bucket_gapfill(e1, '5000mins')
                   │                     | e1          | e1
                   └── distinct          |             |
+                       │                | engine type | time series
                        │                | distinct on | e1
                        └── synchronizer |             |
                             └── ts scan |             |
                                         | ts-table    | tb2
                                         | access mode | metaTable
-(21 rows)
+(22 rows)
 > select time_bucket(e1,'5000mins') as tb from (select twa(k_timestamp,ln(t5)+ln(t6))*elapsed(k_timestamp,1ms) as val,e1 from test_twa_elapsed.tb2 group by e1 order by val) group by tb order by tb;
              tb
 -----------------------------

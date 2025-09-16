@@ -26,7 +26,6 @@
 #include "ee_global.h"
 #include "ee_timestamp_utils.h"
 #include "pgcode.h"
-#include "ts_time_partition.h"
 
 namespace kwdbts {
 
@@ -1883,7 +1882,7 @@ char *FieldFuncCastCheckTs::get_ptr(RowBatch *batch) {
     case roachpb::DataType::DOUBLE: {
       String str = args_[0]->ValStr(ptr);
       ErrorInfo err;
-      int ret = TsTimePartition::tryAlterType({str.ptr_, str.length_}, datatype_, err);
+      int ret = tryAlterType({str.ptr_, str.length_}, datatype_, err);
       val = ret == 0 ? 1 : 0;
       break;
     }
@@ -1909,8 +1908,7 @@ char *FieldFuncCastCheckTs::get_ptr(RowBatch *batch) {
 k_int64 FieldFuncCastCheckTs::ValInt() {
   String str = args_[0]->ValStr();
   ErrorInfo err;
-  int ret =
-      TsTimePartition::tryAlterType({str.ptr_, str.length_}, datatype_, err);
+  int ret = tryAlterType({str.ptr_, str.length_}, datatype_, err);
   return 0 == ret ? 1 : 0;
 }
 

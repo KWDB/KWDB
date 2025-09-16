@@ -496,3 +496,373 @@ where (pg_catalog.to_english(
 DROP DATABASE
 > drop database db_shig cascade;
 DROP DATABASE
+> drop database if exists tpcc cascade;
+DROP DATABASE
+> create database tpcc;
+CREATE DATABASE
+> use tpcc;
+SET
+> CREATE TABLE bmsql_stock
+(
+    s_i_id       INT4 NOT NULL,
+    s_w_id       INT4 NOT NULL,
+    s_quantity   INT4 NULL,
+    s_ytd        INT4 NULL,
+    s_order_cnt  INT4 NULL,
+    s_remote_cnt INT4 NULL,
+    s_data       VARCHAR(50) NULL,
+    s_dist_01    CHAR(24) NULL,
+    s_dist_02    CHAR(24) NULL,
+    s_dist_03    CHAR(24) NULL,
+    s_dist_04    CHAR(24) NULL,
+    s_dist_05    CHAR(24) NULL,
+    s_dist_06    CHAR(24) NULL,
+    s_dist_07    CHAR(24) NULL,
+    s_dist_08    CHAR(24) NULL,
+    s_dist_09    CHAR(24) NULL,
+    s_dist_10    CHAR(24) NULL,
+    CONSTRAINT "primary" PRIMARY KEY (s_w_id ASC, s_i_id ASC),
+    INDEX        bmsql_stock_idx1 (s_i_id ASC),
+    FAMILY       "primary" (s_i_id, s_w_id, s_quantity, s_ytd, s_order_cnt, s_remote_cnt, s_data, s_dist_01, s_dist_02, s_dist_03, s_dist_04, s_dist_05, s_dist_06, s_dist_07, s_dist_08, s_dist_09, s_dist_10)
+);
+CREATE TABLE
+> CREATE TABLE bmsql_item
+(
+    i_id    INT4 NOT NULL,
+    i_name  VARCHAR(24) NULL,
+    i_price DECIMAL(5, 2) NULL,
+    i_data  VARCHAR(50) NULL,
+    i_im_id INT4 NULL,
+    CONSTRAINT "primary" PRIMARY KEY (i_id ASC),
+    FAMILY  "primary" (i_id, i_name, i_price, i_data, i_im_id)
+);
+CREATE TABLE
+> CREATE TABLE bmsql_customer
+(
+    c_id           INT4 NOT NULL,
+    c_d_id         INT4 NOT NULL,
+    c_w_id         INT4 NOT NULL,
+    c_discount     DECIMAL(4, 4) NULL,
+    c_credit       CHAR(2) NULL,
+    c_last         VARCHAR(16) NULL,
+    c_first        VARCHAR(16) NULL,
+    c_credit_lim   DECIMAL(12, 2) NULL,
+    c_balance      DECIMAL(12, 2) NULL,
+    c_ytd_payment  DECIMAL(12, 2) NULL,
+    c_payment_cnt  INT4 NULL,
+    c_delivery_cnt INT4 NULL,
+    c_street_1     VARCHAR(20) NULL,
+    c_street_2     VARCHAR(20) NULL,
+    c_city         VARCHAR(20) NULL,
+    c_state        CHAR(2) NULL,
+    c_zip          CHAR(9) NULL,
+    c_phone        CHAR(16) NULL,
+    c_since        TIMESTAMP NULL,
+    c_middle       CHAR(2) NULL,
+    c_data         VARCHAR(500) NULL,
+    CONSTRAINT "primary" PRIMARY KEY (c_w_id ASC, c_d_id ASC, c_id ASC),
+    INDEX          bmsql_customer_idx1 (c_w_id ASC, c_d_id ASC, c_last ASC, c_first ASC),
+    FAMILY         "primary" (c_id, c_d_id, c_w_id, c_discount, c_credit, c_last, c_first, c_credit_lim, c_balance, c_ytd_payment, c_payment_cnt, c_delivery_cnt, c_street_1, c_street_2, c_city, c_state, c_zip, c_phone, c_since, c_middle, c_data)
+);
+CREATE TABLE
+> CREATE TABLE bmsql_district
+(
+    d_id        INT4 NOT NULL,
+    d_w_id      INT4 NOT NULL,
+    d_ytd       DECIMAL(12, 2) NULL,
+    d_tax       DECIMAL(4, 4) NULL,
+    d_next_o_id INT4 NULL,
+    d_name      VARCHAR(10) NULL,
+    d_street_1  VARCHAR(20) NULL,
+    d_street_2  VARCHAR(20) NULL,
+    d_city      VARCHAR(20) NULL,
+    d_state     CHAR(2) NULL,
+    d_zip       CHAR(9) NULL,
+    CONSTRAINT "primary" PRIMARY KEY (d_w_id ASC, d_id ASC),
+    FAMILY      "primary" (d_id, d_w_id, d_ytd, d_tax, d_next_o_id, d_name, d_street_1, d_street_2, d_city, d_state, d_zip)
+);
+CREATE TABLE
+> CREATE TABLE bmsql_oorder
+(
+    o_id         INT4 NOT NULL,
+    o_w_id       INT4 NOT NULL,
+    o_d_id       INT4 NOT NULL,
+    o_c_id       INT4 NULL,
+    o_carrier_id INT4 NULL,
+    o_ol_cnt     INT4 NULL,
+    o_all_local  INT4 NULL,
+    o_entry_d    TIMESTAMP NULL,
+    CONSTRAINT "primary" PRIMARY KEY (o_w_id ASC, o_d_id ASC, o_id ASC),
+    UNIQUE INDEX bmsql_oorder_idx1 (o_w_id ASC, o_d_id ASC, o_carrier_id ASC, o_id ASC),
+    INDEX        bmsql_oorder_idx2 (o_w_id ASC, o_d_id ASC, o_c_id ASC),
+    FAMILY       "primary" (o_id, o_w_id, o_d_id, o_c_id, o_carrier_id, o_ol_cnt, o_all_local, o_entry_d)
+);
+CREATE TABLE
+> CREATE TABLE bmsql_history
+(
+    hist_id  INT4 NULL,
+    h_c_id   INT4 NULL,
+    h_c_d_id INT4 NULL,
+    h_c_w_id INT4 NULL,
+    h_d_id   INT4 NULL,
+    h_w_id   INT4 NULL,
+    h_date   TIMESTAMP NULL,
+    h_amount DECIMAL(6, 2) NULL,
+    h_data   VARCHAR(24) NULL,
+    INDEX    bmsql_history_idx1 (h_c_w_id ASC, h_c_d_id ASC, h_c_id ASC),
+    INDEX    bmsql_history_idx2 (h_w_id ASC, h_d_id ASC),
+    FAMILY   "primary" (hist_id, h_c_id, h_c_d_id, h_c_w_id, h_d_id, h_w_id, h_date, h_amount, h_data, rowid)
+);
+CREATE TABLE
+> SELECT
+    ref_5.h_c_d_id AS c0,
+    ref_6.d_ytd AS c1,
+    CASE WHEN kwdb_internal.cluster_id() = uuid_recv(ref_4.s_order_cnt)
+             THEN ref_4.s_order_cnt
+         ELSE ref_4.s_order_cnt
+        END AS c2,
+    ref_6.d_name AS c3,
+    83 AS c4,
+    ref_4.s_data AS c5,
+    subq_0.c9 AS c6,
+    ref_0.s_dist_04 AS c7,
+    ref_0.s_dist_09 AS c8,
+    ref_6.d_ytd AS c9,
+    subq_1.c1 AS c10
+FROM
+    tpcc.bmsql_stock AS ref_0
+        INNER JOIN
+    (SELECT
+         ref_1.i_id AS c0,
+         ref_1.i_price AS c1,
+         ref_1.i_name AS c2,
+         ref_1.i_im_id AS c3,
+         ref_1.i_name AS c4,
+         ref_1.i_id AS c5,
+         ref_1.i_id AS c6,
+         ref_1.i_data AS c7,
+         ref_1.i_name AS c8,
+         ref_1.i_im_id AS c9,
+         ref_1.i_price AS c10,
+         ref_1.i_im_id AS c11
+     FROM
+         tpcc.bmsql_item AS ref_1
+     WHERE
+         true
+         LIMIT 72) AS subq_0
+        INNER JOIN
+    (SELECT
+         ref_2.c_discount AS c0,
+         ref_3.i_data AS c1,
+         ref_2.c_since AS c2,
+         ref_2.c_since AS c3,
+         ref_3.i_data AS c4
+     FROM
+         tpcc.bmsql_customer AS ref_2
+             INNER JOIN
+         tpcc.bmsql_item AS ref_3
+         ON
+             (ref_2.c_payment_cnt IS NULL)
+     WHERE
+         CAST(NULL AS BYTES) IS NOT DISTINCT FROM CAST(NULL AS BYTES)
+         LIMIT
+         53) AS subq_1
+        LEFT JOIN
+    tpcc.bmsql_stock AS ref_4
+        INNER JOIN
+    tpcc.bmsql_history AS ref_5
+        RIGHT JOIN
+    tpcc.bmsql_district AS ref_6
+    ON
+        (false >= false)
+    ON
+        (ref_4.s_i_id = ref_5.hist_id)
+    ON
+        (subq_1.c4 = ref_5.h_data)
+    ON
+        (subq_0.c5 = ref_6.d_id)
+    ON
+        ((CASE WHEN
+                   (ref_6.d_tax >= CAST(NULL AS FLOAT8))
+                       OR (CAST(NULL AS INTERVAL) = CAST(NULL AS INTERVAL))
+                   THEN
+                   CAST(NULL AS TIMETZ)
+               ELSE
+                   CAST(NULL AS TIMETZ)
+              END
+            IS DISTINCT FROM CAST(NULL AS TIME))
+            OR
+         (false = CASE WHEN (CAST(NULL AS TIMESTAMPTZ) >= CAST(NULL AS DATE))
+             OR
+                            (CAST(NULL AS TIMESTAMPTZ) >= CAST(NULL AS TIMESTAMPTZ))
+                           THEN false
+                       ELSE false
+             END)
+            ),
+    LATERAL (
+             SELECT
+                 ref_6.d_w_id AS c0
+             FROM
+                 tpcc.bmsql_oorder AS ref_7
+             WHERE
+                 (ref_5.h_c_id IS NOT NULL)
+               AND
+                 (ref_4.s_w_id >= subq_0.c11)
+        ) AS subq_2
+WHERE
+    array_cat(CAST(NULL AS UUID[]),
+              array_append(
+                      array_remove(array_replace(CAST(NULL AS UUID[]),
+                                                 CAST(NULL AS UUID), CAST(NULL AS UUID)),
+                                   gen_random_uuid()),
+                      uuid_recv(ref_6.d_w_id))
+    )
+        IS NOT DISTINCT FROM
+    array_replace(
+    array_replace(array_replace(
+    array_replace(CAST(NULL AS UUID[]),
+    CAST(NULL AS UUID),
+    CAST(COALESCE(CAST(NULL AS UUID),
+    CAST(NULL AS UUID)) AS UUID)),
+    kwdb_internal.cluster_id(),
+    gen_random_uuid()),
+    CASE WHEN
+    ref_6.d_w_id >= ref_5.h_c_d_id
+    THEN uuid_in(subq_1.c0)
+    ELSE uuid_in(subq_1.c0)
+    END,
+    gen_random_uuid()),
+    kwdb_internal.cluster_id(),
+    gen_random_uuid());
+  c0 | c1 | c2 | c3 | c4 | c5 | c6 | c7 | c8 | c9 | c10
+-----+----+----+----+----+----+----+----+----+----+------
+(0 rows)
+> set cluster setting default_transaction_read_only.enabled=true;
+SET CLUSTER SETTING
+> SELECT
+    ref_5.h_c_d_id AS c0,
+    ref_6.d_ytd AS c1,
+    CASE WHEN kwdb_internal.cluster_id() = uuid_recv(ref_4.s_order_cnt)
+             THEN ref_4.s_order_cnt
+         ELSE ref_4.s_order_cnt
+        END AS c2,
+    ref_6.d_name AS c3,
+    83 AS c4,
+    ref_4.s_data AS c5,
+    subq_0.c9 AS c6,
+    ref_0.s_dist_04 AS c7,
+    ref_0.s_dist_09 AS c8,
+    ref_6.d_ytd AS c9,
+    subq_1.c1 AS c10
+FROM
+    tpcc.bmsql_stock AS ref_0
+        INNER JOIN
+    (SELECT
+         ref_1.i_id AS c0,
+         ref_1.i_price AS c1,
+         ref_1.i_name AS c2,
+         ref_1.i_im_id AS c3,
+         ref_1.i_name AS c4,
+         ref_1.i_id AS c5,
+         ref_1.i_id AS c6,
+         ref_1.i_data AS c7,
+         ref_1.i_name AS c8,
+         ref_1.i_im_id AS c9,
+         ref_1.i_price AS c10,
+         ref_1.i_im_id AS c11
+     FROM
+         tpcc.bmsql_item AS ref_1
+     WHERE
+         true
+         LIMIT 72) AS subq_0
+        INNER JOIN
+    (SELECT
+         ref_2.c_discount AS c0,
+         ref_3.i_data AS c1,
+         ref_2.c_since AS c2,
+         ref_2.c_since AS c3,
+         ref_3.i_data AS c4
+     FROM
+         tpcc.bmsql_customer AS ref_2
+             INNER JOIN
+         tpcc.bmsql_item AS ref_3
+         ON
+             (ref_2.c_payment_cnt IS NULL)
+     WHERE
+         CAST(NULL AS BYTES) IS NOT DISTINCT FROM CAST(NULL AS BYTES)
+         LIMIT
+         53) AS subq_1
+        LEFT JOIN
+    tpcc.bmsql_stock AS ref_4
+        INNER JOIN
+    tpcc.bmsql_history AS ref_5
+        RIGHT JOIN
+    tpcc.bmsql_district AS ref_6
+    ON
+        (false >= false)
+    ON
+        (ref_4.s_i_id = ref_5.hist_id)
+    ON
+        (subq_1.c4 = ref_5.h_data)
+    ON
+        (subq_0.c5 = ref_6.d_id)
+    ON
+        ((CASE WHEN
+                   (ref_6.d_tax >= CAST(NULL AS FLOAT8))
+                       OR (CAST(NULL AS INTERVAL) = CAST(NULL AS INTERVAL))
+                   THEN
+                   CAST(NULL AS TIMETZ)
+               ELSE
+                   CAST(NULL AS TIMETZ)
+              END
+            IS DISTINCT FROM CAST(NULL AS TIME))
+            OR
+         (false = CASE WHEN (CAST(NULL AS TIMESTAMPTZ) >= CAST(NULL AS DATE))
+             OR
+                            (CAST(NULL AS TIMESTAMPTZ) >= CAST(NULL AS TIMESTAMPTZ))
+                           THEN false
+                       ELSE false
+             END)
+            ),
+    LATERAL (
+             SELECT
+                 ref_6.d_w_id AS c0
+             FROM
+                 tpcc.bmsql_oorder AS ref_7
+             WHERE
+                 (ref_5.h_c_id IS NOT NULL)
+               AND
+                 (ref_4.s_w_id >= subq_0.c11)
+        ) AS subq_2
+WHERE
+    array_cat(CAST(NULL AS UUID[]),
+              array_append(
+                      array_remove(array_replace(CAST(NULL AS UUID[]),
+                                                 CAST(NULL AS UUID), CAST(NULL AS UUID)),
+                                   gen_random_uuid()),
+                      uuid_recv(ref_6.d_w_id))
+    )
+        IS NOT DISTINCT FROM
+    array_replace(
+    array_replace(array_replace(
+    array_replace(CAST(NULL AS UUID[]),
+    CAST(NULL AS UUID),
+    CAST(COALESCE(CAST(NULL AS UUID),
+    CAST(NULL AS UUID)) AS UUID)),
+    kwdb_internal.cluster_id(),
+    gen_random_uuid()),
+    CASE WHEN
+    ref_6.d_w_id >= ref_5.h_c_d_id
+    THEN uuid_in(subq_1.c0)
+    ELSE uuid_in(subq_1.c0)
+    END,
+    gen_random_uuid()),
+    kwdb_internal.cluster_id(),
+    gen_random_uuid());
+  c0 | c1 | c2 | c3 | c4 | c5 | c6 | c7 | c8 | c9 | c10
+-----+----+----+----+----+----+----+----+----+----+------
+(0 rows)
+> set cluster setting default_transaction_read_only.enabled=default;
+SET CLUSTER SETTING
+> drop database tpcc cascade;
+DROP DATABASE

@@ -509,7 +509,25 @@ func (dsp *DistSQLPlanner) checkSupportForNode(node planNode) (distRecommendatio
 	// batchLookUpJoinNode is only used in query plan for multiple model processing
 	// when the switch is on and the server starts with single node mode.
 	case *batchLookUpJoinNode:
-		return cannotDistribute, nil
+		if err := dsp.checkExpr(n.pred.onCond); err != nil {
+			return cannotDistribute, err
+		}
+		recLeft, err := dsp.checkSupportForNode(n.left.plan)
+		if err != nil {
+			return cannotDistribute, err
+		}
+		recRight, err := dsp.checkSupportForNode(n.right.plan)
+		if err != nil {
+			return cannotDistribute, err
+		}
+		// If either the left or the right side can benefit from distribution, we
+		// should distribute.
+		rec := recLeft.compose(recRight)
+		// If we can do a hash join, we distribute if possible.
+		if len(n.pred.leftEqualityIndices) > 0 {
+			rec = rec.compose(shouldDistribute)
+		}
+		return rec, nil
 
 	case *limitNode:
 		if err := dsp.checkExpr(n.countExpr); err != nil {
@@ -1300,13 +1318,8 @@ func initTableReaderSpec(
 	if err != nil {
 		return nil, execinfrapb.PostProcessSpec{}, err
 	}
-	filterTs, err := physicalplan.MakeTSExpression(n.filter, planCtx, indexVarMap)
-	if err != nil {
-		return nil, execinfrapb.PostProcessSpec{}, err
-	}
 	post := execinfrapb.PostProcessSpec{
-		Filter:   filter,
-		FilterTs: filterTs,
+		Filter: filter,
 	}
 
 	if n.hardLimit != 0 {
@@ -1328,7 +1341,17 @@ func initAPTableReaderSpec(
 	if dbDesc != nil {
 		dbName = dbDesc.Name
 	}
-	*s = execinfrapb.APTableReaderSpec{DbName: dbName, SchemaName: schemaName, TableName: n.desc.Name, ScanColumns: scanColumns}
+	spanFilter, err := physicalplan.MakeExpression(n.spanFilter, planCtx, indexVarMap, true, false)
+	if err != nil {
+		return nil, execinfrapb.PostProcessSpec{}, err
+	}
+	*s = execinfrapb.APTableReaderSpec{
+		DbName:      dbName,
+		SchemaName:  schemaName,
+		TableName:   n.desc.Name,
+		ScanColumns: scanColumns,
+		SpanFilter:  spanFilter,
+	}
 
 	//indexIdx, err := getIndexIdx(n)
 	//if err != nil {
@@ -1347,13 +1370,9 @@ func initAPTableReaderSpec(
 	if err != nil {
 		return nil, execinfrapb.PostProcessSpec{}, err
 	}
-	filterTs, err := physicalplan.MakeTSExpression(n.filter, planCtx, indexVarMap)
-	if err != nil {
-		return nil, execinfrapb.PostProcessSpec{}, err
-	}
+
 	post := execinfrapb.PostProcessSpec{
-		Filter:   filter,
-		FilterTs: filterTs,
+		Filter: filter,
 	}
 
 	if n.hardLimit != 0 {
@@ -1536,11 +1555,11 @@ func (dsp *DistSQLPlanner) GetAllDistNodesInfo(
 }
 
 // GetEngine get engine
-func GetEngine(planCtx *PlanningCtx) int32 {
+func GetEngine(planCtx *PlanningCtx) execinfrapb.ProcessorSpecEngineType {
 	if planCtx.apSelect {
-		return 1
+		return execinfrapb.ProcessorSpec_Analytical
 	}
-	return 0
+	return execinfrapb.ProcessorSpec_Relation
 }
 
 // createTableReaders generates a plan consisting of table reader processors,
@@ -1950,39 +1969,37 @@ func (p *PhysicalPlan) initPhyPlanForTsReaders(
 	for i := range colMetas {
 		tr.ColMetas = append(tr.ColMetas, &colMetas[i])
 	}
-	pIdxStart := physicalplan.ProcessorIdx(len(p.Processors))
-	for _, resultProc := range p.ResultRouters {
+	//pIdxStart := physicalplan.ProcessorIdx(len(p.Processors))
+	p.TsTableReaderRouters = make([]physicalplan.ProcessorIdx, len(p.ResultRouters))
+	for i, resultProc := range p.ResultRouters {
 		nodeID := p.Processors[resultProc].Node
 
 		proc := physicalplan.Processor{
 			Node: nodeID,
-			TSSpec: execinfrapb.TSProcessorSpec{
+			Spec: execinfrapb.ProcessorSpec{
 				Input: []execinfrapb.InputSyncSpec{{
 					// The other fields will be filled in by mergeResultStreams.
 					ColumnTypes: p.ResultTypes,
 				}},
 				Output: []execinfrapb.OutputRouterSpec{{Type: execinfrapb.OutputRouterSpec_PASS_THROUGH}},
+				Engine: execinfrapb.ProcessorSpec_TimeSeries,
 			},
-			ExecInTSEngine: true,
 		}
 
 		var reader = new(execinfrapb.TSReaderSpec)
 		*reader = tr
-		proc.TSSpec.Core.TableReader = reader
+		proc.Spec.Core.TsTableReader = reader
 
-		p.AddProcessor(proc)
-	}
-	// Connect the streams.
-	for bucket := 0; bucket < len(p.ResultRouters); bucket++ {
-		pIdx := pIdxStart + physicalplan.ProcessorIdx(bucket)
-		p.MergeResultStreams(p.ResultRouters, 0, p.MergeOrdering, pIdx, 0, false /* forceSerialization */)
-	}
+		pIdx := p.AddProcessor(proc)
 
-	// Set the new result routers.
-	p.TsTableReaderRouters = make([]physicalplan.ProcessorIdx, len(p.ResultRouters))
-	for i := 0; i < len(p.ResultRouters); i++ {
-		p.ResultRouters[i] = pIdxStart + physicalplan.ProcessorIdx(i)
-		p.TsTableReaderRouters[i] = pIdxStart + physicalplan.ProcessorIdx(i)
+		p.Streams = append(p.Streams, physicalplan.Stream{
+			SourceProcessor:  resultProc,
+			DestProcessor:    pIdx,
+			SourceRouterSlot: 0,
+			DestInput:        0,
+		})
+		p.ResultRouters[i] = pIdx
+		p.TsTableReaderRouters[i] = pIdx
 	}
 
 	p.GateNoopInput = len(*rangeSpans)
@@ -1994,35 +2011,34 @@ func (p *PhysicalPlan) initPhyPlanForTsReaders(
 func (p *PhysicalPlan) initPhyPlanForStatisticReaders(
 	spec execinfrapb.TSStatisticReaderSpec,
 ) error {
-	pIdxStart := physicalplan.ProcessorIdx(len(p.Processors))
-	for _, resultProc := range p.ResultRouters {
+	//pIdxStart := physicalplan.ProcessorIdx(len(p.Processors))
+	for i, resultProc := range p.ResultRouters {
 		nodeID := p.Processors[resultProc].Node
 		proc := physicalplan.Processor{
 			Node: nodeID,
-			TSSpec: execinfrapb.TSProcessorSpec{
+			Spec: execinfrapb.ProcessorSpec{
 				Input: []execinfrapb.InputSyncSpec{{
 					// The other fields will be filled in by mergeResultStreams.
 					ColumnTypes: p.ResultTypes,
 				}},
 				Output: []execinfrapb.OutputRouterSpec{{Type: execinfrapb.OutputRouterSpec_PASS_THROUGH}},
+				Engine: execinfrapb.ProcessorSpec_TimeSeries,
 			},
-			ExecInTSEngine: true,
 		}
 		var reader = new(execinfrapb.TSStatisticReaderSpec)
 		*reader = spec
-		proc.TSSpec.Core.StatisticReader = reader
+		proc.Spec.Core.TsStatisticReader = reader
 
-		p.AddProcessor(proc)
-	}
-	// Connect the streams.
-	for bucket := 0; bucket < len(p.ResultRouters); bucket++ {
-		pIdx := pIdxStart + physicalplan.ProcessorIdx(bucket)
-		p.MergeResultStreams(p.ResultRouters, 0, p.MergeOrdering, pIdx, 0, false /* forceSerialization */)
-	}
+		pIdx := p.AddProcessor(proc)
 
-	// Set the new result routers.
-	for i := 0; i < len(p.ResultRouters); i++ {
-		p.ResultRouters[i] = pIdxStart + physicalplan.ProcessorIdx(i)
+		p.Streams = append(p.Streams, physicalplan.Stream{
+			SourceProcessor:  resultProc,
+			DestProcessor:    pIdx,
+			SourceRouterSlot: 0,
+			DestInput:        0,
+		})
+
+		p.ResultRouters[i] = pIdx
 	}
 
 	p.GateNoopInput = len(p.ResultRouters)
@@ -2136,11 +2152,13 @@ func (p *PhysicalPlan) buildPhyPlanForTagReaders(
 		n.TagFilterArray = append(n.TagFilterArray, n.filter)
 		n.filter = nil
 	}
-
 	// deal tag filter
-	post := execinfrapb.TSPostProcessSpec{
-		Filter: physicalplan.MakeTSExpressionForArray(n.TagFilterArray, planCtx, resCols),
+	post := execinfrapb.PostProcessSpec{}
+	filter, err := physicalplan.MakeTSExpressionForArray(n.TagFilterArray, planCtx, resCols)
+	if err != nil {
+		return err
 	}
+	post.Filter = filter
 
 	// deal primary tag filter values
 	// primary tag need to be sort.
@@ -2153,9 +2171,9 @@ func (p *PhysicalPlan) buildPhyPlanForTagReaders(
 	for nodeID := range *rangeSpans {
 		proc := physicalplan.Processor{
 			Node: nodeID,
-			TSSpec: execinfrapb.TSProcessorSpec{
-				Core: execinfrapb.TSProcessorCoreUnion{
-					TagReader: &execinfrapb.TSTagReaderSpec{
+			Spec: execinfrapb.ProcessorSpec{
+				Core: execinfrapb.ProcessorCoreUnion{
+					TsTagReader: &execinfrapb.TSTagReaderSpec{
 						TableID:      uint64(n.Table.ID()),
 						ColMetas:     colMetas,
 						AccessMode:   n.AccessMode,
@@ -2171,8 +2189,8 @@ func (p *PhysicalPlan) buildPhyPlanForTagReaders(
 				Output: []execinfrapb.OutputRouterSpec{{
 					Type: execinfrapb.OutputRouterSpec_PASS_THROUGH,
 				}},
+				Engine: execinfrapb.ProcessorSpec_TimeSeries,
 			},
-			ExecInTSEngine: true,
 		}
 
 		pIdx := p.AddProcessor(proc)
@@ -2241,9 +2259,12 @@ func (p *PhysicalPlan) buildPhyPlanForHashTagReaders(
 	}
 
 	// deal tag filter
-	post := execinfrapb.TSPostProcessSpec{
-		Filter: physicalplan.MakeTSExpressionForArray(n.TagFilterArray, planCtx, tagResCols),
+	post := execinfrapb.PostProcessSpec{}
+	filter, err := physicalplan.MakeTSExpressionForArray(n.TagFilterArray, planCtx, tagResCols)
+	if err != nil {
+		return err
 	}
+	post.Filter = filter
 
 	// deal primary tag filter values
 	// primary tag need to be sort.
@@ -2262,9 +2283,9 @@ func (p *PhysicalPlan) buildPhyPlanForHashTagReaders(
 	for nodeID := range *rangeSpans {
 		proc := physicalplan.Processor{
 			Node: nodeID,
-			TSSpec: execinfrapb.TSProcessorSpec{
-				Core: execinfrapb.TSProcessorCoreUnion{
-					TagReader: &execinfrapb.TSTagReaderSpec{
+			Spec: execinfrapb.ProcessorSpec{
+				Core: execinfrapb.ProcessorCoreUnion{
+					TsTagReader: &execinfrapb.TSTagReaderSpec{
 						TableID:        uint64(n.Table.ID()),
 						ColMetas:       colMetas,
 						AccessMode:     n.AccessMode,
@@ -2273,6 +2294,7 @@ func (p *PhysicalPlan) buildPhyPlanForHashTagReaders(
 						RelationalCols: *n.RelInfo.RelationalCols,
 						ProbeColids:    *n.RelInfo.ProbeColIds,
 						HashColids:     colIds,
+						RangeSpans:     (*rangeSpans)[nodeID],
 						TagIndexes:     tagIndexes,
 						UnionType:      unionType,
 						TagIndexIDs:    IndexIDs,
@@ -2281,8 +2303,8 @@ func (p *PhysicalPlan) buildPhyPlanForHashTagReaders(
 				Output: []execinfrapb.OutputRouterSpec{{
 					Type: execinfrapb.OutputRouterSpec_PASS_THROUGH,
 				}},
+				Engine: execinfrapb.ProcessorSpec_TimeSeries,
 			},
-			ExecInTSEngine: true,
 		}
 
 		pIdx := p.AddProcessor(proc)
@@ -2471,14 +2493,14 @@ func (p *PhysicalPlan) buildPhyPlanForTSReadersHash(
 // init TSPostProcessSpec
 func initPostSpecForTSReaders(
 	planCtx *PlanningCtx, n *tsScanNode, resCols []int,
-) (execinfrapb.TSPostProcessSpec, error) {
+) (execinfrapb.PostProcessSpec, error) {
 	filter, err := physicalplan.MakeTSExpression(n.filter, planCtx, resCols)
 	if err != nil {
-		return execinfrapb.TSPostProcessSpec{}, err
+		return execinfrapb.PostProcessSpec{}, err
 	}
 
-	post := execinfrapb.TSPostProcessSpec{
-		Filter: filter.Expr,
+	post := execinfrapb.PostProcessSpec{
+		Filter: filter,
 	}
 
 	return post, nil
@@ -2490,7 +2512,7 @@ func buildPostSpecForTSReaders(
 	typs []types.T,
 	descColumnIDs []sqlbase.ColumnID,
 	tsColMap map[sqlbase.ColumnID]tsColIndex,
-	post *execinfrapb.TSPostProcessSpec,
+	post *execinfrapb.PostProcessSpec,
 ) ([]uint32, []int, []types.T) {
 	var outCols []uint32
 	var planToStreamColMap []int
@@ -2518,7 +2540,7 @@ func buildPostSpecForTSReadersHash(
 	typs []types.T,
 	descColumnIDs []sqlbase.ColumnID,
 	tsColMap map[sqlbase.ColumnID]tsColIndex,
-	post *execinfrapb.TSPostProcessSpec,
+	post *execinfrapb.PostProcessSpec,
 	isHashTagScan bool,
 ) ([]uint32, []int, []types.T) {
 	var outCols []uint32
@@ -2569,9 +2591,6 @@ func (dsp *DistSQLPlanner) createTSReaders(
 		rangeSpans, pTagAllNotSplit, err = dsp.getSpans(planCtx, n, ptCols)
 		if err != nil {
 			return PhysicalPlan{}, err
-		}
-		if _, ok := rangeSpans[dsp.nodeDesc.NodeID]; !ok {
-			rangeSpans[dsp.nodeDesc.NodeID] = []execinfrapb.HashpointSpan{}
 		}
 	}
 
@@ -2877,18 +2896,10 @@ func (dsp *DistSQLPlanner) operateTSData(
 
 	p.GateNoopInput = len(n.nodeID)
 	switch n.operateType {
-	case compress:
-		tsPro.TsOperator = execinfrapb.OperatorType_TsCompressTsTable
-	case compressAll, compressDB, compressTable:
-		tsPro.TsOperator = execinfrapb.OperatorType_TsManualCompressTable
-	case deleteExpiredData:
-		tsPro.TsOperator = execinfrapb.OperatorType_TsDeleteExpiredData
 	case autonomy:
 		tsPro.TsOperator = execinfrapb.OperatorType_TsAutonomy
 	case vacuum:
 		tsPro.TsOperator = execinfrapb.OperatorType_TsVacuum
-	case count:
-		tsPro.TsOperator = execinfrapb.OperatorType_TsCount
 	default:
 		return p, pgerror.New(pgcode.WrongObjectType, "operate type is not supported")
 	}
@@ -3160,7 +3171,7 @@ func (dsp *DistSQLPlanner) selectRenders(
 		}
 	} else {
 		if p.ChildIsExecInTSEngine() {
-			p.AddTSTableReader()
+			p.AddTSTableReader(typs)
 		}
 		dealWithRenderForGroupWindow(p, n, dsp.nodeDesc.NodeID, planCtx.ExtendedEvalCtx.StartDistributeMode)
 
@@ -3183,16 +3194,16 @@ func (dsp *DistSQLPlanner) addSorters(p *PhysicalPlan, n *sortNode) {
 	// Sorting is needed; we add a stage of sorting processors.
 	ordering := execinfrapb.ConvertToMappedSpecOrdering(n.ordering, p.PlanToStreamColMap)
 
-	if p.SelfCanExecInTSEngine(n.engine == tree.EngineTypeTimeseries) && len(p.ResultRouters) == 1 {
+	if p.SelfCanExecInTSEngine(n.engine == tree.EngineTypeTimeseries) {
 		kwdbordering := execinfrapb.ConvertToMappedSpecOrdering(n.ordering, p.PlanToStreamColMap)
 		p.AddTSNoGroupingStage(
-			execinfrapb.TSProcessorCoreUnion{
+			execinfrapb.ProcessorCoreUnion{
 				Sorter: &execinfrapb.SorterSpec{
 					OutputOrdering:   kwdbordering,
 					OrderingMatchLen: uint32(n.alreadyOrderedPrefix),
 				},
 			},
-			execinfrapb.TSPostProcessSpec{},
+			execinfrapb.PostProcessSpec{},
 			p.ResultTypes,
 			ordering,
 		)
@@ -3323,6 +3334,7 @@ func dealWithLocal(aggCtx *AggregationContext) error {
 			localAgg.ColIdx = aggCtx.InputAgg.ColIdx
 		}
 		localAgg.Arguments = aggCtx.InputAgg.Arguments
+		localAgg.Distinct = aggCtx.InputAgg.Distinct
 		localAgg.TimestampConstant = aggCtx.InputAgg.TimestampConstant
 
 		key := aggHashElement{funcID: int8(localFunc.Fn), distinct: localAgg.Distinct, filterColIdx: aggCtx.InputAgg.FilterColIdx, colCount: int8(len(localAgg.ColIdx)), argumentsCount: int8(len(localAgg.Arguments))}
@@ -3686,10 +3698,9 @@ func getTwiceAggregatorRender(
 	finalPreRenderTypes []*types.T,
 	finalIdxMap []uint32,
 	canLocal bool,
-) ([]execinfrapb.Expression, []execinfrapb.Expression, error) {
+) ([]execinfrapb.Expression, error) {
 	// Build rendering expressions.
 	renderExprs := make([]execinfrapb.Expression, len(aggregations))
-	renderExprsTs := make([]execinfrapb.Expression, len(aggregations))
 	h := tree.MakeTypesOnlyIndexedVarHelper(finalPreRenderTypes)
 	// finalIdx is an index inside finalAggs. It is used to keep track of the finalAggs results
 	// that correspond to each aggregation.
@@ -3704,11 +3715,7 @@ func getTwiceAggregatorRender(
 			renderExprs[i], err = physicalplan.MakeExpression(
 				h.IndexedVar(mappedIdx), planCtx, nil /* indexVarMap */, canLocal, false)
 			if err != nil {
-				return nil, nil, err
-			}
-			renderExprsTs[i], err = physicalplan.MakeTSExpression(h.IndexedVar(mappedIdx), planCtx, nil)
-			if err != nil {
-				return nil, nil, err
+				return nil, err
 			}
 		} else {
 			// We have multiple final aggregation values that we need to be mapped to their corresponding index in
@@ -3720,21 +3727,17 @@ func getTwiceAggregatorRender(
 			// Map the final aggregation values to their corresponding indices.
 			expr, err := info.FinalRendering(&h, mappedIdxs)
 			if err != nil {
-				return nil, nil, err
+				return nil, err
 			}
 
 			renderExprs[i], err = physicalplan.MakeExpression(expr, planCtx, nil /* indexVarMap */, canLocal, false)
 			if err != nil {
-				return nil, nil, err
-			}
-			renderExprsTs[i], err = physicalplan.MakeTSExpression(expr, planCtx, nil)
-			if err != nil {
-				return nil, nil, err
+				return nil, err
 			}
 		}
 		finalIdx += len(info.FinalStage)
 	}
-	return renderExprs, renderExprsTs, nil
+	return renderExprs, nil
 }
 
 // addSynchronizerForAgg add ts engine twice agg spec
@@ -3743,9 +3746,9 @@ func addSynchronizerForAgg(
 	p *PhysicalPlan,
 	intermediateTypes []types.T,
 	ordCols []execinfrapb.Ordering_Column,
-	post *execinfrapb.TSPostProcessSpec,
+	post *execinfrapb.PostProcessSpec,
 ) {
-	tsPost := execinfrapb.TSPostProcessSpec{}
+	tsPost := execinfrapb.PostProcessSpec{}
 	if post == nil {
 		// add ts post spec output type from intermediateTypes
 		tsPost = createTSPostSpec(&intermediateTypes)
@@ -3757,7 +3760,7 @@ func addSynchronizerForAgg(
 
 	// add Synchronizer spec for all node
 	p.AddTSNoGroupingStage(
-		execinfrapb.TSProcessorCoreUnion{Synchronizer: &execinfrapb.TSSynchronizerSpec{Degree: planCtx.GetTsDop()}},
+		execinfrapb.ProcessorCoreUnion{TsSynchronizer: &execinfrapb.TSSynchronizerSpec{Degree: planCtx.GetTsDop()}},
 		tsPost,
 		intermediateTypes,
 		execinfrapb.Ordering{Columns: ordCols},
@@ -3770,16 +3773,9 @@ func setupChildDistributionStrategy(
 ) {
 	// set up child pass through
 	for _, resultProc := range p.ResultRouters {
-		if p.Processors[resultProc].ExecInTSEngine {
-			p.Processors[resultProc].TSSpec.Output[0] = execinfrapb.OutputRouterSpec{
-				Type:        typ,
-				HashColumns: groupCols,
-			}
-		} else {
-			p.Processors[resultProc].Spec.Output[0] = execinfrapb.OutputRouterSpec{
-				Type:        typ,
-				HashColumns: groupCols,
-			}
+		p.Processors[resultProc].Spec.Output[0] = execinfrapb.OutputRouterSpec{
+			Type:        typ,
+			HashColumns: groupCols,
 		}
 	}
 }
@@ -3865,13 +3861,12 @@ func (dsp *DistSQLPlanner) addTwiceAggregators(
 
 	if needRender {
 		// Build rendering expressions.
-		renderExprs, renderExprsTs, err := getTwiceAggregatorRender(planCtx, aggregations, finalPreRenderTypes, finalIdxMap, false)
+		renderExprs, err := getTwiceAggregatorRender(planCtx, aggregations, finalPreRenderTypes, finalIdxMap, false)
 		if err != nil {
 			return finalAggsSpec, finalAggsPost, err
 		}
 
 		finalAggsPost.RenderExprs = renderExprs
-		finalAggsPost.RenderExprsTs = renderExprsTs
 	} else if len(finalAggs) < len(aggregations) {
 		// We have removed some duplicates, so we need to add a projection.
 		finalAggsPost.Projection = true
@@ -3881,13 +3876,10 @@ func (dsp *DistSQLPlanner) addTwiceAggregators(
 	return finalAggsSpec, finalAggsPost, nil
 }
 
-func createTSPostSpec(src *[]types.T) execinfrapb.TSPostProcessSpec {
-	post := execinfrapb.TSPostProcessSpec{}
+func createTSPostSpec(src *[]types.T) execinfrapb.PostProcessSpec {
+	post := execinfrapb.PostProcessSpec{}
 	// add ts post spec output type from intermediateTypes
-	post.OutputTypes = make([]types.Family, len(*src))
-	for i, typ := range *src {
-		post.OutputTypes[i] = typ.InternalType.Family
-	}
+	post.OutputTypes = *src
 	return post
 }
 
@@ -4010,22 +4002,22 @@ func (dsp *DistSQLPlanner) addTwoStageAggForTS(
 	addLocalAgg := !n.optType.UseStatisticOpt() && (addTSTwiceAgg || !n.optType.PruneLocalAggOpt())
 	if n.optType.PushLocalAggToScanOpt() {
 		tsPost1 := createTSPostSpec(&intermediateTypes)
-		if err = pushAggToScan(p, &localAggsSpec, &tsPost1, intermediateTypes, !addLocalAgg, n); err != nil {
+		if err = pushAggToScan(planCtx, p, &localAggsSpec, &tsPost1, intermediateTypes, !addLocalAgg, n); err != nil {
 			return finalAggsSpec, finalAggsPost, err
 		}
 	}
 
 	var sort *execinfrapb.SorterSpec
-	if p.Processors[p.ResultRouters[0]].TSSpec.Core.Sorter != nil {
-		sort = p.Processors[p.ResultRouters[0]].TSSpec.Core.Sorter
+	if p.Processors[p.ResultRouters[0]].Spec.Core.Sorter != nil {
+		sort = p.Processors[p.ResultRouters[0]].Spec.Core.Sorter
 	}
 
-	var tsPost execinfrapb.TSPostProcessSpec
+	var tsPost execinfrapb.PostProcessSpec
 	if addLocalAgg {
 		tsPost = createTSPostSpec(&intermediateTypes)
 		// add ts local agg
 		p.AddTSNoGroupingStage(
-			execinfrapb.TSProcessorCoreUnion{Aggregator: &localAggsSpec},
+			execinfrapb.ProcessorCoreUnion{Aggregator: &localAggsSpec},
 			tsPost,
 			intermediateTypes,
 			execinfrapb.Ordering{Columns: ordCols},
@@ -4042,7 +4034,7 @@ func (dsp *DistSQLPlanner) addTwoStageAggForTS(
 			// sort agg case, need add sort after add syncchronizer.
 			if sort != nil {
 				p.AddTSNoGroupingStage(
-					execinfrapb.TSProcessorCoreUnion{
+					execinfrapb.ProcessorCoreUnion{
 						Sorter: &execinfrapb.SorterSpec{
 							OutputOrdering:   execinfrapb.Ordering{Columns: ordCols},
 							OrderingMatchLen: sort.OrderingMatchLen,
@@ -4056,40 +4048,38 @@ func (dsp *DistSQLPlanner) addTwoStageAggForTS(
 			twiceAggSpec := tsFinalAggs
 			if n.groupWindowID >= 0 {
 				twiceAggSpec = finalAggs
-			}
-			// add ts final agg processor
-			if addTSTwiceAgg {
-				tsFinialAggsSpec := execinfrapb.AggregatorSpec{
-					Type:             aggType,
-					Aggregations:     twiceAggSpec,
-					GroupCols:        finalGroupCols,        // group col from final col idx
-					OrderedGroupCols: finalOrderedGroupCols, // order cols from final col idx
-					AggPushDown:      false,                 // must false
-					GroupWindowId:    n.groupWindowID,
+				// add ts final agg processor
+				if addTSTwiceAgg {
+					tsFinialAggsSpec := execinfrapb.AggregatorSpec{
+						Type:             aggType,
+						Aggregations:     twiceAggSpec,
+						GroupCols:        finalGroupCols,        // group col from final col idx
+						OrderedGroupCols: finalOrderedGroupCols, // order cols from final col idx
+						AggPushDown:      false,                 // must false
+						GroupWindowId:    n.groupWindowID,
+					}
+
+					tsPostTwice := createTSPostSpec(&tsAggsTypes)
+
+					// add twice stage agg for parallel
+					p.AddTSNoGroupingStage(
+						execinfrapb.ProcessorCoreUnion{Aggregator: &tsFinialAggsSpec},
+						tsPostTwice,
+						tsAggsTypes,
+						execinfrapb.Ordering{Columns: ordCols},
+					)
 				}
-
-				tsPostTwice := createTSPostSpec(&tsAggsTypes)
-
-				// add twice stage agg for parallel
-				p.AddTSNoGroupingStage(
-					execinfrapb.TSProcessorCoreUnion{Aggregator: &tsFinialAggsSpec},
-					tsPostTwice,
-					tsAggsTypes,
-					execinfrapb.Ordering{Columns: ordCols},
-				)
 			}
 		}
 	}
 
 	if needRender {
 		// Build rendering expressions.
-		renderExprs, renderExprsTs, err := getTwiceAggregatorRender(planCtx, aggregations, finalPreRenderTypes, finalIdxMap, false)
+		renderExprs, err := getTwiceAggregatorRender(planCtx, aggregations, finalPreRenderTypes, finalIdxMap, false)
 		if err != nil {
 			return finalAggsSpec, finalAggsPost, err
 		}
-
 		finalAggsPost.RenderExprs = renderExprs
-		finalAggsPost.RenderExprsTs = renderExprsTs
 	} else if len(finalAggs) < len(aggregations) {
 		// We have removed some duplicates, so we need to add a projection.
 		finalAggsPost.Projection = true
@@ -4101,9 +4091,10 @@ func (dsp *DistSQLPlanner) addTwoStageAggForTS(
 
 // pushAggToScan push agg to scan
 func pushAggToScan(
+	planCtx *PlanningCtx,
 	p *PhysicalPlan,
 	aggSpecs *execinfrapb.AggregatorSpec,
-	tsPost *execinfrapb.TSPostProcessSpec,
+	tsPost *execinfrapb.PostProcessSpec,
 	aggResTypes []types.T,
 	pruneLocalAgg bool,
 	n *groupNode,
@@ -4127,7 +4118,7 @@ func pushAggToScan(
 					}
 				}
 			}
-			if err := p.PushAggToStatisticReader(idx, aggSpecs, tsPost, aggResTypes, constValues, n.isScalar); err != nil {
+			if err := p.PushAggToStatisticReader(planCtx, idx, aggSpecs, tsPost, aggResTypes, constValues, n.isScalar); err != nil {
 				return err
 			}
 		} else {
@@ -4286,20 +4277,25 @@ func (dsp *DistSQLPlanner) addDistinct(
 		}
 		if p.ChildIsExecInTSEngine() {
 			// push down distinct, and then add noop
-			var res []types.Family
-			for _, typ := range p.ResultTypes {
-				res = append(res, typ.InternalType.Family)
-			}
 			// add ts distinct
 			p.AddTSNoGroupingStage(
-				execinfrapb.TSProcessorCoreUnion{Distinct: &execinfrapb.DistinctSpec{
+				execinfrapb.ProcessorCoreUnion{Distinct: &execinfrapb.DistinctSpec{
 					OrderedColumns:  orderedColumns,
 					DistinctColumns: distinctColumns,
 				}},
-				execinfrapb.TSPostProcessSpec{OutputTypes: res},
+				execinfrapb.PostProcessSpec{OutputTypes: p.ResultTypes},
 				p.ResultTypes,
 				execinfrapb.Ordering{},
 			)
+			if len(p.ResultRouters) != 1 {
+				p.AddTSSingleGroupStage(
+					dsp.nodeDesc.NodeID,
+					execinfrapb.ProcessorCoreUnion{Distinct: distinctSpec.Distinct},
+					execinfrapb.PostProcessSpec{OutputTypes: p.ResultTypes},
+					p.ResultTypes,
+					false,
+				)
+			}
 		} else {
 			// Add distinct processors local to each existing current result processor.
 			p.AddNoGroupingStage(distinctSpec, execinfrapb.PostProcessSpec{}, p.ResultTypes, p.MergeOrdering)
@@ -4387,13 +4383,10 @@ func getPreStageNodeID(p *PhysicalPlan) roachpb.NodeID {
 }
 
 // connectStreamForMultiAgg connect local agg and final agg spec stream
-func connectStreamForMultiAgg(p *PhysicalPlan, pIdxStart physicalplan.ProcessorIdx, tsEngine bool) {
+func connectStreamForMultiAgg(p *PhysicalPlan, pIdxStart physicalplan.ProcessorIdx) {
 	for bucket := 0; bucket < len(p.ResultRouters); bucket++ {
 		pIdx := pIdxStart + physicalplan.ProcessorIdx(bucket)
 		srcRouterSlot := bucket
-		if tsEngine {
-			srcRouterSlot = 0
-		}
 		p.MergeResultStreams(p.ResultRouters, srcRouterSlot, p.MergeOrdering, pIdx, 0, false /* forceSerialization */)
 	}
 }
@@ -4433,6 +4426,32 @@ func addRelationalFinalAggStateSpec(
 	}
 }
 
+// addTSFinalAggStateSpec add ts final aggregator.
+func addTSFinalAggStateSpec(
+	p *PhysicalPlan,
+	finalAggsSpec execinfrapb.AggregatorSpec,
+	finalAggsPost execinfrapb.PostProcessSpec,
+) {
+	for _, resultProc := range p.ResultRouters {
+		proc := physicalplan.Processor{
+			Node: p.Processors[resultProc].Node,
+			Spec: execinfrapb.ProcessorSpec{
+				Input: []execinfrapb.InputSyncSpec{{
+					// The other fields will be filled in by mergeResultStreams.
+					ColumnTypes: p.ResultTypes,
+				}},
+				Core: execinfrapb.ProcessorCoreUnion{Aggregator: &finalAggsSpec},
+				Post: finalAggsPost,
+				Output: []execinfrapb.OutputRouterSpec{{
+					Type: execinfrapb.OutputRouterSpec_PASS_THROUGH,
+				}},
+				Engine: execinfrapb.ProcessorSpec_TimeSeries,
+			},
+		}
+		p.AddProcessor(proc)
+	}
+}
+
 // setupMultiAggFinalState set up relational engine multiple node agg final state
 func (dsp *DistSQLPlanner) setupMultiAggFinalState(
 	planCtx *PlanningCtx,
@@ -4454,7 +4473,7 @@ func (dsp *DistSQLPlanner) setupMultiAggFinalState(
 	addRelationalFinalAggStateSpec(planCtx, p, finalAggsSpec, finalAggsPost, p.NewStageID())
 
 	// Connect the streams.
-	connectStreamForMultiAgg(p, pIdxStart, false)
+	connectStreamForMultiAgg(p, pIdxStart)
 
 	// Set the new result routers.
 	setupNewResultRouter(p, pIdxStart)
@@ -4463,66 +4482,48 @@ func (dsp *DistSQLPlanner) setupMultiAggFinalState(
 	p.SetMergeOrdering(dsp.convertOrdering(*reqOrdering, p.PlanToStreamColMap))
 }
 
-// setupMultiAggFinalStateForTS set up ts engine multiple node agg final state
-func (dsp *DistSQLPlanner) setupMultiAggFinalStateForTS(
+func (dsp *DistSQLPlanner) setupMultiAggFinalStateForTSNew(
+	planCtx *PlanningCtx,
 	p *PhysicalPlan,
 	finalOutTypes []types.T,
 	reqOrdering *ReqOrdering,
-	reordering bool,
-	coreUnion execinfrapb.TSProcessorCoreUnion,
-	post execinfrapb.TSPostProcessSpec,
+	finalAggsSpec execinfrapb.AggregatorSpec,
+	finalAggsPost execinfrapb.PostProcessSpec,
 ) {
-	// set up child pass through
-	setupChildDistributionStrategy(p, execinfrapb.OutputRouterSpec_PASS_THROUGH, nil)
+	// ts engine compute twice agg , relational engine compute third agg
+	// Set up the output routers from the previous stage.
+	setupChildDistributionStrategy(p, execinfrapb.OutputRouterSpec_BY_HASH, finalAggsSpec.GroupCols)
 
 	// We have one final stage processor for each result router. This is a
 	// somewhat arbitrary decision; we could have a different number of nodes
 	// working on the final stage.
 	pIdxStart := physicalplan.ProcessorIdx(len(p.Processors))
-	for _, resultProc := range p.ResultRouters {
-		proc := physicalplan.Processor{
-			Node: p.Processors[resultProc].Node,
-			TSSpec: execinfrapb.TSProcessorSpec{
-				Input: []execinfrapb.InputSyncSpec{{
-					// The other fields will be filled in by mergeResultStreams.
-					ColumnTypes: p.ResultTypes,
-				}},
-				Core: coreUnion,
-				Post: post,
-				Output: []execinfrapb.OutputRouterSpec{{
-					Type: execinfrapb.OutputRouterSpec_PASS_THROUGH,
-				}},
-			},
-			ExecInTSEngine: true,
-		}
-		p.AddProcessor(proc)
-	}
+
+	addTSFinalAggStateSpec(p, finalAggsSpec, finalAggsPost)
 
 	// Connect the streams.
-	connectStreamForMultiAgg(p, pIdxStart, true)
+	connectStreamForMultiAgg(p, pIdxStart)
 
 	// Set the new result routers.
 	setupNewResultRouter(p, pIdxStart)
 
 	p.ResultTypes = finalOutTypes
-	if reordering {
-		p.SetMergeOrdering(dsp.convertOrdering(*reqOrdering, p.PlanToStreamColMap))
-	}
+	p.SetMergeOrdering(dsp.convertOrdering(*reqOrdering, p.PlanToStreamColMap))
 }
 
 // addSingleGroupStateForTS  add single group state for ts engine
 func (dsp *DistSQLPlanner) addSingleGroupStateForTS(
 	p *PhysicalPlan,
 	prevStageNode roachpb.NodeID,
-	core execinfrapb.TSProcessorCoreUnion,
-	post execinfrapb.TSPostProcessSpec,
+	core execinfrapb.ProcessorCoreUnion,
+	post execinfrapb.PostProcessSpec,
 	finalOutTypes []types.T,
 ) {
 	node := dsp.nodeDesc.NodeID
 	if prevStageNode != 0 {
 		node = prevStageNode
 	}
-	p.AddTSSingleGroupStage(node, core, post, finalOutTypes)
+	p.AddTSSingleGroupStage(node, core, post, finalOutTypes, false)
 }
 
 // addSingleGroupState add single group state for relational
@@ -4708,9 +4709,9 @@ func (dsp *DistSQLPlanner) addSynchronizerForTS(p *PhysicalPlan, degree int32) e
 		return nil
 	}
 	p.SynchronizerChildRouters = append(p.SynchronizerChildRouters, p.ResultRouters...)
-	TSPost := execinfrapb.TSPostProcessSpec{}
+	TSPost := execinfrapb.PostProcessSpec{}
 
-	TSCoreUnion := execinfrapb.TSProcessorCoreUnion{Synchronizer: &execinfrapb.TSSynchronizerSpec{
+	TSCoreUnion := execinfrapb.ProcessorCoreUnion{TsSynchronizer: &execinfrapb.TSSynchronizerSpec{
 		Degree: degree,
 	}}
 
@@ -4757,7 +4758,7 @@ func (dsp *DistSQLPlanner) addTSAggregators(
 	var finalAggsSpec execinfrapb.AggregatorSpec
 	var finalAggsPost execinfrapb.PostProcessSpec
 
-	coreUnion := execinfrapb.TSProcessorCoreUnion{Aggregator: &execinfrapb.AggregatorSpec{
+	coreUnion := execinfrapb.ProcessorCoreUnion{Aggregator: &execinfrapb.AggregatorSpec{
 		Type:             aggType,
 		Aggregations:     aggregations,
 		GroupCols:        groupCols,
@@ -4776,7 +4777,7 @@ func (dsp *DistSQLPlanner) addTSAggregators(
 	if pruneFinalAgg && (n.optType.PruneLocalAggOpt() || n.optType.UseStatisticOpt()) ||
 		len(p.ResultRouters) == 1 && n.optType.PruneTSFinalAggOpt() { // prune all aggregator operator
 		tsPost := createTSPostSpec(&finalOutTypes)
-		if err = pushAggToScan(p, coreUnion.Aggregator, &tsPost, finalOutTypes, n.optType.PruneLocalAggOpt(), n); err != nil {
+		if err = pushAggToScan(planCtx, p, coreUnion.Aggregator, &tsPost, finalOutTypes, n.optType.PruneLocalAggOpt(), n); err != nil {
 			return true, err
 		}
 
@@ -4800,35 +4801,26 @@ func (dsp *DistSQLPlanner) addTSAggregators(
 				finalAggsPost.OutputTypes = finalOutTypes
 
 				if !pruneFinalAgg {
-					// add twice agg for ts engine
-					var tsFinalAggsPost execinfrapb.TSPostProcessSpec
-					for _, val := range finalAggsPost.RenderExprs {
-						tsFinalAggsPost.Renders = append(tsFinalAggsPost.Renders, val.String())
-					}
-					tsFinalAggsPost.Projection = finalAggsPost.Projection
-					tsFinalAggsPost.OutputColumns = finalAggsPost.OutputColumns
-					dsp.addSingleGroupStateForTS(p, prevStageNode, execinfrapb.TSProcessorCoreUnion{Aggregator: &finalAggsSpec},
-						tsFinalAggsPost, finalOutTypes)
+					dsp.addSingleGroupStateForTS(p, prevStageNode, execinfrapb.ProcessorCoreUnion{Aggregator: &finalAggsSpec},
+						finalAggsPost, finalOutTypes)
 				} else {
 					post := p.GetLastStageTSPost()
-					for i := range finalAggsPost.RenderExprs {
-						post.Renders = append(post.Renders, finalAggsPost.RenderExprs[i].String())
-					}
+					post.RenderExprs = finalAggsPost.RenderExprs
 					p.SetLastStageTSPost(post, finalOutTypes)
 				}
 			} else {
 				// No GROUP BY, or we have a single stream. Use a single final aggregator.
 				// If the previous stage was all on a single node, put the final
 				// aggregator there. Otherwise, bring the results back on this node.
-				dsp.addSingleGroupStateForTS(p, prevStageNode, coreUnion, execinfrapb.TSPostProcessSpec{}, finalOutTypes)
+				dsp.addSingleGroupStateForTS(p, prevStageNode, coreUnion, execinfrapb.PostProcessSpec{}, finalOutTypes)
 				if n.optType.TimeBucketOpt() {
 					for _, pIdx := range p.TsTableReaderRouters {
-						if p.Processors[pIdx].TSSpec.Core.TableReader != nil {
-							tsProcessorSpec := &p.Processors[pIdx].TSSpec
+						if p.Processors[pIdx].Spec.Core.TsTableReader != nil {
+							tsProcessorSpec := &p.Processors[pIdx].Spec
 							// add Aggregator and AggPost to TableReader
 							if tsProcessorSpec != nil {
-								tsProcessorSpec.Core.TableReader.Aggregator = p.Processors[p.ResultRouters[0]].TSSpec.Core.Aggregator
-								tsProcessorSpec.Core.TableReader.AggregatorPost = &p.Processors[p.ResultRouters[0]].TSSpec.Post
+								tsProcessorSpec.Core.TsTableReader.Aggregator = p.Processors[p.ResultRouters[0]].Spec.Core.Aggregator
+								tsProcessorSpec.Core.TsTableReader.AggregatorPost = &p.Processors[p.ResultRouters[0]].Spec.Post
 							}
 						}
 					}
@@ -4849,22 +4841,38 @@ func (dsp *DistSQLPlanner) addTSAggregators(
 			finalAggsPost.OutputTypes = finalOutTypes
 
 			if !pruneFinalAgg && n.groupWindowID < 0 {
-				p.AddTSTableReader()
-
 				// get all data to gateway node compute agg
 				// when ts group, cannot use shuffle data for twice agg.
-				dsp.addSingleGroupState(p, prevStageNode, finalAggsSpec, finalAggsPost, finalOutTypes, planCtx.apSelect)
-				//if 0 == len(finalAggsSpec.GroupCols) {
-				//	dsp.addSingleGroupState(p, prevStageNode, finalAggsSpec, finalAggsPost, finalOutTypes)
+				//dsp.addSingleGroupStateForTS(p, prevStageNode, execinfrapb.TSProcessorCoreUnion{Aggregator: &finalAggsSpec}, finalAggsPost, finalOutTypes)
+
+				// notNeedDist is a special identifier used for Interpolate aggregate functions.
+				// Interpolate agg should not dist.
+				finalAggsSpec.GroupWindowId = n.groupWindowID
+				finalAggsSpec.Group_WindowTscolid = n.groupWindowTSColID
+
+				if n.groupWindowID >= 0 {
+					finalAggsSpec.GroupWindowId = n.groupWindowID
+					finalAggsSpec.Group_WindowTscolid = n.groupWindowTSColID
+				}
+				if n.optType.WithSumInt() {
+					// the flag is used to make the sum_int return 0.
+					finalAggsSpec.ScalarGroupByWithSumInt = true
+				}
+				dsp.addSingleGroupStateForTS(p, prevStageNode, execinfrapb.ProcessorCoreUnion{Aggregator: &finalAggsSpec}, finalAggsPost, finalOutTypes)
+				// TODO(haokaiwei): the restrictions here need to be removed in the future.
+				// and the code here needs to be restored after support
+				//if len(finalAggsSpec.GroupCols) == 0 {
+				//	// No GROUP BY, or we have a single stream. Use a single final aggregator.
+				//	// If the previous stage was all on a single node, put the final
+				//	// aggregator there. Otherwise, bring the results back on this node.
+				//	dsp.addSingleGroupStateForTS(p, prevStageNode, execinfrapb.ProcessorCoreUnion{Aggregator: &finalAggsSpec}, finalAggsPost, finalOutTypes)
 				//} else {
-				//	// ts engine compute twice agg , relational engine compute third agg
-				//	dsp.setupMultiAggFinalState(planCtx, p, finalOutTypes, &n.reqOrdering, finalAggsSpec, finalAggsPost)
+				//	// We distribute (by group columns) to multiple processors.
+				//	dsp.setupMultiAggFinalStateForTSNew(planCtx, p, finalOutTypes, &n.reqOrdering, finalAggsSpec, finalAggsPost)
 				//}
 			} else {
 				post := p.GetLastStageTSPost()
-				for i := range finalAggsPost.RenderExprs {
-					post.Renders = append(post.Renders, finalAggsPost.RenderExprs[i].String())
-				}
+				post.RenderExprs = finalAggsPost.RenderExprs
 				p.SetLastStageTSPost(post, finalOutTypes)
 			}
 		}
@@ -4906,13 +4914,8 @@ func (dsp *DistSQLPlanner) createPlanForIndexJoin(
 	if err != nil {
 		return PhysicalPlan{}, err
 	}
-	filterTs, err := physicalplan.MakeTSExpression(n.table.filter, planCtx, nil /* indexVarMap */)
-	if err != nil {
-		return PhysicalPlan{}, err
-	}
 	post := execinfrapb.PostProcessSpec{
 		Filter:     filter,
-		FilterTs:   filterTs,
 		Projection: true,
 	}
 
@@ -5208,10 +5211,23 @@ func (dsp *DistSQLPlanner) createPlanForGroup(
 
 	addOutPutType := true
 
+	// TODO(haokaiwei): the restrictions here need to be removed in the future.
+	// The ts engine currently does not support hash redistribution.
+	// This situation will not be pushed down, and this restriction
+	// will be lifted in future optimizations.
+	if len(n.groupCols) > 0 {
+		for _, f := range n.funcs {
+			if f.isDistinct() {
+				n.engine = tree.EngineTypeRelational
+				break
+			}
+		}
+	}
+
 	if plan.SelfCanExecInTSEngine(n.engine == tree.EngineTypeTimeseries) {
 		pruneFinalAgg := n.optType.PruneFinalAggOpt()
 		addSynchronizer := n.addSynchronizer
-		if len(plan.ResultRouters) > 1 && !planCtx.pTagAllNotSplit {
+		if !planCtx.pTagAllNotSplit {
 			pruneFinalAgg = false
 			if !addSynchronizer && !plan.HasTSParallelProcessor() {
 				addSynchronizer = true
@@ -5451,16 +5467,12 @@ func (dsp *DistSQLPlanner) createPlanForBatchLookUpJoin(
 	}
 
 	if leftPlan.ChildIsExecInTSEngine() {
-		leftPlan.AddNoopToTsProcessors(dsp.nodeDesc.NodeID, planCtx.IsLocal(), false)
+		leftPlan.AddNoopToTsProcessors(dsp.gatewayNodeID, planCtx.isLocal, false)
 	}
 
 	rightPlan, err := dsp.createPlanForNode(planCtx, n.right.plan)
 	if err != nil {
 		return PhysicalPlan{}, err
-	}
-
-	if rightPlan.ChildIsExecInTSEngine() {
-		rightPlan.AddNoopToTsProcessors(dsp.nodeDesc.NodeID, planCtx.IsLocal(), false)
 	}
 
 	// Nodes where we will run the join processors.
@@ -5481,28 +5493,13 @@ func (dsp *DistSQLPlanner) createPlanForBatchLookUpJoin(
 		&leftPlan.PhysicalPlan, &rightPlan.PhysicalPlan,
 	)
 
-	// Set up the output columns.
+	// get nodes of ts plan, where the ts data are actually distributed.
 	if numEq := len(n.pred.leftEqualityIndices); numEq != 0 {
-		nodes = findJoinProcessorNodes(leftRouters, rightRouters, p.Processors)
-	} else {
-		// Without column equality, we cannot distribute the join. Run a
-		// single processor.
-		nodes = []roachpb.NodeID{dsp.nodeDesc.NodeID}
-
-		// If either side has a single stream, put the processor on that node. We
-		// prefer the left side because that is processed first by the batch lookup joiner.
-		if len(leftRouters) == 1 {
-			nodes[0] = p.Processors[leftRouters[0]].Node
-		} else if len(rightRouters) == 1 {
-			nodes[0] = p.Processors[rightRouters[0]].Node
-		}
+		nodes = findBLJProcessorNodes(rightPlan.Processors)
 	}
 
 	rightMap := rightPlan.PlanToStreamColMap
 	post, joinToStreamColMap := joinOutColumnsForBatchLookupJoin(n, rightMap)
-	if err != nil {
-		return PhysicalPlan{}, err
-	}
 
 	// Create the Core spec.
 	var core execinfrapb.ProcessorCoreUnion
@@ -5514,15 +5511,51 @@ func (dsp *DistSQLPlanner) createPlanForBatchLookUpJoin(
 		TstablereaderId:      planCtx.tsTableReaderID,
 	}
 
-	p.AddNoopForJoinToAgent(nodes, leftRouters, rightRouters, dsp.nodeDesc.NodeID, &leftTypes, &rightTypes)
+	nodeMap := make(map[roachpb.NodeID]struct{})
+	for _, v := range nodes {
+		nodeMap[v] = struct{}{}
+	}
+
+	// newRightRouters is the idxes of processors that need to add BatchLookUpJoin.
+	// gatewayRouter is the idx of ts summary processor when isChange is true, or -1 when isChange is false.
+	newRightRouters, _, isChange := p.GetRealRightRouters(nodeMap, rightRouters, dsp.nodeDesc.NodeID)
+
 	p.AddBLJoinStage(
-		nodes, core, post, leftTypes, rightTypes, leftMergeOrd, rightMergeOrd, leftRouters, rightRouters,
+		nodes, core, post, leftTypes, rightTypes, leftMergeOrd, rightMergeOrd, leftRouters, newRightRouters,
 	)
+
+	if isChange {
+		// change OutputRouter type, the processors of noon gateway node have two output streams,
+		// first stream connect to summary processor, the second stream connect to BatchLookUpJoin.
+		for _, v := range newRightRouters {
+			if p.Processors[v].Node != dsp.nodeDesc.NodeID {
+				p.Processors[v].Spec.Output[0] = execinfrapb.OutputRouterSpec{
+					Type: execinfrapb.OutputRouterSpec_BY_GATHER,
+				}
+			}
+		}
+	}
 
 	p.PlanToStreamColMap = joinToStreamColMap
 	p.ResultTypes, err = getTypesForPlanResult(n, joinToStreamColMap)
 	if err != nil {
 		return PhysicalPlan{}, err
+	}
+
+	if planCtx.isLocal {
+		if len(p.ResultRouters) > 1 || p.Processors[p.ResultRouters[0]].Node != dsp.nodeDesc.NodeID {
+			// add noop for gateway node to collect all data from all node
+			p.AddSingleGroupStage(
+				dsp.nodeDesc.NodeID,
+				execinfrapb.ProcessorCoreUnion{Noop: &execinfrapb.NoopCoreSpec{
+					InputNum:   uint32(p.GateNoopInput),
+					TsOperator: p.TsOperator,
+				}},
+				execinfrapb.PostProcessSpec{OutputTypes: p.ResultTypes},
+				p.ResultTypes,
+				planCtx.apSelect,
+			)
+		}
 	}
 
 	return p, nil
@@ -5538,10 +5571,6 @@ func (dsp *DistSQLPlanner) createPlanForNode(
 	// Keep these cases alphabetized, please!
 	case *distinctNode:
 		plan, err = dsp.createPlanForDistinct(planCtx, n)
-		if n.engine != tree.EngineTypeTimeseries {
-			plan.UseOriginalFlow = true
-		}
-
 	case *exportNode:
 		plan, err = dsp.createPlanForExport(planCtx, n)
 
@@ -5554,25 +5583,11 @@ func (dsp *DistSQLPlanner) createPlanForNode(
 		if err := plan.AddFilter(n.filter, planCtx, plan.PlanToStreamColMap, n.engine == tree.EngineTypeTimeseries); err != nil {
 			return PhysicalPlan{}, err
 		}
-		if n.engine != tree.EngineTypeTimeseries {
-			plan.UseOriginalFlow = true
-		}
-
-		if planCtx.cdcCtx != nil && n.filter != nil {
-			planCtx.cdcCtx.metricsFilter, err = physicalplan.MakeExpression(
-				n.filter, planCtx, plan.PlanToStreamColMap, false, false)
-			if err != nil {
-				return PhysicalPlan{}, err
-			}
-		}
 	case *synchronizerNode:
 		plan, err = dsp.createPlanForSynchronizer(planCtx, n)
 
 	case *groupNode:
 		plan, addOutPutType, err = dsp.createPlanForGroup(planCtx, n)
-		if n.engine != tree.EngineTypeTimeseries {
-			plan.UseOriginalFlow = true
-		}
 
 	case *indexJoinNode:
 		plan, err = dsp.createPlanForIndexJoin(planCtx, n)
@@ -5602,7 +5617,7 @@ func (dsp *DistSQLPlanner) createPlanForNode(
 				if n.count == math.MaxInt64 {
 					n.count = 0
 				}
-				tsOffsetOptimize(&plan, uint32(n.count), uint32(n.offset))
+				tsOffsetOptimize(&plan, uint64(n.count), uint64(n.offset))
 			}
 		} else {
 			if err := plan.AddLimit(n.count, n.offset, planCtx, dsp.nodeDesc.NodeID,
@@ -5611,9 +5626,6 @@ func (dsp *DistSQLPlanner) createPlanForNode(
 			}
 
 			handleTSReaderPost(&plan, n.canOpt, n.pushLimitToAggScan)
-		}
-		if n.engine != tree.EngineTypeTimeseries {
-			plan.UseOriginalFlow = true
 		}
 
 	case *lookupJoinNode:
@@ -5635,13 +5647,9 @@ func (dsp *DistSQLPlanner) createPlanForNode(
 		if err != nil {
 			return PhysicalPlan{}, err
 		}
-		if n.engine != tree.EngineTypeTimeseries {
-			plan.UseOriginalFlow = true
-		}
 
 	case *scanNode:
 		plan, err = dsp.createTableReaders(planCtx, n, nil)
-		plan.UseOriginalFlow = true
 
 	case *tsScanNode:
 		countPTagValue := 0
@@ -5665,13 +5673,13 @@ func (dsp *DistSQLPlanner) createPlanForNode(
 				plan.AddTSOutputType(false)
 				kwdbordering := execinfrapb.GetTSColMappedSpecOrdering(plan.PlanToStreamColMap)
 				plan.AddTSNoGroupingStage(
-					execinfrapb.TSProcessorCoreUnion{
+					execinfrapb.ProcessorCoreUnion{
 						Sorter: &execinfrapb.SorterSpec{
 							OutputOrdering:   kwdbordering,
 							OrderingMatchLen: 0,
 						},
 					},
-					execinfrapb.TSPostProcessSpec{},
+					execinfrapb.PostProcessSpec{},
 					plan.ResultTypes,
 					kwdbordering,
 				)
@@ -5749,9 +5757,6 @@ func (dsp *DistSQLPlanner) createPlanForNode(
 		plan, err = dsp.operateTSData(planCtx, n)
 
 	case *sortNode:
-		if n.engine != tree.EngineTypeTimeseries {
-			plan.UseOriginalFlow = true
-		}
 		plan, err = dsp.createPlanForNode(planCtx, n.plan)
 		if err != nil {
 			return PhysicalPlan{}, err
@@ -5765,8 +5770,6 @@ func (dsp *DistSQLPlanner) createPlanForNode(
 
 	case *unionNode:
 		plan, err = dsp.createPlanForSetOp(planCtx, n)
-		// union if use pipeline, remote ae should add a noop or distinct to summarize data.
-		plan.UseOriginalFlow = true
 
 	case *valuesNode:
 		// Just like in checkSupportForNode, if a valuesNode wasn't specified in
@@ -5793,9 +5796,6 @@ func (dsp *DistSQLPlanner) createPlanForNode(
 		}
 
 	case *windowNode:
-		if n.engine != tree.EngineTypeTimeseries {
-			plan.UseOriginalFlow = true
-		}
 		plan, err = dsp.createPlanForWindow(planCtx, n)
 
 	case *zeroNode:
@@ -6162,15 +6162,8 @@ func (dsp *DistSQLPlanner) createPlanForDistinct(
 
 	if plan.SelfCanExecInTSEngine(n.engine == tree.EngineTypeTimeseries) {
 		plan.AddTSNoGroupingStage(
-			execinfrapb.TSProcessorCoreUnion{Distinct: distinctSpec.Distinct},
-			execinfrapb.TSPostProcessSpec{}, plan.ResultTypes, plan.MergeOrdering)
-		if len(plan.ResultRouters) > 1 {
-			// add output types for ts processor
-			plan.AddTSOutputType(false)
-
-			// add ts engine data receiver
-			plan.AddTSTableReader()
-		}
+			execinfrapb.ProcessorCoreUnion{Distinct: distinctSpec.Distinct},
+			execinfrapb.PostProcessSpec{}, plan.ResultTypes, plan.MergeOrdering)
 	} else {
 		// TODO(arjun): This is potentially memory inefficient if we don't have any sorted columns.
 
@@ -6183,7 +6176,11 @@ func (dsp *DistSQLPlanner) createPlanForDistinct(
 	}
 
 	// TODO(arjun): We could distribute this final stage by hash.
-	plan.AddSingleGroupStage(dsp.nodeDesc.NodeID, distinctSpec, execinfrapb.PostProcessSpec{}, plan.ResultTypes, planCtx.apSelect)
+	if plan.ChildIsExecInTSEngine() {
+		plan.AddTSSingleGroupStage(dsp.nodeDesc.NodeID, execinfrapb.ProcessorCoreUnion{Distinct: distinctSpec.Distinct}, execinfrapb.PostProcessSpec{}, plan.ResultTypes, false)
+	} else {
+		plan.AddSingleGroupStage(dsp.nodeDesc.NodeID, distinctSpec, execinfrapb.PostProcessSpec{}, plan.ResultTypes, planCtx.apSelect)
+	}
 
 	return plan, nil
 }
@@ -6753,12 +6750,7 @@ func (dsp *DistSQLPlanner) createPlanForWindow(
 				node = nodes[0]
 			}
 			if plan.ChildIsExecInTSEngine() && n.engine == tree.EngineTypeTimeseries {
-				plan.AddTSSingleGroupStage(
-					node,
-					execinfrapb.TSProcessorCoreUnion{Window: &windowerSpec},
-					execinfrapb.TSPostProcessSpec{},
-					newResultTypes,
-				)
+				plan.AddTSSingleGroupStage(node, execinfrapb.ProcessorCoreUnion{Windower: &windowerSpec}, execinfrapb.PostProcessSpec{}, newResultTypes, false)
 			} else {
 				if planCtx.existTSTable {
 					plan.AddNoopToTsProcessors(dsp.nodeDesc.NodeID, planCtx.isLocal, false)
@@ -7008,31 +7000,197 @@ func (dsp *DistSQLPlanner) FinalizePlan(planCtx *PlanningCtx, plan *PhysicalPlan
 		}
 	}
 	thisNodeID := dsp.nodeDesc.NodeID
-	// If we don't already have a single result router on this node, add a final
-	// stage.
-	for i, idx := range plan.ResultRouters {
-		if plan.Processors[idx].ExecInTSEngine && plan.Processors[idx].Node != thisNodeID {
-			plan.AddNoopImplementation(
-				execinfrapb.PostProcessSpec{}, idx, i, nil, &plan.ResultTypes,
-			)
+
+	plan.SetTSEngineReturnEncode()
+	// add noop if it is a distributed plan
+	isDist := false
+	for _, p := range plan.Processors {
+		if p.Node != thisNodeID {
+			isDist = true
+			break
 		}
 	}
-	if len(plan.ResultRouters) != 1 ||
-		plan.Processors[plan.ResultRouters[0]].Node != thisNodeID || plan.ChildIsExecInTSEngine() {
-		plan.AddSingleGroupStage(
-			thisNodeID,
-			execinfrapb.ProcessorCoreUnion{Noop: &execinfrapb.NoopCoreSpec{
+	if isDist {
+		if plan.ChildIsExecInTSEngine() {
+			resResultRouters := make([]physicalplan.ProcessorIdx, 0)
+			oldResultRouters := make([]physicalplan.ProcessorIdx, len(plan.ResultRouters))
+			copy(oldResultRouters, plan.ResultRouters)
+
+			// dist plan can all exec in AE, add ts noop to summary data
+			// add ME noop distribute Plan
+			post := execinfrapb.PostProcessSpec{OutputTypes: plan.ResultTypes}
+			plan.AddTSSingleGroupStage(thisNodeID, execinfrapb.ProcessorCoreUnion{Noop: &execinfrapb.NoopCoreSpec{
 				InputNum:   uint32(plan.GateNoopInput),
 				TsOperator: plan.TsOperator,
-			}},
-			execinfrapb.PostProcessSpec{OutputTypes: plan.ResultTypes},
-			plan.ResultTypes,
-			planCtx.apSelect,
-		)
+			}}, post, plan.ResultTypes, true)
+			resResultRouters = append(resResultRouters, plan.ResultRouters...)
+
+			lastProcessors := make([]physicalplan.ProcessorIdx, 0)
+			if len(oldResultRouters) == 1 && plan.Processors[oldResultRouters[0]].Node == thisNodeID {
+				// we specially handle the secondary aggregation using statistical information.
+				// In this case, there is only one ResultRouters, but other nodes also need to add noop.
+				routerIdx := oldResultRouters[0]
+				for _, s := range plan.Streams {
+					if s.DestProcessor == routerIdx {
+						lastProcessors = append(lastProcessors, s.SourceProcessor)
+					}
+				}
+			} else {
+				lastProcessors = oldResultRouters
+			}
+			for _, v := range lastProcessors {
+				if plan.Processors[v].Node != thisNodeID {
+					proc := physicalplan.Processor{
+						Node: plan.Processors[v].Node,
+						Spec: execinfrapb.ProcessorSpec{
+							Input: []execinfrapb.InputSyncSpec{{
+								// The other fields will be filled in by mergeResultStreams.
+								ColumnTypes: plan.ResultTypes,
+							}},
+							Core: execinfrapb.ProcessorCoreUnion{Noop: &execinfrapb.NoopCoreSpec{}},
+							Post: execinfrapb.PostProcessSpec{},
+							Output: []execinfrapb.OutputRouterSpec{{
+								Type: execinfrapb.OutputRouterSpec_PASS_THROUGH,
+							}},
+							StageID: plan.NewStageID(),
+						},
+					}
+					pIdx := plan.AddProcessor(proc)
+					resResultRouters = append(resResultRouters, pIdx)
+					plan.Streams = append(plan.Streams, physicalplan.Stream{
+						SourceProcessor:  v,
+						DestProcessor:    pIdx,
+						SourceRouterSlot: 1,
+						DestInput:        0,
+					})
+					for k := range plan.Processors[v].Spec.Output {
+						plan.Processors[v].Spec.Output[k].Type = execinfrapb.OutputRouterSpec_BY_GATHER
+					}
+				}
+			}
+			// add gateway node noop.
+			proc := physicalplan.Processor{
+				Node: thisNodeID,
+				Spec: execinfrapb.ProcessorSpec{
+					Input: []execinfrapb.InputSyncSpec{{
+						// The other fields will be filled in by mergeResultStreams.
+						ColumnTypes: plan.ResultTypes,
+					}},
+					Core: execinfrapb.ProcessorCoreUnion{Noop: &execinfrapb.NoopCoreSpec{}},
+					Post: execinfrapb.PostProcessSpec{},
+					Output: []execinfrapb.OutputRouterSpec{{
+						Type: execinfrapb.OutputRouterSpec_PASS_THROUGH,
+					}},
+					StageID: plan.NewStageID(),
+				},
+			}
+
+			pIdx := plan.AddProcessor(proc)
+
+			// all noon gateway node noop connect to gateway node noop
+			for _, v := range resResultRouters {
+				plan.Streams = append(plan.Streams, physicalplan.Stream{
+					SourceProcessor:  v,
+					DestProcessor:    pIdx,
+					SourceRouterSlot: 0,
+					DestInput:        0,
+				})
+			}
+
+			// We now have a single result stream.
+			plan.ResultRouters = plan.ResultRouters[:1]
+			plan.ResultRouters[0] = pIdx
+		} else {
+			plan.AddSingleGroupStage(
+				thisNodeID,
+				execinfrapb.ProcessorCoreUnion{Noop: &execinfrapb.NoopCoreSpec{
+					InputNum:   uint32(plan.GateNoopInput),
+					TsOperator: plan.TsOperator,
+				}},
+				execinfrapb.PostProcessSpec{},
+				plan.ResultTypes,
+				planCtx.apSelect,
+			)
+		}
+
 		if len(plan.ResultRouters) != 1 {
 			panic(fmt.Sprintf("%d results after single group stage", len(plan.ResultRouters)))
 		}
 		plan.Processors[plan.ResultRouters[0]].LogicalSequenceID = []uint64{0}
+	} else {
+		if plan.ChildIsExecInTSEngine() {
+			plan.AddNoGroupingStage(
+				execinfrapb.ProcessorCoreUnion{Noop: &execinfrapb.NoopCoreSpec{}},
+				execinfrapb.PostProcessSpec{},
+				plan.ResultTypes,
+				execinfrapb.Ordering{},
+			)
+		}
+	}
+	gatewayNoopIdx := len(plan.Processors) - 1
+	for i, p := range plan.Processors {
+		if p.ExecInTSEngine() {
+			childIdxs := make([]physicalplan.ProcessorIdx, 0)
+			addNoopIdxs := make([]physicalplan.ProcessorIdx, 0)
+			for _, s := range plan.Streams {
+				if int(s.DestProcessor) == i {
+					childIdxs = append(childIdxs, s.SourceProcessor)
+				}
+			}
+			for _, childIdx := range childIdxs {
+				childStreams := make([]physicalplan.Stream, 0)
+				for _, ss := range plan.Streams {
+					if ss.SourceProcessor == childIdx {
+						childStreams = append(childStreams, ss)
+					}
+				}
+				if plan.Processors[childIdx].Node != p.Node && len(childStreams) == 1 {
+					addNoopIdxs = append(addNoopIdxs, childIdx)
+				}
+			}
+			for _, v := range addNoopIdxs {
+				if plan.Processors[v].Node != thisNodeID {
+					proc := physicalplan.Processor{
+						Node: plan.Processors[v].Node,
+						Spec: execinfrapb.ProcessorSpec{
+							Input: []execinfrapb.InputSyncSpec{{
+								// The other fields will be filled in by mergeResultStreams.
+								ColumnTypes: plan.ResultTypes,
+							}},
+							Core: execinfrapb.ProcessorCoreUnion{Noop: &execinfrapb.NoopCoreSpec{}},
+							Post: execinfrapb.PostProcessSpec{},
+							Output: []execinfrapb.OutputRouterSpec{{
+								Type: execinfrapb.OutputRouterSpec_PASS_THROUGH,
+							}},
+							StageID: plan.NewStageID(),
+						},
+					}
+					pIdx := plan.AddProcessor(proc)
+					plan.Streams = append(plan.Streams, physicalplan.Stream{
+						SourceProcessor:  v,
+						DestProcessor:    pIdx,
+						SourceRouterSlot: 1,
+						DestInput:        0,
+					})
+					plan.Streams = append(plan.Streams, physicalplan.Stream{
+						SourceProcessor:  pIdx,
+						DestProcessor:    physicalplan.ProcessorIdx(gatewayNoopIdx),
+						SourceRouterSlot: 0,
+						DestInput:        0,
+					})
+					for k := range plan.Processors[v].Spec.Output {
+						plan.Processors[v].Spec.Output[k].Type = execinfrapb.OutputRouterSpec_BY_GATHER
+					}
+				}
+			}
+		}
+	}
+
+	// This operation is used to pass the short-circuit flag to AE.
+	// If there is a subquery, it cannot be short-circuited and
+	// directly returned to the client.
+	if planCtx.ExtendedEvalCtx.IsInternalSQL || planCtx.runningSubquery {
+		plan.AllProcessorsExecInTSEngine = false
 	}
 
 	if len(plan.ResultRouters) == 1 && (plan.Processors[plan.ResultRouters[0]].Spec.Engine == 1) {
@@ -7065,51 +7223,32 @@ func (dsp *DistSQLPlanner) FinalizePlan(planCtx *PlanningCtx, plan *PhysicalPlan
 	// Set up the endpoints for p.streams.
 	plan.PopulateEndpoints(planCtx.NodeAddresses)
 	// Set up the endpoint for the final result.
-	finalOut := &plan.Processors[plan.ResultRouters[0]].Spec.Output[0]
+	var finalOut *execinfrapb.OutputRouterSpec
+	finalProc := plan.Processors[plan.ResultRouters[0]]
+	finalOut = &finalProc.Spec.Output[0]
 	finalOut.Streams = append(finalOut.Streams, execinfrapb.StreamEndpointSpec{
 		Type: execinfrapb.StreamEndpointType_SYNC_RESPONSE,
 	})
 	if pgEncodeShortCircuitEnabled.Get(&dsp.st.SV) && !planCtx.runningSubquery && !planCtx.ExtendedEvalCtx.IsInternalSQL &&
 		!planCtx.ExtendedEvalCtx.SessionData.OutFormats && len(plan.PlanToStreamColMap) == len(plan.ResultTypes) &&
-		planCtx.planner != nil && planCtx.planner.stmt != nil && planCtx.planner.stmt.AST.StatOp() != "CALL" {
-		if !plan.IsRemotePlan() {
-			pro := plan.Processors[len(plan.Processors)-1]
-			if pro.Spec.Core.Noop != nil {
-				if pro.Spec.Post.Limit == 0 && pro.Spec.Post.Filter.Empty() && len(pro.Spec.Post.RenderExprs) == 0 {
-					plan.UseQueryShortCircuit = physicalplan.UseQueryShortCircuitForSingle
-				}
-				for i, v := range pro.Spec.Input[0].Streams {
-					// now query short circuit only support a queue stream for single plan.
-					if i >= 1 || v.Type != execinfrapb.StreamEndpointType_QUEUE {
-						plan.UseQueryShortCircuit = physicalplan.ForbidQueryShortCircuit
-						break
-					}
-				}
-			}
-		} else {
-			plan.UseQueryShortCircuit = physicalplan.UseQueryShortCircuitForDistributedPre
-		}
+		planCtx.planner != nil && planCtx.planner.stmt != nil && planCtx.planner.stmt.AST.StatOp() != "CALL" &&
+		plan.AllProcessorsExecInTSEngine {
+		plan.UseQueryShortCircuit = true
 	}
 	// Assign processor IDs.
 	for i := range plan.Processors {
-		if plan.Processors[i].ExecInTSEngine {
-			plan.Processors[i].TSSpec.Post.Commandlimit = uint32(planCtx.EvalContext().SessionData.CommandLimit)
-			plan.Processors[i].TSSpec.ProcessorID = int32(i)
-		} else {
-			plan.Processors[i].Spec.ProcessorID = int32(i)
+		plan.Processors[i].Spec.ProcessorID = int32(i)
+	}
+
+	for i := len(plan.Processors) - 1; i >= 0; i-- {
+		if plan.Processors[i].ExecInTSEngine() && planCtx.EvalContext().SessionData.CommandLimit > 0 {
+			plan.Processors[i].Spec.Post.Limit = uint64(planCtx.EvalContext().SessionData.CommandLimit)
+			break
 		}
 	}
 
-	if planCtx.haveSubquery || planCtx.ExtendedEvalCtx.IsInternalSQL {
-		// sub-query cannot use pipeline.
-		plan.UseOriginalFlow = true
-	}
-
-	if !plan.UseOriginalFlow {
-		plan.Commandlimit = uint32(planCtx.EvalContext().SessionData.CommandLimit)
-	}
 	if planCtx.apSelect {
-		plan.UseQueryShortCircuit = physicalplan.UseQueryShortCircuitForSingle
+		plan.UseQueryShortCircuit = true
 	}
 	planCtx.EvalContext().SessionData.CommandLimit = 0
 }
@@ -7130,11 +7269,7 @@ func (dsp *DistSQLPlanner) FinalizeTopicPlan(planCtx *PlanningCtx, plan *Physica
 
 	// Assign processor IDs.
 	for i := range plan.Processors {
-		if plan.Processors[i].ExecInTSEngine {
-			plan.Processors[i].TSSpec.ProcessorID = int32(i)
-		} else {
-			plan.Processors[i].Spec.ProcessorID = int32(i)
-		}
+		plan.Processors[i].Spec.ProcessorID = int32(i)
 	}
 }
 
@@ -7154,22 +7289,23 @@ func makeTableReaderSpans(spans roachpb.Spans) []execinfrapb.TableReaderSpan {
 func handleTSReaderPost(p *PhysicalPlan, pushLimitAndSorterToScan bool, pushLimitToAggScan bool) {
 	if pushLimitAndSorterToScan || pushLimitToAggScan {
 		for _, pIdx := range p.TsTableReaderRouters {
-			if p.Processors[pIdx].TSSpec.Core.TableReader != nil {
-				tsProcessorSpec := &p.Processors[pIdx].TSSpec
+			if p.Processors[pIdx].Spec.Core.TsTableReader != nil {
+				tsProcessorSpec := &p.Processors[pIdx].Spec
+				tsReader := tsProcessorSpec.Core.TsTableReader
 				if pushLimitAndSorterToScan {
 					// add limit, offset and sorter to TSSpec.Post
 					order, limit, offset := p.getLimitOffset()
 					tsProcessorSpec.Post.Limit = limit
 					tsProcessorSpec.Post.Offset = offset
 					if order != nil {
-						tsProcessorSpec.Core.TableReader.Sorter = &order.OutputOrdering
+						tsReader.Sorter = &order.OutputOrdering
 					}
-				} else if pushLimitToAggScan && tsProcessorSpec.Core.TableReader.AggregatorPost != nil {
+				} else if pushLimitToAggScan && tsReader.AggregatorPost != nil {
 					// add limit and offset to TableReader.AggPost
 					_, limit, offset := p.getLimitOffset()
-					tsProcessorSpec.Core.TableReader.AggregatorPost.Limit = limit
-					tsProcessorSpec.Core.TableReader.AggregatorPost.Offset = offset
-					tsProcessorSpec.Core.TableReader.OrderedScan = true
+					tsReader.AggregatorPost.Limit = limit
+					tsReader.AggregatorPost.Offset = offset
+					tsReader.OrderedScan = true
 				}
 			}
 		}
@@ -7178,13 +7314,13 @@ func handleTSReaderPost(p *PhysicalPlan, pushLimitAndSorterToScan bool, pushLimi
 
 func (p *PhysicalPlan) getLimitOffset() (
 	order *execinfrapb.SorterSpec,
-	limit uint32,
-	offset uint32,
+	limit uint64,
+	offset uint64,
 ) {
 	if p.ChildIsExecInTSEngine() {
-		order = p.Processors[p.ResultRouters[0]].TSSpec.Core.Sorter
-		limit = p.Processors[p.ResultRouters[0]].TSSpec.Post.Limit
-		offset = p.Processors[p.ResultRouters[0]].TSSpec.Post.Offset
+		order = p.Processors[p.ResultRouters[0]].Spec.Core.Sorter
+		limit = p.Processors[p.ResultRouters[0]].Spec.Post.Limit
+		offset = p.Processors[p.ResultRouters[0]].Spec.Post.Offset
 	} else {
 		for i := p.ResultRouters[0]; i >= 0; i-- {
 			if p.Processors[i].Spec.Core.Sorter != nil {
@@ -7192,22 +7328,23 @@ func (p *PhysicalPlan) getLimitOffset() (
 				break
 			}
 		}
-		limit = uint32(p.Processors[p.ResultRouters[0]].Spec.Post.Limit)
-		offset = uint32(p.Processors[p.ResultRouters[0]].Spec.Post.Offset)
+		limit = p.Processors[p.ResultRouters[0]].Spec.Post.Limit
+		offset = p.Processors[p.ResultRouters[0]].Spec.Post.Offset
 	}
 	return order, limit, offset
 }
 
 // tsOffsetOptimize pushs offset and limit to ts table reader spec
-func tsOffsetOptimize(p *PhysicalPlan, limit, offset uint32) {
-	for k, v := range p.Processors {
-		if v.TSSpec.Core.TableReader != nil {
+func tsOffsetOptimize(p *PhysicalPlan, limit, offset uint64) {
+	for k := range p.Processors {
+		spec := &p.Processors[k].Spec
+		if spec.Core.TsTableReader != nil {
 			if limit > 0 {
-				p.Processors[k].TSSpec.Post.Limit = limit - offset
+				spec.Post.Limit = limit - offset
 			}
 
-			p.Processors[k].TSSpec.Post.Offset = offset
-			p.Processors[k].TSSpec.Core.TableReader.OffsetOpt = true
+			spec.Post.Offset = offset
+			spec.Core.TsTableReader.OffsetOpt = true
 		}
 	}
 }

@@ -27,7 +27,6 @@
 #include "libkwdbts2.h"
 #include "me_metadata.pb.h"
 #include "lt_rw_latch.h"
-#include "utils/compress_utils.h"
 #include "th_kwdb_dynamic_thread_pool.h"
 #include "lg_api.h"
 #include "mmap/mmap_string_column.h"
@@ -431,10 +430,12 @@ struct EntityResultIndex {
   }
 };
 
+class TsBlockSpan;
 struct ResultSet {
   k_uint32 col_num_{0};
   EntityResultIndex entity_index{};
   std::vector<std::vector<const Batch*>> data;
+  std::shared_ptr<TsBlockSpan> block_span;
 
   ResultSet() = default;
 
@@ -1087,16 +1088,6 @@ inline string booleanToString(bool v) {
   return (v) ? s_true : s_false;
 }
 inline string tableTypeToString(int type) { return s_row; }
-
-inline int numDigit(double v) {
-  double x = std::abs(v);
-  int d = 0;
-  while (x > 1.0) {
-    x = x / 10;
-    d++;
-  }
-  return d + (v < 0);
-}
 
 inline timestamp64 convertTsToPTime(timestamp64 ts, DATATYPE ts_type) {
   if (ts == INT64_MAX || ts == INT64_MIN) {

@@ -135,6 +135,7 @@ ALTER TABLE
                     | distributed   | true
                     | vectorized    | false
   distinct          |               |
+   │                | engine type   | time series
    │                | distinct on   | attr2
    └── render       |               |
         │           | engine type   | time series
@@ -145,7 +146,7 @@ ALTER TABLE
                     | access mode   | tableTableMeta
                     | tag filter[0] | attr2 < 3000000
                     | tag filter[1] | attr1 < 2000
-(13 rows)
+(14 rows)
 > explain select e1 from test_ts.order_table order by e1;
         tree        |    field    | description
 --------------------+-------------+--------------
@@ -392,6 +393,7 @@ ALTER TABLE
                     | distributed   | true
                     | vectorized    | false
   distinct          |               |
+   │                | engine type   | time series
    │                | distinct on   | attr2
    └── render       |               |
         │           | engine type   | time series
@@ -402,7 +404,7 @@ ALTER TABLE
                     | access mode   | tableTableMeta
                     | tag filter[0] | attr2 < 3000000
                     | tag filter[1] | attr1 < 2000
-(13 rows)
+(14 rows)
 > explain select e1 from test_ts.unordered_table order by e1;
         tree        |    field    |   description
 --------------------+-------------+------------------

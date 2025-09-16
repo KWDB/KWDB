@@ -478,6 +478,7 @@ INSERT 1
    │              │                     | ts-table              | t1
    │              │                     | access mode           | metaTable
    │              └── distinct          |                       |
+   │                   │                | engine type           | time series
    │                   │                | distinct on           | e1
    │                   └── synchronizer |                       |
    │                        └── ts scan |                       |
@@ -499,7 +500,7 @@ INSERT 1
                                         | use statistic         | true
                                         |                       |
   warning messages                      | multi-model fall back | join on time-series metrics column
-(39 rows)
+(40 rows)
 > select e1 from d1.t1 as t2 where    (t2.e1 in (select t3.e1 from d1.t1 as t3))    and    ((e2 > 0 or (select max(e2) from d1.t1) is not null))    order by e1;
   e1
 ------
@@ -751,6 +752,7 @@ INSERT 1
              │                     | ts-table              | t1
              │                     | access mode           | metaTable
              └── distinct          |                       |
+                  │                | engine type           | time series
                   │                | distinct on           | e1
                   └── synchronizer |                       |
                        └── ts scan |                       |
@@ -758,7 +760,7 @@ INSERT 1
                                    | access mode           | metaTable
                                    |                       |
   warning messages                 | multi-model fall back | join on time-series metrics column
-(24 rows)
+(25 rows)
 > select e1 from d1.t1 as t2 where    (t2.e1 in (select t3.e1 from d1.t1 as t3))    and     (to_english(e1) = 'one-one' or sin(e5) > -1)     order by e1;
   e1
 ------
@@ -1629,6 +1631,7 @@ order by e1;
    │    │                     | original sql        | (SELECT DISTINCT e4 FROM t1 WHERE e4 LIKE '4%')
    │    │                     | exec mode           | all rows normalized
    │    └── distinct          |                     |
+   │         │                | engine type         | time series
    │         │                | distinct on         | e4
    │         └── synchronizer |                     |
    │              └── ts scan |                     |
@@ -1663,7 +1666,7 @@ order by e1;
                               | ts-table            | t1
                               | access mode         | metaTable
                               | use statistic       | true
-(89 rows)
+(90 rows)
 > SELECT * FROM t1
 WHERE
             abs(e1 - (SELECT AVG(e1) FROM t1)) < 5 AND e2 > 20 AND e3 < (SELECT MAX(e3) FROM t1)

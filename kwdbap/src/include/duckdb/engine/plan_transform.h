@@ -14,11 +14,13 @@
 #include <map>
 #include <memory>
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 #include "duckdb/execution/physical_plan_generator.hpp"
 #include "ee_pb_plan.pb.h"
 #include "kwdb_type.h"
+#include "ap_parse_query.h"
 
 namespace kwdbap {
 typedef duckdb::PhysicalOperator &PhyOpRef;
@@ -32,21 +34,19 @@ class TransFormPlan {
  public:
   explicit TransFormPlan(duckdb::ClientContext &context,
                          duckdb::PhysicalPlan *plan, std::string &db_path);
-  ~TransFormPlan() {}
+  ~TransFormPlan() = default;
 
-  PhyOpRef TransFormPhysicalPlan(const kwdbts::ProcessorSpec &procSpec,
+  PhyOpRef TransFormPhysicalPlan(const kwdbts::TSProcessorSpec &procSpec,
                                  const kwdbts::PostProcessSpec &post,
-                                 const kwdbts::ProcessorCoreUnion &core,
+                                 const kwdbts::TSProcessorCoreUnion &core,
                                  PhyOpRefVec &child);
 
  private:
-  PhyOpRef TransFormTableScan(const kwdbts::ProcessorSpec &procSpec,
+  PhyOpRef TransFormTableScan(const kwdbts::TSProcessorSpec &procSpec,
                               const kwdbts::PostProcessSpec &post,
-                              const kwdbts::ProcessorCoreUnion &core);
+                              const kwdbts::TSProcessorCoreUnion &core);
 
-  duckdb::vector<duckdb::unique_ptr<duckdb::Expression>> BuildAPExpr(
-      const std::string &str, duckdb::TableCatalogEntry &table,
-      IdxMap &col_map);
+  duckdb::vector<duckdb::unique_ptr<duckdb::Expression>> BuildAPExpr(const std::string &str, ParseExprParam& param);
 
   duckdb::vector<duckdb::column_t> GetColsFromRenderExpr(
       const std::string &str, duckdb::TableCatalogEntry &table);
@@ -54,27 +54,29 @@ class TransFormPlan {
   PhyOpRef VerifyProjectionByTableScan(PhyOpRef plan, IdxMap &col_map);
 
   PhyOpRef AddAPFilters(PhyOpRef plan, const kwdbts::PostProcessSpec &post,
-                        duckdb::TableCatalogEntry &table, IdxMap &col_map,
-                        std::unordered_set<idx_t> &scan_filter_idx);
+                        ParseExprParam &param, std::unordered_set<idx_t> &scan_filter_idx);
 
   duckdb::unique_ptr<duckdb::TableFilterSet> CreateTableFilters(
-      const duckdb::vector<duckdb::ColumnIndex> column_ids,
-      const kwdbts::PostProcessSpec &post, duckdb::TableCatalogEntry &table,
-      IdxMap &col_map, std::unordered_set<idx_t> &scan_filter_idx,
-      bool &all_filter_push_scan);
+      const duckdb::vector<duckdb::ColumnIndex> &column_ids, const kwdbts::PostProcessSpec &post,
+      ParseExprParam &param, std::unordered_set<idx_t> &scan_filter_idx, bool &all_filter_push_scan);
 
   PhyOpRef TransFormAggregator(const kwdbts::PostProcessSpec &post,
-                               const kwdbts::ProcessorCoreUnion &core,
+                               const kwdbts::TSProcessorCoreUnion &core,
                                PhyOpRef child);
   PhyOpRef InitAggregateExpressions(PhyOpRef child,
                                                                      duckdb::vector<duckdb::unique_ptr<duckdb::Expression>> &aggregates,
                                                                      duckdb::vector<duckdb::unique_ptr<duckdb::Expression>> &groups,
                                                                      duckdb::vector<duckdb::LogicalType> &agg_returned_types,
                                                                      const kwdbts::PostProcessSpec& post,
-                                                                     const kwdbts::ProcessorCoreUnion& core);
+                                                                     const kwdbts::TSProcessorCoreUnion& core);
 
-  PhyOpRef AddAPProjection(PhyOpRef plan, const kwdbts::PostProcessSpec &post,
-                           duckdb::TableCatalogEntry &table, IdxMap &col_map);
+  PhyOpRef AddAPProjection(PhyOpRef plan, const kwdbts::PostProcessSpec &post, ParseExprParam &param);
+  
+  duckdb::PhysicalOperator InitAggregateExpressions(
+      duckdb::PhysicalOperator &child1,
+      duckdb::vector<duckdb::unique_ptr<duckdb::Expression>> &aggregates,
+      duckdb::vector<duckdb::unique_ptr<duckdb::Expression>> &groups,
+      kwdbts::TSAggregatorSpec agg_spec);
   //  duckdb::unique_ptr<duckdb::PhysicalPlan> physical_planner_;
 
  private:

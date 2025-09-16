@@ -13,6 +13,7 @@
 
 #include "ee_field.h"
 #include "ee_pb_plan.pb.h"
+#include "ee_internal_type.h"
 
 namespace kwdbts {
 
@@ -69,7 +70,7 @@ class SpecBase {
     tag_reader_core->set_allocated_tagreader(tag_reader);
     tag_reader->set_uniontype(0);
 
-    auto tag_post = KNEW TSPostProcessSpec();
+    auto tag_post = KNEW PostProcessSpec();
     initTagReaderPostSpec(*tag_post);
     tag_read_processor->set_allocated_post(tag_post);
   }
@@ -95,7 +96,7 @@ class SpecBase {
     table_reader_core->set_allocated_tablereader(table_reader_);
     table_reader_->set_aggpushdown(agg_push_down_);
 
-    auto reader_post = KNEW TSPostProcessSpec();
+    auto reader_post = KNEW PostProcessSpec();
     initTableReaderPostSpec(*reader_post);
     table_read_processor->set_allocated_post(reader_post);
   }
@@ -111,7 +112,7 @@ class SpecBase {
     sync_core->set_allocated_synchronizer(sync);
 
 
-    auto sync_post = KNEW TSPostProcessSpec();
+    auto sync_post = KNEW PostProcessSpec();
     initOutputTypes(*sync_post);
 
     synchronizer->set_allocated_post(sync_post);
@@ -128,9 +129,9 @@ class SpecBase {
     spec->add_distinct_columns(1);
     distinct_core->set_allocated_distinct(spec);
 
-    auto *post = KNEW TSPostProcessSpec();
-    post->add_outputcols(1);
-    post->add_outputtypes(KWDBTypeFamily::IntFamily);
+    auto *post = KNEW PostProcessSpec();
+    post->add_output_columns(1);
+    post->add_output_types(MarshalToOutputType(KWDBTypeFamily::IntFamily, 4));
     distinct_processor->set_allocated_post(post);
   }
 
@@ -141,10 +142,10 @@ class SpecBase {
     auto noop_core = KNEW TSProcessorCoreUnion();
     noop_processor->set_allocated_core(noop_core);
 
-    auto noop = KNEW TSNoopSpec();
+    auto noop = KNEW NoopCoreSpec();
     noop_core->set_allocated_noop(noop);
 
-    auto *post = KNEW TSPostProcessSpec();
+    auto *post = KNEW PostProcessSpec();
     noop_processor->set_allocated_post(post);
   }
 
@@ -169,7 +170,7 @@ class SpecBase {
 
     sorter->set_allocated_output_ordering(ordering);
 
-    auto sorter_post = KNEW TSPostProcessSpec();
+    auto sorter_post = KNEW PostProcessSpec();
     initOutputTypes(*sorter_post);
 
     sorter_processor->set_allocated_post(sorter_post);
@@ -188,7 +189,7 @@ class SpecBase {
 
     initAggFuncs(*agg_spec_);
 
-    agg_post_ = KNEW TSPostProcessSpec();
+    agg_post_ = KNEW PostProcessSpec();
     initAggOutputTypes(*agg_post_);
     agg_processor->set_allocated_post(agg_post_);
   }
@@ -240,66 +241,66 @@ class SpecBase {
   }
 
   // include all columns of TSBS in the Tag Reader Post Spec.
-  virtual void initTagReaderPostSpec(TSPostProcessSpec& post) {
+  virtual void initTagReaderPostSpec(PostProcessSpec& post) {
     // primary tag
-    post.add_outputcols(4);
-    post.add_outputtypes(KWDBTypeFamily::TimestampFamily);
+    post.add_output_columns(4);
+    post.add_output_types(MarshalToOutputType(KWDBTypeFamily::TimestampFamily, 8));
 
     // normal tag
-    post.add_outputcols(5);
-    post.add_outputtypes(KWDBTypeFamily::IntFamily);
+    post.add_output_columns(5);
+    post.add_output_types(MarshalToOutputType(KWDBTypeFamily::IntFamily, 4));
 
-    post.add_outputcols(6);
-    post.add_outputtypes(KWDBTypeFamily::StringFamily);
+    post.add_output_columns(6);
+    post.add_output_types(MarshalToOutputType(KWDBTypeFamily::StringFamily, 10));
 
     post.set_projection(true);
   }
 
   // include all columns of TSBS in the Table Reader Post Spec.
-  virtual void initTableReaderPostSpec(TSPostProcessSpec& post) {
+  virtual void initTableReaderPostSpec(PostProcessSpec& post) {
     // timestamp columns
-    post.add_outputcols(0);
-    post.add_outputtypes(KWDBTypeFamily::TimestampTZFamily);
+    post.add_output_columns(0);
+    post.add_output_types(MarshalToOutputType(KWDBTypeFamily::TimestampTZFamily, 8));
 
     // metrics columns
-    post.add_outputcols(1);
-    post.add_outputtypes(KWDBTypeFamily::IntFamily);
+    post.add_output_columns(1);
+    post.add_output_types(MarshalToOutputType(KWDBTypeFamily::IntFamily, 4));
 
-    post.add_outputcols(2);
-    post.add_outputtypes(KWDBTypeFamily::IntFamily);
+    post.add_output_columns(2);
+    post.add_output_types(MarshalToOutputType(KWDBTypeFamily::IntFamily, 4));
 
-    post.add_outputcols(3);
-    post.add_outputtypes(KWDBTypeFamily::StringFamily);
+    post.add_output_columns(3);
+    post.add_output_types(MarshalToOutputType(KWDBTypeFamily::StringFamily, 10));
 
     initTagReaderPostSpec(post);
     post.set_projection(true);
   }
 
   // include all columns of TSBS in the Output list.
-  virtual void initOutputTypes(TSPostProcessSpec& post) {
+  virtual void initOutputTypes(PostProcessSpec& post) {
     // timestamp columns
-    post.add_outputtypes(TimestampTZFamily);
-    post.add_outputtypes(IntFamily);
-    post.add_outputtypes(IntFamily);
-    post.add_outputtypes(StringFamily);
+    post.add_output_types(MarshalToOutputType(TimestampTZFamily, 8));
+    post.add_output_types(MarshalToOutputType(IntFamily, 4));
+    post.add_output_types(MarshalToOutputType(IntFamily, 4));
+    post.add_output_types(MarshalToOutputType(StringFamily, 10));
 
-    post.add_outputtypes(TimestampFamily);
-    post.add_outputtypes(IntFamily);
-    post.add_outputtypes(StringFamily);
+    post.add_output_types(MarshalToOutputType(TimestampFamily, 8));
+    post.add_output_types(MarshalToOutputType(IntFamily, 4));
+    post.add_output_types(MarshalToOutputType(StringFamily, 10));
   }
 
   // subclass needs to provide the Agg Function list, refer to class SpecAgg.
   virtual void initAggFuncs(TSAggregatorSpec& agg) = 0;
 
   // subclass needs to define the Output types, refer to class SpecAgg.
-  virtual void initAggOutputTypes(TSPostProcessSpec& post) = 0;
+  virtual void initAggOutputTypes(PostProcessSpec& post) = 0;
 
  protected:
   k_uint64 table_id_;
 
   TSReaderSpec* table_reader_{nullptr};
   TSAggregatorSpec* agg_spec_{nullptr};
-  TSPostProcessSpec* agg_post_{nullptr};
+  PostProcessSpec* agg_post_{nullptr};
   bool agg_push_down_{false};
 };
 
@@ -324,20 +325,19 @@ class SpecSelectWithSort : public SpecBase {
   }
 
  protected:
- 
   // include hostname in the Tag Reader Spec.
-  void initTagReaderPostSpec(TSPostProcessSpec& post) override {
+  void initTagReaderPostSpec(PostProcessSpec& post) override {
     // primary tag
-    post.add_outputcols(4);
-    post.add_outputtypes(KWDBTypeFamily::TimestampFamily);
+    post.add_output_columns(4);
+    post.add_output_types(MarshalToOutputType(KWDBTypeFamily::TimestampFamily, 8));
   }
 
   // output columns: usage_user,usage_system,usage_idle,usage_nice,hostname
-  void initTableReaderPostSpec(TSPostProcessSpec& post) override {
+  void initTableReaderPostSpec(PostProcessSpec& post) override {
     // metrics columns
     for (int i = 1; i <= 2; i++) {
-      post.add_outputcols(i);
-      post.add_outputtypes(KWDBTypeFamily::IntFamily);
+      post.add_output_columns(i);
+      post.add_output_types(MarshalToOutputType(KWDBTypeFamily::IntFamily, 4));
     }
     // primary tag column
     initTagReaderPostSpec(post);
@@ -345,17 +345,17 @@ class SpecSelectWithSort : public SpecBase {
   }
 
   // output column types: usage_user,usage_system,usage_idle,usage_nice,hostname
-  void initOutputTypes(TSPostProcessSpec& post) override {
-    // metrics columns
-    post.add_outputtypes(IntFamily);
-    post.add_outputtypes(IntFamily);
+  void initOutputTypes(PostProcessSpec& post) override {
+     // metrics columns
+    post.add_output_types(MarshalToOutputType(IntFamily, 4));
+    post.add_output_types(MarshalToOutputType(IntFamily, 4));
     // primary tag
-    post.add_outputtypes(TimestampFamily);
+    post.add_output_types(MarshalToOutputType(TimestampFamily, 4));
   }
 
   void initAggFuncs(TSAggregatorSpec& agg) override {};
 
-  void initAggOutputTypes(TSPostProcessSpec& post) override {};
+  void initAggOutputTypes(PostProcessSpec& post) override {};
 };
 
 // select hostname, min(usage_user) as min_usage, max(usage_system), sum(usage_idle), count(usage_nice)
@@ -380,18 +380,18 @@ class SpecAgg : public SpecBase {
 
  protected:
   // include hostname in the Tag Reader Spec.
-  void initTagReaderPostSpec(TSPostProcessSpec& post) override {
+  void initTagReaderPostSpec(PostProcessSpec& post) override {
     // primary tag
-    post.add_outputcols(4);
-    post.add_outputtypes(KWDBTypeFamily::TimestampFamily);
+    post.add_output_columns(4);
+    post.add_output_types(MarshalToOutputType(KWDBTypeFamily::TimestampFamily, 8));
   }
 
   // output columns: usage_user,usage_system,usage_idle,usage_nice,hostname
-  void initTableReaderPostSpec(TSPostProcessSpec& post) override {
+  void initTableReaderPostSpec(PostProcessSpec& post) override {
     // metrics columns
     for (int i = 1; i <= 2; i++) {
-      post.add_outputcols(i);
-      post.add_outputtypes(KWDBTypeFamily::IntFamily);
+      post.add_output_columns(i);
+      post.add_output_types(MarshalToOutputType(KWDBTypeFamily::IntFamily, 4));
     }
     // primary tag column
     initTagReaderPostSpec(post);
@@ -399,12 +399,12 @@ class SpecAgg : public SpecBase {
   }
 
   // output column types: usage_user,usage_system,usage_idle,usage_nice,hostname
-  void initOutputTypes(TSPostProcessSpec& post) override {
+  void initOutputTypes(PostProcessSpec& post) override {
     // metrics columns
-    post.add_outputtypes(IntFamily);
-    post.add_outputtypes(IntFamily);
+    post.add_output_types(MarshalToOutputType(IntFamily, 4));
+    post.add_output_types(MarshalToOutputType(IntFamily, 4));
     // primary tag
-    post.add_outputtypes(TimestampFamily);
+    post.add_output_types(MarshalToOutputType(TimestampFamily, 8));
   }
 
   void initAggFuncs(TSAggregatorSpec& agg) override {
@@ -436,15 +436,15 @@ class SpecAgg : public SpecBase {
   }
 
   // output order: hostname, min(usage_user) as min_usage, max(usage_system), sum(usage_idle), count(usage_nice)
-  void initAggOutputTypes(TSPostProcessSpec& post) override {
+  void initAggOutputTypes(PostProcessSpec& post) override {
     // primary tag
-    post.add_outputtypes(TimestampFamily);
+    post.add_output_types(MarshalToOutputType(TimestampFamily, 8));
 
     // metrics columns
-    post.add_outputtypes(IntFamily);
-    post.add_outputtypes(IntFamily);
-    post.add_outputtypes(IntFamily);
-    post.add_outputtypes(IntFamily);
+    post.add_output_types(MarshalToOutputType(IntFamily, 4));
+    post.add_output_types(MarshalToOutputType(IntFamily, 4));
+    post.add_output_types(MarshalToOutputType(IntFamily, 4));
+    post.add_output_types(MarshalToOutputType(IntFamily, 4));
   }
 };
 
@@ -468,47 +468,46 @@ class AggScanSpec : public SpecAgg {
     agg_spec->CopyFrom(*agg_spec_);
     table_reader_->set_allocated_aggregator(agg_spec);
 
-    auto agg_post = KNEW TSPostProcessSpec();
+    auto agg_post = KNEW PostProcessSpec();
     agg_post->CopyFrom(*agg_post_);
     table_reader_->set_allocated_aggregatorpost(agg_post);
   }
 
  protected:
   // include hostname in the Tag Reader Spec.
-  void initTagReaderPostSpec(TSPostProcessSpec& post) override {
+  void initTagReaderPostSpec(PostProcessSpec& post) override {
     // primary tag
-    post.add_outputcols(4);
-    post.add_outputtypes(KWDBTypeFamily::TimestampFamily);
+    post.add_output_columns(4);
+    post.add_output_types(MarshalToOutputType(KWDBTypeFamily::TimestampFamily, 8));
   }
 
   // output columns: usage_user,usage_system,usage_idle,usage_nice,hostname
-  void initTableReaderPostSpec(TSPostProcessSpec& post) override {
+  void initTableReaderPostSpec(PostProcessSpec& post) override {
     // metrics columns
-    post.add_outputcols(0);
-    post.add_outputtypes(KWDBTypeFamily::TimestampTZFamily);
+    post.add_output_columns(0);
+    post.add_output_types(MarshalToOutputType(KWDBTypeFamily::TimestampTZFamily, 8));
 
-    post.add_outputcols(1);
-    post.add_outputtypes(KWDBTypeFamily::IntFamily);
+    post.add_output_columns(1);
+    post.add_output_types(MarshalToOutputType(KWDBTypeFamily::IntFamily, 4));
 
-    post.add_outputcols(3);
-    post.add_outputtypes(KWDBTypeFamily::StringFamily);
+    post.add_output_columns(3);
+    post.add_output_types(MarshalToOutputType(KWDBTypeFamily::StringFamily, 10));
 
-//    post.set_filter(
-//        "(@1 >= '2023-01-01 00:00:00+00:00':::TIMESTAMPTZ) AND (@1 < '2025-01-01 00:00:00+00:00':::TIMESTAMPTZ)");
-    post.add_renders("Function:::time_bucket(@1, '2s':::STRING)");
-    post.add_renders("@2");
-    post.add_renders("@3");
-
-    post.set_projection(false);
+    kwdbts::Expression *expr1 = post.add_render_exprs();
+    expr1->set_expr("Function:::time_bucket(@1, '2s':::STRING)");
+    kwdbts::Expression *expr2 = post.add_render_exprs();
+    expr2->set_expr("@2");
+    kwdbts::Expression *expr3 = post.add_render_exprs();
+    expr3->set_expr("@3");
   }
 
   // output column types: usage_user,usage_system,usage_idle,usage_nice,hostname
-  void initOutputTypes(TSPostProcessSpec& post) override {
+  void initOutputTypes(PostProcessSpec& post) override {
     // metrics columns
-    post.add_outputtypes(TimestampTZFamily);
-    post.add_outputtypes(IntFamily);
+    post.add_output_types(MarshalToOutputType(TimestampTZFamily, 8));
+    post.add_output_types(MarshalToOutputType(IntFamily, 4));
     // primary tag
-    post.add_outputtypes(TimestampFamily);
+    post.add_output_types(MarshalToOutputType(TimestampFamily, 8));
   }
 
   void initAggFuncs(TSAggregatorSpec& agg) override {
@@ -530,13 +529,13 @@ class AggScanSpec : public SpecAgg {
   }
 
   // output order: hostname, min(usage_user) as min_usage, max(usage_system), sum(usage_idle), count(usage_nice)
-  void initAggOutputTypes(TSPostProcessSpec& post) override {
+  void initAggOutputTypes(PostProcessSpec& post) override {
     // primary tag
-    post.add_outputtypes(TimestampFamily);
+    post.add_output_types(MarshalToOutputType(TimestampFamily, 8));
 
     // metrics columns
-    post.add_outputtypes(TimestampTZFamily);
-    post.add_outputtypes(IntFamily);
+    post.add_output_types(MarshalToOutputType(TimestampTZFamily, 8));
+    post.add_output_types(MarshalToOutputType(IntFamily, 4));
   }
 };
 
@@ -575,7 +574,7 @@ class HashTagScanSpec : public SpecBase {
     tag_reader->set_uniontype(0);
     tag_reader_core->set_allocated_tagreader(tag_reader);
 
-    auto tag_post = KNEW TSPostProcessSpec();
+    auto tag_post = KNEW PostProcessSpec();
     initTagReaderPostSpec(*tag_post);
     tag_read_processor->set_allocated_post(tag_post);
 
@@ -638,26 +637,26 @@ class HashTagScanSpec : public SpecBase {
   }
 
   // include hostname, secondary tag and last relational column in the Tag Reader Spec.
-  void initTagReaderPostSpec(TSPostProcessSpec& post) override {
+  void initTagReaderPostSpec(PostProcessSpec& post) override {
     // primary tag
-    post.add_outputcols(11);
-    post.add_outputtypes(KWDBTypeFamily::StringFamily);
+    post.add_output_columns(11);
+    post.add_output_types(MarshalToOutputType(KWDBTypeFamily::StringFamily, 10));
 
     // secondary tag
-    post.add_outputcols(12);
-    post.add_outputtypes(KWDBTypeFamily::StringFamily);
+    post.add_output_columns(12);
+    post.add_output_types(MarshalToOutputType(KWDBTypeFamily::StringFamily, 10));
 
     // rel column
-    post.add_outputcols(13);
-    post.add_outputtypes(KWDBTypeFamily::StringFamily);
+    post.add_output_columns(13);
+    post.add_output_types(MarshalToOutputType(KWDBTypeFamily::StringFamily, 10));
   }
 
   // output columns: usage_user,usage_system,usage_idle,usage_nice,hostname
-  void initTableReaderPostSpec(TSPostProcessSpec& post) override {
+  void initTableReaderPostSpec(PostProcessSpec& post) override {
     // metrics columns
     for (int i = 1; i <= 4; i++) {
-      post.add_outputcols(i);
-      post.add_outputtypes(KWDBTypeFamily::IntFamily);
+      post.add_output_columns(i);
+      post.add_output_types(MarshalToOutputType(KWDBTypeFamily::IntFamily, 4));
     }
     // primary tag column
     initTagReaderPostSpec(post);
@@ -665,20 +664,20 @@ class HashTagScanSpec : public SpecBase {
   }
 
   // output column types: usage_user,usage_system,usage_idle,usage_nice,hostname
-  void initOutputTypes(TSPostProcessSpec& post) override {
+  void initOutputTypes(PostProcessSpec& post) override {
     // metrics columns
-    post.add_outputtypes(IntFamily);
-    post.add_outputtypes(IntFamily);
-    post.add_outputtypes(IntFamily);
-    post.add_outputtypes(IntFamily);
+    post.add_output_types(MarshalToOutputType(IntFamily, 4));
+    post.add_output_types(MarshalToOutputType(IntFamily, 4));
+    post.add_output_types(MarshalToOutputType(IntFamily, 4));
+    post.add_output_types(MarshalToOutputType(IntFamily, 4));
     // primary tag
-    post.add_outputtypes(StringFamily);
+    post.add_output_types(MarshalToOutputType(StringFamily, 10));
   }
 
   void initAggFuncs(TSAggregatorSpec& agg) override {}
 
   // output order: hostname, min(usage_user) as min_usage, max(usage_system), sum(usage_idle), count(usage_nice)
-  void initAggOutputTypes(TSPostProcessSpec& post) override {}
+  void initAggOutputTypes(PostProcessSpec& post) override {}
 };
 
 
@@ -697,18 +696,18 @@ class TestDistinctSpec : public SpecBase {
   }
 
   // include hostname in the Tag Reader Spec.
-  void initTagReaderPostSpec(TSPostProcessSpec& post) override {
+  void initTagReaderPostSpec(PostProcessSpec& post) override {
     // primary tag
-    post.add_outputcols(4);
-    post.add_outputtypes(KWDBTypeFamily::TimestampFamily);
+    post.add_output_columns(4);
+    post.add_output_types(MarshalToOutputType(KWDBTypeFamily::TimestampFamily, 8));
   }
 
   // output columns: usage_user,usage_system,usage_idle,usage_nice,hostname
-  void initTableReaderPostSpec(TSPostProcessSpec& post) override {
+  void initTableReaderPostSpec(PostProcessSpec& post) override {
     // metrics columns
     for (int i = 1; i <= 2; i++) {
-      post.add_outputcols(i);
-      post.add_outputtypes(KWDBTypeFamily::IntFamily);
+      post.add_output_columns(i);
+      post.add_output_types(MarshalToOutputType(KWDBTypeFamily::IntFamily, 4));
     }
     // primary tag column
     initTagReaderPostSpec(post);
@@ -716,12 +715,12 @@ class TestDistinctSpec : public SpecBase {
   }
 
   // output column types: usage_user,usage_system,usage_idle,usage_nice,hostname
-  void initOutputTypes(TSPostProcessSpec& post) override {
-    // metrics columns
-    post.add_outputtypes(IntFamily);
-    post.add_outputtypes(IntFamily);
+  void initOutputTypes(PostProcessSpec& post) override {
+     // metrics columns
+    post.add_output_types(MarshalToOutputType(IntFamily, 4));
+    post.add_output_types(MarshalToOutputType(IntFamily, 4));
     // primary tag
-    post.add_outputtypes(TimestampFamily);
+    post.add_output_types(MarshalToOutputType(TimestampFamily, 8));
   }
 
   void initAggFuncs(TSAggregatorSpec& agg) override {
@@ -753,15 +752,15 @@ class TestDistinctSpec : public SpecBase {
   }
 
   // output order: hostname, min(usage_user) as min_usage, max(usage_system), sum(usage_idle), count(usage_nice)
-  void initAggOutputTypes(TSPostProcessSpec& post) override {
+  void initAggOutputTypes(PostProcessSpec& post) override {
     // primary tag
-    post.add_outputtypes(TimestampFamily);
+    post.add_output_types(MarshalToOutputType(TimestampFamily, 8));
 
     // metrics columns
-    post.add_outputtypes(IntFamily);
-    post.add_outputtypes(IntFamily);
-    post.add_outputtypes(IntFamily);
-    post.add_outputtypes(IntFamily);
+    post.add_output_types(MarshalToOutputType(IntFamily, 4));
+    post.add_output_types(MarshalToOutputType(IntFamily, 4));
+    post.add_output_types(MarshalToOutputType(IntFamily, 4));
+    post.add_output_types(MarshalToOutputType(IntFamily, 4));
   }
 };
 

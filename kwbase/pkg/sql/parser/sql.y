@@ -711,7 +711,7 @@ func (u *sqlSymUnion) triggerBody() tree.TriggerBody {
 %token <str> CACHE CALL CANCEL CASCADE CASE CAST CAST_CHECK CHANGEFEED CHAR
 %token <str> CHARACTER CHARACTERISTICS CHECK
 %token <str> CLOB CLUSTER COALESCE COLLATE COLLATION COLUMN COLUMNS COMMENT COMMIT
-%token <str> COMMITTED COMPACT COMPLETE COMPRESS CONCAT CONCURRENTLY CONFIG CONFIGS CONFIGURATION CONFIGURATIONS CONFIGURE
+%token <str> COMMITTED COMPACT COMPLETE CONCAT CONCURRENTLY CONFIG CONFIGS CONFIGURATION CONFIGURATIONS CONFIGURE
 %token <str> CONFLICT CONSTRAINT CONSTRAINTS CONTAINS CONVERSION COPY COVERING CREATE CREATEROLE CREATE_TIME
 %token <str> CROSS CUBE CURRENT CURRENT_CATALOG CURRENT_DATE CURRENT_SCHEMA
 %token <str> CURRENT_ROLE CURRENT_TIME CURRENT_TIMESTAMP
@@ -905,7 +905,6 @@ func (u *sqlSymUnion) triggerBody() tree.TriggerBody {
 %type <tree.Statement> commit_stmt
 %type <tree.Statement> procedure_commit_stmt
 %type <tree.Statement> copy_from_stmt
-%type <tree.Statement> compress_stmt
 
 %type <tree.Statement> create_stmt
 %type <tree.Statement> create_changefeed_stmt
@@ -1434,7 +1433,6 @@ stmt:
 | preparable_stmt  // help texts in sub-rule
 | copy_from_stmt
 | comment_stmt
-| compress_stmt
 | execute_stmt      // EXTEND WITH HELP: EXECUTE
 | deallocate_stmt   // EXTEND WITH HELP: DEALLOCATE
 | discard_stmt      // EXTEND WITH HELP: DISCARD
@@ -2506,36 +2504,6 @@ copy_from_stmt:
        Options: $6.kvOptions(),
     }
   }
-
-// %Help: COMPRESS
-// %Category: DML
-// %Text:
-// COMPRESS ALL DATABASES
-// COMPRESS DATABASE db_name
-// COMPRESS TABLE table_name
-compress_stmt:
-  COMPRESS ALL DATABASES
-  {
-    $$.val = &tree.Compress{
-      Typ: tree.CompressTypeAll,
-    }
-  }
-| COMPRESS DATABASE database_name
-  {
-    $$.val = &tree.Compress{
-      DBName: tree.Name($3),
-      Typ: tree.CompressTypeDB,
-    }
-  }
-| COMPRESS TABLE table_name
-  {
-    name := $3.unresolvedObjectName().ToTableName()
-    $$.val = &tree.Compress{
-      TblName: name,
-      Typ: tree.CompressTypeTable,
-    }
-  }
-| COMPRESS error // SHOW HELP: COMPRESS
 
 // %Help: CANCEL
 // %Category: Group
@@ -13205,7 +13173,6 @@ unreserved_keyword:
 | COMMITTED
 | COMPACT
 | COMPLETE
-| COMPRESS
 | CONFLICT
 | CONFIG
 | CONFIGS

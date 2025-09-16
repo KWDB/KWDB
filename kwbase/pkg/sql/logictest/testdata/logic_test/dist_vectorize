@@ -51,12 +51,12 @@ NULL       /1       {5}       5
 query T
 SELECT url FROM [EXPLAIN ANALYZE SELECT count(*) FROM kv]
 ----
-eJzMld9r4k4Uxd-_f8Vwn_TLuPmptXmqdF0QbOway_4ooUyTixsaM9mZibSI__uSpLBG6CQgrD7mzhzPOXwuzg7k7xQ8CKbz6e2KFCIlX5aLO_I4_X4_n8x8MvEn8x8_p6T3eRasgq_zPnm_GvEiU73_-_X9l20IFDIeo882KMF7BAso2EDBAQouUBhCSCEXPEIpuSiv7CrBLH4Fz6SQZHmhynFIIeICwduBSlSK4MGKPae4RBajMEygEKNiSVrZvGxvcpFsmHgDCkHOMumRgVEaLwrlEZ9nCBSemYp-oSS8UHk5LsOpIk-PRhJTjFSyTdSbR8xPZuklFUtTopINesSUEO4p1JL3rFKxNYJn7Wn3PpP1WuCaKS6MYbPO7eLBXz0tF9-CXv-03PiKUaESnrVntz_M_jdykXERo8C4kTfc69tZR7SCh7unmb_q3Vj_rp3TaGd13zSrfdMMe2A4Z961lkYHNEYXt2t2dxp2BxrOwHDPTKOl0QGNq4uj4XSn4XSg4Q6qf7dz0mhpdEBjfHE03O403A40hoMzs2jpc8Di-uJYtLznS5Q5zyQ2cwOFD3_eLB9OjNdYv7KSFyLCe8Gjyqv-XFS6ahCjVPWpVX_MsvqoTHkotrRiuyG2jsW23rnF2tGqXb3YPSX3UCse6Z1HpzhfacVjvfP4FOdrPSuzZU30S3bsHe7_-xMAAP__pNX1Vw==
+eJzUll1ro0wUx--fTzGcq_RhsmbU9GWuGrpZCKSmGy37UqRYPWSl1nFnxtJS8t0XtbCxbEZLYBfv4sz8c86P3xz0BdTPDDj48-X8IiClzMin9eqS3My_Xi1nC4_MvNny2_c5GX1c-IH_eXlEXo_Gosz16P-j5vz9YwgUcpGgFz2gAn4DDCjYQMEBCi5QmEJIoZAiRqWErI681IFF8gR8QiHNi1JXyyGFWEgE_gI61RkChyC6y3CNUYLSmgCFBHWUZnWZ-8fzQqYPkXwGCn4R5YqTsVUVXpWaE0_k2PwuSh08F6g4SXPt7lm7i3T8AxUR9R4nFYQui-zNksIMY50-pvqZk8mHSdWT0lGWEZ0-ICcTBeGWQhN5ZVI62iBwtqX9uWebjcRNpIW0pm3si9W1F9yuV1_80dEfWA5DwSeMS52KvBvH3ovzm6LMhUxQYtJCCLdmYPZGtH99ebvwgtE5-6fAznv8eWIsCouxNsnfadRtNcr6DxjrHjDLHlvOQEasg3znxh0PYcTs_iLtHiKdseUORGQH-Y7IkyGIdPqLdHqIdMf1K2IIIjvId0SeDkGk21-k20PkdDwQjR3cOxrPhqCx41W-RlWIXGEbBSjs_ftJ9YGDyQabryElShnjlRRxXat5bNjrhQSVbnZZ87DIm62qy90wM4btVpi9DdvGsGOu7Jjbts1p15iemsPTQ6CPjeETc-WTQyqfGsNn5spnh1RmHXes65K975aF2_9-BQAA__8pTK8e
 
 query T
 SELECT url FROM [EXPLAIN ANALYZE SELECT * FROM kv JOIN kw ON kv.k = kw.k]
 ----
-eJzUl99u4jgUh-_3Kaxz1W5NE-cPLZEqUe2yEhWFbunF7lRcpMQDEWmSSRzaquLdRyEz6hCKT4I1KNw1iT_7_E4_S4d3SL8F4MC4N-j99UCyJCD_3I9uyWPvv7vBdX9IrofXg_-_9MjJ3_3xw_jfwSn5sfTPYuFiSW5G_SFZvJDRkCyW5wtyRRYv54sJUAgjjw_dZ56C8wgMKBhAwQQKFlCwYUIhTqIpT9MoyZe8r4G-9wqOTsEP40zkrycUplHCwXkH4YuAgwMP7lPA77nr8UTTgYLHhesH62MWy26c-M9u8gYUxrEbpg5pafnBT66YznlKokzEmXBIXpDI4qD0KuUBnwp_6Ys3h-jner5_KtwgIMJ_5g7RU5isKBRIUfbPsp7eyNxN55sFdRlMVpP1HjMODlvR_XK2SzlftnNqrElJjZ1JP_aJEo8n3Cvvc5YfXGnVJ0275cmM30R-yBONlewI-Fdx0mVnp1eJP5sXfwKFUd6SLqNdg3ZN2rXUeshf-TQTfhTu6uNHj8wKPcrCz_J_Gn0YtaJYY_Zm6HIUezuKrR7F2ojCqovN8AusGS3NbIzYbN-kFxWucKOSGjuTHvAKs2O6wkZ1G4wK3pstTTHJb_O-RtLLCt43KqmxM-kBvTeOyXuzug1mBe-tlmY3xga2b9JOBe8bldTYmfSA3pvH5L1V3Qargvd2qzEusH1z2rj1LY0RN_QII5GY86QxmY2dmQ_ov3VM_iM_YO95GkdhyjcjAYWd2-t5f7g340XX0yhLpvwuiabrs4rH0ZpbD6QeT0Xx1Sge-mHxKa-yOtxWgTsqMFOqm9lymtVomVEPbqvAHRWYKdVdatkWbZRp_VfalPfblMJss2d6mbZUBJfDiOByGBFcDmOCIzQiuK0iuBxGBJfDiOByGBMcoRHB2yqCX6goKocRReUwoqgcxhRFaETRSxVF5TCiqBxGFJXDmKIIjSjaUVGUKc0JCI1IitCIpQiNaYrh2KygNiyoTQtq44LivKA2MDCliYFtjQy1bJXTmK1yGrNVTqO2Ijhma51haft_Vmdaqktjttaal2rjmK1bw4PU1snqj-8BAAD__7y44Cw=
+eJzUmF1vwjYUhu_3K6xz1a6mifNBS6RKVBuTqCh0hYttFRcp8SAiTbLEoUUV_30K2dQRGp8ES2i5az6e2Oftc6wjPiH9KwAHpoPR4KcZyZKA_PI8eSQvg9-eRvfDMbkf349-_2NALn4eTmfTX0eX5J9XfyxeXG_Iw2Q4Jut3MhmT9eZ6Te7I-v16PQcKYeTxsfvGU3BegAEFAyiYQMECCjbMKcRJtOBpGiX5K597YOh9gKNT8MM4E_ntOYVFlHBwPkH4IuDgwMx9Dfgzdz2eaDpQ8Lhw_WC_zHrTjxP_zU22QGEau2HqkI6WLzzJRJyJ2TbmqUP8UFgV915dsVjxlET7Zw7JNy6yOCjdSnnAF8Lf-GLrEP1az_eRCjcIiPDfuEP0FOY7CgVSlPfv9l-3ZOWmq8ON9xnMd_P9N5YcHLajp-XRLeXxfpyHxtqYiFGZyNd3osTjCffK37nKF6711jfhPvJkyR8iP-SJxkq2BfxPcdFnV5d3ib9cFX8WITqkz2jfoH2T9hUz5B98kQk_Cqty_MrIrJFRFn5X_7elj6NOFGvMPiy6XIp9XIqtXop1UAqr3wAMPxA0o6OZrWsAdmoiNzWOhFYmYlQmcsYjgbXpSDDqW2PU6COzo1UZ8v-1hp2ayG2NPmplIkZlImfsI6NNfWTWt8as0UdWR7NbZw07NZFejT5qZSJGZSJn7COzTX1k1bfGqtFHdqd1zrBT87DxLupojLihRxiJxIonrcvGqMzmjP1ktamfkB8KnnkaR2HKD0sCCpWf1_N8uLfkRepplCUL_pREi_1axWUh0H4A93gqiqdGcTEMi0f5LuvDXRW4pwIzpX0zW06zBpEZzeCuCtxTgZnSvkuRHdFGmdb_S5vyvE0pzA4z08u0pSK4HEYEl8OI4HIYExyhEcFtFcHlMCK4HEYEl8OY4AiNCN5VEfxGRVE5jCgqhxFF5TCmKEIjit6qKCqHEUXlMKKoHMYURWhE0Z6KokxpTkBoRFKERixFaExTDMdmBbVhQW1aUBsXFOcFtYGBKU0M7GhkaGSrnMZsldOYrXIatRXBMVubDEvH_7Mm01JTGrO10bzUGMdsPRoepLbOdz_8HQAA__-uqWrn
 
 # Verify execution.
 statement ok
@@ -92,18 +92,19 @@ EXPLAIN (VEC, VERBOSE) SELECT count(*) FROM kv
 │
 ├ Node 1
 │ └ *colexec.Materializer
-│   └ *colexec.orderedAggregator
-│     └ *colexec.oneShotOp
-│       └ *colexec.distinctChainOps
-│         └ *colexec.ParallelUnorderedSynchronizer
-│           ├ *colexec.countOp
-│           │ └ *colexec.simpleProjectOp
-│           │   └ *colexec.CancelChecker
-│           │     └ *colexec.colBatchScan
-│           ├ *colrpc.Inbox
-│           ├ *colrpc.Inbox
-│           ├ *colrpc.Inbox
-│           └ *colrpc.Inbox
+│   └ *colexec.noopOperator
+│     └ *colexec.orderedAggregator
+│       └ *colexec.oneShotOp
+│         └ *colexec.distinctChainOps
+│           └ *colexec.ParallelUnorderedSynchronizer
+│             ├ *colexec.countOp
+│             │ └ *colexec.simpleProjectOp
+│             │   └ *colexec.CancelChecker
+│             │     └ *colexec.colBatchScan
+│             ├ *colrpc.Inbox
+│             ├ *colrpc.Inbox
+│             ├ *colrpc.Inbox
+│             └ *colrpc.Inbox
 ├ Node 2
 │ └ *colrpc.Outbox
 │   └ *colexec.deselectorOp
@@ -139,41 +140,42 @@ EXPLAIN (VEC, VERBOSE) SELECT count(*) FROM kv NATURAL INNER HASH JOIN kv kv2
 │
 ├ Node 1
 │ └ *colexec.Materializer
-│   └ *colexec.orderedAggregator
-│     └ *colexec.oneShotOp
-│       └ *colexec.distinctChainOps
-│         └ *colexec.ParallelUnorderedSynchronizer
-│           ├ *colexec.countOp
-│           │ └ *colexec.simpleProjectOp
-│           │   └ *colexec.diskSpillerBase
-│           │     ├ *colexec.hashJoiner
-│           │     │ ├ *colexec.ParallelUnorderedSynchronizer
-│           │     │ │ ├ *colexec.routerOutputOp
-│           │     │ │ │ └ *colexec.HashRouter
-│           │     │ │ │   └ *colexec.CancelChecker
-│           │     │ │ │     └ *colexec.colBatchScan
-│           │     │ │ ├ *colrpc.Inbox
-│           │     │ │ ├ *colrpc.Inbox
-│           │     │ │ ├ *colrpc.Inbox
-│           │     │ │ └ *colrpc.Inbox
-│           │     │ └ *colexec.ParallelUnorderedSynchronizer
-│           │     │   ├ *colexec.routerOutputOp
-│           │     │   │ └ *colexec.HashRouter
-│           │     │   │   └ *colexec.CancelChecker
-│           │     │   │     └ *colexec.colBatchScan
-│           │     │   ├ *colrpc.Inbox
-│           │     │   ├ *colrpc.Inbox
-│           │     │   ├ *colrpc.Inbox
-│           │     │   └ *colrpc.Inbox
-│           │     ├ *colexec.ParallelUnorderedSynchronizer
-│           │     ├ *colexec.ParallelUnorderedSynchronizer
-│           │     └ *colexec.externalHashJoiner
-│           │       ├ *colexec.bufferExportingOperator
-│           │       └ *colexec.bufferExportingOperator
-│           ├ *colrpc.Inbox
-│           ├ *colrpc.Inbox
-│           ├ *colrpc.Inbox
-│           └ *colrpc.Inbox
+│   └ *colexec.noopOperator
+│     └ *colexec.orderedAggregator
+│       └ *colexec.oneShotOp
+│         └ *colexec.distinctChainOps
+│           └ *colexec.ParallelUnorderedSynchronizer
+│             ├ *colexec.countOp
+│             │ └ *colexec.simpleProjectOp
+│             │   └ *colexec.diskSpillerBase
+│             │     ├ *colexec.hashJoiner
+│             │     │ ├ *colexec.ParallelUnorderedSynchronizer
+│             │     │ │ ├ *colexec.routerOutputOp
+│             │     │ │ │ └ *colexec.HashRouter
+│             │     │ │ │   └ *colexec.CancelChecker
+│             │     │ │ │     └ *colexec.colBatchScan
+│             │     │ │ ├ *colrpc.Inbox
+│             │     │ │ ├ *colrpc.Inbox
+│             │     │ │ ├ *colrpc.Inbox
+│             │     │ │ └ *colrpc.Inbox
+│             │     │ └ *colexec.ParallelUnorderedSynchronizer
+│             │     │   ├ *colexec.routerOutputOp
+│             │     │   │ └ *colexec.HashRouter
+│             │     │   │   └ *colexec.CancelChecker
+│             │     │   │     └ *colexec.colBatchScan
+│             │     │   ├ *colrpc.Inbox
+│             │     │   ├ *colrpc.Inbox
+│             │     │   ├ *colrpc.Inbox
+│             │     │   └ *colrpc.Inbox
+│             │     ├ *colexec.ParallelUnorderedSynchronizer
+│             │     ├ *colexec.ParallelUnorderedSynchronizer
+│             │     └ *colexec.externalHashJoiner
+│             │       ├ *colexec.bufferExportingOperator
+│             │       └ *colexec.bufferExportingOperator
+│             ├ *colrpc.Inbox
+│             ├ *colrpc.Inbox
+│             ├ *colrpc.Inbox
+│             └ *colrpc.Inbox
 ├ Node 2
 │ └ *colrpc.Outbox
 │   └ *colexec.deselectorOp

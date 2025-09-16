@@ -343,6 +343,8 @@ type tsInsertSelecter struct {
 	// insert table type
 	tableType int32
 
+	notFirst bool
+
 	rowAffectNum  int
 	insertSuccess bool
 	err           error
@@ -643,6 +645,12 @@ func (tis *tsInsertSelecter) runTSInsert(
 
 // Next is part of the RowSource interface.
 func (tis *tsInsertSelecter) Next() (sqlbase.EncDatumRow, *execinfrapb.ProducerMetadata) {
+	// The timing operator only calls Next once.
+	if tis.notFirst {
+		return nil, nil
+	}
+	tis.notFirst = true
+
 	tsInsertMeta := &execinfrapb.RemoteProducerMetadata_TSInsert{
 		NumRow:        uint32(tis.rowAffectNum),
 		InsertSuccess: tis.insertSuccess,

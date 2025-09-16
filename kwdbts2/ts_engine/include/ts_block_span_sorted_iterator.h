@@ -172,6 +172,7 @@ class TsBlockSpanSortedIterator {
     for (auto& block_span : block_spans_) {
       span_row_infos_.push_back(getFirstRowInfo(block_span));
     }
+    block_spans_.clear();
     if (!is_reverse_) {
       span_row_infos_.sort();
     } else {
@@ -265,7 +266,6 @@ class TsBlockSpanSortedIterator {
           span_row_infos_.pop_front();
           insertRowInfo(next_row_info);
         } else {
-          cur_block_span->Clear();
           span_row_infos_.pop_front();
         }
       } else {
@@ -283,8 +283,6 @@ class TsBlockSpanSortedIterator {
           if (iter->block_span->GetRowNum() != 0) {
             TsBlockSpanRowInfo next_row_info = getFirstRowInfo(iter->block_span);
             insertRowInfo(next_row_info, true);
-          } else {
-            iter->block_span->Clear();
           }
           iter = span_row_infos_.erase(iter);
         } else {
@@ -340,7 +338,6 @@ class TsBlockSpanSortedIterator {
           span_row_infos_.pop_front();
           insertRowInfo(next_row_info);
         } else {
-          cur_block_span->Clear();
           span_row_infos_.pop_front();
         }
       } else {
@@ -358,8 +355,6 @@ class TsBlockSpanSortedIterator {
           if (iter->block_span->GetRowNum() != 0) {
             TsBlockSpanRowInfo next_row_info = getFirstRowInfo(iter->block_span);
             insertRowInfo(next_row_info, true);
-          } else {
-            iter->block_span->Clear();
           }
           iter = span_row_infos_.erase(iter);
         } else {
@@ -385,7 +380,6 @@ class TsBlockSpanSortedIterator {
           span_row_infos_.pop_front();
           insertRowInfo(next_row_info);
         } else {
-          cur_block_span->Clear();
           span_row_infos_.pop_front();
         }
       } else {

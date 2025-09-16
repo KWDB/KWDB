@@ -14,8 +14,6 @@
 #include <utility>
 #include "sys_utils.h"
 
-extern int g_engine_version;
-
 namespace kwdbts {
 
 WALFileMgr::WALFileMgr(string wal_path, const KTableKey table_id, EngineOptions* opt, bool read_chk)

@@ -32,7 +32,7 @@
 
 namespace kwdbts {
 
-TableScanOperator::TableScanOperator(TsFetcherCollection* collection, TSReaderSpec* spec, TSPostProcessSpec* post,
+TableScanOperator::TableScanOperator(TsFetcherCollection* collection, TSReaderSpec* spec, PostProcessSpec* post,
                                      TABLE* table, int32_t processor_id)
     : BaseOperator(collection, table, post, processor_id),
       spec_(spec),

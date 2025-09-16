@@ -18,7 +18,7 @@ namespace kwdbts {
 
 class TsNoopParser : public TsOperatorParser{
  public:
-  TsNoopParser(TSPostProcessSpec *post, TABLE *table);
+  TsNoopParser(PostProcessSpec *post, TABLE *table);
 
   void RenderSize(kwdbContext_p ctx, k_uint32 *num) override;
 

@@ -19,9 +19,7 @@
 #include "utils/big_table_utils.h"
 #include "utils/date_time_util.h"
 #include "cm_func.h"
-#include "utils/compress_utils.h"
 #include "engine.h"
-#include "ts_time_partition.h"
 #include "lt_rw_latch.h"
 #include "perf_stat.h"
 #include "st_config.h"
@@ -288,17 +286,6 @@ int MMapSegmentTable::open(EntityBlockMetaManager* meta_manager, BLOCK_ID segmen
   string segment_dir = db_path + tbl_sub_path;
   string sqfs_path = getCompressedFilePath();
   is_compressed_ = IsExists(sqfs_path);
-  bool is_mounted = isMounted(segment_dir);
-  if (!(flags & O_CREAT) && lazy_open) {
-    if (is_compressed_ && !is_mounted && IsExists(segment_dir)) {
-      RemoveDirContents(segment_dir);
-    }
-    return 0;
-  }
-  if (is_compressed_ && !mount(sqfs_path, segment_dir, err_info)) {
-    LOG_ERROR("%s mount failed", sqfs_path.c_str());
-    return err_info.errcode;
-  }
 
   open_(magic(), file_path, db_path, tbl_sub_path, flags, err_info);
   if (err_info.errcode < 0) {
@@ -412,16 +399,10 @@ int MMapSegmentTable::close(ErrorInfo& err_info) {
 
   if (s_status == ImmuSegment) {
     string segment_dir = db_path_ + tbl_sub_path_;
-    if (!isMounted(segment_dir)) {
-      RemoveDirContents(segment_dir);
-    }
+
   }
 
-  if (g_engine_initialized && g_max_mount_cnt_ != 0 && g_cur_mount_cnt_ > g_max_mount_cnt_
-      && s_status == ImmuSegment) {
-    if (is_latest_opened_ && !umount(db_path_, tbl_sub_path_, err_info)) {
-      LOG_WARN("at MMapSegmentTable::close %s", err_info.errmsg.c_str());
-    }
+  if (g_engine_initialized && s_status == ImmuSegment) {
   }
   return err_info.errcode;
 }
@@ -1024,7 +1005,6 @@ int MMapSegmentTable::remove() {
   string sqfs_file_path = getCompressedFilePath();
   if (is_compressed_) {
     // try umount sqfs file
-    umount(db_path_, tbl_sub_path_, err_info);
     // try remove sqfs file
     Remove(sqfs_file_path);
   }
@@ -1058,7 +1038,6 @@ int MMapSegmentTable::try_umount() {
 
   TsTableObject::close();
   // try umount sqfs file
-  umount(db_path_, tbl_sub_path_, err_info);
   return err_info.errcode;
 }
 

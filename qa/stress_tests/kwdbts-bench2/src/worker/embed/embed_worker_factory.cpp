@@ -16,7 +16,6 @@
 #include "SampleWorker.h"
 #include "st_order_worker.h"
 #include "st_worker.h"
-#include "st_entitygroup_worker.h"
 
 namespace kwdbts {
 BenchParams global_params_;
@@ -24,9 +23,6 @@ BenchParams global_params_;
 // Register embed workers
 void RegisterEmbedWorker(const BenchParams& params) {
   global_params_ = params;
-  GenericWorkerFactory<TSEntityGroupWriteWorker, Worker::BenchType::WRITE>::RegisterInstance("savedata_egp");
-  GenericWorkerFactory<TSEntityGroupWriteWorkerWithScan, Worker::BenchType::WRITE>::RegisterInstance("savescandata_egp");
-  GenericWorkerFactory<TSEntityGroupScanWorker, Worker::BenchType::READ>::RegisterInstance("scandata_egp");
 
   GenericWorkerFactory<StWriteWorker>::RegisterInstance("savedata");
   GenericWorkerFactory<StScanWorker, Worker::BenchType::READ>::RegisterInstance("scan");

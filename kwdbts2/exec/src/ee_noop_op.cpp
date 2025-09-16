@@ -17,8 +17,8 @@
 
 namespace kwdbts {
 
-NoopOperator::NoopOperator(TsFetcherCollection* collection, TSNoopSpec *spec,
-                           TSPostProcessSpec *post, TABLE *table,
+NoopOperator::NoopOperator(TsFetcherCollection* collection, NoopCoreSpec *spec,
+                           PostProcessSpec *post, TABLE *table,
                            int32_t processor_id)
     : BaseOperator(collection, table, post, processor_id),
       limit_(post->limit()),
@@ -229,8 +229,8 @@ void NoopOperator::make_noop_data_chunk(kwdbContext_p ctx, DataChunkPtr *chunk,
   ReturnVoid();
 }
 
-PassThroughNoopOperaotr::PassThroughNoopOperaotr(TsFetcherCollection* collection, TSNoopSpec *spec,
-                              TSPostProcessSpec *post, TABLE *table, int32_t processor_id)
+PassThroughNoopOperaotr::PassThroughNoopOperaotr(TsFetcherCollection* collection, NoopCoreSpec *spec,
+                              PostProcessSpec *post, TABLE *table, int32_t processor_id)
   : BaseOperator(collection, table, post, processor_id),
     limit_(post->limit()),
     offset_(post->offset()) { }

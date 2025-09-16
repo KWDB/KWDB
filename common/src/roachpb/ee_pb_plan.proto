@@ -28,10 +28,11 @@ message TSOrdering {
 // computation consisting of processors and streams.
 message TSFlowSpec {
   optional bytes flowID = 1;
-  // The NodeID of the gateway that planned this Flow. Used for debugging.
-  optional int32 gateway = 3;
 
   repeated TSProcessorSpec processors = 2;
+
+  // The NodeID of the gateway that planned this Flow. Used for debugging.
+  optional int32 gateway = 3;
 
   optional int64 queryID = 4;
   
@@ -68,26 +69,25 @@ message TSProcessorSpec {
   // In most cases, there is one input.
   repeated TSInputSyncSpec input = 1;
   optional TSProcessorCoreUnion core = 2;
-  optional TSPostProcessSpec post = 3;
+  optional PostProcessSpec post = 4;
 
   // In most cases, there is one output.
-  repeated TSOutputRouterSpec output = 4;
+  repeated TSOutputRouterSpec output = 3;
 
   // An optional identifier that can be used to correlate processors that are
   // part of the same stage (e.g. multiple joiners that are part of a
   // distributed join). This has no consequence on the running of flows, but is
   // useful for plan diagrams.
-  //optional int32 stage_id = 5 [(gogoproto.nullable) = false,
-  //                             (gogoproto.customname) = "StageID"];
+  optional int32 stage_id = 5;
 
   // processor_id uniquely identifies a processor within a physical plan. This
   // has no consequence on the running of flows, but is useful for plan
   // diagrams and linking information like tracing spans and log messages to
   // processors.
-  optional int32 processor_id = 5;
+  optional int32 processor_id = 6;
 
   // final_ts_processor is true representing the processor is the last AE operator.
-  optional bool final_ts_processor = 6;
+  optional bool final_ts_processor = 7;
 }
 
 // StreamEndpointType type
@@ -167,23 +167,59 @@ message TSOutputRouterSpec {
 }
 
 message TSProcessorCoreUnion {
-  optional TSReaderSpec tableReader = 1;
-
-  optional TSAggregatorSpec aggregator = 2;
-
-  optional TSNoopSpec noop = 3;
-
+  optional NoopCoreSpec noop = 1;
+  reserved 2;
+  reserved 3;
   optional TSSorterSpec sorter = 4;
-
-  optional TSStatisticReaderSpec statisticReader = 5;
-
-  optional TSSynchronizerSpec synchronizer = 8;
-
-  // collection of time series statistics
-  optional TSSamplerSpec sampler = 9;
-  optional TSTagReaderSpec tagReader = 10;
-  optional DistinctSpec distinct = 11;
-  optional WindowerSpec window = 12;
+  optional TSAggregatorSpec aggregator = 5;
+  optional DistinctSpec distinct = 7;
+  reserved 8;
+  reserved 9;
+  reserved 10;
+  reserved 11;
+  reserved 13;
+  reserved 14;
+  reserved 20;
+  reserved 15;
+  reserved 16;
+  reserved 17;
+  reserved 18;
+  reserved 19;
+  reserved 21;
+  reserved 22;
+  optional WindowerSpec window = 23;
+  reserved 24;
+  reserved 25;
+  reserved 26;
+  reserved 27;
+  reserved 28;
+  reserved 29;
+  reserved 30;
+  reserved 31;
+  reserved 32;
+  reserved 33;
+  reserved 34;
+  reserved 35;
+  reserved 36;
+  reserved 37;
+  reserved 38;
+  reserved 39;
+  reserved 40;
+  reserved 41;
+  // BatchLookupJoinerSpec only be used for multiple model processing
+  // when the switch is on and the server starts with single node mode.
+  reserved 42;
+  reserved 43;
+  reserved 44;
+  reserved 45;
+  // TSEngine execute process
+  optional TSTagReaderSpec tagReader = 46;
+  optional TSReaderSpec tableReader = 47;
+  optional TSStatisticReaderSpec statisticReader = 48;
+  optional TSSynchronizerSpec synchronizer = 49;
+  optional TSSamplerSpec sampler = 50;
+  optional APTableReaderSpec apTableReader = 51;
+  reserved 6, 12;
 }
 
 message TSSorterSpec {
@@ -251,7 +287,7 @@ message TSReaderSpec {
   optional bool   reverse = 5;
 
   optional TSAggregatorSpec   aggregator = 6;
-  optional TSPostProcessSpec   aggregatorPost = 7;
+  optional PostProcessSpec   aggregatorPost = 7;
   optional bool aggPushDown = 8;
 
   // table version
@@ -379,15 +415,6 @@ message TSAggregatorSpec {
     NON_SCALAR = 2;
   }
 
-  message Expression {
-    // TODO(radu): TBD how this will be used
-    optional string version = 1;
-
-    // SQL expressions are passed as a string, with ordinal references
-    // (@1, @2, @3 ..) used for "input" variables.
-    optional string expr = 2;
-  }
-
   message Aggregation {
     optional Func func = 1;
 
@@ -441,7 +468,20 @@ message TSAggregatorSpec {
   optional int32 group__window_tscolid = 11;
 }
 
-message TSNoopSpec{
+// OperatorType is ts operation type.
+enum TSOperatorType {
+  TsSelect = 0;
+}
+
+// NoopCoreSpec indicates a "no-op" processor core. This is used when we just
+// need post-processing or when only a synchronizer is required (e.g. at the
+// final endpoint).
+message NoopCoreSpec {
+  // The number of inputs for the Noop operator of the gateway node in distributed temporal queries
+  optional uint32 input_num = 1;
+  // Time series distributed operation type, default to TsSelect
+  optional TSOperatorType TsOperator = 2;
+  repeated bytes output_types = 3;
 }
 
 // See the comment header for the T.Family method for more details.
@@ -779,24 +819,29 @@ message TSCol {
   optional bool nullable = 7;
 }
 
-message TSPostProcessSpec {
+message Expression {
+  // TODO(radu): TBD how this will be used
+  optional string version = 1;
 
-  optional uint32 limit = 1;
+  // SQL expressions are passed as a string, with ordinal references
+  // (@1, @2, @3 ..) used for "input" variables.
+  optional string expr = 2;
+}
 
-  optional uint32 offset = 2;
+message PostProcessSpec {
+  optional Expression filter = 1;
 
-  optional string filter = 3;
+  optional bool projection = 2;
 
-  repeated string renders = 4;
+  repeated uint32 output_columns = 3;
 
-  // output columns
-  repeated uint32 outputCols = 5;
+  repeated Expression render_exprs = 4;
 
-  repeated KWDBTypeFamily outputtypes = 6;
+  optional uint64 offset = 5;
 
-  optional bool projection = 7;
+  optional uint64 limit = 6;
 
-  optional uint32 commandlimit = 8;
+  repeated bytes output_types = 7;
 }
 
 // TSSynchronizer Spec
@@ -874,7 +919,7 @@ message TSTagReaderSpec {
   repeated uint32 probeColids = 8;
   repeated uint32 hashColids = 9;
   required bool only_tag = 10;
-  
+
   // UnionType represents relation of multi tag indexes
   required uint32 UnionType = 11;
   repeated uint32 TagIndexIDs = 12;
@@ -1012,10 +1057,9 @@ message WindowerSpec {
 // computation consisting of processors and streams.
 message FlowSpec {
   optional bytes flow_id = 1 ;
-  repeated ProcessorSpec processors = 2;
+  repeated TSProcessorSpec processors = 2;
   // The NodeID of the gateway that planned this Flow. Used for debugging.
   optional int32 gateway = 3;
-  repeated TSProcessorSpec tsProcessors = 4;
   optional TsInfo tsInfo = 5;
 }
 
@@ -1028,82 +1072,10 @@ message TsInfo {
   optional bool useQueryShortCircuit = 5;
 }
 
-message Expression {
-  // TODO(radu): TBD how this will be used
-  optional string version = 1;
-  // SQL expressions are passed as a string, with ordinal references
-  // (@1, @2, @3 ..) used for "input" variables.
-  optional string expr = 2;
-}
-message PostProcessSpec {
-  // A filtering expression which references the internal columns of the
-  // processor via ordinal references (@1, @2, etc).
-  optional Expression filter = 1;
-  // If true, output_columns describes a projection. Used to differentiate
-  // between an empty projection and no projection.
-  //
-  // Cannot be set at the same time with render expressions.
-  optional bool projection = 2;
-  // The output columns describe a projection on the internal set of columns;
-  // only the columns in this list will be emitted.
-  //
-  // Can only be set if projection is true. Cannot be set at the same time with
-  // render expressions.
-  repeated uint32 output_columns = 3 [packed = true];
-  // If set, the output is the result of rendering these expressions. The
-  // expressions reference the internal columns of the processor.
-  //
-  // Cannot be set at the same time with output columns.
-  repeated Expression render_exprs = 4;
-  // If nonzero, the first <offset> rows will be suppressed.
-  optional uint64 offset = 5;
-  // If nonzero, the processor will stop after emitting this many rows. The rows
-  // suppressed by <offset>, if any, do not count towards this limit.
-  optional uint64 limit = 6;
-  // Output column type
-  repeated bytes output_types = 7;
-  // fiter for ae exec.
-  optional Expression filter_ts = 8;
-  // render_exprs for ae exec.
-  repeated Expression render_exprs_ts = 9;
-}
-message ProcessorSpec {
-  // In most cases, there is one input.
-  repeated TSInputSyncSpec input = 1;
-  optional ProcessorCoreUnion core = 2;
-  // In most cases, there is one output.
-  repeated TSOutputRouterSpec output = 3;
-  optional PostProcessSpec post = 4;
-  // An optional identifier that can be used to correlate processors that are
-  // part of the same stage (e.g. multiple joiners that are part of a
-  // distributed join). This has no consequence on the running of flows, but is
-  // useful for plan diagrams.
-  optional int32 stage_id = 5;
-  // processor_id uniquely identifies a processor within a physical plan. This
-  // has no consequence on the running of flows, but is useful for plan
-  // diagrams and linking information like tracing spans and log messages to
-  // processors.
-  optional int32 processor_id = 6;
-  optional int32 engine = 7;
-}
-message ProcessorCoreUnion {
-//  optional NoopCoreSpec noop = 1;
-//  optional TableReaderSpec tableReader = 2;
-//  optional JoinReaderSpec joinReader = 3;
-  optional TSSorterSpec sorter = 4;
-  optional TSAggregatorSpec aggregator = 5;
-  optional DistinctSpec distinct = 7;
-//  optional MergeJoinerSpec mergeJoiner = 8;
-//  optional HashJoinerSpec hashJoiner = 9;
-  optional WindowerSpec windower = 23;
-  optional APTableReaderSpec apTableReader = 46;
-  reserved 1,2,3,6,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,
-  41,42,43,44,45;
-}
-
 message APTableReaderSpec {
   optional string db_name = 1 ;
   optional string table_name = 2;
   optional string schema_name = 3;
   repeated uint32 scan_columns = 4;
+  optional Expression span_filter = 5;
 }

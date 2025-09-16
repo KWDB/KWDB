@@ -21,13 +21,13 @@
 namespace kwdbts {
 class StorageHandler;
 class TABLE;
-class TSPostProcessSpec;
+class PostProcessSpec;
 class TSStatisticReaderSpec;
 
 class TableStatisticScanOperator : public BaseOperator {
  public:
   TableStatisticScanOperator(TsFetcherCollection* collection, TSStatisticReaderSpec *spec,
-                             TSPostProcessSpec *post, TABLE *table, int32_t processor_id);
+                             PostProcessSpec *post, TABLE *table, int32_t processor_id);
   TableStatisticScanOperator(const TableStatisticScanOperator&, int32_t processor_id);
   virtual ~TableStatisticScanOperator();
   EEIteratorErrCode Start(kwdbContext_p ctx) override;

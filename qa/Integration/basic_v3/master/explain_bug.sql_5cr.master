@@ -12,31 +12,37 @@ CREATE TABLE
                               | distributed | true
                               | vectorized  | false
   distinct                    |             |
+   │                          | engine type | time series
    │                          | distinct on | tb
    └── render                 |             |
+        │                     | engine type | time series
         │                     | tb          | time_bucket(k_timestamp, '010000000000s')
         └── distinct          |             |
+             │                | engine type | time series
              │                | distinct on | k_timestamp, id
              └── synchronizer |             |
                   └── ts scan |             |
                               | ts-table    | t1
                               | access mode | metaTable
-(12 rows)
+(15 rows)
 > explain SELECT TIME_BUCKET(k_timestamp,'10000000000s') AS tb FROM (SELECT k_timestamp FROM test_select_last_add.t1 GROUP BY id,k_timestamp) GROUP BY tb;
              tree             |    field    |               description
 ------------------------------+-------------+-------------------------------------------
                               | distributed | true
                               | vectorized  | false
   distinct                    |             |
+   │                          | engine type | time series
    │                          | distinct on | tb
    └── render                 |             |
+        │                     | engine type | time series
         │                     | tb          | time_bucket(k_timestamp, '10000000000s')
         └── distinct          |             |
+             │                | engine type | time series
              │                | distinct on | k_timestamp, id
              └── synchronizer |             |
                   └── ts scan |             |
                               | ts-table    | t1
                               | access mode | metaTable
-(12 rows)
+(15 rows)
 > DROP DATABASE IF EXISTS test_select_last_add cascade;
 DROP DATABASE

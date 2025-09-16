@@ -627,6 +627,15 @@ INSERT INTO test_block_filter.t12 VALUES ('2023-01-01 07:58:12.459372', '1970-1-
 explain select * from test_block_filter.t12 where e1 = '1970-01-01 08:00:00' and e2 = '1970-01-01 08:00:00';
 explain select * from test_block_filter.t12 where e3 = '1970-01-01 08:00:00' and e4 = '1970-01-01 08:00:00';
 
+-- bugfix ICWF90
+CREATE TABLE test_block_filter.t13(k_timestamp TIMESTAMPTZ NOT NULL, e1 FLOAT4) ATTRIBUTES (code1 INT2 NOT NULL) PRIMARY TAGS(code1);
+INSERT INTO test_block_filter.t13 VALUES('2002-2-22 10:48:12.899',1.23,2);
+INSERT INTO test_block_filter.t13 VALUES('2004-12-31 12:10:10.911',1.23,3);
+INSERT INTO test_block_filter.t13 VALUES('2008-2-29 2:10:10.111',1.22,4);
+INSERT INTO test_block_filter.t13 VALUES('2012-02-29 1:10:10.000',1.24,5);
+select * from test_block_filter.t13 order by code1;
+select * from test_block_filter.t13 where e1 = 1.23 order by code1;
+
 use defaultdb;
 SET CLUSTER SETTING ts.rows_per_block.max_limit=1000;
 drop database test_block_filter cascade;

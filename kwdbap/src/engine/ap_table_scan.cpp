@@ -18,7 +18,6 @@
 #include "duckdb/engine/plan_transform.h"
 #include "duckdb/execution/operator/filter/physical_filter.hpp"
 #include "duckdb/execution/operator/helper/physical_batch_collector.hpp"
-#include "duckdb/execution/operator/projection/physical_projection.hpp"
 #include "duckdb/execution/operator/scan/physical_table_scan.hpp"
 #include "duckdb/function/function_set.hpp"
 #include "duckdb/function/table_function.hpp"
@@ -33,8 +32,8 @@
 namespace kwdbap {
 
 PhyOpRef TransFormPlan::TransFormTableScan(
-    const kwdbts::ProcessorSpec &procSpec, const kwdbts::PostProcessSpec &post,
-    const kwdbts::ProcessorCoreUnion &core) {
+    const kwdbts::TSProcessorSpec &procSpec, const kwdbts::PostProcessSpec &post,
+    const kwdbts::TSProcessorCoreUnion &core) {
   const auto &apReader = core.aptablereader();
   if (post.output_columns_size() > 0 &&
       post.output_columns_size() != post.output_types_size()) {
@@ -102,13 +101,15 @@ PhyOpRef TransFormPlan::TransFormTableScan(
     virtual_columns =
         scan_function.get_virtual_columns(*context_, bind_data.get());
   }
-
+  
+  ParseExprParam param(table, context_, col_map);
   unique_ptr<TableFilterSet> table_filters;
   std::unordered_set<idx_t> scan_filter_idx;
   if (add_filter) {
     bool all_filter_push_scan;
-    table_filters = CreateTableFilters(column_ids, post, table, col_map,
-                                       scan_filter_idx, all_filter_push_scan);
+    table_filters = CreateTableFilters(column_ids, post, param, scan_filter_idx, all_filter_push_scan);
+    // if all filters can be pushed down to scan,
+    // set add_filter to false so that the APFilter will no longer be built.
     add_filter = !all_filter_push_scan;
   }
   ExtraOperatorInfo extra_info;
@@ -122,14 +123,12 @@ PhyOpRef TransFormPlan::TransFormTableScan(
   reference<PhysicalOperator> plan = table_scan;
 
   // add filters
-  if (post.has_filter() && post.filter().has_expr() &&
-      !post.filter().expr().empty()) {
-    plan = AddAPFilters(table_scan, post, table, col_map, scan_filter_idx);
+  if (add_filter) {
+    plan = AddAPFilters(table_scan, post, param, scan_filter_idx);
   }
   // add projection
-  if (post.has_projection() && !post.projection() &&
-      post.render_exprs_size() > 0) {
-    plan = AddAPProjection(plan.get(), post, table, col_map);
+  if (post.has_projection() && !post.projection() && post.render_exprs_size() > 0) {
+    plan = AddAPProjection(plan.get(), post, param);
   }
   return plan;
 }
