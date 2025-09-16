@@ -27,6 +27,7 @@
 #include "test_util.h"
 #include "ts_block.h"
 #include "ts_vgroup.h"
+#include "ts_lru_block_cache.h"
 
 using namespace kwdbts;  // NOLINT
 using namespace roachpb;
@@ -706,5 +707,79 @@ TEST_F(TsEntitySegmentTest, simpleCount) {
     }
     EXPECT_EQ(total_insert_row_num, sum);
     EXPECT_EQ(total_insert_row_num, count_sum);
+  }
+}
+
+// for concurrent crash issue: ICXWWD
+TEST_F(TsEntitySegmentTest, concurrentLRUBlockCacheAccess) {
+  TsLRUBlockCache::GetInstance().unit_test_enabled = true;
+  Defer defer([&]() { TsLRUBlockCache::GetInstance().unit_test_enabled = false; });
+  EngineOptions::max_rows_per_block = 1000;
+  EngineOptions::min_rows_per_block = 1000;
+  int64_t total_insert_row_num = 0;
+  int64_t entity_row_num = 0;
+  int64_t last_row_num = 0;
+  TSTableID table_id = 123;
+  std::vector<DataType> metric_types{DataType::TIMESTAMP, DataType::INT, DataType::DOUBLE, DataType::BIGINT,
+                                     DataType::VARCHAR};
+  const std::vector<AttributeInfo>* metric_schema{nullptr};
+  std::vector<TagInfo> tag_schema;
+  std::shared_ptr<TsTableSchemaManager> schema_mgr;
+  CreateTable(table_id, metric_types, &metric_schema, &tag_schema, schema_mgr);
+  {
+    for (int i = 0; i < 10; ++i) {
+      TSEntityID dev_id = 1 + i * 123;
+      auto payload = GenRowPayload(*metric_schema, tag_schema, table_id, 1, 1 + i * 123, 103 + i * 1000, 123, 1);
+      TsRawPayloadRowParser parser{metric_schema};
+      TsRawPayload p{payload, metric_schema};
+      auto ptag = p.GetPrimaryTag();
+
+      vgroup->PutData(&ctx, table_id, 0, &ptag, dev_id, &payload, false);
+      total_insert_row_num += p.GetRowCount();
+      free(payload.data);
+      ASSERT_EQ(vgroup->Flush(), KStatus::SUCCESS);
+    }
+
+    ASSERT_EQ(vgroup->Compact(), KStatus::SUCCESS);
+
+    auto current = vgroup->CurrentVersion();
+    auto partitions = current->GetPartitions(1, {{INT64_MIN, INT64_MAX}}, DATATYPE::TIMESTAMP64);
+    ASSERT_EQ(partitions.size(), 1);
+
+    auto entity_segment = partitions[0]->GetEntitySegment();
+    ASSERT_NE(entity_segment, nullptr);
+
+    auto AccessEntityBlock = [&]() {
+      int entity_id = 124;
+      // scan [500, INT64_MAX]
+      std::vector<STScanRange> spans{{{500, INT64_MAX}, {0, UINT64_MAX}}};
+      TsBlockItemFilterParams filter{0, table_id, vgroup->GetVGroupID(), (TSEntityID)entity_id, spans};
+      std::list<shared_ptr<TsBlockSpan>> block_spans;
+      std::shared_ptr<MMapMetricsTable> schema;
+      ASSERT_EQ(schema_mgr->GetMetricSchema(1, &schema), KStatus::SUCCESS);
+      auto s = entity_segment->GetBlockSpans(filter, block_spans, schema_mgr, schema);
+      EXPECT_EQ(s, KStatus::SUCCESS);
+      EXPECT_EQ(block_spans.size(), 1);
+    };
+
+    std::shared_ptr<std::thread> entity_block_accessor;
+    entity_block_accessor = std::make_shared<std::thread>(AccessEntityBlock);
+
+    while (TsLRUBlockCache::GetInstance().unit_test_phase != TsLRUBlockCache::UNIT_TEST_PHASE::PHASE_FIRST_INITIALIZING) {
+      usleep(1000);
+    }
+
+    int entity_id = 124;
+    // scan [500, INT64_MAX]
+    std::vector<STScanRange> spans{{{500, INT64_MAX}, {0, UINT64_MAX}}};
+    TsBlockItemFilterParams filter{0, table_id, vgroup->GetVGroupID(), (TSEntityID)entity_id, spans};
+    std::list<shared_ptr<TsBlockSpan>> block_spans;
+    std::shared_ptr<MMapMetricsTable> schema;
+    ASSERT_EQ(schema_mgr->GetMetricSchema(1, &schema), KStatus::SUCCESS);
+    auto s = entity_segment->GetBlockSpans(filter, block_spans, schema_mgr, schema);
+    EXPECT_EQ(s, KStatus::SUCCESS);
+    EXPECT_EQ(block_spans.size(), 1);
+
+    entity_block_accessor->join();
   }
 }

@@ -283,8 +283,6 @@ class TsEntityBlock : public TsBlock {
 
   uint32_t GetAggLength() const { return agg_length_; }
 
-  void CreateColumnBlock(int32_t col_idx);
-
   inline bool HasAggDataNoLock(int32_t col_idx) {
     return column_blocks_.size() > col_idx + 1 && column_blocks_[col_idx + 1] != nullptr
             && !column_blocks_[col_idx + 1]->agg.empty();

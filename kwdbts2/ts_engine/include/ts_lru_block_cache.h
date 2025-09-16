@@ -24,6 +24,20 @@ namespace kwdbts {
  * segment compression to reduce the size of last segment files.
 */
 class TsLRUBlockCache {
+#ifdef WITH_TESTS
+/* Following is only for unit test.
+*/
+ public:
+  enum UNIT_TEST_PHASE {
+    PHASE_NONE,
+    PHASE_FIRST_INITIALIZING,
+    PHASE_SECOND_ACCESS_DONE,
+    PHASE_SECOND_GOING_TO_INITIALIZE
+  };
+  UNIT_TEST_PHASE unit_test_phase{PHASE_NONE};
+  bool unit_test_enabled{false};
+#endif
+
  public:
   static TsLRUBlockCache& GetInstance() {
     static TsLRUBlockCache block_cache(EngineOptions::block_cache_max_size);

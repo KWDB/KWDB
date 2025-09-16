@@ -316,8 +316,21 @@ KStatus TsEntityBlock::LoadColData(int32_t col_idx, const std::vector<AttributeI
   TSSlice data{buffer.data, buffer.len};
   size_t bitmap_len = 0;
   if (column_blocks_[col_idx + 1] == nullptr) {
-    CreateColumnBlock(col_idx);
+    column_blocks_[col_idx + 1] = std::make_shared<TsEntitySegmentColumnBlock>();
   }
+#ifdef WITH_TESTS
+  if (col_idx == -1 && TsLRUBlockCache::GetInstance().unit_test_enabled) {
+    // Initializing lsn column block, timestamp column block has been initialized at this point.
+    if (TsLRUBlockCache::GetInstance().unit_test_phase == TsLRUBlockCache::UNIT_TEST_PHASE::PHASE_NONE) {
+      TsLRUBlockCache::GetInstance().unit_test_phase = TsLRUBlockCache::UNIT_TEST_PHASE::PHASE_FIRST_INITIALIZING;
+      while (TsLRUBlockCache::GetInstance().unit_test_phase != TsLRUBlockCache::UNIT_TEST_PHASE::PHASE_SECOND_ACCESS_DONE
+            && (TsLRUBlockCache::GetInstance().unit_test_phase !=
+                TsLRUBlockCache::UNIT_TEST_PHASE::PHASE_SECOND_GOING_TO_INITIALIZE)) {
+        usleep(1000);
+      }
+    }
+  }
+#endif
   if (col_idx >= 1) {
     bitmap_len = TsBitmap::GetBitmapLen(n_rows_);
     column_blocks_[col_idx + 1]->bitmap = TsBitmap({data.data, bitmap_len}, n_rows_);
@@ -359,16 +372,13 @@ KStatus TsEntityBlock::LoadColData(int32_t col_idx, const std::vector<AttributeI
     column_blocks_[col_idx + 1]->buffer.append(var_data.AsStringView());
     assert(*reinterpret_cast<uint32_t*>(var_offsets.data() + var_offsets.size() - sizeof(uint32_t)) == var_data.size());
   }
-  return KStatus::SUCCESS;
-}
-
-inline void TsEntityBlock::CreateColumnBlock(int32_t col_idx) {
-  column_blocks_[col_idx + 1] = std::make_shared<TsEntitySegmentColumnBlock>();
+  // column_blocks_[col_idx + 1] has been intialized and is ready to use.
   if (col_idx == 0) {
     timestamp_column_block_ = column_blocks_[col_idx + 1];
   } else if (col_idx == -1) {
     lsn_column_block_ = column_blocks_[col_idx + 1];
   }
+  return KStatus::SUCCESS;
 }
 
 KStatus TsEntityBlock::LoadAggData(int32_t col_idx, TSSlice buffer) {
@@ -376,10 +386,14 @@ KStatus TsEntityBlock::LoadAggData(int32_t col_idx, TSSlice buffer) {
     column_blocks_.resize(n_cols_);
   }
   if (column_blocks_[col_idx + 1] == nullptr) {
-    CreateColumnBlock(col_idx);
+    column_blocks_[col_idx + 1] = std::make_shared<TsEntitySegmentColumnBlock>();
   }
   if (buffer.len > 0) {
     column_blocks_[col_idx + 1]->agg.assign(buffer.data, buffer.len);
+  }
+  // column_blocks_[col_idx + 1] has been intialized and is ready to use.
+  if (col_idx == 0) {
+    timestamp_column_block_ = column_blocks_[col_idx + 1];
   }
   return KStatus::SUCCESS;
 }
@@ -414,6 +428,13 @@ KStatus TsEntityBlock::GetRowSpans(const std::vector<STScanRange>& spans,
   }
 
   if (!lsn_column_block_) {
+#ifdef WITH_TESTS
+    if (TsLRUBlockCache::GetInstance().unit_test_enabled) {
+      if (TsLRUBlockCache::GetInstance().unit_test_phase == TsLRUBlockCache::UNIT_TEST_PHASE::PHASE_FIRST_INITIALIZING) {
+        TsLRUBlockCache::GetInstance().unit_test_phase = TsLRUBlockCache::UNIT_TEST_PHASE::PHASE_SECOND_GOING_TO_INITIALIZE;
+      }
+    }
+#endif
     KStatus s = entity_segment_->GetColumnBlock(-1, {}, this);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("block segment column[lsn] data load failed");
@@ -454,6 +475,13 @@ KStatus TsEntityBlock::GetRowSpans(const std::vector<STScanRange>& spans,
       row_spans.push_back({span_start, end_idx - span_start});
     }
   }
+#ifdef WITH_TESTS
+  if (TsLRUBlockCache::GetInstance().unit_test_enabled) {
+    if (TsLRUBlockCache::GetInstance().unit_test_phase == TsLRUBlockCache::UNIT_TEST_PHASE::PHASE_FIRST_INITIALIZING) {
+      TsLRUBlockCache::GetInstance().unit_test_phase = TsLRUBlockCache::UNIT_TEST_PHASE::PHASE_SECOND_ACCESS_DONE;
+    }
+  }
+#endif
   return KStatus::SUCCESS;
 }
 
