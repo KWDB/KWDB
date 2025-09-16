@@ -1,12 +1,15 @@
 [submodule "kwbase/vendor"]
 	path = kwbase/vendor
-	url = https://gitee.com/kwdb/kw-vendor.git
-	branch = 2.0-master
+	## todo:
+    ## url = https://gitee.com/kwdb/kw-vendor.git
+    ## branch = 2.0-master
+    url =  https://gitee.com/kaiwuDB/kw-vendor.git
+    branch = duckdb-vendor
 [submodule "kwbase/c-deps"]
 	path = kwbase/c-deps
 	url = https://gitee.com/kwdb/kw-cdeps.git
 	branch = 2.0-master
 [submodule "kwdbts2/third_party"]
 	path = kwdbts2/third_party
-	url = https://gitee.com/kwdb/kw-third_party.git
-	branch = 2.0-master
+	url = https://gitee.com/kwdb/thirdparty3.git
+	branch = add_duckdb

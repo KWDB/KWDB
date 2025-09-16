@@ -16,58 +16,71 @@
 #include <string>
 #include <vector>
 
+#include "duckdb/execution/physical_plan_generator.hpp"
 #include "ee_pb_plan.pb.h"
 #include "kwdb_type.h"
-#include "duckdb/execution/physical_plan_generator.hpp"
 
 namespace kwdbap {
-typedef duckdb::PhysicalOperator& PhyOpRef;
+typedef duckdb::PhysicalOperator &PhyOpRef;
 typedef std::map<idx_t, idx_t> IdxMap;
-typedef std::vector<duckdb::PhysicalOperator*> PhyOpRefVec;
+typedef std::vector<duckdb::PhysicalOperator *> PhyOpRefVec;
 /**
  * @brief Physical plan processor
  *
  */
 class TransFormPlan {
  public:
-  explicit TransFormPlan(duckdb::ClientContext &context, duckdb::PhysicalPlan* plan, std::string &db_path);
+  explicit TransFormPlan(duckdb::ClientContext &context,
+                         duckdb::PhysicalPlan *plan, std::string &db_path);
   ~TransFormPlan() {}
-  
-  PhyOpRef TransFormPhysicalPlan(const kwdbts::ProcessorSpec &procSpec, const kwdbts::PostProcessSpec &post,
-                                 const kwdbts::ProcessorCoreUnion &core, PhyOpRefVec &child);
+
+  PhyOpRef TransFormPhysicalPlan(const kwdbts::ProcessorSpec &procSpec,
+                                 const kwdbts::PostProcessSpec &post,
+                                 const kwdbts::ProcessorCoreUnion &core,
+                                 PhyOpRefVec &child);
 
  private:
-  PhyOpRef TransFormTableScan(const kwdbts::ProcessorSpec &procSpec, const kwdbts::PostProcessSpec &post,
+  PhyOpRef TransFormTableScan(const kwdbts::ProcessorSpec &procSpec,
+                              const kwdbts::PostProcessSpec &post,
                               const kwdbts::ProcessorCoreUnion &core);
 
-  duckdb::vector<duckdb::unique_ptr<duckdb::Expression>> BuildAPExpr(const std::string &str,
-                                                                     duckdb::TableCatalogEntry &table, IdxMap &col_map);
+  duckdb::vector<duckdb::unique_ptr<duckdb::Expression>> BuildAPExpr(
+      const std::string &str, duckdb::TableCatalogEntry &table,
+      IdxMap &col_map);
 
-  duckdb::vector<duckdb::column_t> GetColsFromRenderExpr(const std::string &str, duckdb::TableCatalogEntry &table);
+  duckdb::vector<duckdb::column_t> GetColsFromRenderExpr(
+      const std::string &str, duckdb::TableCatalogEntry &table);
 
   PhyOpRef VerifyProjectionByTableScan(PhyOpRef plan, IdxMap &col_map);
-  
-  PhyOpRef AddAPFilters(PhyOpRef plan, const kwdbts::PostProcessSpec &post, duckdb::TableCatalogEntry &table,
-                        IdxMap &col_map);
-  
-  PhyOpRef TransFormAggregator(const kwdbts::PostProcessSpec &post, const kwdbts::ProcessorCoreUnion &core,
+
+  PhyOpRef AddAPFilters(PhyOpRef plan, const kwdbts::PostProcessSpec &post,
+                        duckdb::TableCatalogEntry &table, IdxMap &col_map,
+                        std::unordered_set<idx_t> &scan_filter_idx);
+
+  duckdb::unique_ptr<duckdb::TableFilterSet> CreateTableFilters(
+      const duckdb::vector<duckdb::ColumnIndex> column_ids,
+      const kwdbts::PostProcessSpec &post, duckdb::TableCatalogEntry &table,
+      IdxMap &col_map, std::unordered_set<idx_t> &scan_filter_idx,
+      bool &all_filter_push_scan);
+
+  PhyOpRef TransFormAggregator(const kwdbts::PostProcessSpec &post,
+                               const kwdbts::ProcessorCoreUnion &core,
                                PhyOpRef child);
-  
-  PhyOpRef AddAPProjection(PhyOpRef plan,
-                             const kwdbts::PostProcessSpec &post,
-                             duckdb::TableCatalogEntry &table, IdxMap &col_map);
   PhyOpRef InitAggregateExpressions(PhyOpRef child,
                                                                      duckdb::vector<duckdb::unique_ptr<duckdb::Expression>> &aggregates,
                                                                      duckdb::vector<duckdb::unique_ptr<duckdb::Expression>> &groups,
                                                                      duckdb::vector<duckdb::LogicalType> &agg_returned_types,
                                                                      const kwdbts::PostProcessSpec& post,
                                                                      const kwdbts::ProcessorCoreUnion& core);
+
+  PhyOpRef AddAPProjection(PhyOpRef plan, const kwdbts::PostProcessSpec &post,
+                           duckdb::TableCatalogEntry &table, IdxMap &col_map);
   //  duckdb::unique_ptr<duckdb::PhysicalPlan> physical_planner_;
 
  private:
   duckdb::ClientContext *context_;
   std::string db_path_;
-  duckdb::PhysicalPlan* physical_plan_;
+  duckdb::PhysicalPlan *physical_plan_;
 };
 
 }  // namespace kwdbap
