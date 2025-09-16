@@ -29,6 +29,7 @@
 #include "duckdb/planner/expression/bound_constant_expression.hpp"
 #include "duckdb/planner/expression/bound_reference_expression.hpp"
 
+using namespace duckdb;
 namespace kwdbap {
 
 PhyOpRef TransFormPlan::TransFormTableScan(
@@ -75,6 +76,7 @@ PhyOpRef TransFormPlan::TransFormTableScan(
   vector<ColumnIndex> column_ids;
   vector<idx_t> projection_ids;
   IdxMap col_map;
+  std::map<idx_t, LogicalType> col_typ_map;
   google::protobuf::RepeatedField< ::google::protobuf::uint32> scan_columns;
   if (!add_filter && post.has_projection() && post.projection() &&
       post.output_columns_size() > 0) {
@@ -90,7 +92,8 @@ PhyOpRef TransFormPlan::TransFormTableScan(
     scan_names.push_back(col.Name());
     column_ids.emplace_back(col.Oid());
     projection_ids.push_back(column_ids.size() - 1);
-    col_map[col.Oid()] = column_ids.size() - 1;
+    col_map.insert({col.Oid(), column_ids.size() - 1});
+    col_typ_map.insert({col.Oid(), col.Type()});
   }
 
   unique_ptr<FunctionData> bind_data;
@@ -101,13 +104,14 @@ PhyOpRef TransFormPlan::TransFormTableScan(
     virtual_columns =
         scan_function.get_virtual_columns(*context_, bind_data.get());
   }
-  
-  ParseExprParam param(table, context_, col_map);
+
+  ParseExprParam param(context_, col_map, col_typ_map);
   unique_ptr<TableFilterSet> table_filters;
   std::unordered_set<idx_t> scan_filter_idx;
   if (add_filter) {
     bool all_filter_push_scan;
-    table_filters = CreateTableFilters(column_ids, post, param, scan_filter_idx, all_filter_push_scan);
+    table_filters = CreateTableFilters(column_ids, post, param, scan_filter_idx,
+                                       all_filter_push_scan);
     // if all filters can be pushed down to scan,
     // set add_filter to false so that the APFilter will no longer be built.
     add_filter = !all_filter_push_scan;
@@ -127,7 +131,8 @@ PhyOpRef TransFormPlan::TransFormTableScan(
     plan = AddAPFilters(table_scan, post, param, scan_filter_idx);
   }
   // add projection
-  if (post.has_projection() && !post.projection() && post.render_exprs_size() > 0) {
+  if (post.has_projection() && !post.projection() &&
+      post.render_exprs_size() > 0) {
     plan = AddAPProjection(plan.get(), post, param);
   }
   return plan;

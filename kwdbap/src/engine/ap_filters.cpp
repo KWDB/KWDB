@@ -35,22 +35,20 @@ using namespace kwdbts;
 
 namespace kwdbap {
 PhyOpRef TransFormPlan::AddAPFilters(
-    PhyOpRef physicalOp, const kwdbts::PostProcessSpec &post,
+    PhyOpRef physicalOp, const PostProcessSpec &post,
     ParseExprParam &param, std::unordered_set<idx_t> &scan_filter_idx) {
   duckdb::vector<LogicalType> proj_types;
-  duckdb::vector<string> proj_names;
   duckdb::vector<ColumnIndex> proj_column_ids;
   auto &scan = physicalOp.Cast<PhysicalTableScan>();
   if (!post.projection()) {
     if (post.render_exprs_size() <= 0) {
       proj_types = scan.returned_types;
-      proj_names = scan.names;
       proj_column_ids = scan.column_ids;
     } else {
       std::unordered_set<column_t> expr_column_ids;
       auto proj_exprs = post.render_exprs();
       for (auto &proj_expr : proj_exprs) {
-        auto tmp_cols = GetColsFromRenderExpr(proj_expr.expr(), param.table_);
+        auto tmp_cols = GetColsFromRenderExpr(proj_expr.expr());
         expr_column_ids.insert(tmp_cols.begin(), tmp_cols.end());
       }
       for (size_t i = 0; i < scan.column_ids.size(); ++i) {
@@ -60,17 +58,13 @@ PhyOpRef TransFormPlan::AddAPFilters(
           continue;
         }
         proj_types.push_back(scan.types[i]);
-        proj_names.push_back(scan.names[i]);
         proj_column_ids.push_back(col_id);
       }
     }
   } else {
     for (auto &out_col : post.output_columns()) {
-      auto index = LogicalIndex(out_col);
-      auto &col = param.table_.get().GetColumn(index);
-      proj_types.push_back(col.Type());
-      proj_names.push_back(col.Name());
-      proj_column_ids.emplace_back(col.Oid());
+      proj_types.push_back(param.col_typ_map_[out_col]);
+      proj_column_ids.emplace_back(out_col);
     }
   }
 
@@ -78,7 +72,7 @@ PhyOpRef TransFormPlan::AddAPFilters(
   reference<PhysicalOperator> plan =
       VerifyProjectionByTableScan(scan, param.col_map_);
 
-  printf("expr: %s \n", filter_expr.c_str());
+  //printf("expr: %s \n", filter_expr.c_str());
   auto expressions = BuildAPExpr(filter_expr, param);
   // if scan_filter_idx is not empty,
   // we need to remove the filters that have been pushed down to the scan from the expressions.
@@ -102,7 +96,7 @@ PhyOpRef TransFormPlan::AddAPFilters(
   for (idx_t col_idx = 0; col_idx < proj_column_ids.size(); col_idx++) {
     auto proj_idx = param.col_map_[proj_column_ids[col_idx].GetPrimaryIndex()];
     proj_exprs.emplace_back(make_uniq<BoundReferenceExpression>(
-        proj_names[col_idx], proj_types[col_idx], proj_idx));
+        "", proj_types[col_idx], proj_idx));
     param.col_map_[proj_column_ids[col_idx].GetPrimaryIndex()] = col_idx;
   }
 
@@ -263,7 +257,7 @@ unique_ptr<TableFilterSet> TransFormPlan::CreateTableFilters(
     ParseExprParam &param, std::unordered_set<idx_t> &scan_filter_idx,
     bool &all_filter_push_scan) {
   auto filter_expr = post.filter().expr();
-  printf("expr: %s", filter_expr.c_str());
+  //printf("expr: %s", filter_expr.c_str());
   auto expressions = BuildAPExpr(filter_expr, param);
   if (expressions.empty()) {
     return nullptr;

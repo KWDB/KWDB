@@ -91,7 +91,7 @@ vector<unique_ptr<duckdb::Expression>> TransFormPlan::BuildAPExpr(
   return expressions;
 }
 
-vector<column_t> TransFormPlan::GetColsFromRenderExpr(const std::string& str, TableCatalogEntry& table) {
+vector<column_t> TransFormPlan::GetColsFromRenderExpr(const std::string& str) {
   auto max_query_size = 0;
   auto max_parser_depth = 0;
   auto tokens_ptr = std::make_shared<kwdb::Tokens>(
@@ -106,9 +106,7 @@ vector<column_t> TransFormPlan::GetColsFromRenderExpr(const std::string& str, Ta
   size_t i = 0;
   while (i < node_list.size()) {
     if (node_list[i]->operators == COLUMN_TYPE) {
-      auto index = LogicalIndex(node_list[i].get()->value.number.column_id - 1);
-      auto& col = table.GetColumn(index);
-      column_ids.push_back(col.Oid());
+      column_ids.push_back(node_list[i].get()->value.number.column_id - 1);
     }
     i++;
   }
