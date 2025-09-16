@@ -1568,19 +1568,17 @@ func GetEngine(planCtx *PlanningCtx) execinfrapb.ProcessorSpecEngineType {
 func (dsp *DistSQLPlanner) createTableReaders(
 	planCtx *PlanningCtx, n *scanNode, overrideResultColumns []sqlbase.ColumnID,
 ) (PhysicalPlan, error) {
-	if n.desc.TableType == tree.ColumnBasedTable {
-		planCtx.apSelect = true
-	}
-
 	scanNodeToTableOrdinalMap := getScanNodeToTableOrdinalMap(n)
 	var spanPartitions []SpanPartition
 
-	if planCtx.apSelect {
+	if n.desc.TableType == tree.ColumnBasedTable {
+		planCtx.apSelect = true
 		spec, post, err := initAPTableReaderSpec(n, planCtx, scanNodeToTableOrdinalMap)
 		if err != nil {
 			return PhysicalPlan{}, err
 		}
 		var p PhysicalPlan
+		p.EngineType = execinfrapb.ProcessorSpec_Analytical
 		stageID := p.NewStageID()
 
 		p.ResultRouters = make([]physicalplan.ProcessorIdx, 1)
@@ -4544,7 +4542,6 @@ func (dsp *DistSQLPlanner) addSingleGroupState(
 		execinfrapb.ProcessorCoreUnion{Aggregator: &finalAggsSpec},
 		finalAggsPost,
 		finalOutTypes,
-		apSelect,
 	)
 }
 
@@ -4952,7 +4949,6 @@ func (dsp *DistSQLPlanner) createPlanForIndexJoin(
 			execinfrapb.ProcessorCoreUnion{JoinReader: &joinReaderSpec},
 			post,
 			colTypes,
-			planCtx.apSelect,
 		)
 	}
 	return plan, nil
@@ -5355,6 +5351,10 @@ func (dsp *DistSQLPlanner) createPlanForJoin(
 		&leftPlan.PhysicalPlan, &rightPlan.PhysicalPlan,
 	)
 
+	if leftPlan.ExecInApEngine() && rightPlan.ExecInApEngine() {
+		p.EngineType = execinfrapb.ProcessorSpec_Analytical
+	}
+
 	// Set up the output columns.
 	if numEq := len(n.pred.leftEqualityIndices); numEq != 0 {
 		nodes = findJoinProcessorNodes(leftRouters, rightRouters, p.Processors)
@@ -5553,7 +5553,6 @@ func (dsp *DistSQLPlanner) createPlanForBatchLookUpJoin(
 				}},
 				execinfrapb.PostProcessSpec{OutputTypes: p.ResultTypes},
 				p.ResultTypes,
-				planCtx.apSelect,
 			)
 		}
 	}
@@ -6179,7 +6178,7 @@ func (dsp *DistSQLPlanner) createPlanForDistinct(
 	if plan.ChildIsExecInTSEngine() {
 		plan.AddTSSingleGroupStage(dsp.nodeDesc.NodeID, execinfrapb.ProcessorCoreUnion{Distinct: distinctSpec.Distinct}, execinfrapb.PostProcessSpec{}, plan.ResultTypes, false)
 	} else {
-		plan.AddSingleGroupStage(dsp.nodeDesc.NodeID, distinctSpec, execinfrapb.PostProcessSpec{}, plan.ResultTypes, planCtx.apSelect)
+		plan.AddSingleGroupStage(dsp.nodeDesc.NodeID, distinctSpec, execinfrapb.PostProcessSpec{}, plan.ResultTypes)
 	}
 
 	return plan, nil
@@ -6211,7 +6210,7 @@ func (dsp *DistSQLPlanner) createPlanForOrdinality(
 
 	// WITH ORDINALITY never gets distributed so that the gateway node can
 	// always number each row in order.
-	plan.AddSingleGroupStage(dsp.nodeDesc.NodeID, ordinalitySpec, execinfrapb.PostProcessSpec{}, outputTypes, planCtx.apSelect)
+	plan.AddSingleGroupStage(dsp.nodeDesc.NodeID, ordinalitySpec, execinfrapb.PostProcessSpec{}, outputTypes)
 
 	return plan, nil
 }
@@ -6267,7 +6266,7 @@ func (dsp *DistSQLPlanner) createPlanForProjectSet(
 	// filtered), we could try to detect these cases and use AddNoGroupingStage
 	// instead.
 	outputTypes := append(plan.ResultTypes, projectSetSpec.GeneratedColumns...)
-	plan.AddSingleGroupStage(dsp.nodeDesc.NodeID, spec, execinfrapb.PostProcessSpec{}, outputTypes, planCtx.apSelect)
+	plan.AddSingleGroupStage(dsp.nodeDesc.NodeID, spec, execinfrapb.PostProcessSpec{}, outputTypes)
 
 	// Add generated columns to PlanToStreamColMap.
 	for i := range projectSetSpec.GeneratedColumns {
@@ -6449,7 +6448,7 @@ func (dsp *DistSQLPlanner) createPlanForSetOp(
 				Distinct: &execinfrapb.DistinctSpec{DistinctColumns: streamCols},
 			}
 			p.AddSingleGroupStage(
-				dsp.nodeDesc.NodeID, distinctSpec, execinfrapb.PostProcessSpec{}, p.ResultTypes, planCtx.apSelect)
+				dsp.nodeDesc.NodeID, distinctSpec, execinfrapb.PostProcessSpec{}, p.ResultTypes)
 		} else {
 			// With UNION ALL, we can end up with multiple streams on the same node.
 			// We don't want to have unnecessary routers and cross-node streams, so
@@ -6476,7 +6475,6 @@ func (dsp *DistSQLPlanner) createPlanForSetOp(
 					execinfrapb.ProcessorCoreUnion{Noop: &execinfrapb.NoopCoreSpec{}},
 					execinfrapb.PostProcessSpec{OutputTypes: p.ResultTypes},
 					p.ResultTypes,
-					planCtx.apSelect,
 				)
 			}
 		}
@@ -6680,7 +6678,6 @@ func (dsp *DistSQLPlanner) createPlanForOrderedTSScanSetOpImp(
 			execinfrapb.ProcessorCoreUnion{Noop: &execinfrapb.NoopCoreSpec{}},
 			execinfrapb.PostProcessSpec{OutputTypes: p.ResultTypes},
 			p.ResultTypes,
-			planCtx.apSelect,
 		)
 	}
 
@@ -6760,7 +6757,6 @@ func (dsp *DistSQLPlanner) createPlanForWindow(
 					execinfrapb.ProcessorCoreUnion{Windower: &windowerSpec},
 					execinfrapb.PostProcessSpec{},
 					newResultTypes,
-					planCtx.apSelect,
 				)
 			}
 
@@ -7109,7 +7105,6 @@ func (dsp *DistSQLPlanner) FinalizePlan(planCtx *PlanningCtx, plan *PhysicalPlan
 				}},
 				execinfrapb.PostProcessSpec{},
 				plan.ResultTypes,
-				planCtx.apSelect,
 			)
 		}
 
@@ -7193,7 +7188,9 @@ func (dsp *DistSQLPlanner) FinalizePlan(planCtx *PlanningCtx, plan *PhysicalPlan
 		plan.AllProcessorsExecInTSEngine = false
 	}
 
-	if len(plan.ResultRouters) == 1 && (plan.Processors[plan.ResultRouters[0]].Spec.Engine == 1) {
+	if len(plan.ResultRouters) == 1 &&
+		(plan.Processors[plan.ResultRouters[0]].Spec.Engine == execinfrapb.ProcessorSpec_Analytical) {
+		plan.EngineType = execinfrapb.ProcessorSpec_Relation
 		plan.AddSingleGroupStage(
 			thisNodeID,
 			execinfrapb.ProcessorCoreUnion{Noop: &execinfrapb.NoopCoreSpec{
@@ -7202,7 +7199,6 @@ func (dsp *DistSQLPlanner) FinalizePlan(planCtx *PlanningCtx, plan *PhysicalPlan
 			}},
 			execinfrapb.PostProcessSpec{OutputTypes: plan.ResultTypes},
 			plan.ResultTypes,
-			false,
 		)
 	}
 
@@ -7216,7 +7212,6 @@ func (dsp *DistSQLPlanner) FinalizePlan(planCtx *PlanningCtx, plan *PhysicalPlan
 			},
 			execinfrapb.PostProcessSpec{},
 			plan.ResultTypes,
-			planCtx.apSelect,
 		)
 		plan.Processors[plan.ResultRouters[0]].LogicalSequenceID = []uint64{0}
 	}

@@ -92,9 +92,11 @@ PhyOpRef Processors::BuildOperatorImp(const TSProcessorSpec &procSpec, InPutStre
 KStatus Processors::BuildOperator() {
   InPutStreamSrcMap inputSrc;
   std::vector<const kwdbts::TSProcessorSpec*> procs;
+  printf("\nprocessor size  is %d\n", spec_->processors_size());
   // find the child node, deal with the child node first, and then deal with yourself
   for (int i = 0; i < spec_->processors_size() - 1; ++i) {
     const TSProcessorSpec& procSpec = spec_->processors(i);
+    printf("deal with processor %d\n", i);
     auto &plan = BuildOperatorImp(procSpec, inputSrc);
     for (auto m = 0; m < procSpec.output_size(); m++) {
       for (auto n = 0; n < procSpec.output(m).streams_size(); n++) {
@@ -103,6 +105,7 @@ KStatus Processors::BuildOperator() {
     }
   }
   const TSProcessorSpec& procSpec = spec_->processors(spec_->processors_size() - 1);
+  printf("deal with processor %d\n", spec_->processors_size() - 1);
   auto &plan = BuildOperatorImp(procSpec, inputSrc);
   physical_planner_->SetRoot(plan);
   return KStatus::SUCCESS;

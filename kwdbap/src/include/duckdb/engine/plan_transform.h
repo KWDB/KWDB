@@ -42,9 +42,24 @@ class TransFormPlan {
                                  PhyOpRefVec &child);
 
  private:
-  PhyOpRef TransFormTableScan(const kwdbts::TSProcessorSpec &procSpec,
-                              const kwdbts::PostProcessSpec &post,
+  /**
+  * @brief TransForm TableScan
+  *
+  */
+  PhyOpRef TransFormTableScan(const kwdbts::TSProcessorSpec &procSpec, const kwdbts::PostProcessSpec &post,
                               const kwdbts::TSProcessorCoreUnion &core);
+  /**
+  * @brief TransForm Aggregator
+  *
+  */
+  PhyOpRef TransFormAggregator(const kwdbts::PostProcessSpec &post, const kwdbts::TSProcessorCoreUnion &core,
+                               PhyOpRef child);
+  /**
+  * @brief TransForm HashJoin
+  *
+  */
+  PhyOpRef TransFormHashJoin(const kwdbts::PostProcessSpec &post, const kwdbts::TSProcessorCoreUnion &core,
+                             PhyOpRef left_child, PhyOpRef right_child);
 
   duckdb::vector<duckdb::unique_ptr<duckdb::Expression>> BuildAPExpr(const std::string &str, ParseExprParam& param);
 
@@ -59,10 +74,6 @@ class TransFormPlan {
   duckdb::unique_ptr<duckdb::TableFilterSet> CreateTableFilters(
       const duckdb::vector<duckdb::ColumnIndex> &column_ids, const kwdbts::PostProcessSpec &post,
       ParseExprParam &param, std::unordered_set<idx_t> &scan_filter_idx, bool &all_filter_push_scan);
-
-  PhyOpRef TransFormAggregator(const kwdbts::PostProcessSpec &post,
-                               const kwdbts::TSProcessorCoreUnion &core,
-                               PhyOpRef child);
 
   PhyOpRef AddAPProjection(PhyOpRef plan, const kwdbts::PostProcessSpec &post, ParseExprParam &param);
   

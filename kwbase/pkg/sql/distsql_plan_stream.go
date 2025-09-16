@@ -479,6 +479,5 @@ func (dsp *DistSQLPlanner) addStreamSingleGroupState(
 		execinfrapb.ProcessorCoreUnion{StreamAggregator: &finalAggsSpec},
 		finalAggsPost,
 		finalOutTypes,
-		planCtx.apSelect,
 	)
 }

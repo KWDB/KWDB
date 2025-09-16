@@ -190,13 +190,12 @@ function(generate_proto protofile)
 endfunction(generate_proto)
 
 # Generate C++ files from proto files
-file(GLOB_RECURSE NART_PROTOS_EE
-  src/roachpb/ee_pb_plan.proto)
-file(GLOB_RECURSE NART_PROTOS_META
-  src/roachpb/me_metadata.proto)
-file(GLOB_RECURSE NART_PROTOS_BR
-  src/roachpb/br_internal_service.proto)
+file(GLOB_RECURSE NART_PROTOS_EE src/roachpb/ee_pb_plan.proto)
+file(GLOB_RECURSE NART_PROTOS_JOINTYPE src/roachpb/join_type.proto)
+file(GLOB_RECURSE NART_PROTOS_META src/roachpb/me_metadata.proto)
+file(GLOB_RECURSE NART_PROTOS_BR src/roachpb/br_internal_service.proto)
 generate_proto(${NART_PROTOS_META})
+generate_proto(${NART_PROTOS_JOINTYPE})
 generate_proto(${NART_PROTOS_EE})
 generate_proto(${NART_PROTOS_BR})
 

@@ -176,11 +176,17 @@ type PhysicalPlan struct {
 	// if the SQL contains apply-join and set inputsToDrain for ts insert select, it break down.
 	InlcudeApplyJoin     bool
 	UseQueryShortCircuit bool
+	EngineType           execinfrapb.ProcessorSpecEngineType
 }
 
 // IsRemotePlan is true when ts plan is dist.
 func (p *PhysicalPlan) IsRemotePlan() bool {
 	return p.remotePlan
+}
+
+// ExecInApEngine is true when plan execute in ap engine.
+func (p *PhysicalPlan) ExecInApEngine() bool {
+	return p.EngineType == execinfrapb.ProcessorSpec_Analytical
 }
 
 // LimitInfo limit in time series select
@@ -270,6 +276,7 @@ func (p *PhysicalPlan) AddNoInputStage(
 				StageID: stageID,
 				//ResultTypes:       outputTypes,
 				//EstimatedRowCount: corePlacements[i].EstimatedRowCount,
+				Engine: p.EngineType,
 			},
 		}
 
@@ -433,7 +440,6 @@ func (p *PhysicalPlan) addNoopForGatewayNode(nodeID roachpb.NodeID) {
 		}},
 		execinfrapb.PostProcessSpec{OutputTypes: p.ResultTypes},
 		p.ResultTypes,
-		false,
 	)
 	if len(p.ResultRouters) != 1 {
 		panic(fmt.Sprintf("%d results after single group stage", len(p.ResultRouters)))
@@ -491,6 +497,7 @@ func (p *PhysicalPlan) AddNoopImplementation(
 				Type: execinfrapb.OutputRouterSpec_PASS_THROUGH,
 			}},
 			StageID: stageID,
+			Engine:  p.EngineType,
 		},
 	}
 
@@ -642,6 +649,7 @@ func (p *PhysicalPlan) AddNoGroupingStageWithCoreFunc(
 					Type: execinfrapb.OutputRouterSpec_PASS_THROUGH,
 				}},
 				StageID: stageID,
+				Engine:  p.EngineType,
 			},
 		}
 
@@ -756,12 +764,7 @@ func (p *PhysicalPlan) AddSingleGroupStage(
 	core execinfrapb.ProcessorCoreUnion,
 	post execinfrapb.PostProcessSpec,
 	outputTypes []types.T,
-	apSelect bool,
 ) {
-	engineType := execinfrapb.ProcessorSpec_Relation
-	if apSelect {
-		engineType = execinfrapb.ProcessorSpec_Analytical
-	}
 	proc := Processor{
 		Node: nodeID,
 		Spec: execinfrapb.ProcessorSpec{
@@ -775,7 +778,7 @@ func (p *PhysicalPlan) AddSingleGroupStage(
 				Type: execinfrapb.OutputRouterSpec_PASS_THROUGH,
 			}},
 			StageID: p.NewStageID(),
-			Engine:  engineType,
+			Engine:  p.EngineType,
 		},
 	}
 
@@ -1791,7 +1794,6 @@ func (p *PhysicalPlan) AddLimit(
 		execinfrapb.ProcessorCoreUnion{Noop: &execinfrapb.NoopCoreSpec{}},
 		post,
 		p.ResultTypes,
-		false,
 	)
 
 	if limitZero {
@@ -1820,7 +1822,7 @@ func (p *PhysicalPlan) PopulateEndpoints(nodeAddresses map[roachpb.NodeID]string
 			if p1.ExecInTSEngine() && !p2.ExecInTSEngine() {
 				endpoint.Type = execinfrapb.StreamEndpointType_QUEUE
 				p1.Spec.FinalTsProcessor = true
-			} else if !p2.ExecInTSEngine() && p1.Spec.Engine == 1 && p2.Spec.Engine == 0 {
+			} else if !p2.ExecInTSEngine() && p1.Spec.ExecInAPEngine() && p2.Spec.ExecInMEEngine() {
 				endpoint.Type = execinfrapb.StreamEndpointType_AP
 			} else {
 				endpoint.Type = execinfrapb.StreamEndpointType_LOCAL
@@ -2046,6 +2048,7 @@ func (p *PhysicalPlan) AddJoinStage(
 				Post:    post,
 				Output:  []execinfrapb.OutputRouterSpec{{Type: execinfrapb.OutputRouterSpec_PASS_THROUGH}},
 				StageID: stageID,
+				Engine:  p.EngineType,
 			},
 		}
 		p.Processors = append(p.Processors, proc)
@@ -2228,6 +2231,7 @@ func (p *PhysicalPlan) AddDistinctSetOpStage(
 					Post:    execinfrapb.PostProcessSpec{},
 					Output:  []execinfrapb.OutputRouterSpec{{Type: execinfrapb.OutputRouterSpec_PASS_THROUGH}},
 					StageID: distinctStageID,
+					Engine:  p.EngineType,
 				},
 			}
 			pIdx := p.AddProcessor(proc)
@@ -2370,6 +2374,7 @@ func (p *PhysicalPlan) EnsureSingleStreamPerNode(
 					}},
 					Core:   execinfrapb.ProcessorCoreUnion{Noop: &execinfrapb.NoopCoreSpec{OutputTypes: p.ResultTypes}},
 					Output: []execinfrapb.OutputRouterSpec{{Type: execinfrapb.OutputRouterSpec_PASS_THROUGH}},
+					Engine: p.EngineType,
 				},
 			}
 			mergedProcIdx := p.AddProcessor(proc)
