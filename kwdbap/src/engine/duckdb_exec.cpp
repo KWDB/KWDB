@@ -124,9 +124,9 @@ KStatus APEngineImpl::OpenEngine(kwdbContext_p ctx, APEngine** engine,
 
   *out_db = reinterpret_cast<duckdb_database>(wrapper);
   auto conn = std::make_shared<Connection>(*wrapper->database);
-  engineImpl->conn_ = conn;
-  engineImpl->instance_ = wrapper->database->instance;
   c_cache->SetDBWrapper(wrapper);
+  engineImpl->conn_ = conn; // keep the conn_ and instance_ below for database create/drop stuff
+  engineImpl->instance_ = wrapper->database->instance;
   *engine = engineImpl;
   *out = reinterpret_cast<APConnectionPtr>(conn.get());
   return KStatus::SUCCESS;
@@ -171,7 +171,7 @@ KStatus APEngineImpl::UpdateDBCache(std::string dbName) {
   return SUCCESS;
 }
 
-duckdb::Connection* APEngineImpl::GetAPConnFromCache(k_uint64 sessionID, 
+std::shared_ptr<duckdb::Connection> APEngineImpl::GetAPConnFromCache(k_uint64 sessionID, 
     std::string dbName, std::string userName) {
   
   // TODO: we need to support multiple databases, which is better to 
@@ -185,20 +185,27 @@ duckdb::Connection* APEngineImpl::GetAPConnFromCache(k_uint64 sessionID,
 KStatus APEngineImpl::Execute(kwdbContext_p ctx, APQueryInfo* req,
                               APRespInfo* resp) {
   req->db = instance_.get();
-  // req->connection = conn_.get();
-  req->connection = this->GetAPConnFromCache(req->sessionID, "", "");
+  // get C++ conn shared_ptr first
+  auto conn = this->GetAPConnFromCache(req->sessionID, "", "");
+
+  // the real conn to use below is the Connection * type of pointer
+  req->connection = conn.get();
   auto lock = make_uniq<ClientContextLock>(context_lock_);
-  conn_->BeginTransaction();
+  ((duckdb::Connection *)req->connection)->BeginTransaction();
   KStatus ret = DuckdbExec::ExecQuery(ctx, req, resp);
-  conn_->Commit();
+  ((duckdb::Connection *)req->connection)->Commit();
+
+  // return the conn handle, this "return" doesn't reduce refcount
+  c_cache->ReturnDConn(conn);
   return ret;
 }
 
 KStatus APEngineImpl::Query(const char* stmt, APRespInfo* resp) {
   auto lock = make_uniq<ClientContextLock>(context_lock_);
-  conn_->BeginTransaction();
+  auto conn = this->GetAPConnFromCache(1000, "", "").get();
+  conn->BeginTransaction();
   try {
-    auto res = conn_->Query(stmt);
+    auto res = conn->Query(stmt);
     if (res->HasError()) {
       auto errString = res->GetError();
       resp->ret = 0;
@@ -210,7 +217,7 @@ KStatus APEngineImpl::Query(const char* stmt, APRespInfo* resp) {
           memcpy(resp->value, errString.c_str(), resp->len);
         }
       }
-      conn_->Commit();
+      conn->Commit();
       return FAIL;
     }
     resp->row_num = res->RowCount();
@@ -225,7 +232,7 @@ KStatus APEngineImpl::Query(const char* stmt, APRespInfo* resp) {
         memcpy(resp->value, e.what(), resp->len);
       }
     }
-    conn_->Commit();
+    conn->Commit();
     return FAIL;
   } catch (const std::exception& e) {
     resp->ret = 0;
@@ -237,11 +244,11 @@ KStatus APEngineImpl::Query(const char* stmt, APRespInfo* resp) {
         memcpy(resp->value, e.what(), resp->len);
       }
     }
-    conn_->Commit();
+    conn->Commit();
     return FAIL;
   }
 
-  conn_->Commit();
+  conn->Commit();
   return SUCCESS;
 }
 

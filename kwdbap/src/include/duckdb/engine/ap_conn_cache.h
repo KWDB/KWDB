@@ -39,7 +39,8 @@ namespace kwdbts {
   };
 
 typedef struct DConEntry {
-  duckdb::Connection *conn;
+  // duckdb::Connection *conn;
+  std::shared_ptr<duckdb::Connection> conn;
   std::string user;
   std::string dbName;
   k_uint64 sessionID;
@@ -53,23 +54,43 @@ class DConnCache {
  public:
   DConnCache();
 
-  duckdb::Connection* GetOrAddConn(k_uint64 sessionID, std::string dbName, std::string userName);
-  bool ReturnDConn(duckdb::Connection* conn);
+  // this is the main entrance to obtain a connection from cache
+  std::shared_ptr<duckdb::Connection> GetOrAddConn(k_uint64 sessionID, std::string dbName, std::string userName);
+
+  // Retuning
+  bool ReturnDConn(std::shared_ptr<duckdb::Connection> conn);
+
+  // below are used during new or OpenEngine
   void SetDBWrapper(struct duckdb::DatabaseWrapper* wrapper); 
   void Init();
+
   static const int MAX_CACHE_ENTRY_NUM = 2048;
   
  private:
+  // look for a IDLE entry 
   DConEntry * lookForValidEntry(k_uint64 sessionID, std::string dbName, std::string userName);
-  DConEntry * lookForEntryByAddr(duckdb::Connection* conn);
+
+  // look for certain entry, invoked duing return
+  DConEntry * lookForEntryByAddr(std::shared_ptr<duckdb::Connection>);
+
+  // create a new Entry
   bool createEntry(DConEntry ** ent, k_uint64 sessionID, std::string dbName, std::string userName);
   bool addEntryToList(DConEntry * ent);
   bool doReturn(DConEntry * ent);
   
+  // this is copied from EngineImpl class during OpenEngine call, it's needed to create connections
   struct duckdb::DatabaseWrapper* copyOfEngineDBWrapper;
+
+  // cache, array of ConEntry pointers with maximum 2048.  TODO: this can be changed to malloc if needed.
   DConEntry * dConCache[MAX_CACHE_ENTRY_NUM];
+
+  // current number of entries in dConCache
   int current_sz; 
+
+  // TODO: a map to speed up entry searching 
   std::map<k_uint64, int> session2EntMap;  // session ID map to index in the core array
+
+  // the only lock to protect entry accessing 
   std::mutex cap_mux;
 
 }; 

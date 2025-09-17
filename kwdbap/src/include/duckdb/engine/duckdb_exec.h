@@ -83,9 +83,10 @@ class APEngineImpl : public APEngine {
 
   KStatus UpdateDBCache(std::string dbName);
 
-  duckdb::Connection* GetAPConnFromCache(k_uint64 sessionID, std::string dbName,
+  std::shared_ptr<duckdb::Connection> GetAPConnFromCache(k_uint64 sessionID, std::string dbName,
                                            std::string userName);
 
+  // global connection cache
   static DConnCache *c_cache;
 
  private:

@@ -22,7 +22,7 @@ void DConnCache::SetDBWrapper(duckdb::DatabaseWrapper* wrapper) {
 }
 
 // return NULL if any error, otherwise the corresponding parent struct pointer
-DConEntry * DConnCache::lookForEntryByAddr(duckdb::Connection* conn)
+DConEntry * DConnCache::lookForEntryByAddr(std::shared_ptr<duckdb::Connection> conn)
 {
   // caller should have acquired lock
   DConEntry * p = NULL;
@@ -44,10 +44,10 @@ DConEntry * DConnCache::lookForValidEntry(k_uint64 sessionID, std::string dbName
   for (int i=0; i<current_sz; i++){
     p = *(dConCache + i);
     if (CacheState::IDLE == p->status){
-      break;
+      return p;
     }
   }
-  return p;
+  return NULL;
 }
 
 // allocate memory, create connection, and populate the fields.
@@ -63,8 +63,8 @@ bool DConnCache::createEntry(DConEntry ** entry, k_uint64 sessionID, std::string
   }
 
   // get the real connection
-  ent->conn = std::make_shared<duckdb::Connection>(*(copyOfEngineDBWrapper->database)).get();
-  if (NULL == ent->conn ){
+  ent->conn = std::make_shared<duckdb::Connection>(*(copyOfEngineDBWrapper->database));
+  if ( !ent->conn ){
     return false;
   }
 
@@ -91,12 +91,15 @@ bool DConnCache::addEntryToList(DConEntry * ent){
   return true;
 }
 
-duckdb::Connection* DConnCache::GetOrAddConn(k_uint64 sessionID, std::string dbName, std::string userName)
+std::shared_ptr<duckdb::Connection> DConnCache::GetOrAddConn(k_uint64 sessionID, std::string dbName, std::string userName)
 {
   std::lock_guard<std::mutex> guard(cap_mux);  // take a object level lock
 
   DConEntry * result = lookForValidEntry(sessionID, dbName, userName);
-  if (result) {return result->conn; }  
+  if (result) {
+    result->status = CacheState::BUSY;
+    return result->conn; 
+  }  
 
   if (false == createEntry(&result, sessionID, dbName, userName)){
     // failure in createEntry
@@ -121,7 +124,7 @@ bool DConnCache::doReturn(DConEntry * ent){
 }
 
 // 1 for sucess, 0 for failure
-bool DConnCache::ReturnDConn(duckdb::Connection* conn){
+bool DConnCache::ReturnDConn(std::shared_ptr<duckdb::Connection> conn){
   std::lock_guard<std::mutex> guard(cap_mux);  // take a object level lock
 
   DConEntry * p = lookForEntryByAddr(conn);
