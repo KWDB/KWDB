@@ -12,8 +12,8 @@
 
 source $QA_DIR/util/utils.sh
 
-function execute_regression_sql_basic_v2() {
-  local sqldirs=("basic_v2")
+function execute_regression_sql_basic_v3() {
+  local sqldirs=("basic_v3")
 
   test_start_time=$(date +%s)
   passed_cnt=0
@@ -50,8 +50,8 @@ function execute_regression_sql_basic_v2() {
   fi
 }
 
-function execute_regression_sql_cluster_v2() {
-  local sqldirs=("cluster_v2")
+function execute_regression_sql_cluster_v3() {
+  local sqldirs=("cluster_v3")
 
   test_start_time=$(date +%s)
   test_results=()
@@ -122,8 +122,8 @@ function execute_regression_sql_cluster_v2() {
   fi
 }
 
-function execute_regression_sql_distribute_v2() {
-  local sqldirs=("cluster_v2")
+function execute_regression_sql_distribute_v3() {
+  local sqldirs=("cluster_v3")
 
   test_start_time=$(date +%s)
   test_results=()

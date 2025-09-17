@@ -223,52 +223,32 @@ AND opcdata."time">'2023-05-29 10:10:10'
 AND opcdata."time"<='2024-05-29 16:10:10'
 AND pzm.contract_email ='ningmeng0823@hotmail.com'
 AND pzm.contract_mobile=opcdata.channel);
-                  tree                  |       field       |                            description
-----------------------------------------+-------------------+---------------------------------------------------------------------
-                                        | distributed       | true
-                                        | vectorized        | false
-  render                                |                   |
-   │                                    | count             | sum_int
-   │                                    | avg               | sum / sum_int
-   └── group                            |                   |
-        │                               | aggregate 0       | sum_int(count_rows)
-        │                               | aggregate 1       | sum(sum)
-        │                               | aggregate 2       | sum_int(count)
-        │                               | scalar            |
-        └── render                      |                   |
-             │                          | count_rows        | count_rows
-             │                          | sum               | sum
-             │                          | count             | count
-             └── hash-join              |                   |
-                  │                     | type              | inner
-                  │                     | equality          | ("tag", companyid, channel) = ("tag", company_id, contract_mobile)
-                  │                     | left cols are key |
-                  ├── group             |                   |
-                  │    │                | engine type       | time series
-                  │    │                | aggregate 0       | channel
-                  │    │                | aggregate 1       | companyid
-                  │    │                | aggregate 2       | tag
-                  │    │                | aggregate 3       | count_rows()
-                  │    │                | aggregate 4       | sum(value)
-                  │    │                | aggregate 5       | count(value)
-                  │    │                | group by          | channel, companyid, tag
-                  │    │                | addSynchronizer   | true
-                  │    └── render       |                   |
-                  │         │           | engine type       | time series
-                  │         │           | value             | value
-                  │         │           | channel           | channel
-                  │         │           | companyid         | companyid
-                  │         │           | tag               | "tag"
-                  │         └── ts scan |                   |
-                  │                     | ts-table          | opcdata449600
-                  │                     | access mode       | tableTableMeta
-                  │                     | spans:fromTime    | 2023-05-29 10:10:10.001 +0000 UTC
-                  │                     | spans:toTime      | 2024-05-29 16:10:10 +0000 UTC
-                  └── scan              |                   |
-                                        | table             | plat_zone_member@primary
-                                        | spans             | FULL SCAN
-                                        | filter            | contract_email = 'ningmeng0823@hotmail.com'
-(43 rows)
+           tree          |      field       |                            description
+-------------------------+------------------+---------------------------------------------------------------------
+                         | distributed      | true
+                         | vectorized       | false
+  batch-lookup-join      |                  |
+   │                     | type             | inner
+   │                     | equality         | ("tag", company_id, contract_mobile) = ("tag", companyid, channel)
+   ├── scan              |                  |
+   │                     | table            | plat_zone_member@primary
+   │                     | spans            | FULL SCAN
+   │                     | filter           | contract_email = 'ningmeng0823@hotmail.com'
+   └── group             |                  |
+        │                | engine type      | time series
+        │                | aggregate 0      | count_rows()
+        │                | aggregate 1      | avg(value)
+        │                | scalar           |
+        │                | addSynchronizer  | true
+        └── render       |                  |
+             │           | engine type      | time series
+             │           | value            | value
+             └── ts scan |                  |
+                         | ts-table         | opcdata449600
+                         | access mode      | primaryHashTagScan
+                         | spans:fromTime   | 2023-05-29 10:10:10.001 +0000 UTC
+                         | spans:toTime     | 2024-05-29 16:10:10 +0000 UTC
+(23 rows)
 > drop database runba cascade;
 DROP DATABASE
 > drop database runba_tra cascade;

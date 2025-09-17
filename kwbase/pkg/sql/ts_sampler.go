@@ -227,14 +227,9 @@ func updateOutput(tsConfig *TsSamplerConfig, p *PhysicalPlan) {
 	tsConfig.ResultCols = resultColumns
 
 	// Set the scan cols and output types for ts sampler
-	post := execinfrapb.TSPostProcessSpec{
+	post := execinfrapb.PostProcessSpec{
 		OutputColumns: outputColumnsIDx,
-		OutputTypes:   make([]types.Family, len(outputColumnsType)),
-	}
-
-	// Set output types
-	for i, typ := range outputColumnsType {
-		post.OutputTypes[i] = typ.InternalType.Family
+		OutputTypes:   outputColumnsType,
 	}
 
 	// The final stage of setting up the physical plan.

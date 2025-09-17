@@ -338,15 +338,15 @@ EEIteratorErrCode TsSamplerOperator::mainLoop<SortedHistogram>(kwdbContext_p ctx
     }
 
     bucket_data.resize(outRetrunTypes_.size(), std::nullopt);
-    UnorderedDataStats bucketStats{};
-    ts_table_->GetUnorderedDataInfo(ctx, ts_span, &bucketStats);
-
-    bucket_data[sketchIdxCol_] = static_cast<k_int64>(sorted_histogram_.sketchIdx);
-    bucket_data[bucketIDCol_] = static_cast<k_int64>(i+1);
-    bucket_data[bucketNumRowsCol_] = static_cast<k_int64>(bucketStats.total_data_rows);
-    bucket_data[rankCol_] = static_cast<k_int64>(bucketStats.unordered_data_rows);
-    bucket_data[numRowsCol_] = static_cast<k_int64>(bucketStats.ordered_entity_cnt);
-    bucket_data[numNullsCol_] = static_cast<k_int64>(bucketStats.unordered_entity_cnt);
+    // UnorderedDataStats bucketStats{};
+    // ts_table_->GetUnorderedDataInfo(ctx, ts_span, &bucketStats);
+    //
+    // bucket_data[sketchIdxCol_] = static_cast<k_int64>(sorted_histogram_.sketchIdx);
+    // bucket_data[bucketIDCol_] = static_cast<k_int64>(i+1);
+    // bucket_data[bucketNumRowsCol_] = static_cast<k_int64>(bucketStats.total_data_rows);
+    // bucket_data[rankCol_] = static_cast<k_int64>(bucketStats.unordered_data_rows);
+    // bucket_data[numRowsCol_] = static_cast<k_int64>(bucketStats.ordered_entity_cnt);
+    // bucket_data[numNullsCol_] = static_cast<k_int64>(bucketStats.unordered_entity_cnt);
 
     sorted_histogram_.histogram_data.emplace_back(bucket_data);
     total_sample_rows_++;

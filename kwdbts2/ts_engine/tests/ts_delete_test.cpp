@@ -63,7 +63,7 @@ class TestV2DeleteTest : public ::testing::Test {
     std::vector<BlockFilter> block_filter = {};
     std::vector<k_int32> agg_extend_cols = {};
     std::vector<timestamp64> ts_points = {};
-    auto s = entity_v_group->GetIterator(ctx_, entity_ids, ts_spans, block_filter,
+    auto s = entity_v_group->GetIterator(ctx_, table_schema_mgr->GetCurrentVersion(), entity_ids, ts_spans, block_filter,
                         scan_cols, scan_cols, agg_extend_cols, scan_agg_types, table_schema_mgr,
                         schema, &ts_iter, entity_v_group, ts_points, false, false);
     ASSERT_EQ(s, KStatus::SUCCESS);

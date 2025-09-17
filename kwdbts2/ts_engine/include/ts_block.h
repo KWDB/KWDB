@@ -42,7 +42,7 @@ class TsBlock {
   virtual KStatus GetColAddr(uint32_t col_id, const std::vector<AttributeInfo>* schema,
                              char** value) = 0;
   virtual KStatus GetColBitmap(uint32_t col_id, const std::vector<AttributeInfo>* schema,
-                               TsBitmap& bitmap) = 0;
+                               std::unique_ptr<TsBitmapBase>* bitmap) = 0;
   virtual KStatus GetValueSlice(int row_num, int col_id, const std::vector<AttributeInfo>* schema,
                                 TSSlice& value) = 0;
   virtual bool IsColNull(int row_num, int col_id, const std::vector<AttributeInfo>* schema) = 0;
@@ -203,11 +203,12 @@ class TsBlockSpan {
     return convert_->GetColType(scan_idx);
   }
 
-  KStatus GetColBitmap(uint32_t scan_idx, TsBitmap& bitmap);
+  KStatus GetColBitmap(uint32_t scan_idx, std::unique_ptr<TsBitmapBase>* bitmap);
   // dest type is fixed len datatype.
-  KStatus GetFixLenColAddr(uint32_t scan_idx, char** value, TsBitmap& bitmap, bool bitmap_required = true);
+  KStatus GetFixLenColAddr(uint32_t scan_idx, char** value, std::unique_ptr<TsBitmapBase>* bitmap);
   // dest type is varlen datatype.
   KStatus GetVarLenTypeColAddr(uint32_t row_idx, uint32_t scan_idx, DataFlags& flag, TSSlice& data);
+  KStatus GetVarLenTypeColAddr(uint32_t row_idx, uint32_t scan_idx, TSSlice& data);
 
   KStatus GetCount(uint32_t scan_idx, uint32_t& count);
 

@@ -104,9 +104,6 @@ func (tp *tsProcessor) Start(ctx context.Context) context.Context {
 			if err != nil {
 				break
 			}
-			if err != nil {
-				break
-			}
 			_, err = tp.FlowCtx.Cfg.GetTSEngine().DeleteEntities(uint64(toDrop.TemplateID), 1, [][]byte{primaryTag}, true, 0)
 			if err != nil {
 				break
@@ -120,33 +117,6 @@ func (tp *tsProcessor) Start(ctx context.Context) context.Context {
 				break
 			}
 		}
-	case execinfrapb.OperatorType_TsDeleteExpiredData:
-		errPrefix = "Delete Expired Data Failed, reason:%s"
-		for _, toDrop := range tp.dropMEInfo {
-			err = tp.FlowCtx.Cfg.GetTSEngine().DeleteExpiredData(uint64(toDrop.TableID), toDrop.StartTs, toDrop.EndTs)
-			if err != nil {
-				log.Errorf(context.Background(), "Delete Expired Data Failed, tableID:%d, reason:%s \n", toDrop.TableID, err.Error())
-			}
-		}
-	case execinfrapb.OperatorType_TsCompressTsTable:
-		errPrefix = "Compress TS Table Failed, reason:%s"
-		for _, toDrop := range tp.dropMEInfo {
-			err = tp.FlowCtx.Cfg.GetTSEngine().CompressTsTable(uint64(toDrop.TableID), toDrop.CompressTs)
-			if err != nil {
-				log.Errorf(context.Background(), "Compress TS Table Failed, tableID:%d, reason:%s \n", toDrop.TableID, err.Error())
-			}
-		}
-	case execinfrapb.OperatorType_TsManualCompressTable:
-		errPrefix = "Compress data manually failed, reason:%s"
-		for _, toDrop := range tp.dropMEInfo {
-			if toDrop.IsTSTable {
-				err = tp.FlowCtx.Cfg.GetTSEngine().CompressImmediately(tp.Ctx, uint64(toDrop.TableID))
-				if err != nil {
-					log.Errorf(ctx, "Compress Table Failed, tableID:%d, reason:%s", toDrop.TableID, err.Error())
-				}
-			}
-		}
-
 	case execinfrapb.OperatorType_TsAutonomy:
 		errPrefix = "Autonomy TS Table Failed, reason:%s"
 		for _, table := range tp.dropMEInfo {
@@ -160,14 +130,6 @@ func (tp *tsProcessor) Start(ctx context.Context) context.Context {
 		err = tp.FlowCtx.Cfg.GetTSEngine().Vacuum()
 		if err != nil {
 			log.Errorf(context.Background(), "Vacuum Failed, reason:%s \n", err.Error())
-		}
-	case execinfrapb.OperatorType_TsCount:
-		errPrefix = "Count TS Table Failed, reason:%s"
-		for _, table := range tp.dropMEInfo {
-			err = tp.FlowCtx.Cfg.GetTSEngine().CountTsTable(uint64(table.TableID))
-			if err != nil {
-				log.Errorf(context.Background(), "Count TS Table Failed, tableID:%d, reason:%s \n", table.TableID, err.Error())
-			}
 		}
 	default:
 		err = errors.Newf("the TsOperatorType is not supported, TsOperatorType:%s", tp.tsOperatorType.String())

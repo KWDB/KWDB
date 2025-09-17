@@ -46,7 +46,7 @@ class TableScanOperator : public BaseOperator {
  public:
   friend class ScanHelper;
   friend class WindowHelper;
-  TableScanOperator(TsFetcherCollection* collection, TSReaderSpec* spec, TSPostProcessSpec* post, TABLE* table,
+  TableScanOperator(TsFetcherCollection* collection, TSReaderSpec* spec, PostProcessSpec* post, TABLE* table,
                                         int32_t processor_id);
 
   TableScanOperator(const TableScanOperator&, int32_t processor_id);

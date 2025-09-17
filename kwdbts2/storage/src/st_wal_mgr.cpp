@@ -798,7 +798,7 @@ KStatus WALMgr::ReadUncommittedWALLog(std::vector<LogEntry*>& logs, TS_LSN start
   for (auto x_id : uncommitted_xid) {
     status = buffer_mgr_->readWALLogs(logs, start_lsn, end_lsn, end_chk, x_id);
     if (status == KStatus::FAIL) {
-      LOG_ERROR("Failed to readWALLogs with txn_id : %d", x_id)
+      LOG_ERROR("Failed to readWALLogs with txn_id : %ld", x_id)
       return status;
     }
   }

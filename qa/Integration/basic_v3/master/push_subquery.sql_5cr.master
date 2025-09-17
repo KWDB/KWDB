@@ -149,8 +149,10 @@ LIMIT 1;
                                         | vectorized          | false
   root                                  |                     |
    ├── limit                            |                     |
+   │    │                               | engine type         | time series
    │    │                               | count               | 1
    │    └── sort                        |                     |
+   │         │                          | engine type         | time series
    │         │                          | order               | -abnormal_point_count
    │         └── group                  |                     |
    │              │                     | aggregate 0         | station_sn
@@ -186,7 +188,7 @@ LIMIT 1;
                                         | use statistic       | true
                                         | tag filter[0]       | measure_type = 4
                                         | tag filter[1]       | pipeline_sn = 'e1'
-(41 rows)
+(43 rows)
 > SELECT COUNT(*) AS max_sample_count,
 AVG(t.measure_value) AS avg_value,
 t.measure_value AS first_n_max_value

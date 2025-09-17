@@ -14,8 +14,8 @@ SCRIPT_NAME=$(basename ${0})
 
 source $QA_DIR/Integration/execute_regression_sql_v2.sh
 topologies=${@:-5c 5cr}
-export KW_ENGINE_VERSION=1
-execute_regression_sql_cluster_v2 ${topologies}
+export KW_ENGINE_VERSION=2
+execute_regression_sql_cluster_v3 ${topologies}
 
 if [ $? = 1 ]; then
   echo "${SCRIPT_NAME}_failed"

@@ -17,15 +17,17 @@
 #include <string>
 #include "cm_parse_expr.h"
 
+using namespace duckdb;
+
 namespace kwdbap {
 
 struct ParseExprParam {
  public:
-  ParseExprParam(duckdb::TableCatalogEntry &table, duckdb::ClientContext* context, std::map<idx_t, idx_t>& col_map) :
-  table_(table), context_(context), col_map_(col_map) {}
-  duckdb::reference<duckdb::TableCatalogEntry> table_;
-  duckdb::ClientContext *context_;
+  ParseExprParam(ClientContext* context, std::map<idx_t, idx_t>& col_map, std::map<idx_t, LogicalType>& col_typ_map) :
+  context_(context), col_map_(col_map), col_typ_map_(col_typ_map) {}
+  ClientContext *context_;
   std::map<idx_t, idx_t>& col_map_;
+  std::map<idx_t, LogicalType>& col_typ_map_;
 };
 
 class APParseQuery : public kwdb::ParseExpr {

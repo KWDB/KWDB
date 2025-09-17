@@ -200,6 +200,15 @@ func (srw *StreamReceiver) Err() error {
 	return srw.err
 }
 
+// Close the StreamReceiver.
+func (srw *StreamReceiver) Close() {
+	srw.mutex.Lock()
+	defer srw.mutex.Unlock()
+
+	srw.rowContainer.Clear(srw.ctx)
+	srw.rowContainer.Close(srw.ctx)
+}
+
 // flush writes the result from rowContainer to target table.
 func (srw *StreamReceiver) flush() error {
 	srw.mutex.Lock()

@@ -51,7 +51,7 @@ class Processors {
  private:
   kwdbts::KStatus BuildOperator();
   
-  PhyOpRef BuildOperatorImp(const kwdbts::ProcessorSpec &procSpec, InPutStreamSrcMap &inputSrc);
+  PhyOpRef BuildOperatorImp(const kwdbts::TSProcessorSpec &procSpec, InPutStreamSrcMap &inputSrc);
   
   std::shared_ptr<TransFormPlan> transFormPlan_;
   

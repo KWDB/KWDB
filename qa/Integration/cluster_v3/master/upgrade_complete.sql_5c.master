@@ -2,8 +2,6 @@
 SET CLUSTER SETTING
 > SET cluster setting ts.rows_per_block.max_limit=10;
 SET CLUSTER SETTING
-> SET cluster setting ts.blocks_per_segment.max_limit=50;
-SET CLUSTER SETTING
 > CREATE TS DATABASE tsdb;
 CREATE TS DATABASE
 > CREATE TABLE tsdb.tab(ts TIMESTAMP NOT NULL, col1 INT, col2 CHAR(3)) TAGS (tag1 INT8 NOT NULL, tag2 FLOAT4, tag3 CHAR(3)) PRIMARY TAGS(tag1); 

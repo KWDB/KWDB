@@ -254,9 +254,9 @@ class TSBSSchema {
       const auto& col = meta.k_column(i);
       struct AttributeInfo col_var;
       if (i == 0) {
-        TsEntityGroup::GetColAttributeInfo(ctx, col, col_var, true);
+        TsTableV2Impl::GetColAttributeInfo(ctx, col, col_var, true);
       } else {
-        TsEntityGroup::GetColAttributeInfo(ctx, col, col_var, false);
+        TsTableV2Impl::GetColAttributeInfo(ctx, col, col_var, false);
       }
       if (col_var.isAttrType(COL_GENERAL_TAG) || col_var.isAttrType(COL_PRIMARY_TAG)) {
         tag_value_len += col_var.size;
@@ -431,9 +431,9 @@ class TSBSSchema {
       const auto& col = meta.k_column(i);
       struct AttributeInfo col_var;
       if (i == 0) {
-        TsEntityGroup::GetColAttributeInfo(ctx, col, col_var, true);
+        TsTableV2Impl::GetColAttributeInfo(ctx, col, col_var, true);
       } else {
-        TsEntityGroup::GetColAttributeInfo(ctx, col, col_var, false);
+        TsTableV2Impl::GetColAttributeInfo(ctx, col, col_var, false);
       }
       if (col_var.isAttrType(COL_GENERAL_TAG) || col_var.isAttrType(COL_PRIMARY_TAG)) {
         tag_value_len += col_var.size;

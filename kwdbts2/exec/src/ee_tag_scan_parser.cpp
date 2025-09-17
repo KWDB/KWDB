@@ -17,7 +17,7 @@
 
 namespace kwdbts {
 
-TsTagScanParser::TsTagScanParser(TSTagReaderSpec* spec , TSPostProcessSpec *post, TABLE *table)
+TsTagScanParser::TsTagScanParser(TSTagReaderSpec* spec , PostProcessSpec *post, TABLE *table)
     : TsScanParser(post, table), spec_(spec) { }
 
 KStatus TsTagScanParser::ParserTagSpec(kwdbContext_p ctx) {
@@ -37,7 +37,7 @@ EEIteratorErrCode TsTagScanParser::ParserScanTags(kwdbContext_p ctx) {
   EEIteratorErrCode code = EEIteratorErrCode::EE_OK;
 
   for (k_uint32 i = 0; i < inputcols_count_; i++) {
-    k_uint32 col_index = post_->outputcols(i);
+    k_uint32 col_index = post_->output_columns(i);
     // skip the col_id if it exceeds table_->field_num_ which should be relational col for multiple model processing
     if (col_index < table_->field_num_) {
       table_->scan_tags_.push_back(col_index - table_->min_tag_id_);
@@ -55,7 +55,7 @@ EEIteratorErrCode TsTagScanParser::ParserScanTagsRelCols(kwdbContext_p ctx) {
   // resolve relational cols
   table_->scan_rel_cols_.reserve(table_->GetRelFields().size());
   for (k_uint32 i = 0; i < inputcols_count_; ++i) {
-    k_uint32 col_id = post_->outputcols(i);
+    k_uint32 col_id = post_->output_columns(i);
     if (col_id >= table_->field_num_) {
       table_->scan_rel_cols_.push_back(col_id - table_->field_num_);
       Field* field = table_->GetFieldWithColNum(col_id);

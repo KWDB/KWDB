@@ -217,6 +217,7 @@ KStatus DmlExec::Setup(kwdbContext_p ctx, k_char *message, k_uint32 len,
     tsScan->unique_id = uniqueID;
     bool proto_parse = false;
     try {
+      // LOG_ERROR("execute sql: %s", thd_->sql_.c_str());
       proto_parse = tsScan->fspecs->ParseFromArray(message, len);
     } catch (...) {
       LOG_ERROR("Throw exception where parsing physical plan.");

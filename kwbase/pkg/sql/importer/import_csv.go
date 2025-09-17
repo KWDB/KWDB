@@ -508,6 +508,8 @@ func constructCopyAndRun(
 	}
 	var buf bytes.Buffer
 	buf.WriteString("copy ")
+	//buf.WriteString(spec.Table.DbName)
+	//buf.WriteString(".public.")
 	buf.WriteString(spec.Table.Desc.Name)
 	buf.WriteString(" from ")
 	buf.WriteString("'")
@@ -528,21 +530,32 @@ func constructCopyAndRun(
 
 	var state duck.State
 	var res duck.Result
-	db := duck.Database{}
+	//db := duck.Database{}
 
-	path := flowCtx.Cfg.GetAPEngine().GetDBPath() + "/" + spec.Table.DbName
-	state = duck.Open(path, &db)
-	if state != duck.StateSuccess {
-		return false, 0, errors.New("failed to opend the ap database")
+	//path := flowCtx.Cfg.GetAPEngine().GetDBPath() + "/" + spec.Table.DbName
+	//state = duck.Open(path, &db)
+	//if state != duck.StateSuccess {
+	//	return false, 0, errors.New("failed to opend the ap database")
+	//}
+	//defer duck.Close(&db)
+	db := duck.Database{Ptr: flowCtx.Cfg.GetAPEngine().GetDBPtr()}
+
+	if err := flowCtx.Cfg.GetAPEngine().CreateDB(spec.Table.DbName); err != nil {
+		return false, 0, err
 	}
-	defer duck.Close(&db)
-
 	connection := duck.Connection{}
 	state = duck.Connect(db, &connection)
 	if state != duck.StateSuccess {
 		return false, 0, errors.New("failed to connect to ap database")
 	}
 	defer duck.Disconnect(&connection)
+
+	state = duck.Query(connection, "use "+spec.Table.DbName, &res)
+	if state != duck.StateSuccess {
+		fmt.Println("use database failed")
+		errMsg := duck.ResultError(&res)
+		return false, 0, pgerror.New(pgcode.Warning, errMsg)
+	}
 
 	start := time.Now()
 	state = duck.Query(connection, stmt, &res)
@@ -551,6 +564,10 @@ func constructCopyAndRun(
 		errMsg := duck.ResultError(&res)
 		return false, 0, pgerror.New(pgcode.Warning, errMsg)
 	}
+	//rowsCount := 0
+	//if err := flowCtx.Cfg.GetAPEngine().ExecSqlForResult(stmt, &rowsCount); err != nil {
+	//	return false, 0, err
+	//}
 	end := time.Now()
 	diff := end.Sub(start)
 	rowsCount := duck.RowsChanged(&res)

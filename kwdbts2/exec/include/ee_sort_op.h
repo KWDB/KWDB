@@ -39,7 +39,7 @@ enum EESortType {
 class SortOperator : public BaseOperator {
  public:
   SortOperator(TsFetcherCollection* collection, TSSorterSpec* spec,
-               TSPostProcessSpec* post, TABLE* table, int32_t processor_id);
+               PostProcessSpec* post, TABLE* table, int32_t processor_id);
 
   SortOperator(const SortOperator&, int32_t processor_id);
 

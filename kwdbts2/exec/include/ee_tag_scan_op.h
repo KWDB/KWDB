@@ -33,7 +33,7 @@ namespace kwdbts {
 class TagScanBaseOperator : public BaseOperator {
  public:
   TagScanBaseOperator(TsFetcherCollection *collection,
-                      TABLE* table, TSPostProcessSpec* post, int32_t processor_id)
+                      TABLE* table, PostProcessSpec* post, int32_t processor_id)
       : BaseOperator(collection, table, post, processor_id) {}
   virtual KStatus GetEntities(kwdbContext_p ctx,
                       std::vector<EntityResultIndex>* entities,
@@ -60,7 +60,7 @@ class StorageHandler;
 class TagScanOperator : public TagScanBaseOperator {
  public:
   TagScanOperator(TsFetcherCollection *collection, TSTagReaderSpec* spec,
-                              TSPostProcessSpec* post, TABLE* table, int32_t processor_id);
+                              PostProcessSpec* post, TABLE* table, int32_t processor_id);
 
   ~TagScanOperator() override;
 

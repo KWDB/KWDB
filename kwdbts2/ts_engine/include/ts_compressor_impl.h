@@ -27,9 +27,9 @@ namespace kwdbts {
 class TsCompressorBase {
  public:
   virtual ~TsCompressorBase() = default;
-  virtual bool Compress(const TSSlice &raw, const TsBitmap *bitmap, uint32_t count,
+  virtual bool Compress(const TSSlice &raw, const TsBitmapBase *bitmap, uint32_t count,
                         std::string *out) const = 0;
-  virtual bool Decompress(const TSSlice &raw, const TsBitmap *bitmap, uint32_t count,
+  virtual bool Decompress(const TSSlice &raw, const TsBitmapBase *bitmap, uint32_t count,
                           std::string *out) const = 0;
 };
 
@@ -143,7 +143,7 @@ class ConcreateTsCompressor : public TsCompressorBase {
     static ConcreateTsCompressor inst;
     return inst;
   }
-  bool Compress(const TSSlice &raw, const TsBitmap *bitmap, uint32_t count,
+  bool Compress(const TSSlice &raw, const TsBitmapBase *bitmap, uint32_t count,
                 std::string *out) const override {
     out->clear();
     assert(bitmap == nullptr || bitmap->GetCount() == count);
@@ -165,7 +165,7 @@ class ConcreateTsCompressor : public TsCompressorBase {
     return Compressor::GetInstance().Compress(input, bitmap->GetValidCount(), out);
   }
 
-  bool Decompress(const TSSlice &raw, const TsBitmap *bitmap, uint32_t count,
+  bool Decompress(const TSSlice &raw, const TsBitmapBase *bitmap, uint32_t count,
                   std::string *out) const override {
     out->clear();
     int stride = Compressor::stride;

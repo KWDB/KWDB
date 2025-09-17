@@ -317,8 +317,7 @@ DuckdbExec::~DuckdbExec() {}
 void DuckdbExec::Init(void* instance, void* connect) {
   instance_ = static_cast<DatabaseInstance*>(instance);
   connect_ = static_cast<Connection*>(connect);
-  processors_ =
-      make_uniq<kwdbap::Processors>(*connect_->context.get(), db_path_);
+  processors_ = make_uniq<kwdbap::Processors>(*connect_->context.get(), db_path_);
 }
 
 KStatus DuckdbExec::ExecQuery(kwdbContext_p ctx, APQueryInfo* req,
@@ -358,6 +357,7 @@ KStatus DuckdbExec::ExecQuery(kwdbContext_p ctx, APQueryInfo* req,
         //          req->sql.len));
         if (req->sql.data) {
           handle->sql_ = std::string(req->sql.data, req->sql.len);
+          printf("setup sql is %s\n", handle->sql_.c_str());
         }
         ret = handle->Setup(ctx, message, len, id, uniqueID, resp);
         if (ret != KStatus::SUCCESS) {

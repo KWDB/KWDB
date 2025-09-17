@@ -361,9 +361,14 @@ func (ds *ServerImpl) setupFlow(
 		opt = flowinfra.FuseAggressively
 	}
 	var err error
-	f.SetTS(req.Flow.TsProcessors != nil)
+	for i := range req.Flow.Processors {
+		if req.Flow.Processors[i].ExecInTSEngine() {
+			f.SetTS(true)
+			break
+		}
+	}
+
 	f.SetQueryShortCircuit(req.Flow.TsInfo.UseQueryShortCircuit)
-	f.SetAeGather(req.Flow.TsInfo.UseAeGather)
 	f.SetVectorized(isVectorized)
 	if ctx, err = f.Setup(ctx, &req.Flow, opt); err != nil {
 		log.Errorf(ctx, "error setting up flow: %s", err)

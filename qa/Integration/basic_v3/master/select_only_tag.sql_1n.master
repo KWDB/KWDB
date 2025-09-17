@@ -23,96 +23,104 @@ INSERT 10
                | distributed | true
                | vectorized  | false
   distinct     |             |
+   │           | engine type | time series
    │           | distinct on | ptag1
    └── ts scan |             |
                | ts-table    | table1
                | only tag    | true
                | access mode | tableTableMeta
-(8 rows)
+(9 rows)
 > explain select distinct ptag1, t1 from only_tag.table1;
       tree     |    field    |  description
 ---------------+-------------+-----------------
                | distributed | true
                | vectorized  | false
   distinct     |             |
+   │           | engine type | time series
    │           | distinct on | ptag1, t1
    └── ts scan |             |
                | ts-table    | table1
                | only tag    | true
                | access mode | tableTableMeta
-(8 rows)
+(9 rows)
 > explain select distinct ptag1, t1, t2 from only_tag.table1;
       tree     |    field    |  description
 ---------------+-------------+-----------------
                | distributed | true
                | vectorized  | false
   distinct     |             |
+   │           | engine type | time series
    │           | distinct on | ptag1, t1, t2
    └── ts scan |             |
                | ts-table    | table1
                | only tag    | true
                | access mode | tableTableMeta
-(8 rows)
+(9 rows)
 > explain select distinct ptag1, t1, t2, t3 from only_tag.table1;
       tree     |    field    |    description
 ---------------+-------------+--------------------
                | distributed | true
                | vectorized  | false
   distinct     |             |
+   │           | engine type | time series
    │           | distinct on | ptag1, t1, t2, t3
    └── ts scan |             |
                | ts-table    | table1
                | only tag    | true
                | access mode | tableTableMeta
-(8 rows)
+(9 rows)
 > explain select ptag1 from only_tag.table1 group by ptag1;
       tree     |    field    |  description
 ---------------+-------------+-----------------
                | distributed | true
                | vectorized  | false
   distinct     |             |
+   │           | engine type | time series
    │           | distinct on | ptag1
    └── ts scan |             |
                | ts-table    | table1
                | only tag    | true
                | access mode | tableTableMeta
-(8 rows)
+(9 rows)
 > explain select ptag1, t1 from only_tag.table1 group by ptag1, t1;
       tree     |    field    |  description
 ---------------+-------------+-----------------
                | distributed | true
                | vectorized  | false
   distinct     |             |
+   │           | engine type | time series
    │           | distinct on | ptag1, t1
    └── ts scan |             |
                | ts-table    | table1
                | only tag    | true
                | access mode | tableTableMeta
-(8 rows)
+(9 rows)
 > explain select ptag1, t1, t2 from only_tag.table1 group by ptag1, t1, t2;
       tree     |    field    |  description
 ---------------+-------------+-----------------
                | distributed | true
                | vectorized  | false
   distinct     |             |
+   │           | engine type | time series
    │           | distinct on | ptag1, t1, t2
    └── ts scan |             |
                | ts-table    | table1
                | only tag    | true
                | access mode | tableTableMeta
-(8 rows)
+(9 rows)
 > explain select ptag1, t1, t2, t3 from only_tag.table1 group by ptag1, t1, t2, t3;
       tree     |    field    |    description
 ---------------+-------------+--------------------
                | distributed | true
                | vectorized  | false
   distinct     |             |
+   │           | engine type | time series
    │           | distinct on | ptag1, t1, t2, t3
    └── ts scan |             |
                | ts-table    | table1
                | only tag    | true
                | access mode | tableTableMeta
-(8 rows)
+(9 rows)
 > explain select ptag1, sum(t1) from only_tag.table1 group by ptag1;
       tree     |        field        |  description
 ---------------+---------------------+-----------------
@@ -231,45 +239,49 @@ INSERT 10
                | distributed    | true
                | vectorized     | false
   distinct     |                |
+   │           | engine type    | time series
    │           | distinct on    | t1
    └── ts scan |                |
                | ts-table       | table1
                | only tag       | true
                | access mode    | tagIndexTable
                | ptag filter[0] | ptag1 = 100
-(9 rows)
+(10 rows)
 > explain select ptag1, t1, t2 from only_tag.table1 where ptag1 = 100 group by ptag1, t1, t2;
       tree     |     field      |  description
 ---------------+----------------+----------------
                | distributed    | true
                | vectorized     | false
   distinct     |                |
+   │           | engine type    | time series
    │           | distinct on    | t1, t2
    └── ts scan |                |
                | ts-table       | table1
                | only tag       | true
                | access mode    | tagIndexTable
                | ptag filter[0] | ptag1 = 100
-(9 rows)
+(10 rows)
 > explain select ptag1, t1, t2, t3 from only_tag.table1 where ptag1 = 100 group by ptag1, t1, t2, t3;
       tree     |     field      |  description
 ---------------+----------------+----------------
                | distributed    | true
                | vectorized     | false
   distinct     |                |
+   │           | engine type    | time series
    │           | distinct on    | t1, t2, t3
    └── ts scan |                |
                | ts-table       | table1
                | only tag       | true
                | access mode    | tagIndexTable
                | ptag filter[0] | ptag1 = 100
-(9 rows)
+(10 rows)
 > explain select ptag1 from only_tag.table1 where t1 > 1000 group by ptag1;
         tree        |     field     |  description
 --------------------+---------------+-----------------
                     | distributed   | true
                     | vectorized    | false
   distinct          |               |
+   │                | engine type   | time series
    │                | distinct on   | ptag1
    └── render       |               |
         │           | engine type   | time series
@@ -279,46 +291,49 @@ INSERT 10
                     | only tag      | true
                     | access mode   | tableTableMeta
                     | tag filter[0] | t1 > 1000
-(12 rows)
+(13 rows)
 > explain select ptag1, t1 from only_tag.table1 where t1 > 1000 group by ptag1, t1;
       tree     |     field     |  description
 ---------------+---------------+-----------------
                | distributed   | true
                | vectorized    | false
   distinct     |               |
+   │           | engine type   | time series
    │           | distinct on   | ptag1, t1
    └── ts scan |               |
                | ts-table      | table1
                | only tag      | true
                | access mode   | tableTableMeta
                | tag filter[0] | t1 > 1000
-(9 rows)
+(10 rows)
 > explain select ptag1, t1, t2 from only_tag.table1 where t1 > 1000 group by ptag1, t1, t2;
       tree     |     field     |  description
 ---------------+---------------+-----------------
                | distributed   | true
                | vectorized    | false
   distinct     |               |
+   │           | engine type   | time series
    │           | distinct on   | ptag1, t1, t2
    └── ts scan |               |
                | ts-table      | table1
                | only tag      | true
                | access mode   | tableTableMeta
                | tag filter[0] | t1 > 1000
-(9 rows)
+(10 rows)
 > explain select ptag1, t1, t2, t3 from only_tag.table1 where t1 > 1000 group by ptag1, t1, t2, t3;
       tree     |     field     |    description
 ---------------+---------------+--------------------
                | distributed   | true
                | vectorized    | false
   distinct     |               |
+   │           | engine type   | time series
    │           | distinct on   | ptag1, t1, t2, t3
    └── ts scan |               |
                | ts-table      | table1
                | only tag      | true
                | access mode   | tableTableMeta
                | tag filter[0] | t1 > 1000
-(9 rows)
+(10 rows)
 > explain select ptag1 from only_tag.table1 where ptag1 = 100 and t1 > 1000 group by ptag1;
         tree        |     field      |  description
 --------------------+----------------+----------------
@@ -343,6 +358,7 @@ INSERT 10
                | distributed    | true
                | vectorized     | false
   distinct     |                |
+   │           | engine type    | time series
    │           | distinct on    | t1
    └── ts scan |                |
                | ts-table       | table1
@@ -350,13 +366,14 @@ INSERT 10
                | access mode    | tagIndexTable
                | tag filter[0]  | t1 > 1000
                | ptag filter[0] | ptag1 = 100
-(10 rows)
+(11 rows)
 > explain select ptag1, t1, t2 from only_tag.table1 where ptag1 = 100 and t1 > 1000 group by ptag1, t1, t2;
       tree     |     field      |  description
 ---------------+----------------+----------------
                | distributed    | true
                | vectorized     | false
   distinct     |                |
+   │           | engine type    | time series
    │           | distinct on    | t1, t2
    └── ts scan |                |
                | ts-table       | table1
@@ -364,13 +381,14 @@ INSERT 10
                | access mode    | tagIndexTable
                | tag filter[0]  | t1 > 1000
                | ptag filter[0] | ptag1 = 100
-(10 rows)
+(11 rows)
 > explain select ptag1, t1, t2, t3 from only_tag.table1 where ptag1 = 100 and t1 > 1000 group by ptag1, t1, t2, t3;
       tree     |     field      |  description
 ---------------+----------------+----------------
                | distributed    | true
                | vectorized     | false
   distinct     |                |
+   │           | engine type    | time series
    │           | distinct on    | t1, t2, t3
    └── ts scan |                |
                | ts-table       | table1
@@ -378,7 +396,7 @@ INSERT 10
                | access mode    | tagIndexTable
                | tag filter[0]  | t1 > 1000
                | ptag filter[0] | ptag1 = 100
-(10 rows)
+(11 rows)
 > explain select ptag1, sum(t1+t2) from only_tag.table1 group by ptag1;
         tree        |      field       |  description
 --------------------+------------------+-----------------
@@ -911,96 +929,104 @@ INSERT 10
                | distributed | true
                | vectorized  | false
   distinct     |             |
+   │           | engine type | time series
    │           | distinct on | ptag1
    └── ts scan |             |
                | ts-table    | table2
                | only tag    | true
                | access mode | tableTableMeta
-(8 rows)
+(9 rows)
 > explain select distinct ptag1, t1 from only_tag.table2;
       tree     |    field    |  description
 ---------------+-------------+-----------------
                | distributed | true
                | vectorized  | false
   distinct     |             |
+   │           | engine type | time series
    │           | distinct on | ptag1, t1
    └── ts scan |             |
                | ts-table    | table2
                | only tag    | true
                | access mode | tableTableMeta
-(8 rows)
+(9 rows)
 > explain select distinct ptag1, t1, t2 from only_tag.table2;
       tree     |    field    |  description
 ---------------+-------------+-----------------
                | distributed | true
                | vectorized  | false
   distinct     |             |
+   │           | engine type | time series
    │           | distinct on | ptag1, t1, t2
    └── ts scan |             |
                | ts-table    | table2
                | only tag    | true
                | access mode | tableTableMeta
-(8 rows)
+(9 rows)
 > explain select distinct ptag1, t1, t2, t3 from only_tag.table2;
       tree     |    field    |    description
 ---------------+-------------+--------------------
                | distributed | true
                | vectorized  | false
   distinct     |             |
+   │           | engine type | time series
    │           | distinct on | ptag1, t1, t2, t3
    └── ts scan |             |
                | ts-table    | table2
                | only tag    | true
                | access mode | tableTableMeta
-(8 rows)
+(9 rows)
 > explain select ptag1 from only_tag.table2 group by ptag1;
       tree     |    field    |  description
 ---------------+-------------+-----------------
                | distributed | true
                | vectorized  | false
   distinct     |             |
+   │           | engine type | time series
    │           | distinct on | ptag1
    └── ts scan |             |
                | ts-table    | table2
                | only tag    | true
                | access mode | tableTableMeta
-(8 rows)
+(9 rows)
 > explain select ptag1, t1 from only_tag.table2 group by ptag1, t1;
       tree     |    field    |  description
 ---------------+-------------+-----------------
                | distributed | true
                | vectorized  | false
   distinct     |             |
+   │           | engine type | time series
    │           | distinct on | ptag1, t1
    └── ts scan |             |
                | ts-table    | table2
                | only tag    | true
                | access mode | tableTableMeta
-(8 rows)
+(9 rows)
 > explain select ptag1, t1, t2 from only_tag.table2 group by ptag1, t1, t2;
       tree     |    field    |  description
 ---------------+-------------+-----------------
                | distributed | true
                | vectorized  | false
   distinct     |             |
+   │           | engine type | time series
    │           | distinct on | ptag1, t1, t2
    └── ts scan |             |
                | ts-table    | table2
                | only tag    | true
                | access mode | tableTableMeta
-(8 rows)
+(9 rows)
 > explain select ptag1, t1, t2, t3 from only_tag.table2 group by ptag1, t1, t2, t3;
       tree     |    field    |    description
 ---------------+-------------+--------------------
                | distributed | true
                | vectorized  | false
   distinct     |             |
+   │           | engine type | time series
    │           | distinct on | ptag1, t1, t2, t3
    └── ts scan |             |
                | ts-table    | table2
                | only tag    | true
                | access mode | tableTableMeta
-(8 rows)
+(9 rows)
 > explain select ptag1, sum(t1) from only_tag.table2 group by ptag1;
       tree     |      field       |  description
 ---------------+------------------+-----------------
@@ -1098,39 +1124,42 @@ INSERT 10
                | distributed   | true
                | vectorized    | false
   distinct     |               |
+   │           | engine type   | time series
    │           | distinct on   | t1
    └── ts scan |               |
                | ts-table      | table2
                | only tag      | true
                | access mode   | tableTableMeta
                | tag filter[0] | ptag1 = 100
-(9 rows)
+(10 rows)
 > explain select ptag1, t1, t2 from only_tag.table2 where ptag1 = 100 group by ptag1, t1, t2;
       tree     |     field     |  description
 ---------------+---------------+-----------------
                | distributed   | true
                | vectorized    | false
   distinct     |               |
+   │           | engine type   | time series
    │           | distinct on   | t1, t2
    └── ts scan |               |
                | ts-table      | table2
                | only tag      | true
                | access mode   | tableTableMeta
                | tag filter[0] | ptag1 = 100
-(9 rows)
+(10 rows)
 > explain select ptag1, t1, t2, t3 from only_tag.table2 where ptag1 = 100 group by ptag1, t1, t2, t3;
       tree     |     field     |  description
 ---------------+---------------+-----------------
                | distributed   | true
                | vectorized    | false
   distinct     |               |
+   │           | engine type   | time series
    │           | distinct on   | t1, t2, t3
    └── ts scan |               |
                | ts-table      | table2
                | only tag      | true
                | access mode   | tableTableMeta
                | tag filter[0] | ptag1 = 100
-(9 rows)
+(10 rows)
 > explain select ptag1 from only_tag.table2 where ptag1 = 100 and t1 > 1000 group by ptag1;
         tree        |     field     |  description
 --------------------+---------------+-----------------
@@ -1155,6 +1184,7 @@ INSERT 10
                | distributed   | true
                | vectorized    | false
   distinct     |               |
+   │           | engine type   | time series
    │           | distinct on   | t1
    └── ts scan |               |
                | ts-table      | table2
@@ -1162,13 +1192,14 @@ INSERT 10
                | access mode   | tableTableMeta
                | tag filter[0] | t1 > 1000
                | tag filter[1] | ptag1 = 100
-(10 rows)
+(11 rows)
 > explain select ptag1, t1, t2 from only_tag.table2 where ptag1 = 100 and t1 > 1000 group by ptag1, t1, t2;
       tree     |     field     |  description
 ---------------+---------------+-----------------
                | distributed   | true
                | vectorized    | false
   distinct     |               |
+   │           | engine type   | time series
    │           | distinct on   | t1, t2
    └── ts scan |               |
                | ts-table      | table2
@@ -1176,13 +1207,14 @@ INSERT 10
                | access mode   | tableTableMeta
                | tag filter[0] | t1 > 1000
                | tag filter[1] | ptag1 = 100
-(10 rows)
+(11 rows)
 > explain select ptag1, t1, t2, t3 from only_tag.table2 where ptag1 = 100 and t1 > 1000 group by ptag1, t1, t2, t3;
       tree     |     field     |  description
 ---------------+---------------+-----------------
                | distributed   | true
                | vectorized    | false
   distinct     |               |
+   │           | engine type   | time series
    │           | distinct on   | t1, t2, t3
    └── ts scan |               |
                | ts-table      | table2
@@ -1190,7 +1222,7 @@ INSERT 10
                | access mode   | tableTableMeta
                | tag filter[0] | t1 > 1000
                | tag filter[1] | ptag1 = 100
-(10 rows)
+(11 rows)
 > explain select ptag1, sum(t1+t2) from only_tag.table2 group by ptag1;
         tree        |      field       |  description
 --------------------+------------------+-----------------

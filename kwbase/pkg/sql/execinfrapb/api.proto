@@ -37,7 +37,6 @@ import "google/protobuf/timestamp.proto";
 import "roachpb/data.proto";
 import "sql/execinfrapb/data.proto";
 import "sql/execinfrapb/processors.proto";
-import "sql/execinfrapb/kwdb_struct.proto";
 
 message SetupFlowRequest {
   reserved 1, 2;
@@ -67,13 +66,28 @@ message FlowSpec {
   optional bytes flow_id = 1 [(gogoproto.nullable) = false,
                               (gogoproto.customname) = "FlowID",
                               (gogoproto.customtype) = "FlowID"];
+  repeated ProcessorSpec processors = 2 [(gogoproto.nullable) = false];
   // The NodeID of the gateway that planned this Flow. Used for debugging.
   optional int32 gateway = 3 [(gogoproto.nullable) = false,
                               (gogoproto.casttype) = "gitee.com/kwbasedb/kwbase/pkg/roachpb.NodeID"];
+  optional TsInfo tsInfo = 5 [(gogoproto.nullable) = false];
+}
+
+// TSFlowSpec describes a "flow" which is a subgraph of a distributed SQL
+// computation consisting of processors and streams.
+message TSFlowSpec {
+  optional bytes flowID = 1 [(gogoproto.nullable) = false,
+    (gogoproto.customname) = "FlowID",
+    (gogoproto.customtype) = "FlowID"];
+  // The NodeID of the gateway that planned this Flow. Used for debugging.
+  optional int32 gateway = 3 [(gogoproto.nullable) = false,
+    (gogoproto.casttype) = "gitee.com/kwbasedb/kwbase/pkg/roachpb.NodeID"];
 
   repeated ProcessorSpec processors = 2 [(gogoproto.nullable) = false];
-  repeated TSProcessorSpec tsProcessors = 4 [(gogoproto.nullable) = false];
-  optional TsInfo tsInfo = 5 [(gogoproto.nullable) = false];
+  optional int64 queryID = 4[(gogoproto.nullable) = false];
+  repeated string brpcAddrs = 5;
+  optional bool isDist = 6 [(gogoproto.nullable) = false];
+  optional bool useQueryShortCircuit = 7 [(gogoproto.nullable) = false];
 }
 
 // TsInfo is info for AE.

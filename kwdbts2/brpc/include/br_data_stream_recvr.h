@@ -28,7 +28,6 @@
 #include "kwdb_type.h"
 
 namespace kwdbts {
-
 class DataStreamMgr;
 class PTransmitChunkParams;
 class PassThroughChunkBuffer;

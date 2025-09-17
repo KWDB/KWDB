@@ -158,27 +158,29 @@ SET CLUSTER SETTING
                               | access mode | metaTable
 (15 rows)
 > explain select * from test_ts.ts_table where e1 in (select col1 from test.test1 limit 1) order by e2;
-             tree             |       field        |  description
-------------------------------+--------------------+-----------------
-                              | distributed        | true
-                              | vectorized         | false
-  limit                       |                    |
-   │                          | count              | 10
-   └── sort                   |                    |
-        │                     | order              | +e2
-        └── hash-join         |                    |
-             │                | type               | semi
-             │                | equality           | (e1) = (col1)
-             │                | right cols are key |
-             ├── synchronizer |                    |
-             │    └── ts scan |                    |
-             │                | ts-table           | ts_table
-             │                | access mode        | tableTableMeta
-             └── scan         |                    |
-                              | table              | test1@primary
-                              | spans              | LIMITED SCAN
-                              | limit              | 1
-(18 rows)
+             tree             |         field         |            description
+------------------------------+-----------------------+-------------------------------------
+                              | distributed           | true
+                              | vectorized            | false
+  limit                       |                       |
+   │                          | count                 | 10
+   └── sort                   |                       |
+        │                     | order                 | +e2
+        └── hash-join         |                       |
+             │                | type                  | semi
+             │                | equality              | (e1) = (col1)
+             │                | right cols are key    |
+             ├── synchronizer |                       |
+             │    └── ts scan |                       |
+             │                | ts-table              | ts_table
+             │                | access mode           | tableTableMeta
+             └── scan         |                       |
+                              | table                 | test1@primary
+                              | spans                 | LIMITED SCAN
+                              | limit                 | 1
+                              |                       |
+  warning messages            | multi-model fall back | join on time-series metrics column
+(20 rows)
 > explain select e1 = ( select col1 from test.test1 limit 1 ) from test_ts.ts_table order by e1;
                 tree               |    field     |                description
 -----------------------------------+--------------+---------------------------------------------
@@ -208,51 +210,55 @@ SET CLUSTER SETTING
                                    | limit        | 1
 (24 rows)
 > explain select * from test_ts.ts_table as t1 where exists (select col1 from test.test1 as t2 where t1.e1=t2.col1 group by col1 having col1 < 2000 limit 1) order by e1;
-             tree             |       field        |  description
-------------------------------+--------------------+-----------------
-                              | distributed        | true
-                              | vectorized         | false
-  limit                       |                    |
-   │                          | count              | 10
-   └── sort                   |                    |
-        │                     | order              | +e1
-        └── hash-join         |                    |
-             │                | type               | semi
-             │                | equality           | (e1) = (col1)
-             │                | right cols are key |
-             ├── synchronizer |                    |
-             │    └── ts scan |                    |
-             │                | ts-table           | ts_table
-             │                | access mode        | tableTableMeta
-             │                | filter             | e1 < 2000
-             │                | block filter[e1]   | [ - 1999]
-             └── scan         |                    |
-                              | table              | test1@primary
-                              | spans              | -/1999/#
-(19 rows)
+             tree             |         field         |            description
+------------------------------+-----------------------+-------------------------------------
+                              | distributed           | true
+                              | vectorized            | false
+  limit                       |                       |
+   │                          | count                 | 10
+   └── sort                   |                       |
+        │                     | order                 | +e1
+        └── hash-join         |                       |
+             │                | type                  | semi
+             │                | equality              | (e1) = (col1)
+             │                | right cols are key    |
+             ├── synchronizer |                       |
+             │    └── ts scan |                       |
+             │                | ts-table              | ts_table
+             │                | access mode           | tableTableMeta
+             │                | filter                | e1 < 2000
+             │                | block filter[e1]      | [ - 1999]
+             └── scan         |                       |
+                              | table                 | test1@primary
+                              | spans                 | -/1999/#
+                              |                       |
+  warning messages            | multi-model fall back | join on time-series metrics column
+(21 rows)
 > explain select e2 from test_ts.ts_table as t1 join test.test1 as t2 on t1.e1=t2.col1 order by e2;
-                tree               |       field        |  description
------------------------------------+--------------------+----------------
-                                   | distributed        | true
-                                   | vectorized         | false
-  render                           |                    |
-   │                               | e2                 | e2
-   └── limit                       |                    |
-        │                          | count              | 10
-        └── sort                   |                    |
-             │                     | order              | +e2
-             └── hash-join         |                    |
-                  │                | type               | inner
-                  │                | equality           | (e1) = (col1)
-                  │                | right cols are key |
-                  ├── synchronizer |                    |
-                  │    └── ts scan |                    |
-                  │                | ts-table           | ts_table
-                  │                | access mode        | metaTable
-                  └── scan         |                    |
-                                   | table              | test1@primary
-                                   | spans              | FULL SCAN
-(19 rows)
+                tree               |         field         |            description
+-----------------------------------+-----------------------+-------------------------------------
+                                   | distributed           | true
+                                   | vectorized            | false
+  render                           |                       |
+   │                               | e2                    | e2
+   └── limit                       |                       |
+        │                          | count                 | 10
+        └── sort                   |                       |
+             │                     | order                 | +e2
+             └── hash-join         |                       |
+                  │                | type                  | inner
+                  │                | equality              | (e1) = (col1)
+                  │                | right cols are key    |
+                  ├── synchronizer |                       |
+                  │    └── ts scan |                       |
+                  │                | ts-table              | ts_table
+                  │                | access mode           | metaTable
+                  └── scan         |                       |
+                                   | table                 | test1@primary
+                                   | spans                 | FULL SCAN
+                                   |                       |
+  warning messages                 | multi-model fall back | join on time-series metrics column
+(21 rows)
 > prepare p1 as select attr1 from test_ts.ts_table group by attr1 order by attr1;
 PREPARE
 > execute p1;

@@ -23,46 +23,46 @@ namespace kwdbts {
  */
 class OpFactory {
  private:
-  static KStatus NewTableScan(kwdbContext_p ctx, TsFetcherCollection* collection, const TSPostProcessSpec &post,
+  static KStatus NewTableScan(kwdbContext_p ctx, TsFetcherCollection* collection, const PostProcessSpec &post,
                              const TSProcessorCoreUnion &core,
                              BaseOperator **iterator, TABLE **table, int32_t processor_id);
-  static KStatus NewTagScan(kwdbContext_p ctx, TsFetcherCollection* collection, const TSPostProcessSpec &post,
+  static KStatus NewTagScan(kwdbContext_p ctx, TsFetcherCollection* collection, const PostProcessSpec &post,
                              const TSProcessorCoreUnion &core,
                              BaseOperator **iterator, TABLE **table, int32_t processor_id);
-  static KStatus NewAgg(kwdbContext_p ctx, TsFetcherCollection* collection, const TSPostProcessSpec &post,
+  static KStatus NewAgg(kwdbContext_p ctx, TsFetcherCollection* collection, const PostProcessSpec &post,
                           const TSProcessorCoreUnion &core,
                           BaseOperator **iterator, TABLE **table, int32_t processor_id);
-  static KStatus NewNoop(kwdbContext_p ctx, TsFetcherCollection* collection, const TSPostProcessSpec &post,
+  static KStatus NewNoop(kwdbContext_p ctx, TsFetcherCollection* collection, const PostProcessSpec &post,
                            const TSProcessorCoreUnion &core,
                            BaseOperator **iterator, TABLE **table, int32_t processor_id, bool only_operator);
   static KStatus NewSynchronizer(kwdbContext_p ctx, TsFetcherCollection* collection, const TSProcessorSpec& procSpec,
-                                    const TSPostProcessSpec &post, const TSProcessorCoreUnion &core,
+                                    const PostProcessSpec &post, const TSProcessorCoreUnion &core,
                                         BaseOperator **iterator, TABLE **table, int32_t processor_id);
   static KStatus NewSynchronizer(kwdbContext_p ctx, TsFetcherCollection* collection, BaseOperator **iterator,
                                    TABLE **table, int32_t processor_id);
   static KStatus NewTsSampler(kwdbContext_p ctx, TsFetcherCollection* collection, const TSProcessorCoreUnion &core,
                             BaseOperator **iterator, TABLE **table, int32_t processor_id);
-  static KStatus NewSort(kwdbContext_p ctx, TsFetcherCollection* collection, const TSPostProcessSpec &post,
+  static KStatus NewSort(kwdbContext_p ctx, TsFetcherCollection* collection, const PostProcessSpec &post,
                            const TSProcessorCoreUnion &core,
                            BaseOperator **iterator, TABLE **table, int32_t processor_id);
   static KStatus NewStatisticScan(kwdbContext_p ctx, TsFetcherCollection* collection,
-                                      const TSPostProcessSpec &post,
+                                      const PostProcessSpec &post,
                                       const TSProcessorCoreUnion &core,
                                       BaseOperator **iterator, TABLE **table, int32_t processor_id);
   static KStatus NewDistinct(kwdbContext_p ctx, TsFetcherCollection* collection,
-                                      const TSPostProcessSpec &post,
+                                      const PostProcessSpec &post,
                                       const TSProcessorCoreUnion &core,
                                       BaseOperator **iterator, TABLE **table, int32_t processor_id);
   static KStatus NewWindowScan(kwdbContext_p ctx,
                                TsFetcherCollection *collection,
-                               const TSPostProcessSpec &post,
+                               const PostProcessSpec &post,
                                const TSProcessorCoreUnion &core,
                                BaseOperator **iterator, TABLE **table,
                                int32_t processor_id);
 
  public:
   static KStatus NewOp(kwdbContext_p ctx, TsFetcherCollection* collection, const TSProcessorSpec& procSpec,
-                        const TSPostProcessSpec &post, const TSProcessorCoreUnion &core, BaseOperator **iterator,
+                        const PostProcessSpec &post, const TSProcessorCoreUnion &core, BaseOperator **iterator,
                         TABLE **table, int32_t processor, bool only_operator);
 
   static KStatus NewResultCollectorOp(kwdbContext_p ctx, BaseOperator **iterator);

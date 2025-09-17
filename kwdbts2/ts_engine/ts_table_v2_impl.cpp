@@ -202,8 +202,8 @@ KStatus TsTableV2Impl::GetNormalIterator(kwdbContext_p ctx, const IteratorParams
       updateTsSpan(acceptable_ts * life_time.precision, params.ts_spans);
     }
     std::shared_ptr<MMapMetricsTable> schema = metric_schema;
-    s = vgroup->GetIterator(ctx, vgroup_ids[vgroup_iter.first], params.ts_spans, params.block_filter,
-                            params.scan_cols, ts_scan_cols, params.agg_extend_cols,
+    s = vgroup->GetIterator(ctx, params.table_version, vgroup_ids[vgroup_iter.first], params.ts_spans,
+                            params.block_filter, params.scan_cols, ts_scan_cols, params.agg_extend_cols,
                             params.scan_agg_types, table_schema_mgr_, schema,
                             &ts_iter, vgroup, params.ts_points, params.reverse, params.sorted);
     if (s != KStatus::SUCCESS) {
@@ -810,6 +810,318 @@ KStatus TsTableV2Impl::GetLastRowEntity(kwdbContext_p ctx, EntityResultIndex& en
     }
   }
   return KStatus::SUCCESS;
+}
+
+KStatus TsTableV2Impl::GetLastRowBatch(kwdbContext_p ctx, uint32_t table_version, std::vector<uint32_t> scan_cols,
+                                       ResultSet* res, k_uint32* count, bool& valid) {
+  *count = 0;
+  valid = true;
+  timestamp64 entity_max_ts = INT64_MIN;
+  EntityResultIndex entity_id = {0, 0, 0};
+
+  for (auto& vgroup : vgroups_) {
+    if (0 == vgroup->GetMaxEntityID()) continue;
+    // TODO(liumengzhen) problem of multiple tables exists.
+    if (!vgroup->isLastRowEntityPayloadValid(table_id_)) {
+      valid = false;
+      LOG_WARN("last payload is invalid for vgroup[%d]", vgroup->GetVGroupID());
+      return KStatus::SUCCESS;
+    }
+    pair<timestamp64, EntityID> cur_last_entity = {INT64_MIN, 0};
+    if (vgroup->GetLastRowEntity(ctx, table_schema_mgr_, cur_last_entity) != KStatus::SUCCESS) {
+      LOG_ERROR("Vgroup %d GetLastRowEntity failed.", vgroup->GetVGroupID());
+      return KStatus::FAIL;
+    }
+    if (cur_last_entity.second == 0) {
+      LOG_WARN("cannot found last row entity for vgroup[%d]", vgroup->GetVGroupID());
+      continue;
+    }
+    if (cur_last_entity.first > entity_max_ts) {
+      entity_id.entityGroupId = 1;
+      entity_id.subGroupId = vgroup->GetVGroupID();
+      entity_id.entityId = cur_last_entity.second;
+      entity_max_ts = cur_last_entity.first;
+    }
+  }
+
+  if (entity_id.equalsWithoutMem({0, 0, 0})) {
+    return KStatus::SUCCESS;
+  }
+
+  auto& actual_cols = table_schema_mgr_->GetIdxForValidCols(table_version);
+  std::vector<k_uint32> ts_scan_cols;
+  for (auto col : scan_cols) {
+    if (col >= actual_cols.size()) {
+      // In the concurrency scenario, after the storage has deleted the column, kwsql sends query again
+      LOG_ERROR("GetIterator Error : TsTable no column %d", col);
+      return KStatus::FAIL;
+    }
+    ts_scan_cols.emplace_back(actual_cols[col]);
+  }
+
+  uint32_t last_vgroup_id = entity_id.subGroupId;
+  auto vgroup = GetVGroupByID(last_vgroup_id);
+  if (!vgroup->isLastRowEntityPayloadValid(table_id_) || !vgroup->isEntityLatestRowPayloadValid(entity_id.entityId)) {
+    res->clear();
+    valid = false;
+    LOG_WARN("last payload is invalid for vgroup[%d]", vgroup->GetVGroupID());
+    return KStatus::SUCCESS;
+  }
+  timestamp64 cur_last_ts = INT64_MIN;
+  KStatus ret = vgroup->GetEntityLastRowBatch(entity_id.entityId, table_version, table_schema_mgr_,
+                                   {{INT64_MIN, INT64_MAX}}, scan_cols, cur_last_ts, res);
+  if (ret != KStatus::SUCCESS) {
+    res->clear();
+    LOG_ERROR("Vgroup %d GetLastRowBatch failed.", vgroup->GetVGroupID());
+    return KStatus::FAIL;
+  }
+  *count = 1;
+  res->entity_index = entity_id;
+  return KStatus::SUCCESS;
+}
+
+KStatus TsTableV2Impl::GetColAttributeInfo(kwdbContext_p ctx, const roachpb::KWDBKTSColumn& col,
+                                   AttributeInfo& attr_info, bool first_col) {
+  switch (col.storage_type()) {
+    case roachpb::TIMESTAMP:
+    case roachpb::TIMESTAMPTZ:
+    case roachpb::DATE:
+      attr_info.type = DATATYPE::TIMESTAMP64;
+      attr_info.max_len = 3;
+      break;
+    case roachpb::TIMESTAMP_MICRO:
+    case roachpb::TIMESTAMPTZ_MICRO:
+      attr_info.type = DATATYPE::TIMESTAMP64_MICRO;
+      attr_info.max_len = 6;
+      break;
+    case roachpb::TIMESTAMP_NANO:
+    case roachpb::TIMESTAMPTZ_NANO:
+      attr_info.type = DATATYPE::TIMESTAMP64_NANO;
+      attr_info.max_len = 9;
+      break;
+    case roachpb::SMALLINT:
+      attr_info.type = DATATYPE::INT16;
+      break;
+    case roachpb::INT:
+      attr_info.type = DATATYPE::INT32;
+      break;
+    case roachpb::BIGINT:
+      attr_info.type = DATATYPE::INT64;
+      break;
+    case roachpb::FLOAT:
+      attr_info.type = DATATYPE::FLOAT;
+      break;
+    case roachpb::DOUBLE:
+      attr_info.type = DATATYPE::DOUBLE;
+      break;
+    case roachpb::BOOL:
+      attr_info.type = DATATYPE::BYTE;
+      break;
+    case roachpb::CHAR:
+      attr_info.type = DATATYPE::CHAR;
+      attr_info.max_len = col.storage_len();
+      break;
+    case roachpb::BINARY:
+    case roachpb::NCHAR:
+      attr_info.type = DATATYPE::BINARY;
+      attr_info.max_len = col.storage_len();
+      break;
+    case roachpb::VARCHAR:
+      attr_info.type = DATATYPE::VARSTRING;
+      attr_info.max_len = col.storage_len();
+      break;
+    case roachpb::NVARCHAR:
+    case roachpb::VARBINARY:
+      attr_info.type = DATATYPE::VARBINARY;
+      attr_info.max_len = col.storage_len();
+      break;
+    default:
+      LOG_ERROR("convert roachpb::KWDBKTSColumn to AttributeInfo failed: unknown column type[%d]", col.storage_type());
+      return KStatus::FAIL;
+  }
+
+  attr_info.size = getDataTypeSize(attr_info);
+  attr_info.id = col.column_id();
+  if (col.has_name()) {
+    strncpy(attr_info.name, col.name().c_str(), COLUMNATTR_LEN - 1);
+  }
+  attr_info.length = col.storage_len();
+  if (!col.nullable()) {
+    attr_info.setFlag(AINFO_NOT_NULL);
+  }
+  if (col.dropped()) {
+    attr_info.setFlag(AINFO_DROPPED);
+  }
+  attr_info.col_flag = static_cast<ColumnFlag>(col.col_type());
+  attr_info.version = 1;
+
+  return KStatus::SUCCESS;
+}
+
+KStatus TsTableV2Impl::GetMetricColumnInfo(kwdbContext_p ctx, struct AttributeInfo& attr_info, roachpb::KWDBKTSColumn& col) {
+  col.clear_storage_len();
+  switch (attr_info.type) {
+    case DATATYPE::TIMESTAMP64:
+      col.set_storage_type(roachpb::TIMESTAMP);
+      break;
+    case DATATYPE::TIMESTAMP64_MICRO:
+      col.set_storage_type(roachpb::TIMESTAMP_MICRO);
+      break;
+    case DATATYPE::TIMESTAMP64_NANO:
+      col.set_storage_type(roachpb::TIMESTAMP_NANO);
+      break;
+    case DATATYPE::INT16:
+      col.set_storage_type(roachpb::SMALLINT);
+      break;
+    case DATATYPE::INT32:
+      col.set_storage_type(roachpb::INT);
+      break;
+    case DATATYPE::INT64:
+      col.set_storage_type(roachpb::BIGINT);
+      break;
+    case DATATYPE::FLOAT:
+      col.set_storage_type(roachpb::FLOAT);
+      break;
+    case DATATYPE::DOUBLE:
+      col.set_storage_type(roachpb::DOUBLE);
+      break;
+    case DATATYPE::BYTE:
+      col.set_storage_type(roachpb::BOOL);
+      break;
+    case DATATYPE::CHAR:
+      col.set_storage_type(roachpb::CHAR);
+      col.set_storage_len(attr_info.max_len);
+      break;
+    case DATATYPE::BINARY:
+      col.set_storage_type(roachpb::BINARY);
+      col.set_storage_len(attr_info.max_len);
+      break;
+    case DATATYPE::VARSTRING:
+      col.set_storage_type(roachpb::VARCHAR);
+      col.set_storage_len(attr_info.max_len);
+      break;
+    case DATATYPE::VARBINARY:
+      col.set_storage_type(roachpb::VARBINARY);
+      col.set_storage_len(attr_info.max_len);
+      break;
+    case DATATYPE::INVALID:
+    default:
+    return KStatus::FAIL;
+  }
+
+  col.set_column_id(attr_info.id);
+  col.set_name(attr_info.name);
+  col.set_nullable(true);
+  col.set_dropped(false);
+  if (!col.has_storage_len()) {
+    col.set_storage_len(attr_info.length);
+  }
+  if (attr_info.isFlag(AINFO_NOT_NULL)) {
+    col.set_nullable(false);
+  }
+  if (attr_info.isFlag(AINFO_DROPPED)) {
+    col.set_dropped(true);
+  }
+  col.set_col_type((roachpb::KWDBKTSColumn_ColumnType)(attr_info.col_flag));
+  return KStatus::SUCCESS;
+}
+
+KStatus TsTableV2Impl::GetTagColumnInfo(kwdbContext_p ctx, struct TagInfo& tag_info, roachpb::KWDBKTSColumn& col) {
+  col.clear_storage_len();
+  col.set_storage_len(tag_info.m_length);
+  col.set_column_id(tag_info.m_id);
+  col.set_col_type((roachpb::KWDBKTSColumn_ColumnType)((ColumnFlag)tag_info.m_tag_type));
+  if (tag_info.isDropped()) {
+    col.set_dropped(true);
+  }
+  switch (tag_info.m_data_type) {
+    case DATATYPE::TIMESTAMP64:
+      col.set_storage_type(roachpb::TIMESTAMP);
+      break;
+    case DATATYPE::TIMESTAMP64_MICRO:
+      col.set_storage_type(roachpb::TIMESTAMP_MICRO);
+      break;
+    case DATATYPE::TIMESTAMP64_NANO:
+      col.set_storage_type(roachpb::TIMESTAMP_NANO);
+      break;
+    case DATATYPE::INT16:
+      col.set_storage_type(roachpb::SMALLINT);
+      break;
+    case DATATYPE::INT32:
+      col.set_storage_type(roachpb::INT);
+      break;
+    case DATATYPE::INT64:
+      col.set_storage_type(roachpb::BIGINT);
+      break;
+    case DATATYPE::FLOAT:
+      col.set_storage_type(roachpb::FLOAT);
+      break;
+    case DATATYPE::DOUBLE:
+      col.set_storage_type(roachpb::DOUBLE);
+      break;
+    case DATATYPE::BYTE:
+      col.set_storage_type(roachpb::BOOL);
+      break;
+    case DATATYPE::CHAR:
+      col.set_storage_type(roachpb::CHAR);
+      break;
+    case DATATYPE::BINARY:
+      col.set_storage_type(roachpb::BINARY);
+      break;
+    case DATATYPE::VARSTRING:
+      col.set_storage_type(roachpb::VARCHAR);
+      break;
+    case DATATYPE::VARBINARY:
+      col.set_storage_type(roachpb::VARBINARY);
+      break;
+    case DATATYPE::INVALID:
+    default:
+      return KStatus::FAIL;
+  }
+  return KStatus::SUCCESS;
+}
+
+KStatus TsTableV2Impl::GenerateMetaSchema(kwdbContext_p ctx, roachpb::CreateTsTable* meta,
+                                    const std::vector<AttributeInfo>& metric_schema,
+                                         std::vector<TagInfo>& tag_schema,
+                                         uint32_t schema_version) {
+  EnterFunc()
+  // Traverse metric schema and use attribute info to construct metric column info of meta.
+  for (auto col_var : metric_schema) {
+    // meta's column pointer.
+    roachpb::KWDBKTSColumn* col = meta->add_k_column();
+    KStatus s = GetMetricColumnInfo(ctx, col_var, *col);
+    if (s != KStatus::SUCCESS) {
+      LOG_ERROR("GetColTypeStr[%d] failed during generate metric Schema", col_var.type);
+      Return(s);
+    }
+  }
+
+  // Traverse tag schema and use tag info to construct metric column info of meta
+  for (auto tag_info : tag_schema) {
+    // meta's column pointer.
+    roachpb::KWDBKTSColumn* col = meta->add_k_column();
+    // XXX Notice: tag_info don't has tag column name,
+    KStatus s = GetTagColumnInfo(ctx, tag_info, *col);
+    if (s != KStatus::SUCCESS) {
+      LOG_ERROR("GetColTypeStr[%d] failed during generate tag Schema", tag_info.m_data_type);
+      Return(s);
+    }
+    // Set storage length.
+    if (col->has_storage_len() && col->storage_len() == 0) {
+      col->set_storage_len(tag_info.m_size);
+    }
+  }
+
+  auto tag_infos = table_schema_mgr_->GetTagTable()->GetAllNTagIndexs(schema_version);
+  for (auto tag_info : tag_infos) {
+    roachpb::NTagIndexInfo* idx_info = meta->add_index_info();
+    idx_info->set_index_id(tag_info.first);
+    for (auto col_id : tag_info.second) {
+      idx_info->add_col_ids(col_id);
+    }
+  }
+  Return(KStatus::SUCCESS);
 }
 
 }  //  namespace kwdbts

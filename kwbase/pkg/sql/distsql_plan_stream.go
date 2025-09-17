@@ -105,16 +105,13 @@ func (dsp *DistSQLPlanner) planAndRunCreateStream(
 
 	colTypes := sqlbase.ColTypeInfoFromColTypes(physPlan.ResultTypes)
 	rowContainer := rowcontainer.NewRowContainer(evalCtx.Mon.MakeBoundAccount(), colTypes, streamInsertBatch)
-	defer func() {
-		if rowContainer != nil {
-			rowContainer.Close(ctx)
-		}
-	}()
-
 	streamResultWriter := NewStreamResultWriter(
 		ctx, streamDetails.StreamMetadata, &streamPara, physPlan.ResultTypes, streamDetails.TargetTableColTypes,
 		rowContainer, evalCtx.ExecCfg, dsp.stopper,
 	)
+	defer func() {
+		streamResultWriter.Close()
+	}()
 
 	recv := MakeDistSQLReceiver(
 		ctx,
@@ -292,7 +289,6 @@ func (p *PhysicalPlan) initPhyPlanForStreamReader(
 		Spec: execinfrapb.ProcessorSpec{
 			Output: []execinfrapb.OutputRouterSpec{{Type: execinfrapb.OutputRouterSpec_PASS_THROUGH}},
 		},
-		ExecInTSEngine: false,
 	}
 
 	var reader = new(execinfrapb.StreamReaderSpec)
@@ -309,14 +305,15 @@ func (p *PhysicalPlan) initPhyPlanForStreamReader(
 // initPostSpecForStreamReader inits TSPostProcessSpec for StreamReader
 func initPostSpecForStreamReader(
 	planCtx *PlanningCtx, n *tsScanNode, resCols []int,
-) (execinfrapb.TSPostProcessSpec, error) {
+) (execinfrapb.PostProcessSpec, error) {
 	filter, err := physicalplan.MakeTSExpression(n.filter, planCtx, resCols)
 	if err != nil {
-		return execinfrapb.TSPostProcessSpec{}, err
+		return execinfrapb.PostProcessSpec{}, err
 	}
 
-	post := execinfrapb.TSPostProcessSpec{
-		Filter: filter.Expr,
+	post := execinfrapb.PostProcessSpec{
+		Filter:     filter,
+		Projection: false,
 	}
 
 	return post, nil
@@ -328,7 +325,7 @@ func buildPostSpecForStreamReaders(
 	typs []types.T,
 	descColumnIDs []sqlbase.ColumnID,
 	tsColMap map[sqlbase.ColumnID]tsColIndex,
-	post *execinfrapb.TSPostProcessSpec,
+	post *execinfrapb.PostProcessSpec,
 ) ([]uint32, []int, []types.T) {
 	var outCols []uint32
 	var planToStreamColMap []int
@@ -342,8 +339,6 @@ func buildPostSpecForStreamReaders(
 			post.OutputColumns = append(post.OutputColumns, uint32(col.idx))
 		}
 	}
-
-	post.Projection = true
 	planToStreamColMap = getPlanToStreamColMapForReader(outCols, n.resultColumns, descColumnIDs)
 	return outCols, planToStreamColMap, typs
 }
@@ -351,10 +346,10 @@ func buildPostSpecForStreamReaders(
 // SetLastStageStreamPost changes the TSPostProcessSpec spec of the processors in the last
 // stage (ResultRouters).
 func (p *PhysicalPlan) SetLastStageStreamPost(
-	post execinfrapb.TSPostProcessSpec, outputTypes []types.T,
+	post execinfrapb.PostProcessSpec, outputTypes []types.T,
 ) {
 	for _, pIdx := range p.ResultRouters {
-		p.Processors[pIdx].TSSpec.Post = post
+		p.Processors[pIdx].Spec.Post = post
 	}
 
 	p.ResultTypes = outputTypes
@@ -484,6 +479,5 @@ func (dsp *DistSQLPlanner) addStreamSingleGroupState(
 		execinfrapb.ProcessorCoreUnion{StreamAggregator: &finalAggsSpec},
 		finalAggsPost,
 		finalOutTypes,
-		planCtx.apSelect,
 	)
 }
