@@ -1199,6 +1199,18 @@ inline uint32_t GetConsistentHashId(const char* data, size_t length, uint64_t ha
   return hash_val % hash_num;
 }
 
+  inline uint32_t GetConsistentVgroupId(const char* data, size_t length, uint64_t vgroup_num) {
+  const uint32_t offset_basis = 2166136261;  // 32位offset basis
+  const uint32_t prime = 16777619;
+  uint32_t hash_val = offset_basis;
+  for (int i = 0; i < length; i++) {
+    unsigned char b = data[i];
+    hash_val *= prime;
+    hash_val ^= b;
+  }
+  return (hash_val % vgroup_num) + 1;
+}
+
 struct SpanValue {
   union {
     k_int64 ival{0};

@@ -279,10 +279,8 @@ KStatus TsEngineSchemaManager::GetVGroup(kwdbContext_p ctx, TSTableID tbl_id, TS
     *new_tag = false;
     return KStatus::SUCCESS;
   }
-  // TODO(qinlipeng) lock tag
-  // [1, 3]
-  std::uniform_int_distribution<int> distrib(1, EngineOptions::vgroup_max_num);
-  *vgroup_id = distrib(gen);
+  // use consistent hash to allocate vgroup id
+  *vgroup_id = GetConsistentVgroupId(primary_key.data, primary_key.len, EngineOptions::vgroup_max_num);
   *new_tag = true;
   return KStatus::SUCCESS;
 }
