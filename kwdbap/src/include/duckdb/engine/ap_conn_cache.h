@@ -19,6 +19,7 @@
 // #include "duckdb/main/capi/capi_internal.hpp"
 #include "duckdb/main/client_context.hpp"
 #include "duckdb/main/connection.hpp"
+#include "duckdb/main/database.hpp"
 #include <mutex>
 // #include "duckdb/main/prepared_statement_data.hpp"
 // #include "duckdb/engine/ap_processors.h"
@@ -32,34 +33,44 @@
 // TODO, using ts namespace for now
 namespace kwdbts {
 
-typedef struct DConList {
-  DConList *prev;
-  DConList *next;
-  duckdb::Connection conn;
+  enum CacheState {
+    BUSY = 0,
+    IDLE = 1
+  };
+
+typedef struct DConEntry {
+  duckdb::Connection *conn;
   std::string user;
   std::string dbName;
   k_uint64 sessionID;
   int status;  // 0: in use,  1: idle
-}DConList;
-
-typedef struct DConListHead {
-  DConList *next;
-  std::mutex list_mux;
-}DConListHead;
+}DConEntry;
 
 /**
  * @brief Duckdb connection cache under APEngineImpl
  */
 class DConnCache {
  public:
-  explicit DConnCache();
+  DConnCache();
 
   duckdb::Connection* GetOrAddConn(k_uint64 sessionID, std::string dbName, std::string userName);
+  bool ReturnDConn(duckdb::Connection* conn);
+  void SetDBWrapper(struct duckdb::DatabaseWrapper* wrapper); 
+  void Init();
+  static const int MAX_CACHE_ENTRY_NUM = 2048;
   
-
  private:
-  std::map<k_uint64, DConListHead *> cacheMap; 
-  std::mutex map_mux;
+  DConEntry * lookForValidEntry(k_uint64 sessionID, std::string dbName, std::string userName);
+  DConEntry * lookForEntryByAddr(duckdb::Connection* conn);
+  bool createEntry(DConEntry ** ent, k_uint64 sessionID, std::string dbName, std::string userName);
+  bool addEntryToList(DConEntry * ent);
+  bool doReturn(DConEntry * ent);
+  
+  struct duckdb::DatabaseWrapper* copyOfEngineDBWrapper;
+  DConEntry * dConCache[MAX_CACHE_ENTRY_NUM];
+  int current_sz; 
+  std::map<k_uint64, int> session2EntMap;  // session ID map to index in the core array
+  std::mutex cap_mux;
 
 }; 
 

@@ -623,7 +623,7 @@ endif ()
 
 # to prevent the original big value.  In case it's still very big
 # the above two steps fail.  Take 4 as safe value
-if (${DEDUCTED_PARALLEL_DEGREE} GREATER 1)
+if (${DEDUCTED_PARALLEL_DEGREE} GREATER 1023)
     set(DEDUCTED_PARALLEL_DEGREE 4)
 endif ()
 message(STATUS "Final decision on parallel degree is: ${DEDUCTED_PARALLEL_DEGREE}")

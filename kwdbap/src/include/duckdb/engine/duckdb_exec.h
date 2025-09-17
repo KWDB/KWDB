@@ -86,12 +86,14 @@ class APEngineImpl : public APEngine {
   duckdb::Connection* GetAPConnFromCache(k_uint64 sessionID, std::string dbName,
                                            std::string userName);
 
+  static DConnCache *c_cache;
+
  private:
   std::shared_ptr<duckdb::Connection> conn_;
   duckdb::shared_ptr<duckdb::DatabaseInstance> instance_;
   std::string db_path_;
   std::mutex context_lock_;
-  DConnCache c_cache;
+
 };
 
 class KWThdContext;

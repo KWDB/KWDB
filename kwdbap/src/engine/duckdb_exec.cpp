@@ -89,8 +89,13 @@ KStatus DetachDB(DatabaseManager& db_manager, ClientContext& context,
   return ret;
 }
 
+ DConnCache * APEngineImpl::c_cache = NULL;
+
 APEngineImpl::APEngineImpl(kwdbContext_p ctx, const char* db_path)
-    : db_path_(db_path), c_cache() {}
+                        : db_path_(db_path) {
+    c_cache = (DConnCache *)malloc(sizeof(DConnCache));
+    c_cache->Init();
+}
 
 KStatus APEngineImpl::OpenEngine(kwdbContext_p ctx, APEngine** engine,
                                  APConnectionPtr* out, duckdb_database* out_db,
@@ -121,6 +126,7 @@ KStatus APEngineImpl::OpenEngine(kwdbContext_p ctx, APEngine** engine,
   auto conn = std::make_shared<Connection>(*wrapper->database);
   engineImpl->conn_ = conn;
   engineImpl->instance_ = wrapper->database->instance;
+  c_cache->SetDBWrapper(wrapper);
   *engine = engineImpl;
   *out = reinterpret_cast<APConnectionPtr>(conn.get());
   return KStatus::SUCCESS;
@@ -171,9 +177,9 @@ duckdb::Connection* APEngineImpl::GetAPConnFromCache(k_uint64 sessionID,
   // TODO: we need to support multiple databases, which is better to 
   // be cached in APEngineImpl level.  (now it's a class member)
 
-  this->UpdateDBCache(dbName);  // not implemented
+  this->UpdateDBCache(dbName);  // TODO empty call, core logic not implemented
 
-  return c_cache.GetOrAddConn(sessionID, dbName, userName);
+  return c_cache->GetOrAddConn(sessionID, dbName, userName);
 }
 
 KStatus APEngineImpl::Execute(kwdbContext_p ctx, APQueryInfo* req,
