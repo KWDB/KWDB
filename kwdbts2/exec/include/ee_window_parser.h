@@ -21,7 +21,7 @@ namespace kwdbts {
 
 class TsWindowParser : public TsOperatorParser {
  public:
-  TsWindowParser(WindowerSpec *spec, TSPostProcessSpec *post, TABLE *table);
+  TsWindowParser(WindowerSpec *spec, PostProcessSpec *post, TABLE *table);
 
   ~TsWindowParser();
 

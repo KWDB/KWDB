@@ -188,9 +188,9 @@ KStatus TsEntityBlockBuilder::Append(shared_ptr<TsBlockSpan> span, bool& is_full
     uint32_t var_offsets_len = EngineOptions::max_rows_per_block * sizeof(uint32_t);
     size_t row_idx_in_block = n_rows_;
     char* col_val = nullptr;
-    TsBitmap bitmap;
+    std::unique_ptr<TsBitmapBase> bitmap;
     if (!is_var_col && has_bitmap) {
-      KStatus s = span->GetFixLenColAddr(col_idx - 1, &col_val, bitmap);
+      KStatus s = span->GetFixLenColAddr(col_idx - 1, &col_val, &bitmap);
       if (s != KStatus::SUCCESS) {
         LOG_ERROR("GetColBitmap failed");
         return s;
@@ -198,7 +198,7 @@ KStatus TsEntityBlockBuilder::Append(shared_ptr<TsBlockSpan> span, bool& is_full
     }
     for (size_t span_row_idx = 0; span_row_idx < written_rows; ++span_row_idx) {
       if (!is_var_col && has_bitmap) {
-        block.bitmap[row_idx_in_block] = bitmap[span_row_idx];
+        block.bitmap[row_idx_in_block] = bitmap->At(span_row_idx);
       }
       if (is_var_col) {
         DataFlags data_flag;
@@ -912,10 +912,10 @@ KStatus TsEntitySegmentBuilder::WriteBatchFinish(TsVersionUpdate *update) {
 void TsEntitySegmentBuilder::WriteBatchCancel() {
   write_batch_finished_ = true;
   std::unique_lock lock{mutex_};
-  LOG_INFO("TsEntitySegmentBuilder WriteBatchFinish begin, root_path: %s, entity_header_file_num: %lu", root_path_.c_str(),
+  LOG_INFO("TsEntitySegmentBuilder WriteBatchCancel begin, root_path: %s, entity_header_file_num: %lu", root_path_.c_str(),
            entity_item_file_number_);
   Defer defer([this]() {
-    LOG_INFO("TsEntitySegmentBuilder WriteBatchFinish begin, root_path: %s, entity_header_file_num: %lu",
+    LOG_INFO("TsEntitySegmentBuilder WriteBatchCancel end, root_path: %s, entity_header_file_num: %lu",
              root_path_.c_str(), entity_item_file_number_);
     ReleaseBuilders();
   });

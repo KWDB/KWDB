@@ -16,7 +16,7 @@
 
 namespace kwdbts {
 
-TsTableScanParser::TsTableScanParser(TSReaderSpec* spec, TSPostProcessSpec* post, TABLE* table)
+TsTableScanParser::TsTableScanParser(TSReaderSpec* spec, PostProcessSpec* post, TABLE* table)
     : TsScanParser(post, table) {
       spec_ = spec;
 }

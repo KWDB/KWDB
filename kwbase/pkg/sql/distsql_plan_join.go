@@ -903,3 +903,15 @@ func findJoinProcessorNodes(
 	// data for either source. In the future we should be smarter here.
 	return getNodesOfRouters(append(leftRouters, rightRouters...), processors)
 }
+
+// findBLJProcessorNodes find nodes of ts plan.
+func findBLJProcessorNodes(processors []physicalplan.Processor) (nodes []roachpb.NodeID) {
+	seen := make(map[roachpb.NodeID]struct{})
+	for _, p := range processors {
+		if _, ok := seen[p.Node]; !ok {
+			seen[p.Node] = struct{}{}
+			nodes = append(nodes, p.Node)
+		}
+	}
+	return nodes
+}

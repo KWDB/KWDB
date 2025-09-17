@@ -24,14 +24,14 @@
 namespace kwdbts {
 
 
-class TSPostProcessSpec;
+class PostProcessSpec;
 class TABLE;
 class Field;
 class BaseOperator;
 
 class TsBaseParser {
  public:
-  TsBaseParser(TSPostProcessSpec *post, TABLE *table);
+  TsBaseParser(PostProcessSpec *post, TABLE *table);
 
   virtual ~TsBaseParser();
 
@@ -72,7 +72,7 @@ class TsBaseParser {
           std::vector<Field*> &output_fields, bool ignore_outputtype);
 
  protected:
-  TSPostProcessSpec *post_{nullptr};
+  PostProcessSpec *post_{nullptr};
   TABLE *table_{nullptr};
   k_uint32 renders_size_{0};
   std::list<Field *> new_fields_;
@@ -81,7 +81,7 @@ class TsBaseParser {
 
 class TsScanParser : public TsBaseParser {
  public:
-  TsScanParser(TSPostProcessSpec *post, TABLE *table);
+  TsScanParser(PostProcessSpec *post, TABLE *table);
 
   virtual ~TsScanParser();
 
@@ -105,7 +105,7 @@ class TsScanParser : public TsBaseParser {
 
 class TsOperatorParser : public TsBaseParser {
  public:
-  TsOperatorParser(TSPostProcessSpec *post, TABLE *table);
+  TsOperatorParser(PostProcessSpec *post, TABLE *table);
 
   virtual ~TsOperatorParser() {}
 

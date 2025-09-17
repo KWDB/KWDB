@@ -71,6 +71,8 @@ typedef k_int32 KProcessorId;
 // the log level of log report
 typedef enum LogSeverity_t { LG_DEBUG = 0, LG_INFO, LG_WARN, LG_ERROR, LG_FATAL } LogSeverity;
 
+typedef uint32_t EntityID;
+
 //  the max number of nested function calls
 #define CTX_MAX_FRAME_LEVEL 32
 #define CTX_MAX_FILE_NAME_LEN 32

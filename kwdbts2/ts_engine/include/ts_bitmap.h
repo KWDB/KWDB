@@ -11,20 +11,37 @@
 
 #pragma once
 #include <algorithm>
-#include <array>
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <iostream>
+#include <memory>
 #include <string>
+#include <string_view>
 
 #include "libkwdbts2.h"
 
 namespace kwdbts {
 enum DataFlags : uint8_t { kValid = 0b00, kNull = 0b01, kNone = 0b10 };
 
+class TsBitmapBase {
+ public:
+  virtual ~TsBitmapBase() {}
+  DataFlags At(size_t idx) const { return this->operator[](idx); }
+  virtual DataFlags operator[](size_t idx) const = 0;
+  virtual size_t GetCount() const = 0;
+  virtual size_t GetValidCount() const = 0;
+
+  bool IsAllValid() const { return GetValidCount() == GetCount(); }
+  virtual std::unique_ptr<TsBitmapBase> Slice(int start, int count) const = 0;
+  virtual std::unique_ptr<TsBitmapBase> AsView() const = 0;
+
+  virtual std::string GetStr() const = 0;
+};
+
 // TsBitmapView is a read-only view of a TsBitmap.
-class TsBitmapView {
+class TsBitmapView : public TsBitmapBase {
   friend class TsBitmap;
 
  private:
@@ -39,12 +56,13 @@ class TsBitmapView {
   TsBitmapView(std::string_view sv, size_t nrows, int start_row) : sv_(sv), nrows_(nrows), start_row_(start_row) {}
 
  public:
+  TsBitmapView(TSSlice data, int nrows) : TsBitmapView(std::string_view(data.data, data.len), nrows, 0) {}
   TsBitmapView(const TsBitmapView &) = default;
   TsBitmapView(TsBitmapView &&) = default;
   TsBitmapView &operator=(const TsBitmapView &) = default;
   TsBitmapView &operator=(TsBitmapView &&) = default;
 
-  DataFlags operator[](size_t idx) const {
+  DataFlags operator[](size_t idx) const override {
     assert(idx < nrows_);
     idx += start_row_;
     size_t bitidx = nbit_per_row * idx;
@@ -53,8 +71,8 @@ class TsBitmapView {
     return static_cast<DataFlags>((sv_[charidx] >> charoff) & 0b11);
   }
 
-  size_t GetCount() const { return nrows_; }
-  size_t GetValidCount() const {
+  size_t GetCount() const override { return nrows_; }
+  size_t GetValidCount() const override {
     if (valid_count_ != -1) {
       return valid_count_;
     }
@@ -77,13 +95,17 @@ class TsBitmapView {
     return sum;
   }
 
-  TsBitmapView Slice(int start, int count) {
-    assert(start + count < nrows_);
-    return TsBitmapView(sv_, count, start + start_row_);
+  std::string GetStr() const override;
+
+  std::unique_ptr<TsBitmapBase> Slice(int start, int count) const override {
+    assert(start + count <= nrows_);
+    return std::unique_ptr<TsBitmapView>(new TsBitmapView(sv_, count, start + start_row_));
   }
+
+  std::unique_ptr<TsBitmapBase> AsView() const override { return std::make_unique<TsBitmapView>(*this); }
 };
 
-class TsBitmap {
+class TsBitmap : public TsBitmapBase {
  public:
   struct Proxy {
     TsBitmap *p;
@@ -114,10 +136,10 @@ class TsBitmap {
     rep_.assign(rep.data, rep.len);
   }
 
-  TsBitmap(const TsBitmap &) = default;
+  TsBitmap(const TsBitmap &) = delete;
   TsBitmap(TsBitmap &&) = default;
 
-  TsBitmap &operator=(const TsBitmap &) = default;
+  TsBitmap &operator=(const TsBitmap &) = delete;
   TsBitmap &operator=(TsBitmap &&) = default;
 
   void Reset(int nrows) {
@@ -132,7 +154,7 @@ class TsBitmap {
     return Proxy{this, bitidx};
   }
 
-  DataFlags operator[](size_t idx) const {
+  DataFlags operator[](size_t idx) const override {
     assert(idx < nrows_);
     size_t bitidx = nbit_per_row * idx;
     uint32_t charidx = (bitidx / 8);
@@ -146,9 +168,7 @@ class TsBitmap {
     }
   }
 
-  void SetAllValid() {
-    std::fill(rep_.begin(), rep_.end(), 0);
-  }
+  void SetAllValid() { std::fill(rep_.begin(), rep_.end(), 0); }
 
   void SetData(TSSlice rep) { rep_.assign(rep.data, rep.len); }
 
@@ -157,10 +177,11 @@ class TsBitmap {
     Reset(nrows_);
   }
 
-  TsBitmapView Slice(int start, int count) {
-    assert(start + count < nrows_);
-    return TsBitmapView(rep_, count, start);
+  std::unique_ptr<TsBitmapBase> Slice(int start, int count) const override {
+    assert(start + count <= nrows_);
+    return std::unique_ptr<TsBitmapView>(new TsBitmapView(rep_, count, start));
   }
+  std::unique_ptr<TsBitmapBase> AsView() const override { return Slice(0, nrows_); }
 
   void Truncate(size_t count) {
     nrows_ = count;
@@ -168,12 +189,12 @@ class TsBitmap {
   }
 
   TSSlice GetData() { return {rep_.data(), rep_.size()}; }
-  const std::string &GetStr() const { return rep_; }
+  std::string GetStr() const override { return rep_; }
 
-  size_t GetCount() const { return nrows_; }
+  size_t GetCount() const override { return nrows_; }
 
   static size_t GetBitmapLen(size_t nrows) { return (nbit_per_row * nrows + 7) / 8; }
-  size_t GetValidCount() const {
+  size_t GetValidCount() const override {
     if (rep_.empty()) {
       return 0;
     }
@@ -191,35 +212,17 @@ class TsBitmap {
     return sum;
   }
   bool IsAllValid() const {
-    // return std::all_of(rep_.begin(), rep_.end(), [](char c) { return c == 0; });
-    const size_t len = rep_.size();
-    const char* data = rep_.data();
-    const size_t batch_size = len >> 3;
-    const size_t remaining = len & 7;
-
-    const uint64_t zero = 0;
-    for (int i = 0; i < batch_size; ++i) {
-      if (memcmp(data + (i << 3), &zero, 8) != 0) {
-        return false;
-      }
-    }
-    for (int i = 0; i < remaining; ++i) {
-      if (data[(batch_size << 3) + i] != 0) {
-        return false;
-      }
-    }
-    return true;
+    return std::all_of(rep_.begin(), rep_.end(), [](char c) { return c == 0; });
   }
 
-  TsBitmap &operator+=(const TsBitmap &rhs) {
+  void Append(const TsBitmapBase *rhs) {
     size_t old_count = this->GetCount();
-    size_t new_count = old_count + rhs.GetCount();
+    size_t new_count = old_count + rhs->GetCount();
     nrows_ = new_count;
     rep_.resize(GetBitmapLen(new_count));
-    for (int i = 0; i < rhs.GetCount(); ++i) {
-      (*this)[i + old_count] = rhs[i];
+    for (int i = 0; i < rhs->GetCount(); ++i) {
+      (*this)[i + old_count] = rhs->At(i);
     }
-    return *this;
   }
 
   void push_back(DataFlags flag) {
@@ -229,6 +232,37 @@ class TsBitmap {
   }
 
   void push_back(Proxy flag) { this->push_back(static_cast<DataFlags>(flag)); }
+};
+
+inline std::string TsBitmapView::GetStr() const {
+  TsBitmap builder(this->GetCount());
+  for (int i = 0; i < this->GetCount(); ++i) {
+    builder[i] = this->At(i);
+  }
+  return builder.GetStr();
+}
+
+template <DataFlags kFlag>
+class TsUniformBitmap : public TsBitmapBase {
+  int nrows_;
+
+ public:
+  explicit TsUniformBitmap(int nrows) : nrows_(nrows) {}
+  DataFlags operator[](size_t idx) const override { return kFlag; }
+  size_t GetCount() const override { return nrows_; }
+  size_t GetValidCount() const override { return kFlag == kValid ? nrows_ : 0; }
+
+  std::unique_ptr<TsBitmapBase> Slice(int start, int count) const override {
+    assert(start + count <= nrows_);
+    return std::make_unique<TsUniformBitmap<kFlag>>(count);
+  }
+  std::unique_ptr<TsBitmapBase> AsView() const override { return std::make_unique<TsUniformBitmap<kFlag>>(nrows_); }
+
+  std::string GetStr() const override {
+    TsBitmap bitmap(nrows_);
+    bitmap.SetAll(kFlag);
+    return bitmap.GetStr();
+  }
 };
 
 }  // namespace kwdbts

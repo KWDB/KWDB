@@ -22,7 +22,6 @@
 #include "ee_distinct_op.h"
 #include "ee_statistic_scan_op.h"
 #include "ee_tag_scan_op.h"
-#include "ee_synchronizer_op.h"
 #include "ee_router_outbound_op.h"
 #include "ee_remote_inbound_op.h"
 #include "ee_remote_merge_sort_inbound_op.h"
@@ -32,7 +31,7 @@ class CreateIterator {
  public:
   CreateIterator() {}
   ~CreateIterator() {}
-  TSPostProcessSpec *post_{nullptr};
+  PostProcessSpec *post_{nullptr};
   BaseOperator *iter_{nullptr};
   TABLE *table_{nullptr};
   virtual void TearDown() {
@@ -45,7 +44,7 @@ class CreateTagReader : public CreateIterator {
  public:
   void SetUp(kwdbContext_p ctx, k_uint32 table_id) {
     CreateTagReaderSpec(&spec_, table_id);
-    post_ = KNEW TSPostProcessSpec();
+    post_ = KNEW PostProcessSpec();
     table_ = KNEW TABLE(1, table_id);
     table_->Init(ctx, spec_);
     iter_ = NewIterator<TagScanOperator>(nullptr, spec_, post_, table_, 0);
@@ -65,7 +64,7 @@ class CreateTableReader : public CreateIterator {
   void SetUp(kwdbContext_p ctx, k_uint32 table_id) {
     tag_reader_.SetUp(ctx, table_id);
     CreateReaderSpec(&spec_, table_id);
-    CreateReaderTSPostProcessSpec(&post_);
+    CreateReaderPostProcessSpec(&post_);
     table_ = tag_reader_.table_;
     iter_ =
         NewIterator<TableScanOperator>(nullptr, spec_, post_, table_, 0);
@@ -201,7 +200,7 @@ class CreateNoop : public CreateIterator {
   }
 
   CreateTableReader table_reader_;
-  TSNoopSpec *spec_{nullptr};
+  NoopCoreSpec *spec_{nullptr};
 };
 
 class CreateSinkOp : public CreateIterator {

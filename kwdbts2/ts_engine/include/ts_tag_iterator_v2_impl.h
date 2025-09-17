@@ -14,7 +14,6 @@
 #include <unordered_set>
 #include <vector>
 #include "kwdb_type.h"
-#include "ts_time_partition.h"
 #include "mmap/mmap_tag_column_table.h"
 #include "mmap/mmap_tag_table.h"
 #include "ts_common.h"

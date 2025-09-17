@@ -1,5 +1,4 @@
 SET CLUSTER SETTING ts.rows_per_block.max_limit = 10;
-SET CLUSTER SETTING ts.blocks_per_segment.max_limit = 50;
 SET cluster setting server.time_until_store_dead = '1min15s';
 SET CLUSTER SETTING ts.raft_log.sync_period = '0s';
 

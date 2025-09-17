@@ -33,9 +33,11 @@ import (
 	"math"
 	"strconv"
 	"strings"
+	"sync/atomic"
 
 	"gitee.com/kwbasedb/kwbase/pkg/gossip"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
+	"gitee.com/kwbasedb/kwbase/pkg/settings/cluster"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfra"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfrapb"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgcode"
@@ -57,13 +59,6 @@ type Processor struct {
 	// synchronizers and output routers are not set until the end of the planning
 	// process.
 	Spec execinfrapb.ProcessorSpec
-
-	// TSSpec for the processor; note that the StreamEndpointSpecs in the input
-	// synchronizers and output routers are not set until the end of the planning
-	// process.
-	TSSpec execinfrapb.TSProcessorSpec
-
-	ExecInTSEngine bool
 
 	LogicalSequenceID []uint64
 }
@@ -95,6 +90,7 @@ type Stream struct {
 // unconnected output routers of a subset of processors; all these routers
 // output the same kind of data (same schema).
 type PhysicalPlan struct {
+	St *cluster.Settings
 	// Processors in the plan.
 	Processors []Processor
 
@@ -178,28 +174,19 @@ type PhysicalPlan struct {
 
 	// InlcudeApplyJoin whether has applyJoin, if InlcudeApplyJoin is true, we do not need to set inputsToDrain for tsInsertSelecter;
 	// if the SQL contains apply-join and set inputsToDrain for ts insert select, it break down.
-	InlcudeApplyJoin bool
-
-	// UseOriginalFlow is true representing use Original flow.
-	UseOriginalFlow bool
-	Commandlimit    uint32
-	//UseQueryShortCircuit used to determine whether to use query short circuit.
-	UseQueryShortCircuit int
+	InlcudeApplyJoin     bool
+	UseQueryShortCircuit bool
+	EngineType           execinfrapb.ProcessorSpecEngineType
 }
-
-const (
-	//ForbidQueryShortCircuit cannot use query short circuit.
-	ForbidQueryShortCircuit int = 0
-	// UseQueryShortCircuitForSingle can use query short circuit for single plan.
-	UseQueryShortCircuitForSingle = 1
-	// UseQueryShortCircuitForDistributedPre meet some necessary conditions for distributed plan,
-	// but not all.
-	UseQueryShortCircuitForDistributedPre = 2
-)
 
 // IsRemotePlan is true when ts plan is dist.
 func (p *PhysicalPlan) IsRemotePlan() bool {
 	return p.remotePlan
+}
+
+// ExecInApEngine is true when plan execute in ap engine.
+func (p *PhysicalPlan) ExecInApEngine() bool {
+	return p.EngineType == execinfrapb.ProcessorSpec_Analytical
 }
 
 // LimitInfo limit in time series select
@@ -213,7 +200,7 @@ type LimitInfo struct {
 func (p *PhysicalPlan) IsDistInTS() bool {
 	if p.remotePlan {
 		for _, v := range p.Processors {
-			if v.ExecInTSEngine {
+			if v.ExecInTSEngine() {
 				return true
 			}
 		}
@@ -289,6 +276,7 @@ func (p *PhysicalPlan) AddNoInputStage(
 				StageID: stageID,
 				//ResultTypes:       outputTypes,
 				//EstimatedRowCount: corePlacements[i].EstimatedRowCount,
+				Engine: p.EngineType,
 			},
 		}
 
@@ -321,7 +309,7 @@ func (p *PhysicalPlan) AddNoGroupingStage(
 // stages that correspond to logical blocks that don't require any grouping
 // (e.g. evaluator, sorting, etc).
 func (p *PhysicalPlan) AddNoGroupingStageForTSNoop(newOrdering *execinfrapb.Ordering) {
-	post := execinfrapb.TSPostProcessSpec{}
+	post := execinfrapb.PostProcessSpec{}
 	var tmp execinfrapb.Ordering
 	if newOrdering != nil {
 		tmp = *newOrdering
@@ -329,8 +317,8 @@ func (p *PhysicalPlan) AddNoGroupingStageForTSNoop(newOrdering *execinfrapb.Orde
 		tmp = p.MergeOrdering
 	}
 	p.AddTSNoGroupingStageWithCoreFunc(
-		func(_ int, _ *Processor) execinfrapb.TSProcessorCoreUnion {
-			return execinfrapb.TSProcessorCoreUnion{Noop: &execinfrapb.TSNoopSpec{}}
+		func(_ int, _ *Processor) execinfrapb.ProcessorCoreUnion {
+			return execinfrapb.ProcessorCoreUnion{Noop: &execinfrapb.NoopCoreSpec{}}
 		},
 		post,
 		p.ResultTypes,
@@ -339,10 +327,10 @@ func (p *PhysicalPlan) AddNoGroupingStageForTSNoop(newOrdering *execinfrapb.Orde
 }
 
 // AddTSTableReader add timeseries table reader to get data from ae engine
-func (p *PhysicalPlan) AddTSTableReader() {
+func (p *PhysicalPlan) AddTSTableReader(outTypes []types.T) {
 	p.AddNoGroupingStage(
 		execinfrapb.ProcessorCoreUnion{Noop: &execinfrapb.NoopCoreSpec{}},
-		execinfrapb.PostProcessSpec{},
+		execinfrapb.PostProcessSpec{OutputTypes: outTypes},
 		p.ResultTypes, p.MergeOrdering,
 	)
 }
@@ -372,7 +360,7 @@ func (p *PhysicalPlan) AddNoop(
 
 // CheckAndAddNoopForAgent adds a noop processor for each result router, on the same node
 func (p *PhysicalPlan) CheckAndAddNoopForAgent() {
-	if len(p.ResultRouters) > 0 && p.Processors[0].ExecInTSEngine {
+	if len(p.ResultRouters) > 0 && p.Processors[0].ExecInTSEngine() {
 		p.AddNoGroupingStage(
 			execinfrapb.ProcessorCoreUnion{Noop: &execinfrapb.NoopCoreSpec{}},
 			execinfrapb.PostProcessSpec{OutputTypes: p.ResultTypes},
@@ -387,13 +375,13 @@ func (p *PhysicalPlan) CheckAndAddNoopForAgent() {
 // stages that correspond to logical blocks that don't require any grouping
 // (e.g. evaluator, sorting, etc).
 func (p *PhysicalPlan) AddTSNoGroupingStage(
-	core execinfrapb.TSProcessorCoreUnion,
-	post execinfrapb.TSPostProcessSpec,
+	core execinfrapb.ProcessorCoreUnion,
+	post execinfrapb.PostProcessSpec,
 	outputTypes []types.T,
 	newOrdering execinfrapb.Ordering,
 ) {
 	p.AddTSNoGroupingStageWithCoreFunc(
-		func(_ int, _ *Processor) execinfrapb.TSProcessorCoreUnion { return core },
+		func(_ int, _ *Processor) execinfrapb.ProcessorCoreUnion { return core },
 		post,
 		outputTypes,
 		newOrdering,
@@ -403,17 +391,18 @@ func (p *PhysicalPlan) AddTSNoGroupingStage(
 // AddTSNoGroupingStageWithCoreFunc is like AddNoGroupingStage, but creates a core
 // spec based on the input processor's spec.
 func (p *PhysicalPlan) AddTSNoGroupingStageWithCoreFunc(
-	coreFunc func(int, *Processor) execinfrapb.TSProcessorCoreUnion,
-	post execinfrapb.TSPostProcessSpec,
+	coreFunc func(int, *Processor) execinfrapb.ProcessorCoreUnion,
+	post execinfrapb.PostProcessSpec,
 	outputTypes []types.T,
 	newOrdering execinfrapb.Ordering,
 ) {
+	post.OutputTypes = outputTypes
 	for i, resultProc := range p.ResultRouters {
 		prevProc := &p.Processors[resultProc]
 
 		proc := Processor{
 			Node: prevProc.Node,
-			TSSpec: execinfrapb.TSProcessorSpec{
+			Spec: execinfrapb.ProcessorSpec{
 				Input: []execinfrapb.InputSyncSpec{{
 					Type:        execinfrapb.InputSyncSpec_UNORDERED,
 					ColumnTypes: p.ResultTypes,
@@ -423,8 +412,8 @@ func (p *PhysicalPlan) AddTSNoGroupingStageWithCoreFunc(
 				Output: []execinfrapb.OutputRouterSpec{{
 					Type: execinfrapb.OutputRouterSpec_PASS_THROUGH,
 				}},
+				Engine: execinfrapb.ProcessorSpec_TimeSeries,
 			},
-			ExecInTSEngine: true,
 		}
 
 		pIdx := p.AddProcessor(proc)
@@ -451,7 +440,6 @@ func (p *PhysicalPlan) addNoopForGatewayNode(nodeID roachpb.NodeID) {
 		}},
 		execinfrapb.PostProcessSpec{OutputTypes: p.ResultTypes},
 		p.ResultTypes,
-		false,
 	)
 	if len(p.ResultRouters) != 1 {
 		panic(fmt.Sprintf("%d results after single group stage", len(p.ResultRouters)))
@@ -469,7 +457,7 @@ func (p *PhysicalPlan) AddNoopToTsProcessors(nodeID roachpb.NodeID, local bool, 
 	childExecInTSEngineOld := p.ChildIsExecInTSEngine()
 	// add noop-processor to processor of time series in other Node
 	for i, idx := range p.ResultRouters {
-		if p.Processors[idx].ExecInTSEngine && p.Processors[idx].Node != nodeID {
+		if p.Processors[idx].ExecInTSEngine() && p.Processors[idx].Node != nodeID {
 			p.AddNoopImplementation(
 				execinfrapb.PostProcessSpec{}, idx, i, &p.ResultRouters, &p.ResultTypes,
 			)
@@ -509,6 +497,57 @@ func (p *PhysicalPlan) AddNoopImplementation(
 				Type: execinfrapb.OutputRouterSpec_PASS_THROUGH,
 			}},
 			StageID: stageID,
+			Engine:  p.EngineType,
+		},
+	}
+
+	pIdx := p.AddProcessor(proc)
+
+	p.Streams = append(p.Streams, Stream{
+		SourceProcessor:  idx,
+		DestProcessor:    pIdx,
+		SourceRouterSlot: 0,
+		DestInput:        0,
+	})
+
+	// if resultRouters is p variable, the resultRouters is nil
+	if i == -1 {
+		if resultRouters != nil {
+			*resultRouters = append(*resultRouters, pIdx)
+		} else {
+			p.ResultRouters = append(p.ResultRouters, pIdx)
+		}
+	} else {
+		if resultRouters != nil {
+			(*resultRouters)[i] = pIdx
+		} else {
+			p.ResultRouters[i] = pIdx
+		}
+	}
+}
+
+// AddTSNoopImplementation add noop process for ts engine
+func (p *PhysicalPlan) AddTSNoopImplementation(
+	post execinfrapb.PostProcessSpec,
+	idx ProcessorIdx,
+	i int,
+	resultRouters *[]ProcessorIdx,
+	types *[]types.T,
+) {
+	//stageID := p.NewStageID()
+	proc := Processor{
+		Node: p.Processors[idx].Node,
+		Spec: execinfrapb.ProcessorSpec{
+			Input: []execinfrapb.InputSyncSpec{{
+				Type:        execinfrapb.InputSyncSpec_UNORDERED,
+				ColumnTypes: *types,
+			}},
+			Core: execinfrapb.ProcessorCoreUnion{Noop: &execinfrapb.NoopCoreSpec{}},
+			Post: post,
+			Output: []execinfrapb.OutputRouterSpec{{
+				Type: execinfrapb.OutputRouterSpec_PASS_THROUGH,
+			}},
+			Engine: execinfrapb.ProcessorSpec_TimeSeries,
 		},
 	}
 
@@ -547,7 +586,7 @@ func (p *PhysicalPlan) AddNoopForJoinToAgent(
 ) {
 	if len(nodes) == 1 {
 		for k, idx := range leftRouters {
-			if p.Processors[idx].ExecInTSEngine && p.Processors[idx].Node != thisNodeID {
+			if p.Processors[idx].ExecInTSEngine() && p.Processors[idx].Node != thisNodeID {
 				p.AddNoopImplementation(
 					execinfrapb.PostProcessSpec{}, idx, -1, nil, leftTypes,
 				)
@@ -555,7 +594,7 @@ func (p *PhysicalPlan) AddNoopForJoinToAgent(
 			}
 		}
 		for k, idx := range rightRouters {
-			if p.Processors[idx].ExecInTSEngine && p.Processors[idx].Node != thisNodeID {
+			if p.Processors[idx].ExecInTSEngine() && p.Processors[idx].Node != thisNodeID {
 				p.AddNoopImplementation(
 					execinfrapb.PostProcessSpec{}, idx, -1, nil, rightTypes,
 				)
@@ -568,14 +607,14 @@ func (p *PhysicalPlan) AddNoopForJoinToAgent(
 		}
 	} else {
 		for i, idx := range leftRouters {
-			if p.Processors[idx].ExecInTSEngine {
+			if p.Processors[idx].ExecInTSEngine() {
 				p.AddNoopImplementation(
 					execinfrapb.PostProcessSpec{}, idx, i, &leftRouters, leftTypes,
 				)
 			}
 		}
 		for i, idx := range rightRouters {
-			if p.Processors[idx].ExecInTSEngine {
+			if p.Processors[idx].ExecInTSEngine() {
 				p.AddNoopImplementation(
 					execinfrapb.PostProcessSpec{}, idx, i, &rightRouters, rightTypes,
 				)
@@ -610,6 +649,7 @@ func (p *PhysicalPlan) AddNoGroupingStageWithCoreFunc(
 					Type: execinfrapb.OutputRouterSpec_PASS_THROUGH,
 				}},
 				StageID: stageID,
+				Engine:  p.EngineType,
 			},
 		}
 
@@ -653,12 +693,8 @@ func (p *PhysicalPlan) MergeResultStreams(
 		// synchronizer since it is more efficient.
 		useUnorderedSync = true
 	}
-	var inputSpec *[]execinfrapb.InputSyncSpec
-	if proc.ExecInTSEngine {
-		inputSpec = &proc.TSSpec.Input
-	} else {
-		inputSpec = &proc.Spec.Input
-	}
+
+	inputSpec := &proc.Spec.Input
 
 	if useUnorderedSync {
 		(*inputSpec)[destInput].Type = execinfrapb.InputSyncSpec_UNORDERED
@@ -668,10 +704,6 @@ func (p *PhysicalPlan) MergeResultStreams(
 	}
 
 	for _, resultProc := range resultRouters {
-		if proc.ExecInTSEngine && p.Processors[resultProc].Node != proc.Node {
-			continue
-		}
-
 		p.Streams = append(p.Streams, Stream{
 			SourceProcessor:  resultProc,
 			SourceRouterSlot: sourceRouterSlot,
@@ -708,10 +740,10 @@ func (p *PhysicalPlan) MergeTSResultStreams(
 		useUnorderedSync = true
 	}
 	if useUnorderedSync {
-		proc.TSSpec.Input[destInput].Type = execinfrapb.InputSyncSpec_UNORDERED
+		proc.Spec.Input[destInput].Type = execinfrapb.InputSyncSpec_UNORDERED
 	} else {
-		proc.TSSpec.Input[destInput].Type = execinfrapb.InputSyncSpec_ORDERED
-		proc.TSSpec.Input[destInput].Ordering = ordering
+		proc.Spec.Input[destInput].Type = execinfrapb.InputSyncSpec_ORDERED
+		proc.Spec.Input[destInput].Ordering = ordering
 	}
 
 	for _, resultProc := range resultRouters {
@@ -732,12 +764,7 @@ func (p *PhysicalPlan) AddSingleGroupStage(
 	core execinfrapb.ProcessorCoreUnion,
 	post execinfrapb.PostProcessSpec,
 	outputTypes []types.T,
-	apSelect bool,
 ) {
-	engineType := 0
-	if apSelect {
-		engineType = 1
-	}
 	proc := Processor{
 		Node: nodeID,
 		Spec: execinfrapb.ProcessorSpec{
@@ -751,7 +778,7 @@ func (p *PhysicalPlan) AddSingleGroupStage(
 				Type: execinfrapb.OutputRouterSpec_PASS_THROUGH,
 			}},
 			StageID: p.NewStageID(),
-			Engine:  int32(engineType),
+			Engine:  p.EngineType,
 		},
 	}
 
@@ -773,13 +800,14 @@ func (p *PhysicalPlan) AddSingleGroupStage(
 // previous stage (ResultRouters) are all connected to this processor.
 func (p *PhysicalPlan) AddTSSingleGroupStage(
 	nodeID roachpb.NodeID,
-	core execinfrapb.TSProcessorCoreUnion,
-	post execinfrapb.TSPostProcessSpec,
+	core execinfrapb.ProcessorCoreUnion,
+	post execinfrapb.PostProcessSpec,
 	outputTypes []types.T,
+	final bool,
 ) {
 	proc := Processor{
 		Node: nodeID,
-		TSSpec: execinfrapb.TSProcessorSpec{
+		Spec: execinfrapb.ProcessorSpec{
 			Input: []execinfrapb.InputSyncSpec{{
 				// The other fields will be filled in by mergeResultStreams.
 				ColumnTypes: p.ResultTypes,
@@ -789,8 +817,9 @@ func (p *PhysicalPlan) AddTSSingleGroupStage(
 			Output: []execinfrapb.OutputRouterSpec{{
 				Type: execinfrapb.OutputRouterSpec_PASS_THROUGH,
 			}},
+			Engine:           execinfrapb.ProcessorSpec_TimeSeries,
+			FinalTsProcessor: final,
 		},
-		ExecInTSEngine: true,
 	}
 
 	pIdx := p.AddProcessor(proc)
@@ -816,16 +845,16 @@ func (p *PhysicalPlan) CheckLastStagePost() error {
 		} else {
 			resultRouters = p.ResultRouters
 		}
-		post := p.Processors[resultRouters[0]].TSSpec.Post
+		post := p.Processors[resultRouters[0]].Spec.Post
 
 		// All processors of a stage should be identical in terms of post-processing;
 		// verify this assumption.
 		for i := 1; i < len(resultRouters); i++ {
-			pi := &p.Processors[resultRouters[i]].TSSpec.Post
+			pi := &p.Processors[resultRouters[i]].Spec.Post
 			if pi.Filter != post.Filter ||
 				pi.Projection != post.Projection ||
 				len(pi.OutputColumns) != len(post.OutputColumns) ||
-				len(pi.Renders) != len(post.Renders) {
+				len(pi.RenderExprs) != len(post.RenderExprs) {
 				return errors.Errorf("inconsistent post-processing: %v vs %v", post.String(), pi)
 			}
 			for j, col := range pi.OutputColumns {
@@ -833,8 +862,8 @@ func (p *PhysicalPlan) CheckLastStagePost() error {
 					return errors.Errorf("inconsistent post-processing: %v vs %v", post.String(), pi)
 				}
 			}
-			for j, col := range pi.Renders {
-				if col != post.Renders[j] {
+			for j, col := range pi.RenderExprs {
+				if col.String() != post.RenderExprs[j].String() {
 					return errors.Errorf("inconsistent post-processing: %v vs %v", post.String(), pi)
 				}
 			}
@@ -880,11 +909,11 @@ func (p *PhysicalPlan) GetLastStagePost() execinfrapb.PostProcessSpec {
 
 // GetLastStageTSPost returns the TSPostProcessSpec for the processors in the last
 // stage (ResultRouters).
-func (p *PhysicalPlan) GetLastStageTSPost() execinfrapb.TSPostProcessSpec {
+func (p *PhysicalPlan) GetLastStageTSPost() execinfrapb.PostProcessSpec {
 	if p.ChildIsTSParallelProcessor() {
-		return p.Processors[p.SynchronizerChildRouters[0]].TSSpec.Post
+		return p.Processors[p.SynchronizerChildRouters[0]].Spec.Post
 	}
-	return p.Processors[p.ResultRouters[0]].TSSpec.Post
+	return p.Processors[p.ResultRouters[0]].Spec.Post
 }
 
 // SetLastStagePost changes the PostProcess spec of the processors in the last
@@ -905,17 +934,15 @@ func (p *PhysicalPlan) SetLastStagePost(post execinfrapb.PostProcessSpec, output
 // SetLastStageTSPost changes the TSPostProcessSpec spec of the processors in the last
 // stage (ResultRouters).
 // The caller must update the ordering via SetOrdering.
-func (p *PhysicalPlan) SetLastStageTSPost(
-	post execinfrapb.TSPostProcessSpec, outputTypes []types.T,
-) {
+func (p *PhysicalPlan) SetLastStageTSPost(post execinfrapb.PostProcessSpec, outputTypes []types.T) {
 	// limit push down to synchronizer scan child spec
 	if p.ChildIsTSParallelProcessor() {
 		for _, pIdx := range p.SynchronizerChildRouters {
-			p.Processors[pIdx].TSSpec.Post = post
+			p.Processors[pIdx].Spec.Post = post
 		}
 	} else {
 		for _, pIdx := range p.ResultRouters {
-			p.Processors[pIdx].TSSpec.Post = post
+			p.Processors[pIdx].Spec.Post = post
 		}
 	}
 
@@ -927,13 +954,13 @@ func (p *PhysicalPlan) ChildIsTSParallelProcessor() bool {
 	if !p.ChildIsExecInTSEngine() {
 		return false
 	}
-	return p.Processors[p.ResultRouters[0]].TSSpec.Core.Synchronizer != nil
+	return p.Processors[p.ResultRouters[0]].Spec.Core.TsSynchronizer != nil
 }
 
 // HasTSParallelProcessor check has synchronizer
 func (p *PhysicalPlan) HasTSParallelProcessor() bool {
 	for i := range p.Processors {
-		if p.Processors[i].ExecInTSEngine && p.Processors[i].TSSpec.Core.Synchronizer != nil {
+		if p.Processors[i].ExecInTSEngine() && p.Processors[i].Spec.Core.TsSynchronizer != nil {
 			return true
 		}
 	}
@@ -942,7 +969,7 @@ func (p *PhysicalPlan) HasTSParallelProcessor() bool {
 
 // CheckLastIsNoop check last is noop
 func (p *PhysicalPlan) CheckLastIsNoop() bool {
-	return p.Processors[p.ResultRouters[0]].TSSpec.Core.Noop != nil
+	return p.Processors[p.ResultRouters[0]].Spec.Core.Noop != nil
 }
 
 // AppendLastSequenceID modify the SequenceID structure of the processor to correspond with the logical operator
@@ -1016,11 +1043,8 @@ func (p *PhysicalPlan) AddProjection(columns []uint32) {
 		// accordingly.
 		oldRenders := post.RenderExprs
 		post.RenderExprs = make([]execinfrapb.Expression, len(columns))
-		oldRendersTs := post.RenderExprsTs
-		post.RenderExprsTs = make([]execinfrapb.Expression, len(columns))
 		for i, c := range columns {
 			post.RenderExprs[i] = oldRenders[c]
-			post.RenderExprsTs[i] = oldRendersTs[c]
 		}
 	} else {
 		// There is no existing rendering; we can use OutputColumns to set the
@@ -1085,14 +1109,14 @@ func (p *PhysicalPlan) AddTSProjection(columns []uint32) {
 
 	post := p.GetLastStageTSPost()
 
-	if post.Renders != nil {
+	if post.RenderExprs != nil {
 		// Apply the projection to the existing rendering; in other words, keep
 		// only the renders needed by the new output columns, and reorder them
 		// accordingly.
-		oldRenders := post.Renders
-		post.Renders = make([]string, len(columns))
+		oldRenders := post.RenderExprs
+		post.RenderExprs = make([]execinfrapb.Expression, len(columns))
 		for i, c := range columns {
-			post.Renders[i] = oldRenders[c]
+			post.RenderExprs[i] = oldRenders[c]
 		}
 	}
 	p.SetLastStageTSPost(post, newResultTypes)
@@ -1153,14 +1177,14 @@ func (p *PhysicalPlan) AddHashTSProjection(
 
 		post := p.GetLastStageTSPost()
 
-		if post.Renders != nil {
+		if post.RenderExprs != nil {
 			// Apply the projection to the existing rendering; in other words, keep
 			// only the renders needed by the new output columns, and reorder them
 			// accordingly.
-			oldRenders := post.Renders
-			post.Renders = make([]string, len(columns))
+			oldRenders := post.RenderExprs
+			post.RenderExprs = make([]execinfrapb.Expression, len(columns))
 			for i, c := range columns {
-				post.Renders[i] = oldRenders[c]
+				post.RenderExprs[i] = oldRenders[c]
 			}
 		}
 		p.SetLastStageTSPost(post, newResultTypes)
@@ -1242,15 +1266,10 @@ func (p *PhysicalPlan) AddRendering(
 		compositeMap = reverseProjection(post.OutputColumns, indexVarMap)
 	}
 	post.RenderExprs = make([]execinfrapb.Expression, len(exprs))
-	post.RenderExprsTs = make([]execinfrapb.Expression, len(exprs))
 	local := !pushTS && len(p.ResultRouters) == 1
 	for i, e := range exprs {
 		var err error
 		post.RenderExprs[i], err = MakeExpression(e, exprCtx, compositeMap, local, pushTS)
-		if err != nil {
-			return err
-		}
-		post.RenderExprsTs[i], err = MakeTSExpression(e, exprCtx, compositeMap)
 		if err != nil {
 			return err
 		}
@@ -1290,15 +1309,6 @@ func (p *PhysicalPlan) AddRendering(
 				found = len(post.RenderExprs)
 				post.RenderExprs = append(post.RenderExprs, newExpr)
 				outTypes = append(outTypes, p.ResultTypes[c.ColIdx])
-
-				newExprTs, expressErr := MakeTSExpression(tree.NewTypedOrdinalReference(
-					int(internalColIdx),
-					&p.ResultTypes[c.ColIdx]),
-					exprCtx, nil /* indexVarMap */)
-				if expressErr != nil {
-					return expressErr
-				}
-				post.RenderExprsTs = append(post.RenderExprsTs, newExprTs)
 			}
 			newOrdering[i].ColIdx = uint32(found)
 			newOrdering[i].Direction = c.Direction
@@ -1324,13 +1334,13 @@ func (p *PhysicalPlan) AddTSRendering(
 	exprs []tree.TypedExpr, exprCtx ExprContext, indexVarMap []int, outTypes []types.T,
 ) error {
 	post := p.GetLastStageTSPost()
-	if len(post.Renders) > 0 {
-		post = execinfrapb.TSPostProcessSpec{}
+	if len(post.RenderExprs) > 0 {
+		post = execinfrapb.PostProcessSpec{}
 		// The last stage contains render expressions. The new renders refer to
 		// the output of these, so we need to add another "no-op" stage to which
 		// to attach the new rendering.
 		p.AddTSNoGroupingStage(
-			execinfrapb.TSProcessorCoreUnion{Noop: &execinfrapb.TSNoopSpec{}},
+			execinfrapb.ProcessorCoreUnion{Noop: &execinfrapb.NoopCoreSpec{}},
 			post,
 			p.ResultTypes,
 			p.MergeOrdering,
@@ -1338,14 +1348,14 @@ func (p *PhysicalPlan) AddTSRendering(
 	}
 
 	compositeMap := indexVarMap
-	post.Renders = make([]string, len(exprs))
+	post.RenderExprs = make([]execinfrapb.Expression, len(exprs))
 	for i, e := range exprs { // problem
 		var err error
 		renders, err := MakeTSExpression(e, exprCtx, compositeMap)
 		if err != nil {
 			return err
 		}
-		post.Renders[i] = renders.Expr
+		post.RenderExprs[i] = renders
 	}
 
 	if len(p.MergeOrdering.Columns) > 0 {
@@ -1374,8 +1384,8 @@ func (p *PhysicalPlan) AddTSRendering(
 					return err
 				}
 
-				found = len(post.Renders)
-				post.Renders = append(post.Renders, newExpr.Expr)
+				found = len(post.RenderExprs)
+				post.RenderExprs = append(post.RenderExprs, newExpr)
 				outTypes = append(outTypes, p.ResultTypes[c.ColIdx])
 			}
 			newOrdering[i].ColIdx = uint32(found)
@@ -1386,10 +1396,7 @@ func (p *PhysicalPlan) AddTSRendering(
 	if len(exprs) == 0 {
 		return nil
 	}
-	post.OutputTypes = make([]types.Family, len(outTypes))
-	for i, typ := range outTypes {
-		post.OutputTypes[i] = typ.InternalType.Family
-	}
+	post.OutputTypes = outTypes
 	p.SetLastStageTSPost(post, outTypes)
 	return nil
 }
@@ -1455,27 +1462,18 @@ func reverseProjection(outputColumns []uint32, indexVarMap []int) []int {
 
 // AddFilterToPostSpec add filter to post spec
 func (p *PhysicalPlan) AddFilterToPostSpec(filter *execinfrapb.Expression, execInTSEngine bool) {
-	if execInTSEngine {
-		if p.ChildIsTSParallelProcessor() {
-			for _, pIdx := range p.SynchronizerChildRouters {
-				p.Processors[pIdx].TSSpec.Post.Filter = filter.String()
-			}
-		} else {
-			for _, pIdx := range p.ResultRouters {
-				p.Processors[pIdx].TSSpec.Post.Filter = filter.String()
-			}
+	if execInTSEngine && p.ChildIsTSParallelProcessor() {
+		for _, pIdx := range p.SynchronizerChildRouters {
+			p.Processors[pIdx].Spec.Post.Filter = *filter
+		}
+	} else if execInTSEngine {
+		for _, pIdx := range p.ResultRouters {
+			p.Processors[pIdx].Spec.Post.Filter = *filter
 		}
 	} else {
 		for _, pIdx := range p.ResultRouters {
 			p.Processors[pIdx].Spec.Post.Filter = *filter
 		}
-	}
-}
-
-// AddFilterTsToPostSpec add ts filter to post spec
-func (p *PhysicalPlan) AddFilterTsToPostSpec(filterTs *execinfrapb.Expression) {
-	for _, pIdx := range p.ResultRouters {
-		p.Processors[pIdx].Spec.Post.FilterTs = *filterTs
 	}
 }
 
@@ -1517,23 +1515,6 @@ func (p *PhysicalPlan) AddRelationalFilter(
 		}
 	}
 	p.AddFilterToPostSpec(&filter, false)
-
-	filterTs, err := MakeTSExpression(expr, exprCtx, compositeMap)
-	if err != nil {
-		return err
-	}
-	if !post.FilterTs.Empty() {
-		// Either Expr or LocalExpr will be set (not both).
-		if filterTs.Expr != "" {
-			filterTs.Expr = fmt.Sprintf("(%s) AND (%s)", post.FilterTs.Expr, filterTs.Expr)
-		} else if filterTs.LocalExpr != nil {
-			filterTs.LocalExpr = tree.NewTypedAndExpr(
-				post.FilterTs.LocalExpr,
-				filterTs.LocalExpr,
-			)
-		}
-	}
-	p.AddFilterTsToPostSpec(&filterTs)
 	return nil
 }
 
@@ -1570,14 +1551,14 @@ func (p *PhysicalPlan) AddFilter(
 	}
 
 	// child is ts post
-	post := p.Processors[p.ResultRouters[0]].TSSpec.Post
-	childIsSort := p.Processors[p.ResultRouters[0]].TSSpec.Core.Sorter != nil
+	post := p.Processors[p.ResultRouters[0]].Spec.Post
+	childIsSort := p.Processors[p.ResultRouters[0]].Spec.Core.Sorter != nil
 	// some cases need add ts noop spec, reference relationship case
 	// case1: post of child plan have render
 	// case2: post of child plan have offset
 	// case3: post of child plan have limit
 	// case4: child plan is sort (AE sort no support filter)
-	if len(post.Renders) > 0 || post.Offset != 0 || post.Limit != 0 || childIsSort {
+	if len(post.RenderExprs) > 0 || post.Offset != 0 || post.Limit != 0 || childIsSort {
 		// The last stage contains render expressions or a limit. The filter refers
 		// to the output as described by the existing spec, so we need to add
 		// another "no-op" stage to which to attach the filter.
@@ -1585,9 +1566,9 @@ func (p *PhysicalPlan) AddFilter(
 		// In general, we might be able to exec in ts engine the filter "through" the rendering;
 		// but the higher level planning code should figure this out when
 		// propagating filters.
-		post = execinfrapb.TSPostProcessSpec{}
+		post = execinfrapb.PostProcessSpec{}
 		p.AddTSNoGroupingStage(
-			execinfrapb.TSProcessorCoreUnion{Noop: &execinfrapb.TSNoopSpec{}},
+			execinfrapb.ProcessorCoreUnion{Noop: &execinfrapb.NoopCoreSpec{}},
 			post,
 			p.ResultTypes,
 			p.MergeOrdering,
@@ -1602,7 +1583,7 @@ func (p *PhysicalPlan) AddFilter(
 	if err != nil {
 		return err
 	}
-	if post.Filter != "" {
+	if !post.Filter.Empty() {
 		// Either Expr or LocalExpr will be set (not both).
 		if filter.Expr != "" {
 			filter.Expr = fmt.Sprintf("(%s) AND (%s)", post.Filter, filter.Expr)
@@ -1705,20 +1686,20 @@ func (p *PhysicalPlan) handleSingleRouterLimitAndOffset(
 	}
 
 	if p.ChildIsExecInTSEngine() {
-		var post execinfrapb.TSPostProcessSpec
+		var post execinfrapb.PostProcessSpec
 		if p.ChildIsTSParallelProcessor() {
 			p.AddNoGroupingStageForTSNoop(nil)
 		}
 		post = p.GetLastStageTSPost()
 		postTmp := execinfrapb.PostProcessSpec{Limit: uint64(post.Limit), Offset: uint64(post.Offset)}
 		dealWithOffset(offset, count, &postTmp)
-		post.Limit = uint32(postTmp.Limit)
-		post.Offset = uint32(postTmp.Offset)
+		post.Limit = postTmp.Limit
+		post.Offset = postTmp.Offset
 		p.SetLastStageTSPost(post, p.ResultTypes)
 	} else {
 		if p.ChildIsTSParallelProcessor() {
 			// limit child is synchronizer , can not push down limit to it is child, parallel limit need twice limit
-			p.AddTSTableReader()
+			p.AddTSTableReader(p.ResultTypes)
 		}
 
 		post := p.GetLastStagePost()
@@ -1748,8 +1729,8 @@ func (p *PhysicalPlan) setLocalLimitForMultiRouter(count int64, offset int64) ui
 				p.AddNoGroupingStageForTSNoop(nil)
 			}
 			post := p.GetLastStageTSPost()
-			if post.Limit == 0 || post.Limit > uint32(localLimit) {
-				post.Limit = uint32(localLimit)
+			if post.Limit == 0 || post.Limit > localLimit {
+				post.Limit = localLimit
 				p.SetLastStageTSPost(post, p.ResultTypes)
 			}
 		} else {
@@ -1797,21 +1778,7 @@ func (p *PhysicalPlan) AddLimit(
 
 	// multi node need add noop for agent get data to kwbase, add local limit
 	if p.ChildIsExecInTSEngine() {
-		if p.ChildIsTSSortProcessor() {
-			p.AddNoGroupingStage(
-				execinfrapb.ProcessorCoreUnion{
-					Sorter: &execinfrapb.SorterSpec{
-						OutputOrdering:   p.MergeOrdering,
-						OrderingMatchLen: uint32(count),
-					},
-				},
-				execinfrapb.PostProcessSpec{},
-				p.ResultTypes,
-				p.MergeOrdering,
-			)
-		} else {
-			p.AddNoop(&execinfrapb.PostProcessSpec{Limit: localLimit, OutputTypes: p.ResultTypes}, nil)
-		}
+		p.AddNoop(&execinfrapb.PostProcessSpec{Limit: localLimit, OutputTypes: p.ResultTypes}, nil)
 	}
 
 	post := execinfrapb.PostProcessSpec{
@@ -1827,7 +1794,6 @@ func (p *PhysicalPlan) AddLimit(
 		execinfrapb.ProcessorCoreUnion{Noop: &execinfrapb.NoopCoreSpec{}},
 		post,
 		p.ResultTypes,
-		false,
 	)
 
 	if limitZero {
@@ -1848,22 +1814,15 @@ func (p *PhysicalPlan) PopulateEndpoints(nodeAddresses map[roachpb.NodeID]string
 	// Note: instead of using p.Streams, we could fill in the input/output specs
 	// directly throughout the planning code, but this makes the rest of the code
 	// a bit simpler.
-	var haveRelProcessors bool
-	var haveTsProcessors bool
 	for sIdx, s := range p.Streams {
 		p1 := &p.Processors[s.SourceProcessor]
 		p2 := &p.Processors[s.DestProcessor]
-		if !haveRelProcessors && (p1.Spec.Core.TableReader != nil || p2.Spec.Core.TableReader != nil) {
-			haveRelProcessors = true
-		}
-		if !haveTsProcessors && p1.ExecInTSEngine && !p2.ExecInTSEngine {
-			haveTsProcessors = true
-		}
 		endpoint := execinfrapb.StreamEndpointSpec{StreamID: execinfrapb.StreamID(sIdx), DestProcessor: int32(s.DestProcessor)}
 		if p1.Node == p2.Node {
-			if p1.ExecInTSEngine && !p2.ExecInTSEngine {
+			if p1.ExecInTSEngine() && !p2.ExecInTSEngine() {
 				endpoint.Type = execinfrapb.StreamEndpointType_QUEUE
-			} else if !p2.ExecInTSEngine && p1.Spec.Engine == 1 && p2.Spec.Engine == 0 {
+				p1.Spec.FinalTsProcessor = true
+			} else if !p2.ExecInTSEngine() && p1.Spec.ExecInAPEngine() && p2.Spec.ExecInMEEngine() {
 				endpoint.Type = execinfrapb.StreamEndpointType_AP
 			} else {
 				endpoint.Type = execinfrapb.StreamEndpointType_LOCAL
@@ -1871,16 +1830,7 @@ func (p *PhysicalPlan) PopulateEndpoints(nodeAddresses map[roachpb.NodeID]string
 		} else {
 			endpoint.Type = execinfrapb.StreamEndpointType_REMOTE
 		}
-		if p2.ExecInTSEngine {
-			tsEndpoint := execinfrapb.StreamEndpointSpec{StreamID: endpoint.StreamID, DestProcessor: endpoint.DestProcessor}
-			if endpoint.Type == execinfrapb.StreamEndpointType_LOCAL ||
-				endpoint.Type == execinfrapb.StreamEndpointType_REMOTE {
-				tsEndpoint.Type = endpoint.Type
-			}
-			p2.TSSpec.Input[s.DestInput].Streams = append(p2.TSSpec.Input[s.DestInput].Streams, tsEndpoint)
-		} else {
-			p2.Spec.Input[s.DestInput].Streams = append(p2.Spec.Input[s.DestInput].Streams, endpoint)
-		}
+		p2.Spec.Input[s.DestInput].Streams = append(p2.Spec.Input[s.DestInput].Streams, endpoint)
 		if endpoint.Type == execinfrapb.StreamEndpointType_REMOTE {
 			if !p.remotePlan {
 				p.remotePlan = true
@@ -1888,65 +1838,8 @@ func (p *PhysicalPlan) PopulateEndpoints(nodeAddresses map[roachpb.NodeID]string
 			endpoint.TargetNodeID = p2.Node
 		}
 
-		if p1.ExecInTSEngine {
-			router := &p1.TSSpec.Output[0]
-			if len(router.Streams) != s.SourceRouterSlot {
-				panic(fmt.Sprintf(
-					"sourceRouterSlot mismatch: %d, expected %d", len(router.Streams), s.SourceRouterSlot,
-				))
-			}
-			tsEndpoint := execinfrapb.StreamEndpointSpec{StreamID: endpoint.StreamID, DestProcessor: endpoint.DestProcessor}
-			if endpoint.Type == execinfrapb.StreamEndpointType_LOCAL ||
-				endpoint.Type == execinfrapb.StreamEndpointType_REMOTE {
-				tsEndpoint.Type = endpoint.Type
-			}
-			router.Streams = append(router.Streams, tsEndpoint)
-		} else {
-			router := &p1.Spec.Output[0]
-			// We are about to put this stream on the len(router.Streams) position in
-			// the router; verify this matches the sourceRouterSlot. We expect it to
-			// because the streams should be in order; if that assumption changes we can
-			// reorder them here according to sourceRouterSlot.
-			if len(router.Streams) != s.SourceRouterSlot {
-				panic(fmt.Sprintf(
-					"sourceRouterSlot mismatch: %d, expected %d", len(router.Streams), s.SourceRouterSlot,
-				))
-			}
-			router.Streams = append(router.Streams, endpoint)
-		}
-	}
-	// multi mode can not use pipeline.
-	p.UseOriginalFlow = p.UseOriginalFlow || (haveTsProcessors && haveRelProcessors)
-}
-
-// PopulateTSEndpoints processes p.Streams and adds the corresponding
-// TSStreamEndpointSpec to the processors' input and output specs. This should be
-// used when the plan is completed and ready to be executed.
-//
-// The nodeAddresses map contains the address of all the nodes referenced in the
-// plan.
-func (p *PhysicalPlan) PopulateTSEndpoints(nodeAddresses map[roachpb.NodeID]string) {
-	// Note: instead of using p.Streams, we could fill in the input/output specs
-	// directly throughout the planning code, but this makes the rest of the code
-	// a bit simpler.
-	for sIdx, s := range p.Streams {
-		p1 := &p.Processors[s.SourceProcessor]
-		p2 := &p.Processors[s.DestProcessor]
-		endpoint := execinfrapb.StreamEndpointSpec{StreamID: execinfrapb.StreamID(sIdx)}
-		if p1.Node == p2.Node {
-			endpoint.Type = execinfrapb.StreamEndpointType_LOCAL
-		} else {
-			endpoint.Type = execinfrapb.StreamEndpointType_REMOTE
-		}
-		p2.TSSpec.Input[s.DestInput].Streams = append(p2.TSSpec.Input[s.DestInput].Streams, endpoint)
-		if endpoint.Type == execinfrapb.StreamEndpointType_REMOTE {
-			if !p.remotePlan {
-				p.remotePlan = true
-			}
-			endpoint.TargetNodeID = p2.Node
-		}
-
-		router := &p1.TSSpec.Output[0]
+		var router *execinfrapb.OutputRouterSpec
+		router = &p1.Spec.Output[0]
 		// We are about to put this stream on the len(router.Streams) position in
 		// the router; verify this matches the sourceRouterSlot. We expect it to
 		// because the streams should be in order; if that assumption changes we can
@@ -1974,32 +1867,71 @@ func (p *PhysicalPlan) GenerateFlowSpecs(
 	if p.remotePlan {
 		flowID.UUID = uuid.MakeV4()
 	}
-	if !p.UseOriginalFlow && p.remotePlan {
-		flows, ok := generatePipelineFlows(gateway, p, flowID, gossip)
-		if ok {
-			return flows
-		}
-	}
 
 	flows := make(map[roachpb.NodeID]*execinfrapb.FlowSpec, 1)
 
+	maxNodeID := 0
+	useAeGather := false
 	for _, proc := range p.Processors {
+		if maxNodeID < int(proc.Node) {
+			maxNodeID = int(proc.Node)
+		}
 		flowSpec, ok := flows[proc.Node]
 		if !ok {
 			flowSpec = NewFlowSpec(flowID, gateway)
 			flows[proc.Node] = flowSpec
 		}
-		if proc.ExecInTSEngine {
-			flowSpec.TsProcessors = append(flowSpec.TsProcessors, proc.TSSpec)
-		} else {
-			flowSpec.Processors = append(flowSpec.Processors, proc.Spec)
+		if proc.ExecInTSEngine() && !useAeGather {
+			for _, input := range proc.Spec.Input {
+				for _, stream := range input.Streams {
+					if stream.Type == execinfrapb.StreamEndpointType_REMOTE {
+						useAeGather = true
+					}
+				}
+			}
+		}
+		flowSpec.Processors = append(flowSpec.Processors, proc.Spec)
+	}
+
+	queryID := generateQueryID(uint16(gateway))
+
+	//set brpcAddress for ae.
+	brpcAddrs := make([]string, maxNodeID)
+	for nodeID := range flows {
+		if gossip != nil {
+			node, _ := gossip.GetNodeDescriptor(nodeID)
+			brpcAddrs[nodeID-1] = node.BrpcAddress.String()
 		}
 	}
-	for _, flow := range flows {
-		flow.TsInfo.IsDist = len(flows) > 1
-		flow.TsInfo.UseQueryShortCircuit = p.UseQueryShortCircuit == UseQueryShortCircuitForSingle
+	for nodeID, flow := range flows {
+		flow.TsInfo.BrpcAddrs = brpcAddrs
+		flow.TsInfo.UseAeGather = useAeGather
+		flow.TsInfo.QueryID = queryID
+		if nodeID == gateway {
+			flow.TsInfo.UseQueryShortCircuit = p.UseQueryShortCircuit
+		}
 	}
+
 	return flows
+}
+
+const maxQueryID = 1<<47 - 1
+
+// QueryIDForTS is query id for AE.
+var QueryIDForTS = int64(0)
+
+func generateQueryID(nodeID uint16) int64 {
+	queryID := atomic.AddInt64(&QueryIDForTS, 1)
+
+	// Reset when query ID exceeds maximum value
+	if queryID > maxQueryID {
+		queryID = (queryID & maxQueryID) + 1
+
+		atomic.CompareAndSwapInt64(&QueryIDForTS, atomic.LoadInt64(&QueryIDForTS), queryID)
+	}
+
+	// QueryID occupies the upper 48 bits, while nodeID occupies the lower 16 bits.
+	return (queryID << 16) | int64(nodeID)
 }
 
 // SetRowEstimates updates p according to the row estimates of left and right
@@ -2116,6 +2048,7 @@ func (p *PhysicalPlan) AddJoinStage(
 				Post:    post,
 				Output:  []execinfrapb.OutputRouterSpec{{Type: execinfrapb.OutputRouterSpec_PASS_THROUGH}},
 				StageID: stageID,
+				Engine:  p.EngineType,
 			},
 		}
 		p.Processors = append(p.Processors, proc)
@@ -2170,36 +2103,89 @@ func (p *PhysicalPlan) AddBLJoinStage(
 	pIdxStart := ProcessorIdx(len(p.Processors))
 	stageID := p.NewStageID()
 
-	for _, n := range nodes {
-		inputs := make([]execinfrapb.InputSyncSpec, 0, 2)
-		inputs = append(inputs, execinfrapb.InputSyncSpec{ColumnTypes: leftTypes})
-		inputs = append(inputs, execinfrapb.InputSyncSpec{ColumnTypes: rightTypes})
+	if len(nodes) > 1 {
+		for _, idx := range rightRouters {
+			inputs := make([]execinfrapb.InputSyncSpec, 0, 2)
+			inputs = append(inputs, execinfrapb.InputSyncSpec{ColumnTypes: leftTypes})
+			inputs = append(inputs, execinfrapb.InputSyncSpec{ColumnTypes: rightTypes})
+			proc := Processor{
+				Node: p.Processors[idx].Node,
+				Spec: execinfrapb.ProcessorSpec{
+					Input:   inputs,
+					Core:    core,
+					Post:    post,
+					Output:  []execinfrapb.OutputRouterSpec{{Type: execinfrapb.OutputRouterSpec_PASS_THROUGH}},
+					StageID: stageID,
+				},
+			}
+			p.Processors = append(p.Processors, proc)
 
-		proc := Processor{
-			Node: n,
-			Spec: execinfrapb.ProcessorSpec{
-				Input:   inputs,
-				Core:    core,
-				Post:    post,
-				Output:  []execinfrapb.OutputRouterSpec{{Type: execinfrapb.OutputRouterSpec_PASS_THROUGH}},
-				StageID: stageID,
-			},
+			// change SourceRouterSlot of streams, this is the second stream.
+			sourceRouterSlot := 0
+			for i := len(p.Streams) - 1; i >= 0; i-- {
+				if p.Streams[i].SourceProcessor == idx {
+					sourceRouterSlot = 1
+					break
+				}
+			}
+			// each ts plan connects to the local BLJ.
+			p.Streams = append(p.Streams, Stream{
+				SourceProcessor:  idx,
+				SourceRouterSlot: sourceRouterSlot,
+				DestProcessor:    ProcessorIdx(len(p.Processors) - 1),
+				DestInput:        1,
+			})
 		}
-		p.Processors = append(p.Processors, proc)
-	}
 
-	// Connect the left and right routers to the output joiners. Each joiner
-	// corresponds to a hash bucket.
-	for bucket := 0; bucket < len(nodes); bucket++ {
-		pIdx := pIdxStart + ProcessorIdx(bucket)
+		// Set up the left OutputRouters.
+		for _, resultProc := range leftRouters {
+			p.Processors[resultProc].Spec.Output[0] = execinfrapb.OutputRouterSpec{
+				Type: execinfrapb.OutputRouterSpec_MIRROR,
+			}
+		}
 
-		// Connect left routers to the processor's first input. Currently the join
-		// node doesn't care about the orderings of the left and right results.
-		p.MergeResultStreams(leftRouters, bucket, leftMergeOrd, pIdx, 0, false /* forceSerialization */)
-		// Connect right routers to the processor's second input if it has one.
-		p.MergeResultStreams(rightRouters, bucket, rightMergeOrd, pIdx, 1, false /* forceSerialization */)
+		// Connect the left routers to the BLJ. Each BLJ corresponds to a hash bucket.
+		for bucket := 0; bucket < len(rightRouters); bucket++ {
+			pIdx := pIdxStart + ProcessorIdx(bucket)
 
-		p.ResultRouters = append(p.ResultRouters, pIdx)
+			// Connect left routers to the processor's first input. Currently the join
+			// node doesn't care about the orderings of the left and right results.
+			p.MergeResultStreams(leftRouters, bucket, leftMergeOrd, pIdx, 0, false /* forceSerialization */)
+
+			p.ResultRouters = append(p.ResultRouters, pIdx)
+		}
+	} else {
+		p.ResultRouters = nil
+		for _, n := range nodes {
+			inputs := make([]execinfrapb.InputSyncSpec, 0, 2)
+			inputs = append(inputs, execinfrapb.InputSyncSpec{ColumnTypes: leftTypes})
+			inputs = append(inputs, execinfrapb.InputSyncSpec{ColumnTypes: rightTypes})
+			proc := Processor{
+				Node: n,
+				Spec: execinfrapb.ProcessorSpec{
+					Input:   inputs,
+					Core:    core,
+					Post:    post,
+					Output:  []execinfrapb.OutputRouterSpec{{Type: execinfrapb.OutputRouterSpec_PASS_THROUGH}},
+					StageID: stageID,
+				},
+			}
+			p.Processors = append(p.Processors, proc)
+		}
+
+		// Connect the left and right routers to the output joiners. Each joiner
+		// corresponds to a hash bucket.
+		for bucket := 0; bucket < len(nodes); bucket++ {
+			pIdx := pIdxStart + ProcessorIdx(bucket)
+
+			// Connect left routers to the processor's first input. Currently the join
+			// node doesn't care about the orderings of the left and right results.
+			p.MergeResultStreams(leftRouters, bucket, leftMergeOrd, pIdx, 0, false /* forceSerialization */)
+			// Connect right routers to the processor's second input if it has one.
+			p.MergeResultStreams(rightRouters, bucket, rightMergeOrd, pIdx, 1, false /* forceSerialization */)
+
+			p.ResultRouters = append(p.ResultRouters, pIdx)
+		}
 	}
 }
 
@@ -2245,6 +2231,7 @@ func (p *PhysicalPlan) AddDistinctSetOpStage(
 					Post:    execinfrapb.PostProcessSpec{},
 					Output:  []execinfrapb.OutputRouterSpec{{Type: execinfrapb.OutputRouterSpec_PASS_THROUGH}},
 					StageID: distinctStageID,
+					Engine:  p.EngineType,
 				},
 			}
 			pIdx := p.AddProcessor(proc)
@@ -2363,15 +2350,15 @@ func (p *PhysicalPlan) EnsureSingleStreamPerNode(
 		if push {
 			proc := Processor{
 				Node: node,
-				TSSpec: execinfrapb.TSProcessorSpec{
+				Spec: execinfrapb.ProcessorSpec{
 					Input: []execinfrapb.InputSyncSpec{{
 						// The other fields will be filled in by MergeResultStreams.
 						ColumnTypes: p.ResultTypes,
 					}},
-					Core:   execinfrapb.TSProcessorCoreUnion{Noop: &execinfrapb.TSNoopSpec{}},
+					Core:   execinfrapb.ProcessorCoreUnion{Noop: &execinfrapb.NoopCoreSpec{}},
 					Output: []execinfrapb.OutputRouterSpec{{Type: execinfrapb.OutputRouterSpec_PASS_THROUGH}},
+					Engine: execinfrapb.ProcessorSpec_TimeSeries,
 				},
-				ExecInTSEngine: true,
 			}
 			mergedProcIdx := p.AddProcessor(proc)
 			p.MergeResultStreams(streams, 0 /* sourceRouterSlot */, p.MergeOrdering, mergedProcIdx, 0 /* destInput */, forceSerialization)
@@ -2387,6 +2374,7 @@ func (p *PhysicalPlan) EnsureSingleStreamPerNode(
 					}},
 					Core:   execinfrapb.ProcessorCoreUnion{Noop: &execinfrapb.NoopCoreSpec{OutputTypes: p.ResultTypes}},
 					Output: []execinfrapb.OutputRouterSpec{{Type: execinfrapb.OutputRouterSpec_PASS_THROUGH}},
+					Engine: p.EngineType,
 				},
 			}
 			mergedProcIdx := p.AddProcessor(proc)
@@ -2399,7 +2387,7 @@ func (p *PhysicalPlan) EnsureSingleStreamPerNode(
 
 // ChildIsExecInTSEngine get last can push ts engine
 func (p *PhysicalPlan) ChildIsExecInTSEngine() bool {
-	return p.Processors[p.ResultRouters[0]].ExecInTSEngine
+	return p.Processors[p.ResultRouters[0]].ExecInTSEngine()
 }
 
 // SelfCanExecInTSEngine get can exec in ts engine
@@ -2410,7 +2398,7 @@ func (p *PhysicalPlan) SelfCanExecInTSEngine(selfProcessorCanExecInTSEngine bool
 
 // ChildIsTSSortProcessor get last is ts sort
 func (p *PhysicalPlan) ChildIsTSSortProcessor() bool {
-	return p.Processors[p.ResultRouters[0]].ExecInTSEngine && p.Processors[p.ResultRouters[0]].TSSpec.Core.Sorter != nil
+	return p.Processors[p.ResultRouters[0]].ExecInTSEngine() && p.Processors[p.ResultRouters[0]].Spec.Core.Sorter != nil
 }
 
 // SetTSEngineReturnEncode set plan return encode
@@ -2419,7 +2407,7 @@ func (p *PhysicalPlan) SetTSEngineReturnEncode() {
 	// all processors execute on ts engine, so return pg encode to client
 	p.AllProcessorsExecInTSEngine = true
 	for _, idx := range p.ResultRouters {
-		if !p.Processors[idx].ExecInTSEngine {
+		if !p.Processors[idx].ExecInTSEngine() {
 			p.AllProcessorsExecInTSEngine = false
 			break
 		}
@@ -2429,29 +2417,26 @@ func (p *PhysicalPlan) SetTSEngineReturnEncode() {
 // AddTSOutputType add output types for ts processor
 func (p *PhysicalPlan) AddTSOutputType(force bool) {
 	for _, idx := range p.ResultRouters {
-		if force || p.Processors[idx].ExecInTSEngine {
-			p.Processors[idx].TSSpec.Post.OutputTypes = make([]types.Family, len(p.ResultTypes))
-			for i, typ := range p.ResultTypes {
-				p.Processors[idx].TSSpec.Post.OutputTypes[i] = typ.InternalType.Family
-			}
+		if force || p.Processors[idx].ExecInTSEngine() {
+			p.Processors[idx].Spec.Post.OutputTypes = p.ResultTypes
 		}
 	}
 }
 
 func getTableOutPutInfoFromPost(
-	scanPost *execinfrapb.TSPostProcessSpec, constValues []int64,
+	scanPost *execinfrapb.PostProcessSpec, constValues []int64,
 ) []execinfrapb.TSStatisticReaderSpec_ParamInfo {
 	scanOutput := make([]execinfrapb.TSStatisticReaderSpec_ParamInfo, 0)
-	if len(scanPost.Renders) != 0 {
-		for i, v := range scanPost.Renders {
-			if v[0] != '@' { //const value
+	if len(scanPost.RenderExprs) != 0 {
+		for i, v := range scanPost.RenderExprs {
+			if v.String()[0] != '@' { //const value
 				constVal := constValues[i]
 				scanOutput = append(scanOutput, execinfrapb.TSStatisticReaderSpec_ParamInfo{
 					Typ:   execinfrapb.TSStatisticReaderSpec_ParamInfo_const,
 					Value: constVal,
 				})
 			} else {
-				str := strings.Replace(scanPost.Renders[i], "@", "", -1)
+				str := strings.Replace(scanPost.RenderExprs[i].String(), "@", "", -1)
 				val, err := strconv.Atoi(str)
 				if err != nil {
 					val = 0
@@ -2509,17 +2494,18 @@ type AggKey struct {
 
 // PushAggToStatisticReader push Agg to statistic reader
 func (p *PhysicalPlan) PushAggToStatisticReader(
+	exprCtx ExprContext,
 	idx ProcessorIdx,
 	aggSpecs *execinfrapb.AggregatorSpec,
-	tsPostSpec *execinfrapb.TSPostProcessSpec,
+	tsPostSpec *execinfrapb.PostProcessSpec,
 	aggResTypes []types.T,
 	constValues []int64,
 	scalar bool,
 ) error {
-	if p.Processors[idx].TSSpec.Core.StatisticReader != nil {
-		tr := p.Processors[idx].TSSpec.Core.StatisticReader
+	if p.Processors[idx].Spec.Core.TsStatisticReader != nil {
+		tr := p.Processors[idx].Spec.Core.TsStatisticReader
 		tr.Scalar = scalar
-		scanPost := &p.Processors[idx].TSSpec.Post
+		scanPost := &p.Processors[idx].Spec.Post
 		//get render col index and const value
 		scanOutPut := getTableOutPutInfoFromPost(scanPost, constValues)
 
@@ -2614,8 +2600,23 @@ func (p *PhysicalPlan) PushAggToStatisticReader(
 		tr.AggTypes = scanAgg
 		tr.ParamIdx = scanCols
 
-		scanPost.Renders = make([]string, 0)
+		scanPost.RenderExprs = make([]execinfrapb.Expression, 0)
 
+		addRender := func(val int) error {
+			varIdxs := make([]int, 1)
+			varIdxs[0] = val
+			render := tree.NewOrdinalReference(0)
+			expr, err2 := MakeTSExpression(render, exprCtx, varIdxs)
+			if err2 != nil {
+				return err2
+			}
+			scanPost.RenderExprs = append(scanPost.RenderExprs, expr)
+			return nil
+		}
+
+		// posIdx records the real position of each agg functions,
+		// can not use i because avg will be split into sum and count
+		posIdx := 0
 		for i, agg := range aggSpecs.Aggregations {
 			switch agg.Func {
 			case execinfrapb.AggregatorSpec_AVG:
@@ -2639,28 +2640,42 @@ func (p *PhysicalPlan) PushAggToStatisticReader(
 				if err2 != nil {
 					return err2
 				}
-				scanPost.Renders = append(scanPost.Renders, render.String())
+				expr, err2 := MakeTSExpression(render, exprCtx, nil)
+				if err2 != nil {
+					return err2
+				}
+				scanPost.RenderExprs = append(scanPost.RenderExprs, expr)
+				posIdx += 2
 			case execinfrapb.AggregatorSpec_SUM:
 				v, ok := sumMap[agg.ColIdx[0]]
 				if !ok {
 					v = i
 				}
-				scanPost.Renders = append(scanPost.Renders, fmt.Sprintf("@%d", v+1))
+				if err := addRender(v); err != nil {
+					return err
+				}
+				posIdx++
 			case execinfrapb.AggregatorSpec_COUNT:
 				v, ok := countMap[agg.ColIdx[0]]
 				if !ok {
 					v = i
 				}
-				scanPost.Renders = append(scanPost.Renders, fmt.Sprintf("@%d", v+1))
+				if err := addRender(v); err != nil {
+					return err
+				}
+				posIdx++
 			default:
-				scanPost.Renders = append(scanPost.Renders, fmt.Sprintf("@%d", i+1))
+				if err := addRender(posIdx); err != nil {
+					return err
+				}
+				posIdx++
 			}
 		}
 
 		// update reader post renders and outputTypes for local agg
-		p.Processors[idx].TSSpec.Post.OutputTypes = tsPostSpec.OutputTypes
-		p.Processors[idx].TSSpec.Post.OutputColumns = nil
-		p.Processors[idx].TSSpec.Post.Projection = false
+		p.Processors[idx].Spec.Post.OutputTypes = tsPostSpec.OutputTypes
+		p.Processors[idx].Spec.Post.OutputColumns = nil
+		p.Processors[idx].Spec.Post.Projection = false
 		p.ResultTypes = aggResTypes
 	} else {
 		return pgerror.New(pgcode.Internal, " statistic table could not find sum col")
@@ -2673,17 +2688,67 @@ func (p *PhysicalPlan) PushAggToStatisticReader(
 func (p *PhysicalPlan) PushAggToTableReader(
 	idx ProcessorIdx,
 	localAggsSpec *execinfrapb.AggregatorSpec,
-	tsPost *execinfrapb.TSPostProcessSpec,
+	tsPost *execinfrapb.PostProcessSpec,
 	pruneLocalAgg bool,
 ) {
-	if p.Processors[idx].TSSpec.Core.TableReader != nil {
-		r := p.Processors[idx].TSSpec.Core.TableReader
+	if p.Processors[idx].Spec.Core.TsTableReader != nil {
+		r := p.Processors[idx].Spec.Core.TsTableReader
 		r.Aggregator = localAggsSpec
 		r.OrderedScan = pruneLocalAgg
 		r.AggregatorPost = tsPost
-		p.Processors[idx].TSSpec.Post.OutputTypes = tsPost.OutputTypes
+		p.Processors[idx].Spec.Post.OutputTypes = tsPost.OutputTypes
 	} else {
-		str := fmt.Sprintf("PushAggToTableReader table reader does not exist, sub is %v", p.Processors[idx].TSSpec.Core)
+		str := fmt.Sprintf("PushAggToTableReader table reader does not exist, sub is %v", p.Processors[idx].Spec.Core)
 		panic(str)
 	}
+}
+
+// ExecInTSEngine returns true for execute in time series
+func (p *Processor) ExecInTSEngine() bool {
+	return p.Spec.ExecInTSEngine()
+}
+
+// GetRealRightRouters get real router when there has ts summary processor in the dist case.
+// ex1:
+//
+//	node1			 node2     	      node3
+//
+// TSAggregator    TSAggregator     TSAggregator
+//
+//	|				|			    |
+//
+// TSSynchronizer  TSSynchronizer   TSSynchronizer
+//
+//	| 			    |				|
+//
+// TSAggregator─────────┘───────────────┘
+// in this case, the rightRouters has only one, but we need to add BatchLookUpJoin for node1 and node2 and node3.
+// ex2:
+//
+//		node1			 node2     	      node3
+//				     TSAggregator     TSAggregator
+//			 				|			    |
+//	             TSSynchronizer   TSSynchronizer
+//			  			    |				|
+//
+// TSAggregator─────────┘───────────────┘
+// in this case, we add BatchLookUpJoin only for the nodes with ts data.
+func (p *PhysicalPlan) GetRealRightRouters(
+	nodes map[roachpb.NodeID]struct{}, rightRouters []ProcessorIdx, thisNodeID roachpb.NodeID,
+) ([]ProcessorIdx, ProcessorIdx, bool) {
+	if len(nodes) > 1 && len(rightRouters) == 1 {
+		ps := []ProcessorIdx{}
+		for _, v := range p.Streams {
+			if v.DestProcessor == rightRouters[0] {
+				if _, ok := nodes[p.Processors[v.SourceProcessor].Node]; ok {
+					if p.Processors[v.SourceProcessor].Node != thisNodeID {
+						ps = append(ps, v.SourceProcessor)
+					}
+				}
+			}
+		}
+		ps = append(ps, rightRouters[0])
+		return ps, rightRouters[0], true
+	}
+	return rightRouters, -1, false
 }

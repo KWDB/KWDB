@@ -20,7 +20,6 @@
 #include "utils/big_table_utils.h"
 #include "utils/date_time_util.h"
 #include "engine.h"
-#include "utils/compress_utils.h"
 
 extern void markDeleted(char* delete_flags, size_t row_index);
 

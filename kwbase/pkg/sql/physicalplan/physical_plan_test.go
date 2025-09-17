@@ -173,8 +173,7 @@ func TestProjectionAndRendering(t *testing.T) {
 		{
 			// Projection after rendering.
 			post: execinfrapb.PostProcessSpec{
-				RenderExprs:   []execinfrapb.Expression{{Expr: "@5"}, {Expr: "@1 + @2"}, {Expr: "@6"}},
-				RenderExprsTs: []execinfrapb.Expression{{Expr: "@5"}, {Expr: "@1 + @2"}, {Expr: "@6"}},
+				RenderExprs: []execinfrapb.Expression{{Expr: "@5"}, {Expr: "@1 + @2"}, {Expr: "@6"}},
 			},
 			resultTypes: "A,B,C",
 			ordering:    "2",
@@ -184,9 +183,8 @@ func TestProjectionAndRendering(t *testing.T) {
 			},
 
 			expPost: execinfrapb.PostProcessSpec{
-				RenderExprs:   []execinfrapb.Expression{{Expr: "@6"}, {Expr: "@5"}},
-				RenderExprsTs: []execinfrapb.Expression{{Expr: "@6"}, {Expr: "@5"}},
-				OutputTypes:   []types.T{strToType("C"), strToType("A")},
+				RenderExprs: []execinfrapb.Expression{{Expr: "@6"}, {Expr: "@5"}},
+				OutputTypes: []types.T{strToType("C"), strToType("A")},
 			},
 			expResultTypes: "C,A",
 			expOrdering:    "0",
@@ -195,8 +193,7 @@ func TestProjectionAndRendering(t *testing.T) {
 		{
 			// Projection after rendering; ordering refers to non-projected column.
 			post: execinfrapb.PostProcessSpec{
-				RenderExprs:   []execinfrapb.Expression{{Expr: "@5"}, {Expr: "@1 + @2"}, {Expr: "@6"}},
-				RenderExprsTs: []execinfrapb.Expression{{Expr: "@5"}, {Expr: "@1 + @2"}, {Expr: "@6"}},
+				RenderExprs: []execinfrapb.Expression{{Expr: "@5"}, {Expr: "@1 + @2"}, {Expr: "@6"}},
 			},
 			resultTypes: "A,B,C",
 			ordering:    "2,-1",
@@ -206,9 +203,8 @@ func TestProjectionAndRendering(t *testing.T) {
 			},
 
 			expPost: execinfrapb.PostProcessSpec{
-				RenderExprs:   []execinfrapb.Expression{{Expr: "@6"}, {Expr: "@1 + @2"}},
-				OutputTypes:   []types.T{strToType("C"), strToType("B")},
-				RenderExprsTs: []execinfrapb.Expression{{Expr: "@6"}, {Expr: "@1 + @2"}},
+				RenderExprs: []execinfrapb.Expression{{Expr: "@6"}, {Expr: "@1 + @2"}},
+				OutputTypes: []types.T{strToType("C"), strToType("B")},
 			},
 			expResultTypes: "C,B",
 			expOrdering:    "0,-1",
@@ -295,9 +291,8 @@ func TestProjectionAndRendering(t *testing.T) {
 			},
 
 			expPost: execinfrapb.PostProcessSpec{
-				RenderExprs:   []execinfrapb.Expression{{Expr: "@2 + @3"}, {Expr: "@4"}},
-				RenderExprsTs: []execinfrapb.Expression{{Expr: "@2 + @3"}, {Expr: "@4"}},
-				OutputTypes:   []types.T{strToType("X"), strToType("D")},
+				RenderExprs: []execinfrapb.Expression{{Expr: "@2 + @3"}, {Expr: "@4"}},
+				OutputTypes: []types.T{strToType("X"), strToType("D")},
 			},
 			expResultTypes: "X,D",
 			expOrdering:    "1",
@@ -332,9 +327,8 @@ func TestProjectionAndRendering(t *testing.T) {
 			},
 
 			expPost: execinfrapb.PostProcessSpec{
-				RenderExprs:   []execinfrapb.Expression{{Expr: "@7 + @8"}, {Expr: "@6"}, {Expr: "@9"}},
-				RenderExprsTs: []execinfrapb.Expression{{Expr: "@7 + @8"}, {Expr: "@6"}, {Expr: "@9"}},
-				OutputTypes:   []types.T{strToType("X"), strToType("A"), strToType("D")},
+				RenderExprs: []execinfrapb.Expression{{Expr: "@7 + @8"}, {Expr: "@6"}, {Expr: "@9"}},
+				OutputTypes: []types.T{strToType("X"), strToType("A"), strToType("D")},
 			},
 			expResultTypes: "X,A,D",
 			expOrdering:    "1,-2",

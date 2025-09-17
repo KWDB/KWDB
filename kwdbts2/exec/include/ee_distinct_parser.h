@@ -18,7 +18,7 @@ namespace kwdbts {
 
 class TsDistinctParser : public TsOperatorParser {
  public:
-  TsDistinctParser(DistinctSpec *spec, TSPostProcessSpec *post, TABLE *table);
+  TsDistinctParser(DistinctSpec *spec, PostProcessSpec *post, TABLE *table);
 
   virtual ~TsDistinctParser();
 

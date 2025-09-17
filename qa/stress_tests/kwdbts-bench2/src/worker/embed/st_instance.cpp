@@ -17,6 +17,7 @@
 #include "sys_utils.h"
 #include "ts_table_schema_manager.h"
 #include "ts_payload.h"
+#include "ts_table_v2_impl.h"
 
 extern DedupRule g_dedup_rule_;
 
@@ -50,18 +51,6 @@ KStatus StInstance::GetSchemaInfo(kwdbContext_p ctx, uint32_t table_id,
       return s;
     }
     return KStatus::SUCCESS;
-  } else {
-    std::shared_ptr<kwdbts::TsTable> tags_table;
-    KStatus s = ts_engine_->GetTsTable(ctx, table_id, tags_table);
-    if (s != KStatus::SUCCESS) {
-      return s;
-    }
-    s = tags_table->GetTagSchema(ctx, test_range, tag_schema);
-    if (s != KStatus::SUCCESS) {
-      return s;
-    }
-    s = tags_table->GetDataSchemaExcludeDropped(ctx, data_schema);
-    return s;
   }
   return KStatus::FAIL;
 }
@@ -274,77 +263,6 @@ StInstance::~StInstance() {
 //  int ret = system(("rm -rf " + db_path + "/*").c_str());
 //  assert(ret == 0);
   printf("StInstance::~StInstance() OVER.");
-}
-
-std::shared_ptr<StEngityGroupInstance> StEngityGroupInstance::st_inst_ = nullptr;
-std::shared_mutex StEngityGroupInstance::mutex_ = std::shared_mutex();
-
-KBStatus StEngityGroupInstance::Init(BenchParams params) {
-  std::lock_guard<std::shared_mutex> lk(mutex_);
-  if (inited_) {
-    return KBStatus::OK();
-  }
-  auto ret_status = StInstance::Get()->Init(params, vector<uint32_t>());
-  if (!ret_status.isOK()) {
-    return ret_status;
-  }
-  params_ = params;
-
-  ctx = &g_context;
-  if (kwdbts::InitServerKWDBContext(ctx) != kwdbts::KStatus::SUCCESS) {
-    return KBStatus::InternalError("InitServerKWDBContext ");
-  }
-
-  // set storage directory
-  EngineOptions::init();
-
-  string db_path = normalizePath("entitygp_bench");
-  string ws = rmPathSeperator(db_path);
-  assert(!ws.empty());
-  string dir_path = makeDirectoryPath(EngineOptions::home() + ws);
-  bool ret = MakeDirectory(dir_path);
-  assert(ret == true);
-
-  roachpb::CreateTsTable meta;
-  constructRoachpbTable(&meta, table_id_, params);
-  std::vector<RangeGroup> ranges;
-  ranges.push_back({456, 0});
-  table_ = CreateTable(ctx, &meta, dir_path, ranges);
-
-  KStatus s = table_->GetEntityGroup(ctx, range_group_id_, &entity_group_);
-  assert(s == KStatus::SUCCESS);
-  inited_ = true;
-  return KBStatus::OK();
-}
-
-TsTable* CreateTable(kwdbts::kwdbContext_p ctx, roachpb::CreateTsTable* meta, std::string db_path,
-                     const std::vector<RangeGroup>& range_groups) {
-  std::vector<TagInfo> tag_schema;
-  std::vector<AttributeInfo> metric_schema;
-  KStatus s;
-  for (int i = 0 ; i < meta->k_column_size() ; i++) {
-    const auto& col = meta->k_column(i);
-    struct AttributeInfo col_var;
-    s = TsEntityGroup::GetColAttributeInfo(ctx, col, col_var, i==0);
-    assert(s == KStatus::SUCCESS);
-    if (col_var.isAttrType(COL_GENERAL_TAG) || col_var.isAttrType(COL_PRIMARY_TAG)) {
-      tag_schema.push_back(std::move(TagInfo{col.column_id(), col_var.type,
-                                            static_cast<uint32_t>(col_var.length),
-                                            0, static_cast<uint32_t>(col_var.length),
-                                            static_cast<TagType>(col_var.col_flag)}));
-    } else {
-      metric_schema.push_back(std::move(col_var));
-    }
-  }
-  TsTableImpl* table = new TsTableImpl(ctx, db_path, meta->ts_table().ts_table_id());
-  s = table->Create(ctx, metric_schema, meta->ts_table().partition_interval());
-  assert(s == KStatus::SUCCESS);
-  std::shared_ptr<TsEntityGroup> table_range;
-  for (size_t i = 0; i < range_groups.size(); i++) {
-    s = table->CreateEntityGroup(ctx, range_groups[i], tag_schema, &table_range);
-    assert(s == KStatus::SUCCESS);
-  }
-  return table;
 }
 
 void constructRoachpbTable(roachpb::CreateTsTable* meta, uint64_t table_id, const BenchParams& params,

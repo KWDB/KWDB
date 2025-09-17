@@ -12,6 +12,7 @@
 #define KWDBTS2_EXEC_TESTS_EE_ITERATOR_DATA_TEST_H_
 #include "ee_field.h"
 #include "ee_pb_plan.pb.h"
+#include "ee_internal_type.h"
 
 namespace kwdbts {
 
@@ -55,22 +56,24 @@ void CreateTSStatisticReaderSpec(TSStatisticReaderSpec **spec, k_uint64 objid) {
   }
 }
 
-void CreateReaderTSPostProcessSpec(TSPostProcessSpec **post) {
-  *post = KNEW TSPostProcessSpec();
+void CreateReaderPostProcessSpec(PostProcessSpec **post) {
+  *post = KNEW PostProcessSpec();
   (*post)->set_limit(3);
   (*post)->set_offset(1);
-  (*post)->add_renders("@1");
-  (*post)->add_renders("@2");
-  (*post)->add_outputcols(0);
-  (*post)->add_outputcols(1);
-  (*post)->add_outputtypes(KWDBTypeFamily::IntFamily);
-  (*post)->add_outputtypes(KWDBTypeFamily::IntFamily);
+  kwdbts::Expression *expr1 = (*post)->add_render_exprs();
+  expr1->set_expr("@1");
+  kwdbts::Expression *expr2 = (*post)->add_render_exprs();
+  expr2->set_expr("@2");
+  (*post)->add_output_columns(0);
+  (*post)->add_output_columns(1);
+  (*post)->add_output_types(MarshalToOutputType(KWDBTypeFamily::IntFamily, 4));
+  (*post)->add_output_types(MarshalToOutputType(KWDBTypeFamily::IntFamily, 4));
 }
 void CreateMergeSpec(TSSynchronizerSpec **spec) {
   *spec = KNEW TSSynchronizerSpec();
 }
-void CreateMergeTSPostProcessSpec(TSPostProcessSpec **post) {
-  *post = KNEW TSPostProcessSpec();
+void CreateMergePostProcessSpec(PostProcessSpec **post) {
+  *post = KNEW PostProcessSpec();
   // (*post)->add_primarytags();
   // (*post)->add_outputtypes(KWDBTypeFamily::IntFamily);
   // (*post)->add_outputtypes(KWDBTypeFamily::IntFamily);
@@ -83,21 +86,21 @@ void CreateSortSpec(TSSorterSpec **spec) {
   col->set_col_idx(0);
 }
 
-void CreateSortTSPostProcessSpec(TSPostProcessSpec **post) {
-  *post = KNEW TSPostProcessSpec();
+void CreateSortPostProcessSpec(PostProcessSpec **post) {
+  *post = KNEW PostProcessSpec();
   // (*post)->add_primarytags();
-  (*post)->add_outputtypes(KWDBTypeFamily::IntFamily);
-  (*post)->add_outputtypes(KWDBTypeFamily::IntFamily);
+  (*post)->add_output_types(MarshalToOutputType(KWDBTypeFamily::IntFamily, 4));
+  (*post)->add_output_types(MarshalToOutputType(KWDBTypeFamily::IntFamily, 4));
 }
 
-void CreateNoopSpec(TSNoopSpec **spec) {
-  *spec = KNEW TSNoopSpec();
+void CreateNoopSpec(NoopCoreSpec **spec) {
+  *spec = KNEW NoopCoreSpec();
 }
-void CreateNoopTSPostProcessSpec(TSPostProcessSpec **post) {
-  *post = KNEW TSPostProcessSpec();
+void CreateNoopPostProcessSpec(PostProcessSpec **post) {
+  *post = KNEW PostProcessSpec();
   // (*post)->add_primarytags();
-  (*post)->add_outputtypes(KWDBTypeFamily::IntFamily);
-  (*post)->add_outputtypes(KWDBTypeFamily::IntFamily);
+  (*post)->add_output_types(MarshalToOutputType(KWDBTypeFamily::IntFamily, 4));
+  (*post)->add_output_types(MarshalToOutputType(KWDBTypeFamily::IntFamily, 4));
 }
 
 void CreateDistinctSpec(DistinctSpec **spec) {
@@ -136,28 +139,28 @@ void CreateAggregatorSpec(TSAggregatorSpec **spec) {
   item->add_col_idx(1);
 }
 
-void CreateAggPostProcessSpec(TSPostProcessSpec **post) {
-  (*post) = KNEW TSPostProcessSpec();
-  (*post)->add_outputtypes(KWDBTypeFamily::IntFamily);
-  (*post)->add_outputtypes(KWDBTypeFamily::IntFamily);
-  (*post)->add_outputtypes(KWDBTypeFamily::IntFamily);
-  (*post)->add_outputtypes(KWDBTypeFamily::IntFamily);
-  (*post)->add_outputtypes(KWDBTypeFamily::IntFamily);
+void CreateAggPostProcessSpec(PostProcessSpec **post) {
+  (*post) = KNEW PostProcessSpec();
+  (*post)->add_output_types(MarshalToOutputType(KWDBTypeFamily::IntFamily, 4));
+  (*post)->add_output_types(MarshalToOutputType(KWDBTypeFamily::IntFamily, 4));
+  (*post)->add_output_types(MarshalToOutputType(KWDBTypeFamily::IntFamily, 4));
+  (*post)->add_output_types(MarshalToOutputType(KWDBTypeFamily::IntFamily, 4));
+  (*post)->add_output_types(MarshalToOutputType(KWDBTypeFamily::IntFamily, 4));
   // (*post)->add_outputtypes(KWDBTypeFamily::IntFamily);
-  (*post)->add_outputtypes(KWDBTypeFamily::IntFamily);
+  (*post)->add_output_types(MarshalToOutputType(KWDBTypeFamily::IntFamily, 4));
 }
 
-void CreateDistinctPostProcessSpec(TSPostProcessSpec **post) {
-  (*post) = KNEW TSPostProcessSpec();
-  (*post)->add_outputtypes(KWDBTypeFamily::IntFamily);
-  (*post)->add_outputtypes(KWDBTypeFamily::IntFamily);
+void CreateDistinctPostProcessSpec(PostProcessSpec **post) {
+  (*post) = KNEW PostProcessSpec();
+  (*post)->add_output_types(MarshalToOutputType(KWDBTypeFamily::IntFamily, 4));
+  (*post)->add_output_types(MarshalToOutputType(KWDBTypeFamily::IntFamily, 4));
 }
 
 void CreateScanFlowSpec(kwdbContext_p ctx, TSFlowSpec **flow, k_uint64 objid) {
   TSTagReaderSpec *spec{nullptr};
-  TSPostProcessSpec *post{nullptr};
+  PostProcessSpec *post{nullptr};
   CreateTagReaderSpec(&spec, objid);
-  CreateReaderTSPostProcessSpec(&post);
+  CreateReaderPostProcessSpec(&post);
   *flow = KNEW TSFlowSpec();
   TSProcessorSpec *processor = (*flow)->add_processors();
   // TSInputSyncSpec* input = processor->add_input();
@@ -170,28 +173,28 @@ void CreateScanFlowSpec(kwdbContext_p ctx, TSFlowSpec **flow, k_uint64 objid) {
   processor->set_processor_id(0);
 }
 
-void CreateDistinctSpecs(DistinctSpec **spec, TSPostProcessSpec **post) {
+void CreateDistinctSpecs(DistinctSpec **spec, PostProcessSpec **post) {
   CreateDistinctSpec(spec);
   CreateDistinctPostProcessSpec(post);
 }
 
-void CreateAggSpecs(TSAggregatorSpec **spec, TSPostProcessSpec **post) {
+void CreateAggSpecs(TSAggregatorSpec **spec, PostProcessSpec **post) {
   CreateAggregatorSpec(spec);
   CreateAggPostProcessSpec(post);
 }
 
-void CreateMergeSpecs(TSSynchronizerSpec **spec, TSPostProcessSpec **post) {
+void CreateMergeSpecs(TSSynchronizerSpec **spec, PostProcessSpec **post) {
   CreateMergeSpec(spec);
-  CreateMergeTSPostProcessSpec(post);
+  CreateMergePostProcessSpec(post);
 }
 
-void CreateSortSpecs(TSSorterSpec **spec, TSPostProcessSpec **post) {
+void CreateSortSpecs(TSSorterSpec **spec, PostProcessSpec **post) {
   CreateSortSpec(spec);
-  CreateSortTSPostProcessSpec(post);
+  CreateSortPostProcessSpec(post);
 }
-void CreateNoopSpecs(TSNoopSpec **spec, TSPostProcessSpec **post) {
+void CreateNoopSpecs(NoopCoreSpec **spec, PostProcessSpec **post) {
   CreateNoopSpec(spec);
-  CreateNoopTSPostProcessSpec(post);
+  CreateNoopPostProcessSpec(post);
 }
 void CreateSourceSpec(TSInputSyncSpec **spec) {
   *spec = KNEW TSInputSyncSpec();
@@ -249,19 +252,19 @@ void CreateSinkSpec(TSOutputRouterSpec **spec) {
   stream->set_dest_processor(1);
   (*spec)->add_hash_columns(0);
 }
-void CreateSinkSpecs(TSOutputRouterSpec **spec, TSPostProcessSpec **post) {
+void CreateSinkSpecs(TSOutputRouterSpec **spec, PostProcessSpec **post) {
   CreateSinkSpec(spec);
-  CreateNoopTSPostProcessSpec(post);
+  CreateNoopPostProcessSpec(post);
 }
 
-void CreateSourceSpecs(TSInputSyncSpec **spec, TSPostProcessSpec **post) {
+void CreateSourceSpecs(TSInputSyncSpec **spec, PostProcessSpec **post) {
   CreateSourceSpec(spec);
-  CreateNoopTSPostProcessSpec(post);
+  CreateNoopPostProcessSpec(post);
 }
 
-void CreateSourceMergeSpecs(TSInputSyncSpec **spec, TSPostProcessSpec **post) {
+void CreateSourceMergeSpecs(TSInputSyncSpec **spec, PostProcessSpec **post) {
   CreateSourceMergeSpec(spec);
-  CreateNoopTSPostProcessSpec(post);
+  CreateNoopPostProcessSpec(post);
 }
 
 /**
@@ -276,22 +279,22 @@ void CreateScanFlowSpecAllCases(kwdbContext_p ctx, TSFlowSpec **flow,
   *flow = KNEW TSFlowSpec();
   // create Merge
   TSSynchronizerSpec *TSSynchronizerSpec{nullptr};
-  TSPostProcessSpec *mergepost{nullptr};
+  PostProcessSpec *mergepost{nullptr};
   CreateMergeSpecs(&TSSynchronizerSpec, &mergepost);
   // add child
   TSReaderSpec *spec{nullptr};
-  TSPostProcessSpec *post{nullptr};
+  PostProcessSpec *post{nullptr};
   CreateReaderSpec(&spec, objid);
-  CreateReaderTSPostProcessSpec(&post);
+  CreateReaderPostProcessSpec(&post);
   // add child
   TSAggregatorSpec *aggspec{nullptr};
-  TSPostProcessSpec *aggpost{nullptr};
+  PostProcessSpec *aggpost{nullptr};
   CreateAggSpecs(&aggspec, &aggpost);
 
   TSTagReaderSpec *tagspec{nullptr};
-  TSPostProcessSpec *tagpost{nullptr};
+  PostProcessSpec *tagpost{nullptr};
   CreateTagReaderSpec(&tagspec, objid);
-  tagpost = KNEW TSPostProcessSpec();
+  tagpost = KNEW PostProcessSpec();
 
   TSProcessorSpec *tagprocessor = (*flow)->add_processors();
   TSProcessorCoreUnion *tagcore = KNEW TSProcessorCoreUnion();

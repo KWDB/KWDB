@@ -1071,11 +1071,11 @@ AND t.k_timestamp >= '2023-07-01 01:00:00' ;
 FROM pipec_r.point_info pi        -- 26
      join pipec_r.pipeline_info li         -- 26
          on li.pipeline_sn = pi.pipeline_sn            -- 150K
-     join db_pipec.t_point t
+     join db_pipec.t_point t 
           on t.point_sn = pi.point_sn
      join pipec_r.station_info si           -- 436
-         on pi.station_sn = si.station_sn
-     join pipec_r.workarea_info wi
+         on pi.station_sn = si.station_sn     
+     join pipec_r.workarea_info wi 
          on si.work_area_sn = wi.work_area_sn        -- 41
 WHERE li.pipeline_name = 'pipeline_1'  -- 1/26
   AND wi.work_area_name in ('work_area_1', 'work_area_2', 'work_area_3')  -- 3/41
@@ -1104,11 +1104,11 @@ ORDER BY wi.work_area_name,
 FROM pipec_r.point_info pi        -- 26
      join pipec_r.pipeline_info li         -- 26
          on li.pipeline_sn = pi.pipeline_sn            -- 150K
-     join db_pipec.t_point t
+     join db_pipec.t_point t 
           on t.point_sn = pi.point_sn
      join pipec_r.station_info si           -- 436
-         on pi.station_sn = si.station_sn
-     join pipec_r.workarea_info wi
+         on pi.station_sn = si.station_sn     
+     join pipec_r.workarea_info wi 
          on si.work_area_sn = wi.work_area_sn        -- 41
 WHERE li.pipeline_name = 'pipeline_1'  -- 1/26
   AND wi.work_area_name in ('work_area_1', 'work_area_2', 'work_area_3')  -- 3/41
@@ -1197,11 +1197,11 @@ SET
        MAX(t.measure_value) AS max_value,
        MIN(t.measure_value) AS min_value,
        COUNT(t.measure_value) AS number_of_values
-FROM db_pipec.t_point t,
+FROM db_pipec.t_point t,           
      pipec_r.station_info si,
-     pipec_r.workarea_info wi,
-     pipec_r.pipeline_info li,
-     pipec_r.point_info pi
+     pipec_r.workarea_info wi, 
+     pipec_r.pipeline_info li,        
+     pipec_r.point_info pi         
 WHERE li.pipeline_sn = pi.pipeline_sn
   AND pi.station_sn = si.station_sn
   AND si.work_area_sn = wi.work_area_sn
@@ -1230,11 +1230,11 @@ ORDER BY wi.work_area_name,
        MAX(t.measure_value) AS max_value,
        MIN(t.measure_value) AS min_value,
        COUNT(t.measure_value) AS number_of_values
-FROM db_pipec.t_point t,
+FROM db_pipec.t_point t,           
      pipec_r.station_info si,
-     pipec_r.workarea_info wi,
-     pipec_r.pipeline_info li,
-     pipec_r.point_info pi
+     pipec_r.workarea_info wi, 
+     pipec_r.pipeline_info li,        
+     pipec_r.point_info pi         
 WHERE li.pipeline_sn = pi.pipeline_sn
   AND pi.station_sn = si.station_sn
   AND si.work_area_sn = wi.work_area_sn
@@ -1252,7 +1252,7 @@ ORDER BY wi.work_area_name,
          timebucket;
                  tree                |         field         |                                                       description
 -------------------------------------+-----------------------+--------------------------------------------------------------------------------------------------------------------------
-                                     | distributed           | false
+                                     | distributed           | true
                                      | vectorized            | false
   render                             |                       |
    └── sort                          |                       |
@@ -1312,11 +1312,11 @@ ORDER BY wi.work_area_name,
 > SELECT si.station_name,
        AVG(t.measure_value) AS avg_value,
        COUNT(t.measure_value) AS number_of_values
-FROM db_pipec.t_point t,
+FROM db_pipec.t_point t,           
      pipec_r.station_info si,
-     pipec_r.workarea_info wi,
-     pipec_r.pipeline_info li,
-     pipec_r.point_info pi
+     pipec_r.workarea_info wi, 
+     pipec_r.pipeline_info li,        
+     pipec_r.point_info pi         
 WHERE li.pipeline_sn = pi.pipeline_sn
   AND pi.station_sn = si.station_sn
   AND si.work_area_sn = wi.work_area_sn
@@ -1333,11 +1333,11 @@ ORDER BY si.station_name;
 > explain SELECT si.station_name,
        AVG(t.measure_value) AS avg_value,
        COUNT(t.measure_value) AS number_of_values
-FROM db_pipec.t_point t,
+FROM db_pipec.t_point t,           
      pipec_r.station_info si,
-     pipec_r.workarea_info wi,
-     pipec_r.pipeline_info li,
-     pipec_r.point_info pi
+     pipec_r.workarea_info wi, 
+     pipec_r.pipeline_info li,        
+     pipec_r.point_info pi         
 WHERE li.pipeline_sn = pi.pipeline_sn
   AND pi.station_sn = si.station_sn
   AND si.work_area_sn = wi.work_area_sn
@@ -1349,7 +1349,7 @@ GROUP BY si.station_name
 ORDER BY si.station_name;
                tree               |         field         |               description
 ----------------------------------+-----------------------+------------------------------------------
-                                  | distributed           | false
+                                  | distributed           | true
                                   | vectorized            | false
   render                          |                       |
    └── batch-lookup-join          |                       |
@@ -1429,7 +1429,7 @@ GROUP BY si.station_name
 ORDER BY si.station_name;
              tree             |            field            |               description
 ------------------------------+-----------------------------+------------------------------------------
-                              | distributed                 | false
+                              | distributed                 | true
                               | vectorized                  | false
   batch-lookup-join           |                             |
    │                          | type                        | inner
@@ -1590,7 +1590,7 @@ ORDER BY
     wi.work_area_name, t.measure_type;
                   tree                  |       field        |                        description
 ----------------------------------------+--------------------+------------------------------------------------------------
-                                        | distributed        | false
+                                        | distributed        | true
                                         | vectorized         | false
   render                                |                    |
    └── batch-lookup-join                |                    |
@@ -1612,7 +1612,6 @@ ORDER BY
         │                               | table              | pipeline_info@pipeline_name_index
         │                               | spans              | /"pipeline_1"-/"pipeline_1"/PrefixEnd
         └── group                       |                    |
-             │                          | engine type        | time series
              │                          | aggregate 0        | measure_type
              │                          | aggregate 1        | work_area_name
              │                          | aggregate 2        | count(DISTINCT point_sn)
@@ -1630,7 +1629,7 @@ ORDER BY
                             └── ts scan |                    |
                                         | ts-table           | t_point
                                         | access mode        | hashRelScan
-(40 rows)
+(39 rows)
 > SELECT li.pipeline_name,
        t.measure_type,
        time_bucket(t.k_timestamp, '10s') as timebucket,
@@ -1679,7 +1678,7 @@ ORDER BY
     timebucket;
                 tree               |       field       |               description
 -----------------------------------+-------------------+-------------------------------------------
-                                   | distributed       | false
+                                   | distributed       | true
                                    | vectorized        | false
   render                           |                   |
    └── batch-lookup-join           |                   |
@@ -1746,7 +1745,7 @@ GROUP BY si.station_name
 ORDER BY si.station_name;
              tree             |            field            |               description
 ------------------------------+-----------------------------+------------------------------------------
-                              | distributed                 | false
+                              | distributed                 | true
                               | vectorized                  | false
   batch-lookup-join           |                             |
    │                          | type                        | inner
@@ -1818,7 +1817,7 @@ GROUP BY t.measure_type
 ORDER BY t.measure_type;
              tree             |            field            |               description
 ------------------------------+-----------------------------+------------------------------------------
-                              | distributed                 | false
+                              | distributed                 | true
                               | vectorized                  | false
   batch-lookup-join           |                             |
    │                          | type                        | inner
@@ -1907,7 +1906,7 @@ GROUP BY wi.work_area_name,
 ORDER BY timebucket;
                  tree                |         field         |                                                       description
 -------------------------------------+-----------------------+--------------------------------------------------------------------------------------------------------------------------
-                                     | distributed           | false
+                                     | distributed           | true
                                      | vectorized            | false
   render                             |                       |
    └── sort                          |                       |
@@ -2106,7 +2105,7 @@ ORDER BY
     timebucket, s.work_area_sn;
                 tree               |       field        |                      description
 -----------------------------------+--------------------+--------------------------------------------------------
-                                   | distributed        | false
+                                   | distributed        | true
                                    | vectorized         | false
   render                           |                    |
    └── batch-lookup-join           |                    |
@@ -2190,7 +2189,7 @@ WHERE si.station_sn = t.station_sn
 AND t.k_timestamp >= '2023-07-01 01:00:00' ;
              tree             |       field       |                description
 ------------------------------+-------------------+---------------------------------------------
-                              | distributed       | false
+                              | distributed       | true
                               | vectorized        | false
   append                      |                   |
    ├── batch-lookup-join      |                   |
@@ -2298,7 +2297,7 @@ ORDER BY wi.work_area_name,
          timebucket;
                       tree                     |       field        |                                                       description
 -----------------------------------------------+--------------------+--------------------------------------------------------------------------------------------------------------------------
-                                               | distributed        | false
+                                               | distributed        | true
                                                | vectorized         | false
   render                                       |                    |
    └── sort                                    |                    |

@@ -12,9 +12,77 @@
 #include "ee_internal_type.h"
 #include "lg_api.h"
 #include "ee_field.h"
-#include "ee_pb_plan.pb.h"
 
 namespace kwdbts {
+
+void EncodeVarintTypes(char *buf, k_int32 &offset, k_uint64 value) {
+  while (value >= 1 << 7) {
+    buf[offset] = static_cast<char>(value & 0x7f | 0x80);
+    value >>= 7;
+    offset++;
+  }
+  buf[offset] = static_cast<char>(value);
+  offset++;
+}
+
+std::string MarshalToOutputType(KWDBTypeFamily family, k_uint32 width) {
+  char buf[1024] = {0};
+  memset(buf, 0, 1024);
+  k_int32 i = 0;
+  buf[i] = 0x8;
+  ++i;
+  EncodeVarintTypes(buf, i, family);
+  buf[i] = 0x10;
+  ++i;
+  EncodeVarintTypes(buf, i, width);
+
+  return std::string(buf, i);
+}
+
+KWDBTypeFamily GetInternalOutputType(const std::string &str) {
+  k_uint32 internal_type = 0;
+  k_uint32 length = str.size();
+  const char *buf = str.c_str();
+  for (k_uint32 i = 0; i < length; ) {
+    k_uint64 wire = 0;
+    for (k_uint32 shift = 0; ; shift += 7) {
+      if (shift >= 64) {
+        return KWDBTypeFamily::AnyFamily;
+      }
+
+      if (i >= length) {
+        return KWDBTypeFamily::AnyFamily;
+      }
+
+      char byte = buf[i];
+      ++i;
+      wire |= (static_cast<k_uint64>(byte) & 0x7F) << shift;
+      if (wire < 0x80) {
+        break;
+      }
+    }
+
+    for (k_uint32 j = 0; ; j += 7) {
+      if (j >= 64) {
+        return KWDBTypeFamily::AnyFamily;
+      }
+
+      if (i >= length) {
+        return KWDBTypeFamily::AnyFamily;
+      }
+      char byte = buf[i];
+      ++i;
+      internal_type |= (static_cast<k_uint32>(byte) & 0x7F) << j;
+      if (byte < 0x80) {
+        break;
+      }
+    }
+    break;
+  }
+
+  return static_cast<KWDBTypeFamily>(internal_type);
+}
+
 
 KStatus GetInternalField(const char *buf, k_uint32 length, Field **field, k_int32 seq) {
   k_uint32 internal_type = 0;

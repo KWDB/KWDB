@@ -241,7 +241,7 @@ func processProducerMessage(
 			// Don't forward data rows when we're draining.
 			continue
 		}
-		// when isTimeSeries, local AE may get stuck.
+		// when usePipeLine, local AE may get stuck.
 		// When receiving a remote ts error, need cancel locally.
 		// Cancel is called in sendErrToConsumer.
 		needReturn := false

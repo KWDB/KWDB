@@ -19,7 +19,7 @@ namespace kwdbts {
 
 class TsStatisticScanParser : public TsScanParser {
  public:
-  TsStatisticScanParser(TSStatisticReaderSpec *spec, TSPostProcessSpec *post,
+  TsStatisticScanParser(TSStatisticReaderSpec *spec, PostProcessSpec *post,
                         TABLE *table)
       : TsScanParser(post, table), spec_(spec) {}
 

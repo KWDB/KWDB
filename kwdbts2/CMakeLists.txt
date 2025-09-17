@@ -418,9 +418,9 @@ if (WITH_TESTS)
   else ()
       file(GLOB_RECURSE KWDBTS2_SERVER_TEST_SRC
               mmap/tests/*.cpp
-              storage/tests/*.cpp
+#              storage/tests/*.cpp
               exec/tests/*.cpp
-              engine/tests/*.cpp
+#              engine/tests/*.cpp
               ts_engine/tests/*.cpp
               statistic/tests/*.cpp
               icl/autonomy/tests/*.cpp

@@ -69,10 +69,10 @@ message ProcessorSpec {
 
   optional ProcessorCoreUnion core = 2 [(gogoproto.nullable) = false];
 
-  optional PostProcessSpec post = 4 [(gogoproto.nullable) = false];
-
   // In most cases, there is one output.
   repeated OutputRouterSpec output = 3 [(gogoproto.nullable) = false];
+
+  optional PostProcessSpec post = 4 [(gogoproto.nullable) = false];
 
   // An optional identifier that can be used to correlate processors that are
   // part of the same stage (e.g. multiple joiners that are part of a
@@ -88,7 +88,20 @@ message ProcessorSpec {
   optional int32 processor_id = 6 [(gogoproto.nullable) = false,
                                   (gogoproto.customname) = "ProcessorID"];
 
-  optional int32 engine = 7 [(gogoproto.nullable) = false];
+  // final_ts_processor is true representing the processor is the last AE operator.
+  optional bool final_ts_processor = 7 [(gogoproto.nullable) = false];
+
+  enum engineType {
+    // Relation flags relation engine
+    Relation = 0;
+    // TimeSeries flags time series engine
+    TimeSeries = 1;
+    // Analytical flags analytical engine
+    Analytical = 2;
+  }
+
+  // engine flags engine that processor execute
+  optional engineType engine = 8 [(gogoproto.nullable) = false];
 }
 
 // ap engine processor specs
@@ -98,7 +111,6 @@ message APProcessorSpecs {
 
 message ProcessorCoreUnion {
   option (gogoproto.onlyone) = true;
-
   optional NoopCoreSpec noop = 1;
   optional TableReaderSpec tableReader = 2;
   optional JoinReaderSpec joinReader = 3;
@@ -138,18 +150,23 @@ message ProcessorCoreUnion {
   optional TsAlterProSpec tsAlter = 39;
   optional TsTagUpdateProSpec tsTagUpdate = 40;
   optional TsInsertSelSpec tsInsertSelect = 41;
-  // BatchLookupJoinerSpec only be used for multiple model processing
-  // when the switch is on and the server starts with single node mode.
   optional BatchLookupJoinerSpec batchLookupJoiner = 42;
 
   optional TsInsertWithCDCProSpec tsInsertWithCDC = 43;
   optional StreamReaderSpec streamReader = 44;
   optional StreamAggregatorSpec streamAggregator = 45;
-  optional APTableReaderSpec apTableReader = 46;
-  optional APCreateDatabaseProSpec apCreateDatabase = 47;
-  optional APCreateTableProSpec apCreateTable = 48;
-  optional APDropDatabaseProSpec apDropDatabase = 49;
-  optional APDropTableProSpec apDropTable = 50;
+
+  // TSEngine execute process
+  optional TSTagReaderSpec tsTagReader = 46;
+  optional TSReaderSpec tsTableReader = 47;
+  optional TSStatisticReaderSpec tsStatisticReader = 48;
+  optional TSSynchronizerSpec tsSynchronizer = 49;
+  optional TSSamplerSpec tsSampler = 50;
+  optional APTableReaderSpec apTableReader = 51;
+  optional APCreateDatabaseProSpec apCreateDatabase = 52;
+  optional APCreateTableProSpec apCreateTable = 53;
+  optional APDropDatabaseProSpec apDropDatabase = 54;
+  optional APDropTableProSpec apDropTable = 55;
   reserved 6, 12;
 }
 

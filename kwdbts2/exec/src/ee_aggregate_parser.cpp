@@ -27,7 +27,7 @@ namespace kwdbts {
     Return(EEIteratorErrCode::EE_ERROR);                  \
   }
 
-TsAggregateParser::TsAggregateParser(TSAggregatorSpec *spec, TSPostProcessSpec *post,
+TsAggregateParser::TsAggregateParser(TSAggregatorSpec *spec, PostProcessSpec *post,
                                                           TABLE *table, BaseOperator *agg_op)
   : TsOperatorParser(post, table), spec_(spec), agg_op_(agg_op) { }
 
@@ -64,10 +64,10 @@ EEIteratorErrCode TsAggregateParser::HandleRender(kwdbContext_p ctx, Field **ren
   }
 
   for (k_uint32 i = 0; i < renders_size_; ++i) {
-    std::string str = post_->renders(i);
+    Expression render_expr = post_->render_exprs(i);
     // produce Binary tree
     ExprPtr expr;
-    code = BuildBinaryTree(ctx, str, &expr);
+    code = BuildBinaryTree(ctx, render_expr.expr(), &expr);
     if (EEIteratorErrCode::EE_OK != code) {
       break;
     }
@@ -83,7 +83,7 @@ EEIteratorErrCode TsAggregateParser::HandleRender(kwdbContext_p ctx, Field **ren
   }
 
   for (k_uint32 i = 0; i < outputcol_count_; ++i) {
-    k_uint32 index = post_->outputcols(i);
+    k_uint32 index = post_->output_columns(i);
     render[i] = aggs_[index];
   }
 

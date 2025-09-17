@@ -122,6 +122,8 @@ type routerOutput struct {
 
 	stats RouterOutputStats
 
+	rowAlloc sqlbase.EncDatumRowAlloc
+
 	// memoryMonitor and diskMonitor are mu.rowContainer's monitors.
 	memoryMonitor, diskMonitor *mon.BytesMonitor
 }
@@ -602,7 +604,7 @@ func (mr *mirrorRouter) Push(
 	for i := range mr.outputs {
 		ro := &mr.outputs[i]
 		ro.mu.Lock()
-		err := ro.addRowLocked(context.TODO(), row)
+		err := ro.addRowLocked(context.TODO(), ro.rowAlloc.CopyRow(row))
 		ro.mu.Unlock()
 		if err != nil {
 			if useSema {

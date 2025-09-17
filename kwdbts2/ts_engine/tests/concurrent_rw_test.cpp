@@ -123,25 +123,26 @@ TEST_F(ConcurrentRWTest, FlushOnly) {
       std::vector<k_int32> agg_extend_cols = {};
       std::vector<timestamp64> ts_points = {};
       ASSERT_EQ(
-          vgroup_->GetIterator(ctx_, entity_ids, ts_spans, block_filter, scan_cols, scan_cols, agg_extend_cols,
+          vgroup_->GetIterator(ctx_, 1, entity_ids, ts_spans, block_filter, scan_cols, scan_cols, agg_extend_cols,
                                scan_agg_types, table_schema_mgr_, schema, &ts_iter, vgroup_, ts_points, false, false),
           KStatus::SUCCESS);
-      ResultSet res{(k_uint32)scan_cols.size()};
       k_uint32 count = 0;
       uint32_t sum = 0;
-      bool is_finished = false;
-      while (!is_finished) {
-        ts_iter->Next(&res, &count, &is_finished);
-      }
 
       std::unordered_set<timestamp64> ts_set;
-      for (auto x : res.data[0]) {
-        sum += x->count;
-        timestamp64* ts = (timestamp64*)x->mem;
-        for (int i = 0; i < x->count; i++) {
-          ts_set.insert(ts[i]);
+      bool is_finished = false;
+      while (!is_finished) {
+        ResultSet res{(k_uint32)scan_cols.size()};
+        ts_iter->Next(&res, &count, &is_finished);
+        for (auto x : res.data[0]) {
+          sum += x->count;
+          timestamp64* ts = (timestamp64*)x->mem;
+          for (int i = 0; i < x->count; i++) {
+            ts_set.insert(ts[i]);
+          }
         }
       }
+
       delete ts_iter;
       result.count.push_back(sum);
       result.expect.push_back(ts_set.size());
@@ -219,25 +220,25 @@ TEST_F(ConcurrentRWTest, CompactOnly) {
       std::vector<k_uint32> scan_cols = {0, 1};
       std::vector<Sumfunctype> scan_agg_types;
       ASSERT_EQ(
-          vgroup->GetIterator(ctx_, entity_ids, ts_spans, block_filter, scan_cols, scan_cols, agg_extend_cols,
+          vgroup->GetIterator(ctx_, 1, entity_ids, ts_spans, block_filter, scan_cols, scan_cols, agg_extend_cols,
                               scan_agg_types, table_schema_mgr_, schema, &ts_iter, vgroup, ts_points, false, false),
           KStatus::SUCCESS);
-      ResultSet res{(k_uint32)scan_cols.size()};
       k_uint32 count = 0;
       uint32_t sum = 0;
       bool is_finished = false;
-      while (!is_finished) {
-        ts_iter->Next(&res, &count, &is_finished);
-      }
-
       std::unordered_set<timestamp64> ts_set;
-      for (auto x : res.data[0]) {
-        sum += x->count;
-        timestamp64* ts = (timestamp64*)x->mem;
-        for (int i = 0; i < x->count; i++) {
-          ts_set.insert(ts[i]);
+      while (!is_finished) {
+        ResultSet res{(k_uint32)scan_cols.size()};
+        ts_iter->Next(&res, &count, &is_finished);
+        for (auto x : res.data[0]) {
+          sum += x->count;
+          timestamp64* ts = (timestamp64*)x->mem;
+          for (int i = 0; i < x->count; i++) {
+            ts_set.insert(ts[i]);
+          }
         }
       }
+
       delete ts_iter;
       result.count.push_back(sum);
       result.expect.push_back(ts_set.size());
@@ -337,25 +338,25 @@ TEST_F(ConcurrentRWTest, SwitchMem) {
       ASSERT_EQ(table_schema_mgr_->GetMetricSchema(1, &schema), KStatus::SUCCESS);
       auto write_count = atomic_count.load();
       ASSERT_EQ(
-          vgroup->GetIterator(ctx_, entity_ids, ts_spans, block_filter, scan_cols, scan_cols, agg_extend_cols,
+          vgroup->GetIterator(ctx_, 1, entity_ids, ts_spans, block_filter, scan_cols, scan_cols, agg_extend_cols,
                               scan_agg_types, table_schema_mgr_, schema, &ts_iter, vgroup, ts_points, false, false),
           KStatus::SUCCESS);
-      ResultSet res{(k_uint32)scan_cols.size()};
       k_uint32 count = 0;
       uint32_t sum = 0;
       bool is_finished = false;
-      while (!is_finished) {
-        ts_iter->Next(&res, &count, &is_finished);
-      }
-
       std::unordered_set<timestamp64> ts_set;
-      for (auto x : res.data[0]) {
-        sum += x->count;
-        timestamp64* ts = (timestamp64*)x->mem;
-        for (int i = 0; i < x->count; i++) {
-          ts_set.insert(ts[i]);
+      while (!is_finished) {
+        ResultSet res{(k_uint32)scan_cols.size()};
+        ts_iter->Next(&res, &count, &is_finished);
+        for (auto x : res.data[0]) {
+          sum += x->count;
+          timestamp64* ts = (timestamp64*)x->mem;
+          for (int i = 0; i < x->count; i++) {
+            ts_set.insert(ts[i]);
+          }
         }
       }
+
       delete ts_iter;
       result.count.push_back(sum);
       result.expect.push_back(write_count);
@@ -435,25 +436,25 @@ TEST_F(ConcurrentRWTest, RandomFlush) {
       ASSERT_EQ(table_schema_mgr_->GetMetricSchema(1, &schema), KStatus::SUCCESS);
       auto write_count = atomic_count.load();
       ASSERT_EQ(
-          vgroup->GetIterator(ctx_, entity_ids, ts_spans, block_filter, scan_cols, scan_cols, agg_extend_cols,
+          vgroup->GetIterator(ctx_, 1, entity_ids, ts_spans, block_filter, scan_cols, scan_cols, agg_extend_cols,
                               scan_agg_types, table_schema_mgr_, schema, &ts_iter, vgroup, ts_points, false, false),
           KStatus::SUCCESS);
-      ResultSet res{(k_uint32)scan_cols.size()};
       k_uint32 count = 0;
       uint32_t sum = 0;
       bool is_finished = false;
-      while (!is_finished) {
-        ts_iter->Next(&res, &count, &is_finished);
-      }
-
       std::unordered_set<timestamp64> ts_set;
-      for (auto x : res.data[0]) {
-        sum += x->count;
-        timestamp64* ts = (timestamp64*)x->mem;
-        for (int i = 0; i < x->count; i++) {
-          ts_set.insert(ts[i]);
+      while (!is_finished) {
+        ResultSet res{(k_uint32)scan_cols.size()};
+        ts_iter->Next(&res, &count, &is_finished);
+        for (auto x : res.data[0]) {
+          sum += x->count;
+          timestamp64* ts = (timestamp64*)x->mem;
+          for (int i = 0; i < x->count; i++) {
+            ts_set.insert(ts[i]);
+          }
         }
       }
+
       delete ts_iter;
       result.count.push_back(sum);
       result.expect.push_back(write_count);

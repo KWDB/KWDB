@@ -64,19 +64,13 @@ const (
 	alterKwdbAlterColumnType
 	alterKwdbAlterPartitionInterval
 	alterKwdbAlterRetentions
-	compress
-	deleteExpiredData
 	alterCompressInterval
 	autonomy
-	compressAll
-	compressDB
-	compressTable
 	vacuum
 	alterVacuumInterval
 	createTagIndex
 	dropTagIndex
 	alterTagIndex
-	count
 	createKwdbAPDatabase
 	createKwdbAPTable
 	dropKwdbAPDatabase
@@ -389,7 +383,7 @@ func (sw *TSSchemaChangeWorker) handleResult(
 				},
 			}
 			updateErr = p.handleSetTagValue(ctx, d.SNTable, insTable, syncErr)
-		case compress, deleteExpiredData, autonomy, vacuum, count:
+		case autonomy, vacuum:
 			updateErr = p.handleSchedule(ctx, sw.job, syncErr)
 		default:
 		}
@@ -1032,7 +1026,7 @@ func (sw *TSSchemaChangeWorker) makeAndRunDistPlan(
 			allNodePayloadInfos: [][]*sqlbase.SinglePayloadInfo{payInfo},
 		}
 		newPlanNode = tsIns
-	case compress, deleteExpiredData, autonomy, count:
+	case autonomy:
 		log.Infof(ctx, "%s job start, jobID: %d", opType, *sw.job.ID())
 		var desc []sqlbase.TableDescriptor
 		var allDesc []sqlbase.DescriptorProto
@@ -1051,15 +1045,8 @@ func (sw *TSSchemaChangeWorker) makeAndRunDistPlan(
 		}
 		for _, table := range allDesc {
 			tableDesc, ok := table.(*sqlbase.TableDescriptor)
-			// can not compress table if table has mutations
-			if d.Type == compress {
-				if ok && tableDesc.IsTSTable() && tableDesc.State == sqlbase.TableDescriptor_PUBLIC && len(tableDesc.Mutations) == 0 {
-					desc = append(desc, *tableDesc)
-				}
-			} else {
-				if ok && tableDesc.IsTSTable() && tableDesc.State == sqlbase.TableDescriptor_PUBLIC {
-					desc = append(desc, *tableDesc)
-				}
+			if ok && tableDesc.IsTSTable() && tableDesc.State == sqlbase.TableDescriptor_PUBLIC {
+				desc = append(desc, *tableDesc)
 			}
 		}
 		if len(desc) == 0 {
@@ -1240,16 +1227,6 @@ func getDDLOpType(op int32) string {
 		return "alter partition interval"
 	case alterKwdbAlterRetentions:
 		return "alter retentions"
-	case compress:
-		return "compress"
-	case compressAll:
-		return "compress all"
-	case compressDB:
-		return "compress database"
-	case compressTable:
-		return "compress table"
-	case deleteExpiredData:
-		return "clean up expired data"
 	case alterCompressInterval:
 		return "alter compress interval"
 	case autonomy:
@@ -1260,8 +1237,6 @@ func getDDLOpType(op int32) string {
 		return "create tag index"
 	case dropTagIndex:
 		return "drop tag index"
-	case count:
-		return "count"
 	case createKwdbAPDatabase:
 		return "create ap database"
 	case createKwdbAPTable:

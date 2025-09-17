@@ -45,7 +45,7 @@ class TsEntitySegmentIterator;
 class TsStorageIteratorV2Impl : public TsStorageIterator {
  public:
   TsStorageIteratorV2Impl();
-  TsStorageIteratorV2Impl(const std::shared_ptr<TsVGroup>& vgroup, vector<uint32_t>& entity_ids,
+  TsStorageIteratorV2Impl(const std::shared_ptr<TsVGroup>& vgroup, uint32_t version, vector<uint32_t>& entity_ids,
                           std::vector<KwTsSpan>& ts_spans, std::vector<BlockFilter>& block_filter,
                           std::vector<k_uint32>& kw_scan_cols, std::vector<k_uint32>& ts_scan_cols,
                           std::shared_ptr<TsTableSchemaManager>& table_schema_mgr,
@@ -91,7 +91,7 @@ class TsStorageIteratorV2Impl : public TsStorageIterator {
 
 class TsSortedRawDataIteratorV2Impl : public TsStorageIteratorV2Impl {
  public:
-  TsSortedRawDataIteratorV2Impl(const std::shared_ptr<TsVGroup>& vgroup, vector<uint32_t>& entity_ids,
+  TsSortedRawDataIteratorV2Impl(const std::shared_ptr<TsVGroup>& vgroup, uint32_t version, vector<uint32_t>& entity_ids,
                                 std::vector<KwTsSpan>& ts_spans, std::vector<BlockFilter>& block_filter,
                                 std::vector<k_uint32>& kw_scan_cols,
                                 std::vector<k_uint32>& ts_scan_cols,
@@ -112,7 +112,7 @@ class TsSortedRawDataIteratorV2Impl : public TsStorageIteratorV2Impl {
 
 class TsAggIteratorV2Impl : public TsStorageIteratorV2Impl {
  public:
-  TsAggIteratorV2Impl(const std::shared_ptr<TsVGroup>& vgroup, vector<uint32_t>& entity_ids,
+  TsAggIteratorV2Impl(const std::shared_ptr<TsVGroup>& vgroup, uint32_t version, vector<uint32_t>& entity_ids,
                       std::vector<KwTsSpan>& ts_spans, std::vector<BlockFilter>& block_filter,
                       std::vector<k_uint32>& kw_scan_cols, std::vector<k_uint32>& ts_scan_cols,
                       std::vector<k_int32>& agg_extend_cols,
@@ -139,7 +139,7 @@ class TsAggIteratorV2Impl : public TsStorageIteratorV2Impl {
   void InitAggData(TSSlice& agg_data);
   void InitSumValue(void* data, int32_t type);
   void UpdateTsSpans();
-  void ConvertToDoubleIfOverflow(uint32_t blk_col_idx, TSSlice& agg_data);
+  void ConvertToDoubleIfOverflow(uint32_t col_idx, bool over_flow, TSSlice& agg_data);
   KStatus AddSumNotOverflowYet(uint32_t blk_col_idx,
                                 int32_t type,
                                 void* current,
@@ -173,6 +173,7 @@ class TsAggIteratorV2Impl : public TsStorageIteratorV2Impl {
   std::vector<uint32_t> sum_col_idxs_;
   std::vector<uint32_t> max_col_idxs_;
   std::vector<uint32_t> min_col_idxs_;
+  std::vector<k_uint32> kw_last_scan_cols_;
 
   bool first_last_only_agg_;
 

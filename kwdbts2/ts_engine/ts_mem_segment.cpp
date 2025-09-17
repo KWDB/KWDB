@@ -20,6 +20,7 @@
 
 #include "data_type.h"
 #include "kwdb_type.h"
+#include "ts_bitmap.h"
 #include "ts_flush_manager.h"
 #include "ts_mem_seg_index.h"
 #include "ts_mem_segment_mgr.h"
@@ -120,6 +121,7 @@ KStatus TsMemSegmentManager::PutData(const TSSlice& payload, TSEntityID entity_i
   uint32_t row_num = pd.GetRowCount();
 
   auto cur_mem_seg = CurrentMemSegmentAndAllocateRow(row_num);
+  size_t max_row_idx = 0;
   timestamp64 max_ts = INT64_MIN;
   for (size_t i = 0; i < row_num; i++) {
     auto row_ts = pd.GetTS(i);
@@ -136,11 +138,12 @@ KStatus TsMemSegmentManager::PutData(const TSSlice& payload, TSEntityID entity_i
     cur_mem_seg->AppendOneRow(row_data);
 
     if (row_ts > max_ts) {
+      max_row_idx = i;
       max_ts = row_ts;
     }
   }
+  vgroup_->UpdateEntityLatestRow(entity_id, max_ts, pd.GetRowData(max_row_idx), table_version);
   vgroup_->UpdateEntityAndMaxTs(table_id, max_ts, entity_id);
-  vgroup_->UpdateEntityLatestRow(entity_id, max_ts);
 
   if (cur_mem_seg->GetPayloadMemUsage() > EngineOptions::mem_segment_max_size) {
     if (this->SwitchMemSegment(cur_mem_seg.get())) {
@@ -150,20 +153,22 @@ KStatus TsMemSegmentManager::PutData(const TSSlice& payload, TSEntityID entity_i
   return KStatus::SUCCESS;
 }
 
-KStatus TsMemSegBlock::GetColBitmap(uint32_t col_id, const std::vector<AttributeInfo>* schema, TsBitmap& bitmap) {
+KStatus TsMemSegBlock::GetColBitmap(uint32_t col_id, const std::vector<AttributeInfo>* schema,
+                                    std::unique_ptr<TsBitmapBase>* bitmap) {
   auto iter = col_bitmaps_.find(col_id);
   if (iter != col_bitmaps_.end()) {
-    bitmap = iter->second;
+    *bitmap = iter->second->AsView();
     return KStatus::SUCCESS;
   }
-  bitmap.SetCount(row_data_.size());
+  auto tmp_bitmap = std::make_unique<TsBitmap>(row_data_.size());
   for (int i = 0; i < row_data_.size(); i++) {
     auto row = row_data_[i];
     if (parser_->IsColNull(row->GetRowData(), col_id)) {
-      bitmap[i] = DataFlags::kNull;
+      (*tmp_bitmap)[i] = DataFlags::kNull;
     }
   }
-  col_bitmaps_[col_id] = bitmap;
+  *bitmap = tmp_bitmap->AsView();
+  col_bitmaps_[col_id] = std::move(tmp_bitmap);
   return KStatus::SUCCESS;
 }
 

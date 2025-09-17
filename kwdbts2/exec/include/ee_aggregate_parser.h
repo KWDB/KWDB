@@ -18,7 +18,7 @@ namespace kwdbts {
 
 class TsAggregateParser : public TsOperatorParser {
  public:
-  TsAggregateParser(TSAggregatorSpec *spec, TSPostProcessSpec *post, TABLE *table, BaseOperator *agg_op = nullptr);
+  TsAggregateParser(TSAggregatorSpec *spec, PostProcessSpec *post, TABLE *table, BaseOperator *agg_op = nullptr);
 
   ~TsAggregateParser();
 

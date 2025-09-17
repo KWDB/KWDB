@@ -1,4 +1,3 @@
-SET CLUSTER SETTING ts.blocks_per_segment.max_limit=100;
 SET CLUSTER SETTING ts.rows_per_block.max_limit=100;
 USE defaultdb;
 DROP DATABASE IF EXISTS test_SELECT_join cascade;

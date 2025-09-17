@@ -16,6 +16,7 @@
 #include <mutex>
 #include <string_view>
 
+#include "br_global.h"
 #include "butil/logging.h"
 #include "ee_defer.h"
 #include "ee_global.h"
@@ -74,7 +75,6 @@ void OutboundBuffer::IncrSinker() {
 
 KStatus OutboundBuffer::AddSendRequest(ChunkTransmitContext& request) {
   if (is_completing_) {
-    LOG_ERROR("AddRequest is_completing_");
     return KStatus::SUCCESS;
   }
 
@@ -254,14 +254,24 @@ KStatus OutboundBuffer::AttemptSendRpc(const k_int64& instance_id,
           rpc_error_msg.data());
     });
     closure->AddSuccessHandler(
-        [this](const ClosureContext& ctx,
-               const PTransmitChunkResult& result) noexcept {
+        [this](const ClosureContext& ctx, const PTransmitChunkResult& result) noexcept {
           // auto notify = this->defer_notify();
           StatusPB status(result.status());
           auto defer = DeferOp([this, ctx, status]() {
             if (0 != status.status_code() && notify_rpc_callback_) {
-              std::string msg = status.error_msgs(0);
-              notify_rpc_callback_(ctx.instance_id, status.status_code(), msg);
+              k_bool is_notify = true;
+              if (status.status_code() == BRStatusCode::NOT_FOUND_RECV) {
+                is_notify = false;
+                auto& context = OutboundCtx(ctx.instance_id);
+                LOG_ERROR(
+                    "transmit chunk rpc not found recv, not return error [target_node_id={%ld}] "
+                    "[dest={%s}:{%d}]",
+                    ctx.instance_id, context.brpc_dest_addrs.hostname_.c_str(), context.brpc_dest_addrs.port_);
+              }
+              if (is_notify) {
+                std::string msg = status.error_msgs(0);
+                notify_rpc_callback_(ctx.instance_id, status.status_code(), msg);
+              }
             }
             --pending_rpc_total_;
             if (notify_callback_) {
@@ -282,9 +292,7 @@ KStatus OutboundBuffer::AttemptSendRpc(const k_int64& instance_id,
             //     ctx.instance_id, dest_addr.hostname_.c_str(), dest_addr.port_,
             //     status.error_msgs(0).c_str());
           } else {
-            static_cast<void>(AttemptSendRpc(ctx.instance_id, [&]() {
-              UpdateSendWindow(ctx.instance_id, ctx.seq);
-            }));
+            static_cast<void>(AttemptSendRpc(ctx.instance_id, [&]() { UpdateSendWindow(ctx.instance_id, ctx.seq); }));
           }
         });
 
