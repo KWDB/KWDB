@@ -152,7 +152,7 @@ String FieldChar::ValStr() {
 
 String FieldChar::ValStr(char *ptr) {
   if (false == is_chunk_) {
-    return String(ptr);
+    return String(storage_len_ - 1, ptr);
   } else {
     return ValTempStr(ptr);
   }
@@ -592,7 +592,12 @@ String FieldVarchar::ValStr() { return ValStr(get_ptr()); }
 
 String FieldVarchar::ValStr(char *ptr) {
   if (false == is_chunk_) {
-    return String{static_cast<char *>(ptr)};
+    if (roachpb::KWDBKTSColumn::TYPE_DATA == column_type_) {
+      k_uint16 len = current_thd->GetRowBatch()->GetDataLen(col_idx_in_rs_, storage_len_, column_type_);
+      return String(ptr, len > 0 ? len - 1 : len, false);
+    } else {
+      return String(ptr);
+    }
   } else {
     return ValTempStr(ptr);
   }

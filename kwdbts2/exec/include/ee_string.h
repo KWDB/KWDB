@@ -45,6 +45,12 @@ struct String {
         alloc_length_(0),
         is_null_(false),
         is_alloc_(false) {}
+  explicit String(size_t max_len, const k_char *str)
+      : ptr_(const_cast<k_char *>(str)),
+        length_(strnlen(str, max_len)),
+        alloc_length_(0),
+        is_null_(false),
+        is_alloc_(false) {}
   ~String() { mem_free(); }
   String operator=(const String &s) {
     if (&s != this) {

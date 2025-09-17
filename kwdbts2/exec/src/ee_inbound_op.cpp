@@ -41,14 +41,8 @@ EEIteratorErrCode InboundOperator::Init(kwdbContext_p ctx) {
       order_info_.push_back(ColumnOrderInfo{order.columns(i).col_idx(),
                                             order.columns(i).direction()});
     }
-    if (order_size_) {
-      TSOrdering_Column_Direction direction = order.columns(0).direction();
-      if (TSOrdering_Column_Direction::TSOrdering_Column_Direction_DESC == direction) {
-        table_->is_reverse_ = 1;
-      }
-    }
   }
-
+  // inbound stream
   stream_size_ = spec_->streams_size();
   for (k_int32 i = 0; i < stream_size_; i++) {
     TSStreamEndpointSpec spec = spec_->streams(i);

@@ -17,8 +17,9 @@ insert into test_select_last.tb2 values ('2023-05-10 09:08:19.22','2021-06-01 10
 insert into test_select_last.tb3 values ('2024-05-10 23:23:23.783','2024-06-10 16:16:15.183',800,8000,80000,800000.808888,8000000.808088,true,'d','test测试！！！@TEST1 ','d','类型测试1()*  ',null,null,'255测试1cdf~# ','@TEST1  ','abc255测试1()*&^%{}','deg4096测试1(','b','查询1023_2','tes_测试1',b'\xaa\xaa\xaa',b'\xbb\xcc\xbb\xbb',7,200,2000,false,-10.123,500.578578,'c','test测试！！！@TEST1  ','g','abc','\0test查询！！！@TEST1\0','64_3','t','es1023_2','f','tes4096_2');
 insert into test_select_last.tb3 values ('2023-05-10 09:15:15.783','2021-06-10 06:04:15.183',500,5000,60000,500000.505555,5000000.505055,false,'c','test测试！！！@TEST1 ','n','类型测试1()*  ',null,null,'255测试1cdf~# ','@TEST1  ','abc255测试1()*&^%{}','deg4096测试1(','b','查询1023_2','tes_测试1',b'\xaa\xaa\xaa',b'\xbb\xcc\xbb\xbb',8,800,8000,false,-20.123,800.578578,'d','test测试！！！@TEST1  ','d','ddd','\0test查询！！！@TEST1\0','64_3','t','es1023_2','f','tes4096_2');
 
-
 select t2,t7,e9,e10 from test_select_last.tb2 as tab1 join (select last(t2),last(t7) as c7,last(e9),last(e10) from test_select_last.tb2) as tab2 on tab1.t7 = tab2.c7;
+
+select k_timestamp,e1,e7,e8,e9,e10 from test_select_last.tb3 as tab1 join (select last(t6),last(t15),last(t13),last(t14) as c14 from test_select_last.tb3) as tab2 on tab1.t14 = tab2.c14 order by k_timestamp;
 
 use defaultdb;
 drop database test_select_last cascade;

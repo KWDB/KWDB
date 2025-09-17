@@ -39,6 +39,12 @@ INSERT 1
 ------+----+-------+------
   100 | b  | \a r3 | a
 (1 row)
+> select k_timestamp,e1,e7,e8,e9,e10 from test_select_last.tb3 as tab1 join (select last(t6),last(t15),last(t13),last(t14) as c14 from test_select_last.tb3) as tab2 on tab1.t14 = tab2.c14 order by k_timestamp;
+           k_timestamp          |              e1               |  e7   | e8 |          e9           | e10
+--------------------------------+-------------------------------+-------+----+-----------------------+------
+  2023-05-10 09:15:15.783+00:00 | 2021-06-10 06:04:15.183+00:00 | false | c  | test测试！！！@TEST1  | n
+  2024-05-10 23:23:23.783+00:00 | 2024-06-10 16:16:15.183+00:00 | true  | d  | test测试！！！@TEST1  | d
+(2 rows)
 > use defaultdb;
 SET
 > drop database test_select_last cascade;
