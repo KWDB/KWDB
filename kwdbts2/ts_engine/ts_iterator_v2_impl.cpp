@@ -796,19 +796,28 @@ KStatus TsAggIteratorV2Impl::Init(bool is_reversed) {
         && scan_agg_types_[0] == Sumfunctype::COUNT && kw_scan_cols_.size() == 1 && kw_scan_cols_[0] == 0);
 
   for (int i = 0; i < scan_agg_types_.size(); ++i) {
-    if (scan_agg_types_[i] == LAST_ROW || (scan_agg_types_[i] == LAST &&
-                                           attrs_[kw_scan_cols_[i]].isFlag(AINFO_NOT_NULL))) {
-      kw_last_scan_cols_.emplace_back(kw_scan_cols_[i]);
-      continue;
+    if (scan_agg_types_[i] != LAST && scan_agg_types_[i] != LASTTS &&
+        scan_agg_types_[i] != LAST_ROW && scan_agg_types_[i] != LASTROWTS) {
+      only_last_ = false;
+      only_last_row_ = false;
+      break;
     }
-
-    if (scan_agg_types_[i] == LASTROWTS || (scan_agg_types_[i] == LASTTS &&
-                                            attrs_[kw_scan_cols_[i]].isFlag(AINFO_NOT_NULL))) {
+    if (scan_agg_types_[i] == LAST_ROW || scan_agg_types_[i] == LAST) {
+      kw_last_scan_cols_.emplace_back(kw_scan_cols_[i]);
+    }
+    if (scan_agg_types_[i] == LASTROWTS || scan_agg_types_[i] == LASTTS) {
       kw_last_scan_cols_.emplace_back(0);
+    }
+    if ((scan_agg_types_[i] == LAST_ROW) ||
+        (scan_agg_types_[i] == LAST && attrs_[kw_scan_cols_[i]].isFlag(AINFO_NOT_NULL)) ||
+        (scan_agg_types_[i] == LASTROWTS) ||
+        (scan_agg_types_[i] == LASTTS && attrs_[kw_scan_cols_[i]].isFlag(AINFO_NOT_NULL))) {
       continue;
     }
     only_last_row_ = false;
-    break;
+    if (!only_last_ && !only_last_row_) {
+      break;
+    }
   }
 
   cur_entity_index_ = 0;
@@ -858,15 +867,15 @@ KStatus TsAggIteratorV2Impl::Next(ResultSet* res, k_uint32* count, bool* is_fini
   }
 
   KStatus ret;
-  bool valid = true;
+  bool last_payload_valid = true;
   timestamp64 entity_last_ts = INVALID_TS;
   EntityID entity_id = entity_ids_[cur_entity_index_];
 
   std::vector<KwTsSpan> ts_spans_bkup;
   std::vector<std::shared_ptr<const TsPartitionVersion>> ts_partitions_bkup;
-  if (only_last_row_) {
-    valid = vgroup_->isEntityLatestRowPayloadValid(entity_id);
-    if (valid) {
+  if (only_last_ || only_last_row_) {
+    last_payload_valid = CLUSTER_SETTING_USE_LAST_ROW_OPTIMIZATION && vgroup_->isEntityLatestRowPayloadValid(entity_id);
+    if (last_payload_valid) {
       ret = vgroup_->GetEntityLastRowBatch(entity_id, table_version_, table_schema_mgr_,
                                            ts_spans_, kw_last_scan_cols_, entity_last_ts, res);
       if (ret != KStatus::SUCCESS) {
@@ -874,15 +883,23 @@ KStatus TsAggIteratorV2Impl::Next(ResultSet* res, k_uint32* count, bool* is_fini
         return KStatus::FAIL;
       }
       if (entity_last_ts != INVALID_TS && (last_ts_points_.empty() || entity_last_ts <=
-        *min_element(last_ts_points_.begin(), last_ts_points_.end()))) {
-        *count = 1;
-        res->col_num_ = kw_scan_cols_.size();
-        res->entity_index = {1, entity_id, vgroup_->GetVGroupID()};
-        ++cur_entity_index_;
-        return KStatus::SUCCESS;
+                                           *min_element(last_ts_points_.begin(), last_ts_points_.end()))) {
+        bool has_null = false;
+        if (only_last_ && !only_last_row_) {
+          for (int i = 0; i < scan_agg_types_.size() && !has_null; ++i) {
+            res->data[i][0]->isNull(0, &has_null);
+          }
+        }
+        if (!has_null) {
+          *count = 1;
+          res->col_num_ = kw_scan_cols_.size();
+          res->entity_index = {1, entity_id, vgroup_->GetVGroupID()};
+          ++cur_entity_index_;
+          return KStatus::SUCCESS;
+        }
       }
       res->clear();
-    } else {
+    } else if (only_last_row_) {
       ret = vgroup_->GetEntityLastRow(table_schema_mgr_, entity_ids_[cur_entity_index_], ts_spans_, entity_last_ts);
       if (ret != KStatus::SUCCESS) {
         LOG_ERROR("GetEntityLastRow failed.");
@@ -942,7 +959,7 @@ KStatus TsAggIteratorV2Impl::Next(ResultSet* res, k_uint32* count, bool* is_fini
 
   *is_finished = false;
   ++cur_entity_index_;
-  if (only_last_row_ && !valid && entity_last_ts != INVALID_TS) {
+  if (only_last_row_ && !last_payload_valid && entity_last_ts != INVALID_TS) {
     ts_spans_.swap(ts_spans_bkup);
     ts_partitions_.swap(ts_partitions_bkup);
   }

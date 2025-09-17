@@ -649,6 +649,8 @@ void TriggerSettingCallback(const std::string& key, const std::string& value) {
   } else if ("ts.block.lru_cache.max_limit" == key) {
     EngineOptions::block_cache_max_size = atoi(value.c_str());
     TsLRUBlockCache::GetInstance().SetMaxBlocks(EngineOptions::block_cache_max_size);
+  } else if ("ts.last_row_optimization.enabled" == key) {
+    CLUSTER_SETTING_USE_LAST_ROW_OPTIMIZATION = ("true" == value);
   }
 #ifndef KWBASE_OSS
   else if ("ts.storage.autonomy.mode" == key) {  // NOLINT

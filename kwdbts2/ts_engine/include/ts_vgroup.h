@@ -355,39 +355,44 @@ class TsVGroup {
   void UpdateEntityLatestRow(EntityID entity_id, timestamp64 max_ts, const TSSlice& payload, uint32_t version) {
     std::unique_lock<std::shared_mutex> lock(entity_latest_row_mutex_);
     if (!entity_latest_row_.count(entity_id) || max_ts >= entity_latest_row_[entity_id].last_ts) {
-      char* payload_data = nullptr;
-      if (entity_latest_row_checked_[entity_id] != TsEntityLatestRowStatus::Valid) {
-        size_t page_size = getpagesize();
-        size_t alloc_size = std::max(page_size, payload.len);
-        payload_data = static_cast<char*>(malloc(alloc_size));
-        entity_latest_row_mem_size_[entity_id] = alloc_size;
-        entity_latest_row_checked_[entity_id] = TsEntityLatestRowStatus::Valid;
-      } else if (payload.len > entity_latest_row_mem_size_[entity_id]) {
-        size_t& old_size = entity_latest_row_mem_size_[entity_id];
-        char* old_mem = entity_latest_row_[entity_id].last_payload.data;
-        size_t realloc_size = old_size * 1.25;
-        size_t alloc_size = std::max(realloc_size, payload.len);
-        payload_data = static_cast<char*>(realloc(old_mem, alloc_size));
-        entity_latest_row_mem_size_[entity_id] = alloc_size;
-      } else {
-        payload_data = entity_latest_row_[entity_id].last_payload.data;
+      // update last payload
+      if (CLUSTER_SETTING_USE_LAST_ROW_OPTIMIZATION) {
+        char* payload_data = nullptr;
+        if (entity_latest_row_checked_[entity_id] != TsEntityLatestRowStatus::Valid) {
+          size_t page_size = getpagesize();
+          size_t alloc_size = std::max(page_size, payload.len);
+          payload_data = static_cast<char*>(malloc(alloc_size));
+          entity_latest_row_mem_size_[entity_id] = alloc_size;
+          entity_latest_row_checked_[entity_id] = TsEntityLatestRowStatus::Valid;
+        } else if (payload.len > entity_latest_row_mem_size_[entity_id]) {
+          size_t& old_size = entity_latest_row_mem_size_[entity_id];
+          char* old_mem = entity_latest_row_[entity_id].last_payload.data;
+          size_t realloc_size = old_size * 1.25;
+          size_t alloc_size = std::max(realloc_size, payload.len);
+          payload_data = static_cast<char*>(realloc(old_mem, alloc_size));
+          entity_latest_row_mem_size_[entity_id] = alloc_size;
+        } else {
+          payload_data = entity_latest_row_[entity_id].last_payload.data;
+        }
+        entity_latest_row_[entity_id].is_payload_valid = true;
+        entity_latest_row_[entity_id].version = version;
+        entity_latest_row_[entity_id].last_payload.len = payload.len;
+        if (entity_latest_row_[entity_id].last_payload.data != payload_data) {
+          entity_latest_row_[entity_id].last_payload.data = payload_data;
+        }
+        memcpy(entity_latest_row_[entity_id].last_payload.data, payload.data, payload.len);
       }
-      entity_latest_row_[entity_id].is_payload_valid = true;
-      entity_latest_row_[entity_id].version = version;
       entity_latest_row_[entity_id].last_ts = max_ts;
-      entity_latest_row_[entity_id].last_payload.len = payload.len;
-      if (entity_latest_row_[entity_id].last_payload.data != payload_data) {
-        entity_latest_row_[entity_id].last_payload.data = payload_data;
-      }
-      memcpy(entity_latest_row_[entity_id].last_payload.data, payload.data, payload.len);
     }
   }
 
   void ResetEntityLatestRow(EntityID entity_id, timestamp64 max_ts) {
     std::unique_lock<std::shared_mutex> lock(entity_latest_row_mutex_);
     if (entity_latest_row_.count(entity_id) && max_ts >= entity_latest_row_[entity_id].last_ts) {
-      free(entity_latest_row_[entity_id].last_payload.data);
-      entity_latest_row_[entity_id].last_payload.data = nullptr;
+      if (CLUSTER_SETTING_USE_LAST_ROW_OPTIMIZATION) {
+        free(entity_latest_row_[entity_id].last_payload.data);
+        entity_latest_row_[entity_id].last_payload.data = nullptr;
+      }
       entity_latest_row_.erase(entity_id);
       entity_latest_row_checked_[entity_id] = TsEntityLatestRowStatus::Recovering;
     }

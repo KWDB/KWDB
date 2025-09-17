@@ -62,11 +62,13 @@ TsVGroup::TsVGroup(EngineOptions* engine_options, uint32_t vgroup_id, TsEngineSc
 TsVGroup::~TsVGroup() {
   enable_compact_thread_ = false;
   closeCompactThread();
-  for (auto it : entity_latest_row_) {
-    char* last_payload_data = it.second.last_payload.data;
-    if (last_payload_data != nullptr) {
-      free(last_payload_data);
-      last_payload_data = nullptr;
+  if (CLUSTER_SETTING_USE_LAST_ROW_OPTIMIZATION) {
+    for (auto it : entity_latest_row_) {
+      char* last_payload_data = it.second.last_payload.data;
+      if (last_payload_data != nullptr) {
+        free(last_payload_data);
+        last_payload_data = nullptr;
+      }
     }
   }
 }

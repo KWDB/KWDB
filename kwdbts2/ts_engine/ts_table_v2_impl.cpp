@@ -815,6 +815,10 @@ KStatus TsTableV2Impl::GetLastRowEntity(kwdbContext_p ctx, EntityResultIndex& en
 KStatus TsTableV2Impl::GetLastRowBatch(kwdbContext_p ctx, uint32_t table_version, std::vector<uint32_t> scan_cols,
                                        ResultSet* res, k_uint32* count, bool& valid) {
   *count = 0;
+  if (!CLUSTER_SETTING_USE_LAST_ROW_OPTIMIZATION) {
+    valid = false;
+    return KStatus::SUCCESS;
+  }
   valid = true;
   timestamp64 entity_max_ts = INT64_MIN;
   EntityResultIndex entity_id = {0, 0, 0};

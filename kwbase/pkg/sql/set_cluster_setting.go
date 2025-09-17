@@ -244,6 +244,14 @@ func checkTsBlockCacheMaxLimit(encodedValue string) error {
 	return nil
 }
 
+func checkTsLastRowOptimization(encodedValue string) error {
+	_, err := strconv.ParseBool(encodedValue)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
 // CheckClusterSetting map of checking methods for saving cluster settings
 var CheckClusterSetting = map[string]CheckOperation{
 	"ts.dedup.rule":                      checkTsDedupRule,
@@ -257,6 +265,7 @@ var CheckClusterSetting = map[string]CheckOperation{
 	"ts.reserved_last_segment.max_limit": checkTsReservedLastSegmentMaxLimit,
 	"ts.mem_segment_size.max_limit":      checkTsMemSegmentSizeMaxLimit,
 	"ts.block.lru_cache.max_limit":       checkTsBlockCacheMaxLimit,
+	"ts.last_row_optimization.enabled":   checkTsLastRowOptimization,
 }
 
 // TsTxnAtomicityClusterSettingName is the name of the ts txn atomicity cluster setting.
