@@ -193,7 +193,7 @@ var (
 	blockMinRows = settings.RegisterPublicIntSetting(
 		"ts.rows_per_block.min_limit",
 		"the minimum number of rows that can be held in a block",
-		2048)
+		1024)
 
 	maxCompactLastSegNum = settings.RegisterPublicIntSetting(
 		"ts.compact.max_limit",
