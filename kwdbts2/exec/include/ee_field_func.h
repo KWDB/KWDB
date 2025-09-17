@@ -526,6 +526,11 @@ class FieldFuncExpStrftime : public FieldFunc {
  public:
   FieldFuncExpStrftime(Field *a, Field *b) : FieldFunc(a, b) {
     type_ = FIELD_ARITHMETIC;
+    if (b->get_storage_type() == roachpb::DataType::NULLVAL) {
+      sql_type_ = roachpb::DataType::NULLVAL;
+      storage_type_ = roachpb::DataType::NULLVAL;
+      return;
+    }
     sql_type_ = roachpb::DataType::CHAR;
     storage_type_ = roachpb::DataType::CHAR;
     if (b->get_field_type() != FIELD_CONSTANT) {
@@ -957,6 +962,7 @@ class FieldFuncCoalesce : public FieldFunc {
       case roachpb::DataType::NULLVAL:
         storage_type_ = b->get_storage_type();
         storage_len_ = b->get_storage_length();
+        break;
       default:
         storage_type_ = a->get_storage_type();
         storage_len_ = a->get_storage_length();
