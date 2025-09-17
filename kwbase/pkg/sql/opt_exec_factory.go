@@ -3085,7 +3085,7 @@ func (ef *execFactory) ProcessBljLeftColumns(
 	case *limitNode:
 		return ef.ProcessBljLeftColumns(n.plan, mem)
 	case *applyJoinNode:
-		return ef.ProcessBljLeftColumns(n.input.plan, mem)
+		columns = n.columns
 	case *bufferNode:
 		return ef.ProcessBljLeftColumns(n.plan, mem)
 	case *delayedNode:

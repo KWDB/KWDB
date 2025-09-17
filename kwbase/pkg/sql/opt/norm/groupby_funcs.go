@@ -331,14 +331,23 @@ func (c *CustomFuncs) HasOnlyTagColumn(
 		return false
 	}
 
+	meta := c.mem.Metadata()
+	hasOtherCol := false
+	hasPrimaryTag := false
 	for _, agg := range aggs {
 		switch agg.Agg.(type) {
 		case *memo.CountRowsExpr:
 			return false
 		}
-	}
 
-	meta := c.mem.Metadata()
+		if v, ok := agg.Agg.Child(0).(*memo.VariableExpr); ok {
+			if !meta.ColumnMeta(v.Col).IsPrimaryTag() {
+				hasOtherCol = true
+			} else {
+				hasPrimaryTag = true
+			}
+		}
+	}
 
 	allTag := true
 	tsScan.Cols.ForEach(func(col opt.ColumnID) {
@@ -358,9 +367,21 @@ func (c *CustomFuncs) HasOnlyTagColumn(
 		if meta.ColumnMeta(col).IsPrimaryTag() {
 			primaryTagCount++
 		}
+		if !meta.ColumnMeta(col).IsTag() {
+			allTag = false
+		}
 	})
 
-	return allTag && primaryTagCount == tableMeta.PrimaryTagCount
+	// explain select ptag1,sum(t2) from only_tag.table1 group by ptag1; can not use only tag
+	if allTag {
+		if hasOtherCol {
+			allTag = false
+		} else if primaryTagCount != tableMeta.PrimaryTagCount && hasPrimaryTag {
+			allTag = false
+		}
+	}
+
+	return allTag
 }
 
 func onlyTagPrivateTSScan(tsScan *memo.TSScanExpr) *memo.TSScanPrivate {
