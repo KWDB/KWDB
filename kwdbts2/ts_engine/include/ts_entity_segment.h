@@ -289,13 +289,7 @@ class TsEntityBlock : public TsBlock {
   }
 
   inline bool HasAggData(int32_t col_idx) {
-    if (column_blocks_.size() <= col_idx + 1) {
-      return false;
-    }
-    RW_LATCH_S_LOCK(&rw_latch_);
-    std::shared_ptr<TsEntitySegmentColumnBlock>& column_block = column_blocks_[col_idx + 1];
-    RW_LATCH_UNLOCK(&rw_latch_);
-    return column_block != nullptr && !column_block->agg.empty();
+    return HasAggDataNoLock(col_idx);
   }
 
   inline bool HasDataCachedNoLock(int32_t col_idx) {
@@ -305,13 +299,7 @@ class TsEntityBlock : public TsBlock {
   }
 
   inline bool HasDataCached(int32_t col_idx) {
-    if (column_blocks_.size() <= col_idx + 1) {
-      return false;
-    }
-    RW_LATCH_S_LOCK(&rw_latch_);
-    std::shared_ptr<TsEntitySegmentColumnBlock>& column_block = column_blocks_[col_idx + 1];
-    RW_LATCH_UNLOCK(&rw_latch_);
-    return column_block != nullptr && !column_block->buffer.empty();
+    return HasDataCachedNoLock(col_idx);
   }
 
   char* GetMetricColAddr(uint32_t col_idx);

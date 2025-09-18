@@ -269,7 +269,7 @@ TsEntityBlock::TsEntityBlock(uint32_t table_id, TsEntitySegmentBlockItem* block_
   block_id_ = block_item->block_id;
   entity_segment_ = block_segment;
   // reserve two columns for timestamp and LSN
-  column_blocks_.resize(2);
+  column_blocks_.resize(n_cols_);
 }
 
 char* TsEntityBlock::GetMetricColAddr(uint32_t col_idx) {
@@ -303,9 +303,6 @@ KStatus TsEntityBlock::GetMetricColValue(uint32_t row_idx, uint32_t col_idx, TSS
 
 KStatus TsEntityBlock::LoadColData(int32_t col_idx, const std::vector<AttributeInfo>* metric_schema,
                                          TSSlice buffer) {
-  if (column_blocks_.size() <= col_idx + 1) {
-    column_blocks_.resize(n_cols_);
-  }
   bool is_var_type = col_idx > 0 && isVarLenType((*metric_schema)[col_idx].type);
   bool is_not_null = col_idx <= 0 || (*metric_schema)[col_idx].isFlag(AINFO_NOT_NULL);
   const auto& mgr = CompressorManager::GetInstance();
@@ -382,9 +379,6 @@ KStatus TsEntityBlock::LoadColData(int32_t col_idx, const std::vector<AttributeI
 }
 
 KStatus TsEntityBlock::LoadAggData(int32_t col_idx, TSSlice buffer) {
-  if (column_blocks_.size() <= col_idx + 1) {
-    column_blocks_.resize(n_cols_);
-  }
   if (column_blocks_[col_idx + 1] == nullptr) {
     column_blocks_[col_idx + 1] = std::make_shared<TsEntitySegmentColumnBlock>();
   }
