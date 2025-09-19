@@ -23,22 +23,6 @@ enum NextBlkStatus {
 
 namespace kwdbts {
 
-Batch* CreateAggBatch(void* mem, const std::shared_ptr<MMapSegmentTable>& segment_table) {
-  if (mem) {
-    return new AggBatch(mem, 1, segment_table);
-  } else {
-    return new AggBatch(nullptr, 0, segment_table);
-  }
-}
-
-Batch* CreateAggBatch(const std::shared_ptr<void>& mem, const std::shared_ptr<MMapSegmentTable>& segment_table) {
-  if (mem) {
-    return new AggBatch(mem, 1, segment_table);
-  } else {
-    return new AggBatch(nullptr, 0, segment_table);
-  }
-}
-
 // Agreement between storage layer and execution layer:
 // 1. The SUM aggregation result of integer type returns the int64 type uniformly without overflow;
 //    In case of overflow, return double type
@@ -87,12 +71,7 @@ TsStorageIterator::TsStorageIterator(uint64_t entity_group_id,
       ts_scan_cols_(ts_scan_cols),
       table_version_(table_version) { }
 
-TsStorageIterator::~TsStorageIterator() {
-  if (segment_iter_ != nullptr) {
-    delete segment_iter_;
-    segment_iter_ = nullptr;
-  }
-}
+TsStorageIterator::~TsStorageIterator() {}
 
 bool TsStorageIterator::matchesFilterRange(const BlockFilter& filter, SpanValue min, SpanValue max, DATATYPE datatype) {
   for (auto filter_span : filter.spans) {
@@ -165,49 +144,6 @@ bool TsStorageIterator::matchesFilterRange(const BlockFilter& filter, SpanValue 
     }
   }
   return false;
-}
-
-bool TsStorageIterator::getCurBlockSpan(BlockItem* cur_block, std::shared_ptr<MMapSegmentTable>& segment_tbl,
-                                        uint32_t* first_row, uint32_t* count) {
-  bool has_data = false;
-  *count = 0;
-  // Sequential read optimization, if the maximum and minimum timestamps of a BlockItem are within the ts_span range,
-  // there is no need to determine the timestamps for each BlockItem.
-  if (cur_block->is_agg_res_available && cur_block->publish_row_count > 0
-      && cur_block->publish_row_count == cur_block->alloc_row_count
-      && cur_blockdata_offset_ == 1
-      && cur_block->getDeletedCount() == 0
-      && cur_block_ts_check_res_ == TimestampCheckResult::FullyContained) {
-    has_data = true;
-    *first_row = 1;
-    *count = cur_block->publish_row_count;
-    cur_blockdata_offset_ = *first_row + *count;
-  }
-  // If it is not achieved sequential reading optimization process,
-  // the data under the BlockItem will be traversed one by one,
-  // and the maximum number of consecutive data that meets the query conditions will be obtained.
-  // The aggregation result of this continuous data will be further obtained in the future.
-  while (cur_blockdata_offset_ <= cur_block->alloc_row_count) {
-    bool is_deleted = !segment_tbl->IsRowVaild(cur_block, cur_blockdata_offset_);
-    // If the data in the *blk_offset row is not within the ts_span range or has been deleted,
-    // continue to verify the data in the next row.
-    timestamp64 cur_ts = KTimestamp(segment_tbl->columnAddrByBlk(cur_block->block_id, cur_blockdata_offset_ - 1, 0));
-    if (is_deleted || !checkIfTsInSpan(cur_ts)) {
-      ++cur_blockdata_offset_;
-      if (has_data) {
-        break;
-      }
-      continue;
-    }
-
-    if (!has_data) {
-      has_data = true;
-      *first_row = cur_blockdata_offset_;
-    }
-    ++(*count);
-    ++cur_blockdata_offset_;
-  }
-  return has_data;
 }
 
 KStatus TsTableIterator::Next(ResultSet* res, k_uint32* count, timestamp64 ts) {

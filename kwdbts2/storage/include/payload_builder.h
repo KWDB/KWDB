@@ -26,23 +26,6 @@ typedef struct {
   int len_;
 } PrimaryTagInfo;
 
-/**
- * @brief convert row-based payload to col-based payload.
- *        both type of payload has same header and tag section, only different is data section
-*/
-class PayloadStTypeConvert {
- public:
-  PayloadStTypeConvert(TSSlice row_based_payload, const std::vector<AttributeInfo>& data_schema) :
-                      data_schema_(data_schema), row_based_mem_(row_based_payload) {}
-  // build and return col-based payload.
-  KStatus build(MMapRootTableManager* root_bt_manager, TSSlice* payload);
-
- private:
-  const std::vector<AttributeInfo>& data_schema_;
-  TSSlice row_based_mem_;
-  size_t var_col_vaules_len_{0};
-  size_t fix_data_mem_len_{0};
-};
 
 /**
  * @brief build payload struct data.

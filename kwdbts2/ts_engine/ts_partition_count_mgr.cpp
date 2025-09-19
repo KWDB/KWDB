@@ -16,7 +16,6 @@
 #include "settings.h"
 
 namespace kwdbts {
-const int64_t INVALID_TS = INT64_MAX;
 #define ENTITY_COUNT_LATCH_BUCKET_NUM 10
 
 TsPartitionEntityCountManager::TsPartitionEntityCountManager(std::string path) :

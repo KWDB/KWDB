@@ -30,30 +30,6 @@ KStatus TsTable::GetLastRowBatch(kwdbContext_p ctx, uint32_t table_version, std:
                                ResultSet* res, k_uint32* count, bool& valid) {
   return KStatus::SUCCESS;
 }
-MMapRootTableManager* TsTable::CreateMMapRootTableManager(string& db_path, string& tbl_sub_path, KTableKey table_id,
-                                                          vector<AttributeInfo>& schema, uint32_t table_version,
-                                                          uint64_t partition_interval, ErrorInfo& err_info,
-                                                          uint64_t hash_num) {
-  MMapRootTableManager* tmp_bt_manager = new MMapRootTableManager(db_path, tbl_sub_path, table_id, partition_interval,
-                                                                  hash_num);
-  KStatus s = tmp_bt_manager->CreateRootTable(schema, table_version, err_info);
-  if (s == KStatus::FAIL) {
-    delete tmp_bt_manager;
-    tmp_bt_manager = nullptr;
-  }
-  return tmp_bt_manager;
-}
-
-MMapRootTableManager* TsTable::OpenMMapRootTableManager(string& db_path, string& tbl_sub_path, KTableKey table_id,
-                                                        ErrorInfo& err_info) {
-  MMapRootTableManager* tmp_bt_manager = new MMapRootTableManager(db_path, tbl_sub_path, table_id);
-  KStatus s = tmp_bt_manager->Init(err_info);
-  if (s == KStatus::FAIL) {
-    delete tmp_bt_manager;
-    tmp_bt_manager = nullptr;
-  }
-  return tmp_bt_manager;
-}
 
 TsTable::TsTable() {
   is_dropped_.store(false);
@@ -61,7 +37,6 @@ TsTable::TsTable() {
 
 TsTable::TsTable(kwdbContext_p ctx, const string& db_path, const KTableKey& table_id)
     : db_path_(db_path), table_id_(table_id) {
-  entity_bt_manager_ = nullptr;
   tbl_sub_path_ = std::to_string(table_id_) + "/";
   db_path_ = db_path_ + "/";
   is_dropped_.store(false);
@@ -83,9 +58,7 @@ TsTable::~TsTable() {
     //   LOG_ERROR("DropAll Error!");
     // }
   }
-  if (entity_bt_manager_) {
-    delete entity_bt_manager_;
-  }
+
   if (entity_groups_mtx_) {
     delete entity_groups_mtx_;
     entity_groups_mtx_ = nullptr;
@@ -113,10 +86,6 @@ bool IsNumber(struct dirent* dir) {
 
 KStatus TsTable::Create(kwdbContext_p ctx, vector<AttributeInfo>& metric_schema,
                         uint32_t ts_version, uint64_t partition_interval, uint64_t hash_num) {
-  if (entity_bt_manager_ != nullptr) {
-    LOG_ERROR("Entity Bigtable already exist.");
-    return KStatus::FAIL;
-  }
   // Check path
   string dir_path = db_path_ + tbl_sub_path_;
   if (access(dir_path.c_str(), 0)) {
@@ -127,15 +96,9 @@ KStatus TsTable::Create(kwdbContext_p ctx, vector<AttributeInfo>& metric_schema,
 
   hash_num_ = hash_num;
   ErrorInfo err_info;
-  // Create entity table
-  entity_bt_manager_ = CreateMMapRootTableManager(db_path_, tbl_sub_path_, table_id_, metric_schema, ts_version,
-                                                  partition_interval, err_info, hash_num_);
+
   if (err_info.errcode < 0) {
     LOG_ERROR("createTable fail, table_id[%lu], msg[%s]", table_id_, err_info.errmsg.c_str());
-  }
-
-  if (entity_bt_manager_ == nullptr) {
-    return KStatus::FAIL;
   }
 
   return KStatus::SUCCESS;
@@ -143,40 +106,14 @@ KStatus TsTable::Create(kwdbContext_p ctx, vector<AttributeInfo>& metric_schema,
 
 KStatus TsTable::GetDataSchemaIncludeDropped(kwdbContext_p ctx, std::vector<AttributeInfo>* data_schema,
                                              uint32_t table_version) {
-  if (entity_bt_manager_ == nullptr) {
-    LOG_ERROR("TsTable not created : %s", tbl_sub_path_.c_str());
-    return KStatus::FAIL;
-  }
-  return entity_bt_manager_->GetSchemaInfoIncludeDropped(data_schema, table_version);
+  return FAIL;
 }
 
 KStatus TsTable::GetDataSchemaExcludeDropped(kwdbContext_p ctx, std::vector<AttributeInfo>* data_schema) {
-  if (entity_bt_manager_ == nullptr) {
-    LOG_ERROR("TsTable not created : %s", tbl_sub_path_.c_str());
-    return KStatus::FAIL;
-  }
-  return entity_bt_manager_->GetSchemaInfoExcludeDropped(data_schema);
+  return FAIL;
 }
 
 KStatus TsTable::TierMigrate() {
-  return KStatus::SUCCESS;
-}
-
-KStatus TsTable::ConvertRowTypePayload(kwdbContext_p ctx,  TSSlice payload_row, TSSlice* payload) {
-  uint32_t pl_version = Payload::GetTsVsersionFromPayload(&payload_row);
-  MMapMetricsTable* root_table = entity_bt_manager_->GetRootTable(pl_version);
-  if (root_table == nullptr) {
-    LOG_ERROR("table[%lu] cannot found version[%u].", table_id_, pl_version);
-    return KStatus::FAIL;
-  }
-  const std::vector<AttributeInfo>& data_schema = root_table->getSchemaInfoExcludeDropped();
-  PayloadStTypeConvert pl(payload_row, data_schema);
-  auto s = pl.build(entity_bt_manager_, payload);
-  if (s != KStatus::SUCCESS) {
-    LOG_ERROR("can not parse current row-based payload.");
-    return s;
-  }
-
   return KStatus::SUCCESS;
 }
 
@@ -223,17 +160,15 @@ KStatus TsTable::UndoAlterTable(kwdbContext_p ctx, LogEntry* log) {
 }
 
 KStatus TsTable::AlterPartitionInterval(kwdbContext_p ctx, uint64_t partition_interval) {
-  entity_bt_manager_->SetPartitionInterval(partition_interval);
-  return KStatus::SUCCESS;
+  return FAIL;
 }
 
 uint64_t TsTable::GetPartitionInterval() {
-  return entity_bt_manager_->GetPartitionInterval();
+  return 0;
 }
 
 void TsTable::SetDropped() {
   is_dropped_.store(true);
-  entity_bt_manager_->SetDropped();
 }
 
 bool TsTable::IsDropped() {

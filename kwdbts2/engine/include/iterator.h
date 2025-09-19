@@ -21,99 +21,11 @@
 #include "kwdb_type.h"
 #include "libkwdbts2.h"
 #include "lt_rw_latch.h"
-#include "mmap/mmap_segment_table_iterator.h"
 #include "ts_common.h"
 #include "st_config.h"
 
 namespace kwdbts {
 class TsAggIterator;
-
-class ColBlockBitmaps {
- public:
-  ~ColBlockBitmaps() {
-    if (bitmap_) {
-      free(bitmap_);
-    }
-  }
-
-  bool Init(size_t col, bool all_agg_cols_not_null) {
-    all_agg_cols_not_null_ = all_agg_cols_not_null;
-    if (all_agg_cols_not_null_) {
-      bitmap_ = reinterpret_cast<char*>(malloc(BLOCK_ITEM_BITMAP_SIZE));
-      if (bitmap_ == nullptr) {
-        return false;
-      }
-      memset(bitmap_, 0, BLOCK_ITEM_BITMAP_SIZE);
-      return true;
-    }
-    col_num_ = col;
-    bitmap_ = reinterpret_cast<char*>(malloc(col_num_ * BLOCK_ITEM_BITMAP_SIZE));
-    if (bitmap_ == nullptr) {
-      return false;
-    }
-    memset(bitmap_, 0, col_num_ * BLOCK_ITEM_BITMAP_SIZE);
-    col_bitmap_addr_.resize(col_num_);
-    return true;
-  }
-
-  inline char* GetColBitMapAddr(size_t col_idx) {
-    if (all_agg_cols_not_null_) {
-      return bitmap_;
-    }
-    char* ret_addr = bitmap_ + col_idx * BLOCK_ITEM_BITMAP_SIZE;
-    if (col_bitmap_addr_[col_idx] != nullptr) {
-      memcpy(ret_addr, col_bitmap_addr_[col_idx], BLOCK_ITEM_BITMAP_SIZE);
-      col_bitmap_addr_[col_idx] = nullptr;
-    }
-    return ret_addr;
-  }
-
-  inline void SetColBitMap(size_t col_idx, char* bitmap, bool force_cpy = false) {
-    if (bitmap != nullptr) {
-      if (force_cpy) {
-        memcpy(GetColBitMapAddr(col_idx), bitmap, BLOCK_ITEM_BITMAP_SIZE);
-        col_bitmap_addr_[col_idx] = nullptr;
-      } else {
-        col_bitmap_addr_[col_idx] = bitmap;
-      }
-    } else {
-      memset(GetColBitMapAddr(col_idx), 0xFF, BLOCK_ITEM_BITMAP_SIZE);
-      col_bitmap_addr_[col_idx] = nullptr;
-    }
-  }
-
-  inline void SetColBitMapVaild(size_t col_idx) {
-    memset(GetColBitMapAddr(col_idx), 0, BLOCK_ITEM_BITMAP_SIZE);
-    col_bitmap_addr_[col_idx] = nullptr;
-  }
-
-  inline bool IsColNull(size_t col_idx, size_t row_num) {
-    if (all_agg_cols_not_null_) {
-      return false;
-    }
-    return isRowDeleted(GetColBitMapAddr(col_idx), row_num);
-  }
-
-  inline bool IsColAllNull(size_t col_idx, size_t count) {
-    if (all_agg_cols_not_null_) {
-      return false;
-    }
-    return isAllDeleted(GetColBitMapAddr(col_idx), 1, count);
-  }
-
-  inline bool IsColSpanNull(size_t col_idx, size_t start_row, size_t count) {
-    if (all_agg_cols_not_null_) {
-      return false;
-    }
-    return isAllDeleted(GetColBitMapAddr(col_idx), start_row, count);
-  }
-
- private:
-  char* bitmap_{nullptr};
-  bool all_agg_cols_not_null_{false};
-  size_t col_num_;
-  std::vector<char*> col_bitmap_addr_;
-};
 
 /**
  * @brief This is the iterator base class implemented internally in the storage layer, and its two derived classes are:
@@ -166,16 +78,11 @@ class TsStorageIterator {
     return false;
   }
 
-  bool getCurBlockSpan(BlockItem* cur_block, std::shared_ptr<MMapSegmentTable>& segment_tbl, uint32_t* first_row,
-                       uint32_t* count);
-
   bool matchesFilterRange(const BlockFilter& filter, SpanValue min, SpanValue max, DATATYPE datatype);
 
   void nextEntity() {
-    cur_block_item_ = nullptr;
     cur_block_ts_check_res_ = TimestampCheckResult::NonOverlapping;
     cur_blockdata_offset_ = 1;
-    block_item_queue_.clear();
     ++cur_entity_idx_;
   }
 
@@ -194,14 +101,10 @@ class TsStorageIterator {
   DATATYPE ts_col_type_;
     // table version
   uint32_t table_version_;
-  // save all BlockItem objects in the partition table being queried
-  std::deque<BlockItem*> block_item_queue_;
   // save the data offset within the BlockItem object being queried, used for traversal
   k_uint32 cur_blockdata_offset_ = 1;
-  BlockItem* cur_block_item_ = nullptr;
   TimestampCheckResult cur_block_ts_check_res_ = TimestampCheckResult::NonOverlapping;
   k_uint32 cur_entity_idx_ = 0;
-  MMapSegmentTableIterator* segment_iter_{nullptr};
   // Identifies whether the iterator returns blocks in reverse order
   bool is_reversed_ = false;
   // need sorting

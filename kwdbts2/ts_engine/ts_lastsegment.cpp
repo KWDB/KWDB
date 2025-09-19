@@ -28,7 +28,6 @@
 #include "kwdb_type.h"
 #include "lg_api.h"
 #include "libkwdbts2.h"
-#include "mmap/mmap_entity_block_meta.h"
 #include "ts_bitmap.h"
 #include "ts_block.h"
 #include "ts_coding.h"

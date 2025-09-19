@@ -27,6 +27,7 @@
 #include "lt_rw_latch.h"
 #include "cm_func.h"
 #include "ts_table.h"
+#include "ts_blkspan_type_convert.h"
 
 uint32_t k_entity_group_id_size = 8;
 uint32_t k_per_null_bitmap_size = 1;

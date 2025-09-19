@@ -19,7 +19,6 @@
 #include "kwdb_type.h"
 #include "libkwdbts2.h"
 #include "me_metadata.pb.h"
-#include "mmap/mmap_entity_block_meta.h"
 #include "settings.h"
 #include "test_util.h"
 #include "ts_bitmap.h"

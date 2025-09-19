@@ -16,8 +16,6 @@
 #include "utils/date_time_util.h"
 #include "big_table.h"
 #include "mmap_object.h"
-#include "mmap_segment_table.h"
-#include "mmap_entity_block_meta.h"
 #include "ts_table_object.h"
 #include "ts_common.h"
 
@@ -27,7 +25,6 @@ class MMapMetricsTable : public TSObject, public TsTableObject {
 
  protected:
   string name_;
-  MMapEntityBlockMeta* entity_block_meta_{nullptr};
 
  public:
   MMapMetricsTable() : TSObject(), rw_latch_(RWLATCH_ID_MMAP_METRICS_TABLE_RWLOCK) {}

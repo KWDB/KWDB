@@ -26,6 +26,398 @@
 
 namespace kwdbts {
 
+void eraseZeroBeforeE(std::string& str) {
+  while (true) {
+    size_t e_pos = str.find('e');
+    if (e_pos != std::string::npos) {
+      if (str[e_pos - 1] == '0') {
+        if (!str.empty()) {
+          std::string str1 = str.substr(0, e_pos - 1);
+          std::string str2 = str.substr(e_pos, str.length() - e_pos);
+          str =  str1 + str2;
+        }
+      } else {
+        break;
+      }
+    } else {
+      break;
+    }
+  }
+}
+
+std::string floatToStr(float value) {
+  std::ostringstream oss;
+  int decimal_precision = 6;  // decimal part len
+  int integer_part = 6;       // integer part len
+  oss << std::fixed << std::setprecision(decimal_precision) << value;
+  std::string str = oss.str();
+  if (str[0] == '-') {
+    integer_part = 7;  // '-' will use one len in integer.
+  }
+
+  while (true) {
+    // delete end '0's if exists.
+    if (str[str.length() - 1] == '0') {
+      if (!str.empty())
+        str.pop_back();
+    } else {
+      break;
+    }
+  }
+  // if no decimal part, delete '.'
+  if (str[str.length() - 1] == '.') {
+    if (!str.empty())
+      str.pop_back();
+  }
+
+  size_t dot_pos = str.find('.');
+  if (dot_pos == std::string::npos) {
+    // if no decimal part, we check integer len
+    if (str.length() > integer_part) {
+      // integer len is more than 6, change to Scientific notation
+      oss.clear();
+      oss.str("");
+      oss << std::scientific << std::setprecision(16) << value;  // tmp use 16 len
+      str = oss.str();
+      // delete '0's before 'e'
+      eraseZeroBeforeE(str);
+    }
+  } else {
+    // check integer len
+    if (dot_pos > integer_part) {
+      // integer len is more than 6, change to Scientific notation
+      oss.clear();
+      oss.str("");
+      oss << std::scientific << std::setprecision(16) << value;
+      str = oss.str();
+      // delete '0's before 'e'
+      eraseZeroBeforeE(str);
+    }
+  }
+  return str;
+}
+
+std::string doubleToStr(double value) {
+  std::ostringstream oss;
+  int decimal_precision = 16;  // decimal part len
+  int integer_part = 6;        // integer part len
+  int total = 17;              // value total len
+  oss << std::fixed << std::setprecision(decimal_precision) << value;
+  std::string str = oss.str();
+  if (str[0] == '-') {
+    integer_part = 7;  // '-' use occupy len of value
+  }
+
+  while (true) {
+    // delete end '0's if exists.
+    if (str[str.length() - 1] == '0') {
+      if (!str.empty())
+        str.pop_back();
+    } else {
+      break;
+    }
+  }
+  // if no decimal part, delete '.'
+  if (str[str.length() - 1] == '.') {
+    if (!str.empty())
+      str.pop_back();
+  }
+
+  size_t dot_pos = str.find('.');
+  if (dot_pos == std::string::npos) {
+    // if no decimal part, we check integer len
+    if (str.length() > integer_part) {
+      // integer len is more than 6, change to Scientific notation
+      oss.clear();
+      oss.str("");
+      oss << std::scientific << std::setprecision(decimal_precision) << value;
+      str = oss.str();
+      // delete '0's before 'e'
+      eraseZeroBeforeE(str);
+    }
+  } else {
+    // check integer len
+    if (dot_pos > integer_part) {
+      // integer len is more than 6, change to Scientific notation
+      oss.clear();
+      oss.str("");
+      oss << std::scientific << std::setprecision(decimal_precision) << value;
+      str = oss.str();
+      // delete '0's before 'e'
+      eraseZeroBeforeE(str);
+    } else {
+      if (str.length() > total + 1) {
+        oss.clear();
+        oss.str("");
+        oss << std::fixed << std::setprecision(total - dot_pos) << value;
+        str = oss.str();
+      }
+    }
+  }
+
+  return str;
+}
+
+int convertFixedToNum(DATATYPE old_type, DATATYPE new_type, char* src, char* dst, ErrorInfo& err_info) {
+  switch (old_type) {
+    case DATATYPE::INT16 : {
+      switch (new_type) {
+        case DATATYPE::INT32:
+          return convertNumToNum<int16_t, int32_t>(src, dst);
+        case DATATYPE::INT64:
+          return convertNumToNum<int16_t, int64_t>(src, dst);
+        case DATATYPE::FLOAT:
+          return convertNumToNum<int16_t, float>(src, dst);
+        case DATATYPE::DOUBLE:
+          return convertNumToNum<int16_t, double>(src, dst);
+        default:
+          break;
+      }
+      break;
+    }
+    case DATATYPE::INT32 : {
+      switch (new_type) {
+        case DATATYPE::INT16:
+          return convertNumToNum<int32_t, int16_t>(src, dst);
+        case DATATYPE::INT64:
+          return convertNumToNum<int32_t, int64_t>(src, dst);
+        case DATATYPE::FLOAT:
+          return convertNumToNum<int32_t, float>(src, dst);
+        case DATATYPE::DOUBLE:
+          return convertNumToNum<int32_t, double>(src, dst);
+        default:
+          break;
+      }
+      break;
+    }
+    case DATATYPE::INT64 : {
+      switch (new_type) {
+        case DATATYPE::INT16:
+          return convertNumToNum<int64_t, int16_t>(src, dst);
+        case DATATYPE::INT32:
+          return convertNumToNum<int64_t, int32_t>(src, dst);
+        case DATATYPE::FLOAT:
+          return convertNumToNum<int64_t, float>(src, dst);
+        case DATATYPE::DOUBLE:
+          return convertNumToNum<int64_t, double>(src, dst);
+        default:
+          break;
+      }
+      break;
+    }
+    case DATATYPE::FLOAT : {
+      switch (new_type) {
+        case DATATYPE::INT16:
+          return convertNumToNum<float, int16_t>(src, dst);
+        case DATATYPE::INT32:
+          return convertNumToNum<float, int32_t>(src, dst);
+        case DATATYPE::INT64:
+          return convertNumToNum<float, int64_t>(src, dst);
+        case DATATYPE::DOUBLE:
+          return convertNumToNum<float, double>(src, dst);
+        default:
+          break;
+      }
+      break;
+    }
+    case DATATYPE::DOUBLE : {
+      switch (new_type) {
+        case DATATYPE::INT16:
+          return convertNumToNum<double, int16_t>(src, dst);
+        case DATATYPE::INT32:
+          return convertNumToNum<double, int32_t>(src, dst);
+        case DATATYPE::INT64:
+          return convertNumToNum<double, int64_t>(src, dst);
+        case DATATYPE::FLOAT:
+          return convertNumToNum<double, float>(src, dst);
+        default:
+          break;
+      }
+      break;
+    }
+    case DATATYPE::BINARY :
+    case DATATYPE::CHAR : {
+      return convertStrToFixed(std::string(src), new_type, dst, strlen(src), err_info);
+    }
+
+    default:
+      break;
+  }
+  return 0;
+}
+
+int convertFixedToStr(DATATYPE old_type, char* old_data, char* new_data, ErrorInfo& err_info) {
+  std::string res;
+  switch (old_type) {
+    case DATATYPE::INT16 : {
+      res = std::to_string(KInt16(old_data));
+      strcpy(new_data, res.data());  // NOLINT
+      break;
+    }
+    case DATATYPE::INT32 : {
+      res = std::to_string(KInt32(old_data));
+      strcpy(new_data, res.data());  // NOLINT
+      break;
+    }
+    case DATATYPE::INT64 : {
+      res = std::to_string(KInt64(old_data));
+      strcpy(new_data, res.data());  // NOLINT
+      break;
+    }
+    case DATATYPE::FLOAT : {
+      std::ostringstream oss;
+      oss.clear();
+      oss.precision(7);
+      oss.setf(std::ios::fixed);
+      oss << KFloat32(old_data);
+      res = oss.str();
+      strcpy(new_data, res.data());  // NOLINT
+      break;
+    }
+    case DATATYPE::DOUBLE : {
+      std::stringstream ss;
+      ss.precision(15);
+      ss.setf(std::ios::fixed);
+      ss << KDouble64(old_data);
+      res = ss.str();
+      strcpy(new_data, res.data());  // NOLINT
+      break;
+    }
+    case DATATYPE::BINARY :
+    case DATATYPE::CHAR : {
+      strcpy(new_data, old_data);  // NOLINT
+      break;
+    }
+    default:
+      err_info.setError(KWEPERM, "Fixed type invalid");
+      break;
+  }
+  return 0;
+}
+
+int convertStrToFixed(const std::string& str, DATATYPE new_type, char* data, int32_t old_len, ErrorInfo& err_info) {
+  std::size_t pos{};
+  int res32 = 0;
+  int64_t res64{};
+  float res_f{};
+  double res_d{};
+  try {
+    switch (new_type) {
+      case DATATYPE::INT16 :
+        res32 = std::stoi(str, &pos);
+        break;
+      case DATATYPE::INT32 : {
+        res32 = std::stoi(str, &pos);
+        break;
+      }
+      case DATATYPE::INT64 :
+        res64 = std::stoll(str, &pos);
+        break;
+      case DATATYPE::FLOAT :
+        res_f = std::stof(str, &pos);
+        break;
+      case DATATYPE::DOUBLE :
+        res_d = std::stod(str, &pos);
+        break;
+      case DATATYPE::CHAR :
+      case DATATYPE::BINARY : {
+        memcpy(data, str.data(), old_len);
+        return 0;
+      }
+      default:
+        break;
+    }
+  }
+  catch (std::invalid_argument const &ex) {
+    return err_info.setError(KWEPERM, "Incorrect integer value '" + str + "'");
+  }
+  catch (std::out_of_range const &ex) {
+    return err_info.setError(KWEPERM, "Out of range value '" + str + "'");
+  }
+  if (pos < str.size()) {
+    return err_info.setError(KWEPERM, "Data truncated '" + str + "'");
+  }
+  if (new_type == DATATYPE::INT16) {
+    if (res32 > INT16_MAX || res32 < INT16_MIN) {
+      return err_info.setError(KWEPERM, "Out of range value '" + str + "'");
+    }
+  }
+  switch (new_type) {
+    case DATATYPE::INT16 :
+      KInt16(data) = res32;
+      break;
+    case DATATYPE::INT32 :
+      KInt32(data) = res32;
+      break;
+    case DATATYPE::INT64 : {
+      KInt64(data) = res64;
+      break;
+    }
+    case DATATYPE::FLOAT :
+      KFloat32(data) = res_f;
+      break;
+    case DATATYPE::DOUBLE :
+      KDouble64(data) = res_d;
+      break;
+    default:
+      break;
+  }
+  return err_info.errcode;
+}
+
+std::shared_ptr<void> convertFixedToVar(DATATYPE old_type, DATATYPE new_type, char* data, ErrorInfo& err_info) {
+  std::string res;
+  char* var_data;
+  switch (old_type) {
+    case DATATYPE::INT16 : {
+      res = std::to_string(KInt16(data));
+      break;
+    }
+    case DATATYPE::INT32 : {
+      res = std::to_string(KInt32(data));
+      break;
+    }
+    case DATATYPE::INT64 : {
+      res = std::to_string(KInt64(data));
+      break;
+    }
+    case DATATYPE::FLOAT : {
+      res = floatToStr(KFloat32(data));
+      break;
+    }
+    case DATATYPE::DOUBLE : {
+      res = doubleToStr(KDouble64(data));
+      break;
+    }
+    case DATATYPE::CHAR:
+    case DATATYPE::BINARY: {
+      auto char_len = strlen(data);
+      if (new_type == DATATYPE::VARSTRING) {
+        char_len += 1;
+      }
+      k_int16 buffer_len = char_len + kStringLenLen;
+      var_data = static_cast<char*>(std::malloc(buffer_len));
+      memset(var_data, 0, buffer_len);
+      KInt16(var_data) = static_cast<k_int16>(char_len);
+      memcpy(var_data + kStringLenLen, data, strlen(data));
+      break;
+    }
+    default:
+      err_info.setError(KWEPERM, "Incorrect integer value");
+      break;
+  }
+  if (old_type == DATATYPE::INT16 || old_type == DATATYPE::INT32 || old_type == DATATYPE::INT64 ||
+      old_type == DATATYPE::FLOAT || old_type == DATATYPE::DOUBLE) {
+    auto act_len = res.size() + 1;
+    var_data = static_cast<char*>(std::malloc(act_len + kStringLenLen));
+    memset(var_data, 0, act_len + kStringLenLen);
+    KUint16(var_data) = act_len;
+    strcpy(var_data + kStringLenLen, res.data());  // NOLINT
+      }
+  std::shared_ptr<void> ptr(var_data, free);
+  return ptr;
+}
+
 TSBlkDataTypeConvert::TSBlkDataTypeConvert(uint32_t block_version, uint32_t scan_version,
                                            const std::shared_ptr<TsTableSchemaManager>& tbl_schema_mgr)
   : block_version_(block_version), scan_version_(scan_version), tbl_schema_mgr_(tbl_schema_mgr) { }

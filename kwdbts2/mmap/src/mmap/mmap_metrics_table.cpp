@@ -24,9 +24,6 @@
 extern void markDeleted(char* delete_flags, size_t row_index);
 
 MMapMetricsTable::~MMapMetricsTable() {
-  if (entity_block_meta_) {
-    delete entity_block_meta_;
-  }
 }
 
 impl_latch_virtual_func(MMapMetricsTable, &rw_latch_)
@@ -110,38 +107,21 @@ string MMapMetricsTable::path() const {
 
 int MMapMetricsTable::remove() {
   int error_code = 0;
-  if (entity_block_meta_ != nullptr) {
-    error_code = entity_block_meta_->remove();
-    if (error_code < 0) {
-      return error_code;
-    }
-  }
-  delete entity_block_meta_;
-  entity_block_meta_ = nullptr;
   return bt_file_.remove();
 }
 
 void MMapMetricsTable::sync(int flags) {
-  if (entity_block_meta_ != nullptr) {
-    entity_block_meta_->sync(flags);
-  }
   bt_file_.sync(flags);
 }
 
 
 int MMapMetricsTable::Sync(kwdbts::TS_LSN check_lsn, ErrorInfo& err_info) {
   sync(MS_SYNC);
-  if (entity_block_meta_ != nullptr) {
-    entity_block_meta_->sync(MS_SYNC);
-  }
   return 0;
 }
 
 int MMapMetricsTable::Sync(kwdbts::TS_LSN check_lsn, map<uint32_t, uint64_t>& rows,
                            ErrorInfo& err_info) {
-  if (entity_block_meta_ != nullptr) {
-    entity_block_meta_->sync(MS_SYNC);
-  }
   return 0;
 }
 

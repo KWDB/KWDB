@@ -27,7 +27,6 @@
 #include "iterator.h"
 #include "tag_iterator.h"
 #include "payload.h"
-#include "mmap/mmap_root_table_manager.h"
 #include "mmap/mmap_tag_column_table.h"
 #include "st_wal_internal_log_structure.h"
 #include "lt_rw_latch.h"
@@ -58,7 +57,7 @@ class TsTable {
    * @return bool
    */
   virtual bool IsExist() {
-    return this->entity_bt_manager_ != nullptr;
+    return false;
   }
 
   virtual KStatus CheckAndAddSchemaVersion(kwdbContext_p ctx, const KTableKey& table_id, uint64_t version) = 0;
@@ -125,15 +124,6 @@ class TsTable {
                                     KwTsSpan ts_span, uint64_t mtr_id) = 0;
 
   KStatus TierMigrate();
-
-  /**
-   * @brief row-based payload convert to col-based payload
-   * @param[in] payload_row  row-based payload struct.
-   * @param[out] payload    col-based payload
-   *
-   * @return KStatus
-   */
-  virtual KStatus ConvertRowTypePayload(kwdbContext_p ctx,  TSSlice payload_row, TSSlice* payload);
 
   /**
    * @brief Get range row count.
@@ -271,24 +261,12 @@ class TsTable {
 
   virtual bool IsDropped();
 
-  virtual uint64_t partitionInterval() {
-    return entity_bt_manager_->GetPartitionInterval();
-  }
-
-  MMapRootTableManager* GetRootTableManager() {
-    return entity_bt_manager_;
-  }
-
   /**
     * @brief clean ts table
     *
     * @return KStatus
     */
   virtual KStatus TSxClean(kwdbContext_p ctx) = 0;
-
-  inline MMapRootTableManager* GetMetricsTableMgr() {
-    return entity_bt_manager_;
-  }
 
   virtual uint64_t GetHashNum();
 
@@ -304,18 +282,8 @@ class TsTable {
   uint64_t hash_num_ = 0;
 
 //  MMapTagColumnTable* tag_bt_;
-  MMapRootTableManager* entity_bt_manager_{nullptr};
 
   std::atomic_bool is_dropped_;
-
- public:
-  static MMapRootTableManager* CreateMMapRootTableManager(string& db_path, string& tbl_sub_path, KTableKey table_id,
-                                                          vector<AttributeInfo>& schema, uint32_t table_version,
-                                                          uint64_t partition_interval, ErrorInfo& err_info,
-                                                          uint64_t hash_num = 2000);
-
-  static MMapRootTableManager* OpenMMapRootTableManager(string& db_path, string& tbl_sub_path, KTableKey table_id,
-                                                        ErrorInfo& err_info);
 
  protected:
   using TsTableEntityGrpsRwLatch = KRWLatch;
@@ -336,13 +304,6 @@ class TsTable {
   }
 };
 
-// PutAfterProcessInfo records the information that needs to be processed after writing.
-struct PutAfterProcessInfo {
-  std::vector<BlockSpan> spans;  // Record the requested space when writing, and roll back when writing fails
-  // When writing a record for deduplication, the MetricRowID of the deleted record needs to be deduplicated.
-  // Mark deletion after successful writing
-  std::vector<MetricRowID> del_real_rows;
-};
 
 struct PartitionPayload {
   int32_t start_row;

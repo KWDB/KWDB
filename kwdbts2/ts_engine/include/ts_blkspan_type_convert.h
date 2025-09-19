@@ -20,11 +20,25 @@
 #include <vector>
 #include <map>
 #include <memory>
-#include "mmap/mmap_segment_table_iterator.h"
 #include "ts_bitmap.h"
 #include "ts_table_schema_manager.h"
 
 namespace kwdbts {
+template<typename SrcType, typename DestType>
+int convertNumToNum(char* src, char* dst) {
+  *reinterpret_cast<DestType*>(dst) = *reinterpret_cast<SrcType*>(src);
+  return 0;
+}
+
+// convert column value from fixed-len type to numeric types
+int convertFixedToNum(DATATYPE old_type, DATATYPE new_type, char* src, char* dst, ErrorInfo& err_info);
+
+// convert column value from fixed-len type to string type
+int convertFixedToStr(DATATYPE old_type, char* old_data, char* new_data, ErrorInfo& err_info);
+
+int convertStrToFixed(const std::string& str, DATATYPE new_type, char* data, int32_t old_len, ErrorInfo& err_info);
+
+std::shared_ptr<void> convertFixedToVar(DATATYPE old_type, DATATYPE new_type, char* data, ErrorInfo& err_info);
 
 class TsBlockSpan;
 class TsBlock;

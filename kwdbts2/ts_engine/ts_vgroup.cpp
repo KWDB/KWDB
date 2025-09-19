@@ -478,7 +478,7 @@ KStatus TsVGroup::ConvertBlockSpanToResultSet(const std::vector<k_uint32>& kw_sc
     Batch* batch;
     auto kw_col_idx = kw_scan_cols[i];
     if (!ts_blk_span->IsColExist(kw_col_idx)) {
-      batch = new AggBatch(nullptr, 0, nullptr);
+      batch = new AggBatch(nullptr, 0);
     } else {
       if (!ts_blk_span->IsVarLenType(kw_col_idx)) {
         char* value;
@@ -489,11 +489,11 @@ KStatus TsVGroup::ConvertBlockSpanToResultSet(const std::vector<k_uint32>& kw_sc
           return ret;
         }
         if (!attrs[kw_scan_cols[i]].isFlag(AINFO_NOT_NULL) && bitmap->At(0) != DataFlags::kValid) {
-          batch = new AggBatch(nullptr, 0, nullptr);
+          batch = new AggBatch(nullptr, 0);
         } else {
           char* buffer = static_cast<char*>(malloc(attrs[kw_col_idx].size));
           memcpy(buffer, value, attrs[kw_col_idx].size);
-          batch = new AggBatch(static_cast<void*>(buffer), 1, nullptr);
+          batch = new AggBatch(static_cast<void*>(buffer), 1);
           batch->is_new = true;
         }
       } else {
@@ -501,13 +501,13 @@ KStatus TsVGroup::ConvertBlockSpanToResultSet(const std::vector<k_uint32>& kw_sc
         DataFlags var_bitmap;
         ret = ts_blk_span->GetVarLenTypeColAddr(0, kw_col_idx, var_bitmap, var_data);
         if (var_bitmap != DataFlags::kValid) {
-          batch = new AggBatch(nullptr, 0, nullptr);
+          batch = new AggBatch(nullptr, 0);
         } else {
           char* buffer = static_cast<char*>(malloc(var_data.len + kStringLenLen));
           KUint16(buffer) = var_data.len;
           memcpy(buffer + kStringLenLen, var_data.data, var_data.len);
           std::shared_ptr<void> ptr(buffer, free);
-          batch = new AggBatch(ptr, 1, nullptr);
+          batch = new AggBatch(ptr, 1);
         }
       }
     }

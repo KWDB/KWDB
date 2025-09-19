@@ -93,8 +93,6 @@ struct TSTableFileMetadata {
 
 static_assert(sizeof(TSTableFileMetadata) == 664, "wrong size of TSTableFileMetadata, please check compatibility.");
 
-class MMapEntityBlockMeta;
-
 class TsTableObject {
  protected:
   off_t meta_data_length_;

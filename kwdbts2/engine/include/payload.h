@@ -18,7 +18,6 @@
 #include <unordered_map>
 #include <memory>
 #include "kwdb_type.h"
-#include "mmap/mmap_entity_block_meta.h"
 #include "TSLockfreeOrderList.h"
 #include "ts_common.h"
 #include "libkwdbts2.h"
@@ -26,8 +25,6 @@
 #include "ts_table_object.h"
 #include "mmap/mmap_string_column.h"
 
-
-class MMapRootTableManager;
 
 namespace kwdbts {
 
@@ -80,7 +77,6 @@ class Payload {
 
   // TODO(jiadx): schema primary\tag\schema
   // data row first column is timestamp type
-  Payload(MMapRootTableManager* root_bt_manager, TSSlice data);
 
   Payload(const std::vector<AttributeInfo>& schema, const std::vector<uint32_t>& valid_cols, TSSlice data);
 
@@ -344,7 +340,6 @@ class Payload {
 
   int32_t* col_offsets_;
   RecordHelper* rec_helper_{nullptr};
-  std::vector<std::map<MetricRowID, std::shared_ptr<void>>> var_merge_values_;
   TS_LSN lsn_{0};
 
  public:
@@ -358,11 +353,8 @@ struct DedupInfo {
   timestamp64 payload_max_ts = INT64_MIN;
   timestamp64 payload_min_ts = INT64_MAX;
   std::vector<timestamp64> check_ts;
-  std::vector<MetricRowID> check_r;
-  std::vector<MetricRowID> payload_r;
   bool need_dup = false;
   bool need_scan_table = false;
-  std::unordered_map<timestamp64, std::vector<MetricRowID>> table_real_rows;  // duplicate row find from table entity.
   std::unordered_map<timestamp64, std::vector<size_t>> payload_rows;  // duplicate rows in payload.
 };
 

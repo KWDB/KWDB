@@ -36,7 +36,7 @@ KStatus ConvertBlockSpanToResultSet(const std::vector<k_uint32>& kw_scan_cols, c
     if (!ts_blk_span->IsColExist(kw_col_idx)) {
       // column is dropped at block version.
       void* bitmap = nullptr;
-      batch = new Batch(bitmap, *count, bitmap, 1, nullptr);
+      batch = new Batch(bitmap, *count, bitmap, 1);
     } else {
       bool col_not_null = attrs[kw_scan_cols[i]].isFlag(AINFO_NOT_NULL);
       unsigned char* bitmap = nullptr;
@@ -61,10 +61,10 @@ KStatus ConvertBlockSpanToResultSet(const std::vector<k_uint32>& kw_scan_cols, c
             }
           }
         }
-        batch = new Batch(static_cast<void*>(value), *count, bitmap, 1, nullptr);
+        batch = new Batch(static_cast<void*>(value), *count, bitmap, 1);
         batch->is_new = false;
       } else {
-        batch = new VarColumnBatch(*count, bitmap, 1, nullptr);
+        batch = new VarColumnBatch(*count, bitmap, 1);
         auto s = ts_blk_span->GetColBitmap(kw_col_idx, &ts_bitmap);
         if (s != KStatus::SUCCESS) {
           LOG_ERROR("ts_blk_span->GetColBitmap failed.");
@@ -941,14 +941,14 @@ KStatus TsAggIteratorV2Impl::Next(ResultSet* res, k_uint32* count, bool* is_fini
     uint32_t col_idx = (scan_agg_types_[i] == Sumfunctype::MAX_EXTEND || scan_agg_types_[i] == Sumfunctype::MIN_EXTEND) ?
                        agg_extend_cols_[i] : kw_scan_cols_[i];
     if (slice.data == nullptr) {
-      b = new AggBatch(nullptr, 0, nullptr);
+      b = new AggBatch(nullptr, 0);
     } else if (!isVarLenType(attrs_[col_idx].type) || scan_agg_types_[i] == Sumfunctype::COUNT) {
-      b = new AggBatch(slice.data, 1, nullptr);
+      b = new AggBatch(slice.data, 1);
       b->is_new = final_agg_buffer_is_new_[i];
       b->is_overflow = is_overflow_[i];
     } else {
       std::shared_ptr<void> ptr(slice.data, free);
-      b = new AggBatch(ptr, 1, nullptr);
+      b = new AggBatch(ptr, 1);
     }
     res->push_back(i, b);
   }
