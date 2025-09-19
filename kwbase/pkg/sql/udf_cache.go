@@ -396,9 +396,9 @@ func GossipUdfDeleted(g *gossip.Gossip, udfName string) error {
 func (uc *UDFCache) LoadUDF(ctx context.Context, stopper *stop.Stopper) error {
 	stopper.RunWorker(context.Background(), func(ctx context.Context) {
 		const loadUdfQuery = `
-	    SELECT descriptor
+	    SELECT descriptor, name
 	    FROM system.user_defined_routine
-	    WHERE routine_type = $2
+	    WHERE routine_type = 2
 	 `
 
 		rows, err := uc.SQLExecutor.Query(ctx, "Load-udf", nil /* txn */, loadUdfQuery)
@@ -408,8 +408,8 @@ func (uc *UDFCache) LoadUDF(ctx context.Context, stopper *stop.Stopper) error {
 		}
 
 		for _, row := range rows {
-			// Assuming row[0] contains the function_name.
-			udfName := string(*row[0].(*tree.DString))
+			// Get the function_name.
+			udfName := string(*row[1].(*tree.DString))
 
 			udfFn, err := builtins.RegisterLuaUDFs(row)
 			if err != nil {
