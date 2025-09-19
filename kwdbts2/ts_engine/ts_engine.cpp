@@ -56,7 +56,7 @@ TSEngineV2Impl::TSEngineV2Impl(const EngineOptions& engine_options)
     : options_(engine_options),
       read_batch_workers_lock_(RWLATCH_ID_READ_BATCH_DATA_JOB_RWLOCK),
       write_batch_workers_lock_(RWLATCH_ID_WRITE_BATCH_DATA_JOB_RWLOCK),
-      insert_tag_lock_(EngineOptions::vgroup_max_num * 2 , RWLATCH_ID_ENGINE_INSERT_TAG_RWLOCK) {
+      tag_lock_(EngineOptions::vgroup_max_num * 2 , RWLATCH_ID_ENGINE_INSERT_TAG_RWLOCK) {
   LogInit();
   tables_cache_ = new SharedLruUnorderedMap<KTableKey, TsTable>(EngineOptions::table_cache_capacity_, true);
   char* vgroup_num = getenv("KW_VGROUP_NUM");
@@ -207,7 +207,7 @@ KStatus TSEngineV2Impl::Init(kwdbContext_p ctx) {
   vgroups_.clear();
   for (int vgroup_id = 1; vgroup_id <= EngineOptions::vgroup_max_num; vgroup_id++) {
     auto vgroup = std::make_unique<TsVGroup>(&options_, vgroup_id, schema_mgr_.get(),
-                                             &wal_level_mutex_);
+                                             &wal_level_mutex_, &tag_lock_);
     s = vgroup->Init(ctx);
     if (s != KStatus::SUCCESS) {
       return s;
@@ -493,9 +493,9 @@ KStatus TSEngineV2Impl::InsertTagData(kwdbContext_p ctx, const KTableKey& table_
   assert(vgroup != nullptr);
   if (new_tag) {
     uint64_t hash_point = t1ha1_le(primary_key.data, primary_key.len);
-    insert_tag_lock_.WrLock(hash_point);
+    tag_lock_.WrLock(hash_point);
     Defer defer{[&](){
-      insert_tag_lock_.Unlock(hash_point);
+      tag_lock_.Unlock(hash_point);
     }};
     s = schema_mgr_->GetVGroup(ctx, table_id, primary_key, &vgroup_id, &entity_id, &new_tag);
     if (s != KStatus::SUCCESS) {
@@ -599,21 +599,27 @@ KStatus TSEngineV2Impl::PutEntity(kwdbContext_p ctx, const KTableKey& table_id, 
     auto vgroup = GetVGroupByID(ctx, vgroup_id);
     assert(vgroup != nullptr);
 
+    uint64_t hash_point = t1ha1_le(primary_key.data, primary_key.len);
+    tag_lock_.WrLock(hash_point);
+    Defer defer{[&](){
+      tag_lock_.Unlock(hash_point);
+    }};
+    if (!tag_table->hasPrimaryKey(primary_key.data, primary_key.len)) {
+      return KStatus::SUCCESS;
+    }
     if (EnableWAL()) {
       // get old payload
-      if (tag_table->hasPrimaryKey(primary_key.data, primary_key.len)) {
-        TagTuplePack* tag_pack = tag_table->GenTagPack(primary_key.data, primary_key.len);
-        if (UNLIKELY(nullptr == tag_pack)) {
-          return KStatus::FAIL;
-        }
-        wal_level_mutex_.lock_shared();
-        s = vgroup->GetWALManager()->WriteUpdateWAL(ctx, mtr_id, 0, 0, payload_data[i], tag_pack->getData(), vgroup_id,
-                                                    table_id);
-        wal_level_mutex_.unlock_shared();
-        if (s == KStatus::FAIL) {
-          LOG_ERROR("Failed to WriteUpdateWAL while PutEntity")
-          return s;
-        }
+      TagTuplePack *tag_pack = tag_table->GenTagPack(primary_key.data, primary_key.len);
+      if (UNLIKELY(nullptr == tag_pack)) {
+        return KStatus::FAIL;
+      }
+      wal_level_mutex_.lock_shared();
+      s = vgroup->GetWALManager()->WriteUpdateWAL(ctx, mtr_id, 0, 0, payload_data[i], tag_pack->getData(), vgroup_id,
+                                                  table_id);
+      wal_level_mutex_.unlock_shared();
+      if (s == KStatus::FAIL) {
+        LOG_ERROR("Failed to WriteUpdateWAL while PutEntity")
+        return s;
       }
     }
 

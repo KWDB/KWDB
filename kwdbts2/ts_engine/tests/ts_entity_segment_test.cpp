@@ -64,9 +64,10 @@ class TsEntitySegmentTest : public ::testing::Test {
 
     mgr = std::make_unique<TsEngineSchemaManager>("schema");
     std::shared_mutex wal_level_mutex;
+    TsHashRWLatch tag_lock(EngineOptions::vgroup_max_num * 2 , RWLATCH_ID_ENGINE_INSERT_TAG_RWLOCK);
     mgr->Init(nullptr);
     opts.db_path = "db001-123";
-    vgroup = std::make_unique<TsVGroup>(&opts, 0, mgr.get(), &wal_level_mutex, false);
+    vgroup = std::make_unique<TsVGroup>(&opts, 0, mgr.get(), &wal_level_mutex, &tag_lock, false);
     EXPECT_EQ(vgroup->Init(&ctx), KStatus::SUCCESS);
   }
 };
@@ -301,8 +302,9 @@ TEST_F(TsEntitySegmentTest, simpleInsertDoubleCompact) {
     EngineOptions opts;
     EngineOptions::mem_segment_max_size = INT32_MAX;
     std::shared_mutex wal_level_mutex;
+    TsHashRWLatch tag_lock(EngineOptions::vgroup_max_num * 2 , RWLATCH_ID_ENGINE_INSERT_TAG_RWLOCK);
     opts.db_path = "db001-123";
-    auto vgroup = std::make_unique<TsVGroup>(&opts, 0, mgr.get(), &wal_level_mutex, false);
+    auto vgroup = std::make_unique<TsVGroup>(&opts, 0, mgr.get(), &wal_level_mutex, &tag_lock, false);
     vgroup->Init(&ctx);
 
     for (int i = 0; i < 10; ++i) {
@@ -639,8 +641,9 @@ TEST_F(TsEntitySegmentTest, simpleCount) {
     EngineOptions opts;
     EngineOptions::mem_segment_max_size = INT32_MAX;
     std::shared_mutex wal_level_mutex;
+    TsHashRWLatch tag_lock(EngineOptions::vgroup_max_num * 2 , RWLATCH_ID_ENGINE_INSERT_TAG_RWLOCK);
     opts.db_path = "db001-123";
-    auto vgroup = std::make_unique<TsVGroup>(&opts, 0, mgr.get(), &wal_level_mutex, false);
+    auto vgroup = std::make_unique<TsVGroup>(&opts, 0, mgr.get(), &wal_level_mutex, &tag_lock, false);
     EXPECT_EQ(vgroup->Init(&ctx), KStatus::SUCCESS);
 
     for (int i = 1; i <= 10; ++i) {

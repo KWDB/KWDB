@@ -73,7 +73,7 @@ class ConcurrentRWTest : public testing::Test {
     ASSERT_EQ(table_schema_mgr_->GetTagMeta(1, tag_schema_), KStatus::SUCCESS);
 
     std::shared_mutex wal_level_mutex;
-    vgroup_ = std::make_shared<TsVGroup>(&opts_, 1, schema_mgr_.get(), &wal_level_mutex, false);
+    vgroup_ = std::make_shared<TsVGroup>(&opts_, 1, schema_mgr_.get(), &wal_level_mutex, nullptr, false);
     ASSERT_EQ(vgroup_->Init(ctx_), KStatus::SUCCESS);
 
     InitKWDBContext(ctx_);

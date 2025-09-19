@@ -48,9 +48,10 @@ namespace kwdbts {
 
 // todo(liangbo01) using normal path for mem_segment.
 TsVGroup::TsVGroup(EngineOptions* engine_options, uint32_t vgroup_id, TsEngineSchemaManager* schema_mgr,
-                   std::shared_mutex* engine_mutex, bool enable_compact_thread)
+                   std::shared_mutex* engine_mutex, TsHashRWLatch* tag_lock, bool enable_compact_thread)
     : vgroup_id_(vgroup_id),
       schema_mgr_(schema_mgr),
+      tag_lock_(tag_lock),
       path_(fs::path(engine_options->db_path) / VGroupDirName(vgroup_id)),
       max_entity_id_(0),
       engine_options_(engine_options),
@@ -1127,6 +1128,15 @@ KStatus TsVGroup::DeleteEntity(kwdbContext_p ctx, TSTableID table_id, std::strin
   TS_LSN cur_lsn = 0;
   auto tag_table = tb_schema_manager->GetTagTable();
 
+  uint64_t hash_point = t1ha1_le(p_tag.data(), p_tag.size());
+  if (tag_lock_ != nullptr) {
+    tag_lock_->WrLock(hash_point);
+  }
+  Defer defer{[&](){
+    if (tag_lock_ != nullptr) {
+      tag_lock_->Unlock(hash_point);
+    }
+  }};
   if (!tag_table->hasPrimaryKey(p_tag.data(), p_tag.size())) {
     LOG_ERROR("Cannot found this Primary tag.");
     return KStatus::FAIL;

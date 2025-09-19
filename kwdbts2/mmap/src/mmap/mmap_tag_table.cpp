@@ -420,12 +420,10 @@ int TagTable::UpdateTagRecord(kwdbts::Payload &payload, int32_t sub_group_id, in
 int TagTable::UpdateTagRecord(kwdbts::TsRawPayload &payload, int32_t sub_group_id, int32_t entity_id, ErrorInfo& err_info) {
   // 1. delete
   TSSlice tmp_primary_tag = payload.GetPrimaryTag();
-  if (hasPrimaryKey(tmp_primary_tag.data, tmp_primary_tag.len)) {
-    if (this->DeleteTagRecord(tmp_primary_tag.data, tmp_primary_tag.len, err_info) < 0) {
-      err_info.errmsg = "delete tag data failed";
-      LOG_ERROR("delete tag data failed, error: %s", err_info.errmsg.c_str());
-      return err_info.errcode;
-    }
+  if (this->DeleteTagRecord(tmp_primary_tag.data, tmp_primary_tag.len, err_info) < 0) {
+    err_info.errmsg = "delete tag data failed";
+    LOG_ERROR("delete tag data failed, error: %s", err_info.errmsg.c_str());
+    return err_info.errcode;
   }
 
   // 2. insert

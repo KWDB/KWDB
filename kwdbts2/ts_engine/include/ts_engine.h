@@ -74,7 +74,7 @@ class TSEngineV2Impl : public TSEngine {
   KRWLatch write_batch_workers_lock_;
   std::atomic<bool> exist_explict_txn = false;
 
-  TsHashRWLatch insert_tag_lock_;
+  TsHashRWLatch tag_lock_;
 
   // std::unique_ptr<TsMemSegmentManager> mem_seg_mgr_ = nullptr;
 

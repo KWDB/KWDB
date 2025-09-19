@@ -52,7 +52,7 @@ class TsVGroup {
   TsEngineSchemaManager* schema_mgr_ = nullptr;
 
   std::shared_mutex s_mu_;
-
+  TsHashRWLatch* tag_lock_;
 
   fs::path path_;
 
@@ -103,7 +103,7 @@ class TsVGroup {
   TsVGroup() = delete;
 
   TsVGroup(EngineOptions* engine_options, uint32_t vgroup_id, TsEngineSchemaManager* schema_mgr,
-           std::shared_mutex* engine_mutex, bool enable_compact_thread = true);
+           std::shared_mutex* engine_mutex, TsHashRWLatch* tag_lock, bool enable_compact_thread = true);
 
   ~TsVGroup();
 
