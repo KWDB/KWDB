@@ -129,6 +129,41 @@ int TagTable::open(ErrorInfo &err_info) {
     m_version_mgr_->UpdateNewestTableVersion(it);
   }
 
+  for (const auto version : all_versions) {
+    TagVersionObject* tag_version_obj = m_version_mgr_->GetVersionObject(version);
+    if (nullptr == tag_version_obj) {
+      LOG_ERROR("GetVersionObject not found. table_version: %u ", version);
+      return -1;
+    }
+    TagPartitionTable* tag_part_table = m_partition_mgr_->GetPartitionTable(tag_version_obj->metaData()->m_real_used_version_);
+    if (tag_part_table == nullptr) {
+      LOG_ERROR("GetPartitionTable not found. table_version: %u ", tag_version_obj->metaData()->m_real_used_version_);
+      return -1;
+    }
+    for (auto ntag_index : tag_part_table->getMmapNTagHashIndex()) {
+      for (const auto index_version : all_versions) {
+        TagVersionObject* index_tag_version_obj = m_version_mgr_->GetVersionObject(version);
+        if (nullptr == index_tag_version_obj) {
+          LOG_ERROR("GetVersionObject not found. table_version: %u ", version);
+          return -1;
+        }
+        TagPartitionTable* index_tag_part_table = m_partition_mgr_->GetPartitionTable(
+                index_tag_version_obj->metaData()->m_real_used_version_);
+        if (index_tag_part_table == nullptr) {
+          LOG_ERROR("GetPartitionTable not found. table_version: %u ", version);
+          return -1;
+        }
+        if (std::find(index_tag_part_table->getMmapNTagHashIndex().begin(),
+                      index_tag_part_table->getMmapNTagHashIndex().end(), ntag_index)
+                      != index_tag_part_table->getMmapNTagHashIndex().end()) {
+          continue;
+        } else {
+          index_tag_part_table->getMmapNTagHashIndex().push_back(ntag_index);
+        }
+      }
+    }
+  }
+
   // 3. open hash index
   if (initHashIndex(MMAP_OPEN_NORECURSIVE, err_info) < 0) {
     LOG_ERROR("open HashIndex failed. error: %s ", err_info.errmsg.c_str());
@@ -831,15 +866,6 @@ int TagTable::CalculateSchemaIdxs(TableVersion src_table_version, const std::vec
     }
   }
   return 0;
-}
-
-bool isSoftLink(const std::string& path) {
-  struct stat fileStat;
-  if (lstat(path.c_str(), &fileStat) == -1) {
-    LOG_ERROR("Error: Unable to get file status for %s", path.c_str())
-    return false;
-  }
-  return S_ISLNK(fileStat.st_mode);
 }
 
 int TagTable::createHashIndex(uint32_t new_version, ErrorInfo &err_info, const std::vector<uint32_t> &tags,

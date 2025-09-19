@@ -208,3 +208,12 @@ bool IsDiskSpaceEnough(const std::string& path) {
   auto free_space = GetDiskFreeSpace(path);
   return free_space > g_free_space_alert_threshold;
 }
+
+bool isSoftLink(const std::string& path) {
+  struct stat fileStat;
+  if (lstat(path.c_str(), &fileStat) == -1) {
+    LOG_ERROR("Error: Unable to get file status for %s", path.c_str())
+    return false;
+  }
+  return S_ISLNK(fileStat.st_mode);
+}

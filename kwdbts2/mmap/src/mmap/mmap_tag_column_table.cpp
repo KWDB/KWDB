@@ -813,28 +813,27 @@ int MMapTagColumnTable::initNTagHashIndex(ErrorInfo& err_info) {
   }
   closedir(pDir);
 
-  // todo for range files ,read metadata.RecordSize , update key_len&RecordSize
   for (const string& index_file : ntag_index_files) {
     size_t beg = index_file.find('_');
     size_t end = index_file.find_first_of('.');
     int index_id = atoi(index_file.substr(beg + 1, end).c_str());
 
-    MMapNTagHashIndex* index = new MMapNTagHashIndex(0, index_id, std::vector<uint32_t>{});
-    err_info.errcode = index->open(index_file, m_db_path_, m_db_name_, MMAP_OPEN, err_info);
-    if (err_info.errcode < 0) {
-      delete index;
-      index = nullptr;
-      err_info.errmsg = "open Hash Index failed.";
-      LOG_ERROR("failed to open the tag hash index file %s%s, error: %s",
-                m_db_name_.c_str(), index_file.c_str(), err_info.errmsg.c_str())
-      return err_info.errcode;
+    if (!isSoftLink(m_db_path_ + m_db_name_ + index_file)) {
+      MMapNTagHashIndex* index = new MMapNTagHashIndex(0, index_id, std::vector<uint32_t>{});
+      err_info.errcode = index->open(index_file, m_db_path_, m_db_name_, MMAP_OPEN, err_info);
+      if (err_info.errcode < 0) {
+        delete index;
+        index = nullptr;
+        err_info.errmsg = "open Hash Index failed.";
+        LOG_ERROR("failed to open the tag hash index file %s%s, error: %s",
+                  m_db_name_.c_str(), index_file.c_str(), err_info.errmsg.c_str())
+        return err_info.errcode;
+      }
+      index->updateKeyLen();
+      NtagIndexRWMutexXLock();
+      m_ntag_indexes_.emplace_back(index);
+      NtagIndexRWMutexUnLock();
     }
-    // todo update metadata and key_ley and tag col ids
-    // index->updateKeyLen()
-    index->updateKeyLen();
-    NtagIndexRWMutexXLock();
-    m_ntag_indexes_.emplace_back(index);
-    NtagIndexRWMutexUnLock();
   }
   return 0;
 }

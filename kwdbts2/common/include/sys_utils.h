@@ -111,3 +111,5 @@ bool DirExists(const std::string& path);
 int64_t GetDiskFreeSpace(const std::string& path);
 
 bool IsDiskSpaceEnough(const std::string& path);
+
+bool isSoftLink(const std::string& path);
