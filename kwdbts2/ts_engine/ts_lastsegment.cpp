@@ -216,9 +216,9 @@ class TsLastBlock : public TsBlock {
       if (s == FAIL) {
         return FAIL;
       }
-      entity_ids_ = TsSliceGuard{result};
+      bool ok = mgr.DecompressData(result, nullptr, block_info_->nrow, &entity_ids_);
       *entity_ids = reinterpret_cast<TSEntityID*>(entity_ids_.data());
-      return SUCCESS;
+      return ok ? SUCCESS : FAIL;
     }
 
     KStatus GetLSN(TS_LSN** lsn) {
@@ -235,9 +235,9 @@ class TsLastBlock : public TsBlock {
       if (s == FAIL) {
         return FAIL;
       }
-      lsn_ = TsSliceGuard{result};
+      bool ok = mgr.DecompressData(result, nullptr, block_info_->nrow, &lsn_);
       *lsn = reinterpret_cast<TS_LSN*>(lsn_.data());
-      return SUCCESS;
+      return ok ? SUCCESS : FAIL;
     }
 
     KStatus GetTimestamps(timestamp64** timestamps) {
@@ -255,9 +255,9 @@ class TsLastBlock : public TsBlock {
       if (s == FAIL) {
         return FAIL;
       }
-      timestamps_ = TsSliceGuard{result};
+      bool ok = mgr.DecompressData(result, nullptr, block_info_->nrow, &timestamps_);
       *timestamps = reinterpret_cast<timestamp64*>(timestamps_.data());
-      return SUCCESS;
+      return ok ? SUCCESS : FAIL;
     }
   };
 

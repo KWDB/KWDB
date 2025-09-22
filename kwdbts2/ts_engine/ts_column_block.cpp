@@ -93,21 +93,42 @@ bool TsColumnBlock::GetCompressedData(std::string* out, TsColumnCompressInfo* in
   // 1. compress bitmap;
   // TODO(zzr) bitmap compression algorithms;
   assert(count_ == bitmap.GetCount());
+  compressed_data.push_back(static_cast<char>(BitmapCompAlg::kPlain));
   compressed_data.append(bitmap.GetStr());
   info->bitmap_len = compressed_data.size();
 
   // 2. compress fixlen data
+  const auto& mgr = CompressorManager::GetInstance();
   std::string tmp;
-  TSSlice input = fixlen_guard_.AsSlice();
-  tmp.append(input.data, input.len);
+  TsBitmap* p_bitmap = &bitmap;
+  auto [first, second] = mgr.GetDefaultAlgorithm(static_cast<DATATYPE>(col_schema_.type));
+  if (isVarLenType(col_schema_.type)) {
+    // varchar use Gorilla algorithm
+    first = compress ? TsCompAlg::kChimp_32 : TsCompAlg::kPlain;
+    p_bitmap = nullptr;
+  }
 
+  TSSlice input = fixlen_guard_.AsSlice();
+  if (!compress) {
+    first = TsCompAlg::kPlain;
+    second = GenCompAlg::kPlain;
+  }
+
+  bool ok = mgr.CompressData(input, p_bitmap, count_, &tmp, first, second);
+  if (!ok) {
+    return false;
+  }
   info->fixdata_len = tmp.size();
   compressed_data.append(tmp);
 
   // 3. compress varchar data
   if (!varchar_guard_.empty()) {
     tmp.clear();
-    tmp.append(varchar_guard_.AsSlice().data, varchar_guard_.AsSlice().len);
+    auto comp_alg = compress ? GenCompAlg::kSnappy : GenCompAlg::kPlain;
+    ok = mgr.CompressVarchar(varchar_guard_.AsSlice(), &tmp, comp_alg);
+    if (!ok) {
+      return false;
+    }
     info->vardata_len = tmp.size();
     compressed_data.append(tmp);
   } else {
@@ -125,9 +146,16 @@ KStatus TsColumnBlock::ParseColumnData(const AttributeInfo& col_schema, TSSlice 
   // std::unique_ptr<TsBitmap> p_bitmap = nullptr;
   TsSliceGuard bitmap_guard;
   if (info.bitmap_len != 0) {
+    BitmapCompAlg bitmap_alg = static_cast<BitmapCompAlg>(compressed_data.data[0]);
+    if (bitmap_alg != BitmapCompAlg::kPlain) {
+      LOG_ERROR("Unsupported bitmap compression algorithm: %d", static_cast<int>(bitmap_alg));
+      return FAIL;
+    }
+    RemovePrefix(&compressed_data, 1);
+
     TSSlice bitmap_data;
     bitmap_data.data = compressed_data.data;
-    bitmap_data.len = info.bitmap_len;
+    bitmap_data.len = info.bitmap_len - 1;
     bitmap_guard = TsSliceGuard{bitmap_data};
     RemovePrefix(&compressed_data, bitmap_data.len);
   }
@@ -136,7 +164,14 @@ KStatus TsColumnBlock::ParseColumnData(const AttributeInfo& col_schema, TSSlice 
   TSSlice fixlen_slice;
   fixlen_slice.data = compressed_data.data;
   fixlen_slice.len = info.fixdata_len;
-  TsSliceGuard fixlen_guard(fixlen_slice);
+  const auto& mgr = CompressorManager::GetInstance();
+  // TsBitmap* pbitmap = isVarLenType(col_schema.type) ? nullptr : p_bitmap.get();
+  TsBitmap* pbitmap = nullptr;
+  TsSliceGuard fixlen_guard;
+  bool ok = mgr.DecompressData(fixlen_slice, pbitmap, info.row_count, &fixlen_guard);
+  if (!ok) {
+    return KStatus::FAIL;
+  }
   RemovePrefix(&compressed_data, info.fixdata_len);
 
   // 3. Decompress Varchar
@@ -144,7 +179,10 @@ KStatus TsColumnBlock::ParseColumnData(const AttributeInfo& col_schema, TSSlice 
   if (info.vardata_len != 0) {
     TSSlice varlen_slice = compressed_data;
     assert(varlen_slice.len == info.vardata_len);
-    varchar_guard = TsSliceGuard{varlen_slice};
+    ok = mgr.DecompressVarchar(varlen_slice, &varchar_guard);
+    if (!ok) {
+      return KStatus::FAIL;
+    }
   }
   colblock->reset(new TsColumnBlock(col_schema, info.row_count, std::move(bitmap_guard),
                                     std::move(fixlen_guard), std::move(varchar_guard)));

@@ -165,7 +165,11 @@ KStatus TsLastSegmentBuilder::RecordAndWriteBlockToFile() {
                           entity_id_buffer_.size() * sizeof(TSEntityID)};
   const auto& mgr = CompressorManager::GetInstance();
   std::string compressed_data;
-  compressed_data.append(entity_id_slice.data, entity_id_slice.len);
+  bool ok = mgr.CompressData(entity_id_slice, nullptr, entity_id_buffer_.size(), &compressed_data, TsCompAlg::kPlain,
+                             GenCompAlg::kPlain);
+  if (!ok) {
+    return FAIL;
+  }
   auto s = last_segment_file_->Append(compressed_data);
   if (s == FAIL) {
     return s;
@@ -175,7 +179,7 @@ KStatus TsLastSegmentBuilder::RecordAndWriteBlockToFile() {
 
   TsMetricCompressInfo compress_info;
   compressed_data.clear();
-  bool ok = metric_block->GetCompressedData(&compressed_data, &compress_info, false, false);
+  ok = metric_block->GetCompressedData(&compressed_data, &compress_info, false, false);
   if (!ok) {
     return FAIL;
   }
