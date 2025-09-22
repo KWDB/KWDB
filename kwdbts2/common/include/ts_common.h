@@ -200,8 +200,10 @@ struct TagBatch : public Batch {
   }
 
   KStatus isNull(k_uint32 row_idx, bool* is_null) const override {
-    if (mem == nullptr || row_idx >= count) {
+    if (mem == nullptr) {
       *is_null = true;
+      return KStatus::SUCCESS;
+    } else if (row_idx >= count) {
       return KStatus::FAIL;
     }
     *is_null = *reinterpret_cast<char*>((intptr_t)mem + row_idx * data_length_) == 0;
