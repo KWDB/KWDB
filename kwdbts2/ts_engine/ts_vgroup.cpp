@@ -1270,7 +1270,10 @@ KStatus TsVGroup::WriteBatchData(TSTableID tbl_id, uint32_t table_version,
 
   auto partition = current->GetPartition(database_id, p_time);
   if (partition == nullptr) {
-    version_manager_->AddPartition(database_id, p_time);
+    KStatus s = version_manager_->AddPartition(database_id, p_time);
+    if (s != KStatus::SUCCESS) {
+      return s;
+    }
     current = version_manager_->Current();
     partition = current->GetPartition(database_id, p_time);
     if (partition == nullptr) {

@@ -131,7 +131,10 @@ KStatus TsMemSegmentManager::PutData(const TSSlice& payload, TSEntityID entity_i
       continue;
     }
     auto p_time = convertTsToPTime(row_ts, ts_type);
-    version_manager_->AddPartition(db_id, p_time);
+    KStatus s = version_manager_->AddPartition(db_id, p_time);
+    if (s != KStatus::SUCCESS) {
+      return s;
+    }
 
     TSMemSegRowData* row_data = cur_mem_seg->AllocOneRow(db_id, table_id, table_version, entity_id, pd.GetRowData(i));
     row_data->SetData(row_ts, lsn);

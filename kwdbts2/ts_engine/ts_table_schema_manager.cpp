@@ -206,8 +206,8 @@ KStatus TsTableSchemaManager::CreateTable(kwdbContext_p ctx, roachpb::CreateTsTa
       LOG_WARN("CreateTable: table %lu version [%u] already exists", table_id_, ts_version);
       return SUCCESS;
     }
-    LOG_ERROR("CreateTable: metric version [%u] already exists, but current version is [%u]", ts_version, cur_version_);
-    return FAIL;
+    LOG_INFO("CreateTable: metric version [%u] already exists, but current version is [%u]", ts_version, cur_version_);
+    return SUCCESS;
   }
   std::vector<TagInfo> tag_schema;
   std::vector<AttributeInfo> metric_schema;

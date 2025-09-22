@@ -61,11 +61,11 @@ static int64_t GetPartitionStartTime(timestamp64 timestamp, int64_t ts_interval)
   return index * ts_interval;
 }
 
-void TsVersionManager::AddPartition(DatabaseID dbid, timestamp64 ptime) {
+KStatus TsVersionManager::AddPartition(DatabaseID dbid, timestamp64 ptime) {
   timestamp64 start = GetPartitionStartTime(ptime, EngineOptions::partition_interval);
   PartitionIdentifier partition_id{dbid, start, start + EngineOptions::partition_interval};
   if (partition_id == this->last_created_partition_) {
-    return;
+    return KStatus::SUCCESS;
   }
   {
     auto current = Current();
@@ -73,7 +73,7 @@ void TsVersionManager::AddPartition(DatabaseID dbid, timestamp64 ptime) {
     auto it = current->partitions_.find(partition_id);
     if (it != current->partitions_.end()) {
       last_created_partition_ = partition_id;
-      return;
+      return KStatus::SUCCESS;
     }
   }
   // find partition again under exclusive lock
@@ -81,7 +81,7 @@ void TsVersionManager::AddPartition(DatabaseID dbid, timestamp64 ptime) {
   auto it = current_->partitions_.find(partition_id);
   if (it != current_->partitions_.end()) {
     last_created_partition_ = partition_id;
-    return;
+    return KStatus::SUCCESS;
   }
 
   // create new partition under exclusive lock
@@ -100,15 +100,24 @@ void TsVersionManager::AddPartition(DatabaseID dbid, timestamp64 ptime) {
     partition->directory_created_ = true;
 
     partition->del_info_ = std::make_shared<TsDelItemManager>(partition_dir);
-    partition->del_info_->Open();
+    KStatus s = partition->del_info_->Open();
+    if (s != KStatus::SUCCESS) {
+      LOG_ERROR("Partition DelItemManager open failed: partition_dir[%s].", partition_dir.string().c_str());
+      return KStatus::FAIL;
+    }
     partition->count_info_ = std::make_shared<TsPartitionEntityCountManager>(partition_dir);
-    partition->count_info_->Open();
+    s = partition->count_info_->Open();
+    if (s != KStatus::SUCCESS) {
+      LOG_ERROR("Partition EntityCountManager open failed: partition_dir[%s].", partition_dir.string().c_str());
+      return KStatus::FAIL;
+    }
   }
   new_version->partitions_.insert({partition_id, std::move(partition)});
 
   // update current version
   current_ = std::move(new_version);
   last_created_partition_ = partition_id;
+  return KStatus::SUCCESS;
 }
 
 KStatus TsVersionManager::Recover() {
