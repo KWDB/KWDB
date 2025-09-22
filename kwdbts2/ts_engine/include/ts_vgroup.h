@@ -357,19 +357,34 @@ class TsVGroup {
     if (!entity_latest_row_.count(entity_id) || max_ts >= entity_latest_row_[entity_id].last_ts) {
       // update last payload
       if (CLUSTER_SETTING_USE_LAST_ROW_OPTIMIZATION) {
+        assert(payload.len > 0);
+        assert(payload.data != nullptr);
         char* payload_data = nullptr;
         if (entity_latest_row_checked_[entity_id] != TsEntityLatestRowStatus::Valid) {
+          if (entity_latest_row_checked_[entity_id] == TsEntityLatestRowStatus::Uninitialized) {
+            entity_latest_row_checked_[entity_id] = TsEntityLatestRowStatus::Valid;
+          }
           size_t page_size = getpagesize();
           size_t alloc_size = std::max(page_size, payload.len);
           payload_data = static_cast<char*>(malloc(alloc_size));
+          if (nullptr == payload_data) {
+            entity_latest_row_[entity_id].last_ts = max_ts;
+            LOG_ERROR("malloc failed. malloc size is %lu", alloc_size);
+            return;
+          }
           entity_latest_row_mem_size_[entity_id] = alloc_size;
-          entity_latest_row_checked_[entity_id] = TsEntityLatestRowStatus::Valid;
         } else if (payload.len > entity_latest_row_mem_size_[entity_id]) {
           size_t& old_size = entity_latest_row_mem_size_[entity_id];
           char* old_mem = entity_latest_row_[entity_id].last_payload.data;
           size_t realloc_size = old_size * 1.25;
           size_t alloc_size = std::max(realloc_size, payload.len);
           payload_data = static_cast<char*>(realloc(old_mem, alloc_size));
+          if (nullptr == payload_data) {
+            entity_latest_row_[entity_id].last_ts = max_ts;
+            entity_latest_row_[entity_id].is_payload_valid = false;
+            LOG_ERROR("realloc failed. realloc size is %lu", alloc_size);
+            return;
+          }
           entity_latest_row_mem_size_[entity_id] = alloc_size;
         } else {
           payload_data = entity_latest_row_[entity_id].last_payload.data;
@@ -394,6 +409,7 @@ class TsVGroup {
         entity_latest_row_[entity_id].last_payload.data = nullptr;
       }
       entity_latest_row_.erase(entity_id);
+      entity_latest_row_mem_size_.erase(entity_id);
       entity_latest_row_checked_[entity_id] = TsEntityLatestRowStatus::Recovering;
     }
   }

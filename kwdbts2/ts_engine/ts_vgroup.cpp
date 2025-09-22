@@ -409,10 +409,11 @@ KStatus TsVGroup::GetEntityLastRow(std::shared_ptr<TsTableSchemaManager>& table_
     if (entity_latest_row_checked_[entity_id] == TsEntityLatestRowStatus::Uninitialized) {
       return KStatus::SUCCESS;
     }
-    if (entity_latest_row_checked_[entity_id] == TsEntityLatestRowStatus::Valid
-        && checkTimestampWithSpans(ts_spans, entity_latest_row_[entity_id].last_ts,
+    if (entity_latest_row_checked_[entity_id] == TsEntityLatestRowStatus::Valid) {
+      if (checkTimestampWithSpans(ts_spans, entity_latest_row_[entity_id].last_ts,
                                    entity_latest_row_[entity_id].last_ts) != TimestampCheckResult::NonOverlapping) {
-      entity_last_ts = entity_latest_row_[entity_id].last_ts;
+        entity_last_ts = entity_latest_row_[entity_id].last_ts;
+      }
       return KStatus::SUCCESS;
     }
   }
@@ -456,17 +457,18 @@ KStatus TsVGroup::GetEntityLastRow(std::shared_ptr<TsTableSchemaManager>& table_
     }
     break;
   }
+  std::unique_lock<std::shared_mutex> lock(entity_latest_row_mutex_);
   if (last_block_span != nullptr) {
-    std::unique_lock<std::shared_mutex> lock(entity_latest_row_mutex_);
     if (!entity_latest_row_.count(entity_id) || last_block_span->GetLastTS() >= entity_latest_row_[entity_id].last_ts) {
+      entity_latest_row_[entity_id].is_payload_valid = false;
       entity_latest_row_[entity_id].last_ts = last_block_span->GetLastTS();
-      entity_latest_row_checked_[entity_id] = TsEntityLatestRowStatus::Valid;
     }
     if (checkTimestampWithSpans(ts_spans, entity_latest_row_[entity_id].last_ts,
                                 entity_latest_row_[entity_id].last_ts) != TimestampCheckResult::NonOverlapping) {
       entity_last_ts = entity_latest_row_[entity_id].last_ts;
     }
   }
+  entity_latest_row_checked_[entity_id] = TsEntityLatestRowStatus::Valid;
   return KStatus::SUCCESS;
 }
 
@@ -526,7 +528,9 @@ KStatus TsVGroup::GetEntityLastRowBatch(uint32_t entity_id, uint32_t scan_versio
   timestamp64 last_ts = INVALID_TS;
   {
     std::shared_lock<std::shared_mutex> lock(entity_latest_row_mutex_);
-    if (entity_latest_row_checked_[entity_id] != TsEntityLatestRowStatus::Valid
+    if (!entity_latest_row_checked_.count(entity_id)
+        || entity_latest_row_checked_[entity_id] != TsEntityLatestRowStatus::Valid
+        || !entity_latest_row_.count(entity_id) || !entity_latest_row_[entity_id].is_payload_valid
         || TimestampCheckResult::NonOverlapping == checkTimestampWithSpans(ts_spans, entity_latest_row_[entity_id].last_ts,
                                                    entity_latest_row_[entity_id].last_ts)) {
       return KStatus::SUCCESS;
