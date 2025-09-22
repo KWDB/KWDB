@@ -1091,6 +1091,9 @@ message TableDescriptor {
 
   optional uint32 next_trigger_id = 51 [(gogoproto.nullable) = false,
     (gogoproto.customname) = "NextTriggerID", (gogoproto.casttype) = "ID"];
+
+  // metadata of CDC
+  repeated CDCDescriptor CDC = 52 [(gogoproto.nullable) = false];
 }
 
 // TriggerActionTime describes the timing of a trigger: before, after, or
@@ -1150,6 +1153,28 @@ message TriggerDescriptor {
 
   // Extended is the reserved extended field.
   optional bytes extended = 11;
+}
+
+enum CDCInstanceType {
+  Stream = 0;
+  Pipe = 1;
+  Publication = 2;
+  Subscription = 3;
+}
+
+// CDCDescriptor describes a CDC on a table.
+message CDCDescriptor {
+  option (gogoproto.equal) = true;
+  // The CDC ID,
+  optional uint64 id = 1 [(gogoproto.nullable) = false, (gogoproto.customname) = "ID"];
+  // The CDC type
+  optional CDCInstanceType cdc_type = 2 [(gogoproto.nullable) = false];
+  // If true, indicates that the CDC is active.
+  optional bool enabled = 3 [(gogoproto.nullable) = false];
+  // The CDC parameters.
+  optional bytes parameters = 4;
+  // The CDC version
+  optional uint32 version = 5 [(gogoproto.nullable) = false];
 }
 
 // KWDBTSColumn is a dropped column of time-series table .
