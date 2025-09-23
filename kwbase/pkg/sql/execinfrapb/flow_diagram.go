@@ -305,7 +305,7 @@ func (tr *TSReaderSpec) summary() (string, []string) {
 		}
 	}
 
-	return "TableReader", details
+	return "TSTableReader", details
 }
 
 // summary implements the diagramCellType interface.
@@ -331,7 +331,7 @@ func (tr *TSTagReaderSpec) summary() (string, []string) {
 		}
 	}
 
-	return "TagReader", res
+	return "TSTagReader", res
 }
 
 // summary implements the diagramCellType interface.
@@ -366,7 +366,7 @@ func (ts *TSStatisticReaderSpec) summary() (string, []string) {
 	if ts.LastRowOpt {
 		details = append(details, "LastRowOpt")
 	}
-	return "StatisticReader", details
+	return "TSStatisticReader", details
 }
 
 // summary implements the diagramCellType interface.
@@ -1102,10 +1102,10 @@ func DisplayFlowSpec(flow FlowSpec) (string, bool) {
 	var buf bytes.Buffer
 	isQuery := false
 
-	// construct message of ME processor.
+	// construct message of processors.
 	buf.WriteString("==========\n")
 	for _, v := range flow.Processors {
-		if v.Core.TableReader != nil {
+		if v.Core.TableReader != nil || v.Core.TsTableReader != nil {
 			isQuery = true
 		}
 		core, ok := v.Core.GetValue().(diagramCellType)
