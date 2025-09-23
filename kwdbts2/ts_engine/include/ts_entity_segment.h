@@ -234,10 +234,7 @@ class TsEntityBlock : public TsBlock {
   const std::vector<AttributeInfo>* metric_schema_ = nullptr;
 
   TsEntitySegmentBlockInfo block_info_;
-  // std::vector<TsEntitySegmentColumnBlock> column_blocks_;
   std::vector<std::shared_ptr<TsEntitySegmentColumnBlock>> column_blocks_;
-  std::shared_ptr<TsEntitySegmentColumnBlock> lsn_column_block_{nullptr};
-  std::shared_ptr<TsEntitySegmentColumnBlock> timestamp_column_block_{nullptr};
   std::string extra_buffer_;
 
   uint32_t n_rows_ = 0;
