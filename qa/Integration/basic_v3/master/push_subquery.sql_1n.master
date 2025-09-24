@@ -155,6 +155,7 @@ LIMIT 1;
    │         │                          | engine type         | time series
    │         │                          | order               | -abnormal_point_count
    │         └── group                  |                     |
+   │              │                     | engine type         | time series
    │              │                     | aggregate 0         | station_sn
    │              │                     | aggregate 1         | count(DISTINCT point_sn)
    │              │                     | group by            | station_sn
@@ -188,7 +189,7 @@ LIMIT 1;
                                         | use statistic       | true
                                         | tag filter[0]       | measure_type = 4
                                         | tag filter[1]       | pipeline_sn = 'e1'
-(43 rows)
+(44 rows)
 > SELECT COUNT(*) AS max_sample_count,
 AVG(t.measure_value) AS avg_value,
 t.measure_value AS first_n_max_value

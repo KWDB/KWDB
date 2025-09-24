@@ -71,6 +71,7 @@ INSERT 1
    │                          | engine type                | time series
    │                          | order                      | +date
    └── group                  |                            |
+        │                     | engine type                | time series
         │                     | aggregate 0                | date
         │                     | aggregate 1                | count(DISTINCT usage_system)
         │                     | group by                   | date
@@ -87,7 +88,7 @@ INSERT 1
                               | filter                     | (usage_system = 1) AND (ts >= '2023-10-30 00:00:00+00:00')
                               | ptag filter[0]             | hostname = 'host_0'
                               | block filter[usage_system] | [1 - 1]
-(22 rows)
+(23 rows)
 > explain select  time_bucket(ts, '3600s') as date, count(distinct usage_system) as nums from cpu where hostname = 'host_0' and ts >= date_trunc('week', '2023-10-30 12:12:12'::timestamp) and ts < '2023-10-30 12:12:12' and usage_system = 1 group by date order by date;
              tree             |           field            |                        description
 ------------------------------+----------------------------+-------------------------------------------------------------
@@ -97,6 +98,7 @@ INSERT 1
    │                          | engine type                | time series
    │                          | order                      | +date
    └── group                  |                            |
+        │                     | engine type                | time series
         │                     | aggregate 0                | date
         │                     | aggregate 1                | count(DISTINCT usage_system)
         │                     | group by                   | date
@@ -113,7 +115,7 @@ INSERT 1
                               | filter                     | (usage_system = 1) AND (ts >= '2023-10-30 00:00:00+00:00')
                               | ptag filter[0]             | hostname = 'host_0'
                               | block filter[usage_system] | [1 - 1]
-(22 rows)
+(23 rows)
 > explain select usage_user from cpu where hostname = 'host_0' and usage_system>2000 order by usage_user;
            tree          |           field            |     description
 -------------------------+----------------------------+----------------------
@@ -359,6 +361,7 @@ INSERT 1
    │                          | engine type                | time series
    │                          | order                      | +date
    └── group                  |                            |
+        │                     | engine type                | time series
         │                     | aggregate 0                | date
         │                     | aggregate 1                | count(DISTINCT usage_system)
         │                     | group by                   | date
@@ -375,7 +378,7 @@ INSERT 1
                               | filter                     | (usage_system = 1) AND (ts >= '2023-10-30 00:00:00+00:00')
                               | ptag filter[0]             | hostname = 'host_0'
                               | block filter[usage_system] | [1 - 1]
-(22 rows)
+(23 rows)
 > explain select  time_bucket(ts, '3600s') as date, count(distinct usage_system) as nums from cpu where ts >= date_trunc('week', '2023-10-30 12:12:12'::timestamp) and ts < '2023-10-30 12:12:12' and usage_system = 1 group by date order by date;
              tree             |           field            |                        description
 ------------------------------+----------------------------+-------------------------------------------------------------
@@ -385,6 +388,7 @@ INSERT 1
    │                          | engine type                | time series
    │                          | order                      | +date
    └── group                  |                            |
+        │                     | engine type                | time series
         │                     | aggregate 0                | date
         │                     | aggregate 1                | count(DISTINCT usage_system)
         │                     | group by                   | date
@@ -400,7 +404,7 @@ INSERT 1
                               | spans:toTime               | 2023-10-30 12:12:11.999 +0000 UTC
                               | filter                     | (usage_system = 1) AND (ts >= '2023-10-30 00:00:00+00:00')
                               | block filter[usage_system] | [1 - 1]
-(21 rows)
+(22 rows)
 > explain select usage_user from cpu where hostname = 'host_0' and usage_system>2000 order by usage_user;
            tree          |           field            |     description
 -------------------------+----------------------------+----------------------

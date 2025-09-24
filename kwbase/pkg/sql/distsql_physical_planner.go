@@ -4612,11 +4612,21 @@ func (dsp *DistSQLPlanner) addTSAggregators(
 			if err != nil {
 				return false, err
 			}
-			// add twice agg local
-			finalAggsSpec, finalAggsPost, err = dsp.addTwoStageAggForTS(planCtx, p, aggType,
-				aggregations, aggregationsColumnTypes, groupCols, orderedGroupCols, orderedGroupColSet, n, needsTSTwiceAgg, pruneFinalAgg, addSync)
-			if err != nil {
-				return false, err
+			multiStage := checkIsMultiState(prevStageNode, aggregations)
+			if !multiStage {
+				finalAggsSpec = execinfrapb.AggregatorSpec{
+					Type:             aggType,
+					Aggregations:     aggregations,
+					GroupCols:        groupCols,
+					OrderedGroupCols: orderedGroupCols,
+				}
+			} else {
+				// add twice agg local
+				finalAggsSpec, finalAggsPost, err = dsp.addTwoStageAggForTS(planCtx, p, aggType,
+					aggregations, aggregationsColumnTypes, groupCols, orderedGroupCols, orderedGroupColSet, n, needsTSTwiceAgg, pruneFinalAgg, addSync)
+				if err != nil {
+					return false, err
+				}
 			}
 			finalAggsPost.OutputTypes = finalOutTypes
 
@@ -4989,19 +4999,6 @@ func (dsp *DistSQLPlanner) createPlanForGroup(
 	}
 
 	addOutPutType := true
-
-	// TODO(haokaiwei): the restrictions here need to be removed in the future.
-	// The ts engine currently does not support hash redistribution.
-	// This situation will not be pushed down, and this restriction
-	// will be lifted in future optimizations.
-	if len(n.groupCols) > 0 {
-		for _, f := range n.funcs {
-			if f.isDistinct() {
-				n.engine = tree.EngineTypeRelational
-				break
-			}
-		}
-	}
 
 	if plan.SelfCanExecInTSEngine(n.engine == tree.EngineTypeTimeseries) {
 		pruneFinalAgg := n.optType.PruneFinalAggOpt()

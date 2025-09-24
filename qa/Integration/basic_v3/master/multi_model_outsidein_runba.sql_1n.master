@@ -2437,6 +2437,7 @@ ORDER BY
                        │                             | table                 | plat_tijiancard_item_relation@tijian_id_relation
                        │                             | spans                 | /"AX5X4MOWmHcpSHXnzJWe"-/"AX5X4MOWmHcpSHXnzJWe"/PrefixEnd
                        └── group                     |                       |
+                            │                        | engine type           | time series
                             │                        | aggregate 0           | datatype
                             │                        | aggregate 1           | device
                             │                        | aggregate 2           | company_id
@@ -2464,7 +2465,7 @@ ORDER BY
                                       └── ts scan    |                       |
                                                      | ts-table              | opcdata449600
                                                      | access mode           | hashRelScan
-(64 rows)
+(65 rows)
 > SELECT 
     time_bucket(opcdata."time", '200s') AS timebucket,
     SUM(opcdata."value") / COUNT(opcdata."value") + MAX(opcdata."value") - MIN(opcdata."value") as avg_val,

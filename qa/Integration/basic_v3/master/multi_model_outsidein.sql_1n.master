@@ -1612,6 +1612,7 @@ ORDER BY
         │                               | table              | pipeline_info@pipeline_name_index
         │                               | spans              | /"pipeline_1"-/"pipeline_1"/PrefixEnd
         └── group                       |                    |
+             │                          | engine type        | time series
              │                          | aggregate 0        | measure_type
              │                          | aggregate 1        | work_area_name
              │                          | aggregate 2        | count(DISTINCT point_sn)
@@ -1629,7 +1630,7 @@ ORDER BY
                             └── ts scan |                    |
                                         | ts-table           | t_point
                                         | access mode        | hashRelScan
-(39 rows)
+(40 rows)
 > SELECT li.pipeline_name,
        t.measure_type,
        time_bucket(t.k_timestamp, '10s') as timebucket,

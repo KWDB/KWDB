@@ -739,3 +739,28 @@ WHERE
 
 set cluster setting default_transaction_read_only.enabled=default;
 drop database tpcc cascade;
+
+drop database if exists test_agg_distinct cascade;
+create ts database test_agg_distinct;
+use test_agg_distinct;
+create table t1 (ts timestamp not null, e1 int8, e2 int8) tags (tag1 int not null, tag2 int not null) primary tags (tag1);
+insert into t1 values ('2021-04-01 15:00:01', 1, 11, 10, 101);
+insert into t1 values ('2021-04-01 15:00:02', 2, 12, 20, 102);
+insert into t1 values ('2021-04-01 15:00:03', 3, 13, 30, 103);
+insert into t1 values ('2021-04-01 15:00:04', 4, 14, 40, 104);
+insert into t1 values ('2021-04-01 15:00:05', 5, 15, 50, 105);
+insert into t1 values ('2021-04-01 15:00:06', 1, 11, 60, 101);
+insert into t1 values ('2021-04-01 15:00:07', 2, 12, 70, 102);
+insert into t1 values ('2021-04-01 15:00:08', 3, 13, 80, 103);
+insert into t1 values ('2021-04-01 15:00:09', 4, 14, 90, 104);
+insert into t1 values ('2021-04-01 15:00:10', 5, 15, 91, 105);
+select count(distinct e1), count(distinct e2) from test_agg_distinct.t1;
+select count(distinct tag2) from test_agg_distinct.t1;
+
+select count(distinct e1), count(distinct e2) from test_agg_distinct.t1 group by e1;
+select count(distinct tag2) from test_agg_distinct.t1 group by tag2;
+
+select count(e1), count(distinct e2) from test_agg_distinct.t1;
+select count(e1), count(distinct e2) from test_agg_distinct.t1 group by e1;
+
+drop database if exists test_agg_distinct cascade;
