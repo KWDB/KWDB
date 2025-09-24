@@ -9,6 +9,7 @@
 // MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
 // See the Mulan PSL v2 for more details.
 
+#include <mutex>
 #include <vector>
 #include "ts_lru_block_cache.h"
 
@@ -101,6 +102,23 @@ void TsLRUBlockCache::SetMaxBlocks(uint32_t max_blocks) {
   }
   max_blocks_ = max_blocks;
   lock_.unlock();
+}
+
+void TsLRUBlockCache::EvictAll() {
+  std::lock_guard lk{lock_};
+  for (int i = 0; i < cur_block_num_; ++i) {
+    std::shared_ptr<TsEntityBlock> tail_block = tail_;
+    tail_ = tail_->pre_;
+    tail_block->pre_ = nullptr;
+    tail_block->next_ = nullptr;
+    tail_block->RemoveFromSegment();
+  }
+  if (tail_) {
+    tail_->next_ = nullptr;
+  } else {
+    head_ = tail_;
+  }
+  cur_block_num_ = 0;
 }
 
 uint32_t TsLRUBlockCache::Count() {

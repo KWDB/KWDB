@@ -55,6 +55,8 @@ class TsLRUBlockCache {
   void Access(std::shared_ptr<TsEntityBlock>& block);
   // Adjust max_blocks_
   void SetMaxBlocks(uint32_t max_blocks);
+  // Evict all the ts blocks in the cache
+  void EvictAll();
 
   // For unit tests
   uint32_t Count();

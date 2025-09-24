@@ -39,6 +39,7 @@
 #include "ts_entity_segment.h"
 #include "ts_filename.h"
 #include "ts_io.h"
+#include "ts_lru_block_cache.h"
 
 namespace kwdbts {
 // static const int64_t interval = 3600 * 24 * 10;  // 10 days.
@@ -419,7 +420,12 @@ KStatus TsVersionManager::ApplyUpdate(TsVersionUpdate *update) {
     logger_->AddRecord(encoded_update);
   }
   current_ = std::move(new_vgroup_version);
-  lk.unlock();
+
+  // release LRU cache if the update is call by Vacuum
+  // TODO(zzr): optimize later in 3.1
+  if (update->delete_all_prev_entity_segment_) {
+    TsLRUBlockCache::GetInstance().EvictAll();
+  }
   // LOG_DEBUG("%s: %s", this->root_path_.filename().c_str(), update->DebugStr().c_str());
   return SUCCESS;
 }
@@ -678,8 +684,8 @@ KStatus TsPartitionVersion::NeedVacuumEntitySegment(const fs::path& root_path,
     return SUCCESS;
   }
   // Temporarily add environment variables to control vacuum
+  uint32_t vacuum_interval = vacuum_minutes;
   const char *vacuum_minutes_char = getenv("KW_VACUUM_TIME");
-  uint32_t vacuum_interval = 0;
   if (vacuum_minutes_char) {
     char* endptr;
     vacuum_interval = strtol(vacuum_minutes_char, &endptr, 10);
@@ -688,7 +694,6 @@ KStatus TsPartitionVersion::NeedVacuumEntitySegment(const fs::path& root_path,
 
   auto now = std::chrono::time_point_cast<std::chrono::seconds>(std::chrono::system_clock::now());
   float diff_latest_now = (now.time_since_epoch().count() - latest_mtime) / 60;
-  vacuum_interval = vacuum_interval != 0 ? vacuum_interval : vacuum_minutes;
   if (diff_latest_now < vacuum_interval) {
     return SUCCESS;
   }
