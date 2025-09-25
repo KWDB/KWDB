@@ -50,6 +50,10 @@ class TsTableV2Impl : public TsTable {
   }
 
   TsVGroup* GetVGroupByID(uint32_t vgroup_id) {
+    if (EngineOptions::vgroup_max_num < vgroup_id || vgroup_id <= 0) {
+      LOG_ERROR("vgroup_id is wrong! vgroup_max_num is [%d], vgroup_id is [%u], vgroups_ size is [%zu]",
+                EngineOptions::vgroup_max_num, vgroup_id, vgroups_.size())
+    }
     assert(EngineOptions::vgroup_max_num >= vgroup_id && vgroup_id > 0);
     return vgroups_[vgroup_id - 1].get();
   }

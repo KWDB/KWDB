@@ -122,8 +122,10 @@ KStatus MetricsVersionManager::CreateTable(kwdbContext_p ctx, std::vector<Attrib
   tmp_bt->setObjectReady();
   // Save to map cache
   metric_tables_.insert({ts_version, tmp_bt});
-  cur_metric_table_ = tmp_bt;
-  cur_metric_version_ = ts_version;
+  if (ts_version > cur_metric_version_) {
+    cur_metric_table_ = tmp_bt;
+    cur_metric_version_ = ts_version;
+  }
   return KStatus::SUCCESS;
 }
 
@@ -190,25 +192,20 @@ void MetricsVersionManager::GetAllVersions(std::vector<uint32_t> *table_versions
   }
 }
 
-LifeTime MetricsVersionManager::GetLifeTime() const {
-  return cur_metric_table_->GetLifeTime();
+LifeTime MetricsVersionManager::GetLifeTime() {
+  return GetCurrentMetricsTable()->GetLifeTime();
 }
 
-void MetricsVersionManager::SetLifeTime(LifeTime life_time) const {
-  cur_metric_table_->SetLifeTime(life_time);
+void MetricsVersionManager::SetLifeTime(LifeTime life_time) {
+  GetCurrentMetricsTable()->SetLifeTime(life_time);
 }
 
 uint64_t MetricsVersionManager::GetPartitionInterval() const {
   return partition_interval_;
 }
 
-uint64_t MetricsVersionManager::GetDbID() const {
-  if (cur_metric_table_ && cur_metric_table_->metaData()) {
-    return cur_metric_table_->metaData()->db_id;
-  } else {
-    LOG_ERROR("cur_metric_schema_ is nullptr");
-    return 0;
-  }
+uint64_t MetricsVersionManager::GetDbID() {
+  return GetCurrentMetricsTable()->metaData()->db_id;
 }
 
 void MetricsVersionManager::Sync(const kwdbts::TS_LSN& check_lsn, ErrorInfo& err_info) {
@@ -246,9 +243,7 @@ KStatus MetricsVersionManager::SetDropped() {
 }
 
 bool MetricsVersionManager::IsDropped() {
-  rdLock();
-  Defer defer([&]() { unLock(); });
-  return cur_metric_table_->isDropped();
+  return GetCurrentMetricsTable()->isDropped();
 }
 
 KStatus MetricsVersionManager::RemoveAll() {
@@ -286,6 +281,10 @@ KStatus MetricsVersionManager::UndoAlterCol(uint32_t old_version, uint32_t new_v
   }
 
   auto old_bt = GetMetricsTable(old_version, false);
+  if (old_bt == nullptr) {
+    LOG_ERROR("UndoAlterCol failed: metric version %u is null", old_version);
+    return FAIL;
+  }
   cur_metric_table_ = old_bt;
   cur_metric_version_ = old_version;
   partition_interval_ = old_bt->partitionInterval();
@@ -293,8 +292,8 @@ KStatus MetricsVersionManager::UndoAlterCol(uint32_t old_version, uint32_t new_v
   return SUCCESS;
 }
 
-uint64_t MetricsVersionManager::GetHashNum() const {
-  return cur_metric_table_->hashNum();
+uint64_t MetricsVersionManager::GetHashNum() {
+  return GetCurrentMetricsTable()->hashNum();
 }
 
 std::shared_ptr<MMapMetricsTable> MetricsVersionManager::open(uint32_t ts_version, ErrorInfo& err_info) {

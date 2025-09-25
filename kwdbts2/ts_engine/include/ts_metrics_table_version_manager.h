@@ -49,21 +49,29 @@ class MetricsVersionManager {
 
   std::shared_ptr<MMapMetricsTable> GetMetricsTable(uint32_t ts_version, bool lock = true);
 
-  std::shared_ptr<MMapMetricsTable> GetCurrentMetricsTable(bool lock = true) {
-    return GetMetricsTable(cur_metric_version_, lock);
+  std::shared_ptr<MMapMetricsTable> GetCurrentMetricsTable() {
+    rdLock();
+    Defer defer([&]() { unLock(); });
+    assert(cur_metric_table_ != nullptr);
+    assert(cur_metric_version_ == cur_metric_table_->GetVersion());
+    return cur_metric_table_;
   }
 
-  uint32_t GetCurrentMetricsVersion() const { return cur_metric_version_; }
+  uint32_t GetCurrentMetricsVersion() {
+    rdLock();
+    Defer defer([&]() { unLock(); });
+    return cur_metric_version_;
+  }
 
   void GetAllVersions(std::vector<uint32_t>* table_versions);
 
-  LifeTime GetLifeTime() const;
+  LifeTime GetLifeTime();
 
-  void SetLifeTime(LifeTime life_time) const;
+  void SetLifeTime(LifeTime life_time);
 
   uint64_t GetPartitionInterval() const;
 
-  uint64_t GetDbID() const;
+  uint64_t GetDbID();
 
   void Sync(const kwdbts::TS_LSN& check_lsn, ErrorInfo& err_info);
 
@@ -75,7 +83,7 @@ class MetricsVersionManager {
 
   KStatus UndoAlterCol(uint32_t old_version, uint32_t new_version);
 
-  uint64_t GetHashNum() const;
+  uint64_t GetHashNum();
 
  private:
   int rdLock();

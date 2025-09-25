@@ -77,7 +77,9 @@ class TsTableSchemaManager {
 
   KStatus Init();
 
-  uint32_t GetCurrentVersion() const {
+  uint32_t GetCurrentVersion() {
+    RW_LATCH_S_LOCK(&table_version_rw_lock_);
+    Defer defer{[&]() { RW_LATCH_UNLOCK(&table_version_rw_lock_); }};
     return cur_version_;
   }
 
@@ -158,7 +160,7 @@ class TsTableSchemaManager {
    *
    * @return datatype in storage engine.
    */
-  DATATYPE GetTsColDataType();
+  DATATYPE GetTsColDataType() const;
 
   /**
    * @brief Gets index information for the actual column (exclude dropped columns)
@@ -166,7 +168,7 @@ class TsTableSchemaManager {
    * @param table_version Version number of the table. The default is 0.
    * @return Returns index information for the actual column.
    */
-  const vector<uint32_t>& GetIdxForValidCols(uint32_t table_version = 0);
+  KStatus GetIdxForValidCols(vector<uint32_t>& cols, uint32_t table_version = 0);
 
   bool FindVersionConv(uint64_t key, std::shared_ptr<SchemaVersionConv>* version_conv);
 
@@ -174,9 +176,7 @@ class TsTableSchemaManager {
 
   bool IsExistTableVersion(uint32_t version);
 
-  std::shared_ptr<MMapMetricsTable> GetCurrentMetricsTable() {
-    auto cur_metric_version = metric_mgr_->GetCurrentMetricsVersion();
-    assert(cur_version_ == cur_metric_version);
+  std::shared_ptr<MMapMetricsTable> GetCurrentMetricsTable() const {
     return metric_mgr_->GetCurrentMetricsTable();
   }
 

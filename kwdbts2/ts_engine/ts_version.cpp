@@ -733,11 +733,18 @@ KStatus TsPartitionVersion::NeedVacuumEntitySegment(const fs::path& root_path,
           return s;
         }
         auto life_time = tb_schema_mgr->GetLifeTime();
-        auto start_ts = (now.time_since_epoch().count() - life_time.ts) * life_time.precision;
-        auto end_time = GetTsColTypeEndTime(tb_schema_mgr->GetTsColDataType());
-        if (tb_schema_mgr->IsDropped() || end_time < start_ts) {
+        bool has_lifetime = life_time.ts != 0;
+        if (tb_schema_mgr->IsDropped()) {
           need_vacuum = true;
           return SUCCESS;
+        }
+        if (has_lifetime) {
+          auto start_ts = (now.time_since_epoch().count() - life_time.ts) * life_time.precision;
+          auto end_time = GetTsColTypeEndTime(tb_schema_mgr->GetTsColDataType());
+          if (end_time < start_ts) {
+            need_vacuum = true;
+            return SUCCESS;
+          }
         }
         traversed_table[entity_item.table_id] = true;
       }

@@ -921,7 +921,12 @@ KStatus TsVGroup::GetBlockSpans(TSTableID table_id, uint32_t entity_id, KwTsSpan
   current = version_manager_->Current();
   std::vector<KwTsSpan> ts_spans{ts_span};
   auto ts_partitions = current->GetPartitions(db_id, ts_spans, ts_col_type);
-  std::shared_ptr<MMapMetricsTable> metric_schema = table_schema_mgr->GetCurrentMetricsTable();
+  std::shared_ptr<MMapMetricsTable> metric_schema;
+  KStatus s = table_schema_mgr->GetMetricSchema(table_version, &metric_schema);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("GetMetricSchema failed.");
+    return s;
+  }
   for (int32_t index = 0; index < ts_partitions.size(); ++index) {
     TS_LSN lsn;
     if (EnableWAL()) {
@@ -932,7 +937,7 @@ KStatus TsVGroup::GetBlockSpans(TSTableID table_id, uint32_t entity_id, KwTsSpan
     TsScanFilterParams filter{db_id, table_id, vgroup_id_, entity_id, ts_col_type, lsn, ts_spans};
     auto partition_version = ts_partitions[index];
     std::list<std::shared_ptr<TsBlockSpan>> cur_block_span;
-    auto s = partition_version->GetBlockSpans(filter, &cur_block_span, table_schema_mgr, metric_schema);
+    s = partition_version->GetBlockSpans(filter, &cur_block_span, table_schema_mgr, metric_schema);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("partition_version GetBlockSpan failed.");
       return s;

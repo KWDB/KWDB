@@ -718,7 +718,6 @@ KStatus TsTableV2Impl::DeleteData(kwdbContext_p ctx, uint64_t range_group_id, st
       return s;
     }
     if (*count == 0) {
-      LOG_INFO("no valid data, no need add to delete item.");
       return KStatus::SUCCESS;
     }
   }
@@ -852,12 +851,16 @@ KStatus TsTableV2Impl::GetLastRowBatch(kwdbContext_p ctx, uint32_t table_version
     return KStatus::SUCCESS;
   }
 
-  auto& actual_cols = table_schema_mgr_->GetIdxForValidCols(table_version);
+  vector<uint32_t> actual_cols;
+  auto s = table_schema_mgr_->GetIdxForValidCols(actual_cols, table_version);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("GetIdxForValidCols Error");
+    return KStatus::FAIL;
+  }
   std::vector<k_uint32> ts_scan_cols;
   for (auto col : scan_cols) {
     if (col >= actual_cols.size()) {
-      // In the concurrency scenario, after the storage has deleted the column, kwsql sends query again
-      LOG_ERROR("GetIterator Error : TsTable no column %d", col);
+      LOG_ERROR("query col invalid: col idx %u", col);
       return KStatus::FAIL;
     }
     ts_scan_cols.emplace_back(actual_cols[col]);
