@@ -473,7 +473,9 @@ void SortRowChunk::Reset(k_bool force_constant) {
     force_constant_ = force_constant;
     SafeDeleteArray(col_offset_);
     SafeDeleteArray(is_encoded_col_);
+    EE_MemPoolFree(g_pstBufferPoolInfo, data_);
     EE_MemPoolFree(g_pstBufferPoolInfo, non_constant_data_);
+    data_ = nullptr;
     non_constant_data_ = nullptr;
     non_constant_col_offsets_.clear();
     all_constant_ = true;
@@ -834,7 +836,7 @@ KStatus SortRowChunk::Expand(k_uint32 new_count, k_bool copy) {
     return KStatus::FAIL;
   } else {
     capacity_ = new_count;
-    auto new_data = KNEW char[capacity_ * row_size_];
+    auto new_data = EE_MemPoolMalloc(g_pstBufferPoolInfo, capacity_ * row_size_);
     if (new_data == nullptr) {
       capacity_ = count_;
       return KStatus::FAIL;

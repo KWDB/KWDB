@@ -42,6 +42,7 @@ class LocalInboundOperator : public InboundOperator {
 
  protected:
   std::deque<DataChunkPtr> chunks_;  // queue
+  k_uint32 queue_data_size_{0};
   bool is_finished_{0};
   std::mutex chunk_lock_;
   std::condition_variable wait_cond_;

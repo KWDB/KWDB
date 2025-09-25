@@ -16,6 +16,7 @@
 namespace kwdbts {
 
 #define MAX_QUEUE_SIZE 128
+#define MAX_QUEUE_DATA_SIZE (1024 * 1024 * 128)
 
 EEIteratorErrCode LocalInboundOperator::Init(kwdbContext_p ctx) {
   EnterFunc();
@@ -78,10 +79,11 @@ KStatus LocalInboundOperator::PushChunk(DataChunkPtr& chunk, k_int32 stream_id,
                                         EEIteratorErrCode code) {
   // lock
   std::lock_guard<std::mutex> l(chunk_lock_);
-  if (chunks_.size() >= MAX_QUEUE_SIZE) {
+  if (chunks_.size() >= MAX_QUEUE_SIZE || queue_data_size_ > MAX_QUEUE_DATA_SIZE) {
     return KStatus::FAIL;
   }
   // chunk push to queue。
+  queue_data_size_ += chunk->Size();
   chunks_.push_back(std::move(chunk));
   // notify idle thread
   wait_cond_.notify_one();
@@ -116,6 +118,7 @@ KStatus LocalInboundOperator::PullChunk(kwdbContext_p ctx, DataChunkPtr& chunk) 
     }
     // get task
     chunk = std::move(chunks_.front());
+    queue_data_size_ -= chunk->Size();
     total_rows_ += chunk->Count();
     chunks_.pop_front();
     break;
