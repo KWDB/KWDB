@@ -101,9 +101,6 @@ KStatus TsTableSchemaManager::alterTableCol(kwdbContext_p ctx, AlterType alter_t
   if (tag_table_->GetTagTableVersionManager()->SyncFromMetricsTableVersion(cur_version, new_version) < 0) {
     return FAIL;
   }
-  if (new_version > cur_version_) {
-    cur_version_ = new_version;
-  }
   return SUCCESS;
 }
 
@@ -132,6 +129,9 @@ KStatus TsTableSchemaManager::AlterTable(kwdbContext_p ctx, AlterType alter_type
            table_id_, alter_type, cur_version, new_version, attr_info.isAttrType(COL_GENERAL_TAG));
     return s;
   }
+  if (new_version > cur_version_) {
+    cur_version_ = new_version;
+  }
   LOG_INFO("AlterTable succeeded. table_id: %lu alter_type: %hhu cur_version: %u new_version: %u is_general_tag: %d",
            table_id_, alter_type, cur_version, new_version, attr_info.isAttrType(COL_GENERAL_TAG));
   return SUCCESS;
@@ -141,6 +141,9 @@ KStatus TsTableSchemaManager::UndoAlterTable(kwdbContext_p ctx, AlterType alter_
                        uint32_t cur_version, uint32_t new_version) {
   RW_LATCH_X_LOCK(&table_version_rw_lock_);
   Defer defer{[&]() { RW_LATCH_UNLOCK(&table_version_rw_lock_); }};
+  if (cur_version_ == new_version) {
+    return SUCCESS;
+  }
   ErrorInfo err_info;
   auto s = UndoAlterCol(cur_version, new_version);
   if (s != SUCCESS) {
@@ -520,9 +523,6 @@ KStatus TsTableSchemaManager::UpdateMetricVersion(uint32_t cur_version, uint32_t
     LOG_ERROR("UpdateVersion failed: table id = %lu, new_version = %u", table_id_, new_version);
     return s;
   }
-  if (new_version > cur_version_) {
-    cur_version_ = new_version;
-  }
   return SUCCESS;
 }
 
@@ -641,6 +641,8 @@ KStatus TsTableSchemaManager::CreateNormalTagIndex(kwdbContext_p ctx, const uint
                                                    const uint64_t index_id, const uint32_t cur_version,
                                                    const uint32_t new_version,
                                                    const std::vector<uint32_t/* tag column id*/>& tags) {
+    RW_LATCH_X_LOCK(&table_version_rw_lock_);
+    Defer defer{[&]() { RW_LATCH_UNLOCK(&table_version_rw_lock_); }};
     ErrorInfo errorInfo;
     errorInfo.errcode = tag_table_->CreateHashIndex(O_CREAT, tags, index_id, cur_version, new_version, errorInfo);
     if (errorInfo.errcode < 0) {
@@ -651,12 +653,17 @@ KStatus TsTableSchemaManager::CreateNormalTagIndex(kwdbContext_p ctx, const uint
       LOG_ERROR("Update metric version failed");
       return s;
     }
+    if (new_version > cur_version_) {
+      cur_version_ = new_version;
+    }
     return SUCCESS;
 }
 
 KStatus TsTableSchemaManager::DropNormalTagIndex(kwdbContext_p ctx, const uint64_t transaction_id,
                                                  const uint32_t cur_version, const uint32_t new_version,
                                                  const uint64_t index_id) {
+    RW_LATCH_X_LOCK(&table_version_rw_lock_);
+    Defer defer{[&]() { RW_LATCH_UNLOCK(&table_version_rw_lock_); }};
     LOG_INFO("DropNormalTagIndex index_id:%lu, cur_version:%d, new_version:%d", index_id, cur_version, new_version)
     ErrorInfo errorInfo;
     errorInfo.errcode = tag_table_->DropHashIndex(index_id, cur_version, new_version, errorInfo);
@@ -668,11 +675,19 @@ KStatus TsTableSchemaManager::DropNormalTagIndex(kwdbContext_p ctx, const uint64
       LOG_ERROR("Update metric version error");
       return s;
     }
+    if (new_version > cur_version_) {
+      cur_version_ = new_version;
+    }
     return SUCCESS;
 }
 
 KStatus TsTableSchemaManager::UndoCreateHashIndex(uint32_t index_id, uint32_t old_version, uint32_t new_version,
                                                   ErrorInfo& err_info) {
+  RW_LATCH_X_LOCK(&table_version_rw_lock_);
+  Defer defer{[&]() { RW_LATCH_UNLOCK(&table_version_rw_lock_); }};
+  if (cur_version_ == new_version) {
+    return SUCCESS;
+  }
   LOG_INFO("UndoCreateHashIndex index_id:%u, cur_version:%d, new_version:%d", index_id, old_version, new_version)
   ErrorInfo errorInfo;
   errorInfo.errcode = tag_table_->UndoCreateHashIndex(index_id, old_version, new_version, errorInfo);
@@ -690,6 +705,11 @@ KStatus TsTableSchemaManager::UndoCreateHashIndex(uint32_t index_id, uint32_t ol
 
 KStatus TsTableSchemaManager::UndoDropHashIndex(const std::vector<uint32_t> &tags, uint32_t index_id, uint32_t old_version,
                       uint32_t new_version, ErrorInfo& err_info) {
+  RW_LATCH_X_LOCK(&table_version_rw_lock_);
+  Defer defer{[&]() { RW_LATCH_UNLOCK(&table_version_rw_lock_); }};
+  if (cur_version_ == new_version) {
+    return SUCCESS;
+  }
   LOG_INFO("UndoDropHashIndex index_id:%u, cur_version:%d, new_version:%d", index_id, old_version, new_version)
   ErrorInfo errorInfo;
   errorInfo.errcode = tag_table_->UndoDropHashIndex(tags, index_id, old_version, new_version, errorInfo);
