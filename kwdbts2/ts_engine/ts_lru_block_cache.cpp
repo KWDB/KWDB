@@ -15,7 +15,7 @@
 
 namespace kwdbts {
 
-TsLRUBlockCache::TsLRUBlockCache(uint32_t max_blocks) : max_blocks_(max_blocks) {}
+TsLRUBlockCache::TsLRUBlockCache(uint64_t max_memory_size) : max_memory_size_(max_memory_size) {}
 
 TsLRUBlockCache::~TsLRUBlockCache() {
   while (head_) {
@@ -39,27 +39,36 @@ bool TsLRUBlockCache::Add(std::shared_ptr<TsEntityBlock>& block) {
     tail_ = block;
   }
   head_ = block;
-  if (cur_block_num_ >= max_blocks_) {
-    if (tail_ == nullptr) {
-      lock_.unlock();
-      // Something is wrong with LRU block cache, head_ should not be tail_.
-      return false;
-    }
-    std::shared_ptr<TsEntityBlock> tail_block = tail_;
-    tail_ = tail_->pre_;
+  lock_.unlock();
+  // We ignore the memory of a block without loading any data.
+  return true;
+}
+
+inline void TsLRUBlockCache::KickOffBlocks() {
+  while (cur_memory_size_ > max_memory_size_ && tail_) {
+    std::shared_ptr<TsEntityBlock> tail_block = std::move(tail_);
+    tail_ = tail_block->pre_;
     if (tail_) {
       tail_->next_ = nullptr;
     } else {
-      // In this case, max_blocks_ is set to 0.
       head_ = nullptr;
     }
     tail_block->pre_ = nullptr;
-    lock_.unlock();
+    cur_memory_size_ -= tail_block->GetMemorySize();
     tail_block->RemoveFromSegment();
-  } else {
-    cur_block_num_++;
-    lock_.unlock();
   }
+}
+
+bool TsLRUBlockCache::AddMemory(TsEntityBlock* block, uint32_t new_memory_size) {
+  lock_.lock();
+  block->AddMemory(new_memory_size);
+  if (block->pre_ || (head_ && head_.get() == block)) {
+    cur_memory_size_ += new_memory_size;
+    KickOffBlocks();
+  } else {
+    // Don't need to do anything since block should be head_ or has been removed from doubly linked list.
+  }
+  lock_.unlock();
   return true;
 }
 
@@ -83,46 +92,33 @@ void TsLRUBlockCache::Access(std::shared_ptr<TsEntityBlock>& block) {
   lock_.unlock();
 }
 
-void TsLRUBlockCache::SetMaxBlocks(uint32_t max_blocks) {
+void TsLRUBlockCache::SetMaxMemorySize(uint64_t max_memory_size) {
   lock_.lock();
-  if (cur_block_num_ > max_blocks) {
-    for (int i = 0; i < cur_block_num_ - max_blocks; ++i) {
-      std::shared_ptr<TsEntityBlock> tail_block = tail_;
-      tail_ = tail_->pre_;
-      tail_block->pre_ = nullptr;
-      tail_block->next_ = nullptr;
-      tail_block->RemoveFromSegment();
-    }
-    if (tail_) {
-      tail_->next_ = nullptr;
-    } else {
-      head_ = tail_;
-    }
-    cur_block_num_ = max_blocks;
-  }
-  max_blocks_ = max_blocks;
+  max_memory_size_ = max_memory_size;
+  KickOffBlocks();
   lock_.unlock();
 }
 
+uint64_t TsLRUBlockCache::GetMemorySize() {
+  return cur_memory_size_;
+}
+
 void TsLRUBlockCache::EvictAll() {
-  std::lock_guard lk{lock_};
-  for (int i = 0; i < cur_block_num_; ++i) {
+  lock_.lock();
+  while (head_) {
     std::shared_ptr<TsEntityBlock> tail_block = tail_;
     tail_ = tail_->pre_;
     tail_block->pre_ = nullptr;
     tail_block->next_ = nullptr;
     tail_block->RemoveFromSegment();
+    if (tail_) {
+      tail_->next_ = nullptr;
+    } else {
+      head_ = tail_;
+    }
   }
-  if (tail_) {
-    tail_->next_ = nullptr;
-  } else {
-    head_ = tail_;
-  }
-  cur_block_num_ = 0;
-}
-
-uint32_t TsLRUBlockCache::Count() {
-  return cur_block_num_;
+  cur_memory_size_ = 0;
+  lock_.unlock();
 }
 
 }  // namespace kwdbts

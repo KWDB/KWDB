@@ -647,8 +647,8 @@ void TriggerSettingCallback(const std::string& key, const std::string& value) {
   } else if ("ts.mem_segment_size.max_limit" == key) {
     EngineOptions::mem_segment_max_size = atoll(value.c_str());
   } else if ("ts.block.lru_cache.max_limit" == key) {
-    EngineOptions::block_cache_max_size = atoi(value.c_str());
-    TsLRUBlockCache::GetInstance().SetMaxBlocks(EngineOptions::block_cache_max_size);
+    EngineOptions::block_cache_max_size = atoll(value.c_str());
+    TsLRUBlockCache::GetInstance().SetMaxMemorySize(EngineOptions::block_cache_max_size);
   } else if ("ts.last_row_optimization.enabled" == key) {
     CLUSTER_SETTING_USE_LAST_ROW_OPTIMIZATION = ("true" == value);
   }

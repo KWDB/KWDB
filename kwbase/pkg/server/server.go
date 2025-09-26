@@ -212,8 +212,8 @@ var (
 
 	maxBlockLRUCacheMaxSize = settings.RegisterPublicIntSetting(
 		"ts.block.lru_cache.max_limit",
-		"the maximum size of lru caches in the block",
-		1024)
+		"the maximum memory size of block lru cache",
+		1024*1024*1024)
 
 	tsLastRowOptimization = settings.RegisterPublicBoolSetting(
 		"ts.last_row_optimization.enabled",

@@ -11,6 +11,7 @@
 
 #pragma once
 
+#include <atomic>
 #include <memory>
 #include <mutex>
 #include "ts_entity_segment.h"
@@ -46,27 +47,31 @@ class TsLRUBlockCache {
     static TsLRUBlockCache block_cache(EngineOptions::block_cache_max_size);
     return block_cache;
   }
-  explicit TsLRUBlockCache(uint32_t max_blocks);
+  explicit TsLRUBlockCache(uint64_t max_memory_size);
   ~TsLRUBlockCache();
 
   // Add a new TsEntityBlock to block cache.
   bool Add(std::shared_ptr<TsEntityBlock>& block);
   // Access a TsEntityBlock which will move this block to the head of the doubly linked list
   void Access(std::shared_ptr<TsEntityBlock>& block);
-  // Adjust max_blocks_
-  void SetMaxBlocks(uint32_t max_blocks);
+  // Adjust max_memory_size_
+  void SetMaxMemorySize(uint64_t max_memory_size);
+  // Increase memory size after new column block is created, will kick off some blocks if total exceeds max size
+  bool AddMemory(TsEntityBlock* block, uint32_t new_memory_size);
   // Evict all the ts blocks in the cache
   void EvictAll();
 
   // For unit tests
-  uint32_t Count();
+  uint64_t GetMemorySize();
 
  private:
   std::shared_ptr<TsEntityBlock> head_{nullptr};
   std::shared_ptr<TsEntityBlock> tail_{nullptr};
-  uint32_t max_blocks_;
-  uint32_t cur_block_num_{0};
+  uint64_t max_memory_size_;
+  uint64_t cur_memory_size_{0};
   std::mutex lock_;
+
+  void KickOffBlocks();
 };
 
 }  // namespace kwdbts

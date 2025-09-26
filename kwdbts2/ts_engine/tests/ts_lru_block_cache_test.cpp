@@ -17,7 +17,6 @@ using namespace roachpb;
 
 class TsLRUBlockCacheTest : public ::testing::Test {
  protected:
-  std::shared_ptr<TsLRUBlockCache> block_cache;
   std::vector<std::shared_ptr<TsEntitySegment>> entity_segment;
 
  public:
@@ -26,7 +25,7 @@ class TsLRUBlockCacheTest : public ::testing::Test {
   ~TsLRUBlockCacheTest() {}
 
   void SetUp() override {
-    block_cache = std::make_shared<TsLRUBlockCache>(100);
+    EngineOptions::block_cache_max_size = 100 * 1024;
     entity_segment.resize(10);
     for (int i = 0; i < 10; ++i) {
       entity_segment[i] = std::make_shared<TsEntitySegment>((i + 1) * 1000);
@@ -43,9 +42,11 @@ TEST_F(TsLRUBlockCacheTest, basicTest) {
     block_item.n_cols = 5;
     std::shared_ptr<TsEntityBlock> entity_block = std::make_shared<TsEntityBlock>(1, &block_item, entity_segment[0]);
     entity_segment[0]->AddEntityBlock(block_item.block_id, entity_block);
-    block_cache->Add(entity_block);
+    TsLRUBlockCache::GetInstance().Add(entity_block);
+    ASSERT_EQ(TsLRUBlockCache::GetInstance().GetMemorySize(), i <= 100 ? i * 1024 : 100 * 1024);
+    TsLRUBlockCache::GetInstance().AddMemory(entity_block.get(), 1024);
   }
-  ASSERT_EQ(block_cache->Count(), 100);
+  ASSERT_EQ(TsLRUBlockCache::GetInstance().GetMemorySize(), 100 * 1024);
   for (int i = 0; i < 900; ++i) {
     ASSERT_EQ(entity_segment[0]->GetEntityBlock(i + 1), nullptr);
   }
@@ -55,7 +56,7 @@ TEST_F(TsLRUBlockCacheTest, basicTest) {
 
   for (int i = 900; i < 950; ++i) {
     std::shared_ptr<TsEntityBlock> entity_block = entity_segment[0]->GetEntityBlock(i + 1);
-    block_cache->Access(entity_block);
+    TsLRUBlockCache::GetInstance().Access(entity_block);
   }
 
   for (int i = 0; i < 50; ++i) {
@@ -63,16 +64,17 @@ TEST_F(TsLRUBlockCacheTest, basicTest) {
     block_item.n_cols = 5;
     std::shared_ptr<TsEntityBlock> entity_block = std::make_shared<TsEntityBlock>(1, &block_item, entity_segment[0]);
     entity_segment[0]->AddEntityBlock(block_item.block_id, entity_block);
-    block_cache->Add(entity_block);
+    TsLRUBlockCache::GetInstance().Add(entity_block);
+    TsLRUBlockCache::GetInstance().AddMemory(entity_block.get(), 1024);
     ASSERT_EQ(entity_segment[0]->GetEntityBlock(951 + i), nullptr);
   }
 
   for (int i = 49; i >= 0; --i) {
     std::shared_ptr<TsEntityBlock> entity_block = entity_segment[0]->GetEntityBlock(i + 1);
-    block_cache->Access(entity_block);
+    TsLRUBlockCache::GetInstance().Access(entity_block);
   }
 
-  ASSERT_EQ(block_cache->Count(), 100);
+  ASSERT_EQ(TsLRUBlockCache::GetInstance().GetMemorySize(), 100 * 1024);
   for (int i = 0; i < 50; ++i) {
     ASSERT_NE(entity_segment[0]->GetEntityBlock(i + 1), nullptr);
   }
@@ -98,12 +100,13 @@ TEST_F(TsLRUBlockCacheTest, multiThreads) {
         if (entity_block == nullptr) {
           entity_block = std::make_shared<TsEntityBlock>(1, &block_item, entity_segment[thread_index]);
           entity_segment[thread_index]->AddEntityBlock(block_item.block_id, entity_block);
-          block_cache->Add(entity_block);
+          TsLRUBlockCache::GetInstance().Add(entity_block);
+          TsLRUBlockCache::GetInstance().AddMemory(entity_block.get(), 1024 + i * 10);
         } else {
-          block_cache->Access(entity_block);
+          TsLRUBlockCache::GetInstance().Access(entity_block);
         }
       }
-      block_cache->SetMaxBlocks((thread_index + 1) * 256);
+      TsLRUBlockCache::GetInstance().SetMaxMemorySize((thread_index + 1) * 256 * 1024);
       for (int i = (thread_index + 1) * 1000 - 1; i >= 0; --i) {
         block_item.block_id = i + 1;
         block_item.n_cols = 5;
@@ -111,12 +114,13 @@ TEST_F(TsLRUBlockCacheTest, multiThreads) {
         if (entity_block == nullptr) {
           entity_block = std::make_shared<TsEntityBlock>(1, &block_item, entity_segment[thread_index]);
           entity_segment[thread_index]->AddEntityBlock(block_item.block_id, entity_block);
-          block_cache->Add(entity_block);
+          TsLRUBlockCache::GetInstance().Add(entity_block);
+          TsLRUBlockCache::GetInstance().AddMemory(entity_block.get(), 1024 + i * 10);
         } else {
-          block_cache->Access(entity_block);
+          TsLRUBlockCache::GetInstance().Access(entity_block);
         }
       }
-      block_cache->SetMaxBlocks(100);
+      TsLRUBlockCache::GetInstance().SetMaxMemorySize(100 * 1024);
     }
   };
 
@@ -129,16 +133,17 @@ TEST_F(TsLRUBlockCacheTest, multiThreads) {
     t_reader[i]->join();
   }
 
-  ASSERT_EQ(block_cache->Count(), 100);
+  ASSERT_LE(TsLRUBlockCache::GetInstance().GetMemorySize(), 100 * 1024);
   TsEntitySegmentBlockItem block_item;
   for (int i = 0; i < 1000; ++i) {
     block_item.block_id = i + 1;
     block_item.n_cols = 5;
     std::shared_ptr<TsEntityBlock> entity_block = std::make_shared<TsEntityBlock>(1, &block_item, entity_segment[0]);
     entity_segment[0]->AddEntityBlock(block_item.block_id, entity_block);
-    block_cache->Add(entity_block);
+    TsLRUBlockCache::GetInstance().Add(entity_block);
+    TsLRUBlockCache::GetInstance().AddMemory(entity_block.get(), 1024);
   }
-  ASSERT_EQ(block_cache->Count(), 100);
+  ASSERT_EQ(TsLRUBlockCache::GetInstance().GetMemorySize(), 100 * 1024);
   for (int j = 1; j < 10; ++j) {
     for (int i = 0; i < (j + 1) * 1000; ++i) {
       ASSERT_EQ(entity_segment[j]->GetEntityBlock(i + 1), nullptr);

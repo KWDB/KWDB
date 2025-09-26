@@ -255,6 +255,9 @@ class TsEntityBlock : public TsBlock {
 
   KRWLatch rw_latch_;
 
+  // total memory size of all column blocks loaded.
+  uint32_t memory_size_{0};
+
  public:
   TsEntityBlock() = delete;
   TsEntityBlock(uint32_t table_id, TsEntitySegmentBlockItem* block_item,
@@ -263,6 +266,12 @@ class TsEntityBlock : public TsBlock {
   ~TsEntityBlock() {}
 
   size_t GetRowNum() override { return n_rows_; }
+
+  uint32_t GetMemorySize() { return memory_size_; }
+
+  void AddMemory(uint32_t new_memory_size) {
+    memory_size_ += new_memory_size;
+  }
 
   uint32_t GetNCols() { return n_cols_; }
 
