@@ -34,14 +34,16 @@ class WALFileMgr {
 
   KStatus Open();
 
+  KStatus OpenTmp();
+
   /**
    * Init WAL file, and init HeaderBlock
    * @return
    */
-  KStatus initWalFile(TS_LSN first_lsn, TS_LSN flush_lsn = 0);
+  KStatus initWalFile(TS_LSN first_lsn, TS_LSN flush_lsn = 0, bool tmp_file = false);
 
 
-  KStatus initWalFileWithHeader(HeaderBlock& header);
+  KStatus initWalFileWithHeader(HeaderBlock& header, bool tmp_file = false);
 
   /**
    * Close WAL file
@@ -124,6 +126,9 @@ class WALFileMgr {
       return wal_path_ + "kwdb_wal.chk";
     }
     return wal_path_ + "kwdb_wal.cur";
+  }
+  string getTmpFilePath() {
+    return wal_path_ + "kwdb_wal.tmp";
   }
   string getChkFilePath() {
     return wal_path_ + "kwdb_wal.chk";

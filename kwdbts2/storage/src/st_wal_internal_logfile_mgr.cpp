@@ -31,6 +31,26 @@ WALFileMgr::~WALFileMgr() {
   }
 }
 
+KStatus WALFileMgr::OpenTmp() {
+  string path = getTmpFilePath();
+  if (IsExists(path)) {
+    if (file_.is_open()) {
+      header_block_ = readHeaderBlock();
+      return SUCCESS;
+    } else {
+      file_.close();
+    }
+
+    file_.open(path, std::ios::in | std::ios::out);
+    if (file_.is_open()) {
+      header_block_ = readHeaderBlock();
+      return SUCCESS;
+    }
+  }
+  LOG_ERROR("Failed to open the WAL log file from %s", path.c_str())
+  return FAIL;
+}
+
 KStatus WALFileMgr::Open() {
   string path = getFilePath();
   if (IsExists(path)) {
@@ -58,19 +78,20 @@ KStatus WALFileMgr::Close() {
   return SUCCESS;
 }
 
-KStatus WALFileMgr::initWalFile(TS_LSN first_lsn, TS_LSN flush_lsn) {
+KStatus WALFileMgr::initWalFile(TS_LSN first_lsn, TS_LSN flush_lsn, bool tmp_file) {
   HeaderBlock header = HeaderBlock(table_id_, 0, opt_->GetBlockNumPerFile(),
                                    0, first_lsn, first_lsn, 0);
-  return initWalFileWithHeader(header);
+  return initWalFileWithHeader(header, tmp_file);
 }
 
-KStatus WALFileMgr::initWalFileWithHeader(HeaderBlock& header) {
+KStatus WALFileMgr::initWalFileWithHeader(HeaderBlock& header, bool tmp_file) {
   // create the wal directory if it doesn't exist
   if (!IsExists(wal_path_)) {
     MakeDirectory(wal_path_);
   }
-
   string path = getFilePath();
+  string tmp_path = getTmpFilePath();
+
   if (file_.is_open()) {
     // current log file is full. flush and close it.
     file_.close();
@@ -78,6 +99,9 @@ KStatus WALFileMgr::initWalFileWithHeader(HeaderBlock& header) {
 
   // check the wal log file, if it doesn't exist, initialize a new one.
   if (!IsExists(path)) {
+    if (tmp_file) {
+      path = tmp_path;
+    }
     file_.open(path, std::ios::in | std::ios::out | std::ios::trunc);
     if (file_.fail()) {
       // failed to open the new log file, report an error.

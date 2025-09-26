@@ -91,6 +91,17 @@ KStatus WALMgr::Init(kwdbContext_p ctx, bool for_eng_wal) {
   if (!IsExists(wal_path_)) {
     return Create(ctx);
   }
+  string tmp_path = file_mgr_->getTmpFilePath();
+  if (IsExists(tmp_path)) {
+    if (Remove(tmp_path) == KStatus::FAIL) {
+      LOG_ERROR("Failed to Remove Tmp WAL file.")
+      return KStatus::FAIL;
+    }
+    if (-1 == rename(file_mgr_->getChkFilePath().c_str(), file_mgr_->getFilePath().c_str())) {
+      LOG_ERROR("Failed to rename WAL file.")
+      return KStatus::FAIL;
+    }
+  }
 
   KStatus s;
   s = initWalMeta(ctx, false);
@@ -1026,14 +1037,14 @@ KStatus WALMgr::SwitchNextFile(TS_LSN first_lsn) {
 //  auto hb = HeaderBlock(table_id_, 0, opt_->GetBlockNumPerFile(), start_lsn, first_lsn,
 //                        FetchCurrentLSN(), 0);
 //  KStatus s = file_mgr_->initWalFileWithHeader(hb);
-  KStatus s = file_mgr_->initWalFile(first_lsn);
+  KStatus s = file_mgr_->initWalFile(first_lsn, 0, true);
   if (s == KStatus::FAIL) {
     LOG_ERROR("Failed to initWalFileWithHeader.")
     return s;
   }
-  s = file_mgr_->Open();
+  s = file_mgr_->OpenTmp();
   if (s == KStatus::FAIL) {
-    LOG_ERROR("Failed to Open the WAL metadata.")
+    LOG_ERROR("Failed to OpenTmp the WAL metadata.")
     return s;
   }
 
@@ -1045,7 +1056,10 @@ KStatus WALMgr::SwitchNextFile(TS_LSN first_lsn) {
     LOG_ERROR("Failed to FlushWithoutLock.")
     return FAIL;
   }
-
+  if (-1 == rename(file_mgr_->getTmpFilePath().c_str(), file_mgr_->getFilePath().c_str())) {
+    LOG_ERROR("Failed to rename WAL file.")
+    return KStatus::FAIL;
+  }
   return KStatus::SUCCESS;
 }
 
