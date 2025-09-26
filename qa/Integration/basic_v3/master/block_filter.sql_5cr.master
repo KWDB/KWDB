@@ -2612,3 +2612,38 @@ SET
 SET CLUSTER SETTING
 > drop database test_block_filter cascade;
 DROP DATABASE
+> set cluster setting ts.reserved_last_segment.max_limit=10000;
+SET CLUSTER SETTING
+> set cluster setting ts.mem_segment_size.max_limit=1;
+SET CLUSTER SETTING
+> set cluster setting ts.dedup.rule='override';
+SET CLUSTER SETTING
+> USE defaultdb;
+SET
+> DROP DATABASE IF EXISTS test_db;
+DROP DATABASE
+> CREATE ts DATABASE test_db;
+CREATE TS DATABASE
+> CREATE TABLE test_db.t1(k_timestamp TIMESTAMPTZ NOT NULL, id INT NOT NULL, e1 INT)
+ATTRIBUTES (code1 INT2 NOT NULL)
+PRIMARY TAGS(code1);
+CREATE TABLE
+> INSERT INTO test_db.t1 VALUES(10000,1, 20, 1);
+INSERT 1
+> INSERT INTO test_db.t1 VALUES(10000,2, 10, 1);
+INSERT 1
+> SELECT id, k_timestamp, e1 FROM test_db.t1 ORDER BY k_timestamp;
+  id |        k_timestamp        | e1
+-----+---------------------------+-----
+   2 | 1970-01-01 00:00:10+00:00 | 10
+(1 row)
+> SELECT id, k_timestamp, e1 FROM test_db.t1 WHERE e1 > 15 ORDER BY k_timestamp;
+  id | k_timestamp | e1
+-----+-------------+-----
+(0 rows)
+> use defaultdb;
+SET
+> SET CLUSTER SETTING ts.rows_per_block.max_limit=1000;
+SET CLUSTER SETTING
+> drop database test_db cascade;
+DROP DATABASE

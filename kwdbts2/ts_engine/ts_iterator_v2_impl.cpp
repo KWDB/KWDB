@@ -510,21 +510,56 @@ KStatus TsStorageIteratorV2Impl::ScanEntityBlockSpans(timestamp64 ts) {
       return s;
     }
     if (!block_filter_.empty()) {
-      uint32_t size = ts_block_spans_.size();
-      for (uint32_t i = 0; i < size; ++i) {
+      vector<pair<timestamp64, timestamp64>> intervals;
+      std::map<pair<timestamp64, timestamp64>, std::vector<std::shared_ptr<TsBlockSpan>>> interval_block_span_map;
+      while (!ts_block_spans_.empty()) {
         auto block_span = std::move(ts_block_spans_.front());
         ts_block_spans_.pop_front();
-        if (!block_span->GetRowNum()) {
+        timestamp64 begin_ts = block_span->GetFirstTS(), end_ts = block_span->GetLastTS();
+        if (!block_span->GetRowNum() || checkTimestampWithSpans(ts_spans_, begin_ts, end_ts) ==
+                                        TimestampCheckResult::NonOverlapping) {
           continue;
         }
-        bool is_filtered = false;
-        s = isBlockFiltered(block_span, is_filtered);
-        if (s != KStatus::SUCCESS) {
-          LOG_ERROR("isBlockFiltered failed, entityid is %lu", block_span->GetEntityID());
-          return KStatus::FAIL;
+        if (!interval_block_span_map.count({begin_ts, end_ts})) {
+          intervals.push_back({begin_ts, end_ts});
         }
-        if (is_filtered) continue;
-        ts_block_spans_.push_back(std::move(block_span));
+        interval_block_span_map[{begin_ts, end_ts}].emplace_back(block_span);
+      }
+
+      sort(intervals.begin(), intervals.end());
+      std::vector<pair<pair<timestamp64, timestamp64>, std::vector<std::shared_ptr<TsBlockSpan>>>> sorted_block_spans;
+      for (auto interval : intervals) {
+        if (sorted_block_spans.empty() || interval.first >= sorted_block_spans.back().first.second) {
+          sorted_block_spans.push_back({{interval.first, interval.second},
+                                       interval_block_span_map[{interval.first, interval.second}]});
+        } else {
+          if (interval.first > sorted_block_spans.back().first.second) {
+            sorted_block_spans.back().first.second = interval.second;
+          }
+          sorted_block_spans.back().second.insert(sorted_block_spans.back().second.end(),
+                                           interval_block_span_map[{interval.first, interval.second}].begin(),
+                                           interval_block_span_map[{interval.first, interval.second}].end());
+        }
+      }
+      intervals.clear();
+      interval_block_span_map.clear();
+
+      for (auto& cur_block_spans : sorted_block_spans) {
+        if (cur_block_spans.second.size() > 1) {
+          ts_block_spans_.insert(ts_block_spans_.end(), cur_block_spans.second.begin(), cur_block_spans.second.end());
+        } else {
+          bool is_filtered = false;
+          auto cur_block_span = cur_block_spans.second.front();
+          s = isBlockFiltered(cur_block_span, is_filtered);
+          if (s != KStatus::SUCCESS) {
+            LOG_ERROR("isBlockFiltered failed, entityid is %lu", cur_block_span->GetEntityID());
+            return KStatus::FAIL;
+          }
+          if (is_filtered) {
+            continue;
+          }
+          ts_block_spans_.emplace_back(cur_block_span);
+        }
       }
     }
   }

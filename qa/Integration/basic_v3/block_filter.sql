@@ -639,3 +639,22 @@ select * from test_block_filter.t13 where e1 = 1.23 order by code1;
 use defaultdb;
 SET CLUSTER SETTING ts.rows_per_block.max_limit=1000;
 drop database test_block_filter cascade;
+
+-- bugfix ICZB1L
+set cluster setting ts.reserved_last_segment.max_limit=10000;
+set cluster setting ts.mem_segment_size.max_limit=1;
+set cluster setting ts.dedup.rule='override';
+USE defaultdb;
+DROP DATABASE IF EXISTS test_db;
+CREATE ts DATABASE test_db;
+CREATE TABLE test_db.t1(k_timestamp TIMESTAMPTZ NOT NULL, id INT NOT NULL, e1 INT)
+ATTRIBUTES (code1 INT2 NOT NULL)
+PRIMARY TAGS(code1);
+INSERT INTO test_db.t1 VALUES(10000,1, 20, 1);
+INSERT INTO test_db.t1 VALUES(10000,2, 10, 1);
+SELECT id, k_timestamp, e1 FROM test_db.t1 ORDER BY k_timestamp;
+SELECT id, k_timestamp, e1 FROM test_db.t1 WHERE e1 > 15 ORDER BY k_timestamp;
+
+use defaultdb;
+SET CLUSTER SETTING ts.rows_per_block.max_limit=1000;
+drop database test_db cascade;
