@@ -29,6 +29,7 @@
 package physicalplan
 
 import (
+	"context"
 	"fmt"
 	"math"
 	"strconv"
@@ -46,6 +47,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/types"
 	"gitee.com/kwbasedb/kwbase/pkg/util"
+	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 	"gitee.com/kwbasedb/kwbase/pkg/util/uuid"
 	"github.com/pkg/errors"
 )
@@ -1847,7 +1849,7 @@ func (p *PhysicalPlan) PopulateEndpoints(nodeAddresses map[roachpb.NodeID]string
 // gateway is the current node's NodeID.
 func (p *PhysicalPlan) GenerateFlowSpecs(
 	gateway roachpb.NodeID, gossip *gossip.Gossip,
-) map[roachpb.NodeID]*execinfrapb.FlowSpec {
+) (map[roachpb.NodeID]*execinfrapb.FlowSpec, error) {
 	// Only generate a flow ID for a remote plan because it will need to be
 	// referenced by remote nodes when connecting streams. This id generation is
 	// skipped for performance reasons on local flows.
@@ -1887,7 +1889,11 @@ func (p *PhysicalPlan) GenerateFlowSpecs(
 	brpcAddrs := make([]string, maxNodeID)
 	for nodeID := range flows {
 		if gossip != nil {
-			node, _ := gossip.GetNodeDescriptor(nodeID)
+			node, err := gossip.GetNodeDescriptor(nodeID)
+			if err != nil {
+				log.Warning(context.Background(), err)
+				return nil, errors.Errorf("unable to get descriptor for n%d", nodeID)
+			}
 			brpcAddrs[nodeID-1] = node.BrpcAddress.String()
 		}
 	}
@@ -1900,7 +1906,7 @@ func (p *PhysicalPlan) GenerateFlowSpecs(
 		}
 	}
 
-	return flows
+	return flows, nil
 }
 
 const maxQueryID = 1<<47 - 1

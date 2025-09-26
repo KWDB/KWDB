@@ -259,7 +259,10 @@ func populateExplain(
 		// There might be an issue making the physical plan, but that should not
 		// cause an error or panic, so swallow the error. See #40677 for example.
 		distSQLPlanner.FinalizePlan(planCtx, &physicalPlan)
-		flows := physicalPlan.GenerateFlowSpecs(params.extendedEvalCtx.NodeID, distSQLPlanner.gossip)
+		flows, err := physicalPlan.GenerateFlowSpecs(params.extendedEvalCtx.NodeID, distSQLPlanner.gossip)
+		if err != nil {
+			return err
+		}
 		flowCtx := makeFlowCtx(planCtx, physicalPlan, params)
 		flowCtx.Cfg.ClusterID = &distSQLPlanner.rpcCtx.ClusterID
 

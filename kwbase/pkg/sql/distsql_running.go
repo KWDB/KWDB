@@ -640,7 +640,11 @@ func (dsp *DistSQLPlanner) GetFlow(
 		return nil, ctx
 	}
 
-	flows := plan.GenerateFlowSpecs(dsp.nodeDesc.NodeID /* gateway */, dsp.gossip)
+	flows, err := plan.GenerateFlowSpecs(dsp.nodeDesc.NodeID /* gateway */, dsp.gossip)
+	if err != nil {
+		recv.SetError(err)
+		return nil, ctx
+	}
 	if _, ok := flows[dsp.nodeDesc.NodeID]; !ok {
 		recv.SetError(errors.Errorf("expected to find gateway flow"))
 		return nil, ctx

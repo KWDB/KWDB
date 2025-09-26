@@ -215,7 +215,10 @@ func (n *explainDistSQLNode) startExec(params runParams) error {
 		}
 		diagram.AddSpans(spans, rowexec.BuildResponseSpan(distSQLPlanner.RowStats))
 	} else {
-		flows := plan.GenerateFlowSpecs(params.extendedEvalCtx.NodeID, distSQLPlanner.gossip)
+		flows, err := plan.GenerateFlowSpecs(params.extendedEvalCtx.NodeID, distSQLPlanner.gossip)
+		if err != nil {
+			return err
+		}
 		showInputTypes := n.options.Flags[tree.ExplainFlagTypes]
 		diagram, err = execinfrapb.GeneratePlanDiagram(params.p.stmt.String(), flows, showInputTypes)
 		if err != nil {
