@@ -695,6 +695,17 @@ EEIteratorErrCode BaseAggregator::Init(kwdbContext_p ctx) {
     if (code != EEIteratorErrCode::EE_OK) {
       Return(EEIteratorErrCode::EE_ERROR);
     }
+    if (funcs_.empty()) {
+      SafeDeleteArray(output_col_info_);
+      std::vector<Field*> empty_output_fields;
+      for (k_int32 i = 0; i < param_.ParserInputRenderSize(); i++) {
+        empty_output_fields.push_back(renders_[i]);
+      }
+      code = InitOutputColInfo(empty_output_fields);
+      if (code != EEIteratorErrCode::EE_OK) {
+        Return(EEIteratorErrCode::EE_ERROR);
+      }
+    }
     constructDataChunk();
     if (current_data_chunk_ == nullptr) {
       EEPgErrorInfo::SetPgErrorInfo(ERRCODE_OUT_OF_MEMORY, "Insufficient memory");

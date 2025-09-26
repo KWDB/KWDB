@@ -46,6 +46,9 @@ class TsBaseParser {
 
   virtual EEIteratorErrCode ParserOutputFields(kwdbContext_p ctx, Field **renders, k_uint32 num,
                           std::vector<Field*> &output_fields, bool ignore_outputtype);
+  virtual k_int32 ParserInputRenderSize() {
+    return 0;
+  }
 
  protected:
   EEIteratorErrCode BuildBinaryTree(kwdbContext_p ctx, const KString &str, ExprPtr *expr) const;
@@ -115,6 +118,7 @@ class TsOperatorParser : public TsBaseParser {
 
   virtual EEIteratorErrCode HandleRender(kwdbContext_p ctx, Field **render,
                                          k_uint32 num) = 0;
+  k_int32 ParserInputRenderSize() override;
 
  protected:
   BaseOperator *input_{nullptr};

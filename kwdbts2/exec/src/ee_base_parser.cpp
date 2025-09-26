@@ -1076,6 +1076,12 @@ TsOperatorParser::TsOperatorParser(PostProcessSpec *post, TABLE *table)
   : TsBaseParser(post, table),
     outputcol_count_(post->output_columns_size()) {}
 
+k_int32 TsOperatorParser::ParserInputRenderSize() {
+  if (input_ != nullptr) {
+    return input_->GetRenderSize();
+  }
+  return 0;
+}
 
 EEIteratorErrCode TsOperatorParser::ParserRender(kwdbContext_p ctx, Field ***render, k_uint32 num) {
   EnterFunc();
