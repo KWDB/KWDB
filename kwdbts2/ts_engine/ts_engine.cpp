@@ -32,12 +32,12 @@
 // V2
 int EngineOptions::vgroup_max_num = 4;
 DedupRule EngineOptions::g_dedup_rule = DedupRule::OVERRIDE;
-size_t EngineOptions::mem_segment_max_size = 64 << 20;
+size_t EngineOptions::mem_segment_max_size = 512 << 20;
 int32_t EngineOptions::mem_segment_max_height = 12;
-uint32_t EngineOptions::max_last_segment_num = 2;
+uint32_t EngineOptions::max_last_segment_num = 3;
 uint32_t EngineOptions::max_compact_num = 10;
 size_t EngineOptions::max_rows_per_block = 4096;
-size_t EngineOptions::min_rows_per_block = 1024;
+size_t EngineOptions::min_rows_per_block = 512;
 int64_t EngineOptions::partition_interval = 3600 * 24 * 10;
 // default block cache max size is set to 1 * 1024 * 1024 * 1024
 int64_t EngineOptions::block_cache_max_size = 1073741824;

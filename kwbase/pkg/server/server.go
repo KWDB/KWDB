@@ -193,7 +193,7 @@ var (
 	blockMinRows = settings.RegisterPublicIntSetting(
 		"ts.rows_per_block.min_limit",
 		"the minimum number of rows that can be held in a block",
-		1024)
+		512)
 
 	maxCompactLastSegNum = settings.RegisterPublicIntSetting(
 		"ts.compact.max_limit",
@@ -203,12 +203,12 @@ var (
 	maxReservedLastSegNum = settings.RegisterPublicIntSetting(
 		"ts.reserved_last_segment.max_limit",
 		"the maximum number of last segments reserved in the latest partition",
-		2)
+		3)
 
 	maxMemSegmentMaxSize = settings.RegisterPublicIntSetting(
 		"ts.mem_segment_size.max_limit",
 		"the maximum size of mem segment in vgroup",
-		67108864)
+		536870912)
 
 	maxBlockLRUCacheMaxSize = settings.RegisterPublicIntSetting(
 		"ts.block.lru_cache.max_limit",
