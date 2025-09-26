@@ -1715,6 +1715,7 @@ func (ex *connExecutor) execCmd(ctx context.Context) error {
 		ex.sessionData.OutFormats = isBinary
 		res = stmtRes
 		if portal.Stmt.Statement.Insertdirectstmt.InsertFast {
+			ex.sessionData.CommandLimit = 0
 			break
 		}
 		ev, payload, err = ex.execPortal(ctx, portal, portalName, stmtRes, pinfo)

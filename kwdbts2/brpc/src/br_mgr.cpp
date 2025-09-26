@@ -15,6 +15,7 @@
 #include <brpc/socket.h>
 
 #include "br_internal_service.h"
+#include "bvar/variable.h"
 #include "ee_cpuinfo.h"
 
 namespace kwdbts {
@@ -81,6 +82,8 @@ KStatus BrMgr::Init(kwdbContext_p ctx, const EngineOptions& options) {
 
     cluster_id_ = options.cluster_id;
     auth_ = std::make_unique<BoxAuthenticator>(cluster_id_);
+
+    bvar::FLAGS_save_series = true;
 
     // Start Server
     brpc::ServerOptions brpc_options;
