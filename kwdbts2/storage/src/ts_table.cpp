@@ -113,10 +113,6 @@ KStatus TsTable::GetDataSchemaExcludeDropped(kwdbContext_p ctx, std::vector<Attr
   return FAIL;
 }
 
-KStatus TsTable::TierMigrate() {
-  return KStatus::SUCCESS;
-}
-
 KStatus TsTable::GetIterator(kwdbContext_p ctx, const IteratorParams &params, TsIterator** iter) {
   if (params.offset != 0) {
     return GetOffsetIterator(ctx, params, iter);

@@ -138,11 +138,11 @@ KStatus TsLastSegmentBuilder::Finalize() {
   return s;
 }
 
-TS_LSN TsLastSegmentBuilder::GetMaxLSN() const {
+TS_LSN TsLastSegmentBuilder::GetMaxOSN() const {
   auto it = std::max_element(
       block_index_buffer_.begin(), block_index_buffer_.end(),
-      [](const TsLastSegmentBlockIndex& a, const TsLastSegmentBlockIndex& b) { return a.max_lsn < b.max_lsn; });
-  return it == block_index_buffer_.end() ? 0 : it->max_lsn;
+      [](const TsLastSegmentBlockIndex& a, const TsLastSegmentBlockIndex& b) { return a.max_osn < b.max_osn; });
+  return it == block_index_buffer_.end() ? 0 : it->max_osn;
 }
 
 KStatus TsLastSegmentBuilder::RecordAndWriteBlockToFile() {
@@ -192,7 +192,7 @@ KStatus TsLastSegmentBuilder::RecordAndWriteBlockToFile() {
   index.length = -1;
   block_index_buffer_.push_back(std::move(index));
 
-  block_info.lsn_len = compress_info.lsn_len;
+  block_info.osn_len = compress_info.osn_len;
   block_info.col_infos.resize(block_info.ncol);
   for (int i = 0; i < block_info.ncol; ++i) {
     block_info.col_infos[i].offset = compress_info.column_data_segments[i].offset;
@@ -220,19 +220,19 @@ void TsLastSegmentBuilder::BlockIndexCollector::Collect(TsBlockSpan* span) {
   }
   last_ts_ = span->GetLastTS();
 
-  TS_LSN min_lsn = std::numeric_limits<TS_LSN>::max();
-  TS_LSN max_lsn = std::numeric_limits<TS_LSN>::min();
+  uint64_t min_osn = std::numeric_limits<uint64_t>::max();
+  uint64_t max_osn = std::numeric_limits<uint64_t>::min();
   for (int i = 0; i < span->GetRowNum(); ++i) {
-    const TS_LSN* lsn_addr = span->GetLSNAddr(i);
-    min_lsn = std::min(min_lsn, *lsn_addr);
-    max_lsn = std::max(max_lsn, *lsn_addr);
+    const uint64_t* osn_addr = span->GetOSNAddr(i);
+    min_osn = std::min(min_osn, *osn_addr);
+    max_osn = std::max(max_osn, *osn_addr);
   }
-  min_lsn_ = std::min(min_lsn_, min_lsn);
-  max_lsn_ = std::max(max_lsn_, max_lsn);
-  if (first_lsn_ == std::numeric_limits<TS_LSN>::max()) {
-    first_lsn_ = span->GetFirstLSN();
+  min_osn_ = std::min(min_osn_, min_osn);
+  max_osn_ = std::max(max_osn_, max_osn);
+  if (first_osn_ == std::numeric_limits<uint64_t>::max()) {
+    first_osn_ = span->GetFirstOSN();
   }
-  last_lsn_ = span->GetLastLSN();
+  last_osn_ = span->GetLastOSN();
 }
 
 TsLastSegmentBlockIndex TsLastSegmentBuilder::BlockIndexCollector::GetIndex() const {
@@ -246,10 +246,10 @@ TsLastSegmentBlockIndex TsLastSegmentBuilder::BlockIndexCollector::GetIndex() co
   index.max_ts = max_ts_;
   index.first_ts = first_ts_;
   index.last_ts = last_ts_;
-  index.min_lsn = min_lsn_;
-  index.max_lsn = max_lsn_;
-  index.first_lsn = first_lsn_;
-  index.last_lsn = last_lsn_;
+  index.min_osn = min_osn_;
+  index.max_osn = max_osn_;
+  index.first_osn = first_osn_;
+  index.last_osn = last_osn_;
   index.min_entity_id = min_entity_id_;
   index.max_entity_id = max_entity_id_;
   return index;

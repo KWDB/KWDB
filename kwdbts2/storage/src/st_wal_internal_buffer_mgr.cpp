@@ -1301,9 +1301,12 @@ KStatus WALBufferMgr::readDeleteLog(vector<LogEntry*>& log_entries, TS_LSN curre
       size_t p_tag_len = 0;
       size_t tag_len = 0;
       uint64_t table_id = 0;
+      uint64_t osn = 0;
 
       memcpy(&table_id, res, sizeof(DeleteLogTagsEntry::table_id_));
       construct_offset += sizeof(DeleteLogTagsEntry::table_id_);
+      memcpy(&osn, res + construct_offset, sizeof(DeleteLogTagsEntry::osn_));
+      construct_offset += sizeof(DeleteLogTagsEntry::osn_);
       memcpy(&group_id, res + construct_offset, sizeof(DeleteLogTagsEntry::group_id_));
       construct_offset += sizeof(DeleteLogTagsEntry::group_id_);
       memcpy(&entity_id, res + construct_offset, sizeof(DeleteLogTagsEntry::entity_id_));
@@ -1329,7 +1332,7 @@ KStatus WALBufferMgr::readDeleteLog(vector<LogEntry*>& log_entries, TS_LSN curre
             old_lsn = v_lsn;
           }
           d_tags_entry = KNEW DeleteLogTagsEntry(current_lsn, WALLogType::DELETE, x_id, table_type, group_id,
-                                                       entity_id, p_tag_len, tag_len, res, vgrp_id, old_lsn, table_id);
+                                                 entity_id, p_tag_len, tag_len, res, vgrp_id, old_lsn, table_id, osn);
         } catch (exception &e) {
           LOG_ERROR("Failed to malloc memory for construct Entry.")
           return FAIL;
@@ -1415,12 +1418,15 @@ KStatus WALBufferMgr::readDeleteLog(vector<LogEntry*>& log_entries, TS_LSN curre
       size_t p_tag_len = 0;
       TSTableID table_id = 0;
       uint64_t range_size = 0;
+      uint64_t osn = 0;
 
       memcpy(&p_tag_len, res + construct_offset, sizeof(DeleteLogMetricsEntryV2::p_tag_len_));
       construct_offset += sizeof(DeleteLogMetricsEntryV2::p_tag_len_);
       memcpy(&range_size, res + construct_offset, sizeof(DeleteLogMetricsEntryV2::range_size_));
       construct_offset += sizeof(DeleteLogMetricsEntryV2::range_size_);
       memcpy(&table_id, res + construct_offset, sizeof(DeleteLogMetricsEntryV2::table_id_));
+      construct_offset += sizeof(DeleteLogMetricsEntryV2::table_id_);
+      memcpy(&osn, res + construct_offset, sizeof(DeleteLogMetricsEntryV2::osn_));
 
       delete[] res;
       res = nullptr;
@@ -1439,7 +1445,7 @@ KStatus WALBufferMgr::readDeleteLog(vector<LogEntry*>& log_entries, TS_LSN curre
           old_lsn = v_lsn;
         }
         auto* metrics_entry = KNEW DeleteLogMetricsEntryV2(current_lsn, WALLogType::DELETE, x_id, table_type, table_id,
-                                                           p_tag_len, range_size, res, vgrp_id, old_lsn);
+                                                           p_tag_len, range_size, res, vgrp_id, old_lsn, osn);
         if (metrics_entry == nullptr) {
           delete[] res;
           res = nullptr;

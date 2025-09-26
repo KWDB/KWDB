@@ -3020,6 +3020,7 @@ func createInstanceTable(
 		uint32(tmplTbl.TsTable.TsVersion),
 		tmplTbl.TsTable.HashNum,
 		nil,
+		params.ExecCfg().TsIDGen,
 	)
 	if err != nil {
 		return err

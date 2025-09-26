@@ -34,6 +34,7 @@
 #include "ts_segment.h"
 #include "ts_entity_segment_handle.h"
 #include "ts_partition_count_mgr.h"
+#include "ts_partition_meta_mgr.h"
 
 namespace kwdbts {
 using DatabaseID = uint32_t;
@@ -68,6 +69,7 @@ class TsPartitionVersion {
 
   std::shared_ptr<TsDelItemManager> del_info_;
   std::shared_ptr<TsPartitionEntityCountManager> count_info_;
+  // std::shared_ptr<TsPartitionEntityMetaManager> meta_info_;
 
   // Only TsVersionManager can create TsPartitionVersion
   explicit TsPartitionVersion(PartitionIdentifier partition_info)
@@ -111,7 +113,8 @@ class TsPartitionVersion {
 
   // TODO(zzr): optimize the following function ralate to deletions, deletion should also be atomic in future, this is
   // just a temporary solution
-  KStatus DeleteData(TSEntityID e_id, const std::vector<KwTsSpan> &ts_spans, const KwLSNSpan &lsn) const;
+  KStatus DeleteData(TSEntityID e_id, const std::vector<KwTsSpan> &ts_spans,
+    const KwLSNSpan &lsn, bool user_del = true) const;
   KStatus UndoDeleteData(TSEntityID e_id, const std::vector<KwTsSpan> &ts_spans, const KwLSNSpan &lsn) const;
   KStatus HasDeleteItem(bool& has_delete_info, const KwLSNSpan &lsn) const;
   KStatus RmDeleteItems(const std::list<std::pair<TSEntityID, TS_LSN>>& entity_max_lsn) const;
@@ -139,7 +142,7 @@ class TsVGroupVersion {
   std::map<PartitionIdentifier, std::shared_ptr<const TsPartitionVersion>> partitions_;
   std::shared_ptr<MemSegList> valid_memseg_;
 
-  TS_LSN max_lsn_ = 0;
+  uint64_t max_osn_ = 0;
 
  public:
   TsVGroupVersion() : valid_memseg_(std::make_shared<MemSegList>()) {}
@@ -158,7 +161,7 @@ class TsVGroupVersion {
     return partitions_;
   }
 
-  TS_LSN GetMaxLSN() const { return max_lsn_; }
+  TS_LSN GetMaxOSN() const { return max_osn_; }
 };
 
 enum class VersionUpdateType : uint8_t {

@@ -95,7 +95,7 @@ KStatus TsVGroup::Init(kwdbContext_p ctx) {
     LOG_ERROR("Failed to initialize WAL manager")
     return res;
   }
-  UpdateAtomicLSN();
+  UpdateAtomicOSN();
 
   std::list<std::shared_ptr<TsMemSegment>> mems;
   mem_segment_mgr_->GetAllMemSegments(&mems);
@@ -114,13 +114,11 @@ KStatus TsVGroup::CreateTable(kwdbContext_p ctx, const KTableKey& table_id, roac
 
 KStatus TsVGroup::PutData(kwdbContext_p ctx, TSTableID table_id, uint64_t mtr_id, TSSlice* primary_tag,
                           TSEntityID entity_id, TSSlice* payload, bool write_wal) {
-  TS_LSN current_lsn = 1;
   if (EnableWAL() && write_wal) {
     LockSharedLevelMutex();
     TS_LSN entry_lsn = 0;
     // lock current lsn: Lock the current LSN until the log is written to the cache
     wal_manager_->Lock();
-    current_lsn = wal_manager_->FetchCurrentLSN();
     KStatus s = wal_manager_->WriteInsertWAL(ctx, mtr_id, 0, 0, *primary_tag, *payload, entry_lsn, vgroup_id_);
     UnLockSharedLevelMutex();
     if (s == KStatus::FAIL) {
@@ -129,19 +127,9 @@ KStatus TsVGroup::PutData(kwdbContext_p ctx, TSTableID table_id, uint64_t mtr_id
     }
     // unlock current lsn
     wal_manager_->Unlock();
+  }
 
-    if (entry_lsn != current_lsn) {
-      LOG_ERROR("expected lsn is %lu, but got %lu ", current_lsn, entry_lsn);
-      return KStatus::FAIL;
-    }
-  } else {
-    current_lsn = LSNInc();
-  }
-  // TODO(limeng04): import and export current lsn that temporarily use wal
-  if (EnableWAL() && !write_wal) {
-    current_lsn = wal_manager_->FetchCurrentLSN();
-  }
-  auto s = mem_segment_mgr_->PutData(*payload, entity_id, current_lsn);
+  auto s = mem_segment_mgr_->PutData(*payload, entity_id);
   if (s == KStatus::FAIL) {
     LOG_ERROR("mem_segment_mgr_.PutData Failed.")
     return FAIL;
@@ -197,9 +185,6 @@ KStatus TsVGroup::ReadWALLogFromLastCheckpoint(kwdbContext_p ctx, std::vector<Lo
   TS_LSN first_lsn = wal_manager_->GetFirstLSN();
   last_lsn = wal_manager_->FetchCurrentLSN();
   auto next_first_lsn = last_lsn;
-  if (last_lsn < GetMaxLSN()) {
-    next_first_lsn = GetMaxLSN();
-  }
   WALMeta meta = wal_manager_->GetMeta();
   KStatus s = wal_manager_->SwitchNextFile(next_first_lsn);
   if (s == KStatus::FAIL) {
@@ -275,7 +260,7 @@ TsEngineSchemaManager* TsVGroup::GetSchemaMgr() const {
 //   return KStatus::SUCCESS;
 // }
 
-KStatus TsVGroup::redoPut(kwdbContext_p ctx, kwdbts::TS_LSN log_lsn, const TSSlice& payload) {
+KStatus TsVGroup::redoPut(kwdbContext_p ctx, kwdbts::TS_LSN log_lsn, const TSSlice& payload, uint64_t osn) {
   TsRawPayload p{payload};
   auto table_id = p.GetTableID();
   TSSlice primary_key = p.GetPrimaryTag();
@@ -308,7 +293,7 @@ KStatus TsVGroup::redoPut(kwdbContext_p ctx, kwdbts::TS_LSN log_lsn, const TSSli
       LOG_ERROR("GetTagSchema failed, table id[%lu]", table_id);
       return s;
     }
-    auto err_no = tag_table->InsertTagRecord(p, vgroup_id, entity_id);
+    auto err_no = tag_table->InsertTagRecord(p, vgroup_id, entity_id, osn, OperateType::Insert);
     if (err_no < 0) {
       LOG_ERROR("InsertTagRecord failed, table id[%lu]", table_id);
       return KStatus::FAIL;
@@ -318,7 +303,7 @@ KStatus TsVGroup::redoPut(kwdbContext_p ctx, kwdbts::TS_LSN log_lsn, const TSSli
   }
 
   if (payload_data_flag == DataTagFlag::DATA_AND_TAG || payload_data_flag == DataTagFlag::DATA_ONLY) {
-    s = mem_segment_mgr_->PutData(payload, entity_id, log_lsn);
+    s = mem_segment_mgr_->PutData(payload, entity_id);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("failed putdata.");
       return s;
@@ -716,8 +701,8 @@ KStatus TsVGroup::FlushImmSegment(const std::shared_ptr<TsMemSegment>& mem_seg) 
       std::sort(sorted_spans.begin(), sorted_spans.end(),
                 [](const std::shared_ptr<TsBlockSpan>& left, const std::shared_ptr<TsBlockSpan>& right) {
                   using Helper = std::tuple<TSEntityID, timestamp64, TS_LSN>;
-                  auto left_helper = Helper(left->GetEntityID(), left->GetFirstTS(), *left->GetLSNAddr(0));
-                  auto right_helper = Helper(right->GetEntityID(), right->GetFirstTS(), *right->GetLSNAddr(0));
+                  auto left_helper = Helper(left->GetEntityID(), left->GetFirstTS(), *left->GetOSNAddr(0));
+                  auto right_helper = Helper(right->GetEntityID(), right->GetFirstTS(), *right->GetOSNAddr(0));
                   return left_helper < right_helper;
                 });
     } else {
@@ -870,7 +855,7 @@ KStatus TsVGroup::FlushImmSegment(const std::shared_ptr<TsMemSegment>& mem_seg) 
       return FAIL;
     }
     update.AddLastSegment(k->GetPartitionIdentifier(), v.GetFileNumber());
-    update.SetMaxLSN(v.GetMaxLSN());
+    update.SetMaxLSN(v.GetMaxOSN());
   }
 
   mem_segment_mgr_->RemoveMemSegment(mem_seg);
@@ -928,13 +913,7 @@ KStatus TsVGroup::GetBlockSpans(TSTableID table_id, uint32_t entity_id, KwTsSpan
     return s;
   }
   for (int32_t index = 0; index < ts_partitions.size(); ++index) {
-    TS_LSN lsn;
-    if (EnableWAL()) {
-      lsn = wal_manager_->FetchCurrentLSN();
-    } else {
-      lsn = LSNInc();
-    }
-    TsScanFilterParams filter{db_id, table_id, vgroup_id_, entity_id, ts_col_type, lsn, ts_spans};
+    TsScanFilterParams filter{db_id, table_id, vgroup_id_, entity_id, ts_col_type, UINT64_MAX, ts_spans};
     auto partition_version = ts_partitions[index];
     std::list<std::shared_ptr<TsBlockSpan>> cur_block_span;
     s = partition_version->GetBlockSpans(filter, &cur_block_span, table_schema_mgr, metric_schema);
@@ -989,7 +968,8 @@ KStatus TsVGroup::rollback(kwdbContext_p ctx, LogEntry* wal_log, bool from_chk) 
         auto log = reinterpret_cast<DeleteLogTagsEntry*>(del_log);
         TSSlice primary_tag = log->getPrimaryTag();
         TSSlice tags = log->getTags();
-        return undoDeleteTag(ctx, log->getTableID(), primary_tag, lsn, log->group_id_, log->entity_id_, tags);
+        uint64_t osn = log->getOSN();
+        return undoDeleteTag(ctx, log->getTableID(), primary_tag, lsn, log->group_id_, log->entity_id_, tags, osn);
       }
     }
 
@@ -1127,14 +1107,13 @@ KStatus TsVGroup::ApplyWal(kwdbContext_p ctx, LogEntry* wal_log,
 uint32_t TsVGroup::GetVGroupID() { return vgroup_id_; }
 
 KStatus TsVGroup::DeleteEntity(kwdbContext_p ctx, TSTableID table_id, std::string& p_tag, TSEntityID e_id,
-                               uint64_t* count, uint64_t mtr_id) {
+                               uint64_t* count, uint64_t mtr_id, uint64_t osn, bool user_del) {
   std::shared_ptr<TsTableSchemaManager> tb_schema_manager;
   KStatus s = schema_mgr_->GetTableSchemaMgr(table_id, tb_schema_manager);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("Get schema manager failed, table id[%lu]", table_id);
     return KStatus::FAIL;
   }
-  TS_LSN cur_lsn = 0;
   auto tag_table = tb_schema_manager->GetTagTable();
 
   uint64_t hash_point = t1ha1_le(p_tag.data(), p_tag.size());
@@ -1151,29 +1130,27 @@ KStatus TsVGroup::DeleteEntity(kwdbContext_p ctx, TSTableID table_id, std::strin
     return KStatus::FAIL;
   }
 
-  if (EnableWAL()) {
+  if (EnableWAL() && user_del) {
     TagTuplePack* tag_pack = tag_table->GenTagPack(p_tag.data(), p_tag.size());
     if (UNLIKELY(nullptr == tag_pack)) {
       return KStatus::FAIL;
     }
     LockSharedLevelMutex();
     s = wal_manager_->WriteDeleteTagWAL(ctx, mtr_id, p_tag, vgroup_id_, e_id, tag_pack->getData(), vgroup_id_,
-                                        table_id);
-    cur_lsn = wal_manager_->FetchCurrentLSN();
+                                        table_id, osn);
     UnLockSharedLevelMutex();
     delete tag_pack;
     if (s == KStatus::FAIL) {
       LOG_ERROR("WriteDeleteTagWAL failed.");
       return s;
     }
-  } else {
-    cur_lsn = LSNInc();
   }
 
   // if any error, end the delete loop and return ERROR to the caller.
   // Delete tag and its index
   ErrorInfo err_info;
-  tag_table->DeleteTagRecord(p_tag.data(), p_tag.size(), err_info);
+  uint64_t ignore;
+  tag_table->DeleteTagRecord(p_tag.data(), p_tag.size(), err_info, osn, OperateType::Delete, ignore);
   if (err_info.errcode < 0) {
     LOG_ERROR("delete_tag_record error, error msg: %s", err_info.errmsg.c_str())
     return KStatus::FAIL;
@@ -1183,7 +1160,7 @@ KStatus TsVGroup::DeleteEntity(kwdbContext_p ctx, TSTableID table_id, std::strin
     std::vector<KwTsSpan> ts_spans;
     ts_spans.push_back({INT64_MIN, INT64_MAX});
     // delete current entity metric datas.
-    s = DeleteData(ctx, table_id, e_id, cur_lsn, ts_spans);
+    s = DeleteData(ctx, table_id, e_id, osn, ts_spans, false);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("DeleteData failed.");
       return s;
@@ -1193,31 +1170,31 @@ KStatus TsVGroup::DeleteEntity(kwdbContext_p ctx, TSTableID table_id, std::strin
 }
 
 KStatus TsVGroup::DeleteData(kwdbContext_p ctx, TSTableID tbl_id, std::string& p_tag, TSEntityID e_id,
-                             const std::vector<KwTsSpan>& ts_spans, uint64_t* count, uint64_t mtr_id) {
+  const std::vector<KwTsSpan>& ts_spans, uint64_t* count, uint64_t mtr_id, uint64_t osn, bool user_del) {
   std::vector<DelRowSpan> dtp_list;
   // todo(xy): need to initialize lsn if wal_level = off
   TS_LSN current_lsn = 0;
-  if (EnableWAL()) {
+  if (EnableWAL() && user_del) {
     LockSharedLevelMutex();
-    KStatus s = wal_manager_->WriteDeleteMetricsWAL4V2(ctx, mtr_id, tbl_id, p_tag, ts_spans, vgroup_id_, &current_lsn);
+    KStatus s = wal_manager_->WriteDeleteMetricsWAL4V2(ctx, mtr_id, tbl_id, p_tag, ts_spans, vgroup_id_, osn, &current_lsn);
     UnLockSharedLevelMutex();
     if (s == KStatus::FAIL) {
       LOG_ERROR("WriteDeleteTagWAL failed.");
       return s;
     }
   } else {
-    current_lsn = LSNInc();
+    current_lsn = OSNInc();
   }
 
   // delete current entity metric datas.
-  return DeleteData(ctx, tbl_id, e_id, current_lsn, ts_spans);
+  return DeleteData(ctx, tbl_id, e_id, osn, ts_spans, user_del);
 }
 
-KStatus TsVGroup::deleteData(kwdbContext_p ctx, TSTableID tbl_id, TSEntityID e_id, KwLSNSpan lsn,
-const std::vector<KwTsSpan>& ts_spans) {
+KStatus TsVGroup::deleteData(kwdbContext_p ctx, TSTableID tbl_id, TSEntityID e_id, KwLSNSpan osn,
+const std::vector<KwTsSpan>& ts_spans, bool user_del) {
   auto s = TrasvalAllPartition(ctx, tbl_id, ts_spans,
   [&](std::shared_ptr<const TsPartitionVersion> p) -> KStatus {
-    auto ret = p->DeleteData(e_id, ts_spans, lsn);
+    auto ret = p->DeleteData(e_id, ts_spans, osn, user_del);
     if (ret != KStatus::SUCCESS) {
       LOG_ERROR("DeleteData partition[%u/%lu] failed!",
               std::get<0>(p->GetPartitionIdentifier()), std::get<1>(p->GetPartitionIdentifier()));
@@ -1228,14 +1205,10 @@ const std::vector<KwTsSpan>& ts_spans) {
   return KStatus::SUCCESS;
 }
 
-KStatus TsVGroup::DeleteData(kwdbContext_p ctx, TSTableID tbl_id, TSEntityID e_id, TS_LSN lsn,
-const std::vector<KwTsSpan>& ts_spans) {
-  if (lsn == UINT64_MAX) {  // make sure lsn is not larger than current lsn.
-    wal_manager_->Lock();
-    lsn = wal_manager_->FetchCurrentLSN() - 1;  // not same with any allocated lsn.
-    wal_manager_->Unlock();
-  }
-  return deleteData(ctx, tbl_id, e_id, {0, lsn}, ts_spans);
+KStatus TsVGroup::DeleteData(kwdbContext_p ctx, TSTableID tbl_id, TSEntityID e_id, TS_LSN osn,
+const std::vector<KwTsSpan>& ts_spans, bool user_del) {
+  assert(osn != UINT64_MAX);
+  return deleteData(ctx, tbl_id, e_id, {0, osn}, ts_spans, user_del);
 }
 
 KStatus TsVGroup::GetEntitySegmentBuilder(std::shared_ptr<const TsPartitionVersion>& partition,
@@ -1266,7 +1239,7 @@ KStatus TsVGroup::GetEntitySegmentBuilder(std::shared_ptr<const TsPartitionVersi
 }
 
 KStatus TsVGroup::WriteBatchData(TSTableID tbl_id, uint32_t table_version,
-                                 TSEntityID entity_id, timestamp64 p_time, TS_LSN lsn, TSSlice data) {
+                                 TSEntityID entity_id, timestamp64 p_time, TSSlice data) {
   auto current = version_manager_->Current();
   uint32_t database_id = schema_mgr_->GetDBIDByTableID(tbl_id);
   if (database_id == 0) {
@@ -1293,7 +1266,7 @@ KStatus TsVGroup::WriteBatchData(TSTableID tbl_id, uint32_t table_version,
     LOG_ERROR("GetEntitySegmentBuilder failed.");
     return s;
   }
-  s = builder->WriteBatch(tbl_id, entity_id, table_version, lsn, data);
+  s = builder->WriteBatch(tbl_id, entity_id, table_version, data);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("WriteBatch failed.");
     return s;
@@ -1509,7 +1482,7 @@ KStatus TsVGroup::redoPutTag(kwdbContext_p ctx, kwdbts::TS_LSN log_lsn, const TS
       LOG_ERROR("GetTagSchema failed, table id[%lu]", table_id);
       return s;
     }
-    auto err_no = tag_table->InsertTagRecord(p, vgroup_id, entity_id);
+    auto err_no = tag_table->InsertTagRecord(p, vgroup_id, entity_id, p.GetOSN(), OperateType::Insert);
     if (err_no < 0) {
       LOG_ERROR("InsertTagRecord failed, table id[%lu]", table_id);
       return KStatus::FAIL;
@@ -1543,7 +1516,7 @@ KStatus TsVGroup::undoPutTag(kwdbContext_p ctx, TS_LSN log_lsn, const TSSlice& p
     return KStatus::SUCCESS;
   }
 
-  int res = tag_table->InsertForUndo(group_id, entity_id, primary_key);
+  int res = tag_table->InsertForUndo(group_id, entity_id, primary_key, p.GetOSN());
   if (res < 0) {
     LOG_ERROR("undoPutTag: InsertForUndo failed, primary tag[%s]", primary_key.data)
     return KStatus::FAIL;
@@ -1551,7 +1524,7 @@ KStatus TsVGroup::undoPutTag(kwdbContext_p ctx, TS_LSN log_lsn, const TSSlice& p
   return SUCCESS;
 }
 
-KStatus TsVGroup::redoUpdateTag(kwdbContext_p ctx, kwdbts::TS_LSN log_lsn, const TSSlice& payload) {
+KStatus TsVGroup::redoUpdateTag(kwdbContext_p ctx, kwdbts::TS_LSN log_lsn, const TSSlice& payload, uint64_t osn) {
   TsRawPayload p(payload);
   auto table_id = p.GetTableID();
   TSSlice primary_key = p.GetPrimaryTag();
@@ -1584,7 +1557,8 @@ KStatus TsVGroup::redoUpdateTag(kwdbContext_p ctx, kwdbts::TS_LSN log_lsn, const
   return SUCCESS;
 }
 
-KStatus TsVGroup::undoUpdateTag(kwdbContext_p ctx, TS_LSN log_lsn, TSSlice payload, const TSSlice& old_payload) {
+KStatus TsVGroup::undoUpdateTag(kwdbContext_p ctx, TS_LSN log_lsn, TSSlice payload, const TSSlice& old_payload,
+                                uint64_t osn) {
   TsRawPayload p(payload);
   auto table_id = p.GetTableID();
   TSSlice primary_key = p.GetPrimaryTag();
@@ -1609,7 +1583,7 @@ KStatus TsVGroup::undoUpdateTag(kwdbContext_p ctx, TS_LSN log_lsn, TSSlice paylo
     return KStatus::SUCCESS;
   }
 
-  if (tag_table->UpdateForUndo(group_id, entity_id, p.GetHashPoint(), primary_key, old_payload) < 0) {
+  if (tag_table->UpdateForUndo(group_id, entity_id, p.GetHashPoint(), primary_key, old_payload, p.GetOSN()) < 0) {
     LOG_ERROR("undoUpdateTag: UpdateForUndo failed, primary tag[%s].", primary_key.data)
     return KStatus::FAIL;
   }
@@ -1618,7 +1592,7 @@ KStatus TsVGroup::undoUpdateTag(kwdbContext_p ctx, TS_LSN log_lsn, TSSlice paylo
 }
 
 KStatus TsVGroup::redoDeleteTag(kwdbContext_p ctx, uint64_t table_id, TSSlice& primary_key, kwdbts::TS_LSN log_lsn,
-                                uint32_t group_id, uint32_t entity_id, TSSlice& tags) {
+                                uint32_t group_id, uint32_t entity_id, TSSlice& tags, uint64_t osn) {
   std::shared_ptr<TsTableSchemaManager> tb_schema_manager;
   KStatus s = schema_mgr_->GetTableSchemaMgr(table_id, tb_schema_manager);
   if (s != KStatus::SUCCESS) {
@@ -1646,7 +1620,7 @@ KStatus TsVGroup::redoDeleteTag(kwdbContext_p ctx, uint64_t table_id, TSSlice& p
 }
 
 KStatus TsVGroup::undoDeleteTag(kwdbContext_p ctx, uint64_t table_id, TSSlice& primary_key, TS_LSN log_lsn,
-                                uint32_t group_id, uint32_t entity_id, TSSlice& tags) {
+                                uint32_t group_id, uint32_t entity_id, TSSlice& tags, uint64_t osn) {
   std::shared_ptr<TsTableSchemaManager> tb_schema_manager;
   KStatus s = schema_mgr_->GetTableSchemaMgr(table_id, tb_schema_manager);
   if (s != KStatus::SUCCESS) {
@@ -1714,12 +1688,6 @@ KStatus TsVGroup::MtrRollback(kwdbContext_p ctx, uint64_t& mtr_id, bool is_skip,
 
 KStatus TsVGroup::Vacuum() {
   KStatus s = KStatus::SUCCESS;
-  TS_LSN cur_lsn;
-  if (EnableWAL()) {
-    cur_lsn = wal_manager_->FetchCurrentLSN();
-  } else {
-    cur_lsn = LSNInc();
-  }
   auto now = std::chrono::time_point_cast<std::chrono::seconds>(std::chrono::system_clock::now());
   auto current = version_manager_->Current();
   auto all_partitions = current->GetPartitions();
@@ -1898,7 +1866,7 @@ KStatus TsVGroup::Vacuum() {
           // check weather mem segment has data for one entity
           KwTsSpan partition_ts_span = {partition->GetTsColTypeStartTime(tb_schema_mgr->GetTsColDataType()),
                                         partition->GetTsColTypeEndTime(tb_schema_mgr->GetTsColDataType())};
-          STScanRange scan_range = {partition_ts_span, {0, cur_lsn}};
+          STScanRange scan_range = {partition_ts_span, {0, UINT64_MAX}};
           DatabaseID db_id = std::get<0>(partition->GetPartitionIdentifier());
           TsBlockItemFilterParams param {db_id, entity_item.table_id, vgroup_id_, entity_id, {scan_range}};
           std::list<shared_ptr<TsBlockSpan>> mem_block_spans;
@@ -1912,7 +1880,7 @@ KStatus TsVGroup::Vacuum() {
             mem_segment->GetBlockSpans(param, mem_block_spans, tb_schema_mgr, metric_schema);
           }
           if (mem_block_spans.empty()) {
-            entity_max_lsn.emplace_back(entity_id, cur_lsn);
+            entity_max_lsn.emplace_back(entity_id, UINT64_MAX);
           }
         }
       }

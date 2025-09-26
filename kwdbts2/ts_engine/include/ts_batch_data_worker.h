@@ -71,16 +71,16 @@ class TsBatchData {
   uint32_t tags_data_size_ = 0;
 
   /*  block span part
-  __________________________________________________________________________________________________________________
-  |    4        |       8       |         8        |       4       |       4      |               xxx              |
-  |-------------|---------------|------------------|---------------|--------------|--------------------------------|
-  | data length |     min ts    |      max ts      |     n_cols    |    n_rows    |  entity segment compressed data|
+  ________________________________________________________________________________________________________________________________________________________________________________________
+  |    4        |       8       |         8        |       8       |         8        |       8       |         8        |       4       |       4      |               xxx              |
+  |-------------|---------------|------------------|---------------|------------------|---------------|------------------|---------------|--------------|--------------------------------|
+  | data length |     min ts    |      max ts      |     min osn   |      max osn     |   first osn   |    last osn      |     n_cols    |    n_rows    |  entity segment compressed data|
   */
   uint32_t block_span_data_offset_ = 0;
   uint32_t block_span_data_size_ = 0;
 
-  // block span length + min ts + max ts + n_cols + n_rows
-  const static int block_span_data_header_size_ = 3 * sizeof(uint32_t) + 2 * sizeof(timestamp64);  // NOLINT
+  // block span length + min ts + max ts + n_cols + n_rows + min osn + max osn + first osn + last osn
+  const static int block_span_data_header_size_ = 3 * sizeof(uint32_t) + 2 * sizeof(timestamp64) + 4 * sizeof(uint64_t);  // NOLINT
 
   const static uint8_t length_offset_in_span_data_ = 0;  // NOLINT
   const static uint8_t length_size_in_span_data_ = sizeof(uint32_t);  // NOLINT
@@ -91,7 +91,19 @@ class TsBatchData {
   const static uint8_t max_ts_offset_in_span_data_ = min_ts_offset_in_span_data_ + min_ts_size_in_span_data_;  // NOLINT
   const static uint8_t max_ts_size_in_span_data_ = sizeof(timestamp64);  // NOLINT
 
-  const static uint8_t n_cols_offset_in_span_data_ = max_ts_offset_in_span_data_ + max_ts_size_in_span_data_;  // NOLINT
+  const static uint8_t min_osn_offset_in_span_data_ = max_ts_offset_in_span_data_ + max_ts_size_in_span_data_;  // NOLINT
+  const static uint8_t min_osn_size_in_span_data_ = sizeof(uint64_t);  // NOLINT
+
+  const static uint8_t max_osn_offset_in_span_data_ = min_osn_offset_in_span_data_ + min_osn_size_in_span_data_;  // NOLINT
+  const static uint8_t max_osn_size_in_span_data_ = sizeof(uint64_t);  // NOLINT
+
+  const static uint8_t first_osn_offset_in_span_data_ = max_osn_offset_in_span_data_ + max_osn_size_in_span_data_;  // NOLINT
+  const static uint8_t first_osn_size_in_span_data_ = sizeof(uint64_t);  // NOLINT
+
+  const static uint8_t last_osn_offset_in_span_data_ = first_osn_offset_in_span_data_ + first_osn_size_in_span_data_;  // NOLINT
+  const static uint8_t last_osn_size_in_span_data_ = sizeof(uint64_t);  // NOLINT
+
+  const static uint8_t n_cols_offset_in_span_data_ = last_osn_offset_in_span_data_ + last_osn_size_in_span_data_;  // NOLINT
   const static uint8_t n_cols_size_in_span_data_ = sizeof(uint32_t);  // NOLINT
 
   const static uint8_t n_rows_offset_in_span_data_ = n_cols_offset_in_span_data_ + n_cols_size_in_span_data_;  // NOLINT
@@ -195,12 +207,17 @@ class TsBatchData {
   }
 
   void AddBlockSpanDataHeader(uint32_t block_span_length, timestamp64 min_ts, timestamp64 max_ts,
+                              uint64_t min_osn, uint64_t max_osn, uint64_t first_osn, uint64_t last_osn,
                               uint32_t n_cols, uint32_t n_rows) {
     assert(tags_data_size_ != 0 && tags_data_offset_ != 0);
     block_span_data_offset_ = data_.size();
     data_.append(reinterpret_cast<const char *>(&block_span_length), sizeof(uint32_t));
     data_.append(reinterpret_cast<const char *>(&min_ts), sizeof(timestamp64));
     data_.append(reinterpret_cast<const char *>(&max_ts), sizeof(timestamp64));
+    data_.append(reinterpret_cast<const char *>(&min_osn), sizeof(uint64_t));
+    data_.append(reinterpret_cast<const char *>(&max_osn), sizeof(uint64_t));
+    data_.append(reinterpret_cast<const char *>(&first_osn), sizeof(uint64_t));
+    data_.append(reinterpret_cast<const char *>(&last_osn), sizeof(uint64_t));
     data_.append(reinterpret_cast<const char *>(&n_cols), sizeof(uint32_t));
     data_.append(reinterpret_cast<const char *>(&n_rows), sizeof(uint32_t));
     assert(data_.size() - block_span_data_offset_ == block_span_data_header_size_);
@@ -310,8 +327,6 @@ class TsWriteBatchDataWorker : public TsBatchDataWorker {
  private:
   TSEngineV2Impl* ts_engine_;
 
-  std::unordered_map<uint64_t, TS_LSN> vgroups_lsn_;
-
   struct BatchDataHeader {
     TSTableID table_id;
     uint32_t table_version;
@@ -324,8 +339,6 @@ class TsWriteBatchDataWorker : public TsBatchDataWorker {
   KLatch w_file_latch_;
 
   KStatus GetTagPayload(uint32_t table_version, TSSlice* data, std::string& tag_payload_str);
-
-  KStatus UpdateLSN(uint32_t vgroup_id, TSSlice* input, std::string& result);
 
  public:
   TsWriteBatchDataWorker(TSEngineV2Impl* ts_engine, uint64_t job_id);

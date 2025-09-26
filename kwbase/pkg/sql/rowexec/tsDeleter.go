@@ -111,6 +111,7 @@ func (td *tsDeleter) Start(ctx context.Context) context.Context {
 	deletedRow := uint64(0)
 
 	ba := td.FlowCtx.Txn.NewBatch()
+	OsnID := td.FlowCtx.Cfg.TsIDGen.GetNextID()
 	switch td.tsOperatorType {
 	case execinfrapb.OperatorType_TsDeleteData:
 		hashPoints, err := api.GetHashPointByPrimaryTag(td.hashNum, td.primaryTags[0])
@@ -129,6 +130,7 @@ func (td *tsDeleter) Start(ctx context.Context) context.Context {
 			},
 			TableId:     td.tableID,
 			PrimaryTags: td.primaryTags[0],
+			OsnId:       OsnID,
 		}
 		req.TsSpans = make([]*roachpb.TsSpan, len(td.spans))
 		for i := range td.spans {
@@ -156,6 +158,7 @@ func (td *tsDeleter) Start(ctx context.Context) context.Context {
 			},
 			TableId: td.tableID,
 			HashNum: td.hashNum,
+			OsnId:   OsnID,
 		}
 		for _, span := range td.spans {
 			req.TsSpans = append(req.TsSpans, &roachpb.TsSpan{TsStart: span.StartTs, TsEnd: span.EndTs})
@@ -190,6 +193,7 @@ func (td *tsDeleter) Start(ctx context.Context) context.Context {
 			TableId:     td.tableID,
 			PrimaryTags: td.primaryTags[0],
 			TsSpans:     []*roachpb.TsSpan{{TsStart: math.MinInt64, TsEnd: math.MaxInt64}},
+			OsnId:       OsnID,
 		}
 		//fmt.Println("-----DeleteEntities-----data")
 		//fmt.Printf("startKey: %v, endKey: %v, TsSpan: %v\n", delDataReq.Key, delDataReq.EndKey, delDataReq.TsSpans)
@@ -210,6 +214,7 @@ func (td *tsDeleter) Start(ctx context.Context) context.Context {
 				},
 				TableId:     td.tableID,
 				PrimaryTags: td.primaryTags,
+				OsnId:       OsnID,
 			})
 			err = td.FlowCtx.Cfg.TseDB.Run(ctx, ba2)
 		}

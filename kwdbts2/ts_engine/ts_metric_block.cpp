@@ -24,19 +24,19 @@
 namespace kwdbts {
 
 bool TsMetricBlock::GetCompressedData(std::string* output, TsMetricCompressInfo* compress_info,
-                                      bool compress_ts_and_lsn, bool compress_columns) {
+                                      bool compress_ts_and_osn, bool compress_columns) {
   std::string compressed_data;
   const auto& mgr = CompressorManager::GetInstance();
-  // 1. Compress LSN
-  TSSlice lsn_slice{reinterpret_cast<char*>(lsn_buffer_.data()), lsn_buffer_.size() * sizeof(TS_LSN)};
-  TsCompAlg lsn_alg = compress_ts_and_lsn ? TsCompAlg::kSimple8B_u64 : TsCompAlg::kPlain;
-  auto ok = mgr.CompressData(lsn_slice, nullptr, count_, &compressed_data, lsn_alg, GenCompAlg::kPlain);
+  // 1. Compress OSN
+  TSSlice osn_slice{reinterpret_cast<char*>(osn_buffer_.data()), osn_buffer_.size() * sizeof(uint64_t)};
+  TsCompAlg osn_alg = compress_ts_and_osn ? TsCompAlg::kSimple8B_u64 : TsCompAlg::kPlain;
+  auto ok = mgr.CompressData(osn_slice, nullptr, count_, &compressed_data, osn_alg, GenCompAlg::kPlain);
   if (!ok) {
-    LOG_ERROR("compress lsn error");
+    LOG_ERROR("compress osn error");
     return FAIL;
   }
-  compress_info->lsn_len = compressed_data.size();
-  size_t offset = compress_info->lsn_len;
+  compress_info->osn_len = compressed_data.size();
+  size_t offset = compress_info->osn_len;
 
   // 2. Compress column data
   compress_info->column_compress_infos.resize(column_blocks_.size());
@@ -63,10 +63,10 @@ bool TsMetricBlock::GetCompressedData(std::string* output, TsMetricCompressInfo*
 KStatus TsMetricBlockBuilder::PutBlockSpan(std::shared_ptr<TsBlockSpan> span) {
   auto row_count = span->GetRowNum();
 
-  lsn_buffer_.reserve(lsn_buffer_.size() + span->GetRowNum());
+  osn_buffer_.reserve(osn_buffer_.size() + span->GetRowNum());
   for (int i = 0; i < span->GetRowNum(); ++i) {
-    auto lsn_addr = span->GetLSNAddr(i);
-    lsn_buffer_.push_back(*lsn_addr);
+    auto osn_addr = span->GetOSNAddr(i);
+    osn_buffer_.push_back(*osn_addr);
   }
   for (int icol = 0; icol < col_schemas_->size(); icol++) {
     if (isVarLenType((*col_schemas_)[icol].type)) {
@@ -103,9 +103,9 @@ std::unique_ptr<TsMetricBlock> TsMetricBlockBuilder::GetMetricBlock() {
     column_blocks.push_back(column_block_builders_[i]->GetColumnBlock());
   }
 
-  std::vector<TS_LSN> lsn_buffer;
-  lsn_buffer.swap(lsn_buffer_);
-  return std::unique_ptr<TsMetricBlock>(new TsMetricBlock{count_, std::move(lsn_buffer), std::move(column_blocks)});
+  std::vector<uint64_t> osn_buffer;
+  osn_buffer.swap(osn_buffer_);
+  return std::unique_ptr<TsMetricBlock>(new TsMetricBlock{count_, std::move(osn_buffer), std::move(column_blocks)});
 }
 
 KStatus TsMetricBlock::ParseCompressedMetricData(const std::vector<AttributeInfo>& schema,
@@ -119,23 +119,23 @@ KStatus TsMetricBlock::ParseCompressedMetricData(const std::vector<AttributeInfo
   }
 
   const auto& mgr = CompressorManager::GetInstance();
-  // 1. Decompress LSN
-  TSSlice lsn_slice;
-  lsn_slice.data = compressed_data.data;
-  lsn_slice.len = compress_info.lsn_len;
-  TsSliceGuard out_lsn_guard;
-  bool ok = mgr.DecompressData(lsn_slice, nullptr, compress_info.row_count, &out_lsn_guard);
+  // 1. Decompress OSN
+  TSSlice osn_slice;
+  osn_slice.data = compressed_data.data;
+  osn_slice.len = compress_info.osn_len;
+  TsSliceGuard out_osn_guard;
+  bool ok = mgr.DecompressData(osn_slice, nullptr, compress_info.row_count, &out_osn_guard);
   if (!ok) {
-    LOG_ERROR("decompress lsn error");
+    LOG_ERROR("decompress osn error");
     return FAIL;
   }
 
-  if (out_lsn_guard.size() != compress_info.row_count * sizeof(TS_LSN)) {
-    LOG_ERROR("decompress lsn size not match");
+  if (out_osn_guard.size() != compress_info.row_count * sizeof(uint64_t)) {
+    LOG_ERROR("decompress osn size not match");
     return FAIL;
   }
-  std::vector<TS_LSN> lsn_vec(compress_info.row_count);
-  std::memcpy(lsn_vec.data(), out_lsn_guard.data(), out_lsn_guard.size());
+  std::vector<uint64_t> osn_vec(compress_info.row_count);
+  std::memcpy(osn_vec.data(), out_osn_guard.data(), out_osn_guard.size());
 
   std::vector<std::unique_ptr<TsColumnBlock>> column_blocks;
   for (int i = 0; i < schema.size(); i++) {
@@ -151,7 +151,7 @@ KStatus TsMetricBlock::ParseCompressedMetricData(const std::vector<AttributeInfo
     }
     column_blocks.push_back(std::move(colblock));
   }
-  metric_block->reset(new TsMetricBlock{compress_info.row_count, std::move(lsn_vec), std::move(column_blocks)});
+  metric_block->reset(new TsMetricBlock{compress_info.row_count, std::move(osn_vec), std::move(column_blocks)});
   return SUCCESS;
 }
 

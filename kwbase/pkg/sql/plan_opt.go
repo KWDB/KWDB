@@ -230,6 +230,7 @@ func (p *planner) makeOptimizerPlan(ctx context.Context) error {
 
 	bld.ForceFilterInME = p.forceFilterInME
 	bld.CDCCoordinator = p.execCfg.CDCCoordinator
+	bld.TsIDGen = p.execCfg.TsIDGen
 
 	plan, err := bld.Build(true)
 	if err != nil {

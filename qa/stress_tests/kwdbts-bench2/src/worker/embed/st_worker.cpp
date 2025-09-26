@@ -303,7 +303,7 @@ KBStatus StSnapshotWorker::do_work(KTimestamp  new_ts) {
       return dump_zstatus("CreateSnapshotForRead", ctx, s);
     }
     s = st_inst_->GetTSEngine()->CreateSnapshotForWrite(ctx, st_inst_->GetSnapShotTableId(), 0,
-                                            UINT64_MAX, {INT64_MIN, INT64_MAX}, &write_snapshot_id);
+                                            UINT64_MAX, {INT64_MIN, INT64_MAX}, &write_snapshot_id, 1);
     if (s != KStatus::SUCCESS) {
       return dump_zstatus("CreateSnapshotForWrite", ctx, s);
     }

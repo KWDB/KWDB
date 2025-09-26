@@ -121,9 +121,7 @@ class TsTable {
    * @return KStatus
    */
   virtual KStatus DeleteTotalRange(kwdbContext_p ctx, uint64_t begin_hash, uint64_t end_hash,
-                                    KwTsSpan ts_span, uint64_t mtr_id) = 0;
-
-  KStatus TierMigrate();
+                                    KwTsSpan ts_span, uint64_t mtr_id, uint64_t osn) = 0;
 
   /**
    * @brief Get range row count.
@@ -145,7 +143,7 @@ class TsTable {
    * @return KStatus
    */
   virtual KStatus DeleteRangeEntities(kwdbContext_p ctx, const uint64_t& range_group_id, const HashIdSpan& hash_span,
-                                      uint64_t* count, uint64_t mtr_id) = 0;
+                                      uint64_t* count, uint64_t mtr_id, uint64_t osn, bool user_del) = 0;
 
   /**
    * @brief Delete data based on the hash id range and timestamp range.
@@ -157,7 +155,7 @@ class TsTable {
    * @return
    */
   virtual KStatus DeleteRangeData(kwdbContext_p ctx, uint64_t range_group_id, HashIdSpan &hash_span,
-                                  const std::vector<KwTsSpan> &ts_spans, uint64_t *count, uint64_t mtr_id) = 0;
+                            const std::vector<KwTsSpan> &ts_spans, uint64_t *count, uint64_t mtr_id, uint64_t osn) = 0;
 
   /**
    * @brief Delete data based on the primary tag and timestamp range.
@@ -169,7 +167,7 @@ class TsTable {
    * @return KStatus
    */
   virtual KStatus DeleteData(kwdbContext_p ctx, uint64_t range_group_id, std::string &primary_tag,
-                             const std::vector<KwTsSpan> &ts_spans, uint64_t *count, uint64_t mtr_id) = 0;
+                             const std::vector<KwTsSpan> &ts_spans, uint64_t *count, uint64_t mtr_id, uint64_t osn) = 0;
 
   /**
     * @brief Create the iterator TsStorageIterator for the timeline and query the data of all entities within the Leader EntityGroup

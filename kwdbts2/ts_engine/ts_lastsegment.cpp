@@ -162,7 +162,7 @@ class TsLastBlock : public TsBlock {
 
     TsSliceGuard entity_ids_;
     TsSliceGuard timestamps_;
-    TsSliceGuard lsn_;
+    TsSliceGuard osn_;
 
    public:
     ColumnCache(TsRandomReadFile* file, TsLastSegmentBlockInfo* block_info)
@@ -221,9 +221,9 @@ class TsLastBlock : public TsBlock {
       return ok ? SUCCESS : FAIL;
     }
 
-    KStatus GetLSN(TS_LSN** lsn) {
-      if (!lsn_.empty()) {
-        *lsn = reinterpret_cast<TS_LSN*>(lsn_.data());
+    KStatus GetOSN(uint64_t** osn) {
+      if (!osn_.empty()) {
+        *osn = reinterpret_cast<uint64_t*>(osn_.data());
         return SUCCESS;
       }
 
@@ -235,8 +235,8 @@ class TsLastBlock : public TsBlock {
       if (s == FAIL) {
         return FAIL;
       }
-      bool ok = mgr.DecompressData(result, nullptr, block_info_->nrow, &lsn_);
-      *lsn = reinterpret_cast<TS_LSN*>(lsn_.data());
+      bool ok = mgr.DecompressData(result, nullptr, block_info_->nrow, &osn_);
+      *osn = reinterpret_cast<TS_LSN*>(osn_.data());
       return ok ? SUCCESS : FAIL;
     }
 
@@ -335,21 +335,26 @@ class TsLastBlock : public TsBlock {
     return block_index_.last_ts;
   }
 
-  inline TS_LSN GetFirstLSN() override {
-    return block_index_.first_lsn;
+  inline void GetMinAndMaxOSN(uint64_t& min_osn, uint64_t& max_osn) override {
+    min_osn = block_index_.min_osn;
+    max_osn = block_index_.max_osn;
   }
 
-  inline TS_LSN GetLastLSN() override {
-    return block_index_.last_lsn;
+  inline uint64_t GetFirstOSN() override {
+    return block_index_.first_osn;
   }
 
-  inline const uint64_t* GetLSNAddr(int row_num) override {
-    auto seq_nos = GetLSN();
-    if (seq_nos == nullptr) {
-      LOG_ERROR("cannot get lsn addr");
+  inline uint64_t GetLastOSN() override {
+    return block_index_.last_osn;
+  }
+
+  inline const uint64_t* GetOSNAddr(int row_num) override {
+    auto osn = GetOSN();
+    if (osn == nullptr) {
+      LOG_ERROR("cannot get osn addr");
       return nullptr;
     }
-    return &seq_nos[row_num];
+    return &osn[row_num];
   }
 
   inline KStatus GetCompressDataFromFile(uint32_t table_version, int32_t nrow, std::string& data) override {
@@ -371,14 +376,14 @@ class TsLastBlock : public TsBlock {
     return entity_ids;
   }
 
-  inline const uint64_t* GetLSN() {
-    TS_LSN* lsn = nullptr;
-    auto s = column_block_cache_->GetLSN(&lsn);
+  inline const uint64_t* GetOSN() {
+    uint64_t* osn = nullptr;
+    auto s = column_block_cache_->GetOSN(&osn);
     if (s == FAIL) {
-      LOG_ERROR("cannot load lsn column");
+      LOG_ERROR("cannot load osn column");
       return nullptr;
     }
-    return lsn;
+    return osn;
   }
 
   inline const timestamp64* GetTimestamps() {
@@ -612,7 +617,7 @@ KStatus TsLastSegment::GetBlockSpans(const TsBlockItemFilterParams& filter,
       if (it->max_ts < span.ts_span.begin || it->min_ts > span.ts_span.end) {
         continue;
       }
-      if (it->max_lsn < span.lsn_span.begin || it->min_lsn > span.lsn_span.end) {
+      if (it->max_osn < span.lsn_span.begin || it->min_osn > span.lsn_span.end) {
         continue;
       }
       //  we need to read the block to do further filtering.
@@ -626,8 +631,8 @@ KStatus TsLastSegment::GetBlockSpans(const TsBlockItemFilterParams& filter,
       }
       auto ts = block->GetTimestamps();
       auto entities = block->GetEntities();
-      auto lsn = block->GetLSN();
-      if (ts == nullptr || entities == nullptr || lsn == nullptr) {
+      auto osn = block->GetOSN();
+      if (ts == nullptr || entities == nullptr || osn == nullptr) {
         return FAIL;
       }
 
@@ -652,8 +657,8 @@ KStatus TsLastSegment::GetBlockSpans(const TsBlockItemFilterParams& filter,
       // no need to check whether idx_it == end(), the caculation are consistent no matter idx_it is valid or not.
       assert(end_idx >= start_idx);
 
-      if (it->max_lsn <= span.lsn_span.end && span.lsn_span.begin <= it->min_lsn) {
-        // all lsn in the block is in the span, we can directly use the end_idx;
+      if (it->max_osn <= span.lsn_span.end && span.lsn_span.begin <= it->min_osn) {
+        // all osn in the block is in the span, we can directly use the end_idx;
         if (end_idx - start_idx > 0) {
           std::shared_ptr<TsBlockSpan> cur_span;
           auto s = TsBlockSpan::MakeNewBlockSpan(template_blk_span, filter.vgroup_id, filter.entity_id, block, start_idx,
@@ -667,10 +672,10 @@ KStatus TsLastSegment::GetBlockSpans(const TsBlockItemFilterParams& filter,
           block_spans.push_back(std::move(cur_span));
         }
       } else {
-        // we must filter LSN row-by-row
+        // we must filter OSN row-by-row
         int prev_idx = -1;  // invalide index
         for (int i = start_idx; i < end_idx; ++i) {
-          if (span.lsn_span.begin <= lsn[i] && lsn[i] <= span.lsn_span.end) {
+          if (span.lsn_span.begin <= osn[i] && osn[i] <= span.lsn_span.end) {
             prev_idx = prev_idx == -1 ? i : prev_idx;
             continue;
           }

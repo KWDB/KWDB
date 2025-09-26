@@ -162,9 +162,9 @@ TEST_F(TsBatchDataWorkerTest, TestTsBatchDataWorker) {
     EXPECT_EQ(s, KStatus::SUCCESS);
     s = block_span->GetFixLenColAddr(2, &col_values[1], &bitmap);
     EXPECT_EQ(s, KStatus::SUCCESS);
-    uint64_t lsn = *(uint64_t *) (block_span->GetLSNAddr(0));
+    uint64_t osn = *(uint64_t *) (block_span->GetOSNAddr(0));
     for (int idx = 0; idx < block_span->GetRowNum(); ++idx) {
-      EXPECT_EQ(*(uint64_t *) (block_span->GetLSNAddr(idx)), lsn);
+      EXPECT_EQ(*(uint64_t *) (block_span->GetOSNAddr(idx)), osn);
       EXPECT_EQ(block_span->GetTS(idx), 10086000 + idx * 1000);
       EXPECT_EQ(*(timestamp64 *) (ts_col + idx * 8), 10086000 + idx * 1000);
       EXPECT_LE(*(int32_t *) (col_values[0] + idx * 4), 1024);

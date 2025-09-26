@@ -961,7 +961,7 @@ func (c *conn) handleSimpleQuery(
 				dit.HashNum = table.TsTable.HashNum
 				dit.ColsDesc = table.TableDesc().Columns
 				// Get column information
-				if err = sql.GetColsInfo(ctx, evalCtx, &dit.ColsDesc, ins, &di, &stmts[0]); err != nil {
+				if err = sql.GetColsInfo(ctx, evalCtx, &dit.ColsDesc, ins, &di, &stmts[0], cfg.TsIDGen); err != nil {
 					return err
 				}
 

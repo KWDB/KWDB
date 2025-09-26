@@ -53,11 +53,13 @@ class TsBlock {
 
   virtual timestamp64 GetLastTS() = 0;
 
-  virtual TS_LSN GetFirstLSN() = 0;
+  virtual void GetMinAndMaxOSN(uint64_t& min_osn, uint64_t& max_osn) = 0;
 
-  virtual TS_LSN GetLastLSN() = 0;
+  virtual uint64_t GetFirstOSN() = 0;
 
-  virtual const uint64_t* GetLSNAddr(int row_num) = 0;
+  virtual uint64_t GetLastOSN() = 0;
+
+  virtual const uint64_t* GetOSNAddr(int row_num) = 0;
 
   virtual KStatus GetCompressDataFromFile(uint32_t table_version, int32_t nrow, std::string& data) = 0;
 
@@ -143,21 +145,38 @@ class TsBlockSpan {
       return block_->GetTS(start_row_ + nrow_ - 1);
     }
   }
-  TS_LSN GetFirstLSN() const {
+  void GetMinAndMaxOSN(uint64_t& min_osn, uint64_t& max_osn) const {
+    if (nrow_ == block_->GetRowNum()) {
+      block_->GetMinAndMaxOSN(min_osn, max_osn);
+    } else {
+      min_osn = UINT64_MAX;
+      max_osn = 0;
+      for (int i = start_row_; i < start_row_ + nrow_; i++) {
+        uint64_t cur_osn = *block_->GetOSNAddr(i);
+        if (cur_osn < min_osn) {
+          min_osn = cur_osn;
+        }
+        if (cur_osn > max_osn) {
+          max_osn = cur_osn;
+        }
+      }
+    }
+  }
+  uint64_t GetFirstOSN() const {
     if (start_row_ == 0) {
-      return block_->GetFirstLSN();
+      return block_->GetFirstOSN();
     } else {
-      return *block_->GetLSNAddr(start_row_);
+      return *block_->GetOSNAddr(start_row_);
     }
   }
-  TS_LSN GetLastLSN() const {
+  uint64_t GetLastOSN() const {
     if (start_row_ + nrow_ == block_->GetRowNum()) {
-      return block_->GetLastLSN();
+      return block_->GetLastOSN();
     } else {
-      return *block_->GetLSNAddr(start_row_ + nrow_ - 1);
+      return *block_->GetOSNAddr(start_row_ + nrow_ - 1);
     }
   }
-  const uint64_t* GetLSNAddr(int row_idx) const { return block_->GetLSNAddr(start_row_ + row_idx); }
+  const uint64_t* GetOSNAddr(int row_idx) const { return block_->GetOSNAddr(start_row_ + row_idx); }
 
   // convert value to compressed entity block data
   KStatus BuildCompressedData(std::string& data);

@@ -160,6 +160,9 @@ type ServerConfig struct {
 	// TsEngine is a ts engine
 	TsEngine *tse.TsEngine
 
+	// TsIDGen is a TSIDGenerator
+	TsIDGen *sqlbase.TSIDGenerator
+
 	// StatsRefresher is a refresher of statistic
 	StatsRefresher *stats.Refresher
 

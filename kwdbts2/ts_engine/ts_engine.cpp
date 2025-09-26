@@ -478,7 +478,7 @@ KStatus TSEngineV2Impl::putTagData(kwdbContext_p ctx, TSTableID table_id, uint32
       LOG_ERROR("Failed get table id[%ld] version id[%d] tag schema.", table_id, tbl_version);
       return s;
     }
-    err_info.errcode = tag_table->InsertTagRecord(payload, groupid, entity_id);
+    err_info.errcode = tag_table->InsertTagRecord(payload, groupid, entity_id, payload.GetOSN(), OperateType::Insert, 0);
   }
   if (err_info.errcode < 0) {
     return KStatus::FAIL;
@@ -628,7 +628,7 @@ KStatus TSEngineV2Impl::PutEntity(kwdbContext_p ctx, const KTableKey& table_id, 
       }
     }
 
-    err_info.errcode = tag_table->UpdateTagRecord(p, vgroup_id, entity_id, err_info);
+    err_info.errcode = tag_table->UpdateTagRecord(p, vgroup_id, entity_id, err_info, p.GetOSN());
     if (err_info.errcode < 0) {
       return KStatus::FAIL;
     }
@@ -1106,9 +1106,6 @@ KStatus TSEngineV2Impl::CreateCheckpoint(kwdbContext_p ctx) {
     for (const auto &vgrp : vgroups_) {
       vgrp->GetWALManager()->Lock();
       auto cur_lsn = vgrp->GetWALManager()->FetchCurrentLSN();
-      if (cur_lsn < vgrp->GetMaxLSN()) {
-        cur_lsn = vgrp->GetMaxLSN();
-      }
       vgrp_lsn.emplace_back(cur_lsn);
       s = vgrp->GetWALManager()->SwitchNextFile(cur_lsn);
       if (s == KStatus::FAIL) {
@@ -1333,7 +1330,7 @@ KStatus TSEngineV2Impl::GetMetaData(kwdbContext_p ctx, const KTableKey& table_id
 
 KStatus TSEngineV2Impl::DeleteRangeData(kwdbContext_p ctx, const KTableKey& table_id, uint64_t range_group_id,
                         HashIdSpan& hash_span, const std::vector<KwTsSpan>& ts_spans, uint64_t* count,
-                        uint64_t mtr_id) {
+                        uint64_t mtr_id, uint64_t osn) {
   ErrorInfo err_info;
   std::shared_ptr<kwdbts::TsTable> ts_table;
   auto s = GetTsTable(ctx, table_id, ts_table, true, err_info, 0);
@@ -1342,12 +1339,12 @@ KStatus TSEngineV2Impl::DeleteRangeData(kwdbContext_p ctx, const KTableKey& tabl
     return s;
   }
   ctx->ts_engine = this;
-  return ts_table->DeleteRangeData(ctx, range_group_id, hash_span, ts_spans, count, mtr_id);
+  return ts_table->DeleteRangeData(ctx, range_group_id, hash_span, ts_spans, count, mtr_id, osn);
 }
 
 KStatus TSEngineV2Impl::DeleteData(kwdbContext_p ctx, const KTableKey& table_id, uint64_t range_group_id,
                     std::string& primary_tag, const std::vector<KwTsSpan>& ts_spans, uint64_t* count,
-                    uint64_t mtr_id) {
+                    uint64_t mtr_id, uint64_t osn) {
   ErrorInfo err_info;
   std::shared_ptr<kwdbts::TsTable> ts_table;
   auto s = GetTsTable(ctx, table_id, ts_table, true, err_info, 0);
@@ -1356,11 +1353,11 @@ KStatus TSEngineV2Impl::DeleteData(kwdbContext_p ctx, const KTableKey& table_id,
     return s;
   }
   ctx->ts_engine = this;
-  return ts_table->DeleteData(ctx, range_group_id, primary_tag, ts_spans, count, mtr_id);
+  return ts_table->DeleteData(ctx, range_group_id, primary_tag, ts_spans, count, mtr_id, osn);
 }
 
 KStatus TSEngineV2Impl::DeleteEntities(kwdbContext_p ctx, const KTableKey& table_id, uint64_t range_group_id,
-                        std::vector<std::string> primary_tags, uint64_t* count, uint64_t mtr_id) {
+                        std::vector<std::string> primary_tags, uint64_t* count, uint64_t mtr_id, uint64_t osn) {
   ErrorInfo err_info;
   std::shared_ptr<kwdbts::TsTable> ts_table;
   auto s = GetTsTable(ctx, table_id, ts_table, true, err_info, 0);
@@ -1369,11 +1366,11 @@ KStatus TSEngineV2Impl::DeleteEntities(kwdbContext_p ctx, const KTableKey& table
     return s;
   }
   ctx->ts_engine = this;
-  return (dynamic_pointer_cast<TsTableV2Impl>(ts_table))->DeleteEntities(ctx, primary_tags, count, mtr_id);
+  return (dynamic_pointer_cast<TsTableV2Impl>(ts_table))->DeleteEntities(ctx, primary_tags, count, mtr_id, osn, true);
 }
 
 KStatus TSEngineV2Impl::DeleteRangeEntities(kwdbContext_p ctx, const KTableKey& table_id, const uint64_t& range_grp_id,
-                            const HashIdSpan& hash_span, uint64_t* count, uint64_t& mtr_id) {
+                            const HashIdSpan& hash_span, uint64_t* count, uint64_t& mtr_id, uint64_t osn) {
   ErrorInfo err_info;
   std::shared_ptr<kwdbts::TsTable> ts_table;
   auto s = GetTsTable(ctx, table_id, ts_table, true, err_info, 0);
@@ -1382,7 +1379,7 @@ KStatus TSEngineV2Impl::DeleteRangeEntities(kwdbContext_p ctx, const KTableKey& 
     return s;
   }
   ctx->ts_engine = this;
-  return ts_table->DeleteRangeEntities(ctx, range_grp_id, hash_span, count, mtr_id);
+  return ts_table->DeleteRangeEntities(ctx, range_grp_id, hash_span, count, mtr_id, osn, true);
 }
 
 KStatus TSEngineV2Impl::ReadBatchData(kwdbContext_p ctx, TSTableID table_id, uint64_t table_version, uint64_t begin_hash,
@@ -1476,7 +1473,7 @@ KStatus TSEngineV2Impl::WriteBatchData(kwdbContext_p ctx, TSTableID table_id, ui
   return worker->Write(ctx, table_id, table_version, data, row_num);
 }
 
-KStatus TSEngineV2Impl::CancelBatchJob(kwdbContext_p ctx, uint64_t job_id) {
+KStatus TSEngineV2Impl::CancelBatchJob(kwdbContext_p ctx, uint64_t job_id, uint64_t osn) {
   // handle write worker
   {
     RW_LATCH_X_LOCK(&write_batch_workers_lock_);
@@ -1926,7 +1923,7 @@ KStatus TSEngineV2Impl::GetClusterSetting(kwdbContext_p ctx, const std::string& 
 
 KStatus TSEngineV2Impl::UpdateAtomicLSN() {
   for (auto vgrp : vgroups_) {
-    vgrp->UpdateAtomicLSN();
+    vgrp->UpdateAtomicOSN();
   }
   return KStatus::SUCCESS;
 }
@@ -2005,7 +2002,7 @@ uint64_t begin_hash, uint64_t end_hash, const KwTsSpan& ts_span, uint64_t* snaps
   return KStatus::SUCCESS;
 }
 KStatus TSEngineV2Impl::CreateSnapshotForWrite(kwdbContext_p ctx, const KTableKey& table_id,
-uint64_t begin_hash, uint64_t end_hash, const KwTsSpan& ts_span, uint64_t* snapshot_id) {
+uint64_t begin_hash, uint64_t end_hash, const KwTsSpan& ts_span, uint64_t* snapshot_id, uint64_t osn) {
   std::shared_ptr<TsTable> table;
   KStatus s = GetTsTable(ctx, table_id, table, true);
   if (s == KStatus::FAIL) {
@@ -2033,7 +2030,7 @@ uint64_t begin_hash, uint64_t end_hash, const KwTsSpan& ts_span, uint64_t* snaps
   if (count > 0) {
     LOG_WARN("range hash[%lu ~ %lu], ts[%ld ~ %ld] has row [%lu], we clear them now.",
       begin_hash, end_hash, ts_span.begin, ts_span.end, count);
-    s = table->DeleteTotalRange(ctx, begin_hash, end_hash, ts_span, 1);
+    s = table->DeleteTotalRange(ctx, begin_hash, end_hash, ts_span, 1, osn);
     if (s == KStatus::FAIL) {
       LOG_ERROR("DeleteTotalRange [%lu] failed.", table_id);
       return s;
@@ -2179,12 +2176,15 @@ KStatus TSEngineV2Impl::WriteSnapshotSuccess(kwdbContext_p ctx, uint64_t snapsho
     snapshots_.erase(snapshot_id);
     snapshot_mutex_.unlock();
   }
-  LOG_INFO("WriteSnapshotSuccess range hash[%lu ~ %lu], ts[%ld ~ %ld] row count[%lu].",
+  uint64_t count;
+  ts_snapshot_info.table->GetRangeRowCount(ctx, ts_snapshot_info.begin_hash,
+        ts_snapshot_info.end_hash, ts_snapshot_info.ts_span, &count);
+  LOG_INFO("WriteSnapshotSuccess range hash[%lu ~ %lu], ts[%ld ~ %ld] insert rows[%lu], metric rows[%lu].",
       ts_snapshot_info.begin_hash, ts_snapshot_info.end_hash,
-      ts_snapshot_info.ts_span.begin, ts_snapshot_info.ts_span.end, ts_snapshot_info.imgrated_rows);
+      ts_snapshot_info.ts_span.begin, ts_snapshot_info.ts_span.end, ts_snapshot_info.imgrated_rows, count);
   return s;
 }
-KStatus TSEngineV2Impl::WriteSnapshotRollback(kwdbContext_p ctx, uint64_t snapshot_id) {
+KStatus TSEngineV2Impl::WriteSnapshotRollback(kwdbContext_p ctx, uint64_t snapshot_id, uint64_t osn) {
   TsRangeImgrationInfo ts_snapshot_info;
   {
     snapshot_mutex_.lock();
@@ -2198,7 +2198,7 @@ KStatus TSEngineV2Impl::WriteSnapshotRollback(kwdbContext_p ctx, uint64_t snapsh
       return KStatus::FAIL;
     }
   }
-  auto s = CancelBatchJob(ctx, snapshot_id);
+  auto s = CancelBatchJob(ctx, snapshot_id, osn);
   if (s != KStatus::SUCCESS) {
       LOG_ERROR("CancelBatchJob failed.");
   }

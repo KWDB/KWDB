@@ -110,7 +110,7 @@ TEST_F(TestWALManagerV2, TestWALDeleteDataV2) {
 
   uint64_t vgrp_id = 3;
   TS_LSN entry_lsn;
-  KStatus s = wal_->WriteDeleteMetricsWAL4V2(ctx_, x_id, table_id_, p_tag, drs, vgrp_id, &entry_lsn);
+  KStatus s = wal_->WriteDeleteMetricsWAL4V2(ctx_, x_id, table_id_, p_tag, drs, vgrp_id, 0, &entry_lsn);
   EXPECT_EQ(s, KStatus::SUCCESS);
 
   vector<LogEntry*> redo_logs;

@@ -44,6 +44,7 @@ type tsTagUpdater struct {
 	primaryTagKeys [][]byte
 	primaryTags    [][]byte
 	tags           [][]byte
+	osnID          uint64
 
 	// Number of updated rows.
 	updatedRow      uint64
@@ -77,6 +78,7 @@ func newTsTagUpdater(
 		tags:           tsTagUpdateSpec.Tags,
 		startKey:       tsTagUpdateSpec.StartKey,
 		endKey:         tsTagUpdateSpec.EndKey,
+		osnID:          tsTagUpdateSpec.OsnId,
 	}
 
 	if err := tu.Init(
@@ -123,6 +125,7 @@ func (tu *tsTagUpdater) Start(ctx context.Context) context.Context {
 				PrimaryTags:  tu.primaryTags[0],
 				RangeGroupId: tu.rangeGroupID,
 				Tags:         tu.tags[0],
+				OsnID:        tu.osnID,
 			}
 			ba.AddRawRequest(r)
 		} else {
@@ -134,6 +137,7 @@ func (tu *tsTagUpdater) Start(ctx context.Context) context.Context {
 				PrimaryTags:  tu.primaryTags[0],
 				RangeGroupId: tu.rangeGroupID,
 				Tags:         tu.tags[0],
+				OsnID:        tu.osnID,
 			}
 
 			ba.AddRawRequest(r)

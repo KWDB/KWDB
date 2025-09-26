@@ -315,7 +315,7 @@ KStatus TsVersionManager::ApplyUpdate(TsVersionUpdate *update) {
   // Create a new vgroup version based on current version
   auto new_vgroup_version = std::make_unique<TsVGroupVersion>(*current_);
   if (update->has_max_lsn_) {
-    new_vgroup_version->max_lsn_ = std::max(new_vgroup_version->max_lsn_, update->max_lsn_);
+    new_vgroup_version->max_osn_ = std::max(new_vgroup_version->max_osn_, update->max_lsn_);
   }
 
   if (update->has_new_partition_) {
@@ -328,6 +328,8 @@ KStatus TsVersionManager::ApplyUpdate(TsVersionUpdate *update) {
       partition->del_info_->Open();
       partition->count_info_ = std::make_shared<TsPartitionEntityCountManager>(root_path_ / PartitionDirName(p));
       partition->count_info_->Open();
+      // partition->meta_info_ = std::make_shared<TsPartitionEntityMetaManager>(root_path_ / PartitionDirName(p));
+      // partition->meta_info_->Open();
       new_vgroup_version->partitions_.insert({p, std::move(partition)});
     }
   }
@@ -506,8 +508,9 @@ std::vector<std::shared_ptr<TsSegmentBase>> TsPartitionVersion::GetAllSegments()
 }
 
 KStatus TsPartitionVersion::DeleteData(TSEntityID e_id, const std::vector<KwTsSpan> &ts_spans,
-                                       const KwLSNSpan &lsn) const {
-  kwdbts::TsEntityDelItem del_item(ts_spans[0], lsn, e_id);
+                                       const KwLSNSpan &lsn, bool user_del) const {
+  kwdbts::TsEntityDelItem del_item(ts_spans[0], lsn, e_id,
+    user_del ? TsEntityDelItemType::DEL_ITEM_TYPE_USER : TsEntityDelItemType::DEL_ITEM_TYPE_OTHER);
   for (auto &ts_span : ts_spans) {
     assert(ts_span.begin <= ts_span.end);
     del_item.range.ts_span = ts_span;

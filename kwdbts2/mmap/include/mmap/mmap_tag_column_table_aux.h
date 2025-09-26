@@ -72,6 +72,8 @@ public:
 
   void setTxn(char *val);
 
+  void setOSN(uint64_t osn);
+  uint32_t getOSN();
   void setDBId(uint32_t id);
   uint32_t getDBId();
   void setTabId(uint64_t id);

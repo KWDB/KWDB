@@ -1647,6 +1647,7 @@ func (ef *execFactory) ConstructTSTagUpdate(
 	primaryTagKey, TagValues [][]byte,
 	pTagValueNotExist bool,
 	startKey, endKey roachpb.Key,
+	osnID uint64,
 ) (exec.Node, error) {
 	tsTagUpdate := tsTagUpdateNodePool.Get().(*tsTagUpdateNode)
 	tsTagUpdate.nodeIDs = nodeIDs
@@ -1657,6 +1658,7 @@ func (ef *execFactory) ConstructTSTagUpdate(
 	tsTagUpdate.wrongPTag = pTagValueNotExist
 	tsTagUpdate.startKey = startKey
 	tsTagUpdate.endKey = endKey
+	tsTagUpdate.osnID = osnID
 
 	return tsTagUpdate, nil
 }

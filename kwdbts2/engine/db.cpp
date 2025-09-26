@@ -238,7 +238,7 @@ TSStatus TSTableAutonomy(TSEngine* engine, TSTableID table_id) {
 }
 
 TSStatus TSPutEntity(TSEngine *engine, TSTableID tableId, TSSlice *payload, size_t payload_num, RangeGroup range_group,
-                     uint64_t mtr_id) {
+                     uint64_t mtr_id, uint64_t osn) {
   kwdbContext_t context;
   kwdbContext_p ctx_p = &context;
   KStatus s = InitServerKWDBContext(ctx_p);
@@ -341,7 +341,7 @@ TSStatus TSGetWaitThreadNum(TSEngine* engine, void* resp) {
 }
 
 TSStatus TsDeleteEntities(TSEngine *engine, TSTableID table_id, TSSlice *primary_tags, size_t primary_tags_num,
-                          uint64_t range_group_id, uint64_t *count, uint64_t mtr_id) {
+                          uint64_t range_group_id, uint64_t *count, uint64_t mtr_id, uint64_t osn) {
   kwdbContext_t context;
   kwdbContext_p ctx_p = &context;
   KStatus s = InitServerKWDBContext(ctx_p);
@@ -352,7 +352,7 @@ TSStatus TsDeleteEntities(TSEngine *engine, TSTableID table_id, TSSlice *primary
   for (size_t i = 0; i < primary_tags_num; ++i) {
     p_tags.emplace_back(primary_tags[i].data, primary_tags[i].len);
   }
-  s = engine->DeleteEntities(ctx_p, table_id, range_group_id, p_tags, count, mtr_id);
+  s = engine->DeleteEntities(ctx_p, table_id, range_group_id, p_tags, count, mtr_id, osn);
   if (s != KStatus::SUCCESS) {
     return ToTsStatus("DeleteEntities Error!");
   }
@@ -360,7 +360,7 @@ TSStatus TsDeleteEntities(TSEngine *engine, TSTableID table_id, TSSlice *primary
 }
 
 TSStatus TsDeleteRangeData(TSEngine *engine, TSTableID table_id, uint64_t range_group_id, HashIdSpan hash_span,
-                           KwTsSpans ts_spans, uint64_t *count, uint64_t mtr_id) {
+                           KwTsSpans ts_spans, uint64_t *count, uint64_t mtr_id, uint64_t osn) {
   kwdbContext_t context;
   kwdbContext_p ctx_p = &context;
   KStatus s = InitServerKWDBContext(ctx_p);
@@ -368,7 +368,7 @@ TSStatus TsDeleteRangeData(TSEngine *engine, TSTableID table_id, uint64_t range_
     return ToTsStatus("InitServerKWDBContext Error!");
   }
   std::vector<KwTsSpan> spans(ts_spans.spans, ts_spans.spans + ts_spans.len);
-  s = engine->DeleteRangeData(ctx_p, table_id, range_group_id, hash_span, spans, count, mtr_id);
+  s = engine->DeleteRangeData(ctx_p, table_id, range_group_id, hash_span, spans, count, mtr_id, osn);
   if (s != KStatus::SUCCESS) {
     return ToTsStatus("DeleteRangeData Error!");
   }
@@ -377,7 +377,7 @@ TSStatus TsDeleteRangeData(TSEngine *engine, TSTableID table_id, uint64_t range_
 
 TSStatus
 TsDeleteData(TSEngine *engine, TSTableID table_id, uint64_t range_group_id, TSSlice primary_tag, KwTsSpans ts_spans,
-             uint64_t *count, uint64_t mtr_id) {
+             uint64_t *count, uint64_t mtr_id, uint64_t osn) {
   kwdbContext_t context;
   kwdbContext_p ctx_p = &context;
   KStatus s = InitServerKWDBContext(ctx_p);
@@ -386,7 +386,7 @@ TsDeleteData(TSEngine *engine, TSTableID table_id, uint64_t range_group_id, TSSl
   }
   std::string p_tag(primary_tag.data, primary_tag.len);
   std::vector<KwTsSpan> spans(ts_spans.spans, ts_spans.spans + ts_spans.len);
-  s = engine->DeleteData(ctx_p, table_id, range_group_id, p_tag, spans, count, mtr_id);
+  s = engine->DeleteData(ctx_p, table_id, range_group_id, p_tag, spans, count, mtr_id, osn);
   if (s != KStatus::SUCCESS) {
     return ToTsStatus("DeleteData Error!");
   }
@@ -911,7 +911,7 @@ TSStatus TsTestGetAndAddSchemaVersion(TSEngine* engine, TSTableID table_id, uint
 }
 
 TSStatus TsDeleteTotalRange(TSEngine* engine, TSTableID table_id, uint64_t begin_hash, uint64_t end_hash,
-                            KwTsSpan ts_span, uint64_t mtr_id) {
+                            KwTsSpan ts_span, uint64_t mtr_id, uint64_t osn) {
   kwdbContext_t context;
   kwdbContext_p ctx = &context;
   KStatus s = InitServerKWDBContext(ctx);
@@ -924,7 +924,7 @@ TSStatus TsDeleteTotalRange(TSEngine* engine, TSTableID table_id, uint64_t begin
     LOG_ERROR("TsDeleteTotalRange failed: GetTsTable failed, table id [%lu]", table_id)
     return ToTsStatus("get tstable Error!");
   }
-  s = table->DeleteTotalRange(ctx, begin_hash, end_hash, ts_span, mtr_id);
+  s = table->DeleteTotalRange(ctx, begin_hash, end_hash, ts_span, mtr_id, osn);
   if (s != KStatus::SUCCESS) {
     return ToTsStatus("DeleteRangeData Error!");
   }
@@ -969,7 +969,7 @@ TSStatus TSGetSnapshotNextBatchData(TSEngine* engine, TSTableID table_id, uint64
 
 // Create an object to receive data at the dest node
 TSStatus TSCreateSnapshotForWrite(TSEngine* engine, TSTableID table_id, uint64_t begin_hash, uint64_t end_hash,
-                                  KwTsSpan ts_span, uint64_t* snapshot_id) {
+                                  KwTsSpan ts_span, uint64_t* snapshot_id, uint64_t osn) {
   kwdbContext_t context;
   kwdbContext_p ctx_p = &context;
   KStatus s = InitServerKWDBContext(ctx_p);
@@ -977,7 +977,7 @@ TSStatus TSCreateSnapshotForWrite(TSEngine* engine, TSTableID table_id, uint64_t
     return ToTsStatus("InitServerKWDBContext Error!");
   }
   ctx_p->ts_engine = engine;
-  s = engine->CreateSnapshotForWrite(ctx_p, table_id, begin_hash, end_hash, ts_span, snapshot_id);
+  s = engine->CreateSnapshotForWrite(ctx_p, table_id, begin_hash, end_hash, ts_span, snapshot_id, osn);
   if (s != KStatus::SUCCESS) {
     return ToTsStatus("InitSnapshot Error!");
   }
@@ -1019,7 +1019,7 @@ TSStatus TSWriteSnapshotSuccess(TSEngine* engine, TSTableID table_id, uint64_t s
 }
 
 // The snapshot failed, or in other scenarios, the data written this time needs to be rolled back
-TSStatus TSWriteSnapshotRollback(TSEngine* engine, TSTableID table_id, uint64_t snapshot_id) {
+TSStatus TSWriteSnapshotRollback(TSEngine* engine, TSTableID table_id, uint64_t snapshot_id, uint64_t osn) {
   kwdbContext_t context;
   kwdbContext_p ctx_p = &context;
   KStatus s = InitServerKWDBContext(ctx_p);
@@ -1028,7 +1028,7 @@ TSStatus TSWriteSnapshotRollback(TSEngine* engine, TSTableID table_id, uint64_t 
   }
 
   ctx_p->ts_engine = engine;
-  s = engine->WriteSnapshotRollback(ctx_p, snapshot_id);
+  s = engine->WriteSnapshotRollback(ctx_p, snapshot_id, osn);
   if (s != KStatus::SUCCESS) {
       return ToTsStatus("TSWriteSnapshotRollback Error!");
   }
@@ -1081,14 +1081,14 @@ TSStatus TSWriteBatchData(TSEngine* engine, TSTableID table_id, uint64_t table_v
   return TSStatus{nullptr, 0};
 }
 
-TSStatus CancelBatchJob(TSEngine* engine, uint64_t job_id) {
+TSStatus CancelBatchJob(TSEngine* engine, uint64_t job_id, uint64_t osn) {
   kwdbContext_t context;
   kwdbContext_p ctx = &context;
   KStatus s = InitServerKWDBContext(ctx);
   if (s != KStatus::SUCCESS) {
     return ToTsStatus("InitServerKWDBContext Error!");
   }
-  s = engine->CancelBatchJob(ctx, job_id);
+  s = engine->CancelBatchJob(ctx, job_id, osn);
   if (s != KStatus::SUCCESS) {
     return ToTsStatus("CancelBatchJob Error!");
   }

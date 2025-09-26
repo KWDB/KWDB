@@ -48,6 +48,10 @@ const (
 	RangeGroupIDOffset int = 16
 	// RangeGroupIDSize length of range_group_id in the payload header
 	RangeGroupIDSize int = 2
+	// OsnIDOffset offset of osn_id in the payload header
+	OsnIDOffset = 0
+	// OsnIDSize length of osn_id in the payload header (Only 8 bytes have been used).
+	OsnIDSize = 16
 )
 
 // InstNameSpace Stores the relationship between instance table names and ids
@@ -68,6 +72,12 @@ type InstNameSpace struct {
 func DecodeHashPointFromPayload(payload []byte) []api.HashPoint {
 	hashPoint := binary.LittleEndian.Uint16(payload[RangeGroupIDOffset : RangeGroupIDOffset+RangeGroupIDSize])
 	return []api.HashPoint{api.HashPoint(hashPoint)}
+}
+
+// DecodeOsnIDFromPayload decodes osnID from a payload.
+func DecodeOsnIDFromPayload(payload []byte) uint64 {
+	osnID := binary.LittleEndian.Uint64(payload[OsnIDOffset : OsnIDOffset+OsnIDSize])
+	return osnID
 }
 
 // GetKWDBMetadataRow obtains the keyValue pair by the primary key, decodes

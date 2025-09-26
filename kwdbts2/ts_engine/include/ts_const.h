@@ -16,5 +16,6 @@
 namespace kwdbts {
 
 const int64_t INVALID_TS = INT64_MAX;
+const uint64_t INVALID_OSN = UINT64_MAX;
 
 }  //  namespace kwdbts

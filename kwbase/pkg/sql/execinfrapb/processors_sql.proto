@@ -251,6 +251,7 @@ message TsTagUpdateProSpec {
   repeated bytes tags = 6;
   optional bytes start_key = 7;
   optional bytes end_key = 8;
+  optional uint64 osnId = 9[(gogoproto.nullable) = false];
 }
 
 message TsCreateTableProSpec {

@@ -27,6 +27,7 @@
 
 extern uint32_t k_entity_group_id_size;
 extern uint32_t k_per_null_bitmap_size;
+extern uint64_t BITMAP_PER_ROW_LENGTH;
 
 class TagTuplePack;
 
@@ -34,6 +35,21 @@ enum TagType {
     UNKNOWN_TAG = -1,
     GENERAL_TAG = 1,
     PRIMARY_TAG,
+};
+
+enum OperateType {
+  Insert = 1,
+  Update = 2,
+  Delete = 3,
+  DeleteBySnapshot = 4,
+  Ignore = 5,
+};
+
+// This struct use to store tag data info, reserved space is BITMAP_PER_ROW_LENGTH.
+struct TagDataInfo {
+  uint8_t operate_type; // 1:InsertTag 2:UpdateTag 3.DeleteTag 4.DeleteTagBySnapshot
+  uint64_t osn; // HLC
+  uint64_t target_row; // update tag data target row
 };
 
 struct TagInfo {
@@ -269,6 +285,7 @@ class MMapTagColumnTable: public TSObject {
   MMapFile*                m_ptag_file_{nullptr};
   std::vector<TagColumn*>  m_cols_;
   TagColumn*               m_bitmap_file_{nullptr};
+  TagColumn*               m_row_info_file_{nullptr};
   TagColumn*               m_meta_file_{nullptr};
   TagColumn*               m_hps_file_{nullptr};
   MMapHashIndex*           m_index_{nullptr};
@@ -300,10 +317,14 @@ class MMapTagColumnTable: public TSObject {
 
   int initBitMapColumn(ErrorInfo &err_info);
 
+  int initRowInfoColumn(ErrorInfo& err_info);
+
   int initHashPointColumn(ErrorInfo& err_info);
 
   int extend(size_t new_record_count, ErrorInfo &err_info);
 
+  inline char * tag_info_(size_t n) const
+  { return reinterpret_cast<char *>((intptr_t)m_row_info_file_->startAddr() + n * BITMAP_PER_ROW_LENGTH); }
   inline char * header_(size_t n) const
   { return reinterpret_cast<char *>((intptr_t)m_bitmap_file_->startAddr() + n); }
   inline char* hashpoint_pos_(size_t n) const
@@ -417,7 +438,8 @@ class MMapTagColumnTable: public TSObject {
 
   int initNTagHashIndex(ErrorInfo& err_info);
 
-  int insert(uint32_t entity_id, uint32_t subgroup_id, uint32_t hashpoint, const char *rec, size_t* row_id);
+  int insert(uint32_t entity_id, uint32_t subgroup_id, uint32_t hashpoint, uint64_t osn, uint8_t operate_type,
+             const char *rec, size_t* row_id);
 
   inline size_t recordSize() {return m_meta_data_->m_record_size;}
 
@@ -430,6 +452,13 @@ class MMapTagColumnTable: public TSObject {
       return m_cols_[col]->isNull(row);
     }
     //return get_null_bitmap((unsigned char *)header_(row) + 1, col);
+  }
+  TagDataInfo* getTagDataInfoByRowNum(size_t row) {
+    return reinterpret_cast<TagDataInfo*>(tag_info_(row));
+  }
+
+  inline void setTagDataInfo(size_t row, TagDataInfo tag_info) {
+    *getTagDataInfoByRowNum(row) = tag_info;
   }
 
   inline void setDeleteMark(size_t row) {

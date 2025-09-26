@@ -39,15 +39,15 @@ class TsBlockSpanSortedIterator {
     inline bool IsSameEntityAndTs(const TsBlockSpanRowInfo& other) const {
       return entity_id == other.entity_id && ts == other.ts;
     }
-    // lsn only load if  ts is equal.
-    inline TS_LSN GetLSN() const {
-      return  block_span != nullptr ? *(block_span->GetLSNAddr(row_idx)) : 0;
+    // osn only load if  ts is equal.
+    inline uint64_t GetOSN() const {
+      return  block_span != nullptr ? *(block_span->GetOSNAddr(row_idx)) : 0;
     }
 
     inline bool operator<(const TsBlockSpanRowInfo& other) const {
       if (entity_id == other.entity_id) {
         if (ts == other.ts) {
-          return GetLSN() < other.GetLSN();
+          return GetOSN() < other.GetOSN();
         }
         return ts < other.ts;
       }
@@ -56,7 +56,7 @@ class TsBlockSpanSortedIterator {
     inline bool operator==(const TsBlockSpanRowInfo& other) const {
       auto ret = memcmp(this, &other, 16);
       if (ret == 0) {
-        ret = GetLSN() - other.GetLSN();
+        ret = GetOSN() - other.GetOSN();
       }
       return ret == 0;
     }
@@ -137,16 +137,16 @@ class TsBlockSpanSortedIterator {
     }
   }
 
-  inline void getTsAndLSN(std::shared_ptr<TsBlockSpan>& block_span, int row_idx, timestamp64& row_ts, TS_LSN& row_lsn) {
+  inline void getTsAndOSN(std::shared_ptr<TsBlockSpan>& block_span, int row_idx, timestamp64& row_ts, uint64_t& row_osn) {
     if (row_idx == 0) {
       row_ts = block_span->GetFirstTS();
-      row_lsn = block_span->GetFirstLSN();
+      row_osn = block_span->GetFirstOSN();
     } else if (row_idx == block_span->GetRowNum() - 1) {
       row_ts = block_span->GetLastTS();
-      row_lsn = block_span->GetLastLSN();
+      row_osn = block_span->GetLastOSN();
     } else {
       row_ts = block_span->GetTS(row_idx);
-      row_lsn = *block_span->GetLSNAddr(row_idx);
+      row_osn = *block_span->GetOSNAddr(row_idx);
     }
   }
 
@@ -216,14 +216,14 @@ class TsBlockSpanSortedIterator {
     }
 
     timestamp64 cur_span_row_ts;
-    TS_LSN cur_span_row_lsn;
+    uint64_t cur_span_row_osn;
     if (dedup_rule_ == DedupRule::OVERRIDE) {
       auto iter = span_row_infos_.begin();
       TsBlockSpanRowInfo dedup_row_info = defaultBlockSpanRowInfo();
       if (!is_reverse_) {
         int prev_row_idx = row_idx - 1;
         assert(prev_row_idx >= 0);
-        getTsAndLSN(cur_block_span, prev_row_idx, cur_span_row_ts, cur_span_row_lsn);
+        getTsAndOSN(cur_block_span, prev_row_idx, cur_span_row_ts, cur_span_row_osn);
         TsBlockSpanRowInfo prev_row_info = {cur_block_span->GetEntityID(), cur_span_row_ts};
         if (prev_row_info.IsSameEntityAndTs(next_span_row_info)) {
           if (prev_row_idx != 0) {
@@ -246,7 +246,7 @@ class TsBlockSpanSortedIterator {
       } else {
         int next_row_idx = row_idx + 1;
         assert(next_row_idx <= cur_block_span->GetRowNum() - 1);
-        getTsAndLSN(cur_block_span, next_row_idx, cur_span_row_ts, cur_span_row_lsn);
+        getTsAndOSN(cur_block_span, next_row_idx, cur_span_row_ts, cur_span_row_osn);
         TsBlockSpanRowInfo next_row_info = {cur_block_span->GetEntityID(), cur_span_row_ts};
         cur_block_span->SplitBack(span_row_infos_.begin()->row_idx - row_idx, block_span);
         if (next_row_info.IsSameEntityAndTs(next_span_row_info)) {
@@ -295,7 +295,7 @@ class TsBlockSpanSortedIterator {
       if (!is_reverse_) {
         int prev_row_idx = row_idx - 1;
         assert(prev_row_idx >= 0);
-        getTsAndLSN(cur_block_span, prev_row_idx, cur_span_row_ts, cur_span_row_lsn);
+        getTsAndOSN(cur_block_span, prev_row_idx, cur_span_row_ts, cur_span_row_osn);
         TsBlockSpanRowInfo prev_row_info = {cur_block_span->GetEntityID(), cur_span_row_ts};
         if (cur_block_span->GetRowNum() == row_idx) {
           block_span = std::move(cur_block_span);
@@ -312,7 +312,7 @@ class TsBlockSpanSortedIterator {
       } else {
         int next_row_idx = row_idx + 1;
         assert(next_row_idx <= cur_block_span->GetRowNum() - 1);
-        getTsAndLSN(cur_block_span, next_row_idx, cur_span_row_ts, cur_span_row_lsn);
+        getTsAndOSN(cur_block_span, next_row_idx, cur_span_row_ts, cur_span_row_osn);
         TsBlockSpanRowInfo next_row_info = {cur_block_span->GetEntityID(), cur_span_row_ts};
         if (next_row_info.IsSameEntityAndTs(next_span_row_info)) {
           if (next_row_idx != span_row_infos_.begin()->row_idx) {

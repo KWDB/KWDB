@@ -214,6 +214,7 @@ func (b *Builder) buildTSInsert(tsInsert *memo.TSInsertExpr) (execPlan, error) {
 		tsVersion,
 		hashNum,
 		b.CDCCoordinator,
+		b.TsIDGen,
 	)
 
 	if err != nil {
@@ -258,6 +259,7 @@ func BuildInputForTSInsert(
 	tsVersion uint32,
 	hashNum uint64,
 	cdcCoordinator execinfra.CDCCoordinator,
+	tsIDGen *sqlbase.TSIDGenerator,
 ) (map[int]*sqlbase.PayloadForDistTSInsert, error) {
 	colIndexs := make(map[int]int, len(colIndexsInMemo))
 	for k, v := range colIndexsInMemo {
@@ -303,7 +305,7 @@ func BuildInputForTSInsert(
 	}
 
 	// Integrate the arguments required by payload
-	pArgs, err := BuildPayloadArgs(tsVersion, primaryTagCols, allTagCols, dataCols)
+	pArgs, err := BuildPayloadArgs(tsVersion, tsIDGen, primaryTagCols, allTagCols, dataCols)
 	if err != nil {
 		return nil, err
 	}
@@ -453,10 +455,10 @@ func BuildInputForTSInsert(
 }
 
 const (
-	// TxnIDOffset offset of txn_id in the payload header
-	TxnIDOffset = 0
-	// TxnIDSize length of txn_id in the payload header
-	TxnIDSize = 16
+	// OsnIDOffset offset of osn_id in the payload header
+	OsnIDOffset = 0
+	// OsnIDSize length of osn_id in the payload header (Only 8 bytes have been used).
+	OsnIDSize = 16
 	// RangeGroupIDOffset offset of range_group_id in the payload header
 	RangeGroupIDOffset = 16
 	// RangeGroupIDSize length of range_group_id in the payload header
@@ -506,6 +508,8 @@ type PayloadArgs struct {
 	TSVersion uint32
 	// PayloadVersion is the payload codec version.
 	PayloadVersion uint32
+	// UniqueTSID is a TSIDGenerator.
+	TsIDGen *sqlbase.TSIDGenerator
 	// PTagNum is primary tag column num.
 	// AllTagNum is all tag column num.
 	// DataColNum is data column num.
@@ -567,6 +571,7 @@ var RowType = map[string]byte{
 type PayloadHeader struct {
 	TxnID          uuid.UUID
 	PayloadVersion uint32
+	UniqueTsID     uint64
 	DBID           uint32
 	TBID           uint64
 	TSVersion      uint32
@@ -624,6 +629,7 @@ func WriteUint32ToPayload(tp *TsPayload, value uint32) {
 func (ts *TsPayload) SetHeader(header PayloadHeader) {
 	ts.header.TxnID = header.TxnID
 	ts.header.PayloadVersion = header.PayloadVersion
+	ts.header.UniqueTsID = header.UniqueTsID
 	ts.header.DBID = header.DBID
 	ts.header.TBID = header.TBID
 	ts.header.TSVersion = header.TSVersion
@@ -636,11 +642,11 @@ func (ts *TsPayload) fillHeader() {
 	  ______________________________________________________________________________________________
 	  |    16    |    2    |         4        |   4  |    8    |       4        |   4    |    1    |
 	  |----------|---------|------------------|------|---------|----------------|--------|---------|
-	  |  txnID   | groupID |  payloadVersion  | dbID |  tbID   |    TSVersion   | rowNum | rowType |
+	  |  osnID   | groupID |  payloadVersion  | dbID |  tbID   |    TSVersion   | rowNum | rowType |
 	*/
-	ts.header.offset = TxnIDOffset
-	copy(ts.payload[ts.header.offset:], ts.header.TxnID.GetBytes())
-	ts.header.offset += TxnIDSize
+	ts.header.offset = OsnIDOffset
+	binary.LittleEndian.PutUint64(ts.payload[ts.header.offset:], ts.header.UniqueTsID)
+	ts.header.offset += OsnIDSize
 	ts.header.groupIDOffset = ts.header.offset
 	ts.header.offset += RangeGroupIDSize
 	// payload version
@@ -820,7 +826,9 @@ func (ts *TsPayload) BuildRowsPayloadByDatums(
 
 	// var column value length
 	colDataLen := independentOffset - dataLenOffset - DataLenSize
-	binary.LittleEndian.PutUint32(ts.payload[dataLenOffset:], uint32(colDataLen))
+	if dataLenOffset != 0 {
+		binary.LittleEndian.PutUint32(ts.payload[dataLenOffset:], uint32(colDataLen))
+	}
 
 	// primary tag value
 	primaryTagVal = ts.payload[HeadSize+PTagLenSize : HeadSize+PTagLenSize+ts.args.PrimaryTagSize]
@@ -1278,6 +1286,7 @@ func BuildPrePayloadForTsImport(
 	tsPayload.SetHeader(PayloadHeader{
 		TxnID:          txn.ID(),
 		PayloadVersion: pArgs.PayloadVersion,
+		UniqueTsID:     pArgs.TsIDGen.GetNextID(),
 		DBID:           dbID,
 		TBID:           uint64(tableID),
 		TSVersion:      pArgs.TSVersion,
@@ -1304,7 +1313,9 @@ func BuildPrePayloadForTsImport(
 
 // BuildPayloadArgs return PayloadArgs
 func BuildPayloadArgs(
-	tsVersion uint32, primaryTagCols, allTagCols, dataCols []*sqlbase.ColumnDescriptor,
+	tsVersion uint32,
+	tsIDGen *sqlbase.TSIDGenerator,
+	primaryTagCols, allTagCols, dataCols []*sqlbase.ColumnDescriptor,
 ) (PayloadArgs, error) {
 	// compute column size for TsPayload.
 	pTagSize, _, err := ComputeColumnSize(primaryTagCols)
@@ -1334,7 +1345,7 @@ func BuildPayloadArgs(
 	copy(prettyCols[pTagNum+allTagNum:], dataCols)
 
 	return PayloadArgs{
-		TSVersion: tsVersion, PayloadVersion: sqlbase.TSInsertPayloadVersion, PTagNum: pTagNum, AllTagNum: allTagNum,
+		TSVersion: tsVersion, PayloadVersion: sqlbase.TSInsertPayloadVersion, TsIDGen: tsIDGen, PTagNum: pTagNum, AllTagNum: allTagNum,
 		DataColNum: dataColNum, PrimaryTagSize: pTagSize, AllTagSize: allTagSize, RowType: rowType,
 		DataColSize: dataSize, PreAllocTagSize: preTagSize, PreAllocColSize: preDataSize, PrettyCols: prettyCols,
 	}, nil
@@ -1373,6 +1384,7 @@ func BuildPayloadForTsInsert(
 	tsPayload.SetHeader(PayloadHeader{
 		TxnID:          txn.ID(),
 		PayloadVersion: pArgs.PayloadVersion,
+		UniqueTsID:     pArgs.TsIDGen.GetNextID(),
 		DBID:           dbID,
 		TBID:           uint64(tableID),
 		TSVersion:      pArgs.TSVersion,
@@ -1717,10 +1729,10 @@ func BuildPreparePayloadForTsInsert(
 	_____________________________________________________________________________________________
 	|    16    |    2    |        4        |   4  |      8       |   4       |   4    |    1    |
 	|----------|---------|-----------------|------|--------------|-----------|--------|---------|
-	|  txnID   | groupID | payload version | dbID |     tbID     | tsVersion | rowNum | rowType |
+	|  osnID   | groupID | payload version | dbID |     tbID     | tsVersion | rowNum | rowType |
 	*/
-	copy(payload[offset:], txn.ID().GetBytes())
-	offset += TxnIDSize
+	binary.LittleEndian.PutUint64(payload[offset:], pArgs.TsIDGen.GetNextID())
+	offset += OsnIDSize
 	groupIDOffset := offset
 	offset += RangeGroupIDSize
 	// payload version
@@ -2978,6 +2990,7 @@ func (b *Builder) buildTSUpdate(tsUpdate *memo.TSUpdateExpr) (execPlan, error) {
 			[][]byte{},
 			tsUpdate.PTagValueNotExist,
 			nil, nil,
+			0,
 		)
 		if err != nil {
 			return execPlan{}, err
@@ -3018,7 +3031,7 @@ func (b *Builder) buildTSUpdate(tsUpdate *memo.TSUpdateExpr) (execPlan, error) {
 	prettyCols = append(prettyCols, otherTagCols...)
 
 	// Integrate the arguments required by payload
-	pArgs, err := BuildPayloadArgs(tab.GetTSVersion(), primaryTagCols, otherTagCols, nil)
+	pArgs, err := BuildPayloadArgs(tab.GetTSVersion(), b.TsIDGen, primaryTagCols, otherTagCols, nil)
 	if err != nil {
 		return execPlan{}, err
 	}
@@ -3054,6 +3067,7 @@ func (b *Builder) buildTSUpdate(tsUpdate *memo.TSUpdateExpr) (execPlan, error) {
 	}
 	hashPoints := sqlbase.DecodeHashPointFromPayload(payload)
 	primaryTagKey := sqlbase.MakeTsPrimaryTagKey(sqlbase.ID(tab.ID()), hashPoints)
+	osnID := sqlbase.DecodeOsnIDFromPayload(payload)
 	payloads := [][]byte{payload}
 
 	//nodeID, err := hashRouter.GetNodeIDByPrimaryTag(b.evalCtx.Context, primaryTagVal)
@@ -3078,6 +3092,7 @@ func (b *Builder) buildTSUpdate(tsUpdate *memo.TSUpdateExpr) (execPlan, error) {
 		payloads,
 		tsUpdate.PTagValueNotExist,
 		startKey, endKey,
+		osnID,
 	)
 	if err != nil {
 		return execPlan{}, err
@@ -3584,6 +3599,7 @@ func (b *Builder) replaceMemoBeforePlanning(
 
 	eb := New(b.factory, f.Memo(), b.catalog, newRightSide, b.evalCtx)
 	eb.disableTelemetry = true
+	eb.TsIDGen = b.TsIDGen
 	plan, err := eb.Build(false)
 	if err != nil {
 		if errors.IsAssertionFailure(err) {

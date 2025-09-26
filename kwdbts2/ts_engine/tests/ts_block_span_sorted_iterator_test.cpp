@@ -70,7 +70,7 @@ class TsBlockSpanSortedIteratorTest : public ::testing::Test {
     row_datas_.clear();
   }
 
-  std::shared_ptr<TsBlock> AddBlockWithTs(std::vector<timestamp64>& tss, TS_LSN lsn) {
+  std::shared_ptr<TsBlock> AddBlockWithTs(std::vector<timestamp64>& tss, uint64_t osn) {
     std::sort(tss.begin(), tss.end());
     auto cur_block = std::make_shared<TsMemSegBlock>(nullptr);
 
@@ -80,8 +80,8 @@ class TsBlockSpanSortedIteratorTest : public ::testing::Test {
       char* row = reinterpret_cast<char*>(malloc(16));
       row_datas_.push_back(row);
       KTimestamp(row) = tss[i];
-      KUint64(row + 8) = lsn;
-      data->SetData(tss[i], lsn);
+      KUint64(row + 8) = osn;
+      data->SetData(tss[i], osn);
       data->SetRowData(TSSlice{row, 16});
       bool ok = cur_block->InsertRow(data);
       EXPECT_TRUE(ok);
@@ -89,11 +89,11 @@ class TsBlockSpanSortedIteratorTest : public ::testing::Test {
     return cur_block;
   }
 
-  shared_ptr<TsBlockSpan> GenBlockWithSpan(std::vector<timestamp64> tss, TS_LSN lsn) {
-    auto block = AddBlockWithTs(tss, lsn);
+  shared_ptr<TsBlockSpan> GenBlockWithSpan(std::vector<timestamp64> tss, uint64_t osn) {
+    auto block = AddBlockWithTs(tss, osn);
     return std::make_shared<TsBlockSpan>(0, 1, block, 0, tss.size(), empty_convert, 1, nullptr);
   }
-  shared_ptr<TsBlockSpan> GenBlockWithSpan1(timestamp64 start, int interval, int num, TS_LSN lsn) {
+  shared_ptr<TsBlockSpan> GenBlockWithSpan1(timestamp64 start, int interval, int num, uint64_t osn) {
     if (num == 0) {
       return std::make_shared<TsBlockSpan>(0, 1, nullptr, 0, 0, empty_convert, 1, nullptr);
     }
@@ -101,7 +101,7 @@ class TsBlockSpanSortedIteratorTest : public ::testing::Test {
     for (size_t i = 0; i < num; i++) {
       tss.push_back(start + i * interval);
     }
-    auto block = AddBlockWithTs(tss, lsn);
+    auto block = AddBlockWithTs(tss, osn);
     return std::make_shared<TsBlockSpan>(0, 1, block, 0, tss.size(), empty_convert, 1, nullptr);
   }
 };

@@ -82,7 +82,7 @@ class TsVGroup {
   // Mutexes for condition variables
   std::mutex cv_mutex_;
 
-  std::atomic<uint64_t> max_lsn_{LOG_BLOCK_HEADER_SIZE + BLOCK_SIZE};
+  std::atomic<uint64_t> max_osn_{LOG_BLOCK_HEADER_SIZE + BLOCK_SIZE};
 
   mutable std::shared_mutex last_row_entity_mutex_;
   std::unordered_map<uint32_t, bool> last_row_entity_checked_;
@@ -122,7 +122,7 @@ class TsVGroup {
 
   TSEntityID GetMaxEntityID() const;
 
-  TS_LSN GetMaxLSN() const { return CurrentVersion()->GetMaxLSN(); }
+  uint64_t GetMaxOSN() const { return CurrentVersion()->GetMaxOSN(); }
 
   void InitEntityID(TSEntityID entity_id);
 
@@ -150,16 +150,16 @@ class TsVGroup {
     }
   }
 
-  void UpdateAtomicLSN() {
-    max_lsn_.store(GetMaxLSN());
+  void UpdateAtomicOSN() {
+    max_osn_.store(GetMaxOSN());
   }
 
   bool EnableWAL() {
     return engine_options_->wal_level != WALMode::OFF && !engine_options_->use_raft_log_as_wal;
   }
 
-  uint64_t LSNInc() {
-    return max_lsn_.fetch_add(1, std::memory_order_relaxed);
+  uint64_t OSNInc() {
+    return max_osn_.fetch_add(1, std::memory_order_relaxed);
   }
 
   TsEngineSchemaManager* GetEngineSchemaMgr() { return schema_mgr_; }
@@ -226,14 +226,14 @@ class TsVGroup {
   uint32_t GetVGroupID();
 
   KStatus DeleteEntity(kwdbContext_p ctx, TSTableID table_id, std::string& p_tag, TSEntityID e_id, uint64_t* count,
-                       uint64_t mtr_id);
+                       uint64_t mtr_id, uint64_t osn = 0, bool user_del = true);
   KStatus DeleteData(kwdbContext_p ctx, TSTableID tbl_id, std::string& p_tag, TSEntityID e_id,
-                     const std::vector<KwTsSpan>& ts_spans, uint64_t* count, uint64_t mtr_id);
+                    const std::vector<KwTsSpan>& ts_spans, uint64_t* count, uint64_t mtr_id, uint64_t osn, bool user_del);
 
   KStatus DeleteData(kwdbContext_p ctx, TSTableID tbl_id, TSEntityID e_id, TS_LSN lsn,
-                    const std::vector<KwTsSpan>& ts_spans);
+                    const std::vector<KwTsSpan>& ts_spans, bool user_del = true);
   KStatus deleteData(kwdbContext_p ctx, TSTableID tbl_id, TSEntityID e_id, KwLSNSpan lsn,
-                              const std::vector<KwTsSpan>& ts_spans);
+                    const std::vector<KwTsSpan>& ts_spans, bool user_del = true);
 
   KStatus undoDeleteData(kwdbContext_p ctx, TSTableID tbl_id, std::string& primary_tag, TS_LSN log_lsn,
   const std::vector<KwTsSpan>& ts_spans);
@@ -244,7 +244,7 @@ class TsVGroup {
                                   std::shared_ptr<TsEntitySegmentBuilder>& builder);
 
   KStatus WriteBatchData(TSTableID tbl_id, uint32_t table_version, TSEntityID entity_id,
-                         timestamp64 p_time, TS_LSN lsn, TSSlice data);
+                         timestamp64 p_time, TSSlice data);
 
   KStatus FinishWriteBatchData();
 
@@ -266,18 +266,19 @@ class TsVGroup {
   KStatus getEntityIdByPTag(kwdbContext_p ctx, TSTableID table_id, TSSlice& ptag, TSEntityID* entity_id);
 
   KStatus undoDeleteTag(kwdbContext_p ctx, uint64_t table_id, TSSlice& primary_tag, TS_LSN log_lsn,
-                        uint32_t group_id, uint32_t entity_id, TSSlice& tags);
+                        uint32_t group_id, uint32_t entity_id, TSSlice& tags, uint64_t osn = 0);
 
   KStatus redoPutTag(kwdbContext_p ctx, kwdbts::TS_LSN log_lsn, const TSSlice& payload);
 
   KStatus undoPutTag(kwdbContext_p ctx, TS_LSN log_lsn, const TSSlice& payload);
 
-  KStatus redoUpdateTag(kwdbContext_p ctx, kwdbts::TS_LSN log_lsn, const TSSlice& payload);
+  KStatus redoUpdateTag(kwdbContext_p ctx, kwdbts::TS_LSN log_lsn, const TSSlice& payload, uint64_t osn = 0);
 
-  KStatus undoUpdateTag(kwdbContext_p ctx, TS_LSN log_lsn, TSSlice payload, const TSSlice& old_payload);
+  KStatus undoUpdateTag(kwdbContext_p ctx, TS_LSN log_lsn, TSSlice payload, const TSSlice& old_payload,
+                        uint64_t osn = 0);
 
   KStatus redoDeleteTag(kwdbContext_p ctx, uint64_t table_id, TSSlice& primary_tag, kwdbts::TS_LSN log_lsn,
-                        uint32_t group_id, uint32_t entity_id, TSSlice& tags);
+                        uint32_t group_id, uint32_t entity_id, TSSlice& tags, uint64_t osn = 0);
 
   /**
    * @brief Start a mini-transaction for the current EntityGroup.
@@ -305,7 +306,7 @@ class TsVGroup {
    * @return KStatus
    */
   KStatus MtrRollback(kwdbContext_p ctx, uint64_t& mtr_id, bool is_skip = false, const char* tsx_id = nullptr);
-  KStatus redoPut(kwdbContext_p ctx, kwdbts::TS_LSN log_lsn, const TSSlice& payload);
+  KStatus redoPut(kwdbContext_p ctx, kwdbts::TS_LSN log_lsn, const TSSlice& payload, uint64_t osn = 0);
 
   KStatus GetLastRowEntity(kwdbContext_p ctx, std::shared_ptr<TsTableSchemaManager>& table_schema_mgr,
                            pair<timestamp64, uint32_t>& last_row_entity);

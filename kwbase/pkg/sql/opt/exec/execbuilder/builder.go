@@ -31,6 +31,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/opt/exec"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/opt/memo"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
 	"gitee.com/kwbasedb/kwbase/pkg/util/errorutil"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 	"github.com/cockroachdb/errors"
@@ -93,6 +94,9 @@ type Builder struct {
 
 	// PhysType used in time series query to mark which engine the query is for.
 	PhysType tree.PhysicalLayerType
+
+	// TsIDGen is a TSIDGenerator
+	TsIDGen *sqlbase.TSIDGenerator
 }
 
 // New constructs an instance of the execution node builder using the

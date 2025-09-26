@@ -829,7 +829,7 @@ func (r *Replica) stageTsBatchRequest(
 				tsSpans := matchTsSpans(req.TsSpans, ts1, ts2)
 				if len(tsSpans) > 0 {
 					if delCnt, err = r.store.TsEngine.DeleteData(
-						req.TableId, rangeGroupID, req.PrimaryTags, tsSpans, tsTxnID); err != nil {
+						req.TableId, rangeGroupID, req.PrimaryTags, tsSpans, tsTxnID, req.OsnId); err != nil {
 						errRollback := r.store.TsEngine.MtrRollback(tableID, rangeGroupID, tsTxnID, nil)
 						if errRollback != nil {
 							return tableID, rangeGroupID, tsTxnID, needAutoCommit, wrapWithNonDeterministicFailure(err, "unable to rollback mini-transaction")
@@ -850,7 +850,7 @@ func (r *Replica) stageTsBatchRequest(
 		case *roachpb.TsDeleteEntityRequest:
 			{
 				var delCnt uint64
-				if delCnt, err = r.store.TsEngine.DeleteEntities(req.TableId, rangeGroupID, req.PrimaryTags, false, tsTxnID); err != nil {
+				if delCnt, err = r.store.TsEngine.DeleteEntities(req.TableId, rangeGroupID, req.PrimaryTags, false, tsTxnID, req.OsnId); err != nil {
 					errRollback := r.store.TsEngine.MtrRollback(tableID, rangeGroupID, tsTxnID, nil)
 					if errRollback != nil {
 						return tableID, rangeGroupID, tsTxnID, needAutoCommit, wrapWithNonDeterministicFailure(err, "unable to rollback mini-transaction")
@@ -872,7 +872,7 @@ func (r *Replica) stageTsBatchRequest(
 			{
 				var pld [][]byte
 				pld = append(pld, req.Tags)
-				if err = r.store.TsEngine.PutEntity(rangeGroupID, req.TableId, pld, tsTxnID); err != nil {
+				if err = r.store.TsEngine.PutEntity(rangeGroupID, req.TableId, pld, tsTxnID, req.OsnID); err != nil {
 					errRollback := r.store.TsEngine.MtrRollback(tableID, rangeGroupID, tsTxnID, nil)
 					if errRollback != nil {
 						return tableID, rangeGroupID, tsTxnID, needAutoCommit, wrapWithNonDeterministicFailure(err, "unable to rollback mini-transaction")
@@ -924,7 +924,7 @@ func (r *Replica) stageTsBatchRequest(
 					tsSpans = req.TsSpans
 				}
 				if len(tsSpans) > 0 {
-					if delCnt, err = r.store.TsEngine.DeleteRangeData(req.TableId, uint64(1), beginHash, endHash, tsSpans, tsTxnID); err != nil {
+					if delCnt, err = r.store.TsEngine.DeleteRangeData(req.TableId, uint64(1), beginHash, endHash, tsSpans, tsTxnID, req.OsnId); err != nil {
 						errRollback := r.store.TsEngine.MtrRollback(tableID, rangeGroupID, tsTxnID, nil)
 						if errRollback != nil {
 							return tableID, rangeGroupID, tsTxnID, needAutoCommit, wrapWithNonDeterministicFailure(err, "unable to rollback mini-transaction")

@@ -120,9 +120,15 @@ KStatus TsReadBatchDataWorker::GetTagValue(kwdbContext_p ctx) {
 
 KStatus TsReadBatchDataWorker::AddTsBlockSpanInfo(kwdbContext_p ctx, std::shared_ptr<TsBlockSpan>& block_span) {
   timestamp64 first_row_ts = block_span->GetTS(0);
+  uint64_t min_osn = UINT64_MAX;
+  uint64_t max_osn = 0;
+  block_span->GetMinAndMaxOSN(min_osn, max_osn);
+  uint64_t first_osn = block_span->GetFirstOSN();
+  uint64_t last_osn = block_span->GetLastOSN();
   timestamp64 end_row_ts = block_span->GetTS(block_span->GetRowNum() - 1);
   uint32_t n_rows = block_span->GetRowNum();
-  cur_batch_data_.AddBlockSpanDataHeader(0, first_row_ts, end_row_ts, n_cols_, n_rows);
+  cur_batch_data_.AddBlockSpanDataHeader(0, first_row_ts, end_row_ts, min_osn, max_osn,
+                                         first_osn, last_osn, n_cols_, n_rows);
   return KStatus::SUCCESS;
 }
 
@@ -198,7 +204,7 @@ KStatus TsReadBatchDataWorker::Init(kwdbContext_p ctx) {
   }
   const vector<AttributeInfo>& attrs = metric_schema->getSchemaInfoExcludeDropped();
   assert(!attrs.empty());
-  n_cols_ = attrs.size() + 1;  // add lsn
+  n_cols_ = attrs.size() + 1;  // add osn
   ts_col_type_ = static_cast<DATATYPE>(attrs[0].type);
   actual_ts_span_.begin = convertSecondToPrecisionTS(actual_ts_span_.begin, ts_col_type_);
   actual_ts_span_.end = convertSecondToPrecisionTS(actual_ts_span_.end, ts_col_type_);
@@ -377,7 +383,6 @@ TsWriteBatchDataWorker::~TsWriteBatchDataWorker() {
       }
       s = ts_engine_->GetTsVGroup(header.vgroup_id)->WriteBatchData(header.table_id, header.table_version,
                                                                     header.entity_id, header.p_time,
-                                                                    vgroups_lsn_[header.vgroup_id - 1],
                                                                     block_data);
       if (s != KStatus::SUCCESS) {
         LOG_ERROR("WriteBatchData failed, table_id[%lu], entity_id[%lu]", header.table_id, header.entity_id);
@@ -403,13 +408,6 @@ std::atomic<int64_t> w_file_no = 0;
 
 KStatus TsWriteBatchDataWorker::Init(kwdbContext_p ctx) {
   auto vgroups = ts_engine_->GetTsVGroups();
-  for (uint32_t vgroup_id = 0; vgroup_id < vgroups->size(); ++vgroup_id) {
-    if (ts_engine_->EnableWAL()) {
-      vgroups_lsn_[vgroup_id] = (*vgroups)[vgroup_id]->GetWALManager()->FetchCurrentLSN();
-    } else {
-      vgroups_lsn_[vgroup_id] = (*vgroups)[vgroup_id]->LSNInc();
-    }
-  }
   TsIOEnv* env = &TsMMapIOEnv::GetInstance();
   std::string file_path = ts_engine_->GetDbDir() + "/temp_db_/" + std::to_string(job_id_)
                           + "." + std::to_string(w_file_no++) + ".data";
@@ -432,59 +430,6 @@ KStatus TsWriteBatchDataWorker::GetTagPayload(uint32_t table_version, TSSlice* d
   // update tag type
   uint8_t tag_type = DataTagFlag::TAG_ONLY;
   memcpy(tag_payload_str.data() + TsBatchData::row_type_offset_, &tag_type, TsBatchData::row_type_size_);
-  return KStatus::SUCCESS;
-}
-
-KStatus TsWriteBatchDataWorker::UpdateLSN(uint32_t vgroup_id, TSSlice* input, std::string& result) {
-  // header
-  result.append(input->data, TsBatchData::block_span_data_header_size_);
-  // block data
-  uint32_t n_cols = *reinterpret_cast<uint32_t*>(input->data + TsBatchData::n_cols_offset_in_span_data_);
-  uint32_t n_rows = *reinterpret_cast<uint32_t*>(input->data + TsBatchData::n_rows_offset_in_span_data_);
-  std::vector<uint32_t> block_col_offsets;
-  for (uint32_t idx = 0; idx < n_cols; ++idx) {
-    block_col_offsets.push_back(*reinterpret_cast<uint32_t*>(input->data + TsBatchData::block_span_data_header_size_ +
-                                idx * sizeof(uint32_t)));
-  }
-  // agg block length
-  uint32_t agg_block_length = *reinterpret_cast<uint32_t*>(input->data + TsBatchData::block_span_data_header_size_
-                    + n_cols * sizeof(uint32_t) + block_col_offsets[n_cols - 1] + (n_cols - 2) * sizeof(uint32_t));
-  assert(input->len == TsBatchData::block_span_data_header_size_ + (n_cols * 2 - 1) * sizeof(uint32_t)
-                    + block_col_offsets[n_cols - 1] + agg_block_length);
-  // column_block_data without lsn
-  uint32_t column_block_offset_without_lsn = TsBatchData::block_span_data_header_size_ + n_cols * sizeof(uint32_t)
-                                             + block_col_offsets[0];
-  TSSlice data = {input->data + column_block_offset_without_lsn, input->len - column_block_offset_without_lsn};
-  // lsn
-  std::string lsn_data;
-  lsn_data.resize(sizeof(uint64_t) * n_rows);
-  for (uint32_t row_idx = 0; row_idx < n_rows; ++row_idx) {
-    memcpy(lsn_data.data() + row_idx * sizeof(uint64_t), &(vgroups_lsn_[vgroup_id - 1]), sizeof(uint64_t));
-  }
-  DATATYPE d_type = DATATYPE::INT64;
-  size_t d_size = sizeof(uint64_t);
-  std::string compressed;
-  const auto& mgr = CompressorManager::GetInstance();
-  auto [first, second] = mgr.GetDefaultAlgorithm(d_type);
-  TSSlice plain{lsn_data.data(), n_rows * d_size};
-  mgr.CompressData(plain, nullptr, n_rows, &compressed, first, second);
-  // update offset
-  uint32_t old_lsn_size = block_col_offsets[0];
-  uint32_t new_lsn_size = compressed.size();
-  int32_t offset = (int32_t)new_lsn_size - old_lsn_size;
-  for (uint32_t idx = 0; idx < n_cols; ++idx) {
-    block_col_offsets[idx] += offset;
-    result.append(reinterpret_cast<const char *>(&block_col_offsets[idx]), sizeof(uint32_t));
-  }
-  // append lsn
-  result.append(compressed.data(), compressed.size());
-  // append other column block data
-  result.append(data.data, data.len);
-  // block span length
-  uint32_t length = (uint32_t)result.size();
-  memcpy(result.data(), &length, sizeof(uint32_t));
-  assert(length == TsBatchData::block_span_data_header_size_ + (n_cols * 2 - 1) * sizeof(uint32_t)
-                   + block_col_offsets[n_cols - 1] + agg_block_length);
   return KStatus::SUCCESS;
 }
 
@@ -549,13 +494,12 @@ KStatus TsWriteBatchDataWorker::Write(kwdbContext_p ctx, TSTableID table_id, uin
       return KStatus::FAIL;
     }
   }
-  // update lsn
   TSSlice block_span_slice = {data->data + block_span_data_offset, block_span_data_size};
-  std::string block_span_data;
-  UpdateLSN(vgroup_id, &block_span_slice, block_span_data);
-  TSSlice new_block_data = {block_span_data.data(), block_span_data.size()};
+//  std::string block_span_data;
+//  UpdateLSN(vgroup_id, &block_span_slice, block_span_data);
+//  TSSlice new_block_data = {block_span_data.data(), block_span_data.size()};
   // get ptime
-  timestamp64 ts = *reinterpret_cast<timestamp64*>(new_block_data.data + sizeof(uint32_t));
+  timestamp64 ts = *reinterpret_cast<timestamp64*>(block_span_slice.data + sizeof(uint32_t));
   std::shared_ptr<MMapMetricsTable> metric_schema;
   s = schema->GetMetricSchema(table_version, &metric_schema);
   if (s != KStatus::SUCCESS) {
@@ -569,7 +513,7 @@ KStatus TsWriteBatchDataWorker::Write(kwdbContext_p ctx, TSTableID table_id, uin
 
   // write batch data to tmp file
   {
-    BatchDataHeader header{table_id, table_version, vgroup_id, entity_id, p_time, new_block_data.len};
+    BatchDataHeader header{table_id, table_version, vgroup_id, entity_id, p_time, block_span_slice.len};
     TSSlice header_data{reinterpret_cast<char *>(&header), sizeof(BatchDataHeader)};
     MUTEX_LOCK(&w_file_latch_);
     Defer defer([&]() {
@@ -580,7 +524,7 @@ KStatus TsWriteBatchDataWorker::Write(kwdbContext_p ctx, TSTableID table_id, uin
       LOG_ERROR("TsWriteBatchDataWorker::Write append header failed");
       return KStatus::FAIL;
     }
-    s = w_file_->Append(new_block_data);
+    s = w_file_->Append(block_span_slice);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("TsWriteBatchDataWorker::Write append content failed");
       return KStatus::FAIL;

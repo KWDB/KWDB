@@ -156,7 +156,7 @@ class WALMgr {
                                 uint64_t vgrp_id = 0, TS_LSN* entry_lsn = nullptr);
   KStatus WriteDeleteMetricsWAL4V2(kwdbContext_p ctx, uint64_t x_id, TSTableID table_id, const string& primary_tag,
                                       const std::vector<KwTsSpan>& ts_spans,
-                                      uint64_t vgrp_id, TS_LSN* entry_lsn = nullptr);
+                                      uint64_t vgrp_id, uint64_t osn = 0, TS_LSN* entry_lsn = nullptr);
   /**
    * Construct the log entry for the DELETE Tag operation.
    * @param[in] ctx
@@ -169,7 +169,7 @@ class WALMgr {
    */
   KStatus WriteDeleteTagWAL(kwdbContext_p ctx, uint64_t x_id, const string& primary_tag,
                             uint32_t sub_group_id, uint32_t entity_id, TSSlice tag_pack, uint64_t vgrp_id = 0,
-                            uint64_t table_id = 0);
+                            uint64_t table_id = 0, uint64_t osn = 0);
 
   /**
    * Construct the log entry for the CREATE INDEX operation.

@@ -334,7 +334,7 @@ func initPrettyColsAndComputeColumnSize(
 
 	// Integrate the arguments required by payload
 	pArgs, err := execbuilder.BuildPayloadArgs(
-		uint32(immutDesc.GetTsTable().TsVersion),
+		uint32(immutDesc.GetTsTable().TsVersion), flowCtx.Cfg.TsIDGen,
 		primaryTagCols, allTagCols, dataCols,
 	)
 	if err != nil {
@@ -1096,6 +1096,7 @@ func (t *timeSeriesImportInfo) BuildPayloadForTsImportStartSingleNode(
 	tsPayload.SetHeader(execbuilder.PayloadHeader{
 		TxnID:          txn.ID(),
 		PayloadVersion: t.pArgs.PayloadVersion,
+		UniqueTsID:     t.pArgs.TsIDGen.GetNextID(),
 		DBID:           uint32(t.dbID),
 		TBID:           uint64(t.tbID),
 		TSVersion:      t.pArgs.TSVersion,
@@ -1114,6 +1115,7 @@ func (t *timeSeriesImportInfo) BuildPayloadForTsImportStartDistributeMode(
 	tsPayload.SetHeader(execbuilder.PayloadHeader{
 		TxnID:          txn.ID(),
 		PayloadVersion: t.pArgs.PayloadVersion,
+		UniqueTsID:     t.pArgs.TsIDGen.GetNextID(),
 		DBID:           uint32(t.dbID),
 		TBID:           uint64(t.tbID),
 		TSVersion:      t.pArgs.TSVersion,

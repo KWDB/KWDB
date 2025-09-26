@@ -179,7 +179,7 @@ KStatus TsEntityBlockBuilder::Append(shared_ptr<TsBlockSpan> span, bool& is_full
   for (int col_idx = 0; col_idx < n_cols_; ++col_idx) {
     DATATYPE d_type = col_idx == 0 ? DATATYPE::INT64 : static_cast<DATATYPE>(metric_schema_[col_idx - 1].type);
     size_t d_size = col_idx == 0 ? 8 : metric_schema_[col_idx - 1].size;
-    // lsn column do not contain bitmaps
+    // osn column do not contain bitmaps
     bool has_bitmap = col_idx != 0;
 
     bool is_var_col = isVarLenType(d_type);
@@ -222,8 +222,8 @@ KStatus TsEntityBlockBuilder::Append(shared_ptr<TsBlockSpan> span, bool& is_full
     }
     if (!is_var_col) {
       if (col_idx == 0) {
-        const char* lsn_col_value = reinterpret_cast<const char*>(span->GetLSNAddr(0));
-        block.buffer.append(lsn_col_value, written_rows * d_size);
+        const char* osn_col_value = reinterpret_cast<const char*>(span->GetOSNAddr(0));
+        block.buffer.append(osn_col_value, written_rows * d_size);
       } else if (col_idx != 1) {
         block.buffer.append(col_val, written_rows * d_size);
       }
@@ -241,14 +241,14 @@ KStatus TsEntityBlockBuilder::GetCompressData(TsEntitySegmentBlockItem& blk_item
   // init col data offsets to data buffer
   uint32_t block_header_size = n_cols_ * sizeof(uint32_t);
   data_buffer.resize(block_header_size);
-  // init col agg offsets to agg buffer, exclude lsn col
+  // init col agg offsets to agg buffer, exclude osn col
   uint32_t agg_header_size = (n_cols_ - 1) * sizeof(uint32_t);
   agg_buffer.resize(agg_header_size);
-  // min lsn && max lsn
-  TS_LSN min_lsn = UINT64_MAX;
-  TS_LSN max_lsn = 0;
-  TS_LSN first_lsn = 0;
-  TS_LSN last_lsn = 0;
+  // min osn && max osn
+  uint64_t min_osn = UINT64_MAX;
+  uint64_t max_osn = 0;
+  uint64_t first_osn = 0;
+  uint64_t last_osn = 0;
 
   // write column block data and column agg
   for (int col_idx = 0; col_idx < n_cols_; ++col_idx) {
@@ -309,16 +309,16 @@ KStatus TsEntityBlockBuilder::GetCompressData(TsEntitySegmentBlockItem& blk_item
     // calculate aggregate
     if (0 == col_idx) {
       for (int row_idx = 0; row_idx < n_rows_; ++row_idx) {
-        TS_LSN* lsn = reinterpret_cast<TS_LSN *>(block.buffer.data() + row_idx * sizeof(TS_LSN));
-        if (min_lsn > *lsn) {
-          min_lsn = *lsn;
+        uint64_t* osn = reinterpret_cast<uint64_t *>(block.buffer.data() + row_idx * sizeof(uint64_t));
+        if (min_osn > *osn) {
+          min_osn = *osn;
         }
-        if (max_lsn < *lsn) {
-          max_lsn = *lsn;
+        if (max_osn < *osn) {
+          max_osn = *osn;
         }
       }
-      first_lsn = *reinterpret_cast<TS_LSN *>(block.buffer.data());
-      last_lsn = *reinterpret_cast<TS_LSN *>(block.buffer.data() + (n_rows_ - 1) * sizeof(TS_LSN));
+      first_osn = *reinterpret_cast<uint64_t *>(block.buffer.data());
+      last_osn = *reinterpret_cast<uint64_t *>(block.buffer.data() + (n_rows_ - 1) * sizeof(uint64_t));
       continue;
     }
     string col_agg;
@@ -383,10 +383,10 @@ KStatus TsEntityBlockBuilder::GetCompressData(TsEntitySegmentBlockItem& blk_item
   blk_item.n_rows = n_rows_;
   blk_item.max_ts = max_ts;
   blk_item.min_ts = min_ts;
-  blk_item.max_lsn = max_lsn;
-  blk_item.min_lsn = min_lsn;
-  blk_item.first_lsn = first_lsn;
-  blk_item.last_lsn = last_lsn;
+  blk_item.max_osn = max_osn;
+  blk_item.min_osn = min_osn;
+  blk_item.first_osn = first_osn;
+  blk_item.last_osn = last_osn;
   blk_item.block_len = data_buffer.size();
   blk_item.agg_len = agg_buffer.size();
 
@@ -753,7 +753,7 @@ KStatus TsEntitySegmentBuilder::Compact(bool call_by_vacuum, TsVersionUpdate* up
 }
 
 KStatus TsEntitySegmentBuilder::WriteBatch(TSTableID tbl_id, uint32_t entity_id, uint32_t table_version,
-                                           TS_LSN lsn, TSSlice block_data) {
+                                           TSSlice block_data) {
   std::unique_lock lock{mutex_};
   LOG_INFO("TsEntitySegmentBuilder WriteBatch begin, root_path: %s, entity_header_file_num: %lu", root_path_.c_str(),
            entity_item_file_number_);
@@ -799,10 +799,10 @@ KStatus TsEntitySegmentBuilder::WriteBatch(TSTableID tbl_id, uint32_t entity_id,
                          + (n_cols - 1) * sizeof(uint32_t)) + sizeof(uint32_t) * n_cols;
   block_item.min_ts = *reinterpret_cast<timestamp64*>(block_data.data + TsBatchData::min_ts_offset_in_span_data_);
   block_item.max_ts = *reinterpret_cast<timestamp64*>(block_data.data + TsBatchData::max_ts_offset_in_span_data_);
-  block_item.min_lsn = lsn;
-  block_item.max_lsn = lsn;
-  block_item.first_lsn = lsn;
-  block_item.last_lsn = lsn;
+  block_item.min_osn = *reinterpret_cast<uint64_t*>(block_data.data + TsBatchData::min_osn_offset_in_span_data_);
+  block_item.max_osn = *reinterpret_cast<uint64_t*>(block_data.data + TsBatchData::max_osn_offset_in_span_data_);
+  block_item.first_osn = *reinterpret_cast<uint64_t*>(block_data.data + TsBatchData::first_osn_offset_in_span_data_);
+  block_item.last_osn = *reinterpret_cast<uint64_t*>(block_data.data + TsBatchData::last_osn_offset_in_span_data_);
   block_item.agg_len = *reinterpret_cast<uint32_t*>(block_data.data + block_data_header_size + block_item.block_len
                        + (n_cols - 2) * sizeof(uint32_t))  + sizeof(uint32_t) * (n_cols - 1);
 

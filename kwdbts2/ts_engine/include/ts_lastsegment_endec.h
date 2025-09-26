@@ -26,15 +26,15 @@ struct TsLastSegmentBlockIndex {
   uint32_t table_version, n_entity;
   int64_t min_ts, max_ts;
   int64_t first_ts, last_ts;
-  uint64_t min_lsn, max_lsn;
-  uint64_t first_lsn, last_lsn;
+  uint64_t min_osn, max_osn;
+  uint64_t first_osn, last_osn;
   uint64_t min_entity_id, max_entity_id;
 };
 
 struct TsLastSegmentBlockInfo {
   uint64_t block_offset = 0;
   uint32_t entity_id_len = 0;
-  uint32_t lsn_len = 0;
+  uint32_t osn_len = 0;
   uint32_t nrow = 0;
   uint32_t ncol = 0;
   struct ColInfo {
@@ -63,7 +63,7 @@ static_assert(sizeof(TsLastSegmentFooter) == 64);
 inline void EncodeBlockInfo(std::string* buf, const TsLastSegmentBlockInfo& info) {
   PutFixed64(buf, info.block_offset);
   PutFixed32(buf, info.entity_id_len);
-  PutFixed32(buf, info.lsn_len);
+  PutFixed32(buf, info.osn_len);
   PutFixed32(buf, info.nrow);
   PutFixed32(buf, info.ncol);
   for (int i = 0; i < info.ncol; ++i) {
@@ -80,7 +80,7 @@ inline KStatus DecodeBlockInfo(TSSlice slice, TsLastSegmentBlockInfo* info) {
   }
   GetFixed64(&slice, &info->block_offset);
   GetFixed32(&slice, &info->entity_id_len);
-  GetFixed32(&slice, &info->lsn_len);
+  GetFixed32(&slice, &info->osn_len);
   GetFixed32(&slice, &info->nrow);
   GetFixed32(&slice, &info->ncol);
   if (slice.len != info->ncol * 14) {
@@ -106,10 +106,10 @@ inline void EncodeBlockIndex(std::string* buf, const TsLastSegmentBlockIndex& in
   PutFixed64(buf, index.max_ts);
   PutFixed64(buf, index.first_ts);
   PutFixed64(buf, index.last_ts);
-  PutFixed64(buf, index.min_lsn);
-  PutFixed64(buf, index.max_lsn);
-  PutFixed64(buf, index.first_lsn);
-  PutFixed64(buf, index.last_lsn);
+  PutFixed64(buf, index.min_osn);
+  PutFixed64(buf, index.max_osn);
+  PutFixed64(buf, index.first_osn);
+  PutFixed64(buf, index.last_osn);
   PutFixed64(buf, index.min_entity_id);
   PutFixed64(buf, index.max_entity_id);
 }
@@ -132,10 +132,10 @@ inline KStatus DecodeBlockIndex(TSSlice slice, TsLastSegmentBlockIndex* index) {
   index->first_ts = ts;
   GetFixed64(&slice, &ts);
   index->last_ts = ts;
-  GetFixed64(&slice, &index->min_lsn);
-  GetFixed64(&slice, &index->max_lsn);
-  GetFixed64(&slice, &index->first_lsn);
-  GetFixed64(&slice, &index->last_lsn);
+  GetFixed64(&slice, &index->min_osn);
+  GetFixed64(&slice, &index->max_osn);
+  GetFixed64(&slice, &index->first_osn);
+  GetFixed64(&slice, &index->last_osn);
   GetFixed64(&slice, &index->min_entity_id);
   GetFixed64(&slice, &index->max_entity_id);
   return SUCCESS;

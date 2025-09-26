@@ -177,7 +177,7 @@ struct TSEngine {
    */
   virtual KStatus DeleteRangeData(kwdbContext_p ctx, const KTableKey &table_id, uint64_t range_group_id,
                                   HashIdSpan &hash_span, const std::vector<KwTsSpan> &ts_spans,
-                                  uint64_t *count, uint64_t mtr_id) = 0;
+                                  uint64_t *count, uint64_t mtr_id, uint64_t osn) = 0;
 
   /**
    * @brief Mark the deletion of time series data within the specified range.
@@ -192,7 +192,7 @@ struct TSEngine {
    */
   virtual KStatus DeleteData(kwdbContext_p ctx, const KTableKey &table_id, uint64_t range_group_id,
                              std::string &primary_tag, const std::vector<KwTsSpan> &ts_spans, uint64_t *count,
-                             uint64_t mtr_id) = 0;
+                             uint64_t mtr_id, uint64_t osn) = 0;
 
   /**
    * @brief Batch delete Entity and sequential data.
@@ -205,7 +205,8 @@ struct TSEngine {
    * @return KStatus
    */
   virtual KStatus DeleteEntities(kwdbContext_p ctx, const KTableKey &table_id, uint64_t range_group_id,
-                                 std::vector<std::string> primary_tags, uint64_t *count, uint64_t mtr_id) = 0;
+                                 std::vector<std::string> primary_tags, uint64_t *count, uint64_t mtr_id,
+                                 uint64_t osn = 0) = 0;
 
   /**
   * @brief get batch data in tmp memroy
@@ -316,7 +317,7 @@ struct TSEngine {
     */
   virtual KStatus CreateSnapshotForWrite(kwdbContext_p ctx, const KTableKey& table_id,
                                    uint64_t begin_hash, uint64_t end_hash,
-                                   const KwTsSpan& ts_span, uint64_t* snapshot_id) {
+                                   const KwTsSpan& ts_span, uint64_t* snapshot_id, uint64_t osn = 0) {
     return KStatus::FAIL;
   }
 
@@ -334,7 +335,7 @@ struct TSEngine {
     return KStatus::FAIL;
   }
 
-  virtual KStatus WriteSnapshotRollback(kwdbContext_p ctx, uint64_t snapshot_id) {
+  virtual KStatus WriteSnapshotRollback(kwdbContext_p ctx, uint64_t snapshot_id, uint64_t osn) {
     return KStatus::FAIL;
   }
 
@@ -349,7 +350,7 @@ struct TSEngine {
    * @return KStatus
    */
   virtual KStatus DeleteRangeEntities(kwdbContext_p ctx, const KTableKey& table_id, const uint64_t& range_group_id,
-                                      const HashIdSpan& hash_span, uint64_t* count, uint64_t& mtr_id) {
+                                      const HashIdSpan& hash_span, uint64_t* count, uint64_t& mtr_id, uint64_t osn = 0) {
     return KStatus::FAIL;
   }
 
@@ -364,7 +365,7 @@ struct TSEngine {
     return FAIL;
   }
 
-  virtual KStatus CancelBatchJob(kwdbContext_p ctx, uint64_t job_id) {
+  virtual KStatus CancelBatchJob(kwdbContext_p ctx, uint64_t job_id, uint64_t osn) {
     return FAIL;
   }
 

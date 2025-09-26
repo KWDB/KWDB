@@ -232,16 +232,17 @@ KStatus TsDelItemManager::GetDelItem(TSEntityID entity_id, std::list<TsEntityDel
 }
 
 KStatus TsDelItemManager::DropEntity(TSEntityID entity_id) {
-  auto node = index_.GetIndexObject(entity_id, false);
-  if (node == nullptr || *node == INVALID_POSITION) {
-    // this entity has no del item.
-    return KStatus::SUCCESS;
-  }
-  {
-    RW_LATCH_X_LOCK(rw_lock_);
-    *node = INVALID_POSITION;
-    RW_LATCH_UNLOCK(rw_lock_);
-  }
+  // todo(liangbo01) entity deleted, but delete info should be seen.
+  // auto node = index_.GetIndexObject(entity_id, false);
+  // if (node == nullptr || *node == INVALID_POSITION) {
+  //   // this entity has no del item.
+  //   return KStatus::SUCCESS;
+  // }
+  // {
+  //   RW_LATCH_X_LOCK(rw_lock_);
+  //   *node = INVALID_POSITION;
+  //   RW_LATCH_UNLOCK(rw_lock_);
+  // }
   return KStatus::SUCCESS;
 }
 

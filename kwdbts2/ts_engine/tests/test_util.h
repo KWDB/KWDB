@@ -359,6 +359,10 @@ struct SliceGuard {
   std::string guard;
 };
 
+void SetPayloadOSN(TSSlice payload, uint64_t osn) {
+  KUint64(payload.data + TsRawPayload::txn_id_offset_) = osn;
+}
+
 TSSlice GenRowPayload(const std::vector<AttributeInfo>& metric, const std::vector<TagInfo>& tag, TSTableID table_id, uint32_t version, TSEntityID dev_id, int num, KTimestamp ts, KTimestamp interval = 1000) {
   TSRowPayloadBuilder builder(tag, metric, num);
   builder.SetTagValue(0, (char*)(&dev_id), sizeof(dev_id));

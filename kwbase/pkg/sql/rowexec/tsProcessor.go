@@ -104,10 +104,7 @@ func (tp *tsProcessor) Start(ctx context.Context) context.Context {
 			if err != nil {
 				break
 			}
-			_, err = tp.FlowCtx.Cfg.TsEngine.DeleteEntities(uint64(toDrop.TemplateID), 1, [][]byte{primaryTag}, true, 0)
-			if err != nil {
-				break
-			}
+			_, err = tp.FlowCtx.Cfg.TsEngine.DeleteEntities(uint64(toDrop.TemplateID), 1, [][]byte{primaryTag}, true, 0, 0)
 		}
 	case execinfrapb.OperatorType_TsDropTsTable:
 		errPrefix = "drop timeseries table failed, reason:%s"

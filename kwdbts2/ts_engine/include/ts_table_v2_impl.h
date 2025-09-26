@@ -147,7 +147,8 @@ class TsTableV2Impl : public TsTable {
 
   vector<uint32_t> GetNTagIndexInfo(uint32_t ts_version, uint32_t index_id) override;
 
-  KStatus DeleteEntities(kwdbContext_p ctx,  std::vector<std::string>& primary_tag, uint64_t* count, uint64_t mtr_id);
+  KStatus DeleteEntities(kwdbContext_p ctx,  std::vector<std::string>& primary_tag, uint64_t* count, uint64_t mtr_id,
+                         uint64_t osn, bool user_del);
   /**
    * @brief drop all data in range. if table is empty,we will drop table directory at same time.
    * @param[in] ts_span   timestamp span
@@ -156,7 +157,7 @@ class TsTableV2Impl : public TsTable {
    * @return KStatus
    */
   KStatus DeleteTotalRange(kwdbContext_p ctx, uint64_t begin_hash, uint64_t end_hash,
-                                    KwTsSpan ts_span, uint64_t mtr_id) override;
+                                    KwTsSpan ts_span, uint64_t mtr_id, uint64_t osn) override;
   KStatus GetAvgTableRowSize(kwdbContext_p ctx, uint64_t* row_size) override;
   KStatus GetDataVolume(kwdbContext_p ctx, uint64_t begin_hash, uint64_t end_hash,
                                 const KwTsSpan& ts_span, uint64_t* volume) override;
@@ -174,7 +175,7 @@ class TsTableV2Impl : public TsTable {
    * @return KStatus
    */
   KStatus DeleteRangeEntities(kwdbContext_p ctx, const uint64_t& range_group_id, const HashIdSpan& hash_span,
-                                      uint64_t* count, uint64_t mtr_id) override;
+                                      uint64_t* count, uint64_t mtr_id, uint64_t osn, bool user_del) override;
 
   /**
    * @brief Delete data based on the hash id range and timestamp range.
@@ -187,7 +188,7 @@ class TsTableV2Impl : public TsTable {
    */
   KStatus DeleteRangeData(kwdbContext_p ctx, uint64_t range_group_id, HashIdSpan& hash_span,
                                   const std::vector<KwTsSpan>& ts_spans, uint64_t* count,
-                                  uint64_t mtr_id) override;
+                                  uint64_t mtr_id, uint64_t osn) override;
 
   /**
    * @brief Delete data based on the primary tag and timestamp range.
@@ -199,7 +200,7 @@ class TsTableV2Impl : public TsTable {
    * @return KStatus
    */
   KStatus DeleteData(kwdbContext_p ctx, uint64_t range_group_id, std::string& primary_tag,
-                             const std::vector<KwTsSpan>& ts_spans, uint64_t* count, uint64_t mtr_id) override;
+                  const std::vector<KwTsSpan>& ts_spans, uint64_t* count, uint64_t mtr_id, uint64_t osn) override;
 
   KStatus GetEntityRowCount(kwdbContext_p ctx, std::vector<EntityResultIndex>& entity_ids,
                              const std::vector<KwTsSpan>& ts_spans, uint64_t* row_count);

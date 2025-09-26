@@ -46,13 +46,20 @@ enum TsEntityDelItemStatus : uint8_t {
   DEL_ITEM_DROPPED,
 };
 
+enum TsEntityDelItemType : uint8_t {
+  DEL_ITEM_TYPE_USER = 1,
+  DEL_ITEM_TYPE_OTHER,
+};
+
 // delete item info for ceratin entity.
 struct TsEntityDelItem {
   STDelRange range;
   TSEntityID entity_id;  // entity id in vgroup.
   TsEntityDelItemStatus status;
-  TsEntityDelItem(const KwTsSpan& ts, const KwLSNSpan& lsn, TSEntityID e_id) : range(ts, lsn),
-    entity_id(e_id), status(DEL_ITEM_OK) {}
+  TsEntityDelItemType type;  // is this delete caused by user operation.
+  TsEntityDelItem(const KwTsSpan& ts, const KwLSNSpan& lsn, TSEntityID e_id,
+    TsEntityDelItemType t = TsEntityDelItemType::DEL_ITEM_TYPE_USER) : range(ts, lsn),
+    entity_id(e_id), status(DEL_ITEM_OK), type(t) {}
 };
 
 class LSNRangeUtil {

@@ -240,7 +240,7 @@ TSStatus TSIsTsTableExist(TSEngine* engine, TSTableID tableId, bool* find);
 TSStatus TSGetMetaData(TSEngine* engine, TSTableID table_id, RangeGroup range, TSSlice* schema);
 
 TSStatus TSPutEntity(TSEngine *engine, TSTableID tableId, TSSlice *payload, size_t payload_num, RangeGroup range_group,
-                     uint64_t mtr_id);
+                     uint64_t mtr_id, uint64_t osn);
 
 TSStatus TSPutData(TSEngine* engine, TSTableID tableId, TSSlice* payload, size_t payload_num, RangeGroup range_group,
                    uint64_t mtr_id, uint16_t* inc_entity_cnt, uint32_t* inc_unordered_cnt, DedupResult* dedup_result,
@@ -253,14 +253,14 @@ TSStatus TSPutDataExplicit(TSEngine* engine, TSTableID tableId, TSSlice* payload
 TSStatus TSExecQuery(TSEngine* engine, QueryInfo* req, RespInfo* resp, TsFetcher* fetchers, void* fetcher);
 
 TSStatus TsDeleteEntities(TSEngine *engine, TSTableID table_id, TSSlice *primary_tags, size_t primary_tags_num,
-                          uint64_t range_group_id, uint64_t *count, uint64_t mtr_id);
+                          uint64_t range_group_id, uint64_t *count, uint64_t mtr_id, uint64_t osn);
 
 TSStatus TsDeleteRangeData(TSEngine *engine, TSTableID table_id, uint64_t range_group_id, HashIdSpan hash_span,
-                           KwTsSpans ts_spans, uint64_t *count, uint64_t mtr_id);
+                           KwTsSpans ts_spans, uint64_t *count, uint64_t mtr_id, uint64_t osn);
 
 TSStatus
 TsDeleteData(TSEngine *engine, TSTableID table_id, uint64_t range_group_id, TSSlice primary_tag, KwTsSpans ts_spans,
-             uint64_t *count, uint64_t mtr_id);
+             uint64_t *count, uint64_t mtr_id, uint64_t osn);
 
 TSStatus TSFlushBuffer(TSEngine* engine);
 
@@ -351,7 +351,7 @@ bool __attribute__((weak)) checkTableMetaExist(TSTableID table_id);
  * @return
  */
 TSStatus TsDeleteTotalRange(TSEngine* engine, TSTableID table_id, uint64_t begin_hash, uint64_t end_hash,
-                              KwTsSpan ts_span, uint64_t mtr_id);
+                              KwTsSpan ts_span, uint64_t mtr_id, uint64_t osn);
 
 /**
  * @brief Create a snapshot object to read local data
@@ -382,7 +382,7 @@ TSStatus TSGetSnapshotNextBatchData(TSEngine* engine, TSTableID table_id, uint64
  * @return
  */
 TSStatus TSCreateSnapshotForWrite(TSEngine* engine, TSTableID table_id, uint64_t begin_hash, uint64_t end_hash,
-                                  KwTsSpan ts_span, uint64_t* snapshot_id);
+                                  KwTsSpan ts_span, uint64_t* snapshot_id, uint64_t osn);
 
 /**
  * @brief Target node, after receiving data, writes the data to storage
@@ -407,7 +407,7 @@ TSStatus TSWriteSnapshotSuccess(TSEngine* engine, TSTableID table_id, uint64_t s
  * @param[in] snapshot_id  generated snapshot id
  * @return
  */
-TSStatus TSWriteSnapshotRollback(TSEngine* engine, TSTableID table_id, uint64_t snapshot_id);
+TSStatus TSWriteSnapshotRollback(TSEngine* engine, TSTableID table_id, uint64_t snapshot_id, uint64_t osn);
 
 TSStatus TSReadBatchData(TSEngine* engine, TSTableID table_id, uint64_t table_version, uint64_t begin_hash,
                          uint64_t end_hash, KwTsSpan ts_span, uint64_t job_id, TSSlice* data, uint32_t* row_num);
@@ -415,7 +415,7 @@ TSStatus TSReadBatchData(TSEngine* engine, TSTableID table_id, uint64_t table_ve
 TSStatus TSWriteBatchData(TSEngine* engine, TSTableID table_id, uint64_t table_version, uint64_t job_id,
                           TSSlice* data, uint32_t* row_num);
 
-TSStatus CancelBatchJob(TSEngine* engine, uint64_t job_id);
+TSStatus CancelBatchJob(TSEngine* engine, uint64_t job_id, uint64_t osn);
 
 TSStatus BatchJobFinish(TSEngine* engine, uint64_t job_id);
 

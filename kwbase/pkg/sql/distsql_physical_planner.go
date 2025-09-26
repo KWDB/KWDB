@@ -2669,6 +2669,7 @@ func (dsp *DistSQLPlanner) createTSTagUpdate(
 		tsTagUpdate.Tags = n.TagValue
 		tsTagUpdate.StartKey = n.startKey
 		tsTagUpdate.EndKey = n.endKey
+		tsTagUpdate.OsnId = n.osnID
 
 		proc := physicalplan.Processor{
 			Node: n.nodeIDs[i],

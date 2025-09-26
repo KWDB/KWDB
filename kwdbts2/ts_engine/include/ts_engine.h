@@ -140,14 +140,14 @@ class TSEngineV2Impl : public TSEngine {
 
   KStatus DeleteRangeData(kwdbContext_p ctx, const KTableKey& table_id, uint64_t range_group_id,
                           HashIdSpan& hash_span, const std::vector<KwTsSpan>& ts_spans, uint64_t* count,
-                          uint64_t mtr_id) override;
+                          uint64_t mtr_id, uint64_t osn) override;
 
   KStatus DeleteData(kwdbContext_p ctx, const KTableKey& table_id, uint64_t range_group_id,
                      std::string& primary_tag, const std::vector<KwTsSpan>& ts_spans, uint64_t* count,
-                     uint64_t mtr_id) override;
+                     uint64_t mtr_id, uint64_t osn) override;
 
   KStatus DeleteEntities(kwdbContext_p ctx, const KTableKey& table_id, uint64_t range_group_id,
-                         std::vector<std::string> primary_tags, uint64_t* count, uint64_t mtr_id) override;
+                         std::vector<std::string> primary_tags, uint64_t* count, uint64_t mtr_id, uint64_t osn) override;
 
   KStatus GetBatchRepr(kwdbContext_p ctx, TSSlice* batch) override {
     LOG_WARN("should not use GetBatchRepr any more.");
@@ -167,13 +167,13 @@ class TSEngineV2Impl : public TSEngine {
   KStatus GetSnapshotNextBatchData(kwdbContext_p ctx, uint64_t snapshot_id, TSSlice* data) override;
   KStatus CreateSnapshotForWrite(kwdbContext_p ctx, const KTableKey& table_id,
                                    uint64_t begin_hash, uint64_t end_hash,
-                                   const KwTsSpan& ts_span, uint64_t* snapshot_id) override;
+                                   const KwTsSpan& ts_span, uint64_t* snapshot_id, uint64_t osn) override;
   KStatus WriteSnapshotBatchData(kwdbContext_p ctx, uint64_t snapshot_id, TSSlice data) override;
   KStatus WriteSnapshotSuccess(kwdbContext_p ctx, uint64_t snapshot_id) override;
-  KStatus WriteSnapshotRollback(kwdbContext_p ctx, uint64_t snapshot_id) override;
+  KStatus WriteSnapshotRollback(kwdbContext_p ctx, uint64_t snapshot_id, uint64_t osn) override;
   // range imgration snapshot using interface...............end................................
   KStatus DeleteRangeEntities(kwdbContext_p ctx, const KTableKey& table_id, const uint64_t& range_group_id,
-                              const HashIdSpan& hash_span, uint64_t* count, uint64_t& mtr_id) override;
+                              const HashIdSpan& hash_span, uint64_t* count, uint64_t& mtr_id, uint64_t osn) override;
 
   KStatus ReadBatchData(kwdbContext_p ctx, TSTableID table_id, uint64_t table_version, uint64_t begin_hash,
                         uint64_t end_hash, KwTsSpan ts_span, uint64_t job_id, TSSlice* data,
@@ -182,7 +182,7 @@ class TSEngineV2Impl : public TSEngine {
   KStatus WriteBatchData(kwdbContext_p ctx, TSTableID table_id, uint64_t table_version, uint64_t job_id,
                          TSSlice* data, uint32_t* row_num) override;
 
-  KStatus CancelBatchJob(kwdbContext_p ctx, uint64_t job_id) override;
+  KStatus CancelBatchJob(kwdbContext_p ctx, uint64_t job_id, uint64_t osn) override;
 
   KStatus BatchJobFinish(kwdbContext_p ctx, uint64_t job_id) override;
 

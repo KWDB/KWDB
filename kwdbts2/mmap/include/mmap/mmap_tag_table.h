@@ -92,10 +92,12 @@ class TagTable {
 
   // insert tag record
   int InsertTagRecord(kwdbts::Payload &payload, int32_t sub_group_id, int32_t entity_id);
-  int InsertTagRecord(kwdbts::TsRawPayload &payload, int32_t sub_group_id, int32_t entity_id);
+  int InsertTagRecord(kwdbts::TsRawPayload &payload, int32_t sub_group_id, int32_t entity_id, uint64_t osn,
+                      uint8_t operate_type, uint64_t del_row_no = 0);
   // update tag record
   int UpdateTagRecord(kwdbts::Payload &payload, int32_t sub_group_id, int32_t entity_id, ErrorInfo& err_info);
-  int UpdateTagRecord(kwdbts::TsRawPayload &payload, int32_t sub_group_id, int32_t entity_id, ErrorInfo& err_info);
+  int UpdateTagRecord(kwdbts::TsRawPayload &payload, int32_t sub_group_id, int32_t entity_id, ErrorInfo& err_info,
+                      uint64_t osn);
 
   /**
   * @brief Query tag through the index of the primary tag and normal tag.
@@ -130,7 +132,8 @@ class TagTable {
                                   std::vector<uint32_t>* src_scan_idxs);
 
   // delete tag record by ptag
-  int DeleteTagRecord(const char *primary_tags, int len, ErrorInfo& err_info);
+  int DeleteTagRecord(const char *primary_tags, int len, ErrorInfo& err_info, uint64_t osn, uint8_t operate_type,
+                      uint64_t& del_row_no);
 
   int AlterTableTag(AlterType alter_type, const AttributeInfo& attr_info,
                     uint32_t cur_version, uint32_t new_version, ErrorInfo& err_info);
@@ -157,7 +160,7 @@ class TagTable {
   int UndoAlterTagTable(uint32_t cur_version, uint32_t new_version, ErrorInfo& err_info);
 
   int InsertForUndo(uint32_t group_id, uint32_t entity_id,
-		    const TSSlice& primary_tag);
+		    const TSSlice& primary_tag, uint64_t osn = 0);
   int InsertForRedo(uint32_t group_id, uint32_t entity_id,
 		    kwdbts::Payload &payload);
   int DeleteForUndo(uint32_t group_id, uint32_t entity_id, uint64_t hash_num,
@@ -170,7 +173,7 @@ class TagTable {
   int UpdateForRedo(uint32_t group_id, uint32_t entity_id,
                     const TSSlice& primary_tag, kwdbts::TsRawPayload &payload);
   int UpdateForUndo(uint32_t group_id, uint32_t entity_id, uint64_t hash_num,
-                    const TSSlice& primary_tag, const TSSlice& old_tag);
+                    const TSSlice& primary_tag, const TSSlice& old_tag, uint64_t osn = 0);
 
   int UndoCreateHashIndex(uint32_t index_id, uint32_t cur_ts_version, uint32_t new_ts_version, ErrorInfo& err_info);
 

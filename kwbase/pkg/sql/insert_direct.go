@@ -894,6 +894,7 @@ func GetColsInfo(
 	ins *tree.Insert,
 	di *DirectInsert,
 	stmt *parser.Statement,
+	tsIDGen *sqlbase.TSIDGenerator,
 ) error {
 	colsDesc := *tsColsDesc
 	tableColLength := len(colsDesc)
@@ -1026,7 +1027,7 @@ func GetColsInfo(
 
 	tsVersion := uint32(1)
 	var err error
-	di.PArgs, err = execbuilder.BuildPayloadArgs(tsVersion, di.PrimaryTagCols, tagCols, dataCols)
+	di.PArgs, err = execbuilder.BuildPayloadArgs(tsVersion, tsIDGen, di.PrimaryTagCols, tagCols, dataCols)
 	if err != nil {
 		return err
 	}

@@ -629,6 +629,7 @@ func (tis *tsInsertSelecter) runTSInsert(
 			uint32(insTable.TsTable.TsVersion),
 			insTable.TsTable.HashNum,
 			nil,
+			tis.FlowCtx.Cfg.TsIDGen,
 		)
 		if err != nil {
 			return false, 0, err

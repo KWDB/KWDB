@@ -103,6 +103,10 @@ class TsRawPayload {
   explicit TsRawPayload(const TSSlice &raw, const std::vector<AttributeInfo>* data_schema = nullptr);
 
   // rangeGroupID --> hashPoint
+  uint64_t GetOSN() {
+    return KUint64(payload_.data + txn_id_offset_);
+  }
+
   uint32_t GetHashPoint() {
     return KUint16(payload_.data + hash_point_id_offset_);
   }

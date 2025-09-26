@@ -290,9 +290,9 @@ size_t DeleteLogMetricsEntry::getLen() {
 
 DeleteLogMetricsEntryV2::DeleteLogMetricsEntryV2(TS_LSN lsn, WALLogType type, uint64_t x_id, WALTableType table_type,
                                              TSTableID table_id, size_t p_tag_len, uint64_t range_size, char* data,
-                                              uint64_t vgrp_id, TS_LSN old_lsn)
+                                              uint64_t vgrp_id, TS_LSN old_lsn, uint64_t osn)
     : DeleteLogEntry(lsn, type, x_id, table_type, vgrp_id, old_lsn), p_tag_len_(p_tag_len), range_size_(range_size),
-    table_id_(table_id) {
+    table_id_(table_id), osn_(osn) {
   encoded_primary_tags_ = KNEW char[p_tag_len_];
   memcpy(encoded_primary_tags_, data, p_tag_len_);
 
@@ -341,9 +341,9 @@ size_t DeleteLogMetricsEntryV2::getLen() {
 DeleteLogTagsEntry::DeleteLogTagsEntry(TS_LSN lsn, WALLogType type, uint64_t x_id, WALTableType table_type,
                                        uint32_t group_id, uint32_t entity_id, size_t p_tag_len,
                                        size_t tag_len, char* encoded_data, uint64_t vgrp_id, TS_LSN old_lsn,
-                                       uint64_t table_id)
+                                       uint64_t table_id, uint64_t osn)
     : DeleteLogEntry(lsn, type, x_id, table_type, vgrp_id, old_lsn, table_id), group_id_(group_id),
-    entity_id_(entity_id), p_tag_len_(p_tag_len), tag_len_(tag_len), table_id_(table_id) {
+    entity_id_(entity_id), p_tag_len_(p_tag_len), tag_len_(tag_len), table_id_(table_id), osn_(osn) {
   encoded_primary_tags_ = KNEW char[p_tag_len_];
   memcpy(encoded_primary_tags_, encoded_data, p_tag_len_);
   encoded_tags_ = KNEW char[tag_len_];
@@ -363,6 +363,10 @@ TSSlice DeleteLogTagsEntry::getTags() {
   return TSSlice{encoded_tags_, tag_len_};
 }
 
+uint64_t DeleteLogTagsEntry::getOSN() {
+  return osn_;
+}
+
 size_t DeleteLogTagsEntry::getLen() {
   if (len_ == 0) {
     len_ = sizeof(type_) +
@@ -370,6 +374,7 @@ size_t DeleteLogTagsEntry::getLen() {
            sizeof(vgrp_id_) +
            sizeof(old_lsn_) +
            sizeof(table_id_) +
+           sizeof(osn_) +
            sizeof(table_type_) +
            sizeof(group_id_) +
            sizeof(entity_id_) +

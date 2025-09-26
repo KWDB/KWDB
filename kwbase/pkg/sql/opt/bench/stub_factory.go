@@ -332,6 +332,7 @@ func (f *stubFactory) ConstructTSTagUpdate(
 	primaryTagKey, TagValues [][]byte,
 	pTagValueNotExist bool,
 	startKey, endKey roachpb.Key,
+	osnID uint64,
 ) (exec.Node, error) {
 	return struct{}{}, nil
 }

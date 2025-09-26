@@ -180,6 +180,7 @@ type tsTagUpdateNode struct {
 	wrongPTag bool
 	startKey  roachpb.Key
 	endKey    roachpb.Key
+	osnID     uint64
 }
 
 func (t *tsTagUpdateNode) startExec(params runParams) error {

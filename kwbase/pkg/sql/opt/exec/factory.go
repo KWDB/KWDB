@@ -410,6 +410,7 @@ type Factory interface {
 		primaryTagKey, TagValues [][]byte,
 		pTagValueNotExist bool,
 		startKey, endKey roachpb.Key,
+		osnID uint64,
 	) (Node, error)
 
 	// ConstructInsertFastPath creates a node that implements a special (but very

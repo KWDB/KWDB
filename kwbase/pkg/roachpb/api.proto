@@ -351,6 +351,7 @@ message TsDeleteRequest {
   bytes primaryTags = 3;
   uint64 rangeGroupId = 4;
   repeated TsSpan TsSpans = 5;
+  uint64 OsnId = 6;
 }
 
 // A TsDeleteResponse is the return value for inserting value to TS DB
@@ -368,6 +369,7 @@ message TsDeleteMultiEntitiesDataRequest {
   // just for MPP mode
   repeated DelEntityGroup del_entity_groups = 4 [(gogoproto.nullable) = true];
   uint64 hashNum = 5;
+  uint64 OsnId = 6;
 }
 
 // DelEntityGroup just for del_multi_entities_req.
@@ -395,6 +397,7 @@ message TsDeleteEntityRequest {
   uint64 tableId = 2;
   repeated bytes primaryTags = 3;
   uint64 rangeGroupId = 4;
+  uint64 OsnId = 5;
 }
 
 // A TsDeleteEntityResponse is the return value for inserting value to TS DB
@@ -410,6 +413,7 @@ message TsTagUpdateRequest {
   uint64 rangeGroupId = 3;
   bytes primaryTags = 4;
   bytes tags = 5;
+  uint64 osnID = 6;
 }
 
 // A TsTagUpdateResponse is the return value for updating tag to TS DB

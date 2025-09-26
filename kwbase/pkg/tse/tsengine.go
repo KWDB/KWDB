@@ -184,6 +184,7 @@ type TsEngineConfig struct {
 	IsSingleNode   bool
 	BRPCAddr       string
 	ClusterID      string
+	TsIDGen        *sqlbase.TSIDGenerator
 }
 
 // TsQueryInfo the parameter and return value passed by the query
@@ -652,7 +653,7 @@ func (r *TsEngine) AlterTSColumnType(
 
 // PutEntity write in, update tag data and write in ts data
 func (r *TsEngine) PutEntity(
-	rangeGroupID uint64, tableID uint64, payload [][]byte, tsTxnID uint64,
+	rangeGroupID uint64, tableID uint64, payload [][]byte, tsTxnID uint64, osnID uint64,
 ) error {
 	if len(payload) == 0 {
 		return errors.New("payload is nul")
@@ -683,7 +684,8 @@ func (r *TsEngine) PutEntity(
 		&cTsSlice[0],
 		(C.size_t)(len(cTsSlice)),
 		cRangeGroup,
-		C.uint64_t(tsTxnID))
+		C.uint64_t(tsTxnID),
+		C.uint64_t(osnID))
 	if err := statusToError(status); err != nil {
 		return errors.Wrap(err, "could not PutEntity")
 	}
@@ -1412,7 +1414,12 @@ func freeTSSlice(cTsSlice []C.TSSlice) {
 
 // DeleteEntities delete entity, containing tag data and ts data
 func (r *TsEngine) DeleteEntities(
-	tableID uint64, rangeGroupID uint64, primaryTags [][]byte, isDrop bool, tsTxnID uint64,
+	tableID uint64,
+	rangeGroupID uint64,
+	primaryTags [][]byte,
+	isDrop bool,
+	tsTxnID uint64,
+	osnID uint64,
 ) (uint64, error) {
 	if len(primaryTags) == 0 {
 		return 0, errors.New("primaryTags is null")
@@ -1434,7 +1441,7 @@ func (r *TsEngine) DeleteEntities(
 
 	var delCnt C.uint64_t
 	status := C.TsDeleteEntities(r.tdb, C.TSTableID(tableID), &cTsSlice[0], (C.size_t)(len(cTsSlice)),
-		C.uint64_t(rangeGroupID), &delCnt, C.uint64_t(tsTxnID))
+		C.uint64_t(rangeGroupID), &delCnt, C.uint64_t(tsTxnID), C.uint64_t(osnID))
 	if err := statusToError(status); err != nil {
 		if isDrop {
 			return 0, err
@@ -1452,6 +1459,7 @@ func (r *TsEngine) DeleteRangeData(
 	endHash uint64,
 	tsSpans []*roachpb.TsSpan,
 	tsTxnID uint64,
+	osnID uint64,
 ) (uint64, error) {
 	r.checkOrWaitForOpen()
 	cKwHashIDSpans := C.HashIdSpan{
@@ -1477,7 +1485,8 @@ func (r *TsEngine) DeleteRangeData(
 		cKwHashIDSpans,
 		cKwTsSpans,
 		&delCnt,
-		C.uint64_t(tsTxnID))
+		C.uint64_t(tsTxnID),
+		C.uint64_t(osnID))
 	if err := statusToError(status); err != nil {
 		return uint64(delCnt), errors.New("Data deletion failed or partially failed")
 	}
@@ -1488,13 +1497,14 @@ func (r *TsEngine) DeleteRangeData(
 func (r *TsEngine) DeleteTsRangeData(
 	tableID, beginHash, endHash uint64, startTs, endTs int64, tsTxnID uint64,
 ) error {
+	osnID := r.cfg.TsIDGen.GetNextID()
 	r.checkOrWaitForOpen()
 	tsSpan := C.KwTsSpan{
 		begin: C.int64_t(startTs),
 		end:   C.int64_t(endTs),
 	}
 	status := C.TsDeleteTotalRange(r.tdb, C.TSTableID(tableID), C.uint64_t(beginHash),
-		C.uint64_t(endHash), tsSpan, C.uint64_t(tsTxnID))
+		C.uint64_t(endHash), tsSpan, C.uint64_t(tsTxnID), C.uint64_t(osnID))
 	if err := statusToError(status); err != nil {
 		return errors.New("range data deletion failed")
 	}
@@ -1503,7 +1513,12 @@ func (r *TsEngine) DeleteTsRangeData(
 
 // DeleteData delete some one entity data
 func (r *TsEngine) DeleteData(
-	tableID uint64, rangeGroupID uint64, primaryTag []byte, tsSpans []*roachpb.TsSpan, tsTxnID uint64,
+	tableID uint64,
+	rangeGroupID uint64,
+	primaryTag []byte,
+	tsSpans []*roachpb.TsSpan,
+	tsTxnID uint64,
+	osnID uint64,
 ) (uint64, error) {
 	if len(primaryTag) == 0 {
 		return 0, errors.New("primaryTag is null")
@@ -1539,7 +1554,8 @@ func (r *TsEngine) DeleteData(
 		cTsSlice,
 		cKwTsSpans,
 		&delCnt,
-		C.uint64_t(tsTxnID))
+		C.uint64_t(tsTxnID),
+		C.uint64_t(osnID))
 	if err := statusToError(status); err != nil {
 		return uint64(delCnt), errors.Wrap(err, "failed to delete ts data")
 	}
@@ -1695,13 +1711,14 @@ func (r *TsEngine) CreateSnapshotForWrite(
 	tableID uint64, beginHash uint64, endHash uint64, beginTs int64, endTs int64,
 ) (uint64, error) {
 	r.checkOrWaitForOpen()
+	osnID := r.cfg.TsIDGen.GetNextID()
 	var snapshotID C.uint64_t
 	tsSpan := C.KwTsSpan{
 		begin: C.int64_t(beginTs),
 		end:   C.int64_t(endTs),
 	}
 	status := C.TSCreateSnapshotForWrite(r.tdb, C.TSTableID(tableID),
-		C.uint64_t(beginHash), C.uint64_t(endHash), tsSpan, &snapshotID)
+		C.uint64_t(beginHash), C.uint64_t(endHash), tsSpan, &snapshotID, C.uint64_t(osnID))
 	if err := statusToError(status); err != nil {
 		return 0, errors.Wrap(err, "failed to create snapshot")
 	}
@@ -1753,7 +1770,8 @@ func (r *TsEngine) WriteSnapshotSuccess(tableID uint64, snapshotID uint64) error
 // WriteSnapshotRollback rollback snapshot
 func (r *TsEngine) WriteSnapshotRollback(tableID uint64, snapshotID uint64) error {
 	r.checkOrWaitForOpen()
-	status := C.TSWriteSnapshotRollback(r.tdb, C.TSTableID(tableID), C.uint64_t(snapshotID))
+	osnID := r.cfg.TsIDGen.GetNextID()
+	status := C.TSWriteSnapshotRollback(r.tdb, C.TSTableID(tableID), C.uint64_t(snapshotID), C.uint64_t(osnID))
 	if err := statusToError(status); err != nil {
 		return errors.Wrap(err, "failed to rollback snapshot")
 	}
@@ -1920,13 +1938,14 @@ func (r *TsEngine) manageWAL() {
 func (r *TsEngine) DeleteReplicaTSData(
 	tableID uint64, beginHash uint64, endHash uint64, startTs int64, endTs int64,
 ) error {
+	osnID := r.cfg.TsIDGen.GetNextID()
 	r.checkOrWaitForOpen()
 	tsSpan := C.KwTsSpan{
 		begin: C.int64_t(startTs),
 		end:   C.int64_t(endTs),
 	}
 	status := C.TsDeleteTotalRange(r.tdb, C.TSTableID(tableID),
-		C.uint64_t(beginHash), C.uint64_t(endHash), tsSpan, C.uint64_t(0))
+		C.uint64_t(beginHash), C.uint64_t(endHash), tsSpan, C.uint64_t(0), C.uint64_t(osnID))
 	if err := statusToError(status); err != nil {
 		return errors.Wrap(err, "failed to delete replica ts data")
 	}

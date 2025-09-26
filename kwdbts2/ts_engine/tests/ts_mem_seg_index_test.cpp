@@ -134,7 +134,7 @@ TEST(TsMemSegIndexTest, InsertAndSeekMultiple) {
     ASSERT_TRUE(iter.Valid());
     auto row_data = skiplist.ParseKey(iter.key());
     ASSERT_EQ(row_data->GetEntityId(), expected_ids[i]);
-    ASSERT_EQ(row_data->GetLSN(), expected_ids[i]);
+    ASSERT_EQ(row_data->GetOSN(), expected_ids[i]);
     int data = *reinterpret_cast<int *>(row_data->GetRowData().data);
     ASSERT_EQ(data, expected_data[i]);
   }

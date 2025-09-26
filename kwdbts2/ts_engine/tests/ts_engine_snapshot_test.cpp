@@ -149,7 +149,7 @@ TEST_F(TestEngineSnapshotImgrate, TestDataVolumeIntface) {
       ASSERT_EQ(s, KStatus::SUCCESS);
       ASSERT_EQ(half_ts, 12345 + (1000 * entity_rows * i) / 2);
     }
-    s = ts_table->DeleteTotalRange(ctx_, 0, UINT64_MAX, {INT64_MIN, INT64_MAX}, 1);
+    s = ts_table->DeleteTotalRange(ctx_, 0, UINT64_MAX, {INT64_MIN, INT64_MAX}, 1, 1);
     ASSERT_EQ(s, KStatus::SUCCESS);
     uint64_t row_num;
     s = ts_table->GetRangeRowCount(ctx_, 0, UINT64_MAX, {INT64_MIN, INT64_MAX},  &row_num);
@@ -177,7 +177,7 @@ TEST_F(TestEngineSnapshotImgrate, CreateSnapshotAndInsertOtherEmpty) {
   ASSERT_EQ(s, KStatus::SUCCESS);
   ctx_->ts_engine = ts_engine_src_;
   uint64_t desc_snapshot_id;
-  s = ts_engine_desc_->CreateSnapshotForWrite(ctx_, cur_table_id, 0, UINT64_MAX, {INT64_MIN, INT64_MAX}, &desc_snapshot_id);
+  s = ts_engine_desc_->CreateSnapshotForWrite(ctx_, cur_table_id, 0, UINT64_MAX, {INT64_MIN, INT64_MAX}, &desc_snapshot_id, 100);
   ASSERT_EQ(s, KStatus::SUCCESS);
 
   // migrate data from 1007 to 1008
@@ -243,7 +243,7 @@ TEST_F(TestEngineSnapshotImgrate, CreateSnapshotAndInsertOther) {
   ASSERT_EQ(row_count, 5);
 
   uint64_t desc_snapshot_id;
-  s = ts_engine_desc_->CreateSnapshotForWrite(ctx_, cur_table_id, 0, UINT64_MAX, {INT64_MIN, INT64_MAX}, &desc_snapshot_id);
+  s = ts_engine_desc_->CreateSnapshotForWrite(ctx_, cur_table_id, 0, UINT64_MAX, {INT64_MIN, INT64_MAX}, &desc_snapshot_id, 100);
   ASSERT_EQ(s, KStatus::SUCCESS);
 
   // migrate data from 1007 to 1008
@@ -318,7 +318,7 @@ TEST_F(TestEngineSnapshotImgrate, CreateSnapshotAndInsertPartitions) {
   ASSERT_EQ(row_count, 5 * partition_num);
 
   uint64_t desc_snapshot_id;
-  s = ts_engine_desc_->CreateSnapshotForWrite(ctx_, cur_table_id, 0, UINT64_MAX, {INT64_MIN, INT64_MAX}, &desc_snapshot_id);
+  s = ts_engine_desc_->CreateSnapshotForWrite(ctx_, cur_table_id, 0, UINT64_MAX, {INT64_MIN, INT64_MAX}, &desc_snapshot_id, 100);
   ASSERT_EQ(s, KStatus::SUCCESS);
 
   // migrate data from 1007 to 1008
@@ -393,7 +393,7 @@ TEST_F(TestEngineSnapshotImgrate, InsertPartitionsRollback) {
   ASSERT_EQ(row_count, 5 * partition_num);
 
   uint64_t desc_snapshot_id;
-  s = ts_engine_desc_->CreateSnapshotForWrite(ctx_, cur_table_id, 0, UINT64_MAX, {INT64_MIN, INT64_MAX}, &desc_snapshot_id);
+  s = ts_engine_desc_->CreateSnapshotForWrite(ctx_, cur_table_id, 0, UINT64_MAX, {INT64_MIN, INT64_MAX}, &desc_snapshot_id, 100);
   ASSERT_EQ(s, KStatus::SUCCESS);
 
   // migrate data from 1007 to 1008
@@ -409,7 +409,7 @@ TEST_F(TestEngineSnapshotImgrate, InsertPartitionsRollback) {
   } while (snapshot_data.len > 0);
   s = ts_engine_src_->DeleteSnapshot(ctx_, snapshot_id);
   ASSERT_EQ(s, KStatus::SUCCESS);
-  s = ts_engine_desc_->WriteSnapshotRollback(ctx_, desc_snapshot_id);
+  s = ts_engine_desc_->WriteSnapshotRollback(ctx_, desc_snapshot_id, 0);
   ASSERT_EQ(s, KStatus::SUCCESS);
   s = ts_engine_desc_->DeleteSnapshot(ctx_, desc_snapshot_id);
   ASSERT_EQ(s, KStatus::SUCCESS);
@@ -450,7 +450,7 @@ TEST_F(TestEngineSnapshotImgrate, ConvertManyDataDiffEntitiesFaild1) {
   s = ts_table->GetRangeRowCount(ctx_, 0, UINT64_MAX, {INT64_MIN, INT64_MAX},  &row_num);
   ASSERT_EQ(s, KStatus::SUCCESS);
   ASSERT_EQ(row_num, 5 * entity_num);
-  s = ts_table->DeleteTotalRange(ctx_, 0, UINT64_MAX, {INT64_MIN, INT64_MAX}, 1);
+  s = ts_table->DeleteTotalRange(ctx_, 0, UINT64_MAX, {INT64_MIN, INT64_MAX}, 1, 1);
   ASSERT_EQ(s, KStatus::SUCCESS);
   s = ts_table->GetRangeRowCount(ctx_, 0, UINT64_MAX, {INT64_MIN, INT64_MAX},  &row_num);
   ASSERT_EQ(s, KStatus::SUCCESS);
@@ -458,13 +458,13 @@ TEST_F(TestEngineSnapshotImgrate, ConvertManyDataDiffEntitiesFaild1) {
   std::vector<kwdbts::EntityResultIndex> entity_store;
   s = dynamic_pointer_cast<TsTableV2Impl>(ts_table)->GetEntityIdByHashSpan(ctx_, {0, UINT64_MAX}, entity_store);
   ASSERT_EQ(s, KStatus::SUCCESS);
-  ASSERT_EQ(entity_store.size(), entity_num);
+  ASSERT_EQ(entity_store.size(), 0);
 
   // create table 1008
   s = ts_engine_desc_->CreateTsTable(ctx_, cur_table_id, &meta, ts_table);
   ASSERT_EQ(s, KStatus::SUCCESS);
   uint64_t desc_snapshot_id;
-  s = ts_engine_desc_->CreateSnapshotForWrite(ctx_, cur_table_id, 0, UINT64_MAX, {INT64_MIN, INT64_MAX}, &desc_snapshot_id);
+  s = ts_engine_desc_->CreateSnapshotForWrite(ctx_, cur_table_id, 0, UINT64_MAX, {INT64_MIN, INT64_MAX}, &desc_snapshot_id, 100);
   ASSERT_EQ(s, KStatus::SUCCESS);
   uint64_t snapshot_id;
   s = ts_engine_src_->CreateSnapshotForRead(ctx_, cur_table_id, 0, UINT64_MAX, {INT64_MIN, INT64_MAX}, &snapshot_id);
@@ -492,7 +492,7 @@ TEST_F(TestEngineSnapshotImgrate, ConvertManyDataDiffEntitiesFaild1) {
   s = dynamic_pointer_cast<TsTableV2Impl>(ts_table)->GetEntityIdByHashSpan(ctx_, {0, UINT64_MAX}, entity_store);
   ctx_->ts_engine = ts_engine_src_;
   ASSERT_EQ(s, KStatus::SUCCESS);
-  ASSERT_EQ(entity_store.size(), entity_num);
+  ASSERT_EQ(entity_store.size(), 0);
   
   s = ts_engine_src_->DropTsTable(ctx_, cur_table_id);
   ASSERT_EQ(s, KStatus::SUCCESS);
@@ -536,7 +536,7 @@ TEST_F(TestEngineSnapshotImgrate, ConvertManyDataSameEntityDestNoEmpty) {
   ASSERT_EQ(count, entity_num * 5);
 
   uint64_t desc_snapshot_id;
-  s = ts_engine_desc_->CreateSnapshotForWrite(ctx_, cur_table_id, 0, UINT64_MAX, {INT64_MIN, INT64_MAX}, &desc_snapshot_id);
+  s = ts_engine_desc_->CreateSnapshotForWrite(ctx_, cur_table_id, 0, UINT64_MAX, {INT64_MIN, INT64_MAX}, &desc_snapshot_id, 100);
   ASSERT_EQ(s, KStatus::SUCCESS);
   s = dynamic_pointer_cast<TsTableV2Impl>(ts_table)->GetRangeRowCount(ctx_, 0, UINT64_MAX, {INT64_MIN, INT64_MAX}, &count);
   ASSERT_EQ(s, KStatus::SUCCESS);
@@ -585,7 +585,7 @@ TEST_F(TestEngineSnapshotImgrate, DestNoEmptyThreeTimes) {
   ASSERT_EQ(s, KStatus::SUCCESS);
   ctx_->ts_engine = ts_engine_src_;
   // input data to  table 1007
-  int entity_num = 5;
+  int entity_num = 3;
   for (size_t i = 0; i < entity_num; i++) {
     InsertData(ts_engine_src_, cur_table_id, 1 + i, 12345 + i * 1000, 5);
   }
@@ -612,7 +612,7 @@ TEST_F(TestEngineSnapshotImgrate, DestNoEmptyThreeTimes) {
 
   for (size_t i = 0; i < 3; i++) {
     uint64_t desc_snapshot_id;
-    s = ts_engine_desc_->CreateSnapshotForWrite(ctx_, cur_table_id, 0, UINT64_MAX, {INT64_MIN, INT64_MAX}, &desc_snapshot_id);
+    s = ts_engine_desc_->CreateSnapshotForWrite(ctx_, cur_table_id, 0, UINT64_MAX, {INT64_MIN, INT64_MAX}, &desc_snapshot_id, 100);
     ASSERT_EQ(s, KStatus::SUCCESS);
     uint64_t snapshot_id;
     s = ts_engine_src_->CreateSnapshotForRead(ctx_, cur_table_id, 0, UINT64_MAX, {INT64_MIN, INT64_MAX}, &snapshot_id);
@@ -685,7 +685,7 @@ TEST_F(TestEngineSnapshotImgrate, ConvertManyDataSameEntityDestNoEmptyRollback) 
 
   for (size_t i = 0; i < 3; i++) {
     uint64_t desc_snapshot_id;
-    s = ts_engine_desc_->CreateSnapshotForWrite(ctx_, cur_table_id, 0, UINT64_MAX, {INT64_MIN, INT64_MAX}, &desc_snapshot_id);
+    s = ts_engine_desc_->CreateSnapshotForWrite(ctx_, cur_table_id, 0, UINT64_MAX, {INT64_MIN, INT64_MAX}, &desc_snapshot_id, 100);
     ASSERT_EQ(s, KStatus::SUCCESS);
     uint64_t snapshot_id;
     s = ts_engine_src_->CreateSnapshotForRead(ctx_, cur_table_id, 0, UINT64_MAX, {INT64_MIN, INT64_MAX}, &snapshot_id);
@@ -704,7 +704,7 @@ TEST_F(TestEngineSnapshotImgrate, ConvertManyDataSameEntityDestNoEmptyRollback) 
     } while (snapshot_data.len > 0);
     s = ts_engine_src_->DeleteSnapshot(ctx_, snapshot_id);
     ASSERT_EQ(s, KStatus::SUCCESS);
-    s = ts_engine_desc_->WriteSnapshotRollback(ctx_, desc_snapshot_id);
+    s = ts_engine_desc_->WriteSnapshotRollback(ctx_, desc_snapshot_id, 0);
     ASSERT_EQ(s, KStatus::SUCCESS);
     s = ts_engine_desc_->DeleteSnapshot(ctx_, desc_snapshot_id);
     ASSERT_EQ(s, KStatus::SUCCESS);
@@ -751,7 +751,7 @@ TEST_F(TestEngineSnapshotImgrate, mulitSnapshot) {
       ts_span.begin = 12345 + i * (500 * 1000) / thread_num;
       ts_span.begin = 12345 + (i + i) * (500 * 1000) / thread_num;
       uint64_t desc_snapshot_id;
-      s = ts_engine_desc_->CreateSnapshotForWrite(ctx_, cur_table_id, 0, UINT64_MAX, ts_span, &desc_snapshot_id);
+      s = ts_engine_desc_->CreateSnapshotForWrite(ctx_, cur_table_id, 0, UINT64_MAX, ts_span, &desc_snapshot_id, 100);
       ASSERT_EQ(s, KStatus::SUCCESS);
       uint64_t snapshot_id;
       s = ts_engine_src_->CreateSnapshotForRead(ctx_, cur_table_id, 0, UINT64_MAX, ts_span, &snapshot_id);

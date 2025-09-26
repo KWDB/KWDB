@@ -139,19 +139,33 @@ class TsMemSegBlock : public TsBlock {
     return row_data_[row_data_.size() - 1]->GetTS();
   }
 
-  TS_LSN GetFirstLSN() override {
+  void GetMinAndMaxOSN(uint64_t& min_osn, uint64_t& max_osn) override {
     assert(row_data_.size() > 0);
-    return row_data_[0]->GetLSN();
+    min_osn = UINT64_MAX;
+    max_osn = 0;
+    for (auto& row : row_data_) {
+      if (row->GetOSN() < min_osn) {
+        min_osn = row->GetOSN();
+      }
+      if (row->GetOSN() > max_osn) {
+        max_osn = row->GetOSN();
+      }
+    }
   }
 
-  TS_LSN GetLastLSN() override {
+  uint64_t GetFirstOSN() override {
     assert(row_data_.size() > 0);
-    return row_data_[row_data_.size() - 1]->GetLSN();
+    return row_data_[0]->GetOSN();
   }
 
-  const uint64_t* GetLSNAddr(int row_num) override {
+  uint64_t GetLastOSN() override {
+    assert(row_data_.size() > 0);
+    return row_data_[row_data_.size() - 1]->GetOSN();
+  }
+
+  const uint64_t* GetOSNAddr(int row_num) override {
     assert(row_data_.size() > row_num);
-    return row_data_[row_num]->GetLSNAddr();
+    return row_data_[row_num]->GetOSNAddr();
   }
 
   KStatus GetColBitmap(uint32_t col_id, const std::vector<AttributeInfo>* schema,
@@ -221,7 +235,7 @@ class TsMemSegmentManager {
     *mems = segment_;
   }
 
-  KStatus PutData(const TSSlice& payload, TSEntityID entity_id, TS_LSN lsn);
+  KStatus PutData(const TSSlice& payload, TSEntityID entity_id);
 
   bool GetMetricSchemaAndMeta(TSTableID table_id_, uint32_t version, const std::vector<AttributeInfo>** schema,
                               DATATYPE* ts_type, LifeTime* lifetime = nullptr);

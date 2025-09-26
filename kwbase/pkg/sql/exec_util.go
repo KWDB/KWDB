@@ -684,6 +684,9 @@ type ExecutorConfig struct {
 	// TsEngine is a ts engine
 	TsEngine *tse.TsEngine
 
+	// TsIDGen is a TSIDGenerator
+	TsIDGen *sqlbase.TSIDGenerator
+
 	// UDFCache is user defined functions
 	UDFCache *UDFCache
 

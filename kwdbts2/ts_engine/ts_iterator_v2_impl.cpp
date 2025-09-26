@@ -160,7 +160,6 @@ KStatus TsStorageIteratorV2Impl::Init(bool is_reversed) {
 
   auto current = vgroup_->CurrentVersion();
   ts_partitions_ = current->GetPartitions(db_id_, ts_spans_, ts_col_type_);
-
   filter_ = std::make_shared<TsScanFilterParams>(db_id_, table_id_, vgroup_->GetVGroupID(),
                                                   0, ts_col_type_, scan_lsn_, ts_spans_);
   return KStatus::SUCCESS;

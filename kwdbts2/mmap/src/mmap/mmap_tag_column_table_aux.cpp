@@ -190,6 +190,7 @@ TagTuplePack* MMapTagColumnTable::GenTagPack(TagTableRowID row) {
   entityId = *reinterpret_cast<const uint32_t *>(idPtr);
   subgroupId = *reinterpret_cast<const uint32_t *>(idPtr + 4);
   this->stopRead();
+  packer->setOSN(getTagDataInfoByRowNum(row)->osn);
   packer->setEntityId(entityId);
   packer->setSubgroupId(subgroupId);
   packer->setVersion(metaData().m_ts_version);
@@ -255,6 +256,16 @@ void TagTuplePack::setVersion(uint32_t id) {
 
 uint32_t TagTuplePack::getVersion() {
   return *reinterpret_cast<uint32_t *>(data_ + versionOffset_);
+}
+
+void TagTuplePack::setOSN(uint64_t osn) {
+  if (isMemOwner_ && data_ != nullptr) {
+    *reinterpret_cast<uint32_t *>(data_ + txnOffset_) = osn;
+  }
+}
+
+uint32_t TagTuplePack::getOSN() {
+  return *reinterpret_cast<uint64_t *>(data_ + txnOffset_);
 }
 
 void TagTuplePack::setDBId(uint32_t id) {

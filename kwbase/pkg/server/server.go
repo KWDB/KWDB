@@ -1892,10 +1892,11 @@ func (s *Server) Start(ctx context.Context) error {
 	// instance of the node can use. We do not use startTime because it is lower
 	// than the timestamp used to create the bootstrap schema.
 	timeThreshold := s.clock.Now().WallTime
+	s.execCfg.TsIDGen = &sqlbase.TSIDGenerator{}
 
 	setTse := func() (*tse.TsEngine, error) {
 		if s.cfg.Stores.Specs != nil && s.cfg.Stores.Specs[0].Path != "" && !s.cfg.ForbidCatchCoreDump {
-			s.tsEngine, err = s.cfg.CreateTsEngine(ctx, s.stopper, s.ClusterID().String())
+			s.tsEngine, err = s.cfg.CreateTsEngine(ctx, s.stopper, s.ClusterID().String(), s.execCfg.TsIDGen)
 			if err != nil {
 				return nil, errors.Wrap(err, "failed to create ts engine")
 			}
@@ -1905,6 +1906,7 @@ func (s *Server) Start(ctx context.Context) error {
 
 			s.node.storeCfg.TsEngine = s.tsEngine
 			s.distSQLServer.ServerConfig.TsEngine = s.tsEngine
+			s.distSQLServer.ServerConfig.TsIDGen = s.execCfg.TsIDGen
 
 			if !GetSingleNodeModeFlag(s.cfg.ModeFlag) {
 				tse.TsRaftLogCombineWAL.SetOnChange(&s.st.SV, func() {

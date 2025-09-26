@@ -35,7 +35,7 @@ struct TSMemSegRowData {
  private:
   uint64_t entity_id = 0;
   uint64_t ts = 0;
-  uint64_t lsn = 0;
+  uint64_t osn = 0;
 
   // the following fields WILL NOT BE used to sort and in little-endian order.
  private:
@@ -57,15 +57,15 @@ struct TSMemSegRowData {
     // ts = htobe64(cts - INT64_MIN);
 
     ts = htobe64(static_cast<uint64_t>(cts) ^ (1ULL << 63));
-    lsn = htobe64(clsn);
+    osn = htobe64(clsn);
     little_endian_lsn = clsn;
   }
   static constexpr size_t GetKeyLen() { return offsetof(TSMemSegRowData, table_id); }
 
   TSEntityID GetEntityId() const { return be64toh(entity_id); }
   timestamp64 GetTS() const { return static_cast<timestamp64>(be64toh(ts) ^ (1ULL << 63)); }
-  TS_LSN GetLSN() const { return little_endian_lsn; }
-  const TS_LSN* GetLSNAddr() const { return &little_endian_lsn; }
+  uint64_t GetOSN() const { return little_endian_lsn; }
+  const uint64_t* GetOSNAddr() const { return &little_endian_lsn; }
 
   TSTableID GetTableId() const { return table_id; }
   uint32_t GetTableVersion() const { return table_version; }
@@ -76,7 +76,7 @@ struct TSMemSegRowData {
     return this->entity_id == b->entity_id && this->table_version == b->table_version;
   }
   inline bool SameEntityAndTs(const TSMemSegRowData* b) const {
-    return std::memcmp(this, b, offsetof(TSMemSegRowData, lsn)) == 0;
+    return std::memcmp(this, b, offsetof(TSMemSegRowData, osn)) == 0;
   }
   inline bool SameTableId(const TSMemSegRowData* b) const { return this->table_id == b->table_id; }
 };

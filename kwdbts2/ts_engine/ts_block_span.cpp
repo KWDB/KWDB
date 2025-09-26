@@ -126,8 +126,8 @@ bool TsBlockSpan::operator<(const TsBlockSpan& other) const {
     if (ts != other_ts) {
       return ts < other_ts;
     } else {
-      uint64_t seq_no = *block_->GetLSNAddr(start_row_);
-      uint64_t other_seq_no = *other.block_->GetLSNAddr(other.start_row_);
+      uint64_t seq_no = *block_->GetOSNAddr(start_row_);
+      uint64_t other_seq_no = *other.block_->GetOSNAddr(other.start_row_);
       return seq_no > other_seq_no;
     }
   }
@@ -152,7 +152,7 @@ KStatus TsBlockSpan::BuildCompressedData(std::string& data) {
     size_t d_size = sizeof(uint64_t);
     std::string lsn_data;
     for (int row_idx = 0; row_idx < nrow_; ++row_idx) {
-      lsn_data.append(reinterpret_cast<const char*>(block_->GetLSNAddr(start_row_ + row_idx)), d_size);
+      lsn_data.append(reinterpret_cast<const char*>(block_->GetOSNAddr(start_row_ + row_idx)), d_size);
     }
     std::string compressed;
     auto [first, second] = mgr.GetDefaultAlgorithm(d_type);

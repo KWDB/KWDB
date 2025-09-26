@@ -42,6 +42,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
 	"gitee.com/kwbasedb/kwbase/pkg/server/status"
 	"gitee.com/kwbasedb/kwbase/pkg/settings/cluster"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
 	"gitee.com/kwbasedb/kwbase/pkg/storage"
 	"gitee.com/kwbasedb/kwbase/pkg/storage/enginepb"
 	"gitee.com/kwbasedb/kwbase/pkg/ts"
@@ -679,7 +680,7 @@ func (cfg *Config) CreateEngines(ctx context.Context) (Engines, error) {
 
 // CreateTsEngine create ts engine
 func (cfg *Config) CreateTsEngine(
-	ctx context.Context, stopper *stop.Stopper, clusterID string,
+	ctx context.Context, stopper *stop.Stopper, clusterID string, tsIDGen *sqlbase.TSIDGenerator,
 ) (*tse.TsEngine, error) {
 
 	threadPoolSize, err := strconv.Atoi(cfg.ThreadPoolSize)
@@ -708,6 +709,7 @@ func (cfg *Config) CreateTsEngine(
 		IsSingleNode:   GetSingleNodeModeFlag(cfg.ModeFlag),
 		BRPCAddr:       cfg.BRPCListenAddr,
 		ClusterID:      clusterID,
+		TsIDGen:        tsIDGen,
 	}
 	tsDB, err := tse.NewTsEngine(ctx, tsConfig, stopper)
 	if err != nil {

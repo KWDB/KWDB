@@ -50,6 +50,8 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/util/interval"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 	"gitee.com/kwbasedb/kwbase/pkg/util/protoutil"
+	"gitee.com/kwbasedb/kwbase/pkg/util/syncutil"
+	"gitee.com/kwbasedb/kwbase/pkg/util/timeutil"
 	"github.com/cockroachdb/errors"
 )
 
@@ -4848,4 +4850,24 @@ func (desc *ProcedureDescriptor) Validate() error {
 
 	// Validate the privilege descriptor.
 	return desc.Privileges.Validate(desc.GetID())
+}
+
+// TSIDGenerator is used to generate a unique time-series ID.
+type TSIDGenerator struct {
+	mu           syncutil.Mutex
+	lastNanoTime uint64
+}
+
+// GetNextID returns a unique ID based on a timestamp.
+func (u *TSIDGenerator) GetNextID() uint64 {
+	var res uint64
+
+	u.mu.Lock()
+	res = uint64(timeutil.Now().UnixNano())
+	if u.lastNanoTime == res {
+		res++
+	}
+	u.lastNanoTime = res
+	u.mu.Unlock()
+	return res
 }

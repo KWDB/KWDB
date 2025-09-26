@@ -100,7 +100,7 @@ func (s *TsSender) Send(
 			case *roachpb.TsTagUpdateRequest:
 				var pld [][]byte
 				pld = append(pld, tdr.Tags)
-				err := s.tsEngine.PutEntity(rangeGroupID, tdr.TableId, pld, 0)
+				err := s.tsEngine.PutEntity(rangeGroupID, tdr.TableId, pld, 0, tdr.OsnID)
 				if err != nil {
 					return nil, &roachpb.Error{Message: err.Error()}
 				}
@@ -112,7 +112,7 @@ func (s *TsSender) Send(
 					},
 				})
 			case *roachpb.TsDeleteRequest:
-				rows, err := s.tsEngine.DeleteData(tdr.TableId, rangeGroupID, tdr.PrimaryTags, tdr.TsSpans, 0)
+				rows, err := s.tsEngine.DeleteData(tdr.TableId, rangeGroupID, tdr.PrimaryTags, tdr.TsSpans, 0, tdr.OsnId)
 				if err != nil {
 					return nil, &roachpb.Error{Message: err.Error()}
 				}
@@ -124,7 +124,7 @@ func (s *TsSender) Send(
 					},
 				})
 			case *roachpb.TsDeleteEntityRequest:
-				cnt, err := s.tsEngine.DeleteEntities(tdr.TableId, rangeGroupID, tdr.PrimaryTags, false, 0)
+				cnt, err := s.tsEngine.DeleteEntities(tdr.TableId, rangeGroupID, tdr.PrimaryTags, false, 0, tdr.OsnId)
 				if err != nil {
 					return nil, &roachpb.Error{Message: err.Error()}
 				}
@@ -138,7 +138,7 @@ func (s *TsSender) Send(
 			case *roachpb.TsDeleteMultiEntitiesDataRequest:
 				var deleteRows uint64
 				// only one rangeGroup
-				cnt, err := s.tsEngine.DeleteRangeData(tdr.TableId, rangeGroupID, 0, tdr.HashNum-1, tdr.TsSpans, 0)
+				cnt, err := s.tsEngine.DeleteRangeData(tdr.TableId, rangeGroupID, 0, tdr.HashNum-1, tdr.TsSpans, 0, tdr.OsnId)
 				if err != nil {
 					return nil, &roachpb.Error{Message: err.Error()}
 				}

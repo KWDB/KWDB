@@ -26,7 +26,7 @@ namespace kwdbts {
 
 struct TsMetricCompressInfo {
   int row_count;
-  int lsn_len;
+  int osn_len;
   std::vector<TsColumnCompressInfo> column_compress_infos;
 
   struct OffsetLength {
@@ -40,23 +40,23 @@ class TsMetricBlock {
 
  private:
   int count_;
-  std::vector<TS_LSN> lsn_buffer_;
+  std::vector<uint64_t> osn_buffer_;
   std::vector<std::unique_ptr<TsColumnBlock>> column_blocks_;
 
-  TsMetricBlock(int count, std::vector<TS_LSN>&& lsn_buffer,
+  TsMetricBlock(int count, std::vector<uint64_t>&& osn_buffer,
                 std::vector<std::unique_ptr<TsColumnBlock>>&& column_blocks)
-      : count_(count), lsn_buffer_(std::move(lsn_buffer)), column_blocks_(std::move(column_blocks)) {}
+      : count_(count), osn_buffer_(std::move(osn_buffer)), column_blocks_(std::move(column_blocks)) {}
 
  public:
   static KStatus ParseCompressedMetricData(const std::vector<AttributeInfo>& schema, TSSlice compressed_data,
                                            const TsMetricCompressInfo& compress_info,
                                            std::unique_ptr<TsMetricBlock>* metric_block);
-  const TS_LSN* GetLSNAddr() const { return reinterpret_cast<const TS_LSN*>(lsn_buffer_.data()); }
+  const uint64_t* GetOSNAddr() const { return reinterpret_cast<const uint64_t*>(osn_buffer_.data()); }
   const timestamp64* GetTSAddr() const { return reinterpret_cast<const timestamp64*>(column_blocks_[0]->GetColAddr()); }
   int GetColNum() const { return column_blocks_.size(); }
   int GetRowNum() const { return count_; }
 
-  bool GetCompressedData(std::string* output, TsMetricCompressInfo* compress_info, bool compress_ts_and_lsn,
+  bool GetCompressedData(std::string* output, TsMetricCompressInfo* compress_info, bool compress_ts_and_osn,
                          bool compress_columns);
 };
 
@@ -69,7 +69,7 @@ class TsMetricBlockBuilder {
   std::vector<std::unique_ptr<TsColumnBlockBuilder>> column_block_builders_;
 
   int count_ = 0;
-  std::vector<TS_LSN> lsn_buffer_;
+  std::vector<uint64_t> osn_buffer_;
 
  public:
   explicit TsMetricBlockBuilder(const std::vector<AttributeInfo>* col_schemas)
@@ -84,7 +84,7 @@ class TsMetricBlockBuilder {
   int GetRowNum() const { return count_; }
   void Reset() {
     count_ = 0;
-    lsn_buffer_.clear();
+    osn_buffer_.clear();
     for (auto& builder : column_block_builders_) {
       builder->Reset();
     }

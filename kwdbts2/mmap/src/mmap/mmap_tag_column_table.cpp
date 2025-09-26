@@ -31,6 +31,7 @@
 
 uint32_t k_entity_group_id_size = 8;
 uint32_t k_per_null_bitmap_size = 1;
+uint64_t BITMAP_PER_ROW_LENGTH = 64;
 
 TagColumn::TagColumn(int32_t idx, const TagInfo& attr) {
   m_attr_ = attr;
@@ -270,12 +271,14 @@ MMapTagColumnTable::~MMapTagColumnTable() {
   }
 
   delete  m_bitmap_file_;
+  delete  m_row_info_file_;
   delete  m_index_;
   delete  m_entity_row_index_;
   delete  m_meta_file_;
   delete m_hps_file_;
 
   m_bitmap_file_ = nullptr;
+  m_row_info_file_ = nullptr;
   m_index_ = nullptr;
   m_entity_row_index_ = nullptr;
   m_meta_file_ = nullptr;
@@ -434,6 +437,23 @@ int MMapTagColumnTable::initBitMapColumn(ErrorInfo& err_info) {
   return err_info.errcode;
 }
 
+int MMapTagColumnTable::initRowInfoColumn(ErrorInfo& err_info) {
+  std::string rowinfo_file_name = m_name_ + ".rinfo";
+  TagInfo ainfo = {0x00};
+  ainfo.m_offset = 0;
+  ainfo.m_size = BITMAP_PER_ROW_LENGTH;  // tag info
+  m_row_info_file_ = new TagColumn(-1, ainfo);
+  err_info.errcode = m_row_info_file_->open(rowinfo_file_name, m_db_path_, m_tbl_sub_path_, m_flags_);
+  if (err_info.errcode < 0) {
+    delete m_row_info_file_;
+    m_row_info_file_ = nullptr;
+    err_info.errmsg = "initRowInfoColumn failed.";
+    LOG_ERROR("failed to open the row info file %s%s, error: %s",
+              m_tbl_sub_path_.c_str(), rowinfo_file_name.c_str(), err_info.errmsg.c_str());
+  }
+  return err_info.errcode;
+}
+
 int MMapTagColumnTable::initHashPointColumn(ErrorInfo& err_info) {
   string hash_file_name = m_name_ + ".hps";
   TagInfo ainfo = {0x00};
@@ -486,6 +506,11 @@ int MMapTagColumnTable::readTagInfo(ErrorInfo& err_info) {
     m_cols_[idx] = tag_col;
   }
   err_info.errcode = initBitMapColumn(err_info);
+  if (err_info.errcode < 0) {
+    return err_info.setError(err_info.errcode);
+  }
+
+  err_info.errcode = initRowInfoColumn(err_info);
   if (err_info.errcode < 0) {
     return err_info.setError(err_info.errcode);
   }
@@ -604,6 +629,11 @@ int MMapTagColumnTable::init(const vector<TagInfo>& schema, ErrorInfo& err_info)
     return err_info.setError(err_info.errcode);
   }
 
+  err_info.errcode = initRowInfoColumn(err_info);
+  if (err_info.errcode < 0) {
+    return err_info.setError(err_info.errcode);
+  }
+
   // initHashPointFile
   if (!EngineOptions::isSingleNode()) {
     err_info.errcode = initHashPointColumn(err_info);
@@ -680,6 +710,11 @@ int MMapTagColumnTable::remove() {
     delete m_bitmap_file_;
     m_bitmap_file_ = nullptr;
   }
+  if (m_row_info_file_) {
+    m_row_info_file_->remove();
+    delete m_row_info_file_;
+    m_row_info_file_ = nullptr;
+  }
   if (m_meta_file_) {
     m_meta_file_->remove();
     delete m_meta_file_;
@@ -739,7 +774,10 @@ int MMapTagColumnTable::reserve(size_t n, ErrorInfo& err_info) {
     stopWrite();
     return err_code;
   }
-
+  // row info mremap
+  if (m_row_info_file_) {
+    err_code = m_row_info_file_->extend(m_row_info_file_->fileLen(), n*BITMAP_PER_ROW_LENGTH);
+  }
   // hashpoint file extend
   if (m_hps_file_) {
    err_code = m_hps_file_->extend(m_hps_file_->fileLen(), n*sizeof(hashPointStorage));
@@ -839,8 +877,8 @@ int MMapTagColumnTable::initNTagHashIndex(ErrorInfo& err_info) {
   return 0;
 }
 
-int MMapTagColumnTable::insert(uint32_t entity_id, uint32_t subgroup_id, uint32_t hashpoint,
-                               const char* rec, size_t* row_id) {
+int MMapTagColumnTable::insert(uint32_t entity_id, uint32_t subgroup_id, uint32_t hashpoint, uint64_t osn,
+                               uint8_t operate_type, const char* rec, size_t* row_id) {
   size_t row_no;
   int err_code = 0;
   ErrorInfo err_info;
@@ -873,6 +911,8 @@ int MMapTagColumnTable::insert(uint32_t entity_id, uint32_t subgroup_id, uint32_
   mutexUnlock();
   *row_id = row_no;
   setDeleteMark(row_no);
+  TagDataInfo tagInfo{ operate_type, osn, row_no};
+  setTagDataInfo(row_no, tagInfo);
 
   // put entity id
   push_back_entityid(row_no, entity_id, subgroup_id);
