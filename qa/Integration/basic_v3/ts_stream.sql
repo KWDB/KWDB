@@ -1009,6 +1009,33 @@ create table stream_db_fvt_out1.cpu_avg_normal
     PRIMARY KEY (k_timestamp ASC, hostname ASC)
 );
 
+create table stream_db_fvt_out.cpu_normal
+(
+    k_timestamp      timestamp(6) not null,
+    usage_user       bigint,
+    usage_system     bigint,
+    usage_idle       bigint,
+    usage_nice       bigint,
+    usage_iowait     bigint,
+    usage_irq        bigint,
+    usage_softirq    bigint,
+    usage_steal      bigint,
+    usage_guest      bigint,
+    usage_guest_nice bigint
+) attributes (
+    hostname char(30) not null,
+    region char(30),
+    datacenter char(30),
+    rack char(30),
+    os char(30),
+    arch char(30),
+    team char(30),
+    service char(30),
+    service_version char(30),
+    service_environment char(30)
+    )
+primary attributes (hostname);
+
 
 INSERT INTO stream_db_fvt.cpu_normal values ('2023-05-31 10:00:00.123456789', 58, 8, 24, 61, 22, 63, 6, 44, 80, 38, 'host_0', 'beijing', '', '', '', '', '', '', '', '');
 INSERT INTO stream_db_fvt.cpu_normal values ('2023-05-31 10:00:10.123456789', 58, 33, 24, 61, 22, 63, 6, 44, 80, 38, 'host_0', '', '', '', '', '', '', '', '', '');
@@ -1019,6 +1046,7 @@ CREATE STREAM cpu_stream_normal_1 INTO stream_db_fvt_out.cpu_avg_normal WITH OPT
 CREATE STREAM cpu_stream_normal_2 INTO stream_db_fvt_out1.cpu_avg_normal WITH OPTIONS(recalculate_delay_rounds='1',MAX_RETRIES='3',PROCESS_HISTORY='on',IGNORE_EXPIRED='on', MAX_DELAY='5s',SYNC_TIME='3s',BUFFER_SIZE='1024kib',checkpoint_interval='2s',heartbeat_interval='1s') AS SELECT k_timestamp AS k_timestamp, hostname AS hostname, usage_user+usage_system AS usage_user_system, usage_idle*usage_nice AS usage_idel_nice, usage_iowait/usage_irq AS usage_iowait_irq FROM stream_db_fvt.cpu_normal ;
 CREATE STREAM cpu_stream_normal_3 INTO stream_db_fvt_out1.cpu_avg_normal WITH OPTIONS(recalculate_delay_rounds='1',MAX_RETRIES='3',PROCESS_HISTORY='off',IGNORE_EXPIRED='on', MAX_DELAY='5s',SYNC_TIME='3s',BUFFER_SIZE='1024kib',checkpoint_interval='2s',heartbeat_interval='1s') AS SELECT k_timestamp AS k_timestamp, hostname AS hostname, usage_user+usage_system AS usage_user_system, usage_idle*usage_nice AS usage_idel_nice, usage_iowait/usage_irq AS usage_iowait_irq FROM stream_db_fvt.cpu_normal where usage_system>11;
 CREATE STREAM cpu_stream_normal_4 INTO stream_db_fvt_out1.cpu_avg_normal WITH OPTIONS(recalculate_delay_rounds='1',MAX_RETRIES='3',PROCESS_HISTORY='off',IGNORE_EXPIRED='on', MAX_DELAY='5s',SYNC_TIME='3s',BUFFER_SIZE='1024kib',checkpoint_interval='1500ms',heartbeat_interval='2s') AS SELECT k_timestamp AS k_timestamp, hostname AS hostname, usage_user+usage_system AS usage_user_system, usage_idle*usage_nice AS usage_idel_nice, usage_iowait/usage_irq AS usage_iowait_irq FROM stream_db_fvt.cpu_normal;
+CREATE STREAM cpu_stream_normal_5 INTO stream_db_fvt_out.cpu_normal WITH OPTIONS(recalculate_delay_rounds='1',MAX_RETRIES='3',PROCESS_HISTORY='off',IGNORE_EXPIRED='on', MAX_DELAY='5s',SYNC_TIME='3s',BUFFER_SIZE='1024kib',checkpoint_interval='2s',heartbeat_interval='1s') AS SELECT k_timestamp AS k_timestamp, usage_steal AS usage_steal, usage_guest AS usage_guest, usage_guest_nice AS usage_guest_nice, hostname AS hostname, region AS region, service_environment AS service_environment FROM stream_db_fvt.cpu_normal;
 
 select pg_sleep(2);
 
@@ -1034,6 +1062,7 @@ select pg_sleep(5);
 
 select * from stream_db_fvt_out.cpu_avg_normal order by k_timestamp,hostname;
 select * from stream_db_fvt_out1.cpu_avg_normal order by k_timestamp,hostname;
+select * from stream_db_fvt_out.cpu_normal order by hostname,k_timestamp;
 
 -- cleanup
 drop table stream_db_fvt.cpu_normal cascade;

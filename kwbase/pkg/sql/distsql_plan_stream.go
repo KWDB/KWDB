@@ -225,11 +225,12 @@ func (p *PhysicalPlan) buildPhyPlanForStreamReaders(
 		return err1
 	}
 
-	outCols, planToStreamColMap, outTypes := buildPostSpecForStreamReaders(n, typs, descColumnIDs, tsColMap, &post)
+	outCols, planToStreamColMap, outTypes := buildPostSpecForStreamReaders(n, typs, descColumnIDs)
 	p.SetLastStageStreamPost(post, outTypes)
 
 	p.AddTSProjection(outCols)
 	p.PlanToStreamColMap = planToStreamColMap
+
 	return nil
 }
 
@@ -312,8 +313,7 @@ func initPostSpecForStreamReader(
 	}
 
 	post := execinfrapb.PostProcessSpec{
-		Filter:     filter,
-		Projection: false,
+		Filter: filter,
 	}
 
 	return post, nil
@@ -321,11 +321,7 @@ func initPostSpecForStreamReader(
 
 // buildPostSpecForStreamReaders builds TSPostProcessSpec for StreamReader
 func buildPostSpecForStreamReaders(
-	n *tsScanNode,
-	typs []types.T,
-	descColumnIDs []sqlbase.ColumnID,
-	tsColMap map[sqlbase.ColumnID]tsColIndex,
-	post *execinfrapb.PostProcessSpec,
+	n *tsScanNode, typs []types.T, descColumnIDs []sqlbase.ColumnID,
 ) ([]uint32, []int, []types.T) {
 	var outCols []uint32
 	var planToStreamColMap []int
@@ -334,11 +330,6 @@ func buildPostSpecForStreamReaders(
 		outCols = append(outCols, uint32(i-1))
 	})
 
-	for i := 0; i < len(n.resultColumns); i++ {
-		if col, ok := tsColMap[n.resultColumns[i].PGAttributeNum]; ok {
-			post.OutputColumns = append(post.OutputColumns, uint32(col.idx))
-		}
-	}
 	planToStreamColMap = getPlanToStreamColMapForReader(outCols, n.resultColumns, descColumnIDs)
 	return outCols, planToStreamColMap, typs
 }

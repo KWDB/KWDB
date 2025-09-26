@@ -674,7 +674,9 @@ func (s *streamReaderProcessor) close() {
 	s.notifyNext()
 
 	if s.InternalClose() {
-		s.rowBuffer.Close()
+		if s.rowBuffer != nil {
+			s.rowBuffer.Close()
+		}
 	}
 }
 
@@ -688,7 +690,7 @@ func (s *streamReaderProcessor) close() {
 //  7. The watermarkCache stores the local low-water marks received from each node,
 //  8. The watermarkCache also records the receiving time of each local low-water mark.
 //  9. Use HeartbeatInterval * MaxRetries as the heartbeatTimeout.
-//  10.If it failed to receive a valid low-water mark more than heartbeatTimeout, the streamReaderProcessor will
+//     10.If it failed to receive a valid low-water mark more than heartbeatTimeout, the streamReaderProcessor will
 //     return an error and the current stream job will be terminated.
 func (s *streamReaderProcessor) extractGlobalHighWaterMark() (int64, error) {
 	var globalWaterMark int64 = math.MinInt64

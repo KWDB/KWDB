@@ -132,7 +132,7 @@ func (s *streamResumer) makeAndRunStreamPlan(
 	return dsp.planAndRunCreateStream(ctx, evalCtx, planCtx, streamTxn, s.job, finishedSetupFn)
 }
 
-//OnFailOrCancel implements the Job interface.
+// OnFailOrCancel implements the Job interface.
 func (s *streamResumer) OnFailOrCancel(_ context.Context, _ interface{}) error {
 	return nil
 }
@@ -336,10 +336,6 @@ func marshalStreamFilter(
 		streamQuery += " WHERE " + sourceTable.Filter
 	}
 
-	streamSpec := &execinfrapb.StreamReaderSpec{
-		Metadata: metadata,
-	}
-
 	stmt, err := parser.ParseOne(streamQuery)
 	if err != nil {
 		return err
@@ -363,11 +359,10 @@ func marshalStreamFilter(
 	evalCtx := localPlanner.ExtendedEvalContext()
 	planCtx := localPlanner.DistSQLPlanner().NewPlanningCtx(params.ctx, evalCtx, params.p.txn)
 	planCtx.isLocal = true
-	planCtx.isStream = true
+	planCtx.isStream = false
 	planCtx.cdcCtx = &CDCContext{}
 	planCtx.planner = localPlanner
 	planCtx.stmtType = tree.Rows
-	planCtx.streamSpec = streamSpec
 
 	physPlan, err := localPlanner.DistSQLPlanner().createPlanForNode(planCtx, localPlanner.curPlan.plan)
 	if err != nil {
