@@ -2124,6 +2124,7 @@ func (b *Builder) buildBatchLookUpJoin(join memo.RelExpr) (execPlan, bool, error
 	if err != nil || filters.ChildCount() != len(leftEq) {
 		fallBack = true
 		b.mem.MultimodelHelper.ResetReasons[memo.LeftJoinColsPositionMismatch] = struct{}{}
+		return execPlan{}, true, err
 	}
 
 	tsCols, fb := b.factory.ProcessBljLeftColumns(left.root, b.mem)

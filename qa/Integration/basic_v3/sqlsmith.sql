@@ -820,3 +820,160 @@ limit 44;
  
 drop database tpcc cascade;
 drop database db_shig cascade;
+
+create ts database test_vacuum;
+create table test_vacuum.t1 (k_timestamp timestamptz not null,id int not null,e1 int2,e2 int,e3 int8,e4 float4,e5 float8,e6 bool,e7 timestamptz,e8 char(1023),e9 nchar(255),e10 varchar(4096),e11 char,e12 char(255),e13 nchar,e14 nvarchar(4096),e15 varchar(1023),e16 nvarchar(200),e17 nchar(255),e18 char(200),e19 varbytes,e20 varbytes(60),e21 varchar,e22 nvarchar) tags (code1 int2 not null,code2 int,code3 int8,code4 float4,code5 float8,code6 bool,code7 varchar,code8 varchar(128) not null,code9 varbytes,code10 varbytes(60),code11 varchar,code12 varchar(60),code13 char(2),code14 char(1023) not null,code15 nchar,code16 nchar(254) not null) primary tags (code1) activetime 2d partition interval 1d;
+set cluster setting ts.parallel_degree = 8;
+set statement_timeout='1s';
+
+
+INSERT INTO test_vacuum.t1 (k_timestamp, id, e1, e2, e3, e4, e5, e6, e7, e8, e9, e10, e11, e12, e13, e14, e15, e16, e17, e18, e19, e20, e21, e22, code1, code2, code3, code4, code5, code6, code7, code8, code9, code10, code11, code12, code13, code14, code15, code16) VALUES ('2024-08-06 01:42:09', 6, 8353, 1742385267, NULL, -660.1786165580095, NULL, True, '2022-05-09 03:41:04.050654', '可是很多帖子地址不会时候朋友全国.对于密码有关自己图片会员语>言两个.
+觉得电子如果不断.都是设计下载增加更多在线.提供公司日本游戏控制只有.
+回复你的一个女人全国空间.程序包括广告回复.', '学生显示主题比较因为自己.学生最大音乐发现类别客户名称.
+是一建设一个数据操作生活专业学习.北京文章活动选择以下一次帖子提高.
+人员日期这种可能来自责任.其实喜欢部分报告.语言提供日期简介.
+特别现在今年美国因为一个.包括这是合作深圳.联系主题价格正在而且城市.
+说明标题如此文件文化历史其实.分析查看自己.介绍软件当前觉得工程相关.
+目前系统决定威望系统我们.价格拥有功能政府教育主题介绍.电影一点有限美国个人事情中文以后.
+任何品牌广告参加.服务的人部门他的精华一定支持.经验如果运行原因决定大家.', '程序人民的是怎么.在线中心一切当然准备.对于由于以上状态.
+这种结果当然方法方法关系.影响更新中国能力搜索对于.简介国内一样搜索而且.
+问题增加这种的人.目前设备合作工作.方面搜索首页女人类别进行.资料有关一般决定记者而且项目.
+正在详细发展方法软件电子.有限经营全国推荐他的女人当然我的.
+这样法律国家手机社区.他的单位的是发表应用技术.
+得到的是质量表示很多.控制成功方式根据联系.成功软件阅读决定.
+选择喜欢这种客户.部分一定不过.查看这个网站类别.对于这些设计那个.
+公司有些的人.怎么运行电话学生简介工具.
+参加的是大家还是类型论坛.电脑朋友没有深圳公司直接.
+不要控制美国相关.准备中国生活我的.他们然后城市但是方式之间以后.
+作者完全喜欢实现评论不断系列.程序准备世界环境.状态大小谢谢.推荐应用部门那些.
+一般如此大家出现以后.公司发表一次同时.', 'x', 'BDOXoIYlxMAowZucPCGlJwEnLSBcXJOrmZThRXSEykVFBciymIQIpkoQlFJGgCSzFzWdXppMpiVMHbcUFZuglLWBtLYkwXnAUkkhwdffzXXAeLjInyrDqSbMtCMhbtMQTTjnriACQUyHlYXJFVWWGozuaXJBIhvbuPJYHdgPMSzoNqAdIsdYNRwBgrwRGSCTukPUorjqMsfwasUNSlLuXHTnuQdZsNdSHBLACZVBzywzzkKZRirJWeVtMsBngvP', 'e', '语言发展支持发现东西其实点击.能力以上工程因此一个简介比较.
+搜索一下希望全部包括作为开始.他们那些应用本站.
+最后可是方式得到有些到了计划中文.学校一定而且公司准备网上有些.个人帮助公司不同要求.', '科技客户很多.欢迎以上图片重要具有美国.
+价格这个一起本站大家.进入评论但是评论以后分析.
+这是之后方法公司进行地方.规定用户精华基本如何大小情况具有.电话那么不过一个.', '详细操作电影一直只有的话发表.密码这个简介那个.
+一起要求参加不要责任部门时间.一次浏览有限怎么本站市场操作联系.浏览相关学校影响.
+汽车学习国内免费状态不是大小.必须只要帮助资料.全部所有系列希望女人手机.
+大小价格不能美国.新闻介绍留言留言.
+资源个人阅读本站目前.这种要求国家电影报告由于.比较所以上海点击两个密码使用.
+直接状态生产首页她的.我的组织发表提供法律人民只有.', '成功设备起来来源.怎么发生出现运行有些.
+注册地区以及可是电脑不要社区然后.重要成为电话电脑.安全特别以及这是地区.
+行业应用电话关于文章生活.有关活动重要资源成功.也是游戏北京.登录下载安全进入发展.
+单位关系成为就是地址.推荐积分任何电脑.还有学习以后.
+主要不断介绍业务城市中心以上.投资只是来源设计一起发表浏览.您的位置上海帮助.电子目前学习事情.
+进行起来只要程序应该电话.全部对于品牌结果.
+学习责任时候比较个人科技.这样公司处理项目状态根据.
+本站这是任何留言服务.其实不断以后欢迎.', 'xZYgVoetEUrDbDjuFVNBYvRxupODwYQafgIlQWeIyLNOGNCJOhUdfbLGsUMdselmByfhmzKNQorQsoLWghfQHhKCywoKJlitXYiGteCRLPzsRYXwtCUuMlbqMGyQftkYdMRFQzWJWuaEbgLlLoLQNYntTqnDhOfwJbjSRorcBxJyUYkDEEKbWnNnHwelniqYwTKkKZjJ', 'B+f3#OFg2@0DJGwwe9^F', 'TP@3YtZm!L', '标准生活无法的人游戏质量电话产品控制.', '怎么状态选择下载时候以上记者技术可是.', 6, 1759289692, 4684480790311133270, 840.3514610909983, -779077.0773629927, False, '发表也是能够那么关系虽然可是会员直接.', '一个表示成为可是那个企业不是投资发展.', '_$JrWx#YeC0aiM*ee+ux', '91Xv$ogv$$', '今天之间是一来源完成研究要求等级国家.', '更多威望什么有些操作文章文化时候能够.', 'gT', '你们制作规定.可以更多增加规定.更新希望操作威望由于行业.开始只要政府国际.
+一切提供为了所有支持功能上海.客户是否发生分析全部.人民他的法律.', 'z', '在线设备方面北京还有开始.联系觉得时间这里显示论坛中国.
+数据社会的话都是方式.直接方式程序地区.
+主题影响网上一定东西参加音乐.报告发生那个免费软件什么设备.
+可能出现市场生产成为网上拥有.具有作品上海最后只要.
+表示深圳部分图片.详细来源一次发生的人.
+得到来源已经学习会员操作谢谢根据.客户直接程序.
+一下特别拥有他们.这些目前表示就是地区美国.
+来自一样不会成为生产一点.记者以下可是学生.孩子包括实现地址感觉详细而且.');
+
+
+use test_vacuum;
+WITH
+jennifer_0 AS (select
+    subq_0.c0 as c0,
+    subq_0.c6 as c1,
+    cast(nullif(subq_0.c3,
+      subq_0.c3) as "nchar") as c2,
+    subq_0.c5 as c3,
+    subq_0.c0 as c4,
+    subq_0.c2 as c5,
+    subq_0.c4 as c6,
+    (select code9 from test_vacuum.t1 limit 1 offset 56)
+       as c7,
+    subq_0.c7 as c8,
+    subq_0.c0 as c9,
+    subq_0.c5 as c10,
+    subq_0.c1 as c11,
+    subq_0.c5 as c12,
+    subq_0.c3 as c13,
+    (select code4 from test_vacuum.t1 limit 1 offset 6)
+       as c14,
+    (select e7 from test_vacuum.t1 limit 1 offset 19)
+       as c15,
+    subq_0.c0 as c16,
+    subq_0.c0 as c17,
+    subq_0.c1 as c18,
+    subq_0.c1 as c19,
+    subq_0.c2 as c20,
+    subq_0.c1 as c21,
+    subq_0.c3 as c22,
+    subq_0.c1 as c23,
+    subq_0.c5 as c24,
+    (select e4 from test_vacuum.t1 limit 1 offset 6)
+       as c25,
+    97 as c26,
+    subq_0.c4 as c27,
+    subq_0.c4 as c28,
+    case when pg_catalog.now() < pg_catalog.experimental_follower_read_timestamp() then 47 else 47 end
+       as c29,
+    33 as c30
+  from
+    (select
+          ref_0.code8 as c0,
+          ref_0.e19 as c1,
+          ref_0.code13 as c2,
+          (select e17 from test_vacuum.t1 limit 1 offset 6)
+             as c3,
+          ref_0.code6 as c4,
+          ref_0.code1 as c5,
+          85 as c6,
+          ref_0.code13 as c7
+        from
+          test_vacuum.t1 as ref_0
+        where ref_0.e12 is not NULL
+        limit 149) as subq_0
+  where true
+  limit 187)
+select
+    subq_2.c1 as c0,
+    47 as c1,
+    subq_2.c0 as c2,
+    subq_2.c1 as c3,
+    subq_2.c0 as c4
+  from
+    (select
+          subq_1.c0 as c0,
+          subq_1.c4 as c1
+        from
+          (select
+                ref_1.e10 as c0,
+                ref_1.code11 as c1,
+                ref_2.c10 as c2,
+                ref_2.c22 as c3,
+                ref_1.e7 as c4,
+                ref_2.c21 as c5,
+                ref_2.c16 as c6,
+                ref_2.c20 as c7,
+                ref_2.c14 as c8,
+                ref_2.c2 as c9
+              from
+                test_vacuum.t1 as ref_1
+                  inner join jennifer_0 as ref_2
+                  on (ref_1.code1 = ref_2.c3 )
+              where ((ref_2.c26 is NULL)
+                  and (ref_1.code3 != (select pg_catalog.variance(e3) from test_vacuum.t1)
+                      ))
+                and (ref_1.e3 IS DISTINCT FROM cast(null as "numeric"))) as subq_1
+        where EXISTS (
+          select
+              subq_1.c0 as c0,
+              ref_3.c4 as c1,
+              65 as c2,
+              38 as c3,
+              subq_1.c7 as c4,
+              ref_3.c14 as c5
+            from
+              jennifer_0 as ref_3
+            where (subq_1.c2 is not NULL)
+              or (cast(null as "numeric") = cast(null as "numeric"))
+            limit 58)) as subq_2
+  where pg_catalog.current_time(pg_catalog.inet_client_port()) = pg_catalog.localtime()
+  limit 77
+;
+drop database test_vacuum cascade;
