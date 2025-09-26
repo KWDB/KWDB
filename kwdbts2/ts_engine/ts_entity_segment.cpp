@@ -356,7 +356,21 @@ KStatus TsEntityBlock::LoadColData(int32_t col_idx, const std::vector<AttributeI
       return KStatus::FAIL;
     }
     assert(var_offsets.size() == n_rows_ * sizeof(uint32_t));
-    column_blocks_[col_idx + 1]->buffer.append(var_offsets.AsStringView());
+    std::string var_buffer(var_offsets.AsStringView());
+#ifdef WITH_TESTS
+  if (TsLRUBlockCache::GetInstance().unit_test_enabled &&
+      TsLRUBlockCache::GetInstance().unit_test_phase ==
+        TsLRUBlockCache::UNIT_TEST_PHASE::VAR_COLUMN_BLOCK_CRASH_PHASE_NONE) {
+    TsLRUBlockCache::GetInstance().unit_test_phase =
+      TsLRUBlockCache::UNIT_TEST_PHASE::VAR_COLUMN_BLOCK_CRASH_PHASE_FIRST_APPEND_ONE_DONE;
+    while (TsLRUBlockCache::GetInstance().unit_test_phase !=
+            TsLRUBlockCache::UNIT_TEST_PHASE::VAR_COLUMN_BLOCK_CRASH_PHASE_SECOND_GET_VAR_COL_ADDR_DONE
+          && TsLRUBlockCache::GetInstance().unit_test_phase !=
+            TsLRUBlockCache::UNIT_TEST_PHASE::VAR_COLUMN_BLOCK_CRASH_PHASE_SECOND_TRY_GETTING_VAR_COLUMN_BLOCK) {
+      usleep(1000);
+    }
+  }
+#endif
     RemovePrefix(&data, var_offsets_len);
     TsSliceGuard var_data;
     ok = mgr.DecompressVarchar(data, &var_data);
@@ -364,7 +378,25 @@ KStatus TsEntityBlock::LoadColData(int32_t col_idx, const std::vector<AttributeI
       LOG_ERROR("Decompress varchar failed");
       return KStatus::FAIL;
     }
-    column_blocks_[col_idx + 1]->buffer.append(var_data.AsStringView());
+    var_buffer.append(var_data.AsStringView());
+    column_blocks_[col_idx + 1]->buffer.swap(var_buffer);
+#ifdef WITH_TESTS
+  if (TsLRUBlockCache::GetInstance().unit_test_enabled) {
+    if (TsLRUBlockCache::GetInstance().unit_test_phase ==
+        TsLRUBlockCache::UNIT_TEST_PHASE::VAR_COLUMN_BLOCK_CRASH_PHASE_SECOND_GET_VAR_COL_ADDR_DONE) {
+      TsLRUBlockCache::GetInstance().unit_test_phase =
+        TsLRUBlockCache::UNIT_TEST_PHASE::VAR_COLUMN_BLOCK_CRASH_PHASE_FIRST_APPEND_TWO_DONE;
+      while (TsLRUBlockCache::GetInstance().unit_test_phase !=
+              TsLRUBlockCache::UNIT_TEST_PHASE::VAR_COLUMN_BLOCK_CRASH_PHASE_SECOND_ACCESS_DONE) {
+        usleep(1000);
+      }
+    } else if (TsLRUBlockCache::GetInstance().unit_test_phase ==
+        TsLRUBlockCache::UNIT_TEST_PHASE::VAR_COLUMN_BLOCK_CRASH_PHASE_SECOND_TRY_GETTING_VAR_COLUMN_BLOCK) {
+      TsLRUBlockCache::GetInstance().unit_test_phase =
+        TsLRUBlockCache::UNIT_TEST_PHASE::VAR_COLUMN_BLOCK_CRASH_PHASE_FIRST_APPEND_TWO_DONE;
+    }
+  }
+#endif
     assert(*reinterpret_cast<uint32_t*>(var_offsets.data() + var_offsets.size() - sizeof(uint32_t)) == var_data.size());
   }
   TsLRUBlockCache::GetInstance().AddMemory(this, bitmap_len + column_blocks_[col_idx + 1]->buffer.length());
@@ -766,6 +798,15 @@ inline KStatus TsEntitySegment::GetBlockData(TsEntityBlock* block, std::string& 
 
 KStatus TsEntitySegment::GetColumnBlock(int32_t col_idx, const std::vector<AttributeInfo>* metric_schema,
                                        TsEntityBlock* block) {
+#ifdef WITH_TESTS
+  if (TsLRUBlockCache::GetInstance().unit_test_enabled) {
+    if (TsLRUBlockCache::GetInstance().unit_test_phase ==
+        TsLRUBlockCache::UNIT_TEST_PHASE::VAR_COLUMN_BLOCK_CRASH_PHASE_FIRST_APPEND_ONE_DONE) {
+      TsLRUBlockCache::GetInstance().unit_test_phase =
+        TsLRUBlockCache::UNIT_TEST_PHASE::VAR_COLUMN_BLOCK_CRASH_PHASE_SECOND_TRY_GETTING_VAR_COLUMN_BLOCK;
+    }
+  }
+#endif
   block->WrLock();
   Defer defer([&]() { block->Unlock(); });
   // init block info

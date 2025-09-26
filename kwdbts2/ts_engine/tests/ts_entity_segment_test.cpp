@@ -787,7 +787,7 @@ TEST_F(TsEntitySegmentTest, concurrentLRUBlockCacheAccess) {
   }
 }
 
-// for accessing column block crash issue
+// for accessing column block crash issue: ZDP-49328
 TEST_F(TsEntitySegmentTest, columnBlockCrashTest) {
   TsLRUBlockCache::GetInstance().unit_test_enabled = true;
   TsLRUBlockCache::GetInstance().unit_test_phase = TsLRUBlockCache::UNIT_TEST_PHASE::COLUMN_BLOCK_CRASH_PHASE_NONE;
@@ -920,5 +920,126 @@ TEST_F(TsEntitySegmentTest, columnBlockCrashTest) {
     EXPECT_EQ(row_idx, EngineOptions::max_rows_per_block);
 
     column_block_accessor->join();
+  }
+}
+
+// for accessing var column block issue
+TEST_F(TsEntitySegmentTest, varColumnBlockTest) {
+  TsLRUBlockCache::GetInstance().unit_test_enabled = true;
+  TsLRUBlockCache::GetInstance().unit_test_phase = TsLRUBlockCache::UNIT_TEST_PHASE::VAR_COLUMN_BLOCK_CRASH_PHASE_NONE;
+  Defer defer([&]() {
+    if (TsLRUBlockCache::GetInstance().unit_test_phase == TsLRUBlockCache::UNIT_TEST_PHASE::VAR_COLUMN_BLOCK_CRASH_PHASE_FIRST_APPEND_ONE_DONE) {
+      TsLRUBlockCache::GetInstance().unit_test_phase = TsLRUBlockCache::UNIT_TEST_PHASE::VAR_COLUMN_BLOCK_CRASH_PHASE_SECOND_GET_VAR_COL_ADDR_DONE;
+      while (TsLRUBlockCache::GetInstance().unit_test_phase !=
+              TsLRUBlockCache::UNIT_TEST_PHASE::VAR_COLUMN_BLOCK_CRASH_PHASE_FIRST_APPEND_TWO_DONE) {
+        usleep(1000);
+      }
+    }
+    if (TsLRUBlockCache::GetInstance().unit_test_phase == TsLRUBlockCache::UNIT_TEST_PHASE::VAR_COLUMN_BLOCK_CRASH_PHASE_FIRST_APPEND_TWO_DONE) {
+      TsLRUBlockCache::GetInstance().unit_test_phase = TsLRUBlockCache::UNIT_TEST_PHASE::VAR_COLUMN_BLOCK_CRASH_PHASE_SECOND_ACCESS_DONE;
+    }
+  });
+
+  EngineOptions::max_rows_per_block = 1000;
+  EngineOptions::min_rows_per_block = 1000;
+  int64_t total_insert_row_num = 0;
+  int64_t entity_row_num = 0;
+  int64_t last_row_num = 0;
+  TSTableID table_id = 123;
+  std::vector<DataType> metric_types{DataType::TIMESTAMP, DataType::INT, DataType::DOUBLE, DataType::BIGINT,
+                                     DataType::VARCHAR};
+  const std::vector<AttributeInfo>* metric_schema{nullptr};
+  std::vector<TagInfo> tag_schema;
+  std::shared_ptr<TsTableSchemaManager> schema_mgr;
+  CreateTable(table_id, metric_types, &metric_schema, &tag_schema, schema_mgr);
+  for (int i = 0; i < 10; ++i) {
+    TSEntityID dev_id = 1 + i * 123;
+    auto payload = GenRowPayload(*metric_schema, tag_schema, table_id, 1, 1 + i * 123, 103 + i * 1000, 123, 1);
+    TsRawPayloadRowParser parser{metric_schema};
+    TsRawPayload p{payload, metric_schema};
+    auto ptag = p.GetPrimaryTag();
+
+    vgroup->PutData(&ctx, table_id, 0, &ptag, dev_id, &payload, false);
+    total_insert_row_num += p.GetRowCount();
+    free(payload.data);
+    ASSERT_EQ(vgroup->Flush(), KStatus::SUCCESS);
+  }
+
+  ASSERT_EQ(vgroup->Compact(), KStatus::SUCCESS);
+
+  auto current = vgroup->CurrentVersion();
+  auto partitions = current->GetPartitions(1, {{INT64_MIN, INT64_MAX}}, DATATYPE::TIMESTAMP64);
+  ASSERT_EQ(partitions.size(), 1);
+
+  auto entity_segment = partitions[0]->GetEntitySegment();
+  ASSERT_NE(entity_segment, nullptr);
+  {
+    auto AccessVarColumnBlock = [&]() {
+      // scan [INT64_MIN, INT64_MAX]
+      int entity_id = 124;
+      std::vector<STScanRange> spans{{{INT64_MIN, INT64_MAX}, {0, UINT64_MAX}}};
+      TsBlockItemFilterParams filter{0, table_id, vgroup->GetVGroupID(), (TSEntityID)(entity_id), spans};
+      std::list<shared_ptr<TsBlockSpan>> block_spans;
+      std::shared_ptr<MMapMetricsTable> schema;
+      ASSERT_EQ(schema_mgr->GetMetricSchema(1, &schema), KStatus::SUCCESS);
+      auto s = entity_segment->GetBlockSpans(filter, block_spans, schema_mgr, schema);
+      EXPECT_EQ(s, KStatus::SUCCESS);
+      EXPECT_EQ(block_spans.size(), 1);
+      int row_idx = 0;
+      while (!block_spans.empty()) {
+        auto block_span = block_spans.front();
+        block_spans.pop_front();
+        std::unique_ptr<TsBitmapBase> bitmap;
+        for (int idx = 0; idx < block_span->GetRowNum(); ++idx) {
+          kwdbts::DataFlags flag;
+          TSSlice data;
+          s = block_span->GetVarLenTypeColAddr(idx, 4, flag, data);
+          EXPECT_EQ(s, KStatus::SUCCESS);
+          string str(data.data, 10);
+          EXPECT_EQ(str, "varstring_");
+        }
+        row_idx += block_span->GetRowNum();
+      }
+      EXPECT_EQ(row_idx, EngineOptions::max_rows_per_block);
+    };
+
+    std::shared_ptr<std::thread> var_column_block_accessor;
+    var_column_block_accessor = std::make_shared<std::thread>(AccessVarColumnBlock);
+
+    while (TsLRUBlockCache::GetInstance().unit_test_phase != TsLRUBlockCache::UNIT_TEST_PHASE::VAR_COLUMN_BLOCK_CRASH_PHASE_FIRST_APPEND_ONE_DONE) {
+      usleep(1000);
+    }
+
+    // scan [INT64_MIN, INT64_MAX]
+    int entity_id = 124;
+    std::vector<STScanRange> spans{{{INT64_MIN, INT64_MAX}, {0, UINT64_MAX}}};
+    TsBlockItemFilterParams filter{0, table_id, vgroup->GetVGroupID(), (TSEntityID)(entity_id), spans};
+    std::list<shared_ptr<TsBlockSpan>> block_spans;
+    std::shared_ptr<MMapMetricsTable> schema;
+    ASSERT_EQ(schema_mgr->GetMetricSchema(1, &schema), KStatus::SUCCESS);
+    auto s = entity_segment->GetBlockSpans(filter, block_spans, schema_mgr, schema);
+    EXPECT_EQ(s, KStatus::SUCCESS);
+    EXPECT_EQ(block_spans.size(), 1);
+    auto block_span = block_spans.front();
+    block_spans.pop_front();
+    std::unique_ptr<TsBitmapBase> bitmap;
+    std::vector<char *> col_values;
+    kwdbts::DataFlags flag;
+    TSSlice data;
+    s = block_span->GetVarLenTypeColAddr(0, 4, flag, data);
+    EXPECT_EQ(s, KStatus::SUCCESS);
+    if (TsLRUBlockCache::GetInstance().unit_test_phase !=
+        TsLRUBlockCache::UNIT_TEST_PHASE::VAR_COLUMN_BLOCK_CRASH_PHASE_FIRST_APPEND_TWO_DONE) {
+      TsLRUBlockCache::GetInstance().unit_test_phase = TsLRUBlockCache::UNIT_TEST_PHASE::VAR_COLUMN_BLOCK_CRASH_PHASE_SECOND_GET_VAR_COL_ADDR_DONE;
+      while (TsLRUBlockCache::GetInstance().unit_test_phase !=
+          TsLRUBlockCache::UNIT_TEST_PHASE::VAR_COLUMN_BLOCK_CRASH_PHASE_FIRST_APPEND_TWO_DONE) {
+        usleep(1000);
+      }
+    }
+    string str(data.data, 10);
+    EXPECT_EQ(str, "varstring_");
+    TsLRUBlockCache::GetInstance().unit_test_phase = TsLRUBlockCache::UNIT_TEST_PHASE::VAR_COLUMN_BLOCK_CRASH_PHASE_SECOND_ACCESS_DONE;
+
+    var_column_block_accessor->join();
   }
 }
