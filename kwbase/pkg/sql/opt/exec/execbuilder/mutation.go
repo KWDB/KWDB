@@ -1868,7 +1868,31 @@ func BuildPreparePayloadForTsInsert(
 				switch column.Type.Oid() {
 				case oid.T_char, types.T_nchar, oid.T_text, oid.T_bpchar, types.T_geometry:
 					copy(payload[offset:], inputValues)
-				case oid.T_varchar, types.T_nvarchar:
+				case oid.T_varchar:
+					if IsPrimaryTagCol {
+						copy(payload[offset:], inputValues)
+					} else {
+						//copy len
+						dataOffset := 0
+						if IsTagCol {
+							dataOffset = independentOffset - otherTagBitmapOffset
+						} else {
+							dataOffset = independentOffset - columnBitmapOffset
+						}
+						binary.LittleEndian.PutUint32(payload[offset:], uint32(dataOffset))
+						addSize := len(inputValues) + VarDataLenSize + 1
+						if independentOffset+addSize > len(payload) {
+							// grow payload size
+							newPayload := make([]byte, len(payload)+addSize)
+							copy(newPayload, payload)
+							payload = newPayload
+						}
+						// next var column offset
+						binary.LittleEndian.PutUint16(payload[independentOffset:], uint16(len(inputValues)+1))
+						copy(payload[independentOffset+VarDataLenSize:], inputValues)
+						independentOffset += addSize
+					}
+				case types.T_nvarchar:
 					if IsPrimaryTagCol {
 						copy(payload[offset:], inputValues)
 					} else {
