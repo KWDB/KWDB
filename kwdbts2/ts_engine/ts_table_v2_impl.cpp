@@ -178,6 +178,15 @@ KStatus TsTableV2Impl::GetNormalIterator(kwdbContext_p ctx, const IteratorParams
     ts_scan_cols.emplace_back(actual_cols[col]);
   }
 
+  // Update ts_span
+  auto life_time = metric_schema->GetLifeTime();
+  if (life_time.ts != 0) {
+    int64_t acceptable_ts = INT64_MIN;
+    auto now = std::chrono::time_point_cast<std::chrono::seconds>(std::chrono::system_clock::now());
+    acceptable_ts = now.time_since_epoch().count() - life_time.ts;
+    updateTsSpan(acceptable_ts * life_time.precision, params.ts_spans);
+  }
+
   std::map<uint32_t, std::vector<EntityID>> vgroup_ids;
   for (auto& entity : params.entity_ids) {
     vgroup_ids[entity.subGroupId - 1].push_back(entity.entityId);
@@ -193,14 +202,6 @@ KStatus TsTableV2Impl::GetNormalIterator(kwdbContext_p ctx, const IteratorParams
     }
     vgroup = (*ts_vgroups)[vgroup_iter.first];
     TsStorageIterator* ts_iter;
-    // Update ts_span
-    auto life_time = table_schema_mgr_->GetLifeTime();
-    if (life_time.ts != 0) {
-      int64_t acceptable_ts = INT64_MIN;
-      auto now = std::chrono::time_point_cast<std::chrono::seconds>(std::chrono::system_clock::now());
-      acceptable_ts = now.time_since_epoch().count() - life_time.ts;
-      updateTsSpan(acceptable_ts * life_time.precision, params.ts_spans);
-    }
     std::shared_ptr<MMapMetricsTable> schema = metric_schema;
     s = vgroup->GetIterator(ctx, params.table_version, vgroup_ids[vgroup_iter.first], params.ts_spans,
                             params.block_filter, params.scan_cols, ts_scan_cols, params.agg_extend_cols,

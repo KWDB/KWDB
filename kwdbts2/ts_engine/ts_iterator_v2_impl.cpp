@@ -156,7 +156,7 @@ KStatus TsStorageIteratorV2Impl::Init(bool is_reversed) {
   is_reversed_ = is_reversed;
   attrs_ = schema_->getSchemaInfoExcludeDropped();
   table_id_ = table_schema_mgr_->GetTableId();
-  db_id_ = table_schema_mgr_->GetDbID();
+  db_id_ = schema_->metaData()->db_id;
 
   auto current = vgroup_->CurrentVersion();
   ts_partitions_ = current->GetPartitions(db_id_, ts_spans_, ts_col_type_);
