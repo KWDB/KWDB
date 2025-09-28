@@ -755,10 +755,10 @@ KStatus TsEntitySegmentBuilder::Compact(bool call_by_vacuum, TsVersionUpdate* up
 KStatus TsEntitySegmentBuilder::WriteBatch(TSTableID tbl_id, uint32_t entity_id, uint32_t table_version,
                                            TSSlice block_data) {
   std::unique_lock lock{mutex_};
-  LOG_INFO("TsEntitySegmentBuilder WriteBatch begin, root_path: %s, entity_header_file_num: %lu", root_path_.c_str(),
+  LOG_DEBUG("TsEntitySegmentBuilder WriteBatch begin, root_path: %s, entity_header_file_num: %lu", root_path_.c_str(),
            entity_item_file_number_);
   Defer defer([this]() {
-    LOG_INFO("TsEntitySegmentBuilder WriteBatch end, root_path: %s, entity_header_file_num: %lu", root_path_.c_str(),
+    LOG_DEBUG("TsEntitySegmentBuilder WriteBatch end, root_path: %s, entity_header_file_num: %lu", root_path_.c_str(),
              entity_item_file_number_);
   });
   if (write_batch_finished_) {
@@ -842,10 +842,10 @@ KStatus TsEntitySegmentBuilder::WriteBatch(TSTableID tbl_id, uint32_t entity_id,
 KStatus TsEntitySegmentBuilder::WriteBatchFinish(TsVersionUpdate *update) {
   write_batch_finished_ = true;
   std::unique_lock lock{mutex_};
-  LOG_INFO("TsEntitySegmentBuilder WriteBatchFinish begin, root_path: %s, entity_header_file_num: %lu", root_path_.c_str(),
+  LOG_DEBUG("TsEntitySegmentBuilder WriteBatchFinish begin, root_path: %s, entity_header_file_num: %lu", root_path_.c_str(),
            entity_item_file_number_);
   Defer defer([&]() {
-    LOG_INFO("TsEntitySegmentBuilder WriteBatchFinish end, root_path: %s, update info: %s",
+    LOG_DEBUG("TsEntitySegmentBuilder WriteBatchFinish end, root_path: %s, update info: %s",
              root_path_.c_str(), update->DebugStr().c_str());
     ReleaseBuilders();
   });

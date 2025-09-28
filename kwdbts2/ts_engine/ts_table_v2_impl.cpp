@@ -444,19 +444,16 @@ KwTsSpan ts_span, uint64_t* count) {
 
 KStatus TsTableV2Impl::DeleteTotalRange(kwdbContext_p ctx, uint64_t begin_hash, uint64_t end_hash,
 KwTsSpan ts_span, uint64_t mtr_id, uint64_t osn) {
-#ifdef K_DEBUG
   uint64_t row_num_bef = 0;
   uint64_t row_num_aft = 0;
+#ifdef K_DEBUG
   GetRangeRowCount(ctx, begin_hash, end_hash, ts_span, &row_num_bef);
-  if (row_num_bef > 0) {
-    LOG_INFO("DeleteTotalRange hash[%lu ~ %lu], ts[%ld ~ %ld], rows[%lu].",
-      begin_hash, end_hash, ts_span.begin, ts_span.end, row_num_bef);
-  }
   if (ts_span.begin != INT64_MIN || ts_span.end != INT64_MAX) {
     LOG_ERROR("DeleteTotalRange not support range split by timestamp.");
     return KStatus::FAIL;
   }
 #endif
+  assert(ts_span.begin == INT64_MIN && ts_span.end == INT64_MAX);
   HashIdSpan hash_span{begin_hash, end_hash};
   vector<EntityResultIndex> entity_store;
   uint64_t del_tags;
@@ -467,10 +464,9 @@ KwTsSpan ts_span, uint64_t mtr_id, uint64_t osn) {
   }
   #ifdef K_DEBUG
     GetRangeRowCount(ctx, begin_hash, end_hash, ts_span, &row_num_aft);
-      LOG_INFO("DeleteTotalRange hash[%lu ~ %lu], ts[%ld ~ %ld], before rows[%lu], del rows[%lu].",
-        begin_hash, end_hash, ts_span.begin, ts_span.end, row_num_bef, del_tags);
   #endif
-
+  LOG_INFO("DeleteTotalRange table[%lu] hash[%lu ~ %lu], entity_rows[%lu], metric_rows[%lu-->%lu].",
+    table_id_, begin_hash, end_hash, entity_store.size(), row_num_bef, row_num_aft);
   return KStatus::SUCCESS;
 }
 

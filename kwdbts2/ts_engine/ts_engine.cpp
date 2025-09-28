@@ -2097,7 +2097,7 @@ KStatus TSEngineV2Impl::GetSnapshotNextBatchData(kwdbContext_p ctx, uint64_t sna
       return s;
     }
   }
-  LOG_INFO("GetSnapshotNextBatchData succeeded, snapshot[%lu] row_num[%u]", snapshot_id, row_num);
+  LOG_DEBUG("GetSnapshotNextBatchData succeeded, snapshot[%lu] row_num[%u]", snapshot_id, row_num);
   return KStatus::SUCCESS;
 }
 
@@ -2150,7 +2150,7 @@ KStatus TSEngineV2Impl::WriteSnapshotBatchData(kwdbContext_p ctx, uint64_t snaps
     snapshots_[snapshot_id].package_id = package_id;
     snapshots_[snapshot_id].imgrated_rows += row_num;
   }
-  LOG_INFO("WriteSnapshotBatchData succeeded, snapshot[%lu] row_num[%u]", snapshot_id, row_num);
+  LOG_DEBUG("WriteSnapshotBatchData succeeded, snapshot[%lu] row_num[%u]", snapshot_id, row_num);
   return KStatus::SUCCESS;
 }
 KStatus TSEngineV2Impl::WriteSnapshotSuccess(kwdbContext_p ctx, uint64_t snapshot_id) {
@@ -2171,17 +2171,13 @@ KStatus TSEngineV2Impl::WriteSnapshotSuccess(kwdbContext_p ctx, uint64_t snapsho
   if (s != KStatus::SUCCESS) {
       LOG_ERROR("BatchJobFinish failed.");
   }
-  {
-    snapshot_mutex_.lock();
-    snapshots_.erase(snapshot_id);
-    snapshot_mutex_.unlock();
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("DeleteSnapshot failed.");
+    return s;
   }
-  uint64_t count;
-  ts_snapshot_info.table->GetRangeRowCount(ctx, ts_snapshot_info.begin_hash,
-        ts_snapshot_info.end_hash, ts_snapshot_info.ts_span, &count);
-  LOG_INFO("WriteSnapshotSuccess range hash[%lu ~ %lu], ts[%ld ~ %ld] insert rows[%lu], metric rows[%lu].",
-      ts_snapshot_info.begin_hash, ts_snapshot_info.end_hash,
-      ts_snapshot_info.ts_span.begin, ts_snapshot_info.ts_span.end, ts_snapshot_info.imgrated_rows, count);
+LOG_INFO("WriteSnapshotSuccess [%d] table[%lu] range hash[%lu ~ %lu], ts[%ld ~ %ld] row count[%lu].",
+      ts_snapshot_info.type, ts_snapshot_info.table_id, ts_snapshot_info.begin_hash, ts_snapshot_info.end_hash,
+      ts_snapshot_info.ts_span.begin, ts_snapshot_info.ts_span.end, ts_snapshot_info.imgrated_rows);
   return s;
 }
 KStatus TSEngineV2Impl::WriteSnapshotRollback(kwdbContext_p ctx, uint64_t snapshot_id, uint64_t osn) {
@@ -2202,37 +2198,42 @@ KStatus TSEngineV2Impl::WriteSnapshotRollback(kwdbContext_p ctx, uint64_t snapsh
   if (s != KStatus::SUCCESS) {
       LOG_ERROR("CancelBatchJob failed.");
   }
-  {
-    snapshot_mutex_.lock();
-    snapshots_.erase(snapshot_id);
-    snapshot_mutex_.unlock();
+  s = DeleteSnapshot(ctx, snapshot_id);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("DeleteSnapshot failed.");
+    return s;
   }
-  LOG_INFO("WriteSnapshotRollback range hash[%lu ~ %lu], ts[%ld ~ %ld] row count[%lu].",
-      ts_snapshot_info.begin_hash, ts_snapshot_info.end_hash,
+  LOG_INFO("WriteSnapshotRollback [%d] table[%lu] range hash[%lu ~ %lu], ts[%ld ~ %ld] row count[%lu].",
+      ts_snapshot_info.type, ts_snapshot_info.table_id, ts_snapshot_info.begin_hash, ts_snapshot_info.end_hash,
       ts_snapshot_info.ts_span.begin, ts_snapshot_info.ts_span.end, ts_snapshot_info.imgrated_rows);
   LOG_INFO("WriteSnapshotRollback succeeded, snapshot[%lu]", snapshot_id);
   return s;
 }
 KStatus TSEngineV2Impl::DeleteSnapshot(kwdbContext_p ctx, uint64_t snapshot_id) {
-  snapshot_mutex_.lock();
-  Defer defer{[&](){
-    snapshot_mutex_.unlock();
-  }};
-  if (snapshots_.find(snapshot_id) != snapshots_.end()) {
-    if (snapshots_[snapshot_id].type == 1) {
-      LOG_WARN("snapshot[%lu] is not commit ar rollback.", snapshot_id);
-      LOG_INFO("WriteSnapshotRollback range hash[%lu ~ %lu], ts[%ld ~ %ld] row count[%lu].",
-      snapshots_[snapshot_id].begin_hash, snapshots_[snapshot_id].end_hash,
-      snapshots_[snapshot_id].ts_span.begin, snapshots_[snapshot_id].ts_span.end,
-      snapshots_[snapshot_id].imgrated_rows);
-    }
-    snapshots_.erase(snapshot_id);
-  }
   auto s = BatchJobFinish(ctx, snapshot_id);
-  if (s == KStatus::SUCCESS) {
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("BatchJobFinish failed.");
     return s;
   }
-  LOG_INFO("DeleteSnapshot succeeded, snapshot[%lu]", snapshot_id);
+  TsRangeImgrationInfo ts_snapshot_info{0, 0, 0, 0, {0, 0}, 0, 0, 0, 0, nullptr};
+  {
+    snapshot_mutex_.lock();
+    Defer defer{[&](){
+      snapshot_mutex_.unlock();
+    }};
+    if (snapshots_.find(snapshot_id) != snapshots_.end()) {
+      ts_snapshot_info = snapshots_[snapshot_id];
+      snapshots_.erase(snapshot_id);
+    }
+  }
+  if (ts_snapshot_info.table_id != 0) {
+    uint64_t count = 0;
+    ts_snapshot_info.table->GetRangeRowCount(ctx, ts_snapshot_info.begin_hash, ts_snapshot_info.end_hash,
+      {INT64_MIN, INT64_MAX}, &count);
+    LOG_INFO("DeleteSnapshot [%d] table[%lu] range hash[%lu ~ %lu] row count[%lu].",
+        ts_snapshot_info.type, ts_snapshot_info.table_id, ts_snapshot_info.begin_hash,
+        ts_snapshot_info.end_hash, count);
+  }
   return KStatus::SUCCESS;
 }
 
