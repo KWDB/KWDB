@@ -1278,6 +1278,7 @@ KStatus TsVGroup::FinishWriteBatchData() {
   bool success = true;
   for (auto& kv : write_batch_segment_builders_) {
     partition_ids.insert({kv.first, kv.second->FlushInfos()});
+    update.PartitionDirCreated(kv.first);
     KStatus s = kv.second->WriteBatchFinish(&update);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("Finish entity segment builder failed");

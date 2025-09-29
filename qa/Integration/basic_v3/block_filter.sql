@@ -657,4 +657,6 @@ SELECT id, k_timestamp, e1 FROM test_db.t1 WHERE e1 > 15 ORDER BY k_timestamp;
 
 use defaultdb;
 SET CLUSTER SETTING ts.rows_per_block.max_limit=1000;
+set cluster setting ts.reserved_last_segment.max_limit=3;
+set cluster setting ts.mem_segment_size.max_limit=67108864;
 drop database test_db cascade;

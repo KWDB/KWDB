@@ -339,6 +339,11 @@ TEST_F(TestEngineSnapshotImgrate, CreateSnapshotAndInsertPartitions) {
   s = ts_engine_desc_->DeleteSnapshot(ctx_, desc_snapshot_id);
   ASSERT_EQ(s, KStatus::SUCCESS);
 
+  // recover 
+  delete ts_engine_desc_;
+  ts_engine_desc_ = new TSEngineV2Impl(opts_);
+  ts_engine_desc_->Init(ctx_);
+
   entity_ids.clear();
   for(auto vg : *(ts_engine_desc_->GetTsVGroups())) {
     if (vg->GetMaxEntityID() > 0) {

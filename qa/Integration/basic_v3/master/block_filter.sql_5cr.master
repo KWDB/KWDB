@@ -2645,5 +2645,9 @@ INSERT 1
 SET
 > SET CLUSTER SETTING ts.rows_per_block.max_limit=1000;
 SET CLUSTER SETTING
+> set cluster setting ts.reserved_last_segment.max_limit=3;
+SET CLUSTER SETTING
+> set cluster setting ts.mem_segment_size.max_limit=67108864;
+SET CLUSTER SETTING
 > drop database test_db cascade;
 DROP DATABASE

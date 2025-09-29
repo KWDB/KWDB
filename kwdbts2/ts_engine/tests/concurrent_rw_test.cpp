@@ -1,6 +1,7 @@
 #ifdef NDEBUG
 #include <gtest/gtest.h>
 #include <unistd.h>
+#include <valgrind/valgrind.h>
 
 #include <atomic>
 #include <cstdint>
@@ -88,6 +89,7 @@ struct QueryResult {
 };
 
 TEST_F(ConcurrentRWTest, FlushOnly) {
+  if(RUNNING_ON_VALGRIND) return;
   int npayload = 100;
   int nrow = 20;
   int total_row = npayload * nrow;
@@ -185,6 +187,7 @@ TEST_F(ConcurrentRWTest, FlushOnly) {
 }
 
 TEST_F(ConcurrentRWTest, CompactOnly) {
+  if(RUNNING_ON_VALGRIND) return;
   int nrow_per_last_segment = 400;
   int nlast_segment = 5;
   int total_row = nrow_per_last_segment * nlast_segment;
@@ -286,6 +289,7 @@ TEST_F(ConcurrentRWTest, CompactOnly) {
 }
 
 TEST_F(ConcurrentRWTest, SwitchMem) {
+  if(RUNNING_ON_VALGRIND) return;
   EngineOptions::mem_segment_max_size = 0;
   EngineOptions::max_last_segment_num = 1 << 30;
   auto engine = std::make_unique<TSEngineV2Impl>(opts_);
@@ -384,6 +388,7 @@ TEST_F(ConcurrentRWTest, SwitchMem) {
 }
 
 TEST_F(ConcurrentRWTest, RandomFlush) {
+  if(RUNNING_ON_VALGRIND) return;
   EngineOptions::mem_segment_max_size = 0;
   EngineOptions::max_last_segment_num = 1 << 30;
   auto engine = std::make_unique<TSEngineV2Impl>(opts_);
