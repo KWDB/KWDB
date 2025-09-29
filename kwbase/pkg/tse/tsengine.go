@@ -56,7 +56,6 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/util/envutil"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 	"gitee.com/kwbasedb/kwbase/pkg/util/stop"
-	"gitee.com/kwbasedb/kwbase/pkg/util/syncutil"
 	"gitee.com/kwbasedb/kwbase/pkg/util/timeutil"
 	"github.com/cockroachdb/apd"
 	"github.com/lib/pq/oid"
@@ -946,7 +945,6 @@ type TsFetcher struct {
 	Collected bool
 	CFetchers []C.TsFetcher
 	Size      int
-	Mu        *syncutil.Mutex
 }
 
 // TsFetcherStats collect information in explain analyse
@@ -1007,7 +1005,6 @@ func (r *TsEngine) tsExecute(
 		vecFetcher.collected = C.bool(true)
 		vecFetcher.size = C.int8_t(tsQueryInfo.Fetcher.Size)
 		// vecFetcher.TsFetchers = &tsQueryInfo.Fetcher.CFetchers[0]
-		vecFetcher.goMutux = C.uint64_t(uintptr(unsafe.Pointer(&tsQueryInfo.Fetcher)))
 	} else {
 		tsFetchers := make([]C.TsFetcher, 1)
 		tsFetchers[0].processor_id = C.int32_t(-1)
@@ -1030,22 +1027,19 @@ func (r *TsEngine) tsExecute(
 		tsRespInfo.Buf = C.GoBytes(unsafe.Pointer(retInfo.value), C.int(retInfo.len))
 		C.TSFree(unsafe.Pointer(retInfo.value))
 	}
-	if tsRespInfo.Code > 1 {
-		if unsafe.Pointer(retInfo.value) != nil {
+	if retInfo.ret < 1 {
+		if retInfo.len > 0 {
 			strCode := make([]byte, 5)
-			code := tsRespInfo.Code
+			code := uint32(tsRespInfo.Code)
 			for i := 0; i < 5; i++ {
-				strCode[i] = byte(((code) & 0x3F) + '0')
+				strCode[i] = byte((code & 0x3F) + '0')
 				code = code >> 6
 			}
 			err = pgerror.Newf(string(strCode), string(tsRespInfo.Buf))
 		} else {
-			err = fmt.Errorf("Error Code: %s", strconv.Itoa(tsRespInfo.Code))
+			err = fmt.Errorf("Error Code: %d", tsRespInfo.Code)
 		}
-	} else if retInfo.ret < 1 {
-		err = fmt.Errorf("Unknown error")
 	}
-
 	return tsRespInfo, err
 }
 
@@ -1086,7 +1080,6 @@ func (r *TsEngine) tsVectorizedExecute(
 		vecFetcher.collected = C.bool(true)
 		vecFetcher.size = C.int8_t(tsQueryInfo.Fetcher.Size)
 		// vecFetcher.TsFetchers = &tsQueryInfo.Fetcher.CFetchers[0]
-		vecFetcher.goMutux = C.uint64_t(uintptr(unsafe.Pointer(&tsQueryInfo.Fetcher)))
 	} else {
 		tsFetchers := make([]C.TsFetcher, 1)
 		tsFetchers[0].processor_id = C.int32_t(-1)
@@ -1384,21 +1377,20 @@ func (r *TsEngine) tsVectorizedExecute(
 		C.TSFree(unsafe.Pointer(retInfo.vectorize_data.column_))
 		C.TSFree(unsafe.Pointer(retInfo.vectorize_data.column_data_))
 	}
-	if tsRespInfo.Code > 1 {
-		if unsafe.Pointer(retInfo.value) != nil {
+	if retInfo.ret < 1 {
+		if retInfo.len > 0 {
 			strCode := make([]byte, 5)
-			code := tsRespInfo.Code
+			code := uint32(tsRespInfo.Code)
 			for i := 0; i < 5; i++ {
-				strCode[i] = byte(((code) & 0x3F) + '0')
+				strCode[i] = byte((code & 0x3F) + '0')
 				code = code >> 6
 			}
 			tsRespInfo.Buf = C.GoBytes(unsafe.Pointer(retInfo.value), C.int(retInfo.len))
+			C.TSFree(unsafe.Pointer(retInfo.value))
 			err = pgerror.Newf(string(strCode), string(tsRespInfo.Buf))
 		} else {
-			err = fmt.Errorf("Error Code: %s", strconv.Itoa(tsRespInfo.Code))
+			err = fmt.Errorf("Error Code: %d", tsRespInfo.Code)
 		}
-	} else if retInfo.ret < 1 {
-		err = fmt.Errorf("Unknown error")
 	}
 
 	return tsRespInfo, err
@@ -2047,22 +2039,6 @@ func AddStatsList(tsFetcher TsFetcher, statss []TsFetcherStats) []TsFetcherStats
 		}
 	}
 	return statss
-}
-
-//export goLock
-func goLock(goMutux C.uint64_t) {
-	fet := *(*TsFetcher)(unsafe.Pointer(uintptr(goMutux)))
-	if fet.Mu != nil {
-		fet.Mu.Lock()
-	}
-}
-
-//export goUnLock
-func goUnLock(goMutux C.uint64_t) {
-	fet := *(*TsFetcher)(unsafe.Pointer(uintptr(goMutux)))
-	if fet.Mu != nil {
-		fet.Mu.Unlock()
-	}
 }
 
 // GetTsVersion get current version of ts table

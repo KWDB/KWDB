@@ -47,7 +47,6 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/tse"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 	"gitee.com/kwbasedb/kwbase/pkg/util/protoutil"
-	"gitee.com/kwbasedb/kwbase/pkg/util/syncutil"
 	"gitee.com/kwbasedb/kwbase/pkg/util/timeutil"
 	"gitee.com/kwbasedb/kwbase/pkg/util/tracing"
 	"gitee.com/kwbasedb/kwbase/pkg/util/uuid"
@@ -84,7 +83,6 @@ type TsTableReader struct {
 
 	collected bool
 	statsList []tse.TsFetcherStats
-	fetMu     syncutil.Mutex
 
 	tsInfo execinfrapb.TsInfo
 }
@@ -539,7 +537,6 @@ func (ttr *TsTableReader) initStatsCollector(queryInfo *tse.TsQueryInfo) {
 	tsFetchers := tse.NewTsFetcher(ttr.tsProcessorSpecs)
 	queryInfo.Fetcher.CFetchers = tsFetchers
 	queryInfo.Fetcher.Size = len(tsFetchers)
-	queryInfo.Fetcher.Mu = &ttr.fetMu
 
 	if len(ttr.statsList) <= 0 {
 		ttr.initStatsList()

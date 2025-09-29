@@ -29,7 +29,6 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/tse"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 	"gitee.com/kwbasedb/kwbase/pkg/util/protoutil"
-	"gitee.com/kwbasedb/kwbase/pkg/util/syncutil"
 	"gitee.com/kwbasedb/kwbase/pkg/util/timeutil"
 	"gitee.com/kwbasedb/kwbase/pkg/util/tracing"
 	"gitee.com/kwbasedb/kwbase/pkg/util/uuid"
@@ -49,7 +48,6 @@ type TsReaderOp struct {
 	timeZone         int
 	collected        bool
 	statsList        []tse.TsFetcherStats
-	fetMu            syncutil.Mutex
 	done             bool
 	FlowCtx          *execinfra.FlowCtx
 	// EvalCtx is used for expression evaluation. It overrides the one in flowCtx.
@@ -226,7 +224,6 @@ func (tro *TsReaderOp) Next(ctx context.Context) coldata.Batch {
 				tsFetchers := tse.NewTsFetcher(tro.tsProcessorSpecs)
 				tsQueryInfo.Fetcher.CFetchers = tsFetchers
 				tsQueryInfo.Fetcher.Size = len(tsFetchers)
-				tsQueryInfo.Fetcher.Mu = &tro.fetMu
 				if tro.statsList == nil || len(tro.statsList) <= 0 {
 					for j := len(tro.tsProcessorSpecs) - 1; j >= 0; j-- {
 						rowNumFetcherStats := tse.TsFetcherStats{ProcessorID: tro.tsProcessorSpecs[j].ProcessorID, ProcessorName: tse.TsGetNameValue(&tro.tsProcessorSpecs[j].Core)}
@@ -316,7 +313,6 @@ func (tro *TsReaderOp) NextPgWire() (val []byte, code int, err error) {
 		tsFetchers := tse.NewTsFetcher(tro.tsProcessorSpecs)
 		tsQueryInfo.Fetcher.CFetchers = tsFetchers
 		tsQueryInfo.Fetcher.Size = len(tsFetchers)
-		tsQueryInfo.Fetcher.Mu = &tro.fetMu
 		if tro.statsList == nil || len(tro.statsList) <= 0 {
 			for j := len(tro.tsProcessorSpecs) - 1; j >= 0; j-- {
 				rowNumFetcherStats := tse.TsFetcherStats{ProcessorID: tro.tsProcessorSpecs[j].ProcessorID, ProcessorName: tse.TsGetNameValue(&tro.tsProcessorSpecs[j].Core)}

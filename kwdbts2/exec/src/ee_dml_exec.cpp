@@ -256,11 +256,12 @@ void DmlExec::DisposeError(kwdbContext_p ctx, QueryInfo *return_info) {
   rel_batch_queue_->NotifyError();
   if (EEPgErrorInfo::IsError()) {
     return_info->code = EEPgErrorInfo::GetPgErrorInfo().code;
-    return_info->len = strlen(EEPgErrorInfo::GetPgErrorInfo().msg) + 1;
-    if (return_info->len > 0) {
-      return_info->value = malloc(return_info->len);
+    k_uint32 len = strlen(EEPgErrorInfo::GetPgErrorInfo().msg);
+    if (len > 0) {
+      return_info->value = malloc(len);
       if (return_info->value != nullptr) {
-        memcpy(return_info->value, EEPgErrorInfo::GetPgErrorInfo().msg, return_info->len);
+        memcpy(return_info->value, EEPgErrorInfo::GetPgErrorInfo().msg, len);
+        return_info->len = len;
       }
     }
     EEPgErrorInfo::ResetPgErrorInfo();

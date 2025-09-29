@@ -38,7 +38,12 @@ EE_PoolInfoDataPtr EE_MemPoolInit(k_uint32 numOfBlock, k_uint32 blockSize) {
 
   pstPoolMsg->data_ = nullptr;
   k_uint64 iSumSize = (k_uint64)blockSize * (k_uint64)numOfBlock;
+#ifdef MAP_HUGETLB
+  pstPoolMsg->data_ = reinterpret_cast<char *>(mmap(NULL, iSumSize, PROT_READ | PROT_WRITE,
+                                             MAP_ANONYMOUS | MAP_PRIVATE | MAP_HUGETLB | MAP_POPULATE, -1, 0));
+#else
   pstPoolMsg->data_ = KNEW char[iSumSize];
+#endif
   if (pstPoolMsg->data_ == nullptr) {
     LOG_ERROR("failed to malloc memory, malloc sum size: %ld\n", iSumSize);
     SafeDeleteArray(pstPoolMsg->iFreeList);
@@ -70,9 +75,6 @@ k_char *EE_MemPoolMalloc(kwdbts::EE_PoolInfoDataPtr pstPoolMsg, k_size_t iMalloc
   }
   if (iMallocLen > ROW_BUFFER_SIZE) {
     data = KNEW char[iMallocLen];
-    if (data != nullptr) {
-      std::memset(data, 0, iMallocLen);
-    }
     // LOG_INFO("malloc non-anticipatory address: %p, iMallocLen: %ld\n", data, iMallocLen);
     return data;
   }
@@ -133,7 +135,13 @@ kwdbts::KStatus EE_MemPoolCleanUp(kwdbts::EE_PoolInfoDataPtr pstPoolMsg) {
     if (pstPoolMsg->is_pool_init_ == false) {
       return kwdbts::FAIL;
     }
+#ifdef MAP_HUGETLB
+    if (pstTemPtr->data_ != nullptr) {
+      munmap(pstTemPtr->data_, pstTemPtr->iSumOffset);
+    }
+#else
     SafeDeleteArray(pstTemPtr->data_);
+#endif
     SafeDeleteArray(pstTemPtr->iFreeList);
   }
   delete pstTemPtr;

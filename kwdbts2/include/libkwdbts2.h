@@ -155,11 +155,7 @@ typedef struct {
   bool collected;
   int8_t size;
   TsFetcher *TsFetchers;
-  uint64_t goMutux;
 } VecTsFetcher;
-
-void __attribute__((weak)) goLock(uint64_t goMutux);
-void __attribute__((weak)) goUnLock(uint64_t goMutux);
 
 typedef struct _TsColumnInfo {
   uint32_t fixed_len_;

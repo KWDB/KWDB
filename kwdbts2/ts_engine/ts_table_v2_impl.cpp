@@ -298,8 +298,10 @@ KStatus TsTableV2Impl::CheckAndAddSchemaVersion(kwdbContext_p ctx, const KTableK
   char* error;
   size_t data_len = 0;
   char* data = getTableMetaByVersion(table_id, version, &data_len, &error);
+  Defer defer{[&]() { free(data); }};
   if (error != nullptr) {
     LOG_ERROR("getTableMetaByVersion failed. msg: %s", error);
+    free(error);
     return KStatus::FAIL;
   }
   roachpb::CreateTsTable meta;
