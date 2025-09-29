@@ -163,7 +163,6 @@ class TagRowBatch : public RowBatch {
     }
     return x.subGroupId < y.subGroupId;
   }
-  KStatus SortByEntityIndex();
 };
 
 };  // namespace kwdbts

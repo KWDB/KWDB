@@ -519,10 +519,6 @@ EEIteratorErrCode StorageHandler::TagNext(kwdbContext_p ctx, Field *tag_filter) 
       break;
     }
   }
-  if (tag_rowbatch_->Count() > 1) {
-    // sort by entityIndex
-    tag_rowbatch_->SortByEntityIndex();
-  }
   tag_rowbatch_->SetPipeEntityNum(ctx, current_thd->GetDegree());
   thd->SetRowBatch(ptr);
   Return(code);
@@ -598,7 +594,9 @@ EEIteratorErrCode StorageHandler::NewTsIterator(kwdbContext_p ctx) {
       }
     }
 
-    std::sort(entities_.begin(), entities_.end(), EntityLessThan);
+    if (entities_.size() > 1) {
+      std::sort(entities_.begin(), entities_.end(), EntityLessThan);
+    }
 
     IteratorParams params = {
       .entity_ids = entities_,
@@ -709,10 +707,6 @@ EEIteratorErrCode StorageHandler::GetEntityIdList(kwdbContext_p ctx,
       break;
     }
 
-    if (tag_rowbatch_->Count() > 1) {
-      // sort by entityIndex
-      tag_rowbatch_->SortByEntityIndex();
-    }
     tag_rowbatch_->SetPipeEntityNum(ctx, current_thd->GetDegree());
     code = EEIteratorErrCode::EE_OK;
   } while (0);

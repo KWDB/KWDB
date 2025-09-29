@@ -418,34 +418,4 @@ void TagRowBatch::SetPipeEntityNum(kwdbContext_p ctx, k_uint32 pipe_degree) {
   }
 }
 
-KStatus TagRowBatch::SortByEntityIndex() {
-  ResetLine();
-  if (!isFilter_) {
-    selection_.reserve(count_);
-    for (k_uint32 i = 0; i < count_; ++i) {
-      AddSelection();
-      NextLine();
-    }
-    ResetLine();
-  }
-
-  // Use a lambda expression and directly access the entity_indexs_
-  // to avoid indirect access through function calls
-  const auto &entities = entity_indexs_;
-
-  std::sort(selection_.begin(), selection_.end(), [&entities](const TagSelection &a, const TagSelection &b) -> bool {
-    const auto &x = entities[a.entity_];
-    const auto &y = entities[b.entity_];
-    if (x.entityGroupId != y.entityGroupId) {
-      return x.entityGroupId < y.entityGroupId;
-    }
-    if (x.subGroupId != y.subGroupId) {
-      return x.subGroupId < y.subGroupId;
-    }
-    return x.entityId < y.entityId;
-  });
-
-  return SUCCESS;
-}
-
 }  // namespace kwdbts
