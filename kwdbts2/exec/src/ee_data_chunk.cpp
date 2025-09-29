@@ -2029,8 +2029,7 @@ KStatus DataChunk::InsertEntities(TagRowBatch* tag_row_batch) {
   if (EngineOptions::isSingleNode()) {
     return tag_row_batch->GetEntities(&entity_indexs_);
   } else {
-    entity_indexs_ = tag_row_batch->entity_indexs_;
-    return SUCCESS;
+    return tag_row_batch->GetALLEntities(&entity_indexs_);
   }
 }
 

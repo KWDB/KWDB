@@ -2736,6 +2736,30 @@ FROM
 ---------
      47
 (1 row)
+> SELECT
+    t1.id, t1.code16, t11.id, t11.code16
+FROM
+    test_select_join.t1 t1
+    JOIN test_select_join_rel.t1 t11
+    ON t1.code16 = t11.code16
+WHERE
+    t11.code16 = 'test数据库语法查询测试！！！@TEST11-16';
+  id |                 code16                 | id |                 code16
+-----+----------------------------------------+----+-----------------------------------------
+  11 | test数据库语法查询测试！！！@TEST11-16 | 11 | test数据库语法查询测试！！！@TEST11-16
+(1 row)
+> SELECT
+    COUNT(*)
+FROM
+    test_select_join.t1 t1
+    JOIN test_select_join_rel.t1 t11
+    ON t1.code16 = t11.code16
+WHERE
+    t11.code16 = 'test数据库语法查询测试！！！@TEST11-16';
+  count
+---------
+      1
+(1 row)
 > delete from system.table_statistics where name = '_stats_';
 DELETE 35
 > set enable_multimodel=false;

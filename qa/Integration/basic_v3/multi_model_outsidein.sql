@@ -1337,6 +1337,26 @@ FROM
     JOIN test_select_join_rel.t1 t11
     ON t1.code9 = t11.code9;
 
+
+-- test query with filter on tag
+SELECT
+    t1.id, t1.code16, t11.id, t11.code16
+FROM
+    test_select_join.t1 t1
+    JOIN test_select_join_rel.t1 t11
+    ON t1.code16 = t11.code16
+WHERE
+    t11.code16 = 'test数据库语法查询测试！！！@TEST11-16';
+
+SELECT
+    COUNT(*)
+FROM
+    test_select_join.t1 t1
+    JOIN test_select_join_rel.t1 t11
+    ON t1.code16 = t11.code16
+WHERE
+    t11.code16 = 'test数据库语法查询测试！！！@TEST11-16';
+
 delete from system.table_statistics where name = '_stats_';
 set enable_multimodel=false;
 drop database mtagdb cascade;

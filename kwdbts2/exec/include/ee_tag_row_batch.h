@@ -150,6 +150,7 @@ class TagRowBatch : public RowBatch {
   void SetLimitOffset(k_uint32 limit, k_uint32 offset) {}
   void SetPipeEntityNum(kwdbContext_p ctx, k_uint32 pipe_degree);
   KStatus GetEntities(std::vector<EntityResultIndex> *entities);
+  KStatus GetALLEntities(std::vector<EntityResultIndex> *entities);
   bool isAllDistributed();
 
   inline bool EntityLessThan(TagSelection &a, TagSelection &b) {

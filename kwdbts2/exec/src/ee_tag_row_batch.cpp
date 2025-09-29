@@ -372,6 +372,28 @@ KStatus TagRowBatch::GetEntities(std::vector<EntityResultIndex> *entities) {
   }
 }
 
+KStatus TagRowBatch::GetALLEntities(std::vector<EntityResultIndex> *entities) {
+  // Get all entities in the batch when muilt nodes mode
+  if (EngineOptions::isSingleNode()) {
+    LOG_ERROR("TagRowBatch::GetALLEntities only used in muilt nodes mode! Use TagRowBatch::GetEntities when single node!");
+    return FAIL;
+  } else if (isFilter_) {
+    entities->reserve(selection_.size());
+    for (const auto &selection : selection_) {
+      entity_indexs_[selection.entity_].index = selection.entity_;
+      entities->push_back(entity_indexs_[selection.entity_]);
+    }
+    return SUCCESS;
+  } else {
+    entities->reserve(entity_indexs_.size());
+    for (size_t i = 0; i < entity_indexs_.size(); ++i) {
+      entity_indexs_[i].index = i;
+      entities->push_back(entity_indexs_[i]);
+    }
+    return SUCCESS;
+  }
+}
+
 bool TagRowBatch::isAllDistributed() {
   if (EngineOptions::isSingleNode()) {
     return current_pipe_no_ >= valid_pipe_no_;

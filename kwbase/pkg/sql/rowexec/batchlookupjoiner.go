@@ -397,16 +397,11 @@ func InsertData(
 			binary.LittleEndian.PutUint64(dc.Data[colOffset:], uint64(int64(math.Float64bits(float64(*d)))))
 		}
 	case *tree.DString:
-		switch dc.ColInfo[col].StorageType {
-		case oid.T_char, types.T_nchar, oid.T_bpchar, types.T_geometry: // text in here
-			copy(dc.Data[colOffset+stringWide:], *d)
-		case oid.T_varchar, types.T_nvarchar, oid.T_text:
-			str := *d
-			value := []byte(str) // 转换为 []byte
-			length := uint32(len(value))
-			binary.LittleEndian.PutUint32(dc.Data[colOffset:], length) // encode to cpp readable format, add len
-			copy(dc.Data[colOffset+stringWide:], *d)                   // add value
-		}
+		str := *d
+		value := []byte(str) // 转换为 []byte
+		length := uint32(len(value))
+		binary.LittleEndian.PutUint32(dc.Data[colOffset:], length) // encode to cpp readable format, add len
+		copy(dc.Data[colOffset+stringWide:], *d)                   // add value
 	case *tree.DBytes:
 		switch dc.ColInfo[col].StorageType {
 		case oid.T_bytea:
