@@ -846,12 +846,13 @@ KStatus TsTableV2Impl::GetLastRowBatch(kwdbContext_p ctx, uint32_t table_version
     return KStatus::SUCCESS;
   }
 
-  vector<uint32_t> actual_cols;
-  auto s = table_schema_mgr_->GetIdxForValidCols(actual_cols, table_version);
+  std::shared_ptr<MMapMetricsTable> schema;
+  auto s = table_schema_mgr_->GetMetricSchema(table_version, &schema);
   if (s != KStatus::SUCCESS) {
-    LOG_ERROR("GetIdxForValidCols Error");
+    LOG_ERROR("GetMetricSchema failed");
     return KStatus::FAIL;
   }
+  vector<uint32_t> actual_cols = schema->getIdxForValidCols();
   std::vector<k_uint32> ts_scan_cols;
   for (auto col : scan_cols) {
     if (col >= actual_cols.size()) {
@@ -871,7 +872,7 @@ KStatus TsTableV2Impl::GetLastRowBatch(kwdbContext_p ctx, uint32_t table_version
   }
   timestamp64 cur_last_ts = INT64_MIN;
   KStatus ret = vgroup->GetEntityLastRowBatch(entity_id.entityId, table_version, table_schema_mgr_,
-                                   {{INT64_MIN, INT64_MAX}}, scan_cols, cur_last_ts, res);
+                                              schema, {{INT64_MIN, INT64_MAX}}, scan_cols, cur_last_ts, res);
   if (ret != KStatus::SUCCESS) {
     res->clear();
     LOG_ERROR("Vgroup %d GetLastRowBatch failed.", vgroup->GetVGroupID());

@@ -910,7 +910,7 @@ KStatus TsAggIteratorV2Impl::Next(ResultSet* res, k_uint32* count, bool* is_fini
   if (only_last_ || only_last_row_) {
     last_payload_valid = CLUSTER_SETTING_USE_LAST_ROW_OPTIMIZATION && vgroup_->isEntityLatestRowPayloadValid(entity_id);
     if (last_payload_valid) {
-      ret = vgroup_->GetEntityLastRowBatch(entity_id, table_version_, table_schema_mgr_,
+      ret = vgroup_->GetEntityLastRowBatch(entity_id, table_version_, table_schema_mgr_, schema_,
                                            ts_spans_, kw_last_scan_cols_, entity_last_ts, res);
       if (ret != KStatus::SUCCESS) {
         LOG_ERROR("GetEntityLastRowBatch failed.");

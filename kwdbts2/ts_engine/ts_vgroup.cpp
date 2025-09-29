@@ -506,6 +506,7 @@ KStatus TsVGroup::ConvertBlockSpanToResultSet(const std::vector<k_uint32>& kw_sc
 
 KStatus TsVGroup::GetEntityLastRowBatch(uint32_t entity_id, uint32_t scan_version,
                                         std::shared_ptr<TsTableSchemaManager>& table_schema_mgr,
+                                        std::shared_ptr<MMapMetricsTable>& schema,
                                         const std::vector<KwTsSpan>& ts_spans, const std::vector<k_uint32>& scan_cols,
                                         timestamp64& entity_last_ts, ResultSet* res) {
   TSSlice last_payload;
@@ -525,7 +526,7 @@ KStatus TsVGroup::GetEntityLastRowBatch(uint32_t entity_id, uint32_t scan_versio
     last_payload = entity_latest_row_[entity_id].last_payload;
   }
 
-  uint32_t db_id = table_schema_mgr->GetDbID();
+  uint32_t db_id = schema->metaData()->db_id;
   KTableKey table_id = table_schema_mgr->GetTableId();
   TSMemSegRowData last_row_data(db_id, table_id, last_version, entity_id);
   // TODO(liumengzhen) : set correct lsn
@@ -534,12 +535,6 @@ KStatus TsVGroup::GetEntityLastRowBatch(uint32_t entity_id, uint32_t scan_versio
   std::shared_ptr<TsMemSegBlock> mem_block = std::make_shared<TsMemSegBlock>(nullptr);
   mem_block->InsertRow(&last_row_data);
 
-  std::shared_ptr<MMapMetricsTable> schema;
-  auto ret = table_schema_mgr->GetMetricSchema(scan_version, &schema);
-  if (ret != KStatus::SUCCESS) {
-    LOG_ERROR("GetMetricSchema failed");
-    return KStatus::FAIL;
-  }
   const vector<AttributeInfo>& attrs = schema->getSchemaInfoExcludeDropped();
 
   std::shared_ptr<TSBlkDataTypeConvert> convert = nullptr;
@@ -554,7 +549,7 @@ KStatus TsVGroup::GetEntityLastRowBatch(uint32_t entity_id, uint32_t scan_versio
 
   auto block_span = std::make_shared<TsBlockSpan>(vgroup_id_, entity_id, std::move(mem_block), 0, 1,
                                                   convert, scan_version, &attrs);
-  ret = ConvertBlockSpanToResultSet(scan_cols, block_span, attrs, res);
+  auto ret = ConvertBlockSpanToResultSet(scan_cols, block_span, attrs, res);
   if (ret != KStatus::SUCCESS) {
     LOG_ERROR("ConvertBlockSpanToResultSet failed");
     return KStatus::FAIL;
