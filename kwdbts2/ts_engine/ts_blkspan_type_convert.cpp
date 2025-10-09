@@ -368,7 +368,7 @@ int convertStrToFixed(const std::string& str, DATATYPE new_type, char* data, int
 
 std::shared_ptr<void> convertFixedToVar(DATATYPE old_type, DATATYPE new_type, char* data, ErrorInfo& err_info) {
   std::string res;
-  char* var_data;
+  char* var_data{nullptr};
   switch (old_type) {
     case DATATYPE::INT16 : {
       res = std::to_string(KInt16(data));
@@ -536,7 +536,6 @@ KStatus TSBlkDataTypeConvert::GetColBitmap(TsBlockSpan* blk_span, uint32_t scan_
   }
   if (isVarLenType((*version_conv_->blk_attrs_)[blk_col_idx].type) &&
       !isVarLenType((*version_conv_->scan_attrs_)[scan_idx].type)) {
-    char* value = nullptr;
     auto ret = getColBitmapConverted(blk_span, scan_idx, bitmap);
     if (ret != KStatus::SUCCESS) {
       LOG_ERROR("getColBitmapConverted failed.");
@@ -651,7 +650,7 @@ KStatus TSBlkDataTypeConvert::GetFixLenColAddr(TsBlockSpan* blk_span, uint32_t s
   }
 
   if (IsSameType(scan_idx)) {
-    char* blk_value;
+    char* blk_value{nullptr};
     auto s = blk_span->block_->GetColAddr(blk_col_idx, version_conv_->blk_attrs_, &blk_value);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("GetColAddr failed. col id [%u]", blk_col_idx);
