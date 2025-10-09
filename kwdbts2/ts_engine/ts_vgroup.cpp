@@ -1058,12 +1058,12 @@ KStatus TsVGroup::ApplyWal(kwdbContext_p ctx, LogEntry* wal_log,
         p_tag = log->getPrimaryTag();
         TSTableID table_id = log->getTableId();
         vector<KwTsSpan> ts_spans = log->getTsSpans();
-        return redoDeleteData(ctx, table_id, p_tag, log->getLSN(), ts_spans);
+        return redoDeleteData(ctx, table_id, p_tag, log->getOSN(), ts_spans);
       } else {
         auto log = reinterpret_cast<DeleteLogTagsEntry*>(del_log);
         auto p_tag_slice = log->getPrimaryTag();
         auto tag_slice = log->getTags();
-        return redoDeleteTag(ctx, log->getTableID(), p_tag_slice, log->getLSN(), log->group_id_, log->entity_id_, tag_slice);
+        return redoDeleteTag(ctx, log->getTableID(), p_tag_slice, log->getOSN(), log->group_id_, log->entity_id_, tag_slice);
       }
     }
     case WALLogType::UPDATE: {
@@ -1366,7 +1366,7 @@ KStatus TsVGroup::undoPut(kwdbContext_p ctx, TS_LSN log_lsn, TSSlice payload) {
       timestamp64 cur_ts = p.GetTS(i);
       ts_spans.push_back({cur_ts, cur_ts});
     }
-    s = deleteData(ctx, table_id, entity_id, {log_lsn, log_lsn}, ts_spans);
+    s = deleteData(ctx, table_id, entity_id, {tmp_p.GetOSN(), tmp_p.GetOSN()}, ts_spans);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("deleteData failed.");
       return s;

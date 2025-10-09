@@ -334,6 +334,7 @@ size_t DeleteLogMetricsEntryV2::getLen() {
            sizeof(range_size_);
     len_ += (range_size_) * sizeof(KwTsSpan);
     len_ += p_tag_len_;
+    len_ += sizeof(osn_);
   }
   return len_;
 }

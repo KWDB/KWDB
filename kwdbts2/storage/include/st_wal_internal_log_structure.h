@@ -475,6 +475,8 @@ class DeleteLogMetricsEntryV2 : public DeleteLogEntry {
 
   [[nodiscard]] vector<KwTsSpan> getTsSpans() const;
 
+  uint64_t getOSN() {return osn_;}
+
  public:
   static const size_t header_length = sizeof(p_tag_len_) +
                                       sizeof(table_id_) +
