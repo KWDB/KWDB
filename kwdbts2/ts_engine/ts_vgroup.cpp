@@ -97,13 +97,10 @@ KStatus TsVGroup::Init(kwdbContext_p ctx) {
   }
   UpdateAtomicOSN();
 
-  std::list<std::shared_ptr<TsMemSegment>> mems;
-  mem_segment_mgr_->GetAllMemSegments(&mems);
-  for (const auto& m : mems) {
-    TsVersionUpdate update;
-    update.AddMemSegment(m);
-    version_manager_->ApplyUpdate(&update);
-  }
+  auto mem = mem_segment_mgr_->CurrentMemSegment();
+  TsVersionUpdate update;
+  update.AddMemSegment(std::move(mem));
+  version_manager_->ApplyUpdate(&update);
   return KStatus::SUCCESS;
 }
 
@@ -853,7 +850,6 @@ KStatus TsVGroup::FlushImmSegment(const std::shared_ptr<TsMemSegment>& mem_seg) 
     update.SetMaxLSN(v.GetMaxOSN());
   }
 
-  mem_segment_mgr_->RemoveMemSegment(mem_seg);
   update.RemoveMemSegment(mem_seg);
 
   version_manager_->ApplyUpdate(&update);

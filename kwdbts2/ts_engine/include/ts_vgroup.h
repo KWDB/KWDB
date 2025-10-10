@@ -171,7 +171,7 @@ class TsVGroup {
   // flush all mem segment data into last segment.
   KStatus Flush() {
     auto current = mem_segment_mgr_->CurrentMemSegment();
-    if (mem_segment_mgr_->SwitchMemSegment(current.get())) {
+    if (mem_segment_mgr_->SwitchMemSegment(current.get(), false)) {
       // Flush imm segment.
       return FlushImmSegment(current);
     }

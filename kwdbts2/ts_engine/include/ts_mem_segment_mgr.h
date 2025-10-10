@@ -204,7 +204,6 @@ class TsMemSegmentManager {
   TsVGroup* vgroup_;
   TsVersionManager* version_manager_;
   std::shared_ptr<TsMemSegment> cur_mem_seg_{nullptr};
-  std::list<std::shared_ptr<TsMemSegment>> segment_;
   mutable std::shared_mutex segment_lock_;
 
   std::shared_ptr<TsMemSegment> CurrentMemSegmentAndAllocateRow(uint32_t row_num) const {
@@ -216,24 +215,12 @@ class TsMemSegmentManager {
  public:
   explicit TsMemSegmentManager(TsVGroup* vgroup, TsVersionManager* version_manager);
 
-  ~TsMemSegmentManager() {
-    segment_.clear();
-  }
-
   std::shared_ptr<TsMemSegment> CurrentMemSegment() const {
     std::shared_lock lock(segment_lock_);
     return cur_mem_seg_;
   }
 
-  // std::shared_ptr<TsMemSegment> SwitchMemSegment();
-  bool SwitchMemSegment(TsMemSegment* expected_old_mem_seg);
-
-  void RemoveMemSegment(const std::shared_ptr<TsMemSegment>& mem_seg);
-
-  void GetAllMemSegments(std::list<std::shared_ptr<TsMemSegment>>* mems) {
-    std::shared_lock lock(segment_lock_);
-    *mems = segment_;
-  }
+  bool SwitchMemSegment(TsMemSegment* expected_old_mem_seg, bool flush);
 
   KStatus PutData(const TSSlice& payload, TSEntityID entity_id);
 

@@ -36,10 +36,9 @@ TsMemSegmentManager::TsMemSegmentManager(TsVGroup* vgroup, TsVersionManager* ver
     : vgroup_(vgroup),
       version_manager_(version_manager),
       cur_mem_seg_(TsMemSegment::Create(EngineOptions::mem_segment_max_height)) {
-  segment_.push_back(cur_mem_seg_);
 }
 
-bool TsMemSegmentManager::SwitchMemSegment(TsMemSegment* expected_old_mem_seg) {
+bool TsMemSegmentManager::SwitchMemSegment(TsMemSegment* expected_old_mem_seg, bool flush) {
   {
     std::shared_lock lock(segment_lock_);
     if (cur_mem_seg_.get() != expected_old_mem_seg) {
@@ -52,23 +51,19 @@ bool TsMemSegmentManager::SwitchMemSegment(TsMemSegment* expected_old_mem_seg) {
   }
 
   auto row_num = cur_mem_seg_->GetRowNum();
+  if (flush) {
+    TsFlushJobPool::GetInstance().AddFlushJob(vgroup_, std::move(cur_mem_seg_));
+  }
   cur_mem_seg_ = TsMemSegment::Create(EngineOptions::mem_segment_max_height);
 
   TsVersionUpdate update;
   update.AddMemSegment(cur_mem_seg_);
-  segment_.push_back(cur_mem_seg_);
   uint32_t new_heigh = log2(row_num);
   if (EngineOptions::mem_segment_max_height < new_heigh) {
     EngineOptions::mem_segment_max_height = new_heigh;
   }
-
   version_manager_->ApplyUpdate(&update);
   return true;
-}
-
-void TsMemSegmentManager::RemoveMemSegment(const std::shared_ptr<TsMemSegment>& mem_seg) {
-  std::unique_lock lock{segment_lock_};
-  segment_.remove(mem_seg);
 }
 
 bool TsMemSegmentManager::GetMetricSchemaAndMeta(TSTableID table_id, uint32_t version,
@@ -153,9 +148,7 @@ KStatus TsMemSegmentManager::PutData(const TSSlice& payload, TSEntityID entity_i
   vgroup_->UpdateEntityAndMaxTs(table_id, max_ts, entity_id);
 
   if (cur_mem_seg->GetPayloadMemUsage() > EngineOptions::mem_segment_max_size) {
-    if (this->SwitchMemSegment(cur_mem_seg.get())) {
-      TsFlushJobPool::GetInstance().AddFlushJob(vgroup_, cur_mem_seg);
-    }
+    this->SwitchMemSegment(cur_mem_seg.get(), true);
   }
   return KStatus::SUCCESS;
 }

@@ -162,7 +162,7 @@ KStatus TsMMapRandomReadFile::Prefetch(size_t offset, size_t n) {
 
   size_t page_offset = TruncateToPage(offset, page_size_);
   char* p1 = mmap_start_ + page_offset;
-  int ok = madvise(p1, n + (offset - page_offset), MADV_WILLNEED);
+  int ok = madvise(p1, n + (offset - page_offset), MADV_SEQUENTIAL);
   if (ok < 0) {
     LOG_WARN("madvise failed, reason %s", strerror(errno));
   }
