@@ -776,7 +776,7 @@ int MMapTagColumnTable::reserve(size_t n, ErrorInfo& err_info) {
   }
   // row info mremap
   if (m_row_info_file_) {
-    err_code = m_row_info_file_->extend(m_row_info_file_->fileLen(), n*BITMAP_PER_ROW_LENGTH);
+    err_code = m_row_info_file_->extend(m_meta_data_->m_row_count, n);
   }
   // hashpoint file extend
   if (m_hps_file_) {
