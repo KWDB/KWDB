@@ -189,10 +189,10 @@ KStatus TsMMapSequentialReadFile::Read(size_t n, TSSlice* slice, char* buf) {
 }
 
 KStatus TsMMapIOEnv::NewAppendOnlyFile(const std::string& filepath, std::unique_ptr<TsAppendOnlyFile>* file,
-                                       bool overrite, size_t offset) {
+                                       bool overwrite, size_t offset) {
   int fd = -1;
   int flag = O_RDWR | O_CREAT;
-  if (overrite) {
+  if (overwrite) {
     flag |= O_TRUNC;
     offset = -1;
   }

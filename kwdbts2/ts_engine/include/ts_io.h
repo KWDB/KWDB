@@ -221,7 +221,7 @@ class TsIOEnv {
 class TsMMapIOEnv : public TsIOEnv {
  public:
   static TsIOEnv& GetInstance();
-  KStatus NewAppendOnlyFile(const std::string& filepath, std::unique_ptr<TsAppendOnlyFile>* file, bool overrite = true,
+  KStatus NewAppendOnlyFile(const std::string& filepath, std::unique_ptr<TsAppendOnlyFile>* file, bool overwrite = true,
                             size_t offset = -1) override;
   KStatus NewRandomReadFile(const std::string& filepath, std::unique_ptr<TsRandomReadFile>* file,
                             size_t file_size = -1) override;

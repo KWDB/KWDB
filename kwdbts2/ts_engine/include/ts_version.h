@@ -154,6 +154,7 @@ class TsVGroupVersion {
 
   // timestamp is in ptime
   std::shared_ptr<const TsPartitionVersion> GetPartition(uint32_t dbid, timestamp64 timestamp) const;
+  std::shared_ptr<const TsPartitionVersion> GetPartition(PartitionIdentifier par_id) const;
 
   std::map<uint32_t, std::vector<std::shared_ptr<const TsPartitionVersion>>> GetPartitions() const;
 

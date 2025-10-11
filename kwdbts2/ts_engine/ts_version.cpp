@@ -10,6 +10,8 @@
 // See the Mulan PSL v2 for more details.
 
 #include "ts_version.h"
+#include <fcntl.h>
+#include <unistd.h>
 
 #include <algorithm>
 #include <atomic>
@@ -21,12 +23,12 @@
 #include <list>
 #include <memory>
 #include <mutex>
-#include <numeric>
 #include <regex>
 #include <string>
 #include <string_view>
 #include <system_error>
 #include <tuple>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -119,6 +121,27 @@ KStatus TsVersionManager::AddPartition(DatabaseID dbid, timestamp64 ptime) {
   current_ = std::move(new_version);
   last_created_partition_ = partition_id;
   return KStatus::SUCCESS;
+}
+
+static KStatus TruncateFile(const fs::path path, size_t size) {
+  int fd = open(path.c_str(), O_WRONLY);
+  if (fd < 0) {
+    LOG_ERROR("can not open file: %s, reason: %s", path.c_str(), std::strerror(errno));
+    return FAIL;
+  }
+
+  KStatus ret = SUCCESS;
+  size_t actual_size = lseek(fd, 0, SEEK_END);
+  if (actual_size > size) {
+    LOG_INFO("unexpected file size: %s, expected: %lu, actual: %lu, truncate it", path.c_str(), size, actual_size);
+    int ok = ftruncate(fd, size);
+    if (ok != 0) {
+      LOG_ERROR("can not truncate file: %s, reason: %s", path.c_str(), std::strerror(errno));
+      ret = FAIL;
+    }
+  }
+  close(fd);
+  return ret;
 }
 
 KStatus TsVersionManager::Recover() {
@@ -263,6 +286,86 @@ KStatus TsVersionManager::Recover() {
     // the older log file is no longer needed, delete it
     // no need to check return value
     env_->DeleteFile(root_path_ / log_filename);
+  }
+
+  // delete unexpected files
+  std::set<fs::path> partition_name;
+  for (const auto &partition_id : update.partitions_created_) {
+    partition_name.insert(PartitionDirName(partition_id));
+  }
+  {
+    // 1. delete unflushed partition dir
+    std::error_code ec;
+    fs::directory_iterator iter{root_path_, ec};
+    if (ec.value() != 0) {
+      LOG_ERROR("cannot iterate directory %s, reason: %s", root_path_.c_str(), ec.message().c_str());
+      return FAIL;
+    }
+    for (auto const &dir_entry : iter) {
+      if (!fs::is_directory(dir_entry)) {
+        continue;
+      }
+      fs::path path{dir_entry};
+      if (partition_name.find(path.filename()) == partition_name.end()) {
+        LOG_INFO("unexpected partition directory: %s, remove it", path.c_str());
+        auto s = env_->DeleteDir(path);
+        if (s == FAIL) {
+          return s;
+        }
+      }
+    }
+  }
+  {
+    // 2. delete datafiles
+    for (auto par_id : update.partitions_created_) {
+      auto root = root_path_ / PartitionDirName(par_id);
+      std::set<fs::path> expected{DEL_FILE_NAME, COUNT_FILE_NAME};
+      {
+        auto it = update.entity_segment_.find(par_id);
+        if (it != update.entity_segment_.end()) {
+          auto &info = it->second;
+          expected.insert(EntityHeaderFileName(info.header_e_file_number));
+
+          auto header_b_file = BlockHeaderFileName(info.header_b_info.file_number);
+          TruncateFile(root / header_b_file, info.header_b_info.length);
+          expected.insert(header_b_file);
+
+          auto datablock_file = DataBlockFileName(info.datablock_info.file_number);
+          TruncateFile(root / datablock_file, info.datablock_info.length);
+          expected.insert(datablock_file);
+
+          auto agg_file = EntityAggFileName(info.agg_info.file_number);
+          TruncateFile(root / agg_file, info.agg_info.length);
+          expected.insert(agg_file);
+        }
+      }
+      {
+        auto it = update.new_lastsegs_.find(par_id);
+        if (it != update.new_lastsegs_.end()) {
+          for (auto n : it->second) {
+            expected.insert(LastSegmentFileName(n));
+          }
+        }
+      }
+
+      std::error_code ec;
+      fs::directory_iterator iter{root, ec};
+      if (ec.value() != 0) {
+        LOG_ERROR("cannot iterate directory %s, reason: %s", root.c_str(), ec.message().c_str());
+        return FAIL;
+      }
+
+      for (auto const &dir_entry : iter) {
+        fs::path p{dir_entry};
+        if (expected.find(p.filename()) == expected.end()) {
+          LOG_INFO("unexpected file: %s, remove it", p.c_str());
+          auto s = env_->DeleteFile(p);
+          if (s == FAIL) {
+            return s;
+          }
+        }
+      }
+    }
   }
 
   assert(current_ != nullptr);
@@ -462,6 +565,14 @@ std::shared_ptr<const TsPartitionVersion> TsVGroupVersion::GetPartition(uint32_t
                                                                         timestamp64 target_time) const {
   timestamp64 start = GetPartitionStartTime(target_time, EngineOptions::partition_interval);
   auto it = partitions_.find({target_dbid, start, start + EngineOptions::partition_interval});
+  if (it == partitions_.end()) {
+    return nullptr;
+  }
+  return it->second;
+}
+
+std::shared_ptr<const TsPartitionVersion> TsVGroupVersion::GetPartition(PartitionIdentifier par_id) const {
+  auto it = partitions_.find(par_id);
   if (it == partitions_.end()) {
     return nullptr;
   }
