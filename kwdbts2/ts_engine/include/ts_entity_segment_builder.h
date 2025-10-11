@@ -86,6 +86,8 @@ class TsEntitySegmentBlockItemFileBuilder {
   KStatus Open();
   KStatus AppendBlockItem(TsEntitySegmentBlockItem& block_item);
   MetaFileInfo GetFileInfo() { return {file_number_, w_file_->GetFileSize()}; }
+
+  void MarkDelete() { w_file_->MarkDelete(); }
 };
 
 class TsEntitySegmentBlockFileBuilder {
@@ -107,6 +109,8 @@ class TsEntitySegmentBlockFileBuilder {
   KStatus Open();
   KStatus AppendBlock(const TSSlice& block, uint64_t* offset);
   MetaFileInfo GetFileInfo() { return {file_number_, w_file_->GetFileSize()}; }
+
+  void MarkDelete() { w_file_->MarkDelete(); }
 };
 
 class TsEntitySegmentAggFileBuilder {
@@ -128,6 +132,8 @@ class TsEntitySegmentAggFileBuilder {
   KStatus Open();
   KStatus AppendAggBlock(const TSSlice& agg, uint64_t* offset);
   MetaFileInfo GetFileInfo() { return {file_number_, w_file_->GetFileSize()}; }
+
+  void MarkDelete() { w_file_->MarkDelete(); }
 };
 
 class TsEntitySegmentBuilder;
@@ -301,6 +307,7 @@ class TsEntitySegmentVacuumer {
  public:
   explicit TsEntitySegmentVacuumer(const std::string& root_path, TsVersionManager* version_manager);
   KStatus Open();
+  void Cancel();
   KStatus AppendEntityItem(TsEntityItem& entity_item);
   KStatus AppendBlock(const TSSlice& block, uint64_t* offset);
   KStatus AppendAgg(const TSSlice& agg, uint64_t* offset);
