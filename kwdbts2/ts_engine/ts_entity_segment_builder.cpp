@@ -971,6 +971,13 @@ KStatus TsEntitySegmentVacuumer::Open() {
   return s;
 }
 
+void TsEntitySegmentVacuumer::Cancel() {
+  entity_item_builder_->MarkDelete();
+  block_item_builder_->MarkDelete();
+  block_file_builder_->MarkDelete();
+  agg_file_builder_->MarkDelete();
+}
+
 KStatus TsEntitySegmentVacuumer::AppendEntityItem(TsEntityItem& entity_item) {
   return entity_item_builder_->AppendEntityItem(entity_item);
 }
