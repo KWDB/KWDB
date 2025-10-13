@@ -1055,7 +1055,7 @@ func (sw *TSSchemaChangeWorker) checkReplica(
 	}); r.Next(); {
 		isComplete := true
 		startKey := sqlbase.MakeTsHashPointKey(tableID, 0, hashNum)
-		endKey := sqlbase.MakeTsHashPointKey(tableID, api.HashParam, hashNum)
+		endKey := sqlbase.MakeTsHashPointKey(tableID, api.HashParamV2, hashNum)
 		if sw.p.ExecCfg().StartMode == StartMultiReplica {
 			isComplete, _ = sw.db.AdminReplicaStatusConsistent(ctx, startKey, endKey)
 		}
