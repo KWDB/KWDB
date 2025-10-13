@@ -170,8 +170,6 @@ int TSObject::stopWrite() {
 
 bool TSObject::isTemporary() const { return false; }
 
-int TSObject::permission() const { return 0; }
-
 string TSObject::toString() {
   return intToString(ref_count_);
 }

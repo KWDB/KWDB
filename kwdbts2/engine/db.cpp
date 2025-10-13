@@ -19,7 +19,6 @@
 #include "cm_fault_injection.h"
 #include "cm_task.h"
 #include "perf_stat.h"
-#include "st_config.h"
 #include "sys_utils.h"
 #include "ee_mempool.h"
 #include "st_tier.h"
@@ -42,6 +41,10 @@ uint64_t g_vacuum_sleep_time = 1000;
 std::atomic<bool> g_is_migrating{false};
 uint64_t g_duration_level0{30 * 24 * 60 * 60};
 uint64_t g_duration_level1{90 * 24 * 60 * 60};
+
+uint16_t CLUSTER_SETTING_MAX_ROWS_PER_BLOCK = 1000;
+bool CLUSTER_SETTING_COUNT_USE_STATISTICS = true;
+bool CLUSTER_SETTING_USE_LAST_ROW_OPTIMIZATION = false;
 
 TSStatus TSOpen(TSEngine** engine, TSSlice dir, TSOptions options,
                 AppliedRangeIndex* applied_indexes, size_t range_num) {

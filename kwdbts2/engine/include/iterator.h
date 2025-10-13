@@ -22,7 +22,6 @@
 #include "libkwdbts2.h"
 #include "lt_rw_latch.h"
 #include "ts_common.h"
-#include "st_config.h"
 
 namespace kwdbts {
 class TsAggIterator;

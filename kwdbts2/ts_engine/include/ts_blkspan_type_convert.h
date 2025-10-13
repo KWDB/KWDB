@@ -17,6 +17,7 @@
 #include <cstring>
 #include <string>
 #include <list>
+#include <limits>
 #include <vector>
 #include <map>
 #include <memory>
@@ -24,6 +25,120 @@
 #include "ts_table_schema_manager.h"
 
 namespace kwdbts {
+
+typedef int (*CONVERT_DATA_FUNC)(const char* src, char* dst, int dst_len);
+
+CONVERT_DATA_FUNC getConvertFunc(int32_t old_data_type, int32_t new_data_type,
+                                 int32_t new_length, bool& is_digit_data, ErrorInfo& err_info);
+
+template <typename T1, typename T2, bool need_to_string>
+int convertFixDataToData(const char* src, char* dst, int dst_len)  {
+  T1 tmp;
+  memcpy(&tmp, src, sizeof(tmp));
+  int len = 0;
+  if (need_to_string) {
+    std::ostringstream oss;
+    oss.clear();
+    if (std::is_same<T1, float>::value) {
+      oss.precision(7);
+    } else if (std::is_same<T1, double>::value) {
+      oss.precision(14);
+    }
+    oss.setf(std::ios::fixed);
+    oss << tmp;
+    if (oss.str().length() > dst_len) {
+      return -1;
+    }
+    snprintf(dst, dst_len, "%s", oss.str().c_str());
+    len = oss.str().length();
+  } else {
+    *reinterpret_cast<T2*>(dst) = tmp;
+    len = dst_len;
+  }
+  return len;
+}
+
+template <int32_t to_type>
+int convertStringToFixData(const char* src, char* dst, int src_len) {
+  char* end_val = nullptr;
+  const char* end = src + src_len;
+  switch (to_type) {
+    case DATATYPE::INT16 : {
+      int32_t value = std::strtol(src, &end_val, 10);
+      if (end_val < end && *end_val !='\0') {
+        // data truncated
+        return -2;
+      }
+      if (value > INT16_MAX || value < INT16_MIN) {
+        // Out of range value
+        return -1;
+      }
+      *reinterpret_cast<int16_t*>(dst) = static_cast<int16_t>(value);
+      break;
+    }
+    case DATATYPE::INT32 : {
+      int32_t value = std::strtol(src, &end_val, 10);
+      if (end_val < end && *end_val !='\0') {
+        // data truncated
+        return -2;
+      }
+      if (value > INT32_MAX || value < INT32_MIN) {
+        // Out of range value
+        return -1;
+      }
+      *reinterpret_cast<int32_t*>(dst) = static_cast<int32_t>(value);
+      break;
+    }
+    case DATATYPE::INT64 : {
+      int64_t value;
+      size_t end_pos = 0;
+      try {
+        // use stoll avoid no exceptions
+        value = std::stoll(src, &end_pos);
+      } catch (std::invalid_argument const& ex) {
+        return -2;
+      } catch (std::out_of_range const& ex) {
+        return -1;
+      }
+      if (end_pos < src_len) {
+        return -2;
+      }
+
+      *reinterpret_cast<int64_t*>(dst) = value;
+      break;
+    }
+    case DATATYPE::FLOAT : {
+      float value = std::strtof(src, &end_val);
+      if (end_val < end && *end_val !='\0') {
+        // data truncated
+        return -2;
+      }
+      if (value > numeric_limits<float>::max() || value < numeric_limits<float>::lowest()) {
+        // Out of range value
+        return -1;
+      }
+      *reinterpret_cast<float*>(dst) = value;
+      break;
+    }
+    case DATATYPE::DOUBLE : {
+      double value = std::strtod(src, &end_val);
+      if (end_val < end && *end_val !='\0') {
+        // data truncated
+        return -2;
+      }
+      if (value > numeric_limits<double>::max() || value < numeric_limits<double>::lowest()) {
+        // Out of range value
+        return -1;
+      }
+      *reinterpret_cast<double*>(dst) = value;
+      break;
+    }
+    default:
+      return -3;
+  }
+  return 0;
+}
+
 template<typename SrcType, typename DestType>
 int convertNumToNum(char* src, char* dst) {
   *reinterpret_cast<DestType*>(dst) = *reinterpret_cast<SrcType*>(src);

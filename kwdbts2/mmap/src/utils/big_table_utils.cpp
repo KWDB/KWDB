@@ -18,8 +18,6 @@
 #include <parallel/algorithm>
 #include "utils/big_table_utils.h"
 #include "mmap/mmap_file.h"
-#include "var_string.h"
-#include "mmap/mmap_big_table.h"
 
 vector<AttributeInfo> dummy_schema;
 
@@ -28,13 +26,6 @@ string nameToPath(const string &name, const string &ext) {
   if (pos != string::npos)
     return name;
   return name + ext;
-}
-
-const string & rmPathSeperator(string &path) {
-  if (!path.empty() && path.back() == '/') {
-    path.resize(path.size() - 1);
-  }
-  return path;
 }
 
 vector<AttributeInfo> & getDummySchema() { return dummy_schema; }
@@ -59,25 +50,9 @@ string nameToObjectPath(const string &name, const string &ext) {
     return nameToPath(name, ext);
 }
 
-string nameToTagBigTablePath(const string &name, const string &ext)
-{
-  return nameToObjectPath(name, ".pt");
-}
-
 string nameToEntityBigTablePath(const string &name, const string &ext)
 { return nameToObjectPath(name, ext); }
 
-
-string genTempObjectPath(const string &src_path) {
-  static std::atomic<size_t> ts_inc = 0;
-  ostringstream oss;
-  int pos = src_path.find('.');
-  string src_head = src_path.substr(0, pos);
-  int64_t t = ts_inc.fetch_add(1);
-  oss << "_t_" << hex << t;
-
-  return oss.str();
-}
 
 int setInteger(int &n, const string &val_str, int min, int max) {
   int64_t lv;
@@ -215,98 +190,6 @@ int setAttributeInfo(vector<AttributeInfo> &info) {
   return offset;
 }
 
-int normalizeString(char *s) {
-  if (*s == 0)
-    return 0;
-  char quote = 0;
-  size_t i = 0;
-  size_t end = strlen(s);
-  size_t back = strlen(s) - 1;
-
-  if (end > 1) {      // at least 2 characters in the string
-    if (s[0] == '\'' && s[back] == '\'') {
-      quote = '\'';
-      i++;
-    }
-    if (s[0] == '"' && s[back] == '"') {
-      quote = '"';
-      i++;
-    }
-    if (s[0] == '`' && s[back] == '`') {
-      quote = '`';
-      i++;
-    }
-    if (s[0] == '[' && s[back] == ']') {
-      quote = '\\';
-      i++;
-    }
-  }
-
-  size_t j = 0;
-  while (i <= back) {
-    if (i == back) {
-      if (!quote) {
-        s[j] = s[i];
-        j++;
-      }
-    } else {
-      char si = s[i];
-      if (si == '\\' && (i + 1 != back)) {
-        char sn = s[i + 1];
-        switch (sn) {
-        case '0':
-          s[j] = '\0';
-          break;
-        case 'b':
-          s[j] = '\b';
-          break;
-        case 'n':
-          s[j] = '\n';
-          break;
-        case 'r':
-          s[j] = '\r';
-          break;
-        case 't':
-          s[j] = '\t';
-          break;
-        case 'Z':
-          s[j] = 0x26;
-          break;
-        case '\\':
-        case '\'':
-        case '"':
-        case '`':
-          s[j] = sn;
-          break;
-        default:
-          s[j++] = '\\';
-          s[j] = sn;
-        }
-        i++;
-      } else {
-        if (si == quote && (i + 1 != back) && (s[i + 1] == quote)) {
-          i++;
-        }
-        s[j] = si;
-      }
-      j++;
-    }
-    i++;
-  }
-  s[j] = 0;
-  return j;
-}
-
-void normalizeString(string &s) {
-  int len = normalizeString((char *)s.c_str());
-  s.resize(len);
-}
-
-string normalize(const string &s) {
-  string ns = s.substr(0);
-  normalizeString(ns);
-  return ns;
-}
 
 string toString(const char *data)
 { return (data == nullptr) ? kwdbts::s_emptyString : string(data); }
@@ -321,10 +204,6 @@ string toString(const char *str, size_t len) {
   s[i] = 0;
   s.resize(i);
   return s;
-}
-
-string quoteString(const string &str, char quote) {
-  return quote + str + quote;
 }
 
 string normalizePath(const string &path) {
@@ -358,67 +237,3 @@ string makeDirectoryPath(const string &tbl_sub_path) {
     dir_path.push_back(kwdbts::EngineOptions::directorySeperator());
   return dir_path;
 }
-
-int makeDirectory(const string &dir) {
-  int ret_code = 0;
-  if (!dir.empty()) {
-    struct stat st;
-    size_t e_pos = 1;
-    char *path = (char *)dir.data();
-    while(e_pos < dir.size()) {
-      e_pos = dir.find_first_of('/', e_pos);
-      if (e_pos != string::npos)
-        path[e_pos] = 0;
-      if (stat(path, &st) != 0) {
-        if (mkdir(path,
-          S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH) < 0)
-          return -1;
-        ret_code = 0;
-      } else {
-        if (!S_ISDIR(st.st_mode)) {
-          return -1;
-        } else
-          ret_code = 1;
-      }
-      if (e_pos != string::npos)
-        path[e_pos] = '/';
-      else
-        break;      // reach end of directory path
-      e_pos++;
-    }
-  }
-  return ret_code;
-}
-
-BigTable *CreateTempTable(const vector<AttributeInfo> &schema, const std::string &db_path,
-                          int encoding,
-                          ErrorInfo &err_info) {
-  std::vector<std::string> key;
-  int flags = MMAP_CREAT_EXCL;
-  std::string bt_actual_path = genTempObjectPath("");
-  BigTable *bt = reinterpret_cast<BigTable*>(new MMapBigTable());
-  if (unlikely(bt == nullptr)) {
-    LOG_ERROR("new MMapBigTable failed, db_path: %s name: %s ", db_path.c_str(), bt_actual_path.c_str());
-    return nullptr;
-  }
-  if (bt->open(bt_actual_path, db_path, "", flags, err_info) < 0) {
-    LOG_ERROR("Open temporary table failed, db_path: %s name: %s ", db_path.c_str(), bt_actual_path.c_str());
-    delete bt;
-    return nullptr;
-  }
-  if (bt->create(schema, key, "", "", "", "", "", encoding, err_info) < 0 ) {
-    LOG_ERROR("Create temporary table failed, db_path: %s name: %s ", db_path.c_str(), bt_actual_path.c_str());
-    delete bt;
-    return nullptr;
-  }
-  return bt;
-}
-
-void DropTempTable(BigTable* bt, ErrorInfo &err_info) {
-  if (bt) {
-    bt->remove();
-    delete bt;
-  }
-  return;
-}
-

@@ -12,10 +12,7 @@
 #pragma once
 
 #include <string>
-#include "cm_kwdb_context.h"
 #include "utils/date_time_util.h"
-#include "big_table.h"
-#include "mmap_object.h"
 #include "ts_table_object.h"
 #include "ts_common.h"
 
@@ -93,18 +90,12 @@ class MMapMetricsTable : public TSObject, public TsTableObject {
 
   virtual void sync(int flags) override;
 
-  timestamp64& minTimestamp() { return meta_data_->min_ts; }
-
-  timestamp64& maxTimestamp() { return meta_data_->max_ts; }
-
   LifeTime GetLifeTime() { return LifeTime{meta_data_->life_time, meta_data_->precision}; }
 
   void SetLifeTime(LifeTime life_time) {
     meta_data_->life_time = life_time.ts;
     meta_data_->precision = life_time.precision;
   }
-
-  uint32_t& tableVersionOfLatestData() { return meta_data_->schema_version_of_latest_data;}
 
   virtual int reserve(size_t size) {
     return KWEPERM;

@@ -57,7 +57,7 @@ int MMapMetricsTable::create(const vector<AttributeInfo>& schema, const uint32_t
   meta_data_->struct_type |= (ST_COLUMN_TABLE);
   meta_data_->schema_version = table_version;
   meta_data_->partition_interval = partition_interval;
-
+  meta_data_->encoding = encoding;
   meta_data_->has_data = init_data;
   meta_data_->hash_num = hash_number;
   setObjectReady();

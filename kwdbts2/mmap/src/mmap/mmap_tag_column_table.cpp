@@ -23,7 +23,6 @@
 #include "utils/date_time_util.h"
 #include "utils/string_utils.h"
 #include "sys_utils.h"
-#include "data_value_handler.h"
 #include "lt_rw_latch.h"
 #include "cm_func.h"
 #include "ts_table.h"

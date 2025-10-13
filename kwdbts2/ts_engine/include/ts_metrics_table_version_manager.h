@@ -42,7 +42,7 @@ class MetricsVersionManager {
 
   void InsertNull(uint32_t ts_version);
 
-  KStatus CreateTable(kwdbContext_p ctx, std::vector<AttributeInfo> meta, uint64_t db_id, uint32_t ts_version,
+  KStatus CreateTable(kwdbContext_p ctx, std::vector<AttributeInfo> meta, uint32_t db_id, uint32_t ts_version,
                       int64_t life_time, uint64_t hash_num, ErrorInfo& err_info);
 
   void AddOneVersion(uint32_t ts_version, std::shared_ptr<MMapMetricsTable> metrics_table);

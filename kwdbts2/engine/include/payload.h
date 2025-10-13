@@ -83,7 +83,6 @@ class Payload {
   Payload(const std::vector<AttributeInfo>& schema, TSSlice data);
 
   ~Payload() {
-    if (rec_helper_) delete rec_helper_;
     delete []col_offsets_;
   }
 
@@ -299,28 +298,6 @@ class Payload {
                           tmp_col_values_4_dedup_merge_.end();
   }
 
-  ostream& PrintMetric(std::ostream& os) {
-    if (!rec_helper_) {
-      rec_helper_ = new RecordHelper();
-      rec_helper_->setHelper(schema_, false);
-    }
-
-    for (int row = 0; row < GetRowCount(); row++) {
-      for (int col = 0; col < schema_.size(); col++) {
-        if (IsNull(col, row)) {
-          os << s_NULL << ' ';
-        } else if (schema_[col].type == VARSTRING) {
-          os << std::string(GetVarColumnAddr(row, col) + kStringLenLen, GetVarColumnLen(row, col)) << ' ';
-        } else {
-          os << rec_helper_->columnToString(col, GetColumnAddr(row, col)) << ' ';
-        }
-      }
-      os << "\n";
-    }
-    os << "\n";
-    return os;
-  }
-
  private:
   vector<AttributeInfo> schema_;
   vector<uint32_t> idx_for_valid_cols_;  // column index that has not been dropped
@@ -339,7 +316,6 @@ class Payload {
   int32_t count_;
 
   int32_t* col_offsets_;
-  RecordHelper* rec_helper_{nullptr};
   TS_LSN lsn_{0};
 
  public:

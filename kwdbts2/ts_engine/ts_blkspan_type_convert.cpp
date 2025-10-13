@@ -751,4 +751,95 @@ KStatus TSBlkDataTypeConvert::GetVarLenTypeColAddr(TsBlockSpan* blk_span, uint32
   return KStatus::SUCCESS;
 }
 
+
+CONVERT_DATA_FUNC getConvertFunc(int32_t old_data_type, int32_t new_data_type,
+                                int32_t new_length, bool& is_digit_data, ErrorInfo& err_info) {
+  is_digit_data = false;
+  err_info.errcode = 0;
+  switch (old_data_type)  {
+  case DATATYPE::INT16:
+    is_digit_data = true;
+    if (new_data_type == DATATYPE::INT32) {
+      return convertFixDataToData<int16_t, int32_t, false>;
+    } else if (new_data_type == DATATYPE::INT64) {
+      return convertFixDataToData<int16_t, int32_t, false>;
+    } else if (new_data_type == DATATYPE::VARSTRING) {
+      return convertFixDataToData<int16_t, char, true>;
+    }
+    err_info.errcode = -1;
+    break;
+  case DATATYPE::INT32:
+    is_digit_data = true;
+    if (new_data_type == DATATYPE::INT64) {
+      return convertFixDataToData<int32_t, int64_t, false>;
+    } else if (new_data_type == DATATYPE::VARSTRING) {
+      return convertFixDataToData<int32_t, char, true>;
+    }
+    err_info.errcode = -1;
+    break;
+  case DATATYPE::INT64:
+    is_digit_data = true;
+    if (new_data_type == DATATYPE::VARSTRING) {
+      return convertFixDataToData<int64_t, char, true>;
+    }
+    err_info.errcode = -1;
+    break;
+  case DATATYPE::FLOAT:
+    is_digit_data = true;
+    if (new_data_type == DATATYPE::DOUBLE) {
+      return convertFixDataToData<float, double, false>;
+    } else if (new_data_type == DATATYPE::VARSTRING) {
+      return convertFixDataToData<float, char, true>;
+    }
+    err_info.errcode = -1;
+    break;
+  case DATATYPE::DOUBLE:
+    is_digit_data = true;
+    if (new_data_type == DATATYPE::VARSTRING) {
+      return convertFixDataToData<double, char, true>;
+    }
+    err_info.errcode = -1;
+    break;
+  case DATATYPE::CHAR:
+    if (new_data_type == DATATYPE::VARSTRING ||
+        new_data_type == DATATYPE::BINARY ||
+        new_data_type == DATATYPE::CHAR) {
+      return nullptr;
+    }
+    err_info.errcode = -1;
+    break;
+  case DATATYPE::BINARY:
+    if (new_data_type == DATATYPE::VARSTRING ||
+        new_data_type == DATATYPE::CHAR ||
+        new_data_type == DATATYPE::BINARY) {
+      return nullptr;
+    }
+    err_info.errcode = -1;
+    break;
+  case DATATYPE::VARSTRING:
+    if (new_data_type == DATATYPE::INT16) {
+      return convertStringToFixData<DATATYPE::INT16>;
+    } else if (new_data_type == DATATYPE::INT32) {
+      return convertStringToFixData<DATATYPE::INT32>;
+    } else if (new_data_type == DATATYPE::INT64) {
+      return convertStringToFixData<DATATYPE::INT64>;
+    } else if (new_data_type == DATATYPE::FLOAT) {
+      return convertStringToFixData<DATATYPE::FLOAT>;
+    } else if (new_data_type == DATATYPE::DOUBLE) {
+      return convertStringToFixData<DATATYPE::DOUBLE>;
+    } else if (new_data_type == DATATYPE::CHAR ||
+               new_data_type == DATATYPE::BINARY ||
+               new_data_type == DATATYPE::VARSTRING) {
+      return nullptr;
+    }
+    err_info.errcode = -1;
+    break;
+  case DATATYPE::VARBINARY:
+  default:
+    err_info.errcode = -1;
+    break;
+  }
+  return nullptr;
+}
+
 }  // namespace kwdbts

@@ -196,7 +196,7 @@ KStatus TsTableSchemaManager::Init() {
   return SUCCESS;
 }
 
-KStatus TsTableSchemaManager::CreateTable(kwdbContext_p ctx, roachpb::CreateTsTable* meta, uint64_t db_id,
+KStatus TsTableSchemaManager::CreateTable(kwdbContext_p ctx, roachpb::CreateTsTable* meta, uint32_t db_id,
                                           uint32_t ts_version, ErrorInfo& err_info) {
   RW_LATCH_X_LOCK(&table_version_rw_lock_);
   Defer defer{[&]() { RW_LATCH_UNLOCK(&table_version_rw_lock_); }};
@@ -297,18 +297,9 @@ KStatus TsTableSchemaManager::addMetricForAlter(vector<AttributeInfo>& schema, u
     tmp_bt->metaData()->partition_interval = src_bt->metaData()->partition_interval;
     tmp_bt->metaData()->num_node = src_bt->metaData()->num_node;
     tmp_bt->metaData()->is_dropped = src_bt->metaData()->is_dropped;
-    tmp_bt->metaData()->min_ts = src_bt->metaData()->min_ts;
-    tmp_bt->metaData()->max_ts = src_bt->metaData()->max_ts;
     tmp_bt->metaData()->db_id = src_bt->metaData()->db_id;
     tmp_bt->metaData()->hash_num = src_bt->metaData()->hash_num;
-    // Version compatibility
-    if (src_bt->metaData()->schema_version_of_latest_data == 0) {
-      tmp_bt->metaData()->schema_version_of_latest_data = new_version;
-    } else {
-      tmp_bt->metaData()->schema_version_of_latest_data = src_bt->metaData()->schema_version_of_latest_data;
-    }
   } else {
-    tmp_bt->metaData()->schema_version_of_latest_data = new_version;
     tmp_bt->metaData()->db_id = GetDbID();
   }
 

@@ -21,36 +21,6 @@ TsTableObject::TsTableObject() {
 TsTableObject::~TsTableObject() {
 }
 
-
-void RecordHelper::setHelper(const vector<AttributeInfo> &attr_info, bool is_internal_data,
-                             const string & time_format) {
-  time_format_ = time_format;
-  attr_info_ = &attr_info;
-
-  to_str_handler_.clear();
-  to_data_handler_.clear();
-  data_size_ = 0;
-  for (size_t i = 0; i < (*attr_info_).size(); ++i) {
-    to_str_handler_.push_back(
-        std::move(getDataToStringHandler((*attr_info_)[i], DICTIONARY)));
-
-    to_data_handler_.push_back(
-        std::move(getStringToDataHandler(nullptr, i, (*attr_info_)[i],
-                                         (*attr_info_)[i].encoding, time_format_)));
-
-    if (to_data_handler_.back()->isLatest()) {
-      to_data_handler_[i]->setColumn(i);
-    }
-
-    data_size_ += (*attr_info_)[i].size;
-  }
-  if (is_internal_data) {
-    internal_data_.reserve(data_size_);
-    internal_data_.resize(data_size_);
-    data_ = &(internal_data_[0]);
-  }
-}
-
 int TsTableObject::open(const string& table_path, const std::string& db_path, const string& tbl_sub_path, int cc,
                         int flags) {
   db_path_ = db_path;

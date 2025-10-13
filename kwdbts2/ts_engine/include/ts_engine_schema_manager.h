@@ -44,7 +44,7 @@ class TsEngineSchemaManager {
 
   KStatus Init(kwdbContext_p ctx);
 
-  KStatus CreateTable(kwdbContext_p ctx, const uint64_t& db_id, const KTableKey& table_id, roachpb::CreateTsTable* meta);
+  KStatus CreateTable(kwdbContext_p ctx, const uint32_t& db_id, const KTableKey& table_id, roachpb::CreateTsTable* meta);
 
   KStatus GetTableMetricSchema(kwdbContext_p ctx, TSTableID tbl_id, uint32_t version,
                                std::shared_ptr<MMapMetricsTable>* metric_schema);

@@ -31,6 +31,10 @@
 #include "ts_mem_segment_mgr.h"
 #include "ts_version.h"
 
+extern uint16_t CLUSTER_SETTING_MAX_ROWS_PER_BLOCK;         // PARTITION_ROWS from cluster setting
+extern bool CLUSTER_SETTING_COUNT_USE_STATISTICS;          // COUNT_USE_STATISTICS from cluster setting
+extern bool CLUSTER_SETTING_USE_LAST_ROW_OPTIMIZATION;
+
 namespace kwdbts {
 
 class TsEntitySegmentBuilder;

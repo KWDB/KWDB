@@ -93,7 +93,7 @@ class TsTableSchemaManager {
     return tag_table_;
   }
 
-  KStatus CreateTable(kwdbContext_p ctx, roachpb::CreateTsTable* meta, uint64_t db_id,
+  KStatus CreateTable(kwdbContext_p ctx, roachpb::CreateTsTable* meta, uint32_t db_id,
                       uint32_t ts_version, ErrorInfo& err_info);
 
   KStatus CreateNormalTagIndex(kwdbContext_p ctx, const uint64_t transaction_id, const uint64_t index_id,

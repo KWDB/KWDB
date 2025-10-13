@@ -71,7 +71,7 @@ KStatus TsEngineSchemaManager::Init(kwdbContext_p ctx) {
   return KStatus::SUCCESS;
 }
 
-KStatus TsEngineSchemaManager::CreateTable(kwdbContext_p ctx, const uint64_t& db_id, const KTableKey& table_id,
+KStatus TsEngineSchemaManager::CreateTable(kwdbContext_p ctx, const uint32_t& db_id, const KTableKey& table_id,
                                            roachpb::CreateTsTable* meta) {
   {
     rdLock();

@@ -14,7 +14,6 @@
 #include <vector>
 #include "utils/date_time_util.h"
 #include "big_table.h"
-#include "mmap_object.h"
 #include "mmap_hash_index.h"
 #include "mmap_ntag_hash_index.h"
 #include "ts_common.h"

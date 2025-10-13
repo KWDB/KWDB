@@ -81,7 +81,7 @@ void MetricsVersionManager::InsertNull(uint32_t ts_version) {
   metric_tables_.insert({ts_version, nullptr});
 }
 
-KStatus MetricsVersionManager::CreateTable(kwdbContext_p ctx, std::vector<AttributeInfo> meta, uint64_t db_id,
+KStatus MetricsVersionManager::CreateTable(kwdbContext_p ctx, std::vector<AttributeInfo> meta, uint32_t db_id,
                                                       uint32_t ts_version, int64_t lifetime, uint64_t hash_num,
                                                       ErrorInfo& err_info) {
   wrLock();
@@ -98,8 +98,7 @@ KStatus MetricsVersionManager::CreateTable(kwdbContext_p ctx, std::vector<Attrib
     tmp_bt->remove();
     return FAIL;
   }
-  tmp_bt->metaData()->schema_version_of_latest_data = ts_version;
-  tmp_bt->metaData()->db_id = db_id;
+  tmp_bt->setDBid(db_id);
   // Set lifetime
   int32_t precision = 1;
   switch (meta[0].type) {

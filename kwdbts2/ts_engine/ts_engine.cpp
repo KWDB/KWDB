@@ -279,7 +279,7 @@ KStatus TSEngineV2Impl::CreateTsTable(kwdbContext_p ctx, TSTableID table_id, roa
     return KStatus::SUCCESS;
   }
 
-  uint64_t db_id = 1;
+  uint32_t db_id = 1;
   if (meta->ts_table().has_database_id()) {
     db_id = meta->ts_table().database_id();
   }

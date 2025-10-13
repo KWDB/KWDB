@@ -17,7 +17,6 @@
 #include "ts_object_error.h"
 #include "lt_rw_latch.h"
 
-//using namespace std;
 
 
 #define OBJ_PERM_NO_SELECT          0x00000001
@@ -166,8 +165,6 @@ public:
   // return true is object is used by anyone.
   inline bool isUsed() const
   { return (isTemporary()) ? ref_count_ > 2 : ref_count_ > 1; }
-
-  virtual int permission() const;
 
   void setObjectReady() { status_ = OBJ_READY; }
 
