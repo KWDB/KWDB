@@ -40,8 +40,8 @@ import (
 //
 // MVCCIncrementalIterator will return an error if either of the following are
 // encountered:
-//   1. An inline value (non-user data)
-//   2. An intent whose timestamp lies within the time bounds
+//  1. An inline value (non-user data)
+//  2. An intent whose timestamp lies within the time bounds
 //
 // Note: The endTime is inclusive to be consistent with the non-incremental
 // iterator, where reads at a given timestamp return writes at that
@@ -51,20 +51,21 @@ import (
 // CockroachDB uses that as a sentinel for key metadata anyway.
 //
 // Expected usage:
-//    iter := NewMVCCIncrementalIterator(e, IterOptions{
-//        StartTime:  startTime,
-//        EndTime:    endTime,
-//        UpperBound: endKey,
-//    })
-//    defer iter.Close()
-//    for iter.SeekGE(startKey); ; iter.Next() {
-//        ok, err := iter.Valid()
-//        if !ok { ... }
-//        [code using iter.Key() and iter.Value()]
-//    }
-//    if err := iter.Error(); err != nil {
-//      ...
-//    }
+//
+//	iter := NewMVCCIncrementalIterator(e, IterOptions{
+//	    StartTime:  startTime,
+//	    EndTime:    endTime,
+//	    UpperBound: endKey,
+//	})
+//	defer iter.Close()
+//	for iter.SeekGE(startKey); ; iter.Next() {
+//	    ok, err := iter.Valid()
+//	    if !ok { ... }
+//	    [code using iter.Key() and iter.Value()]
+//	}
+//	if err := iter.Error(); err != nil {
+//	  ...
+//	}
 //
 // Note regarding the correctness of the time-bound iterator optimization:
 //
@@ -119,8 +120,9 @@ type MVCCIncrementalIterOptions struct {
 // specified reader and options. The timestamp hint range should not be more
 // restrictive than the start and end time range.
 // TODO(pbardea): Add validation here and in C++ implementation that the
-//  timestamp hints are not more restrictive than incremental iterator's
-//  (startTime, endTime] interval.
+//
+//	timestamp hints are not more restrictive than incremental iterator's
+//	(startTime, endTime] interval.
 func NewMVCCIncrementalIterator(
 	reader Reader, opts MVCCIncrementalIterOptions,
 ) *MVCCIncrementalIterator {

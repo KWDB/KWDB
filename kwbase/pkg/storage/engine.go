@@ -503,10 +503,10 @@ type Batch interface {
 // Some stats (eg, `IngestedBytes`) are only exposed by Pebble.
 //
 // Currently, we collect stats from the following sources:
-// 1. RocksDB's internal "tickers" (i.e. counters). They're defined in
-//    rocksdb/statistics.h
-// 2. DBEventListener, which implements RocksDB's EventListener interface.
-// 3. rocksdb::DB::GetProperty().
+//  1. RocksDB's internal "tickers" (i.e. counters). They're defined in
+//     rocksdb/statistics.h
+//  2. DBEventListener, which implements RocksDB's EventListener interface.
+//  3. rocksdb::DB::GetProperty().
 //
 // This is a good resource describing RocksDB's memory-related stats:
 // https://github.com/facebook/rocksdb/wiki/Memory-usage-in-RocksDB

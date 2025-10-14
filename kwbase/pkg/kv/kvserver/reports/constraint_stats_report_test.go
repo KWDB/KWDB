@@ -909,7 +909,8 @@ func makeTableDesc(t table, tableID int, dbID int) (sqlbase.TableDescriptor, err
 // and possibly nil).
 //
 // parent: Can be nil if the parent table doesn't have a zone of its own. In that
-//   case, if any subzones are created, a placeholder zone will also be created and returned.
+//
+//	case, if any subzones are created, a placeholder zone will also be created and returned.
 func addIndexSubzones(idx index, parent *zonepb.ZoneConfig, idxID int) *zonepb.ZoneConfig {
 	res := parent
 

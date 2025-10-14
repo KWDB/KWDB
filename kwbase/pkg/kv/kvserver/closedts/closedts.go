@@ -32,24 +32,28 @@
 // follower reads talk to the Provider, which receives closed timestamp updates
 // for the local node and its peers.
 //
-//                             Node 1 | Node 2
-//                                    |
+//	Node 1 | Node 2
+//	       |
+//
 // +---------+  Close  +-----------+  |  +-----------+
 // | Tracker |<--------|           |  |  |           |
 // +-----+---+         | +-------+ |  |  | +-------+ |  CanServe
-//       ^             | |Storage| |  |  | |Storage| |<---------+
-//       |             | --------+ |  |  | +-------+ |          |
-//       |Track        |           |  |  |           |     +----+----+
-//       |             | Provider  |  |  | Provider  |     | Follower|
-//       |             +-----------+  |  +-----------+     | Replica |
-//       |                 ^                  ^            +----+----+
-//       |                 |Subscribe         |Notify           |
-//       |                 |                  |                 |
+//
+//	^             | |Storage| |  |  | |Storage| |<---------+
+//	|             | --------+ |  |  | +-------+ |          |
+//	|Track        |           |  |  |           |     +----+----+
+//	|             | Provider  |  |  | Provider  |     | Follower|
+//	|             +-----------+  |  +-----------+     | Replica |
+//	|                 ^                  ^            +----+----+
+//	|                 |Subscribe         |Notify           |
+//	|                 |                  |                 |
+//
 // +---------+             |      Request     |                 |
 // |Proposing| Refresh +---+----+ <------ +---+-----+  Request  |
 // | Replica |<--------| Server |         | Clients |<----------+
 // +---------+         +--------+ ------> +---------+  EnsureClient
-//                                  CT
+//
+//	CT
 package closedts
 
 import (
@@ -135,20 +139,20 @@ type Producer interface {
 // gatekeeper for the closed timestamp state for both local and remote nodes,
 // which it handles in a symmetric fashion. It has the following tasks:
 //
-// 1. it accepts subscriptions for closed timestamp updates sourced from the
-//    local node. Upon accepting a subscription, the subscriber first receives
-//    the aggregate closed timestamp snapshot of the local node and then periodic
-//    updates.
-// 2. it periodically closes out timestamps on the local node and passes the
-//    resulting entries to all of its subscribers.
-// 3. it accepts notifications from other nodes, passing these updates through
-//    to its local storage, so that
-// 4. the CanServe method determines via the the underlying storage whether a
-//    given read can be satisfied via follower reads.
-// 5. the MaxClosed method determines via the underlying storage what the maximum
-//    closed timestamp is for the specified LAI.
-//    TODO(tschottdorf): This is already adding some cruft to this nice interface.
-//    CanServe and MaxClosed are almost identical.
+//  1. it accepts subscriptions for closed timestamp updates sourced from the
+//     local node. Upon accepting a subscription, the subscriber first receives
+//     the aggregate closed timestamp snapshot of the local node and then periodic
+//     updates.
+//  2. it periodically closes out timestamps on the local node and passes the
+//     resulting entries to all of its subscribers.
+//  3. it accepts notifications from other nodes, passing these updates through
+//     to its local storage, so that
+//  4. the CanServe method determines via the the underlying storage whether a
+//     given read can be satisfied via follower reads.
+//  5. the MaxClosed method determines via the underlying storage what the maximum
+//     closed timestamp is for the specified LAI.
+//     TODO(tschottdorf): This is already adding some cruft to this nice interface.
+//     CanServe and MaxClosed are almost identical.
 //
 // Note that a Provider has no duty to immediately persist the local closed
 // timestamps to the underlying storage.

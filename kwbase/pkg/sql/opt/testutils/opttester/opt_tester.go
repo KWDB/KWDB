@@ -228,135 +228,136 @@ func New(catalog cat.Catalog, sql string) *OptTester {
 
 // RunCommand implements commands that are used by most tests:
 //
-//  - exec-ddl
+//   - exec-ddl
 //
-//    Runs a SQL DDL statement to build the test catalog. Only a small number
-//    of DDL statements are supported, and those not fully. This is only
-//    available when using a TestCatalog.
+//     Runs a SQL DDL statement to build the test catalog. Only a small number
+//     of DDL statements are supported, and those not fully. This is only
+//     available when using a TestCatalog.
 //
-//  - build [flags]
+//   - build [flags]
 //
-//    Builds an expression tree from a SQL query and outputs it without any
-//    optimizations applied to it.
+//     Builds an expression tree from a SQL query and outputs it without any
+//     optimizations applied to it.
 //
-//  - norm [flags]
+//   - norm [flags]
 //
-//    Builds an expression tree from a SQL query, applies normalization
-//    optimizations, and outputs it without any exploration optimizations
-//    applied to it.
+//     Builds an expression tree from a SQL query, applies normalization
+//     optimizations, and outputs it without any exploration optimizations
+//     applied to it.
 //
-//  - opt [flags]
+//   - opt [flags]
 //
-//    Builds an expression tree from a SQL query, fully optimizes it using the
-//    memo, and then outputs the lowest cost tree.
+//     Builds an expression tree from a SQL query, fully optimizes it using the
+//     memo, and then outputs the lowest cost tree.
 //
-//  - optsteps [flags]
+//   - optsteps [flags]
 //
-//    Outputs the lowest cost tree for each step in optimization using the
-//    standard unified diff format. Used for debugging the optimizer.
+//     Outputs the lowest cost tree for each step in optimization using the
+//     standard unified diff format. Used for debugging the optimizer.
 //
-//  - exploretrace [flags]
+//   - exploretrace [flags]
 //
-//    Outputs information about exploration rule application. Used for debugging
-//    the optimizer.
+//     Outputs information about exploration rule application. Used for debugging
+//     the optimizer.
 //
-//  - memo [flags]
+//   - memo [flags]
 //
-//    Builds an expression tree from a SQL query, fully optimizes it using the
-//    memo, and then outputs the memo containing the forest of trees.
+//     Builds an expression tree from a SQL query, fully optimizes it using the
+//     memo, and then outputs the memo containing the forest of trees.
 //
-//  - rulestats [flags]
+//   - rulestats [flags]
 //
-//    Performs the optimization and outputs statistics about applied rules.
+//     Performs the optimization and outputs statistics about applied rules.
 //
-//  - expr
+//   - expr
 //
-//    Builds an expression directly from an opt-gen-like string; see
-//    exprgen.Build.
+//     Builds an expression directly from an opt-gen-like string; see
+//     exprgen.Build.
 //
-//  - save-tables [flags]
+//   - save-tables [flags]
 //
-//    Fully optimizes the given query and saves the subexpressions as tables
-//    in the test catalog with their estimated statistics injected.
-//    If rewriteActualFlag=true, also executes the given query against a
-//    running database and saves the intermediate results as tables.
+//     Fully optimizes the given query and saves the subexpressions as tables
+//     in the test catalog with their estimated statistics injected.
+//     If rewriteActualFlag=true, also executes the given query against a
+//     running database and saves the intermediate results as tables.
 //
-//  - stats table=... [flags]
+//   - stats table=... [flags]
 //
-//    Compares estimated statistics for a relational expression with the actual
-//    statistics calculated by calling CREATE STATISTICS on the output of the
-//    expression. save-tables must have been called previously to save the
-//    target expression as a table. The name of this table must be provided
-//    with the table flag.
+//     Compares estimated statistics for a relational expression with the actual
+//     statistics calculated by calling CREATE STATISTICS on the output of the
+//     expression. save-tables must have been called previously to save the
+//     target expression as a table. The name of this table must be provided
+//     with the table flag.
 //
-//  - import file=...
+//   - import file=...
 //
-//    Imports a file containing exec-ddl commands in order to add tables and/or
-//    stats to the catalog. This allows commonly-used schemas such as TPC-C or
-//    TPC-H to be used by multiple test files without copying the schemas and
-//    stats multiple times. The file name must be provided with the file flag.
-//    The path of the file should be relative to
-//    testutils/opttester/testfixtures.
+//     Imports a file containing exec-ddl commands in order to add tables and/or
+//     stats to the catalog. This allows commonly-used schemas such as TPC-C or
+//     TPC-H to be used by multiple test files without copying the schemas and
+//     stats multiple times. The file name must be provided with the file flag.
+//     The path of the file should be relative to
+//     testutils/opttester/testfixtures.
 //
-//  - inject-stats file=... table=...
+//   - inject-stats file=... table=...
 //
-//    Injects table statistics from a json file.
+//     Injects table statistics from a json file.
 //
 // Supported flags:
 //
-//  - format: controls the formatting of expressions for build, opt, and
-//    optsteps commands. Format flags are of the form
-//      (show|hide)-(all|miscprops|constraints|scalars|types|...)
-//    See formatFlags for all flags. Multiple flags can be specified; each flag
-//    modifies the existing set of the flags.
+//   - format: controls the formatting of expressions for build, opt, and
+//     optsteps commands. Format flags are of the form
+//     (show|hide)-(all|miscprops|constraints|scalars|types|...)
+//     See formatFlags for all flags. Multiple flags can be specified; each flag
+//     modifies the existing set of the flags.
 //
-//  - allow-unsupported: wrap unsupported expressions in UnsupportedOp.
+//   - allow-unsupported: wrap unsupported expressions in UnsupportedOp.
 //
-//  - fully-qualify-names: fully qualify all column names in the test output.
+//   - fully-qualify-names: fully qualify all column names in the test output.
 //
-//  - expect: fail the test if the rules specified by name do not match.
+//   - expect: fail the test if the rules specified by name do not match.
 //
-//  - expect-not: fail the test if the rules specified by name match.
+//   - expect-not: fail the test if the rules specified by name match.
 //
-//  - disable: disables optimizer rules by name. Examples:
-//      opt disable=ConstrainScan
-//      norm disable=(NegateOr,NegateAnd)
+//   - disable: disables optimizer rules by name. Examples:
+//     opt disable=ConstrainScan
+//     norm disable=(NegateOr,NegateAnd)
 //
-//  - rule: used with exploretrace; the value is the name of a rule. When
-//    specified, the exploretrace output is filtered to only show expression
-//    changes due to that specific rule.
+//   - rule: used with exploretrace; the value is the name of a rule. When
+//     specified, the exploretrace output is filtered to only show expression
+//     changes due to that specific rule.
 //
-//  - skip-no-op: used with exploretrace; hide instances of rules that don't
-//    generate any new expressions.
+//   - skip-no-op: used with exploretrace; hide instances of rules that don't
+//     generate any new expressions.
 //
-//  - colstat: requests the calculation of a column statistic on the top-level
-//    expression. The value is a column or a list of columns. The flag can
-//    be used multiple times to request different statistics.
+//   - colstat: requests the calculation of a column statistic on the top-level
+//     expression. The value is a column or a list of columns. The flag can
+//     be used multiple times to request different statistics.
 //
-//  - perturb-cost: used to randomly perturb the estimated cost of each
-//    expression in the query tree for the purpose of creating alternate query
-//    plans in the optimizer.
+//   - perturb-cost: used to randomly perturb the estimated cost of each
+//     expression in the query tree for the purpose of creating alternate query
+//     plans in the optimizer.
 //
-//  - locality: used to set the locality of the node that plans the query. This
-//    can affect costing when there are multiple possible indexes to choose
-//    from, each in different localities.
+//   - locality: used to set the locality of the node that plans the query. This
+//     can affect costing when there are multiple possible indexes to choose
+//     from, each in different localities.
 //
-//  - database: used to set the current database used by the query. This is
-//    used by the save-tables command when rewriteActualFlag=true.
+//   - database: used to set the current database used by the query. This is
+//     used by the save-tables command when rewriteActualFlag=true.
 //
-//  - table: used to set the current table used by the command. This is used by
-//    the stats command.
+//   - table: used to set the current table used by the command. This is used by
+//     the stats command.
 //
-//  - save-tables-prefix: must be used with the save-tables command. If
-//    rewriteActualFlag=true, indicates that a table should be created with the
-//    given prefix for the output of each subexpression in the query.
-//    Otherwise, outputs the name of the table that would be created for each
-//    subexpression.
+//   - save-tables-prefix: must be used with the save-tables command. If
+//     rewriteActualFlag=true, indicates that a table should be created with the
+//     given prefix for the output of each subexpression in the query.
+//     Otherwise, outputs the name of the table that would be created for each
+//     subexpression.
 //
-//  - file: specifies a file, used for the following commands:
-//     - import: the file path is relative to opttester/testfixtures;
-//     - inject-stats: the file path is relative to the test file.
+//   - file: specifies a file, used for the following commands:
 //
+//   - import: the file path is relative to opttester/testfixtures;
+//
+//   - inject-stats: the file path is relative to the test file.
 func (ot *OptTester) RunCommand(tb testing.TB, d *datadriven.TestData) string {
 	// Allow testcases to override the flags.
 	for _, a := range d.CmdArgs {
@@ -903,17 +904,18 @@ func (ot *OptTester) RuleStats() (string, error) {
 // transformation. The output of each step is diff'd against the output of a
 // previous step, using the standard unified diff format.
 //
-//   CREATE TABLE a (x INT PRIMARY KEY, y INT, UNIQUE INDEX (y))
+//	CREATE TABLE a (x INT PRIMARY KEY, y INT, UNIQUE INDEX (y))
 //
-//   SELECT x FROM a WHERE x=1
+//	SELECT x FROM a WHERE x=1
 //
 // At the time of this writing, this query triggers 6 rule applications:
-//   EnsureSelectFilters     Wrap Select predicate with Filters operator
-//   FilterUnusedSelectCols  Do not return unused "y" column from Scan
-//   EliminateProject        Remove unneeded Project operator
-//   GenerateIndexScans      Explore scanning "y" index to get "x" values
-//   ConstrainScan           Explore pushing "x=1" into "x" index Scan
-//   ConstrainScan           Explore pushing "x=1" into "y" index Scan
+//
+//	EnsureSelectFilters     Wrap Select predicate with Filters operator
+//	FilterUnusedSelectCols  Do not return unused "y" column from Scan
+//	EliminateProject        Remove unneeded Project operator
+//	GenerateIndexScans      Explore scanning "y" index to get "x" values
+//	ConstrainScan           Explore pushing "x=1" into "x" index Scan
+//	ConstrainScan           Explore pushing "x=1" into "y" index Scan
 //
 // Some steps produce better plans that have a lower execution cost. Other steps
 // don't. However, it's useful to see both kinds of steps. The optsteps output
@@ -921,7 +923,6 @@ func (ot *OptTester) RuleStats() (string, error) {
 // a better plan has been found, and weaker "----" header delimiters when not.
 // In both cases, the output shows the expressions that were changed or added by
 // the rule, even if the total expression tree cost worsened.
-//
 func (ot *OptTester) OptSteps() (string, error) {
 	var prevBest, prev, next string
 	ot.builder.Reset()

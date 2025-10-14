@@ -54,21 +54,20 @@ func registerFollowerReads(r *testRegistry) {
 // runFollowerReadsTest is a basic litmus test that follower reads work.
 // The test does the following:
 //
-//  * Creates a database and table.
-//  * Installs a number of rows into that table.
-//  * Queries the data initially with a recent timestamp and expecting an
-//    error because the table does not exist in the past immediately following
-//    creation.
-//  * Waits until the required duration has elapsed such that the installed
-//    data can be read with a follower read issued using `follower_timestamp()`.
-//  * Performs a single `follower_timestamp()` select query against a single
-//    row on all of the nodes and then observes the counter metric for
-//    store-level follower reads ensuring that they occurred on at least
-//    two of the nodes.
-//  * Performs reads against the written data on all of the nodes at a steady
-//    rate for 20 seconds, ensure that the 90-%ile SQL latencies during that
-//    time are under 10ms which implies that no WAN RPCs occurred.
-//
+//   - Creates a database and table.
+//   - Installs a number of rows into that table.
+//   - Queries the data initially with a recent timestamp and expecting an
+//     error because the table does not exist in the past immediately following
+//     creation.
+//   - Waits until the required duration has elapsed such that the installed
+//     data can be read with a follower read issued using `follower_timestamp()`.
+//   - Performs a single `follower_timestamp()` select query against a single
+//     row on all of the nodes and then observes the counter metric for
+//     store-level follower reads ensuring that they occurred on at least
+//     two of the nodes.
+//   - Performs reads against the written data on all of the nodes at a steady
+//     rate for 20 seconds, ensure that the 90-%ile SQL latencies during that
+//     time are under 10ms which implies that no WAN RPCs occurred.
 func runFollowerReadsTest(ctx context.Context, t *test, c *cluster) {
 	kwdbNodes := c.Range(1, c.spec.NodeCount)
 	c.Put(ctx, kwbase, "./kwbase", kwdbNodes)

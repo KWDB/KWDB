@@ -61,17 +61,20 @@ func (l *loggingT) formatLogEntry(entry Entry, stacks []byte, cp ttycolor.Profil
 // for calling putBuffer() afterwards.
 //
 // Log lines have this form:
-// 	Lyymmdd hh:mm:ss.uuuuuu goid file:line msg...
+//
+//	Lyymmdd hh:mm:ss.uuuuuu goid file:line msg...
+//
 // where the fields are defined as follows:
-// 	L                A single character, representing the log level (eg 'I' for INFO)
-// 	yy               The year (zero padded; ie 2016 is '16')
-// 	mm               The month (zero padded; ie May is '05')
-// 	dd               The day (zero padded)
-// 	hh:mm:ss.uuuuuu  Time in hours, minutes and fractional seconds
-// 	goid             The goroutine id (omitted if zero for use by tests)
-// 	file             The file name
-// 	line             The line number
-// 	msg              The user-supplied message
+//
+//	L                A single character, representing the log level (eg 'I' for INFO)
+//	yy               The year (zero padded; ie 2016 is '16')
+//	mm               The month (zero padded; ie May is '05')
+//	dd               The day (zero padded)
+//	hh:mm:ss.uuuuuu  Time in hours, minutes and fractional seconds
+//	goid             The goroutine id (omitted if zero for use by tests)
+//	file             The file name
+//	line             The line number
+//	msg              The user-supplied message
 func (l *loggingT) formatHeader(
 	s Severity, now time.Time, gid int, file string, line int, cp ttycolor.Profile,
 ) *buffer {

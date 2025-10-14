@@ -21,8 +21,8 @@
 // MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
 // See the Mulan PSL v2 for more details.
 
-// +build !deadlock
-// +build race
+//go:build !deadlock && race
+// +build !deadlock,race
 
 package syncutil
 

@@ -320,7 +320,7 @@ func (c *C) check() {
 	}
 }
 
-//SetHashID sets CachedData's hashID
+// SetHashID sets CachedData's hashID
 func (c *C) SetHashID(sql string, hashID string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()

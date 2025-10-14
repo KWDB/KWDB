@@ -245,9 +245,9 @@ func runTests(
 
 // runTestsWithTyps is the same as runTests with an ability to specify the
 // types of the input tuples.
-// - typs is the type schema of the input tuples. Note that this is a multi-
-//   dimensional slice which allows for specifying different schemas for each
-//   of the inputs.
+//   - typs is the type schema of the input tuples. Note that this is a multi-
+//     dimensional slice which allows for specifying different schemas for each
+//     of the inputs.
 func runTestsWithTyps(
 	t *testing.T,
 	tups []tuples,
@@ -492,15 +492,15 @@ func runTestsWithoutAllNullsInjection(
 // testing facility than runTests, because it can't get a handle on the operator
 // under test and therefore can't perform as many extra checks. You should
 // always prefer using runTests over runTestsWithFn.
-// - tups is the sets of input tuples.
-// - typs is the type schema of the input tuples. Note that this is a multi-
-//   dimensional slice which allows for specifying different schemas for each
-//   of the inputs. This can also be left nil in which case the types will be
-//   determined at the runtime looking at the first input tuple, and if the
-//   determination doesn't succeed for a value of the tuple (likely because
-//   it's a nil), then that column will be assumed by default of type Int64.
-// - test is a function that takes a list of input Operators and performs
-//   testing with t.
+//   - tups is the sets of input tuples.
+//   - typs is the type schema of the input tuples. Note that this is a multi-
+//     dimensional slice which allows for specifying different schemas for each
+//     of the inputs. This can also be left nil in which case the types will be
+//     determined at the runtime looking at the first input tuple, and if the
+//     determination doesn't succeed for a value of the tuple (likely because
+//     it's a nil), then that column will be assumed by default of type Int64.
+//   - test is a function that takes a list of input Operators and performs
+//     testing with t.
 func runTestsWithFn(
 	t *testing.T, tups []tuples, typs [][]coltypes.T, test func(t *testing.T, inputs []Operator),
 ) {
@@ -598,16 +598,18 @@ func setColVal(vec coldata.Vec, idx int, val interface{}) {
 // of arbitrary Go coltypes. It's meant to be used in Operator unit tests in
 // conjunction with opTestOutput like the following:
 //
-// inputTuples := tuples{
-//   {1,2,3.3,true},
-//   {5,6,7.0,false},
-// }
+//	inputTuples := tuples{
+//	  {1,2,3.3,true},
+//	  {5,6,7.0,false},
+//	}
+//
 // tupleSource := newOpTestInput(inputTuples, coltypes.Bool)
 // opUnderTest := newFooOp(tupleSource, ...)
 // output := newOpTestOutput(opUnderTest, expectedOutputTuples)
-// if err := output.Verify(); err != nil {
-//     t.Fatal(err)
-// }
+//
+//	if err := output.Verify(); err != nil {
+//	    t.Fatal(err)
+//	}
 type opTestInput struct {
 	ZeroInputNode
 

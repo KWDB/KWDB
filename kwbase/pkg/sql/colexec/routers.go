@@ -289,10 +289,11 @@ func (o *routerOutputOp) cancel(ctx context.Context) {
 // True is returned if the the output changes state to blocked (note: if the
 // output is already blocked, false is returned).
 // TODO(asubiotto): We should explore pipelining addBatch if disk-spilling
-//  performance becomes a concern. The main router goroutine will be writing to
-//  disk as the code is written, meaning that we impact the performance of
-//  writing rows to a fast output if we have to write to disk for a single
-//  slow output.
+//
+//	performance becomes a concern. The main router goroutine will be writing to
+//	disk as the code is written, meaning that we impact the performance of
+//	writing rows to a fast output if we have to write to disk for a single
+//	slow output.
 func (o *routerOutputOp) addBatch(ctx context.Context, batch coldata.Batch, selection []int) bool {
 	if len(selection) > batch.Length() {
 		selection = selection[:batch.Length()]

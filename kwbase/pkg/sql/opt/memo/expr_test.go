@@ -47,26 +47,27 @@ import (
 )
 
 // TestExprIsNeverNull runs data-driven testcases of the form
-//   <command> [<args>]...
-//   <SQL statement or expression>
-//   ----
-//   <expected results>
+//
+//	<command> [<args>]...
+//	<SQL statement or expression>
+//	----
+//	<expected results>
 //
 // See OptTester.Handle for supported commands. In addition to those, we
 // support:
 //
-//  - scalar-is-not-nullable [args]
+//   - scalar-is-not-nullable [args]
 //
-//    Builds a scalar expression using the input and performs a best-effort
-//    check to see if the scalar expression is nullable. It outputs this
-//    result as a boolean.
+//     Builds a scalar expression using the input and performs a best-effort
+//     check to see if the scalar expression is nullable. It outputs this
+//     result as a boolean.
 //
-//    The supported args (in addition to the ones supported by OptTester):
+//     The supported args (in addition to the ones supported by OptTester):
 //
-//      - vars=(type1,type2,...)
+//   - vars=(type1,type2,...)
 //
-//      Adding a !null suffix on a var type is used to mark that var as
-//      non-nullable.
+//     Adding a !null suffix on a var type is used to mark that var as
+//     non-nullable.
 func TestExprIsNeverNull(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 

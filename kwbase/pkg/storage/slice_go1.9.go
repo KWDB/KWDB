@@ -21,6 +21,7 @@
 // MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
 // See the Mulan PSL v2 for more details.
 
+//go:build gc && go1.9
 // +build gc,go1.9
 
 package storage

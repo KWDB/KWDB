@@ -99,8 +99,10 @@ type testRunner struct {
 // newTestRunner constructs a testRunner.
 //
 // cr: The cluster registry with which all clusters will be registered. The
-//   caller provides this as the caller needs to be able to shut clusters down
-//   on Ctrl+C.
+//
+//	caller provides this as the caller needs to be able to shut clusters down
+//	on Ctrl+C.
+//
 // buildVersion: The version of the Cockroach binary against which tests will run.
 func newTestRunner(cr *clusterRegistry, buildVersion version.Version) *testRunner {
 	r := &testRunner{
@@ -156,9 +158,11 @@ func (c clustersOpt) validate() error {
 // tests: The tests to run.
 // count: How many times to run each test selected by filter.
 // parallelism: How many workers to use for running tests. Tests are run
-//   locally (although generally they run against remote roachprod clusters).
-//   parallelism bounds the maximum number of tests that run concurrently. Note
-//   that the concurrency is also affected by cpuQuota.
+//
+//	locally (although generally they run against remote roachprod clusters).
+//	parallelism bounds the maximum number of tests that run concurrently. Note
+//	that the concurrency is also affected by cpuQuota.
+//
 // clusterOpt: Options for the clusters to use by tests.
 // lopt: Options for logging.
 func (r *testRunner) Run(
@@ -348,11 +352,17 @@ type clusterAllocatorFn func(
 // Args:
 // name: The worker's name, to be used as a prefix for log messages.
 // artifactsRootDir: The artifacts dir. Each test's logs are going to be under a
-//   run_<n> dir. If empty, test log files will not be created.
+//
+//	run_<n> dir. If empty, test log files will not be created.
+//
 // testRunnerLogPath: The path to the test runner's log. It will be copied to
-//  	failing tests' artifacts dir if running under TeamCity.
+//
+//	failing tests' artifacts dir if running under TeamCity.
+//
 // stdout: The Writer to use for messages that need to go to stdout (e.g. the
-// 	 "=== RUN" and "--- FAIL" lines).
+//
+//	"=== RUN" and "--- FAIL" lines).
+//
 // teeOpt: The teeing option for future test loggers.
 // l: The logger to use for more verbose messages.
 func (r *testRunner) runWorker(
@@ -576,10 +586,13 @@ func allStacks() []byte {
 //
 // Args:
 // c: The cluster on which the test will run. runTest() does not wipe or destroy
-//    the cluster.
+//
+//	the cluster.
+//
 // testRunnerLogPath: The path to the test runner's log. It will be copied to
-//  	the test's artifacts dir if the test fails and we're running under
-//  	TeamCity.
+//
+//	the test's artifacts dir if the test fails and we're running under
+//	TeamCity.
 func (r *testRunner) runTest(
 	ctx context.Context,
 	t *test,
@@ -1014,7 +1027,8 @@ func (r *testRunner) removeWorker(ctx context.Context, name string) {
 // runHTTPServer starts a server running in the background.
 //
 // httpPort: The port on which to serve the web interface. Pass 0 for allocating
-// 	 a port automatically (which will be printed to stdout).
+//
+//	a port automatically (which will be printed to stdout).
 func (r *testRunner) runHTTPServer(httpPort int, stdout io.Writer) error {
 	http.HandleFunc("/", r.serveHTTP)
 	// Run an http server in the background.

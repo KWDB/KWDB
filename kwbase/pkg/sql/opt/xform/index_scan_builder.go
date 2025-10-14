@@ -36,20 +36,19 @@ import (
 // Any filters are created as close to the scan as possible, and index joins can
 // be used to scan a non-covering index. For example, in order to construct:
 //
-//   (IndexJoin
-//     (Select (Scan $scanPrivate) $filters)
-//     $indexJoinPrivate
-//   )
+//	(IndexJoin
+//	  (Select (Scan $scanPrivate) $filters)
+//	  $indexJoinPrivate
+//	)
 //
 // make the following calls:
 //
-//   var sb indexScanBuilder
-//   sb.init(c, tabID)
-//   sb.setScan(scanPrivate)
-//   sb.addSelect(filters)
-//   sb.addIndexJoin(cols)
-//   expr := sb.build()
-//
+//	var sb indexScanBuilder
+//	sb.init(c, tabID)
+//	sb.setScan(scanPrivate)
+//	sb.addSelect(filters)
+//	sb.addIndexJoin(cols)
+//	expr := sb.build()
 type indexScanBuilder struct {
 	c                *CustomFuncs
 	f                *norm.Factory

@@ -23,7 +23,9 @@
 // See the Mulan PSL v2 for more details.
 
 // {{/*
+//go:build execgen_template
 // +build execgen_template
+
 //
 // This file is the execgen template for select_in.eg.go. It's formatted in a
 // special way, so it's both valid Go and a valid text/template input. This

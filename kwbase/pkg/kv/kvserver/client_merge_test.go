@@ -1603,17 +1603,17 @@ func TestStoreRangeMergeConcurrentRequests(t *testing.T) {
 //
 // Consider the following sequence of events observed in a real cluster:
 //
-//     1. Adjacent ranges Q and R are slated to be merged. Q has replicas on
-//        stores S1, S2, and S3, while R has replicas on S1, S2, and S4.
-//     2. To collocate Q and R, the merge queue adds a replica of R on S3 and
-//        removes the replica on S4. The replica on S4 is queued for garbage
-//        collection, but is not yet processed.
-//     3. The merge transaction commits, deleting R's range descriptor from the
-//        meta2 index.
-//     4. The replica GC queue processes the former replica of R on S4. It
-//        performs a consistent lookup of R's start key in the meta2 index to
-//        determine whether the replica is still a member of R. Since R has been
-//        deleted, the lookup returns Q's range descriptor, not R's.
+//  1. Adjacent ranges Q and R are slated to be merged. Q has replicas on
+//     stores S1, S2, and S3, while R has replicas on S1, S2, and S4.
+//  2. To collocate Q and R, the merge queue adds a replica of R on S3 and
+//     removes the replica on S4. The replica on S4 is queued for garbage
+//     collection, but is not yet processed.
+//  3. The merge transaction commits, deleting R's range descriptor from the
+//     meta2 index.
+//  4. The replica GC queue processes the former replica of R on S4. It
+//     performs a consistent lookup of R's start key in the meta2 index to
+//     determine whether the replica is still a member of R. Since R has been
+//     deleted, the lookup returns Q's range descriptor, not R's.
 //
 // The replica GC queue would previously fail to notice that it had received Q's
 // range descriptor, not R's. It would then proceed to call store.RemoveReplica

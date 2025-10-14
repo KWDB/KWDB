@@ -31,9 +31,9 @@ import (
 
 // CanInlineWith returns whether or not it's valid to inline binding in expr.
 // This is the case when:
-// 1. binding has no side-effects (because once it's inlined, there's no
-//    guarantee it will be executed fully), and
-// 2. binding is referenced at most once in expr.
+//  1. binding has no side-effects (because once it's inlined, there's no
+//     guarantee it will be executed fully), and
+//  2. binding is referenced at most once in expr.
 func (c *CustomFuncs) CanInlineWith(binding, expr memo.RelExpr, private *memo.WithPrivate) bool {
 	if binding.Relational().CanHaveSideEffects {
 		return false

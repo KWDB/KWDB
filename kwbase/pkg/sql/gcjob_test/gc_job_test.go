@@ -50,7 +50,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-//TODO(pbardea): Add more testing around the timer calculations.
+// TODO(pbardea): Add more testing around the timer calculations.
 func TestSchemaChangeGCJob(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 

@@ -392,9 +392,10 @@ func makeSpanFromBucket(b *cat.HistogramBucket, lowerBound tree.Datum) (span con
 // values are integers).
 //
 // The following spans will filter the bucket as shown:
-//   [/0 - /5]   => {NumEq: 1, NumRange: 5, UpperBound: 5}
-//   [/2 - /10]  => {NumEq: 5, NumRange: 8, UpperBound: 10}
-//   [/20 - /30] => error
+//
+//	[/0 - /5]   => {NumEq: 1, NumRange: 5, UpperBound: 5}
+//	[/2 - /10]  => {NumEq: 5, NumRange: 8, UpperBound: 10}
+//	[/20 - /30] => error
 //
 // Note that the calculations for NumEq and NumRange depend on the data type.
 // For discrete data types such as integers and dates, it is always possible
@@ -404,14 +405,13 @@ func makeSpanFromBucket(b *cat.HistogramBucket, lowerBound tree.Datum) (span con
 // bound. For example, given the same bucket as in the above example, but with
 // floating point values instead of integers:
 //
-//   [/0 - /5]   => {NumEq: 0, NumRange: 5, UpperBound: 5.0}
-//   [/2 - /10]  => {NumEq: 5, NumRange: 8, UpperBound: 10.0}
-//   [/20 - /30] => error
+//	[/0 - /5]   => {NumEq: 0, NumRange: 5, UpperBound: 5.0}
+//	[/2 - /10]  => {NumEq: 5, NumRange: 8, UpperBound: 10.0}
+//	[/20 - /30] => error
 //
 // For non-numeric types such as strings, it is not possible to estimate
 // the size of NumRange if the bucket is cut off in the middle. In this case,
 // we use the heuristic that NumRange is reduced by half.
-//
 func getFilteredBucket(
 	b *cat.HistogramBucket,
 	keyCtx *constraint.KeyContext,
@@ -580,11 +580,15 @@ func isDiscrete(typ *types.T) bool {
 }
 
 // histogramWriter prints histograms with the following formatting:
-//   NumRange1    NumEq1     NumRange2    NumEq2    ....
+//
+//	NumRange1    NumEq1     NumRange2    NumEq2    ....
+//
 // <----------- UpperBound1 ----------- UpperBound2 ....
 //
 // For example:
-//   0  1  90  10   0  20
+//
+//	0  1  90  10   0  20
+//
 // <--- 0 ---- 100 --- 200
 //
 // This describes a histogram with 3 buckets. The first bucket contains 1 value

@@ -91,7 +91,9 @@ func validateCheckExpr(
 //
 // SELECT s.a_id, s.b_id, s.pk1, s.pk2 FROM child@c_idx
 // WHERE
-//   (a_id IS NULL OR b_id IS NULL) AND (a_id IS NOT NULL OR b_id IS NOT NULL)
+//
+//	(a_id IS NULL OR b_id IS NULL) AND (a_id IS NOT NULL OR b_id IS NOT NULL)
+//
 // LIMIT 1;
 func matchFullUnacceptableKeyQuery(
 	srcTbl *sqlbase.TableDescriptor, fk *sqlbase.ForeignKeyConstraint, limitResults bool,
@@ -154,13 +156,19 @@ func matchFullUnacceptableKeyQuery(
 // "parent", would require the following query:
 //
 // SELECT
-//   s.a_id, s.b_id, s.pk1, s.pk2
+//
+//	s.a_id, s.b_id, s.pk1, s.pk2
+//
 // FROM
-//   (SELECT * FROM child@c_idx WHERE a_id IS NOT NULL AND b_id IS NOT NULL) AS s
-//   LEFT OUTER JOIN parent@p_idx AS t ON s.a_id = t.a AND s.b_id = t.b
+//
+//	(SELECT * FROM child@c_idx WHERE a_id IS NOT NULL AND b_id IS NOT NULL) AS s
+//	LEFT OUTER JOIN parent@p_idx AS t ON s.a_id = t.a AND s.b_id = t.b
+//
 // WHERE
-//   t.a IS NULL
-// LIMIT 1  -- if limitResults is set
+//
+//	t.a IS NULL
+//
+// # LIMIT 1  -- if limitResults is set
 //
 // TODO(radu): change this to a query which executes as an anti-join when we
 // remove the heuristic planner.
@@ -347,7 +355,6 @@ type checkSet = util.FastIntSet
 // the entire input); checkSet contains the set of checks for which we have
 // values, as ordinals into ActiveChecks(). There must be exactly one value in
 // checkVals for each element in checkSet.
-//
 func checkMutationInput(
 	tabDesc *sqlbase.ImmutableTableDescriptor, checkOrds checkSet, checkVals tree.Datums,
 ) error {

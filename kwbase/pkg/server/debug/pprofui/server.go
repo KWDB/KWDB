@@ -63,13 +63,13 @@ type Server struct {
 // be called by the hook. The intention is that hook will be a method such as
 // this:
 //
-// func hook(profile string, do func()) {
-// 	if profile == "profile" {
-// 		something.EnableProfilerLabels()
-// 		defer something.DisableProfilerLabels()
-// 		do()
-// 	}
-// }
+//	func hook(profile string, do func()) {
+//		if profile == "profile" {
+//			something.EnableProfilerLabels()
+//			defer something.DisableProfilerLabels()
+//			do()
+//		}
+//	}
 func NewServer(storage Storage, hook func(profile string, labels bool, do func())) *Server {
 	if hook == nil {
 		hook = func(_ string, _ bool, do func()) { do() }

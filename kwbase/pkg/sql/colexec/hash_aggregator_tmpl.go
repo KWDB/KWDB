@@ -23,7 +23,9 @@
 // See the Mulan PSL v2 for more details.
 
 // {{/*
+//go:build execgen_template
 // +build execgen_template
+
 //
 // This file is the execgen template for hash_aggregator.eg.go. It's formatted
 // in a special way, so it's both valid Go and a valid text/template input. This
@@ -123,7 +125,8 @@ func _MATCH_LOOP(
 // all false. diff will be reset to all false when match returns. This is to
 // avoid additional slice allocation.
 // NOTE: the return vector will reuse the memory allocated for the selection
-//       vector.
+//
+//	vector.
 func (v hashAggFuncs) match(
 	sel []int,
 	b coldata.Batch,

@@ -135,12 +135,13 @@ func CreateTableInterleavedDebug(
 
 // CreateTestInterleavedHierarchy generates the following interleaved hierarchy
 // for testing:
-//   <table>		  <primary index/interleave prefix>   <nrows>
-//   parent1		  (pid1)			      100
-//     child1		  (pid1, cid1, cid2)		      250
-//       grandchild1	  (pid1, cid1, cid2, gcid1)	      1000
-//     child2		  (pid1, cid3, cid4)		      50
-//   parent2		  (pid1)			      20
+//
+//	<table>		  <primary index/interleave prefix>   <nrows>
+//	parent1		  (pid1)			      100
+//	  child1		  (pid1, cid1, cid2)		      250
+//	    grandchild1	  (pid1, cid1, cid2, gcid1)	      1000
+//	  child2		  (pid1, cid3, cid4)		      50
+//	parent2		  (pid1)			      20
 func CreateTestInterleavedHierarchy(t *testing.T, sqlDB *gosql.DB) {
 	vMod := 42
 	CreateTable(t, sqlDB, "parent1",
@@ -212,8 +213,10 @@ func RowModuloFn(modulo int) GenValueFn {
 
 // RowModuloShiftedFn creates a GenValueFn that uses the following recursive
 // function definition F(row, modulo), where modulo is []int
-//    F(row, [])      = row
-//    F(row, modulo)  = F((row - 1) % modulo[0] + 1, modulo[1:])
+//
+//	F(row, [])      = row
+//	F(row, modulo)  = F((row - 1) % modulo[0] + 1, modulo[1:])
+//
 // and returns the result as a DInt.
 func RowModuloShiftedFn(modulo ...int) GenValueFn {
 	return func(row int) tree.Datum {
@@ -230,7 +233,8 @@ func moduloShiftedRecursive(row int, modulo []int) int {
 
 // IntToEnglish returns an English (pilot style) string for the given integer,
 // for example:
-//   IntToEnglish(135) = "one-three-five"
+//
+//	IntToEnglish(135) = "one-three-five"
 func IntToEnglish(val int) string {
 	if val < 0 {
 		panic(val)

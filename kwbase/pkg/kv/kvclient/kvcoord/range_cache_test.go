@@ -479,13 +479,13 @@ func TestRangeCacheCoalescedRequests(t *testing.T) {
 // returns with an error indicating so. The result of the context cancellation
 // differs between requests that lead RangeLookup requests and requests that
 // coalesce onto existing RangeLookup requests.
-// - If the context of a RangeLookup request follower is canceled, the follower
-//   will stop waiting on the inflight request, but will not have an effect on
-//   the inflight request.
-// - If the context of a RangeLookup request leader is canceled, the lookup
-//   itself will also be canceled. This means that any followers waiting on the
-//   inflight request will also see the context cancellation. This is ok, though,
-//   because DistSender will transparently retry the lookup.
+//   - If the context of a RangeLookup request follower is canceled, the follower
+//     will stop waiting on the inflight request, but will not have an effect on
+//     the inflight request.
+//   - If the context of a RangeLookup request leader is canceled, the lookup
+//     itself will also be canceled. This means that any followers waiting on the
+//     inflight request will also see the context cancellation. This is ok, though,
+//     because DistSender will transparently retry the lookup.
 func TestRangeCacheContextCancellation(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 	db := initTestDescriptorDB(t)

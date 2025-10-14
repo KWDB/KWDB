@@ -710,11 +710,13 @@ func generateIdxSubsets(maxIdx int, subsets [][]int) [][]int {
 // The tables are structured as follows:
 // parent1
 // parent2
-//   child1
-//      grandchild1
-//	      grandgrandchild1
-//   child2
-//   grandgrandchild1@ggc1_unique_idx
+//
+//	  child1
+//	     grandchild1
+//		      grandgrandchild1
+//	  child2
+//	  grandgrandchild1@ggc1_unique_idx
+//
 // parent3
 // We test reading rows from every non-empty subset for completeness.
 func TestNextRowInterleaved(t *testing.T) {

@@ -22,6 +22,7 @@
 // MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
 // See the Mulan PSL v2 for more details.
 
+//go:build race
 // +build race
 
 package props
@@ -34,10 +35,9 @@ import (
 // Verify runs consistency checks against the shared properties, in order to
 // ensure that they conform to several invariants:
 //
-//   1. The properties must have been built.
-//   2. If HasCorrelatedSubquery is true, then HasSubquery must be true as well.
-//   3. If Mutate is true, then CanHaveSideEffects must also be true.
-//
+//  1. The properties must have been built.
+//  2. If HasCorrelatedSubquery is true, then HasSubquery must be true as well.
+//  3. If Mutate is true, then CanHaveSideEffects must also be true.
 func (s *Shared) Verify() {
 	if !s.Populated {
 		panic(errors.AssertionFailedf("properties are not populated"))
@@ -53,12 +53,11 @@ func (s *Shared) Verify() {
 // Verify runs consistency checks against the relational properties, in order to
 // ensure that they conform to several invariants:
 //
-//   1. Functional dependencies are internally consistent.
-//   2. Not null columns are a subset of output columns.
-//   3. Outer columns do not intersect output columns.
-//   4. If functional dependencies indicate that the relation can have at most
-//      one row, then the cardinality reflects that as well.
-//
+//  1. Functional dependencies are internally consistent.
+//  2. Not null columns are a subset of output columns.
+//  3. Outer columns do not intersect output columns.
+//  4. If functional dependencies indicate that the relation can have at most
+//     one row, then the cardinality reflects that as well.
 func (r *Relational) Verify() {
 	r.Shared.Verify()
 	r.FuncDeps.Verify()
@@ -106,8 +105,7 @@ func (r *Relational) VerifyAgainst(other *Relational) {
 // Verify runs consistency checks against the relational properties, in order to
 // ensure that they conform to several invariants:
 //
-//   1. Functional dependencies are internally consistent.
-//
+//  1. Functional dependencies are internally consistent.
 func (s *Scalar) Verify() {
 	s.Shared.Verify()
 	s.FuncDeps.Verify()

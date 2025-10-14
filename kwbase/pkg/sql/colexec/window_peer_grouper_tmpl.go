@@ -23,7 +23,9 @@
 // See the Mulan PSL v2 for more details.
 
 // {{/*
+//go:build execgen_template
 // +build execgen_template
+
 //
 // This file is the execgen template for window_peer_grouper.eg.go. It's
 // formatted in a special way, so it's both valid Go and a valid text/template
@@ -46,8 +48,9 @@ import (
 // the first within its peer group. Peers are tuples that belong to the same
 // partition and are equal on the ordering columns. If orderingCols is empty,
 // then all tuples within the partition are peers.
-// - partitionColIdx, if not columnOmitted, *must* specify the column in which
-//   'true' indicates the start of a new partition.
+//   - partitionColIdx, if not columnOmitted, *must* specify the column in which
+//     'true' indicates the start of a new partition.
+//
 // NOTE: the input *must* already be ordered on ordCols.
 func NewWindowPeerGrouper(
 	allocator *Allocator,

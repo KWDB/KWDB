@@ -49,7 +49,8 @@ import (
 // copies of the certificates, so the cleanup function must always be called.
 //
 // Args:
-//  prefix: A prefix to be prepended to the temp file names generated, for debugging.
+//
+//	prefix: A prefix to be prepended to the temp file names generated, for debugging.
 func PGUrl(t testing.TB, servingAddr, prefix string, user *url.Userinfo) (url.URL, func()) {
 	return PGUrlWithOptionalClientCerts(t, servingAddr, prefix, user, true /* withCerts */)
 }
@@ -65,7 +66,8 @@ func PGUrl(t testing.TB, servingAddr, prefix string, user *url.Userinfo) (url.UR
 // copies of the certificates, so the cleanup function must always be called.
 //
 // Args:
-//  prefix: A prefix to be prepended to the temp file names generated, for debugging.
+//
+//	prefix: A prefix to be prepended to the temp file names generated, for debugging.
 func PGUrlWithNoneCer(
 	t testing.TB, servingAddr, prefix string, user *url.Userinfo,
 ) (url.URL, func()) {

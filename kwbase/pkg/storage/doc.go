@@ -37,7 +37,7 @@ engine. MVCC is the basis for Cockroach's support for distributed
 transactions. It is intended for direct use from storage.Range
 objects.
 
-Notes on MVCC architecture
+# Notes on MVCC architecture
 
 Each MVCC value contains a metadata key/value pair and one or more
 version key/value pairs. The MVCC metadata key is the actual key for
@@ -73,13 +73,13 @@ version. It also allows us to leverage RocksDB's bloom filters.
 
 The following is an example of the sort order for MVCC key/value pairs:
 
-		...
-		keyA: MVCCMetadata of keyA
-		keyA_Timestamp_n: value of version_n
-		keyA_Timestamp_n-1: value of version_n-1
-		...
-		keyA_Timestamp_0: value of version_0
-		keyB: MVCCMetadata of keyB
+	...
+	keyA: MVCCMetadata of keyA
+	keyA_Timestamp_n: value of version_n
+	keyA_Timestamp_n-1: value of version_n-1
+	...
+	keyA_Timestamp_0: value of version_0
+	keyB: MVCCMetadata of keyB
 
 The binary encoding used on the MVCC keys allows arbitrary keys to be
 stored in the map (no restrictions on intermediate nil-bytes, for

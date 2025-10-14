@@ -45,7 +45,7 @@ import (
 )
 
 // TestScrubIndexMissingIndexEntry tests that
-// `SCRUB TABLE ... INDEX ALL`` will find missing index entries. To test
+// `SCRUB TABLE ... INDEX ALL“ will find missing index entries. To test
 // this, a row's underlying secondary index k/v is deleted using the KV
 // client. This causes a missing index entry error as the row is missing
 // the expected secondary index k/v.
@@ -118,7 +118,7 @@ INSERT INTO t."tEst" VALUES (10, 20);
 }
 
 // TestScrubIndexDanglingIndexReference tests that
-// `SCRUB TABLE ... INDEX`` will find dangling index references, which
+// `SCRUB TABLE ... INDEX“ will find dangling index references, which
 // are index entries that have no corresponding primary k/v. To test
 // this an index entry is generated and inserted. This creates a
 // dangling index error as the corresponding primary k/v is not equal.

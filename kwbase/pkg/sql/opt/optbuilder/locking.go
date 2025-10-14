@@ -42,10 +42,10 @@ import "gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 // access the same row. In order from weakest to strongest, the lock strength
 // variants are:
 //
-//   FOR KEY SHARE
-//   FOR SHARE
-//   FOR NO KEY UPDATE
-//   FOR UPDATE
+//	FOR KEY SHARE
+//	FOR SHARE
+//	FOR NO KEY UPDATE
+//	FOR UPDATE
 //
 // The second property is the locking wait policy (see tree.LockingWaitPolicy).
 // A locking wait policy represents the policy a table scan uses to interact
@@ -56,8 +56,8 @@ import "gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 // to handling locks held by other transactions. These non-standard policies
 // are:
 //
-//   SKIP LOCKED
-//   NOWAIT
+//	SKIP LOCKED
+//	NOWAIT
 //
 // In addition to these two properties, locking clauses can contain an optional
 // list of target relations. When provided, the locking clause applies only to
@@ -66,12 +66,11 @@ import "gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 //
 // Put together, a complex locking spec might look like:
 //
-//   SELECT ... FROM ... FOR SHARE NOWAIT FOR UPDATE OF t1, t2
+//	SELECT ... FROM ... FOR SHARE NOWAIT FOR UPDATE OF t1, t2
 //
 // which would be represented as:
 //
-//   [ {ForShare, LockWaitError, []}, {ForUpdate, LockWaitBlock, [t1, t2]} ]
-//
+//	[ {ForShare, LockWaitError, []}, {ForUpdate, LockWaitBlock, [t1, t2]} ]
 type lockingSpec []*tree.LockingItem
 
 // noRowLocking indicates that no row-level locking has been specified.

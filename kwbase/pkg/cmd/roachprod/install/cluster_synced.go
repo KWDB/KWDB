@@ -119,10 +119,10 @@ func (c *SyncedCluster) IsLocal() bool {
 // ServerNodes is the fully expanded, ordered list of nodes that any given
 // roachprod command is intending to target.
 //
-//  $ roachprod create local -n 4
-//  $ roachprod start local          # [1, 2, 3, 4]
-//  $ roachprod start local:2-4      # [2, 3, 4]
-//  $ roachprod start local:2,1,4    # [1, 2, 4]
+//	$ roachprod create local -n 4
+//	$ roachprod start local          # [1, 2, 3, 4]
+//	$ roachprod start local:2-4      # [2, 3, 4]
+//	$ roachprod start local:2,1,4    # [1, 2, 4]
 func (c *SyncedCluster) ServerNodes() []int {
 	return append([]int{}, c.Nodes...)
 }
@@ -589,12 +589,12 @@ func (c *SyncedCluster) Wait() error {
 // added to the hosts via the c.AuthorizedKeys field. It does so in the following
 // steps:
 //
-//   1. Creates an ssh key pair on the first host to be used on all hosts if
-//      none exists.
-//   2. Distributes the public key, private key, and authorized_keys file from
-//      the first host to the others.
-//   3. Merges the data in c.AuthorizedKeys with the existing authorized_keys
-//      files on all hosts.
+//  1. Creates an ssh key pair on the first host to be used on all hosts if
+//     none exists.
+//  2. Distributes the public key, private key, and authorized_keys file from
+//     the first host to the others.
+//  3. Merges the data in c.AuthorizedKeys with the existing authorized_keys
+//     files on all hosts.
 //
 // This call strives to be idempotent.
 func (c *SyncedCluster) SetupSSH() error {
@@ -1188,9 +1188,9 @@ func (c *SyncedCluster) Put(src, dest string) {
 // For example, if dest is "tpcc-test.logs" then the logs for each node will be
 // stored like:
 //
-//  tpcc-test.logs/1.logs/...
-//  tpcc-test.logs/2.logs/...
-//  ...
+//	tpcc-test.logs/1.logs/...
+//	tpcc-test.logs/2.logs/...
+//	...
 //
 // Log file syncing uses rsync which attempts to be efficient when deciding
 // which files to update. The logs are merged by calling

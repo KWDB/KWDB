@@ -51,32 +51,31 @@ import (
 //
 //   - index-constraints [arg | arg=val | arg=(val1,val2, ...)]...
 //
-//   Takes a scalar expression, builds a memo for it, and computes index
-//   constraints. Arguments:
+//     Takes a scalar expression, builds a memo for it, and computes index
+//     constraints. Arguments:
 //
-//     - vars=(<type>, ...)
+//   - vars=(<type>, ...)
 //
-//       Sets the types for the index vars in the expression.
+//     Sets the types for the index vars in the expression.
 //
-//     - index=(@<index> [ascending|asc|descending|desc] [not null], ...)
+//   - index=(@<index> [ascending|asc|descending|desc] [not null], ...)
 //
-//       Information for the index (used by index-constraints). Each column of the
-//       index refers to an index var.
+//     Information for the index (used by index-constraints). Each column of the
+//     index refers to an index var.
 //
-//     - inverted-index=@<index>
+//   - inverted-index=@<index>
 //
-//       Information about an inverted index (used by index-constraints). The
-//       one column of the inverted index refers to an index var. Only one of
-//       "index" and "inverted-index" should be used.
+//     Information about an inverted index (used by index-constraints). The
+//     one column of the inverted index refers to an index var. Only one of
+//     "index" and "inverted-index" should be used.
 //
-//     - nonormalize
+//   - nonormalize
 //
-//       Disable the optimizer normalization rules.
+//     Disable the optimizer normalization rules.
 //
-//     - semtree-normalize
+//   - semtree-normalize
 //
-//       Run TypedExpr normalization before building the memo.
-//
+//     Run TypedExpr normalization before building the memo.
 func TestIndexConstraints(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 
@@ -266,7 +265,8 @@ func BenchmarkIndexConstraints(b *testing.B) {
 
 // parseIndexColumns parses descriptions of index columns; each
 // string corresponds to an index column and is of the form:
-//   @id [ascending|asc|descending|desc] [not null]
+//
+//	@id [ascending|asc|descending|desc] [not null]
 func parseIndexColumns(
 	tb testing.TB, md *opt.Metadata, colStrs []string,
 ) (columns []opt.OrderingColumn, notNullCols opt.ColSet) {

@@ -22,6 +22,7 @@
 // MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
 // See the Mulan PSL v2 for more details.
 
+//go:build gofuzz
 // +build gofuzz
 
 // The parser fuzzer needs to live in its own package because it must import

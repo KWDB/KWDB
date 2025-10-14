@@ -316,8 +316,7 @@ func ProvidersSequential(named []string, action func(Provider) error) error {
 //
 // For example:
 //
-//   ZonePlacement(3, 8) = []int{0, 0, 1, 1, 2, 2, 0, 1}
-//
+//	ZonePlacement(3, 8) = []int{0, 0, 1, 1, 2, 2, 0, 1}
 func ZonePlacement(numZones, numNodes int) (nodeZones []int) {
 	numPerZone := numNodes / numZones
 	extraStartIndex := numPerZone * numZones

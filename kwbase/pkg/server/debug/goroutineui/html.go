@@ -151,7 +151,8 @@ const htmlTpl = `<!DOCTYPE html>
 // License: http://scripts.sil.org/cms/scripts/page.php?site_id=nrsi&id=OFL
 //
 // Created with:
-//   python -c "import base64;a=base64.b64encode(open('emoji_u1f4a3.png','rb').read()); print '\n'.join(a[i:i+70] for i in range(0,len(a),70))"
+//
+//	python -c "import base64;a=base64.b64encode(open('emoji_u1f4a3.png','rb').read()); print '\n'.join(a[i:i+70] for i in range(0,len(a),70))"
 func notoColorEmoji1F4A3() template.HTML {
 	return "" +
 		"iVBORw0KGgoAAAANSUhEUgAAAIgAAACACAMAAADnN9ENAAAA5FBMVEVMaXFvTjQhISEhIS" +

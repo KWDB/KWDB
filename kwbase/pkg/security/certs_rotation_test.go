@@ -22,6 +22,7 @@
 // MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
 // See the Mulan PSL v2 for more details.
 
+//go:build !windows
 // +build !windows
 
 package security_test
@@ -108,6 +109,7 @@ func TestRotateCerts(t *testing.T) {
 	// Some errors codes.
 	const kBadAuthority = "certificate signed by unknown authority"
 	const kBadCertificate = "tls: bad certificate"
+	const kUnknownCertificate = "unknown certificate authority"
 
 	// Test client with the same certs.
 	clientContext := testutils.NewNodeTestBaseContext()
@@ -223,8 +225,8 @@ func TestRotateCerts(t *testing.T) {
 	thirdSQLClient := createTestClient()
 	defer thirdSQLClient.Close()
 
-	if _, err := thirdSQLClient.Exec("SELECT 1"); !testutils.IsError(err, kBadCertificate) {
-		t.Fatalf("expected error %q, got: %q", kBadCertificate, err)
+	if _, err := thirdSQLClient.Exec("SELECT 1"); !testutils.IsError(err, kUnknownCertificate) {
+		t.Fatalf("expected error %q, got: %q", kUnknownCertificate, err)
 	}
 
 	// We haven't triggered the reload, second client should still work.

@@ -137,15 +137,15 @@ func (o *Outbox) close(ctx context.Context) {
 // If an error is encountered that cannot be sent over the stream, the error
 // will be logged but not returned.
 // There are several ways the bidirectional FlowStream RPC may terminate.
-// 1) Execution is finished. In this case, the upstream operator signals
-//    termination by returning a zero-length batch. The Outbox will drain its
-//    metadata sources, send the metadata, and then call CloseSend on the
-//    stream. The Outbox will wait until its Recv goroutine receives a non-nil
-//    error to not leak resources.
-// 2) A cancellation happened. This can come from the provided context or the
-//    remote reader. Refer to tests for expected behavior.
-// 3) A drain signal was received from the server (consumer). In this case, the
-//    Outbox goes through the same steps as 1).
+//  1. Execution is finished. In this case, the upstream operator signals
+//     termination by returning a zero-length batch. The Outbox will drain its
+//     metadata sources, send the metadata, and then call CloseSend on the
+//     stream. The Outbox will wait until its Recv goroutine receives a non-nil
+//     error to not leak resources.
+//  2. A cancellation happened. This can come from the provided context or the
+//     remote reader. Refer to tests for expected behavior.
+//  3. A drain signal was received from the server (consumer). In this case, the
+//     Outbox goes through the same steps as 1).
 func (o *Outbox) Run(
 	ctx context.Context,
 	dialer Dialer,
@@ -235,18 +235,18 @@ func (o *Outbox) moveToDraining(ctx context.Context) {
 // drain signal) as well as an error which is non-nil if an error was
 // encountered AND the error should be sent over the stream as metadata. The for
 // loop continues iterating until one of the following conditions becomes true:
-// 1) A zero-length batch is received from the input. This indicates graceful
-//    termination. true, nil is returned.
-// 2) Outbox.draining is observed to be true. This is also considered graceful
-//    termination. true, nil is returned.
-// 3) An error unrelated to the stream occurs (e.g. while deserializing a
-//    coldata.Batch). false, err is returned. This err should be sent over the
-//    stream as metadata.
-// 4) An error related to the stream occurs. In this case, the error is logged
-//    but not returned, as there is no way to propagate this error anywhere
-//    meaningful. false, nil is returned. NOTE: io.EOF is a special case. This
-//    indicates non-graceful termination initiated by the remote Inbox. cancelFn
-//    will be called in this case.
+//  1. A zero-length batch is received from the input. This indicates graceful
+//     termination. true, nil is returned.
+//  2. Outbox.draining is observed to be true. This is also considered graceful
+//     termination. true, nil is returned.
+//  3. An error unrelated to the stream occurs (e.g. while deserializing a
+//     coldata.Batch). false, err is returned. This err should be sent over the
+//     stream as metadata.
+//  4. An error related to the stream occurs. In this case, the error is logged
+//     but not returned, as there is no way to propagate this error anywhere
+//     meaningful. false, nil is returned. NOTE: io.EOF is a special case. This
+//     indicates non-graceful termination initiated by the remote Inbox. cancelFn
+//     will be called in this case.
 func (o *Outbox) sendBatches(
 	ctx context.Context, stream flowStreamClient, cancelFn context.CancelFunc,
 ) (terminatedGracefully bool, errToSend error) {

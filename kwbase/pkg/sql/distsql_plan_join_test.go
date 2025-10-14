@@ -115,7 +115,8 @@ var tableNames = map[string]bool{
 }
 
 // Format for any key:
-//   <table-name>/<index-id>/<index-col1>/.../#/<table-name>/<index-id>/....
+//
+//	<table-name>/<index-id>/<index-col1>/.../#/<table-name>/<index-id>/....
 func encodeTestKey(kvDB *kv.DB, keyStr string) (roachpb.Key, error) {
 	var key []byte
 	tokens := strings.Split(keyStr, "/")
@@ -196,9 +197,12 @@ func decodeTestKey(kvDB *kv.DB, key roachpb.Key) (string, error) {
 var shortFormTables = [3]string{"parent1", "child1", "grandchild1"}
 
 // shortToLongKey converts the short key format preferred in test cases
-//    /1/#/3/4
+//
+//	/1/#/3/4
+//
 // to its long form required by parseTestkey
-//    parent1/1/1/#/child1/1/3/4
+//
+//	parent1/1/1/#/child1/1/3/4
 func shortToLongKey(short string) string {
 	tableOrder := shortFormTables
 	curTableIdx := 0

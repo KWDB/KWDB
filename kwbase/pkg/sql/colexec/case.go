@@ -85,9 +85,11 @@ func (c *caseOp) InternalMemoryUsage() int {
 // NewCaseOp returns an operator that runs a case statement.
 // buffer is a bufferOp that will return the input batch repeatedly.
 // caseOps is a list of operator chains, one per branch in the case statement.
-//   Each caseOp is connected to the input buffer op, and filters the input based
-//   on the case arm's WHEN condition, and then projects the remaining selected
-//   tuples based on the case arm's THEN condition.
+//
+//	Each caseOp is connected to the input buffer op, and filters the input based
+//	on the case arm's WHEN condition, and then projects the remaining selected
+//	tuples based on the case arm's THEN condition.
+//
 // elseOp is the ELSE condition.
 // whenCol is the index into the input batch to read from.
 // thenCol is the index into the output batch to write to.

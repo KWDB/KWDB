@@ -735,17 +735,19 @@ func (c *Constraint) TransformSpansToTsSpans(precision int32) []execinfrapb.TsSp
 // assignPrecision converts the datum type time to an integer according to precision
 //
 // in parameter:
-//		start            - the start value of the interval for filtering time
-//		startBoundary		 - startBoundary indicates whether the span contains the start key value
-//		end              - the end value of the interval for filtering time
-//		endBoundary      - endBoundary indicates whether the span contains the end key value
-//		precision        - precision represents time precision
+//
+//	start            - the start value of the interval for filtering time
+//	startBoundary		 - startBoundary indicates whether the span contains the start key value
+//	end              - the end value of the interval for filtering time
+//	endBoundary      - endBoundary indicates whether the span contains the end key value
+//	precision        - precision represents time precision
 //
 // out parameter:
-//    startNew         - startNew represents the integer corresponding to the start time,
-//   										 and its units depend on precision
-//    endNew           - endNew represents the integer corresponding to the end time,
-//                       and its units depend on precision
+//
+//	 startNew         - startNew represents the integer corresponding to the start time,
+//											 and its units depend on precision
+//	 endNew           - endNew represents the integer corresponding to the end time,
+//	                    and its units depend on precision
 func assignPrecision(
 	start Key, startBoundary bool, end Key, endBoundary bool, precision int64,
 ) (startNew int64, endNew int64) {

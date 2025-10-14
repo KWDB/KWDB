@@ -209,7 +209,8 @@ func (s *Builder) CanSplitSpanIntoSeparateFamilies(
 
 // SpansFromConstraint generates spans from an optimizer constraint.
 // TODO (rohany): In future work, there should be a single API to generate spans
-//  from constraints, datums and encdatums.
+//
+//	from constraints, datums and encdatums.
 func (s *Builder) SpansFromConstraint(
 	c *constraint.Constraint, needed util.FastIntSet, forDelete bool,
 ) (roachpb.Spans, error) {

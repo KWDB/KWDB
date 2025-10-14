@@ -21,6 +21,7 @@
 // MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
 // See the Mulan PSL v2 for more details.
 
-package a
-
+//go:build notme
 // +build notme
+
+package a

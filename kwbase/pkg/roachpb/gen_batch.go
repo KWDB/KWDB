@@ -25,6 +25,7 @@
 // This file generates batch_generated.go. It can be run via:
 //    go run -tags gen_batch gen_batch.go
 
+//go:build gen_batch
 // +build gen_batch
 
 package main

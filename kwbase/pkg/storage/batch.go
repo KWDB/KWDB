@@ -70,17 +70,17 @@ const (
 // RocksDBBatchBuilder is used to construct the RocksDB batch representation.
 // From the RocksDB code, the representation of a batch is:
 //
-//   WriteBatch::rep_ :=
-//      sequence: fixed64
-//      count: fixed32
-//      data: record[count]
-//   record :=
-//      kTypeValue varstring varstring
-//      kTypeDeletion varstring
-//      [...] (see BatchType)
-//   varstring :=
-//      len: varint32
-//      data: uint8[len]
+//	WriteBatch::rep_ :=
+//	   sequence: fixed64
+//	   count: fixed32
+//	   data: record[count]
+//	record :=
+//	   kTypeValue varstring varstring
+//	   kTypeDeletion varstring
+//	   [...] (see BatchType)
+//	varstring :=
+//	   len: varint32
+//	   data: uint8[len]
 //
 // The RocksDBBatchBuilder code currently only supports kTypeValue
 // (BatchTypeValue), kTypeDeletion (BatchTypeDeletion), kTypeMerge
@@ -91,7 +91,7 @@ const (
 // The keys encoded into the batch are MVCC keys: a string key with a timestamp
 // suffix. MVCC keys are encoded as:
 //
-//   <key>[<wall_time>[<logical>]]<#timestamp-bytes>
+//	<key>[<wall_time>[<logical>]]<#timestamp-bytes>
 //
 // The <wall_time> and <logical> portions of the key are encoded as 64 and
 // 32-bit big-endian integers. A custom RocksDB comparator is used to maintain
@@ -283,26 +283,29 @@ func rocksDBBatchDecodeHeader(repr []byte) (count int, orepr pebble.BatchReader,
 //
 // Example:
 // r, err := NewRocksDBBatchReader(...)
-// if err != nil {
-//   return err
-// }
-// for r.Next() {
-// 	 switch r.BatchType() {
-// 	 case BatchTypeDeletion:
-// 	   fmt.Printf("delete(%x)", r.Key())
-// 	 case BatchTypeValue:
-// 	   fmt.Printf("put(%x,%x)", r.Key(), r.Value())
-// 	 case BatchTypeMerge:
-// 	   fmt.Printf("merge(%x,%x)", r.Key(), r.Value())
-//   case BatchTypeSingleDeletion:
-// 	   fmt.Printf("single_delete(%x)", r.Key())
-//   case BatchTypeRangeDeletion:
-// 	   fmt.Printf("delete_range(%x,%x)", r.Key(), r.Value())
-// 	 }
-// }
-// if err := r.Error(); err != nil {
-//   return err
-// }
+//
+//	if err != nil {
+//	  return err
+//	}
+//
+//	for r.Next() {
+//		 switch r.BatchType() {
+//		 case BatchTypeDeletion:
+//		   fmt.Printf("delete(%x)", r.Key())
+//		 case BatchTypeValue:
+//		   fmt.Printf("put(%x,%x)", r.Key(), r.Value())
+//		 case BatchTypeMerge:
+//		   fmt.Printf("merge(%x,%x)", r.Key(), r.Value())
+//	  case BatchTypeSingleDeletion:
+//		   fmt.Printf("single_delete(%x)", r.Key())
+//	  case BatchTypeRangeDeletion:
+//		   fmt.Printf("delete_range(%x,%x)", r.Key(), r.Value())
+//		 }
+//	}
+//
+//	if err := r.Error(); err != nil {
+//	  return err
+//	}
 type RocksDBBatchReader struct {
 	batchReader pebble.BatchReader
 

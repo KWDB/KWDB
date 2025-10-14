@@ -107,29 +107,29 @@ type fkExistenceCheckBaseHelper struct {
 //
 // - dir is the direction of the check.
 //
-// - ref is a copy of the FK constraint object that points
-//   to the table where to perform the existence check.
+//   - ref is a copy of the FK constraint object that points
+//     to the table where to perform the existence check.
 //
-//   For forward checks, this is a copy of the FK
-//   constraint placed on the referencing table.
-//   For backward checks, this is a copy of the FK
-//   constraint placed as backref on the referenced table.
+//     For forward checks, this is a copy of the FK
+//     constraint placed on the referencing table.
+//     For backward checks, this is a copy of the FK
+//     constraint placed as backref on the referenced table.
 //
-//   This is used to derive the searched table/index,
-//   and determine the MATCH style.
+//     This is used to derive the searched table/index,
+//     and determine the MATCH style.
 //
-// - writeIdx is the target index being mutated. This is used
-//   to determine prefixLen in combination with searchIdx.
+//   - writeIdx is the target index being mutated. This is used
+//     to determine prefixLen in combination with searchIdx.
 //
-// - colMap maps column IDs in the searched index, to positions
-//   in the input `row` of datums during the check.
+//   - colMap maps column IDs in the searched index, to positions
+//     in the input `row` of datums during the check.
 //
-// - alloc is a suitable datum allocator used to initialize
-//   the row fetcher.
+//   - alloc is a suitable datum allocator used to initialize
+//     the row fetcher.
 //
-// - otherTables is an object that provides schema extraction services.
-//   TODO(knz): this should become homogeneous across the 3 packages
-//   sql, sqlbase, row. The proliferation is annoying.
+//   - otherTables is an object that provides schema extraction services.
+//     TODO(knz): this should become homogeneous across the 3 packages
+//     sql, sqlbase, row. The proliferation is annoying.
 func makeFkExistenceCheckBaseHelper(
 	txn *kv.Txn,
 	otherTables FkTableMetadata,

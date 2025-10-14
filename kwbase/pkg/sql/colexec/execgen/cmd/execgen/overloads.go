@@ -1480,7 +1480,9 @@ func makeFunctionRegex(funcName string, numArgs int) *regexp.Regexp {
 
 // makeTemplateFunctionCall makes a string representing a function call in the
 // template language. For example, it will return
-//   `{{.Assign "$1" "$2" "$3"}}`
+//
+//	`{{.Assign "$1" "$2" "$3"}}`
+//
 // if funcName is `Assign` and numArgs is 3.
 func makeTemplateFunctionCall(funcName string, numArgs int) string {
 	res := "{{." + funcName

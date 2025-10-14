@@ -414,6 +414,7 @@ func isGarbage(threshold hlc.Timestamp, cur, next *storage.MVCCKeyValue, isNewes
 // transaction records, queue last processed timestamps, and range descriptors.
 //
 // - Transaction entries:
+//
 //   - For expired transactions , schedule the intents for
 //     asynchronous resolution. The actual transaction spans are not
 //     returned for GC in this pass, but are separately GC'ed after
@@ -421,8 +422,8 @@ func isGarbage(threshold hlc.Timestamp, cur, next *storage.MVCCKeyValue, isNewes
 //     are no intents on the txn record, in which case it's returned for
 //     immediate GC.
 //
-// - Queue last processed times: cleanup any entries which don't match
-//   this range's start key. This can happen on range merges.
+//   - Queue last processed times: cleanup any entries which don't match
+//     this range's start key. This can happen on range merges.
 func processLocalKeyRange(
 	ctx context.Context,
 	snap storage.Reader,

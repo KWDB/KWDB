@@ -44,26 +44,25 @@ import (
 // The function is tolerant of unavailable clusters (or unavailable
 // system.user) as follows:
 //
-// - if the user is root, the user is reported to exist immediately
-//   without querying system.users at all. The password retrieval
-//   is delayed until actually needed by the authentication method.
-//   This way, if the client presents a valid TLS certificate
-//   the password is not even needed at all. This is useful for e.g.
-//   `kwbase node status`.
+//   - if the user is root, the user is reported to exist immediately
+//     without querying system.users at all. The password retrieval
+//     is delayed until actually needed by the authentication method.
+//     This way, if the client presents a valid TLS certificate
+//     the password is not even needed at all. This is useful for e.g.
+//     `kwbase node status`.
 //
-//   If root is forced to use a password (e.g. logging in onto the UI)
-//   then a user login timeout greater than 5 seconds is also
-//   ignored. This ensures that root has a modicum of comfort
-//   logging into an unavailable cluster.
+//     If root is forced to use a password (e.g. logging in onto the UI)
+//     then a user login timeout greater than 5 seconds is also
+//     ignored. This ensures that root has a modicum of comfort
+//     logging into an unavailable cluster.
 //
-//   TODO(knz): this does not yet quite work becaus even if the pw
-//   auth on the UI succeeds writing to system.web_sessions will still
-//   stall on an unavailable cluster and prevent root from logging in.
+//     TODO(knz): this does not yet quite work becaus even if the pw
+//     auth on the UI succeeds writing to system.web_sessions will still
+//     stall on an unavailable cluster and prevent root from logging in.
 //
-// - if the user is another user than root, then the function fails
-//   after a timeout instead of blocking. The timeout is configurable
-//   via the cluster setting.
-//
+//   - if the user is another user than root, then the function fails
+//     after a timeout instead of blocking. The timeout is configurable
+//     via the cluster setting.
 func GetUserHashedPassword(
 	ctx context.Context, ie *InternalExecutor, username string,
 ) (

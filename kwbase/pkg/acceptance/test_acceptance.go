@@ -22,6 +22,7 @@
 // MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
 // See the Mulan PSL v2 for more details.
 
+//go:build acceptance
 // +build acceptance
 
 // Acceptance tests are comparatively slow to run, so we use the above build

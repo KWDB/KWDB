@@ -21,7 +21,8 @@
 // MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
 // See the Mulan PSL v2 for more details.
 
-//+build !race
+//go:build !race
+// +build !race
 
 package protoutil
 

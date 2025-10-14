@@ -273,9 +273,12 @@ func (t *Tracker) Close(
 // needs to be forwarded if necessary), and acquires a reference with the
 // Tracker. This reference is released by calling the returned closure either
 // a) before proposing the command, supplying the Lease Applied Index at which
-//    the proposal will be carried out, or
+//
+//	the proposal will be carried out, or
+//
 // b) with zero arguments if the command won't end up being proposed (i.e. hit
-//    an error during evaluation).
+//
+//	an error during evaluation).
 //
 // The ReleaseFunc is not thread safe. For convenience, it may be called with
 // zero arguments once after a regular call.

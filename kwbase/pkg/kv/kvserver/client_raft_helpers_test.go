@@ -198,11 +198,11 @@ type mtcPartitionedRange struct {
 // out messages from the partitioned store. When activated the configuration
 // looks like:
 //
-//           [p]
-//          x  x
-//         /    \
-//        x      x
-//      [*]<---->[*]
+//	     [p]
+//	    x  x
+//	   /    \
+//	  x      x
+//	[*]<---->[*]
 //
 // The activated argument controls whether the partition is activated when this
 // function returns.

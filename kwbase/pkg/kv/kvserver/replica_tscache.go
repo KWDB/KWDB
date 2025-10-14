@@ -364,47 +364,46 @@ func (r *Replica) applyTimestampCache(
 //
 // This is detailed in the transaction record state machine below:
 //
-//  +----------------------------------------------------+
-//  | vars                                               |
-//  |----------------------------------------------------|
-//  | v1 = tsCache[push_marker(txn.id)]      = timestamp |
-//  | v2 = tsCache[tombstone_marker(txn.id)] = timestamp |
-//  +----------------------------------------------------+
-//  | operations                                         |
-//  |----------------------------------------------------|
-//  | v -> t = forward v by timestamp t                  |
-//  +----------------------------------------------------+
+//	+----------------------------------------------------+
+//	| vars                                               |
+//	|----------------------------------------------------|
+//	| v1 = tsCache[push_marker(txn.id)]      = timestamp |
+//	| v2 = tsCache[tombstone_marker(txn.id)] = timestamp |
+//	+----------------------------------------------------+
+//	| operations                                         |
+//	|----------------------------------------------------|
+//	| v -> t = forward v by timestamp t                  |
+//	+----------------------------------------------------+
 //
-//                   PushTxn(TIMESTAMP)                                HeartbeatTxn
-//                   then: v1 -> push.ts                             then: update record
-//                       +------+                                        +------+
-//     PushTxn(ABORT)    |      |        HeartbeatTxn                    |      |   PushTxn(TIMESTAMP)
-//    then: v2 -> txn.ts |      v        if: v2 < txn.orig               |      v  then: update record
-//                  +-----------------+  then: txn.ts -> v1      +--------------------+
-//             +----|                 |  else: fail              |                    |----+
-//             |    |                 |------------------------->|                    |    |
-//             |    |  no txn record  |                          | txn record written |    |
-//             +--->|                 |  EndTxn(STAGING)         |     [pending]      |<---+
-//                  |                 |__  if: v2 < txn.orig     |                    |
-//                  +-----------------+  \__ then: txn.ts -> v1  +--------------------+
-//                     |            ^       \__ else: fail       _/   |            ^
-//                     |            |          \__             _/     |            |
-//  EndTxn(!STAGING)   |            |             \__        _/       | EndTxn(STAGING)
-//  if: v2 < txn.orig  |   Eager GC |                \____ _/______   |            |
-//  then: v2 -> txn.ts |      or    |                    _/        \  |            | HeartbeatTxn
-//  else: fail         |   GC queue |  /----------------/          |  |            | if: epoch update
-//                     v            | v    EndTxn(!STAGING)        v  v            |
-//                 +--------------------+  or PushTxn(ABORT)     +--------------------+
-//                 |                    |  then: v2 -> txn.ts    |                    |
-//            +--->|                    |<-----------------------|                    |----+
-//            |    | txn record written |                        | txn record written |    |
-//            |    |     [finalized]    |                        |      [staging]     |    |
-//            +----|                    |                        |                    |<---+
-//    PushTxn(*)   +--------------------+                        +--------------------+
-//    then: no-op                    ^   PushTxn(*) + RecoverTxn    |              EndTxn(STAGING)
-//                                   |     then: v2 -> txn.ts       |              or HeartbeatTxn
-//                                   +------------------------------+            then: update record
-//
+//	                 PushTxn(TIMESTAMP)                                HeartbeatTxn
+//	                 then: v1 -> push.ts                             then: update record
+//	                     +------+                                        +------+
+//	   PushTxn(ABORT)    |      |        HeartbeatTxn                    |      |   PushTxn(TIMESTAMP)
+//	  then: v2 -> txn.ts |      v        if: v2 < txn.orig               |      v  then: update record
+//	                +-----------------+  then: txn.ts -> v1      +--------------------+
+//	           +----|                 |  else: fail              |                    |----+
+//	           |    |                 |------------------------->|                    |    |
+//	           |    |  no txn record  |                          | txn record written |    |
+//	           +--->|                 |  EndTxn(STAGING)         |     [pending]      |<---+
+//	                |                 |__  if: v2 < txn.orig     |                    |
+//	                +-----------------+  \__ then: txn.ts -> v1  +--------------------+
+//	                   |            ^       \__ else: fail       _/   |            ^
+//	                   |            |          \__             _/     |            |
+//	EndTxn(!STAGING)   |            |             \__        _/       | EndTxn(STAGING)
+//	if: v2 < txn.orig  |   Eager GC |                \____ _/______   |            |
+//	then: v2 -> txn.ts |      or    |                    _/        \  |            | HeartbeatTxn
+//	else: fail         |   GC queue |  /----------------/          |  |            | if: epoch update
+//	                   v            | v    EndTxn(!STAGING)        v  v            |
+//	               +--------------------+  or PushTxn(ABORT)     +--------------------+
+//	               |                    |  then: v2 -> txn.ts    |                    |
+//	          +--->|                    |<-----------------------|                    |----+
+//	          |    | txn record written |                        | txn record written |    |
+//	          |    |     [finalized]    |                        |      [staging]     |    |
+//	          +----|                    |                        |                    |<---+
+//	  PushTxn(*)   +--------------------+                        +--------------------+
+//	  then: no-op                    ^   PushTxn(*) + RecoverTxn    |              EndTxn(STAGING)
+//	                                 |     then: v2 -> txn.ts       |              or HeartbeatTxn
+//	                                 +------------------------------+            then: update record
 //
 // In the diagram, CanCreateTxnRecord is consulted in all three of the
 // state transitions that move away from the "no txn record" state.
@@ -463,7 +462,6 @@ func (r *Replica) applyTimestampCache(
 // with only two states that the transaction record could be in, written or not
 // written. At that point, it begins to closely resemble any other write in the
 // system.
-//
 func (r *Replica) CanCreateTxnRecord(
 	txnID uuid.UUID, txnKey []byte, txnMinTS hlc.Timestamp,
 ) (ok bool, minCommitTS hlc.Timestamp, reason roachpb.TransactionAbortedReason) {

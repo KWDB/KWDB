@@ -727,21 +727,21 @@ CREATE TABLE t.test (k CHAR PRIMARY KEY, v CHAR);
 // case through tableState.acquire(), the second through
 // tableState.acquireFreshestFromStore()) and a release of the lease that was
 // just acquired. Precisely:
-// 1. Thread 1 calls either acquireFreshestFromStore() or acquire().
-// 2. Thread 1 releases the lock on tableState and starts acquisition of a lease
-//    from the store, blocking until it's finished.
-// 3. Thread 2 calls acquire(). The lease has not been acquired yet, so it
-//    also enters the acquisition code path (calling DoChan).
-// 4. Thread 2 proceeds to release the lock on tableState waiting for the
-//    in-flight acquisition.
-// 4. The lease is acquired from the store and the waiting routines are
-//    unblocked.
-// 5. Thread 2 unblocks first, and releases the new lease, for whatever reason.
-// 5. Thread 1 wakes up. At this point, a naive implementation would use the
-//    newly acquired lease, which would be incorrect. The test checks that
-//    acquireFreshestFromStore() or acquire() notices, after re-acquiring the
-//    tableState lock, that the new lease has been released and acquires a new
-//    one.
+//  1. Thread 1 calls either acquireFreshestFromStore() or acquire().
+//  2. Thread 1 releases the lock on tableState and starts acquisition of a lease
+//     from the store, blocking until it's finished.
+//  3. Thread 2 calls acquire(). The lease has not been acquired yet, so it
+//     also enters the acquisition code path (calling DoChan).
+//  4. Thread 2 proceeds to release the lock on tableState waiting for the
+//     in-flight acquisition.
+//  4. The lease is acquired from the store and the waiting routines are
+//     unblocked.
+//  5. Thread 2 unblocks first, and releases the new lease, for whatever reason.
+//  5. Thread 1 wakes up. At this point, a naive implementation would use the
+//     newly acquired lease, which would be incorrect. The test checks that
+//     acquireFreshestFromStore() or acquire() notices, after re-acquiring the
+//     tableState lock, that the new lease has been released and acquires a new
+//     one.
 func TestLeaseAcquireAndReleaseConcurrently(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 

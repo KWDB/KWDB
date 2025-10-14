@@ -61,8 +61,8 @@ func ColIDtoRowIndexFromCols(cols []sqlbase.ColumnDescriptor) map[sqlbase.Column
 // ColMapping returns a map from ordinals in the fromCols list to ordinals in
 // the toCols list. More precisely, for 0 <= i < fromCols:
 //
-//   result[i] = j such that fromCols[i].ID == toCols[j].ID, or
-//                -1 if the column is not part of toCols.
+//	result[i] = j such that fromCols[i].ID == toCols[j].ID, or
+//	             -1 if the column is not part of toCols.
 func ColMapping(fromCols, toCols []sqlbase.ColumnDescriptor) []int {
 	// colMap is a map from ColumnID to ordinal into fromCols.
 	var colMap util.FastIntMap
@@ -88,28 +88,28 @@ func ColMapping(fromCols, toCols []sqlbase.ColumnDescriptor) []int {
 
 // prepareInsertOrUpdateBatch constructs a KV batch that inserts or
 // updates a row in KV.
-// - batch is the KV batch where commands should be appended.
-// - putFn is the functions that can append Put/CPut commands to the batch.
-//   (must be adapted depending on whether 'overwrite' is set)
-// - helper is the rowHelper that knows about the table being modified.
-// - primaryIndexKey is the PK prefix for the current row.
-// - fetchedCols is the list of schema columns that have been fetched
-//   in preparation for this update.
-// - values is the SQL-level row values that are being written.
-// - marshaledValues contains the pre-encoded KV-level row values.
-//   marshaledValues is only used when writing single column families.
-//   Regardless of whether there are single column families,
-//   pre-encoding must occur prior to calling this function to check whether
-//   the encoding is _possible_ (i.e. values fit in the column types, etc).
-// - valColIDMapping/marshaledColIDMapping is the mapping from column
-//   IDs into positions of the slices values or marshaledValues.
-// - kvKey and kvValues must be heap-allocated scratch buffers to write
-//   roachpb.Key and roachpb.Value values.
-// - rawValueBuf must be a scratch byte array. This must be reinitialized
-//   to an empty slice on each call but can be preserved at its current
-//   capacity to avoid allocations. The function returns the slice.
-// - overwrite must be set to true for UPDATE and UPSERT.
-// - traceKV is to be set to log the KV operations added to the batch.
+//   - batch is the KV batch where commands should be appended.
+//   - putFn is the functions that can append Put/CPut commands to the batch.
+//     (must be adapted depending on whether 'overwrite' is set)
+//   - helper is the rowHelper that knows about the table being modified.
+//   - primaryIndexKey is the PK prefix for the current row.
+//   - fetchedCols is the list of schema columns that have been fetched
+//     in preparation for this update.
+//   - values is the SQL-level row values that are being written.
+//   - marshaledValues contains the pre-encoded KV-level row values.
+//     marshaledValues is only used when writing single column families.
+//     Regardless of whether there are single column families,
+//     pre-encoding must occur prior to calling this function to check whether
+//     the encoding is _possible_ (i.e. values fit in the column types, etc).
+//   - valColIDMapping/marshaledColIDMapping is the mapping from column
+//     IDs into positions of the slices values or marshaledValues.
+//   - kvKey and kvValues must be heap-allocated scratch buffers to write
+//     roachpb.Key and roachpb.Value values.
+//   - rawValueBuf must be a scratch byte array. This must be reinitialized
+//     to an empty slice on each call but can be preserved at its current
+//     capacity to avoid allocations. The function returns the slice.
+//   - overwrite must be set to true for UPDATE and UPSERT.
+//   - traceKV is to be set to log the KV operations added to the batch.
 func prepareInsertOrUpdateBatch(
 	ctx context.Context,
 	batch putter,

@@ -360,8 +360,9 @@ func (t *test) failWithMsg(msg string) {
 
 // Args:
 // skip: The number of stack frames to exclude from the result. 0 means that
-//   the caller will be the first frame identified. 1 means the caller's caller
-//   will be the first, etc.
+//
+//	the caller will be the first frame identified. 1 means the caller's caller
+//	will be the first, etc.
 func (t *test) decorate(skip int, s string) string {
 	// Skip two extra frames to account for this function and runtime.Callers
 	// itself.

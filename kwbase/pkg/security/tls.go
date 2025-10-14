@@ -51,11 +51,12 @@ const (
 
 // LoadServerTLSConfig creates a server TLSConfig by loading the CA and server certs.
 // The following paths must be passed:
-// - sslCA: path to the CA certificate
-// - sslClientCA: path to the CA certificate to verify client certificates,
-//                can be the same as sslCA
-// - sslCert: path to the server certificate
-// - sslCertKey: path to the server key
+//   - sslCA: path to the CA certificate
+//   - sslClientCA: path to the CA certificate to verify client certificates,
+//     can be the same as sslCA
+//   - sslCert: path to the server certificate
+//   - sslCertKey: path to the server key
+//
 // If the path is prefixed with "embedded=", load the embedded certs.
 func LoadServerTLSConfig(sslCA, sslClientCA, sslCert, sslCertKey string) (*tls.Config, error) {
 	certPEM, err := assetLoaderImpl.ReadFile(sslCert)

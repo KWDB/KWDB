@@ -23,7 +23,9 @@
 // See the Mulan PSL v2 for more details.
 
 // {{/*
+//go:build execgen_template
 // +build execgen_template
+
 //
 // This file is the execgen template for mergejoiner.eg.go. It's formatted in a
 // special way, so it's both valid Go and a valid text/template input. This
@@ -735,20 +737,24 @@ func _LEFT_SWITCH(_JOIN_TYPE joinTypeInfo, _HAS_SELECTION bool, _HAS_NULLS bool)
 // buildLeftGroupsFromBatch takes a []group and expands each group into the
 // output by repeating each row in the group numRepeats times. For example,
 // given an input table:
-//  L1 |  L2
-//  --------
-//  1  |  a
-//  1  |  b
+//
+//	L1 |  L2
+//	--------
+//	1  |  a
+//	1  |  b
+//
 // and leftGroups = [{startIdx: 0, endIdx: 2, numRepeats: 3}]
 // then buildLeftGroupsFromBatch expands this to
-//  L1 |  L2
-//  --------
-//  1  |  a
-//  1  |  a
-//  1  |  a
-//  1  |  b
-//  1  |  b
-//  1  |  b
+//
+//	L1 |  L2
+//	--------
+//	1  |  a
+//	1  |  a
+//	1  |  a
+//	1  |  b
+//	1  |  b
+//	1  |  b
+//
 // Note: this is different from buildRightGroupsFromBatch in that each row of
 // group is repeated numRepeats times, instead of a simple copy of the group as
 // a whole.
@@ -1028,20 +1034,24 @@ func _RIGHT_SWITCH(_JOIN_TYPE joinTypeInfo, _HAS_SELECTION bool, _HAS_NULLS bool
 
 // buildRightGroupsFromBatch takes a []group and repeats each group numRepeats
 // times. For example, given an input table:
-//  R1 |  R2
-//  --------
-//  1  |  a
-//  1  |  b
+//
+//	R1 |  R2
+//	--------
+//	1  |  a
+//	1  |  b
+//
 // and rightGroups = [{startIdx: 0, endIdx: 2, numRepeats: 3}]
 // then buildRightGroups expands this to
-//  R1 |  R2
-//  --------
-//  1  |  a
-//  1  |  b
-//  1  |  a
-//  1  |  b
-//  1  |  a
-//  1  |  b
+//
+//	R1 |  R2
+//	--------
+//	1  |  a
+//	1  |  b
+//	1  |  a
+//	1  |  b
+//	1  |  a
+//	1  |  b
+//
 // Note: this is different from buildLeftGroupsFromBatch in that each group is
 // not expanded but directly copied numRepeats times.
 // SIDE EFFECTS: writes into o.output.

@@ -51,11 +51,11 @@ var tableNames = map[string]bool{
 // it into an actual roachpb.Key. Refer to ShortToLongKeyFmt for more info. on
 // the short format.
 // All tokens are interpreted as UVarint (ascending) unless they satisfy:
-//    - '#' - interleaved sentinel
-//    - 's' first byte - string/bytes (ascending)
-//    - 'd' first byte - decimal (ascending)
-//    - NULLASC, NULLDESC, NOTNULLASC, NOTNULLDESC
-//    - PrefixEnd
+//   - '#' - interleaved sentinel
+//   - 's' first byte - string/bytes (ascending)
+//   - 'd' first byte - decimal (ascending)
+//   - NULLASC, NULLDESC, NOTNULLASC, NOTNULLDESC
+//   - PrefixEnd
 func EncodeTestKey(tb testing.TB, kvDB *kv.DB, keyStr string) roachpb.Key {
 	var key []byte
 	tokens := strings.Split(keyStr, "/")
@@ -139,9 +139,13 @@ func EncodeTestKey(tb testing.TB, kvDB *kv.DB, keyStr string) roachpb.Key {
 var shortFormTables = [3]string{"parent1", "child1", "grandchild1"}
 
 // ShortToLongKeyFmt converts the short key format preferred in test cases
-//    /1/#/3/4
+//
+//	/1/#/3/4
+//
 // to its long form required by parseTestkey
-//    parent1/1/1/#/child1/1/3/4
+//
+//	parent1/1/1/#/child1/1/3/4
+//
 // The short key format can end in an interleave sentinel '#' (i.e. after
 // TightenEndKey).
 // The short key format can also be "/" or end in "#/" which will append

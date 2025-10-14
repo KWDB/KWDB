@@ -139,6 +139,7 @@ type TxnPusher interface {
 // txnPushAttempt pushes all old transactions that have unresolved intents on
 // the range which are blocking the resolved timestamp from moving forward. It
 // does so in two steps.
+//
 //  1. it pushes all old transactions to the current timestamp and gathers
 //     up the transactions' authoritative transaction records.
 //
@@ -154,7 +155,6 @@ type TxnPusher interface {
 //     resolved timestamp.
 //     - ABORTED:   inform the Processor to stop caring about the transaction.
 //     It will never commit and its intents can be safely ignored.
-//
 type txnPushAttempt struct {
 	p     *Processor
 	txns  []enginepb.TxnMeta

@@ -21,6 +21,7 @@
 // MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
 // See the Mulan PSL v2 for more details.
 
+//go:build !windows && !freebsd && !dragonfly
 // +build !windows,!freebsd,!dragonfly
 
 package server

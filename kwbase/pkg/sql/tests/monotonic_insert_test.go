@@ -87,7 +87,8 @@ type mtClient struct {
 
 // TestMonotonicInserts replicates the 'monotonic' test from the Jepsen
 // CockroachDB test suite:
-//   https://github.com/jepsen-io/jepsen/blob/master/kwbasedb/src/jepsen/kwbase/monotonic.clj
+//
+//	https://github.com/jepsen-io/jepsen/blob/master/kwbasedb/src/jepsen/kwbase/monotonic.clj
 func TestMonotonicInserts(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 	s := log.Scope(t)

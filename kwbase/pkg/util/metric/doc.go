@@ -27,7 +27,7 @@ CockroachDB server. These metrics are persisted to the time-series database and
 are viewable through the web interface and the /_status/metrics/<NODEID> HTTP
 endpoint.
 
-Adding a new metric
+# Adding a new metric
 
 First, add the metric to a Registry.
 
@@ -52,7 +52,7 @@ updated as follows:
 To add the metric to the web UI, modify the appropriate file in
 "ui/ts/pages/*.ts". Someone more qualified than me can elaborate, like @maxlang.
 
-Sub-registries
+# Sub-registries
 
 It's common for a Registry to become part of another Registry through the "Add"
 and "MustAdd" methods.
@@ -70,7 +70,7 @@ Node-level sub-registries are added by calling:
 
 	(*metric.MetricRecorder).AddNodeRegistry(YOUR_NODE_SUBREGISTRY)
 
-Testing
+# Testing
 
 After your test does something to trigger your new metric update, you'll
 probably want to call methods in TestServer such as MustGetSQLCounter() to

@@ -21,6 +21,7 @@
 // MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
 // See the Mulan PSL v2 for more details.
 
+//go:build !windows
 // +build !windows
 
 //lint:file-ignore Unconvert (redundant conversions are necessary for cross-platform compatibility)

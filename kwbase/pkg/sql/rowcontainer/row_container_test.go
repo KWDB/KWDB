@@ -501,7 +501,7 @@ func TestDiskBackedIndexedRowContainer(t *testing.T) {
 			}
 
 			sorter := rowsSorter{evalCtx: &evalCtx, rows: sortedRows, ordering: ordering}
-			sort.Sort(&sorter)
+			sqlbase.Sort(&sorter, sqlbase.NewCancelChecker(ctx))
 			if sorter.err != nil {
 				t.Fatal(sorter.err)
 			}

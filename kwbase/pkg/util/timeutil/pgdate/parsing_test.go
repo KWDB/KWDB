@@ -679,16 +679,17 @@ func TestMain(m *testing.M) {
 
 // TestParse does the following:
 // * For each parsing mode:
-//   * Pick an example date input: 2018-01-01
-//   * Test ParseDate()
-//   * Pick an example time input: 12:34:56
-//     * Derive a timestamp from date + time
-//     * Test ParseTimestame()
-//     * Test ParseDate()
-//     * Test ParseTime()
-//   * Test one-off timestamp formats
+//   - Pick an example date input: 2018-01-01
+//   - Test ParseDate()
+//   - Pick an example time input: 12:34:56
+//   - Derive a timestamp from date + time
+//   - Test ParseTimestame()
+//   - Test ParseDate()
+//   - Test ParseTime()
+//   - Test one-off timestamp formats
+//
 // * Pick an example time input:
-//   * Test ParseTime()
+//   - Test ParseTime()
 func TestParse(t *testing.T) {
 	for _, mode := range modes {
 		t.Run(mode.String(), func(t *testing.T) {

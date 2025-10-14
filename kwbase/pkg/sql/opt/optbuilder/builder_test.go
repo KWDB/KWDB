@@ -46,25 +46,25 @@ import (
 )
 
 // TestBuilder runs data-driven testcases of the form
-//   <command> [<args>]...
-//   <SQL statement or expression>
-//   ----
-//   <expected results>
+//
+//	<command> [<args>]...
+//	<SQL statement or expression>
+//	----
+//	<expected results>
 //
 // See OptTester.Handle for supported commands. In addition to those, we
 // support:
 //
-//  - build-scalar [args]
+//   - build-scalar [args]
 //
-//    Builds a memo structure from a SQL scalar expression and outputs a
-//    representation of the "expression view" of the memo structure.
+//     Builds a memo structure from a SQL scalar expression and outputs a
+//     representation of the "expression view" of the memo structure.
 //
-//    The supported args (in addition to the ones supported by OptTester):
+//     The supported args (in addition to the ones supported by OptTester):
 //
-//      - vars=(type1,type2,...)
+//   - vars=(type1,type2,...)
 //
-//        Information about IndexedVar columns.
-//
+//     Information about IndexedVar columns.
 func TestBuilder(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 

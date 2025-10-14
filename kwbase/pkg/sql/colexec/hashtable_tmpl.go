@@ -23,7 +23,9 @@
 // See the Mulan PSL v2 for more details.
 
 // {{/*
+//go:build execgen_template
 // +build execgen_template
+
 //
 // This file is the execgen template for hashtable.eg.go. It's formatted in a
 // special way, so it's both valid Go and a valid text/template input. This
@@ -353,7 +355,8 @@ func _CHECK_BODY(ht *hashTable, nDiffers uint64, _SELECT_SAME_TUPLES bool) { // 
 // keyIDs in headID buffer.
 // NOTE: It assumes that probeVecs does not contain any duplicates itself.
 // NOTE: It assumes that probSel has already being populated and it is not
-//       nil.
+//
+//	nil.
 func (ht *hashTable) checkBuildForDistinct(
 	probeVecs []coldata.Vec, nToCheck uint64, probeSel []int,
 ) uint64 {

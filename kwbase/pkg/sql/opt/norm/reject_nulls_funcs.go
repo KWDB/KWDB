@@ -134,19 +134,18 @@ func DeriveRejectNullCols(in memo.RelExpr) opt.ColSet {
 // eligible for null rejection. If an aggregate input column has requested null
 // rejection, then pass along its request if the following criteria are met:
 //
-//   1. The aggregate function ignores null values, meaning that its value
-//      would not change if input null values are filtered.
+//  1. The aggregate function ignores null values, meaning that its value
+//     would not change if input null values are filtered.
 //
-//   2. The aggregate function returns null if its input is empty. And since
-//      by #1, the presence of nulls does not alter the result, the aggregate
-//      function would return null if its input contains only null values.
+//  2. The aggregate function returns null if its input is empty. And since
+//     by #1, the presence of nulls does not alter the result, the aggregate
+//     function would return null if its input contains only null values.
 //
-//   3. No other input columns are referenced by other aggregate functions in
-//      the GroupBy (all functions must refer to the same column), with the
-//      possible exception of ConstAgg. A ConstAgg aggregate can be safely
-//      ignored because all rows in each group must have the same value for this
-//      column, so it doesn't matter which rows are filtered.
-//
+//  3. No other input columns are referenced by other aggregate functions in
+//     the GroupBy (all functions must refer to the same column), with the
+//     possible exception of ConstAgg. A ConstAgg aggregate can be safely
+//     ignored because all rows in each group must have the same value for this
+//     column, so it doesn't matter which rows are filtered.
 func deriveGroupByRejectNullCols(in memo.RelExpr) opt.ColSet {
 	input := in.Child(0).(memo.RelExpr)
 	aggs := *in.Child(1).(*memo.AggregationsExpr)

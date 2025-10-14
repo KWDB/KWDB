@@ -34,25 +34,24 @@ import (
 
 // fkExistenceCheckForUpdate is an auxiliary object with two purposes:
 //
-// - its main purpose is to facilitate the existence checks on both
-//   referencing and referenced tables when modifying rows in a table.
+//   - its main purpose is to facilitate the existence checks on both
+//     referencing and referenced tables when modifying rows in a table.
 //
-//   Note that users of this purpose are responsible for calling
-//   addCheckForIndex() on all mutated indexes, to register a mutated
-//   index for FK checking.
+//     Note that users of this purpose are responsible for calling
+//     addCheckForIndex() on all mutated indexes, to register a mutated
+//     index for FK checking.
 //
-//   TODO(knz): why cannot the fkExistenceCheckForUpdate make this determination
-//   itself, like the other helpers? The asymmetry is concerning.
+//     TODO(knz): why cannot the fkExistenceCheckForUpdate make this determination
+//     itself, like the other helpers? The asymmetry is concerning.
 //
-// - its secondary purpose is to serve the boolean "hasFk()" for "does
-//   the mutated table have any FK constraints, either forward or
-//   backward?"  This boolean is used by the row writer and the
-//   CASCADEing close.
+//   - its secondary purpose is to serve the boolean "hasFk()" for "does
+//     the mutated table have any FK constraints, either forward or
+//     backward?"  This boolean is used by the row writer and the
+//     CASCADEing close.
 //
-//   TODO(knz): this responsibility should be carried by another
-//   object, so that the helper can specialize to only do existence
-//   checks!
-//
+//     TODO(knz): this responsibility should be carried by another
+//     object, so that the helper can specialize to only do existence
+//     checks!
 type fkExistenceCheckForUpdate struct {
 	// inbound is responsible for existence checks in referencing tables.
 	inbound fkExistenceCheckForDelete

@@ -121,8 +121,8 @@ func DirSet() bool { return mainLog.logDir.IsSet() }
 // accidentally and it splits the details of the filename into groups for easy
 // parsing. The log file format is
 //
-//   {program}.{host}.{username}.{timestamp}.{pid}.log
-//   kwbase.Brams-MacBook-Pro.bram.2015-06-09T16-10-48Z.30209.log
+//	{program}.{host}.{username}.{timestamp}.{pid}.log
+//	kwbase.Brams-MacBook-Pro.bram.2015-06-09T16-10-48Z.30209.log
 //
 // All underscore in process, host and username are escaped to double
 // underscores and all periods are escaped to an underscore.

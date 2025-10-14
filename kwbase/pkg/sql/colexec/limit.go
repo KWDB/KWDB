@@ -81,9 +81,10 @@ func (c *limitOp) Next(ctx context.Context) coldata.Batch {
 
 // Close closes the limitOp's input.
 // TODO(asubiotto): Remove this method. It only exists so that we can call Close
-//  from some runTests subtests when not draining the input fully. The test
-//  should pass in the testing.T object used so that the caller can decide to
-//  explicitly close the input after checking the test.
+//
+//	from some runTests subtests when not draining the input fully. The test
+//	should pass in the testing.T object used so that the caller can decide to
+//	explicitly close the input after checking the test.
 func (c *limitOp) IdempotentClose(ctx context.Context) error {
 	if !c.close() {
 		return nil

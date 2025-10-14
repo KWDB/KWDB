@@ -160,20 +160,21 @@ func (m colIdxMap) get(c sqlbase.ColumnID) (int, bool) {
 // cFetcher handles fetching kvs and forming table rows for an
 // arbitrary number of tables.
 // Usage:
-//   var rf cFetcher
-//   err := rf.Init(..)
-//   // Handle err
-//   err := rf.StartScan(..)
-//   // Handle err
-//   for {
-//      res, err := rf.nextBatch()
-//      // Handle err
-//      if res.colBatch.Length() == 0 {
-//         // Done
-//         break
-//      }
-//      // Process res.colBatch
-//   }
+//
+//	var rf cFetcher
+//	err := rf.Init(..)
+//	// Handle err
+//	err := rf.StartScan(..)
+//	// Handle err
+//	for {
+//	   res, err := rf.nextBatch()
+//	   // Handle err
+//	   if res.colBatch.Length() == 0 {
+//	      // Done
+//	      break
+//	   }
+//	   // Process res.colBatch
+//	}
 type cFetcher struct {
 	// table is the table that's configured for fetching.
 	table cTableInfo
