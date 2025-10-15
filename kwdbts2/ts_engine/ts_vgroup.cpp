@@ -852,10 +852,10 @@ KStatus TsVGroup::FlushImmSegment(const std::shared_ptr<TsMemSegment>& mem_seg) 
 
   update.RemoveMemSegment(mem_seg);
 
-  version_manager_->ApplyUpdate(&update);
   for (auto& [k, v] : flush_infos) {
     k->GetCountManager()->AddFlushEntityAgg(v);
   }
+  version_manager_->ApplyUpdate(&update);
   return KStatus::SUCCESS;
 }
 
@@ -1283,15 +1283,18 @@ KStatus TsVGroup::FinishWriteBatchData() {
   }
   write_batch_segment_builders_.clear();
   if (success) {
+    for (auto& [k, v] : partition_ids) {
+      auto partition = version_manager_->Current()->GetPartition(std::get<0>(k), std::get<1>(k));
+      auto count_manager = partition->GetCountManager();
+      for (auto& info : v) {
+        count_manager->AddFlushEntityAgg(info);
+      }
+    }
     version_manager_->ApplyUpdate(&update);
   }
   for (auto& [k, v] : partition_ids) {
     auto partition = version_manager_->Current()->GetPartition(std::get<0>(k), std::get<1>(k));
     partition->ResetStatus();
-    auto count_manager = partition->GetCountManager();
-    for (auto& info : v) {
-      count_manager->AddFlushEntityAgg(info);
-    }
   }
   return KStatus::SUCCESS;
 }
