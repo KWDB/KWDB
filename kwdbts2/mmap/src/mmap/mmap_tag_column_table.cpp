@@ -775,11 +775,23 @@ int MMapTagColumnTable::reserve(size_t n, ErrorInfo& err_info) {
   }
   // row info mremap
   if (m_row_info_file_) {
-    err_code = m_row_info_file_->extend(m_meta_data_->m_row_count, n);
+    err_code = m_row_info_file_->extend(m_row_info_file_->fileLen(), n * BITMAP_PER_ROW_LENGTH);
+    if (err_code < 0) {
+      LOG_ERROR("failed to extend row info file for the tag table %s%s",
+                m_db_name_.c_str(), m_name_.c_str());
+      stopWrite();
+      return err_code;
+    }
   }
   // hashpoint file extend
   if (m_hps_file_) {
    err_code = m_hps_file_->extend(m_hps_file_->fileLen(), n*sizeof(hashPointStorage));
+    if (err_code < 0) {
+      LOG_ERROR("failed to extend hashpoint file for the tag table %s%s",
+                m_db_name_.c_str(), m_name_.c_str());
+      stopWrite();
+      return err_code;
+    }
   }
   // tagcolumn extend
   for (size_t i = 0; i < m_cols_.size(); ++i) {
