@@ -233,7 +233,7 @@ if (BUILD_KWBASE)
 
     add_custom_target(
         kwbase ALL
-        COMMAND make build -f ${KWBASE_MAKEFILE}
+        COMMAND make build/defs.mk && make build -f ${KWBASE_MAKEFILE}
         PROTOBUF_DIR=${PROTOBUF_DIR}
         OUTPUT_PATH=${CMAKE_BINARY_DIR}/bin
         KWDB_LIB_DIR=${CMAKE_BINARY_DIR}/lib WITH_ASAN=${WITH_ASAN}
