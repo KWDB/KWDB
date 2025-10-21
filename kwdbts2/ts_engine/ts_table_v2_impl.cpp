@@ -874,8 +874,10 @@ KStatus TsTableV2Impl::GetLastRowBatch(kwdbContext_p ctx, uint32_t table_version
     return KStatus::SUCCESS;
   }
   timestamp64 cur_last_ts = INT64_MIN;
+  std::shared_ptr<TsRawPayloadRowParser> parser = nullptr;
   KStatus ret = vgroup->GetEntityLastRowBatch(entity_id.entityId, table_version, table_schema_mgr_,
-                                              schema, {{INT64_MIN, INT64_MAX}}, scan_cols, cur_last_ts, res);
+                                              schema, parser, {{INT64_MIN, INT64_MAX}}, scan_cols,
+                                              cur_last_ts, res);
   if (ret != KStatus::SUCCESS) {
     res->clear();
     LOG_ERROR("Vgroup %d GetLastRowBatch failed.", vgroup->GetVGroupID());

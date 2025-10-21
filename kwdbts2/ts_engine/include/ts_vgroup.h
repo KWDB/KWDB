@@ -348,6 +348,7 @@ class TsVGroup {
   KStatus GetEntityLastRowBatch(uint32_t entity_id, uint32_t scan_version,
                                 std::shared_ptr<TsTableSchemaManager>& table_schema_mgr,
                                 std::shared_ptr<MMapMetricsTable>& schema,
+                                std::shared_ptr<TsRawPayloadRowParser>& parser,
                                 const std::vector<KwTsSpan>& ts_spans, const std::vector<k_uint32>& scan_cols,
                                 timestamp64& entity_last_ts, ResultSet* res);
 

@@ -87,7 +87,7 @@ class TsMemSegBlock : public TsBlock {
   std::vector<const TSMemSegRowData*> row_data_;
   timestamp64 min_ts_{INVALID_TS};
   timestamp64 max_ts_{INVALID_TS};
-  std::unique_ptr<TsRawPayloadRowParser> parser_ = nullptr;
+  std::shared_ptr<TsRawPayloadRowParser> parser_ = nullptr;
   std::unordered_map<uint32_t, char*> col_based_mems_;
   std::unordered_map<uint32_t, std::unique_ptr<TsBitmap>> col_bitmaps_;
 
@@ -101,6 +101,10 @@ class TsMemSegBlock : public TsBlock {
       }
     }
     col_based_mems_.clear();
+  }
+
+  void SetParser(std::shared_ptr<TsRawPayloadRowParser>& parser) {
+    parser_ = parser;
   }
 
   TSEntityID GetEntityId() {

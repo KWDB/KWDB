@@ -504,6 +504,7 @@ KStatus TsVGroup::ConvertBlockSpanToResultSet(const std::vector<k_uint32>& kw_sc
 KStatus TsVGroup::GetEntityLastRowBatch(uint32_t entity_id, uint32_t scan_version,
                                         std::shared_ptr<TsTableSchemaManager>& table_schema_mgr,
                                         std::shared_ptr<MMapMetricsTable>& schema,
+                                        std::shared_ptr<TsRawPayloadRowParser>& parser,
                                         const std::vector<KwTsSpan>& ts_spans, const std::vector<k_uint32>& scan_cols,
                                         timestamp64& entity_last_ts, ResultSet* res) {
   TSSlice last_payload;
@@ -542,6 +543,8 @@ KStatus TsVGroup::GetEntityLastRowBatch(uint32_t entity_id, uint32_t scan_versio
       LOG_ERROR("TSBlkDataTypeConvert Init failed.");
       return KStatus::FAIL;
     }
+  } else {
+    mem_block->SetParser(parser);
   }
 
   auto block_span = std::make_shared<TsBlockSpan>(vgroup_id_, entity_id, std::move(mem_block), 0, 1,
