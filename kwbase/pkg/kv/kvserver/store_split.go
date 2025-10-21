@@ -32,6 +32,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
 	"gitee.com/kwbasedb/kwbase/pkg/storage"
 	"gitee.com/kwbasedb/kwbase/pkg/storage/enginepb"
+	"gitee.com/kwbasedb/kwbase/pkg/tse"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 	"github.com/pkg/errors"
 	"go.etcd.io/etcd/raft"
@@ -42,7 +43,11 @@ import (
 // changes to the given ReadWriter will be written atomically with the
 // split commit.
 func splitPreApply(
-	ctx context.Context, readWriter storage.ReadWriter, split roachpb.SplitTrigger, r *Replica,
+	ctx context.Context,
+	readWriter storage.ReadWriter,
+	tsBatch *tse.TsRaftWriteBatch,
+	split roachpb.SplitTrigger,
+	r *Replica,
 ) {
 	// Sanity check that the store is in the split.
 	//
@@ -104,18 +109,26 @@ func splitPreApply(
 			if rightRepl.IsInitialized() {
 				log.Fatalf(ctx, "unexpectedly found initialized newer RHS of split: %v", rightRepl.Desc())
 			}
-			hs, err = rightRepl.raftMu.stateLoader.LoadHardState(ctx, readWriter)
+			if split.RightDesc.GetRangeType() == roachpb.TS_RANGE {
+				hs, err = rightRepl.LoadTsHardState(ctx, readWriter)
+			} else {
+				hs, err = rightRepl.raftMu.stateLoader.LoadHardState(ctx, readWriter)
+			}
 			if err != nil {
 				log.Fatalf(ctx, "failed to load hard state for removed rhs: %v", err)
 			}
 		}
 		const rangeIDLocalOnly = false
 		const mustUseClearRange = false
-		if err := clearRangeData(&split.RightDesc, readWriter, readWriter, rangeIDLocalOnly, mustUseClearRange); err != nil {
+		if err := clearRangeData(&split.RightDesc, readWriter, readWriter, tsBatch, rangeIDLocalOnly, mustUseClearRange); err != nil {
 			log.Fatalf(ctx, "failed to clear range data for removed rhs: %v", err)
 		}
 		if rightRepl != nil {
-			if err := rightRepl.raftMu.stateLoader.SetHardState(ctx, readWriter, hs); err != nil {
+			if split.RightDesc.GetRangeType() == roachpb.TS_RANGE && tsBatch != nil {
+				if err := rightRepl.SetTsHardState(ctx, hs, tsBatch); err != nil {
+					log.Fatalf(ctx, "failed to set hard state with 0 commit index for removed rhs to ts raft store: %v", err)
+				}
+			} else if err := rightRepl.raftMu.stateLoader.SetHardState(ctx, readWriter, hs); err != nil {
 				log.Fatalf(ctx, "failed to set hard state with 0 commit index for removed rhs: %v", err)
 			}
 		}

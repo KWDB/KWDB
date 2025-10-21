@@ -41,6 +41,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
 	"gitee.com/kwbasedb/kwbase/pkg/settings"
 	"gitee.com/kwbasedb/kwbase/pkg/storage"
+	"gitee.com/kwbasedb/kwbase/pkg/tse"
 	"gitee.com/kwbasedb/kwbase/pkg/util"
 	"gitee.com/kwbasedb/kwbase/pkg/util/encoding"
 	"gitee.com/kwbasedb/kwbase/pkg/util/hlc"
@@ -1368,14 +1369,18 @@ func (r *Replica) handleRaftTSReadyRaftMuLocked(
 	r.traceMessageSends(msgApps, "sending msgApp")
 	r.sendRaftMessages(ctx, msgApps)
 
-	// Use a more efficient write-only batch because we don't need to do any
-	// reads from the batch. Any reads are performed via the "distinct" batch
-	// which passes the reads through to the underlying DB.
-	batch := r.store.Engine().NewWriteOnlyBatch()
-	defer batch.Close()
+	var batch storage.Batch
+	var writer storage.ReadWriter
+	var tsBatch *tse.TsRaftWriteBatch
+	if r.store.TsRaftLogEngine != nil {
+		tsBatch = tse.NewTsRaftLogBatch(r.store.TsRaftLogEngine)
+	} else {
+		batch = r.store.Engine().NewWriteOnlyBatch()
+		defer batch.Close()
 
-	// We know that all of the writes from here forward will be to distinct keys.
-	writer := batch.Distinct()
+		// We know that all of the writes from here forward will be to distinct keys.
+		writer = batch.Distinct()
+	}
 	prevLastIndex := lastIndex
 	if len(rd.Entries) > 0 {
 		// All of the entries are appended to distinct keys, returning a new
@@ -1386,9 +1391,12 @@ func (r *Replica) handleRaftTSReadyRaftMuLocked(
 			return stats, expl, errors.Wrap(err, expl)
 		}
 		raftLogSize += sideLoadedEntriesSize
-		if lastIndex, lastTerm, raftLogSize, err = r.append(
-			ctx, writer, lastIndex, lastTerm, raftLogSize, thinEntries,
-		); err != nil {
+		if tsBatch != nil {
+			lastIndex, lastTerm, raftLogSize, err = r.appendTs(lastIndex, lastTerm, raftLogSize, thinEntries, tsBatch)
+		} else {
+			lastIndex, lastTerm, raftLogSize, err = r.append(ctx, writer, lastIndex, lastTerm, raftLogSize, thinEntries)
+		}
+		if err != nil {
 			const expl = "during append"
 			return stats, expl, errors.Wrap(err, expl)
 		}
@@ -1405,34 +1413,51 @@ func (r *Replica) handleRaftTSReadyRaftMuLocked(
 		//
 		// We have both in the same batch, so there's no problem. If that ever
 		// changes, we must write and sync the Entries before the HardState.
-		if err := r.raftMu.stateLoader.SetHardState(ctx, writer, rd.HardState); err != nil {
+		if tsBatch != nil {
+			err = r.SetTsHardState(ctx, rd.HardState, tsBatch)
+		} else {
+			err = r.raftMu.stateLoader.SetHardState(ctx, writer, rd.HardState)
+		}
+		if err != nil {
 			const expl = "during setHardState"
 			return stats, expl, errors.Wrap(err, expl)
 		}
 	}
-	writer.Close()
-	// Synchronously commit the batch with the Raft log entries and Raft hard
-	// state as we're promising not to lose this data.
-	//
-	// Note that the data is visible to other goroutines before it is synced to
-	// disk. This is fine. The important constraints are that these syncs happen
-	// before Raft messages are sent and before the call to RawNode.Advance. Our
-	// regular locking is sufficient for this and if other goroutines can see the
-	// data early, that's fine. In particular, snapshots are not a problem (I
-	// think they're the only thing that might access log entries or HardState
-	// from other goroutines). Snapshots do not include either the HardState or
-	// uncommitted log entries, and even if they did include log entries that
-	// were not persisted to disk, it wouldn't be a problem because raft does not
-	// infer the that entries are persisted on the node that sends a snapshot.
-	commitStart := timeutil.Now()
-	sync := rd.MustSync && !disableSyncRaftLog.Get(&r.store.cfg.Settings.SV)
-	if err := batch.Commit(sync, storage.TsCommitType); err != nil {
-		const expl = "while committing batch"
-		return stats, expl, errors.Wrap(err, expl)
-	}
-	if rd.MustSync {
-		elapsed := timeutil.Since(commitStart)
-		r.store.metrics.RaftLogCommitLatency.RecordValue(elapsed.Nanoseconds())
+
+	var sync bool
+	if tsBatch != nil {
+		sync = true
+		if err := tsBatch.Commit(); err != nil {
+			log.Errorf(ctx, "sync ts raft log failed, err: %s", err.Error())
+			const expl = "during sync"
+			return stats, expl, errors.Wrap(err, expl)
+		}
+		log.VEventf(ctx, 3, "set to hd[%d, %d], lastIndex %d, lastTerm %d", rd.HardState.Commit, rd.HardState.Term, lastIndex, lastTerm)
+	} else {
+		writer.Close()
+		// Synchronously commit the batch with the Raft log entries and Raft hard
+		// state as we're promising not to lose this data.
+		//
+		// Note that the data is visible to other goroutines before it is synced to
+		// disk. This is fine. The important constraints are that these syncs happen
+		// before Raft messages are sent and before the call to RawNode.Advance. Our
+		// regular locking is sufficient for this and if other goroutines can see the
+		// data early, that's fine. In particular, snapshots are not a problem (I
+		// think they're the only thing that might access log entries or HardState
+		// from other goroutines). Snapshots do not include either the HardState or
+		// uncommitted log entries, and even if they did include log entries that
+		// were not persisted to disk, it wouldn't be a problem because raft does not
+		// infer the that entries are persisted on the node that sends a snapshot.
+		commitStart := timeutil.Now()
+		sync = rd.MustSync && !disableSyncRaftLog.Get(&r.store.cfg.Settings.SV)
+		if err := batch.Commit(sync, storage.TsCommitType); err != nil {
+			const expl = "while committing batch"
+			return stats, expl, errors.Wrap(err, expl)
+		}
+		if rd.MustSync {
+			elapsed := timeutil.Since(commitStart)
+			r.store.metrics.RaftLogCommitLatency.RecordValue(elapsed.Nanoseconds())
+		}
 	}
 	if sync {
 		if r.mu.inconsistent != storage.IsAsyncWrite() {
@@ -2433,11 +2458,12 @@ func (r *Replica) acquireMergeLock(
 // the associated RaftLogDelta. It is usually expected to be true, but may not
 // be for the first truncation after on a replica that recently received a
 // snapshot.
-func handleTruncatedStateBelowRaft(
+func (r *Replica) handleTruncatedStateBelowRaft(
 	ctx context.Context,
 	oldTruncatedState, newTruncatedState *roachpb.RaftTruncatedState,
 	loader stateloader.StateLoader,
 	readWriter storage.ReadWriter,
+	tsBatch *tse.TsRaftWriteBatch,
 ) (_apply bool, _ error) {
 	// If this is a log truncation, load the resulting unreplicated or legacy
 	// replicated truncated state (in that order). If the migration is happening
@@ -2465,12 +2491,17 @@ func handleTruncatedStateBelowRaft(
 	// perform well here because the tombstones could be "collapsed",
 	// but it is hardly worth the risk at this point.
 	prefixBuf := &loader.RangeIDPrefixBuf
-	for idx := oldTruncatedState.Index + 1; idx <= newTruncatedState.Index; idx++ {
-		// NB: RangeIDPrefixBufs have sufficient capacity (32 bytes) to
-		// avoid allocating when constructing Raft log keys (16 bytes).
-		unsafeKey := prefixBuf.RaftLogKey(idx)
-		if err := readWriter.Clear(storage.MakeMVCCMetadataKey(unsafeKey)); err != nil {
-			return false, errors.Wrapf(err, "unable to clear truncated Raft entries for %+v", newTruncatedState)
+	if tsBatch != nil && r.isTsLocked() {
+		tsBatch.Truncate(uint64(r.RangeID), newTruncatedState.Index+1)
+		log.Infof(ctx, "truncate to %d", newTruncatedState.Index)
+	} else {
+		for idx := oldTruncatedState.Index + 1; idx <= newTruncatedState.Index; idx++ {
+			// NB: RangeIDPrefixBufs have sufficient capacity (32 bytes) to
+			// avoid allocating when constructing Raft log keys (16 bytes).
+			unsafeKey := prefixBuf.RaftLogKey(idx)
+			if err := readWriter.Clear(storage.MakeMVCCMetadataKey(unsafeKey)); err != nil {
+				return false, errors.Wrapf(err, "unable to clear truncated Raft entries for %+v", newTruncatedState)
+			}
 		}
 	}
 

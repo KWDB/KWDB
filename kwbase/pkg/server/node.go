@@ -371,7 +371,7 @@ func (n *Node) start(
 	localityAddress []roachpb.LocalityAddress,
 	nodeDescriptorCallback func(descriptor roachpb.NodeDescriptor),
 	startMode string,
-	setTse func() (*tse.TsEngine, error),
+	setTse func() (*tse.TsEngine, *tse.TsRaftLogEngine, error),
 ) error {
 	if err := clusterversion.Initialize(ctx, cv.Version, &n.storeCfg.Settings.SV); err != nil {
 		return err
@@ -615,7 +615,7 @@ func (n *Node) bootstrapStores(
 	ctx context.Context,
 	emptyEngines []storage.Engine,
 	stopper *stop.Stopper,
-	setTse func() (*tse.TsEngine, error),
+	setTse func() (*tse.TsEngine, *tse.TsRaftLogEngine, error),
 ) error {
 	if n.clusterID.Get() == uuid.Nil {
 		return errors.New("ClusterID missing during store bootstrap of auxiliary store")

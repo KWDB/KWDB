@@ -304,7 +304,13 @@ message RangeDescriptor {
   // be aggregated based on historical data, so the time of the last split needs to
   // be recorded.
   optional util.hlc.Timestamp last_split_time = 11;
+
   optional uint64 hash_num = 12 [(gogoproto.nullable) = false];
+
+    // removed indicates that whether the range has been removed.
+  // TS range descriptors are not removed at once when the ranges are unsplitted,
+  // so that we need a flag to record the state.
+  optional bool removed = 13;
 }
 
 // Percentiles contains a handful of hard-coded percentiles meant to summarize

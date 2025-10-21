@@ -77,7 +77,12 @@ var _ raft.Storage = (*replicaRaftStorage)(nil)
 // InitialState requires that r.mu is held.
 func (r *replicaRaftStorage) InitialState() (raftpb.HardState, raftpb.ConfState, error) {
 	ctx := r.AnnotateCtx(context.TODO())
-	hs, err := r.mu.stateLoader.LoadHardState(ctx, r.store.Engine())
+	var hs raftpb.HardState
+	var err error
+	// replica may not know its type yet, just call LoadTsHardState,
+	// because it will call LoadHardState if ts raft store has no record.
+	repl := (*Replica)(r)
+	hs, err = repl.LoadTsHardState(ctx, r.store.Engine())
 	// For uninitialized ranges, membership is unknown at this point.
 	if raft.IsEmptyHardState(hs) || err != nil {
 		return raftpb.HardState{}, raftpb.ConfState{}, err
@@ -96,8 +101,21 @@ func (r *replicaRaftStorage) Entries(lo, hi, maxBytes uint64) ([]raftpb.Entry, e
 	if r.raftMu.sideloaded == nil {
 		return nil, errors.New("sideloaded storage is uninitialized")
 	}
-	return entries(ctx, r.mu.stateLoader, readonly, r.RangeID, r.store.raftEntryCache,
+	if (*Replica)(r).isTsLocked() && r.store.TsRaftLogEngine != nil {
+		return tsEntries(ctx, r.mu.stateLoader, r.store.TsRaftLogEngine, readonly, r.RangeID, r.store.raftEntryCache,
+			r.raftMu.sideloaded, lo, hi, maxBytes)
+	}
+	ents, err := entries(ctx, r.mu.stateLoader, readonly, r.RangeID, r.store.raftEntryCache,
 		r.raftMu.sideloaded, lo, hi, maxBytes)
+	if err == nil {
+		return ents, nil
+	}
+	if r.mu.state.Desc.IsRemoved() && r.store.TsRaftLogEngine != nil {
+		log.Infof(ctx, "r%d is removed, try get entries from ts engine", r.RangeID)
+		return tsEntries(ctx, r.mu.stateLoader, r.store.TsRaftLogEngine, readonly, r.RangeID, r.store.raftEntryCache,
+			r.raftMu.sideloaded, lo, hi, maxBytes)
+	}
+	return nil, err
 }
 
 // raftEntriesLocked requires that r.mu is held.
@@ -251,6 +269,129 @@ func iterateEntries(
 	return err
 }
 
+func tsEntries(
+	ctx context.Context,
+	rsl stateloader.StateLoader,
+	raftLogEngine *tse.TsRaftLogEngine,
+	reader storage.Reader,
+	rangeID roachpb.RangeID,
+	eCache *raftentry.Cache,
+	sideloaded SideloadStorage,
+	lo, hi, maxBytes uint64,
+) ([]raftpb.Entry, error) {
+	if lo > hi {
+		return nil, errors.Errorf("lo:%d is greater than hi:%d", lo, hi)
+	}
+
+	n := hi - lo
+	if n > 100 {
+		n = 100
+	}
+	ents := make([]raftpb.Entry, 0, n)
+
+	ents, size, hitIndex, exceededMaxBytes := eCache.Scan(ents, rangeID, lo, hi, maxBytes)
+
+	// Return results if the correct number of results came back or if
+	// we ran into the max bytes limit.
+	if uint64(len(ents)) == hi-lo || exceededMaxBytes {
+		return ents, nil
+	}
+
+	// Whether we can populate the Raft entries cache. False if we found a
+	// sideloaded proposal, but the caller didn't give us a sideloaded storage.
+	canCache := true
+
+	var ent raftpb.Entry
+	var value roachpb.Value
+	expectedIndex := hitIndex
+	transfer := func(v []byte) error {
+		value.RawBytes = v
+		if err := value.GetProto(&ent); err != nil {
+			panic(fmt.Sprintf("failed get proto for raft log %d, err: %s, value: %+v", expectedIndex, err, v))
+		}
+		if sniffSideloadedRaftCommand(ent.Data) {
+			canCache = canCache && sideloaded != nil
+			if sideloaded != nil {
+				newEnt, err := maybeInlineSideloadedRaftCommand(
+					ctx, rangeID, ent, sideloaded, eCache,
+				)
+				if err != nil {
+					return err
+				}
+				if newEnt != nil {
+					ent = *newEnt
+				}
+			}
+		}
+
+		// Note that we track the size of proposals with payloads inlined.
+		size += uint64(ent.Size())
+		if size > maxBytes {
+			exceededMaxBytes = true
+			if len(ents) > 0 {
+				log.Infof(ctx, "%d have exceeded max bytes %d", size, maxBytes)
+				return tse.ErrExceedMaxBytes
+			}
+		}
+		ents = append(ents, ent)
+		expectedIndex++
+		return nil
+	}
+	var err error
+	err = raftLogEngine.GetRaftLog(uint64(rangeID), expectedIndex, hi, transfer)
+	if err != nil && err != tse.ErrExceedMaxBytes {
+		log.Infof(ctx, "failed get raft log for index %d, err: %s", expectedIndex, err)
+		return nil, raft.ErrUnavailable
+	}
+	// Cache the fetched entries, if we may.
+	if canCache {
+		eCache.Add(rangeID, ents, false /* truncate */)
+	}
+
+	// Did the correct number of results come back? If so, we're all good.
+	if uint64(len(ents)) == hi-lo {
+		return ents, nil
+	}
+
+	// Did we hit the size limit? If so, return what we have.
+	if exceededMaxBytes {
+		return ents, nil
+	}
+
+	// Did we get any results at all? Because something went wrong.
+	if len(ents) > 0 {
+		// Was the lo already truncated?
+		if ents[0].Index > lo {
+			return nil, raft.ErrCompacted
+		}
+
+		// Was the missing index after the last index?
+		lastIndex, err := raftLogEngine.GetLastIndex(uint64(rangeID))
+		log.Infof(ctx, "get last index from ts: %d", lastIndex)
+		if err != nil {
+			return nil, raft.ErrUnavailable
+		}
+		if lastIndex <= expectedIndex {
+			return nil, raft.ErrUnavailable
+		}
+
+		// We have a gap in the record, if so, return a nasty error.
+		return nil, errors.Errorf("there is a gap in the index record between lo:%d and hi:%d at index:%d", lo, hi, expectedIndex)
+	}
+
+	// No results, was it due to unavailability or truncation?
+	ts, _, err := rsl.LoadRaftTruncatedState(ctx, reader)
+	if err != nil {
+		return nil, err
+	}
+	if ts.Index >= lo {
+		// The requested lo index has already been truncated.
+		return nil, raft.ErrCompacted
+	}
+	// The requested lo index does not yet exist.
+	return nil, raft.ErrUnavailable
+}
+
 // invalidLastTerm is an out-of-band value for r.mu.lastTerm that
 // invalidates lastTerm caching and forces retrieval of Term(lastTerm)
 // from the raftEntryCache/RocksDB.
@@ -270,7 +411,18 @@ func (r *replicaRaftStorage) Term(i uint64) (uint64, error) {
 	readonly := r.store.Engine().NewReadOnly()
 	defer readonly.Close()
 	ctx := r.AnnotateCtx(context.TODO())
-	return term(ctx, r.mu.stateLoader, readonly, r.RangeID, r.store.raftEntryCache, i)
+	if (*Replica)(r).isTsLocked() && r.store.TsRaftLogEngine != nil {
+		return tsTerm(ctx, r.mu.stateLoader, r.store.TsRaftLogEngine, readonly, r.RangeID, r.store.raftEntryCache, i)
+	}
+	t, err := term(ctx, r.mu.stateLoader, readonly, r.RangeID, r.store.raftEntryCache, i)
+	if err == nil {
+		return t, nil
+	}
+	if r.mu.state.Desc.IsRemoved() && r.store.TsRaftLogEngine != nil {
+		log.Infof(ctx, "r%d is removed, try get term from ts engine", r.RangeID)
+		return tsTerm(ctx, r.mu.stateLoader, r.store.TsRaftLogEngine, readonly, r.RangeID, r.store.raftEntryCache, i)
+	}
+	return 0, err
 }
 
 // raftTermLocked requires that r.mu is locked for reading.
@@ -307,6 +459,47 @@ func term(
 	return ents[0].Term, nil
 }
 
+func tsTerm(
+	ctx context.Context,
+	rsl stateloader.StateLoader,
+	raftLogEngine *tse.TsRaftLogEngine,
+	reader storage.Reader,
+	rangeID roachpb.RangeID,
+	eCache *raftentry.Cache,
+	i uint64,
+) (uint64, error) {
+	if eCache != nil {
+		if e, ok := eCache.Get(rangeID, i); ok {
+			return e.Term, nil
+		}
+	}
+	var ent raftpb.Entry
+	var value roachpb.Value
+	transfer := func(v []byte) error {
+		value.RawBytes = v
+		if err := value.GetProto(&ent); err != nil {
+			panic(fmt.Sprintf("failed get proto for raft log of index %d, err: %s, value: %+v", i, err, value.RawBytes))
+		}
+		return nil
+	}
+	if err := raftLogEngine.GetRaftLog(uint64(rangeID), i, i+1, transfer); err == nil {
+		log.Eventf(ctx, "get term from ts %d", ent.Term)
+		return ent.Term, nil
+	}
+	ts, _, err := rsl.LoadRaftTruncatedState(ctx, reader)
+	if err != nil {
+		log.Infof(ctx, "failed load raft truncated state")
+		return 0, err
+	}
+	if i == ts.Index {
+		log.Eventf(ctx, "get term from truncate state [%+v]: %d", ts, ent.Term)
+		return ts.Term, nil
+	}
+	// TODO(whz): specify ErrCompacted, ErrUnavailable
+	log.Infof(ctx, "failed get raft log for index %d, err: %s", i, err)
+	return 0, nil
+}
+
 // LastIndex implements the raft.Storage interface.
 func (r *replicaRaftStorage) LastIndex() (uint64, error) {
 	return r.mu.lastIndex, nil
@@ -335,6 +528,80 @@ func (r *Replica) raftTruncatedStateLocked(
 		r.mu.state.TruncatedState = &ts
 	}
 	return ts, nil
+}
+
+// LoadTsLastIndex get the latest raftlog of the specified rangeID.
+func (r *Replica) LoadTsLastIndex(ctx context.Context, reader storage.Reader) (uint64, error) {
+	index, err := r.store.TsRaftLogEngine.GetLastIndex(uint64(r.RangeID))
+	if err == nil {
+		log.VEventf(ctx, 3, "get last index from ts: %d", index)
+	} else {
+		lastEnt, _, err := r.mu.stateLoader.LoadRaftTruncatedState(ctx, reader)
+		if err != nil {
+			return 0, err
+		}
+		return lastEnt.Index, nil
+	}
+	return index, nil
+}
+
+// GetTsTruncateState obtain the index of the earliest record.
+func (r *Replica) GetTsTruncateState(ctx context.Context) (roachpb.RaftTruncatedState, error) {
+	var state roachpb.RaftTruncatedState
+	err := r.store.TsRaftLogEngine.GetTsFirstIndexTerm(uint64(r.RangeID), func(v []byte) error {
+		var ent raftpb.Entry
+		var value roachpb.Value
+		value.RawBytes = v
+		if err := value.GetProto(&ent); err != nil {
+			return err
+		}
+		state.Index = ent.Index
+		state.Term = ent.Term
+		return nil
+	})
+	return state, err
+}
+
+// SetTsHardState set hard state.
+func (r *Replica) SetTsHardState(
+	ctx context.Context, hs raftpb.HardState, batch *tse.TsRaftWriteBatch,
+) error {
+	var value roachpb.Value
+	if err := value.SetProto(&hs); err != nil {
+		log.Errorf(ctx, "failed set hard state to bytes, err: %s", err)
+		return err
+	}
+	batch.Put(uint64(r.RangeID), 0, 1, [][]byte{value.RawBytes}, len(value.RawBytes))
+	return nil
+}
+
+// LoadTsHardState get the state raftlog of the specified rangeID.
+func (r *Replica) LoadTsHardState(
+	ctx context.Context, reader storage.Reader,
+) (raftpb.HardState, error) {
+	var value roachpb.Value
+	var hs raftpb.HardState
+	transfer := func(v []byte) error {
+		if v == nil {
+			return nil
+		}
+		value.RawBytes = v
+		if err := value.GetProto(&hs); err != nil {
+			panic(fmt.Sprintf("failed load ts raft state for r%d, err: %s", r.RangeID, err))
+		}
+		return nil
+	}
+	if r.store.TsRaftLogEngine != nil {
+		err := r.store.TsRaftLogEngine.GetRaftLog(uint64(r.RangeID), 0, 1, transfer)
+		if err == nil {
+			log.Eventf(ctx, "get hard state from ts: %+v", hs)
+			return hs, nil
+		}
+		if reader == nil {
+			return raftpb.HardState{}, err
+		}
+	}
+	return r.mu.stateLoader.LoadHardState(ctx, reader)
 }
 
 // FirstIndex implements the raft.Storage interface.
@@ -455,8 +722,8 @@ func (r *Replica) GetTSSnapshot(
 		// to use Replica.mu.stateLoader. This call is not performance sensitive, so
 		// create a new state loader.
 		snapData, err := tsSnapshot(
-			ctx, snapUUID, 0, stateloader.Make(rangeID), snapType,
-			snap, rangeID, r.store.raftEntryCache, withSideloaded, startKey, r.store.engine,
+			ctx, snapUUID, 0, stateloader.Make(rangeID), snapType, snap,
+			r.store.TsRaftLogEngine, rangeID, r.store.raftEntryCache, withSideloaded, startKey, r.store.engine,
 		)
 		if err != nil {
 			log.Errorf(ctx, "error generating snapshot: %+v", err)
@@ -479,8 +746,8 @@ func (r *Replica) GetTSSnapshot(
 		return nil, errors.Errorf("error CreateTSSnapshot: %s", errMsg)
 	}
 	snapData, err := tsSnapshot(
-		ctx, snapUUID, tsSnapshotID, stateloader.Make(rangeID), snapType,
-		snap, rangeID, r.store.raftEntryCache, withSideloaded, startKey, r.store.Engine(),
+		ctx, snapUUID, tsSnapshotID, stateloader.Make(rangeID), snapType, snap,
+		r.store.TsRaftLogEngine, rangeID, r.store.raftEntryCache, withSideloaded, startKey, r.store.Engine(),
 	)
 	if err != nil {
 		log.Errorf(ctx, "error generating tsSnapshot: %+v", err)
@@ -703,6 +970,7 @@ func tsSnapshot(
 	rsl stateloader.StateLoader,
 	snapType SnapshotRequest_Type,
 	snap storage.Reader,
+	raftLogEngine *tse.TsRaftLogEngine,
 	rangeID roachpb.RangeID,
 	eCache *raftentry.Cache,
 	withSideloaded func(func(SideloadStorage) error) error,
@@ -729,7 +997,12 @@ func tsSnapshot(
 		return OutgoingSnapshot{}, err
 	}
 
-	term, err := term(ctx, rsl, snap, rangeID, eCache, appliedIndex)
+	var logTerm uint64
+	if raftLogEngine != nil {
+		logTerm, err = tsTerm(ctx, rsl, raftLogEngine, snap, rangeID, eCache, appliedIndex)
+	} else {
+		logTerm, err = term(ctx, rsl, snap, rangeID, eCache, appliedIndex)
+	}
 	if err != nil {
 		return OutgoingSnapshot{}, errors.Errorf("failed to fetch term of %d: %s", appliedIndex, err)
 	}
@@ -791,7 +1064,7 @@ func tsSnapshot(
 			Data: snapUUID.GetBytes(),
 			Metadata: raftpb.SnapshotMetadata{
 				Index: appliedIndex,
-				Term:  term,
+				Term:  logTerm,
 				// Synthesize our raftpb.ConfState from desc.
 				ConfState: desc.Replicas().ConfState(),
 			},
@@ -877,6 +1150,42 @@ func (r *Replica) append(
 	return lastIndex, lastTerm, raftLogSize, nil
 }
 
+func (r *Replica) appendTs(
+	prevLastIndex uint64,
+	prevLastTerm uint64,
+	prevRaftLogSize int64,
+	entries []raftpb.Entry,
+	batch *tse.TsRaftWriteBatch,
+) (uint64, uint64, int64, error) {
+	if len(entries) == 0 {
+		return prevLastIndex, prevLastTerm, prevRaftLogSize, nil
+	}
+	cnt := len(entries)
+	values := make([][]byte, cnt)
+	size := 0
+	rawSize := 0
+	for i := range entries {
+		ent := &entries[i]
+		key := r.raftMu.stateLoader.RaftLogKey(ent.Index)
+
+		var value roachpb.Value
+		if err := value.SetProto(ent); err != nil {
+			return 0, 0, 0, err
+		}
+		value.InitChecksum(key)
+		values[i] = value.RawBytes
+		size += ent.Size()
+		rawSize += len(value.RawBytes)
+	}
+	batch.Put(uint64(r.RangeID), entries[0].Index, entries[cnt-1].Index+1, values, rawSize)
+
+	lastIndex := entries[cnt-1].Index
+	lastTerm := entries[cnt-1].Term
+
+	raftLogSize := prevRaftLogSize + int64(size)
+	return lastIndex, lastTerm, raftLogSize, nil
+}
+
 // updateRangeInfo is called whenever a range is updated by ApplySnapshot
 // or is created by range splitting to setup the fields which are
 // uninitialized or need updating.
@@ -928,6 +1237,7 @@ func clearRangeData(
 	desc *roachpb.RangeDescriptor,
 	reader storage.Reader,
 	writer storage.Writer,
+	tsBatch *tse.TsRaftWriteBatch,
 	rangeIDLocalOnly bool,
 	mustClearRange bool,
 ) error {
@@ -950,6 +1260,12 @@ func clearRangeData(
 		if err := clearRangeFn(reader, writer, keyRange.Start.Key, keyRange.End.Key); err != nil {
 			return err
 		}
+	}
+
+	if tsBatch != nil {
+		log.Infof(context.Background(), "clear data for r%d", desc.RangeID)
+		// Always clear ts range data.
+		tsBatch.ClearRange(uint64(desc.RangeID))
 	}
 	return nil
 }
@@ -1082,7 +1398,13 @@ func (r *Replica) applySnapshot(
 	}
 
 	// Update HardState.
-	if err := r.raftMu.stateLoader.SetHardState(ctx, &unreplicatedSST, hs); err != nil {
+	var tsBatch *tse.TsRaftWriteBatch
+	if inSnap.IsTSSnapshot && r.store.TsRaftLogEngine != nil {
+		tsBatch = tse.NewTsRaftLogBatch(r.store.TsRaftLogEngine)
+		if err := r.SetTsHardState(ctx, hs, tsBatch); err != nil {
+			return errors.Wrapf(err, "unable to write HardState to ts raft store")
+		}
+	} else if err := r.raftMu.stateLoader.SetHardState(ctx, &unreplicatedSST, hs); err != nil {
 		return errors.Wrapf(err, "unable to write HardState to unreplicated SST writer")
 	}
 
@@ -1103,8 +1425,13 @@ func (r *Replica) applySnapshot(
 			return err
 		}
 		raftLogSize += sideloadedEntriesSize
-		_, lastTerm, raftLogSize, err = r.append(ctx, &unreplicatedSST, 0, invalidLastTerm, raftLogSize, logEntries)
+		if inSnap.IsTSSnapshot && r.store.TsRaftLogEngine != nil {
+			_, lastTerm, raftLogSize, err = r.appendTs(0, invalidLastTerm, raftLogSize, logEntries, tsBatch)
+		} else {
+			_, lastTerm, raftLogSize, err = r.append(ctx, &unreplicatedSST, 0, invalidLastTerm, raftLogSize, logEntries)
+		}
 		if err != nil {
+			log.Errorf(ctx, "failed append log entries, err: %s", err.Error())
 			return err
 		}
 	} else {
@@ -1121,6 +1448,12 @@ func (r *Replica) applySnapshot(
 		}
 	}
 
+	if inSnap.IsTSSnapshot && tsBatch != nil {
+		if err := tsBatch.Commit(); err != nil {
+			log.Errorf(ctx, "sync ts raft log failed, err: %s", err.Error())
+			return err
+		}
+	}
 	if err := unreplicatedSST.Finish(); err != nil {
 		return err
 	}
@@ -1286,6 +1619,7 @@ func (r *Replica) clearSubsumedReplicaDiskData(
 	}
 	keyRanges := getKeyRanges(desc)
 	totalKeyRanges := append([]rditer.KeyRange(nil), keyRanges[:]...)
+	tsBatch := tse.NewTsRaftLogBatch(r.store.TsRaftLogEngine)
 	for _, sr := range subsumedRepls {
 		// We have to create an SST for the subsumed replica's range-id local keys.
 		subsumedReplSSTFile := &storage.MemFile{}
@@ -1298,6 +1632,7 @@ func (r *Replica) clearSubsumedReplicaDiskData(
 			ctx,
 			r.store.Engine(),
 			&subsumedReplSST,
+			tsBatch,
 			subsumedNextReplicaID,
 			true, /* clearRangeIDLocalOnly */
 			true, /* mustClearRange */
@@ -1326,6 +1661,11 @@ func (r *Replica) clearSubsumedReplicaDiskData(
 			if srKeyRanges[i].End.Key.Compare(totalKeyRanges[i].End.Key) > 0 {
 				totalKeyRanges[i].End = srKeyRanges[i].End
 			}
+		}
+	}
+	if tsBatch != nil {
+		if err := tsBatch.Commit(); err != nil {
+			return err
 		}
 	}
 

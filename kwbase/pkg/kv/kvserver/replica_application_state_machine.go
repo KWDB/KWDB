@@ -358,6 +358,7 @@ func (sm *replicaStateMachine) NewBatch(ephemeral bool) apply.Batch {
 	b.r = r
 	b.sm = sm
 	b.batch = r.store.engine.NewBatch()
+	b.tsBatch = tse.NewTsRaftLogBatch(r.store.TsRaftLogEngine)
 	r.mu.RLock()
 	b.state = r.mu.state
 	b.state.Stats = &b.stats
@@ -380,6 +381,8 @@ type replicaAppBatch struct {
 
 	// batch accumulates writes implied by the raft entries in this batch.
 	batch storage.Batch
+	// tsBatch write ts raft log with TsRaftLogEngine
+	tsBatch *tse.TsRaftWriteBatch
 	// state is this batch's view of the replica's state. It is copied from
 	// under the Replica.mu when the batch is initialized and is updated in
 	// stageTrivialReplicatedEvalResult.
@@ -1096,7 +1099,7 @@ func (b *replicaAppBatch) runPreApplyTriggersAfterStagingWriteBatch(
 		//
 		// Alternatively if we discover that the RHS has already been removed
 		// from this store, clean up its data.
-		splitPreApply(ctx, b.batch, res.Split.SplitTrigger, b.r)
+		splitPreApply(ctx, b.batch, b.tsBatch, res.Split.SplitTrigger, b.r)
 	}
 
 	if merge := res.Merge; merge != nil {
@@ -1123,7 +1126,7 @@ func (b *replicaAppBatch) runPreApplyTriggersAfterStagingWriteBatch(
 		const clearRangeIDLocalOnly = true
 		const mustClearRange = false
 		if err := rhsRepl.preDestroyRaftMuLocked(
-			ctx, b.batch, b.batch, mergedTombstoneReplicaID, clearRangeIDLocalOnly, mustClearRange,
+			ctx, b.batch, b.batch, b.tsBatch, mergedTombstoneReplicaID, clearRangeIDLocalOnly, mustClearRange,
 		); err != nil {
 			return wrapWithNonDeterministicFailure(err, "unable to destroy replica before merge")
 		}
@@ -1134,8 +1137,8 @@ func (b *replicaAppBatch) runPreApplyTriggersAfterStagingWriteBatch(
 			return wrapWithNonDeterministicFailure(err, "unable to adapt truncated state")
 		}
 		log.VEventf(ctx, 3, "try to apply truncate state %d, %d", res.State.TruncatedState.Index, res.State.TruncatedState.Term)
-		if applied, err := handleTruncatedStateBelowRaft(
-			ctx, b.state.TruncatedState, res.State.TruncatedState, b.r.raftMu.stateLoader, b.batch,
+		if applied, err := b.r.handleTruncatedStateBelowRaft(
+			ctx, b.state.TruncatedState, res.State.TruncatedState, b.r.raftMu.stateLoader, b.batch, b.tsBatch,
 		); err != nil {
 			return wrapWithNonDeterministicFailure(err, "unable to handle truncated state")
 		} else if !applied {
@@ -1192,6 +1195,7 @@ func (b *replicaAppBatch) runPreApplyTriggersAfterStagingWriteBatch(
 			ctx,
 			b.batch,
 			b.batch,
+			b.tsBatch,
 			change.NextReplicaID(),
 			false, /* clearRangeIDLocalOnly */
 			false, /* mustUseClearRange */
@@ -1316,6 +1320,11 @@ func (b *replicaAppBatch) ApplyToStateMachine(ctx context.Context) error {
 	if err := b.batch.Commit(sync, storage.NormalCommitType); err != nil {
 		return wrapWithNonDeterministicFailure(err, "unable to commit Raft entry batch")
 	}
+	if b.tsBatch != nil {
+		if err := b.tsBatch.Commit(); err != nil {
+			return wrapWithNonDeterministicFailure(err, "unable to commit ts Raft batch")
+		}
+	}
 	desc := b.state.Desc
 	if desc.GetRangeType() == roachpb.TS_RANGE && b.changeRemovesReplica && r.store.TsEngine != nil && desc.TableId != 0 {
 		exist, _ := r.store.TsEngine.TSIsTsTableExist(uint64(desc.TableId))
@@ -1339,6 +1348,7 @@ func (b *replicaAppBatch) ApplyToStateMachine(ctx context.Context) error {
 	}
 	b.batch.Close()
 	b.batch = nil
+	b.tsBatch = nil
 
 	// Update the replica's applied indexes and mvcc stats.
 	r.mu.Lock()
@@ -1565,7 +1575,7 @@ func (sm *replicaStateMachine) ApplySideEffects(
 					}
 				}
 			}
-			log.Fatalf(ctx, "finishing proposal [%s,%s] %p with outstanding reproposal at a higher max lease index, %d-%d",
+			log.Fatalf(ctx, "finishing proposal [%x,%x] %p with outstanding reproposal at a higher max lease index, %d-%d",
 				cmd.idKey, cmd.proposal.idKey, cmd.proposal, cmd.raftCmd.MaxLeaseIndex, cmd.proposal.command.MaxLeaseIndex)
 		}
 		if !rejected && cmd.proposal.applied {

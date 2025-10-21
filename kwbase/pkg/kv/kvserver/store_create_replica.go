@@ -37,6 +37,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 	"gitee.com/kwbasedb/kwbase/pkg/util/retry"
 	"github.com/pkg/errors"
+	"go.etcd.io/etcd/raft/raftpb"
 )
 
 var errRetry = errors.New("retry: orphaned replica")
@@ -234,7 +235,12 @@ func (s *Store) tryGetOrCreateReplica(
 		// An uninitialized replica should have an empty HardState.Commit at
 		// all times. Failure to maintain this invariant indicates corruption.
 		// And yet, we have observed this in the wild. See #40213.
-		if hs, err := repl.mu.stateLoader.LoadHardState(ctx, s.Engine()); err != nil {
+		var hs raftpb.HardState
+		var err error
+		// replica may not know its type yet, just call LoadTsHardState,
+		// because it will call LoadHardState if ts raft store has no record.
+		hs, err = repl.LoadTsHardState(ctx, s.Engine())
+		if err != nil {
 			return err
 		} else if hs.Commit != 0 {
 			log.Fatalf(ctx, "found non-zero HardState.Commit on uninitialized replica %s. HS=%+v", repl, hs)

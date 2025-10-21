@@ -1894,11 +1894,12 @@ func (s *Server) Start(ctx context.Context) error {
 	timeThreshold := s.clock.Now().WallTime
 	s.execCfg.TsIDGen = &sqlbase.TSIDGenerator{}
 
-	setTse := func() (*tse.TsEngine, error) {
+	setTse := func() (*tse.TsEngine, *tse.TsRaftLogEngine, error) {
+		var tsRaftLogEngine *tse.TsRaftLogEngine
 		if s.cfg.Stores.Specs != nil && s.cfg.Stores.Specs[0].Path != "" && !s.cfg.ForbidCatchCoreDump {
 			s.tsEngine, err = s.cfg.CreateTsEngine(ctx, s.stopper, s.ClusterID().String(), s.execCfg.TsIDGen)
 			if err != nil {
-				return nil, errors.Wrap(err, "failed to create ts engine")
+				return nil, nil, errors.Wrap(err, "failed to create ts engine")
 			}
 			s.stopper.AddCloser(s.tsEngine)
 			s.node.tsEngine = s.tsEngine
@@ -1938,11 +1939,50 @@ func (s *Server) Start(ctx context.Context) error {
 			s.tseDB = kvcoord.NewDB(tsDBCfg)
 			// s.node.storeCfg.TseDB = s.tseDB
 			s.distSQLServer.ServerConfig.TseDB = s.tseDB
+
+			if s.cfg.UseRaftStore {
+				log.Infof(ctx, "use raft store to save raft logs")
+				tsRaftLogEngineConfig := tse.TsRaftLogEngineConfig{
+					Dir: s.cfg.Stores.Specs[0].Path,
+				}
+				if tsRaftLogEngine, err = tse.NewTsRaftLogEngine(ctx, tsRaftLogEngineConfig, s.stopper, &s.st.SV); err != nil {
+					return nil, nil, errors.Wrap(err, "failed to create ts raft log engine")
+				}
+			}
+
+			if !GetSingleNodeModeFlag(s.cfg.ModeFlag) {
+				tse.TsRaftLogCombineWAL.SetOnChange(&s.st.SV, func() {
+					combined := tse.TsRaftLogCombineWAL.Get(&s.st.SV)
+					s.tsEngine.SetRaftLogCombinedWAL(combined)
+					if !combined {
+						if err := kvserver.ClearReplicasAndResetFlushedIndex(ctx); err != nil {
+							log.Warningf(ctx, "failed clear flushed index for replicas, err: %+v", err)
+						}
+					}
+				})
+
+				tse.TsRaftLogSyncPeriod.SetOnChange(&s.st.SV, func() {
+					newPeriod := tse.TsRaftLogSyncPeriod.Get(&s.st.SV)
+					if s.cfg.UseRaftStore {
+						if curPeriod := tsRaftLogEngine.GetSyncPeriod(); curPeriod != newPeriod {
+							tsRaftLogEngine.SetSyncPeriod(newPeriod)
+							tsRaftLogEngine.NotifySyncPeriodChange()
+						}
+					} else {
+						if curPeriod := storage.GetSyncPeriod(); curPeriod != newPeriod {
+							storage.SetSyncPeriod(newPeriod)
+							storage.NotifySyncPeriodChange()
+						}
+					}
+				})
+			}
 		}
-		return s.tsEngine, nil
+		return s.tsEngine, tsRaftLogEngine, nil
 	}
 	// init sync period
-	storage.SetSyncPeriod(tse.TsRaftLogSyncPeriod.Get(&s.st.SV))
+	if !s.cfg.UseRaftStore {
+		storage.SetSyncPeriod(tse.TsRaftLogSyncPeriod.Get(&s.st.SV))
+	}
 	// Now that we have a monotonic HLC wrt previous incarnations of the process,
 	// init all the replicas. At this point *some* store has been bootstrapped or
 	// we're joining an existing cluster for the first time.

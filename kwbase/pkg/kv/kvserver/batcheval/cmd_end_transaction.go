@@ -768,14 +768,11 @@ func RunCommitTrigger(
 		return result.Result{}, nil
 	}
 	if sbt := ct.GetStickyBitTrigger(); sbt != nil {
-		newDesc := *rec.Desc()
+		newDesc := sbt.NewDesc
 		if sbt.StickyBit != (hlc.Timestamp{}) {
 			newDesc.StickyBit = &sbt.StickyBit
 		} else {
 			newDesc.StickyBit = nil
-		}
-		if sbt.ChangeToDefaultRange {
-			newDesc.SetRangeType(roachpb.DEFAULT_RANGE)
 		}
 		var res result.Result
 		res.Replicated.State = &storagepb.ReplicaState{

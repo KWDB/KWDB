@@ -37,6 +37,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
 	"gitee.com/kwbasedb/kwbase/pkg/storage"
 	"gitee.com/kwbasedb/kwbase/pkg/storage/enginepb"
+	"gitee.com/kwbasedb/kwbase/pkg/tse"
 	"gitee.com/kwbasedb/kwbase/pkg/util/hlc"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 	"gitee.com/kwbasedb/kwbase/pkg/util/timeutil"
@@ -120,7 +121,8 @@ func removePreemptiveSnapshot(
 			err = errors.Wrapf(err, "failed to remove preemptive snapshot for range %v", desc)
 		}
 	}()
-	if err := clearRangeData(desc, s.Engine(), batch, rangeIDLocalOnly, mustClearRange); err != nil {
+	tsBatch := tse.NewTsRaftLogBatch(s.TsRaftLogEngine)
+	if err := clearRangeData(desc, s.Engine(), batch, tsBatch, rangeIDLocalOnly, mustClearRange); err != nil {
 		return err
 	}
 	if err := writeTombstoneKey(ctx, batch, desc.RangeID, desc.NextReplicaID); err != nil {
@@ -128,6 +130,12 @@ func removePreemptiveSnapshot(
 	}
 	if err := batch.Commit(true, storage.NormalCommitType); err != nil {
 		return err
+	}
+	if tsBatch != nil {
+		if err := tsBatch.Commit(); err != nil {
+			log.Errorf(ctx, "commit ts raft log failed, err: %s", err.Error())
+			return err
+		}
 	}
 	log.Infof(ctx, "removed preemptive snapshot for %v", desc)
 	return nil
@@ -145,12 +153,13 @@ func (r *Replica) preDestroyRaftMuLocked(
 	ctx context.Context,
 	reader storage.Reader,
 	writer storage.Writer,
+	tsBatch *tse.TsRaftWriteBatch,
 	nextReplicaID roachpb.ReplicaID,
 	clearRangeIDLocalOnly bool,
 	mustUseClearRange bool,
 ) error {
 	desc := r.Desc()
-	err := clearRangeData(desc, reader, writer, clearRangeIDLocalOnly, mustUseClearRange)
+	err := clearRangeData(desc, reader, writer, tsBatch, clearRangeIDLocalOnly, mustUseClearRange)
 	if err != nil {
 		return err
 	}
@@ -204,11 +213,13 @@ func (r *Replica) destroyRaftMuLocked(ctx context.Context, nextReplicaID roachpb
 	ms := r.GetMVCCStats()
 	batch := r.Engine().NewWriteOnlyBatch()
 	defer batch.Close()
+	tsBatch := tse.NewTsRaftLogBatch(r.store.TsRaftLogEngine)
 	clearRangeIDLocalOnly := !r.IsInitialized()
 	if err := r.preDestroyRaftMuLocked(
 		ctx,
 		r.Engine(),
 		batch,
+		tsBatch,
 		nextReplicaID,
 		clearRangeIDLocalOnly,
 		false, /* mustUseClearRange */
@@ -224,6 +235,11 @@ func (r *Replica) destroyRaftMuLocked(ctx context.Context, nextReplicaID roachpb
 	// leftover replica data.
 	if err := batch.Commit(true, storage.NormalCommitType); err != nil {
 		return err
+	}
+	if tsBatch != nil {
+		if err := tsBatch.Commit(); err != nil {
+			return err
+		}
 	}
 
 	// delete replica ts data

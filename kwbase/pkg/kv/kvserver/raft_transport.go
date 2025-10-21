@@ -671,6 +671,7 @@ func (t *RaftTransport) SendTSSnapshot(
 	raftCfg *base.RaftConfig,
 	storePool *StorePool,
 	TsEngine *tse.TsEngine,
+	RaftLogEngine *tse.TsRaftLogEngine,
 	header SnapshotRequest_Header,
 	snap *OutgoingSnapshot,
 	newBatch func() storage.Batch,
@@ -695,7 +696,7 @@ func (t *RaftTransport) SendTSSnapshot(
 			log.Warningf(ctx, "failed to close snapshot stream: %+v", err)
 		}
 	}()
-	return sendTSSnapshot(ctx, raftCfg, TsEngine, t.st, stream, storePool, header, snap, newBatch, sent)
+	return sendTSSnapshot(ctx, raftCfg, TsEngine, RaftLogEngine, t.st, stream, storePool, header, snap, newBatch, sent)
 }
 
 // SendSnapshot streams the given outgoing snapshot. The caller is responsible

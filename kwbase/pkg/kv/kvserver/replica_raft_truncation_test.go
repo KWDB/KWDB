@@ -99,7 +99,8 @@ func TestHandleTruncatedStateBelowRaft(t *testing.T) {
 					Term:  term,
 				}
 
-				apply, err := handleTruncatedStateBelowRaft(ctx, &prevTruncatedState, newTruncatedState, loader, eng)
+				r := &Replica{RangeID: rangeID}
+				apply, err := r.handleTruncatedStateBelowRaft(ctx, &prevTruncatedState, newTruncatedState, loader, eng, nil)
 				if err != nil {
 					return err.Error()
 				}

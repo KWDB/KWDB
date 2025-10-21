@@ -471,6 +471,8 @@ func init() {
 		StringFlag(f, &startCtx.externalIODir, cliflags.ExternalIODir, startCtx.externalIODir)
 
 		VarFlag(f, serverCfg.SQLAuditLogDirName, cliflags.SQLAuditLogDirName)
+
+		BoolFlag(f, &serverCfg.UseRaftStore, cliflags.UseRaftLogStore, false)
 	}
 
 	// Flags that apply to commands that start servers.

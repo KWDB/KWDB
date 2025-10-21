@@ -580,6 +580,8 @@ type Replica struct {
 		// GC threshold for the range.
 		pendingGCThreshold hlc.Timestamp
 	}
+
+	tsCommitter tse.TsRaftWriteBatch
 }
 
 var _ batcheval.EvalContext = &Replica{}
@@ -620,7 +622,10 @@ func (r *Replica) isTs() bool {
 }
 
 func (r *Replica) isTsLocked() bool {
-	return r.mu.state.Desc.GetRangeType() == roachpb.TS_RANGE
+	if r.mu.state.Desc.GetRangeType() == roachpb.TS_RANGE {
+		return true
+	}
+	return r.mu.state.Desc.IsRemoved() && r.store.TsRaftLogEngine != nil && r.store.TsRaftLogEngine.HasRange(uint64(r.RangeID))
 }
 
 // cleanupFailedProposal cleans up after a proposal that has failed. It

@@ -958,6 +958,7 @@ func TestLintClusterSettingNames(t *testing.T) {
 				// idle_in_session_timeout.
 				"sql.defaults.idle_in_session_timeout": `sql.defaults.idle_in_session_timeout: use ".timeout" instead of "_timeout"`,
 				"sql.ts_stats.enabled":                 `if set, we will collect time series statistics`,
+				"ts.raft_store.sync":                   `ts.raft_store.sync: use .enabled for booleans`,
 			}
 			expectedErr, found := grandFathered[varName]
 			if !found || expectedErr != nameErr.Error() {

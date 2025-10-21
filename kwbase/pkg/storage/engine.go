@@ -829,3 +829,8 @@ func SetSyncPeriod(period time.Duration) {
 func IsAsyncWrite() bool {
 	return asyncWrite
 }
+
+// GetSyncPeriod get sync period
+func GetSyncPeriod() time.Duration {
+	return syncPeriod
+}

@@ -13,6 +13,7 @@ extern "C" {
 #endif
 
 typedef struct TSEngine TSEngine;
+typedef struct RaftStore RaftStore;
 
 // A TSSlice contains read-only data that does not need to be freed.
 typedef struct {
@@ -201,6 +202,14 @@ typedef struct _QueryInfo {
   TSSlice sql;
   DataInfo vectorize_data;
 } QueryInfo;
+
+typedef struct {
+  uint64_t range_id;
+  int index_cnt;  // The number of indexes in indexes.
+  uint64_t *indexes;
+  char *data;
+  uint64_t *offs;  // length = len(indexes) + 1 if data is not empty
+} TSRaftlog;
 
 typedef QueryInfo RespInfo;
 
@@ -503,6 +512,22 @@ bool __attribute__((weak)) isCanceledCtx(uint64_t goCtxPtr);
 
 int __attribute__((weak)) goPrepareFlush();
 int __attribute__((weak)) goFlushed();
+
+TSStatus TSRaftOpen(RaftStore** engine, TSSlice dir);
+
+TSStatus TSWriteRaftLog(RaftStore *engine, int cnt, TSRaftlog *raftlog, bool sync);
+
+TSStatus TSGetRaftLog(RaftStore* engine, uint64_t range_id, uint64_t start, uint64_t end, TSSlice* value);
+
+TSStatus TSGetFirstIndex(RaftStore* engine, uint64_t range_id, uint64_t* index_id);
+
+TSStatus TSGetLastIndex(RaftStore* engine, uint64_t range_id, uint64_t* index_id);
+
+TSStatus TSGetFirstRaftLog(RaftStore *engine, uint64_t range_id, TSSlice *value);
+
+TSStatus TSSyncRaftLog(RaftStore* engine);
+
+TSStatus TSHasRange(RaftStore* engine, uint64_t range_id);
 
 #ifdef __cplusplus
 }  // extern "C"
