@@ -2,6 +2,7 @@
 
 PORT=${1:-26888}
 HTTP_ADDR=${2:-8080}
+DOCKER_CONTAINER_PREFIX=$3
 
 CUR_DIR="$(cd "$(dirname "$0")"; pwd)"
 # perf_test root dir
@@ -36,8 +37,22 @@ cd $KWBASE_BIN_PATH || exit 1
 
 echo "Creating databases and tables in 5 seconds..."
 sleep 5
-./kwbase sql $DB_INSECURE --host=$DB_LISTEN_ADDR < ${CUR_DIR}/runbayun_create_db_table.sql || { echo "Failed to create databases and tables"; exit 1; }
+
+echo "Copy the sql file that needs to be imported into the container"
+
+echo "docker exec ${DOCKER_CONTAINER_PREFIX}-$PORT sh -c 'mkdir /prep-runbayun'"
+docker exec ${DOCKER_CONTAINER_PREFIX}-$PORT sh -c 'mkdir /prep-runbayun'
+
+echo "docker cp ${CUR_DIR}/runbayun_create_db_table.sql ${DOCKER_CONTAINER_PREFIX}-$PORT:/prep-runbayun/"
+docker cp ${CUR_DIR}/runbayun_create_db_table.sql ${DOCKER_CONTAINER_PREFIX}-$PORT:/prep-runbayun/
+
+docker exec ${DOCKER_CONTAINER_PREFIX}-$PORT sh -c '/home/inspur/install/bin/kwbase sql --insecure --host=127.0.0.1:26888 < /prep-runbayun/runbayun_create_db_table.sql' || { echo "Failed to create databases and tables"; exit 1; }
+
 echo "Loading data..."
-./kwbase sql $DB_INSECURE --host=$DB_LISTEN_ADDR < ${CUR_DIR}/load.sql || { echo "Failed to load data"; exit 1; }
+
+echo "docker cp ${CUR_DIR}/load.sql ${DOCKER_CONTAINER_PREFIX}-$PORT:/prep-runbayun/"
+docker cp ${CUR_DIR}/load.sql ${DOCKER_CONTAINER_PREFIX}-$PORT:/prep-runbayun/
+
+docker exec ${DOCKER_CONTAINER_PREFIX}-$PORT sh -c '/home/inspur/install/bin/kwbase sql --insecure --host=127.0.0.1:26888 < /prep-runbayun/load.sql' || { echo "Failed to load data"; exit 1; }
 
 echo "Complete the data writing."

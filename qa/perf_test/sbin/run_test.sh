@@ -379,7 +379,7 @@ case $COMMAND in
                 if [ -d "$dir" ] && [ -f "$dir/prep_env.sh" ]; then
                     echo "Running prep_env.sh in $dir..."
                     # TEST_IMAGE_NAME, TEST_IMAGE_TAG, WORKSPACE_DIR, UUID_PATH, CODE_PLATFORM, HTTP_PORT set in env.sh
-                    bash "$dir/prep_env.sh" "$PORT" "$HTTP_PORT" || { print_header "Failed to run prep_env.sh in $dir"; print_errlog; exit 1; }
+                    bash "$dir/prep_env.sh" "$PORT" "$HTTP_PORT" "${DOCKER_CONTAINER_PREFIX}" || { print_header "Failed to run prep_env.sh in $dir"; print_errlog; exit 1; }
                 else
                     echo "Directory $dir or prep_env.sh not found, skipping."
                 fi
