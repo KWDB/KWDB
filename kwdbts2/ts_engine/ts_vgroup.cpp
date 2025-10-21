@@ -1143,7 +1143,7 @@ KStatus TsVGroup::DeleteEntity(kwdbContext_p ctx, TSTableID table_id, std::strin
   // if any error, end the delete loop and return ERROR to the caller.
   // Delete tag and its index
   ErrorInfo err_info;
-  uint64_t ignore;
+  std::pair<uint64_t, uint64_t> ignore;
   tag_table->DeleteTagRecord(p_tag.data(), p_tag.size(), err_info, osn, OperateType::Delete, ignore);
   if (err_info.errcode < 0) {
     LOG_ERROR("delete_tag_record error, error msg: %s", err_info.errmsg.c_str())

@@ -49,6 +49,7 @@ struct TagDataInfo {
   uint8_t operate_type; // 1:InsertTag 2:UpdateTag 3.DeleteTag 4.DeleteTagBySnapshot
   uint64_t osn; // HLC
   uint64_t target_row; // update tag data target row
+  uint64_t target_ver; // update tag data target version
 };
 
 struct TagInfo {
@@ -456,8 +457,9 @@ class MMapTagColumnTable: public TSObject {
     return reinterpret_cast<TagDataInfo*>(tag_info_(row));
   }
 
-  inline void setTagDataInfo(size_t row, TagDataInfo tag_info) {
-    *getTagDataInfoByRowNum(row) = tag_info;
+  inline void setTagDataInfo(size_t row, TagDataInfo* tag_info) {
+    char * tag_ptr = tag_info_(row);
+    memcpy(tag_ptr, tag_info, sizeof(TagDataInfo));
   }
 
   inline void setDeleteMark(size_t row) {

@@ -480,7 +480,7 @@ KStatus TSEngineV2Impl::putTagData(kwdbContext_p ctx, TSTableID table_id, uint32
       LOG_ERROR("Failed get table id[%ld] version id[%d] tag schema.", table_id, tbl_version);
       return s;
     }
-    err_info.errcode = tag_table->InsertTagRecord(payload, groupid, entity_id, payload.GetOSN(), OperateType::Insert, 0);
+    err_info.errcode = tag_table->InsertTagRecord(payload, groupid, entity_id, payload.GetOSN(), OperateType::Insert);
   }
   if (err_info.errcode < 0) {
     return KStatus::FAIL;
