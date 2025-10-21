@@ -428,13 +428,13 @@ KStatus TSBlkDataTypeConvert::Init() {
     key_ = (static_cast<uint64_t>(block_version_) << 32) + scan_version_;
     auto res = tbl_schema_mgr_->FindVersionConv(key_, &version_conv_);
     if (!res) {
-      std::shared_ptr<MMapMetricsTable> blk_metric;
+      std::shared_ptr<MMapMetricsTable> blk_metric{nullptr};
       KStatus s = tbl_schema_mgr_->GetMetricSchema(block_version_, &blk_metric);
       if (s != SUCCESS) {
         LOG_ERROR("GetMetricSchema failed. table version [%u]", block_version_);
         return FAIL;
       }
-      std::shared_ptr<MMapMetricsTable> scan_metric;
+      std::shared_ptr<MMapMetricsTable> scan_metric{nullptr};
       s = tbl_schema_mgr_->GetMetricSchema(scan_version_, &scan_metric);
       if (s != SUCCESS) {
         LOG_ERROR("GetMetricSchema failed. table version [%u]", scan_version_);

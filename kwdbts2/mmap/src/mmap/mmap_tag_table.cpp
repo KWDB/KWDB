@@ -1288,8 +1288,8 @@ int TagTable::AlterTableTag(AlterType alter_type, const AttributeInfo& attr_info
 
     case DROP_COLUMN:
       if (col_idx < 0) {
-        LOG_WARN("tag schema does not exist, column(id %u), table_id = %lu", tag_schema.m_id, m_table_id);
-        err_info.errmsg = "tag schema does not exist";
+        LOG_WARN("tag does not exist, tag id %u, tag name %s, table_id = %lu", tag_schema.m_id, attr_info.name, m_table_id);
+        err_info.errmsg = "tag does not exist";
         return -1;
       } else if (latest_version >= new_version) {
         LOG_WARN("new_version [%u] already exist, tag newest_version[%u]",
