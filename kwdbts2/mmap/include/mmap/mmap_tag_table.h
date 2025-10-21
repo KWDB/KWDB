@@ -114,6 +114,7 @@ class TagTable {
   */
   int GetEntityIdList(const std::vector<void*>& primary_tags, const std::vector<uint64_t/*index_id*/> &tags_index_id,
                       const std::vector<void*> tags, TSTagOpType op_type, const std::vector<uint32_t> &scan_tags,
+                      const std::unordered_set<uint32_t> &hps,
                       std::vector<kwdbts::EntityResultIndex>* entity_id_list,
                       kwdbts::ResultSet* res, uint32_t* count, uint32_t table_version = 0);
 
@@ -217,6 +218,7 @@ class TagTable {
 
   // Get the column value of the tag using RowID.
   int getDataWithRowID(TagPartitionTable* tag_partition, std::pair<TableVersionID, TagPartitionTableRowID> ret,
+                                 const std::unordered_set<uint32_t> &hps,
                                  std::vector<kwdbts::EntityResultIndex>* entity_id_list,
                                  kwdbts::ResultSet* res, std::vector<uint32_t> &scan_tags, std::vector<uint32_t> &valid_scan_tags,
                                  TagVersionObject* tag_version_obj, uint32_t scan_tags_num, bool get_partition);

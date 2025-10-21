@@ -200,6 +200,7 @@ class TsTable {
                   const std::vector<void*> tags,
                   TSTagOpType op_type,
                   const std::vector<uint32_t>& scan_tags,
+                  const std::unordered_set<uint32_t> &hps,
                   std::vector<EntityResultIndex>* entity_id_list, ResultSet* res, uint32_t* count,
                   uint32_t table_version = 1) = 0;
 

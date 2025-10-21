@@ -43,7 +43,6 @@ bool TsLRUBlockCache::Add(std::shared_ptr<TsEntityBlock>& block) {
   // We ignore the memory of a block without loading any data.
   return true;
 }
-
 inline void TsLRUBlockCache::KickOffBlocks() {
   while (cur_memory_size_ > max_memory_size_ && tail_) {
     std::shared_ptr<TsEntityBlock> tail_block = std::move(tail_);
@@ -58,7 +57,6 @@ inline void TsLRUBlockCache::KickOffBlocks() {
     tail_block->RemoveFromSegment();
   }
 }
-
 bool TsLRUBlockCache::AddMemory(TsEntityBlock* block, uint32_t new_memory_size) {
   lock_.lock();
   block->AddMemory(new_memory_size);

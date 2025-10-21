@@ -114,6 +114,7 @@ KStatus TsTableV2Impl::GetEntityIdList(kwdbContext_p ctx, const std::vector<void
                                  const std::vector<void*> tags,
                                  TSTagOpType op_type,
                                  const std::vector<uint32_t>& scan_tags,
+                                 const std::unordered_set<uint32_t> &hps,
                                  std::vector<EntityResultIndex>* entity_id_list, ResultSet* res, uint32_t* count,
                                  uint32_t table_version) {
   std::shared_ptr<TagTable> tag_table;
@@ -121,7 +122,7 @@ KStatus TsTableV2Impl::GetEntityIdList(kwdbContext_p ctx, const std::vector<void
   if (ret != KStatus::SUCCESS) {
     return KStatus::FAIL;
   }
-  if (tag_table->GetEntityIdList(primary_tags, tags_index_id, tags, op_type, scan_tags,
+  if (tag_table->GetEntityIdList(primary_tags, tags_index_id, tags, op_type, scan_tags, hps,
                                     entity_id_list, res, count, table_version) < 0) {
     LOG_ERROR("GetEntityIdList error ");
     return KStatus::FAIL;

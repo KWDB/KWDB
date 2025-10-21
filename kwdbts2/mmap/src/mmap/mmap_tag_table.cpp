@@ -545,6 +545,7 @@ int TagTable::DeleteTagRecord(const char *primary_tags, int len, ErrorInfo& err_
 
 // Get the column value of the tag using RowID.
 int TagTable::getDataWithRowID(TagPartitionTable* tag_partition, std::pair<TableVersionID, TagPartitionTableRowID> ret,
+                               const std::unordered_set<uint32_t> &hps,
                                std::vector<kwdbts::EntityResultIndex>* entity_id_list,
                                kwdbts::ResultSet* res, std::vector<uint32_t> &scan_tags, std::vector<uint32_t> &valid_scan_tags,
                                TagVersionObject* tag_version_obj, uint32_t scan_tags_num, bool get_partition) {
@@ -568,9 +569,12 @@ int TagTable::getDataWithRowID(TagPartitionTable* tag_partition, std::pair<Table
   }
   tag_partition->startRead();
   if (!EngineOptions::isSingleNode()) {
-    uint32_t hps;
-    tag_partition->getHashpointByRowNum(row, &hps);
-    tag_partition->getHashedEntityIdByRownum(row, hps, entity_id_list);
+    uint32_t hp;
+    tag_partition->getHashpointByRowNum(row, &hp);
+    if (hps.find(hp) == hps.end()) {
+      return 1;
+    }
+    tag_partition->getHashedEntityIdByRownum(row, hp, entity_id_list);
   } else {
     tag_partition->getEntityIdByRownum(row, entity_id_list);
   }
@@ -704,6 +708,7 @@ int TagTable::getRowIDByNTag(const std::vector<uint64_t> &tags_index_id, const s
 // Query tag through the index of the primary tag and normal tag.
 int TagTable::GetEntityIdList(const std::vector<void*>& primary_tags, const std::vector<uint64_t/*index_id*/> &tags_index_id,
                               const std::vector<void*> tags, TSTagOpType op_type, const std::vector<uint32_t> &scan_tags,
+                              const std::unordered_set<uint32_t> &hps,
                               std::vector<kwdbts::EntityResultIndex>* entity_id_list,
                               kwdbts::ResultSet* res, uint32_t* count, uint32_t table_version) {
   TagPartitionTableRowID row;
@@ -763,11 +768,12 @@ int TagTable::GetEntityIdList(const std::vector<void*>& primary_tags, const std:
         get_partition = true;
         last_tbl_version = tbl_version;
       }
-      int err_code = getDataWithRowID(src_tag_partition_tbl, result_value[idx], entity_id_list, res, result_scan_tags, src_scan_tags, result_tag_version_obj, scan_tag_num, get_partition);
+      int err_code = getDataWithRowID(src_tag_partition_tbl, result_value[idx], hps, entity_id_list, res, result_scan_tags, src_scan_tags, result_tag_version_obj, scan_tag_num, get_partition);
+      if (err_code < 0) {
+        return err_code;
+      }
       if (err_code == 0) {
         fetch_count++;
-      } else {
-        return err_code;
       }
     }
   }

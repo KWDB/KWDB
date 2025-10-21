@@ -582,17 +582,6 @@ EEIteratorErrCode StorageHandler::NewTsIterator(kwdbContext_p ctx) {
     if (ts_iterator) {
       SafeDeletePointer(ts_iterator);
     }
-    std::vector<KwTsSpan> ts_spans;
-    if (EngineOptions::isSingleNode()) {
-      ts_spans = *ts_spans_;
-    } else {
-      auto it = table_->hash_points_spans_.find(entities_[0].hash_point);
-      if (it != table_->hash_points_spans_.end()) {
-        for (auto const &ts_span : it->second) {
-          ts_spans.push_back(ts_span);
-        }
-      }
-    }
 
     if (entities_.size() > 1) {
       std::sort(entities_.begin(), entities_.end(), EntityLessThan);
@@ -600,7 +589,7 @@ EEIteratorErrCode StorageHandler::NewTsIterator(kwdbContext_p ctx) {
 
     IteratorParams params = {
       .entity_ids = entities_,
-      .ts_spans = ts_spans,
+      .ts_spans = *ts_spans_,
       .block_filter = table_->block_filters_,
       .scan_cols = table_->scan_cols_,
       .agg_extend_cols = table_->agg_extends_,
@@ -687,9 +676,9 @@ EEIteratorErrCode StorageHandler::GetEntityIdList(kwdbContext_p ctx,
     if (ret != SUCCESS) {
       break;
     }
-    ret = ts_table_->GetEntityIdList(
-        ctx, primary_tags, tags_index_id, tags, tp, table_->scan_tags_, &tag_rowbatch_->entity_indexs_,
-        &tag_rowbatch_->res_, &tag_rowbatch_->count_, table_->table_version_);
+    ret = ts_table_->GetEntityIdList(ctx, primary_tags, tags_index_id, tags, tp, table_->scan_tags_,
+                                     table_->hash_points_, &tag_rowbatch_->entity_indexs_, &tag_rowbatch_->res_,
+                                     &tag_rowbatch_->count_, table_->table_version_);
     if (ret != SUCCESS) {
       EEPgErrorInfo::SetPgErrorInfo(ERRCODE_FETCH_DATA_FAILED,
                                   "scanning column data fail when getting ts entity list");
@@ -764,9 +753,9 @@ EEIteratorErrCode StorageHandler::GetTagDataChunkWithPrimaryTags(kwdbContext_p c
   std::vector<void*> tags;
 
   do {
-    KStatus ret = ts_table_->GetEntityIdList(
-        ctx, primary_tags, tags_index_id, tags, TSTagOpType::opUnKnow, table_->scan_tags_, &tag_rowbatch_->entity_indexs_,
-        &tag_rowbatch_->res_, &tag_rowbatch_->count_);
+    KStatus ret = ts_table_->GetEntityIdList(ctx, primary_tags, tags_index_id, tags, TSTagOpType::opUnKnow,
+                                             table_->scan_tags_, table_->hash_points_, &tag_rowbatch_->entity_indexs_,
+                                             &tag_rowbatch_->res_, &tag_rowbatch_->count_);
     if (ret != SUCCESS) {
       break;
     }

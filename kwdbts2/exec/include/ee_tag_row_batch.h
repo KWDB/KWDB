@@ -56,8 +56,6 @@ class TagRowBatch : public RowBatch {
                                            // allocated to each thread
   k_uint32 valid_pipe_no_{0};
 
-  std::unordered_map<k_uint32, std::vector<k_uint32>> hash_entity_indexs_;
-
   std::vector<TagSelection> selection_;
   TABLE *table_{nullptr};
 

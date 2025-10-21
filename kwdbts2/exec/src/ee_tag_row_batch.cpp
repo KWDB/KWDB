@@ -333,43 +333,27 @@ void TagRowBatch::Init(TABLE *table) {
 }
 
 KStatus TagRowBatch::GetEntities(std::vector<EntityResultIndex> *entities) {
-  if (EngineOptions::isSingleNode()) {
-    k_uint32 entities_num_per_pipe, remainder;
-    if (current_pipe_no_ >= pipe_entity_num_.size()) {
-      return FAIL;
-    }
-    entities->reserve(pipe_entity_num_[current_pipe_no_]);
-    if (isFilter_) {
-      for (k_uint32 i = 0; i < pipe_entity_num_[current_pipe_no_]; i++) {
-        entity_indexs_[selection_[current_pipe_line_].entity_].index = selection_[current_pipe_line_].entity_;
-        entities->push_back(
-            entity_indexs_[selection_[current_pipe_line_].entity_]);
-        current_pipe_line_++;
-      }
-    } else {
-      for (k_uint32 i = 0; i < pipe_entity_num_[current_pipe_no_]; i++) {
-        entity_indexs_[current_pipe_line_].index = current_pipe_line_;
-        entities->push_back(entity_indexs_[current_pipe_line_]);
-        current_pipe_line_++;
-      }
-    }
-    current_pipe_no_++;
-    return SUCCESS;
-  } else {
-    if (hash_entity_indexs_.empty()) {
-      return FAIL;
-    }
-    auto it = hash_entity_indexs_.begin();
-    entities->reserve(it->second.size());
-
-    for (const k_int32 i : it->second) {
-      entity_indexs_[i].index = i;
-      entities->push_back(entity_indexs_[i]);
-    }
-
-    hash_entity_indexs_.erase(it);
-    return SUCCESS;
+  k_uint32 entities_num_per_pipe, remainder;
+  if (current_pipe_no_ >= pipe_entity_num_.size()) {
+    return FAIL;
   }
+  entities->reserve(pipe_entity_num_[current_pipe_no_]);
+  if (isFilter_) {
+    for (k_uint32 i = 0; i < pipe_entity_num_[current_pipe_no_]; i++) {
+      entity_indexs_[selection_[current_pipe_line_].entity_].index = selection_[current_pipe_line_].entity_;
+      entities->push_back(
+          entity_indexs_[selection_[current_pipe_line_].entity_]);
+      current_pipe_line_++;
+    }
+  } else {
+    for (k_uint32 i = 0; i < pipe_entity_num_[current_pipe_no_]; i++) {
+      entity_indexs_[current_pipe_line_].index = current_pipe_line_;
+      entities->push_back(entity_indexs_[current_pipe_line_]);
+      current_pipe_line_++;
+    }
+  }
+  current_pipe_no_++;
+  return SUCCESS;
 }
 
 KStatus TagRowBatch::GetALLEntities(std::vector<EntityResultIndex> *entities) {
@@ -395,47 +379,21 @@ KStatus TagRowBatch::GetALLEntities(std::vector<EntityResultIndex> *entities) {
 }
 
 bool TagRowBatch::isAllDistributed() {
-  if (EngineOptions::isSingleNode()) {
-    return current_pipe_no_ >= valid_pipe_no_;
-  } else {
-    return hash_entity_indexs_.empty();
-  }
+  return current_pipe_no_ >= valid_pipe_no_;
 }
 
 void TagRowBatch::SetPipeEntityNum(kwdbContext_p ctx, k_uint32 pipe_degree) {
   current_pipe_no_ = 0;
   current_pipe_line_ = 0;
-  if (EngineOptions::isSingleNode()) {
-    k_int32 total_entities = isFilter_ ? selection_.size() : entity_indexs_.size();
-    k_int32 entities_num_per_pipe = total_entities / pipe_degree;
-    k_int32 remainder = total_entities % pipe_degree;
-    pipe_entity_num_.reserve(pipe_degree);
-    for (k_int32 i = 0; i < pipe_degree; i++) {
-      const int current_size = entities_num_per_pipe + (i < remainder ? 1 : 0);
-      pipe_entity_num_.push_back(current_size);
-      if (current_size > 0) {
-        valid_pipe_no_++;
-      }
-    }
-  } else {
-    if (isFilter_) {
-      for (const auto &selection : selection_) {
-        k_uint32 key = entity_indexs_[selection.entity_].hash_point;
-        if (hash_entity_indexs_.find(key) == hash_entity_indexs_.end()) {
-          hash_entity_indexs_[key] = std::vector<k_uint32>();
-        }
-        hash_entity_indexs_[key].emplace_back(selection.entity_);
-      }
-
-    } else {
-      for (size_t i = 0; i < entity_indexs_.size(); ++i) {
-        k_uint32 key = entity_indexs_[i].hash_point;
-        // If the key does not exist in the map, create a new vector.
-        if (hash_entity_indexs_.find(key) == hash_entity_indexs_.end()) {
-          hash_entity_indexs_[key] = std::vector<k_uint32>();
-        }
-        hash_entity_indexs_[key].emplace_back(i);
-      }
+  k_int32 total_entities = isFilter_ ? selection_.size() : entity_indexs_.size();
+  k_int32 entities_num_per_pipe = total_entities / pipe_degree;
+  k_int32 remainder = total_entities % pipe_degree;
+  pipe_entity_num_.reserve(pipe_degree);
+  for (k_int32 i = 0; i < pipe_degree; i++) {
+    const int current_size = entities_num_per_pipe + (i < remainder ? 1 : 0);
+    pipe_entity_num_.push_back(current_size);
+    if (current_size > 0) {
+      valid_pipe_no_++;
     }
   }
 }
