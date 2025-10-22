@@ -848,11 +848,11 @@ func (sw *TSSchemaChangeWorker) makeAndRunDistPlan(
 			return err
 		}
 		log.Infof(ctx, "%s, jobID: %d, waitForOneVersion finished", opType, sw.job.ID())
-		log.Infof(ctx, "%s, jobID: %d, checkReplica start", opType, sw.job.ID())
-		if err := sw.checkReplica(ctx, d.SNTable.ID, d.SNTable.TsTable.HashNum); err != nil {
-			return err
-		}
-		log.Infof(ctx, "%s, jobID: %d, checkReplica finished", opType, sw.job.ID())
+		//log.Infof(ctx, "%s, jobID: %d, checkReplica start", opType, sw.job.ID())
+		//if err := sw.checkReplica(ctx, d.SNTable.ID, d.SNTable.TsTable.HashNum); err != nil {
+		//	return err
+		//}
+		//log.Infof(ctx, "%s, jobID: %d, checkReplica finished", opType, sw.job.ID())
 		txnID := strconv.AppendInt([]byte{}, *sw.job.ID(), 10)
 		miniTxn := tsTxn{txnID: txnID, txnEvent: txnStart}
 		newPlanNode = &tsDDLNode{d: d, nodeID: nodeList, tsTxn: miniTxn}
