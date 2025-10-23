@@ -836,7 +836,9 @@ KStatus WALMgr::ReadWALLogAndSwitchFile(std::vector<LogEntry*>& logs, TS_LSN sta
 
 KStatus WALMgr::ReadWALLogForMtr(uint64_t mtr_trans_id, std::vector<LogEntry*>& logs, std::vector<uint64_t>& end_chk) {
   file_mgr_->Lock();
-  KStatus status = buffer_mgr_->readWALLogs(logs, meta_.checkpoint_lsn, meta_.current_lsn, end_chk, mtr_trans_id);
+  HeaderBlock hb = file_mgr_->readHeaderBlock();
+  TS_LSN first_lsn = hb.getFirstLSN();
+  KStatus status = buffer_mgr_->readWALLogs(logs, first_lsn, meta_.current_lsn, end_chk, mtr_trans_id);
   file_mgr_->Unlock();
   if (status == FAIL) {
     LOG_ERROR("Failed to read the WAL log with transaction id %lu", mtr_trans_id)

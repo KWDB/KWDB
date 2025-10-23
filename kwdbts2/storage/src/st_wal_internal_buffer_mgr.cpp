@@ -133,6 +133,9 @@ KStatus WALBufferMgr::readWALLogs(std::vector<LogEntry*>& log_entries, TS_LSN st
         current_block = read_queue.front();
         current_offset = file_mgr_->GetLSNFromBlockNo(current_block->getBlockNo());
         current_lsn = current_offset;
+        if (current_lsn >= end_lsn) {
+          break;
+        }
       } else {
         status = FAIL;
         break;
