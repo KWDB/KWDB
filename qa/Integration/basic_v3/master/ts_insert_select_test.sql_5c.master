@@ -847,6 +847,26 @@ INSERT 5
 CREATE TABLE
 > INSERT into rdb.Device values(001,1,'2023-07-01','area1');
 INSERT 1
+> INSERT into rdb.Device values(002,2,'2023-07-01','area2');
+INSERT 1
+> INSERT into rdb.Device values(003,3,'2023-07-01','area3');
+INSERT 1
+> INSERT into rdb.Device values(004,4,'2023-07-02','area1');
+INSERT 1
+> INSERT into rdb.Device values(005,5,'2023-07-04','area1');
+INSERT 1
+> INSERT into rdb.Device values(006,1,'2023-07-03','area2');
+INSERT 1
+> INSERT into rdb.Device values(007,2,'2023-07-02','area2');
+INSERT 1
+> INSERT into rdb.Device values(008,3,'2023-07-04','area3');
+INSERT 1
+> INSERT into rdb.Device values(009,4,'2023-07-02','area3');
+INSERT 1
+> INSERT into rdb.Device values(010,5,'2023-07-04','area2');
+INSERT 1
+> INSERT into rdb.Device values(011,6,'2023-07-01','area2');
+INSERT 1
 > drop DATABASE if EXISTS tsdb cascade;
 DROP DATABASE
 > create ts DATABASE tsdb;
@@ -920,6 +940,77 @@ INSERT 3
 ----------------------------+-----------+--------+-----------
   2022-02-02 00:00:00+00:00 | 电表模型1 |      0 |        1
 (1 row)
+> CREATE TABLE tsdb.t1c (ts TIMESTAMP not NULL, deviceid INT4 NOT NULL, voltage FLOAT8 NULL, location VARCHAR(255) NULL, current FLOAT8 NULL,frequency FLOAT8 NOT NULL, temperature FLOAT8 NOT NULL)
+    TAGS (modelid INT4 NOT NULL)
+PRIMARY TAGS(modelid);
+CREATE TABLE
+> select pg_sleep(10);
+  pg_sleep
+------------
+    true
+(1 row)
+> explain INSERT INTO tsdb.t1c SELECT ts.ts, d.deviceid, ts.voltage, d.location, ts.current, ts.frequency, ts.frequency, d.modelid
+                                          FROM rdb.Device AS d INNER JOIN tsdb.TransformerSuper AS ts ON d.deviceID = ts.deviceID WHERE ts.ts = (SELECT MAX(ts) FROM tsdb.TransformerSuper WHERE deviceID = d.deviceID)
+                                          ORDER BY d.deviceID;
+                          tree                         |       field        |       description
+-------------------------------------------------------+--------------------+--------------------------
+                                                       | distributed        | false
+                                                       | vectorized         | false
+  TSInsertSelect                                       |                    |
+   │                                                   | into               | t1c
+   └── render                                          |                    |
+        └── sort                                       |                    |
+             │                                         | order              | +any_not_null
+             └── render                                |                    |
+                  └── filter                           |                    |
+                       │                               | filter             | any_not_null = max
+                       └── batch-lookup-join           |                    |
+                            │                          | type               | inner
+                            │                          | equality           | (deviceid) = (deviceid)
+                            ├── hash-join              |                    |
+                            │    │                     | type               | inner
+                            │    │                     | equality           | (deviceid) = (deviceid)
+                            │    │                     | right cols are key |
+                            │    ├── ordinality        |                    |
+                            │    │    └── synchronizer |                    |
+                            │    │         └── ts scan |                    |
+                            │    │                     | ts-table           | transformersuper
+                            │    │                     | access mode        | tableTableMeta
+                            │    └── scan              |                    |
+                            │                          | table              | device@primary
+                            │                          | spans              | FULL SCAN
+                            └── group                  |                    |
+                                 │                     | engine type        | time series
+                                 │                     | aggregate 0        | rownum
+                                 │                     | aggregate 1        | max(ts)
+                                 │                     | aggregate 2        | any_not_null(ts)
+                                 │                     | aggregate 3        | any_not_null(current)
+                                 │                     | aggregate 4        | any_not_null(voltage)
+                                 │                     | aggregate 5        | any_not_null(frequency)
+                                 │                     | aggregate 6        | any_not_null(modelid)
+                                 │                     | aggregate 7        | any_not_null(location)
+                                 │                     | aggregate 8        | any_not_null(deviceid)
+                                 │                     | group by           | rownum
+                                 │                     | addSynchronizer    | true
+                                 └── render            |                    |
+                                      │                | engine type        | time series
+                                      │                | deviceid           | deviceid
+                                      │                | modelid            | modelid
+                                      │                | location           | location
+                                      │                | ts                 | ts
+                                      │                | current            | current
+                                      │                | voltage            | voltage
+                                      │                | frequency          | frequency
+                                      │                | ts                 | ts
+                                      │                | rownum             | rownum
+                                      └── ts scan      |                    |
+                                                       | ts-table           | transformersuper
+                                                       | access mode        | hashTagScan
+(52 rows)
+> INSERT INTO tsdb.t1c SELECT ts.ts, d.deviceid, ts.voltage, d.location, ts.current, ts.frequency, ts.frequency, d.modelid
+                             FROM rdb.Device AS d INNER JOIN tsdb.TransformerSuper AS ts ON d.deviceID = ts.deviceID WHERE ts.ts = (SELECT MAX(ts) FROM tsdb.TransformerSuper WHERE deviceID = d.deviceID)
+                             ORDER BY d.deviceID;
+INSERT 1
 > use defaultdb;
 SET
 > drop database tsdb CASCADE;

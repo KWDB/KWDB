@@ -618,6 +618,16 @@ INSERT INTO rdb.DeviceModel (modelID, TypeID, ModelName,TypeName) SELECT x,1,'�
 INSERT INTO rdb.DeviceModel (modelID, TypeID, ModelName,TypeName) SELECT x,2,'变压器模型' || x::string, '变压器'FROM generate_series(6,10) AS t(x);
 CREATE TABLE rdb.Device (deviceID INT PRIMARY KEY, modelID INT, installDate DATE, location VARCHAR(255), FOREIGN KEY (modelID) REFERENCES rdb.DeviceModel(modelID) );
 INSERT into rdb.Device values(001,1,'2023-07-01','area1');
+INSERT into rdb.Device values(002,2,'2023-07-01','area2');
+INSERT into rdb.Device values(003,3,'2023-07-01','area3');
+INSERT into rdb.Device values(004,4,'2023-07-02','area1');
+INSERT into rdb.Device values(005,5,'2023-07-04','area1');
+INSERT into rdb.Device values(006,1,'2023-07-03','area2');
+INSERT into rdb.Device values(007,2,'2023-07-02','area2');
+INSERT into rdb.Device values(008,3,'2023-07-04','area3');
+INSERT into rdb.Device values(009,4,'2023-07-02','area3');
+INSERT into rdb.Device values(010,5,'2023-07-04','area2');
+INSERT into rdb.Device values(011,6,'2023-07-01','area2');
 drop DATABASE if EXISTS tsdb cascade;
 create ts DATABASE tsdb;
 CREATE TABLE tsdb.MonitoringCenter (ts TIMESTAMP not NULL, deviceID INT, status INT )attributes (location varchar(64) not null,type varchar(64) not null) primary tags (location,type);
@@ -674,11 +684,28 @@ FROM (
      ) AS combined_results
 ORDER BY deviceID, ModelName, status ASC;
 SELECT * FROM tsdb.t1 ORDER BY ts, deviceid, modelname, status;
+--  ZDP-44832 END --
+
+-- ZDP-49928 START --
+CREATE TABLE tsdb.t1c (ts TIMESTAMP not NULL, deviceid INT4 NOT NULL, voltage FLOAT8 NULL, location VARCHAR(255) NULL, current FLOAT8 NULL,frequency FLOAT8 NOT NULL, temperature FLOAT8 NOT NULL)
+    TAGS (modelid INT4 NOT NULL)
+PRIMARY TAGS(modelid);
+
+select pg_sleep(10);
+explain INSERT INTO tsdb.t1c SELECT ts.ts, d.deviceid, ts.voltage, d.location, ts.current, ts.frequency, ts.frequency, d.modelid
+                                          FROM rdb.Device AS d INNER JOIN tsdb.TransformerSuper AS ts ON d.deviceID = ts.deviceID WHERE ts.ts = (SELECT MAX(ts) FROM tsdb.TransformerSuper WHERE deviceID = d.deviceID)
+                                          ORDER BY d.deviceID;
+
+
+INSERT INTO tsdb.t1c SELECT ts.ts, d.deviceid, ts.voltage, d.location, ts.current, ts.frequency, ts.frequency, d.modelid
+                             FROM rdb.Device AS d INNER JOIN tsdb.TransformerSuper AS ts ON d.deviceID = ts.deviceID WHERE ts.ts = (SELECT MAX(ts) FROM tsdb.TransformerSuper WHERE deviceID = d.deviceID)
+                             ORDER BY d.deviceID;
+-- ZDP-49928 END --
 
 use defaultdb;
 drop database tsdb CASCADE;
 drop database rdb CASCADE;
---  ZDP-44832 END --
+
 
 -- bug
 create ts database test;

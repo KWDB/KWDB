@@ -485,7 +485,7 @@ func (b *Builder) buildRelational(e memo.RelExpr) (execPlan, error) {
 	}
 
 	// Wrap the expression in a render expression if presentation requires it.
-	if p := e.RequiredPhysical(); p != nil && !p.Presentation.Any() {
+	if p := e.RequiredPhysical(); p != nil && !p.Presentation.Any() && b.factory.CanAddRender(e, ep.root) {
 		ep, err = b.applyPresentation(ep, p)
 	}
 
@@ -2844,10 +2844,23 @@ func (b *Builder) buildSort(sort *memo.SortExpr) (execPlan, error) {
 	}
 
 	// Swap the positions of sortNode and tsInsertSelectNode.
-	node, ok := b.factory.ProcessTSInsertWithSort(input.root, &input.outputCols, input.sqlOrdering(ordering), alreadyOrderedPrefix, sort.IsTSEngine())
+	tmpSort, ok := b.factory.BuildSortInTsInsert(input.root, input.sqlOrdering(ordering), alreadyOrderedPrefix, sort.IsTSEngine())
+	var node exec.Node
 	if ok {
-		// if ok, it means the TSInsertSelect is at the top level and there's no need the RequiredPhysical.
-		sort.ClearRequiredPhysical()
+		// Wrap the expression in a render expression if presentation requires it.
+		tmpPlan := execPlan{root: tmpSort, outputCols: input.outputCols}
+		if sort.RequiredPhysical() != nil && !sort.RequiredPhysical().Presentation.Any() {
+			// expr optimized by CBO
+			tmpPlan, err = b.applyPresentation(tmpPlan, sort.RequiredPhysical())
+			if err != nil {
+				return execPlan{}, err
+			}
+		}
+		var ok1 bool
+		node, ok1 = b.factory.ProcessTSInsertWithSort(input.root, tmpPlan.root, &input.outputCols)
+		if !ok1 {
+			return execPlan{}, errors.Newf("swap the positions of sortNode and tsInsertSelectNode failed")
+		}
 	} else {
 		node, err = b.factory.ConstructSort(input.root, input.sqlOrdering(ordering), alreadyOrderedPrefix, sort.IsTSEngine())
 		if err != nil {
