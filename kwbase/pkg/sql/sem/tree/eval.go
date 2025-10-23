@@ -3160,8 +3160,7 @@ type EvalContext struct {
 	IsProcedure bool
 
 	// IsTrigger is true when the the SQL has trigger.
-	IsTrigger       bool
-	Kwengineversion string
+	IsTrigger bool
 }
 
 // GroupWindow record group_window information.

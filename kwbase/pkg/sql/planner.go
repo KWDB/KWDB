@@ -231,8 +231,6 @@ type planner struct {
 	// It is true if forcing filtering in ME and preventing pushdown to tsengine.
 	// This is used for CDC filtering.
 	forceFilterInME bool
-
-	Kwengineversion string
 }
 
 // ExecutorConfig implements Planner interface.

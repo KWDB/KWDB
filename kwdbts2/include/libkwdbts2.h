@@ -121,7 +121,6 @@ typedef struct {
   bool is_single_node;
   TSSlice brpc_addr;
   TSSlice cluster_id;
-  const char* engine_version;
 } TSOptions;
 
 typedef enum _EnMqType {

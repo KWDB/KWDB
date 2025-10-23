@@ -326,132 +326,16 @@ func BuildInputForTSInsert(
 		inputDatums[i], preSlice = preSlice[:rowLen:rowLen], preSlice[rowLen:]
 	}
 
-	// For insert in distributed cluster mode, the line format payload needs to be constructed.
-	if evalCtx.StartDistributeMode || evalCtx.Kwengineversion == "2" {
-		payloadNodeMap, err := BuildRowBytesForTsInsert(evalCtx, InputRows, inputDatums, dataCols, colIndexs, pArgs, dbID, tabID, hashNum)
-		if isStream && err == nil {
-			cdcData, maxTime := cdcCoordinator.CaptureData(evalCtx, uint64(tabID), columns, inputDatums, colIndexs)
-			payloadNodeMap[int(evalCtx.NodeID)].CDCData = &sqlbase.CDCData{
-				TableID:      uint64(tabID),
-				MinTimestamp: maxTime,
-				PushData:     cdcData,
-			}
-		}
-		return payloadNodeMap, err
-	}
-	// partition input data based on primary tag values
-	priTagValMap := make(map[string][]int)
-	// collect all columns with default value set.
-	colsWithDefaultValMap, err := CheckDefaultVals(evalCtx, pArgs)
-	// Type check for input values.
-	var buf strings.Builder
-	for i := range InputRows {
-		isLastRow := i == (len(InputRows) - 1)
-		// defaultValue's index used to locate values in inputDatums
-		defaultValIdx := len(InputRows[i])
-		for j, col := range pArgs.PrettyCols {
-			// the expr used to do typeCheck
-			var inputExpr tree.Expr
-			// value's index used to locate values in inputDatums
-			inputIdx := -1
-			valIdx := colIndexs[int(col.ID)]
-			if col.HasDefault() && valIdx < 0 {
-				inputIdx = defaultValIdx
-				defaultValIdx++
-				if isLastRow {
-					colIndexs[int(col.ID)] = inputIdx
-				}
-				// for column that has NULL value, find default value of the column and assign it to inputExpr
-				if expr, ok := colsWithDefaultValMap[col.ID]; ok {
-					inputExpr = expr
-				} else {
-					return nil, pgerror.Newf(pgcode.CaseNotFound, "column '%s' should have default value '%s' "+
-						"but not found in internal struct", col.Name, col.DefaultExprStr())
-				}
-			} else if valIdx < 0 {
-				if !col.Nullable && valIdx == sqlbase.ColumnValIsNull {
-					return nil, sqlbase.NewNonNullViolationError(col.Name)
-				}
-				continue
-			} else {
-				// use idx and value passed in
-				inputIdx = valIdx
-				inputExpr = InputRows[i][inputIdx]
-			}
-			// checks whether the input value is valid for target column.
-			inputDatums[i][inputIdx], err = TSTypeCheckForInput(evalCtx, &inputExpr, &col.Type, col)
-			if err != nil {
-				return nil, err
-			}
-			if j < len(primaryTagCols) {
-				vString := sqlbase.DatumToString(inputDatums[i][inputIdx])
-				// Distinguish aa + bb = a + abb
-				buf.WriteString(fmt.Sprintf("%d:%s", len(vString), vString))
-			}
-		}
-		// Group rows with the same primary tag value.
-		priTagValMap[buf.String()] = append(priTagValMap[buf.String()], i)
-		buf.Reset()
-	}
-	// Build payload separately for groups with the same primary tag value.
-	payloadNodeMap := make(map[int]*sqlbase.PayloadForDistTSInsert, len(priTagValMap))
-	for _, priTagRowIdx := range priTagValMap {
-		payload, _, err := BuildPayloadForTsInsert(
-			evalCtx,
-			evalCtx.Txn,
-			inputDatums,
-			priTagRowIdx,
-			pArgs.PrettyCols,
-			colIndexs,
-			pArgs,
-			dbID,
-			tabID,
-			hashNum,
-		)
-		if err != nil {
-			return nil, err
-		}
-		// Calculate leaseHolder node based on primaryTag value.
-		//nodeID, err := hashRouter.GetNodeIDByPrimaryTag(evalCtx.Context, primaryTagVal)
-		//if err != nil {
-		//	return nil, err
-		//}
-		// use current NodeID
-		nodeID := evalCtx.NodeID
-		// Make primaryTag key.
-		hashPoints := sqlbase.DecodeHashPointFromPayload(payload)
-		primaryTagKey := sqlbase.MakeTsPrimaryTagKey(sqlbase.ID(tabID), hashPoints)
-		if val, ok := payloadNodeMap[int(nodeID)]; ok {
-			val.PerNodePayloads = append(val.PerNodePayloads, &sqlbase.SinglePayloadInfo{
-				Payload:       payload,
-				RowNum:        uint32(len(priTagRowIdx)),
-				PrimaryTagKey: primaryTagKey,
-				HashNum:       hashNum,
-			})
-		} else {
-			rowVal := sqlbase.PayloadForDistTSInsert{
-				NodeID: nodeID,
-				PerNodePayloads: []*sqlbase.SinglePayloadInfo{{
-					Payload:       payload,
-					RowNum:        uint32(len(priTagRowIdx)),
-					PrimaryTagKey: primaryTagKey,
-					HashNum:       hashNum,
-				}},
-			}
-			payloadNodeMap[int(nodeID)] = &rowVal
-		}
-	}
-
-	if isStream && cdcCoordinator != nil {
-		cdcData, payloadMaxTime := cdcCoordinator.CaptureData(evalCtx, uint64(tabID), columns, inputDatums, colIndexsInMemo)
+	payloadNodeMap, err := BuildRowBytesForTsInsert(evalCtx, InputRows, inputDatums, dataCols, colIndexs, pArgs, dbID, tabID, hashNum)
+	if isStream && err == nil {
+		cdcData, maxTime := cdcCoordinator.CaptureData(evalCtx, uint64(tabID), columns, inputDatums, colIndexs)
 		payloadNodeMap[int(evalCtx.NodeID)].CDCData = &sqlbase.CDCData{
 			TableID:      uint64(tabID),
-			MinTimestamp: payloadMaxTime,
+			MinTimestamp: maxTime,
 			PushData:     cdcData,
 		}
 	}
-
-	return payloadNodeMap, nil
+	return payloadNodeMap, err
 }
 
 const (

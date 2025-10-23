@@ -715,6 +715,7 @@ TEST_F(TsEntitySegmentTest, simpleCount) {
 
 // for concurrent crash issue: ICXWWD
 TEST_F(TsEntitySegmentTest, concurrentLRUBlockCacheAccess) {
+  EngineOptions::block_cache_max_size = 1024 * 1024 * 1024;
   TsLRUBlockCache::GetInstance().unit_test_enabled = true;
   Defer defer([&]() { TsLRUBlockCache::GetInstance().unit_test_enabled = false; });
   EngineOptions::max_rows_per_block = 1000;
@@ -789,6 +790,7 @@ TEST_F(TsEntitySegmentTest, concurrentLRUBlockCacheAccess) {
 
 // for accessing column block crash issue: ZDP-49328
 TEST_F(TsEntitySegmentTest, columnBlockCrashTest) {
+  EngineOptions::block_cache_max_size = 1024 * 1024 * 1024;
   TsLRUBlockCache::GetInstance().unit_test_enabled = true;
   TsLRUBlockCache::GetInstance().unit_test_phase = TsLRUBlockCache::UNIT_TEST_PHASE::COLUMN_BLOCK_CRASH_PHASE_NONE;
   EngineOptions::max_rows_per_block = 1000;
@@ -925,6 +927,7 @@ TEST_F(TsEntitySegmentTest, columnBlockCrashTest) {
 
 // for accessing var column block issue
 TEST_F(TsEntitySegmentTest, varColumnBlockTest) {
+  EngineOptions::block_cache_max_size = 1024 * 1024 * 1024;
   TsLRUBlockCache::GetInstance().unit_test_enabled = true;
   TsLRUBlockCache::GetInstance().unit_test_phase = TsLRUBlockCache::UNIT_TEST_PHASE::VAR_COLUMN_BLOCK_CRASH_PHASE_NONE;
   Defer defer([&]() {
