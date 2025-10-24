@@ -2,6 +2,7 @@
 
 PORT=${1:-26888}
 HTTP_ADDR=${2:-8080}
+DOCKER_CONTAINER_PREFIX=$3
 
 CUR_DIR="$(cd "$(dirname "$0")"; pwd)"
 # perf_test root dir
@@ -37,6 +38,9 @@ cd $KWBASE_BIN_PATH || exit 1
 
 echo "Create stats for tables in 5 seconds..."
 sleep 5
-$KWBASE_BIN sql $DB_INSECURE --host=$DB_LISTEN_ADDR < ${CUR_DIR}/create_and_show_stats.sql || { echo "Failed to create stats for tables"; exit 1; }
+
+docker exec ${DOCKER_CONTAINER_PREFIX}-$PORT sh -c 'mkdir -p /kaiwudb'
+docker cp ${CUR_DIR}/create_and_show_stats.sql ${DOCKER_CONTAINER_PREFIX}-$PORT:/kaiwudb/
+docker exec ${DOCKER_CONTAINER_PREFIX}-$PORT sh -c '/home/inspur/install/bin/kwbase sql --insecure --host=127.0.0.1:26888 < /kaiwudb/create_and_show_stats.sql' || { echo "Failed to create stats for tables"; exit 1; }
 
 echo "Creating stats for tables is done."

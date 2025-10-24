@@ -123,7 +123,8 @@ EXEC_ROUND_NO=${9:-1}
 COLLECT_PHYSICAL_PLAN=${10:-false}
 CORRECTNESS_CHECK=${11:-true}
 MULTI_MODEL_ENABLED=${12:-true}
-QUERY_TIME_FILE_NAME=${13:-query_time}
+DOCKER_CONTAINER_PREFIX=${13:-kwdb-pipe-test}
+QUERY_TIME_FILE_NAME=${14:-query_time}
 
 EXCLUDE_SQL_FILES_ARRAY=($EXCLUDE_SQL_FILES)
 
@@ -205,8 +206,7 @@ if [[ "$MASTER_OVERWRITE" == "true" ]]; then
     output_file="$EXPECTED_DIR/${csv_file_name}.csv"
     # Execute the query and save the result to ACTUAL_DIR
     log_with_timestamp "Executing query for ${csv_file_name}, output to $output_file"
-    echo "$query" | $KWBASE_BIN sql --insecure --format=csv \
-        --set "show_times=true" --host=127.0.0.1:${PORT} > "$output_file"
+    docker exec ${DOCKER_CONTAINER_PREFIX}-$PORT sh -c "export LD_LIBRARY_PATH=/home/inspur/install/lib; echo \"$query\" | /home/inspur/install/bin/kwbase sql --insecure --format=csv --set 'show_times=true' --host=127.0.0.1:26888" > "$output_file"
   done
 else
   header_line="Total Time,Execution Start Time"
@@ -250,8 +250,7 @@ else
     log_with_timestamp "Executing query for ${csv_file_name}, output to $output_file"
     analyze_html="N/A"
     if ! test -f ./stop_stress_test; then
-      echo "$query" | $KWBASE_BIN sql --insecure --format=csv \
-          --set "show_times=true" --host=127.0.0.1:${PORT} > "$output_file" 2>&1
+      docker exec ${DOCKER_CONTAINER_PREFIX}-$PORT sh -c "export LD_LIBRARY_PATH=/home/inspur/install/lib; echo \"$query\" | /home/inspur/install/bin/kwbase sql --insecure --format=csv --set 'show_times=true' --host=127.0.0.1:26888" > "$output_file" 2>&1
       time_str=$(tac "$output_file" | grep -m 1 "Time:" | awk '{print $2}')
       execution_time=$(toMs "$time_str")
       total_time=$(echo "$total_time+$execution_time" | bc)
@@ -267,7 +266,7 @@ else
           else
             query="EXPLAIN ANALYZE $query"
           fi
-          json_output=$( $KWBASE_BIN sql --insecure --format=table --host=127.0.0.1:${PORT} -e "$query" )
+          json_output=$( docker exec ${DOCKER_CONTAINER_PREFIX}-$PORT sh -c "export LD_LIBRARY_PATH=/home/inspur/install/lib; /home/inspur/install/bin/kwbase sql --insecure --format=table --host=127.0.0.1:26888 -e \"$query\"")
           # Extract the value of encodePlan from JSON
           encode_plan=$(echo "$json_output" | grep -oP '(?<="encodePlan": ")[^"]+')
           # Construct the final URL
