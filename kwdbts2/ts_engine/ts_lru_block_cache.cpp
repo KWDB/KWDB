@@ -119,4 +119,20 @@ void TsLRUBlockCache::EvictAll() {
   lock_.unlock();
 }
 
+#ifdef WITH_TESTS
+bool TsLRUBlockCache::VerifyCacheMemorySize() {
+  bool passed;
+  lock_.lock();
+  uint64_t memory_size = 0;
+  std::shared_ptr<TsEntityBlock> block = head_;
+  while (block) {
+    memory_size += block->GetMemorySize();
+    block = block->next_;
+  }
+  passed = (memory_size == cur_memory_size_);
+  lock_.unlock();
+  return passed;
+}
+#endif
+
 }  // namespace kwdbts

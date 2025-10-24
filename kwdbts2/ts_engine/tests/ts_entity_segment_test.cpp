@@ -53,6 +53,8 @@ class TsEntitySegmentTest : public ::testing::Test {
     ASSERT_EQ(schema_mgr->GetTagMeta(1, *tag_schema), KStatus::SUCCESS);
   }
 
+  void SimpleInsert();
+
  public:
   TsEntitySegmentTest() { EngineOptions::mem_segment_max_size = INT32_MAX; }
 
@@ -72,7 +74,7 @@ class TsEntitySegmentTest : public ::testing::Test {
   }
 };
 
-TEST_F(TsEntitySegmentTest, simpleInsert) {
+void TsEntitySegmentTest::SimpleInsert() {
   EngineOptions::max_rows_per_block = 1000;
   EngineOptions::min_rows_per_block = 1000;
   int64_t total_insert_row_num = 0;
@@ -85,6 +87,7 @@ TEST_F(TsEntitySegmentTest, simpleInsert) {
   std::vector<TagInfo> tag_schema;
   std::shared_ptr<TsTableSchemaManager> schema_mgr;
   CreateTable(table_id, metric_types, &metric_schema, &tag_schema, schema_mgr);
+  ASSERT_EQ(TsLRUBlockCache::GetInstance().VerifyCacheMemorySize(), true);
   {
     for (int i = 0; i < 10; ++i) {
       TSEntityID dev_id = 1 + i * 123;
@@ -97,9 +100,11 @@ TEST_F(TsEntitySegmentTest, simpleInsert) {
       total_insert_row_num += p.GetRowCount();
       free(payload.data);
       ASSERT_EQ(vgroup->Flush(), KStatus::SUCCESS);
+      ASSERT_EQ(TsLRUBlockCache::GetInstance().VerifyCacheMemorySize(), true);
     }
 
     ASSERT_EQ(vgroup->Compact(), KStatus::SUCCESS);
+    ASSERT_EQ(TsLRUBlockCache::GetInstance().VerifyCacheMemorySize(), true);
 
     auto current = vgroup->CurrentVersion();
     auto partitions = current->GetPartitions(1, {{INT64_MIN, INT64_MAX}}, DATATYPE::TIMESTAMP64);
@@ -146,6 +151,7 @@ TEST_F(TsEntitySegmentTest, simpleInsert) {
             EXPECT_EQ(s, KStatus::SUCCESS);
             string str(data.data, 10);
             EXPECT_EQ(str, "varstring_");
+            ASSERT_EQ(TsLRUBlockCache::GetInstance().VerifyCacheMemorySize(), true);
           }
           row_idx += block_span->GetRowNum();
         }
@@ -193,6 +199,7 @@ TEST_F(TsEntitySegmentTest, simpleInsert) {
             EXPECT_EQ(s, KStatus::SUCCESS);
             string str(data.data, 10);
             EXPECT_EQ(str, "varstring_");
+            ASSERT_EQ(TsLRUBlockCache::GetInstance().VerifyCacheMemorySize(), true);
           }
           row_idx += block_span->GetRowNum();
         }
@@ -235,6 +242,7 @@ TEST_F(TsEntitySegmentTest, simpleInsert) {
             EXPECT_EQ(s, KStatus::SUCCESS);
             string str(data.data, 10);
             EXPECT_EQ(str, "varstring_");
+            ASSERT_EQ(TsLRUBlockCache::GetInstance().VerifyCacheMemorySize(), true);
           }
           row_idx += block_span->GetRowNum();
         }
@@ -271,7 +279,38 @@ TEST_F(TsEntitySegmentTest, simpleInsert) {
     }
     EXPECT_EQ(last_total_row_num, last_row_num);
     EXPECT_EQ(last_total_row_num, total_insert_row_num - entity_row_num);
+    ASSERT_EQ(TsLRUBlockCache::GetInstance().VerifyCacheMemorySize(), true);
   }
+}
+
+TEST_F(TsEntitySegmentTest, simpleInsertNoBlockCache) {
+  TsLRUBlockCache::GetInstance().SetMaxMemorySize(0);
+  SimpleInsert();
+}
+
+TEST_F(TsEntitySegmentTest, simpleInsertSmallBlockCache) {
+  TsLRUBlockCache::GetInstance().SetMaxMemorySize(1024);
+  SimpleInsert();
+}
+
+TEST_F(TsEntitySegmentTest, simpleInsertMedianBlockCache) {
+  TsLRUBlockCache::GetInstance().SetMaxMemorySize(256 * 1024 * 1024);
+  SimpleInsert();
+}
+
+TEST_F(TsEntitySegmentTest, simpleInsertDefaultBlockCache) {
+  TsLRUBlockCache::GetInstance().SetMaxMemorySize(EngineOptions::block_cache_max_size);
+  SimpleInsert();
+}
+
+TEST_F(TsEntitySegmentTest, simpleInsertLargeBlockCache) {
+  TsLRUBlockCache::GetInstance().SetMaxMemorySize((uint64_t)20 * 1024 * 1024 * 1024);
+  SimpleInsert();
+}
+
+TEST_F(TsEntitySegmentTest, simpleInsertExtraLargeBlockCache) {
+  TsLRUBlockCache::GetInstance().SetMaxMemorySize((uint64_t)128 * 1024 * 1024 * 1024);
+  SimpleInsert();
 }
 
 TEST_F(TsEntitySegmentTest, simpleInsertDoubleCompact) {
@@ -306,6 +345,7 @@ TEST_F(TsEntitySegmentTest, simpleInsertDoubleCompact) {
     opts.db_path = "db001-123";
     auto vgroup = std::make_unique<TsVGroup>(&opts, 0, mgr.get(), &wal_level_mutex, &tag_lock, false);
     vgroup->Init(&ctx);
+    ASSERT_EQ(TsLRUBlockCache::GetInstance().VerifyCacheMemorySize(), true);
 
     for (int i = 0; i < 10; ++i) {
       TSEntityID dev_id = 1 + i * 123;
@@ -839,6 +879,7 @@ TEST_F(TsEntitySegmentTest, columnBlockCrashTest) {
       EXPECT_EQ(s, KStatus::SUCCESS);
       EXPECT_EQ(block_spans.size(), 1);
       int row_idx = 0;
+      ASSERT_EQ(TsLRUBlockCache::GetInstance().VerifyCacheMemorySize(), true);
       while (!block_spans.empty()) {
         auto block_span = block_spans.front();
         block_spans.pop_front();
@@ -865,6 +906,7 @@ TEST_F(TsEntitySegmentTest, columnBlockCrashTest) {
           EXPECT_EQ(s, KStatus::SUCCESS);
           string str(data.data, 10);
           EXPECT_EQ(str, "varstring_");
+          ASSERT_EQ(TsLRUBlockCache::GetInstance().VerifyCacheMemorySize(), true);
         }
         row_idx += block_span->GetRowNum();
       }
@@ -889,6 +931,7 @@ TEST_F(TsEntitySegmentTest, columnBlockCrashTest) {
     EXPECT_EQ(s, KStatus::SUCCESS);
     EXPECT_EQ(block_spans.size(), 1);
     int row_idx = 0;
+    ASSERT_EQ(TsLRUBlockCache::GetInstance().VerifyCacheMemorySize(), true);
     while (!block_spans.empty()) {
       auto block_span = block_spans.front();
       block_spans.pop_front();
@@ -916,6 +959,7 @@ TEST_F(TsEntitySegmentTest, columnBlockCrashTest) {
         EXPECT_EQ(s, KStatus::SUCCESS);
         string str(data.data, 10);
         EXPECT_EQ(str, "varstring_");
+        ASSERT_EQ(TsLRUBlockCache::GetInstance().VerifyCacheMemorySize(), true);
       }
       row_idx += block_span->GetRowNum();
     }
@@ -955,6 +999,7 @@ TEST_F(TsEntitySegmentTest, varColumnBlockTest) {
   std::vector<TagInfo> tag_schema;
   std::shared_ptr<TsTableSchemaManager> schema_mgr;
   CreateTable(table_id, metric_types, &metric_schema, &tag_schema, schema_mgr);
+  ASSERT_EQ(TsLRUBlockCache::GetInstance().VerifyCacheMemorySize(), true);
   for (int i = 0; i < 10; ++i) {
     TSEntityID dev_id = 1 + i * 123;
     auto payload = GenRowPayload(*metric_schema, tag_schema, table_id, 1, 1 + i * 123, 103 + i * 1000, 123, 1);
@@ -989,6 +1034,7 @@ TEST_F(TsEntitySegmentTest, varColumnBlockTest) {
       EXPECT_EQ(s, KStatus::SUCCESS);
       EXPECT_EQ(block_spans.size(), 1);
       int row_idx = 0;
+      ASSERT_EQ(TsLRUBlockCache::GetInstance().VerifyCacheMemorySize(), true);
       while (!block_spans.empty()) {
         auto block_span = block_spans.front();
         block_spans.pop_front();
@@ -1000,6 +1046,7 @@ TEST_F(TsEntitySegmentTest, varColumnBlockTest) {
           EXPECT_EQ(s, KStatus::SUCCESS);
           string str(data.data, 10);
           EXPECT_EQ(str, "varstring_");
+          ASSERT_EQ(TsLRUBlockCache::GetInstance().VerifyCacheMemorySize(), true);
         }
         row_idx += block_span->GetRowNum();
       }
@@ -1023,6 +1070,7 @@ TEST_F(TsEntitySegmentTest, varColumnBlockTest) {
     auto s = entity_segment->GetBlockSpans(filter, block_spans, schema_mgr, schema);
     EXPECT_EQ(s, KStatus::SUCCESS);
     EXPECT_EQ(block_spans.size(), 1);
+    ASSERT_EQ(TsLRUBlockCache::GetInstance().VerifyCacheMemorySize(), true);
     auto block_span = block_spans.front();
     block_spans.pop_front();
     std::unique_ptr<TsBitmapBase> bitmap;
@@ -1031,6 +1079,7 @@ TEST_F(TsEntitySegmentTest, varColumnBlockTest) {
     TSSlice data;
     s = block_span->GetVarLenTypeColAddr(0, 4, flag, data);
     EXPECT_EQ(s, KStatus::SUCCESS);
+    ASSERT_EQ(TsLRUBlockCache::GetInstance().VerifyCacheMemorySize(), true);
     if (TsLRUBlockCache::GetInstance().unit_test_phase !=
         TsLRUBlockCache::UNIT_TEST_PHASE::VAR_COLUMN_BLOCK_CRASH_PHASE_FIRST_APPEND_TWO_DONE) {
       TsLRUBlockCache::GetInstance().unit_test_phase = TsLRUBlockCache::UNIT_TEST_PHASE::VAR_COLUMN_BLOCK_CRASH_PHASE_SECOND_GET_VAR_COL_ADDR_DONE;
@@ -1042,6 +1091,7 @@ TEST_F(TsEntitySegmentTest, varColumnBlockTest) {
     string str(data.data, 10);
     EXPECT_EQ(str, "varstring_");
     TsLRUBlockCache::GetInstance().unit_test_phase = TsLRUBlockCache::UNIT_TEST_PHASE::VAR_COLUMN_BLOCK_CRASH_PHASE_SECOND_ACCESS_DONE;
+    ASSERT_EQ(TsLRUBlockCache::GetInstance().VerifyCacheMemorySize(), true);
 
     var_column_block_accessor->join();
   }

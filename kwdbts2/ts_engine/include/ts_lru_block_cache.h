@@ -46,6 +46,9 @@ class TsLRUBlockCache {
   };
   UNIT_TEST_PHASE unit_test_phase{PHASE_NONE};
   bool unit_test_enabled{false};
+
+  // Check if current memmory size is accurate
+  bool VerifyCacheMemorySize();
 #endif
 
  public:
