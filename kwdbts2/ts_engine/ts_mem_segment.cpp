@@ -179,33 +179,50 @@ KStatus TsMemSegBlock::GetColAddr(uint32_t col_id, const std::vector<AttributeIn
     *value = iter->second;
     return KStatus::SUCCESS;
   }
-  auto col_len = (*schema)[col_id].size;
-  auto col_based_len = col_len * row_data_.size();
-  char* col_based_mem = reinterpret_cast<char*>(malloc(col_based_len));
-  if (col_based_mem == nullptr) {
-    LOG_ERROR("malloc memroy failed.");
-    return KStatus::FAIL;
-  }
-  col_based_mems_[col_id] = col_based_mem;
   if (parser_ == nullptr) {
     parser_ = std::make_unique<TsRawPayloadRowParser>(schema);
   }
   TSSlice value_slice;
-  char* cur_offset = col_based_mem;
-  for (int i = 0; i < row_data_.size(); i++) {
-    auto row = row_data_[i];
+  if (memory_addr_safe_) {
+    assert(row_data_.size() == 1);
+    // it is single row and we can return memory address safely
+    auto row = row_data_[0];
     if (!parser_->IsColNull(row->GetRowData(), col_id)) {
       auto ok = parser_->GetColValueAddr(row->GetRowData(), col_id, &value_slice);
       if (!ok) {
         LOG_ERROR("GetColValueAddr failed.");
         return KStatus::FAIL;
       }
-      assert(col_len == value_slice.len);
-      memcpy(cur_offset, value_slice.data, col_len);
+      *value = value_slice.data;
+    } else {
+      // we just return a valid address with invalid value
+      *value = row->GetRowData().data;
     }
-    cur_offset += col_len;
+  } else {
+    auto col_len = (*schema)[col_id].size;
+    auto col_based_len = col_len * row_data_.size();
+    char* col_based_mem = reinterpret_cast<char*>(malloc(col_based_len));
+    if (col_based_mem == nullptr) {
+      LOG_ERROR("malloc memroy failed.");
+      return KStatus::FAIL;
+    }
+    col_based_mems_[col_id] = col_based_mem;
+    char* cur_offset = col_based_mem;
+    for (int i = 0; i < row_data_.size(); i++) {
+      auto row = row_data_[i];
+      if (!parser_->IsColNull(row->GetRowData(), col_id)) {
+        auto ok = parser_->GetColValueAddr(row->GetRowData(), col_id, &value_slice);
+        if (!ok) {
+          LOG_ERROR("GetColValueAddr failed.");
+          return KStatus::FAIL;
+        }
+        assert(col_len == value_slice.len);
+        memcpy(cur_offset, value_slice.data, col_len);
+      }
+      cur_offset += col_len;
+    }
+    *value = col_based_mem;
   }
-  *value = col_based_mem;
   return KStatus::SUCCESS;
 }
 

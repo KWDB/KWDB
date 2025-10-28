@@ -510,19 +510,18 @@ KStatus TsVGroup::GetEntityLastRowBatch(uint32_t entity_id, uint32_t scan_versio
   TSSlice last_payload;
   uint32_t last_version = 0;
   timestamp64 last_ts = INVALID_TS;
-  {
-    std::shared_lock<std::shared_mutex> lock(entity_latest_row_mutex_);
-    if (!entity_latest_row_checked_.count(entity_id)
-        || entity_latest_row_checked_[entity_id] != TsEntityLatestRowStatus::Valid
-        || !entity_latest_row_.count(entity_id) || !entity_latest_row_[entity_id].is_payload_valid
-        || TimestampCheckResult::NonOverlapping == checkTimestampWithSpans(ts_spans, entity_latest_row_[entity_id].last_ts,
-                                                   entity_latest_row_[entity_id].last_ts)) {
-      return KStatus::SUCCESS;
-    }
-    last_version = entity_latest_row_[entity_id].version;
-    last_ts = entity_latest_row_[entity_id].last_ts;
-    last_payload = entity_latest_row_[entity_id].last_payload;
+  std::shared_lock<std::shared_mutex> lock(entity_latest_row_mutex_);
+  if (!entity_latest_row_checked_.count(entity_id)
+      || entity_latest_row_checked_[entity_id] != TsEntityLatestRowStatus::Valid
+      || !entity_latest_row_.count(entity_id) || !entity_latest_row_[entity_id].is_payload_valid
+      || TimestampCheckResult::NonOverlapping == checkTimestampWithSpans(ts_spans, entity_latest_row_[entity_id].last_ts,
+                                                 entity_latest_row_[entity_id].last_ts)) {
+    return KStatus::SUCCESS;
   }
+  last_version = entity_latest_row_[entity_id].version;
+  last_ts = entity_latest_row_[entity_id].last_ts;
+  last_payload.len = entity_latest_row_[entity_id].last_payload.len;
+  last_payload.data =  entity_latest_row_[entity_id].last_payload.data;
 
   uint32_t db_id = schema->metaData()->db_id;
   KTableKey table_id = table_schema_mgr->GetTableId();
@@ -531,6 +530,7 @@ KStatus TsVGroup::GetEntityLastRowBatch(uint32_t entity_id, uint32_t scan_versio
   last_row_data.SetData(last_ts, UINT64_MAX);
   last_row_data.SetRowData(last_payload);
   std::shared_ptr<TsMemSegBlock> mem_block = std::make_shared<TsMemSegBlock>(nullptr);
+  mem_block->SetMemoryAddrSafe();
   mem_block->InsertRow(&last_row_data);
 
   const vector<AttributeInfo>& attrs = schema->getSchemaInfoExcludeDropped();
