@@ -477,3 +477,54 @@ set cluster setting ts.sql.query_opt_mode=DEFAULT;
 use defaultdb;
 drop database runba cascade;
 drop database runba_tra cascade;
+
+create ts database ts;
+use ts;
+CREATE TABLE mini1 (
+    c0 TIMESTAMPTZ NOT NULL,
+    c1 FLOAT8 NOT NULL
+) TAGS (
+    tag_id INT NOT NULL
+) PRIMARY TAGS(tag_id);
+
+CREATE TABLE mini2 (
+    c0 TIMESTAMPTZ NOT NULL,
+    c1 FLOAT8 NOT NULL
+) TAGS (
+    tag_id INT NOT NULL
+) PRIMARY TAGS(tag_id);
+INSERT INTO mini1 (c0, c1, tag_id)
+VALUES (now(), 1.0, 1);
+
+INSERT INTO mini2 (c0, c1, tag_id)
+VALUES (now(), 1.0, 2);
+
+SELECT COUNT(1)
+FROM mini1 JOIN mini2
+ON mini1.c1 = 1 
+WHERE 123 > 100;
+
+create database test;
+CREATE TABLE test.mini2 (
+    c0 TIMESTAMPTZ NOT NULL,
+    c1 FLOAT8 NOT NULL
+);
+INSERT INTO test.mini2 values( now(),1.0);
+
+SELECT sum(1)
+FROM ts.mini1 JOIN test.mini2
+ON mini1.c1 = 1
+WHERE 123 > 100;
+
+SELECT avg(1)
+FROM ts.mini1 JOIN test.mini2
+ON mini1.c1 = 1
+WHERE 123 > 100;
+
+SELECT COUNT(1)
+FROM ts.mini1 JOIN test.mini2
+ON mini1.c1 = 1
+WHERE 123 > 100;
+
+drop database ts cascade;
+drop database test cascade;

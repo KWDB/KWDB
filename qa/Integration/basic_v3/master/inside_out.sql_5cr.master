@@ -922,3 +922,72 @@ SET
 DROP DATABASE
 > drop database runba_tra cascade;
 DROP DATABASE
+> create ts database ts;
+CREATE TS DATABASE
+> use ts;
+SET
+> CREATE TABLE mini1 (
+    c0 TIMESTAMPTZ NOT NULL,
+    c1 FLOAT8 NOT NULL
+) TAGS (
+    tag_id INT NOT NULL
+) PRIMARY TAGS(tag_id);
+CREATE TABLE
+> CREATE TABLE mini2 (
+    c0 TIMESTAMPTZ NOT NULL,
+    c1 FLOAT8 NOT NULL
+) TAGS (
+    tag_id INT NOT NULL
+) PRIMARY TAGS(tag_id);
+CREATE TABLE
+> INSERT INTO mini1 (c0, c1, tag_id)
+VALUES (now(), 1.0, 1);
+INSERT 1
+> INSERT INTO mini2 (c0, c1, tag_id)
+VALUES (now(), 1.0, 2);
+INSERT 1
+> SELECT COUNT(1)
+FROM mini1 JOIN mini2
+ON mini1.c1 = 1 
+WHERE 123 > 100;
+  count
+---------
+      1
+(1 row)
+> create database test;
+CREATE DATABASE
+> CREATE TABLE test.mini2 (
+    c0 TIMESTAMPTZ NOT NULL,
+    c1 FLOAT8 NOT NULL
+);
+CREATE TABLE
+> INSERT INTO test.mini2 values( now(),1.0);
+INSERT 1
+> SELECT sum(1)
+FROM ts.mini1 JOIN test.mini2
+ON mini1.c1 = 1
+WHERE 123 > 100;
+  sum
+-------
+    1
+(1 row)
+> SELECT avg(1)
+FROM ts.mini1 JOIN test.mini2
+ON mini1.c1 = 1
+WHERE 123 > 100;
+  avg
+-------
+    1
+(1 row)
+> SELECT COUNT(1)
+FROM ts.mini1 JOIN test.mini2
+ON mini1.c1 = 1
+WHERE 123 > 100;
+  count
+---------
+      1
+(1 row)
+> drop database ts cascade;
+DROP DATABASE
+> drop database test cascade;
+DROP DATABASE

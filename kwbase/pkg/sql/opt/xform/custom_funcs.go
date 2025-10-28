@@ -3648,7 +3648,8 @@ func constructNewAgg(
 				sumIntTwo := f.ConstructSumInt(f.ConstructVariable(newAggID))
 				*NewAggregations = append(*NewAggregations, f.ConstructAggregationsItem(sumIntTwo, agg.Col))
 				passthroughCols.Add(agg.Col)
-			case *memo.MaxExpr, *memo.MinExpr, *memo.ConstAggExpr, *memo.AggDistinctExpr:
+			case *memo.MaxExpr, *memo.MinExpr, *memo.ConstAggExpr, *memo.AggDistinctExpr, *memo.CountExpr, *memo.AvgExpr, *memo.SumExpr:
+				// such as: max(rel.col), min(rel.col) ... avg(1),sum(1) need passthrough.
 				*NewAggregations = append(*NewAggregations, agg)
 				passthroughCols.Add(agg.Col)
 			default:
@@ -3908,10 +3909,12 @@ func checkConditionColumn(column opt.ScalarExpr, f *norm.Factory) bool {
 // getAllEngine returns EngineType base on input,
 // Relational is 1 ,Timeseries is 2
 func getAllEngine(input memo.RelExpr) int {
-	ret := int(tree.EngineTypeRelational) + 1
+	ret := 0
 	switch input.(type) {
 	case *memo.TSScanExpr:
 		return int(tree.EngineTypeTimeseries) + 1
+	case *memo.ScanExpr:
+		return int(tree.EngineTypeRelational) + 1
 	}
 
 	for i := 0; i < input.ChildCount(); i++ {
