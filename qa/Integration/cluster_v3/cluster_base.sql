@@ -40,9 +40,12 @@ select count(1) from tsdb1.ts_t4;
 -- upgrade: c3
 
 -- sleep: 5s
+-- kill: c3
+-- sleep: 5s
 
 -- upgrade-complete: c3
 
+-- sleep: 10s
 -- node: c3
 select count(*) from tsdb1.ts_t3;
 select count(*) from tsdb1.ts_t4;
