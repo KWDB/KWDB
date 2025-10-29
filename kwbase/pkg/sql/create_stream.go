@@ -161,6 +161,9 @@ func (n *createStreamNode) startExec(params runParams) (err error) {
 		return err
 	}
 	sourceTableInfo, sourceTableID, err := params.p.makeStreamTableCommonInfo(params.ctx, sourceTableDesc)
+	if err != nil {
+		return err
+	}
 
 	if sourceTableID == targetTableID {
 		return errors.Newf(
