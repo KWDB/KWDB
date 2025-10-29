@@ -397,6 +397,22 @@ TsDeleteData(TSEngine *engine, TSTableID table_id, uint64_t range_group_id, TSSl
   return kTsSuccess;
 }
 
+TSStatus TsCountRangeData(TSEngine *engine, TSTableID table_id, uint64_t range_group_id, HashIdSpan hash_span,
+                           KwTsSpans ts_spans, uint64_t *count, uint64_t mtr_id, uint64_t osn) {
+  kwdbContext_t context;
+  kwdbContext_p ctx_p = &context;
+  KStatus s = InitServerKWDBContext(ctx_p);
+  if (s != KStatus::SUCCESS) {
+    return ToTsStatus("InitServerKWDBContext Error!");
+  }
+  std::vector<KwTsSpan> spans(ts_spans.spans, ts_spans.spans + ts_spans.len);
+  s = engine->CountRangeData(ctx_p, table_id, range_group_id, hash_span, spans, count, mtr_id, osn);
+  if (s != KStatus::SUCCESS) {
+    return ToTsStatus("CountRangeData Error!");
+  }
+  return kTsSuccess;
+}
+
 TSStatus TSFlushBuffer(TSEngine* engine) {
   kwdbContext_t context;
   kwdbContext_p ctx_p = &context;

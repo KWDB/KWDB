@@ -27,6 +27,7 @@ package kvcoord
 
 import (
 	"context"
+	"errors"
 
 	"gitee.com/kwbasedb/kwbase/pkg/base"
 	"gitee.com/kwbasedb/kwbase/pkg/gossip"
@@ -41,6 +42,8 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/util/stop"
 	"gitee.com/kwbasedb/kwbase/pkg/util/syncutil"
 	"gitee.com/kwbasedb/kwbase/pkg/util/uuid"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 // TsSender is a Sender to send TS requests to TS DB
@@ -333,6 +336,35 @@ func (db *DB) Clone() *DB {
 	newDB.tss.interceptorStack = []lockedSender{&newDB.tss.interceptorAlloc.tsTxnHeartbeater, &newDB.tss.interceptorAlloc.tsTxnCommitter}
 
 	return newDB
+}
+
+// GetRangeRowCount get row count of the range on specified node.
+func (db *DB) GetRangeRowCount(
+	ctx context.Context, rangeID roachpb.RangeID, nodeID roachpb.NodeID,
+) (uint64, error) {
+	log.Infof(ctx, "get row count of range %d on node %d", rangeID, nodeID)
+	addr, err := db.tss.gossip.GetNodeIDAddress(nodeID)
+	if err != nil {
+		return 0, err
+	}
+	conn, err := db.tss.rpcContext.GRPCDialNode(addr.String(), nodeID, rpc.DefaultClass).Connect(ctx)
+	if err != nil {
+		log.Errorf(ctx, "could not dial node ID %d", nodeID)
+		return 0, err
+	}
+	client := serverpb.NewAdminClient(conn)
+	req := &serverpb.GetRangeRowCountRequest{
+		RangeID: rangeID,
+		NodeID:  nodeID,
+	}
+	var resp *serverpb.GetRangeRowCountResponse
+	if resp, err = client.GetRangeRowCount(ctx, req); err != nil {
+		if st, ok := status.FromError(err); ok && st.Code() == codes.Unknown {
+			return 0, errors.New(st.Message())
+		}
+		return 0, err
+	}
+	return resp.Count, nil
 }
 
 // CreateTSTable create ts table

@@ -1531,6 +1531,48 @@ func (r *TsEngine) DeleteData(
 	return uint64(delCnt), nil
 }
 
+// CountRangeData delete entities data in the range
+func (r *TsEngine) CountRangeData(
+	tableID uint64,
+	rangeGroupID uint64,
+	beginHash uint64,
+	endHash uint64,
+	tsSpans []*roachpb.TsSpan,
+	tsTxnID uint64,
+	osnID uint64,
+) (uint64, error) {
+	r.checkOrWaitForOpen()
+	cKwHashIDSpans := C.HashIdSpan{
+		begin: C.uint64_t(beginHash),
+		end:   C.uint64_t(endHash),
+	}
+
+	cTsSpans := make([]C.KwTsSpan, len(tsSpans))
+	for i := 0; i < len(tsSpans); i++ {
+		cTsSpans[i].begin = C.int64_t(tsSpans[i].TsStart)
+		cTsSpans[i].end = C.int64_t(tsSpans[i].TsEnd)
+	}
+	cKwTsSpans := C.KwTsSpans{
+		spans: (*C.KwTsSpan)(unsafe.Pointer(&cTsSpans[0])),
+		len:   C.int32_t(len(tsSpans)),
+	}
+
+	var RangeCnt C.uint64_t
+	status := C.TsCountRangeData(
+		r.tdb,
+		C.TSTableID(tableID),
+		C.uint64_t(rangeGroupID),
+		cKwHashIDSpans,
+		cKwTsSpans,
+		&RangeCnt,
+		C.uint64_t(tsTxnID),
+		C.uint64_t(osnID))
+	if err := statusToError(status); err != nil {
+		return uint64(RangeCnt), errors.New("Data count failed or partially failed")
+	}
+	return uint64(RangeCnt), nil
+}
+
 // Vacuum vacuum partitions
 func (r *TsEngine) Vacuum() error {
 	if r == nil {

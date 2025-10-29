@@ -1,0 +1,17 @@
+> CREATE ts DATABASE test_get_rowcount;
+CREATE TS DATABASE
+> CREATE TABLE test_get_rowcount.t1(k_timestamp timestamp not null,e1 int2 not null)
+    attributes (t1_attribute int not null) primary tags(t1_attribute) with hash(400);
+CREATE TABLE
+> INSERT INTO test_get_rowcount.t1 VALUES ('2018-10-10 10:00:00', -1, 1);
+INSERT 1
+> INSERT INTO test_get_rowcount.t1 VALUES ('2018-10-10 10:00:01', 0, 2);
+INSERT 1
+> SELECT get_range_count(40, 1);
+ERROR: get_range_count(): wrong range type
+> SELECT get_range_count(54, 6);
+ERROR: get_range_count(): unable to look up descriptor for n6
+> SELECT get_range_count(10000000, 1);
+ERROR: get_range_count(): target range not found within user table's key range
+> DROP DATABASE test_get_rowcount CASCADE;
+DROP DATABASE

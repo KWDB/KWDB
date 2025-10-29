@@ -266,6 +266,9 @@ TSStatus
 TsDeleteData(TSEngine *engine, TSTableID table_id, uint64_t range_group_id, TSSlice primary_tag, KwTsSpans ts_spans,
              uint64_t *count, uint64_t mtr_id, uint64_t osn);
 
+TSStatus TsCountRangeData(TSEngine *engine, TSTableID table_id, uint64_t range_group_id, HashIdSpan hash_span,
+                           KwTsSpans ts_spans, uint64_t *count, uint64_t mtr_id, uint64_t osn);
+
 TSStatus TSFlushBuffer(TSEngine* engine);
 
 TSStatus TSCreateCheckpoint(TSEngine* engine);

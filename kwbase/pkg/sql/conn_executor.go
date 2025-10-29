@@ -2284,6 +2284,7 @@ func (ex *connExecutor) initEvalCtx(ctx context.Context, evalCtx *extendedEvalCo
 			SessionAccessor:    p,
 			PrivilegedAccessor: p,
 			ClientNoticeSender: p,
+			TsDBAccessor:       p,
 			Settings:           ex.server.cfg.Settings,
 			TestingKnobs:       ex.server.cfg.EvalContextTestingKnobs,
 			ClusterID:          ex.server.cfg.ClusterID(),

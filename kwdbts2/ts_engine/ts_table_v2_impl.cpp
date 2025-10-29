@@ -734,6 +734,23 @@ KStatus TsTableV2Impl::DeleteData(kwdbContext_p ctx, uint64_t range_group_id, st
   return KStatus::SUCCESS;
 }
 
+KStatus TsTableV2Impl::CountRangeData(kwdbContext_p ctx, uint64_t range_group_id, HashIdSpan& hash_span,
+                                       const std::vector<KwTsSpan>& ts_spans, uint64_t* count,
+                                       uint64_t mtr_id, uint64_t osn) {
+  vector<EntityResultIndex> entity_store;
+  auto s = GetEntityIdByHashSpan(ctx, hash_span, entity_store);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("GetEntityIdByHashSpan failed.");
+    return s;
+  }
+  s = GetEntityRowCount(ctx, entity_store, ts_spans, count);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("GetEntityRowCount failed.");
+    return s;
+  }
+  return KStatus::SUCCESS;
+}
+
 KStatus TsTableV2Impl::GetEntityRowCount(kwdbContext_p ctx, std::vector<EntityResultIndex>& entity_ids,
 const std::vector<KwTsSpan>& ts_spans, uint64_t* row_count) {
   std::vector<k_uint32> scan_cols = {0};

@@ -897,6 +897,7 @@ func NewServer(cfg Config, stopper *stop.Stopper) (*Server, error) {
 		Locality:                s.cfg.Locality,
 		AmbientCtx:              s.cfg.AmbientCtx,
 		DB:                      s.db,
+		TsDB:                    s.tseDB,
 		Gossip:                  s.gossip,
 		MetricsRecorder:         s.recorder,
 		DistSender:              s.distSender,
@@ -2001,6 +2002,7 @@ func (s *Server) Start(ctx context.Context) error {
 	); err != nil {
 		return err
 	}
+	s.execCfg.TsDB = s.tseDB
 	sql.Init(s.db, s.tsEngine)
 
 	// close tsEngine will use rocksDB, so close rocksDB after close tsEngine.

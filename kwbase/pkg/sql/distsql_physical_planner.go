@@ -31,8 +31,10 @@ import (
 	"fmt"
 	"math"
 	"reflect"
+	"runtime"
 	"sort"
 	"strings"
+	"sync"
 
 	"gitee.com/kwbasedb/kwbase/pkg/gossip"
 	"gitee.com/kwbasedb/kwbase/pkg/keys"
@@ -64,6 +66,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/util/envutil"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 	"gitee.com/kwbasedb/kwbase/pkg/util/protoutil"
+	"gitee.com/kwbasedb/kwbase/pkg/util/quotapool"
 	"gitee.com/kwbasedb/kwbase/pkg/util/stop"
 	"gitee.com/kwbasedb/kwbase/pkg/util/timeutil"
 	"gitee.com/kwbasedb/kwbase/pkg/util/uuid"
@@ -128,6 +131,8 @@ type DistSQLPlanner struct {
 	gatewayNodeID roachpb.NodeID
 	// RowStats record stallTime and number of rows
 	RowStats execinfra.RowStats
+	// semaphore to limit async goroutines for get ts-range lease info
+	tsLeaseInfoSem *quotapool.IntPool
 }
 
 // aggHashElement records hash values of execinflapb.AggregatorSpec_Aggregation
@@ -228,6 +233,32 @@ var planMergeJoins = settings.RegisterBoolSetting(
 	true,
 )
 
+var tsQueryUseCache = settings.RegisterBoolSetting(
+	"sql.distsql.ts_range_cache.enabled",
+	"if set, range cache is allowed to be used for ts queries",
+	false,
+)
+
+var tsSendConcurrencyLimit = settings.RegisterValidatedIntSetting(
+	"sql.distsql.send_concurrency_limit",
+	"maximum number of asynchronous send ts requests",
+	max(6, int64(runtime.NumCPU()/2)),
+	func(v int64) error {
+		if v < 6 {
+			return errors.Errorf("cannot set %s less than: %d",
+				"sql.distsql.send_concurrency_limit", v)
+		}
+		return nil
+	},
+)
+
+func max(a, b int64) int64 {
+	if a > b {
+		return a
+	}
+	return b
+}
+
 // livenessProvider provides just the methods of storage.NodeLiveness that the
 // DistSQLPlanner needs, to avoid importing all of storage.
 type livenessProvider interface {
@@ -272,6 +303,10 @@ func NewDistSQLPlanner(
 		rpcCtx:                rpcCtx,
 		metadataTestTolerance: execinfra.NoExplain,
 	}
+	dsp.tsLeaseInfoSem = quotapool.NewIntPool("ts-lease-info", uint64(tsSendConcurrencyLimit.Get(&st.SV)))
+	tsSendConcurrencyLimit.SetOnChange(&st.SV, func() {
+		dsp.tsLeaseInfoSem.UpdateCapacity(uint64(tsSendConcurrencyLimit.Get(&st.SV)))
+	})
 	dsp.nodeHealth.isLive = liveness.IsLive
 	dsp.gatewayNodeID = nodeDesc.NodeID
 
@@ -1020,6 +1055,7 @@ func (dsp *DistSQLPlanner) partitionTSSpans(
 		return partitions, nil
 	}
 
+	useCache := tsQueryUseCache.Get(&dsp.st.SV)
 	for _, span := range spans {
 		var lastNodeID roachpb.NodeID
 		// lastKey maintains the EndKey of the last piece of `span`.
@@ -1032,19 +1068,47 @@ func (dsp *DistSQLPlanner) partitionTSSpans(
 			log.Error(ctx, err)
 			return nil, err
 		}
-		rangeKey := span.Key
-		for {
-			var b kv.Batch
-			liReq := &roachpb.LeaseInfoRequest{}
-			liReq.Key = rangeKey
-			b.AddRawRequest(liReq)
-			b.Header.ReturnRangeInfo = true
-			if err := dsp.distSQLSrv.DB.Run(ctx, &b); err != nil {
-				return nil, errors.Wrap(err, "looking up lease")
+
+		var err error
+		var nodeIDs []roachpb.NodeID
+		var descs []roachpb.RangeDescriptor
+		if useCache {
+			descs, err = getAllRangeFromRangeCache(ctx, dsp.distSender, span)
+			if err != nil {
+				return nil, err
 			}
-			resp := b.RawResponse().Responses[0].GetLeaseInfo()
-			nodeID := resp.Lease.Replica.NodeID
-			nextKey := resp.RangeInfos[0].Desc.EndKey.AsRawKey()
+
+			nodeIDs, err = getLeaseHolderByLeaseInfoRequest(ctx, dsp, descs)
+			if err != nil {
+				log.Errorf(ctx, "get leaseholder with error %v", err.Error())
+				useCache = false
+			}
+		}
+		var pos int
+
+		rangeKey := span.Key
+		for ; ; pos++ {
+			var nextKey roachpb.Key
+			var nodeID roachpb.NodeID
+
+			if useCache {
+				// use nodeIDs and range descs got before
+				nodeID = nodeIDs[pos]
+				nextKey = descs[pos].EndKey.AsRawKey()
+			} else {
+				// get range and leaseholder one by one
+				var b kv.Batch
+				liReq := &roachpb.LeaseInfoRequest{}
+				liReq.Key = rangeKey
+				b.AddRawRequest(liReq)
+				b.Header.ReturnRangeInfo = true
+				if err = dsp.distSQLSrv.DB.Run(ctx, &b); err != nil {
+					return nil, errors.Wrap(err, "looking up lease")
+				}
+				resp := b.RawResponse().Responses[0].GetLeaseInfo()
+				nodeID = resp.Lease.Replica.NodeID
+				nextKey = resp.RangeInfos[0].Desc.EndKey.AsRawKey()
+			}
 
 			partitionIdx, inNodeMap := nodeMap[nodeID]
 
@@ -1100,6 +1164,104 @@ func (dsp *DistSQLPlanner) partitionTSSpans(
 		}
 	}
 	return partitions, nil
+}
+
+func getLeaseHolderByLeaseInfoRequest(
+	ctx context.Context, dsp *DistSQLPlanner, descs []roachpb.RangeDescriptor,
+) ([]roachpb.NodeID, error) {
+	// get response concurrently
+	var wg sync.WaitGroup
+	var errOnce sync.Once
+	var resultErr error
+
+	nodeIDs := make([]roachpb.NodeID, len(descs))
+	for i, d := range descs {
+		idx, start, end := i, d.StartKey.AsRawKey(), d.EndKey.AsRawKey()
+		taskName := fmt.Sprintf("lease-info-task-%d", i)
+
+		wg.Add(1)
+		err := dsp.stopper.RunLimitedAsyncTask(ctx, taskName, dsp.tsLeaseInfoSem, true,
+			func(ctx context.Context) {
+				defer wg.Done()
+
+				liReq := &roachpb.LeaseInfoRequest{}
+				liReq.Key = start
+
+				var b kv.Batch
+				b.AddRawRequest(liReq)
+				b.Header.ReturnRangeInfo = true
+				if err := dsp.distSQLSrv.DB.Run(ctx, &b); err != nil {
+					errOnce.Do(func() {
+						resultErr = errors.Wrap(err, "get lease info failed")
+					})
+					return
+				}
+				actDesc := b.RawResponse().Responses[0].GetLeaseInfo().RangeInfos[0].Desc
+				if end.Compare(actDesc.EndKey.AsRawKey()) > 0 ||
+					start.Compare(actDesc.StartKey.AsRawKey()) < 0 {
+					errOnce.Do(func() {
+						resultErr = errors.Errorf("start %s end %s, actual range start %s end %s",
+							start.String(), end.String(), actDesc.StartKey.AsRawKey().String(),
+							actDesc.EndKey.AsRawKey().String())
+					})
+					return
+				}
+				nodeIDs[idx] = b.RawResponse().Responses[0].GetLeaseInfo().Lease.Replica.NodeID
+			})
+		if err != nil {
+			wg.Done()
+			errOnce.Do(func() {
+				resultErr = errors.Wrap(err, "failed to run async task")
+			})
+			break
+		}
+	}
+	wg.Wait()
+
+	return nodeIDs, resultErr
+}
+
+func getAllRangeFromRangeCache(
+	ctx context.Context, ds *kvcoord.DistSender, span roachpb.Span,
+) ([]roachpb.RangeDescriptor, error) {
+	var descs []roachpb.RangeDescriptor
+	var rSpan roachpb.RSpan
+	var err error
+	if rSpan.Key, err = keys.Addr(span.Key); err != nil {
+		return nil, err
+	}
+	if rSpan.EndKey, err = keys.Addr(span.EndKey); err != nil {
+		return nil, err
+	}
+
+	lastKey := rSpan.Key
+	it := kvcoord.NewRangeIterator(ds)
+	for it.Seek(ctx, roachpb.RKey(span.Key), kvcoord.Ascending); ; it.Next(ctx) {
+		if !it.Valid() {
+			return descs, it.Error()
+		}
+
+		desc := it.Desc()
+		if !desc.ContainsKey(lastKey) {
+			return nil, errors.Errorf(
+				"next range %v doesn't cover last end key %v", desc.RSpan(), lastKey)
+		}
+
+		descs = append(descs, *desc)
+
+		endKey := desc.EndKey
+		if rSpan.EndKey.Less(endKey) {
+			endKey = rSpan.EndKey
+		}
+
+		if !endKey.Less(rSpan.EndKey) {
+			break
+		}
+
+		lastKey = endKey
+	}
+
+	return descs, nil
 }
 
 // PartitionSpans finds out which nodes are owners for ranges touching the

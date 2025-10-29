@@ -30,6 +30,7 @@ import (
 	"database/sql/driver"
 	"fmt"
 	"math/rand"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -44,6 +45,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/keys"
 	"gitee.com/kwbasedb/kwbase/pkg/kv"
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvclient/kvcoord"
+	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
 	"gitee.com/kwbasedb/kwbase/pkg/security"
 	"gitee.com/kwbasedb/kwbase/pkg/settings/cluster"
@@ -58,6 +60,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/testutils/jobutils"
 	"gitee.com/kwbasedb/kwbase/pkg/testutils/serverutils"
 	"gitee.com/kwbasedb/kwbase/pkg/testutils/sqlutils"
+	"gitee.com/kwbasedb/kwbase/pkg/testutils/testcluster"
 	"gitee.com/kwbasedb/kwbase/pkg/util"
 	"gitee.com/kwbasedb/kwbase/pkg/util/ctxgroup"
 	"gitee.com/kwbasedb/kwbase/pkg/util/encoding"
@@ -618,6 +621,90 @@ CREATE UNIQUE INDEX vidx ON t.test (v);
 	eCount := maxValue + 1
 	if eCount != count {
 		t.Fatalf("read the wrong number of rows: e = %d, v = %d", eCount, count)
+	}
+}
+
+// setClusterArgs set cluster args
+func setClusterArgs(nodes int, baseDir string) base.TestClusterArgs {
+	clusterArgs := base.TestClusterArgs{
+		ServerArgsPerNode: map[int]base.TestServerArgs{},
+	}
+
+	for i := 0; i < nodes; i++ {
+		args := base.TestServerArgs{}
+		storeID := roachpb.StoreID(i + 1)
+		path := filepath.Join(baseDir, fmt.Sprintf("s%d", storeID))
+		args.StoreSpecs = []base.StoreSpec{{Path: path}}
+		args.CatchCoreDump = true
+		clusterArgs.ServerArgsPerNode[i] = args
+		clusterArgs.ReplicationMode = base.ReplicationManual // for split
+	}
+	return clusterArgs
+}
+
+func TestTSQuerySplitTsTable(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+	t.Skip("skip ts UT")
+	ctx := context.Background()
+	baseDir, dirCleanupFn := testutils.TempDir(t)
+	defer dirCleanupFn()
+	const nodes = 5
+	clusterArgs := setClusterArgs(nodes, baseDir)
+	clusterArgs.ServerArgs.Knobs = base.TestingKnobs{
+		SQLExecutor: &sql.ExecutorTestingKnobs{
+			RunCreateTableFailedAndRollback: func() error {
+				return errors.Errorf("create ts table failed. try roll back")
+			},
+		},
+		Store: &kvserver.StoreTestingKnobs{
+			DisableMergeQueue: true,
+		},
+	}
+	for k := range clusterArgs.ServerArgsPerNode {
+		v := clusterArgs.ServerArgsPerNode[k]
+		v.Knobs.SQLExecutor = &sql.ExecutorTestingKnobs{
+			RunCreateTableFailedAndRollback: func() error {
+				return errors.Errorf("create ts table failed. try roll back")
+			},
+		}
+		v.Knobs.Store = &kvserver.StoreTestingKnobs{
+			DisableMergeQueue: true,
+		}
+		clusterArgs.ServerArgsPerNode[k] = v
+	}
+	c := testcluster.StartTestCluster(t, nodes, clusterArgs)
+	defer c.Stopper().Stop(ctx)
+
+	s := c.Conns[0]
+	_, err := s.Exec("create ts database tsdb")
+	if err != nil {
+		t.Error(err)
+	}
+	_, err = s.Exec("CREATE TABLE tsdb.t1(k_timestamp timestamptz NOT NULL, e1 int2 NOT NULL) " +
+		"ATTRIBUTES (code1 int NOT NULL,flag BOOL NOT NULL,color nchar(200) NOT NULL) " +
+		"primary tags(code1)  with hash(400);")
+	if err != nil {
+		t.Error(err)
+	}
+	kvDB := c.Server(0).DB()
+
+	tableDesc := sqlbase.GetTableDescriptor(kvDB, "tsdb", "t1")
+
+	// split and query
+	k := sqlbase.MakeTsHashPointKey(tableDesc.ID, 100, 400)
+	lr, _, err := c.SplitTsRange(k)
+	if err != nil {
+	}
+	_, err = s.Query("select * from tsdb.t1")
+
+	// merge and query
+	_, err = c.Servers[0].MergeRanges(lr.StartKey.AsRawKey())
+	if err != nil {
+		t.Error(err)
+	}
+	_, err = s.Query("select * from tsdb.t1")
+	if err != nil {
+		t.Error(err)
 	}
 }
 

@@ -1384,6 +1384,20 @@ KStatus TSEngineV2Impl::DeleteRangeEntities(kwdbContext_p ctx, const KTableKey& 
   return ts_table->DeleteRangeEntities(ctx, range_grp_id, hash_span, count, mtr_id, osn, true);
 }
 
+KStatus TSEngineV2Impl::CountRangeData(kwdbContext_p ctx, const KTableKey& table_id, uint64_t range_group_id,
+                                        HashIdSpan& hash_span, const std::vector<KwTsSpan>& ts_spans, uint64_t* count,
+                                        uint64_t mtr_id, uint64_t osn) {
+  ErrorInfo err_info;
+  std::shared_ptr<kwdbts::TsTable> ts_table;
+  auto s = GetTsTable(ctx, table_id, ts_table, true, err_info, 0);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("cannot found table[%lu] with version[%u], errmsg[%s]", table_id, 0, err_info.errmsg.c_str());
+    return s;
+  }
+  ctx->ts_engine = this;
+  return ts_table->CountRangeData(ctx, range_group_id, hash_span, ts_spans, count, mtr_id, osn);
+}
+
 KStatus TSEngineV2Impl::ReadBatchData(kwdbContext_p ctx, TSTableID table_id, uint64_t table_version, uint64_t begin_hash,
                       uint64_t end_hash, KwTsSpan ts_span, uint64_t job_id, TSSlice* data,
                       uint32_t* row_num) {
