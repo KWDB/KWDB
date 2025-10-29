@@ -205,8 +205,8 @@ EEIteratorErrCode StorageHandler::TsOffsetNext(kwdbContext_p ctx) {
           TSTableReadMode::metaTable == read_mode_ ||
           (TSTableReadMode::tableTableMeta == read_mode_ && IsHasTagFilter())) {
       ScanRowBatch data_handle(table_);
-      std::vector<EntityResultIndex> entities;
       while (true) {
+        std::vector<EntityResultIndex> entities;
         ret = tag_scan_->GetEntities(ctx, &entities, &(data_handle.tag_rowbatch_));
         if (KStatus::FAIL == ret) {
           break;
