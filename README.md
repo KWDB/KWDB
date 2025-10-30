@@ -302,3 +302,4 @@ KWDB 是由[开放原子开源基金会（OpenAtom Foundation）](https://openat
 - 公众号：KaiwuDB
 
 ![img](./static/wechat.png)
+![img](./static/wechat.png)
