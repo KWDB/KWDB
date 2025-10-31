@@ -1,5 +1,6 @@
 // Copyright 2019 The Cockroach Authors.
-// Copyright (c) 2022-present, Shanghai Yunxi Technology Co, Ltd. All rights reserved.
+// Copyright (c) 2022-present, Shanghai Yunxi Technology Co, Ltd. All rights
+// reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,13 +15,13 @@
 // limitations under the License.
 //
 // This software (KWDB) is licensed under Mulan PSL v2.
-// You can use this software according to the terms and conditions of the Mulan PSL v2.
-// You may obtain a copy of Mulan PSL v2 at:
+// You can use this software according to the terms and conditions of the Mulan
+// PSL v2. You may obtain a copy of Mulan PSL v2 at:
 //          http://license.coscl.org.cn/MulanPSL2
-// THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND,
-// EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT,
-// MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
-// See the Mulan PSL v2 for more details.
+// THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY
+// KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO
+// NON-INFRINGEMENT, MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE. See the
+// Mulan PSL v2 for more details.
 //
 // Processor definitions for distributed SQL APIs. See
 // docs/RFCS/distributed_sql.md.
@@ -137,7 +138,8 @@ message TableReaderSpec {
 
   // Indicates the row-level locking strength to be used by the scan. If set to
   // FOR_NONE, no row-level locking should be performed.
-  optional sqlbase.ScanLockingStrength locking_strength = 10 [(gogoproto.nullable) = false];
+  optional sqlbase.ScanLockingStrength locking_strength = 10
+      [(gogoproto.nullable) = false];
 
   // Indicates the policy to be used by the scan when dealing with rows being
   // locked. Always set to BLOCK when locking_stength is FOR_NONE.
@@ -145,7 +147,8 @@ message TableReaderSpec {
   // NOTE: this is currently set but unused because only the BLOCK wait policy
   // makes it out of the SQL optimizer without throwing an error. If/when other
   // wait policies are supported, this field will be plumbed further.
-  optional sqlbase.ScanLockingWaitPolicy locking_wait_policy = 11 [(gogoproto.nullable) = false];
+  optional sqlbase.ScanLockingWaitPolicy locking_wait_policy = 11
+      [(gogoproto.nullable) = false];
 }
 
 // DedupRule is deduplication mode during insertion.
@@ -185,20 +188,20 @@ enum OperatorType {
 // TsInsertSelSpec build payLoads for TsInsert
 message TsInsertSelSpec {
   // insert table id
-  optional uint64 target_table_id = 1[(gogoproto.nullable) = false];
+  optional uint64 target_table_id = 1 [(gogoproto.nullable) = false];
   // insert database id
-  optional uint64 db_id = 2[(gogoproto.nullable) = false];
+  optional uint64 db_id = 2 [(gogoproto.nullable) = false];
   // colids of table
   repeated int32 cols = 3;
   // index of cols
   repeated int32 col_idxs = 4;
   // if insert table is child table, record name of child table
-  optional string child_name = 5[(gogoproto.nullable) = false];
+  optional string child_name = 5 [(gogoproto.nullable) = false];
   // type of insert table
-  optional int32 table_type = 6[(gogoproto.nullable) = false];
+  optional int32 table_type = 6 [(gogoproto.nullable) = false];
 
   // whether set InputsToDrain for tsInsertSelecter
-  optional bool not_set_inputs_to_drain = 7[(gogoproto.nullable) = false];
+  optional bool not_set_inputs_to_drain = 7 [(gogoproto.nullable) = false];
 }
 
 message payloadForDistributeMode {
@@ -207,8 +210,8 @@ message payloadForDistributeMode {
   repeated int64 timeStamps = 2;
   optional bytes startKey = 3;
   optional bytes endKey = 4;
-  optional int32 valueSize = 5[(gogoproto.nullable) = false];
-  optional uint64 hashNum = 6[(gogoproto.nullable) = false];
+  optional int32 valueSize = 5 [(gogoproto.nullable) = false];
+  optional uint64 hashNum = 6 [(gogoproto.nullable) = false];
 }
 
 message TsInsertProSpec {
@@ -220,20 +223,20 @@ message TsInsertProSpec {
 }
 
 message Span {
-  optional int64 start_ts = 1[(gogoproto.nullable) = false];
-  optional int64 end_ts = 2[(gogoproto.nullable) = false];
+  optional int64 start_ts = 1 [(gogoproto.nullable) = false];
+  optional int64 end_ts = 2 [(gogoproto.nullable) = false];
 }
 
 message TsDeleteProSpec {
   optional OperatorType TsOperator = 1 [(gogoproto.nullable) = false];
-  optional uint64 tableId = 2[(gogoproto.nullable) = false];
-  optional uint64 rangeGroupId = 3[(gogoproto.nullable) = false];
+  optional uint64 tableId = 2 [(gogoproto.nullable) = false];
+  optional uint64 rangeGroupId = 3 [(gogoproto.nullable) = false];
   repeated bytes primary_tag_keys = 4;
   repeated bytes primary_tags = 5;
   repeated Span spans = 6 [(gogoproto.nullable) = false];
   // Delete multi entities for MPP mode
   repeated DeleteEntityGroup entity_groups = 7 [(gogoproto.nullable) = false];
-  optional uint64 hashNum = 8[(gogoproto.nullable) = false];
+  optional uint64 hashNum = 8 [(gogoproto.nullable) = false];
 }
 
 // DeleteEntityGroup just for delete multi entities.
@@ -244,8 +247,8 @@ message DeleteEntityGroup {
 
 message TsTagUpdateProSpec {
   optional OperatorType TsOperator = 1 [(gogoproto.nullable) = false];
-  optional uint64 tableId = 2[(gogoproto.nullable) = false];
-  optional uint64 rangeGroupId = 3[(gogoproto.nullable) = false];
+  optional uint64 tableId = 2 [(gogoproto.nullable) = false];
+  optional uint64 rangeGroupId = 3 [(gogoproto.nullable) = false];
   repeated bytes primary_tag_keys = 4;
   repeated bytes primary_tags = 5;
   repeated bytes tags = 6;
@@ -255,9 +258,9 @@ message TsTagUpdateProSpec {
 }
 
 message TsCreateTableProSpec {
-  optional uint64 tsTableID = 1[(gogoproto.nullable) = false];
+  optional uint64 tsTableID = 1 [(gogoproto.nullable) = false];
   optional bytes meta = 2;
-  optional uint64 hashNum = 3[(gogoproto.nullable) = false];
+  optional uint64 hashNum = 3 [(gogoproto.nullable) = false];
 }
 
 message TsProSpec {
@@ -304,7 +307,8 @@ message IndexSkipTableReaderSpec {
 
   // Indicates the row-level locking strength to be used by the scan. If set to
   // FOR_NONE, no row-level locking should be performed.
-  optional sqlbase.ScanLockingStrength locking_strength = 6 [(gogoproto.nullable) = false];
+  optional sqlbase.ScanLockingStrength locking_strength = 6
+      [(gogoproto.nullable) = false];
 
   // Indicates the policy to be used by the scan when dealing with rows being
   // locked. Always set to BLOCK when locking_stength is FOR_NONE.
@@ -312,7 +316,8 @@ message IndexSkipTableReaderSpec {
   // NOTE: this is currently set but unused because only the BLOCK wait policy
   // makes it out of the SQL optimizer without throwing an error. If/when other
   // wait policies are supported, this field will be plumbed further.
-  optional sqlbase.ScanLockingWaitPolicy locking_wait_policy = 7 [(gogoproto.nullable) = false];
+  optional sqlbase.ScanLockingWaitPolicy locking_wait_policy = 7
+      [(gogoproto.nullable) = false];
 }
 
 // JoinReaderSpec is the specification for a "join reader". A join reader
@@ -385,7 +390,8 @@ message JoinReaderSpec {
 
   // Indicates the row-level locking strength to be used by the join. If set to
   // FOR_NONE, no row-level locking should be performed.
-  optional sqlbase.ScanLockingStrength locking_strength = 9 [(gogoproto.nullable) = false];
+  optional sqlbase.ScanLockingStrength locking_strength = 9
+      [(gogoproto.nullable) = false];
 
   // Indicates the policy to be used by the join when dealing with rows being
   // locked. Always set to BLOCK when locking_stength is FOR_NONE.
@@ -393,7 +399,8 @@ message JoinReaderSpec {
   // NOTE: this is currently set but unused because only the BLOCK wait policy
   // makes it out of the SQL optimizer without throwing an error. If/when other
   // wait policies are supported, this field will be plumbed further.
-  optional sqlbase.ScanLockingWaitPolicy locking_wait_policy = 10 [(gogoproto.nullable) = false];
+  optional sqlbase.ScanLockingWaitPolicy locking_wait_policy = 10
+      [(gogoproto.nullable) = false];
 }
 
 // SorterSpec is the specification for a "sorting aggregator". A sorting
@@ -425,8 +432,8 @@ message DistinctSpec {
   // considered, so rows A1,B1,C1,D1 and A1,B1,C1,D2 are considered equal and
   // only one of them (the first) is output.
   repeated uint32 distinct_columns = 2;
-  // If true, then NULL values are treated as not equal to one another. Each NULL
-  // value will cause a new row group to be created. For example:
+  // If true, then NULL values are treated as not equal to one another. Each
+  // NULL value will cause a new row group to be created. For example:
   //
   //   c
   //   ----
@@ -486,9 +493,9 @@ message ZigzagJoinerSpec {
   optional sqlbase.JoinType type = 6 [(gogoproto.nullable) = false];
 }
 
-// MergeJoinerSpec is the specification for a merge join processor. The processor
-// has two inputs and one output. The inputs must have the same ordering on the
-// columns that have equality constraints. For example:
+// MergeJoinerSpec is the specification for a merge join processor. The
+// processor has two inputs and one output. The inputs must have the same
+// ordering on the columns that have equality constraints. For example:
 //   SELECT * FROM T1 INNER JOIN T2 ON T1.C1 = T2.C5 AND T1.C2 = T2.C4
 //
 // To perform a merge join, the streams corresponding to T1 and T2 must have the
@@ -541,12 +548,12 @@ message MergeJoinerSpec {
 // HashJoinerSpec is the specification for a hash join processor. The processor
 // has two inputs and one output.
 //
-// The processor works by reading the entire right input and putting it in a hash
-// table. Thus, there is no guarantee on the ordering of results that stem only
-// from the right input (in the case of RIGHT_OUTER, FULL_OUTER). However, it is
-// guaranteed that results that involve the left stream preserve the ordering;
-// i.e. all results that stem from left row (i) precede results that stem from
-// left row (i+1).
+// The processor works by reading the entire right input and putting it in a
+// hash table. Thus, there is no guarantee on the ordering of results that stem
+// only from the right input (in the case of RIGHT_OUTER, FULL_OUTER). However,
+// it is guaranteed that results that involve the left stream preserve the
+// ordering; i.e. all results that stem from left row (i) precede results that
+// stem from left row (i+1).
 //
 // The "internal columns" of a HashJoiner (see ProcessorSpec) are the
 // concatenation of merged columns (if present), left input columns and right
@@ -593,25 +600,25 @@ message HashJoinerSpec {
   //
   // Extra merged columns that are added in case of OUTER JOINS. These
   // columns occupy first positions in a row amd it's the left value if it's not
-  // NULL, otherwise it's the right value. In INNER JOIN case no merged columns are
-  // needed since left stream values are guaranteed to be not NULL.
+  // NULL, otherwise it's the right value. In INNER JOIN case no merged columns
+  // are needed since left stream values are guaranteed to be not NULL.
   //
   // This has been deprecated; the distsqlrun layer still supports it for
   // backward compatibility during upgrade.
   optional bool merged_columns = 7 [(gogoproto.nullable) = false];
 }
 
-// BatchLookupJoinerSpec is only used to create batchLookUpJoin Spec for multiple model processing
-// when the switch is on and the server starts with single node mode.
-// BatchLookupJoinerSpec is the specification for a batch lookup join processor. The processor
-// has two inputs and one output.
+// BatchLookupJoinerSpec is only used to create batchLookUpJoin Spec for
+// multiple model processing when the switch is on and the server starts with
+// single node mode. BatchLookupJoinerSpec is the specification for a batch
+// lookup join processor. The processor has two inputs and one output.
 //
-// The processor works by reading the entire right input and putting it in a hash
-// table. Thus, there is no guarantee on the ordering of results that stem only
-// from the right input (in the case of RIGHT_OUTER, FULL_OUTER). However, it is
-// guaranteed that results that involve the left stream preserve the ordering;
-// i.e. all results that stem from left row (i) precede results that stem from
-// left row (i+1).
+// The processor works by reading the entire right input and putting it in a
+// hash table. Thus, there is no guarantee on the ordering of results that stem
+// only from the right input (in the case of RIGHT_OUTER, FULL_OUTER). However,
+// it is guaranteed that results that involve the left stream preserve the
+// ordering; i.e. all results that stem from left row (i) precede results that
+// stem from left row (i+1).
 //
 // The "internal columns" of a BatchLookupJoiner (see ProcessorSpec) are the
 // concatenation of merged columns (if present), left input columns and right
@@ -654,16 +661,16 @@ message BatchLookupJoinerSpec {
   // same set of values on the right equality columns.
   optional bool right_eq_columns_are_key = 9 [(gogoproto.nullable) = false];
 
-  // tstablereader id to identify the specific tstablereader associated with this
-  // batchlookupjoin
+  // tstablereader id to identify the specific tstablereader associated with
+  // this batchlookupjoin
   optional int32 tstablereader_id = 10 [(gogoproto.nullable) = false];
 
   // DEPRECATED
   //
   // Extra merged columns that are added in case of OUTER JOINS. These
   // columns occupy first positions in a row amd it's the left value if it's not
-  // NULL, otherwise it's the right value. In INNER JOIN case no merged columns are
-  // needed since left stream values are guaranteed to be not NULL.
+  // NULL, otherwise it's the right value. In INNER JOIN case no merged columns
+  // are needed since left stream values are guaranteed to be not NULL.
   //
   // This has been deprecated; the distsqlrun layer still supports it for
   // backward compatibility during upgrade.
@@ -672,9 +679,9 @@ message BatchLookupJoinerSpec {
 
 // AggregatorSpec is the specification for an "aggregator" (processor core
 // type, not the logical plan computation stage). An aggregator performs
-// 'aggregation' in the SQL sense in that it groups rows and computes an aggregate
-// for each group. The group is configured using the group key. The aggregator
-// can be configured with one or more aggregation functions.
+// 'aggregation' in the SQL sense in that it groups rows and computes an
+// aggregate for each group. The group is configured using the group key. The
+// aggregator can be configured with one or more aggregation functions.
 //
 // The "internal columns" of an Aggregator map 1-1 to the aggregations.
 message AggregatorSpec {
@@ -721,6 +728,9 @@ message AggregatorSpec {
     TWA = 37;
     MIN_EXTEND = 38;
     MAX_EXTEND = 39;
+    VAR_POP = 40;
+    QUANTILE = 41;
+    NORM = 42;
   }
 
   enum Type {
@@ -761,7 +771,8 @@ message AggregatorSpec {
     // Arguments are const expressions passed to aggregation functions.
     repeated Expression arguments = 6 [(gogoproto.nullable) = false];
 
-    // The timestamp constant represents the last argument of the last/lastts function, push to ae.
+    // The timestamp constant represents the last argument of the last/lastts
+    // function, push to ae.
     repeated int64 timestampConstant = 7;
 
     reserved 3;
@@ -778,25 +789,26 @@ message AggregatorSpec {
   // A subset of the GROUP BY columns which are ordered in the input.
   repeated uint32 ordered_group_cols = 4 [packed = true];
   optional bool agg_push_down = 6 [(gogoproto.nullable) = false];
-  // HasTimeBucketGapFill is true if aggregations have function time_bucket_gapFill.
+  // HasTimeBucketGapFill is true if aggregations have function
+  // time_bucket_gapFill.
   optional bool has_time_bucket_gapFill = 7 [(gogoproto.nullable) = false];
   optional int32 time_bucket_gapFill_colId = 8 [(gogoproto.nullable) = false];
-  // ScalarGroupBy with sum_Int agg in inside_out case must return 0 when the table is empty, because sum_int
-  // is the twice agg of count.
+  // ScalarGroupBy with sum_Int agg in inside_out case must return 0 when the
+  // table is empty, because sum_int is the twice agg of count.
   optional bool scalar_group_by_with_sum_int = 9 [(gogoproto.nullable) = false];
   optional int32 group_window_id = 10 [(gogoproto.nullable) = false];
   optional int32 group__window_tscolid = 11 [(gogoproto.nullable) = false];
   repeated int32 group__window_id = 12 [packed = true];
 }
 
-// InterleavedReaderJoinerSpec is the specification for a processor that performs
-// KV operations to retrieve rows from 2+ tables from an interleaved hierarchy,
-// performs intermediate filtering on rows from each table, and performs a
-// join on the rows from the 2+ tables.
+// InterleavedReaderJoinerSpec is the specification for a processor that
+// performs KV operations to retrieve rows from 2+ tables from an interleaved
+// hierarchy, performs intermediate filtering on rows from each table, and
+// performs a join on the rows from the 2+ tables.
 //
-// Limitations: the InterleavedReaderJoiner currently supports only equality INNER joins
-// on the full interleave prefix.
-// See https://gitee.com/kwbasedb/kwbase/blob/master/docs/RFCS/20171025_interleaved_table_joins.md.
+// Limitations: the InterleavedReaderJoiner currently supports only equality
+// INNER joins on the full interleave prefix. See
+// https://gitee.com/kwbasedb/kwbase/blob/master/docs/RFCS/20171025_interleaved_table_joins.md.
 //
 // The "internal columns" of an InterleavedReaderJoiner are the
 // concatenation of left input columns and right input columns. If the left
@@ -806,8 +818,8 @@ message AggregatorSpec {
 message InterleavedReaderJoinerSpec {
   message Table {
     optional sqlbase.TableDescriptor desc = 1 [(gogoproto.nullable) = false];
-    // If 0, we use the primary index. If non-zero, we use the index_idx-th index,
-    // i.e. desc.indexes[index_idx-1]
+    // If 0, we use the primary index. If non-zero, we use the index_idx-th
+    // index, i.e. desc.indexes[index_idx-1]
     optional uint32 index_idx = 2 [(gogoproto.nullable) = false];
     // The PostProcessSpecs of the corresponding TableReaderSpecs of each table
     // are fed as arguments to InterleavedReaderJoiner.
@@ -820,16 +832,17 @@ message InterleavedReaderJoinerSpec {
     optional PostProcessSpec post = 3 [(gogoproto.nullable) = false];
 
     // The tables must be ordered according to the columns that have equality
-    // constraints. The first column of the first table's ordering is constrained
-    // to be equal to the first column in the second table's ordering and so on
-    // for the other tables and their corresponding columns.
+    // constraints. The first column of the first table's ordering is
+    // constrained to be equal to the first column in the second table's
+    // ordering and so on for the other tables and their corresponding columns.
     optional Ordering ordering = 4 [(gogoproto.nullable) = false];
 
     // The span covering the rows from this table to join. Note the
-    // InterleavedReaderJoiner processor will taking the union of all spans across
-    // all tables to do a single pass-through scan. InterleavedReaderJoiner will
-    // then check if a given row for a table is within any of its spans.
-    // There must exist at least one non-empty set of spans for some table.
+    // InterleavedReaderJoiner processor will taking the union of all spans
+    // across all tables to do a single pass-through scan.
+    // InterleavedReaderJoiner will then check if a given row for a table is
+    // within any of its spans. There must exist at least one non-empty set of
+    // spans for some table.
     repeated TableReaderSpan spans = 5 [(gogoproto.nullable) = false];
   }
 
@@ -851,7 +864,8 @@ message InterleavedReaderJoinerSpec {
 
   // Indicates the row-level locking strength to be used by the scan over the
   // tables. If set to FOR_NONE, no row-level locking should be performed.
-  optional sqlbase.ScanLockingStrength locking_strength = 6 [(gogoproto.nullable) = false];
+  optional sqlbase.ScanLockingStrength locking_strength = 6
+      [(gogoproto.nullable) = false];
 
   // Indicates the policy to be used by the scan over the tables when dealing
   // with rows being locked. Always set to BLOCK when locking_stength is
@@ -860,7 +874,8 @@ message InterleavedReaderJoinerSpec {
   // NOTE: this is currently set but unused because only the BLOCK wait policy
   // makes it out of the SQL optimizer without throwing an error. If/when other
   // wait policies are supported, this field will be plumbed further.
-  optional sqlbase.ScanLockingWaitPolicy locking_wait_policy = 7 [(gogoproto.nullable) = false];
+  optional sqlbase.ScanLockingWaitPolicy locking_wait_policy = 7
+      [(gogoproto.nullable) = false];
 
   // Joiner component
 
@@ -881,7 +896,10 @@ message ProjectSetSpec {
   repeated Expression exprs = 1 [(gogoproto.nullable) = false];
 
   // Column types for the generated values
-  repeated bytes generated_columns = 2 [(gogoproto.nullable) = false, (gogoproto.customtype) = "gitee.com/kwbasedb/kwbase/pkg/sql/types.T"];
+  repeated bytes generated_columns = 2 [
+    (gogoproto.nullable) = false,
+    (gogoproto.customtype) = "gitee.com/kwbasedb/kwbase/pkg/sql/types.T"
+  ];
 
   // The number of columns each expression returns. Same length as exprs.
   repeated uint32 num_cols_per_gen = 3;
@@ -908,6 +926,8 @@ message WindowerSpec {
     LAST_VALUE = 9;
     NTH_VALUE = 10;
     DIFF = 11;
+    GROUP_RANK = 12;
+    GROUP_ROW_NUMBER = 13;
   }
 
   // Func specifies which function to compute. It can either be built-in
@@ -1002,8 +1022,8 @@ message WindowerSpec {
   repeated WindowFn windowFns = 2 [(gogoproto.nullable) = false];
 }
 
-// ReplicationManagerSpec is the specification of a processor that replicate manage commands
-// to all nodes.
+// ReplicationManagerSpec is the specification of a processor that replicate
+// manage commands to all nodes.
 message ReplicationServiceCallerSpec {
   message DisasterNode {
     optional int32 node_id = 1 [(gogoproto.nullable) = false];
@@ -1011,10 +1031,15 @@ message ReplicationServiceCallerSpec {
   }
   // FuncName specifies the function name which we distributed call on all node.
   optional string funcName = 1 [(gogoproto.nullable) = false];
-  // A collection of column types returned by our distributed calls to functions.
-  repeated bytes columns = 2 [(gogoproto.nullable) = false, (gogoproto.customtype) = "gitee.com/kwbasedb/kwbase/pkg/sql/types.T"];
+  // A collection of column types returned by our distributed calls to
+  // functions.
+  repeated bytes columns = 2 [
+    (gogoproto.nullable) = false,
+    (gogoproto.customtype) = "gitee.com/kwbasedb/kwbase/pkg/sql/types.T"
+  ];
   // Functions input param.
-  optional sqlbase.ReplicationServiceCallerFuncInputs inputs = 3 [(gogoproto.nullable) = false];
+  optional sqlbase.ReplicationServiceCallerFuncInputs inputs = 3
+      [(gogoproto.nullable) = false];
   // IsGateWay identifies whether it is a gateway node distCallerSpec.
   optional bool is_gate_way = 4 [(gogoproto.nullable) = false];
   // DisasterNodes stores error information about node Healthy check that the

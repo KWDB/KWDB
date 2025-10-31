@@ -163,8 +163,14 @@ var RankSingleton = &RankExpr{}
 // RowNumberSingleton is the global instance of RowNumber.
 var RowNumberSingleton = &RowNumberExpr{}
 
+// GroupRowNumberSingleton is the global instance of GroupRowNumberExpr.
+var GroupRowNumberSingleton = &GroupRowNumberExpr{}
+
 // DenseRankSingleton is the global instance of DenseRankExpr.
 var DenseRankSingleton = &DenseRankExpr{}
+
+// GroupRankSingleton is the global instance of GroupRankExpr.
+var GroupRankSingleton = &GroupRankExpr{}
 
 // PercentRankSingleton is the global instance of PercentRankExpr.
 var PercentRankSingleton = &PercentRankExpr{}

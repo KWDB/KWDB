@@ -498,3 +498,53 @@ query I
 SELECT a.public.c.d FROM a.public.c
 ----
 1
+
+statement ok
+SET DATABASE = test
+
+statement ok
+CREATE TABLE like_src (
+  id INT PRIMARY KEY,
+  a  INT NOT NULL DEFAULT 1,
+  b  STRING,
+  INDEX like_src_a_idx (a),
+  UNIQUE (b)
+)
+
+statement ok
+CREATE TABLE like_dst LIKE like_src
+
+query TT
+select column_name, data_type from [SHOW COLUMNS FROM like_dst] order by column_name
+----
+ a  INT4
+ b  STRING
+ id INT4
+
+statement ok
+INSERT INTO like_dst (id, b) VALUES (100, 'x')
+
+query I
+SELECT a FROM like_dst WHERE id = 100
+----
+1
+
+query I
+SELECT count(*) FROM [SHOW INDEXES FROM like_dst] WHERE column_name = 'a' AND non_unique = true
+----
+1
+
+query I
+SELECT count(*) FROM [SHOW INDEXES FROM like_dst] WHERE column_name = 'b' AND non_unique = false
+----
+1
+
+statement ok
+DESCRIBE like_dst
+
+query TT
+select column_name, data_type from [SHOW COLUMNS FROM like_dst]
+----
+ id INT4
+ a  INT4
+ b  STRING

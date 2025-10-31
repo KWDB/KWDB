@@ -39,6 +39,7 @@ import (
 	"math"
 	"math/rand"
 	"net"
+	"regexp"
 	"regexp/syntax"
 	"strconv"
 	"strings"
@@ -2860,6 +2861,176 @@ may increase either contention or retry errors, or both.`,
 		}, "Calculates the tangent of `val`."),
 	),
 
+	"to_time": makeBuiltin(defProps(),
+		tree.Overload{
+			Types:      tree.ArgTypes{{"val", types.Int}},
+			ReturnType: tree.FixedReturnType(types.Time),
+			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				val := int64(tree.MustBeDInt(args[0]))
+				// Interpret INT as milliseconds since Unix epoch.
+				if val < 0 || val > 86399000 {
+					return tree.DNull, pgerror.Newf(pgcode.InvalidDatetimeFormat, "invalid input syntax for type time: %s", args[0])
+				}
+				sec := val / 1000
+				nsec := (val % 1000) * int64(time.Millisecond)
+				t := tree.MakeDTimestamp(timeutil.Unix(sec, nsec), time.Nanosecond)
+				hour, min, secOfDay := t.Clock()
+				return tree.MakeDTime(timeofday.New(hour, min, secOfDay, 0)), nil
+			},
+			Info: "Converts an integer as milliseconds to a TIME interval.",
+		},
+		tree.Overload{
+			Types:      tree.ArgTypes{{"val", types.String}},
+			ReturnType: tree.FixedReturnType(types.Time),
+			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				s := string(tree.MustBeDString(args[0]))
+
+				var InvalidTimePattern = regexp.MustCompile(`(24:00(:00)?(\.0+)?)|(23:59:59\.[0-9]*[1-9][0-9]*)`)
+				if InvalidTimePattern.MatchString(s) {
+					return tree.DNull, fmt.Errorf("time value out of range: %q", s)
+				}
+
+				parsedTime, err := tree.ParseDTime(ctx, s, types.DefaultTimePrecision)
+				if err == nil {
+					return parsedTime, nil
+				}
+
+				parsedTimestamp, err := tree.ParseDTimestamp(ctx, s, types.DefaultTimePrecision)
+				if err != nil {
+					return tree.DNull, err
+				}
+				hour, min, sec := parsedTimestamp.Clock()
+				msec := parsedTimestamp.Nanosecond() / 1000
+				return tree.MakeDTime(timeofday.New(hour, min, sec, msec)), nil
+			},
+			Info: "Parses a string as TIMESTAMP/TIMESTAMPTZ/TIME.",
+		},
+		tree.Overload{
+			Types:      tree.ArgTypes{{"val", types.Timestamp}},
+			ReturnType: tree.FixedReturnType(types.Time),
+			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				t := tree.MustBeDTimestamp(args[0])
+				hour, min, secs := t.Clock()
+				msec := t.Nanosecond() / 1000
+				return tree.MakeDTime(timeofday.New(hour, min, secs, msec)), nil
+			},
+			Info: "Extracts the time part from a timestamp.",
+		},
+		tree.Overload{
+			Types:      tree.ArgTypes{{"val", types.TimestampTZ}},
+			ReturnType: tree.FixedReturnType(types.Time),
+			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				t := tree.MustBeDTimestampTZ(args[0])
+				hour, min, secs := t.Clock()
+				msec := t.Nanosecond() / 1_000
+				return tree.MakeDTime(timeofday.New(hour, min, secs, msec)), nil
+			},
+			Info: "Extracts the time-of-day part from a timestamp with time zone.",
+		},
+		tree.Overload{
+			Types:      tree.ArgTypes{{"val", types.Time}},
+			ReturnType: tree.FixedReturnType(types.Time),
+			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				t, ok := args[0].(*tree.DTime)
+				if !ok {
+					return nil, pgerror.Newf(pgcode.Internal, "expected DTime but got %T", args[0])
+				}
+				return t, nil
+			},
+			Info: "Converts a TIME value.",
+		},
+	),
+
+	"time_to_sec": makeBuiltin(defProps(),
+		tree.Overload{
+			Types:      tree.ArgTypes{{"val", types.Time}},
+			ReturnType: tree.FixedReturnType(types.Int),
+			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				t, ok := args[0].(*tree.DTime)
+				if !ok {
+					return nil, pgerror.Newf(pgcode.Internal, "expected DTime but got %T", args[0])
+				}
+				tUnrounded := int64(*t)
+				if tUnrounded < 0 || tUnrounded > 86399000000 {
+					return tree.DNull, pgerror.Newf(pgcode.InvalidParameterValue, "time value out of range (00:00:00 to 23:59:59.000000)")
+				}
+				totalSeconds := (int64(tUnrounded) + 500_000) / 1_000_000
+				return tree.NewDInt(tree.DInt(totalSeconds)), nil
+			},
+			Info: "Converts a TIME (time-of-day) value to the number of seconds from midnight.",
+		},
+		tree.Overload{
+			Types:      tree.ArgTypes{{"val", types.String}},
+			ReturnType: tree.FixedReturnType(types.Int),
+			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				s := string(tree.MustBeDString(args[0]))
+				_, err := strconv.Atoi(s)
+				if err == nil {
+					return tree.DNull, pgerror.Newf(pgcode.InvalidParameterValue, "time value is not a time string.")
+				}
+				parsedTime, err := tree.ParseDTime(ctx, s, types.DefaultTimePrecision)
+				if err == nil {
+					tUnrounded := int64(*parsedTime)
+					if tUnrounded < 0 || tUnrounded > 86399000000 {
+						return tree.DNull, pgerror.Newf(pgcode.InvalidParameterValue, "time value out of range (00:00:00 to 23:59:59.000000)")
+					}
+					totalSeconds := (tUnrounded + 500_000) / 1_000_000
+					return tree.NewDInt(tree.DInt(totalSeconds)), nil
+				}
+				parsedTimestamp, err := tree.ParseDTimestamp(ctx, s, types.DefaultTimePrecision)
+				if err != nil {
+					return tree.DNull, err
+				}
+				if parsedTimestamp.Hour() < 0 || parsedTimestamp.Hour() > 23 {
+					return tree.DNull, pgerror.Newf(pgcode.InvalidParameterValue, "time value out of range (00:00:00 to 23:59:59)")
+				}
+				if parsedTimestamp.Hour() == 23 && parsedTimestamp.Minute() == 59 && parsedTimestamp.Second() == 59 && parsedTimestamp.Nanosecond() > 0 {
+					return tree.DNull, pgerror.Newf(pgcode.InvalidParameterValue, "time value out of range (00:00:00 to 23:59:59.000000)")
+				}
+				totalSeconds := parsedTimestamp.Time.Hour()*3600 + parsedTimestamp.Time.Minute()*60 + parsedTimestamp.Time.Second()
+				return tree.NewDInt(tree.DInt(totalSeconds)), nil
+			},
+			Info: "Parses a string as TIME/TIMESTAMP/TIMESTAMPTZ and return it seconds.",
+		},
+		tree.Overload{
+			Types:      tree.ArgTypes{{"val", types.Timestamp}},
+			ReturnType: tree.FixedReturnType(types.Int),
+			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				ts := tree.MustBeDTimestamp(args[0])
+				tUnrounded := ts.Time
+				if tUnrounded.Hour() < 0 || tUnrounded.Hour() > 23 {
+					return tree.DNull, pgerror.Newf(pgcode.InvalidParameterValue, "time value out of range (00:00:00 to 23:59:59)")
+				}
+				if tUnrounded.Hour() == 23 && tUnrounded.Minute() == 59 && tUnrounded.Second() == 59 && tUnrounded.Nanosecond() > 0 {
+					return tree.DNull, pgerror.Newf(pgcode.InvalidParameterValue, "time value out of range (00:00:00 to 23:59:59.000000)")
+				}
+				nanosUnrounded := int64(tUnrounded.Hour())*3600*1_000_000_000 + int64(tUnrounded.Minute())*60*1_000_000_000 + int64(tUnrounded.Second())*1_000_000_000 + int64(tUnrounded.Nanosecond())
+				seconds := (nanosUnrounded + 500_000_000) / 1_000_000_000
+				return tree.NewDInt(tree.DInt(seconds)), nil
+			},
+			Info: "Parses timestamp to seconds.",
+		},
+		tree.Overload{
+			Types:      tree.ArgTypes{{"val", types.TimestampTZ}},
+			ReturnType: tree.FixedReturnType(types.Int),
+			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				ts := tree.MustBeDTimestampTZ(args[0])
+				tUnrounded := ts.Time
+				if tUnrounded.Hour() < 0 || tUnrounded.Hour() > 23 {
+					return tree.DNull, pgerror.Newf(pgcode.InvalidParameterValue, "time value out of range (00:00:00 to 23:59:59)")
+				}
+				if tUnrounded.Hour() == 23 && tUnrounded.Minute() == 59 && tUnrounded.Second() == 59 && tUnrounded.Nanosecond() > 0 {
+					return tree.DNull, pgerror.Newf(pgcode.InvalidParameterValue, "time value out of range (00:00:00 to 23:59:59.000000)")
+				}
+
+				nanosUnrounded := int64(tUnrounded.Hour())*3600*1_000_000_000 + int64(tUnrounded.Minute())*60*1_000_000_000 + int64(tUnrounded.Second())*1_000_000_000 + int64(tUnrounded.Nanosecond())
+				seconds := (nanosUnrounded + 500_000_000) / 1_000_000_000
+				return tree.NewDInt(tree.DInt(seconds)), nil
+			},
+			Info: "Parses timestampTZ to seconds.",
+		},
+	),
+
 	// https://www.postgresql.org/docs/9.6/functions-datetime.html
 	"timezone": makeBuiltin(defProps(),
 		// NOTE(otan): this should be deleted and replaced with the correct
@@ -3146,6 +3317,49 @@ may increase either contention or retry errors, or both.`,
 			Info: "return the bucket number to which operand would be assigned given an array listing the " +
 				"lower bounds of the buckets; returns 0 for an input less than the first lower bound; the " +
 				"thresholds array must be sorted, smallest first, or unexpected results will be obtained",
+		},
+	),
+
+	"str_to_date": makeBuiltin(defProps(),
+		tree.Overload{
+			Types:      tree.ArgTypes{{"val", types.String}, {"format", types.String}},
+			ReturnType: tree.FixedReturnType(types.TimestampTZ),
+			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				if args[0] == tree.DNull {
+					return tree.DNull, nil
+				}
+				if args[1] == tree.DNull {
+					return tree.DNull, nil
+				}
+				dateStr := string(tree.MustBeDString(args[0]))
+				formatStr := string(tree.MustBeDString(args[1]))
+
+				parsedTime, err := strtime.Strptime(dateStr, formatStr)
+				if err != nil {
+					return tree.DNull, err
+				}
+
+				if parsedTime.IsZero() {
+					return tree.DNull, nil
+				}
+				formattedStr, err := strtime.Strftime(parsedTime, formatStr)
+				if err != nil {
+					return tree.DNull, err
+				}
+				if formattedStr != dateStr {
+					return tree.DNull, nil
+				}
+
+				sessionLoc := ctx.GetLocation()
+				finalTime := time.Date(
+					parsedTime.Year(), parsedTime.Month(), parsedTime.Day(),
+					parsedTime.Hour(), parsedTime.Minute(), parsedTime.Second(), parsedTime.Nanosecond(),
+					sessionLoc,
+				)
+
+				return tree.MakeDTimestampTZ(finalTime, time.Microsecond), nil
+			},
+			Info: "Parses a string into a timestamp according to a format string from github.com/knz/strtime.",
 		},
 	),
 

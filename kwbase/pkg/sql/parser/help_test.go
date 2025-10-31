@@ -182,6 +182,8 @@ func TestContextualHelp(t *testing.T) {
 		{`DELETE FROM blah WHERE ??`, `DELETE`},
 		{`DELETE FROM blah WHERE x > 3 ??`, `DELETE`},
 
+		{`DESCRIBE t ??`, `DESCRIBE`},
+
 		{`DISCARD ALL ??`, `DISCARD`},
 		{`DISCARD ??`, `DISCARD`},
 

@@ -25,11 +25,15 @@
 package sql
 
 import (
+	"context"
 	"fmt"
 	"testing"
 
 	"gitee.com/kwbasedb/kwbase/pkg/clusterversion"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/tests"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/types"
+	"gitee.com/kwbasedb/kwbase/pkg/testutils/serverutils"
+	"gitee.com/kwbasedb/kwbase/pkg/testutils/sqlutils"
 	"gitee.com/kwbasedb/kwbase/pkg/util/leaktest"
 	"github.com/stretchr/testify/require"
 )
@@ -99,4 +103,54 @@ func TestIsTypeSupportedInVersion(t *testing.T) {
 			require.Equal(t, tc.ok, ok)
 		})
 	}
+}
+
+func TestCreateTableLike(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	params, _ := tests.CreateTestServerParams()
+	params.Insecure = true
+	s, rawDB, _ := serverutils.StartServer(t, params)
+	defer s.Stopper().Stop(context.TODO())
+	db := sqlutils.MakeSQLRunner(rawDB)
+
+	// Workspace.
+	db.Exec(t, `CREATE DATABASE IF NOT EXISTS test`)
+	db.Exec(t, `SET DATABASE = test`)
+
+	// Source table with defaults and indexes.
+	db.Exec(t, `CREATE TABLE like_src (
+		id INT PRIMARY KEY,
+		a  INT NOT NULL DEFAULT 1,
+		b  STRING,
+		INDEX like_src_a_idx (a),
+		UNIQUE (b)
+	)`)
+
+	// Create destination from LIKE.
+	db.Exec(t, `CREATE TABLE like_dst LIKE like_src`)
+
+	// Columns and types copied.
+	db.CheckQueryResults(t,
+		`SELECT column_name, data_type FROM [SHOW COLUMNS FROM like_dst] ORDER BY column_name`,
+		[][]string{
+			{"a", "INT4"},
+			{"b", "STRING"},
+			{"id", "INT4"},
+		},
+	)
+
+	// Default on column a copied.
+	db.Exec(t, `INSERT INTO like_dst (id, b) VALUES (100, 'x')`)
+	db.CheckQueryResults(t, `SELECT a FROM like_dst WHERE id = 100`, [][]string{{"1"}})
+
+	// Indexes copied: non-unique on a, unique on b.
+	db.CheckQueryResults(t,
+		`SELECT count(*) FROM [SHOW INDEXES FROM like_dst] WHERE column_name = 'a' AND non_unique = true`,
+		[][]string{{"1"}},
+	)
+	db.CheckQueryResults(t,
+		`SELECT count(*) FROM [SHOW INDEXES FROM like_dst] WHERE column_name = 'b' AND non_unique = false`,
+		[][]string{{"1"}},
+	)
 }

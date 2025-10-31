@@ -807,7 +807,7 @@ SELECT time_bucket(k_timestamp, '2s') as k_timestamp_b,
        firstts(usage_nice),
        max(usage_user),
        max(usage_irq),
-       lastts(usage_user) as last_ts
+       lastts(usage_user)            as last_ts
 FROM test.cpu
 WHERE k_timestamp >= '2023-01-01 00:00:00'
   AND k_timestamp < '2024-01-01 00:00:00'
@@ -875,7 +875,7 @@ WHERE k_timestamp >= '2023-01-01 00:00:00'
 GROUP BY hostname, k_timestamp_b
 ORDER BY hostname, k_timestamp_b, last_ts;
 
-SELECT time_bucket(k_timestamp, '2s') as k_timestamp_b,
+SELECT time_bucket(k_timestamp, '2s') as k_timestamp_b, 
     first (usage_nice), min (usage_system), min (usage_softirq), last_row(usage_guest_nice), hostname,
     lastts(usage_user)            as last_ts
 FROM test.cpu
@@ -2142,3 +2142,76 @@ WHERE k_timestamp >= '1600-01-01 00:00:00'
 GROUP BY hostname, region, rack, k_timestamp_b
 ORDER BY hostname, region, rack, k_timestamp_b, last_ts;
 drop database test cascade;
+
+-- Create a test table for aggregate and window functions
+CREATE TABLE test_data (
+    group_id INT,
+    value FLOAT
+);
+
+INSERT INTO test_data VALUES 
+(1, 10.0),
+(1, 20.0),
+(1, 30.0),
+(2, 15.0),
+(2, 25.0);
+
+-- Test for norm() - assuming it's a normalization function, adjust if needed
+SELECT norm(value) FROM test_data;  -- Placeholder, adjust based on actual function
+
+-- Test for group_rank() - assuming window function
+SELECT group_id, value, group_rank() OVER (PARTITION BY group_id ORDER BY value) AS rank FROM test_data;
+
+-- Test for group_row_number()
+SELECT group_id, value, group_row_number() OVER (PARTITION BY group_id) AS row_num FROM test_data;
+
+-- Test for var_samp()
+SELECT var_samp(value) FROM test_data GROUP BY group_id ORDER BY group_id;
+
+-- Test for var_pop()
+SELECT var_pop(value) FROM test_data GROUP BY group_id ORDER BY group_id;
+
+-- Test for quantile()
+SELECT quantile(value, 0.5) FROM test_data GROUP BY group_id ORDER BY group_id;
+
+-- Cleanup
+DROP TABLE test_data;
+
+-- Additional tests for norm()
+SELECT norm(value) FROM (SELECT UNNEST(ARRAY[1.0, 2.0, 3.0]) AS value); -- Positive values
+SELECT norm(value) FROM (SELECT UNNEST(ARRAY[-1.0, -2.0, -3.0]) AS value); -- Negative values
+SELECT norm(value) FROM (SELECT UNNEST(ARRAY[]) AS value); -- Empty set, expect NULL
+SELECT norm(5.0); -- Single value
+
+-- Additional tests for group_rank()
+SELECT group_id, value, group_rank() OVER (PARTITION BY group_id ORDER BY value) FROM test_data; -- Existing
+SELECT group_id, value, group_rank() OVER (PARTITION BY group_id ORDER BY value DESC) FROM test_data; -- Descending
+-- Add ties
+INSERT INTO test_data VALUES (1, 20.0), (2, 15.0);
+SELECT group_id, value, group_rank() OVER (PARTITION BY group_id ORDER BY value) FROM test_data; -- With ties
+
+-- Additional tests for group_row_number()
+SELECT group_id, value, group_row_number() OVER (PARTITION BY group_id) FROM test_data; -- Existing
+SELECT group_id, value, group_row_number() OVER (PARTITION BY group_id ORDER BY value) FROM test_data; -- With order
+
+-- Additional tests for var_samp()
+SELECT var_samp(value) FROM test_data GROUP BY group_id; -- Existing
+SELECT var_samp(value) FROM (SELECT UNNEST(ARRAY[1.0]) AS value) GROUP BY value; -- Single element, expect NULL
+SELECT var_samp(value) FROM (SELECT UNNEST(ARRAY[]) AS value); -- Empty, expect NULL
+SELECT var_samp(value) FROM (SELECT UNNEST(ARRAY[5.0, 5.0, 5.0]) AS value); -- Identical values
+
+-- Additional tests for var_pop()
+SELECT var_pop(value) FROM test_data GROUP BY group_id; -- Existing
+SELECT var_pop(value) FROM (SELECT UNNEST(ARRAY[1.0]) AS value) GROUP BY value; -- Single, expect 0
+SELECT var_pop(value) FROM (SELECT UNNEST(ARRAY[]) AS value); -- Empty, expect NULL
+
+-- Additional tests for quantile()
+SELECT quantile(value, 0.0) FROM test_data GROUP BY group_id; -- Min
+SELECT quantile(value, 1.0) FROM test_data GROUP BY group_id; -- Max
+SELECT quantile(value, 0.25) FROM test_data GROUP BY group_id; -- Lower quartile
+SELECT quantile(value, 0.5) FROM (SELECT UNNEST(ARRAY[]) AS value) GROUP BY value; -- Empty, expect NULL
+SELECT quantile(5.0, 0.5); -- Single value
+
+-- Cleanup additional data
+DELETE FROM test_data WHERE value = 20.0 AND group_id = 1;
+DELETE FROM test_data WHERE value = 15.0 AND group_id = 2;

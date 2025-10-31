@@ -28,6 +28,7 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"strconv"
 	"testing"
 
 	"gitee.com/kwbasedb/kwbase/pkg/settings/cluster"
@@ -709,4 +710,362 @@ func BenchmarkGapfillAggregateDecimal(b *testing.B) {
 			runBenchmarkAggregateGapfill(b, newTimeBucketAggregate, makeTimestampTestDatum(count))
 		})
 	}
+}
+
+func TestNormAggregate(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	testCases := []struct {
+		name     string
+		values   []tree.Datum
+		expected string
+	}{
+		{
+			name:     "ints",
+			values:   []tree.Datum{tree.NewDInt(3), tree.NewDInt(4), tree.NewDInt(0)},
+			expected: "5",
+		},
+		{
+			name:     "floats",
+			values:   []tree.Datum{tree.NewDFloat(3), tree.NewDFloat(4), tree.NewDFloat(0)},
+			expected: "5",
+		},
+		{
+			name: "decimals",
+			values: func() []tree.Datum {
+				vals := make([]tree.Datum, 3)
+				d1 := &tree.DDecimal{}
+				d1.SetInt64(3)
+				vals[0] = d1
+				d2 := &tree.DDecimal{}
+				d2.SetInt64(4)
+				vals[1] = d2
+				d3 := &tree.DDecimal{}
+				d3.SetInt64(0)
+				vals[2] = d3
+				return vals
+			}(),
+			expected: "5",
+		},
+		{
+			name:     "single",
+			values:   []tree.Datum{tree.NewDInt(5)},
+			expected: "5",
+		},
+		{
+			name:     "zeros",
+			values:   []tree.Datum{tree.NewDInt(0), tree.NewDInt(0), tree.NewDInt(0)},
+			expected: "0",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			evalCtx := tree.NewTestingEvalContext(cluster.MakeTestingClusterSettings())
+			defer evalCtx.Stop(context.Background())
+			agg := newDecimalNormAggregate([]*types.T{tc.values[0].ResolvedType()}, evalCtx, nil)
+			defer agg.Close(context.Background())
+			for _, v := range tc.values {
+				if err := agg.Add(context.Background(), v); err != nil {
+					t.Fatalf("add: %v", err)
+				}
+			}
+			res, err := agg.Result()
+			if err != nil || res == tree.DNull {
+				t.Fatalf("result err=%v res=%v", err, res)
+			}
+			if res.String() != tc.expected {
+				t.Fatalf("expected %s got %s", tc.expected, res.String())
+			}
+		})
+	}
+}
+
+func TestQuantileAggregate(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	testCases := []struct {
+		name     string
+		values   []tree.Datum
+		q        tree.Datum
+		expected string
+	}{
+		{
+			name:     "median ints",
+			values:   []tree.Datum{tree.NewDInt(1), tree.NewDInt(2), tree.NewDInt(3), tree.NewDInt(4), tree.NewDInt(5)},
+			q:        tree.NewDFloat(0.5),
+			expected: "3",
+		},
+		{
+			name:     "q1 ints",
+			values:   []tree.Datum{tree.NewDInt(1), tree.NewDInt(2), tree.NewDInt(3), tree.NewDInt(4), tree.NewDInt(5)},
+			q:        tree.NewDFloat(0.25),
+			expected: "2",
+		},
+		{
+			name:     "q3 ints",
+			values:   []tree.Datum{tree.NewDInt(1), tree.NewDInt(2), tree.NewDInt(3), tree.NewDInt(4), tree.NewDInt(5)},
+			q:        tree.NewDFloat(0.75),
+			expected: "4",
+		},
+		{
+			name:     "median floats",
+			values:   []tree.Datum{tree.NewDFloat(1), tree.NewDFloat(2), tree.NewDFloat(3), tree.NewDFloat(4), tree.NewDFloat(5)},
+			q:        tree.NewDFloat(0.5),
+			expected: "3",
+		},
+		{
+			name: "median decimals",
+			values: func() []tree.Datum {
+				arr := make([]tree.Datum, 5)
+				for i := 1; i <= 5; i++ {
+					d := &tree.DDecimal{}
+					d.SetInt64(int64(i))
+					arr[i-1] = d
+				}
+				return arr
+			}(),
+			q:        tree.NewDFloat(0.5),
+			expected: "3",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			evalCtx := tree.NewTestingEvalContext(cluster.MakeTestingClusterSettings())
+			defer evalCtx.Stop(context.Background())
+			agg := newQuantileAggregate([]*types.T{tc.values[0].ResolvedType()}, evalCtx, nil)
+			defer agg.Close(context.Background())
+			for _, v := range tc.values {
+				if err := agg.Add(context.Background(), v, tc.q); err != nil {
+					t.Fatalf("add: %v", err)
+				}
+			}
+			res, err := agg.Result()
+			if err != nil || res == tree.DNull {
+				t.Fatalf("result err=%v res=%v", err, res)
+			}
+			// Compare numerically to avoid string format differences like 3 vs 3.0
+			exp, _ := strconv.ParseFloat(tc.expected, 64)
+			got := datumToFloat(res)
+			if !floatsAlmostEqual(got, exp) {
+				t.Fatalf("expected %s got %s", tc.expected, res.String())
+			}
+		})
+	}
+}
+
+func TestVarSampAggregate(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	testCases := []struct {
+		name     string
+		values   []tree.Datum
+		newAgg   func([]*types.T, *tree.EvalContext, tree.Datums) tree.AggregateFunc
+		typ      *types.T
+		expected *string
+	}{
+		{
+			name:     "ints",
+			values:   []tree.Datum{tree.NewDInt(1), tree.NewDInt(2), tree.NewDInt(3), tree.NewDInt(4), tree.NewDInt(5)},
+			newAgg:   newIntVarianceAggregate,
+			typ:      types.Int,
+			expected: strPtr("2.5"),
+		},
+		{
+			name:     "floats",
+			values:   []tree.Datum{tree.NewDFloat(1), tree.NewDFloat(2), tree.NewDFloat(3), tree.NewDFloat(4), tree.NewDFloat(5)},
+			newAgg:   newFloatVarianceAggregate,
+			typ:      types.Float,
+			expected: strPtr("2.5"),
+		},
+		{
+			name: "decimals",
+			values: func() []tree.Datum {
+				arr := make([]tree.Datum, 5)
+				for i := 1; i <= 5; i++ {
+					d := &tree.DDecimal{}
+					d.SetInt64(int64(i))
+					arr[i-1] = d
+				}
+				return arr
+			}(),
+			newAgg:   newDecimalVarianceAggregate,
+			typ:      types.Decimal,
+			expected: strPtr("2.5"),
+		},
+		{
+			name:     "single -> NULL",
+			values:   []tree.Datum{tree.NewDInt(5)},
+			newAgg:   newIntVarianceAggregate,
+			typ:      types.Int,
+			expected: nil,
+		},
+		{
+			name:     "identical -> 0",
+			values:   []tree.Datum{tree.NewDInt(3), tree.NewDInt(3), tree.NewDInt(3)},
+			newAgg:   newIntVarianceAggregate,
+			typ:      types.Int,
+			expected: strPtr("0"),
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			evalCtx := tree.NewTestingEvalContext(cluster.MakeTestingClusterSettings())
+			defer evalCtx.Stop(context.Background())
+			agg := tc.newAgg([]*types.T{tc.typ}, evalCtx, nil)
+			defer agg.Close(context.Background())
+			for _, v := range tc.values {
+				if err := agg.Add(context.Background(), v); err != nil {
+					t.Fatalf("add: %v", err)
+				}
+			}
+			res, err := agg.Result()
+			if err != nil {
+				t.Fatalf("result: %v", err)
+			}
+			if tc.expected == nil {
+				if res != tree.DNull {
+					t.Fatalf("expected NULL got %v", res)
+				}
+				return
+			}
+			if res == tree.DNull {
+				t.Fatalf("expected %s got NULL", *tc.expected)
+			}
+			exp, _ := strconv.ParseFloat(*tc.expected, 64)
+			got := datumToFloat(res)
+			if !floatsAlmostEqual(got, exp) {
+				t.Fatalf("expected %s got %s", *tc.expected, res.String())
+			}
+		})
+	}
+}
+
+func TestVarPopAggregate(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	testCases := []struct {
+		name     string
+		values   []tree.Datum
+		newAgg   func([]*types.T, *tree.EvalContext, tree.Datums) tree.AggregateFunc
+		typ      *types.T
+		expected *string // nil means expect NULL
+	}{
+		{
+			name:     "ints",
+			values:   []tree.Datum{tree.NewDInt(1), tree.NewDInt(2), tree.NewDInt(3), tree.NewDInt(4), tree.NewDInt(5)},
+			newAgg:   newIntPopVarianceAggregate,
+			typ:      types.Int,
+			expected: strPtr("2"),
+		},
+		{
+			name:     "floats",
+			values:   []tree.Datum{tree.NewDFloat(1), tree.NewDFloat(2), tree.NewDFloat(3), tree.NewDFloat(4), tree.NewDFloat(5)},
+			newAgg:   newFloatPopVarianceAggregate,
+			typ:      types.Float,
+			expected: strPtr("2"),
+		},
+		{
+			name: "decimals",
+			values: func() []tree.Datum {
+				arr := make([]tree.Datum, 5)
+				for i := 1; i <= 5; i++ {
+					d := &tree.DDecimal{}
+					d.SetInt64(int64(i))
+					arr[i-1] = d
+				}
+				return arr
+			}(),
+			newAgg:   newDecimalPopVarianceAggregate,
+			typ:      types.Decimal,
+			expected: strPtr("2"),
+		},
+		{
+			name:     "single -> 0",
+			values:   []tree.Datum{tree.NewDInt(5)},
+			newAgg:   newIntPopVarianceAggregate,
+			typ:      types.Int,
+			expected: strPtr("0"),
+		},
+		{
+			name:     "empty -> NULL",
+			values:   []tree.Datum{},
+			newAgg:   newIntPopVarianceAggregate,
+			typ:      types.Int,
+			expected: nil,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			evalCtx := tree.NewTestingEvalContext(cluster.MakeTestingClusterSettings())
+			defer evalCtx.Stop(context.Background())
+			agg := tc.newAgg([]*types.T{tc.typ}, evalCtx, nil)
+			defer agg.Close(context.Background())
+			for _, v := range tc.values {
+				if err := agg.Add(context.Background(), v); err != nil {
+					t.Fatalf("add: %v", err)
+				}
+			}
+			res, err := agg.Result()
+			if err != nil {
+				t.Fatalf("result: %v", err)
+			}
+			if tc.expected == nil {
+				if res != tree.DNull {
+					t.Fatalf("expected NULL got %v", res)
+				}
+				return
+			}
+			if res == tree.DNull {
+				t.Fatalf("expected %s got NULL", *tc.expected)
+			}
+			exp, _ := strconv.ParseFloat(*tc.expected, 64)
+			got := datumToFloat(res)
+			if !floatsAlmostEqual(got, exp) {
+				t.Fatalf("expected %s got %s", *tc.expected, res.String())
+			}
+		})
+	}
+}
+
+func strPtr(s string) *string { return &s }
+
+// datumToFloat converts a Datum expected to represent a numeric value to float64 for comparison.
+func datumToFloat(d tree.Datum) float64 {
+	switch v := d.(type) {
+	case *tree.DInt:
+		return float64(int64(*v))
+	case *tree.DFloat:
+		return float64(*v)
+	case *tree.DDecimal:
+		f, _ := v.Decimal.Float64()
+		return f
+	default:
+		// Fallback to parsing string
+		f, _ := strconv.ParseFloat(d.String(), 64)
+		return f
+	}
+}
+
+// floatsAlmostEqual compares two float64 values with a small epsilon.
+func floatsAlmostEqual(a, b float64) bool {
+	if a == b {
+		return true
+	}
+	const eps = 1e-9
+	diff := a - b
+	if diff < 0 {
+		diff = -diff
+	}
+	return diff <= eps*(1+abs(a)+abs(b))
+}
+
+func abs(x float64) float64 {
+	if x < 0 {
+		return -x
+	}
+	return x
 }

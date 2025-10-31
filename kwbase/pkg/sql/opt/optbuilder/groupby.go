@@ -1029,10 +1029,14 @@ func (b *Builder) constructWindowFn(name string, args []opt.ScalarExpr) opt.Scal
 		return b.factory.ConstructRank()
 	case "row_number":
 		return b.factory.ConstructRowNumber()
+	case "group_row_number":
+		return b.factory.ConstructGroupRowNumber()
 	case "dense_rank":
 		return b.factory.ConstructDenseRank()
 	case "percent_rank":
 		return b.factory.ConstructPercentRank()
+	case "group_rank":
+		return b.factory.ConstructGroupRank()
 	case "cume_dist":
 		return b.factory.ConstructCumeDist()
 	case "ntile":
@@ -1100,8 +1104,10 @@ func (b *Builder) constructAggregate(name string, args []opt.ScalarExpr) opt.Sca
 		return b.factory.ConstructMatching(args[0], args[1], args[2], args[3], args[4])
 	case "sqrdiff":
 		return b.factory.ConstructSqrDiff(args[0])
-	case "variance":
+	case "variance", "var_samp":
 		return b.factory.ConstructVariance(args[0])
+	case "var_pop":
+		return b.factory.ConstructVarPop(args[0])
 	case "stddev", "stddev_samp":
 		return b.factory.ConstructStdDev(args[0])
 	case "time_bucket_gapfill_internal":
@@ -1124,6 +1130,10 @@ func (b *Builder) constructAggregate(name string, args []opt.ScalarExpr) opt.Sca
 		return b.factory.ConstructElapsed(args[0], args[1])
 	case "twa":
 		return b.factory.ConstructTwa(args[0], args[1])
+	case "quantile":
+		return b.factory.ConstructQuantile(args[0], args[1])
+	case "norm":
+		return b.factory.ConstructNorm(args[0])
 	}
 	panic(errors.AssertionFailedf("unhandled aggregate: %s", name))
 }

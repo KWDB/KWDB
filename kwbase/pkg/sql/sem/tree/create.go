@@ -1366,6 +1366,8 @@ type CreateTable struct {
 	PartitionInterval *TimeInput
 	Comment           string
 	HashNum           int64
+	// In CREATE ... LIKE queries, LikeTable as the origin table.
+	LikeTable TableName
 }
 
 // Retention including Resolution and KeepDuration

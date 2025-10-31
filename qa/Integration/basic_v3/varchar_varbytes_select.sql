@@ -490,3 +490,65 @@ SELECT avg(e2), code1 FROM test_SELECT_col.t1 WHERE e2 NOT IN(100000) GROUP BY c
 SELECT stddev(e2), code1 FROM test_SELECT_col.t1 WHERE e2 NOT IN(100000) GROUP BY code1 order by k_timestamp;
 SELECT variance(e2), code1 FROM test_SELECT_col.t1 WHERE e2 NOT IN(100000) GROUP BY code1 order by k_timestamp;
 drop database test_SELECT_col cascade;
+
+--create table like test
+CREATE TABLE test_table_original (
+    id INT PRIMARY KEY,
+    name VARCHAR(255)
+);
+
+CREATE TABLE test_table_like LIKE test_table_original;
+
+--test_table_original
+INSERT INTO test_table_original VALUES (1, 'Test');
+
+--test_table_original
+DESCRIBE test_table_original;
+
+--cleanup
+DROP TABLE test_table_original;
+DROP TABLE test_table_like;
+
+--test with constraints and indexes
+CREATE TABLE src_with_constraints (
+    id INT PRIMARY KEY,
+    name VARCHAR(255) UNIQUE,
+    age INT CHECK (age > 0)
+);
+CREATE TABLE dst_like_constraints LIKE src_with_constraints;
+DESCRIBE dst_like_constraints;
+--insert and verify
+INSERT INTO src_with_constraints VALUES (1, 'Alice', 30);
+
+--test with partitions
+--assuming basic support, otherwise comment out
+CREATE TABLE src_partitioned (
+    id INT PRIMARY KEY,
+    value INT
+) PARTITION BY RANGE (id) (
+    PARTITION p1 VALUES FROM (1) TO (10)
+);
+
+CREATE TABLE dst_like_partitioned LIKE src_partitioned;
+
+DESCRIBE dst_like_partitioned;
+
+--Edge case: LIKE on temporary table
+SET experimental_enable_temp_tables = 'on';
+CREATE TEMP TABLE temp_src (id INT);
+
+CREATE TABLE dst_like_temp LIKE temp_src;
+
+DESCRIBE dst_like_temp;
+
+--Edge case: LIKE on non-existent table (should error)
+--Expect error, but for testing purposes
+--CREATE TABLE dst_invalid LIKE non_existent_table;
+
+--Cleanup additional tables
+DROP TABLE src_with_constraints;
+DROP TABLE dst_like_constraints;
+DROP TABLE src_partitioned;
+DROP TABLE dst_like_partitioned;
+DROP TABLE temp_src;
+DROP TABLE dst_like_temp;

@@ -3482,7 +3482,7 @@ INSERT 10
        firstts(usage_nice),
        max(usage_user),
        max(usage_irq),
-       lastts(usage_user) as last_ts
+       lastts(usage_user)            as last_ts
 FROM test.cpu
 WHERE k_timestamp >= '2023-01-01 00:00:00'
   AND k_timestamp < '2024-01-01 00:00:00'
@@ -3610,7 +3610,7 @@ ORDER BY hostname, k_timestamp_b, last_ts;
   2023-05-31 10:00:08+00:00 | NULL      | NULL                      | NULL  | host_9   |       NULL | NULL
   2023-05-31 10:00:10+00:00 |        11 | 2023-05-31 10:00:10+00:00 |    65 | host_9   |         70 | 2023-05-31 10:00:10+00:00
 (40 rows)
-> SELECT time_bucket(k_timestamp, '2s') as k_timestamp_b,
+> SELECT time_bucket(k_timestamp, '2s') as k_timestamp_b, 
     first (usage_nice), min (usage_system), min (usage_softirq), last_row(usage_guest_nice), hostname,
     lastts(usage_user)            as last_ts
 FROM test.cpu
@@ -7821,3 +7821,144 @@ ORDER BY hostname, region, rack, k_timestamp_b, last_ts;
 (41 rows)
 > drop database test cascade;
 DROP DATABASE
+> CREATE TABLE test_data (
+    group_id INT,
+    value FLOAT
+);
+CREATE TABLE
+> INSERT INTO test_data VALUES 
+(1, 10.0),
+(1, 20.0),
+(1, 30.0),
+(2, 15.0),
+(2, 25.0);
+INSERT 5
+> SELECT norm(value) FROM test_data;  -- Placeholder, adjust based on actual function
+        norm
+---------------------
+  47.43416490252569
+(1 row)
+> SELECT group_id, value, group_rank() OVER (PARTITION BY group_id ORDER BY value) AS rank FROM test_data;
+  group_id | value | rank
+-----------+-------+-------
+         1 |    10 |    1
+         1 |    20 |    2
+         1 |    30 |    3
+         2 |    15 |    1
+         2 |    25 |    2
+(5 rows)
+> SELECT group_id, value, group_row_number() OVER (PARTITION BY group_id) AS row_num FROM test_data;
+  group_id | value | row_num
+-----------+-------+----------
+         1 |    10 |       1
+         1 |    20 |       2
+         1 |    30 |       3
+         2 |    15 |       1
+         2 |    25 |       2
+(5 rows)
+> SELECT var_samp(value) FROM test_data GROUP BY group_id ORDER BY group_id;
+  var_samp
+------------
+       100
+        50
+(2 rows)
+> SELECT var_pop(value) FROM test_data GROUP BY group_id ORDER BY group_id;
+       var_pop
+---------------------
+  66.66666666666667
+                 25
+(2 rows)
+> SELECT quantile(value, 0.5) FROM test_data GROUP BY group_id ORDER BY group_id;
+  quantile
+------------
+        20
+        20
+(2 rows)
+> DROP TABLE test_data;
+DROP TABLE
+> SELECT norm(value) FROM (SELECT UNNEST(ARRAY[1.0, 2.0, 3.0]) AS value); -- Positive values
+          norm
+-------------------------
+  3.7416573867739413856
+(1 row)
+> SELECT norm(value) FROM (SELECT UNNEST(ARRAY[-1.0, -2.0, -3.0]) AS value); -- Negative values
+          norm
+-------------------------
+  3.7416573867739413856
+(1 row)
+> SELECT norm(value) FROM (SELECT UNNEST(ARRAY[]) AS value); -- Empty set, expect NULL
+ERROR: unnest(): cannot determine type of empty array. Consider annotating with the desired type, for example ARRAY[]:::int[]
+SQLSTATE: 42P18
+> SELECT norm(5.0); -- Single value
+  norm
+--------
+     5
+(1 row)
+> SELECT group_id, value, group_rank() OVER (PARTITION BY group_id ORDER BY value) FROM test_data; -- Existing
+ERROR: relation "test_data" does not exist
+SQLSTATE: 42P01
+> SELECT group_id, value, group_rank() OVER (PARTITION BY group_id ORDER BY value DESC) FROM test_data; -- Descending
+ERROR: relation "test_data" does not exist
+SQLSTATE: 42P01
+> INSERT INTO test_data VALUES (1, 20.0), (2, 15.0);
+ERROR: relation "test_data" does not exist
+SQLSTATE: 42P01
+> SELECT group_id, value, group_rank() OVER (PARTITION BY group_id ORDER BY value) FROM test_data; -- With ties
+ERROR: relation "test_data" does not exist
+SQLSTATE: 42P01
+> SELECT group_id, value, group_row_number() OVER (PARTITION BY group_id) FROM test_data; -- Existing
+ERROR: relation "test_data" does not exist
+SQLSTATE: 42P01
+> SELECT group_id, value, group_row_number() OVER (PARTITION BY group_id ORDER BY value) FROM test_data; -- With order
+ERROR: relation "test_data" does not exist
+SQLSTATE: 42P01
+> SELECT var_samp(value) FROM test_data GROUP BY group_id; -- Existing
+ERROR: relation "test_data" does not exist
+SQLSTATE: 42P01
+> SELECT var_samp(value) FROM (SELECT UNNEST(ARRAY[1.0]) AS value) GROUP BY value; -- Single element, expect NULL
+  var_samp
+------------
+  NULL
+(1 row)
+> SELECT var_samp(value) FROM (SELECT UNNEST(ARRAY[]) AS value); -- Empty, expect NULL
+ERROR: unnest(): cannot determine type of empty array. Consider annotating with the desired type, for example ARRAY[]:::int[]
+SQLSTATE: 42P18
+> SELECT var_samp(value) FROM (SELECT UNNEST(ARRAY[5.0, 5.0, 5.0]) AS value); -- Identical values
+  var_samp
+------------
+         0
+(1 row)
+> SELECT var_pop(value) FROM test_data GROUP BY group_id; -- Existing
+ERROR: relation "test_data" does not exist
+SQLSTATE: 42P01
+> SELECT var_pop(value) FROM (SELECT UNNEST(ARRAY[1.0]) AS value) GROUP BY value; -- Single, expect 0
+  var_pop
+-----------
+        0
+(1 row)
+> SELECT var_pop(value) FROM (SELECT UNNEST(ARRAY[]) AS value); -- Empty, expect NULL
+ERROR: unnest(): cannot determine type of empty array. Consider annotating with the desired type, for example ARRAY[]:::int[]
+SQLSTATE: 42P18
+> SELECT quantile(value, 0.0) FROM test_data GROUP BY group_id; -- Min
+ERROR: relation "test_data" does not exist
+SQLSTATE: 42P01
+> SELECT quantile(value, 1.0) FROM test_data GROUP BY group_id; -- Max
+ERROR: relation "test_data" does not exist
+SQLSTATE: 42P01
+> SELECT quantile(value, 0.25) FROM test_data GROUP BY group_id; -- Lower quartile
+ERROR: relation "test_data" does not exist
+SQLSTATE: 42P01
+> SELECT quantile(value, 0.5) FROM (SELECT UNNEST(ARRAY[]) AS value) GROUP BY value; -- Empty, expect NULL
+ERROR: unnest(): cannot determine type of empty array. Consider annotating with the desired type, for example ARRAY[]:::int[]
+SQLSTATE: 42P18
+> SELECT quantile(5.0, 0.5); -- Single value
+  quantile
+------------
+         5
+(1 row)
+> DELETE FROM test_data WHERE value = 20.0 AND group_id = 1;
+ERROR: relation "test_data" does not exist
+SQLSTATE: 42P01
+> DELETE FROM test_data WHERE value = 15.0 AND group_id = 2;
+ERROR: relation "test_data" does not exist
+SQLSTATE: 42P01

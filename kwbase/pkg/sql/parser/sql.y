@@ -718,7 +718,7 @@ func (u *sqlSymUnion) triggerBody() tree.TriggerBody {
 %token <str> CURRENT_USER CYCLE COLLECT_SORTED_HISTOGRAM
 
 %token <str> D DATA DATABASE DATABASES DATAS DATE DAY DDLREPLAY DEC DECLARE DECIMAL DEFAULT DELIMITER_EOF
-%token <str> DEALLOCATE DEFERRABLE DEFERRED DELETE DESC DEVICE
+%token <str> DEALLOCATE DEFERRABLE DEFERRED DELETE DESC DESCRIBE DEVICE
 %token <str> DICT DISCARD DISTINCT DO DOMAIN DOUBLE DROP DISABLE
 
 %token <str> EACH ELSIF ENDIF ENDWHILE ENDCASE ENDLOOP ENDHANDLER
@@ -777,12 +777,13 @@ func (u *sqlSymUnion) triggerBody() tree.TriggerBody {
 %token <str> SERIAL SERIAL2 SERIAL4 SERIAL8
 %token <str> SERIALIZABLE SERVER SERVICE SESSION SESSIONS SESSION_USER SET SETTING SETTINGS
 %token <str> SHARE SHOW SIMILAR SIMPLE SKIP SLIDING SMALLINT SMALLSERIAL SNAPSHOT SOME SPLIT SQL
+%token <str> STR_TO_DATE
 
 %token <str> START STARTTIME STATISTICS STATUS STDIN STREAM STREAMS STRICT STRING STORE STORED STORING SUBSTRING SUCCESS
 %token <str> SYMMETRIC SYNTAX SYSTEM SUBSCRIPTION
 
 %token <str> TABLE TABLES TAG TAGS TAG_TABLE TAG_ONLY TEMP TEMPLATE TEMPORARY TESTING_RELOCATE EXPERIMENTAL_RELOCATE TEXT THEN
-%token <str> TIES TIME TIMETZ TIMESTAMP TIMESTAMPTZ TINYINT TO THROTTLING TRAILING TRACE TRANSACTION TREAT TRIGGER TRIGGERS TRIM TRUE
+%token <str> TIES TIME TIMETZ TIMESTAMP TIMESTAMPTZ TO_TIME TIME_TO_SEC TINYINT TO THROTTLING TRAILING TRACE TRANSACTION TREAT TRIGGER TRIGGERS TRIM TRUE
 %token <str> TRUNCATE TRUSTED TYPE
 %token <str> TRACING TS
 
@@ -916,6 +917,7 @@ func (u *sqlSymUnion) triggerBody() tree.TriggerBody {
 %type <tree.Statement> create_stream_stmt
 %type <tree.Statement> create_table_stmt
 %type <tree.Statement> create_table_as_stmt
+%type <tree.Statement> create_table_like_stmt
 //%type <tree.Statement> create_super_table_stmt
 //%type <tree.Statement> create_child_table_stmt
 %type <tree.Statement> create_ts_table_stmt
@@ -933,6 +935,7 @@ func (u *sqlSymUnion) triggerBody() tree.TriggerBody {
 
 %type <tree.Statement> create_type_stmt
 %type <tree.Statement> delete_stmt
+%type <tree.Statement> describe_stmt
 %type <tree.Statement> discard_stmt
 %type <tree.Statement> drop_stmt
 %type <tree.Statement> drop_ddl_stmt
@@ -2742,6 +2745,7 @@ create_ddl_stmt:
 | create_table_stmt    // EXTEND WITH HELP: CREATE TABLE
 | create_table_as_stmt // EXTEND WITH HELP: CREATE TABLE
 | create_ts_table_stmt // EXTEND WITH HELP: CREATE TABLE
+| create_table_like_stmt // EXTEND WITH HELP: CREATE TABLE
 // Error case for both CREATE TABLE and CREATE TABLE ... AS in one
 | CREATE opt_temp_create_table TABLE error   // SHOW HELP: CREATE TABLE
 | create_type_stmt     { /* SKIP DOC */ }
@@ -3480,6 +3484,7 @@ preparable_stmt:
 | cancel_stmt       // help texts in sub-rule
 | create_stmt       // help texts in sub-rule
 | delete_stmt       // EXTEND WITH HELP: DELETE
+| describe_stmt     // EXTEND WITH HELP: DESCRIBE
 | drop_stmt         // help texts in sub-rule
 | explain_stmt      // EXTEND WITH HELP: EXPLAIN
 | import_stmt       // EXTEND WITH HELP: IMPORT
@@ -3510,6 +3515,7 @@ preparable_stmt:
 // syntax with brackets. These are a subset of preparable_stmt.
 row_source_extension_stmt:
   delete_stmt       // EXTEND WITH HELP: DELETE
+| describe_stmt     // EXTEND WITH HELP: DESCRIBE
 | explain_stmt      // EXTEND WITH HELP: EXPLAIN
 | insert_stmt       // EXTEND WITH HELP: INSERT
 | select_stmt       // help texts in sub-rule
@@ -4103,6 +4109,16 @@ zone_value:
 | LOCAL
   {
     $$.val = tree.NewStrVal($1)
+  }
+
+// %Help: DESCRIBE - list columns in relation
+// %Category: DDL
+// %Text: DESCRIBE <tablename>
+// %SeeAlso: SHOW COLUMNS
+describe_stmt:
+  DESCRIBE table_name
+  {
+    $$.val = &tree.ShowColumns{Table: $2.unresolvedObjectName(), WithComment: false}
   }
 
 // %Help: SHOW
@@ -5782,6 +5798,37 @@ create_table_as_stmt:
       Temporary: $2.persistenceType(),
       TableType: tree.RelationalTable,
       Comment: $14,
+    }
+  }
+
+create_table_like_stmt:
+  CREATE opt_temp_create_table TABLE table_name LIKE table_name opt_create_table_on_commit opt_comment_clause
+  {
+    new_name := $4.unresolvedObjectName().ToTableName()
+    origin_name := $6.unresolvedObjectName().ToTableName()
+    $$.val = &tree.CreateTable{
+      Table:       new_name,
+      IfNotExists: false,
+      Temporary:   $2.persistenceType(),
+      OnCommit:    $7.createTableOnCommitSetting(),
+      Comment:     $8,
+      // The key change: Populate the new LikeTable field instead of Defs
+      LikeTable:   origin_name,
+      Defs: nil,
+    }
+  }
+| CREATE opt_temp_create_table TABLE IF NOT EXISTS table_name LIKE table_name opt_create_table_on_commit opt_comment_clause
+  {
+    new_name := $7.unresolvedObjectName().ToTableName()
+    origin_name := $9.unresolvedObjectName().ToTableName()
+    $$.val = &tree.CreateTable{
+      Table: new_name,
+      IfNotExists: true,
+      Temporary: $2.persistenceType(),
+      OnCommit: $10.createTableOnCommitSetting(),
+      // The key change: Populate the new LikeTable field instead of Defs
+      LikeTable: origin_name,
+      Defs: nil,
     }
   }
 
@@ -11886,6 +11933,16 @@ special_function:
     $$.val = &tree.FuncExpr{Func: tree.WrapFunction($1), Exprs: tree.Exprs{$3.expr()}}
   }
 | LAST_ROW_TS '(' error { return helpWithFunctionByName(sqllex, $1) }
+| TO_TIME '(' a_expr ')'
+  {
+    $$.val = &tree.FuncExpr{Func: tree.WrapFunction("time"), Exprs: tree.Exprs{$3.expr()}}
+  }
+| TO_TIME '(' error { return helpWithFunctionByName(sqllex, "time")}
+| TIME_TO_SEC '(' a_expr ')'
+  {
+    $$.val = &tree.FuncExpr{Func: tree.WrapFunction($1), Exprs: tree.Exprs{$3.expr()}}
+  }
+| TIME_TO_SEC '(' error { return helpWithFunctionByName(sqllex, $1)}
 | FIRST '(' last_column ')'
   {
     $$.val = &tree.FuncExpr{Func: tree.WrapFunction($1), Exprs: tree.Exprs{$3.expr()}}
@@ -11906,6 +11963,11 @@ special_function:
     $$.val = &tree.FuncExpr{Func: tree.WrapFunction($1), Exprs: tree.Exprs{$3.expr()}}
   }
 | FIRST_ROW_TS '(' error { return helpWithFunctionByName(sqllex, $1) }
+| STR_TO_DATE '(' a_expr ',' a_expr ')'
+  {
+    $$.val = &tree.FuncExpr{Func: tree.WrapFunction($1), Exprs: tree.Exprs{$3.expr(), $5.expr()}}
+  }
+| STR_TO_DATE '(' error { return helpWithFunctionByName(sqllex, $1)}
 
 last_column:
 column_path_with_star
@@ -13113,6 +13175,7 @@ unreserved_keyword:
 | DEALLOCATE
 | DECLARE
 | DELETE
+| DESCRIBE
 | DEVICE
 | DEFERRED
 | DICT

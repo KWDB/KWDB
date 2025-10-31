@@ -893,7 +893,23 @@ define Variance {
 }
 
 [Scalar, Aggregate]
+define VarPop {
+    Input ScalarExpr
+}
+
+[Scalar, Aggregate]
+define Quantile {
+    Input    ScalarExpr
+    Quantile ScalarExpr
+}
+
+[Scalar, Aggregate]
 define StdDev {
+    Input ScalarExpr
+}
+
+[Scalar, Aggregate]
+define Norm {
     Input ScalarExpr
 }
 
@@ -1069,9 +1085,18 @@ define Rank {
 define RowNumber {
 }
 
+[Scalar, Int, Window]
+define GroupRowNumber {
+}
+
 # DenseRank is like Rank, but without gaps. Instead of 1, 1, 3, it gives 1, 1, 2.
 [Scalar, Int, Window]
 define DenseRank {
+}
+
+# GroupRank alias by Rank.
+[Scalar, Int, Window]
+define GroupRank {
 }
 
 # PercentRank is (rank - 1) / (total rows - 1).

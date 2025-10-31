@@ -2284,3 +2284,109 @@ CREATE VIEW v46981_0(c0) AS SELECT count_rows() FROM t46981_0
 
 statement error parsing regexp: missing argument to repetition operator: `\+`
 SELECT * FROM v46981_0 WHERE '' !~ '+'
+
+# -- Extra aggregate and window tests --
+
+statement ok
+SET DATABASE = test
+
+# Prepare data
+statement ok
+CREATE TABLE agg_t(x INT, y INT)
+
+statement ok
+INSERT INTO agg_t SELECT generate_series(1,10), generate_series(11,20)
+
+# NORM()
+query T
+SELECT round(norm(x), 6)::STRING FROM agg_t
+----
+19.621417
+
+# norm over empty -> NULL
+query N
+SELECT norm(x) FROM (SELECT 1 as x WHERE false)
+----
+NULL
+
+# QUANTILE()
+query T
+SELECT quantile(x, 0.5)::STRING FROM agg_t
+----
+5.5
+
+# invalid quantile -> error
+statement error unknown signature
+SELECT quantile(x) FROM agg_t
+
+statement error unknown signature
+SELECT quantile(x, 'a') FROM agg_t
+
+# VAR_POP and VAR_SAMP
+query TT
+SELECT round(var_pop(x)::FLOAT, 6)::STRING, round(var_samp(x), 6)::STRING FROM agg_t
+----
+8.25 9.166667
+
+# empty input -> NULL
+query NN
+SELECT var_pop(x), var_samp(x) FROM (SELECT 1 as x WHERE false)
+----
+NULL NULL
+
+# Single value: var_pop=0, var_samp=NULL
+query TN
+SELECT var_pop(x), var_samp(x) FROM (VALUES (1)) AS t(x)
+----
+0 NULL
+
+# Window functions: GROUP_RANK() and GROUP_ROW_NUMBER()
+statement ok
+CREATE TABLE wf_t(g INT, v INT)
+
+statement ok
+INSERT INTO wf_t VALUES (1,10),(1,20),(1,20),(2,5),(2,5),(2,7)
+
+# group_row_number is alias of row_number
+query III
+SELECT g, v, group_row_number() OVER (PARTITION BY g ORDER BY v) FROM wf_t ORDER BY g, v, 3
+----
+ 1 10 1
+ 1 20 2
+ 1 20 3
+ 2 5  1
+ 2 5  2
+ 2 7  3
+
+# group_rank is alias of rank
+query III
+SELECT g, v, group_rank() OVER (PARTITION BY g ORDER BY v) FROM wf_t ORDER BY g, v, 3
+----
+ 1 10 1
+ 1 20 2
+ 1 20 2
+ 2 5  1
+ 2 5  1
+ 2 7  3
+
+# Large data test for aggregates
+statement ok
+CREATE TABLE big_t(v INT)
+
+statement ok
+INSERT INTO big_t SELECT generate_series(1,1000)
+
+query T
+SELECT quantile(v::FLOAT, 0.5::FLOAT)::STRING FROM big_t
+----
+ 500.5
+
+query T
+SELECT round(var_pop(v)::FLOAT, 2)::STRING FROM big_t
+----
+ 83333.25
+
+query T
+SELECT round(var_samp(v), 2)::STRING FROM big_t
+----
+ 83416.67

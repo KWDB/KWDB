@@ -151,3 +151,23 @@ select date_trunc('month', 432048203942.);
 select date_trunc('month', 0xC9023472524AFE);
 
 drop database t1 cascade;
+
+SELECT to_time('12:34:56') AS time_result;
+SELECT to_time(0) AS midnight;
+SELECT to_time(86399999) AS almost_midnight;
+SELECT to_time(-1000) AS negative;
+SELECT to_time(86400000) AS exactly_24h;
+
+SELECT time_to_sec('12:34:56') AS sec_result;
+SELECT time_to_sec('00:00:00') AS zero_sec;
+SELECT time_to_sec('23:59:59') AS max_sec;
+SELECT time_to_sec('invalid') AS invalid_input;
+SELECT time_to_sec(NULL) AS null_input;
+
+SELECT str_to_date('2025-09-18', '%Y-%m-%d') AS date_result;
+SELECT str_to_date('2023-02-29', '%Y-%m-%d') AS leap_year_invalid;
+SELECT str_to_date('2024-02-29', '%Y-%m-%d') AS leap_year_valid;
+SELECT str_to_date('12:34:56', '%H:%M:%S') AS time_only;
+SELECT str_to_date('abc', '%Y-%m-%d') AS invalid_format;
+SELECT str_to_date(NULL, '%Y-%m-%d') AS null_str;
+SELECT str_to_date('2023-12-25', NULL) AS null_format;

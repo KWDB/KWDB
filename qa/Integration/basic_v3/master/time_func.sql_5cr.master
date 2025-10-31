@@ -699,3 +699,80 @@ ERROR: unknown signature: date_trunc(STRING, INT8)
 SQLSTATE: 42883
 > drop database t1 cascade;
 DROP DATABASE
+> SELECT to_time('12:34:56') AS time_result;
+            time_result
+------------------------------------
+  0000-01-01 12:34:55.999999+00:00
+(1 row)
+> SELECT to_time(0) AS midnight;
+          midnight
+-----------------------------
+  0000-01-01 00:00:00+00:00
+(1 row)
+> SELECT to_time(86399999) AS almost_midnight;
+ERROR: to_time(): invalid input syntax for type time: 86399999
+SQLSTATE: 22007
+> SELECT to_time(-1000) AS negative;
+ERROR: to_time(): invalid input syntax for type time: -1000
+SQLSTATE: 22007
+> SELECT to_time(86400000) AS exactly_24h;
+ERROR: to_time(): invalid input syntax for type time: 86400000
+SQLSTATE: 22007
+> SELECT time_to_sec('12:34:56') AS sec_result;
+  sec_result
+--------------
+       45296
+(1 row)
+> SELECT time_to_sec('00:00:00') AS zero_sec;
+  zero_sec
+------------
+         0
+(1 row)
+> SELECT time_to_sec('23:59:59') AS max_sec;
+  max_sec
+-----------
+    86399
+(1 row)
+> SELECT time_to_sec('invalid') AS invalid_input;
+ERROR: time_to_sec(): parsing as type timestamp: could not parse "invalid"
+SQLSTATE: 22007
+> SELECT time_to_sec(NULL) AS null_input;
+  null_input
+--------------
+  NULL
+(1 row)
+> SELECT str_to_date('2025-09-18', '%Y-%m-%d') AS date_result;
+         date_result
+-----------------------------
+  2025-09-18 00:00:00+00:00
+(1 row)
+> SELECT str_to_date('2023-02-29', '%Y-%m-%d') AS leap_year_invalid;
+  leap_year_invalid
+---------------------
+  NULL
+(1 row)
+> SELECT str_to_date('2024-02-29', '%Y-%m-%d') AS leap_year_valid;
+       leap_year_valid
+-----------------------------
+  2024-02-29 00:00:00+00:00
+(1 row)
+> SELECT str_to_date('12:34:56', '%H:%M:%S') AS time_only;
+          time_only
+-----------------------------
+  1899-12-31 12:34:56+00:00
+(1 row)
+> SELECT str_to_date('abc', '%Y-%m-%d') AS invalid_format;
+  invalid_format
+------------------
+  NULL
+(1 row)
+> SELECT str_to_date(NULL, '%Y-%m-%d') AS null_str;
+  null_str
+------------
+  NULL
+(1 row)
+> SELECT str_to_date('2023-12-25', NULL) AS null_format;
+  null_format
+---------------
+  NULL
+(1 row)

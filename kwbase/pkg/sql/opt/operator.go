@@ -250,6 +250,7 @@ var AggregateOpReverseMap = map[Operator]string{
 	SumOp:               "sum",
 	SqrDiffOp:           "sqrdiff",
 	VarianceOp:          "variance",
+	VarPopOp:            "var_pop",
 	StdDevOp:            "stddev",
 	XorAggOp:            "xor_agg",
 	JsonAggOp:           "json_agg",
@@ -264,23 +265,27 @@ var AggregateOpReverseMap = map[Operator]string{
 	TwaOp:               "twa",
 	MinExtendOp:         "min_extend",
 	MaxExtendOp:         "max_extend",
+	QuantileOp:          "quantile",
+	NormOp:              "norm",
 }
 
 // WindowOpReverseMap maps from an optimizer operator type to the name of a
 // window function.
 var WindowOpReverseMap = map[Operator]string{
-	RankOp:        "rank",
-	RowNumberOp:   "row_number",
-	DenseRankOp:   "dense_rank",
-	PercentRankOp: "percent_rank",
-	CumeDistOp:    "cume_dist",
-	NtileOp:       "ntile",
-	LagOp:         "lag",
-	LeadOp:        "lead",
-	FirstValueOp:  "first_value",
-	LastValueOp:   "last_value",
-	NthValueOp:    "nth_value",
-	DiffOp:        "diff",
+	RankOp:           "rank",
+	RowNumberOp:      "row_number",
+	GroupRowNumberOp: "group_row_number",
+	DenseRankOp:      "dense_rank",
+	PercentRankOp:    "percent_rank",
+	GroupRankOp:      "group_rank",
+	CumeDistOp:       "cume_dist",
+	NtileOp:          "ntile",
+	LagOp:            "lag",
+	LeadOp:           "lead",
+	FirstValueOp:     "first_value",
+	LastValueOp:      "last_value",
+	NthValueOp:       "nth_value",
+	DiffOp:           "diff",
 }
 
 // NegateOpMap maps from a comparison operator type to its negated operator
@@ -344,7 +349,7 @@ func AggregateIgnoresNulls(op Operator) bool {
 	case AnyNotNullAggOp, AvgOp, BitAndAggOp, BitOrAggOp, BoolAndOp, BoolOrOp,
 		ConstNotNullAggOp, CorrOp, CountOp, ElapsedOp, FirstOp, FirstTimeStampOp, FirstRowOp, FirstRowTimeStampOp,
 		LastRowTimeStampOp, LastOp, LastTimeStampOp, LastRowOp, MatchingOp, MaxOp, MaxExtendOp, MinOp, MinExtendOp,
-		SqrDiffOp, StdDevOp, StringAggOp, SumOp, SumIntOp, TimeBucketGapfillOp, TwaOp, ImputationOp, VarianceOp, XorAggOp:
+		SqrDiffOp, StdDevOp, StringAggOp, SumOp, SumIntOp, TimeBucketGapfillOp, TwaOp, ImputationOp, VarianceOp, VarPopOp, XorAggOp, QuantileOp, NormOp:
 		return true
 
 	case ArrayAggOp, ConcatAggOp, ConstAggOp, CountRowsOp, FirstAggOp, JsonAggOp,
@@ -366,7 +371,7 @@ func AggregateIsNullOnEmpty(op Operator) bool {
 		ConcatAggOp, ConstAggOp, ConstNotNullAggOp, CorrOp, ElapsedOp, FirstAggOp, JsonAggOp, JsonbAggOp,
 		MaxOp, MaxExtendOp, MatchingOp, MinOp, MinExtendOp, FirstOp, FirstTimeStampOp, FirstRowOp, FirstRowTimeStampOp,
 		LastRowTimeStampOp, LastOp, LastTimeStampOp, LastRowOp, SqrDiffOp, StdDevOp, StringAggOp,
-		SumOp, SumIntOp, TimeBucketGapfillOp, TwaOp, ImputationOp, VarianceOp, XorAggOp:
+		SumOp, SumIntOp, TimeBucketGapfillOp, TwaOp, ImputationOp, VarianceOp, VarPopOp, XorAggOp, QuantileOp, NormOp:
 		return true
 
 	case CountOp, CountRowsOp:
@@ -393,7 +398,7 @@ func AggregateIsNeverNullOnNonNullInput(op Operator) bool {
 		JsonAggOp, JsonbAggOp, MaxOp, MatchingOp, MinOp,
 		FirstOp, FirstTimeStampOp, FirstRowOp, FirstRowTimeStampOp,
 		LastRowTimeStampOp, LastOp, LastTimeStampOp, LastRowOp, SqrDiffOp,
-		StringAggOp, SumOp, SumIntOp, TimeBucketGapfillOp, ImputationOp, XorAggOp, ElapsedOp, TwaOp, MaxExtendOp, MinExtendOp:
+		StringAggOp, SumOp, SumIntOp, TimeBucketGapfillOp, ImputationOp, XorAggOp, ElapsedOp, TwaOp, MaxExtendOp, MinExtendOp, VarPopOp, QuantileOp, NormOp:
 		return true
 
 	case VarianceOp, StdDevOp, CorrOp:
