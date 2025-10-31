@@ -131,9 +131,9 @@ int TagTable::open(ErrorInfo &err_info) {
 
   for (const auto version : all_versions) {
     TagVersionObject* tag_version_obj = m_version_mgr_->GetVersionObject(version);
-    if (nullptr == tag_version_obj) {
-      LOG_ERROR("GetVersionObject not found. table_version: %u ", version);
-      return -1;
+    if (nullptr == tag_version_obj || !tag_version_obj->isValid()) {
+      // tag version is invalid
+      continue;
     }
     TagPartitionTable* tag_part_table = m_partition_mgr_->GetPartitionTable(tag_version_obj->metaData()->m_real_used_version_);
     if (tag_part_table == nullptr) {
@@ -142,15 +142,16 @@ int TagTable::open(ErrorInfo &err_info) {
     }
     for (auto ntag_index : tag_part_table->getMmapNTagHashIndex()) {
       for (const auto index_version : all_versions) {
-        TagVersionObject* index_tag_version_obj = m_version_mgr_->GetVersionObject(version);
-        if (nullptr == index_tag_version_obj) {
-          LOG_ERROR("GetVersionObject not found. table_version: %u ", version);
-          return -1;
+        TagVersionObject* index_tag_version_obj = m_version_mgr_->GetVersionObject(index_version);
+        if (nullptr == index_tag_version_obj || !index_tag_version_obj->isValid()) {
+          // tag version is invalid
+          continue;
         }
         TagPartitionTable* index_tag_part_table = m_partition_mgr_->GetPartitionTable(
                 index_tag_version_obj->metaData()->m_real_used_version_);
         if (index_tag_part_table == nullptr) {
-          LOG_ERROR("GetPartitionTable not found. table_version: %u ", version);
+          LOG_ERROR("GetPartitionTable not found. table_id:%u, table_version: %u ", m_table_id,
+                    index_tag_version_obj->metaData()->m_real_used_version_);
           return -1;
         }
         if (std::find(index_tag_part_table->getMmapNTagHashIndex().begin(),
