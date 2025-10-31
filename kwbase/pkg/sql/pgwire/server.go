@@ -494,6 +494,11 @@ func (s *Server) TestingEnableConnAuthLogging() {
 	atomic.StoreInt32(&s.testingLogEnabled, 1)
 }
 
+// GetConnMonitor return server.connMonitor
+func (s *Server) GetConnMonitor() *mon.BytesMonitor {
+	return &s.connMonitor
+}
+
 // ServeConn serves a single connection, driving the handshake process and
 // delegating to the appropriate connection type.
 //

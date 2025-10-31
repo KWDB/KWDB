@@ -471,6 +471,51 @@ type ConnectionHandler struct {
 	ex *connExecutor
 }
 
+// RestfulRes is used for restful apt to get result
+type RestfulRes struct {
+	Rows         []tree.Datums
+	RowsAffected int
+	Cols         sqlbase.ResultColumns
+	Err          error
+}
+
+// NewConnectionHandler create a new connectionHandler for restful api
+func (s *Server) NewConnectionHandler(
+	ctx context.Context, user string,
+) (ConnectionHandler, chan []RestfulRes, error) {
+	args := SessionArgs{User: user}
+	stmtBuf := NewStmtBuf()
+
+	resCh := make(chan []RestfulRes)
+	syncCallback := func(results []resWithPos) {
+		RestRes := make([]RestfulRes, len(results)-1)
+		for i, res := range results {
+			if i == len(results)-1 {
+				break
+			}
+			if res.err != nil {
+				RestRes[i] = RestfulRes{Err: res.err}
+				continue
+			}
+			RestRes[i] = RestfulRes{Rows: res.rows, RowsAffected: res.RowsAffected(), Cols: res.cols, Err: res.Err()}
+		}
+		resCh <- RestRes
+	}
+	clientComm := &internalClientComm{
+		sync: syncCallback,
+		// init lastDelivered below the position of the first result (0).
+		lastDelivered: -1,
+	}
+	memMetrics := MakeMemMetrics("sql", s.cfg.HistogramWindowInterval)
+
+	conn, err := s.SetupConn(ctx, args, stmtBuf, clientComm, memMetrics)
+	conn.ex.sessionData.DataConversion.ExtraFloatDigits = 2
+	if err != nil {
+		return ConnectionHandler{}, resCh, err
+	}
+	return conn, resCh, nil
+}
+
 // GetClientEncoding is the func that get client_encoding session
 func (h ConnectionHandler) GetClientEncoding() string {
 	if h.ex == nil {
@@ -555,6 +600,21 @@ func (h ConnectionHandler) GetTsZone() time.Time {
 	return h.ex.state.sqlTimestamp.In(h.ex.sessionData.DataConversion.Location)
 }
 
+// SetTimeZone set conn time zone from the given value.
+func (h ConnectionHandler) SetTimeZone(location *time.Location) {
+	if h.ex.dataMutator != nil {
+		h.ex.dataMutator.data.DataConversion.Location = location
+	}
+}
+
+// GetTimeZone get conn time zone from the given value.
+func (h ConnectionHandler) GetTimeZone() *time.Location {
+	if h.ex.dataMutator != nil {
+		return h.ex.dataMutator.data.DataConversion.Location
+	}
+	return nil
+}
+
 // GetPreparedStatement get PreparedStatement
 func (h ConnectionHandler) GetPreparedStatement(
 	PreparedStatementName string,
@@ -604,6 +664,35 @@ func (h ConnectionHandler) GetDBName() string {
 		return h.ex.sessionData.Database
 	}
 	return ""
+}
+
+// SetDBName is the method to set Database
+func (h ConnectionHandler) SetDBName(dbName string) {
+	if h.ex.sessionData != nil {
+		h.ex.sessionData.Database = dbName
+	}
+}
+
+// NewStmt set a new stmt to connExecutor
+func (h ConnectionHandler) NewStmt() {
+	h.ex.stmtBuf = NewStmtBuf()
+}
+
+// PushStmt push stmt to connExecutor
+func (h ConnectionHandler) PushStmt(ctx context.Context, cmd Command) error {
+	if h.ex.stmtBuf != nil {
+		return h.ex.stmtBuf.Push(ctx, cmd)
+	}
+	return errors.New("stmtBuf is nil")
+}
+
+// CloseStmt connExecutor statement buffer
+func (h ConnectionHandler) CloseStmt() error {
+	if h.ex.stmtBuf != nil {
+		h.ex.stmtBuf.Close()
+		return nil
+	}
+	return errors.New("stmtBuf is nil")
 }
 
 // ServeConn serves a client connection by reading commands from the stmtBuf
@@ -1527,6 +1616,118 @@ func (ex *connExecutor) run(
 			return err
 		}
 	}
+}
+
+// ExecRestfulStmt is used for restful to execute sql statement
+func (h ConnectionHandler) ExecRestfulStmt(ctx context.Context) (RestfulRes, error) {
+	ex := h.ex
+	ex.activate(ctx, ex.server.pool, mon.BoundAccount{})
+	var restRes RestfulRes
+	cmd, pos, err := ex.stmtBuf.CurCmd()
+	if err != nil {
+		return restRes, err // err could be io.EOF
+	}
+
+	var res ResultBase
+	var ev fsm.Event
+	var payload fsm.EventPayload
+	switch tcmd := cmd.(type) {
+	case ExecStmt:
+		if tcmd.AST == nil {
+			return restRes, errors.New("wrong input stmt")
+		}
+		ex.curStmt = tcmd.AST
+
+		stmtRes := ex.clientComm.CreateStatementResult(
+			tcmd.AST,
+			NeedRowDesc,
+			pos,
+			nil, /* formatCodes */
+			ex.sessionData.DataConversion,
+			0,  /* limit */
+			"", /* portalName */
+			ex.implicitTxn(),
+		)
+		res = stmtRes
+		if _, err = ex.txnStateTransitionsApplyWrapper(eventTxnStart{ImplicitTxn: fsm.True},
+			makeEventTxnStartPayload(
+				roachpb.NormalUserPriority,
+				tree.ReadWrite,
+				ex.server.cfg.Clock.PhysicalTime(),
+				nil, /* historicalTimestamp */
+				ex.transitionCtx,
+				ex.txnIsolationLevelToKV(tree.UnspecifiedIsolation)), res, pos); err != nil {
+			return restRes, err
+		}
+		curStmt := Statement{Statement: tcmd.Statement}
+		ex.phaseTimes[sessionQueryReceived] = tcmd.TimeReceived
+		ex.phaseTimes[sessionStartParse] = tcmd.ParseStart
+		ex.phaseTimes[sessionEndParse] = tcmd.ParseEnd
+
+		if !curStmt.Insertdirectstmt.InsertFast {
+			stmtCtx := withStatement(ctx, ex.curStmt)
+			ev, payload, err = ex.execStmt(stmtCtx, curStmt, stmtRes, nil /* pinfo */)
+			if payload != nil {
+				if p, ok := payload.(*eventRetriableErrPayload); ok {
+					log.Warningf(ctx, "retry error=%v\n ; curStmt=%s\n", p.err, curStmt.SQL)
+				}
+			}
+		} else {
+			ex.sendDedupClientNoticeToRes(ctx, stmtRes, curStmt.Insertdirectstmt.UseDeepRule, curStmt.Insertdirectstmt.DedupRule, curStmt.Insertdirectstmt.DedupRows)
+			err = curStmt.Insertdirectstmt.ErrorInfo
+			if curStmt.Insertdirectstmt.IgnoreBatcherror && curStmt.Insertdirectstmt.BatchFailed+curStmt.Insertdirectstmt.BatchFailedColumn != 0 {
+				ex.sendBatchErrorToRes(stmtRes, curStmt.Insertdirectstmt.BatchFailed+curStmt.Insertdirectstmt.BatchFailedColumn)
+			}
+			stmtRes.IncrementRowsAffected(int(curStmt.Insertdirectstmt.RowsAffected - curStmt.Insertdirectstmt.DedupRows))
+		}
+		if buffRes, ok := stmtRes.(*bufferedCommandResult); ok {
+			buffRes.Close(ctx, stateToTxnStatusIndicator(ex.machine.CurState()))
+			restRes = RestfulRes{Rows: buffRes.rows, RowsAffected: buffRes.RowsAffected(), Cols: buffRes.cols, Err: buffRes.Err()}
+		}
+	}
+
+	var advInfo advanceInfo
+
+	// If an event was generated, feed it to the state machine.
+	if ev != nil {
+		var err error
+		advInfo, err = ex.txnStateTransitionsApplyWrapper(ev, payload, res, pos)
+		if err != nil {
+			return restRes, err
+		}
+	} else {
+		// If no event was generated synthesize an advance code.
+		advInfo = advanceInfo{
+			code: advanceOne,
+		}
+	}
+
+	// Decide if we need to close the result or not. We don't need to do it if
+	// we're staying in place or rewinding - the statement will be executed
+	// again.
+	if advInfo.code != stayInPlace && advInfo.code != rewind {
+		// Close the result. In case of an execution error, the result might have
+		// its error set already or it might not.
+		resErr := res.Err()
+
+		pe, ok := payload.(payloadWithError)
+		if ok {
+			ex.sessionEventf(ctx, "execution error: %s", pe.errorCause())
+			if resErr == nil {
+				res.SetError(pe.errorCause())
+			}
+		}
+		res.Close(ctx, stateToTxnStatusIndicator(ex.machine.CurState()))
+	} else {
+		res.Discard()
+	}
+	if err := ex.updateTxnRewindPosMaybe(ctx, cmd, pos, advInfo); err != nil {
+		return restRes, err
+	}
+	ex.mon.Stop(ctx)
+	ex.sessionMon.Stop(ctx)
+
+	return restRes, nil
 }
 
 // errDrainingComplete is returned by execCmd when the connExecutor previously got

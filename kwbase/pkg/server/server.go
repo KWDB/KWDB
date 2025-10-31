@@ -3104,23 +3104,17 @@ func (s *Server) RunLocalSQL(
 
 // RestfulLogout function for your API endpoint
 func (s *Server) RestfulLogout(ctx context.Context) error {
-	if s.restful.connCache == nil {
+	if s.restful.connPool == nil || s.restful.connPool.connCache == nil {
 		return nil
 	}
 	// get current time.
 	tNow := timeutil.Now().Unix()
-	// loop to find the expired db.
-	for k, v := range s.restful.connCache {
-		if tNow-v.lastLoginTime > v.maxLifeTime {
-			// stop db.
-			if v.db != nil {
-				if err := v.db.Close(); err != nil {
-					return err
-				}
-				// set pg conn expired. change login valid to false.
-				delete(s.restful.connCache, k)
-				log.Infof(ctx, "session %s expired.", v.sessionid)
-			}
+	// loop to find the expired conn
+	for k, v := range s.restful.connPool.connCache {
+		if tNow-v.lastLoginTime > s.restful.connPool.maxLifeTime {
+			// set pg conn expired. change login valid to false.
+			delete(s.restful.connPool.connCache, k)
+			log.Infof(ctx, "session %s expired.", v.sessionID)
 		}
 	}
 	return nil

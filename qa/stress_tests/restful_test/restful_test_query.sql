@@ -1,0 +1,17 @@
+show databases;
+show tables;
+show tables from test_savedata1;
+show tables from test;
+show tablse from test_insert;
+show tables from ts_db;
+select count(*) from test_savedata1.d1;
+select * from test_savedata1.d1;
+select count(*) from test_savedata1.d2;
+select * from test_savedata1.d2;
+select * from test_savedata1.nst1 order by ts;
+select a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a14, t1, t2,t3, t4, t5, t6, t7, t8, t9, t10, t11 from test.tb order by a1;
+select * from test_insert.tb order by k_timestamp;
+select count(*) from kwdb_internal.ranges where database_name='test';
+select ts, e1, e2, tag1, tag2, tag3 from test_insert2.t1;
+select e11 from ts_db.t1;
+select ts, e7, tag1, tag2, tag3 from test_insert2.t1 order by ts;

@@ -432,41 +432,41 @@ func TestRestfulApi(t *testing.T) {
 }
 
 // TestExecuteWithRetry tests Restful Api
-func TestExecuteWithRetry(t *testing.T) {
-	defer leaktest.AfterTest(t)()
-	s, db, _ := serverutils.StartServer(t, base.TestServerArgs{})
-	defer s.Stopper().Stop(context.TODO())
-
-	testCases := []struct {
-		insert string
-		create string
-		err    string
-	}{
-		{
-			insert: `insert into t1(a) values(1)`,
-			create: `create table t1(a int)`,
-			err:    ``,
-		},
-		{
-			insert: `insert into t2(a) values(1)`,
-			create: `create table t2(a float)`,
-			err:    ``,
-		},
-		{
-			insert: `insert into t3(a, b) values(1, 2)`,
-			create: `create table t3(a float)`,
-			err:    `pq: column "b" does not exist`,
-		},
-		{
-			insert: `insert into t4(a) values(false)`,
-			create: `create table t4(a float)`,
-			err:    `pq: value type bool doesn't match type float of column "a"`,
-		},
-	}
-	for _, test := range testCases {
-		_, err := executeWithRetry(db, test.insert, test.create)
-		if !testutils.IsError(err, test.err) {
-			t.Errorf("expected %s error, got %v", test.err, err)
-		}
-	}
-}
+//func TestExecuteWithRetry(t *testing.T) {
+//	defer leaktest.AfterTest(t)()
+//	s, db, _ := serverutils.StartServer(t, base.TestServerArgs{})
+//	defer s.Stopper().Stop(context.TODO())
+//
+//	testCases := []struct {
+//		insert string
+//		create string
+//		err    string
+//	}{
+//		{
+//			insert: `insert into t1(a) values(1)`,
+//			create: `create table t1(a int)`,
+//			err:    ``,
+//		},
+//		{
+//			insert: `insert into t2(a) values(1)`,
+//			create: `create table t2(a float)`,
+//			err:    ``,
+//		},
+//		{
+//			insert: `insert into t3(a, b) values(1, 2)`,
+//			create: `create table t3(a float)`,
+//			err:    `pq: column "b" does not exist`,
+//		},
+//		{
+//			insert: `insert into t4(a) values(false)`,
+//			create: `create table t4(a float)`,
+//			err:    `pq: value type bool doesn't match type float of column "a"`,
+//		},
+//	}
+//	for _, test := range testCases {
+//		_, err := executeWithRetry(db, test.insert, test.create)
+//		if !testutils.IsError(err, test.err) {
+//			t.Errorf("expected %s error, got %v", test.err, err)
+//		}
+//	}
+//}
