@@ -315,7 +315,7 @@ SQLSTATE: 22023
 ERROR: second arg should be a positive interval.
 SQLSTATE: 22023
 > select time_bucket(k_timestamp, '-5s') as tb, e20 from test_select_timebucket.tb where e20 is not null group by tb,e20;
-ERROR: time_bucket(): second arg should be a positive interval
+ERROR: second arg should be a positive interval.
 SQLSTATE: 22023
 > select time_bucket(k_timestamp,'10s') as tb,t1 from test_select_timebucket.tb group by tb,t1 order by tb,t1;
              tb             |   t1

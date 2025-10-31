@@ -411,5 +411,17 @@ INSERT 1
                     | spans:fromTime      | 2020-11-06 00:10:23.001 +0000 UTC
                     | spans:toTime        | 2970-01-01 00:00:00 +0000 UTC
 (17 rows)
+> explain select e6 from test_filter where e6 is not null;
+      tree     |      field       |  description
+---------------+------------------+-----------------
+               | distributed      | true
+               | vectorized       | false
+  synchronizer |                  |
+   └── ts scan |                  |
+               | ts-table         | test_filter
+               | access mode      | metaTable
+               | filter           | e6 IS NOT NULL
+               | block filter[e6] | NOT NULL
+(8 rows)
 > drop database test_ts cascade;
 DROP DATABASE

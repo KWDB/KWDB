@@ -109,21 +109,22 @@ INSERT 1
 ------
 (0 rows)
 > explain select e1 from d1.t1 where    (e4 is not null and tag2 is not null or tag3 is not null)    and    (e1 is not null or e2 is not null and e3 is not null)    order by e1;
-             tree             |    field    |                                                             description
-------------------------------+-------------+--------------------------------------------------------------------------------------------------------------------------------------
-                              | distributed | true
-                              | vectorized  | false
-  sort                        |             |
-   │                          | order       | +e1
-   └── render                 |             |
-        │                     | e1          | e1
-        └── filter            |             |
-             │                | filter      | (((e4 IS NOT NULL) AND (tag2 IS NOT NULL)) OR (tag3 IS NOT NULL)) AND ((e1 IS NOT NULL) OR ((e2 IS NOT NULL) AND (e3 IS NOT NULL)))
-             └── synchronizer |             |
-                  └── ts scan |             |
-                              | ts-table    | t1
-                              | access mode | tableTableMeta
-(12 rows)
+           tree          |    field    |                                                             description
+-------------------------+-------------+--------------------------------------------------------------------------------------------------------------------------------------
+                         | distributed | true
+                         | vectorized  | false
+  sort                   |             |
+   │                     | engine type | time series
+   │                     | order       | +e1
+   └── synchronizer      |             |
+        └── render       |             |
+             │           | engine type | time series
+             │           | e1          | e1
+             └── ts scan |             |
+                         | ts-table    | t1
+                         | access mode | tableTableMeta
+                         | filter      | (((e4 IS NOT NULL) AND (tag2 IS NOT NULL)) OR (tag3 IS NOT NULL)) AND ((e1 IS NOT NULL) OR ((e2 IS NOT NULL) AND (e3 IS NOT NULL)))
+(13 rows)
 > select e1 from d1.t1 where    (e4 is not null and tag2 is not null or tag3 is not null)    and    (e1 is not null or e2 is not null and e3 is not null)    order by e1;
   e1
 ------
@@ -134,21 +135,22 @@ INSERT 1
   15
 (5 rows)
 > explain select e1 from d1.t1 where    (e1 is not null or e2 is null and e3 is not null)    and    (e4 is not null and tag2 is not null or tag3 is null)    order by e1;
-             tree             |    field    |                                                         description
-------------------------------+-------------+------------------------------------------------------------------------------------------------------------------------------
-                              | distributed | true
-                              | vectorized  | false
-  sort                        |             |
-   │                          | order       | +e1
-   └── render                 |             |
-        │                     | e1          | e1
-        └── filter            |             |
-             │                | filter      | ((e1 IS NOT NULL) OR ((e2 IS NULL) AND (e3 IS NOT NULL))) AND (((e4 IS NOT NULL) AND (tag2 IS NOT NULL)) OR (tag3 IS NULL))
-             └── synchronizer |             |
-                  └── ts scan |             |
-                              | ts-table    | t1
-                              | access mode | tableTableMeta
-(12 rows)
+           tree          |    field    |                                                         description
+-------------------------+-------------+------------------------------------------------------------------------------------------------------------------------------
+                         | distributed | true
+                         | vectorized  | false
+  sort                   |             |
+   │                     | engine type | time series
+   │                     | order       | +e1
+   └── synchronizer      |             |
+        └── render       |             |
+             │           | engine type | time series
+             │           | e1          | e1
+             └── ts scan |             |
+                         | ts-table    | t1
+                         | access mode | tableTableMeta
+                         | filter      | ((e1 IS NOT NULL) OR ((e2 IS NULL) AND (e3 IS NOT NULL))) AND (((e4 IS NOT NULL) AND (tag2 IS NOT NULL)) OR (tag3 IS NULL))
+(13 rows)
 > select e1 from d1.t1 where    (e1 is not null or e2 is null and e3 is not null)    and    (e4 is not null and tag2 is not null or tag3 is null)    order by e1;
   e1
 ------
@@ -268,21 +270,22 @@ INSERT 1
   15
 (5 rows)
 > explain select e1 from d1.t1 where    (case tag3 when '301' then 'yes' else 'no' end)='yes' or tag1 is not null    order by e1;
-             tree             |    field    |                                  description
-------------------------------+-------------+--------------------------------------------------------------------------------
-                              | distributed | true
-                              | vectorized  | false
-  sort                        |             |
-   │                          | order       | +e1
-   └── render                 |             |
-        │                     | e1          | e1
-        └── filter            |             |
-             │                | filter      | (tag1 IS NOT NULL) OR (CASE tag3 WHEN '301' THEN 'yes' ELSE 'no' END = 'yes')
-             └── synchronizer |             |
-                  └── ts scan |             |
-                              | ts-table    | t1
-                              | access mode | tableTableMeta
-(12 rows)
+           tree          |     field     |                                  description
+-------------------------+---------------+--------------------------------------------------------------------------------
+                         | distributed   | true
+                         | vectorized    | false
+  sort                   |               |
+   │                     | engine type   | time series
+   │                     | order         | +e1
+   └── synchronizer      |               |
+        └── render       |               |
+             │           | engine type   | time series
+             │           | e1            | e1
+             └── ts scan |               |
+                         | ts-table      | t1
+                         | access mode   | tableTableMeta
+                         | tag filter[0] | (tag1 IS NOT NULL) OR (CASE tag3 WHEN '301' THEN 'yes' ELSE 'no' END = 'yes')
+(13 rows)
 > select e1 from d1.t1 where    (case tag3 when '301' then 'yes' else 'no' end)='yes' or tag1 is not null    order by e1;
   e1
 ------
@@ -364,21 +367,21 @@ INSERT 1
   11
 (1 row)
 > explain select e1 from d1.t1 where (coalesce(e1, 12345) < 100 or coalesce(tag2, 1) > 12345) and coalesce(e5, 1.2) is not null    order by e1;
-             tree             |    field    |                        description
-------------------------------+-------------+-------------------------------------------------------------
-                              | distributed | true
-                              | vectorized  | false
-  sort                        |             |
-   │                          | order       | +e1
-   └── render                 |             |
-        │                     | e1          | e1
-        └── filter            |             |
-             │                | filter      | COALESCE(e5, 1.2) IS NOT NULL
-             └── synchronizer |             |
-                  └── ts scan |             |
-                              | ts-table    | t1
-                              | access mode | tableTableMeta
-                              | filter      | (COALESCE(e1, 12345) < 100) OR (COALESCE(tag2, 1) > 12345)
+           tree          |    field    |                                           description
+-------------------------+-------------+---------------------------------------------------------------------------------------------------
+                         | distributed | true
+                         | vectorized  | false
+  sort                   |             |
+   │                     | engine type | time series
+   │                     | order       | +e1
+   └── synchronizer      |             |
+        └── render       |             |
+             │           | engine type | time series
+             │           | e1          | e1
+             └── ts scan |             |
+                         | ts-table    | t1
+                         | access mode | tableTableMeta
+                         | filter      | ((COALESCE(e1, 12345) < 100) OR (COALESCE(tag2, 1) > 12345)) AND (COALESCE(e5, 1.2) IS NOT NULL)
 (13 rows)
 > select e1 from d1.t1 where (coalesce(e1, 12345) < 100 or coalesce(tag2, 1) > 12345) and coalesce(e5, 1.2) is not null    order by e1;
   e1
@@ -390,42 +393,43 @@ INSERT 1
   15
 (5 rows)
 > explain select e1 from d1.t1 where (coalesce(tag2, 1) > 12345) and coalesce(e5, 1.2) is not null    order by e1;
-             tree             |     field     |          description
-------------------------------+---------------+--------------------------------
-                              | distributed   | true
-                              | vectorized    | false
-  sort                        |               |
-   │                          | order         | +e1
-   └── render                 |               |
-        │                     | e1            | e1
-        └── filter            |               |
-             │                | filter        | COALESCE(e5, 1.2) IS NOT NULL
-             └── synchronizer |               |
-                  └── ts scan |               |
-                              | ts-table      | t1
-                              | access mode   | tableTableMeta
-                              | tag filter[0] | COALESCE(tag2, 1) > 12345
-(13 rows)
+           tree          |     field     |          description
+-------------------------+---------------+--------------------------------
+                         | distributed   | true
+                         | vectorized    | false
+  sort                   |               |
+   │                     | engine type   | time series
+   │                     | order         | +e1
+   └── synchronizer      |               |
+        └── render       |               |
+             │           | engine type   | time series
+             │           | e1            | e1
+             └── ts scan |               |
+                         | ts-table      | t1
+                         | access mode   | tableTableMeta
+                         | filter        | COALESCE(e5, 1.2) IS NOT NULL
+                         | tag filter[0] | COALESCE(tag2, 1) > 12345
+(14 rows)
 > select e1 from d1.t1 where (coalesce(tag2, 1) > 12345) and coalesce(e5, 1.2) is not null    order by e1;
   e1
 ------
 (0 rows)
 > explain select e1 from d1.t1 where (ifnull(e1, 12345) < 100 or ifnull(tag2, 1) > 12345) and ifnull(e5, 1.2) is not null    order by e1;
-             tree             |    field    |                        description
-------------------------------+-------------+-------------------------------------------------------------
-                              | distributed | true
-                              | vectorized  | false
-  sort                        |             |
-   │                          | order       | +e1
-   └── render                 |             |
-        │                     | e1          | e1
-        └── filter            |             |
-             │                | filter      | COALESCE(e5, 1.2) IS NOT NULL
-             └── synchronizer |             |
-                  └── ts scan |             |
-                              | ts-table    | t1
-                              | access mode | tableTableMeta
-                              | filter      | (COALESCE(e1, 12345) < 100) OR (COALESCE(tag2, 1) > 12345)
+           tree          |    field    |                                           description
+-------------------------+-------------+---------------------------------------------------------------------------------------------------
+                         | distributed | true
+                         | vectorized  | false
+  sort                   |             |
+   │                     | engine type | time series
+   │                     | order       | +e1
+   └── synchronizer      |             |
+        └── render       |             |
+             │           | engine type | time series
+             │           | e1          | e1
+             └── ts scan |             |
+                         | ts-table    | t1
+                         | access mode | tableTableMeta
+                         | filter      | ((COALESCE(e1, 12345) < 100) OR (COALESCE(tag2, 1) > 12345)) AND (COALESCE(e5, 1.2) IS NOT NULL)
 (13 rows)
 > select e1 from d1.t1 where (ifnull(e1, 12345) < 100 or ifnull(tag2, 1) > 12345) and ifnull(e5, 1.2) is not null    order by e1;
   e1
@@ -437,22 +441,23 @@ INSERT 1
   15
 (5 rows)
 > explain select e1 from d1.t1 where ifnull(tag2, 1) > 12345 and ifnull(e5, 1.2) is not null    order by e1;
-             tree             |     field     |          description
-------------------------------+---------------+--------------------------------
-                              | distributed   | true
-                              | vectorized    | false
-  sort                        |               |
-   │                          | order         | +e1
-   └── render                 |               |
-        │                     | e1            | e1
-        └── filter            |               |
-             │                | filter        | COALESCE(e5, 1.2) IS NOT NULL
-             └── synchronizer |               |
-                  └── ts scan |               |
-                              | ts-table      | t1
-                              | access mode   | tableTableMeta
-                              | tag filter[0] | COALESCE(tag2, 1) > 12345
-(13 rows)
+           tree          |     field     |          description
+-------------------------+---------------+--------------------------------
+                         | distributed   | true
+                         | vectorized    | false
+  sort                   |               |
+   │                     | engine type   | time series
+   │                     | order         | +e1
+   └── synchronizer      |               |
+        └── render       |               |
+             │           | engine type   | time series
+             │           | e1            | e1
+             └── ts scan |               |
+                         | ts-table      | t1
+                         | access mode   | tableTableMeta
+                         | filter        | COALESCE(e5, 1.2) IS NOT NULL
+                         | tag filter[0] | COALESCE(tag2, 1) > 12345
+(14 rows)
 > select e1 from d1.t1 where ifnull(tag2, 1) > 12345 and ifnull(e5, 1.2) is not null    order by e1;
   e1
 ------
@@ -471,12 +476,11 @@ INSERT 1
    │              │                     | type                  | inner
    │              │                     | equality              | (e1) = (e1)
    │              │                     | right cols are key    |
-   │              ├── filter            |                       |
-   │              │    │                | filter                | (e2 > 0) OR (@S1 IS NOT NULL)
-   │              │    └── synchronizer |                       |
-   │              │         └── ts scan |                       |
+   │              ├── synchronizer      |                       |
+   │              │    └── ts scan      |                       |
    │              │                     | ts-table              | t1
    │              │                     | access mode           | metaTable
+   │              │                     | filter                | (e2 > 0) OR (@S1 IS NOT NULL)
    │              └── distinct          |                       |
    │                   │                | engine type           | time series
    │                   │                | distinct on           | e1
@@ -500,7 +504,7 @@ INSERT 1
                                         | use statistic         | true
                                         |                       |
   warning messages                      | multi-model fall back | join on time-series metrics column
-(40 rows)
+(39 rows)
 > select e1 from d1.t1 as t2 where    (t2.e1 in (select t3.e1 from d1.t1 as t3))    and    ((e2 > 0 or (select max(e2) from d1.t1) is not null))    order by e1;
   e1
 ------
@@ -511,59 +515,59 @@ INSERT 1
   15
 (5 rows)
 > explain select e1 from d1.t1 as t2 where    (((select last(e2) from d1.t1) > 20 and e1 > 0))    and    ((select last(e2) from d1.t1 where (e2 > 0 or e2 < -1)) > 0 and e1 != 0 and tag1 is not null or tag2 is null )   order by e1;
-                tree               |        field        |                             description
------------------------------------+---------------------+-----------------------------------------------------------------------
-                                   | distributed         | true
-                                   | vectorized          | false
-  root                             |                     |
-   ├── sort                        |                     |
-   │    │                          | order               | +e1
-   │    └── render                 |                     |
-   │         │                     | e1                  | e1
-   │         └── filter            |                     |
-   │              │                | filter              | (((e1 != 0) AND (@S2 > 0)) AND (tag1 IS NOT NULL)) OR (tag2 IS NULL)
-   │              └── synchronizer |                     |
-   │                   └── ts scan |                     |
-   │                               | ts-table            | t1
-   │                               | access mode         | tableTableMeta
-   │                               | filter              | (e1 > 0) AND (@S1 > 20)
-   │                               | block filter[e1]    | [1 - ]
-   ├── subquery                    |                     |
-   │    │                          | id                  | @S1
-   │    │                          | original sql        | (SELECT last(e2) FROM d1.t1)
-   │    │                          | exec mode           | one row
-   │    └── group                  |                     |
-   │         │                     | engine type         | time series
-   │         │                     | aggregate 0         | last(e2, ts)
-   │         │                     | scalar              |
-   │         │                     | pushLocalAggToScan  | true
-   │         │                     | addSynchronizer     | true
-   │         └── render            |                     |
-   │              │                | engine type         | time series
-   │              │                | ts                  | ts
-   │              │                | e2                  | e2
-   │              └── ts scan      |                     |
-   │                               | ts-table            | t1
-   │                               | access mode         | metaTable
-   │                               | use statistic       | true
-   └── subquery                    |                     |
-        │                          | id                  | @S2
-        │                          | original sql        | (SELECT last(e2) FROM d1.t1 WHERE ((e2 > 0) OR (e2 < -1)))
-        │                          | exec mode           | one row
-        └── group                  |                     |
-             │                     | engine type         | time series
-             │                     | aggregate 0         | last(e2, ts)
-             │                     | scalar              |
-             │                     | addSynchronizer     | true
-             └── render            |                     |
-                  │                | engine type         | time series
-                  │                | ts                  | ts
-                  │                | e2                  | e2
-                  └── ts scan      |                     |
-                                   | ts-table            | t1
-                                   | access mode         | metaTable
-                                   | filter              | (e2 > 0) OR (e2 < -1)
-                                   | block filter[e2]    | [ - -2]; [1 - ]
+             tree             |        field        |                                             description
+------------------------------+---------------------+-------------------------------------------------------------------------------------------------------
+                              | distributed         | true
+                              | vectorized          | false
+  root                        |                     |
+   ├── sort                   |                     |
+   │    │                     | engine type         | time series
+   │    │                     | order               | +e1
+   │    └── synchronizer      |                     |
+   │         └── render       |                     |
+   │              │           | engine type         | time series
+   │              │           | e1                  | e1
+   │              └── ts scan |                     |
+   │                          | ts-table            | t1
+   │                          | access mode         | tableTableMeta
+   │                          | filter              | ((e1 > 0) AND (@S1 > 20)) AND ((((e1 != 0) AND (@S2 > 0)) AND (tag1 IS NOT NULL)) OR (tag2 IS NULL))
+   │                          | block filter[e1]    | [1 - ]
+   ├── subquery               |                     |
+   │    │                     | id                  | @S1
+   │    │                     | original sql        | (SELECT last(e2) FROM d1.t1)
+   │    │                     | exec mode           | one row
+   │    └── group             |                     |
+   │         │                | engine type         | time series
+   │         │                | aggregate 0         | last(e2, ts)
+   │         │                | scalar              |
+   │         │                | pushLocalAggToScan  | true
+   │         │                | addSynchronizer     | true
+   │         └── render       |                     |
+   │              │           | engine type         | time series
+   │              │           | ts                  | ts
+   │              │           | e2                  | e2
+   │              └── ts scan |                     |
+   │                          | ts-table            | t1
+   │                          | access mode         | metaTable
+   │                          | use statistic       | true
+   └── subquery               |                     |
+        │                     | id                  | @S2
+        │                     | original sql        | (SELECT last(e2) FROM d1.t1 WHERE ((e2 > 0) OR (e2 < -1)))
+        │                     | exec mode           | one row
+        └── group             |                     |
+             │                | engine type         | time series
+             │                | aggregate 0         | last(e2, ts)
+             │                | scalar              |
+             │                | addSynchronizer     | true
+             └── render       |                     |
+                  │           | engine type         | time series
+                  │           | ts                  | ts
+                  │           | e2                  | e2
+                  └── ts scan |                     |
+                              | ts-table            | t1
+                              | access mode         | metaTable
+                              | filter              | (e2 > 0) OR (e2 < -1)
+                              | block filter[e2]    | [ - -2]; [1 - ]
 (51 rows)
 > select e1 from d1.t1 as t2 where    (((select last(e2) from d1.t1) > 20 and e1 > 0))    and    ((select last(e2) from d1.t1 where (e2 > 0 or e2 < -1)) > 0 and e1 != 0 and tag1 is not null or tag2 is null )   order by e1;
   e1
@@ -609,22 +613,22 @@ INSERT 1
 ------
 (0 rows)
 > explain select e1 from d1.t1 where    (abs(e1) > 3 or length(e4) < 2 or trunc(e5) = 2)    and    (e4 is not null or e1+e2 > 0 )    and    (e1 between 0 and 100)    and    ((case e1 when 11 then 0 else -1 end)=0)    order by e1;
-             tree             |      field       |                                                                description
-------------------------------+------------------+--------------------------------------------------------------------------------------------------------------------------------------------
-                              | distributed      | true
-                              | vectorized       | false
-  sort                        |                  |
-   │                          | order            | +e1
-   └── render                 |                  |
-        │                     | e1               | e1
-        └── filter            |                  |
-             │                | filter           | (e4 IS NOT NULL) OR ((e1 + e2) > 0)
-             └── synchronizer |                  |
-                  └── ts scan |                  |
-                              | ts-table         | t1
-                              | access mode      | metaTable
-                              | filter           | (((e1 >= 0) AND (e1 <= 100)) AND (((abs(e1) > 3) OR (length(e4) < 2)) OR (trunc(e5) = 2.0))) AND (CASE e1 WHEN 11 THEN 0 ELSE -1 END = 0)
-                              | block filter[e1] | [0 - 100]
+           tree          |      field       |                                                                                      description
+-------------------------+------------------+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+                         | distributed      | true
+                         | vectorized       | false
+  sort                   |                  |
+   │                     | engine type      | time series
+   │                     | order            | +e1
+   └── synchronizer      |                  |
+        └── render       |                  |
+             │           | engine type      | time series
+             │           | e1               | e1
+             └── ts scan |                  |
+                         | ts-table         | t1
+                         | access mode      | metaTable
+                         | filter           | ((((e1 >= 0) AND (e1 <= 100)) AND (((abs(e1) > 3) OR (length(e4) < 2)) OR (trunc(e5) = 2.0))) AND ((e4 IS NOT NULL) OR ((e1 + e2) > 0))) AND (CASE e1 WHEN 11 THEN 0 ELSE -1 END = 0)
+                         | block filter[e1] | [0 - 100]
 (14 rows)
 > select e1 from d1.t1 where    (abs(e1) > 3 or length(e4) < 2 or trunc(e5) = 2)    and    (e4 is not null or e1+e2 > 0 )    and    (e1 between 0 and 100)    and    ((case e1 when 11 then 0 else -1 end)=0)    order by e1;
   e1
@@ -708,24 +712,24 @@ INSERT 1
   11
 (1 row)
 > explain select e1 from d1.t1 where    (ts between '2020-01-01 00:00:00' and '2024-07-01 00:00:00')    and    e5 in (cast (51 as float8))    and    coalesce(e5, 1.2) is not null    order by e1;
-             tree             |      field       |          description
-------------------------------+------------------+--------------------------------
-                              | distributed      | true
-                              | vectorized       | false
-  sort                        |                  |
-   │                          | order            | +e1
-   └── render                 |                  |
-        │                     | e1               | e1
-        └── filter            |                  |
-             │                | filter           | COALESCE(e5, 1.2) IS NOT NULL
-             └── synchronizer |                  |
-                  └── ts scan |                  |
-                              | ts-table         | t1
-                              | access mode      | metaTable
-                              | spans:fromTime   | 2020-01-01 00:00:00 +0000 UTC
-                              | spans:toTime     | 2024-07-01 00:00:00 +0000 UTC
-                              | filter           | e5 IN (51.0,)
-                              | block filter[e5] | [51.0 - 51.0]
+           tree          |      field       |                     description
+-------------------------+------------------+------------------------------------------------------
+                         | distributed      | true
+                         | vectorized       | false
+  sort                   |                  |
+   │                     | engine type      | time series
+   │                     | order            | +e1
+   └── synchronizer      |                  |
+        └── render       |                  |
+             │           | engine type      | time series
+             │           | e1               | e1
+             └── ts scan |                  |
+                         | ts-table         | t1
+                         | access mode      | metaTable
+                         | spans:fromTime   | 2020-01-01 00:00:00 +0000 UTC
+                         | spans:toTime     | 2024-07-01 00:00:00 +0000 UTC
+                         | filter           | (e5 IN (51.0,)) AND (COALESCE(e5, 1.2) IS NOT NULL)
+                         | block filter[e5] | [51.0 - 51.0]
 (16 rows)
 > select e1 from d1.t1 where    (ts between '2020-01-01 00:00:00' and '2024-07-01 00:00:00')    and    e5 in (cast (51 as float8))    and    coalesce(e5, 1.2) is not null    order by e1;
   e1
@@ -771,36 +775,37 @@ INSERT 1
   15
 (5 rows)
 > explain select e1 from d1.t1 as t2 where    ((e2 > 0 or (select max(e2) from d1.t1) is not null))    or    (abs(e1) > 3 or length(e4) < 2 or trunc(e5) = 2)    order by e1;
-                tree               |        field        |                                          description
------------------------------------+---------------------+------------------------------------------------------------------------------------------------
-                                   | distributed         | true
-                                   | vectorized          | false
-  root                             |                     |
-   ├── sort                        |                     |
-   │    │                          | order               | +e1
-   │    └── render                 |                     |
-   │         │                     | e1                  | e1
-   │         └── filter            |                     |
-   │              │                | filter              | ((e2 > 0) OR (@S1 IS NOT NULL)) OR (((abs(e1) > 3) OR (length(e4) < 2)) OR (trunc(e5) = 2.0))
-   │              └── synchronizer |                     |
-   │                   └── ts scan |                     |
-   │                               | ts-table            | t1
-   │                               | access mode         | metaTable
-   └── subquery                    |                     |
-        │                          | id                  | @S1
-        │                          | original sql        | (SELECT max(e2) FROM d1.t1)
-        │                          | exec mode           | one row
-        └── group                  |                     |
-             │                     | engine type         | time series
-             │                     | aggregate 0         | max(e2)
-             │                     | scalar              |
-             │                     | pushLocalAggToScan  | true
-             │                     | addSynchronizer     | true
-             └── ts scan           |                     |
-                                   | ts-table            | t1
-                                   | access mode         | metaTable
-                                   | use statistic       | true
-(27 rows)
+             tree             |        field        |                                          description
+------------------------------+---------------------+------------------------------------------------------------------------------------------------
+                              | distributed         | true
+                              | vectorized          | false
+  root                        |                     |
+   ├── sort                   |                     |
+   │    │                     | engine type         | time series
+   │    │                     | order               | +e1
+   │    └── synchronizer      |                     |
+   │         └── render       |                     |
+   │              │           | engine type         | time series
+   │              │           | e1                  | e1
+   │              └── ts scan |                     |
+   │                          | ts-table            | t1
+   │                          | access mode         | metaTable
+   │                          | filter              | ((e2 > 0) OR (@S1 IS NOT NULL)) OR (((abs(e1) > 3) OR (length(e4) < 2)) OR (trunc(e5) = 2.0))
+   └── subquery               |                     |
+        │                     | id                  | @S1
+        │                     | original sql        | (SELECT max(e2) FROM d1.t1)
+        │                     | exec mode           | one row
+        └── group             |                     |
+             │                | engine type         | time series
+             │                | aggregate 0         | max(e2)
+             │                | scalar              |
+             │                | pushLocalAggToScan  | true
+             │                | addSynchronizer     | true
+             └── ts scan      |                     |
+                              | ts-table            | t1
+                              | access mode         | metaTable
+                              | use statistic       | true
+(28 rows)
 > select e1 from d1.t1 as t2 where    ((e2 > 0 or (select max(e2) from d1.t1) is not null))    or    (abs(e1) > 3 or length(e4) < 2 or trunc(e5) = 2)    order by e1;
   e1
 ------
@@ -952,24 +957,24 @@ INSERT 1
   15
 (25 rows)
 > explain select e1 from d1.t1 where    (ts > '2020-01-01 00:00:00' and e1 + e2 < 1000)    and    e5 in (cast (51 as float8))    and    coalesce(e5, 1.2) is not null    order by e1;
-             tree             |      field       |              description
-------------------------------+------------------+-----------------------------------------
-                              | distributed      | true
-                              | vectorized       | false
-  sort                        |                  |
-   │                          | order            | +e1
-   └── render                 |                  |
-        │                     | e1               | e1
-        └── filter            |                  |
-             │                | filter           | COALESCE(e5, 1.2) IS NOT NULL
-             └── synchronizer |                  |
-                  └── ts scan |                  |
-                              | ts-table         | t1
-                              | access mode      | metaTable
-                              | spans:fromTime   | 2020-01-01 00:00:00.001 +0000 UTC
-                              | spans:toTime     | 2970-01-01 00:00:00 +0000 UTC
-                              | filter           | (e5 IN (51.0,)) AND ((e1 + e2) < 1000)
-                              | block filter[e5] | [51.0 - 51.0]
+           tree          |      field       |                                 description
+-------------------------+------------------+-------------------------------------------------------------------------------
+                         | distributed      | true
+                         | vectorized       | false
+  sort                   |                  |
+   │                     | engine type      | time series
+   │                     | order            | +e1
+   └── synchronizer      |                  |
+        └── render       |                  |
+             │           | engine type      | time series
+             │           | e1               | e1
+             └── ts scan |                  |
+                         | ts-table         | t1
+                         | access mode      | metaTable
+                         | spans:fromTime   | 2020-01-01 00:00:00.001 +0000 UTC
+                         | spans:toTime     | 2970-01-01 00:00:00 +0000 UTC
+                         | filter           | ((e5 IN (51.0,)) AND ((e1 + e2) < 1000)) AND (COALESCE(e5, 1.2) IS NOT NULL)
+                         | block filter[e5] | [51.0 - 51.0]
 (16 rows)
 > select e1 from d1.t1 where    (ts > '2020-01-01 00:00:00' and e1 + e2 < 1000)    and    e5 in (cast (51 as float8))    and    coalesce(e5, 1.2) is not null    order by e1;
   e1

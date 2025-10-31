@@ -149,4 +149,6 @@ explain select count(e1) from test_filter where k_timestamp > '2020-11-06 08:10:
 select count(*) from test_filter where k_timestamp > '2020-11-06 08:10:23+08';
 explain select count(e1) from test_filter where k_timestamp > '2020-11-06 08:10:23+08';
 
+explain select e6 from test_filter where e6 is not null;
+
 drop database test_ts cascade;

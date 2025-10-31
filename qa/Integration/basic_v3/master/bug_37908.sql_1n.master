@@ -167,19 +167,19 @@ INSERT 1
    1
 (1 row)
 > explain select e1 from d1.t1 where ts > '-292275055-05-16 16:47:04.192 +0000' and e1 is not null;
-           tree          |      field       |  description
--------------------------+------------------+-----------------
-                         | distributed      | true
-                         | vectorized       | false
-  render                 |                  |
-   │                     | e1               | e1
-   └── filter            |                  |
-        │                | filter           | e1 IS NOT NULL
-        └── synchronizer |                  |
-             └── ts scan |                  |
-                         | ts-table         | t1
-                         | access mode      | metaTable
-                         | block filter[e1] | NOT NULL
+        tree        |      field       |  description
+--------------------+------------------+-----------------
+                    | distributed      | true
+                    | vectorized       | false
+  synchronizer      |                  |
+   └── render       |                  |
+        │           | engine type      | time series
+        │           | e1               | e1
+        └── ts scan |                  |
+                    | ts-table         | t1
+                    | access mode      | metaTable
+                    | filter           | e1 IS NOT NULL
+                    | block filter[e1] | NOT NULL
 (11 rows)
 > select e1 from d1.t1 where ts > '-292275055-05-16 16:47:04.192 +0000' and e1 is not null and e2 = 2;
   e1
@@ -187,22 +187,21 @@ INSERT 1
    1
 (1 row)
 > explain select e1 from d1.t1 where ts > '-292275055-05-16 16:47:04.192 +0000' and e1 is not null and e2 = 2;
-           tree          |      field       |  description
--------------------------+------------------+-----------------
-                         | distributed      | true
-                         | vectorized       | false
-  render                 |                  |
-   │                     | e1               | e1
-   └── filter            |                  |
-        │                | filter           | e1 IS NOT NULL
-        └── synchronizer |                  |
-             └── ts scan |                  |
-                         | ts-table         | t1
-                         | access mode      | metaTable
-                         | filter           | e2 = 2
-                         | block filter[e2] | [2 - 2]
-                         | block filter[e1] | NOT NULL
-(13 rows)
+        tree        |      field       |          description
+--------------------+------------------+--------------------------------
+                    | distributed      | true
+                    | vectorized       | false
+  synchronizer      |                  |
+   └── render       |                  |
+        │           | engine type      | time series
+        │           | e1               | e1
+        └── ts scan |                  |
+                    | ts-table         | t1
+                    | access mode      | metaTable
+                    | filter           | (e2 = 2) AND (e1 IS NOT NULL)
+                    | block filter[e2] | [2 - 2]
+                    | block filter[e1] | NOT NULL
+(12 rows)
 > drop database d1 cascade;
 DROP DATABASE
 > create database d2;

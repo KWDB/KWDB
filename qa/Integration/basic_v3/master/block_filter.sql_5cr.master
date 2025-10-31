@@ -503,19 +503,19 @@ INSERT 1
    9 | NULL
 (1 row)
 > explain select id,e1 from test_block_filter.t1 where e1 is not NULL order by id;
-           tree          |      field       |  description
--------------------------+------------------+-----------------
-                         | distributed      | true
-                         | vectorized       | false
-  sort                   |                  |
-   │                     | order            | +id
-   └── filter            |                  |
-        │                | filter           | e1 IS NOT NULL
-        └── synchronizer |                  |
-             └── ts scan |                  |
-                         | ts-table         | t1
-                         | access mode      | metaTable
-                         | block filter[e1] | NOT NULL
+        tree        |      field       |  description
+--------------------+------------------+-----------------
+                    | distributed      | true
+                    | vectorized       | false
+  sort              |                  |
+   │                | engine type      | time series
+   │                | order            | +id
+   └── synchronizer |                  |
+        └── ts scan |                  |
+                    | ts-table         | t1
+                    | access mode      | metaTable
+                    | filter           | e1 IS NOT NULL
+                    | block filter[e1] | NOT NULL
 (11 rows)
 > select id,e1 from test_block_filter.t1 where e1 is not NULL order by id;
   id  |   e1
@@ -1975,8 +1975,8 @@ INSERT 1
   16 | \x27
 (4 rows)
 > explain select id,e19 from test_block_filter.t1 where e19>b'\x20' and e19<b'\xca' and e20 is not null order by id;
-             tree             |       field       |                        description
-------------------------------+-------------------+------------------------------------------------------------
+             tree             |       field       |            description
+------------------------------+-------------------+------------------------------------
                               | distributed       | true
                               | vectorized        | false
   sort                        |                   |
@@ -1985,14 +1985,15 @@ INSERT 1
         │                     | id                | id
         │                     | e19               | e19
         └── filter            |                   |
-             │                | filter            | ((e19 > '\x20') AND (e19 < '\xca')) AND (e20 IS NOT NULL)
+             │                | filter            | (e19 > '\x20') AND (e19 < '\xca')
              └── synchronizer |                   |
                   └── ts scan |                   |
                               | ts-table          | t1
                               | access mode       | metaTable
+                              | filter            | e20 IS NOT NULL
                               | block filter[e19] | ['\x2000' - '\xca')
                               | block filter[e20] | NOT NULL
-(15 rows)
+(16 rows)
 > select id,e19 from test_block_filter.t1 where e19>b'\x20' and e19<b'\xca' and e20 is not null order by id;
   id | e19
 -----+-------
@@ -2051,8 +2052,8 @@ INSERT 1
   16 | \x27
 (3 rows)
 > explain select id,e19, e1 from test_block_filter.t1 where e19>b'\x20' and e19<b'\xca' and e20<b'\xca' and id between 14 and 16 and e1 is not null order by id;
-                tree               |       field       |                                  description
------------------------------------+-------------------+--------------------------------------------------------------------------------
+                tree               |       field       |                      description
+-----------------------------------+-------------------+---------------------------------------------------------
                                    | distributed       | true
                                    | vectorized        | false
   render                           |                   |
@@ -2066,12 +2067,12 @@ INSERT 1
              │                     | e1                | e1
              │                     | e19               | e19
              └── filter            |                   |
-                  │                | filter            | (((e19 > '\x20') AND (e19 < '\xca')) AND (e20 < '\xca')) AND (e1 IS NOT NULL)
+                  │                | filter            | ((e19 > '\x20') AND (e19 < '\xca')) AND (e20 < '\xca')
                   └── synchronizer |                   |
                        └── ts scan |                   |
                                    | ts-table          | t1
                                    | access mode       | metaTable
-                                   | filter            | (id >= 14) AND (id <= 16)
+                                   | filter            | ((id >= 14) AND (id <= 16)) AND (e1 IS NOT NULL)
                                    | block filter[id]  | [14 - 16]
                                    | block filter[e19] | ['\x2000' - '\xca')
                                    | block filter[e20] | [ - '\xca')

@@ -1717,33 +1717,44 @@ SET CLUSTER SETTING
     3
 (1 row)
 > explain select min(ts.e1+ts.e2) from redb.re1 r join (select * from tsdb.ts1 where tsdb.ts1.e1 is not null) ts on ts.tag1=r.e1 and ts.tag2=r.e2 group by r.e1;
-                  tree                  |      field       |       description
-----------------------------------------+------------------+--------------------------
-                                        | distributed      | true
-                                        | vectorized       | false
-  render                                |                  |
-   │                                    | min              | min
-   └── group                            |                  |
-        │                               | aggregate 0      | e1
-        │                               | aggregate 1      | min(e1 + e2)
-        │                               | group by         | e1
-        └── render                      |                  |
-             │                          | e1 + e2          | e1 + e2
-             │                          | e1               | e1
-             └── hash-join              |                  |
-                  │                     | type             | inner
-                  │                     | equality         | (tag1, tag2) = (e1, e2)
-                  ├── filter            |                  |
-                  │    │                | filter           | e1 IS NOT NULL
-                  │    └── synchronizer |                  |
-                  │         └── ts scan |                  |
-                  │                     | ts-table         | ts1
-                  │                     | access mode      | tableTableMeta
-                  │                     | block filter[e1] | NOT NULL
-                  └── scan              |                  |
-                                        | table            | re1@primary
-                                        | spans            | FULL SCAN
-(24 rows)
+                  tree                  |       field       |       description
+----------------------------------------+-------------------+--------------------------
+                                        | distributed       | true
+                                        | vectorized        | false
+  render                                |                   |
+   │                                    | min               | min
+   └── group                            |                   |
+        │                               | aggregate 0       | e1
+        │                               | aggregate 1       | min(min)
+        │                               | group by          | e1
+        └── render                      |                   |
+             │                          | e1                | e1
+             │                          | min               | min
+             └── hash-join              |                   |
+                  │                     | type              | inner
+                  │                     | equality          | (tag1, tag2) = (e1, e2)
+                  │                     | left cols are key |
+                  ├── group             |                   |
+                  │    │                | engine type       | time series
+                  │    │                | aggregate 0       | tag1
+                  │    │                | aggregate 1       | tag2
+                  │    │                | aggregate 2       | min(e1 + e2)
+                  │    │                | group by          | tag1, tag2
+                  │    │                | addSynchronizer   | true
+                  │    └── render       |                   |
+                  │         │           | engine type       | time series
+                  │         │           | e1 + e2           | e1 + e2
+                  │         │           | tag1              | tag1
+                  │         │           | tag2              | tag2
+                  │         └── ts scan |                   |
+                  │                     | ts-table          | ts1
+                  │                     | access mode       | tableTableMeta
+                  │                     | filter            | e1 IS NOT NULL
+                  │                     | block filter[e1]  | NOT NULL
+                  └── scan              |                   |
+                                        | table             | re1@primary
+                                        | spans             | FULL SCAN
+(35 rows)
 > select min(ts.e1+ts.e2) from redb.re1 r1 join redb.re1 r2 join (select * from tsdb.ts1 where tsdb.ts1.e1 is not null) ts on ts.tag2=r2.e2 on ts.tag1=r1.e1 group by r1.e1;
   min
 -------
@@ -1758,31 +1769,41 @@ SET CLUSTER SETTING
    │                                         | min              | min
    └── group                                 |                  |
         │                                    | aggregate 0      | e1
-        │                                    | aggregate 1      | min(e1 + e2)
+        │                                    | aggregate 1      | min(min)
         │                                    | group by         | e1
         └── render                           |                  |
-             │                               | e1 + e2          | e1 + e2
              │                               | e1               | e1
+             │                               | min              | min
              └── hash-join                   |                  |
                   │                          | type             | inner
-                  │                          | equality         | (tag1) = (e1)
-                  ├── hash-join              |                  |
-                  │    │                     | type             | inner
-                  │    │                     | equality         | (tag2) = (e2)
-                  │    ├── filter            |                  |
-                  │    │    │                | filter           | e1 IS NOT NULL
-                  │    │    └── synchronizer |                  |
-                  │    │         └── ts scan |                  |
-                  │    │                     | ts-table         | ts1
-                  │    │                     | access mode      | tableTableMeta
-                  │    │                     | block filter[e1] | NOT NULL
-                  │    └── scan              |                  |
+                  │                          | equality         | (e1) = (tag1)
+                  ├── scan                   |                  |
                   │                          | table            | re1@primary
                   │                          | spans            | FULL SCAN
-                  └── scan                   |                  |
+                  └── hash-join              |                  |
+                       │                     | type             | inner
+                       │                     | equality         | (tag2) = (e2)
+                       ├── group             |                  |
+                       │    │                | engine type      | time series
+                       │    │                | aggregate 0      | tag1
+                       │    │                | aggregate 1      | tag2
+                       │    │                | aggregate 2      | min(e1 + e2)
+                       │    │                | group by         | tag1, tag2
+                       │    │                | addSynchronizer  | true
+                       │    └── render       |                  |
+                       │         │           | engine type      | time series
+                       │         │           | e1 + e2          | e1 + e2
+                       │         │           | tag1             | tag1
+                       │         │           | tag2             | tag2
+                       │         └── ts scan |                  |
+                       │                     | ts-table         | ts1
+                       │                     | access mode      | tableTableMeta
+                       │                     | filter           | e1 IS NOT NULL
+                       │                     | block filter[e1] | NOT NULL
+                       └── scan              |                  |
                                              | table            | re1@primary
                                              | spans            | FULL SCAN
-(30 rows)
+(40 rows)
 > select min(ts.e1+ts.e2) from redb.re1 r1 join redb.re1 r2 join (select * from tsdb.ts1 where tsdb.ts1.e1 > 0) ts on ts.tag1=r2.e1 or ts.tag2=r2.e2 on ts.tag1=r1.e1 or ts.tag2=r1.e2 group by r1.e1;
   min
 -------

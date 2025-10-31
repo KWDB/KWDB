@@ -2991,7 +2991,7 @@ var InitWhiteList = []sqlbase.WhiteList{
 	{"time_window", 2, []uint32{uint32(oid.T_timestamptz), uint32(oid.T_text)}, PosAll, true, TypeConstAndColumn},
 	{"time_window", 3, []uint32{uint32(oid.T_timestamptz), uint32(oid.T_text), uint32(oid.T_text)}, PosAll, true, TypeConstAndColumn},
 
-	// is not null
+	// is null
 	{"IS NOT DISTINCT FROM", 2, []uint32{uint32(types.T_varbytea), uint32(oid.T_unknown)}, PosWhere, true, TypeConstAndColumn},
 	{"IS NOT DISTINCT FROM", 2, []uint32{uint32(oid.T_int2), uint32(oid.T_unknown)}, PosWhere, true, TypeConstAndColumn},
 	{"IS NOT DISTINCT FROM", 2, []uint32{uint32(oid.T_int4), uint32(oid.T_unknown)}, PosWhere, true, TypeConstAndColumn},
@@ -3005,6 +3005,21 @@ var InitWhiteList = []sqlbase.WhiteList{
 	{"IS NOT DISTINCT FROM", 2, []uint32{uint32(types.T_nvarchar), uint32(oid.T_unknown)}, PosWhere, true, TypeConstAndColumn},
 	{"IS NOT DISTINCT FROM", 2, []uint32{uint32(oid.T_timestamptz), uint32(oid.T_unknown)}, PosWhere, true, TypeConstAndColumn},
 	{"IS NOT DISTINCT FROM", 2, []uint32{uint32(oid.T_timestamp), uint32(oid.T_unknown)}, PosWhere, true, TypeConstAndColumn},
+
+	// is not null
+	{"IS DISTINCT FROM", 2, []uint32{uint32(types.T_varbytea), uint32(oid.T_unknown)}, PosWhere, true, TypeConstAndColumn},
+	{"IS DISTINCT FROM", 2, []uint32{uint32(oid.T_int2), uint32(oid.T_unknown)}, PosWhere, true, TypeConstAndColumn},
+	{"IS DISTINCT FROM", 2, []uint32{uint32(oid.T_int4), uint32(oid.T_unknown)}, PosWhere, true, TypeConstAndColumn},
+	{"IS DISTINCT FROM", 2, []uint32{uint32(oid.T_int8), uint32(oid.T_unknown)}, PosWhere, true, TypeConstAndColumn},
+	{"IS DISTINCT FROM", 2, []uint32{uint32(oid.T_float4), uint32(oid.T_unknown)}, PosWhere, true, TypeConstAndColumn},
+	{"IS DISTINCT FROM", 2, []uint32{uint32(oid.T_float8), uint32(oid.T_unknown)}, PosWhere, true, TypeConstAndColumn},
+	{"IS DISTINCT FROM", 2, []uint32{uint32(oid.T_text), uint32(oid.T_unknown)}, PosWhere, true, TypeConstAndColumn},
+	{"IS DISTINCT FROM", 2, []uint32{uint32(oid.T_bpchar), uint32(oid.T_unknown)}, PosWhere, true, TypeConstAndColumn},
+	{"IS DISTINCT FROM", 2, []uint32{uint32(types.T_nchar), uint32(oid.T_unknown)}, PosWhere, true, TypeConstAndColumn},
+	{"IS DISTINCT FROM", 2, []uint32{uint32(oid.T_varchar), uint32(oid.T_unknown)}, PosWhere, true, TypeConstAndColumn},
+	{"IS DISTINCT FROM", 2, []uint32{uint32(types.T_nvarchar), uint32(oid.T_unknown)}, PosWhere, true, TypeConstAndColumn},
+	{"IS DISTINCT FROM", 2, []uint32{uint32(oid.T_timestamptz), uint32(oid.T_unknown)}, PosWhere, true, TypeConstAndColumn},
+	{"IS DISTINCT FROM", 2, []uint32{uint32(oid.T_timestamp), uint32(oid.T_unknown)}, PosWhere, true, TypeConstAndColumn},
 }
 
 // generate a hash value using the name and parameters of whitelist to compare whether the whitelist is consistent.
