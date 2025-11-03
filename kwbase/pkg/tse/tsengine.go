@@ -534,6 +534,15 @@ func (r *TsEngine) TSFlushVGroups() error {
 	return nil
 }
 
+// TsGetRecentBlockCacheInfo get storage block cache hit, miss counts and current used memory size(M) for showing hit ratio in web console
+func (r *TsEngine) TsGetRecentBlockCacheInfo() (int, int, int, error) {
+	var hitCount C.uint32_t
+	var missCount C.uint32_t
+	var memorySize C.uint32_t
+	C.TsGetRecentBlockCacheInfo(&hitCount, &missCount, &memorySize)
+	return int(hitCount), int(missCount), int(memorySize), nil
+}
+
 // AddTSColumn adds column for ts table.
 func (r *TsEngine) AddTSColumn(
 	tableID uint64, currentTSVersion, newTSVersion uint32, transactionID []byte, colMeta []byte,

@@ -15,7 +15,8 @@
 
 namespace kwdbts {
 
-TsLRUBlockCache::TsLRUBlockCache(uint64_t max_memory_size) : max_memory_size_(max_memory_size) {}
+TsLRUBlockCache::TsLRUBlockCache(uint64_t max_memory_size) : max_memory_size_(max_memory_size),
+                                                        cache_hit_miss_bits_(MAX_VISIT_CACHE_HISTORY_COUNT) {}
 
 TsLRUBlockCache::~TsLRUBlockCache() {
   while (head_) {
@@ -32,6 +33,12 @@ bool TsLRUBlockCache::Add(std::shared_ptr<TsEntityBlock>& block) {
   assert(block != nullptr);
   block->pre_ = nullptr;
   lock_.lock();
+  ++current_visit_cache_index_;
+  if (current_visit_cache_index_ >= MAX_VISIT_CACHE_HISTORY_COUNT) {
+    max_visit_cache_count_reached = true;
+    current_visit_cache_index_ &= MAX_VISIT_CACHE_HISTORY_COUNT - 1;
+  }
+  int cur_index = current_visit_cache_index_;
   block->next_ = head_;
   if (head_) {
     head_->pre_ = block;
@@ -40,6 +47,7 @@ bool TsLRUBlockCache::Add(std::shared_ptr<TsEntityBlock>& block) {
   }
   head_ = block;
   lock_.unlock();
+  cache_hit_miss_bits_[cur_index] = false;
   // We ignore the memory of a block without loading any data.
   return true;
 }
@@ -73,6 +81,12 @@ bool TsLRUBlockCache::AddMemory(TsEntityBlock* block, uint32_t new_memory_size) 
 void TsLRUBlockCache::Access(std::shared_ptr<TsEntityBlock>& block) {
   assert(block != nullptr);
   lock_.lock();
+  ++current_visit_cache_index_;
+  if (current_visit_cache_index_ >= MAX_VISIT_CACHE_HISTORY_COUNT) {
+    max_visit_cache_count_reached = true;
+    current_visit_cache_index_ &= MAX_VISIT_CACHE_HISTORY_COUNT - 1;
+  }
+  int cur_index = current_visit_cache_index_;
   if (block->pre_) {
     head_->pre_ = std::move(block->pre_->next_);
     block->pre_->next_ = std::move(block->next_);
@@ -88,6 +102,7 @@ void TsLRUBlockCache::Access(std::shared_ptr<TsEntityBlock>& block) {
     // Don't need to do anything since block should be head_ or has been removed from doubly linked list.
   }
   lock_.unlock();
+  cache_hit_miss_bits_[cur_index] = true;
 }
 
 void TsLRUBlockCache::SetMaxMemorySize(uint64_t max_memory_size) {
@@ -117,6 +132,60 @@ void TsLRUBlockCache::EvictAll() {
   }
   cur_memory_size_ = 0;
   lock_.unlock();
+}
+
+uint32_t TsLRUBlockCache::GetCacheHitCount() {
+  int cur_index = current_visit_cache_index_;
+  if (max_visit_cache_count_reached || current_visit_cache_index_ >= MAX_VISIT_CACHE_HISTORY_COUNT) {
+    return std::count(cache_hit_miss_bits_.begin(), cache_hit_miss_bits_.end(), true);
+  } else if (cur_index >= 0) {
+    return std::count(cache_hit_miss_bits_.begin(), cache_hit_miss_bits_.begin() + cur_index + 1, true);
+  } else {
+    // None of entity block is touched so far
+    return 0;
+  }
+}
+
+uint32_t TsLRUBlockCache::GetCacheMissCount() {
+  int cur_index = current_visit_cache_index_;
+  if (max_visit_cache_count_reached || current_visit_cache_index_ >= MAX_VISIT_CACHE_HISTORY_COUNT) {
+    return std::count(cache_hit_miss_bits_.begin(), cache_hit_miss_bits_.end(), false);
+  } else if (cur_index >= 0) {
+    return std::count(cache_hit_miss_bits_.begin(), cache_hit_miss_bits_.begin() + cur_index + 1, false);
+  } else {
+    // None of entity block is touched so far
+    return 0;
+  }
+}
+
+float TsLRUBlockCache::GetHitRatio() {
+  int hit_count;
+  int cur_index = current_visit_cache_index_;
+  if (max_visit_cache_count_reached || current_visit_cache_index_ >= MAX_VISIT_CACHE_HISTORY_COUNT) {
+    hit_count = std::count(cache_hit_miss_bits_.begin(), cache_hit_miss_bits_.end(), true);
+    return static_cast<float>(hit_count) / static_cast<float>(MAX_VISIT_CACHE_HISTORY_COUNT);
+  } else if (cur_index >= 0) {
+    hit_count = std::count(cache_hit_miss_bits_.begin(), cache_hit_miss_bits_.begin() + cur_index + 1, true);
+    return static_cast<float>(hit_count) / static_cast<float>(cur_index + 1);
+  } else {
+    // None of entity block is touched so far
+    return 0;
+  }
+}
+
+void TsLRUBlockCache::GetRecentHitInfo(uint32_t* hit_count, uint32_t* miss_count, uint32_t* memory_size) {
+  lock_.lock();
+  int cur_index = current_visit_cache_index_;
+  if (max_visit_cache_count_reached || current_visit_cache_index_ >= MAX_VISIT_CACHE_HISTORY_COUNT) {
+    *hit_count = std::count(cache_hit_miss_bits_.begin(), cache_hit_miss_bits_.end(), true);
+    *miss_count = MAX_VISIT_CACHE_HISTORY_COUNT - *hit_count;
+  } else if (cur_index >= 0) {
+    *hit_count = std::count(cache_hit_miss_bits_.begin(), cache_hit_miss_bits_.begin() + cur_index + 1, true);
+    *miss_count = cur_index + 1 - *hit_count;
+  }
+  *memory_size = cur_memory_size_ / (1024 * 1024);
+  lock_.unlock();
+  return;
 }
 
 #ifdef WITH_TESTS

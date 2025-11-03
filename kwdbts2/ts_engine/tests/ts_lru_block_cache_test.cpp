@@ -37,6 +37,9 @@ class TsLRUBlockCacheTest : public ::testing::Test {
 
 TEST_F(TsLRUBlockCacheTest, basicTest) {
   TsEntitySegmentBlockItem block_item;
+  uint32_t hit_count;
+  uint32_t miss_count;
+  uint32_t memory_size;
   for (int i = 0; i < 1000; ++i) {
     block_item.block_id = i + 1;
     block_item.n_cols = 5;
@@ -47,6 +50,12 @@ TEST_F(TsLRUBlockCacheTest, basicTest) {
     TsLRUBlockCache::GetInstance().AddMemory(entity_block.get(), 1024);
   }
   ASSERT_EQ(TsLRUBlockCache::GetInstance().GetMemorySize(), 100 * 1024);
+  ASSERT_EQ(TsLRUBlockCache::GetInstance().GetCacheHitCount(), 0);
+  ASSERT_EQ(TsLRUBlockCache::GetInstance().GetCacheMissCount(), 1000);
+  TsLRUBlockCache::GetInstance().GetRecentHitInfo(&hit_count, &miss_count, &memory_size);
+  ASSERT_EQ(hit_count, 0);
+  ASSERT_EQ(miss_count, 1000);
+  ASSERT_EQ(TsLRUBlockCache::GetInstance().GetHitRatio(), 0.0);
   for (int i = 0; i < 900; ++i) {
     ASSERT_EQ(entity_segment[0]->GetEntityBlock(i + 1), nullptr);
   }
@@ -58,6 +67,12 @@ TEST_F(TsLRUBlockCacheTest, basicTest) {
     std::shared_ptr<TsEntityBlock> entity_block = entity_segment[0]->GetEntityBlock(i + 1);
     TsLRUBlockCache::GetInstance().Access(entity_block);
   }
+  ASSERT_EQ(TsLRUBlockCache::GetInstance().GetCacheHitCount(), 50);
+  ASSERT_EQ(TsLRUBlockCache::GetInstance().GetCacheMissCount(), 1000);
+  TsLRUBlockCache::GetInstance().GetRecentHitInfo(&hit_count, &miss_count, &memory_size);
+  ASSERT_EQ(hit_count, 50);
+  ASSERT_EQ(miss_count, 1000);
+  ASSERT_EQ(TsLRUBlockCache::GetInstance().GetHitRatio(), (float)50 / (float)1050);
 
   for (int i = 0; i < 50; ++i) {
     block_item.block_id = i + 1;
@@ -68,11 +83,23 @@ TEST_F(TsLRUBlockCacheTest, basicTest) {
     TsLRUBlockCache::GetInstance().AddMemory(entity_block.get(), 1024);
     ASSERT_EQ(entity_segment[0]->GetEntityBlock(951 + i), nullptr);
   }
+  ASSERT_EQ(TsLRUBlockCache::GetInstance().GetCacheHitCount(), 50);
+  ASSERT_EQ(TsLRUBlockCache::GetInstance().GetCacheMissCount(), 1050);
+  TsLRUBlockCache::GetInstance().GetRecentHitInfo(&hit_count, &miss_count, &memory_size);
+  ASSERT_EQ(hit_count, 50);
+  ASSERT_EQ(miss_count, 1050);
+  ASSERT_EQ(TsLRUBlockCache::GetInstance().GetHitRatio(), (float)50 / (float)1100);
 
   for (int i = 49; i >= 0; --i) {
     std::shared_ptr<TsEntityBlock> entity_block = entity_segment[0]->GetEntityBlock(i + 1);
     TsLRUBlockCache::GetInstance().Access(entity_block);
   }
+  ASSERT_EQ(TsLRUBlockCache::GetInstance().GetCacheHitCount(), 100);
+  ASSERT_EQ(TsLRUBlockCache::GetInstance().GetCacheMissCount(), 1050);
+  TsLRUBlockCache::GetInstance().GetRecentHitInfo(&hit_count, &miss_count, &memory_size);
+  ASSERT_EQ(hit_count, 100);
+  ASSERT_EQ(miss_count, 1050);
+  ASSERT_EQ(TsLRUBlockCache::GetInstance().GetHitRatio(), (float)100 / (float)1150);
 
   ASSERT_EQ(TsLRUBlockCache::GetInstance().GetMemorySize(), 100 * 1024);
   for (int i = 0; i < 50; ++i) {

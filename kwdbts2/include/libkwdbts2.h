@@ -510,6 +510,15 @@ TSStatus TsSetUseRaftLogAsWAL(TSEngine* engine, bool use);
 
 TSStatus TSFlushVGroups(TSEngine* engine);
 
+/**
+ * @brief Get storage block cache hit, miss count and memory size(M) for showing hit ratio in web console
+ * @param[out] hit_count the number of blocks found in block cache
+ * @param[out] miss_count the number of blocks not found in block cache
+ * @param[out] memory_size current used memory size(M) in block cache
+ * @return
+ */
+void TsGetRecentBlockCacheInfo(uint32_t* hit_count, uint32_t* miss_count, uint32_t* memory_size);
+
 bool __attribute__((weak)) isCanceledCtx(uint64_t goCtxPtr);
 
 int __attribute__((weak)) goPrepareFlush();
