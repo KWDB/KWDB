@@ -76,6 +76,7 @@ class TsTableV2Impl : public TsTable {
                           const std::vector<void*> tags,
                           TSTagOpType op_type,
                           const std::vector<uint32_t>& scan_tags,
+                          const std::unordered_set<uint32_t> &hps,
                           std::vector<EntityResultIndex>* entity_id_list, ResultSet* res, uint32_t* count,
                           uint32_t table_version = 1) override;
 
@@ -201,6 +202,10 @@ class TsTableV2Impl : public TsTable {
    */
   KStatus DeleteData(kwdbContext_p ctx, uint64_t range_group_id, std::string& primary_tag,
                   const std::vector<KwTsSpan>& ts_spans, uint64_t* count, uint64_t mtr_id, uint64_t osn) override;
+
+  KStatus CountRangeData(kwdbContext_p ctx, uint64_t range_group_id, HashIdSpan& hash_span,
+                          const std::vector<KwTsSpan>& ts_spans, uint64_t* count,
+                          uint64_t mtr_id, uint64_t osn) override;
 
   KStatus GetEntityRowCount(kwdbContext_p ctx, std::vector<EntityResultIndex>& entity_ids,
                              const std::vector<KwTsSpan>& ts_spans, uint64_t* row_count);

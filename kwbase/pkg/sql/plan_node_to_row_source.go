@@ -36,6 +36,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/types"
+	"gitee.com/kwbasedb/kwbase/pkg/util/errorutil"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 	"gitee.com/kwbasedb/kwbase/pkg/util/timeutil"
 	"github.com/pkg/errors"
@@ -514,10 +515,15 @@ func (p *planNodeToRowSource) Run(ctx context.Context) execinfra.RowStats {
 	start := timeutil.Now()
 	defer func(p *planNodeToRowSource, startTime time.Time) execinfra.RowStats {
 		if p1 := recover(); p1 != nil {
-			err := errors.Errorf("%v", p1)
-			if err.Error() == "" {
-				// for test.
-				panic(p1)
+			var err error
+			if ok, e := errorutil.ShouldCatch(p1); ok {
+				err = e
+			} else {
+				err = errors.Errorf("%v", p1)
+				if err.Error() == "" {
+					// for test.
+					panic(p1)
+				}
 			}
 			metaErr := &execinfrapb.ProducerMetadata{Err: err}
 			p.Out.Output().Push(nil, metaErr)

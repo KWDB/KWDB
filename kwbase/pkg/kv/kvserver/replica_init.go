@@ -169,12 +169,33 @@ func (r *Replica) loadRaftMuLockedReplicaMuLocked(
 	if r.mu.state, err = r.mu.stateLoader.Load(ctx, r.Engine(), desc); err != nil {
 		return err
 	}
-	r.mu.lastIndex, err = r.mu.stateLoader.LoadLastIndex(ctx, r.Engine())
+	needSave := false
+	isTs := r.isTsLocked()
+	if isTs && r.store.TsRaftLogEngine != nil {
+		r.mu.lastIndex, err = r.LoadTsLastIndex(ctx, r.Engine())
+		if err == nil {
+			var state roachpb.RaftTruncatedState
+			if state, err = r.GetTsTruncateState(ctx); err == nil {
+				log.Infof(ctx, "Get truncate state from ts engine[%d, %d], current[%d, %d], current applied index: %d",
+					state.Index, state.Term, r.mu.state.TruncatedState.Index, r.mu.state.TruncatedState.Term, r.mu.state.RaftAppliedIndex)
+				r.mu.state.TruncatedState.Index, r.mu.state.TruncatedState.Term = state.Index, state.Term
+				if r.mu.state.RaftAppliedIndex < r.mu.state.TruncatedState.Index {
+					r.mu.state.RaftAppliedIndex = r.mu.state.TruncatedState.Index
+					needSave = true // save state including TruncatedState, or we just save TruncatedState only.
+				} else if err = r.mu.stateLoader.SetRaftTruncatedState(ctx, r.Engine(), r.mu.state.TruncatedState); err != nil {
+					log.Errorf(ctx, "failed set raft truncate state, err: %+v", err)
+				}
+			}
+			err = nil
+		}
+	} else {
+		r.mu.lastIndex, err = r.mu.stateLoader.LoadLastIndex(ctx, r.Engine())
+	}
 	if err != nil {
 		return err
 	}
 	r.mu.lastTerm = invalidLastTerm
-	if r.isTsLocked() {
+	if isTs {
 		// if we use the mode that raft log combines with WAL to guarantee the data integrity,
 		// we need to adjust applied index with ts flushed index.
 		hasTsFlushedIndex := tse.TsRaftLogCombineWAL.Get(&r.store.ClusterSettings().SV)
@@ -196,18 +217,21 @@ func (r *Replica) loadRaftMuLockedReplicaMuLocked(
 			hasTsFlushedIndex = r.mu.tsFlushedIndex > 0
 		}
 
-		hs, err := r.mu.stateLoader.LoadHardState(ctx, r.store.Engine())
-		// For uninitialized ranges, membership is unknown at this point.
+		hs, err := r.LoadTsHardState(ctx, r.store.Engine())
 		if err != nil {
 			log.Errorf(ctx, "failed get hard state,err: %+v", err)
 			return err
 		}
-		log.Infof(ctx, "init %v, truncate index is %d, tsFlushedIndex is %d, RaftAppliedIndex is %d, lastIndex: %d, "+
-			"hardState: %s, inconsistent: %v", isInit, r.mu.state.TruncatedState.Index, r.mu.tsFlushedIndex,
-			r.mu.state.RaftAppliedIndex, r.mu.lastIndex, hs, r.mu.inconsistent)
+		log.Infof(ctx, "init %v, removed %v, truncate index is %d, tsFlushedIndex is %d, RaftAppliedIndex is %d, "+
+			"lastIndex: %d, commit: %d, term: %d, vote: %d, inconsistent: %v, needSave: %v", isInit, r.mu.state.Desc.IsRemoved(),
+			r.mu.state.TruncatedState.Index, r.mu.tsFlushedIndex, r.mu.state.RaftAppliedIndex,
+			r.mu.lastIndex, hs.Commit, hs.Term, hs.Vote, r.mu.inconsistent, needSave)
 		if hasTsFlushedIndex && r.mu.tsFlushedIndex < r.mu.state.RaftAppliedIndex {
 			// only set RaftAppliedIndex to tsFlushedIndex when node starts.
 			r.mu.state.RaftAppliedIndex = r.mu.tsFlushedIndex
+			needSave = true
+		}
+		if needSave {
 			if _, err := r.mu.stateLoader.Save(ctx, r.Engine(), r.mu.state, stateloader.TruncatedStateUnreplicated); err != nil {
 				log.Warningf(ctx, "failed Save ReplicaState, err: %v", err)
 			}

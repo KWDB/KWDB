@@ -329,7 +329,7 @@ int TagTable::InsertTagRecord(kwdbts::Payload &payload, int32_t sub_group_id, in
 
 // V3 insert tag record
 int TagTable::InsertTagRecord(kwdbts::TsRawPayload &payload, int32_t sub_group_id, int32_t entity_id, uint64_t osn,
-                              uint8_t operate_type, uint64_t del_row_no) {
+                              uint8_t operate_type, std::pair<uint64_t, uint64_t> del_row) {
   // 1. check version
   auto tag_version_object = m_version_mgr_->GetVersionObject(payload.GetTableVersion());
   if (nullptr == tag_version_object) {
@@ -396,11 +396,30 @@ int TagTable::InsertTagRecord(kwdbts::TsRawPayload &payload, int32_t sub_group_i
   // 6. set undelete mark
   tag_partition_table->startRead();
   tag_partition_table->unsetDeleteMark(row_no);
-  if (operate_type == OperateType::Update) {
-    TagDataInfo del_tag_info{operate_type, osn, row_no};
-    tag_partition_table->setTagDataInfo(del_row_no, del_tag_info);
-  }
   tag_partition_table->stopRead();
+
+  //
+  // 1. check version
+  if (operate_type == OperateType::Update) {
+    auto old_tag_partition_table = tag_partition_table;
+    if (payload.GetTableVersion() != del_row.first) {
+      auto old_tag_version_object = m_version_mgr_->GetVersionObject(del_row.first);
+      if (nullptr == old_tag_version_object) {
+        LOG_ERROR("Tag table id[%ld] version[%lu] doesn't exist.", this->m_table_id, del_row.first);
+        return -1;
+      }
+      TableVersion old_tag_partition_version = old_tag_version_object->metaData()->m_real_used_version_;
+      old_tag_partition_table = m_partition_mgr_->GetPartitionTable(old_tag_partition_version);
+      if (nullptr == old_tag_partition_table) {
+        LOG_ERROR("Tag partition table version[%u] doesn't exist.", old_tag_partition_version);
+        return -1;
+      }
+    }
+    old_tag_partition_table->startRead();
+    TagDataInfo del_tag_info{operate_type, osn, row_no, payload.GetTableVersion()};
+    old_tag_partition_table->setTagDataInfo(del_row.second, &del_tag_info);
+    old_tag_partition_table->stopRead();
+  }
   return 0;
 }
 
@@ -408,7 +427,7 @@ int TagTable::InsertTagRecord(kwdbts::TsRawPayload &payload, int32_t sub_group_i
 int TagTable::UpdateTagRecord(kwdbts::Payload &payload, int32_t sub_group_id, int32_t entity_id, ErrorInfo& err_info) {
   // 1. delete
   TSSlice tmp_primary_tag = payload.GetPrimaryTag();
-  uint64_t ignore;
+  std::pair<uint64_t, uint64_t> ignore;
   if (this->DeleteTagRecord(tmp_primary_tag.data, tmp_primary_tag.len, err_info, 0, 0, ignore) < 0) {
     err_info.errmsg = "delete tag data failed";
     LOG_ERROR("delete tag data failed, error: %s", err_info.errmsg.c_str());
@@ -428,10 +447,10 @@ int TagTable::UpdateTagRecord(kwdbts::TsRawPayload &payload, int32_t sub_group_i
                               ErrorInfo& err_info, uint64_t osn) {
   // 1. delete
   TSSlice tmp_primary_tag = payload.GetPrimaryTag();
-  uint64_t del_row_no = 0;
+  std::pair<uint64_t, uint64_t> del_row = {0, 0};
   if (hasPrimaryKey(tmp_primary_tag.data, tmp_primary_tag.len)) {
     if (this->DeleteTagRecord(tmp_primary_tag.data, tmp_primary_tag.len, err_info, osn, OperateType::Update,
-                              del_row_no) < 0) {
+                              del_row) < 0) {
       err_info.errmsg = "delete tag data failed";
       LOG_ERROR("delete tag data failed, error: %s", err_info.errmsg.c_str());
       return err_info.errcode;
@@ -440,7 +459,7 @@ int TagTable::UpdateTagRecord(kwdbts::TsRawPayload &payload, int32_t sub_group_i
 
   // 2. insert
   if ((err_info.errcode = this->InsertTagRecord(payload, sub_group_id, entity_id, osn, OperateType::Update,
-                                                del_row_no)) < 0 ) {
+                                                del_row)) < 0 ) {
     err_info.errmsg = "insert tag data fail";
     return err_info.errcode;
   }
@@ -449,7 +468,7 @@ int TagTable::UpdateTagRecord(kwdbts::TsRawPayload &payload, int32_t sub_group_i
 
 // delete tag record by ptag
 int TagTable::DeleteTagRecord(const char *primary_tags, int len, ErrorInfo& err_info, uint64_t osn,
-                              uint8_t operate_type, uint64_t& del_row_no) {
+                              uint8_t operate_type, std::pair<uint64_t, uint64_t>& del_row) {
   // 1. find
   auto ret = m_index_->get(primary_tags, len);
   if (ret.first == INVALID_TABLE_VERSION_ID) {
@@ -528,10 +547,10 @@ int TagTable::DeleteTagRecord(const char *primary_tags, int len, ErrorInfo& err_
   tag_part_table->startRead();
   tag_part_table->setDeleteMark(ret.second);
   if (operate_type == OperateType::Update) {
-   del_row_no = ret.second;
+   del_row = ret;
   }
-  TagDataInfo tagInfo{operate_type, osn, 0};
-  tag_part_table->setTagDataInfo(ret.second, tagInfo);
+  TagDataInfo tagInfo{operate_type, osn, 0, 0};
+  tag_part_table->setTagDataInfo(ret.second, &tagInfo);
   tag_part_table->getEntityIdGroupId(ret.second, entity_id, sub_group_id);
   tag_part_table->stopRead();
 
@@ -546,6 +565,7 @@ int TagTable::DeleteTagRecord(const char *primary_tags, int len, ErrorInfo& err_
 
 // Get the column value of the tag using RowID.
 int TagTable::getDataWithRowID(TagPartitionTable* tag_partition, std::pair<TableVersionID, TagPartitionTableRowID> ret,
+                               const std::unordered_set<uint32_t> &hps,
                                std::vector<kwdbts::EntityResultIndex>* entity_id_list,
                                kwdbts::ResultSet* res, std::vector<uint32_t> &scan_tags, std::vector<uint32_t> &valid_scan_tags,
                                TagVersionObject* tag_version_obj, uint32_t scan_tags_num, bool get_partition) {
@@ -569,9 +589,12 @@ int TagTable::getDataWithRowID(TagPartitionTable* tag_partition, std::pair<Table
   }
   tag_partition->startRead();
   if (!EngineOptions::isSingleNode()) {
-    uint32_t hps;
-    tag_partition->getHashpointByRowNum(row, &hps);
-    tag_partition->getHashedEntityIdByRownum(row, hps, entity_id_list);
+    uint32_t hp;
+    tag_partition->getHashpointByRowNum(row, &hp);
+    if (hps.find(hp) == hps.end()) {
+      return 1;
+    }
+    tag_partition->getHashedEntityIdByRownum(row, hp, entity_id_list);
   } else {
     tag_partition->getEntityIdByRownum(row, entity_id_list);
   }
@@ -705,6 +728,7 @@ int TagTable::getRowIDByNTag(const std::vector<uint64_t> &tags_index_id, const s
 // Query tag through the index of the primary tag and normal tag.
 int TagTable::GetEntityIdList(const std::vector<void*>& primary_tags, const std::vector<uint64_t/*index_id*/> &tags_index_id,
                               const std::vector<void*> tags, TSTagOpType op_type, const std::vector<uint32_t> &scan_tags,
+                              const std::unordered_set<uint32_t> &hps,
                               std::vector<kwdbts::EntityResultIndex>* entity_id_list,
                               kwdbts::ResultSet* res, uint32_t* count, uint32_t table_version) {
   TagPartitionTableRowID row;
@@ -764,11 +788,12 @@ int TagTable::GetEntityIdList(const std::vector<void*>& primary_tags, const std:
         get_partition = true;
         last_tbl_version = tbl_version;
       }
-      int err_code = getDataWithRowID(src_tag_partition_tbl, result_value[idx], entity_id_list, res, result_scan_tags, src_scan_tags, result_tag_version_obj, scan_tag_num, get_partition);
+      int err_code = getDataWithRowID(src_tag_partition_tbl, result_value[idx], hps, entity_id_list, res, result_scan_tags, src_scan_tags, result_tag_version_obj, scan_tag_num, get_partition);
+      if (err_code < 0) {
+        return err_code;
+      }
       if (err_code == 0) {
         fetch_count++;
-      } else {
-        return err_code;
       }
     }
   }
@@ -1289,8 +1314,8 @@ int TagTable::AlterTableTag(AlterType alter_type, const AttributeInfo& attr_info
 
     case DROP_COLUMN:
       if (col_idx < 0) {
-        LOG_WARN("tag schema does not exist, column(id %u), table_id = %lu", tag_schema.m_id, m_table_id);
-        err_info.errmsg = "tag schema does not exist";
+        LOG_WARN("tag does not exist, tag id %u, tag name %s, table_id = %lu", tag_schema.m_id, attr_info.name, m_table_id);
+        err_info.errmsg = "tag does not exist";
         return -1;
       } else if (latest_version >= new_version) {
         LOG_WARN("new_version [%u] already exist, tag newest_version[%u]",
@@ -1713,7 +1738,7 @@ int TagTable::InsertForUndo(uint32_t group_id, uint32_t entity_id,
     return -1;
   }
   ErrorInfo err_info;
-  uint64_t ignore;
+  std::pair<uint64_t, uint64_t> ignore;
   return DeleteTagRecord(primary_tag.data, primary_tag.len, err_info, osn, OperateType::Ignore, ignore);
 }
 
@@ -1912,8 +1937,8 @@ int TagTable::DeleteForRedo(uint32_t group_id, uint32_t entity_id,
   // 2. delete data
   TagPartitionTableRowID row_no = ret.second;
   tag_partition_table->startRead();
-  TagDataInfo tag_info {OperateType::Delete, tag_tuple.getOSN(), 0};
-  tag_partition_table->setTagDataInfo(ret.second, tag_info);
+  TagDataInfo tag_info {OperateType::Delete, tag_tuple.getOSN(), 0, 0};
+  tag_partition_table->setTagDataInfo(ret.second, &tag_info);
   tag_partition_table->setDeleteMark(ret.second);
   tag_partition_table->stopRead();
 
@@ -2051,7 +2076,7 @@ int TagTable::UpdateForRedo(uint32_t group_id, uint32_t entity_id, const TSSlice
     uint64_t joint_entity_id = (static_cast<uint64_t>(entity_id) << 32) | group_id;
     ret_del = m_entity_row_index_->delete_data(reinterpret_cast<const char *>(&joint_entity_id));
   }
-  return InsertTagRecord(payload, group_id, entity_id, payload.GetOSN(), OperateType::Update, ret.second);
+  return InsertTagRecord(payload, group_id, entity_id, payload.GetOSN(), OperateType::Update, ret);
 }
 
 int TagTable::UpdateForUndo(uint32_t group_id, uint32_t entity_id, uint64_t hash_num,
@@ -2076,7 +2101,7 @@ int TagTable::UpdateForUndo(uint32_t group_id, uint32_t entity_id, uint64_t hash
     return -1;
   }
   // 1. delete
-  uint64_t ignore;
+  std::pair<uint64_t, uint64_t> ignore;
   rc = DeleteTagRecord(primary_tag.data, primary_tag.len, err_info, osn, OperateType::Ignore, ignore);
   if (rc < 0) {
     return rc;

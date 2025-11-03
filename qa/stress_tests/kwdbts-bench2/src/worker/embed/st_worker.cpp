@@ -75,18 +75,13 @@ KBStatus StWriteWorker::do_work(KTimestamp  new_ts) {
   TSSlice payload;
   {
     KWDB_START();
-    if (params_.engine_version == "2") {
-      if (table_schema.build == nullptr) {
-        table_schema.build = std::make_shared<TSRowPayloadBuilder>(table_schema.tag_schema, table_schema.data_schema, params_.BATCH_NUM);
-      } else {
-        table_schema.build->Reset();
-      }
-      FillPayloaderBuilderData(*(table_schema.build.get()), entity_tag, wr_ts, params_.BATCH_NUM, params_.time_inc);
-      table_schema.build->Build(w_table, 1, &payload);
-      // genRowBasedPayloadData(table_schema.tag_schema, table_schema.data_schema, w_table, 1, entity_tag, wr_ts, params_.BATCH_NUM, params_.time_inc, &payload);
+    if (table_schema.build == nullptr) {
+      table_schema.build = std::make_shared<TSRowPayloadBuilder>(table_schema.tag_schema, table_schema.data_schema, params_.BATCH_NUM);
     } else {
-      genPayloadData(table_schema.tag_schema, table_schema.data_schema, entity_tag, wr_ts, params_.BATCH_NUM, params_.time_inc, &payload);
+      table_schema.build->Reset();
     }
+    FillPayloaderBuilderData(*(table_schema.build.get()), entity_tag, wr_ts, params_.BATCH_NUM, params_.time_inc);
+    table_schema.build->Build(w_table, 1, &payload);
 
     KWDB_DURATION(_row_prepare_time);
   }
@@ -207,59 +202,57 @@ KBStatus StScanWorker::do_work(KTimestamp  new_ts) {
   if (s.isNotOK()) {
     return s;
   }
-  if (st_inst_->IsV2()) {
-    auto tablev2 = dynamic_pointer_cast<TsTableV2Impl>(ts_table);
-    auto tbl_version = tablev2->GetSchemaManager()->GetCurrentVersion();
-    tablev2->GetSchemaManager()->GetColumnsExcludeDropped(data_schema, tbl_version);
-    for (size_t i = 0; i < data_schema.size(); i++) {
-      scan_cols.push_back(i);
+  auto tablev2 = dynamic_pointer_cast<TsTableV2Impl>(ts_table);
+  auto tbl_version = tablev2->GetSchemaManager()->GetCurrentVersion();
+  tablev2->GetSchemaManager()->GetColumnsExcludeDropped(data_schema, tbl_version);
+  for (size_t i = 0; i < data_schema.size(); i++) {
+    scan_cols.push_back(i);
+  }
+  EntityResultIndex e_idx{1, entity_index, 1};
+  TsIterator* iter = nullptr;
+  Defer defer{[&]() {
+    if (iter != nullptr) {
+      delete iter;
     }
-    EntityResultIndex e_idx{1, entity_index, 1};
-    TsIterator* iter = nullptr;
-    Defer defer{[&]() {
-      if (iter != nullptr) {
-        delete iter;
-      }
-    }};
-    ctx->ts_engine = st_inst_->GetTSEngine();
-    std::vector<EntityResultIndex> entity_ids = {e_idx};
-    std::vector<BlockFilter> block_filter;
-    std::vector<k_int32> agg_extend_cols;
-    IteratorParams params = {
-        .entity_ids = entity_ids,
-        .ts_spans = ts_spans,
-        .block_filter = block_filter,
-        .scan_cols = scan_cols,
-        .agg_extend_cols = agg_extend_cols,
-        .scan_agg_types = scan_agg_types,
-        .table_version = tbl_version,
-        .ts_points = {},
-        .reverse = false,
-        .sorted = false,
-        .offset = 0,
-        .limit = 0,
-    };
-    auto status = tablev2->GetNormalIterator(ctx, params, &iter);
-    s = dump_zstatus("GetIterator", ctx, status);
+  }};
+  ctx->ts_engine = st_inst_->GetTSEngine();
+  std::vector<EntityResultIndex> entity_ids = {e_idx};
+  std::vector<BlockFilter> block_filter;
+  std::vector<k_int32> agg_extend_cols;
+  IteratorParams params = {
+      .entity_ids = entity_ids,
+      .ts_spans = ts_spans,
+      .block_filter = block_filter,
+      .scan_cols = scan_cols,
+      .agg_extend_cols = agg_extend_cols,
+      .scan_agg_types = scan_agg_types,
+      .table_version = tbl_version,
+      .ts_points = {},
+      .reverse = false,
+      .sorted = false,
+      .offset = 0,
+      .limit = 0,
+  };
+  auto status = tablev2->GetNormalIterator(ctx, params, &iter);
+  s = dump_zstatus("GetIterator", ctx, status);
+  if (s.isNotOK()) {
+    return s;
+  }
+  uint32_t count = 0;
+  bool is_finished = false;
+  do {
+    ResultSet res;
+    res.setColumnNum(scan_cols.size());
+    status = iter->Next(&res, &count);
+    s = dump_zstatus("IteratorNext", ctx, status);
     if (s.isNotOK()) {
       return s;
     }
-    uint32_t count = 0;
-    bool is_finished = false;
-    do {
-      ResultSet res;
-      res.setColumnNum(scan_cols.size());
-      status = iter->Next(&res, &count);
-      s = dump_zstatus("IteratorNext", ctx, status);
-      if (s.isNotOK()) {
-        return s;
-      }
-      if (count > 0 && !checkColValue(data_schema, res, count, params_.time_inc)) {
-        return KBStatus(StatusCode::RError, "colume value check failed.");
-      }
-      _scan_rows.add(count);
-    } while (count > 0);
-  }
+    if (count > 0 && !checkColValue(data_schema, res, count, params_.time_inc)) {
+      return KBStatus(StatusCode::RError, "colume value check failed.");
+    }
+    _scan_rows.add(count);
+  } while (count > 0);
 
   KWDB_DURATION(_scan_time);
 

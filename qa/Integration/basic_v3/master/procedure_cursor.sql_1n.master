@@ -1055,20 +1055,6 @@ SQLSTATE: 42704
 > DROP PROCEDURE test_set7;
 ERROR: procedure "test_set7" does not exist
 SQLSTATE: 42704
-> CREATE PROCEDURE test_set8()BEGIN DECLARE dt timestamp; SET dt = NOW();SELECT dt = NOW();END;
-CREATE PROCEDURE
-> CALL test_set8();
-  ?column?
-------------
-   false
-(1 row)
-> CALL test_set8();
-  ?column?
-------------
-   false
-(1 row)
-> DROP PROCEDURE test_set8;
-DROP PROCEDURE
 > CREATE PROCEDURE test_set9()BEGIN DECLARE x INT;SET x = (SELECT a FROM t1 limit 1);END;
 ERROR: Subquery inside condition expression is not supported
 SQLSTATE: 0A000

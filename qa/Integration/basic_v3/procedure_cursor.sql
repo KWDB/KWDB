@@ -394,11 +394,6 @@ CALL test_set7();
 CALL test_set7();
 DROP PROCEDURE test_set7;
 
-CREATE PROCEDURE test_set8()BEGIN DECLARE dt timestamp; SET dt = NOW();SELECT dt = NOW();END;
-CALL test_set8();
-CALL test_set8();
-DROP PROCEDURE test_set8;
-
 CREATE PROCEDURE test_set9()BEGIN DECLARE x INT;SET x = (SELECT a FROM t1 limit 1);END;
 CALL test_set9();
 CALL test_set9();

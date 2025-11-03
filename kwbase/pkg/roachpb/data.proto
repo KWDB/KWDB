@@ -268,8 +268,8 @@ message StickyBitTrigger {
 
   // Set to nil to remove a RangeDescriptor's sticky bit.
   util.hlc.Timestamp sticky_bit = 1 [(gogoproto.nullable) = false];
-  bool change_to_default_range = 2;
   RangeDescriptor new_desc = 3 [(gogoproto.nullable) = false];
+  reserved 2;
 }
 
 // Deprecated structure, kept for version compatibility.

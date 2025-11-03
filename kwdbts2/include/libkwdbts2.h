@@ -13,6 +13,7 @@ extern "C" {
 #endif
 
 typedef struct TSEngine TSEngine;
+typedef struct RaftStore RaftStore;
 
 // A TSSlice contains read-only data that does not need to be freed.
 typedef struct {
@@ -120,7 +121,6 @@ typedef struct {
   bool is_single_node;
   TSSlice brpc_addr;
   TSSlice cluster_id;
-  const char* engine_version;
 } TSOptions;
 
 typedef enum _EnMqType {
@@ -202,6 +202,14 @@ typedef struct _QueryInfo {
   DataInfo vectorize_data;
 } QueryInfo;
 
+typedef struct {
+  uint64_t range_id;
+  int index_cnt;  // The number of indexes in indexes.
+  uint64_t *indexes;
+  char *data;
+  uint64_t *offs;  // length = len(indexes) + 1 if data is not empty
+} TSRaftlog;
+
 typedef QueryInfo RespInfo;
 
 TSStatus TSOpen(TSEngine** engine, TSSlice dir, TSOptions options, AppliedRangeIndex* applied_indexes, size_t range_num);
@@ -257,6 +265,9 @@ TSStatus TsDeleteRangeData(TSEngine *engine, TSTableID table_id, uint64_t range_
 TSStatus
 TsDeleteData(TSEngine *engine, TSTableID table_id, uint64_t range_group_id, TSSlice primary_tag, KwTsSpans ts_spans,
              uint64_t *count, uint64_t mtr_id, uint64_t osn);
+
+TSStatus TsCountRangeData(TSEngine *engine, TSTableID table_id, uint64_t range_group_id, HashIdSpan hash_span,
+                           KwTsSpans ts_spans, uint64_t *count, uint64_t mtr_id, uint64_t osn);
 
 TSStatus TSFlushBuffer(TSEngine* engine);
 
@@ -503,6 +514,22 @@ bool __attribute__((weak)) isCanceledCtx(uint64_t goCtxPtr);
 
 int __attribute__((weak)) goPrepareFlush();
 int __attribute__((weak)) goFlushed();
+
+TSStatus TSRaftOpen(RaftStore** engine, TSSlice dir);
+
+TSStatus TSWriteRaftLog(RaftStore *engine, int cnt, TSRaftlog *raftlog, bool sync);
+
+TSStatus TSGetRaftLog(RaftStore* engine, uint64_t range_id, uint64_t start, uint64_t end, TSSlice* value);
+
+TSStatus TSGetFirstIndex(RaftStore* engine, uint64_t range_id, uint64_t* index_id);
+
+TSStatus TSGetLastIndex(RaftStore* engine, uint64_t range_id, uint64_t* index_id);
+
+TSStatus TSGetFirstRaftLog(RaftStore *engine, uint64_t range_id, TSSlice *value);
+
+TSStatus TSSyncRaftLog(RaftStore* engine);
+
+TSStatus TSHasRange(RaftStore* engine, uint64_t range_id);
 
 #ifdef __cplusplus
 }  // extern "C"

@@ -691,9 +691,16 @@ type Factory interface {
 	// to original plan for multiple model processing.
 	ResetTsScanAccessMode(expr memo.RelExpr, originalAccessMode execinfrapb.TSTableReadMode)
 
+	// BuildSortInTsInsert build sortNode by input of tsInsertSelectNode.
+	BuildSortInTsInsert(tsInsertSelect Node, ordering sqlbase.ColumnOrdering, alreadyOrderedPrefix int, execInTSEngine bool,
+	) (Node, bool)
+
+	// CanAddRender check whether render should be added to the node.
+	CanAddRender(expr memo.RelExpr, node Node) bool
+
 	// ProcessTSInsertWithSort swaps the positions of sortNode and tsInsertSelectNode.
 	ProcessTSInsertWithSort(
-		tsInsertSelect Node, outputCols *opt.ColMap, ordering sqlbase.ColumnOrdering, alreadyOrderedPrefix int, execInTSEngine bool,
+		tsInsertSelect Node, sort Node, outputCols *opt.ColMap,
 	) (Node, bool)
 }
 

@@ -333,6 +333,8 @@ type Config struct {
 	// Forbid cache coredump for go test, for example TestFuncNull
 	ForbidCatchCoreDump bool
 
+	// UseRaftStore determines whether use raft store to save raft logs.
+	UseRaftStore bool
 	// ProcedureCacheSize is the memory size (in bytes) of the procedure.
 	ProcedureCacheSize int64
 }

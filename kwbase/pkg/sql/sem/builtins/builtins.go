@@ -5070,6 +5070,36 @@ may increase either contention or retry errors, or both.`,
 	//		Info: "time_bucket_gapfill groups timestamps by duration.",
 	//	},
 	//),
+
+	"get_range_count": makeBuiltin(
+		tree.FunctionProperties{DistsqlBlacklist: true, Impure: true},
+		tree.Overload{
+			Types:      tree.ArgTypes{{"range_id", types.Int}, {"node_id", types.Int}},
+			ReturnType: tree.FixedReturnType(types.Int),
+			Fn: func(evalCtx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				var id *tree.DInt
+				var ok bool
+				if id, ok = args[0].(*tree.DInt); !ok {
+					return nil, pgerror.New(pgcode.InvalidParameterValue, "first arg should be int.")
+				}
+				rangeID := roachpb.RangeID(*id)
+				if id, ok = args[1].(*tree.DInt); !ok {
+					return nil, pgerror.New(pgcode.InvalidParameterValue, "second arg should be int.")
+				}
+				if rangeID < 1 {
+					return nil, errors.New("range not exist")
+				}
+				nodeID := roachpb.NodeID(*id)
+				count, err := evalCtx.TsDBAccessor.GetRangeRowCountFromNode(evalCtx.Ctx(), rangeID, nodeID)
+				if err != nil {
+					return nil, err
+				}
+
+				return tree.NewDInt(tree.DInt(count)), nil
+			},
+			Info: "get_range_data get the row count of the range data on the specified node",
+		},
+	),
 }
 
 func timeBucketOverload(evalCtx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {

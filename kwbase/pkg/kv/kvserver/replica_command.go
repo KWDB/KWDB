@@ -622,10 +622,11 @@ func (r *Replica) adminUnsplitWithDescriptor(
 		// before the cluster version reaches 19.2 and the early return above
 		// already handles that case, but nothing is won in doing so.
 		newDesc.StickyBit = nil
-		changeToDefaultRange := false
+		removed := true
+		newDesc.Removed = &removed
+		log.Infof(ctx, "will remove r%d", desc.RangeID)
 		stickyBit := hlc.Timestamp{}
 		if desc.GetRangeType() == roachpb.TS_RANGE {
-			changeToDefaultRange = true
 			newDesc.SetRangeType(roachpb.DEFAULT_RANGE)
 			newDesc.StickyBit = &hlc.MaxTimestamp
 			stickyBit = hlc.MaxTimestamp
@@ -646,9 +647,8 @@ func (r *Replica) adminUnsplitWithDescriptor(
 				StickyBitTrigger: &roachpb.StickyBitTrigger{
 					// Setting StickyBit to the zero timestamp ensures that it is always
 					// eligible for automatic merging.
-					StickyBit:            stickyBit,
-					ChangeToDefaultRange: changeToDefaultRange,
-					NewDesc:              newDesc,
+					StickyBit: stickyBit,
+					NewDesc:   newDesc,
 				},
 			},
 		})
@@ -2134,6 +2134,7 @@ func (r *Replica) sendTSSnapshot(
 		&r.store.cfg.RaftConfig,
 		r.store.allocator.storePool,
 		r.store.TsEngine,
+		r.store.TsRaftLogEngine,
 		req,
 		snap,
 		r.store.Engine().NewBatch,

@@ -209,6 +209,21 @@ struct TSEngine {
                                  uint64_t osn = 0) = 0;
 
   /**
+ * @brief Count data of some specified entities within a specified time range by marking
+ * @param[in] table_id    ID of the time series table
+ * @param[in] range_group_id  RangeGroup ID
+ * @param[in] hash_span   Entities within certain hash range
+ * @param[in] ts_spans    Time range for deleting data
+ * @param[out] count  Number of data rows
+ * @param[in] mtr_id  Mini-transaction id for TS table
+ *
+ * @return KStatus
+ */
+  virtual KStatus CountRangeData(kwdbContext_p ctx, const KTableKey &table_id, uint64_t range_group_id,
+                                  HashIdSpan &hash_span, const std::vector<KwTsSpan> &ts_spans,
+                                  uint64_t *count, uint64_t mtr_id, uint64_t osn) = 0;
+
+  /**
   * @brief get batch data in tmp memroy
   * @param[out] TsWriteBatch
   *

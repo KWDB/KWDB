@@ -95,7 +95,7 @@ type snapshotStrategy interface {
 
 	// SendTS streams SnapshotRequests created from the OutgoingSnapshot in to the
 	// provided stream. On nil error, the number of bytes sent is returned.
-	SendTS(context.Context, *tse.TsEngine, outgoingSnapshotStream, SnapshotRequest_Header, *OutgoingSnapshot) (int64, error)
+	SendTS(context.Context, *tse.TsEngine, *tse.TsRaftLogEngine, outgoingSnapshotStream, SnapshotRequest_Header, *OutgoingSnapshot) (int64, error)
 
 	// Status provides a status report on the work performed during the
 	// snapshot. Only valid if the strategy succeeded.
@@ -477,6 +477,7 @@ var errMalformedSnapshot = errors.New("malformed snapshot generated")
 func (kvSS *kvBatchSnapshotStrategy) SendTS(
 	ctx context.Context,
 	TsEngine *tse.TsEngine,
+	RaftLogEngine *tse.TsRaftLogEngine,
 	stream outgoingSnapshotStream,
 	header SnapshotRequest_Header,
 	snap *OutgoingSnapshot,
@@ -562,18 +563,38 @@ func (kvSS *kvBatchSnapshotStrategy) SendTS(
 	}
 	logEntries := make([][]byte, 0, preallocSize)
 
-	var raftLogBytes int64
-	scanFunc := func(kv roachpb.KeyValue) (bool, error) {
-		bytes, err := kv.Value.GetBytes()
-		if err == nil {
-			logEntries = append(logEntries, bytes)
-			raftLogBytes += int64(len(bytes))
+	if RaftLogEngine != nil {
+		var raftLogBytes int64
+		var value roachpb.Value
+		transfer := func(v []byte) error {
+			value.RawBytes = make([]byte, len(v))
+			copy(value.RawBytes, v)
+			bytes, err := value.GetBytes()
+			if err == nil {
+				logEntries = append(logEntries, bytes)
+				raftLogBytes += int64(len(bytes))
+			}
+			return err
 		}
-		return false, err
-	}
+		err := RaftLogEngine.GetRaftLog(uint64(rangeID), firstIndex, endIndex, transfer)
+		if err != nil {
+			log.Infof(ctx, "failed get raft log, err: %s", err)
+			return 0, err
+		}
+	} else {
+		var raftLogBytes int64
+		scanFunc := func(kv roachpb.KeyValue) (bool, error) {
+			bytes, err := kv.Value.GetBytes()
+			if err == nil {
+				logEntries = append(logEntries, bytes)
+				raftLogBytes += int64(len(bytes))
+			}
+			return false, err
+		}
 
-	if err := iterateEntries(ctx, snap.EngineSnap, rangeID, firstIndex, endIndex, scanFunc); err != nil {
-		return 0, err
+		if err := iterateEntries(ctx, snap.EngineSnap, rangeID, firstIndex, endIndex, scanFunc); err != nil {
+			return 0, err
+		}
 	}
 
 	expLen := endIndex - firstIndex
@@ -1267,6 +1288,7 @@ func sendTSSnapshot(
 	ctx context.Context,
 	raftCfg *base.RaftConfig,
 	TsEngine *tse.TsEngine,
+	RaftLogEngine *tse.TsRaftLogEngine,
 	st *cluster.Settings,
 	stream outgoingSnapshotStream,
 	storePool SnapshotStorePool,
@@ -1339,7 +1361,7 @@ func sendTSSnapshot(
 		log.Fatalf(ctx, "unknown snapshot strategy: %s", header.Strategy)
 	}
 
-	numBytesSent, err := ss.SendTS(ctx, TsEngine, stream, header, snap)
+	numBytesSent, err := ss.SendTS(ctx, TsEngine, RaftLogEngine, stream, header, snap)
 	if err != nil {
 		return err
 	}

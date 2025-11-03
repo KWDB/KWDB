@@ -27,11 +27,13 @@ package rowexec
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"gitee.com/kwbasedb/kwbase/pkg/kv"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfra"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfrapb"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
+	"gitee.com/kwbasedb/kwbase/pkg/util/timeutil"
 	"gitee.com/kwbasedb/kwbase/pkg/util/tracing"
 	"github.com/opentracing/opentracing-go"
 )
@@ -118,6 +120,7 @@ func newNoopProcessor(
 // RunShortCircuit is part of the Processor interface.
 func (n *noopProcessor) RunShortCircuit(ctx context.Context, ttr execinfra.TSReader) error {
 	// start a goroutine to receive local data.
+	startTime := timeutil.Now()
 	go func() {
 		ttr := ttr.(*TsTableReader)
 		dst := ttr.Out.Output()
@@ -150,6 +153,10 @@ func (n *noopProcessor) RunShortCircuit(ctx context.Context, ttr execinfra.TSRea
 		row, meta := n.input.Next()
 		if row == nil && meta == nil {
 			// query short circuit end.
+			if n.FinishTrace != nil {
+				meta := n.outputStatsToTraceShortCircuit(startTime)
+				dst.Push(nil, meta)
+			}
 			return nil
 		}
 		dst.Push(row, meta)
@@ -380,4 +387,20 @@ func (n *noopProcessor) outputStatsToTrace() {
 			sp, &OrdinalityStats{InputStats: is},
 		)
 	}
+}
+
+// outputStatsToTraceShortCircuit outputs the collected noop stats to the trace when RunShortCircuit.
+func (n *noopProcessor) outputStatsToTraceShortCircuit(
+	startTime time.Time,
+) *execinfrapb.ProducerMetadata {
+	if sp := opentracing.SpanFromContext(n.PbCtx()); sp != nil {
+		tracing.SetSpanStats(
+			sp, &OrdinalityStats{InputStats: InputStats{StallTime: timeutil.Since(startTime)}},
+		)
+	}
+	if trace := execinfra.GetTraceData(n.PbCtx()); trace != nil {
+		meta := execinfrapb.ProducerMetadata{TraceData: trace}
+		return &meta
+	}
+	return nil
 }

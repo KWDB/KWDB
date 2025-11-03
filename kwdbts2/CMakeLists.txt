@@ -317,6 +317,7 @@ set(TS_INCLUDE
         statistic/include
         ${SNAPPY_INCLUDE}
         brpc/include
+        ${SNAPPY_INCLUDE}
         )
 if (NOT KWBASE_OSS)
     list(APPEND TS_INCLUDE icl/autonomy/include)

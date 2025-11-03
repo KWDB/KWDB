@@ -1244,4 +1244,10 @@ The default is to not exclude any node.`,
 		Name:        "upgrade-complete",
 		Description: `Node upgrade complete`,
 	}
+
+	UseRaftLogStore = FlagInfo{
+		Name: "use-raft-store",
+		Description: `
+Use raft store as storage engine to save raft logs and related data.`,
+	}
 )

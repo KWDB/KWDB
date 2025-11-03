@@ -220,9 +220,7 @@ function execute_regression_sql_distribute_v3() {
             rm -f $diff_file
           fi
 
-          for folder in `ls $storedir`; do
-          	tar -cvzPf $QA_DIR/TEST_integration/$dir/${sql_file}/$current_time-${res}/${sql_file}_${topology}_$folder.logs.tar.gz -C $storedir/$folder logs
-          done
+          tar -cvzPf $QA_DIR/TEST_integration/$dir/${sql_file}/$current_time-${res}/${sql_file}_${topology}.logs.tar.gz $storedir/c*/logs
 
           $QA_DIR/util/stop_basic_v2.sh ${topology}
           if [ $? = 1 ]; then

@@ -53,7 +53,6 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/types"
 	"gitee.com/kwbasedb/kwbase/pkg/util/duration"
-	"gitee.com/kwbasedb/kwbase/pkg/util/envutil"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 	"gitee.com/kwbasedb/kwbase/pkg/util/stop"
 	"gitee.com/kwbasedb/kwbase/pkg/util/timeutil"
@@ -88,9 +87,6 @@ const (
 	// Day is one day to hours
 	Day = 24 * Hour
 )
-
-// KwEngineVersion indicates which verson storage engine to use
-var KwEngineVersion = envutil.EnvOrDefaultString("KW_ENGINE_VERSION", "2")
 
 // TsPayloadSizeLimit is the max size of per payload.
 var TsPayloadSizeLimit = settings.RegisterNonNegativeIntSetting(
@@ -271,7 +267,6 @@ type TsEngine struct {
 	tdb     *C.TSEngine
 	opened  bool
 	openCh  chan struct{}
-	Version string
 }
 
 // IsSingleNode Returns whether TsEngine is started in singleNode mode
@@ -360,7 +355,6 @@ func NewTsEngine(
 		stopper: stopper,
 		cfg:     cfg,
 		openCh:  make(chan struct{}),
-		Version: KwEngineVersion,
 	}
 	return r, nil
 }
@@ -392,9 +386,6 @@ func (r *TsEngine) Open(rangeIndex []roachpb.RangeIndex) error {
 		Trace_on_off_list:         goToTSSlice([]byte(traceLevel)),
 	}
 
-	cEngineVersion := C.CString(r.Version)
-	defer C.free(unsafe.Pointer(cEngineVersion))
-
 	if len(rangeIndex) == 0 {
 		status := C.TSOpen(&r.tdb, goToTSSlice([]byte(r.cfg.Dir)),
 			C.TSOptions{
@@ -407,7 +398,6 @@ func (r *TsEngine) Open(rangeIndex []roachpb.RangeIndex) error {
 				is_single_node:   C.bool(r.cfg.IsSingleNode),
 				brpc_addr:        goToTSSlice([]byte(r.cfg.BRPCAddr)),
 				cluster_id:       goToTSSlice([]byte(r.cfg.ClusterID)),
-				engine_version:   cEngineVersion,
 			},
 			nil,
 			C.uint64_t(0))
@@ -434,7 +424,6 @@ func (r *TsEngine) Open(rangeIndex []roachpb.RangeIndex) error {
 				is_single_node:   C.bool(r.cfg.IsSingleNode),
 				brpc_addr:        goToTSSlice([]byte(r.cfg.BRPCAddr)),
 				cluster_id:       goToTSSlice([]byte(r.cfg.ClusterID)),
-				engine_version:   cEngineVersion,
 			},
 			&appliedRangeIndex[0],
 			C.uint64_t(len(appliedRangeIndex)))
@@ -724,26 +713,14 @@ func (r *TsEngine) PutData(
 	var entitiesAffected C.uint16_t
 	var unorderedAffected C.uint32_t
 	var status C.TSStatus
-	if r.Version == "2" {
-		if transactionID != nil {
-			cstr := C.CString(string(transactionID))
-			defer C.free(unsafe.Pointer(cstr))
-			status = C.TSPutDataByRowTypeExplicit(r.tdb, C.TSTableID(tableID), &cTsSlice[0], (C.size_t)(len(cTsSlice)), cRangeGroup, C.uint64_t(tsTxnID),
-				&entitiesAffected, &unorderedAffected, &dedupResult, C.bool(writeWAL), cstr)
-		} else {
-			status = C.TSPutDataByRowType(r.tdb, C.TSTableID(tableID), &cTsSlice[0], (C.size_t)(len(cTsSlice)), cRangeGroup, C.uint64_t(tsTxnID),
-				&entitiesAffected, &unorderedAffected, &dedupResult, C.bool(writeWAL))
-		}
+	if transactionID != nil {
+		cstr := C.CString(string(transactionID))
+		defer C.free(unsafe.Pointer(cstr))
+		status = C.TSPutDataByRowTypeExplicit(r.tdb, C.TSTableID(tableID), &cTsSlice[0], (C.size_t)(len(cTsSlice)), cRangeGroup, C.uint64_t(tsTxnID),
+			&entitiesAffected, &unorderedAffected, &dedupResult, C.bool(writeWAL), cstr)
 	} else {
-		if transactionID != nil {
-			cstr := C.CString(string(transactionID))
-			defer C.free(unsafe.Pointer(cstr))
-			status = C.TSPutDataExplicit(r.tdb, C.TSTableID(tableID), &cTsSlice[0], (C.size_t)(len(cTsSlice)), cRangeGroup, C.uint64_t(tsTxnID),
-				&entitiesAffected, &unorderedAffected, &dedupResult, C.bool(writeWAL), cstr)
-		} else {
-			status = C.TSPutData(r.tdb, C.TSTableID(tableID), &cTsSlice[0], (C.size_t)(len(cTsSlice)), cRangeGroup, C.uint64_t(tsTxnID),
-				&entitiesAffected, &unorderedAffected, &dedupResult, C.bool(writeWAL))
-		}
+		status = C.TSPutDataByRowType(r.tdb, C.TSTableID(tableID), &cTsSlice[0], (C.size_t)(len(cTsSlice)), cRangeGroup, C.uint64_t(tsTxnID),
+			&entitiesAffected, &unorderedAffected, &dedupResult, C.bool(writeWAL))
 	}
 	if err := statusToError(status); err != nil {
 		return DedupResult{}, EntitiesAffect{}, errors.Wrap(err, "could not PutData")
@@ -1552,6 +1529,48 @@ func (r *TsEngine) DeleteData(
 		return uint64(delCnt), errors.Wrap(err, "failed to delete ts data")
 	}
 	return uint64(delCnt), nil
+}
+
+// CountRangeData delete entities data in the range
+func (r *TsEngine) CountRangeData(
+	tableID uint64,
+	rangeGroupID uint64,
+	beginHash uint64,
+	endHash uint64,
+	tsSpans []*roachpb.TsSpan,
+	tsTxnID uint64,
+	osnID uint64,
+) (uint64, error) {
+	r.checkOrWaitForOpen()
+	cKwHashIDSpans := C.HashIdSpan{
+		begin: C.uint64_t(beginHash),
+		end:   C.uint64_t(endHash),
+	}
+
+	cTsSpans := make([]C.KwTsSpan, len(tsSpans))
+	for i := 0; i < len(tsSpans); i++ {
+		cTsSpans[i].begin = C.int64_t(tsSpans[i].TsStart)
+		cTsSpans[i].end = C.int64_t(tsSpans[i].TsEnd)
+	}
+	cKwTsSpans := C.KwTsSpans{
+		spans: (*C.KwTsSpan)(unsafe.Pointer(&cTsSpans[0])),
+		len:   C.int32_t(len(tsSpans)),
+	}
+
+	var RangeCnt C.uint64_t
+	status := C.TsCountRangeData(
+		r.tdb,
+		C.TSTableID(tableID),
+		C.uint64_t(rangeGroupID),
+		cKwHashIDSpans,
+		cKwTsSpans,
+		&RangeCnt,
+		C.uint64_t(tsTxnID),
+		C.uint64_t(osnID))
+	if err := statusToError(status); err != nil {
+		return uint64(RangeCnt), errors.New("Data count failed or partially failed")
+	}
+	return uint64(RangeCnt), nil
 }
 
 // Vacuum vacuum partitions

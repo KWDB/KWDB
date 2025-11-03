@@ -107,7 +107,7 @@ endif
 # dep-build is set to non-empty if the .d files should be included.
 # This definition makes it empty when only the targets "help" and/or "clean"
 # are specified.
-build-with-dep-files := $(or $(if $(MAKECMDGOALS),,implicit-all),$(filter-out help clean,$(MAKECMDGOALS)))
+build-with-dep-files := $(or $(if $(MAKECMDGOALS),,implicit-all),$(filter-out help clean build/defs.mk,$(MAKECMDGOALS)))
 
 ## Which package to run tests against, e.g. "./pkg/foo".
 PKG := ./pkg/...
@@ -1197,7 +1197,7 @@ bin/.gw_protobuf_sources: $(GW_SERVER_PROTOS) $(GW_TS_PROTOS) $(GO_PROTOS) $(GOG
 	goimports -w $(GW_SOURCES)
 	touch $@
 
-bin/.cpp_protobuf_sources: $(CPP_PROTOS)
+bin/.cpp_protobuf_sources: $(CPP_PROTOS) bin/.bootstrap
 	rm -rf $(CPP_PROTO_ROOT)
 	mkdir -p $(CPP_PROTO_ROOT)
 	build/werror.sh $(PROTOC) -Ipkg:$(GOGO_PROTOBUF_PATH):$(PROTOBUF_PATH) --cpp_out=lite:$(CPP_PROTO_ROOT) $(CPP_PROTOS)

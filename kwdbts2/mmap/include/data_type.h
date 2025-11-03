@@ -218,7 +218,7 @@ enum ColumnFlag {
 #define COLUMNATTR_LEN      64  // MAX_COLUMNATTR_LEN + 2
 struct AttributeInfo {
   uint32_t id;           /// < column id.
-  char name[COLUMNATTR_LEN];       ///< column name.
+  char name[COLUMNATTR_LEN] = {0};       ///< column name.
   int32_t type;           ///< column data type.
   int32_t offset;         ///< Offset.
   int32_t size;           ///< Size.

@@ -87,9 +87,11 @@ class TsMemSegBlock : public TsBlock {
   std::vector<const TSMemSegRowData*> row_data_;
   timestamp64 min_ts_{INVALID_TS};
   timestamp64 max_ts_{INVALID_TS};
-  std::unique_ptr<TsRawPayloadRowParser> parser_ = nullptr;
+  std::shared_ptr<TsRawPayloadRowParser> parser_ = nullptr;
   std::unordered_map<uint32_t, char*> col_based_mems_;
   std::unordered_map<uint32_t, std::unique_ptr<TsBitmap>> col_bitmaps_;
+  // it's safe to return memory address if memory_addr_safe_ is true
+  bool memory_addr_safe_{false};
 
  public:
   explicit TsMemSegBlock(std::shared_ptr<TsMemSegment> mem_seg) : mem_seg_(mem_seg) {}
@@ -101,6 +103,10 @@ class TsMemSegBlock : public TsBlock {
       }
     }
     col_based_mems_.clear();
+  }
+
+  void SetParser(std::shared_ptr<TsRawPayloadRowParser>& parser) {
+    parser_ = parser;
   }
 
   TSEntityID GetEntityId() {
@@ -175,6 +181,10 @@ class TsMemSegBlock : public TsBlock {
 
   KStatus GetCompressDataFromFile(uint32_t table_version, int32_t nrow, std::string& data) override {
     return KStatus::FAIL;
+  }
+
+  void SetMemoryAddrSafe() {
+    memory_addr_safe_ = true;
   }
 
   bool InsertRow(const TSMemSegRowData* row) {

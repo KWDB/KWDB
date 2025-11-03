@@ -31,6 +31,7 @@ import (
 
 	"gitee.com/kwbasedb/kwbase/pkg/jobs"
 	"gitee.com/kwbasedb/kwbase/pkg/kv"
+	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
 	"gitee.com/kwbasedb/kwbase/pkg/server/serverpb"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/opt/exec"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/parser"
@@ -231,8 +232,6 @@ type planner struct {
 	// It is true if forcing filtering in ME and preventing pushdown to tsengine.
 	// This is used for CDC filtering.
 	forceFilterInME bool
-
-	Kwengineversion string
 }
 
 // ExecutorConfig implements Planner interface.
@@ -749,4 +748,11 @@ func (p *planner) GetNodeIDNumber() int32 {
 		return int32(p.execCfg.NodeID.Get())
 	}
 	return 0
+}
+
+// GetRangeRowCountFromNode get the row count of ts range on remote node.
+func (p *planner) GetRangeRowCountFromNode(
+	ctx context.Context, rangeID roachpb.RangeID, nodeID roachpb.NodeID,
+) (uint64, error) {
+	return p.ExecCfg().TsDB.GetRangeRowCount(ctx, rangeID, nodeID)
 }

@@ -66,7 +66,10 @@ KStatus MetricsVersionManager::Init() {
     return FAIL;
   }
   // Save to map cache
-  AddOneVersion(max_table_version, tmp_bt);
+  auto s = AddOneVersion(max_table_version, tmp_bt);
+  if (s != SUCCESS) {
+    return s;
+  }
   return KStatus::SUCCESS;
 }
 
@@ -128,13 +131,12 @@ KStatus MetricsVersionManager::CreateTable(kwdbContext_p ctx, std::vector<Attrib
   return KStatus::SUCCESS;
 }
 
-void MetricsVersionManager::AddOneVersion(uint32_t ts_version, std::shared_ptr<MMapMetricsTable> metrics_table) {
+KStatus MetricsVersionManager::AddOneVersion(uint32_t ts_version, std::shared_ptr<MMapMetricsTable> metrics_table) {
   wrLock();
   Defer defer([&]() { unLock(); });
   auto iter = metric_tables_.find(ts_version);
-  if (iter != metric_tables_.end()) {
-    iter->second.reset();
-    metric_tables_.erase(iter);
+  if (iter != metric_tables_.end() && iter->second != nullptr) {
+    return FAIL;
   }
   metric_tables_.insert({ts_version, metrics_table});
   if (cur_metric_version_ < ts_version) {
@@ -142,6 +144,7 @@ void MetricsVersionManager::AddOneVersion(uint32_t ts_version, std::shared_ptr<M
     cur_metric_version_ = ts_version;
     partition_interval_ = metrics_table->partitionInterval();
   }
+  return SUCCESS;
 }
 
 std::shared_ptr<MMapMetricsTable> MetricsVersionManager::GetMetricsTable(uint32_t ts_version, bool lock) {
@@ -264,6 +267,11 @@ KStatus MetricsVersionManager::UndoAlterCol(uint32_t old_version, uint32_t new_v
   wrLock();
   Defer defer([&]() { unLock(); });
   LOG_INFO("UndoAlterCol begin, table id [%lu], old version [%u], new version [%u]", table_id_, old_version, new_version);
+  if (new_version < cur_metric_version_) {
+    LOG_ERROR("UndoAlterCol Unexpected error: current version is [%u], but new version is [%u] when alter",
+              cur_metric_version_, new_version);
+    return FAIL;;
+  }
   if (cur_metric_version_ < old_version) {
     LOG_ERROR("UndoAlterCol Unexpected error: current version is [%u], but want to roll back to version [%u]",
               cur_metric_version_, old_version);

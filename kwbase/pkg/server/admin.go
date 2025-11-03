@@ -31,6 +31,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -2812,6 +2813,80 @@ func (s *adminServer) CreateTSTable(
 		}
 	}
 	return nil, nil
+}
+
+func existReplica(replicas []roachpb.ReplicaDescriptor, nodeID roachpb.NodeID) bool {
+	for _, r := range replicas {
+		if r.NodeID == nodeID {
+			return true
+		}
+	}
+	return false
+}
+
+// GetRangeRowCount get row count from the range on current time-series storage.
+func (s *adminServer) GetRangeRowCount(
+	ctx context.Context, req *serverpb.GetRangeRowCountRequest,
+) (*serverpb.GetRangeRowCountResponse, error) {
+	var err error
+	var desc roachpb.RangeDescriptor
+	if err = s.server.db.Txn(ctx, func(ctx context.Context, txn *kv.Txn) error {
+		desc, err = getRangeDescByID(ctx, txn, req.RangeID)
+		if err != nil {
+			return err
+		}
+		if desc.GetRangeType() == roachpb.DEFAULT_RANGE {
+			return errors.New("wrong range type")
+		}
+		if !existReplica(desc.Replicas().All(), req.NodeID) {
+			return errors.New("node have no replica of this range")
+		}
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+
+	tableID, beginHash, _, err := sqlbase.DecodeTsRangeKey(desc.StartKey, true, desc.HashNum)
+	if err != nil {
+		return nil, err
+	}
+	_, endHash, _, err := sqlbase.DecodeTsRangeKey(desc.EndKey, false, desc.HashNum)
+	if err != nil {
+		return nil, err
+	}
+
+	var tsSpans []*roachpb.TsSpan
+	tsSpans = append(tsSpans, &roachpb.TsSpan{TsStart: math.MinInt64, TsEnd: math.MaxInt64})
+	count, err := s.server.tsEngine.CountRangeData(
+		tableID, uint64(1), beginHash, endHash, tsSpans, 0, 0)
+	if err != nil {
+		return nil, err
+	}
+	return &serverpb.GetRangeRowCountResponse{Count: count}, nil
+}
+
+func getRangeDescByID(
+	ctx context.Context, txn *kv.Txn, rangeID roachpb.RangeID,
+) (roachpb.RangeDescriptor, error) {
+	var err error
+	var ranges []kv.KeyValue
+	if ranges, err = sql.ScanMetaKVs(ctx, txn, roachpb.Span{
+		Key:    keys.UserTableDataMin,
+		EndKey: keys.MaxKey,
+	}); err != nil {
+		return roachpb.RangeDescriptor{}, err
+	}
+
+	for _, r := range ranges {
+		var desc roachpb.RangeDescriptor
+		if err = r.ValueProto(&desc); err != nil {
+			return desc, err
+		}
+		if desc.RangeID == rangeID {
+			return desc, nil
+		}
+	}
+	return roachpb.RangeDescriptor{}, errors.Errorf("target range not found within user table's key range")
 }
 
 // createTSTable create ts table

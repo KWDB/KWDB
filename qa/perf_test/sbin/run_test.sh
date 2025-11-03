@@ -379,18 +379,20 @@ case $COMMAND in
                 if [ -d "$dir" ] && [ -f "$dir/prep_env.sh" ]; then
                     echo "Running prep_env.sh in $dir..."
                     # TEST_IMAGE_NAME, TEST_IMAGE_TAG, WORKSPACE_DIR, UUID_PATH, CODE_PLATFORM, HTTP_PORT set in env.sh
-                    bash "$dir/prep_env.sh" "$PORT" "$HTTP_PORT" || { print_header "Failed to run prep_env.sh in $dir"; print_errlog; exit 1; }
+                    bash "$dir/prep_env.sh" "$PORT" "$HTTP_PORT" "${DOCKER_CONTAINER_PREFIX}" || { print_header "Failed to run prep_env.sh in $dir"; print_errlog; exit 1; }
                 else
                     echo "Directory $dir or prep_env.sh not found, skipping."
                 fi
             done
             # insert extra needed data for test
-            $KWBASE_BIN sql --insecure --host=127.0.0.1:${PORT} < ${SBIN_DIR}/../tests/kaiwudb-regression/prep.sql
+            docker exec ${DOCKER_CONTAINER_PREFIX}-$PORT sh -c 'mkdir -p /kaiwudb-regression'
+            docker cp ${SBIN_DIR}/../tests/kaiwudb-regression/prep.sql ${DOCKER_CONTAINER_PREFIX}-$PORT:/kaiwudb-regression/
+            docker exec ${DOCKER_CONTAINER_PREFIX}-$PORT sh -c '/home/inspur/install/bin/kwbase sql --insecure --host=127.0.0.1:26888 < /kaiwudb-regression/prep.sql'
             # create stats to avoid inconsistent query results
-            bash "$KWQUERY_DIR/create_stats_after_loading_data.sh" "$PORT" "$HTTP_PORT" || { print_header "Failed to run create_stats_after_loading_data.sh in $dir"; print_errlog; exit 1; }
+            bash "$KWQUERY_DIR/create_stats_after_loading_data.sh" "$PORT" "$HTTP_PORT" "${DOCKER_CONTAINER_PREFIX}" || { print_header "Failed to run create_stats_after_loading_data.sh in $dir"; print_errlog; exit 1; }
         fi
         # set cluster settings and shutdown kwbase
-        bash "$KWQUERY_DIR/set_cluster_settings.sh" "$PORT" "$HTTP_PORT" "$PARALLEL_DEGREE" "$ACCESS_MODE" "$MULTI_MODEL_ENABLED" "$SPECIAL_OPTIMIZATION_MODE" "$HASH_SCAN_MODE_SETTING_NAME" || { print_header "Failed to run set_cluster_settings.sh in $dir"; print_errlog; exit 1; }
+        bash "$KWQUERY_DIR/set_cluster_settings.sh" "$PORT" "$HTTP_PORT" "$PARALLEL_DEGREE" "$ACCESS_MODE" "$MULTI_MODEL_ENABLED" "$SPECIAL_OPTIMIZATION_MODE" "$HASH_SCAN_MODE_SETTING_NAME" "${DOCKER_CONTAINER_PREFIX}" || { print_header "Failed to run set_cluster_settings.sh in $dir"; print_errlog; exit 1; }
 
         if [ "$LOCAL_RUN" = false ]; then
             echo "Stopping and removing Docker container ${DOCKER_CONTAINER_PREFIX}-$PORT..."
@@ -428,7 +430,7 @@ case $COMMAND in
         # Execute the regression test
         cd $SBIN_DIR
         TEST_PASSED=true
-        bash "$(dirname "$0")/run_regression.sh" "$PORT" "$PARALLEL_DEGREE" "$OUTPUT_DIR" "$ACCESS_MODE" "$MASTER_OVERWRITE" "$LOCAL_RUN" "$SQL_FILE_FILTER" "$EXCLUDE_SQL_FILES" "1" "$COLLECT_PHYSICAL_PLAN" "$CORRECTNESS_CHECK" "$MULTI_MODEL_ENABLED" || { print_header "Regression test failed"; TEST_PASSED=false; }
+        bash "$(dirname "$0")/run_regression.sh" "$PORT" "$PARALLEL_DEGREE" "$OUTPUT_DIR" "$ACCESS_MODE" "$MASTER_OVERWRITE" "$LOCAL_RUN" "$SQL_FILE_FILTER" "$EXCLUDE_SQL_FILES" "1" "$COLLECT_PHYSICAL_PLAN" "$CORRECTNESS_CHECK" "$MULTI_MODEL_ENABLED" "${DOCKER_CONTAINER_PREFIX}" || { print_header "Regression test failed"; TEST_PASSED=false; }
         print_errlog
         if [[ "$LOCAL_RUN" = "false" && "$KEEP_DOCKER_CONTAINER" = "false" && "$TEST_PASSED" = "true" ]]; then
             # First, stop and remove the Docker container
@@ -482,7 +484,7 @@ case $COMMAND in
                     rm $OUTPUT_DIR/regression-$i/passed
                 fi
                 mkdir -p $OUTPUT_DIR/regression-$i/
-                bash "$(dirname "$0")/run_regression.sh" "$PORT" "$PARALLEL_DEGREE" "$OUTPUT_DIR" "$ACCESS_MODE" "$MASTER_OVERWRITE" "$LOCAL_RUN" "${PARALLEL_SQL_FILE_FILTER[$i]}" "${PARALLEL_EXCLUDE_SQL_FILES[$i]}" "1" "$COLLECT_PHYSICAL_PLAN" "$CORRECTNESS_CHECK" "$MULTI_MODEL_ENABLED" "query_time_${i}"
+                bash "$(dirname "$0")/run_regression.sh" "$PORT" "$PARALLEL_DEGREE" "$OUTPUT_DIR" "$ACCESS_MODE" "$MASTER_OVERWRITE" "$LOCAL_RUN" "${PARALLEL_SQL_FILE_FILTER[$i]}" "${PARALLEL_EXCLUDE_SQL_FILES[$i]}" "1" "$COLLECT_PHYSICAL_PLAN" "$CORRECTNESS_CHECK" "$MULTI_MODEL_ENABLED" "${DOCKER_CONTAINER_PREFIX}" "query_time_${i}"
                 if [ "$?" != "0" ]; then
                     echo "#$i regression run failed." > $OUTPUT_DIR/regression-$i/failed
                     echo "#$i regression run exits."

@@ -357,6 +357,7 @@ func (ttr *TsTableReader) NextPgWire() (val []byte, code int, err error) {
 						return nil, 0, errors.Errorf("error ingesting remote spans: %s", err)
 					}
 				}
+				ttr.Out.Output().Push(nil, meta)
 			}
 			return nil, respInfo.Code, nil
 		case 1: // Success
@@ -551,7 +552,7 @@ func (ttr *TsTableReader) initStatsList() {
 		procSpec := &ttr.tsProcessorSpecs[j]
 		ttr.statsList = append(ttr.statsList, tse.TsFetcherStats{
 			ProcessorID:   procSpec.ProcessorID,
-			ProcessorName: tsGetNameValue(&procSpec.Core),
+			ProcessorName: tse.TsGetNameValue(&procSpec.Core),
 		})
 	}
 }
@@ -578,52 +579,6 @@ func (ttr *TsTableReader) outputStatsToTrace() {
 	if sp != nil {
 		tracing.SetSpanStats(sp, &tsi)
 	}
-}
-
-// Name of processor in time series
-const (
-	tsUnknownName int8 = iota
-	tsTableReaderName
-	tsAggregatorName
-	tsNoopName
-	tsSorterName
-	tsStatisticReaderName
-	tsSynchronizerName
-	tsSamplerName
-	tsTagReaderName
-	tsDistinctName
-)
-
-// tsGetNameValue get name of tsProcessor.
-func tsGetNameValue(this *execinfrapb.ProcessorCoreUnion) int8 {
-	if this.TableReader != nil {
-		return tsTableReaderName
-	}
-	if this.Aggregator != nil {
-		return tsAggregatorName
-	}
-	if this.Noop != nil {
-		return tsNoopName
-	}
-	if this.Sorter != nil {
-		return tsSorterName
-	}
-	if this.TsStatisticReader != nil {
-		return tsStatisticReaderName
-	}
-	if this.TsSynchronizer != nil {
-		return tsSynchronizerName
-	}
-	if this.Sampler != nil {
-		return tsSamplerName
-	}
-	if this.TsTagReader != nil {
-		return tsTagReaderName
-	}
-	if this.Distinct != nil {
-		return tsDistinctName
-	}
-	return tsUnknownName
 }
 
 var _ execinfrapb.DistSQLSpanStats = &TsInputStats{}
@@ -700,7 +655,7 @@ func (tsi *TsInputStats) SetTsInputStats(stats tse.TsFetcherStats) {
 			PorcessorId: stats.ProcessorID,
 		}
 		tsi.TsTableReaderStatss = append(tsi.TsTableReaderStatss, ts)
-	case tse.TsAggregatorName, tse.TsDistinctName:
+	case tse.TsAggregatorName, tse.TsDistinctName, tse.TsNoopName:
 		ts := TsAggregatorStats{
 			InputStats: AggregatorStats{
 				InputStats:      is,

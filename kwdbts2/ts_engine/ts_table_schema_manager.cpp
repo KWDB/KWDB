@@ -307,7 +307,12 @@ KStatus TsTableSchemaManager::addMetricForAlter(vector<AttributeInfo>& schema, u
   tmp_bt->SetLifeTime(metric_mgr_->GetLifeTime());
   tmp_bt->setObjectReady();
   // Save to map cache
-  metric_mgr_->AddOneVersion(new_version, tmp_bt);
+  auto s = metric_mgr_->AddOneVersion(new_version, tmp_bt);
+  if (s != SUCCESS) {
+    LOG_ERROR("addOneVersion failed: table id %lu, version %u", table_id_, new_version);
+    tmp_bt->remove();
+    return s;
+  }
   return SUCCESS;
 }
 

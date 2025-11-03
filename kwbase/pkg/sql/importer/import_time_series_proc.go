@@ -772,44 +772,6 @@ func (t *timeSeriesImportInfo) ingest(
 		return nil
 	}
 
-	// single-node KW_ENGINE_VERSION=1 (列存)(默认值为1)
-	if t.flowCtx.EvalCtx.StartSinglenode && t.flowCtx.EvalCtx.Kwengineversion == "1" {
-		payload, primaryTagVal, tolerantErr, err := t.BuildPayloadForTsImportStartSingleNode(
-			t.flowCtx.EvalCtx,
-			t.txn,
-			datums,
-			len(datums),
-		)
-
-		if err != nil {
-			for i := range datums {
-				cols := datums[i]
-				rowString := tree.ConvertDatumsToStr(cols, ',')
-				t.handleCoruptedResult(ctx, rowString, err)
-			}
-			return err
-		}
-
-		if len(tolerantErr) > 0 {
-			for _, rowErrmap := range tolerantErr {
-				for k, v := range rowErrmap.(map[string]error) {
-					t.handleCoruptedResult(ctx, k, v)
-				}
-			}
-		}
-		resp, _, err := t.flowCtx.Cfg.TsEngine.PutData(uint64(t.tbID), [][]byte{payload}, uint64(0), t.writeWAL, nil)
-		if err != nil {
-			for i := range datums {
-				cols := datums[i]
-				rowString := tree.ConvertDatumsToStr(cols, ',')
-				t.handleCoruptedResult(ctx, rowString, err)
-			}
-			return err
-		}
-		t.handleDedupResp(ctx, resp, false, int64(len(datums)), datums, string(primaryTagVal))
-		return err
-	}
-
 	payloadNodeMap, tolerantErr, err := t.BuildPayloadForTsImportStartDistributeMode(
 		t.flowCtx.EvalCtx,
 		t.txn,
@@ -833,8 +795,8 @@ func (t *timeSeriesImportInfo) ingest(
 		}
 	}
 
-	// start && single-node KW_ENGINE_VERSION=2 (行存)
-	if t.flowCtx.EvalCtx.StartSinglenode && t.flowCtx.EvalCtx.Kwengineversion == "2" {
+	// start && single-node
+	if t.flowCtx.EvalCtx.StartSinglenode {
 		for _, val := range payloadNodeMap[int(t.flowCtx.EvalCtx.NodeID)].PerNodePayloads {
 			resp, _, err := t.flowCtx.Cfg.TsEngine.PutData(uint64(t.tbID), [][]byte{val.Payload}, uint64(0), t.writeWAL, nil)
 			if err != nil {

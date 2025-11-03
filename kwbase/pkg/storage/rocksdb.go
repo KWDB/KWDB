@@ -706,6 +706,8 @@ func (r *RocksDB) open() error {
 	// NB: The sync goroutine acts as a check that the RocksDB instance was
 	// properly closed as the goroutine will leak otherwise.
 	go r.syncLoop()
+
+	periodUpdate = make(chan interface{})
 	go r.asyncLoop()
 	return nil
 }
@@ -762,6 +764,28 @@ func (r *RocksDB) syncLoop() {
 	}
 }
 
+var periodUpdate chan interface{}
+var periodNeedUpdate bool
+var periodMutex syncutil.Mutex
+
+// NotifySyncPeriodChange notify sync period change
+func NotifySyncPeriodChange() {
+	periodMutex.Lock()
+	defer periodMutex.Unlock()
+	if !periodNeedUpdate {
+		return
+	}
+	close(periodUpdate)
+	periodNeedUpdate = true
+}
+
+func updateSyncPeriod() {
+	periodMutex.Lock()
+	defer periodMutex.Unlock()
+	periodUpdate = make(chan interface{})
+	periodNeedUpdate = false
+}
+
 func (r *RocksDB) asyncLoop() {
 	s := &r.asyncer
 	s.Lock()
@@ -796,11 +820,19 @@ func (r *RocksDB) asyncLoop() {
 			C.DBSyncWAL(r.rdb)
 		}
 
-		timer.Reset(syncPeriod - timeutil.Since(lastSync))
-		select {
-		case <-s.closeCh:
-			return
-		case <-timer.C:
+		for asyncWrite {
+			timer.Reset(syncPeriod - timeutil.Since(lastSync))
+			select {
+			case <-s.closeCh:
+				return
+			case <-timer.C:
+				timer.Read = true
+			case <-periodUpdate:
+				updateSyncPeriod()
+			}
+			if timer.Read {
+				break
+			}
 			timer.Read = true
 		}
 
@@ -844,10 +876,10 @@ func (r *RocksDB) Close() {
 	r.syncer.cond.Signal()
 	r.syncer.Unlock()
 
-	close(r.asyncer.closeCh)
 	r.asyncer.Lock()
 	r.asyncer.closed = true
 	r.asyncer.cond.Signal()
+	close(r.asyncer.closeCh)
 	r.asyncer.Unlock()
 }
 

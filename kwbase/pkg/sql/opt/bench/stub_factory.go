@@ -609,13 +609,24 @@ func (f *stubFactory) ResetTsScanAccessMode(
 
 // ProcessTSInsertWithSort implements the factory interface.
 func (f *stubFactory) ProcessTSInsertWithSort(
+	tsInsertSelect exec.Node, sort exec.Node, outputCols *opt.ColMap,
+) (exec.Node, bool) {
+	return struct{}{}, false
+}
+
+// BuildSortInTsInsert implements the factory interface.
+func (f *stubFactory) BuildSortInTsInsert(
 	tsInsertSelect exec.Node,
-	outputCols *opt.ColMap,
 	ordering sqlbase.ColumnOrdering,
 	alreadyOrderedPrefix int,
 	execInTSEngine bool,
 ) (exec.Node, bool) {
 	return struct{}{}, false
+}
+
+// CanAddRender implements the factory interface.
+func (f *stubFactory) CanAddRender(expr memo.RelExpr, node exec.Node) bool {
+	return true
 }
 
 func (f *stubFactory) ConstructTSInsertWithCDC(

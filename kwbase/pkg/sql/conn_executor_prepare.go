@@ -563,40 +563,16 @@ func (ex *connExecutor) execPreparedirectBind(
 			}
 
 			// Calculate rowTimestamps and save the value of the timestamp column
-			inputValues, rowTimestamps, err := TsprepareTypeCheck(ptCtx, bindCmd.Args, ps.InferredTypes, bindCmd.ArgFormatCodes, &ps.PrepareInsertDirect.Dit.ColsDesc, di)
+			_, rowTimestamps, err := TsprepareTypeCheck(ptCtx, bindCmd.Args, ps.InferredTypes, bindCmd.ArgFormatCodes, &ps.PrepareInsertDirect.Dit.ColsDesc, di)
 			if err != nil {
 				return err
 			}
 
-			if !evalCtx.StartSinglenode || ex.kwengineversion == "2" {
-				//start mode
-				di.PayloadNodeMap = make(map[int]*sqlbase.PayloadForDistTSInsert, 1)
-				if err = BuildRowBytesForPrepareTsInsert(
-					ptCtx, bindCmd.Args, ps.PrepareInsertDirect.Dit, &di, evalCtx, table,
-					cfg.NodeInfo.NodeID.Get(), rowTimestamps, ex.server.GetCFG()); err != nil {
-					return err
-				}
-
-			} else if ex.kwengineversion == "1" {
-				// single-node KW_ENGINE_VERSION=1 (Column-stored)(default value is 1)
-				priTagValMap := BuildPreparepriTagValMap(bindCmd.Args, di)
-				di.PayloadNodeMap = make(map[int]*sqlbase.PayloadForDistTSInsert, 1)
-				for _, priTagRowIdx := range priTagValMap {
-					if err = BuildPreparePayload(&evalCtx, inputValues, priTagRowIdx,
-						&di, ps.PrepareInsertDirect.Dit, bindCmd.Args); err != nil {
-						return err
-					}
-				}
-				di.PayloadNodeMap[int(evalCtx.NodeID)].CDCData = BuildCDCDataForDirectInsert(
-					&evalCtx,
-					uint64(ps.PrepareInsertDirect.Dit.TabID),
-					ps.PrepareInsertDirect.Dit.ColsDesc,
-					di.InputValues,
-					di.ColIndexs,
-					ex.server.GetCFG().CDCCoordinator,
-				)
-			} else {
-				return pgerror.Newf(pgcode.InvalidName, "Error KW_ENGINE_VERSION %s", ex.kwengineversion)
+			di.PayloadNodeMap = make(map[int]*sqlbase.PayloadForDistTSInsert, 1)
+			if err = BuildRowBytesForPrepareTsInsert(
+				ptCtx, bindCmd.Args, ps.PrepareInsertDirect.Dit, &di, evalCtx, table,
+				cfg.NodeInfo.NodeID.Get(), rowTimestamps, ex.server.GetCFG()); err != nil {
+				return err
 			}
 
 			numCols := len(ps.Columns)

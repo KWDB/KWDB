@@ -69,10 +69,6 @@ class StInstance {
 
   TSEngine* GetTSEngine() { return ts_engine_; }
 
-  bool IsV2() {
-    return params_.engine_version == "2";
-  }
-
   vector<roachpb::CreateTsTable>& tableMetas() { return table_metas; };
 
   uint64_t rangeGroup();

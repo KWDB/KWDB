@@ -504,24 +504,24 @@ KStatus TsVGroup::ConvertBlockSpanToResultSet(const std::vector<k_uint32>& kw_sc
 KStatus TsVGroup::GetEntityLastRowBatch(uint32_t entity_id, uint32_t scan_version,
                                         std::shared_ptr<TsTableSchemaManager>& table_schema_mgr,
                                         std::shared_ptr<MMapMetricsTable>& schema,
+                                        std::shared_ptr<TsRawPayloadRowParser>& parser,
                                         const std::vector<KwTsSpan>& ts_spans, const std::vector<k_uint32>& scan_cols,
                                         timestamp64& entity_last_ts, ResultSet* res) {
   TSSlice last_payload;
   uint32_t last_version = 0;
   timestamp64 last_ts = INVALID_TS;
-  {
-    std::shared_lock<std::shared_mutex> lock(entity_latest_row_mutex_);
-    if (!entity_latest_row_checked_.count(entity_id)
-        || entity_latest_row_checked_[entity_id] != TsEntityLatestRowStatus::Valid
-        || !entity_latest_row_.count(entity_id) || !entity_latest_row_[entity_id].is_payload_valid
-        || TimestampCheckResult::NonOverlapping == checkTimestampWithSpans(ts_spans, entity_latest_row_[entity_id].last_ts,
-                                                   entity_latest_row_[entity_id].last_ts)) {
-      return KStatus::SUCCESS;
-    }
-    last_version = entity_latest_row_[entity_id].version;
-    last_ts = entity_latest_row_[entity_id].last_ts;
-    last_payload = entity_latest_row_[entity_id].last_payload;
+  std::shared_lock<std::shared_mutex> lock(entity_latest_row_mutex_);
+  if (!entity_latest_row_checked_.count(entity_id)
+      || entity_latest_row_checked_[entity_id] != TsEntityLatestRowStatus::Valid
+      || !entity_latest_row_.count(entity_id) || !entity_latest_row_[entity_id].is_payload_valid
+      || TimestampCheckResult::NonOverlapping == checkTimestampWithSpans(ts_spans, entity_latest_row_[entity_id].last_ts,
+                                                 entity_latest_row_[entity_id].last_ts)) {
+    return KStatus::SUCCESS;
   }
+  last_version = entity_latest_row_[entity_id].version;
+  last_ts = entity_latest_row_[entity_id].last_ts;
+  last_payload.len = entity_latest_row_[entity_id].last_payload.len;
+  last_payload.data =  entity_latest_row_[entity_id].last_payload.data;
 
   uint32_t db_id = schema->metaData()->db_id;
   KTableKey table_id = table_schema_mgr->GetTableId();
@@ -530,6 +530,7 @@ KStatus TsVGroup::GetEntityLastRowBatch(uint32_t entity_id, uint32_t scan_versio
   last_row_data.SetData(last_ts, UINT64_MAX);
   last_row_data.SetRowData(last_payload);
   std::shared_ptr<TsMemSegBlock> mem_block = std::make_shared<TsMemSegBlock>(nullptr);
+  mem_block->SetMemoryAddrSafe();
   mem_block->InsertRow(&last_row_data);
 
   const vector<AttributeInfo>& attrs = schema->getSchemaInfoExcludeDropped();
@@ -542,6 +543,8 @@ KStatus TsVGroup::GetEntityLastRowBatch(uint32_t entity_id, uint32_t scan_versio
       LOG_ERROR("TSBlkDataTypeConvert Init failed.");
       return KStatus::FAIL;
     }
+  } else {
+    mem_block->SetParser(parser);
   }
 
   auto block_span = std::make_shared<TsBlockSpan>(vgroup_id_, entity_id, std::move(mem_block), 0, 1,
@@ -1140,7 +1143,7 @@ KStatus TsVGroup::DeleteEntity(kwdbContext_p ctx, TSTableID table_id, std::strin
   // if any error, end the delete loop and return ERROR to the caller.
   // Delete tag and its index
   ErrorInfo err_info;
-  uint64_t ignore;
+  std::pair<uint64_t, uint64_t> ignore;
   tag_table->DeleteTagRecord(p_tag.data(), p_tag.size(), err_info, osn, OperateType::Delete, ignore);
   if (err_info.errcode < 0) {
     LOG_ERROR("delete_tag_record error, error msg: %s", err_info.errmsg.c_str())

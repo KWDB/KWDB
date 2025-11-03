@@ -114,6 +114,7 @@ KStatus TsTableV2Impl::GetEntityIdList(kwdbContext_p ctx, const std::vector<void
                                  const std::vector<void*> tags,
                                  TSTagOpType op_type,
                                  const std::vector<uint32_t>& scan_tags,
+                                 const std::unordered_set<uint32_t> &hps,
                                  std::vector<EntityResultIndex>* entity_id_list, ResultSet* res, uint32_t* count,
                                  uint32_t table_version) {
   std::shared_ptr<TagTable> tag_table;
@@ -121,7 +122,7 @@ KStatus TsTableV2Impl::GetEntityIdList(kwdbContext_p ctx, const std::vector<void
   if (ret != KStatus::SUCCESS) {
     return KStatus::FAIL;
   }
-  if (tag_table->GetEntityIdList(primary_tags, tags_index_id, tags, op_type, scan_tags,
+  if (tag_table->GetEntityIdList(primary_tags, tags_index_id, tags, op_type, scan_tags, hps,
                                     entity_id_list, res, count, table_version) < 0) {
     LOG_ERROR("GetEntityIdList error ");
     return KStatus::FAIL;
@@ -733,6 +734,23 @@ KStatus TsTableV2Impl::DeleteData(kwdbContext_p ctx, uint64_t range_group_id, st
   return KStatus::SUCCESS;
 }
 
+KStatus TsTableV2Impl::CountRangeData(kwdbContext_p ctx, uint64_t range_group_id, HashIdSpan& hash_span,
+                                       const std::vector<KwTsSpan>& ts_spans, uint64_t* count,
+                                       uint64_t mtr_id, uint64_t osn) {
+  vector<EntityResultIndex> entity_store;
+  auto s = GetEntityIdByHashSpan(ctx, hash_span, entity_store);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("GetEntityIdByHashSpan failed.");
+    return s;
+  }
+  s = GetEntityRowCount(ctx, entity_store, ts_spans, count);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("GetEntityRowCount failed.");
+    return s;
+  }
+  return KStatus::SUCCESS;
+}
+
 KStatus TsTableV2Impl::GetEntityRowCount(kwdbContext_p ctx, std::vector<EntityResultIndex>& entity_ids,
 const std::vector<KwTsSpan>& ts_spans, uint64_t* row_count) {
   std::vector<k_uint32> scan_cols = {0};
@@ -873,8 +891,10 @@ KStatus TsTableV2Impl::GetLastRowBatch(kwdbContext_p ctx, uint32_t table_version
     return KStatus::SUCCESS;
   }
   timestamp64 cur_last_ts = INT64_MIN;
+  std::shared_ptr<TsRawPayloadRowParser> parser = nullptr;
   KStatus ret = vgroup->GetEntityLastRowBatch(entity_id.entityId, table_version, table_schema_mgr_,
-                                              schema, {{INT64_MIN, INT64_MAX}}, scan_cols, cur_last_ts, res);
+                                              schema, parser, {{INT64_MIN, INT64_MAX}}, scan_cols,
+                                              cur_last_ts, res);
   if (ret != KStatus::SUCCESS) {
     res->clear();
     LOG_ERROR("Vgroup %d GetLastRowBatch failed.", vgroup->GetVGroupID());

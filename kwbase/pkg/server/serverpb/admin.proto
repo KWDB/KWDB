@@ -828,6 +828,19 @@ message CreateTSTableRequest {
 message CreateTSTableResponse {
 }
 
+// GetRangeRowCountRequest ...
+message GetRangeRowCountRequest {
+  int32 range_id = 1 [(gogoproto.customname) = "RangeID",
+                      (gogoproto.casttype) = "gitee.com/kwbasedb/kwbase/pkg/roachpb.RangeID"];
+  int32 node_id = 2 [(gogoproto.customname) = "NodeID",
+                      (gogoproto.casttype) = "gitee.com/kwbasedb/kwbase/pkg/roachpb.NodeID"];
+}
+
+// GetRangeRowCountResponse ...
+message GetRangeRowCountResponse {
+  uint64 count = 1;
+}
+
 // Admin is the gRPC API for the admin UI. Through grpc-gateway, we offer
 // REST-style HTTP endpoints that locally proxy to the gRPC endpoints.
 service Admin {
@@ -1071,4 +1084,7 @@ service Admin {
 
   // CreateTSTable create ts table
   rpc CreateTSTable(CreateTSTableRequest) returns (CreateTSTableResponse) {}
+
+  // GetRangeRowCount get row count of ts range data on node.
+  rpc GetRangeRowCount(GetRangeRowCountRequest) returns (GetRangeRowCountResponse) {}
 }

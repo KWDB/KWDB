@@ -92,7 +92,7 @@ class TagTable {
   // insert tag record
   int InsertTagRecord(kwdbts::Payload &payload, int32_t sub_group_id, int32_t entity_id);
   int InsertTagRecord(kwdbts::TsRawPayload &payload, int32_t sub_group_id, int32_t entity_id, uint64_t osn,
-                      uint8_t operate_type, uint64_t del_row_no = 0);
+                      uint8_t operate_type, std::pair<uint64_t, uint64_t> del_row = { 0, 0 });
   // update tag record
   int UpdateTagRecord(kwdbts::Payload &payload, int32_t sub_group_id, int32_t entity_id, ErrorInfo& err_info);
   int UpdateTagRecord(kwdbts::TsRawPayload &payload, int32_t sub_group_id, int32_t entity_id, ErrorInfo& err_info,
@@ -114,6 +114,7 @@ class TagTable {
   */
   int GetEntityIdList(const std::vector<void*>& primary_tags, const std::vector<uint64_t/*index_id*/> &tags_index_id,
                       const std::vector<void*> tags, TSTagOpType op_type, const std::vector<uint32_t> &scan_tags,
+                      const std::unordered_set<uint32_t> &hps,
                       std::vector<kwdbts::EntityResultIndex>* entity_id_list,
                       kwdbts::ResultSet* res, uint32_t* count, uint32_t table_version = 0);
 
@@ -132,7 +133,7 @@ class TagTable {
 
   // delete tag record by ptag
   int DeleteTagRecord(const char *primary_tags, int len, ErrorInfo& err_info, uint64_t osn, uint8_t operate_type,
-                      uint64_t& del_row_no);
+                      std::pair<uint64_t, uint64_t>& del_row_no);
 
   int AlterTableTag(AlterType alter_type, const AttributeInfo& attr_info,
                     uint32_t cur_version, uint32_t new_version, ErrorInfo& err_info);
@@ -217,6 +218,7 @@ class TagTable {
 
   // Get the column value of the tag using RowID.
   int getDataWithRowID(TagPartitionTable* tag_partition, std::pair<TableVersionID, TagPartitionTableRowID> ret,
+                                 const std::unordered_set<uint32_t> &hps,
                                  std::vector<kwdbts::EntityResultIndex>* entity_id_list,
                                  kwdbts::ResultSet* res, std::vector<uint32_t> &scan_tags, std::vector<uint32_t> &valid_scan_tags,
                                  TagVersionObject* tag_version_obj, uint32_t scan_tags_num, bool get_partition);

@@ -39,8 +39,8 @@ uint32_t EngineOptions::max_compact_num = 10;
 size_t EngineOptions::max_rows_per_block = 4096;
 size_t EngineOptions::min_rows_per_block = 512;
 int64_t EngineOptions::partition_interval = 3600 * 24 * 10;
-// default block cache max size is set to 1 * 1024 * 1024 * 1024
-int64_t EngineOptions::block_cache_max_size = 1073741824;
+// default block cache max size is set to 0
+int64_t EngineOptions::block_cache_max_size = 0;
 
 extern std::map<std::string, std::string> g_cluster_settings;
 extern DedupRule g_dedup_rule;
@@ -480,7 +480,7 @@ KStatus TSEngineV2Impl::putTagData(kwdbContext_p ctx, TSTableID table_id, uint32
       LOG_ERROR("Failed get table id[%ld] version id[%d] tag schema.", table_id, tbl_version);
       return s;
     }
-    err_info.errcode = tag_table->InsertTagRecord(payload, groupid, entity_id, payload.GetOSN(), OperateType::Insert, 0);
+    err_info.errcode = tag_table->InsertTagRecord(payload, groupid, entity_id, payload.GetOSN(), OperateType::Insert);
   }
   if (err_info.errcode < 0) {
     return KStatus::FAIL;
@@ -1382,6 +1382,20 @@ KStatus TSEngineV2Impl::DeleteRangeEntities(kwdbContext_p ctx, const KTableKey& 
   }
   ctx->ts_engine = this;
   return ts_table->DeleteRangeEntities(ctx, range_grp_id, hash_span, count, mtr_id, osn, true);
+}
+
+KStatus TSEngineV2Impl::CountRangeData(kwdbContext_p ctx, const KTableKey& table_id, uint64_t range_group_id,
+                                        HashIdSpan& hash_span, const std::vector<KwTsSpan>& ts_spans, uint64_t* count,
+                                        uint64_t mtr_id, uint64_t osn) {
+  ErrorInfo err_info;
+  std::shared_ptr<kwdbts::TsTable> ts_table;
+  auto s = GetTsTable(ctx, table_id, ts_table, true, err_info, 0);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("cannot found table[%lu] with version[%u], errmsg[%s]", table_id, 0, err_info.errmsg.c_str());
+    return s;
+  }
+  ctx->ts_engine = this;
+  return ts_table->CountRangeData(ctx, range_group_id, hash_span, ts_spans, count, mtr_id, osn);
 }
 
 KStatus TSEngineV2Impl::ReadBatchData(kwdbContext_p ctx, TSTableID table_id, uint64_t table_version, uint64_t begin_hash,

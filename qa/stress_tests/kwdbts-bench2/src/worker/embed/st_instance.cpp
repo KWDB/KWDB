@@ -33,26 +33,23 @@ uint64_t StInstance::rangeGroup() {
 
 KStatus StInstance::GetSchemaInfo(kwdbContext_p ctx, uint32_t table_id,
  std::vector<TagInfo>* tag_schema, std::vector<AttributeInfo>* data_schema) {
-  if (params_.engine_version == "2") {
-    std::shared_ptr<kwdbts::TsTableSchemaManager> schema;
-    KStatus s = ts_engine_->GetTableSchemaMgr(ctx, table_id, schema);
-    if (s != KStatus::SUCCESS) {
-      return s;
-    }
-    auto version = schema->GetCurrentVersion();
-    std::shared_ptr<MMapMetricsTable> schema_tbl;
-    s = schema->GetMetricSchema(version, &schema_tbl);
-    if (s != KStatus::SUCCESS) {
-      return s;
-    }
-    *data_schema = schema_tbl->getSchemaInfoExcludeDropped();
-    s = schema->GetTagMeta(version, *tag_schema);
-    if (s != KStatus::SUCCESS) {
-      return s;
-    }
-    return KStatus::SUCCESS;
+  std::shared_ptr<kwdbts::TsTableSchemaManager> schema;
+  KStatus s = ts_engine_->GetTableSchemaMgr(ctx, table_id, schema);
+  if (s != KStatus::SUCCESS) {
+    return s;
   }
-  return KStatus::FAIL;
+  auto version = schema->GetCurrentVersion();
+  std::shared_ptr<MMapMetricsTable> schema_tbl;
+  s = schema->GetMetricSchema(version, &schema_tbl);
+  if (s != KStatus::SUCCESS) {
+    return s;
+  }
+  *data_schema = schema_tbl->getSchemaInfoExcludeDropped();
+  s = schema->GetTagMeta(version, *tag_schema);
+  if (s != KStatus::SUCCESS) {
+    return s;
+  }
+  return KStatus::SUCCESS;
 }
 
 void StInstance::ParseInputParams() {
@@ -130,7 +127,7 @@ KBStatus StInstance::Init(BenchParams params, std::vector<uint32_t> table_ids_) 
   }
 
   // initialize TSEngine
-  ts_opts_.engine_version = params_.engine_version.c_str();
+  // ts_opts_.engine_version = params_.engine_version.c_str();
   ts_opts_.thread_pool_size = 0;
   ts_opts_.lg_opts.LogFileVerbosityThreshold = LgSeverity::INFO_K;
   auto index = new AppliedRangeIndex[1]{AppliedRangeIndex{1, 1}};

@@ -50,7 +50,6 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/types"
 	"gitee.com/kwbasedb/kwbase/pkg/storage/enginepb"
-	"gitee.com/kwbasedb/kwbase/pkg/tse"
 	"gitee.com/kwbasedb/kwbase/pkg/util"
 	"gitee.com/kwbasedb/kwbase/pkg/util/envutil"
 	"gitee.com/kwbasedb/kwbase/pkg/util/errorutil"
@@ -74,9 +73,6 @@ import (
 // transaction or session monitor before the monitor starts explicitly
 // logging overall usage growth in the log.
 var noteworthyMemoryUsageBytes = envutil.EnvOrDefaultInt64("KWBASE_NOTEWORTHY_SESSION_MEMORY_USAGE", 1024*1024)
-
-// kwEngineVersion indicates which verson storage engine to use
-var kwEngineVersion = tse.KwEngineVersion
 
 // A connExecutor is in charge of executing queries received on a given client
 // connection. The connExecutor implements a state machine (dictated by the
@@ -590,11 +586,6 @@ func (h ConnectionHandler) GetTsSupportBatch() bool {
 	return h.ex.sessionData.TsSupportBatch
 }
 
-// GetEngineVersion get TsSupportBatch status
-func (h ConnectionHandler) GetEngineVersion() string {
-	return h.ex.kwengineversion
-}
-
 // GetTsZone constructs a ParseTimeContext that returns the given values.
 func (h ConnectionHandler) GetTsZone() time.Time {
 	return h.ex.state.sqlTimestamp.In(h.ex.sessionData.DataConversion.Location)
@@ -802,15 +793,14 @@ func (s *Server) newConnExecutor(
 	)
 
 	ex := &connExecutor{
-		server:          s,
-		metrics:         srvMetrics,
-		stmtBuf:         stmtBuf,
-		clientComm:      clientComm,
-		mon:             &sessionRootMon,
-		sessionMon:      &sessionMon,
-		sessionData:     sd,
-		dataMutator:     sdMutator,
-		kwengineversion: kwEngineVersion,
+		server:      s,
+		metrics:     srvMetrics,
+		stmtBuf:     stmtBuf,
+		clientComm:  clientComm,
+		mon:         &sessionRootMon,
+		sessionMon:  &sessionMon,
+		sessionData: sd,
+		dataMutator: sdMutator,
 		state: txnState{
 			mon:     &txnMon,
 			connCtx: ctx,
@@ -1175,8 +1165,6 @@ func (ex *connExecutor) close(ctx context.Context, closeType closeType) {
 }
 
 type connExecutor struct {
-	kwengineversion string
-
 	_ util.NoCopy
 
 	// The server to which this connExecutor is attached. The reference is used
@@ -2497,6 +2485,7 @@ func (ex *connExecutor) initEvalCtx(ctx context.Context, evalCtx *extendedEvalCo
 			SessionAccessor:    p,
 			PrivilegedAccessor: p,
 			ClientNoticeSender: p,
+			TsDBAccessor:       p,
 			Settings:           ex.server.cfg.Settings,
 			TestingKnobs:       ex.server.cfg.EvalContextTestingKnobs,
 			ClusterID:          ex.server.cfg.ClusterID(),

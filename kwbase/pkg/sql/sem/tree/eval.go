@@ -2925,6 +2925,12 @@ type ClientNoticeSender interface {
 	SendClientNotice(ctx context.Context, notice error)
 }
 
+// TsDBAccessor is a limited interface to access tsDB interface.
+type TsDBAccessor interface {
+	// GetRangeRowCountFromNode get range row count from remote by tsDB.
+	GetRangeRowCountFromNode(ctx context.Context, rangeID roachpb.RangeID, nodeID roachpb.NodeID) (uint64, error)
+}
+
 // InternalExecutor is a subset of sqlutil.InternalExecutor (which, in turn, is
 // implemented by sql.InternalExecutor) used by this sem/tree package which
 // can't even import sqlutil.
@@ -3109,6 +3115,8 @@ type EvalContext struct {
 
 	SessionAccessor EvalSessionAccessor
 
+	TsDBAccessor TsDBAccessor
+
 	ClientNoticeSender ClientNoticeSender
 
 	Sequence SequenceOperators
@@ -3160,8 +3168,7 @@ type EvalContext struct {
 	IsProcedure bool
 
 	// IsTrigger is true when the the SQL has trigger.
-	IsTrigger       bool
-	Kwengineversion string
+	IsTrigger bool
 }
 
 // GroupWindow record group_window information.

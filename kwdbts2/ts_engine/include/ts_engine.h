@@ -149,6 +149,10 @@ class TSEngineV2Impl : public TSEngine {
   KStatus DeleteEntities(kwdbContext_p ctx, const KTableKey& table_id, uint64_t range_group_id,
                          std::vector<std::string> primary_tags, uint64_t* count, uint64_t mtr_id, uint64_t osn) override;
 
+  KStatus CountRangeData(kwdbContext_p ctx, const KTableKey& table_id, uint64_t range_group_id,
+                          HashIdSpan& hash_span, const std::vector<KwTsSpan>& ts_spans, uint64_t* count,
+                          uint64_t mtr_id, uint64_t osn) override;
+
   KStatus GetBatchRepr(kwdbContext_p ctx, TSSlice* batch) override {
     LOG_WARN("should not use GetBatchRepr any more.");
     return KStatus::SUCCESS;

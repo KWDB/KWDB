@@ -775,7 +775,7 @@ int MMapTagColumnTable::reserve(size_t n, ErrorInfo& err_info) {
   }
   // row info mremap
   if (m_row_info_file_) {
-    err_code = m_row_info_file_->extend(m_row_info_file_->fileLen(), n * BITMAP_PER_ROW_LENGTH);
+    err_code = m_row_info_file_->extend(m_meta_data_->m_row_count, n);
     if (err_code < 0) {
       LOG_ERROR("failed to extend row info file for the tag table %s%s",
                 m_db_name_.c_str(), m_name_.c_str());
@@ -785,7 +785,7 @@ int MMapTagColumnTable::reserve(size_t n, ErrorInfo& err_info) {
   }
   // hashpoint file extend
   if (m_hps_file_) {
-   err_code = m_hps_file_->extend(m_hps_file_->fileLen(), n*sizeof(hashPointStorage));
+    err_code = m_hps_file_->extend(m_meta_data_->m_row_count, n);
     if (err_code < 0) {
       LOG_ERROR("failed to extend hashpoint file for the tag table %s%s",
                 m_db_name_.c_str(), m_name_.c_str());
@@ -922,8 +922,8 @@ int MMapTagColumnTable::insert(uint32_t entity_id, uint32_t subgroup_id, uint32_
   mutexUnlock();
   *row_id = row_no;
   setDeleteMark(row_no);
-  TagDataInfo tagInfo{ operate_type, osn, row_no};
-  setTagDataInfo(row_no, tagInfo);
+  TagDataInfo tagInfo{ operate_type, osn, row_no, 0};
+  setTagDataInfo(row_no, &tagInfo);
 
   // put entity id
   push_back_entityid(row_no, entity_id, subgroup_id);

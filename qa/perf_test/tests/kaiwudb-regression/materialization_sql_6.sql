@@ -1,6 +1,6 @@
 set hash_scan_mode=3;
 select
-    concat('"', cdp.adr, '"') as address,
+    concat('\"', cdp.adr, '\"') as address,
     opcdata."time",
     opcdata.datatype,
     opcdata.lowwarn,

@@ -22,6 +22,7 @@
 #include "sys_utils.h"
 #include "ee_mempool.h"
 #include "st_tier.h"
+#include "raft_store.h"
 #include "ts_engine.h"
 #include "ts_lru_block_cache.h"
 
@@ -392,6 +393,22 @@ TsDeleteData(TSEngine *engine, TSTableID table_id, uint64_t range_group_id, TSSl
   s = engine->DeleteData(ctx_p, table_id, range_group_id, p_tag, spans, count, mtr_id, osn);
   if (s != KStatus::SUCCESS) {
     return ToTsStatus("DeleteData Error!");
+  }
+  return kTsSuccess;
+}
+
+TSStatus TsCountRangeData(TSEngine *engine, TSTableID table_id, uint64_t range_group_id, HashIdSpan hash_span,
+                           KwTsSpans ts_spans, uint64_t *count, uint64_t mtr_id, uint64_t osn) {
+  kwdbContext_t context;
+  kwdbContext_p ctx_p = &context;
+  KStatus s = InitServerKWDBContext(ctx_p);
+  if (s != KStatus::SUCCESS) {
+    return ToTsStatus("InitServerKWDBContext Error!");
+  }
+  std::vector<KwTsSpan> spans(ts_spans.spans, ts_spans.spans + ts_spans.len);
+  s = engine->CountRangeData(ctx_p, table_id, range_group_id, hash_span, spans, count, mtr_id, osn);
+  if (s != KStatus::SUCCESS) {
+    return ToTsStatus("CountRangeData Error!");
   }
   return kTsSuccess;
 }
@@ -1341,4 +1358,135 @@ TSStatus TSFlushVGroups(TSEngine* engine) {
     return ToTsStatus("Checkpoint Error!");
   }
   return kTsSuccess;
+}
+
+TSStatus TSRaftOpen(RaftStore** engine, TSSlice dir) {
+  kwdbContext_t context;
+  kwdbContext_p ctx = &context;
+  KStatus s = InitServerKWDBContext(ctx);
+  if (s != KStatus::SUCCESS) {
+    return ToTsStatus("InitServerKWDBContext Error!");
+  }
+  std::string ts_store_path(dir.data, dir.len);
+  if (fs::exists(ts_store_path + "/tsdb")) {
+    if (!fs::exists(ts_store_path + "/tsdb/raftlog")) {
+      return ToTsStatus("Init raftlog store Error! Raftlog store should not be used.");
+    }
+  }
+  auto* raftStore = new RaftStore();
+  s = raftStore->init(ts_store_path + "/tsdb/raftlog");
+  if (s != KStatus::SUCCESS) {
+    return ToTsStatus("open raftlog store Error!");
+  }
+  *engine = raftStore;
+  return TSStatus{nullptr, 0};
+}
+
+TSStatus TSWriteRaftLog(RaftStore *engine, int cnt, TSRaftlog *raftlog, bool sync) {
+  kwdbContext_t context;
+  kwdbContext_p ctx_p = &context;
+  KStatus s = InitServerKWDBContext(ctx_p);
+  if (s != KStatus::SUCCESS) {
+    return ToTsStatus("InitServerKWDBContext Error!");
+  }
+  s = engine->WriteRaftLog(ctx_p, cnt, raftlog, sync);
+  if (s != KStatus::SUCCESS) {
+    return ToTsStatus("Modify Raftlog Error!");
+  }
+  return TSStatus{nullptr, 0};
+}
+
+TSStatus TSGetRaftLog(RaftStore* engine, uint64_t range_id, uint64_t start, uint64_t end, TSSlice* value) {
+  kwdbContext_t context;
+  kwdbContext_p ctx_p = &context;
+  KStatus s = InitServerKWDBContext(ctx_p);
+  if (s != KStatus::SUCCESS) {
+    return ToTsStatus("InitServerKWDBContext Error!");
+  }
+  s = engine->Get(ctx_p, range_id, start, end, value);
+  if (s != KStatus::SUCCESS) {
+    std::ostringstream range, index_start, index_end;
+    range << range_id;
+    index_start << start;
+    index_end << end;
+    return ToTsStatus("Get Raftlog Error! Range:" + range.str()
+                      + ",start index:" + index_start.str() + "end index:" + index_end.str());
+  }
+  return TSStatus{nullptr, 0};
+}
+
+TSStatus TSGetFirstIndex(RaftStore* engine, uint64_t range_id, uint64_t *index_id) {
+  kwdbContext_t context;
+  kwdbContext_p ctx_p = &context;
+  KStatus s = InitServerKWDBContext(ctx_p);
+  if (s != KStatus::SUCCESS) {
+    return ToTsStatus("InitServerKWDBContext Error!");
+  }
+  s = engine->GetFirstIndex(ctx_p, range_id, index_id);
+  if (s != KStatus::SUCCESS) {
+    std::ostringstream range;
+    range << range_id;
+    return ToTsStatus("Get First Index Error! Range:" + range.str());
+  }
+  return TSStatus{nullptr, 0};
+}
+
+TSStatus TSGetLastIndex(RaftStore* engine, uint64_t range_id, uint64_t* index_id) {
+  kwdbContext_t context;
+  kwdbContext_p ctx_p = &context;
+  KStatus s = InitServerKWDBContext(ctx_p);
+  if (s != KStatus::SUCCESS) {
+    return ToTsStatus("InitServerKWDBContext Error!");
+  }
+  s = engine->GetLastIndex(ctx_p, range_id, index_id);
+  if (s != KStatus::SUCCESS) {
+    std::ostringstream range;
+    range << range_id;
+    return ToTsStatus("Get Last Index Error! Range:" + range.str());
+  }
+  return TSStatus{nullptr, 0};
+}
+
+TSStatus TSGetFirstRaftLog(RaftStore *engine, uint64_t range_id, TSSlice *value) {
+  kwdbContext_t context;
+  kwdbContext_p ctx_p = &context;
+  KStatus s = InitServerKWDBContext(ctx_p);
+  if (s != KStatus::SUCCESS) {
+    return ToTsStatus("InitServerKWDBContext Error!");
+  }
+  s = engine->GetFirst(ctx_p, range_id, value);
+  if (s != KStatus::SUCCESS) {
+    std::ostringstream range;
+    range << range_id;
+    return ToTsStatus("Get First Raftlog Error! Range:" + range.str());
+  }
+  return TSStatus{nullptr, 0};
+}
+
+TSStatus TSSyncRaftLog(RaftStore* engine) {
+  kwdbContext_t context;
+  kwdbContext_p ctx_p = &context;
+  KStatus s = InitServerKWDBContext(ctx_p);
+  if (s != KStatus::SUCCESS) {
+    return ToTsStatus("InitServerKWDBContext Error!");
+  }
+  s = engine->Sync(ctx_p);
+  if (s != KStatus::SUCCESS) {
+    return ToTsStatus("Sync Raftlog Error!");
+  }
+  return TSStatus{nullptr, 0};
+}
+
+TSStatus TSHasRange(RaftStore* engine, uint64_t range_id) {
+  kwdbContext_t context;
+  kwdbContext_p ctx_p = &context;
+  KStatus s = InitServerKWDBContext(ctx_p);
+  if (s != KStatus::SUCCESS) {
+    return ToTsStatus("InitServerKWDBContext Error!");
+  }
+  s = engine->HasRange(ctx_p, range_id);
+  if (s != KStatus::SUCCESS) {
+    return ToTsStatus("has no range");
+  }
+  return TSStatus{nullptr, 0};
 }

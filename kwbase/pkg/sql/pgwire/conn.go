@@ -598,8 +598,6 @@ type unqualifiedIntSizer interface {
 	GetPreparedStatement(PreparedStatementName string) (*sql.PreparedStatement, bool)
 
 	GetTsSupportBatch() bool
-
-	GetEngineVersion() string
 }
 
 type fixedIntSizer struct {
@@ -616,10 +614,6 @@ func (f fixedIntSizer) GetTsinsertdirect() bool {
 
 func (f fixedIntSizer) GetTsSupportBatch() bool {
 	return false
-}
-
-func (f fixedIntSizer) GetEngineVersion() string {
-	return "0"
 }
 
 func (f fixedIntSizer) GetTsSessionData() *sessiondata.SessionData {
@@ -976,30 +970,8 @@ func (c *conn) handleSimpleQuery(
 				r := c.allocCommandResult()
 				*r = commandResult{conn: c, typ: commandComplete}
 
-				// According to the node mode processing
-				if !evalCtx.StartSinglenode || unqis.GetEngineVersion() == "2" {
-					// start
-					err = sql.GetPayloadMapForMuiltNode(
-						ctx, ptCtx, dit, &di, stmts, evalCtx, table, cfg)
-				} else if unqis.GetEngineVersion() == "1" {
-					// single node mode
-					if di.InputValues, err = sql.GetInputValues(ctx, ptCtx, &dit.ColsDesc, &di, stmts); err != nil {
-						return err
-					}
-
-					// Build payload by primary tag
-					priTagValMap := sql.BuildpriTagValMap(di)
-					di.PayloadNodeMap = make(map[int]*sqlbase.PayloadForDistTSInsert, 1)
-					for _, idx := range priTagValMap {
-						if err = sql.BuildPayload(&evalCtx, idx, &di, dit); err != nil {
-							return err
-						}
-					}
-					di.PayloadNodeMap[int(evalCtx.NodeID)].CDCData = sql.BuildCDCDataForDirectInsert(
-						&evalCtx, uint64(dit.TabID), dit.ColsDesc, di.InputValues, di.ColIndexs, cfg.CDCCoordinator)
-				} else {
-					return pgerror.Newf(pgcode.InvalidName, "Error KW_ENGINE_VERSION %s", unqis.GetEngineVersion())
-				}
+				err = sql.GetPayloadMapForMuiltNode(
+					ctx, ptCtx, dit, &di, stmts, evalCtx, table, cfg)
 
 				if err != nil {
 					return err

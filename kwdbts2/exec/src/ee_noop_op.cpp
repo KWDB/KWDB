@@ -101,6 +101,8 @@ EEIteratorErrCode NoopOperator::Next(kwdbContext_p ctx, DataChunkPtr &chunk) {
   }
   KWThdContext *thd = current_thd;
   std::chrono::_V2::system_clock::time_point start;
+  k_uint32 read_rows = 0;
+  k_int64 bytes_read = 0;
   do {
     DataChunkPtr data_batch = nullptr;
     code = childrens_[0]->Next(ctx, data_batch);
@@ -108,7 +110,8 @@ EEIteratorErrCode NoopOperator::Next(kwdbContext_p ctx, DataChunkPtr &chunk) {
     if (EEIteratorErrCode::EE_OK != code) {
       break;
     }
-
+    read_rows = data_batch->Count();
+    bytes_read = read_rows * data_batch->RowSize();
     if (is_pass_through_) {
       chunk = std::move(data_batch);
       break;
@@ -117,14 +120,13 @@ EEIteratorErrCode NoopOperator::Next(kwdbContext_p ctx, DataChunkPtr &chunk) {
     DataChunk *input_chunk = data_batch.get();
     thd->SetDataChunk(input_chunk);
     input_chunk->ResetLine();
-    k_uint32 count = input_chunk->Count();
-    make_noop_data_chunk(ctx, &chunk, count);
+    make_noop_data_chunk(ctx, &chunk, read_rows);
     if (chunk == nullptr) {
       code = EEIteratorErrCode::EE_ERROR;
       break;
     }
 
-    for (k_uint32 i = 0; i < count; ++i) {
+    for (k_uint32 i = 0; i < read_rows; ++i) {
       k_uint32 row = input_chunk->NextLine();
       if (nullptr != filter_ && 0 == filter_->ValInt()) {
         continue;
@@ -149,7 +151,7 @@ EEIteratorErrCode NoopOperator::Next(kwdbContext_p ctx, DataChunkPtr &chunk) {
   auto end = std::chrono::high_resolution_clock::now();
   if (chunk != nullptr) {
     OPERATOR_DIRECT_ENCODING(ctx, output_encoding_, use_query_short_circuit_, thd, chunk);
-    fetcher_.Update(chunk->Count(), (end - start).count(), chunk->Count() * chunk->RowSize(), 0, 0, 0);
+    fetcher_.Update(read_rows, (end - start).count(), bytes_read, 0, 0, chunk->Count());
   } else {
     fetcher_.Update(0, (end - start).count(), 0, 0, 0, 0);
   }

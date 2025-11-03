@@ -414,6 +414,7 @@ type Store struct {
 	db                 *kv.DB
 	engine             storage.Engine // The underlying key-value store
 	TsEngine           *tse.TsEngine
+	TsRaftLogEngine    *tse.TsRaftLogEngine
 	compactor          *compactor.Compactor // Schedules compaction of the engine
 	tsCache            tscache.Cache        // Most recent timestamps for keys / key ranges
 	allocator          Allocator            // Makes allocation decisions
@@ -1385,7 +1386,9 @@ func ReadStoreIdent(ctx context.Context, eng storage.Engine) (roachpb.StoreIdent
 
 // Start the engine, set the GC and read the StoreIdent.
 func (s *Store) Start(
-	ctx context.Context, stopper *stop.Stopper, setTse func() (*tse.TsEngine, error),
+	ctx context.Context,
+	stopper *stop.Stopper,
+	setTse func() (*tse.TsEngine, *tse.TsRaftLogEngine, error),
 ) error {
 	s.stopper = stopper
 
@@ -1455,6 +1458,18 @@ func (s *Store) Start(
 	now := s.cfg.Clock.Now()
 	s.startedAt = now.WallTime
 
+	if setTse != nil {
+		tsEngine, tsRaftLogEngine, err := setTse()
+		if err != nil {
+			log.Errorf(ctx, "failed set tse: %+v", err)
+			return err
+		}
+		log.Infof(ctx, "done set tse")
+		s.TsEngine = tsEngine
+		s.cfg.TsEngine = tsEngine
+		s.TsRaftLogEngine = tsRaftLogEngine
+	}
+
 	// Iterate over all range descriptors, ignoring uncommitted versions
 	// (consistent=false). Uncommitted intents which have been abandoned
 	// due to a split crashing halfway will simply be resolved on the
@@ -1470,6 +1485,7 @@ func (s *Store) Start(
 			if !desc.IsInitialized() {
 				return false, errors.Errorf("found uninitialized RangeDescriptor: %+v", desc)
 			}
+
 			replicaDesc, found := desc.GetReplicaDescriptor(s.StoreID())
 			if !found {
 				// This is a pre-emptive snapshot. It's also possible that this is a
@@ -1489,6 +1505,7 @@ func (s *Store) Start(
 				return false, err
 			}
 
+			log.VEventf(ctx, 3, "will add replica r%d", desc.RangeID)
 			// We can't lock s.mu across NewReplica due to the lock ordering
 			// constraint (*Replica).raftMu < (*Store).mu. See the comment on
 			// (Store).mu.
@@ -1521,15 +1538,6 @@ func (s *Store) Start(
 		})
 	if err != nil {
 		return err
-	}
-
-	if setTse != nil {
-		tsEngine, err := setTse()
-		if err != nil {
-			return err
-		}
-		s.TsEngine = tsEngine
-		s.cfg.TsEngine = tsEngine
 	}
 
 	// Start Raft processing goroutines.

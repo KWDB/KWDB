@@ -3746,8 +3746,33 @@ func (ef *execFactory) AddAvgFuncColumns(node exec.Node, mem *memo.Memo, tableGr
 // 4. alreadyOrderedPrefix describes the input columns that have already been sorted.
 // 5. execInTSEngine is true when the sort can exec in ts engine.
 func (ef *execFactory) ProcessTSInsertWithSort(
+	tsInsertSelect exec.Node, sort exec.Node, outputCols *opt.ColMap,
+) (exec.Node, bool) {
+	if tsInsert, ok := tsInsertSelect.(*tsInsertSelectNode); ok {
+		switch e := sort.(type) {
+		case *renderNode:
+			if _, ok1 := e.source.plan.(*sortNode); ok1 {
+				tsInsert.plan = e
+			}
+		case *sortNode:
+			tsInsert.plan = e
+		default:
+			return struct{}{}, false
+		}
+		(*outputCols) = opt.ColMap{}
+		return tsInsert, true
+	}
+	return struct{}{}, false
+}
+
+// BuildSortInTsInsert constructs sortNode base on the input of tsInsertSelectNode, return sortNode.
+// params:
+// 1. tsInsertSelect is the tsInsertSelectNode
+// 2. ordering is used to describe a desired column ordering.
+// 3. alreadyOrderedPrefix describes the input columns that have already been sorted.
+// 4. execInTSEngine is true when the sort can exec in ts engine.
+func (ef *execFactory) BuildSortInTsInsert(
 	tsInsertSelect exec.Node,
-	outputCols *opt.ColMap,
 	ordering sqlbase.ColumnOrdering,
 	alreadyOrderedPrefix int,
 	execInTSEngine bool,
@@ -3758,18 +3783,27 @@ func (ef *execFactory) ProcessTSInsertWithSort(
 			engine = tree.EngineTypeTimeseries
 		}
 
-		sort := &sortNode{
+		return &sortNode{
 			plan:                 tsInsert.plan,
 			ordering:             ordering,
 			alreadyOrderedPrefix: alreadyOrderedPrefix,
 			engine:               engine,
-		}
-		tsInsert.plan = sort
-
-		(*outputCols) = opt.ColMap{}
-		return tsInsert, true
+		}, true
 	}
 	return struct{}{}, false
+}
+
+// CanAddRender check whether render should be added to the node.
+func (ef *execFactory) CanAddRender(expr memo.RelExpr, node exec.Node) bool {
+	switch node.(type) {
+	case *tsInsertSelectNode:
+		if _, ok := expr.(*memo.SortExpr); ok {
+			// the positions of sortNode and tsInsertNode have been swapped,
+			// so there is no need to add render to tsInsertNode.
+			return false
+		}
+	}
+	return true
 }
 
 func (ef *execFactory) getTriggerInstructions(

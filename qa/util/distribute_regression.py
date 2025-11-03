@@ -379,6 +379,9 @@ if __name__ == "__main__":
                     get_url_from_node_id(1)
                 )
                 cmds.append(cmd)
+                cmd = ' {} sql --insecure --host={} -e "set cluster setting' \
+                      ' cluster.license = {};"'.format(kwbin_path, url, "'${KWBASE_LICENSE}'")
+                cmds.append(cmd)
         elif re.match('-- decommission', sql):
             node_ids = get_nodes(sql)
             for node_id in node_ids:

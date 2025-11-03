@@ -102,10 +102,6 @@ func BuildChildPhysicalProps(
 	if groupBy, ok := parent.(*memo.GroupByExpr); ok {
 		childProps.MustAddSort = groupBy.TimeBucketGapFillColId > 0
 	}
-	// we should add sorter to input of TSInsertSelectExpr if tsInsertSelect with orderby
-	if _, ok := parent.(*memo.TSInsertSelectExpr); ok && len(childProps.Ordering.Columns) > 0 {
-		childProps.MustAddSort = true
-	}
 
 	switch parent.Op() {
 	case opt.LimitOp:

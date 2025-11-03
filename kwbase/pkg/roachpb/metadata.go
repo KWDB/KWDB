@@ -180,6 +180,14 @@ func (r RangeDescriptor) GetRangeType() RangeType {
 	return *r.RangeType
 }
 
+// IsRemoved indicated whether the range has been removed.
+func (r RangeDescriptor) IsRemoved() bool {
+	if r.Removed == nil {
+		return false
+	}
+	return *r.Removed
+}
+
 // SetReplicaType changes the type of the replica with the given ID to the given
 // type. Returns zero values if the replica was not found and the updated
 // descriptor, the previous type, and true, otherwise.
@@ -356,6 +364,7 @@ func (r RangeDescriptor) String() string {
 	if s := r.GetStickyBit(); !s.IsEmpty() {
 		fmt.Fprintf(&buf, ", sticky=%s", s)
 	}
+	fmt.Fprintf(&buf, ", removed=%v", r.IsRemoved())
 	buf.WriteString("]")
 
 	return buf.String()

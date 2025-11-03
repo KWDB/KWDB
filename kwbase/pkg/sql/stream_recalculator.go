@@ -919,7 +919,25 @@ func (sr *streamRecalculator) loadExpiredTime(last time.Time) (time.Time, error)
 		return last, nil
 	}
 
-	newLast := tree.MustBeDTimestampTZ(rows[0][0]).Time
+	dTime, ok := tree.AsDTimestampTZ(rows[0][0])
+	if !ok {
+		log.Errorf(sr.ctx, "the column %s of target table %s.%s is not timestamptz, value %v",
+			sr.streamParameters.TargetEndColName,
+			sr.streamParameters.TargetTable.Database,
+			sr.streamParameters.TargetTable.Table,
+			rows[0][0],
+		)
+
+		return last, errors.Newf(
+			"the column %s of target table %s.%s is not timestamptz, value %v",
+			sr.streamParameters.TargetEndColName,
+			sr.streamParameters.TargetTable.Database,
+			sr.streamParameters.TargetTable.Table,
+			rows[0][0],
+		)
+	}
+
+	newLast := dTime.Time
 	if last.After(newLast) {
 		return last, nil
 	}
