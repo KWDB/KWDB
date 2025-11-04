@@ -324,3 +324,31 @@ DELETE 1
 DROP TABLE
 > drop database test cascade;
 DROP DATABASE
+> set cluster setting ts.dedup.rule='override';
+SET CLUSTER SETTING
+> set cluster setting ts.mem_segment_size.max_limit=1;
+SET CLUSTER SETTING
+> use defaultdb;
+SET
+> drop database if exists test_db;
+DROP DATABASE
+> create ts database test_db;
+CREATE TS DATABASE
+> create table test_db.t1(ts timestamptz NOT NULL, a int, b int) ATTRIBUTES(x int not null) primary tags(x);
+CREATE TABLE
+> insert into test_db.t1 values('2025-02-18 03:11:59.688', 1, 1, 1);
+INSERT 1
+> insert into test_db.t1 values('2025-02-18 03:11:59.688', 2, 2, 1);
+INSERT 1
+> insert into test_db.t1 values('2025-02-18 03:11:59.688', 3, 3, 1);
+INSERT 1
+> select * from test_db.t1 order by ts offset 1 limit 1;
+  ts | a | b | x
+-----+---+---+----
+(0 rows)
+> use defaultdb;
+SET
+> set cluster setting ts.mem_segment_size.max_limit=67108864;
+SET CLUSTER SETTING
+> drop database test_db cascade;
+DROP DATABASE

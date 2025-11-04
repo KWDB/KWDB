@@ -226,7 +226,7 @@ class TsOffsetIteratorV2Impl : public TsIterator {
   KStatus ScanPartitionBlockSpans(uint32_t* cnt);
 
   KStatus divideBlockSpans(timestamp64 begin_ts, timestamp64 end_ts, uint32_t* lower_cnt,
-                           deque<std::shared_ptr<TsBlockSpan>>& lower_block_span);
+                           deque<pair<pair<timestamp64, timestamp64>, std::shared_ptr<TsBlockSpan>>>& lower_block_span);
   KStatus filterLower(uint32_t* cnt);
   KStatus filterUpper(uint32_t filter_num, uint32_t* cnt);
   KStatus filterBlockSpan();
@@ -274,8 +274,8 @@ class TsOffsetIteratorV2Impl : public TsIterator {
   map<timestamp64, std::vector<pair<uint32_t, std::shared_ptr<const TsPartitionVersion>>>>::iterator p_time_it_;
 
   std::list<std::shared_ptr<TsBlockSpan>> ts_block_spans_;
-  std::deque<std::shared_ptr<TsBlockSpan>> block_spans_;
-  std::deque<std::shared_ptr<TsBlockSpan>> filter_block_spans_;
+  std::deque<pair<pair<timestamp64, timestamp64>, std::shared_ptr<TsBlockSpan>>> block_spans_;
+  std::deque<pair<pair<timestamp64, timestamp64>, std::shared_ptr<TsBlockSpan>>> filter_block_spans_;
   std::list<std::shared_ptr<TsBlockSpan>> ts_block_spans_with_data_;
 
   int32_t offset_;

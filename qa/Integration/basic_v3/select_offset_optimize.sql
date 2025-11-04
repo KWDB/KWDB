@@ -173,3 +173,21 @@ SELECT * FROM sensor_data ORDER BY ts DESC LIMIT 10 OFFSET 1;
 drop table sensor_data;
 
 drop database test cascade;
+
+--- fix duplicate data
+set cluster setting ts.dedup.rule='override';
+set cluster setting ts.mem_segment_size.max_limit=1;
+use defaultdb;
+drop database if exists test_db;
+create ts database test_db;
+create table test_db.t1(ts timestamptz NOT NULL, a int, b int) ATTRIBUTES(x int not null) primary tags(x);
+
+insert into test_db.t1 values('2025-02-18 03:11:59.688', 1, 1, 1);
+insert into test_db.t1 values('2025-02-18 03:11:59.688', 2, 2, 1);
+insert into test_db.t1 values('2025-02-18 03:11:59.688', 3, 3, 1);
+
+select * from test_db.t1 order by ts offset 1 limit 1;
+
+use defaultdb;
+set cluster setting ts.mem_segment_size.max_limit=67108864;
+drop database test_db cascade;
