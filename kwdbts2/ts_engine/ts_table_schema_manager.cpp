@@ -486,7 +486,7 @@ uint64_t TsTableSchemaManager::GetDbID() const {
   return metric_mgr_->GetDbID();
 }
 
-int TsTableSchemaManager::Sync(const kwdbts::TS_LSN& check_lsn, ErrorInfo& err_info) {
+int TsTableSchemaManager::Sync(const kwdbts::TS_OSN& check_lsn, ErrorInfo& err_info) {
   metric_mgr_->Sync(check_lsn, err_info);
   return 0;
 }

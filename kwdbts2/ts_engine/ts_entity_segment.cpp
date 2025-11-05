@@ -25,6 +25,7 @@
 #include "ts_lastsegment_builder.h"
 #include "ts_version.h"
 #include "ts_lru_block_cache.h"
+#include "ts_ts_lsn_span_utils.h"
 
 namespace kwdbts {
 
@@ -46,6 +47,10 @@ KStatus TsEntitySegmentEntityItemFile::Open() {
   }
   return s;
 }
+KStatus TsEntitySegmentEntityItemFile::SetEntityItemDropped(uint64_t entity_id) {
+  // todo(liangbo01) readonly_file ,cannot modify.
+  return KStatus::SUCCESS;
+}
 
 KStatus TsEntitySegmentEntityItemFile::GetEntityItem(uint64_t entity_id, TsEntityItem& entity_item, bool& is_exist) {
   if (entity_id > header_->entity_num) {
@@ -61,13 +66,10 @@ KStatus TsEntitySegmentEntityItemFile::GetEntityItem(uint64_t entity_id, TsEntit
     LOG_ERROR("read entity item[id=%lu] failed.", entity_id);
     return s;
   }
-  entity_item = *reinterpret_cast<TsEntityItem *>(result.data);
-  if (entity_item.table_id == 0) {
-    is_exist = false;
-    return SUCCESS;
+  if (is_exist) {
+    entity_item = *(reinterpret_cast<TsEntityItem *>(result.data));
   }
-  is_exist = true;
-  return s;
+  return KStatus::SUCCESS;
 }
 
 uint32_t TsEntitySegmentEntityItemFile::GetFileNum() {
@@ -469,7 +471,7 @@ KStatus TsEntityBlock::GetRowSpans(const std::vector<STScanRange>& spans,
     }
   }
   timestamp64* ts_col = reinterpret_cast<timestamp64*>(column_blocks_[1]->buffer.data());
-  TS_LSN* osn_col = reinterpret_cast<TS_LSN*>(column_blocks_[0]->buffer.data());
+  TS_OSN* osn_col = reinterpret_cast<TS_OSN*>(column_blocks_[0]->buffer.data());
   assert(n_rows_ * 8 == column_blocks_[1]->buffer.length());
   assert(n_rows_ * 8 == column_blocks_[0]->buffer.length());
 
@@ -486,7 +488,7 @@ KStatus TsEntityBlock::GetRowSpans(const std::vector<STScanRange>& spans,
     bool match_found = false;
     int span_start = 0;
     for (int i = start_idx; i < end_idx; i++) {
-      if (osn_col[i] >= span.lsn_span.begin && osn_col[i] <= span.lsn_span.end) {
+      if (osn_col[i] >= span.osn_span.begin && osn_col[i] <= span.osn_span.end) {
         if (!match_found) {
           span_start = i;
           match_found = true;

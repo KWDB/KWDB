@@ -24,6 +24,7 @@
 #include "ts_table_schema_manager.h"
 #include "ts_version.h"
 #include "ts_block_span_sorted_iterator.h"
+#include "ts_table.h"
 
 namespace kwdbts {
 
@@ -287,7 +288,37 @@ class TsOffsetIteratorV2Impl : public TsIterator {
   timestamp t_time_ = 0;
   int32_t deviation_ = 1000;
   // todo(liangbo) set lsn parameter.
-  TS_LSN scan_lsn_{UINT64_MAX};
+  TS_OSN scan_osn_{UINT64_MAX};
+};
+
+class TsRawDataIteratorV2ImplByOSN : public TsStorageIteratorV2Impl {
+ public:
+  TsRawDataIteratorV2ImplByOSN(const std::shared_ptr<TsVGroup>& vgroup, uint32_t version,
+    vector<EntityResultIndex>& entity_ids,
+    std::vector<k_uint32>& scan_cols, std::vector<k_uint32>& ts_scan_cols,
+    std::vector<KwOSNSpan>& osn_spans, std::shared_ptr<TsTableSchemaManager>& table_schema_mgr);
+  ~TsRawDataIteratorV2ImplByOSN();
+
+  KStatus Init();
+
+  KStatus Next(ResultSet* res, k_uint32* count, bool* is_finished, timestamp64 ts = INVALID_TS) override;
+  bool IsDisordered() override { return true; }
+
+ protected:
+  KStatus MoveToNextEntity(bool* is_finished);
+  KStatus ScanAndSortEntityData(timestamp64 ts);
+  KStatus NextMetricDelRows(ResultSet* res, k_uint32* count, bool* is_finished);
+  KStatus NextMetricInsertRows(ResultSet* res, k_uint32* count, bool* is_finished);
+  KStatus FillEmptyMetricRow(ResultSet* res, uint32_t count, TS_OSN osn, OperatorTypeOfRecord type);
+  KStatus AppendExtendColSpace(ResultSet* res, uint32_t count);
+
+ private:
+  std::vector<KwOSNSpan> osn_span_;
+  std::list<std::shared_ptr<TsBlockSpan>> ts_block_spans_reserved_;
+  std::vector<EntityResultIndex> entitys_;
+  bool del_info_finished_{false};
+  uint64_t fill_empty_value{0};
+  uint8_t fill_empty_bitmap{0XFF};
 };
 
 }  //  namespace kwdbts

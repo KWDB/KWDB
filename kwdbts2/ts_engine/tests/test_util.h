@@ -177,6 +177,7 @@ void ConstructRoachpbTable(roachpb::CreateTsTable* meta, KTableKey table_id, uin
   // add tag infos
   std::vector<ZTableColumnMeta> tag_metas;
   tag_metas.push_back({roachpb::DataType::TIMESTAMP, 8, 8, roachpb::VariableLengthType::ColStorageTypeTuple});
+  tag_metas.push_back({roachpb::DataType::TIMESTAMP, 8, 8, roachpb::VariableLengthType::ColStorageTypeTuple});
   for (int i = 0; i< tag_metas.size(); i++) {
     roachpb::KWDBKTSColumn* column = meta->mutable_k_column()->Add();
     column->set_storage_type((roachpb::DataType)(tag_metas[i].type));
@@ -366,6 +367,7 @@ void SetPayloadOSN(TSSlice payload, uint64_t osn) {
 TSSlice GenRowPayload(const std::vector<AttributeInfo>& metric, const std::vector<TagInfo>& tag, TSTableID table_id, uint32_t version, TSEntityID dev_id, int num, KTimestamp ts, KTimestamp interval = 1000) {
   TSRowPayloadBuilder builder(tag, metric, num);
   builder.SetTagValue(0, (char*)(&dev_id), sizeof(dev_id));
+  builder.SetTagValue(1, (char*)(&dev_id), sizeof(dev_id));
 
   timestamp64 cur_ts = ts;
   for (size_t i = 0; i < num; i++) {

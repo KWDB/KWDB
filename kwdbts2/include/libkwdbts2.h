@@ -69,6 +69,21 @@ typedef struct {
   int32_t len;
 } KwTsSpans;
 
+// OSN range span info
+typedef struct {
+  uint64_t begin;
+  uint64_t end;
+} KwOSNSpan;
+// OSN and TS range struct
+typedef struct {
+  KwTsSpan ts_span;
+  KwOSNSpan osn_span;
+} TSAndLSNRange;
+
+// rename for understanding easily.
+typedef TSAndLSNRange STDelRange;
+typedef TSAndLSNRange STScanRange;
+
 // hashID span
 typedef struct {
   uint64_t begin;

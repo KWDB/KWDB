@@ -58,10 +58,10 @@ enum AlterType : uint8_t {
 };
 
 struct WALMeta {
-  TS_LSN current_lsn;
-  TS_LSN block_flush_to_disk_lsn;
+  TS_OSN current_lsn;
+  TS_OSN block_flush_to_disk_lsn;
   uint32_t current_checkpoint_no;
-  TS_LSN checkpoint_lsn;
+  TS_OSN checkpoint_lsn;
 }__attribute__((packed));
 
 // checkpoint time partition

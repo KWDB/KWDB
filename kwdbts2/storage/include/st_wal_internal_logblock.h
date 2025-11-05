@@ -79,7 +79,7 @@ class HeaderBlock {
   HeaderBlock();
 
   HeaderBlock(uint64_t object_id, uint64_t start_block_no, uint32_t block_num,
-              TS_LSN start_lsn, TS_LSN first_lsn, TS_LSN checkpoint_lsn, uint32_t checkpoint_no);
+              TS_OSN start_lsn, TS_OSN first_lsn, TS_OSN checkpoint_lsn, uint32_t checkpoint_no);
 
   explicit HeaderBlock(const char* value);
 
@@ -96,17 +96,17 @@ class HeaderBlock {
    * @param checkpoint_lsn
    * @param checkpoint_no
    */
-  void setCheckpointInfo(TS_LSN checkpoint_lsn, uint32_t checkpoint_no);
+  void setCheckpointInfo(TS_OSN checkpoint_lsn, uint32_t checkpoint_no);
 
-  void setFirstLSN(TS_LSN first_lsn);
+  void setFirstLSN(TS_OSN first_lsn);
 
-  [[nodiscard]] TS_LSN getStartLSN() const;
+  [[nodiscard]] TS_OSN getStartLSN() const;
 
-  [[nodiscard]] TS_LSN getCheckpointLSN() const;
+  [[nodiscard]] TS_OSN getCheckpointLSN() const;
 
   [[nodiscard]] uint32_t getCheckpointNo() const;
 
-  [[nodiscard]] TS_LSN getFlushedLsn() const;
+  [[nodiscard]] TS_OSN getFlushedLsn() const;
 
   [[nodiscard]] uint64_t getStartBlockNo() const;
 
@@ -114,9 +114,9 @@ class HeaderBlock {
 
   [[nodiscard]] uint32_t getBlockNum() const;
 
-  [[nodiscard]] TS_LSN getFirstLSN() const;
+  [[nodiscard]] TS_OSN getFirstLSN() const;
 
-  void setFlushedLsn(TS_LSN flushed_lsn);
+  void setFlushedLsn(TS_OSN flushed_lsn);
 
  private:
   /**
@@ -129,10 +129,10 @@ class HeaderBlock {
   uint64_t object_id_{0};
   uint64_t start_block_no_{0};
   uint32_t block_num_{0};
-  TS_LSN start_lsn_{0};
-  TS_LSN first_lsn_{0};
-  TS_LSN checkpoint_lsn_{0};
-  TS_LSN flushed_lsn_{0};
+  TS_OSN start_lsn_{0};
+  TS_OSN first_lsn_{0};
+  TS_OSN checkpoint_lsn_{0};
+  TS_OSN flushed_lsn_{0};
   uint32_t checkpoint_no_{0};
   uint32_t checksum_{0};
 };

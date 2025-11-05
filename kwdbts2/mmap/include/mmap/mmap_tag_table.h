@@ -151,7 +151,7 @@ class TagTable {
   KStatus Init();
 
   // wal
-  void sync_with_lsn(kwdbts::TS_LSN lsn);
+  void sync_with_lsn(kwdbts::TS_OSN lsn);
 
   void sync(int flag);
 

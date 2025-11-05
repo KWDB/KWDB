@@ -101,9 +101,9 @@ class MMapMetricsTable : public TSObject, public TsTableObject {
     return KWEPERM;
   }
 
-  int Sync(kwdbts::TS_LSN check_lsn, ErrorInfo& err_info);
+  int Sync(kwdbts::TS_OSN check_lsn, ErrorInfo& err_info);
 
-  int Sync(kwdbts::TS_LSN check_lsn, map<uint32_t, uint64_t>& rows, ErrorInfo& err_info);
+  int Sync(kwdbts::TS_OSN check_lsn, map<uint32_t, uint64_t>& rows, ErrorInfo& err_info);
 
-  int UndoDeleteEntity(uint32_t entity_id, kwdbts::TS_LSN lsn, uint64_t* count, ErrorInfo& err_info);
+  int UndoDeleteEntity(uint32_t entity_id, kwdbts::TS_OSN lsn, uint64_t* count, ErrorInfo& err_info);
 };

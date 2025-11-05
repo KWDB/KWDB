@@ -32,7 +32,7 @@ WALBufferMgr::~WALBufferMgr() {
   delete buf_mutex_;
 }
 
-KStatus WALBufferMgr::init(TS_LSN start_lsn) {
+KStatus WALBufferMgr::init(TS_OSN start_lsn) {
   // last_write_block_no: The last block number written
   uint64_t last_write_block_no = file_mgr_->GetBlockNoFromLsn(start_lsn);
 
@@ -76,7 +76,7 @@ void WALBufferMgr::ResetMeta() {
   end_block_index_ = init_buffer_size_ - 1;
 }
 
-KStatus WALBufferMgr::readWALLogs(std::vector<LogEntry*>& log_entries, TS_LSN start_lsn, TS_LSN end_lsn,
+KStatus WALBufferMgr::readWALLogs(std::vector<LogEntry*>& log_entries, TS_OSN start_lsn, TS_OSN end_lsn,
                                   std::vector<uint64_t>& v_lsn, uint64_t txn_id, bool for_chk) {
   if (end_lsn <= start_lsn || end_lsn > getCurrentLsn()) {
     return SUCCESS;
@@ -110,8 +110,8 @@ KStatus WALBufferMgr::readWALLogs(std::vector<LogEntry*>& log_entries, TS_LSN st
     } while (buffer_[index].getBlockNo() <= end_block);
   }
 
-  TS_LSN current_offset = start_lsn;
-  TS_LSN current_lsn;
+  TS_OSN current_offset = start_lsn;
+  TS_OSN current_lsn;
 
   if (read_queue.empty() || read_queue.front()->getBlockNo() != start_block) {
     LOG_ERROR("Failed to read the WAL log file from LSN %lu to %lu with transaction id %lu.",
@@ -458,7 +458,7 @@ KStatus WALBufferMgr::readWALLogs(std::vector<LogEntry*>& log_entries, TS_LSN st
   return SUCCESS;
 }
 
-KStatus WALBufferMgr::readUncommittedTxnID(std::vector<uint64_t>& uncommitted_id, TS_LSN start_lsn, TS_LSN end_lsn) {
+KStatus WALBufferMgr::readUncommittedTxnID(std::vector<uint64_t>& uncommitted_id, TS_OSN start_lsn, TS_OSN end_lsn) {
   if (end_lsn <= start_lsn || end_lsn > getCurrentLsn()) {
     return SUCCESS;
   }
@@ -491,8 +491,8 @@ KStatus WALBufferMgr::readUncommittedTxnID(std::vector<uint64_t>& uncommitted_id
     } while (buffer_[index].getBlockNo() <= end_block);
   }
 
-  TS_LSN current_offset = start_lsn;
-  TS_LSN current_lsn;
+  TS_OSN current_offset = start_lsn;
+  TS_OSN current_lsn;
 
   KStatus status;
   std::vector<LogEntry*> log_entries;
@@ -744,7 +744,7 @@ KStatus WALBufferMgr::readUncommittedTxnID(std::vector<uint64_t>& uncommitted_id
   return SUCCESS;
 }
 
-KStatus WALBufferMgr::readBytes(TS_LSN& start_offset,
+KStatus WALBufferMgr::readBytes(TS_OSN& start_offset,
                                 std::queue<EntryBlock*>& read_queue,
                                 size_t length, char*& res) {
   size_t read_size = 0;
@@ -793,18 +793,18 @@ KStatus WALBufferMgr::readBytes(TS_LSN& start_offset,
   return SUCCESS;
 }
 
-KStatus WALBufferMgr::setHeaderBlockCheckpointInfo(TS_LSN checkpoint_lsn, uint32_t checkpoint_no) {
+KStatus WALBufferMgr::setHeaderBlockCheckpointInfo(TS_OSN checkpoint_lsn, uint32_t checkpoint_no) {
   headerBlock_.setCheckpointInfo(checkpoint_lsn, checkpoint_no);
   return SUCCESS;
 }
 
-KStatus WALBufferMgr::setHeaderBlockFirstLSN(TS_LSN first_lsn) {
+KStatus WALBufferMgr::setHeaderBlockFirstLSN(TS_OSN first_lsn) {
   headerBlock_.setFirstLSN(first_lsn);
   return SUCCESS;
 }
 
 KStatus WALBufferMgr::writeWAL(kwdbContext_p ctx, k_char* wal_log,
-                               size_t length, TS_LSN& lsn_offset) {
+                               size_t length, TS_OSN& lsn_offset) {
   // In this method, buf_mutex is required to protect current block and the subsequent Block that may be used.
   this->Lock();
 
@@ -890,8 +890,8 @@ KStatus WALBufferMgr::writeWAL(kwdbContext_p ctx, k_char* wal_log,
   return SUCCESS;
 }
 
-TS_LSN WALBufferMgr::getCurrentLsn() {
-  TS_LSN lsn = file_mgr_->GetLSNFromBlockNo(currentBlock_->getBlockNo());
+TS_OSN WALBufferMgr::getCurrentLsn() {
+  TS_OSN lsn = file_mgr_->GetLSNFromBlockNo(currentBlock_->getBlockNo());
   return lsn + currentBlock_->getDataLen();
 }
 
@@ -983,14 +983,14 @@ KStatus WALBufferMgr::flushWithoutLock(bool flush_header) {
   return s;
 }
 
-KStatus WALBufferMgr::readInsertLog(std::vector<LogEntry*>& log_entries, TS_LSN current_lsn, TS_LSN txn_id,
-                                    TS_LSN& current_offset, std::queue<EntryBlock*>& read_queue, bool for_chk) {
+KStatus WALBufferMgr::readInsertLog(std::vector<LogEntry*>& log_entries, TS_OSN current_lsn, TS_OSN txn_id,
+                                    TS_OSN& current_offset, std::queue<EntryBlock*>& read_queue, bool for_chk) {
   char* read_buf;
   WALTableType tbl_typ;
   uint64_t x_id = 0;
   uint64_t vgrp_id = 0;
-  TS_LSN old_lsn = 0;
-  TS_LSN v_lsn = current_offset - 1;
+  TS_OSN old_lsn = 0;
+  TS_OSN v_lsn = current_offset - 1;
 
   KStatus status;
 
@@ -1137,14 +1137,14 @@ KStatus WALBufferMgr::readInsertLog(std::vector<LogEntry*>& log_entries, TS_LSN 
   return SUCCESS;
 }
 
-KStatus WALBufferMgr::readUpdateLog(std::vector<LogEntry*>& log_entries, TS_LSN current_lsn, TS_LSN txn_id,
-                                    TS_LSN& current_offset, std::queue<EntryBlock*>& read_queue, bool for_chk) {
+KStatus WALBufferMgr::readUpdateLog(std::vector<LogEntry*>& log_entries, TS_OSN current_lsn, TS_OSN txn_id,
+                                    TS_OSN& current_offset, std::queue<EntryBlock*>& read_queue, bool for_chk) {
   char* read_buf;
   WALTableType tbl_typ;
   uint64_t x_id = 0;
   uint64_t vgrp_id = 0;
-  TS_LSN old_lsn = 0;
-  TS_LSN v_lsn = current_offset - 1;
+  TS_OSN old_lsn = 0;
+  TS_OSN v_lsn = current_offset - 1;
   KStatus status;
 
   status = readBytes(current_offset, read_queue, sizeof(x_id) + sizeof(vgrp_id) + sizeof(old_lsn) + sizeof(WALTableType),
@@ -1244,14 +1244,14 @@ KStatus WALBufferMgr::readUpdateLog(std::vector<LogEntry*>& log_entries, TS_LSN 
   return SUCCESS;
 }
 
-KStatus WALBufferMgr::readDeleteLog(vector<LogEntry*>& log_entries, TS_LSN current_lsn, TS_LSN txn_id,
-                                    TS_LSN& current_offset, std::queue<EntryBlock*>& read_queue, bool for_chk) {
+KStatus WALBufferMgr::readDeleteLog(vector<LogEntry*>& log_entries, TS_OSN current_lsn, TS_OSN txn_id,
+                                    TS_OSN& current_offset, std::queue<EntryBlock*>& read_queue, bool for_chk) {
   WALTableType table_type;
   char* res;
   uint64_t x_id = 0;
   uint64_t vgrp_id = 0;
-  TS_LSN old_lsn = 0;
-  TS_LSN v_lsn = current_offset - 1;
+  TS_OSN old_lsn = 0;
+  TS_OSN v_lsn = current_offset - 1;
   KStatus status;
 
   status = readBytes(current_offset, read_queue, sizeof(x_id) + sizeof(vgrp_id) + sizeof(old_lsn), res);
@@ -1465,8 +1465,8 @@ KStatus WALBufferMgr::readDeleteLog(vector<LogEntry*>& log_entries, TS_LSN curre
   return SUCCESS;
 }
 
-KStatus WALBufferMgr::readCreateIndexLog(std::vector<LogEntry*>& log_entries, TS_LSN current_lsn, TS_LSN txn_id,
-                           TS_LSN& current_offset, std::queue<EntryBlock*>& read_queue) {
+KStatus WALBufferMgr::readCreateIndexLog(std::vector<LogEntry*>& log_entries, TS_OSN current_lsn, TS_OSN txn_id,
+                           TS_OSN& current_offset, std::queue<EntryBlock*>& read_queue) {
   char* res;
   KStatus  status;
   uint64_t x_id;
@@ -1512,8 +1512,8 @@ KStatus WALBufferMgr::readCreateIndexLog(std::vector<LogEntry*>& log_entries, TS
   return SUCCESS;
 }
 
-KStatus WALBufferMgr::readDropIndexLog(std::vector<LogEntry*>& log_entries, TS_LSN current_lsn, TS_LSN txn_id,
-                         TS_LSN& current_offset, std::queue<EntryBlock*>& read_queue) {
+KStatus WALBufferMgr::readDropIndexLog(std::vector<LogEntry*>& log_entries, TS_OSN current_lsn, TS_OSN txn_id,
+                         TS_OSN& current_offset, std::queue<EntryBlock*>& read_queue) {
   char* res;
   KStatus  status;
   uint64_t x_id;
@@ -1559,8 +1559,8 @@ KStatus WALBufferMgr::readDropIndexLog(std::vector<LogEntry*>& log_entries, TS_L
   return SUCCESS;
 }
 
-KStatus WALBufferMgr::readCheckpointLog(vector<LogEntry*>& log_entries, TS_LSN current_lsn, TS_LSN txn_id,
-                                        TS_LSN& current_offset, std::queue<EntryBlock*>& read_queue) {
+KStatus WALBufferMgr::readCheckpointLog(vector<LogEntry*>& log_entries, TS_OSN current_lsn, TS_OSN txn_id,
+                                        TS_OSN& current_offset, std::queue<EntryBlock*>& read_queue) {
   char* read_buf;
   KStatus status;
 
@@ -1613,8 +1613,8 @@ KStatus WALBufferMgr::readCheckpointLog(vector<LogEntry*>& log_entries, TS_LSN c
   return SUCCESS;
 }
 
-KStatus WALBufferMgr::readDDLCreateLog(vector<LogEntry*>& log_entries, TS_LSN current_lsn, TS_LSN txn_id,
-                                       TS_LSN& current_offset, std::queue<EntryBlock*>& read_queue) {
+KStatus WALBufferMgr::readDDLCreateLog(vector<LogEntry*>& log_entries, TS_OSN current_lsn, TS_OSN txn_id,
+                                       TS_OSN& current_offset, std::queue<EntryBlock*>& read_queue) {
   char* read_buf;
   KStatus status;
 
@@ -1680,8 +1680,8 @@ KStatus WALBufferMgr::readDDLCreateLog(vector<LogEntry*>& log_entries, TS_LSN cu
   return SUCCESS;
 }
 
-KStatus WALBufferMgr::readDDLAlterLog(vector<LogEntry*>& log_entries, TS_LSN current_lsn, TS_LSN txn_id,
-                                       TS_LSN& current_offset, std::queue<EntryBlock*>& read_queue) {
+KStatus WALBufferMgr::readDDLAlterLog(vector<LogEntry*>& log_entries, TS_OSN current_lsn, TS_OSN txn_id,
+                                       TS_OSN& current_offset, std::queue<EntryBlock*>& read_queue) {
   char* read_buf;
   KStatus status;
 

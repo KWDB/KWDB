@@ -1652,7 +1652,7 @@ KStatus TagTable::GetMeta(uint64_t table_id, uint32_t table_version, roachpb::Cr
 KStatus TagTable::Init() { return KStatus::SUCCESS; }
 
 // wal
-void TagTable::sync_with_lsn(kwdbts::TS_LSN lsn) {
+void TagTable::sync_with_lsn(kwdbts::TS_OSN lsn) {
   std::vector<TagPartitionTable*> all_parttables;
   TableVersion cur_tbl_version = this->GetTagTableVersionManager()->GetCurrentTableVersion();
   m_partition_mgr_->GetAllPartitionTablesLessVersion(all_parttables, cur_tbl_version);

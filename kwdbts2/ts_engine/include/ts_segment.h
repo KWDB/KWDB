@@ -28,17 +28,26 @@ class TsSegmentBase;
 // conditions used for flitering data.
 struct TsScanFilterParams {
   TsScanFilterParams(uint32_t db_id, TSTableID table_id, uint32_t vgroup_id,
-                      TSEntityID entity_id, DATATYPE  table_ts_type, TS_LSN end_lsn,
+                      TSEntityID entity_id, DATATYPE  table_ts_type, TS_OSN end_osn,
                       const std::vector<KwTsSpan>& ts_spans) :
                       db_id_(db_id), table_id_(table_id), vgroup_id_(vgroup_id),
                       entity_id_(entity_id), table_ts_type_(table_ts_type),
-                      end_lsn_(end_lsn), ts_spans_(ts_spans) {}
+                      ts_spans_(ts_spans) {
+                        osn_spans_.push_back({0, end_osn});
+                      }
+  TsScanFilterParams(uint32_t db_id, TSTableID table_id, uint32_t vgroup_id,
+                      TSEntityID entity_id, DATATYPE  table_ts_type,
+                      const std::vector<KwTsSpan>& ts_spans,
+                      const std::vector<KwOSNSpan>& osn_spans) :
+                      db_id_(db_id), table_id_(table_id), vgroup_id_(vgroup_id),
+                      entity_id_(entity_id), table_ts_type_(table_ts_type),
+                      osn_spans_(osn_spans), ts_spans_(ts_spans) {}
   uint32_t db_id_;
   TSTableID table_id_;
   uint32_t vgroup_id_;
   TSEntityID entity_id_;
   DATATYPE  table_ts_type_;
-  TS_LSN end_lsn_;
+  std::vector<KwOSNSpan> osn_spans_;
   const std::vector<KwTsSpan>& ts_spans_;
 };
 
@@ -64,48 +73,5 @@ class TsSegmentBase {
 
   virtual ~TsSegmentBase() {}
 };
-
-inline bool IsTsLsnInScanSpan(timestamp64 ts, TS_LSN lsn, const STScanRange& span) {
-  if (ts >= span.ts_span.begin && ts <= span.ts_span.end &&
-      lsn >= span.lsn_span.begin && lsn <= span.lsn_span.end) {
-    return true;
-  }
-  return false;
-}
-
-inline bool IsTsLsnInSpans(timestamp64 ts, TS_LSN lsn, const std::vector<STScanRange>& spans) {
-  for (auto& span : spans) {
-    if (IsTsLsnInScanSpan(ts, lsn, span)) {
-      return true;
-    }
-  }
-  return false;
-}
-
-inline bool IsTsLsnSpanInSpans(const std::vector<STScanRange>& spans,
-                                KwTsSpan ts_span, KwLSNSpan lsn_span) {
-  for (auto& span : spans) {
-    if (IsTsLsnInScanSpan(ts_span.begin, lsn_span.begin, span) &&
-        IsTsLsnInScanSpan(ts_span.end, lsn_span.end, span)) {
-      return true;
-    }
-  }
-  return false;
-}
-
-inline bool IsLsnInSpan(const STScanRange& span, TS_LSN lsn) {
-  return (span.lsn_span.begin >= lsn && lsn <= span.lsn_span.end);
-}
-
-inline bool IsTsLsnSpanCrossSpans(const std::vector<STScanRange>& spans,
-                                KwTsSpan ts_span, KwLSNSpan lsn_span) {
-  for (auto& span : spans) {
-    if (ts_span.begin <= span.ts_span.end && ts_span.end >= span.ts_span.begin &&
-        lsn_span.begin <= span.lsn_span.end && lsn_span.end >= span.lsn_span.begin) {
-      return true;
-    }
-  }
-  return false;
-}
 
 }  // namespace kwdbts

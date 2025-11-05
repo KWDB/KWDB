@@ -161,7 +161,7 @@ KStatus TsStorageIteratorV2Impl::Init(bool is_reversed) {
   auto current = vgroup_->CurrentVersion();
   ts_partitions_ = current->GetPartitions(db_id_, ts_spans_, ts_col_type_);
   filter_ = std::make_shared<TsScanFilterParams>(db_id_, table_id_, vgroup_->GetVGroupID(),
-                                                  0, ts_col_type_, scan_lsn_, ts_spans_);
+                                                  0, ts_col_type_, scan_osn_, ts_spans_);
   return KStatus::SUCCESS;
 }
 
@@ -1012,7 +1012,7 @@ KStatus TsAggIteratorV2Impl::Aggregate() {
     }
     cur_partition_index_ = first_partition_idx;
     TsScanFilterParams filter{db_id_, table_id_, vgroup_->GetVGroupID(),
-                              entity_ids_[cur_entity_index_], ts_col_type_, scan_lsn_, ts_spans_};
+                              entity_ids_[cur_entity_index_], ts_col_type_, scan_osn_, ts_spans_};
     auto partition_version = ts_partitions_[cur_partition_index_];
     ts_block_spans_.clear();
     auto ret = partition_version->GetBlockSpans(filter, &ts_block_spans_, table_schema_mgr_, schema_);
@@ -1034,7 +1034,7 @@ KStatus TsAggIteratorV2Impl::Aggregate() {
     }
     cur_partition_index_ = last_partition_idx;
     TsScanFilterParams filter{db_id_, table_id_, vgroup_->GetVGroupID(),
-                              entity_ids_[cur_entity_index_], ts_col_type_, scan_lsn_, ts_spans_};
+                              entity_ids_[cur_entity_index_], ts_col_type_, scan_osn_, ts_spans_};
     auto partition_version = ts_partitions_[cur_partition_index_];
     ts_block_spans_.clear();
     auto ret = partition_version->GetBlockSpans(filter, &ts_block_spans_, table_schema_mgr_, schema_);
@@ -1055,7 +1055,7 @@ KStatus TsAggIteratorV2Impl::Aggregate() {
     for (; first_partition_idx <= last_partition_idx; ++first_partition_idx) {
       cur_partition_index_ = first_partition_idx;
       TsScanFilterParams filter{db_id_, table_id_, vgroup_->GetVGroupID(),
-                                entity_ids_[cur_entity_index_], ts_col_type_, scan_lsn_, ts_spans_};
+                                entity_ids_[cur_entity_index_], ts_col_type_, scan_osn_, ts_spans_};
       auto partition_version = ts_partitions_[cur_partition_index_];
       ts_block_spans_.clear();
       auto ret = partition_version->GetBlockSpans(filter, &ts_block_spans_, table_schema_mgr_, schema_);
@@ -1170,7 +1170,7 @@ KStatus TsAggIteratorV2Impl::CountAggregate() {
   for (int idx = 0; idx < ts_partitions_.size(); idx++) {
     cur_partition_index_ = idx;
     TsScanFilterParams filter{db_id_, table_id_, vgroup_->GetVGroupID(),
-                              entity_ids_[cur_entity_index_], ts_col_type_, scan_lsn_, ts_spans_};
+                              entity_ids_[cur_entity_index_], ts_col_type_, scan_osn_, ts_spans_};
     auto partition_version = ts_partitions_[cur_partition_index_];
     auto count_manager = partition_version->GetCountManager();
     TsEntityCountHeader count_header{};
@@ -2059,7 +2059,7 @@ KStatus TsOffsetIteratorV2Impl::ScanPartitionBlockSpans(uint32_t* cnt) {
     // TODO(liumengzhen) filter参数能否支持多设备
     for (auto entity_id : entity_ids) {
       ts_block_spans_.clear();
-      TsScanFilterParams filter{db_id_, table_id_, vgroup_id, entity_id, ts_col_type_, scan_lsn_, ts_spans_};
+      TsScanFilterParams filter{db_id_, table_id_, vgroup_id, entity_id, ts_col_type_, scan_osn_, ts_spans_};
       ret = partition_version->GetBlockSpans(filter, &ts_block_spans_, table_schema_mgr_, schema_);
       if (ret != KStatus::SUCCESS) {
         LOG_ERROR("GetBlockSpan failed.");
@@ -2224,6 +2224,222 @@ KStatus TsOffsetIteratorV2Impl::Next(ResultSet* res, k_uint32* count, timestamp6
   // We are returning memory address inside TsBlockSpan, so we need to keep it until iterator is destroyed
   ts_block_spans_with_data_.push_back(ts_block);
   return KStatus::SUCCESS;
+}
+
+TsRawDataIteratorV2ImplByOSN::TsRawDataIteratorV2ImplByOSN(const std::shared_ptr<TsVGroup>& vgroup,
+  uint32_t version, vector<EntityResultIndex>& entity_ids,
+  std::vector<k_uint32>& scan_cols, std::vector<k_uint32>& ts_scan_cols,
+  std::vector<KwOSNSpan>& osn_spans,
+  std::shared_ptr<TsTableSchemaManager>& table_schema_mgr) : osn_span_(osn_spans), entitys_(entity_ids) {
+  table_schema_mgr_ = table_schema_mgr;
+  table_version_ = version;
+  kw_scan_cols_ = scan_cols;
+  ts_scan_cols_ = ts_scan_cols;
+  vgroup_ = vgroup;
+}
+
+KStatus TsRawDataIteratorV2ImplByOSN::Init() {
+  auto s = table_schema_mgr_->GetMetricSchema(table_version_, &schema_);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("get table version[%u] schema failed.", table_version_);
+    return s;
+  }
+  attrs_ = schema_->getSchemaInfoExcludeDropped();
+  ts_spans_.push_back({INT64_MIN, INT64_MAX});
+  table_id_ = table_schema_mgr_->GetTableId();
+  db_id_ = schema_->metaData()->db_id;
+  ts_col_type_ = schema_->GetTsColDataType();
+  auto current = vgroup_->CurrentVersion();
+  ts_partitions_ = current->GetPartitions(db_id_, ts_spans_, ts_col_type_);
+  filter_ = std::make_shared<TsScanFilterParams>(db_id_, table_id_, vgroup_->GetVGroupID(), 0,
+              ts_col_type_, ts_spans_, osn_span_);
+  return KStatus::SUCCESS;
+}
+
+KStatus TsRawDataIteratorV2ImplByOSN::MoveToNextEntity(bool* is_finished) {
+  ts_block_spans_.clear();
+  cur_entity_index_++;
+  if (cur_entity_index_ >= entitys_.size()) {
+    // All entities are scanned.
+    *is_finished = true;
+    return KStatus::SUCCESS;
+  }
+  filter_->entity_id_ = entitys_[cur_entity_index_].entityId;
+  auto op_osn = reinterpret_cast<OperatorInfoOfRecord*>(entitys_[cur_entity_index_].op_with_osn.get());
+  if (op_osn->type != OperatorTypeOfRecord::OP_TYPE_TAG_DELETE) {
+    for (auto& partition_version : ts_partitions_) {
+      auto s = partition_version->GetBlockSpans(*filter_, &ts_block_spans_, table_schema_mgr_, schema_);
+      if (s != KStatus::SUCCESS) {
+        LOG_ERROR("partition_version GetBlockSpan failed.");
+        return s;
+      }
+    }
+  }
+  return KStatus::SUCCESS;
+}
+
+KStatus TsRawDataIteratorV2ImplByOSN::Next(ResultSet* res, k_uint32* count, bool* is_finished, timestamp64 ts) {
+  if (!del_info_finished_) {
+    KStatus s = NextMetricDelRows(res, count, &del_info_finished_);
+    if (s != KStatus::SUCCESS) {
+      LOG_ERROR("NextMetricDelRows failed.");
+      return s;
+    }
+  }
+  if (*count == 0) {
+    auto s = NextMetricInsertRows(res, count, is_finished);
+    if (s != KStatus::SUCCESS) {
+      LOG_ERROR("NextMetricInsertRows failed.");
+      return s;
+    }
+  }
+  return KStatus::SUCCESS;
+}
+
+KStatus TsRawDataIteratorV2ImplByOSN::NextMetricDelRows(ResultSet* res, k_uint32* count, bool* is_finished) {
+  *is_finished = false;
+  *count = 0;
+  do {
+    cur_entity_index_++;
+    if (cur_entity_index_ >= entitys_.size()) {
+      *is_finished = true;
+      cur_entity_index_ = -1;
+      return KStatus::SUCCESS;
+    }
+    auto op_osn = reinterpret_cast<OperatorInfoOfRecord*>(entitys_[cur_entity_index_].op_with_osn.get());
+    assert(op_osn != nullptr);
+    if (op_osn->type == OperatorTypeOfRecord::OP_TYPE_TAG_DELETE) {
+      // if tag is deleted, no need search metric delete operation.
+      continue;
+    }
+    std::vector<KwTsSpan> del_spans;
+    auto s = vgroup_->GetDelInfoByOSN(nullptr, table_id_, entitys_[cur_entity_index_].entityId, osn_span_, &del_spans);
+    if (s != KStatus::SUCCESS) {
+      LOG_ERROR("GetDelInfoByOSN failed.");
+      return s;
+    }
+    if (del_spans.empty()) {
+      continue;
+    }
+    *count = del_spans.size();
+    s = FillEmptyMetricRow(res, del_spans.size(), osn_span_[0].begin, OperatorTypeOfRecord::OP_TYPE_METRIC_DELETE);
+    if (s != KStatus::SUCCESS) {
+      LOG_ERROR("FillEmptyMetricRow failed.");
+      return s;
+    }
+    size_t ext_event_idx = kw_scan_cols_.size() + 2;
+    for (size_t i = 0; i < del_spans.size(); i++) {
+      KUint64(reinterpret_cast<char*>(res->data[ext_event_idx][0]->mem) + i * 16) = del_spans[i].begin;
+      KUint64(reinterpret_cast<char*>(res->data[ext_event_idx][0]->mem) + i * 16 + 8) = del_spans[i].end;
+    }
+    return KStatus::SUCCESS;
+  } while (true);
+  return KStatus::SUCCESS;
+}
+
+KStatus TsRawDataIteratorV2ImplByOSN::AppendExtendColSpace(ResultSet* res, uint32_t count) {
+  size_t bitmap_len = (count + 7) / 8;
+  char* value = reinterpret_cast<char*>(malloc(count * (8 + 1 + 16) + 3 * bitmap_len));
+  memset(value, 0, count * (8 + 1 + 16) + 3 * bitmap_len);
+  Batch* batch = new Batch(value + 3 * bitmap_len, count, value);
+  batch->need_free_bitmap = true;  // free memory for value.
+  size_t extend_col_idx = kw_scan_cols_.size();
+  res->push_back(extend_col_idx, batch);
+  batch = new Batch(value + 3 * bitmap_len + 8 * count, count, value + bitmap_len);
+  res->push_back(extend_col_idx + 1, batch);
+  batch = new Batch(value + 3 * bitmap_len + (8 + 1) * count, count, value + 2 * bitmap_len);
+  res->push_back(extend_col_idx + 2, batch);
+  return KStatus::SUCCESS;
+}
+
+KStatus TsRawDataIteratorV2ImplByOSN::FillEmptyMetricRow(ResultSet* res, uint32_t count,
+  TS_OSN osn, OperatorTypeOfRecord type) {
+  for (int i = 0; i < kw_scan_cols_.size(); ++i) {
+    auto kw_col_idx = kw_scan_cols_[i];
+    Batch* batch = nullptr;
+    // just as all column is dropped at block version.
+    batch = new Batch(nullptr, count, nullptr);
+    res->push_back(i, batch);
+  }
+  res->entity_index = entitys_[cur_entity_index_];
+  // add  osn | type | event  columns.
+  AppendExtendColSpace(res, count);
+  size_t ext_idx = kw_scan_cols_.size();
+  size_t vector_idx = res->data[0].size() - 1;
+  for (size_t i = 0; i < count; i++) {
+    KUint64(reinterpret_cast<char*>(res->data[ext_idx + 0][vector_idx]->mem) + i * 8) = osn;
+    KUint8(reinterpret_cast<char*>(res->data[ext_idx + 1][vector_idx]->mem) + i * 1) = type;
+  }
+  if (type == OperatorTypeOfRecord::OP_TYPE_INSERT) {
+    for (size_t i = 0; i < count; i++) {
+      KUint8(reinterpret_cast<char*>(res->data[ext_idx + 2][vector_idx]->mem) + i * 16) = type;
+    }
+  } else if (type == OperatorTypeOfRecord::OP_TYPE_METRIC_DELETE) {
+    // delete will insert this column.
+  } else {
+    setBatchDeleted(reinterpret_cast<char*>(res->data[ext_idx + 2][vector_idx]->bitmap), 1, count);
+  }
+  return KStatus::SUCCESS;
+}
+
+KStatus TsRawDataIteratorV2ImplByOSN::NextMetricInsertRows(ResultSet* res, k_uint32* count, bool* is_finished) {
+  KStatus ret;
+  *count = 0;
+  *is_finished = false;
+  ts_block_spans_reserved_.clear();
+  while (true) {
+    if (ts_block_spans_.size() == 0) {
+      ret = MoveToNextEntity(is_finished);
+      if (ret != KStatus::SUCCESS) {
+        LOG_ERROR("MoveToNextEntity failed.");
+        return ret;
+      }
+      if (*is_finished) {
+        return KStatus::SUCCESS;
+      }
+      // if only tag, no metric data, we need create empty row.
+      if (ts_block_spans_.size() == 0) {
+        auto oper_info = reinterpret_cast<OperatorInfoOfRecord*>(entitys_[cur_entity_index_].op_with_osn.get());
+        assert(oper_info != nullptr);
+        if (oper_info->type != OperatorTypeOfRecord::OP_TYPE_TAG_EXISTED) {
+          ret = FillEmptyMetricRow(res, 1, oper_info->osn, oper_info->type);
+          *count = 1;
+          return ret;
+        }
+        continue;
+      }
+    }
+    auto block_span = ts_block_spans_.front();
+    ts_block_spans_.pop_front();
+    // no need remove repeat data, just send all.
+    ret = ConvertBlockSpanToResultSet(kw_scan_cols_, attrs_, block_span, res, count);
+    if (ret != KStatus::SUCCESS) {
+      LOG_ERROR("ConvertBlockSpanToResultSet failed.");
+      return ret;
+    }
+    // append extern column: osn | processed_type | processed_event_info.
+    AppendExtendColSpace(res, *count);
+    size_t ext_idx = kw_scan_cols_.size();
+    assert(block_span->GetRowNum() == *count);
+    size_t vector_idx = res->data[0].size() - 1;
+    for (size_t i = 0; i < *count; i++) {
+      KUint64(reinterpret_cast<char*>(res->data[ext_idx + 0][vector_idx]->mem) + 8 * i) = *(block_span->GetOSNAddr(i));
+      KUint8(reinterpret_cast<char*>(res->data[ext_idx + 1][vector_idx]->mem) + 1 * i) =
+        OperatorTypeOfRecord::OP_TYPE_INSERT;
+    }
+    setBatchDeleted(reinterpret_cast<char*>(res->data[2][vector_idx]->bitmap), 1, *count);
+    // We are returning memory address inside TsBlockSpan, so we need to keep it until iterator is destroyed
+    ts_block_spans_reserved_.push_back(block_span);
+    if (*count > 0) {
+      // Return the result set.
+      return KStatus::SUCCESS;
+    }
+  }
+  LOG_WARN("should not exec here.");
+  return KStatus::FAIL;
+}
+
+TsRawDataIteratorV2ImplByOSN::~TsRawDataIteratorV2ImplByOSN() {
 }
 
 }  //  namespace kwdbts

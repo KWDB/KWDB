@@ -42,6 +42,7 @@
 #include "ts_filename.h"
 #include "ts_io.h"
 #include "ts_lru_block_cache.h"
+#include "ts_ts_lsn_span_utils.h"
 
 namespace kwdbts {
 // static const int64_t interval = 3600 * 24 * 10;  // 10 days.
@@ -587,6 +588,17 @@ std::map<uint32_t, std::vector<std::shared_ptr<const TsPartitionVersion>>> TsVGr
   return result;
 }
 
+std::vector<std::shared_ptr<const TsPartitionVersion>> TsVGroupVersion::GetDBAllPartitions(uint32_t target_dbid) const {
+  std::vector<std::shared_ptr<const TsPartitionVersion>> result;
+  for (const auto &[k, v] : partitions_) {
+    const auto &[dbid, _, __] = k;
+    if (dbid == target_dbid) {
+        result.push_back(v);
+    }
+  }
+  return result;
+}
+
 std::vector<std::shared_ptr<TsLastSegment>> TsPartitionVersion::GetCompactLastSegments() const {
   // TODO(zzr): There is room for optimization
   // Maybe we can pre-compute which lastsegments can be compacted, and just return them.
@@ -619,7 +631,7 @@ std::vector<std::shared_ptr<TsSegmentBase>> TsPartitionVersion::GetAllSegments()
 }
 
 KStatus TsPartitionVersion::DeleteData(TSEntityID e_id, const std::vector<KwTsSpan> &ts_spans,
-                                       const KwLSNSpan &lsn, bool user_del) const {
+                                       const KwOSNSpan &lsn, bool user_del) const {
   kwdbts::TsEntityDelItem del_item(ts_spans[0], lsn, e_id,
     user_del ? TsEntityDelItemType::DEL_ITEM_TYPE_USER : TsEntityDelItemType::DEL_ITEM_TYPE_OTHER);
   for (auto &ts_span : ts_spans) {
@@ -637,8 +649,9 @@ KStatus TsPartitionVersion::DeleteData(TSEntityID e_id, const std::vector<KwTsSp
   }
   return KStatus::SUCCESS;
 }
+
 KStatus TsPartitionVersion::UndoDeleteData(TSEntityID e_id, const std::vector<KwTsSpan> &ts_spans,
-                                           const KwLSNSpan &lsn) const {
+                                           const KwOSNSpan &lsn) const {
   auto s = del_info_->RollBackDelItem(e_id, lsn);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("RollBackDelItem failed. for entity[%lu]", e_id);
@@ -647,11 +660,11 @@ KStatus TsPartitionVersion::UndoDeleteData(TSEntityID e_id, const std::vector<Kw
   return KStatus::SUCCESS;
 }
 
-KStatus TsPartitionVersion::HasDeleteItem(bool& has_delete_info, const KwLSNSpan &lsn) const {
+KStatus TsPartitionVersion::HasDeleteItem(bool& has_delete_info, const KwOSNSpan &lsn) const {
   return del_info_->HasValidDelItem(lsn, has_delete_info);
 }
 
-KStatus TsPartitionVersion::RmDeleteItems(const std::list<std::pair<TSEntityID, TS_LSN>>& entity_max_lsn) const {
+KStatus TsPartitionVersion::RmDeleteItems(const std::list<std::pair<TSEntityID, TS_OSN>>& entity_max_lsn) const {
   for (auto entity : entity_max_lsn) {
     auto s = del_info_->RmDeleteItems(entity.first, {0, entity.second});
     if (s != KStatus::SUCCESS) {
@@ -664,22 +677,22 @@ KStatus TsPartitionVersion::RmDeleteItems(const std::list<std::pair<TSEntityID, 
 
 KStatus TsPartitionVersion::DropEntity(TSEntityID e_id) const {
   // todo(liangbo01) add metric data clearing function
+  if (entity_segment_.get() != nullptr) {
+    auto s = entity_segment_->SetEntityItemDropped(e_id);
+    if (s != KStatus::SUCCESS) {
+      LOG_ERROR("SetEntityItemDropped failed.");
+      return s;
+    }
+  }
   return del_info_->DropEntity(e_id);
 }
 
 KStatus TsPartitionVersion::getFilter(const TsScanFilterParams& filter, TsBlockItemFilterParams& block_data_filter) const {
-  std::list<STDelRange> del_range_all;
-  auto s = GetDelRange(filter.entity_id_, del_range_all);
+  std::list<STDelRange> del_range;
+  auto s = GetDelRange(filter.entity_id_, del_range);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("GetDelRange failed.");
     return s;
-  }
-  // filter delitems that insert after scannig.
-  std::list<STDelRange> del_range;
-  for (STDelRange& d_item : del_range_all) {
-    if (d_item.lsn_span.end <= filter.end_lsn_) {
-      del_range.push_back(d_item);
-    }
   }
   KwTsSpan partition_span;
   partition_span.begin = convertSecondToPrecisionTS(GetStartTime(), filter.table_ts_type_);
@@ -690,7 +703,9 @@ KStatus TsPartitionVersion::getFilter(const TsScanFilterParams& filter, TsBlockI
     cross_part.begin = std::max(partition_span.begin, scan.begin);
     cross_part.end = std::min(partition_span.end, scan.end);
     if (cross_part.begin <= cross_part.end) {
-      cur_scan_range.push_back(STScanRange(cross_part, {0, filter.end_lsn_}));
+      for (const KwOSNSpan& osn_span : filter.osn_spans_) {
+        cur_scan_range.push_back(STScanRange{cross_part, osn_span});
+      }
     }
   }
   for (auto& del : del_range) {
@@ -700,8 +715,8 @@ KStatus TsPartitionVersion::getFilter(const TsScanFilterParams& filter, TsBlockI
   // TODO(zzr, lb): optimize: cur_scan_range should be sorted, implement a O(m+n) algorithm to do this.
   // for now, MergeScanAndDelRange in loop is O(m*n)
   std::sort(cur_scan_range.begin(), cur_scan_range.end(), [](const STScanRange &a, const STScanRange &b) {
-    using HelperTuple = std::tuple<timestamp64, TS_LSN>;
-    return HelperTuple{a.ts_span.begin, a.lsn_span.begin} < HelperTuple{b.ts_span.begin, b.lsn_span.begin};
+    using HelperTuple = std::tuple<timestamp64, TS_OSN>;
+    return HelperTuple{a.ts_span.begin, a.osn_span.begin} < HelperTuple{b.ts_span.begin, b.osn_span.begin};
   });
 
   block_data_filter.spans_ = std::move(cur_scan_range);
@@ -819,7 +834,7 @@ KStatus TsPartitionVersion::NeedVacuumEntitySegment(const fs::path& root_path,
   }
   bool has_del_info;
   // todo(liangbo01) get entity segment min and max lsn.
-  KwLSNSpan span{0, UINT64_MAX};
+  KwOSNSpan span{0, UINT64_MAX};
   auto s = del_info_->HasValidDelItem(span, has_del_info);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("HasValidDelItem failed");

@@ -236,7 +236,7 @@ class TsLastBlock : public TsBlock {
         return FAIL;
       }
       bool ok = mgr.DecompressData(result, nullptr, block_info_->nrow, &osn_);
-      *osn = reinterpret_cast<TS_LSN*>(osn_.data());
+      *osn = reinterpret_cast<TS_OSN*>(osn_.data());
       return ok ? SUCCESS : FAIL;
     }
 
@@ -617,7 +617,7 @@ KStatus TsLastSegment::GetBlockSpans(const TsBlockItemFilterParams& filter,
       if (it->max_ts < span.ts_span.begin || it->min_ts > span.ts_span.end) {
         continue;
       }
-      if (it->max_osn < span.lsn_span.begin || it->min_osn > span.lsn_span.end) {
+      if (it->max_osn < span.osn_span.begin || it->min_osn > span.osn_span.end) {
         continue;
       }
       //  we need to read the block to do further filtering.
@@ -657,7 +657,7 @@ KStatus TsLastSegment::GetBlockSpans(const TsBlockItemFilterParams& filter,
       // no need to check whether idx_it == end(), the caculation are consistent no matter idx_it is valid or not.
       assert(end_idx >= start_idx);
 
-      if (it->max_osn <= span.lsn_span.end && span.lsn_span.begin <= it->min_osn) {
+      if (it->max_osn <= span.osn_span.end && span.osn_span.begin <= it->min_osn) {
         // all osn in the block is in the span, we can directly use the end_idx;
         if (end_idx - start_idx > 0) {
           std::shared_ptr<TsBlockSpan> cur_span;
@@ -675,7 +675,7 @@ KStatus TsLastSegment::GetBlockSpans(const TsBlockItemFilterParams& filter,
         // we must filter OSN row-by-row
         int prev_idx = -1;  // invalide index
         for (int i = start_idx; i < end_idx; ++i) {
-          if (span.lsn_span.begin <= osn[i] && osn[i] <= span.lsn_span.end) {
+          if (span.osn_span.begin <= osn[i] && osn[i] <= span.osn_span.end) {
             prev_idx = prev_idx == -1 ? i : prev_idx;
             continue;
           }

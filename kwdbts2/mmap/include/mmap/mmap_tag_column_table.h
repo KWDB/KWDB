@@ -577,13 +577,13 @@ class MMapTagColumnTable: public TSObject {
   const string& sandbox() const { return m_db_name_; }
 
   void enableWal() { enableWal_ = true; }
-  void setLSN(kwdbts::TS_LSN lsn);
+  void setLSN(kwdbts::TS_OSN lsn);
 
   void setDropped();
 
   bool isDropped();
 
-  void sync_with_lsn(kwdbts::TS_LSN lsn);
+  void sync_with_lsn(kwdbts::TS_OSN lsn);
 
   void sync(int flags) override;
 

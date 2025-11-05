@@ -45,14 +45,14 @@ struct TSMemSegRowData {
   TSSlice row_data;
 
  private:
-  TS_LSN little_endian_lsn = 0;
+  TS_OSN little_endian_lsn = 0;
 
  public:
   TSMemSegRowData(uint32_t db_id, TSTableID tbl_id, uint32_t tbl_version, TSEntityID en_id)
       : entity_id(htobe64(en_id)), table_id(tbl_id), table_version(tbl_version), database_id(db_id) {}
 
   void SetRowData(const TSSlice& crow_data) { row_data = crow_data; }
-  void SetData(timestamp64 cts, TS_LSN clsn) {
+  void SetData(timestamp64 cts, TS_OSN clsn) {
     // the following line has undefined behavior, see: https://godbolt.org/z/1e567j4G5
     // ts = htobe64(cts - INT64_MIN);
 

@@ -242,12 +242,12 @@ class Payload {
   }
 
   // update payload rows lsn
-  void SetLsn(TS_LSN lsn) {
+  void SetOsn(TS_OSN lsn) {
     lsn_ = lsn;
   }
 
   // get lsn from first row.
-  bool GetLsn(TS_LSN& lsn) {
+  bool GetOsn(TS_OSN& lsn) {
     lsn = lsn_;
     return true;
   }
@@ -316,7 +316,7 @@ class Payload {
   int32_t count_;
 
   int32_t* col_offsets_;
-  TS_LSN lsn_{0};
+  TS_OSN lsn_{0};
 
  public:
   DedupRule dedup_rule_ = DedupRule::OVERRIDE;

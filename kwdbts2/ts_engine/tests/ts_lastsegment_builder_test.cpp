@@ -303,7 +303,7 @@ void Finalize(R *builder) {
 
   std::sort(spans_vec.begin(), spans_vec.end(),
             [](const std::shared_ptr<TsBlockSpan> &left, const std::shared_ptr<TsBlockSpan> &right) {
-              using Helper = std::tuple<TSEntityID, timestamp64, TS_LSN>;
+              using Helper = std::tuple<TSEntityID, timestamp64, TS_OSN>;
               auto left_helper = Helper(left->GetEntityID(), left->GetFirstTS(), *left->GetOSNAddr(0));
               auto right_helper = Helper(right->GetEntityID(), right->GetFirstTS(), *right->GetOSNAddr(0));
               return left_helper < right_helper;

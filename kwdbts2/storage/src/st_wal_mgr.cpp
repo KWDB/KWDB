@@ -70,7 +70,7 @@ KStatus WALMgr::Create(kwdbContext_p ctx) {
     return s;
   }
 
-  TS_LSN current_lsn = FetchCurrentLSN();
+  TS_OSN current_lsn = FetchCurrentLSN();
 
   s = file_mgr_->initWalFile(current_lsn);
   if (s == KStatus::FAIL) {
@@ -110,8 +110,8 @@ KStatus WALMgr::Init(kwdbContext_p ctx, bool for_eng_wal) {
     return s;
   }
 
-  TS_LSN current_lsn = FetchCurrentLSN();
-  TS_LSN buffer_lsn = FetchCurrentLSN();
+  TS_OSN current_lsn = FetchCurrentLSN();
+  TS_OSN buffer_lsn = FetchCurrentLSN();
   if (for_eng_wal) {
     buffer_lsn = GetFirstLSN();
   }
@@ -138,7 +138,7 @@ KStatus WALMgr::Init(kwdbContext_p ctx, bool for_eng_wal) {
 
 KStatus WALMgr::InitForChk(kwdbContext_p ctx, WALMeta meta) {
   meta_ = meta;
-  TS_LSN current_lsn = FetchCurrentLSN();
+  TS_OSN current_lsn = FetchCurrentLSN();
   KStatus s = file_mgr_->Open();
   if (s == KStatus::FAIL) {
     LOG_ERROR("Failed to open the WAL file ")
@@ -157,8 +157,8 @@ KStatus WALMgr::InitForChk(kwdbContext_p ctx, WALMeta meta) {
   return SUCCESS;
 }
 
-KStatus WALMgr::writeWALInternal(kwdbContext_p ctx, k_char* wal_log, size_t length, TS_LSN& entry_lsn) {
-  TS_LSN lsn_offset = 0;
+KStatus WALMgr::writeWALInternal(kwdbContext_p ctx, k_char* wal_log, size_t length, TS_OSN& entry_lsn) {
+  TS_OSN lsn_offset = 0;
   KStatus s = buffer_mgr_->writeWAL(ctx, wal_log, length, lsn_offset);
   if (s == KStatus::FAIL) {
     LOG_ERROR("Failed to write the WAL log to WAL buffer, payload length %lu", length)
@@ -186,7 +186,7 @@ KStatus WALMgr::writeWALInternal(kwdbContext_p ctx, k_char* wal_log, size_t leng
   return SUCCESS;
 }
 
-KStatus WALMgr::WriteWAL(kwdbContext_p ctx, k_char* wal_log, size_t length, TS_LSN& entry_lsn) {
+KStatus WALMgr::WriteWAL(kwdbContext_p ctx, k_char* wal_log, size_t length, TS_OSN& entry_lsn) {
   this->Lock();
   KStatus s = writeWALInternal(ctx, wal_log, length, entry_lsn);
   this->Unlock();
@@ -194,7 +194,7 @@ KStatus WALMgr::WriteWAL(kwdbContext_p ctx, k_char* wal_log, size_t length, TS_L
 }
 
 KStatus WALMgr::WriteWAL(kwdbContext_p ctx, k_char* wal_log, size_t length) {
-  TS_LSN current_lsn = 0;
+  TS_OSN current_lsn = 0;
   return WriteWAL(ctx, wal_log, length, current_lsn);
 }
 
@@ -469,14 +469,14 @@ KStatus WALMgr::CreateCheckpointWithoutFlush(kwdbts::kwdbContext_p ctx) {
   return SUCCESS;
 }
 
-KStatus WALMgr::UpdateCheckpointWithoutFlush(kwdbts::kwdbContext_p ctx, TS_LSN chk_lsn) {
+KStatus WALMgr::UpdateCheckpointWithoutFlush(kwdbts::kwdbContext_p ctx, TS_OSN chk_lsn) {
   meta_.current_checkpoint_no++;
   buffer_mgr_->setHeaderBlockCheckpointInfo(chk_lsn, meta_.current_checkpoint_no);
   meta_.checkpoint_lsn = chk_lsn;
   return SUCCESS;
 }
 
-KStatus WALMgr::UpdateFirstLSN(TS_LSN first_lsn) {
+KStatus WALMgr::UpdateFirstLSN(TS_OSN first_lsn) {
   buffer_mgr_->setHeaderBlockFirstLSN(first_lsn);
   return SUCCESS;
 }
@@ -527,7 +527,7 @@ KStatus WALMgr::WriteInsertWAL(kwdbContext_p ctx, uint64_t x_id, int64_t time_pa
 }
 
 KStatus WALMgr::WriteInsertWAL(kwdbContext_p ctx, uint64_t x_id, int64_t time_partition,
-                               size_t offset, TSSlice primary_tag, TSSlice prepared_payload, TS_LSN& entry_lsn,
+                               size_t offset, TSSlice primary_tag, TSSlice prepared_payload, TS_OSN& entry_lsn,
                                uint64_t vgrp_id) {
   auto* wal_log = InsertLogMetricsEntry::construct(WALLogType::INSERT, x_id, vgrp_id, 0, WALTableType::DATA,
                                                    time_partition, offset, prepared_payload.len, prepared_payload.data,
@@ -562,7 +562,7 @@ KStatus WALMgr::WriteUpdateWAL(kwdbContext_p ctx, uint64_t x_id, int64_t time_pa
 
 KStatus WALMgr::WriteDeleteMetricsWAL(kwdbContext_p ctx, uint64_t x_id, const string& primary_tag,
                                       const std::vector<KwTsSpan>& ts_spans, vector<DelRowSpan>& row_spans,
-                                      uint64_t vgrp_id, TS_LSN* entry_lsn) {
+                                      uint64_t vgrp_id, TS_OSN* entry_lsn) {
   auto* wal_log = DeleteLogMetricsEntry::construct(WALLogType::DELETE, x_id, vgrp_id, 0, WALTableType::DATA,
                                                    primary_tag.length(), 0, 0, row_spans.size(), primary_tag.data(),
                                                    row_spans.data());
@@ -571,7 +571,7 @@ KStatus WALMgr::WriteDeleteMetricsWAL(kwdbContext_p ctx, uint64_t x_id, const st
     return KStatus::FAIL;
   }
   size_t log_len = DeleteLogMetricsEntry::fixed_length + row_spans.size() * sizeof(DelRowSpan) + primary_tag.length();
-  TS_LSN cur_lsn;
+  TS_OSN cur_lsn;
   KStatus status = WriteWAL(ctx, wal_log, log_len, cur_lsn);
   if (entry_lsn != nullptr) {
     *entry_lsn = cur_lsn;
@@ -583,7 +583,7 @@ KStatus WALMgr::WriteDeleteMetricsWAL(kwdbContext_p ctx, uint64_t x_id, const st
 
 KStatus WALMgr::WriteDeleteMetricsWAL4V2(kwdbContext_p ctx, uint64_t x_id, TSTableID table_id, const string& primary_tag,
                                       const std::vector<KwTsSpan>& ts_spans,
-                                      uint64_t vgrp_id, uint64_t osn, TS_LSN* entry_lsn) {
+                                      uint64_t vgrp_id, uint64_t osn, TS_OSN* entry_lsn) {
   auto* wal_log = DeleteLogMetricsEntryV2::construct(WALLogType::DELETE, x_id, vgrp_id, 0, WALTableType::DATA_V2, table_id,
                   osn, primary_tag.length(), ts_spans.size(), primary_tag.data(), ts_spans.data());
   if (wal_log == nullptr) {
@@ -591,7 +591,7 @@ KStatus WALMgr::WriteDeleteMetricsWAL4V2(kwdbContext_p ctx, uint64_t x_id, TSTab
     return KStatus::FAIL;
   }
   size_t log_len = DeleteLogMetricsEntryV2::fixed_length + ts_spans.size() * sizeof(KwTsSpan) + primary_tag.length();
-  TS_LSN cur_lsn;
+  TS_OSN cur_lsn;
   KStatus status = WriteWAL(ctx, wal_log, log_len, cur_lsn);
   if (entry_lsn != nullptr) {
     *entry_lsn = cur_lsn;
@@ -661,7 +661,7 @@ KStatus WALMgr::WriteDropIndexWAL(kwdbContext_p ctx, uint64_t x_id, uint64_t obj
 }
 
 KStatus WALMgr::WriteCheckpointWAL(kwdbContext_p ctx, uint64_t x_id, uint64_t tag_offset,
-                                   uint32_t range_size, CheckpointPartition* time_partitions, TS_LSN& entry_lsn) {
+                                   uint32_t range_size, CheckpointPartition* time_partitions, TS_OSN& entry_lsn) {
   auto* wal_log = CheckpointEntry::construct(WALLogType::CHECKPOINT, x_id, meta_.current_checkpoint_no, tag_offset,
                                              range_size, time_partitions);
   if (wal_log == nullptr) {
@@ -676,7 +676,7 @@ KStatus WALMgr::WriteCheckpointWAL(kwdbContext_p ctx, uint64_t x_id, uint64_t ta
   return status;
 }
 
-KStatus WALMgr::WriteCheckpointWAL(kwdbContext_p ctx, uint64_t x_id, TS_LSN& entry_lsn) {
+KStatus WALMgr::WriteCheckpointWAL(kwdbContext_p ctx, uint64_t x_id, TS_OSN& entry_lsn) {
   auto* wal_log = CheckpointEntry::construct(WALLogType::CHECKPOINT, x_id, meta_.current_checkpoint_no, 0, 0, nullptr);
   if (wal_log == nullptr) {
     LOG_ERROR("Failed to construct WAL, insufficient memory")
@@ -785,16 +785,16 @@ KStatus WALMgr::WriteTSxWAL(kwdbContext_p ctx, uint64_t x_id, const char* ts_tra
   return status;
 }
 
-TS_LSN WALMgr::GetFirstLSN() {
+TS_OSN WALMgr::GetFirstLSN() {
   return file_mgr_->readHeaderBlock().getFirstLSN();
 }
 
-KStatus WALMgr::ResetCurLSNAndFlushMeta(kwdbContext_p ctx, TS_LSN cur_lsn) {
+KStatus WALMgr::ResetCurLSNAndFlushMeta(kwdbContext_p ctx, TS_OSN cur_lsn) {
   meta_.current_lsn = cur_lsn;
   return flushMeta(ctx);
 }
 
-KStatus WALMgr::ReadWALLog(std::vector<LogEntry*>& logs, TS_LSN start_lsn, TS_LSN end_lsn,
+KStatus WALMgr::ReadWALLog(std::vector<LogEntry*>& logs, TS_OSN start_lsn, TS_OSN end_lsn,
                            std::vector<uint64_t>& end_chk) {
   file_mgr_->Lock();
   KStatus status = buffer_mgr_->readWALLogs(logs, start_lsn, end_lsn, end_chk);
@@ -802,7 +802,7 @@ KStatus WALMgr::ReadWALLog(std::vector<LogEntry*>& logs, TS_LSN start_lsn, TS_LS
   return status;
 }
 
-KStatus WALMgr::ReadUncommittedWALLog(std::vector<LogEntry*>& logs, TS_LSN start_lsn, TS_LSN end_lsn,
+KStatus WALMgr::ReadUncommittedWALLog(std::vector<LogEntry*>& logs, TS_OSN start_lsn, TS_OSN end_lsn,
                            std::vector<uint64_t>& end_chk, const std::vector<uint64_t>& uncommitted_xid) {
   KStatus status = KStatus::SUCCESS;
   file_mgr_->Lock();
@@ -817,7 +817,7 @@ KStatus WALMgr::ReadUncommittedWALLog(std::vector<LogEntry*>& logs, TS_LSN start
   return status;
 }
 
-KStatus WALMgr::ReadWALLogAndSwitchFile(std::vector<LogEntry*>& logs, TS_LSN start_lsn, TS_LSN end_lsn,
+KStatus WALMgr::ReadWALLogAndSwitchFile(std::vector<LogEntry*>& logs, TS_OSN start_lsn, TS_OSN end_lsn,
                                         std::vector<uint64_t>& end_chk) {
   file_mgr_->Lock();
   // use block header's first lsn
@@ -837,7 +837,7 @@ KStatus WALMgr::ReadWALLogAndSwitchFile(std::vector<LogEntry*>& logs, TS_LSN sta
 KStatus WALMgr::ReadWALLogForMtr(uint64_t mtr_trans_id, std::vector<LogEntry*>& logs, std::vector<uint64_t>& end_chk) {
   file_mgr_->Lock();
   HeaderBlock hb = file_mgr_->readHeaderBlock();
-  TS_LSN first_lsn = hb.getFirstLSN();
+  TS_OSN first_lsn = hb.getFirstLSN();
   KStatus status = buffer_mgr_->readWALLogs(logs, first_lsn, meta_.current_lsn, end_chk, mtr_trans_id);
   file_mgr_->Unlock();
   if (status == FAIL) {
@@ -876,15 +876,15 @@ WALMeta WALMgr::GetMeta() const {
   return meta_;
 }
 
-TS_LSN WALMgr::FetchCurrentLSN() const {
+TS_OSN WALMgr::FetchCurrentLSN() const {
   return meta_.current_lsn;
 }
 
-TS_LSN WALMgr::FetchFlushedLSN() const {
+TS_OSN WALMgr::FetchFlushedLSN() const {
   return meta_.block_flush_to_disk_lsn;
 }
 
-TS_LSN WALMgr::FetchCheckpointLSN() const {
+TS_OSN WALMgr::FetchCheckpointLSN() const {
   return meta_.checkpoint_lsn;
 }
 
@@ -898,7 +898,7 @@ KStatus WALMgr::initWalMeta(kwdbContext_p ctx, bool is_create) {
     }
 
     // start_lsn is header block size + block header size
-    TS_LSN start_lsn = BLOCK_SIZE + LOG_BLOCK_HEADER_SIZE;
+    TS_OSN start_lsn = BLOCK_SIZE + LOG_BLOCK_HEADER_SIZE;
     meta_ = {start_lsn, start_lsn, 0, start_lsn};
 
     flushMeta(ctx);
@@ -969,7 +969,7 @@ KStatus WALMgr::ResetWAL(kwdbContext_p ctx, bool reset) {
       return FAIL;
     }
   }
-  TS_LSN current_lsn_recover = FetchCurrentLSN();
+  TS_OSN current_lsn_recover = FetchCurrentLSN();
   WALMeta old_meta = meta_;
   if (reset) {
     current_lsn_recover = 0;
@@ -1018,7 +1018,7 @@ bool WALMgr::NeedCheckpoint() {
   return false;
 }
 
-KStatus WALMgr::SwitchNextFile(TS_LSN first_lsn) {
+KStatus WALMgr::SwitchNextFile(TS_OSN first_lsn) {
   kwdbts::kwdbContext_p ctx;
   if (fs::exists(file_mgr_->getFilePath())) {
     KStatus s = FlushWithoutLock(ctx);
@@ -1035,7 +1035,7 @@ KStatus WALMgr::SwitchNextFile(TS_LSN first_lsn) {
   if (first_lsn == 0) {
     first_lsn = FetchCurrentLSN();
   }
-//  TS_LSN first_lsn = start_lsn + BLOCK_SIZE + LOG_BLOCK_HEADER_SIZE;
+//  TS_OSN first_lsn = start_lsn + BLOCK_SIZE + LOG_BLOCK_HEADER_SIZE;
 //  auto hb = HeaderBlock(table_id_, 0, opt_->GetBlockNumPerFile(), start_lsn, first_lsn,
 //                        FetchCurrentLSN(), 0);
 //  KStatus s = file_mgr_->initWalFileWithHeader(hb);
@@ -1065,7 +1065,7 @@ KStatus WALMgr::SwitchNextFile(TS_LSN first_lsn) {
   return KStatus::SUCCESS;
 }
 
-KStatus WALMgr::SwitchLastFile(kwdbContext_p ctx, TS_LSN last_lsn) {
+KStatus WALMgr::SwitchLastFile(kwdbContext_p ctx, TS_OSN last_lsn) {
   if (fs::exists(file_mgr_->getChkFilePath())) {
     file_mgr_->Close();
     ResetCurLSNAndFlushMeta(ctx, last_lsn);

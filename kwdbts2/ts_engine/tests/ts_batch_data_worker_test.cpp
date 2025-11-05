@@ -141,8 +141,8 @@ TEST_F(TsBatchDataWorkerTest, TestTsBatchDataWorker) {
     s = engine_->GetTableSchemaMgr(ctx_, table_id, schema_mgr);
     ASSERT_EQ(s, KStatus::SUCCESS);
     KwTsSpan ts_span{INT64_MIN, INT64_MAX};
-    KwLSNSpan lsn_span{0, UINT64_MAX};
-    STScanRange scan_range{ts_span, lsn_span};
+    KwOSNSpan osn_span{0, UINT64_MAX};
+    STScanRange scan_range{ts_span, osn_span};
     TsBlockItemFilterParams filter{1, table_id, vgroup_id, entity_id, {scan_range}};
     std::shared_ptr<MMapMetricsTable> schema;
     ASSERT_EQ(schema_mgr->GetMetricSchema(1, &schema), KStatus::SUCCESS);

@@ -210,7 +210,7 @@ uint64_t MetricsVersionManager::GetDbID() {
   return GetCurrentMetricsTable()->metaData()->db_id;
 }
 
-void MetricsVersionManager::Sync(const kwdbts::TS_LSN& check_lsn, ErrorInfo& err_info) {
+void MetricsVersionManager::Sync(const kwdbts::TS_OSN& check_lsn, ErrorInfo& err_info) {
   wrLock();
   Defer defer([&]() { unLock(); });
   for (auto& root_table : metric_tables_) {

@@ -112,7 +112,7 @@ KStatus TSEngineV2Impl::SortWALFile(kwdbContext_p ctx) {
   std::vector<uint64_t> ignore;
   bool is_end_chk = false;
 
-  TS_LSN last_lsn = wal_mgr_->GetFirstLSN();
+  TS_OSN last_lsn = wal_mgr_->GetFirstLSN();
   auto res = wal_mgr_->ReadWALLog(cur_eng_logs, last_lsn, wal_mgr_->FetchCurrentLSN(), ignore);
   if (!cur_eng_logs.empty()) {
     if ((*cur_eng_logs.end())->getType() == WALLogType::END_CHECKPOINT) {
@@ -166,7 +166,7 @@ KStatus TSEngineV2Impl::SortWALFile(kwdbContext_p ctx) {
         }
       }};
       WALMgr* v_wal = vgroup->GetWALManager();
-      TS_LSN v_last_lsn = v_wal->GetFirstLSN();
+      TS_OSN v_last_lsn = v_wal->GetFirstLSN();
       std::vector<uint64_t> v_ignore;
       if (v_wal->ReadWALLog(append_logs, v_last_lsn, v_wal->FetchCurrentLSN(), ignore) == KStatus::FAIL) {
         LOG_ERROR("Failed to read WAL from vgroup file.")
@@ -1128,7 +1128,7 @@ KStatus TSEngineV2Impl::CreateCheckpoint(kwdbContext_p ctx) {
     }
 
     // 4. write end chkckpoint wal
-    TS_LSN end_lsn;
+    TS_OSN end_lsn;
     uint64_t lsn_len = vgrp_lsn.size() * sizeof(uint64_t);
     auto v_lsn = std::make_unique<char[]>(lsn_len);
     int location = 0;
@@ -1169,7 +1169,7 @@ KStatus TSEngineV2Impl::CreateCheckpoint(kwdbContext_p ctx) {
   }};
   // 1. read chk log from chk file.
   std::vector<uint64_t> vgroup_lsn;
-  TS_LSN last_lsn = wal_mgr_->GetFirstLSN();
+  TS_OSN last_lsn = wal_mgr_->GetFirstLSN();
   s = wal_mgr_->ReadWALLog(logs, last_lsn, wal_mgr_->FetchCurrentLSN(), vgroup_lsn);
   if (s == KStatus::FAIL) {
     LOG_ERROR("Failed to read wal log from chk file, with Last LSN [%lu] and Current LSN [%lu]",
@@ -1202,7 +1202,7 @@ KStatus TSEngineV2Impl::CreateCheckpoint(kwdbContext_p ctx) {
   // 3. read wal log from all vgroup
   for (const auto &vgrp : vgroups_) {
     std::vector<LogEntry *> vlogs;
-    TS_LSN lsn = 0;
+    TS_OSN lsn = 0;
     if (vgrp->GetVGroupID() <= vgroup_lsn.size()) {
       lsn = vgroup_lsn[vgrp->GetVGroupID() - 1];
     }
@@ -1232,7 +1232,7 @@ KStatus TSEngineV2Impl::CreateCheckpoint(kwdbContext_p ctx) {
   }
 
   // 6.write EndWAL to chk file
-  TS_LSN end_lsn;
+  TS_OSN end_lsn;
   uint64_t lsn_len = vgrp_lsn.size() * sizeof(uint64_t);
   auto v_lsn = std::make_unique<char[]>(lsn_len);
   int location = 0;
@@ -1604,8 +1604,8 @@ KStatus TSEngineV2Impl::recover(kwdbts::kwdbContext_p ctx) {
    */
   KStatus s;
 
-  TS_LSN checkpoint_lsn = wal_sys_->FetchCheckpointLSN();
-  TS_LSN current_lsn = wal_sys_->FetchCurrentLSN();
+  TS_OSN checkpoint_lsn = wal_sys_->FetchCheckpointLSN();
+  TS_OSN current_lsn = wal_sys_->FetchCurrentLSN();
 
   std::vector<LogEntry*> redo_logs;
   Defer defer{[&]() {
@@ -1623,14 +1623,14 @@ KStatus TSEngineV2Impl::recover(kwdbts::kwdbContext_p ctx) {
 #endif
   }
 
-  std::unordered_map<TS_LSN, LogEntry*> incomplete;
+  std::unordered_map<TS_OSN, LogEntry*> incomplete;
   for (auto wal_log : redo_logs) {
     // From checkpoint loop to the latest commit, including only ddl
     auto mtr_id = wal_log->getXID();
 
     switch (wal_log->getType()) {
       case WALLogType::TS_BEGIN: {
-        incomplete.insert(std::pair<TS_LSN, LogEntry*>(mtr_id, wal_log));
+        incomplete.insert(std::pair<TS_OSN, LogEntry*>(mtr_id, wal_log));
         tsx_manager_sys_->insertMtrID(wal_log->getTsxID().c_str(), mtr_id);
         break;
       }
@@ -1836,7 +1836,7 @@ KStatus TSEngineV2Impl::Recover(kwdbContext_p ctx) {
     }
   }};
   std::vector<uint64_t> vgroup_lsn;
-  TS_LSN last_lsn = wal_mgr_->GetFirstLSN();
+  TS_OSN last_lsn = wal_mgr_->GetFirstLSN();
   s = wal_mgr_->ReadWALLog(logs, last_lsn, wal_mgr_->FetchCurrentLSN(), vgroup_lsn);
   if (s == KStatus::FAIL) {
     LOG_ERROR("Failed to ReadWALLog from chk file while recovering, with Last LSN [%lu] and Current LSN [%lu].",
@@ -1851,7 +1851,7 @@ KStatus TSEngineV2Impl::Recover(kwdbContext_p ctx) {
   // 2. get all vgroup wal log
   for (const auto &vgrp : vgroups_) {
     std::vector<LogEntry *> vlogs;
-    TS_LSN lsn = 0;
+    TS_OSN lsn = 0;
     if (vgrp->GetVGroupID() < vgroup_lsn.size()) {
       lsn = vgroup_lsn[vgrp->GetVGroupID() - 1];
     }
@@ -1865,12 +1865,12 @@ KStatus TSEngineV2Impl::Recover(kwdbContext_p ctx) {
 
   // 3. apply redo log && insert MtrID
   auto vgroup_mtr = GetVGroupByID(ctx, 1);
-  std::unordered_map<TS_LSN, MTRBeginEntry*> incomplete;
-  std::vector<TS_LSN> rollback;
+  std::unordered_map<TS_OSN, MTRBeginEntry*> incomplete;
+  std::vector<TS_OSN> rollback;
   for (auto wal_log : logs) {
     if (wal_log->getType() == WALLogType::MTR_BEGIN)  {
       auto log = reinterpret_cast<MTRBeginEntry *>(wal_log);
-      incomplete.insert(std::pair<TS_LSN, MTRBeginEntry *>(log->getXID(), log));
+      incomplete.insert(std::pair<TS_OSN, MTRBeginEntry *>(log->getXID(), log));
       if (log->getTsxID().c_str() != LogEntry::DEFAULT_TS_TRANS_ID) {
         vgroup_mtr->SetMtrIDByTsxID(log->getXID(), log->getTsxID().c_str());
       }
@@ -1908,7 +1908,7 @@ KStatus TSEngineV2Impl::Recover(kwdbContext_p ctx) {
   }
   // 5. rollback incomplete wal
   for (auto& it : incomplete) {
-    TS_LSN mtr_id = it.first;
+    TS_OSN mtr_id = it.first;
     auto log_entry = it.second;
     if (vgroup_mtr->IsExplict(mtr_id)) {
       break;

@@ -11,8 +11,11 @@
 #pragma once
 
 #include <memory>
+#include <list>
+#include <unordered_map>
 #include <unordered_set>
 #include <vector>
+#include <string>
 #include "kwdb_type.h"
 #include "mmap/mmap_tag_column_table.h"
 #include "mmap/mmap_tag_table.h"
@@ -26,16 +29,17 @@ namespace kwdbts {
 
 class TagIteratorV2Impl : public BaseEntityIterator {
  public:
+  TagIteratorV2Impl() {}
+  ~TagIteratorV2Impl() override;
   TagIteratorV2Impl(std::shared_ptr<TagTable> tag_bt, uint32_t table_versioin, const std::vector<k_uint32>& scan_tags);
   TagIteratorV2Impl(std::shared_ptr<TagTable> tag_bt, uint32_t table_versioin, const std::vector<k_uint32>& scan_tags,
                     const std::unordered_set<uint32_t>& hps);
-  ~TagIteratorV2Impl() override;
 
   KStatus Init() override;
-  KStatus Next(std::vector<EntityResultIndex>* entity_id_list, ResultSet* res, k_uint32* count) override;
+  virtual KStatus Next(std::vector<EntityResultIndex>* entity_id_list, ResultSet* res, k_uint32* count);
   KStatus Close() override;
 
- private:
+ protected:
   std::vector<k_uint32> scan_tags_;
   std::unordered_set<uint32_t> hps_;
   std::shared_ptr<TagTable> tag_bt_;
@@ -44,5 +48,19 @@ class TagIteratorV2Impl : public BaseEntityIterator {
   TagPartitionIterator* cur_tag_part_iter_ = nullptr;
   uint32_t cur_tag_part_idx_{0};
 };
+
+class TagIteratorByOSN : public TagIteratorV2Impl {
+ public:
+  TagIteratorByOSN(std::shared_ptr<TagTable> tag_bt, uint32_t table_versioin,
+    std::vector<k_uint32>& scan_cols, std::vector<KwOSNSpan>& osn_span);
+  KStatus Init(const std::unordered_set<uint32_t>& hps, std::unordered_map<uint64_t, EntityResultIndex> pkeys);
+  KStatus Next(std::vector<EntityResultIndex>* entity_id_list,
+              ResultSet* res, k_uint32* count) override;
+
+ private:
+  std::vector<KwOSNSpan> osn_span_;
+  std::unordered_map<uint64_t, EntityResultIndex> pkeys_status_;
+};
+
 
 }  //  namespace kwdbts

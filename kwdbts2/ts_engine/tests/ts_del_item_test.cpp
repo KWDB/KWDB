@@ -12,6 +12,7 @@
 #include <gtest/gtest.h>
 #include "ts_del_item_manager.h"
 #include "sys_utils.h"
+#include "ts_ts_lsn_span_utils.h"
 
 using namespace kwdbts;  // NOLINT
 
@@ -21,95 +22,95 @@ class TsDelItemUtilTest : public ::testing::Test {
 TEST(TsDelItemUtilTest, TsCrossNone) {
   STScanRange scan_range;
   scan_range.ts_span = {1, 11};
-  scan_range.lsn_span = {0, 100};
+  scan_range.osn_span = {0, 100};
   std::vector<STScanRange> result;
   STDelRange del_range;
   del_range.ts_span = {12, 100};
-  del_range.lsn_span = {0, 100};
+  del_range.osn_span = {0, 100};
   LSNRangeUtil::MergeRangeCross(scan_range, del_range, &result);
   ASSERT_TRUE(result.size() == 1);
   ASSERT_TRUE(result[0].ts_span.begin == scan_range.ts_span.begin);
   ASSERT_TRUE(result[0].ts_span.end == scan_range.ts_span.end);
-  ASSERT_TRUE(result[0].lsn_span.begin == scan_range.lsn_span.begin);
-  ASSERT_TRUE(result[0].lsn_span.end == scan_range.lsn_span.end);
+  ASSERT_TRUE(result[0].osn_span.begin == scan_range.osn_span.begin);
+  ASSERT_TRUE(result[0].osn_span.end == scan_range.osn_span.end);
 }
 
 TEST(TsDelItemUtilTest, TsCrossOne) {
   STScanRange scan_range;
   scan_range.ts_span = {1, 11};
-  scan_range.lsn_span = {0, 100};
+  scan_range.osn_span = {0, 100};
   STDelRange del_range;
   del_range.ts_span = {11, 100};
-  del_range.lsn_span = {0, 90};
+  del_range.osn_span = {0, 90};
   std::vector<STScanRange> result;
   LSNRangeUtil::MergeRangeCross(scan_range, del_range, &result);
   ASSERT_TRUE(result.size() == 2);
   ASSERT_TRUE(result[0].ts_span.begin == 11);
   ASSERT_TRUE(result[0].ts_span.end == 11);
-  ASSERT_TRUE(result[0].lsn_span.begin == 91);
-  ASSERT_TRUE(result[0].lsn_span.end == scan_range.lsn_span.end);
+  ASSERT_TRUE(result[0].osn_span.begin == 91);
+  ASSERT_TRUE(result[0].osn_span.end == scan_range.osn_span.end);
   ASSERT_TRUE(result[1].ts_span.begin == 1);
   ASSERT_TRUE(result[1].ts_span.end == 10);
-  ASSERT_TRUE(result[1].lsn_span.begin == scan_range.lsn_span.begin);
-  ASSERT_TRUE(result[1].lsn_span.end == scan_range.lsn_span.end);
+  ASSERT_TRUE(result[1].osn_span.begin == scan_range.osn_span.begin);
+  ASSERT_TRUE(result[1].osn_span.end == scan_range.osn_span.end);
 }
 
 TEST(TsDelItemUtilTest, TsCrossSome) {
   STScanRange scan_range;
   scan_range.ts_span = {1, 11};
-  scan_range.lsn_span = {0, 100};
+  scan_range.osn_span = {0, 100};
   std::vector<STScanRange> result;
   STDelRange del_range;
   del_range.ts_span = {9, 11};
-  del_range.lsn_span = {0, 100};
+  del_range.osn_span = {0, 100};
   LSNRangeUtil::MergeRangeCross(scan_range, del_range, &result);
   ASSERT_TRUE(result.size() == 1);
   ASSERT_TRUE(result[0].ts_span.begin == 1);
   ASSERT_TRUE(result[0].ts_span.end == 8);
-  ASSERT_TRUE(result[0].lsn_span.begin == scan_range.lsn_span.begin);
-  ASSERT_TRUE(result[0].lsn_span.end == scan_range.lsn_span.end);
+  ASSERT_TRUE(result[0].osn_span.begin == scan_range.osn_span.begin);
+  ASSERT_TRUE(result[0].osn_span.end == scan_range.osn_span.end);
 }
 
 TEST(TsDelItemUtilTest, TsCrossSome1) {
   STScanRange scan_range;
   scan_range.ts_span = {11, 100};
-  scan_range.lsn_span = {0, 100};
+  scan_range.osn_span = {0, 100};
   std::vector<STScanRange> result;
   STDelRange del_range;
   del_range.ts_span = {9, 15};
-  del_range.lsn_span = {0, 100};
+  del_range.osn_span = {0, 100};
   LSNRangeUtil::MergeRangeCross(scan_range, del_range, &result);
   ASSERT_TRUE(result.size() == 1);
   ASSERT_TRUE(result[0].ts_span.begin == 16);
   ASSERT_TRUE(result[0].ts_span.end == 100);
-  ASSERT_TRUE(result[0].lsn_span.begin == scan_range.lsn_span.begin);
-  ASSERT_TRUE(result[0].lsn_span.end == scan_range.lsn_span.end);
+  ASSERT_TRUE(result[0].osn_span.begin == scan_range.osn_span.begin);
+  ASSERT_TRUE(result[0].osn_span.end == scan_range.osn_span.end);
 }
 
 TEST(TsDelItemUtilTest, TsCrossLeftOne) {
   STScanRange scan_range;
   scan_range.ts_span = {1, 11};
-  scan_range.lsn_span = {0, 100};
+  scan_range.osn_span = {0, 100};
   std::vector<STScanRange> result;
   STDelRange del_range;
   del_range.ts_span = {2, 11};
-  del_range.lsn_span = {0, 100};
+  del_range.osn_span = {0, 100};
   LSNRangeUtil::MergeRangeCross(scan_range, del_range, &result);
   ASSERT_TRUE(result.size() == 1);
   ASSERT_TRUE(result[0].ts_span.begin == 1);
   ASSERT_TRUE(result[0].ts_span.end == 1);
-  ASSERT_TRUE(result[0].lsn_span.begin == scan_range.lsn_span.begin);
-  ASSERT_TRUE(result[0].lsn_span.end == scan_range.lsn_span.end);
+  ASSERT_TRUE(result[0].osn_span.begin == scan_range.osn_span.begin);
+  ASSERT_TRUE(result[0].osn_span.end == scan_range.osn_span.end);
 }
 
 TEST(TsDelItemUtilTest, TsCrossAll) {
   STScanRange scan_range;
   scan_range.ts_span = {1, 11};
-  scan_range.lsn_span = {0, 100};
+  scan_range.osn_span = {0, 100};
   std::vector<STScanRange> result;
   STDelRange del_range;
   del_range.ts_span = {1, 100};
-  del_range.lsn_span = {0, 100};
+  del_range.osn_span = {0, 100};
   LSNRangeUtil::MergeRangeCross(scan_range, del_range, &result);
   ASSERT_TRUE(result.size() == 0);
 }
@@ -117,95 +118,133 @@ TEST(TsDelItemUtilTest, TsCrossAll) {
 TEST(TsDelItemUtilTest, TsCrossSomeLsnCrossNull) {
   STScanRange scan_range;
   scan_range.ts_span = {1, 11};
-  scan_range.lsn_span = {0, 100};
+  scan_range.osn_span = {0, 100};
   std::vector<STScanRange> result;
   STDelRange del_range;
   del_range.ts_span = {9, 11};
-  del_range.lsn_span = {101, 200};
+  del_range.osn_span = {101, 200};
   LSNRangeUtil::MergeRangeCross(scan_range, del_range, &result);
   ASSERT_TRUE(result.size() == 2);
   ASSERT_TRUE(result[0].ts_span.begin == 9);
   ASSERT_TRUE(result[0].ts_span.end == 11);
-  ASSERT_TRUE(result[0].lsn_span.begin == scan_range.lsn_span.begin);
-  ASSERT_TRUE(result[0].lsn_span.end == scan_range.lsn_span.end);
+  ASSERT_TRUE(result[0].osn_span.begin == scan_range.osn_span.begin);
+  ASSERT_TRUE(result[0].osn_span.end == scan_range.osn_span.end);
   ASSERT_TRUE(result[1].ts_span.begin == 1);
   ASSERT_TRUE(result[1].ts_span.end == 8);
-  ASSERT_TRUE(result[1].lsn_span.begin == scan_range.lsn_span.begin);
-  ASSERT_TRUE(result[1].lsn_span.end == scan_range.lsn_span.end);
+  ASSERT_TRUE(result[1].osn_span.begin == scan_range.osn_span.begin);
+  ASSERT_TRUE(result[1].osn_span.end == scan_range.osn_span.end);
 }
 
 TEST(TsDelItemUtilTest, TsCrossSomeLsnCrossOne) {
   STScanRange scan_range;
   scan_range.ts_span = {1, 11};
-  scan_range.lsn_span = {0, 100};
+  scan_range.osn_span = {0, 100};
   std::vector<STScanRange> result;
   STDelRange del_range;
   del_range.ts_span = {9, 11};
-  del_range.lsn_span = {100, 200};
+  del_range.osn_span = {100, 200};
   LSNRangeUtil::MergeRangeCross(scan_range, del_range, &result);
   ASSERT_TRUE(result.size() == 2);
   ASSERT_TRUE(result[0].ts_span.begin == 9);
   ASSERT_TRUE(result[0].ts_span.end == 11);
-  ASSERT_TRUE(result[0].lsn_span.begin == 0);
-  ASSERT_TRUE(result[0].lsn_span.end == 99);
+  ASSERT_TRUE(result[0].osn_span.begin == 0);
+  ASSERT_TRUE(result[0].osn_span.end == 99);
   ASSERT_TRUE(result[1].ts_span.begin == 1);
   ASSERT_TRUE(result[1].ts_span.end == 8);
-  ASSERT_TRUE(result[1].lsn_span.begin == scan_range.lsn_span.begin);
-  ASSERT_TRUE(result[1].lsn_span.end == 100);
+  ASSERT_TRUE(result[1].osn_span.begin == scan_range.osn_span.begin);
+  ASSERT_TRUE(result[1].osn_span.end == 100);
 }
 
 TEST(TsDelItemUtilTest, TsCrossSomeLsnCrossSome) {
   STScanRange scan_range;
   scan_range.ts_span = {1, 11};
-  scan_range.lsn_span = {0, 100};
+  scan_range.osn_span = {0, 100};
   std::vector<STScanRange> result;
   STDelRange del_range;
   del_range.ts_span = {9, 11};
-  del_range.lsn_span = {90, 200};
+  del_range.osn_span = {90, 200};
   LSNRangeUtil::MergeRangeCross(scan_range, del_range, &result);
   ASSERT_TRUE(result.size() == 2);
   ASSERT_TRUE(result[0].ts_span.begin == 9);
   ASSERT_TRUE(result[0].ts_span.end == 11);
-  ASSERT_TRUE(result[0].lsn_span.begin == 0);
-  ASSERT_TRUE(result[0].lsn_span.end == 89);
+  ASSERT_TRUE(result[0].osn_span.begin == 0);
+  ASSERT_TRUE(result[0].osn_span.end == 89);
   ASSERT_TRUE(result[1].ts_span.begin == 1);
   ASSERT_TRUE(result[1].ts_span.end == 8);
-  ASSERT_TRUE(result[1].lsn_span.begin == scan_range.lsn_span.begin);
-  ASSERT_TRUE(result[1].lsn_span.end == 100);
+  ASSERT_TRUE(result[1].osn_span.begin == scan_range.osn_span.begin);
+  ASSERT_TRUE(result[1].osn_span.end == 100);
 }
 
 TEST(TsDelItemUtilTest, TsCrossSomeLsnCrossLeftOne) {
   STScanRange scan_range;
   scan_range.ts_span = {1, 11};
-  scan_range.lsn_span = {1, 100};
+  scan_range.osn_span = {1, 100};
   std::vector<STScanRange> result;
   STDelRange del_range;
   del_range.ts_span = {9, 11};
-  del_range.lsn_span = {2, 200};
+  del_range.osn_span = {2, 200};
   LSNRangeUtil::MergeRangeCross(scan_range, del_range, &result);
   ASSERT_TRUE(result.size() == 2);
   ASSERT_TRUE(result[0].ts_span.begin == 9);
   ASSERT_TRUE(result[0].ts_span.end == 11);
-  ASSERT_TRUE(result[0].lsn_span.begin == 1);
-  ASSERT_TRUE(result[0].lsn_span.end == 1);
+  ASSERT_TRUE(result[0].osn_span.begin == 1);
+  ASSERT_TRUE(result[0].osn_span.end == 1);
   ASSERT_TRUE(result[1].ts_span.begin == 1);
   ASSERT_TRUE(result[1].ts_span.end == 8);
-  ASSERT_TRUE(result[1].lsn_span.begin == scan_range.lsn_span.begin);
-  ASSERT_TRUE(result[1].lsn_span.end == 100);
+  ASSERT_TRUE(result[1].osn_span.begin == scan_range.osn_span.begin);
+  ASSERT_TRUE(result[1].osn_span.end == 100);
 }
 
 TEST(TsDelItemUtilTest, TsCrossSomeLsnCrossAll) {
   STScanRange scan_range;
   scan_range.ts_span = {1, 11};
-  scan_range.lsn_span = {1, 100};
+  scan_range.osn_span = {1, 100};
   std::vector<STScanRange> result;
   STDelRange del_range;
   del_range.ts_span = {9, 11};
-  del_range.lsn_span = {1, 100};
+  del_range.osn_span = {1, 100};
   LSNRangeUtil::MergeRangeCross(scan_range, del_range, &result);
   ASSERT_TRUE(result.size() == 1);
   ASSERT_TRUE(result[0].ts_span.begin= 1);
   ASSERT_TRUE(result[0].ts_span.end == 8);
-  ASSERT_TRUE(result[0].lsn_span.begin == scan_range.lsn_span.begin);
-  ASSERT_TRUE(result[0].lsn_span.end == 100);
+  ASSERT_TRUE(result[0].osn_span.begin == scan_range.osn_span.begin);
+  ASSERT_TRUE(result[0].osn_span.end == 100);
 }
+
+TEST(TsDelItemUtilTest, mergeSortedSpans) {
+  std::list<KwTsSpan> raw_spans;
+  raw_spans.push_back({-1000, -500});
+  raw_spans.push_back({-600, -100});
+  raw_spans.push_back({-1100, 100});
+  std::vector<KwTsSpan> ret_spans;
+  MergeTsSpans(raw_spans, &ret_spans);
+  ASSERT_TRUE(ret_spans.size() == 1);
+  ASSERT_TRUE(ret_spans[0].begin == -1100);
+  ASSERT_TRUE(ret_spans[0].end == 100);
+}
+
+TEST(TsDelItemUtilTest, mergeSortedSpans1) {
+  std::list<KwTsSpan> raw_spans;
+  raw_spans.push_back({-600, -100});
+  raw_spans.push_back({0, 500});
+  raw_spans.push_back({0, 200});
+  raw_spans.push_back({300, 500});
+  raw_spans.push_back({-10, 700});
+  std::vector<KwTsSpan> ret_spans;
+  MergeTsSpans(raw_spans, &ret_spans);
+  ASSERT_TRUE(ret_spans.size() == 2);
+  ASSERT_TRUE(ret_spans[0].begin == -600);
+  ASSERT_TRUE(ret_spans[1].end == 700);
+}
+
+TEST(TsDelItemUtilTest, mergeSortedSpans2) {
+  std::list<KwTsSpan> raw_spans;
+  raw_spans.push_back({-600, -500});
+  raw_spans.push_back({-400, -300});
+  raw_spans.push_back({-200, 200});
+  raw_spans.push_back({300, 500});
+  raw_spans.push_back({600, 700});
+  std::vector<KwTsSpan> ret_spans;
+  MergeTsSpans(raw_spans, &ret_spans);
+  ASSERT_TRUE(ret_spans.size() == 5);
+ }

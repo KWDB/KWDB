@@ -35,7 +35,7 @@ class UnitTestBlock : public TsBlock {
   std::vector<std::string> data_;
   std::vector<std::vector<std::string>> var_data_;
 
-  std::vector<TS_LSN> lsn_data_;
+  std::vector<TS_OSN> lsn_data_;
 
   std::vector<TsBitmap> bitmaps_;
 

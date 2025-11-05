@@ -76,7 +76,8 @@ struct TsEntityItem {
   int64_t min_ts = INT64_MAX;  // min ts of current entity in this Partition
   uint64_t row_written = 0;    // row num that has written into file.
   uint64_t table_id = 0;
-  char reserved[80] = {0};     // reserved for user-defined information.
+  bool is_dropped = false;
+  char reserved[79] = {0};     // reserved for user-defined information.
 };
 static_assert(sizeof(TsEntityItem) == 128, "wrong size of TsEntityItem, please check compatibility.");
 // static_assert(std::has_unique_object_representations_v<TsEntityItem>, "check padding in TsEntityItem");
@@ -108,6 +109,8 @@ class TsEntitySegmentEntityItemFile {
   KStatus Open();
 
   KStatus GetEntityItem(uint64_t entity_id, TsEntityItem& entity_item, bool& is_exist);
+
+  KStatus SetEntityItemDropped(uint64_t entity_id);
 
   uint32_t GetFileNum();
 
@@ -183,6 +186,10 @@ class TsEntitySegmentMetaManager {
 
   KStatus GetEntityItem(uint64_t entity_id, TsEntityItem& entity_item, bool& is_exist) {
     return entity_header_.GetEntityItem(entity_id, entity_item, is_exist);
+  }
+
+  KStatus SetEntityItemDropped(uint64_t entity_id) {
+    return entity_header_.SetEntityItemDropped(entity_id);
   }
 
   KStatus Open();
@@ -399,6 +406,10 @@ class TsEntitySegment : public TsSegmentBase, public enable_shared_from_this<TsE
 
   KStatus GetEntityItem(uint64_t entity_id, TsEntityItem& entity_item, bool& is_exist) {
     return meta_mgr_.GetEntityItem(entity_id, entity_item, is_exist);
+  }
+
+  KStatus SetEntityItemDropped(uint64_t entity_id) {
+    return meta_mgr_.SetEntityItemDropped(entity_id);
   }
 
   uint64_t GetEntityNum() { return meta_mgr_.GetEntityNum(); }

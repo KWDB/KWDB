@@ -78,7 +78,7 @@ KStatus WALFileMgr::Close() {
   return SUCCESS;
 }
 
-KStatus WALFileMgr::initWalFile(TS_LSN first_lsn, TS_LSN flush_lsn, bool tmp_file) {
+KStatus WALFileMgr::initWalFile(TS_OSN first_lsn, TS_OSN flush_lsn, bool tmp_file) {
   HeaderBlock header = HeaderBlock(table_id_, 0, opt_->GetBlockNumPerFile(),
                                    0, first_lsn, first_lsn, 0);
   return initWalFileWithHeader(header, tmp_file);
@@ -183,8 +183,8 @@ KStatus WALFileMgr::writeBlocks(std::vector<EntryBlock*>& entry_blocks, HeaderBl
       writeHeaderBlock(header);
       file_.flush();
 
-      TS_LSN start_lsn = header.getStartLSN() + BLOCK_SIZE + header.getBlockNum() * BLOCK_SIZE;
-      TS_LSN first_lsn = start_lsn + BLOCK_SIZE + LOG_BLOCK_HEADER_SIZE + entry_block->getFirstRecOffset();
+      TS_OSN start_lsn = header.getStartLSN() + BLOCK_SIZE + header.getBlockNum() * BLOCK_SIZE;
+      TS_OSN first_lsn = start_lsn + BLOCK_SIZE + LOG_BLOCK_HEADER_SIZE + entry_block->getFirstRecOffset();
       header = HeaderBlock(table_id_, entry_block->getBlockNo() + 1, opt_->GetBlockNumPerFile(), start_lsn, first_lsn,
                            header.getCheckpointLSN(), header.getCheckpointNo());
 
@@ -313,7 +313,7 @@ KStatus WALFileMgr::readEntryBlocks(std::vector<EntryBlock*>& entry_blocks,
   return s;
 }
 
-void WALFileMgr::CleanUp(TS_LSN checkpoint_lsn, TS_LSN current_lsn) {
+void WALFileMgr::CleanUp(TS_OSN checkpoint_lsn, TS_OSN current_lsn) {
   if (checkpoint_lsn == current_lsn) {
     string path = getFilePath();
     if (IsExists(path)) {
@@ -322,12 +322,12 @@ void WALFileMgr::CleanUp(TS_LSN checkpoint_lsn, TS_LSN current_lsn) {
   }
 }
 
-KStatus WALFileMgr::ResetWALInternal(kwdbContext_p ctx, TS_LSN current_lsn_recover) {
+KStatus WALFileMgr::ResetWALInternal(kwdbContext_p ctx, TS_OSN current_lsn_recover) {
   string path = getFilePath();
   if (IsExists(path)) {
     Remove(path);
   }
-  TS_LSN first_lsn = BLOCK_SIZE + LOG_BLOCK_HEADER_SIZE;
+  TS_OSN first_lsn = BLOCK_SIZE + LOG_BLOCK_HEADER_SIZE;
   KStatus s = initWalFile(first_lsn);
   if (s == KStatus::FAIL) {
     LOG_ERROR("Failed to initialize the WAL file.")
@@ -336,7 +336,7 @@ KStatus WALFileMgr::ResetWALInternal(kwdbContext_p ctx, TS_LSN current_lsn_recov
   return SUCCESS;
 }
 
-TS_LSN WALFileMgr::GetLSNFromBlockNo(uint64_t block_no) {
+TS_OSN WALFileMgr::GetLSNFromBlockNo(uint64_t block_no) {
   HeaderBlock header = header_block_;
   if (block_no >= header.getStartBlockNo() && block_no <= header.getEndBlockNo()) {
     // at current file
@@ -346,13 +346,13 @@ TS_LSN WALFileMgr::GetLSNFromBlockNo(uint64_t block_no) {
   return 0;
 }
 
-uint64_t WALFileMgr::GetBlockNoFromLsn(TS_LSN lsn) {
+uint64_t WALFileMgr::GetBlockNoFromLsn(TS_OSN lsn) {
   if (lsn == 0) {
     return 0;
   }
 
   HeaderBlock header = header_block_;
-  TS_LSN min_offset = header.getStartLSN();
+  TS_OSN min_offset = header.getStartLSN();
   while (lsn < header.getStartLSN()) {
     if (header.getStartLSN() - lsn < min_offset) {
       min_offset = header.getStartLSN() - lsn;

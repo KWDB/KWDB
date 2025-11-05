@@ -45,8 +45,8 @@ TEST_F(TsDelItemMgrTest, simple) {
   ASSERT_TRUE(s == KStatus::SUCCESS);
   ASSERT_EQ(1, del_items.size());
   ASSERT_EQ(del_items.front()->entity_id, 1);
-  ASSERT_EQ(del_items.front()->range.lsn_span.begin, 1);
-  ASSERT_EQ(del_items.front()->range.lsn_span.end, 11);
+  ASSERT_EQ(del_items.front()->range.osn_span.begin, 1);
+  ASSERT_EQ(del_items.front()->range.osn_span.end, 11);
   ASSERT_EQ(del_items.front()->range.ts_span.begin, 2);
   ASSERT_EQ(del_items.front()->range.ts_span.end, 22);
 }
@@ -68,8 +68,8 @@ TEST_F(TsDelItemMgrTest, simpleInsert) {
   int i = 0;
   while (it != del_items.rend()) {
     ASSERT_EQ((*it)->entity_id, 1);
-    ASSERT_EQ((*it)->range.lsn_span.begin, 1 + i);
-    ASSERT_EQ((*it)->range.lsn_span.end, 11 + i);
+    ASSERT_EQ((*it)->range.osn_span.begin, 1 + i);
+    ASSERT_EQ((*it)->range.osn_span.end, 11 + i);
     ASSERT_EQ((*it)->range.ts_span.begin, 2 + i);
     ASSERT_EQ((*it)->range.ts_span.end, 22 + i);
     i++;

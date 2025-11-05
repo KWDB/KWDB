@@ -15,7 +15,7 @@
 
 using namespace kwdbts;  // NOLINT
 
-KStatus TsMemSegmentManager::PutData(const TSSlice& payload, TSEntityID entity_id, TS_LSN lsn, std::list<TSMemSegRowData>* rows) {
+KStatus TsMemSegmentManager::PutData(const TSSlice& payload, TSEntityID entity_id, TS_OSN lsn, std::list<TSMemSegRowData>* rows) {
   TSMemSegRowData* row_data = reinterpret_cast<TSMemSegRowData*>(payload.data);
   uint32_t row_num = 1;
   segment_lock_.lock();

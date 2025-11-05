@@ -137,7 +137,7 @@ class TsTableSchemaManager {
 
   uint64_t GetDbID() const;
 
-  int Sync(const kwdbts::TS_LSN& check_lsn, ErrorInfo& err_info);
+  int Sync(const kwdbts::TS_OSN& check_lsn, ErrorInfo& err_info);
 
   KStatus SetDropped();
 

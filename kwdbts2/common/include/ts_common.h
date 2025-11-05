@@ -52,7 +52,7 @@ namespace kwdbts {
 // ***In order to compile some temporary type definitions, each module needs to be redefined ****
 typedef std::string TS_TABLE_ID;
 
-typedef uint64_t TS_LSN;  // LSN number used for WAL logs
+typedef uint64_t TS_OSN;  // LSN number used for WAL logs
 
 struct DelRowSpan {
   timestamp64 partition_ts;   // Partition timestamp
@@ -416,6 +416,7 @@ struct EntityResultIndex {
   uint32_t ts_version{0};
   std::shared_ptr<void> mem{nullptr};  // primaryTags address
   size_t p_tags_size{0};
+  std::shared_ptr<void> op_with_osn{nullptr};  // operator type and event time info.
 
   bool equalsWithoutMem(const EntityResultIndex& entity_index) {
     if (entityId != entity_index.entityId ||
@@ -424,6 +425,9 @@ struct EntityResultIndex {
       return false;
     }
     return true;
+  }
+  inline uint64_t GenUniqueKey() {
+    return subGroupId * 4294967296L + entityId;
   }
 };
 

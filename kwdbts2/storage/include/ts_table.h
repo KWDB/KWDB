@@ -43,6 +43,21 @@ class EntityGroupMetaIterator;
 // in distributed Verison2, every ts table has just one entitygroup
 const uint64_t default_entitygroup_id_in_dist_v2 = 1;
 
+enum OperatorTypeOfRecord : uint8_t {
+  OP_TYPE_UNKNOWN = 0,
+  OP_TYPE_INSERT,
+  OP_TYPE_TAG_UPDATE,
+  OP_TYPE_TAG_DELETE,
+  OP_TYPE_METRIC_DELETE,
+  OP_TYPE_TAG_EXISTED,  // TAG created before osn range.
+};
+
+struct OperatorInfoOfRecord {
+  OperatorTypeOfRecord type;
+  TS_OSN osn;
+  OperatorInfoOfRecord(OperatorTypeOfRecord t, TS_OSN o) : type(t), osn(o) {}
+};
+
 class TsTable {
  public:
   TsTable();
@@ -186,6 +201,13 @@ class TsTable {
 
   virtual KStatus GetIterator(kwdbContext_p ctx, const IteratorParams &params, TsIterator** iter);
 
+  // scan metric data by osn range. return all rows
+  virtual KStatus GetMetricIteratorByOSN(kwdbContext_p ctx, k_uint32 table_version, std::vector<k_uint32>& scan_cols,
+    std::vector<EntityResultIndex>& entity_ids, std::vector<KwOSNSpan>& osn_span, TsIterator** iter) = 0;
+
+  // scan tag data by osn range. return all rows
+  virtual KStatus GetTagIteratorByOSN(kwdbContext_p ctx, k_uint32 table_version, std::vector<k_uint32>& scan_cols,
+    std::vector<KwOSNSpan>& osn_span, const std::unordered_set<uint32_t> hps, BaseEntityIterator** iter) = 0;
 
   /**
    * @brief get entityId List

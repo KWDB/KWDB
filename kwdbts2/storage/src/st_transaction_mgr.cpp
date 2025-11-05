@@ -18,7 +18,7 @@ TSxMgr::TSxMgr(WALMgr* wal_mgr) : wal_mgr_(wal_mgr) {}
 TSxMgr::~TSxMgr() = default;
 
 KStatus TSxMgr::TSxBegin(kwdbContext_p ctx, const char* ts_trans_id) {
-  TS_LSN mini_trans_id = 0;
+  TS_OSN mini_trans_id = 0;
   char* wal_log = MTRBeginEntry::construct(WALLogType::TS_BEGIN, mini_trans_id, ts_trans_id, 0, 0);
   size_t wal_len = MTRBeginEntry::fixed_length;
   KStatus s = wal_mgr_->WriteWAL(ctx, wal_log, wal_len, mini_trans_id);
@@ -54,7 +54,7 @@ KStatus TSxMgr::TSxRollback(kwdbContext_p ctx, const char* ts_trans_id) {
   return SUCCESS;
 }
 
-KStatus TSxMgr::MtrBegin(kwdbts::kwdbContext_p ctx, uint64_t range_id, uint64_t index, TS_LSN& mini_trans_id,
+KStatus TSxMgr::MtrBegin(kwdbts::kwdbContext_p ctx, uint64_t range_id, uint64_t index, TS_OSN& mini_trans_id,
                          const char* tsx_id) {
   if (tsx_id == nullptr) {
     tsx_id = LogEntry::DEFAULT_TS_TRANS_ID;

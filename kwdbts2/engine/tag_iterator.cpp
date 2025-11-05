@@ -11,6 +11,7 @@
 
 #include "tag_iterator.h"
 #include "lt_cond.h"
+#include "ts_ts_lsn_span_utils.h"
 
 namespace kwdbts {
 
@@ -47,7 +48,22 @@ KStatus TagPartitionIterator::Next(std::vector<EntityResultIndex>* entity_id_lis
       needSkip = !in(hash_point, hps_);
       LOG_DEBUG("row %lu hashpoint is %u %s in search list", row_num, hash_point, needSkip?"not":"");
     }
-    if (!m_tag_partition_table_->isValidRow(row_num) || needSkip) {
+    // if fliter by osn range, set osn_spans_.
+    if (!needSkip) {
+      if (osn_spans_.size() == 0) {
+        if (!m_tag_partition_table_->isValidRow(row_num)) {
+          needSkip = true;
+        }
+      } else {
+        auto row_info = m_tag_partition_table_->getTagDataInfoByRowNum(row_num);
+        if (!(row_info->operate_type == OperateType::Insert ||
+              (row_info->operate_type == OperateType::Delete &&
+                IsOsnInSpans(row_info->osn, osn_spans_)))) {
+          needSkip = true;
+        }
+      }
+    }
+    if (needSkip) {
       if (has_data) {
         for (int idx = 0; idx < src_version_scan_tags_.size(); idx++) {
           if (src_version_scan_tags_[idx] == INVALID_COL_IDX) {

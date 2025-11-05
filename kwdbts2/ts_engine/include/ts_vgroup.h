@@ -202,9 +202,9 @@ class TsVGroup {
   KStatus RemoveChkFile(kwdbContext_p ctx);
 
   KStatus ReadWALLogFromLastCheckpoint(kwdbContext_p ctx, std::vector<LogEntry*>& logs,
-                                       TS_LSN& last_lsn, std::vector<uint64_t> uncommitted_xid);
+                                       TS_OSN& last_lsn, std::vector<uint64_t> uncommitted_xid);
 
-  KStatus ReadLogFromLastCheckpoint(kwdbContext_p ctx, std::vector<LogEntry*>& logs, TS_LSN& last_lsn);
+  KStatus ReadLogFromLastCheckpoint(kwdbContext_p ctx, std::vector<LogEntry*>& logs, TS_OSN& last_lsn);
 
   KStatus ReadWALLogForMtr(uint64_t mtr_trans_id, std::vector<LogEntry*>& logs);
 
@@ -218,6 +218,14 @@ class TsVGroup {
                       const std::shared_ptr<TsVGroup>& vgroup,
                       const std::vector<timestamp64>& ts_points, bool reverse, bool sorted);
 
+  KStatus GetMetricIteratorByOSN(kwdbContext_p ctx, const std::shared_ptr<TsVGroup>& vgroup,
+    std::vector<EntityResultIndex>& entity_ids, std::vector<k_uint32>& scan_cols, std::vector<k_uint32>& ts_scan_cols,
+    std::vector<KwOSNSpan>& osn_span,
+    uint32_t version, std::shared_ptr<TsTableSchemaManager>& table_schema_mgr, TsStorageIterator** iter);
+
+  KStatus GetDelInfoByOSN(kwdbContext_p ctx, TSTableID tbl_id, uint32_t entity_id, std::vector<KwOSNSpan>& osn_span,
+    std::vector<KwTsSpan>* del_spans);
+
   KStatus GetBlockSpans(TSTableID table_id, uint32_t entity_id, KwTsSpan ts_span, DATATYPE ts_col_type,
                         std::shared_ptr<TsTableSchemaManager> table_schema_mgr, uint32_t table_version,
                         std::shared_ptr<const TsVGroupVersion>& current,
@@ -225,7 +233,7 @@ class TsVGroup {
 
   KStatus rollback(kwdbContext_p ctx, LogEntry* wal_log, bool from_chk = false);
 
-  KStatus ApplyWal(kwdbContext_p ctx, LogEntry* wal_log, std::unordered_map<TS_LSN, MTRBeginEntry*>& incomplete);
+  KStatus ApplyWal(kwdbContext_p ctx, LogEntry* wal_log, std::unordered_map<TS_OSN, MTRBeginEntry*>& incomplete);
 
   uint32_t GetVGroupID();
 
@@ -233,15 +241,15 @@ class TsVGroup {
                        uint64_t mtr_id, uint64_t osn = 0, bool user_del = true);
   KStatus DeleteData(kwdbContext_p ctx, TSTableID tbl_id, std::string& p_tag, TSEntityID e_id,
                     const std::vector<KwTsSpan>& ts_spans, uint64_t* count, uint64_t mtr_id, uint64_t osn, bool user_del);
-
-  KStatus DeleteData(kwdbContext_p ctx, TSTableID tbl_id, TSEntityID e_id, TS_LSN lsn,
+  KStatus DropMetricEntity(kwdbContext_p ctx, TSTableID tbl_id, TSEntityID e_id);
+  KStatus DeleteData(kwdbContext_p ctx, TSTableID tbl_id, TSEntityID e_id, TS_OSN lsn,
                     const std::vector<KwTsSpan>& ts_spans, bool user_del = true);
-  KStatus deleteData(kwdbContext_p ctx, TSTableID tbl_id, TSEntityID e_id, KwLSNSpan lsn,
+  KStatus deleteData(kwdbContext_p ctx, TSTableID tbl_id, TSEntityID e_id, KwOSNSpan lsn,
                     const std::vector<KwTsSpan>& ts_spans, bool user_del = true);
 
-  KStatus undoDeleteData(kwdbContext_p ctx, TSTableID tbl_id, std::string& primary_tag, TS_LSN log_lsn,
+  KStatus undoDeleteData(kwdbContext_p ctx, TSTableID tbl_id, std::string& primary_tag, TS_OSN log_lsn,
   const std::vector<KwTsSpan>& ts_spans);
-  KStatus redoDeleteData(kwdbContext_p ctx, TSTableID tbl_id, std::string& primary_tag, TS_LSN log_lsn,
+  KStatus redoDeleteData(kwdbContext_p ctx, TSTableID tbl_id, std::string& primary_tag, TS_OSN log_lsn,
   const std::vector<KwTsSpan>& ts_spans);
 
   KStatus GetEntitySegmentBuilder(std::shared_ptr<const TsPartitionVersion>& partition,
@@ -265,23 +273,23 @@ class TsVGroup {
    *
    * @return KStatus The status of the undo operation, indicating success or specific failure reasons.
    */
-  KStatus undoPut(kwdbContext_p ctx, TS_LSN log_lsn, TSSlice payload);
+  KStatus undoPut(kwdbContext_p ctx, TS_OSN log_lsn, TSSlice payload);
 
   KStatus getEntityIdByPTag(kwdbContext_p ctx, TSTableID table_id, TSSlice& ptag, TSEntityID* entity_id);
 
-  KStatus undoDeleteTag(kwdbContext_p ctx, uint64_t table_id, TSSlice& primary_tag, TS_LSN log_lsn,
+  KStatus undoDeleteTag(kwdbContext_p ctx, uint64_t table_id, TSSlice& primary_tag, TS_OSN log_lsn,
                         uint32_t group_id, uint32_t entity_id, TSSlice& tags, uint64_t osn = 0);
 
-  KStatus redoPutTag(kwdbContext_p ctx, kwdbts::TS_LSN log_lsn, const TSSlice& payload);
+  KStatus redoPutTag(kwdbContext_p ctx, kwdbts::TS_OSN log_lsn, const TSSlice& payload);
 
-  KStatus undoPutTag(kwdbContext_p ctx, TS_LSN log_lsn, const TSSlice& payload);
+  KStatus undoPutTag(kwdbContext_p ctx, TS_OSN log_lsn, const TSSlice& payload);
 
-  KStatus redoUpdateTag(kwdbContext_p ctx, kwdbts::TS_LSN log_lsn, const TSSlice& payload, uint64_t osn = 0);
+  KStatus redoUpdateTag(kwdbContext_p ctx, kwdbts::TS_OSN log_lsn, const TSSlice& payload, uint64_t osn = 0);
 
-  KStatus undoUpdateTag(kwdbContext_p ctx, TS_LSN log_lsn, TSSlice payload, const TSSlice& old_payload,
+  KStatus undoUpdateTag(kwdbContext_p ctx, TS_OSN log_lsn, TSSlice payload, const TSSlice& old_payload,
                         uint64_t osn = 0);
 
-  KStatus redoDeleteTag(kwdbContext_p ctx, uint64_t table_id, TSSlice& primary_tag, kwdbts::TS_LSN log_lsn,
+  KStatus redoDeleteTag(kwdbContext_p ctx, uint64_t table_id, TSSlice& primary_tag, kwdbts::TS_OSN log_lsn,
                         uint32_t group_id, uint32_t entity_id, TSSlice& tags, uint64_t osn = 0);
 
   /**
@@ -310,7 +318,7 @@ class TsVGroup {
    * @return KStatus
    */
   KStatus MtrRollback(kwdbContext_p ctx, uint64_t& mtr_id, bool is_skip = false, const char* tsx_id = nullptr);
-  KStatus redoPut(kwdbContext_p ctx, kwdbts::TS_LSN log_lsn, const TSSlice& payload, uint64_t osn = 0);
+  KStatus redoPut(kwdbContext_p ctx, kwdbts::TS_OSN log_lsn, const TSSlice& payload, uint64_t osn = 0);
 
   KStatus GetLastRowEntity(kwdbContext_p ctx, std::shared_ptr<TsTableSchemaManager>& table_schema_mgr,
                            pair<timestamp64, uint32_t>& last_row_entity);

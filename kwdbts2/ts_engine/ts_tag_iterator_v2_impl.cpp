@@ -9,6 +9,13 @@
 // MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
 // See the Mulan PSL v2 for more details.
 
+#include <list>
+#include <unordered_map>
+#include <unordered_set>
+#include <vector>
+#include <string>
+#include <memory>
+#include <utility>
 #include "ts_tag_iterator_v2_impl.h"
 
 namespace kwdbts {
@@ -98,5 +105,49 @@ KStatus TagIteratorV2Impl::Next(std::vector<EntityResultIndex>* entity_id_list,
 KStatus TagIteratorV2Impl::Close() {
   return (KStatus::SUCCESS);
 }
+
+TagIteratorByOSN::TagIteratorByOSN(std::shared_ptr<TagTable> tag_bt, uint32_t table_version,
+  std::vector<k_uint32>& scan_cols, std::vector<KwOSNSpan>& osn_span) :
+  osn_span_(osn_span) {
+  tag_bt_ = tag_bt;
+  table_version_ = table_version;
+  scan_tags_ = scan_cols;
+}
+
+KStatus TagIteratorByOSN::Init(const std::unordered_set<uint32_t>& hps,
+  std::unordered_map<uint64_t, EntityResultIndex> pkeys) {
+  pkeys_status_ = std::move(pkeys);
+  hps_ = hps;
+  auto s = TagIteratorV2Impl::Init();
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("TagIteratorV2Impl::Init failed");
+    return KStatus::FAIL;
+  }
+  for (auto p : tag_partition_iters_) {
+    p->SetOSNSpan(osn_span_);
+  }
+  return KStatus::SUCCESS;
+}
+
+KStatus TagIteratorByOSN::Next(std::vector<EntityResultIndex>* entity_id_list,
+  ResultSet* res, k_uint32* count) {
+  auto s = TagIteratorV2Impl::Next(entity_id_list, res, count);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("TagIteratorV2Impl::Next failed");
+    return KStatus::FAIL;
+  }
+  for (EntityResultIndex& entity : *entity_id_list) {
+    uint64_t key = entity.GenUniqueKey();
+    auto stat = pkeys_status_.find(key);
+    if (stat == pkeys_status_.end()) {
+      // current entity has no tag operation between osn range.
+      entity.op_with_osn = std::make_shared<OperatorInfoOfRecord>(OperatorTypeOfRecord::OP_TYPE_TAG_EXISTED, 0);
+    } else {
+      entity.op_with_osn = stat->second.op_with_osn;
+    }
+  }
+  return KStatus::SUCCESS;
+}
+
 
 }  //  namespace kwdbts

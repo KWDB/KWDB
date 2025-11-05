@@ -65,7 +65,7 @@ TEST_F(TestWALManagerV2, TestWALDeleteData) {
   drs.push_back(d1);
   drs.push_back(d2);
   drs.push_back(d3);
-  TS_LSN entry_lsn;
+  TS_OSN entry_lsn;
   KwTsSpan span{timestamp, timestamp + 1,};
   KStatus s = wal_->WriteDeleteMetricsWAL(ctx_, x_id, p_tag, {span}, drs, tbl_grp_id_, &entry_lsn);
   EXPECT_EQ(s, KStatus::SUCCESS);
@@ -109,7 +109,7 @@ TEST_F(TestWALManagerV2, TestWALDeleteDataV2) {
   drs.push_back(d3);
 
   uint64_t vgrp_id = 3;
-  TS_LSN entry_lsn;
+  TS_OSN entry_lsn;
   KStatus s = wal_->WriteDeleteMetricsWAL4V2(ctx_, x_id, table_id_, p_tag, drs, vgrp_id, 0, &entry_lsn);
   EXPECT_EQ(s, KStatus::SUCCESS);
 

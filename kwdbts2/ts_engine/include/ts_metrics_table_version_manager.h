@@ -73,7 +73,7 @@ class MetricsVersionManager {
 
   uint64_t GetDbID();
 
-  void Sync(const kwdbts::TS_LSN& check_lsn, ErrorInfo& err_info);
+  void Sync(const kwdbts::TS_OSN& check_lsn, ErrorInfo& err_info);
 
   KStatus SetDropped();
 

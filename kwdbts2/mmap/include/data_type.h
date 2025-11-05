@@ -187,7 +187,7 @@ struct LifeTime {
 
 typedef uint32_t    timestamp;
 typedef int64_t    timestamp64;
-typedef uint64_t    TS_LSN;
+typedef uint64_t    TS_OSN;
 
 inline bool isBinaryType(int type) { return (type == BINARY || type == VARBINARY); }
 
@@ -278,21 +278,21 @@ struct InputString {
 
 struct TimeStamp64LSN {
   timestamp64 ts64;
-  TS_LSN lsn;
+  TS_OSN lsn;
 
-  TimeStamp64LSN(timestamp64 ts, TS_LSN lsn) : ts64(ts), lsn(lsn){}
+  TimeStamp64LSN(timestamp64 ts, TS_OSN lsn) : ts64(ts), lsn(lsn){}
 
   TimeStamp64LSN(void * buf) {
     ts64 = (*(static_cast<timestamp64 *>(buf)));
-    lsn = (*(static_cast<TS_LSN *>((void *)((intptr_t)buf + 8))));
+    lsn = (*(static_cast<TS_OSN *>((void *)((intptr_t)buf + 8))));
   }
 
   static timestamp64 * getTimestampAddr(void * buf) {
     return static_cast<timestamp64*>(buf);
   }
 
-  static TS_LSN * getLsnAddr(void * buf) {
-    return static_cast<TS_LSN*>((void *)((intptr_t)buf+8));
+  static TS_OSN * getLsnAddr(void * buf) {
+    return static_cast<TS_OSN*>((void *)((intptr_t)buf+8));
   }
 
   std::string to_string() {

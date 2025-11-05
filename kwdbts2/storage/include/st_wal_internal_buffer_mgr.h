@@ -36,7 +36,7 @@ class WALBufferMgr {
    * 2. Initializes LogBlocks and allocates memory space based on init_buffer_size.
    * @return
    */
-  KStatus init(TS_LSN start_lsn = 0);
+  KStatus init(TS_OSN start_lsn = 0);
 
   void ResetMeta();
 
@@ -48,7 +48,7 @@ class WALBufferMgr {
    * @return
    */
   KStatus writeWAL(kwdbContext_p ctx, k_char* wal_log, size_t length,
-                   TS_LSN& lsn_offset);
+                   TS_OSN& lsn_offset);
 
   /**
    * Flush WAL to log files
@@ -75,9 +75,9 @@ class WALBufferMgr {
    * @param no checkpoint NO
    * @return
    */
-  KStatus setHeaderBlockCheckpointInfo(TS_LSN checkpoint_lsn, uint32_t checkpoint_no);
+  KStatus setHeaderBlockCheckpointInfo(TS_OSN checkpoint_lsn, uint32_t checkpoint_no);
 
-  KStatus setHeaderBlockFirstLSN(TS_LSN first_lsn);
+  KStatus setHeaderBlockFirstLSN(TS_OSN first_lsn);
 
   /**
    * Read multiple log entries
@@ -87,10 +87,10 @@ class WALBufferMgr {
    * @param txn_id Only the log entries of this txn_id are read. The default value is 0, that is, all logs are read.
    * @return
    */
-  KStatus readWALLogs(std::vector<LogEntry*>& log_entries, TS_LSN start_lsn, TS_LSN end_lsn, std::vector<uint64_t>& end_chk,
+  KStatus readWALLogs(std::vector<LogEntry*>& log_entries, TS_OSN start_lsn, TS_OSN end_lsn, std::vector<uint64_t>& end_chk,
                       uint64_t txn_id = 0, bool for_chk = false);
 
-  KStatus readUncommittedTxnID(std::vector<uint64_t>& log_entries, TS_LSN start_lsn, TS_LSN end_lsn);
+  KStatus readUncommittedTxnID(std::vector<uint64_t>& log_entries, TS_OSN start_lsn, TS_OSN end_lsn);
 
   /**
    * Cache specified length bytes from current EntryBlock.
@@ -100,9 +100,9 @@ class WALBufferMgr {
    * @param[out] res Content
    * @return Current Block pointer
    */
-  KStatus readBytes(TS_LSN& start_offset, std::queue<EntryBlock*>& read_queue, size_t length, char*& res);
+  KStatus readBytes(TS_OSN& start_offset, std::queue<EntryBlock*>& read_queue, size_t length, char*& res);
 
-  TS_LSN getCurrentLsn();
+  TS_OSN getCurrentLsn();
 
   HeaderBlock getHeaderBlock() { return headerBlock_; }
 
@@ -165,32 +165,32 @@ class WALBufferMgr {
     return SUCCESS;
   }
 
-  KStatus readInsertLog(std::vector<LogEntry*>& log_entries, TS_LSN current_lsn, TS_LSN txn_id,
-                        TS_LSN& current_offset, std::queue<EntryBlock*>& read_queue, bool for_chk);
+  KStatus readInsertLog(std::vector<LogEntry*>& log_entries, TS_OSN current_lsn, TS_OSN txn_id,
+                        TS_OSN& current_offset, std::queue<EntryBlock*>& read_queue, bool for_chk);
 
-  KStatus readUpdateLog(std::vector<LogEntry*>& log_entries, TS_LSN current_lsn, TS_LSN txn_id,
-                        TS_LSN& current_offset, std::queue<EntryBlock*>& read_queue, bool for_chk);
+  KStatus readUpdateLog(std::vector<LogEntry*>& log_entries, TS_OSN current_lsn, TS_OSN txn_id,
+                        TS_OSN& current_offset, std::queue<EntryBlock*>& read_queue, bool for_chk);
 
-  KStatus readDeleteLog(std::vector<LogEntry*>& log_entries, TS_LSN current_lsn, TS_LSN txn_id,
-                        TS_LSN& current_offset, std::queue<EntryBlock*>& read_queue, bool for_chk);
+  KStatus readDeleteLog(std::vector<LogEntry*>& log_entries, TS_OSN current_lsn, TS_OSN txn_id,
+                        TS_OSN& current_offset, std::queue<EntryBlock*>& read_queue, bool for_chk);
 
-  KStatus readCreateIndexLog(std::vector<LogEntry*>& log_entries, TS_LSN current_lsn, TS_LSN txn_id,
-                            TS_LSN& current_offset, std::queue<EntryBlock*>& read_queue);
+  KStatus readCreateIndexLog(std::vector<LogEntry*>& log_entries, TS_OSN current_lsn, TS_OSN txn_id,
+                            TS_OSN& current_offset, std::queue<EntryBlock*>& read_queue);
 
-  KStatus readDropIndexLog(std::vector<LogEntry*>& log_entries, TS_LSN current_lsn, TS_LSN txn_id,
-                            TS_LSN& current_offset, std::queue<EntryBlock*>& read_queue);
+  KStatus readDropIndexLog(std::vector<LogEntry*>& log_entries, TS_OSN current_lsn, TS_OSN txn_id,
+                            TS_OSN& current_offset, std::queue<EntryBlock*>& read_queue);
 
-  KStatus readCheckpointLog(std::vector<LogEntry*>& log_entries, TS_LSN current_lsn, TS_LSN txn_id,
-                            TS_LSN& current_offset, std::queue<EntryBlock*>& read_queue);
+  KStatus readCheckpointLog(std::vector<LogEntry*>& log_entries, TS_OSN current_lsn, TS_OSN txn_id,
+                            TS_OSN& current_offset, std::queue<EntryBlock*>& read_queue);
 
-  KStatus readDDLCreateLog(vector<LogEntry*>& log_entries, TS_LSN current_lsn, TS_LSN txn_id, TS_LSN& current_offset,
+  KStatus readDDLCreateLog(vector<LogEntry*>& log_entries, TS_OSN current_lsn, TS_OSN txn_id, TS_OSN& current_offset,
                            queue<EntryBlock*>& read_queue);
 
-  KStatus readDDLAlterLog(vector<LogEntry*>& log_entries, TS_LSN current_lsn, TS_LSN txn_id, TS_LSN& current_offset,
+  KStatus readDDLAlterLog(vector<LogEntry*>& log_entries, TS_OSN current_lsn, TS_OSN txn_id, TS_OSN& current_offset,
                           queue<EntryBlock*>& read_queue);
 
-  KStatus readEndCheckPointLog(std::vector<LogEntry*>& log_entries, TS_LSN current_lsn,
-                               TS_LSN txn_id, TS_LSN& current_offset, std::queue<EntryBlock*>& read_queue);
+  KStatus readEndCheckPointLog(std::vector<LogEntry*>& log_entries, TS_OSN current_lsn,
+                               TS_OSN txn_id, TS_OSN& current_offset, std::queue<EntryBlock*>& read_queue);
 
   void Lock() {
     MUTEX_LOCK(buf_mutex_);

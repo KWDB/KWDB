@@ -12,7 +12,7 @@
 
 namespace kwdbts {
 
-LogEntry::LogEntry(TS_LSN lsn, WALLogType type, uint64_t x_id, uint64_t vgrp_id, TS_LSN old_lsn, uint64_t table_id)
+LogEntry::LogEntry(TS_OSN lsn, WALLogType type, uint64_t x_id, uint64_t vgrp_id, TS_OSN old_lsn, uint64_t table_id)
     : lsn_(lsn), type_(type), x_id_(x_id), len_(0), vgrp_id_(vgrp_id), old_lsn_(old_lsn), table_id_(table_id) {
 }
 
@@ -24,7 +24,7 @@ char* LogEntry::encode() {
   return nullptr;
 }
 
-TS_LSN LogEntry::getLSN() const {
+TS_OSN LogEntry::getLSN() const {
   return lsn_;
 }
 
@@ -40,7 +40,7 @@ uint64_t LogEntry::getVGroupID() const {
   return vgrp_id_;
 }
 
-TS_LSN LogEntry::getOldLSN() const {
+TS_OSN LogEntry::getOldLSN() const {
   return old_lsn_;
 }
 
@@ -48,8 +48,8 @@ uint64_t LogEntry::getTableID() const {
   return table_id_;
 }
 
-InsertLogEntry::InsertLogEntry(TS_LSN lsn, WALLogType type, uint64_t x_id, WALTableType table_type, uint64_t vgrp_id,
-                               TS_LSN old_lsn, uint64_t table_id) : LogEntry(lsn, type, x_id, vgrp_id, old_lsn,
+InsertLogEntry::InsertLogEntry(TS_OSN lsn, WALLogType type, uint64_t x_id, WALTableType table_type, uint64_t vgrp_id,
+                               TS_OSN old_lsn, uint64_t table_id) : LogEntry(lsn, type, x_id, vgrp_id, old_lsn,
                                                                              table_id), table_type_(table_type) {}
 
 size_t InsertLogEntry::getLen() {
@@ -60,9 +60,9 @@ WALTableType InsertLogEntry::getTableType() {
   return table_type_;
 }
 
-InsertLogTagsEntry::InsertLogTagsEntry(TS_LSN lsn, WALLogType type, uint64_t x_id, WALTableType table_type,
+InsertLogTagsEntry::InsertLogTagsEntry(TS_OSN lsn, WALLogType type, uint64_t x_id, WALTableType table_type,
                                        int64_t time_partition, uint64_t offset, uint64_t length, char* data,
-                                       uint64_t vgrp_id, TS_LSN old_lsn, uint64_t table_id)
+                                       uint64_t vgrp_id, TS_OSN old_lsn, uint64_t table_id)
     : InsertLogEntry(lsn, type, x_id, table_type, vgrp_id, old_lsn, table_id), time_partition_(time_partition),
     offset_(offset), length_(length), table_id_(table_id) {
   data_ = KNEW char[length_];
@@ -102,10 +102,10 @@ uint64_t InsertLogTagsEntry::getOffset() {
 }
 
 
-InsertLogMetricsEntry::InsertLogMetricsEntry(TS_LSN lsn, WALLogType type, uint64_t x_id, WALTableType table_type,
+InsertLogMetricsEntry::InsertLogMetricsEntry(TS_OSN lsn, WALLogType type, uint64_t x_id, WALTableType table_type,
                                              int64_t time_partition, uint64_t offset, uint64_t length,
                                              char* data, size_t p_tag_len, char* encoded_primary_tags, uint64_t vgrp_id,
-                                             TS_LSN old_lsn)
+                                             TS_OSN old_lsn)
     : InsertLogEntry(lsn, type, x_id, table_type, vgrp_id, old_lsn), time_partition_(time_partition),
       offset_(offset), length_(length), p_tag_len_(p_tag_len) {
   encoded_primary_tags_ = KNEW char[p_tag_len_];
@@ -115,9 +115,9 @@ InsertLogMetricsEntry::InsertLogMetricsEntry(TS_LSN lsn, WALLogType type, uint64
   memcpy(data_, data, length_);
 }
 
-InsertLogMetricsEntry::InsertLogMetricsEntry(TS_LSN lsn, WALLogType type, uint64_t x_id, WALTableType table_type,
+InsertLogMetricsEntry::InsertLogMetricsEntry(TS_OSN lsn, WALLogType type, uint64_t x_id, WALTableType table_type,
                                              int64_t time_partition, uint64_t offset, uint64_t length,
-                                             size_t p_tag_len, char* data, uint64_t vgrp_id, TS_LSN old_lsn)
+                                             size_t p_tag_len, char* data, uint64_t vgrp_id, TS_OSN old_lsn)
     : InsertLogEntry(lsn, type, x_id, table_type, vgrp_id, old_lsn), time_partition_(time_partition),
       offset_(offset), length_(length), p_tag_len_(p_tag_len) {
   encoded_primary_tags_ = KNEW char[p_tag_len_];
@@ -162,8 +162,8 @@ uint64_t InsertLogMetricsEntry::getOffset() {
   return offset_;
 }
 
-UpdateLogEntry::UpdateLogEntry(TS_LSN lsn, WALLogType type, uint64_t x_id, WALTableType table_type, uint64_t vgrp_id,
-                               TS_LSN old_lsn, uint64_t table_id) : LogEntry(lsn, type, x_id, vgrp_id, old_lsn,
+UpdateLogEntry::UpdateLogEntry(TS_OSN lsn, WALLogType type, uint64_t x_id, WALTableType table_type, uint64_t vgrp_id,
+                               TS_OSN old_lsn, uint64_t table_id) : LogEntry(lsn, type, x_id, vgrp_id, old_lsn,
                                                                              table_id), table_type_(table_type) {
 }
 
@@ -175,9 +175,9 @@ WALTableType UpdateLogEntry::getTableType() {
   return table_type_;
 }
 
-UpdateLogTagsEntry::UpdateLogTagsEntry(TS_LSN lsn, WALLogType type, uint64_t x_id, WALTableType table_type,
+UpdateLogTagsEntry::UpdateLogTagsEntry(TS_OSN lsn, WALLogType type, uint64_t x_id, WALTableType table_type,
                                        int64_t time_partition, uint64_t offset,
-                                       uint64_t length, uint64_t old_len, char* data, uint64_t vgrp_id, TS_LSN old_lsn,
+                                       uint64_t length, uint64_t old_len, char* data, uint64_t vgrp_id, TS_OSN old_lsn,
                                        uint64_t table_id)
     : UpdateLogEntry(lsn, type, x_id, table_type, vgrp_id, old_lsn, table_id), time_partition_(time_partition),
     offset_(offset), length_(length), old_len_(old_len), table_id_(table_id) {
@@ -226,8 +226,8 @@ uint64_t UpdateLogTagsEntry::getOffset() {
   return offset_;
 }
 
-DeleteLogEntry::DeleteLogEntry(TS_LSN lsn, WALLogType type, uint64_t x_id, WALTableType table_type, uint64_t vgrp_id,
-                               TS_LSN old_lsn, uint64_t table_id) : LogEntry(lsn, type, x_id, vgrp_id, old_lsn,
+DeleteLogEntry::DeleteLogEntry(TS_OSN lsn, WALLogType type, uint64_t x_id, WALTableType table_type, uint64_t vgrp_id,
+                               TS_OSN old_lsn, uint64_t table_id) : LogEntry(lsn, type, x_id, vgrp_id, old_lsn,
                                                                              table_id), table_type_(table_type) {}
 
 WALTableType DeleteLogEntry::getTableType() {
@@ -238,9 +238,9 @@ char* DeleteLogEntry::encode() {
   return nullptr;
 }
 
-DeleteLogMetricsEntry::DeleteLogMetricsEntry(TS_LSN lsn, WALLogType type, uint64_t x_id, WALTableType table_type,
+DeleteLogMetricsEntry::DeleteLogMetricsEntry(TS_OSN lsn, WALLogType type, uint64_t x_id, WALTableType table_type,
                                              size_t p_tag_len, uint64_t range_size, char* data, uint64_t vgrp_id,
-                                             TS_LSN old_lsn)
+                                             TS_OSN old_lsn)
     : DeleteLogEntry(lsn, type, x_id, table_type, vgrp_id, old_lsn), p_tag_len_(p_tag_len), range_size_(range_size) {
   start_ts_ = 0;
   end_ts_ = 0;
@@ -288,9 +288,9 @@ size_t DeleteLogMetricsEntry::getLen() {
   return len_;
 }
 
-DeleteLogMetricsEntryV2::DeleteLogMetricsEntryV2(TS_LSN lsn, WALLogType type, uint64_t x_id, WALTableType table_type,
+DeleteLogMetricsEntryV2::DeleteLogMetricsEntryV2(TS_OSN lsn, WALLogType type, uint64_t x_id, WALTableType table_type,
                                              TSTableID table_id, size_t p_tag_len, uint64_t range_size, char* data,
-                                              uint64_t vgrp_id, TS_LSN old_lsn, uint64_t osn)
+                                              uint64_t vgrp_id, TS_OSN old_lsn, uint64_t osn)
     : DeleteLogEntry(lsn, type, x_id, table_type, vgrp_id, old_lsn), p_tag_len_(p_tag_len), range_size_(range_size),
     table_id_(table_id), osn_(osn) {
   encoded_primary_tags_ = KNEW char[p_tag_len_];
@@ -339,9 +339,9 @@ size_t DeleteLogMetricsEntryV2::getLen() {
   return len_;
 }
 
-DeleteLogTagsEntry::DeleteLogTagsEntry(TS_LSN lsn, WALLogType type, uint64_t x_id, WALTableType table_type,
+DeleteLogTagsEntry::DeleteLogTagsEntry(TS_OSN lsn, WALLogType type, uint64_t x_id, WALTableType table_type,
                                        uint32_t group_id, uint32_t entity_id, size_t p_tag_len,
-                                       size_t tag_len, char* encoded_data, uint64_t vgrp_id, TS_LSN old_lsn,
+                                       size_t tag_len, char* encoded_data, uint64_t vgrp_id, TS_OSN old_lsn,
                                        uint64_t table_id, uint64_t osn)
     : DeleteLogEntry(lsn, type, x_id, table_type, vgrp_id, old_lsn, table_id), group_id_(group_id),
     entity_id_(entity_id), p_tag_len_(p_tag_len), tag_len_(tag_len), table_id_(table_id), osn_(osn) {
@@ -387,7 +387,7 @@ size_t DeleteLogTagsEntry::getLen() {
   return len_;
 }
 
-CheckpointEntry::CheckpointEntry(TS_LSN lsn, WALLogType type, char* data) : LogEntry(lsn, type, 0) {
+CheckpointEntry::CheckpointEntry(TS_OSN lsn, WALLogType type, char* data) : LogEntry(lsn, type, 0) {
   size_t read_offset = 0;
   memcpy(&x_id_, data, sizeof(x_id_));
   read_offset += sizeof(x_id_);
@@ -422,20 +422,20 @@ void CheckpointEntry::setCheckpointPartitions(char* data) {
   }
 }
 
-MTREntry::MTREntry(TS_LSN lsn, WALLogType type, uint64_t x_id, const char* tsx_id)
+MTREntry::MTREntry(TS_OSN lsn, WALLogType type, uint64_t x_id, const char* tsx_id)
     : LogEntry(lsn, type, x_id) {
   len_ = sizeof(type_) + sizeof(x_id_) + TS_TRANS_ID_LEN;
   memcpy(tsx_id_, tsx_id, TS_TRANS_ID_LEN);
 }
 
-TTREntry::TTREntry(TS_LSN lsn, WALLogType type, uint64_t x_id, char* tsx_id)
+TTREntry::TTREntry(TS_OSN lsn, WALLogType type, uint64_t x_id, char* tsx_id)
     : LogEntry(lsn, type, x_id) {
   len_ = sizeof(type_) + sizeof(x_id) + TS_TRANS_ID_LEN;
 
   memcpy(tsx_id_, tsx_id, TS_TRANS_ID_LEN);
 }
 
-DDLEntry::DDLEntry(TS_LSN lsn, WALLogType type, uint64_t x_id, uint64_t object_id)
+DDLEntry::DDLEntry(TS_OSN lsn, WALLogType type, uint64_t x_id, uint64_t object_id)
     : LogEntry(lsn, type, x_id), object_id_(object_id) {
 }
 
@@ -443,13 +443,13 @@ uint64_t DDLEntry::getObjectID() const {
   return object_id_;
 }
 
-DDLCreateEntry::DDLCreateEntry(TS_LSN lsn, WALLogType type, uint64_t x_id, uint64_t object_id, int meta_length,
+DDLCreateEntry::DDLCreateEntry(TS_OSN lsn, WALLogType type, uint64_t x_id, uint64_t object_id, int meta_length,
                                uint64_t range_size, roachpb::CreateTsTable* meta, RangeGroup* ranges)
     : DDLEntry(lsn, type, x_id, object_id) {
   len_ = fixed_length + meta_length + range_size * range_length;
 }
 
-DDLCreateEntry::DDLCreateEntry(TS_LSN lsn, WALLogType type, char* data) : DDLEntry(lsn, type, 0, 0) {
+DDLCreateEntry::DDLCreateEntry(TS_OSN lsn, WALLogType type, char* data) : DDLEntry(lsn, type, 0, 0) {
   size_t read_offset = 0;
   memcpy(&x_id_, data, sizeof(x_id_));
   read_offset += sizeof(x_id_);
@@ -492,7 +492,7 @@ int DDLCreateEntry::getMetaLength() const {
   return meta_length_;
 }
 
-DDLDropEntry::DDLDropEntry(TS_LSN lsn, WALLogType type, uint64_t x_id, uint64_t object_id)
+DDLDropEntry::DDLDropEntry(TS_OSN lsn, WALLogType type, uint64_t x_id, uint64_t object_id)
     : DDLEntry(lsn, type, x_id, object_id) {
   len_ = LogEntry::LOG_TYPE_SIZE + sizeof(x_id_) + sizeof(object_id_);
 }
@@ -501,7 +501,7 @@ size_t DDLDropEntry::getLen() {
   return LogEntry::getLen();
 }
 
-DDLAlterEntry::DDLAlterEntry(TS_LSN lsn, WALLogType type, char* data) : DDLEntry(lsn, type, 0, 0) {
+DDLAlterEntry::DDLAlterEntry(TS_OSN lsn, WALLogType type, char* data) : DDLEntry(lsn, type, 0, 0) {
   size_t read_offset = 0;
   memcpy(&x_id_, data, sizeof(x_id_));
   read_offset += sizeof(x_id_);
@@ -551,7 +551,7 @@ uint32_t DDLAlterEntry::getNewVersion() const {
   return new_version_;
 }
 
-CreateIndexEntry::CreateIndexEntry(kwdbts::TS_LSN lsn, kwdbts::WALLogType type, uint64_t x_id, uint64_t object_id,
+CreateIndexEntry::CreateIndexEntry(kwdbts::TS_OSN lsn, kwdbts::WALLogType type, uint64_t x_id, uint64_t object_id,
                                    uint32_t index_id, uint32_t cur_ts_version, uint32_t new_ts_version,
                                    std::array<int32_t, 10> col_ids) :
                                    LogEntry(lsn, type, x_id), object_id_(object_id), index_id_(index_id),
@@ -578,7 +578,7 @@ uint64_t CreateIndexEntry::getObjectID() const {
   return object_id_;
 }
 
-DropIndexEntry::DropIndexEntry(kwdbts::TS_LSN lsn, kwdbts::WALLogType type, uint64_t x_id, uint64_t object_id,
+DropIndexEntry::DropIndexEntry(kwdbts::TS_OSN lsn, kwdbts::WALLogType type, uint64_t x_id, uint64_t object_id,
                                uint32_t index_id, uint32_t cur_ts_version, uint32_t new_ts_version,
                                std::array<int32_t, 10> col_ids) :
                                LogEntry(lsn, type, x_id), object_id_(object_id), index_id_(index_id),
@@ -737,7 +737,7 @@ void DDLDropEntry::prettyPrint() {
 }
 
 
-MTRBeginEntry::MTRBeginEntry(TS_LSN lsn, uint64_t x_id, const char* tsx_id, uint64_t range_id,
+MTRBeginEntry::MTRBeginEntry(TS_OSN lsn, uint64_t x_id, const char* tsx_id, uint64_t range_id,
                              uint64_t index) : MTREntry(lsn, WALLogType::MTR_BEGIN, x_id, tsx_id),
                                                range_id_(range_id), index_(index) {
   len_ = LogEntry::LOG_TYPE_SIZE + header_length;

@@ -11,10 +11,12 @@
 #pragma once
 
 #include <string>
+#include <unordered_map>
 #include <unordered_set>
 #include <utility>
 #include <vector>
 #include <memory>
+#include <list>
 #include "ts_table.h"
 #include "ts_table_schema_manager.h"
 
@@ -87,6 +89,20 @@ class TsTableV2Impl : public TsTable {
   KStatus GetNormalIterator(kwdbContext_p ctx, const IteratorParams &params, TsIterator** iter) override;
 
   KStatus GetOffsetIterator(kwdbContext_p ctx, const IteratorParams &params, TsIterator** iter) override;
+
+  // scan metric data by osn range. return all rows
+  KStatus GetMetricIteratorByOSN(kwdbContext_p ctx, k_uint32 table_version, std::vector<k_uint32>& scan_cols,
+    std::vector<EntityResultIndex>& entity_ids, std::vector<KwOSNSpan>& osn_span, TsIterator** iter) override;
+  KStatus GetMetricDelInfoByOSN(kwdbContext_p ctx, const EntityResultIndex& entity_ids,
+    std::vector<KwOSNSpan>& osn_span, std::vector<KwTsSpan>* del_spans);
+  KStatus GetTagRecordInfoByOSN(kwdbContext_p ctx, const std::unordered_set<uint32_t> hps,
+    std::vector<KwOSNSpan>& osn_span, std::unordered_map<uint64_t, EntityResultIndex>* del_pkeys);
+  // scan tag data by osn range. return all rows
+  KStatus GetTagIteratorByOSN(kwdbContext_p ctx, k_uint32 table_version, std::vector<k_uint32>& scan_cols,
+    std::vector<KwOSNSpan>& osn_span,
+    const std::unordered_set<uint32_t> hps, BaseEntityIterator** iter) override;
+  KStatus TrasvalAllTagPtable(kwdbContext_p ctx, std::function<bool(TagPartitionTable*, size_t)> func);
+
 
   KStatus AlterTable(kwdbContext_p ctx, AlterType alter_type, roachpb::KWDBKTSColumn* column,
                      uint32_t cur_version, uint32_t new_version, string& msg) override;

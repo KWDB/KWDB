@@ -27,7 +27,7 @@
  * @IN: lsn: the lsn to be set
  * @Return: void
  */
-void MMapTagColumnTable::setLSN(kwdbts::TS_LSN lsn) {
+void MMapTagColumnTable::setLSN(kwdbts::TS_OSN lsn) {
   if (m_ptag_file_->memAddr()) {
     reinterpret_cast<TagColumnMetaData*>(m_ptag_file_->memAddr())->m_lsn = lsn;
   }
@@ -46,8 +46,8 @@ void MMapTagColumnTable::setLSN(kwdbts::TS_LSN lsn) {
  * @IN:
  * @Return: min lsn
  */
-// kwdbts::TS_LSN MMapTagColumnTable::getLSN() {
-//   kwdbts::TS_LSN minLSN = reinterpret_cast<TagColumnMetaData*>(m_ptag_file_->memAddr())->m_lsn;
+// kwdbts::TS_OSN MMapTagColumnTable::getLSN() {
+//   kwdbts::TS_OSN minLSN = reinterpret_cast<TagColumnMetaData*>(m_ptag_file_->memAddr())->m_lsn;
 //   for (size_t i = 0; i < m_cols_.size(); ++i) {
 //     if (!m_cols_[i]->isPrimaryTag()) {
 //       minLSN = (m_cols_[i]->getLSN() > minLSN) ? minLSN : m_cols_[i]->getLSN();
@@ -85,7 +85,7 @@ bool MMapTagColumnTable::isDropped() {
  * @IN:
  * @Return: 0
  */
-void MMapTagColumnTable::sync_with_lsn(kwdbts::TS_LSN lsn) {
+void MMapTagColumnTable::sync_with_lsn(kwdbts::TS_OSN lsn) {
   setLSN(lsn);
 
   m_ptag_file_->sync(MS_SYNC);

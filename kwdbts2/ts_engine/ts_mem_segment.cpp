@@ -316,7 +316,7 @@ bool TsMemSegment::GetEntityRows(const TsBlockItemFilterParams& filter, std::lis
         break;
       }
       auto osn = row_data->GetOSN();
-      if (osn <= span.lsn_span.end && osn >= span.lsn_span.begin) {
+      if (osn <= span.osn_span.end && osn >= span.osn_span.begin) {
         rows->push_back(row_data);
       }
       iter.Next();

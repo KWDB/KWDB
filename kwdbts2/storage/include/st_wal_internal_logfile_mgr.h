@@ -40,7 +40,7 @@ class WALFileMgr {
    * Init WAL file, and init HeaderBlock
    * @return
    */
-  KStatus initWalFile(TS_LSN first_lsn, TS_LSN flush_lsn = 0, bool tmp_file = false);
+  KStatus initWalFile(TS_OSN first_lsn, TS_OSN flush_lsn = 0, bool tmp_file = false);
 
 
   KStatus initWalFileWithHeader(HeaderBlock& header, bool tmp_file = false);
@@ -85,16 +85,16 @@ class WALFileMgr {
   /**
   * Clean up expired files.
   */
-  void CleanUp(TS_LSN checkpoint_lsn, TS_LSN current_lsn);
+  void CleanUp(TS_OSN checkpoint_lsn, TS_OSN current_lsn);
 
   /**
  * Reset WAL files.
  */
-  KStatus ResetWALInternal(kwdbContext_p ctx, TS_LSN current_lsn);
+  KStatus ResetWALInternal(kwdbContext_p ctx, TS_OSN current_lsn);
 
-  TS_LSN GetLSNFromBlockNo(uint64_t block_no);
+  TS_OSN GetLSNFromBlockNo(uint64_t block_no);
 
-  uint64_t GetBlockNoFromLsn(TS_LSN lsn);
+  uint64_t GetBlockNoFromLsn(TS_OSN lsn);
 
  private:
   /**
@@ -137,7 +137,7 @@ class WALFileMgr {
     return wal_path_ + "kwdb_wal.meta";
   }
 
-//  uint16_t getFileNoFromLSN(TS_LSN lsn) {
+//  uint16_t getFileNoFromLSN(TS_OSN lsn) {
 //    uint16_t file_no = lsn / (opt_->wal_file_size << 20);
 //    file_no = file_no % opt_->wal_file_in_group;
 //    return file_no;

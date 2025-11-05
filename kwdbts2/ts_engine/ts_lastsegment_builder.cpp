@@ -138,7 +138,7 @@ KStatus TsLastSegmentBuilder::Finalize() {
   return s;
 }
 
-TS_LSN TsLastSegmentBuilder::GetMaxOSN() const {
+TS_OSN TsLastSegmentBuilder::GetMaxOSN() const {
   auto it = std::max_element(
       block_index_buffer_.begin(), block_index_buffer_.end(),
       [](const TsLastSegmentBlockIndex& a, const TsLastSegmentBlockIndex& b) { return a.max_osn < b.max_osn; });

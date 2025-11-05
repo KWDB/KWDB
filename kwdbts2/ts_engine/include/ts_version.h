@@ -114,14 +114,19 @@ class TsPartitionVersion {
   // TODO(zzr): optimize the following function ralate to deletions, deletion should also be atomic in future, this is
   // just a temporary solution
   KStatus DeleteData(TSEntityID e_id, const std::vector<KwTsSpan> &ts_spans,
-    const KwLSNSpan &lsn, bool user_del = true) const;
-  KStatus UndoDeleteData(TSEntityID e_id, const std::vector<KwTsSpan> &ts_spans, const KwLSNSpan &lsn) const;
-  KStatus HasDeleteItem(bool& has_delete_info, const KwLSNSpan &lsn) const;
-  KStatus RmDeleteItems(const std::list<std::pair<TSEntityID, TS_LSN>>& entity_max_lsn) const;
+    const KwOSNSpan &lsn, bool user_del = true) const;
+  KStatus UndoDeleteData(TSEntityID e_id, const std::vector<KwTsSpan> &ts_spans, const KwOSNSpan &lsn) const;
+  KStatus HasDeleteItem(bool& has_delete_info, const KwOSNSpan &lsn) const;
+  KStatus RmDeleteItems(const std::list<std::pair<TSEntityID, TS_OSN>>& entity_max_lsn) const;
   KStatus DropEntity(TSEntityID e_id) const;
   KStatus GetDelRange(TSEntityID e_id, std::list<STDelRange> &del_items) const {
     return del_info_->GetDelRange(e_id, del_items);
   }
+
+  KStatus GetDelRangeByOSN(TSEntityID e_id, std::vector<KwOSNSpan>& osn_span, std::list<KwTsSpan>& del_range) const {
+    return del_info_->GetDelRangeByOSN(e_id, osn_span, del_range);
+  }
+
   KStatus getFilter(const TsScanFilterParams& filter, TsBlockItemFilterParams& block_data_filter) const;
   KStatus GetBlockSpans(const TsScanFilterParams& filter, std::list<shared_ptr<TsBlockSpan>>* ts_block_spans,
                        std::shared_ptr<TsTableSchemaManager>& tbl_schema_mgr,
@@ -161,8 +166,9 @@ class TsVGroupVersion {
   std::map<PartitionIdentifier, std::shared_ptr<const TsPartitionVersion>> GetAllPartitions() const {
     return partitions_;
   }
+  std::vector<std::shared_ptr<const TsPartitionVersion>> GetDBAllPartitions(uint32_t target_dbid) const;
 
-  TS_LSN GetMaxOSN() const { return max_osn_; }
+  TS_OSN GetMaxOSN() const { return max_osn_; }
 };
 
 enum class VersionUpdateType : uint8_t {
@@ -205,7 +211,7 @@ class TsVersionUpdate {
   uint64_t next_file_number_ = 0;
 
   bool has_max_lsn_ = false;
-  TS_LSN max_lsn_ = 0;
+  TS_OSN max_lsn_ = 0;
 
   bool need_record_ = false;
 
@@ -240,7 +246,7 @@ class TsVersionUpdate {
     need_record_ = true;
   }
 
-  void SetMaxLSN(TS_LSN lsn) {
+  void SetMaxLSN(TS_OSN lsn) {
     max_lsn_ = std::max(max_lsn_, lsn);
     has_max_lsn_ = true;
     need_record_ = true;

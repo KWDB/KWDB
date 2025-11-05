@@ -153,7 +153,7 @@ uint16_t EntryBlock::getFirstRecOffset() const {
 HeaderBlock::HeaderBlock() {}
 
 HeaderBlock::HeaderBlock(uint64_t object_id, uint64_t start_block_no, uint32_t block_num,
-                         TS_LSN start_lsn, TS_LSN first_lsn, TS_LSN checkpoint_lsn, uint32_t checkpoint_no)
+                         TS_OSN start_lsn, TS_OSN first_lsn, TS_OSN checkpoint_lsn, uint32_t checkpoint_no)
     : object_id_(object_id), start_block_no_(start_block_no), block_num_(block_num),
     start_lsn_(start_lsn), first_lsn_(first_lsn), checkpoint_lsn_(checkpoint_lsn), checkpoint_no_(checkpoint_no) {
   flushed_lsn_ = start_lsn;
@@ -163,13 +163,13 @@ HeaderBlock::HeaderBlock(const char* value) {
   decode(value);
 }
 
-void HeaderBlock::setCheckpointInfo(TS_LSN checkpoint_lsn,
+void HeaderBlock::setCheckpointInfo(TS_OSN checkpoint_lsn,
                                     uint32_t checkpoint_no) {
   checkpoint_lsn_ = checkpoint_lsn;
   checkpoint_no_ = checkpoint_no;
 }
 
-void HeaderBlock::setFirstLSN(TS_LSN first_lsn) {
+void HeaderBlock::setFirstLSN(TS_OSN first_lsn) {
   first_lsn_ = first_lsn;
 }
 
@@ -252,11 +252,11 @@ void HeaderBlock::decode(const char* value) {
 }
 
 
-TS_LSN HeaderBlock::getStartLSN() const {
+TS_OSN HeaderBlock::getStartLSN() const {
   return start_lsn_;
 }
 
-TS_LSN HeaderBlock::getCheckpointLSN() const {
+TS_OSN HeaderBlock::getCheckpointLSN() const {
   return checkpoint_lsn_;
 }
 
@@ -264,11 +264,11 @@ uint32_t HeaderBlock::getCheckpointNo() const {
   return checkpoint_no_;
 }
 
-TS_LSN HeaderBlock::getFlushedLsn() const {
+TS_OSN HeaderBlock::getFlushedLsn() const {
   return flushed_lsn_;
 }
 
-void HeaderBlock::setFlushedLsn(TS_LSN flushed_lsn) {
+void HeaderBlock::setFlushedLsn(TS_OSN flushed_lsn) {
   flushed_lsn_ = flushed_lsn;
 }
 
@@ -280,7 +280,7 @@ uint32_t HeaderBlock::getBlockNum() const {
   return block_num_;
 }
 
-TS_LSN  HeaderBlock::getFirstLSN() const {
+TS_OSN  HeaderBlock::getFirstLSN() const {
   return first_lsn_;
 }
 

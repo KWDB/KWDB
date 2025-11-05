@@ -19,27 +19,6 @@
 
 namespace kwdbts {
 
-// LSN range span info
-struct KwLSNSpan {
-  TS_LSN begin;
-  TS_LSN end;
-  inline bool Equal(const KwLSNSpan& desc) {
-    return begin == desc.begin && end == desc.end;
-  }
-};
-
-// LSN and TS range struct
-struct TSAndLSNRange {
-  KwTsSpan ts_span;
-  KwLSNSpan lsn_span;
-  TSAndLSNRange() {}
-  TSAndLSNRange(const KwTsSpan& ts, const KwLSNSpan& lsn) : ts_span(ts), lsn_span(lsn) {}
-};
-
-// rename for understanding easily.
-typedef TSAndLSNRange STDelRange;
-typedef TSAndLSNRange STScanRange;
-
 enum TsEntityDelItemStatus : uint8_t {
   DEL_ITEM_OK = 1,
   DEL_ITEM_ROLLBACK,
@@ -57,8 +36,8 @@ struct TsEntityDelItem {
   TSEntityID entity_id;  // entity id in vgroup.
   TsEntityDelItemStatus status;
   TsEntityDelItemType type;  // is this delete caused by user operation.
-  TsEntityDelItem(const KwTsSpan& ts, const KwLSNSpan& lsn, TSEntityID e_id,
-    TsEntityDelItemType t = TsEntityDelItemType::DEL_ITEM_TYPE_USER) : range(ts, lsn),
+  TsEntityDelItem(const KwTsSpan& ts, const KwOSNSpan& lsn, TSEntityID e_id,
+    TsEntityDelItemType t = TsEntityDelItemType::DEL_ITEM_TYPE_USER) : range{ts, lsn},
     entity_id(e_id), status(DEL_ITEM_OK), type(t) {}
 };
 
@@ -72,10 +51,10 @@ class LSNRangeUtil {
   static inline bool IsSpan1IncludeSpan2(const KwTsSpan& span1, const KwTsSpan& span2) {
     return span1.begin <= span2.begin && span1.end >= span2.end;
   }
-  static inline bool IsSpan1IncludeSpan2(const KwLSNSpan& span1, const KwLSNSpan& span2) {
+  static inline bool IsSpan1IncludeSpan2(const KwOSNSpan& span1, const KwOSNSpan& span2) {
     return span1.begin <= span2.begin && span1.end >= span2.end;
   }
-  static inline bool IsSpan1CrossSpan2(const KwLSNSpan& span1, const KwLSNSpan& span2) {
+  static inline bool IsSpan1CrossSpan2(const KwOSNSpan& span1, const KwOSNSpan& span2) {
     return  !(span1.begin > span2.end || span1.end < span2.begin);
   }
 };
@@ -92,9 +71,9 @@ class TsDelItemManager {
     uint64_t max_entity_id;
     uint64_t delitem_num;
     uint64_t dropped_num;
-    TS_LSN clear_max_lsn;
-    TS_LSN min_lsn;
-    TS_LSN max_lsn;
+    TS_OSN clear_max_lsn;
+    TS_OSN min_lsn;
+    TS_OSN max_lsn;
     char reserved[80];
   };
   static_assert(sizeof(DelItemHeader) == 128, "wrong size of DelItemHeader, please check compatibility.");
@@ -110,17 +89,18 @@ class TsDelItemManager {
   ~TsDelItemManager();
   KStatus Open();
   KStatus AddDelItem(TSEntityID entity_id, const TsEntityDelItem& del_item);
-  KStatus RollBackDelItem(TSEntityID entity_id, const KwLSNSpan& lsn);
+  KStatus RollBackDelItem(TSEntityID entity_id, const KwOSNSpan& lsn);
   KStatus GetDelItem(TSEntityID entity_id, std::list<TsEntityDelItem*>& del_items);
   KStatus GetDelRange(TSEntityID entity_id, std::list<STDelRange>& del_range);
-  KStatus HasValidDelItem(const KwLSNSpan& lsn, bool& has_valid);
-  KStatus RmDeleteItems(TSEntityID entity_id, const KwLSNSpan &lsn);
+  KStatus GetDelRangeByOSN(TSEntityID entity_id, std::vector<KwOSNSpan>& osn_span, std::list<KwTsSpan>& del_range);
+  KStatus HasValidDelItem(const KwOSNSpan& lsn, bool& has_valid);
+  KStatus RmDeleteItems(TSEntityID entity_id, const KwOSNSpan &lsn);
   KStatus DropEntity(TSEntityID entity_id);
   uint64_t GetTotalNum() { return header_->delitem_num; }
   uint64_t GetDroppedNum() { return header_->dropped_num; }
-  TS_LSN GetMaxLsn() { return header_->max_lsn; }
-  TS_LSN GetMinLsn() { return header_->min_lsn; }
-  TS_LSN GetClearMaxLsn() { return header_->clear_max_lsn; }
+  TS_OSN GetMaxLsn() { return header_->max_lsn; }
+  TS_OSN GetMinLsn() { return header_->min_lsn; }
+  TS_OSN GetClearMaxLsn() { return header_->clear_max_lsn; }
   uint64_t GetMaxEntityId() { return header_->max_entity_id; }
   void DropAll();
   KStatus Reset();
