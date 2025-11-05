@@ -403,20 +403,16 @@ int TagTable::InsertTagRecord(kwdbts::TsRawPayload &payload, int32_t sub_group_i
   if (operate_type == OperateType::Update) {
     auto old_tag_partition_table = tag_partition_table;
     if (payload.GetTableVersion() != del_row.first) {
-      auto old_tag_version_object = m_version_mgr_->GetVersionObject(del_row.first);
-      if (nullptr == old_tag_version_object) {
-        LOG_ERROR("Tag table id[%ld] version[%lu] doesn't exist.", this->m_table_id, del_row.first);
-        return -1;
-      }
-      TableVersion old_tag_partition_version = old_tag_version_object->metaData()->m_real_used_version_;
-      old_tag_partition_table = m_partition_mgr_->GetPartitionTable(old_tag_partition_version);
+      old_tag_partition_table = m_partition_mgr_->GetPartitionTable(del_row.first);
       if (nullptr == old_tag_partition_table) {
-        LOG_ERROR("Tag partition table version[%u] doesn't exist.", old_tag_partition_version);
+        LOG_ERROR("Tag partition table[%lu] version[%lu] doesn't exist.", this->m_table_id, del_row.first);
         return -1;
       }
     }
     old_tag_partition_table->startRead();
-    TagDataInfo del_tag_info{operate_type, osn, row_no, payload.GetTableVersion()};
+    // need to keep old del row osn
+    auto old_osn = old_tag_partition_table->getTagDataInfoByRowNum(del_row.second)->osn;
+    TagDataInfo del_tag_info{operate_type, old_osn, row_no, payload.GetTableVersion()};
     old_tag_partition_table->setTagDataInfo(del_row.second, &del_tag_info);
     old_tag_partition_table->stopRead();
   }
