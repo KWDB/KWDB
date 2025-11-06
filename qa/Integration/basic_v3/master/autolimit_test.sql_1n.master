@@ -374,6 +374,20 @@ SET CLUSTER SETTING
   2023-05-31 11:00:00+00:00
   2023-05-31 11:00:00+00:00
 (20 rows)
+> set cluster setting sql.auto_limit.quantity=0;
+SET CLUSTER SETTING
+> select node_id from kwdb_internal.gossip_liveness order by node_id desc;
+  node_id
+-----------
+        1
+(1 row)
+> set cluster setting sql.auto_limit.quantity=1;
+SET CLUSTER SETTING
+> select node_id from kwdb_internal.gossip_liveness order by node_id desc;
+  node_id
+-----------
+        1
+(1 row)
 > use defaultdb;
 SET
 > set cluster setting sql.query_cache.enabled=default;

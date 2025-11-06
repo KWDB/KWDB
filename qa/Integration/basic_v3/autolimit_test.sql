@@ -64,6 +64,12 @@ select time from test_ts.ts_table order by time;
 set cluster setting sql.auto_limit.quantity=20;
 select time from test_ts.ts_table order by time;
 
+-- ZDP-50011
+set cluster setting sql.auto_limit.quantity=0;
+select node_id from kwdb_internal.gossip_liveness order by node_id desc;
+set cluster setting sql.auto_limit.quantity=1;
+select node_id from kwdb_internal.gossip_liveness order by node_id desc;
+
 use defaultdb;
 set cluster setting sql.query_cache.enabled=default;
 set cluster setting sql.auto_limit.quantity=default;

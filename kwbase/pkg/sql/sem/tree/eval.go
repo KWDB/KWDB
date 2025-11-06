@@ -2894,6 +2894,9 @@ type EvalPlanner interface {
 
 	// GetStmt return stmt
 	GetStmt() string
+
+	// IsInternalSQL return IsInternalSQL
+	IsInternalSQL() bool
 }
 
 // EvalSessionAccessor is a limited interface to access session variables.

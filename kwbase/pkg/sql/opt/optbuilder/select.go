@@ -982,10 +982,27 @@ func (b *Builder) buildSelectStmtWithoutParens(
 	}
 
 	if limit != nil {
+		canBuildLimit := true
 		if limit.IsAutoLimit {
 			b.factory.Memo().SetFlag(opt.HasAutoLimit)
+			tblMetas := b.factory.Metadata().AllTables()
+			// the internally executed SQL does not add AutoLimit.
+			if b.evalCtx.Planner.IsInternalSQL() {
+				canBuildLimit = false
+			} else {
+				// the SQL for querying system tables or kwdb_internal tables does not add AutoLimit.
+				for _, tblMeta := range tblMetas {
+					if tblMeta.Table.GetParentID() == keys.SystemDatabaseID ||
+						tblMeta.Table.GetParentID() == tree.ID(sqlbase.InvalidID) {
+						canBuildLimit = false
+						break
+					}
+				}
+			}
 		}
-		b.buildLimit(limit, inScope, outScope)
+		if canBuildLimit {
+			b.buildLimit(limit, inScope, outScope)
+		}
 	}
 
 	return outScope
