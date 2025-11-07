@@ -834,6 +834,7 @@ int MMapTagColumnTable::linkNTagHashIndex(uint32_t table_id, MMapTagColumnTable 
         err_info.errcode = symlink(old_index->realFilePath().c_str(), new_index_path.c_str());
         if (err_info.errcode != 0) {
           LOG_ERROR("create hash index symlink failed")
+          old_part->stopRead();
           return err_info.errcode;
         }
         NtagIndexRWMutexXLock();

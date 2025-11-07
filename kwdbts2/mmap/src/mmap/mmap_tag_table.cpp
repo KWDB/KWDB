@@ -588,6 +588,7 @@ int TagTable::getDataWithRowID(TagPartitionTable* tag_partition, std::pair<Table
     uint32_t hp;
     tag_partition->getHashpointByRowNum(row, &hp);
     if (hps.find(hp) == hps.end()) {
+      tag_partition->stopRead();
       return 1;
     }
     tag_partition->getHashedEntityIdByRownum(row, hp, entity_id_list);
