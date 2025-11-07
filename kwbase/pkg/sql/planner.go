@@ -234,6 +234,11 @@ type planner struct {
 	forceFilterInME bool
 }
 
+// IsInternalSQL return IsInternalSQL
+func (p *planner) IsInternalSQL() bool {
+	return p.extendedEvalCtx.IsInternalSQL
+}
+
 // ExecutorConfig implements Planner interface.
 func (p *planner) ExecutorConfig() interface{} {
 	return p.execCfg

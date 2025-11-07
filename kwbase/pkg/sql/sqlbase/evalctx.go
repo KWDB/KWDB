@@ -90,6 +90,11 @@ func (so *DummySequenceOperators) SetSequenceValue(
 // errors.
 type DummyEvalPlanner struct{}
 
+// IsInternalSQL return IsInternalSQL
+func (ep *DummyEvalPlanner) IsInternalSQL() bool {
+	return false
+}
+
 var _ tree.EvalPlanner = &DummyEvalPlanner{}
 
 var errEvalPlanner = pgerror.New(pgcode.ScalarOperationCannotRunWithoutFullSessionContext,
