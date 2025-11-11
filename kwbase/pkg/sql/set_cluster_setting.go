@@ -268,8 +268,8 @@ var CheckClusterSetting = map[string]CheckOperation{
 	"ts.last_row_optimization.enabled":   checkTsLastRowOptimization,
 }
 
-// TsTxnAtomicityClusterSettingName is the name of the ts txn atomicity cluster setting.
-const TsTxnAtomicityClusterSettingName = "ts.txn.atomicity_enabled"
+// TsRaftlogCombineWalClusterSettingName is the name of the ts raftlog combine wal cluster setting.
+const TsRaftlogCombineWalClusterSettingName = "ts.raftlog_combine_wal.enabled"
 
 func (n *setClusterSettingNode) startExec(params runParams) error {
 	//if n.name == mgr.ClusterSettingReplicaRole &&
@@ -405,16 +405,22 @@ func (n *setClusterSettingNode) startExec(params runParams) error {
 				break
 			}
 			telemetry.Inc(sqltelemetry.VecModeCounter(validatedExecMode.String()))
-		case TsTxnAtomicityClusterSettingName:
+		case kvcoord.TsTxnAtomicityClusterSettingName:
 			tsWalLevel := tse.TsWALLevel.Get(&n.st.SV)
-			if expectedEncodedValue == "true" && (tsWalLevel != 1 && tsWalLevel != 2) {
+			combineWal := tse.TsRaftLogCombineWAL.Get(&n.st.SV)
+			if expectedEncodedValue == "true" && ((tsWalLevel != 1 && tsWalLevel != 2) || combineWal) {
 				return pgerror.Newf(pgcode.InvalidParameterValue,
-					"cannot enable ts.txn.atomicity_enabled=true when ts.wal.wal_level is %v; atomicity requires WAL level 1, 2", tsWalLevel)
+					"cannot enable ts.txn.atomicity_enabled=true when ts.wal.wal.level is %v; atomicity requires WAL level 1, 2 and ts.raftlog_combine_wal.enabled is false", tsWalLevel)
+			}
+		case TsRaftlogCombineWalClusterSettingName:
+			if kvcoord.TsTxnAtomicityEnabled.Get(&n.st.SV) && expectedEncodedValue == "true" {
+				return pgerror.Newf(pgcode.InvalidParameterValue,
+					"ts.raftlog_combine_wal.enabled cannot be set to %v when ts.txn.atomicity.enabled is true", expectedEncodedValue)
 			}
 		case tse.TsWALLevelClusterSettingName:
-			if kvcoord.TsTxnAtomicityEnabled.Get(&n.st.SV) && (expectedEncodedValue == "0" || expectedEncodedValue == "4") {
+			if kvcoord.TsTxnAtomicityEnabled.Get(&n.st.SV) && (expectedEncodedValue == "0" || expectedEncodedValue == "3") {
 				return pgerror.Newf(pgcode.InvalidParameterValue,
-					"ts.wal.wal_level cannot be set to %v when ts.txn.atomicity_enabled is true", expectedEncodedValue)
+					"ts.wal.wal_level cannot be set to %v when ts.txn.atomicity.enabled is true", expectedEncodedValue)
 			}
 		}
 
