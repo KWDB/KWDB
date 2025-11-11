@@ -15,7 +15,120 @@
 #include "ee_common.h"
 #include "ee_timestamp_utils.h"
 #include "ee_sort_compare.h"
+#include "ee_ryu_dbconvert.h"
 namespace kwdbts {
+// %.g buffer size is 64 characters (including null terminator)
+#define BUF_SIZE 64
+typedef union {
+  double d;
+  uint64_t u;
+} DoubleUnion;
+static inline k_int32 fast_exponent(double d) {
+  if (d == 0.0) return 0;
+  DoubleUnion u;
+  u.d = fabs(d);
+  k_int32 bias = 1023;
+  k_int32 exp_bits = (k_int32)((u.u >> 52) & 0x7FF);
+  k_int32 binary_exp = exp_bits - bias;
+  double log10_2 = 0.30102999566;
+  k_int32 decimal_exp = (k_int32)floor(binary_exp * log10_2 + 1e-9);
+  double pow10 = 1.0;
+  if (decimal_exp >= 0) {
+    for (k_int32 i = 0; i < decimal_exp; i++) pow10 *= 10;
+  } else {
+    for (k_int32 i = 0; i < -decimal_exp; i++) pow10 /= 10;
+  }
+  if (u.d >= pow10 * 10)
+    decimal_exp++;
+  else if (u.d < pow10)
+    decimal_exp--;
+  return decimal_exp;
+}
+static inline bool should_use_scientific(k_int32 exp, k_int32 precision) {
+  return (exp < -4) | (exp >= precision);
+}
+static inline void generate_scientific(double d, k_int32 precision, char* buf) {
+  d2exp_buffered(d, precision - 1, buf);
+  char* e = strchr(buf, 'e');
+  if (!e) return;
+  char* dot = strchr(buf, '.');
+  if (!dot || dot >= e) return;
+  k_int32 max_fractional = precision - 1;
+  char* end = dot + 1 + max_fractional;
+  if (end > e) end = e;
+  char* last_non_zero = end - 1;
+  while (last_non_zero > dot && *last_non_zero == '0') {
+    last_non_zero--;
+  }
+  if (last_non_zero == dot) {
+    *dot = 'e';
+    memmove(dot + 1, e + 1, strlen(e + 1) + 1);
+  } else {
+    *(last_non_zero + 1) = 'e';
+    memmove(last_non_zero + 2, e + 1, strlen(e + 1) + 1);
+  }
+}
+static inline void generate_fixed(double d, k_int32 precision, k_int32 exp, char* buf) {
+  k_int32 integer_len = exp + 1;
+  k_int32 fractional_digits = (precision > integer_len) ? (precision - integer_len) : 0;
+  d2fixed_buffered(d, fractional_digits, buf);
+  char* dot = strchr(buf, '.');
+  if (!dot) return;
+  char* end = buf + strlen(buf);
+  char* last_non_zero = end - 1;
+  while (last_non_zero > dot && *last_non_zero == '0') {
+    last_non_zero--;
+  }
+  if (last_non_zero == dot) {
+    *dot = '\0';
+  } else {
+    *(last_non_zero + 1) = '\0';
+  }
+}
+// %.g core conversion function: returns number of characters written (excluding null terminator)
+static inline k_int32 ryu_snprintf_g(double d, k_int32 precision, char* result) {
+  if (isnan(d)) {
+    snprintf(result, sizeof(result), "%s", "nan");
+    return 3;  // "nan" length is 3
+  }
+  if (isinf(d)) {
+    if (d > 0) {
+      snprintf(result, sizeof(result), "%s", "inf");
+      return 3;  // "inf" length is 3
+    } else {
+      snprintf(result, sizeof(result), "%s", "-inf");
+      return 4;  // "-inf" length is 4
+    }
+  }
+  if (d == 0.0) {
+    snprintf(result, sizeof(result), "%s", "0");
+    return 1;  // "0" length is 1
+  }
+
+  k_int32 exp = fast_exponent(d);
+  bool use_scientific = should_use_scientific(exp, precision);
+
+  if (use_scientific) {
+    generate_scientific(d, precision, result);
+  } else {
+    generate_fixed(d, precision, exp, result);
+  }
+
+  // length same as snprintf behavior
+  return strlen(result);
+}
+
+static inline k_int32 ryu_snprintf_f(k_double64 d, k_int32 precision, char* buf, size_t buf_size) {
+    k_int32 len = d2fixed_buffered_n(d, precision, buf);
+    if (len < buf_size) {
+        buf[len] = '\0';
+        return len;
+    } else {
+        buf[buf_size - 1] = '\0';
+        return buf_size - 1;
+    }
+    return len;
+}
 
 template <typename T>
 static inline k_int32 fastIntToString(T value, char* buffer) {
@@ -1191,6 +1304,48 @@ static inline k_uint8 format_timestamp(const CKTime& ck_time, KWDBTypeFamily ret
   return static_cast<k_uint8>(p - buf);
 }
 
+/**
+ * @brief Encode decimal value (actually double64 or int64) using pgwire
+ * protocol.
+ * @param[in] raw
+ * @param[in] info
+ */
+template <typename T>
+inline KStatus DataChunk::PgEncodeDecimal(DatumPtr raw, const EE_StringInfo& info) {
+  T val;
+  std::memcpy(&val, raw, sizeof(T));
+
+  if constexpr (std::is_same_v<T, k_int64>) {
+    k_int64 data = val;
+    char val_char[32];
+    snprintf(val_char, sizeof(val_char), "%ld", data);
+
+    // Write the length of the column value
+    if (ee_sendint(info, strlen(val_char), 4) != SUCCESS) {
+      return FAIL;
+    }
+    // Write the string form of the column value
+    if (ee_appendBinaryStringInfo(info, val_char, strlen(val_char)) != SUCCESS) {
+      return FAIL;
+    }
+  } else {
+    k_char buf[30] = {0};
+    double d = static_cast<double>(val);
+    // k_int32 n = snprintf(buf, sizeof(buf), "%.8g", d);
+    k_int32 n = ryu_snprintf_g(d, 8, buf);
+    // Write the length of the column value
+    if (ee_sendint(info, n, 4) != SUCCESS) {
+      return FAIL;
+    }
+    // Write the string form of the column value
+    if (ee_appendBinaryStringInfo(info, buf, n) != SUCCESS) {
+      return FAIL;
+    }
+  }
+
+  return SUCCESS;
+}
+
 KStatus DataChunk::PgResultData(kwdbContext_p ctx, k_uint32 row, const EE_StringInfo& info) {
   EnterFunc();
   k_uint32 temp_len = info->len;
@@ -1300,10 +1455,12 @@ KStatus DataChunk::PgResultData(kwdbContext_p ctx, k_uint32 row, const EE_String
           k_float32 val32;
           std::memcpy(&val32, raw, sizeof(k_float32));
           d = (k_double64)val32;
-          n = snprintf(buf, sizeof(buf), "%.6f", d);
+          // n = snprintf(buf, sizeof(buf), "%.6f", d);
+          n = ryu_snprintf_f(d, 6, buf, sizeof(buf));
         } else {
           std::memcpy(&d, raw, sizeof(k_double64));
-          n = snprintf(buf, sizeof(buf), "%.17g", d);
+          // n = snprintf(buf, sizeof(buf), "%.17g", d);
+          n = ryu_snprintf_g(d, 17, buf);
         }
 
         if (std::isnan(d)) {

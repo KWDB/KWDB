@@ -447,49 +447,8 @@ class DataChunk : public IChunk {
       info->len = info->len + len;
     }
   }
-
-  /**
-   * @brief Encode decimal value (actually double64 or int64) using pgwire
-   * protocol.
-   * @param[in] raw
-   * @param[in] info
-   */
   template <typename T>
-  KStatus PgEncodeDecimal(DatumPtr raw, const EE_StringInfo& info) {
-    T val;
-    std::memcpy(&val, raw, sizeof(T));
-
-    if constexpr (std::is_same_v<T, k_int64>) {
-      k_int64 data = val;
-      char val_char[32];
-      snprintf(val_char, sizeof(val_char), "%ld", data);
-
-      // Write the length of the column value
-      if (ee_sendint(info, strlen(val_char), 4) != SUCCESS) {
-        return FAIL;
-      }
-      // Write the string form of the column value
-      if (ee_appendBinaryStringInfo(info, val_char, strlen(val_char)) !=
-          SUCCESS) {
-        return FAIL;
-      }
-    } else {
-      k_char buf[30] = {0};
-      double d = static_cast<double>(val);
-      k_int32 n = snprintf(buf, sizeof(buf), "%.8g", d);
-
-      // Write the length of the column value
-      if (ee_sendint(info, n, 4) != SUCCESS) {
-        return FAIL;
-      }
-      // Write the string form of the column value
-      if (ee_appendBinaryStringInfo(info, buf, n) != SUCCESS) {
-        return FAIL;
-      }
-    }
-
-    return SUCCESS;
-  }
+  KStatus PgEncodeDecimal(DatumPtr raw, const EE_StringInfo& info);
 
   //  use to limit the return size in Next functions.
   static const int SIZE_LIMIT = ROW_BUFFER_SIZE;
