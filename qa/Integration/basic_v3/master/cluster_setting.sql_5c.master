@@ -1,0 +1,118 @@
+> SHOW CLUSTER SETTING ts.txn.atomicity.enabled;
+  ts.txn.atomicity.enabled
+----------------------------
+           false
+(1 row)
+> SHOW CLUSTER SETTING ts.raftlog_combine_wal.enabled;
+  ts.raftlog_combine_wal.enabled
+----------------------------------
+              false
+(1 row)
+> SHOW CLUSTER SETTING ts.wal.wal_level;
+  ts.wal.wal_level
+--------------------
+                 2
+(1 row)
+> SET CLUSTER SETTING ts.txn.atomicity.enabled = TRUE;
+SET CLUSTER SETTING
+> SHOW CLUSTER SETTING ts.txn.atomicity.enabled;
+  ts.txn.atomicity.enabled
+----------------------------
+            true
+(1 row)
+> SET CLUSTER SETTING ts.wal.wal_level = 1;
+SET CLUSTER SETTING
+> SHOW CLUSTER SETTING ts.wal.wal_level;
+  ts.wal.wal_level
+--------------------
+                 1
+(1 row)
+> SET CLUSTER SETTING ts.raftlog_combine_wal.enabled = TRUE;
+ERROR: ts.raftlog_combine_wal.enabled cannot be set to true when ts.txn.atomicity.enabled is true
+SQLSTATE: 22023
+> SHOW CLUSTER SETTING ts.raftlog_combine_wal.enabled;
+  ts.raftlog_combine_wal.enabled
+----------------------------------
+              false
+(1 row)
+> SET CLUSTER SETTING ts.wal.wal_level = 0;
+ERROR: ts.wal.wal_level cannot be set to 0 when ts.txn.atomicity.enabled is true
+SQLSTATE: 22023
+> SHOW CLUSTER SETTING ts.wal.wal_level;
+  ts.wal.wal_level
+--------------------
+                 1
+(1 row)
+> SET CLUSTER SETTING ts.wal.wal_level = 3;
+ERROR: ts.wal.wal_level cannot be set to 3 when ts.txn.atomicity.enabled is true
+SQLSTATE: 22023
+> SHOW CLUSTER SETTING ts.wal.wal_level;
+  ts.wal.wal_level
+--------------------
+                 1
+(1 row)
+> SET CLUSTER SETTING ts.txn.atomicity.enabled = FALSE;
+SET CLUSTER SETTING
+> SHOW CLUSTER SETTING ts.txn.atomicity.enabled;
+  ts.txn.atomicity.enabled
+----------------------------
+           false
+(1 row)
+> SET CLUSTER SETTING ts.wal.wal_level = 0;
+SET CLUSTER SETTING
+> SHOW CLUSTER SETTING ts.wal.wal_level;
+  ts.wal.wal_level
+--------------------
+                 0
+(1 row)
+> SET CLUSTER SETTING ts.txn.atomicity.enabled = TRUE;
+ERROR: cannot enable ts.txn.atomicity_enabled=true when ts.wal.wal.level is 0; atomicity requires WAL level 1, 2 and ts.raftlog_combine_wal.enabled is false
+SQLSTATE: 22023
+> SHOW CLUSTER SETTING ts.txn.atomicity.enabled;
+  ts.txn.atomicity.enabled
+----------------------------
+           false
+(1 row)
+> SET CLUSTER SETTING ts.wal.wal_level = 3;
+SET CLUSTER SETTING
+> SHOW CLUSTER SETTING ts.wal.wal_level;
+  ts.wal.wal_level
+--------------------
+                 3
+(1 row)
+> SET CLUSTER SETTING ts.txn.atomicity.enabled = TRUE;
+ERROR: cannot enable ts.txn.atomicity_enabled=true when ts.wal.wal.level is 3; atomicity requires WAL level 1, 2 and ts.raftlog_combine_wal.enabled is false
+SQLSTATE: 22023
+> SHOW CLUSTER SETTING ts.txn.atomicity.enabled;
+  ts.txn.atomicity.enabled
+----------------------------
+           false
+(1 row)
+> SET CLUSTER SETTING ts.wal.wal_level = 2;
+SET CLUSTER SETTING
+> SHOW CLUSTER SETTING ts.wal.wal_level;
+  ts.wal.wal_level
+--------------------
+                 2
+(1 row)
+> SET CLUSTER SETTING ts.raftlog_combine_wal.enabled = TRUE;
+SET CLUSTER SETTING
+> SHOW CLUSTER SETTING ts.raftlog_combine_wal.enabled;
+  ts.raftlog_combine_wal.enabled
+----------------------------------
+               true
+(1 row)
+> SET CLUSTER SETTING ts.txn.atomicity.enabled = TRUE;
+ERROR: cannot enable ts.txn.atomicity_enabled=true when ts.wal.wal.level is 2; atomicity requires WAL level 1, 2 and ts.raftlog_combine_wal.enabled is false
+SQLSTATE: 22023
+> SHOW CLUSTER SETTING ts.txn.atomicity.enabled;
+  ts.txn.atomicity.enabled
+----------------------------
+           false
+(1 row)
+> SET CLUSTER SETTING ts.txn.atomicity.enabled = FALSE;
+SET CLUSTER SETTING
+> SET CLUSTER SETTING ts.raftlog_combine_wal.enabled = FALSE;
+SET CLUSTER SETTING
+> SET CLUSTER SETTING ts.wal.wal_level = 2;
+SET CLUSTER SETTING

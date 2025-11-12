@@ -164,7 +164,7 @@ struct RaftStore {
 
   KStatus compact();
   uint64_t compactPut(uint64_t range_id, uint64_t index_id, TSSlice& value, std::string &mem);
-  KStatus loadFile(kwdbContext_p ctx, FileHandle& file_handle, int file_id);
+  KStatus loadFile(kwdbContext_p ctx, FileHandle& file_handle, int file_id, bool is_cur_file);
   KStatus loadIndex(kwdbContext_p ctx, uint64_t range_id, uint64_t index_id, int file_id, uint64_t offset, size_t len);
   KStatus createNewFile();
   bool checkIsCompact(int file1, int file2);

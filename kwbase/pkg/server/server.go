@@ -1910,22 +1910,6 @@ func (s *Server) Start(ctx context.Context) error {
 			s.distSQLServer.ServerConfig.TsEngine = s.tsEngine
 			s.distSQLServer.ServerConfig.TsIDGen = s.execCfg.TsIDGen
 
-			if !GetSingleNodeModeFlag(s.cfg.ModeFlag) {
-				tse.TsRaftLogCombineWAL.SetOnChange(&s.st.SV, func() {
-					combined := tse.TsRaftLogCombineWAL.Get(&s.st.SV)
-					s.tsEngine.SetRaftLogCombinedWAL(combined)
-					if !combined {
-						if err := kvserver.ClearReplicasAndResetFlushedIndex(ctx); err != nil {
-							log.Warningf(ctx, "failed clear flushed index for replicas, err: %+v", err)
-						}
-					}
-				})
-
-				tse.TsRaftLogSyncPeriod.SetOnChange(&s.st.SV, func() {
-					storage.SetSyncPeriod(tse.TsRaftLogSyncPeriod.Get(&s.st.SV))
-				})
-			}
-
 			tsDBCfg := kvcoord.TsDBConfig{
 				KvDB:         s.db,
 				TsEngine:     s.tsEngine,

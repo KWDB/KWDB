@@ -314,10 +314,31 @@ func ArrayContains(ctx *EvalContext, haystack *DArray, needles *DArray) (*DBool,
 	if !haystack.ParamTyp.Equivalent(needles.ParamTyp) {
 		return DBoolFalse, pgerror.New(pgcode.DatatypeMismatch, "cannot compare arrays with different element types")
 	}
-	for _, needle := range needles.Array {
+
+	// Check context at start for large datasets to fail fast if already canceled.
+	totalOps := len(haystack.Array) * len(needles.Array)
+	const cancelCheckThreshold = 100000000
+	if totalOps >= cancelCheckThreshold {
+		if err := ctx.Ctx().Err(); err != nil {
+			panic(err)
+		}
+	}
+	// For very large datasets, check context periodically every 100 needles.
+	checkInterval := 0
+	if totalOps >= cancelCheckThreshold {
+		checkInterval = 100
+	}
+
+	for i, needle := range needles.Array {
 		// Nulls don't compare to each other in @> syntax.
 		if needle == DNull {
 			return DBoolFalse, nil
+		}
+		// Periodic context check to avoid blocking on canceled queries.
+		if checkInterval > 0 && i > 0 && i%checkInterval == 0 {
+			if err := ctx.Ctx().Err(); err != nil {
+				panic(err)
+			}
 		}
 		var found bool
 		for _, hay := range haystack.Array {

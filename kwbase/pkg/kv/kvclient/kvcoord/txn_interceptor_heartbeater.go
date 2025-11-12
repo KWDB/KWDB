@@ -437,9 +437,12 @@ func firstLockingIndex(ba *roachpb.BatchRequest) (int, *roachpb.Error) {
 	return -1, nil
 }
 
+// TsTxnAtomicityClusterSettingName is the name of the ts txn atomicity cluster setting.
+const TsTxnAtomicityClusterSettingName = "ts.txn.atomicity.enabled"
+
 // TsTxnAtomicityEnabled is a cluster setting that controls whether ts insert should guarantee atomicity.
 var TsTxnAtomicityEnabled = settings.RegisterBoolSetting(
-	"ts.txn.atomicity.enabled",
+	TsTxnAtomicityClusterSettingName,
 	"if enabled, the atomicity of time-series transactions will be guaranteed",
 	false,
 )
