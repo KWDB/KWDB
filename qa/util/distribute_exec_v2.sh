@@ -27,18 +27,19 @@ declare -a stmts
 
 python3 $QA_DIR/util/distribute_regression.py ${sql_file} ${KWBIN} ${output_file} ${store_dir} ${output_cmd_file} ${open_source}
 
+rm -rf ${LOG_DIR}/${SQL_FILTER}.log
 while read -r line || [ -n "${line}" ];do
   stmts+=(${line})
   #echo '***************************'
-  #echo "$line"
+  echo "$line" >> ${LOG_DIR}/${SQL_FILTER}.log
   eval "$line"
 done < ${output_cmd_file}
 
-[ -n "${last_section[0]}" -a -n "${last_section[1]}" ] && \
-  stmts+=("--node:${last_section[0]}\n${last_section[1]}")
+  #[ -n "${last_section[0]}" -a -n "${last_section[1]}" ] && \
+  #stmts+=("--node:${last_section[0]}\n${last_section[1]}")
 
-for idx in ${!stmts[@]};do
-  stmt=${stmts[${idx}]}
+  #for idx in ${!stmts[@]};do
+  #stmt=${stmts[${idx}]}
   # echo $stmt
   #if [ -n "${stmt}" ];then
   #  nodes=$(echo -e "${stmt}" | sed -n -re "s/${node_annotation_regex}/\1/p")
@@ -53,4 +54,4 @@ for idx in ${!stmts[@]};do
   #      2>&1 | tee -a ${output_file} > /dev/null
   #  done
   #fi
-done
+  #done

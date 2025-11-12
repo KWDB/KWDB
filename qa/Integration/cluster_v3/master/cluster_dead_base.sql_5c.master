@@ -57,7 +57,7 @@ Failed running "sql"
 ERROR: set zone config num_replicas when node unhealthy or dead is not supported
 SQLSTATE: 0A000
 Failed running "sql"
-> SELECT COUNT(*) = 0 FROM kwdb_internal.ranges WHERE database_name = 'tsdb1' AND 4=ANY(replicas); 
+> SET statement_timeout = '30s';SELECT COUNT(*) = 0 FROM kwdb_internal.ranges WHERE 4=ANY(replicas); 
   ?column?
 ------------
     true
@@ -82,7 +82,7 @@ Failed running "sql"
 ----------
   250000
 (1 row)
-> SELECT COUNT(*) = 0 FROM kwdb_internal.ranges WHERE database_name = 'tsdb1' AND 5=ANY(replicas); 
+> SET statement_timeout = '30s';SELECT COUNT(*) = 0 FROM kwdb_internal.ranges WHERE 5=ANY(replicas); 
   ?column?
 ------------
     true
