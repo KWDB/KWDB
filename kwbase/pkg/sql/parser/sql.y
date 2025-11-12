@@ -5635,7 +5635,27 @@ table_elem_tag:
 //  }
 
 create_ts_table_stmt:
-  CREATE opt_temp_create_table TABLE table_name '(' opt_table_elem_list ')' attributes_tags '(' table_elem_tag_list ')' PRIMARY attributes_tags '(' name_list ')' opt_retentions_elems opt_active_time opt_dict_encoding opt_partition_interval opt_comment_clause opt_hash_num
+  CREATE opt_temp_create_table TABLE IF NOT EXISTS table_name '(' opt_table_elem_list ')' attributes_tags '(' table_elem_tag_list ')' PRIMARY attributes_tags '(' name_list ')' opt_retentions_elems opt_active_time opt_dict_encoding opt_partition_interval opt_comment_clause opt_hash_num
+	{
+    name := $7.unresolvedObjectName().ToTableName()
+    $$.val = &tree.CreateTable{
+      Table: name,
+      IfNotExists: true,
+      Defs: $9.tblDefs(),
+      Temporary: $2.persistenceType(),
+      OnCommit: tree.CreateTableOnCommitUnset,
+      DownSampling: $20.downSampling(),
+      ActiveTime: $21.activeTime(),
+      TableType: tree.TimeseriesTable,
+      Tags: $13.tags(),
+      Sde: $22.bool(),
+      PrimaryTagList: $18.nameList(),
+      PartitionInterval: $23.partitionInterval(),
+      Comment: $24,
+      HashNum: $25.int64(),
+    }
+	}
+| CREATE opt_temp_create_table TABLE table_name '(' opt_table_elem_list ')' attributes_tags '(' table_elem_tag_list ')' PRIMARY attributes_tags '(' name_list ')' opt_retentions_elems opt_active_time opt_dict_encoding opt_partition_interval opt_comment_clause opt_hash_num
 	{
     name := $4.unresolvedObjectName().ToTableName()
     $$.val = &tree.CreateTable{
@@ -8283,7 +8303,21 @@ create_database_stmt:
 // %Text:
 // CREATE TS DATABASE <name> [RETENTIONS <duration>] [PARTITION INTERVAL <duration>] [COMMENT <comment>]
 create_ts_database_stmt:
-	CREATE TS DATABASE database_name opt_retentions_elems opt_partition_interval opt_comment_clause
+	CREATE TS DATABASE IF NOT EXISTS database_name opt_retentions_elems opt_partition_interval opt_comment_clause
+  	{
+			tsDB := tree.TSDatabase{
+				DownSampling: $8.downSampling(),
+				PartitionInterval: $9.partitionInterval(),
+			}
+  		$$.val = &tree.CreateDatabase{
+        IfNotExists: true,
+				Name: tree.Name($7),
+				EngineType: 1,
+				TSDatabase: tsDB,
+				Comment: $10,
+      }
+  	}
+|	CREATE TS DATABASE database_name opt_retentions_elems opt_partition_interval opt_comment_clause
   	{
 			tsDB := tree.TSDatabase{
 				DownSampling: $5.downSampling(),

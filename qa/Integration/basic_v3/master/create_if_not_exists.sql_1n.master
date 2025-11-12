@@ -1,0 +1,20 @@
+> drop database if exists test_db cascade;
+DROP DATABASE
+> create ts database test_db;
+CREATE TS DATABASE
+> create ts database if not exists test_db;
+CREATE TS DATABASE
+> create ts database test_db;
+ERROR: database "test_db" already exists
+SQLSTATE: 42P04
+> create table if not exists test_db.t1(ts timestamp not null, a int) tags(b int not null) primary tags(b);
+CREATE TABLE
+> create table test_db.t1(ts timestamp not null, a int) tags(b int not null) primary tags(b);
+ERROR: relation "t1" already exists
+SQLSTATE: 42P07
+> create table if not exists test_db.t1(ts timestamp not null, a int) tags(b int not null) primary tags(b);
+CREATE TABLE
+> drop table test_db.t1;
+DROP TABLE
+> drop database test_db;
+DROP DATABASE
