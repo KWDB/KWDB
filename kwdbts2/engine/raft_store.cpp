@@ -217,7 +217,10 @@ KStatus RaftStore::WriteRaftLog(kwdbContext_p ctx, int cnt, TSRaftlog *raftlog, 
   }
 
   ssize_t write_num = write(file_, mem.c_str(), mem.size());
-  assert(write_num == mem.size());
+  if (write_num != mem.size()) {
+    LOG_ERROR("Raftlog cannot be written normally.");
+    return KStatus::FAIL;
+  }
   file_len_ += mem.size();
   if (sync) {
     fsync(file_);
@@ -537,7 +540,7 @@ KStatus RaftStore::deleteState(kwdbContext_p ctx, uint64_t range_id, std::string
   return KStatus::SUCCESS;
 }
 
-KStatus RaftStore::loadFile(kwdbContext_p ctx, FileHandle& file_handle, int file_id) {
+KStatus RaftStore::loadFile(kwdbContext_p ctx, FileHandle& file_handle, int file_id, bool is_cur_file) {
   file_handle.file = open(file_handle.path.c_str(), O_RDWR | O_APPEND);
   if (file_id == current_id_) {
     file_ = file_handle.file;
@@ -571,6 +574,10 @@ KStatus RaftStore::loadFile(kwdbContext_p ctx, FileHandle& file_handle, int file
     switch (header->type) {
       case RaftKeyType::PUT:
         value_off = off + sizeof(RaftLogHeader);
+        if (is_cur_file && (value_off + header->size > len)) {
+          LOG_WARN("data missing, type=%d, rangeID=%lu, index=%lu", header->type, header->rangeID, header->index);
+          break;
+        }
         if (header->index == 0) {
           state_[header->rangeID] = std::make_shared<RaftValueOffset>(0, file_id, value_off, header->size);
         } else {
@@ -580,6 +587,10 @@ KStatus RaftStore::loadFile(kwdbContext_p ctx, FileHandle& file_handle, int file
         break;
       case RaftKeyType::DELSPAN:
       {
+        if (is_cur_file && (off + sizeof(RaftLogHeader) > len)) {
+          LOG_WARN("data missing, type=%d", header->type);
+          break;
+        }
         std::string mem;
         multDelete(ctx, header->rangeID, header->index, header->endIndex, mem, false);
         off += sizeof(RaftLogHeader);
@@ -587,12 +598,20 @@ KStatus RaftStore::loadFile(kwdbContext_p ctx, FileHandle& file_handle, int file
         break;
       case RaftKeyType::DELSTATE:
       {
+        if (is_cur_file && (off + sizeof(header->type) + sizeof(header->rangeID) > len)) {
+          LOG_WARN("data missing, type=%d", header->type);
+          break;
+        }
         state_.erase(header->rangeID);
         off += sizeof(header->type) + sizeof(header->rangeID);
       }
         break;
       case RaftKeyType::CLEAR:
       {
+        if (is_cur_file && (off + sizeof(header->type) + sizeof(header->rangeID) > len)) {
+          LOG_WARN("data missing, type=%d", header->type);
+          break;
+        }
         ranges_.erase(header->rangeID);
         state_.erase(header->rangeID);
         off += sizeof(header->type) + sizeof(header->rangeID);
@@ -600,6 +619,10 @@ KStatus RaftStore::loadFile(kwdbContext_p ctx, FileHandle& file_handle, int file
         break;
       case RaftKeyType::TRUNCATE:
       {
+        if (is_cur_file && (off + sizeof(RaftLogHeader) > len)) {
+          LOG_WARN("data missing, type=%d", header->type);
+          break;
+        }
         std::string mem;
         truncate(ctx, header->rangeID, header->index, mem, false);
         off += sizeof(RaftLogHeader);
@@ -692,15 +715,15 @@ KStatus RaftStore::init(std::string engine_root_path) {
     // Read the raftlog recorded in the file.
     for (int i = 1; i < current_id_; i++) {
       if (previous_files_.find(i) != previous_files_.end()) {
-        loadFile(ctx_p, previous_files_[i], i);
+        loadFile(ctx_p, previous_files_[i], i, false);
       }
       if (previous_files_.find(-i) != previous_files_.end()) {
-        loadFile(ctx_p, previous_files_[-i], -i);
+        loadFile(ctx_p, previous_files_[-i], -i, false);
       }
     }
     // Load the raftlog of the courrend_id_ file.
     FileHandle current_file = FileHandle(-1, file_path_);
-    loadFile(ctx_p, current_file, current_id_);
+    loadFile(ctx_p, current_file, current_id_, true);
   } else {
     std::string current_file = engine_root_path + "/current_" + std::to_string(current_id_) + ".raftlog";
     file_path_ = current_file;

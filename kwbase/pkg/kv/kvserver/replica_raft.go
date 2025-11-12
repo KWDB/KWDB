@@ -1460,8 +1460,14 @@ func (r *Replica) handleRaftTSReadyRaftMuLocked(
 		}
 	}
 	if sync {
-		if r.mu.inconsistent != storage.IsAsyncWrite() {
-			r.mu.inconsistent = storage.IsAsyncWrite()
+		var storageAsync bool
+		if r.store.TsRaftLogEngine == nil {
+			storageAsync = storage.IsAsyncWrite()
+		} else {
+			storageAsync = r.store.TsRaftLogEngine.IsAsyncWrite()
+		}
+		if r.mu.inconsistent != storageAsync {
+			r.mu.inconsistent = storageAsync
 			if err = r.mu.stateLoader.SetInconsistent(ctx, r.Engine(), r.mu.inconsistent); err != nil {
 				const expl = "while set inconsistent"
 				return stats, expl, errors.Wrap(err, expl)

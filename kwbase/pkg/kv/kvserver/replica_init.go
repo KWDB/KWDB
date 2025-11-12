@@ -231,6 +231,20 @@ func (r *Replica) loadRaftMuLockedReplicaMuLocked(
 			r.mu.state.RaftAppliedIndex = r.mu.tsFlushedIndex
 			needSave = true
 		}
+		// If raft log written to disk async, by cluster setting ts.raft_log.sync_period
+		// for example. Normally, TruncatedState.Index <= RaftAppliedIndex <= lastIndex,
+		// but in this case, the lastIndex may be less than RaftAppliedIndex, and it
+		// violates the raft protocol since we should firstly have the raft log and then
+		// apply it, the lastIndex should not less than RaftAppliedIndex. So we should
+		// assign value of RaftAppliedIndex to lastIndex, and this makes raft logs
+		// non-contiguous, because we actually have no raft log between
+		// (lastIndex, RaftAppliedIndex]. So that we should tell raft protocol that we
+		// have cleared the raft logs, by making TruncatedState.Index equal to lastIndex.
+		if r.mu.lastIndex < r.mu.state.RaftAppliedIndex {
+			r.mu.lastIndex = r.mu.state.RaftAppliedIndex
+			r.mu.state.TruncatedState.Index = r.mu.lastIndex
+			needSave = true
+		}
 		if needSave {
 			if _, err := r.mu.stateLoader.Save(ctx, r.Engine(), r.mu.state, stateloader.TruncatedStateUnreplicated); err != nil {
 				log.Warningf(ctx, "failed Save ReplicaState, err: %v", err)
@@ -242,15 +256,15 @@ func (r *Replica) loadRaftMuLockedReplicaMuLocked(
 				hs.Vote = 0
 			}
 			hs.Term = r.mu.state.TruncatedState.Term
-			if err = r.mu.stateLoader.SetHardState(ctx, r.Engine(), hs); err != nil {
+			if r.store.TsRaftLogEngine != nil {
+				err = r.SetTsHardState(ctx, hs, tse.NewTsRaftLogBatch(r.store.TsRaftLogEngine))
+			} else {
+				err = r.mu.stateLoader.SetHardState(ctx, r.Engine(), hs)
+			}
+			if err != nil {
 				log.Errorf(ctx, "failed set hard state,err: %+v", err)
 				return err
 			}
-		}
-		if r.mu.lastIndex < r.mu.state.TruncatedState.Index {
-			r.mu.lastIndex = r.mu.state.TruncatedState.Index
-		} else if r.mu.lastIndex < r.mu.state.RaftAppliedIndex {
-			r.mu.lastIndex = r.mu.state.RaftAppliedIndex
 		}
 	}
 	if isInit {
