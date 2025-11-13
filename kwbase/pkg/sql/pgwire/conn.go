@@ -2166,8 +2166,8 @@ var SQLConnectionMaxLimit = settings.RegisterValidatedIntSetting(
 	"the maximum of connections from clients to servers per node",
 	200,
 	func(v int64) error {
-		if v < 4 || v > 10000 {
-			return errors.Errorf("server.sql_connections.max_limit should be set to a value between 4 and 10000")
+		if v < 4 || v > 50000 {
+			return errors.Errorf("server.sql_connections.max_limit should be set to a value between 4 and 50000")
 		}
 		return nil
 	},

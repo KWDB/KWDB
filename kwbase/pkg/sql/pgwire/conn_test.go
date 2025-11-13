@@ -1072,7 +1072,15 @@ func TestConnectionMaxLimit(t *testing.T) {
 
 	if _, err := db.Exec(
 		`SET CLUSTER SETTING server.sql_connections.max_limit = 1`,
-	); !testutils.IsError(err, "server.sql_connections.max_limit should be set to a value between 4 and 10000") {
+	); !testutils.IsError(err, "server.sql_connections.max_limit should be set to a value between 4 and 50000") {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`SET CLUSTER SETTING server.sql_connections.max_limit = 50000`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(
+		`SET CLUSTER SETTING server.sql_connections.max_limit = 50001`,
+	); !testutils.IsError(err, "server.sql_connections.max_limit should be set to a value between 4 and 50000") {
 		t.Fatal(err)
 	}
 
