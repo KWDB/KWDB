@@ -1,0 +1,31 @@
+query T
+select to_timestamp('1633072800');
+----
+2021-10-01 07:20:00 +0000 +0000
+
+
+query T
+select to_timestamp(1633072800);
+----
+2021-10-01 07:20:00 +0000 +0000
+
+query T
+select to_timestamp('2021-10-01 07:20:00.123456', 'YYYY-MM-DD HH24:MI:SS.US');
+----
+2021-10-01 07:20:00.123456 +0000 +0000
+
+query T
+select to_timestamp('2021-10-01 07:20:00.123456', 'YYYY-MM-DD HH24:MI:SS.US');
+----
+2021-10-01 07:20:00.123456 +0000 +0000
+
+query T
+select to_timestamp('2021-10-01 07:20:00.123456789', 'YYYY-MM-DD HH24:MI:SS.NS');
+----
+2021-10-01 07:20:00.123456789 +0000 +0000
+
+
+query T
+select to_timestamp('2021-10-01 07:20:00.123456', 'YYYY-MM-DD HH24:MI:SS.MS');
+----
+2021-10-01 07:20:00.123 +0000 +0000

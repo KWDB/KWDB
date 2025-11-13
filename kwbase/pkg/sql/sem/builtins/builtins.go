@@ -4704,6 +4704,32 @@ may increase either contention or retry errors, or both.`,
 			Info:       "time_bucket groups timestamps by interval.",
 		},
 	),
+	"to_timestamp": makeBuiltin(tree.FunctionProperties{NullableArgs: true},
+		tree.Overload{
+			Types:      tree.ArgTypes{{"timestamp_string", types.String}},
+			ReturnType: tree.FixedReturnType(types.Timestamp),
+			Fn:         unixStringToTimestamp,
+			Info:       "to_timestamp converts a Unix timestamp string into a timestamp in UTC.",
+		},
+		tree.Overload{
+			Types:      tree.ArgTypes{{"timestamp_int", types.Int}},
+			ReturnType: tree.FixedReturnType(types.Timestamp),
+			Fn:         unixIntToTimestamp,
+			Info:       "to_timestamp converts a Unix timestamp integer into a timestamp in UTC.",
+		},
+		tree.Overload{
+			Types:      tree.ArgTypes{{"timestamp_string", types.String}, {"format_string", types.String}},
+			ReturnType: tree.FixedReturnType(types.Timestamp),
+			Fn:         formatStringToTimestamp,
+			Info:       "to_timestamp converts a timestamp string in a specified format into a timestamp in UTC with the appropriate precision.",
+		},
+		tree.Overload{
+			Types:      tree.ArgTypes{{"timestamp", types.Timestamp}, {"format_string", types.String}},
+			ReturnType: tree.FixedReturnType(types.Timestamp),
+			Fn:         formatTimestampToTimestamp,
+			Info:       "to_timestamp converts a timestamp string in a specified format into a timestamp in UTC with the appropriate precision.",
+		},
+	),
 	"time_bucket_gapfill": makeBuiltin(tree.FunctionProperties{NullableArgs: true},
 		tree.Overload{
 			Types:      tree.ArgTypes{{"timestamp", types.Timestamp}, {"interval", types.String}},
@@ -5117,6 +5143,30 @@ func timeBucketOverload(evalCtx *tree.EvalContext, args tree.Datums) (tree.Datum
 	return tree.MakeDTimestamp(getNewTime(value.Time, dInterval, time.UTC), 0), nil
 }
 
+// unixStringToTimestamp converts a Unix timestamp string to a timestamp in UTC.
+func unixStringToTimestamp(evalCtx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+	if args[0] == tree.DNull {
+		return tree.DNull, nil
+	}
+	timestampString := string(tree.MustBeDString(args[0]))
+	unixTimestamp, err := strconv.ParseInt(timestampString, 10, 64)
+	if err != nil {
+		return nil, fmt.Errorf("invalid timestamp string: %v", err)
+	}
+	timestamp := timeutil.Unix(unixTimestamp, 0).UTC()
+	return tree.MakeDTimestamp(timestamp, 0), nil
+}
+
+// unixIntToTimestamp converts a Unix timestamp integer to a timestamp in UTC.
+func unixIntToTimestamp(evalCtx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+	if args[0] == tree.DNull {
+		return tree.DNull, nil
+	}
+	unixTimestamp := int64(tree.MustBeDInt(args[0]))
+	timestamp := timeutil.Unix(unixTimestamp, 0).UTC()
+	return tree.MakeDTimestamp(timestamp, 0), nil
+}
+
 func timeBucketTZOverload(evalCtx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
 	if _, ok := args[0].(tree.DNullExtern); ok {
 		return &tree.DTimestampTZ{}, pgerror.New(pgcode.InvalidParameterValue, "first arg can not be null")
@@ -5130,6 +5180,111 @@ func timeBucketTZOverload(evalCtx *tree.EvalContext, args tree.Datums) (tree.Dat
 		return &tree.DTimestampTZ{}, err
 	}
 	return tree.MakeDTimestampTZ(getNewTime(value.Time, dInterval, evalCtx.GetLocation()), 0), nil
+}
+
+// formatStringToTimestamp converts a formatted timestamp string to a timestamp in UTC, based on the provided format (US, MS, NS).
+func formatStringToTimestamp(evalCtx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+	if args[0] == tree.DNull || args[1] == tree.DNull {
+		return tree.DNull, nil
+	}
+	timestampString := string(tree.MustBeDString(args[0]))
+	formatString := string(tree.MustBeDString(args[1]))
+
+	timestampString = normalizeFractionalSeconds(timestampString, formatString)
+	matched, _ := regexp.MatchString(`^YYYY-MM-DD HH24:MI:SS\.(US|MS|NS)$`, formatString)
+	if !matched {
+		return nil, fmt.Errorf("unsupported format: %q, only support: YYYY-MM-DD HH24:MI:SS.US, YYYY-MM-DD HH24:MI:SS.MS, YYYY-MM-DD HH24:MI:SS.NS", formatString)
+	}
+	goFormatString, precision := convertToGoFormat(formatString)
+
+	parsedTime, err := time.Parse(goFormatString, timestampString)
+	if err != nil {
+		return nil, fmt.Errorf("invalid timestamp string: %v", err)
+	}
+
+	return tree.MakeDTimestamp(parsedTime, precision), nil
+}
+
+// formatTimestampToTimestamp converts a timestamp to a formatted string and then parses it back into a timestamp using the specified format (US, MS, NS).
+func formatTimestampToTimestamp(evalCtx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+	if args[0] == tree.DNull || args[1] == tree.DNull {
+		return tree.DNull, nil
+	}
+	timestamp := tree.MustBeDTimestamp(args[0])
+	formatString := string(tree.MustBeDString(args[1]))
+	timestampString := timestamp.Time.Format("2006-01-02 15:04:05.000000000")
+
+	timestampString = normalizeFractionalSeconds(timestampString, formatString)
+	matched, _ := regexp.MatchString(`^YYYY-MM-DD HH24:MI:SS\.(US|MS|NS)$`, formatString)
+	if !matched {
+		return nil, fmt.Errorf("unsupported format: %q, only support: YYYY-MM-DD HH24:MI:SS.US, YYYY-MM-DD HH24:MI:SS.MS, YYYY-MM-DD HH24:MI:SS.NS", formatString)
+	}
+
+	goFormatString, precision := convertToGoFormat(formatString)
+
+	parsedTime, err := time.Parse(goFormatString, timestampString)
+	if err != nil {
+		return nil, fmt.Errorf("invalid timestamp string: %v (input: %q, format: %q)", err, timestampString, goFormatString)
+	}
+
+	return tree.MakeDTimestamp(parsedTime, precision), nil
+}
+
+// Normalizes the fractional part of a timestamp to match the expected number of digits based on the format (MS, US, NS).
+func normalizeFractionalSeconds(timestamp, format string) string {
+	dotIndex := strings.Index(timestamp, ".")
+	if dotIndex == -1 {
+		return timestamp
+	}
+
+	fractionalPart := timestamp[dotIndex+1:]
+	expectedDigits := 0
+
+	if strings.HasSuffix(format, "MS") {
+		expectedDigits = 3
+	} else if strings.HasSuffix(format, "US") {
+		expectedDigits = 6
+	} else if strings.HasSuffix(format, "NS") {
+		expectedDigits = 9
+	} else {
+		return timestamp
+	}
+
+	currentDigits := len(fractionalPart)
+	if currentDigits < expectedDigits {
+		fractionalPart += strings.Repeat("0", expectedDigits-currentDigits)
+		return timestamp[:dotIndex+1] + fractionalPart
+	} else if currentDigits > expectedDigits {
+		return timestamp[:dotIndex+1+expectedDigits]
+	}
+
+	return timestamp
+}
+
+// convertToGoFormat converts custom datetime format to Go layout format.
+func convertToGoFormat(format string) (string, time.Duration) {
+	precision := time.Nanosecond
+	switch {
+	case strings.HasSuffix(format, ".MS"):
+		format = strings.TrimSuffix(format, ".MS") + ".000"
+		precision = time.Millisecond
+	case strings.HasSuffix(format, ".US"):
+		format = strings.TrimSuffix(format, ".US") + ".000000"
+		precision = time.Microsecond
+	case strings.HasSuffix(format, ".NS"):
+		format = strings.TrimSuffix(format, ".NS") + ".000000000"
+		precision = time.Nanosecond
+	}
+	format = strings.NewReplacer(
+		"YYYY", "2006",
+		"MM", "01",
+		"DD", "02",
+		"HH24", "15",
+		"MI", "04",
+		"SS", "05",
+	).Replace(format)
+
+	return format, precision
 }
 
 var lengthImpls = func(incBitOverload bool) builtinDefinition {
