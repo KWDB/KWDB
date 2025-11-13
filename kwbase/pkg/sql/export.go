@@ -252,6 +252,9 @@ func (ef *execFactory) ConstructExport(
 			return nil, errors.Errorf("Export support SQL cannot be used in conjunction with chunk sizes")
 		}
 		chunkSize, err = strconv.Atoi(override)
+		if chunkSize > 100000 {
+			return nil, errors.Errorf("The chunk size must be less than 100000")
+		}
 		if err != nil {
 			return nil, pgerror.New(pgcode.InvalidParameterValue, err.Error())
 		}

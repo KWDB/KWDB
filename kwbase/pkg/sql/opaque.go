@@ -199,6 +199,16 @@ func buildOpaque(
 		plan, err = p.ShowFingerprints(ctx, n)
 	case *tree.Truncate:
 		plan, err = p.Truncate(ctx, n)
+	case *tree.Backup:
+		plan, err = p.maybePlanHook(ctx, stmt)
+		if plan == nil && err == nil {
+			return nil, nil, errors.Errorf("The BACKUP can only be used in the enterprise version")
+		}
+	case *tree.Restore:
+		plan, err = p.maybePlanHook(ctx, stmt)
+		if plan == nil && err == nil {
+			return nil, nil, errors.Errorf("The RESTORE can only be used in the enterprise version")
+		}
 	case tree.CCLOnlyStatement:
 		plan, err = p.maybePlanHook(ctx, stmt)
 		if plan == nil && err == nil {

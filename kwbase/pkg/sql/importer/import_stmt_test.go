@@ -221,6 +221,62 @@ func TestDatabaseExportImportAudit(t *testing.T) {
 
 }
 
+func TestBackupRestoreSQL(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+	ctx := context.Background()
+	baseDir, cleanup := testutils.TempDir(t)
+	defer cleanup()
+	tc := testcluster.StartTestCluster(
+		t, 1, base.TestClusterArgs{ServerArgs: base.TestServerArgs{ExternalIODir: baseDir}})
+	defer tc.Stopper().Stop(ctx)
+	conn := tc.Conns[0]
+	sqlDB := sqlutils.MakeSQLRunner(conn)
+
+	sqlDB.Exec(t, `create database d1;`)
+	sqlDB.Exec(t, `use d1;`)
+	sqlDB.Exec(t, `create table t1(a int);`)
+	sqlDB.Exec(t, `insert into t1 values (1);`)
+	sqlDB.Exec(t, `insert into t1 values (2);`)
+	sqlDB.Exec(t, `insert into t1 values (3);`)
+	sqlDB.Exec(t, `create table t2(b string);`)
+	sqlDB.Exec(t, `insert into t2 values ('abc');`)
+	sqlDB.Exec(t, `use defaultdb;`)
+
+	// test backup
+	sqlDB.ExpectErr(t, "The BACKUP can only be used in the enterprise version", `BACKUP TABLE d1.t1 TO "nodelocal://1/tb1";`)
+	sqlDB.ExpectErr(t, "The BACKUP can only be used in the enterprise version", `BACKUP DATABASE d1 TO "nodelocal://1/db1";`)
+
+	// test restore
+	sqlDB.ExpectErr(t, "The RESTORE can only be used in the enterprise version", `RESTORE TABLE t1 FROM "nodelocal://1/tb1";`)
+	sqlDB.ExpectErr(t, "The RESTORE can only be used in the enterprise version", `RESTORE DATABASE d1 FROM "nodelocal://1/db1";`)
+}
+
+func TestExportChunkSize(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+	ctx := context.Background()
+	baseDir, cleanup := testutils.TempDir(t)
+	defer cleanup()
+	tc := testcluster.StartTestCluster(
+		t, 1, base.TestClusterArgs{ServerArgs: base.TestServerArgs{ExternalIODir: baseDir}})
+	defer tc.Stopper().Stop(ctx)
+	conn := tc.Conns[0]
+	sqlDB := sqlutils.MakeSQLRunner(conn)
+
+	sqlDB.Exec(t, `create database d1;`)
+	sqlDB.Exec(t, `use d1;`)
+	sqlDB.Exec(t, `create table t1(a int);`)
+	sqlDB.Exec(t, `insert into t1 values (1);`)
+	sqlDB.Exec(t, `insert into t1 values (2);`)
+	sqlDB.Exec(t, `insert into t1 values (3);`)
+	sqlDB.Exec(t, `create table t2(b string);`)
+	sqlDB.Exec(t, `insert into t2 values ('abc');`)
+	sqlDB.Exec(t, `use defaultdb;`)
+
+	// test export
+	sqlDB.ExpectErr(t, "The chunk size must be less than 100000", `EXPORT INTO CSV "nodelocal://1/tb1" FROM TABLE d1.t1 with chunk_rows='10000000';`)
+	sqlDB.ExpectErr(t, "The chunk size must be less than 100000", `EXPORT INTO CSV "nodelocal://1/tb1" FROM DATABASE d1 with chunk_rows='10000000';`)
+}
+
 func TestTableExportImportAudit(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 	ctx := context.Background()
