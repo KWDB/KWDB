@@ -568,6 +568,7 @@ KStatus WALBufferMgr::readUncommittedTxnID(std::vector<uint64_t>& uncommitted_id
           LOG_ERROR("Failed to parse the WAL log.")
           break;
         }
+        uncommitted_id.emplace_back(x_id);
         delete[] read_buf;
         read_buf = nullptr;
         break;
@@ -587,6 +588,8 @@ KStatus WALBufferMgr::readUncommittedTxnID(std::vector<uint64_t>& uncommitted_id
         if (x_id != current_lsn) {
           memcpy(&x_id, read_buf, sizeof(x_id));
         }
+        auto new_end = std::remove(uncommitted_id.begin(), uncommitted_id.end(), x_id);
+        uncommitted_id.erase(new_end, uncommitted_id.end());
         memcpy(tsx_id, read_buf + sizeof(x_id), LogEntry::TS_TRANS_ID_LEN);
         delete[] read_buf;
         read_buf = nullptr;

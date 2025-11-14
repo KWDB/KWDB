@@ -196,16 +196,10 @@ KStatus TsVGroup::ReadWALLogFromLastCheckpoint(kwdbContext_p ctx, std::vector<Lo
   // new tmp wal mgr to read chk wal file
   WALMgr tmp_wal = WALMgr(engine_options_->db_path, VGroupDirName(vgroup_id_), engine_options_, true);
   tmp_wal.InitForChk(ctx, meta);
-  uint64_t start_lsn = first_lsn;
-  uint64_t end_lsn = min(first_lsn + MAX_PER_READ_LSN_RANGES, last_lsn);
-  while (end_lsn > start_lsn) {
-    s = tmp_wal.ReadUncommittedWALLog(logs, start_lsn, end_lsn, ignore, uncommitted_xid);
-    if (s == FAIL) {
-      LOG_ERROR("Failed to ReadUncommittedWALLog");
-      return FAIL;
-    }
-    start_lsn = min(start_lsn + MAX_PER_READ_LSN_RANGES, last_lsn);
-    end_lsn = min(end_lsn + MAX_PER_READ_LSN_RANGES, last_lsn);
+  s = tmp_wal.ReadUncommittedWALLog(logs, first_lsn, last_lsn, ignore, uncommitted_xid);
+  if (s == FAIL) {
+    LOG_ERROR("Failed to ReadUncommittedWALLog");
+    return FAIL;
   }
   return s;
 }

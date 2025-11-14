@@ -866,17 +866,11 @@ KStatus WALMgr::ReadUncommittedTxnID(std::vector<uint64_t>& uncommitted_xid) {
   file_mgr_->Lock();
   auto first_lsn = GetFirstLSN();
   auto last_lsn = FetchCurrentLSN();
-  uint64_t start_lsn = first_lsn;
-  uint64_t end_lsn = min(first_lsn + MAX_PER_READ_LSN_RANGES, last_lsn);
-  while (end_lsn > start_lsn) {
-    KStatus status = buffer_mgr_->readUncommittedTxnID(uncommitted_xid, start_lsn, end_lsn);
-    if (status == FAIL) {
-      LOG_ERROR("Failed to readUncommittedTxnID");
-      file_mgr_->Unlock();
-      return FAIL;
-    }
-    start_lsn = min(start_lsn + MAX_PER_READ_LSN_RANGES, last_lsn);
-    end_lsn = min(end_lsn + MAX_PER_READ_LSN_RANGES, last_lsn);
+  KStatus status = buffer_mgr_->readUncommittedTxnID(uncommitted_xid, first_lsn, last_lsn);
+  if (status == FAIL) {
+    LOG_ERROR("Failed to readUncommittedTxnID");
+    file_mgr_->Unlock();
+    return FAIL;
   }
   file_mgr_->Unlock();
   return SUCCESS;
