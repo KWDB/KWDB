@@ -31,6 +31,7 @@
 
 namespace kwdbts {
 
+
 struct TsEntitySegmentBlockItem {
   uint64_t block_id = 0;  // block item id
   uint64_t entity_id = 0;
@@ -48,7 +49,8 @@ struct TsEntitySegmentBlockItem {
   uint64_t last_osn = 0;
   uint64_t agg_offset = 0;
   uint32_t agg_len = 0;
-  char reserved[20] = {0};            // reserved for user-defined information.
+  uint32_t block_version = INVALID_BLOCK_VERSION;
+  char reserved[16] = {0};  // reserved for user-defined information.
 };
 static_assert(sizeof(TsEntitySegmentBlockItem) == 128,
               "wrong size of TsEntitySegmentBlockItem, please check compatibility.");
@@ -221,7 +223,7 @@ struct TsEntitySegmentBlockInfo {
 };
 
 struct TsEntitySegmentColumnBlock {
-  TsBitmap bitmap;
+  std::unique_ptr<TsBitmapBase> bitmap;
   std::string buffer;
   std::string agg;
   std::vector<std::string> var_rows;
@@ -264,6 +266,7 @@ class TsEntityBlock : public TsBlock {
 
   // total memory size of all column blocks loaded.
   uint32_t memory_size_{0};
+  uint32_t block_version_ = INVALID_BLOCK_VERSION;
 
  public:
   TsEntityBlock() = delete;
@@ -271,6 +274,8 @@ class TsEntityBlock : public TsBlock {
                 std::shared_ptr<TsEntitySegment>& block_segment);
   TsEntityBlock(const TsEntityBlock& other) = delete;
   ~TsEntityBlock() {}
+
+  uint32_t GetBlockVersion() const override { return block_version_; }
 
   size_t GetRowNum() override { return n_rows_; }
 

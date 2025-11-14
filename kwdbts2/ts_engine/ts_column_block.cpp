@@ -93,7 +93,7 @@ bool TsColumnBlock::GetCompressedData(std::string* out, TsColumnCompressInfo* in
   // 1. compress bitmap;
   // TODO(zzr) bitmap compression algorithms;
   assert(count_ == bitmap.GetCount());
-  compressed_data.push_back(static_cast<char>(BitmapCompAlg::kPlain));
+  compressed_data.push_back(static_cast<char>(BitmapType::kRaw));
   compressed_data.append(bitmap.GetStr());
   info->bitmap_len = compressed_data.size();
 
@@ -146,8 +146,8 @@ KStatus TsColumnBlock::ParseColumnData(const AttributeInfo& col_schema, TSSlice 
   // std::unique_ptr<TsBitmap> p_bitmap = nullptr;
   TsSliceGuard bitmap_guard;
   if (info.bitmap_len != 0) {
-    BitmapCompAlg bitmap_alg = static_cast<BitmapCompAlg>(compressed_data.data[0]);
-    if (bitmap_alg != BitmapCompAlg::kPlain) {
+    BitmapType bitmap_alg = static_cast<BitmapType>(compressed_data.data[0]);
+    if (bitmap_alg != BitmapType::kRaw) {
       LOG_ERROR("Unsupported bitmap compression algorithm: %d", static_cast<int>(bitmap_alg));
       return FAIL;
     }

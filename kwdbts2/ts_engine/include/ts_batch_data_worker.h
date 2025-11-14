@@ -10,18 +10,16 @@
 // See the Mulan PSL v2 for more details.
 #pragma once
 
-#include <map>
+#include <cstddef>
+#include <cstdint>
+#include <cstdio>
 #include <memory>
 #include <string>
 #include <vector>
-#include <cstdio>
-#include <list>
-#include <unordered_map>
-#include <utility>
+
 #include "ts_block_span_sorted_iterator.h"
 #include "ts_common.h"
-#include "ts_const.h"
-#include "ts_entity_segment_builder.h"
+#include "ts_compatibility.h"
 #include "ts_table.h"
 #include "ts_version.h"
 
@@ -34,35 +32,51 @@ namespace kwdbts {
 // +--------+----------+------+---------+-----+-----------------------------+
 
 class TsBatchData {
+ private:
+  struct __attribute__((packed)) BatchHeader {
+    char checksum[16];
+    uint16_t hash_point_id;
+    uint32_t data_length;
+    char reserve[8];
+    uint32_t batch_version;
+    uint32_t ts_version;
+    uint32_t row_num;
+    uint8_t row_type;
+  };
+
  public:
   /*  header part
-  ____________________________________________________________________________________________________
-  |    16    |       2       |         4        |       12       |       4        |   4    |    1    |
-  |----------|---------------|------------------|----------------|----------------|--------|---------|
-  | checksum |   hash point  |    data length   |     reserve    |    TSVersion   | rowNum | rowType |
+  ____________________________________________________________________________________________________________________
+  |    16    |       2       |         4        |        8       |       4       |       4        |   4    |    1    |
+  |----------|---------------|------------------|----------------|---------------|----------------|--------|---------|
+  | checksum |   hash point  |    data length   |     reserve    |  BatchVersion |    TSVersion   | rowNum | rowType |
   */
-  const static uint8_t checksum_offset_ = 0;  // NOLINT
-  const static uint8_t checksum_size_ = 16;  // NOLINT
+  constexpr static uint8_t checksum_offset_ = offsetof(BatchHeader, checksum);  // NOLINT
+  constexpr static uint8_t checksum_size_ = sizeof(BatchHeader::checksum);  // NOLINT
 
-  const static uint8_t hash_point_id_offset_ = 16;  // NOLINT
-  const static uint8_t hash_point_id_size_ = 2;  // NOLINT
+  constexpr static uint8_t hash_point_id_offset_ = offsetof(BatchHeader, hash_point_id);  // NOLINT
+  constexpr static uint8_t hash_point_id_size_ = sizeof(BatchHeader::hash_point_id);  // NOLINT
 
-  const static uint8_t data_length_offset_ = 18;  // NOLINT
-  const static uint8_t data_length_size_ = 4;  // NOLINT
+  constexpr static uint8_t data_length_offset_ = offsetof(BatchHeader, data_length);  // NOLINT
+  constexpr static uint8_t data_length_size_ = sizeof(BatchHeader::data_length);  // NOLINT
 
-  const static uint8_t reserve_offset_ = 22;  // NOLINT
-  const static uint8_t reserve_size_ = 12;  // NOLINT
+  constexpr static uint8_t reserve_offset_ = offsetof(BatchHeader, reserve);  // NOLINT
+  constexpr static uint8_t reserve_size_ = sizeof(BatchHeader::reserve);  // NOLINT
 
-  const static uint8_t ts_version_offset_ = 34;  // NOLINT
-  const static uint8_t ts_version_size_ = 4;  // NOLINT
+  constexpr static uint8_t batch_version_offset_ = offsetof(BatchHeader, batch_version);  // NOLINT
+  constexpr static uint8_t batch_version_size_ = sizeof(BatchHeader::batch_version);  // NOLINT
 
-  const static uint8_t row_num_offset_ = 38;  // NOLINT
-  const static uint8_t row_num_size_ = 4;  // NOLINT
+  constexpr static uint8_t ts_version_offset_ = offsetof(BatchHeader, ts_version);  // NOLINT
+  constexpr static uint8_t ts_version_size_ = sizeof(BatchHeader::ts_version);  // NOLINT
 
-  const static uint8_t row_type_offset_ = 42;  // NOLINT
-  const static uint8_t row_type_size_ = 1;  // NOLINT
+  constexpr static uint8_t row_num_offset_ = offsetof(BatchHeader, row_num);  // NOLINT
+  constexpr static uint8_t row_num_size_ = sizeof(BatchHeader::row_num);  // NOLINT
 
-  const static int header_size_ = row_type_offset_ + row_type_size_;  // NOLINT
+  constexpr static uint8_t row_type_offset_ = offsetof(BatchHeader, row_type);  // NOLINT
+  constexpr static uint8_t row_type_size_ = sizeof(BatchHeader::row_type);  // NOLINT
+
+  constexpr static int header_size_ = row_type_offset_ + row_type_size_;  // NOLINT
+  static_assert(header_size_ == 43, "header size is not 43");
 
   // tag part
   uint32_t p_tag_offset_ = 0;
@@ -79,54 +93,74 @@ class TsBatchData {
   uint32_t block_span_data_offset_ = 0;
   uint32_t block_span_data_size_ = 0;
 
+ private:
+  struct __attribute__((packed)) BlockSpanHeader {
+    uint32_t length;
+    timestamp64 min_ts, max_ts;
+    uint64_t min_osn, max_osn, first_osn, last_osn;
+    uint32_t n_cols, n_rows;
+    uint32_t block_version;
+  };
+
+ public:
   // block span length + min ts + max ts + n_cols + n_rows + min osn + max osn + first osn + last osn
-  const static int block_span_data_header_size_ = 3 * sizeof(uint32_t) + 2 * sizeof(timestamp64) + 4 * sizeof(uint64_t);  // NOLINT
+  const static int block_span_data_header_size_ = sizeof(BlockSpanHeader);  // NOLINT
 
-  const static uint8_t length_offset_in_span_data_ = 0;  // NOLINT
-  const static uint8_t length_size_in_span_data_ = sizeof(uint32_t);  // NOLINT
+  constexpr static uint8_t length_offset_in_span_data_ = offsetof(BlockSpanHeader, length);  // NOLINT
+  constexpr static uint8_t length_size_in_span_data_ = sizeof(BlockSpanHeader::length);      // NOLINT
 
-  const static uint8_t min_ts_offset_in_span_data_ = length_offset_in_span_data_ + length_size_in_span_data_;  // NOLINT
-  const static uint8_t min_ts_size_in_span_data_ = sizeof(timestamp64);  // NOLINT
+  constexpr static uint8_t min_ts_offset_in_span_data_ = offsetof(BlockSpanHeader, min_ts);  // NOLINT
+  constexpr static uint8_t min_ts_size_in_span_data_ = sizeof(BlockSpanHeader::min_ts);      // NOLINT
 
-  const static uint8_t max_ts_offset_in_span_data_ = min_ts_offset_in_span_data_ + min_ts_size_in_span_data_;  // NOLINT
-  const static uint8_t max_ts_size_in_span_data_ = sizeof(timestamp64);  // NOLINT
+  constexpr static uint8_t max_ts_offset_in_span_data_ = offsetof(BlockSpanHeader, max_ts);  // NOLINT
+  constexpr static uint8_t max_ts_size_in_span_data_ = sizeof(BlockSpanHeader::max_ts);      // NOLINT
 
-  const static uint8_t min_osn_offset_in_span_data_ = max_ts_offset_in_span_data_ + max_ts_size_in_span_data_;  // NOLINT
-  const static uint8_t min_osn_size_in_span_data_ = sizeof(uint64_t);  // NOLINT
+  constexpr static uint8_t min_osn_offset_in_span_data_ = offsetof(BlockSpanHeader, min_osn);  // NOLINT
+  constexpr static uint8_t min_osn_size_in_span_data_ = sizeof(BlockSpanHeader::min_osn);      // NOLINT
 
-  const static uint8_t max_osn_offset_in_span_data_ = min_osn_offset_in_span_data_ + min_osn_size_in_span_data_;  // NOLINT
-  const static uint8_t max_osn_size_in_span_data_ = sizeof(uint64_t);  // NOLINT
+  constexpr static uint8_t max_osn_offset_in_span_data_ = offsetof(BlockSpanHeader, max_osn);  // NOLINT
+  constexpr static uint8_t max_osn_size_in_span_data_ = sizeof(BlockSpanHeader::max_osn);      // NOLINT
 
-  const static uint8_t first_osn_offset_in_span_data_ = max_osn_offset_in_span_data_ + max_osn_size_in_span_data_;  // NOLINT
-  const static uint8_t first_osn_size_in_span_data_ = sizeof(uint64_t);  // NOLINT
+  constexpr static uint8_t first_osn_offset_in_span_data_ = offsetof(BlockSpanHeader, first_osn);  // NOLINT
+  constexpr static uint8_t first_osn_size_in_span_data_ = sizeof(BlockSpanHeader::first_osn);      // NOLINT
 
-  const static uint8_t last_osn_offset_in_span_data_ = first_osn_offset_in_span_data_ + first_osn_size_in_span_data_;  // NOLINT
-  const static uint8_t last_osn_size_in_span_data_ = sizeof(uint64_t);  // NOLINT
+  constexpr static uint8_t last_osn_offset_in_span_data_ = offsetof(BlockSpanHeader, last_osn);  // NOLINT
+  constexpr static uint8_t last_osn_size_in_span_data_ = sizeof(BlockSpanHeader::last_osn);      // NOLINT
 
-  const static uint8_t n_cols_offset_in_span_data_ = last_osn_offset_in_span_data_ + last_osn_size_in_span_data_;  // NOLINT
-  const static uint8_t n_cols_size_in_span_data_ = sizeof(uint32_t);  // NOLINT
+  constexpr static uint8_t n_cols_offset_in_span_data_ = offsetof(BlockSpanHeader, n_cols);  // NOLINT
+  constexpr static uint8_t n_cols_size_in_span_data_ = sizeof(BlockSpanHeader::n_cols);      // NOLINT
 
-  const static uint8_t n_rows_offset_in_span_data_ = n_cols_offset_in_span_data_ + n_cols_size_in_span_data_;  // NOLINT
-  const static uint8_t n_rows_size_in_span_data_ = sizeof(uint32_t);  // NOLINT
+  constexpr static uint8_t n_rows_offset_in_span_data_ = offsetof(BlockSpanHeader, n_rows);  // NOLINT
+  constexpr static uint8_t n_rows_size_in_span_data_ = sizeof(BlockSpanHeader::n_rows);      // NOLINT
+
+  constexpr static uint8_t block_version_offset_in_span_data_ = offsetof(BlockSpanHeader, block_version);  // NOLINT
+  constexpr static uint8_t block_version_size_in_span_data_ = sizeof(BlockSpanHeader::block_version);      // NOLINT
 
   std::string data_;
 
- public:
-  explicit TsBatchData(std::string batch_data) : data_(batch_data) {
-    p_tag_size_ = KUint16(const_cast<char *>(data_.data()) + header_size_);
-    p_tag_offset_ = header_size_ + sizeof(p_tag_size_);
-    tags_data_offset_ = p_tag_offset_ + p_tag_size_ + sizeof(tags_data_size_);
-    tags_data_size_ = KUint32(const_cast<char *>(data_.data()) + tags_data_offset_ - sizeof(tags_data_size_));
-    assert(tags_data_offset_ + tags_data_size_ <= data_.size());
-    if (GetRowType() == DataTagFlag::DATA_AND_TAG) {
-      block_span_data_offset_ = tags_data_offset_ + tags_data_size_;
-      block_span_data_size_ = data_.size() - block_span_data_offset_;
-    }
+  void SetBatchVersion(uint32_t batch_version) {
+    memcpy(data_.data() + batch_version_offset_, &batch_version, batch_version_size_);
   }
+
+ public:
+  // explicit TsBatchData(std::string batch_data) : data_(batch_data) {
+  //   p_tag_size_ = KUint16(const_cast<char *>(data_.data()) + header_size_);
+  //   p_tag_offset_ = header_size_ + sizeof(p_tag_size_);
+  //   tags_data_offset_ = p_tag_offset_ + p_tag_size_ + sizeof(tags_data_size_);
+  //   tags_data_size_ = KUint32(const_cast<char *>(data_.data()) + tags_data_offset_ - sizeof(tags_data_size_));
+  //   assert(tags_data_offset_ + tags_data_size_ <= data_.size());
+  //   if (GetRowType() == DataTagFlag::DATA_AND_TAG) {
+  //     block_span_data_offset_ = tags_data_offset_ + tags_data_size_;
+  //     block_span_data_size_ = data_.size() - block_span_data_offset_;
+  //   }
+  // }
   TsBatchData() {
     data_.resize(header_size_);
+    SetBatchVersion(CURRENT_BATCH_VERSION);
   }
   ~TsBatchData() = default;
+
+  uint32_t GetBatchVersion() const { return *reinterpret_cast<const uint32_t *>(data_.data() + batch_version_offset_); }
 
   TSSlice GetCheckSum() const {
     return TSSlice{const_cast<char *>(const_cast<char *>(data_.data()) + checksum_offset_), checksum_size_};
@@ -208,7 +242,7 @@ class TsBatchData {
 
   void AddBlockSpanDataHeader(uint32_t block_span_length, timestamp64 min_ts, timestamp64 max_ts,
                               uint64_t min_osn, uint64_t max_osn, uint64_t first_osn, uint64_t last_osn,
-                              uint32_t n_cols, uint32_t n_rows) {
+                              uint32_t n_cols, uint32_t n_rows, uint32_t block_version) {
     assert(tags_data_size_ != 0 && tags_data_offset_ != 0);
     block_span_data_offset_ = data_.size();
     data_.append(reinterpret_cast<const char *>(&block_span_length), sizeof(uint32_t));
@@ -220,6 +254,7 @@ class TsBatchData {
     data_.append(reinterpret_cast<const char *>(&last_osn), sizeof(uint64_t));
     data_.append(reinterpret_cast<const char *>(&n_cols), sizeof(uint32_t));
     data_.append(reinterpret_cast<const char *>(&n_rows), sizeof(uint32_t));
+    data_.append(reinterpret_cast<const char *>(&block_version), sizeof(uint32_t));
     assert(data_.size() - block_span_data_offset_ == block_span_data_header_size_);
   }
 
@@ -243,6 +278,7 @@ class TsBatchData {
   void Clear() {
     data_.clear();
     data_.resize(header_size_);
+    SetBatchVersion(CURRENT_BATCH_VERSION);
   }
 };
 
@@ -334,6 +370,7 @@ class TsWriteBatchDataWorker : public TsBatchDataWorker {
     TSEntityID entity_id;
     timestamp64 p_time;
     uint64_t data_length;
+    uint32_t batch_version = INVALID_BATCH_VERSION;
   };
   std::unique_ptr<TsAppendOnlyFile> w_file_;
   KLatch w_file_latch_;

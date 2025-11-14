@@ -16,6 +16,7 @@
 #include "kwdb_type.h"
 #include "libkwdbts2.h"
 #include "ts_agg.h"
+#include "ts_bitmap.h"
 #include "ts_block_span_sorted_iterator.h"
 #include "ts_coding.h"
 #include "ts_compressor.h"
@@ -111,6 +112,11 @@ KStatus TsEntitySegmentBlockItemFile::GetBlockItem(uint64_t blk_id, TsEntitySegm
     return s;
   }
   *blk_item = reinterpret_cast<TsEntitySegmentBlockItem*>(result.data);
+  if ((*blk_item)->block_version == INVALID_BLOCK_VERSION) {
+    LOG_ERROR("TsEntitySegmentBlockItemFile block version is invalid, file_path=%s, block_id=%lu", file_path_.c_str(),
+              blk_id);
+    return FAIL;
+  }
   return KStatus::SUCCESS;
 }
 
@@ -252,7 +258,7 @@ KStatus TsEntitySegmentMetaManager::GetBlockSpans(const TsBlockItemFilterParams&
 
 TsEntityBlock::TsEntityBlock(uint32_t table_id, TsEntitySegmentBlockItem* block_item,
                              std::shared_ptr<TsEntitySegment>& block_segment)
-                             : rw_latch_(RWLATCH_ID_ENTITY_BLOCK_RWLOCK) {
+    : rw_latch_(RWLATCH_ID_ENTITY_BLOCK_RWLOCK) {
   table_id_ = table_id;
   table_version_ = block_item->table_version;
   entity_id_ = block_item->entity_id;
@@ -270,6 +276,7 @@ TsEntityBlock::TsEntityBlock(uint32_t table_id, TsEntitySegmentBlockItem* block_
   agg_length_ = block_item->agg_len;
   block_id_ = block_item->block_id;
   entity_segment_ = block_segment;
+  block_version_ = block_item->block_version;
   // reserve two columns for timestamp and OSN
   column_blocks_.resize(n_cols_);
 }
@@ -328,17 +335,35 @@ KStatus TsEntityBlock::LoadColData(int32_t col_idx, const std::vector<AttributeI
     }
   }
 #endif
-  if (col_idx >= 1) {
-    bitmap_len = TsBitmap::GetBitmapLen(n_rows_);
-    column_blocks_[col_idx + 1]->bitmap = TsBitmap({data.data, bitmap_len}, n_rows_);
-  } else if (col_idx == 0) {
-    // Timestamp Column Assign Default Value kValid
-    column_blocks_[col_idx + 1]->bitmap.SetCount(n_rows_);
+  if (block_version_ < 1) {
+    if (col_idx >= 1) {
+      bitmap_len = TsBitmap::GetBitmapLen(n_rows_);
+      column_blocks_[col_idx + 1]->bitmap = std::make_unique<TsBitmap>(TSSlice{data.data, bitmap_len}, n_rows_);
+    } else if (col_idx == 0) {
+      // Timestamp Column Assign Default Value kValid
+      column_blocks_[col_idx + 1]->bitmap = std::make_unique<TsUniformBitmap<kValid>>(n_rows_);
+    }
+  } else if (block_version_ >= 1 && block_version_ < BLOCK_VERSION_LIMIT) {
+    bool has_bitmap = col_idx >= 1;  //&& !(*metric_schema_)[col_idx].isFlag(AINFO_NOT_NULL);
+    if (has_bitmap) {
+      std::unique_ptr<TsBitmapBase> bitmap;
+      bool ok = mgr.DecompressBitmap(data, &bitmap, n_rows_, &bitmap_len);
+      if (!ok) {
+        LOG_ERROR("block segment column[%u] bitmap decompress failed", col_idx + 1);
+        return KStatus::FAIL;
+      }
+      column_blocks_[col_idx + 1]->bitmap = std::move(bitmap);
+    } else {
+      column_blocks_[col_idx + 1]->bitmap = std::make_unique<TsUniformBitmap<kValid>>(n_rows_);
+    }
+  } else {
+    LOG_ERROR("unexpected block version %u", block_version_);
+    return FAIL;
   }
   RemovePrefix(&data, bitmap_len);
   if (!is_var_type) {
     TsSliceGuard plain;
-    TsBitmap* bitmap = is_not_null ? nullptr : &column_blocks_[col_idx + 1]->bitmap;
+    TsBitmapBase* bitmap = is_not_null ? nullptr : column_blocks_[col_idx + 1]->bitmap.get();
     bool ok = mgr.DecompressData(data, bitmap, n_rows_, &plain);
     if (!ok) {
       LOG_ERROR("block segment column[%u] data decompress failed, entity segment is [%s], handle info %s", col_idx + 1,
@@ -537,7 +562,7 @@ KStatus TsEntityBlock::GetColBitmap(uint32_t col_id, const std::vector<Attribute
     }
   }
 
-  *bitmap = column_blocks_[col_id + 1]->bitmap.AsView();
+  *bitmap = column_blocks_[col_id + 1]->bitmap->AsView();
   return KStatus::SUCCESS;
 }
 
@@ -563,7 +588,7 @@ bool TsEntityBlock::IsColNull(int row_num, int col_id, const std::vector<Attribu
   }
   // assert(col_id < column_blocks_.size() - 1);
   assert(row_num < n_rows_);
-  return column_blocks_[col_id + 1]->bitmap[row_num] == DataFlags::kNull;
+  return column_blocks_[col_id + 1]->bitmap->At(row_num) == DataFlags::kNull;
 }
 
 timestamp64 TsEntityBlock::GetTS(int row_num) {

@@ -32,6 +32,7 @@
 #include "libkwdbts2.h"
 #include "ts_block.h"
 #include "ts_common.h"
+#include "ts_compatibility.h"
 #include "ts_entity_segment.h"
 #include "ts_entity_segment_builder.h"
 #include "ts_filename.h"
@@ -1285,8 +1286,8 @@ KStatus TsVGroup::GetEntitySegmentBuilder(std::shared_ptr<const TsPartitionVersi
   return KStatus::SUCCESS;
 }
 
-KStatus TsVGroup::WriteBatchData(TSTableID tbl_id, uint32_t table_version,
-                                 TSEntityID entity_id, timestamp64 p_time, TSSlice data) {
+KStatus TsVGroup::WriteBatchData(TSTableID tbl_id, uint32_t table_version, TSEntityID entity_id, timestamp64 p_time,
+                                 uint32_t batch_version, TSSlice data) {
   auto current = version_manager_->Current();
   uint32_t database_id = schema_mgr_->GetDBIDByTableID(tbl_id);
   if (database_id == 0) {
@@ -1313,7 +1314,7 @@ KStatus TsVGroup::WriteBatchData(TSTableID tbl_id, uint32_t table_version,
     LOG_ERROR("GetEntitySegmentBuilder failed.");
     return s;
   }
-  s = builder->WriteBatch(tbl_id, entity_id, table_version, data);
+  s = builder->WriteBatch(tbl_id, entity_id, table_version, batch_version, data);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("WriteBatch failed.");
     return s;
@@ -1906,6 +1907,7 @@ KStatus TsVGroup::Vacuum() {
           blk_item.max_ts = block_span->GetLastTS();
           blk_item.block_len = block_data.size();
           blk_item.agg_len = block_agg.size();
+          blk_item.block_version = CURRENT_BLOCK_VERSION;
           s = vacuumer->AppendBlock({block_data.data(), block_data.size()}, &blk_item.block_offset);
           if (s != KStatus::SUCCESS) {
             LOG_ERROR("Vacuum failed, AppendBlock failed");

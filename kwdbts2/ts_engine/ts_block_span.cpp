@@ -228,11 +228,7 @@ KStatus TsBlockSpan::BuildCompressedData(std::string& data) {
     }
     // compress bitmap
     if (has_bitmap) {
-      auto bitmap_data = bitmap->GetStr();
-      // TODO(limeng04): compress bitmap
-      char bitmap_compress_type = 0;
-      data.append(&bitmap_compress_type);
-      data.append(bitmap_data);
+      mgr.CompressBitmap(bitmap.get(), &data);
       b = bitmap.get();
     }
     auto [first, second] = mgr.GetDefaultAlgorithm(static_cast<DATATYPE>(d_type));

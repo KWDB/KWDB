@@ -20,6 +20,10 @@ TEST(TsBitmap, Write) {
     bm[i] = static_cast<kwdbts::DataFlags>(i % 3);
   }
   EXPECT_EQ(bm.GetValidCount(), 333);
+  EXPECT_EQ(bm.Count(kwdbts::kValid), 333);
+  EXPECT_EQ(bm.Count(kwdbts::kNull), 332);
+  EXPECT_EQ(bm.Count(kwdbts::kNone), 332);
+
   for (int i = 0; i < 997; ++i) {
     EXPECT_TRUE(bm[i] == static_cast<kwdbts::DataFlags>(i % 3));
   }
@@ -32,10 +36,18 @@ TEST(TsBitmap, Write) {
     EXPECT_EQ(bm[i], kwdbts::kNone);
   }
   EXPECT_EQ(bm.GetValidCount(), 0);
+  EXPECT_EQ(bm.Count(kwdbts::kValid), 0);
+  EXPECT_EQ(bm.Count(kwdbts::kNone), 997);
+  EXPECT_EQ(bm.Count(kwdbts::kNull), 0);
 
   EXPECT_FALSE(bm.IsAllValid());
   bm.SetAll(kwdbts::kValid);
   EXPECT_TRUE(bm.IsAllValid());
+
+  EXPECT_EQ(bm.GetValidCount(), bm.GetCount());
+  EXPECT_EQ(bm.Count(kwdbts::kValid), 997);
+  EXPECT_EQ(bm.Count(kwdbts::kNone), 0);
+  EXPECT_EQ(bm.Count(kwdbts::kNull), 0);
 }
 
 TEST(TsBitmap, Rep) {
@@ -110,7 +122,12 @@ TEST(TsBitmap, View) {
     }
 
     int nvalid = std::count(flags.begin() + c.start, flags.begin() + c.start + c.count, kwdbts::DataFlags::kValid);
+    int nnull = std::count(flags.begin() + c.start, flags.begin() + c.start + c.count, kwdbts::DataFlags::kNull);
+    int nnone = std::count(flags.begin() + c.start, flags.begin() + c.start + c.count, kwdbts::DataFlags::kNone);
     EXPECT_EQ(view->GetValidCount(), nvalid);
+    EXPECT_EQ(view->Count(kwdbts::DataFlags::kValid), nvalid);
+    EXPECT_EQ(view->Count(kwdbts::DataFlags::kNull), nnull);
+    EXPECT_EQ(view->Count(kwdbts::DataFlags::kNone), nnone);
 
     auto str1 = view->GetStr();
     auto str2 = ref.GetStr();
@@ -135,8 +152,14 @@ TEST(TsBitmap, SliceOfView) {
     EXPECT_EQ(bm_v->At(i), flags[i + 30 + 40 + 50]);
   }
 
-  EXPECT_EQ(bm_v->GetValidCount(),
-            std::count(flags.begin() + 30 + 40 + 50, flags.begin() + 30 + 40 + 50 + 10, kwdbts::DataFlags::kValid));
+  int st = 30 + 40 + 50, ed = 30 + 40 + 50 + 10;
+  int nvalid = std::count(flags.begin() + st, flags.begin() + ed, kwdbts::DataFlags::kValid);
+  int nnull = std::count(flags.begin() + st, flags.begin() + ed, kwdbts::DataFlags::kNull);
+  int nnone = std::count(flags.begin() + st, flags.begin() + ed, kwdbts::DataFlags::kNone);
+  EXPECT_EQ(bm_v->GetValidCount(), nvalid);
+  EXPECT_EQ(bm_v->Count(kwdbts::DataFlags::kValid), nvalid);
+  EXPECT_EQ(bm_v->Count(kwdbts::DataFlags::kNull), nnull);
+  EXPECT_EQ(bm_v->Count(kwdbts::DataFlags::kNone), nnone);
 }
 
 TEST(TsBitmap, ValidCount) {
@@ -151,7 +174,22 @@ TEST(TsBitmap, ValidCount) {
       flags[k] = choises[drng() % choises.size()];
       bm[k] = flags[k];
     }
+    int nvalid = std::count(flags.begin(), flags.begin() + i, kwdbts::DataFlags::kValid);
+    int nnull = std::count(flags.begin(), flags.begin() + i, kwdbts::DataFlags::kNull);
+    int nnone = std::count(flags.begin(), flags.begin() + i, kwdbts::DataFlags::kNone);
+    EXPECT_EQ(bm.GetValidCount(), nvalid);
+    EXPECT_EQ(bm.Count(kwdbts::DataFlags::kValid), nvalid);
+    EXPECT_EQ(bm.Count(kwdbts::DataFlags::kNull), nnull);
+    EXPECT_EQ(bm.Count(kwdbts::DataFlags::kNone), nnone);
 
-    EXPECT_EQ(bm.GetValidCount(), std::count(flags.begin(), flags.begin() + i, kwdbts::DataFlags::kValid));
+    nvalid -= flags[0] == kwdbts::kValid;
+    nnull -= flags[0] == kwdbts::kNull;
+    nnone -= flags[0] == kwdbts::kNone;
+
+    auto view = bm.Slice(1, i - 1);
+    EXPECT_EQ(view->GetValidCount(), nvalid);
+    EXPECT_EQ(view->Count(kwdbts::DataFlags::kValid), nvalid);
+    EXPECT_EQ(view->Count(kwdbts::DataFlags::kNull), nnull);
+    EXPECT_EQ(view->Count(kwdbts::DataFlags::kNone), nnone);
   }
 }

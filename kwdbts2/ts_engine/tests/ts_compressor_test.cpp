@@ -12,6 +12,7 @@
 
 #include "libkwdbts2.h"
 #include "ts_coding.h"
+#include "ts_bitmap.h"
 #include "ts_compressor_impl.h"
 
 template <class Compressor>

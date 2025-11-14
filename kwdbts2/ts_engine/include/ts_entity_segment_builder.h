@@ -292,7 +292,8 @@ class TsEntitySegmentBuilder {
 
   KStatus Compact(bool call_by_vacuum, TsVersionUpdate* update);
 
-  KStatus WriteBatch(TSTableID tbl_id, uint32_t entity_id, uint32_t table_version, TSSlice data);
+  KStatus WriteBatch(TSTableID tbl_id, uint32_t entity_id, uint32_t table_version, uint32_t batch_version,
+                     TSSlice data);
 
   KStatus WriteBatchFinish(TsVersionUpdate* update);
 

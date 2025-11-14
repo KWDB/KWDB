@@ -12,6 +12,7 @@
 #pragma once
 
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <tuple>
 #include <unordered_map>
@@ -68,9 +69,13 @@ enum class GenCompAlg : uint16_t {
   GEN_COMP_ALG_LAST
 };
 
-enum class BitmapCompAlg : uint8_t {
-  kPlain = 0,
-  kCompressed = 1,
+enum class BitmapType : uint8_t {
+  kRaw = 0,
+  kAllValid = 1,
+  kAllNone = 2,
+  kAllNull = 3,
+
+  BITMAP_COMP_ALG_LAST
 };
 
 class TsSliceGuard {
@@ -168,10 +173,14 @@ class CompressorManager {
   TwoLevelCompressor GetDefaultCompressor(DATATYPE dtype) const;
 
   bool CompressData(TSSlice input, const TsBitmapBase* bitmap, uint64_t count, std::string* output,
-                    TsCompAlg fisrt, GenCompAlg second) const;
+                    TsCompAlg first, GenCompAlg second) const;
   bool CompressVarchar(TSSlice input, std::string* output, GenCompAlg alg) const;
   bool DecompressData(TSSlice input, const TsBitmapBase* bitmap, uint64_t count, TsSliceGuard* out) const;
   bool DecompressVarchar(TSSlice input, TsSliceGuard* out) const;
+
+  bool CompressBitmap(TsBitmapBase* bitmap, std::string* output) const;
+  bool DecompressBitmap(TSSlice input, std::unique_ptr<TsBitmapBase>* bitmap, uint64_t count,
+                        uint64_t* bytes_consumed) const;
 };
 
 }  //  namespace kwdbts

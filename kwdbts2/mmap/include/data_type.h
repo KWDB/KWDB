@@ -238,7 +238,7 @@ struct AttributeInfo {
 
   inline void setFlag(int32_t f) { flag |= f; }
   inline void unsetFlag(int32_t f) { flag &= ~f; }
-  inline int isFlag(int32_t f) const { return (flag & f); }
+  inline bool isFlag(int32_t f) const { return (flag & f) != 0; }
 
   inline bool isAttrType(int expAttrType) const
 	{ return (col_flag == (ColumnFlag)expAttrType); }
