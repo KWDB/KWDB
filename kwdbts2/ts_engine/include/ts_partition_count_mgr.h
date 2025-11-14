@@ -60,6 +60,7 @@ class TsPartitionEntityCountManager {
   KStatus PrepareEntityCountValid(TSEntityID e_id);
   KStatus SetEntityCountValid(TSEntityID e_id, TsEntityFlushInfo* info);
   KStatus GetEntityCountHeader(TsEntityCountHeader* count_header);
+  KStatus Sync();
   void DropAll();
   KStatus Reset();
 

@@ -66,8 +66,11 @@ KStatus TsEntitySegmentEntityItemFile::GetEntityItem(uint64_t entity_id, TsEntit
     is_exist = false;
     return SUCCESS;
   }
-  is_exist = true;
-  return s;
+  if (entity_item.table_id == 0) {
+    is_exist = false;
+    return SUCCESS;
+  }
+  return KStatus::SUCCESS;
 }
 
 uint32_t TsEntitySegmentEntityItemFile::GetFileNum() {

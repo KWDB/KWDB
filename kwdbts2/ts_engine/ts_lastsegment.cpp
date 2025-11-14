@@ -105,6 +105,11 @@ KStatus TsLastSegment::TsLastSegBlockCache::BlockInfoCache::GetBlockInfo(int blo
 }
 
 KStatus TsLastSegment::GetFooter(TsLastSegmentFooter* footer) const {
+  auto sz = file_->GetFileSize();
+  if (sz < sizeof(TsLastSegmentFooter)) {
+    LOG_ERROR("lastsegment file corrupted");
+    return FAIL;
+  }
   TSSlice result;
   size_t offset = file_->GetFileSize() - sizeof(TsLastSegmentFooter);
   auto s = file_->Read(offset, sizeof(TsLastSegmentFooter), &result, reinterpret_cast<char*>(footer));
@@ -442,11 +447,6 @@ inline KStatus TsLastSegment::TsLastSegBlockCache::GetBlockInfo(int block_id, Ts
 
 KStatus TsLastSegment::Open() {
   // just check the magic number;
-  auto sz = file_->GetFileSize();
-  if (sz < sizeof(TsLastSegmentFooter)) {
-    LOG_ERROR("lastsegment file corrupted");
-    return FAIL;
-  }
   auto s = GetFooter(&footer_);
   if (s == FAIL) {
     return s;

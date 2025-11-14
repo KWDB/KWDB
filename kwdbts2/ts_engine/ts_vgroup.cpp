@@ -16,6 +16,7 @@
 #include <memory>
 #include <algorithm>
 #include <numeric>
+#include <sstream>
 #include <unordered_set>
 #include <utility>
 #include <vector>
@@ -844,6 +845,8 @@ KStatus TsVGroup::FlushImmSegment(const std::shared_ptr<TsMemSegment>& mem_seg) 
     flush_infos.push_back({cur_partition, entity_flush_info});
   }
 
+  std::vector<uint64_t> file_numbers;
+  file_numbers.reserve(builders.size());
   for (auto& [k, v] : builders) {
     auto s = v.Finalize();
     if (s == FAIL) {
@@ -851,6 +854,7 @@ KStatus TsVGroup::FlushImmSegment(const std::shared_ptr<TsMemSegment>& mem_seg) 
     }
     update.AddLastSegment(k->GetPartitionIdentifier(), v.GetFileNumber());
     update.SetMaxLSN(v.GetMaxOSN());
+    file_numbers.push_back(v.GetFileNumber());
   }
 
   update.RemoveMemSegment(mem_seg);
@@ -859,6 +863,12 @@ KStatus TsVGroup::FlushImmSegment(const std::shared_ptr<TsMemSegment>& mem_seg) 
     k->GetCountManager()->AddFlushEntityAgg(v);
   }
   version_manager_->ApplyUpdate(&update);
+
+  std::stringstream ss;
+  for (auto file_number : file_numbers) {
+    ss << file_number << ", ";
+  }
+  LOG_INFO("VGroup %d flush end, create lastsegments: %s", this->vgroup_id_, ss.str().c_str());
   return KStatus::SUCCESS;
 }
 

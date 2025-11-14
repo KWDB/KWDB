@@ -40,6 +40,12 @@ enum TsFileStatus {
   READY = 1,
 };
 
+static size_t TruncateToPage(size_t offset, size_t page_size) {
+  assert((page_size & (page_size - 1)) == 0);
+  offset -= offset & (page_size - 1);
+  return offset;
+}
+
 class TsAppendOnlyFile {
  protected:
   bool delete_after_free = false;  // remove it later
@@ -339,6 +345,26 @@ class TsMMapAllocFile : public FileWithIndex {
     return nullptr;
   }
 
+  KStatus NodeSync(size_t offset, size_t len) {
+    uint64_t cur_offset = 0;
+    for (int i = 0; i < addrs_.size(); i++) {
+      if (cur_offset + addrs_[i].len > offset) {
+        int page_size = getpagesize();
+        char* p1 = addrs_[i].data + TruncateToPage(offset - cur_offset, page_size);
+        char* p2 = addrs_[i].data + TruncateToPage(offset - cur_offset + len - 1, page_size) + page_size;
+        int ok = msync(p1, p2 - p1, MS_SYNC);
+        if (ok < 0) {
+          LOG_ERROR("node msync failed, reason: %s", strerror(errno));
+          return KStatus::FAIL;
+        }
+        return KStatus::SUCCESS;
+      } else {
+        cur_offset += addrs_[i].len;
+      }
+    }
+    return KStatus::FAIL;
+  }
+
   uint64_t AllocateAssigned(size_t size, uint8_t fill_number) override {
     RW_LATCH_X_LOCK(rw_lock_);
     offsetAssigned();
@@ -391,7 +417,7 @@ class TsMMapAllocFile : public FileWithIndex {
     return KStatus::FAIL;
   }
 
-  KStatus Sync() {
+  KStatus Sync() override {
     RW_LATCH_X_LOCK(rw_lock_);
     KStatus s = KStatus::SUCCESS;
     for (auto addr : addrs_) {

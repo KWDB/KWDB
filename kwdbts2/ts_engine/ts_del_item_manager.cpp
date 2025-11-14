@@ -124,10 +124,15 @@ KStatus TsDelItemManager::Open() {
   if (mmap_alloc_.Open() == KStatus::SUCCESS) {
     if (mmap_alloc_.GetAllocSize() >= sizeof(DelItemHeader)) {
       header_ = reinterpret_cast<DelItemHeader*>(mmap_alloc_.addr(mmap_alloc_.GetStartPos()));
+      if (header_->min_lsn == 0) {
+        // actual osn cannot be 0.
+        header_->min_lsn = UINT64_MAX;
+      }
     } else {
       auto offset = mmap_alloc_.AllocateAssigned(sizeof(DelItemHeader), 0);
       header_ = reinterpret_cast<DelItemHeader*>(mmap_alloc_.addr(offset));
       header_->min_lsn = UINT64_MAX;
+      mmap_alloc_.Sync();
     }
     KStatus s = index_.Init(&mmap_alloc_, &(mmap_alloc_.getHeader()->index_header_offset));
     if (s == KStatus::SUCCESS) {
@@ -175,6 +180,7 @@ KStatus TsDelItemManager::RmDeleteItems(TSEntityID entity_id, const KwLSNSpan &l
     RW_LATCH_X_LOCK(rw_lock_);
     header_->dropped_num += total_dropped;
     header_->clear_max_lsn = std::max(header_->clear_max_lsn, lsn.end);
+    mmap_alloc_.Sync();
     RW_LATCH_UNLOCK(rw_lock_);
   }
   return KStatus::SUCCESS;
@@ -203,6 +209,7 @@ KStatus TsDelItemManager::AddDelItem(TSEntityID entity_id, const TsEntityDelItem
     header_->delitem_num += 1;
     header_->min_lsn = std::min(header_->min_lsn, del_item.range.lsn_span.begin);
     header_->max_lsn = std::max(header_->max_lsn, del_item.range.lsn_span.end);
+    mmap_alloc_.Sync();
     RW_LATCH_UNLOCK(rw_lock_);
   }
   return KStatus::SUCCESS;
@@ -265,6 +272,7 @@ KStatus TsDelItemManager::RollBackDelItem(TSEntityID entity_id, const KwLSNSpan&
       if (cur_node->del_item.range.lsn_span.Equal(lsn)) {
         cur_node->del_item.status = DEL_ITEM_ROLLBACK;
         dropped_num++;
+        mmap_alloc_.Sync();
       }
       cur_node_offset = cur_node->pre_node_offset;
     }

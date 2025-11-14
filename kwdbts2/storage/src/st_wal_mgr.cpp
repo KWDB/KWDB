@@ -129,8 +129,22 @@ KStatus WALMgr::Init(kwdbContext_p ctx, bool for_eng_wal) {
 
   s = buffer_mgr_->init(buffer_lsn);
   if (s == KStatus::FAIL) {
-    LOG_ERROR("Failed to initialize the WAL buffer with LSN %lu", buffer_lsn)
-    return s;
+    LOG_WARN("Failed to initialize the WAL buffer with LSN %lu, Now reset wal file.", buffer_lsn)
+    if (Remove(file_mgr_->getFilePath()) == KStatus::FAIL) {
+      LOG_ERROR("Failed to Remove WAL file.")
+      return KStatus::FAIL;
+    }
+    file_mgr_->Close();
+    s = file_mgr_->initWalFile(buffer_lsn, 0, false);
+    if (s == KStatus::FAIL) {
+      LOG_ERROR("Failed to initWalFileWithHeader.")
+      return s;
+    }
+    s = buffer_mgr_->init(buffer_lsn);
+    if (s == KStatus::FAIL) {
+      LOG_ERROR("Failed to Reset wal.")
+      return s;
+    }
   }
 
   return SUCCESS;

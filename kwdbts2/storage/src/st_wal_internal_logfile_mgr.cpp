@@ -111,9 +111,11 @@ KStatus WALFileMgr::initWalFileWithHeader(HeaderBlock& header, bool tmp_file) {
     char* header_value = header.encode();
     file_.write(header_value, BLOCK_SIZE);
 
-    file_.seekg(BLOCK_SIZE, std::ios::beg);
+    uint64_t first_block_no = (header.getFirstLSN() - header.getStartLSN()) / BLOCK_SIZE +
+            header.getStartBlockNo();
+    file_.seekg(first_block_no * BLOCK_SIZE, std::ios::beg);
     EntryBlock eb = EntryBlock();
-    eb.reset(0);
+    eb.reset(first_block_no - 1);
     char* eb_value = eb.encode();
     file_.write(eb_value, BLOCK_SIZE);
     file_.flush();
@@ -133,9 +135,11 @@ KStatus WALFileMgr::initWalFileWithHeader(HeaderBlock& header, bool tmp_file) {
     file_.write(header_value, BLOCK_SIZE);
     delete[] header_value;
 
-    file_.seekg(BLOCK_SIZE, std::ios::beg);
+    uint64_t first_block_no = (header.getFirstLSN() - header.getStartLSN()) / BLOCK_SIZE +
+                              header.getStartBlockNo();
+    file_.seekg(first_block_no * BLOCK_SIZE, std::ios::beg);
     EntryBlock eb = EntryBlock();
-    eb.reset(0);
+    eb.reset(first_block_no - 1);
     char* eb_value = eb.encode();
     file_.write(eb_value, BLOCK_SIZE);
     delete[] eb_value;
@@ -244,6 +248,7 @@ KStatus WALFileMgr::readEntryBlocks(std::vector<EntryBlock*>& entry_blocks,
     file_path = getFilePath();
     wal_file.open(file_path, std::ios::binary);
     if (!wal_file.is_open()) {
+      LOG_ERROR("Failed to open wal_file.")
       entry_blocks.clear();
       return FAIL;
     }
@@ -275,6 +280,8 @@ KStatus WALFileMgr::readEntryBlocks(std::vector<EntryBlock*>& entry_blocks,
       }
 
       if (!wal_file.is_open()) {
+        LOG_ERROR("wal_file isn't open, index[%lu], StartBlockNo[%lu], BlockNum[%u].", index, header.getStartBlockNo(),
+                  header.getBlockNum())
         s = FAIL;
         break;
       }
@@ -299,6 +306,7 @@ KStatus WALFileMgr::readEntryBlocks(std::vector<EntryBlock*>& entry_blocks,
     if (entry_block->getBlockNo() != index) {
       delete entry_block;
       s = FAIL;
+      LOG_ERROR("Failed to get EntryBlock, BlockNo[%lu] != index[%lu].", entry_block->getBlockNo(), index)
       break;
     }
     entry_blocks.emplace_back(entry_block);
