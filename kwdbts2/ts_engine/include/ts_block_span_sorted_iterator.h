@@ -151,18 +151,17 @@ class TsBlockSpanSortedIterator {
   }
 
  public:
-  explicit TsBlockSpanSortedIterator(std::list<shared_ptr<TsBlockSpan>>& block_spans,
-                                     DedupRule dedup_rule = DedupRule::OVERRIDE,
-                                     bool is_reverse = false) :
-                                     block_spans_(std::move(block_spans)),
-                                     dedup_rule_(dedup_rule), is_reverse_(is_reverse) {}
-  explicit TsBlockSpanSortedIterator(std::vector<std::list<shared_ptr<TsBlockSpan>>>& block_spans,
-                                     DedupRule dedup_rule = DedupRule::OVERRIDE,
-                                     bool is_reverse = false) : dedup_rule_(dedup_rule), is_reverse_(is_reverse) {
-    for (auto& block_span_list : block_spans) {
-      block_spans_.merge(block_span_list);
-    }
+  TsBlockSpanSortedIterator(std::list<shared_ptr<TsBlockSpan>>& block_spans, DedupRule dedup_rule = DedupRule::OVERRIDE,
+                            bool is_reverse = false)
+      : block_spans_(std::move(block_spans)), dedup_rule_(dedup_rule), is_reverse_(is_reverse) {}
+
+  TsBlockSpanSortedIterator(std::vector<std::shared_ptr<TsBlockSpan>> block_spans,
+                            DedupRule dedup_rule = DedupRule::OVERRIDE, bool is_reverse = false)
+      : dedup_rule_(dedup_rule), is_reverse_(is_reverse) {
+    block_spans_.resize(block_spans.size());
+    std::move(block_spans.begin(), block_spans.end(), block_spans_.begin());
   }
+
   ~TsBlockSpanSortedIterator() = default;
   TsBlockSpanSortedIterator(const TsBlockSpanSortedIterator& other) {
     block_spans_ = other.block_spans_;

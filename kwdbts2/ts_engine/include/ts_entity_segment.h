@@ -174,7 +174,7 @@ class TsEntitySegmentMetaManager {
  public:
   TsEntitySegmentMetaManager() {}
 
-  explicit TsEntitySegmentMetaManager(const string& dir_path, EntitySegmentHandleInfo info);
+  explicit TsEntitySegmentMetaManager(const string& dir_path, EntitySegmentMetaInfo info);
 
   ~TsEntitySegmentMetaManager() {}
 
@@ -390,7 +390,7 @@ class TsEntitySegment : public TsSegmentBase, public enable_shared_from_this<TsE
   TsEntitySegmentBlockFile block_file_;
   TsEntitySegmentAggFile agg_file_;
 
-  EntitySegmentHandleInfo info_;
+  EntitySegmentMetaInfo info_;
 
   std::vector<std::shared_ptr<TsEntityBlock>> entity_blocks_;
   KRWLatch entity_blocks_rw_latch_;
@@ -398,7 +398,7 @@ class TsEntitySegment : public TsSegmentBase, public enable_shared_from_this<TsE
  public:
   TsEntitySegment() = delete;
 
-  explicit TsEntitySegment(const fs::path& root, EntitySegmentHandleInfo info);
+  explicit TsEntitySegment(const fs::path& root, EntitySegmentMetaInfo info);
 
   // Only for LRU block cache unit tests
   explicit TsEntitySegment(uint32_t max_blocks);
@@ -454,7 +454,7 @@ class TsEntitySegment : public TsSegmentBase, public enable_shared_from_this<TsE
 
   KStatus GetColumnAgg(int32_t col_idx, TsEntityBlock* block);
 
-  const EntitySegmentHandleInfo &GetHandleInfo() const { return info_; }
+  const EntitySegmentMetaInfo &GetHandleInfo() const { return info_; }
 
   void MarkDeleteEntityHeader() { meta_mgr_.MarkDeleteEntityHeader(); }
 

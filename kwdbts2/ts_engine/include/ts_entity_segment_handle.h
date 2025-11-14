@@ -20,10 +20,16 @@ struct MetaFileInfo {
   uint64_t length;
 };
 
-struct EntitySegmentHandleInfo {
+struct EntitySegmentMetaInfo {
   MetaFileInfo datablock_info;
   MetaFileInfo header_b_info;
   MetaFileInfo agg_info;
   uint64_t header_e_file_number;
+};
+
+struct LastSegmentMetaInfo {
+  uint64_t file_number;
+  int level;
+  int group;
 };
 }  // namespace kwdbts
