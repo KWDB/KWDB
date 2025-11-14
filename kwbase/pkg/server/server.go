@@ -1904,6 +1904,7 @@ func (s *Server) Start(ctx context.Context) error {
 			}
 			s.stopper.AddCloser(s.tsEngine)
 			s.node.tsEngine = s.tsEngine
+			s.registry.AddMetricStruct(s.tsEngine.Metrics())
 			s.execCfg.TsEngine = s.tsEngine
 
 			s.node.storeCfg.TsEngine = s.tsEngine
@@ -2926,6 +2927,9 @@ func (s *Server) startSampleEnvironment(
 				curStats := goMemStats.Load().(*status.GoMemStats)
 				cgoStats := status.GetCGoMemStats(ctx)
 				s.runtime.SampleEnvironment(ctx, curStats, cgoStats)
+				if s.tsEngine != nil && s.tsEngine.IsOpen() {
+					s.tsEngine.SamplePeriodicMetrics()
+				}
 				if goroutineDumper != nil {
 					goroutineDumper.MaybeDump(ctx, s.ClusterSettings(), s.runtime.Goroutines.Value())
 				}

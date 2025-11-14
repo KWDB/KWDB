@@ -39,7 +39,11 @@ TEST_F(TsLRUBlockCacheTest, basicTest) {
   TsEntitySegmentBlockItem block_item;
   uint32_t hit_count;
   uint32_t miss_count;
-  uint32_t memory_size;
+  uint64_t memory_size;
+  TsLRUBlockCache::GetInstance().GetRecentHitInfo(&hit_count, &miss_count, &memory_size);
+  ASSERT_EQ(hit_count, 0);
+  ASSERT_EQ(miss_count, 0);
+  ASSERT_EQ(memory_size, 0);
   for (int i = 0; i < 1000; ++i) {
     block_item.block_id = i + 1;
     block_item.n_cols = 5;

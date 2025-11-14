@@ -173,17 +173,20 @@ float TsLRUBlockCache::GetHitRatio() {
   }
 }
 
-void TsLRUBlockCache::GetRecentHitInfo(uint32_t* hit_count, uint32_t* miss_count, uint32_t* memory_size) {
+void TsLRUBlockCache::GetRecentHitInfo(uint32_t* hit_count, uint32_t* miss_count, uint64_t* memory_size) {
   lock_.lock();
-  int cur_index = current_visit_cache_index_;
   if (max_visit_cache_count_reached || current_visit_cache_index_ >= MAX_VISIT_CACHE_HISTORY_COUNT) {
     *hit_count = std::count(cache_hit_miss_bits_.begin(), cache_hit_miss_bits_.end(), true);
     *miss_count = MAX_VISIT_CACHE_HISTORY_COUNT - *hit_count;
-  } else if (cur_index >= 0) {
-    *hit_count = std::count(cache_hit_miss_bits_.begin(), cache_hit_miss_bits_.begin() + cur_index + 1, true);
-    *miss_count = cur_index + 1 - *hit_count;
+  } else if (current_visit_cache_index_ >= 0) {
+    *hit_count = std::count(cache_hit_miss_bits_.begin(),
+                            cache_hit_miss_bits_.begin() + current_visit_cache_index_ + 1, true);
+    *miss_count = current_visit_cache_index_ + 1 - *hit_count;
+  } else {
+    *hit_count = 0;
+    *miss_count = 0;
   }
-  *memory_size = cur_memory_size_ / (1024 * 1024);
+  *memory_size = cur_memory_size_;
   lock_.unlock();
   return;
 }

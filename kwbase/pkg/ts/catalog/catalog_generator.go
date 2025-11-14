@@ -61,6 +61,7 @@ const (
 	Audits             = `Audits`
 	License            = `License`
 	Jobs               = `Jobs`
+	TsEngine           = `TsEngine`
 )
 
 // sectionDescription describes either a section or subsection of the chart.
@@ -228,6 +229,13 @@ var chartCatalog = []ChartSection{
 		Description:     `Your cluster executes various background jobs, as well as scheduled jobs `,
 		Level:           0,
 	},
+	{
+		Title:           TsEngine,
+		LongTitle:       TsEngine,
+		CollectionTitle: "TsEngine-all",
+		Description:     `The tsEngine provides a server to log the metrics relevant to tsEngine `,
+		Level:           0,
+	},
 }
 
 var catalogGenerated = false
@@ -245,6 +253,7 @@ var catalogKey = map[string]int{
 	Audits:             7,
 	License:            8,
 	Jobs:               9,
+	TsEngine:           10,
 }
 
 // unitsKey converts between metric.Unit and catalog.AxisUnits which is

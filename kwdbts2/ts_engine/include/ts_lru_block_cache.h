@@ -70,7 +70,7 @@ class TsLRUBlockCache {
   // Get cache miss count
   uint32_t GetCacheMissCount();
   // Get block cache hit and miss count;
-  void GetRecentHitInfo(uint32_t* hit_count, uint32_t* miss_count, uint32_t* memory_size);
+  void GetRecentHitInfo(uint32_t* hit_count, uint32_t* miss_count, uint64_t* memory_size);
   // Get cache hit ratio
   float GetHitRatio();
   // Adjust max_memory_size_
@@ -90,7 +90,7 @@ class TsLRUBlockCache {
   uint64_t cur_memory_size_{0};
   std::mutex lock_;
   // MAX_VISIT_CACHE_HISTORY_COUNT must be 2 ^ n
-  static const uint32_t MAX_VISIT_CACHE_HISTORY_COUNT = 16384;
+  static const int32_t MAX_VISIT_CACHE_HISTORY_COUNT = 16384;
   // std::vector<bool> storage was optimized for boolean values by packing them into individual bits.
   std::vector<bool> cache_hit_miss_bits_;
   int32_t current_visit_cache_index_{-1};

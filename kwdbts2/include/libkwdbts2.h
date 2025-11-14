@@ -532,7 +532,7 @@ TSStatus TSFlushVGroups(TSEngine* engine);
  * @param[out] memory_size current used memory size(M) in block cache
  * @return
  */
-void TsGetRecentBlockCacheInfo(uint32_t* hit_count, uint32_t* miss_count, uint32_t* memory_size);
+void TsGetRecentBlockCacheInfo(uint32_t* hit_count, uint32_t* miss_count, uint64_t* memory_size);
 
 bool __attribute__((weak)) isCanceledCtx(uint64_t goCtxPtr);
 

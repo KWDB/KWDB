@@ -2524,4 +2524,31 @@ var charts = []sectionDescription{
 			},
 		},
 	},
+	{
+		Organization: [][]string{{TsEngine, "ts engine"}},
+		Charts: []chartDescription{
+			{
+				Title: "Counter of ts block cache hit / miss count",
+				Metrics: []string{
+					"ts.blockcache.hit.count",
+					"ts.blockcache.miss.count",
+				},
+				AxisLabel: "Count",
+			},
+			{
+				Title: "Hit ratio of ts engine block cache",
+				Metrics: []string{
+					"ts.blockcache.hit.ratio",
+				},
+				AxisLabel: "Percent",
+			},
+			{
+				Title: "Bytes of ts block cache memory size",
+				Metrics: []string{
+					"ts.blockcache.memory.size",
+				},
+				AxisLabel: "Bytes",
+			},
+		},
+	},
 }

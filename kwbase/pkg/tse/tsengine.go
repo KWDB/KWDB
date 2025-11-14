@@ -54,6 +54,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/types"
 	"gitee.com/kwbasedb/kwbase/pkg/util/duration"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
+	"gitee.com/kwbasedb/kwbase/pkg/util/metric"
 	"gitee.com/kwbasedb/kwbase/pkg/util/stop"
 	"gitee.com/kwbasedb/kwbase/pkg/util/timeutil"
 	"github.com/cockroachdb/apd"
@@ -148,6 +149,51 @@ type Error struct {
 
 func (e Error) Error() string {
 	return e.msg
+}
+
+// TsMetrics is to define the metrics used in TsEngine.
+var (
+	MetaTsBlockCacheHitCount = metric.Metadata{
+		Name:        "ts.blockcache.hit.count",
+		Help:        "Counter of ts engine block cache hit count",
+		Measurement: "Ts Engine",
+		Unit:        metric.Unit_COUNT,
+	}
+	MetaTsBlockCacheMissCount = metric.Metadata{
+		Name:        "ts.blockcache.miss.count",
+		Help:        "Counter of ts engine block cache miss count",
+		Measurement: "Ts Engine",
+		Unit:        metric.Unit_COUNT,
+	}
+	MetaTsBlockCacheHitRatio = metric.Metadata{
+		Name:        "ts.blockcache.hit.ratio",
+		Help:        "Hit ratio of ts engine block cache",
+		Measurement: "Ts Engine",
+		Unit:        metric.Unit_PERCENT,
+	}
+	MetaTsBlockCacheMemorySize = metric.Metadata{
+		Name:        "ts.blockcache.memory.size",
+		Help:        "Bytes of ts engine block cache memory size",
+		Measurement: "Ts Engine",
+		Unit:        metric.Unit_BYTES,
+	}
+)
+
+// TsEngineMetrics is the set of metrics for the tsEngine server.
+type TsEngineMetrics struct {
+	TsBlockCacheHitCount   *metric.Gauge
+	TsBlockCacheMissCount  *metric.Gauge
+	TsBlockCacheHitRatio   *metric.GaugeFloat64
+	TsBlockCacheMemorySize *metric.Gauge
+}
+
+func makeTsEngineMetrics() *TsEngineMetrics {
+	return &TsEngineMetrics{
+		TsBlockCacheHitCount:   metric.NewGauge(MetaTsBlockCacheHitCount),
+		TsBlockCacheMissCount:  metric.NewGauge(MetaTsBlockCacheMissCount),
+		TsBlockCacheHitRatio:   metric.NewGaugeFloat64(MetaTsBlockCacheHitRatio),
+		TsBlockCacheMemorySize: metric.NewGauge(MetaTsBlockCacheMemorySize),
+	}
 }
 
 // goToCTSSlice converts a go byte slice to a TSSlice. Note that this is
@@ -267,6 +313,7 @@ type TsEngine struct {
 	tdb     *C.TSEngine
 	opened  bool
 	openCh  chan struct{}
+	metrics *TsEngineMetrics
 }
 
 // IsSingleNode Returns whether TsEngine is started in singleNode mode
@@ -351,12 +398,20 @@ func NewTsEngine(
 		return nil, errors.New("dir must be non-empty")
 	}
 
+	metrics := makeTsEngineMetrics()
+
 	r := &TsEngine{
 		stopper: stopper,
 		cfg:     cfg,
 		openCh:  make(chan struct{}),
+		metrics: metrics,
 	}
 	return r, nil
+}
+
+// Metrics returns the metrics for the ts engine.
+func (r *TsEngine) Metrics() *TsEngineMetrics {
+	return r.metrics
 }
 
 // IsOpen returns when the ts engine has been open.
@@ -535,12 +590,24 @@ func (r *TsEngine) TSFlushVGroups() error {
 }
 
 // TsGetRecentBlockCacheInfo get storage block cache hit, miss counts and current used memory size(M) for showing hit ratio in web console
-func (r *TsEngine) TsGetRecentBlockCacheInfo() (int, int, int, error) {
+func (r *TsEngine) TsGetRecentBlockCacheInfo() (int, int, int64, error) {
 	var hitCount C.uint32_t
 	var missCount C.uint32_t
-	var memorySize C.uint32_t
+	var memorySize C.uint64_t
 	C.TsGetRecentBlockCacheInfo(&hitCount, &missCount, &memorySize)
-	return int(hitCount), int(missCount), int(memorySize), nil
+	return int(hitCount), int(missCount), int64(memorySize), nil
+}
+
+// SamplePeriodicMetrics sample tsengine metrics periodically (default 10s).
+// If you need to collect other ts engine metrics periodically, please add them in this function.
+func (r *TsEngine) SamplePeriodicMetrics() {
+	// Sample BlockCache Info
+	hitCount, missCount, memorySize, _ := r.TsGetRecentBlockCacheInfo()
+	hitRatio := float64(hitCount) / (float64(hitCount) + float64(missCount) + 1e-8) // add 1e-8 to avoid division by zero
+	r.metrics.TsBlockCacheHitCount.Update(int64(hitCount))
+	r.metrics.TsBlockCacheMissCount.Update(int64(missCount))
+	r.metrics.TsBlockCacheHitRatio.Update(hitRatio)
+	r.metrics.TsBlockCacheMemorySize.Update(int64(memorySize))
 }
 
 // AddTSColumn adds column for ts table.

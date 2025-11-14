@@ -1360,7 +1360,7 @@ TSStatus TSFlushVGroups(TSEngine* engine) {
   return kTsSuccess;
 }
 
-void TsGetRecentBlockCacheInfo(uint32_t* hit_count, uint32_t* miss_count, uint32_t* memory_size) {
+void TsGetRecentBlockCacheInfo(uint32_t* hit_count, uint32_t* miss_count, uint64_t* memory_size) {
   TsLRUBlockCache::GetInstance().GetRecentHitInfo(hit_count, miss_count, memory_size);
 }
 
