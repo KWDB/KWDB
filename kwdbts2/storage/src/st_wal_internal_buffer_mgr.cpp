@@ -40,6 +40,7 @@ KStatus WALBufferMgr::init(TS_OSN start_lsn) {
   vector<EntryBlock*> first_block;
   KStatus s = file_mgr_->readEntryBlocks(first_block, last_write_block_no, last_write_block_no);
   if (s == FAIL) {
+    LOG_ERROR("Failed to read first block[%lu].", last_write_block_no)
     return s;
   }
 

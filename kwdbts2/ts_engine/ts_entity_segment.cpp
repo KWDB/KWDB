@@ -70,6 +70,10 @@ KStatus TsEntitySegmentEntityItemFile::GetEntityItem(uint64_t entity_id, TsEntit
   if (is_exist) {
     entity_item = *(reinterpret_cast<TsEntityItem *>(result.data));
   }
+  if (entity_item.table_id == 0) {
+    is_exist = false;
+    return SUCCESS;
+  }
   return KStatus::SUCCESS;
 }
 

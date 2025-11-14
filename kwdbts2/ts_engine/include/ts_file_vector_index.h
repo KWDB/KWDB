@@ -26,6 +26,7 @@ class FileWithIndex {
   virtual uint64_t AllocateAssigned(size_t size, uint8_t fill_number) = 0;
   virtual char* GetAddrForOffset(uint64_t offset, uint32_t reading_bytes) = 0;
   virtual ~FileWithIndex() {}
+  virtual KStatus Sync() = 0;
 };
 
 /**
@@ -62,6 +63,7 @@ class VectorIndexForFile {
 
   void Reset() {
     *start_offset_ = INVALID_POSITION;
+    file_->Sync();
   }
 
   void initLevelInfo() {
@@ -103,6 +105,7 @@ class VectorIndexForFile {
         return INVALID_POSITION;
       }
       new_node_offset = offset;
+      file_->Sync();
     }
     return new_node_offset;
   }

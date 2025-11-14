@@ -69,7 +69,6 @@ class TsVGroup {
   EngineOptions* engine_options_ = nullptr;
 
   std::shared_mutex* engine_wal_level_mutex_ = nullptr;
-  std::unique_ptr<WALMgr> wal_manager_ = nullptr;
   std::unique_ptr<TSxMgr> tsx_manager_ = nullptr;
 
   std::unique_ptr<TsVersionManager> version_manager_ = nullptr;
@@ -104,6 +103,7 @@ class TsVGroup {
   std::unordered_map<uint32_t, size_t> entity_latest_row_mem_size_;
 
  public:
+  std::unique_ptr<WALMgr> wal_manager_ = nullptr;
   TsVGroup() = delete;
 
   TsVGroup(EngineOptions* engine_options, uint32_t vgroup_id, TsEngineSchemaManager* schema_mgr,

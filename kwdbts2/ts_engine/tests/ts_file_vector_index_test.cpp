@@ -47,6 +47,10 @@ class TestMemFile : public FileWithIndex {
     }
     return start_ + offset;
   }
+
+  KStatus Sync() override {
+    return KStatus::SUCCESS;
+  }
 };
 
 class TsFileVectorIndexTest : public ::testing::Test {
