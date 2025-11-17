@@ -435,6 +435,9 @@ func checkExportOptions(
 			return expOpts, errors.Errorf("Export support SQL cannot be used in conjunction with chunk rows")
 		}
 		chunkSize, err = strconv.Atoi(override)
+		if chunkSize > 100000 {
+			return expOpts, errors.Errorf("The chunk size must be less than 100000")
+		}
 		if err != nil {
 			return expOpts, pgerror.New(pgcode.InvalidParameterValue, err.Error())
 		}

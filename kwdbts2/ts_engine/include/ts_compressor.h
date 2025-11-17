@@ -35,10 +35,23 @@ enum class TsCompAlg : uint16_t {
   kSimple8B_u16 = 8,
   kSimple8B_u32 = 9,
   kSimple8B_u64 = 10,
+
   kChimp_32 = 11,
   kChimp_64 = 12,
   // kALP,
   // kELF,
+
+  kSimple8B_V2_s8 = 13,
+  kSimple8B_V2_s16 = 14,
+  kSimple8B_V2_s32 = 15,
+  kSimple8B_V2_s64 = 16,
+  kSimple8B_V2_u8 = 17,
+  kSimple8B_V2_u16 = 18,
+  kSimple8B_V2_u32 = 19,
+  kSimple8B_V2_u64 = 20,
+
+  kBitPacking = 21,
+
   TS_COMP_ALG_LAST
 };
 

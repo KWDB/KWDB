@@ -155,11 +155,6 @@ function execute_regression_sql_distribute_v3() {
 
           pkill -9 kwbase
           sleep 10s
-          echo 'before umount'
-          find "${DEPLOY_ROOT}" -type d -exec findmnt {} \;
-          echo 'after umount'
-          find "${DEPLOY_ROOT}" -type d -exec findmnt {} \; -exec umount -l {} \;
-          find "${DEPLOY_ROOT}" -type d -exec findmnt {} \;
 
           rm -rf $QA_DIR/../install/deploy/
 

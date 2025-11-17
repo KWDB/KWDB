@@ -379,9 +379,6 @@ if __name__ == "__main__":
                     get_url_from_node_id(1)
                 )
                 cmds.append(cmd)
-                cmd = ' {} sql --insecure --host={} -e "set cluster setting' \
-                      ' cluster.license = {};"'.format(kwbin_path, url, "'${KWBASE_LICENSE}'")
-                cmds.append(cmd)
         elif re.match('-- decommission', sql):
             node_ids = get_nodes(sql)
             for node_id in node_ids:
@@ -407,43 +404,55 @@ if __name__ == "__main__":
         elif re.match('-- wait-running', sql):
             node_ids = get_nodes(sql)
             url = get_url_from_node_id(node_ids[0])
+            cmd = "echo $(date) >>$LOG_DIR/$SQL_FILTER.log"
+            cmds.append(cmd)
             cmd = "count=0;" \
                   "while [ $({} sql --insecure --host={} " \
-                  "-e \"SELECT sum((metrics->>'ranges.unavailable')::DECIMAL)::INT AS ranges_unavailable FROM kwdb_internal.kv_store_status;\" --format=raw | grep -v '#' | sort | tail -n 1 ) -ne 0 ] && [ $count -lt 180 ];" \
+                  "-e \"SET statement_timeout = '10s';SELECT sum((metrics->>'ranges.unavailable')::DECIMAL)::INT AS ranges_unavailable FROM kwdb_internal.kv_store_status;\" --format=raw | grep -v '#' | sort | tail -n 1 ) -ne 0 ] && [ $count -lt 180 ];" \
                   "do " \
                   " sleep 1s;  count=$((count+1)) ;" \
-                  "done\nif [ $count -ge 180 ]; then echo \"wait-running timeout after 180s\" ;fi".format(kwbin_path,
+                  "done\nif [ $count -ge 180 ]; then echo \"wait-running timeout after 180s\">>$LOG_DIR/$SQL_FILTER.log;fi".format(kwbin_path,
                                                                                                           url)
+            cmds.append(cmd)
+            cmd = "echo $(date) >>$LOG_DIR/$SQL_FILTER.log"
             cmds.append(cmd)
         elif re.match('-- wait-nonzero-replica', sql):
             node_ids = get_nodes(sql)
             for node_id in node_ids:
                 url = get_url_from_node_id(1)
+                cmd = "echo $(date) >>$LOG_DIR/$SQL_FILTER.log"
+                cmds.append(cmd)
                 cmd = "count=0;" \
                       "while [ $({} sql --insecure --host={} " \
-                      "-e \"SELECT COUNT(*) FROM kwdb_internal.ranges WHERE database_name = 'tsdb1' AND {}=ANY(replicas);\" --format=raw | grep -v '#' ) -eq 0 ] && [ $count -lt 180 ]; do" \
+                      "-e \"SET statement_timeout = '10s';SELECT COUNT(*) FROM kwdb_internal.ranges WHERE database_name = 'tsdb1' AND {}=ANY(replicas);\" --format=raw | grep -v '#' ) -eq 0 ] && [ $count -lt 180 ]; do" \
                       "    count=$((count+1));" \
                       "    sleep 1;" \
                       "done\n" \
                       "if [ $count -ge 180 ]; then" \
-                      "    echo \"wait-nonzero-replica timeout after 180s\";" \
+                      "    echo \"wait-nonzero-replica timeout after 180s\">>$LOG_DIR/$SQL_FILTER.log;" \
                       "fi".format(kwbin_path, url, node_id)
+                cmds.append(cmd)
+                cmd = "echo $(date) >>$LOG_DIR/$SQL_FILTER.log"
                 cmds.append(cmd)
         elif re.match('-- wait-zero-replica', sql):
             node_ids = get_nodes(sql)
             for node_id in node_ids:
                 url = get_url_from_node_id(1)
+                cmd = "echo $(date) >>$LOG_DIR/$SQL_FILTER.log"
+                cmds.append(cmd)
                 cmd = "count=0;" \
                       "while [ $({} sql --insecure --host={} " \
-                      "-e \"SELECT COUNT(*) FROM kwdb_internal.ranges WHERE database_name = 'tsdb1' AND {}=ANY(replicas);\" --format=raw | grep -v '#' ) -ne 0 ] && [ $count -lt 180 ]; do" \
+                      "-e \"SET statement_timeout = '10s';SELECT COUNT(*) FROM kwdb_internal.ranges WHERE {}=ANY(replicas);\" --format=raw | grep -v '#' ) -ne 0 ] && [ $count -lt 180 ]; do" \
                       "    count=$((count+1));" \
                       "    sleep 1;" \
                       "done\n" \
                       "if [ $count -ge 180 ]; then" \
                       "    {} sql --insecure --host={} " \
-                      "     -e \"SELECT * FROM kwdb_internal.ranges WHERE database_name = 'tsdb1' AND {}=ANY(replicas);\";" \
-                      "    echo \"wait-zero-replica timeout after 180s\";" \
+                      "     -e \"SET statement_timeout = '10s';SELECT * FROM kwdb_internal.ranges WHERE {}=ANY(replicas);\";" \
+                      "    echo \"wait-zero-replica timeout after 180s\">>$LOG_DIR/$SQL_FILTER.log;" \
                       "fi".format(kwbin_path, url, node_id, kwbin_path, url, node_id)
+                cmds.append(cmd)
+                cmd = "echo $(date) >>$LOG_DIR/$SQL_FILTER.log"
                 cmds.append(cmd)
 
         elif re.match('-- wait-all-replica-health', sql):
@@ -455,18 +464,22 @@ if __name__ == "__main__":
             # node_ids = get_nodes(sql)
             for node_id in last_exec_node:
                 url = get_url_from_node_id(1)
+                cmd = "echo $(date) >>$LOG_DIR/$SQL_FILTER.log"
+                cmds.append(cmd)
                 cmd = "count=0;" \
                       "while [ $({} sql --insecure --host={} " \
-                      "-e \"WITH liveness_and_nodes AS (SELECT node_id AS id, CASE WHEN split_part(expiration, ',', 1)::decimal > now()::decimal AND NOT upgrading THEN true ELSE false END AS is_available, COALESCE(is_live, false) AS is_live, ranges AS gossiped_replicas, decommissioning AS is_decommissioning, draining AS is_draining FROM kwdb_internal.gossip_liveness LEFT JOIN kwdb_internal.gossip_nodes USING (node_id) ), kv_store_metrics AS (SELECT node_id AS id, sum((metrics->>'replicas.leaders')::DECIMAL)::INT AS replicas_leaders, sum((metrics->>'replicas.leaseholders')::DECIMAL)::INT AS replicas_leaseholders, sum((metrics->>'replicas')::DECIMAL)::INT AS ranges, sum((metrics->>'ranges.unavailable')::DECIMAL)::INT AS ranges_unavailable, sum((metrics->>'ranges.underreplicated')::DECIMAL)::INT AS ranges_underreplicated FROM kwdb_internal.kv_store_status GROUP BY node_id ) select sum(ranges_underreplicated) from kv_store_metrics ;\" --format=raw | grep -v '#' ) -ne 0 ] && [ $count -lt {} ]; do" \
+                      "-e \"SET statement_timeout = '10s';WITH liveness_and_nodes AS (SELECT node_id AS id, CASE WHEN split_part(expiration, ',', 1)::decimal > now()::decimal AND NOT upgrading THEN true ELSE false END AS is_available, COALESCE(is_live, false) AS is_live, ranges AS gossiped_replicas, decommissioning AS is_decommissioning, draining AS is_draining FROM kwdb_internal.gossip_liveness LEFT JOIN kwdb_internal.gossip_nodes USING (node_id) ), kv_store_metrics AS (SELECT node_id AS id, sum((metrics->>'replicas.leaders')::DECIMAL)::INT AS replicas_leaders, sum((metrics->>'replicas.leaseholders')::DECIMAL)::INT AS replicas_leaseholders, sum((metrics->>'replicas')::DECIMAL)::INT AS ranges, sum((metrics->>'ranges.unavailable')::DECIMAL)::INT AS ranges_unavailable, sum((metrics->>'ranges.underreplicated')::DECIMAL)::INT AS ranges_underreplicated FROM kwdb_internal.kv_store_status GROUP BY node_id ) select sum(ranges_underreplicated) from kv_store_metrics ;\" --format=raw | grep -v '#' ) -ne 0 ] && [ $count -lt {} ]; do" \
                       "    count=$((count+1));" \
                       "    sleep 1;" \
                       "done\n" \
                       "if [ $count -ge {} ]; then" \
                       "    {} sql --insecure --host={} " \
-                      "     -e \"WITH liveness_and_nodes AS (SELECT node_id AS id, CASE WHEN split_part(expiration, ',', 1)::decimal > now()::decimal AND NOT upgrading THEN true ELSE false END AS is_available, COALESCE(is_live, false) AS is_live, ranges AS gossiped_replicas, decommissioning AS is_decommissioning, draining AS is_draining FROM kwdb_internal.gossip_liveness LEFT JOIN kwdb_internal.gossip_nodes USING (node_id) ), kv_store_metrics AS (SELECT node_id AS id, sum((metrics->>'replicas.leaders')::DECIMAL)::INT AS replicas_leaders, sum((metrics->>'replicas.leaseholders')::DECIMAL)::INT AS replicas_leaseholders, sum((metrics->>'replicas')::DECIMAL)::INT AS ranges, sum((metrics->>'ranges.unavailable')::DECIMAL)::INT AS ranges_unavailable, sum((metrics->>'ranges.underreplicated')::DECIMAL)::INT AS ranges_underreplicated FROM kwdb_internal.kv_store_status GROUP BY node_id ) select sum(ranges_underreplicated) from kv_store_metrics ;;\";" \
-                      "    echo \"wait-all-replica-health timeout after {}s\";" \
+                      "     -e \"SET statement_timeout = '10s';WITH liveness_and_nodes AS (SELECT node_id AS id, CASE WHEN split_part(expiration, ',', 1)::decimal > now()::decimal AND NOT upgrading THEN true ELSE false END AS is_available, COALESCE(is_live, false) AS is_live, ranges AS gossiped_replicas, decommissioning AS is_decommissioning, draining AS is_draining FROM kwdb_internal.gossip_liveness LEFT JOIN kwdb_internal.gossip_nodes USING (node_id) ), kv_store_metrics AS (SELECT node_id AS id, sum((metrics->>'replicas.leaders')::DECIMAL)::INT AS replicas_leaders, sum((metrics->>'replicas.leaseholders')::DECIMAL)::INT AS replicas_leaseholders, sum((metrics->>'replicas')::DECIMAL)::INT AS ranges, sum((metrics->>'ranges.unavailable')::DECIMAL)::INT AS ranges_unavailable, sum((metrics->>'ranges.underreplicated')::DECIMAL)::INT AS ranges_underreplicated FROM kwdb_internal.kv_store_status GROUP BY node_id ) select sum(ranges_underreplicated) from kv_store_metrics ;;\";" \
+                      "    echo \"wait-all-replica-health timeout after {}s\">>$LOG_DIR/$SQL_FILTER.log ;" \
                       "fi;" \
                       "echo cost $count s".format(kwbin_path, url, ts, ts, kwbin_path, url, ts)
+                cmds.append(cmd)
+                cmd = "echo $(date) >>$LOG_DIR/$SQL_FILTER.log"
                 cmds.append(cmd)
 
         elif re.match('-- wait-clear', sql):
@@ -477,12 +490,16 @@ if __name__ == "__main__":
             ts = re.sub('s','',ts)
             for node_id in last_exec_node:
                 url = get_url_from_node_id(1)
+                cmd = "echo $(date) >>$LOG_DIR/$SQL_FILTER.log"
+                cmds.append(cmd)
                 cmd = "count=0;" \
                   "while [ $(ls $store_dir\/c1\/tsdb | wc -l ) -ne 2 ] && [ $count -lt {} ]; do" \
                   "    count=$((count+1));" \
                   "    sleep 1;" \
                   "done\n" \
                     "echo cost $count s".format(ts)
+                cmds.append(cmd)
+                cmd = "echo $(date) >>$LOG_DIR/$SQL_FILTER.log"
                 cmds.append(cmd)
 
         elif re.match('-- upgrade-complete', sql):

@@ -11,6 +11,7 @@
 
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 #include <string>
 #include <type_traits>
@@ -50,6 +51,7 @@ class CompressorImpl {
   void operator=(const CompressorImpl &) = delete;
   virtual bool Compress(const TSSlice &data, uint64_t count, std::string *out) const = 0;
   virtual bool Decompress(const TSSlice &data, uint64_t count, std::string *out) const = 0;
+  virtual size_t GetUncompressedSize(const TSSlice &data, uint64_t count) const = 0;
 };
 
 class GorillaInt : public CompressorImpl {
@@ -64,6 +66,7 @@ class GorillaInt : public CompressorImpl {
   static constexpr int stride = 8;
   bool Compress(const TSSlice &data, uint64_t count, std::string *out) const override;
   bool Decompress(const TSSlice &data, uint64_t count, std::string *out) const override;
+  size_t GetUncompressedSize(const TSSlice &data, uint64_t count) const override { return stride * count; }
 };
 
 template <class T>
@@ -79,6 +82,7 @@ class GorillaIntV2 : public CompressorImpl {
   static constexpr int stride = sizeof(T);
   bool Compress(const TSSlice &data, uint64_t count, std::string *out) const override;
   bool Decompress(const TSSlice &data, uint64_t count, std::string *out) const override;
+  size_t GetUncompressedSize(const TSSlice &data, uint64_t count) const override { return stride * count; }
 };
 
 template <class T>
@@ -94,7 +98,41 @@ class Simple8BInt : public CompressorImpl {
   static constexpr int stride = sizeof(T);
   bool Compress(const TSSlice &data, uint64_t count, std::string *out) const override;
   bool Decompress(const TSSlice &data, uint64_t count, std::string *out) const override;
+  size_t GetUncompressedSize(const TSSlice &data, uint64_t count) const override { return stride * count; }
 };
+
+template <class T>
+class Simple8BIntV2 : public CompressorImpl {
+ private:
+  Simple8BIntV2() = default;
+
+ public:
+  static Simple8BIntV2 &GetInstance() {
+    static Simple8BIntV2 inst;
+    return inst;
+  }
+  static constexpr int stride = sizeof(T);
+  bool Compress(const TSSlice &data, uint64_t count, std::string *out) const override;
+  bool Decompress(const TSSlice &data, uint64_t count, std::string *out) const override;
+  size_t GetUncompressedSize(const TSSlice &data, uint64_t count) const override { return stride * count; }
+};
+
+class BitPacking : public CompressorImpl {
+ private:
+  BitPacking() = default;
+
+ public:
+  static BitPacking &GetInstance() {
+    static BitPacking inst;
+    return inst;
+  }
+  static constexpr int stride = 1;
+  bool Compress(const TSSlice &data, uint64_t count, std::string *out) const override;
+  bool Decompress(const TSSlice &data, uint64_t count, std::string *out) const override;
+  size_t GetUncompressedSize(const TSSlice &data, uint64_t count) const override { return stride * count; }
+};
+
+class EntropyEncode : public CompressorImpl {};
 
 template <class T>
 class Chimp : public CompressorImpl {
@@ -111,6 +149,7 @@ class Chimp : public CompressorImpl {
   static constexpr int stride = sizeof(T);
   bool Compress(const TSSlice &data, uint64_t count, std::string *out) const override;
   bool Decompress(const TSSlice &data, uint64_t count, std::string *out) const override;
+  size_t GetUncompressedSize(const TSSlice &data, uint64_t count) const override { return stride * count; }
 };
 
 class SnappyString : public CompressorImpl {
@@ -130,6 +169,14 @@ class SnappyString : public CompressorImpl {
   bool Decompress(const TSSlice &data, uint64_t count, std::string *out) const override {
     snappy::Uncompress(data.data, data.len, out);
     return true;
+  }
+  size_t GetUncompressedSize(const TSSlice &data, uint64_t count) const override {
+    size_t result;
+    bool ok = snappy::GetUncompressedLength(data.data, data.len, &result);
+    if (ok) {
+      return result;
+    }
+    return -1;
   }
 };
 

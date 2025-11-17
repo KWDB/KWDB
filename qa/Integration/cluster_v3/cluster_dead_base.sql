@@ -25,7 +25,7 @@ alter range default configure zone using num_replicas = 5;
 -- sleep: 90s
 -- wait-zero-replica: c4
 alter range default configure zone using num_replicas = 5;
-SELECT COUNT(*) = 0 FROM kwdb_internal.ranges WHERE database_name = 'tsdb1' AND 4=ANY(replicas);
+SET statement_timeout = '30s';SELECT COUNT(*) = 0 FROM kwdb_internal.ranges WHERE 4=ANY(replicas);
 SELECT COUNT(*) FROM tsdb1.ts_t3;
 SELECT COUNT(*) FROM tsdb1.ts_t4;
 SELECT COUNT(1) FROM tsdb1.ts_t3;
@@ -34,7 +34,7 @@ SELECT COUNT(1) FROM tsdb1.ts_t4;
 -- kill: c5
 -- sleep: 120s
 -- wait-zero-replica: c5
-SELECT COUNT(*) = 0 FROM kwdb_internal.ranges WHERE database_name = 'tsdb1' AND 5=ANY(replicas);
+SET statement_timeout = '30s';SELECT COUNT(*) = 0 FROM kwdb_internal.ranges WHERE 5=ANY(replicas);
 SELECT COUNT(*) FROM tsdb1.ts_t3;
 SELECT COUNT(*) FROM tsdb1.ts_t4;
 SELECT COUNT(1) FROM tsdb1.ts_t3;

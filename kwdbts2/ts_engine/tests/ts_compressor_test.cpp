@@ -2,6 +2,7 @@
 
 #include <gtest/gtest.h>
 
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -10,20 +11,24 @@
 #include <vector>
 
 #include "libkwdbts2.h"
+#include "ts_coding.h"
 #include "ts_compressor_impl.h"
 
 template <class Compressor>
 class TimestampCompressorTester : public ::testing::Test {};
-using AllTsTypes = ::testing::Types<kwdbts::GorillaInt, kwdbts::GorillaIntV2<int64_t>,
-                                    kwdbts::GorillaIntV2<int32_t>>;
+using AllTsTypes = ::testing::Types<kwdbts::GorillaInt, kwdbts::GorillaIntV2<int64_t>, kwdbts::GorillaIntV2<int32_t>,
+                                    kwdbts::Simple8BIntV2<int64_t>, kwdbts::Simple8BIntV2<int32_t>>;
 template <class T>
-struct TargetType {
-  using Type = int64_t;
+struct TargetType {};
+
+template <template <class> class T, class U>
+struct TargetType<T<U>> {
+  using Type = U;
 };
 
 template <>
-struct TargetType<kwdbts::GorillaIntV2<int32_t>> {
-  using Type = int32_t;
+struct TargetType<kwdbts::GorillaInt> {
+  using Type = int64_t;
 };
 
 TYPED_TEST_CASE(TimestampCompressorTester, AllTsTypes);
@@ -114,6 +119,20 @@ static bool Simple8BDecode(const std::string &data, int count, std::string *out)
   kwdbts::ConcreateTsCompressor<kwdbts::Simple8BInt<T>>::GetInstance();
   const TSSlice s_data{(char *)data.data(), data.size()};
   return kwdbts::Simple8BInt<T>::GetInstance().Decompress(s_data, count, out);
+}
+
+template <class T>
+static bool Simple8BV2Encode(const std::vector<T> &input, std::string *out) {
+  kwdbts::ConcreateTsCompressor<kwdbts::Simple8BInt<T>>::GetInstance();
+  const TSSlice plain{(char *)(input.data()), sizeof(T) * input.size()};
+  return kwdbts::Simple8BIntV2<T>::GetInstance().Compress(plain, input.size(), out);
+}
+
+template <class T>
+static bool Simple8BV2Decode(const std::string &data, int count, std::string *out) {
+  kwdbts::ConcreateTsCompressor<kwdbts::Simple8BInt<T>>::GetInstance();
+  const TSSlice s_data{(char *)data.data(), data.size()};
+  return kwdbts::Simple8BIntV2<T>::GetInstance().Decompress(s_data, count, out);
 }
 
 alignas(64) static constexpr uint32_t ITEMWIDTH[16] = {0, 0, 1,  2,  3,  4,  5,  6,
@@ -258,6 +277,19 @@ TEST(Simple8B, EncodeSpecial) {
   EXPECT_EQ(std::memcmp(number.data(), v.data(), v.size()), 0);
 }
 
+TEST(Simple8BV2, EncodeSpecial) {
+  size_t count = 119;
+  std::vector<uint64_t> number(count, 1024);
+  std::string out;
+  ASSERT_TRUE(Simple8BV2Encode(number, &out));
+  ASSERT_EQ(out.size(), 2 + 1 + 8);
+
+  std::string v;
+  EXPECT_TRUE(Simple8BV2Decode<uint64_t>(out, count, &v));
+  ASSERT_EQ(number.size() * 8, v.size());
+  EXPECT_EQ(std::memcmp(number.data(), v.data(), v.size()), 0);
+}
+
 TEST(Simple8B, OneBatch) {
   for (int selector = 0; selector < 16; ++selector) {
     auto v = GenBatch(selector);
@@ -341,6 +373,19 @@ TEST(Simple8B, Bug1) {
   }
 }
 
+TEST(Simple8BV2, Bug1) {
+  std::vector<uint64_t> data{1 << 4, 1 << 14, 1 << 14, 1 << 14, 1 << 11};
+  std::string out;
+  ASSERT_TRUE(Simple8BV2Encode<uint64_t>(data, &out));
+  std::string raw;
+  ASSERT_TRUE(Simple8BV2Decode<uint64_t>(out, data.size(), &raw));
+  ASSERT_EQ(raw.size(), data.size() * sizeof(uint64_t));
+  auto p = reinterpret_cast<uint64_t *>(raw.data());
+  for (int i = 0; i < data.size(); ++i) {
+    EXPECT_EQ(p[i], data[i]) << i;
+  }
+}
+
 TEST(Simple8B, Bug2) {
   std::vector<int16_t> data{5079, 8477, 1760, 3220, 4244, 4374, 4749, 6412, 5194,
                             1631, 5734, 4339, 7815, 5237, 8829, 1245, 7099, 9217,
@@ -355,6 +400,173 @@ TEST(Simple8B, Bug2) {
   for (int i = 0; i < data.size(); ++i) {
     EXPECT_EQ(p[i], data[i]) << i;
   }
+}
+
+TEST(Simple8BV2, Bug2) {
+  std::vector<int16_t> data{5079, 8477, 1760, 3220, 4244, 4374, 4749, 6412, 5194, 1631, 5734, 4339, 7815, 5237,
+                            8829, 1245, 7099, 9217, 9274, 8227, 8881, 1461, 5528, 2946, 8872, 9103, 5161};
+
+  std::string out;
+  ASSERT_TRUE(Simple8BV2Encode<int16_t>(data, &out));
+  std::string raw;
+  ASSERT_TRUE(Simple8BV2Decode<int16_t>(out, data.size(), &raw));
+  ASSERT_EQ(raw.size(), data.size() * sizeof(int16_t));
+  auto p = reinterpret_cast<int16_t *>(raw.data());
+  for (int i = 0; i < data.size(); ++i) {
+    EXPECT_EQ(p[i], data[i]) << i;
+  }
+}
+
+[[maybe_unused]]
+static std::vector<int64_t> GenBatchV2(const std::vector<uint64_t> &dod_zigzag) {
+  int delta = 0;
+  std::vector<int64_t> data{0, 0};
+  for (auto i : dod_zigzag) {
+    int64_t dod = kwdbts::DecodeZigZag(i);
+    delta += dod;
+    data.push_back(data.back() + delta);
+  }
+  return data;
+}
+
+TEST(Simple8BV2, AllBranch) {
+
+  struct TestCases {
+    std::vector<int64_t> data;
+    int expected_size;
+  };
+  std::vector<TestCases> cases;
+
+  {
+    std::vector<int64_t> data;
+    data = {1, 2};
+    cases.push_back({std::move(data), 2});
+
+    data = {0, 0, 0};
+    cases.push_back({std::move(data), 10});
+
+    data = std::vector<int64_t>(10000, 1);
+    cases.push_back({std::move(data), 2 + 8});
+
+    data = std::vector<int64_t>(70000, 2);
+    cases.push_back({std::move(data), 2 + 8 + 8});
+
+    data = std::vector<int64_t>(100, 1);
+    data.push_back(100);
+    cases.push_back({std::move(data), 2 + 8 + 8});
+
+    {
+      data = {0, 0};
+      int delta = 0;
+      int dods[] = {-2, 1};
+      for (int i = 0; i < 35; ++i) {
+        int dod = dods[i % 2];
+        data.push_back(data.back() + delta);
+        delta += dod;
+      }
+      cases.push_back({std::move(data), -1});
+    }
+    {
+      data = {0, 0};
+      int delta = 0;
+      for (int i = 0; i < 5; ++i) {
+        int dod = 3;
+        data.push_back(data.back() + delta);
+        delta += dod;
+      }
+      data.push_back(data.back());
+      cases.push_back({std::move(data), -1});
+    }
+
+    {
+      data = GenBatchV2({8, 8, 8, 8, 8, 8, 9});
+      cases.push_back({std::move(data), -1});
+    }
+
+    {
+      std::vector<uint64_t> dod(15, 8);
+      dod.push_back(9);
+      data = GenBatchV2(std::move(dod));
+      cases.push_back({std::move(data), -1});
+    }
+    {
+      std::vector<int64_t> data;
+      data.reserve(10000);
+      for (int i = 0; i < 10000; ++i) {
+        data.push_back(std::sin(i * 3.14 * 2 / 10000) * 10000);
+      }
+      for(int i = 2; i < data.size(); ++i) {
+        int64_t d1 = data[i] - data[i - 1];
+        int64_t d2 = data[i - 1] - data[i - 2];
+        int64_t dod = d1 - d2;
+      }
+      cases.push_back({std::move(data), -1});
+    }
+    {
+      for (int i = 1; i < 64; ++i) {
+        std::vector<uint64_t> dod(i, 7);
+        dod.push_back(9);
+        std::vector<int64_t> data = GenBatchV2(std::move(dod));
+        cases.push_back({std::move(data), -1});
+      }
+    }
+  }
+  for (const auto &c : cases) {
+    std::string out;
+    ASSERT_TRUE(Simple8BV2Encode(c.data, &out));
+    if (c.expected_size != -1) {
+      ASSERT_EQ(out.size(), c.expected_size);
+    }
+    std::string raw;
+    ASSERT_TRUE(Simple8BV2Decode<int64_t>(out, c.data.size(), &raw));
+    ASSERT_EQ(raw.size(), c.data.size() * sizeof(int64_t));
+    auto p = reinterpret_cast<int64_t *>(raw.data());
+    for (int i = 0; i < c.data.size(); ++i) {
+      ASSERT_EQ(p[i], c.data[i]) << i;
+    }
+  }
+}
+
+template<class Type>
+void Simple8BUintTester() {
+  struct TestCases {
+    std::vector<Type> data;
+    int expected_size;
+  };
+
+  std::vector<TestCases> cases;
+
+  {
+    std::vector<Type> data;
+    {
+      std::vector<Type> data;
+      data.reserve(10000);
+      for (int i = 0; i < 35; ++i) {
+        data.push_back(std::cos(i * 3.14 * 2 / 10000) * 10000 + 20000);
+      }
+      cases.push_back({std::move(data), -1});
+    }
+  }
+
+  for (const auto &c : cases) {
+    std::string out;
+    ASSERT_TRUE(Simple8BV2Encode(c.data, &out));
+    if (c.expected_size != -1) {
+      ASSERT_EQ(out.size(), c.expected_size);
+    }
+    std::string raw;
+    ASSERT_TRUE(Simple8BV2Decode<Type>(out, c.data.size(), &raw));
+    ASSERT_EQ(raw.size(), c.data.size() * sizeof(Type));
+    auto p = reinterpret_cast<Type *>(raw.data());
+    for (int i = 0; i < c.data.size(); ++i) {
+      ASSERT_EQ(p[i], c.data[i]) << i;
+    }
+  }
+}
+
+TEST(Simple8BV2, Uint) {
+  Simple8BUintTester<uint32_t>();
+  Simple8BUintTester<uint64_t>();
 }
 
 // Snappy
@@ -374,6 +586,8 @@ TEST(Snappy, CompressDecompress) {
 
   std::string origin;
   ASSERT_TRUE(comp.Decompress({out.data(), out.size()}, 0, &origin));
+  size_t origin_size = comp.GetUncompressedSize({out.data(), out.size()}, 0);
+  ASSERT_EQ(origin_size, s.size());
 
   EXPECT_EQ(origin, s);
 }
@@ -436,5 +650,44 @@ TYPED_TEST(FloatingPointCompressorTester, CompressDecompress) {
     for (int j = 0; j < c[i].size(); ++j) {
       EXPECT_EQ(c[i][j], raw[j]) << i;
     }
+  }
+}
+
+
+// bool
+
+static bool BitPackingEnc(const std::vector<uint8_t> &data, std::string *out) {
+  return kwdbts::BitPacking::GetInstance().Compress(TSSlice{(char *)data.data(), data.size()}, data.size(), out);
+}
+
+static bool BitPackingDec(std::string &data, size_t size, std::vector<uint8_t> *out) {
+  std::string plain;
+  out->resize(size);
+  bool ok = kwdbts::BitPacking::GetInstance().Decompress(TSSlice{data.data(), data.size()}, size, &plain);
+  std::copy(plain.begin(), plain.end(), out->begin());
+  if (!ok) {
+    return false;
+  }
+  return true;
+}
+
+TEST(Bool, CompressDecompress) {
+  for (int i = 1; i < 1025; ++i) {
+    std::default_random_engine drng(i);
+    std::bernoulli_distribution d(0.25);
+    std::vector<uint8_t> data(i);
+
+    for (int j = 0; j < i; ++j) {
+      data[j] = d(drng);
+    }
+
+    std::string out;
+    ASSERT_TRUE(BitPackingEnc(data, &out));
+
+    std::vector<uint8_t> x2;
+    ASSERT_TRUE(BitPackingDec(out, data.size(), &x2));
+    ASSERT_EQ(data.size(), x2.size());
+
+    EXPECT_EQ(data, x2);
   }
 }

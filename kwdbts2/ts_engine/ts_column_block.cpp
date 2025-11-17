@@ -103,8 +103,8 @@ bool TsColumnBlock::GetCompressedData(std::string* out, TsColumnCompressInfo* in
   TsBitmap* p_bitmap = &bitmap;
   auto [first, second] = mgr.GetDefaultAlgorithm(static_cast<DATATYPE>(col_schema_.type));
   if (isVarLenType(col_schema_.type)) {
-    // varchar use Gorilla algorithm
-    first = compress ? TsCompAlg::kChimp_32 : TsCompAlg::kPlain;
+    // varchar use simple8b algorithm
+    first = compress ? TsCompAlg::kSimple8B_V2_u32 : TsCompAlg::kPlain;
     p_bitmap = nullptr;
   }
 

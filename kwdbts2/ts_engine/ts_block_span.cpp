@@ -238,7 +238,7 @@ KStatus TsBlockSpan::BuildCompressedData(std::string& data) {
     auto [first, second] = mgr.GetDefaultAlgorithm(static_cast<DATATYPE>(d_type));
     if (is_var_col) {
       // varchar use Gorilla algorithm
-      first = TsCompAlg::kChimp_32;
+      first = TsCompAlg::kSimple8B_V2_u32;
       // var offset data
       std::string compressed;
       bool ok = mgr.CompressData({var_offset_data.data(), var_offset_data.size()},
