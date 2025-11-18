@@ -31,9 +31,13 @@ class TsBitmapBase {
   DataFlags At(size_t idx) const { return this->operator[](idx); }
   virtual DataFlags operator[](size_t idx) const = 0;
   virtual size_t GetCount() const = 0;
+  virtual size_t Count(DataFlags flag) const = 0;
   virtual size_t GetValidCount() const = 0;
 
   bool IsAllValid() const { return GetValidCount() == GetCount(); }
+  bool IsAllNull() const { return Count(kNull) == GetCount(); }
+  bool IsAllNone() const { return Count(kNone) == GetCount(); }
+
   virtual std::unique_ptr<TsBitmapBase> Slice(int start, int count) const = 0;
   virtual std::unique_ptr<TsBitmapBase> AsView() const = 0;
 
@@ -72,27 +76,32 @@ class TsBitmapView : public TsBitmapBase {
   }
 
   size_t GetCount() const override { return nrows_; }
-  size_t GetValidCount() const override {
-    if (valid_count_ != -1) {
-      return valid_count_;
-    }
+  size_t Count(DataFlags flag) const override {
     int sum = 0;
     int bit_idx = 0;
     for (; bit_idx < nrows_ && (bit_idx + start_row_) % 4 != 0; ++bit_idx) {
-      sum += ((*this)[bit_idx] == kValid);
+      sum += ((*this)[bit_idx] == flag);
     }
 
+    uint8_t flag_int = static_cast<uint8_t>(flag);
     int nleft = nrows_ - bit_idx;
     for (; nleft >= 4; bit_idx += 4, nleft -= 4) {
       int char_idx = (bit_idx + start_row_) / 4;
       uint8_t c = sv_[char_idx];
-      sum += ((c & 0b11) == 0) + ((c & 0b1100) == 0) + ((c & 0b110000) == 0) + ((c & 0b11000000) == 0);
+      sum += ((c & 0b11) == flag_int) + ((c & 0b1100) == (flag_int << 2)) + ((c & 0b110000) == (flag_int << 4)) +
+             ((c & 0b11000000) == (flag_int << 6));
     }
     for (; bit_idx < nrows_; ++bit_idx) {
-      sum += ((*this)[bit_idx] == kValid);
+      sum += ((*this)[bit_idx] == flag);
     }
-    valid_count_ = sum;
     return sum;
+  }
+  size_t GetValidCount() const override {
+    if (valid_count_ != -1) {
+      return valid_count_;
+    }
+    valid_count_ = Count(kValid);
+    return valid_count_;
   }
 
   std::string GetStr() const override;
@@ -194,23 +203,27 @@ class TsBitmap : public TsBitmapBase {
   size_t GetCount() const override { return nrows_; }
 
   static size_t GetBitmapLen(size_t nrows) { return (nbit_per_row * nrows + 7) / 8; }
-  size_t GetValidCount() const override {
+  size_t Count(DataFlags flag) const override {
     if (rep_.empty()) {
       return 0;
     }
+    uint8_t flag_int = static_cast<uint8_t>(flag);
     int sum = 0;
     int end = rep_.size() - (nrows_ % 4 != 0);
     for (int i = 0; i < end; ++i) {
       uint8_t c = rep_[i];
-      sum += ((c & 0b11) == 0) + ((c & 0b1100) == 0) + ((c & 0b110000) == 0) + ((c & 0b11000000) == 0);
+      sum += ((c & 0b11) == flag_int) + ((c & 0b1100) == (flag_int << 2)) + ((c & 0b110000) == (flag_int << 4)) +
+             ((c & 0b11000000) == (flag_int << 6));
     }
     // last byte
     uint8_t c = rep_.back();
     for (int i = 0; i < nrows_ % 4; ++i) {
-      sum += ((c >> (2 * i)) & 0b11) == 0b00;
+      sum += ((c >> (2 * i)) & 0b11) == flag_int;
     }
     return sum;
   }
+  size_t GetValidCount() const override { return Count(kValid); }
+
   bool IsAllValid() const {
     return std::all_of(rep_.begin(), rep_.end(), [](char c) { return c == 0; });
   }
@@ -251,6 +264,7 @@ class TsUniformBitmap : public TsBitmapBase {
   DataFlags operator[](size_t idx) const override { return kFlag; }
   size_t GetCount() const override { return nrows_; }
   size_t GetValidCount() const override { return kFlag == kValid ? nrows_ : 0; }
+  size_t Count(DataFlags flag) const override { return kFlag == flag? nrows_ : 0; }
 
   std::unique_ptr<TsBitmapBase> Slice(int start, int count) const override {
     assert(start + count <= nrows_);

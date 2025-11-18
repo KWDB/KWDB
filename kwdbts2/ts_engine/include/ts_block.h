@@ -35,6 +35,7 @@ struct AggCandidate {
 class TsBlock {
  public:
   virtual ~TsBlock() {}
+  virtual uint32_t GetBlockVersion() const = 0;
   virtual TSTableID GetTableId() = 0;
   virtual uint32_t GetTableVersion() = 0;
   virtual size_t GetRowNum() = 0;
@@ -122,6 +123,7 @@ class TsBlockSpan {
     convert_ = nullptr;
   }
 
+  uint32_t GetBlockVersion() const { return block_->GetBlockVersion(); }
   uint32_t GetVGroupID() const { return vgroup_id_; }
   TSEntityID GetEntityID() const { return entity_id_; }
   int GetRowNum() const { return nrow_; }

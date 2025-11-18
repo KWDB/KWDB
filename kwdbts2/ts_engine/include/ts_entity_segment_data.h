@@ -32,7 +32,7 @@ struct TsAggAndBlockFileHeader {
 class TsEntitySegmentBlockFile {
  private:
   fs::path root_path_;
-  EntitySegmentHandleInfo info_;
+  EntitySegmentMetaInfo info_;
 
   std::unique_ptr<TsRandomReadFile> r_file_ = nullptr;
   TsAggAndBlockFileHeader header_;
@@ -40,7 +40,7 @@ class TsEntitySegmentBlockFile {
  public:
   TsEntitySegmentBlockFile() {}
 
-  explicit TsEntitySegmentBlockFile(const string& root, EntitySegmentHandleInfo info);
+  explicit TsEntitySegmentBlockFile(const string& root, EntitySegmentMetaInfo info);
 
   ~TsEntitySegmentBlockFile();
 
@@ -88,14 +88,14 @@ class TsEntitySegmentBlockFile {
 class TsEntitySegmentAggFile {
  private:
   fs::path root_;
-  EntitySegmentHandleInfo info_;
+  EntitySegmentMetaInfo info_;
   std::unique_ptr<TsRandomReadFile> r_file_ = nullptr;
   TsAggAndBlockFileHeader header_;
 
  public:
   TsEntitySegmentAggFile() {}
 
-  explicit TsEntitySegmentAggFile(const string& root, EntitySegmentHandleInfo info);
+  explicit TsEntitySegmentAggFile(const string& root, EntitySegmentMetaInfo info);
 
   ~TsEntitySegmentAggFile() {}
 

@@ -31,7 +31,7 @@ class TsVersionTest : public testing::Test {
     env->NewDirectory(vgroup_root);
   }
 
-  void BrandNewEntitySegment(TsVersionManager *mgr, const fs::path &root, EntitySegmentHandleInfo *info) {
+  void BrandNewEntitySegment(TsVersionManager *mgr, const fs::path &root, EntitySegmentMetaInfo *info) {
     {
       info->header_b_info.file_number = mgr->NewFileNumber();
       auto header_b_filename = root / BlockHeaderFileName(info->header_b_info.file_number);
@@ -68,7 +68,7 @@ class TsVersionTest : public testing::Test {
   }
 
   void MimicAppendEntitySegment(TsVersionManager *mgr, const fs::path &root, TsEntitySegment *segment,
-                                EntitySegmentHandleInfo *info) {
+                                EntitySegmentMetaInfo *info) {
     auto prev_info = segment->GetHandleInfo();
     {
       auto header_b_filename = root / BlockHeaderFileName(prev_info.header_b_info.file_number);
@@ -100,7 +100,7 @@ class TsVersionTest : public testing::Test {
   }
 
   void GenerateNewEntitySegment(TsVersionManager *mgr, PartitionIdentifier par_id, TsEntitySegment *segment,
-                                EntitySegmentHandleInfo *info) {
+                                EntitySegmentMetaInfo *info) {
     auto root = vgroup_root / PartitionDirName(par_id);
     {
       info->header_e_file_number = mgr->NewFileNumber();
@@ -133,7 +133,7 @@ class TsVersionTest : public testing::Test {
     ASSERT_EQ(env->NewAppendOnlyFile(last_seg_filename, &file), SUCCESS);
     TsLastSegmentBuilder builder(nullptr, std::move(file), filenumber);
     ASSERT_EQ(builder.Finalize(), SUCCESS);
-    update.AddLastSegment(par_id, filenumber);
+    update.AddLastSegment(par_id, {filenumber, 0, 0});
     if (!force_kill) {
       ASSERT_EQ(mgr->ApplyUpdate(&update), SUCCESS);
     }
@@ -144,14 +144,15 @@ class TsVersionTest : public testing::Test {
     auto root = vgroup_root / PartitionDirName(par_id);
     auto current = mgr->Current();
     auto partitions = current->GetPartitions(1, {all_data}, TIMESTAMP64);
-    auto lastsegments = partitions[0]->GetAllLastSegments();
+    int level = -1, group = -1;
+    auto lastsegments = partitions[0]->GetCompactLastSegments(&level, &group);
     uint64_t filenumber = mgr->NewFileNumber();
     auto last_seg_filename = root / LastSegmentFileName(filenumber);
     std::unique_ptr<TsAppendOnlyFile> file;
     ASSERT_EQ(env->NewAppendOnlyFile(last_seg_filename, &file), SUCCESS);
     TsLastSegmentBuilder builder(nullptr, std::move(file), filenumber);
     ASSERT_EQ(builder.Finalize(), SUCCESS);
-    update.AddLastSegment(par_id, filenumber);
+    update.AddLastSegment(par_id, {filenumber, std::min(level + 1, 3), 0});
     ASSERT_GE(lastsegments.size(), 2);
     update.DeleteLastSegment(par_id, lastsegments[0]->GetFileNumber());
     update.DeleteLastSegment(par_id, lastsegments[1]->GetFileNumber());
@@ -160,7 +161,7 @@ class TsVersionTest : public testing::Test {
     ASSERT_NE(p, nullptr);
     auto entity_segment = p->GetEntitySegment();
 
-    EntitySegmentHandleInfo info;
+    EntitySegmentMetaInfo info;
     GenerateNewEntitySegment(mgr, par_id, entity_segment.get(), &info);
     update.SetEntitySegment(par_id, info, false);
 
@@ -176,7 +177,7 @@ class TsVersionTest : public testing::Test {
     ASSERT_NE(p, nullptr);
     auto entity_segment = p->GetEntitySegment();
 
-    EntitySegmentHandleInfo info;
+    EntitySegmentMetaInfo info;
     GenerateNewEntitySegment(mgr, par_id, nullptr, &info);
     update.SetEntitySegment(par_id, info, true);
 
@@ -196,11 +197,11 @@ TEST_F(TsVersionTest, EncodeDecodeTest) {
 
   {
     TsVersionUpdate update;
-    update.AddLastSegment({1, 2, 3}, 1);
-    update.AddLastSegment({1, 2, 3}, 2);
-    update.AddLastSegment({1, 2, 3}, 3);
-    update.AddLastSegment({1, 2, 3}, 4);
-    update.AddLastSegment({1, 2, 3}, 5);
+    update.AddLastSegment({1, 2, 3}, {1, 0, 0});
+    update.AddLastSegment({1, 2, 3}, {2, 1, 1});
+    update.AddLastSegment({1, 2, 3}, {3, 2, 2});
+    update.AddLastSegment({1, 2, 3}, {4, 3, 3});
+    update.AddLastSegment({1, 2, 3}, {5, 3, 3});
     auto encoded = update.EncodeToString();
     EXPECT_NE(encoded.size(), 0);
 
@@ -269,8 +270,8 @@ TEST_F(TsVersionTest, EncodeDecodeTest) {
   {
     TsVersionUpdate update;
     update.PartitionDirCreated({1, 2, 3});
-    update.AddLastSegment({1, 2, 3}, 5);
-    update.AddLastSegment({1, 2, 3}, 6);
+    update.AddLastSegment({1, 2, 3}, {5, 0, 0});
+    update.AddLastSegment({1, 2, 3}, {6, 1, 3});
     update.DeleteLastSegment({1, 2, 3}, 4);
     update.SetNextFileNumber(7);
     // update.SetEntitySegment({1, 2, 3}, {9, 10, 11, 12});
@@ -515,20 +516,20 @@ TEST_F(TsVersionTest, RecoverAndDelete_UnfinishedCompaction) {
     MimicFlushing(mgr.get(), par_id);
   }
   // first compaction
-  // Add: last-10, header.e-11, header.b-12, agg-13, data-14
+  // Add: last-10 L1, header.e-11, header.b-12, agg-13, data-14
   // Del: last-0,  last-1
   MimicCompaction(mgr.get(), par_id, false);
   // second compaction
-  // Add: last-15, header.e-16
+  // Add: last-15 L1, header.e-16
   // Del: last-2,  last-3
   MimicCompaction(mgr.get(), par_id, false);
-  // third compaction
-  // Add: last-17, header.e-18
-  // Del: last-4,  last-5
+  // third compaction compact L1
+  // Add: last-17 L2, header.e-18
+  // Del: last-10,  last-15
   MimicCompaction(mgr.get(), par_id, false);
   // unfinished compaction
-  // Add: last-19, header.e-20
-  // Del: last-6,  last-7
+  // Add: last-19 L1, header.e-20
+  // Del: last-4,  last-5
   MimicCompaction(mgr.get(), par_id, true);
 
   mgr.reset();
@@ -536,13 +537,16 @@ TEST_F(TsVersionTest, RecoverAndDelete_UnfinishedCompaction) {
   s = mgr->Recover();
   EXPECT_EQ(s, SUCCESS);
 
+  EXPECT_TRUE(fs::exists(partition_dir / LastSegmentFileName(4)));
+  EXPECT_TRUE(fs::exists(partition_dir / LastSegmentFileName(5)));
   EXPECT_TRUE(fs::exists(partition_dir / LastSegmentFileName(6)));
   EXPECT_TRUE(fs::exists(partition_dir / LastSegmentFileName(7)));
   EXPECT_TRUE(fs::exists(partition_dir / LastSegmentFileName(8)));
   EXPECT_TRUE(fs::exists(partition_dir / LastSegmentFileName(9)));
-  EXPECT_TRUE(fs::exists(partition_dir / LastSegmentFileName(10)));
-  EXPECT_TRUE(fs::exists(partition_dir / LastSegmentFileName(15)));
   EXPECT_TRUE(fs::exists(partition_dir / LastSegmentFileName(17)));
+
+  EXPECT_FALSE(fs::exists(partition_dir / LastSegmentFileName(10)));
+  EXPECT_FALSE(fs::exists(partition_dir / LastSegmentFileName(15)));
   EXPECT_FALSE(fs::exists(partition_dir / LastSegmentFileName(19)));
 
   EXPECT_TRUE(fs::exists(partition_dir / EntityAggFileName(13)));
@@ -575,16 +579,16 @@ TEST_F(TsVersionTest, RecoverAndDelete_UnfinishedVacuum) {
     MimicFlushing(mgr.get(), par_id);
   }
   // first compaction
-  // Add: last-10, header.e-11, header.b-12, agg-13, data-14
+  // Add: last-10 L1, header.e-11, header.b-12, agg-13, data-14
   // Del: last-0,  last-1
   MimicCompaction(mgr.get(), par_id, false);
   // second compaction
-  // Add: last-15, header.e-16
+  // Add: last-15 L1, header.e-16
   // Del: last-2,  last-3
   MimicCompaction(mgr.get(), par_id, false);
-  // third compaction
+  // third compaction compact L1
   // Add: last-17, header.e-18
-  // Del: last-4,  last-5
+  // Del: last-10,  last-15
   MimicCompaction(mgr.get(), par_id, false);
 
   // unfinished vacuum
@@ -602,12 +606,14 @@ TEST_F(TsVersionTest, RecoverAndDelete_UnfinishedVacuum) {
   s = mgr->Recover();
   EXPECT_EQ(s, SUCCESS);
 
+  EXPECT_TRUE(fs::exists(partition_dir / LastSegmentFileName(4)));
+  EXPECT_TRUE(fs::exists(partition_dir / LastSegmentFileName(5)));
   EXPECT_TRUE(fs::exists(partition_dir / LastSegmentFileName(6)));
   EXPECT_TRUE(fs::exists(partition_dir / LastSegmentFileName(7)));
   EXPECT_TRUE(fs::exists(partition_dir / LastSegmentFileName(8)));
   EXPECT_TRUE(fs::exists(partition_dir / LastSegmentFileName(9)));
-  EXPECT_TRUE(fs::exists(partition_dir / LastSegmentFileName(10)));
-  EXPECT_TRUE(fs::exists(partition_dir / LastSegmentFileName(15)));
+  EXPECT_FALSE(fs::exists(partition_dir / LastSegmentFileName(10)));
+  EXPECT_FALSE(fs::exists(partition_dir / LastSegmentFileName(15)));
   EXPECT_TRUE(fs::exists(partition_dir / LastSegmentFileName(17)));
 
   EXPECT_TRUE(fs::exists(partition_dir / EntityAggFileName(13)));

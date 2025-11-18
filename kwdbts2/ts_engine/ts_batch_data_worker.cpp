@@ -128,7 +128,7 @@ KStatus TsReadBatchDataWorker::AddTsBlockSpanInfo(kwdbContext_p ctx, std::shared
   timestamp64 end_row_ts = block_span->GetTS(block_span->GetRowNum() - 1);
   uint32_t n_rows = block_span->GetRowNum();
   cur_batch_data_.AddBlockSpanDataHeader(0, first_row_ts, end_row_ts, min_osn, max_osn,
-                                         first_osn, last_osn, n_cols_, n_rows);
+                                         first_osn, last_osn, n_cols_, n_rows, block_span->GetBlockVersion());
   return KStatus::SUCCESS;
 }
 
@@ -360,6 +360,7 @@ TsWriteBatchDataWorker::~TsWriteBatchDataWorker() {
     std::unique_ptr<TsSequentialReadFile> r_file;
 
     TsIOEnv *env = &TsMMapIOEnv::GetInstance();
+    w_file_->Sync();
     s = env->NewSequentialReadFile(w_file_->GetFilePath(), &r_file);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("NewSequentialReadFile failed, job_id[%lu]", job_id_);
@@ -381,9 +382,9 @@ TsWriteBatchDataWorker::~TsWriteBatchDataWorker() {
         LOG_ERROR("Read batch data failed, job_id[%lu]", job_id_);
         return;
       }
-      s = ts_engine_->GetTsVGroup(header.vgroup_id)->WriteBatchData(header.table_id, header.table_version,
-                                                                    header.entity_id, header.p_time,
-                                                                    block_data);
+      s = ts_engine_->GetTsVGroup(header.vgroup_id)
+              ->WriteBatchData(header.table_id, header.table_version, header.entity_id, header.p_time,
+                               header.batch_version, block_data);
       if (s != KStatus::SUCCESS) {
         LOG_ERROR("WriteBatchData failed, table_id[%lu], entity_id[%lu]", header.table_id, header.entity_id);
         return;
@@ -435,6 +436,17 @@ KStatus TsWriteBatchDataWorker::GetTagPayload(uint32_t table_version, TSSlice* d
 
 KStatus TsWriteBatchDataWorker::Write(kwdbContext_p ctx, TSTableID table_id, uint32_t table_version,
                                       TSSlice* data, uint32_t* row_num) {
+  if (data->len < TsBatchData::header_size_) {
+    LOG_ERROR("batch data len is too small, len=%lu", data->len);
+    return FAIL;
+  }
+  // parse batch version first;
+  uint32_t batch_version = KUint32(data->data + TsBatchData::batch_version_offset_);
+  if (batch_version > CURRENT_BATCH_VERSION) {
+    LOG_ERROR("batch version is too large, version=%u", batch_version);
+    return FAIL;
+  }
+
   // get or create ts table
   ErrorInfo err_info;
   std::shared_ptr<TsTable> ts_table;
@@ -513,7 +525,7 @@ KStatus TsWriteBatchDataWorker::Write(kwdbContext_p ctx, TSTableID table_id, uin
 
   // write batch data to tmp file
   {
-    BatchDataHeader header{table_id, table_version, vgroup_id, entity_id, p_time, block_span_slice.len};
+    BatchDataHeader header{table_id, table_version, vgroup_id, entity_id, p_time, block_span_slice.len, batch_version};
     TSSlice header_data{reinterpret_cast<char *>(&header), sizeof(BatchDataHeader)};
     MUTEX_LOCK(&w_file_latch_);
     Defer defer([&]() {

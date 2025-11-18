@@ -10,18 +10,19 @@
 // See the Mulan PSL v2 for more details.
 #pragma once
 
+#include <atomic>
 #include <list>
 #include <memory>
-#include <unordered_map>
-#include <atomic>
 #include <string>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
 #include "libkwdbts2.h"
+#include "ts_compatibility.h"
 #include "ts_engine_schema_manager.h"
-#include "ts_payload.h"
 #include "ts_mem_seg_index.h"
+#include "ts_payload.h"
 #include "ts_segment.h"
 namespace kwdbts {
 
@@ -108,6 +109,8 @@ class TsMemSegBlock : public TsBlock {
   void SetParser(std::shared_ptr<TsRawPayloadRowParser>& parser) {
     parser_ = parser;
   }
+
+  uint32_t GetBlockVersion() const override { return CURRENT_BLOCK_VERSION; }
 
   TSEntityID GetEntityId() {
     assert(row_data_.size() > 0);

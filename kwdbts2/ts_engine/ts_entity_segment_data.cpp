@@ -15,7 +15,7 @@
 
 namespace kwdbts {
 
-TsEntitySegmentBlockFile::TsEntitySegmentBlockFile(const string& root, EntitySegmentHandleInfo info)
+TsEntitySegmentBlockFile::TsEntitySegmentBlockFile(const string& root, EntitySegmentMetaInfo info)
     : root_path_(root), info_(std::move(info)) {
   memset(&header_, 0, sizeof(TsAggAndBlockFileHeader));
 }
@@ -58,7 +58,7 @@ KStatus TsEntitySegmentBlockFile::ReadData(uint64_t offset, char** buff, size_t 
   return KStatus::SUCCESS;
 }
 
-TsEntitySegmentAggFile::TsEntitySegmentAggFile(const string& root, EntitySegmentHandleInfo info)
+TsEntitySegmentAggFile::TsEntitySegmentAggFile(const string& root, EntitySegmentMetaInfo info)
     : root_(root), info_(std::move(info)) {
   memset(&header_, 0, sizeof(TsAggAndBlockFileHeader));
 }

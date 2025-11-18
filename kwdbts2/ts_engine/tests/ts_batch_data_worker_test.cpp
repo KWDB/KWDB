@@ -10,11 +10,13 @@
 // See the Mulan PSL v2 for more details.
 
 #include <unistd.h>
+
 #include "libkwdbts2.h"
 #include "me_metadata.pb.h"
-#include "ts_engine.h"
 #include "sys_utils.h"
 #include "test_util.h"
+#include "ts_engine.h"
+#include "ts_entity_segment.h"
 
 using namespace kwdbts;  // NOLINT
 

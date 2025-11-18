@@ -9,27 +9,15 @@
 // MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
 // See the Mulan PSL v2 for more details.
 
-// this file is just aimed to avoid circular dependency
-// for ts_version.h and ts_entity_segment.h
-
 #pragma once
 #include <cstdint>
-namespace kwdbts {
-struct MetaFileInfo {
-  uint64_t file_number;
-  uint64_t length;
-};
 
-struct EntitySegmentMetaInfo {
-  MetaFileInfo datablock_info;
-  MetaFileInfo header_b_info;
-  MetaFileInfo agg_info;
-  uint64_t header_e_file_number;
-};
+// block version control
+constexpr uint32_t INVALID_BLOCK_VERSION = -1;
+constexpr uint32_t CURRENT_BLOCK_VERSION = 1;
+constexpr uint32_t BLOCK_VERSION_LIMIT = CURRENT_BLOCK_VERSION + 1;
 
-struct LastSegmentMetaInfo {
-  uint64_t file_number;
-  int level;
-  int group;
-};
-}  // namespace kwdbts
+// batch version control
+constexpr static uint32_t INVALID_BATCH_VERSION = -1;
+constexpr static uint32_t CURRENT_BATCH_VERSION = 1;
+constexpr static uint32_t BATCH_VERSION_LIMIT = CURRENT_BATCH_VERSION + 1;

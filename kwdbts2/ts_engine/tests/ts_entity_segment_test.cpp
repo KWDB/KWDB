@@ -255,7 +255,7 @@ void TsEntitySegmentTest::SimpleInsert() {
     partitions = current->GetPartitions(1, {{INT64_MIN, INT64_MAX}}, DATATYPE::TIMESTAMP64);
     ASSERT_EQ(partitions.size(), 1);
     std::vector<std::shared_ptr<TsLastSegment>> result = partitions[0]->GetAllLastSegments();
-    ASSERT_EQ(result.size(), 1);
+    ASSERT_EQ(result.size(), 3);
     std::shared_ptr<MMapMetricsTable> schema;
     ASSERT_EQ(schema_mgr->GetMetricSchema(1, &schema), KStatus::SUCCESS);
     for (int j = 0; j < result.size(); ++j) {
@@ -555,7 +555,7 @@ TEST_F(TsEntitySegmentTest, simpleInsertDoubleCompact) {
     partitions = current->GetPartitions(1, {{INT64_MIN, INT64_MAX}}, DATATYPE::TIMESTAMP64);
     ASSERT_EQ(partitions.size(), 1);
     std::vector<std::shared_ptr<TsLastSegment>> result = partitions[0]->GetAllLastSegments();
-    ASSERT_EQ(result.size(), 1);
+    ASSERT_EQ(result.size(), 6);
     for (int j = 0; j < result.size(); ++j) {
       for (int i = 0; i < 10; ++i) {
         TSTableID table_id = i % 2 == 0 ? table_id1 : table_id2;

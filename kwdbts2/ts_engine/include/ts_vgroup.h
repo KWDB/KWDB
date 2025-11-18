@@ -80,10 +80,6 @@ class TsVGroup {
   bool enable_compact_thread_{true};
   // Id of the compact thread
   KThreadID compact_thread_id_{0};
-  // Conditional variable
-  std::condition_variable cv_;
-  // Mutexes for condition variables
-  std::mutex cv_mutex_;
 
   std::atomic<uint64_t> max_osn_{LOG_BLOCK_HEADER_SIZE + BLOCK_SIZE};
 
@@ -194,7 +190,7 @@ class TsVGroup {
     return tsx_manager_->IsExplict(mini_trans_id);
   }
 
-  KStatus Compact();
+  KStatus Compact(bool *compacted = nullptr);
 
 
   KStatus FlushImmSegment(const std::shared_ptr<TsMemSegment>& segment);
@@ -247,8 +243,8 @@ class TsVGroup {
   KStatus GetEntitySegmentBuilder(std::shared_ptr<const TsPartitionVersion>& partition,
                                   std::shared_ptr<TsEntitySegmentBuilder>& builder);
 
-  KStatus WriteBatchData(TSTableID tbl_id, uint32_t table_version, TSEntityID entity_id,
-                         timestamp64 p_time, TSSlice data);
+  KStatus WriteBatchData(TSTableID tbl_id, uint32_t table_version, TSEntityID entity_id, timestamp64 p_time,
+                         uint32_t batch_version, TSSlice data);
 
   KStatus FinishWriteBatchData();
 

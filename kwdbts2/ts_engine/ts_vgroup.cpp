@@ -33,6 +33,7 @@
 #include "libkwdbts2.h"
 #include "ts_block.h"
 #include "ts_common.h"
+#include "ts_compatibility.h"
 #include "ts_entity_segment.h"
 #include "ts_entity_segment_builder.h"
 #include "ts_filename.h"
@@ -561,16 +562,17 @@ KStatus TsVGroup::GetEntityLastRowBatch(uint32_t entity_id, uint32_t scan_versio
 
 void TsVGroup::compactRoutine(void* args) {
   while (!KWDBDynamicThreadPool::GetThreadPool().IsCancel() && enable_compact_thread_) {
-    std::unique_lock<std::mutex> lock(cv_mutex_);
-    // Check every 2 seconds if compact is necessary
-    cv_.wait_for(lock, std::chrono::seconds(2), [this] { return !enable_compact_thread_; });
-    lock.unlock();
     // If the thread pool stops or the system is no longer running, exit the loop
     if (KWDBDynamicThreadPool::GetThreadPool().IsCancel() || !enable_compact_thread_) {
       break;
     }
     // Execute compact tasks
-    Compact();
+    bool compacted = false;
+    auto s = Compact(&compacted);
+
+    if (!compacted || s == FAIL) {
+      std::this_thread::sleep_for(std::chrono::seconds(2));
+    }
   }
 }
 
@@ -596,8 +598,6 @@ void TsVGroup::initCompactThread() {
 
 void TsVGroup::closeCompactThread() {
   if (compact_thread_id_ > 0) {
-    // Wake up potentially dormant compact threads
-    cv_.notify_all();
     // Waiting for the compact thread to complete
     KWDBDynamicThreadPool::GetThreadPool().JoinThread(compact_thread_id_, 0);
   }
@@ -617,8 +617,9 @@ KStatus TsVGroup::PartitionCompact(std::shared_ptr<const TsPartitionVersion> par
   TsVersionUpdate update;
   // 1. Get all the last segments that need to be compacted.
   std::vector<std::shared_ptr<TsLastSegment>> last_segments;
+  int level = -1, group = -1;
   if (!call_by_vacuum) {
-    last_segments = partition->GetCompactLastSegments();
+    last_segments = partition->GetCompactLastSegments(&level, &group);
   } else {
     last_segments = partition->GetAllLastSegments();
   }
@@ -631,15 +632,28 @@ KStatus TsVGroup::PartitionCompact(std::shared_ptr<const TsPartitionVersion> par
 
   // 2. Build the column block.
   {
+    std::vector<std::shared_ptr<TsBlockSpan>> block_spans;
+    for (auto& last_segment : last_segments) {
+      std::list<std::shared_ptr<TsBlockSpan>> curr_block_spans;
+      auto s = last_segment->GetBlockSpans(curr_block_spans, schema_mgr_);
+      if (s == FAIL) {
+        LOG_ERROR("get block spans failed. vgroup: %d, lastsegment: %u", this->vgroup_id_,
+                  last_segment->GetFileNumber());
+        return FAIL;
+      }
+      std::move(curr_block_spans.begin(), curr_block_spans.end(), std::back_inserter(block_spans));
+    }
+
     TsEntitySegmentBuilder builder(root_path.string(), schema_mgr_, version_manager_.get(),
-                                   partition->GetPartitionIdentifier(), entity_segment,
-                                   last_segments);
+                                   partition->GetPartitionIdentifier(), entity_segment);
+    builder.PutBlockSpans(std::move(block_spans));
+
     KStatus s = builder.Open();
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("partition[%s] compact failed, TsEntitySegmentBuilder open failed", path_.c_str());
       return s;
     }
-    s = builder.Compact(call_by_vacuum, &update);
+    s = builder.Compact(call_by_vacuum, &update, level, group);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("partition[%s] compact failed, TsEntitySegmentBuilder build failed", path_.c_str());
       return s;
@@ -655,9 +669,18 @@ KStatus TsVGroup::PartitionCompact(std::shared_ptr<const TsPartitionVersion> par
   return version_manager_->ApplyUpdate(&update);
 }
 
-KStatus TsVGroup::Compact() {
+KStatus TsVGroup::Compact(bool* compacted) {
   auto current = version_manager_->Current();
   std::vector<std::shared_ptr<const TsPartitionVersion>> partitions = current->GetPartitionsToCompact();
+  if (partitions.empty()) {
+    if (compacted != nullptr) {
+      *compacted = false;
+    }
+    return KStatus::SUCCESS;
+  }
+  if (compacted != nullptr) {
+    *compacted = true;
+  }
   // Compact partitions
   bool success{true};
   for (auto it = partitions.rbegin(); it != partitions.rend(); ++it) {
@@ -852,7 +875,7 @@ KStatus TsVGroup::FlushImmSegment(const std::shared_ptr<TsMemSegment>& mem_seg) 
     if (s == FAIL) {
       return FAIL;
     }
-    update.AddLastSegment(k->GetPartitionIdentifier(), v.GetFileNumber());
+    update.AddLastSegment(k->GetPartitionIdentifier(), {v.GetFileNumber(), 0, 0});
     update.SetMaxLSN(v.GetMaxOSN());
     file_numbers.push_back(v.GetFileNumber());
   }
@@ -1242,8 +1265,8 @@ KStatus TsVGroup::GetEntitySegmentBuilder(std::shared_ptr<const TsPartitionVersi
   return KStatus::SUCCESS;
 }
 
-KStatus TsVGroup::WriteBatchData(TSTableID tbl_id, uint32_t table_version,
-                                 TSEntityID entity_id, timestamp64 p_time, TSSlice data) {
+KStatus TsVGroup::WriteBatchData(TSTableID tbl_id, uint32_t table_version, TSEntityID entity_id, timestamp64 p_time,
+                                 uint32_t batch_version, TSSlice data) {
   auto current = version_manager_->Current();
   uint32_t database_id = schema_mgr_->GetDBIDByTableID(tbl_id);
   if (database_id == 0) {
@@ -1270,7 +1293,7 @@ KStatus TsVGroup::WriteBatchData(TSTableID tbl_id, uint32_t table_version,
     LOG_ERROR("GetEntitySegmentBuilder failed.");
     return s;
   }
-  s = builder->WriteBatch(tbl_id, entity_id, table_version, data);
+  s = builder->WriteBatch(tbl_id, entity_id, table_version, batch_version, data);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("WriteBatch failed.");
     return s;
@@ -1863,6 +1886,7 @@ KStatus TsVGroup::Vacuum() {
           blk_item.max_ts = block_span->GetLastTS();
           blk_item.block_len = block_data.size();
           blk_item.agg_len = block_agg.size();
+          blk_item.block_version = CURRENT_BLOCK_VERSION;
           s = vacuumer->AppendBlock({block_data.data(), block_data.size()}, &blk_item.block_offset);
           if (s != KStatus::SUCCESS) {
             LOG_ERROR("Vacuum failed, AppendBlock failed");

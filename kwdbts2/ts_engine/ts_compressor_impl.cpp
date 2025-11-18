@@ -405,8 +405,7 @@ template class Chimp<double>;
 template class Chimp<float>;
 
 namespace __simple8b_detail {
-alignas(64) static constexpr uint32_t ITEMWIDTH[16] = {0, 0, 1,  2,  3,  4,  5,  6,
-                                                       7, 8, 10, 12, 15, 20, 30, 60};
+alignas(64) static constexpr uint32_t ITEMWIDTH[16] = {0, 0, 1, 2, 3, 4, 5, 6, 7, 8, 10, 12, 15, 20, 30, 60};
 /* The following array is generate by python code:
 >>> width = [0, 0, 1, 2, 3, 4, 5, 6, 7, 8, 10, 12, 15, 20, 30, 60]
 >>> print(list(map(lambda x : bisect.bisect_left(width, x), range(64))))
@@ -417,8 +416,7 @@ alignas(64) static constexpr uint8_t NBITS2SELECTOR[64] = {
     14, 14, 14, 14, 14, 14, 14, 14, 14, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15,
     15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 16, 16, 16};
 
-alignas(64) static constexpr int32_t GROUPSIZE[16] = {240, 120, 60, 30, 20, 15, 12, 10,
-                                                      8,   7,   6,  5,  4,  3,  2,  1};
+alignas(64) static constexpr int32_t GROUPSIZE[16] = {240, 120, 60, 30, 20, 15, 12, 10, 8, 7, 6, 5, 4, 3, 2, 1};
 
 template <typename T>
 static inline int GetValidBits(T v) {
@@ -860,8 +858,8 @@ bool CompressorManager::TwoLevelCompressor::Compress(const TSSlice &raw, const T
   }
   return second_->Compress(data, out);
 }
-bool CompressorManager::TwoLevelCompressor::Decompress(const TSSlice &raw, const TsBitmapBase *bitmap,
-                                                       uint32_t count, std::string *out) const {
+bool CompressorManager::TwoLevelCompressor::Decompress(const TSSlice &raw, const TsBitmapBase *bitmap, uint32_t count,
+                                                       std::string *out) const {
   if (IsPlain()) return false;
   out->clear();
   std::string buf;
@@ -899,9 +897,9 @@ CompressorManager::CompressorManager() {
     }
   }
   GenCompAlg second = twolevel ? GenCompAlg::kSnappy : GenCompAlg::kPlain;
-  const std::vector<DATATYPE> timestamp_type{
-      DATATYPE::TIMESTAMP64,     DATATYPE::TIMESTAMP64_MICRO,     DATATYPE::TIMESTAMP64_NANO,
-      DATATYPE::TIMESTAMP64, DATATYPE::TIMESTAMP64_MICRO, DATATYPE::TIMESTAMP64_NANO};
+  const std::vector<DATATYPE> timestamp_type{DATATYPE::TIMESTAMP64,       DATATYPE::TIMESTAMP64_MICRO,
+                                             DATATYPE::TIMESTAMP64_NANO,  DATATYPE::TIMESTAMP64,
+                                             DATATYPE::TIMESTAMP64_MICRO, DATATYPE::TIMESTAMP64_NANO};
   for (auto i : timestamp_type) {
     default_algs_[i] = {TsCompAlg::kSimple8B_V2_s64, GenCompAlg::kPlain};
   }
@@ -952,8 +950,7 @@ CompressorManager::CompressorManager() {
   // default_algs_[DATATYPE::VARSTRING] = {TsCompAlg::kGorilla_32, GenCompAlg::kPlain};
   // default_algs_[DATATYPE::VARBINARY] = {TsCompAlg::kGorilla_32, GenCompAlg::kPlain};
 }
-auto CompressorManager::GetCompressor(TsCompAlg first, GenCompAlg second) const
-    -> TwoLevelCompressor {
+auto CompressorManager::GetCompressor(TsCompAlg first, GenCompAlg second) const -> TwoLevelCompressor {
   const TsCompressorBase *first_comp = nullptr;
   const GenCompressorBase *second_comp = nullptr;
   {
@@ -967,8 +964,7 @@ auto CompressorManager::GetCompressor(TsCompAlg first, GenCompAlg second) const
   return TwoLevelCompressor{first_comp, second_comp, first, second};
 }
 
-auto CompressorManager::GetDefaultAlgorithm(DATATYPE dtype) const
-    -> std::tuple<TsCompAlg, GenCompAlg> {
+auto CompressorManager::GetDefaultAlgorithm(DATATYPE dtype) const -> std::tuple<TsCompAlg, GenCompAlg> {
   auto it = default_algs_.find(dtype);
   if (it == default_algs_.end()) {
     return {TsCompAlg::kPlain, GenCompAlg::kPlain};
@@ -981,9 +977,8 @@ auto CompressorManager::GetDefaultCompressor(DATATYPE dtype) const -> TwoLevelCo
   return GetCompressor(first, second);
 }
 
-bool CompressorManager::CompressData(TSSlice input, const TsBitmapBase *bitmap, uint64_t count,
-                                     std::string *output, TsCompAlg first,
-                                     GenCompAlg second) const {
+bool CompressorManager::CompressData(TSSlice input, const TsBitmapBase *bitmap, uint64_t count, std::string *output,
+                                     TsCompAlg first, GenCompAlg second) const {
   static_assert(sizeof(first) == sizeof(uint16_t));
   static_assert(sizeof(second) == sizeof(uint16_t));
   auto compressor = GetCompressor(first, second);
@@ -1003,8 +998,7 @@ bool CompressorManager::CompressData(TSSlice input, const TsBitmapBase *bitmap, 
   return true;
 }
 
-bool CompressorManager::CompressVarchar(TSSlice input, std::string *output,
-                                        GenCompAlg alg) const {
+bool CompressorManager::CompressVarchar(TSSlice input, std::string *output, GenCompAlg alg) const {
   assert(sizeof(alg) == sizeof(uint16_t));
   output->clear();
   PutFixed16(output, static_cast<uint16_t>(alg));
@@ -1023,7 +1017,8 @@ bool CompressorManager::CompressVarchar(TSSlice input, std::string *output,
   return true;
 }
 
-bool CompressorManager::DecompressData(TSSlice input, const TsBitmapBase *bitmap, uint64_t count, TsSliceGuard *out) const {
+bool CompressorManager::DecompressData(TSSlice input, const TsBitmapBase *bitmap, uint64_t count,
+                                       TsSliceGuard *out) const {
   if (input.len < 4) {
     LOG_ERROR("Invalid input length, too short");
     return false;
@@ -1072,6 +1067,71 @@ bool CompressorManager::DecompressVarchar(TSSlice input, TsSliceGuard *out) cons
   bool ok = it->second->Decompress(input, &tmp);
   *out = TsSliceGuard{std::move(tmp)};
   return ok;
+}
+
+bool CompressorManager::CompressBitmap(TsBitmapBase *bitmap, std::string *output) const {
+  if (bitmap->IsAllValid()) {
+    output->push_back(static_cast<char>(BitmapType::kAllValid));
+    return true;
+  }
+
+  if (bitmap->IsAllNull()) {
+    output->push_back(static_cast<char>(BitmapType::kAllNull));
+    return true;
+  }
+
+  if (bitmap->IsAllNone()) {
+    output->push_back(static_cast<char>(BitmapType::kAllNone));
+    return true;
+  }
+
+  output->push_back(static_cast<char>(BitmapType::kRaw));
+  output->append(bitmap->GetStr());
+  return true;
+}
+
+bool CompressorManager::DecompressBitmap(TSSlice input, std::unique_ptr<TsBitmapBase> *bitmap, uint64_t count,
+                                         uint64_t *bytes_consumed) const {
+  if (input.len < 1) {
+    LOG_ERROR("Invalid input length = 0, too short");
+    return false;
+  }
+  BitmapType alg = static_cast<BitmapType>(input.data[0]);
+  RemovePrefix(&input, 1);
+  *bytes_consumed = 1;
+  switch (alg) {
+    case BitmapType::kRaw: {
+      auto n_bytes = TsBitmap::GetBitmapLen(count);
+      if (input.len < n_bytes) {
+        LOG_ERROR("Invalid bitmap length, too short. expected: %lu, actual: %lu", n_bytes, input.len);
+        return false;
+      }
+      *bitmap = std::make_unique<TsBitmap>(TSSlice{input.data, n_bytes}, count);
+      *bytes_consumed += n_bytes;
+      break;
+    }
+
+    case BitmapType::kAllValid: {
+      *bitmap = std::make_unique<TsUniformBitmap<kValid>>(count);
+      break;
+    }
+
+    case BitmapType::kAllNull: {
+      *bitmap = std::make_unique<TsUniformBitmap<kNull>>(count);
+      break;
+    }
+
+    case BitmapType::kAllNone: {
+      *bitmap = std::make_unique<TsUniformBitmap<kNone>>(count);
+      break;
+    }
+
+    default: {
+      LOG_ERROR("Invalid bitmap type: %d", static_cast<int>(alg));
+      return false;
+    }
+  }
+  return true;
 }
 
 }  // namespace kwdbts

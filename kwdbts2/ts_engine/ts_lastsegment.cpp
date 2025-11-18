@@ -23,7 +23,7 @@
 #include <tuple>
 #include <utility>
 #include <vector>
-#include <list>
+
 #include "data_type.h"
 #include "kwdb_type.h"
 #include "lg_api.h"
@@ -33,6 +33,7 @@
 #include "ts_coding.h"
 #include "ts_column_block.h"
 #include "ts_common.h"
+#include "ts_compatibility.h"
 #include "ts_compressor.h"
 #include "ts_io.h"
 #include "ts_lastsegment_endec.h"
@@ -277,6 +278,7 @@ class TsLastBlock : public TsBlock {
         block_info_(std::move(block_info)),
         column_block_cache_(std::make_unique<ColumnCache>(lastsegment_->file_.get(), &block_info_)) {}
   ~TsLastBlock() = default;
+  uint32_t GetBlockVersion() const override { return CURRENT_BLOCK_VERSION; }
   TSTableID GetTableId() override { return block_index_.table_id; }
   uint32_t GetTableVersion() override { return block_index_.table_version; }
   size_t GetRowNum() override { return block_info_.nrow; }
