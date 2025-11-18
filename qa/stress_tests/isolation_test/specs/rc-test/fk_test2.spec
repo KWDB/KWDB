@@ -1,11 +1,11 @@
 setup
 {
-  CREATE TABLE parent (
+  CREATE TABLE IF NOT EXISTS  parent (
 	parent_key	int		PRIMARY KEY,
 	aux			text	NOT NULL
   );
 
-  CREATE TABLE child (
+  CREATE TABLE IF NOT EXISTS  child (
 	child_key	int		PRIMARY KEY,
 	parent_key	int		NOT NULL REFERENCES parent
   );

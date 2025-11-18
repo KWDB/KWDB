@@ -2,7 +2,7 @@
 
 setup
 {
-  CREATE TABLE t1 (
+  CREATE TABLE IF NOT EXISTS  t1 (
       id INT PRIMARY KEY,
       balance DECIMAL(10, 2) NOT NULL
   );

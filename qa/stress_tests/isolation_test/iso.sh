@@ -57,7 +57,6 @@ cleanup() {
   echo "Waiting for KaiwuDB to stop..."
 
   echo "Removing data directories..."
-  rm -rf $DEPLOY_DIR
 }
 
 start_single_node() {
@@ -77,7 +76,6 @@ cleanup_single_node() {
   echo "Waiting for KaiwuDB to stop..."
 
   echo "Removing data directories..."
-  rm -rf $DEPLOY_DIR
 }
 
 cd "${INSTALL_DIR}"

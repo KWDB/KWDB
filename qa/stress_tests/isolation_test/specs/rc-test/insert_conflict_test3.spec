@@ -1,6 +1,6 @@
 setup
 {
-  CREATE TABLE upsert (key int primary key, val text);
+  CREATE TABLE IF NOT EXISTS upsert (key int primary key, val text);
 }
 
 teardown

@@ -1,7 +1,7 @@
 setup
 {
- CREATE TABLE a (i int PRIMARY KEY);
- CREATE TABLE b (a_id int);
+ CREATE TABLE IF NOT EXISTS  a (i int PRIMARY KEY);
+ CREATE TABLE IF NOT EXISTS  b (a_id int);
  CREATE INDEX idx1 on b(a_id);
  INSERT INTO a VALUES (0), (1), (2), (3);
  INSERT INTO b SELECT generate_series(1,1000) % 4;

@@ -1,6 +1,6 @@
 setup
 {
-	CREATE TABLE test_dc(id serial primary key, data int);
+	CREATE TABLE IF NOT EXISTS  test_dc(id serial primary key, data int);
 	INSERT INTO test_dc(data) SELECT * FROM generate_series(1, 100);
 	CREATE INDEX test_dc_data ON test_dc(data);
 }

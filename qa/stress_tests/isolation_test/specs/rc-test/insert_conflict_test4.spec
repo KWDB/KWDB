@@ -1,6 +1,6 @@
 setup
 {
-  CREATE TABLE upsert (key text not null, payload text);
+  CREATE TABLE IF NOT EXISTS upsert (key text not null, payload text);
   CREATE UNIQUE INDEX ON upsert(key) INCLUDE (payload);
 }
 

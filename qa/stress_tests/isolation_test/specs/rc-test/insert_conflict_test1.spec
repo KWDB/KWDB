@@ -1,6 +1,6 @@
 setup
 {
-  CREATE TABLE ints (key int, val text, PRIMARY KEY (key));
+  CREATE TABLE IF NOT EXISTS  ints (key int, val text, PRIMARY KEY (key));
 }
 
 teardown

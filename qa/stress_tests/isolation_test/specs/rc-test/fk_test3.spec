@@ -1,12 +1,12 @@
 setup
 {
-  CREATE TABLE A (
+  CREATE TABLE IF NOT EXISTS  A (
 	AID integer not null,
 	Col1 integer,
 	PRIMARY KEY (AID)
   );
 
-  CREATE TABLE B (
+  CREATE TABLE IF NOT EXISTS  B (
 	BID integer not null,
 	AID integer not null,
 	Col2 integer,
