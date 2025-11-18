@@ -148,7 +148,9 @@ class TsAggIteratorV2Impl : public TsStorageIteratorV2Impl {
   KStatus AddSumOverflow(int32_t type,
                           void* current,
                           TSSlice& agg_data);
-
+  inline KStatus AddSumNotOverflowYetByPreSum(uint32_t col_idx, int32_t type,
+                                              void* current, TSSlice& agg_data);
+  inline KStatus AddSumOverflowByPreSum(int32_t type, void* current, TSSlice& agg_data);
   std::vector<Sumfunctype> scan_agg_types_;
   std::vector<timestamp64> last_ts_points_;
   std::vector<k_int32> agg_extend_cols_;

@@ -25,7 +25,8 @@ struct ColDataTypes {
 
 std::vector<ColDataTypes> tag_col_types({
   {DATATYPE::TIMESTAMP64, 8, TagType::PRIMARY_TAG},
-  {DATATYPE::INT64, 8, TagType::GENERAL_TAG}});
+  {DATATYPE::INT64, 8, TagType::GENERAL_TAG},
+  {DATATYPE::VARSTRING, 1024, TagType::PRIMARY_TAG}});
 
 std::vector<ColDataTypes> metric_col_types({{DATATYPE::TIMESTAMP64, 16, TagType::UNKNOWN_TAG},
                                             {DATATYPE::VARSTRING, 1024, TagType::UNKNOWN_TAG},
@@ -50,6 +51,9 @@ class TestRowPayloadBuilder : public testing::Test {
       info.m_data_type = tag_col_types[i].type;
       info.m_length = tag_col_types[i].size;
       info.m_size = tag_col_types[i].size;
+      if (isVarLenType(tag_col_types[i].type)) {
+        info.m_size = 8;
+      }
       info.m_offset = offset;
       offset += info.m_size;
       tag_schema_.push_back(info);
@@ -113,6 +117,22 @@ class TestRowPayloadBuilder : public testing::Test {
     ASSERT_EQ(pay.GetRowCount(), data_count);
     ASSERT_EQ(pay.GetTableID(), table_id_);
     ASSERT_EQ(pay.GetTableVersion(), table_version_);
+
+    auto tags = pay.GetTags();
+    int tag_offset = (7 + tag_schema_.size()) / 8;
+    for (size_t i = 0; i < tag_schema_.size(); i++) {
+      KTimestamp cur_value = primary_tag + i;
+      if (isVarLenType(tag_schema_[i].m_data_type) && !tag_schema_[i].isPrimaryTag()) {
+        auto tag_idx = KUint64((char*)(tags.data) + tag_offset);
+        assert(KUint16(tags.data + tag_idx) == sizeof(KTimestamp));
+        assert(0 == memcmp(tags.data + tag_idx + 2, reinterpret_cast<char*>(&cur_value), sizeof(KTimestamp)));
+        tag_offset += 8;
+      } else {
+        assert(0 == memcmp(tags.data + tag_offset, reinterpret_cast<char*>(&cur_value), sizeof(KTimestamp)));
+        tag_offset += tag_schema_[i].m_size;
+      }
+    }
+
     for (size_t j = 0; j < data_count; j++) {
       for (size_t i = 0; i < data_schema_.size(); i++) {
         TSSlice col_data;

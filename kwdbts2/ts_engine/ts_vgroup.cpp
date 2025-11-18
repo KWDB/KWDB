@@ -943,6 +943,31 @@ KStatus TsVGroup::GetDelInfoByOSN(kwdbContext_p ctx, TSTableID tbl_id, uint32_t 
   return KStatus::SUCCESS;
 }
 
+KStatus TsVGroup::GetDelInfoWithOSN(kwdbContext_p ctx, TSTableID tbl_id, uint32_t entity_id,
+  list<STDelRange>* del_spans) {
+  auto current = CurrentVersion();
+  auto db_id = schema_mgr_->GetDBIDByTableID(tbl_id);
+  if (db_id == 0) {
+    LOG_ERROR("cannot find db by table[%lu]", tbl_id);
+    return KStatus::FAIL;
+  }
+  auto ts_partitions = current->GetDBAllPartitions(db_id);
+  list<STDelRange> del_items;
+  std::vector<KwOSNSpan> osn_span;
+  osn_span.push_back({0, UINT64_MAX});
+  for (auto p : ts_partitions) {
+    list<STDelRange> del_item;
+    auto s = p->GetDelRangeWithOSN(entity_id, osn_span, del_item);
+    if (s != KStatus::SUCCESS) {
+      LOG_ERROR("get delete info failed for partition[%ld], db [%u]", p->GetStartTime(), db_id);
+      return s;
+    }
+    del_items.insert(del_items.end(), del_item.begin(), del_item.end());
+  }
+  DeplicateTsSpans(del_items, del_spans);
+  return KStatus::SUCCESS;
+}
+
 KStatus TsVGroup::GetMetricIteratorByOSN(kwdbContext_p ctx, const std::shared_ptr<TsVGroup>& vgroup,
     std::vector<EntityResultIndex>& entity_ids, std::vector<k_uint32>& scan_cols, std::vector<k_uint32>& ts_scan_cols,
     std::vector<KwOSNSpan>& osn_span,
@@ -1210,7 +1235,8 @@ KStatus TsVGroup::DeleteEntity(kwdbContext_p ctx, TSTableID table_id, std::strin
   // Delete tag and its index
   ErrorInfo err_info;
   std::pair<uint64_t, uint64_t> ignore;
-  tag_table->DeleteTagRecord(p_tag.data(), p_tag.size(), err_info, osn, OperateType::Delete, ignore);
+  tag_table->DeleteTagRecord(p_tag.data(), p_tag.size(), err_info, osn,
+    user_del ? OperateType::Delete : OperateType::DeleteBySnapshot, ignore);
   if (err_info.errcode < 0) {
     LOG_ERROR("delete_tag_record error, error msg: %s", err_info.errmsg.c_str())
     return KStatus::FAIL;
@@ -1252,16 +1278,38 @@ KStatus TsVGroup::DeleteData(kwdbContext_p ctx, TSTableID tbl_id, std::string& p
 
 KStatus TsVGroup::deleteData(kwdbContext_p ctx, TSTableID tbl_id, TSEntityID e_id, KwOSNSpan osn,
 const std::vector<KwTsSpan>& ts_spans, bool user_del) {
-  auto s = TrasvalAllPartition(ctx, tbl_id, ts_spans,
-  [&](std::shared_ptr<const TsPartitionVersion> p) -> KStatus {
-    auto ret = p->DeleteData(e_id, ts_spans, osn, user_del);
-    if (ret != KStatus::SUCCESS) {
+  std::shared_ptr<kwdbts::TsTableSchemaManager> tb_schema_mgr;
+  auto s = schema_mgr_->GetTableSchemaMgr(tbl_id, tb_schema_mgr);
+  if (s == KStatus::FAIL) {
+    LOG_ERROR("GetTableSchemaMgr failed.");
+    return s;
+  }
+  auto db_id = tb_schema_mgr->GetDbID();
+  auto ts_type = tb_schema_mgr->GetTsColDataType();
+
+  std::vector<std::shared_ptr<const TsPartitionVersion>> ps =
+    version_manager_->Current()->GetPartitions(db_id, ts_spans, ts_type);
+  if (ps.size() == 0) {
+    auto ptime = convertTsToPTime(ts_spans.back().end, ts_type);
+    uint64_t cur_time = time(nullptr);
+    if (ptime > cur_time) {
+      ptime = cur_time;
+    }
+    s = version_manager_->AddPartition(db_id, ptime);
+    if (s == KStatus::FAIL) {
+      LOG_ERROR("AddPartition [%lu] of current time failed.", ptime);
+      return s;
+    }
+  }
+  ps = version_manager_->Current()->GetPartitions(db_id, ts_spans, ts_type);
+  for (auto& p : ps) {
+    s = p->DeleteData(e_id, ts_spans, osn, user_del);
+    if (s != KStatus::SUCCESS) {
       LOG_ERROR("DeleteData partition[%u/%lu] failed!",
               std::get<0>(p->GetPartitionIdentifier()), std::get<1>(p->GetPartitionIdentifier()));
-      return ret;
+      return s;
     }
-    return ret;
-  });
+  }
   return KStatus::SUCCESS;
 }
 

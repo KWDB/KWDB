@@ -177,13 +177,16 @@ void ConstructRoachpbTable(roachpb::CreateTsTable* meta, KTableKey table_id, uin
   // add tag infos
   std::vector<ZTableColumnMeta> tag_metas;
   tag_metas.push_back({roachpb::DataType::TIMESTAMP, 8, 8, roachpb::VariableLengthType::ColStorageTypeTuple});
+  tag_metas.push_back({roachpb::DataType::VARCHAR, 3000, 3000, roachpb::VariableLengthType::ColStorageTypeTuple});
+  tag_metas.push_back({roachpb::DataType::VARCHAR, 200, 200, roachpb::VariableLengthType::ColStorageTypeTuple});
   tag_metas.push_back({roachpb::DataType::TIMESTAMP, 8, 8, roachpb::VariableLengthType::ColStorageTypeTuple});
+
   for (int i = 0; i< tag_metas.size(); i++) {
     roachpb::KWDBKTSColumn* column = meta->mutable_k_column()->Add();
     column->set_storage_type((roachpb::DataType)(tag_metas[i].type));
     column->set_storage_len(tag_metas[i].storage_len);
     column->set_column_id(tag_metas.size() + 1 + i);
-    if (i == 0) {
+    if (i % 2 == 0) {
       column->set_col_type(::roachpb::KWDBKTSColumn_ColumnType::KWDBKTSColumn_ColumnType_TYPE_PTAG);
     } else {
       column->set_col_type(::roachpb::KWDBKTSColumn_ColumnType::KWDBKTSColumn_ColumnType_TYPE_TAG);
@@ -360,14 +363,17 @@ struct SliceGuard {
   std::string guard;
 };
 
-void SetPayloadOSN(TSSlice payload, uint64_t osn) {
-  KUint64(payload.data + TsRawPayload::txn_id_offset_) = osn;
-}
-
 TSSlice GenRowPayload(const std::vector<AttributeInfo>& metric, const std::vector<TagInfo>& tag, TSTableID table_id, uint32_t version, TSEntityID dev_id, int num, KTimestamp ts, KTimestamp interval = 1000) {
   TSRowPayloadBuilder builder(tag, metric, num);
   builder.SetTagValue(0, (char*)(&dev_id), sizeof(dev_id));
-  builder.SetTagValue(1, (char*)(&dev_id), sizeof(dev_id));
+  string var_str = intToString(dev_id);
+  for (size_t i = 1; i < tag.size(); i++) {
+    if (tag[i].m_data_type == DATATYPE::VARSTRING) {
+      builder.SetTagValue(i, var_str.data(), var_str.length());
+    } else {
+      builder.SetTagValue(i, (char*)(&dev_id), tag[i].m_size);
+    }
+  }
 
   timestamp64 cur_ts = ts;
   for (size_t i = 0; i < num; i++) {

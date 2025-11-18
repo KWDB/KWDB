@@ -93,6 +93,8 @@ class TsDelItemManager {
   KStatus GetDelItem(TSEntityID entity_id, std::list<TsEntityDelItem*>& del_items);
   KStatus GetDelRange(TSEntityID entity_id, std::list<STDelRange>& del_range);
   KStatus GetDelRangeByOSN(TSEntityID entity_id, std::vector<KwOSNSpan>& osn_span, std::list<KwTsSpan>& del_range);
+  KStatus GetDelRangeWithOSN(TSEntityID entity_id, std::vector<KwOSNSpan>& osn_span,
+    std::list<STDelRange>& del_range);
   KStatus HasValidDelItem(const KwOSNSpan& lsn, bool& has_valid);
   KStatus RmDeleteItems(TSEntityID entity_id, const KwOSNSpan &lsn);
   KStatus DropEntity(TSEntityID entity_id);

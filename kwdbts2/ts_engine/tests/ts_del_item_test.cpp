@@ -13,6 +13,7 @@
 #include "ts_del_item_manager.h"
 #include "sys_utils.h"
 #include "ts_ts_lsn_span_utils.h"
+#include "ts_table_del_info.h"
 
 using namespace kwdbts;  // NOLINT
 
@@ -248,3 +249,31 @@ TEST(TsDelItemUtilTest, mergeSortedSpans2) {
   MergeTsSpans(raw_spans, &ret_spans);
   ASSERT_TRUE(ret_spans.size() == 5);
  }
+
+ TEST(TsDelItemUtilTest, snapshot_pack) {
+  char tmp[128];
+  memset(tmp, 'a', 128);
+  uint32_t package_id = 10086;
+  TSTableID tbl_id = 12345;
+  uint32_t tbl_version = 456787;
+  TSSlice batch_data{tmp, 50};
+  uint32_t row_num = 300;
+  TSSlice del_data{tmp, 100};
+  TSSlice data;
+  bool s = STPackageSnapshotData::PackageData(package_id, tbl_id, tbl_version, batch_data, row_num, del_data, &data);
+  ASSERT_TRUE(s);
+
+  uint32_t package_id_1;
+  TSTableID tbl_id_1;
+  uint32_t tbl_version_1;
+  TSSlice batch_data_1;
+  uint32_t row_num_1;
+  TSSlice del_data_1;
+  STPackageSnapshotData::UnpackageData(data, package_id_1, tbl_id_1, tbl_version_1, batch_data_1, row_num_1, del_data_1);
+  ASSERT_EQ(package_id, package_id_1);
+  ASSERT_EQ(tbl_id, tbl_id_1);
+  ASSERT_EQ(tbl_version, tbl_version_1);
+  ASSERT_EQ(row_num, row_num_1);
+  ASSERT_EQ(batch_data.len, batch_data_1.len);
+  ASSERT_EQ(del_data.len, del_data_1.len);
+}

@@ -80,17 +80,14 @@ TSRowPayloadBuilder::TSRowPayloadBuilder(const std::vector<TagInfo>& tag_schema,
 void TSRowPayloadBuilder::SetTagMem() {
   tag_value_mem_bitmap_len_ = (tag_schema_.size() + 7) / 8;  // bitmap
   tag_value_mem_len_ = tag_value_mem_bitmap_len_;
-  for (const auto tag : tag_schema_) {
-    if (IS_VAR_DATATYPE(tag.m_data_type)) {
-      // not allocate space now. Then insert tag value, resize this tmp space.
-      if (tag.m_tag_type == PRIMARY_TAG) {
-        // primary tag all store in tuple.
-        tag_value_mem_len_ += tag.m_length;
-      } else {
-        tag_value_mem_len_ += sizeof(intptr_t);
-      }
+  for (auto tag : tag_schema_) {
+    if (IS_VAR_DATATYPE(tag.m_data_type) && !tag.isPrimaryTag()) {
+      tag_value_mem_len_ += sizeof(intptr_t);
     } else {
       tag_value_mem_len_ += tag.m_size;
+    }
+    if (tag.isPrimaryTag()) {
+      primary_key_info_.push_back(tag);
     }
   }
   tag_value_mem_ = reinterpret_cast<char*>(std::malloc(tag_value_mem_len_));
@@ -120,21 +117,23 @@ bool TSRowPayloadBuilder::SetTagValue(int tag_idx, char* mem, int count) {
   }
   auto tag_schema = tag_schema_[tag_idx];
   int col_data_offset = tag_value_mem_bitmap_len_ + tag_schema.m_offset;
-  if (tag_schema.isPrimaryTag()) {  // primary key store in tuple.
-    std::memcpy(tag_value_mem_ + col_data_offset, mem, count);
-    primary_tags_.push_back({col_data_offset, count});
+  // all types of tag all store same.
+  char* tag_in_mem = nullptr;
+  if (!tag_schema.isPrimaryTag() && IS_VAR_DATATYPE(tag_schema.m_data_type)) {  // re_alloc  var type data space.
+    int cur_offset = tag_value_mem_len_;
+    tag_value_mem_ = reinterpret_cast<char*>(std::realloc(tag_value_mem_, tag_value_mem_len_ + count + 2));
+    tag_value_mem_len_ = tag_value_mem_len_ + count + 2;
+    KUint16(tag_value_mem_ + cur_offset) = count;
+    tag_in_mem = tag_value_mem_ + cur_offset + 2;
+    std::memcpy(tag_in_mem, mem, count);
+    KUint64(tag_value_mem_ + col_data_offset) = cur_offset;
   } else {
-    // all types of tag all store same.
-    if (IS_VAR_DATATYPE(tag_schema.m_data_type)) {  // re_alloc  var type data space.
-      int cur_offset = tag_value_mem_len_;
-      tag_value_mem_ = reinterpret_cast<char*>(std::realloc(tag_value_mem_, tag_value_mem_len_ + count + 2));
-      tag_value_mem_len_ = tag_value_mem_len_ + count + 2;
-      KUint16(tag_value_mem_ + cur_offset) = count;
-      std::memcpy(tag_value_mem_ + cur_offset + 2, mem, count);
-      KUint64(tag_value_mem_ + col_data_offset) = cur_offset;
-    } else {
-      std::memcpy(tag_value_mem_ + col_data_offset, mem, count);
-    }
+    tag_in_mem = tag_value_mem_ + col_data_offset;
+    std::memcpy(tag_in_mem, mem, count);
+  }
+  if (tag_schema.isPrimaryTag()) {  // primary key store in tuple.
+    int offset = (tag_in_mem - tag_value_mem_);
+    primary_tags_.push_back({offset, count});
   }
   unset_null_bitmap((unsigned char *)tag_value_mem_, tag_idx);
   return true;
@@ -166,14 +165,16 @@ bool TSRowPayloadBuilder::Build(TSTableID table_id, uint32_t table_version, TSSl
   // primary tag
 
   k_int32 primary_tag_len = 0;
+  assert(primary_tags_.size() == primary_key_info_.size());
   for (int i = 0; i < primary_tags_.size(); ++i) {
-    primary_tag_len += primary_tags_[i].len_;
+    primary_tag_len += primary_key_info_[i].m_size;
   }
   char* primary_keys_mem = reinterpret_cast<char*>(malloc(primary_tag_len));
+  memset(primary_keys_mem, 0, primary_tag_len);
   int begin_offset = 0;
   for (int i = 0; i < primary_tags_.size(); ++i) {
     std::memcpy(primary_keys_mem + begin_offset, tag_value_mem_ + primary_tags_[i].offset_, primary_tags_[i].len_);
-    begin_offset += primary_tags_[i].len_;
+    begin_offset += primary_key_info_[i].m_size;
   }
 
   k_int32 tag_len_len = 4;

@@ -141,7 +141,7 @@ KStatus TagIteratorByOSN::Next(std::vector<EntityResultIndex>* entity_id_list,
     auto stat = pkeys_status_.find(key);
     if (stat == pkeys_status_.end()) {
       // current entity has no tag operation between osn range.
-      entity.op_with_osn = std::make_shared<OperatorInfoOfRecord>(OperatorTypeOfRecord::OP_TYPE_TAG_EXISTED, 0);
+      entity.op_with_osn = std::make_shared<OperatorInfoOfRecord>(OperatorTypeOfRecord::OP_TYPE_TAG_EXISTED, 0, 0, 0);
     } else {
       entity.op_with_osn = stat->second.op_with_osn;
     }

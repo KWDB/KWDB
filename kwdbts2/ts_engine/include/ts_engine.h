@@ -33,6 +33,8 @@
 #include "ts_table_v2_impl.h"
 #include "ts_version.h"
 #include "ts_vgroup.h"
+#include "ts_table_del_info.h"
+
 extern bool g_go_start_service;
 
 namespace kwdbts {
@@ -48,6 +50,8 @@ struct TsRangeImgrationInfo {
   uint32_t package_id;
   uint64_t imgrated_rows;
   std::shared_ptr<TsTable> table;
+  bool batch_read_finished;
+  std::shared_ptr<STTableRangeDelAndTagInfo> del_iter;
 };
 
 /**

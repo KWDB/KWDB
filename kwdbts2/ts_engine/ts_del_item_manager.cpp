@@ -13,6 +13,7 @@
 #include <algorithm>
 #include <string>
 #include <list>
+#include <utility>
 #include <vector>
 #include "data_type.h"
 #include "ts_del_item_manager.h"
@@ -323,6 +324,22 @@ KStatus TsDelItemManager::GetDelRangeByOSN(TSEntityID entity_id, std::vector<KwO
   for (auto& item : del_items) {
     if (item->type == DEL_ITEM_TYPE_USER && IsOsnInSpans(item->range.osn_span.end, osn_span)) {
       del_range.push_back(item->range.ts_span);
+    }
+  }
+  return KStatus::SUCCESS;
+}
+
+KStatus TsDelItemManager::GetDelRangeWithOSN(TSEntityID entity_id, std::vector<KwOSNSpan>& osn_span,
+  std::list<STDelRange>& del_range) {
+  std::list<TsEntityDelItem*> del_items;
+  auto s = GetDelItem(entity_id, del_items);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("GetDelItemByOSN failed. entity_id [%lu]", entity_id);
+    return s;
+  }
+  for (auto& item : del_items) {
+    if (item->type == DEL_ITEM_TYPE_USER && IsOsnInSpans(item->range.osn_span.end, osn_span)) {
+      del_range.push_back(item->range);
     }
   }
   return KStatus::SUCCESS;

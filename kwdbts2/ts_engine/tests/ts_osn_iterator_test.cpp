@@ -68,6 +68,37 @@ class TestV2IteratorByOSN : public ::testing::Test {
       delete engine_;
     }
   }
+    std::string GetPrimaryKey(TSEntityID dev_id) {
+    std::shared_ptr<kwdbts::TsTableSchemaManager> schema_mgr;
+    KStatus s = engine_->GetTableSchemaMgr(ctx_, table_id_, schema_mgr);
+    EXPECT_EQ(s, KStatus::SUCCESS);
+    std::vector<TagInfo> tag_schema;
+    s = schema_mgr->GetTagMeta(1, tag_schema);
+    EXPECT_EQ(s , KStatus::SUCCESS);
+    uint64_t pkey_len = 0;
+    for (size_t i = 0; i < tag_schema.size(); i++) {
+      if (tag_schema[i].isPrimaryTag()) {
+        pkey_len += tag_schema[i].m_size;
+      }
+    }
+    char* mem = reinterpret_cast<char*>(malloc(pkey_len));
+    memset(mem, 0, pkey_len);
+    std::string dev_str = intToString(dev_id);
+    size_t offset = 0;
+    for (size_t i = 0; i < tag_schema.size(); i++) {
+      if (tag_schema[i].isPrimaryTag()) {
+        if (tag_schema[i].m_data_type == DATATYPE::VARSTRING) {
+          memcpy(mem + offset, dev_str.data(), dev_str.length());
+        } else {
+          memcpy(mem + offset, (char*)(&dev_id), tag_schema[i].m_size);
+        }
+        offset += tag_schema[i].m_size;
+      }
+    }
+    auto ret = std::string{mem, pkey_len};
+    free(mem);
+    return ret;
+  }
 };
 
 // insert one tag, then scan tags by osn ranges.
@@ -75,7 +106,7 @@ TEST_F(TestV2IteratorByOSN, basic_insert) {
   uint32_t table_version = 1;
   timestamp64 start_ts = 3600;
   auto pay_load = GenRowPayload(*metric_schema_, tag_schema_ ,table_id_, table_version, 1, 1, start_ts);
-  SetPayloadOSN(pay_load, 1760000);
+  TsRawPayload::SetOSN(pay_load, 1760000);
   uint16_t inc_entity_cnt;
   uint32_t inc_unordered_cnt;
   DedupResult dedup_result{0, 0, 0, TSSlice {nullptr, 0}};
@@ -155,16 +186,16 @@ TEST_F(TestV2IteratorByOSN, basic_udpate) {
   uint32_t table_version = 1;
   timestamp64 start_ts = 3600;
   auto pay_load = GenRowPayload(*metric_schema_, tag_schema_ ,table_id_, table_version, 1, 1, start_ts);
-  SetPayloadOSN(pay_load, 1760000);
+  TsRawPayload::SetOSN(pay_load, 1760000);
   uint16_t inc_entity_cnt;
   uint32_t inc_unordered_cnt;
   DedupResult dedup_result{0, 0, 0, TSSlice {nullptr, 0}};
   auto s = engine_->PutData(ctx_, table_id_, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
   ASSERT_EQ(s, KStatus::SUCCESS);
-  SetPayloadOSN(pay_load, 1770000);
+  TsRawPayload::SetOSN(pay_load, 1770000);
   s = engine_->PutEntity(ctx_, table_id_, 1, &pay_load, 1, 0);
   ASSERT_EQ(s, KStatus::SUCCESS);
-  SetPayloadOSN(pay_load, 1780000);
+  TsRawPayload::SetOSN(pay_load, 1780000);
   s = engine_->PutEntity(ctx_, table_id_, 1, &pay_load, 1, 0);
   ASSERT_EQ(s, KStatus::SUCCESS);
   free(pay_load.data);
@@ -246,6 +277,21 @@ TEST_F(TestV2IteratorByOSN, basic_udpate) {
   ASSERT_EQ(KUint64(m_rs.data[1][0]->mem), 1760000);
   ASSERT_EQ(KUint8(m_rs.data[2][0]->mem), 1);
   ASSERT_EQ(KUint8(m_rs.data[3][0]->mem), 0);
+
+  uint64_t pkey = 1;
+  std::vector<void*> pkeys;
+  std::string pkey_str = GetPrimaryKey(pkey);
+  pkeys.push_back(pkey_str.data());
+  osn_spans.clear();
+  osn_spans.push_back({0, UINT64_MAX});
+  entity_id_list.clear();
+  ResultSet res;
+  res.setColumnNum(1);
+  s = ts_table_->GetEntityIdListByOSN(ctx_, pkeys, osn_spans, scan_cols, {2}, &entity_id_list, &res, &count, 1);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  ASSERT_EQ(entity_id_list.size(), 1);
+  ASSERT_EQ(count, 1);
+  ASSERT_EQ(KUint64(res.data[0][0]->mem), pkey);
 }
 
 // insert one tag, then delete tag twice. then insert again, delete again, then scan by osn ranges.
@@ -254,7 +300,7 @@ TEST_F(TestV2IteratorByOSN, basic_delete) {
   uint32_t table_version = 1;
   timestamp64 start_ts = 3600;
   auto pay_load = GenRowPayload(*metric_schema_, tag_schema_ ,table_id_, table_version, 1, 1, start_ts);
-  SetPayloadOSN(pay_load, 1760000);
+  TsRawPayload::SetOSN(pay_load, 1760000);
   uint16_t inc_entity_cnt;
   uint32_t inc_unordered_cnt;
   DedupResult dedup_result{0, 0, 0, TSSlice {nullptr, 0}};
@@ -266,7 +312,7 @@ TEST_F(TestV2IteratorByOSN, basic_delete) {
   ASSERT_EQ(d_count, 1);
   free(pay_load.data);
   pay_load = GenRowPayload(*metric_schema_, tag_schema_ ,table_id_, table_version, 1, 1, start_ts + 1000);
-  SetPayloadOSN(pay_load, 1780000);
+  TsRawPayload::SetOSN(pay_load, 1780000);
   // insert tag at 1780000
   s = engine_->PutData(ctx_, table_id_, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
   ASSERT_EQ(s, KStatus::SUCCESS);
@@ -376,6 +422,23 @@ TEST_F(TestV2IteratorByOSN, basic_delete) {
   ASSERT_EQ(KUint64(m_rs.data[1][1]->mem), 1790000);
   ASSERT_EQ(KUint8(m_rs.data[2][1]->mem), 3);
   ASSERT_EQ(KUint8(m_rs.data[3][1]->mem), 0);
+
+  uint64_t pkey = 1;
+  std::string pkey_str = GetPrimaryKey(pkey);
+  std::vector<void*> pkeys;
+  pkeys.push_back(pkey_str.data());
+  osn_spans.clear();
+  osn_spans.push_back({0, UINT64_MAX});
+  entity_id_list.clear();
+  ResultSet res;
+  res.setColumnNum(1);
+  s = ts_table_->GetEntityIdListByOSN(ctx_, pkeys, osn_spans, scan_cols, {2}, &entity_id_list, &res, &count, 1);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  ASSERT_EQ(entity_id_list.size(), 2);
+  ASSERT_EQ(count, 2);
+  ASSERT_EQ(res.data[0].size(), 1);
+  ASSERT_EQ(KUint64(res.data[0][0]->mem), pkey);
+  ASSERT_EQ(KUint64((char*)(res.data[0][0]->mem) + 216), pkey);
 }
 
 // insert one tag, then insert some metric datas
@@ -383,16 +446,16 @@ TEST_F(TestV2IteratorByOSN, basic_metric_insert) {
   uint32_t table_version = 1;
   timestamp64 start_ts = 3600;
   auto pay_load = GenRowPayload(*metric_schema_, tag_schema_ ,table_id_, table_version, 1, 1, start_ts);
-  SetPayloadOSN(pay_load, 1760000);
+  TsRawPayload::SetOSN(pay_load, 1760000);
   uint16_t inc_entity_cnt;
   uint32_t inc_unordered_cnt;
   DedupResult dedup_result{0, 0, 0, TSSlice {nullptr, 0}};
   auto s = engine_->PutData(ctx_, table_id_, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
   ASSERT_EQ(s, KStatus::SUCCESS);
-  SetPayloadOSN(pay_load, 1770000);
+  TsRawPayload::SetOSN(pay_load, 1770000);
   s = engine_->PutData(ctx_, table_id_, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
   ASSERT_EQ(s, KStatus::SUCCESS);
-  SetPayloadOSN(pay_load, 1780000);
+  TsRawPayload::SetOSN(pay_load, 1780000);
   s = engine_->PutData(ctx_, table_id_, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
   ASSERT_EQ(s, KStatus::SUCCESS);
   free(pay_load.data);
@@ -465,7 +528,7 @@ TEST_F(TestV2IteratorByOSN, basic_metric_delete) {
   uint32_t table_version = 1;
   timestamp64 start_ts = 3600;
   auto pay_load = GenRowPayload(*metric_schema_, tag_schema_ ,table_id_, table_version, 1, 1, start_ts);
-  SetPayloadOSN(pay_load, 1760000);
+  TsRawPayload::SetOSN(pay_load, 1760000);
   uint16_t inc_entity_cnt;
   uint32_t inc_unordered_cnt;
   DedupResult dedup_result{0, 0, 0, TSSlice {nullptr, 0}};
@@ -473,20 +536,20 @@ TEST_F(TestV2IteratorByOSN, basic_metric_delete) {
   ASSERT_EQ(s, KStatus::SUCCESS);
 
   uint64_t pkey_mem = 1;
-  std::string pkey = std::string(reinterpret_cast<char*>(&pkey_mem), 8);
+  std::string pkey = GetPrimaryKey(pkey_mem);
   std::vector<KwTsSpan> ts_spans;
   uint64_t r_count;
   ts_spans.push_back({0, 3600});
   s = engine_->DeleteData(ctx_, table_id_, 1, pkey, ts_spans, &r_count, 0, 1770000);
   ASSERT_EQ(s, KStatus::SUCCESS);
-  SetPayloadOSN(pay_load, 1780000);
+  TsRawPayload::SetOSN(pay_load, 1780000);
   s = engine_->PutData(ctx_, table_id_, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
   ASSERT_EQ(s, KStatus::SUCCESS);
   ts_spans.clear();
   ts_spans.push_back({0, 13600});
   s = engine_->DeleteData(ctx_, table_id_, 1, pkey, ts_spans, &r_count, 0, 1790000);
   ASSERT_EQ(s, KStatus::SUCCESS);
-  SetPayloadOSN(pay_load, 1800000);
+  TsRawPayload::SetOSN(pay_load, 1800000);
   s = engine_->PutData(ctx_, table_id_, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
   ASSERT_EQ(s, KStatus::SUCCESS);
   ts_spans.clear();
@@ -583,7 +646,7 @@ TEST_F(TestV2IteratorByOSN, only_tag_data_exist) {
   uint32_t table_version = 1;
   timestamp64 start_ts = 3600;
   auto pay_load = GenRowPayload(*metric_schema_, tag_schema_ ,table_id_, table_version, 1, 1, start_ts);
-  SetPayloadOSN(pay_load, 1760000);
+  TsRawPayload::SetOSN(pay_load, 1760000);
   uint16_t inc_entity_cnt;
   uint32_t inc_unordered_cnt;
   DedupResult dedup_result{0, 0, 0, TSSlice {nullptr, 0}};
@@ -591,7 +654,7 @@ TEST_F(TestV2IteratorByOSN, only_tag_data_exist) {
   ASSERT_EQ(s, KStatus::SUCCESS);
 
   uint64_t pkey_mem = 1;
-  std::string pkey = std::string(reinterpret_cast<char*>(&pkey_mem), 8);
+  std::string pkey = GetPrimaryKey(pkey_mem);
   std::vector<KwTsSpan> ts_spans;
   uint64_t r_count;
   ts_spans.push_back({0, 45600});

@@ -55,7 +55,10 @@ enum OperatorTypeOfRecord : uint8_t {
 struct OperatorInfoOfRecord {
   OperatorTypeOfRecord type;
   TS_OSN osn;
-  OperatorInfoOfRecord(OperatorTypeOfRecord t, TS_OSN o) : type(t), osn(o) {}
+  uint32_t p_tag_id;
+  uint32_t row_num;
+  OperatorInfoOfRecord(OperatorTypeOfRecord t, TS_OSN o, uint32_t ptag_id, int rownum) :
+    type(t), osn(o), p_tag_id(ptag_id), row_num(rownum) {}
 };
 
 class TsTable {
@@ -208,7 +211,13 @@ class TsTable {
   // scan tag data by osn range. return all rows
   virtual KStatus GetTagIteratorByOSN(kwdbContext_p ctx, k_uint32 table_version, std::vector<k_uint32>& scan_cols,
     std::vector<KwOSNSpan>& osn_span, const std::unordered_set<uint32_t> hps, BaseEntityIterator** iter) = 0;
-
+  // scan tag by primary key.
+  virtual KStatus GetEntityIdListByOSN(kwdbContext_p ctx, const std::vector<void*>& primary_tags,
+            std::vector<KwOSNSpan>& osn_span,
+            std::vector<k_uint32>& scan_cols,
+            const std::unordered_set<uint32_t> &hps,
+            std::vector<EntityResultIndex>* entity_id_list, ResultSet* res, uint32_t* count,
+            uint32_t table_version) = 0;
   /**
    * @brief get entityId List
    * @param[in] primary_tags primaryTag

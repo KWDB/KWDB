@@ -221,6 +221,8 @@ class TsVGroup {
 
   KStatus GetDelInfoByOSN(kwdbContext_p ctx, TSTableID tbl_id, uint32_t entity_id, std::vector<KwOSNSpan>& osn_span,
     std::vector<KwTsSpan>* del_spans);
+  KStatus GetDelInfoWithOSN(kwdbContext_p ctx, TSTableID tbl_id, uint32_t entity_id,
+    list<STDelRange>* del_spans);
 
   KStatus GetBlockSpans(TSTableID table_id, uint32_t entity_id, KwTsSpan ts_span, DATATYPE ts_col_type,
                         std::shared_ptr<TsTableSchemaManager> table_schema_mgr, uint32_t table_version,

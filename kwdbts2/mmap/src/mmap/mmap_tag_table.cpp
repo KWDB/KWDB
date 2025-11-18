@@ -150,7 +150,7 @@ int TagTable::open(ErrorInfo &err_info) {
         TagPartitionTable* index_tag_part_table = m_partition_mgr_->GetPartitionTable(
                 index_tag_version_obj->metaData()->m_real_used_version_);
         if (index_tag_part_table == nullptr) {
-          LOG_ERROR("GetPartitionTable not found. table_id:%u, table_version: %u ", m_table_id,
+          LOG_ERROR("GetPartitionTable not found. table_id:%lu, table_version: %u ", m_table_id,
                     index_tag_version_obj->metaData()->m_real_used_version_);
           return -1;
         }
@@ -416,6 +416,39 @@ int TagTable::InsertTagRecord(kwdbts::TsRawPayload &payload, int32_t sub_group_i
     old_tag_partition_table->setTagDataInfo(del_row.second, &del_tag_info);
     old_tag_partition_table->stopRead();
   }
+  return 0;
+}
+
+
+// V3 insert history tag record
+int TagTable::InsertDeletedTagRecord(kwdbts::TsRawPayload &payload, int32_t sub_group_id, int32_t entity_id,
+   uint64_t osn, OperateType operate_type) {
+  // 1. check version
+  auto tag_version_object = m_version_mgr_->GetVersionObject(payload.GetTableVersion());
+  if (nullptr == tag_version_object) {
+    LOG_ERROR("Tag table id[%ld] version[%u] doesn't exist.", this->m_table_id, payload.GetTableVersion());
+    return -1;
+  }
+  TableVersion tag_partition_version = tag_version_object->metaData()->m_real_used_version_;
+  auto tag_partition_table = m_partition_mgr_->GetPartitionTable(tag_partition_version);
+  if (nullptr == tag_partition_table) {
+    LOG_ERROR("Tag partition table[%lu] version[%u] doesn't exist.", m_table_id, tag_partition_version);
+    return -1;
+  }
+
+  // 2. insert partition data
+  size_t row_no = 0;
+  if (tag_partition_table->insert(entity_id, sub_group_id, payload.GetHashPoint(), osn, operate_type,
+                                  payload.GetTags().data, &row_no) < 0) {
+    LOG_ERROR("insert tag partition table[%s/%s] failed. ",
+              tag_partition_table->m_tbl_sub_path_.c_str(), tag_partition_table->m_name_.c_str());
+    return -1;
+  }
+
+  // 3. set delete mark
+  tag_partition_table->startRead();
+  tag_partition_table->setDeleteMark(row_no);
+  tag_partition_table->stopRead();
   return 0;
 }
 

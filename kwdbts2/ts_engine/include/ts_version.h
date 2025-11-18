@@ -235,6 +235,11 @@ class TsPartitionVersion {
     return del_info_->GetDelRangeByOSN(e_id, osn_span, del_range);
   }
 
+  KStatus GetDelRangeWithOSN(TSEntityID e_id, std::vector<KwOSNSpan>& osn_span,
+      std::list<STDelRange>& del_range) const {
+    return del_info_->GetDelRangeWithOSN(e_id, osn_span, del_range);
+  }
+
   KStatus getFilter(const TsScanFilterParams& filter, TsBlockItemFilterParams& block_data_filter) const;
   KStatus GetBlockSpans(const TsScanFilterParams& filter, std::list<shared_ptr<TsBlockSpan>>* ts_block_spans,
                        std::shared_ptr<TsTableSchemaManager>& tbl_schema_mgr,

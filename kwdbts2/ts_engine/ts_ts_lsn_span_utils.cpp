@@ -9,9 +9,11 @@
 // MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
 // See the Mulan PSL v2 for more details.
 
+#include <cassert>
 #include <memory>
 #include <vector>
 #include <list>
+#include <utility>
 #include <algorithm>
 #include "ts_ts_lsn_span_utils.h"
 
@@ -44,6 +46,28 @@ void MergeTsSpans(std::list<KwTsSpan>& raw_spans, std::vector<KwTsSpan>* ret_spa
         ret_spans->push_back(*it);
       }
     }
+  }
+}
+
+void DeplicateTsSpans(list<STDelRange>& raw_spans, list<STDelRange>* ret_spans) {
+  raw_spans.sort([](STDelRange a, STDelRange b) -> bool {
+    if (a.osn_span.end < b.osn_span.end) {
+      return true;
+    }
+    return false;
+  });
+  ret_spans->clear();
+  STDelRange last_osn{{0, 0}, {0, 0}};
+  for (auto it = raw_spans.begin(); it != raw_spans.end(); ++it) {
+    if (it->osn_span.begin != 0) {
+      continue;
+    }
+    if (last_osn.osn_span.end == it->osn_span.end) {
+      assert(last_osn.osn_span.begin == it->osn_span.begin);
+      assert(last_osn.osn_span.end == it->osn_span.end);
+      continue;
+    }
+    ret_spans->push_back(*it);
   }
 }
 

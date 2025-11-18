@@ -1431,6 +1431,55 @@ inline KStatus TsAggIteratorV2Impl::AddSumNotOverflowYet(uint32_t col_idx,
   return KStatus::SUCCESS;
 }
 
+
+inline KStatus TsAggIteratorV2Impl::AddSumNotOverflowYetByPreSum(uint32_t col_idx,
+                                                          int32_t type,
+                                                          void* current,
+                                                          TSSlice& agg_data) {
+  bool over_flow = false;
+  switch (type) {
+    case DATATYPE::INT8:
+      over_flow = AddAggInteger<int64_t>(
+          *reinterpret_cast<int64_t*>(agg_data.data),
+          *reinterpret_cast<int64_t*>(current));
+      ConvertToDoubleIfOverflow(col_idx, over_flow, agg_data);
+      break;
+    case DATATYPE::INT16:
+      over_flow = AddAggInteger<int64_t>(
+          *reinterpret_cast<int64_t*>(agg_data.data),
+          *reinterpret_cast<int64_t*>(current));
+      ConvertToDoubleIfOverflow(col_idx, over_flow, agg_data);
+      break;
+    case DATATYPE::INT32:
+      over_flow = AddAggInteger<int64_t>(
+          *reinterpret_cast<int64_t*>(agg_data.data),
+          *reinterpret_cast<int64_t*>(current));
+      ConvertToDoubleIfOverflow(col_idx, over_flow, agg_data);
+      break;
+    case DATATYPE::INT64:
+      over_flow = AddAggInteger<int64_t>(
+          *reinterpret_cast<int64_t*>(agg_data.data),
+          *reinterpret_cast<int64_t*>(current));
+      ConvertToDoubleIfOverflow(col_idx, over_flow, agg_data);
+      break;
+    case DATATYPE::FLOAT:
+      AddAggFloat<double>(
+          *reinterpret_cast<double*>(agg_data.data),
+          *reinterpret_cast<double*>(current));
+      break;
+    case DATATYPE::DOUBLE:
+      AddAggFloat<double>(
+          *reinterpret_cast<double*>(agg_data.data),
+          *reinterpret_cast<double*>(current));
+      break;
+    default:
+      LOG_ERROR("Not supported for sum, datatype: %d", type);
+      return KStatus::FAIL;
+      break;
+  }
+  return KStatus::SUCCESS;
+}
+
 inline KStatus TsAggIteratorV2Impl::AddSumOverflow(int32_t type,
                                                     void* current,
                                                     TSSlice& agg_data) {
@@ -1449,6 +1498,43 @@ inline KStatus TsAggIteratorV2Impl::AddSumOverflow(int32_t type,
       AddAggFloat<double, int64_t>(
           *reinterpret_cast<double*>(agg_data.data),
           *reinterpret_cast<int32_t*>(current));
+      break;
+    case DATATYPE::INT64:
+      AddAggFloat<double, int64_t>(
+          *reinterpret_cast<double*>(agg_data.data),
+          *reinterpret_cast<int64_t*>(current));
+      break;
+    case DATATYPE::FLOAT:
+    case DATATYPE::DOUBLE:
+      LOG_ERROR("Overflow not supported for sum, datatype: %d", type);
+      return KStatus::FAIL;
+      break;
+    default:
+      LOG_ERROR("Not supported for sum, datatype: %d", type);
+      return KStatus::FAIL;
+      break;
+  }
+  return KStatus::SUCCESS;
+}
+
+inline KStatus TsAggIteratorV2Impl::AddSumOverflowByPreSum(int32_t type,
+                                                    void* current,
+                                                    TSSlice& agg_data) {
+  switch (type) {
+    case DATATYPE::INT8:
+      AddAggFloat<double, int64_t>(
+          *reinterpret_cast<double*>(agg_data.data),
+          *reinterpret_cast<int64_t*>(current));
+      break;
+    case DATATYPE::INT16:
+      AddAggFloat<double, int64_t>(
+          *reinterpret_cast<double*>(agg_data.data),
+          *reinterpret_cast<int64_t*>(current));
+      break;
+    case DATATYPE::INT32:
+      AddAggFloat<double, int64_t>(
+          *reinterpret_cast<double*>(agg_data.data),
+          *reinterpret_cast<int64_t*>(current));
       break;
     case DATATYPE::INT64:
       AddAggFloat<double, int64_t>(
@@ -1606,15 +1692,15 @@ KStatus TsAggIteratorV2Impl::UpdateAggregation(std::shared_ptr<TsBlockSpan>& blo
       }
       if (!is_overflow_[idx]) {
         if (!pre_sum_is_overflow) {
-          ret = AddSumNotOverflowYet(idx, type, pre_sum, agg_data);
+          ret = AddSumNotOverflowYetByPreSum(idx, type, pre_sum, agg_data);
         } else {
-          ret = AddSumNotOverflowYet(idx, DATATYPE::DOUBLE, pre_sum, agg_data);
+          ret = AddSumNotOverflowYetByPreSum(idx, DATATYPE::DOUBLE, pre_sum, agg_data);
         }
       } else {
         if (!pre_sum_is_overflow) {
-          ret = AddSumOverflow(type, pre_sum, agg_data);
+          ret = AddSumOverflowByPreSum(type, pre_sum, agg_data);
         } else {
-          ret = AddSumOverflow(DATATYPE::DOUBLE, pre_sum, agg_data);
+          ret = AddSumOverflowByPreSum(DATATYPE::DOUBLE, pre_sum, agg_data);
         }
       }
       if (ret != KStatus::SUCCESS) {
@@ -2341,13 +2427,13 @@ KStatus TsRawDataIteratorV2ImplByOSN::AppendExtendColSpace(ResultSet* res, uint3
   size_t bitmap_len = (count + 7) / 8;
   char* value = reinterpret_cast<char*>(malloc(count * (8 + 1 + 16) + 3 * bitmap_len));
   memset(value, 0, count * (8 + 1 + 16) + 3 * bitmap_len);
-  Batch* batch = new Batch(value + 3 * bitmap_len, count, value);
+  Batch* batch = new Batch(value + 3 * bitmap_len, count, value, 1);
   batch->need_free_bitmap = true;  // free memory for value.
   size_t extend_col_idx = kw_scan_cols_.size();
   res->push_back(extend_col_idx, batch);
-  batch = new Batch(value + 3 * bitmap_len + 8 * count, count, value + bitmap_len);
+  batch = new Batch(value + 3 * bitmap_len + 8 * count, count, value + bitmap_len, 1);
   res->push_back(extend_col_idx + 1, batch);
-  batch = new Batch(value + 3 * bitmap_len + (8 + 1) * count, count, value + 2 * bitmap_len);
+  batch = new Batch(value + 3 * bitmap_len + (8 + 1) * count, count, value + 2 * bitmap_len, 1);
   res->push_back(extend_col_idx + 2, batch);
   return KStatus::SUCCESS;
 }
@@ -2427,7 +2513,7 @@ KStatus TsRawDataIteratorV2ImplByOSN::NextMetricInsertRows(ResultSet* res, k_uin
       KUint8(reinterpret_cast<char*>(res->data[ext_idx + 1][vector_idx]->mem) + 1 * i) =
         OperatorTypeOfRecord::OP_TYPE_INSERT;
     }
-    setBatchDeleted(reinterpret_cast<char*>(res->data[2][vector_idx]->bitmap), 1, *count);
+    setBatchDeleted(reinterpret_cast<char*>(res->data[ext_idx + 2][vector_idx]->bitmap), 1, *count);
     // We are returning memory address inside TsBlockSpan, so we need to keep it until iterator is destroyed
     ts_block_spans_reserved_.push_back(block_span);
     if (*count > 0) {

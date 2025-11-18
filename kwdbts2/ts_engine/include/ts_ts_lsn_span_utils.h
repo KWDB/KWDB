@@ -95,4 +95,6 @@ inline bool IsTsLsnSpanCrossSpans(const std::vector<STScanRange>& spans,
 
 void MergeTsSpans(std::list<KwTsSpan>& raw_spans, std::vector<KwTsSpan>* ret_spans);
 
+void DeplicateTsSpans(list<STDelRange>& raw_spans, list<STDelRange>* ret_spans);
+
 }  // namespace kwdbts

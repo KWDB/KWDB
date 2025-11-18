@@ -50,6 +50,37 @@ class TestV2Iterator : public ::testing::Test {
       delete engine_;
     }
   }
+  std::string GetPrimaryKey(TSTableID table_id, TSEntityID dev_id) {
+    std::shared_ptr<kwdbts::TsTableSchemaManager> schema_mgr;
+    KStatus s = engine_->GetTableSchemaMgr(ctx_, table_id, schema_mgr);
+    EXPECT_EQ(s, KStatus::SUCCESS);
+    std::vector<TagInfo> tag_schema;
+    s = schema_mgr->GetTagMeta(1, tag_schema);
+    EXPECT_EQ(s , KStatus::SUCCESS);
+    uint64_t pkey_len = 0;
+    for (size_t i = 0; i < tag_schema.size(); i++) {
+      if (tag_schema[i].isPrimaryTag()) {
+        pkey_len += tag_schema[i].m_size;
+      }
+    }
+    char* mem = reinterpret_cast<char*>(malloc(pkey_len));
+    memset(mem, 0, pkey_len);
+    std::string dev_str = intToString(dev_id);
+    size_t offset = 0;
+    for (size_t i = 0; i < tag_schema.size(); i++) {
+      if (tag_schema[i].isPrimaryTag()) {
+        if (tag_schema[i].m_data_type == DATATYPE::VARSTRING) {
+          memcpy(mem + offset, dev_str.data(), dev_str.length());
+        } else {
+          memcpy(mem + offset, (char*)(&dev_id), tag_schema[i].m_size);
+        }
+        offset += tag_schema[i].m_size;
+      }
+    }
+    auto ret = std::string{mem, pkey_len};
+    free(mem);
+    return ret;
+  }
 };
 
 TEST_F(TestV2Iterator, basic) {
@@ -514,7 +545,7 @@ TEST_F(TestV2Iterator, mulitEntityDeleteCount) {
   }
   uint64_t tmp_count;
   uint64_t p_tag_entity_id = 3;
-  std::string p_key = string((char*)(&p_tag_entity_id), sizeof(p_tag_entity_id));
+  std::string p_key = GetPrimaryKey(table_id, p_tag_entity_id);
 
   s = engine_->DeleteData(ctx_, table_id, 0, p_key, {{start_ts + entity_row_num / 2 * interval, INT64_MAX}},
                           &tmp_count, 0, 1);
@@ -692,7 +723,7 @@ TEST_F(TestV2Iterator, mulitEntityDeleteCountBeforeFlush) {
   for (size_t i = 0; i < entity_num; i++) {
     uint64_t tmp_count;
     uint64_t p_tag_entity_id = 1 + i;
-    std::string p_key = string((char*)(&p_tag_entity_id), sizeof(p_tag_entity_id));
+    std::string p_key = GetPrimaryKey(table_id, p_tag_entity_id);
 
     s = engine_->DeleteData(ctx_, table_id, 0, p_key, {{start_ts + entity_row_num / 2 * interval, INT64_MAX}},
                             &tmp_count, 0, 1);

@@ -131,6 +131,15 @@ class TsRawPayload {
 
   static uint32_t GetTableVersionFromSlice(const TSSlice &raw) { return KUint32(raw.data + ts_version_offset_); }
 
+  static void SetOSN(const TSSlice &raw, uint64_t osn) { KUint64(raw.data + txn_id_offset_) = osn; }
+
+  static void SetHashPoint(const TSSlice &raw, uint32_t hash_point) {
+    KUint32(raw.data + hash_point_id_offset_) = hash_point;
+  }
+  static void SetRowType(const TSSlice &raw, DataTagFlag row_type) {
+    KUint8(raw.data + row_type_offset_) = row_type;
+  }
+
   TSTableID GetTableID() const { return KUint64(payload_.data + table_id_offset_); }
 
   uint32_t GetTableVersion() const { return KUint32(payload_.data + ts_version_offset_); }
@@ -344,6 +353,7 @@ class TSRowPayloadBuilder {
   // TSSlice primary_tag_{nullptr, 0};
   std::vector<int32_t> data_schema_offset_;
   std::vector<TsPrimaryTagInfo> primary_tags_;
+  std::vector<TagInfo> primary_key_info_;
   int count_{0};
   int primary_offset_;
   int tag_offset_;
