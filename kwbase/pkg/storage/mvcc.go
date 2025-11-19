@@ -3644,20 +3644,53 @@ func computeCapacity(
 			Available: maxSizeBytes,
 		}, nil
 	}
-	if err := fileSystemUsage.Get(dir); err != nil {
-		return roachpb.StoreCapacity{}, err
+
+	// Track processed devices to avoid duplicate counting
+	processedDevs := make(map[int64]struct{})
+	var fsuTotal, fsuAvail int64
+
+	// Collect paths to check (path and tsPath if non-empty)
+	paths := []string{path}
+	if tsPath != "" {
+		paths = append(paths, tsPath)
 	}
 
-	if fileSystemUsage.Total > math.MaxInt64 {
-		return roachpb.StoreCapacity{}, fmt.Errorf("unsupported disk size %s, max supported size is %s",
-			humanize.IBytes(fileSystemUsage.Total), humanizeutil.IBytes(math.MaxInt64))
+	// Iterate through all paths and accumulate device capacities
+	for _, p := range paths {
+		// Get device number for current path
+		devNum, err := sysutil.GetDeviceNumber(p)
+		if err != nil {
+			if os.IsNotExist(err) {
+				// The directory doesn't exist, so we can't get a device number.
+				continue
+			}
+			return roachpb.StoreCapacity{}, err
+		}
+
+		// Skip if device already processed
+		if _, exists := processedDevs[devNum]; exists {
+			continue
+		}
+		processedDevs[devNum] = struct{}{}
+
+		if err := fileSystemUsage.Get(p); err != nil {
+			return roachpb.StoreCapacity{}, err
+		}
+
+		// Validate disk size limits
+		if fileSystemUsage.Total > math.MaxInt64 {
+			return roachpb.StoreCapacity{}, fmt.Errorf("unsupported disk size %s, max supported size is %s",
+				humanize.IBytes(fileSystemUsage.Total), humanizeutil.IBytes(math.MaxInt64))
+		}
+		if fileSystemUsage.Avail > math.MaxInt64 {
+			return roachpb.StoreCapacity{}, fmt.Errorf("unsupported disk size %s, max supported size is %s",
+				humanize.IBytes(fileSystemUsage.Avail), humanizeutil.IBytes(math.MaxInt64))
+		}
+
+		// Accumulate total capacity and available space
+		fsuTotal += int64(fileSystemUsage.Total)
+		fsuAvail += int64(fileSystemUsage.Avail)
 	}
-	if fileSystemUsage.Avail > math.MaxInt64 {
-		return roachpb.StoreCapacity{}, fmt.Errorf("unsupported disk size %s, max supported size is %s",
-			humanize.IBytes(fileSystemUsage.Avail), humanizeutil.IBytes(math.MaxInt64))
-	}
-	fsuTotal := int64(fileSystemUsage.Total)
-	fsuAvail := int64(fileSystemUsage.Avail)
 
 	// Find the total size of all the files in the r.dir and all its
 	// subdirectories.
