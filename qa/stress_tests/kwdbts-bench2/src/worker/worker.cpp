@@ -14,8 +14,11 @@
  * @version 1.0
  */
 
-#include "util.h"
 #include "worker.h"
+
+#include <cstdint>
+
+#include "util.h"
 
 namespace kwdbts {
 using namespace kwdbts;
