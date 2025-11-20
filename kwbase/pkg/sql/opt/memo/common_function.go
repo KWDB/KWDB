@@ -240,9 +240,15 @@ func checkAESupportType(id oid.Oid) bool {
 // CheckExprCanExecInTSEngine checks whether expr and it's children exprs can be pushed down
 // tupleCanExecInTSEngine is true when the tuple use in InExpr or NotInExpr, tuple expr only can exec in ts engine in this case,
 // such as col in (1,2,3) or col in (col1,col2); other case such as COUNT(DISTINCT (channel, companyid)) can not exec in ts engine.
-// add param onlyOnePTagValue: filters have one pTag only
-func CheckExprCanExecInTSEngine(
-	src opt.Expr, pos int8, f CheckFunc, tupleCanExecInTSEngine bool, onlyOnePTagValue bool,
+func CheckExprCanExecInTSEngine(src opt.Expr, pos int8, f CheckFunc) (bool, uint32) {
+	return CheckExprCanExecInTSEngineImp(src, pos, f, false)
+}
+
+// CheckExprCanExecInTSEngineImp checks whether expr and it's children exprs can be pushed down
+// tupleCanExecInTSEngine is true when the tuple use in InExpr or NotInExpr, tuple expr only can exec in ts engine in this case,
+// such as col in (1,2,3) or col in (col1,col2); other case such as COUNT(DISTINCT (channel, companyid)) can not exec in ts engine.
+func CheckExprCanExecInTSEngineImp(
+	src opt.Expr, pos int8, f CheckFunc, tupleCanExecInTSEngine bool,
 ) (bool, uint32) {
 	switch src.Op() {
 	case opt.VariableOp, opt.ConstOp, opt.FalseOp, opt.NullOp, opt.TrueOp, opt.SubqueryOp, opt.ExistsOp, opt.AnyOp:
@@ -256,7 +262,7 @@ func CheckExprCanExecInTSEngine(
 		}
 	case opt.InOp, opt.NotInOp:
 		for i := 0; i < src.ChildCount(); i++ {
-			can, _ := CheckExprCanExecInTSEngine(src.Child(i), pos, f, true, onlyOnePTagValue)
+			can, _ := CheckExprCanExecInTSEngineImp(src.Child(i), pos, f, true)
 			if !can { // can not push down
 				return false, 0
 			}
@@ -282,7 +288,7 @@ func CheckExprCanExecInTSEngine(
 	switch source := src.(type) {
 	case *ScalarListExpr:
 		for i := 0; i < len(*source); i++ {
-			can, _ := CheckExprCanExecInTSEngine((*source)[i], pos, f, false, onlyOnePTagValue)
+			can, _ := CheckExprCanExecInTSEngine((*source)[i], pos, f)
 			if !can { // can not push down
 				return false, 0
 			}
@@ -290,9 +296,7 @@ func CheckExprCanExecInTSEngine(
 		return true, 0
 	case *FunctionExpr:
 		if source.Properties.ForbiddenExecInTSEngine {
-			if _, ok := CheckGroupWindowExist(src); ok && !onlyOnePTagValue {
-				return false, 0
-			}
+			return false, 0
 		}
 
 	case *CastExpr:
@@ -313,7 +317,7 @@ func CheckExprCanExecInTSEngine(
 
 	// check whether child exprs can exec in ts engine
 	for i := 0; i < src.ChildCount(); i++ {
-		if can, _ := CheckExprCanExecInTSEngine(src.Child(i), pos, f, false, onlyOnePTagValue); !can { // can not push down
+		if can, _ := CheckExprCanExecInTSEngine(src.Child(i), pos, f); !can { // can not push down
 			return false, hashCode
 		}
 	}
@@ -329,14 +333,12 @@ func CheckExprCanExecInTSEngine(
 //
 // return
 // - can execute on ts engine
-func CheckFilterExprCanExecInTSEngine(
-	src opt.Expr, pos ExprPos, f CheckFunc, onlyOnePTagValue bool,
-) bool {
+func CheckFilterExprCanExecInTSEngine(src opt.Expr, pos ExprPos, f CheckFunc) bool {
 	// operator and , or , range check is child can exec on ts engine
 	if src.Op() == opt.AndOp || src.Op() == opt.OrOp || src.Op() == opt.RangeOp {
 		var i int
 		for i = 0; i < src.ChildCount(); i++ {
-			if !CheckFilterExprCanExecInTSEngine(src.Child(i), pos, f, onlyOnePTagValue) {
+			if !CheckFilterExprCanExecInTSEngine(src.Child(i), pos, f) {
 				return false
 			}
 		}
@@ -345,7 +347,7 @@ func CheckFilterExprCanExecInTSEngine(
 	}
 
 	// check white list that can support by ts engine
-	if can, _ := CheckExprCanExecInTSEngine(src, int8(pos), f, false, onlyOnePTagValue); !can {
+	if can, _ := CheckExprCanExecInTSEngine(src, int8(pos), f); !can {
 		return false
 	}
 
@@ -361,7 +363,7 @@ func GetPrimaryTagFilterValue(
 	private *TSScanPrivate, e opt.Expr, m *Memo,
 ) (opt.Expr, []opt.Expr, []opt.Expr) {
 	tabID := private.Table
-
+	flags := &private.Flags
 	table := m.Metadata().TableMeta(tabID).Table
 	colMap := make(TagColMap, 1)
 	primaryColMap := make(TagColMap, 1)
@@ -380,14 +382,14 @@ func GetPrimaryTagFilterValue(
 	leave, tagFilter := m.SplitTagExpr(e, colMap)
 
 	// hint control use TagTable
-	if tagFilter != nil && private.HintType == keys.ForceTagTableHint {
+	if tagFilter != nil && flags.HintType == keys.ForceTagTableHint {
 		return leave, tagFilter, nil
 	}
 	var tags []opt.Expr
 	var PrimaryTags []opt.Expr
-	private.PrimaryTagValues = make(map[uint32][]string, 1)
+	flags.PrimaryTagValues = make(map[uint32][]string, 1)
 	for i := 0; i < len(tagFilter); i++ {
-		if !GetPrimaryTagValues(tagFilter[i], primaryColMap, &private.PrimaryTagValues) {
+		if !GetPrimaryTagValues(tagFilter[i], primaryColMap, &flags.PrimaryTagValues) {
 			tags = append(tags, tagFilter[i])
 		} else {
 			PrimaryTags = append(PrimaryTags, tagFilter[i])
@@ -395,10 +397,10 @@ func GetPrimaryTagFilterValue(
 	}
 
 	// check primary tag
-	if !CheckPrimaryTagCanUse(m.Metadata().TableMeta(tabID).PrimaryTagCount, &private.PrimaryTagValues) {
+	if !CheckPrimaryTagCanUse(m.Metadata().TableMeta(tabID).PrimaryTagCount, &flags.PrimaryTagValues) {
 		tags = append(tags, PrimaryTags...)
 		PrimaryTags = nil
-		private.PrimaryTagValues = nil
+		flags.PrimaryTagValues = nil
 	}
 	return leave, tags, PrimaryTags
 }
@@ -437,8 +439,8 @@ func CheckPrimaryTagCanUse(primaryTagCount int, value *PTagValues) bool {
 func GetAccessMode(
 	hasPrimaryFilter bool, hasTagFilter bool, hasTagIndex bool, private *TSScanPrivate, m *Memo,
 ) (accessMode int) {
-	if private.AccessMode != -1 {
-		return private.AccessMode
+	if private.Flags.AccessMode != -1 {
+		return private.Flags.AccessMode
 	}
 	var hasNormalTags, outputHasTag, outputHasPTag bool
 	hasPrimaryTags := hasPrimaryFilter
@@ -551,7 +553,7 @@ func (m *Memo) SplitTagExpr(src opt.Expr, colMap TagColMap) (leave opt.Expr, tag
 		return source, nil
 	default:
 		// check white list that can push down
-		if push, _ := CheckExprCanExecInTSEngine(src, ExprPosSelect, m.GetWhiteList().CheckWhiteListParam, false, m.CheckOnlyOnePTagValue()); !push {
+		if push, _ := CheckExprCanExecInTSEngine(src, ExprPosSelect, m.GetWhiteList().CheckWhiteListParam); !push {
 			return source, nil
 		}
 
@@ -779,6 +781,7 @@ func GetTagIndexKeyAndFilter(
 	private *TSScanPrivate, tagFilters *[]opt.Expr, m *Memo, filterCount int,
 ) []opt.Expr {
 	tabID := private.Table
+	Flags := &private.Flags
 	table := m.Metadata().TableMeta(tabID).Table
 
 	// Early return if there's no index to use
@@ -807,15 +810,16 @@ func GetTagIndexKeyAndFilter(
 	tagEqFilters, tagOrFilter, filterMap := populateFilters(tagFilters, &tagValues, tagColMap, primaryTagColMap, filterCount)
 
 	// Attempt to use tag index
+	TagIndex := &Flags.TagIndex
 	tagIndexFilters, tagIndexValues, canUseTagIndex := CheckAndGetTagIndex(tagIndexColumnIDs, tagValues, tagEqFilters, filterMap)
 	if canUseTagIndex {
 		if len(tagIndexFilters) == 1 && tagIndexFilters[0].Op() == opt.InOp {
-			private.TagIndex.UnionType = Combine
+			TagIndex.UnionType = Combine
 		} else {
-			private.TagIndex.UnionType = Intersection
+			TagIndex.UnionType = Intersection
 		}
-		private.TagIndex.TagIndexValues = tagIndexValues
-		private.TagIndex.IndexID = make([]uint32, len(tagIndexValues))
+		TagIndex.TagIndexValues = tagIndexValues
+		TagIndex.IndexID = make([]uint32, len(tagIndexValues))
 		for i, mapTagColumnIDs := range tagIndexValues {
 			var TagColumnIDs []uint32
 			for k := range mapTagColumnIDs {
@@ -825,7 +829,7 @@ func GetTagIndexKeyAndFilter(
 			for _, indexMap := range mapTagIndexIDs {
 				for indexID, colIDs := range indexMap {
 					if equalColumns(TagColumnIDs, colIDs) {
-						private.TagIndex.IndexID[i] = uint32(indexID)
+						TagIndex.IndexID[i] = uint32(indexID)
 						break
 					}
 				}
@@ -834,10 +838,13 @@ func GetTagIndexKeyAndFilter(
 	} else {
 		primaryTagValues, tagIndexValues, canUseTagIndexByOrFilter := CheckAndGetTagIndexFromOrExpr(tagIndexColumnIDs, tagValues, primaryTagColMap)
 		if canUseTagIndexByOrFilter {
-			private.PrimaryTagValues = primaryTagValues
-			private.TagIndex.UnionType = Combine
-			private.TagIndex.TagIndexValues = tagIndexValues
-			private.TagIndex.IndexID = make([]uint32, len(tagIndexValues))
+			if len(primaryTagValues) > 0 {
+				Flags.PrimaryTagValues = primaryTagValues
+				Flags.PrimaryTagFilter = getPrimaryTagFilter(tagOrFilter, primaryTagColMap)
+			}
+			TagIndex.UnionType = Combine
+			TagIndex.TagIndexValues = tagIndexValues
+			TagIndex.IndexID = make([]uint32, len(tagIndexValues))
 			for i, mapTagColumnIDs := range tagIndexValues {
 				var TagColumnIDs []uint32
 				for k := range mapTagColumnIDs {
@@ -847,7 +854,7 @@ func GetTagIndexKeyAndFilter(
 				for _, indexMap := range mapTagIndexIDs {
 					for indexID, colIDs := range indexMap {
 						if equalColumns(TagColumnIDs, colIDs) {
-							private.TagIndex.IndexID[i] = uint32(indexID)
+							TagIndex.IndexID[i] = uint32(indexID)
 							break
 						}
 					}
@@ -1195,4 +1202,49 @@ func equalColumns(a, b []uint32) bool {
 		}
 	}
 	return true
+}
+
+// getPrimaryTagFilter is used to get primary tag filter.
+func getPrimaryTagFilter(src []opt.Expr, primaryColMap TagColMap) []opt.Expr {
+	var primaryFilters []opt.Expr
+
+	for _, filter := range src {
+		extractPrimaryFilters(filter, primaryColMap, &primaryFilters)
+	}
+
+	return primaryFilters
+}
+
+// extractPrimaryFilters is used to get primary tag filter from *memo.OrExpr
+func extractPrimaryFilters(expr opt.Expr, primaryColMap TagColMap, result *[]opt.Expr) {
+	if orExpr, ok := expr.(*OrExpr); ok {
+		extractPrimaryFilters(orExpr.Left, primaryColMap, result)
+		extractPrimaryFilters(orExpr.Right, primaryColMap, result)
+	} else if isPrimaryTagEqualityFilter(expr, primaryColMap) {
+		*result = append(*result, expr)
+	}
+}
+
+// isPrimaryTagEqualityFilter checks whether the expression is an equivalence condition of the primary tag
+func isPrimaryTagEqualityFilter(expr opt.Expr, primaryColMap TagColMap) bool {
+	eq, ok := expr.(*EqExpr)
+	if !ok {
+		return false
+	}
+
+	var colID opt.ColumnID
+
+	if leftCol, ok := eq.Left.(*VariableExpr); ok {
+		if _, ok := eq.Right.(*ConstExpr); ok {
+			colID = leftCol.Col
+		}
+	}
+
+	for k := range primaryColMap {
+		if colID == k {
+			return true
+		}
+	}
+
+	return false
 }

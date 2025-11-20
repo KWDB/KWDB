@@ -3486,16 +3486,15 @@ func distributeAndDuplicateOfCreateTSTable(
 	preDistReplicas = preDist
 
 	type pointGroup struct {
-		point     int32
-		timestamp int64
+		point int32
 	}
 	var pointGroups []pointGroup
 	var splitInfo []roachpb.AdminSplitInfoForTs
 	for index, hashPartition := range partitions {
 		startPoint := hashPartition.StartPoint
 		var info roachpb.AdminSplitInfoForTs
-		pointGroups = append(pointGroups, pointGroup{int32(startPoint), hashPartition.StartTimeStamp})
-		splitKey := sqlbase.MakeTsRangeKey(desc.ID, uint64(startPoint), hashPartition.StartTimeStamp, hashNum)
+		pointGroups = append(pointGroups, pointGroup{int32(startPoint)})
+		splitKey := sqlbase.MakeTsRangeKey(desc.ID, uint64(startPoint), hashNum)
 		info = roachpb.AdminSplitInfoForTs{
 			SplitKey: splitKey,
 			PreDist:  preDistReplicas[index],
@@ -3506,11 +3505,10 @@ func distributeAndDuplicateOfCreateTSTable(
 	// split ts range
 	sort.Slice(pointGroups, func(i, j int) bool { return pointGroups[i].point < pointGroups[j].point })
 	for _, p := range pointGroups {
-		spanKey := sqlbase.MakeTsRangeKey(desc.ID, uint64(p.point), p.timestamp, hashNum)
+		spanKey := sqlbase.MakeTsRangeKey(desc.ID, uint64(p.point), hashNum)
 		// TODO(kang): send split key
 		var tmp = []int32{p.point}
-		var timestamps = []int64{p.timestamp}
-		if err := params.extendedEvalCtx.ExecCfg.DB.AdminSplitTs(params.ctx, spanKey, uint32(desc.ID), hashNum, tmp, timestamps, false); err != nil {
+		if err := params.extendedEvalCtx.ExecCfg.DB.AdminSplitTs(params.ctx, spanKey, uint32(desc.ID), hashNum, tmp, false); err != nil {
 			return nil, errors.Wrap(err, "PreDistributionError: split failed")
 		}
 	}

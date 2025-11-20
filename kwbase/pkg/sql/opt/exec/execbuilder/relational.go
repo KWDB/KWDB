@@ -702,37 +702,38 @@ func (b *Builder) buildTimesScan(scan *memo.TSScanExpr) (execPlan, error) {
 		outputHasTag = outputHasTag || colMeta.IsTag()
 	})
 
-	if scan.AccessMode < 0 {
+	flags := &scan.Flags
+	if flags.AccessMode < 0 {
 		// accessMode default value is TSReaderSpec_metaTable
-		scan.AccessMode = int(execinfrapb.TSTableReadMode_metaTable)
+		flags.AccessMode = int(execinfrapb.TSTableReadMode_metaTable)
 		if outputHasTag {
-			scan.AccessMode = int(execinfrapb.TSTableReadMode_tableTableMeta)
+			flags.AccessMode = int(execinfrapb.TSTableReadMode_tableTableMeta)
 		}
 	}
 
 	ctx := res.makeBuildScalarCtx()
 	var tagFilter []tree.TypedExpr
-	if !b.buildArrayTypedExpr(scan.TagFilter, &ctx, &tagFilter) {
+	if !b.buildArrayTypedExpr(flags.TagFilter, &ctx, &tagFilter) {
 		return execPlan{}, nil
 	}
 
 	var primaryFilter []tree.TypedExpr
-	if !b.buildArrayTypedExpr(scan.PrimaryTagFilter, &ctx, &primaryFilter) {
+	if !b.buildArrayTypedExpr(flags.PrimaryTagFilter, &ctx, &primaryFilter) {
 		return execPlan{}, nil
 	}
 
 	var tagIndexFilter []tree.TypedExpr
-	if !b.buildArrayTypedExpr(scan.TagIndexFilter, &ctx, &tagIndexFilter) {
+	if !b.buildArrayTypedExpr(flags.TagIndexFilter, &ctx, &tagIndexFilter) {
 		return execPlan{}, nil
 	}
 
-	blockFilter, blockErr := b.buildTSBlockFilter(scan.BlockFilter)
+	blockFilter, blockErr := b.buildTSBlockFilter(flags.BlockFilter)
 	if blockErr != nil {
 		return execPlan{}, nil
 	}
 
 	if b.mem.CheckFlag(opt.DiffUseOrderScan) && b.mem.CheckFlag(opt.SingleMode) {
-		scan.OrderedScanType = opt.ForceOrderedScan
+		flags.OrderedScanType = opt.ForceOrderedScan
 	}
 	value, ok := b.mem.MultimodelHelper.TableData.Load(scan.Table)
 	var tableInfo memo.TableInfo
@@ -743,7 +744,7 @@ func (b *Builder) buildTimesScan(scan *memo.TSScanExpr) (execPlan, error) {
 	}
 	tableInfo.PrimaryFilterLen = len(primaryFilter)
 	tableInfo.PrimaryTagCount = md.TableMeta(scan.Table).PrimaryTagCount
-	tableInfo.OriginalAccessMode = execinfrapb.TSTableReadMode(scan.AccessMode)
+	tableInfo.OriginalAccessMode = execinfrapb.TSTableReadMode(flags.AccessMode)
 	b.mem.MultimodelHelper.TableData.Store(scan.Table, tableInfo)
 
 	// Get the estimated row count from the statistics.

@@ -62,7 +62,7 @@ func (r *Replica) Send(
 			if hashNum == 0 {
 				hashNum = api.HashParamV2
 			}
-			reqTableID, _, _, err := sqlbase.DecodeTsRangeKey(ba.Requests[0].GetInner().Header().Key, true, hashNum)
+			reqTableID, _, err := sqlbase.DecodeTsRangeKey(ba.Requests[0].GetInner().Header().Key, true, hashNum)
 			if err == nil && reqTableID == uint64(r.Desc().TableId) {
 				if errGetTable := r.DB().Txn(ctx, func(ctx context.Context, txn *kv.Txn) error {
 					table, _, errGet := sqlbase.GetTsTableDescFromID(ctx, txn, sqlbase.ID(reqTableID))
@@ -283,9 +283,19 @@ func (r *Replica) executeBatchWithConcurrencyRetries(
 		} else {
 			// If the request is a write or a consistent read, it requires the
 			// range lease or permission to serve via follower reads.
-			if status, pErr = r.redirectOnOrAcquireLease(ctx); pErr != nil {
-				if nErr := r.canServeFollowerRead(ctx, ba, pErr); nErr != nil {
-					return nil, nErr
+			if !kv.FollowerReadEnable || ba.Requests == nil ||
+				!(ba.Requests[0].GetInner().Method() == roachpb.Get ||
+					ba.Requests[0].GetInner().Method() == roachpb.Scan ||
+					ba.Requests[0].GetInner().Method() == roachpb.LeaseInfo ||
+					ba.Requests[0].GetInner().Method() == roachpb.RangeStats) {
+				if kv.FollowerReadEnable {
+					return nil, roachpb.NewError(errors.New("follower read enabled"))
+				}
+
+				if status, pErr = r.redirectOnOrAcquireLease(ctx); pErr != nil {
+					if nErr := r.canServeFollowerRead(ctx, ba, pErr); nErr != nil {
+						return nil, nErr
+					}
 				}
 			}
 		}

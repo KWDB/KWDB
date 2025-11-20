@@ -327,7 +327,7 @@ func (c *CustomFuncs) areRowsDistinct(
 func (c *CustomFuncs) HasOnlyTagColumn(
 	tsScan *memo.TSScanPrivate, aggs memo.AggregationsExpr, private *memo.GroupingPrivate,
 ) bool {
-	if tsScan.HintType.OnlyTag() {
+	if tsScan.Flags.HintType.OnlyTag() {
 		return false
 	}
 
@@ -385,30 +385,76 @@ func (c *CustomFuncs) HasOnlyTagColumn(
 }
 
 func onlyTagPrivateTSScan(tsScan *memo.TSScanExpr) *memo.TSScanPrivate {
+	flags := tsScan.Flags
 	return &memo.TSScanPrivate{
-		Table:            tsScan.Table,
-		Cols:             tsScan.Cols,
-		AccessMode:       tsScan.AccessMode,
-		ScanAggs:         tsScan.ScanAggs,
-		TagFilter:        tsScan.TagFilter,
-		PrimaryTagFilter: tsScan.PrimaryTagFilter,
-		PrimaryTagValues: tsScan.PrimaryTagValues,
-		HintType:         keys.TagOnlyHint,
+		Table: tsScan.Table,
+		Cols:  tsScan.Cols,
+		Flags: struct {
+			AccessMode         int
+			ScanAggs           bool
+			TagFilter          opt.Exprs
+			BlockFilter        memo.FiltersExpr
+			PrimaryTagFilter   opt.Exprs
+			PrimaryTagValues   memo.PTagValues
+			TagIndexFilter     opt.Exprs
+			TagIndex           memo.TagIndexInfo
+			HintType           keys.ScanMethodHintType
+			ExploreOrderedScan bool
+			OrderedScanType    opt.OrderedTableType
+			Direction          tree.Direction
+			InStream           bool
+		}{AccessMode: flags.AccessMode,
+			ScanAggs:         flags.ScanAggs,
+			TagFilter:        flags.TagFilter,
+			BlockFilter:      flags.BlockFilter,
+			PrimaryTagFilter: flags.PrimaryTagFilter,
+			PrimaryTagValues: flags.PrimaryTagValues,
+			TagIndexFilter:   flags.TagIndexFilter,
+			TagIndex:         flags.TagIndex,
+			HintType:         keys.TagOnlyHint,
+			OrderedScanType:  flags.OrderedScanType,
+			Direction:        flags.Direction,
+		},
+	}
+}
+
+func newTSScanPrivateFromOldPrivate(
+	tsScan *memo.TSScanPrivate, scanType keys.ScanMethodHintType,
+) *memo.TSScanPrivate {
+	flags := tsScan.Flags
+	return &memo.TSScanPrivate{
+		Table: tsScan.Table,
+		Cols:  tsScan.Cols,
+		Flags: struct {
+			AccessMode         int
+			ScanAggs           bool
+			TagFilter          opt.Exprs
+			BlockFilter        memo.FiltersExpr
+			PrimaryTagFilter   opt.Exprs
+			PrimaryTagValues   memo.PTagValues
+			TagIndexFilter     opt.Exprs
+			TagIndex           memo.TagIndexInfo
+			HintType           keys.ScanMethodHintType
+			ExploreOrderedScan bool
+			OrderedScanType    opt.OrderedTableType
+			Direction          tree.Direction
+			InStream           bool
+		}{AccessMode: flags.AccessMode,
+			ScanAggs:         flags.ScanAggs,
+			TagFilter:        flags.TagFilter,
+			BlockFilter:      flags.BlockFilter,
+			PrimaryTagFilter: flags.PrimaryTagFilter,
+			PrimaryTagValues: flags.PrimaryTagValues,
+			TagIndexFilter:   flags.TagIndexFilter,
+			TagIndex:         flags.TagIndex,
+			HintType:         scanType,
+		},
 	}
 }
 
 // ChangeTSTableScanType change ts table scan mode
 func (c *CustomFuncs) ChangeTSTableScanType(tsScan *memo.TSScanPrivate) memo.RelExpr {
-	return c.f.ConstructTSScan(&memo.TSScanPrivate{
-		Table:            tsScan.Table,
-		Cols:             tsScan.Cols,
-		AccessMode:       tsScan.AccessMode,
-		ScanAggs:         tsScan.ScanAggs,
-		TagFilter:        tsScan.TagFilter,
-		PrimaryTagFilter: tsScan.PrimaryTagFilter,
-		PrimaryTagValues: tsScan.PrimaryTagValues,
-		HintType:         keys.TagOnlyHint,
-	})
+	return c.f.ConstructTSScan(newTSScanPrivateFromOldPrivate(tsScan, keys.TagOnlyHint))
 }
 
 // ChangeTSTableScanTypeForSelect change ts table scan mode
@@ -458,7 +504,8 @@ func (c *CustomFuncs) ChangeTSTableScanTypeForProject(projectExpr memo.RelExpr) 
 func (c *CustomFuncs) CheckForLastRowOpt(
 	tsScan *memo.TSScanPrivate, aggs memo.AggregationsExpr, private *memo.GroupingPrivate,
 ) bool {
-	if tsScan.HintType == keys.LastRowOptHint || tsScan.PrimaryTagFilter != nil || tsScan.TagFilter != nil ||
+	flags := tsScan.Flags
+	if flags.HintType == keys.LastRowOptHint || flags.PrimaryTagFilter != nil || flags.TagFilter != nil ||
 		!private.GroupingCols.Empty() {
 		return false
 	}
@@ -476,14 +523,5 @@ func (c *CustomFuncs) CheckForLastRowOpt(
 
 // DealForLastRowOpt flags tsScanExpr for last row optimize
 func (c *CustomFuncs) DealForLastRowOpt(tsScan *memo.TSScanPrivate) memo.RelExpr {
-	return c.f.ConstructTSScan(&memo.TSScanPrivate{
-		Table:            tsScan.Table,
-		Cols:             tsScan.Cols,
-		AccessMode:       tsScan.AccessMode,
-		ScanAggs:         tsScan.ScanAggs,
-		TagFilter:        tsScan.TagFilter,
-		PrimaryTagFilter: tsScan.PrimaryTagFilter,
-		PrimaryTagValues: tsScan.PrimaryTagValues,
-		HintType:         keys.LastRowOptHint,
-	})
+	return c.f.ConstructTSScan(newTSScanPrivateFromOldPrivate(tsScan, keys.LastRowOptHint))
 }

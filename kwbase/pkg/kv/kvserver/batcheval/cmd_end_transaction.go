@@ -794,7 +794,7 @@ func getTsRangeSize(rec EvalContext, desc roachpb.RangeDescriptor) (uint64, erro
 	if hashNum == 0 {
 		hashNum = api.HashParamV2
 	}
-	startTableID, startHashPoint, startTimestamp, err := sqlbase.DecodeTsRangeKey(startKey, true, hashNum)
+	startTableID, startHashPoint, err := sqlbase.DecodeTsRangeKey(startKey, true, hashNum)
 	if err != nil {
 		return 0, err
 	}
@@ -805,12 +805,12 @@ func getTsRangeSize(rec EvalContext, desc roachpb.RangeDescriptor) (uint64, erro
 			startTableID,
 			startHashPoint,
 			startHashPoint,
-			startTimestamp,
+			math.MinInt64,
 			math.MaxInt64,
 		)
 		return rangeSize, err
 	}
-	_, EndHashPoint, endTimestamp, err := sqlbase.DecodeTsRangeKey(endKey, false, hashNum)
+	_, EndHashPoint, err := sqlbase.DecodeTsRangeKey(endKey, false, hashNum)
 	if err != nil {
 		return 0, err
 	}
@@ -819,8 +819,8 @@ func getTsRangeSize(rec EvalContext, desc roachpb.RangeDescriptor) (uint64, erro
 		startTableID,
 		startHashPoint,
 		EndHashPoint,
-		startTimestamp,
-		endTimestamp,
+		math.MinInt64,
+		math.MaxInt64,
 	)
 	return rangeSize, err
 

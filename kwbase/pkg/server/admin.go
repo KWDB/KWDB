@@ -2846,11 +2846,11 @@ func (s *adminServer) GetRangeRowCount(
 		return nil, err
 	}
 
-	tableID, beginHash, _, err := sqlbase.DecodeTsRangeKey(desc.StartKey, true, desc.HashNum)
+	tableID, beginHash, err := sqlbase.DecodeTsRangeKey(desc.StartKey, true, desc.HashNum)
 	if err != nil {
 		return nil, err
 	}
-	_, endHash, _, err := sqlbase.DecodeTsRangeKey(desc.EndKey, false, desc.HashNum)
+	_, endHash, err := sqlbase.DecodeTsRangeKey(desc.EndKey, false, desc.HashNum)
 	if err != nil {
 		return nil, err
 	}

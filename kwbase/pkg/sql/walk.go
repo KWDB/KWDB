@@ -1013,6 +1013,10 @@ func nodeName(plan planNode) string {
 		if n.reverse {
 			return "revscan"
 		}
+	case *tsScanNode:
+		if n.reverse {
+			return "rev ts scan"
+		}
 	case *unionNode:
 		if n.emitAll {
 			return "append"

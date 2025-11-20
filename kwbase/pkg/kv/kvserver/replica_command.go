@@ -28,7 +28,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"math"
 	"math/rand"
 	"sort"
 	"strings"
@@ -71,15 +70,10 @@ func (r *Replica) AdminSplitForTs(
 	ctx context.Context, args roachpb.AdminSplitForTsRequest, reason string,
 ) (reply roachpb.AdminSplitResponse, err *roachpb.Error) {
 	splitKeys := args.Keys
-	splitTimestamps := args.Timestamps
 	//sort.Slice(splitKeys, func(i, j int) bool { return splitKeys[i] > splitKeys[j]})
 	var SplitKey roachpb.Key
-	for index, key := range splitKeys {
-		if len(splitTimestamps) == 0 || splitTimestamps[index] == math.MinInt64 {
-			SplitKey = sqlbase.MakeTsHashPointKey(sqlbase.ID(args.TableId), uint64(key), args.HashNum)
-		} else {
-			SplitKey = sqlbase.MakeTsRangeKey(sqlbase.ID(args.TableId), uint64(key), splitTimestamps[index], args.HashNum)
-		}
+	for _, key := range splitKeys {
+		SplitKey = sqlbase.MakeTsRangeKey(sqlbase.ID(args.TableId), uint64(key), args.HashNum)
 
 		if len(SplitKey) == 0 {
 			return roachpb.AdminSplitResponse{}, roachpb.NewErrorf("cannot split range with no key provided")

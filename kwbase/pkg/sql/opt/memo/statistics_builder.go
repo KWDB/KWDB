@@ -698,7 +698,7 @@ func (sb *statisticsBuilder) buildTSScan(scan *TSScanExpr, relProps *props.Relat
 	s.Available = sb.availabilityFromInput(scan)
 
 	inputStats := sb.makeTableStatistics(scan.Table)
-	if scan.HintType.OnlyTag() {
+	if scan.Flags.HintType.OnlyTag() {
 		s.RowCount = inputStats.PTagCount
 	} else {
 		s.RowCount = inputStats.RowCount

@@ -35,7 +35,7 @@ message TableDesc {
 }
 
 // TSSynchronizerSpec operator
-message TSSynchronizerSpec{
+message TSSynchronizerSpec {
   // Parallelism degree
   optional int32 degree = 1 [(gogoproto.nullable) = false];
 }
@@ -142,9 +142,10 @@ message TSStatisticReaderSpec {
 
   required bool LastRowOpt = 8 [(gogoproto.nullable) = false];
 }
-message HashpointSpan{
-  required uint32 hashpoint = 1 [(gogoproto.nullable) = false];
-  repeated TsSpan tspans = 2 [(gogoproto.nullable) = false];
+message HashpointSpan {
+  required uint32 from = 1 [(gogoproto.nullable) = false];
+  required uint32 to = 2 [(gogoproto.nullable) = false];
+  required int32 type = 3;
 }
 
 // TagTSTableReader operator

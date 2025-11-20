@@ -789,7 +789,7 @@ func (r *Replica) evaluateProposalTS(
 		if hashNum == 0 {
 			hashNum = api.HashParamV2
 		}
-		tableID, _, _, err := sqlbase.DecodeTsRangeKey(r.startKey(), true, hashNum)
+		tableID, _, err := sqlbase.DecodeTsRangeKey(r.startKey(), true, hashNum)
 		if err != nil {
 			calculateMS = false
 		}

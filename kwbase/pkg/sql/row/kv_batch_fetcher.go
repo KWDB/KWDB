@@ -195,7 +195,14 @@ func makeKVBatchFetcher(
 	returnRangeInfo bool,
 ) (txnKVFetcher, error) {
 	sendFn := func(ctx context.Context, ba roachpb.BatchRequest) (*roachpb.BatchResponse, error) {
-		res, err := txn.Send(ctx, ba)
+		var res *roachpb.BatchResponse
+		var err *roachpb.Error
+		if kv.FollowerReadEnable {
+			ba.ReadConsistency = roachpb.INCONSISTENT
+			res, err = txn.DB().NonTransactionalSender().Send(ctx, ba)
+		} else {
+			res, err = txn.Send(ctx, ba)
+		}
 		if err != nil {
 			return nil, err.GoError()
 		}
@@ -328,6 +335,17 @@ func (f *txnKVFetcher) fetch(ctx context.Context) error {
 	br, err := f.sendFn(ctx, ba)
 	if err != nil {
 		return err
+	}
+	// keep ScanResponse, remove EndTxnResponse
+	if kv.FollowerReadEnable {
+		filteredResponses := make([]roachpb.ResponseUnion, 0, len(br.Responses))
+		for _, resp := range br.Responses {
+			inner := resp.GetInner()
+			if _, ok := inner.(*roachpb.ScanResponse); ok {
+				filteredResponses = append(filteredResponses, resp)
+			}
+		}
+		br.Responses = filteredResponses
 	}
 	if br != nil {
 		f.responses = br.Responses

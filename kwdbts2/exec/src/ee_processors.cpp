@@ -787,10 +787,8 @@ KStatus Processors::RunWithEncoding(kwdbContext_p ctx, char** buffer,
     break;
   } while (true);
 
-  if (nullptr != chunk) {
-    if (EEPgErrorInfo::IsError()) {
-      code = EEIteratorErrCode::EE_ERROR;
-    }
+  if (EEPgErrorInfo::IsError()) {
+    code = EEIteratorErrCode::EE_ERROR;
   }
 
   if (EEIteratorErrCode::EE_OK == code) {

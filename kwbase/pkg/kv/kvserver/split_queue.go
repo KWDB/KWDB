@@ -27,7 +27,6 @@ package kvserver
 import (
 	"context"
 	"fmt"
-	"math"
 	"time"
 
 	"gitee.com/kwbasedb/kwbase/pkg/config"
@@ -170,7 +169,7 @@ func (sq *splitQueue) shouldQueue(
 		if hashNum == 0 {
 			hashNum = api.HashParamV2
 		}
-		tableID, startHashPoint, _, err := sqlbase.DecodeTsRangeKey(startKey, true, hashNum)
+		tableID, startHashPoint, err := sqlbase.DecodeTsRangeKey(startKey, true, hashNum)
 		if err != nil {
 			return false, priority
 		}
@@ -178,7 +177,7 @@ func (sq *splitQueue) shouldQueue(
 		if desc.TableId == 0 {
 			desc.TableId = uint32(tableID)
 		}
-		_, endHashPoint, _, err := sqlbase.DecodeTsRangeKey(endKey, false, hashNum)
+		_, endHashPoint, err := sqlbase.DecodeTsRangeKey(endKey, false, hashNum)
 		if err != nil {
 			return false, priority
 		}
@@ -311,13 +310,13 @@ func (sq *splitQueue) processAttempt(
 			if hashNum == 0 {
 				hashNum = api.HashParamV2
 			}
-			startTableID, startHashPoint, startTimestamp, err := sqlbase.DecodeTsRangeKey(startKey, true, hashNum)
+			startTableID, startHashPoint, err := sqlbase.DecodeTsRangeKey(startKey, true, hashNum)
 			if err != nil {
 				//fmt.Println("DecodeTsRangeKey StartKey failed", err)
 				log.Errorf(ctx, "DecodeTsRangeKey StartKey failed", err)
 			}
 			// /Max endTableID = 0
-			endTableID, endHashPoint, endTimestamp, err := sqlbase.DecodeTsRangeKey(endKey, false, hashNum)
+			endTableID, endHashPoint, err := sqlbase.DecodeTsRangeKey(endKey, false, hashNum)
 			if err != nil {
 				log.Errorf(ctx, "DecodeTsRangeKey endKey failed", err)
 			}
@@ -340,55 +339,7 @@ func (sq *splitQueue) processAttempt(
 				}
 				splitKey = sqlbase.MakeTsHashPointKey(sqlbase.ID(startTableID), splitHashPoint, hashNum)
 			} else {
-				if !splitMode {
-					return nil
-				}
-
-				//        when range is like
-				//        /Table/78/9/555 - /Max
-				//        Decode /Max , get tableID = 0, hashPoint=0, timestamp = 0
-				//        set endTimestamp to max
-				if endKey.Equal(roachpb.RKeyMax) {
-					endTimestamp = math.MaxInt64
-				}
-
-				if endTimestamp != math.MaxInt64 {
-					return nil
-				}
-				//rangeSize ,err := r.store.TsEngine.GetDataVolume(
-				//	uint64(startTableID),
-				//	startHashPoint,
-				//	startHashPoint,
-				//	startTimestamp,
-				//	endTimestamp,
-				//	)
-				//fmt.Println(" ======== ",r.startKey(),endKey,r.GetMVCCStats().LiveBytes,"GetDataVolume:",rangeSize,err)
-				var halfTimestamp int64
-				halfTimestamp, err = r.store.TsEngine.GetDataVolumeHalfTS(
-					startTableID,
-					startHashPoint,
-					endHashPoint,
-					startTimestamp,
-					endTimestamp,
-				)
-				//fmt.Println("halfTimestamp : ",halfTimestamp ,err ,
-				//	fmt.Sprintf("===TableID :%d  StartHashPoint : %d, EndHashPoint: %d StartTimeStamp: %d EndTimeStamp: %d",
-				//		startTableID,startHashPoint,startHashPoint,startTimestamp,endTimestamp))
-				if err != nil || (halfTimestamp < startTimestamp) {
-					//fmt.Println("GetDataVolumeHalfTS Failed ! Err: ",err ,
-					//	fmt.Sprintf("===TableID :%d  StartHashPoint : %d, EndHashPoint: %d StartTimeStamp: %d EndTimeStamp: %d",
-					//		startTableID,startHashPoint,startHashPoint,startTimestamp,endTimestamp))
-					err = errors.Wrapf(err, "GetDataVolumeHalfTS Failed. TableID: %d, StartKey: %s, "+
-						"EndKey:%s,  halfTimestamp:%v, startTimeStamp: %d, endTimeStamp: %d",
-						startTableID, startKey, endKey, halfTimestamp, startTimestamp, endTimestamp)
-					log.Errorf(ctx, err.Error())
-					return err
-					//// GetDataVolumeHalfTS failed, set splitTimeStamp = startTimestamp + 1day
-					//halfTimestamp = startTimestamp + 86400000
-				}
-				splitHashPoint := startHashPoint
-				splitTimeStamp := halfTimestamp
-				splitKey = sqlbase.MakeTsRangeKey(sqlbase.ID(startTableID), splitHashPoint, splitTimeStamp, hashNum)
+				return nil
 			}
 
 			//理论上不会溢出，兼容

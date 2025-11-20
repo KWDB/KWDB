@@ -27,9 +27,7 @@ package kvcoord
 import (
 	"context"
 	"fmt"
-	"math"
 	"runtime"
-	"sort"
 	"sync/atomic"
 	"time"
 	"unsafe"
@@ -43,7 +41,6 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/rpc/nodedialer"
 	"gitee.com/kwbasedb/kwbase/pkg/settings"
 	"gitee.com/kwbasedb/kwbase/pkg/settings/cluster"
-	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
 	"gitee.com/kwbasedb/kwbase/pkg/util/grpcutil"
 	"gitee.com/kwbasedb/kwbase/pkg/util/hlc"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
@@ -574,6 +571,20 @@ func (ds *DistSender) sendSingleRange(
 	class := rpc.ConnectionClassForKey(desc.RSpan().Key)
 	br, err := ds.sendRPC(ctx, ba, class, desc.RangeID, replicas, li, withCommit)
 	if err != nil {
+		if kv.FollowerReadEnable && ba.Requests != nil {
+			var resp = roachpb.ResponseUnion{}
+			if ba.Requests[0].GetInner().Method() == roachpb.LeaseInfo {
+				var lResp = &roachpb.LeaseInfoResponse{}
+				lResp.SetHeader(roachpb.ResponseHeader{RangeInfos: []roachpb.RangeInfo{{Desc: *desc}}})
+				resp.Value = &roachpb.ResponseUnion_LeaseInfo{LeaseInfo: lResp}
+				return &roachpb.BatchResponse{Responses: []roachpb.ResponseUnion{resp}}, nil
+			} else if ba.Requests[0].GetInner().Method() == roachpb.RangeStats {
+				var rResp = &roachpb.RangeStatsResponse{}
+				rResp.SetHeader(roachpb.ResponseHeader{RangeInfos: []roachpb.RangeInfo{{Desc: *desc}}})
+				resp.Value = &roachpb.ResponseUnion_RangeStats{RangeStats: rResp}
+				return &roachpb.BatchResponse{Responses: []roachpb.ResponseUnion{resp}}, nil
+			}
+		}
 		log.VErrEvent(ctx, 2, err.Error())
 		return nil, roachpb.NewError(err)
 	}
@@ -1274,93 +1285,32 @@ func (ds *DistSender) divideAndSendTsRowPutBatch(
 		if !ok {
 			return nil, roachpb.NewError(errors.New("meet not-tsRowPutRequest"))
 		}
-		hashNum := rowReq.HashNum
-		tableID, hashPoint, timestamp, err := sqlbase.DecodeTsRangeKey(rowReq.Key, true, hashNum)
-		if err != nil {
-			return nil, roachpb.NewError(err)
-		}
-
-		rangeTimestamps := []int64{timestamp}
 		var descs []*roachpb.RangeDescriptor
 		var tokens []*EvictionToken
-		curHashpoint := hashPoint
-		curTableID := tableID
 		ri := NewRangeIterator(ds)
 		for ri.Seek(ctx, roachpb.RKey(rowReq.Key), Ascending); ri.Valid(); ri.Next(ctx) {
 			descs = append(descs, ri.desc)
 			tokens = append(tokens, ri.token)
-			tableID, hashPoint, timestamp, err = sqlbase.DecodeTsRangeKey(ri.desc.EndKey, true, hashNum)
-			if hashPoint > curHashpoint || tableID > curTableID {
-				rangeTimestamps = append(rangeTimestamps, math.MaxInt64)
-				break
-			}
-			rangeTimestamps = append(rangeTimestamps, timestamp)
 		}
 		if len(descs) == 0 {
 			return nil, roachpb.NewError(errors.Errorf("failed seek any range descriptor, seekKey: %v", rowReq.Key))
 		}
-		if len(descs) == 1 {
-			// don't need truncate, send directly
-			desc := descs[0]
-			rowReq.EndKey = roachpb.Key(desc.EndKey)
-			if rangeBatch, ok := rangeBatches[desc.RangeID]; ok {
-				rangeBatch.ba.Requests = append(rangeBatch.ba.Requests, req)
-				rangeBatch.positions = append(rangeBatch.positions, pos)
-			} else {
-				rangeBatches[desc.RangeID] = &RangeBatch{
-					desc:       desc,
-					evictToken: tokens[0],
-					ba: roachpb.BatchRequest{
-						Header:   ba.Header,
-						Requests: []roachpb.RequestUnion{req},
-					},
-					positions: []int{pos},
-				}
-			}
-			continue
-		}
-		l := len(rangeTimestamps)
-		paylaods := make([][][]byte, l-1)
-		timestamps := make([][]int64, l-1)
-		sizes := make([]int, l-1)
-		for i, ts := range rowReq.Timestamps {
-			idx := sort.Search(l, func(i int) bool {
-				return rangeTimestamps[i] > ts
-			}) - 1
-			paylaods[idx] = append(paylaods[idx], rowReq.Values[i])
-			timestamps[idx] = append(timestamps[idx], ts)
-			sizes[idx] += len(rowReq.Values[i])
-		}
-		for i, values := range paylaods {
-			if len(values) == 0 {
-				continue
-			}
-			desc := descs[i]
-			newReq := &roachpb.TsRowPutRequest{
-				RequestHeader: roachpb.RequestHeader{
-					Key:      roachpb.Key(desc.StartKey),
-					EndKey:   roachpb.Key(desc.EndKey),
-					Sequence: rowReq.Sequence,
-				},
-				HeaderPrefix: rowReq.HeaderPrefix,
-				Values:       values,
-				ValueSize:    int32(sizes[i]),
-				Timestamps:   timestamps[i],
-				HashNum:      hashNum,
-			}
-			rangeBatch, ok := rangeBatches[desc.RangeID]
-			if !ok {
-				rangeBatch = &RangeBatch{
-					desc:       desc,
-					evictToken: tokens[i],
-					ba: roachpb.BatchRequest{
-						Header: ba.Header,
-					},
-				}
-				rangeBatches[desc.RangeID] = rangeBatch
-			}
-			rangeBatch.ba.Add(newReq)
+		// don't need truncate, send directly
+		desc := descs[0]
+		rowReq.EndKey = roachpb.Key(desc.EndKey)
+		if rangeBatch, ok := rangeBatches[desc.RangeID]; ok {
+			rangeBatch.ba.Requests = append(rangeBatch.ba.Requests, req)
 			rangeBatch.positions = append(rangeBatch.positions, pos)
+		} else {
+			rangeBatches[desc.RangeID] = &RangeBatch{
+				desc:       desc,
+				evictToken: tokens[0],
+				ba: roachpb.BatchRequest{
+					Header:   ba.Header,
+					Requests: []roachpb.RequestUnion{req},
+				},
+				positions: []int{pos},
+			}
 		}
 	}
 	return ds.sendTsRowPutBatch(ctx, ba, rangeBatches, withCommit, batchIdx, r)
@@ -1765,6 +1715,9 @@ func (ds *DistSender) sendPartialBatch(
 
 	// Start a retry loop for sending the batch to the range.
 	tBegin, attempts := timeutil.Now(), int64(0) // for slow log message
+	if kv.FollowerReadEnable {
+		ds.rpcRetryOptions.MaxRetries = 10
+	}
 	for r := retry.StartWithCtx(ctx, ds.rpcRetryOptions); r.Next(); {
 		attempts++
 		// If we've cleared the descriptor on a send failure, re-lookup.

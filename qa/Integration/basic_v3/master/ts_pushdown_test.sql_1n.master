@@ -36,7 +36,6 @@ INSERT 1
    │                | aggregate 0         | count_rows()
    │                | scalar              |
    │                | pushLocalAggToScan  | true
-   │                | addSynchronizer     | true
    │                | pruneFinalAgg       | true
    └── render       |                     |
         │           | engine type         | time series
@@ -45,7 +44,7 @@ INSERT 1
                     | access mode         | tagIndex
                     | use statistic       | true
                     | ptag filter[0]      | hostname = 'host_0'
-(16 rows)
+(15 rows)
 > explain select count(*) from cpu;
       tree     |        field        | description
 ---------------+---------------------+---------------
@@ -63,122 +62,114 @@ INSERT 1
                | use statistic       | true
 (12 rows)
 > explain select  time_bucket(ts, '3600s') as date, count(distinct usage_system) as nums from cpu where hostname = 'host_0' and ts >= date_trunc('week', '2023-10-30 12:12:12'::timestamp) and ts < '2023-10-30 12:12:12' and usage_system = 1 group by date order by date;
-             tree             |           field            |                        description
-------------------------------+----------------------------+-------------------------------------------------------------
-                              | distributed                | true
-                              | vectorized                 | false
-  sort                        |                            |
-   │                          | engine type                | time series
-   │                          | order                      | +date
-   └── group                  |                            |
-        │                     | engine type                | time series
-        │                     | aggregate 0                | date
-        │                     | aggregate 1                | count(DISTINCT usage_system)
-        │                     | group by                   | date
-        └── synchronizer      |                            |
-             └── render       |                            |
-                  │           | engine type                | time series
-                  │           | date                       | time_bucket(ts, '3600s')
-                  │           | usage_system               | usage_system
-                  └── ts scan |                            |
-                              | ts-table                   | cpu
-                              | access mode                | tagIndex
-                              | spans:fromTime             | 0000-01-01 00:00:00 +0000 UTC
-                              | spans:toTime               | 2023-10-30 12:12:11.999 +0000 UTC
-                              | filter                     | (usage_system = 1) AND (ts >= '2023-10-30 00:00:00+00:00')
-                              | ptag filter[0]             | hostname = 'host_0'
-                              | block filter[usage_system] | [1 - 1]
-(23 rows)
-> explain select  time_bucket(ts, '3600s') as date, count(distinct usage_system) as nums from cpu where hostname = 'host_0' and ts >= date_trunc('week', '2023-10-30 12:12:12'::timestamp) and ts < '2023-10-30 12:12:12' and usage_system = 1 group by date order by date;
-             tree             |           field            |                        description
-------------------------------+----------------------------+-------------------------------------------------------------
-                              | distributed                | true
-                              | vectorized                 | false
-  sort                        |                            |
-   │                          | engine type                | time series
-   │                          | order                      | +date
-   └── group                  |                            |
-        │                     | engine type                | time series
-        │                     | aggregate 0                | date
-        │                     | aggregate 1                | count(DISTINCT usage_system)
-        │                     | group by                   | date
-        └── synchronizer      |                            |
-             └── render       |                            |
-                  │           | engine type                | time series
-                  │           | date                       | time_bucket(ts, '3600s')
-                  │           | usage_system               | usage_system
-                  └── ts scan |                            |
-                              | ts-table                   | cpu
-                              | access mode                | tagIndex
-                              | spans:fromTime             | 0000-01-01 00:00:00 +0000 UTC
-                              | spans:toTime               | 2023-10-30 12:12:11.999 +0000 UTC
-                              | filter                     | (usage_system = 1) AND (ts >= '2023-10-30 00:00:00+00:00')
-                              | ptag filter[0]             | hostname = 'host_0'
-                              | block filter[usage_system] | [1 - 1]
-(23 rows)
-> explain select usage_user from cpu where hostname = 'host_0' and usage_system>2000 order by usage_user;
-           tree          |           field            |     description
--------------------------+----------------------------+----------------------
+           tree          |           field            |                        description
+-------------------------+----------------------------+-------------------------------------------------------------
                          | distributed                | true
                          | vectorized                 | false
   sort                   |                            |
    │                     | engine type                | time series
-   │                     | order                      | +usage_user
-   └── synchronizer      |                            |
+   │                     | order                      | +date
+   └── group             |                            |
+        │                | engine type                | time series
+        │                | aggregate 0                | date
+        │                | aggregate 1                | count(DISTINCT usage_system)
+        │                | group by                   | date
         └── render       |                            |
              │           | engine type                | time series
-             │           | usage_user                 | usage_user
+             │           | date                       | time_bucket(ts, '3600s')
+             │           | usage_system               | usage_system
+             └── ts scan |                            |
+                         | ts-table                   | cpu
+                         | access mode                | tagIndex
+                         | spans:fromTime             | 0000-01-01 00:00:00 +0000 UTC
+                         | spans:toTime               | 2023-10-30 12:12:11.999 +0000 UTC
+                         | filter                     | (usage_system = 1) AND (ts >= '2023-10-30 00:00:00+00:00')
+                         | ptag filter[0]             | hostname = 'host_0'
+                         | block filter[usage_system] | [1 - 1]
+(22 rows)
+> explain select  time_bucket(ts, '3600s') as date, count(distinct usage_system) as nums from cpu where hostname = 'host_0' and ts >= date_trunc('week', '2023-10-30 12:12:12'::timestamp) and ts < '2023-10-30 12:12:12' and usage_system = 1 group by date order by date;
+           tree          |           field            |                        description
+-------------------------+----------------------------+-------------------------------------------------------------
+                         | distributed                | true
+                         | vectorized                 | false
+  sort                   |                            |
+   │                     | engine type                | time series
+   │                     | order                      | +date
+   └── group             |                            |
+        │                | engine type                | time series
+        │                | aggregate 0                | date
+        │                | aggregate 1                | count(DISTINCT usage_system)
+        │                | group by                   | date
+        └── render       |                            |
+             │           | engine type                | time series
+             │           | date                       | time_bucket(ts, '3600s')
+             │           | usage_system               | usage_system
+             └── ts scan |                            |
+                         | ts-table                   | cpu
+                         | access mode                | tagIndex
+                         | spans:fromTime             | 0000-01-01 00:00:00 +0000 UTC
+                         | spans:toTime               | 2023-10-30 12:12:11.999 +0000 UTC
+                         | filter                     | (usage_system = 1) AND (ts >= '2023-10-30 00:00:00+00:00')
+                         | ptag filter[0]             | hostname = 'host_0'
+                         | block filter[usage_system] | [1 - 1]
+(22 rows)
+> explain select usage_user from cpu where hostname = 'host_0' and usage_system>2000 order by usage_user;
+        tree        |           field            |     description
+--------------------+----------------------------+----------------------
+                    | distributed                | true
+                    | vectorized                 | false
+  sort              |                            |
+   │                | engine type                | time series
+   │                | order                      | +usage_user
+   └── render       |                            |
+        │           | engine type                | time series
+        │           | usage_user                 | usage_user
+        └── ts scan |                            |
+                    | ts-table                   | cpu
+                    | access mode                | tagIndex
+                    | filter                     | usage_system > 2000
+                    | ptag filter[0]             | hostname = 'host_0'
+                    | block filter[usage_system] | [2001 - ]
+(14 rows)
+> explain select usage_user from cpu where hostname = 'host_0' and usage_system>2000 limit 1;
+        tree        |           field            |     description
+--------------------+----------------------------+----------------------
+                    | distributed                | true
+                    | vectorized                 | false
+  render            |                            |
+   │                | engine type                | time series
+   │                | usage_user                 | usage_user
+   └── limit        |                            |
+        │           | engine type                | time series
+        │           | count                      | 1
+        └── ts scan |                            |
+                    | ts-table                   | cpu
+                    | access mode                | tagIndex
+                    | filter                     | usage_system > 2000
+                    | ptag filter[0]             | hostname = 'host_0'
+                    | block filter[usage_system] | [2001 - ]
+(14 rows)
+> explain select usage_user from cpu where hostname = 'host_0' and usage_system>2000 order by usage_user limit 2;
+           tree          |           field            |     description
+-------------------------+----------------------------+----------------------
+                         | distributed                | true
+                         | vectorized                 | false
+  render                 |                            |
+   │                     | engine type                | time series
+   │                     | usage_user                 | usage_user
+   └── limit             |                            |
+        │                | engine type                | time series
+        │                | count                      | 2
+        └── sort         |                            |
+             │           | engine type                | time series
+             │           | order                      | +usage_user
              └── ts scan |                            |
                          | ts-table                   | cpu
                          | access mode                | tagIndex
                          | filter                     | usage_system > 2000
                          | ptag filter[0]             | hostname = 'host_0'
                          | block filter[usage_system] | [2001 - ]
-(15 rows)
-> explain select usage_user from cpu where hostname = 'host_0' and usage_system>2000 limit 1;
-             tree             |           field            |     description
-------------------------------+----------------------------+----------------------
-                              | distributed                | true
-                              | vectorized                 | false
-  render                      |                            |
-   │                          | engine type                | time series
-   │                          | usage_user                 | usage_user
-   └── limit                  |                            |
-        │                     | engine type                | time series
-        │                     | count                      | 1
-        └── synchronizer      |                            |
-             └── limit        |                            |
-                  │           | engine type                | time series
-                  │           | count                      | 1
-                  └── ts scan |                            |
-                              | ts-table                   | cpu
-                              | access mode                | tagIndex
-                              | filter                     | usage_system > 2000
-                              | ptag filter[0]             | hostname = 'host_0'
-                              | block filter[usage_system] | [2001 - ]
-(18 rows)
-> explain select usage_user from cpu where hostname = 'host_0' and usage_system>2000 order by usage_user limit 2;
-             tree             |           field            |     description
-------------------------------+----------------------------+----------------------
-                              | distributed                | true
-                              | vectorized                 | false
-  render                      |                            |
-   │                          | engine type                | time series
-   │                          | usage_user                 | usage_user
-   └── limit                  |                            |
-        │                     | engine type                | time series
-        │                     | count                      | 2
-        └── sort              |                            |
-             │                | engine type                | time series
-             │                | order                      | +usage_user
-             └── synchronizer |                            |
-                  └── ts scan |                            |
-                              | ts-table                   | cpu
-                              | access mode                | tagIndex
-                              | filter                     | usage_system > 2000
-                              | ptag filter[0]             | hostname = 'host_0'
-                              | block filter[usage_system] | [2001 - ]
-(18 rows)
+(17 rows)
 > explain select usage_user from cpu where usage_system>2000 order by usage_idle;
              tree             |           field            |     description
 ------------------------------+----------------------------+----------------------
@@ -305,7 +296,6 @@ INSERT 1
    │                | aggregate 0         | count_rows()
    │                | scalar              |
    │                | pushLocalAggToScan  | true
-   │                | addSynchronizer     | true
    │                | pruneFinalAgg       | true
    └── render       |                     |
         │           | engine type         | time series
@@ -314,7 +304,7 @@ INSERT 1
                     | access mode         | tagIndex
                     | use statistic       | true
                     | ptag filter[0]      | hostname = 'host_0'
-(16 rows)
+(15 rows)
 > explain select count(*) from cpu;
       tree     |        field        | description
 ---------------+---------------------+---------------
@@ -353,32 +343,31 @@ INSERT 1
                          | use statistic       | true
 (17 rows)
 > explain select  time_bucket(ts, '3600s') as date, count(distinct usage_system) as nums from cpu where hostname = 'host_0' and ts >= date_trunc('week', '2023-10-30 12:12:12'::timestamp) and ts < '2023-10-30 12:12:12' and usage_system = 1 group by date order by date;
-             tree             |           field            |                        description
-------------------------------+----------------------------+-------------------------------------------------------------
-                              | distributed                | true
-                              | vectorized                 | false
-  sort                        |                            |
-   │                          | engine type                | time series
-   │                          | order                      | +date
-   └── group                  |                            |
-        │                     | engine type                | time series
-        │                     | aggregate 0                | date
-        │                     | aggregate 1                | count(DISTINCT usage_system)
-        │                     | group by                   | date
-        └── synchronizer      |                            |
-             └── render       |                            |
-                  │           | engine type                | time series
-                  │           | date                       | time_bucket(ts, '3600s')
-                  │           | usage_system               | usage_system
-                  └── ts scan |                            |
-                              | ts-table                   | cpu
-                              | access mode                | tagIndex
-                              | spans:fromTime             | 0000-01-01 00:00:00 +0000 UTC
-                              | spans:toTime               | 2023-10-30 12:12:11.999 +0000 UTC
-                              | filter                     | (usage_system = 1) AND (ts >= '2023-10-30 00:00:00+00:00')
-                              | ptag filter[0]             | hostname = 'host_0'
-                              | block filter[usage_system] | [1 - 1]
-(23 rows)
+           tree          |           field            |                        description
+-------------------------+----------------------------+-------------------------------------------------------------
+                         | distributed                | true
+                         | vectorized                 | false
+  sort                   |                            |
+   │                     | engine type                | time series
+   │                     | order                      | +date
+   └── group             |                            |
+        │                | engine type                | time series
+        │                | aggregate 0                | date
+        │                | aggregate 1                | count(DISTINCT usage_system)
+        │                | group by                   | date
+        └── render       |                            |
+             │           | engine type                | time series
+             │           | date                       | time_bucket(ts, '3600s')
+             │           | usage_system               | usage_system
+             └── ts scan |                            |
+                         | ts-table                   | cpu
+                         | access mode                | tagIndex
+                         | spans:fromTime             | 0000-01-01 00:00:00 +0000 UTC
+                         | spans:toTime               | 2023-10-30 12:12:11.999 +0000 UTC
+                         | filter                     | (usage_system = 1) AND (ts >= '2023-10-30 00:00:00+00:00')
+                         | ptag filter[0]             | hostname = 'host_0'
+                         | block filter[usage_system] | [1 - 1]
+(22 rows)
 > explain select  time_bucket(ts, '3600s') as date, count(distinct usage_system) as nums from cpu where ts >= date_trunc('week', '2023-10-30 12:12:12'::timestamp) and ts < '2023-10-30 12:12:12' and usage_system = 1 group by date order by date;
              tree             |           field            |                        description
 ------------------------------+----------------------------+-------------------------------------------------------------
@@ -406,68 +395,62 @@ INSERT 1
                               | block filter[usage_system] | [1 - 1]
 (22 rows)
 > explain select usage_user from cpu where hostname = 'host_0' and usage_system>2000 order by usage_user;
+        tree        |           field            |     description
+--------------------+----------------------------+----------------------
+                    | distributed                | true
+                    | vectorized                 | false
+  sort              |                            |
+   │                | engine type                | time series
+   │                | order                      | +usage_user
+   └── render       |                            |
+        │           | engine type                | time series
+        │           | usage_user                 | usage_user
+        └── ts scan |                            |
+                    | ts-table                   | cpu
+                    | access mode                | tagIndex
+                    | filter                     | usage_system > 2000
+                    | ptag filter[0]             | hostname = 'host_0'
+                    | block filter[usage_system] | [2001 - ]
+(14 rows)
+> explain select usage_user from cpu where hostname = 'host_0' and usage_system>2000 limit 1;
+        tree        |           field            |     description
+--------------------+----------------------------+----------------------
+                    | distributed                | true
+                    | vectorized                 | false
+  render            |                            |
+   │                | engine type                | time series
+   │                | usage_user                 | usage_user
+   └── limit        |                            |
+        │           | engine type                | time series
+        │           | count                      | 1
+        └── ts scan |                            |
+                    | ts-table                   | cpu
+                    | access mode                | tagIndex
+                    | filter                     | usage_system > 2000
+                    | ptag filter[0]             | hostname = 'host_0'
+                    | block filter[usage_system] | [2001 - ]
+(14 rows)
+> explain select usage_user from cpu where hostname = 'host_0' and usage_system>2000 order by usage_user limit 2;
            tree          |           field            |     description
 -------------------------+----------------------------+----------------------
                          | distributed                | true
                          | vectorized                 | false
-  sort                   |                            |
+  render                 |                            |
    │                     | engine type                | time series
-   │                     | order                      | +usage_user
-   └── synchronizer      |                            |
-        └── render       |                            |
+   │                     | usage_user                 | usage_user
+   └── limit             |                            |
+        │                | engine type                | time series
+        │                | count                      | 2
+        └── sort         |                            |
              │           | engine type                | time series
-             │           | usage_user                 | usage_user
+             │           | order                      | +usage_user
              └── ts scan |                            |
                          | ts-table                   | cpu
                          | access mode                | tagIndex
                          | filter                     | usage_system > 2000
                          | ptag filter[0]             | hostname = 'host_0'
                          | block filter[usage_system] | [2001 - ]
-(15 rows)
-> explain select usage_user from cpu where hostname = 'host_0' and usage_system>2000 limit 1;
-             tree             |           field            |     description
-------------------------------+----------------------------+----------------------
-                              | distributed                | true
-                              | vectorized                 | false
-  render                      |                            |
-   │                          | engine type                | time series
-   │                          | usage_user                 | usage_user
-   └── limit                  |                            |
-        │                     | engine type                | time series
-        │                     | count                      | 1
-        └── synchronizer      |                            |
-             └── limit        |                            |
-                  │           | engine type                | time series
-                  │           | count                      | 1
-                  └── ts scan |                            |
-                              | ts-table                   | cpu
-                              | access mode                | tagIndex
-                              | filter                     | usage_system > 2000
-                              | ptag filter[0]             | hostname = 'host_0'
-                              | block filter[usage_system] | [2001 - ]
-(18 rows)
-> explain select usage_user from cpu where hostname = 'host_0' and usage_system>2000 order by usage_user limit 2;
-             tree             |           field            |     description
-------------------------------+----------------------------+----------------------
-                              | distributed                | true
-                              | vectorized                 | false
-  render                      |                            |
-   │                          | engine type                | time series
-   │                          | usage_user                 | usage_user
-   └── limit                  |                            |
-        │                     | engine type                | time series
-        │                     | count                      | 2
-        └── sort              |                            |
-             │                | engine type                | time series
-             │                | order                      | +usage_user
-             └── synchronizer |                            |
-                  └── ts scan |                            |
-                              | ts-table                   | cpu
-                              | access mode                | tagIndex
-                              | filter                     | usage_system > 2000
-                              | ptag filter[0]             | hostname = 'host_0'
-                              | block filter[usage_system] | [2001 - ]
-(18 rows)
+(17 rows)
 > explain select usage_user from cpu where usage_system>2000 order by usage_user;
            tree          |           field            |     description
 -------------------------+----------------------------+----------------------

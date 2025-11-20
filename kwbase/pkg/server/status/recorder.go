@@ -502,14 +502,17 @@ func (mr *MetricsRecorder) WriteNodeStatus(
 	mr.writeSummaryMu.Lock()
 	defer mr.writeSummaryMu.Unlock()
 	key := keys.NodeStatusKey(nodeStatus.Desc.NodeID)
-	// We use PutInline to store only a single version of the node status.
-	// There's not much point in keeping the historical versions as we keep
-	// all of the constituent data as timeseries. Further, due to the size
-	// of the build info in the node status, writing one of these every 10s
-	// will generate more versions than will easily fit into a range over
-	// the course of a day.
-	if err := db.PutInline(ctx, key, &nodeStatus); err != nil {
-		return err
+	// FollowerRead skip writing the node status
+	if !kv.FollowerReadEnable {
+		// We use PutInline to store only a single version of the node status.
+		// There's not much point in keeping the historical versions as we keep
+		// all of the constituent data as timeseries. Further, due to the size
+		// of the build info in the node status, writing one of these every 10s
+		// will generate more versions than will easily fit into a range over
+		// the course of a day.
+		if err := db.PutInline(ctx, key, &nodeStatus); err != nil {
+			return err
+		}
 	}
 	if log.V(2) {
 		statusJSON, err := json.Marshal(&nodeStatus)

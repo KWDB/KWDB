@@ -468,6 +468,7 @@ func (b *Builder) buildAggregation(having opt.ScalarExpr, fromScope *scope) (out
 		}
 	}
 
+	groupByPtag := false
 	if b.factory.Memo().CheckFlag(opt.GroupWindowUseOrderScan) {
 		fromScope.expr.ChildCount()
 		if len(groupingCols) > 1 {
@@ -477,6 +478,7 @@ func (b *Builder) buildAggregation(having opt.ScalarExpr, fromScope *scope) (out
 				(hasOhterCol && pTagNum == b.factory.Metadata().TableMeta(tableID).PrimaryTagCount) {
 				panic(pgerror.Newf(pgcode.Syntax, "groupby cols are all ptags or without groupby cols for using group window function."))
 			}
+			groupByPtag = true
 		} else if groupWindowIdx >= 0 {
 			// function not push to AE if there are no other groupby cols except for the group window function
 			if f, ok := groupingCols[groupWindowIdx].scalar.(*memo.FunctionExpr); ok {
@@ -605,6 +607,14 @@ func (b *Builder) buildAggregation(having opt.ScalarExpr, fromScope *scope) (out
 			g.GroupingPrivate.Func = aggFuncs
 		}
 	}
+
+	// flag group by ptags for group window check
+	if b.factory.Memo().CheckFlag(opt.GroupWindowUseOrderScan) && groupByPtag {
+		if g, ok := g.aggOutScope.expr.(*memo.GroupByExpr); ok {
+			g.GroupingPrivate.OptFlags |= opt.GroupByPtag // add group by ptags flags
+		}
+	}
+
 	// Wrap with having filter if it exists.
 	if having != nil {
 		input := g.aggOutScope.expr.(memo.RelExpr)

@@ -140,7 +140,7 @@ def get_url_for_join(node_id: int):
     return join_node_id_map[str(node_id)]
 
 
-def get_http_url_fot_join(node_id: int):
+def get_http_url_for_join(node_id: int):
     return join_http_ip_map[str(node_id)]
 
 
@@ -292,10 +292,10 @@ if __name__ == "__main__":
                           ' --pid-file={}/kwbase.pid ' \
                           ' --external-io-dir={}/extern' \
                           ' --join={} --background'.format(
-                        kwbin_path, 'start', url, get_http_url_fot_join(node_id), get_brpc_url_from_node_id(url), store_dir, 'c' + str(store_id), store_dir,
+                        kwbin_path, 'start', url, get_http_url_for_join(node_id), get_brpc_url_from_node_id(url), store_dir, 'c' + str(store_id), store_dir,
                                                                                              'c-ts' + str(store_id),
                                                                                              "%02d" % node_id,
-                                                                                             store_dir + '/c' + str(
+                                                                                                                             store_dir + '/c' + str(
                                                                                                  store_id), store_dir,
                         get_url_from_node_id(1))
                     cmds.append(cmd)
@@ -335,7 +335,7 @@ if __name__ == "__main__":
                           ' --pid-file={}/kwbase.pid ' \
                           ' --external-io-dir={}/extern' \
                           ' --join={} --background'.format(
-                        kwbin_path, 'start', url, get_http_url_fot_join(node_id), get_brpc_url_from_node_id(url), store_dir, 'c' + str(store_id),
+                        kwbin_path, 'start', url, get_http_url_for_join(node_id), get_brpc_url_from_node_id(url), store_dir, 'c' + str(store_id),
                                                                                              "%02d" % node_id,
                                                                                              store_dir + '/c' + str(
                                                                                                  store_id), store_dir,
@@ -372,7 +372,7 @@ if __name__ == "__main__":
                       ' --locality=region=CN-100000-0{}' \
                       ' --external-io-dir={}/extern' \
                       ' --join={} --background'.format(
-                    kwbin_path, 'start', url, get_http_url_fot_join(node_id), get_brpc_url_from_node_id(url), store_dir,
+                    kwbin_path, 'start', url, get_http_url_for_join(node_id), get_brpc_url_from_node_id(url), store_dir,
                     'c' + str(node_id),
                     store_dir + '/c' + str(node_id),
                     "%02d" % node_id, store_dir,
@@ -500,6 +500,25 @@ if __name__ == "__main__":
                     "echo cost $count s".format(ts)
                 cmds.append(cmd)
                 cmd = "echo $(date) >>$LOG_DIR/$SQL_FILTER.log"
+                cmds.append(cmd)
+
+        elif re.match('-- enable-follower-read', sql):
+            node_ids = get_nodes(sql)
+            for node_id in node_ids:
+                url = get_url_from_node_id(node_id)
+                store_id = int(url.split(':')[-1]) - 26256
+                cmd = 'KWBASE_ENABLE_FOLLOWER_READ=true {} {}' \
+                      ' --insecure --listen-addr={}' \
+                      ' --http-addr={}' \
+                      ' --brpc-addr={}' \
+                      ' --store={}/{}' \
+                      ' --locality=region=CN-100000-0{}' \
+                      ' --pid-file={}/kwbase.pid ' \
+                      '--external-io-dir={}/extern' \
+                      ' --join={} --background'.format(
+                    kwbin_path, 'start', url, get_http_url_from_node_id(node_id), get_brpc_url_from_node_id(url),
+                    store_dir, 'c' + str(store_id), "%02d" % node_id, store_dir + '/c' + str(store_id),
+                    store_dir, get_url_from_node_id(1))
                 cmds.append(cmd)
 
         elif re.match('-- upgrade-complete', sql):

@@ -197,7 +197,7 @@ func (b *logicalPropsBuilder) buildTSScanProps(scan *TSScanExpr, rel *props.Rela
 	// the constraint, minus any columns that are not projected by the Scan
 	// operator.
 
-	if scan.OrderedScanType.Ordered() {
+	if scan.Flags.OrderedScanType.Ordered() {
 		fd := &props.FuncDepSet{}
 		var keyCols opt.ColSet
 		keyCols.Add(scan.Table.ColumnID(0))

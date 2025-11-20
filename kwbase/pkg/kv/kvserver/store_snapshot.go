@@ -28,6 +28,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"math"
 	"time"
 
 	"gitee.com/kwbasedb/kwbase/pkg/base"
@@ -306,14 +307,14 @@ func (kvSS *kvBatchSnapshotStrategy) ReceiveTS(
 				header.State.Desc.HashNum = api.HashParamV2
 			}
 			hashNum := header.State.Desc.HashNum
-			_, startPoint, endPoint, startTs, endTs, err := sqlbase.DecodeTSRangeKey(startKey, endKey, hashNum)
+			_, startPoint, endPoint, err := sqlbase.DecodeTSRangeKey(startKey, endKey, hashNum)
 			if err != nil {
 				log.Errorf(ctx, "DecodeTSRangeKey failedD: %v", err)
 				return IncomingSnapshot{}, errors.Wrap(err, "DecodeTSRangeKey failed")
 			}
 			var snapshotErr error
-			writeSnapshotID, snapshotErr = s.TsEngine.CreateSnapshotForWrite(tableID, startPoint, endPoint, startTs, endTs)
-			log.VEventf(ctx, 3, "TsEngine.CreateSnapshotForWrite r%v, %v, %v, %v, %v, %v, %v, %v, %v", rangeID, tableID, startPoint, endPoint, startTs, endTs, req.TsSnapshotId, writeSnapshotID, snapshotErr)
+			writeSnapshotID, snapshotErr = s.TsEngine.CreateSnapshotForWrite(tableID, startPoint, endPoint, math.MinInt64, math.MaxInt64)
+			log.VEventf(ctx, 3, "TsEngine.CreateSnapshotForWrite r%v, %v, %v, %v, %v, %v, %v", rangeID, tableID, startPoint, endPoint, req.TsSnapshotId, writeSnapshotID, snapshotErr)
 			if snapshotErr != nil {
 				rollbackFn(ctx, "CreateSnapshotForWrite", writeSnapshotID, tableID, rangeID)
 				return IncomingSnapshot{}, errors.Wrap(snapshotErr, "receiveTS CreateSnapshotForWrite failed")

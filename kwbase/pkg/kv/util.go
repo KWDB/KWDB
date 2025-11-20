@@ -30,7 +30,9 @@ import (
 	"time"
 
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
+	"gitee.com/kwbasedb/kwbase/pkg/settings"
 	"gitee.com/kwbasedb/kwbase/pkg/util/duration"
+	"gitee.com/kwbasedb/kwbase/pkg/util/envutil"
 	"gitee.com/kwbasedb/kwbase/pkg/util/protoutil"
 	"github.com/cockroachdb/apd"
 )
@@ -131,3 +133,14 @@ func marshalValue(v interface{}) (roachpb.Value, error) {
 
 	return r, fmt.Errorf("unable to marshal %T: %v", v, v)
 }
+
+// FollowerReadEnable is true means allow follower read.
+var FollowerReadEnable = envutil.EnvOrDefaultBool("KWBASE_ENABLE_FOLLOWER_READ", false)
+
+// TsFollowerReadThreshold controls whether ts replicas attempt to serve follower
+// reads.
+var TsFollowerReadThreshold = settings.RegisterNonNegativeFloatSetting(
+	"kv.kvserver.qps_ts_follower_read_threshold",
+	"allow ts replicas to serve follower reads if qps exceed the threshold",
+	0,
+)

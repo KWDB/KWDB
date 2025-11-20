@@ -379,11 +379,11 @@ func (c *coster) computeScanCost(scan *memo.ScanExpr, required *physical.Require
 func (c *coster) computeTsScanCost(tsScan *memo.TSScanExpr) memo.Cost {
 	pTagColCount := 0
 	table := c.mem.Metadata().Table(tsScan.Table)
-
+	flags := &tsScan.Flags
 	// Calculate the width of the columns to be scanned
 	var pTagColsWith, tagColsWith, tagIndexColsWith, colsWith uint64
 	var tagIndexCols opt.ColSet
-	for k := range tsScan.TagIndex.TagIndexValues {
+	for k := range flags.TagIndex.TagIndexValues {
 		tagIndexCols.Add(opt.ColumnID(k))
 	}
 	tsScan.Cols.ForEach(func(id opt.ColumnID) {
@@ -444,7 +444,14 @@ func (c *coster) computeTsScanCost(tsScan *memo.TSScanExpr) memo.Cost {
 
 	// row count of full table.
 	rowCount := stats.RowCount
-	if tsScan.BlockFilter != nil {
+	if flags.CheckOnlyOnePTagValue() && pTagRowCount > 1 {
+		// scan single device data
+		rowCount = rowCount / pTagRowCount
+		//if rowCount < 1 {
+		//	rowCount = 1
+		//}
+	}
+	if flags.BlockFilter != nil {
 		// we should to reduce count to select this expr if block filter exists.
 		// since the cost of blockFilter cannot be accurately calculated at this time, it is temporarily estimated as 0.5.
 		rowCount = stats.RowCount * 0.5
@@ -458,30 +465,30 @@ func (c *coster) computeTsScanCost(tsScan *memo.TSScanExpr) memo.Cost {
 	// Calculate parallel num in timing scenarios
 	tsScan.Memo().CalculateDop(rowCount, stats.PTagCount, uint32(allColsWidth))
 	var cost memo.Cost
-	if tsScan.PrimaryTagFilter != nil && tsScan.TagFilter == nil && tsScan.TagIndexFilter == nil {
+	if flags.PrimaryTagFilter != nil && flags.TagFilter == nil && flags.TagIndexFilter == nil {
 		// case: TagIndex
-		if len(tsScan.PrimaryTagValues) > 0 {
-			needPtagRow = float64(len(tsScan.PrimaryTagValues[0]))
+		if len(flags.PrimaryTagValues) > 0 {
+			needPtagRow = float64(len(flags.PrimaryTagValues[0]))
 		}
 		talbeCountFactor = math.Min(needPtagRow/pTagRowCount, 1) * cpuCostFactor
 		cost = memo.Cost(float64(pTagColCount)*float64(pTagColsWith)*colHashCostUnit*pTagRowCount +
 			talbeCountFactor*fullScanTblCost)
-	} else if tsScan.PrimaryTagFilter != nil && (tsScan.TagFilter != nil || tsScan.TagIndexFilter != nil) {
+	} else if flags.PrimaryTagFilter != nil && (flags.TagFilter != nil || flags.TagIndexFilter != nil) {
 		// case: TagIndexTable
-		if len(tsScan.PrimaryTagValues) > 0 {
-			needPtagRow = float64(len(tsScan.PrimaryTagValues[0]))
+		if len(flags.PrimaryTagValues) > 0 {
+			needPtagRow = float64(len(flags.PrimaryTagValues[0]))
 		}
 		talbeCountFactor = math.Min(needPtagRow/pTagRowCount, 1) * cpuCostFactor
 		cost = memo.Cost(float64(pTagColCount)*float64(pTagColsWith)*colHashCostUnit*pTagRowCount*tableScanCostUnit +
 			talbeCountFactor*fullScanTagTblCost +
 			talbeCountFactor*fullScanTblCost)
-	} else if tsScan.PrimaryTagFilter == nil && (tsScan.TagFilter != nil || tsScan.TagIndexFilter != nil) {
-		if tsScan.AccessMode == int(execinfrapb.TSTableReadMode_tagHashIndex) {
+	} else if flags.PrimaryTagFilter == nil && (flags.TagFilter != nil || flags.TagIndexFilter != nil) {
+		if flags.AccessMode == int(execinfrapb.TSTableReadMode_tagHashIndex) {
 			// case: tagHashIndex
 			// The cost of hash calculation and the cost of table scan.
 			// The cost of hash calculation include hash computation and hash search.
 			// The cost of table scan same as tagTable model.
-			indexCount := len(tsScan.TagIndex.TagIndexValues)
+			indexCount := len(flags.TagIndex.TagIndexValues)
 			cost = memo.Cost(float64(indexCount)*(float64(tagIndexColsWith)*colHashCostUnit+tableScanCostUnit) +
 				0.5*fullScanTblCost)
 		} else {
@@ -490,7 +497,7 @@ func (c *coster) computeTsScanCost(tsScan *memo.TSScanExpr) memo.Cost {
 			// The cost should be smaller than a full table scan
 			cost = memo.Cost(fullScanTagTblCost + 0.5*fullScanTblCost)
 		}
-	} else if tsScan.PrimaryTagFilter == nil && tsScan.TagFilter != nil {
+	} else if flags.PrimaryTagFilter == nil && flags.TagFilter != nil {
 		// case: tagTable
 		// TagFilter cannot affect talbeCountFactor, default to 0.5
 		// The cost should be smaller than a full table scan
@@ -500,7 +507,7 @@ func (c *coster) computeTsScanCost(tsScan *memo.TSScanExpr) memo.Cost {
 		cost = memo.Cost(fullScanTagTblCost + fullScanTblCost)
 	}
 
-	switch tsScan.OrderedScanType {
+	switch flags.OrderedScanType {
 	case opt.OrderedScan:
 		// disorder partition order cost plus return batch cost
 		// Sorting out out out of order partitions leads to a decrease in the amount of data returned within the batch

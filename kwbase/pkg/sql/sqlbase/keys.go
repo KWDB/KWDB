@@ -140,76 +140,54 @@ func MakeTsHashPointKey(tbDescID ID, hashPoint uint64, hashNum uint64) roachpb.K
 }
 
 // MakeTsRangeKey make the TS key from table descriptor ID, hash point and timestamp.
-func MakeTsRangeKey(tbDescID ID, hashPoint uint64, timestamp int64, hashNum uint64) roachpb.Key {
-	// last hashPartition -> /Table/tbDescID/hashPoint - /Table/tbDescID+1
-	if hashPoint == hashNum {
-		return keys.MakeTablePrefix(uint32(tbDescID + 1))
-	}
-	prefix := keys.MakeTablePrefix(uint32(tbDescID))
-	key := encoding.EncodeUvarintAscending(prefix, hashPoint)
-
-	return encoding.EncodeVarintAscending(key, timestamp)
+func MakeTsRangeKey(tbDescID ID, hashPoint uint64, hashNum uint64) roachpb.Key {
+	return MakeTsHashPointKey(tbDescID, hashPoint, hashNum)
 }
 
 // DecodeTsRangeKey decodes a range key for table id, hash point and timestamp.
-func DecodeTsRangeKey(key []byte, isStartKey bool, hashNum uint64) (uint64, uint64, int64, error) {
+func DecodeTsRangeKey(key []byte, isStartKey bool, hashNum uint64) (uint64, uint64, error) {
 	// specially handle the /Max key, it is actually out of the ranges.
 	if bytes.Compare(key, keys.MaxKey) == 0 {
-		return math.MaxUint64, hashNum - 1, math.MaxInt64, nil
+		return math.MaxUint64, hashNum - 1, nil
 	}
 	remaining, tableID, err := keys.DecodeTablePrefix(key)
 	if err != nil {
-		return 0, 0, 0, err
+		return 0, 0, err
 	}
 	if len(remaining) == 0 {
 		// the first range startKey meet it
 		if isStartKey {
-			return tableID, 0, math.MinInt64, nil
+			return tableID, 0, nil
 		}
-		return tableID - 1, hashNum - 1, math.MaxInt64, nil
+		return tableID - 1, hashNum - 1, nil
 	}
 
 	var hashPoint uint64
-	remaining, hashPoint, err = encoding.DecodeUvarintAscending(remaining)
+	_, hashPoint, err = encoding.DecodeUvarintAscending(remaining)
 	if err != nil {
-		return 0, 0, 0, err
+		return 0, 0, err
 	}
-	if len(remaining) == 0 {
-		if isStartKey {
-			return tableID, hashPoint, math.MinInt64, nil
-		}
-		return tableID, hashPoint - 1, math.MaxInt64, nil
+	if isStartKey {
+		return tableID, hashPoint, nil
 	}
-
-	_, timestamp, err := encoding.DecodeVarintAscending(remaining)
-	if err != nil {
-		return 0, 0, 0, err
-	}
-	if timestamp == 0 && !isStartKey {
-		return tableID, hashPoint - 1, math.MaxInt64, nil
-	}
-	return tableID, hashPoint, timestamp, nil
+	return tableID, hashPoint - 1, nil
 }
 
 // DecodeTSRangeKey decode ts range key
 func DecodeTSRangeKey(
 	startKey roachpb.RKey, endKey roachpb.RKey, hashNum uint64,
-) (uint64, uint64, uint64, int64, int64, error) {
+) (uint64, uint64, uint64, error) {
 	var tableID, startPoint, endPoint uint64
-	var startTs, endTs int64
 	var err error
-	tableID, startPoint, startTs, err = DecodeTsRangeKey(startKey, true, hashNum)
+	tableID, startPoint, err = DecodeTsRangeKey(startKey, true, hashNum)
 	if err != nil {
-		return 0, 0, 0, 0, 0, errors.Wrap(err, "DecodeTsRangeKey StartKey failed")
+		return 0, 0, 0, errors.Wrap(err, "DecodeTsRangeKey StartKey failed")
 	}
-	_, endPoint, endTs, err = DecodeTsRangeKey(endKey, false, hashNum)
+	_, endPoint, err = DecodeTsRangeKey(endKey, false, hashNum)
 	if err != nil {
-		return 0, 0, 0, 0, 0, errors.Wrap(err, "DecodeTsRangeKey endKey failed")
+		return 0, 0, 0, errors.Wrap(err, "DecodeTsRangeKey endKey failed")
 	}
-	if endTs != math.MaxInt64 {
-		endTs--
-	}
-	return tableID, startPoint, endPoint, startTs, endTs, nil
+	return tableID, startPoint, endPoint, nil
 }
 
 // IndexKeyValDirs returns the corresponding encoding.Directions for all the

@@ -87,28 +87,12 @@ KStatus TABLE::Init(kwdbContext_p ctx, const TSTagReaderSpec *spec) {
     // resolve hashpoints
     k_uint32 hps_num = spec->rangespans_size();
     for (k_int32 i = 0; i < hps_num; ++i) {
-      std::vector<KwTsSpan> ts_kwspans;
       const HashpointSpan &hps = spec->rangespans(i);
-      hash_points_.insert(hps.hashpoint());
-      int count = hps.tspans_size();
-      for (int j = 0; j < count; ++j) {
-        const TsSpan &span = hps.tspans(j);
-        KwTsSpan ts_span;
-        if (span.has_fromtimestamp()) {
-          ts_span.begin = span.fromtimestamp();
-        }
-        if (span.has_totimestamp()) {
-          ts_span.end = span.totimestamp();
-        }
-        ts_kwspans.push_back(ts_span);
+      k_uint32 from = hps.from();
+      k_uint32 to = hps.to();
+      for (k_uint32 i = from; i <= to; i++) {
+        hash_points_.insert(i);
       }
-      if (0 == count) {
-        KwTsSpan ts_span;
-        ts_span.begin = kInt64Min;
-        ts_span.end = kInt64Max;
-        ts_kwspans.push_back(ts_span);
-      }
-      hash_points_spans_.insert({hps.hashpoint(), ts_kwspans});
     }
 
     if (KStatus::FAIL == ret) {

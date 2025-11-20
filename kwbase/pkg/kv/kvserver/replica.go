@@ -901,6 +901,11 @@ func (r *Replica) GetSplitQPS() float64 {
 	return r.loadBasedSplitter.LastQPS(timeutil.Now())
 }
 
+// GetLeaseQPS returns the Replica's lease queries/s request rate.
+func (r *Replica) GetLeaseQPS() (float64, time.Duration) {
+	return r.leaseholderStats.avgQPS()
+}
+
 // ContainsKey returns whether this range contains the specified key.
 //
 // TODO(bdarnell): This is not the same as RangeDescriptor.ContainsKey.

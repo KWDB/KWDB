@@ -26,6 +26,7 @@ package kvserver
 
 import (
 	"context"
+	"time"
 
 	"gitee.com/kwbasedb/kwbase/pkg/keys"
 	"gitee.com/kwbasedb/kwbase/pkg/kv"
@@ -163,6 +164,11 @@ func (rec SpanSetReplicaEvalContext) GetMVCCStats() enginepb.MVCCStats {
 // GetSplitQPS returns the Replica's queries/s rate for splitting purposes.
 func (rec SpanSetReplicaEvalContext) GetSplitQPS() float64 {
 	return rec.i.GetSplitQPS()
+}
+
+// GetLeaseQPS returns the Replica's lease queries/s rate.
+func (rec SpanSetReplicaEvalContext) GetLeaseQPS() (float64, time.Duration) {
+	return rec.i.GetLeaseQPS()
 }
 
 // CanCreateTxnRecord determines whether a transaction record can be created

@@ -26,6 +26,7 @@ package tse_test
 import (
 	"context"
 	"fmt"
+	"math"
 	"path/filepath"
 	"testing"
 	"time"
@@ -69,7 +70,7 @@ func setClusterArgs(nodes int, baseDir string) base.TestClusterArgs {
 // prepareTsTable create timeseries table return ts info
 func prepareTsTable(
 	t *testing.T, ctx context.Context, tc *testcluster.TestCluster,
-) (uint64, uint64, uint64, int64, int64, roachpb.NodeID, []roachpb.NodeID) {
+) (uint64, uint64, uint64, roachpb.NodeID, []roachpb.NodeID) {
 	sqlDB := sqlutils.MakeSQLRunner(tc.Conns[0])
 	sqlDB.Exec(t, `CREATE TS DATABASE d1`)
 	sqlDB.Exec(t, `CREATE TABLE d1.ts (ts timestamp not null, e1 int) tags(attr1 int not null) primary tags (attr1)`)
@@ -101,11 +102,10 @@ WHERE database_name = $1
 	_, err := fmt.Sscanf(replicasStr, "{%d,%d,%d}", &replicas[0], &replicas[1], &replicas[2])
 	require.NoError(t, err)
 
-	var startTs, endTs int64
-	_, startHashPoint, endHashPoint, startTs, endTs, err = sqlbase.DecodeTSRangeKey(startKey, endKey, 2000)
+	_, startHashPoint, endHashPoint, err = sqlbase.DecodeTSRangeKey(startKey, endKey, 2000)
 	require.NoError(t, err)
 
-	return tableID, startHashPoint, endHashPoint, startTs, endTs, leaseHolder, replicas
+	return tableID, startHashPoint, endHashPoint, leaseHolder, replicas
 }
 
 // getOptServer return opt servers
@@ -152,15 +152,15 @@ func TestSnapshotMultiNode(t *testing.T) {
 	require.NoError(t, tc.WaitForFullReplication())
 
 	// create timeseries table and return info
-	tableID, startHashPoint, endHashPoint, startTs, endTs, leaseHolder, replicas := prepareTsTable(t, ctx, tc)
+	tableID, startHashPoint, endHashPoint, leaseHolder, replicas := prepareTsTable(t, ctx, tc)
 
 	// get opt server
 	leaseServer, targetServer := getOptServer(nodes, tc, leaseHolder, replicas)
 
-	srcSnapshotID, err := leaseServer.TSEngine().CreateSnapshotForRead(tableID, startHashPoint, endHashPoint, startTs, endTs)
+	srcSnapshotID, err := leaseServer.TSEngine().CreateSnapshotForRead(tableID, startHashPoint, endHashPoint, math.MinInt64, math.MaxInt64)
 	require.NoError(t, err)
 
-	destSnapshotID, err := targetServer.TSEngine().CreateSnapshotForWrite(tableID, startHashPoint, endHashPoint, startTs, endTs)
+	destSnapshotID, err := targetServer.TSEngine().CreateSnapshotForWrite(tableID, startHashPoint, endHashPoint, math.MinInt64, math.MaxInt64)
 	require.NoError(t, err)
 
 	apply := false

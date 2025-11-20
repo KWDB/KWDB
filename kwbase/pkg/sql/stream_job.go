@@ -343,6 +343,7 @@ func marshalStreamFilter(
 	localPlanner := plan
 	localPlanner.stmt = &Statement{Statement: stmt}
 	localPlanner.forceFilterInME = true
+	localPlanner.inStream = true
 	localPlanner.SessionData().Database = params.p.CurrentDatabase()
 	localPlanner.SessionData().SearchPath = params.p.CurrentSearchPath()
 

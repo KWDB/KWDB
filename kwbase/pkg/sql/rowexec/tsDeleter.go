@@ -120,9 +120,8 @@ func (td *tsDeleter) Start(ctx context.Context) context.Context {
 			td.err = err
 			return ctx
 		}
-		startTs, endTs := getMinMaxTimestamp(td.spans)
-		startKey := sqlbase.MakeTsRangeKey(sqlbase.ID(td.tableID), uint64(hashPoints[0]), startTs, td.hashNum)
-		endKey := sqlbase.MakeTsRangeKey(sqlbase.ID(td.tableID), uint64(hashPoints[0]), endTs+1, td.hashNum)
+		startKey := sqlbase.MakeTsRangeKey(sqlbase.ID(td.tableID), uint64(hashPoints[0]), td.hashNum)
+		endKey := sqlbase.MakeTsRangeKey(sqlbase.ID(td.tableID), uint64(hashPoints[0])+1, td.hashNum)
 		req := &roachpb.TsDeleteRequest{
 			RequestHeader: roachpb.RequestHeader{
 				Key:    startKey,
@@ -150,7 +149,7 @@ func (td *tsDeleter) Start(ctx context.Context) context.Context {
 		}
 	case execinfrapb.OperatorType_TsDeleteMultiEntitiesData:
 		startKey := sqlbase.MakeTsHashPointKey(sqlbase.ID(td.tableID), uint64(0), td.hashNum)
-		endKey := sqlbase.MakeTsRangeKey(sqlbase.ID(td.tableID), td.hashNum, math.MaxInt64, td.hashNum)
+		endKey := sqlbase.MakeTsRangeKey(sqlbase.ID(td.tableID), td.hashNum, td.hashNum)
 		req := &roachpb.TsDeleteMultiEntitiesDataRequest{
 			RequestHeader: roachpb.RequestHeader{
 				Key:    startKey,
@@ -183,7 +182,7 @@ func (td *tsDeleter) Start(ctx context.Context) context.Context {
 			return ctx
 		}
 		startKey := sqlbase.MakeTsHashPointKey(sqlbase.ID(td.tableID), uint64(hashPoints[0]), td.hashNum)
-		endKey := sqlbase.MakeTsRangeKey(sqlbase.ID(td.tableID), uint64(hashPoints[0]), math.MaxInt64, td.hashNum)
+		endKey := sqlbase.MakeTsRangeKey(sqlbase.ID(td.tableID), uint64(hashPoints[0])+1, td.hashNum)
 		// delete data
 		delDataReq := &roachpb.TsDeleteRequest{
 			RequestHeader: roachpb.RequestHeader{

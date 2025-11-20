@@ -1514,6 +1514,8 @@ message LeaseInfoResponse{
   // The last lease known by the replica serving the request. It can also be the
   // tentative future lease, if a lease transfer is in progress.
   Lease lease = 2 [(gogoproto.nullable) = false];
+
+  double lease_qps = 3;
 }
 
 // A RequestLeaseResponse is the response to a RequestLease() or TransferLease()
@@ -2024,6 +2026,8 @@ message RangeStatsResponse {
 
   // QueriesPerSecond is the rate of request/s or QPS for the range.
   double queries_per_second = 3;
+  // LeaseHolderQps is the rate of request/s or QPS for the leaseholder.
+  double lease_holder_qps = 4;
 }
 
 // A RequestUnion contains exactly one of the requests.

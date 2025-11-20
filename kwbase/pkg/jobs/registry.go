@@ -528,6 +528,9 @@ func (r *Registry) Start(
 	nl NodeLiveness,
 	cancelInterval, adoptInterval time.Duration,
 ) error {
+	if kv.FollowerReadEnable {
+		return nil
+	}
 	// Calling maybeCancelJobs once at the start ensures we have an up-to-date
 	// liveness epoch before we wait out the first cancelInterval.
 	r.maybeCancelJobs(ctx, nl)

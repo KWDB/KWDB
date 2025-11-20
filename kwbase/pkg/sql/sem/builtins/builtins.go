@@ -62,6 +62,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sessiondata"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/types"
+	"gitee.com/kwbasedb/kwbase/pkg/storage/enginepb"
 	"gitee.com/kwbasedb/kwbase/pkg/util/duration"
 	"gitee.com/kwbasedb/kwbase/pkg/util/errorutil/unimplemented"
 	"gitee.com/kwbasedb/kwbase/pkg/util/humanizeutil"
@@ -4443,7 +4444,15 @@ may increase either contention or retry errors, or both.`,
 					return nil, pgerror.Newf(pgcode.InvalidParameterValue, "message: %s", err)
 				}
 				resp := b.RawResponse().Responses[0].GetInner().(*roachpb.RangeStatsResponse).MVCCStats
-				jsonStr, err := gojson.Marshal(&resp)
+				qps := b.RawResponse().Responses[0].GetInner().(*roachpb.RangeStatsResponse).LeaseHolderQps
+				extendedResp := struct {
+					enginepb.MVCCStats
+					QPS string `json:"lease_holder_qps"`
+				}{
+					MVCCStats: resp,
+					QPS:       strconv.FormatFloat(qps, 'f', 2, 64),
+				}
+				jsonStr, err := gojson.Marshal(&extendedResp)
 				if err != nil {
 					return nil, err
 				}

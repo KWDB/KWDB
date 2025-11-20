@@ -27,6 +27,7 @@ package kvserver
 import (
 	"context"
 	"fmt"
+	"math"
 	"time"
 
 	"gitee.com/kwbasedb/kwbase/pkg/clusterversion"
@@ -547,13 +548,13 @@ func (b *replicaAppBatch) migrateReplicatedResult(ctx context.Context, cmd *repl
 func (r *Replica) CreateSnapshotForRead(
 	ctx context.Context, startKey []byte, endKey []byte, hashNum uint64,
 ) (uint64, error) {
-	tableID, startPoint, endPoint, startTs, endTs, err := sqlbase.DecodeTSRangeKey(startKey, endKey, hashNum)
+	tableID, startPoint, endPoint, err := sqlbase.DecodeTSRangeKey(startKey, endKey, hashNum)
 	if err != nil {
 		log.Errorf(ctx, "CreateSnapshotForRead failed: %v", err)
 		return 0, err
 	}
-	tsSnapshotID, err := r.store.TsEngine.CreateSnapshotForRead(tableID, startPoint, endPoint, startTs, endTs)
-	log.VEventf(ctx, 3, "TsEngine.CreateSnapshotForRead r%d, %d, %d, %d, %d, %d, %d, %d", r.RangeID, tableID, startPoint, endPoint, startTs, endTs, tsSnapshotID, err)
+	tsSnapshotID, err := r.store.TsEngine.CreateSnapshotForRead(tableID, startPoint, endPoint, math.MinInt64, math.MaxInt64)
+	log.VEventf(ctx, 3, "TsEngine.CreateSnapshotForRead r%d, %d, %d, %d, %d, %d", r.RangeID, tableID, startPoint, endPoint, tsSnapshotID, err)
 	if err != nil {
 		return 0, errors.Wrapf(err, "Ts CreateSnapshotForRead err")
 	}
@@ -806,33 +807,10 @@ func (r *Replica) stageTsBatchRequest(
 		case *roachpb.TsDeleteRequest:
 			{
 				var delCnt uint64
-				var ts1, ts2 int64
-				hashNum := r.mu.state.Desc.HashNum
-				if hashNum == 0 {
-					hashNum = api.HashParamV2
-				}
-				_, _, ts1, err = sqlbase.DecodeTsRangeKey(r.mu.state.Desc.StartKey, true, hashNum)
-				if err != nil {
-					errRollback := r.store.TsEngine.MtrRollback(tableID, rangeGroupID, tsTxnID, nil)
-					if errRollback != nil {
-						return tableID, rangeGroupID, tsTxnID, needAutoCommit, wrapWithNonDeterministicFailure(err, "unable to rollback mini-transaction")
-					}
-					return tableID, rangeGroupID, tsTxnID, needAutoCommit, wrapWithNonDeterministicFailure(err, "unable to get beginhash")
-				}
-				_, _, ts2, err = sqlbase.DecodeTsRangeKey(r.mu.state.Desc.EndKey, false, hashNum)
-				if err != nil {
-					errRollback := r.store.TsEngine.MtrRollback(tableID, rangeGroupID, tsTxnID, nil)
-					if errRollback != nil {
-						return tableID, rangeGroupID, tsTxnID, needAutoCommit, wrapWithNonDeterministicFailure(err, "unable to rollback mini-transaction")
-					}
-					return tableID, rangeGroupID, tsTxnID, needAutoCommit, wrapWithNonDeterministicFailure(err, "unable to get endhash")
-				}
-				// exclude the EndKey
-				ts2--
-				tsSpans := matchTsSpans(req.TsSpans, ts1, ts2)
+				tsSpans := req.TsSpans
 				if len(tsSpans) > 0 {
 					if delCnt, err = r.store.TsEngine.DeleteData(
-						req.TableId, rangeGroupID, req.PrimaryTags, tsSpans, tsTxnID, req.OsnId); err != nil {
+						req.TableId, rangeGroupID, req.PrimaryTags, req.TsSpans, tsTxnID, req.OsnId); err != nil {
 						errRollback := r.store.TsEngine.MtrRollback(tableID, rangeGroupID, tsTxnID, nil)
 						if errRollback != nil {
 							return tableID, rangeGroupID, tsTxnID, needAutoCommit, wrapWithNonDeterministicFailure(err, "unable to rollback mini-transaction")
@@ -896,12 +874,11 @@ func (r *Replica) stageTsBatchRequest(
 			{
 				var delCnt uint64
 				var beginHash, endHash uint64
-				var ts1, ts2 int64
 				hashNum := r.mu.state.Desc.HashNum
 				if hashNum == 0 {
 					hashNum = api.HashParamV2
 				}
-				tableID, beginHash, ts1, err = sqlbase.DecodeTsRangeKey(r.mu.state.Desc.StartKey, true, hashNum)
+				tableID, beginHash, err = sqlbase.DecodeTsRangeKey(r.mu.state.Desc.StartKey, true, hashNum)
 				if err != nil {
 					errRollback := r.store.TsEngine.MtrRollback(tableID, rangeGroupID, tsTxnID, nil)
 					if errRollback != nil {
@@ -909,7 +886,7 @@ func (r *Replica) stageTsBatchRequest(
 					}
 					return tableID, rangeGroupID, tsTxnID, needAutoCommit, wrapWithNonDeterministicFailure(err, "unable to get beginhash")
 				}
-				_, endHash, ts2, err = sqlbase.DecodeTsRangeKey(r.mu.state.Desc.EndKey, false, hashNum)
+				_, endHash, err = sqlbase.DecodeTsRangeKey(r.mu.state.Desc.EndKey, false, hashNum)
 				if err != nil {
 					errRollback := r.store.TsEngine.MtrRollback(tableID, rangeGroupID, tsTxnID, nil)
 					if errRollback != nil {
@@ -917,15 +894,7 @@ func (r *Replica) stageTsBatchRequest(
 					}
 					return tableID, rangeGroupID, tsTxnID, needAutoCommit, wrapWithNonDeterministicFailure(err, "unable to get endhash")
 				}
-				var tsSpans []*roachpb.TsSpan
-				if beginHash == endHash {
-					// exclude the EndKey
-					ts2--
-					// the hashPoint may be split, filter the ts spans
-					tsSpans = matchTsSpans(req.TsSpans, ts1, ts2)
-				} else {
-					tsSpans = req.TsSpans
-				}
+				var tsSpans = req.TsSpans
 				if len(tsSpans) > 0 {
 					if delCnt, err = r.store.TsEngine.DeleteRangeData(req.TableId, uint64(1), beginHash, endHash, tsSpans, tsTxnID, req.OsnId); err != nil {
 						errRollback := r.store.TsEngine.MtrRollback(tableID, rangeGroupID, tsTxnID, nil)
@@ -1334,12 +1303,12 @@ func (b *replicaAppBatch) ApplyToStateMachine(ctx context.Context) error {
 			if hashNum == 0 {
 				hashNum = api.HashParamV2
 			}
-			tableID, beginHash, endHash, startTs, endTs, err := sqlbase.DecodeTSRangeKey(desc.StartKey, desc.EndKey, hashNum)
+			tableID, beginHash, endHash, err := sqlbase.DecodeTSRangeKey(desc.StartKey, desc.EndKey, hashNum)
 			if err != nil {
 				log.Errorf(ctx, "DecodeTSRangeKey failed: %v", err)
 			} else {
-				err = r.store.TsEngine.DeleteReplicaTSData(tableID, beginHash, endHash, startTs, endTs)
-				log.VEventf(ctx, 3, "TsEngine.DeleteReplicaTSData %v, r%v, %v, %v, %v, %v, %v, %v", b.r.store.StoreID(), desc.RangeID, tableID, beginHash, endHash, startTs, endTs, err)
+				err = r.store.TsEngine.DeleteReplicaTSData(tableID, beginHash, endHash, math.MinInt64, math.MaxInt64)
+				log.VEventf(ctx, 3, "TsEngine.DeleteReplicaTSData %v, r%v, %v, %v, %v, %v", b.r.store.StoreID(), desc.RangeID, tableID, beginHash, endHash, err)
 				if err != nil {
 					log.Errorf(ctx, "DeleteReplicaTSData failed", err)
 				}

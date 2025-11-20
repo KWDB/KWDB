@@ -17,7 +17,6 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
-	"math"
 	"net/url"
 	"path/filepath"
 	"reflect"
@@ -131,7 +130,7 @@ func runTimeSeriesImport(
 			// start-single-replica && start
 			ba := flowCtx.Txn.NewBatch()
 			startKey := sqlbase.MakeTsHashPointKey(spec.Table.Desc.ID, uint64(0), spec.Table.Desc.TsTable.HashNum)
-			endKey := sqlbase.MakeTsRangeKey(spec.Table.Desc.ID, api.HashParamV2, math.MaxInt64, spec.Table.Desc.TsTable.HashNum)
+			endKey := sqlbase.MakeTsRangeKey(spec.Table.Desc.ID, api.HashParamV2, spec.Table.Desc.TsTable.HashNum)
 			// make TsImportFlushRequest
 			ba.AddRawRequest(&roachpb.TsImportFlushRequest{
 				RequestHeader: roachpb.RequestHeader{

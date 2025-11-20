@@ -757,8 +757,8 @@ func BuildRowBytesForPrepareTsInsert(
 				PrimaryTagKey: primaryTagKey,
 				RowBytes:      groupBytes,
 				RowTimestamps: groupTimes,
-				StartKey:      sqlbase.MakeTsRangeKey(table.ID, uint64(hashPoints[0]), minTs, hashNum),
-				EndKey:        sqlbase.MakeTsRangeKey(table.ID, uint64(hashPoints[0]), maxTs+1, hashNum),
+				StartKey:      sqlbase.MakeTsRangeKey(table.ID, uint64(hashPoints[0]), hashNum),
+				EndKey:        sqlbase.MakeTsRangeKey(table.ID, uint64(hashPoints[0])+1, hashNum),
 				ValueSize:     valueSize,
 				HashNum:       hashNum,
 			})
@@ -1722,10 +1722,10 @@ func GetPayloadMapForMuiltNode(
 			var startKey, endKey roachpb.Key
 			if di.PArgs.RowType == execbuilder.OnlyTag {
 				startKey = sqlbase.MakeTsHashPointKey(tabID, hashPoint, hashNum)
-				endKey = sqlbase.MakeTsRangeKey(tabID, hashPoint, math.MaxInt64, hashNum)
+				endKey = sqlbase.MakeTsRangeKey(tabID, hashPoint+1, hashNum)
 			} else {
-				startKey = sqlbase.MakeTsRangeKey(tabID, hashPoint, minTs, hashNum)
-				endKey = sqlbase.MakeTsRangeKey(tabID, hashPoint, maxTs+1, hashNum)
+				startKey = sqlbase.MakeTsRangeKey(tabID, hashPoint, hashNum)
+				endKey = sqlbase.MakeTsRangeKey(tabID, hashPoint+1, hashNum)
 			}
 
 			allPayloads = append(allPayloads, &sqlbase.SinglePayloadInfo{

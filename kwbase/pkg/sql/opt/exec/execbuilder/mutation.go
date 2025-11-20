@@ -1077,10 +1077,10 @@ func (ts *TsPayload) BuildRowBytesForTsImport(
 			var endKey roachpb.Key
 			if pArgs.RowType == OnlyTag {
 				startKey = sqlbase.MakeTsHashPointKey(sqlbase.ID(tableID), uint64(hashPoints[0]), hashNum)
-				endKey = sqlbase.MakeTsRangeKey(sqlbase.ID(tableID), uint64(hashPoints[0]), math.MaxInt64, hashNum)
+				endKey = sqlbase.MakeTsRangeKey(sqlbase.ID(tableID), uint64(hashPoints[0])+1, hashNum)
 			} else {
-				startKey = sqlbase.MakeTsRangeKey(sqlbase.ID(tableID), uint64(hashPoints[0]), minTimestamp, hashNum)
-				endKey = sqlbase.MakeTsRangeKey(sqlbase.ID(tableID), uint64(hashPoints[0]), maxTimeStamp+1, hashNum)
+				startKey = sqlbase.MakeTsRangeKey(sqlbase.ID(tableID), uint64(hashPoints[0]), hashNum)
+				endKey = sqlbase.MakeTsRangeKey(sqlbase.ID(tableID), uint64(hashPoints[0])+1, hashNum)
 			}
 			allPayloads[count] = &sqlbase.SinglePayloadInfo{
 				Payload:       payload,
@@ -1505,10 +1505,10 @@ func BuildRowBytesForTsInsert(
 			var endKey roachpb.Key
 			if pArgs.RowType == OnlyTag {
 				startKey = sqlbase.MakeTsHashPointKey(sqlbase.ID(tableID), uint64(hashPoints[0]), hashNum)
-				endKey = sqlbase.MakeTsRangeKey(sqlbase.ID(tableID), uint64(hashPoints[0]), math.MaxInt64, hashNum)
+				endKey = sqlbase.MakeTsRangeKey(sqlbase.ID(tableID), uint64(hashPoints[0])+1, hashNum)
 			} else {
-				startKey = sqlbase.MakeTsRangeKey(sqlbase.ID(tableID), uint64(hashPoints[0]), minTimestamp, hashNum)
-				endKey = sqlbase.MakeTsRangeKey(sqlbase.ID(tableID), uint64(hashPoints[0]), maxTimeStamp+1, hashNum)
+				startKey = sqlbase.MakeTsRangeKey(sqlbase.ID(tableID), uint64(hashPoints[0]), hashNum)
+				endKey = sqlbase.MakeTsRangeKey(sqlbase.ID(tableID), uint64(hashPoints[0])+1, hashNum)
 			}
 			allPayloads[count] = &sqlbase.SinglePayloadInfo{
 				Payload:       payload,
@@ -2990,7 +2990,7 @@ func (b *Builder) buildTSUpdate(tsUpdate *memo.TSUpdateExpr) (execPlan, error) {
 	if b.evalCtx.StartDistributeMode {
 		// StartDistributeMode only exec update in local node.
 		startKey = sqlbase.MakeTsHashPointKey(sqlbase.ID(tab.ID()), uint64(hashPoints[0]), uint64(hashNum))
-		endKey = sqlbase.MakeTsRangeKey(sqlbase.ID(tab.ID()), uint64(hashPoints[0]), math.MaxInt64, uint64(hashNum))
+		endKey = sqlbase.MakeTsRangeKey(sqlbase.ID(tab.ID()), uint64(hashPoints[0])+1, uint64(hashNum))
 	}
 	node, err := b.factory.ConstructTSTagUpdate(
 		[]roachpb.NodeID{nodeID},

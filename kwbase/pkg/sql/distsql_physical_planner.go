@@ -30,6 +30,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"math"
+	"math/rand"
 	"reflect"
 	"runtime"
 	"sort"
@@ -754,9 +755,6 @@ type PlanningCtx struct {
 	// unique id to identify tsTableReader for batchlookup join
 	tsTableReaderID int32
 
-	// pTagAllNotSplit a flag that primary tag not split by time
-	pTagAllNotSplit bool
-
 	haveSubquery bool
 
 	// isStream used to build stream StreamReaderSpec
@@ -984,18 +982,18 @@ func (h *distSQLNodeHealth) check(ctx context.Context, nodeID roachpb.NodeID) er
 // PartitionTSSpansByPrimaryTagValue gets SpanPartitions
 func (dsp *DistSQLPlanner) PartitionTSSpansByPrimaryTagValue(
 	planCtx *PlanningCtx, tableID uint64, hashNum uint64, primaryTagValues ...[]byte,
-) ([]SpanPartition, error) {
+) ([]SpanPartition, []SpansType, error) {
 	var spans roachpb.Spans
 	points, err := api.GetHashPointByPrimaryTag(hashNum, primaryTagValues...)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	hashIDMap := make(map[api.HashPoint]struct{})
 	for _, point := range points {
 		if _, ok := hashIDMap[point]; !ok {
 			span := roachpb.Span{
-				Key:    sqlbase.MakeTsRangeKey(sqlbase.ID(tableID), uint64(point), math.MinInt64, hashNum),
-				EndKey: sqlbase.MakeTsRangeKey(sqlbase.ID(tableID), uint64(point), math.MaxInt64, hashNum),
+				Key:    sqlbase.MakeTsRangeKey(sqlbase.ID(tableID), uint64(point), hashNum),
+				EndKey: sqlbase.MakeTsRangeKey(sqlbase.ID(tableID), uint64(point)+1, hashNum),
 			}
 			spans = append(spans, span)
 			hashIDMap[point] = struct{}{}
@@ -1007,15 +1005,29 @@ func (dsp *DistSQLPlanner) PartitionTSSpansByPrimaryTagValue(
 // PartitionTSSpansByTableID gets PartitionTSSpans by TableID
 func (dsp *DistSQLPlanner) PartitionTSSpansByTableID(
 	planCtx *PlanningCtx, tableID uint64, hashNum uint64,
-) ([]SpanPartition, error) {
+) ([]SpanPartition, []SpansType, error) {
 	var spans roachpb.Spans
 	span := roachpb.Span{
-		Key:    sqlbase.MakeTsRangeKey(sqlbase.ID(tableID), 0, math.MinInt64, hashNum),
-		EndKey: sqlbase.MakeTsRangeKey(sqlbase.ID(tableID), hashNum-1, math.MaxInt64, hashNum),
+		Key:    sqlbase.MakeTsRangeKey(sqlbase.ID(tableID), 0, hashNum),
+		EndKey: sqlbase.MakeTsRangeKey(sqlbase.ID(tableID), hashNum, hashNum),
 	}
 	spans = append(spans, span)
 	return dsp.partitionTSSpans(planCtx, spans)
 }
+
+// SpanType use to show span and query from leader or follower.
+type SpanType int
+
+// SpansType use to show span and query from leader or follower.
+type SpansType struct {
+	nodeID    roachpb.NodeID
+	spansType []SpanType
+}
+
+const (
+	leader   SpanType = 0
+	follower SpanType = 1
+)
 
 // partitionTSSpans finds out which nodes are owners for ranges touching the
 // given spans, and splits the spans according to owning nodes. The result is a
@@ -1028,12 +1040,13 @@ func (dsp *DistSQLPlanner) PartitionTSSpansByTableID(
 // such nodes are assigned to the gateway.
 func (dsp *DistSQLPlanner) partitionTSSpans(
 	planCtx *PlanningCtx, spans roachpb.Spans,
-) ([]SpanPartition, error) {
+) ([]SpanPartition, []SpansType, error) {
 	if len(spans) == 0 {
 		panic("no spans")
 	}
 	ctx := planCtx.ctx
 	partitions := make([]SpanPartition, 0, 1)
+	partitionsType := make([]SpansType, 0, 1)
 	//if planCtx.isLocal {
 	//	// If we're planning locally, map all spans to the local node.
 	//	partitions = append(partitions,
@@ -1052,12 +1065,14 @@ func (dsp *DistSQLPlanner) partitionTSSpans(
 
 	if api.SingleNode {
 		partitions = append(partitions, SpanPartition{Node: dsp.nodeDesc.NodeID, Spans: spans})
-		return partitions, nil
+		// partitionsType empty when start with single-node
+		return partitions, nil, nil
 	}
 
 	useCache := tsQueryUseCache.Get(&dsp.st.SV)
 	for _, span := range spans {
 		var lastNodeID roachpb.NodeID
+		var lastType SpanType
 		// lastKey maintains the EndKey of the last piece of `span`.
 		if log.V(1) {
 			log.Infof(ctx, "partitioning span %s", span)
@@ -1066,7 +1081,7 @@ func (dsp *DistSQLPlanner) partitionTSSpans(
 		if bytes.Compare(span.Key, span.EndKey) > 0 {
 			err := errors.Newf("invalid span[%v, %v]", span.Key, span.EndKey)
 			log.Error(ctx, err)
-			return nil, err
+			return nil, nil, err
 		}
 
 		var err error
@@ -1075,7 +1090,7 @@ func (dsp *DistSQLPlanner) partitionTSSpans(
 		if useCache {
 			descs, err = getAllRangeFromRangeCache(ctx, dsp.distSender, span)
 			if err != nil {
-				return nil, err
+				return nil, nil, err
 			}
 
 			nodeIDs, err = getLeaseHolderByLeaseInfoRequest(ctx, dsp, descs)
@@ -1090,6 +1105,7 @@ func (dsp *DistSQLPlanner) partitionTSSpans(
 		for ; ; pos++ {
 			var nextKey roachpb.Key
 			var nodeID roachpb.NodeID
+			var resp *roachpb.LeaseInfoResponse
 
 			if useCache {
 				// use nodeIDs and range descs got before
@@ -1103,13 +1119,36 @@ func (dsp *DistSQLPlanner) partitionTSSpans(
 				b.AddRawRequest(liReq)
 				b.Header.ReturnRangeInfo = true
 				if err = dsp.distSQLSrv.DB.Run(ctx, &b); err != nil {
-					return nil, errors.Wrap(err, "looking up lease")
+					return nil, nil, errors.Wrap(err, "looking up lease")
 				}
-				resp := b.RawResponse().Responses[0].GetLeaseInfo()
+				resp = b.RawResponse().Responses[0].GetLeaseInfo()
 				nodeID = resp.Lease.Replica.NodeID
 				nextKey = resp.RangeInfos[0].Desc.EndKey.AsRawKey()
 			}
 
+			threshold := kv.TsFollowerReadThreshold.Get(&dsp.st.SV)
+			// check qps
+			var replicaNodeIDs []roachpb.NodeID
+			var currentType = leader
+			if kv.FollowerReadEnable || (threshold != 0 && resp.LeaseQps > threshold) {
+				for _, r := range resp.RangeInfos[0].Desc.InternalReplicas {
+					err := dsp.nodeHealth.check(planCtx.ctx, r.NodeID)
+					if err != nil {
+						log.Infof(planCtx.ctx, "node %d unhealthy, ty another node", r.NodeID)
+						continue
+					}
+					replicaNodeIDs = append(replicaNodeIDs, r.NodeID)
+				}
+				leaseNode := nodeID
+				if len(replicaNodeIDs) == 0 {
+					nodeID = dsp.nodeDesc.NodeID
+				} else {
+					nodeID = replicaNodeIDs[rand.Intn(len(replicaNodeIDs))]
+				}
+				if leaseNode != nodeID {
+					currentType = follower
+				}
+			}
 			partitionIdx, inNodeMap := nodeMap[nodeID]
 
 			if !inNodeMap {
@@ -1134,18 +1173,20 @@ func (dsp *DistSQLPlanner) partitionTSSpans(
 				if !inNodeMap {
 					partitionIdx = len(partitions)
 					partitions = append(partitions, SpanPartition{Node: nodeID})
+					partitionsType = append(partitionsType, SpansType{nodeID: nodeID})
 					nodeMap[nodeID] = partitionIdx
 				}
 			}
 			partition := &partitions[partitionIdx]
+			partitionType := &partitionsType[partitionIdx]
 
 			var complete bool
-			if nextKey.Compare(span.EndKey) > 0 {
+			if nextKey.Compare(span.EndKey) >= 0 {
 				nextKey = span.EndKey
 				complete = true
 			}
 
-			if lastNodeID == nodeID {
+			if lastNodeID == nodeID && lastType == currentType {
 				// Two consecutive ranges on the same node, merge the spans.
 				partition.Spans[len(partition.Spans)-1].EndKey = nextKey
 			} else {
@@ -1153,6 +1194,8 @@ func (dsp *DistSQLPlanner) partitionTSSpans(
 					Key:    rangeKey,
 					EndKey: nextKey,
 				})
+				partitionType.spansType = append(partitionType.spansType, currentType)
+				lastType = currentType
 				lastNodeID = nodeID
 			}
 
@@ -1163,7 +1206,7 @@ func (dsp *DistSQLPlanner) partitionTSSpans(
 			rangeKey = nextKey
 		}
 	}
-	return partitions, nil
+	return partitions, partitionsType, nil
 }
 
 func getLeaseHolderByLeaseInfoRequest(
@@ -1932,8 +1975,9 @@ func (p *PhysicalPlan) initPhyPlanForTsReaders(
 	tr := execinfrapb.TSReaderSpec{TableID: uint64(n.Table.ID()), TsSpans: n.tsSpans, TableVersion: n.Table.GetTSVersion(),
 		OrderedScan: n.orderedType.UserOrderedScan(), TsTablereaderId: planCtx.tsTableReaderID, BlockFilter: n.blockFilter}
 
-	if n.orderedType.NeedReverse() {
-		tr.Reverse = &tr.OrderedScan
+	if n.orderedType.NeedReverse() || n.reverse {
+		reverse := true
+		tr.Reverse = &reverse
 	}
 	for i := range colMetas {
 		tr.ColMetas = append(tr.ColMetas, &colMetas[i])
@@ -2553,11 +2597,10 @@ func (dsp *DistSQLPlanner) createTSReaders(
 	ptCols, typs, descColumnIDs, columnIDSet := visitTableMeta(n)
 
 	rangeSpans := make(map[roachpb.NodeID][]execinfrapb.HashpointSpan)
-	pTagAllNotSplit := true
 	if planCtx.ExtendedEvalCtx.ExecCfg.StartMode == StartSingleNode {
 		rangeSpans[dsp.nodeDesc.NodeID] = []execinfrapb.HashpointSpan{}
 	} else {
-		rangeSpans, pTagAllNotSplit, err = dsp.getSpans(planCtx, n, ptCols)
+		rangeSpans, err = dsp.getSpans(planCtx, n, ptCols)
 		if err != nil {
 			return PhysicalPlan{}, err
 		}
@@ -2566,8 +2609,6 @@ func (dsp *DistSQLPlanner) createTSReaders(
 	if len(rangeSpans) == 0 {
 		return PhysicalPlan{}, pgerror.New(pgcode.Warning, "get spans error, length of spans is 0")
 	}
-
-	planCtx.pTagAllNotSplit = pTagAllNotSplit
 
 	p.TotalEstimatedScannedRows += n.estimatedRowCount
 	if n.estimatedRowCount > p.MaxEstimatedRowCount {
@@ -5166,13 +5207,6 @@ func (dsp *DistSQLPlanner) createPlanForGroup(
 	if plan.SelfCanExecInTSEngine(n.engine == tree.EngineTypeTimeseries) {
 		pruneFinalAgg := n.optType.PruneFinalAggOpt()
 		addSynchronizer := n.addSynchronizer
-		if !planCtx.pTagAllNotSplit {
-			pruneFinalAgg = false
-			if !addSynchronizer && !plan.HasTSParallelProcessor() {
-				addSynchronizer = true
-			}
-		}
-
 		addOutPutType, err = dsp.addTSAggregators(planCtx, &plan, n, pruneFinalAgg, addSynchronizer)
 	} else if planCtx.isStream {
 		err = dsp.addStreamAggregators(planCtx, &plan, n)
@@ -7270,13 +7304,14 @@ func tsOffsetOptimize(p *PhysicalPlan, limit, offset uint64) {
 // PartitionTSSpansByTableID() functions, and then parse it and construct it as a RangeSpans.
 func (dsp *DistSQLPlanner) getSpans(
 	planCtx *PlanningCtx, n *tsScanNode, ptCols []*sqlbase.ColumnDescriptor,
-) (map[roachpb.NodeID][]execinfrapb.HashpointSpan, bool, error) {
+) (map[roachpb.NodeID][]execinfrapb.HashpointSpan, error) {
 	var partitions []SpanPartition
+	var partitionsType []SpansType
 	var err error
 	if len(n.PrimaryTagValues) != 0 && len(n.TagIndex.TagIndexValues) == 0 {
 		pTagSize, _, err := execbuilder.ComputeColumnSize(ptCols)
 		if err != nil {
-			return nil, false, err
+			return nil, err
 		}
 
 		payloads := make([][]byte, 0)
@@ -7284,86 +7319,64 @@ func (dsp *DistSQLPlanner) getSpans(
 		for _, col := range ptCols {
 			payloads, err = getPtagPayloads(payloads, n.PrimaryTagValues[uint32(col.ID)], offset, col.DatumType(), pTagSize)
 			if err != nil {
-				return nil, false, err
+				return nil, err
 			}
 			offset += int(col.TsCol.StorageLen)
 		}
 		// get partitions through PartitionTSSpansByPrimaryTagValue()
-		partitions, err = dsp.PartitionTSSpansByPrimaryTagValue(planCtx, uint64(n.Table.ID()), n.hashNum, payloads...)
+		partitions, partitionsType, err = dsp.PartitionTSSpansByPrimaryTagValue(planCtx, uint64(n.Table.ID()), n.hashNum, payloads...)
 	} else {
 		// get partitions through PartitionTSSpansByTableID()
-		partitions, err = dsp.PartitionTSSpansByTableID(planCtx, uint64(n.Table.ID()), n.hashNum)
+		partitions, partitionsType, err = dsp.PartitionTSSpansByTableID(planCtx, uint64(n.Table.ID()), n.hashNum)
 	}
 	if err != nil {
-		return nil, false, err
+		return nil, err
 	}
 	if len(partitions) == 0 {
-		return nil, false, pgerror.New(pgcode.Warning, "get Partitions error, length of Partitions is 0")
+		return nil, pgerror.New(pgcode.Warning, "get Partitions error, length of Partitions is 0")
 	}
-	return constructRangeSpans(partitions, n)
+	return constructRangeSpans(partitions, partitionsType, n)
 }
 
 // constructRangeSpans construct RangeSpans base on partitions.
 func constructRangeSpans(
-	partitions []SpanPartition, n *tsScanNode,
-) (map[roachpb.NodeID][]execinfrapb.HashpointSpan, bool, error) {
+	partitions []SpanPartition, partitionsType []SpansType, n *tsScanNode,
+) (map[roachpb.NodeID][]execinfrapb.HashpointSpan, error) {
 	rangeSpans := make(map[roachpb.NodeID][]execinfrapb.HashpointSpan, len(partitions))
 	hashNum := n.hashNum
-	pTagAllNotSplit := true
 	//The number of partitions is equal to the number of nodes.
 	log.VEventf(context.TODO(), 3, "dist sql range partitions : +%v ", partitions)
+	addType := partitionsType != nil && len(partitionsType) == len(partitions)
 	for k := range partitions {
-		// key of hashPointMap is hashPoint, value is TsSpan
-		// ex: [77/1/3/10, 77/1/3/12],[77/1/3/14, 77/1/4/12]  ->
-		// key:3, values:[10,12],[14,max]
-		// key:4, values:[min,12]
-		hashPointMap := make(map[uint32][]execinfrapb.TsSpan)
 		// parse Key and endKey, then construct TsSpan.
+		rangeSpans[partitions[k].Node] = make([]execinfrapb.HashpointSpan, len(partitions[k].Spans))
+		if addType && len(partitionsType[k].spansType) != len(partitions[k].Spans) {
+			addType = false
+		}
 		for k1 := range partitions[k].Spans {
-			_, startHashPoint, startTimestamp, err := sqlbase.DecodeTsRangeKey(partitions[k].Spans[k1].Key, true, uint64(hashNum))
+			_, startHashPoint, err := sqlbase.DecodeTsRangeKey(partitions[k].Spans[k1].Key, true, uint64(hashNum))
 			if err != nil {
-				return nil, false, err
+				return nil, err
 			}
-			_, endHashPoint, endTimestamp, err := sqlbase.DecodeTsRangeKey(partitions[k].Spans[k1].EndKey, false, uint64(hashNum))
+			_, endHashPoint, err := sqlbase.DecodeTsRangeKey(partitions[k].Spans[k1].EndKey, false, uint64(hashNum))
 			if err != nil {
-				return nil, false, err
+				return nil, err
 			}
 
-			if pTagAllNotSplit && (startTimestamp != math.MinInt64 || endTimestamp != math.MaxInt64) {
-				pTagAllNotSplit = false
+			span := execinfrapb.HashpointSpan{
+				From: uint32(startHashPoint),
+				To:   uint32(endHashPoint),
 			}
-
-			if startHashPoint == endHashPoint {
-				// case: not cross device
-				addHashPointMap(&hashPointMap, n.tsSpans, startHashPoint, startTimestamp, endTimestamp-1)
-			} else {
-				// case: cross device
-				// [77/1/3/10, 77/1/5/14] ->
-				// [77/1/3/10, 77/1/3/max], [77/1/4/min, 77/1/4/max], [77/1/5/min, 77/1/5/14]
-				for i := startHashPoint; i <= endHashPoint; i++ {
-					if i == startHashPoint {
-						// first hash point: start - max
-						addHashPointMap(&hashPointMap, n.tsSpans, startHashPoint, startTimestamp, math.MaxInt64)
-					} else if i == endHashPoint {
-						// end hash point: min - end
-						addHashPointMap(&hashPointMap, n.tsSpans, endHashPoint, math.MinInt64, endTimestamp-1)
-					} else {
-						// middle hash point: min - max
-						addHashPointMap(&hashPointMap, n.tsSpans, i, math.MinInt64, math.MaxInt64)
-					}
-				}
+			if addType {
+				var typeTmp int32
+				typeTmp = int32(partitionsType[k].spansType[k1])
+				span.Type = &typeTmp
 			}
+			rangeSpans[partitions[k].Node][k1] = span
 		}
 
-		// construct []execinfrapb.HashpointSpan.
-		for k2 := range hashPointMap {
-			rangeSpans[partitions[k].Node] = append(rangeSpans[partitions[k].Node], execinfrapb.HashpointSpan{
-				Hashpoint: k2,
-				Tspans:    hashPointMap[k2],
-			})
-		}
 	}
-	return rangeSpans, pTagAllNotSplit, nil
+	return rangeSpans, nil
 }
 
 // addHashPointMap confirms the scanning timestamp span, and then

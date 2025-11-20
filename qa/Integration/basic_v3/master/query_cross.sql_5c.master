@@ -8080,48 +8080,40 @@ from meter_detail_info
 where meter_id = '1252011120050116'
   and mnft_code = '125'
     limit 10;
-           tree          |     field      |         description
--------------------------+----------------+------------------------------
-                         | distributed    | true
-                         | vectorized     | false
-  limit                  |                |
-   │                     | engine type    | time series
-   │                     | count          | 10
-   └── synchronizer      |                |
-        └── limit        |                |
-             │           | engine type    | time series
-             │           | count          | 10
-             └── ts scan |                |
-                         | ts-table       | meter_detail_info
-                         | access mode    | tagIndexTable
-                         | ptag filter[0] | meter_id = 1252011120050116
-                         | ptag filter[1] | mnft_code = 125
-(14 rows)
+      tree     |     field      |         description
+---------------+----------------+------------------------------
+               | distributed    | true
+               | vectorized     | false
+  limit        |                |
+   │           | engine type    | time series
+   │           | count          | 10
+   └── ts scan |                |
+               | ts-table       | meter_detail_info
+               | access mode    | tagIndexTable
+               | ptag filter[0] | meter_id = 1252011120050116
+               | ptag filter[1] | mnft_code = 125
+(10 rows)
 > explain select *
 from meter_detail_info
 where create_time >= TIMESTAMPTZ '2024-12-13 00:00:00.000+00:00'
   and meter_id = '1252011120050116'
   and mnft_code = '125'
 limit 10;
-           tree          |     field      |          description
--------------------------+----------------+--------------------------------
-                         | distributed    | true
-                         | vectorized     | false
-  limit                  |                |
-   │                     | engine type    | time series
-   │                     | count          | 10
-   └── synchronizer      |                |
-        └── limit        |                |
-             │           | engine type    | time series
-             │           | count          | 10
-             └── ts scan |                |
-                         | ts-table       | meter_detail_info
-                         | access mode    | tagIndexTable
-                         | spans:fromTime | 2024-12-13 00:00:00 +0000 UTC
-                         | spans:toTime   | 2970-01-01 00:00:00 +0000 UTC
-                         | ptag filter[0] | meter_id = 1252011120050116
-                         | ptag filter[1] | mnft_code = 125
-(16 rows)
+      tree     |     field      |          description
+---------------+----------------+--------------------------------
+               | distributed    | true
+               | vectorized     | false
+  limit        |                |
+   │           | engine type    | time series
+   │           | count          | 10
+   └── ts scan |                |
+               | ts-table       | meter_detail_info
+               | access mode    | tagIndexTable
+               | spans:fromTime | 2024-12-13 00:00:00 +0000 UTC
+               | spans:toTime   | 2970-01-01 00:00:00 +0000 UTC
+               | ptag filter[0] | meter_id = 1252011120050116
+               | ptag filter[1] | mnft_code = 125
+(12 rows)
 > explain select count(1)
 from meter_detail_info
 where create_time >=date_trunc('day', '2024-01-01 10:00:00'::timestamptz)-2h

@@ -313,6 +313,23 @@ func (tr *TSTagReaderSpec) summary() (string, []string) {
 	var res []string
 	res = append(res, fmt.Sprintf("TableID: %v", tr.TableID))
 	res = append(res, fmt.Sprintf("mode: %v", tr.AccessMode.String()))
+	res = append(res, fmt.Sprintf("version: %v", tr.TableVersion))
+	var buf bytes.Buffer
+	for i, val := range tr.RangeSpans {
+		if i > 0 {
+			buf.WriteString(",")
+		}
+		buf.WriteString(fmt.Sprintf("%v-%v", val.From, val.To))
+		if val.Type != nil {
+			if *val.Type == 0 {
+				buf.WriteString("-L")
+			} else {
+				buf.WriteString("-F")
+			}
+		}
+	}
+	res = append(res, fmt.Sprintf("span(%v)", buf.String()))
+
 	if tr.OnlyTag {
 		res = append(res, "OnlyScanTag")
 	}
@@ -320,7 +337,13 @@ func (tr *TSTagReaderSpec) summary() (string, []string) {
 		res = append(res, fmt.Sprintf("ptag [%v]: %v", val.Colid, val.TagValues))
 	}
 	if len(tr.TagIndexIDs) > 0 {
-		res = append(res, fmt.Sprintf("UnionType: %v", tr.UnionType))
+		var unionType string
+		if tr.UnionType == 1 {
+			unionType = "combine"
+		} else {
+			unionType = "Intersection"
+		}
+		res = append(res, fmt.Sprintf("UnionType: %v", unionType))
 		for _, val := range tr.TagIndexIDs {
 			res = append(res, fmt.Sprintf("TagIndexIDs  %v", val))
 		}

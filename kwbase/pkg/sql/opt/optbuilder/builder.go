@@ -184,6 +184,9 @@ type Builder struct {
 	OutPutCols []scopeColumn
 	// TriggerBuilder contains some fields that are only used to build trigger.
 	TriggerInfo *TriggerBuilder
+
+	// InStream is set to true if we build stream select
+	InStream bool
 }
 
 // TriggerBuilder contains some elements that are only used to build trigger.

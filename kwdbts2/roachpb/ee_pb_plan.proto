@@ -888,8 +888,9 @@ message TSStatisticReaderSpec {
 }
 
 message HashpointSpan{
-  required uint32 hashpoint = 1;
-  repeated TsSpan tspans = 2;
+  required uint32 from = 1;
+  required uint32 to = 2;
+  required int32 type = 3;
 }
 
 // TSTagReader Spec

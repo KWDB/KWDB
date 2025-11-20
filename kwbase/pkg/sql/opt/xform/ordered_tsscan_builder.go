@@ -35,12 +35,13 @@ func (b *orderedTSScanBuilder) init(c *CustomFuncs, private memo.TSScanPrivate) 
 // expressions that were specified by previous calls to various add methods.
 func (b *orderedTSScanBuilder) build(grp memo.RelExpr) {
 	// 1. Only scan.
-	b.scanPrivate.ExploreOrderedScan = false
-	switch b.scanPrivate.OrderedScanType {
+	flags := &b.scanPrivate.Flags
+	flags.ExploreOrderedScan = false
+	switch flags.OrderedScanType {
 	case opt.OrderedScan:
-		b.scanPrivate.OrderedScanType = opt.SortAfterScan
+		flags.OrderedScanType = opt.SortAfterScan
 	case opt.SortAfterScan:
-		b.scanPrivate.OrderedScanType = opt.OrderedScan
+		flags.OrderedScanType = opt.OrderedScan
 	}
 
 	b.mem.AddTSScanToGroup(&memo.TSScanExpr{TSScanPrivate: b.scanPrivate}, grp)

@@ -356,56 +356,55 @@ WHERE li.pipeline_sn = pi.pipeline_sn
   AND t.point_sn = 'a1'
 GROUP BY si.station_name
 ORDER BY si.station_name;
-                     tree                    |         field         |               description
----------------------------------------------+-----------------------+------------------------------------------
-                                             | distributed           | true
-                                             | vectorized            | false
-  render                                     |                       |
-   │                                         | station_name          | any_not_null
-   │                                         | avg_value             | avg
-   │                                         | number_of_values      | count
-   └── group                                 |                       |
-        │                                    | aggregate 0           | avg(measure_value)
-        │                                    | aggregate 1           | count(measure_value)
-        │                                    | aggregate 2           | any_not_null(station_name)
-        └── render                           |                       |
-             │                               | measure_value         | measure_value
-             │                               | station_name          | station_name
-             └── merge-join                  |                       |
-                  │                          | type                  | inner
-                  │                          | equality              | (work_area_sn) = (work_area_sn)
-                  │                          | left cols are key     |
-                  │                          | mergeJoinOrder        | +"(work_area_sn=work_area_sn)"
-                  ├── scan                   |                       |
-                  │                          | table                 | workarea_info@workarea_name_index
-                  │                          | spans                 | /"work_area_1"-/"work_area_1"/PrefixEnd
-                  └── lookup-join            |                       |
-                       │                     | table                 | station_info@primary
-                       │                     | type                  | inner
-                       │                     | equality              | (station_sn) = (station_sn)
-                       │                     | equality cols are key |
-                       │                     | parallel              |
-                       └── merge-join        |                       |
-                            │                | type                  | inner
-                            │                | equality              | (point_sn) = (point_sn)
-                            │                | left cols are key     |
-                            │                | mergeJoinOrder        | +"(point_sn=point_sn)"
-                            ├── lookup-join  |                       |
-                            │    │           | table                 | pipeline_info@pipeline_sn_index
-                            │    │           | type                  | inner
-                            │    │           | equality              | (pipeline_sn) = (pipeline_sn)
-                            │    │           | equality cols are key |
-                            │    │           | parallel              |
-                            │    └── scan    |                       |
-                            │                | table                 | point_info@primary
-                            │                | spans                 | /"a1"-/"a1"/#
-                            └── synchronizer |                       |
-                                 └── ts scan |                       |
-                                             | ts-table              | t_point
-                                             | access mode           | tagIndexTable
-                                             | tag filter[0]         | measure_type = 1
-                                             | ptag filter[0]        | point_sn = 'a1'
-(47 rows)
+                    tree                    |         field         |               description
+--------------------------------------------+-----------------------+------------------------------------------
+                                            | distributed           | true
+                                            | vectorized            | false
+  render                                    |                       |
+   │                                        | station_name          | any_not_null
+   │                                        | avg_value             | avg
+   │                                        | number_of_values      | count
+   └── group                                |                       |
+        │                                   | aggregate 0           | avg(measure_value)
+        │                                   | aggregate 1           | count(measure_value)
+        │                                   | aggregate 2           | any_not_null(station_name)
+        └── render                          |                       |
+             │                              | measure_value         | measure_value
+             │                              | station_name          | station_name
+             └── merge-join                 |                       |
+                  │                         | type                  | inner
+                  │                         | equality              | (work_area_sn) = (work_area_sn)
+                  │                         | left cols are key     |
+                  │                         | mergeJoinOrder        | +"(work_area_sn=work_area_sn)"
+                  ├── scan                  |                       |
+                  │                         | table                 | workarea_info@workarea_name_index
+                  │                         | spans                 | /"work_area_1"-/"work_area_1"/PrefixEnd
+                  └── lookup-join           |                       |
+                       │                    | table                 | station_info@primary
+                       │                    | type                  | inner
+                       │                    | equality              | (station_sn) = (station_sn)
+                       │                    | equality cols are key |
+                       │                    | parallel              |
+                       └── merge-join       |                       |
+                            │               | type                  | inner
+                            │               | equality              | (point_sn) = (point_sn)
+                            │               | left cols are key     |
+                            │               | mergeJoinOrder        | +"(point_sn=point_sn)"
+                            ├── lookup-join |                       |
+                            │    │          | table                 | pipeline_info@pipeline_sn_index
+                            │    │          | type                  | inner
+                            │    │          | equality              | (pipeline_sn) = (pipeline_sn)
+                            │    │          | equality cols are key |
+                            │    │          | parallel              |
+                            │    └── scan   |                       |
+                            │               | table                 | point_info@primary
+                            │               | spans                 | /"a1"-/"a1"/#
+                            └── ts scan     |                       |
+                                            | ts-table              | t_point
+                                            | access mode           | tagIndexTable
+                                            | tag filter[0]         | measure_type = 1
+                                            | ptag filter[0]        | point_sn = 'a1'
+(46 rows)
 > SELECT si.station_name,
        COUNT(t.measure_value),
        AVG(t.measure_value)
@@ -1352,56 +1351,55 @@ WHERE li.pipeline_sn = pi.pipeline_sn
   AND t.point_sn = 'a1'
 GROUP BY si.station_name
 ORDER BY si.station_name;
-                     tree                    |         field         |               description
----------------------------------------------+-----------------------+------------------------------------------
-                                             | distributed           | true
-                                             | vectorized            | false
-  render                                     |                       |
-   │                                         | station_name          | any_not_null
-   │                                         | avg_value             | avg
-   │                                         | number_of_values      | count
-   └── group                                 |                       |
-        │                                    | aggregate 0           | avg(measure_value)
-        │                                    | aggregate 1           | count(measure_value)
-        │                                    | aggregate 2           | any_not_null(station_name)
-        └── render                           |                       |
-             │                               | measure_value         | measure_value
-             │                               | station_name          | station_name
-             └── merge-join                  |                       |
-                  │                          | type                  | inner
-                  │                          | equality              | (work_area_sn) = (work_area_sn)
-                  │                          | left cols are key     |
-                  │                          | mergeJoinOrder        | +"(work_area_sn=work_area_sn)"
-                  ├── scan                   |                       |
-                  │                          | table                 | workarea_info@workarea_name_index
-                  │                          | spans                 | /"work_area_1"-/"work_area_1"/PrefixEnd
-                  └── lookup-join            |                       |
-                       │                     | table                 | station_info@primary
-                       │                     | type                  | inner
-                       │                     | equality              | (station_sn) = (station_sn)
-                       │                     | equality cols are key |
-                       │                     | parallel              |
-                       └── merge-join        |                       |
-                            │                | type                  | inner
-                            │                | equality              | (point_sn) = (point_sn)
-                            │                | left cols are key     |
-                            │                | mergeJoinOrder        | +"(point_sn=point_sn)"
-                            ├── lookup-join  |                       |
-                            │    │           | table                 | pipeline_info@pipeline_sn_index
-                            │    │           | type                  | inner
-                            │    │           | equality              | (pipeline_sn) = (pipeline_sn)
-                            │    │           | equality cols are key |
-                            │    │           | parallel              |
-                            │    └── scan    |                       |
-                            │                | table                 | point_info@primary
-                            │                | spans                 | /"a1"-/"a1"/#
-                            └── synchronizer |                       |
-                                 └── ts scan |                       |
-                                             | ts-table              | t_point
-                                             | access mode           | tagIndexTable
-                                             | tag filter[0]         | measure_type = 1
-                                             | ptag filter[0]        | point_sn = 'a1'
-(47 rows)
+                    tree                    |         field         |               description
+--------------------------------------------+-----------------------+------------------------------------------
+                                            | distributed           | true
+                                            | vectorized            | false
+  render                                    |                       |
+   │                                        | station_name          | any_not_null
+   │                                        | avg_value             | avg
+   │                                        | number_of_values      | count
+   └── group                                |                       |
+        │                                   | aggregate 0           | avg(measure_value)
+        │                                   | aggregate 1           | count(measure_value)
+        │                                   | aggregate 2           | any_not_null(station_name)
+        └── render                          |                       |
+             │                              | measure_value         | measure_value
+             │                              | station_name          | station_name
+             └── merge-join                 |                       |
+                  │                         | type                  | inner
+                  │                         | equality              | (work_area_sn) = (work_area_sn)
+                  │                         | left cols are key     |
+                  │                         | mergeJoinOrder        | +"(work_area_sn=work_area_sn)"
+                  ├── scan                  |                       |
+                  │                         | table                 | workarea_info@workarea_name_index
+                  │                         | spans                 | /"work_area_1"-/"work_area_1"/PrefixEnd
+                  └── lookup-join           |                       |
+                       │                    | table                 | station_info@primary
+                       │                    | type                  | inner
+                       │                    | equality              | (station_sn) = (station_sn)
+                       │                    | equality cols are key |
+                       │                    | parallel              |
+                       └── merge-join       |                       |
+                            │               | type                  | inner
+                            │               | equality              | (point_sn) = (point_sn)
+                            │               | left cols are key     |
+                            │               | mergeJoinOrder        | +"(point_sn=point_sn)"
+                            ├── lookup-join |                       |
+                            │    │          | table                 | pipeline_info@pipeline_sn_index
+                            │    │          | type                  | inner
+                            │    │          | equality              | (pipeline_sn) = (pipeline_sn)
+                            │    │          | equality cols are key |
+                            │    │          | parallel              |
+                            │    └── scan   |                       |
+                            │               | table                 | point_info@primary
+                            │               | spans                 | /"a1"-/"a1"/#
+                            └── ts scan     |                       |
+                                            | ts-table              | t_point
+                                            | access mode           | tagIndexTable
+                                            | tag filter[0]         | measure_type = 1
+                                            | ptag filter[0]        | point_sn = 'a1'
+(46 rows)
 > SELECT si.station_name,
        COUNT(t.measure_value),
        AVG(t.measure_value)
@@ -1972,44 +1970,43 @@ WHERE wi.work_area_name = 'work_area_1'
 GROUP BY si.station_name
 HAVING COUNT(t.measure_value) >= 1
 ORDER BY si.station_name;
-                     tree                    |            field            |               description
----------------------------------------------+-----------------------------+------------------------------------------
-                                             | distributed                 | true
-                                             | vectorized                  | false
-  filter                                     |                             |
-   │                                         | filter                      | count >= 1
-   └── group                                 |                             |
-        │                                    | aggregate 0                 | station_name
-        │                                    | aggregate 1                 | count(measure_value)
-        │                                    | aggregate 2                 | avg(measure_value)
-        │                                    | group by                    | station_name
-        │                                    | ordered                     | +station_name
-        └── render                           |                             |
-             │                               | station_name                | station_name
-             │                               | measure_value               | measure_value
-             └── sort                        |                             |
-                  │                          | order                       | +station_name
-                  └── lookup-join            |                             |
-                       │                     | table                       | station_info@primary
-                       │                     | type                        | inner
-                       │                     | equality                    | (station_sn) = (station_sn)
-                       │                     | equality cols are key       |
-                       │                     | parallel                    |
-                       │                     | pred                        | @1 = @9
-                       └── cross-join        |                             |
-                            │                | type                        | cross
-                            ├── scan         |                             |
-                            │                | table                       | workarea_info@workarea_name_index
-                            │                | spans                       | /"work_area_1"-/"work_area_1"/PrefixEnd
-                            └── synchronizer |                             |
-                                 └── ts scan |                             |
-                                             | ts-table                    | t_point
-                                             | access mode                 | tagIndexTable
-                                             | filter                      | measure_value > 11.0
-                                             | tag filter[0]               | measure_type = 1
-                                             | ptag filter[0]              | point_sn = 'a1'
-                                             | block filter[measure_value] | [11.000000000000002 - ]
-(35 rows)
+                  tree                  |            field            |               description
+----------------------------------------+-----------------------------+------------------------------------------
+                                        | distributed                 | true
+                                        | vectorized                  | false
+  filter                                |                             |
+   │                                    | filter                      | count >= 1
+   └── group                            |                             |
+        │                               | aggregate 0                 | station_name
+        │                               | aggregate 1                 | count(measure_value)
+        │                               | aggregate 2                 | avg(measure_value)
+        │                               | group by                    | station_name
+        │                               | ordered                     | +station_name
+        └── render                      |                             |
+             │                          | station_name                | station_name
+             │                          | measure_value               | measure_value
+             └── sort                   |                             |
+                  │                     | order                       | +station_name
+                  └── lookup-join       |                             |
+                       │                | table                       | station_info@primary
+                       │                | type                        | inner
+                       │                | equality                    | (station_sn) = (station_sn)
+                       │                | equality cols are key       |
+                       │                | parallel                    |
+                       │                | pred                        | @1 = @9
+                       └── cross-join   |                             |
+                            │           | type                        | cross
+                            ├── scan    |                             |
+                            │           | table                       | workarea_info@workarea_name_index
+                            │           | spans                       | /"work_area_1"-/"work_area_1"/PrefixEnd
+                            └── ts scan |                             |
+                                        | ts-table                    | t_point
+                                        | access mode                 | tagIndexTable
+                                        | filter                      | measure_value > 11.0
+                                        | tag filter[0]               | measure_type = 1
+                                        | ptag filter[0]              | point_sn = 'a1'
+                                        | block filter[measure_value] | [11.000000000000002 - ]
+(34 rows)
 > SELECT si.station_name,
        COUNT(t.measure_value),
        AVG(t.measure_value)

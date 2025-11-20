@@ -170,20 +170,21 @@ func (ef *execFactory) ConstructTSScan(
 
 	// Construct the resultCols which the column need to be scanned.
 	tsScan.PrimaryTagValues = make(map[uint32][]string, 0)
-	tsScan.TagIndex.TagIndexValues = make([]map[uint32][]string, len(private.TagIndex.TagIndexValues))
-	tsScan.TagIndex.UnionType = private.TagIndex.UnionType
-	tsScan.TagIndex.IndexID = private.TagIndex.IndexID
-	for j := range private.TagIndex.TagIndexValues {
+	flags := &private.Flags
+	tsScan.TagIndex.TagIndexValues = make([]map[uint32][]string, len(flags.TagIndex.TagIndexValues))
+	tsScan.TagIndex.UnionType = flags.TagIndex.UnionType
+	tsScan.TagIndex.IndexID = flags.TagIndex.IndexID
+	for j := range flags.TagIndex.TagIndexValues {
 		tsScan.TagIndex.TagIndexValues[j] = make(map[uint32][]string, 0)
 	}
 	for i := 0; i < table.DeletableColumnCount(); i++ {
 		colID := private.Table.ColumnID(count)
 		col := table.Column(i)
-		if v, ok := private.PrimaryTagValues[uint32(private.Table.ColumnID(i))]; ok {
+		if v, ok := flags.PrimaryTagValues[uint32(private.Table.ColumnID(i))]; ok {
 			tsScan.PrimaryTagValues[uint32(table.Column(i).ColID())] = v
 		}
-		for j := range private.TagIndex.TagIndexValues {
-			if v, ok := private.TagIndex.TagIndexValues[j][uint32(private.Table.ColumnID(i))]; ok {
+		for j := range flags.TagIndex.TagIndexValues {
+			if v, ok := flags.TagIndex.TagIndexValues[j][uint32(private.Table.ColumnID(i))]; ok {
 				tsScan.TagIndex.TagIndexValues[j][uint32(table.Column(i).ColID())] = v
 			}
 		}
@@ -203,14 +204,15 @@ func (ef *execFactory) ConstructTSScan(
 	}
 	tsScan.filterVars = tree.MakeIndexedVarHelper(tsScan, len(resultCols))
 	tsScan.resultColumns = resultCols
-	tsScan.AccessMode = execinfrapb.TSTableReadMode(private.AccessMode)
-	tsScan.HintType = private.HintType
-	tsScan.orderedType = private.OrderedScanType
-	tsScan.ScanAggArray = private.ScanAggs
+	tsScan.AccessMode = execinfrapb.TSTableReadMode(flags.AccessMode)
+	tsScan.HintType = flags.HintType
+	tsScan.orderedType = flags.OrderedScanType
+	tsScan.ScanAggArray = flags.ScanAggs
 	tsScan.TableMetaID = private.Table
 	tsScan.hashNum = table.GetTSHashNum()
 	tsScan.estimatedRowCount = uint64(rowCount)
 	tsScan.blockFilter = blockFilter
+	tsScan.reverse = flags.Direction == tree.Descending
 
 	// bind tag filter and primary filter to tsScanNode.
 	bindFilter := func(filters []tree.TypedExpr, primaryTag bool, tagIndex bool) bool {
@@ -1074,20 +1076,22 @@ func (ef *execFactory) ConstructLimit(
 		engine:             engine,
 		pushLimitToAggScan: getLimitOpt(limitExpr),
 	}
-	if limit != nil {
-		node.canOpt = tryOptLimitOrder(meta, limitExpr, limit, ef.planner.SessionData().MaxPushLimitNumber)
-	} else {
-		canOpt := (ef.planner.execCfg.StartMode == StartSingleNode) && tryOffsetOpt(meta, limitExpr, offset) &&
-			checkFilterForOffsetOpt(input)
-		if canOpt {
-			// offset optimize must have limitNode and limit count less than MaxPushLimitNumber
-			if v, ok := input.(*limitNode); ok {
-				count, ok1 := v.countExpr.(*tree.DInt)
-				offset, ok2 := offset.(*tree.DInt)
-				if ok1 && ok2 && (int64(*count)-int64(*offset) < ef.planner.SessionData().MaxPushLimitNumber) {
-					node.countExpr = v.countExpr
-					node.plan = applyOffsetOptimize(v.plan, false).(planNode)
-					node.canOpt = true
+	if limitExpr.IsTSEngine() {
+		if limit != nil {
+			node.canOpt = tryOptLimitOrder(meta, limitExpr, limit, ef.planner.SessionData().MaxPushLimitNumber)
+		} else {
+			canOpt := (ef.planner.execCfg.StartMode == StartSingleNode) && tryOffsetOpt(meta, limitExpr, offset) &&
+				checkFilterForOffsetOpt(input)
+			if canOpt {
+				// offset optimize must have limitNode and limit count less than MaxPushLimitNumber
+				if v, ok := input.(*limitNode); ok {
+					count, ok1 := v.countExpr.(*tree.DInt)
+					offset, ok2 := offset.(*tree.DInt)
+					if ok1 && ok2 && (int64(*count)-int64(*offset) < ef.planner.SessionData().MaxPushLimitNumber) {
+						node.countExpr = v.countExpr
+						node.plan = applyOffsetOptimize(v.plan, false).(planNode)
+						node.canOpt = true
+					}
 				}
 			}
 		}
@@ -2945,6 +2949,22 @@ func tryOptLimitOrder(
 	return false
 }
 
+// checkOrderByTimeStampCol checks input order by timestamp col
+func checkOrderByTimeStampCol(t memo.RelExpr, meta *opt.Metadata) bool {
+	orderTimestampCol := false
+	for _, v := range t.ProvidedPhysical().Ordering {
+		if v.Descending() {
+			v = -v
+		}
+		col := meta.ColumnMeta(opt.ColumnID(v))
+		if col.Table.ColumnID(0) == col.MetaID {
+			orderTimestampCol = true
+			break
+		}
+	}
+	return orderTimestampCol
+}
+
 // tryOffsetOpt check if limit offset and sort can optimize.
 // meta is metadata.
 // e is memo.LimitExpr
@@ -2957,8 +2977,13 @@ func tryOffsetOpt(meta *opt.Metadata, e memo.RelExpr, offset tree.TypedExpr) boo
 		if l, ok := e.(*memo.OffsetExpr); ok {
 			// need order by ts col
 			if limit, ok := l.Input.(*memo.LimitExpr); ok {
-				if sort, ok := limit.Input.(*memo.SortExpr); ok {
+				if sort, IsSort := limit.Input.(*memo.SortExpr); IsSort {
 					return walkSort(meta, sort)
+				}
+
+				input := limit.Input
+				if checkOrderByTimeStampCol(input, meta) && walkSort(meta, input) {
+					return true
 				}
 			}
 
@@ -3247,7 +3272,7 @@ func (ef *execFactory) ResetTsScanAccessMode(
 ) {
 	setAccessMode := func(e memo.RelExpr) {
 		if tsScanExpr, ok := e.(*memo.TSScanExpr); ok {
-			tsScanExpr.TSScanPrivate.AccessMode = int(originalAccessMode)
+			tsScanExpr.TSScanPrivate.Flags.AccessMode = int(originalAccessMode)
 		}
 	}
 

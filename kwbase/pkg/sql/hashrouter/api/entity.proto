@@ -115,12 +115,9 @@ message HashPartition {
   option (gogoproto.equal) = true;
   // HashPartition start point
   optional int32 start_point = 1 [(gogoproto.nullable) = false, (gogoproto.casttype) = "HashPoint"];
-  // HashPartition start timeStamp
-  optional int64 start_time_stamp = 2 [(gogoproto.nullable) = false];
   // HashPartition end point
-  optional int32 end_point = 3 [(gogoproto.nullable) = false, (gogoproto.casttype) = "HashPoint"];
-  // HashPartition end timeStamp
-  optional int64 end_time_stamp = 4 [(gogoproto.nullable) = false];
+  optional int32 end_point = 2 [(gogoproto.nullable) = false, (gogoproto.casttype) = "HashPoint"];
+
 }
 
 // EntityRangePartitionMessage is the changes of the HashPartition in need

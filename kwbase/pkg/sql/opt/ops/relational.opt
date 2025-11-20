@@ -1006,38 +1006,8 @@ define TSScanPrivate {
     # may be a subset of the columns that the table/index contains.
     Cols ColSet
 
-    # AccessMode table read mode
-    AccessMode int
-
-    # ScanAggs statistic cols
-    ScanAggs bool
-
-    # TagFilter tag col filter exprs
-    TagFilter Exprs
-
-    # BlockFilter ordinary col(except the ts col) filter exprs
-    BlockFilter FiltersExpr
-
-    # PrimaryTagFilter primary tag col filter exprs
-    PrimaryTagFilter Exprs
-
-    # PrimaryTagValues primary tag col and value map
-    PrimaryTagValues PTagValues
-
-    # TagIndexFilter tag index col filter exprs
-    TagIndexFilter Exprs
-
-    # TagIndex tag col and value map
-    TagIndex TagIndexInfo
-
-    # HintType select hint type for control plan
-    HintType TSHintType
-
-    # ExploreOrderedScan is a flag for order by ts scan ts table
-    ExploreOrderedScan bool
-
-    # OrderedScanType is a flag for order by ts scan ts table
-    OrderedScanType TSOrderedScanType
+    # Flags modify how the table is scanned, such as which index is used to scan.
+    Flags TSScanFlags
 }
 
 # TSInsert is an expression for INSERT DEVICE. Applies only to constant value inserts.

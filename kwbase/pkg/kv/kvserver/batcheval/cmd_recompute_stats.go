@@ -26,6 +26,7 @@ package batcheval
 
 import (
 	"context"
+	"math"
 
 	"gitee.com/kwbasedb/kwbase/pkg/clusterversion"
 	"gitee.com/kwbasedb/kwbase/pkg/keys"
@@ -119,8 +120,8 @@ func RecomputeStats(
 		if hashNum == 0 {
 			hashNum = api.HashParamV2
 		}
-		startTableID, startHashPoint, startTimestamp, err1 := sqlbase.DecodeTsRangeKey(desc.StartKey, true, hashNum)
-		_, EndHashPoint, endTimestamp, err2 := sqlbase.DecodeTsRangeKey(desc.EndKey, false, hashNum)
+		startTableID, startHashPoint, err1 := sqlbase.DecodeTsRangeKey(desc.StartKey, true, hashNum)
+		_, EndHashPoint, err2 := sqlbase.DecodeTsRangeKey(desc.EndKey, false, hashNum)
 
 		if err1 != nil || err2 != nil {
 			delta = enginepb.MVCCStats{}
@@ -129,8 +130,8 @@ func RecomputeStats(
 				startTableID,
 				startHashPoint,
 				EndHashPoint,
-				startTimestamp,
-				endTimestamp,
+				math.MinInt64,
+				math.MaxInt64,
 			)
 			if err == nil {
 				delta = enginepb.MVCCStats{

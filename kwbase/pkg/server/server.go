@@ -2248,10 +2248,13 @@ func (s *Server) Start(ctx context.Context) error {
 	// Attempt to upgrade cluster version.
 	s.startAttemptUpgrade(ctx)
 
-	// for show jobs
-	err = s.ShowJobsForInsert(ctx)
-	if err != nil {
-		log.Errorf(ctx, "insert job info failed, error %v", err.Error())
+	// FollowerRead skip writing show jobs.
+	if !kv.FollowerReadEnable {
+		// for show jobs
+		err = s.ShowJobsForInsert(ctx)
+		if err != nil {
+			log.Errorf(ctx, "insert job info failed, error %v", err.Error())
+		}
 	}
 
 	// Check if the restful API registration has timed out, and check once every 1/2 * timeout period

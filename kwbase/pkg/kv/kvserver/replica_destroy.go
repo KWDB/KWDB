@@ -252,12 +252,12 @@ func (r *Replica) destroyRaftMuLocked(ctx context.Context, nextReplicaID roachpb
 			if hashNum == 0 {
 				hashNum = api.HashParamV2
 			}
-			tableID, beginHash, endHash, startTs, endTs, err := sqlbase.DecodeTSRangeKey(desc.StartKey, desc.EndKey, hashNum)
+			tableID, beginHash, endHash, err := sqlbase.DecodeTSRangeKey(desc.StartKey, desc.EndKey, hashNum)
 			if err != nil {
 				log.Errorf(ctx, "DecodeTSRangeKey failed: %v", err)
 			} else {
-				err = r.store.TsEngine.DeleteReplicaTSData(tableID, beginHash, endHash, startTs, endTs)
-				log.VEventf(ctx, 3, "TsEngine.DeleteReplicaTSData %v, r%v, %v, %v, %v, %v, %v, %v", r.store.StoreID(), desc.RangeID, tableID, beginHash, endHash, startTs, endTs, err)
+				err = r.store.TsEngine.DeleteReplicaTSData(tableID, beginHash, endHash, math.MinInt64, math.MaxInt64)
+				log.VEventf(ctx, 3, "TsEngine.DeleteReplicaTSData %v, r%v, %v, %v, %v,  %v", r.store.StoreID(), desc.RangeID, tableID, beginHash, endHash, err)
 				if err != nil {
 					log.Errorf(ctx, "DeleteReplicaTSData failed %v", err)
 				}

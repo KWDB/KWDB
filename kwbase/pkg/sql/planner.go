@@ -232,6 +232,9 @@ type planner struct {
 	// It is true if forcing filtering in ME and preventing pushdown to tsengine.
 	// This is used for CDC filtering.
 	forceFilterInME bool
+
+	// inStream used to block tsscan table ordered optimize,because stream is not ordered
+	inStream bool
 }
 
 // IsInternalSQL return IsInternalSQL

@@ -254,6 +254,9 @@ const (
 
 	// ApplyOutsideIn is setted when the sql can apply outside-in.
 	ApplyOutsideIn = 1 << 7
+
+	// GroupByPtag is setted when group by ptags
+	GroupByPtag = 1 << 8
 )
 
 // TimeBucketOpt return true if has TimeBucketPushAgg opt
@@ -304,6 +307,11 @@ func (v GroupOptType) CanApplyOutsideIn() bool {
 // ResetApplyOutsideIn return true in the case can use ouside-in.
 func (v GroupOptType) ResetApplyOutsideIn() {
 	v &^= ApplyOutsideIn
+}
+
+// GroupByPtags return true if has GroupByPtag opt
+func (v GroupOptType) GroupByPtags() bool {
+	return v&GroupByPtag > 0
 }
 
 // String return opt all type name

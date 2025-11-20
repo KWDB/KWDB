@@ -198,20 +198,16 @@ func (mq *mergeQueue) shouldQueue(
 			if rHashNum == 0 {
 				rHashNum = api.HashParamV2
 			}
-			startTableID, startHashPoint, _, err := sqlbase.DecodeTsRangeKey(lhsDesc.StartKey, true, lHashNum)
+			startTableID, startHashPoint, err := sqlbase.DecodeTsRangeKey(lhsDesc.StartKey, true, lHashNum)
 			if err != nil {
 				return false, 0
 			}
-			endTableID, endHashPoint, endTimestamp, err := sqlbase.DecodeTsRangeKey(rhsDesc.StartKey, true, rHashNum)
+			endTableID, endHashPoint, err := sqlbase.DecodeTsRangeKey(rhsDesc.StartKey, true, rHashNum)
 			if err != nil {
 				return false, 0
 			}
 			if startTableID != endTableID || startHashPoint != endHashPoint {
 				// Time series ranges can only be merged by timestamp
-				return false, 0
-			}
-			if endTimestamp == math.MaxInt64 {
-				// active range
 				return false, 0
 			}
 		}
@@ -320,24 +316,16 @@ func (mq *mergeQueue) process(
 		if rHashNum == 0 {
 			rHashNum = api.HashParamV2
 		}
-		startTableID, startHashPoint, _, err := sqlbase.DecodeTsRangeKey(lhsDesc.StartKey, true, lHashNum)
+		startTableID, startHashPoint, err := sqlbase.DecodeTsRangeKey(lhsDesc.StartKey, true, lHashNum)
 		if err != nil {
 			return err
 		}
-		endTableID, endHashPoint, _, err := sqlbase.DecodeTsRangeKey(rhsDesc.StartKey, true, rHashNum)
+		endTableID, endHashPoint, err := sqlbase.DecodeTsRangeKey(rhsDesc.StartKey, true, rHashNum)
 		if err != nil {
 			return err
 		}
 		if startTableID != endTableID || startHashPoint != endHashPoint {
 			// Time series ranges can only be merged by timestamp
-			return nil
-		}
-		_, _, endTimestamp, err := sqlbase.DecodeTsRangeKey(rhsDesc.EndKey, false, rHashNum)
-		if err != nil {
-			return nil
-		}
-		if endTimestamp == math.MaxInt64 {
-			// active range
 			return nil
 		}
 		zone := lhsRepl.mu.zone

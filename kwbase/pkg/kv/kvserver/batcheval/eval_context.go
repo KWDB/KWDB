@@ -27,6 +27,7 @@ package batcheval
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"gitee.com/kwbasedb/kwbase/pkg/kv"
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver/abortspan"
@@ -104,6 +105,8 @@ type EvalContext interface {
 	// NOTE: This should not be used when the load based splitting cluster
 	// setting is disabled.
 	GetSplitQPS() float64
+	// GetLeaseQPS returns the Replica's lease queries/s rate.
+	GetLeaseQPS() (float64, time.Duration)
 
 	GetGCThreshold() hlc.Timestamp
 	GetLastReplicaGCTimestamp(context.Context) (hlc.Timestamp, error)
@@ -206,6 +209,9 @@ func (m *mockEvalCtxImpl) GetMVCCStats() enginepb.MVCCStats {
 }
 func (m *mockEvalCtxImpl) GetSplitQPS() float64 {
 	return m.QPS
+}
+func (m *mockEvalCtxImpl) GetLeaseQPS() (float64, time.Duration) {
+	return m.QPS, 0
 }
 func (m *mockEvalCtxImpl) CanCreateTxnRecord(
 	uuid.UUID, []byte, hlc.Timestamp,

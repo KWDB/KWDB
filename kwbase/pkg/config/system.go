@@ -270,7 +270,7 @@ func (s *SystemConfig) GetZoneConfigForKey(key roachpb.RKey) (*zonepb.ZoneConfig
 func (s *SystemConfig) GetZoneConfigForTSKey(
 	key roachpb.RKey, hashNum uint64,
 ) (*zonepb.ZoneConfig, error) {
-	tableID, hashPoint, _, err := sqlbase.DecodeTsRangeKey(key, true, hashNum)
+	tableID, hashPoint, err := sqlbase.DecodeTsRangeKey(key, true, hashNum)
 	if err != nil {
 		return nil, err
 	}

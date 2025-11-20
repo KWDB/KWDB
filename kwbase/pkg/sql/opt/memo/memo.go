@@ -1299,7 +1299,7 @@ func (m *Memo) dealWithGroupBy(src RelExpr, child RelExpr, ret *aggCrossEngCheck
 }
 
 func setOrderedForce(expr *TSScanExpr) {
-	expr.OrderedScanType = opt.ForceOrderedScan
+	expr.Flags.OrderedScanType = opt.ForceOrderedScan
 }
 
 // dealWithOrderBy set engine and add flag for the child of order by
@@ -1392,12 +1392,12 @@ func (m *Memo) projectExprFillStatistic(
 // gp is the GroupingPrivate of (memo.GroupByExpr / memo.ScalarGroupByExpr).
 func (m *Memo) tsScanFillStatistic(tsScan *TSScanExpr, gp *GroupingPrivate) {
 	allColsPrimary := true
-
+	flags := &tsScan.Flags
 	// fill the grouping with ptag from the tagfilter.
 	// do this because some time the grouping col will be reduced in RBO,
 	// causing can not use statistic optimization.
 	tempSet := gp.GroupingCols.Copy()
-	for _, v := range tsScan.TagFilter {
+	for _, v := range flags.TagFilter {
 		addTagToGrouping(&tempSet, v, m.Metadata())
 	}
 
@@ -1408,17 +1408,17 @@ func (m *Memo) tsScanFillStatistic(tsScan *TSScanExpr, gp *GroupingPrivate) {
 
 	tableMeta := m.Metadata().TableMeta(tsScan.Table)
 	if !allColsPrimary || (tempSet.Len() != 0 && tempSet.Len() != tableMeta.PrimaryTagCount) ||
-		tsScan.HintType.OnlyTag() {
+		flags.HintType.OnlyTag() {
 		return
 	}
 
 	if gp.GroupingCols.Len() > 0 || m.CheckOnlyOnePTagValue() {
 		gp.OptFlags |= opt.PruneFinalAgg
-	} else if tsScan.HintType.LastRowOpt() {
+	} else if flags.HintType.LastRowOpt() {
 		gp.OptFlags |= opt.PruneTSFinalAgg
 	}
 
-	tsScan.ScanAggs = true
+	flags.ScanAggs = true
 	gp.OptFlags |= opt.UseStatistic
 }
 
@@ -1843,7 +1843,7 @@ func (m *Memo) dealCanNotAddSynchronize(child *RelExpr) CrossEngCheckResults {
 // set OrderedScanType with opt.ForceOrderedScan
 func (m *Memo) setForceOrderScan(source *TSScanExpr) {
 	if m.CheckFlag(opt.DiffUseOrderScan) || m.CheckFlag(opt.GroupWindowUseOrderScan) {
-		source.OrderedScanType = opt.ForceOrderedScan
+		source.Flags.OrderedScanType = opt.ForceOrderedScan
 	}
 }
 
@@ -1865,7 +1865,8 @@ func (m *Memo) CheckTSScan(source *TSScanExpr) (ret CrossEngCheckResults) {
 		}
 		m.AddColumn(colID, colMeta.Alias, ExprTypCol, ExprPosNone, 0, false)
 	})
-	onlyTag := source.HintType.OnlyTag()
+	flags := &source.Flags
+	onlyTag := flags.HintType.OnlyTag()
 	ret.err = nil
 	ret.canTimeBucketOptimize = true
 	ret.canDiffExecInAE = true
@@ -1875,37 +1876,39 @@ func (m *Memo) CheckTSScan(source *TSScanExpr) (ret CrossEngCheckResults) {
 	} else {
 		// when the tagFilter has a subquery, it needs to Walk to check whether it can execute in ts engine.
 		param := GetSubQueryExpr{m: m}
-		for _, filter := range source.TagFilter {
+		for _, filter := range flags.TagFilter {
 			filter.Walk(&param)
 		}
 		source.SetEngineTS()
 		// only tag mode should not add synchronizer, so param2 will be true.
-		ret.hasAddSynchronizer = onlyTag || source.OrderedScanType == opt.SortAfterScan
+		ret.hasAddSynchronizer = onlyTag || flags.OrderedScanType == opt.SortAfterScan
 	}
 
-	m.CheckHelper.onlyOnePTagValue = false
-	if onlyTag || len(source.PrimaryTagValues) == 0 {
-		source.OrderedScanType = opt.NoOrdered
+	m.SetOnlyOnePTagValue(false)
+	if onlyTag || len(flags.PrimaryTagValues) == 0 {
+		flags.OrderedScanType = opt.NoOrdered
 	} else {
-		for _, v := range source.PrimaryTagValues {
-			if len(v) > 100 {
-				source.OrderedScanType = opt.NoOrdered
+		for _, v := range flags.PrimaryTagValues {
+			if len(v) > 100 || flags.TagIndex.UnionType == 1 {
+				flags.OrderedScanType = opt.NoOrdered
 			} else if len(v) == 1 {
-				m.CheckHelper.onlyOnePTagValue = true
+				m.SetOnlyOnePTagValue(true)
 			}
+			break
 		}
 	}
 
 	m.setForceOrderScan(source)
 
-	if source.OrderedScanType != opt.NoOrdered {
+	if flags.OrderedScanType != opt.NoOrdered {
 		m.CheckHelper.orderedCols.Add(source.Table.ColumnID(0))
 	}
-	m.CheckHelper.orderedScanType = source.OrderedScanType
+	m.CheckHelper.orderedScanType = flags.OrderedScanType
 
-	if source.HintType.LastRowOpt() {
+	if flags.HintType.LastRowOpt() || m.CheckOnlyOnePTagValue() {
 		ret.hasAddSynchronizer = true
 	}
+
 	return ret
 }
 
@@ -1961,7 +1964,7 @@ func (m *Memo) checkSelect(source *SelectExpr) (ret CrossEngCheckResults) {
 		}
 
 		if ret.execInTSEngine {
-			if CheckFilterExprCanExecInTSEngine(filter.Condition, ExprPosSelect, m.CheckHelper.whiteList.CheckWhiteListParam, m.CheckOnlyOnePTagValue()) {
+			if CheckFilterExprCanExecInTSEngine(filter.Condition, ExprPosSelect, m.CheckHelper.whiteList.CheckWhiteListParam) {
 				if ret.canTimeBucketOptimize {
 					ret.canTimeBucketOptimize = m.checkFilterOptTimeBucket(filter.Condition)
 				}
@@ -2011,14 +2014,30 @@ func (m *Memo) checkProject(source *ProjectExpr) (ret CrossEngCheckResults) {
 	m.CheckHelper.orderedCols = opt.ColSet{}
 	findTimeBucket := false
 	for _, proj := range source.Projections {
+		// check group window can push to AE engine
+		// 1 filter contain only ptag filter that equal group by ptag, need push down AE engine, otherwise painic
+		// 2 filter has not only ptag filter, need execute in me engine
+		if exists, pros := GetGroupWindowForbiddenState(proj.Element); exists {
+			// 1 contain only ptag filter, push down
+			if pros.ForbiddenExecInTSEngine && m.CheckOnlyOnePTagValue() {
+				// force execute in AE engine
+				// select *  from ts_table where ptag = 1 group by count_window(3);
+				pros.ForbiddenExecInTSEngine = false
+			} else if pros.ForbiddenExecInTSEngine && !m.CheckOnlyOnePTagValue() {
+				// can not execute in AE engine
+				// select *  from ts_table group by count_window(3);
+				selfExecInTS = false
+				break
+			}
+		}
+
 		proj.Walk(&param)
 		if param.hasSub && !m.CheckFlag(opt.ScalarSubQueryPush) {
 			selfExecInTS = false
 		}
 		if ret.execInTSEngine {
-			// check if element of ProjectionExpr can execute in ts engine.
 			if execInTSEngine, hashcode := CheckExprCanExecInTSEngine(proj.Element.(opt.Expr), ExprPosProjList,
-				m.CheckHelper.whiteList.CheckWhiteListParam, false, m.CheckOnlyOnePTagValue()); execInTSEngine {
+				m.CheckHelper.whiteList.CheckWhiteListParam); execInTSEngine {
 				m.AddColumn(proj.Col, "", GetExprType(proj.Element), ExprPosProjList, hashcode, false)
 			} else {
 				selfExecInTS = false
@@ -2171,6 +2190,22 @@ func (m *Memo) checkGroupBy(
 	}
 
 	ret.isParallel = true
+
+	// check group window
+	if m.CheckFlag(opt.GroupWindowUseOrderScan) {
+		// need execute in AE engine
+		if gp.OptFlags.GroupByPtags() || m.CheckOnlyOnePTagValue() {
+			if !ret.commonRet.execInTSEngine {
+				ret.commonRet.err = pgerror.Newf(pgcode.FeatureNotSupported, "group by group window and ptag column not execute in ae engine")
+				return ret
+			}
+		} else {
+			if ret.commonRet.execInTSEngine {
+				ret.commonRet.err = pgerror.Newf(pgcode.FeatureNotSupported, "group by group window execute in ae engine")
+				return ret
+			}
+		}
+	}
 
 	// memo.GroupByExpr or memo.ScalarGroupByExpr or memo.DistinctOnExpr
 	// should not parallel when the rows less than ten hundred.
@@ -2494,9 +2529,36 @@ func (m *Memo) SetTsDop(num uint32) {
 	m.tsDop = num
 }
 
+// SetOnlyOnePTagValue sets only One PTag Value
+func (m *Memo) SetOnlyOnePTagValue(v bool) {
+	m.CheckHelper.onlyOnePTagValue = v
+}
+
 // CheckOnlyOnePTagValue return onlyOnePTagValue
 func (m *Memo) CheckOnlyOnePTagValue() bool {
 	return m.CheckHelper.onlyOnePTagValue
+}
+
+// CheckOnlyOnePTagValue returns that only scan single device data
+func (m *TSScanFlags) CheckOnlyOnePTagValue() bool {
+	if m.HintType.OnlyTag() || m.InStream {
+		return false
+	}
+	// the Combine mode of tag index cannot determine a single device
+	if m.TagIndex.UnionType == Combine || len(m.PrimaryTagValues) == 0 {
+		return false
+	}
+
+	// primary tag value needs only one value
+	for _, v := range m.PrimaryTagValues {
+		if len(v) == 1 {
+			return true
+		}
+
+		break
+	}
+
+	return false
 }
 
 // InsideOutOptHelper records agg functions and projections which can push down ts engine side.
@@ -2688,6 +2750,30 @@ func CheckGroupWindowExist(expr opt.Expr) (string, bool) {
 	return "", false
 }
 
+// GetGroupWindowForbiddenState if expr contains grouping window function, return true
+// ret Param
+// 1 group window exists
+// 2 ForbiddenState
+func GetGroupWindowForbiddenState(expr opt.Expr) (bool, *tree.FunctionProperties) {
+	if expr != nil {
+		if f, ok := expr.(*FunctionExpr); ok {
+			for _, name := range groupWindowNamelist {
+				if f.Name == name {
+					return true, f.Properties
+				}
+			}
+		}
+		if expr.ChildCount() > 0 {
+			for i := 0; i < expr.ChildCount(); i++ {
+				if exists, status := GetGroupWindowForbiddenState(expr.Child(i)); exists {
+					return exists, status
+				}
+			}
+		}
+	}
+	return false, nil
+}
+
 // checkApplyOutsideIn checks if agg can apply outside-in.
 // 1. child of GroupByExpr is ProjectionExpr and it can not execute in AE, agg can not apply outside-in.
 // 2. the datType and dataLength of cols of grouping can not meet the conditions, agg can not apply outside-in.
@@ -2697,7 +2783,7 @@ func (m *Memo) checkApplyOutsideIn(input RelExpr, gp *GroupingPrivate, aggs *Agg
 		for _, proj := range projectExpr.Projections {
 			if element, ok := proj.Element.(opt.Expr); ok {
 				if execInTSEngine, _ := CheckExprCanExecInTSEngine(element, ExprPosProjList,
-					m.GetWhiteList().CheckWhiteListParam, false, false); !execInTSEngine {
+					m.GetWhiteList().CheckWhiteListParam); !execInTSEngine {
 					gp.OptFlags.ResetApplyOutsideIn()
 					return
 				}

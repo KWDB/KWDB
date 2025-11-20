@@ -104,6 +104,9 @@ type tsScanNode struct {
 	// output. When there are no statistics to make the estimation, it will be
 	// set to zero.
 	estimatedRowCount uint64
+
+	// direction flags that order need reverse scan
+	reverse bool
 }
 
 // RelationalInfo contains relational information from the other side of

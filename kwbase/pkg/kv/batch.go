@@ -694,12 +694,7 @@ func (b *Batch) adminMerge(key interface{}) {
 // adminSplitTs is only exported on DB. It is here for symmetry with the
 // other operations.
 func (b *Batch) adminSplitTs(
-	spanKeyIn interface{},
-	tableID uint32,
-	hashNum uint64,
-	splitPoints []int32,
-	timestamps []int64,
-	isCreateTable bool,
+	spanKeyIn interface{}, tableID uint32, hashNum uint64, splitPoints []int32, isCreateTable bool,
 ) {
 	spanKey, err := marshalKey(spanKeyIn)
 	if err != nil {
@@ -713,7 +708,6 @@ func (b *Batch) adminSplitTs(
 		TableId:         tableID,
 		HashNum:         hashNum,
 		Keys:            splitPoints,
-		Timestamps:      timestamps,
 		IsCreateTsTable: isCreateTable,
 	}
 	b.AppendReqs(req)

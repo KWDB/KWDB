@@ -502,7 +502,7 @@ func (n *Node) start(
 		return err
 	}
 
-	if len(initializedEngines) != 0 {
+	if len(initializedEngines) != 0 && !kv.FollowerReadEnable {
 		// Connect gossip before starting bootstrap. This will be necessary
 		// to bootstrap new stores. We do it before initializing the NodeID
 		// as well (if needed) to avoid awkward error messages until Gossip
@@ -711,6 +711,9 @@ func (n *Node) connectGossip(ctx context.Context) error {
 // startGossip loops on a periodic ticker to gossip node-related
 // information. Starts a goroutine to loop until the node is closed.
 func (n *Node) startGossip(ctx context.Context, stopper *stop.Stopper) {
+	if kv.FollowerReadEnable {
+		return
+	}
 	ctx = n.AnnotateCtx(ctx)
 	stopper.RunWorker(ctx, func(ctx context.Context) {
 		// This should always return immediately and acts as a sanity check that we

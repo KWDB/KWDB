@@ -65,6 +65,7 @@ func (dsp *DistSQLPlanner) planAndRunCreateStream(
 	localPlanner := planCtx.planner
 	localPlanner.stmt = &Statement{Statement: stmt}
 	localPlanner.forceFilterInME = true
+	localPlanner.inStream = true
 
 	localPlanner.optPlanningCtx.init(localPlanner)
 
@@ -156,6 +157,7 @@ func createPlanForStream(
 	localPlanner := planCtx.planner
 	localPlanner.stmt = &Statement{Statement: stmt}
 	localPlanner.forceFilterInME = true
+	localPlanner.inStream = true
 
 	localPlanner.optPlanningCtx.init(localPlanner)
 

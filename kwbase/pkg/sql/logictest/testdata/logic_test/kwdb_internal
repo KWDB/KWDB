@@ -232,10 +232,10 @@ SELECT * FROM kwdb_internal.zones WHERE false
 zone_id  subzone_id  target  range_name  database_name  table_name  index_name  partition_name
 raw_config_yaml  raw_config_sql  raw_config_protobuf full_config_yaml full_config_sql
 
-query ITTTTTTTTTTTTI colnames
+query ITTTTTTTTTTTTTI colnames
 SELECT * FROM kwdb_internal.ranges WHERE range_id < 0
 ----
-range_id  start_key  start_pretty  end_key  end_pretty  database_name  table_name  index_name  replicas  replica_localities learner_replicas  split_enforced_until  lease_holder range_size
+range_id  start_key  start_pretty  end_key  end_pretty  database_name  table_name  index_name  replicas  replica_localities  learner_replicas  split_enforced_until  lease_holder  lease_holder_qps  range_size
 
 query ITTTTTTTITTTTT colnames
 SELECT * FROM kwdb_internal.ranges_no_leases WHERE range_id < 0

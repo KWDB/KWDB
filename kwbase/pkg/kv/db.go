@@ -557,11 +557,10 @@ func (db *DB) AdminSplitTs(
 	tableID uint32,
 	hashNum uint64,
 	splitPoints []int32,
-	timestamps []int64,
 	isCreateTable bool,
 ) error {
 	b := &Batch{}
-	b.adminSplitTs(spanKey, tableID, hashNum, splitPoints, timestamps, isCreateTable)
+	b.adminSplitTs(spanKey, tableID, hashNum, splitPoints, isCreateTable)
 	return getOneErr(db.Run(ctx, b), b)
 }
 
@@ -939,7 +938,18 @@ func (db *DB) SendUsingSender(
 	}
 
 	tracing.AnnotateTrace()
-	br, pErr := sender.Send(ctx, ba)
+	var br *roachpb.BatchResponse
+	var pErr *roachpb.Error
+	if FollowerReadEnable && ba.Requests != nil &&
+		(ba.Requests[0].GetInner().Method() == roachpb.Scan ||
+			ba.Requests[0].GetInner().Method() == roachpb.Get ||
+			ba.Requests[0].GetInner().Method() == roachpb.LeaseInfo ||
+			ba.Requests[0].GetInner().Method() == roachpb.RangeStats) {
+		ba.ReadConsistency = roachpb.INCONSISTENT
+		br, pErr = db.NonTransactionalSender().Send(ctx, ba)
+	} else {
+		br, pErr = sender.Send(ctx, ba)
+	}
 	if pErr != nil {
 		if log.V(1) {
 			log.Infof(ctx, "failed batch: %s", pErr)

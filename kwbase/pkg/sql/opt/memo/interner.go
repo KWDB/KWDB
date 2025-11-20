@@ -507,6 +507,22 @@ func (h *hasher) HashScanFlags(val ScanFlags) {
 	h.HashBool(val.LeadingTable)
 }
 
+func (h *hasher) HashTSScanFlags(val TSScanFlags) {
+	h.HashInt(val.AccessMode)
+	h.HashBool(val.ScanAggs)
+	h.HashExprs(val.TagFilter)
+	h.HashFiltersExpr(val.BlockFilter)
+	h.HashExprs(val.PrimaryTagFilter)
+	h.HashPTagValues(val.PrimaryTagValues)
+	h.HashExprs(val.TagIndexFilter)
+	h.HashTagIndexInfo(val.TagIndex)
+	h.HashTSHintType(val.HintType)
+	h.HashBool(val.ExploreOrderedScan)
+	h.HashTSOrderedScanType(val.OrderedScanType)
+	h.HashInt(int(val.Direction))
+	h.HashBool(val.InStream)
+}
+
 func (h *hasher) HashJoinFlags(val JoinFlags) {
 	h.HashUint64(uint64(val))
 }
@@ -972,6 +988,21 @@ func (h *hasher) IsScanFlagsEqual(l, r ScanFlags) bool {
 		if l.IndexName[i] != r.IndexName[i] {
 			return false
 		}
+	}
+	return true
+}
+
+func (h *hasher) IsTSScanFlagsEqual(l, r TSScanFlags) bool {
+	if !(l.AccessMode == r.AccessMode && l.ScanAggs == r.ScanAggs && l.Direction == r.Direction &&
+		l.ExploreOrderedScan == r.ExploreOrderedScan && l.OrderedScanType == r.OrderedScanType &&
+		h.IsExprsEqual(l.TagFilter, r.TagFilter) && l.InStream == r.InStream &&
+		h.IsFiltersExprEqual(l.BlockFilter, r.BlockFilter) &&
+		h.IsExprsEqual(l.PrimaryTagFilter, r.PrimaryTagFilter) &&
+		h.IsPTagValuesEqual(l.PrimaryTagValues, r.PrimaryTagValues) &&
+		h.IsExprsEqual(l.TagIndexFilter, r.TagIndexFilter) &&
+		h.IsTagIndexInfoEqual(l.TagIndex, r.TagIndex) &&
+		h.IsTSHintTypeEqual(l.HintType, r.HintType)) {
+		return false
 	}
 	return true
 }

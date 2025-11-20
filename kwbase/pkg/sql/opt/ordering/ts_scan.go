@@ -15,6 +15,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/opt"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/opt/memo"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/opt/props/physical"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 )
 
 func tsScanCanProvideOrdering(expr memo.RelExpr, required *physical.OrderingChoice) bool {
@@ -29,7 +30,37 @@ func tsScanCanProvideOrdering(expr memo.RelExpr, required *physical.OrderingChoi
 func tsScanBuildProvided(expr memo.RelExpr, required *physical.OrderingChoice) opt.Ordering {
 	scan := expr.(*memo.TSScanExpr)
 	fds := &scan.Relational().FuncDeps
-	provided := make(opt.Ordering, 0)
+	constCols := fds.ComputeClosure(opt.ColSet{})
+	provided := make(opt.Ordering, 0, 1)
+	indexColID := scan.Table.ColumnID(0)
+	descending := false
+	for right := 0; right < len(required.Columns); {
+		if required.Optional.Contains(indexColID) {
+			continue
+		}
+		reqCol := &required.Columns[right]
+		descending = reqCol.Descending
+		break
+	}
+	if descending {
+		scan.Flags.Direction = tree.Descending
+	} else {
+		scan.Flags.Direction = tree.Ascending
+	}
+	// only timestamp col can provide order
+	for i := 0; i < 1; i++ {
+		colID := scan.Table.ColumnID(0)
+		if !scan.Cols.Contains(colID) {
+			// Column not in output; we are done.
+			break
+		}
+		if constCols.Contains(colID) {
+			// Column constrained to a constant, ignore.
+			continue
+		}
+
+		provided = append(provided, opt.MakeOrderingColumn(colID, descending))
+	}
 	return trimProvided(provided, required, fds)
 }
 
@@ -39,11 +70,31 @@ func tsScanBuildProvided(expr memo.RelExpr, required *physical.OrderingChoice) o
 func TSScanPrivateCanProvide(
 	md *opt.Metadata, s *memo.TSScanPrivate, required *physical.OrderingChoice,
 ) (ok bool, reverse bool) {
-	//if s.OrderedScanType == keys.OrderedScan || s.OrderedScanType == keys.SortAfterScan {
-	if required.Optional.Contains(md.TableMeta(s.Table).MetaID.ColumnID(0)) {
-		return true, false
+	if !s.Flags.CheckOnlyOnePTagValue() {
+		return false, false
 	}
-	//}
 
-	return false, false
+	descending := false
+	indexColID := s.Table.ColumnID(0)
+	for right := 0; right < len(required.Columns); {
+		if required.Optional.Contains(indexColID) {
+			continue
+		}
+		reqCol := &required.Columns[right]
+		if !reqCol.Group.Contains(indexColID) {
+			return false, false
+		}
+		// The directions of the index column and the required column impose either
+		// a forward or a reverse scan.
+		if right == 0 {
+			descending = reqCol.Descending
+		} else if descending != reqCol.Descending {
+			// We already determined the direction, and according to it, this column
+			// has the wrong direction.
+			return false, false
+		}
+		right = right + 1
+	}
+	// If direction is either, we prefer forward scan.
+	return true, descending
 }

@@ -254,16 +254,18 @@ func (s LeaseStore) acquire(
 		// general cost of preparing, preparing this statement always requires a
 		// read from the database for the special descriptor of a system table
 		// (#23937).
-		insertLease := fmt.Sprintf(
-			`INSERT INTO system.public.lease ("descID", version, "nodeID", expiration) VALUES (%d, %d, %d, %s)`,
-			storedLease.id, storedLease.version, nodeID, &storedLease.expiration,
-		)
-		count, err := s.internalExecutor.Exec(ctx, "lease-insert", txn, insertLease)
-		if err != nil {
-			return err
-		}
-		if count != 1 {
-			return errors.Errorf("%s: expected 1 result, found %d", insertLease, count)
+		if !kv.FollowerReadEnable {
+			insertLease := fmt.Sprintf(
+				`INSERT INTO system.public.lease ("descID", version, "nodeID", expiration) VALUES (%d, %d, %d, %s)`,
+				storedLease.id, storedLease.version, nodeID, &storedLease.expiration,
+			)
+			count, err := s.internalExecutor.Exec(ctx, "lease-insert", txn, insertLease)
+			if err != nil {
+				return err
+			}
+			if count != 1 {
+				return errors.Errorf("%s: expected 1 result, found %d", insertLease, count)
+			}
 		}
 		return nil
 	})

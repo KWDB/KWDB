@@ -433,8 +433,8 @@ func getTableRanges(
 	var numRepl = 3
 	if err := exec.DB.Txn(ctx, func(ctx context.Context, txn *kv.Txn) error {
 		ranges, err := ScanMetaKVs(ctx, txn, roachpb.Span{
-			Key:    sqlbase.MakeTsRangeKey(tableID, 0, math.MinInt64, hashNum),
-			EndKey: sqlbase.MakeTsRangeKey(tableID, hashNum-1, math.MaxInt64, hashNum),
+			Key:    sqlbase.MakeTsRangeKey(tableID, 0, hashNum),
+			EndKey: sqlbase.MakeTsRangeKey(tableID, hashNum, hashNum),
 		})
 		if err != nil {
 			return err
@@ -665,12 +665,12 @@ func (r *replicaRebalanceResumer) Resume(
 		tableName := dbDesc.Name + "." + tbDesc.Name
 		var strs []string
 		for _, target := range tableTarget {
-			_, startPoint, _, err = sqlbase.DecodeTsRangeKey(target.StartKey,
+			_, startPoint, err = sqlbase.DecodeTsRangeKey(target.StartKey,
 				true, tbDesc.TsTable.HashNum)
 			if err != nil {
 				return err
 			}
-			_, endPoint, _, err = sqlbase.DecodeTsRangeKey(target.EndKey,
+			_, endPoint, err = sqlbase.DecodeTsRangeKey(target.EndKey,
 				false, tbDesc.TsTable.HashNum)
 			if err != nil {
 				return err

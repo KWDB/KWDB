@@ -1645,14 +1645,13 @@ SET CLUSTER SETTING
                                  │           | aggregate 0         | max(e1)
                                  │           | aggregate 1         | any_not_null(tag1)
                                  │           | pushLocalAggToScan  | true
-                                 │           | addSynchronizer     | true
                                  │           | pruneFinalAgg       | true
                                  └── ts scan |                     |
                                              | ts-table            | ts1
                                              | access mode         | tagIndex
                                              | use statistic       | true
                                              | ptag filter[0]      | tag1 = 10
-(36 rows)
+(35 rows)
 > select max(r.e1+r.e2) from tsdb.ts1 ts, redb.re1 r where ts.tag1=r.e1 and ts.tag2=r.e2 or ts.tag3=r.e3 group by ts.tag1, r.e1;
   max
 -------

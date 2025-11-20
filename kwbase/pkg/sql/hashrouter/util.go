@@ -25,7 +25,6 @@ package hashrouter
 
 import (
 	"context"
-	"math"
 	"time"
 
 	"gitee.com/kwbasedb/kwbase/pkg/kv"
@@ -68,8 +67,8 @@ func GetTableNodeIDs(
 	}); r.Next(); {
 		if retErr = db.Txn(ctx, func(ctx context.Context, txn *kv.Txn) error {
 			ranges, err := sql.ScanMetaKVs(ctx, txn, roachpb.Span{
-				Key:    sqlbase.MakeTsRangeKey(sqlbase.ID(tableID), 0, math.MinInt64, hashNum),
-				EndKey: sqlbase.MakeTsRangeKey(sqlbase.ID(tableID), hashNum-1, math.MaxInt64, hashNum),
+				Key:    sqlbase.MakeTsRangeKey(sqlbase.ID(tableID), 0, hashNum),
+				EndKey: sqlbase.MakeTsRangeKey(sqlbase.ID(tableID), hashNum, hashNum),
 			})
 			if err != nil {
 				return err

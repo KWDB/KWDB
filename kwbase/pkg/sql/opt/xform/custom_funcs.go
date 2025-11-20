@@ -90,7 +90,7 @@ func (c *CustomFuncs) IsCanonicalScan(scan *memo.ScanPrivate) bool {
 
 // ExploreOrderedTSScan returns true if the given ScanPrivate need explore ordered tsscan
 func (c *CustomFuncs) ExploreOrderedTSScan(scan *memo.TSScanPrivate) bool {
-	return scan.ExploreOrderedScan
+	return scan.Flags.ExploreOrderedScan
 }
 
 // IsLocking returns true if the ScanPrivate is configured to use a row-level
@@ -162,7 +162,7 @@ func (c *CustomFuncs) GenerateIndexScans(grp memo.RelExpr, scanPrivate *memo.Sca
 
 // GenerateOrderedTSScans create sort two type for ordered table
 func (c *CustomFuncs) GenerateOrderedTSScans(grp memo.RelExpr, scanPrivate *memo.TSScanPrivate) {
-	if scanPrivate.ExploreOrderedScan {
+	if scanPrivate.Flags.ExploreOrderedScan {
 		var sb orderedTSScanBuilder
 		sb.init(c, *scanPrivate)
 		sb.build(grp)
@@ -3005,6 +3005,7 @@ func (c *CustomFuncs) GenerateTagTSScans(
 		return
 	}
 	private := *TSScanPrivate
+	flags := &private.Flags
 	// get primary tag value from filters
 	// eg: select a, b, c from ts1 where ptag = 10 and tag1 < 11 and a > 12 and ts = now();
 	// get ptag = 10, split 10 for ptag value
@@ -3013,20 +3014,20 @@ func (c *CustomFuncs) GenerateTagTSScans(
 	// tagFilters is tag1 < 11
 	// primaryTagFilters is ptag = 10
 	leaveFilter, tagFilters, primaryTagFilters := memo.GetPrimaryTagFilterValue(&private, &explicitFilters, c.e.mem)
-	private.BlockFilter = memo.GetBlockFilter(leaveFilter, private.Table, c.e.mem)
+	flags.BlockFilter = memo.GetBlockFilter(leaveFilter, private.Table, c.e.mem)
 	// if tagFilters, primaryTagFilters or private.BlockFilter exists, we need build newExpr and add it to group
-	if tagFilters == nil && primaryTagFilters == nil && private.BlockFilter == nil {
+	if tagFilters == nil && primaryTagFilters == nil && flags.BlockFilter == nil {
 		// can not optimize when have not tag filter or blockFilter
 		return
 	}
+	flags.PrimaryTagFilter = primaryTagFilters
 
 	// Get tag index key and tag index filters
 	if primaryTagFilters == nil {
-		private.TagIndexFilter = memo.GetTagIndexKeyAndFilter(&private, &tagFilters, c.e.mem, len(explicitFilters))
+		flags.TagIndexFilter = memo.GetTagIndexKeyAndFilter(&private, &tagFilters, c.e.mem, len(explicitFilters))
 	}
 
-	private.TagFilter = tagFilters
-	private.PrimaryTagFilter = primaryTagFilters
+	flags.TagFilter = tagFilters
 
 	// get ts table access mode through tag filter and primary tag value
 	// only primary tag value --- tag index
@@ -3036,8 +3037,13 @@ func (c *CustomFuncs) GenerateTagTSScans(
 	//
 	// only when at least one of primaryTagFilters, tagFilters or TagIndexFilter is non-empty should AccessMode be set,
 	// processing is only skipped when blockFilter exists.
-	if primaryTagFilters != nil || tagFilters != nil || len(private.TagIndexFilter) > 0 {
-		private.AccessMode = memo.GetAccessMode(primaryTagFilters != nil, tagFilters != nil, len(private.TagIndexFilter) > 0, TSScanPrivate, c.e.mem)
+	if primaryTagFilters != nil || tagFilters != nil || len(flags.TagIndexFilter) > 0 {
+		flags.AccessMode = memo.GetAccessMode(primaryTagFilters != nil, tagFilters != nil, len(flags.TagIndexFilter) > 0, TSScanPrivate, c.e.mem)
+	}
+
+	// scan one device no need explore order scan
+	if flags.ExploreOrderedScan && flags.CheckOnlyOnePTagValue() {
+		flags.ExploreOrderedScan = false
 	}
 
 	// filter can all push to table reader, so need remover select expr
@@ -3324,7 +3330,7 @@ func (c *CustomFuncs) checkProjectionApplicable(
 		if m.checkMode(tsMode) {
 			// check if elements of ProjectionExpr can be pushed down
 			push, _ := memo.CheckExprCanExecInTSEngine(proj.Element.(opt.Expr), memo.ExprPosProjList,
-				c.e.f.TSWhiteListMap.CheckWhiteListParam, false, c.e.mem.CheckOnlyOnePTagValue())
+				c.e.f.TSWhiteListMap.CheckWhiteListParam)
 			if !push {
 				return false
 			}

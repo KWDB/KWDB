@@ -67,11 +67,13 @@ func (b *Builder) buildTimeSeriesScan(
 		})
 	}
 
-	private := memo.TSScanPrivate{Table: tabID, Cols: tabColIDs, AccessMode: -1}
+	private := memo.TSScanPrivate{Table: tabID, Cols: tabColIDs,
+		Flags: memo.TSScanFlags{AccessMode: -1, InStream: b.InStream},
+	}
 
 	if indexFlags != nil {
 		if indexFlags.FromHintTree {
-			private.HintType = indexFlags.HintType
+			private.Flags.HintType = indexFlags.HintType
 		}
 	}
 
@@ -237,8 +239,8 @@ func (b *Builder) checkOrderedTSScan(expr memo.RelExpr) {
 			filter.Walk(&param)
 		}
 		if v, ok := src.Input.(*memo.TSScanExpr); ok && !param.hasSub {
-			v.OrderedScanType = opt.OrderedScan
-			v.ExploreOrderedScan = true
+			v.Flags.OrderedScanType = opt.OrderedScan
+			v.Flags.ExploreOrderedScan = true
 		}
 	}
 }

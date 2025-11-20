@@ -2188,6 +2188,7 @@ CREATE VIEW kwdb_internal.ranges AS SELECT
 	learner_replicas,
 	split_enforced_until,
 	kwdb_internal.lease_holder(start_key) AS lease_holder,
+	(kwdb_internal.range_stats(start_key)->>'lease_holder_qps')::FLOAT8 AS lease_holder_qps,
 	(kwdb_internal.range_stats(start_key)->>'key_bytes')::INT8 +
 	(kwdb_internal.range_stats(start_key)->>'val_bytes')::INT8 AS range_size
 FROM kwdb_internal.ranges_no_leases
@@ -2206,6 +2207,7 @@ FROM kwdb_internal.ranges_no_leases
 		{Name: "learner_replicas", Typ: types.Int2Vector},
 		{Name: "split_enforced_until", Typ: types.Timestamp},
 		{Name: "lease_holder", Typ: types.Int},
+		{Name: "lease_holder_qps", Typ: types.Float},
 		{Name: "range_size", Typ: types.Int},
 	},
 }

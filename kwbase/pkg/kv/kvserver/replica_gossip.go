@@ -30,6 +30,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/config"
 	"gitee.com/kwbasedb/kwbase/pkg/gossip"
 	"gitee.com/kwbasedb/kwbase/pkg/keys"
+	"gitee.com/kwbasedb/kwbase/pkg/kv"
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver/storagebase"
 	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver/storagepb"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
@@ -247,8 +248,10 @@ func (r *Replica) getLeaseForGossip(ctx context.Context) (bool, *roachpb.Error) 
 	if err := r.store.Stopper().RunTask(
 		ctx, "storage.Replica: acquiring lease to gossip",
 		func(ctx context.Context) {
-			// Check for or obtain the lease, if none active.
-			_, pErr = r.redirectOnOrAcquireLease(ctx)
+			if !kv.FollowerReadEnable {
+				// Check for or obtain the lease, if none active.
+				_, pErr = r.redirectOnOrAcquireLease(ctx)
+			}
 			hasLease = pErr == nil
 			if pErr != nil {
 				switch e := pErr.GetDetail().(type) {

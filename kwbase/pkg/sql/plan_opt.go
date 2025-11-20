@@ -593,6 +593,7 @@ func (opc *optPlanningCtx) buildExecMemo(
 	// We are executing a statement for which there is no reusable memo
 	// available.
 	bld := optbuilder.New(ctx, &p.semaCtx, p.EvalContext(), &opc.catalog, f, opc.p.stmt.AST)
+	bld.InStream = opc.p.inStream
 
 	//computer queryingerPrint for a select sql,and get its external hint from pseudo catalog cache
 	//or pseudo catalog table.

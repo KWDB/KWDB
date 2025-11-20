@@ -386,6 +386,55 @@ type ScanFlags struct {
 	LeadingTable         bool
 }
 
+// TSScanFlags stores any flags for the ts scan specified in the query (see
+// tree.IndexFlags). These flags may be consulted by transformation rules or the
+// coster.
+type TSScanFlags struct {
+	// AccessMode table read mode
+	AccessMode int
+
+	// ScanAggs statistic cols
+	ScanAggs bool
+
+	// TagFilter tag col filter exprs
+	TagFilter opt.Exprs
+
+	// BlockFilter ordinary col(except the ts col) filter exprs
+	BlockFilter FiltersExpr
+
+	// PrimaryTagFilter primary tag col filter exprs
+	PrimaryTagFilter opt.Exprs
+
+	// PrimaryTagValues primary tag col and value map
+	PrimaryTagValues PTagValues
+
+	// TagIndexFilter tag index col filter exprs
+	TagIndexFilter opt.Exprs
+
+	// TagIndex tag col and value map
+	TagIndex TagIndexInfo
+
+	// HintType select hint type for control plan
+	HintType keys.ScanMethodHintType
+
+	// ExploreOrderedScan is a flag for order by ts scan ts table
+	ExploreOrderedScan bool
+
+	// OrderedScanType is a flag for order by ts scan ts table
+	OrderedScanType opt.OrderedTableType
+
+	// NoIndexJoin disallows use of non-covering indexes (index-join) for scanning
+	// this table.
+	//NoIndexJoin bool
+
+	// ForceIndex forces the use of a specific index (specified in Index).
+	// ForceIndex and NoIndexJoin cannot both be set at the same time.
+	//ForceIndex bool
+	Direction tree.Direction
+
+	InStream bool
+}
+
 // Empty returns true if there are no flags set.
 func (sf *ScanFlags) Empty() bool {
 	return !sf.NoIndexJoin && !sf.ForceIndex

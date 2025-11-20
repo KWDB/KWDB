@@ -53,6 +53,8 @@ func LeaseInfo(
 ) (result.Result, error) {
 	reply := resp.(*roachpb.LeaseInfoResponse)
 	lease, nextLease := cArgs.EvalCtx.GetLease()
+	qps, _ := cArgs.EvalCtx.GetLeaseQPS()
+	reply.LeaseQps = qps
 	if nextLease != (roachpb.Lease{}) {
 		// If there's a lease request in progress, speculatively return that future
 		// lease.

@@ -25,7 +25,6 @@ package hashrouter
 
 import (
 	"context"
-	"math"
 
 	"gitee.com/kwbasedb/kwbase/pkg/gossip"
 	"gitee.com/kwbasedb/kwbase/pkg/kv"
@@ -135,8 +134,7 @@ func GetDistributeInfo(
 	if splitMode == 0 {
 		for i := 0; i < groupNum; i += int(partitionBalanceNumber) {
 			partitions = append(partitions, api.HashPartition{
-				StartPoint:     api.HashPoint(i),
-				StartTimeStamp: math.MinInt64,
+				StartPoint: api.HashPoint(i),
 			})
 		}
 	} else if splitMode == 1 {
@@ -146,36 +144,30 @@ func GetDistributeInfo(
 			case api.SplitWithOneHashPoint:
 				for k := 0; k < int(partitionBalanceNumber); k++ {
 					partitions = append(partitions, api.HashPartition{
-						StartPoint:     api.HashPoint(i + k),
-						StartTimeStamp: math.MinInt64,
+						StartPoint: api.HashPoint(i + k),
 					})
 				}
 			case api.SplitWithHashPointAndPositiveTimeStamp:
 				for k := 0; k < int(partitionBalanceNumber); k++ {
 					partitions = append(partitions, api.HashPartition{
-						StartPoint:     api.HashPoint(i + k),
-						StartTimeStamp: math.MinInt64,
+						StartPoint: api.HashPoint(i + k),
 					})
 					partitions = append(partitions, api.HashPartition{
-						StartPoint:     api.HashPoint(i + k),
-						StartTimeStamp: 1681111110000,
+						StartPoint: api.HashPoint(i + k),
 					})
 				}
 			case api.SplitWithHashPointAndNegativeTimeStamp:
 				for k := 0; k < int(partitionBalanceNumber); k++ {
 					partitions = append(partitions, api.HashPartition{
-						StartPoint:     api.HashPoint(i + k),
-						StartTimeStamp: math.MinInt64,
+						StartPoint: api.HashPoint(i + k),
 					})
 					partitions = append(partitions, api.HashPartition{
-						StartPoint:     api.HashPoint(i + k),
-						StartTimeStamp: -1681111110000,
+						StartPoint: api.HashPoint(i + k),
 					})
 				}
 			default:
 				partitions = append(partitions, api.HashPartition{
-					StartPoint:     api.HashPoint(i),
-					StartTimeStamp: math.MinInt64,
+					StartPoint: api.HashPoint(i),
 				})
 			}
 		}

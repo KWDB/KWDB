@@ -770,10 +770,10 @@ func (o *Optimizer) setLowestCostTree(parent opt.Expr, parentProps *physical.Req
 	if parent.Op() == opt.TSScanOp {
 		// handle tsScan's children tagFilters and primaryTagFilters, set lowest cost
 		tsScan, _ := parent.(*memo.TSScanExpr)
-		for _, before := range tsScan.TagFilter {
+		for _, before := range tsScan.Flags.TagFilter {
 			o.setLowestCostTree(before, childProps)
 		}
-		for _, before := range tsScan.PrimaryTagFilter {
+		for _, before := range tsScan.Flags.PrimaryTagFilter {
 			o.setLowestCostTree(before, childProps)
 		}
 	}
@@ -1653,7 +1653,7 @@ func processGroupByOrScalarGroupByExpr(expr memo.RelExpr, mem *memo.Memo) {
 		for _, proj := range projectExpr.Projections {
 			if element, ok := proj.Element.(opt.Expr); ok {
 				if execInTSEngine, _ := memo.CheckExprCanExecInTSEngine(element, memo.ExprPosProjList,
-					mem.GetWhiteList().CheckWhiteListParam, false, mem.CheckOnlyOnePTagValue()); !execInTSEngine {
+					mem.GetWhiteList().CheckWhiteListParam); !execInTSEngine {
 					// this path used to fallback because of memo.UnsupportedAggFuncOrExpr in outside-in plan,
 					// but now outside-in supports this path and leave unsupported agg/expr to relational side
 					colIDs := getColIDsOfExpr(element, 0, -1)

@@ -49,7 +49,6 @@ func (g *exprsGen) generate(compiled *lang.CompiledExpr, w io.Writer) {
 	fmt.Fprintf(g.w, "import (\n")
 	fmt.Fprintf(g.w, "  \"unsafe\"\n")
 	fmt.Fprintf(g.w, "\n")
-	fmt.Fprintf(g.w, "  \"gitee.com/kwbasedb/kwbase/pkg/keys\"\n")
 	fmt.Fprintf(g.w, "  \"gitee.com/kwbasedb/kwbase/pkg/sql/opt\"\n")
 	fmt.Fprintf(g.w, "  \"gitee.com/kwbasedb/kwbase/pkg/sql/opt/cat\"\n")
 	fmt.Fprintf(g.w, "  \"gitee.com/kwbasedb/kwbase/pkg/sql/opt/constraint\"\n")

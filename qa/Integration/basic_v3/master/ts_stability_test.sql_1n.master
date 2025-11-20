@@ -64,17 +64,16 @@ ALTER TABLE
                | access mode | tableTableMeta
 (6 rows)
 > explain select * from order_table where attr1 = 1;
-      tree     |     field      |  description
----------------+----------------+----------------
-               | distributed    | true
-               | vectorized     | false
-  synchronizer |                |
-   └── ts scan |                |
-               | ts-table       | order_table
-               | ordered type   | order scan
-               | access mode    | tagIndexTable
-               | ptag filter[0] | attr1 = 1
-(8 rows)
+   tree   |     field      |  description
+----------+----------------+----------------
+          | distributed    | true
+          | vectorized     | false
+  ts scan |                |
+          | ts-table       | order_table
+          | ordered type   | order scan
+          | access mode    | tagIndexTable
+          | ptag filter[0] | attr1 = 1
+(7 rows)
 > explain (opt,verbose) select * from order_table where attr1 = 1;
                                                    text
 ----------------------------------------------------------------------------------------------------------
@@ -572,19 +571,18 @@ ALTER TABLE
   '2024-01-01 03:00:00+00:00' |  10000000 |            10000000 |                      0 |                        1
 (11 rows)
 > explain select * from unordered_table2 where attr1 = 1 and attr2 = 2 and attr3 = 3;
-      tree     |     field      |   description
----------------+----------------+-------------------
-               | distributed    | true
-               | vectorized     | false
-  synchronizer |                |
-   └── ts scan |                |
-               | ts-table       | unordered_table2
-               | ordered type   | order scan
-               | access mode    | tagIndexTable
-               | ptag filter[0] | attr1 = 1
-               | ptag filter[1] | attr2 = 2
-               | ptag filter[2] | attr3 = 3
-(10 rows)
+   tree   |     field      |   description
+----------+----------------+-------------------
+          | distributed    | true
+          | vectorized     | false
+  ts scan |                |
+          | ts-table       | unordered_table2
+          | ordered type   | order scan
+          | access mode    | tagIndexTable
+          | ptag filter[0] | attr1 = 1
+          | ptag filter[1] | attr2 = 2
+          | ptag filter[2] | attr3 = 3
+(9 rows)
 > explain (opt,verbose) select * from unordered_table2 where attr1 = 1 and attr2 = 2 and attr3 = 3;
                                                                                text
 ------------------------------------------------------------------------------------------------------------------------------------------------------------------

@@ -29,6 +29,7 @@ import (
 	"context"
 
 	"gitee.com/kwbasedb/kwbase/pkg/keys"
+	"gitee.com/kwbasedb/kwbase/pkg/kv"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
 	"gitee.com/kwbasedb/kwbase/pkg/settings"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/row"
@@ -117,6 +118,17 @@ func (s *Server) refreshSettings() {
 	}
 
 	ctx := s.AnnotateCtx(context.Background())
+	if kv.FollowerReadEnable {
+		if s.tsEngine == nil {
+			// todo(qzy): confirm the warning log
+			log.Warningf(ctx, "ts engine is not creted")
+		} else if !s.tsEngine.IsOpen() {
+			log.Infof(ctx, "try open ts engine")
+			if err := s.tsEngine.Open(s.node.Descriptor.RangeIndex); err != nil {
+				panic(errors.Errorf("failed create tsEngine, err: %+v", err))
+			}
+		}
+	}
 	s.stopper.RunWorker(ctx, func(ctx context.Context) {
 		gossipUpdateC := s.gossip.RegisterSystemConfigChannel()
 		// No new settings can be defined beyond this point.
@@ -138,16 +150,18 @@ func (s *Server) refreshSettings() {
 				if ok {
 					u.ResetRemaining()
 				}
-				// TODO(whz): we open tsengine async to wait for updated cluster settings.
-				// This affects all start modes, and some immediate ops may block to wait
-				// for opening of tsengine. It depends on the speed of refreshing cluster
-				// setting, usually quick enough. We will optimize it later if necessary.
-				if s.tsEngine == nil {
-					log.Warningf(ctx, "ts engine is not creted")
-				} else if !s.tsEngine.IsOpen() {
-					log.Infof(ctx, "try open ts engine")
-					if err := s.tsEngine.Open(s.node.Descriptor.RangeIndex); err != nil {
-						panic(errors.Errorf("failed create tsEngine, err: %+v", err))
+				if !kv.FollowerReadEnable {
+					// TODO(whz): we open tsengine async to wait for updated cluster settings.
+					// This affects all start modes, and some immediate ops may block to wait
+					// for opening of tsengine. It depends on the speed of refreshing cluster
+					// setting, usually quick enough. We will optimize it later if necessary.
+					if s.tsEngine == nil {
+						log.Warningf(ctx, "ts engine is not creted")
+					} else if !s.tsEngine.IsOpen() {
+						log.Infof(ctx, "try open ts engine")
+						if err := s.tsEngine.Open(s.node.Descriptor.RangeIndex); err != nil {
+							panic(errors.Errorf("failed create tsEngine, err: %+v", err))
+						}
 					}
 				}
 			case <-s.stopper.ShouldStop():
