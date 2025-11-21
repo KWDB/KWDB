@@ -1942,6 +1942,7 @@ insert into t1 values('2025-07-29 03:57:58.191',10000,345667643);
 insert into t1 values('2025-07-29 03:58:59.203',100000,4564353);
 SELECT max(a) FROM tsdb.t1 GROUP BY a,ts order by ts;
 SELECT * FROM tsdb.t1 order by ts;
+select time_bucket(ts, '10ms') as bucket_ts, sum(a) as s from tsdb.t1 where ts > '2025-07-29 03:06:27.103' and ts < '2025-07-29 03:58:59.203' and b = 1 group by bucket_ts;
 use defaultdb;
 drop database if exists tsdb;
 

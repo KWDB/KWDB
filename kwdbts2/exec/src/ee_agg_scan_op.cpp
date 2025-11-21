@@ -29,9 +29,9 @@ EEIteratorErrCode AggTableScanOperator::Init(kwdbContext_p ctx) {
   EEIteratorErrCode ret;
   do {
     if (!is_clone_) {
-     if (OperatorType::OPERATOR_POST_AGG_SCAN == parent_operators_[0]->Type()) {
-      has_post_agg_ = true;
-     }
+      if (parent_operators_.size() > 0 && OperatorType::OPERATOR_POST_AGG_SCAN == parent_operators_[0]->Type()) {
+        has_post_agg_ = true;
+      }
     }
 
     ignore_outputtypes_ = true;

@@ -6742,6 +6742,11 @@ INSERT 1
   2025-07-29 03:57:58.191+00:00 |  10000 | 345667643
   2025-07-29 03:58:59.203+00:00 | 100000 |   4564353
 (20 rows)
+> select time_bucket(ts, '10ms') as bucket_ts, sum(a) as s from tsdb.t1 where ts > '2025-07-29 03:06:27.103' and ts < '2025-07-29 03:58:59.203' and b = 1 group by bucket_ts;
+           bucket_ts          | s
+------------------------------+----
+  2025-07-29 03:06:28.1+00:00 | 1
+(1 row)
 > use defaultdb;
 SET
 > drop database if exists tsdb;
