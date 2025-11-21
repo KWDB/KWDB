@@ -78,7 +78,8 @@ class TsMemSegment : public TsSegmentBase, public enable_shared_from_this<TsMemS
 
   KStatus GetBlockSpans(const TsBlockItemFilterParams& filter, std::list<shared_ptr<TsBlockSpan>>& blocks,
                         std::shared_ptr<TsTableSchemaManager>& tbl_schema_mgr,
-                        std::shared_ptr<MMapMetricsTable>& scan_schema) override;
+                        std::shared_ptr<MMapMetricsTable>& scan_schema,
+                        TsScanStats* ts_scan_stats = nullptr) override;
   KStatus GetBlockSpans(std::list<shared_ptr<TsBlockSpan>>& blocks, TsEngineSchemaManager* schema_mgr);
 };
 
@@ -129,11 +130,13 @@ class TsMemSegBlock : public TsBlock {
     *max_ts = max_ts_;
   }
   size_t GetRowNum() override { return row_data_.size(); }
-  KStatus GetValueSlice(int row_num, int col_id, const std::vector<AttributeInfo>* schema, TSSlice& value) override;
-  bool IsColNull(int row_num, int col_id, const std::vector<AttributeInfo>* schema) override;
+  KStatus GetValueSlice(int row_num, int col_id, const std::vector<AttributeInfo>* schema, TSSlice& value,
+                        TsScanStats* ts_scan_stats = nullptr) override;
+  bool IsColNull(int row_num, int col_id, const std::vector<AttributeInfo>* schema,
+                  TsScanStats* ts_scan_stats = nullptr) override;
 
   // if just get timestamp , this function return fast.
-  timestamp64 GetTS(int row_num) override {
+  timestamp64 GetTS(int row_num, TsScanStats* ts_scan_stats = nullptr) override {
     assert(row_data_.size() > row_num);
     return row_data_[row_num]->GetTS();
   }
@@ -172,15 +175,16 @@ class TsMemSegBlock : public TsBlock {
     return row_data_[row_data_.size() - 1]->GetOSN();
   }
 
-  const uint64_t* GetOSNAddr(int row_num) override {
+  const uint64_t* GetOSNAddr(int row_num, TsScanStats* ts_scan_stats = nullptr) override {
     assert(row_data_.size() > row_num);
     return row_data_[row_num]->GetOSNAddr();
   }
 
   KStatus GetColBitmap(uint32_t col_id, const std::vector<AttributeInfo>* schema,
-                       std::unique_ptr<TsBitmapBase>* bitmap) override;
+                       std::unique_ptr<TsBitmapBase>* bitmap, TsScanStats* ts_scan_stats = nullptr) override;
 
-  KStatus GetColAddr(uint32_t col_id, const std::vector<AttributeInfo>* schema, char** value) override;
+  KStatus GetColAddr(uint32_t col_id, const std::vector<AttributeInfo>* schema, char** value,
+                      TsScanStats* ts_scan_stats = nullptr) override;
 
   KStatus GetCompressDataFromFile(uint32_t table_version, int32_t nrow, std::string& data) override {
     return KStatus::FAIL;

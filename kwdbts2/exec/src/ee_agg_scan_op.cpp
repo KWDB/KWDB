@@ -161,6 +161,7 @@ EEIteratorErrCode AggTableScanOperator::Next(kwdbContext_p ctx, DataChunkPtr& ch
   }
   StorageHandler* handler = handler_;
   auto start = std::chrono::high_resolution_clock::now();
+  TsScanStats ts_scan_stats;
   do {
     if (limit_ && examined_rows_ >= limit_) {
       code = EEIteratorErrCode::EE_END_OF_RECORD;
@@ -175,7 +176,7 @@ EEIteratorErrCode AggTableScanOperator::Next(kwdbContext_p ctx, DataChunkPtr& ch
     // read data
     while (!is_done_) {
       row_batch_->ts_ = max_ts_;
-      code = handler->TsNext(ctx);
+      code = handler->TsNext(ctx, &ts_scan_stats);
       if (EEIteratorErrCode::EE_OK != code) {
         is_done_ = true;
         break;
@@ -247,7 +248,7 @@ EEIteratorErrCode AggTableScanOperator::Next(kwdbContext_p ctx, DataChunkPtr& ch
     OPERATOR_DIRECT_ENCODING(ctx, output_encoding_, use_query_short_circuit_, thd, chunk);
     output_queue_.pop();
     auto end = std::chrono::high_resolution_clock::now();
-    fetcher_.Update(chunk->Count(), (end - start).count(), chunk->Count() * chunk->RowSize(), 0, 0, 0);
+    fetcher_.Update(chunk->Count(), (end - start).count(), chunk->Count() * chunk->RowSize(), 0, 0, 0, 0, &ts_scan_stats);
     if (code == EEIteratorErrCode::EE_END_OF_RECORD) {
       Return(EEIteratorErrCode::EE_OK)
     } else {
@@ -255,7 +256,7 @@ EEIteratorErrCode AggTableScanOperator::Next(kwdbContext_p ctx, DataChunkPtr& ch
     }
   } else {
     auto end = std::chrono::high_resolution_clock::now();
-    fetcher_.Update(0, (end - start).count(), 0, 0, 0, 0);
+    fetcher_.Update(0, (end - start).count(), 0, 0, 0, 0, 0, &ts_scan_stats);
     if (is_done_) {
       Return(EEIteratorErrCode::EE_END_OF_RECORD)
     } else {

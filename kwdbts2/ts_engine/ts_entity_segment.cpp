@@ -107,7 +107,8 @@ KStatus TsEntitySegmentBlockItemFile::Open() {
   return s;
 }
 
-KStatus TsEntitySegmentBlockItemFile::GetBlockItem(uint64_t blk_id, TsEntitySegmentBlockItem** blk_item) {
+KStatus TsEntitySegmentBlockItemFile::GetBlockItem(uint64_t blk_id, TsEntitySegmentBlockItem** blk_item,
+                                                    TsScanStats* ts_scan_stats) {
   TSSlice result;
   KStatus s = r_file_->Read(sizeof(TsBlockItemFileHeader) + (blk_id - 1) * sizeof(TsEntitySegmentBlockItem),
                             sizeof(TsEntitySegmentBlockItem), &result, nullptr);
@@ -120,6 +121,9 @@ KStatus TsEntitySegmentBlockItemFile::GetBlockItem(uint64_t blk_id, TsEntitySegm
     LOG_ERROR("TsEntitySegmentBlockItemFile block version is invalid, file_path=%s, block_id=%lu", file_path_.c_str(),
               blk_id);
     return FAIL;
+  }
+  if (ts_scan_stats) {
+    ts_scan_stats->header_bytes += result.len;
   }
   return KStatus::SUCCESS;
 }
@@ -172,7 +176,8 @@ KStatus TsEntitySegmentMetaManager::GetBlockSpans(const TsBlockItemFilterParams&
                                                   std::shared_ptr<TsEntitySegment> entity_segment,
                                                   std::list<shared_ptr<TsBlockSpan>>& block_spans,
                                                   std::shared_ptr<TsTableSchemaManager>& tbl_schema_mgr,
-                                                  std::shared_ptr<MMapMetricsTable>& scan_schema) {
+                                                  std::shared_ptr<MMapMetricsTable>& scan_schema,
+                                                  TsScanStats* ts_scan_stats) {
   TsEntityItem entity_item{filter.entity_id};
   bool is_exist;
   KStatus s = entity_header_.GetEntityItem(filter.entity_id, entity_item, is_exist);
@@ -187,7 +192,7 @@ KStatus TsEntitySegmentMetaManager::GetBlockSpans(const TsBlockItemFilterParams&
   TsEntitySegmentBlockItem* cur_blk_item;
   TsBlockSpan* template_blk_span = nullptr;
   while (last_blk_id > 0) {
-    s = block_header_.GetBlockItem(last_blk_id, &cur_blk_item);
+    s = block_header_.GetBlockItem(last_blk_id, &cur_blk_item, ts_scan_stats);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("get block item failed, entity_id=%lu, blk_id=%lu", filter.entity_id, last_blk_id);
       return s;
@@ -196,6 +201,9 @@ KStatus TsEntitySegmentMetaManager::GetBlockSpans(const TsBlockItemFilterParams&
     if (IsTsLsnSpanInSpans(filter.spans_, {cur_blk_item->min_ts, cur_blk_item->max_ts},
                           {cur_blk_item->min_osn, cur_blk_item->max_osn})) {
       std::shared_ptr<TsEntityBlock> block = nullptr;
+      if (ts_scan_stats) {
+        ++ts_scan_stats->entity_block_count;
+      }
       if (EngineOptions::block_cache_max_size > 0) {
          block = entity_segment->GetEntityBlock(cur_blk_item->block_id);
         if (block == nullptr) {
@@ -204,6 +212,9 @@ KStatus TsEntitySegmentMetaManager::GetBlockSpans(const TsBlockItemFilterParams&
           TsLRUBlockCache::GetInstance().Add(block);
         } else {
           TsLRUBlockCache::GetInstance().Access(block);
+          if (ts_scan_stats) {
+            ++ts_scan_stats->block_cache_hit_count;
+          }
         }
       } else {
         block = std::make_shared<TsEntityBlock>(filter.table_id, cur_blk_item, entity_segment);
@@ -220,6 +231,9 @@ KStatus TsEntitySegmentMetaManager::GetBlockSpans(const TsBlockItemFilterParams&
     } else if (IsTsLsnSpanCrossSpans(filter.spans_, {cur_blk_item->min_ts, cur_blk_item->max_ts},
                               {cur_blk_item->min_osn, cur_blk_item->max_osn})) {
       std::shared_ptr<TsEntityBlock> block = nullptr;
+      if (ts_scan_stats) {
+        ++ts_scan_stats->entity_block_count;
+      }
       if (EngineOptions::block_cache_max_size > 0) {
         block = entity_segment->GetEntityBlock(cur_blk_item->block_id);
         if (block == nullptr) {
@@ -228,13 +242,16 @@ KStatus TsEntitySegmentMetaManager::GetBlockSpans(const TsBlockItemFilterParams&
           TsLRUBlockCache::GetInstance().Add(block);
         } else {
           TsLRUBlockCache::GetInstance().Access(block);
+          if (ts_scan_stats) {
+            ++ts_scan_stats->block_cache_hit_count;
+          }
         }
       } else {
         block = std::make_shared<TsEntityBlock>(filter.table_id, cur_blk_item, entity_segment);
       }
       // std::vector<std::pair<start_row, row_num>>
       std::vector<std::pair<int, int>> row_spans;
-      s = block->GetRowSpans(filter.spans_, row_spans);
+      s = block->GetRowSpans(filter.spans_, row_spans, ts_scan_stats);
       if (s != KStatus::SUCCESS) {
         return s;
       }
@@ -476,9 +493,9 @@ KStatus TsEntityBlock::LoadAggInfo(TSSlice buffer) {
 }
 
 KStatus TsEntityBlock::GetRowSpans(const std::vector<STScanRange>& spans,
-                      std::vector<std::pair<int, int>>& row_spans) {
+                      std::vector<std::pair<int, int>>& row_spans, TsScanStats* ts_scan_stats) {
   if (!HasDataCached(0)) {
-    KStatus s = entity_segment_->GetColumnBlock(0, {}, this);
+    KStatus s = entity_segment_->GetColumnBlock(0, {}, this, ts_scan_stats);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("block segment column[ts] data load failed");
       return s;
@@ -493,7 +510,7 @@ KStatus TsEntityBlock::GetRowSpans(const std::vector<STScanRange>& spans,
       }
     }
 #endif
-    KStatus s = entity_segment_->GetColumnBlock(-1, {}, this);
+    KStatus s = entity_segment_->GetColumnBlock(-1, {}, this, ts_scan_stats);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("block segment column[osn] data load failed");
       return s;
@@ -544,9 +561,9 @@ KStatus TsEntityBlock::GetRowSpans(const std::vector<STScanRange>& spans,
 }
 
 KStatus TsEntityBlock::GetColAddr(uint32_t col_id, const std::vector<AttributeInfo>* schema,
-                     char** value) {
+                                  char** value, TsScanStats* ts_scan_stats) {
   if (!HasDataCached(col_id)) {
-    KStatus s = entity_segment_->GetColumnBlock(col_id, schema, this);
+    KStatus s = entity_segment_->GetColumnBlock(col_id, schema, this, ts_scan_stats);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("block segment column[%u] data load failed", col_id);
       return s;
@@ -557,9 +574,9 @@ KStatus TsEntityBlock::GetColAddr(uint32_t col_id, const std::vector<AttributeIn
 }
 
 KStatus TsEntityBlock::GetColBitmap(uint32_t col_id, const std::vector<AttributeInfo>* schema,
-                                    std::unique_ptr<TsBitmapBase>* bitmap) {
+                                    std::unique_ptr<TsBitmapBase>* bitmap, TsScanStats* ts_scan_stats) {
   if (!HasDataCached(col_id)) {
-    KStatus s = entity_segment_->GetColumnBlock(col_id, schema, this);
+    KStatus s = entity_segment_->GetColumnBlock(col_id, schema, this, ts_scan_stats);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("block segment column[%u] data load failed", col_id);
       return s;
@@ -571,9 +588,9 @@ KStatus TsEntityBlock::GetColBitmap(uint32_t col_id, const std::vector<Attribute
 }
 
 KStatus TsEntityBlock::GetValueSlice(int row_num, int col_id, const std::vector<AttributeInfo>* schema,
-                                           TSSlice& value) {
+                                           TSSlice& value, TsScanStats* ts_scan_stats) {
   if (!HasDataCached(col_id)) {
-    KStatus s = entity_segment_->GetColumnBlock(col_id, schema, this);
+    KStatus s = entity_segment_->GetColumnBlock(col_id, schema, this, ts_scan_stats);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("block segment column[%u] data load failed", col_id);
       return s;
@@ -582,9 +599,10 @@ KStatus TsEntityBlock::GetValueSlice(int row_num, int col_id, const std::vector<
   return GetMetricColValue(row_num, col_id, value);
 }
 
-bool TsEntityBlock::IsColNull(int row_num, int col_id, const std::vector<AttributeInfo>* schema) {
+bool TsEntityBlock::IsColNull(int row_num, int col_id, const std::vector<AttributeInfo>* schema,
+                              TsScanStats* ts_scan_stats) {
   if (!HasDataCached(col_id)) {
-    KStatus s = entity_segment_->GetColumnBlock(col_id, schema, this);
+    KStatus s = entity_segment_->GetColumnBlock(col_id, schema, this, ts_scan_stats);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("block segment column[%u] data load failed", col_id);
       return s;
@@ -595,9 +613,9 @@ bool TsEntityBlock::IsColNull(int row_num, int col_id, const std::vector<Attribu
   return column_blocks_[col_id + 1]->bitmap->At(row_num) == DataFlags::kNull;
 }
 
-timestamp64 TsEntityBlock::GetTS(int row_num) {
+timestamp64 TsEntityBlock::GetTS(int row_num, TsScanStats* ts_scan_stats) {
   if (!HasDataCached(0)) {
-    KStatus s = entity_segment_->GetColumnBlock(0, {}, this);
+    KStatus s = entity_segment_->GetColumnBlock(0, {}, this, ts_scan_stats);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("block segment column[0] data load failed");
       // Should not return s as timestamp64, we need to refactor the code later
@@ -628,9 +646,9 @@ inline uint64_t TsEntityBlock::GetLastOSN() {
   return last_osn_;
 }
 
-inline const uint64_t* TsEntityBlock::GetOSNAddr(int row_num) {
+inline const uint64_t* TsEntityBlock::GetOSNAddr(int row_num, TsScanStats* ts_scan_stats) {
   if (!HasDataCached(-1)) {
-    KStatus s = entity_segment_->GetColumnBlock(-1, {}, this);
+    KStatus s = entity_segment_->GetColumnBlock(-1, {}, this, ts_scan_stats);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("block segment column[osn] data load failed");
       return nullptr;
@@ -660,9 +678,9 @@ inline bool TsEntityBlock::HasPreAgg(uint32_t begin_row_idx, uint32_t row_num) {
   return 0 == begin_row_idx && row_num == n_rows_;
 }
 
-inline KStatus TsEntityBlock::GetPreCount(uint32_t blk_col_idx, uint16_t& count) {
+inline KStatus TsEntityBlock::GetPreCount(uint32_t blk_col_idx, TsScanStats* ts_scan_stats, uint16_t& count) {
   if (!HasAggData(blk_col_idx)) {
-    auto s = entity_segment_->GetColumnAgg(blk_col_idx, this);
+    auto s = entity_segment_->GetColumnAgg(blk_col_idx, this, ts_scan_stats);
     if (s != SUCCESS) {
       return s;
     }
@@ -676,9 +694,10 @@ inline KStatus TsEntityBlock::GetPreCount(uint32_t blk_col_idx, uint16_t& count)
   return KStatus::SUCCESS;
 }
 
-inline KStatus TsEntityBlock::GetPreSum(uint32_t blk_col_idx, int32_t size, void* &pre_sum, bool& is_overflow) {
+inline KStatus TsEntityBlock::GetPreSum(uint32_t blk_col_idx, int32_t size, TsScanStats* ts_scan_stats,
+                                        void* &pre_sum, bool& is_overflow) {
   if (!HasAggData(blk_col_idx)) {
-    auto s = entity_segment_->GetColumnAgg(blk_col_idx, this);
+    auto s = entity_segment_->GetColumnAgg(blk_col_idx, this, ts_scan_stats);
     if (s != SUCCESS) {
       return s;
     }
@@ -693,9 +712,9 @@ inline KStatus TsEntityBlock::GetPreSum(uint32_t blk_col_idx, int32_t size, void
   return KStatus::SUCCESS;
 }
 
-inline KStatus TsEntityBlock::GetPreMax(uint32_t blk_col_idx, void* &pre_max) {
+inline KStatus TsEntityBlock::GetPreMax(uint32_t blk_col_idx, TsScanStats* ts_scan_stats, void* &pre_max) {
   if (!HasAggData(blk_col_idx)) {
-    auto s = entity_segment_->GetColumnAgg(blk_col_idx, this);
+    auto s = entity_segment_->GetColumnAgg(blk_col_idx, this, ts_scan_stats);
     if (s != SUCCESS) {
       return s;
     }
@@ -709,9 +728,10 @@ inline KStatus TsEntityBlock::GetPreMax(uint32_t blk_col_idx, void* &pre_max) {
   return KStatus::SUCCESS;
 }
 
-inline KStatus TsEntityBlock::GetPreMin(uint32_t blk_col_idx, int32_t size, void* &pre_min) {
+inline KStatus TsEntityBlock::GetPreMin(uint32_t blk_col_idx, int32_t size, TsScanStats* ts_scan_stats,
+                                        void* &pre_min) {
   if (!HasAggData(blk_col_idx)) {
-    auto s = entity_segment_->GetColumnAgg(blk_col_idx, this);
+    auto s = entity_segment_->GetColumnAgg(blk_col_idx, this, ts_scan_stats);
     if (s != SUCCESS) {
       return s;
     }
@@ -728,9 +748,9 @@ inline KStatus TsEntityBlock::GetPreMin(uint32_t blk_col_idx, int32_t size, void
   return KStatus::SUCCESS;
 }
 
-inline KStatus TsEntityBlock::GetVarPreMax(uint32_t blk_col_idx, TSSlice& pre_max) {
+inline KStatus TsEntityBlock::GetVarPreMax(uint32_t blk_col_idx, TsScanStats* ts_scan_stats, TSSlice& pre_max) {
   if (!HasAggData(blk_col_idx)) {
-    auto s = entity_segment_->GetColumnAgg(blk_col_idx, this);
+    auto s = entity_segment_->GetColumnAgg(blk_col_idx, this, ts_scan_stats);
     if (s != SUCCESS) {
       return s;
     }
@@ -746,9 +766,9 @@ inline KStatus TsEntityBlock::GetVarPreMax(uint32_t blk_col_idx, TSSlice& pre_ma
   return KStatus::SUCCESS;
 }
 
-inline KStatus TsEntityBlock::GetVarPreMin(uint32_t blk_col_idx, TSSlice& pre_min) {
+inline KStatus TsEntityBlock::GetVarPreMin(uint32_t blk_col_idx, TsScanStats* ts_scan_stats, TSSlice& pre_min) {
   if (!HasAggData(blk_col_idx)) {
-    auto s = entity_segment_->GetColumnAgg(blk_col_idx, this);
+    auto s = entity_segment_->GetColumnAgg(blk_col_idx, this, ts_scan_stats);
     if (s != SUCCESS) {
       return s;
     }
@@ -808,14 +828,15 @@ KStatus TsEntitySegment::Open() {
 }
 
 inline KStatus TsEntitySegment::GetBlockSpans(const TsBlockItemFilterParams& filter,
-                                       std::list<shared_ptr<TsBlockSpan>>& block_spans,
-                                       std::shared_ptr<TsTableSchemaManager>& tbl_schema_mgr,
-                                       std::shared_ptr<MMapMetricsTable>& scan_schema) {
+                                        std::list<shared_ptr<TsBlockSpan>>& block_spans,
+                                        std::shared_ptr<TsTableSchemaManager>& tbl_schema_mgr,
+                                        std::shared_ptr<MMapMetricsTable>& scan_schema,
+                                        TsScanStats* ts_scan_stats) {
   if (filter.entity_id > meta_mgr_.GetEntityNum()) {
     // LOG_WARN("entity id [%lu] > entity number [%lu]", filter.entity_id, meta_mgr_.GetEntityNum());
     return KStatus::SUCCESS;
   }
-  return meta_mgr_.GetBlockSpans(filter, shared_from_this(), block_spans, tbl_schema_mgr, scan_schema);
+  return meta_mgr_.GetBlockSpans(filter, shared_from_this(), block_spans, tbl_schema_mgr, scan_schema, ts_scan_stats);
 }
 
 inline KStatus TsEntitySegment::GetBlockData(TsEntityBlock* block, std::string& data) {
@@ -833,7 +854,7 @@ inline KStatus TsEntitySegment::GetBlockData(TsEntityBlock* block, std::string& 
 }
 
 KStatus TsEntitySegment::GetColumnBlock(int32_t col_idx, const std::vector<AttributeInfo>* metric_schema,
-                                       TsEntityBlock* block) {
+                                       TsEntityBlock* block, TsScanStats* ts_scan_stats) {
 #ifdef WITH_TESTS
   if (TsLRUBlockCache::GetInstance().unit_test_enabled) {
     if (TsLRUBlockCache::GetInstance().unit_test_phase ==
@@ -860,6 +881,9 @@ KStatus TsEntitySegment::GetColumnBlock(int32_t col_idx, const std::vector<Attri
       LOG_ERROR("TsEntitySegment::GetColumnBlock block info init failed")
       return s;
     }
+     if (ts_scan_stats) {
+      ts_scan_stats->block_bytes += buffer.len;
+    }
   }
   // init column block
   if (!block->HasDataCachedNoLock(col_idx)) {
@@ -882,6 +906,9 @@ KStatus TsEntitySegment::GetColumnBlock(int32_t col_idx, const std::vector<Attri
       LOG_ERROR("TsEntitySegment::GetColumnBlock column[%u] block init failed", col_idx + 1);
       return s;
     }
+    if (ts_scan_stats) {
+      ts_scan_stats->block_bytes += buffer.len;
+    }
   }
   return KStatus::SUCCESS;
 }
@@ -900,7 +927,7 @@ inline KStatus TsEntitySegment::GetAggData(TsEntityBlock *block, std::string& da
   return KStatus::SUCCESS;
 }
 
-KStatus TsEntitySegment::GetColumnAgg(int32_t col_idx, TsEntityBlock *block) {
+KStatus TsEntitySegment::GetColumnAgg(int32_t col_idx, TsEntityBlock *block, TsScanStats* ts_scan_stats) {
   block->WrLock();
   Defer defer([&]() { block->Unlock(); });
   if (block->GetBlockInfo().col_agg_offset == nullptr) {
@@ -915,6 +942,9 @@ KStatus TsEntitySegment::GetColumnAgg(int32_t col_idx, TsEntityBlock *block) {
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("TsEntitySegment::GetColumnBlock agg info init failed")
       return s;
+    }
+    if (ts_scan_stats) {
+      ts_scan_stats->agg_bytes += agg_offsets.len;
     }
   }
   if (!block->HasAggDataNoLock(col_idx)) {
@@ -933,6 +963,9 @@ KStatus TsEntitySegment::GetColumnAgg(int32_t col_idx, TsEntityBlock *block) {
       return s;
     }
     block->LoadAggData(col_idx, {col_agg_buffer.data, col_agg_buffer.len});
+    if (ts_scan_stats) {
+      ts_scan_stats->agg_bytes += col_agg_buffer.len;
+    }
   }
 
   return KStatus::SUCCESS;

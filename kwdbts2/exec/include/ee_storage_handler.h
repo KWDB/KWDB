@@ -97,11 +97,11 @@ class StorageHandler {
    * @param count
    * @return EEIteratorErrCode
    */
-  virtual EEIteratorErrCode TsNext(kwdbContext_p ctx);
+  virtual EEIteratorErrCode TsNext(kwdbContext_p ctx, TsScanStats* ts_scan_stats);
 
-  virtual EEIteratorErrCode TsOffsetNext(kwdbContext_p ctx);
+  virtual EEIteratorErrCode TsOffsetNext(kwdbContext_p ctx, TsScanStats* ts_scan_stats);
 
-  virtual EEIteratorErrCode TsStatisticCacheNext(kwdbContext_p ctx);
+  virtual EEIteratorErrCode TsStatisticCacheNext(kwdbContext_p ctx, TsScanStats* ts_scan_stats);
 
   /**
    * @brief           read data
@@ -177,7 +177,7 @@ class StorageHandler {
   EEIteratorErrCode TsNextAndFilter(kwdbContext_p ctx, Field *filter,
                                     k_uint32 *cur_offset, k_int32 limit,
                                     ScanRowBatch *row_batch, k_uint32 *total_read_row,
-                                    k_uint32 *examined_rows);
+                                    k_uint32 *examined_rows, TsScanStats* ts_scan_stats);
 
  private:
   EEIteratorErrCode HandleTsItrAndGetTagData(kwdbContext_p ctx,

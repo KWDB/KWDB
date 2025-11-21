@@ -1002,14 +1002,21 @@ type TsFetcher struct {
 
 // TsFetcherStats collect information in explain analyse
 type TsFetcherStats struct {
-	ProcessorID      int32
-	ProcessorName    int8
-	RowNum           int64
-	StallTime        int64 // time of execute
-	BytesRead        int64 // byte of rows
-	MaxAllocatedMem  int64 // maximum number of memory
-	MaxAllocatedDisk int64 // Maximum number of disk
-	OutputRowNum     int64 // row of aggregation
+	ProcessorID        int32
+	ProcessorName      int8
+	RowNum             int64
+	StallTime          int64   // time of execute
+	BytesRead          int64   // byte of rows
+	MaxAllocatedMem    int64   // maximum number of memory
+	MaxAllocatedDisk   int64   // Maximum number of disk
+	OutputRowNum       int64   // row of aggregation
+	MemoryBlockCount   int32   // scanned memory block count
+	LastBlockCount     int32   // scanned last block count
+	EntityBlockCount   int64   // scanned entity block count
+	BlockCacheHitRatio float32 //entity block cache hit ratio
+	BlockBytes         int64   // scanned block bytes
+	AggBytes           int64   // scanned agg bytes
+	HeaderBytes        int64   // scanned header bytes
 	// BuildTime only be used for hash tag scan op for multiple model processing
 	// when the switch is on and the server starts with single node mode.
 	BuildTime int64 // hash tag build time
@@ -2126,6 +2133,25 @@ func AddStatsList(tsFetcher TsFetcher, statss []TsFetcherStats) []TsFetcherStats
 		}
 		if fetcher.output_row_num > 0 {
 			statss[i].OutputRowNum = int64(fetcher.output_row_num)
+		}
+		if fetcher.memory_block_count > 0 {
+			statss[i].MemoryBlockCount = int32(fetcher.memory_block_count)
+		}
+		if fetcher.last_block_count > 0 {
+			statss[i].LastBlockCount = int32(fetcher.last_block_count)
+		}
+		if fetcher.entity_block_count > 0 {
+			statss[i].EntityBlockCount = int64(fetcher.entity_block_count)
+			statss[i].BlockCacheHitRatio = float32(fetcher.block_cache_hit_count) / float32(statss[i].EntityBlockCount)
+		}
+		if fetcher.block_bytes > 0 {
+			statss[i].BlockBytes = int64(fetcher.block_bytes)
+		}
+		if fetcher.agg_bytes > 0 {
+			statss[i].AggBytes = int64(fetcher.agg_bytes)
+		}
+		if fetcher.header_bytes > 0 {
+			statss[i].HeaderBytes = int64(fetcher.header_bytes)
 		}
 		// build_time only be used for hash tag scan op for multiple model processing
 		// when the switch is on and the server starts with single node mode.

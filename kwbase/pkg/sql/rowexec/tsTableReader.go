@@ -33,6 +33,7 @@ package rowexec
 import "C"
 import (
 	"context"
+	"fmt"
 	"math/rand"
 	"sync"
 	"time"
@@ -626,6 +627,11 @@ func (tsi *TsInputStats) TsStatsForQueryPlan() map[int32][]string {
 	resultMap := make(map[int32][]string)
 	for _, stats := range tsi.TsTableReaderStatss {
 		resultMap[stats.PorcessorId] = append(resultMap[stats.PorcessorId], stats.InputStats.StatsForQueryPlan()...)
+		if stats.PorcessorId == 1 {
+			resultMap[stats.PorcessorId] = append(resultMap[stats.PorcessorId], fmt.Sprintf("block cache hit ratio: %f", stats.InputStats.BlockCacheHitRatio))
+			resultMap[stats.PorcessorId] = append(resultMap[stats.PorcessorId], fmt.Sprintf("blocks<mem, last, entity>: <%d, %d, %d>", stats.InputStats.MemoryBlockCount, stats.InputStats.LastBlockCount, stats.InputStats.EntityBlockCount))
+			resultMap[stats.PorcessorId] = append(resultMap[stats.PorcessorId], fmt.Sprintf("scan bytes<block, agg, header>: <%d, %d, %d>", stats.InputStats.BlockBytes, stats.InputStats.AggBytes, stats.InputStats.HeaderBytes))
+		}
 	}
 	for _, stats := range tsi.TsAggregatorStatss {
 		tempStats := stats.InputStats.TsStatsForQueryPlan()
@@ -649,8 +655,15 @@ func (tsi *TsInputStats) SetTsInputStats(stats tse.TsFetcherStats) {
 	case tse.TsTableReaderName, tse.TsTagReaderName, tse.TsStatisticReaderName:
 		ts := TsTableReaderStats{
 			InputStats: TableReaderStats{
-				InputStats: is,
-				BytesRead:  stats.BytesRead,
+				InputStats:         is,
+				BytesRead:          stats.BytesRead,
+				MemoryBlockCount:   stats.MemoryBlockCount,
+				LastBlockCount:     stats.LastBlockCount,
+				EntityBlockCount:   stats.EntityBlockCount,
+				BlockCacheHitRatio: stats.BlockCacheHitRatio,
+				BlockBytes:         stats.BlockBytes,
+				AggBytes:           stats.AggBytes,
+				HeaderBytes:        stats.HeaderBytes,
 			},
 			PorcessorId: stats.ProcessorID,
 		}

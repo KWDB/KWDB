@@ -208,17 +208,21 @@ class TSBlkDataTypeConvert {
 
   // dest type is fixed len datatype.
   KStatus GetFixLenColAddr(TsBlockSpan* blk_span, uint32_t scan_idx, char** value,
-                           std::unique_ptr<TsBitmapBase>* bitmap);
+                           std::unique_ptr<TsBitmapBase>* bitmap, TsScanStats* ts_scan_stats = nullptr);
   // dest type is varlen datatype.
-  KStatus GetVarLenTypeColAddr(TsBlockSpan* blk_span, uint32_t row_idx, uint32_t scan_idx, DataFlags& flag, TSSlice& data);
-  KStatus GetColBitmap(TsBlockSpan* blk_span, uint32_t scan_idx, std::unique_ptr<TsBitmapBase>* bitmap);
-  KStatus getColBitmapConverted(TsBlockSpan* blk_span, uint32_t scan_idx, std::unique_ptr<TsBitmapBase>* bitmap);
-  KStatus GetPreCount(TsBlockSpan* blk_span, uint32_t scan_idx, uint16_t& count);
-  KStatus GetPreSum(TsBlockSpan* blk_span, uint32_t scan_idx, int32_t size, void* &pre_sum, bool& is_overflow);
-  KStatus GetPreMax(TsBlockSpan* blk_span, uint32_t scan_idx, void* &pre_max);
-  KStatus GetPreMin(TsBlockSpan* blk_span, uint32_t scan_idx, int32_t size, void* &pre_min);
-  KStatus GetVarPreMax(TsBlockSpan* blk_span, uint32_t scan_idx, TSSlice& pre_max);
-  KStatus GetVarPreMin(TsBlockSpan* blk_span, uint32_t scan_idx, TSSlice& pre_min);
+  KStatus GetVarLenTypeColAddr(TsBlockSpan* blk_span, uint32_t row_idx, uint32_t scan_idx, DataFlags& flag,
+                                TSSlice& data, TsScanStats* ts_scan_stats = nullptr);
+  KStatus GetColBitmap(TsBlockSpan* blk_span, uint32_t scan_idx, std::unique_ptr<TsBitmapBase>* bitmap,
+                                TsScanStats* ts_scan_stats = nullptr);
+  KStatus getColBitmapConverted(TsBlockSpan* blk_span, uint32_t scan_idx, std::unique_ptr<TsBitmapBase>* bitmap,
+                                TsScanStats* ts_scan_stats = nullptr);
+  KStatus GetPreCount(TsBlockSpan* blk_span, uint32_t scan_idx, TsScanStats* ts_scan_stats, uint16_t& count);
+  KStatus GetPreSum(TsBlockSpan* blk_span, uint32_t scan_idx, int32_t size, TsScanStats* ts_scan_stats,
+                    void* &pre_sum, bool& is_overflow);
+  KStatus GetPreMax(TsBlockSpan* blk_span, uint32_t scan_idx, TsScanStats* ts_scan_stats, void* &pre_max);
+  KStatus GetPreMin(TsBlockSpan* blk_span, uint32_t scan_idx, int32_t size, TsScanStats* ts_scan_stats, void* &pre_min);
+  KStatus GetVarPreMax(TsBlockSpan* blk_span, uint32_t scan_idx, TsScanStats* ts_scan_stats, TSSlice& pre_max);
+  KStatus GetVarPreMin(TsBlockSpan* blk_span, uint32_t scan_idx, TsScanStats* ts_scan_stats, TSSlice& pre_min);
 };
 
 

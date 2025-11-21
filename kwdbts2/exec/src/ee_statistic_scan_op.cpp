@@ -198,6 +198,7 @@ EEIteratorErrCode TableStatisticScanOperator::Next(kwdbContext_p ctx, DataChunkP
   }
   EEIteratorErrCode code = EEIteratorErrCode::EE_ERROR;
   KWThdContext *thd = current_thd;
+  TsScanStats ts_scan_stats;
   do {
     code = InitScanRowBatch(ctx, &row_batch_);
     if (EEIteratorErrCode::EE_OK != code) {
@@ -206,9 +207,9 @@ EEIteratorErrCode TableStatisticScanOperator::Next(kwdbContext_p ctx, DataChunkP
 
     while (!is_done_) {
       if (!is_lastrow_optimize_) {
-        code = handler_->TsNext(ctx);
+        code = handler_->TsNext(ctx, &ts_scan_stats);
       } else {
-        code = handler_->TsStatisticCacheNext(ctx);
+        code = handler_->TsStatisticCacheNext(ctx, &ts_scan_stats);
       }
       if (EEIteratorErrCode::EE_OK != code) {
         is_done_ = true;

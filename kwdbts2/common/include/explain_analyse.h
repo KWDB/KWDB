@@ -24,7 +24,8 @@ namespace kwdbts {
 
 struct OperatorFetcher {
   void Update(k_int32 read_rows, k_int64 stall_time, k_int64 bytes_read, k_int64 max_memory_use,
-                  k_int64 max_disk_use, k_int64 output_rows, k_int64 build_time = 0) {
+                  k_int64 max_disk_use, k_int64 output_rows, k_int64 build_time = 0,
+                  TsScanStats* ts_scan_stats = nullptr) {
     read_rows_ += read_rows;
     stall_time_ += stall_time;
     bytes_read_ += bytes_read;
@@ -34,6 +35,15 @@ struct OperatorFetcher {
     // build_time_ is only used for hash_tag_scan_op
     // denoting the hash index contruction time cost
     build_time_ += build_time;
+    if (ts_scan_stats) {
+      memory_block_count_ += ts_scan_stats->memory_block_count;
+      last_block_count_ += ts_scan_stats->last_block_count;
+      entity_block_count_ += ts_scan_stats->entity_block_count;
+      block_cache_hit_count_ += ts_scan_stats->block_cache_hit_count;
+      block_bytes_ += ts_scan_stats->block_bytes;
+      agg_bytes_ += ts_scan_stats->agg_bytes;
+      header_bytes_ += ts_scan_stats->header_bytes;
+    }
   }
 
   void Reset() {
@@ -43,6 +53,13 @@ struct OperatorFetcher {
     max_memory_use_ = 0;
     max_disk_use_ = 0;
     output_rows_ = 0;
+    memory_block_count_ = 0;
+    last_block_count_ = 0;
+    entity_block_count_ = 0;
+    block_cache_hit_count_ = 0;
+    block_bytes_ = 0;
+    agg_bytes_ = 0;
+    header_bytes_ = 0;
     build_time_ = 0;
   }
 
@@ -52,6 +69,13 @@ struct OperatorFetcher {
   k_int64 max_memory_use_{0};
   k_int64 max_disk_use_{0};
   k_int64 output_rows_{0};
+  k_int32 memory_block_count_{0};
+  k_int32 last_block_count_{0};
+  k_int64 entity_block_count_{0};
+  k_int64 block_cache_hit_count_{0};
+  k_int64 block_bytes_{0};
+  k_int64 agg_bytes_{0};
+  k_int64 header_bytes_{0};
   k_int64 build_time_{0};
 };
 
@@ -83,6 +107,13 @@ class TsFetcherCollection {
             fetcher->max_allocated_mem += f->max_memory_use_;
             fetcher->max_allocated_disk += f->max_disk_use_;
             fetcher->output_row_num += f->output_rows_;
+            fetcher->memory_block_count += f->memory_block_count_;
+            fetcher->last_block_count += f->last_block_count_;
+            fetcher->entity_block_count += f->entity_block_count_;
+            fetcher->block_cache_hit_count += f->block_cache_hit_count_;
+            fetcher->block_bytes += f->block_bytes_;
+            fetcher->agg_bytes += f->agg_bytes_;
+            fetcher->header_bytes += f->header_bytes_;
             fetcher->build_time += f->build_time_;
           }
         }

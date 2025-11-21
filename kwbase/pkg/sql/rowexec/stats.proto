@@ -46,12 +46,19 @@ message InputStats {
 message TableReaderStats {
   InputStats input_stats = 1 [(gogoproto.nullable) = false];
   int64 bytes_read = 2;
+  int32 memory_block_count = 3;
+  int32 last_block_count = 4;
+  int64 entity_block_count = 5;
+  float block_cache_hit_ratio = 6;
+  int64 block_bytes = 7;
+  int64 agg_bytes = 8;
+  int64 header_bytes = 9;
 }
 
 // TsTableReaderStats are the stats collected during a tsTableReader run.
 message TsTableReaderStats {
   TableReaderStats input_stats = 1 [(gogoproto.nullable) = false];
-  int32 porcessor_id =2;
+  int32 porcessor_id = 2;
 }
 
 // TsAggregatorStats are the stats collected during a TsAggregator run.

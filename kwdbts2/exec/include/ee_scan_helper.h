@@ -29,7 +29,11 @@ class ScanHelper {
   }
   virtual EEIteratorErrCode Materialize(kwdbContext_p ctx, ScanRowBatch *rowbatch, DataChunkPtr &chunk);
 
+  TsScanStats& GetTsScanStats() {return ts_scan_stats;}
+
  protected:
   TableScanOperator *op_{nullptr};
+  // Scan stats for TsFetcher
+  TsScanStats ts_scan_stats;
 };
 };  // namespace kwdbts

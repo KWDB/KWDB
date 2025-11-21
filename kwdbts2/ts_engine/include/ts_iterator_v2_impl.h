@@ -66,14 +66,14 @@ class TsStorageIteratorV2Impl : public TsStorageIterator {
    * Convert block span data to result set which will be returned to execution engine
    * for further process.
    */
-  KStatus ScanEntityBlockSpans(timestamp64 ts);
+  KStatus ScanEntityBlockSpans(timestamp64 ts, TsScanStats* ts_scan_stats);
 
   KStatus getBlockSpanMinMaxValue(std::shared_ptr<TsBlockSpan>& block_span, uint32_t col_id,
-                                  uint32_t type, void*& min, void*& max);
+                                  uint32_t type, TsScanStats* ts_scan_stats, void*& min, void*& max);
   KStatus getBlockSpanVarMinMaxValue(std::shared_ptr<TsBlockSpan>& block_span, uint32_t col_id,
-                                  uint32_t type, TSSlice& min, TSSlice& max);
+                                  uint32_t type, TsScanStats* ts_scan_stats, TSSlice& min, TSSlice& max);
 
-  KStatus isBlockFiltered(std::shared_ptr<TsBlockSpan>& block_span, bool& is_filtered);
+  KStatus isBlockFiltered(std::shared_ptr<TsBlockSpan>& block_span, TsScanStats* ts_scan_stats, bool& is_filtered);
 
   k_int32 cur_entity_index_{-1};
   k_int32 cur_partition_index_{-1};
@@ -101,12 +101,13 @@ class TsSortedRawDataIteratorV2Impl : public TsStorageIteratorV2Impl {
                                 SortOrder order_type = ASC);
   ~TsSortedRawDataIteratorV2Impl();
 
-  KStatus Next(ResultSet* res, k_uint32* count, bool* is_finished, timestamp64 ts = INVALID_TS) override;
+  KStatus Next(ResultSet* res, k_uint32* count, bool* is_finished,
+                timestamp64 ts = INVALID_TS, TsScanStats* ts_scan_stats = nullptr) override;
   bool IsDisordered() override;
 
  protected:
-  KStatus ScanAndSortEntityData(timestamp64 ts);
-  KStatus MoveToNextEntity(timestamp64 ts);
+  KStatus ScanAndSortEntityData(timestamp64 ts, TsScanStats* ts_scan_stats);
+  KStatus MoveToNextEntity(timestamp64 ts, TsScanStats* ts_scan_stats);
 
   std::shared_ptr<TsBlockSpanSortedIterator> block_span_sorted_iterator_{nullptr};
 };
@@ -125,18 +126,21 @@ class TsAggIteratorV2Impl : public TsStorageIteratorV2Impl {
 
   KStatus Init(bool is_reversed) override;
   // need call Next function times: entity_ids.size(), no matter Next return what.
-  KStatus Next(ResultSet* res, k_uint32* count, bool* is_finished, timestamp64 ts = INVALID_TS) override;
+  KStatus Next(ResultSet* res, k_uint32* count, bool* is_finished,
+                timestamp64 ts = INVALID_TS, TsScanStats* ts_scan_stats = nullptr) override;
   bool IsDisordered() override;
 
  protected:
-  KStatus Aggregate();
-  KStatus CountAggregate();
+  KStatus Aggregate(TsScanStats* ts_scan_stats);
+  KStatus CountAggregate(TsScanStats* ts_scan_stats = nullptr);
   KStatus RecalculateCountInfo(std::shared_ptr<const TsPartitionVersion> partition,
-                               shared_ptr<TsPartitionEntityCountManager> count_manager);
-  KStatus UpdateAggregation(bool can_remove_last_candidate);
+                                shared_ptr<TsPartitionEntityCountManager> count_manager,
+                                TsScanStats* ts_scan_stats);
+  KStatus UpdateAggregation(bool can_remove_last_candidate, TsScanStats* ts_scan_stats);
   KStatus UpdateAggregation(std::shared_ptr<TsBlockSpan>& block_span,
                             bool aggregate_first_last_cols,
-                            bool can_remove_last_candidate);
+                            bool can_remove_last_candidate,
+                            TsScanStats* ts_scan_stats);
   void InitAggData(TSSlice& agg_data);
   void InitSumValue(void* data, int32_t type);
   void UpdateTsSpans();
@@ -223,7 +227,8 @@ class TsOffsetIteratorV2Impl : public TsIterator {
     return filter_cnt_;
   }
 
-  KStatus Next(ResultSet* res, k_uint32* count, timestamp64 ts = INVALID_TS) override;
+  KStatus Next(ResultSet* res, k_uint32* count, timestamp64 ts = INVALID_TS,
+                TsScanStats* ts_scan_stats = nullptr) override;
 
  private:
   KStatus ScanPartitionBlockSpans(uint32_t* cnt);
@@ -303,14 +308,15 @@ class TsRawDataIteratorV2ImplByOSN : public TsStorageIteratorV2Impl {
 
   KStatus Init();
 
-  KStatus Next(ResultSet* res, k_uint32* count, bool* is_finished, timestamp64 ts = INVALID_TS) override;
+  KStatus Next(ResultSet* res, k_uint32* count, bool* is_finished,
+                timestamp64 ts = INVALID_TS, TsScanStats* ts_scan_stats = nullptr) override;
   bool IsDisordered() override { return true; }
 
  protected:
   KStatus MoveToNextEntity(bool* is_finished);
   KStatus ScanAndSortEntityData(timestamp64 ts);
   KStatus NextMetricDelRows(ResultSet* res, k_uint32* count, bool* is_finished);
-  KStatus NextMetricInsertRows(ResultSet* res, k_uint32* count, bool* is_finished);
+  KStatus NextMetricInsertRows(ResultSet* res, k_uint32* count, bool* is_finished, TsScanStats* ts_scan_stats);
   KStatus FillEmptyMetricRow(ResultSet* res, uint32_t count, TS_OSN osn, OperatorTypeOfRecord type);
   KStatus AppendExtendColSpace(ResultSet* res, uint32_t count);
 

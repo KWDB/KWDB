@@ -612,7 +612,7 @@ const KwTsSpan& ts_span, uint64_t* volume) {
 }
 
 KStatus TsTableV2Impl::GetDataVolumeHalfTS(kwdbContext_p ctx, uint64_t begin_hash, uint64_t end_hash,
-                                           const KwTsSpan& ts_span, timestamp64* half_ts) {
+                                            const KwTsSpan& ts_span, timestamp64* half_ts) {
   uint64_t row_num = 0;
   HashIdSpan hash_span{begin_hash, end_hash};
   vector<EntityResultIndex> entity_store;

@@ -110,6 +110,7 @@ EEIteratorErrCode SortScanOperator::Start(kwdbContext_p ctx) {
     Return(EEIteratorErrCode::EE_ERROR);
   }
 
+  TsScanStats ts_scan_stats;
   // read data
   while (true) {
     code = InitScanRowBatch(ctx, &row_batch_);
@@ -118,9 +119,9 @@ EEIteratorErrCode SortScanOperator::Start(kwdbContext_p ctx) {
     }
     row_batch_->ts_ = ts_;
     if (!is_offset_opt_) {
-      code = handler_->TsNext(ctx);
+      code = handler_->TsNext(ctx, &ts_scan_stats);
     } else {
-      code = handler_->TsOffsetNext(ctx);
+      code = handler_->TsOffsetNext(ctx, &ts_scan_stats);
     }
 
     if (EEIteratorErrCode::EE_OK != code) {
@@ -161,7 +162,7 @@ EEIteratorErrCode SortScanOperator::Start(kwdbContext_p ctx) {
   auto end = std::chrono::high_resolution_clock::now();
   if (data_chunk_) {
     fetcher_.Update(data_chunk_->Count(), (end - start).count(),
-                                    data_chunk_->Count() * data_chunk_->RowSize(), 0, 0, 0);
+                                    data_chunk_->Count() * data_chunk_->RowSize(), 0, 0, 0, 0, &ts_scan_stats);
   }
 
   Return(code);

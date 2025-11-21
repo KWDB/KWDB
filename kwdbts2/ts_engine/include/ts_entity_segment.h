@@ -154,7 +154,8 @@ class TsEntitySegmentBlockItemFile {
 
   KStatus Open();
 
-  KStatus GetBlockItem(uint64_t blk_id, TsEntitySegmentBlockItem** blk_item);
+  KStatus GetBlockItem(uint64_t blk_id, TsEntitySegmentBlockItem** blk_item,
+                        TsScanStats* ts_scan_stats = nullptr);
 
   uint64_t GetBlockNum() {
     assert((r_file_->GetFileSize() - sizeof(TsBlockItemFileHeader)) % sizeof(TsEntitySegmentBlockItem) == 0);
@@ -201,7 +202,8 @@ class TsEntitySegmentMetaManager {
   KStatus GetBlockSpans(const TsBlockItemFilterParams& filter, std::shared_ptr<TsEntitySegment> entity_segment,
                         std::list<shared_ptr<TsBlockSpan>>& block_spans,
                         std::shared_ptr<TsTableSchemaManager>& tbl_schema_mgr,
-                        std::shared_ptr<MMapMetricsTable>& scan_schema);
+                        std::shared_ptr<MMapMetricsTable>& scan_schema,
+                        TsScanStats* ts_scan_stats = nullptr);
 
   void MarkDeleteEntityHeader() { entity_header_.MarkDelete(); }
 
@@ -332,18 +334,22 @@ class TsEntityBlock : public TsBlock {
 
   KStatus LoadAggInfo(TSSlice buffer);
 
-  KStatus GetRowSpans(const std::vector<STScanRange>& spans, std::vector<std::pair<int, int>>& row_spans);
+  KStatus GetRowSpans(const std::vector<STScanRange>& spans, std::vector<std::pair<int, int>>& row_spans,
+                      TsScanStats* ts_scan_stats);
 
-  KStatus GetColAddr(uint32_t col_id, const std::vector<AttributeInfo>* schema, char** value) override;
+  KStatus GetColAddr(uint32_t col_id, const std::vector<AttributeInfo>* schema, char** value,
+                      TsScanStats* ts_scan_stats = nullptr) override;
 
   KStatus GetColBitmap(uint32_t col_id, const std::vector<AttributeInfo>* schema,
-                       std::unique_ptr<TsBitmapBase>* bitmap) override;
+                       std::unique_ptr<TsBitmapBase>* bitmap, TsScanStats* ts_scan_stats = nullptr) override;
 
-  KStatus GetValueSlice(int row_num, int col_id, const std::vector<AttributeInfo>* schema, TSSlice& value) override;
+  KStatus GetValueSlice(int row_num, int col_id, const std::vector<AttributeInfo>* schema, TSSlice& value,
+                        TsScanStats* ts_scan_stats = nullptr) override;
 
-  bool IsColNull(int row_num, int col_id, const std::vector<AttributeInfo>* schema) override;
+  bool IsColNull(int row_num, int col_id, const std::vector<AttributeInfo>* schema,
+                  TsScanStats* ts_scan_stats = nullptr) override;
 
-  timestamp64 GetTS(int row_num) override;
+  timestamp64 GetTS(int row_num, TsScanStats* ts_scan_stats = nullptr) override;
 
   timestamp64 GetFirstTS() override;
 
@@ -355,17 +361,18 @@ class TsEntityBlock : public TsBlock {
 
   uint64_t GetLastOSN() override;
 
-  const uint64_t* GetOSNAddr(int row_num) override;
+  const uint64_t* GetOSNAddr(int row_num, TsScanStats* ts_scan_stats = nullptr) override;
 
   KStatus GetCompressDataFromFile(uint32_t table_version, int32_t nrow, std::string& data) override;
 
   bool HasPreAgg(uint32_t begin_row_idx, uint32_t row_num) override;
-  KStatus GetPreCount(uint32_t blk_col_idx, uint16_t& count) override;
-  KStatus GetPreSum(uint32_t blk_col_idx, int32_t size, void*& pre_sum, bool& is_overflow) override;
-  KStatus GetPreMax(uint32_t blk_col_idx, void*& pre_max) override;
-  KStatus GetPreMin(uint32_t blk_col_idx, int32_t size, void*& pre_max) override;
-  KStatus GetVarPreMax(uint32_t blk_col_idx, TSSlice& pre_max) override;
-  KStatus GetVarPreMin(uint32_t blk_col_idx, TSSlice& pre_min) override;
+  KStatus GetPreCount(uint32_t blk_col_idx, TsScanStats* ts_scan_stats, uint16_t& count) override;
+  KStatus GetPreSum(uint32_t blk_col_idx, int32_t size, TsScanStats* ts_scan_stats,
+                    void*& pre_sum, bool& is_overflow) override;
+  KStatus GetPreMax(uint32_t blk_col_idx, TsScanStats* ts_scan_stats, void*& pre_max) override;
+  KStatus GetPreMin(uint32_t blk_col_idx, int32_t size, TsScanStats* ts_scan_stats, void*& pre_max) override;
+  KStatus GetVarPreMax(uint32_t blk_col_idx, TsScanStats* ts_scan_stats, TSSlice& pre_max) override;
+  KStatus GetVarPreMin(uint32_t blk_col_idx, TsScanStats* ts_scan_stats, TSSlice& pre_min) override;
 
   std::string GetEntitySegmentPath();
   std::string GetHandleInfoStr();
@@ -444,15 +451,17 @@ class TsEntitySegment : public TsSegmentBase, public enable_shared_from_this<TsE
 
   KStatus GetBlockSpans(const TsBlockItemFilterParams& filter, std::list<shared_ptr<TsBlockSpan>>& block_spans,
                         std::shared_ptr<TsTableSchemaManager>& tbl_schema_mgr,
-                        std::shared_ptr<MMapMetricsTable>& scan_schema) override;
+                        std::shared_ptr<MMapMetricsTable>& scan_schema,
+                        TsScanStats* ts_scan_stats = nullptr) override;
 
   KStatus GetBlockData(TsEntityBlock* block, std::string& data);
 
-  KStatus GetColumnBlock(int32_t col_idx, const std::vector<AttributeInfo>* metric_schema, TsEntityBlock* block);
+  KStatus GetColumnBlock(int32_t col_idx, const std::vector<AttributeInfo>* metric_schema,
+                          TsEntityBlock* block, TsScanStats* ts_scan_stats);
 
   KStatus GetAggData(TsEntityBlock *block, std::string& data);
 
-  KStatus GetColumnAgg(int32_t col_idx, TsEntityBlock* block);
+  KStatus GetColumnAgg(int32_t col_idx, TsEntityBlock* block, TsScanStats* ts_scan_stats);
 
   const EntitySegmentMetaInfo &GetHandleInfo() const { return info_; }
 

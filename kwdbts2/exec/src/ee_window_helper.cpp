@@ -97,7 +97,7 @@ EEIteratorErrCode WindowHelper::NextBatch(kwdbContext_p ctx,
   }
   code = op_->handler_->TsNextAndFilter(
       ctx, op_->filter_, &op_->cur_offset_, op_->limit_, rowbatch,
-      &op_->total_read_row_, &op_->examined_rows_);
+      &op_->total_read_row_, &op_->examined_rows_, NULL);
   return code;
 }
 

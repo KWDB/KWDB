@@ -155,7 +155,7 @@ KStatus TsMemSegmentManager::PutData(const TSSlice& payload, TSEntityID entity_i
 }
 
 KStatus TsMemSegBlock::GetColBitmap(uint32_t col_id, const std::vector<AttributeInfo>* schema,
-                                    std::unique_ptr<TsBitmapBase>* bitmap) {
+                                    std::unique_ptr<TsBitmapBase>* bitmap, TsScanStats* ts_scan_stats) {
   auto iter = col_bitmaps_.find(col_id);
   if (iter != col_bitmaps_.end()) {
     *bitmap = iter->second->AsView();
@@ -173,7 +173,8 @@ KStatus TsMemSegBlock::GetColBitmap(uint32_t col_id, const std::vector<Attribute
   return KStatus::SUCCESS;
 }
 
-KStatus TsMemSegBlock::GetColAddr(uint32_t col_id, const std::vector<AttributeInfo>* schema, char** value) {
+KStatus TsMemSegBlock::GetColAddr(uint32_t col_id, const std::vector<AttributeInfo>* schema, char** value,
+                                  TsScanStats* ts_scan_stats) {
   assert(!isVarLenType((*schema)[col_id].type));
   auto iter = col_based_mems_.find(col_id);
   if (iter != col_based_mems_.end() && iter->second != nullptr) {
@@ -228,7 +229,7 @@ KStatus TsMemSegBlock::GetColAddr(uint32_t col_id, const std::vector<AttributeIn
 }
 
 inline KStatus TsMemSegBlock::GetValueSlice(int row_num, int col_id, const std::vector<AttributeInfo>* schema,
-                                     TSSlice& value) {
+                                     TSSlice& value, TsScanStats* ts_scan_stats) {
   assert(row_data_.size() > row_num);
   if (parser_ == nullptr) {
     parser_ = std::make_unique<TsRawPayloadRowParser>(schema);
@@ -240,7 +241,8 @@ inline KStatus TsMemSegBlock::GetValueSlice(int row_num, int col_id, const std::
   return KStatus::SUCCESS;
 }
 
-inline bool TsMemSegBlock::IsColNull(int row_num, int col_id, const std::vector<AttributeInfo>* schema) {
+inline bool TsMemSegBlock::IsColNull(int row_num, int col_id, const std::vector<AttributeInfo>* schema,
+                                      TsScanStats* ts_scan_stats) {
   assert(row_data_.size() > row_num);
   if (parser_ == nullptr) {
     parser_ = std::make_unique<TsRawPayloadRowParser>(schema);
@@ -429,7 +431,8 @@ KStatus TsMemSegment::GetBlockSpans(std::list<shared_ptr<TsBlockSpan>>& blocks, 
 
 KStatus TsMemSegment::GetBlockSpans(const TsBlockItemFilterParams& filter, std::list<shared_ptr<TsBlockSpan>>& blocks,
                                     std::shared_ptr<TsTableSchemaManager>& tbl_schema_mgr,
-                                    std::shared_ptr<MMapMetricsTable>& scan_schema) {
+                                    std::shared_ptr<MMapMetricsTable>& scan_schema,
+                                    TsScanStats* ts_scan_stats) {
   std::list<const kwdbts::TSMemSegRowData*> row_datas;
   bool ok = GetEntityRows(filter, &row_datas);
   if (!ok) {
@@ -493,6 +496,9 @@ KStatus TsMemSegment::GetBlockSpans(const TsBlockItemFilterParams& filter, std::
     }
     template_blk_span = cur_span.get();
     blocks.push_back(std::move(cur_span));
+    if (ts_scan_stats) {
+      ++ts_scan_stats->memory_block_count;
+    }
   }
   return KStatus::SUCCESS;
 }

@@ -146,7 +146,7 @@ bool TsStorageIterator::matchesFilterRange(const BlockFilter& filter, SpanValue 
   return false;
 }
 
-KStatus TsTableIterator::Next(ResultSet* res, k_uint32* count, timestamp64 ts) {
+KStatus TsTableIterator::Next(ResultSet* res, k_uint32* count, timestamp64 ts, TsScanStats* ts_scan_stats) {
   *count = 0;
   MUTEX_LOCK(&latch_);
   Defer defer{[&]() { MUTEX_UNLOCK(&latch_); }};
@@ -159,7 +159,7 @@ KStatus TsTableIterator::Next(ResultSet* res, k_uint32* count, timestamp64 ts) {
       break;
     }
 
-    s = iterators_[current_iter_]->Next(res, count, &is_finished, ts);
+    s = iterators_[current_iter_]->Next(res, count, &is_finished, ts, ts_scan_stats);
     if (s == FAIL) {
       return s;
     }

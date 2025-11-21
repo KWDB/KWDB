@@ -71,13 +71,14 @@ EEIteratorErrCode StorageHandler::HandleTsItrAndGetTagData(
 
 EEIteratorErrCode StorageHandler::TsNextAndFilter(
     kwdbContext_p ctx, Field *filter, k_uint32 *cur_offset, k_int32 limit,
-    ScanRowBatch *row_batch, k_uint32 *total_read_row, k_uint32 *examined_rows) {
+    ScanRowBatch *row_batch, k_uint32 *total_read_row, k_uint32 *examined_rows,
+    TsScanStats* ts_scan_stats) {
   EEIteratorErrCode code = EEIteratorErrCode::EE_OK;
   KWThdContext *thd = current_thd;
   bool null_filter = (thd->wtyp_ == WindowGroupType::EE_WGT_EVENT) ||
                      (thd->wtyp_ == WindowGroupType::EE_WGT_STATE);
   while (true) {
-    code = this->TsNext(ctx);
+    code = this->TsNext(ctx, ts_scan_stats);
     if (EEIteratorErrCode::EE_OK != code) {
       break;
     }
@@ -136,7 +137,7 @@ EEIteratorErrCode StorageHandler::TsNextAndFilter(
   return code;
 }
 
-EEIteratorErrCode StorageHandler::TsNext(kwdbContext_p ctx) {
+EEIteratorErrCode StorageHandler::TsNext(kwdbContext_p ctx, TsScanStats* ts_scan_stats) {
   EEIteratorErrCode code = EEIteratorErrCode::EE_OK;
   KWThdContext *thd = current_thd;
   bool need_reset = (thd->wtyp_ == WindowGroupType::EE_WGT_EVENT || thd->wtyp_ == WindowGroupType::EE_WGT_COUNT);
@@ -151,7 +152,7 @@ EEIteratorErrCode StorageHandler::TsNext(kwdbContext_p ctx) {
     }
 
     row_batch->Reset();
-    KStatus ret = ts_iterator->Next(&row_batch->res_, &row_batch->count_, row_batch->ts_);
+    KStatus ret = ts_iterator->Next(&row_batch->res_, &row_batch->count_, row_batch->ts_, ts_scan_stats);
     if (KStatus::FAIL == ret) {
       EEPgErrorInfo::SetPgErrorInfo(ERRCODE_FETCH_DATA_FAILED,
                                   "scanning column data fail");
@@ -193,7 +194,7 @@ EEIteratorErrCode StorageHandler::TsNext(kwdbContext_p ctx) {
   return code;
 }
 
-EEIteratorErrCode StorageHandler::TsOffsetNext(kwdbContext_p ctx) {
+EEIteratorErrCode StorageHandler::TsOffsetNext(kwdbContext_p ctx, TsScanStats* ts_scan_stats) {
   EnterFunc();
   EEIteratorErrCode code = EEIteratorErrCode::EE_OK;
   KStatus ret = KStatus::FAIL;
@@ -241,7 +242,7 @@ EEIteratorErrCode StorageHandler::TsOffsetNext(kwdbContext_p ctx) {
 
   ScanRowBatch* row_batch = static_cast<ScanRowBatch *>(current_thd->GetRowBatch());
   row_batch->Reset();
-  ret = ts_iterator->Next(&row_batch->res_, &row_batch->count_, row_batch->ts_);
+  ret = ts_iterator->Next(&row_batch->res_, &row_batch->count_, row_batch->ts_, ts_scan_stats);
   if (KStatus::FAIL == ret) {
     EEPgErrorInfo::SetPgErrorInfo(ERRCODE_FETCH_DATA_FAILED,
                                 "scanning column data fail");
@@ -282,7 +283,7 @@ EEIteratorErrCode StorageHandler::TsOffsetNext(kwdbContext_p ctx) {
   Return(code);
 }
 
-EEIteratorErrCode StorageHandler::TsStatisticCacheNext(kwdbContext_p ctx) {
+EEIteratorErrCode StorageHandler::TsStatisticCacheNext(kwdbContext_p ctx, TsScanStats* ts_scan_stats) {
   EnterFunc();
   // This func only return the last row, so only one chunk can handle the row data.
   // if already has row in row_chunk. we return EE_END_OF_RECORD directly.
@@ -356,7 +357,7 @@ EEIteratorErrCode StorageHandler::TsStatisticCacheNext(kwdbContext_p ctx) {
     }
 
     row_batch->Reset();
-    ret = ts_iterator->Next(&row_batch->res_, &row_batch->count_, row_batch->ts_);
+    ret = ts_iterator->Next(&row_batch->res_, &row_batch->count_, row_batch->ts_, ts_scan_stats);
     if (KStatus::FAIL == ret) {
       EEPgErrorInfo::SetPgErrorInfo(ERRCODE_FETCH_DATA_FAILED,
                                     "scanning column data fail");

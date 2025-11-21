@@ -63,7 +63,8 @@ class TsStorageIterator {
    * @param is_finished    identify whether the iterator has completed querying
    * @param ts             used for block and partition table level data filtering during orderbylimit queries
    */
-  virtual KStatus Next(ResultSet* res, k_uint32* count, bool* is_finished, timestamp64 ts = INVALID_TS) = 0;
+  virtual KStatus Next(ResultSet* res, k_uint32* count, bool* is_finished,
+                        timestamp64 ts = INVALID_TS, TsScanStats* ts_scan_stats = nullptr) = 0;
 
   virtual bool IsDisordered() = 0;
 
@@ -117,7 +118,8 @@ class TsIterator {
   virtual ~TsIterator() {}
   virtual bool IsDisordered() = 0;
   virtual uint32_t GetFilterCount() = 0;
-  virtual KStatus Next(ResultSet* res, k_uint32* count, timestamp64 ts = INVALID_TS) = 0;
+  virtual KStatus Next(ResultSet* res, k_uint32* count, timestamp64 ts = INVALID_TS,
+                        TsScanStats* ts_scan_stats = nullptr) = 0;
 };
 
 /**
@@ -157,7 +159,8 @@ class TsTableIterator : public TsIterator {
    * @param res     the set of returned query results
    * @param count   number of rows of data
    */
-  KStatus Next(ResultSet* res, k_uint32* count, timestamp64 ts = INVALID_TS) override;
+  KStatus Next(ResultSet* res, k_uint32* count, timestamp64 ts = INVALID_TS,
+                TsScanStats* ts_scan_stats = nullptr) override;
 
  private:
   KLatch latch_;

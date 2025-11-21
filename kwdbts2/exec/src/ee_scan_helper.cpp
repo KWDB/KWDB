@@ -37,7 +37,7 @@ EEIteratorErrCode ScanHelper::NextChunk(kwdbContext_p ctx,
     }
     code = op_->handler_->TsNextAndFilter(
         ctx, op_->filter_, &op_->cur_offset_, op_->limit_, op_->row_batch_,
-        &op_->total_read_row_, &op_->examined_rows_);
+        &op_->total_read_row_, &op_->examined_rows_, &ts_scan_stats);
     if (code == EEIteratorErrCode::EE_ERROR) {
       break;
     }

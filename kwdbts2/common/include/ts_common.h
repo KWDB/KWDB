@@ -66,6 +66,25 @@ struct DelRowSpans {
   std::vector<DelRowSpan> spans;
 };
 
+struct TsScanStats {
+  int32_t memory_block_count{0};         // scanned memory block count
+  int32_t last_block_count{0};           // scanned last block count
+  int64_t entity_block_count{0};         // scanned entity block count
+  int64_t block_cache_hit_count{0};      // block cache hit count
+  int64_t block_bytes{0};                // scanned block_bytes
+  int64_t agg_bytes{0};                  // scanned agg_bytes
+  int64_t header_bytes{0};               // scanned header_bytes
+  void reset() {
+    memory_block_count = 0;
+    last_block_count = 0;
+    entity_block_count = 0;
+    block_cache_hit_count = 0;
+    block_bytes = 0;
+    agg_bytes = 0;
+    header_bytes = 0;
+  }
+};
+
 struct UnorderedDataStats {
   k_uint32 total_data_rows = 0;
   k_uint32 unordered_data_rows = 0;

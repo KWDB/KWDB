@@ -284,7 +284,7 @@ class TsLastBlock : public TsBlock {
   size_t GetRowNum() override { return block_info_.nrow; }
 
   KStatus GetColBitmap(uint32_t col_id, const std::vector<AttributeInfo>* schema,
-                       std::unique_ptr<TsBitmapBase>* bitmap) override {
+                       std::unique_ptr<TsBitmapBase>* bitmap, TsScanStats* ts_scan_stats = nullptr) override {
     TsColumnBlock* col_block = nullptr;
     auto s = column_block_cache_->GetColumnBlock(col_id, &col_block, schema);
     if (s == FAIL) {
@@ -294,7 +294,8 @@ class TsLastBlock : public TsBlock {
     }
     return col_block->GetColBitmap(bitmap);
   }
-  KStatus GetColAddr(uint32_t col_id, const std::vector<AttributeInfo>* schema, char** value) override {
+  KStatus GetColAddr(uint32_t col_id, const std::vector<AttributeInfo>* schema, char** value,
+                      TsScanStats* ts_scan_stats = nullptr) override {
     TsColumnBlock* col_block = nullptr;
     auto s = column_block_cache_->GetColumnBlock(col_id, &col_block, schema);
     if (s == FAIL) {
@@ -305,7 +306,8 @@ class TsLastBlock : public TsBlock {
     *value = col_block->GetColAddr();
     return SUCCESS;
   }
-  KStatus GetValueSlice(int row_num, int col_id, const std::vector<AttributeInfo>* schema, TSSlice& value) override {
+  KStatus GetValueSlice(int row_num, int col_id, const std::vector<AttributeInfo>* schema, TSSlice& value,
+                        TsScanStats* ts_scan_stats = nullptr) override {
     TsColumnBlock* col_block = nullptr;
     auto s = column_block_cache_->GetColumnBlock(col_id, &col_block, schema);
     if (s == FAIL) {
@@ -316,7 +318,8 @@ class TsLastBlock : public TsBlock {
     return col_block->GetValueSlice(row_num, value);
   }
 
-  inline bool IsColNull(int row_num, int col_id, const std::vector<AttributeInfo>* schema) override {
+  inline bool IsColNull(int row_num, int col_id, const std::vector<AttributeInfo>* schema,
+                        TsScanStats* ts_scan_stats = nullptr) override {
     std::unique_ptr<TsBitmapBase> bitmap;
     auto s = GetColBitmap(col_id, schema, &bitmap);
     if (s == FAIL) {
@@ -326,7 +329,7 @@ class TsLastBlock : public TsBlock {
   }
 
   // if just get timestamp , this function return fast.
-  inline timestamp64 GetTS(int row_num) override {
+  inline timestamp64 GetTS(int row_num, TsScanStats* ts_scan_stats = nullptr) override {
     auto ts = GetTimestamps();
     if (ts == nullptr) {
       return INVALID_TS;
@@ -355,7 +358,7 @@ class TsLastBlock : public TsBlock {
     return block_index_.last_osn;
   }
 
-  inline const uint64_t* GetOSNAddr(int row_num) override {
+  inline const uint64_t* GetOSNAddr(int row_num, TsScanStats* ts_scan_stats = nullptr) override {
     auto osn = GetOSN();
     if (osn == nullptr) {
       LOG_ERROR("cannot get osn addr");
@@ -565,9 +568,10 @@ KStatus TsLastSegment::GetBlockSpans(std::list<shared_ptr<TsBlockSpan>>& block_s
 
 using EntityTsPoint = std::tuple<TSEntityID, timestamp64>;
 KStatus TsLastSegment::GetBlockSpans(const TsBlockItemFilterParams& filter,
-                                     std::list<shared_ptr<TsBlockSpan>>& block_spans,
-                                     std::shared_ptr<TsTableSchemaManager>& tbl_schema_mgr,
-                                      std::shared_ptr<MMapMetricsTable>& scan_schema) {
+                                      std::list<shared_ptr<TsBlockSpan>>& block_spans,
+                                      std::shared_ptr<TsTableSchemaManager>& tbl_schema_mgr,
+                                      std::shared_ptr<MMapMetricsTable>& scan_schema,
+                                      TsScanStats* ts_scan_stats) {
   assert(block_cache_ != nullptr);
 
   // if filter is empty, no need to do anything.
@@ -649,6 +653,9 @@ KStatus TsLastSegment::GetBlockSpans(const TsBlockItemFilterParams& filter,
         continue;
       }
 
+      if (ts_scan_stats) {
+        ++ts_scan_stats->last_block_count;
+      }
       // find the first row in the block that (eid, ts) > (filter.eid, filter.end_ts).
       auto end_idx = *std::upper_bound(IndexRange{start_idx}, IndexRange(block->GetRowNum()), filter_ts_span_end,
                                        [&](const EntityTsPoint& val, int idx) {

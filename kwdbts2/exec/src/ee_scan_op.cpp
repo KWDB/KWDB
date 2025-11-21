@@ -209,7 +209,7 @@ EEIteratorErrCode TableScanOperator::Next(kwdbContext_p ctx) {
   }
   code =
       handler_->TsNextAndFilter(ctx, filter_, &cur_offset_, limit_, row_batch_,
-                                &total_read_row_, &examined_rows_);
+                                &total_read_row_, &examined_rows_, NULL);
 
   Return(code);
 }
@@ -225,16 +225,18 @@ EEIteratorErrCode TableScanOperator::Next(kwdbContext_p ctx, DataChunkPtr& chunk
   if (CheckCancel(ctx) != SUCCESS) {
     Return(EEIteratorErrCode::EE_ERROR);
   }
+  TsScanStats& ts_scan_stats = helper_->GetTsScanStats();
+  ts_scan_stats.reset();
   chunk = nullptr;
   code = helper_->NextChunk(ctx, chunk);
   if (chunk) {
     OPERATOR_DIRECT_ENCODING(ctx, output_encoding_, use_query_short_circuit_, thd, chunk);
     auto end = std::chrono::high_resolution_clock::now();
-    fetcher_.Update(chunk->Count(), (end - start).count(), chunk->Count() * chunk->RowSize(), 0, 0, 0);
+    fetcher_.Update(chunk->Count(), (end - start).count(), chunk->Count() * chunk->RowSize(), 0, 0, 0, 0, &ts_scan_stats);
     Return(code);
   } else {
     auto end = std::chrono::high_resolution_clock::now();
-    fetcher_.Update(0, (end - start).count(), 0, 0, 0, 0);
+    fetcher_.Update(0, (end - start).count(), 0, 0, 0, 0, 0, &ts_scan_stats);
     Return(code);
   }
 }

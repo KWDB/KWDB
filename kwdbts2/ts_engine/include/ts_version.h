@@ -245,6 +245,7 @@ class TsPartitionVersion {
   KStatus GetBlockSpans(const TsScanFilterParams& filter, std::list<shared_ptr<TsBlockSpan>>* ts_block_spans,
                        std::shared_ptr<TsTableSchemaManager>& tbl_schema_mgr,
                        std::shared_ptr<MMapMetricsTable>& scan_schema,
+                       TsScanStats* ts_scan_stats = nullptr,
                        bool skip_mem = false, bool skip_last = false, bool skip_entity = false) const;
 
   bool TrySetBusy(PartitionStatus desired) const;

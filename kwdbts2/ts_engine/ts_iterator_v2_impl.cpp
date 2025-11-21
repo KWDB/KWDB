@@ -26,7 +26,8 @@ int64_t TsMaxMilliTimestamp = 31556995200000;  // be associated with 'kwbase/pkg
 int64_t TsMaxMicroTimestamp = 31556995200000000;
 
 KStatus ConvertBlockSpanToResultSet(const std::vector<k_uint32>& kw_scan_cols, const vector<AttributeInfo>& attrs,
-                                    shared_ptr<TsBlockSpan>& ts_blk_span, ResultSet* res, k_uint32* count) {
+                                    shared_ptr<TsBlockSpan>& ts_blk_span, ResultSet* res, k_uint32* count,
+                                    TsScanStats* ts_scan_stats) {
   *count = ts_blk_span->GetRowNum();
   KStatus ret;
   std::unique_ptr<TsBitmapBase> ts_bitmap;
@@ -49,7 +50,7 @@ KStatus ConvertBlockSpanToResultSet(const std::vector<k_uint32>& kw_scan_cols, c
       }
       if (!ts_blk_span->IsVarLenType(kw_col_idx)) {
         char* value;
-        ret = ts_blk_span->GetFixLenColAddr(kw_col_idx, &value, &ts_bitmap);
+        ret = ts_blk_span->GetFixLenColAddr(kw_col_idx, &value, &ts_bitmap, ts_scan_stats);
         if (ret != KStatus::SUCCESS) {
           LOG_ERROR("GetFixLenColAddr failed.");
           return ret;
@@ -65,7 +66,7 @@ KStatus ConvertBlockSpanToResultSet(const std::vector<k_uint32>& kw_scan_cols, c
         batch->is_new = false;
       } else {
         batch = new VarColumnBatch(*count, bitmap, 1);
-        auto s = ts_blk_span->GetColBitmap(kw_col_idx, &ts_bitmap);
+        auto s = ts_blk_span->GetColBitmap(kw_col_idx, &ts_bitmap, ts_scan_stats);
         if (s != KStatus::SUCCESS) {
           LOG_ERROR("ts_blk_span->GetColBitmap failed.");
           return s;
@@ -76,7 +77,7 @@ KStatus ConvertBlockSpanToResultSet(const std::vector<k_uint32>& kw_scan_cols, c
             batch->push_back(nullptr);
           } else {
             TSSlice var_data;
-            s = ts_blk_span->GetVarLenTypeColAddr(row_idx, kw_col_idx, var_data);
+            s = ts_blk_span->GetVarLenTypeColAddr(row_idx, kw_col_idx, var_data, ts_scan_stats);
             if (s != KStatus::SUCCESS) {
               LOG_ERROR("GetVarLenTypeColAddr failed.");
               return s;
@@ -198,10 +199,11 @@ inline bool TsStorageIteratorV2Impl::IsFilteredOut(timestamp64 begin_ts, timesta
 }
 
 KStatus TsStorageIteratorV2Impl::getBlockSpanMinMaxValue(std::shared_ptr<TsBlockSpan>& block_span, uint32_t col_id,
-                                                         uint32_t type, void*& min, void*& max) {
+                                                         uint32_t type, TsScanStats* ts_scan_stats,
+                                                         void*& min, void*& max) {
   std::unique_ptr<TsBitmapBase> bitmap;
   char* value = nullptr;
-  auto s = block_span->GetFixLenColAddr(col_id, &value, &bitmap);
+  auto s = block_span->GetFixLenColAddr(col_id, &value, &bitmap, ts_scan_stats);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("GetFixLenColAddr failed.");
     return s;
@@ -230,15 +232,16 @@ KStatus TsStorageIteratorV2Impl::getBlockSpanMinMaxValue(std::shared_ptr<TsBlock
 }
 
 KStatus TsStorageIteratorV2Impl::getBlockSpanVarMinMaxValue(std::shared_ptr<TsBlockSpan>& block_span,
-                                                            uint32_t col_id, uint32_t type, TSSlice& min,
-                                                            TSSlice& max) {
+                                                            uint32_t col_id, uint32_t type,
+                                                            TsScanStats* ts_scan_stats,
+                                                            TSSlice& min, TSSlice& max) {
   KStatus ret;
   std::vector<string> var_rows;
   uint32_t row_num = block_span->GetRowNum();
   for (int row_idx = 0; row_idx < row_num; ++row_idx) {
     TSSlice slice;
     DataFlags flag;
-    ret = block_span->GetVarLenTypeColAddr(row_idx, col_id, flag, slice);
+    ret = block_span->GetVarLenTypeColAddr(row_idx, col_id, flag, slice, ts_scan_stats);
     if (ret != KStatus::SUCCESS) {
       LOG_ERROR("GetVarLenTypeColAddr failed.");
       return ret;
@@ -278,7 +281,8 @@ KStatus TsStorageIteratorV2Impl::getBlockSpanVarMinMaxValue(std::shared_ptr<TsBl
   return KStatus::SUCCESS;
 }
 
-KStatus TsStorageIteratorV2Impl::isBlockFiltered(std::shared_ptr<TsBlockSpan>& block_span, bool& is_filtered) {
+KStatus TsStorageIteratorV2Impl::isBlockFiltered(std::shared_ptr<TsBlockSpan>& block_span,
+                                                  TsScanStats* ts_scan_stats, bool& is_filtered) {
   is_filtered = false;
   KStatus ret;
   for (const auto& filter : block_filter_) {
@@ -297,7 +301,7 @@ KStatus TsStorageIteratorV2Impl::isBlockFiltered(std::shared_ptr<TsBlockSpan>& b
           } else if (block_span->HasPreAgg()) {
             // Use pre agg to calculate count
             uint16_t pre_count{0};
-            ret = block_span->GetPreCount(col_id, pre_count);
+            ret = block_span->GetPreCount(col_id, ts_scan_stats, pre_count);
             if (ret != KStatus::SUCCESS) {
               return KStatus::FAIL;
             }
@@ -326,7 +330,7 @@ KStatus TsStorageIteratorV2Impl::isBlockFiltered(std::shared_ptr<TsBlockSpan>& b
           } else if (block_span->HasPreAgg()) {
             // Use pre agg to calculate count
             uint16_t pre_count{0};
-            ret = block_span->GetPreCount(col_id, pre_count);
+            ret = block_span->GetPreCount(col_id, ts_scan_stats, pre_count);
             if (ret != KStatus::SUCCESS) {
               return KStatus::FAIL;
             }
@@ -374,16 +378,17 @@ KStatus TsStorageIteratorV2Impl::isBlockFiltered(std::shared_ptr<TsBlockSpan>& b
         }};
         if (!isVarLenType(attrs_[col_id].type)) {
           if (block_span->HasPreAgg()) {
-            ret = block_span->GetPreMin(col_id, min_addr);
+            ret = block_span->GetPreMin(col_id, ts_scan_stats, min_addr);
             if (ret != KStatus::SUCCESS) {
               return KStatus::FAIL;
             }
-            ret = block_span->GetPreMax(col_id, max_addr);
+            ret = block_span->GetPreMax(col_id, ts_scan_stats, max_addr);
             if (ret != KStatus::SUCCESS) {
               return KStatus::FAIL;
             }
           } else {
-            ret = getBlockSpanMinMaxValue(block_span, col_id, attrs_[col_id].type, min_addr, max_addr);
+            ret = getBlockSpanMinMaxValue(block_span, col_id, attrs_[col_id].type,
+                                          ts_scan_stats, min_addr, max_addr);
             is_new = true;
           }
           if (!min_addr || !max_addr) continue;
@@ -446,13 +451,13 @@ KStatus TsStorageIteratorV2Impl::isBlockFiltered(std::shared_ptr<TsBlockSpan>& b
           bool is_var_string = (attrs_[col_id].type == DATATYPE::VARSTRING);
           if (block_span->HasPreAgg()) {
             TSSlice var_pre_min{nullptr, 0};
-            ret = block_span->GetVarPreMin(col_id, var_pre_min);
+            ret = block_span->GetVarPreMin(col_id, ts_scan_stats, var_pre_min);
             if (ret != KStatus::SUCCESS) {
               LOG_ERROR("GetVarPreMin failed.");
               return KStatus::FAIL;
             }
             TSSlice var_pre_max{nullptr, 0};
-            ret = block_span->GetVarPreMax(col_id, var_pre_max);
+            ret = block_span->GetVarPreMax(col_id, ts_scan_stats, var_pre_max);
             if (ret != KStatus::SUCCESS) {
               LOG_ERROR("GetVarPreMax failed.");
               return KStatus::FAIL;
@@ -466,7 +471,8 @@ KStatus TsStorageIteratorV2Impl::isBlockFiltered(std::shared_ptr<TsBlockSpan>& b
           } else {
             TSSlice var_pre_min{nullptr, 0};
             TSSlice var_pre_max{nullptr, 0};
-            ret = getBlockSpanVarMinMaxValue(block_span, col_id, attrs_[col_id].type, var_pre_min, var_pre_max);
+            ret = getBlockSpanVarMinMaxValue(block_span, col_id, attrs_[col_id].type,
+                                              ts_scan_stats, var_pre_min, var_pre_max);
             if (ret != KStatus::SUCCESS) {
               LOG_ERROR("getBlockSpanVarMinValue failed.");
               return KStatus::FAIL;
@@ -494,7 +500,7 @@ KStatus TsStorageIteratorV2Impl::isBlockFiltered(std::shared_ptr<TsBlockSpan>& b
   return KStatus::SUCCESS;
 }
 
-KStatus TsStorageIteratorV2Impl::ScanEntityBlockSpans(timestamp64 ts) {
+KStatus TsStorageIteratorV2Impl::ScanEntityBlockSpans(timestamp64 ts, TsScanStats* ts_scan_stats) {
   ts_block_spans_.clear();
   UpdateTsSpans(ts);
   filter_->entity_id_ = entity_ids_[cur_entity_index_];
@@ -503,7 +509,7 @@ KStatus TsStorageIteratorV2Impl::ScanEntityBlockSpans(timestamp64 ts) {
                                           partition_version->GetTsColTypeEndTime(ts_col_type_), ts))  {
       continue;
     }
-    auto s = partition_version->GetBlockSpans(*filter_, &ts_block_spans_, table_schema_mgr_, schema_);
+    auto s = partition_version->GetBlockSpans(*filter_, &ts_block_spans_, table_schema_mgr_, schema_, ts_scan_stats);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("partition_version GetBlockSpan failed.");
       return s;
@@ -549,7 +555,7 @@ KStatus TsStorageIteratorV2Impl::ScanEntityBlockSpans(timestamp64 ts) {
         } else {
           bool is_filtered = false;
           auto cur_block_span = cur_block_spans.second.front();
-          s = isBlockFiltered(cur_block_span, is_filtered);
+          s = isBlockFiltered(cur_block_span, ts_scan_stats, is_filtered);
           if (s != KStatus::SUCCESS) {
             LOG_ERROR("isBlockFiltered failed, entityid is %lu", cur_block_span->GetEntityID());
             return KStatus::FAIL;
@@ -585,10 +591,10 @@ TsSortedRawDataIteratorV2Impl::TsSortedRawDataIteratorV2Impl(const std::shared_p
 TsSortedRawDataIteratorV2Impl::~TsSortedRawDataIteratorV2Impl() {
 }
 
-KStatus TsSortedRawDataIteratorV2Impl::ScanAndSortEntityData(timestamp64 ts) {
+KStatus TsSortedRawDataIteratorV2Impl::ScanAndSortEntityData(timestamp64 ts, TsScanStats* ts_scan_stats) {
   if (cur_entity_index_ < entity_ids_.size()) {
     // scan row data for current entity
-    KStatus ret = ScanEntityBlockSpans(ts);
+    KStatus ret = ScanEntityBlockSpans(ts, ts_scan_stats);
     if (ret != KStatus::SUCCESS) {
       LOG_ERROR("Failed to scan block spans for entity(%d).", entity_ids_[cur_entity_index_]);
       return KStatus::FAIL;
@@ -609,20 +615,21 @@ KStatus TsSortedRawDataIteratorV2Impl::ScanAndSortEntityData(timestamp64 ts) {
   return KStatus::SUCCESS;
 }
 
-inline KStatus TsSortedRawDataIteratorV2Impl::MoveToNextEntity(timestamp64 ts) {
+inline KStatus TsSortedRawDataIteratorV2Impl::MoveToNextEntity(timestamp64 ts, TsScanStats* ts_scan_stats) {
   ++cur_entity_index_;
-  return ScanAndSortEntityData(ts);
+  return ScanAndSortEntityData(ts, ts_scan_stats);
 }
 
 bool TsSortedRawDataIteratorV2Impl::IsDisordered() {
   return false;
 }
 
-KStatus TsSortedRawDataIteratorV2Impl::Next(ResultSet* res, k_uint32* count, bool* is_finished, timestamp64 ts) {
+KStatus TsSortedRawDataIteratorV2Impl::Next(ResultSet* res, k_uint32* count, bool* is_finished, timestamp64 ts,
+                                            TsScanStats* ts_scan_stats) {
   KStatus ret;
   *count = 0;
   if (cur_entity_index_ == -1) {
-    ret = MoveToNextEntity(ts);
+    ret = MoveToNextEntity(ts, ts_scan_stats);
     if (ret != KStatus::SUCCESS) {
       return ret;
     }
@@ -646,7 +653,7 @@ KStatus TsSortedRawDataIteratorV2Impl::Next(ResultSet* res, k_uint32* count, boo
       }
       if (!is_done) {
         // Found a block span which might contain satisfied rows.
-        ret = ConvertBlockSpanToResultSet(kw_scan_cols_, attrs_, block_span, res, count);
+        ret = ConvertBlockSpanToResultSet(kw_scan_cols_, attrs_, block_span, res, count, ts_scan_stats);
         if (ret != KStatus::SUCCESS) {
           return ret;
         }
@@ -662,10 +669,10 @@ KStatus TsSortedRawDataIteratorV2Impl::Next(ResultSet* res, k_uint32* count, boo
       }
     } while (!is_done);
     // No more satisfied rows found, we need to return 0 count for current entity.
-    return MoveToNextEntity(ts);
+    return MoveToNextEntity(ts, ts_scan_stats);
   } else {
     // No satisfied rows found, we need to return 0 count for current entity.
-    return MoveToNextEntity(ts);
+    return MoveToNextEntity(ts, ts_scan_stats);
   }
 }
 
@@ -863,7 +870,8 @@ bool TsAggIteratorV2Impl::IsDisordered() {
   return false;
 }
 
-KStatus TsAggIteratorV2Impl::Next(ResultSet* res, k_uint32* count, bool* is_finished, timestamp64 ts) {
+KStatus TsAggIteratorV2Impl::Next(ResultSet* res, k_uint32* count, bool* is_finished, timestamp64 ts,
+                                  TsScanStats* ts_scan_stats) {
   *count = 0;
   if (cur_entity_index_ >= entity_ids_.size()) {
     *is_finished = true;
@@ -955,9 +963,9 @@ KStatus TsAggIteratorV2Impl::Next(ResultSet* res, k_uint32* count, bool* is_fini
   }
 
   if (only_count_ts_) {
-    ret = CountAggregate();
+    ret = CountAggregate(ts_scan_stats);
   } else {
-    ret = Aggregate();
+    ret = Aggregate(ts_scan_stats);
   }
   if (ret != KStatus::SUCCESS) {
     return ret;
@@ -1003,7 +1011,7 @@ KStatus TsAggIteratorV2Impl::Next(ResultSet* res, k_uint32* count, bool* is_fini
   return KStatus::SUCCESS;
 }
 
-KStatus TsAggIteratorV2Impl::Aggregate() {
+KStatus TsAggIteratorV2Impl::Aggregate(TsScanStats* ts_scan_stats) {
   // Scan forwards to aggrate first col along with other agg functions
   int first_partition_idx = 0;
   for (; first_partition_idx < ts_partitions_.size(); ++first_partition_idx) {
@@ -1020,7 +1028,7 @@ KStatus TsAggIteratorV2Impl::Aggregate() {
       LOG_ERROR("e_paritition GetBlockSpan failed.");
       return ret;
     }
-    ret = UpdateAggregation(false);
+    ret = UpdateAggregation(false, ts_scan_stats);
     if (ret != KStatus::SUCCESS) {
       return ret;
     }
@@ -1042,7 +1050,7 @@ KStatus TsAggIteratorV2Impl::Aggregate() {
       LOG_ERROR("e_paritition GetBlockSpan failed.");
       return ret;
     }
-    ret = UpdateAggregation(true);
+    ret = UpdateAggregation(true, ts_scan_stats);
     if (ret != KStatus::SUCCESS) {
       return ret;
     }
@@ -1063,7 +1071,7 @@ KStatus TsAggIteratorV2Impl::Aggregate() {
         LOG_ERROR("e_paritition GetBlockSpan failed.");
         return ret;
       }
-      ret = UpdateAggregation(true);
+      ret = UpdateAggregation(true, ts_scan_stats);
       if (ret != KStatus::SUCCESS) {
         return ret;
       }
@@ -1165,7 +1173,7 @@ KStatus TsAggIteratorV2Impl::Aggregate() {
   return KStatus::SUCCESS;
 }
 
-KStatus TsAggIteratorV2Impl::CountAggregate() {
+KStatus TsAggIteratorV2Impl::CountAggregate(TsScanStats* ts_scan_stats) {
   KStatus ret;
   for (int idx = 0; idx < ts_partitions_.size(); idx++) {
     cur_partition_index_ = idx;
@@ -1180,7 +1188,7 @@ KStatus TsAggIteratorV2Impl::CountAggregate() {
     TimestampCheckResult::FullyContained) {
       std::list<shared_ptr<TsBlockSpan>> mem_block_spans;
       ret = partition_version->GetBlockSpans(filter, &mem_block_spans, table_schema_mgr_, schema_,
-                                            false, true, true);
+                                              ts_scan_stats, false, true, true);
       if (ret != KStatus::SUCCESS) {
         LOG_ERROR("partition_version get mem block span failed.");
         return ret;
@@ -1218,13 +1226,13 @@ KStatus TsAggIteratorV2Impl::CountAggregate() {
       }
       if (!count_header.is_count_valid && checkTimestampWithSpans(ts_spans_, count_header.min_ts, count_header.max_ts) ==
                                           TimestampCheckResult::FullyContained) {
-        ret = RecalculateCountInfo(partition_version, count_manager);
+        ret = RecalculateCountInfo(partition_version, count_manager, ts_scan_stats);
         if (ret != KStatus::SUCCESS) {
           LOG_ERROR("RecalculateCountInfo entity[%lu] failed.", count_header.entity_id);
         }
       }
     }
-    ret = UpdateAggregation(false);
+    ret = UpdateAggregation(false, ts_scan_stats);
     if (ret != KStatus::SUCCESS) {
       return ret;
     }
@@ -1233,7 +1241,8 @@ KStatus TsAggIteratorV2Impl::CountAggregate() {
 }
 
 KStatus TsAggIteratorV2Impl::RecalculateCountInfo(std::shared_ptr<const TsPartitionVersion> partition,
-                                                  shared_ptr<TsPartitionEntityCountManager> count_manager) {
+                                                  shared_ptr<TsPartitionEntityCountManager> count_manager,
+                                                  TsScanStats* ts_scan_stats) {
   KStatus ret;
   ret = count_manager->PrepareEntityCountValid(entity_ids_[cur_entity_index_]);
   if (ret != KStatus::SUCCESS) {
@@ -1247,7 +1256,7 @@ KStatus TsAggIteratorV2Impl::RecalculateCountInfo(std::shared_ptr<const TsPartit
                                      latest_partition->GetTsColTypeEndTime(ts_col_type_)}};
   TsScanFilterParams count_filter{db_id_, table_id_, vgroup_->GetVGroupID(),
                                   entity_ids_[cur_entity_index_], ts_col_type_, UINT64_MAX, ts_spans};
-  ret = latest_partition->GetBlockSpans(count_filter, &count_block_spans, table_schema_mgr_, schema_, true);
+  ret = latest_partition->GetBlockSpans(count_filter, &count_block_spans, table_schema_mgr_, schema_, ts_scan_stats, true);
   if (ret != KStatus::SUCCESS) {
     LOG_ERROR("RecalculateCountInfo get mem block span failed.");
     return ret;
@@ -1284,7 +1293,7 @@ inline bool LastTSLessThan(shared_ptr<TsBlockSpan>& a, shared_ptr<TsBlockSpan>& 
   return a->GetLastTS() < b->GetLastTS();
 }
 
-KStatus TsAggIteratorV2Impl::UpdateAggregation(bool can_remove_last_candidate) {
+KStatus TsAggIteratorV2Impl::UpdateAggregation(bool can_remove_last_candidate, TsScanStats* ts_scan_stats) {
   if (ts_block_spans_.empty()) {
     return KStatus::SUCCESS;
   }
@@ -1314,7 +1323,7 @@ KStatus TsAggIteratorV2Impl::UpdateAggregation(bool can_remove_last_candidate) {
     }
     while (block_span_idx < ts_block_spans.size() && !cur_first_col_idxs_.empty()) {
       shared_ptr<TsBlockSpan>& blk_span = ts_block_spans[block_span_idx];
-      ret = UpdateAggregation(blk_span, true, false);
+      ret = UpdateAggregation(blk_span, true, false, ts_scan_stats);
       if (ret != KStatus::SUCCESS) {
         return ret;
       }
@@ -1333,7 +1342,7 @@ KStatus TsAggIteratorV2Impl::UpdateAggregation(bool can_remove_last_candidate) {
     }
     while (block_span_idx <= block_span_backward_idx && !cur_last_col_idxs_.empty()) {
       shared_ptr<TsBlockSpan>& blk_span = ts_block_spans[block_span_backward_idx];
-      ret = UpdateAggregation(blk_span, true, can_remove_last_candidate);
+      ret = UpdateAggregation(blk_span, true, can_remove_last_candidate, ts_scan_stats);
       if (ret != KStatus::SUCCESS) {
         return ret;
       }
@@ -1344,7 +1353,7 @@ KStatus TsAggIteratorV2Impl::UpdateAggregation(bool can_remove_last_candidate) {
   if (!first_last_only_agg_) {
     for (; block_span_idx <= block_span_backward_idx; ++block_span_idx) {
       shared_ptr<TsBlockSpan>& blk_span = ts_block_spans[block_span_idx];
-      ret = UpdateAggregation(blk_span, false, can_remove_last_candidate);
+      ret = UpdateAggregation(blk_span, false, can_remove_last_candidate, ts_scan_stats);
       if (ret != KStatus::SUCCESS) {
         return ret;
       }
@@ -1556,7 +1565,8 @@ inline KStatus TsAggIteratorV2Impl::AddSumOverflowByPreSum(int32_t type,
 
 KStatus TsAggIteratorV2Impl::UpdateAggregation(std::shared_ptr<TsBlockSpan>& block_span,
                                                 bool aggregate_first_last_cols,
-                                                bool can_remove_last_candidate) {
+                                                bool can_remove_last_candidate,
+                                                TsScanStats* ts_scan_stats) {
   KStatus ret;
   std::unique_ptr<TsBitmapBase> bitmap;
   int row_num = block_span->GetRowNum();
@@ -1649,7 +1659,7 @@ KStatus TsAggIteratorV2Impl::UpdateAggregation(std::shared_ptr<TsBlockSpan>& blo
       if (block_span->HasPreAgg()) {
         // Use pre agg to calculate count
         uint16_t pre_count{0};
-        ret = block_span->GetPreCount(kw_col_idx, pre_count);
+        ret = block_span->GetPreCount(kw_col_idx, ts_scan_stats, pre_count);
         if (ret != KStatus::SUCCESS) {
           return KStatus::FAIL;
         }
@@ -1677,7 +1687,7 @@ KStatus TsAggIteratorV2Impl::UpdateAggregation(std::shared_ptr<TsBlockSpan>& blo
       // Use pre agg to calculate sum
       void* pre_sum{nullptr};
       bool pre_sum_is_overflow{false};
-      ret = block_span->GetPreSum(kw_col_idx, pre_sum, pre_sum_is_overflow);
+      ret = block_span->GetPreSum(kw_col_idx, ts_scan_stats, pre_sum, pre_sum_is_overflow);
       if (ret != KStatus::SUCCESS) {
         return KStatus::FAIL;
       }
@@ -1760,7 +1770,7 @@ KStatus TsAggIteratorV2Impl::UpdateAggregation(std::shared_ptr<TsBlockSpan>& blo
       if (!block_span->IsVarLenType(kw_col_idx)) {
         void* pre_max{nullptr};
         int32_t size = kw_col_idx == 0 ? 8 : block_span->GetColSize(kw_col_idx);
-        ret = block_span->GetPreMax(kw_col_idx, pre_max);  // pre agg max(timestamp) use 8 bytes
+        ret = block_span->GetPreMax(kw_col_idx, ts_scan_stats, pre_max);  // pre agg max(timestamp) use 8 bytes
         if (ret != KStatus::SUCCESS) {
           return KStatus::FAIL;
         }
@@ -1780,7 +1790,7 @@ KStatus TsAggIteratorV2Impl::UpdateAggregation(std::shared_ptr<TsBlockSpan>& blo
         }
       } else {
         TSSlice pre_max{nullptr, 0};
-        ret = block_span->GetVarPreMax(kw_col_idx, pre_max);
+        ret = block_span->GetVarPreMax(kw_col_idx, ts_scan_stats, pre_max);
         if (ret != KStatus::SUCCESS) {
           return KStatus::FAIL;
         }
@@ -1836,7 +1846,7 @@ KStatus TsAggIteratorV2Impl::UpdateAggregation(std::shared_ptr<TsBlockSpan>& blo
         for (int row_idx = 0; row_idx < row_num; ++row_idx) {
           TSSlice slice;
           DataFlags flag;
-          ret = block_span->GetVarLenTypeColAddr(row_idx, kw_col_idx, flag, slice);
+          ret = block_span->GetVarLenTypeColAddr(row_idx, kw_col_idx, flag, slice, ts_scan_stats);
           if (ret != KStatus::SUCCESS) {
             LOG_ERROR("GetVarLenTypeColAddr failed.");
             return ret;
@@ -1886,7 +1896,7 @@ KStatus TsAggIteratorV2Impl::UpdateAggregation(std::shared_ptr<TsBlockSpan>& blo
       if (!block_span->IsVarLenType(kw_col_idx)) {
         void* pre_min{nullptr};
         int32_t size = block_span->GetColSize(kw_col_idx);
-        ret = block_span->GetPreMin(kw_col_idx, pre_min);  // pre agg min(timestamp) use 8 bytes
+        ret = block_span->GetPreMin(kw_col_idx, ts_scan_stats, pre_min);  // pre agg min(timestamp) use 8 bytes
         if (ret != KStatus::SUCCESS) {
           return KStatus::FAIL;
         }
@@ -1906,7 +1916,7 @@ KStatus TsAggIteratorV2Impl::UpdateAggregation(std::shared_ptr<TsBlockSpan>& blo
         }
       } else {
         TSSlice pre_min{nullptr, 0};
-        ret = block_span->GetVarPreMin(kw_col_idx, pre_min);
+        ret = block_span->GetVarPreMin(kw_col_idx, ts_scan_stats, pre_min);
         if (ret != KStatus::SUCCESS) {
           return KStatus::FAIL;
         }
@@ -1962,7 +1972,7 @@ KStatus TsAggIteratorV2Impl::UpdateAggregation(std::shared_ptr<TsBlockSpan>& blo
         for (int row_idx = 0; row_idx < row_num; ++row_idx) {
           TSSlice slice;
           DataFlags flag;
-          ret = block_span->GetVarLenTypeColAddr(row_idx, kw_col_idx, flag, slice);
+          ret = block_span->GetVarLenTypeColAddr(row_idx, kw_col_idx, flag, slice, ts_scan_stats);
           if (ret != KStatus::SUCCESS) {
             LOG_ERROR("GetVarLenTypeColAddr failed.");
             return ret;
@@ -2284,7 +2294,7 @@ KStatus TsOffsetIteratorV2Impl::filterBlockSpan() {
   return KStatus::SUCCESS;
 }
 
-KStatus TsOffsetIteratorV2Impl::Next(ResultSet* res, k_uint32* count, timestamp64 ts) {
+KStatus TsOffsetIteratorV2Impl::Next(ResultSet* res, k_uint32* count, timestamp64 ts, TsScanStats* ts_scan_stats) {
   *count = 0;
   KStatus ret;
   while (block_spans_.empty()) {
@@ -2302,7 +2312,7 @@ KStatus TsOffsetIteratorV2Impl::Next(ResultSet* res, k_uint32* count, timestamp6
   // Return one block span data each time.
   shared_ptr<TsBlockSpan> ts_block = block_spans_.front().second;
   block_spans_.pop_front();
-  ret = ConvertBlockSpanToResultSet(kw_scan_cols_, attrs_, ts_block, res, count);
+  ret = ConvertBlockSpanToResultSet(kw_scan_cols_, attrs_, ts_block, res, count, ts_scan_stats);
   if (ret != KStatus::SUCCESS) {
     LOG_ERROR("Failed to get next block span for current partition: %ld.", p_time_it_->first);
     return KStatus::FAIL;
@@ -2364,7 +2374,8 @@ KStatus TsRawDataIteratorV2ImplByOSN::MoveToNextEntity(bool* is_finished) {
   return KStatus::SUCCESS;
 }
 
-KStatus TsRawDataIteratorV2ImplByOSN::Next(ResultSet* res, k_uint32* count, bool* is_finished, timestamp64 ts) {
+KStatus TsRawDataIteratorV2ImplByOSN::Next(ResultSet* res, k_uint32* count, bool* is_finished, timestamp64 ts,
+                                            TsScanStats* ts_scan_stats) {
   if (!del_info_finished_) {
     KStatus s = NextMetricDelRows(res, count, &del_info_finished_);
     if (s != KStatus::SUCCESS) {
@@ -2373,7 +2384,7 @@ KStatus TsRawDataIteratorV2ImplByOSN::Next(ResultSet* res, k_uint32* count, bool
     }
   }
   if (*count == 0) {
-    auto s = NextMetricInsertRows(res, count, is_finished);
+    auto s = NextMetricInsertRows(res, count, is_finished, ts_scan_stats);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("NextMetricInsertRows failed.");
       return s;
@@ -2468,7 +2479,8 @@ KStatus TsRawDataIteratorV2ImplByOSN::FillEmptyMetricRow(ResultSet* res, uint32_
   return KStatus::SUCCESS;
 }
 
-KStatus TsRawDataIteratorV2ImplByOSN::NextMetricInsertRows(ResultSet* res, k_uint32* count, bool* is_finished) {
+KStatus TsRawDataIteratorV2ImplByOSN::NextMetricInsertRows(ResultSet* res, k_uint32* count, bool* is_finished,
+                                                            TsScanStats* ts_scan_stats) {
   KStatus ret;
   *count = 0;
   *is_finished = false;
@@ -2498,7 +2510,7 @@ KStatus TsRawDataIteratorV2ImplByOSN::NextMetricInsertRows(ResultSet* res, k_uin
     auto block_span = ts_block_spans_.front();
     ts_block_spans_.pop_front();
     // no need remove repeat data, just send all.
-    ret = ConvertBlockSpanToResultSet(kw_scan_cols_, attrs_, block_span, res, count);
+    ret = ConvertBlockSpanToResultSet(kw_scan_cols_, attrs_, block_span, res, count, ts_scan_stats);
     if (ret != KStatus::SUCCESS) {
       LOG_ERROR("ConvertBlockSpanToResultSet failed.");
       return ret;

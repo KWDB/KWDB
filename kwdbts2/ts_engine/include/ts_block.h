@@ -41,14 +41,15 @@ class TsBlock {
   virtual size_t GetRowNum() = 0;
   // if has three rows, this return three value for certain column using col-based storege struct.
   virtual KStatus GetColAddr(uint32_t col_id, const std::vector<AttributeInfo>* schema,
-                             char** value) = 0;
+                             char** value, TsScanStats* ts_scan_stats = nullptr) = 0;
   virtual KStatus GetColBitmap(uint32_t col_id, const std::vector<AttributeInfo>* schema,
-                               std::unique_ptr<TsBitmapBase>* bitmap) = 0;
+                               std::unique_ptr<TsBitmapBase>* bitmap, TsScanStats* ts_scan_stats = nullptr) = 0;
   virtual KStatus GetValueSlice(int row_num, int col_id, const std::vector<AttributeInfo>* schema,
-                                TSSlice& value) = 0;
-  virtual bool IsColNull(int row_num, int col_id, const std::vector<AttributeInfo>* schema) = 0;
+                                TSSlice& value, TsScanStats* ts_scan_stats = nullptr) = 0;
+  virtual bool IsColNull(int row_num, int col_id, const std::vector<AttributeInfo>* schema,
+                          TsScanStats* ts_scan_stats = nullptr) = 0;
   // if just get timestamp , this function return fast.
-  virtual timestamp64 GetTS(int row_num) = 0;
+  virtual timestamp64 GetTS(int row_num, TsScanStats* ts_scan_stats = nullptr) = 0;
 
   virtual timestamp64 GetFirstTS() = 0;
 
@@ -60,7 +61,7 @@ class TsBlock {
 
   virtual uint64_t GetLastOSN() = 0;
 
-  virtual const uint64_t* GetOSNAddr(int row_num) = 0;
+  virtual const uint64_t* GetOSNAddr(int row_num, TsScanStats* ts_scan_stats = nullptr) = 0;
 
   virtual KStatus GetCompressDataFromFile(uint32_t table_version, int32_t nrow, std::string& data) = 0;
 
@@ -68,12 +69,13 @@ class TsBlock {
   * Pre agg includes count/min/max/sum, it doesn't have pre-agg by default
   */
   virtual bool HasPreAgg(uint32_t begin_row_idx, uint32_t row_num);
-  virtual KStatus GetPreCount(uint32_t blk_col_idx, uint16_t& count);
-  virtual KStatus GetPreSum(uint32_t blk_col_idx, int32_t size, void* &pre_sum, bool& is_overflow);
-  virtual KStatus GetPreMax(uint32_t blk_col_idx, void* &pre_max);
-  virtual KStatus GetPreMin(uint32_t blk_col_idx, int32_t size, void* &pre_min);
-  virtual KStatus GetVarPreMax(uint32_t blk_col_idx, TSSlice& pre_max);
-  virtual KStatus GetVarPreMin(uint32_t blk_col_idx, TSSlice& pre_min);
+  virtual KStatus GetPreCount(uint32_t blk_col_idx, TsScanStats* ts_scan_stats, uint16_t& count);
+  virtual KStatus GetPreSum(uint32_t blk_col_idx, int32_t size, TsScanStats* ts_scan_stats,
+                            void* &pre_sum, bool& is_overflow);
+  virtual KStatus GetPreMax(uint32_t blk_col_idx, TsScanStats* ts_scan_stats, void* &pre_max);
+  virtual KStatus GetPreMin(uint32_t blk_col_idx, int32_t size, TsScanStats* ts_scan_stats, void* &pre_min);
+  virtual KStatus GetVarPreMax(uint32_t blk_col_idx, TsScanStats* ts_scan_stats, TSSlice& pre_max);
+  virtual KStatus GetVarPreMin(uint32_t blk_col_idx, TsScanStats* ts_scan_stats, TSSlice& pre_min);
   KStatus UpdateFirstLastCandidates(const std::vector<k_uint32>& ts_scan_cols,
                                                 const std::vector<AttributeInfo>* schema,
                                                 std::vector<k_uint32>& first_col_idxs,
@@ -132,29 +134,31 @@ class TsBlockSpan {
   std::shared_ptr<TsBlock> GetTsBlock() const { return block_; }
   TSTableID GetTableID() const { return block_->GetTableId(); }
   uint32_t GetTableVersion() const { return block_->GetTableVersion(); }
-  timestamp64 GetTS(uint32_t row_idx) const { return block_->GetTS(start_row_ + row_idx); }
-  timestamp64 GetFirstTS() const {
+  timestamp64 GetTS(uint32_t row_idx, TsScanStats* ts_scan_stats = nullptr) const {
+    return block_->GetTS(start_row_ + row_idx, ts_scan_stats);
+  }
+  timestamp64 GetFirstTS(TsScanStats* ts_scan_stats = nullptr) const {
     if (start_row_ == 0) {
       return block_->GetFirstTS();
     } else {
-      return block_->GetTS(start_row_);
+      return block_->GetTS(start_row_, ts_scan_stats);
     }
   }
-  timestamp64 GetLastTS() const {
+  timestamp64 GetLastTS(TsScanStats* ts_scan_stats = nullptr) const {
     if (start_row_ + nrow_ == block_->GetRowNum()) {
       return block_->GetLastTS();
     } else {
-      return block_->GetTS(start_row_ + nrow_ - 1);
+      return block_->GetTS(start_row_ + nrow_ - 1, ts_scan_stats);
     }
   }
-  void GetMinAndMaxOSN(uint64_t& min_osn, uint64_t& max_osn) const {
+  void GetMinAndMaxOSN(uint64_t& min_osn, uint64_t& max_osn, TsScanStats* ts_scan_stats = nullptr) const {
     if (nrow_ == block_->GetRowNum()) {
       block_->GetMinAndMaxOSN(min_osn, max_osn);
     } else {
       min_osn = UINT64_MAX;
       max_osn = 0;
       for (int i = start_row_; i < start_row_ + nrow_; i++) {
-        uint64_t cur_osn = *block_->GetOSNAddr(i);
+        uint64_t cur_osn = *block_->GetOSNAddr(i, ts_scan_stats);
         if (cur_osn < min_osn) {
           min_osn = cur_osn;
         }
@@ -164,21 +168,23 @@ class TsBlockSpan {
       }
     }
   }
-  uint64_t GetFirstOSN() const {
+  uint64_t GetFirstOSN(TsScanStats* ts_scan_stats = nullptr) const {
     if (start_row_ == 0) {
       return block_->GetFirstOSN();
     } else {
-      return *block_->GetOSNAddr(start_row_);
+      return *block_->GetOSNAddr(start_row_, ts_scan_stats);
     }
   }
-  uint64_t GetLastOSN() const {
+  uint64_t GetLastOSN(TsScanStats* ts_scan_stats = nullptr) const {
     if (start_row_ + nrow_ == block_->GetRowNum()) {
       return block_->GetLastOSN();
     } else {
-      return *block_->GetOSNAddr(start_row_ + nrow_ - 1);
+      return *block_->GetOSNAddr(start_row_ + nrow_ - 1, ts_scan_stats);
     }
   }
-  const uint64_t* GetOSNAddr(int row_idx) const { return block_->GetOSNAddr(start_row_ + row_idx); }
+  const uint64_t* GetOSNAddr(int row_idx, TsScanStats* ts_scan_stats = nullptr) const {
+    return block_->GetOSNAddr(start_row_ + row_idx, ts_scan_stats);
+  }
 
   // convert value to compressed entity block data
   KStatus BuildCompressedData(std::string& data);
@@ -224,57 +230,60 @@ class TsBlockSpan {
     return convert_->GetColType(scan_idx);
   }
 
-  KStatus GetColBitmap(uint32_t scan_idx, std::unique_ptr<TsBitmapBase>* bitmap);
+  KStatus GetColBitmap(uint32_t scan_idx, std::unique_ptr<TsBitmapBase>* bitmap, TsScanStats* ts_scan_stats = nullptr);
   // dest type is fixed len datatype.
-  KStatus GetFixLenColAddr(uint32_t scan_idx, char** value, std::unique_ptr<TsBitmapBase>* bitmap);
+  KStatus GetFixLenColAddr(uint32_t scan_idx, char** value, std::unique_ptr<TsBitmapBase>* bitmap,
+                            TsScanStats* ts_scan_stats = nullptr);
   // dest type is varlen datatype.
-  KStatus GetVarLenTypeColAddr(uint32_t row_idx, uint32_t scan_idx, DataFlags& flag, TSSlice& data);
-  KStatus GetVarLenTypeColAddr(uint32_t row_idx, uint32_t scan_idx, TSSlice& data);
+  KStatus GetVarLenTypeColAddr(uint32_t row_idx, uint32_t scan_idx, DataFlags& flag, TSSlice& data,
+                                TsScanStats* ts_scan_stats = nullptr);
+  KStatus GetVarLenTypeColAddr(uint32_t row_idx, uint32_t scan_idx, TSSlice& data,
+                                TsScanStats* ts_scan_stats = nullptr);
 
-  KStatus GetCount(uint32_t scan_idx, uint32_t& count);
+  KStatus GetCount(uint32_t scan_idx, uint32_t& count, TsScanStats* ts_scan_stats = nullptr);
 
   bool HasPreAgg() {
     return has_pre_agg_;
   }
-  KStatus GetPreCount(uint32_t scan_idx, uint16_t& count) {
+  KStatus GetPreCount(uint32_t scan_idx, TsScanStats* ts_scan_stats, uint16_t& count) {
     if (!convert_) {
-      return block_->GetPreCount(scan_idx, count);
+      return block_->GetPreCount(scan_idx, ts_scan_stats, count);
     }
-    return convert_->GetPreCount(this, scan_idx, count);
+    return convert_->GetPreCount(this, scan_idx, ts_scan_stats, count);
   }
-  KStatus GetPreSum(uint32_t scan_idx, void* &pre_sum, bool& is_overflow) {
+  KStatus GetPreSum(uint32_t scan_idx, TsScanStats* ts_scan_stats, void* &pre_sum, bool& is_overflow) {
     if (!convert_) {
       int32_t size = (*scan_attrs_)[scan_idx].size;
-      return block_->GetPreSum(scan_idx, size, pre_sum, is_overflow);
+      return block_->GetPreSum(scan_idx, size, ts_scan_stats, pre_sum, is_overflow);
     }
     int32_t size = (*convert_->version_conv_->blk_attrs_)[scan_idx].size;
-    return convert_->GetPreSum(this, scan_idx, size, pre_sum, is_overflow);
+    return convert_->GetPreSum(this, scan_idx, size, ts_scan_stats, pre_sum, is_overflow);
   }
-  KStatus GetPreMax(uint32_t scan_idx, void* &pre_max) {
+  KStatus GetPreMax(uint32_t scan_idx, TsScanStats* ts_scan_stats, void* &pre_max) {
     if (!convert_) {
-      return block_->GetPreMax(scan_idx, pre_max);
+      return block_->GetPreMax(scan_idx, ts_scan_stats, pre_max);
     }
-    return convert_->GetPreMax(this, scan_idx, pre_max);
+    return convert_->GetPreMax(this, scan_idx, ts_scan_stats, pre_max);
   }
-  KStatus GetPreMin(uint32_t scan_idx, void* &pre_min) {
+  KStatus GetPreMin(uint32_t scan_idx, TsScanStats* ts_scan_stats, void* &pre_min) {
     if (!convert_) {
       int32_t size = (*scan_attrs_)[scan_idx].size;
-      return block_->GetPreMin(scan_idx, size, pre_min);
+      return block_->GetPreMin(scan_idx, size, ts_scan_stats, pre_min);
     }
     int32_t size = (*convert_->version_conv_->blk_attrs_)[scan_idx].size;
-    return convert_->GetPreMin(this, scan_idx, size, pre_min);
+    return convert_->GetPreMin(this, scan_idx, size, ts_scan_stats, pre_min);
   }
-  KStatus GetVarPreMax(uint32_t scan_idx, TSSlice& pre_max) {
+  KStatus GetVarPreMax(uint32_t scan_idx, TsScanStats* ts_scan_stats, TSSlice& pre_max) {
     if (!convert_) {
-      return block_->GetVarPreMax(scan_idx, pre_max);
+      return block_->GetVarPreMax(scan_idx, ts_scan_stats, pre_max);
     }
-    return convert_->GetVarPreMax(this, scan_idx, pre_max);
+    return convert_->GetVarPreMax(this, scan_idx, ts_scan_stats, pre_max);
   }
-  KStatus GetVarPreMin(uint32_t scan_idx, TSSlice& pre_min) {
+  KStatus GetVarPreMin(uint32_t scan_idx, TsScanStats* ts_scan_stats, TSSlice& pre_min) {
     if (!convert_) {
-      return block_->GetVarPreMin(scan_idx, pre_min);
+      return block_->GetVarPreMin(scan_idx, ts_scan_stats, pre_min);
     }
-    return convert_->GetVarPreMin(this, scan_idx, pre_min);
+    return convert_->GetVarPreMin(this, scan_idx, ts_scan_stats, pre_min);
   }
 
   KStatus UpdateFirstLastCandidates(const std::vector<k_uint32>& ts_scan_cols,

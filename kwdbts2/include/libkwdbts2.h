@@ -161,6 +161,13 @@ typedef struct {
   int64_t max_allocated_mem;  // maximum number of memory
   int64_t max_allocated_disk;  // Maximum number of disk
   int64_t output_row_num;  // rows of aggregation
+  int32_t memory_block_count;         // scanned memory block count
+  int32_t last_block_count;           // scanned last block count
+  int64_t entity_block_count;         // scanned entity block count
+  int64_t block_cache_hit_count;      // block cache hit count
+  int64_t block_bytes;                // scanned block_bytes
+  int64_t agg_bytes;                  // scanned agg_bytes
+  int64_t header_bytes;               // scannned header bytes
   // build_time only be used for showing build time in explain analyze of hash tag scan op
   // for multiple model processing when the switch is on and the server starts with single node mode.
   int64_t build_time;  // time of build
