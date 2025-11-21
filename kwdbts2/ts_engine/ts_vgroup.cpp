@@ -31,6 +31,7 @@
 #include "kwdb_type.h"
 #include "lg_api.h"
 #include "libkwdbts2.h"
+#include "settings.h"
 #include "ts_block.h"
 #include "ts_common.h"
 #include "ts_compatibility.h"
@@ -45,6 +46,7 @@
 #include "ts_std_utils.h"
 #include "ts_table_schema_manager.h"
 #include "ts_version.h"
+#include "ts_partition_interval_recorder.h"
 #include "ts_ts_lsn_span_utils.h"
 
 namespace kwdbts {
@@ -1367,7 +1369,6 @@ KStatus TsVGroup::WriteBatchData(TSTableID tbl_id, uint32_t table_version, TSEnt
   if (database_id == 0) {
     return KStatus::FAIL;
   }
-
   auto partition = current->GetPartition(database_id, p_time);
   if (partition == nullptr) {
     KStatus s = version_manager_->AddPartition(database_id, p_time);

@@ -82,6 +82,8 @@ class MMapMetricsTable : public TSObject, public TsTableObject {
 
   uint64_t& partitionInterval() { return meta_data_->partition_interval; }
 
+  void SetPartitionInterval(uint64_t partition_interval) { meta_data_->partition_interval = partition_interval; }
+
   uint64_t& hashNum() { return meta_data_->hash_num; }
 
   virtual int remove();

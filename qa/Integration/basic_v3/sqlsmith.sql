@@ -1,5 +1,5 @@
 create ts database test_vacuum;
-create table test_vacuum.t1 (k_timestamp timestamptz not null,id int not null,e1 int2,e2 int,e3 int8,e4 float4,e5 float8,e6 bool,e7 timestamptz,e8 char(1023),e9 nchar(255),e10 varchar(4096),e11 char,e12 char(255),e13 nchar,e14 nvarchar(4096),e15 varchar(1023),e16 nvarchar(200),e17 nchar(255),e18 char(200),e19 varbytes,e20 varbytes(60),e21 varchar,e22 nvarchar) tags (code1 int2 not null,code2 int,code3 int8,code4 float4,code5 float8,code6 bool,code7 varchar,code8 varchar(128) not null,code9 varbytes,code10 varbytes(60),code11 varchar,code12 varchar(60),code13 char(2),code14 char(1023) not null,code15 nchar,code16 nchar(254) not null) primary tags (code1) activetime 2d partition interval 1d;
+create table test_vacuum.t1 (k_timestamp timestamptz not null,id int not null,e1 int2,e2 int,e3 int8,e4 float4,e5 float8,e6 bool,e7 timestamptz,e8 char(1023),e9 nchar(255),e10 varchar(4096),e11 char,e12 char(255),e13 nchar,e14 nvarchar(4096),e15 varchar(1023),e16 nvarchar(200),e17 nchar(255),e18 char(200),e19 varbytes,e20 varbytes(60),e21 varchar,e22 nvarchar) tags (code1 int2 not null,code2 int,code3 int8,code4 float4,code5 float8,code6 bool,code7 varchar,code8 varchar(128) not null,code9 varbytes,code10 varbytes(60),code11 varchar,code12 varchar(60),code13 char(2),code14 char(1023) not null,code15 nchar,code16 nchar(254) not null) primary tags (code1) activetime 2d;
 
 set cluster setting ts.parallel_degree = 8;
 set statement_timeout='10s';
@@ -270,7 +270,7 @@ limit 132;
 drop database test_vacuum cascade;
 
 create ts database test_vacuum;
-create table test_vacuum.t1 (k_timestamp timestamptz not null,id int not null,e1 int2,e2 int,e3 int8,e4 float4,e5 float8,e6 bool,e7 timestamptz,e8 char(1023),e9 nchar(255),e10 varchar(4096),e11 char,e12 char(255),e13 nchar,e14 nvarchar(4096),e15 varchar(1023),e16 nvarchar(200),e17 nchar(255),e18 char(200),e19 varbytes,e20 varbytes(60),e21 varchar,e22 nvarchar) tags (code1 int2 not null,code2 int,code3 int8,code4 float4,code5 float8,code6 bool,code7 varchar,code8 varchar(128) not null,code9 varbytes,code10 varbytes(60),code11 varchar,code12 varchar(60),code13 char(2),code14 char(1023) not null,code15 nchar,code16 nchar(254) not null) primary tags (code1) activetime 2d partition interval 1d;
+create table test_vacuum.t1 (k_timestamp timestamptz not null,id int not null,e1 int2,e2 int,e3 int8,e4 float4,e5 float8,e6 bool,e7 timestamptz,e8 char(1023),e9 nchar(255),e10 varchar(4096),e11 char,e12 char(255),e13 nchar,e14 nvarchar(4096),e15 varchar(1023),e16 nvarchar(200),e17 nchar(255),e18 char(200),e19 varbytes,e20 varbytes(60),e21 varchar,e22 nvarchar) tags (code1 int2 not null,code2 int,code3 int8,code4 float4,code5 float8,code6 bool,code7 varchar,code8 varchar(128) not null,code9 varbytes,code10 varbytes(60),code11 varchar,code12 varchar(60),code13 char(2),code14 char(1023) not null,code15 nchar,code16 nchar(254) not null) primary tags (code1) activetime 2d;
 set cluster setting ts.parallel_degree = 8;
 set statement_timeout='10s';
 
@@ -567,8 +567,7 @@ CREATE TABLE t_electmeter (
 	location VARCHAR(64) NOT NULL,
 	cnc_number INT4 ) PRIMARY TAGS(machine_code)
 	retentions 0s
-	activetime 3h
-	partition interval 10d;
+	activetime 3h;
 
 CREATE TABLE up_exg_msg_real_location (
 	gtime TIMESTAMPTZ NOT NULL,
@@ -630,8 +629,7 @@ CREATE TABLE up_exg_msg_real_location (
 	vehicle_color INT4,
 	vehicle_no VARCHAR(32) NOT NULL ) PRIMARY TAGS(vehicle_no)
 	retentions 0s
-	activetime 1d
-	partition interval 10d;
+	activetime 1d;
 
 create database tpcc;
 use tpcc;
@@ -822,7 +820,7 @@ drop database tpcc cascade;
 drop database db_shig cascade;
 
 create ts database test_vacuum;
-create table test_vacuum.t1 (k_timestamp timestamptz not null,id int not null,e1 int2,e2 int,e3 int8,e4 float4,e5 float8,e6 bool,e7 timestamptz,e8 char(1023),e9 nchar(255),e10 varchar(4096),e11 char,e12 char(255),e13 nchar,e14 nvarchar(4096),e15 varchar(1023),e16 nvarchar(200),e17 nchar(255),e18 char(200),e19 varbytes,e20 varbytes(60),e21 varchar,e22 nvarchar) tags (code1 int2 not null,code2 int,code3 int8,code4 float4,code5 float8,code6 bool,code7 varchar,code8 varchar(128) not null,code9 varbytes,code10 varbytes(60),code11 varchar,code12 varchar(60),code13 char(2),code14 char(1023) not null,code15 nchar,code16 nchar(254) not null) primary tags (code1) activetime 2d partition interval 1d;
+create table test_vacuum.t1 (k_timestamp timestamptz not null,id int not null,e1 int2,e2 int,e3 int8,e4 float4,e5 float8,e6 bool,e7 timestamptz,e8 char(1023),e9 nchar(255),e10 varchar(4096),e11 char,e12 char(255),e13 nchar,e14 nvarchar(4096),e15 varchar(1023),e16 nvarchar(200),e17 nchar(255),e18 char(200),e19 varbytes,e20 varbytes(60),e21 varchar,e22 nvarchar) tags (code1 int2 not null,code2 int,code3 int8,code4 float4,code5 float8,code6 bool,code7 varchar,code8 varchar(128) not null,code9 varbytes,code10 varbytes(60),code11 varchar,code12 varchar(60),code13 char(2),code14 char(1023) not null,code15 nchar,code16 nchar(254) not null) primary tags (code1) activetime 2d;
 set cluster setting ts.parallel_degree = 8;
 set statement_timeout='1s';
 

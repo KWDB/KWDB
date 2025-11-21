@@ -1361,11 +1361,10 @@ type CreateTable struct {
 	// only support lifetime for now, e.g. retentions 1 day
 	DownSampling *DownSampling
 	// dict encoding
-	Sde               bool
-	PrimaryTagList    NameList
-	PartitionInterval *TimeInput
-	Comment           string
-	HashNum           int64
+	Sde            bool
+	PrimaryTagList NameList
+	Comment        string
+	HashNum        int64
 	// In CREATE ... LIKE queries, LikeTable as the origin table.
 	LikeTable TableName
 }
@@ -1506,11 +1505,6 @@ func (node *CreateTable) FormatBody(ctx *FmtCtx) {
 		}
 		if node.DownSampling != nil {
 			ctx.FormatNode(node.DownSampling)
-		}
-		if node.PartitionInterval != nil {
-			ctx.WriteString(" PARTITION INTERVAL ")
-			ctx.Printf("%d", node.PartitionInterval.Value)
-			ctx.WriteString(node.PartitionInterval.Unit)
 		}
 	} else if node.TableType == InstanceTable {
 		var tagNameList NameList

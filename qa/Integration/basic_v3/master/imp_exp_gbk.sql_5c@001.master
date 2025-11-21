@@ -44,7 +44,7 @@ ATTRIBUTES (
  code14 CHAR(1023) NOT NULL,
  code15 NCHAR,
  code16 NCHAR(254) NOT NULL)
-PRIMARY TAGS(code1) partition interval 30d;
+PRIMARY TAGS(code1);
 CREATE TABLE
 > INSERT INTO gbk_impexp.t1 values('2024-04-01 00:01:10',1,-22802,NULL,1482075815,40489.984375,7193410.151417,NULL,'1998-06-18 07:27:21.641','中中000000test数据库语法------查询测试！！！@TEST000000000000test数据库语法------查询测试！！！@TEST000000中000000test数据库语法------查询测试！！！@TEST000000000000test数据库语法------查询测试！！！@TEST0000000中Test000000test数据库语法------查询测试！！！@TEST000000000000test数据库语法------查询测试！！！@TEST000000Testaaa中0Testaaa000000test数据库语法------查询测试！！！@TEST000000000000test数据库语法------查询测试！！！@TEST000000aaa000000test数据库语法------查询测试！！！@TEST000000000000test数据库语法------查询测试！！！@TEST000000000000test数据库语法------查询测试！！！@TEST000000000000test数据库语法------查询测试！！！@TEST000000Test中TestaaaTest0中000000test数据库语法------查询测试！！！@TEST000000000000test数据库语法------查询测试！！！@TEST000000Test中0aaa中aaaaaaaaa0中aaa','test数据库语法查询测试！！！@TEST000---',NULL,'H','test数据库语法查询测试！！！@TEST111---Testtest数据库语法查询测试！！！@TEST888---test数据库语法查询测试！！！@TEST000---','a','0Testtest数据库语法查询测试！！！@TEST777---','UU文2e303TUH学学2',NULL,'test数据库语法查询测试！！！@TEST111---Testaaa',NULL,')（c112）-(Tabc中）-(H测试1！abc中b1298*Aabc中)（',NULL,'test数据库语法查询测试！！！@TEST000---中','0test数据库语法查询测试！！！@TEST999---中',-11336,NULL,702359162,34053.347656,8838531.997967,true,'test数据库语法查询测试！！！@TEST1-1','test数据库语法查询测试！！！@TEST1-1','d00ba1ca3U0))bA3bU1A',NULL,'aT3dcaHT*dHd*)3TU)eU',NULL,'e','test数据库语法查询测试！！！@TEST2-2','3','abc中');
 INSERT 1

@@ -68,7 +68,7 @@ create table test_vacuum.t1 (
 	code14 char(1023) not null,
 	code15 nchar,
 	code16 nchar(254) not null
-) primary tags (code1) activetime 2d partition interval 1d;
+) primary tags (code1) activetime 2d;
 
 insert into t1 values('2024-07-04 10:16:39',49995,24108,1825863461,477627461831675063,663.2890625,-856570.6584169177,true,'2023-01-15 14:31:37.299','以上状态简介就是中国.
 汽车的是重要这些电脑注意.到了他的社区最后方式方面.这里两个国内进入网站时间只有.处理技术下载之后语言数据出来.
@@ -321,7 +321,7 @@ create table test_vacuum.t1 (
 	code14 char(1023) not null,
 	code15 nchar,
 	code16 nchar(254) not null
-) primary tags (code1) activetime 2d partition interval 1d;
+) primary tags (code1) activetime 2d;
 
 -- insert data
 INSERT INTO test_vacuum.t1 (k_timestamp, id, e1, e2, e3, e4, e5, e6, e7, e8, e9, e10, e11, e12, e13, e14, e15, e16, e17, e18, e19, e20, e21, e22, code1, code2, code3, code4, code5, code6, code7, code8, code9, code10, code11, code12, code13, code14, code15, code16) VALUES ('2024-06-17 01:40:39', 3, NULL, NULL, 4454905094816277526, -546.1563015466311, -350273.7207891615, False, '2023-07-23 16:54:08.429569', '积分操作会员新闻之间因为.日期标题不是完成怎么不是的人.虽然一下重要密码手机.喜欢可能使用开发国家经验.
@@ -556,7 +556,7 @@ create table test_vacuum.t1 (
 	code14 char(1023) not null,
 	code15 nchar,
 	code16 nchar(254) not null
-) primary tags (code1) activetime 2d partition interval 1d;
+) primary tags (code1) activetime 2d;
 
 INSERT INTO test_vacuum.t1 (k_timestamp, id, e1, e2, e3, e4, e5, e6, e7, e8, e9, e10, e11, e12, e13, e14, e15, e16, e17, e18, e19, e20, e21, e22, code1, code2, code3, code4, code5, code6, code7, code8, code9, code10, code11, code12, code13, code14, code15, code16) VALUES ('2024-08-06 01:42:09', 6, 8353, 1742385267, NULL, -660.1786165580095, NULL, True, '2022-05-09 03:41:04.050654', '可是很多帖子地址不会时候朋友全国.对于密码有关自己图片会员语>言两个.
 觉得电子如果不断.都是设计下载增加更多在线.提供公司日本游戏控制只有.
@@ -914,8 +914,7 @@ CREATE TABLE t1 (
 	code15 NCHAR(1),
 	code16 NCHAR(254) ) PRIMARY TAGS(code1)
 	retentions 0s
-	activetime 1d
-	partition interval 10d;
+	activetime 1d;
 CREATE TABLE t2 (
                     k_timestamp TIMESTAMPTZ(3) NOT NULL,
                     id INT4 NOT NULL,
@@ -959,8 +958,7 @@ CREATE TABLE t2 (
 	code15 NCHAR(1),
 	code16 NCHAR(254) ) PRIMARY TAGS(code1)
 	retentions 0s
-	activetime 1d
-	partition interval 10d;
+	activetime 1d;
 CREATE TABLE t3 (
                     k_timestamp TIMESTAMPTZ(3) NOT NULL,
                     id INT4 NOT NULL,
@@ -1004,8 +1002,7 @@ CREATE TABLE t3 (
 	code15 NCHAR(1),
 	code16 NCHAR(254) ) PRIMARY TAGS(code1)
 	retentions 0s
-	activetime 1d
-	partition interval 10d;
+	activetime 1d;
 CREATE TABLE t4 (
                     k_timestamp TIMESTAMPTZ(3) NOT NULL,
                     id INT8 NOT NULL,
@@ -1238,8 +1235,7 @@ CREATE TABLE t4 (
 	code15 NCHAR(1),
 	code16 NCHAR(100) ) PRIMARY TAGS(code1)
 	retentions 0s
-	activetime 1d
-	partition interval 10d;
+	activetime 1d;
 CREATE TABLE t5 (
                     k_timestamp TIMESTAMPTZ(3) NOT NULL,
                     id INT8 NOT NULL,
@@ -1472,8 +1468,7 @@ CREATE TABLE t5 (
 	code15 NCHAR(1),
 	code16 NCHAR(100) ) PRIMARY TAGS(code1)
 	retentions 0s
-	activetime 1d
-	partition interval 10d;
+	activetime 1d;
 CREATE TABLE t6 (
                     k_timestamp TIMESTAMPTZ(3) NOT NULL,
                     id INT8 NOT NULL,
@@ -1706,8 +1701,7 @@ CREATE TABLE t6 (
 	code15 NCHAR(1),
 	code16 NCHAR(100) ) PRIMARY TAGS(code1)
 	retentions 0s
-	activetime 1d
-	partition interval 10d;
+	activetime 1d;
 CREATE TABLE t7 (
                     k_timestamp TIMESTAMPTZ(3) NOT NULL,
                     id INT8 NOT NULL,
@@ -3729,8 +3723,7 @@ CREATE TABLE t7 (
 	code15 NCHAR(1),
 	code16 NCHAR(100) ) PRIMARY TAGS(code1)
 	retentions 0s
-	activetime 1d
-	partition interval 10d;
+	activetime 1d;
 CREATE TABLE t8 (
                     k_timestamp TIMESTAMPTZ(3) NOT NULL,
                     id INT8 NOT NULL,
@@ -5752,8 +5745,7 @@ CREATE TABLE t8 (
 	code15 NCHAR(1),
 	code16 NCHAR(100) ) PRIMARY TAGS(code1)
 	retentions 0s
-	activetime 1d
-	partition interval 10d;
+	activetime 1d;
 
 select
     (select test78 from public.t4 limit 1 offset 6)

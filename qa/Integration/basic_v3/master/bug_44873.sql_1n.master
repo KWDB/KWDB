@@ -56,8 +56,7 @@ SET
      workshop_id INT2 NOT NULL,
      cnc_number INT4 ) PRIMARY TAGS(machine_code)
      retentions 5d
-     activetime 1h
-     partition interval 1d;
+     activetime 1h;
 CREATE TABLE
 > prepare my_plan (varchar, varchar) as SELECT machine_code, max(cur_a) as max_cur,min(cur_a) as min_cur,avg(cur_a) as avg_cur, sum(cur_a) as sum_cur, count(cur_a) as count_cur FROM db_shig.t_electmeter where 1=1 and machine_code = $1 and elect_name = $2 and k_timestamp > ('2025-01-01 00:00:00')::timestamptz and k_timestamp < ('2025-01-31 23:59:59')::timestamptz group by machine_code order by machine_code asc;
 PREPARE

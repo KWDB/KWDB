@@ -312,7 +312,7 @@ CREATE TABLE
                   |     code2 VARCHAR(64) NOT NULL ) PRIMARY TAGS(code1, code2)
                   |     retentions 0s
                   |     activetime 1d
-                  |     partition interval 10d
+                  |
 (1 row)
 > show create table db1.tb02;
     table_name    |               create_statement
@@ -325,7 +325,7 @@ CREATE TABLE
                   |     code2 VARCHAR(254) ) PRIMARY TAGS(code1)
                   |     retentions 0s
                   |     activetime 1d
-                  |     partition interval 10d
+                  |
 (1 row)
 > CREATE TABLE db1.tb_varchar(k_timestamp timestamptz not null, e1 varchar,e2 varchar(30))TAGS (code1 bool not null) primary tags (code1);
 CREATE TABLE
@@ -340,7 +340,7 @@ CREATE TABLE
                         |     code1 BOOL NOT NULL ) PRIMARY TAGS(code1)
                         |     retentions 0s
                         |     activetime 1d
-                        |     partition interval 10d
+                        |
 (1 row)
 > show columns from db1.tb_varchar;
   column_name |   data_type    | is_nullable | column_default | generation_expression |  indices  | is_hidden | is_tag

@@ -378,7 +378,7 @@ CREATE TABLE lingshou_station (
     value FLOAT8 NULL,
     load_time TIMESTAMP NULL) TAGS (
         equipment_code_id INT4,
-        capture_tag_id INT4 NOT NULL ) PRIMARY TAGS(capture_tag_id) retentions 0day activetime 1day partition interval 10day;
+        capture_tag_id INT4 NOT NULL ) PRIMARY TAGS(capture_tag_id) retentions 0day activetime 1day;
 
 insert into  lingshou_station  values ('2025-01-22 03:16:41.343+00:00',0.0,'2025-01-22 11:14:06+00:00',8,620),
 ('2025-01-22 03:46:41.343+00:00',0.0,'2025-01-22 11:42:32+00:00',8,620),
@@ -409,7 +409,7 @@ CREATE TABLE lingshou_station_10m_test (
     std_value FLOAT8 NULL,
     load_time TIMESTAMP(3) NULL) TAGS (
         equipment_code_id INT4,
-        capture_tag_id INT4 NOT NULL ) PRIMARY TAGS(capture_tag_id) retentions 0day activetime 1day partition interval 10day;
+        capture_tag_id INT4 NOT NULL ) PRIMARY TAGS(capture_tag_id) retentions 0day activetime 1day;
 
 
 insert into lingshou_station_10m_test SELECT

@@ -135,6 +135,8 @@ class TsTableSchemaManager {
 
   uint64_t GetPartitionInterval() const;
 
+  void SetPartitionInterval(uint64_t partition_interval) const;
+
   uint64_t GetDbID() const;
 
   int Sync(const kwdbts::TS_OSN& check_lsn, ErrorInfo& err_info);

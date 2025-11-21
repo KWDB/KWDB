@@ -225,7 +225,8 @@ KStatus TsTableSchemaManager::CreateTable(kwdbContext_p ctx, roachpb::CreateTsTa
     attr.version = ts_version;
   }
   hash_num_ = meta->ts_table().hash_num();
-  s = metric_mgr_->CreateTable(ctx, metric_schema, db_id, ts_version, meta->ts_table().life_time(), hash_num_, err_info);
+  s = metric_mgr_->CreateTable(ctx, metric_schema, db_id, ts_version, meta->ts_table().life_time(),
+                               meta->ts_table().partition_interval(), hash_num_, err_info);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("failed to create the metric table %lu version [%u], error: %s",
               table_id_, ts_version, err_info.errmsg.c_str());
@@ -293,7 +294,8 @@ KStatus TsTableSchemaManager::addMetricForAlter(vector<AttributeInfo>& schema, u
     }
     tmp_bt->metaData()->has_data = src_bt->metaData()->has_data;
     tmp_bt->metaData()->actul_size = src_bt->metaData()->actul_size;
-    // tmp_bt->metaData()->life_time = src_bt->metaData()->life_time;
+    tmp_bt->metaData()->life_time = src_bt->metaData()->life_time;
+    tmp_bt->metaData()->precision = src_bt->metaData()->precision;
     tmp_bt->metaData()->partition_interval = src_bt->metaData()->partition_interval;
     tmp_bt->metaData()->num_node = src_bt->metaData()->num_node;
     tmp_bt->metaData()->is_dropped = src_bt->metaData()->is_dropped;
@@ -302,6 +304,8 @@ KStatus TsTableSchemaManager::addMetricForAlter(vector<AttributeInfo>& schema, u
   } else {
     tmp_bt->metaData()->db_id = GetDbID();
   }
+  time(&tmp_bt->metaData()->create_time);
+  tmp_bt->metaData()->schema_version = new_version;
 
   // The current version must already exist.
   tmp_bt->SetLifeTime(metric_mgr_->GetLifeTime());
@@ -480,6 +484,10 @@ void TsTableSchemaManager::SetLifeTime(LifeTime life_time) const {
 
 uint64_t TsTableSchemaManager::GetPartitionInterval() const {
   return metric_mgr_->GetPartitionInterval();
+}
+
+void TsTableSchemaManager::SetPartitionInterval(uint64_t partition_interval) const {
+  metric_mgr_->SetPartitionInterval(partition_interval);
 }
 
 uint64_t TsTableSchemaManager::GetDbID() const {

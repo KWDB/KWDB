@@ -1807,14 +1807,6 @@ alter_ts_database_stmt:
   				LifeTime: &lifeTime,
   		 }
     }
-| ALTER TS DATABASE database_name SET PARTITION INTERVAL '=' keep_duration
-    {
-    	 partitionInterval := $9.timeinput()
-       $$.val = &tree.AlterTSDatabase{
-       		Database: tree.Name($4),
-  				PartitionInterval: &partitionInterval,
-  		 }
-    }
 
 alter_zone_table_stmt:
   ALTER TABLE table_name set_zone_config
@@ -2120,12 +2112,6 @@ alter_table_cmd:
   	  TimeInput: $4.timeInput(),
   	}
   }
-| SET PARTITION INTERVAL '=' keep_duration
-	{
-		$$.val = &tree.AlterPartitionInterval{
-			TimeInput: $5.timeInput(),
-		}
-	}
 
 alter_index_cmds:
   alter_index_cmd
@@ -5635,7 +5621,7 @@ table_elem_tag:
 //  }
 
 create_ts_table_stmt:
-  CREATE opt_temp_create_table TABLE IF NOT EXISTS table_name '(' opt_table_elem_list ')' attributes_tags '(' table_elem_tag_list ')' PRIMARY attributes_tags '(' name_list ')' opt_retentions_elems opt_active_time opt_dict_encoding opt_partition_interval opt_comment_clause opt_hash_num
+  CREATE opt_temp_create_table TABLE IF NOT EXISTS table_name '(' opt_table_elem_list ')' attributes_tags '(' table_elem_tag_list ')' PRIMARY attributes_tags '(' name_list ')' opt_retentions_elems opt_active_time opt_dict_encoding opt_comment_clause opt_hash_num
 	{
     name := $7.unresolvedObjectName().ToTableName()
     $$.val = &tree.CreateTable{
@@ -5650,12 +5636,11 @@ create_ts_table_stmt:
       Tags: $13.tags(),
       Sde: $22.bool(),
       PrimaryTagList: $18.nameList(),
-      PartitionInterval: $23.partitionInterval(),
-      Comment: $24,
-      HashNum: $25.int64(),
+      Comment: $23,
+      HashNum: $24.int64(),
     }
 	}
-| CREATE opt_temp_create_table TABLE table_name '(' opt_table_elem_list ')' attributes_tags '(' table_elem_tag_list ')' PRIMARY attributes_tags '(' name_list ')' opt_retentions_elems opt_active_time opt_dict_encoding opt_partition_interval opt_comment_clause opt_hash_num
+| CREATE opt_temp_create_table TABLE table_name '(' opt_table_elem_list ')' attributes_tags '(' table_elem_tag_list ')' PRIMARY attributes_tags '(' name_list ')' opt_retentions_elems opt_active_time opt_dict_encoding opt_comment_clause opt_hash_num
 	{
     name := $4.unresolvedObjectName().ToTableName()
     $$.val = &tree.CreateTable{
@@ -5670,9 +5655,8 @@ create_ts_table_stmt:
       Tags: $10.tags(),
       Sde: $19.bool(),
       PrimaryTagList: $15.nameList(),
-      PartitionInterval: $20.partitionInterval(),
-      Comment: $21,
-      HashNum: $22.int64(),
+      Comment: $20,
+      HashNum: $21.int64(),
     }
 	}
 

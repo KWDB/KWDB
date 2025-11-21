@@ -167,7 +167,7 @@ INSERT 1
              |     tag11 VARBYTES(255) NOT NULL ) PRIMARY TAGS(tag4, tag5, tag8)
              |     retentions 0s
              |     activetime 1d
-             |     partition interval 10d
+             |
 (1 row)
 > show create table tb1_1;
   table_name |                         create_statement
@@ -198,7 +198,7 @@ INSERT 1
              |     tag11 VARBYTES(255) NOT NULL ) PRIMARY TAGS(tag1, tag2, tag3)
              |     retentions 0s
              |     activetime 1d
-             |     partition interval 10d
+             |
 (1 row)
 > show create table tb2;
   table_name |                         create_statement
@@ -227,7 +227,7 @@ INSERT 1
              |     tag11 VARCHAR(255) NOT NULL ) PRIMARY TAGS(tag1, tag2, tag3)
              |     retentions 0s
              |     activetime 1d
-             |     partition interval 10d
+             |
 (1 row)
 > show create table tb2_1;
   table_name |                      create_statement
@@ -256,7 +256,7 @@ INSERT 1
              |     tag11 VARCHAR(64) NOT NULL ) PRIMARY TAGS(tag10, tag11)
              |     retentions 0s
              |     activetime 1d
-             |     partition interval 10d
+             |
 (1 row)
 > show columns from tb1;
   column_name |   data_type    | is_nullable | column_default | generation_expression |  indices  | is_hidden | is_tag
@@ -544,7 +544,7 @@ CREATE TABLE
              |     "1t" VARCHAR(254) ) PRIMARY TAGS(primary_tag)
              |     retentions 0s
              |     activetime 1d
-             |     partition interval 10d
+             |
 (1 row)
 > CREATE TABLE s12(k_timestamp TIMESTAMPTZ NOT NULL,"1e" INT8 ) TAGS ("1p" VARCHAR(64) NOT NULL,"1t" VARCHAR(254) ) PRIMARY TAGS("1p");
 CREATE TABLE
@@ -559,7 +559,7 @@ CREATE TABLE
              |     "1t" VARCHAR(254) ) PRIMARY TAGS("1p")
              |     retentions 0s
              |     activetime 1d
-             |     partition interval 10d
+             |
 (1 row)
 > drop database tsdb cascade;
 DROP DATABASE

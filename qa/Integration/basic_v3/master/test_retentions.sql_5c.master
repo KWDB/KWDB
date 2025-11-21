@@ -195,7 +195,7 @@ CREATE TABLE
                 |     ptag INT4 NOT NULL ) PRIMARY TAGS(ptag)
                 |     retentions 0s
                 |     activetime 1d
-                |     partition interval 10d
+                |
 (1 row)
 > create table tsdb.t1(ts timestamp not null, a int) tags(ptag int not null) primary tags(ptag) activetime 100d;
 CREATE TABLE
@@ -216,7 +216,7 @@ CREATE TABLE
                  |     ptag INT4 NOT NULL ) PRIMARY TAGS(ptag)
                  |     retentions 0s
                  |     activetime 100d
-                 |     partition interval 10d
+                 |
 (1 row)
 > show create table tsdb.t2;
     table_name   |              create_statement
@@ -228,7 +228,7 @@ CREATE TABLE
                  |     ptag INT4 NOT NULL ) PRIMARY TAGS(ptag)
                  |     retentions 0s
                  |     activetime 1000y
-                 |     partition interval 10d
+                 |
 (1 row)
 > show create table tsdb.t3;
     table_name   |              create_statement
@@ -240,7 +240,7 @@ CREATE TABLE
                  |     ptag INT4 NOT NULL ) PRIMARY TAGS(ptag)
                  |     retentions 0s
                  |     activetime 1000month
-                 |     partition interval 10d
+                 |
 (1 row)
 > alter table tsdb.t1 set activetime = 100000s;
 ALTER TABLE
@@ -259,7 +259,7 @@ ALTER TABLE
                  |     ptag INT4 NOT NULL ) PRIMARY TAGS(ptag)
                  |     retentions 0s
                  |     activetime 100000s
-                 |     partition interval 10d
+                 |
 (1 row)
 > show create table tsdb.t2;
     table_name   |              create_statement
@@ -271,7 +271,7 @@ ALTER TABLE
                  |     ptag INT4 NOT NULL ) PRIMARY TAGS(ptag)
                  |     retentions 0s
                  |     activetime 1000y
-                 |     partition interval 10d
+                 |
 (1 row)
 > show create table tsdb.t3;
     table_name   |              create_statement
@@ -283,7 +283,7 @@ ALTER TABLE
                  |     ptag INT4 NOT NULL ) PRIMARY TAGS(ptag)
                  |     retentions 0s
                  |     activetime 10hour
-                 |     partition interval 10d
+                 |
 (1 row)
 > drop database tsdb;
 DROP DATABASE

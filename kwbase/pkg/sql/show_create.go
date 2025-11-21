@@ -251,13 +251,6 @@ func ShowCreateTable(
 			f.WriteString(" DICT ENCODING")
 		}
 		f.WriteString("\n\t")
-		f.WriteString("partition interval ")
-		if desc.TsTable.PartitionIntervalInput != nil {
-			f.WriteString(*desc.TsTable.PartitionIntervalInput)
-		} else {
-			f.WriteString(strconv.Itoa(int(desc.TsTable.PartitionInterval / 86400)))
-			f.WriteString("d")
-		}
 	}
 
 	if err := showCreateInterleave(&desc.PrimaryIndex, &f.Buffer, dbPrefix, lCtx); err != nil {

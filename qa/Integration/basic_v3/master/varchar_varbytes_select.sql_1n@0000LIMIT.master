@@ -44,5 +44,5 @@
                             |     type NCHAR(254) ) PRIMARY TAGS(code1, flag, color)
                             |     retentions 0s
                             |     activetime 1d
-                            |     partition interval 10d
+                            |
 (1 row)

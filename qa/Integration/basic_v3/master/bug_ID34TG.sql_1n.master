@@ -1439,7 +1439,7 @@ SET
                                  |     code4 NCHAR(10) ) PRIMARY TAGS(code1, code8, code14, code16)
                                  |     retentions 0s
                                  |     activetime 1d
-                                 |     partition interval 10d
+                                 |
 (1 row)
 > INSERT INTO test_ddl_dml_mix1.test1 VALUES('2002-2-22 2:22:22.222',22222,'test数据库语法查询测试！！！@TEST222','test数据库语法查询测试！！！@TEST222','test数据库语法查询测试！！！@TEST222','test数据库语法查询测试！！！@TEST222','test数据库语法查询测试！！！@TEST222','test数据库语法查询测试！！！@TEST222','test数据库语法查询测试！！！@TEST222','test数据库语法查询测试！！！@TEST222',22222222,222222222,222,'222222222','2','test数据库语法查询测试！！！@TEST222','test数据库语法查询测试！！！@TEST222','test数据库语法查询测试！！！@TEST222','test数据库语法查询测试！！！@TEST222',222222.222222,false,222222222.2222222222,'222222','2022-2-2',222,'test数据库语法查询测试！！！@TEST222','test数据库语法查询测试！！！@TEST222','2','test数据库语法查询测试！！！@TEST222',false,'222','222');
 INSERT 1

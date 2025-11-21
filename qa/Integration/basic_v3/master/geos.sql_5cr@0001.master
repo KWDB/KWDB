@@ -16,7 +16,7 @@ CREATE TABLE
                           |     code2 INT4 ) PRIMARY TAGS(code1)
                           |     retentions 0s
                           |     activetime 1d
-                          |     partition interval 10d
+                          |
 (1 row)
 > set sql_safe_updates = false;
 SET

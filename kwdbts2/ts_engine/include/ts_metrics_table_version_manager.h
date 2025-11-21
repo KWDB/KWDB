@@ -28,7 +28,6 @@ class MetricsVersionManager {
   std::shared_ptr<MMapMetricsTable> cur_metric_table_;
   // schemas of all versions
   std::unordered_map<uint32_t, std::shared_ptr<MMapMetricsTable>> metric_tables_;
-  uint64_t partition_interval_;
   KRWLatch schema_rw_lock_;
 
  public:
@@ -43,7 +42,7 @@ class MetricsVersionManager {
   void InsertNull(uint32_t ts_version);
 
   KStatus CreateTable(kwdbContext_p ctx, std::vector<AttributeInfo> meta, uint32_t db_id, uint32_t ts_version,
-                      int64_t life_time, uint64_t hash_num, ErrorInfo& err_info);
+                      int64_t life_time, uint64_t partition_interval, uint64_t hash_num, ErrorInfo& err_info);
 
   KStatus AddOneVersion(uint32_t ts_version, std::shared_ptr<MMapMetricsTable> metrics_table);
 
@@ -69,7 +68,9 @@ class MetricsVersionManager {
 
   void SetLifeTime(LifeTime life_time);
 
-  uint64_t GetPartitionInterval() const;
+  uint64_t GetPartitionInterval();
+
+  void SetPartitionInterval(uint64_t partition_interval);
 
   uint64_t GetDbID();
 

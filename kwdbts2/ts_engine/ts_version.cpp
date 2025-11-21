@@ -66,8 +66,9 @@ static int64_t GetPartitionStartTime(timestamp64 timestamp, int64_t ts_interval)
 }
 
 KStatus TsVersionManager::AddPartition(DatabaseID dbid, timestamp64 ptime) {
-  timestamp64 start = GetPartitionStartTime(ptime, EngineOptions::partition_interval);
-  PartitionIdentifier partition_id{dbid, start, start + EngineOptions::partition_interval};
+  int64_t interval = PartitionIntervalRecorder::GetInstance()->GetInterval(dbid);
+  timestamp64 start = GetPartitionStartTime(ptime, interval);
+  PartitionIdentifier partition_id{dbid, start, start + interval};
   if (partition_id == this->last_created_partition_) {
     return KStatus::SUCCESS;
   }
@@ -257,6 +258,11 @@ KStatus TsVersionManager::Recover() {
   TsVersionUpdate update;
   builder.Finalize(&update);
   assert(logger_ != nullptr);
+  for (const auto &ipar : update.partitions_created_) {
+    auto [dbid, start, end] = ipar;
+    int64_t interval = end - start;
+    recorder_->RecordInterval(dbid, interval);
+  }
   s = ApplyUpdate(&update);
   LOG_INFO("recovered update: %s", update.DebugStr().c_str());
   if (s == FAIL) {
@@ -573,8 +579,9 @@ std::vector<std::shared_ptr<const TsPartitionVersion>> TsVGroupVersion::GetParti
 
 std::shared_ptr<const TsPartitionVersion> TsVGroupVersion::GetPartition(uint32_t target_dbid,
                                                                         timestamp64 target_time) const {
-  timestamp64 start = GetPartitionStartTime(target_time, EngineOptions::partition_interval);
-  auto it = partitions_.find({target_dbid, start, start + EngineOptions::partition_interval});
+  int64_t interval = recorder_->GetInterval(target_dbid);
+  timestamp64 start = GetPartitionStartTime(target_time, interval);
+  auto it = partitions_.find({target_dbid, start, start + interval});
   if (it == partitions_.end()) {
     return nullptr;
   }

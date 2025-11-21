@@ -20,6 +20,7 @@
 
 #include "data_type.h"
 #include "kwdb_type.h"
+#include "settings.h"
 #include "ts_bitmap.h"
 #include "ts_flush_manager.h"
 #include "ts_mem_seg_index.h"

@@ -30,6 +30,7 @@
 #include "ts_engine_schema_manager.h"
 #include "ts_mem_segment_mgr.h"
 #include "ts_version.h"
+#include "ts_partition_interval_recorder.h"
 
 extern uint16_t CLUSTER_SETTING_MAX_ROWS_PER_BLOCK;         // PARTITION_ROWS from cluster setting
 extern bool CLUSTER_SETTING_COUNT_USE_STATISTICS;          // COUNT_USE_STATISTICS from cluster setting
@@ -97,6 +98,7 @@ class TsVGroup {
   std::unordered_map<uint32_t, TsEntityLatestRowStatus> entity_latest_row_checked_;
   std::unordered_map<uint32_t, TsTableLastRow> entity_latest_row_;
   std::unordered_map<uint32_t, size_t> entity_latest_row_mem_size_;
+
 
  public:
   std::unique_ptr<WALMgr> wal_manager_ = nullptr;

@@ -85,8 +85,8 @@ void MetricsVersionManager::InsertNull(uint32_t ts_version) {
 }
 
 KStatus MetricsVersionManager::CreateTable(kwdbContext_p ctx, std::vector<AttributeInfo> meta, uint32_t db_id,
-                                                      uint32_t ts_version, int64_t lifetime, uint64_t hash_num,
-                                                      ErrorInfo& err_info) {
+                                           uint32_t ts_version, int64_t lifetime, uint64_t partition_interval,
+                                           uint64_t hash_num, ErrorInfo& err_info) {
   wrLock();
   Defer defer([&]() { unLock(); });
   string bt_path = IdToSchemaPath(table_id_, ts_version);
@@ -94,7 +94,7 @@ KStatus MetricsVersionManager::CreateTable(kwdbContext_p ctx, std::vector<Attrib
   auto tmp_bt = std::make_shared<MMapMetricsTable>();
   if (tmp_bt->open(bt_path, table_path_, tbl_sub_path_, MMAP_CREAT_EXCL, err_info) >= 0
       || err_info.errcode == KWECORR) {
-    tmp_bt->create(meta, ts_version, tbl_sub_path_, partition_interval_, encoding, err_info, false, hash_num);
+    tmp_bt->create(meta, ts_version, tbl_sub_path_, partition_interval, encoding, err_info, false, hash_num);
   }
   if (err_info.errcode < 0) {
     LOG_ERROR("root table[%s] create error : %s", bt_path.c_str(), err_info.errmsg.c_str());
@@ -142,7 +142,6 @@ KStatus MetricsVersionManager::AddOneVersion(uint32_t ts_version, std::shared_pt
   if (cur_metric_version_ < ts_version) {
     cur_metric_table_ = metrics_table;
     cur_metric_version_ = ts_version;
-    partition_interval_ = metrics_table->partitionInterval();
   }
   return SUCCESS;
 }
@@ -202,8 +201,12 @@ void MetricsVersionManager::SetLifeTime(LifeTime life_time) {
   GetCurrentMetricsTable()->SetLifeTime(life_time);
 }
 
-uint64_t MetricsVersionManager::GetPartitionInterval() const {
-  return partition_interval_;
+uint64_t MetricsVersionManager::GetPartitionInterval() {
+  return GetCurrentMetricsTable()->metaData()->partition_interval;
+}
+
+void MetricsVersionManager::SetPartitionInterval(uint64_t partition_interval) {
+  GetCurrentMetricsTable()->SetPartitionInterval(partition_interval);
 }
 
 uint64_t MetricsVersionManager::GetDbID() {
@@ -294,7 +297,6 @@ KStatus MetricsVersionManager::UndoAlterCol(uint32_t old_version, uint32_t new_v
   }
   cur_metric_table_ = old_bt;
   cur_metric_version_ = old_version;
-  partition_interval_ = old_bt->partitionInterval();
   LOG_INFO("UndoAlterCol succeed, table id [%lu], old version [%u], new version [%u]", table_id_, old_version, new_version);
   return SUCCESS;
 }

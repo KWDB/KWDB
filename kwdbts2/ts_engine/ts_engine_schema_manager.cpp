@@ -59,6 +59,20 @@ KStatus TsEngineSchemaManager::Init(kwdbContext_p ctx) {
           if (s != KStatus::SUCCESS) {
             return s;
           }
+          auto partition_interval = tb_schema_mgr->GetPartitionInterval();
+          // compatibility process for updating v3.0 to v3.1, partition interval is 0 or other random value in v3.0,
+          // set it to default value
+          if (partition_interval == 0 || partition_interval % 86400 != 0) {
+            partition_interval = EngineOptions::default_partition_interval;
+            tb_schema_mgr->SetPartitionInterval(partition_interval);
+          }
+          s = PartitionIntervalRecorder::GetInstance()->RecordInterval(tb_schema_mgr->GetDbID(), partition_interval);
+          if (s != KStatus::SUCCESS) {
+            LOG_ERROR("Partition interval of db_id %lu is %ld, not %ld for table id %u", tb_schema_mgr->GetDbID(),
+                       PartitionIntervalRecorder::GetInstance()->GetInterval(tb_schema_mgr->GetDbID()),
+                       partition_interval, table_id);
+            return s;
+          }
           table_schema_mgrs_[table_id] = std::move(tb_schema_mgr);
         }
       }
@@ -91,12 +105,6 @@ KStatus TsEngineSchemaManager::CreateTable(kwdbContext_p ctx, const uint32_t& db
   if (meta->ts_table().has_ts_version()) {
     ts_version = meta->ts_table().ts_version();
   }
-
-  // TODO(zzr): customize partition interval
-  // uint64_t partition_interval = EngineOptions::iot_interval;
-  // if (meta->ts_table().has_partition_interval()) {
-  //   partition_interval = meta->ts_table().partition_interval();
-  // }
 
   ErrorInfo err_info;
   string table_path = schema_root_path_.string() + "/" + std::to_string(table_id) + "/";

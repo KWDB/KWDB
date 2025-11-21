@@ -120,7 +120,7 @@ CREATE TABLE
                  |     ptag INT4 NOT NULL ) PRIMARY TAGS(ptag)
                  |     retentions 0s
                  |     activetime 1d
-                 |     partition interval 10d
+                 |
 (1 row)
 > SHOW CREATE TABLE tsdb2.t;
     table_name   |              create_statement
@@ -132,7 +132,7 @@ CREATE TABLE
                  |     ptag INT4 NOT NULL ) PRIMARY TAGS(ptag)
                  |     retentions 864000s
                  |     activetime 1d
-                 |     partition interval 10d
+                 |
 (1 row)
 > SHOW CREATE TABLE tsdb3.t;
     table_name   |              create_statement
@@ -144,7 +144,7 @@ CREATE TABLE
                  |     ptag INT4 NOT NULL ) PRIMARY TAGS(ptag)
                  |     retentions 950400s
                  |     activetime 1d
-                 |     partition interval 10d
+                 |
 (1 row)
 > SHOW CREATE TABLE tsdb4.t;
     table_name   |              create_statement
@@ -156,7 +156,7 @@ CREATE TABLE
                  |     ptag INT4 NOT NULL ) PRIMARY TAGS(ptag)
                  |     retentions 11600s
                  |     activetime 1d
-                 |     partition interval 10d
+                 |
 (1 row)
 > SHOW CREATE TABLE tsdb5.t;
     table_name   |              create_statement
@@ -168,7 +168,7 @@ CREATE TABLE
                  |     ptag INT4 NOT NULL ) PRIMARY TAGS(ptag)
                  |     retentions 0s
                  |     activetime 1d
-                 |     partition interval 10d
+                 |
 (1 row)
 > SHOW CREATE TABLE tsdb6.t;
     table_name   |              create_statement
@@ -180,7 +180,7 @@ CREATE TABLE
                  |     ptag INT4 NOT NULL ) PRIMARY TAGS(ptag)
                  |     retentions 777600s
                  |     activetime 1d
-                 |     partition interval 9d
+                 |
 (1 row)
 > DROP DATABASE reldb1 CASCADE;
 DROP DATABASE

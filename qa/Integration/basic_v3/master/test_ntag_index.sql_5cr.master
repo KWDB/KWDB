@@ -634,7 +634,7 @@ ALTER TABLE
              |     code9 INT2 ) PRIMARY TAGS(code0)
              |     retentions 0s
              |     activetime 1d
-             |     partition interval 10d
+             |
 (1 row)
 > show columns from t2;
   column_name |   data_type    | is_nullable | column_default | generation_expression |          indices          | is_hidden | is_tag
@@ -1088,7 +1088,7 @@ ALTER TABLE
              |     code9 INT2 ) PRIMARY TAGS(code0)
              |     retentions 0s
              |     activetime 1d
-             |     partition interval 10d
+             |
 (1 row)
 > show columns from t2;
   column_name |   data_type    | is_nullable | column_default | generation_expression |          indices          | is_hidden | is_tag
@@ -1638,7 +1638,7 @@ ALTER TABLE
              |     type NCHAR(254) ) PRIMARY TAGS(code0)
              |     retentions 0s
              |     activetime 1d
-             |     partition interval 10d
+             |
 (1 row)
 > show columns from t2;
   column_name |   data_type    | is_nullable | column_default | generation_expression |          indices          | is_hidden | is_tag

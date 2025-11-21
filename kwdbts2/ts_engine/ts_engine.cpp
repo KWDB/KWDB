@@ -22,6 +22,7 @@
 #include <memory>
 #include <utility>
 #include "kwdb_type.h"
+#include "lg_api.h"
 #include "settings.h"
 #include "ts_flush_manager.h"
 #include "ts_payload.h"
@@ -38,7 +39,7 @@ uint32_t EngineOptions::max_last_segment_num = 3;
 uint32_t EngineOptions::max_compact_num = 10;
 size_t EngineOptions::max_rows_per_block = 4096;
 size_t EngineOptions::min_rows_per_block = 512;
-int64_t EngineOptions::partition_interval = 3600 * 24 * 10;
+int64_t EngineOptions::default_partition_interval = 3600 * 24 * 10;
 // default block cache max size is set to 0
 int64_t EngineOptions::block_cache_max_size = 0;
 
@@ -57,7 +58,7 @@ TSEngineV2Impl::TSEngineV2Impl(const EngineOptions& engine_options)
     : options_(engine_options),
       read_batch_workers_lock_(RWLATCH_ID_READ_BATCH_DATA_JOB_RWLOCK),
       write_batch_workers_lock_(RWLATCH_ID_WRITE_BATCH_DATA_JOB_RWLOCK),
-      tag_lock_(EngineOptions::vgroup_max_num * 2 , RWLATCH_ID_ENGINE_INSERT_TAG_RWLOCK) {
+      tag_lock_(EngineOptions::vgroup_max_num * 2, RWLATCH_ID_ENGINE_INSERT_TAG_RWLOCK) {
   LogInit();
   tables_cache_ = new SharedLruUnorderedMap<KTableKey, TsTable>(EngineOptions::table_cache_capacity_, true);
   char* vgroup_num = getenv("KW_VGROUP_NUM");
@@ -66,15 +67,7 @@ TSEngineV2Impl::TSEngineV2Impl(const EngineOptions& engine_options)
     EngineOptions::vgroup_max_num = strtol(vgroup_num, &endptr, 10);
     assert(*endptr == '\0');
   }
-  char* partition_interval = getenv("KW_PARTITION_INTERVAL");
-  if (partition_interval != nullptr) {
-    char* endptr;
-    int64_t interval = strtol(partition_interval, &endptr, 10);
-    if (interval > 0) {
-      EngineOptions::partition_interval = interval;
-    }
-    assert(*endptr == '\0');
-  }
+  interval_recorder_ = PartitionIntervalRecorder::GetInstance();
   TsFlushJobPool::GetInstance().Start();
 }
 
@@ -207,8 +200,7 @@ KStatus TSEngineV2Impl::Init(kwdbContext_p ctx) {
   InitExecutor(ctx, options_);
   vgroups_.clear();
   for (int vgroup_id = 1; vgroup_id <= EngineOptions::vgroup_max_num; vgroup_id++) {
-    auto vgroup = std::make_unique<TsVGroup>(&options_, vgroup_id, schema_mgr_.get(),
-                                             &wal_level_mutex_, &tag_lock_);
+    auto vgroup = std::make_unique<TsVGroup>(&options_, vgroup_id, schema_mgr_.get(), &wal_level_mutex_, &tag_lock_);
     s = vgroup->Init(ctx);
     if (s != KStatus::SUCCESS) {
       return s;
@@ -282,6 +274,16 @@ KStatus TSEngineV2Impl::CreateTsTable(kwdbContext_p ctx, TSTableID table_id, roa
   uint32_t db_id = 1;
   if (meta->ts_table().has_database_id()) {
     db_id = meta->ts_table().database_id();
+  }
+
+  uint64_t interval = EngineOptions::default_partition_interval;
+  if (meta->ts_table().has_partition_interval()) {
+    interval = meta->ts_table().partition_interval();
+  }
+  s = interval_recorder_->RecordInterval(db_id, interval);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("Record partition interval of db_id %d failed, interval %ld", db_id, interval);
+    return s;
   }
 
   s = schema_mgr_->CreateTable(ctx, db_id, table_id, meta);

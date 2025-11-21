@@ -23,7 +23,7 @@ CREATE TABLE
              |     ptag INT4 NOT NULL ) PRIMARY TAGS(ptag)
              |     retentions 0s
              |     activetime 1d
-             |     partition interval 10d
+             |
 (1 row)
 > insert into t values (1681111110000,1,2,'bbb',1);
 INSERT 1
@@ -105,7 +105,7 @@ INSERT 1
              |     ptag INT4 NOT NULL ) PRIMARY TAGS(ptag)
              |     retentions 0s
              |     activetime 1d
-             |     partition interval 10d
+             |
 (1 row)
 > alter table t alter column b set default 'abc';
 ERROR: could not resolve "abc" as INT4 type (column b)
@@ -131,7 +131,7 @@ CREATE TABLE
              |     ptag INT4 NOT NULL ) PRIMARY TAGS(ptag)
              |     retentions 0s
              |     activetime 1d
-             |     partition interval 10d
+             |
 (1 row)
 > alter table t1 alter column ts set default current_timestamp();
 ERROR: column ts with type TIMESTAMPTZ(3) can only be set now() as default function
@@ -154,7 +154,7 @@ SQLSTATE: 0A000
              |     ptag INT4 NOT NULL ) PRIMARY TAGS(ptag)
              |     retentions 0s
              |     activetime 1d
-             |     partition interval 10d
+             |
 (1 row)
 > drop table t;
 DROP TABLE

@@ -31,13 +31,14 @@
 #include "libkwdbts2.h"
 #include "settings.h"
 #include "ts_common.h"
-#include "ts_entity_segment_handle.h"
 #include "ts_io.h"
 #include "ts_lastsegment.h"
 #include "ts_mem_segment_mgr.h"
+#include "ts_partition_interval_recorder.h"
+#include "ts_segment.h"
+#include "ts_entity_segment_handle.h"
 #include "ts_partition_count_mgr.h"
 #include "ts_partition_meta_mgr.h"
-#include "ts_segment.h"
 
 namespace kwdbts {
 using DatabaseID = uint32_t;
@@ -257,13 +258,18 @@ class TsVGroupVersion {
   friend class TsPartitionVersion;
 
  private:
+  const PartitionIntervalRecorder* recorder_;
   std::map<PartitionIdentifier, std::shared_ptr<const TsPartitionVersion>> partitions_;
   std::shared_ptr<MemSegList> valid_memseg_;
 
   uint64_t max_osn_ = 0;
 
  public:
-  TsVGroupVersion() : valid_memseg_(std::make_shared<MemSegList>()) {}
+  TsVGroupVersion()
+      : valid_memseg_(std::make_shared<MemSegList>()) {
+    recorder_ = PartitionIntervalRecorder::GetInstance();
+  }
+
   std::vector<std::shared_ptr<const TsPartitionVersion>> GetPartitions(uint32_t dbid,
                                                                        const std::vector<KwTsSpan> &ts_spans,
                                                                        DATATYPE ts_type) const;
@@ -272,6 +278,7 @@ class TsVGroupVersion {
 
   // timestamp is in ptime
   std::shared_ptr<const TsPartitionVersion> GetPartition(uint32_t dbid, timestamp64 timestamp) const;
+
   std::shared_ptr<const TsPartitionVersion> GetPartition(PartitionIdentifier par_id) const;
 
   std::map<uint32_t, std::vector<std::shared_ptr<const TsPartitionVersion>>> GetPartitions() const;
@@ -427,12 +434,16 @@ class TsVersionManager {
 
   class Logger;
   std::unique_ptr<Logger> logger_;
+  PartitionIntervalRecorder* recorder_;
 
   class RecordReader;
   class VersionBuilder;
 
  public:
-  explicit TsVersionManager(TsIOEnv *env, const std::string &root_path) : env_(env), root_path_(root_path) {}
+  explicit TsVersionManager(TsIOEnv *env, const std::string &root_path)
+      : env_(env), root_path_(root_path) {
+    recorder_ = PartitionIntervalRecorder::GetInstance();
+  }
   KStatus Recover();
   KStatus ApplyUpdate(TsVersionUpdate *update);
 

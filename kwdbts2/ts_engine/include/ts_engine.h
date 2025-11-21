@@ -26,10 +26,11 @@
 #include "kwdb_type.h"
 #include "libkwdbts2.h"
 #include "settings.h"
+#include "ts_batch_data_worker.h"
 #include "ts_common.h"
 #include "ts_engine_schema_manager.h"
 #include "ts_flush_manager.h"
-#include "ts_batch_data_worker.h"
+#include "ts_partition_interval_recorder.h"
 #include "ts_table_v2_impl.h"
 #include "ts_version.h"
 #include "ts_vgroup.h"
@@ -81,6 +82,7 @@ class TSEngineV2Impl : public TSEngine {
   TsHashRWLatch tag_lock_;
 
   // std::unique_ptr<TsMemSegmentManager> mem_seg_mgr_ = nullptr;
+  PartitionIntervalRecorder* interval_recorder_ = nullptr;
 
  public:
   explicit TSEngineV2Impl(const EngineOptions& engine_options);

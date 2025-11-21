@@ -509,9 +509,7 @@ func (n *createTableNode) startExec(params runParams) error {
 		if desc.TsTable.Lifetime == InvalidLifetime {
 			desc.TsTable.Lifetime = n.dbDesc.TsDb.Lifetime
 		}
-		if desc.TsTable.PartitionInterval == InvalidLifetime {
-			desc.TsTable.PartitionInterval = n.dbDesc.TsDb.PartitionInterval
-		}
+		desc.TsTable.PartitionInterval = n.dbDesc.TsDb.PartitionInterval
 	}
 
 	// Descriptor written to store here.
@@ -1633,24 +1631,6 @@ func buildTSTableDesc(
 		activeTime = DefaultActiveTime
 	}
 	desc.TsTable.ActiveTime = uint32(activeTime)
-	var partitionInterval int64
-	if n.PartitionInterval != nil {
-		switch n.PartitionInterval.Unit {
-		case "s", "second", "m", "minute", "h", "hour":
-			return pgerror.Newf(pgcode.InvalidParameterValue, "unsupported partition interval unit: %s",
-				n.PartitionInterval.Unit)
-		}
-		partitionInterval = getTimeFromTimeInput(*n.PartitionInterval)
-		if partitionInterval <= 0 || partitionInterval > MaxLifeTime {
-			return pgerror.Newf(pgcode.InvalidParameterValue, "partition interval %d%s is invalid, time range between 1day and 1000year is accepted",
-				n.PartitionInterval.Value, n.PartitionInterval.Unit)
-		}
-		partitionIntervalInput := timeInputToString(*n.PartitionInterval)
-		desc.TsTable.PartitionIntervalInput = &partitionIntervalInput
-	} else {
-		partitionInterval = InvalidLifetime
-	}
-	desc.TsTable.PartitionInterval = uint64(partitionInterval)
 	desc.TsTable.TsVersion = 1
 	desc.TsTable.NextTsVersion = desc.TsTable.TsVersion + 1
 
