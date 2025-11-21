@@ -52,7 +52,8 @@ class TestTsTableMaxTSV2 : public ::testing::Test {
   }
   std::string GetPrimaryKey(TSTableID table_id, TSEntityID dev_id) {
     std::shared_ptr<kwdbts::TsTableSchemaManager> schema_mgr;
-    KStatus s = engine_->GetTableSchemaMgr(ctx_, table_id, schema_mgr);
+    bool is_dropped = false;
+    KStatus s = engine_->GetTableSchemaMgr(ctx_, table_id, is_dropped, schema_mgr);
     EXPECT_EQ(s, KStatus::SUCCESS);
     std::vector<TagInfo> tag_schema;
     s = schema_mgr->GetTagMeta(1, tag_schema);
@@ -92,11 +93,12 @@ TEST_F(TestTsTableMaxTSV2, InsertOneRecord) {
   std::shared_ptr<TsTable> ts_table;
   auto s = engine_->CreateTsTable(ctx_, table_id, &pb_meta, ts_table);
   ASSERT_EQ(s, KStatus::SUCCESS);
-  s = engine_->GetTsTable(ctx_, table_id, ts_table);
+  bool is_dropped = false;
+  s = engine_->GetTsTable(ctx_, table_id, ts_table, is_dropped);
   ASSERT_EQ(s, KStatus::SUCCESS);
 
   std::shared_ptr<TsTableSchemaManager> table_schema_mgr;
-  s = engine_->GetTableSchemaMgr(ctx_, table_id, table_schema_mgr);
+  s = engine_->GetTableSchemaMgr(ctx_, table_id, is_dropped, table_schema_mgr);
   ASSERT_EQ(s , KStatus::SUCCESS);
 
   const std::vector<AttributeInfo>* metric_schema{nullptr};
@@ -112,7 +114,7 @@ TEST_F(TestTsTableMaxTSV2, InsertOneRecord) {
   uint16_t inc_entity_cnt;
   uint32_t inc_unordered_cnt;
   DedupResult dedup_result{0, 0, 0, TSSlice {nullptr, 0}};
-  s = engine_->PutData(ctx_, table_id, 0, &payload, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
+  s = engine_->PutData(ctx_, table_id, 0, &payload, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result, is_dropped);
   free(payload.data);
   ASSERT_EQ(s, KStatus::SUCCESS);
 
@@ -136,11 +138,12 @@ TEST_F(TestTsTableMaxTSV2, InsertManyTags) {
   std::shared_ptr<TsTable> ts_table;
   auto s = engine_->CreateTsTable(ctx_, table_id, &pb_meta, ts_table);
   ASSERT_EQ(s, KStatus::SUCCESS);
-  s = engine_->GetTsTable(ctx_, table_id, ts_table);
+  bool is_dropped = false;
+  s = engine_->GetTsTable(ctx_, table_id, ts_table, is_dropped);
   ASSERT_EQ(s, KStatus::SUCCESS);
 
   std::shared_ptr<TsTableSchemaManager> table_schema_mgr;
-  s = engine_->GetTableSchemaMgr(ctx_, table_id, table_schema_mgr);
+  s = engine_->GetTableSchemaMgr(ctx_, table_id, is_dropped, table_schema_mgr);
   ASSERT_EQ(s , KStatus::SUCCESS);
 
   const std::vector<AttributeInfo>* metric_schema;
@@ -158,7 +161,7 @@ TEST_F(TestTsTableMaxTSV2, InsertManyTags) {
   DedupResult dedup_result{0, 0, 0, TSSlice {nullptr, 0}};
   for (size_t i = 1; i <= entity_num; ++i) {
     auto payload = GenRowPayload(*metric_schema, tag_schema ,table_id, 1, i, 1, start_ts - i);
-    s = engine_->PutData(ctx_, table_id, 0, &payload, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
+    s = engine_->PutData(ctx_, table_id, 0, &payload, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result, is_dropped);
     free(payload.data);
     ASSERT_EQ(s, KStatus::SUCCESS);
   }
@@ -183,11 +186,12 @@ TEST_F(TestTsTableMaxTSV2, InsertManyTags1) {
   std::shared_ptr<TsTable> ts_table;
   auto s = engine_->CreateTsTable(ctx_, table_id, &pb_meta, ts_table);
   ASSERT_EQ(s, KStatus::SUCCESS);
-  s = engine_->GetTsTable(ctx_, table_id, ts_table);
+  bool is_dropped = false;
+  s = engine_->GetTsTable(ctx_, table_id, ts_table, is_dropped);
   ASSERT_EQ(s, KStatus::SUCCESS);
 
   std::shared_ptr<TsTableSchemaManager> table_schema_mgr;
-  s = engine_->GetTableSchemaMgr(ctx_, table_id, table_schema_mgr);
+  s = engine_->GetTableSchemaMgr(ctx_, table_id, is_dropped, table_schema_mgr);
   ASSERT_EQ(s , KStatus::SUCCESS);
 
   const std::vector<AttributeInfo>* metric_schema{nullptr};
@@ -205,7 +209,7 @@ TEST_F(TestTsTableMaxTSV2, InsertManyTags1) {
   DedupResult dedup_result{0, 0, 0, TSSlice {nullptr, 0}};
   for (size_t i = 1; i <= entity_num; ++i) {
     auto payload = GenRowPayload(*metric_schema, tag_schema ,table_id, 1, i, 1, start_ts + i);
-    s = engine_->PutData(ctx_, table_id, 0, &payload, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
+    s = engine_->PutData(ctx_, table_id, 0, &payload, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result, is_dropped);
     free(payload.data);
     ASSERT_EQ(s, KStatus::SUCCESS);
   }
@@ -231,11 +235,12 @@ TEST_F(TestTsTableMaxTSV2, restart) {
   std::shared_ptr<TsTable> ts_table1;
   auto s = engine_->CreateTsTable(ctx_, table_id, &pb_meta, ts_table1);
   ASSERT_EQ(s, KStatus::SUCCESS);
-  s = engine_->GetTsTable(ctx_, table_id, ts_table1);
+  bool is_dropped = false;
+  s = engine_->GetTsTable(ctx_, table_id, ts_table1, is_dropped);
   ASSERT_EQ(s, KStatus::SUCCESS);
 
   std::shared_ptr<TsTableSchemaManager> table_schema_mgr;
-  s = engine_->GetTableSchemaMgr(ctx_, table_id, table_schema_mgr);
+  s = engine_->GetTableSchemaMgr(ctx_, table_id, is_dropped, table_schema_mgr);
   ASSERT_EQ(s , KStatus::SUCCESS);
 
   const std::vector<AttributeInfo>* metric_schema{nullptr};
@@ -253,7 +258,7 @@ TEST_F(TestTsTableMaxTSV2, restart) {
   DedupResult dedup_result{0, 0, 0, TSSlice {nullptr, 0}};
   for (size_t i = 1; i <= entity_num; ++i) {
     auto payload = GenRowPayload(*metric_schema, tag_schema ,table_id, 1, i, 1, start_ts + i);
-    s = engine_->PutData(ctx_, table_id, 0, &payload, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
+    s = engine_->PutData(ctx_, table_id, 0, &payload, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result, is_dropped);
     free(payload.data);
     ASSERT_EQ(s, KStatus::SUCCESS);
   }
@@ -273,7 +278,7 @@ TEST_F(TestTsTableMaxTSV2, restart) {
   std::shared_ptr<TsTable> ts_table2;
   s = engine_->CreateTsTable(ctx_, table_id, &pb_meta, ts_table2);
   ASSERT_EQ(s, KStatus::SUCCESS);
-  s = engine_->GetTsTable(ctx_, table_id, ts_table2);
+  s = engine_->GetTsTable(ctx_, table_id, ts_table2, is_dropped);
   ASSERT_EQ(s, KStatus::SUCCESS);
 
   timestamp64 ts2;
@@ -295,11 +300,12 @@ TEST_F(TestTsTableMaxTSV2, deleteSomeData) {
   std::shared_ptr<TsTable> ts_table;
   auto s = engine_->CreateTsTable(ctx_, table_id, &pb_meta, ts_table);
   ASSERT_EQ(s, KStatus::SUCCESS);
-  s = engine_->GetTsTable(ctx_, table_id, ts_table);
+  bool is_dropped = false;
+  s = engine_->GetTsTable(ctx_, table_id, ts_table, is_dropped);
   ASSERT_EQ(s, KStatus::SUCCESS);
 
   std::shared_ptr<TsTableSchemaManager> table_schema_mgr;
-  s = engine_->GetTableSchemaMgr(ctx_, table_id, table_schema_mgr);
+  s = engine_->GetTableSchemaMgr(ctx_, table_id, is_dropped, table_schema_mgr);
   ASSERT_EQ(s , KStatus::SUCCESS);
 
   const std::vector<AttributeInfo>* metric_schema{nullptr};
@@ -317,7 +323,7 @@ TEST_F(TestTsTableMaxTSV2, deleteSomeData) {
   DedupResult dedup_result{0, 0, 0, TSSlice {nullptr, 0}};
   for (size_t i = 1; i <= entity_num; ++i) {
     auto payload = GenRowPayload(*metric_schema, tag_schema ,table_id, 1, i, 1, start_ts + i);
-    s = engine_->PutData(ctx_, table_id, 0, &payload, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
+    s = engine_->PutData(ctx_, table_id, 0, &payload, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result, is_dropped);
     free(payload.data);
     ASSERT_EQ(s, KStatus::SUCCESS);
   }
@@ -336,7 +342,7 @@ TEST_F(TestTsTableMaxTSV2, deleteSomeData) {
   uint64_t tmp_count;
   uint64_t p_tag_entity_id = entity_num;
   std::string p_key = GetPrimaryKey(table_id, p_tag_entity_id);
-  s = engine_->DeleteData(ctx_, table_id, 0, p_key, {{start_ts + entity_num, start_ts + entity_num}}, &tmp_count, 0, 1);
+  s = engine_->DeleteData(ctx_, table_id, 0, p_key, {{start_ts + entity_num, start_ts + entity_num}}, &tmp_count, 0, 1, is_dropped);
   ASSERT_EQ(s, KStatus::SUCCESS);
   EXPECT_EQ(tmp_count, 1);
 

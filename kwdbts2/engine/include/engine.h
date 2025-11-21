@@ -79,17 +79,15 @@ struct TSEngine {
   virtual KStatus DropResidualTsTable(kwdbContext_p ctx) = 0;
 
   virtual KStatus CreateNormalTagIndex(kwdbContext_p ctx, const KTableKey& table_id, const uint64_t index_id,
-                                       const char* transaction_id, const uint32_t cur_version,
-                                       const uint32_t new_version,
-                                       const std::vector<uint32_t/* tag column id*/> &index_schema) = 0;
+  const char* transaction_id, bool& is_dropped, const uint32_t cur_version, const uint32_t new_version,
+  const std::vector<uint32_t/* tag column id*/> &index_schema) = 0;
 
   virtual KStatus DropNormalTagIndex(kwdbContext_p ctx, const KTableKey& table_id, const uint64_t index_id,
-                                     const char* transaction_id, const uint32_t cur_version,
-                                     const uint32_t new_version) = 0;
+  const char* transaction_id, bool& is_dropped, const uint32_t cur_version, const uint32_t new_version) = 0;
 
   virtual KStatus AlterNormalTagIndex(kwdbContext_p ctx, const KTableKey& table_id, const uint64_t index_id,
-                                      const char* transaction_id, const uint32_t old_version, const uint32_t new_version,
-                                      const std::vector<uint32_t/* tag column id*/> &new_index_schema) = 0;
+    const char* transaction_id, bool& is_dropped, const uint32_t old_version, const uint32_t new_version,
+    const std::vector<uint32_t/* tag column id*/> &new_index_schema) = 0;
 
   /**
    * @brief Compress the segment whose maximum timestamp in the time series table is less than ts
@@ -112,11 +110,11 @@ struct TSEngine {
    * @return KStatus
    */
   virtual KStatus GetTsTable(kwdbContext_p ctx, const KTableKey& table_id, std::shared_ptr<TsTable>& ts_table,
-                             bool create_if_not_exist = true, ErrorInfo& err_info = getDummyErrorInfo(),
+                             bool& is_dropped, bool create_if_not_exist = true, ErrorInfo& err_info = getDummyErrorInfo(),
                              uint32_t version = 0) = 0;
 
 
-  virtual KStatus GetTableSchemaMgr(kwdbContext_p ctx, const KTableKey& table_id,
+  virtual KStatus GetTableSchemaMgr(kwdbContext_p ctx, const KTableKey& table_id, bool& is_dropped,
                                  std::shared_ptr<TsTableSchemaManager>& schema) {
     return KStatus::FAIL;
   }
@@ -129,7 +127,7 @@ struct TSEngine {
   * @return KStatus
   */
   virtual KStatus GetMetaData(kwdbContext_p ctx, const KTableKey& table_id,  RangeGroup range,
-                              roachpb::CreateTsTable* meta) = 0;
+                              roachpb::CreateTsTable* meta, bool& is_dropped) = 0;
 
   /**
    * @brief Entity tags insert ,support update
@@ -144,7 +142,7 @@ struct TSEngine {
    */
   virtual KStatus
   PutEntity(kwdbContext_p ctx, const KTableKey &table_id, uint64_t range_group_id, TSSlice *payload_data,
-            int payload_num, uint64_t mtr_id) = 0;
+            int payload_num, uint64_t mtr_id, bool& is_dropped) = 0;
 
   /**
    * @brief Entity Tag value and time series data writing. Tag value modification is not supported.
@@ -160,9 +158,8 @@ struct TSEngine {
    * @return KStatus
    */
   virtual KStatus PutData(kwdbContext_p ctx, const KTableKey& table_id, uint64_t range_group_id,
-                          TSSlice* payload_data, int payload_num, uint64_t mtr_id, uint16_t* inc_entity_cnt,
-                          uint32_t* inc_unordered_cnt, DedupResult* dedup_result, bool writeWAL = true,
-                          const char* tsx_id = nullptr) = 0;
+    TSSlice* payload_data, int payload_num, uint64_t mtr_id, uint16_t* inc_entity_cnt, uint32_t* inc_unordered_cnt,
+    DedupResult* dedup_result, bool& is_dropped, bool writeWAL = true, const char* tsx_id = nullptr) = 0;
 
   /**
    * @brief Delete data of some specified entities within a specified time range by marking
@@ -177,7 +174,7 @@ struct TSEngine {
    */
   virtual KStatus DeleteRangeData(kwdbContext_p ctx, const KTableKey &table_id, uint64_t range_group_id,
                                   HashIdSpan &hash_span, const std::vector<KwTsSpan> &ts_spans,
-                                  uint64_t *count, uint64_t mtr_id, uint64_t osn) = 0;
+                                  uint64_t *count, uint64_t mtr_id, uint64_t osn, bool& is_dropped) = 0;
 
   /**
    * @brief Mark the deletion of time series data within the specified range.
@@ -192,7 +189,7 @@ struct TSEngine {
    */
   virtual KStatus DeleteData(kwdbContext_p ctx, const KTableKey &table_id, uint64_t range_group_id,
                              std::string &primary_tag, const std::vector<KwTsSpan> &ts_spans, uint64_t *count,
-                             uint64_t mtr_id, uint64_t osn) = 0;
+                             uint64_t mtr_id, uint64_t osn, bool& is_dropped) = 0;
 
   /**
    * @brief Batch delete Entity and sequential data.
@@ -206,7 +203,7 @@ struct TSEngine {
    */
   virtual KStatus DeleteEntities(kwdbContext_p ctx, const KTableKey &table_id, uint64_t range_group_id,
                                  std::vector<std::string> primary_tags, uint64_t *count, uint64_t mtr_id,
-                                 uint64_t osn = 0) = 0;
+                                 bool& is_dropped, uint64_t osn = 0) = 0;
 
   /**
  * @brief Count data of some specified entities within a specified time range by marking
@@ -295,8 +292,7 @@ struct TSEngine {
     * @return KStatus
     */
   virtual KStatus CreateSnapshotForRead(kwdbContext_p ctx, const KTableKey& table_id,
-                                 uint64_t begin_hash, uint64_t end_hash,
-                                 const KwTsSpan& ts_span, uint64_t* snapshot_id) {
+    uint64_t begin_hash, uint64_t end_hash, const KwTsSpan& ts_span, uint64_t* snapshot_id, bool& is_dropped) {
     return KStatus::FAIL;
   }
 
@@ -317,7 +313,7 @@ struct TSEngine {
   *
   * @return KStatus
   */
-  virtual KStatus GetSnapshotNextBatchData(kwdbContext_p ctx, uint64_t snapshot_id, TSSlice* data) {
+  virtual KStatus GetSnapshotNextBatchData(kwdbContext_p ctx, uint64_t snapshot_id, TSSlice* data, bool& is_dropped) {
     return KStatus::FAIL;
   }
 
@@ -332,7 +328,7 @@ struct TSEngine {
     */
   virtual KStatus CreateSnapshotForWrite(kwdbContext_p ctx, const KTableKey& table_id,
                                    uint64_t begin_hash, uint64_t end_hash,
-                                   const KwTsSpan& ts_span, uint64_t* snapshot_id, uint64_t osn = 0) {
+                                   const KwTsSpan& ts_span, uint64_t* snapshot_id, bool& is_dropped, uint64_t osn = 0) {
     return KStatus::FAIL;
   }
 
@@ -343,7 +339,7 @@ struct TSEngine {
    *
    * @return KStatus
    */
-  virtual KStatus WriteSnapshotBatchData(kwdbContext_p ctx, uint64_t snapshot_id, TSSlice data) {
+  virtual KStatus WriteSnapshotBatchData(kwdbContext_p ctx, uint64_t snapshot_id, TSSlice data, bool& is_dropped) {
     return KStatus::FAIL;
   }
   virtual KStatus WriteSnapshotSuccess(kwdbContext_p ctx, uint64_t snapshot_id) {
@@ -365,18 +361,19 @@ struct TSEngine {
    * @return KStatus
    */
   virtual KStatus DeleteRangeEntities(kwdbContext_p ctx, const KTableKey& table_id, const uint64_t& range_group_id,
-                                      const HashIdSpan& hash_span, uint64_t* count, uint64_t& mtr_id, uint64_t osn = 0) {
+                                      const HashIdSpan& hash_span, uint64_t* count, uint64_t& mtr_id,
+                                      bool& is_dropped, uint64_t osn = 0) {
     return KStatus::FAIL;
   }
 
   virtual KStatus ReadBatchData(kwdbContext_p ctx, TSTableID table_id, uint64_t table_version, uint64_t begin_hash,
                                 uint64_t end_hash, KwTsSpan ts_span, uint64_t job_id, TSSlice* data,
-                                uint32_t* row_num) {
+                                uint32_t* row_num, bool& is_dropped) {
     return FAIL;
   }
 
   virtual KStatus WriteBatchData(kwdbContext_p ctx, TSTableID table_id, uint64_t table_version, uint64_t job_id,
-                                 TSSlice* data, uint32_t* row_num) {
+                                 TSSlice* data, uint32_t* row_num, bool& is_dropped) {
     return FAIL;
   }
 
@@ -417,7 +414,7 @@ struct TSEngine {
     * 
     * @return KStatus
     */
-  virtual KStatus CreateCheckpointForTable(kwdbContext_p ctx, TSTableID table_id) = 0;
+  virtual KStatus CreateCheckpointForTable(kwdbContext_p ctx, TSTableID table_id, bool& is_dropped) = 0;
 
   /**
     * @brief recover transactions, while restart
@@ -467,7 +464,7 @@ struct TSEngine {
     *
     * @return KStatus
     */
-  virtual KStatus TSxBegin(kwdbContext_p ctx, const KTableKey& table_id, char* transaction_id) = 0;
+  virtual KStatus TSxBegin(kwdbContext_p ctx, const KTableKey& table_id, char* transaction_id, bool& is_dropped) = 0;
 
   /**
     * @brief commit one transaction.
@@ -477,7 +474,7 @@ struct TSEngine {
     *
     * @return KStatus
     */
-  virtual KStatus TSxCommit(kwdbContext_p ctx, const KTableKey& table_id, char* transaction_id) = 0;
+  virtual KStatus TSxCommit(kwdbContext_p ctx, const KTableKey& table_id, char* transaction_id, bool& is_dropped) = 0;
 
   /**
     * @brief rollback one transaction.
@@ -487,7 +484,7 @@ struct TSEngine {
     *
     * @return KStatus
     */
-  virtual KStatus TSxRollback(kwdbContext_p ctx, const KTableKey& table_id, char* transaction_id) = 0;
+  virtual KStatus TSxRollback(kwdbContext_p ctx, const KTableKey& table_id, char* transaction_id, bool& is_dropped) = 0;
 
   virtual void GetTableIDList(kwdbContext_p ctx, std::vector<KTableKey>& table_id_list) = 0;
 
@@ -503,7 +500,7 @@ struct TSEngine {
     *
     * @return KStatus
     */
-  virtual KStatus AddColumn(kwdbContext_p ctx, const KTableKey& table_id, char* transaction_id,
+  virtual KStatus AddColumn(kwdbContext_p ctx, const KTableKey& table_id, char* transaction_id, bool& is_dropped,
                             TSSlice column, uint32_t cur_version, uint32_t new_version, string& msg) = 0;
 
   /**
@@ -516,12 +513,12 @@ struct TSEngine {
     *
     * @return KStatus
     */
-  virtual KStatus DropColumn(kwdbContext_p ctx, const KTableKey& table_id, char* transaction_id,
+  virtual KStatus DropColumn(kwdbContext_p ctx, const KTableKey& table_id, char* transaction_id, bool& is_dropped,
                              TSSlice column, uint32_t cur_version, uint32_t new_version, string& msg) = 0;
 
   virtual KStatus AlterPartitionInterval(kwdbContext_p ctx, const KTableKey& table_id, uint64_t partition_interval) = 0;
 
-  virtual KStatus AlterLifetime(kwdbContext_p ctx, const KTableKey& table_id, uint64_t lifetime) = 0;
+  virtual KStatus AlterLifetime(kwdbContext_p ctx, const KTableKey& table_id, uint64_t lifetime, bool& is_dropped) = 0;
   /**
     * @brief Modify a column type of the time series table
     *
@@ -533,9 +530,8 @@ struct TSEngine {
     *
     * @return KStatus
     */
-  virtual KStatus AlterColumnType(kwdbContext_p ctx, const KTableKey& table_id, char* transaction_id,
-                                  TSSlice new_column, TSSlice origin_column,
-                                  uint32_t cur_version, uint32_t new_version, string& msg) = 0;
+  virtual KStatus AlterColumnType(kwdbContext_p ctx, const KTableKey& table_id, char* transaction_id, bool& is_dropped,
+    TSSlice new_column, TSSlice origin_column, uint32_t cur_version, uint32_t new_version, string& msg) = 0;
 
   /**
    * @brief : Gets the number of remaining threads from the thread pool and
@@ -555,7 +551,7 @@ struct TSEngine {
   *
   * @return KStatus
   */
-  virtual KStatus GetTableVersion(kwdbContext_p ctx, TSTableID table_id, uint32_t* version) = 0;
+  virtual KStatus GetTableVersion(kwdbContext_p ctx, TSTableID table_id, uint32_t* version, bool& is_dropped) = 0;
 
   /**
   * @brief Get current wal level of the engine

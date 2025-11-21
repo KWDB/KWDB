@@ -760,7 +760,6 @@ TEST_F(TsEntitySegmentTest, concurrentLRUBlockCacheAccess) {
   Defer defer([&]() { TsLRUBlockCache::GetInstance().unit_test_enabled = false; });
   EngineOptions::max_rows_per_block = 1000;
   EngineOptions::min_rows_per_block = 1000;
-  int64_t total_insert_row_num = 0;
   int64_t entity_row_num = 0;
   int64_t last_row_num = 0;
   TSTableID table_id = 123;
@@ -779,7 +778,6 @@ TEST_F(TsEntitySegmentTest, concurrentLRUBlockCacheAccess) {
       auto ptag = p.GetPrimaryTag();
 
       vgroup->PutData(&ctx, table_id, 0, &ptag, dev_id, &payload, false);
-      total_insert_row_num += p.GetRowCount();
       free(payload.data);
       ASSERT_EQ(vgroup->Flush(), KStatus::SUCCESS);
     }
@@ -835,7 +833,6 @@ TEST_F(TsEntitySegmentTest, columnBlockCrashTest) {
   TsLRUBlockCache::GetInstance().unit_test_phase = TsLRUBlockCache::UNIT_TEST_PHASE::COLUMN_BLOCK_CRASH_PHASE_NONE;
   EngineOptions::max_rows_per_block = 1000;
   EngineOptions::min_rows_per_block = 1000;
-  int64_t total_insert_row_num = 0;
   int64_t entity_row_num = 0;
   int64_t last_row_num = 0;
   TSTableID table_id = 123;
@@ -853,7 +850,6 @@ TEST_F(TsEntitySegmentTest, columnBlockCrashTest) {
     auto ptag = p.GetPrimaryTag();
 
     vgroup->PutData(&ctx, table_id, 0, &ptag, dev_id, &payload, false);
-    total_insert_row_num += p.GetRowCount();
     free(payload.data);
     ASSERT_EQ(vgroup->Flush(), KStatus::SUCCESS);
   }
@@ -989,7 +985,6 @@ TEST_F(TsEntitySegmentTest, varColumnBlockTest) {
 
   EngineOptions::max_rows_per_block = 1000;
   EngineOptions::min_rows_per_block = 1000;
-  int64_t total_insert_row_num = 0;
   int64_t entity_row_num = 0;
   int64_t last_row_num = 0;
   TSTableID table_id = 123;
@@ -1008,7 +1003,6 @@ TEST_F(TsEntitySegmentTest, varColumnBlockTest) {
     auto ptag = p.GetPrimaryTag();
 
     vgroup->PutData(&ctx, table_id, 0, &ptag, dev_id, &payload, false);
-    total_insert_row_num += p.GetRowCount();
     free(payload.data);
     ASSERT_EQ(vgroup->Flush(), KStatus::SUCCESS);
   }

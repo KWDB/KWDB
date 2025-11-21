@@ -73,7 +73,8 @@ TEST_F(TsEngineV2Test, simpleInsert) {
   ASSERT_EQ(s, KStatus::SUCCESS);
 
   std::shared_ptr<TsTableSchemaManager> schema_mgr;
-  s = engine_->GetTableSchemaMgr(ctx_, table_id, schema_mgr);
+  bool is_dropped = false;
+  s = engine_->GetTableSchemaMgr(ctx_, table_id, is_dropped, schema_mgr);
   ASSERT_EQ(s , KStatus::SUCCESS);
 
   const std::vector<AttributeInfo>* metric_schema{nullptr};
@@ -88,7 +89,7 @@ TEST_F(TsEngineV2Test, simpleInsert) {
   uint16_t inc_entity_cnt;
   uint32_t inc_unordered_cnt;
   DedupResult dedup_result{0, 0, 0, TSSlice {nullptr, 0}};
-  s = engine_->PutData(ctx_, table_id, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
+  s = engine_->PutData(ctx_, table_id, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result, is_dropped);
   free(pay_load.data);
   ASSERT_EQ(s, KStatus::SUCCESS);
 }
@@ -104,7 +105,8 @@ TEST_F(TsEngineV2Test, InsertMulitMemSeg) {
   auto s = engine_->CreateTsTable(ctx_, table_id, &pb_meta, ts_table);
   ASSERT_EQ(s, KStatus::SUCCESS);
   std::shared_ptr<TsTableSchemaManager> schema_mgr;
-  s = engine_->GetTableSchemaMgr(ctx_, table_id, schema_mgr);
+  bool is_dropped = false;
+  s = engine_->GetTableSchemaMgr(ctx_, table_id, is_dropped, schema_mgr);
   ASSERT_EQ(s , KStatus::SUCCESS);
   const std::vector<AttributeInfo>* metric_schema{nullptr};
   s = schema_mgr->GetMetricMeta(1, &metric_schema);
@@ -119,7 +121,7 @@ TEST_F(TsEngineV2Test, InsertMulitMemSeg) {
   timestamp64 ts = 10086000;
   for (int i = 0; i < 100000; ++i) {
     auto pay_load = GenRowPayload(*metric_schema, tag_schema , table_id, 1, 1, 1, ts);
-    s = engine_->PutData(ctx_, table_id, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
+    s = engine_->PutData(ctx_, table_id, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result, is_dropped);
     free(pay_load.data);
     ASSERT_EQ(s, KStatus::SUCCESS);
     ts += 1000;
@@ -137,7 +139,8 @@ TEST_F(TsEngineV2Test, InsertMulitMemSeg2) {
   auto s = engine_->CreateTsTable(ctx_, table_id, &pb_meta, ts_table);
   ASSERT_EQ(s, KStatus::SUCCESS);
   std::shared_ptr<TsTableSchemaManager> schema_mgr;
-  s = engine_->GetTableSchemaMgr(ctx_, table_id, schema_mgr);
+  bool is_dropped = false;
+  s = engine_->GetTableSchemaMgr(ctx_, table_id, is_dropped, schema_mgr);
   ASSERT_EQ(s , KStatus::SUCCESS);
   const std::vector<AttributeInfo>* metric_schema{nullptr};
   s = schema_mgr->GetMetricMeta(1, &metric_schema);
@@ -153,7 +156,7 @@ TEST_F(TsEngineV2Test, InsertMulitMemSeg2) {
   for (size_t j = 0; j < 5; j++) {
     for (int i = 0; i < 10000; ++i) {
       auto pay_load = GenRowPayload(*metric_schema, tag_schema , table_id, 1, 1, 1, ts);
-      s = engine_->PutData(ctx_, table_id, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
+      s = engine_->PutData(ctx_, table_id, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result, is_dropped);
       free(pay_load.data);
       ASSERT_EQ(s, KStatus::SUCCESS);
       ts += 1000;
@@ -172,7 +175,8 @@ TEST_F(TsEngineV2Test, CreateCheckpoint){
   auto s = engine_->CreateTsTable(ctx_, table_id, &pb_meta, ts_table);
   ASSERT_EQ(s, KStatus::SUCCESS);
   std::shared_ptr<TsTableSchemaManager> schema_mgr;
-  s = engine_->GetTableSchemaMgr(ctx_, table_id, schema_mgr);
+  bool is_dropped = false;
+  s = engine_->GetTableSchemaMgr(ctx_, table_id, is_dropped, schema_mgr);
   ASSERT_EQ(s , KStatus::SUCCESS);
   const std::vector<AttributeInfo>* metric_schema{nullptr};
   s = schema_mgr->GetMetricMeta(1, &metric_schema);
@@ -188,7 +192,7 @@ TEST_F(TsEngineV2Test, CreateCheckpoint){
   for (size_t j = 0; j < 5; j++) {
     for (int i = 0; i < 10000; ++i) {
       auto pay_load = GenRowPayload(*metric_schema, tag_schema , table_id, 1, 1, 1, ts);
-      s = engine_->PutData(ctx_, table_id, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
+      s = engine_->PutData(ctx_, table_id, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result, is_dropped);
       free(pay_load.data);
       ASSERT_EQ(s, KStatus::SUCCESS);
       ts += 1000;
@@ -201,7 +205,7 @@ TEST_F(TsEngineV2Test, CreateCheckpoint){
   for (size_t j = 0; j < 5; j++) {
     for (int i = 0; i < 10000; ++i) {
       auto pay_load = GenRowPayload(*metric_schema, tag_schema , table_id, 1, 1, 1, ts);
-      s = engine_->PutData(ctx_, table_id, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
+      s = engine_->PutData(ctx_, table_id, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result, is_dropped);
       free(pay_load.data);
       ASSERT_EQ(s, KStatus::SUCCESS);
       ts += 1000;
@@ -224,7 +228,8 @@ TEST_F(TsEngineV2Test, Recover){
   auto s = engine_->CreateTsTable(ctx_, table_id, &pb_meta, ts_table);
   ASSERT_EQ(s, KStatus::SUCCESS);
   std::shared_ptr<TsTableSchemaManager> schema_mgr;
-  s = engine_->GetTableSchemaMgr(ctx_, table_id, schema_mgr);
+  bool is_dropped = false;
+  s = engine_->GetTableSchemaMgr(ctx_, table_id, is_dropped, schema_mgr);
   ASSERT_EQ(s , KStatus::SUCCESS);
   const std::vector<AttributeInfo>* metric_schema{nullptr};
   s = schema_mgr->GetMetricMeta(1, &metric_schema);
@@ -240,7 +245,7 @@ TEST_F(TsEngineV2Test, Recover){
   for (size_t j = 0; j < 5; j++) {
     for (int i = 0; i < 10000; ++i) {
       auto pay_load = GenRowPayload(*metric_schema, tag_schema , table_id, 1, 1, 1, ts);
-      s = engine_->PutData(ctx_, table_id, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
+      s = engine_->PutData(ctx_, table_id, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result, is_dropped);
       free(pay_load.data);
       ASSERT_EQ(s, KStatus::SUCCESS);
       ts += 1000;
@@ -253,7 +258,7 @@ TEST_F(TsEngineV2Test, Recover){
   for (size_t j = 0; j < 5; j++) {
     for (int i = 0; i < 10000; ++i) {
       auto pay_load = GenRowPayload(*metric_schema, tag_schema , table_id, 1, 1, 1, ts);
-      s = engine_->PutData(ctx_, table_id, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
+      s = engine_->PutData(ctx_, table_id, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result, is_dropped);
       free(pay_load.data);
       ASSERT_EQ(s, KStatus::SUCCESS);
       ts += 1000;

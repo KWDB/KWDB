@@ -39,13 +39,15 @@ func (s *Server) startTSTableGC(ctx context.Context) {
 		for {
 			select {
 			case <-timer.C:
-				err := s.tsEngine.DropLeftTsTableGarbage()
-				if err != nil {
-					log.Error(ctx, err)
+				if s.tsEngine != nil {
+					err := s.tsEngine.DropLeftTsTableGarbage()
+					if err != nil {
+						log.Error(ctx, err)
+					}
+					timer.Read = true
+					period = tsTableGCTTL.Get(&s.cfg.Settings.SV)
+					timer.Reset(period)
 				}
-				timer.Read = true
-				period = tsTableGCTTL.Get(&s.cfg.Settings.SV)
-				timer.Reset(period)
 			case <-s.stopper.ShouldStop():
 				return
 			}

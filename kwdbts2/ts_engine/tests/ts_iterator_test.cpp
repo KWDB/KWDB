@@ -52,7 +52,8 @@ class TestV2Iterator : public ::testing::Test {
   }
   std::string GetPrimaryKey(TSTableID table_id, TSEntityID dev_id) {
     std::shared_ptr<kwdbts::TsTableSchemaManager> schema_mgr;
-    KStatus s = engine_->GetTableSchemaMgr(ctx_, table_id, schema_mgr);
+    bool is_dropped = false;
+    KStatus s = engine_->GetTableSchemaMgr(ctx_, table_id, is_dropped, schema_mgr);
     EXPECT_EQ(s, KStatus::SUCCESS);
     std::vector<TagInfo> tag_schema;
     s = schema_mgr->GetTagMeta(1, tag_schema);
@@ -90,11 +91,12 @@ TEST_F(TestV2Iterator, basic) {
     std::shared_ptr<TsTable> ts_table;
     auto s = engine_->CreateTsTable(ctx_, table_id, &pb_meta, ts_table);
     ASSERT_EQ(s, KStatus::SUCCESS);
-    s = engine_->GetTsTable(ctx_, table_id, ts_table);
+  bool is_dropped = false;
+    s = engine_->GetTsTable(ctx_, table_id, ts_table, is_dropped);
     ASSERT_EQ(s, KStatus::SUCCESS);
 
     std::shared_ptr<TsTableSchemaManager> table_schema_mgr;
-    s = engine_->GetTableSchemaMgr(ctx_, table_id, table_schema_mgr);
+    s = engine_->GetTableSchemaMgr(ctx_, table_id, is_dropped, table_schema_mgr);
     ASSERT_EQ(s , KStatus::SUCCESS);
 
     const std::vector<AttributeInfo>* metric_schema{nullptr};
@@ -110,7 +112,7 @@ TEST_F(TestV2Iterator, basic) {
     uint16_t inc_entity_cnt;
     uint32_t inc_unordered_cnt;
     DedupResult dedup_result{0, 0, 0, TSSlice {nullptr, 0}};
-    s = engine_->PutData(ctx_, table_id, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
+    s = engine_->PutData(ctx_, table_id, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result, is_dropped);
     free(pay_load.data);
     ASSERT_EQ(s, KStatus::SUCCESS);
 
@@ -161,11 +163,12 @@ TEST_F(TestV2Iterator, mulitEntity) {
     std::shared_ptr<TsTable> ts_table;
     auto s = engine_->CreateTsTable(ctx_, table_id, &pb_meta, ts_table);
     ASSERT_EQ(s, KStatus::SUCCESS);
-    s = engine_->GetTsTable(ctx_, table_id, ts_table);
+    bool is_dropped = false;
+    s = engine_->GetTsTable(ctx_, table_id, ts_table, is_dropped);
     ASSERT_EQ(s, KStatus::SUCCESS);
 
     std::shared_ptr<TsTableSchemaManager> table_schema_mgr;
-    s = engine_->GetTableSchemaMgr(ctx_, table_id, table_schema_mgr);
+    s = engine_->GetTableSchemaMgr(ctx_, table_id, is_dropped, table_schema_mgr);
     ASSERT_EQ(s , KStatus::SUCCESS);
 
     const std::vector<AttributeInfo>* metric_schema{nullptr};
@@ -185,7 +188,7 @@ TEST_F(TestV2Iterator, mulitEntity) {
     DedupResult dedup_result{0, 0, 0, TSSlice {nullptr, 0}};
     for (size_t i = 0; i < entity_num; i++) {
       auto pay_load = GenRowPayload(*metric_schema, tag_schema ,table_id, 1, 1 + i, entity_row_num, start_ts + 1 + i, interval);
-      s = engine_->PutData(ctx_, table_id, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
+      s = engine_->PutData(ctx_, table_id, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result, is_dropped);
       free(pay_load.data);
       ASSERT_EQ(s, KStatus::SUCCESS);
     }
@@ -233,7 +236,8 @@ TEST_F(TestV2Iterator, multiDBAndEntity) {
       ASSERT_EQ(s, KStatus::SUCCESS);
     }
     std::shared_ptr<TsTableSchemaManager> table_schema_mgr;
-    auto s = engine_->GetTableSchemaMgr(ctx_, table_id, table_schema_mgr);
+    bool is_dropped = false;
+    auto s = engine_->GetTableSchemaMgr(ctx_, table_id, is_dropped, table_schema_mgr);
     ASSERT_EQ(s , KStatus::SUCCESS);
 
     const std::vector<AttributeInfo>* metric_schema{nullptr};
@@ -253,20 +257,20 @@ TEST_F(TestV2Iterator, multiDBAndEntity) {
     DedupResult dedup_result{0, 0, 0, TSSlice {nullptr, 0}};
     for (size_t i = 0; i < entity_num; i++) {
       auto pay_load = GenRowPayload(*metric_schema, tag_schema ,table_id + i % db_num, 1, 1 + i, entity_row_num, start_ts + 1 + i, interval);
-      s = engine_->PutData(ctx_, table_id + i % db_num, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
+      s = engine_->PutData(ctx_, table_id + i % db_num, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result, is_dropped);
       free(pay_load.data);
       ASSERT_EQ(s, KStatus::SUCCESS);
     }
     int entity_scan_num = 0;
     int entity_result_num = 0;
     for (size_t i = 0; i < db_num; i++) {
-      s = engine_->GetTsTable(ctx_, table_id + i, ts_table, false);
+      s = engine_->GetTsTable(ctx_, table_id + i, ts_table, is_dropped, false);
       ASSERT_EQ(s , KStatus::SUCCESS);
       vector<EntityResultIndex> entity_store;
       s = dynamic_pointer_cast<TsTableV2Impl>(ts_table)->GetEntityIdByHashSpan(ctx_, {0, UINT64_MAX}, entity_store);
       ASSERT_EQ(s, KStatus::SUCCESS);
       entity_scan_num += entity_store.size();
-      s = engine_->GetTableSchemaMgr(ctx_, table_id + i, table_schema_mgr);
+      s = engine_->GetTableSchemaMgr(ctx_, table_id + i, is_dropped, table_schema_mgr);
       ASSERT_EQ(s , KStatus::SUCCESS);
       for (auto entity : entity_store) {
         TsStorageIterator* ts_iter;
@@ -311,11 +315,12 @@ TEST_F(TestV2Iterator, mulitEntityCount) {
   std::shared_ptr<TsTable> ts_table;
   auto s = engine_->CreateTsTable(ctx_, table_id, &pb_meta, ts_table);
   ASSERT_EQ(s, KStatus::SUCCESS);
-  s = engine_->GetTsTable(ctx_, table_id, ts_table);
+  bool is_dropped = false;
+  s = engine_->GetTsTable(ctx_, table_id, ts_table, is_dropped);
   ASSERT_EQ(s, KStatus::SUCCESS);
 
   std::shared_ptr<TsTableSchemaManager> table_schema_mgr;
-  s = engine_->GetTableSchemaMgr(ctx_, table_id, table_schema_mgr);
+  s = engine_->GetTableSchemaMgr(ctx_, table_id, is_dropped, table_schema_mgr);
   ASSERT_EQ(s , KStatus::SUCCESS);
 
   const std::vector<AttributeInfo>* metric_schema{nullptr};
@@ -335,14 +340,14 @@ TEST_F(TestV2Iterator, mulitEntityCount) {
   DedupResult dedup_result{0, 0, 0, TSSlice {nullptr, 0}};
   for (size_t i = 0; i < entity_num; i++) {
     auto pay_load = GenRowPayload(*metric_schema, tag_schema ,table_id, 1, 1 + i, entity_row_num, start_ts + 1 + i, interval);
-    s = engine_->PutData(ctx_, table_id, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
+    s = engine_->PutData(ctx_, table_id, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result, is_dropped);
     free(pay_load.data);
     ASSERT_EQ(s, KStatus::SUCCESS);
   }
   start_ts += 10000 * 86400;
   for (size_t i = 0; i < entity_num; i++) {
     auto pay_load = GenRowPayload(*metric_schema, tag_schema ,table_id, 1, 1 + i, entity_row_num, start_ts + 1 + i, interval);
-    s = engine_->PutData(ctx_, table_id, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
+    s = engine_->PutData(ctx_, table_id, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result, is_dropped);
     free(pay_load.data);
     ASSERT_EQ(s, KStatus::SUCCESS);
   }
@@ -405,11 +410,12 @@ TEST_F(TestV2Iterator, mulitEntityDeleteCount) {
   std::shared_ptr<TsTable> ts_table;
   auto s = engine_->CreateTsTable(ctx_, table_id, &pb_meta, ts_table);
   ASSERT_EQ(s, KStatus::SUCCESS);
-  s = engine_->GetTsTable(ctx_, table_id, ts_table);
+  bool is_dropped = false;
+  s = engine_->GetTsTable(ctx_, table_id, ts_table, is_dropped);
   ASSERT_EQ(s, KStatus::SUCCESS);
 
   std::shared_ptr<TsTableSchemaManager> table_schema_mgr;
-  s = engine_->GetTableSchemaMgr(ctx_, table_id, table_schema_mgr);
+  s = engine_->GetTableSchemaMgr(ctx_, table_id, is_dropped, table_schema_mgr);
   ASSERT_EQ(s , KStatus::SUCCESS);
 
   const std::vector<AttributeInfo>* metric_schema;
@@ -430,8 +436,8 @@ TEST_F(TestV2Iterator, mulitEntityDeleteCount) {
   for (size_t i = 0; i < entity_num; i++) {
     auto pay_load = GenRowPayload(*metric_schema, tag_schema ,table_id, 1, 1 + i,
                                   entity_row_num, start_ts + 1 + i, interval);
-    s = engine_->PutData(ctx_, table_id, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
-    s = engine_->PutData(ctx_, table_id, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
+    s = engine_->PutData(ctx_, table_id, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result, is_dropped);
+    s = engine_->PutData(ctx_, table_id, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result, is_dropped);
     free(pay_load.data);
     ASSERT_EQ(s, KStatus::SUCCESS);
   }
@@ -439,8 +445,8 @@ TEST_F(TestV2Iterator, mulitEntityDeleteCount) {
   for (size_t i = 0; i < entity_num; i++) {
     auto pay_load = GenRowPayload(*metric_schema, tag_schema ,table_id, 1, 1 + i,
                                   entity_row_num, start_ts + 1 + i, interval);
-    s = engine_->PutData(ctx_, table_id, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
-    s = engine_->PutData(ctx_, table_id, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
+    s = engine_->PutData(ctx_, table_id, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result, is_dropped);
+    s = engine_->PutData(ctx_, table_id, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result, is_dropped);
     free(pay_load.data);
     ASSERT_EQ(s, KStatus::SUCCESS);
   }
@@ -548,7 +554,7 @@ TEST_F(TestV2Iterator, mulitEntityDeleteCount) {
   std::string p_key = GetPrimaryKey(table_id, p_tag_entity_id);
 
   s = engine_->DeleteData(ctx_, table_id, 0, p_key, {{start_ts + entity_row_num / 2 * interval, INT64_MAX}},
-                          &tmp_count, 0, 1);
+                          &tmp_count, 0, 1, is_dropped);
   ASSERT_EQ(s, KStatus::SUCCESS);
   auto tag_table = table_schema_mgr->GetTagTable();
   uint32_t v_group_id, del_entity_id;
@@ -638,11 +644,12 @@ TEST_F(TestV2Iterator, mulitEntityDeleteCountBeforeFlush) {
   std::shared_ptr<TsTable> ts_table;
   auto s = engine_->CreateTsTable(ctx_, table_id, &pb_meta, ts_table);
   ASSERT_EQ(s, KStatus::SUCCESS);
-  s = engine_->GetTsTable(ctx_, table_id, ts_table);
+  bool is_dropped = false;
+  s = engine_->GetTsTable(ctx_, table_id, ts_table, is_dropped);
   ASSERT_EQ(s, KStatus::SUCCESS);
 
   std::shared_ptr<TsTableSchemaManager> table_schema_mgr;
-  s = engine_->GetTableSchemaMgr(ctx_, table_id, table_schema_mgr);
+  s = engine_->GetTableSchemaMgr(ctx_, table_id, is_dropped, table_schema_mgr);
   ASSERT_EQ(s , KStatus::SUCCESS);
 
   const std::vector<AttributeInfo>* metric_schema;
@@ -663,7 +670,7 @@ TEST_F(TestV2Iterator, mulitEntityDeleteCountBeforeFlush) {
   for (size_t i = 0; i < entity_num; i++) {
     auto pay_load = GenRowPayload(*metric_schema, tag_schema ,table_id, 1, 1 + i,
                                   entity_row_num, start_ts + 1 + i, interval);
-    s = engine_->PutData(ctx_, table_id, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
+    s = engine_->PutData(ctx_, table_id, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result, is_dropped);
     free(pay_load.data);
     ASSERT_EQ(s, KStatus::SUCCESS);
   }
@@ -726,7 +733,7 @@ TEST_F(TestV2Iterator, mulitEntityDeleteCountBeforeFlush) {
     std::string p_key = GetPrimaryKey(table_id, p_tag_entity_id);
 
     s = engine_->DeleteData(ctx_, table_id, 0, p_key, {{start_ts + entity_row_num / 2 * interval, INT64_MAX}},
-                            &tmp_count, 0, 1);
+                            &tmp_count, 0, 1, is_dropped);
     ASSERT_EQ(s, KStatus::SUCCESS);
   }
 

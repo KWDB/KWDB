@@ -887,9 +887,14 @@ KStatus TsPartitionVersion::NeedVacuumEntitySegment(const fs::path &root_path, T
         std::shared_ptr<TsTableSchemaManager> tb_schema_mgr{nullptr};
         s = schema_manager->GetTableSchemaMgr(entity_item.table_id, tb_schema_mgr);
         if (s != SUCCESS) {
+          if (tb_schema_mgr == nullptr) {
+            need_vacuum = true;
+            return SUCCESS;
+          }
           return s;
         }
         auto life_time = tb_schema_mgr->GetLifeTime();
+
         bool has_lifetime = life_time.ts != 0;
         if (tb_schema_mgr->IsDropped()) {
           need_vacuum = true;

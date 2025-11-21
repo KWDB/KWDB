@@ -175,12 +175,13 @@ KStatus TsReadBatchDataWorker::NextBlockSpansIterator() {
 
 KStatus TsReadBatchDataWorker::Init(kwdbContext_p ctx) {
   ErrorInfo err_info;
-  KStatus s = ts_engine_->GetTsTable(ctx, table_id_, ts_table_, true, err_info, table_version_);
+  bool is_dropped = false;
+  KStatus s = ts_engine_->GetTsTable(ctx, table_id_, ts_table_, is_dropped, true, err_info, table_version_);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("GetTsTable[%lu] failed, %s", table_id_, err_info.toString().c_str());
     return KStatus::FAIL;
   }
-  s = ts_engine_->GetTableSchemaMgr(ctx, table_id_, schema_);
+  s = ts_engine_->GetTableSchemaMgr(ctx, table_id_, is_dropped, schema_);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("GetTableSchemaMgr[%lu] failed", table_id_);
     return KStatus::FAIL;
@@ -450,14 +451,15 @@ KStatus TsWriteBatchDataWorker::Write(kwdbContext_p ctx, TSTableID table_id, uin
   // get or create ts table
   ErrorInfo err_info;
   std::shared_ptr<TsTable> ts_table;
-  KStatus s = ts_engine_->GetTsTable(ctx, table_id, ts_table, true, err_info, table_version);
+  bool is_dropped = false;
+  KStatus s = ts_engine_->GetTsTable(ctx, table_id, ts_table, is_dropped, true, err_info, table_version);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("GetTsTable[%lu] failed, %s", table_id, err_info.toString().c_str());
     return KStatus::FAIL;
   }
   // get table schema && create ts table
   std::shared_ptr<TsTableSchemaManager> schema = nullptr;
-  s = ts_engine_->GetTableSchemaMgr(ctx, table_id, schema);
+  s = ts_engine_->GetTableSchemaMgr(ctx, table_id, is_dropped, schema);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("GetTableSchemaMgr[%lu] failed", table_id);
     return KStatus::FAIL;
@@ -484,9 +486,9 @@ KStatus TsWriteBatchDataWorker::Write(kwdbContext_p ctx, TSTableID table_id, uin
   // insert tag record
   uint32_t vgroup_id;
   TSEntityID entity_id;
-  uint16_t entity_cnt;
+  is_dropped = false;
   s = ts_engine_->InsertTagData(ctx, table_id, 0, {tag_payload_str.data(), tag_payload_str.size()}, false,
-                                vgroup_id, entity_id, &entity_cnt);
+                                vgroup_id, entity_id, is_dropped);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("InsertTagData[%lu] failed, %s", table_id, err_info.toString().c_str());
     return KStatus::FAIL;
@@ -500,7 +502,8 @@ KStatus TsWriteBatchDataWorker::Write(kwdbContext_p ctx, TSTableID table_id, uin
   }
 
   if (schema == nullptr) {
-    s = ts_engine_->GetTableSchemaMgr(ctx, table_id, schema);
+    is_dropped = false;
+    s = ts_engine_->GetTableSchemaMgr(ctx, table_id, is_dropped, schema);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("GetTableSchemaMgr[%lu] failed", table_id);
       return KStatus::FAIL;

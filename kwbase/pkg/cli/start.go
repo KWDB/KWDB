@@ -781,6 +781,7 @@ If problems persist, please see ` + base.DocsURL("cluster-setup-troubleshooting.
 				fmt.Fprintf(tw, "store[%d]:\t%s\n", i, spec)
 			}
 			fmt.Fprintf(tw, "storage engine: \t%s\n", serverCfg.StorageEngine.String())
+			fmt.Fprintf(tw, "ts storage engine: \tkwtsdb\n")
 			nodeID := s.NodeID()
 			if initialBoot {
 				if nodeID == server.FirstNodeID {

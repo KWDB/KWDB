@@ -493,8 +493,11 @@ EEIteratorErrCode TsSamplerOperator::Init(kwdbContext_p ctx) {
 
     KStatus res = KStatus::FAIL;
     auto *ts_engine = static_cast<TSEngine *>(ctx->ts_engine);
-    if (ts_engine)
-      res = ts_engine->GetTsTable(ctx, table_->object_id_, ts_table_);
+    if (ts_engine) {
+      bool is_dropped = false;
+      res = ts_engine->GetTsTable(ctx, table_->object_id_, ts_table_, is_dropped);
+    }
+
     if (res != KStatus::SUCCESS) {
       LOG_ERROR("Failed to get ts table for table %lu", table_->object_id_);
       EEPgErrorInfo::SetPgErrorInfo(ERRCODE_FETCH_DATA_FAILED,

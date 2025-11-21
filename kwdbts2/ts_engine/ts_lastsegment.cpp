@@ -531,6 +531,10 @@ KStatus TsLastSegment::GetBlockSpans(std::list<shared_ptr<TsBlockSpan>>& block_s
     if (tbl_schema_mgr == nullptr || tbl_schema_mgr->GetTableId() != block->GetTableId()) {
       auto s = schema_mgr->GetTableSchemaMgr(block->GetTableId(), tbl_schema_mgr);
       if (s != KStatus::SUCCESS) {
+        if (tbl_schema_mgr == nullptr) {
+          LOG_DEBUG("Table has already been dropped, table id:%ld", block->GetTableId());
+          continue;
+        }
         LOG_ERROR("get table schema manager failed. table id: %lu", block->GetTableId());
         return s;
       }

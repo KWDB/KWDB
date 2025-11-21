@@ -318,7 +318,8 @@ TEST_F(ConcurrentRWTest, SwitchMem) {
       uint16_t inc_entity_cnt;
       uint32_t inc_unordered_cnt;
       DedupResult dedup_result;
-      engine->PutData(ctx_, table_id, 0, &payload, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
+      bool is_dropped = false;
+      engine->PutData(ctx_, table_id, 0, &payload, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result, is_dropped);
       atomic_count++;
     }
   };
@@ -355,8 +356,8 @@ TEST_F(ConcurrentRWTest, SwitchMem) {
         for (auto x : res.data[0]) {
           sum += x->count;
           timestamp64* ts = (timestamp64*)x->mem;
-          for (int i = 0; i < x->count; i++) {
-            ts_set.insert(ts[i]);
+          for (int j = 0; j < x->count; j++) {
+            ts_set.insert(ts[j]);
           }
         }
       }
@@ -417,7 +418,8 @@ TEST_F(ConcurrentRWTest, RandomFlush) {
       uint16_t inc_entity_cnt;
       uint32_t inc_unordered_cnt;
       DedupResult dedup_result;
-      engine->PutData(ctx_, table_id, 0, &payload, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
+      bool is_dropped = false;
+      engine->PutData(ctx_, table_id, 0, &payload, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result, is_dropped);
       atomic_count++;
     }
   };
@@ -454,8 +456,8 @@ TEST_F(ConcurrentRWTest, RandomFlush) {
         for (auto x : res.data[0]) {
           sum += x->count;
           timestamp64* ts = (timestamp64*)x->mem;
-          for (int i = 0; i < x->count; i++) {
-            ts_set.insert(ts[i]);
+          for (int j = 0; j < x->count; j++) {
+            ts_set.insert(ts[j]);
           }
         }
       }

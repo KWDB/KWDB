@@ -32,7 +32,8 @@ const static int HEADER_SIZE = 16 + 2 + 4 + 4 + 8 + 4 + 1;  // NOLINT
 bool StWorker::IsTableCreated(uint32_t tbl_id, int table_i) {
   // check if the table has been created
   std::shared_ptr<TsTable> ts_table;
-  while (KStatus::SUCCESS != st_inst_->GetTSEngine()->GetTsTable(ctx, tbl_id, ts_table)) {
+  bool is_dropped = false;
+  while (KStatus::SUCCESS != st_inst_->GetTSEngine()->GetTsTable(ctx, tbl_id, ts_table, is_dropped)) {
     std::this_thread::sleep_for(std::chrono::seconds(1));
   }
   return true;
@@ -91,9 +92,10 @@ KBStatus StWriteWorker::do_work(KTimestamp  new_ts) {
     DedupResult dedup_result{0, 0, 0, TSSlice {nullptr, 0}};
     uint16_t inc_entity_cnt;
     uint32_t inc_unordered_cnt;
+    bool is_dropped = false;
     stat = st_inst_->GetTSEngine()->PutData(
         ctx, w_table, st_inst_->rangeGroup(), &payload, 1, 0, &inc_entity_cnt,
-        &inc_unordered_cnt, &dedup_result);
+        &inc_unordered_cnt, &dedup_result, is_dropped);
     if (stat != KStatus::SUCCESS) {
       std::cout << "failed put data." << std::endl;
     }
@@ -197,7 +199,8 @@ KBStatus StScanWorker::do_work(KTimestamp  new_ts) {
   KBStatus s;
   std::vector<Sumfunctype> scan_agg_types;
   std::shared_ptr<TsTable> ts_table;
-  auto stat = st_inst_->GetTSEngine()->GetTsTable(ctx, r_table, ts_table);
+  bool is_dropped = false;
+  auto stat = st_inst_->GetTSEngine()->GetTsTable(ctx, r_table, ts_table, is_dropped);
   s = dump_zstatus("GetTsTable", ctx, stat);
   if (s.isNotOK()) {
     return s;
@@ -287,16 +290,17 @@ KBStatus StSnapshotWorker::do_work(KTimestamp  new_ts) {
   uint64_t read_snapshot_id, write_snapshot_id;
   KStatus s;
   size_t snapshot_size = 0;
+  bool is_dropped = false;
   KWDB_START();
   {
     KWDB_START();
     s = st_inst_->GetTSEngine()->CreateSnapshotForRead(ctx, table_ids_[table_i], 0, UINT64_MAX,
-                                                        {INT64_MIN, INT64_MAX}, &read_snapshot_id);
+                                                        {INT64_MIN, INT64_MAX}, &read_snapshot_id, is_dropped);
     if (s != KStatus::SUCCESS) {
       return dump_zstatus("CreateSnapshotForRead", ctx, s);
     }
     s = st_inst_->GetTSEngine()->CreateSnapshotForWrite(ctx, st_inst_->GetSnapShotTableId(), 0,
-                                            UINT64_MAX, {INT64_MIN, INT64_MAX}, &write_snapshot_id, 1);
+                                            UINT64_MAX, {INT64_MIN, INT64_MAX}, &write_snapshot_id, is_dropped, 1);
     if (s != KStatus::SUCCESS) {
       return dump_zstatus("CreateSnapshotForWrite", ctx, s);
     }
@@ -306,7 +310,7 @@ KBStatus StSnapshotWorker::do_work(KTimestamp  new_ts) {
     TSSlice payload{nullptr, 0};
     {
       KWDB_START();
-      s = st_inst_->GetTSEngine()->GetSnapshotNextBatchData(ctx, read_snapshot_id, &payload);
+      s = st_inst_->GetTSEngine()->GetSnapshotNextBatchData(ctx, read_snapshot_id, &payload, is_dropped);
       if (s != KStatus::SUCCESS) {
         return dump_zstatus("GetSnapshotNextBatchData", ctx, s);
       }
@@ -315,7 +319,7 @@ KBStatus StSnapshotWorker::do_work(KTimestamp  new_ts) {
     snapshot_size += payload.len;
     if (payload.data != nullptr) {
       KWDB_START();
-      s = st_inst_->GetTSEngine()->WriteSnapshotBatchData(ctx, write_snapshot_id, payload);
+      s = st_inst_->GetTSEngine()->WriteSnapshotBatchData(ctx, write_snapshot_id, payload, is_dropped);
       if (s != KStatus::SUCCESS) {
         return dump_zstatus("WriteSnapshotBatchData", ctx, s);
       }
@@ -426,7 +430,8 @@ KBStatus StRetentionsWorker::do_work(KTimestamp  new_ts) {
 
   std::shared_ptr<TsTable> ts_table;
   KBStatus s;
-  auto stat = st_inst_->GetTSEngine()->GetTsTable(ctx, r_table, ts_table);
+  bool is_dropped = false;
+  auto stat = st_inst_->GetTSEngine()->GetTsTable(ctx, r_table, ts_table, is_dropped);
   s = dump_zstatus("GetTsTable", ctx, stat);
   if (s.isNotOK()) {
     return s;

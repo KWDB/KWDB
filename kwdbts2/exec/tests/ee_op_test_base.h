@@ -58,7 +58,8 @@ class OperatorTestBase : public ::testing::Test {
 
   void InsertRecords(roachpb::CreateTsTable& meta) {
     std::shared_ptr<kwdbts::TsTableSchemaManager> schema_mgr;
-    KStatus s = engine_->GetTableSchemaMgr(ctx_, table_id_, schema_mgr);
+    bool is_dropped = false;
+    KStatus s = engine_->GetTableSchemaMgr(ctx_, table_id_, is_dropped, schema_mgr);
     EXPECT_EQ(s, KStatus::SUCCESS);
     const std::vector<AttributeInfo>* metric_schema{nullptr};
     s = schema_mgr->GetMetricMeta(1, &metric_schema);
@@ -73,7 +74,7 @@ class OperatorTestBase : public ::testing::Test {
     uint16_t inc_entity_cnt;
     uint32_t inc_unordered_cnt;
     DedupResult dedup_result{0, 0, 0, TSSlice{nullptr, 0}};
-    s = engine_->PutData(ctx_, table_id_, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
+    s = engine_->PutData(ctx_, table_id_, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result, is_dropped);
     EXPECT_EQ(s, KStatus::SUCCESS);
     free(pay_load.data);
   }

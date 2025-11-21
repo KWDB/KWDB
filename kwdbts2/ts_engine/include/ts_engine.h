@@ -35,6 +35,7 @@
 #include "ts_version.h"
 #include "ts_vgroup.h"
 #include "ts_table_del_info.h"
+#include "ts_drop_manager.h"
 
 extern bool g_go_start_service;
 
@@ -80,7 +81,6 @@ class TSEngineV2Impl : public TSEngine {
   std::atomic<bool> exist_explict_txn = false;
 
   TsHashRWLatch tag_lock_;
-
   // std::unique_ptr<TsMemSegmentManager> mem_seg_mgr_ = nullptr;
   PartitionIntervalRecorder* interval_recorder_ = nullptr;
 
@@ -95,31 +95,34 @@ class TSEngineV2Impl : public TSEngine {
   KStatus DropTsTable(kwdbContext_p ctx, const KTableKey& table_id) override;
 
   KStatus CreateNormalTagIndex(kwdbContext_p ctx, const KTableKey& table_id, const uint64_t index_id,
-                               const char* transaction_id, const uint32_t cur_version, const uint32_t new_version,
-                               const std::vector<uint32_t/* tag column id*/> &index_schema) override;
+    const char* transaction_id, bool& is_dropped, const uint32_t cur_version, const uint32_t new_version,
+    const std::vector<uint32_t/* tag column id*/> &index_schema) override;
 
   KStatus DropNormalTagIndex(kwdbContext_p ctx, const KTableKey& table_id, const uint64_t index_id,
-                             const char* transaction_id,  const uint32_t cur_version,
-                             const uint32_t new_version) override;
+    const char* transaction_id, bool& is_dropped, const uint32_t cur_version, const uint32_t new_version) override;
 
   KStatus AlterNormalTagIndex(kwdbContext_p ctx, const KTableKey& table_id, const uint64_t index_id,
-                              const char* transaction_id, const uint32_t old_version, const uint32_t new_version,
-                              const std::vector<uint32_t/* tag column id*/> &new_index_schema) override;
+    const char* transaction_id, bool& is_dropped, const uint32_t old_version, const uint32_t new_version,
+    const std::vector<uint32_t/* tag column id*/> &new_index_schema) override;
 
   KStatus CompressTsTable(kwdbContext_p ctx, const KTableKey& table_id, KTimestamp ts) override {
     LOG_WARN("should not use CompressTsTable any more.");
     return KStatus::SUCCESS;
   }
 
-  KStatus GetTsTable(kwdbContext_p ctx, const KTableKey& table_id, std::shared_ptr<TsTable>& ts_table,
+  KStatus CheckAndDropTsTable(kwdbContext_p ctx, const KTableKey& table_id, bool& is_dropped, ErrorInfo& err_info);
+
+  KStatus GetTsTable(kwdbContext_p ctx, const KTableKey& table_id, std::shared_ptr<TsTable>& ts_table, bool& is_dropped,
                      bool create_if_not_exist = true, ErrorInfo& err_info = getDummyErrorInfo(),
                      uint32_t version = 0) override;
+
+  KStatus ProcessDrop(const KTableKey& table_id);
 
   std::vector<std::shared_ptr<TsVGroup>>* GetTsVGroups();
 
   std::shared_ptr<TsVGroup> GetTsVGroup(uint32_t vgroup_id);
 
-  KStatus GetTableSchemaMgr(kwdbContext_p ctx, const KTableKey& table_id,
+  KStatus GetTableSchemaMgr(kwdbContext_p ctx, const KTableKey& table_id, bool& is_dropped,
                          std::shared_ptr<TsTableSchemaManager>& schema) override;
 
   KStatus GetAllTableSchemaMgrs(std::vector<std::shared_ptr<TsTableSchemaManager>>& tb_schema_mgr) {
@@ -131,29 +134,30 @@ class TSEngineV2Impl : public TSEngine {
   }
 
   KStatus InsertTagData(kwdbContext_p ctx, const KTableKey& table_id, uint64_t mtr_id, TSSlice payload_data,
-                        bool write_wal, uint32_t& vgroup, TSEntityID& entity_id, uint16_t* inc_entity_cnt);
+                        bool write_wal, uint32_t& vgroup, TSEntityID& entity_id, bool& is_dropped);
 
   KStatus
-  GetMetaData(kwdbContext_p ctx, const KTableKey& table_id,  RangeGroup range, roachpb::CreateTsTable* meta) override;
+  GetMetaData(kwdbContext_p ctx, const KTableKey& table_id, RangeGroup range, roachpb::CreateTsTable* meta,
+              bool& is_dropped) override;
 
   KStatus PutEntity(kwdbContext_p ctx, const KTableKey& table_id, uint64_t range_group_id,
-                    TSSlice* payload_data, int payload_num, uint64_t mtr_id) override;
+                    TSSlice* payload_data, int payload_num, uint64_t mtr_id, bool& is_dropped) override;
 
   KStatus PutData(kwdbContext_p ctx, const KTableKey& table_id, uint64_t range_group_id,
-                  TSSlice* payload_data, int payload_num, uint64_t mtr_id, uint16_t* inc_entity_cnt,
-                  uint32_t* inc_unordered_cnt, DedupResult* dedup_result, bool writeWAL = true,
-                  const char* tsx_id = nullptr) override;
+    TSSlice* payload_data, int payload_num, uint64_t mtr_id, uint16_t* inc_entity_cnt, uint32_t* inc_unordered_cnt,
+    DedupResult* dedup_result, bool& is_dropped, bool writeWAL = true, const char* tsx_id = nullptr) override;
 
   KStatus DeleteRangeData(kwdbContext_p ctx, const KTableKey& table_id, uint64_t range_group_id,
                           HashIdSpan& hash_span, const std::vector<KwTsSpan>& ts_spans, uint64_t* count,
-                          uint64_t mtr_id, uint64_t osn) override;
+                          uint64_t mtr_id, uint64_t osn, bool& is_dropped) override;
 
   KStatus DeleteData(kwdbContext_p ctx, const KTableKey& table_id, uint64_t range_group_id,
                      std::string& primary_tag, const std::vector<KwTsSpan>& ts_spans, uint64_t* count,
-                     uint64_t mtr_id, uint64_t osn) override;
+                     uint64_t mtr_id, uint64_t osn, bool& is_dropped) override;
 
   KStatus DeleteEntities(kwdbContext_p ctx, const KTableKey& table_id, uint64_t range_group_id,
-                         std::vector<std::string> primary_tags, uint64_t* count, uint64_t mtr_id, uint64_t osn) override;
+                         std::vector<std::string> primary_tags, uint64_t* count, uint64_t mtr_id,
+                         bool& is_dropped, uint64_t osn) override;
 
   KStatus CountRangeData(kwdbContext_p ctx, const KTableKey& table_id, uint64_t range_group_id,
                           HashIdSpan& hash_span, const std::vector<KwTsSpan>& ts_spans, uint64_t* count,
@@ -170,27 +174,26 @@ class TSEngineV2Impl : public TSEngine {
     }
 
   // range imgration snapshot using interface...............begin................................
-  KStatus CreateSnapshotForRead(kwdbContext_p ctx, const KTableKey& table_id,
-                                 uint64_t begin_hash, uint64_t end_hash,
-                                 const KwTsSpan& ts_span, uint64_t* snapshot_id) override;
+  KStatus CreateSnapshotForRead(kwdbContext_p ctx, const KTableKey& table_id, uint64_t begin_hash, uint64_t end_hash,
+                              const KwTsSpan& ts_span, uint64_t* snapshot_id, bool& is_dropped) override;
   KStatus DeleteSnapshot(kwdbContext_p ctx, uint64_t snapshot_id) override;
-  KStatus GetSnapshotNextBatchData(kwdbContext_p ctx, uint64_t snapshot_id, TSSlice* data) override;
-  KStatus CreateSnapshotForWrite(kwdbContext_p ctx, const KTableKey& table_id,
-                                   uint64_t begin_hash, uint64_t end_hash,
-                                   const KwTsSpan& ts_span, uint64_t* snapshot_id, uint64_t osn) override;
-  KStatus WriteSnapshotBatchData(kwdbContext_p ctx, uint64_t snapshot_id, TSSlice data) override;
+  KStatus GetSnapshotNextBatchData(kwdbContext_p ctx, uint64_t snapshot_id, TSSlice* data, bool& is_dropped) override;
+  KStatus CreateSnapshotForWrite(kwdbContext_p ctx, const KTableKey& table_id, uint64_t begin_hash, uint64_t end_hash,
+                              const KwTsSpan& ts_span, uint64_t* snapshot_id, bool& is_dropped, uint64_t osn) override;
+  KStatus WriteSnapshotBatchData(kwdbContext_p ctx, uint64_t snapshot_id, TSSlice data, bool& is_dropped) override;
   KStatus WriteSnapshotSuccess(kwdbContext_p ctx, uint64_t snapshot_id) override;
   KStatus WriteSnapshotRollback(kwdbContext_p ctx, uint64_t snapshot_id, uint64_t osn) override;
   // range imgration snapshot using interface...............end................................
   KStatus DeleteRangeEntities(kwdbContext_p ctx, const KTableKey& table_id, const uint64_t& range_group_id,
-                              const HashIdSpan& hash_span, uint64_t* count, uint64_t& mtr_id, uint64_t osn) override;
+                              const HashIdSpan& hash_span, uint64_t* count, uint64_t& mtr_id,
+                              bool& is_dropped, uint64_t osn) override;
 
   KStatus ReadBatchData(kwdbContext_p ctx, TSTableID table_id, uint64_t table_version, uint64_t begin_hash,
                         uint64_t end_hash, KwTsSpan ts_span, uint64_t job_id, TSSlice* data,
-                        uint32_t* row_num) override;
+                        uint32_t* row_num, bool& is_dropped) override;
 
   KStatus WriteBatchData(kwdbContext_p ctx, TSTableID table_id, uint64_t table_version, uint64_t job_id,
-                         TSSlice* data, uint32_t* row_num) override;
+                         TSSlice* data, uint32_t* row_num, bool& is_dropped) override;
 
   KStatus CancelBatchJob(kwdbContext_p ctx, uint64_t job_id, uint64_t osn) override;
 
@@ -201,7 +204,7 @@ class TSEngineV2Impl : public TSEngine {
 
   KStatus CreateCheckpoint(kwdbContext_p ctx) override;
 
-  KStatus CreateCheckpointForTable(kwdbContext_p ctx, TSTableID table_id) override {
+  KStatus CreateCheckpointForTable(kwdbContext_p ctx, TSTableID table_id, bool& is_dropped) override {
     LOG_WARN("should not use CreateCheckpointForTable any more.");
     return KStatus::SUCCESS;
   }
@@ -232,11 +235,11 @@ class TSEngineV2Impl : public TSEngine {
 */
   KStatus checkpoint(kwdbContext_p ctx);
 
-  KStatus TSxBegin(kwdbContext_p ctx, const KTableKey& table_id, char* transaction_id) override;
+  KStatus TSxBegin(kwdbContext_p ctx, const KTableKey& table_id, char* transaction_id, bool& is_dropped) override;
 
-  KStatus TSxCommit(kwdbContext_p ctx, const KTableKey& table_id, char* transaction_id) override;
+  KStatus TSxCommit(kwdbContext_p ctx, const KTableKey& table_id, char* transaction_id, bool& is_dropped) override;
 
-  KStatus TSxRollback(kwdbContext_p ctx, const KTableKey& table_id, char* transaction_id) override;
+  KStatus TSxRollback(kwdbContext_p ctx, const KTableKey& table_id, char* transaction_id, bool& is_dropped) override;
 
   void GetTableIDList(kwdbContext_p ctx, std::vector<KTableKey>& table_id_list) override;
 
@@ -246,25 +249,24 @@ class TSEngineV2Impl : public TSEngine {
 
   KStatus LogInit();
 
-  KStatus AddColumn(kwdbContext_p ctx, const KTableKey& table_id, char* transaction_id,
+  KStatus AddColumn(kwdbContext_p ctx, const KTableKey& table_id, char* transaction_id, bool& is_dropped,
                     TSSlice column, uint32_t cur_version, uint32_t new_version, string& err_msg) override;
 
-  KStatus DropColumn(kwdbContext_p ctx, const KTableKey& table_id, char* transaction_id,
+  KStatus DropColumn(kwdbContext_p ctx, const KTableKey& table_id, char* transaction_id, bool& is_dropped,
                      TSSlice column, uint32_t cur_version, uint32_t new_version, string& err_msg) override;
 
-  KStatus AlterColumnType(kwdbContext_p ctx, const KTableKey& table_id, char* transaction_id,
-                          TSSlice new_column, TSSlice origin_column, uint32_t cur_version,
-                          uint32_t new_version, string& err_msg) override;
+  KStatus AlterColumnType(kwdbContext_p ctx, const KTableKey& table_id, char* transaction_id, bool& is_dropped,
+    TSSlice new_column, TSSlice origin_column, uint32_t cur_version, uint32_t new_version, string& err_msg) override;
 
   KStatus AlterPartitionInterval(kwdbContext_p ctx, const KTableKey& table_id, uint64_t partition_interval) override {
     LOG_WARN("should not use AlterPartitionInterval any more.");
     return KStatus::SUCCESS;
   }
 
-  KStatus AlterLifetime(kwdbContext_p ctx, const KTableKey& table_id, uint64_t lifetime) override;
+  KStatus AlterLifetime(kwdbContext_p ctx, const KTableKey& table_id, uint64_t lifetime, bool& is_dropped) override;
 
   KStatus GetTsWaitThreadNum(kwdbContext_p ctx, void *resp) override;
-  KStatus GetTableVersion(kwdbContext_p ctx, TSTableID table_id, uint32_t* version) override;
+  KStatus GetTableVersion(kwdbContext_p ctx, TSTableID table_id, uint32_t* version, bool& is_dropped) override;
   KStatus GetWalLevel(kwdbContext_p ctx, uint8_t* wal_level) override;
   KStatus SetUseRaftLogAsWAL(kwdbContext_p ctx, bool use) override;
   static KStatus CloseTSEngine(kwdbContext_p ctx, TSEngine* engine) { return KStatus::SUCCESS; }
@@ -277,6 +279,8 @@ class TSEngineV2Impl : public TSEngine {
 
   // init all engine.
   KStatus Init(kwdbContext_p ctx);
+
+  void PreClearDroppedTables();
 
   KStatus CreateTsTable(kwdbContext_p ctx, TSTableID table_id, roachpb::CreateTsTable* meta,
                         std::shared_ptr<TsTable>& ts_table);
@@ -321,12 +325,19 @@ class TSEngineV2Impl : public TSEngine {
 
   KStatus ParallelRemoveChkFiles(kwdbContext_p ctx);
 
+  bool HasDroppedFlag(TSTableID id);
+
  private:
   TsVGroup* GetVGroupByID(kwdbContext_p ctx, uint32_t vgroup_id);
 
-  KStatus putTagData(kwdbContext_p ctx, TSTableID table_id, uint32_t groupid, uint32_t entity_id, TsRawPayload& payload);
+  KStatus putTagData(kwdbContext_p ctx, TSTableID table_id, uint32_t groupid, uint32_t entity_id, TsRawPayload& payload,
+    bool& is_dropped);
 
   uint64_t insertToSnapshotCache(TsRangeImgrationInfo& snapshot);
+
+  void createDroppedFlag(TSTableID table_id);
+
+  void removeDroppedFlag(TSTableID table_id);
 };
 
 }  //  namespace kwdbts

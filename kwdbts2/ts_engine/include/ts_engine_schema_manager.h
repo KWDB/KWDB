@@ -21,6 +21,7 @@
 #include <vector>
 #include <chrono>
 #include <random>
+#include <unordered_set>
 #include "kwdb_type.h"
 #include "ts_common.h"
 #include "libkwdbts2.h"
@@ -55,6 +56,8 @@ class TsEngineSchemaManager {
   KStatus GetTableSchemaMgr(TSTableID tbl_id, std::shared_ptr<TsTableSchemaManager>& tb_schema_mgr);
 
   KStatus GetAllTableSchemaMgrs(std::vector<std::shared_ptr<TsTableSchemaManager>>& tb_schema_mgr);
+
+  KStatus DropTableSchemaMgr(TSTableID tbl_id);
 
   KStatus GetTableList(std::vector<TSTableID>* table_ids);
 

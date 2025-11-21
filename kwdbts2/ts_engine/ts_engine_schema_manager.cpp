@@ -14,9 +14,11 @@
 #include <memory>
 #include <regex>
 
+#include "ee_global.h"
 #include "kwdb_type.h"
 #include "lg_api.h"
 #include "sys_utils.h"
+#include "ts_drop_manager.h"
 #include "ts_table_schema_manager.h"
 
 unsigned seed = std::chrono::system_clock::now().time_since_epoch().count();
@@ -33,7 +35,8 @@ TsEngineSchemaManager::TsEngineSchemaManager(const string& schema_root_path) :
   }
 }
 
-TsEngineSchemaManager::~TsEngineSchemaManager() {}
+TsEngineSchemaManager::~TsEngineSchemaManager() {
+}
 
 KStatus TsEngineSchemaManager::Init(kwdbContext_p ctx) {
   wrLock();
@@ -209,25 +212,20 @@ KStatus TsEngineSchemaManager::GetTableList(std::vector<TSTableID>* table_ids) {
   // scan all directory.
   std::error_code ec;
   fs::directory_iterator dir_iter{schema_root_path_, ec};
-  std::unordered_map<TSTableID, int> table_scan_times;
   if (ec.value() != 0) {
     LOG_ERROR("GetTableList failed, reason: %s", ec.message().c_str());
     return KStatus::FAIL;
   }
   for (const auto& it : dir_iter) {
     std::string fname = it.path().filename();
-    auto split_pos = fname.find("_");
-    if (split_pos == std::string::npos) {
-      continue;
+    TSTableID tbl_id = 0;
+    auto split_pos = fname.find(".");
+    if (split_pos != std::string::npos) {
+      tbl_id = std::stol(fname.substr(split_pos + 1));
+    } else {
+      tbl_id = std::stol(fname);
     }
-    TSTableID tbl_id = std::stol(fname.substr(split_pos + 1));
-    table_scan_times[tbl_id] += 1;
-  }
-  for (auto kv : table_scan_times) {
-    if (kv.second != 2) {
-      LOG_WARN("table[%lu] just has %d directory.", kv.first, kv.second);
-    }
-    table_ids->push_back(kv.first);
+    table_ids->push_back(tbl_id);
   }
   return KStatus::SUCCESS;
 }
@@ -236,6 +234,13 @@ KStatus TsEngineSchemaManager::GetTableSchemaMgr(TSTableID tbl_id,
                                                  std::shared_ptr<TsTableSchemaManager>& tb_schema_mgr) {
   assert(tbl_id != 0);
   rdLock();
+  std::string file_name = schema_root_path_ / ("." +to_string(tbl_id));
+  if (DropTableManager::getInstance().isTableDropped(tbl_id) || fs::exists(file_name)) {
+    LOG_WARN("Table[%ld] has already been dropped.", tbl_id);
+    tb_schema_mgr = nullptr;
+    unLock();
+    return KStatus::FAIL;
+  }
   auto it = table_schema_mgrs_.find(tbl_id);
   if (it == table_schema_mgrs_.end()) {
     unLock();
@@ -266,6 +271,19 @@ KStatus TsEngineSchemaManager::GetAllTableSchemaMgrs(std::vector<std::shared_ptr
     tb_schema_mgr.emplace_back(it.second);
   }
   unLock();
+  return KStatus::SUCCESS;
+}
+
+KStatus TsEngineSchemaManager::DropTableSchemaMgr(TSTableID tbl_id) {
+  wrLock();
+  Defer defer([&]() { unLock(); });
+  if (table_schema_mgrs_.find(tbl_id) != table_schema_mgrs_.end()) {
+    table_schema_mgrs_.erase(tbl_id);
+  }
+  if (!Remove(schema_root_path_ / to_string(tbl_id))) {
+    LOG_ERROR("DropTableSchemaManager failed, table_id: %lu", tbl_id);
+    return KStatus::FAIL;
+  }
   return KStatus::SUCCESS;
 }
 
@@ -312,7 +330,5 @@ KStatus TsEngineSchemaManager::AlterTable(kwdbContext_p ctx, const KTableKey& ta
   }
   return tb_schema_mgr->AlterTable(ctx, alter_type, column, cur_version, new_version, msg);
 }
-
 impl_latch_virtual_func(TsEngineSchemaManager, &mgrs_rw_latch_)
-
 }  //  namespace kwdbts

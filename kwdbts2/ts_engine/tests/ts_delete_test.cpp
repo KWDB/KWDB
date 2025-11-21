@@ -54,7 +54,8 @@ class TestV2DeleteTest : public ::testing::Test {
 
   std::string GetPrimaryKey(TSTableID table_id, TSEntityID dev_id) {
     std::shared_ptr<kwdbts::TsTableSchemaManager> schema_mgr;
-    KStatus s = engine_->GetTableSchemaMgr(ctx_, table_id, schema_mgr);
+    bool is_dropped = false;
+    KStatus s = engine_->GetTableSchemaMgr(ctx_, table_id, is_dropped, schema_mgr);
     EXPECT_EQ(s, KStatus::SUCCESS);
     std::vector<TagInfo> tag_schema;
     s = schema_mgr->GetTagMeta(1, tag_schema);
@@ -121,11 +122,12 @@ TEST_F(TestV2DeleteTest, basicDelete) {
   std::shared_ptr<TsTable> ts_table;
   auto s = engine_->CreateTsTable(ctx_, table_id, &pb_meta, ts_table);
   ASSERT_EQ(s, KStatus::SUCCESS);
-  s = engine_->GetTsTable(ctx_, table_id, ts_table);
+  bool is_dropped = false;
+  s = engine_->GetTsTable(ctx_, table_id, ts_table, is_dropped);
   ASSERT_EQ(s, KStatus::SUCCESS);
 
   std::shared_ptr<TsTableSchemaManager> table_schema_mgr;
-  s = engine_->GetTableSchemaMgr(ctx_, table_id, table_schema_mgr);
+  s = engine_->GetTableSchemaMgr(ctx_, table_id, is_dropped, table_schema_mgr);
   ASSERT_EQ(s , KStatus::SUCCESS);
 
   const std::vector<AttributeInfo>* metric_schema;
@@ -142,7 +144,7 @@ TEST_F(TestV2DeleteTest, basicDelete) {
   uint16_t inc_entity_cnt;
   uint32_t inc_unordered_cnt;
   DedupResult dedup_result{0, 0, 0, TSSlice {nullptr, 0}};
-  s = engine_->PutData(ctx_, table_id, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
+  s = engine_->PutData(ctx_, table_id, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result, is_dropped);
   free(pay_load.data);
   ASSERT_EQ(s, KStatus::SUCCESS);
 
@@ -161,7 +163,7 @@ TEST_F(TestV2DeleteTest, basicDelete) {
   uint64_t tmp_count;
   uint64_t p_tag_entity_id = 1;
   std::string p_key = GetPrimaryKey(table_id, p_tag_entity_id);
-  s = engine_->DeleteData(ctx_, table_id, 0, p_key, {{start_ts, start_ts + row_num / 2 * 1000 - 1}}, &tmp_count, 0, 1);
+  s = engine_->DeleteData(ctx_, table_id, 0, p_key, {{start_ts, start_ts + row_num / 2 * 1000 - 1}}, &tmp_count, 0, 1, is_dropped);
   ASSERT_EQ(s, KStatus::SUCCESS);
 
   CheckRowCount(table_schema_mgr, entity_v_group, 1, ts_span, row_num / 2);
@@ -174,11 +176,12 @@ TEST_F(TestV2DeleteTest, MultiInsertAndDelete) {
   std::shared_ptr<TsTable> ts_table;
   auto s = engine_->CreateTsTable(ctx_, table_id, &pb_meta, ts_table);
   ASSERT_EQ(s, KStatus::SUCCESS);
-  s = engine_->GetTsTable(ctx_, table_id, ts_table);
+  bool is_dropped = false;
+  s = engine_->GetTsTable(ctx_, table_id, ts_table, is_dropped);
   ASSERT_EQ(s, KStatus::SUCCESS);
 
   std::shared_ptr<TsTableSchemaManager> table_schema_mgr;
-  s = engine_->GetTableSchemaMgr(ctx_, table_id, table_schema_mgr);
+  s = engine_->GetTableSchemaMgr(ctx_, table_id, is_dropped, table_schema_mgr);
   ASSERT_EQ(s , KStatus::SUCCESS);
 
   const std::vector<AttributeInfo>* metric_schema;
@@ -197,7 +200,7 @@ TEST_F(TestV2DeleteTest, MultiInsertAndDelete) {
     uint16_t inc_entity_cnt;
     uint32_t inc_unordered_cnt;
     DedupResult dedup_result{0, 0, 0, TSSlice {nullptr, 0}};
-    s = engine_->PutData(ctx_, table_id, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
+    s = engine_->PutData(ctx_, table_id, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result, is_dropped);
     free(pay_load.data);
     ASSERT_EQ(s, KStatus::SUCCESS);
   }
@@ -217,11 +220,11 @@ TEST_F(TestV2DeleteTest, MultiInsertAndDelete) {
   uint64_t tmp_count;
   uint64_t p_tag_entity_id = 1;
   std::string p_key = GetPrimaryKey(table_id, p_tag_entity_id);
-  s = engine_->DeleteData(ctx_, table_id, 0, p_key, {{start_ts, start_ts + row_num * 1000 - 1}}, &tmp_count, 0, 1);
+  s = engine_->DeleteData(ctx_, table_id, 0, p_key, {{start_ts, start_ts + row_num * 1000 - 1}}, &tmp_count, 0, 1, is_dropped);
   ASSERT_EQ(s, KStatus::SUCCESS);
   CheckRowCount(table_schema_mgr, entity_v_group, 1, ts_span, row_num * (insert_times - 1));
 
-  s = engine_->DeleteData(ctx_, table_id, 0, p_key, {{start_ts + row_num * 1000 * (insert_times - 1), INT64_MAX}}, &tmp_count, 0, 1);
+  s = engine_->DeleteData(ctx_, table_id, 0, p_key, {{start_ts + row_num * 1000 * (insert_times - 1), INT64_MAX}}, &tmp_count, 0, 1, is_dropped);
   ASSERT_EQ(s, KStatus::SUCCESS);
   CheckRowCount(table_schema_mgr, entity_v_group, 1, ts_span, row_num * (insert_times - 2));
 }
@@ -233,11 +236,12 @@ TEST_F(TestV2DeleteTest, InsertAndDeleteAndInsert) {
   std::shared_ptr<TsTable> ts_table;
   auto s = engine_->CreateTsTable(ctx_, table_id, &pb_meta, ts_table);
   ASSERT_EQ(s, KStatus::SUCCESS);
-  s = engine_->GetTsTable(ctx_, table_id, ts_table);
+  bool is_dropped = false;
+  s = engine_->GetTsTable(ctx_, table_id, ts_table, is_dropped);
   ASSERT_EQ(s, KStatus::SUCCESS);
 
   std::shared_ptr<TsTableSchemaManager> table_schema_mgr;
-  s = engine_->GetTableSchemaMgr(ctx_, table_id, table_schema_mgr);
+  s = engine_->GetTableSchemaMgr(ctx_, table_id, is_dropped, table_schema_mgr);
   ASSERT_EQ(s , KStatus::SUCCESS);
 
   const std::vector<AttributeInfo>* metric_schema;
@@ -255,7 +259,7 @@ TEST_F(TestV2DeleteTest, InsertAndDeleteAndInsert) {
   uint16_t inc_entity_cnt;
   uint32_t inc_unordered_cnt;
   DedupResult dedup_result{0, 0, 0, TSSlice {nullptr, 0}};
-  s = engine_->PutData(ctx_, table_id, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
+  s = engine_->PutData(ctx_, table_id, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result, is_dropped);
   ASSERT_EQ(s, KStatus::SUCCESS);
 
   std::vector<std::shared_ptr<TsVGroup>>* ts_vgroups = engine_->GetTsVGroups();
@@ -273,13 +277,13 @@ TEST_F(TestV2DeleteTest, InsertAndDeleteAndInsert) {
   uint64_t cur_osn = 1;
   std::string p_key = GetPrimaryKey(table_id, p_tag_entity_id);
   for (size_t i = 0; i < 5; i++) {
-    s = engine_->DeleteData(ctx_, table_id, 0, p_key, {{start_ts, start_ts + del_num * 1000 - 1}}, &tmp_count, 0, cur_osn++);
+    s = engine_->DeleteData(ctx_, table_id, 0, p_key, {{start_ts, start_ts + del_num * 1000 - 1}}, &tmp_count, 0, cur_osn++, is_dropped);
     ASSERT_EQ(s, KStatus::SUCCESS);
     KwTsSpan ts_span = {start_ts, INT64_MAX};
     CheckRowCount(table_schema_mgr, entity_v_group, 1, ts_span, (i + 1) * (row_num - del_num));
 
     TsRawPayload::SetOSN(pay_load, cur_osn);
-    s = engine_->PutData(ctx_, table_id, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
+    s = engine_->PutData(ctx_, table_id, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result, is_dropped);
     ASSERT_EQ(s, KStatus::SUCCESS);
     CheckRowCount(table_schema_mgr, entity_v_group, 1, ts_span, (i + 1) * (row_num - del_num) + row_num);
   }
@@ -293,11 +297,12 @@ TEST_F(TestV2DeleteTest, undoDelete) {
   std::shared_ptr<TsTable> ts_table;
   auto s = engine_->CreateTsTable(ctx_, table_id, &pb_meta, ts_table);
   ASSERT_EQ(s, KStatus::SUCCESS);
-  s = engine_->GetTsTable(ctx_, table_id, ts_table);
+  bool is_dropped = false;
+  s = engine_->GetTsTable(ctx_, table_id, ts_table, is_dropped);
   ASSERT_EQ(s, KStatus::SUCCESS);
 
   std::shared_ptr<TsTableSchemaManager> table_schema_mgr;
-  s = engine_->GetTableSchemaMgr(ctx_, table_id, table_schema_mgr);
+  s = engine_->GetTableSchemaMgr(ctx_, table_id, is_dropped, table_schema_mgr);
   ASSERT_EQ(s , KStatus::SUCCESS);
 
   const std::vector<AttributeInfo>* metric_schema;
@@ -314,7 +319,7 @@ TEST_F(TestV2DeleteTest, undoDelete) {
   uint16_t inc_entity_cnt;
   uint32_t inc_unordered_cnt;
   DedupResult dedup_result{0, 0, 0, TSSlice {nullptr, 0}};
-  s = engine_->PutData(ctx_, table_id, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
+  s = engine_->PutData(ctx_, table_id, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result, is_dropped);
   ASSERT_EQ(s, KStatus::SUCCESS);
 
   std::vector<std::shared_ptr<TsVGroup>>* ts_vgroups = engine_->GetTsVGroups();
@@ -339,7 +344,7 @@ TEST_F(TestV2DeleteTest, undoDelete) {
     KwTsSpan ts_span = {start_ts, INT64_MAX};
     CheckRowCount(table_schema_mgr, entity_v_group, 1, ts_span, 0);
     s = entity_v_group->undoDeleteData(ctx_, table_id, p_key, 10086000 + i * 5000, {{start_ts, INT64_MAX}});
-    s = engine_->PutData(ctx_, table_id, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
+    s = engine_->PutData(ctx_, table_id, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result, is_dropped);
     ASSERT_EQ(s, KStatus::SUCCESS);
     CheckRowCount(table_schema_mgr, entity_v_group, 1, ts_span, (i + 2) * row_num);
   }
@@ -353,11 +358,12 @@ TEST_F(TestV2DeleteTest, undoPutAndRedoPut) {
   std::shared_ptr<TsTable> ts_table;
   auto s = engine_->CreateTsTable(ctx_, table_id, &pb_meta, ts_table);
   ASSERT_EQ(s, KStatus::SUCCESS);
-  s = engine_->GetTsTable(ctx_, table_id, ts_table);
+  bool is_dropped = false;
+  s = engine_->GetTsTable(ctx_, table_id, ts_table, is_dropped);
   ASSERT_EQ(s, KStatus::SUCCESS);
 
   std::shared_ptr<TsTableSchemaManager> table_schema_mgr;
-  s = engine_->GetTableSchemaMgr(ctx_, table_id, table_schema_mgr);
+  s = engine_->GetTableSchemaMgr(ctx_, table_id, is_dropped, table_schema_mgr);
   ASSERT_EQ(s , KStatus::SUCCESS);
 
   const std::vector<AttributeInfo>* metric_schema;
@@ -374,7 +380,7 @@ TEST_F(TestV2DeleteTest, undoPutAndRedoPut) {
   uint16_t inc_entity_cnt;
   uint32_t inc_unordered_cnt;
   DedupResult dedup_result{0, 0, 0, TSSlice {nullptr, 0}};
-  s = engine_->PutData(ctx_, table_id, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
+  s = engine_->PutData(ctx_, table_id, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result, is_dropped);
   ASSERT_EQ(s, KStatus::SUCCESS);
 
   std::vector<std::shared_ptr<TsVGroup>>* ts_vgroups = engine_->GetTsVGroups();

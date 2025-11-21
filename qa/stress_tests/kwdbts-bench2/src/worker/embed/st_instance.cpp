@@ -34,7 +34,8 @@ uint64_t StInstance::rangeGroup() {
 KStatus StInstance::GetSchemaInfo(kwdbContext_p ctx, uint32_t table_id,
  std::vector<TagInfo>* tag_schema, std::vector<AttributeInfo>* data_schema) {
   std::shared_ptr<kwdbts::TsTableSchemaManager> schema;
-  KStatus s = ts_engine_->GetTableSchemaMgr(ctx, table_id, schema);
+  bool is_dropped = false;
+  KStatus s = ts_engine_->GetTableSchemaMgr(ctx, table_id, is_dropped, schema);
   if (s != KStatus::SUCCESS) {
     return s;
   }
@@ -161,7 +162,8 @@ KBStatus StInstance::Init(BenchParams params, std::vector<uint32_t> table_ids_) 
       log_ERROR("CreateKObjectTable fail");
     }
     std::shared_ptr<TsTable> ts_table;
-    s = ts_engine_->GetTsTable(g_contet_p, table_id, ts_table);
+    bool is_dropped = false;
+    s = ts_engine_->GetTsTable(g_contet_p, table_id, ts_table, is_dropped);
     if (s != kwdbts::KStatus::SUCCESS) {
       char buf[1024];
       (&g_contet_p->err_stack)->DumpToJson(buf, 1024);

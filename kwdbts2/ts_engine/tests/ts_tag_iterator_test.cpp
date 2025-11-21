@@ -59,11 +59,12 @@ TEST_F(TestEngine, tagiterator) {
   ASSERT_EQ(s, KStatus::SUCCESS);
 
   std::shared_ptr<TsTable> ts_table;
-  s = ts_engine_->GetTsTable(ctx_, cur_table_id, ts_table);
+  bool is_dropped = false;
+  s = ts_engine_->GetTsTable(ctx_, cur_table_id, ts_table, is_dropped);
   ASSERT_EQ(s, KStatus::SUCCESS);
 
   std::shared_ptr<TsTableSchemaManager> table_schema_mgr;
-  s = ts_engine_->GetTableSchemaMgr(ctx_, cur_table_id, table_schema_mgr);
+  s = ts_engine_->GetTableSchemaMgr(ctx_, cur_table_id, is_dropped, table_schema_mgr);
   ASSERT_EQ(s , KStatus::SUCCESS);
 
   const std::vector<AttributeInfo>* metric_schema{nullptr};
@@ -82,7 +83,7 @@ TEST_F(TestEngine, tagiterator) {
   uint16_t inc_entity_cnt;
   uint32_t inc_unordered_cnt;
   DedupResult dedup_result{0, 0, 0, TSSlice {nullptr, 0}};
-  s = ts_engine_->PutData(ctx_, ts_id, 0, &data_value, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result, true);
+  s = ts_engine_->PutData(ctx_, ts_id, 0, &data_value, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result, is_dropped, true);
   ASSERT_EQ(s , KStatus::SUCCESS);
   free(data_value.data);
 

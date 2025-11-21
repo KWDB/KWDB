@@ -758,6 +758,9 @@ KStatus TsVGroup::FlushImmSegment(const std::shared_ptr<TsMemSegment>& mem_seg) 
     std::shared_ptr<TsTableSchemaManager> table_schema_manager;
     auto s = schema_mgr_->GetTableSchemaMgr(table_id, table_schema_manager);
     if (s != KStatus::SUCCESS) {
+      if (table_schema_manager == nullptr) {
+        continue;
+      }
       LOG_ERROR("cannot get table[%lu] schemainfo.", table_id);
       return KStatus::FAIL;
     }
@@ -1906,11 +1909,11 @@ KStatus TsVGroup::Vacuum() {
         }
         std::shared_ptr<TsTableSchemaManager> tb_schema_mgr{nullptr};
         s = schema_mgr_->GetTableSchemaMgr(entity_item.table_id, tb_schema_mgr);
-        if (s != SUCCESS) {
+        if (s != SUCCESS && tb_schema_mgr != nullptr) {
           cancel_vacuumer = true;
           return s;
         }
-        if (tb_schema_mgr->IsDropped()) {
+        if (tb_schema_mgr == nullptr || tb_schema_mgr->IsDropped()) {
           TsEntityItem empty_entity_item{entity_id};
           empty_entity_item.table_id = entity_item.table_id;
           s = vacuumer->AppendEntityItem(empty_entity_item);

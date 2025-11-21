@@ -62,11 +62,12 @@ TEST_F(TestOffsetIteratorV2, basic) {
   std::shared_ptr<TsTable> ts_table;
   auto s = engine_->CreateTsTable(ctx_, table_id, &pb_meta, ts_table);
   ASSERT_EQ(s, KStatus::SUCCESS);
-  s = engine_->GetTsTable(ctx_, table_id, ts_table);
+  bool is_dropped = false;
+  s = engine_->GetTsTable(ctx_, table_id, ts_table, is_dropped);
   ASSERT_EQ(s, KStatus::SUCCESS);
 
   std::shared_ptr<TsTableSchemaManager> table_schema_mgr;
-  s = engine_->GetTableSchemaMgr(ctx_, table_id, table_schema_mgr);
+  s = engine_->GetTableSchemaMgr(ctx_, table_id, is_dropped, table_schema_mgr);
   ASSERT_EQ(s , KStatus::SUCCESS);
 
   const std::vector<AttributeInfo>* metric_schema{nullptr};
@@ -82,7 +83,7 @@ TEST_F(TestOffsetIteratorV2, basic) {
   uint16_t inc_entity_cnt;
   uint32_t inc_unordered_cnt;
   DedupResult dedup_result{0, 0, 0, TSSlice {nullptr, 0}};
-  s = engine_->PutData(ctx_, table_id, 0, &payload, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
+  s = engine_->PutData(ctx_, table_id, 0, &payload, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result, is_dropped);
   free(payload.data);
   ASSERT_EQ(s, KStatus::SUCCESS);
 
@@ -181,11 +182,12 @@ TEST_F(TestOffsetIteratorV2, multi_partition) {
   std::shared_ptr<TsTable> ts_table;
   auto s = engine_->CreateTsTable(ctx_, table_id, &pb_meta, ts_table);
   ASSERT_EQ(s, KStatus::SUCCESS);
-  s = engine_->GetTsTable(ctx_, table_id, ts_table);
+  bool is_dropped = false;
+  s = engine_->GetTsTable(ctx_, table_id, ts_table, is_dropped);
   ASSERT_EQ(s, KStatus::SUCCESS);
 
   std::shared_ptr<TsTableSchemaManager> table_schema_mgr;
-  s = engine_->GetTableSchemaMgr(ctx_, table_id, table_schema_mgr);
+  s = engine_->GetTableSchemaMgr(ctx_, table_id, is_dropped, table_schema_mgr);
   ASSERT_EQ(s , KStatus::SUCCESS);
 
   const std::vector<AttributeInfo>* metric_schema{nullptr};
@@ -201,19 +203,19 @@ TEST_F(TestOffsetIteratorV2, multi_partition) {
   uint16_t inc_entity_cnt;
   uint32_t inc_unordered_cnt;
   DedupResult dedup_result{0, 0, 0, TSSlice {nullptr, 0}};
-  s = engine_->PutData(ctx_, table_id, 0, &payload1, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
+  s = engine_->PutData(ctx_, table_id, 0, &payload1, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result, is_dropped);
   free(payload1.data);
   ASSERT_EQ(s, KStatus::SUCCESS);
 
   timestamp64 start_ts2 = 2.0 * 864000 * 1000;
   auto payload2 = GenRowPayload(*metric_schema, tag_schema ,table_id, 1, 1, 10000, start_ts2, 10);
-  s = engine_->PutData(ctx_, table_id, 0, &payload2, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
+  s = engine_->PutData(ctx_, table_id, 0, &payload2, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result, is_dropped);
   free(payload2.data);
   ASSERT_EQ(s, KStatus::SUCCESS);
 
   timestamp64 start_ts3 = 3.0 * 864000 * 1000;
   auto payload3 = GenRowPayload(*metric_schema, tag_schema ,table_id, 1, 1, 10000, start_ts3, 10);
-  s = engine_->PutData(ctx_, table_id, 0, &payload3, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
+  s = engine_->PutData(ctx_, table_id, 0, &payload3, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result, is_dropped);
   free(payload3.data);
   ASSERT_EQ(s, KStatus::SUCCESS);
 
@@ -312,11 +314,12 @@ TEST_F(TestOffsetIteratorV2, extreme) {
   std::shared_ptr<TsTable> ts_table;
   auto s = engine_->CreateTsTable(ctx_, table_id, &pb_meta, ts_table);
   ASSERT_EQ(s, KStatus::SUCCESS);
-  s = engine_->GetTsTable(ctx_, table_id, ts_table);
+  bool is_dropped = false;
+  s = engine_->GetTsTable(ctx_, table_id, ts_table, is_dropped);
   ASSERT_EQ(s, KStatus::SUCCESS);
 
   std::shared_ptr<TsTableSchemaManager> table_schema_mgr;
-  s = engine_->GetTableSchemaMgr(ctx_, table_id, table_schema_mgr);
+  s = engine_->GetTableSchemaMgr(ctx_, table_id, is_dropped, table_schema_mgr);
   ASSERT_EQ(s , KStatus::SUCCESS);
 
   const std::vector<AttributeInfo>* metric_schema{nullptr};
@@ -332,7 +335,7 @@ TEST_F(TestOffsetIteratorV2, extreme) {
   uint16_t inc_entity_cnt;
   uint32_t inc_unordered_cnt;
   DedupResult dedup_result{0, 0, 0, TSSlice {nullptr, 0}};
-  s = engine_->PutData(ctx_, table_id, 0, &payload1, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
+  s = engine_->PutData(ctx_, table_id, 0, &payload1, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result, is_dropped);
   free(payload1.data);
   ASSERT_EQ(s, KStatus::SUCCESS);
 
@@ -392,7 +395,7 @@ TEST_F(TestOffsetIteratorV2, extreme) {
 
   timestamp64 start_ts2 = 3600 * 1000 + 20;
   auto payload2 = GenRowPayload(*metric_schema, tag_schema ,table_id, 1, 1, 10000, start_ts2, 10);
-  s = engine_->PutData(ctx_, table_id, 0, &payload2, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
+  s = engine_->PutData(ctx_, table_id, 0, &payload2, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result, is_dropped);
   free(payload2.data);
   ASSERT_EQ(s, KStatus::SUCCESS);
 
@@ -462,7 +465,7 @@ TEST_F(TestOffsetIteratorV2, extreme) {
 //      // Write unordered data
 //      payload = GenRowPayload(metric_schema, tag_schema ,table_id, 1, 1, 100, disorder_ts + (i / 2) * 100 * 10, 10);
 //    }
-//    s = engine_->PutData(ctx_, table_id, 0, &payload, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
+//    s = engine_->PutData(ctx_, table_id, 0, &payload, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result, is_dropped);
 //    free(payload.data);
 //    ASSERT_EQ(s, KStatus::SUCCESS);
 //  }

@@ -70,7 +70,8 @@ TEST_F(TsBatchDataWorkerTest, TestTsBatchDataWorker) {
   ASSERT_EQ(s, KStatus::SUCCESS);
 
   std::shared_ptr<TsTableSchemaManager> schema_mgr;
-  s = engine_->GetTableSchemaMgr(ctx_, table_id, schema_mgr);
+  bool is_dropped = false;
+  s = engine_->GetTableSchemaMgr(ctx_, table_id, is_dropped, schema_mgr);
   ASSERT_EQ(s , KStatus::SUCCESS);
 
   const std::vector<AttributeInfo>* metric_schema{nullptr};
@@ -85,14 +86,14 @@ TEST_F(TsBatchDataWorkerTest, TestTsBatchDataWorker) {
   uint16_t inc_entity_cnt;
   uint32_t inc_unordered_cnt;
   DedupResult dedup_result{0, 0, 0, TSSlice {nullptr, 0}};
-  s = engine_->PutData(ctx_, table_id, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
+  s = engine_->PutData(ctx_, table_id, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result, is_dropped);
   free(pay_load.data);
 
   // read batch job
   uint64_t read_job_id = 1;
   TSSlice data;
   uint32_t row_num;
-  s = engine_->ReadBatchData(ctx_, table_id, 1, 0, UINT32_MAX, {INT64_MIN, INT64_MAX}, read_job_id, &data, &row_num);
+  s = engine_->ReadBatchData(ctx_, table_id, 1, 0, UINT32_MAX, {INT64_MIN, INT64_MAX}, read_job_id, &data, &row_num, is_dropped);
   ASSERT_EQ(s, KStatus::SUCCESS);
 
   std::string backup_data = std::string(data.data, data.len);
@@ -118,11 +119,11 @@ TEST_F(TsBatchDataWorkerTest, TestTsBatchDataWorker) {
   data.data = backup_data.data();
   data.len = backup_data.size();
   // first write
-  s = engine_->WriteBatchData(ctx_, table_id, 1, write_job_id, &data, &n_rows);
+  s = engine_->WriteBatchData(ctx_, table_id, 1, write_job_id, &data, &n_rows, is_dropped);
   ASSERT_EQ(s, KStatus::SUCCESS);
   ASSERT_EQ(n_rows, row_num);
   // second write
-  s = engine_->WriteBatchData(ctx_, table_id, 1, write_job_id, &data, &n_rows);
+  s = engine_->WriteBatchData(ctx_, table_id, 1, write_job_id, &data, &n_rows, is_dropped);
   ASSERT_EQ(s, KStatus::SUCCESS);
   ASSERT_EQ(n_rows, row_num);
   //  finish
@@ -139,8 +140,8 @@ TEST_F(TsBatchDataWorkerTest, TestTsBatchDataWorker) {
     auto entity_segment = p->GetEntitySegment();
     uint32_t entity_id = entity_segment->GetEntityNum();
     assert(entity_id == 1);
-    std::shared_ptr<TsTableSchemaManager> schema_mgr;
-    s = engine_->GetTableSchemaMgr(ctx_, table_id, schema_mgr);
+    schema_mgr = nullptr;
+    s = engine_->GetTableSchemaMgr(ctx_, table_id, is_dropped, schema_mgr);
     ASSERT_EQ(s, KStatus::SUCCESS);
     KwTsSpan ts_span{INT64_MIN, INT64_MAX};
     KwOSNSpan osn_span{0, UINT64_MAX};

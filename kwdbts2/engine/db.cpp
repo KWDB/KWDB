@@ -154,8 +154,12 @@ TSStatus TSGetMetaData(TSEngine* engine, TSTableID table_id, RangeGroup range, T
   }
 
   roachpb::CreateTsTable meta;  // Convert according to schema protobuf
-  s = engine->GetMetaData(ctx_p, table_id, range, &meta);
+  bool is_dropped = false;
+  s = engine->GetMetaData(ctx_p, table_id, range, &meta, is_dropped);
   if (s != KStatus::SUCCESS) {
+    if (is_dropped) {
+      return ToTsStatus("GetMetaData Error, table is dropped!");
+    }
     return ToTsStatus("GetTsTable Error!");
   }
   string meta_str;
@@ -177,8 +181,12 @@ TSStatus TSIsTsTableExist(TSEngine* engine, TSTableID table_id, bool* find) {
     return ToTsStatus("InitServerKWDBContext Error!");
   }
   std::shared_ptr<TsTable> tags_table;
-  s = engine->GetTsTable(ctx_p, table_id, tags_table);
+  bool is_dropped = false;
+  s = engine->GetTsTable(ctx_p, table_id, tags_table, is_dropped);
   if (s != KStatus::SUCCESS) {
+    if (is_dropped) {
+      return kTsSuccess;
+    }
     return ToTsStatus("GetTsTable Error!");
   }
   if (tags_table != nullptr) {
@@ -249,8 +257,12 @@ TSStatus TSPutEntity(TSEngine *engine, TSTableID tableId, TSSlice *payload, size
   if (s != KStatus::SUCCESS) {
     return ToTsStatus("InitServerKWDBContext Error!");
   }
-  s = engine->PutEntity(ctx_p, tableId, range_group.range_group_id, payload, payload_num, mtr_id);
+  bool is_dropped = false;
+  s = engine->PutEntity(ctx_p, tableId, range_group.range_group_id, payload, payload_num, mtr_id, is_dropped);
   if (s != KStatus::SUCCESS) {
+    if (is_dropped) {
+      return kTsSuccess;
+    }
     return ToTsStatus("PutEntity Error!");
   }
   return kTsSuccess;
@@ -356,8 +368,12 @@ TSStatus TsDeleteEntities(TSEngine *engine, TSTableID table_id, TSSlice *primary
   for (size_t i = 0; i < primary_tags_num; ++i) {
     p_tags.emplace_back(primary_tags[i].data, primary_tags[i].len);
   }
-  s = engine->DeleteEntities(ctx_p, table_id, range_group_id, p_tags, count, mtr_id, osn);
+  bool is_dropped = false;
+  s = engine->DeleteEntities(ctx_p, table_id, range_group_id, p_tags, count, mtr_id, is_dropped, osn);
   if (s != KStatus::SUCCESS) {
+    if (is_dropped) {
+      return kTsSuccess;
+    }
     return ToTsStatus("DeleteEntities Error!");
   }
   return kTsSuccess;
@@ -372,8 +388,12 @@ TSStatus TsDeleteRangeData(TSEngine *engine, TSTableID table_id, uint64_t range_
     return ToTsStatus("InitServerKWDBContext Error!");
   }
   std::vector<KwTsSpan> spans(ts_spans.spans, ts_spans.spans + ts_spans.len);
-  s = engine->DeleteRangeData(ctx_p, table_id, range_group_id, hash_span, spans, count, mtr_id, osn);
+  bool is_dropped = false;
+  s = engine->DeleteRangeData(ctx_p, table_id, range_group_id, hash_span, spans, count, mtr_id, osn, is_dropped);
   if (s != KStatus::SUCCESS) {
+    if (is_dropped) {
+      return kTsSuccess;
+    }
     return ToTsStatus("DeleteRangeData Error!");
   }
   return kTsSuccess;
@@ -390,8 +410,12 @@ TsDeleteData(TSEngine *engine, TSTableID table_id, uint64_t range_group_id, TSSl
   }
   std::string p_tag(primary_tag.data, primary_tag.len);
   std::vector<KwTsSpan> spans(ts_spans.spans, ts_spans.spans + ts_spans.len);
-  s = engine->DeleteData(ctx_p, table_id, range_group_id, p_tag, spans, count, mtr_id, osn);
+  bool is_dropped = false;
+  s = engine->DeleteData(ctx_p, table_id, range_group_id, p_tag, spans, count, mtr_id, osn, is_dropped);
   if (s != KStatus::SUCCESS) {
+    if (is_dropped) {
+      return kTsSuccess;
+    }
     return ToTsStatus("DeleteData Error!");
   }
   return kTsSuccess;
@@ -448,8 +472,12 @@ TSStatus TSCreateCheckpointForTable(TSEngine* engine, TSTableID table_id) {
   if (s != KStatus::SUCCESS) {
     return ToTsStatus("InitServerKWDBContext Error!");
   }
-  s = engine->CreateCheckpointForTable(ctx_p, table_id);
+  bool is_dropped = false;
+  s = engine->CreateCheckpointForTable(ctx_p, table_id, is_dropped);
   if (s != KStatus::SUCCESS) {
+    if (is_dropped) {
+      return kTsSuccess;
+    }
     return ToTsStatus("Checkpoint Error!");
   }
   return kTsSuccess;
@@ -550,8 +578,12 @@ TSStatus TSxBegin(TSEngine* engine, TSTableID table_id, char* transaction_id) {
   if (s != KStatus::SUCCESS) {
     return ToTsStatus("InitServerKWDBContext Error!");
   }
-  s = engine->TSxBegin(ctx_p, table_id, transaction_id);
+  bool is_dropped = false;
+  s = engine->TSxBegin(ctx_p, table_id, transaction_id, is_dropped);
   if (s != KStatus::SUCCESS) {
+    if (is_dropped) {
+      return kTsSuccess;
+    }
     return ToTsStatus("Failed to begin the TS transaction!");
   }
   return kTsSuccess;
@@ -564,8 +596,12 @@ TSStatus TSxCommit(TSEngine* engine, TSTableID table_id, char* transaction_id) {
   if (s != KStatus::SUCCESS) {
     return ToTsStatus("InitServerKWDBContext Error!");
   }
-  s = engine->TSxCommit(ctx_p, table_id, transaction_id);
+  bool is_dropped = false;
+  s = engine->TSxCommit(ctx_p, table_id, transaction_id, is_dropped);
   if (s != KStatus::SUCCESS) {
+    if (is_dropped) {
+      return kTsSuccess;
+    }
     return ToTsStatus("Failed to commit the TS transaction!");
   }
   return kTsSuccess;
@@ -578,8 +614,12 @@ TSStatus TSxRollback(TSEngine* engine, TSTableID table_id, char* transaction_id)
   if (s != KStatus::SUCCESS) {
     return ToTsStatus("InitServerKWDBContext Error!");
   }
-  s = engine->TSxRollback(ctx_p, table_id, transaction_id);
+  bool is_dropped = false;
+  s = engine->TSxRollback(ctx_p, table_id, transaction_id, is_dropped);
   if (s != KStatus::SUCCESS) {
+    if (is_dropped) {
+      return kTsSuccess;
+    }
     return ToTsStatus("Failed to rollback the TS transaction!");
   }
   return kTsSuccess;
@@ -737,8 +777,12 @@ TSStatus TSGetAvgTableRowSize(TSEngine* engine, TSTableID table_id, uint64_t* ro
   }
   ctx_p->ts_engine = engine;
   std::shared_ptr<TsTable> ts_tb;
-  s = engine->GetTsTable(ctx_p, table_id, ts_tb);
+  bool is_dropped = false;
+  s = engine->GetTsTable(ctx_p, table_id, ts_tb, is_dropped);
   if (s != KStatus::SUCCESS) {
+    if (is_dropped) {
+      return kTsSuccess;
+    }
     return ToTsStatus("GetTsTable Error!");
   }
   s = ts_tb->GetAvgTableRowSize(ctx_p, row_size);
@@ -760,8 +804,12 @@ TSStatus TSGetDataVolume(TSEngine* engine, TSTableID table_id, uint64_t begin_ha
   }
   ctx_p->ts_engine = engine;
   std::shared_ptr<TsTable> ts_tb;
-  s = engine->GetTsTable(ctx_p, table_id, ts_tb);
+  bool is_dropped = false;
+  s = engine->GetTsTable(ctx_p, table_id, ts_tb, is_dropped);
   if (s != KStatus::SUCCESS) {
+    if (is_dropped) {
+      return ToTsStatus("TsTable has already been dropped.");
+    }
     return ToTsStatus("GetTsTable Error!");
   }
   s = ts_tb->GetDataVolume(ctx_p, begin_hash, end_hash, ts_span, volume);
@@ -832,8 +880,12 @@ TSStatus TSGetDataVolumeHalfTS(TSEngine* engine, TSTableID table_id, uint64_t be
   }
   ctx_p->ts_engine = engine;
   std::shared_ptr<TsTable> ts_tb;
-  s = engine->GetTsTable(ctx_p, table_id, ts_tb);
+  bool is_dropped = false;
+  s = engine->GetTsTable(ctx_p, table_id, ts_tb, is_dropped);
   if (s != KStatus::SUCCESS) {
+    if (is_dropped) {
+      return ToTsStatus("TsTable has already been dropped.");
+    }
     return ToTsStatus("GetTsTable Error!");
   }
   s = ts_tb->GetDataVolumeHalfTS(ctx_p, begin_hash, end_hash, ts_span, half_ts);
@@ -861,8 +913,12 @@ TSStatus TSPutDataByRowType(TSEngine* engine, TSTableID table_id, TSSlice* paylo
   uint64_t tmp_range_group_id = *reinterpret_cast<uint16_t*>(payload_row[0].data + Payload::hash_point_id_offset_);
 
   std::shared_ptr<TsTable> ts_tb;
-  s = engine->GetTsTable(ctx_p, tmp_table_id, ts_tb);
+  bool is_dropped = false;
+  s = engine->GetTsTable(ctx_p, tmp_table_id, ts_tb, is_dropped);
   if (s != KStatus::SUCCESS) {
+    if (is_dropped) {
+      return ToTsStatus("TsTable has already been dropped.");
+    }
     return ToTsStatus("GetTsTable Error!");
   }
 
@@ -893,8 +949,12 @@ TSStatus TSPutDataByRowTypeExplicit(TSEngine* engine, TSTableID table_id, TSSlic
   uint64_t tmp_range_group_id = *reinterpret_cast<uint16_t*>(payload_row[0].data + Payload::hash_point_id_offset_);
 
   std::shared_ptr<TsTable> ts_tb;
-  s = engine->GetTsTable(ctx_p, tmp_table_id, ts_tb);
+  bool is_dropped = false;
+  s = engine->GetTsTable(ctx_p, tmp_table_id, ts_tb, is_dropped);
   if (s != KStatus::SUCCESS) {
+    if (is_dropped) {
+      return ToTsStatus("TsTable has already been dropped.");
+    }
     return ToTsStatus("GetTsTable Error!");
   }
   // todo(liangbo01) current interface dedup result no support multi-payload insert.
@@ -917,8 +977,12 @@ TSStatus TsTestGetAndAddSchemaVersion(TSEngine* engine, TSTableID table_id, uint
   }
 
   std::shared_ptr<TsTable> ts_tb;
-  s = engine->GetTsTable(ctx_p, table_id, ts_tb);
+  bool is_dropped = false;
+  s = engine->GetTsTable(ctx_p, table_id, ts_tb, is_dropped);
   if (s != KStatus::SUCCESS) {
+    if (is_dropped) {
+      return ToTsStatus("TsTable has already been dropped.");
+    }
     return ToTsStatus("GetTsTable Error!");
   }
 
@@ -939,9 +1003,13 @@ TSStatus TsDeleteTotalRange(TSEngine* engine, TSTableID table_id, uint64_t begin
     return ToTsStatus("InitServerKWDBContext Error!");
   }
   std::shared_ptr<TsTable> table;
-  s = engine->GetTsTable(ctx, table_id, table);
+  bool is_dropped = false;
+  s = engine->GetTsTable(ctx, table_id, table, is_dropped);
   if (s == KStatus::FAIL) {
     LOG_ERROR("TsDeleteTotalRange failed: GetTsTable failed, table id [%lu]", table_id)
+    if (is_dropped) {
+      return ToTsStatus("TsTable has already been dropped.");
+    }
     return ToTsStatus("get tstable Error!");
   }
   s = table->DeleteTotalRange(ctx, begin_hash, end_hash, ts_span, mtr_id, osn);
@@ -963,7 +1031,8 @@ TSStatus TSCreateSnapshotForRead(TSEngine* engine, TSTableID table_id, uint64_t 
   }
 
   ctx_p->ts_engine = engine;
-  s = engine->CreateSnapshotForRead(ctx_p, table_id, begin_hash, end_hash, ts_span, snapshot_id);
+  bool is_dropped = false;
+  s = engine->CreateSnapshotForRead(ctx_p, table_id, begin_hash, end_hash, ts_span, snapshot_id, is_dropped);
   if (s != KStatus::SUCCESS) {
     return ToTsStatus("CreateSnapshot Error!");
   }
@@ -980,7 +1049,8 @@ TSStatus TSGetSnapshotNextBatchData(TSEngine* engine, TSTableID table_id, uint64
   }
 
   ctx_p->ts_engine = engine;
-  s = engine->GetSnapshotNextBatchData(ctx_p, snapshot_id, data);
+  bool is_dropped = false;
+  s = engine->GetSnapshotNextBatchData(ctx_p, snapshot_id, data, is_dropped);
   if (s != KStatus::SUCCESS) {
     return ToTsStatus("GetSnapshotData Error!");
   }
@@ -997,7 +1067,8 @@ TSStatus TSCreateSnapshotForWrite(TSEngine* engine, TSTableID table_id, uint64_t
     return ToTsStatus("InitServerKWDBContext Error!");
   }
   ctx_p->ts_engine = engine;
-  s = engine->CreateSnapshotForWrite(ctx_p, table_id, begin_hash, end_hash, ts_span, snapshot_id, osn);
+  bool is_dropped = false;
+  s = engine->CreateSnapshotForWrite(ctx_p, table_id, begin_hash, end_hash, ts_span, snapshot_id, is_dropped, osn);
   if (s != KStatus::SUCCESS) {
     return ToTsStatus("InitSnapshot Error!");
   }
@@ -1014,7 +1085,8 @@ TSStatus TSWriteSnapshotBatchData(TSEngine* engine, TSTableID table_id, uint64_t
   }
 
   ctx_p->ts_engine = engine;
-  s = engine->WriteSnapshotBatchData(ctx_p, snapshot_id, data);
+  bool is_dropped = false;
+  s = engine->WriteSnapshotBatchData(ctx_p, snapshot_id, data, is_dropped);
   if (s != KStatus::SUCCESS) {
       return ToTsStatus("WriteSnapshotBatchData Error!");
   }
@@ -1079,7 +1151,8 @@ TSStatus TSReadBatchData(TSEngine* engine, TSTableID table_id, uint64_t table_ve
   if (s != KStatus::SUCCESS) {
     return ToTsStatus("InitServerKWDBContext Error!");
   }
-  s = engine->ReadBatchData(ctx, table_id, table_version, begin_hash, end_hash, ts_span, job_id, data, row_num);
+  bool is_dropped = false;
+  s = engine->ReadBatchData(ctx, table_id, table_version, begin_hash, end_hash, ts_span, job_id, data, row_num, is_dropped);
   if (s != KStatus::SUCCESS) {
     return ToTsStatus("ReadBatchData Error!");
   }
@@ -1094,7 +1167,8 @@ TSStatus TSWriteBatchData(TSEngine* engine, TSTableID table_id, uint64_t table_v
   if (s != KStatus::SUCCESS) {
     return ToTsStatus("InitServerKWDBContext Error!");
   }
-  s = engine->WriteBatchData(ctx, table_id, table_version, job_id, data, row_num);
+  bool is_dropped = false;
+  s = engine->WriteBatchData(ctx, table_id, table_version, job_id, data, row_num, is_dropped);
   if (s != KStatus::SUCCESS) {
     return ToTsStatus("WriteBatchData Error!");
   }
@@ -1161,7 +1235,8 @@ TSStatus TSAddColumn(TSEngine* engine, TSTableID table_id, char* transaction_id,
   }
 
   string err_msg;
-  s = engine->AddColumn(ctx_p, table_id, transaction_id, column, cur_version, new_version, err_msg);
+  bool is_dropped = false;
+  s = engine->AddColumn(ctx_p, table_id, transaction_id, is_dropped, column, cur_version, new_version, err_msg);
   if (s != KStatus::SUCCESS) {
     if (err_msg.empty()) {
       err_msg = "unknown error";
@@ -1174,22 +1249,23 @@ TSStatus TSAddColumn(TSEngine* engine, TSTableID table_id, char* transaction_id,
 
 TSStatus TSDropColumn(TSEngine* engine, TSTableID table_id, char* transaction_id, TSSlice column,
                       uint32_t cur_version, uint32_t new_version) {
-    kwdbContext_t context;
-    kwdbContext_p ctx_p = &context;
-    KStatus s = InitServerKWDBContext(ctx_p);
-    if (s != KStatus::SUCCESS) {
-        return ToTsStatus("InitServerKWDBContext Error");
+  kwdbContext_t context;
+  kwdbContext_p ctx_p = &context;
+  KStatus s = InitServerKWDBContext(ctx_p);
+  if (s != KStatus::SUCCESS) {
+      return ToTsStatus("InitServerKWDBContext Error");
+  }
+  string err_msg;
+  bool is_dropped = false;
+  s = engine->DropColumn(ctx_p, table_id, transaction_id, is_dropped, column, cur_version, new_version, err_msg);
+  if (s != KStatus::SUCCESS) {
+    if (err_msg.empty()) {
+      err_msg = "unknown error";
     }
-    string err_msg;
-    s = engine->DropColumn(ctx_p, table_id, transaction_id, column, cur_version, new_version, err_msg);
-    if (s != KStatus::SUCCESS) {
-      if (err_msg.empty()) {
-        err_msg = "unknown error";
-      }
-      return ToTsStatus(err_msg);
-    }
+    return ToTsStatus(err_msg);
+  }
 
-    return kTsSuccess;
+  return kTsSuccess;
 }
 
 TSStatus TSAlterColumnType(TSEngine* engine, TSTableID table_id, char* transaction_id,
@@ -1203,7 +1279,8 @@ TSStatus TSAlterColumnType(TSEngine* engine, TSTableID table_id, char* transacti
   }
 
   string err_msg;
-  s = engine->AlterColumnType(ctx_p, table_id, transaction_id, new_column, origin_column,
+  bool is_dropped = false;
+  s = engine->AlterColumnType(ctx_p, table_id, transaction_id, is_dropped, new_column, origin_column,
                               cur_version, new_version, err_msg);
   if (s != KStatus::SUCCESS) {
     if (err_msg.empty()) {
@@ -1217,33 +1294,35 @@ TSStatus TSAlterColumnType(TSEngine* engine, TSTableID table_id, char* transacti
 
 TSStatus TSCreateNormalTagIndex(TSEngine* engine, TSTableID table_id, uint64_t index_id, char* transaction_id,
                                 uint32_t cur_version, uint32_t new_version, IndexColumns index_columns) {
-    kwdbContext_t context;
-    kwdbContext_p ctx_p = &context;
-    KStatus s = InitServerKWDBContext(ctx_p);
-    if (s != KStatus::SUCCESS) {
-        return ToTsStatus("InitServerKWDBContext Error!");
-    }
-    std::vector<uint32_t> columns(index_columns.index_column, index_columns.index_column + index_columns.len);
-    s = engine->CreateNormalTagIndex(ctx_p, table_id, index_id, transaction_id, cur_version, new_version, columns);
-    if (s != KStatus::SUCCESS) {
-        return ToTsStatus("CreateNormalTagIndex Error!");
-    }
-    return kTsSuccess;
+  kwdbContext_t context;
+  kwdbContext_p ctx_p = &context;
+  KStatus s = InitServerKWDBContext(ctx_p);
+  if (s != KStatus::SUCCESS) {
+      return ToTsStatus("InitServerKWDBContext Error!");
+  }
+  std::vector<uint32_t> columns(index_columns.index_column, index_columns.index_column + index_columns.len);
+  bool is_dropped = false;
+  s = engine->CreateNormalTagIndex(ctx_p, table_id, index_id, transaction_id, is_dropped, cur_version, new_version, columns);
+  if (s != KStatus::SUCCESS) {
+      return ToTsStatus("CreateNormalTagIndex Error!");
+  }
+  return kTsSuccess;
 }
 
 TSStatus TSDropNormalTagIndex(TSEngine* engine, TSTableID table_id, uint64_t index_id, char* transaction_id,
                               uint32_t cur_version, uint32_t new_version) {
-    kwdbContext_t context;
-    kwdbContext_p ctx_p = &context;
-    KStatus s = InitServerKWDBContext(ctx_p);
-    if (s != KStatus::SUCCESS) {
-        return ToTsStatus("InitServerKWDBContext Error!");
-    }
-    s = engine->DropNormalTagIndex(ctx_p, table_id, index_id, transaction_id, cur_version, new_version);
-    if (s != KStatus::SUCCESS) {
-        return ToTsStatus("TSDropNormalTagIndex Error!");
-    }
-    return kTsSuccess;
+  kwdbContext_t context;
+  kwdbContext_p ctx_p = &context;
+  KStatus s = InitServerKWDBContext(ctx_p);
+  if (s != KStatus::SUCCESS) {
+      return ToTsStatus("InitServerKWDBContext Error!");
+  }
+  bool is_dropped = false;
+  s = engine->DropNormalTagIndex(ctx_p, table_id, index_id, transaction_id, is_dropped, cur_version, new_version);
+  if (s != KStatus::SUCCESS) {
+      return ToTsStatus("TSDropNormalTagIndex Error!");
+  }
+  return kTsSuccess;
 }
 
 
@@ -1268,7 +1347,8 @@ TSStatus TSAlterLifetime(TSEngine* engine, TSTableID table_id, uint64_t life_tim
   if (s != KStatus::SUCCESS) {
     return ToTsStatus("InitServerKWDBContext Error!");
   }
-  s = engine->AlterLifetime(ctx_p, table_id, life_time);
+  bool is_dropped = false;
+  s = engine->AlterLifetime(ctx_p, table_id, life_time, is_dropped);
   if (s != KStatus::SUCCESS) {
     return ToTsStatus("AlterLifetime Error!");
   }
@@ -1300,7 +1380,8 @@ TSStatus TsGetTableVersion(TSEngine* engine, TSTableID table_id, uint32_t* versi
   if (s != KStatus::SUCCESS) {
     return ToTsStatus("InitServerKWDBContext Error!");
   }
-  s = engine->GetTableVersion(ctx_p, table_id, version);
+  bool is_dropped = false;
+  s = engine->GetTableVersion(ctx_p, table_id, version, is_dropped);
   if (s != KStatus::SUCCESS) {
     return ToTsStatus("GetTableVersion Error!");
   }

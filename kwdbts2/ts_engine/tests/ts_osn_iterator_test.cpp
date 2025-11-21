@@ -54,7 +54,8 @@ class TestV2IteratorByOSN : public ::testing::Test {
     ConstructRoachpbTable(&pb_meta, table_id_);
     s = engine_->CreateTsTable(ctx_, table_id_, &pb_meta, ts_table_);
     EXPECT_EQ(s, KStatus::SUCCESS);
-    s = engine_->GetTableSchemaMgr(ctx_, table_id_, table_schema_mgr_);
+    bool is_dropped = false;
+    s = engine_->GetTableSchemaMgr(ctx_, table_id_, is_dropped, table_schema_mgr_);
     EXPECT_EQ(s , KStatus::SUCCESS);
     s = table_schema_mgr_->GetMetricMeta(1, &metric_schema_);
     EXPECT_EQ(s , KStatus::SUCCESS);
@@ -70,7 +71,8 @@ class TestV2IteratorByOSN : public ::testing::Test {
   }
     std::string GetPrimaryKey(TSEntityID dev_id) {
     std::shared_ptr<kwdbts::TsTableSchemaManager> schema_mgr;
-    KStatus s = engine_->GetTableSchemaMgr(ctx_, table_id_, schema_mgr);
+    bool is_dropped = false;
+    KStatus s = engine_->GetTableSchemaMgr(ctx_, table_id_, is_dropped, schema_mgr);
     EXPECT_EQ(s, KStatus::SUCCESS);
     std::vector<TagInfo> tag_schema;
     s = schema_mgr->GetTagMeta(1, tag_schema);
@@ -110,7 +112,8 @@ TEST_F(TestV2IteratorByOSN, basic_insert) {
   uint16_t inc_entity_cnt;
   uint32_t inc_unordered_cnt;
   DedupResult dedup_result{0, 0, 0, TSSlice {nullptr, 0}};
-  auto s = engine_->PutData(ctx_, table_id_, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
+  bool is_dropped = false;
+  auto s = engine_->PutData(ctx_, table_id_, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result, is_dropped);
   free(pay_load.data);
   ASSERT_EQ(s, KStatus::SUCCESS);
 
@@ -190,13 +193,14 @@ TEST_F(TestV2IteratorByOSN, basic_udpate) {
   uint16_t inc_entity_cnt;
   uint32_t inc_unordered_cnt;
   DedupResult dedup_result{0, 0, 0, TSSlice {nullptr, 0}};
-  auto s = engine_->PutData(ctx_, table_id_, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
+  bool is_dropped = false;
+  auto s = engine_->PutData(ctx_, table_id_, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result, is_dropped);
   ASSERT_EQ(s, KStatus::SUCCESS);
   TsRawPayload::SetOSN(pay_load, 1770000);
-  s = engine_->PutEntity(ctx_, table_id_, 1, &pay_load, 1, 0);
+  s = engine_->PutEntity(ctx_, table_id_, 1, &pay_load, 1, 0, is_dropped);
   ASSERT_EQ(s, KStatus::SUCCESS);
   TsRawPayload::SetOSN(pay_load, 1780000);
-  s = engine_->PutEntity(ctx_, table_id_, 1, &pay_load, 1, 0);
+  s = engine_->PutEntity(ctx_, table_id_, 1, &pay_load, 1, 0, is_dropped);
   ASSERT_EQ(s, KStatus::SUCCESS);
   free(pay_load.data);
   
@@ -304,20 +308,21 @@ TEST_F(TestV2IteratorByOSN, basic_delete) {
   uint16_t inc_entity_cnt;
   uint32_t inc_unordered_cnt;
   DedupResult dedup_result{0, 0, 0, TSSlice {nullptr, 0}};
-  auto s = engine_->PutData(ctx_, table_id_, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
+  bool is_dropped = false;
+  auto s = engine_->PutData(ctx_, table_id_, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result, is_dropped);
   uint64_t d_count = 0;
   // delete tag at 1770000
-  s = engine_->DeleteRangeEntities(ctx_, table_id_, 1, {0, UINT64_MAX}, &d_count, d_count, 1770000);
+  s = engine_->DeleteRangeEntities(ctx_, table_id_, 1, {0, UINT64_MAX}, &d_count, d_count, is_dropped, 1770000);
   ASSERT_EQ(s, KStatus::SUCCESS);
   ASSERT_EQ(d_count, 1);
   free(pay_load.data);
   pay_load = GenRowPayload(*metric_schema_, tag_schema_ ,table_id_, table_version, 1, 1, start_ts + 1000);
   TsRawPayload::SetOSN(pay_load, 1780000);
   // insert tag at 1780000
-  s = engine_->PutData(ctx_, table_id_, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
+  s = engine_->PutData(ctx_, table_id_, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result, is_dropped);
   ASSERT_EQ(s, KStatus::SUCCESS);
   // delete tag at 1790000
-  s = engine_->DeleteRangeEntities(ctx_, table_id_, 1, {0, UINT64_MAX}, &d_count, d_count, 1790000);
+  s = engine_->DeleteRangeEntities(ctx_, table_id_, 1, {0, UINT64_MAX}, &d_count, d_count, is_dropped, 1790000);
   ASSERT_EQ(s, KStatus::SUCCESS);
   ASSERT_EQ(d_count, 1);
   free(pay_load.data);
@@ -450,13 +455,14 @@ TEST_F(TestV2IteratorByOSN, basic_metric_insert) {
   uint16_t inc_entity_cnt;
   uint32_t inc_unordered_cnt;
   DedupResult dedup_result{0, 0, 0, TSSlice {nullptr, 0}};
-  auto s = engine_->PutData(ctx_, table_id_, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
+  bool is_dropped = false;
+  auto s = engine_->PutData(ctx_, table_id_, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result, is_dropped);
   ASSERT_EQ(s, KStatus::SUCCESS);
   TsRawPayload::SetOSN(pay_load, 1770000);
-  s = engine_->PutData(ctx_, table_id_, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
+  s = engine_->PutData(ctx_, table_id_, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result, is_dropped);
   ASSERT_EQ(s, KStatus::SUCCESS);
   TsRawPayload::SetOSN(pay_load, 1780000);
-  s = engine_->PutData(ctx_, table_id_, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
+  s = engine_->PutData(ctx_, table_id_, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result, is_dropped);
   ASSERT_EQ(s, KStatus::SUCCESS);
   free(pay_load.data);
 
@@ -532,7 +538,8 @@ TEST_F(TestV2IteratorByOSN, basic_metric_delete) {
   uint16_t inc_entity_cnt;
   uint32_t inc_unordered_cnt;
   DedupResult dedup_result{0, 0, 0, TSSlice {nullptr, 0}};
-  auto s = engine_->PutData(ctx_, table_id_, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
+  bool is_dropped = false;
+  auto s = engine_->PutData(ctx_, table_id_, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result, is_dropped);
   ASSERT_EQ(s, KStatus::SUCCESS);
 
   uint64_t pkey_mem = 1;
@@ -540,21 +547,21 @@ TEST_F(TestV2IteratorByOSN, basic_metric_delete) {
   std::vector<KwTsSpan> ts_spans;
   uint64_t r_count;
   ts_spans.push_back({0, 3600});
-  s = engine_->DeleteData(ctx_, table_id_, 1, pkey, ts_spans, &r_count, 0, 1770000);
+  s = engine_->DeleteData(ctx_, table_id_, 1, pkey, ts_spans, &r_count, 0, 1770000, is_dropped);
   ASSERT_EQ(s, KStatus::SUCCESS);
   TsRawPayload::SetOSN(pay_load, 1780000);
-  s = engine_->PutData(ctx_, table_id_, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
+  s = engine_->PutData(ctx_, table_id_, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result, is_dropped);
   ASSERT_EQ(s, KStatus::SUCCESS);
   ts_spans.clear();
   ts_spans.push_back({0, 13600});
-  s = engine_->DeleteData(ctx_, table_id_, 1, pkey, ts_spans, &r_count, 0, 1790000);
+  s = engine_->DeleteData(ctx_, table_id_, 1, pkey, ts_spans, &r_count, 0, 1790000, is_dropped);
   ASSERT_EQ(s, KStatus::SUCCESS);
   TsRawPayload::SetOSN(pay_load, 1800000);
-  s = engine_->PutData(ctx_, table_id_, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
+  s = engine_->PutData(ctx_, table_id_, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result, is_dropped);
   ASSERT_EQ(s, KStatus::SUCCESS);
   ts_spans.clear();
   ts_spans.push_back({0, 23600});
-  s = engine_->DeleteData(ctx_, table_id_, 1, pkey, ts_spans, &r_count, 0, 1810000);
+  s = engine_->DeleteData(ctx_, table_id_, 1, pkey, ts_spans, &r_count, 0, 1810000, is_dropped);
   ASSERT_EQ(s, KStatus::SUCCESS);
   free(pay_load.data);
 
@@ -650,7 +657,8 @@ TEST_F(TestV2IteratorByOSN, only_tag_data_exist) {
   uint16_t inc_entity_cnt;
   uint32_t inc_unordered_cnt;
   DedupResult dedup_result{0, 0, 0, TSSlice {nullptr, 0}};
-  auto s = engine_->PutData(ctx_, table_id_, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
+    bool is_dropped = false;
+  auto s = engine_->PutData(ctx_, table_id_, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result, is_dropped);
   ASSERT_EQ(s, KStatus::SUCCESS);
 
   uint64_t pkey_mem = 1;
@@ -658,7 +666,8 @@ TEST_F(TestV2IteratorByOSN, only_tag_data_exist) {
   std::vector<KwTsSpan> ts_spans;
   uint64_t r_count;
   ts_spans.push_back({0, 45600});
-  s = engine_->DeleteData(ctx_, table_id_, 1, pkey, ts_spans, &r_count, 0, 1770000);
+
+  s = engine_->DeleteData(ctx_, table_id_, 1, pkey, ts_spans, &r_count, 0, 1770000, is_dropped);
   ASSERT_EQ(s, KStatus::SUCCESS);
 
   std::vector<k_uint32> scan_cols = {0};
