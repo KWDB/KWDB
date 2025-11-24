@@ -687,6 +687,8 @@ func (n *createTableNode) startExec(params runParams) error {
 		if err = createAndExecCreateTSTableJob(params, desc, n); err != nil {
 			return err
 		}
+		// txn is already committed, make a new context to avoid context canceled.
+		params.ctx = context.Background()
 		var splitInfo []roachpb.AdminSplitInfoForTs
 		if splitInfo, err = distributeAndDuplicateOfCreateTSTable(params, desc); err != nil {
 			return err

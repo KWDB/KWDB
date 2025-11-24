@@ -1609,7 +1609,16 @@ func (ex *connExecutor) run(
 // ExecRestfulStmt is used for restful to execute sql statement
 func (h ConnectionHandler) ExecRestfulStmt(ctx context.Context) (RestfulRes, error) {
 	ex := h.ex
-	ex.activate(ctx, ex.server.pool, mon.BoundAccount{})
+	if !ex.activated {
+		ex.activate(ctx, ex.server.pool, mon.BoundAccount{})
+	}
+	ex.ctxHolder.connCtx = ctx
+
+	ex.goroutineID = goid.Get()
+	ex.sessionID = ex.generateID()
+	ex.server.cfg.SessionRegistry.register(ex.sessionID, ex)
+	ex.planner.extendedEvalCtx.setSessionID(ex.sessionID)
+	defer ex.server.cfg.SessionRegistry.deregister(ex.sessionID)
 	var restRes RestfulRes
 	cmd, pos, err := ex.stmtBuf.CurCmd()
 	if err != nil {

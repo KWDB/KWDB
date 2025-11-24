@@ -25,6 +25,7 @@
 package optbuilder
 
 import (
+	"context"
 	"fmt"
 	"sort"
 	"strings"
@@ -1664,12 +1665,14 @@ func (b *Builder) maybeAddNonExistsColumn(
 	for i := range addStmts {
 		// Retry while execution returns error.
 		for r := retry.Start(retryOpt); r.Next(); {
-			_, err := b.evalCtx.InternalExecutor.Query(b.evalCtx.Context, "auto add column", nil, addStmts[i])
+			_, err := b.evalCtx.InternalExecutor.Query(b.ctx, "auto add column", nil, addStmts[i])
 			if err != nil {
 				if IsInsertNoSchemaRetryableError(err) {
 					log.Warningf(b.ctx, "auto alter add failed: %s, err: %s\n", addStmts[i], err.Error())
 				} else if strings.Contains(err.Error(), "schema version") {
 					return false, err
+				} else if strings.Contains(err.Error(), "context canceled") {
+					b.ctx = context.Background()
 				} else {
 					break
 				}

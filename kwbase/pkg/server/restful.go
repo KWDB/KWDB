@@ -123,6 +123,8 @@ var (
 	reWaitForSuccess, _ = regexp.Compile(`.* Please wait for success$`)
 	// indicate errors that already exist in the table
 	reRelationAlreadyExists, _ = regexp.Compile(`relation .* already exists$`)
+	// txn retriable error
+	retriableErr, _ = regexp.Compile(`TransactionRetryWithProtoRefreshError: .*`)
 )
 
 const (
@@ -1762,6 +1764,10 @@ func (s *restfulServer) handleInfluxDB(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		return
 	}
+	connCache, err := s.checkConn(ctx, w, r)
+	if err != nil {
+		return
+	}
 	var rowsAffected int64
 	rowsAffected = 0
 	var teleResult sql.RestfulRes
@@ -1788,7 +1794,7 @@ func (s *restfulServer) handleInfluxDB(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 
-		teleResult, err = s.executeWithRetry(ctx, cancelConn, w, r, insertTelegraphStmt, createTelegrafStmt)
+		teleResult, err = s.executeWithRetry(ctx, connCache, insertTelegraphStmt, createTelegrafStmt)
 		if err != nil {
 			desc += "pq: " + err.Error() + ";"
 			code = RestfulResponseCodeFail
@@ -1830,7 +1836,10 @@ func (s *restfulServer) handleOpenTSDBTelnet(w http.ResponseWriter, r *http.Requ
 	if err != nil {
 		return
 	}
-
+	connCache, err := s.checkConn(ctx, w, r)
+	if err != nil {
+		return
+	}
 	var rowsAffected int64
 	rowsAffected = 0
 	var teleResult sql.RestfulRes
@@ -1850,7 +1859,7 @@ func (s *restfulServer) handleOpenTSDBTelnet(w http.ResponseWriter, r *http.Requ
 			continue
 		}
 
-		teleResult, err = s.executeWithRetry(ctx, cancelConn, w, r, insertStatement, createStatement)
+		teleResult, err = s.executeWithRetry(ctx, connCache, insertStatement, createStatement)
 		if err != nil {
 			desc += "pq: " + err.Error() + ";"
 			code = RestfulResponseCodeFail
@@ -1892,7 +1901,10 @@ func (s *restfulServer) handleOpenTSDBJson(w http.ResponseWriter, r *http.Reques
 	if err != nil {
 		return
 	}
-
+	connCache, err := s.checkConn(ctx, w, r)
+	if err != nil {
+		return
+	}
 	var rowsAffected int64
 	rowsAffected = 0
 	var teleResult sql.RestfulRes
@@ -1919,7 +1931,7 @@ func (s *restfulServer) handleOpenTSDBJson(w http.ResponseWriter, r *http.Reques
 			continue
 		}
 
-		teleResult, err = s.executeWithRetry(ctx, cancelConn, w, r, insertTelegraphStmt, createTelegrafStmt)
+		teleResult, err = s.executeWithRetry(ctx, connCache, insertTelegraphStmt, createTelegrafStmt)
 		if err != nil {
 			desc += "pq: " + err.Error() + ";"
 			code = RestfulResponseCodeFail
@@ -1951,11 +1963,7 @@ func refreshRequestTime(connCache *restfulConn) {
 
 // executeWithRetry handles retries in the event of a failure to write without a pattern
 func (s *restfulServer) executeWithRetry(
-	ctx context.Context,
-	cancel context.CancelFunc,
-	w http.ResponseWriter,
-	r *http.Request,
-	insertStmt, createStmt string,
+	ctx context.Context, connCache *restfulConn, insertStmt, createStmt string,
 ) (sql.RestfulRes, error) {
 	var execResult sql.RestfulRes
 	insert, err := parser.ParseOne(insertStmt)
@@ -1966,10 +1974,7 @@ func (s *restfulServer) executeWithRetry(
 	if err != nil {
 		return execResult, err
 	}
-	connCache, err := s.checkConn(ctx, w, r)
-	if err != nil {
-		return execResult, err
-	}
+
 	// initialize the time of the first retry
 	retryDelay := 1 * time.Second
 	for attempt := 0; attempt < maxRetries; attempt++ {
@@ -2001,15 +2006,16 @@ func (s *restfulServer) executeWithRetry(
 			execResult = re
 			if execResult.Err != nil {
 				createTableError := execResult.Err.Error()
-				if !reRelationAlreadyExists.MatchString(createTableError) && !reWaitForSuccess.MatchString(createTableError) {
+				if !reRelationAlreadyExists.MatchString(createTableError) && !reWaitForSuccess.MatchString(createTableError) && !retriableErr.MatchString(createTableError) {
 					return execResult, execResult.Err
-				} else if reWaitForSuccess.MatchString(createTableError) {
+				} else if reWaitForSuccess.MatchString(createTableError) || retriableErr.MatchString(createTableError) {
 					time.Sleep(retryDelay)
 					retryDelay *= 2
 				}
 			}
-		} else if reWaitForSuccess.MatchString(schemalessError) {
+		} else if reWaitForSuccess.MatchString(schemalessError) || retriableErr.MatchString(schemalessError) {
 			// reWaitForSuccess performs the following operations
+			log.Warningf(ctx, "exec error=%v\n", schemalessError)
 			time.Sleep(retryDelay)
 			retryDelay *= 2
 		} else {
