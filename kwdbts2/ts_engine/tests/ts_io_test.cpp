@@ -425,6 +425,14 @@ TEST(MMAP, TsMMapAllocFiletest) {
   delete f;
 }
 
+TEST(MMap, WriteEmptyFile_BUG_ID7BNN) {
+  TsIOEnv* env = &TsMMapIOEnv::GetInstance();
+  fs::remove("test");
+  std::unique_ptr<TsAppendOnlyFile> wfile;
+  env->NewAppendOnlyFile("test", &wfile);
+  wfile->Sync();
+}
+
 // TEST(MMap, FileLock) {
 //   TsIOEnv* env = &TsMMapIOEnv::GetInstance();
 //   std::string filename = "lock_test";

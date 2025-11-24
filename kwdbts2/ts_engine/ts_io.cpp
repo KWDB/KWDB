@@ -104,7 +104,9 @@ KStatus TsMMapAppendOnlyFile::Append(std::string_view data) {
 }
 
 KStatus TsMMapAppendOnlyFile::Sync() {
-  assert(synced_ != nullptr);
+  if (synced_ == nullptr) {
+    return SUCCESS;
+  }
   if (dest_ == synced_) {
     return SUCCESS;
   }

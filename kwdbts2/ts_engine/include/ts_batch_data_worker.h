@@ -371,6 +371,7 @@ class TsWriteBatchDataWorker : public TsBatchDataWorker {
     timestamp64 p_time;
     uint64_t data_length;
     uint32_t batch_version = INVALID_BATCH_VERSION;
+    uint32_t padding = 0;
   };
   std::unique_ptr<TsAppendOnlyFile> w_file_;
   KLatch w_file_latch_;
