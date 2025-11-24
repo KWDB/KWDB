@@ -476,7 +476,7 @@ KStatus TsVersionManager::ApplyUpdate(TsVersionUpdate *update) {
             const auto &last_segments = src_last_segments.GetLastSegments(level, group);
             for (auto &l : last_segments) {
               if (it->second.find(l->GetFileNumber()) == it->second.end()) {
-                tmp_container.AddLastSegment(level, group, std::move(l));
+                tmp_container.AddLastSegment(level, group, l);
               } else {
                 l->MarkDelete();
               }

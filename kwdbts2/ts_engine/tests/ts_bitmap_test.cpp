@@ -1,7 +1,9 @@
 #include "ts_bitmap.h"
 
 #include <gtest/gtest.h>
+
 #include <algorithm>
+#include <array>
 #include <random>
 
 using namespace kwdbts;

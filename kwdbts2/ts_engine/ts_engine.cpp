@@ -2057,6 +2057,17 @@ uint64_t begin_hash, uint64_t end_hash, const KwTsSpan& ts_span, uint64_t* snaps
   return KStatus::SUCCESS;
 }
 
+static inline uint64_t EncodeTableID(uint64_t table_id, uint32_t version) {
+  table_id &= 0x7FFFFFFF;
+  table_id |= (1ULL << 31);
+  return (static_cast<uint64_t>(version) << 32) | table_id;
+}
+static inline std::pair<uint64_t, uint8_t> DecodeTableID(uint64_t table_id) {
+  uint64_t table_id_mask = 0x7FFFFFFF;
+  uint8_t version = table_id >> 32;
+  return {table_id_mask & table_id, version};
+}
+
 KStatus TSEngineV2Impl::GetSnapshotNextBatchData(kwdbContext_p ctx, uint64_t snapshot_id, TSSlice* data) {
   TsRangeImgrationInfo ts_snapshot_info;
   {
@@ -2099,7 +2110,7 @@ KStatus TSEngineV2Impl::GetSnapshotNextBatchData(kwdbContext_p ctx, uint64_t sna
       map_info.imgrated_rows += row_num;
     }
     data_with_rownum += 4;
-    KUint64(data_with_rownum) = ts_snapshot_info.table_id;
+    KUint64(data_with_rownum) = EncodeTableID(ts_snapshot_info.table_id, 1);
     data_with_rownum += 8;
     KUint32(data_with_rownum) = ts_snapshot_info.table_version;
     data_with_rownum += 4;
@@ -2140,7 +2151,11 @@ KStatus TSEngineV2Impl::WriteSnapshotBatchData(kwdbContext_p ctx, uint64_t snaps
   char* data_with_rownum = data.data;
   auto package_id = KUint32(data_with_rownum);
   data_with_rownum += 4;
-  auto table_id = KUint64(data_with_rownum);
+  auto [table_id, snapshot_version] = DecodeTableID(KUint64(data_with_rownum));
+  if (snapshot_version > 1) {
+    LOG_ERROR("snapshot version [%u] not support on current kwbase version.", snapshot_version);
+    return FAIL;
+  }
   data_with_rownum += 8;
   auto table_version = KUint32(data_with_rownum);
   data_with_rownum += 4;

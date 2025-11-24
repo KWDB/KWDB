@@ -31,12 +31,12 @@ KStatus TsMMapAppendOnlyFile::UnmapCurrent() {
   if (mmap_start_ == nullptr) {
     return SUCCESS;
   }
-  int ok = msync(mmap_start_, mmap_end_ - mmap_start_, MS_SYNC);
-  if (ok < 0) {
-    LOG_ERROR("msync failed, reason: %s", strerror(errno));
-    return FAIL;
-  }
-  ok = munmap(mmap_start_, mmap_end_ - mmap_start_);
+  // int ok = msync(mmap_start_, mmap_end_ - mmap_start_, MS_SYNC);
+  // if (ok < 0) {
+  //   LOG_ERROR("msync failed, reason: %s", strerror(errno));
+  //   return FAIL;
+  // }
+  int ok = munmap(mmap_start_, mmap_end_ - mmap_start_);
   if (ok < 0) {
     LOG_ERROR("munmap failed, reason: %s", strerror(errno));
     return FAIL;
