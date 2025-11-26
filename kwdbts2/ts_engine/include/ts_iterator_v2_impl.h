@@ -231,13 +231,13 @@ class TsOffsetIteratorV2Impl : public TsIterator {
                 TsScanStats* ts_scan_stats = nullptr) override;
 
  private:
-  KStatus ScanPartitionBlockSpans(uint32_t* cnt);
+  KStatus ScanPartitionBlockSpans(uint32_t* cnt, TsScanStats* ts_scan_stats);
 
   KStatus divideBlockSpans(timestamp64 begin_ts, timestamp64 end_ts, uint32_t* lower_cnt,
                            deque<pair<pair<timestamp64, timestamp64>, std::shared_ptr<TsBlockSpan>>>& lower_block_span);
   KStatus filterLower(uint32_t* cnt);
   KStatus filterUpper(uint32_t filter_num, uint32_t* cnt);
-  KStatus filterBlockSpan();
+  KStatus filterBlockSpan(TsScanStats* ts_scan_stats);
 
   inline void GetTerminationTime() {
     switch (ts_col_type_) {
@@ -313,7 +313,7 @@ class TsRawDataIteratorV2ImplByOSN : public TsStorageIteratorV2Impl {
   bool IsDisordered() override { return true; }
 
  protected:
-  KStatus MoveToNextEntity(bool* is_finished);
+  KStatus MoveToNextEntity(bool* is_finished, TsScanStats* ts_scan_stats);
   KStatus ScanAndSortEntityData(timestamp64 ts);
   KStatus NextMetricDelRows(ResultSet* res, k_uint32* count, bool* is_finished);
   KStatus NextMetricInsertRows(ResultSet* res, k_uint32* count, bool* is_finished, TsScanStats* ts_scan_stats);

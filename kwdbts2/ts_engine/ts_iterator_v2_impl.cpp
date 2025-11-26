@@ -1023,7 +1023,7 @@ KStatus TsAggIteratorV2Impl::Aggregate(TsScanStats* ts_scan_stats) {
                               entity_ids_[cur_entity_index_], ts_col_type_, scan_osn_, ts_spans_};
     auto partition_version = ts_partitions_[cur_partition_index_];
     ts_block_spans_.clear();
-    auto ret = partition_version->GetBlockSpans(filter, &ts_block_spans_, table_schema_mgr_, schema_);
+    auto ret = partition_version->GetBlockSpans(filter, &ts_block_spans_, table_schema_mgr_, schema_, ts_scan_stats);
     if (ret != KStatus::SUCCESS) {
       LOG_ERROR("e_paritition GetBlockSpan failed.");
       return ret;
@@ -1045,7 +1045,7 @@ KStatus TsAggIteratorV2Impl::Aggregate(TsScanStats* ts_scan_stats) {
                               entity_ids_[cur_entity_index_], ts_col_type_, scan_osn_, ts_spans_};
     auto partition_version = ts_partitions_[cur_partition_index_];
     ts_block_spans_.clear();
-    auto ret = partition_version->GetBlockSpans(filter, &ts_block_spans_, table_schema_mgr_, schema_);
+    auto ret = partition_version->GetBlockSpans(filter, &ts_block_spans_, table_schema_mgr_, schema_, ts_scan_stats);
     if (ret != KStatus::SUCCESS) {
       LOG_ERROR("e_paritition GetBlockSpan failed.");
       return ret;
@@ -1066,7 +1066,7 @@ KStatus TsAggIteratorV2Impl::Aggregate(TsScanStats* ts_scan_stats) {
                                 entity_ids_[cur_entity_index_], ts_col_type_, scan_osn_, ts_spans_};
       auto partition_version = ts_partitions_[cur_partition_index_];
       ts_block_spans_.clear();
-      auto ret = partition_version->GetBlockSpans(filter, &ts_block_spans_, table_schema_mgr_, schema_);
+      auto ret = partition_version->GetBlockSpans(filter, &ts_block_spans_, table_schema_mgr_, schema_, ts_scan_stats);
       if (ret != KStatus::SUCCESS) {
         LOG_ERROR("e_paritition GetBlockSpan failed.");
         return ret;
@@ -1211,7 +1211,7 @@ KStatus TsAggIteratorV2Impl::CountAggregate(TsScanStats* ts_scan_stats) {
         TimestampCheckResult::NonOverlapping)) {
           KUint64(final_agg_data_[0].data) += count_header.valid_count + mem_count;
         } else {
-          ret = partition_version->GetBlockSpans(filter, &ts_block_spans_, table_schema_mgr_, schema_);
+          ret = partition_version->GetBlockSpans(filter, &ts_block_spans_, table_schema_mgr_, schema_, ts_scan_stats);
           if (ret != KStatus::SUCCESS) {
             LOG_ERROR("e_paritition GetBlockSpan failed.");
             return ret;
@@ -1219,7 +1219,7 @@ KStatus TsAggIteratorV2Impl::CountAggregate(TsScanStats* ts_scan_stats) {
         }
       }
     } else {
-      ret = partition_version->GetBlockSpans(filter, &ts_block_spans_, table_schema_mgr_, schema_);
+      ret = partition_version->GetBlockSpans(filter, &ts_block_spans_, table_schema_mgr_, schema_, ts_scan_stats);
       if (ret != KStatus::SUCCESS) {
         LOG_ERROR("e_paritition GetBlockSpan failed.");
         return ret;
@@ -2144,7 +2144,7 @@ KStatus TsOffsetIteratorV2Impl::filterUpper(uint32_t filter_num, uint32_t* cnt) 
   return KStatus::SUCCESS;
 }
 
-KStatus TsOffsetIteratorV2Impl::ScanPartitionBlockSpans(uint32_t* cnt) {
+KStatus TsOffsetIteratorV2Impl::ScanPartitionBlockSpans(uint32_t* cnt, TsScanStats* ts_scan_stats) {
   *cnt = 0;
   KStatus ret;
   for (const auto& it : p_time_it_->second) {
@@ -2156,7 +2156,7 @@ KStatus TsOffsetIteratorV2Impl::ScanPartitionBlockSpans(uint32_t* cnt) {
     for (auto entity_id : entity_ids) {
       ts_block_spans_.clear();
       TsScanFilterParams filter{db_id_, table_id_, vgroup_id, entity_id, ts_col_type_, scan_osn_, ts_spans_};
-      ret = partition_version->GetBlockSpans(filter, &ts_block_spans_, table_schema_mgr_, schema_);
+      ret = partition_version->GetBlockSpans(filter, &ts_block_spans_, table_schema_mgr_, schema_, ts_scan_stats);
       if (ret != KStatus::SUCCESS) {
         LOG_ERROR("GetBlockSpan failed.");
         return KStatus::FAIL;
@@ -2249,10 +2249,10 @@ KStatus TsOffsetIteratorV2Impl::Init(bool is_reversed) {
   return KStatus::SUCCESS;
 }
 
-KStatus TsOffsetIteratorV2Impl::filterBlockSpan() {
+KStatus TsOffsetIteratorV2Impl::filterBlockSpan(TsScanStats* ts_scan_stats) {
   Defer defer{[&]() { ts_block_spans_.clear(); }};
   uint32_t row_cnt = 0;
-  KStatus ret = ScanPartitionBlockSpans(&row_cnt);
+  KStatus ret = ScanPartitionBlockSpans(&row_cnt, ts_scan_stats);
   if (ret != KStatus::SUCCESS) {
     LOG_ERROR("call ScanPartitionBlockSpans failed.");
     return KStatus::FAIL;
@@ -2302,7 +2302,7 @@ KStatus TsOffsetIteratorV2Impl::Next(ResultSet* res, k_uint32* count, timestamp6
     if (p_time_it_ == p_times_.end() || queried_cnt >= offset_ + limit_ - filter_cnt_) {
       return KStatus::SUCCESS;
     }
-    ret = filterBlockSpan();
+    ret = filterBlockSpan(ts_scan_stats);
     if (ret != KStatus::SUCCESS) {
       LOG_ERROR("call filterBlockSpan failed.");
       return KStatus::FAIL;
@@ -2352,7 +2352,7 @@ KStatus TsRawDataIteratorV2ImplByOSN::Init() {
   return KStatus::SUCCESS;
 }
 
-KStatus TsRawDataIteratorV2ImplByOSN::MoveToNextEntity(bool* is_finished) {
+KStatus TsRawDataIteratorV2ImplByOSN::MoveToNextEntity(bool* is_finished, TsScanStats* ts_scan_stats) {
   ts_block_spans_.clear();
   cur_entity_index_++;
   if (cur_entity_index_ >= entitys_.size()) {
@@ -2364,7 +2364,7 @@ KStatus TsRawDataIteratorV2ImplByOSN::MoveToNextEntity(bool* is_finished) {
   auto op_osn = reinterpret_cast<OperatorInfoOfRecord*>(entitys_[cur_entity_index_].op_with_osn.get());
   if (op_osn->type != OperatorTypeOfRecord::OP_TYPE_TAG_DELETE) {
     for (auto& partition_version : ts_partitions_) {
-      auto s = partition_version->GetBlockSpans(*filter_, &ts_block_spans_, table_schema_mgr_, schema_);
+      auto s = partition_version->GetBlockSpans(*filter_, &ts_block_spans_, table_schema_mgr_, schema_, ts_scan_stats);
       if (s != KStatus::SUCCESS) {
         LOG_ERROR("partition_version GetBlockSpan failed.");
         return s;
@@ -2487,7 +2487,7 @@ KStatus TsRawDataIteratorV2ImplByOSN::NextMetricInsertRows(ResultSet* res, k_uin
   ts_block_spans_reserved_.clear();
   while (true) {
     if (ts_block_spans_.size() == 0) {
-      ret = MoveToNextEntity(is_finished);
+      ret = MoveToNextEntity(is_finished, ts_scan_stats);
       if (ret != KStatus::SUCCESS) {
         LOG_ERROR("MoveToNextEntity failed.");
         return ret;

@@ -273,7 +273,7 @@ EEIteratorErrCode TableStatisticScanOperator::Next(kwdbContext_p ctx, DataChunkP
     OPERATOR_DIRECT_ENCODING(ctx, output_encoding_, use_query_short_circuit_, thd, chunk);
     output_queue_.pop();
     auto end = std::chrono::high_resolution_clock::now();
-    fetcher_.Update(chunk->Count(), (end - start).count(), chunk->Count() * chunk->RowSize(), 0, 0, 0);
+    fetcher_.Update(chunk->Count(), (end - start).count(), chunk->Count() * chunk->RowSize(), 0, 0, 0, 0, &ts_scan_stats);
     if (code == EEIteratorErrCode::EE_END_OF_RECORD) {
       Return(EEIteratorErrCode::EE_OK)
     } else {
@@ -281,7 +281,7 @@ EEIteratorErrCode TableStatisticScanOperator::Next(kwdbContext_p ctx, DataChunkP
     }
   } else {
     auto end = std::chrono::high_resolution_clock::now();
-    fetcher_.Update(0, (end - start).count(), 0, 0, 0, 0);
+    fetcher_.Update(0, (end - start).count(), 0, 0, 0, 0, 0, &ts_scan_stats);
     if (is_done_) {
       Return(EEIteratorErrCode::EE_END_OF_RECORD);
     } else {
