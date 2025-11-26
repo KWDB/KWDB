@@ -225,7 +225,6 @@ func startForDistributeMode(ctx context.Context, tri *tsInserter) context.Contex
 				},
 				HeaderPrefix: tri.payloadPrefix[i],
 				Values:       pl.Row,
-				Timestamps:   pl.TimeStamps,
 				ValueSize:    pl.ValueSize,
 				HashNum:      pl.HashNum,
 			})

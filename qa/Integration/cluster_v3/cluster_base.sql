@@ -8,6 +8,7 @@ select count(1) from tsdb1.ts_t3;
 select count(1) from tsdb1.ts_t4;
 
 -- kill: c4
+-- sleep: 10s
 select count(*) from tsdb1.ts_t3;
 select count(*) from tsdb1.ts_t4;
 select count(1) from tsdb1.ts_t3;

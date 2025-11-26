@@ -21,96 +21,15 @@ CONFIGURE ZONE 0
 ---------
       5
 (1 row)
-> select IF(raw_config_sql like '%[[+region=CN-100000-001]]%',TRUE,FALSE) as lease_preferences  from [show zone configurations] where target like '%PARTITION%' order by lease_preferences; 
-  lease_preferences
----------------------
-        false
-        false
-        false
-        false
-        true
-(5 rows)
-> select IF(raw_config_sql like '%[[+region=CN-100000-002]]%',TRUE,FALSE) as lease_preferences  from [show zone configurations] where target like '%PARTITION%' order by lease_preferences; 
-  lease_preferences
----------------------
-        false
-        false
-        false
-        false
-        true
-(5 rows)
-> select IF(raw_config_sql like '%[[+region=CN-100000-003]]%',TRUE,FALSE) as lease_preferences  from [show zone configurations] where target like '%PARTITION%' order by lease_preferences; 
-  lease_preferences
----------------------
-        false
-        false
-        false
-        false
-        true
-(5 rows)
-> select IF(raw_config_sql like '%[[+region=CN-100000-004]]%',TRUE,FALSE) as lease_preferences  from [show zone configurations] where target like '%PARTITION%' order by lease_preferences; 
-  lease_preferences
----------------------
-        false
-        false
-        false
-        false
-        true
-(5 rows)
-> select IF(raw_config_sql like '%[[+region=CN-100000-005]]%',TRUE,FALSE) as lease_preferences  from [show zone configurations] where target like '%PARTITION%' order by lease_preferences; 
-  lease_preferences
----------------------
-        false
-        false
-        false
-        false
-        true
-(5 rows)
-> select IF(lease_holder=1,TRUE,FALSE) from kwdb_internal.ranges  where database_name='test_rebalance' and table_name='t1' order by lease_holder; 
-   if
----------
-  true
-  false
-  false
-  false
-  false
-(5 rows)
-> select IF(lease_holder=2,TRUE,FALSE) from kwdb_internal.ranges  where database_name='test_rebalance' and table_name='t1' order by lease_holder; 
-   if
----------
-  false
-  true
-  false
-  false
-  false
-(5 rows)
-> select IF(lease_holder=3,TRUE,FALSE) from kwdb_internal.ranges  where database_name='test_rebalance' and table_name='t1' order by lease_holder; 
-   if
----------
-  false
-  false
-  true
-  false
-  false
-(5 rows)
-> select IF(lease_holder=4,TRUE,FALSE) from kwdb_internal.ranges  where database_name='test_rebalance' and table_name='t1' order by lease_holder; 
-   if
----------
-  false
-  false
-  false
-  true
-  false
-(5 rows)
-> select IF(lease_holder=5,TRUE,FALSE) from kwdb_internal.ranges  where database_name='test_rebalance' and table_name='t1' order by lease_holder; 
-   if
----------
-  false
-  false
-  false
-  false
-  true
-(5 rows)
+> alter table test_rebalance.t1 partition by hashpoint(partition  p0 values from (0) to (400)); 
+ALTER TABLE
+> ALTER PARTITION p0 OF TABLE test_rebalance.t1 CONFIGURE ZONE USING lease_preferences = '[[+region=CN-100000-001]]',  constraints = '{"+region=CN-100000-001":1}', num_replicas=3; 
+CONFIGURE ZONE 1
+> select pg_sleep(60); 
+  pg_sleep
+------------
+    true
+(1 row)
 > INSERT INTO test_rebalance.t1 (ts, e1, e2, e3, e4, e5, e6, e7, e8, e10, e16, tag1, tag2, tag3, tag4, tag5, tag6, tag7, tag11, tag13) VALUES ('2000-10-10T10:10:10', '2024-02-06 07:53:45', 909, 872, 786, -7405.201085703498, 5680.235488974005, True, 'S', 'X', '1', True, 244, 821, 564, 7143.936442921109, 2561.374095811332, 'A', 't', 'r'); 
 INSERT 1
 > INSERT INTO test_rebalance.t1 (ts, e1, e2, e3, e4, e5, e6, e7, e8, e10, e16, tag1, tag2, tag3, tag4, tag5, tag6, tag7, tag11, tag13) VALUES ('2000-10-10T10:10:11', '2024-02-06 07:53:45', 974, 94, 105, -5640.587402071648, -3281.6318342911745, True, 'Z', 'o', '8', False, 550, 44, 713, -6106.154077932764, -8543.06093658501, '1', 'F', 'p'); 

@@ -41,6 +41,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/rpc/nodedialer"
 	"gitee.com/kwbasedb/kwbase/pkg/settings"
 	"gitee.com/kwbasedb/kwbase/pkg/settings/cluster"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
 	"gitee.com/kwbasedb/kwbase/pkg/util/grpcutil"
 	"gitee.com/kwbasedb/kwbase/pkg/util/hlc"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
@@ -1285,12 +1286,24 @@ func (ds *DistSender) divideAndSendTsRowPutBatch(
 		if !ok {
 			return nil, roachpb.NewError(errors.New("meet not-tsRowPutRequest"))
 		}
+		hashNum := rowReq.HashNum
+		tableID, hashPoint, err := sqlbase.DecodeTsRangeKey(rowReq.Key, true, hashNum)
+		if err != nil {
+			return nil, roachpb.NewError(err)
+		}
+
 		var descs []*roachpb.RangeDescriptor
 		var tokens []*EvictionToken
+		curHashpoint := hashPoint
+		curTableID := tableID
 		ri := NewRangeIterator(ds)
 		for ri.Seek(ctx, roachpb.RKey(rowReq.Key), Ascending); ri.Valid(); ri.Next(ctx) {
 			descs = append(descs, ri.desc)
 			tokens = append(tokens, ri.token)
+			tableID, hashPoint, err = sqlbase.DecodeTsRangeKey(ri.desc.EndKey, true, hashNum)
+			if hashPoint > curHashpoint || tableID > curTableID {
+				break
+			}
 		}
 		if len(descs) == 0 {
 			return nil, roachpb.NewError(errors.Errorf("failed seek any range descriptor, seekKey: %v", rowReq.Key))

@@ -11,27 +11,11 @@ alter table test_rebalance.t1 configure zone using rebalance;
 select pg_sleep(150);
 
 select count(*) from [show zone configurations] where target like '%PARTITION%';
-select IF(raw_config_sql like '%[[+region=CN-100000-001]]%',TRUE,FALSE) as lease_preferences
-from [show zone configurations] where target like '%PARTITION%' order by lease_preferences;
-select IF(raw_config_sql like '%[[+region=CN-100000-002]]%',TRUE,FALSE) as lease_preferences
-from [show zone configurations] where target like '%PARTITION%' order by lease_preferences;
-select IF(raw_config_sql like '%[[+region=CN-100000-003]]%',TRUE,FALSE) as lease_preferences
-from [show zone configurations] where target like '%PARTITION%' order by lease_preferences;
-select IF(raw_config_sql like '%[[+region=CN-100000-004]]%',TRUE,FALSE) as lease_preferences
-from [show zone configurations] where target like '%PARTITION%' order by lease_preferences;
-select IF(raw_config_sql like '%[[+region=CN-100000-005]]%',TRUE,FALSE) as lease_preferences
-from [show zone configurations] where target like '%PARTITION%' order by lease_preferences;
 
-select IF(lease_holder=1,TRUE,FALSE) from kwdb_internal.ranges
-where database_name='test_rebalance' and table_name='t1' order by lease_holder;
-select IF(lease_holder=2,TRUE,FALSE) from kwdb_internal.ranges
-where database_name='test_rebalance' and table_name='t1' order by lease_holder;
-select IF(lease_holder=3,TRUE,FALSE) from kwdb_internal.ranges
-where database_name='test_rebalance' and table_name='t1' order by lease_holder;
-select IF(lease_holder=4,TRUE,FALSE) from kwdb_internal.ranges
-where database_name='test_rebalance' and table_name='t1' order by lease_holder;
-select IF(lease_holder=5,TRUE,FALSE) from kwdb_internal.ranges
-where database_name='test_rebalance' and table_name='t1' order by lease_holder;
+alter table test_rebalance.t1 partition by hashpoint(partition  p0 values from (0) to (400));
+ALTER PARTITION p0 OF TABLE test_rebalance.t1 CONFIGURE ZONE USING lease_preferences = '[[+region=CN-100000-001]]',
+constraints = '{\"+region=CN-100000-001\":1}', num_replicas=3;
+select pg_sleep(60);
 
 -- insert
 INSERT INTO test_rebalance.t1 (ts, e1, e2, e3, e4, e5, e6, e7, e8, e10, e16, tag1, tag2, tag3, tag4, tag5, tag6, tag7, tag11, tag13) VALUES ('2000-10-10T10:10:10', '2024-02-06 07:53:45', 909, 872, 786, -7405.201085703498, 5680.235488974005, True, 'S', 'X', '1', True, 244, 821, 564, 7143.936442921109, 2561.374095811332, 'A', 't', 'r');

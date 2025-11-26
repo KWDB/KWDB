@@ -820,7 +820,6 @@ func (t *timeSeriesImportInfo) ingest(
 			},
 			HeaderPrefix: val.Payload,
 			Values:       val.RowBytes,
-			Timestamps:   val.RowTimestamps,
 			ValueSize:    val.ValueSize,
 			CloseWAL:     !t.writeWAL,
 			HashNum:      t.hashNum,
