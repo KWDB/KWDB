@@ -1431,6 +1431,54 @@ inline KStatus TsAggIteratorV2Impl::AddSumNotOverflowYet(uint32_t col_idx,
   return KStatus::SUCCESS;
 }
 
+inline KStatus TsAggIteratorV2Impl::AddSumNotOverflowYetByPreSum(uint32_t col_idx,
+                                                                 int32_t type,
+                                                                 void* current,
+                                                                 TSSlice& agg_data) {
+  bool over_flow = false;
+  switch (type) {
+    case DATATYPE::INT8:
+      over_flow = AddAggInteger<int64_t>(
+          *reinterpret_cast<int64_t*>(agg_data.data),
+          *reinterpret_cast<int64_t*>(current));
+      ConvertToDoubleIfOverflow(col_idx, over_flow, agg_data);
+      break;
+    case DATATYPE::INT16:
+      over_flow = AddAggInteger<int64_t>(
+          *reinterpret_cast<int64_t*>(agg_data.data),
+          *reinterpret_cast<int64_t*>(current));
+      ConvertToDoubleIfOverflow(col_idx, over_flow, agg_data);
+      break;
+    case DATATYPE::INT32:
+      over_flow = AddAggInteger<int64_t>(
+          *reinterpret_cast<int64_t*>(agg_data.data),
+          *reinterpret_cast<int64_t*>(current));
+      ConvertToDoubleIfOverflow(col_idx, over_flow, agg_data);
+      break;
+    case DATATYPE::INT64:
+      over_flow = AddAggInteger<int64_t>(
+          *reinterpret_cast<int64_t*>(agg_data.data),
+          *reinterpret_cast<int64_t*>(current));
+      ConvertToDoubleIfOverflow(col_idx, over_flow, agg_data);
+      break;
+    case DATATYPE::FLOAT:
+      AddAggFloat<double>(
+          *reinterpret_cast<double*>(agg_data.data),
+          *reinterpret_cast<double*>(current));
+      break;
+    case DATATYPE::DOUBLE:
+      AddAggFloat<double>(
+          *reinterpret_cast<double*>(agg_data.data),
+          *reinterpret_cast<double*>(current));
+      break;
+    default:
+    LOG_ERROR("Not supported for sum, datatype: %d", type);
+      return KStatus::FAIL;
+      break;
+  }
+  return KStatus::SUCCESS;
+}
+
 inline KStatus TsAggIteratorV2Impl::AddSumOverflow(int32_t type,
                                                     void* current,
                                                     TSSlice& agg_data) {
@@ -1462,6 +1510,43 @@ inline KStatus TsAggIteratorV2Impl::AddSumOverflow(int32_t type,
       break;
     default:
       LOG_ERROR("Not supported for sum, datatype: %d", type);
+      return KStatus::FAIL;
+      break;
+  }
+  return KStatus::SUCCESS;
+}
+
+inline KStatus TsAggIteratorV2Impl::AddSumOverflowByPreSum(int32_t type,
+                                                           void* current,
+                                                           TSSlice& agg_data) {
+  switch (type) {
+    case DATATYPE::INT8:
+      AddAggFloat<double, int64_t>(
+          *reinterpret_cast<double*>(agg_data.data),
+          *reinterpret_cast<int64_t*>(current));
+      break;
+    case DATATYPE::INT16:
+      AddAggFloat<double, int64_t>(
+          *reinterpret_cast<double*>(agg_data.data),
+          *reinterpret_cast<int64_t*>(current));
+      break;
+    case DATATYPE::INT32:
+      AddAggFloat<double, int64_t>(
+          *reinterpret_cast<double*>(agg_data.data),
+          *reinterpret_cast<int64_t*>(current));
+      break;
+    case DATATYPE::INT64:
+      AddAggFloat<double, int64_t>(
+          *reinterpret_cast<double*>(agg_data.data),
+          *reinterpret_cast<int64_t*>(current));
+      break;
+    case DATATYPE::FLOAT:
+    case DATATYPE::DOUBLE:
+    LOG_ERROR("Overflow not supported for sum, datatype: %d", type);
+      return KStatus::FAIL;
+      break;
+    default:
+    LOG_ERROR("Not supported for sum, datatype: %d", type);
       return KStatus::FAIL;
       break;
   }
@@ -1606,15 +1691,15 @@ KStatus TsAggIteratorV2Impl::UpdateAggregation(std::shared_ptr<TsBlockSpan>& blo
       }
       if (!is_overflow_[idx]) {
         if (!pre_sum_is_overflow) {
-          ret = AddSumNotOverflowYet(idx, type, pre_sum, agg_data);
+          ret = AddSumNotOverflowYetByPreSum(idx, type, pre_sum, agg_data);
         } else {
-          ret = AddSumNotOverflowYet(idx, DATATYPE::DOUBLE, pre_sum, agg_data);
+          ret = AddSumNotOverflowYetByPreSum(idx, DATATYPE::DOUBLE, pre_sum, agg_data);
         }
       } else {
         if (!pre_sum_is_overflow) {
-          ret = AddSumOverflow(type, pre_sum, agg_data);
+          ret = AddSumOverflowByPreSum(type, pre_sum, agg_data);
         } else {
-          ret = AddSumOverflow(DATATYPE::DOUBLE, pre_sum, agg_data);
+          ret = AddSumOverflowByPreSum(DATATYPE::DOUBLE, pre_sum, agg_data);
         }
       }
       if (ret != KStatus::SUCCESS) {
