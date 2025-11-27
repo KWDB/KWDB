@@ -95,7 +95,7 @@ class OperatorTestBase : public ::testing::Test {
 
   kwdbContext_t test_context;
   kwdbContext_p ctx_ = &test_context;
-  TSEngineV2Impl* engine_{nullptr};
+  TSEngineImpl* engine_{nullptr};
   KTableId table_id_{0};
 };
 

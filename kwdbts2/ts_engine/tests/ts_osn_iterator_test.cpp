@@ -19,7 +19,7 @@ const string engine_root_path = "./tsdb";
 class TestV2IteratorByOSN : public ::testing::Test {
  public:
   EngineOptions opts_;
-  TSEngineV2Impl *engine_;
+  TSEngineImpl *engine_;
   kwdbContext_t g_ctx_;
   kwdbContext_p ctx_;
   TSTableID table_id_ = 999;
@@ -46,7 +46,7 @@ class TestV2IteratorByOSN : public ::testing::Test {
     opts_.db_path = engine_root_path;
     Remove(engine_root_path);
     MakeDirectory(engine_root_path);
-    engine_ = new TSEngineV2Impl(opts_);
+    engine_ = new TSEngineImpl(opts_);
     auto s = engine_->Init(ctx_);
     EXPECT_EQ(s, KStatus::SUCCESS);
 

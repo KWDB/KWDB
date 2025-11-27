@@ -316,10 +316,10 @@ class TsBatchDataWorker {
   }
 };
 
-class TSEngineV2Impl;
+class TSEngineImpl;
 class TsReadBatchDataWorker : public TsBatchDataWorker {
  private:
-  TSEngineV2Impl* ts_engine_;
+  TSEngineImpl* ts_engine_;
   TSTableID table_id_;
   uint64_t table_version_;
   KwTsSpan ts_span_;
@@ -346,7 +346,7 @@ class TsReadBatchDataWorker : public TsBatchDataWorker {
   KStatus GenerateBatchData(kwdbContext_p ctx, std::shared_ptr<TsBlockSpan> block_span);
 
  public:
-  TsReadBatchDataWorker(TSEngineV2Impl* ts_engine, TSTableID table_id, uint64_t table_version, KwTsSpan ts_span,
+  TsReadBatchDataWorker(TSEngineImpl* ts_engine, TSTableID table_id, uint64_t table_version, KwTsSpan ts_span,
                         uint64_t job_id, vector<EntityResultIndex> entity_indexes_);
 
   KStatus Init(kwdbContext_p ctx) override;
@@ -361,7 +361,7 @@ class TsReadBatchDataWorker : public TsBatchDataWorker {
 
 class TsWriteBatchDataWorker : public TsBatchDataWorker {
  private:
-  TSEngineV2Impl* ts_engine_;
+  TSEngineImpl* ts_engine_;
 
   struct BatchDataHeader {
     TSTableID table_id;
@@ -379,7 +379,7 @@ class TsWriteBatchDataWorker : public TsBatchDataWorker {
   KStatus GetTagPayload(uint32_t table_version, TSSlice* data, std::string& tag_payload_str);
 
  public:
-  TsWriteBatchDataWorker(TSEngineV2Impl* ts_engine, uint64_t job_id);
+  TsWriteBatchDataWorker(TSEngineImpl* ts_engine, uint64_t job_id);
   ~TsWriteBatchDataWorker();
 
   KStatus Init(kwdbContext_p ctx) override;

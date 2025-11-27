@@ -23,12 +23,12 @@ namespace kwdbts {
 
 RangeGroup test_range{default_entitygroup_id_in_dist_v2, 0};
 
-TSEngineV2Impl* CreateTestTsEngine(kwdbContext_p ctx, const string& db_path) {
+TSEngineImpl* CreateTestTsEngine(kwdbContext_p ctx, const string& db_path) {
   EngineOptions opts;
   opts.wal_level = 0;
   opts.db_path = db_path;
   system(("rm -rf " + db_path + "/*").c_str());
-  auto* ts_engine = new TSEngineV2Impl(opts);
+  auto* ts_engine = new TSEngineImpl(opts);
   auto s = ts_engine->Init(ctx);
   EXPECT_EQ(s, KStatus::SUCCESS);
   ctx->ts_engine = ts_engine;
@@ -38,7 +38,7 @@ TSEngineV2Impl* CreateTestTsEngine(kwdbContext_p ctx, const string& db_path) {
 }
 
 void CloseTestTsEngine(kwdbContext_p ctx) {
-  auto* ts_engine = static_cast<TSEngineV2Impl*>(ctx->ts_engine);
+  auto* ts_engine = static_cast<TSEngineImpl*>(ctx->ts_engine);
   if (ts_engine) {
     delete ts_engine;
   }

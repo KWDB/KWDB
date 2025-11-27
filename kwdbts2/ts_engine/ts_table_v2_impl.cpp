@@ -262,7 +262,7 @@ KStatus TsTableV2Impl::GetNormalIterator(kwdbContext_p ctx, const IteratorParams
     vgroup_ids[entity.subGroupId - 1].push_back(entity.entityId);
   }
   std::shared_ptr<TsVGroup> vgroup;
-  TSEngineV2Impl* ts_engine = static_cast<TSEngineV2Impl*>(ctx->ts_engine);
+  TSEngineImpl* ts_engine = static_cast<TSEngineImpl*>(ctx->ts_engine);
   std::vector<std::shared_ptr<TsVGroup>>* ts_vgroups = ts_engine->GetTsVGroups();
   for (auto& vgroup_iter : vgroup_ids) {
     if (vgroup_iter.first >= EngineOptions::vgroup_max_num) {
@@ -1288,7 +1288,7 @@ KStatus TsTableV2Impl::GetMetricIteratorByOSN(kwdbContext_p ctx, k_uint32 table_
     vgroup_ids[entity.subGroupId - 1].push_back(entity);
   }
   std::shared_ptr<TsVGroup> vgroup;
-  TSEngineV2Impl* ts_engine = static_cast<TSEngineV2Impl*>(ctx->ts_engine);
+  TSEngineImpl* ts_engine = static_cast<TSEngineImpl*>(ctx->ts_engine);
   std::vector<std::shared_ptr<TsVGroup>>* ts_vgroups = ts_engine->GetTsVGroups();
   for (auto& vgroup_iter : vgroup_ids) {
     if (vgroup_iter.first >= EngineOptions::vgroup_max_num) {

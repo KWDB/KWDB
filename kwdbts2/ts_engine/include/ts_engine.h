@@ -59,7 +59,7 @@ struct TsRangeImgrationInfo {
 /**
  * @brief TSEngineV2Impl
  */
-class TSEngineV2Impl : public TSEngine {
+class TSEngineImpl : public TSEngine {
  private:
   std::unique_ptr<TsEngineSchemaManager> schema_mgr_ = nullptr;
   std::vector<std::shared_ptr<TsVGroup>> vgroups_;
@@ -85,9 +85,9 @@ class TSEngineV2Impl : public TSEngine {
   PartitionIntervalRecorder* interval_recorder_ = nullptr;
 
  public:
-  explicit TSEngineV2Impl(const EngineOptions& engine_options);
+  explicit TSEngineImpl(const EngineOptions& engine_options);
 
-  ~TSEngineV2Impl() override;
+  ~TSEngineImpl() override;
 
   KStatus CreateTsTable(kwdbContext_p ctx, const KTableKey& table_id, roachpb::CreateTsTable* meta,
                         std::vector<RangeGroup> ranges, bool not_get_table) override;
@@ -134,7 +134,7 @@ class TSEngineV2Impl : public TSEngine {
   }
 
   KStatus InsertTagData(kwdbContext_p ctx, const KTableKey& table_id, uint64_t mtr_id, TSSlice payload_data,
-                        bool write_wal, uint32_t& vgroup, TSEntityID& entity_id, bool& is_dropped);
+                        bool write_wal, uint32_t& vgroup, TSEntityID& entity_id);
 
   KStatus
   GetMetaData(kwdbContext_p ctx, const KTableKey& table_id, RangeGroup range, roachpb::CreateTsTable* meta,
@@ -330,8 +330,7 @@ class TSEngineV2Impl : public TSEngine {
  private:
   TsVGroup* GetVGroupByID(kwdbContext_p ctx, uint32_t vgroup_id);
 
-  KStatus putTagData(kwdbContext_p ctx, TSTableID table_id, uint32_t groupid, uint32_t entity_id, TsRawPayload& payload,
-    bool& is_dropped);
+  KStatus putTagData(kwdbContext_p ctx, TSTableID table_id, uint32_t groupid, uint32_t entity_id, TsRawPayload& payload);
 
   uint64_t insertToSnapshotCache(TsRangeImgrationInfo& snapshot);
 

@@ -30,8 +30,8 @@ class TestEngineSnapshotImgrate : public ::testing::Test {
   kwdbContext_t context_;
   kwdbContext_p ctx_;
   EngineOptions opts_;
-  TSEngineV2Impl* ts_engine_src_;
-  TSEngineV2Impl* ts_engine_desc_;
+  TSEngineImpl* ts_engine_src_;
+  TSEngineImpl* ts_engine_desc_;
 
   virtual void SetUp() override {
     ctx_ = &context_;
@@ -51,7 +51,7 @@ class TestEngineSnapshotImgrate : public ::testing::Test {
     InitServerKWDBContext(ctx_);
     opts_.db_path = db_path + "/srcdb/";
     // clear path files.
-    auto engine = new TSEngineV2Impl(opts_);
+    auto engine = new TSEngineImpl(opts_);
     auto s = engine->Init(ctx_);
     if (s != KStatus::SUCCESS) {
       std::cout << "engine init failed." << std::endl;
@@ -60,7 +60,7 @@ class TestEngineSnapshotImgrate : public ::testing::Test {
     ts_engine_src_ = engine;
 
     opts_.db_path = db_path + "/descdb/";
-    engine = new TSEngineV2Impl(opts_);
+    engine = new TSEngineImpl(opts_);
     s = engine->Init(ctx_);
     MakeDirectory(opts_.db_path + "/temp_db_");
     if (s != KStatus::SUCCESS) {
@@ -82,7 +82,7 @@ class TestEngineSnapshotImgrate : public ::testing::Test {
     }
   }
   
-  void InsertData(TSEngineV2Impl* ts_e, TSTableID table_id, TSEntityID dev_id, timestamp64 start_ts, int num, KTimestamp interval = 1000, TS_OSN osn = 10) {
+  void InsertData(TSEngineImpl* ts_e, TSTableID table_id, TSEntityID dev_id, timestamp64 start_ts, int num, KTimestamp interval = 1000, TS_OSN osn = 10) {
     std::shared_ptr<kwdbts::TsTableSchemaManager> schema_mgr;
     bool is_dropped = false;
     KStatus s = ts_e->GetTableSchemaMgr(ctx_, table_id, is_dropped, schema_mgr);
@@ -103,7 +103,7 @@ class TestEngineSnapshotImgrate : public ::testing::Test {
     EXPECT_EQ(s , KStatus::SUCCESS);
     free(pay_load.data);
   }
-  void UpdateTag(TSEngineV2Impl* ts_e, TSTableID table_id, TSEntityID dev_id, TS_OSN osn) {
+  void UpdateTag(TSEngineImpl* ts_e, TSTableID table_id, TSEntityID dev_id, TS_OSN osn) {
     std::shared_ptr<kwdbts::TsTableSchemaManager> schema_mgr;
     bool is_dropped = false;
     KStatus s = ts_e->GetTableSchemaMgr(ctx_, table_id, is_dropped, schema_mgr);
@@ -136,7 +136,7 @@ class TestEngineSnapshotImgrate : public ::testing::Test {
     }
   }
 
-  uint64_t GetDataNum(TSEngineV2Impl* ts_e, TSTableID table_id, EntityResultIndex dev_id, KwTsSpan ts_span) {
+  uint64_t GetDataNum(TSEngineImpl* ts_e, TSTableID table_id, EntityResultIndex dev_id, KwTsSpan ts_span) {
     std::shared_ptr<TsTable> ts_table_dest;
     bool is_dropped = false;
     auto s = ts_e->GetTsTable(ctx_, table_id, ts_table_dest, is_dropped);
@@ -148,7 +148,7 @@ class TestEngineSnapshotImgrate : public ::testing::Test {
     ts_table_v2->GetEntityRowCount(ctx_, devs, {ts_span}, &row_count);
     return row_count;
   }
-  std::string GetPrimaryKey(TSEngineV2Impl* ts_e, TSTableID table_id, TSEntityID dev_id) {
+  std::string GetPrimaryKey(TSEngineImpl* ts_e, TSTableID table_id, TSEntityID dev_id) {
     std::shared_ptr<kwdbts::TsTableSchemaManager> schema_mgr;
     bool is_dropped = false;
     KStatus s = ts_e->GetTableSchemaMgr(ctx_, table_id, is_dropped, schema_mgr);
@@ -414,7 +414,7 @@ TEST_F(TestEngineSnapshotImgrate, CreateSnapshotAndInsertPartitions) {
 
   // recover 
   delete ts_engine_desc_;
-  ts_engine_desc_ = new TSEngineV2Impl(opts_);
+  ts_engine_desc_ = new TSEngineImpl(opts_);
   ts_engine_desc_->Init(ctx_);
 
   entity_ids.clear();

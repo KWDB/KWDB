@@ -234,16 +234,15 @@ KStatus TsEngineSchemaManager::GetTableSchemaMgr(TSTableID tbl_id,
                                                  std::shared_ptr<TsTableSchemaManager>& tb_schema_mgr) {
   assert(tbl_id != 0);
   rdLock();
-  std::string file_name = schema_root_path_ / ("." +to_string(tbl_id));
-  if (DropTableManager::getInstance().isTableDropped(tbl_id) || fs::exists(file_name)) {
-    LOG_WARN("Table[%ld] has already been dropped.", tbl_id);
-    tb_schema_mgr = nullptr;
-    unLock();
-    return KStatus::FAIL;
-  }
   auto it = table_schema_mgrs_.find(tbl_id);
   if (it == table_schema_mgrs_.end()) {
     unLock();
+    std::string file_name = schema_root_path_ / ("." +to_string(tbl_id));
+    if (DropTableManager::getInstance().isTableDropped(tbl_id) || fs::exists(file_name)) {
+      LOG_WARN("Table[%ld] has already been dropped.", tbl_id);
+      tb_schema_mgr = nullptr;
+      return KStatus::FAIL;
+    }
     wrLock();
     Defer defer([&]() { unLock(); });
     it = table_schema_mgrs_.find(tbl_id);

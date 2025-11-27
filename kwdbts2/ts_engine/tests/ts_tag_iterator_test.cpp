@@ -22,7 +22,7 @@ class TestEngine : public ::testing::Test {
   kwdbContext_t context_;
   kwdbContext_p ctx_;
   EngineOptions opts_;
-  TSEngineV2Impl* ts_engine_;
+  TSEngineImpl* ts_engine_;
 
   TestEngine() {
     ctx_ = &context_;
@@ -33,7 +33,7 @@ class TestEngine : public ::testing::Test {
 
     fs::remove_all(kDbPath);
     // Clean up file directory
-    auto engine = new TSEngineV2Impl(opts_);
+    auto engine = new TSEngineImpl(opts_);
     KStatus s = engine->Init(ctx_);
     ts_engine_ = engine;
   }

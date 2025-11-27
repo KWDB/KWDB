@@ -107,13 +107,13 @@ TSStatus TSOpen(TSEngine** engine, TSSlice dir, TSOptions options,
   }
 #endif
 
-  auto ts_engine = new TSEngineV2Impl(opts);
+  auto ts_engine = new TSEngineImpl(opts);
   ts_engine->initRangeIndexMap(applied_indexes, range_num);
   s = ts_engine->Init(ctx);
   if (s != KStatus::SUCCESS) {
-    return ToTsStatus("open TSEngineV2Impl Error!");
+    return ToTsStatus("open TSEngineImpl Error!");
   }
-  LOG_INFO("TSEngineV2Impl created success.");
+  LOG_INFO("TSEngineImpl created success.");
   *engine = ts_engine;
   g_engine_ = ts_engine;
   g_engine_initialized = true;

@@ -292,7 +292,7 @@ TEST_F(ConcurrentRWTest, SwitchMem) {
   if(RUNNING_ON_VALGRIND) return;
   EngineOptions::mem_segment_max_size = 0;
   EngineOptions::max_last_segment_num = 1 << 30;
-  auto engine = std::make_unique<TSEngineV2Impl>(opts_);
+  auto engine = std::make_unique<TSEngineImpl>(opts_);
   engine->Init(ctx_);
 
   std::shared_ptr<TsTable> ts_table;
@@ -392,7 +392,7 @@ TEST_F(ConcurrentRWTest, RandomFlush) {
   if(RUNNING_ON_VALGRIND) return;
   EngineOptions::mem_segment_max_size = 0;
   EngineOptions::max_last_segment_num = 1 << 30;
-  auto engine = std::make_unique<TSEngineV2Impl>(opts_);
+  auto engine = std::make_unique<TSEngineImpl>(opts_);
   engine->Init(ctx_);
 
   std::shared_ptr<TsTable> ts_table;

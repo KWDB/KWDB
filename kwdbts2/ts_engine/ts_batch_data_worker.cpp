@@ -32,7 +32,7 @@ void ResetWriteStatus() {
   write_batch_status.store(WriteBatchStatus::None);
 }
 
-TsReadBatchDataWorker::TsReadBatchDataWorker(TSEngineV2Impl* ts_engine, TSTableID table_id,
+TsReadBatchDataWorker::TsReadBatchDataWorker(TSEngineImpl* ts_engine, TSTableID table_id,
                                              uint64_t table_version, KwTsSpan ts_span, uint64_t job_id,
                                              vector<EntityResultIndex> entity_indexes)
                                              : TsBatchDataWorker(job_id), ts_engine_(ts_engine), table_id_(table_id),
@@ -330,7 +330,7 @@ KStatus TsReadBatchDataWorker::Finish(kwdbContext_p ctx) {
   return KStatus::SUCCESS;
 }
 
-TsWriteBatchDataWorker::TsWriteBatchDataWorker(TSEngineV2Impl* ts_engine, uint64_t job_id)
+TsWriteBatchDataWorker::TsWriteBatchDataWorker(TSEngineImpl* ts_engine, uint64_t job_id)
                                                : TsBatchDataWorker(job_id), ts_engine_(ts_engine),
                                                  w_file_latch_(LATCH_ID_TAG_TABLE_VERSION_MUTEX) {}
 
@@ -488,7 +488,7 @@ KStatus TsWriteBatchDataWorker::Write(kwdbContext_p ctx, TSTableID table_id, uin
   TSEntityID entity_id;
   is_dropped = false;
   s = ts_engine_->InsertTagData(ctx, table_id, 0, {tag_payload_str.data(), tag_payload_str.size()}, false,
-                                vgroup_id, entity_id, is_dropped);
+                                vgroup_id, entity_id);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("InsertTagData[%lu] failed, %s", table_id, err_info.toString().c_str());
     return KStatus::FAIL;
