@@ -57,6 +57,9 @@ class AggTableScanOperator : public TableScanOperator {
     SafeFreePointer(group_cols_);
     SafeFreePointer(agg_source_target_col_map_);
     agg_num_ = 0;
+    for (auto func : funcs_) {
+      SafeDeletePointer(func);
+    }
   };
 
   // resolve spec
@@ -170,7 +173,7 @@ class AggTableScanOperator : public TableScanOperator {
   std::vector<k_uint32> agg_cols_;
   std::vector<k_uint32> normal_cols_;
   // storage agg funcs
-  std::vector<unique_ptr<AggregateFunc>> funcs_;
+  std::vector<AggregateFunc *> funcs_;
 
   // Aggregate spec
   std::vector<TSAggregatorSpec_Aggregation> aggregations_;

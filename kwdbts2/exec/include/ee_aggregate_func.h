@@ -27,11 +27,14 @@
 
 namespace kwdbts {
 
+#define AGG_RESULT_IS_NULL(bitmap, col) ((bitmap[col >> 3] & (0x80 >> (col & 7))) == 0)
+
 struct DistinctOpt {
   bool needDistinct;
   std::vector<roachpb::DataType>& col_types;
   std::vector<k_uint32>& col_lens;
   std::vector<k_uint32>& group_cols;
+  std::vector<bool>& group_allow_null;
 };
 
 struct ElapsedInfo {
@@ -135,7 +138,7 @@ class AggregateFunc {
       if (distinctOpt.needDistinct) {
         k_bool is_distinct;
         if (isDistinct(chunk, line, distinctOpt.col_types, distinctOpt.col_lens,
-                       distinctOpt.group_cols, &is_distinct) < 0) {
+                       distinctOpt.group_cols, &is_distinct, distinctOpt.group_allow_null) < 0) {
           return -1;
         }
         if (is_distinct == false) {
@@ -169,10 +172,7 @@ class AggregateFunc {
   }
 
   static k_bool IsNull(const char* bitmap, k_uint32 col) {
-    k_uint32 index = col >> 3;     // col / 8
-    unsigned int pos = 1 << 7;    // binary 1000 0000
-    unsigned int mask = pos >> (col & 7);     // pos >> (col % 8)
-    return (bitmap[index] & mask) == 0;
+    return ((bitmap[col >> 3] & (0x80 >> (col & 7))) == 0);
   }
 
   // 0 indicates Null，1 indicates not Null
@@ -246,7 +246,8 @@ class AggregateFunc {
                  std::vector<roachpb::DataType>& col_types,
                  std::vector<k_uint32>& col_lens,
                  std::vector<k_uint32>& group_cols,
-                 k_bool* is_distinct);
+                 k_bool* is_distinct,
+                 std::vector<bool>& group_allow_null);
 
   virtual roachpb::DataType GetStorageType() const { return roachpb::DataType::UNKNOWN; }
 
@@ -1665,7 +1666,7 @@ class SumAggregate : public AggregateFunc {
       if (distinctOpt.needDistinct) {
         k_bool is_distinct;
         if (isDistinct(data_container, row, distinctOpt.col_types, distinctOpt.col_lens,
-                       distinctOpt.group_cols, &is_distinct) < 0) {
+                       distinctOpt.group_cols, &is_distinct, distinctOpt.group_allow_null) < 0) {
           return -1;
         }
         if (is_distinct == false) {
@@ -1753,7 +1754,7 @@ class SumAggregate : public AggregateFunc {
       if (distinctOpt.needDistinct) {
         k_bool is_distinct;
         if (isDistinct(data_container, row, distinctOpt.col_types, distinctOpt.col_lens,
-                       distinctOpt.group_cols, &is_distinct) < 0) {
+                       distinctOpt.group_cols, &is_distinct, distinctOpt.group_allow_null) < 0) {
           return -1;
         }
         if (is_distinct == false) {
@@ -1857,7 +1858,7 @@ class SumAggregate : public AggregateFunc {
       if (distinctOpt.needDistinct) {
         k_bool is_distinct;
         if (isDistinct(data_container, row, distinctOpt.col_types, distinctOpt.col_lens,
-                       distinctOpt.group_cols, &is_distinct) < 0) {
+                       distinctOpt.group_cols, &is_distinct, distinctOpt.group_allow_null) < 0) {
           return -1;
         }
         if (is_distinct == false) {
@@ -2284,7 +2285,7 @@ class CountAggregate : public AggregateFunc {
       if (distinctOpt.needDistinct) {
         k_bool is_distinct;
         if (isDistinct(data_container, row, distinctOpt.col_types, distinctOpt.col_lens,
-                       distinctOpt.group_cols, &is_distinct) < 0) {
+                       distinctOpt.group_cols, &is_distinct, distinctOpt.group_allow_null) < 0) {
           return -1;
         }
         if (is_distinct == false) {

@@ -41,13 +41,17 @@ bool HashTableIterator::operator!=(const HashTableIterator& t) const {
 
 LinearProbingHashTable::LinearProbingHashTable(
     const std::vector<roachpb::DataType>& group_types,
-    const std::vector<k_uint32>& group_lens, k_uint32 agg_width)
+    const std::vector<k_uint32>& group_lens, k_uint32 agg_width,
+    const std::vector<bool>& group_allow_null)
     : capacity_(0),
       group_types_(group_types),
       group_lens_(group_lens),
-      agg_width_(agg_width) {
-  for (int i = 0; i < group_types_.size(); i++) {
-    group_offsets_.push_back(FLAG_SIZE + group_width_);
+      agg_width_(agg_width),
+      group_allow_null_(group_allow_null) {
+  group_num_ = group_types_.size();
+  group_data_ = KNEW GroupColData[group_num_];
+  for (int i = 0; i < group_num_; i++) {
+    group_offsets_.push_back(group_width_);
 
     group_width_ += group_lens_[i];
     if (IsStringType(group_types_[i])) {
@@ -56,14 +60,16 @@ LinearProbingHashTable::LinearProbingHashTable(
       group_width_ += BOOL_WIDE;
     }
   }
-  group_null_offset_ = FLAG_SIZE + group_width_;
+  group_null_offset_ = group_width_;
   group_width_ += (group_types_.size() + 7) / 8;
 
-  tuple_size_ = FLAG_SIZE + group_width_ + agg_width_;
+  tuple_size_ = group_width_ + agg_width_;
 }
 
 LinearProbingHashTable::~LinearProbingHashTable() {
   SafeDeleteArray(data_);
+  SafeDeleteArray(this->used_bitmap_);
+  SafeDeleteArray(group_data_)
 }
 
 int LinearProbingHashTable::Resize(k_uint64 size) {
@@ -73,7 +79,7 @@ int LinearProbingHashTable::Resize(k_uint64 size) {
   mask_ = size - 1;
 
   if (entries_.size() > 0) {
-    auto new_ht = make_unique<LinearProbingHashTable>(group_types_, group_lens_, agg_width_);
+    auto new_ht = make_unique<LinearProbingHashTable>(group_types_, group_lens_, agg_width_, group_allow_null_);
     if (!new_ht || new_ht->Resize(size) < 0) {
       return -1;
     }
@@ -88,11 +94,15 @@ int LinearProbingHashTable::Resize(k_uint64 size) {
       }
       char* new_ptr = new_ht->GetTuple(loc);
       std::memcpy(new_ptr, ptr, tuple_size_);
+      new_ht->SetUsed(loc);
     }
 
     SafeDeleteArray(this->data_);
+    SafeDeleteArray(this->used_bitmap_);
     data_ = new_ht->data_;
     new_ht->data_ = nullptr;
+    used_bitmap_ = new_ht->used_bitmap_;
+    new_ht->used_bitmap_ = nullptr;
     entries_ = std::move(new_ht->entries_);
 
     capacity_ = new_ht->capacity_;
@@ -103,6 +113,12 @@ int LinearProbingHashTable::Resize(k_uint64 size) {
       return -1;
     }
     std::memset(data_, 0, size * tuple_size_);
+    k_uint64 used_size = (size + 7) / 8;
+    used_bitmap_ = KNEW char[used_size];
+    if (used_bitmap_ == nullptr) {
+      return -1;
+    }
+    std::memset(used_bitmap_, 0, used_size);
     capacity_ = size;
     mask_ = size - 1;
   }
@@ -184,14 +200,18 @@ std::size_t LinearProbingHashTable::HashGroups(
     IChunk* chunk, k_uint64 row,
     const std::vector<k_uint32>& group_cols) const {
   std::size_t h = INIT_HASH_VALUE;
-  for (int i = 0; i < GroupNum(); i++) {
+  for (int i = 0; i < group_num_; i++) {
     k_uint32 col = group_cols[i];
-    if (chunk->IsNull(row, col)) {
-      continue;
+    if (group_allow_null_[i]) {
+      bool is_null = chunk->IsNull(row, col);
+      group_data_[i].null = is_null;
+      if (is_null) {
+        continue;
+      }
     }
-
     DatumPtr ptr = chunk->GetData(row, col);
     HashColumn(ptr, group_types_[i], &h);
+    group_data_[i].ptr = ptr;
   }
 
   return h;
@@ -201,8 +221,8 @@ std::size_t LinearProbingHashTable::HashGroups(k_uint64 loc) const {
   std::size_t h = INIT_HASH_VALUE;
   char* ptr = GetTuple(loc);
   char* null_bitmap = ptr + group_null_offset_;
-  for (int i = 0; i < GroupNum(); i++) {
-    if (AggregateFunc::IsNull(null_bitmap, i)) {
+  for (int i = 0; i < group_num_; i++) {
+    if (group_allow_null_[i] && AGG_RESULT_IS_NULL(null_bitmap, i)) {
       continue;
     }
     HashColumn(ptr + group_offsets_[i], group_types_[i], &h);
@@ -230,7 +250,6 @@ int LinearProbingHashTable::FindOrCreateGroups(
   if (entries_.size() > capacity_ / 2 && Resize(capacity_ * 2) < 0) {
       return -1;
   }
-
   // hash the group columns
   size_t hash_val = HashGroups(chunk, row, group_cols);
   *loc = hash_val & mask_;
@@ -238,7 +257,7 @@ int LinearProbingHashTable::FindOrCreateGroups(
     if (!IsUsed(*loc)) {
       break;
     }
-    if (CompareGroups(chunk, row, group_cols, *loc)) {
+    if (CompareGroups(group_cols, *loc)) {
       return 0;
     }
 
@@ -247,7 +266,7 @@ int LinearProbingHashTable::FindOrCreateGroups(
   }
 
   entries_.push_back(*loc);
-  return 0;
+  return 1;
 }
 
 int LinearProbingHashTable::FindOrCreateGroups(
@@ -276,12 +295,14 @@ void LinearProbingHashTable::CopyGroups(IChunk* chunk, k_uint64 row,
                                         const std::vector<k_uint32>& group_cols,
                                         k_uint64 loc) {
   auto null_bitmap = GetTuple(loc) + group_null_offset_;
-  for (int i = 0; i < GroupNum(); i++) {
+  for (int i = 0; i < group_num_; i++) {
     k_uint32 col = group_cols[i];
-    auto is_null = chunk->IsNull(row, col);
-    if (is_null) {
-      AggregateFunc::SetNull(null_bitmap, i);
-      continue;
+    if (group_allow_null_[i]) {
+      auto is_null = chunk->IsNull(row, col);
+      if (is_null) {
+        AggregateFunc::SetNull(null_bitmap, i);
+        continue;
+      }
     }
 
     DatumPtr src = chunk->GetData(row, col);
@@ -298,25 +319,22 @@ void LinearProbingHashTable::CopyGroups(IChunk* chunk, k_uint64 row,
   }
 }
 
-bool LinearProbingHashTable::CompareGroups(
-    IChunk* chunk, k_uint64 row,
-    const std::vector<k_uint32>& group_cols, k_uint64 loc) {
+bool LinearProbingHashTable::CompareGroups(const std::vector<k_uint32>& group_cols, k_uint64 loc) {
   auto tuple = GetTuple(loc);
   auto null_bitmap = tuple + group_null_offset_;
-  for (int i = 0; i < GroupNum(); i++) {
+  for (int i = 0; i < group_num_; i++) {
     k_uint32 col = group_cols[i];
-    auto is_null = chunk->IsNull(row, col);
-    auto ht_is_null = AggregateFunc::IsNull(null_bitmap, i);
+    auto ht_is_null = false;
+    if (group_allow_null_[i]) {
+      auto is_null = group_data_[i].null;
+      ht_is_null = AGG_RESULT_IS_NULL(null_bitmap, i);
 
-    if (ht_is_null != is_null) {
-      return false;
-    } else if (ht_is_null && is_null) {
-      continue;
+      if (ht_is_null != is_null) {
+        return false;
+      }
     }
 
-    DatumPtr left_ptr = chunk->GetData(row, col);
-    DatumPtr right_ptr = tuple + group_offsets_[i];
-    if (!CompareColumn(left_ptr, right_ptr, group_types_[i])) {
+    if (!ht_is_null && !CompareColumn(group_data_[i].ptr, tuple + group_offsets_[i], group_types_[i])) {
       return false;
     }
   }
@@ -432,25 +450,23 @@ bool CompareColumn(DatumPtr left_ptr, DatumPtr right_ptr,
   return true;
 }
 
-bool CompareGroups(const LinearProbingHashTable& left, k_uint64 lloc,
-                   const LinearProbingHashTable& right, k_uint64 rloc) {
+bool CompareGroups(const LinearProbingHashTable& left, k_uint64 lloc, const LinearProbingHashTable& right,
+                   k_uint64 rloc) {
   auto left_null_bitmap = left.GetTuple(lloc) + left.group_null_offset_;
   auto right_null_bitmap = right.GetTuple(rloc) + right.group_null_offset_;
 
-  for (int r = 0; r < left.GroupNum(); ++r) {
+  for (int r = 0; r < left.group_num_; ++r) {
     if (left.group_types_[r] != right.group_types_[r]) return false;
-
-    auto is_null = AggregateFunc::IsNull(left_null_bitmap, r);
-    auto other_is_null = AggregateFunc::IsNull(right_null_bitmap, r);
-    if (other_is_null != is_null) {
-      return false;
-    } else if (other_is_null && is_null) {
-      continue;
+    auto other_is_null = false;
+    if (left.group_allow_null_[r]) {
+      auto is_null = AGG_RESULT_IS_NULL(left_null_bitmap, r);
+      other_is_null = AGG_RESULT_IS_NULL(right_null_bitmap, r);
+      if (other_is_null != is_null) {
+        return false;
+      }
     }
-
-    DatumPtr left_ptr = left.GetTuple(lloc) + left.group_offsets_[r];
-    DatumPtr right_ptr = right.GetTuple(rloc) + right.group_offsets_[r];
-    if (!CompareColumn(left_ptr, right_ptr, left.group_types_[r])) {
+    if (!other_is_null && !CompareColumn(left.GetTuple(lloc) + left.group_offsets_[r],
+                                         right.GetTuple(rloc) + right.group_offsets_[r], left.group_types_[r])) {
       return false;
     }
   }

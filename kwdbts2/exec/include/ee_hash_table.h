@@ -48,17 +48,22 @@ class HashTableIterator {
    distinct operation.
 */
 class LinearProbingHashTable {
+  struct GroupColData {
+    bool null{false};
+    DatumPtr ptr;
+  };
+
  public:
   typedef HashTableIterator iterator;
 
-  LinearProbingHashTable(const std::vector<roachpb::DataType>& group_types,
-                         const std::vector<k_uint32>& group_lens, k_uint32 agg_width);
+  LinearProbingHashTable(const std::vector<roachpb::DataType>& group_types, const std::vector<k_uint32>& group_lens,
+                         k_uint32 agg_width, const std::vector<bool>& group_allow_null);
 
   ~LinearProbingHashTable();
 
   LinearProbingHashTable(const LinearProbingHashTable&) = delete;
 
-  inline k_uint64 GroupNum() const { return group_types_.size(); }
+  inline k_uint64 GroupNum() const { return group_num_; }
 
   inline k_uint64 Size() const { return entries_.size(); }
 
@@ -121,17 +126,18 @@ class LinearProbingHashTable {
    * aggregation result columns (InitFirstLastTimeStamp).
    */
   inline bool IsUsed(k_uint64 loc) {
-    char* ptr = GetTuple(loc);
-    return *reinterpret_cast<bool*>(ptr);
+    size_t idx = loc / 8;
+    k_uint8 bit = loc % 8;
+    return (used_bitmap_[idx] >> bit) & 1;
   }
 
   /**
    * @brief set the location in the hash table used
    */
   void SetUsed(k_uint64 loc) {
-    char* ptr = GetTuple(loc);
-    bool used = true;
-    std::memcpy(ptr, &used, FLAG_SIZE);
+    size_t idx = loc / 8;
+    k_uint8 bit = loc % 8;
+    used_bitmap_[idx] |= (1 << bit);
   }
 
   /**
@@ -143,7 +149,7 @@ class LinearProbingHashTable {
    * @brief get aggregation result pointer in the hash table
    */
   DatumPtr GetAggResult(k_uint64 loc) const {
-    return data_ + tuple_size_ * loc + FLAG_SIZE + group_width_;
+    return data_ + tuple_size_ * loc + group_width_;
   }
 
   // iterator begin & end
@@ -166,8 +172,7 @@ class LinearProbingHashTable {
   /**
    * @brief combined hash of group columns from the data chunk
    */
-  std::size_t HashGroups(IChunk* chunk, k_uint64 row,
-                         const std::vector<k_uint32>& group_cols) const;
+  std::size_t HashGroups(IChunk* chunk, k_uint64 row, const std::vector<k_uint32>& group_cols) const;
 
   /**
    * @brief combined hash of group columns in the hash table
@@ -184,12 +189,13 @@ class LinearProbingHashTable {
    * @return If the group keys are identical, return true; otherwise return
    * false
    */
-  bool CompareGroups(IChunk* chunk, k_uint64 row,
-                     const std::vector<k_uint32>& group_cols, k_uint64 loc);
+  bool CompareGroups(const std::vector<k_uint32>& group_cols, k_uint64 loc);
 
   std::vector<roachpb::DataType> group_types_;
+  k_uint32 group_num_{0};
   std::vector<k_uint32> group_lens_;
   std::vector<k_uint32> group_offsets_;
+  std::vector<bool> group_allow_null_;
 
   k_uint64 capacity_{0};
   k_uint64 mask_{0};
@@ -203,10 +209,10 @@ class LinearProbingHashTable {
   k_uint32 tuple_size_{0};
 
   char* data_{nullptr};
-
-  static const int FLAG_SIZE = sizeof(bool);
+  char* used_bitmap_{nullptr};
+  GroupColData *group_data_;
   static const std::size_t INIT_HASH_VALUE = 13;
-  static const k_uint64 INIT_CAPACITY = 128;
+  static const k_uint64 INIT_CAPACITY = 4*1024;
 };
 
 /**

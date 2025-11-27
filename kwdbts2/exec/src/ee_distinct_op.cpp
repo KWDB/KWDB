@@ -79,13 +79,15 @@ EEIteratorErrCode DistinctOperator::Init(kwdbContext_p ctx) {
     // custom hash set
     std::vector<roachpb::DataType> distinct_types;
     std::vector<k_uint32> distinct_lens;
+    std::vector<bool> group_allow_null;
     std::vector<Field *> &input_fields = childrens_[0]->OutputFields();
     for (const auto& col : distinct_cols_) {
       distinct_types.push_back(input_fields[col]->get_storage_type());
       distinct_lens.push_back(input_fields[col]->get_storage_length());
+      group_allow_null.push_back(input_fields[col]->is_allow_null());
     }
 
-    seen_ = KNEW LinearProbingHashTable(distinct_types, distinct_lens, 0);
+    seen_ = KNEW LinearProbingHashTable(distinct_types, distinct_lens, 0, group_allow_null);
     if (seen_ == nullptr || seen_->Resize() < 0) {
       EEPgErrorInfo::SetPgErrorInfo(ERRCODE_OUT_OF_MEMORY, "Insufficient memory");
       Return(EEIteratorErrCode::EE_ERROR);

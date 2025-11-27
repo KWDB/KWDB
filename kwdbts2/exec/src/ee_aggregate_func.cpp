@@ -17,7 +17,8 @@ int AggregateFunc::isDistinct(IChunk* chunk, k_uint32 line,
                                  std::vector<roachpb::DataType>& col_types,
                                  std::vector<k_uint32>& col_lens,
                                  std::vector<k_uint32>& group_cols,
-                                 k_bool *is_distinct) {
+                                 k_bool *is_distinct,
+                                 std::vector<bool>& group_allow_null) {
   // group col + agg col
   std::vector<k_uint32> all_cols(group_cols);
   all_cols.insert(all_cols.end(), arg_idx_.begin(), arg_idx_.end());
@@ -25,11 +26,13 @@ int AggregateFunc::isDistinct(IChunk* chunk, k_uint32 line,
   if (seen_ == nullptr) {
     std::vector<roachpb::DataType> distinct_types;
     std::vector<k_uint32> distinct_lens;
+    std::vector<bool> distinct_allow_null;
     for (auto& col : all_cols) {
       distinct_types.push_back(col_types[col]);
       distinct_lens.push_back(col_lens[col]);
+      distinct_allow_null.push_back(group_allow_null[col]);
     }
-    seen_ = KNEW LinearProbingHashTable(distinct_types, distinct_lens, 0);
+    seen_ = KNEW LinearProbingHashTable(distinct_types, distinct_lens, 0, distinct_allow_null);
     if (seen_->Resize() < 0) {
       return -1;
     }

@@ -438,7 +438,7 @@ KStatus AggTableScanOperator::ResolveAggFuncs(kwdbContext_p ctx) {
       argIdx = agg.col_idx(0);
     }
 
-    unique_ptr<AggregateFunc> agg_func = nullptr;
+    AggregateFunc* agg_func = nullptr;
     k_bool aggfunc_new_flag = true;
 
     switch (func_type) {
@@ -446,15 +446,13 @@ KStatus AggTableScanOperator::ResolveAggFuncs(kwdbContext_p ctx) {
         k_uint32 len = output_fields_[argIdx]->get_storage_length();
         switch (output_fields_[argIdx]->get_storage_type()) {
           case roachpb::DataType::BOOL:
-            agg_func = make_unique<MaxAggregate<k_bool>>(i, argIdx, len);
+            agg_func = KNEW MaxAggregate<k_bool>(i, argIdx, len);
             break;
           case roachpb::DataType::SMALLINT:
-            agg_func = make_unique<MaxAggregate<k_int16>>
-                (i, argIdx, len);
+            agg_func = KNEW MaxAggregate<k_int16>(i, argIdx, len);
             break;
           case roachpb::DataType::INT:
-            agg_func = make_unique<MaxAggregate<k_int32>>
-                (i, argIdx, len);
+            agg_func = KNEW MaxAggregate<k_int32>(i, argIdx, len);
             break;
           case roachpb::DataType::TIMESTAMP:
           case roachpb::DataType::TIMESTAMPTZ:
@@ -464,16 +462,13 @@ KStatus AggTableScanOperator::ResolveAggFuncs(kwdbContext_p ctx) {
           case roachpb::DataType::TIMESTAMPTZ_NANO:
           case roachpb::DataType::DATE:
           case roachpb::DataType::BIGINT:
-            agg_func = make_unique<MaxAggregate<k_int64>>
-                (i, argIdx, len);
+            agg_func = KNEW MaxAggregate<k_int64>(i, argIdx, len);
             break;
           case roachpb::DataType::FLOAT:
-            agg_func = make_unique<MaxAggregate<k_float32>>
-                (i, argIdx, len);
+            agg_func = KNEW MaxAggregate<k_float32>(i, argIdx, len);
             break;
           case roachpb::DataType::DOUBLE:
-            agg_func = make_unique<MaxAggregate<k_double64>>
-                (i, argIdx, len);
+            agg_func = KNEW MaxAggregate<k_double64>(i, argIdx, len);
             break;
           case roachpb::DataType::CHAR:
           case roachpb::DataType::VARCHAR:
@@ -481,8 +476,7 @@ KStatus AggTableScanOperator::ResolveAggFuncs(kwdbContext_p ctx) {
           case roachpb::DataType::NVARCHAR:
           case roachpb::DataType::BINARY:
           case roachpb::DataType::VARBINARY:
-            agg_func = make_unique<MaxAggregate<std::string>>
-                (i, argIdx, len + STRING_WIDE);
+            agg_func = KNEW MaxAggregate<std::string>(i, argIdx, len + STRING_WIDE);
             break;
           default:
             LOG_ERROR("unsupported data type for max aggregation\n")
@@ -496,13 +490,13 @@ KStatus AggTableScanOperator::ResolveAggFuncs(kwdbContext_p ctx) {
         k_uint32 len = output_fields_[argIdx]->get_storage_length();
         switch (output_fields_[argIdx]->get_storage_type()) {
           case roachpb::DataType::BOOL:
-            agg_func = make_unique<MinAggregate<k_bool>>(i, argIdx, len);
+            agg_func = KNEW MinAggregate<k_bool>(i, argIdx, len);
             break;
           case roachpb::DataType::SMALLINT:
-            agg_func = make_unique<MinAggregate<k_int16>>(i, argIdx, len);
+            agg_func = KNEW MinAggregate<k_int16>(i, argIdx, len);
             break;
           case roachpb::DataType::INT:
-            agg_func = make_unique<MinAggregate<k_int32>>(i, argIdx, len);
+            agg_func = KNEW MinAggregate<k_int32>(i, argIdx, len);
             break;
           case roachpb::DataType::TIMESTAMP:
           case roachpb::DataType::TIMESTAMPTZ:
@@ -512,14 +506,14 @@ KStatus AggTableScanOperator::ResolveAggFuncs(kwdbContext_p ctx) {
           case roachpb::DataType::TIMESTAMPTZ_NANO:
           case roachpb::DataType::DATE:
           case roachpb::DataType::BIGINT:
-            agg_func = make_unique<MinAggregate<k_int64>>(i, argIdx, len);
+            agg_func = KNEW MinAggregate<k_int64>(i, argIdx, len);
             break;
           case roachpb::DataType::FLOAT:
-            agg_func = make_unique<MinAggregate<k_float32>>(i, argIdx, len);
+            agg_func = KNEW MinAggregate<k_float32>(i, argIdx, len);
             break;
           case roachpb::DataType::DOUBLE:
             agg_func =
-                make_unique<MinAggregate<k_double64>>(i, argIdx, len);
+                KNEW MinAggregate<k_double64>(i, argIdx, len);
             break;
           case roachpb::DataType::CHAR:
           case roachpb::DataType::VARCHAR:
@@ -527,7 +521,7 @@ KStatus AggTableScanOperator::ResolveAggFuncs(kwdbContext_p ctx) {
           case roachpb::DataType::NVARCHAR:
           case roachpb::DataType::BINARY:
           case roachpb::DataType::VARBINARY:
-            agg_func = make_unique<MinAggregate<std::string>>(
+            agg_func = KNEW MinAggregate<std::string>(
                 i, argIdx, len + STRING_WIDE);
             break;
           default:
@@ -563,16 +557,13 @@ KStatus AggTableScanOperator::ResolveAggFuncs(kwdbContext_p ctx) {
 
         switch (output_fields_[argIdx]->get_storage_type()) {
           case roachpb::DataType::BOOL:
-            agg_func = make_unique<AnyNotNullAggregate<k_bool>>
-                (i, argIdx, len);
+            agg_func = KNEW AnyNotNullAggregate<k_bool>(i, argIdx, len);
             break;
           case roachpb::DataType::SMALLINT:
-            agg_func = make_unique<AnyNotNullAggregate<k_int16>>
-                (i, argIdx, len);
+            agg_func = KNEW AnyNotNullAggregate<k_int16>(i, argIdx, len);
             break;
           case roachpb::DataType::INT:
-            agg_func = make_unique<AnyNotNullAggregate<k_int32>>
-                (i, argIdx, len);
+            agg_func = KNEW AnyNotNullAggregate<k_int32>(i, argIdx, len);
             break;
           case roachpb::DataType::TIMESTAMP:
           case roachpb::DataType::TIMESTAMPTZ:
@@ -582,16 +573,13 @@ KStatus AggTableScanOperator::ResolveAggFuncs(kwdbContext_p ctx) {
           case roachpb::DataType::TIMESTAMPTZ_NANO:
           case roachpb::DataType::DATE:
           case roachpb::DataType::BIGINT:
-            agg_func = make_unique<AnyNotNullAggregate<k_int64>>
-                (i, argIdx, len);
+            agg_func = KNEW AnyNotNullAggregate<k_int64>(i, argIdx, len);
             break;
           case roachpb::DataType::FLOAT:
-            agg_func = make_unique<AnyNotNullAggregate<k_float32>>
-                (i, argIdx, len);
+            agg_func = KNEW AnyNotNullAggregate<k_float32>(i, argIdx, len);
             break;
           case roachpb::DataType::DOUBLE:
-            agg_func = make_unique<AnyNotNullAggregate<k_double64>>
-                (i, argIdx, len);
+            agg_func = KNEW AnyNotNullAggregate<k_double64>(i, argIdx, len);
             break;
           case roachpb::DataType::CHAR:
           case roachpb::DataType::VARCHAR:
@@ -599,8 +587,7 @@ KStatus AggTableScanOperator::ResolveAggFuncs(kwdbContext_p ctx) {
           case roachpb::DataType::NVARCHAR:
           case roachpb::DataType::BINARY:
           case roachpb::DataType::VARBINARY:
-            agg_func = make_unique<AnyNotNullAggregate<std::string>>
-                (i, argIdx, len + STRING_WIDE);
+            agg_func = KNEW AnyNotNullAggregate<std::string>(i, argIdx, len + STRING_WIDE);
             break;
           default:
             LOG_ERROR("unsupported data type for any_not_null aggregation\n")
@@ -614,24 +601,19 @@ KStatus AggTableScanOperator::ResolveAggFuncs(kwdbContext_p ctx) {
         k_uint32 len = agg_output_fields_[i]->get_storage_length();
         switch (output_fields_[argIdx]->get_storage_type()) {
           case roachpb::DataType::SMALLINT:
-            agg_func = make_unique<SumAggregate<k_int16, k_decimal>>
-                (i, argIdx, len);
+            agg_func = KNEW SumAggregate<k_int16, k_decimal>(i, argIdx, len);
             break;
           case roachpb::DataType::INT:
-            agg_func = make_unique<SumAggregate<k_int32, k_decimal>>
-                (i, argIdx, len);
+            agg_func = KNEW SumAggregate<k_int32, k_decimal>(i, argIdx, len);
             break;
           case roachpb::DataType::BIGINT:
-            agg_func = make_unique<SumAggregate<k_int64, k_decimal>>
-                (i, argIdx, len);
+            agg_func = KNEW SumAggregate<k_int64, k_decimal>(i, argIdx, len);
             break;
           case roachpb::DataType::FLOAT:
-            agg_func = make_unique<SumAggregate<k_float32, k_double64>>
-                (i, argIdx, len);
+            agg_func = KNEW SumAggregate<k_float32, k_double64>(i, argIdx, len);
             break;
           case roachpb::DataType::DOUBLE:
-            agg_func = make_unique<SumAggregate<k_double64, k_double64>>
-                (i, argIdx, len);
+            agg_func = KNEW SumAggregate<k_double64, k_double64>(i, argIdx, len);
             break;
           default:
             LOG_ERROR("unsupported data type for sum aggregation\n")
@@ -643,12 +625,12 @@ KStatus AggTableScanOperator::ResolveAggFuncs(kwdbContext_p ctx) {
       }
       case Sumfunctype::COUNT: {
         k_uint32 len = sizeof(k_int64);
-        agg_func = make_unique<CountAggregate>(i, argIdx, len);
+        agg_func = KNEW CountAggregate(i, argIdx, len);
         break;
       }
       case Sumfunctype::COUNT_ROWS: {
         k_uint32 len = sizeof(k_int64);
-        agg_func = make_unique<CountRowAggregate>(i, len);
+        agg_func = KNEW CountRowAggregate(i, len);
         break;
       }
       case Sumfunctype::LAST: {
@@ -658,10 +640,10 @@ KStatus AggTableScanOperator::ResolveAggFuncs(kwdbContext_p ctx) {
         agg_output_fields_[i]->set_storage_length(output_fields_[argIdx]->get_storage_length());
         k_int64 time = agg.timestampconstant(0);
         if (IsStringType(agg_output_fields_[i]->get_storage_type())) {
-          auto last_func = make_unique<LastAggregate<true>>(i, argIdx, tsIdx, time, len + STRING_WIDE);
+          auto last_func = KNEW LastAggregate<true>(i, argIdx, tsIdx, time, len + STRING_WIDE);
           agg_func = std::move(last_func);
         } else {
-          agg_func = make_unique<LastAggregate<false>>(i, argIdx, tsIdx, time, len);
+          agg_func = KNEW LastAggregate<false>(i, argIdx, tsIdx, time, len);
         }
         break;
       }
@@ -671,7 +653,7 @@ KStatus AggTableScanOperator::ResolveAggFuncs(kwdbContext_p ctx) {
         k_int64 time = agg.timestampconstant(0);
         agg_output_fields_[i]->set_storage_type(roachpb::DataType::TIMESTAMP);
         agg_output_fields_[i]->set_storage_length(len);
-        agg_func = make_unique<LastTSAggregate>(i, argIdx, tsIdx, time, len);
+        agg_func = KNEW LastTSAggregate(i, argIdx, tsIdx, time, len);
         break;
       }
       case Sumfunctype::LAST_ROW: {
@@ -682,9 +664,9 @@ KStatus AggTableScanOperator::ResolveAggFuncs(kwdbContext_p ctx) {
         agg_output_fields_[i]->set_storage_length(output_fields_[argIdx]->get_storage_length());
 
         if (IsStringType(agg_output_fields_[i]->get_storage_type())) {
-          agg_func = make_unique<LastRowAggregate<true>>(i, argIdx, tsIdx, len + STRING_WIDE);
+          agg_func = KNEW LastRowAggregate<true>(i, argIdx, tsIdx, len + STRING_WIDE);
         } else {
-          agg_func = make_unique<LastRowAggregate<false>>(i, argIdx, tsIdx, len);
+          agg_func = KNEW LastRowAggregate<false>(i, argIdx, tsIdx, len);
         }
         break;
       }
@@ -695,7 +677,7 @@ KStatus AggTableScanOperator::ResolveAggFuncs(kwdbContext_p ctx) {
         agg_output_fields_[i]->set_storage_type(roachpb::DataType::TIMESTAMP);
         agg_output_fields_[i]->set_storage_length(len);
 
-        agg_func = make_unique<LastRowTSAggregate>(i, argIdx, tsIdx, len);
+        agg_func = KNEW LastRowTSAggregate(i, argIdx, tsIdx, len);
         break;
       }
       case Sumfunctype::FIRST: {
@@ -706,9 +688,9 @@ KStatus AggTableScanOperator::ResolveAggFuncs(kwdbContext_p ctx) {
         agg_output_fields_[i]->set_storage_length(output_fields_[argIdx]->get_storage_length());
 
         if (IsStringType(agg_output_fields_[i]->get_storage_type())) {
-          agg_func = make_unique<FirstAggregate<true>>(i, argIdx, tsIdx, len + STRING_WIDE);
+          agg_func = KNEW FirstAggregate<true>(i, argIdx, tsIdx, len + STRING_WIDE);
         } else {
-          agg_func = make_unique<FirstAggregate<false>>(i, argIdx, tsIdx, len);
+          agg_func = KNEW FirstAggregate<false>(i, argIdx, tsIdx, len);
         }
         break;
       }
@@ -718,7 +700,7 @@ KStatus AggTableScanOperator::ResolveAggFuncs(kwdbContext_p ctx) {
 
         agg_output_fields_[i]->set_storage_type(roachpb::DataType::TIMESTAMP);
         agg_output_fields_[i]->set_storage_length(len);
-        agg_func = make_unique<FirstTSAggregate>(i, argIdx, tsIdx, len);
+        agg_func = KNEW FirstTSAggregate(i, argIdx, tsIdx, len);
         break;
       }
       case Sumfunctype::FIRST_ROW: {
@@ -729,9 +711,9 @@ KStatus AggTableScanOperator::ResolveAggFuncs(kwdbContext_p ctx) {
         agg_output_fields_[i]->set_storage_length(output_fields_[argIdx]->get_storage_length());
 
         if (IsStringType(agg_output_fields_[i]->get_storage_type())) {
-          agg_func = make_unique<FirstRowAggregate<true>>(i, argIdx, tsIdx, len + STRING_WIDE);
+          agg_func = KNEW FirstRowAggregate<true>(i, argIdx, tsIdx, len + STRING_WIDE);
         } else {
-          agg_func = make_unique<FirstRowAggregate<false>>(i, argIdx, tsIdx, len);
+          agg_func = KNEW FirstRowAggregate<false>(i, argIdx, tsIdx, len);
         }
         break;
       }
@@ -742,7 +724,7 @@ KStatus AggTableScanOperator::ResolveAggFuncs(kwdbContext_p ctx) {
         agg_output_fields_[i]->set_storage_type(roachpb::DataType::TIMESTAMP);
         agg_output_fields_[i]->set_storage_length(len);
 
-        agg_func = make_unique<FirstRowTSAggregate>(i, argIdx, tsIdx, len);
+        agg_func = KNEW FirstRowTSAggregate(i, argIdx, tsIdx, len);
         break;
       }
       case Sumfunctype::STDDEV: {
@@ -753,19 +735,19 @@ KStatus AggTableScanOperator::ResolveAggFuncs(kwdbContext_p ctx) {
         k_uint32 len = agg_output_fields_[i]->get_storage_length();;
         switch (output_fields_[argIdx]->get_storage_type()) {
           case roachpb::DataType::SMALLINT:
-            agg_func = make_unique<AVGRowAggregate<k_int16>>(i, argIdx, len);
+            agg_func = KNEW AVGRowAggregate<k_int16>(i, argIdx, len);
             break;
           case roachpb::DataType::INT:
-            agg_func = make_unique<AVGRowAggregate<k_int32>>(i, argIdx, len);
+            agg_func = KNEW AVGRowAggregate<k_int32>(i, argIdx, len);
             break;
           case roachpb::DataType::BIGINT:
-            agg_func = make_unique<AVGRowAggregate<k_int64>>(i, argIdx, len);
+            agg_func = KNEW AVGRowAggregate<k_int64>(i, argIdx, len);
             break;
           case roachpb::DataType::FLOAT:
-            agg_func = make_unique<AVGRowAggregate<k_float32>>(i, argIdx, len);
+            agg_func = KNEW AVGRowAggregate<k_float32>(i, argIdx, len);
             break;
           case roachpb::DataType::DOUBLE:
-            agg_func = make_unique<AVGRowAggregate<k_double64>>(i, argIdx, len);
+            agg_func = KNEW AVGRowAggregate<k_double64>(i, argIdx, len);
             break;
           default:
             LOG_ERROR("unsupported data type for sum aggregation\n");
@@ -791,13 +773,13 @@ KStatus AggTableScanOperator::ResolveAggFuncs(kwdbContext_p ctx) {
         }
         switch (output_fields_[argIdx]->get_storage_type()) {
           case roachpb::DataType::BOOL:
-            agg_func = make_unique<MaxExtendAggregate<k_bool>>(i, argIdx, len2, argIdx2);
+            agg_func = KNEW MaxExtendAggregate<k_bool>(i, argIdx, len2, argIdx2);
             break;
           case roachpb::DataType::SMALLINT:
-            agg_func = make_unique<MaxExtendAggregate<k_int16>>(i, argIdx, len2, argIdx2);
+            agg_func = KNEW MaxExtendAggregate<k_int16>(i, argIdx, len2, argIdx2);
             break;
           case roachpb::DataType::INT:
-            agg_func = make_unique<MaxExtendAggregate<k_int32>>(i, argIdx, len2, argIdx2);
+            agg_func = KNEW MaxExtendAggregate<k_int32>(i, argIdx, len2, argIdx2);
             break;
           case roachpb::DataType::TIMESTAMP:
           case roachpb::DataType::TIMESTAMPTZ:
@@ -807,16 +789,13 @@ KStatus AggTableScanOperator::ResolveAggFuncs(kwdbContext_p ctx) {
           case roachpb::DataType::TIMESTAMPTZ_NANO:
           case roachpb::DataType::DATE:
           case roachpb::DataType::BIGINT:
-            agg_func = make_unique<MaxExtendAggregate<k_int64>>
-                (i, argIdx, len2, argIdx2);
+            agg_func = KNEW MaxExtendAggregate<k_int64>(i, argIdx, len2, argIdx2);
             break;
           case roachpb::DataType::FLOAT:
-            agg_func = make_unique<MaxExtendAggregate<k_float32>>
-                (i, argIdx, len2, argIdx2);
+            agg_func = KNEW MaxExtendAggregate<k_float32>(i, argIdx, len2, argIdx2);
             break;
           case roachpb::DataType::DOUBLE:
-            agg_func = make_unique<MaxExtendAggregate<k_double64>>
-                (i, argIdx, len2, argIdx2);
+            agg_func = KNEW MaxExtendAggregate<k_double64>(i, argIdx, len2, argIdx2);
             break;
           case roachpb::DataType::CHAR:
           case roachpb::DataType::VARCHAR:
@@ -824,8 +803,7 @@ KStatus AggTableScanOperator::ResolveAggFuncs(kwdbContext_p ctx) {
           case roachpb::DataType::NVARCHAR:
           case roachpb::DataType::BINARY:
           case roachpb::DataType::VARBINARY:
-            agg_func = make_unique<MaxExtendAggregate<std::string>>
-                (i, argIdx, len2, argIdx2);
+            agg_func = KNEW MaxExtendAggregate<std::string>(i, argIdx, len2, argIdx2);
             break;
           default:
             LOG_ERROR("unsupported data type for max aggregation\n")
@@ -851,13 +829,13 @@ KStatus AggTableScanOperator::ResolveAggFuncs(kwdbContext_p ctx) {
         }
         switch (output_fields_[argIdx]->get_storage_type()) {
           case roachpb::DataType::BOOL:
-            agg_func = make_unique<MinExtendAggregate<k_bool>>(i, argIdx, len2, argIdx2);
+            agg_func = KNEW MinExtendAggregate<k_bool>(i, argIdx, len2, argIdx2);
             break;
           case roachpb::DataType::SMALLINT:
-            agg_func = make_unique<MinExtendAggregate<k_int16>>(i, argIdx, len2, argIdx2);
+            agg_func = KNEW MinExtendAggregate<k_int16>(i, argIdx, len2, argIdx2);
             break;
           case roachpb::DataType::INT:
-            agg_func = make_unique<MinExtendAggregate<k_int32>>(i, argIdx, len2, argIdx2);
+            agg_func = KNEW MinExtendAggregate<k_int32>(i, argIdx, len2, argIdx2);
             break;
           case roachpb::DataType::TIMESTAMP:
           case roachpb::DataType::TIMESTAMPTZ:
@@ -867,14 +845,14 @@ KStatus AggTableScanOperator::ResolveAggFuncs(kwdbContext_p ctx) {
           case roachpb::DataType::TIMESTAMPTZ_NANO:
           case roachpb::DataType::DATE:
           case roachpb::DataType::BIGINT:
-            agg_func = make_unique<MinExtendAggregate<k_int64>>(i, argIdx, len2, argIdx2);
+            agg_func = KNEW MinExtendAggregate<k_int64>(i, argIdx, len2, argIdx2);
             break;
           case roachpb::DataType::FLOAT:
-            agg_func = make_unique<MinExtendAggregate<k_float32>>(i, argIdx, len2, argIdx2);
+            agg_func = KNEW MinExtendAggregate<k_float32>(i, argIdx, len2, argIdx2);
             break;
           case roachpb::DataType::DOUBLE:
             agg_func =
-                make_unique<MinExtendAggregate<k_double64>>(i, argIdx, len2, argIdx2);
+                KNEW MinExtendAggregate<k_double64>(i, argIdx, len2, argIdx2);
             break;
           case roachpb::DataType::CHAR:
           case roachpb::DataType::VARCHAR:
@@ -882,7 +860,7 @@ KStatus AggTableScanOperator::ResolveAggFuncs(kwdbContext_p ctx) {
           case roachpb::DataType::NVARCHAR:
           case roachpb::DataType::BINARY:
           case roachpb::DataType::VARBINARY:
-            agg_func = make_unique<MinExtendAggregate<std::string>>(
+            agg_func = KNEW MinExtendAggregate<std::string>(
                 i, argIdx, len2, argIdx2);
             break;
           default:
@@ -906,8 +884,7 @@ KStatus AggTableScanOperator::ResolveAggFuncs(kwdbContext_p ctx) {
         // should use the original HASH Agg instead.
         Return(FAIL)
       }
-
-      funcs_.push_back(std::move(agg_func));
+      funcs_.push_back(agg_func);
     } else if ((status != KStatus::FAIL) && (aggfunc_new_flag != false)) {
       EEPgErrorInfo::SetPgErrorInfo(ERRCODE_OUT_OF_MEMORY, "Insufficient memory");
     }

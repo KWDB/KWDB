@@ -71,14 +71,14 @@ class BaseAggregator : public BaseOperator {
   TsAggregateParser param_;
   // AggregationFunc is an interface to an aggregate function object (including
   // the AddOrUpdate method) that inherits a class such as MaxAggregate
-  std::vector<unique_ptr<AggregateFunc>> funcs_;
+  std::vector<AggregateFunc*> funcs_;
   // the list of The inputs column's type and storage length
   std::vector<roachpb::DataType> col_types_;
   std::vector<k_uint32> col_lens_;
 
   // group col
   std::vector<k_uint32> group_cols_;
-
+  std::vector<bool> col_allow_null_;
   // agg spec
   std::vector<TSAggregatorSpec_Aggregation> aggregations_;
 
