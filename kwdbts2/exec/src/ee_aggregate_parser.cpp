@@ -39,6 +39,7 @@ TsAggregateParser::~TsAggregateParser() {
 
     SafeFreePointer(aggs_);
   }
+  SafeFreePointer(outputs_);
 
   aggs_size_ = 0;
 }
@@ -62,7 +63,25 @@ EEIteratorErrCode TsAggregateParser::HandleRender(kwdbContext_p ctx, Field **ren
   if (code != EEIteratorErrCode::EE_OK) {
     Return(code);
   }
-
+  if (outputcol_count_ > 0) {
+    outputs_ = static_cast<Field**>(malloc(outputcol_count_ * sizeof(Field*)));
+    if (nullptr == outputs_) {
+      EEPgErrorInfo::SetPgErrorInfo(ERRCODE_OUT_OF_MEMORY, "Insufficient memory");
+      LOG_ERROR("aggs_ malloc failed\n");
+      Return(EEIteratorErrCode::EE_ERROR);
+    }
+    memset(outputs_, 0, outputcol_count_ * sizeof(Field*));
+    for (k_uint32 i = 0; i < outputcol_count_; ++i) {
+      k_uint32 index = post_->output_columns(i);
+      outputs_[i] = aggs_[index];
+    }
+  }
+  if (renders_size_ < 1) {
+    for (k_uint32 i = 0; i < outputcol_count_; ++i) {
+      render[i] = outputs_[i];
+    }
+    Return(code);
+  }
   for (k_uint32 i = 0; i < renders_size_; ++i) {
     Expression render_expr = post_->render_exprs(i);
     // produce Binary tree
@@ -82,11 +101,6 @@ EEIteratorErrCode TsAggregateParser::HandleRender(kwdbContext_p ctx, Field **ren
     }
   }
 
-  for (k_uint32 i = 0; i < outputcol_count_; ++i) {
-    k_uint32 index = post_->output_columns(i);
-    render[i] = aggs_[index];
-  }
-
   Return(code);
 }
 
@@ -95,10 +109,28 @@ EEIteratorErrCode TsAggregateParser::ParserReference(kwdbContext_p ctx,
   EnterFunc();
   EEIteratorErrCode code = EEIteratorErrCode::EE_OK;
   for (auto i : virtualField->args_) {
-    if (nullptr == *field) {
-      *field = aggs_[i - 1];
+    if (outputcol_count_ > 0) {
+      if (i > outputcol_count_) {
+        EEPgErrorInfo::SetPgErrorInfo(ERRCODE_INVALID_PARAMETER_VALUE, "Invalid parameter value");
+        LOG_ERROR("Invalid parameter value");
+        Return(EEIteratorErrCode::EE_ERROR);
+      }
+      if (nullptr == *field) {
+        *field = outputs_[i - 1];
+      } else {
+        (*field)->next_ = outputs_[i - 1];
+      }
     } else {
-      (*field)->next_ = aggs_[i - 1];
+      if (i > aggs_size_) {
+        EEPgErrorInfo::SetPgErrorInfo(ERRCODE_INVALID_PARAMETER_VALUE, "Invalid parameter value");
+        LOG_ERROR("Invalid parameter value");
+        Return(EEIteratorErrCode::EE_ERROR);
+      }
+      if (nullptr == *field) {
+        *field = aggs_[i - 1];
+      } else {
+        (*field)->next_ = aggs_[i - 1];
+      }
     }
   }
 

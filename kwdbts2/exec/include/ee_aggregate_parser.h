@@ -37,6 +37,7 @@ class TsAggregateParser : public TsOperatorParser {
  public:
   TSAggregatorSpec *spec_{nullptr};
   Field **aggs_{nullptr};
+  Field **outputs_{nullptr};
   k_uint32 aggs_size_{0};           // it contains the func count of Sumfunctype::ANY_NOT_NULL
   BaseOperator *agg_op_{nullptr};   // point agg operator
 };
