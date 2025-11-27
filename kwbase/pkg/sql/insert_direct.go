@@ -2033,23 +2033,29 @@ func intFormatBinary(
 				}
 			}
 		case oid.T_int4:
-			if len(Args[idx]) > 4 {
-				var intValue int64
-				for _, b := range Args[idx] {
-					intValue = (intValue << 8) | int64(b)
+			if infer == oid.T_int2 {
+				binary.LittleEndian.PutUint16(Args[idx], binary.BigEndian.Uint16(Args[idx]))
+			} else {
+				if len(Args[idx]) > 4 {
+					var intValue int64
+					for _, b := range Args[idx] {
+						intValue = (intValue << 8) | int64(b)
+					}
+					if intValue < math.MinInt32 || intValue > math.MaxInt32 {
+						return pgerror.Newf(pgcode.NumericValueOutOfRange,
+							"integer out of range for type %s (column %q)",
+							column.Type.SQLString(), column.Name)
+					}
 				}
-				if intValue < math.MinInt32 || intValue > math.MaxInt32 {
-					return pgerror.Newf(pgcode.NumericValueOutOfRange,
-						"integer out of range for type %s (column %q)",
-						column.Type.SQLString(), column.Name)
-				}
+				binary.LittleEndian.PutUint32(Args[idx], binary.BigEndian.Uint32(Args[idx]))
 			}
-			binary.LittleEndian.PutUint32(Args[idx], binary.BigEndian.Uint32(Args[idx]))
 		case oid.T_int8:
 			if infer == oid.T_int8 {
 				binary.LittleEndian.PutUint64(Args[idx], binary.BigEndian.Uint64(Args[idx]))
-			} else {
+			} else if infer == oid.T_int4 {
 				binary.LittleEndian.PutUint32(Args[idx], binary.BigEndian.Uint32(Args[idx]))
+			} else {
+				binary.LittleEndian.PutUint16(Args[idx], binary.BigEndian.Uint16(Args[idx]))
 			}
 		case oid.T_timestamptz, oid.T_timestamp:
 			tum := binary.BigEndian.Uint64(Args[idx])
