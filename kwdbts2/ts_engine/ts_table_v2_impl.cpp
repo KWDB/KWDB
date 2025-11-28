@@ -1350,7 +1350,9 @@ KStatus TsTableV2Impl::GetImagrateTagBySnapshot(kwdbContext_p ctx, HashIdSpan ha
         } else if (tag_info->operate_type == OperateType::Update) {
           type = OperatorTypeOfRecord::OP_TYPE_TAG_UPDATE;
         } else if (tag_info->operate_type == OperateType::Insert) {
-          type = OperatorTypeOfRecord::OP_TYPE_INSERT;
+          if (entity_tag_bt->isValidRow(rownum)) {
+            type = OperatorTypeOfRecord::OP_TYPE_INSERT;
+          }
         }
         if (type != OperatorTypeOfRecord::OP_TYPE_UNKNOWN) {
           std::vector<kwdbts::EntityResultIndex> entity_id_list;
@@ -1419,7 +1421,9 @@ KStatus TsTableV2Impl::GetTagRecordInfoByOSN(kwdbContext_p ctx,
           if (tag_info->operate_type == OperateType::Delete) {
             type = OperatorTypeOfRecord::OP_TYPE_TAG_DELETE;
           } else if (tag_info->operate_type == OperateType::Insert) {
-            type = OperatorTypeOfRecord::OP_TYPE_INSERT;
+            if (entity_tag_bt->isValidRow(rownum)) {
+              type = OperatorTypeOfRecord::OP_TYPE_INSERT;
+            }
           }
           if (type != OperatorTypeOfRecord::OP_TYPE_UNKNOWN) {
             std::vector<kwdbts::EntityResultIndex> entity_id_list;
