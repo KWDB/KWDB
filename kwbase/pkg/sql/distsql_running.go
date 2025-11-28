@@ -59,6 +59,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/util/hlc"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 	"gitee.com/kwbasedb/kwbase/pkg/util/mon"
+	"gitee.com/kwbasedb/kwbase/pkg/util/timeutil"
 	"gitee.com/kwbasedb/kwbase/pkg/util/tracing"
 	"gitee.com/kwbasedb/kwbase/pkg/util/uuid"
 	"github.com/cockroachdb/errors"
@@ -1567,12 +1568,20 @@ func (dsp *DistSQLPlanner) PlanAndRun(
 	plan planNode,
 	recv *DistSQLReceiver,
 	stmt string,
+	di *DirectInsert,
 ) (cleanup func()) {
 	physPlan := dsp.GetPhysPlan(ctx, planCtx, plan, recv, stmt)
 	if physPlan == nil {
 		return func() {}
 	}
 
+	if di != nil {
+		directTimes := &di.DirectTimes
+		directTimes[PlanAndRunStart] = timeutil.Now()
+		defer func() {
+			directTimes[PlanAndRunEnd] = timeutil.Now()
+		}()
+	}
 	return dsp.Run(planCtx, txn, physPlan, recv, evalCtx, nil /* finishedSetupFn */)
 }
 

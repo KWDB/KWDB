@@ -510,6 +510,13 @@ func (ex *connExecutor) execPreparedirectBind(
 	}
 
 	if ins, ok := ps.PrepareMetadata.Statement.AST.(*tree.Insert); ok {
+		curStmt := Statement{Prepared: ps}
+		curStmt.queryID = ex.generateID()
+		unregisterFn := ex.TsprepareaddActiveQuery(curStmt.queryID, curStmt, ex.state.cancel)
+		defer func() {
+			unregisterFn()
+		}()
+
 		var di DirectInsert
 		copy(ins.Columns, ps.PrepareInsertDirect.Dit.Desc)
 
@@ -601,6 +608,7 @@ func (ex *connExecutor) execPreparedirectBind(
 			ps.PrepareInsertDirect.stmtRes = stmtRes
 			ps.PrepareInsertDirect.EvalContext = evalCtx
 			ps.PrepareInsertDirect.EvalContext.Txn = nil
+			ps.PrepareInsertDirect.Queryid = curStmt.queryID
 			return nil
 		})
 		if err != nil {

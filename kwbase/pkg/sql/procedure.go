@@ -378,7 +378,7 @@ func runPlanImplement(
 	planCtx.ignoreClose = ignoreClose
 
 	params.p.extendedEvalCtx.ExecCfg.DistSQLPlanner.PlanAndRun(
-		params.ctx, evalCtx, planCtx, params.p.Txn(), plan.plan, recv, params.p.GetStmt(),
+		params.ctx, evalCtx, planCtx, params.p.Txn(), plan.plan, recv, params.p.GetStmt(), nil,
 	)()
 	if recv.commErr != nil {
 		return recv.commErr

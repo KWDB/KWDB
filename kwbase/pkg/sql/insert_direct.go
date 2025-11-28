@@ -18,6 +18,7 @@ import (
 	"math"
 	"strconv"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
@@ -57,6 +58,7 @@ type DirectInsert struct {
 	Dcs                        []*sqlbase.ColumnDescriptor
 	PayloadNodeMap             map[int]*sqlbase.PayloadForDistTSInsert
 	InputValues                []tree.Datums
+	DirectTimes                directTimes
 }
 
 const (
@@ -66,6 +68,33 @@ const (
 	errValueOutofRange = "value '%s' out of range for type %s (column %s)"
 	errTooLong         = "value '%s' too long for type %s (column %s)"
 )
+
+const (
+	// HandleSimpleStart means insertdirecrt starts.
+	HandleSimpleStart = iota
+	// ParseStart means parse starts.
+	ParseStart
+	// ParseEnd means parse ends.
+	ParseEnd
+	// CreateInsertNodeStart means construct starts.
+	CreateInsertNodeStart
+	// CreateInsertNodeEnd means construct ends.
+	CreateInsertNodeEnd
+	// PlanAndRunStart means planning starts.
+	PlanAndRunStart
+	// PlanAndRunEnd means planning ends.
+	PlanAndRunEnd
+	// OtherStart means other starts.
+	OtherStart
+	// OtherEnd means other ends.
+	OtherEnd
+
+	// sessionNum must be listed last so that it can be used to
+	// define arrays sufficiently large to hold all the other values.
+	sessionNum
+)
+
+type directTimes [sessionNum]time.Time
 
 // GetInputValues performs column type conversion and length checking
 func GetInputValues(
@@ -854,7 +883,7 @@ func TsprepareTypeCheck(
 			} else {
 				switch inferTypes[idx] {
 				case oid.T_timestamptz, oid.T_timestamp:
-					timeFormatBinary(Args, idx, isFirstCols, &rowTimestamps)
+					err = timeFormatBinary(Args, idx, column, isFirstCols, &rowTimestamps)
 				case oid.T_int8, oid.T_int4, oid.T_int2:
 					err = intFormatBinary(Args, idx, column, inferTypes[idx], isFirstCols, &rowTimestamps)
 				case oid.T_float8:
@@ -1980,7 +2009,16 @@ func boolFormatText(Args [][]byte, idx int) error {
 	return nil
 }
 
-func timeFormatBinary(Args [][]byte, idx int, isFirstCols bool, rowTimestamps *[]int64) {
+func timeFormatBinary(
+	Args [][]byte,
+	idx int,
+	column *sqlbase.ColumnDescriptor,
+	isFirstCols bool,
+	rowTimestamps *[]int64,
+) error {
+	if len(Args[idx]) < 8 {
+		return tree.NewDatatypeMismatchError(column.Name, string(Args[idx]), column.Type.SQLString())
+	}
 	i := int64(binary.BigEndian.Uint64(Args[idx]))
 	nanosecond := execbuilder.PgBinaryToTime(i).Nanosecond()
 	second := execbuilder.PgBinaryToTime(i).Unix()
@@ -1989,6 +2027,7 @@ func timeFormatBinary(Args [][]byte, idx int, isFirstCols bool, rowTimestamps *[
 	if isFirstCols {
 		*rowTimestamps = append(*rowTimestamps, tum)
 	}
+	return nil
 }
 
 func intFormatBinary(
@@ -2037,10 +2076,7 @@ func intFormatBinary(
 				binary.LittleEndian.PutUint16(Args[idx], binary.BigEndian.Uint16(Args[idx]))
 			} else {
 				if len(Args[idx]) > 4 {
-					var intValue int64
-					for _, b := range Args[idx] {
-						intValue = (intValue << 8) | int64(b)
-					}
+					intValue := int64(binary.BigEndian.Uint64(Args[idx]))
 					if intValue < math.MinInt32 || intValue > math.MaxInt32 {
 						return pgerror.Newf(pgcode.NumericValueOutOfRange,
 							"integer out of range for type %s (column %q)",
@@ -2146,7 +2182,9 @@ func charFormatBinary(
 					"value too long for type %s (column %q)", column.Type.SQLString(), column.Name)
 			}
 		case oid.T_timestamptz, oid.T_timestamp:
-			timeFormatBinary(Args, idx, isFirstCols, rowTimestamps)
+			if err := timeFormatBinary(Args, idx, column, isFirstCols, rowTimestamps); err != nil {
+				return err
+			}
 		case oid.T_bool:
 			davl, err := tree.ParseDBool(string(Args[idx]))
 			if err != nil {

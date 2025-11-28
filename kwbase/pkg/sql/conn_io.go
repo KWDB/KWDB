@@ -215,6 +215,7 @@ type PrepareInsertDirect struct {
 	payloadNodeMap map[int]*sqlbase.PayloadForDistTSInsert
 	stmtRes        CommandResult
 	EvalContext    tree.EvalContext
+	Queryid        ClusterWideID
 }
 
 // command implements the Command interface.

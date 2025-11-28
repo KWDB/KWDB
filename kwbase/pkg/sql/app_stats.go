@@ -160,7 +160,7 @@ func (a *appStats) recordStatement(
 	}
 
 	// Get the statistics object.
-	s := a.getStatsForStmt(stmt, user, database, distSQLUsed, implicitTxn, err, true /* createIfNonexistent */)
+	s := a.getStatsForStmt(stmt, user, database, distSQLUsed, implicitTxn, err, true /* createIfNonexistent */, numRows)
 
 	// Collect the per-statement statistics.
 	s.Lock()
@@ -199,6 +199,7 @@ func (a *appStats) getStatsForStmt(
 	implicitTxn bool,
 	err error,
 	createIfNonexistent bool,
+	numRows int,
 ) *stmtStats {
 	// Extend the statement key with various characteristics, so
 	// that we use separate buckets for the different situations.
@@ -207,7 +208,26 @@ func (a *appStats) getStatsForStmt(
 		// Use the cached anonymized string.
 		key.stmt = stmt.AnonymizedStr
 	} else {
-		key.stmt = anonymizeStmt(stmt.AST)
+		if stmt.Insertdirectstmt.InsertFast {
+			ctx := tree.NewFmtCtx(tree.FmtHideConstants)
+			ctx.WriteString("INSERT INTO ")
+			if insert, ok := stmt.Statement.AST.(*tree.Insert); ok {
+				ctx.FormatNode(insert.Table)
+				if insert.Columns != nil {
+					ctx.WriteByte('(')
+					ctx.FormatNode(&insert.Columns)
+					ctx.WriteByte(')')
+				}
+			}
+			ctx.WriteByte(' ')
+			ctx.WriteString("VALUES ")
+			if numRows > 1 {
+				ctx.Printf("(%s)", fmt.Sprintf("__more%d__", numRows))
+			}
+			key.stmt = ctx.CloseAndGetString()
+		} else {
+			key.stmt = anonymizeStmt(stmt.AST)
+		}
 	}
 	key.user = user
 	key.database = database
@@ -318,7 +338,7 @@ func (a *appStats) shouldSaveLogicalPlanDescription(
 	if !sampleLogicalPlans.Get(&a.st.SV) {
 		return false
 	}
-	stats := a.getStatsForStmt(stmt, user, database, useDistSQL, implicitTxn, err, false /* createIfNonexistent */)
+	stats := a.getStatsForStmt(stmt, user, database, useDistSQL, implicitTxn, err, false /* createIfNonexistent */, 0)
 	if stats == nil {
 		// Save logical plan the first time we see new statement fingerprint.
 		return true

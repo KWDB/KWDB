@@ -598,6 +598,8 @@ type unqualifiedIntSizer interface {
 	GetPreparedStatement(PreparedStatementName string) (*sql.PreparedStatement, bool)
 
 	GetTsSupportBatch() bool
+
+	TsinsertaddActiveQuery(curStmt *sql.Statement) func()
 }
 
 type fixedIntSizer struct {
@@ -624,6 +626,10 @@ func (f fixedIntSizer) GetPreparedStatement(
 	PreparedStatementName string,
 ) (*sql.PreparedStatement, bool) {
 	return nil, false
+}
+
+func (f fixedIntSizer) TsinsertaddActiveQuery(curStmt *sql.Statement) func() {
+	return func() {}
 }
 
 // processCommandsAsync spawns a goroutine that authenticates the connection and
@@ -850,6 +856,8 @@ func (c *conn) handleSimpleQuery(
 
 	c.parser.IsShortcircuit = unqis.GetTsinsertdirect()
 	var dit sql.DirectInsertTable
+	var di sql.DirectInsert
+	di.DirectTimes[sql.HandleSimpleStart] = timeutil.Now()
 	c.parser.Dudgetstable = func(dbName *string, tableName string) bool {
 		if *dbName == "public" || *dbName == "" {
 			*dbName = unqis.GetTsSessionData().Database
@@ -883,13 +891,14 @@ func (c *conn) handleSimpleQuery(
 
 	if c.parser.GetIsTsTable() {
 		if len(stmts) == 1 {
+			di.DirectTimes[sql.OtherStart] = timeutil.Now()
+			di.DirectTimes[sql.ParseStart], di.DirectTimes[sql.ParseEnd] = startParse, endParse
 			// Only a single INSERT statement is processed
 			ins, ok := stmts[0].AST.(*tree.Insert)
 			if !ok {
 				goto normalExec
 			}
 
-			var di sql.DirectInsert
 			// Check whether the inserted value and the number of columns match.
 			if matchCnt := sql.NumofInsertDirect(ins, &dit.ColsDesc, stmts, &di); matchCnt != di.RowNum*di.ColNum || c.parser.Customize {
 				c.parser.IsShortcircuit = false
@@ -905,6 +914,12 @@ func (c *conn) handleSimpleQuery(
 
 			// Execute in a transaction
 			if err := cfg.DB.Txn(ctx, func(ctx context.Context, txn *kv.Txn) error {
+				curStmt := sql.Statement{Statement: stmts[0]}
+				unregisterFn := unqis.TsinsertaddActiveQuery(&curStmt)
+				defer func() {
+					unregisterFn()
+				}()
+
 				// Set execution context
 				evalCtx := getEvalContext(ctx, txn, server)
 				// Get table collection and version
@@ -981,9 +996,9 @@ func (c *conn) handleSimpleQuery(
 				if err = handleInsertDirectAuditLog(ctx, server, startParse, stmts, unqis, dit.TabID, query); err != nil {
 					return err
 				}
-
+				di.DirectTimes[sql.OtherEnd] = timeutil.Now()
 				// Send insert_direct information
-				if err = Send(ctx, unqis, evalCtx, r, stmts, di, c, timeReceived, startParse, endParse); err != nil {
+				if err = Send(ctx, unqis, evalCtx, r, stmts, di, c, timeReceived, startParse, endParse, curStmt); err != nil {
 					return err
 				}
 				if r.Err() != nil {
@@ -1199,6 +1214,7 @@ func Send(
 	di sql.DirectInsert,
 	c *conn,
 	timeReceived, startParse, endParse time.Time,
+	curStmt sql.Statement,
 ) error {
 	con, ok := unqis.(sql.ConnectionHandler)
 	if !ok {
@@ -1219,7 +1235,7 @@ func Send(
 
 	var err error
 	if insertStmt.UseDeepRule, insertStmt.DedupRule, insertStmt.DedupRows, err =
-		con.SendDTI(EvalContext.Context, &EvalContext, r, di, stmts); err != nil {
+		con.SendDTI(EvalContext.Context, &EvalContext, r, di, stmts, curStmt); err != nil {
 		return err
 	}
 

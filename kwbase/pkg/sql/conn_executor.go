@@ -536,34 +536,47 @@ func (h ConnectionHandler) SendDTI(
 	r CommandResult,
 	di DirectInsert,
 	stmts parser.Statements,
+	curStmt Statement,
 ) (useDeepRule bool, dedupRule int64, dedupRows int64, err error) {
 	h.ex.metrics.StartedStatementCounters.QueryCount.Inc()
 	h.ex.metrics.StartedStatementCounters.InsertCount.Inc()
 	if !evalCtx.StartSinglenode {
 		h.ex.planner.ExtendedEvalContext().StartDistributeMode = true
 	}
-	starttime := timeutil.Now()
 	ctx, sp := tracing.EnsureChildSpan(
 		ctx, h.ex.server.cfg.AmbientCtx.Tracer,
 		// We print the type of command, not the String() which includes long
 		// statements.
 		"insert stmt")
 	defer sp.Finish()
-	useDeepRule, dedupRule, dedupRows = h.ex.SendDirectTsInsert(ctx, evalCtx, r, di.PayloadNodeMap)
+	useDeepRule, dedupRule, dedupRows = h.ex.SendDirectTsInsert(ctx, evalCtx, r, di.PayloadNodeMap, curStmt.queryID, &di)
 	if err = r.Err(); err != nil {
 		return
 	}
-	endtime := timeutil.Now()
 	var tempStmt Statement
 	var flags planFlags
 	tempStmt.AST = stmts[0].AST
+	tempStmt.Insertdirectstmt.InsertFast = stmts[0].Insertdirectstmt.InsertFast
 	user := h.ex.sessionData.User
 	database := h.ex.sessionData.Database
+	if database == "" {
+		database = "(internal)"
+	}
+	directTimes := &di.DirectTimes
+	calcDuration := func(start, end int) float64 {
+		return directTimes[end].Sub(directTimes[start]).Seconds()
+	}
+	parseTime := calcDuration(ParseStart, ParseEnd)
+	CreateInsertNodeTime := calcDuration(CreateInsertNodeStart, CreateInsertNodeEnd)
+	PlanAndRunTime := calcDuration(PlanAndRunStart, PlanAndRunEnd)
+	svcLat := calcDuration(HandleSimpleStart, PlanAndRunEnd)
+	otherTime := calcDuration(OtherStart, OtherEnd)
+
 	h.ex.statsCollector.recordStatement(
 		&tempStmt, nil,
 		flags.IsSet(planFlagDistributed), flags.IsSet(planFlagImplicitTxn),
 		0, di.RowNum, nil,
-		0, 0, endtime.Sub(starttime).Seconds(), 0, 0, 0, 0,
+		parseTime, CreateInsertNodeTime, PlanAndRunTime, svcLat, otherTime, 0, 0,
 		user, database,
 	)
 	h.ex.metrics.ExecutedStatementCounters.QueryCount.Inc()
@@ -1354,6 +1367,8 @@ type connExecutor struct {
 
 	sessionID ClusterWideID
 
+	InsertDirectSQL string
+
 	// activated determines whether activate() was called already.
 	// When this is set, close() must be called to release resources.
 	activated bool
@@ -1872,7 +1887,8 @@ func (ex *connExecutor) execCmd(ctx context.Context) error {
 			starttime := timeutil.Now()
 			ex.metrics.StartedStatementCounters.QueryCount.Inc()
 			ex.metrics.StartedStatementCounters.InsertCount.Inc()
-			ex.SendDirectTsInsert(ctx, &portal.Stmt.PrepareInsertDirect.EvalContext, portal.Stmt.PrepareInsertDirect.stmtRes, portal.Stmt.PrepareInsertDirect.payloadNodeMap)
+			ex.SendDirectTsInsert(ctx, &portal.Stmt.PrepareInsertDirect.EvalContext, portal.Stmt.PrepareInsertDirect.stmtRes,
+				portal.Stmt.PrepareInsertDirect.payloadNodeMap, portal.Stmt.PrepareInsertDirect.Queryid, nil)
 			if err = portal.Stmt.Insertdirectstmt.ErrorInfo; err != nil {
 				return err
 			}
@@ -2826,7 +2842,9 @@ func (ex *connExecutor) serialize() serverpb.Session {
 	if ex.mu.LastActiveQuery != nil {
 		lastActiveQuery = truncateSQL(ex.mu.LastActiveQuery.String())
 	}
-
+	if ex.InsertDirectSQL != "" {
+		lastActiveQuery = truncateSQL(ex.InsertDirectSQL)
+	}
 	remoteStr := "<admin>"
 	if ex.sessionData.RemoteAddr != nil {
 		remoteStr = ex.sessionData.RemoteAddr.String()
@@ -3124,6 +3142,8 @@ func (ex *connExecutor) SendDirectTsInsert(
 	evalCtx *tree.EvalContext,
 	res CommandResult,
 	payloadNodeMap map[int]*sqlbase.PayloadForDistTSInsert,
+	queryID ClusterWideID,
+	di *DirectInsert,
 ) (useDeepRule bool, dedupRule int64, dedupRows int64) {
 	readOnly := sqlbase.ReadOnly.Get(ex.planner.execCfg.SV())
 	if readOnly || sqlbase.ReadOnlyInternal {
@@ -3131,6 +3151,8 @@ func (ex *connExecutor) SendDirectTsInsert(
 		return
 	}
 	var tsInsNode planNode
+	directTimes := &di.DirectTimes
+	directTimes[CreateInsertNodeStart] = timeutil.Now()
 	// When CDCData is not empty, it signifies that the insert operation includes data that needs to be pushed.
 	// As a result, a tsInsertWithCDCNode is generated to replace the normal insert process's tsInsertNode.
 	if payloadNodeMap[int(evalCtx.NodeID)].CDCData == nil {
@@ -3149,7 +3171,7 @@ func (ex *connExecutor) SendDirectTsInsert(
 		tsIns.CDCData = payloadNodeMap[int(evalCtx.NodeID)].CDCData
 		tsInsNode = tsIns
 	}
-
+	directTimes[CreateInsertNodeEnd] = timeutil.Now()
 	cfg := ex.server.cfg
 	ex.planner.txn = evalCtx.Txn
 	ex.planner.execCfg = cfg
@@ -3171,6 +3193,19 @@ func (ex *connExecutor) SendDirectTsInsert(
 	distribute := false
 	distribute = shouldDistributePlan(
 		ctx, ex.sessionData.DistSQLMode, cfg.DistSQLPlanner, tsInsNode)
+
+	ex.mu.Lock()
+	if ex.mu.ActiveQueries != nil && len(ex.mu.ActiveQueries) != 0 {
+		queryMeta, ok := ex.mu.ActiveQueries[queryID]
+		if !ok {
+			ex.mu.Unlock()
+			panic(fmt.Sprintf("query %d not in registry", queryID))
+		}
+		queryMeta.phase = executing
+		queryMeta.isDistributed = distribute
+	}
+	ex.mu.Unlock()
+
 	if distribute {
 		planCtx = cfg.DistSQLPlanner.NewPlanningCtx(ctx, exEvalCtx, ex.planner.txn)
 	} else {
@@ -3181,7 +3216,7 @@ func (ex *connExecutor) SendDirectTsInsert(
 	planCtx.stmtType = recv.stmtType
 
 	cleanup := cfg.DistSQLPlanner.PlanAndRun(
-		ctx, exEvalCtx, planCtx, ex.planner.txn, tsInsNode, recv, ex.planner.GetStmt(),
+		ctx, exEvalCtx, planCtx, ex.planner.txn, tsInsNode, recv, ex.planner.GetStmt(), di,
 	)
 	ex.sendDedupClientNotice(ctx, &ex.planner, recv)
 	useDeepRule = recv.useDeepRule

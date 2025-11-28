@@ -1383,7 +1383,7 @@ func (ex *connExecutor) execWithDistSQLEngine(
 	// We pass in whether or not we wanted to distribute this plan, which tells
 	// the planner whether or not to plan remote table readers.
 	cleanup := ex.server.cfg.DistSQLPlanner.PlanAndRun(
-		ctx, evalCtx, planCtx, planner.txn, planner.curPlan.plan, recv, stmt,
+		ctx, evalCtx, planCtx, planner.txn, planner.curPlan.plan, recv, stmt, nil,
 	)
 	ex.sendDedupClientNotice(ctx, planner, recv)
 	//collect the TotalMaxMem and TotalMaxDisk
@@ -1835,6 +1835,64 @@ func (ex *connExecutor) addActiveQuery(
 		delete(ex.mu.ActiveQueries, queryID)
 		ex.mu.LastActiveQuery = stmt.AST
 
+		ex.mu.Unlock()
+	}
+}
+
+// TsinsertaddActiveQuery adds a running tsinsert_direct insert to the list of running queries.
+func (h ConnectionHandler) TsinsertaddActiveQuery(curStmt *Statement) func() {
+	curStmt.queryID = h.ex.generateID()
+	queryID := curStmt.queryID
+	_, hidden := curStmt.AST.(tree.HiddenFromShowQueries)
+	qm := &queryMeta{
+		start:         h.ex.phaseTimes[sessionQueryReceived],
+		rawStmt:       curStmt.SQL,
+		phase:         preparing,
+		isDistributed: false,
+		ctxCancel:     h.ex.state.cancel,
+		hidden:        hidden,
+	}
+	h.ex.mu.Lock()
+	h.ex.mu.ActiveQueries[queryID] = qm
+	h.ex.mu.Unlock()
+	return func() {
+		h.ex.mu.Lock()
+		_, ok := h.ex.mu.ActiveQueries[queryID]
+		if !ok {
+			h.ex.mu.Unlock()
+			panic(fmt.Sprintf("query %d missing from ActiveQueries", queryID))
+		}
+		delete(h.ex.mu.ActiveQueries, queryID)
+		h.ex.InsertDirectSQL = curStmt.SQL
+		h.ex.mu.Unlock()
+	}
+}
+
+// TsprepareaddActiveQuery adds a running tsinsert_direct prepare to the list of running queries.
+func (ex *connExecutor) TsprepareaddActiveQuery(
+	queryID ClusterWideID, stmt Statement, cancelFun context.CancelFunc,
+) func() {
+	_, hidden := stmt.AST.(tree.HiddenFromShowQueries)
+	qm := &queryMeta{
+		start:         ex.phaseTimes[sessionQueryReceived],
+		rawStmt:       stmt.Prepared.Statement.SQL,
+		phase:         preparing,
+		isDistributed: false,
+		ctxCancel:     cancelFun,
+		hidden:        hidden,
+	}
+	ex.mu.Lock()
+	ex.mu.ActiveQueries[queryID] = qm
+	ex.mu.Unlock()
+	return func() {
+		ex.mu.Lock()
+		_, ok := ex.mu.ActiveQueries[queryID]
+		if !ok {
+			ex.mu.Unlock()
+			panic(fmt.Sprintf("query %d missing from ActiveQueries", queryID))
+		}
+		delete(ex.mu.ActiveQueries, queryID)
+		ex.InsertDirectSQL = stmt.Prepared.Statement.SQL
 		ex.mu.Unlock()
 	}
 }

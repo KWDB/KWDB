@@ -997,6 +997,7 @@ func (p *planner) makeNewPlanAndRun(
 			localPlanner.curPlan.plan,
 			recv,
 			localPlanner.GetStmt(),
+			nil,
 		)
 		defer cleanup()
 		if planAndRunErr = rw.Err(); planAndRunErr != nil {
