@@ -22,6 +22,8 @@
 
 #define EE_TIMER_EVENT_POOL_SIZE 10240
 #define EE_ENABLE_PARALLEL 1
+// wait for about 10 minutes before exit for temporary thread
+#define TEMPORARY_THREAD_MAX_WAIT_TIMES       300
 
 namespace kwdbts {
 
@@ -102,6 +104,11 @@ class ExecPool {
 
   std::atomic<k_int32> total_threads_{0};
 
+  /**
+   * @brief Number of wait times before exit for temporary thread
+   */
+  int temporary_thread_wait_times_{TEMPORARY_THREAD_MAX_WAIT_TIMES};
+
  public:
   /**
    * @brief Constructor
@@ -127,6 +134,13 @@ class ExecPool {
    */
   KStatus PushTask(ExecTaskPtr task_ptr, bool no_check = false);
 
+  /**
+   * @brief set the number of wait times before exit for temporary thread
+   */
+  void SetTemporaryThreadWaitTimes(int temporary_thread_wait_times) {
+    temporary_thread_wait_times_ = temporary_thread_wait_times;
+  }
+
   KStatus PushBlockedTask(ExecTaskPtr task_ptr);
   /**
   * @brief add timed tasks
@@ -143,6 +157,10 @@ class ExecPool {
    * @brief gets the number of idle threads
    */
   k_uint32 GetWaitThreadNum() const;
+  k_uint32 GetTotalThreadNum() const {
+    std::unique_lock l(lock_);
+    return threads_num_ + threads_starting_;
+  }
   k_uint32 GetWaitThreadNum(k_uint32 dop);
   k_uint32 ReleaseThreadNum(k_uint32 dop);
   bool IsActive() { return active_threads_ > 0 || task_queue_.size() > 0; }

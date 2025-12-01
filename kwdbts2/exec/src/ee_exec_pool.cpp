@@ -110,21 +110,21 @@ void ExecPool::Routine(void *arg) {
   threads_num_++;
   threads_starting_--;
   bool permanent = threads_num_ <= min_threads_;
-  bool wait_once = false;
+  int wait_times = 0;
   while (true) {
     if (is_tp_stop_) {
       break;
     }
     // task_queue_ null
     if (task_queue_.empty()) {
-      if (!permanent && wait_once) {
+      if (!permanent && wait_times >= temporary_thread_wait_times_) {
         break;
       }
       wait_cond_.wait_for(l, std::chrono::seconds(2));
-      wait_once = true;
+      ++wait_times;
       continue;
     }
-    wait_once = false;
+    wait_times = 0;
     // get task
     ExecTaskPtr task_ptr = task_queue_.front();
     task_queue_.pop_front();
@@ -202,6 +202,7 @@ k_bool ExecPool::IsInited() { return is_init_; }
 k_bool ExecPool::IsStopped() {return is_tp_stop_; }
 
 k_uint32 ExecPool::GetWaitThreadNum() const {
+  std::unique_lock l(lock_);
   k_int32 idle = threads_num_ + threads_starting_ - active_threads_;
   return idle > 8 ? 8 : idle;
 }
