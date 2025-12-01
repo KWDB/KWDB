@@ -239,10 +239,10 @@ class TsMemSegmentManager {
 
   bool SwitchMemSegment(TsMemSegment* expected_old_mem_seg, bool flush);
 
-  KStatus PutData(const TSSlice& payload, TSEntityID entity_id);
+  KStatus PutData(const TSSlice& payload, const std::shared_ptr<TsTableSchemaManager>& tb_schema, TSEntityID entity_id);
 
-  bool GetMetricSchemaAndMeta(TSTableID table_id_, uint32_t version, const std::vector<AttributeInfo>** schema,
-                              DATATYPE* ts_type, LifeTime* lifetime = nullptr);
+  bool GetMetricSchemaAndMeta(const std::shared_ptr<TsTableSchemaManager>& tb_schema, uint32_t version,
+                              const std::vector<AttributeInfo>** schema, DATATYPE* ts_type, LifeTime* lifetime = nullptr);
 };
 
 }  // namespace kwdbts

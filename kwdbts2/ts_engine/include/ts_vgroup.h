@@ -113,7 +113,8 @@ class TsVGroup {
 
   KStatus CreateTable(kwdbContext_p ctx, const KTableKey& table_id, roachpb::CreateTsTable* meta);
 
-  KStatus PutData(kwdbContext_p ctx, TSTableID table_id, uint64_t mtr_id, TSSlice* primary_tag, TSEntityID entity_id,
+  KStatus PutData(kwdbContext_p ctx, const std::shared_ptr<TsTableSchemaManager>& tb_schema,
+                  uint64_t mtr_id, TSSlice* primary_tag, TSEntityID entity_id,
                   TSSlice* payload, bool write_wal);
 
   fs::path GetPath() const;

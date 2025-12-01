@@ -286,15 +286,8 @@ KStatus TsEngineSchemaManager::DropTableSchemaMgr(TSTableID tbl_id) {
   return KStatus::SUCCESS;
 }
 
-KStatus TsEngineSchemaManager::GetVGroup(kwdbContext_p ctx, TSTableID tbl_id, TSSlice primary_key,
-                                             uint32_t* vgroup_id, TSEntityID* entity_id, bool* new_tag) {
-  std::shared_ptr<TsTableSchemaManager> tb_schema;
-  KStatus s = GetTableSchemaMgr(tbl_id, tb_schema);
-  if (s != KStatus::SUCCESS) {
-    LOG_ERROR("GetTableSchemaManager failed, table id: %lu", tbl_id);
-    return s;
-  }
-
+KStatus TsEngineSchemaManager::GetVGroup(kwdbContext_p ctx, const std::shared_ptr<TsTableSchemaManager>& tb_schema,
+                                          TSSlice primary_key, uint32_t* vgroup_id, TSEntityID* entity_id, bool* new_tag) {
   std::shared_ptr<TagTable> tag_schema;
   tb_schema->GetTagSchema(ctx, &tag_schema);
   uint32_t entityid, groupid;

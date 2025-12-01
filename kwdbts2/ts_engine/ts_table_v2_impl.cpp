@@ -59,7 +59,7 @@ KStatus TsTableV2Impl::PutData(kwdbContext_p ctx, TsVGroup* v_group, TSSlice* pa
     return KStatus::SUCCESS;
   }
   auto primary_key = TsRawPayload::GetPrimaryKeyFromSlice(*payload);
-  auto s = v_group->PutData(ctx, table_id_, mtr_id, &primary_key, entity_id, payload, write_wal);
+  auto s = v_group->PutData(ctx, table_schema_mgr_, mtr_id, &primary_key, entity_id, payload, write_wal);
   if (s != KStatus::SUCCESS) {
     // todo(liangbo01) if failed. should we need rollback all inserted data?
     LOG_ERROR("putdata failed. table id[%lu], group id[%u]", table_id_, v_group->GetVGroupID());
@@ -79,7 +79,7 @@ KStatus TsTableV2Impl::PutData(kwdbContext_p ctx, TsVGroup* v_group, TsRawPayloa
   auto primary_key = p.GetPrimaryTag();
   auto payload = p.GetPayload();
   auto version = p.GetTableVersion();
-  auto s = v_group->PutData(ctx, table_id_, mtr_id, &primary_key, entity_id, &payload, write_wal);
+  auto s = v_group->PutData(ctx, table_schema_mgr_, mtr_id, &primary_key, entity_id, &payload, write_wal);
   if (s != KStatus::SUCCESS) {
     // todo(liangbo01) if failed. should we need rollback all inserted data?
     LOG_ERROR("putdata failed. table id[%lu], group id[%u]", table_id_, v_group->GetVGroupID());

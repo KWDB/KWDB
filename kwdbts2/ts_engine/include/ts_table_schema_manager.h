@@ -87,7 +87,9 @@ class TsTableSchemaManager {
     return hash_num_;
   }
 
-  TSTableID GetTableId();
+  TSTableID GetTableId() const {
+    return table_id_;
+  }
 
   std::shared_ptr<TagTable> GetTagTable() {
     return tag_table_;

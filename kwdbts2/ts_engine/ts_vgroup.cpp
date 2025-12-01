@@ -114,8 +114,9 @@ KStatus TsVGroup::CreateTable(kwdbContext_p ctx, const KTableKey& table_id, roac
   return KStatus::SUCCESS;
 }
 
-KStatus TsVGroup::PutData(kwdbContext_p ctx, TSTableID table_id, uint64_t mtr_id, TSSlice* primary_tag,
-                          TSEntityID entity_id, TSSlice* payload, bool write_wal) {
+KStatus TsVGroup::PutData(kwdbContext_p ctx, const std::shared_ptr<TsTableSchemaManager>& tb_schema,
+                          uint64_t mtr_id, TSSlice* primary_tag, TSEntityID entity_id,
+                          TSSlice* payload, bool write_wal) {
   if (EnableWAL() && write_wal) {
     LockSharedLevelMutex();
     TS_OSN entry_lsn = 0;
@@ -131,7 +132,7 @@ KStatus TsVGroup::PutData(kwdbContext_p ctx, TSTableID table_id, uint64_t mtr_id
     wal_manager_->Unlock();
   }
 
-  auto s = mem_segment_mgr_->PutData(*payload, entity_id);
+  auto s = mem_segment_mgr_->PutData(*payload, tb_schema, entity_id);
   if (s == KStatus::FAIL) {
     LOG_ERROR("mem_segment_mgr_.PutData Failed.")
     return FAIL;
@@ -266,7 +267,14 @@ KStatus TsVGroup::redoPut(kwdbContext_p ctx, kwdbts::TS_OSN log_lsn, const TSSli
   uint32_t vgroup_id;
   TSEntityID entity_id;
 
-  auto s = schema_mgr_->GetVGroup(ctx, table_id, primary_key, &vgroup_id, &entity_id, &new_tag);
+  std::shared_ptr<TsTableSchemaManager> tb_schema_manager;
+  KStatus s = schema_mgr_->GetTableSchemaMgr(table_id, tb_schema_manager);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("GetTableSchemaManager failed, table id: %lu", table_id);
+    return s;
+  }
+
+  s = schema_mgr_->GetVGroup(ctx, tb_schema_manager, primary_key, &vgroup_id, &entity_id, &new_tag);
   if (s != KStatus::SUCCESS) {
     return s;
   }
@@ -277,12 +285,6 @@ KStatus TsVGroup::redoPut(kwdbContext_p ctx, kwdbts::TS_OSN log_lsn, const TSSli
     // 1. Write tag data
     assert(payload_data_flag == DataTagFlag::DATA_AND_TAG || payload_data_flag == DataTagFlag::TAG_ONLY);
     LOG_DEBUG("tag bt insert hashPoint=%hu", p.GetHashPoint());
-    std::shared_ptr<TsTableSchemaManager> tb_schema_manager;
-    s = schema_mgr_->GetTableSchemaMgr(table_id, tb_schema_manager);
-    if (s != KStatus::SUCCESS) {
-      LOG_ERROR("Get schema manager failed, table id[%lu]", table_id);
-      return KStatus::FAIL;
-    }
     std::shared_ptr<TagTable> tag_table;
     s = tb_schema_manager->GetTagSchema(ctx, &tag_table);
     if (s != KStatus::SUCCESS) {
@@ -299,7 +301,7 @@ KStatus TsVGroup::redoPut(kwdbContext_p ctx, kwdbts::TS_OSN log_lsn, const TSSli
   }
 
   if (payload_data_flag == DataTagFlag::DATA_AND_TAG || payload_data_flag == DataTagFlag::DATA_ONLY) {
-    s = mem_segment_mgr_->PutData(payload, entity_id);
+    s = mem_segment_mgr_->PutData(payload, tb_schema_manager, entity_id);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("failed putdata.");
       return s;
@@ -1589,7 +1591,14 @@ KStatus TsVGroup::redoPutTag(kwdbContext_p ctx, kwdbts::TS_OSN log_lsn, const TS
   uint32_t vgroup_id;
   TSEntityID entity_id;
 
-  auto s = schema_mgr_->GetVGroup(ctx, table_id, primary_key, &vgroup_id, &entity_id, &new_tag);
+  std::shared_ptr<TsTableSchemaManager> tb_schema;
+  KStatus s = schema_mgr_->GetTableSchemaMgr(table_id, tb_schema);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("GetTableSchemaManager failed, table id: %lu", table_id);
+    return s;
+  }
+
+  s = schema_mgr_->GetVGroup(ctx, tb_schema, primary_key, &vgroup_id, &entity_id, &new_tag);
   if (s != KStatus::SUCCESS) {
     return s;
   }

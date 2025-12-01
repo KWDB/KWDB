@@ -82,7 +82,7 @@ TEST_F(VacuumTest, ZDP49302) {
     TsRawPayloadRowParser parser{metric_schema_};
     TsRawPayload p{payload, metric_schema_};
     auto ptag = p.GetPrimaryTag();
-    vgroup_->PutData(ctx_, table_id, 0, &ptag, 1, &payload, false);
+    vgroup_->PutData(ctx_, table_schema_mgr_, 0, &ptag, 1, &payload, false);
     free(payload.data);
   }
 

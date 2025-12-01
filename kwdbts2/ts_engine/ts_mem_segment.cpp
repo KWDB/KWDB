@@ -67,39 +67,33 @@ bool TsMemSegmentManager::SwitchMemSegment(TsMemSegment* expected_old_mem_seg, b
   return true;
 }
 
-bool TsMemSegmentManager::GetMetricSchemaAndMeta(TSTableID table_id, uint32_t version,
+bool TsMemSegmentManager::GetMetricSchemaAndMeta(const std::shared_ptr<TsTableSchemaManager>& tb_schema, uint32_t version,
                                                  const std::vector<AttributeInfo>** schema, DATATYPE* ts_type,
                                                  LifeTime* lifetime) {
-  std::shared_ptr<kwdbts::TsTableSchemaManager> schema_mgr;
-  auto s = vgroup_->GetEngineSchemaMgr()->GetTableSchemaMgr(table_id, schema_mgr);
+  auto s = tb_schema->GetColumnsExcludeDroppedPtr(schema, version);
   if (s != KStatus::SUCCESS) {
-    LOG_ERROR("cannot found table [%lu] schema manager.", table_id);
+    LOG_ERROR("cannot found table [%lu] with version[%u].", tb_schema->GetTableId(), version);
     return false;
   }
-  s = schema_mgr->GetColumnsExcludeDroppedPtr(schema, version);
-  if (s != KStatus::SUCCESS) {
-    LOG_ERROR("cannot found table [%lu] with version[%u].", table_id, version);
-    return false;
-  }
-  *lifetime = schema_mgr->GetLifeTime();
-  *ts_type = schema_mgr->GetTsColDataType();
+  *lifetime = tb_schema->GetLifeTime();
+  *ts_type = tb_schema->GetTsColDataType();
   return true;
 }
 
-KStatus TsMemSegmentManager::PutData(const TSSlice& payload, TSEntityID entity_id) {
+KStatus TsMemSegmentManager::PutData(const TSSlice& payload, const std::shared_ptr<TsTableSchemaManager>& tb_schema,
+                                      TSEntityID entity_id) {
   // first of all, check BG flush job status
   auto bg_status = TsFlushJobPool::GetInstance().GetBackGroundStatus();
   if (bg_status == FAIL) {
     return FAIL;
   }
 
-  auto table_id = TsRawPayload::GetTableIDFromSlice(payload);
   auto table_version = TsRawPayload::GetTableVersionFromSlice(payload);
   // get column info and life time
   const std::vector<AttributeInfo>* schema{nullptr};
   LifeTime life_time{};
   DATATYPE ts_type;
-  if (!GetMetricSchemaAndMeta(table_id, table_version, &schema, &ts_type, &life_time)) {
+  if (!GetMetricSchemaAndMeta(tb_schema, table_version, &schema, &ts_type, &life_time)) {
     LOG_ERROR("GetMetricSchemaAndMeta failed.");
     return KStatus::FAIL;
   }
@@ -110,7 +104,7 @@ KStatus TsMemSegmentManager::PutData(const TSSlice& payload, TSEntityID entity_i
     acceptable_ts = (now.time_since_epoch().count() - life_time.ts) * life_time.precision;
   }
 
-  uint32_t db_id = vgroup_->GetEngineSchemaMgr()->GetDBIDByTableID(table_id);
+  uint32_t db_id = tb_schema->GetDbID();
   // TSMemSegRowData row_data(db_id, table_id, table_version, entity_id);
   TsRawPayload pd(payload, schema);
   uint32_t row_num = pd.GetRowCount();
@@ -136,7 +130,8 @@ KStatus TsMemSegmentManager::PutData(const TSSlice& payload, TSEntityID entity_i
       last_p_time = p_time;
     }
 
-    TSMemSegRowData* row_data = cur_mem_seg->AllocOneRow(db_id, table_id, table_version, entity_id, pd.GetRowData(i));
+    TSMemSegRowData* row_data = cur_mem_seg->AllocOneRow(db_id, tb_schema->GetTableId(),
+                                                          table_version, entity_id, pd.GetRowData(i));
     row_data->SetData(row_ts, osn);
     cur_mem_seg->AppendOneRow(row_data);
 
@@ -146,7 +141,7 @@ KStatus TsMemSegmentManager::PutData(const TSSlice& payload, TSEntityID entity_i
     }
   }
   vgroup_->UpdateEntityLatestRow(entity_id, max_ts, pd.GetRowData(max_row_idx), table_version);
-  vgroup_->UpdateEntityAndMaxTs(table_id, max_ts, entity_id);
+  vgroup_->UpdateEntityAndMaxTs(tb_schema->GetTableId(), max_ts, entity_id);
 
   if (cur_mem_seg->GetPayloadMemUsage() > EngineOptions::mem_segment_max_size) {
     this->SwitchMemSegment(cur_mem_seg.get(), true);

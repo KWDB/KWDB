@@ -133,8 +133,8 @@ class TSEngineImpl : public TSEngine {
     return KStatus::SUCCESS;
   }
 
-  KStatus InsertTagData(kwdbContext_p ctx, const KTableKey& table_id, uint64_t mtr_id, TSSlice payload_data,
-                        bool write_wal, uint32_t& vgroup, TSEntityID& entity_id);
+  KStatus InsertTagData(kwdbContext_p ctx, const std::shared_ptr<TsTableSchemaManager>& tb_schema,
+                        uint64_t mtr_id, TSSlice payload_data, bool write_wal, uint32_t& vgroup, TSEntityID& entity_id);
 
   KStatus
   GetMetaData(kwdbContext_p ctx, const KTableKey& table_id, RangeGroup range, roachpb::CreateTsTable* meta,

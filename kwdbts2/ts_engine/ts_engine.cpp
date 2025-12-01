@@ -559,11 +559,12 @@ KStatus TSEngineImpl::putTagData(kwdbContext_p ctx, TSTableID table_id, uint32_t
   return KStatus::SUCCESS;
 }
 
-KStatus TSEngineImpl::InsertTagData(kwdbContext_p ctx, const KTableKey& table_id, uint64_t mtr_id, TSSlice payload_data,
-  bool write_wal, uint32_t& vgroup_id, TSEntityID& entity_id) {
+KStatus TSEngineImpl::InsertTagData(kwdbContext_p ctx, const std::shared_ptr<TsTableSchemaManager>& tb_schema,
+                                    uint64_t mtr_id, TSSlice payload_data, bool write_wal, uint32_t& vgroup_id,
+                                    TSEntityID& entity_id) {
   bool new_tag;
   TSSlice primary_key = TsRawPayload::GetPrimaryKeyFromSlice(payload_data);
-  KStatus s = schema_mgr_->GetVGroup(ctx, table_id, primary_key, &vgroup_id, &entity_id, &new_tag);
+  KStatus s = schema_mgr_->GetVGroup(ctx, tb_schema, primary_key, &vgroup_id, &entity_id, &new_tag);
   if (s != KStatus::SUCCESS) {
     return s;
   }
@@ -575,7 +576,7 @@ KStatus TSEngineImpl::InsertTagData(kwdbContext_p ctx, const KTableKey& table_id
     Defer defer{[&](){
       tag_lock_.Unlock(hash_point);
     }};
-    s = schema_mgr_->GetVGroup(ctx, table_id, primary_key, &vgroup_id, &entity_id, &new_tag);
+    s = schema_mgr_->GetVGroup(ctx, tb_schema, primary_key, &vgroup_id, &entity_id, &new_tag);
     if (s != KStatus::SUCCESS) {
       return s;
     }
@@ -583,7 +584,7 @@ KStatus TSEngineImpl::InsertTagData(kwdbContext_p ctx, const KTableKey& table_id
     if (new_tag) {
       if (EnableWAL() && write_wal) {
         wal_level_mutex_.lock_shared();
-        s = vgroup->GetWALManager()->WriteInsertWAL(ctx, mtr_id, 0, 0, payload_data, vgroup_id, table_id);
+        s = vgroup->GetWALManager()->WriteInsertWAL(ctx, mtr_id, 0, 0, payload_data, vgroup_id, tb_schema->GetTableId());
         wal_level_mutex_.unlock_shared();
         if (s == KStatus::FAIL) {
           LOG_ERROR("failed WriteInsertWAL for new tag.");
@@ -592,7 +593,7 @@ KStatus TSEngineImpl::InsertTagData(kwdbContext_p ctx, const KTableKey& table_id
       }
       TsRawPayload p{payload_data};
       entity_id = vgroup->AllocateEntityID();
-      s = putTagData(ctx, table_id, vgroup_id, entity_id, p);
+      s = putTagData(ctx, tb_schema->GetTableId(), vgroup_id, entity_id, p);
       if (s != KStatus::SUCCESS) {
         return s;
       }
@@ -622,7 +623,13 @@ KStatus TSEngineImpl::PutData(kwdbContext_p ctx, const KTableKey& table_id, uint
     if (tsx_id != nullptr) {
       mtr_id = GetVGroupByID(ctx, 1)->GetMtrIDByTsxID(tsx_id);
     }
-    s = InsertTagData(ctx, table_id, mtr_id, cur_pd, write_wal, vgroup_id, entity_id);
+    std::shared_ptr<TsTableSchemaManager> tb_schema;
+    s = GetTableSchemaMgr(ctx, table_id, is_dropped, tb_schema);
+    if (s != KStatus::SUCCESS) {
+      LOG_ERROR("GetTableSchemaManager failed, table id: %lu", table_id);
+      return s;
+    }
+    s = InsertTagData(ctx, tb_schema, mtr_id, cur_pd, write_wal, vgroup_id, entity_id);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("put tag data failed. table[%lu].", table_id);
       return s;
@@ -668,7 +675,7 @@ KStatus TSEngineImpl::PutEntity(kwdbContext_p ctx, const KTableKey& table_id, ui
       return s;
     }
     bool new_tag;
-    s = schema_mgr_->GetVGroup(ctx, table_id, primary_key, &vgroup_id, &entity_id, &new_tag);
+    s = schema_mgr_->GetVGroup(ctx, tb_schema_manager, primary_key, &vgroup_id, &entity_id, &new_tag);
     if (s != KStatus::SUCCESS) {
       return s;
     }

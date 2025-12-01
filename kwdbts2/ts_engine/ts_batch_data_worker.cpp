@@ -487,7 +487,7 @@ KStatus TsWriteBatchDataWorker::Write(kwdbContext_p ctx, TSTableID table_id, uin
   uint32_t vgroup_id;
   TSEntityID entity_id;
   is_dropped = false;
-  s = ts_engine_->InsertTagData(ctx, table_id, 0, {tag_payload_str.data(), tag_payload_str.size()}, false,
+  s = ts_engine_->InsertTagData(ctx, schema, 0, {tag_payload_str.data(), tag_payload_str.size()}, false,
                                 vgroup_id, entity_id);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("InsertTagData[%lu] failed, %s", table_id, err_info.toString().c_str());

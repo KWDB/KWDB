@@ -637,10 +637,6 @@ void TsTableSchemaManager::InsertVersionConv(uint64_t key, const shared_ptr<Sche
   version_conv_map.insert(make_pair(key, ver_conv));
 }
 
-TSTableID TsTableSchemaManager::GetTableId() {
-  return table_id_;
-}
-
 KStatus TsTableSchemaManager::CreateNormalTagIndex(kwdbContext_p ctx, const uint64_t transaction_id,
                                                    const uint64_t index_id, const uint32_t cur_version,
                                                    const uint32_t new_version,
