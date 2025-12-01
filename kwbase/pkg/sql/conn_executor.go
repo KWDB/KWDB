@@ -3151,8 +3151,11 @@ func (ex *connExecutor) SendDirectTsInsert(
 		return
 	}
 	var tsInsNode planNode
-	directTimes := &di.DirectTimes
-	directTimes[CreateInsertNodeStart] = timeutil.Now()
+	var directTimes *directTimes
+	if di != nil {
+		directTimes = &di.DirectTimes
+		directTimes[CreateInsertNodeStart] = timeutil.Now()
+	}
 	// When CDCData is not empty, it signifies that the insert operation includes data that needs to be pushed.
 	// As a result, a tsInsertWithCDCNode is generated to replace the normal insert process's tsInsertNode.
 	if payloadNodeMap[int(evalCtx.NodeID)].CDCData == nil {
@@ -3171,7 +3174,9 @@ func (ex *connExecutor) SendDirectTsInsert(
 		tsIns.CDCData = payloadNodeMap[int(evalCtx.NodeID)].CDCData
 		tsInsNode = tsIns
 	}
-	directTimes[CreateInsertNodeEnd] = timeutil.Now()
+	if di != nil {
+		directTimes[CreateInsertNodeEnd] = timeutil.Now()
+	}
 	cfg := ex.server.cfg
 	ex.planner.txn = evalCtx.Txn
 	ex.planner.execCfg = cfg
