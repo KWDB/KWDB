@@ -268,10 +268,6 @@ TSStatus TSGetMetaData(TSEngine* engine, TSTableID table_id, RangeGroup range, T
 TSStatus TSPutEntity(TSEngine *engine, TSTableID tableId, TSSlice *payload, size_t payload_num, RangeGroup range_group,
                      uint64_t mtr_id, uint64_t osn);
 
-TSStatus TSPutData(TSEngine* engine, TSTableID tableId, TSSlice* payload, size_t payload_num, RangeGroup range_group,
-                   uint64_t mtr_id, uint16_t* inc_entity_cnt, uint32_t* inc_unordered_cnt, DedupResult* dedup_result,
-                   bool writeWAL);
-
 TSStatus TSPutDataExplicit(TSEngine* engine, TSTableID tableId, TSSlice* payload, size_t payload_num, RangeGroup range_group,
                    uint64_t mtr_id, uint16_t* inc_entity_cnt, uint32_t* inc_unordered_cnt, DedupResult* dedup_result,
                    bool writeWAL, const char* tsx_id);

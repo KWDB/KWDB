@@ -604,18 +604,23 @@ KStatus TSEngineImpl::InsertTagData(kwdbContext_p ctx, const std::shared_ptr<TsT
 
 KStatus TSEngineImpl::PutData(kwdbContext_p ctx, const KTableKey& table_id, uint64_t range_group_id,
   TSSlice* payload_data, int payload_num, uint64_t mtr_id, uint16_t* inc_entity_cnt, uint32_t* inc_unordered_cnt,
-  DedupResult* dedup_result, bool& is_dropped, bool write_wal, const char* tsx_id) {
+  DedupResult* dedup_result, bool write_wal, const char* tsx_id) {
   std::shared_ptr<kwdbts::TsTable> ts_table;
   ErrorInfo err_info;
   TSEntityID entity_id;
   // size_t payload_size = 0;
   dedup_result->payload_num = payload_num;
   dedup_result->dedup_rule = static_cast<int>(EngineOptions::g_dedup_rule);
+  bool is_dropped = false;
   for (size_t i = 0; i < payload_num; i++) {
     TSSlice& cur_pd = payload_data[i];
     auto tbl_version = TsRawPayload::GetTableVersionFromSlice(cur_pd);
     auto s = GetTsTable(ctx, table_id, ts_table, is_dropped, true, err_info, tbl_version);
     if (s != KStatus::SUCCESS) {
+      if (is_dropped) {
+        LOG_INFO("Table[%ld] has already been dropped.", table_id);
+        return KStatus::SUCCESS;
+      }
       LOG_ERROR("cannot found table[%lu] with version[%u], errmsg[%s]", table_id, tbl_version, err_info.errmsg.c_str());
       return s;
     }

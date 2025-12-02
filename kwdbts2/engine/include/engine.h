@@ -159,7 +159,7 @@ struct TSEngine {
    */
   virtual KStatus PutData(kwdbContext_p ctx, const KTableKey& table_id, uint64_t range_group_id,
     TSSlice* payload_data, int payload_num, uint64_t mtr_id, uint16_t* inc_entity_cnt, uint32_t* inc_unordered_cnt,
-    DedupResult* dedup_result, bool& is_dropped, bool writeWAL = true, const char* tsx_id = nullptr) = 0;
+    DedupResult* dedup_result, bool writeWAL = true, const char* tsx_id = nullptr) = 0;
 
   /**
    * @brief Delete data of some specified entities within a specified time range by marking

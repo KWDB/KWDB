@@ -113,7 +113,7 @@ TEST_F(TestV2IteratorByOSN, basic_insert) {
   uint32_t inc_unordered_cnt;
   DedupResult dedup_result{0, 0, 0, TSSlice {nullptr, 0}};
   bool is_dropped = false;
-  auto s = engine_->PutData(ctx_, table_id_, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result, is_dropped);
+  auto s = engine_->PutData(ctx_, table_id_, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
   free(pay_load.data);
   ASSERT_EQ(s, KStatus::SUCCESS);
 
@@ -194,7 +194,7 @@ TEST_F(TestV2IteratorByOSN, basic_udpate) {
   uint32_t inc_unordered_cnt;
   DedupResult dedup_result{0, 0, 0, TSSlice {nullptr, 0}};
   bool is_dropped = false;
-  auto s = engine_->PutData(ctx_, table_id_, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result, is_dropped);
+  auto s = engine_->PutData(ctx_, table_id_, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
   ASSERT_EQ(s, KStatus::SUCCESS);
   TsRawPayload::SetOSN(pay_load, 1770000);
   s = engine_->PutEntity(ctx_, table_id_, 1, &pay_load, 1, 0, is_dropped);
@@ -309,7 +309,7 @@ TEST_F(TestV2IteratorByOSN, basic_delete) {
   uint32_t inc_unordered_cnt;
   DedupResult dedup_result{0, 0, 0, TSSlice {nullptr, 0}};
   bool is_dropped = false;
-  auto s = engine_->PutData(ctx_, table_id_, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result, is_dropped);
+  auto s = engine_->PutData(ctx_, table_id_, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
   uint64_t d_count = 0;
   // delete tag at 1770000
   s = engine_->DeleteRangeEntities(ctx_, table_id_, 1, {0, UINT64_MAX}, &d_count, d_count, is_dropped, 1770000);
@@ -319,7 +319,7 @@ TEST_F(TestV2IteratorByOSN, basic_delete) {
   pay_load = GenRowPayload(*metric_schema_, tag_schema_ ,table_id_, table_version, 1, 1, start_ts + 1000);
   TsRawPayload::SetOSN(pay_load, 1780000);
   // insert tag at 1780000
-  s = engine_->PutData(ctx_, table_id_, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result, is_dropped);
+  s = engine_->PutData(ctx_, table_id_, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
   ASSERT_EQ(s, KStatus::SUCCESS);
   // delete tag at 1790000
   s = engine_->DeleteRangeEntities(ctx_, table_id_, 1, {0, UINT64_MAX}, &d_count, d_count, is_dropped, 1790000);
@@ -456,13 +456,13 @@ TEST_F(TestV2IteratorByOSN, basic_metric_insert) {
   uint32_t inc_unordered_cnt;
   DedupResult dedup_result{0, 0, 0, TSSlice {nullptr, 0}};
   bool is_dropped = false;
-  auto s = engine_->PutData(ctx_, table_id_, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result, is_dropped);
+  auto s = engine_->PutData(ctx_, table_id_, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
   ASSERT_EQ(s, KStatus::SUCCESS);
   TsRawPayload::SetOSN(pay_load, 1770000);
-  s = engine_->PutData(ctx_, table_id_, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result, is_dropped);
+  s = engine_->PutData(ctx_, table_id_, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
   ASSERT_EQ(s, KStatus::SUCCESS);
   TsRawPayload::SetOSN(pay_load, 1780000);
-  s = engine_->PutData(ctx_, table_id_, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result, is_dropped);
+  s = engine_->PutData(ctx_, table_id_, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
   ASSERT_EQ(s, KStatus::SUCCESS);
   free(pay_load.data);
 
@@ -539,7 +539,7 @@ TEST_F(TestV2IteratorByOSN, basic_metric_delete) {
   uint32_t inc_unordered_cnt;
   DedupResult dedup_result{0, 0, 0, TSSlice {nullptr, 0}};
   bool is_dropped = false;
-  auto s = engine_->PutData(ctx_, table_id_, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result, is_dropped);
+  auto s = engine_->PutData(ctx_, table_id_, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
   ASSERT_EQ(s, KStatus::SUCCESS);
 
   uint64_t pkey_mem = 1;
@@ -550,14 +550,14 @@ TEST_F(TestV2IteratorByOSN, basic_metric_delete) {
   s = engine_->DeleteData(ctx_, table_id_, 1, pkey, ts_spans, &r_count, 0, 1770000, is_dropped);
   ASSERT_EQ(s, KStatus::SUCCESS);
   TsRawPayload::SetOSN(pay_load, 1780000);
-  s = engine_->PutData(ctx_, table_id_, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result, is_dropped);
+  s = engine_->PutData(ctx_, table_id_, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
   ASSERT_EQ(s, KStatus::SUCCESS);
   ts_spans.clear();
   ts_spans.push_back({0, 13600});
   s = engine_->DeleteData(ctx_, table_id_, 1, pkey, ts_spans, &r_count, 0, 1790000, is_dropped);
   ASSERT_EQ(s, KStatus::SUCCESS);
   TsRawPayload::SetOSN(pay_load, 1800000);
-  s = engine_->PutData(ctx_, table_id_, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result, is_dropped);
+  s = engine_->PutData(ctx_, table_id_, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
   ASSERT_EQ(s, KStatus::SUCCESS);
   ts_spans.clear();
   ts_spans.push_back({0, 23600});
@@ -658,7 +658,7 @@ TEST_F(TestV2IteratorByOSN, only_tag_data_exist) {
   uint32_t inc_unordered_cnt;
   DedupResult dedup_result{0, 0, 0, TSSlice {nullptr, 0}};
     bool is_dropped = false;
-  auto s = engine_->PutData(ctx_, table_id_, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result, is_dropped);
+  auto s = engine_->PutData(ctx_, table_id_, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
   ASSERT_EQ(s, KStatus::SUCCESS);
 
   uint64_t pkey_mem = 1;

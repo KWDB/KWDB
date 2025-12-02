@@ -319,7 +319,7 @@ TEST_F(ConcurrentRWTest, SwitchMem) {
       uint32_t inc_unordered_cnt;
       DedupResult dedup_result;
       bool is_dropped = false;
-      engine->PutData(ctx_, table_id, 0, &payload, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result, is_dropped);
+      engine->PutData(ctx_, table_id, 0, &payload, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
       atomic_count++;
     }
   };
@@ -419,7 +419,7 @@ TEST_F(ConcurrentRWTest, RandomFlush) {
       uint32_t inc_unordered_cnt;
       DedupResult dedup_result;
       bool is_dropped = false;
-      engine->PutData(ctx_, table_id, 0, &payload, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result, is_dropped);
+      engine->PutData(ctx_, table_id, 0, &payload, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
       atomic_count++;
     }
   };

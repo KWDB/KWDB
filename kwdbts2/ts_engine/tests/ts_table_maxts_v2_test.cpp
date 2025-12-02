@@ -114,7 +114,7 @@ TEST_F(TestTsTableMaxTSV2, InsertOneRecord) {
   uint16_t inc_entity_cnt;
   uint32_t inc_unordered_cnt;
   DedupResult dedup_result{0, 0, 0, TSSlice {nullptr, 0}};
-  s = engine_->PutData(ctx_, table_id, 0, &payload, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result, is_dropped);
+  s = engine_->PutData(ctx_, table_id, 0, &payload, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
   free(payload.data);
   ASSERT_EQ(s, KStatus::SUCCESS);
 
@@ -161,7 +161,7 @@ TEST_F(TestTsTableMaxTSV2, InsertManyTags) {
   DedupResult dedup_result{0, 0, 0, TSSlice {nullptr, 0}};
   for (size_t i = 1; i <= entity_num; ++i) {
     auto payload = GenRowPayload(*metric_schema, tag_schema ,table_id, 1, i, 1, start_ts - i);
-    s = engine_->PutData(ctx_, table_id, 0, &payload, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result, is_dropped);
+    s = engine_->PutData(ctx_, table_id, 0, &payload, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
     free(payload.data);
     ASSERT_EQ(s, KStatus::SUCCESS);
   }
@@ -209,7 +209,7 @@ TEST_F(TestTsTableMaxTSV2, InsertManyTags1) {
   DedupResult dedup_result{0, 0, 0, TSSlice {nullptr, 0}};
   for (size_t i = 1; i <= entity_num; ++i) {
     auto payload = GenRowPayload(*metric_schema, tag_schema ,table_id, 1, i, 1, start_ts + i);
-    s = engine_->PutData(ctx_, table_id, 0, &payload, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result, is_dropped);
+    s = engine_->PutData(ctx_, table_id, 0, &payload, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
     free(payload.data);
     ASSERT_EQ(s, KStatus::SUCCESS);
   }
@@ -258,7 +258,7 @@ TEST_F(TestTsTableMaxTSV2, restart) {
   DedupResult dedup_result{0, 0, 0, TSSlice {nullptr, 0}};
   for (size_t i = 1; i <= entity_num; ++i) {
     auto payload = GenRowPayload(*metric_schema, tag_schema ,table_id, 1, i, 1, start_ts + i);
-    s = engine_->PutData(ctx_, table_id, 0, &payload, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result, is_dropped);
+    s = engine_->PutData(ctx_, table_id, 0, &payload, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
     free(payload.data);
     ASSERT_EQ(s, KStatus::SUCCESS);
   }
@@ -323,7 +323,7 @@ TEST_F(TestTsTableMaxTSV2, deleteSomeData) {
   DedupResult dedup_result{0, 0, 0, TSSlice {nullptr, 0}};
   for (size_t i = 1; i <= entity_num; ++i) {
     auto payload = GenRowPayload(*metric_schema, tag_schema ,table_id, 1, i, 1, start_ts + i);
-    s = engine_->PutData(ctx_, table_id, 0, &payload, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result, is_dropped);
+    s = engine_->PutData(ctx_, table_id, 0, &payload, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
     free(payload.data);
     ASSERT_EQ(s, KStatus::SUCCESS);
   }

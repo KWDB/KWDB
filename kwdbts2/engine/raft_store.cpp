@@ -360,7 +360,7 @@ KStatus RaftStore::getDiskValue(kwdbContext_p ctx, std::shared_ptr<RaftValueOffs
   }
   size_t read_num = read(get_file, data, index_id->len);
   if (read_num != index_id->len) {
-    LOG_ERROR("only read[%lu] from file [%s] not same as [%u].", read_num, file_name.c_str(), index_id->len);
+    LOG_ERROR("only read[%lu] from file [%s] not same as [%lu].", read_num, file_name.c_str(), index_id->len);
     free(value->data);
     return KStatus::FAIL;
   }
@@ -563,7 +563,7 @@ KStatus RaftStore::loadFile(kwdbContext_p ctx, FileHandle& file_handle, int file
   lseek(file_handle.file, 0, SEEK_SET);
   uint64_t read_num = read(file_handle.file, buffer, len);
   if (read_num != len) {
-    LOG_ERROR("The content reading failed. The actual length of the read content: %d, and the file length: %d",
+    LOG_ERROR("The content reading failed. The actual length of the read content: %ld, and the file length: %ld",
               read_num, len);
     return KStatus::FAIL;
   }

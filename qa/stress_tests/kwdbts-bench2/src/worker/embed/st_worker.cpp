@@ -95,7 +95,7 @@ KBStatus StWriteWorker::do_work(KTimestamp  new_ts) {
     bool is_dropped = false;
     stat = st_inst_->GetTSEngine()->PutData(
         ctx, w_table, st_inst_->rangeGroup(), &payload, 1, 0, &inc_entity_cnt,
-        &inc_unordered_cnt, &dedup_result, is_dropped);
+        &inc_unordered_cnt, &dedup_result);
     if (stat != KStatus::SUCCESS) {
       std::cout << "failed put data." << std::endl;
     }
