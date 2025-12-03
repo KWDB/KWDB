@@ -26,6 +26,9 @@
 #include "sys_utils.h"
 #include "test_util.h"
 #include "ts_block.h"
+#include "ts_entity_segment_data.h"
+#include "ts_filename.h"
+#include "ts_io.h"
 #include "ts_vgroup.h"
 #include "ts_lru_block_cache.h"
 
@@ -1091,4 +1094,50 @@ TEST_F(TsEntitySegmentTest, varColumnBlockTest) {
 
     var_column_block_accessor->join();
   }
+}
+
+TEST_F(TsEntitySegmentTest, varColumnCompression) {
+  EngineOptions::max_rows_per_block = 1000;
+  EngineOptions::min_rows_per_block = 1000;
+  int64_t entity_row_num = 0;
+  int64_t last_row_num = 0;
+  TSTableID table_id = 123;
+  std::vector<DataType> metric_types{DataType::TIMESTAMP, DataType::VARCHAR};
+  const std::vector<AttributeInfo> *metric_schema{nullptr};
+  std::vector<TagInfo> tag_schema;
+  std::shared_ptr<TsTableSchemaManager> schema_mgr;
+  CreateTable(table_id, metric_types, &metric_schema, &tag_schema, schema_mgr);
+  TSEntityID dev_id = 12306;
+  for (int k = 0; k < 10; ++k) {
+    auto payload = GenRowPayload(*metric_schema, tag_schema, table_id, 1, dev_id, 1000, 123 + k * 1000, 1);
+    TsRawPayloadRowParser parser{metric_schema};
+    TsRawPayload p{payload, metric_schema};
+    auto ptag = p.GetPrimaryTag();
+    vgroup->PutData(&ctx, schema_mgr, 0, &ptag, dev_id, &payload, false);
+    free(payload.data);
+    ASSERT_EQ(vgroup->Flush(), KStatus::SUCCESS);
+  }
+  ASSERT_EQ(vgroup->Compact(), KStatus::SUCCESS);
+  auto current = vgroup->CurrentVersion();
+  auto partitions = current->GetPartitions(1, {{INT64_MIN, INT64_MAX}}, DATATYPE::TIMESTAMP64);
+  ASSERT_EQ(partitions.size(), 1);
+
+  auto entity_segment = partitions[0]->GetEntitySegment();
+  ASSERT_NE(entity_segment, nullptr);
+
+  auto root = entity_segment->GetPath();
+  auto info = entity_segment->GetHandleInfo();
+
+  auto path = root + "/" + DataBlockFileName(info.datablock_info.file_number);
+  int fd = open(path.c_str(), O_RDWR);
+  ASSERT_GE(fd, 0);
+  uint32_t offset[3];
+  ASSERT_GE(pread(fd, &offset, sizeof(offset), sizeof(TsAggAndBlockFileHeader)), 0);
+
+  uint32_t compressed_len;
+  ASSERT_GE(pread(fd, &compressed_len, sizeof(compressed_len),
+                  offset[1] + 3 * sizeof(uint32_t) + 1 + sizeof(TsAggAndBlockFileHeader)),
+            0);
+  EXPECT_EQ(compressed_len, 4 + 1 + 1 + 8);
+  close(fd);
 }

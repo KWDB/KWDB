@@ -406,7 +406,7 @@ TSSlice GenRowPayload(const std::vector<AttributeInfo>& metric, const std::vecto
         }
         case ::roachpb::DataType::VARCHAR: {
           char buf[128];
-          std::sprintf(buf, "varstring_%lu_%" PRIu64, i, GetRandomNumber(100000));
+          std::sprintf(buf, "varstring_%07lu_%07" PRIu64, i, GetRandomNumber(100000));
           builder.SetColumnValue(i, j, buf, string(buf).size());
           break;
         }
