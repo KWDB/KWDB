@@ -697,7 +697,7 @@ KStatus TSEngineImpl::PutEntity(kwdbContext_p ctx, const KTableKey& table_id, ui
     }
     if (EnableWAL()) {
       // get old payload
-      TagTuplePack *tag_pack = tag_table->GenTagPack(primary_key.data, primary_key.len);
+      auto tag_pack = tag_table->GenTagPack(primary_key.data, primary_key.len);
       if (UNLIKELY(nullptr == tag_pack)) {
         return KStatus::FAIL;
       }
@@ -2195,6 +2195,7 @@ KStatus TSEngineImpl::GetSnapshotNextBatchData(kwdbContext_p ctx, uint64_t snaps
   uint32_t row_num = 0;
   TSSlice batch_data = {nullptr, 0};
   TSSlice del_data{nullptr, 0};
+  Defer free_del_data([&]() { free(del_data.data); });
   if (!ts_snapshot_info.batch_read_finished) {
     bool is_del_iter_finished = false;
     // gen data from tabledelteinfo.

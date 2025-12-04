@@ -276,4 +276,6 @@ TEST(TsDelItemUtilTest, mergeSortedSpans2) {
   ASSERT_EQ(row_num, row_num_1);
   ASSERT_EQ(batch_data.len, batch_data_1.len);
   ASSERT_EQ(del_data.len, del_data_1.len);
+
+  free(data.data);
 }

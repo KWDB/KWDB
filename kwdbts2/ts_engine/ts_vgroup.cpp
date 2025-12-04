@@ -1223,7 +1223,7 @@ KStatus TsVGroup::DeleteEntity(kwdbContext_p ctx, TSTableID table_id, std::strin
   }
 
   if (EnableWAL() && user_del) {
-    TagTuplePack* tag_pack = tag_table->GenTagPack(p_tag.data(), p_tag.size());
+    auto tag_pack = tag_table->GenTagPack(p_tag.data(), p_tag.size());
     if (UNLIKELY(nullptr == tag_pack)) {
       return KStatus::FAIL;
     }
@@ -1231,7 +1231,6 @@ KStatus TsVGroup::DeleteEntity(kwdbContext_p ctx, TSTableID table_id, std::strin
     s = wal_manager_->WriteDeleteTagWAL(ctx, mtr_id, p_tag, vgroup_id_, e_id, tag_pack->getData(), vgroup_id_,
                                         table_id, osn);
     UnLockSharedLevelMutex();
-    delete tag_pack;
     if (s == KStatus::FAIL) {
       LOG_ERROR("WriteDeleteTagWAL failed.");
       return s;

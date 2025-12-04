@@ -1513,10 +1513,8 @@ KStatus TsTableV2Impl::GetEntityIdListByOSN(kwdbContext_p ctx, const std::vector
     LOG_ERROR("GetTagSchema failed.");
     return KStatus::FAIL;
   }
-  TagIteratorByOSN* tag_iter = new TagIteratorByOSN(tag_table, table_version, scan_cols, osn_span);
+  auto tag_iter = std::make_unique<TagIteratorByOSN>(tag_table, table_version, scan_cols, osn_span);
   if (KStatus::SUCCESS != tag_iter->Init(hps, std::move(pkeys_left))) {
-    delete tag_iter;
-    tag_iter = nullptr;
     return KStatus::FAIL;
   }
   uint32_t cur_count;

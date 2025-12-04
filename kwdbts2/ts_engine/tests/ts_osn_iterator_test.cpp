@@ -182,6 +182,7 @@ TEST_F(TestV2IteratorByOSN, basic_insert) {
   ASSERT_EQ(KUint64(rs.data[1][0]->mem), 1760000);
   ASSERT_EQ(KUint8(rs.data[2][0]->mem), 1);
   ASSERT_EQ(KUint8(rs.data[3][0]->mem), 0);
+  delete m_iter;
 }
 
 // insert one tag, then update tag twice. then scan by osn ranges.
@@ -245,6 +246,8 @@ TEST_F(TestV2IteratorByOSN, basic_udpate) {
   ASSERT_EQ(KUint64(m_rs.data[1][0]->mem), 1760000);
   ASSERT_EQ(KUint8(m_rs.data[2][0]->mem), 1);
   ASSERT_EQ(KUint8(m_rs.data[3][0]->mem), 0);
+  delete m_iter;
+  m_iter = nullptr;
 
   osn_spans.clear();
   osn_spans.push_back({0, 1780000});
@@ -281,6 +284,7 @@ TEST_F(TestV2IteratorByOSN, basic_udpate) {
   ASSERT_EQ(KUint64(m_rs.data[1][0]->mem), 1760000);
   ASSERT_EQ(KUint8(m_rs.data[2][0]->mem), 1);
   ASSERT_EQ(KUint8(m_rs.data[3][0]->mem), 0);
+  delete m_iter;
 
   uint64_t pkey = 1;
   std::vector<void*> pkeys;
@@ -383,6 +387,8 @@ TEST_F(TestV2IteratorByOSN, basic_delete) {
   ASSERT_EQ(KUint64(m_rs.data[1][0]->mem), 1770000);
   ASSERT_EQ(KUint8(m_rs.data[2][0]->mem), 3);
   ASSERT_EQ(KUint8(m_rs.data[3][0]->mem), 0);
+  delete m_iter;
+  m_iter = nullptr;
 
   osn_spans.clear();
   osn_spans.push_back({0, 1790000});
@@ -427,6 +433,8 @@ TEST_F(TestV2IteratorByOSN, basic_delete) {
   ASSERT_EQ(KUint64(m_rs.data[1][1]->mem), 1790000);
   ASSERT_EQ(KUint8(m_rs.data[2][1]->mem), 3);
   ASSERT_EQ(KUint8(m_rs.data[3][1]->mem), 0);
+  delete m_iter;
+  m_iter = nullptr;
 
   uint64_t pkey = 1;
   std::string pkey_str = GetPrimaryKey(pkey);
@@ -495,6 +503,8 @@ TEST_F(TestV2IteratorByOSN, basic_metric_insert) {
     total += count;
   } while (count > 0);
   ASSERT_EQ(total,  0);
+  delete m_iter;
+  m_iter = nullptr;
 
   total = 0;
   osn_spans.clear();
@@ -511,6 +521,8 @@ TEST_F(TestV2IteratorByOSN, basic_metric_insert) {
   ASSERT_EQ(KUint64(rs.data[1][0]->mem), 1760000);
   ASSERT_EQ(KUint8(rs.data[2][0]->mem), 1);
   ASSERT_EQ(KUint8(rs.data[3][0]->mem), 0);
+  delete m_iter;
+  m_iter = nullptr;
 
   total = 0;
   osn_spans.clear();
@@ -527,6 +539,8 @@ TEST_F(TestV2IteratorByOSN, basic_metric_insert) {
   ASSERT_EQ(KUint64(rs.data[1][0]->mem), 1780000);
   ASSERT_EQ(KUint8(rs.data[2][0]->mem), 1);
   ASSERT_EQ(KUint8(rs.data[3][0]->mem), 0);
+  delete m_iter;
+  m_iter = nullptr;
 }
 
 // insert some metric datas, and then delete some metric data.
@@ -595,6 +609,7 @@ TEST_F(TestV2IteratorByOSN, basic_metric_delete) {
     total += count;
   } while (count > 0);
   ASSERT_EQ(total,  0);
+  delete m_iter;
 
   total = 0;
   osn_spans.clear();
@@ -613,6 +628,7 @@ TEST_F(TestV2IteratorByOSN, basic_metric_delete) {
   ASSERT_EQ(KUint8(m_rs.data[2][0]->mem), 4);
   ASSERT_EQ(KUint64(m_rs.data[3][0]->mem), 0);
   ASSERT_EQ(KUint64((char*)(m_rs.data[3][0]->mem) + 8), 3600);
+  delete m_iter;
 
   total = 0;
   osn_spans.clear();
@@ -630,6 +646,7 @@ TEST_F(TestV2IteratorByOSN, basic_metric_delete) {
   ASSERT_EQ(KUint8(m_rs.data[2][0]->mem), 4);
   ASSERT_EQ(KUint64(m_rs.data[3][0]->mem), 0);
   ASSERT_EQ(KUint64((char*)(m_rs.data[3][0]->mem) + 8), 13600);
+  delete m_iter;
 
   total = 0;
   osn_spans.clear();
@@ -647,6 +664,7 @@ TEST_F(TestV2IteratorByOSN, basic_metric_delete) {
   ASSERT_EQ(KUint8(m_rs.data[2][0]->mem), 4);
   ASSERT_EQ(KUint64(m_rs.data[3][0]->mem), 0);
   ASSERT_EQ(KUint64((char*)(m_rs.data[3][0]->mem) + 8), 23600);
+  delete m_iter;
 }
 // tag insert then delete all metric data. osn range return empty row, else return nothing.
 TEST_F(TestV2IteratorByOSN, only_tag_data_exist) {
@@ -700,6 +718,8 @@ TEST_F(TestV2IteratorByOSN, only_tag_data_exist) {
     total += count;
   } while (count > 0);
   ASSERT_EQ(total,  0);
+  delete m_iter;
+  m_iter = nullptr;
 
   entity_id_list.clear();
   osn_spans.clear();
@@ -727,6 +747,8 @@ TEST_F(TestV2IteratorByOSN, only_tag_data_exist) {
   ASSERT_EQ(KUint64(m_rs.data[1][0]->mem), 1760000);
   ASSERT_EQ(KUint8(m_rs.data[2][0]->mem), 1);
   ASSERT_EQ(KUint8(m_rs.data[3][0]->mem), 1);
+  delete m_iter;
+  m_iter = nullptr;
 
   entity_id_list.clear();
   osn_spans.clear();
@@ -754,4 +776,7 @@ TEST_F(TestV2IteratorByOSN, only_tag_data_exist) {
   ASSERT_EQ(KUint8(m_rs.data[2][0]->mem), 4);
   ASSERT_EQ(KUint64(m_rs.data[3][0]->mem), 0);
   ASSERT_EQ(KUint64((char*)(m_rs.data[3][0]->mem) + 8), 45600);
+  delete m_iter;
+
+  free(pay_load.data);
 }

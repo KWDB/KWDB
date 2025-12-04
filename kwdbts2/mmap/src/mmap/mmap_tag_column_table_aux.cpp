@@ -113,7 +113,7 @@ void MMapTagColumnTable::sync(int flags) {
   m_meta_file_->sync(flags);
 }
 
-TagTuplePack* MMapTagColumnTable::GenTagPack(TagTableRowID row) {
+std::unique_ptr<TagTuplePack> MMapTagColumnTable::GenTagPack(TagTableRowID row) {
   vector<TagInfo> schema;
   for (const auto& col: m_tag_info_include_dropped_) {
     if (col.isDropped()) {
@@ -195,7 +195,7 @@ TagTuplePack* MMapTagColumnTable::GenTagPack(TagTableRowID row) {
   packer->setSubgroupId(subgroupId);
   packer->setVersion(metaData().m_ts_version);
 
-  return packer;
+  return std::unique_ptr<TagTuplePack>(packer);
 }
 
 

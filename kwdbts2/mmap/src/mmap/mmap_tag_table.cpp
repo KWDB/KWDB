@@ -1713,7 +1713,7 @@ void TagTable::sync(int flag) {
   return ;
 }
 
-TagTuplePack* TagTable::GenTagPack(const char* primarytag, int len) {
+std::unique_ptr<TagTuplePack> TagTable::GenTagPack(const char* primarytag, int len) {
   // 1. search primary tag
   auto ret = m_index_->get(primarytag, len);
   if (ret.first == INVALID_TABLE_VERSION_ID) {

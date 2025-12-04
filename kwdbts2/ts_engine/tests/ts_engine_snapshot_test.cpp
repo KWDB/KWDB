@@ -841,9 +841,9 @@ TEST_F(TestEngineSnapshotImgrate, ConvertManyDataSameEntityDestNoEmpty) {
   s = ts_engine_desc_->GetTsTable(ctx_, cur_table_id, ts_table_dest, is_dropped);
   EXPECT_EQ(s , KStatus::SUCCESS);
   ts_table_v2 = dynamic_pointer_cast<TsTableV2Impl>(ts_table_dest);
-  uint64_t pkey = 1;
+  uint64_t pkey[26] = {1};
   std::vector<void*> pkeys;
-  pkeys.push_back(&pkey);
+  pkeys.push_back(pkey);
   osn_spans.clear();
   osn_spans.push_back({0, UINT64_MAX});
   entity_id_list.clear();
@@ -1206,6 +1206,8 @@ TEST_F(TestEngineSnapshotImgrate, ConvertUpdateEntities) {
   auto op_osn = reinterpret_cast<OperatorInfoOfRecord*>(entity_id_list[0].op_with_osn.get());
   ASSERT_EQ(op_osn->osn, 0);
   ASSERT_EQ(op_osn->type, OperatorTypeOfRecord::OP_TYPE_TAG_EXISTED);
+  delete iter;
+  iter = nullptr;
 
   total = 0;
   rs.clear();
@@ -1236,6 +1238,8 @@ TEST_F(TestEngineSnapshotImgrate, ConvertUpdateEntities) {
   op_osn = reinterpret_cast<OperatorInfoOfRecord*>(entity_id_list[0].op_with_osn.get());
   ASSERT_EQ(op_osn->osn, 10189);
   ASSERT_EQ(op_osn->type, OperatorTypeOfRecord::OP_TYPE_TAG_UPDATE);
+  delete iter;
+  iter = nullptr;
 
   total = 0;
   rs.clear();

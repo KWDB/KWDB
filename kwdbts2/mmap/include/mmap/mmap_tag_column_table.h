@@ -587,7 +587,7 @@ class MMapTagColumnTable: public TSObject {
 
   void sync(int flags) override;
 
-  TagTuplePack* GenTagPack(TagTableRowID row);
+  std::unique_ptr<TagTuplePack> GenTagPack(TagTableRowID row);
 
   uint32_t getTagColOff(int col_id);
 

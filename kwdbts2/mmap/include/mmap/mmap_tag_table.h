@@ -157,7 +157,7 @@ class TagTable {
 
   void sync(int flag);
 
-  TagTuplePack* GenTagPack(const char* primarytag, int len);
+  std::unique_ptr<TagTuplePack> GenTagPack(const char* primarytag, int len);
 
   int UndoAlterTagTable(uint32_t cur_version, uint32_t new_version, ErrorInfo& err_info);
 
