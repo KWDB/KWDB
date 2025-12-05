@@ -100,7 +100,7 @@ class STPackageSnapshotData {
   static bool PackageData(uint32_t package_id, TSTableID tbl_id, uint32_t tbl_version,
     TSSlice& batch_data, uint32_t row_num, TSSlice& del_data, TSSlice* data);
 
-  static void UnpackageData(TSSlice& data, uint32_t& package_id, TSTableID& tbl_id, uint32_t& tbl_version,
+  static bool UnpackageData(TSSlice& data, uint32_t& package_id, TSTableID& tbl_id, uint32_t& tbl_version,
     TSSlice& batch_data, uint32_t& row_num, TSSlice& del_data);
 };
 

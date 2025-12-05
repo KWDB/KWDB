@@ -16,6 +16,7 @@
 #include <list>
 #include <unordered_map>
 #include "ts_table_del_info.h"
+#include "ts_compatibility.h"
 #include "ts_vgroup.h"
 
 namespace kwdbts {
@@ -369,6 +370,17 @@ KStatus STTableRangeDelAndTagInfo::CommitDeleteInfo(kwdbContext_p ctx) {
   return KStatus::SUCCESS;
 }
 
+static inline uint64_t EncodeTableID(uint64_t table_id, uint32_t version) {
+  table_id &= 0x7FFFFFFF;
+  table_id |= (1ULL << 31);
+  return (static_cast<uint64_t>(version) << 32) | table_id;
+}
+static inline std::pair<uint64_t, uint32_t> DecodeTableID(uint64_t table_id) {
+  uint64_t table_id_mask = 0x7FFFFFFF;
+  uint32_t version = table_id >> 32;
+  return {table_id_mask & table_id, version};
+}
+
 bool STPackageSnapshotData::PackageData(uint32_t package_id, TSTableID tbl_id, uint32_t tbl_version,
   TSSlice& batch_data, uint32_t row_num, TSSlice& del_data, TSSlice* data) {
   size_t data_len = 4 + 8 + 4 + 4 + 4 + batch_data.len + 4 + del_data.len;
@@ -380,7 +392,7 @@ bool STPackageSnapshotData::PackageData(uint32_t package_id, TSTableID tbl_id, u
   *data = {data_with_rownum, data_len};
   KUint32(data_with_rownum) = package_id;
   data_with_rownum += 4;
-  KUint64(data_with_rownum) = tbl_id;
+  KUint64(data_with_rownum) = EncodeTableID(tbl_id, CURRENT_SNAPSHOT_VERSION);
   data_with_rownum += 8;
   KUint32(data_with_rownum) = tbl_version;
   data_with_rownum += 4;
@@ -396,18 +408,29 @@ bool STPackageSnapshotData::PackageData(uint32_t package_id, TSTableID tbl_id, u
   return true;
 }
 
-void STPackageSnapshotData::UnpackageData(TSSlice& data, uint32_t& package_id, TSTableID& tbl_id, uint32_t& tbl_version,
-  TSSlice& batch_data, uint32_t& row_num, TSSlice& del_data) {
-  size_t data_len = 4 + 8 + 4 + 4 + 4 + batch_data.len + 4 + del_data.len;
+bool STPackageSnapshotData::UnpackageData(TSSlice& data, uint32_t& package_id, TSTableID& tbl_id, uint32_t& tbl_version,
+                                          TSSlice& batch_data, uint32_t& row_num, TSSlice& del_data) {
   char* data_with_rownum = data.data;
   package_id = KUint32(data_with_rownum);
   data_with_rownum += 4;
-  tbl_id = KUint64(data_with_rownum);
+  auto [table_id, snapshot_version] = DecodeTableID(KUint64(data_with_rownum));
+  if (snapshot_version > CURRENT_SNAPSHOT_VERSION) {
+    LOG_ERROR("snapshot version [%u] not support on current kwbase version.", snapshot_version);
+    return false;
+  }
+  tbl_id = table_id;
   data_with_rownum += 8;
   tbl_version = KUint32(data_with_rownum);
   data_with_rownum += 4;
   row_num = KUint32(data_with_rownum);
   data_with_rownum += 4;
+  if (snapshot_version < CURRENT_SNAPSHOT_VERSION) {
+    batch_data.len = data.len - 20;
+    batch_data.data = data_with_rownum;
+    del_data.data = nullptr;
+    del_data.len = 0;
+    return true;
+  }
   batch_data.len = KUint32(data_with_rownum);
   data_with_rownum += 4;
   batch_data.data = data_with_rownum;
@@ -415,6 +438,7 @@ void STPackageSnapshotData::UnpackageData(TSSlice& data, uint32_t& package_id, T
   del_data.len = KUint32(data_with_rownum);
   data_with_rownum += 4;
   del_data.data = data_with_rownum;
+  return true;
 }
 
 }  // namespace kwdbts

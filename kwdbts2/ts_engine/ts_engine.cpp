@@ -2271,7 +2271,12 @@ KStatus TSEngineImpl::WriteSnapshotBatchData(kwdbContext_p ctx, uint64_t snapsho
   uint32_t row_num;
   TSSlice batch_data;
   TSSlice del_data;
-  STPackageSnapshotData::UnpackageData(data, package_id, table_id, table_version, batch_data, row_num, del_data);
+  bool ok =
+      STPackageSnapshotData::UnpackageData(data, package_id, table_id, table_version, batch_data, row_num, del_data);
+  if (!ok) {
+    LOG_ERROR("cannot unpackage data, len[%lu].", data.len);
+    return FAIL;
+  }
   if (package_id - 1 != ts_snapshot_info.package_id) {
     if (package_id - 1 > ts_snapshot_info.package_id) {
       LOG_ERROR("last package id [%u] is behind of current package [%u], failed.",
