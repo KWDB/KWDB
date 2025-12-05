@@ -38,6 +38,12 @@ typedef enum {
   SCAN_STATUS_DONE
 } STORAGE_SCAN_STATUS;
 
+typedef enum {
+  FIND_ONE = 1,
+  SCAN_OVER = 2,
+  SCAN_ERROR = 3
+} NextBlockStatus;
+
 class TsVGroup;
 class TsMemSegmentIterator;
 class TsLastSegmentIterator;
@@ -84,6 +90,7 @@ class TsStorageIteratorV2Impl : public TsStorageIterator {
   std::shared_ptr<TsTableSchemaManager> table_schema_mgr_;
   std::vector<std::shared_ptr<const TsPartitionVersion>> ts_partitions_;
 
+  std::shared_ptr<TsBlockSpan> cur_block_span_{nullptr};
   std::list<std::shared_ptr<TsBlockSpan>> ts_block_spans_;
 
   std::shared_ptr<TsScanFilterParams> filter_;
@@ -101,13 +108,14 @@ class TsSortedRawDataIteratorV2Impl : public TsStorageIteratorV2Impl {
                                 SortOrder order_type = ASC);
   ~TsSortedRawDataIteratorV2Impl();
 
+  KStatus Init(bool is_reversed) override;
   KStatus Next(ResultSet* res, k_uint32* count, bool* is_finished,
-                timestamp64 ts = INVALID_TS, TsScanStats* ts_scan_stats = nullptr) override;
+               timestamp64 ts = INVALID_TS, TsScanStats* ts_scan_stats = nullptr) override;
   bool IsDisordered() override;
 
  protected:
+  NextBlockStatus NextBlockSpan(timestamp64 ts, TsScanStats* ts_scan_stats);
   KStatus ScanAndSortEntityData(timestamp64 ts, TsScanStats* ts_scan_stats);
-  KStatus MoveToNextEntity(timestamp64 ts, TsScanStats* ts_scan_stats);
 
   std::shared_ptr<TsBlockSpanSortedIterator> block_span_sorted_iterator_{nullptr};
 };

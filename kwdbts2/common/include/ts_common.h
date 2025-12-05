@@ -473,13 +473,15 @@ struct ResultSet {
 
   void clear() {
     entity_index = {};
-    for (const auto& it : data) {
-      for (auto batch : it) {
+    for (auto& it : data) {
+      if (it.empty()) continue;
+      for (auto& batch : it) {
         delete batch;
+        batch = nullptr;
       }
+      std::vector<const Batch*> empty_vec;
+      it.swap(empty_vec);
     }
-    data.clear();
-    data.resize(col_num_);
   }
 
   bool empty() {
