@@ -524,8 +524,9 @@ class FieldFuncExtract : public FieldFunc {
 
 class FieldFuncExpStrftime : public FieldFunc {
  public:
-  FieldFuncExpStrftime(Field *a, Field *b) : FieldFunc(a, b) {
+  FieldFuncExpStrftime(Field *a, Field *b, k_int8 timezone) : FieldFunc(a, b) {
     type_ = FIELD_ARITHMETIC;
+    time_zone_ = timezone;
     if (b->get_storage_type() == roachpb::DataType::NULLVAL) {
       sql_type_ = roachpb::DataType::NULLVAL;
       storage_type_ = roachpb::DataType::NULLVAL;
@@ -605,6 +606,7 @@ class FieldFuncExpStrftime : public FieldFunc {
 
  protected:
   String strvalue_{""};
+  k_int8 time_zone_;
 };
 
 class FieldFuncTimeOfDay : public FieldFunc {

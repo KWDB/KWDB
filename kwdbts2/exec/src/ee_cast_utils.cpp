@@ -674,7 +674,7 @@ bool checkTzPresent(KString &str) {
   }
   return false;
 }
-time_t kwdbMktime(struct tm *timep) { return mktime(timep); }
+time_t kwdbMktime(struct tm *timep) { return mktime(timep) + timep->tm_gmtoff; }
 
 #define LEAP_YEAR_MONTH_DAY 29
 static inline bool validateTm(struct tm *pTm) {

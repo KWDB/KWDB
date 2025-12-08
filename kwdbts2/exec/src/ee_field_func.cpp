@@ -2334,9 +2334,9 @@ Field *FieldFuncExpStrftime::field_to_copy() {
 }
 String FieldFuncExpStrftime::ValStr() {
   CKTime ck_time =
-      getCKTime(args_[0]->ValInt(), args_[0]->get_storage_type(), 0);
+      getCKTime(args_[0]->ValInt(), args_[0]->get_storage_type(), time_zone_);
   struct tm ltm;
-  ToGMT(ck_time.t_timespec.tv_sec, ltm);
+  ToGMT(ck_time.t_timespec.tv_sec + ck_time.t_abbv, ltm);
   const int kArraySize = this->storage_len_;
   String s(kArraySize);
   try {

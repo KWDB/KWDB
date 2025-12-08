@@ -55,13 +55,13 @@ TEST_F(TestFieldConst, TestFieldConstIntervalFunc) {
   SafeDeletePointer(field);
 }
 
-TEST_F(TestFieldConst, TestFieldConstStringFunc) {
-  KString str_type("2013-04-12 15:52:01+08:00");
-  FieldConstString *field = new FieldConstString(roachpb::DataType::DATE, str_type);
+TEST_F(TestFieldConst, TestFieldConstDateFunc) {
+  KString str_type("2013-04-12");
+  FieldConstDate *field = new FieldConstDate(roachpb::DataType::DATE, str_type, 0);
   k_int64 value = field->ValInt();
-  EXPECT_EQ(value, 1365781921080);
+  EXPECT_EQ(value, 1365724800000);
   k_double64 dval = field->ValReal();
-  EXPECT_DOUBLE_EQ(dval, 1365781921080.0);
+  EXPECT_DOUBLE_EQ(dval, 1365724800000.0);
   SafeDeletePointer(field);
 }
 }  // namespace kwdbts

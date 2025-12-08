@@ -15,6 +15,7 @@
 
 #include "ee_field.h"
 #include "ee_field_common.h"
+#include "ee_cast_utils.h"
 
 namespace kwdbts {
 
@@ -134,6 +135,17 @@ class FieldConstString : public FieldConst {
 
  protected:
   KString value_;
+};
+
+class FieldConstDate : public FieldConstString {
+ public:
+  FieldConstDate(roachpb::DataType datatype, const KString &str, k_int8 timezone)
+    : FieldConstString(datatype, str) {
+      timezone_ = timezone;
+    }
+  k_int64 ValInt() override;
+ protected:
+  k_int8 timezone_;
 };
 
 class FieldConstNull : public FieldConst {

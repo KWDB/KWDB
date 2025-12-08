@@ -563,8 +563,8 @@ EEIteratorErrCode TsBaseParser::ParserConst(kwdbContext_p ctx, std::shared_ptr<E
       break;
     }
     case AstEleType::DATE_TYPE: {
-      *field = KNEW FieldConstString(roachpb::DataType::DATE,
-                                     const_ptr->value.string_type);
+      *field = KNEW FieldConstDate(roachpb::DataType::DATE,
+                                     const_ptr->value.string_type, ctx->timezone);
       break;
     }
     case AstEleType::NULL_TYPE: {
@@ -616,7 +616,7 @@ Field *TsBaseParser::ParserFuncOperator(kwdbContext_p ctx, const KString &func_n
   } else if (func_name == "extract") {
     field = KNEW FieldFuncExtract(args.front(), right, ctx->timezone);
   } else if (func_name == "experimental_strftime") {
-    field = KNEW FieldFuncExpStrftime(args.front(), right);
+    field = KNEW FieldFuncExpStrftime(args.front(), right, ctx->timezone);
   } else if (func_name == "timeofday") {
     field = KNEW FieldFuncTimeOfDay(ctx->timezone);
   } else if (func_name == "age") {

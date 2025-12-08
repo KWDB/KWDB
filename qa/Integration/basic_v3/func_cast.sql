@@ -88,8 +88,10 @@ create table ts_db.t2 (
     tags (t1 int2 not null) primary tags(t1);
 insert into ts_db.t2 values ('2022-01-06 11:22:33.456+08:00', '2022-01-06 11:22:33.456+08:00' , 1,1,1641439353456,1641439353456.0,1641439353456.0,'3','3','3','2022-01-04 11:22:33.456+08:00','2022-01-04 11:22:33.456+08:00',true,1);
 select vc::timestamp, vc::timestamptz, i8::timestamp, i8::timestamptz from ts_db.t2;
+select timestamp'1990-1-1 20:12:12.121'::date from ts_db.t2;
 set time zone 8;
 select vc::timestamp, vc::timestamptz, i8::timestamp, i8::timestamptz from ts_db.t2;
+select timestamp'1990-1-1 20:12:12.121'::date from ts_db.t2;
 
 create table ts_db.t3 (
     kt timestamp not null,

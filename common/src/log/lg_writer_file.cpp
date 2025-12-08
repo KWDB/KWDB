@@ -53,7 +53,7 @@ KStatus LogWriterFile::FormatAndOut(const LogItem *pItem) {
   struct tm tm{};
   time_t sec = pItem->time_stamp / 1000000;
   k_int32 usec = pItem->time_stamp % 1000000;
-  localtime_r(&sec, &tm);
+  gmtime_r(&sec, &tm);
 #ifdef WITH_TESTS
   ToGMT(sec, tm);
 #endif

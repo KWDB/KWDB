@@ -181,31 +181,6 @@ k_int64 getInterval(KString *value_, k_int64 *orgVal, k_bool negative) {
   return timegm(&ltm) * 1000 + orgMS - intervalMS;
 }
 
-k_int64 getTimeFormTimestamp(KString *value_) {
-  // get timestamp(int64) from timestamp of string type
-  time_t now = time(nullptr);
-  tm ltm{0};
-  localtime_r(&now, &ltm);
-  ltm.tm_year = ltm.tm_mon = ltm.tm_mday = ltm.tm_hour = ltm.tm_min = ltm.tm_sec = 0;
-  k_int32 intervalMS, startPos;
-  intervalMS = startPos = 0;
-  k_bool negative = KFALSE;
-  if (value_->at(startPos) == '-') {
-    negative = KTRUE;
-    startPos++;
-  } else if (value_->length() >= 2 && value_->substr(value_->length() - 2) == "BC") {
-    negative = KTRUE;
-  }
-  getYMDFormTimestamp(value_, &startPos, &ltm.tm_year, &ltm.tm_mon, &ltm.tm_mday);
-  getHMSFormTimestamp(value_, &startPos, &ltm.tm_hour, &ltm.tm_min, &ltm.tm_sec, &intervalMS);
-  if (negative) {
-    ltm.tm_year = 0 - ltm.tm_year - 2 * 1900;
-    auto a = mktime(&ltm) * 1000 + intervalMS;
-    return  a + ltm.tm_gmtoff*1000;
-  }
-  return mktime(&ltm) * 1000 + intervalMS + ltm.tm_gmtoff*1000;
-}
-
 char *FieldConstInterval::get_ptr(RowBatch *batch) {
   return value_.data();
 }
@@ -285,7 +260,7 @@ char *FieldConstString::get_ptr(RowBatch *batch) {
 
 // %Y-%m-%d %H:%M:%S.ms
 k_int64 FieldConstString::ValInt() {
-  return getTimeFormTimestamp(&value_);
+  return 0;
 }
 
 k_int64 FieldConstString::ValInt(char *ptr) {
@@ -332,4 +307,10 @@ Field *FieldConstNull::field_to_copy() {
   return field;
 }
 
+k_int64 FieldConstDate::ValInt() {
+  k_int64 val;
+  convertStringToTimestamp(value_, 1000, &val);
+  val += timezone_ * 3600 * 1000;
+  return val;
+}
 }  // namespace kwdbts

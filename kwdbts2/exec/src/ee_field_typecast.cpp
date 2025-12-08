@@ -1073,6 +1073,11 @@ char *FieldTypeCastTimestampTz::get_ptr(RowBatch *batch) {
       String valstr = field_->ValStr(ptr);
       if (!valstr.empty()) {
         convertStringToTimestamp(std::string(valstr.getptr(), valstr.length_), type_scale_, &intvalue_);
+        if (!I64_SAFE_ADD_CHECK(intvalue_, timezone_diff_)) {
+          err = FAIL;
+        } else {
+          intvalue_ += timezone_diff_;
+        }
       } else {
         err = FAIL;
       }

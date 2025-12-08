@@ -1177,7 +1177,7 @@ KStatus DataChunk::EncodingValue(kwdbContext_p ctx, k_uint32 row, k_uint32 col, 
       stm.tm_year = timeinfo.tm_year;
       stm.tm_mon = timeinfo.tm_mon;
       stm.tm_mday = timeinfo.tm_mday;
-      time_t val = timelocal(&stm);
+      time_t val = mktime(&stm) + stm.tm_gmtoff;
       val += ctx->timezone * 60 * 60;
       val /= secondOfDay;
       k_int32 len = ValueEncoding::EncodeComputeLenInt(0, val);

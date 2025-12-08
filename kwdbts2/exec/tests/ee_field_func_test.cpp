@@ -245,18 +245,18 @@ TEST_F(TestFieldFunc, TestFieldTimeBucketFunc) {
 }
 
 TEST_F(TestFieldFunc, TestFieldCoalesceFunc) {
-  KString a = "2013-04-12 15:52:01+08:00";
+  KString a = "2013-04-12";
   k_int64 b = 1;
-  FieldConstString *FieldConstValA = KNEW FieldConstString(roachpb::DataType::CHAR, a);
+  FieldConstDate *FieldConstValA = KNEW FieldConstDate(roachpb::DataType::DATE, a, 0);
   FieldConstInt *FieldConstValB = KNEW FieldConstInt(roachpb::DataType::BIGINT, b, sizeof(k_int64));
   FieldFuncCoalesce *field = KNEW FieldFuncCoalesce(FieldConstValA, FieldConstValB);
 
   k_int64 ival = field->ValInt();
-  EXPECT_EQ(ival, 1365781921080);
+  EXPECT_EQ(ival, 1365724800000);
   k_double64 dval = field->ValReal();
-  EXPECT_DOUBLE_EQ(dval, 1365781921080.0);
+  EXPECT_DOUBLE_EQ(dval, 1365724800000.0);
   kwdbts::String strval = field->ValStr();
-  EXPECT_STREQ(strval.c_str(), "2013-04-12 15:52:01+08:00");
+  EXPECT_STREQ(strval.c_str(), "2013-04-12");
 
   SafeDeletePointer(field);
   SafeDeletePointer(FieldConstValA);
