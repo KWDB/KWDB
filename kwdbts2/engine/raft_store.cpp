@@ -576,7 +576,7 @@ KStatus RaftStore::loadFile(kwdbContext_p ctx, FileHandle& file_handle, int file
         value_off = off + sizeof(RaftLogHeader);
         if (is_cur_file && (value_off + header->size > len)) {
           LOG_WARN("data missing, type=%d, rangeID=%lu, index=%lu", header->type, header->rangeID, header->index);
-          break;
+          return KStatus::SUCCESS;
         }
         if (header->index == 0) {
           state_[header->rangeID] = std::make_shared<RaftValueOffset>(0, file_id, value_off, header->size);
@@ -589,7 +589,7 @@ KStatus RaftStore::loadFile(kwdbContext_p ctx, FileHandle& file_handle, int file
       {
         if (is_cur_file && (off + sizeof(RaftLogHeader) > len)) {
           LOG_WARN("data missing, type=%d", header->type);
-          break;
+          return KStatus::SUCCESS;
         }
         std::string mem;
         multDelete(ctx, header->rangeID, header->index, header->endIndex, mem, false);
@@ -600,7 +600,7 @@ KStatus RaftStore::loadFile(kwdbContext_p ctx, FileHandle& file_handle, int file
       {
         if (is_cur_file && (off + sizeof(header->type) + sizeof(header->rangeID) > len)) {
           LOG_WARN("data missing, type=%d", header->type);
-          break;
+          return KStatus::SUCCESS;
         }
         state_.erase(header->rangeID);
         off += sizeof(header->type) + sizeof(header->rangeID);
@@ -610,7 +610,7 @@ KStatus RaftStore::loadFile(kwdbContext_p ctx, FileHandle& file_handle, int file
       {
         if (is_cur_file && (off + sizeof(header->type) + sizeof(header->rangeID) > len)) {
           LOG_WARN("data missing, type=%d", header->type);
-          break;
+          return KStatus::SUCCESS;
         }
         ranges_.erase(header->rangeID);
         state_.erase(header->rangeID);
@@ -621,7 +621,7 @@ KStatus RaftStore::loadFile(kwdbContext_p ctx, FileHandle& file_handle, int file
       {
         if (is_cur_file && (off + sizeof(RaftLogHeader) > len)) {
           LOG_WARN("data missing, type=%d", header->type);
-          break;
+          return KStatus::SUCCESS;
         }
         std::string mem;
         truncate(ctx, header->rangeID, header->index, mem, false);

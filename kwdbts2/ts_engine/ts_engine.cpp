@@ -238,8 +238,18 @@ KStatus TSEngineImpl::Init(kwdbContext_p ctx) {
 
   s = Recover(ctx);
   if (s == KStatus::FAIL) {
-    LOG_ERROR("Recover fail.")
-    return s;
+    LOG_ERROR("Recover fail.Now Reset All WAL.")
+    if (wal_mgr_->ResetWAL(ctx, true) == KStatus::FAIL) {
+      LOG_ERROR("Failed to Reset engine wal.")
+      return  KStatus::FAIL;
+    }
+    for (auto vgrp : vgroups_) {
+      if (vgrp->GetWALManager()->ResetWAL(ctx, true) == KStatus::FAIL) {
+        LOG_ERROR("Failed to Reset vgroup[%d] wal.", vgrp->GetVGroupID())
+        return  KStatus::FAIL;
+      }
+    }
+    return SUCCESS;
   }
   return KStatus::SUCCESS;
 }

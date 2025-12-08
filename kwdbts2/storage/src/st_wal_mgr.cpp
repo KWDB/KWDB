@@ -130,20 +130,9 @@ KStatus WALMgr::Init(kwdbContext_p ctx, bool for_eng_wal) {
   s = buffer_mgr_->init(buffer_lsn);
   if (s == KStatus::FAIL) {
     LOG_WARN("Failed to initialize the WAL buffer with LSN %lu, Now reset wal file.", buffer_lsn)
-    if (Remove(file_mgr_->getFilePath()) == KStatus::FAIL) {
-      LOG_ERROR("Failed to Remove WAL file.")
-      return KStatus::FAIL;
-    }
-    file_mgr_->Close();
-    s = file_mgr_->initWalFile(buffer_lsn, 0, false);
-    if (s == KStatus::FAIL) {
-      LOG_ERROR("Failed to initWalFileWithHeader.")
-      return s;
-    }
-    s = buffer_mgr_->init(buffer_lsn);
-    if (s == KStatus::FAIL) {
+    if (ResetWAL(ctx, true) == KStatus::FAIL) {
       LOG_ERROR("Failed to Reset wal.")
-      return s;
+      return FAIL;
     }
   }
 
@@ -980,7 +969,7 @@ KStatus WALMgr::ResetWAL(kwdbContext_p ctx, bool reset) {
   TS_OSN current_lsn_recover = FetchCurrentLSN();
   WALMeta old_meta = meta_;
   if (reset) {
-    current_lsn_recover = 0;
+    current_lsn_recover = BLOCK_SIZE + LOG_BLOCK_HEADER_SIZE;
     old_meta = WALMeta{BLOCK_SIZE + LOG_BLOCK_HEADER_SIZE, BLOCK_SIZE + LOG_BLOCK_HEADER_SIZE, 0,
                        BLOCK_SIZE + LOG_BLOCK_HEADER_SIZE};
   }
@@ -1012,9 +1001,9 @@ KStatus WALMgr::ResetWAL(kwdbContext_p ctx, bool reset) {
     return s;
   }
 
-  buffer_mgr_->ResetMeta();
+  buffer_mgr_->ResetMeta(file_mgr_);
 
-  s = buffer_mgr_->init(0);
+  s = buffer_mgr_->init(current_lsn_recover);
   if (s == KStatus::FAIL) {
     LOG_ERROR("Failed to initialize the WAL buffer.")
     return s;

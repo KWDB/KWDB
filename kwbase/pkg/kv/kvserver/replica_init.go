@@ -257,7 +257,10 @@ func (r *Replica) loadRaftMuLockedReplicaMuLocked(
 			}
 			hs.Term = r.mu.state.TruncatedState.Term
 			if r.store.TsRaftLogEngine != nil {
-				err = r.SetTsHardState(ctx, hs, tse.NewTsRaftLogBatch(r.store.TsRaftLogEngine))
+				tsBatch := tse.NewTsRaftLogBatch(r.store.TsRaftLogEngine)
+				if err = r.SetTsHardState(ctx, hs, tsBatch); err == nil {
+					err = tsBatch.Commit()
+				}
 			} else {
 				err = r.mu.stateLoader.SetHardState(ctx, r.Engine(), hs)
 			}

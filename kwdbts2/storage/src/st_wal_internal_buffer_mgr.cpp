@@ -71,10 +71,11 @@ KStatus WALBufferMgr::init(TS_OSN start_lsn) {
   return SUCCESS;
 }
 
-void WALBufferMgr::ResetMeta() {
+void WALBufferMgr::ResetMeta(WALFileMgr* file_mgr) {
   begin_block_index_ = 0;
   current_block_index_ = 0;
   end_block_index_ = init_buffer_size_ - 1;
+  file_mgr_ = file_mgr;
 }
 
 KStatus WALBufferMgr::readWALLogs(std::vector<LogEntry*>& log_entries, TS_OSN start_lsn, TS_OSN end_lsn,
