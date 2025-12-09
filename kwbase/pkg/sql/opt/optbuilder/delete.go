@@ -205,6 +205,12 @@ func getLimitOfTimestampWithPrecision(precision int64) (int64, int64) {
 	}
 }
 
+// ExprWithLogicID pairs an expression with its optimizer logical column ID.
+type ExprWithLogicID struct {
+	exp     tree.Expr
+	logicID opt.ColumnID
+}
+
 // buildTSDelete build delete outScope of time-series table
 // input: inScope, table, delete, TableName, table ID
 // output: outScope
@@ -263,7 +269,7 @@ func (b *Builder) buildTSDelete(
 
 	// only one set of primary tags or ts columns of the time series table
 	// or ts columns of the instance table are supported for filtering in delete
-	exprs := make(map[int]tree.Expr, len(priTagCols))
+	exprs := make(map[int]ExprWithLogicID, len(priTagCols))
 	var filter tree.Exprs
 	var filters []tree.Exprs
 
@@ -321,7 +327,7 @@ func (b *Builder) buildTSDelete(
 		for i, col := range priTagCols {
 			// check if primary tags completed
 			if exp, ok := exprs[int(col.ColID())]; ok {
-				filter = append(filter, exp)
+				filter = append(filter, exp.exp)
 				colMap[int(col.ID)] = i
 			} else {
 				panic(sqlbase.UnsupportedDeleteConditionError("incomplete tag filter"))
@@ -329,9 +335,9 @@ func (b *Builder) buildTSDelete(
 		}
 		filters = append(filters, filter)
 	}
-	for colID, expr := range exprs {
-		if v, ok := expr.(*tree.Placeholder); ok {
-			b.semaCtx.Placeholders.Types[v.Idx] = meta.ColumnMeta(opt.ColumnID(colID)).Type
+	for _, expr := range exprs {
+		if v, ok := expr.exp.(*tree.Placeholder); ok {
+			b.semaCtx.Placeholders.Types[v.Idx] = meta.ColumnMeta(expr.logicID).Type
 		}
 	}
 	// get delete type
@@ -388,7 +394,7 @@ func checkTSDeleteFilter(
 	evalCtx *tree.EvalContext,
 	inScope *scope,
 	filter tree.Expr,
-	exprs map[int]tree.Expr,
+	exprs map[int]ExprWithLogicID,
 	typ *filterType,
 	primaryTagIDs map[int]struct{},
 	meta *opt.Metadata,
@@ -405,14 +411,14 @@ func checkTSDeleteFilter(
 		leftSpans := checkTSDeleteFilter(evalCtx, inScope, f.Left, exprs, typ, primaryTagIDs, meta, nil, precision)
 		spans = mergeAndSpans(leftSpans, rightSpans, spans)
 	case *tree.OrExpr:
-		leftPri, rightPri := make(map[int]tree.Expr), make(map[int]tree.Expr)
+		leftPri, rightPri := make(map[int]ExprWithLogicID), make(map[int]ExprWithLogicID)
 		rightSpans := checkTSDeleteFilter(evalCtx, inScope, f.Right, rightPri, typ, primaryTagIDs, meta, nil, precision)
 		right := checkPTagIsComplete(rightPri, primaryTagIDs)
 		leftSpans := checkTSDeleteFilter(evalCtx, inScope, f.Left, leftPri, typ, primaryTagIDs, meta, nil, precision)
 		left := checkPTagIsComplete(leftPri, primaryTagIDs)
 		if (*typ == onlyTag || *typ == tagAndTS) && right && left {
 			for key, value := range leftPri {
-				if rightPri[key].String() != value.String() {
+				if rightPri[key].exp.String() != value.exp.String() {
 					*typ = unsupportedType
 					return nil
 				}
@@ -514,30 +520,35 @@ func handleDBool(f *tree.DBool, spans []opt.TsSpan, typ *filterType, precision i
 
 // handlePrimaryTagColumn check if primary tag in filter is supported
 func handlePrimaryTagColumn(
-	exprs map[int]tree.Expr,
+	exprs map[int]ExprWithLogicID,
 	id int,
 	expr tree.Expr,
 	op tree.ComparisonOperator,
 	typ *filterType,
 	primaryTagIDs map[int]struct{},
+	logicID opt.ColumnID,
 ) {
 	if op != tree.EQ {
 		*typ = unsupportedType
 	}
+	var expWithID ExprWithLogicID
+	expWithID.logicID = logicID
 	if datum, ok := expr.(tree.Datum); ok {
-		if val, ok := exprs[id]; ok && val.String() != datum.String() {
+		if val, ok := exprs[id]; ok && val.exp.String() != datum.String() {
 			*typ = unsupportedType
 		}
 		checkFilterType(id, typ, primaryTagIDs)
-		exprs[id] = datum
+		expWithID.exp = datum
+		exprs[id] = expWithID
 	} else if idxVal, ok := expr.(*tree.IndexedVar); ok {
 		if val, ok := exprs[id]; ok {
-			if idxVal1, ok := val.(*tree.IndexedVar); !ok || ok && (idxVal1.Idx != idxVal.Idx) {
+			if idxVal1, ok := val.exp.(*tree.IndexedVar); !ok || ok && (idxVal1.Idx != idxVal.Idx) {
 				*typ = unsupportedType
 			}
 		}
 		checkFilterType(id, typ, primaryTagIDs)
-		exprs[id] = idxVal
+		expWithID.exp = idxVal
+		exprs[id] = expWithID
 	} else {
 		*typ = unsupportedType
 	}
@@ -575,7 +586,7 @@ func getTimeWithPrecision(time *tree.DTimestampTZ, precision int64) (bool, int64
 func checkComExpr(
 	evalCtx *tree.EvalContext,
 	left, right tree.Expr,
-	exprs map[int]tree.Expr,
+	exprs map[int]ExprWithLogicID,
 	typ *filterType,
 	primaryTagIDs map[int]struct{},
 	op tree.ComparisonOperator,
@@ -602,6 +613,7 @@ func checkComExpr(
 	if leftIsScopeCol && !rightIsScopeCol {
 		// id in expr is column's logical id, need to get column's physical id
 		t := meta.ColumnMeta(leftScopeCol.id).Table
+		logicID := leftScopeCol.id
 		index := t.ColumnOrdinal(leftScopeCol.id)
 		id := meta.Table(t).Column(index).ColID()
 		if id == tsColumnID {
@@ -686,11 +698,13 @@ func checkComExpr(
 			}
 			return spans
 		}
-		handlePrimaryTagColumn(exprs, int(id), right, op, typ, primaryTagIDs)
+		handlePrimaryTagColumn(exprs, int(id), right, op, typ, primaryTagIDs, logicID)
 	} else if !leftIsScopeCol && rightIsScopeCol {
 		// id in expr is column's logical id, need to get column's physical id
 		t := meta.ColumnMeta(rightScopeCol.id).Table
-		id := t.ColumnOrdinal(rightScopeCol.id) + 1
+		index := t.ColumnOrdinal(rightScopeCol.id)
+		id := meta.Table(t).Column(index).ColID()
+		logicID := rightScopeCol.id
 		if id == tsColumnID {
 			if leftIsDeclareCol {
 				// The ts column of the time-series does not support Declare col
@@ -771,7 +785,7 @@ func checkComExpr(
 			}
 			return spans
 		}
-		handlePrimaryTagColumn(exprs, id, left, op, typ, primaryTagIDs)
+		handlePrimaryTagColumn(exprs, int(id), left, op, typ, primaryTagIDs, logicID)
 	} else {
 		*typ = unsupportedType
 		return nil
@@ -795,7 +809,7 @@ func checkFilterType(id int, typ *filterType, primaryTagIDs map[int]struct{}) {
 	}
 }
 
-func checkPTagIsComplete(exprs map[int]tree.Expr, primaryTagIDs map[int]struct{}) bool {
+func checkPTagIsComplete(exprs map[int]ExprWithLogicID, primaryTagIDs map[int]struct{}) bool {
 	for key := range primaryTagIDs {
 		if _, ok := exprs[key]; !ok {
 			return false

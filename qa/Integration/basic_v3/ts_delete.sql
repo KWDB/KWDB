@@ -992,3 +992,34 @@ delete from tsdba.t3 where k_timestamp <= '2021-03-03 15:00:00';
 select count(*) from tsdba.t3;
 
 USE defaultdb;DROP DATABASE IF EXISTS tsdba CASCADE;
+
+create ts database d2;
+use d2;
+create table t1(
+                   start_time TIMESTAMPTZ(3) NOT NULL,
+                   end_time TIMESTAMPTZ(3) NOT NULL,
+                   seller_load FLOAT8 NOT NULL,
+                   seller_price FLOAT8 NOT NULL,
+                   buyer VARCHAR(200) NOT NULL,
+                   seller VARCHAR(200) NOT NULL
+) TAGS (
+                        site_id VARCHAR(50) NOT NULL,
+                        code VARCHAR(20) NOT NULL,
+                        interval_code VARCHAR(20) NOT NULL,
+                        id VARCHAR(50) NOT NULL
+                ) PRIMARY TAGS(site_id, code, interval_code, id);
+insert into t1 (
+    start_time, end_time, seller_load, seller_price, buyer, seller,
+    site_id, code, interval_code, id
+) VALUES
+    ('2024-02-01 00:00:00+08', '2024-02-01 01:00:00+08', 2000.0, 0.5,
+     '国家电网公司', '测试电力公司',
+     'GS1002T', '2', '00:00-01:00', 'test-id-001');
+PREPARE delete_stmt AS
+DELETE FROM t1 WHERE site_id = $1 AND code = $2 AND interval_code = $3 AND id = $4;
+set sql_safe_updates = false;
+ALTER TABLE t1 DROP COLUMN seller_price;
+
+EXECUTE delete_stmt('GS1002T', '2', '00:00-01:00', 'test-id-001');
+
+USE defaultdb;DROP DATABASE IF EXISTS d2 CASCADE;
