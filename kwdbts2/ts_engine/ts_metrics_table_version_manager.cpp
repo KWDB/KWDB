@@ -81,7 +81,7 @@ void MetricsVersionManager::InsertNull(uint32_t ts_version) {
     iter->second.reset();
     metric_tables_.erase(iter);
   }
-  metric_tables_.insert({ts_version, nullptr});
+  metric_tables_.insert_or_assign(ts_version, nullptr);
 }
 
 KStatus MetricsVersionManager::CreateTable(kwdbContext_p ctx, std::vector<AttributeInfo> meta, uint32_t db_id,
@@ -123,7 +123,7 @@ KStatus MetricsVersionManager::CreateTable(kwdbContext_p ctx, std::vector<Attrib
   LOG_INFO("Create table %lu with life time[%ld:%d], version:%d.", table_id_, life_time.ts, life_time.precision, ts_version);
   tmp_bt->setObjectReady();
   // Save to map cache
-  metric_tables_.insert({ts_version, tmp_bt});
+  metric_tables_.insert_or_assign(ts_version, tmp_bt);
   if (ts_version > cur_metric_version_) {
     cur_metric_table_ = tmp_bt;
     cur_metric_version_ = ts_version;
@@ -138,7 +138,7 @@ KStatus MetricsVersionManager::AddOneVersion(uint32_t ts_version, std::shared_pt
   if (iter != metric_tables_.end() && iter->second != nullptr) {
     return FAIL;
   }
-  metric_tables_.insert({ts_version, metrics_table});
+  metric_tables_.insert_or_assign(ts_version, metrics_table);
   if (cur_metric_version_ < ts_version) {
     cur_metric_table_ = metrics_table;
     cur_metric_version_ = ts_version;
