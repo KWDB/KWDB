@@ -843,5 +843,29 @@ SQLSTATE: 42702
 --------
   null
 (1 row)
+> set @aa_fix = 1.25::float4;
+SET
+> set @aa_fix1 = 1.25::decimal;
+SET
+> create table test_fix (a int, b decimal(1000,10));
+CREATE TABLE
+> insert into test_fix values(1,1);
+INSERT 1
+> insert into test_fix values(2,2);
+INSERT 1
+> insert into test_fix values(3,1.25);
+INSERT 1
+> prepare p1_fix as select * from test_fix where b = $1;
+PREPARE
+> execute p1_fix(@aa_fix);
+ERROR: expected EXECUTE parameter expression to have type decimal, but '@aa_fix' has type float
+SQLSTATE: 42809
+> execute p1_fix(@aa_fix1);
+  a |      b
+----+---------------
+  3 | 1.2500000000
+(1 row)
+> drop table test_fix;
+DROP TABLE
 > DROP DATABASE test_udvar CASCADE;
 DROP DATABASE

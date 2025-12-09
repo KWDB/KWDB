@@ -332,4 +332,16 @@ SELECT @qwe;
 INSERT INTO test_udv1 VALUES('Q'),('W');
 SELECT a into @qwe from test_udv1;
 SELECT @qwe;
+
+set @aa_fix = 1.25::float4;
+set @aa_fix1 = 1.25::decimal;
+create table test_fix (a int, b decimal(1000,10));
+insert into test_fix values(1,1);
+insert into test_fix values(2,2);
+insert into test_fix values(3,1.25);
+prepare p1_fix as select * from test_fix where b = $1;
+execute p1_fix(@aa_fix);
+execute p1_fix(@aa_fix1);
+drop table test_fix;
+
 DROP DATABASE test_udvar CASCADE;

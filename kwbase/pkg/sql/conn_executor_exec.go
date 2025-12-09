@@ -634,7 +634,7 @@ func (ex *connExecutor) execStmtInOpenState(
 			return makeErrEvent(err)
 		}
 		var err error
-		pinfo, err = fillInPlaceholders(ps, name, s.Params, ex.sessionData.SearchPath, ex.planner.semaCtx.Location)
+		pinfo, err = fillInPlaceholders(ps, name, s.Params, ex.sessionData.SearchPath, ex.planner.semaCtx.Location, ex.sessionData.UserDefinedVars)
 		if err != nil {
 			return makeErrEvent(err)
 		}

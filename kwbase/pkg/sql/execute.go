@@ -45,6 +45,7 @@ func fillInPlaceholders(
 	params tree.Exprs,
 	searchPath sessiondata.SearchPath,
 	loc **time.Location,
+	userDefinedVars map[string]interface{},
 ) (*tree.PlaceholderInfo, error) {
 	if len(ps.Types) != len(params) {
 		return nil, pgerror.Newf(pgcode.Syntax,
@@ -55,6 +56,7 @@ func fillInPlaceholders(
 	qArgs := make(tree.QueryArguments, len(params))
 	var semaCtx tree.SemaContext
 	semaCtx.Location = loc
+	semaCtx.UserDefinedVars = userDefinedVars
 	for i, e := range params {
 		idx := tree.PlaceholderIdx(i)
 
