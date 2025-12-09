@@ -437,20 +437,13 @@ KStatus TsBlockSpan::GetCount(uint32_t scan_idx, uint32_t& count, TsScanStats* t
 void TsBlockSpan::SplitFront(int row_num, shared_ptr<TsBlockSpan>& front_span) {
   assert(row_num <= nrow_);
   assert(block_ != nullptr);
-  front_span = make_shared<TsBlockSpan>(*this, block_, start_row_, row_num);
-  // change current span info
-  start_row_ += row_num;
-  nrow_ -= row_num;
-  has_pre_agg_ = false;
+  SplitFrontImpl(row_num, front_span);
 }
 
 void TsBlockSpan::SplitBack(int row_num, shared_ptr<TsBlockSpan>& back_span) {
   assert(row_num <= nrow_);
   assert(block_ != nullptr);
-  back_span = make_shared<TsBlockSpan>(*this, block_, start_row_ + nrow_ - row_num, row_num);
-  // change current span info
-  nrow_ -= row_num;
-  has_pre_agg_ = false;
+  SplitBackImpl(row_num, back_span);
 }
 
 }  // namespace kwdbts

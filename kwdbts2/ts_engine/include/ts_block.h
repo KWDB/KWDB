@@ -302,6 +302,7 @@ class TsBlockSpan {
     assert(row_num <= nrow_);
     assert(block_ != nullptr);
     nrow_ -= row_num;
+    has_pre_agg_ = false;
   }
 
   void TrimFront(int row_num) {
@@ -309,6 +310,23 @@ class TsBlockSpan {
     assert(block_ != nullptr);
     start_row_ += row_num;
     nrow_ -= row_num;
+    has_pre_agg_ = false;
+  }
+
+ private:
+  void SplitFrontImpl(int row_num, shared_ptr<TsBlockSpan>& front_span) {
+    front_span = make_shared<TsBlockSpan>(*this, block_, start_row_, row_num);
+    // change current span info
+    start_row_ += row_num;
+    nrow_ -= row_num;
+    has_pre_agg_ = false;
+  }
+
+  void SplitBackImpl(int row_num, shared_ptr<TsBlockSpan>& back_span) {
+    back_span = make_shared<TsBlockSpan>(*this, block_, start_row_ + nrow_ - row_num, row_num);
+    // change current span info
+    nrow_ -= row_num;
+    has_pre_agg_ = false;
   }
 };
 }  // namespace kwdbts

@@ -29,19 +29,92 @@ std::shared_ptr<TSBlkDataTypeConvert> empty_convert = nullptr;
 
 void TsBlockSpan::SplitFront(int row_num, shared_ptr<TsBlockSpan>& front_span) {
   EXPECT_TRUE(row_num <= nrow_);
-  front_span = make_shared<TsBlockSpan>(0, entity_id_, block_, start_row_, row_num, empty_convert, 1, nullptr);
-  // change current span info
-  start_row_ += row_num;
-  nrow_ -= row_num;
+  SplitFrontImpl(row_num, front_span);
 }
 
 void TsBlockSpan::SplitBack(int row_num, shared_ptr<TsBlockSpan>& back_span) {
   EXPECT_TRUE(row_num <= nrow_);
-  back_span = make_shared<TsBlockSpan>(0, entity_id_, block_, start_row_ + nrow_ - row_num, row_num, empty_convert, 1, nullptr);
-  // change current span info
-  nrow_ -= row_num;
+  SplitBackImpl(row_num, back_span);
 }
 
+class SimulatedTsEntityBlock : public TsBlock {
+ private:
+  timestamp64 first_ts_;
+  int rows_;
+  uint64_t osn_;
+ public:
+  SimulatedTsEntityBlock() = delete;
+  SimulatedTsEntityBlock(timestamp64 first_ts, int rows, uint64_t osn) {
+    first_ts_ = first_ts;
+    rows_ = rows;
+    osn_ = osn;
+  }
+  bool HasPreAgg(uint32_t begin_row_idx, uint32_t row_num) override {
+    return 0 == begin_row_idx && row_num == rows_;
+  }
+  uint32_t GetBlockVersion() const override { return 1; }
+  TSTableID GetTableId() override { return 1; }
+  uint32_t GetTableVersion() override { return 1; }
+  size_t GetRowNum() override { return rows_; }
+  timestamp64 GetTS(int row_num, TsScanStats* ts_scan_stats = nullptr) override {
+    return first_ts_ + row_num;
+  }
+  timestamp64 GetFirstTS() override { return first_ts_; }
+  timestamp64 GetLastTS() override { return first_ts_ + rows_ - 1; }
+
+  KStatus GetColAddr(uint32_t col_id, const std::vector<AttributeInfo>* schema,
+                             char** value, TsScanStats* ts_scan_stats = nullptr) override {
+    return KStatus::FAIL;
+  }
+  KStatus GetColBitmap(uint32_t col_id, const std::vector<AttributeInfo>* schema,
+                               std::unique_ptr<TsBitmapBase>* bitmap, TsScanStats* ts_scan_stats = nullptr) override {
+    return KStatus::FAIL;
+  }
+  KStatus GetValueSlice(int row_num, int col_id, const std::vector<AttributeInfo>* schema,
+                                TSSlice& value, TsScanStats* ts_scan_stats = nullptr) override {
+    return KStatus::FAIL;
+  }
+  bool IsColNull(int row_num, int col_id, const std::vector<AttributeInfo>* schema,
+                          TsScanStats* ts_scan_stats = nullptr) override {
+    return KStatus::FAIL;
+  }
+
+  void GetMinAndMaxOSN(uint64_t& min_osn, uint64_t& max_osn) override {
+    min_osn = osn_;
+    max_osn = osn_;
+    return;
+  }
+
+  uint64_t GetFirstOSN() override { return KStatus::FAIL; }
+
+  uint64_t GetLastOSN() override { return KStatus::FAIL; }
+
+  const uint64_t* GetOSNAddr(int row_num, TsScanStats* ts_scan_stats = nullptr) override { return &osn_; }
+
+  KStatus GetCompressDataFromFile(uint32_t table_version, int32_t nrow, std::string& data) override {
+    return KStatus::FAIL;
+  }
+
+  KStatus GetPreCount(uint32_t blk_col_idx, TsScanStats* ts_scan_stats, uint16_t& count) override {
+    return KStatus::FAIL;
+  }
+  KStatus GetPreSum(uint32_t blk_col_idx, int32_t size, TsScanStats* ts_scan_stats,
+                            void* &pre_sum, bool& is_overflow) override {
+    return KStatus::FAIL;
+  }
+  KStatus GetPreMax(uint32_t blk_col_idx, TsScanStats* ts_scan_stats, void* &pre_max) override {
+    return KStatus::FAIL;
+  }
+  KStatus GetPreMin(uint32_t blk_col_idx, int32_t size, TsScanStats* ts_scan_stats, void* &pre_min) override {
+    return KStatus::FAIL;
+  }
+  KStatus GetVarPreMax(uint32_t blk_col_idx, TsScanStats* ts_scan_stats, TSSlice& pre_max) override {
+    return KStatus::FAIL;
+  }
+  KStatus GetVarPreMin(uint32_t blk_col_idx, TsScanStats* ts_scan_stats, TSSlice& pre_min) override {
+    return KStatus::FAIL;
+  }
+};
 class TsBlockSpanSortedIteratorTest : public ::testing::Test {
  public:
   std::vector<AttributeInfo> schema_;
@@ -103,6 +176,14 @@ class TsBlockSpanSortedIteratorTest : public ::testing::Test {
     }
     auto block = AddBlockWithTs(tss, osn);
     return std::make_shared<TsBlockSpan>(0, 1, block, 0, tss.size(), empty_convert, 1, nullptr);
+  }
+
+  shared_ptr<TsBlockSpan> GenSimulatedEntityBlockSpan(timestamp64 start, int num, uint64_t osn) {
+    if (num == 0) {
+      return std::make_shared<TsBlockSpan>(0, 1, nullptr, 0, 0, empty_convert, 1, nullptr);
+    }
+    auto block = std::make_shared<SimulatedTsEntityBlock>(start, num, osn);
+    return std::make_shared<TsBlockSpan>(0, 1, block, 0, num, empty_convert, 1, nullptr);
   }
 };
 
@@ -319,5 +400,31 @@ TEST_F(TsBlockSpanSortedIteratorTest, multiBlockSpanWithCrossData) {
           break;
       }
     }
+  }
+}
+
+TEST_F(TsBlockSpanSortedIteratorTest, preAgg) {
+  std::vector<DedupRule> dedup_rules = {DedupRule::KEEP, DedupRule::OVERRIDE, DedupRule::DISCARD};
+  std::vector<int> total_row_count = {220, 120, 120};
+  for (int i = 0; i < 3; ++i) {
+    DedupRule rule = dedup_rules[i];
+    uint32_t total_rows = 0;
+    std::list<shared_ptr<TsBlockSpan>> spans;
+    spans.push_back(GenSimulatedEntityBlockSpan(1000, 100, 1));
+    spans.push_back(GenSimulatedEntityBlockSpan(1000, 120, 1));
+    TsBlockSpanSortedIterator iter(spans, rule);
+    auto s = iter.Init();
+    EXPECT_TRUE(s == KStatus::SUCCESS);
+    bool is_finished;
+    std::shared_ptr<kwdbts::TsBlockSpan> block_span;
+    do {
+      auto s = iter.Next(block_span, &is_finished);
+      EXPECT_TRUE(s == KStatus::SUCCESS);
+      if (!is_finished) {
+        total_rows += block_span->GetRowNum();
+        EXPECT_FALSE(block_span->HasPreAgg());
+      }
+    } while (!is_finished);
+    EXPECT_TRUE(total_rows == total_row_count[i]);
   }
 }
