@@ -68,19 +68,18 @@ var (
 )
 
 var (
-	// StatsCapacityCount is the counter of computing capacity.
-	StatsCapacityCount int64 = -1
+	// lastStatsCapacityAt is the time of last computing capacity.
+	// MUST initialize it to current time to avoid computing capacity at the start time,
+	// because the ts engine have not startup, compute at this time will issue errors.
+	lastStatsCapacityAt time.Time = timeutil.Now()
 
-	// StatsCapacityPeriod is the default period of computing capacity.
-	defaultStatsCapacityPeriod int64 = 12
+	// StatsCapacityPeriod is the default period of computing capacity (seconds).
+	defaultStatsCapacityPeriod int64 = 60
 
-	// statsCapacityPeriod is a period to delay the capacity computing
-	// where the frequency of computing capacity is 10s.
-	// There are two threads alternately computing capacity, thus the period
-	// is set as 12 to fulfill computing capacity once per minute.
+	// statsCapacityPeriod is a period to run the capacity computing
 	statsCapacityPeriod = settings.RegisterPublicIntSetting(
 		"capacity.stats.period",
-		"period of computing capacity, the valid value is [1, 10000], default value is 12",
+		"period of computing capacity, the valid value is [1, 10000], default value is 60 (seconds)",
 		defaultStatsCapacityPeriod,
 	)
 
@@ -3698,13 +3697,15 @@ func computeCapacity(
 	var tsdbUsedBytes int64
 	var relationalUsedBytes int64
 	var tsdbPath = tsPath + "/tsdb/"
-
-	var period = defaultStatsCapacityPeriod // default value is 12
+	var period = defaultStatsCapacityPeriod // default value is 60 seconds
 	if s != nil {
 		period = statsCapacityPeriod.Get(&s.SV)
 	}
-	StatsCapacityCount++
-	if StatsCapacityCount%period == 0 {
+
+	currentTime := timeutil.Now().Truncate(time.Second)
+	diffSeconds := int64(currentTime.Sub(lastStatsCapacityAt) / time.Second)
+	if diffSeconds >= period {
+		lastStatsCapacityAt = timeutil.Now().Truncate(time.Second)
 		rootDevNum, err := sysutil.GetDeviceNumber(path)
 		if err != nil {
 			return roachpb.StoreCapacity{}, err
