@@ -22,5 +22,6 @@ constexpr static uint32_t INVALID_BATCH_VERSION = -1;
 constexpr static uint32_t CURRENT_BATCH_VERSION = 1;
 constexpr static uint32_t BATCH_VERSION_LIMIT = CURRENT_BATCH_VERSION + 1;
 
-constexpr static uint32_t CURRENT_SNAPSHOT_VERSION = 2;
+constexpr static uint32_t CURRENT_SNAPSHOT_VERSION = 1;
+constexpr static uint32_t SNAPSHOT_START_PACKAGE_ID = CURRENT_SNAPSHOT_VERSION + 1;
 constexpr static uint32_t SNAPSHOT_VERSION_LIMIT = CURRENT_SNAPSHOT_VERSION + 1;

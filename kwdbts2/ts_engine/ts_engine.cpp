@@ -2275,17 +2275,16 @@ KStatus TSEngineImpl::WriteSnapshotBatchData(kwdbContext_p ctx, uint64_t snapsho
     return KStatus::SUCCESS;
   }
   assert(data.len >= 20);
-  uint32_t package_id;
-  TSTableID table_id;
-  uint32_t table_version;
-  uint32_t row_num;
-  TSSlice batch_data;
-  TSSlice del_data;
-  bool ok =
-      STPackageSnapshotData::UnpackageData(data, package_id, table_id, table_version, batch_data, row_num, del_data);
+  uint32_t package_id = 0;
+  TSTableID table_id = 0;
+  uint32_t table_version = 0;
+  uint32_t row_num = 0;
+  TSSlice batch_data{nullptr, 0};
+  TSSlice del_data{nullptr, 0};
+  bool ok = STPackageSnapshotData::UnpackageData(data, package_id, table_id, table_version, batch_data, row_num, del_data);
   if (!ok) {
-    LOG_ERROR("cannot unpackage data, len[%lu].", data.len);
-    return FAIL;
+    LOG_ERROR("UnpackageData failed, last package id [%u].", ts_snapshot_info.package_id);
+    return KStatus::FAIL;
   }
   if (package_id - 1 != ts_snapshot_info.package_id) {
     if (package_id - 1 > ts_snapshot_info.package_id) {

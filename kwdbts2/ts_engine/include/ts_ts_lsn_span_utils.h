@@ -14,6 +14,7 @@
 #include <memory>
 #include <vector>
 #include <list>
+#include <string>
 #include <algorithm>
 #include "data_type.h"
 #include "kwdb_type.h"
@@ -96,5 +97,9 @@ inline bool IsTsLsnSpanCrossSpans(const std::vector<STScanRange>& spans,
 void MergeTsSpans(std::list<KwTsSpan>& raw_spans, std::vector<KwTsSpan>* ret_spans);
 
 void DeplicateTsSpans(list<STDelRange>& raw_spans, list<STDelRange>* ret_spans);
+
+// used for print binary data to log files. and convert back to for check.
+void BinaryToHexStr(const TSSlice& data, std::string& ret);
+void HexStrToBinary(const std::string& data, TSSlice& ret);
 
 }  // namespace kwdbts

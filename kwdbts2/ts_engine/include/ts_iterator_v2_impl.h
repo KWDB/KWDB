@@ -323,8 +323,8 @@ class TsRawDataIteratorV2ImplByOSN : public TsStorageIteratorV2Impl {
  protected:
   KStatus MoveToNextEntity(bool* is_finished, TsScanStats* ts_scan_stats);
   KStatus ScanAndSortEntityData(timestamp64 ts);
-  KStatus NextMetricDelRows(ResultSet* res, k_uint32* count, bool* is_finished);
-  KStatus NextMetricInsertRows(ResultSet* res, k_uint32* count, bool* is_finished, TsScanStats* ts_scan_stats);
+  KStatus GetMetricDelRows(ResultSet* res, k_uint32* count);
+  KStatus GetMetricInsertRows(ResultSet* res, k_uint32* count, TsScanStats* ts_scan_stats);
   KStatus FillEmptyMetricRow(ResultSet* res, uint32_t count, TS_OSN osn, OperatorTypeOfRecord type);
   KStatus AppendExtendColSpace(ResultSet* res, uint32_t count);
 
@@ -332,7 +332,12 @@ class TsRawDataIteratorV2ImplByOSN : public TsStorageIteratorV2Impl {
   std::vector<KwOSNSpan> osn_span_;
   std::list<std::shared_ptr<TsBlockSpan>> ts_block_spans_reserved_;
   std::vector<EntityResultIndex> entitys_;
-  bool del_info_finished_{false};
+  enum SendingStatus : uint8_t {
+    SENDING_DEL_INFO = 1,
+    SENDING_EMPTY_ROW,
+    SENDING_METRIC_ROWS,
+  };
+  SendingStatus cur_entity_status_{SENDING_METRIC_ROWS};
   uint64_t fill_empty_value{0};
   uint8_t fill_empty_bitmap{0XFF};
 };

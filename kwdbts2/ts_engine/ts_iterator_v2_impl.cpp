@@ -2422,63 +2422,98 @@ KStatus TsRawDataIteratorV2ImplByOSN::MoveToNextEntity(bool* is_finished, TsScan
   return KStatus::SUCCESS;
 }
 
-KStatus TsRawDataIteratorV2ImplByOSN::Next(ResultSet* res, k_uint32* count, bool* is_finished, timestamp64 ts,
-                                            TsScanStats* ts_scan_stats) {
-  if (!del_info_finished_) {
-    KStatus s = NextMetricDelRows(res, count, &del_info_finished_);
-    if (s != KStatus::SUCCESS) {
-      LOG_ERROR("NextMetricDelRows failed.");
-      return s;
-    }
-  }
-  if (*count == 0) {
-    auto s = NextMetricInsertRows(res, count, is_finished, ts_scan_stats);
-    if (s != KStatus::SUCCESS) {
-      LOG_ERROR("NextMetricInsertRows failed.");
-      return s;
-    }
-  }
-  return KStatus::SUCCESS;
-}
-
-KStatus TsRawDataIteratorV2ImplByOSN::NextMetricDelRows(ResultSet* res, k_uint32* count, bool* is_finished) {
-  *is_finished = false;
+KStatus TsRawDataIteratorV2ImplByOSN::Next(ResultSet* res, k_uint32* count, bool* is_finished,
+  timestamp64 ts, TsScanStats* ts_scan_stats) {
   *count = 0;
-  do {
-    cur_entity_index_++;
-    if (cur_entity_index_ >= entitys_.size()) {
-      *is_finished = true;
-      cur_entity_index_ = -1;
+  *is_finished = false;
+  ts_block_spans_reserved_.clear();
+  while (true) {
+    if (ts_block_spans_.size() == 0 && SendingStatus::SENDING_METRIC_ROWS == cur_entity_status_) {
+      auto ret = MoveToNextEntity(is_finished, ts_scan_stats);
+      if (ret != KStatus::SUCCESS) {
+        LOG_ERROR("MoveToNextEntity failed.");
+        return ret;
+      }
+      if (*is_finished) {
+        return KStatus::SUCCESS;
+      }
+      cur_entity_status_ = SendingStatus::SENDING_DEL_INFO;
+    }
+    switch (cur_entity_status_) {
+      case SendingStatus::SENDING_DEL_INFO: {
+        auto s = GetMetricDelRows(res, count);
+        if (s != KStatus::SUCCESS) {
+          LOG_ERROR("GetMetricDelRows failed.");
+          return s;
+        }
+        cur_entity_status_ = SendingStatus::SENDING_EMPTY_ROW;
+        break;
+      }
+      case SendingStatus::SENDING_EMPTY_ROW: {
+        // if only tag, no metric data, we need create empty row.
+        auto oper_info = reinterpret_cast<OperatorInfoOfRecord*>(entitys_[cur_entity_index_].op_with_osn.get());
+        assert(oper_info != nullptr);
+        if (oper_info->type == OperatorTypeOfRecord::OP_TYPE_TAG_UPDATE ||
+            oper_info->type == OperatorTypeOfRecord::OP_TYPE_TAG_DELETE ||
+            (oper_info->type == OperatorTypeOfRecord::OP_TYPE_INSERT && ts_block_spans_.size() == 0)) {
+          auto s = FillEmptyMetricRow(res, 1, oper_info->osn, oper_info->type);
+          if (s != KStatus::SUCCESS) {
+            LOG_ERROR("FillEmptyMetricRow failed.");
+            return s;
+          }
+          *count = 1;
+        }
+        cur_entity_status_ = SendingStatus::SENDING_METRIC_ROWS;
+        break;
+      }
+      case SendingStatus::SENDING_METRIC_ROWS: {
+        auto s = GetMetricInsertRows(res, count, ts_scan_stats);
+        if (s != KStatus::SUCCESS) {
+          LOG_ERROR("GetMetricInsertRows failed.");
+          return s;
+        }
+        break;
+      }
+      default:
+        LOG_ERROR("sending status cannot be this.");
+        break;
+    }
+    if (*count > 0) {
       return KStatus::SUCCESS;
     }
-    auto op_osn = reinterpret_cast<OperatorInfoOfRecord*>(entitys_[cur_entity_index_].op_with_osn.get());
-    assert(op_osn != nullptr);
-    if (op_osn->type == OperatorTypeOfRecord::OP_TYPE_TAG_DELETE) {
-      // if tag is deleted, no need search metric delete operation.
-      continue;
-    }
-    std::vector<KwTsSpan> del_spans;
-    auto s = vgroup_->GetDelInfoByOSN(nullptr, table_id_, entitys_[cur_entity_index_].entityId, osn_span_, &del_spans);
-    if (s != KStatus::SUCCESS) {
-      LOG_ERROR("GetDelInfoByOSN failed.");
-      return s;
-    }
-    if (del_spans.empty()) {
-      continue;
-    }
-    *count = del_spans.size();
-    s = FillEmptyMetricRow(res, del_spans.size(), osn_span_[0].begin, OperatorTypeOfRecord::OP_TYPE_METRIC_DELETE);
-    if (s != KStatus::SUCCESS) {
-      LOG_ERROR("FillEmptyMetricRow failed.");
-      return s;
-    }
-    size_t ext_event_idx = kw_scan_cols_.size() + 2;
-    for (size_t i = 0; i < del_spans.size(); i++) {
-      KUint64(reinterpret_cast<char*>(res->data[ext_event_idx][0]->mem) + i * 16) = del_spans[i].begin;
-      KUint64(reinterpret_cast<char*>(res->data[ext_event_idx][0]->mem) + i * 16 + 8) = del_spans[i].end;
-    }
+  }
+  LOG_WARN("should not exec here.");
+  return KStatus::FAIL;
+}
+
+KStatus TsRawDataIteratorV2ImplByOSN::GetMetricDelRows(ResultSet* res, k_uint32* count) {
+  *count = 0;
+  auto op_osn = reinterpret_cast<OperatorInfoOfRecord*>(entitys_[cur_entity_index_].op_with_osn.get());
+  assert(op_osn != nullptr);
+  if (op_osn->type == OperatorTypeOfRecord::OP_TYPE_TAG_DELETE) {
+    // if tag is deleted, no need search metric delete operation.
     return KStatus::SUCCESS;
-  } while (true);
+  }
+  std::vector<KwTsSpan> del_spans;
+  auto s = vgroup_->GetDelInfoByOSN(nullptr, table_id_, entitys_[cur_entity_index_].entityId, osn_span_, &del_spans);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("GetDelInfoByOSN failed.");
+    return s;
+  }
+  if (del_spans.empty()) {
+    return KStatus::SUCCESS;
+  }
+  *count = del_spans.size();
+  s = FillEmptyMetricRow(res, del_spans.size(), osn_span_[0].begin, OperatorTypeOfRecord::OP_TYPE_METRIC_DELETE);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("FillEmptyMetricRow failed.");
+    return s;
+  }
+  size_t ext_event_idx = kw_scan_cols_.size() + 2;
+  for (size_t i = 0; i < del_spans.size(); i++) {
+    KUint64(reinterpret_cast<char*>(res->data[ext_event_idx][0]->mem) + i * 16) = del_spans[i].begin;
+    KUint64(reinterpret_cast<char*>(res->data[ext_event_idx][0]->mem) + i * 16 + 8) = del_spans[i].end;
+  }
   return KStatus::SUCCESS;
 }
 
@@ -2527,38 +2562,13 @@ KStatus TsRawDataIteratorV2ImplByOSN::FillEmptyMetricRow(ResultSet* res, uint32_
   return KStatus::SUCCESS;
 }
 
-KStatus TsRawDataIteratorV2ImplByOSN::NextMetricInsertRows(ResultSet* res, k_uint32* count, bool* is_finished,
-                                                            TsScanStats* ts_scan_stats) {
-  KStatus ret;
+KStatus TsRawDataIteratorV2ImplByOSN::GetMetricInsertRows(ResultSet* res, k_uint32* count, TsScanStats* ts_scan_stats) {
   *count = 0;
-  *is_finished = false;
-  ts_block_spans_reserved_.clear();
-  while (true) {
-    if (ts_block_spans_.size() == 0) {
-      ret = MoveToNextEntity(is_finished, ts_scan_stats);
-      if (ret != KStatus::SUCCESS) {
-        LOG_ERROR("MoveToNextEntity failed.");
-        return ret;
-      }
-      if (*is_finished) {
-        return KStatus::SUCCESS;
-      }
-      // if only tag, no metric data, we need create empty row.
-      if (ts_block_spans_.size() == 0) {
-        auto oper_info = reinterpret_cast<OperatorInfoOfRecord*>(entitys_[cur_entity_index_].op_with_osn.get());
-        assert(oper_info != nullptr);
-        if (oper_info->type != OperatorTypeOfRecord::OP_TYPE_TAG_EXISTED) {
-          ret = FillEmptyMetricRow(res, 1, oper_info->osn, oper_info->type);
-          *count = 1;
-          return ret;
-        }
-        continue;
-      }
-    }
+  if (ts_block_spans_.size() > 0) {
     auto block_span = ts_block_spans_.front();
     ts_block_spans_.pop_front();
     // no need remove repeat data, just send all.
-    ret = ConvertBlockSpanToResultSet(kw_scan_cols_, attrs_, block_span, res, count, ts_scan_stats);
+    auto ret = ConvertBlockSpanToResultSet(kw_scan_cols_, attrs_, block_span, res, count, ts_scan_stats);
     if (ret != KStatus::SUCCESS) {
       LOG_ERROR("ConvertBlockSpanToResultSet failed.");
       return ret;
@@ -2576,13 +2586,8 @@ KStatus TsRawDataIteratorV2ImplByOSN::NextMetricInsertRows(ResultSet* res, k_uin
     setBatchDeleted(reinterpret_cast<char*>(res->data[ext_idx + 2][vector_idx]->bitmap), 1, *count);
     // We are returning memory address inside TsBlockSpan, so we need to keep it until iterator is destroyed
     ts_block_spans_reserved_.push_back(block_span);
-    if (*count > 0) {
-      // Return the result set.
-      return KStatus::SUCCESS;
-    }
   }
-  LOG_WARN("should not exec here.");
-  return KStatus::FAIL;
+  return KStatus::SUCCESS;
 }
 
 TsRawDataIteratorV2ImplByOSN::~TsRawDataIteratorV2ImplByOSN() {

@@ -279,11 +279,15 @@ TEST_F(TestV2IteratorByOSN, basic_udpate) {
     ASSERT_EQ(s, KStatus::SUCCESS);
     total += count;
   } while (count > 0);
-  ASSERT_EQ(total,  1);
-  ASSERT_EQ(KUint64(m_rs.data[0][0]->mem), 3600);
-  ASSERT_EQ(KUint64(m_rs.data[1][0]->mem), 1760000);
-  ASSERT_EQ(KUint8(m_rs.data[2][0]->mem), 1);
+  ASSERT_EQ(total,  2);
+  ASSERT_EQ(m_rs.data[0][0]->mem, nullptr);
+  ASSERT_EQ(KUint64(m_rs.data[1][0]->mem), 1780000);
+  ASSERT_EQ(KUint8(m_rs.data[2][0]->mem), 2);
   ASSERT_EQ(KUint8(m_rs.data[3][0]->mem), 0);
+  ASSERT_EQ(KUint64(m_rs.data[0][1]->mem), 3600);
+  ASSERT_EQ(KUint64(m_rs.data[1][1]->mem), 1760000);
+  ASSERT_EQ(KUint8(m_rs.data[2][1]->mem), 1);
+  ASSERT_EQ(KUint8(m_rs.data[3][1]->mem), 0);
   delete m_iter;
 
   uint64_t pkey = 1;

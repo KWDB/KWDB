@@ -14,6 +14,7 @@
 #include "sys_utils.h"
 #include "ts_ts_lsn_span_utils.h"
 #include "ts_table_del_info.h"
+#include "ts_batch_data_worker.h"
 
 using namespace kwdbts;  // NOLINT
 
@@ -276,6 +277,83 @@ TEST(TsDelItemUtilTest, mergeSortedSpans2) {
   ASSERT_EQ(row_num, row_num_1);
   ASSERT_EQ(batch_data.len, batch_data_1.len);
   ASSERT_EQ(del_data.len, del_data_1.len);
-
   free(data.data);
+}
+
+TEST(TsDelItemUtilTest, snapshot_pack_301_version) {
+  char tmp[128];
+  memset(tmp, 'a', 128);
+  uint32_t package_id = 10086;
+  TSTableID tbl_id = 12345;
+  uint32_t tbl_version = 456787;
+  TsBatchData batch_work;
+  batch_work.SetHashPoint(1111);
+  batch_work.UpdateBatchDataInfo();
+  TSSlice batch_data{batch_work.data_.data(), batch_work.data_.length()};
+  uint32_t row_num = 300;
+  TSSlice del_data{tmp, 100};
+  TSSlice data;
+
+   // package_id + table_id + table_version + row_num + data
+  size_t data_len = 4 + 8 + 4 + 4 + batch_data.len;
+  char* data_with_rownum = reinterpret_cast<char*>(malloc(data_len));
+  data.data = data_with_rownum;
+  data.len = data_len;
+  KUint32(data_with_rownum) = package_id;
+  data_with_rownum += 4;
+  KUint64(data_with_rownum) = tbl_id;
+  data_with_rownum += 8;
+  KUint32(data_with_rownum) = tbl_version;
+  data_with_rownum += 4;
+  KInt32(data_with_rownum) = row_num;
+  data_with_rownum += 4;
+  memcpy(data_with_rownum, batch_data.data, batch_data.len);
+
+  uint32_t package_id_1;
+  TSTableID tbl_id_1;
+  uint32_t tbl_version_1;
+  TSSlice batch_data_1;
+  uint32_t row_num_1;
+  TSSlice del_data_1{nullptr, 0};
+  STPackageSnapshotData::UnpackageData(data, package_id_1, tbl_id_1, tbl_version_1, batch_data_1, row_num_1, del_data_1);
+  ASSERT_EQ(package_id, package_id_1);
+  ASSERT_EQ(tbl_id, tbl_id_1);
+  ASSERT_EQ(tbl_version, tbl_version_1);
+  ASSERT_EQ(row_num, row_num_1);
+  ASSERT_EQ(batch_data.len, batch_data_1.len);
+  ASSERT_EQ(del_data_1.len, 0);
+  free(data.data);
+}
+
+#include <cstdlib>
+#include <ctime>
+TEST(TsDelItemUtilTest, BinaryToHexStrTest) {
+  char buff[128];
+  TSSlice data{buff, 128};
+  memset(buff, 254, 128);
+  std::string hex;
+  BinaryToHexStr(data, hex);
+  // std::cout << "|" << hex << "|" << std::endl;
+  TSSlice buff_bak;
+  HexStrToBinary(hex, buff_bak);
+  ASSERT_EQ(buff_bak.len, data.len);
+  ASSERT_TRUE(0 == memcmp(data.data, buff_bak.data, data.len));
+  memset(buff, 12, 100);
+  BinaryToHexStr(data, hex);
+  // std::cout << "|" << hex << "|" << std::endl;
+  free(buff_bak.data);
+  HexStrToBinary(hex, buff_bak);
+  ASSERT_EQ(buff_bak.len, data.len);
+  ASSERT_TRUE(0 == memcmp(data.data, buff_bak.data, data.len));
+  free(buff_bak.data);
+  srand(time(nullptr));
+  for (size_t i = 0; i < 128; i++) {
+    buff[i] = (rand() % 256);
+  }
+  BinaryToHexStr(data, hex);
+  // std::cout << "|" << hex << "|" << std::endl;
+  HexStrToBinary(hex, buff_bak);
+  ASSERT_EQ(buff_bak.len, data.len);
+  ASSERT_TRUE(0 == memcmp(data.data, buff_bak.data, data.len));
+  free(buff_bak.data);
 }

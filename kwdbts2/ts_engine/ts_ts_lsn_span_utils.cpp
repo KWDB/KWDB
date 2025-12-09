@@ -15,6 +15,9 @@
 #include <list>
 #include <utility>
 #include <algorithm>
+#include <iostream>
+#include <string>
+#include <charconv>
 #include "ts_ts_lsn_span_utils.h"
 
 namespace kwdbts {
@@ -68,6 +71,31 @@ void DeplicateTsSpans(list<STDelRange>& raw_spans, list<STDelRange>* ret_spans) 
       continue;
     }
     ret_spans->push_back(*it);
+  }
+}
+
+void BinaryToHexStr(const TSSlice& data, std::string& ret) {
+  ret.clear();
+  ret.resize(data.len * 2, 0);
+  char* end_pos = ret.data() + ret.length();
+  for (size_t i = 0; i < data.len; i++) {
+    std::to_chars(ret.data() + i * 2, end_pos, (uint8_t)(data.data[i]), 16);
+  }
+  for (size_t i = 0; i < ret.length(); i++) {
+    if (ret.at(i) == 0) {
+      ret.at(i) = ret.at(i - 1);
+      ret.at(i - 1) = '0';
+    }
+  }
+}
+
+void HexStrToBinary(const std::string& data, TSSlice& ret) {
+  ret.len = data.length() / 2;
+  ret.data = reinterpret_cast<char*>(malloc(ret.len));
+  uint8_t* u8_t = reinterpret_cast<uint8_t*>(ret.data);
+  memset(ret.data, 0, ret.len);
+  for (size_t i = 0; i < ret.len; i++) {
+    std::from_chars(data.data() + i * 2, data.data() + i * 2 + 2, u8_t[i], 16);
   }
 }
 
