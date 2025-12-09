@@ -601,6 +601,9 @@ func (h ConnectionHandler) GetTsSupportBatch() bool {
 
 // GetTsZone constructs a ParseTimeContext that returns the given values.
 func (h ConnectionHandler) GetTsZone() time.Time {
+	if h.ex.state.sqlTimestamp.IsZero() {
+		h.ex.state.sqlTimestamp = timeutil.Now()
+	}
 	return h.ex.state.sqlTimestamp.In(h.ex.sessionData.DataConversion.Location)
 }
 
