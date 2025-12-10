@@ -34,6 +34,7 @@
 #include "ts_bitmap.h"
 #include "ts_coding.h"
 #include "ts_compressor.h"
+#include "settings.h"
 
 namespace kwdbts {
 
@@ -886,20 +887,10 @@ std::tuple<TsCompAlg, GenCompAlg> CompressorManager::TwoLevelCompressor::GetAlgo
 }
 
 CompressorManager::CompressorManager() {
-  const char *twolevelenv = getenv("KW_TWOLEVEL_COMPRESS");
-  bool twolevel = false;
-  if (twolevelenv) {
-    std::string config;
-    std::transform(twolevelenv, twolevelenv + std::strlen(twolevelenv), std::back_inserter(config),
-                   [](char c) { return std::tolower(c); });
-    if (config == "on" || config == "true") {
-      twolevel = true;
-    }
-  }
-  GenCompAlg second = twolevel ? GenCompAlg::kSnappy : GenCompAlg::kPlain;
-  const std::vector<DATATYPE> timestamp_type{DATATYPE::TIMESTAMP64,       DATATYPE::TIMESTAMP64_MICRO,
-                                             DATATYPE::TIMESTAMP64_NANO,  DATATYPE::TIMESTAMP64,
-                                             DATATYPE::TIMESTAMP64_MICRO, DATATYPE::TIMESTAMP64_NANO};
+  GenCompAlg second = EngineOptions::compress_stage == 2 ? GenCompAlg::kSnappy : GenCompAlg::kPlain;
+  const std::vector<DATATYPE> timestamp_type{
+      DATATYPE::TIMESTAMP64,     DATATYPE::TIMESTAMP64_MICRO,     DATATYPE::TIMESTAMP64_NANO,
+      DATATYPE::TIMESTAMP64, DATATYPE::TIMESTAMP64_MICRO, DATATYPE::TIMESTAMP64_NANO};
   for (auto i : timestamp_type) {
     default_algs_[i] = {TsCompAlg::kSimple8B_V2_s64, GenCompAlg::kPlain};
   }
@@ -979,6 +970,11 @@ auto CompressorManager::GetDefaultCompressor(DATATYPE dtype) const -> TwoLevelCo
 
 bool CompressorManager::CompressData(TSSlice input, const TsBitmapBase *bitmap, uint64_t count, std::string *output,
                                      TsCompAlg first, GenCompAlg second) const {
+  if (EngineOptions::compress_stage == 0) {
+    first = TsCompAlg::kPlain;
+    second = GenCompAlg::kPlain;
+  }
+
   static_assert(sizeof(first) == sizeof(uint16_t));
   static_assert(sizeof(second) == sizeof(uint16_t));
   auto compressor = GetCompressor(first, second);

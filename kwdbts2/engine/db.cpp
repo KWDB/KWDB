@@ -682,6 +682,8 @@ void TriggerSettingCallback(const std::string& key, const std::string& value) {
     TsLRUBlockCache::GetInstance().SetMaxMemorySize(EngineOptions::block_cache_max_size);
   } else if ("ts.last_row_optimization.enabled" == key) {
     CLUSTER_SETTING_USE_LAST_ROW_OPTIMIZATION = ("true" == value);
+  } else if ("ts.compress.stage" == key) {
+    EngineOptions::compress_stage = atoi(value.c_str());
   }
 #ifndef KWBASE_OSS
   else if ("ts.storage.autonomy.mode" == key) {  // NOLINT

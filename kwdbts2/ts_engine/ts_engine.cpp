@@ -43,6 +43,7 @@ size_t EngineOptions::min_rows_per_block = 512;
 int64_t EngineOptions::default_partition_interval = 3600 * 24 * 10;
 // default block cache max size is set to 0
 int64_t EngineOptions::block_cache_max_size = 0;
+uint8_t EngineOptions::compress_stage = 2;
 
 extern std::map<std::string, std::string> g_cluster_settings;
 extern DedupRule g_dedup_rule;

@@ -211,6 +211,17 @@ func checkTsCompactLastSegmentMaxLimit(encodedValue string) error {
 	return nil
 }
 
+func checkTsCompressStage(encodedValue string) error {
+	value, err := strconv.ParseInt(encodedValue, 10, 8)
+	if err != nil {
+		return err
+	}
+	if value != 0 && value != 1 && value != 2 {
+		return errors.New("invalid value, allowed values are 0, 1, or 2")
+	}
+	return nil
+}
+
 func checkTsReservedLastSegmentMaxLimit(encodedValue string) error {
 	value, err := strconv.ParseInt(encodedValue, 10, 64)
 	if err != nil {
@@ -262,6 +273,7 @@ var CheckClusterSetting = map[string]CheckOperation{
 	"ts.table_cache.capacity":            checkTsTableCacheCapacity,
 	"ts.rows_per_block.min_limit":        checkTsRowsPerBlockMinLimit,
 	"ts.compact.max_limit":               checkTsCompactLastSegmentMaxLimit,
+	"ts.compress.stage":                  checkTsCompressStage,
 	"ts.reserved_last_segment.max_limit": checkTsReservedLastSegmentMaxLimit,
 	"ts.mem_segment_size.max_limit":      checkTsMemSegmentSizeMaxLimit,
 	"ts.block.lru_cache.max_limit":       checkTsBlockCacheMaxLimit,

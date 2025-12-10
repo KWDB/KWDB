@@ -200,6 +200,12 @@ var (
 		"the maximum number of compacts at one time",
 		10)
 
+	compressPolicy = settings.RegisterPublicIntSetting(
+		"ts.compress.stage",
+		"compression stage for database: 0 means do not compress, 1 means one stage compression, "+
+			"2 means two stage compression",
+		2)
+
 	maxReservedLastSegNum = settings.RegisterPublicIntSetting(
 		"ts.reserved_last_segment.max_limit",
 		"the maximum number of last segments reserved in the latest partition",
