@@ -505,7 +505,6 @@ func (n *createTableNode) startExec(params runParams) error {
 		}
 	}
 	if desc.IsTSTable() {
-		desc.State = sqlbase.TableDescriptor_ADD
 		if desc.TsTable.Lifetime == InvalidLifetime {
 			desc.TsTable.Lifetime = n.dbDesc.TsDb.Lifetime
 		}
@@ -726,21 +725,6 @@ func (n *createTableNode) startExec(params runParams) error {
 				wg.Wait()
 				log.Infof(params.ctx, "done relocate leaseholder for creating ts table ")
 			}
-		}
-
-		if updateErr := params.p.ExecCfg().DB.Txn(params.ctx, func(ctx context.Context, txn *kv.Txn) error {
-			desc.State = sqlbase.TableDescriptor_PUBLIC
-			if err := txn.SetSystemConfigTrigger(); err != nil {
-				return err
-			}
-			b := txn.NewBatch()
-			err := writeDescToBatch(ctx, params.p.extendedEvalCtx.Tracing.KVTracingEnabled(), params.p.execCfg.Settings, b, desc.GetID(), desc.TableDesc())
-			if err != nil {
-				return err
-			}
-			return txn.Run(params.ctx, b)
-		}); updateErr != nil {
-			return updateErr
 		}
 	}
 
