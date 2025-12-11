@@ -557,6 +557,10 @@ int TagTable::DeleteTagRecord(const char *primary_tags, int len, ErrorInfo& err_
     std::vector<void*> tag_cols;
     for (int col = 0; col < res.data.size(); col++) {
       auto per_batch = (TagBatch*)res.data[col].at(0);
+      if (per_batch->data_length_ == 0) {
+        // INVALID_COL_IDX
+        continue;
+      }
       tag_cols.emplace_back(per_batch->getRowAddr(0));
     }
 
