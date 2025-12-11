@@ -236,7 +236,7 @@ void PipelineTask::Run(kwdbContext_p ctx) {
 
     state_ = PipelineTaskState::PS_HAS_OUTPUT;
     BaseOperator *source = pipeline_group_->GetSource();
-
+    BaseOperator *sink = pipeline_group_->GetSink();
     UpdateStartTime();
 
     while (true) {
@@ -246,7 +246,7 @@ void PipelineTask::Run(kwdbContext_p ctx) {
         break;
       }
 
-      if (source && !source->HasOutput()) {
+      if ((source && !source->HasOutput()) || (sink && !sink->NeedInput())) {
         Blocked(ctx);
         break;
       }

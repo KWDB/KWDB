@@ -37,6 +37,8 @@ class LocalOutboundOperator : public OutboundOperator {
 
   KStatus CreateInputChannel(kwdbContext_p ctx, std::vector<BaseOperator *> &new_operators) override;
 
+  k_bool NeedInput() override;
+
   enum OperatorType Type() override {return OperatorType::OPERATOR_LOCAL_OUT_BOUND; }
 
   BaseOperator* Clone() override;

@@ -28,6 +28,7 @@ class RemoteMergeSortInboundOperator : public RemoteInboundOperator {
   // KStatus PullChunk(DataChunkPtr& chunk) override;
   k_bool HasOutput() override;
   k_bool IsFinished() override;
+  k_bool NeedInput() override;
   enum OperatorType Type() override {
     return OperatorType::OPERATOR_REMOTE_MERGE_SORT_IN_BOUND;
   }

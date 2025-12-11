@@ -43,6 +43,39 @@ DataStreamRecvr::DataStreamRecvr(DataStreamMgr* stream_mgr, const KQueryId& quer
   pass_through_context_.Init();
 }
 
+k_int32 DataStreamRecvr::GetTotalChunks(k_int32 sender_id) {
+  k_int32 queue_index = 0;
+  if (is_merging_) {
+    // Use the sender_id to queue_index mapping with mutex protection
+    {
+      std::lock_guard<std::mutex> lock(sender_map_mutex_);
+      auto it = sender_to_queue_map_.find(sender_id);
+      if (it != sender_to_queue_map_.end()) {
+        // Use existing mapping
+        queue_index = it->second;
+      } else {
+        // Create new mapping using next available queue
+        k_int32 current_index = next_queue_index_.load();
+        if (current_index < sender_queues_.size()) {
+          queue_index = current_index;
+          sender_to_queue_map_[sender_id] = queue_index;
+          next_queue_index_.fetch_add(1);
+        } else {
+          std::ostringstream oss;
+          oss << " sender_id: " << sender_id << " has no queue";
+          auto msg = oss.str();
+          LOG_ERROR("%s", msg.c_str());
+          return 0;
+        }
+      }
+    }
+  } else {
+    // When not merging, always use queue 0
+    queue_index = 0;
+  }
+  return sender_queues_[queue_index]->GetTotalChunks();
+}
+
 BRStatus DataStreamRecvr::AddChunks(const PTransmitChunkParams& request,
                                     ::google::protobuf::Closure** done) {
   auto notify = this->DeferNotify();

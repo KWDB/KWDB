@@ -123,6 +123,8 @@ class BaseOperator {
 
   virtual k_bool HasOutput() { return true; }
 
+  virtual k_bool NeedInput() { return true; }
+
   virtual void PushFinish(EEIteratorErrCode code, k_int32 stream_id,
                           const EEPgErrorInfo& pgInfo) {}
 

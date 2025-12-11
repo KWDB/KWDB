@@ -180,6 +180,9 @@ k_bool RemoteMergeSortInboundOperator::HasOutput() {
   return stream_recvr_->IsDataReady();
 }
 
+k_bool RemoteMergeSortInboundOperator::NeedInput() {
+  return stream_recvr_ && (stream_recvr_->GetTotalChunks(stream_id_) < 100);
+}
 k_bool RemoteMergeSortInboundOperator::IsFinished() { return is_finished_; }
 
 }  // namespace kwdbts

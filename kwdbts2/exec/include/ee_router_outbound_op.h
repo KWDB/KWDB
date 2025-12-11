@@ -129,8 +129,12 @@ class RouterOutboundOperator : public OutboundOperator {
   KStatus SetFinishing() override;
 
   k_bool HasOutput() override { return true; };
-  k_bool NeedInput() override { return true; };
-  k_bool IsFinished() override { return true; }
+  k_bool NeedInput() override {
+    return !IsFinished() && buffer_ != nullptr && !buffer_->IsFull();
+  }
+  k_bool IsFinished() override {
+    return is_finished_;
+  }
 
   // BaseOperator* Clone() override;
   void ReceiveNotify(k_int32 nodeid = 0, k_int32 code = 0, const std::string& msg = "") {
@@ -175,6 +179,7 @@ class RouterOutboundOperator : public OutboundOperator {
   StatusPB status_;
   k_bool is_real_finished_ = false;
   // k_bool is_ready_ = false;
+  std::atomic<k_bool> is_finished_{false};
   k_bool is_tp_stop_{false};
   CompressionTypePB compress_type_ = CompressionTypePB::NO_COMPRESSION;
   const BlockCompressor* compress_codec_ = nullptr;

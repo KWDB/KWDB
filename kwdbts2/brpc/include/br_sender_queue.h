@@ -60,6 +60,8 @@ class DataStreamRecvr::SenderQueue {
 
   virtual k_bool HasChunk() = 0;
 
+  virtual k_int32 GetTotalChunks() = 0;
+
  protected:
   KStatus BuildChunkMeta(const ChunkPB& pb_chunk);
   KStatus DeserializeChunk(const ChunkPB& pchunk, DataChunkPtr& chunk);
@@ -100,6 +102,10 @@ class DataStreamRecvr::PipelineSenderQueue final : public DataStreamRecvr::Sende
   k_bool HasOutput(const k_int32 driver_sequence);
 
   k_bool IsFinished() const;
+
+  k_int32 GetTotalChunks() {
+    return total_chunks_;
+  }
 
  private:
   struct ChunkItem {

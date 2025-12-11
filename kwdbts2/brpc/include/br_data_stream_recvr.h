@@ -78,6 +78,7 @@ class DataStreamRecvr {
   KStatus CreateMergerForPipeline(kwdbContext_p ctx, const std::vector<k_uint32>* order_column,
                                   const std::vector<k_bool>* is_asc,
                                   const std::vector<k_bool>* is_null_first);
+  k_int32 GetTotalChunks(k_int32 sender_id);
 
  private:
   friend class DataStreamMgr;

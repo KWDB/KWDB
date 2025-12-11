@@ -35,6 +35,15 @@ EEIteratorErrCode LocalOutboundOperator::Init(kwdbContext_p ctx) {
   Return(ret);
 }
 
+k_bool LocalOutboundOperator::NeedInput() {
+  for (auto parent : parent_operators_) {
+    InboundOperator* parent_inbound = dynamic_cast<InboundOperator*>(parent);
+    if (parent_inbound) {
+      return parent_inbound->NeedInput();
+    }
+  }
+}
+
 KStatus LocalOutboundOperator::PushChunk(DataChunkPtr& chunk, k_int32 stream_id, EEIteratorErrCode code) {
   for (auto parent : parent_operators_) {
     InboundOperator* parent_inbound =

@@ -533,6 +533,7 @@ void RouterOutboundOperator::PushFinish(EEIteratorErrCode code, k_int32 stream_i
       parent->PushFinish(code, stream_id, pgInfo);
     }
   }
+  is_finished_ = true;
 }
 
 int64_t RouterOutboundOperator::ConstrucBrpcAttachment(
