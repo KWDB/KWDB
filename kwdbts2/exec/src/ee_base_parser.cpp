@@ -924,6 +924,7 @@ EEIteratorErrCode TsBaseParser::BuildOutputFields(kwdbContext_p ctx, Field **ren
     if (new_field) {
       new_field->is_chunk_ = true;
       new_field->table_ = field->table_;
+      new_field->set_sql_type(field->get_sql_type());
       if (!ignore_outputtype) {
         k_uint32 idx = outputcol_types[i];
         if (idx >= post_->output_types_size()) {

@@ -52,6 +52,7 @@ struct ColumnInfo {
   k_uint32 fixed_storage_len{0};
   k_uint16 max_string_len{0};
   roachpb::DataType storage_type;
+  roachpb::DataType sql_type{roachpb::UNKNOWN};
   KWDBTypeFamily return_type;
   bool is_string{false};
   bool allow_null{true};
@@ -60,6 +61,7 @@ struct ColumnInfo {
              KWDBTypeFamily return_type)
       : storage_len(storage_len),
         storage_type(storage_type),
+        sql_type(storage_type),
         return_type(return_type) {
     if (storage_type == roachpb::DataType::CHAR ||
         storage_type == roachpb::DataType::VARCHAR ||

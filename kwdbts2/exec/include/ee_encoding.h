@@ -137,9 +137,26 @@ struct KWDuration {
   size_t format_pg_result(k_int64 ms, char *buf, size_t sz, k_int64 scale) {
     format(ms, scale);
     size_t n = 0;
+
+    // If all fields are 0, output "00:00:00" (consistent with Go version)
+    if (nanos == 0 && days == 0 && months == 0) {
+      n += snprintf(buf + n, sz - n, "00:00:00");
+      return n;
+    }
+
     if (days) {
       n += snprintf(buf + n, sz - n, "%ld %s", days,
-                    days > 1 || days < -1 ? "days " : "day ");
+                    days > 1 || days < -1 ? "days" : "day");
+    }
+
+    // If nanos is 0, do not output time part (consistent with Go version)
+    if (nanos == 0) {
+      return n;
+    }
+
+    // Add space separator if days were written
+    if (days) {
+      n += snprintf(buf + n, sz - n, " ");
     }
 
     k_int64 total_sec = nanos / 1000000000;

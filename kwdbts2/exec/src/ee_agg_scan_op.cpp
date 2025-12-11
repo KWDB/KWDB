@@ -117,12 +117,14 @@ EEIteratorErrCode AggTableScanOperator::Init(kwdbContext_p ctx) {
             agg_param_->aggs_[i]->get_storage_length() + sizeof(k_int64),
             agg_param_->aggs_[i]->get_storage_type(),
             agg_param_->aggs_[i]->get_return_type());
+        agg_output_col_info_[i].sql_type = agg_param_->aggs_[i]->get_sql_type();
         is_resolve_datachunk_ = true;
       } else {
         agg_output_col_info_[i] =
             ColumnInfo(agg_param_->aggs_[i]->get_storage_length(),
                        agg_param_->aggs_[i]->get_storage_type(),
                        agg_param_->aggs_[i]->get_return_type());
+        agg_output_col_info_[i].sql_type = agg_param_->aggs_[i]->get_sql_type();
       }
     }
 

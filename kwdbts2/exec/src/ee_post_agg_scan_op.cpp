@@ -48,6 +48,7 @@ EEIteratorErrCode PostAggScanOperator::Init(kwdbContext_p ctx) {
         ColumnInfo(output_fields_[i]->get_storage_length(),
                    output_fields_[i]->get_storage_type(),
                    output_fields_[i]->get_return_type());
+    agg_output_col_info_[i].sql_type = output_fields_[i]->get_sql_type();
   }
 
   col_types_.clear();

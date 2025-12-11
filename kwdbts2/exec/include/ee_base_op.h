@@ -251,6 +251,7 @@ class BaseOperator {
                                        output_fields[i]->get_storage_type(),
                                        output_fields[i]->get_return_type());
       output_col_info_[i].allow_null = output_fields[i]->is_allow_null();
+      output_col_info_[i].sql_type = output_fields[i]->get_sql_type();
     }
     return EEIteratorErrCode::EE_OK;
   }

@@ -266,7 +266,84 @@ INSERT 1
   var |  你好2 | \x45275c783031
   var | \U     | \x45275c783032
 (2 rows)
+> create table ts_db.t4 (k_timestamp TIMESTAMPTZ(3) NOT NULL, e1 INT8 NULL) tags(code int not null) primary tags(code);
+CREATE TABLE
+> insert into ts_db.t4 values('2002-02-22 10:48:12.899+00:00', 9223372036854775807, 1);
+INSERT 1
+> SELECT k_timestamp,CAST(e1 AS TIMESTAMPTZ) FROM ts_db.t4;
+           k_timestamp          |                 e1
+--------------------------------+-------------------------------------
+  2002-02-22 18:48:12.899+08:00 | 292278994-08-17 15:12:55.807+08:00
+(1 row)
+> create table ts_db.t6(k_timestamp timestamp not null, e1 int) tags(a int not null) primary tags(a);
+CREATE TABLE
+> insert into ts_db.t6 values(now(), 2147483647, 1);
+INSERT 1
+> select avg(e1) from ts_db.t6;
+     avg
+--------------
+  2147483647
+(1 row)
+> create table ts_db.t7(k_timestamp timestamp not null, e1 float) tags(a int not null) primary tags(a);
+CREATE TABLE
+> insert into ts_db.t7 values(now(), 2147483647, 1);
+INSERT 1
+> insert into ts_db.t7 values(now(), -2147483647, 1);
+INSERT 1
+> select mod(e1,e1) from ts_db.t7;
+  mod
+-------
+    0
+   -0
+(2 rows)
 > drop database ts_db cascade;
+DROP DATABASE
+> use defaultdb;drop database if exists test_select_timebucket_ms cascade;
+DROP DATABASE
+> create ts database test_select_timebucket_ms;
+CREATE TS DATABASE
+> create table test_select_timebucket_ms.tb(k_timestamp timestamptz not null,e1 timestamp,e2 int2,e3 int,e4 int8,e5 float4,e6 float8,e7 bool,e8 char,e9 char(100),e10 nchar,e11 nchar(255),e12 varchar,e13 varchar(254),e14 varchar(4096),e15 nvarchar,e16 nvarchar(255),e17 nvarchar(4096),e18 varbytes,e19 varbytes(100),e20 varbytes,e21 varbytes(254),e22 varbytes(4096)) tags (t1 int2 not null,t2 int,t3 int8,t4 bool not null,t5 float4,t6 float8,t7 char,t8 char(100) not null,t9 nchar,t10 nchar(254),t11 varchar,t12 varchar(128) not null,t13 varbytes,t14 varbytes(100),t15 varbytes,t16 varbytes(255)) primary tags(t1,t4,t8,t12);
+CREATE TABLE
+> create table test_select_timebucket_ms.tb2(k_timestamp timestamptz not null,e1 timestamp,e2 int2,e3 int,e4 int8,e5 float4,e6 float8,e7 bool,e8 char,e9 char(100),e10 nchar,e11 nchar(255),e12 varchar,e13 varchar(254),e14 varchar(4096),e15 nvarchar,e16 nvarchar(255),e17 nvarchar(4096),e18 varbytes,e19 varbytes(100),e20 varbytes,e21 varbytes(254),e22 varbytes(4096)) tags (t1 int2,t2 int not null,t3 int8,t4 bool,t5 float4,t6 float8,t7 char not null,t8 char(100),t9 nchar not null,t10 nchar(254) not null,t11 varchar,t12 varchar(128),t13 varbytes,t14 varbytes(100),t15 varbytes,t16 varbytes(255)) primary tags(t2,t7,t9,t10);
+CREATE TABLE
+> create table test_select_timebucket_ms.tb3(k_timestamp timestamptz not null,e1 timestamp,e2 int2,e3 int,e4 int8,e5 float4,e6 float8,e7 bool,e8 char,e9 char(100),e10 nchar,e11 nchar(255),e12 varchar,e13 varchar(254),e14 varchar(4096),e15 nvarchar,e16 nvarchar(255),e17 nvarchar(4096),e18 varbytes,e19 varbytes(100),e20 varbytes,e21 varbytes(254),e22 varbytes(4096)) tags (t1 int2,t2 int,t3 int8 not null,t4 bool,t5 float4,t6 float8,t7 char,t8 char(100),t9 nchar,t10 nchar(254),t11 varchar not null,t12 varchar(128),t13 varbytes not null,t14 varbytes(100) not null,t15 varbytes,t16 varbytes(255)) primary tags(t3,t11);
+CREATE TABLE
+> insert into test_select_timebucket_ms.tb values('0000-02-16 17:10:22.123','0000-11-01 08:30:00.867',600,6000,60000,760000.767,600000.6060606,true,'w',null,null,null,'test---->测试',null,'测试中文testing-----',null,null,null,null,null,null,null,'中文测试abcwww+++',1,null,6000,true,66.66666,500.56756,'t','test测试！！！@TEST1','e','a',null,'test----->>>64_1','c','test----<>1023_1','test中文测试_1','uuuuwww');
+INSERT 1
+> insert into test_select_timebucket_ms.tb values('0001-11-06 17:10:20.523','1970-01-01 08:00:00.347',700,7000,70000,700000.707,7000000.1010101,true,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,1,null,7000,false,70.7077,700.5675675,'a','test测试！！！@TEST1','e','\a',null,'vvvaa64_1','b','test测试1023_1','vwwws测试_1','aaabbb');
+INSERT 1
+> insert into test_select_timebucket_ms.tb values('0001-11-06 17:10:23.500','1970-01-28 08:10:23.126',100,3000,40000,600000.60612,4000000.4040404,false,' ',' ',' ',' ',' ',' ',' ',null,'','','','','','',null,-32768,-2147483648,-9223372036854775808,false,-9223372036854775807.12345,100.111111,'b','test测试！！！@TEST1 ','','test测试！TEST1xaa','\0test查询  @TEST1\0','e','y','test@@测试！1023_1','vwwws测试_1','cccddde');
+INSERT 1
+> insert into test_select_timebucket_ms.tb values('0000-02-16 17:10:20.123','0000-11-01 08:30:00.867',600,6000,60000,760000.767,600000.6060606,true,'w',null,null,null,'test---->测试',null,'测试中文testing-----',null,null,null,null,null,null,null,'中文测试abcwww+++',2,null,6000,true,66.66666,500.56756,'t','test测试！@TEST1','e','a',null,'test----->>>64_1','c','test<>1023_1','test中文测试_1','uuuuwww');
+INSERT 1
+> insert into test_select_timebucket_ms.tb values('0001-12-20 20:10:43.456','2000-05-01 17:55:55.019',500,5000,60000,500000.505555,5000000.505055,false,'c','test测试！！！@TEST1 ','n','类型测试1()*  ','testTest  ','e','40964096 ','@TEST1  ','abc255测试1()*&^%{}','deg4096测试1(','b','查询1023_2','tes_测试1',b'\xaa\xbb\xcc',b'\xaa\xaa\xbb\xbb',32767,2147483647,9223372036854775807,true,9223372036854775806.12345,500.578578,'','     ',' ','abc','\0test查询！！！@TEST1\0','64_3','t','es1023_2','f','tes4096_2');
+INSERT 1
+> insert into test_select_timebucket_ms.tb values('0001-12-20 20:10:31.222','2000-05-01 18:30:11.976',500,5000,50000,-500000.505,-5000000.505055,true,'h', 'ar2  ', 'c', 'r255测试2()*&^%{}','\\', 'v2551cdf~#   ', '  测试%&!','ar-1', 'ar255()*&^%{}  ','6_1测试1&^%{} ','y', 's1023_1','ytes_2', null,b'\xcc\xcc\xdd\xdd',3,300,300,false,60.666,600.678,'','\\test测试！！！@TEST1',' ','test测试！T  EST1xaa','查询查询 ','\\','','    ','','  ');
+INSERT 1
+> insert into test_select_timebucket_ms.tb values('0001-11-06 17:20:35.655','1970-03-01 20:30:00.238',500,5000,50000,-500000.505,-5000000.505055,true,'h', 'ar2  ', 'c', 'r255测试2()*&^%{}','\\\\', 'v255测试1cdf~#   ', 'lengthis4096  测试%&!','ar-1', 'ar255()*&^%{}  ','6_1测试1&^%{} ','y', 's1023_1','ytes_2', null,b'\xcc\xcc\xdd\xdd',4,400,4000,false,50.555,500.578578,'d','\\test测试！！！@TEST1','e','test测试！T  EST1xaa','查询查询 ','\\','e','es1023_2','s_ 4','ww4096_2');
+INSERT 1
+> insert into test_select_timebucket_ms.tb values('0001-12-20 21:08:19.789','2000-05-01 22:04:18.223',600,6000,60000,600000.666,666660.101011,true,'r', 'a r3', 'a', 'r255测试1(){}','varchar  中文1', null, 'hof4096查询test%%&!   ',null, 'ar255{}', 'ar4096测试1%{}','e','es1023_0', null, b'\xbb\xee\xff', null,5,null,6000,true,60.6066,600.123455,'a','test测试！！！@TEST1','e','a',null,'测试测试 ','b','test测试10_1','vwwws中文_1',null);
+INSERT 1
+> insert into test_select_timebucket_ms.tb values('0002-05-10 03:37:15.783','2008-07-15 06:04:15.183',500,5000,60000,500000.505555,5000000.505055,false,'c','test测试！！！@TEST1 ','n','类型测试1()*  ',null,null,'测试测试 ','@TEST1  ','abc255测试1()*&^%{}','deg4096测试1(','b','查询1023_2','tes_测试1',b'\xaa\xaa\xaa',b'\xbb\xcc\xbb\xbb',7,200,2000,true,-10.123,500.578578,'c','test测试！！！@TEST1  ','g','abc','\0test查询！！！@TEST1\0','64_3','t','es1023_2','f','tes4096_2');
+INSERT 1
+> insert into test_select_timebucket_ms.tb values('0002-05-10 03:42:18.223','2008-07-15 07:00:00.778',100,3000,40000,600000.60612,4000000.4040404,false,'r', '\a r3', 'a', 'r255测试1{}','varchar  中文1', null, 'hof4096查询test%&!   ',null, 'ar255{}', 'ar96测试1%{}','e','es1023_0', null, b'\xcc\xee\xdd', null,6,100,1000,false,-10.123,100.111111,'b','\\TEST1 ','f','测试！TEST1xaa','5555 5','  bdbd','y','test@测试！10_1','vwwws_1','cddde');
+INSERT 1
+> insert into test_select_timebucket_ms.tb2 values('0003-02-10 06:18:19.055','2021-06-10 10:00:00.335',100,3000,40000,600000.60612,4000000.4040404,false,'r', '\a r3', 'a', 'r255测试1{}','varchar  中文1', null, 'hof4096查询test%&!   ',null, 'ar255{}', 'ar96测试1%{}','e','es1023_0', null, b'\xcc\xee\xdd', null,6,100,1000,true,-10.123,100.111111,'b','\\TEST1 ','f','测试！TEST1xaa','test查询  @TEST1\0','bd64_1','y','test@测试！10_1','vwwws_1','cddde');
+INSERT 1
+> insert into test_select_timebucket_ms.tb2 values('0003-02-09 06:16:58.223','2021-06-10 09:04:18.223',600,6000,60000,600000.666,666660.101011,true,'r', 'a r3', 'a', 'r255测试1(){}','中文  中文', null, 'hof4096查询test%%&!   ',null, 'ar255{}', 'ar4096测试1%{}','e','es1023_0', null, b'\xbb\xee\xff', null,5,600,6000,false,60.6066,600.123455,'a','test测试！！！@TEST1','e','\a',null,'chch4_1','b','test测试10_1','vwwws中文_1',null);
+INSERT 1
+> insert into test_select_timebucket_ms.tb3 values('0002-06-06 08:00:00','2024-06-10 16:16:15.183',800,8000,80000,800000.808888,8000000.808088,true,'d','test测试！！！@TEST1 ','d','类型测试1()*  ',null,null,'255测试1cdf~# ','@TEST1  ','abc255测试1()*&^%{}','deg4096测试1(','b','查询1023_2','tes_测试1',b'\xaa\xaa\xaa',b'\xbb\xcc\xbb\xbb',7,200,2000,false,-10.123,500.578578,'c','test测试！！！@TEST1  ','g','abc','\0test查询！！！@TEST1\0','64_3','t','es1023_2','f','tes4096_2');
+INSERT 1
+> insert into test_select_timebucket_ms.tb3 values('0002-06-06 11:15:15.783','2024-06-10 17:04:05.683',500,5000,60000,500000.505555,5000000.505055,false,'c','test测试！！！@TEST1 ','n','类型测试1()*  ',null,null,'255测试1cdf~# ','@TEST1  ','abc255测试1()*&^%{}','deg4096测试1(','b','查询1023_2','tes_测试1',b'\xaa\xaa\xaa',b'\xbb\xcc\xbb\xbb',8,800,8000,false,-20.123,800.578578,'d','test测试！！！@TEST1  ','d','ddd','\0test查询！！！@TEST1\0','64_3','t','es1023_2','f','tes4096_2');
+INSERT 1
+> select time_bucket(k_timestamp, '12960000000ms') as tb from test_select_timebucket_ms.tb group by tb order by tb;
+              tb
+------------------------------
+  -0001-10-09 00:00:00+08:00
+  0001-10-28 00:00:00+08:00
+  0002-03-27 00:00:00+08:00
+(3 rows)
+> drop database if exists test_select_timebucket_ms cascade;
 DROP DATABASE
 > set cluster setting sql.pg_encode_short_circuit.enabled = false;
 SET CLUSTER SETTING

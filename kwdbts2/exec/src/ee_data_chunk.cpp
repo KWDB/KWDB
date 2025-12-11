@@ -101,8 +101,12 @@ static inline k_int32 ryu_snprintf_g(double d, k_int32 precision, char* result) 
     }
   }
   if (d == 0.0) {
+    if (std::signbit(d)) {  // Check if it is negative zero.
+      snprintf(result, sizeof(result), "%s", "-0");
+      return 2;  // "-0"  length is 2
+    }
     snprintf(result, sizeof(result), "%s", "0");
-    return 1;  // "0" length is 1
+    return 1;  // "0"  length is 1
   }
 
   k_int32 exp = fast_exponent(d);
@@ -1233,11 +1237,37 @@ static inline k_uint8 format_timestamp(const CKTime& ck_time, KWDBTypeFamily ret
   const k_int32 min = ts.tm_min;
   const k_int32 sec = ts.tm_sec;
 
-  // year(4 bit)
-  *p++ = '0' + (year / 1000);
-  *p++ = '0' + ((year / 100) % 10);
-  *p++ = '0' + ((year / 10) % 10);
-  *p++ = '0' + (year % 10);
+  // Handle BC years (year <= 0 in astronomical year notation)
+  // In pgwire format: year 0 = "0001 BC", year -1 = "0002 BC", etc.
+  k_bool is_bc = false;
+  k_int32 display_year = year;
+  if (year <= 0) {
+    is_bc = true;
+    // Convert astronomical year to BC year: 0 -> 1 BC, -1 -> 2 BC, -2 -> 3 BC, etc.
+    display_year = 1 - year;
+  }
+  // format year digits (variable length for large years)
+  if (display_year >= 10000) {
+    // 5+ digit year
+    k_int32 temp_year = display_year;
+    char year_buf[16];
+    k_int32 year_len = 0;
+    do {
+      year_buf[year_len++] = '0' + (temp_year % 10);
+      temp_year /= 10;
+    } while (temp_year > 0);
+    // reverse copy
+    while (year_len > 0) {
+      *p++ = year_buf[--year_len];
+    }
+  } else {
+    // 4 digit year (zero-padded)
+    *p++ = '0' + (display_year / 1000);
+    *p++ = '0' + ((display_year / 100) % 10);
+    *p++ = '0' + ((display_year / 10) % 10);
+    *p++ = '0' + (display_year % 10);
+  }
+
   *p++ = '-';
 
   // mon(2 bit)
@@ -1300,6 +1330,13 @@ static inline k_uint8 format_timestamp(const CKTime& ck_time, KWDBTypeFamily ret
     *p++ = '0';
   }
 
+  // Append " BC" suffix for BC years (pgwire format)
+  if (is_bc) {
+    *p++ = ' ';
+    *p++ = 'B';
+    *p++ = 'C';
+  }
+
   // return length
   return static_cast<k_uint8>(p - buf);
 }
@@ -1332,7 +1369,7 @@ inline KStatus DataChunk::PgEncodeDecimal(DatumPtr raw, const EE_StringInfo& inf
     k_char buf[30] = {0};
     double d = static_cast<double>(val);
     // k_int32 n = snprintf(buf, sizeof(buf), "%.8g", d);
-    k_int32 n = ryu_snprintf_g(d, 8, buf);
+    k_int32 n = ryu_snprintf_g(d, 16, buf);
     // Write the length of the column value
     if (ee_sendint(info, n, 4) != SUCCESS) {
       return FAIL;
@@ -1451,17 +1488,22 @@ KStatus DataChunk::PgResultData(kwdbContext_p ctx, k_uint32 row, const EE_String
 
         DatumPtr raw = GetData(row, col);
         k_double64 d;
+        // Read data based on storage_type
         if (col_info_[col].storage_type == roachpb::DataType::FLOAT) {
           k_float32 val32;
           std::memcpy(&val32, raw, sizeof(k_float32));
           d = (k_double64)val32;
-          // n = snprintf(buf, sizeof(buf), "%.6f", d);
-          n = ryu_snprintf_f(d, 6, buf, sizeof(buf));
         } else {
           std::memcpy(&d, raw, sizeof(k_double64));
-          // n = snprintf(buf, sizeof(buf), "%.17g", d);
-          n = ryu_snprintf_g(d, 17, buf);
         }
+
+        // Format based on sql_type (original type) or storage_type
+        if (col_info_[col].storage_type == roachpb::DataType::FLOAT ||
+          col_info_[col].sql_type == roachpb::DataType::FLOAT) {
+          n = ryu_snprintf_f(d, 6, buf, sizeof(buf));
+        } else {
+           n = ryu_snprintf_g(d, 17, buf);
+         }
 
         if (std::isnan(d)) {
           buf[0] = 'N';
