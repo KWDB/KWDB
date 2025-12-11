@@ -258,7 +258,12 @@ TsEngineSchemaManager* TsVGroup::GetSchemaMgr() const {
 // }
 
 KStatus TsVGroup::redoPut(kwdbContext_p ctx, kwdbts::TS_OSN log_lsn, const TSSlice& payload, uint64_t osn) {
-  TsRawPayload p{payload};
+  TsRawPayload p;
+  auto s = p.ParsePayLoadStruct(payload);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("ParsePayLoadStruct failed.");
+    return s;
+  }
   auto table_id = p.GetTableID();
   TSSlice primary_key = p.GetPrimaryTag();
   auto tbl_version = p.GetTableVersion();
@@ -268,7 +273,7 @@ KStatus TsVGroup::redoPut(kwdbContext_p ctx, kwdbts::TS_OSN log_lsn, const TSSli
   TSEntityID entity_id;
 
   std::shared_ptr<TsTableSchemaManager> tb_schema_manager;
-  KStatus s = schema_mgr_->GetTableSchemaMgr(table_id, tb_schema_manager);
+  s = schema_mgr_->GetTableSchemaMgr(table_id, tb_schema_manager);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("GetTableSchemaManager failed, table id: %lu", table_id);
     return s;
@@ -1475,10 +1480,9 @@ KStatus TsVGroup::getEntityIdByPTag(kwdbContext_p ctx, TSTableID table_id, TSSli
 }
 
 KStatus TsVGroup::undoPut(kwdbContext_p ctx, TS_OSN log_lsn, TSSlice payload) {
-  TsRawPayload tmp_p{payload};
-  auto table_id = tmp_p.GetTableID();
-  TSSlice primary_key = tmp_p.GetPrimaryTag();
-  auto tbl_version = tmp_p.GetTableVersion();
+  auto table_id = TsRawPayload::GetTableIDFromSlice(payload);
+  TSSlice primary_key = TsRawPayload::GetPrimaryKeyFromSlice(payload);
+  auto tbl_version = TsRawPayload::GetTableVersionFromSlice(payload);
   std::shared_ptr<kwdbts::TsTableSchemaManager> tb_schema_mgr;
   auto s = schema_mgr_->GetTableSchemaMgr(table_id, tb_schema_mgr);
   if (s != KStatus::SUCCESS) {
@@ -1487,7 +1491,12 @@ KStatus TsVGroup::undoPut(kwdbContext_p ctx, TS_OSN log_lsn, TSSlice payload) {
   }
   const std::vector<AttributeInfo>* metric_schema{nullptr};
   tb_schema_mgr->GetColumnsExcludeDroppedPtr(&metric_schema, tbl_version);
-  TsRawPayload p(payload, metric_schema);
+  TsRawPayload p(metric_schema);
+  s = p.ParsePayLoadStruct(payload);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("ParsePayLoadStruct failed.");
+    return s;
+  }
   TSEntityID entity_id;
   s = getEntityIdByPTag(ctx, table_id, primary_key, &entity_id);
   if (s != KStatus::SUCCESS) {
@@ -1501,7 +1510,7 @@ KStatus TsVGroup::undoPut(kwdbContext_p ctx, TS_OSN log_lsn, TSSlice payload) {
       timestamp64 cur_ts = p.GetTS(i);
       ts_spans.push_back({cur_ts, cur_ts});
     }
-    s = deleteData(ctx, table_id, entity_id, {tmp_p.GetOSN(), tmp_p.GetOSN()}, ts_spans);
+    s = deleteData(ctx, table_id, entity_id, {p.GetOSN(), p.GetOSN()}, ts_spans);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("deleteData failed.");
       return s;
@@ -1581,7 +1590,12 @@ KStatus TsVGroup::redoDeleteData(kwdbContext_p ctx, TSTableID tbl_id, std::strin
 }
 
 KStatus TsVGroup::redoPutTag(kwdbContext_p ctx, kwdbts::TS_OSN log_lsn, const TSSlice& payload) {
-  TsRawPayload p{payload};
+  TsRawPayload p;
+  auto s = p.ParsePayLoadStruct(payload);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("ParsePayLoadStruct failed.");
+    return s;
+  }
   auto table_id = p.GetTableID();
   TSSlice primary_key = p.GetPrimaryTag();
   auto tbl_version = p.GetTableVersion();
@@ -1591,7 +1605,7 @@ KStatus TsVGroup::redoPutTag(kwdbContext_p ctx, kwdbts::TS_OSN log_lsn, const TS
   TSEntityID entity_id;
 
   std::shared_ptr<TsTableSchemaManager> tb_schema;
-  KStatus s = schema_mgr_->GetTableSchemaMgr(table_id, tb_schema);
+  s = schema_mgr_->GetTableSchemaMgr(table_id, tb_schema);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("GetTableSchemaManager failed, table id: %lu", table_id);
     return s;
@@ -1630,12 +1644,17 @@ KStatus TsVGroup::redoPutTag(kwdbContext_p ctx, kwdbts::TS_OSN log_lsn, const TS
 }
 
 KStatus TsVGroup::undoPutTag(kwdbContext_p ctx, TS_OSN log_lsn, const TSSlice& payload) {
-  TsRawPayload p(payload);
+  TsRawPayload p;
+  auto s = p.ParsePayLoadStruct(payload);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("ParsePayLoadStruct failed.");
+    return s;
+  }
   auto table_id = p.GetTableID();
   TSSlice primary_key = p.GetPrimaryTag();
 
   std::shared_ptr<TsTableSchemaManager> tb_schema_manager;
-  KStatus s = schema_mgr_->GetTableSchemaMgr(table_id, tb_schema_manager);
+  s = schema_mgr_->GetTableSchemaMgr(table_id, tb_schema_manager);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("Get schema manager failed, table id[%lu]", table_id);
     return KStatus::FAIL;
@@ -1663,12 +1682,17 @@ KStatus TsVGroup::undoPutTag(kwdbContext_p ctx, TS_OSN log_lsn, const TSSlice& p
 }
 
 KStatus TsVGroup::redoUpdateTag(kwdbContext_p ctx, kwdbts::TS_OSN log_lsn, const TSSlice& payload, uint64_t osn) {
-  TsRawPayload p(payload);
+  TsRawPayload p;
+  auto s = p.ParsePayLoadStruct(payload);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("ParsePayLoadStruct failed.");
+    return s;
+  }
   auto table_id = p.GetTableID();
   TSSlice primary_key = p.GetPrimaryTag();
 
   std::shared_ptr<TsTableSchemaManager> tb_schema_manager;
-  KStatus s = schema_mgr_->GetTableSchemaMgr(table_id, tb_schema_manager);
+  s = schema_mgr_->GetTableSchemaMgr(table_id, tb_schema_manager);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("Get schema manager failed, table id[%lu]", table_id);
     return KStatus::FAIL;
@@ -1697,12 +1721,17 @@ KStatus TsVGroup::redoUpdateTag(kwdbContext_p ctx, kwdbts::TS_OSN log_lsn, const
 
 KStatus TsVGroup::undoUpdateTag(kwdbContext_p ctx, TS_OSN log_lsn, TSSlice payload, const TSSlice& old_payload,
                                 uint64_t osn) {
-  TsRawPayload p(payload);
+  TsRawPayload p;
+  auto s = p.ParsePayLoadStruct(payload);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("ParsePayLoadStruct failed.");
+    return s;
+  }
   auto table_id = p.GetTableID();
   TSSlice primary_key = p.GetPrimaryTag();
 
   std::shared_ptr<TsTableSchemaManager> tb_schema_manager;
-  KStatus s = schema_mgr_->GetTableSchemaMgr(table_id, tb_schema_manager);
+  s = schema_mgr_->GetTableSchemaMgr(table_id, tb_schema_manager);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("Get schema manager failed, table id[%lu]", table_id);
     return KStatus::FAIL;

@@ -106,7 +106,12 @@ KStatus TsMemSegmentManager::PutData(const TSSlice& payload, const std::shared_p
 
   uint32_t db_id = tb_schema->GetDbID();
   // TSMemSegRowData row_data(db_id, table_id, table_version, entity_id);
-  TsRawPayload pd(payload, schema);
+  TsRawPayload pd(schema);
+  auto s = pd.ParsePayLoadStruct(payload);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("ParsePayLoadStruct failed.");
+    return s;
+  }
   uint32_t row_num = pd.GetRowCount();
   // no use lsn anymore, using osn from payload instead.
   auto osn = pd.GetOSN();

@@ -9,14 +9,17 @@
 // MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
 // See the Mulan PSL v2 for more details.
 
-#include <string>
-#include <string_view>
-#include "mmap/mmap_tag_column_table.h"
-#include "test_util.h"
-#include "payload_builder.h"
+#include <gtest/gtest.h>
+#include <cstdlib>
+#include <ctime>
+#include <algorithm>
+#include <array>
+#include <random>
+#include "libkwdbts2.h"
 #include "ts_ts_lsn_span_utils.h"
+#include  "ts_payload.h"
 
-using namespace kwdbts;  // NOLINT
+using namespace kwdbts;
 
 struct ColDataTypes {
   DATATYPE type;
@@ -35,13 +38,12 @@ std::vector<ColDataTypes> metric_col_types({{DATATYPE::TIMESTAMP64, 16, TagType:
                                             {DATATYPE::VARBINARY, 1123, TagType::UNKNOWN_TAG},
                                             {DATATYPE::VARSTRING, 12334, TagType::UNKNOWN_TAG}});
 
-class TestRowPayloadBuilder : public testing::Test {
+class TestBinaryToHexstr : public testing::Test {
  public:
   std::vector<TagInfo> tag_schema_;
   std::vector<AttributeInfo> data_schema_;
-  TSTableID table_id_ = 12343;
-  uint32_t table_version_ = 345;
-  TestRowPayloadBuilder() {
+
+ TestBinaryToHexstr() {
     // add tag columns
     tag_schema_.clear();
     size_t offset = 0;
@@ -70,10 +72,6 @@ class TestRowPayloadBuilder : public testing::Test {
       data_schema_.push_back(info);
     }
   }
-
-  ~TestRowPayloadBuilder() {
-  }
-
   TSSlice GenPayload(KTimestamp primary_tag, int data_count) {
     TSRowPayloadBuilder pay_build(tag_schema_, data_schema_, data_count);
     for (size_t i = 0; i < tag_schema_.size(); i++) {
@@ -108,98 +106,93 @@ class TestRowPayloadBuilder : public testing::Test {
       }
     }
     TSSlice payload_slice;
-    bool s = pay_build.Build(table_id_, table_version_, &payload_slice);
+    bool s = pay_build.Build(100, 101, &payload_slice);
     EXPECT_EQ(s, true);
     return payload_slice;
   }
-
-  void CheckPayload(const TSSlice &raw, KTimestamp primary_tag, int data_count) {
-    TsRawPayload pay(&data_schema_);
-    pay.ParsePayLoadStruct(raw);
-    ASSERT_EQ(pay.GetRowCount(), data_count);
-    ASSERT_EQ(pay.GetTableID(), table_id_);
-    ASSERT_EQ(pay.GetTableVersion(), table_version_);
-
-    auto tags = pay.GetTags();
-    int tag_offset = (7 + tag_schema_.size()) / 8;
-    for (size_t i = 0; i < tag_schema_.size(); i++) {
-      KTimestamp cur_value = primary_tag + i;
-      if (isVarLenType(tag_schema_[i].m_data_type) && !tag_schema_[i].isPrimaryTag()) {
-        auto tag_idx = KUint64((char*)(tags.data) + tag_offset);
-        assert(KUint16(tags.data + tag_idx) == sizeof(KTimestamp));
-        assert(0 == memcmp(tags.data + tag_idx + 2, reinterpret_cast<char*>(&cur_value), sizeof(KTimestamp)));
-        tag_offset += 8;
-      } else {
-        assert(0 == memcmp(tags.data + tag_offset, reinterpret_cast<char*>(&cur_value), sizeof(KTimestamp)));
-        tag_offset += tag_schema_[i].m_size;
-      }
-    }
-
-    for (size_t j = 0; j < data_count; j++) {
-      for (size_t i = 0; i < data_schema_.size(); i++) {
-        TSSlice col_data;
-        auto ok = pay.GetColValue(j, i, &col_data);
-        ASSERT_TRUE(ok);
-        KTimestamp cur_value = primary_tag + i + j;
-        switch (data_schema_[i].type) {
-        case DATATYPE::TIMESTAMP:
-        case DATATYPE::TIMESTAMP64:
-          ASSERT_EQ(KTimestamp(col_data.data), cur_value);
-          break;
-        case DATATYPE::INT32: {
-          ASSERT_EQ(cur_value, KUint32(col_data.data));
-          break;
-        }
-        case DATATYPE::VARSTRING: {
-          auto const_var_data = std::stoll(std::string{col_data.data, col_data.len});
-          ASSERT_EQ(const_var_data, cur_value);
-          break;
-        }
-        case DATATYPE::VARBINARY:  {
-          ASSERT_EQ(KTimestamp(col_data.data), cur_value);
-          break;
-        }
-        default:
-          break;
-        }
-      }
-    }
-  }
 };
 
-// Create and delete empty tables
-TEST_F(TestRowPayloadBuilder, empty) {
+TEST_F(TestBinaryToHexstr, BinaryToHexStrTest) {
+  char buff[128];
+  TSSlice data{buff, 128};
+  memset(buff, 254, 128);
+  std::string hex;
+  BinaryToHexStr(data, hex);
+  // std::cout << "|" << hex << "|" << std::endl;
+  TSSlice buff_bak;
+  HexStrToBinary(hex, buff_bak);
+  ASSERT_EQ(buff_bak.len, data.len);
+  ASSERT_TRUE(0 == memcmp(data.data, buff_bak.data, data.len));
+  memset(buff, 12, 100);
+  BinaryToHexStr(data, hex);
+  // std::cout << "|" << hex << "|" << std::endl;
+  free(buff_bak.data);
+  HexStrToBinary(hex, buff_bak);
+  ASSERT_EQ(buff_bak.len, data.len);
+  ASSERT_TRUE(0 == memcmp(data.data, buff_bak.data, data.len));
+  free(buff_bak.data);
+  srand(time(nullptr));
+  for (size_t i = 0; i < 128; i++) {
+    buff[i] = (rand() % 256);
+  }
+  BinaryToHexStr(data, hex);
+  // std::cout << "|" << hex << "|" << std::endl;
+  HexStrToBinary(hex, buff_bak);
+  ASSERT_EQ(buff_bak.len, data.len);
+  ASSERT_TRUE(0 == memcmp(data.data, buff_bak.data, data.len));
+  free(buff_bak.data);
+
+  uint8_t buff_1[1024];
+    for (size_t i = 0; i < 1024; i++) {
+    buff_1[i] = i;
+  }
+  TSSlice data1{reinterpret_cast<char*>(buff_1), 1024};
+  BinaryToHexStr(data1, hex);
+  // std::cout << "|" << hex << "|" << std::endl;
+  HexStrToBinary(hex, buff_bak);
+  ASSERT_EQ(buff_bak.len, data1.len);
+  ASSERT_TRUE(0 == memcmp(data1.data, buff_bak.data, data1.len));
+  free(buff_bak.data);
 }
 
-// Test simple data types
-TEST_F(TestRowPayloadBuilder, create) {
-  int count = 1;
-  KTimestamp primary_tag = 10010;
-  TSSlice payload_slice = GenPayload(primary_tag, count);
-  CheckPayload(payload_slice, primary_tag, count);
-  free(payload_slice.data);
+TEST_F(TestBinaryToHexstr, payloadToHexStrTest) {
+  TSSlice payload = GenPayload(10010, 3);
+  TsRawPayload p;
+  auto s = p.ParsePayLoadStruct(payload);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  KUint32(payload.data + TsRawPayload::row_num_offset_) = 2;
+  s = p.ParsePayLoadStruct(payload);
+  ASSERT_EQ(s, KStatus::FAIL);
+  KUint32(payload.data + TsRawPayload::row_num_offset_) = 4;
+  s = p.ParsePayLoadStruct(payload);
+  ASSERT_EQ(s, KStatus::FAIL);
+  free(payload.data);
 }
 
-// Test simple data types with converting to hexstr
-TEST_F(TestRowPayloadBuilder, createAndConvert) {
-  int count = 1;
-  KTimestamp primary_tag = 10010;
-  TSSlice payload_slice = GenPayload(primary_tag, count);
-  CheckPayload(payload_slice, primary_tag, count);
-  std::string hex_str;
-  BinaryToHexStr(payload_slice, hex_str);
-  TSSlice convert_p;
-  HexStrToBinary(hex_str, convert_p);
-  CheckPayload(convert_p, primary_tag, count);
-  free(payload_slice.data);
-  free(convert_p.data);
+TEST_F(TestBinaryToHexstr, payloadRowToHexStrTest) {
+  TSSlice payload = GenPayload(10010, 3);
+  TsRawPayload p;
+  auto s = p.ParsePayLoadStruct(payload);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  auto row_data = p.GetRowData(0);
+  TsRawPayloadRowParser row_p(&data_schema_);
+  ASSERT_TRUE(!row_p.IsColNull(row_data, data_schema_.size() - 1));
+  TSSlice col_data;
+  ASSERT_TRUE(row_p.GetColValueAddr(row_data, data_schema_.size() - 1, &col_data));
+
+  row_data.len -= 1;
+  ASSERT_TRUE(!row_p.GetColValueAddr(row_data, data_schema_.size() - 1, &col_data));
+  row_data.len += 2;
+  ASSERT_TRUE(row_p.GetColValueAddr(row_data, data_schema_.size() - 1, &col_data));
+  free(payload.data);
 }
 
-// Test data with variable length type fields
-TEST_F(TestRowPayloadBuilder, createMultiRows) {
-  int count = 100;
-  KTimestamp primary_tag = 10086;
-  TSSlice payload_slice = GenPayload(primary_tag, count);
-  CheckPayload(payload_slice, primary_tag, count);
-  free(payload_slice.data);
+TEST_F(TestBinaryToHexstr, HexStrToPayloadTest) {
+  std::string hex_str = "1111111111111111111111111111111111111111111111111111111111111111111111111111111";
+  TSSlice payload;
+  HexStrToBinary(hex_str, payload);
+  TsRawPayload p;
+  auto s = p.ParsePayLoadStruct(payload);
+  ASSERT_EQ(s, KStatus::FAIL);
+  free(payload.data);
 }

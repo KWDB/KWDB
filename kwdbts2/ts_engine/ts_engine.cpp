@@ -602,7 +602,12 @@ KStatus TSEngineImpl::InsertTagData(kwdbContext_p ctx, const std::shared_ptr<TsT
           return s;
         }
       }
-      TsRawPayload p{payload_data};
+      TsRawPayload p;
+      s = p.ParsePayLoadStruct(payload_data);
+      if (s != KStatus::SUCCESS) {
+        LOG_ERROR("ParsePayLoadStruct failed.");
+        return s;
+      }
       entity_id = vgroup->AllocateEntityID();
       s = putTagData(ctx, tb_schema->GetTableId(), vgroup_id, entity_id, p);
       if (s != KStatus::SUCCESS) {
@@ -682,7 +687,12 @@ KStatus TSEngineImpl::PutEntity(kwdbContext_p ctx, const KTableKey& table_id, ui
   }
 
   for (size_t i = 0; i < payload_num; i++) {
-    TsRawPayload p{payload_data[i]};
+    TsRawPayload p;
+    s = p.ParsePayLoadStruct(payload_data[i]);
+    if (s != KStatus::SUCCESS) {
+      LOG_ERROR("ParsePayLoadStruct failed.");
+      return s;
+    }
     TSSlice primary_key = p.GetPrimaryTag();
     auto tbl_version = p.GetTableVersion();
     s = GetTsTable(ctx, table_id, ts_table, is_dropped, true, err_info, tbl_version);

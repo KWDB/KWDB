@@ -17,7 +17,9 @@
 #include <algorithm>
 #include <iostream>
 #include <string>
-#include <charconv>
+#if defined(__has_include) && __has_include(<charconv>)
+  #include <charconv>
+#endif
 #include "ts_ts_lsn_span_utils.h"
 
 namespace kwdbts {
@@ -74,6 +76,7 @@ void DeplicateTsSpans(list<STDelRange>& raw_spans, list<STDelRange>* ret_spans) 
   }
 }
 
+#if defined(__has_include) && __has_include(<charconv>)
 void BinaryToHexStr(const TSSlice& data, std::string& ret) {
   ret.clear();
   ret.resize(data.len * 2, 0);
@@ -82,13 +85,12 @@ void BinaryToHexStr(const TSSlice& data, std::string& ret) {
     std::to_chars(ret.data() + i * 2, end_pos, (uint8_t)(data.data[i]), 16);
   }
   for (size_t i = 0; i < ret.length(); i++) {
-    if (ret.at(i) == 0) {
-      ret.at(i) = ret.at(i - 1);
-      ret.at(i - 1) = '0';
+    if (ret[i] == 0) {
+      ret[i] = ret[i - 1];
+      ret[i - 1] = '0';
     }
   }
 }
-
 void HexStrToBinary(const std::string& data, TSSlice& ret) {
   ret.len = data.length() / 2;
   ret.data = reinterpret_cast<char*>(malloc(ret.len));
@@ -98,5 +100,27 @@ void HexStrToBinary(const std::string& data, TSSlice& ret) {
     std::from_chars(data.data() + i * 2, data.data() + i * 2 + 2, u8_t[i], 16);
   }
 }
+#else
+void BinaryToHexStr(const TSSlice& data, std::string& ret) {
+  static const char* digits = "0123456789ABCDEF";
+  ret.clear();
+  ret.resize(data.len * 2, 0);
+  uint32_t ret_offset = 0;
+  for (size_t i = 0; i < data.len; i++) {
+    ret[ret_offset + 1] = digits[(data.data[i]) & 0x0f];
+    ret[ret_offset] = digits[(data.data[i] >> 4) & 0x0f];
+    ret_offset += 2;
+  }
+}
 
+void HexStrToBinary(const std::string& data, TSSlice& ret) {
+  ret.len = data.length() / 2;
+  ret.data = reinterpret_cast<char*>(malloc(ret.len));
+  uint8_t* u8_t = reinterpret_cast<uint8_t*>(ret.data);
+  memset(ret.data, 0, ret.len);
+  for (size_t i = 0; i < ret.len; i++) {
+    u8_t[i] = std::stoi({data.data() + i * 2, 2}, nullptr, 16);
+  }
+}
+#endif
 }  // namespace kwdbts

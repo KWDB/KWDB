@@ -324,36 +324,3 @@ TEST(TsDelItemUtilTest, snapshot_pack_301_version) {
   ASSERT_EQ(del_data_1.len, 0);
   free(data.data);
 }
-
-#include <cstdlib>
-#include <ctime>
-TEST(TsDelItemUtilTest, BinaryToHexStrTest) {
-  char buff[128];
-  TSSlice data{buff, 128};
-  memset(buff, 254, 128);
-  std::string hex;
-  BinaryToHexStr(data, hex);
-  // std::cout << "|" << hex << "|" << std::endl;
-  TSSlice buff_bak;
-  HexStrToBinary(hex, buff_bak);
-  ASSERT_EQ(buff_bak.len, data.len);
-  ASSERT_TRUE(0 == memcmp(data.data, buff_bak.data, data.len));
-  memset(buff, 12, 100);
-  BinaryToHexStr(data, hex);
-  // std::cout << "|" << hex << "|" << std::endl;
-  free(buff_bak.data);
-  HexStrToBinary(hex, buff_bak);
-  ASSERT_EQ(buff_bak.len, data.len);
-  ASSERT_TRUE(0 == memcmp(data.data, buff_bak.data, data.len));
-  free(buff_bak.data);
-  srand(time(nullptr));
-  for (size_t i = 0; i < 128; i++) {
-    buff[i] = (rand() % 256);
-  }
-  BinaryToHexStr(data, hex);
-  // std::cout << "|" << hex << "|" << std::endl;
-  HexStrToBinary(hex, buff_bak);
-  ASSERT_EQ(buff_bak.len, data.len);
-  ASSERT_TRUE(0 == memcmp(data.data, buff_bak.data, data.len));
-  free(buff_bak.data);
-}

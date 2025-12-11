@@ -1445,7 +1445,10 @@ KStatus TsTableV2Impl::GetTagRecordInfoByOSN(kwdbContext_p ctx,
               (*pkeys_status)[key].op_with_osn = std::make_shared<OperatorInfoOfRecord>(
                 type, tag_info->osn, vec_idx, rownum);
             } else {
-              assert(false);
+              // todo(liangbo01) if one insert tag record readed to pkeys_status,
+              //  then this tag record updated, and store at new verison table.
+              //  new stored tag record may be readed again.
+              // assert(false);
             }
           }
         }

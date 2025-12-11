@@ -203,7 +203,12 @@ KStatus STTableRangeDelAndTagInfo::GenTagPayLoad(kwdbContext_p ctx, EntityResult
 KStatus STTableRangeDelAndTagInfo::WriteDeleteTagRecord(kwdbContext_p ctx, TSSlice& payload,
   OperateType type, TsHashRWLatch& tag_lock) {
   assert(payload.len > 0);
-  TsRawPayload p{payload};
+  TsRawPayload p;
+  auto s = p.ParsePayLoadStruct(payload);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("ParsePayLoadStruct failed.");
+    return s;
+  }
   auto pkey = p.GetPrimaryTag();
   auto vgroup_id = GetConsistentVgroupId(pkey.data, pkey.len, EngineOptions::vgroup_max_num);
   TsVGroup* vgroup = table_->GetVGroupByID(vgroup_id);
@@ -225,7 +230,7 @@ KStatus STTableRangeDelAndTagInfo::WriteDeleteTagRecord(kwdbContext_p ctx, TSSli
   }};
 
   std::shared_ptr<TagTable> tag_table;
-  auto s = table_->GetSchemaManager()->GetTagSchema(ctx, &tag_table);
+  s = table_->GetSchemaManager()->GetTagSchema(ctx, &tag_table);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("Failed get table id[%ld] tag schema.", table_->GetTableId());
     return s;
@@ -245,7 +250,12 @@ KStatus STTableRangeDelAndTagInfo::WriteDeleteTagRecord(kwdbContext_p ctx, TSSli
 KStatus STTableRangeDelAndTagInfo::WriteUpdateTagRecord(kwdbContext_p ctx, TSSlice& payload,
   OperateType type, TsHashRWLatch& tag_lock) {
   assert(payload.len > 0);
-  TsRawPayload p{payload};
+  TsRawPayload p;
+  auto s = p.ParsePayLoadStruct(payload);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("ParsePayLoadStruct failed.");
+    return s;
+  }
   auto pkey = p.GetPrimaryTag();
   uint32_t entity_id;
   uint32_t vgroup_id = GetConsistentVgroupId(pkey.data, pkey.len, EngineOptions::vgroup_max_num);
@@ -257,7 +267,7 @@ KStatus STTableRangeDelAndTagInfo::WriteUpdateTagRecord(kwdbContext_p ctx, TSSli
   }};
 
   std::shared_ptr<TagTable> tag_table;
-  auto s = table_->GetSchemaManager()->GetTagSchema(ctx, &tag_table);
+  s = table_->GetSchemaManager()->GetTagSchema(ctx, &tag_table);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("Failed get table id[%ld] tag schema.", table_->GetTableId());
     return s;
@@ -304,7 +314,12 @@ KStatus STTableRangeDelAndTagInfo::WriteInsertTagRecord(kwdbContext_p ctx, TSSli
     LOG_ERROR("Failed write tag at hasPrimaryKey id[%ld], already exists.", table_->GetTableId());
     return KStatus::FAIL;
   }
-  TsRawPayload p{payload};
+  TsRawPayload p;
+  auto s = p.ParsePayLoadStruct(payload);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("ParsePayLoadStruct failed.");
+    return s;
+  }
   if (tag_schema->InsertTagRecord(p, groupid, entity_id, p.GetOSN(), OperateType::Insert) < 0) {
     LOG_ERROR("InsertTagRecord failed.");
     return KStatus::FAIL;

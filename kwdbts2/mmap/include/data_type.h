@@ -232,6 +232,13 @@ struct AttributeInfo {
 
   AttributeInfo();
 
+  std::string toString() const {
+    char buff[256];
+    snprintf(buff, 256, "{id:%u,type:%d,offset:%d,size:%d,length:%d,max_len:%d,version:%u,name:%s}",
+      id, type, offset, size, length, max_len, version, name);
+    return std::string(buff);
+  }
+
   bool isValid() { return !(type == INVALID); }
 
   bool isEqual(const AttributeInfo& other) const { return (id == other.id) && (flag == other.flag); }

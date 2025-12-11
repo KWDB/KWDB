@@ -80,7 +80,8 @@ TEST_F(VacuumTest, ZDP49302) {
   for (int i = 0; i < 2; ++i) {
     auto payload = GenRowPayload(*metric_schema_, tag_schema_, table_id, 1, 1, 100, 1864000000 * i, 1);
     TsRawPayloadRowParser parser{metric_schema_};
-    TsRawPayload p{payload, metric_schema_};
+    TsRawPayload p{metric_schema_};
+    p.ParsePayLoadStruct(payload);
     auto ptag = p.GetPrimaryTag();
     vgroup_->PutData(ctx_, table_schema_mgr_, 0, &ptag, 1, &payload, false);
     free(payload.data);

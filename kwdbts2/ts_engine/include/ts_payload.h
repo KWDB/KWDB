@@ -91,8 +91,7 @@ class TsRawPayload {
   const static int header_size_ = row_type_offset_ + row_type_size_;  // NOLINT
 
  private:
-  TSSlice payload_;
-  const std::vector<AttributeInfo>* metric_schema_ = nullptr;
+  TSSlice payload_{nullptr, 0};
   TsRawPayloadRowParser row_parser_;
   TSSlice primary_key_;
   TSSlice tag_datas_;
@@ -100,7 +99,9 @@ class TsRawPayload {
   bool can_parse_ = false;
 
  public:
-  explicit TsRawPayload(const TSSlice &raw, const std::vector<AttributeInfo>* data_schema = nullptr);
+  explicit TsRawPayload(const std::vector<AttributeInfo>* data_schema = nullptr);
+
+  KStatus ParsePayLoadStruct(const TSSlice &raw);
 
   // rangeGroupID --> hashPoint
   uint64_t GetOSN() {
