@@ -425,7 +425,8 @@ Loop:
 			ClientEncoding = sessionData.ClientEncoding
 		}
 
-		//为了能使session对写入写出都生效，需要把session写入到conn里
+		// In order to make the session effective for both writing in and writing out,
+		// it is necessary to write the session into the conn
 		c.sessionArgs.SessionDefaults.Set("client_encoding", ClientEncoding)
 		log.VEventf(ctx, 2, "pgwire: processing %s", typ)
 

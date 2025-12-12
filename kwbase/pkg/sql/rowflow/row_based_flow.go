@@ -265,6 +265,7 @@ func (f *rowBasedFlow) makeProcessor(
 		&ps.Post,
 		inputs,
 		outputs,
+		&ps.Input,
 		f.GetLocalProcessors(),
 	)
 	if err != nil {

@@ -94,7 +94,8 @@ func (tct *tsCreateTable) Start(ctx context.Context) context.Context {
 	//	return ctx
 	//}
 
-	//TODO rangeGroup暂时保留，但对存储而言应该不再使用，只创建一个RangeGroup，GroupID=1,角色为leader
+	//TODO RangeGroup will be temporarily retained, but it should no longer be used for storage purposes.
+	// Only one RangeGroup will be created with GroupID=1 and the role will be leader
 	//rangeGroups := hashRouter.GetGroupIDAndRoleOnNode(ctx, tct.EvalCtx.NodeID)
 	rangeGroup := api.RangeGroup{
 		RangeGroupID: 1,

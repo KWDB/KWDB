@@ -559,7 +559,7 @@ func calculateReplicaBalance(state clusterState, numRepl int) float64 {
 // calculateMigrationTotal calculate the sore migration
 func calculateMigrationTotal(migrations []RebalancedPlan, maxData float64) float64 {
 	if maxData <= 0 {
-		return 0 // 避免除以0
+		return 0 // avoid divide by 0
 	}
 
 	totalMigration := 0.0

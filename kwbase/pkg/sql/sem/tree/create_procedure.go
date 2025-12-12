@@ -119,7 +119,7 @@ func (node *CreateProcedurePG) Format(ctx *FmtCtx) {
 	ctx.WriteString("$$")
 }
 
-// ProcedureParameter 表示存储过程的参数
+// ProcedureParameter represents a parameter in a stored procedure.
 type ProcedureParameter struct {
 	Direction ProcDirection
 	Name      Name

@@ -1213,7 +1213,7 @@ inline timestamp64 convertMSToPrecisionTS(timestamp64 ts, DATATYPE ts_type) {
 }
 
 inline uint32_t GetConsistentHashId(const char* data, size_t length, uint64_t hash_num) {
-  const uint32_t offset_basis = 2166136261;  // 32位offset basis
+  const uint32_t offset_basis = 2166136261;  // 32 bit offset basis
   const uint32_t prime = 16777619;
   uint32_t hash_val = offset_basis;
   for (int i = 0; i < length; i++) {
@@ -1225,7 +1225,7 @@ inline uint32_t GetConsistentHashId(const char* data, size_t length, uint64_t ha
 }
 
   inline uint32_t GetConsistentVgroupId(const char* data, size_t length, uint64_t vgroup_num) {
-  const uint32_t offset_basis = 2166136261;  // 32位offset basis
+  const uint32_t offset_basis = 2166136261;  // 32 bit offset basis
   const uint32_t prime = 16777619;
   uint32_t hash_val = offset_basis;
   for (int i = 0; i < length; i++) {

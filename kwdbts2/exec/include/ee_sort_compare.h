@@ -26,7 +26,6 @@ struct SorterComparator {
   }
 };
 
-// 浮点类型特化
 template <typename T>
 struct SorterComparator<T, std::enable_if_t<std::is_floating_point_v<T>>> {
   static int compare(T lhs, T rhs) {

@@ -165,7 +165,7 @@ k_int32 DynamicHashIndex::init(k_int32 key_len, size_t bkt_instances, size_t per
     // update mem hash
     mem_hash_ = addrHash();
 
-    // 更新元数据中的桶数量和记录大小
+    // update bucket count and record size in meta data
     meta_data.m_bucket_count = m_bucket_count_;
     meta_data.m_record_size = m_record_size_;
     meta_data.m_file_size = new_file_size;
@@ -250,7 +250,7 @@ k_int32 DynamicHashIndex::reserve(size_t n) {
         char* mem_hash_new = addrHash();
         // update meta data
         meta_data.m_file_size = new_file_size;
-        // copy in-memory data into mmap 文件
+        // copy in-memory data into mmap file
         std::memcpy(mem_hash_new, mem_hash_, meta_data.m_capacity);
         // delete in-memory-data
         delete[] mem_hash_;

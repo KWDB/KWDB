@@ -258,7 +258,7 @@ EEIteratorErrCode StorageHandler::TsOffsetNext(kwdbContext_p ctx, TsScanStats* t
     Return(code);
   }
 
-  // 获取tag值
+  // get tag value
   TagRowBatchPtr tag_rowbatch = std::make_shared<TagRowBatch>();
   tag_rowbatch->Init(table_);
   ret = ts_table_->GetTagList(ctx, {row_batch->res_.entity_index}, table_->scan_tags_,
@@ -379,7 +379,7 @@ EEIteratorErrCode StorageHandler::TsStatisticCacheNext(kwdbContext_p ctx, TsScan
     Return(code);
   }
 
-  // 获取tag值
+  // get tag value
   TagRowBatchPtr tag_rowbatch = std::make_shared<TagRowBatch>();
   tag_rowbatch->Init(table_);
   ret = ts_table_->GetTagList(ctx, {row_batch->res_.entity_index}, table_->scan_tags_,

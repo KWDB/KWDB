@@ -180,7 +180,8 @@ func BenchmarkProjectSet(b *testing.B) {
 				p, err := NewProcessor(
 					context.Background(), &flowCtx, 0, /* processorID */
 					&execinfrapb.ProcessorCoreUnion{ProjectSet: &c.spec}, &execinfrapb.PostProcessSpec{},
-					[]execinfra.RowSource{in}, []execinfra.RowReceiver{out}, []execinfra.LocalProcessor{})
+					[]execinfra.RowSource{in}, []execinfra.RowReceiver{out}, nil, /* inputSyncSpecs */
+					[]execinfra.LocalProcessor{})
 				if err != nil {
 					b.Fatal(err)
 				}

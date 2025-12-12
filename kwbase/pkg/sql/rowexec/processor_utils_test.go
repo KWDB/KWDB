@@ -164,6 +164,7 @@ func (p *ProcessorTest) RunTestCases(
 			&tc.Post,
 			inputs,
 			[]execinfra.RowReceiver{output},
+			nil, /* inputSyncSpecs */
 			nil, /* localProcessors */
 		)
 		if err != nil {

@@ -2200,7 +2200,7 @@ KStatus TsOffsetIteratorV2Impl::ScanPartitionBlockSpans(uint32_t* cnt, TsScanSta
     std::shared_ptr<const TsPartitionVersion> partition_version = it.second;
     std::shared_ptr<TsVGroup> vgroup = vgroups_[vgroup_id];
     std::vector<EntityID> entity_ids = vgroup_ids_[vgroup_id];
-    // TODO(liumengzhen) filter参数能否支持多设备
+    // TODO(liumengzhen) Can the "filter" parameter support multiple devices
     for (auto entity_id : entity_ids) {
       ts_block_spans_.clear();
       TsScanFilterParams filter{db_id_, table_id_, vgroup_id, entity_id, ts_col_type_, scan_osn_, ts_spans_};

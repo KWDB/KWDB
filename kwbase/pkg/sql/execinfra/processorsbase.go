@@ -462,6 +462,7 @@ type ProcessorConstructor func(
 	post *execinfrapb.PostProcessSpec,
 	inputs []RowSource,
 	outputs []RowReceiver,
+	inputSpecs *[]execinfrapb.InputSyncSpec,
 	localProcessors []LocalProcessor,
 ) (Processor, error)
 

@@ -122,6 +122,11 @@ type batchLookupJoiner struct {
 	rowCount uint32
 	// batch count for plan display
 	batchCount uint32
+
+	// inputSpecs is the input sync spec for the batchLookupJoiner.
+	// inputSpecs[0] is the input sync spec for leftSource.
+	// inputSpecs[1] is the input sync spec for rightSource.
+	inputSpecs *[]execinfrapb.InputSyncSpec
 }
 
 var _ execinfra.Processor = &batchLookupJoiner{}
@@ -139,11 +144,13 @@ func newBatchLookupJoiner(
 	rightSource execinfra.RowSource,
 	post *execinfrapb.PostProcessSpec,
 	output execinfra.RowReceiver,
+	inputSpecs *[]execinfrapb.InputSyncSpec,
 ) (*batchLookupJoiner, error) {
 	h := &batchLookupJoiner{
 		initialBufferSize: batchLookupJoinerInitialBufferSize,
 		leftSource:        leftSource,
 		rightSource:       rightSource,
+		inputSpecs:        inputSpecs,
 	}
 
 	if err := h.joinerBase.BLJInit(
@@ -398,7 +405,7 @@ func InsertData(
 		}
 	case *tree.DString:
 		str := *d
-		value := []byte(str) // 转换为 []byte
+		value := []byte(str) // convert to []byte
 		length := uint32(len(value))
 		binary.LittleEndian.PutUint32(dc.Data[colOffset:], length) // encode to cpp readable format, add len
 		copy(dc.Data[colOffset+stringWide:], *d)                   // add value
@@ -411,7 +418,7 @@ func InsertData(
 			copy(dc.Data[colOffset+2:], *d)
 		case types.T_varbytea: // isString: bytes in kwbase -> binary in tse
 			str := *d
-			value := []byte(str) // 转换为 []byte
+			value := []byte(str) // convert to []byte
 			length := uint32(len(value))
 			binary.LittleEndian.PutUint32(dc.Data[colOffset:], length) // encode to cpp readable format, add len
 			copy(dc.Data[colOffset+stringWide:], *d)                   // add value
@@ -478,7 +485,7 @@ func (h *batchLookupJoiner) pushToProbeSide() (
 		// Create DataChunk, step1 prepare all info for DataChunk
 		var rowSize uint32
 		rowSize = 0 // bytes
-		outputType := h.leftSource.OutputTypes()
+		outputType := (*h.inputSpecs)[0].ColumnTypes
 		// bitmap
 		bitmapSize := uint32((rowNums + 7) / 8)
 		bitmapOffset := uint32(0)
@@ -549,7 +556,7 @@ func (h *batchLookupJoiner) pushToProbeSide() (
 					}
 				} else {
 					switch colType {
-					case oid.T_char, oid.T_bpchar, oid.Oid(91002), oid.T_varchar, oid.Oid(91004):
+					case oid.T_char, oid.T_bpchar, oid.Oid(91002), oid.T_varchar, oid.Oid(91004), oid.T_text:
 						// 1 more bytes for TS decode wrt mutation.go & table.go, -> bug ZDP-31516
 						storeLen = colWidth + 1
 						fixedStoreLen = storeLen + stringWide // + STRING_WIDE in ee_data_chunk.cpp

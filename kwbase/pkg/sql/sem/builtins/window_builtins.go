@@ -1036,7 +1036,7 @@ func (dw *DiffWindowFloat) Close(context.Context, *tree.EvalContext) {}
 
 // safeSub saf sub
 func safeSub(a, b tree.DInt) (tree.DInt, error) {
-	// 检查减法是否会导致溢出
+	// Check if subtraction will cause overflow
 	if (b < 0 && a > math.MaxInt64+b) || (b > 0 && a < math.MinInt64+b) {
 		return 0, tree.ErrIntOutOfRange
 	}

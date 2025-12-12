@@ -294,7 +294,7 @@ KStatus OpFactory::NewSynchronizer(kwdbContext_p ctx, TsFetcherCollection* colle
     EEPgErrorInfo::SetPgErrorInfo(ERRCODE_OUT_OF_MEMORY, "Insufficient memory");
     Return(KStatus::FAIL);
   }
-  // 设置并行度
+  // set parallelism
   OutboundOperator *outbound = dynamic_cast<OutboundOperator*>(*iterator);
   if (outbound) {
     outbound->SetDegree(mergeSpec.degree());

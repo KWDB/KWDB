@@ -629,9 +629,9 @@ class HashTagScanSpec : public SpecBase {
 
     // join columns
     spec.add_probecolids(0);
-    spec.add_hashcolids(11);  // prob的0对应bt中的11
+    spec.add_hashcolids(11);  // prob's 0 is bt's 11
     spec.add_probecolids(1);
-    spec.add_hashcolids(12);  // prob的1对应bt(tag表)中的12
+    spec.add_hashcolids(12);  // prob's 1 is bt(tag table)'s 12
 
     spec.set_tableid(table_id_);
   }

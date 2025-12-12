@@ -22,7 +22,7 @@ Payload::Payload(const std::vector<AttributeInfo>& schema, const std::vector<uin
   bitmap_len_ = (count_ + 7) / 8;
 
   col_offsets_ = new int32_t[schema_.size()];
-  // 更新每一列的偏移
+  // update column offsets
   int32_t col_len = data_offset_;
   for (int i = 0; i < schema_.size(); i++) {
     col_offsets_[i] = col_len;
@@ -49,7 +49,7 @@ Payload::Payload(const std::vector<AttributeInfo>& schema, TSSlice data) : schem
   bitmap_len_ = (count_ + 7) / 8;
 
   col_offsets_ = new int32_t[schema_.size()];
-  // 更新每一列的偏移
+  // update column offsets
   int32_t col_len = data_offset_;
   for (int i = 0; i < schema_.size(); i++) {
     col_offsets_[i] = col_len;

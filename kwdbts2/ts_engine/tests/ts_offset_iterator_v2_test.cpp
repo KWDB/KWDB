@@ -52,7 +52,8 @@ class TestOffsetIteratorV2 : public ::testing::Test {
   }
 };
 
-// 单分区 多分区 单设备 多设备 顺序乱序 正序逆序 极端值
+// Single partition, multiple partitions, single device, multiple devices,
+// disorderly order, positive order, reverse order, extreme values
 TEST_F(TestOffsetIteratorV2, basic) {
   roachpb::CreateTsTable meta;
 
