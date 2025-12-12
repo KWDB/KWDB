@@ -584,6 +584,9 @@ enum class TimestampCheckResult {
 
 inline TimestampCheckResult checkTimestampWithSpans(const std::vector<KwTsSpan>& spans,
                                                     timestamp64 start, timestamp64 end) {
+  if (start > end) {
+    return TimestampCheckResult::NonOverlapping;
+  }
   for (auto& span : spans) {
     if (start >= span.begin && end <= span.end) {
       return TimestampCheckResult::FullyContained;
@@ -1179,7 +1182,7 @@ inline timestamp64 convertSecondToPrecisionTS(timestamp64 ts, DATATYPE ts_type) 
   if (!overflow) {
     return ret;
   }
-  return ts > 0 ? INT64_MAX : INT64_MIN;
+  return ts > 0 ? INT64_MAX : INT64_MIN + 1;
 }
 
 inline timestamp64 convertMSToPrecisionTS(timestamp64 ts, DATATYPE ts_type) {
