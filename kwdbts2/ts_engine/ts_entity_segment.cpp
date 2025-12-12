@@ -35,14 +35,13 @@ KStatus TsEntitySegmentEntityItemFile::Open() {
     LOG_ERROR("TsEntitySegmentEntityItemFile open failed, file_path=%s", file_path_.c_str())
     return KStatus::FAIL;
   }
-  TSSlice result;
   KStatus s = r_file_->Read(r_file_->GetFileSize() - sizeof(TsEntityItemFileHeader), sizeof(TsEntityItemFileHeader),
-                            &result, nullptr);
+                            &header_guard_);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("TsEntitySegmentEntityItemFile read failed, file_path=%s", file_path_.c_str())
     return s;
   }
-  header_ = reinterpret_cast<TsEntityItemFileHeader*>(result.data);
+  header_ = reinterpret_cast<TsEntityItemFileHeader*>(header_guard_.data());
   if (header_->status != TsFileStatus::READY) {
     LOG_ERROR("TsEntitySegmentEntityItemFile not ready, file_path=%s", file_path_.c_str())
   }
@@ -53,22 +52,23 @@ KStatus TsEntitySegmentEntityItemFile::SetEntityItemDropped(uint64_t entity_id) 
   return KStatus::SUCCESS;
 }
 
-KStatus TsEntitySegmentEntityItemFile::GetEntityItem(uint64_t entity_id, TsEntityItem& entity_item, bool& is_exist) {
+KStatus TsEntitySegmentEntityItemFile::GetEntityItem(uint64_t entity_id, TsEntityItem& entity_item,
+                                                     bool& is_exist) {
   if (entity_id > header_->entity_num) {
     is_exist = false;
     return KStatus::FAIL;
   }
   is_exist = true;
   assert(entity_id * sizeof(TsEntityItem) <= r_file_->GetFileSize() - sizeof(TsEntityItemFileHeader));
-  TSSlice result;
+  TsSliceGuard result;
   KStatus s = r_file_->Read((entity_id - 1) * sizeof(TsEntityItem), sizeof(TsEntityItem),
-                            &result, nullptr);
+                            &result);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("read entity item[id=%lu] failed.", entity_id);
     return s;
   }
   if (is_exist) {
-    entity_item = *(reinterpret_cast<TsEntityItem *>(result.data));
+    entity_item = *(reinterpret_cast<TsEntityItem *>(result.data()));
   }
   if (entity_item.table_id == 0) {
     is_exist = false;
@@ -94,13 +94,12 @@ KStatus TsEntitySegmentBlockItemFile::Open() {
     LOG_ERROR("TsEntitySegmentBlockItemFile open failed, file_path=%s", file_path_.c_str())
     return KStatus::FAIL;
   }
-  TSSlice result;
-  KStatus s = r_file_->Read(0, sizeof(TsBlockItemFileHeader), &result, nullptr);
+  KStatus s = r_file_->Read(0, sizeof(TsBlockItemFileHeader), &header_guard_);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("TsEntitySegmentBlockItemFile read failed, file_path=%s", file_path_.c_str())
     return s;
   }
-  header_ = reinterpret_cast<TsBlockItemFileHeader*>(result.data);
+  header_ = reinterpret_cast<TsBlockItemFileHeader*>(header_guard_.data());
   if (header_->status != TsFileStatus::READY) {
     LOG_ERROR("TsEntitySegmentBlockItemFile not ready, file_path=%s", file_path_.c_str())
   }
@@ -108,22 +107,21 @@ KStatus TsEntitySegmentBlockItemFile::Open() {
 }
 
 KStatus TsEntitySegmentBlockItemFile::GetBlockItem(uint64_t blk_id, TsEntitySegmentBlockItem** blk_item,
-                                                    TsScanStats* ts_scan_stats) {
-  TSSlice result;
+                                                   TsSliceGuard* blk_item_guard, TsScanStats* ts_scan_stats) {
   KStatus s = r_file_->Read(sizeof(TsBlockItemFileHeader) + (blk_id - 1) * sizeof(TsEntitySegmentBlockItem),
-                            sizeof(TsEntitySegmentBlockItem), &result, nullptr);
+                            sizeof(TsEntitySegmentBlockItem), blk_item_guard);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("TsEntitySegmentBlockItemFile read failed, file_path=%s", file_path_.c_str())
     return s;
   }
-  *blk_item = reinterpret_cast<TsEntitySegmentBlockItem*>(result.data);
+  *blk_item = reinterpret_cast<TsEntitySegmentBlockItem*>(blk_item_guard->data());
   if ((*blk_item)->block_version == INVALID_BLOCK_VERSION) {
     LOG_ERROR("TsEntitySegmentBlockItemFile block version is invalid, file_path=%s, block_id=%lu", file_path_.c_str(),
               blk_id);
     return FAIL;
   }
   if (ts_scan_stats) {
-    ts_scan_stats->header_bytes += result.len;
+    ts_scan_stats->header_bytes += blk_item_guard->size();
   }
   return KStatus::SUCCESS;
 }
@@ -151,7 +149,7 @@ KStatus TsEntitySegmentMetaManager::Open() {
 }
 
 KStatus TsEntitySegmentMetaManager::GetAllBlockItems(TSEntityID entity_id,
-                                                    std::vector<TsEntitySegmentBlockItem*>* blk_items) {
+                                                    std::vector<TsEntitySegmentBlockItem>* blk_items) {
   TsEntityItem entity_item{entity_id};
   bool is_exist;
   KStatus s = entity_header_.GetEntityItem(entity_id, entity_item, is_exist);
@@ -161,12 +159,13 @@ KStatus TsEntitySegmentMetaManager::GetAllBlockItems(TSEntityID entity_id,
   uint64_t last_blk_id = entity_item.cur_block_id;
 
   TsEntitySegmentBlockItem* cur_blk_item;
+  TsSliceGuard cur_blk_item_guard;
   while (last_blk_id > 0) {
-    s = block_header_.GetBlockItem(last_blk_id, &cur_blk_item);
+    s = block_header_.GetBlockItem(last_blk_id, &cur_blk_item, &cur_blk_item_guard);
     if (s != KStatus::SUCCESS) {
       return s;
     }
-    blk_items->push_back(cur_blk_item);
+    blk_items->push_back(*cur_blk_item);
     last_blk_id = cur_blk_item->prev_block_id;
   }
   return KStatus::SUCCESS;
@@ -190,9 +189,10 @@ KStatus TsEntitySegmentMetaManager::GetBlockSpans(const TsBlockItemFilterParams&
   uint64_t last_blk_id = entity_item.cur_block_id;
 
   TsEntitySegmentBlockItem* cur_blk_item;
+  TsSliceGuard block_item_guard;
   TsBlockSpan* template_blk_span = nullptr;
   while (last_blk_id > 0) {
-    s = block_header_.GetBlockItem(last_blk_id, &cur_blk_item, ts_scan_stats);
+    s = block_header_.GetBlockItem(last_blk_id, &cur_blk_item, &block_item_guard, ts_scan_stats);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("get block item failed, entity_id=%lu, blk_id=%lu", filter.entity_id, last_blk_id);
       return s;
@@ -462,33 +462,25 @@ KStatus TsEntityBlock::LoadColData(int32_t col_idx, const std::vector<AttributeI
   return KStatus::SUCCESS;
 }
 
-KStatus TsEntityBlock::LoadAggData(int32_t col_idx, TSSlice buffer) {
+KStatus TsEntityBlock::LoadAggData(int32_t col_idx, TsSliceGuard&& buffer) {
   if (column_blocks_[col_idx + 1] == nullptr) {
     column_blocks_[col_idx + 1] = std::make_shared<TsEntitySegmentColumnBlock>();
   }
-  if (buffer.len > 0) {
-    column_blocks_[col_idx + 1]->agg.assign(buffer.data, buffer.len);
-    TsLRUBlockCache::GetInstance().AddMemory(this, buffer.len);
+  size_t buffer_len = buffer.size();
+  if (buffer_len > 0) {
+    column_blocks_[col_idx + 1]->agg = std::move(buffer);
+    TsLRUBlockCache::GetInstance().AddMemory(this, buffer_len);
   }
   return KStatus::SUCCESS;
 }
 
-KStatus TsEntityBlock::LoadBlockInfo(TSSlice buffer, int32_t col_idx) {
-  if (-1 == col_idx) {
-    for (int i = 0; i < n_cols_; ++i) {
-      block_info_.col_block_offset[i] = *reinterpret_cast<uint32_t*>(buffer.data + sizeof(uint32_t) * i);
-    }
-  } else {
-    block_info_.col_block_offset[col_idx] = *reinterpret_cast<uint32_t*>(buffer.data + sizeof(uint32_t) * col_idx);
-    block_info_.col_block_offset[col_idx + 1] = *reinterpret_cast<uint32_t*>(buffer.data +
-                                                                  sizeof(uint32_t) * (col_idx + 1));
-  }
+KStatus TsEntityBlock::LoadBlockInfo(TsSliceGuard&& buffer) {
+  block_info_.col_block_offset = std::move(buffer);
   return KStatus::SUCCESS;
 }
 
-KStatus TsEntityBlock::LoadAggInfo(TSSlice buffer) {
-  block_info_.col_agg_offset = reinterpret_cast<uint32_t*>(malloc(sizeof(uint32_t) * n_cols_));
-  memcpy(block_info_.col_agg_offset, buffer.data, n_cols_ * sizeof(uint32_t));
+KStatus TsEntityBlock::LoadAggInfo(TsSliceGuard&& buffer) {
+  block_info_.col_agg_offset = std::move(buffer);
   return KStatus::SUCCESS;
 }
 
@@ -841,15 +833,14 @@ inline KStatus TsEntitySegment::GetBlockSpans(const TsBlockItemFilterParams& fil
 
 inline KStatus TsEntitySegment::GetBlockData(TsEntityBlock* block, std::string& data) {
   // get compressed data
-  TSSlice buffer;
-  buffer.len = block->GetBlockLength();
-  KStatus s = block_file_.ReadData(block->GetBlockOffset(), &buffer.data, buffer.len);
+  TsSliceGuard buffer;
+  KStatus s = block_file_.ReadData(block->GetBlockOffset(), &buffer, block->GetBlockLength());
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("TsEntitySegment::GetBlockData read block data[offset=%lu, length=%d] failed",
               block->GetBlockOffset(), block->GetBlockLength());
     return s;
   }
-  data.append(buffer.data, buffer.len);
+  data.append(buffer.data(), buffer.size());
   return KStatus::SUCCESS;
 }
 
@@ -867,22 +858,21 @@ KStatus TsEntitySegment::GetColumnBlock(int32_t col_idx, const std::vector<Attri
   block->WrLock();
   Defer defer([&]() { block->Unlock(); });
   // init block info
-  if (!block->GetBlockInfo().col_block_offset.count(col_idx) ||
-      !block->GetBlockInfo().col_block_offset.count(col_idx + 1)) {
-    TSSlice buffer;
-    buffer.len = sizeof(uint32_t) * block->GetNCols();
-    KStatus s = block_file_.ReadData(block->GetBlockOffset(), &buffer.data, buffer.len);
+  if (block->GetBlockInfo().col_block_offset.empty()) {
+    TsSliceGuard buffer;
+    KStatus s = block_file_.ReadData(block->GetBlockOffset(), &buffer, sizeof(uint32_t) * block->GetNCols());
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("TsEntitySegment::GetColumnBlock read block info data failed")
       return s;
     }
-    s = block->LoadBlockInfo(buffer, col_idx);
+    size_t buffer_size = buffer.size();
+    s = block->LoadBlockInfo(std::move(buffer));
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("TsEntitySegment::GetColumnBlock block info init failed")
       return s;
     }
      if (ts_scan_stats) {
-      ts_scan_stats->block_bytes += buffer.len;
+      ts_scan_stats->block_bytes += buffer_size;
     }
   }
   // init column block
@@ -891,23 +881,23 @@ KStatus TsEntitySegment::GetColumnBlock(int32_t col_idx, const std::vector<Attri
     uint32_t start_offset = 0;
     const TsEntitySegmentBlockInfo& block_info = block->GetBlockInfo();
     if (col_idx != -1) {
-      start_offset = block_info.col_block_offset.at(col_idx);
+      start_offset = reinterpret_cast<const uint32_t*>(block_info.col_block_offset.data())[col_idx];
     }
-    uint32_t end_offset = block_info.col_block_offset.at(col_idx + 1);
-    TSSlice buffer;
-    buffer.len = end_offset - start_offset;
-    KStatus s = block_file_.ReadData(block->GetBlockOffset() + col_offsets_len + start_offset, &buffer.data, buffer.len);
+    uint32_t end_offset = reinterpret_cast<const uint32_t*>(block_info.col_block_offset.data())[col_idx + 1];
+    TsSliceGuard buffer;
+    KStatus s = block_file_.ReadData(block->GetBlockOffset() + col_offsets_len + start_offset,
+                                     &buffer, end_offset - start_offset);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("TsEntitySegment::GetColumnBlock read column[%u] block data failed", col_idx + 1);
       return s;
     }
-    s = block->LoadColData(col_idx, metric_schema, {buffer.data, buffer.len});
+    s = block->LoadColData(col_idx, metric_schema, {buffer.data(), buffer.size()});
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("TsEntitySegment::GetColumnBlock column[%u] block init failed", col_idx + 1);
       return s;
     }
     if (ts_scan_stats) {
-      ts_scan_stats->block_bytes += buffer.len;
+      ts_scan_stats->block_bytes += buffer.size();
     }
   }
   return KStatus::SUCCESS;
@@ -915,56 +905,55 @@ KStatus TsEntitySegment::GetColumnBlock(int32_t col_idx, const std::vector<Attri
 
 inline KStatus TsEntitySegment::GetAggData(TsEntityBlock *block, std::string& data) {
   // get agg data
-  TSSlice col_agg_buffer;
-  col_agg_buffer.len = block->GetAggLength();
-  KStatus s = agg_file_.ReadAggData(block->GetAggOffset(), &col_agg_buffer.data, col_agg_buffer.len);
+  TsSliceGuard col_agg_buffer;
+  KStatus s = agg_file_.ReadAggData(block->GetAggOffset(), &col_agg_buffer, block->GetAggLength());
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("TsEntitySegment::GetAggData read agg block[offset=%lu, length=%d] data failed",
               block->GetAggOffset(), block->GetAggLength());
     return s;
   }
-  data.append(col_agg_buffer.data, col_agg_buffer.len);
+  data.append(col_agg_buffer.data(), col_agg_buffer.size());
   return KStatus::SUCCESS;
 }
 
 KStatus TsEntitySegment::GetColumnAgg(int32_t col_idx, TsEntityBlock *block, TsScanStats* ts_scan_stats) {
   block->WrLock();
   Defer defer([&]() { block->Unlock(); });
-  if (block->GetBlockInfo().col_agg_offset == nullptr) {
-    TSSlice agg_offsets;
-    agg_offsets.len = sizeof(uint32_t) * (block->GetNCols() - 1);
-    KStatus s = agg_file_.ReadAggData(block->GetAggOffset(), &agg_offsets.data, agg_offsets.len);
+  if (block->GetBlockInfo().col_agg_offset.empty()) {
+    TsSliceGuard agg_offsets;
+    KStatus s = agg_file_.ReadAggData(block->GetAggOffset(), &agg_offsets, sizeof(uint32_t) * (block->GetNCols() - 1));
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("TsEntitySegment::GetColumnBlock read agg data failed")
       return s;
     }
-    s = block->LoadAggInfo(agg_offsets);
+    size_t agg_offsets_size = agg_offsets.size();
+    s = block->LoadAggInfo(std::move(agg_offsets));
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("TsEntitySegment::GetColumnBlock agg info init failed")
       return s;
     }
     if (ts_scan_stats) {
-      ts_scan_stats->agg_bytes += agg_offsets.len;
+      ts_scan_stats->agg_bytes += agg_offsets_size;
     }
   }
   if (!block->HasAggDataNoLock(col_idx)) {
     uint32_t agg_offsets_len = sizeof(uint32_t) * (block->GetNCols() - 1);
     uint32_t start_offset = 0;
     if (col_idx != 0) {
-      start_offset = block->GetBlockInfo().col_agg_offset[col_idx - 1];
+      start_offset = reinterpret_cast<const uint32_t*>(block->GetBlockInfo().col_agg_offset.data())[col_idx - 1];
     }
-    uint32_t end_offset = block->GetBlockInfo().col_agg_offset[col_idx];
-    TSSlice col_agg_buffer;
-    col_agg_buffer.len = end_offset - start_offset;
+    uint32_t end_offset = reinterpret_cast<const uint32_t*>(block->GetBlockInfo().col_agg_offset.data())[col_idx];
+    TsSliceGuard col_agg_buffer;
     KStatus s = agg_file_.ReadAggData(block->GetAggOffset() + agg_offsets_len + start_offset,
-                                      &col_agg_buffer.data, col_agg_buffer.len);
+                                      &col_agg_buffer, end_offset - start_offset);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("TsEntitySegment::GetColumnBlock read column[%u] block data failed", col_idx + 1);
       return s;
     }
-    block->LoadAggData(col_idx, {col_agg_buffer.data, col_agg_buffer.len});
+    size_t col_agg_buffer_size = col_agg_buffer.size();
+    block->LoadAggData(col_idx, std::move(col_agg_buffer));
     if (ts_scan_stats) {
-      ts_scan_stats->agg_bytes += col_agg_buffer.len;
+      ts_scan_stats->agg_bytes += col_agg_buffer_size;
     }
   }
 

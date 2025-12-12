@@ -82,6 +82,7 @@ class TsSliceGuard {
  private:
   TSSlice slice;
   std::string str;
+  std::unique_ptr<char[]> shared_data;
 
  public:
   TsSliceGuard() : slice{nullptr, 0} {}
@@ -104,6 +105,7 @@ class TsSliceGuard {
       this->slice = TSSlice{this->str.data(), this->str.size()};
     } else {
       this->slice = other.slice;
+      this->shared_data = std::move(other.shared_data);
     }
     return *this;
   }
@@ -116,6 +118,12 @@ class TsSliceGuard {
   bool empty() const { return slice.len == 0; }
 
   const std::string& AsString() const { return str; }
+  void allocate(size_t n) {
+    std::unique_ptr<char[]> buffer(new char[n]);
+    shared_data = std::move(buffer);
+    slice.data = shared_data.get();
+    slice.len = n;
+  }
   void swap(std::string& strVal) {
     if (str.data() != slice.data) {
       strVal = {slice.data, slice.len};

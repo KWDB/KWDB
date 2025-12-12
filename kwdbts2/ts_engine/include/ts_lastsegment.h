@@ -91,6 +91,9 @@ class TsLastSegment : public TsSegmentBase {
   std::unique_ptr<TsLastSegBlockCache> block_cache_;
 
   TsLastSegmentFooter footer_;
+  TsSliceGuard footer_guard_;
+
+  TsSliceGuard block_index_data_;
 
   explicit TsLastSegment(uint32_t file_number, std::unique_ptr<TsRandomReadFile>&& file)
       : file_number_(file_number), file_(std::move(file)) {}
@@ -111,7 +114,7 @@ class TsLastSegment : public TsSegmentBase {
 
   void MarkDelete() { file_->MarkDelete(); }
 
-  KStatus GetFooter(TsLastSegmentFooter* footer) const;
+  KStatus GetFooter(TsLastSegmentFooter* footer);
 
   KStatus GetAllBlockIndex(std::vector<TsLastSegmentBlockIndex>* block_indexes);
 
@@ -131,7 +134,6 @@ class TsLastSegment : public TsSegmentBase {
   }
 
  private:
-  KStatus GetAllBlockIndex(std::vector<TsLastSegmentBlockIndex>*) const;
   KStatus GetBlock(int block_id, std::shared_ptr<TsLastBlock>* block) const;
 };
 
@@ -150,7 +152,7 @@ class TsLastSegment::TsLastSegBlockCache {
 
   KStatus GetAllBlockIndex(std::vector<TsLastSegmentBlockIndex>** block_indexes) const;
   KStatus GetBlockIndex(int block_id, TsLastSegmentBlockIndex** index) const;
-  KStatus GetBlockInfo(int block_id, TsLastSegmentBlockInfo** info) const;
+  KStatus GetBlockInfo(int block_id, TsLastSegmentBlockInfoWithData** info) const;
 };
 
 class TsLastSegment::TsLastSegBlockCache::BlockIndexCache {
@@ -168,13 +170,13 @@ class TsLastSegment::TsLastSegBlockCache::BlockInfoCache {
  private:
   TsLastSegBlockCache* lastseg_cache_;
   std::vector<uint8_t> cache_flag_;
-  std::vector<TsLastSegmentBlockInfo> block_infos_;
+  std::vector<TsLastSegmentBlockInfoWithData> block_infos_;
   std::shared_mutex mu_;
 
  public:
   explicit BlockInfoCache(TsLastSegBlockCache* lastseg_cache, int nblocks)
       : lastseg_cache_(lastseg_cache), cache_flag_(nblocks, 0), block_infos_(nblocks) {}
-  KStatus GetBlockInfo(int block_id, TsLastSegmentBlockInfo** info);
+  KStatus GetBlockInfo(int block_id, TsLastSegmentBlockInfoWithData** info);
 };
 
 }  // namespace kwdbts

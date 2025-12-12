@@ -703,7 +703,7 @@ KStatus TsVGroup::Compact(bool* compacted) {
 }
 
 KStatus TsVGroup::FlushImmSegment(const std::shared_ptr<TsMemSegment>& mem_seg) {
-  TsIOEnv* env = &TsMMapIOEnv::GetInstance();
+  TsIOEnv* env = &TsIOEnv::GetInstance();
 
   std::unordered_map<std::shared_ptr<const TsPartitionVersion>, TsLastSegmentBuilder> builders;
   std::unordered_set<std::shared_ptr<const TsPartitionVersion>> new_created_partitions;

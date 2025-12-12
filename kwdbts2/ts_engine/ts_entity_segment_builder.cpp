@@ -29,7 +29,7 @@
 namespace kwdbts {
 
 KStatus TsEntitySegmentEntityItemFileBuilder::Open() {
-  TsIOEnv* env = &TsMMapIOEnv::GetInstance();
+  TsIOEnv* env = &TsIOEnv::GetInstance();
   if (env->NewAppendOnlyFile(file_path_, &w_file_, true, -1) != KStatus::SUCCESS) {
     LOG_ERROR("TsEntitySegmentEntityItemFileBuilder NewAppendOnlyFile failed, file_path=%s", file_path_.c_str())
     return KStatus::FAIL;
@@ -48,7 +48,7 @@ KStatus TsEntitySegmentEntityItemFileBuilder::AppendEntityItem(TsEntityItem& ent
 }
 
 KStatus TsEntitySegmentBlockItemFileBuilder::Open() {
-  TsIOEnv* env = &TsMMapIOEnv::GetInstance();
+  TsIOEnv* env = &TsIOEnv::GetInstance();
   if (env->NewAppendOnlyFile(file_path_, &w_file_, false, file_size_) != KStatus::SUCCESS) {
     LOG_ERROR("TsEntitySegmentBlockItemFile NewAppendOnlyFile failed, file_path=%s", file_path_.c_str())
     return KStatus::FAIL;
@@ -77,7 +77,7 @@ KStatus TsEntitySegmentBlockItemFileBuilder::AppendBlockItem(TsEntitySegmentBloc
 }
 
 KStatus TsEntitySegmentBlockFileBuilder::Open() {
-  TsIOEnv* env = &TsMMapIOEnv::GetInstance();
+  TsIOEnv* env = &TsIOEnv::GetInstance();
   if (env->NewAppendOnlyFile(file_path_, &w_file_, false, file_size_) != KStatus::SUCCESS) {
     LOG_ERROR("TsEntitySegmentBlockFileBuilder NewAppendOnlyFile failed, file_path=%s", file_path_.c_str())
     return KStatus::FAIL;
@@ -101,7 +101,7 @@ KStatus TsEntitySegmentBlockFileBuilder::AppendBlock(const TSSlice& block, uint6
 }
 
 KStatus TsEntitySegmentAggFileBuilder::Open() {
-  TsIOEnv* env = &TsMMapIOEnv::GetInstance();
+  TsIOEnv* env = &TsIOEnv::GetInstance();
   if (env->NewAppendOnlyFile(file_path_, &w_file_, false, file_size_) != KStatus::SUCCESS) {
     LOG_ERROR("TsEntitySegmentAggFile NewAppendOnlyFile failed, file_path=%s", file_path_.c_str())
     return KStatus::FAIL;
@@ -137,11 +137,6 @@ TsEntityBlockBuilder::TsEntityBlockBuilder(uint32_t table_id, uint32_t table_ver
     if (isVarLenType(d_type)) {
       column_block.buffer.resize(EngineOptions::max_rows_per_block * sizeof(uint32_t));
     }
-  }
-  // block_info_.col_block_offset.resize(n_cols_);
-  if (block_info_.col_agg_offset != nullptr) {
-    free(block_info_.col_agg_offset);
-    block_info_.col_agg_offset = nullptr;
   }
 }
 
@@ -303,10 +298,10 @@ KStatus TsEntityBlockBuilder::GetCompressData(TsEntitySegmentBlockItem& blk_item
       mgr.CompressData(plain, b, n_rows_, &compressed, first, second);
       data_buffer.append(compressed);
     }
-    // record col offset
-    block_info_.col_block_offset[col_idx] = data_buffer.size() - block_header_size;
+    // col offset
+    uint32_t col_offset = data_buffer.size() - block_header_size;
     // write col data offset
-    memcpy(data_buffer.data() + col_idx * sizeof(uint32_t), &(block_info_.col_block_offset[col_idx]), sizeof(uint32_t));
+    memcpy(data_buffer.data() + col_idx * sizeof(uint32_t), &col_offset, sizeof(uint32_t));
     // calculate aggregate
     if (0 == col_idx) {
       for (int row_idx = 0; row_idx < n_rows_; ++row_idx) {
@@ -407,20 +402,13 @@ void TsEntityBlockBuilder::Clear() {
     if (isVarLenType(d_type)) {
       column_block.buffer.resize(EngineOptions::max_rows_per_block * sizeof(uint32_t));
     }
-    column_block.agg.clear();
     column_block.var_rows.clear();
   }
-  if (block_info_.col_agg_offset != nullptr) {
-    free(block_info_.col_agg_offset);
-    block_info_.col_agg_offset = nullptr;
-  }
-  block_info_.col_block_offset.clear();
-  // block_info_.col_block_offset.resize(n_cols_);
 }
 
 KStatus TsEntitySegmentBuilder::NewLastSegmentFile(std::unique_ptr<TsAppendOnlyFile>* file,
                                                    uint64_t* file_number) {
-  TsIOEnv* env = &TsMMapIOEnv::GetInstance();
+  TsIOEnv* env = &TsIOEnv::GetInstance();
   *file_number = version_manager_->NewFileNumber();
   auto filepath = root_path_ / LastSegmentFileName(*file_number);
   return env->NewAppendOnlyFile(filepath, file);

@@ -45,14 +45,14 @@ namespace kwdbts {
 int TsLastSegment::kNRowPerBlock = 4096;
 
 static KStatus LoadBlockInfo(TsRandomReadFile* file, const TsLastSegmentBlockIndex& index,
-                             TsLastSegmentBlockInfo* info) {
+                             TsLastSegmentBlockInfoWithData* info) {
   assert(info != nullptr);
-  TSSlice result;
-  auto s = file->Read(index.info_offset, index.length, &result, nullptr);
+  auto s = file->Read(index.info_offset, index.length, &info->data);
   if (s != SUCCESS) {
     return s;
   }
-  return DecodeBlockInfo(result, info);
+  TSSlice data{info->data.data(), info->data.size()};
+  return DecodeBlockInfo(data, info);
 }
 
 KStatus TsLastSegment::TsLastSegBlockCache::BlockIndexCache::GetBlockIndices(
@@ -77,7 +77,8 @@ KStatus TsLastSegment::TsLastSegBlockCache::BlockIndexCache::GetBlockIndices(
   return SUCCESS;
 }
 
-KStatus TsLastSegment::TsLastSegBlockCache::BlockInfoCache::GetBlockInfo(int block_id, TsLastSegmentBlockInfo** info) {
+KStatus TsLastSegment::TsLastSegBlockCache::BlockInfoCache::GetBlockInfo(int block_id,
+                                                                         TsLastSegmentBlockInfoWithData** info) {
   {
     if (cache_flag_[block_id] == 1) {
       *info = &block_infos_[block_id];
@@ -94,7 +95,7 @@ KStatus TsLastSegment::TsLastSegBlockCache::BlockInfoCache::GetBlockInfo(int blo
   if (s == FAIL) {
     LOG_ERROR("cannot load block index from last segment");
   }
-  TsLastSegmentBlockInfo tmp_info;
+  TsLastSegmentBlockInfoWithData tmp_info;
   s = LoadBlockInfo(lastseg_cache_->segment_->file_.get(), *index, &tmp_info);
   if (s == FAIL) {
     LOG_ERROR("cannot load block info from last segment");
@@ -105,47 +106,46 @@ KStatus TsLastSegment::TsLastSegBlockCache::BlockInfoCache::GetBlockInfo(int blo
   return SUCCESS;
 }
 
-KStatus TsLastSegment::GetFooter(TsLastSegmentFooter* footer) const {
+KStatus TsLastSegment::GetFooter(TsLastSegmentFooter* footer) {
   auto sz = file_->GetFileSize();
   if (sz < sizeof(TsLastSegmentFooter)) {
     LOG_ERROR("lastsegment file corrupted");
     return FAIL;
   }
-  TSSlice result;
   size_t offset = file_->GetFileSize() - sizeof(TsLastSegmentFooter);
-  auto s = file_->Read(offset, sizeof(TsLastSegmentFooter), &result, reinterpret_cast<char*>(footer));
-  if (s == FAIL || result.len != sizeof(TsLastSegmentFooter)) {
+  auto s = file_->Read(offset, sizeof(TsLastSegmentFooter), &footer_guard_);
+  if (s == FAIL || footer_guard_.size() != sizeof(TsLastSegmentFooter)) {
     LOG_ERROR("last segment[%s] GetFooter failed.", file_->GetFilePath().c_str());
     return s;
   }
   // important, Read function may not fill the buffer;
-  return DecodeFooter(result, footer);
+  TSSlice data{footer_guard_.data(), footer_guard_.size()};
+  return DecodeFooter(data, footer);
 }
 
 KStatus TsLastSegment::GetAllBlockIndex(std::vector<TsLastSegmentBlockIndex>* block_indices) {
   assert(footer_.magic_number == FOOTER_MAGIC);
   std::vector<TsLastSegmentBlockIndex> tmp_indices;
   tmp_indices.resize(footer_.n_data_block);
-  TSSlice result;
-  auto buf = std::make_unique<char[]>(footer_.n_data_block * sizeof(TsLastSegmentBlockIndex));
-  auto s = file_->Read(footer_.block_info_idx_offset, tmp_indices.size() * sizeof(TsLastSegmentBlockIndex), &result,
-                       buf.get());
+  auto s = file_->Read(footer_.block_info_idx_offset, tmp_indices.size() * sizeof(TsLastSegmentBlockIndex),
+                       &block_index_data_);
   if (s == FAIL) {
     LOG_ERROR("cannot read data from file");
     return s;
   }
   constexpr size_t kIndexSize = sizeof(TsLastSegmentBlockIndex);
-  if (result.len != footer_.n_data_block * kIndexSize) {
+  if (block_index_data_.size() != footer_.n_data_block * kIndexSize) {
     LOG_ERROR("last segment[%s] GetAllBlockIndex failed, result.len[%ld] != footer_.n_data_block * kIndexSize[%ld]",
-              file_->GetFilePath().c_str(), result.len, footer_.n_data_block * kIndexSize);
+              file_->GetFilePath().c_str(), block_index_data_.size(), footer_.n_data_block * kIndexSize);
     return FAIL;
   }
+  TSSlice data{block_index_data_.data(), block_index_data_.size()};
   for (int i = 0; i < tmp_indices.size(); ++i) {
-    TSSlice slice{result.data, kIndexSize};
+    TSSlice slice{data.data, kIndexSize};
     DecodeBlockIndex(slice, &tmp_indices[i]);
-    RemovePrefix(&result, kIndexSize);
+    RemovePrefix(&data, kIndexSize);
   }
-  assert(result.len == 0);
+  assert(data.len == 0);
   block_indices->swap(tmp_indices);
   return SUCCESS;
 }
@@ -157,21 +157,24 @@ class TsLastBlock : public TsBlock {
   int block_id_;
 
   TsLastSegmentBlockIndex block_index_;
-  TsLastSegmentBlockInfo block_info_;
+  TsLastSegmentBlockInfoWithData* block_info_;
 
   class ColumnCache {
    private:
     TsRandomReadFile* file_;
-    TsLastSegmentBlockInfo* block_info_;
+    TsLastSegmentBlockInfoWithData* block_info_;
 
     std::vector<std::unique_ptr<TsColumnBlock>> column_blocks_;
 
     TsSliceGuard entity_ids_;
+    TsSliceGuard entity_ids_raw_data_;
     TsSliceGuard timestamps_;
+    TsSliceGuard timestamps_raw_data_;
     TsSliceGuard osn_;
+    TsSliceGuard osn_raw_data_;
 
    public:
-    ColumnCache(TsRandomReadFile* file, TsLastSegmentBlockInfo* block_info)
+    ColumnCache(TsRandomReadFile* file, TsLastSegmentBlockInfoWithData* block_info)
         : file_(file), block_info_(block_info), column_blocks_(block_info->ncol) {}
     KStatus GetColumnBlock(int col_id, TsColumnBlock** block, const std::vector<AttributeInfo>* schema) {
       if (column_blocks_[col_id] != nullptr) {
@@ -184,10 +187,10 @@ class TsLastBlock : public TsBlock {
       const auto& col_info = block_info_->col_infos[col_id];
       size_t length = col_info.bitmap_len + col_info.fixdata_len + col_info.vardata_len;
 
-      TSSlice result{nullptr, 0};
-      auto s = file_->Read(offset, length, &result, nullptr);
-      if (s == FAIL || result.len != length) {
-        LOG_ERROR("cannot read column data from file, expect %lu, result %lu", length, result.len);
+      TsSliceGuard result;
+      auto s = file_->Read(offset, length, &result);
+      if (s == FAIL || result.size() != length) {
+        LOG_ERROR("cannot read column data from file, expect %lu, result %lu", length, result.size());
         return s;
       }
       TsColumnCompressInfo info;
@@ -217,12 +220,12 @@ class TsLastBlock : public TsBlock {
       const auto& mgr = CompressorManager::GetInstance();
       auto offset = block_info_->block_offset;
       size_t length = block_info_->entity_id_len;
-      TSSlice result;
-      auto s = file_->Read(offset, length, &result, nullptr);
+      auto s = file_->Read(offset, length, &entity_ids_raw_data_);
       if (s == FAIL) {
         return FAIL;
       }
-      bool ok = mgr.DecompressData(result, nullptr, block_info_->nrow, &entity_ids_);
+      TSSlice data{entity_ids_raw_data_.data(), entity_ids_raw_data_.size()};
+      bool ok = mgr.DecompressData(data, nullptr, block_info_->nrow, &entity_ids_);
       *entity_ids = reinterpret_cast<TSEntityID*>(entity_ids_.data());
       return ok ? SUCCESS : FAIL;
     }
@@ -236,11 +239,11 @@ class TsLastBlock : public TsBlock {
       const auto& mgr = CompressorManager::GetInstance();
       auto offset = block_info_->block_offset + block_info_->entity_id_len;
       size_t length = block_info_->entity_id_len;
-      TSSlice result;
-      auto s = file_->Read(offset, length, &result, nullptr);
+      auto s = file_->Read(offset, length, &osn_raw_data_);
       if (s == FAIL) {
         return FAIL;
       }
+      TSSlice result{osn_raw_data_.data(), osn_raw_data_.size()};
       bool ok = mgr.DecompressData(result, nullptr, block_info_->nrow, &osn_);
       *osn = reinterpret_cast<TS_OSN*>(osn_.data());
       return ok ? SUCCESS : FAIL;
@@ -256,11 +259,11 @@ class TsLastBlock : public TsBlock {
       offset += block_info_->col_infos[0].offset + block_info_->col_infos[0].bitmap_len;
       auto length = block_info_->col_infos[0].fixdata_len;
       const auto& mgr = CompressorManager::GetInstance();
-      TSSlice result;
-      auto s = file_->Read(offset, length, &result, nullptr);
+      auto s = file_->Read(offset, length, &timestamps_raw_data_);
       if (s == FAIL) {
         return FAIL;
       }
+      TSSlice result{timestamps_raw_data_.data(), timestamps_raw_data_.size()};
       bool ok = mgr.DecompressData(result, nullptr, block_info_->nrow, &timestamps_);
       *timestamps = reinterpret_cast<timestamp64*>(timestamps_.data());
       return ok ? SUCCESS : FAIL;
@@ -271,17 +274,17 @@ class TsLastBlock : public TsBlock {
 
  public:
   TsLastBlock(const TsLastSegment* lastseg, int block_id, TsLastSegmentBlockIndex block_index,
-              TsLastSegmentBlockInfo block_info)
+              TsLastSegmentBlockInfoWithData* block_info)
       : lastsegment_(lastseg),
         block_id_(block_id),
         block_index_(block_index),
-        block_info_(std::move(block_info)),
-        column_block_cache_(std::make_unique<ColumnCache>(lastsegment_->file_.get(), &block_info_)) {}
+        block_info_(block_info),
+        column_block_cache_(std::make_unique<ColumnCache>(lastsegment_->file_.get(), block_info_)) {}
   ~TsLastBlock() = default;
   uint32_t GetBlockVersion() const override { return CURRENT_BLOCK_VERSION; }
   TSTableID GetTableId() override { return block_index_.table_id; }
   uint32_t GetTableVersion() override { return block_index_.table_version; }
-  size_t GetRowNum() override { return block_info_.nrow; }
+  size_t GetRowNum() override { return block_info_->nrow; }
 
   KStatus GetColBitmap(uint32_t col_id, const std::vector<AttributeInfo>* schema,
                        std::unique_ptr<TsBitmapBase>* bitmap, TsScanStats* ts_scan_stats = nullptr) override {
@@ -415,14 +418,14 @@ KStatus TsLastSegment::GetBlock(int block_id, std::shared_ptr<TsLastBlock>* bloc
     return s;
   }
 
-  TsLastSegmentBlockInfo* info;
+  TsLastSegmentBlockInfoWithData* info;
   s = block_cache_->GetBlockInfo(block_id, &info);
   if (s == FAIL) {
     LOG_ERROR("cannot get block info");
     return s;
   }
 
-  *block = std::make_unique<TsLastBlock>(this, block_id, *index, *info);
+  *block = std::make_unique<TsLastBlock>(this, block_id, *index, info);
   return SUCCESS;
 }
 
@@ -446,7 +449,7 @@ KStatus TsLastSegment::TsLastSegBlockCache::GetBlockIndex(int block_id, TsLastSe
   return SUCCESS;
 }
 
-inline KStatus TsLastSegment::TsLastSegBlockCache::GetBlockInfo(int block_id, TsLastSegmentBlockInfo** info) const {
+inline KStatus TsLastSegment::TsLastSegBlockCache::GetBlockInfo(int block_id, TsLastSegmentBlockInfoWithData** info) const {
   return block_info_cache_->GetBlockInfo(block_id, info);
 }
 
@@ -466,29 +469,31 @@ KStatus TsLastSegment::Open() {
   // Open()
   int nmeta = footer_.n_meta_block;
   if (nmeta != 0) {
-    TSSlice result;
-    s = file_->Read(footer_.meta_block_idx_offset, nmeta * 16, &result, nullptr);
+    TsSliceGuard result;
+    s = file_->Read(footer_.meta_block_idx_offset, nmeta * 16, &result);
     if (s == FAIL) {
       return s;
     }
     std::vector<size_t> meta_offset(nmeta);
     std::vector<size_t> meta_len(nmeta);
+    TSSlice data{result.data(), result.size()};
     for (int i = 0; i < nmeta; ++i) {
-      GetFixed64(&result, &meta_offset[i]);
-      GetFixed64(&result, &meta_len[i]);
+      GetFixed64(&data, &meta_offset[i]);
+      GetFixed64(&data, &meta_len[i]);
     }
 
     for (int i = 0; i < nmeta; ++i) {
-      s = file_->Read(meta_offset[i], meta_len[i], &result, nullptr);
+      s = file_->Read(meta_offset[i], meta_len[i], &result);
       if (s == FAIL) {
         return FAIL;
       }
-      uint8_t len = static_cast<uint8_t>(result.data[0]);
-      std::string_view sv{result.data + 1, len};
-      result.data += len + 1;
-      result.len -= len + 1;
+      data = {result.data(), result.size()};
+      uint8_t len = static_cast<uint8_t>(data.data[0]);
+      std::string_view sv{data.data + 1, len};
+      data.data += len + 1;
+      data.len -= len + 1;
       if (sv == LastSegmentBloomFilter::Name()) {
-        s = TsBloomFilter::FromData(result, &bloom_filter_);
+        s = TsBloomFilter::FromData(data, &bloom_filter_);
       } else {
         assert(false);
       }

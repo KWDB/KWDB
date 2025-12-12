@@ -432,6 +432,11 @@ TEST_F(TsEntitySegmentTest, simpleInsertDoubleCompact) {
             s = block_span->GetFixLenColAddr(3, &col_values[2], &bitmap);
             EXPECT_EQ(s, KStatus::SUCCESS);
           }
+          uint16_t pre_count;
+          if (block_span->HasPreAgg()) {
+            block_span->GetPreCount(0, nullptr, pre_count);
+            EXPECT_EQ(pre_count, block_span->GetRowNum());
+          }
           for (int idx = 0; idx < block_span->GetRowNum(); ++idx) {
             if (i % 2 == 0) {
               EXPECT_LE(*(int32_t *)(col_values[0] + idx * 4), 1024);
@@ -643,11 +648,11 @@ TEST_F(TsEntitySegmentTest, TestEntityMinMaxRowNum) {
       ASSERT_EQ(entity_segment->GetEntityItem(eid, entity_item, is_exist), SUCCESS);
 
       if (is_exist) {
-        std::vector<TsEntitySegmentBlockItem *> blk_items;
+        std::vector<TsEntitySegmentBlockItem> blk_items;
         ASSERT_EQ(entity_segment->GetAllBlockItems(eid, &blk_items), SUCCESS);
         ASSERT_EQ(blk_items.size(), expect.nblock_in_entity_segment);
         int nrow = std::accumulate(blk_items.begin(), blk_items.end(), 0,
-                                   [](int sum, TsEntitySegmentBlockItem *blk_item) { return sum + blk_item->n_rows; });
+                                   [](int sum, TsEntitySegmentBlockItem& blk_item) { return sum + blk_item.n_rows; });
         EXPECT_EQ(nrow, expect.row_num_in_entity_segment);
       }
 

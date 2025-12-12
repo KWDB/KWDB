@@ -189,14 +189,13 @@ KStatus TsVersionManager::Recover() {
     return FAIL;
   }
   size_t size = rfile->GetFileSize();
-  TSSlice result;
-  auto buf = std::make_unique<char[]>(size);
-  s = rfile->Read(0, size, &result, buf.get());
+  TsSliceGuard result;
+  s = rfile->Read(0, size, &result);
   if (s == FAIL) {
     LOG_ERROR("can not read current version file");
     return FAIL;
   }
-  std::string_view content(result.data, result.len);
+  std::string_view content(result.data(), result.size());
   if (content.back() != '\n') {
     LOG_ERROR("current version file content is not ended with newline");
     return FAIL;
@@ -503,7 +502,13 @@ KStatus TsVersionManager::ApplyUpdate(TsVersionUpdate *update) {
         for (auto meta : it->second) {
           std::unique_ptr<TsRandomReadFile> rfile;
           auto filepath = partition_dir / LastSegmentFileName(meta.file_number);
-          auto s = env_->NewRandomReadFile(filepath, &rfile);
+          TsIOEnv* last_segment_env;
+          if (EngineOptions::g_io_mode >= TsIOMode::FIO_AND_MMAP) {
+            last_segment_env = &TsMMapIOEnv::GetInstance();
+          } else {
+            last_segment_env = &TsFIOEnv::GetInstance();
+          }
+          auto s = last_segment_env->NewRandomReadFile(filepath, &rfile);
           if (s == FAIL) {
             return FAIL;
           }
@@ -1326,18 +1331,17 @@ KStatus TsVersionManager::RecordReader::ReadRecord(std::string *record, bool *eo
     return SUCCESS;
   }
 
-  TSSlice result;
-  auto buf = std::make_unique<char[]>(sizeof(kTsVersionMagicNumber));
-  auto s = file_->Read(sizeof(kTsVersionMagicNumber), &result, buf.get());
+  TsSliceGuard result;
+  auto s = file_->Read(sizeof(kTsVersionMagicNumber), &result);
   if (s == FAIL) {
     return FAIL;
   }
-  if (result.len != sizeof(kTsVersionMagicNumber)) {
+  if (result.size() != sizeof(kTsVersionMagicNumber)) {
     *eof = true;
     return SUCCESS;
   }
 
-  uint32_t magic_number = DecodeFixed32(result.data);
+  uint32_t magic_number = DecodeFixed32(result.data());
   if (magic_number != kTsVersionMagicNumber) {
     LOG_WARN("Invalid magic number, expect %x, actual %x, ignore following records", kTsVersionMagicNumber,
              magic_number);
@@ -1345,43 +1349,38 @@ KStatus TsVersionManager::RecordReader::ReadRecord(std::string *record, bool *eo
     return SUCCESS;
   }
 
-  buf = std::make_unique<char[]>(kHeaderSize);
-  s = file_->Read(kHeaderSize, &result, buf.get());
+  s = file_->Read(kHeaderSize, &result);
   if (s == FAIL) {
     return FAIL;
   }
-  if (result.len != kHeaderSize) {
+  if (result.size() != kHeaderSize) {
     LOG_WARN("Failed to read a full record header, ignore following records");
     *eof = true;
     return SUCCESS;
   }
-  const char *ptr = result.data;
+  const char *ptr = result.data();
   uint32_t checksum = DecodeFixed16(ptr);
   ptr += sizeof(uint16_t);
   uint32_t size = DecodeFixed32(ptr);
   ptr += sizeof(uint32_t);
 
-  buf = std::make_unique<char[]>(size);
-  s = file_->Read(size, &result, buf.get());
-  if (s == FAIL) {
-    return FAIL;
-  }
-  if (result.len != size) {
+  file_->Read(size, &result);
+  if (result.size() != size) {
     *eof = true;
-    LOG_WARN("Failed to read a full record data, expect %u, actual %lu, ignore following records", size, result.len);
+    LOG_WARN("Failed to read a full record data, expect %u, actual %lu, ignore following records", size, result.size());
     return SUCCESS;
   }
 
   uint16_t tmp = 0;
   for (uint32_t i = 0; i < size; ++i) {
-    tmp += static_cast<uint8_t>(result.data[i]);
+    tmp += static_cast<uint8_t>(result.data()[i]);
   }
   if (checksum != tmp) {
     LOG_ERROR("Checksum mismatch, expect %u, actual %u, ignore following records", checksum, tmp);
     *eof = true;
     return SUCCESS;
   }
-  record->assign(result.data, size);
+  record->assign(result.data(), size);
   return SUCCESS;
 }
 

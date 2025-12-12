@@ -20,8 +20,6 @@
 
 #include "../../ts_engine/tests/test_util.h"
 
-extern DedupRule g_dedup_rule;
-
 extern "C" {
 // Tests are run in plain C++, we need a symbol for isCanceledCtx, normally
 // implemented on the Go side.
@@ -38,7 +36,7 @@ class OperatorTestBase : public ::testing::Test {
   static const string data_root;
 
   explicit OperatorTestBase() : table_id_(test_table_id) {
-    g_dedup_rule = kwdbts::DedupRule::KEEP;
+    EngineOptions::g_dedup_rule = kwdbts::DedupRule::KEEP;
     system(("rm -rf " + kw_home).c_str());
     system(("rm -rf " + data_root).c_str());
 

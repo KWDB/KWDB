@@ -24,6 +24,7 @@
 #include "kwdb_type.h"
 #include "lg_api.h"
 #include "libkwdbts2.h"
+#include "settings.h"
 
 namespace kwdbts {
 
@@ -173,21 +174,23 @@ KStatus TsMMapRandomReadFile::Prefetch(size_t offset, size_t n) {
   return SUCCESS;
 }
 
-KStatus TsMMapRandomReadFile::Read(size_t offset, size_t n, TSSlice* result, char* buffer) const {
-  if (offset + n > file_size_) {
-    n = offset > file_size_ ? 0 : file_size_ - offset;
+KStatus TsMMapRandomReadFile::Read(size_t offset, size_t n, TsSliceGuard* result) const {
+  if (offset >= file_size_ || offset + n > file_size_) {
+    LOG_ERROR("file access overflow, file path: %s, file size: %zu, offset: %zu, length: %zu",
+              path_.c_str(), file_size_, offset, n);
+    return FAIL;
   }
-  result->data = mmap_start_ + offset;
-  result->len = n;
+  *result = TsSliceGuard(TSSlice{mmap_start_ + offset, n});
   return SUCCESS;
 }
 
-KStatus TsMMapSequentialReadFile::Read(size_t n, TSSlice* slice, char* buf) {
-  if (offset_ + n > file_size_) {
-    n = offset_ > file_size_ ? 0 : file_size_ - offset_;
+KStatus TsMMapSequentialReadFile::Read(size_t n, TsSliceGuard* slice) {
+  if (offset_ >= file_size_ || offset_ + n > file_size_) {
+    LOG_ERROR("file access overflow, file path: %s, file size: %zu, offset: %zu, length: %zu",
+              path_.c_str(), file_size_, offset_, n);
+    return FAIL;
   }
-  slice->data = mmap_start_ + offset_;
-  slice->len = n;
+  *slice = TsSliceGuard(TSSlice{mmap_start_ + offset_, n});
   offset_ += n;
   return SUCCESS;
 }
@@ -337,6 +340,101 @@ KStatus TsMMapIOEnv::DeleteFile(const std::string& path) {
 TsIOEnv& TsMMapIOEnv::GetInstance() {
   static TsMMapIOEnv inst;
   return inst;
+}
+
+KStatus TsFIOEnv::NewAppendOnlyFile(const std::string& filepath, std::unique_ptr<TsAppendOnlyFile>* file,
+                                   bool overwrite, size_t offset) {
+  FILE* fp;
+  if (overwrite) {
+    offset = 0;
+  }
+  if (offset != -1 && fs::exists(filepath) && truncate(filepath.c_str(), offset) != 0) {
+    LOG_ERROR("truncate failed on file %s, offset = %zu", filepath.c_str(), offset);
+    return FAIL;
+  }
+
+  fp = fopen(filepath.c_str(), "ab");
+  if (fp == nullptr) {
+    LOG_ERROR("can not open file %s", filepath.c_str());
+    return FAIL;
+  }
+
+  if (fseek(fp, 0, SEEK_END) !=0) {
+    LOG_ERROR("fseek failed on file %s", filepath.c_str());
+    return FAIL;
+  }
+  size_t append_offset = ftell(fp);
+  auto new_file = std::make_unique<TsFIOAppendOnlyFile>(filepath, fp, append_offset);
+  *file = std::move(new_file);
+  return SUCCESS;
+}
+
+KStatus TsFIOEnv::NewRandomReadFile(const std::string& filepath, std::unique_ptr<TsRandomReadFile>* file,
+                                   size_t file_size) {
+  auto [fd, readable_size] = OpenReadOnlyFile(filepath, file_size);
+  if (fd < 0) {
+    return FAIL;
+  }
+  auto new_file = std::make_unique<TsFIORandomReadFile>(filepath, fd, readable_size);
+  *file = std::move(new_file);
+  return SUCCESS;
+}
+
+KStatus TsFIOEnv::NewSequentialReadFile(const std::string& filepath, std::unique_ptr<TsSequentialReadFile>* file,
+                                       size_t file_size) {
+  auto [fd, readable_size] = OpenReadOnlyFile(filepath, file_size);
+  if (fd < 0) {
+    return FAIL;
+  }
+
+  auto new_file = std::make_unique<TsFIOSequentialReadFile>(filepath, fd, readable_size);
+  *file = std::move(new_file);
+  return SUCCESS;
+}
+
+KStatus TsFIOEnv::NewDirectory(const std::string& path) {
+  std::error_code ec;
+  bool ok = fs::create_directories(path, ec);
+  if (!ok) {
+    if (fs::exists(path)) {
+      return SUCCESS;
+    }
+    LOG_ERROR("create directory %s failed, reason: %s", path.c_str(), ec.message().c_str());
+    return FAIL;
+  }
+  return SUCCESS;
+}
+
+KStatus TsFIOEnv::DeleteDir(const std::string& path) {
+  std::error_code ec;
+  uintmax_t n_removed = fs::remove_all(path, ec);
+  if (n_removed == -1) {
+    LOG_ERROR("cannot delete directory %s, reason: %s", path.c_str(), ec.message().c_str());
+    return FAIL;
+  }
+  return SUCCESS;
+}
+
+KStatus TsFIOEnv::DeleteFile(const std::string& path) {
+  std::error_code ec;
+  bool ok = fs::remove(path, ec);
+  if (!ok) {
+    LOG_ERROR("cannot delete directory %s, reason: %s", path.c_str(), ec.message().c_str());
+    return FAIL;
+  }
+  return SUCCESS;
+}
+
+TsIOEnv& TsFIOEnv::GetInstance() {
+  static TsFIOEnv inst;
+  return inst;
+}
+
+TsIOEnv& TsIOEnv::GetInstance() {
+  if (EngineOptions::g_io_mode <= TsIOMode::FIO_AND_MMAP) {
+    return TsFIOEnv::GetInstance();
+  }
+  return TsMMapIOEnv::GetInstance();
 }
 
 }  // namespace kwdbts

@@ -37,7 +37,7 @@
 
 using namespace kwdbts;  // NOLINT
 TEST(MMapIOV2, Write) {
-  TsIOEnv* env = &TsMMapIOEnv::GetInstance();
+  TsIOEnv* env = &TsIOEnv::GetInstance();
   std::unique_ptr<TsAppendOnlyFile> wfile;
   std::string filename = "append1";
   auto s = env->NewAppendOnlyFile(filename, &wfile);
@@ -58,9 +58,9 @@ TEST(MMapIOV2, Write) {
   s = env->NewRandomReadFile(filename, &rfile);
   ASSERT_EQ(s, SUCCESS);
   EXPECT_EQ(rfile->GetFileSize(), 11);
-  TSSlice result;
-  ASSERT_EQ(rfile->Read(0, rfile->GetFileSize(), &result, nullptr), SUCCESS);
-  std::string_view sv{result.data, result.len};
+  TsSliceGuard result;
+  ASSERT_EQ(rfile->Read(0, rfile->GetFileSize(), &result), SUCCESS);
+  std::string_view sv{result.data(), result.size()};
   EXPECT_EQ(sv, "12345543211");
 
   // reopen and overwrite the file;
@@ -78,8 +78,8 @@ TEST(MMapIOV2, Write) {
   s = env->NewRandomReadFile(filename, &rfile);
   ASSERT_EQ(s, SUCCESS);
   EXPECT_EQ(rfile->GetFileSize(), 15);
-  ASSERT_EQ(rfile->Read(0, rfile->GetFileSize(), &result, nullptr), SUCCESS);
-  sv = std::string_view{result.data, result.len};
+  ASSERT_EQ(rfile->Read(0, rfile->GetFileSize(), &result), SUCCESS);
+  sv = std::string_view{result.data(), result.size()};
   EXPECT_EQ(sv, "abcdeABCDEEDCBA");
 
   // reopen but not overwrite the file, append from the end;
@@ -97,8 +97,8 @@ TEST(MMapIOV2, Write) {
   s = env->NewRandomReadFile(filename, &rfile);
   ASSERT_EQ(s, SUCCESS);
   EXPECT_EQ(rfile->GetFileSize(), 27);
-  ASSERT_EQ(rfile->Read(0, rfile->GetFileSize(), &result, nullptr), SUCCESS);
-  sv = std::string_view{result.data, result.len};
+  ASSERT_EQ(rfile->Read(0, rfile->GetFileSize(), &result), SUCCESS);
+  sv = std::string_view{result.data(), result.size()};
   EXPECT_EQ(sv, "abcdeABCDEEDCBAqwerasdfzxcv");
 
   // reopen but not overwrite the file, append from offset = 6;
@@ -116,8 +116,8 @@ TEST(MMapIOV2, Write) {
   s = env->NewRandomReadFile(filename, &rfile);
   ASSERT_EQ(s, SUCCESS);
   EXPECT_EQ(rfile->GetFileSize(), 18);
-  ASSERT_EQ(rfile->Read(0, rfile->GetFileSize(), &result, nullptr), SUCCESS);
-  sv = std::string_view{result.data, result.len};
+  ASSERT_EQ(rfile->Read(0, rfile->GetFileSize(), &result), SUCCESS);
+  sv = std::string_view{result.data(), result.size()};
   EXPECT_EQ(sv, "abcdeAtestTESTTeSt");
 
   fs::remove(filename);
@@ -148,10 +148,10 @@ TEST(MMapIOV2, Write) {
   for (int i = 0; i < nblock; ++i) {
     int offset = 4096 * i;
     ASSERT_EQ(rfile->Prefetch(offset, 4096), SUCCESS);
-    ASSERT_EQ(rfile->Read(offset, 4096, &result, nullptr), SUCCESS);
+    ASSERT_EQ(rfile->Read(offset, 4096, &result), SUCCESS);
     for (int iloc = 0; iloc < 4096; ++iloc) {
       char expected = (i * 4096 + iloc) & 0xff;
-      ASSERT_EQ(result.data[iloc], expected);
+      ASSERT_EQ(result.data()[iloc], expected);
     }
   }
   fs::remove(filename);
@@ -164,30 +164,29 @@ TEST(MMapIOV2, SequentialRead) {
   f << "0123456789";
   f.close();
 
-  TsIOEnv* env = &TsMMapIOEnv::GetInstance();
+  TsIOEnv* env = &TsIOEnv::GetInstance();
   std::unique_ptr<TsSequentialReadFile> sfile;
   auto s = env->NewSequentialReadFile(filename, &sfile);
   ASSERT_EQ(s, SUCCESS);
 
   EXPECT_EQ(sfile->GetFileSize(), 10);
 
-  TSSlice result;
-  EXPECT_EQ(sfile->Read(1, &result, nullptr), SUCCESS);
-  std::string_view sv{result.data, result.len};
+  TsSliceGuard result;
+  EXPECT_EQ(sfile->Read(1, &result), SUCCESS);
+  std::string_view sv{result.data(), result.size()};
   EXPECT_EQ(sv, "0");
-  EXPECT_EQ(sfile->Read(5, &result, nullptr), SUCCESS);
-  sv = std::string_view{result.data, result.len};
+  EXPECT_EQ(sfile->Read(5, &result), SUCCESS);
+  sv = std::string_view{result.data(), result.size()};
   EXPECT_EQ(sv, "12345");
-  EXPECT_EQ(sfile->Read(9, &result, nullptr), SUCCESS);
-  sv = std::string_view{result.data, result.len};
+  EXPECT_EQ(sfile->Read(9, &result), FAIL);
+  EXPECT_EQ(sfile->Read(4, &result), SUCCESS);
+  sv = std::string_view{result.data(), result.size()};
   EXPECT_EQ(sv, "6789");
-  EXPECT_EQ(sfile->Read(10, &result, nullptr), SUCCESS);
-  sv = std::string_view{result.data, result.len};
-  EXPECT_EQ(sv, "");
+  EXPECT_EQ(sfile->Read(10, &result), FAIL);
 }
 
 TEST(MMapIOV2, OpenZeroSizeFile) {
-  TsIOEnv* env = &TsMMapIOEnv::GetInstance();
+  TsIOEnv* env = &TsIOEnv::GetInstance();
 
   std::string filename = "zero_size_file";
   fs::remove(filename);
@@ -200,15 +199,15 @@ TEST(MMapIOV2, OpenZeroSizeFile) {
     ASSERT_TRUE(env->NewRandomReadFile(filename, &rfile));
     EXPECT_EQ(rfile->GetFileSize(), 0);
 
-    TSSlice result;
-    EXPECT_EQ(rfile->Read(0, 10, &result, nullptr), SUCCESS);
-    EXPECT_EQ(result.len, 0);
+    TsSliceGuard result;
+    EXPECT_EQ(rfile->Read(0, 10, &result), FAIL);
+    EXPECT_EQ(result.size(), 0);
 
-    EXPECT_EQ(rfile->Read(1, 2, &result, nullptr), SUCCESS);
-    EXPECT_EQ(result.len, 0);
+    EXPECT_EQ(rfile->Read(1, 2, &result), FAIL);
+    EXPECT_EQ(result.size(), 0);
 
-    EXPECT_EQ(rfile->Read(3, 4, &result, nullptr), SUCCESS);
-    EXPECT_EQ(result.len, 0);
+    EXPECT_EQ(rfile->Read(3, 4, &result), FAIL);
+    EXPECT_EQ(result.size(), 0);
   }
 
   {
@@ -216,15 +215,15 @@ TEST(MMapIOV2, OpenZeroSizeFile) {
     ASSERT_TRUE(env->NewSequentialReadFile(filename, &rfile));
     EXPECT_EQ(rfile->GetFileSize(), 0);
 
-    TSSlice result;
-    EXPECT_EQ(rfile->Read(10, &result, nullptr), SUCCESS);
-    EXPECT_EQ(result.len, 0);
+    TsSliceGuard result;
+    EXPECT_EQ(rfile->Read(10, &result), FAIL);
+    EXPECT_EQ(result.size(), 0);
 
-    EXPECT_EQ(rfile->Read(2, &result, nullptr), SUCCESS);
-    EXPECT_EQ(result.len, 0);
+    EXPECT_EQ(rfile->Read(2, &result), FAIL);
+    EXPECT_EQ(result.size(), 0);
 
-    EXPECT_EQ(rfile->Read(4, &result, nullptr), SUCCESS);
-    EXPECT_EQ(result.len, 0);
+    EXPECT_EQ(rfile->Read(4, &result), FAIL);
+    EXPECT_EQ(result.size(), 0);
   }
   {
     std::unique_ptr<TsAppendOnlyFile> wfile;
@@ -242,7 +241,7 @@ TEST(MMapIOV2, OpenZeroSizeFile) {
 }
 
 TEST(MMapIOV2, FailedCases) {
-  TsIOEnv* env = &TsMMapIOEnv::GetInstance();
+  TsIOEnv* env = &TsIOEnv::GetInstance();
 
   // open a non-exist file
   std::string filename = "FOOO";
@@ -261,18 +260,19 @@ TEST(MMapIOV2, FailedCases) {
   EXPECT_EQ(rfile->Prefetch(1000, 1000), SUCCESS);
   EXPECT_EQ(rfile->Prefetch(5, 1000), SUCCESS);
 
-  TSSlice result;
-  EXPECT_EQ(rfile->Read(10, 1000, &result, nullptr), SUCCESS);
-  EXPECT_EQ(result.len, 0);
-  EXPECT_EQ(rfile->Read(9, 1000, &result, nullptr), SUCCESS);
-  EXPECT_EQ(result.len, 1);
-  std::string_view sv{result.data, result.len};
+  TsSliceGuard result;
+  EXPECT_EQ(rfile->Read(10, 1000, &result), FAIL);
+  EXPECT_EQ(result.size(), 0);
+  EXPECT_EQ(rfile->Read(9, 2, &result), FAIL);
+  EXPECT_EQ(rfile->Read(9, 1, &result), SUCCESS);
+  EXPECT_EQ(result.size(), 1);
+  std::string_view sv{result.data(), result.size()};
   EXPECT_EQ(sv, "9");
   fs::remove(filename);
 }
 
 TEST(MMapIOV2, ReadAfterAllocate) {
-  TsIOEnv* env = &TsMMapIOEnv::GetInstance();
+  TsIOEnv* env = &TsIOEnv::GetInstance();
   char block[4096];
   for (int i = 0; i < 4096; ++i) {
     block[i] = i & 0xff;
@@ -295,18 +295,17 @@ TEST(MMapIOV2, ReadAfterAllocate) {
   for (int i = 0; i < 10; ++i) {
     ASSERT_EQ(wfile->Append(slice), SUCCESS);
   }
-  TSSlice result;
-  char buf[4096];
+  TsSliceGuard result;
   EXPECT_EQ(rfile->Prefetch(0, 4096), SUCCESS);
-  ASSERT_EQ(rfile->Read(0, 4096, &result, buf), SUCCESS);
+  ASSERT_EQ(rfile->Read(0, 4096, &result), SUCCESS);
   for (int i = 0; i < 4096; ++i) {
-    ASSERT_EQ(result.data[i], block[i]);
+    ASSERT_EQ(result.data()[i], block[i]);
   }
   fs::remove(filepath);
 }
 
 TEST(MMapIOV2, ConcurrentReadWrite) {
-  TsIOEnv* env = &TsMMapIOEnv::GetInstance();
+  TsIOEnv* env = &TsIOEnv::GetInstance();
   std::atomic<size_t> file_size{0};
   std::atomic_bool finished{false};
   std::atomic_bool start{false};
@@ -354,16 +353,16 @@ TEST(MMapIOV2, ConcurrentReadWrite) {
       ASSERT_EQ(s, SUCCESS);
       s = rfile->Prefetch(0, fsize);
       ASSERT_EQ(s, SUCCESS);
-      TSSlice result;
+      TsSliceGuard result;
       rfile->Prefetch(0, fsize);
-      s = rfile->Read(0, fsize, &result, nullptr);
+      s = rfile->Read(0, fsize, &result);
       ASSERT_EQ(s, SUCCESS);
-      ASSERT_EQ(result.len, fsize);
+      ASSERT_EQ(result.size(), fsize);
 
       ASSERT_EQ(fsize % 4096, 0);
       int nblocks = fsize / 4096;
 
-      const char* p = result.data;
+      const char* p = result.data();
       for (int iblock = 0; iblock < nblocks; ++iblock) {
         std::default_random_engine drng(iblock);
         for (int i = 0; i < 4096; ++i) {
@@ -434,7 +433,7 @@ TEST(MMap, WriteEmptyFile_BUG_ID7BNN) {
 }
 
 // TEST(MMap, FileLock) {
-//   TsIOEnv* env = &TsMMapIOEnv::GetInstance();
+//   TsIOEnv* env = &TsIOEnv::GetInstance();
 //   std::string filename = "lock_test";
 //   fs::remove(filename);
 //   std::unique_ptr<TsAppendOnlyFile> wfile1, wfile2;

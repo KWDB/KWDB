@@ -142,9 +142,10 @@ KStatus TsMetricBlock::ParseCompressedMetricData(const std::vector<AttributeInfo
     TSSlice data_slice;
     data_slice.data = compressed_data.data + compress_info.column_data_segments[i].offset;
     data_slice.len = compress_info.column_data_segments[i].length;
+    TsSliceGuard data_guard(data_slice);
     std::unique_ptr<TsColumnBlock> colblock;
     auto s = TsColumnBlock::ParseColumnData(
-        schema[i], data_slice, compress_info.column_compress_infos[i], &colblock);
+        schema[i], data_guard, compress_info.column_compress_infos[i], &colblock);
     if (s == FAIL) {
       LOG_ERROR("parse column data error");
       return s;

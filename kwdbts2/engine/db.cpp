@@ -31,7 +31,6 @@
 #endif
 
 std::map<std::string, std::string> g_cluster_settings;
-DedupRule g_dedup_rule = kwdbts::DedupRule::OVERRIDE;
 std::shared_mutex g_settings_mutex;
 bool g_engine_initialized = false;
 bool g_go_start_service = true;
@@ -634,20 +633,15 @@ void TriggerSettingCallback(const std::string& key, const std::string& value) {
     TRACER.SetTraceConfigStr(value);
   } else if ("ts.dedup.rule" == key) {
     if ("override" == value) {
-      g_dedup_rule = kwdbts::DedupRule::OVERRIDE;
       EngineOptions::g_dedup_rule = kwdbts::DedupRule::OVERRIDE;
     } else if ("merge" == value) {
-      g_dedup_rule = kwdbts::DedupRule::MERGE;
       EngineOptions::g_dedup_rule = kwdbts::DedupRule::MERGE;
     } else if ("keep" == value) {
-      g_dedup_rule = kwdbts::DedupRule::KEEP;
       EngineOptions::g_dedup_rule = kwdbts::DedupRule::KEEP;
-    } else if ("reject" == value) {
-      g_dedup_rule = kwdbts::DedupRule::REJECT;
-      EngineOptions::g_dedup_rule = kwdbts::DedupRule::REJECT;
     } else if ("discard" == value) {
-      g_dedup_rule = kwdbts::DedupRule::DISCARD;
       EngineOptions::g_dedup_rule = kwdbts::DedupRule::DISCARD;
+    } else {
+      LOG_ERROR("Invalid dedup rule: %s", value.c_str());
     }
   } else if ("ts.rows_per_block.max_limit" == key) {
     CLUSTER_SETTING_MAX_ROWS_PER_BLOCK = atoi(value.c_str());

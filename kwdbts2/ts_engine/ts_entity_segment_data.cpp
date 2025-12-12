@@ -23,7 +23,7 @@ TsEntitySegmentBlockFile::TsEntitySegmentBlockFile(const string& root, EntitySeg
 TsEntitySegmentBlockFile::~TsEntitySegmentBlockFile() {}
 
 KStatus TsEntitySegmentBlockFile::Open() {
-  TsIOEnv* env = &TsMMapIOEnv::GetInstance();
+  TsIOEnv* env = &TsIOEnv::GetInstance();
   std::string file_path_ = root_path_ / DataBlockFileName(info_.datablock_info.file_number);
   if (env->NewRandomReadFile(file_path_, &r_file_, info_.datablock_info.length) != KStatus::SUCCESS) {
     LOG_ERROR("TsEntitySegmentBlockFile NewRandomReadFile failed, file_path=%s", file_path_.c_str())
@@ -34,37 +34,33 @@ KStatus TsEntitySegmentBlockFile::Open() {
     LOG_ERROR("TsEntitySegmentBlockFile open failed, file_path=%s", file_path_.c_str())
     return KStatus::FAIL;
   }
-  TSSlice result;
-  KStatus s = r_file_->Read(0, sizeof(TsAggAndBlockFileHeader), &result, nullptr);
+  KStatus s = r_file_->Read(0, sizeof(TsAggAndBlockFileHeader), &header_guard_);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("TsEntitySegmentBlockFile read failed, file_path=%s", file_path_.c_str())
     return s;
   }
-  header_ = *reinterpret_cast<TsAggAndBlockFileHeader*>(result.data);
-  if (header_.status != TsFileStatus::READY) {
+  header_ = reinterpret_cast<TsAggAndBlockFileHeader*>(header_guard_.data());
+  if (header_->status != TsFileStatus::READY) {
     LOG_ERROR("TsEntitySegmentBlockFile not ready, file_path=%s", file_path_.c_str())
   }
   return s;
 }
 
-KStatus TsEntitySegmentBlockFile::ReadData(uint64_t offset, char** buff, size_t len) {
-  TSSlice result;
-  KStatus s = r_file_->Read(offset, len, &result, nullptr);
+KStatus TsEntitySegmentBlockFile::ReadData(uint64_t offset, TsSliceGuard* data, size_t len) {
+  KStatus s = r_file_->Read(offset, len, data);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("TsEntitySegmentBlockFile read block failed, offset=%lu, len=%zu", offset, len)
     return KStatus::FAIL;
   }
-  *buff = result.data;
   return KStatus::SUCCESS;
 }
 
 TsEntitySegmentAggFile::TsEntitySegmentAggFile(const string& root, EntitySegmentMetaInfo info)
     : root_(root), info_(std::move(info)) {
-  memset(&header_, 0, sizeof(TsAggAndBlockFileHeader));
 }
 
 KStatus TsEntitySegmentAggFile::Open() {
-  TsIOEnv* env = &TsMMapIOEnv::GetInstance();
+  TsIOEnv* env = &TsIOEnv::GetInstance();
   std::string file_path_ = root_ / EntityAggFileName(info_.agg_info.file_number);
   if (env->NewRandomReadFile(file_path_, &r_file_, info_.agg_info.length) != KStatus::SUCCESS) {
     LOG_ERROR("TsEntitySegmentAggFile NewRandomReadFile failed, file_path=%s", file_path_.c_str())
@@ -75,27 +71,24 @@ KStatus TsEntitySegmentAggFile::Open() {
     LOG_ERROR("TsEntitySegmentAggFile open failed, file_path=%s", file_path_.c_str())
     return KStatus::FAIL;
   }
-  TSSlice result;
-  KStatus s = r_file_->Read(0, sizeof(TsAggAndBlockFileHeader), &result, nullptr);
+  KStatus s = r_file_->Read(0, sizeof(TsAggAndBlockFileHeader), &header_guard_);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("TsEntitySegmentAggFile read failed, file_path=%s", file_path_.c_str())
     return s;
   }
-  header_ = *reinterpret_cast<TsAggAndBlockFileHeader*>(result.data);
-  if (header_.status != TsFileStatus::READY) {
+  header_ = reinterpret_cast<TsAggAndBlockFileHeader*>(header_guard_.data());
+  if (header_->status != TsFileStatus::READY) {
     LOG_ERROR("TsEntitySegmentAggFile not ready, file_path=%s", file_path_.c_str())
   }
   return s;
 }
 
-KStatus TsEntitySegmentAggFile::ReadAggData(uint64_t offset, char** buff, size_t len) {
-  TSSlice result;
-  r_file_->Read(offset, len, &result, nullptr);
-  if (result.len != len) {
+KStatus TsEntitySegmentAggFile::ReadAggData(uint64_t offset, TsSliceGuard* data, size_t len) {
+  r_file_->Read(offset, len, data);
+  if (data->size() != len) {
     LOG_ERROR("TsEntitySegmentAggFile read agg block failed, offset=%lu, len=%zu", offset, len)
     return FAIL;
   }
-  *buff = result.data;
   return SUCCESS;
 }
 

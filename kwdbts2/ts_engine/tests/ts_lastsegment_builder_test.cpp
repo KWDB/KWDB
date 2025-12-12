@@ -32,7 +32,7 @@
 #include "ts_payload.h"
 #include "ts_vgroup.h"
 
-static TsIOEnv *env = &TsMMapIOEnv::GetInstance();
+static TsIOEnv *env = &TsIOEnv::GetInstance();
 
 static std::string filename = "lastsegment";
 
@@ -52,7 +52,7 @@ class LastSegmentReadWriteTest : public testing::Test {
  protected:
   std::shared_ptr<TsEngineSchemaManager> mgr = nullptr;
 
-  TsIOEnv *env = &TsMMapIOEnv::GetInstance();
+  TsIOEnv *env = &TsIOEnv::GetInstance();
   void SetUp() override {
     fs::remove_all("schema");
     fs::remove(filename);
@@ -161,11 +161,11 @@ void LastSegmentReadWriteTest::BuilderWithBasicCheck(TSTableID table_id, int nro
   ASSERT_EQ(env->NewRandomReadFile(filename, &rfile), SUCCESS);
   for (int i = 0; i < nblock; ++i) {
     const TsLastSegmentBlockIndex &idx_block = block_indexes[i];
-    char buf[10240];
-    TSSlice result;
-    rfile->Read(idx_block.info_offset, idx_block.length, &result, buf);
+    TsSliceGuard result;
+    rfile->Read(idx_block.info_offset, idx_block.length, &result);
     TsLastSegmentBlockInfo info;
-    ASSERT_EQ(DecodeBlockInfo(result, &info), SUCCESS);
+    TSSlice data{result.data(), result.size()};
+    ASSERT_EQ(DecodeBlockInfo(data, &info), SUCCESS);
     ASSERT_EQ(info.ncol, dtypes.size());
   }
 }

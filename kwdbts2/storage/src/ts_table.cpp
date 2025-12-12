@@ -22,7 +22,6 @@
 #include "ee_global.h"
 #include "payload_builder.h"
 
-extern DedupRule g_dedup_rule;
 extern bool g_go_start_service;
 namespace kwdbts {
 

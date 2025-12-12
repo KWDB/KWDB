@@ -93,17 +93,22 @@ class TsEntitySegmentEntityItemFile {
   string file_path_;
   std::unique_ptr<TsRandomReadFile> r_file_;
   TsEntityItemFileHeader* header_ = nullptr;
+  TsSliceGuard header_guard_{};
 
  public:
   TsEntitySegmentEntityItemFile() {}
 
   explicit TsEntitySegmentEntityItemFile(const string& file_path) : file_path_(file_path) {
-    TsIOEnv* env = &TsMMapIOEnv::GetInstance();
+    TsIOEnv* env;
+    if (EngineOptions::g_io_mode >= TsIOMode::FIO_AND_MMAP) {
+      env = &TsMMapIOEnv::GetInstance();
+    } else {
+      env = &TsFIOEnv::GetInstance();
+    }
     if (env->NewRandomReadFile(file_path_, &r_file_) != KStatus::SUCCESS) {
       LOG_ERROR("TsEntitySegmentEntityItemFile NewRandomReadFile failed, file_path=%s", file_path_.c_str())
       assert(false);
     }
-    memset(&header_, 0, sizeof(TsEntityItemFileHeader));
   }
 
   ~TsEntitySegmentEntityItemFile() {}
@@ -137,25 +142,30 @@ class TsEntitySegmentBlockItemFile {
   string file_path_;
   std::unique_ptr<TsRandomReadFile> r_file_;
   TsBlockItemFileHeader* header_ = nullptr;
+  TsSliceGuard header_guard_{};
 
  public:
   TsEntitySegmentBlockItemFile() {}
 
   explicit TsEntitySegmentBlockItemFile(const string& file_path, uint64_t file_size) : file_path_(file_path) {
-    TsIOEnv* env = &TsMMapIOEnv::GetInstance();
+    TsIOEnv* env;
+    if (EngineOptions::g_io_mode >= TsIOMode::FIO_AND_MMAP) {
+      env = &TsMMapIOEnv::GetInstance();
+    } else {
+      env = &TsFIOEnv::GetInstance();
+    }
     if (env->NewRandomReadFile(file_path_, &r_file_, file_size) != KStatus::SUCCESS) {
       LOG_ERROR("TsEntitySegmentBlockItemFile NewRandomReadFile failed, file_path=%s", file_path_.c_str())
       assert(false);
     }
-    memset(&header_, 0, sizeof(TsBlockItemFileHeader));
   }
 
   ~TsEntitySegmentBlockItemFile() {}
 
   KStatus Open();
 
-  KStatus GetBlockItem(uint64_t blk_id, TsEntitySegmentBlockItem** blk_item,
-                        TsScanStats* ts_scan_stats = nullptr);
+  KStatus GetBlockItem(uint64_t blk_id, TsEntitySegmentBlockItem** blk_item, TsSliceGuard* blk_item_guard,
+                       TsScanStats* ts_scan_stats = nullptr);
 
   uint64_t GetBlockNum() {
     assert((r_file_->GetFileSize() - sizeof(TsBlockItemFileHeader)) % sizeof(TsEntitySegmentBlockItem) == 0);
@@ -197,7 +207,7 @@ class TsEntitySegmentMetaManager {
 
   KStatus Open();
 
-  KStatus GetAllBlockItems(TSEntityID entity_id, std::vector<TsEntitySegmentBlockItem*>* blk_items);
+  KStatus GetAllBlockItems(TSEntityID entity_id, std::vector<TsEntitySegmentBlockItem>* blk_items);
 
   KStatus GetBlockSpans(const TsBlockItemFilterParams& filter, std::shared_ptr<TsEntitySegment> entity_segment,
                         std::list<shared_ptr<TsBlockSpan>>& block_spans,
@@ -214,20 +224,14 @@ class TsEntitySegmentMetaManager {
 };
 
 struct TsEntitySegmentBlockInfo {
-  std::unordered_map<int32_t, uint32_t> col_block_offset;
-  uint32_t* col_agg_offset = nullptr;
-  ~TsEntitySegmentBlockInfo() {
-    if (col_agg_offset != nullptr) {
-      free(col_agg_offset);
-      col_agg_offset = nullptr;
-    }
-  }
+  TsSliceGuard col_block_offset{};
+  TsSliceGuard col_agg_offset{};
 };
 
 struct TsEntitySegmentColumnBlock {
   std::unique_ptr<TsBitmapBase> bitmap;
   std::string buffer;
-  std::string agg;
+  TsSliceGuard agg;
   std::vector<std::string> var_rows;
 };
 
@@ -328,11 +332,11 @@ class TsEntityBlock : public TsBlock {
 
   KStatus LoadColData(int32_t col_idx, const std::vector<AttributeInfo>* metric_schema, TSSlice buffer);
 
-  KStatus LoadAggData(int32_t col_idx, TSSlice buffer);
+  KStatus LoadAggData(int32_t col_idx, TsSliceGuard&& buffer);
 
-  KStatus LoadBlockInfo(TSSlice buffer, int32_t col_idx = -1);
+  KStatus LoadBlockInfo(TsSliceGuard&& buffer);
 
-  KStatus LoadAggInfo(TSSlice buffer);
+  KStatus LoadAggInfo(TsSliceGuard&& buffer);
 
   KStatus GetRowSpans(const std::vector<STScanRange>& spans, std::vector<std::pair<int, int>>& row_spans,
                       TsScanStats* ts_scan_stats);
@@ -445,7 +449,7 @@ class TsEntitySegment : public TsSegmentBase, public enable_shared_from_this<TsE
     RW_LATCH_UNLOCK(&entity_blocks_rw_latch_);
   }
 
-  KStatus GetAllBlockItems(TSEntityID entity_id, std::vector<TsEntitySegmentBlockItem*>* blk_items) {
+  KStatus GetAllBlockItems(TSEntityID entity_id, std::vector<TsEntitySegmentBlockItem>* blk_items) {
     return meta_mgr_.GetAllBlockItems(entity_id, blk_items);
   }
 

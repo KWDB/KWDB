@@ -360,9 +360,9 @@ TsWriteBatchDataWorker::~TsWriteBatchDataWorker() {
     size_t batch_header_size = sizeof(BatchDataHeader);
     std::unique_ptr<TsSequentialReadFile> r_file;
 
-    TsIOEnv *env = &TsMMapIOEnv::GetInstance();
     w_file_->Sync();
-    s = env->NewSequentialReadFile(w_file_->GetFilePath(), &r_file);
+    TsIOEnv *env = &TsIOEnv::GetInstance();
+    s = env->NewSequentialReadFile(w_file_->GetFilePath(), &r_file, w_file_->GetFileSize());
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("NewSequentialReadFile failed, job_id[%lu]", job_id_);
       return;
@@ -370,22 +370,23 @@ TsWriteBatchDataWorker::~TsWriteBatchDataWorker() {
 
     uint64_t left = 0;
     while (left < w_file_->GetFileSize()) {
-      TSSlice batch_header;
-      s = r_file->Read(batch_header_size, &batch_header, nullptr);
+      TsSliceGuard batch_header;
+      s = r_file->Read(batch_header_size, &batch_header);
       if (s != KStatus::SUCCESS) {
         LOG_ERROR("Read batch header failed, job_id[%lu]", job_id_);
         return;
       }
-      header = *reinterpret_cast<BatchDataHeader *>(batch_header.data);
-      TSSlice block_data;
-      s = r_file->Read(header.data_length, &block_data, nullptr);
+      header = *reinterpret_cast<BatchDataHeader *>(batch_header.data());
+      TsSliceGuard block_data;
+      s = r_file->Read(header.data_length, &block_data);
       if (s != KStatus::SUCCESS) {
         LOG_ERROR("Read batch data failed, job_id[%lu]", job_id_);
         return;
       }
+      TSSlice data{block_data.data(), block_data.size()};
       s = ts_engine_->GetTsVGroup(header.vgroup_id)
               ->WriteBatchData(header.table_id, header.table_version, header.entity_id, header.p_time,
-                               header.batch_version, block_data);
+                               header.batch_version, data);
       if (s != KStatus::SUCCESS) {
         LOG_ERROR("WriteBatchData failed, table_id[%lu], entity_id[%lu]", header.table_id, header.entity_id);
         return;
@@ -410,7 +411,7 @@ std::atomic<int64_t> w_file_no = 0;
 
 KStatus TsWriteBatchDataWorker::Init(kwdbContext_p ctx) {
   auto vgroups = ts_engine_->GetTsVGroups();
-  TsIOEnv* env = &TsMMapIOEnv::GetInstance();
+  TsIOEnv* env = &TsIOEnv::GetInstance();
   std::string file_path = ts_engine_->GetDbDir() + "/temp_db_/" + std::to_string(job_id_)
                           + "." + std::to_string(w_file_no++) + ".data";
   if (env->NewAppendOnlyFile(file_path, &w_file_, true, -1) != KStatus::SUCCESS) {

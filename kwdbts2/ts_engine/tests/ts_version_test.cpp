@@ -21,7 +21,7 @@
 
 class TsVersionTest : public testing::Test {
  protected:
-  TsIOEnv *env = &TsMMapIOEnv::GetInstance();
+  TsIOEnv *env = &TsIOEnv::GetInstance();
   fs::path vgroup_root = "version_test";
 
   KwTsSpan all_data{INT64_MIN, INT64_MAX};
@@ -38,6 +38,7 @@ class TsVersionTest : public testing::Test {
       std::unique_ptr<TsAppendOnlyFile> file_b;
       ASSERT_EQ(env->NewAppendOnlyFile(header_b_filename, &file_b), SUCCESS);
       TsBlockItemFileHeader header_b;
+      memset(&header_b, 0, sizeof(TsBlockItemFileHeader));
       header_b.status = TsFileStatus::READY;
       header_b.magic = TS_ENTITY_SEGMENT_BLOCK_ITEM_FILE_MAGIC;
       file_b->Append(TSSlice{(char *)&header_b, sizeof(TsBlockItemFileHeader)});
@@ -108,6 +109,7 @@ class TsVersionTest : public testing::Test {
       std::unique_ptr<TsAppendOnlyFile> file_e;
       ASSERT_EQ(env->NewAppendOnlyFile(header_e_filename, &file_e), SUCCESS);
       TsEntityItemFileHeader header_e;
+      memset(&header_e, 0, sizeof(TsEntityItemFileHeader));
       header_e.magic = TS_ENTITY_SEGMENT_ENTITY_ITEM_FILE_MAGIC;
       header_e.encoding = 0;
       header_e.entity_num = 1;

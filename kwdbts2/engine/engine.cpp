@@ -28,7 +28,6 @@
 #endif
 
 extern std::map<std::string, std::string> g_cluster_settings;
-extern DedupRule g_dedup_rule;
 extern std::shared_mutex g_settings_mutex;
 extern bool g_go_start_service;
 

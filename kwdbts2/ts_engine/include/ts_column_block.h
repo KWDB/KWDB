@@ -36,19 +36,29 @@ class TsColumnBlock {
  private:
   const AttributeInfo col_schema_;
   int count_ = 0;
+  TsSliceGuard data_;
   TsSliceGuard bitmap_guard_;
   TsSliceGuard fixlen_guard_, varchar_guard_;
 
-  TsColumnBlock(const AttributeInfo& col_schema, int count, TsSliceGuard&& bitmap, TsSliceGuard&& fixlen_data,
-                TsSliceGuard&& varchar_data)
+  TsColumnBlock(const AttributeInfo& col_schema, int count, TsSliceGuard&& data, TsSliceGuard&& bitmap,
+                TsSliceGuard&& fixlen_data, TsSliceGuard&& varchar_data)
       : col_schema_(col_schema),
         count_(count),
+        data_(std::move(data)),
         bitmap_guard_(std::move(bitmap)),
         fixlen_guard_(std::move(fixlen_data)),
         varchar_guard_(std::move(varchar_data)) {}
 
+  TsColumnBlock(const AttributeInfo& col_schema, int count, TsSliceGuard&& bitmap, TsSliceGuard&& fixlen_data,
+                TsSliceGuard&& varchar_data)
+    : col_schema_(col_schema),
+      count_(count),
+      bitmap_guard_(std::move(bitmap)),
+      fixlen_guard_(std::move(fixlen_data)),
+      varchar_guard_(std::move(varchar_data)) {}
+
  public:
-  static KStatus ParseColumnData(const AttributeInfo& col_schema, TSSlice compressed_data,
+  static KStatus ParseColumnData(const AttributeInfo& col_schema, TsSliceGuard& compressed_guard,
                                  const TsColumnCompressInfo& info, std::unique_ptr<TsColumnBlock>* colblock);
 
   bool GetCompressedData(std::string*, TsColumnCompressInfo*, bool compress);

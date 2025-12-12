@@ -20,6 +20,7 @@
 #include "libkwdbts2.h"
 #include "ts_bitmap.h"
 #include "ts_coding.h"
+#include "ts_common.h"
 #include "ts_compressor.h"
 namespace kwdbts {
 void TsColumnBlockBuilder::AppendFixLenData(TSSlice data, int count, const TsBitmapBase* bitmap) {
@@ -138,9 +139,10 @@ bool TsColumnBlock::GetCompressedData(std::string* out, TsColumnCompressInfo* in
   return true;
 }
 
-KStatus TsColumnBlock::ParseColumnData(const AttributeInfo& col_schema, TSSlice compressed_data,
+KStatus TsColumnBlock::ParseColumnData(const AttributeInfo& col_schema, TsSliceGuard& compressed_guard,
                                                  const TsColumnCompressInfo& info,
                                                  std::unique_ptr<TsColumnBlock>* colblock) {
+  TSSlice compressed_data{compressed_guard.data(), compressed_guard.size()};
   assert(compressed_data.len == info.bitmap_len + info.fixdata_len + info.vardata_len);
   // 1. Decompress Bitmap
   // std::unique_ptr<TsBitmap> p_bitmap = nullptr;
@@ -184,8 +186,9 @@ KStatus TsColumnBlock::ParseColumnData(const AttributeInfo& col_schema, TSSlice 
       return KStatus::FAIL;
     }
   }
-  colblock->reset(new TsColumnBlock(col_schema, info.row_count, std::move(bitmap_guard),
-                                    std::move(fixlen_guard), std::move(varchar_guard)));
+  colblock->reset(new TsColumnBlock(col_schema, info.row_count, std::move(compressed_guard),
+                                    std::move(bitmap_guard), std::move(fixlen_guard),
+                                    std::move(varchar_guard)));
   return SUCCESS;
 }
 }  // namespace kwdbts

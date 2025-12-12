@@ -35,7 +35,8 @@ class TsEntitySegmentBlockFile {
   EntitySegmentMetaInfo info_;
 
   std::unique_ptr<TsRandomReadFile> r_file_ = nullptr;
-  TsAggAndBlockFileHeader header_;
+  TsAggAndBlockFileHeader* header_ = nullptr;
+  TsSliceGuard header_guard_{};
 
  public:
   TsEntitySegmentBlockFile() {}
@@ -45,7 +46,7 @@ class TsEntitySegmentBlockFile {
   ~TsEntitySegmentBlockFile();
 
   KStatus Open();
-  KStatus ReadData(uint64_t offset, char** buff, size_t len);
+  KStatus ReadData(uint64_t offset, TsSliceGuard* data, size_t len);
   void MarkDelete() { r_file_->MarkDelete(); }
 };
 
@@ -90,7 +91,8 @@ class TsEntitySegmentAggFile {
   fs::path root_;
   EntitySegmentMetaInfo info_;
   std::unique_ptr<TsRandomReadFile> r_file_ = nullptr;
-  TsAggAndBlockFileHeader header_;
+  TsAggAndBlockFileHeader* header_ = nullptr;
+  TsSliceGuard header_guard_{};
 
  public:
   TsEntitySegmentAggFile() {}
@@ -100,7 +102,7 @@ class TsEntitySegmentAggFile {
   ~TsEntitySegmentAggFile() {}
 
   KStatus Open();
-  KStatus ReadAggData(uint64_t offset, char** buff, size_t len);
+  KStatus ReadAggData(uint64_t offset, TsSliceGuard* data, size_t len);
   void MarkDelete() { r_file_->MarkDelete(); }
 };
 

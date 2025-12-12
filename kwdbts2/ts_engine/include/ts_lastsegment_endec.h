@@ -46,6 +46,10 @@ struct TsLastSegmentBlockInfo {
   std::vector<ColInfo> col_infos;
 };
 
+struct TsLastSegmentBlockInfoWithData : TsLastSegmentBlockInfo {
+  TsSliceGuard data;
+};
+
 // first 8 byte of `md5 -s kwdbts::TsLastSegment`
 // TODO(zzr) fix endian
 static constexpr uint64_t FOOTER_MAGIC = 0xcb2ffe9321847271;

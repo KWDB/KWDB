@@ -34,6 +34,7 @@
 // V2
 int EngineOptions::vgroup_max_num = 4;
 DedupRule EngineOptions::g_dedup_rule = DedupRule::OVERRIDE;
+TsIOMode EngineOptions::g_io_mode = TsIOMode::FIO_AND_MMAP;
 size_t EngineOptions::mem_segment_max_size = 128 << 20;
 int32_t EngineOptions::mem_segment_max_height = 12;
 uint32_t EngineOptions::max_last_segment_num = 3;
@@ -46,7 +47,6 @@ int64_t EngineOptions::block_cache_max_size = 0;
 uint8_t EngineOptions::compress_stage = 2;
 
 extern std::map<std::string, std::string> g_cluster_settings;
-extern DedupRule g_dedup_rule;
 extern std::shared_mutex g_settings_mutex;
 extern bool g_go_start_service;
 
@@ -70,6 +70,14 @@ TSEngineImpl::TSEngineImpl(const EngineOptions& engine_options)
     assert(*endptr == '\0');
   }
   interval_recorder_ = PartitionIntervalRecorder::GetInstance();
+  char* io_mode = getenv("KW_IO_MODE");
+  if (io_mode != nullptr) {
+    char* endptr;
+    int64_t mode = strtol(io_mode, &endptr, 10);
+    if (mode >= 0 && mode <= 2) {
+      EngineOptions::g_io_mode = static_cast<TsIOMode>(mode);
+    }
+  }
   TsFlushJobPool::GetInstance().Start();
 }
 

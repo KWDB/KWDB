@@ -37,6 +37,12 @@ inline const string& s_defaultDateTimeFormat()
 inline const string& s_defaultTimeFormat()
 { static string s = "%H:%M:%S"; return s; }
 
+enum TsIOMode {
+  FIO = 0,
+  FIO_AND_MMAP = 1,
+  MMAP = 2,
+};
+
 struct EngineOptions {
   EngineOptions() {}
 
@@ -99,9 +105,10 @@ struct EngineOptions {
   static size_t min_rows_per_block;
   static int64_t default_partition_interval;
   static int64_t block_cache_max_size;
+  static TsIOMode g_io_mode;
   static uint8_t compress_stage;
 
-  TsIOEnv* io_env = &TsMMapIOEnv::GetInstance();
+  TsIOEnv* io_env = &TsIOEnv::GetInstance();
 };
 extern std::atomic<int64_t> kw_used_anon_memory_size;
 
