@@ -696,6 +696,9 @@ func (dsp *DistSQLPlanner) checkSupportForNode(node planNode) (distRecommendatio
 	case *tsDDLNode:
 		return shouldDistribute, nil
 
+	case *vacuumNode:
+		return shouldDistribute, nil
+
 	case *operateDataNode:
 		return shouldDistribute, nil
 
@@ -2940,6 +2943,38 @@ func (dsp *DistSQLPlanner) operateTSData(
 	for i := range n.nodeID {
 		proc := physicalplan.Processor{
 			Node: n.nodeID[i],
+			Spec: execinfrapb.ProcessorSpec{
+				Output:  []execinfrapb.OutputRouterSpec{{Type: execinfrapb.OutputRouterSpec_PASS_THROUGH}},
+				StageID: stageID,
+			},
+		}
+		proc.Spec.Core = execinfrapb.ProcessorCoreUnion{TsPro: tsPro}
+		pIdx := p.AddProcessor(proc)
+
+		//I don't know what the key represents temporarily, starting from 0
+		p.ResultRouters[i] = pIdx
+	}
+	return p, nil
+}
+
+func (dsp *DistSQLPlanner) vacuumTSDatabase(
+	planCtx *PlanningCtx, n *vacuumNode,
+) (PhysicalPlan, error) {
+	var p PhysicalPlan
+	stageID := p.NewStageID()
+	tsPro := &execinfrapb.TsProSpec{}
+	nodeID, err := api.GetHealthyNodeIDs(planCtx.ctx)
+	if err != nil {
+		return p, err
+	}
+	p.ResultRouters = make([]physicalplan.ProcessorIdx, len(nodeID))
+	p.Processors = make([]physicalplan.Processor, 0, len(nodeID))
+
+	p.GateNoopInput = len(nodeID)
+	tsPro.TsOperator = execinfrapb.OperatorType_TsManualVacuum
+	for i := 0; i < len(nodeID); i++ {
+		proc := physicalplan.Processor{
+			Node: nodeID[i],
 			Spec: execinfrapb.ProcessorSpec{
 				Output:  []execinfrapb.OutputRouterSpec{{Type: execinfrapb.OutputRouterSpec_PASS_THROUGH}},
 				StageID: stageID,
@@ -5724,6 +5759,9 @@ func (dsp *DistSQLPlanner) createPlanForNode(
 
 	case *tsDDLNode:
 		plan, err = dsp.createTSDDL(planCtx, n)
+
+	case *vacuumNode:
+		plan, err = dsp.vacuumTSDatabase(planCtx, n)
 
 	case *operateDataNode:
 		plan, err = dsp.operateTSData(planCtx, n)

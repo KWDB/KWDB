@@ -822,18 +822,25 @@ void TsPartitionVersion::ResetStatus() const {
   exclusive_status_->store(PartitionStatus::None);
 }
 
-KStatus TsPartitionVersion::NeedVacuumEntitySegment(const fs::path &root_path, TsEngineSchemaManager *schema_manager,
-                                                    bool &need_vacuum, bool &need_compact) const {
+KStatus TsPartitionVersion::NeedVacuumEntitySegment(const fs::path& root_path, TsEngineSchemaManager* schema_manager,
+                                                    bool force, bool& need_vacuum) const {
   need_vacuum = false;
-  need_compact = false;
   int nlastseg = leveled_last_segments_.Size();
   if (nlastseg == 0 && entity_segment_ == nullptr) {
     return SUCCESS;
   }
   timestamp64 latest_mtime = 0;
   bool has_files = false;
-  for (const auto& entry : fs::directory_iterator(root_path)) {
-    if (fs::is_regular_file(entry) && entry.path().filename() != DEL_FILE_NAME) {
+
+  std::error_code ec;
+  fs::directory_iterator dir_iter{root_path, ec};
+  if (ec.value() != 0) {
+    LOG_ERROR("fs::directory_iterator error:%s", ec.message().c_str());
+    return FAIL;
+  }
+  for (const auto& entry : dir_iter) {
+    std::error_code file_ec;
+    if (fs::is_regular_file(entry, file_ec) && !file_ec && entry.path().filename() != DEL_FILE_NAME) {
       auto mtime = ModifyTime(entry.path());
       if (!has_files || mtime > latest_mtime) {
         latest_mtime = mtime;
@@ -845,25 +852,20 @@ KStatus TsPartitionVersion::NeedVacuumEntitySegment(const fs::path &root_path, T
     LOG_WARN("No regular files found in directory [%s]", root_path.c_str());
     return SUCCESS;
   }
-  // Temporarily add environment variables to control vacuum
-  uint32_t vacuum_interval = vacuum_minutes;
-  const char *vacuum_minutes_char = getenv("KW_VACUUM_TIME");
-  if (vacuum_minutes_char) {
-    char* endptr;
-    vacuum_interval = strtol(vacuum_minutes_char, &endptr, 10);
-    assert(*endptr == '\0');
-  }
-
   auto now = std::chrono::time_point_cast<std::chrono::seconds>(std::chrono::system_clock::now());
-  float diff_latest_now = (now.time_since_epoch().count() - latest_mtime) / 60;
-  if (diff_latest_now < vacuum_interval) {
-    return SUCCESS;
-  }
-  if (nlastseg != 0) {
-    need_compact = true;
-  }
-  if (entity_segment_ == nullptr) {
-    return SUCCESS;
+  if (!force) {
+    // Temporarily add environment variables to control vacuum
+    uint32_t vacuum_interval = vacuum_minutes;
+    const char *vacuum_minutes_char = getenv("KW_VACUUM_TIME");
+    if (vacuum_minutes_char) {
+      char* endptr;
+      vacuum_interval = strtol(vacuum_minutes_char, &endptr, 10);
+      assert(*endptr == '\0');
+    }
+    float diff_latest_now = (now.time_since_epoch().count() - latest_mtime) / 60;
+    if (diff_latest_now < vacuum_interval) {
+      return SUCCESS;
+    }
   }
   bool has_del_info;
   // todo(liangbo01) get entity segment min and max lsn.
@@ -874,7 +876,7 @@ KStatus TsPartitionVersion::NeedVacuumEntitySegment(const fs::path &root_path, T
     return s;
   }
   need_vacuum = has_del_info;
-  if (!need_vacuum) {
+  if (!need_vacuum && entity_segment_ != nullptr) {
     uint64_t max_entity_id = entity_segment_->GetEntityNum();
     std::unordered_map<TSTableID, bool> traversed_table;
     for (int entity_id = 1; entity_id <= max_entity_id; entity_id++) {
@@ -885,8 +887,24 @@ KStatus TsPartitionVersion::NeedVacuumEntitySegment(const fs::path &root_path, T
         LOG_WARN("GetEntityItem failed, entity id [%u]", entity_id);
         continue;
       }
-      if (!found) {
+      if (!found || 0 == entity_item.cur_block_id) {
         continue;
+      }
+
+      if (force) {
+        // CheckDeviceContinuity
+        std::vector<TsEntitySegmentBlockItem*> block_items;
+        s = entity_segment_->GetAllBlockItems(entity_id, &block_items);
+        if (s != KStatus::SUCCESS) {
+          LOG_WARN("GetAllBlockItems failed, entity id [%u]", entity_id);
+          continue;
+        }
+        for (auto block_item : block_items) {
+          if (block_item->block_id - 1 != block_item->prev_block_id) {
+            need_vacuum = true;
+            return SUCCESS;
+          }
+        }
       }
       if (traversed_table.count(entity_item.table_id) == 0) {
         std::shared_ptr<TsTableSchemaManager> tb_schema_mgr{nullptr};
@@ -919,8 +937,6 @@ KStatus TsPartitionVersion::NeedVacuumEntitySegment(const fs::path &root_path, T
   }
   return KStatus::SUCCESS;
 }
-
-// version update
 
 inline void EncodePartitionID(std::string *result, const PartitionIdentifier &partition_id) {
   auto [dbid, start_time, end_time] = partition_id;

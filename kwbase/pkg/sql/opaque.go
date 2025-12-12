@@ -199,6 +199,8 @@ func buildOpaque(
 		plan, err = p.ShowFingerprints(ctx, n)
 	case *tree.Truncate:
 		plan, err = p.Truncate(ctx, n)
+	case *tree.Vacuum:
+		plan, err = p.Vacuum(ctx, n)
 	case *tree.Backup:
 		plan, err = p.maybePlanHook(ctx, stmt)
 		if plan == nil && err == nil {
@@ -302,6 +304,7 @@ func init() {
 		&tree.ReplicateSetRole{},
 		&tree.ReplicateSetSecondary{},
 		&tree.Truncate{},
+		&tree.Vacuum{},
 
 		// CCL statements (without Export which has an optimizer operator).
 		&tree.Backup{},

@@ -37,7 +37,6 @@ bool g_go_start_service = true;
 TSEngine* g_engine_ = nullptr;
 
 std::atomic<bool> g_is_vacuuming{false};
-uint64_t g_vacuum_sleep_time = 1000;
 std::atomic<bool> g_is_migrating{false};
 uint64_t g_duration_level0{30 * 24 * 60 * 60};
 uint64_t g_duration_level1{90 * 24 * 60 * 60};
@@ -222,17 +221,32 @@ TSStatus TSDropResidualTsTable(TSEngine* engine) {
   return kTsSuccess;
 }
 
-TSStatus TSVacuum(TSEngine* engine) {
+TSStatus TSVacuum(TSEngine* engine, uint64_t goCtxPtr, bool force) {
+  kwdbContext_t context;
+  kwdbContext_p ctx_p = &context;
+  KStatus s = InitServerKWDBContext(ctx_p);
+  ctx_p->relation_ctx = goCtxPtr;
+  if (s != KStatus::SUCCESS) {
+    return ToTsStatus("InitServerKWDBContext Error!");
+  }
   bool expected = false;
   if (!g_is_vacuuming.compare_exchange_strong(expected, true)) {
     LOG_INFO("The engine is vacuuming, ignore vacuum request");
     return kTsSuccess;
   }
   Defer defer([&](){ g_is_vacuuming.store(false); });
-  auto s = engine->Vacuum();
+  LOG_INFO("TSVacuum begin, force:%d.", force);
+  if (force) {
+    s = engine->FlushVGroups(ctx_p);
+    if (s != KStatus::SUCCESS) {
+      return ToTsStatus("TsVacuum Error! FlushVGroups failed.");
+    }
+  }
+  s = engine->Vacuum(ctx_p, force);
   if (s != KStatus::SUCCESS) {
     return ToTsStatus("TsVacuum Error!");
   }
+  LOG_INFO("TSVacuum success, force:%d.", force);
   return kTsSuccess;
 }
 
@@ -663,8 +677,6 @@ void TriggerSettingCallback(const std::string& key, const std::string& value) {
     }
   } else if ("ts.tier.duration" == key) {
     parseDurations(value);
-  } else if ("ts.auto_vacuum.sleep" == key) {
-    g_vacuum_sleep_time = atoll(value.c_str());
   } else if ("ts.compact.max_limit" == key) {
     EngineOptions::max_compact_num = atoi(value.c_str());
   } else if ("ts.reserved_last_segment.max_limit" == key) {

@@ -2324,6 +2324,18 @@ func (*UnionClause) StatementTag() string { return "UNION" }
 func (*UnionClause) StatTargetType() string { return "" }
 
 // StatementType implements the Statement interface.
+func (*Vacuum) StatementType() StatementType { return Ack }
+
+// StatOp implements the StatOp interface.
+func (*Vacuum) StatOp() string { return "VACUUM TS DATABASES" }
+
+// StatTargetType implements the StatTargetType interface.
+func (*Vacuum) StatTargetType() string { return "TS DATABASE" }
+
+// StatementTag returns a short string identifying the type of statement.
+func (*Vacuum) StatementTag() string { return "VACUUM" }
+
+// StatementType implements the Statement interface.
 func (*ValuesClause) StatementType() StatementType { return Rows }
 
 // StatOp implements the StatOp interface.
@@ -2499,6 +2511,7 @@ func (n *SelectInto) String() string                     { return AsString(n) }
 func (n *Truncate) String() string                       { return AsString(n) }
 func (n *UnionClause) String() string                    { return AsString(n) }
 func (n *Update) String() string                         { return AsString(n) }
+func (n *Vacuum) String() string                         { return AsString(n) }
 func (n *ValuesClause) String() string                   { return AsString(n) }
 
 func (n *CreateProcedure) String() string {

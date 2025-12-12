@@ -1853,253 +1853,308 @@ KStatus TsVGroup::MtrRollback(kwdbContext_p ctx, uint64_t& mtr_id, bool is_skip,
   return KStatus::SUCCESS;
 }
 
-KStatus TsVGroup::Vacuum() {
+bool TsVGroup::getDroppedTables(uint32_t db_id, std::unordered_set<TSTableID>* dropped_table_ids, bool force) {
+  bool has_dropped = false;
+  std::vector<TSTableID> table_ids;
+  // vacuum immediately, we can check table dropped by rocksdb's meta,
+  // don't care about parallel r&w
+  if (force) {
+    KStatus s = schema_mgr_->GetTableList(&table_ids);
+    if (s != SUCCESS) {
+      LOG_WARN("GetTableList failed.");
+      return has_dropped;
+    }
+    for (auto tb_id : table_ids) {
+      if (!checkTableMetaExist(tb_id)) {
+        if (schema_mgr_->GetDBIDByTableID(tb_id) == db_id) {
+          has_dropped = true;
+          dropped_table_ids->insert(tb_id);
+        }
+      }
+    }
+    return has_dropped;
+  }
+  // not vacuum immediately, check table dropped by schema manager,
+  // this is original code logic.
+  std::vector<std::shared_ptr<TsTableSchemaManager>> tb_schema_mgr;
+  KStatus s = schema_mgr_->GetAllTableSchemaMgrs(tb_schema_mgr);
+  if (s != SUCCESS) {
+    LOG_WARN("GetAllTableSchemaMgrs failed.");
+    return has_dropped;
+  }
+  for (const auto& tb_mgr : tb_schema_mgr) {
+    if (tb_mgr->IsDropped()) {
+      has_dropped = true;
+      dropped_table_ids->insert(tb_mgr->GetTableId());
+    }
+  }
+  return has_dropped;
+}
+
+KStatus TsVGroup::Vacuum(kwdbContext_p ctx, bool force) {
   KStatus s = KStatus::SUCCESS;
-  auto now = std::chrono::time_point_cast<std::chrono::seconds>(std::chrono::system_clock::now());
   auto current = version_manager_->Current();
   auto all_partitions = current->GetPartitions();
 
   for (auto& [db_id, partitions] : all_partitions) {
-    if (partitions.size() == 1) {
-      continue;
-    }
-    for (int i = 0; i < partitions.size() - 1; i++) {
+    const int n = force ? partitions.size() : partitions.size() - 1;
+    for (int i = 0; i < n; i++) {
+      // There is an issue with the current logic for determining whether the ctx has been cancelled.
+      // if (force && ctx->relation_ctx != 0 && isCanceledCtx(ctx->relation_ctx)) {
+      //   LOG_INFO("Context has been canceled, stop vacuum.");
+      //   return KStatus::SUCCESS;
+      // }
       s = KStatus::SUCCESS;
       auto& partition = partitions[i];
       auto partition_id = partition->GetPartitionIdentifier();
       auto root_path = this->GetPath() / PartitionDirName(partition_id);
       bool need_vacuum = false;
-      bool need_compact = false;
-      s = partition->NeedVacuumEntitySegment(root_path, schema_mgr_, need_vacuum, need_compact);
-      if (s != SUCCESS) {
-        LOG_ERROR("NeedVacuumEntitySegment failed.");
-        continue;
-      }
-      if (need_compact) {
+      if (partition->GetLastSegmentsCount() != 0) {
         // force compact historical partition
         s = PartitionCompact(partition, true);
         if (s != SUCCESS) {
           LOG_ERROR("PartitionCompact failed, [%s]", partition->GetPartitionIdentifierStr().c_str());
           continue;
         }
+        partition = version_manager_->Current()->GetPartition(std::get<0>(partition_id), std::get<1>(partition_id));
       }
+      std::unordered_set<TSTableID> dropped_table_ids;
+      need_vacuum = getDroppedTables(db_id, &dropped_table_ids, force);
       if (!need_vacuum) {
-        LOG_DEBUG("no need vacuum partition [%s]", partition->GetPartitionIdentifierStr().c_str());
-        continue;
-      }
-
-
-      if (!partition->TrySetBusy(PartitionStatus::Vacuuming)) {
-        continue;
-      }
-      Defer defer{[&]() {
-        partition->ResetStatus();
-      }};
-      partition = version_manager_->Current()->GetPartition(std::get<0>(partition_id), std::get<1>(partition_id));
-
-      auto entity_segment = partition->GetEntitySegment();
-      if (entity_segment == nullptr) {
-        continue;
-      }
-
-      auto max_entity_id = entity_segment->GetEntityNum();
-
-      auto vacuumer = std::make_unique<TsEntitySegmentVacuumer>(root_path, this->version_manager_.get());
-      bool cancel_vacuumer = false;
-      s = vacuumer->Open();
-      if (s != SUCCESS) {
-        cancel_vacuumer = true;
-        return s;
-      }
-      Defer defer2{[&]() {
-        if (cancel_vacuumer) {
-          vacuumer->Cancel();
-        }
-      }};
-      auto handle_info = vacuumer->GetHandleInfo();
-      LOG_INFO("Vacuum partition [vgroup_%d]-[%ld, %ld) begin, handle info {%lu, %lu, %lu, %lu}",
-                vgroup_id_, partition->GetStartTime(), partition->GetEndTime() - 1,
-                handle_info.header_e_file_number, handle_info.header_b_info.file_number,
-                handle_info.datablock_info.file_number, handle_info.agg_info.file_number);
-
-      auto mem_segments = partition->GetAllMemSegments();
-      std::list<std::pair<TSEntityID, TS_OSN>> entity_max_lsn;
-      for (uint32_t entity_id = 1; entity_id <= max_entity_id; entity_id++) {
-        TsEntityItem entity_item;
-        bool found = false;
-        s = entity_segment->GetEntityItem(entity_id, entity_item, found);
+        s = partition->NeedVacuumEntitySegment(root_path, schema_mgr_, force, need_vacuum);
         if (s != SUCCESS) {
-          LOG_ERROR("Vacuum failed, GetEntityItem [%u] failed", entity_id);
-          cancel_vacuumer = true;
-          return s;
-        }
-        if (!found || 0 == entity_item.cur_block_id) {
-          TsEntityItem empty_entity_item{entity_id};
-          empty_entity_item.table_id = entity_item.table_id;
-          s = vacuumer->AppendEntityItem(empty_entity_item);
-          if (s != SUCCESS) {
-            LOG_ERROR("Vacuum failed, AppendEntityItem failed");
-            cancel_vacuumer = true;
-            return s;
-          }
+          LOG_ERROR("NeedVacuumEntitySegment failed.");
           continue;
         }
-        std::shared_ptr<TsTableSchemaManager> tb_schema_mgr{nullptr};
-        s = schema_mgr_->GetTableSchemaMgr(entity_item.table_id, tb_schema_mgr);
-        if (s != SUCCESS && tb_schema_mgr != nullptr) {
-          cancel_vacuumer = true;
-          return s;
-        }
-        if (tb_schema_mgr == nullptr || tb_schema_mgr->IsDropped()) {
-          TsEntityItem empty_entity_item{entity_id};
-          empty_entity_item.table_id = entity_item.table_id;
-          s = vacuumer->AppendEntityItem(empty_entity_item);
-          if (s != SUCCESS) {
-            LOG_ERROR("Vacuum failed, AppendEntityItem failed");
-            cancel_vacuumer = true;
-            return s;
-          }
-          entity_max_lsn.emplace_back(entity_id, UINT64_MAX);
-          continue;
-        }
-        auto life_time = tb_schema_mgr->GetLifeTime();
-        int64_t start_ts = INT64_MIN;
-        int64_t end_ts = INT64_MAX;
-        if (life_time.ts != 0) {
-          start_ts = (now.time_since_epoch().count() - life_time.ts) * life_time.precision;
-        }
-        KwTsSpan ts_span = {start_ts, end_ts};
-        std::vector<KwTsSpan> ts_spans = {ts_span};
-        TsScanFilterParams filter{partition->GetDatabaseID(), entity_item.table_id, vgroup_id_,
-                                  entity_id, tb_schema_mgr->GetTsColDataType(), UINT64_MAX, ts_spans};
-        TsBlockItemFilterParams block_data_filter;
-        s = partition->getFilter(filter, block_data_filter);
-        if (s != KStatus::SUCCESS) {
-          LOG_ERROR("getFilter failed");
-          cancel_vacuumer = true;
-          return s;
-        }
-
-        std::list<shared_ptr<TsBlockSpan>> block_spans;
-        std::shared_ptr<MMapMetricsTable> metric_schema;
-        auto scan_version = tb_schema_mgr->GetCurrentVersion();
-        s = tb_schema_mgr->GetMetricSchema(scan_version, &metric_schema);
+      }
+      if (need_vacuum) {
+        s = VacuumPartition(ctx, partition, dropped_table_ids, force);
         if (s != SUCCESS) {
-          LOG_ERROR("Vacuum failed, GetMetricSchema failed");
-          cancel_vacuumer = true;
-          return s;
-        }
-        s = entity_segment->GetBlockSpans(block_data_filter, block_spans, tb_schema_mgr, metric_schema);
-        if (s != SUCCESS) {
-          LOG_ERROR("Vacuum failed, GetBlockSpans failed");
-          cancel_vacuumer = true;
-          return s;
-        }
-        TsEntityItem cur_entity_item = {entity_id};
-        cur_entity_item.table_id = entity_item.table_id;
-        for (auto& block_span : block_spans) {
-          string data;
-          s = block_span->GetCompressData(data);
-          if (s != SUCCESS) {
-            LOG_ERROR("Vacuum failed, GetCompressData failed");
-            cancel_vacuumer = true;
-            return s;
-          }
-          uint32_t col_count = block_span->GetColCount();
-          uint32_t col_offsets_len = (col_count + 1) * sizeof(uint32_t);
-          auto last_col_tail_offset = *reinterpret_cast<uint32_t *>(data.data() + col_count * sizeof(uint32_t));
-          auto block_data_len = col_offsets_len + last_col_tail_offset;
-          auto block_agg_len = data.size() - block_data_len;
-          string block_data = data.substr(0, block_data_len);
-          string block_agg = data.substr(block_data_len, block_agg_len);
-
-          TsEntitySegmentBlockItem blk_item;
-          blk_item.entity_id = entity_item.entity_id;
-          blk_item.table_version = scan_version;
-          blk_item.n_cols = block_span->GetColCount() + 1;
-          blk_item.n_rows = block_span->GetRowNum();
-          blk_item.min_ts = block_span->GetFirstTS();
-          blk_item.max_ts = block_span->GetLastTS();
-          blk_item.block_len = block_data.size();
-          blk_item.agg_len = block_agg.size();
-          blk_item.block_version = CURRENT_BLOCK_VERSION;
-          s = vacuumer->AppendBlock({block_data.data(), block_data.size()}, &blk_item.block_offset);
-          if (s != KStatus::SUCCESS) {
-            LOG_ERROR("Vacuum failed, AppendBlock failed");
-            cancel_vacuumer = true;
-            return s;
-          }
-          s = vacuumer->AppendAgg({block_agg.data(), block_agg.size()}, &blk_item.agg_offset);
-          if (s != KStatus::SUCCESS) {
-            LOG_ERROR("Vacuum failed, AppendAgg failed");
-            cancel_vacuumer = true;
-            return s;
-          }
-          blk_item.prev_block_id = cur_entity_item.cur_block_id;
-          s = vacuumer->AppendBlockItem(blk_item);  // block_id is set when append
-          if (s != KStatus::SUCCESS) {
-            LOG_ERROR("Vacuum failed, AppendBlockItem failed");
-            cancel_vacuumer = true;
-            return s;
-          }
-          cur_entity_item.cur_block_id = blk_item.block_id;
-          cur_entity_item.row_written += blk_item.n_rows;
-          if (blk_item.max_ts > cur_entity_item.max_ts) {
-            cur_entity_item.max_ts = blk_item.max_ts;
-          }
-          if (blk_item.min_ts < cur_entity_item.min_ts) {
-            cur_entity_item.min_ts = blk_item.min_ts;
-          }
-        }
-        s = vacuumer->AppendEntityItem(cur_entity_item);
-        if (s != KStatus::SUCCESS) {
-          LOG_ERROR("Vacuum failed, AppendEntityItem failed");
-          cancel_vacuumer = true;
-          return s;
-        }
-        {
-          // check weather mem segment has data for one entity
-          KwTsSpan partition_ts_span = {partition->GetTsColTypeStartTime(tb_schema_mgr->GetTsColDataType()),
-                                        partition->GetTsColTypeEndTime(tb_schema_mgr->GetTsColDataType())};
-          STScanRange scan_range = {partition_ts_span, {0, UINT64_MAX}};
-          DatabaseID db_id = std::get<0>(partition->GetPartitionIdentifier());
-          TsBlockItemFilterParams param {db_id, entity_item.table_id, vgroup_id_, entity_id, {scan_range}};
-          std::list<shared_ptr<TsBlockSpan>> mem_block_spans;
-          std::shared_ptr<MMapMetricsTable> metric_schema;
-          s = tb_schema_mgr->GetMetricSchema(0, &metric_schema);
-          if (s != SUCCESS) {
-            LOG_ERROR("Vacuum failed, GetMetricSchema failed");
-            cancel_vacuumer = true;
-            return s;
-          }
-          for (auto& mem_segment : mem_segments) {
-            s = mem_segment->GetBlockSpans(param, mem_block_spans, tb_schema_mgr, metric_schema);
-            if (s != SUCCESS) {
-              LOG_ERROR("Vacuum failed, GetBlockSpans for mem segment failed");
-              cancel_vacuumer = true;
-              return s;
-            }
-          }
-          if (mem_block_spans.empty()) {
-            entity_max_lsn.emplace_back(entity_id, UINT64_MAX);
-          }
+          LOG_WARN("Vacuum partition [vgroup_%d]-[%ld, %ld) failed", vgroup_id_,
+                    partition->GetStartTime(), partition->GetEndTime() - 1);
         }
       }
-      TsVersionUpdate update;
-      auto info = vacuumer->GetHandleInfo();
-      update.SetEntitySegment(partition->GetPartitionIdentifier(), info, true);
-      vacuumer.reset();
-      version_manager_->ApplyUpdate(&update);
-
-      s = partition->RmDeleteItems(entity_max_lsn);
-      if (s != KStatus::SUCCESS) {
-        LOG_INFO("delete delitem failed. can ignore this.");
-      }
-      LOG_INFO("Vacuum partition [vgroup_%d]-[%ld, %ld) succeeded", vgroup_id_, partition->GetStartTime(),
-                                                                    partition->GetEndTime() - 1);
     }
   }
   return KStatus::SUCCESS;
 }
 
+KStatus TsVGroup::VacuumPartition(kwdbContext_p ctx, shared_ptr<const TsPartitionVersion> partition,
+  std::unordered_set<TSTableID> dropped_table_ids, bool force) {
+  if (force) {
+    while (!partition->TrySetBusy(PartitionStatus::Vacuuming)) {
+      using std::chrono_literals::operator""s;
+      this_thread::sleep_for(1s);
+      if (ctx->relation_ctx != 0 && isCanceledCtx(ctx->relation_ctx)) {
+        LOG_INFO("Context has been canceled, stop vacuum.");
+        return KStatus::SUCCESS;
+      }
+    }
+  } else {
+    if (!partition->TrySetBusy(PartitionStatus::Vacuuming)) {
+      return SUCCESS;
+    }
+  }
+  Defer defer{[&]() {
+    partition->ResetStatus();
+  }};
+
+  auto entity_segment = partition->GetEntitySegment();
+  if (entity_segment == nullptr) {
+    return SUCCESS;
+  }
+
+  auto now = std::chrono::time_point_cast<std::chrono::seconds>(std::chrono::system_clock::now());
+  auto max_entity_id = entity_segment->GetEntityNum();
+
+  auto partition_id = partition->GetPartitionIdentifier();
+  auto root_path = this->GetPath() / PartitionDirName(partition_id);
+  auto vacuumer = std::make_unique<TsEntitySegmentVacuumer>(root_path, this->version_manager_.get());
+  bool cancel_vacuumer = false;
+  auto s = vacuumer->Open();
+  if (s != SUCCESS) {
+    cancel_vacuumer = true;
+    return s;
+  }
+  Defer defer2{[&]() {
+    if (cancel_vacuumer) {
+      vacuumer->Cancel();
+    }
+  }};
+  auto handle_info = vacuumer->GetHandleInfo();
+  LOG_INFO("Vacuum partition [vgroup_%d]-[%ld, %ld) begin, handle info {%lu, %lu, %lu, %lu}",
+            vgroup_id_, partition->GetStartTime(), partition->GetEndTime() - 1,
+            handle_info.header_e_file_number, handle_info.header_b_info.file_number,
+            handle_info.datablock_info.file_number, handle_info.agg_info.file_number);
+
+  auto mem_segments = partition->GetAllMemSegments();
+  std::list<std::pair<TSEntityID, TS_OSN>> entity_max_lsn;
+  for (uint32_t entity_id = 1; entity_id <= max_entity_id; entity_id++) {
+    TsEntityItem entity_item;
+    bool found = false;
+    s = entity_segment->GetEntityItem(entity_id, entity_item, found);
+    if (s != SUCCESS) {
+      LOG_ERROR("Vacuum failed, GetEntityItem [%u] failed", entity_id);
+      cancel_vacuumer = true;
+      return s;
+    }
+    bool is_dropped = dropped_table_ids.find(entity_item.table_id) != dropped_table_ids.end();
+    if (!found || 0 == entity_item.cur_block_id || is_dropped) {
+      TsEntityItem empty_entity_item{entity_id};
+      empty_entity_item.table_id = entity_item.table_id;
+      s = vacuumer->AppendEntityItem(empty_entity_item);
+      if (s != SUCCESS) {
+        LOG_ERROR("Vacuum failed, AppendEntityItem failed");
+        cancel_vacuumer = true;
+        return s;
+      }
+      if (is_dropped) {
+        entity_max_lsn.emplace_back(entity_id, UINT64_MAX);
+      }
+      continue;
+    }
+    // not dropped
+    std::shared_ptr<TsTableSchemaManager> tb_schema_mgr{nullptr};
+    s = schema_mgr_->GetTableSchemaMgr(entity_item.table_id, tb_schema_mgr);
+    if (s != SUCCESS) {
+      cancel_vacuumer = true;
+      return s;
+    }
+    auto life_time = tb_schema_mgr->GetLifeTime();
+    int64_t start_ts = INT64_MIN;
+    int64_t end_ts = INT64_MAX;
+    if (life_time.ts != 0) {
+      start_ts = (now.time_since_epoch().count() - life_time.ts) * life_time.precision;
+    }
+    KwTsSpan ts_span = {start_ts, end_ts};
+    std::vector<KwTsSpan> ts_spans = {ts_span};
+    TsScanFilterParams filter{partition->GetDatabaseID(), entity_item.table_id, vgroup_id_,
+                              entity_id, tb_schema_mgr->GetTsColDataType(), UINT64_MAX, ts_spans};
+    TsBlockItemFilterParams block_data_filter;
+    s = partition->getFilter(filter, block_data_filter);
+    if (s != KStatus::SUCCESS) {
+      LOG_ERROR("getFilter failed");
+      cancel_vacuumer = true;
+      return s;
+    }
+
+    std::list<shared_ptr<TsBlockSpan>> block_spans;
+    std::shared_ptr<MMapMetricsTable> metric_schema;
+    auto scan_version = tb_schema_mgr->GetCurrentVersion();
+    s = tb_schema_mgr->GetMetricSchema(scan_version, &metric_schema);
+    if (s != SUCCESS) {
+      LOG_ERROR("Vacuum failed, GetMetricSchema failed");
+      cancel_vacuumer = true;
+      return s;
+    }
+    s = entity_segment->GetBlockSpans(block_data_filter, block_spans, tb_schema_mgr, metric_schema);
+    if (s != SUCCESS) {
+      LOG_ERROR("Vacuum failed, GetBlockSpans failed");
+      cancel_vacuumer = true;
+      return s;
+    }
+    TsEntityItem cur_entity_item = {entity_id};
+    cur_entity_item.table_id = entity_item.table_id;
+    for (auto& block_span : block_spans) {
+      string data;
+      s = block_span->GetCompressData(data);
+      if (s != SUCCESS) {
+        LOG_ERROR("Vacuum failed, GetCompressData failed");
+        cancel_vacuumer = true;
+        return s;
+      }
+      uint32_t col_count = block_span->GetColCount();
+      uint32_t col_offsets_len = (col_count + 1) * sizeof(uint32_t);
+      auto last_col_tail_offset = *reinterpret_cast<uint32_t *>(data.data() + col_count * sizeof(uint32_t));
+      auto block_data_len = col_offsets_len + last_col_tail_offset;
+      auto block_agg_len = data.size() - block_data_len;
+      string block_data = data.substr(0, block_data_len);
+      string block_agg = data.substr(block_data_len, block_agg_len);
+
+      TsEntitySegmentBlockItem blk_item;
+      blk_item.entity_id = entity_item.entity_id;
+      blk_item.table_version = scan_version;
+      blk_item.n_cols = block_span->GetColCount() + 1;
+      blk_item.n_rows = block_span->GetRowNum();
+      blk_item.min_ts = block_span->GetFirstTS();
+      blk_item.max_ts = block_span->GetLastTS();
+      blk_item.block_len = block_data.size();
+      blk_item.agg_len = block_agg.size();
+      blk_item.block_version = CURRENT_BLOCK_VERSION;
+      s = vacuumer->AppendBlock({block_data.data(), block_data.size()}, &blk_item.block_offset);
+      if (s != KStatus::SUCCESS) {
+        LOG_ERROR("Vacuum failed, AppendBlock failed");
+        cancel_vacuumer = true;
+        return s;
+      }
+      s = vacuumer->AppendAgg({block_agg.data(), block_agg.size()}, &blk_item.agg_offset);
+      if (s != KStatus::SUCCESS) {
+        LOG_ERROR("Vacuum failed, AppendAgg failed");
+        cancel_vacuumer = true;
+        return s;
+      }
+      blk_item.prev_block_id = cur_entity_item.cur_block_id;
+      s = vacuumer->AppendBlockItem(blk_item);  // block_id is set when append
+      if (s != KStatus::SUCCESS) {
+        LOG_ERROR("Vacuum failed, AppendBlockItem failed");
+        cancel_vacuumer = true;
+        return s;
+      }
+      cur_entity_item.cur_block_id = blk_item.block_id;
+      cur_entity_item.row_written += blk_item.n_rows;
+      if (blk_item.max_ts > cur_entity_item.max_ts) {
+        cur_entity_item.max_ts = blk_item.max_ts;
+      }
+      if (blk_item.min_ts < cur_entity_item.min_ts) {
+        cur_entity_item.min_ts = blk_item.min_ts;
+      }
+    }
+    s = vacuumer->AppendEntityItem(cur_entity_item);
+    if (s != KStatus::SUCCESS) {
+      LOG_ERROR("Vacuum failed, AppendEntityItem failed");
+      cancel_vacuumer = true;
+      return s;
+    }
+    {
+      // check weather mem segment has data for one entity
+      KwTsSpan partition_ts_span = {partition->GetTsColTypeStartTime(tb_schema_mgr->GetTsColDataType()),
+                                    partition->GetTsColTypeEndTime(tb_schema_mgr->GetTsColDataType())};
+      STScanRange scan_range = {partition_ts_span, {0, UINT64_MAX}};
+      DatabaseID db_id = std::get<0>(partition->GetPartitionIdentifier());
+      TsBlockItemFilterParams param {db_id, entity_item.table_id, vgroup_id_, entity_id, {scan_range}};
+      std::list<shared_ptr<TsBlockSpan>> mem_block_spans;
+      std::shared_ptr<MMapMetricsTable> partition_metric_schema;
+      s = tb_schema_mgr->GetMetricSchema(0, &partition_metric_schema);
+      if (s != SUCCESS) {
+        LOG_ERROR("Vacuum failed, GetMetricSchema failed");
+        cancel_vacuumer = true;
+        return s;
+      }
+      for (auto& mem_segment : mem_segments) {
+        s = mem_segment->GetBlockSpans(param, mem_block_spans, tb_schema_mgr, partition_metric_schema);
+        if (s != SUCCESS) {
+          LOG_ERROR("Vacuum failed, GetBlockSpans for mem segment failed");
+          cancel_vacuumer = true;
+          return s;
+        }
+      }
+      if (mem_block_spans.empty()) {
+        entity_max_lsn.emplace_back(entity_id, UINT64_MAX);
+      }
+    }
+  }
+  TsVersionUpdate update;
+  auto info = vacuumer->GetHandleInfo();
+  update.SetEntitySegment(partition->GetPartitionIdentifier(), info, true);
+  vacuumer.reset();
+  version_manager_->ApplyUpdate(&update);
+
+  s = partition->RmDeleteItems(entity_max_lsn);
+  if (s != KStatus::SUCCESS) {
+    LOG_INFO("delete delitem failed. can ignore this.");
+  }
+  LOG_INFO("Vacuum partition [vgroup_%d]-[%ld, %ld) succeeded", vgroup_id_, partition->GetStartTime(),
+                                                                partition->GetEndTime() - 1);
+  return SUCCESS;
+}
 }  //  namespace kwdbts

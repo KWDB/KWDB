@@ -216,6 +216,8 @@ class TsPartitionVersion {
     return leveled_last_segments_.GetAllLastSegments();
   }
 
+  int32_t GetLastSegmentsCount() const { return GetAllLastSegments().size(); }
+
   std::shared_ptr<TsEntitySegment> GetEntitySegment() const { return entity_segment_; }
   std::list<std::shared_ptr<TsMemSegment>> GetAllMemSegments() const;
   shared_ptr<TsPartitionEntityCountManager> GetCountManager() const { return count_info_; }
@@ -250,8 +252,8 @@ class TsPartitionVersion {
 
   bool TrySetBusy(PartitionStatus desired) const;
   void ResetStatus() const;
-  KStatus NeedVacuumEntitySegment(const fs::path& root_path,
-    TsEngineSchemaManager* schema_manager, bool& need_vacuum, bool& need_compact) const;
+  KStatus NeedVacuumEntitySegment(const fs::path& root_path, TsEngineSchemaManager* schema_manager,
+                                  bool force, bool& need_vacuum) const;
 };
 
 class TsVGroupVersion {

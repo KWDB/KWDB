@@ -790,7 +790,7 @@ func (u *sqlSymUnion) triggerBody() tree.TriggerBody {
 %token <str> UNBOUNDED UNCOMMITTED UNDER UNION UNIQUE UNKNOWN UNLOGGED UNSPLIT
 %token <str> UPDATE UPSERT UNTIL US USAGE USE USER USERS USING UUID
 
-%token <str> VALID VALIDATE VALUE VALUES VARBIT VARBYTES VARCHAR VARIADIC VIEW VARYING VIRTUAL
+%token <str> VACUUM VALID VALIDATE VALUE VALUES VARBIT VARBYTES VARCHAR VARIADIC VIEW VARYING VIRTUAL
 
 %token <str> W WEEK WHEN WHERE WINDOW WITH WITHIN WITHOUT WORK WRITE WHENEVER WHILE
 
@@ -1042,6 +1042,8 @@ func (u *sqlSymUnion) triggerBody() tree.TriggerBody {
 %type <tree.Statement> update_stmt
 %type <tree.Statement> upsert_stmt
 %type <tree.Statement> use_stmt
+
+%type <tree.Statement> vacuum_stmt
 
 %type <tree.Statement> reindex_stmt
 
@@ -1445,6 +1447,7 @@ stmt:
 | transaction_stmt  // help texts in sub-rule
 | reindex_stmt
 | rebalance_stmt
+| vacuum_stmt       // EXTEND WITH HELP: VACUUM
 | /* EMPTY */
   {
     $$.val = tree.Statement(nil)
@@ -8016,6 +8019,17 @@ rebalance_stmt:
     $$.val = &tree.RebalanceTsData{TableName: name}
   }
 
+// %Help: VACUUM - vacuum ts databases
+// %Category: Misc
+// %Text:
+// VACUUM TS DATABASES
+vacuum_stmt:
+  VACUUM TS DATABASES
+  {
+    $$.val = &tree.Vacuum{}
+  }
+| VACUUM error // SHOW HELP: VACUUM
+
 // %Help: REFRESH - recalculate a materialized view
 // %Category: Misc
 // %Text:
@@ -13462,6 +13476,7 @@ unreserved_keyword:
 | USAGE
 | USE
 | USERS
+| VACUUM
 | VALID
 | VALIDATE
 | VALUE

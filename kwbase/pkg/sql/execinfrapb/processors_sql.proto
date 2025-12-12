@@ -183,6 +183,7 @@ enum OperatorType {
   TsDropTagIndex = 21;
   TsAlterTagIndex = 22;
   TsAlterRetentions = 23;
+  TsManualVacuum = 24;
 }
 
 // TsInsertSelSpec build payLoads for TsInsert

@@ -92,13 +92,13 @@ TEST_F(VacuumTest, ZDP49302) {
   vgroup_->DeleteData(ctx_, table_id, 1, 5000, ts_spans);
 
   vgroup_->Flush();
-  vgroup_->Vacuum();
-  vgroup_->Vacuum();
-  vgroup_->Vacuum();
-  vgroup_->Vacuum();
-  vgroup_->Vacuum();
-  vgroup_->Vacuum();
-  vgroup_->Vacuum();
+  vgroup_->Vacuum(ctx_, false);
+  vgroup_->Vacuum(ctx_, false);
+  vgroup_->Vacuum(ctx_, false);
+  vgroup_->Vacuum(ctx_, false);
+  vgroup_->Vacuum(ctx_, false);
+  vgroup_->Vacuum(ctx_, false);
+  vgroup_->Vacuum(ctx_, false);
 
   int nblock_file = 0;
 

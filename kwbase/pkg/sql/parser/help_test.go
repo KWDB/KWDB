@@ -469,6 +469,7 @@ func TestContextualHelp(t *testing.T) {
 		{`CREATE TRIGGER blah ??`, `CREATE TRIGGER`},
 		{`DROP TRIGGER blah ??`, `DROP TRIGGER`},
 		{`SHOW TRIGGERS ??`, `SHOW TRIGGERS`},
+		{`VACUUM TS DATABASES ??`, `VACUUM`},
 	}
 
 	// The following checks that the test definition above exercises all

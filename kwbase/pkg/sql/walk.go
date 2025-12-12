@@ -1183,6 +1183,7 @@ var planNodeNames = map[reflect.Type]string{
 	reflect.TypeOf(&unionNode{}):                "union",
 	reflect.TypeOf(&updateNode{}):               "update",
 	reflect.TypeOf(&upsertNode{}):               "upsert",
+	reflect.TypeOf(&vacuumNode{}):               "vacuum ts databases",
 	reflect.TypeOf(&valuesNode{}):               "values",
 	reflect.TypeOf(&virtualTableNode{}):         "virtual table values",
 	reflect.TypeOf(&windowNode{}):               "window",

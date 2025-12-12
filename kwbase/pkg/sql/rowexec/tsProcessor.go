@@ -124,7 +124,13 @@ func (tp *tsProcessor) Start(ctx context.Context) context.Context {
 		}
 	case execinfrapb.OperatorType_TsVacuum:
 		errPrefix = "Vacuum Failed, reason:%s"
-		err = tp.FlowCtx.Cfg.TsEngine.Vacuum()
+		err = tp.FlowCtx.Cfg.TsEngine.Vacuum(ctx, false)
+		if err != nil {
+			log.Errorf(context.Background(), "Vacuum Failed, reason:%s \n", err.Error())
+		}
+	case execinfrapb.OperatorType_TsManualVacuum:
+		errPrefix = "Vacuum Failed, reason:%s"
+		err = tp.FlowCtx.Cfg.TsEngine.Vacuum(ctx, true)
 		if err != nil {
 			log.Errorf(context.Background(), "Vacuum Failed, reason:%s \n", err.Error())
 		}

@@ -580,7 +580,7 @@ struct TSEngine {
    */
   virtual void AlterTableCacheCapacity(int capacity) = 0;
 
-  virtual KStatus Vacuum() {
+  virtual KStatus Vacuum(kwdbContext_p ctx, bool force) {
     return SUCCESS;
   }
 

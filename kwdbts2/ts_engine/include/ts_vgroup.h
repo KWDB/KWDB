@@ -21,6 +21,7 @@
 #include <unordered_map>
 #include <vector>
 #include <utility>
+#include <unordered_set>
 
 #include "data_type.h"
 #include "iterator.h"
@@ -430,7 +431,12 @@ class TsVGroup {
     }
   }
 
-  KStatus Vacuum();
+  bool getDroppedTables(uint32_t db_id, std::unordered_set<TSTableID>* dropped_table_ids, bool force);
+
+  KStatus Vacuum(kwdbContext_p ctx, bool force);
+
+  KStatus VacuumPartition(kwdbContext_p ctx, shared_ptr<const TsPartitionVersion> partition,
+    std::unordered_set<TSTableID> dropped_table_ids, bool force);
 
  private:
   // check partition of rows exist. if not creating it.
