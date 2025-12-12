@@ -314,7 +314,7 @@ KStatus TsVersionManager::Recover() {
       fs::path path{dir_entry};
       if (partition_name.find(path.filename()) == partition_name.end()) {
         LOG_INFO("unexpected partition directory: %s, remove it", path.c_str());
-        auto s = env_->DeleteDir(path);
+        s = env_->DeleteDir(path);
         if (s == FAIL) {
           return s;
         }
@@ -365,7 +365,7 @@ KStatus TsVersionManager::Recover() {
         fs::path p{dir_entry};
         if (expected.find(p.filename()) == expected.end()) {
           LOG_INFO("unexpected file: %s, remove it", p.c_str());
-          auto s = env_->DeleteFile(p);
+          s = env_->DeleteFile(p);
           if (s == FAIL) {
             return s;
           }
@@ -893,14 +893,14 @@ KStatus TsPartitionVersion::NeedVacuumEntitySegment(const fs::path& root_path, T
 
       if (force) {
         // CheckDeviceContinuity
-        std::vector<TsEntitySegmentBlockItem*> block_items;
+        std::vector<TsEntitySegmentBlockItem> block_items;
         s = entity_segment_->GetAllBlockItems(entity_id, &block_items);
         if (s != KStatus::SUCCESS) {
           LOG_WARN("GetAllBlockItems failed, entity id [%u]", entity_id);
           continue;
         }
-        for (auto block_item : block_items) {
-          if (block_item->block_id - 1 != block_item->prev_block_id) {
+        for (const auto& block_item : block_items) {
+          if (block_item.block_id - 1 != block_item.prev_block_id) {
             need_vacuum = true;
             return SUCCESS;
           }
@@ -1060,7 +1060,7 @@ inline const char *DecodeLastSegmentMetas(
     auto n_meta_section = static_cast<uint8_t>(*ptr);
     ++ptr;
 
-    for (int i = 0; i < n_meta_section; ++i) {
+    for (int j = 0; j < n_meta_section; ++j) {
       auto type = static_cast<uint8_t>(*ptr);
       ptr++;
       ptr = decode_funcs[type](ptr, limit, nfiles, &last_seg_meta_vec);
