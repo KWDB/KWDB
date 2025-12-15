@@ -1396,6 +1396,10 @@ func (dsp *DistSQLPlanner) PlanAndRunSubqueries(
 			stmt,
 		); err != nil {
 			recv.SetError(err)
+			for i := range subqueryPlans {
+				subqueryPlans[i].plan.Close(ctx)
+				subqueryPlans[i].plan = nil
+			}
 			return false
 		}
 	}
