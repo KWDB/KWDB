@@ -57,8 +57,13 @@ func (d *delegator) delegateShowJobs(n *tree.ShowJobs) (tree.Statement, error) {
 		// The query intends to present:
 		// - first all the running jobs sorted in order of start time,
 		// - then all completed jobs sorted in order of completion time.
-		whereClause = fmt.Sprintf(
-			`WHERE %s AND (finished IS NULL OR finished > now() - '7d':::interval)`, typePredicate)
+		if n.Where == nil {
+			whereClause = fmt.Sprintf(
+				`WHERE %s AND (finished IS NULL OR finished > now() - '7d':::interval)`, typePredicate)
+		} else {
+			whereClause = fmt.Sprintf(
+				`WHERE %s AND %s AND (finished IS NULL OR finished > now() - '7d':::interval)`, n.Where.Expr.String(), typePredicate)
+		}
 		// The "ORDER BY" clause below exploits the fact that all
 		// running jobs have finished = NULL.
 		orderbyClause = `ORDER BY COALESCE(finished, now()) DESC, started DESC`
@@ -66,6 +71,7 @@ func (d *delegator) delegateShowJobs(n *tree.ShowJobs) (tree.Statement, error) {
 		// Limit the jobs displayed to the select statement in n.Jobs.
 		whereClause = fmt.Sprintf(`WHERE job_id in (%s)`, n.Jobs.String())
 	}
+
 	sqlStmt := fmt.Sprintf("%s %s %s", selectClause, whereClause, orderbyClause)
 	if n.Block {
 		sqlStmt = fmt.Sprintf(

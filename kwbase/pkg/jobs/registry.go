@@ -564,6 +564,12 @@ func (r *Registry) Start(
 				if err := r.cleanupOldJobs(ctx, old); err != nil {
 					log.Warningf(ctx, "error cleaning up old job records: %v", err)
 				}
+
+				// use storeHistoryTimeSetting delete expired jobs
+				historyThreshold := timeutil.Now().Add(-1 * storeHistoryTimeSetting.Get(&r.settings.SV))
+				if err := r.dureHistoricalJobs(ctx, historyThreshold); err != nil {
+					log.Warningf(ctx, "Failed to delete historical job records: %+v", err)
+				}
 			}
 		}
 	})
@@ -784,6 +790,12 @@ func (r *Registry) PauseRequested(ctx context.Context, txn *kv.Txn, id int64) er
 	if err != nil {
 		return err
 	}
+	if job.mu.payload.Description == "stream lifecycle management" {
+		return errors.Newf(
+			"stream job cannot be paused, " +
+				"please pause stream directly")
+	}
+
 	var onPauseRequested onPauseRequestFunc
 	if pr, ok := resumer.(PauseRequester); ok {
 		onPauseRequested = pr.OnPauseRequest
@@ -816,6 +828,135 @@ func (r *Registry) Resume(ctx context.Context, txn *kv.Txn, id int64) error {
 		return err
 	}
 	return job.WithTxn(txn).resumed(ctx)
+}
+
+// dureHistoricalJobs iteratively cleans up historical jobs older than the specified time
+func (r *Registry) dureHistoricalJobs(ctx context.Context, olderThan time.Time) error {
+	const pageSize = cleanupPageSize // Use the predefined page size
+	var lastProcessedID int64        // Start from the beginning
+
+	for {
+		// Process one page of old jobs
+		completed, newMaxID, err := r.deleteOldJobs(ctx, olderThan, lastProcessedID, pageSize)
+		if err != nil {
+			return errors.Wrap(err, "failed to cleanup historical jobs page")
+		}
+
+		if completed {
+			return nil // All eligible jobs have been processed
+		}
+
+		// Update the cursor for the next page
+		lastProcessedID = newMaxID
+
+		// Check context cancellation between pages
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+	}
+}
+
+// deleteOldJobs deletes job records older than the specified time in paginated manner
+//
+// Parameters:
+//   - ctx: Context for cancellation and timeout control
+//   - olderThan: Time threshold - only processes records created before this time
+//   - minID: Starting ID for pagination (processes records where ID > minID)
+//   - pageSize: Number of records to process per page
+//
+// Returns:
+//   - done: Whether all eligible records have been processed
+//   - maxID: Highest ID processed in current page, used for next pagination
+//   - error: Any error encountered during operation
+func (r *Registry) deleteOldJobs(
+	ctx context.Context, olderThan time.Time, minID int64, pageSize int,
+) (done bool, maxID int64, _ error) {
+	const (
+		selectStmt = `
+            SELECT id, payload, status, created 
+            FROM system.jobs 
+            WHERE created < $1 AND id > $2 
+            ORDER BY id  -- ordering is important for pagination
+            LIMIT $3`
+
+		deleteStmt = `DELETE FROM system.jobs WHERE id = ANY($1)`
+	)
+
+	// Query for potentially expired jobs
+	rows, err := r.ex.Query(ctx, "gc-jobs", nil /* txn */, selectStmt, olderThan, minID, pageSize)
+	if err != nil {
+		return false, 0, errors.Wrap(err, "querying for old jobs")
+	}
+
+	log.VEventf(ctx, 2, "read potentially expired jobs: %d", len(rows))
+
+	// Handle empty result case
+	if len(rows) == 0 {
+		return true, 0, nil
+	}
+
+	// Determine pagination status
+	maxID = int64(*(rows[len(rows)-1][0].(*tree.DInt)))
+	morePages := len(rows) == pageSize
+
+	// Filter jobs that should be deleted
+	toDelete := tree.NewDArray(types.Int)
+	toDelete.Array = make(tree.Datums, 0, len(rows))
+	oldMicros := timeutil.ToUnixMicros(olderThan)
+
+	for _, row := range rows {
+		shouldDelete, err := r.shouldDeleteJob(ctx, row, olderThan, oldMicros)
+		if err != nil {
+			return false, 0, err
+		}
+		if shouldDelete {
+			toDelete.Array = append(toDelete.Array, row[0])
+		}
+	}
+
+	// Perform deletion if needed
+	if len(toDelete.Array) > 0 {
+		log.Infof(ctx, "cleaning up expired job records: %d", len(toDelete.Array))
+
+		nDeleted, err := r.ex.Exec(ctx, "gc-jobs", nil /* txn */, deleteStmt, toDelete)
+		if err != nil {
+			return false, 0, errors.Wrap(err, "deleting old jobs")
+		}
+
+		if nDeleted != len(toDelete.Array) {
+			return false, 0, errors.AssertionFailedf(
+				"asked to delete %d rows but %d were actually deleted",
+				len(toDelete.Array), nDeleted,
+			)
+		}
+	}
+
+	return !morePages, maxID, nil
+}
+
+// Helper function to determine if a job should be deleted
+func (r *Registry) shouldDeleteJob(
+	ctx context.Context, row tree.Datums, olderThan time.Time, oldMicros int64,
+) (bool, error) {
+	payload, err := UnmarshalPayload(row[1])
+	if err != nil {
+		return false, err
+	}
+
+	switch Status(*row[2].(*tree.DString)) {
+	case StatusRunning, StatusPending:
+		done, err := r.isOrphaned(ctx, payload)
+		if err != nil {
+			return false, err
+		}
+		return done && row[3].(*tree.DTimestamp).Time.Before(olderThan), nil
+
+	case StatusSucceeded, StatusCanceled, StatusFailed:
+		return payload.FinishedMicros < oldMicros, nil
+
+	default:
+		return false, nil
+	}
 }
 
 // Resumer is a resumable job, and is associated with a Job object. Jobs can be

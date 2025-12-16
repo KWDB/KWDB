@@ -29,10 +29,12 @@ import (
 	"fmt"
 	"reflect"
 	"sync/atomic"
+	"time"
 
 	"gitee.com/kwbasedb/kwbase/pkg/jobs/jobspb"
 	"gitee.com/kwbasedb/kwbase/pkg/kv"
 	"gitee.com/kwbasedb/kwbase/pkg/security"
+	"gitee.com/kwbasedb/kwbase/pkg/settings"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sessiondata"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
@@ -43,6 +45,11 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/util/timeutil"
 	"github.com/cockroachdb/errors"
 )
+
+var storeHistoryTimeSetting = settings.RegisterDurationSetting(
+	"jobs.store_history_time",
+	"set the time of storing history jobs",
+	time.Hour*24*3000)
 
 // Job manages logging the progress of long-running system processes, like
 // backups and restores, to the system.jobs table.

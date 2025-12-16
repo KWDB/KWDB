@@ -4651,6 +4651,12 @@ show_jobs_stmt:
         Name: tree.Name($5),
       }
   }
+| SHOW JOBS where_clause
+	{
+		$$.val = &tree.ShowJobs{
+				Where: tree.NewWhere(tree.AstWhere, $3.expr()),
+     }
+	}
 | SHOW JOB error // SHOW HELP: SHOW JOBS
 
 // %Help: SHOW TRACE - display an execution trace

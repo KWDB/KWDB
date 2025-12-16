@@ -467,6 +467,7 @@ type ShowJobs struct {
 	// Whether to block and wait for completion of all running jobs to be displayed.
 	Block bool
 	Name  Name
+	Where *Where
 }
 
 // Format implements the NodeFormatter interface.

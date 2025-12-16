@@ -595,6 +595,7 @@ CREATE TABLE kwdb_internal.jobs (
 				totalNumOfSuccess := 0
 				totalNumOfFail := 0
 				timeOfLastSuccess := tree.DNull
+
 				// Extract data from the progress field.
 				if progressBytes != tree.DNull {
 					progress, err := jobs.UnmarshalProgress(progressBytes)

@@ -957,6 +957,9 @@ create stream test_stream284 into stream_db_fvt_out1.cpu_stream_out21 with optio
 -- bool
 create stream test_stream290 into stream_db_fvt_out1.cpu_stream_out21 with options (enable='off') AS SELECT first(k_timestamp) as w_begin, last(k_timestamp) as w_end, last(bool1) as bool1, hostname as hostname FROM stream_db_fvt1.cpu20 GROUP BY TIME_BUCKET(k_timestamp, '1m'), hostname;
 
+-- show jobs
+select count(*) from [show jobs where job_type='STREAM'];
+select job_type, description, user_name, statement, error from [show jobs where job_type='STREAM'];
 -- cleanup
 drop table stream_db_fvt_out1.cpu_stream_out21 cascade;
 
@@ -1048,7 +1051,9 @@ CREATE STREAM cpu_stream_normal_3 INTO stream_db_fvt_out1.cpu_avg_normal WITH OP
 CREATE STREAM cpu_stream_normal_4 INTO stream_db_fvt_out1.cpu_avg_normal WITH OPTIONS(recalculate_delay_rounds='1',MAX_RETRIES='3',PROCESS_HISTORY='off',IGNORE_EXPIRED='on', MAX_DELAY='5s',SYNC_TIME='3s',BUFFER_SIZE='1024kib',checkpoint_interval='1500ms',heartbeat_interval='2s') AS SELECT k_timestamp AS k_timestamp, hostname AS hostname, usage_user+usage_system AS usage_user_system, usage_idle*usage_nice AS usage_idel_nice, usage_iowait/usage_irq AS usage_iowait_irq FROM stream_db_fvt.cpu_normal;
 CREATE STREAM cpu_stream_normal_5 INTO stream_db_fvt_out.cpu_normal WITH OPTIONS(recalculate_delay_rounds='1',MAX_RETRIES='3',PROCESS_HISTORY='off',IGNORE_EXPIRED='on', MAX_DELAY='5s',SYNC_TIME='3s',BUFFER_SIZE='1024kib',checkpoint_interval='2s',heartbeat_interval='1s') AS SELECT k_timestamp AS k_timestamp, usage_steal AS usage_steal, usage_guest AS usage_guest, usage_guest_nice AS usage_guest_nice, hostname AS hostname, region AS region, service_environment AS service_environment FROM stream_db_fvt.cpu_normal;
 
-select pg_sleep(2);
+-- show jobs
+select count(*) from [show jobs where job_type='STREAM'];
+select job_type, description, user_name, statement, error from [show jobs where job_type='STREAM'];
 
 INSERT INTO stream_db_fvt.cpu_normal values ('2023-05-31 10:00:30.123456789', 58, 10, 24, 61, 22, 63, 6, 44, 80, 38, 'host_1', '', '', '', '', '', '', '', '', '');
 INSERT INTO stream_db_fvt.cpu_normal values ('2023-05-31 10:00:40.123456789', 58, 55, 24, 61, 22, 63, 6, 44, 80, 38, 'host_0', '', '', '', '', '', '', '', '', '');
@@ -1371,6 +1376,10 @@ select * from stream_db_fvt_out1.cpu_avg_agg5 order by w_begin, hostname;
 select * from stream_db_fvt_out1.cpu_avg_agg6 order by w_begin, hostname;
 select * from stream_db_fvt_out1.cpu_avg_agg7 order by w_begin, hostname;
 
+-- show jobs
+select count(*) from [show jobs where job_type='STREAM'];
+select job_type, description, user_name, statement, error from [show jobs where job_type='STREAM'];
+
 -- cleanup
 drop database if exists stream_db_fvt cascade;
 create ts database stream_db_fvt;
@@ -1378,7 +1387,18 @@ create ts database stream_db_fvt;
 drop database if exists stream_db_fvt_out cascade;
 create ts database stream_db_fvt_out;
 
+-- show jobs
+select count(*) from [show jobs where job_type='STREAM'];
+select job_type, description, user_name, statement, error from [show jobs where job_type='STREAM'];
+
+select job_type, description, user_name, statement, error from [show jobs where job_type='STREAM' AND status = 'paused'];
+
+
 drop database if exists stream_db_fvt_out1 cascade;
 create database stream_db_fvt_out1;
 
 show streams;
+-- show jobs
+select count(*) from [show jobs where job_type='STREAM'];
+select job_type, description, user_name, statement, error from [show jobs where job_type='STREAM'];
+PAUSE JOBS SELECT job_id FROM [SHOW JOBS] WHERE job_type = 'STREAM';
