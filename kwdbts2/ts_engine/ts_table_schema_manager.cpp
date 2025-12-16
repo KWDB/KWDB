@@ -62,20 +62,31 @@ KStatus TsTableSchemaManager::alterTableCol(kwdbContext_p ctx, AlterType alter_t
   }
   switch (alter_type) {
     case ADD_COLUMN:
-      if (col_idx >= 0 && latest_version == new_version) {
-        return SUCCESS;
+      if (col_idx >= 0) {
+        if (latest_version == new_version) {
+          LOG_WARN("alterTableCol: table id %lu, column id %u already exists", table_id_, attr_info.id);
+          return SUCCESS;
+        }
+        LOG_WARN("alterTableCol failed: table id %lu, column id %u already exists, cur version %u, expect version %u",
+                  table_id_, attr_info.id, latest_version, new_version);
+        return FAIL;
       }
-    schema.emplace_back(attr_info);
-    break;
+      schema.emplace_back(attr_info);
+      break;
     case DROP_COLUMN:
-      if (col_idx < 0 && latest_version == new_version) {
-        return SUCCESS;
+      if (col_idx < 0) {
+        if (latest_version == new_version) {
+          LOG_WARN("alterTableCol: column %u has been dropped, table id %lu", attr_info.id, table_id_)
+          return SUCCESS;
+        }
+        LOG_WARN("drop column failed: table id %lu, column id %u, column name %s", table_id_, attr_info.id, attr_info.name);
+        return FAIL;
       }
-    schema[col_idx].setFlag(AINFO_DROPPED);
-    break;
+      schema[col_idx].setFlag(AINFO_DROPPED);
+      break;
     case ALTER_COLUMN_TYPE: {
       if (col_idx < 0) {
-        LOG_ERROR("alter column type failed: column (id %u) does not exists, table id = %lu", attr_info.id, table_id_);
+        LOG_ERROR("alter column type failed: table id %lu, column (id %u) does not exists", table_id_, attr_info.id);
         msg = "column does not exist";
         return FAIL;
       }
@@ -736,7 +747,7 @@ bool TsTableSchemaManager::IsExistTableVersion(uint32_t version) {
     return true;
   }
   if (getMetricsTable(version) == nullptr) {
-    LOG_ERROR("Couldn't find metrics table with version: %u", version);
+    LOG_ERROR("Couldn't find metrics table with version %u, table id %lu", version, table_id_);
     return false;
   }
   int retry = 6;

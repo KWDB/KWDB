@@ -85,7 +85,7 @@ TagVersionObject* TagTableVersionManager::GetVersionObject(uint32_t table_versio
      return version_obj->second;
   }
   unLock();
-  LOG_WARN("Get Tag MetaData Object failed. table_version: %u ", table_version);
+  LOG_WARN("Get Tag MetaData Object failed. table_version %u, table id %u", table_version, m_table_id_);
   return nullptr;
 }
 
@@ -110,8 +110,8 @@ TagVersionObject* TagTableVersionManager::CloneTagVersionObject(const TagVersion
   auto version_obj = m_version_tables_.find(new_version);
   if (version_obj != m_version_tables_.end()) {
      unLock();
-     LOG_WARN("tag table version [%u] already exist.", new_version);
-     return 0;
+     LOG_WARN("tag table version [%u] already exist, table id %u", new_version, m_table_id_);
+     return nullptr;
   }
   TagVersionObject* tmp_obj = KNEW TagVersionObject(m_db_path_, m_tbl_sub_path_, m_table_id_, new_version);
   if (tmp_obj && !tmp_obj->create(src_ver_obj->getIncludeDroppedSchemaInfos(), err_info)) {
@@ -142,7 +142,9 @@ int TagTableVersionManager::SyncFromMetricsTableVersion(uint32_t cur_version, ui
   ErrorInfo err_info;
   auto tmp_new_obj = CloneTagVersionObject(tbl_ver_obj, new_version, err_info);
   if (tmp_new_obj == nullptr) {
-    LOG_ERROR("CloneTagVersionObject failed. error: %s ", err_info.errmsg.c_str());
+    if (0 != err_info.errcode) {
+      LOG_ERROR("CloneTagVersionObject failed. error: %s ", err_info.errmsg.c_str());
+    }
     return err_info.errcode;
   }
   tmp_new_obj->setStatus(TAG_STATUS_READY);
