@@ -210,11 +210,10 @@ var (
 		"the maximum memory size of block lru cache",
 		0)
 
-	tsLastRowOptimization = settings.RegisterPublicBoolSetting(
-		"ts.last_row_optimization.enabled",
-		"enable optimization for last_row queries which can improve performance "+
-			"when working with tables containing large amounts of data",
-		false)
+	maxLastCacheMaxSize = settings.RegisterPublicIntSetting(
+		"ts.last_cache_size.max_limit",
+		"the maximum size of last cache in vgroup",
+		1024*1024*1024)
 )
 
 // TODO(peter): Until go1.11, ServeMux.ServeHTTP was not safe to call

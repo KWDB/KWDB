@@ -68,15 +68,13 @@ TsVGroup::TsVGroup(EngineOptions* engine_options, uint32_t vgroup_id, TsEngineSc
 TsVGroup::~TsVGroup() {
   enable_compact_thread_ = false;
   closeCompactThread();
-  if (CLUSTER_SETTING_USE_LAST_ROW_OPTIMIZATION) {
-    for (auto it : entity_latest_row_) {
-      char* last_payload_data = it.second.last_payload.data;
-      if (last_payload_data != nullptr) {
-        free(last_payload_data);
-        last_payload_data = nullptr;
-      }
+  for (auto it : entity_latest_row_) {
+    if (it.second.last_payload.data != nullptr) {
+      free(it.second.last_payload.data);
+      it.second.last_payload.data = nullptr;
     }
   }
+  cur_mem_size_ = 0;
 }
 
 KStatus TsVGroup::Init(kwdbContext_p ctx) {
@@ -147,7 +145,7 @@ TSEntityID TsVGroup::AllocateEntityID() {
   std::lock_guard<std::mutex> lock1(entity_id_mutex_);
   std::unique_lock<std::shared_mutex> lock2(entity_latest_row_mutex_);
   uint64_t max_entity_id = ++max_entity_id_;
-  entity_latest_row_checked_[max_entity_id] = TsEntityLatestRowStatus::Uninitialized;
+  entity_latest_row_[max_entity_id].status = TsEntityLatestRowStatus::Uninitialized;
   return max_entity_id;
 }
 
@@ -161,7 +159,7 @@ void TsVGroup::InitEntityID(TSEntityID entity_id) {
   std::unique_lock<shared_mutex> lock2(entity_latest_row_mutex_);
   max_entity_id_ = entity_id;
   for (int i = 1; i <= max_entity_id_; ++i) {
-    entity_latest_row_checked_[i] = TsEntityLatestRowStatus::Recovering;
+    entity_latest_row_[i].status = TsEntityLatestRowStatus::Recovering;
   }
 }
 
@@ -320,7 +318,7 @@ KStatus TsVGroup::GetLastRowEntity(kwdbContext_p ctx, std::shared_ptr<TsTableSch
   KTableKey table_id = table_schema_mgr->GetTableId();
   {
     std::shared_lock<std::shared_mutex> lock(last_row_entity_mutex_);
-    if (last_row_entity_checked_[table_id] && last_row_entity_.count(table_id)) {
+    if (last_row_entity_.count(table_id)) {
       last_row_entity = last_row_entity_[table_id];
       return KStatus::SUCCESS;
     }
@@ -332,7 +330,6 @@ KStatus TsVGroup::GetLastRowEntity(kwdbContext_p ctx, std::shared_ptr<TsTableSch
   if (ts_partitions.empty()) {
     std::unique_lock<std::shared_mutex> lock(last_row_entity_mutex_);
     last_row_entity = {INT64_MIN, 0};
-    last_row_entity_checked_[table_id] = true;
     return KStatus::SUCCESS;
   }
   bool last_row_found = false;
@@ -384,7 +381,6 @@ KStatus TsVGroup::GetLastRowEntity(kwdbContext_p ctx, std::shared_ptr<TsTableSch
   if (!last_row_entity_.count(table_id) || last_row_entity.first >= last_row_entity_[table_id].first) {
     last_row_entity_[table_id] = last_row_entity;
   }
-  last_row_entity_checked_[table_id] = true;
   return KStatus::SUCCESS;
 }
 
@@ -392,28 +388,28 @@ KStatus TsVGroup::GetEntityLastRow(std::shared_ptr<TsTableSchemaManager>& table_
                                    uint32_t entity_id, const std::vector<KwTsSpan>& ts_spans,
                                    timestamp64& entity_last_ts) {
   entity_last_ts = INVALID_TS;
-  {
-    std::shared_lock<std::shared_mutex> lock(entity_latest_row_mutex_);
-    if (entity_latest_row_checked_[entity_id] == TsEntityLatestRowStatus::Uninitialized) {
-      return KStatus::SUCCESS;
-    }
-    if (entity_latest_row_checked_[entity_id] == TsEntityLatestRowStatus::Valid) {
-      if (checkTimestampWithSpans(ts_spans, entity_latest_row_[entity_id].last_ts,
-                                   entity_latest_row_[entity_id].last_ts) != TimestampCheckResult::NonOverlapping) {
-        entity_last_ts = entity_latest_row_[entity_id].last_ts;
-      }
-      return KStatus::SUCCESS;
-    }
+  std::shared_lock<std::shared_mutex> lock1(entity_latest_row_mutex_);
+  TsTableLastRow& last_row = entity_latest_row_[entity_id];
+  if (last_row.status == TsEntityLatestRowStatus::Uninitialized) {
+    return KStatus::SUCCESS;
   }
+  if (last_row.status == TsEntityLatestRowStatus::Valid) {
+    if (checkTimestampWithSpans(ts_spans, last_row.last_ts, last_row.last_ts) != TimestampCheckResult::NonOverlapping) {
+      entity_last_ts = last_row.last_ts;
+    }
+    return KStatus::SUCCESS;
+  }
+  lock1.unlock();
+
   uint32_t db_id = table_schema_mgr->GetDbID();
   KTableKey table_id = table_schema_mgr->GetTableId();
   DATATYPE ts_col_type = table_schema_mgr->GetTsColDataType();
   auto current = CurrentVersion();
   auto ts_partitions = current->GetPartitions(db_id, {{INT64_MIN, INT64_MAX}}, ts_col_type);
   if (ts_partitions.empty()) {
-    std::unique_lock<std::shared_mutex> lock(entity_latest_row_mutex_);
-    entity_latest_row_checked_[entity_id] = TsEntityLatestRowStatus::Valid;
-    entity_latest_row_[entity_id].last_ts = INT64_MIN;
+    std::unique_lock<std::shared_mutex> lock2(entity_latest_row_mutex_);
+    last_row.status = TsEntityLatestRowStatus::Valid;
+    last_row.last_ts = INT64_MIN;
     return KStatus::SUCCESS;
   }
 
@@ -433,30 +429,29 @@ KStatus TsVGroup::GetEntityLastRow(std::shared_ptr<TsTableSchemaManager>& table_
     }
     if (ts_block_spans.empty()) continue;
 
-    timestamp64 last_ts = INT64_MIN;
+    timestamp64 max_ts = INT64_MIN;
     while (!ts_block_spans.empty()) {
       auto block_span = ts_block_spans.front();
       ts_block_spans.pop_front();
       timestamp64 cur_ts = block_span->GetLastTS();
-      if (cur_ts > last_ts) {
-        last_ts = cur_ts;
+      if (cur_ts > max_ts) {
+        max_ts = cur_ts;
         last_block_span.swap(block_span);
       }
     }
     break;
   }
-  std::unique_lock<std::shared_mutex> lock(entity_latest_row_mutex_);
+  std::unique_lock<std::shared_mutex> lock3(entity_latest_row_mutex_);
   if (last_block_span != nullptr) {
-    if (!entity_latest_row_.count(entity_id) || last_block_span->GetLastTS() >= entity_latest_row_[entity_id].last_ts) {
-      entity_latest_row_[entity_id].is_payload_valid = false;
-      entity_latest_row_[entity_id].last_ts = last_block_span->GetLastTS();
+    if (!entity_latest_row_.count(entity_id) || last_block_span->GetLastTS() >= last_row.last_ts) {
+      last_row.is_payload_valid = false;
+      last_row.last_ts = last_block_span->GetLastTS();
     }
-    if (checkTimestampWithSpans(ts_spans, entity_latest_row_[entity_id].last_ts,
-                                entity_latest_row_[entity_id].last_ts) != TimestampCheckResult::NonOverlapping) {
-      entity_last_ts = entity_latest_row_[entity_id].last_ts;
+    if (checkTimestampWithSpans(ts_spans, last_row.last_ts, last_row.last_ts) != TimestampCheckResult::NonOverlapping) {
+      entity_last_ts = last_row.last_ts;
     }
   }
-  entity_latest_row_checked_[entity_id] = TsEntityLatestRowStatus::Valid;
+  last_row.status = TsEntityLatestRowStatus::Valid;
   return KStatus::SUCCESS;
 }
 
@@ -513,28 +508,20 @@ KStatus TsVGroup::GetEntityLastRowBatch(uint32_t entity_id, uint32_t scan_versio
                                         std::shared_ptr<TsRawPayloadRowParser>& parser,
                                         const std::vector<KwTsSpan>& ts_spans, const std::vector<k_uint32>& scan_cols,
                                         timestamp64& entity_last_ts, ResultSet* res) {
-  TSSlice last_payload;
-  uint32_t last_version = 0;
-  timestamp64 last_ts = INVALID_TS;
   std::shared_lock<std::shared_mutex> lock(entity_latest_row_mutex_);
-  if (!entity_latest_row_checked_.count(entity_id)
-      || entity_latest_row_checked_[entity_id] != TsEntityLatestRowStatus::Valid
-      || !entity_latest_row_.count(entity_id) || !entity_latest_row_[entity_id].is_payload_valid
-      || TimestampCheckResult::NonOverlapping == checkTimestampWithSpans(ts_spans, entity_latest_row_[entity_id].last_ts,
-                                                 entity_latest_row_[entity_id].last_ts)) {
+  TsTableLastRow& last_row = entity_latest_row_[entity_id];
+  if (!entity_latest_row_.count(entity_id) || last_row.status != TsEntityLatestRowStatus::Valid ||
+      !last_row.is_payload_valid ||
+      TimestampCheckResult::NonOverlapping == checkTimestampWithSpans(ts_spans, last_row.last_ts, last_row.last_ts)) {
     return KStatus::SUCCESS;
   }
-  last_version = entity_latest_row_[entity_id].version;
-  last_ts = entity_latest_row_[entity_id].last_ts;
-  last_payload.len = entity_latest_row_[entity_id].last_payload.len;
-  last_payload.data =  entity_latest_row_[entity_id].last_payload.data;
 
   uint32_t db_id = schema->metaData()->db_id;
   KTableKey table_id = table_schema_mgr->GetTableId();
-  TSMemSegRowData last_row_data(db_id, table_id, last_version, entity_id);
+  TSMemSegRowData last_row_data(db_id, table_id, last_row.version, entity_id);
   // TODO(liumengzhen) : set correct lsn
-  last_row_data.SetData(last_ts, UINT64_MAX);
-  last_row_data.SetRowData(last_payload);
+  last_row_data.SetData(last_row.last_ts, UINT64_MAX);
+  last_row_data.SetRowData(last_row.last_payload);
   std::shared_ptr<TsMemSegBlock> mem_block = std::make_shared<TsMemSegBlock>(nullptr);
   mem_block->SetMemoryAddrSafe();
   mem_block->InsertRow(&last_row_data);
@@ -542,8 +529,8 @@ KStatus TsVGroup::GetEntityLastRowBatch(uint32_t entity_id, uint32_t scan_versio
   const vector<AttributeInfo>& attrs = schema->getSchemaInfoExcludeDropped();
 
   std::shared_ptr<TSBlkDataTypeConvert> convert = nullptr;
-  if (last_version != scan_version) {
-    convert = std::make_shared<TSBlkDataTypeConvert>(last_version, scan_version, table_schema_mgr);
+  if (last_row.version != scan_version) {
+    convert = std::make_shared<TSBlkDataTypeConvert>(last_row.version, scan_version, table_schema_mgr);
     KStatus s = convert->Init();
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("TSBlkDataTypeConvert Init failed.");
@@ -560,7 +547,7 @@ KStatus TsVGroup::GetEntityLastRowBatch(uint32_t entity_id, uint32_t scan_versio
     LOG_ERROR("ConvertBlockSpanToResultSet failed");
     return KStatus::FAIL;
   }
-  entity_last_ts = last_ts;
+  entity_last_ts = last_row.last_ts;
   return KStatus::SUCCESS;
 }
 

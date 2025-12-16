@@ -16,12 +16,12 @@
 #include <list>
 #include <memory>
 #include <mutex>
-#include <set>
 #include <string>
+#include <tuple>
 #include <unordered_map>
-#include <vector>
 #include <utility>
 #include <unordered_set>
+#include <vector>
 
 #include "data_type.h"
 #include "iterator.h"
@@ -35,7 +35,6 @@
 
 extern uint16_t CLUSTER_SETTING_MAX_ROWS_PER_BLOCK;         // PARTITION_ROWS from cluster setting
 extern bool CLUSTER_SETTING_COUNT_USE_STATISTICS;          // COUNT_USE_STATISTICS from cluster setting
-extern bool CLUSTER_SETTING_USE_LAST_ROW_OPTIMIZATION;
 
 namespace kwdbts {
 
@@ -86,19 +85,19 @@ class TsVGroup {
   std::atomic<uint64_t> max_osn_{LOG_BLOCK_HEADER_SIZE + BLOCK_SIZE};
 
   mutable std::shared_mutex last_row_entity_mutex_;
-  std::unordered_map<uint32_t, bool> last_row_entity_checked_;
   std::unordered_map<uint32_t, pair<timestamp64, uint32_t>> last_row_entity_;
 
   struct TsTableLastRow {
     bool is_payload_valid = false;  // for restart
+    TsEntityLatestRowStatus status = TsEntityLatestRowStatus::Uninitialized;
     uint32_t version = 0;
     timestamp64 last_ts = INT64_MIN;
+    size_t last_payload_mem_size = 0;
     TSSlice last_payload;
   };
   mutable std::shared_mutex entity_latest_row_mutex_;
-  std::unordered_map<uint32_t, TsEntityLatestRowStatus> entity_latest_row_checked_;
   std::unordered_map<uint32_t, TsTableLastRow> entity_latest_row_;
-  std::unordered_map<uint32_t, size_t> entity_latest_row_mem_size_;
+  size_t cur_mem_size_ = 0;
 
 
  public:
@@ -327,16 +326,12 @@ class TsVGroup {
 
   bool isLastRowEntityPayloadValid(KTableKey table_id) {
     std::unique_lock<std::shared_mutex> lock(last_row_entity_mutex_);
-    return last_row_entity_checked_.count(table_id) && last_row_entity_checked_[table_id];
+    return last_row_entity_.count(table_id);
   }
 
   void UpdateEntityAndMaxTs(KTableKey table_id, timestamp64 max_ts, EntityID entity_id) {
-    std::unique_lock<std::shared_mutex> lock1(last_row_entity_mutex_);
+    std::unique_lock<std::shared_mutex> lock(last_row_entity_mutex_);
     if (!last_row_entity_.count(table_id) || max_ts >= last_row_entity_[table_id].first) {
-      std::shared_lock<std::shared_mutex> lock2(entity_latest_row_mutex_);
-      if (entity_latest_row_checked_[entity_id] == TsEntityLatestRowStatus::Valid) {
-        last_row_entity_checked_[table_id] = true;
-      }
       last_row_entity_[table_id] = {max_ts, entity_id};
     }
   }
@@ -346,7 +341,6 @@ class TsVGroup {
     if (last_row_entity_.count(table_id) && max_ts >= last_row_entity_[table_id].first) {
       if (entity_id == last_row_entity_[table_id].second) {
         last_row_entity_.erase(table_id);
-        last_row_entity_checked_[table_id] = false;
       }
     }
   }
@@ -364,70 +358,94 @@ class TsVGroup {
 
   bool isEntityLatestRowPayloadValid(EntityID entity_id) {
     std::shared_lock<std::shared_mutex> lock(entity_latest_row_mutex_);
-    return entity_latest_row_checked_.count(entity_id) &&
-           entity_latest_row_checked_[entity_id] != TsEntityLatestRowStatus::Recovering &&
-           entity_latest_row_[entity_id].is_payload_valid;
+    if (!entity_latest_row_.count(entity_id)) return false;
+    TsTableLastRow last_row = entity_latest_row_[entity_id];
+    return last_row.status != TsEntityLatestRowStatus::Recovering && last_row.is_payload_valid;
+  }
+
+  void EvictEntityRows() {
+    size_t recycled_size = 0;
+    size_t last_cache_max_size = EngineOptions::last_cache_max_size;
+    const size_t target_recycle_size = (last_cache_max_size > 0) ? static_cast<size_t>(last_cache_max_size * 0.25) :
+                                                                   cur_mem_size_;
+    for (auto it = entity_latest_row_.begin(); it != entity_latest_row_.end(); ++it) {
+      if (0 == it->second.last_payload_mem_size) {
+        continue;
+      }
+      free(it->second.last_payload.data);
+      it->second.last_payload.data = nullptr;
+      size_t mem_size = it->second.last_payload_mem_size;
+      recycled_size += mem_size;
+      cur_mem_size_ -= mem_size;
+      it->second.is_payload_valid = false;
+      it->second.last_payload_mem_size = 0;
+
+      if (recycled_size >= target_recycle_size) {
+        break;
+      }
+    }
+    LOG_INFO("recycled %lu bytes for last cache", recycled_size);
   }
 
   void UpdateEntityLatestRow(EntityID entity_id, timestamp64 max_ts, const TSSlice& payload, uint32_t version) {
     std::unique_lock<std::shared_mutex> lock(entity_latest_row_mutex_);
     if (!entity_latest_row_.count(entity_id) || max_ts >= entity_latest_row_[entity_id].last_ts) {
+      TsTableLastRow& last_row = entity_latest_row_[entity_id];
       // update last payload
-      if (CLUSTER_SETTING_USE_LAST_ROW_OPTIMIZATION) {
+      if (EngineOptions::last_cache_max_size != 0) {
         assert(payload.len > 0);
         assert(payload.data != nullptr);
         char* payload_data = nullptr;
-        if (entity_latest_row_checked_[entity_id] != TsEntityLatestRowStatus::Valid) {
-          if (entity_latest_row_checked_[entity_id] == TsEntityLatestRowStatus::Uninitialized) {
-            entity_latest_row_checked_[entity_id] = TsEntityLatestRowStatus::Valid;
+        if (last_row.last_payload_mem_size < payload.len &&
+            (payload.len - last_row.last_payload_mem_size + cur_mem_size_) > EngineOptions::last_cache_max_size) {
+          EvictEntityRows();
+        }
+        if (0 == last_row.last_payload_mem_size) {
+          if (last_row.status == TsEntityLatestRowStatus::Uninitialized) {
+            last_row.status = TsEntityLatestRowStatus::Valid;
           }
-          size_t page_size = getpagesize();
-          size_t alloc_size = std::max(page_size, payload.len);
-          payload_data = static_cast<char*>(malloc(alloc_size));
+          payload_data = static_cast<char*>(malloc(payload.len));
           if (nullptr == payload_data) {
-            entity_latest_row_[entity_id].last_ts = max_ts;
-            LOG_ERROR("malloc failed. malloc size is %lu", alloc_size);
+            last_row.last_ts = max_ts;
+            LOG_ERROR("malloc failed. malloc size is %lu", payload.len);
             return;
           }
-          entity_latest_row_mem_size_[entity_id] = alloc_size;
-        } else if (payload.len > entity_latest_row_mem_size_[entity_id]) {
-          size_t& old_size = entity_latest_row_mem_size_[entity_id];
-          char* old_mem = entity_latest_row_[entity_id].last_payload.data;
-          size_t realloc_size = old_size * 1.25;
-          size_t alloc_size = std::max(realloc_size, payload.len);
-          payload_data = static_cast<char*>(realloc(old_mem, alloc_size));
+          last_row.last_payload_mem_size = payload.len;
+          cur_mem_size_ += last_row.last_payload_mem_size;
+        } else if (payload.len > last_row.last_payload_mem_size) {
+          char* old_mem = last_row.last_payload.data;
+          cur_mem_size_ -= last_row.last_payload_mem_size;
+          payload_data = static_cast<char*>(realloc(old_mem, payload.len));
           if (nullptr == payload_data) {
-            entity_latest_row_[entity_id].last_ts = max_ts;
-            entity_latest_row_[entity_id].is_payload_valid = false;
-            LOG_ERROR("realloc failed. realloc size is %lu", alloc_size);
+            last_row.last_ts = max_ts;
+            last_row.is_payload_valid = false;
+            LOG_ERROR("realloc failed. realloc size is %lu", payload.len);
             return;
           }
-          entity_latest_row_mem_size_[entity_id] = alloc_size;
+          last_row.last_payload_mem_size = payload.len;
+          cur_mem_size_ += last_row.last_payload_mem_size;
         } else {
-          payload_data = entity_latest_row_[entity_id].last_payload.data;
+          payload_data = last_row.last_payload.data;
         }
-        entity_latest_row_[entity_id].is_payload_valid = true;
-        entity_latest_row_[entity_id].version = version;
-        entity_latest_row_[entity_id].last_payload.len = payload.len;
-        if (entity_latest_row_[entity_id].last_payload.data != payload_data) {
-          entity_latest_row_[entity_id].last_payload.data = payload_data;
+        last_row.is_payload_valid = true;
+        last_row.version = version;
+        last_row.last_payload.len = payload.len;
+        if (last_row.last_payload.data != payload_data) {
+          last_row.last_payload.data = payload_data;
         }
-        memcpy(entity_latest_row_[entity_id].last_payload.data, payload.data, payload.len);
+        memcpy(last_row.last_payload.data, payload.data, payload.len);
+      } else if (cur_mem_size_ != 0) {
+        LOG_INFO("ts.last_cache_size.max_limit is set to 0, evicting all entity rows.");
+        EvictEntityRows();
       }
-      entity_latest_row_[entity_id].last_ts = max_ts;
+      last_row.last_ts = max_ts;
     }
   }
 
   void ResetEntityLatestRow(EntityID entity_id, timestamp64 max_ts) {
     std::unique_lock<std::shared_mutex> lock(entity_latest_row_mutex_);
     if (entity_latest_row_.count(entity_id) && max_ts >= entity_latest_row_[entity_id].last_ts) {
-      if (CLUSTER_SETTING_USE_LAST_ROW_OPTIMIZATION) {
-        free(entity_latest_row_[entity_id].last_payload.data);
-        entity_latest_row_[entity_id].last_payload.data = nullptr;
-      }
-      entity_latest_row_.erase(entity_id);
-      entity_latest_row_mem_size_.erase(entity_id);
-      entity_latest_row_checked_[entity_id] = TsEntityLatestRowStatus::Recovering;
+      entity_latest_row_[entity_id].status = TsEntityLatestRowStatus::Recovering;
     }
   }
 

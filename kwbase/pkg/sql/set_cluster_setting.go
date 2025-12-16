@@ -255,10 +255,13 @@ func checkTsBlockCacheMaxLimit(encodedValue string) error {
 	return nil
 }
 
-func checkTsLastRowOptimization(encodedValue string) error {
-	_, err := strconv.ParseBool(encodedValue)
+func checkTsLastCacheSizeMaxLimit(encodedValue string) error {
+	value, err := strconv.ParseInt(encodedValue, 10, 64)
 	if err != nil {
 		return err
+	}
+	if value < 0 || value > 1073741824 {
+		return errors.New("invalid value, the range of ts.last_cache_size.max_limit is [0, 1073741824]")
 	}
 	return nil
 }
@@ -277,7 +280,7 @@ var CheckClusterSetting = map[string]CheckOperation{
 	"ts.reserved_last_segment.max_limit": checkTsReservedLastSegmentMaxLimit,
 	"ts.mem_segment_size.max_limit":      checkTsMemSegmentSizeMaxLimit,
 	"ts.block.lru_cache.max_limit":       checkTsBlockCacheMaxLimit,
-	"ts.last_row_optimization.enabled":   checkTsLastRowOptimization,
+	"ts.last_cache_size.max_limit":       checkTsLastCacheSizeMaxLimit,
 }
 
 // TsRaftlogCombineWalClusterSettingName is the name of the ts raftlog combine wal cluster setting.

@@ -964,7 +964,7 @@ KStatus TsAggIteratorV2Impl::Next(ResultSet* res, k_uint32* count, bool* is_fini
   std::vector<KwTsSpan> ts_spans_bkup;
   std::vector<std::shared_ptr<const TsPartitionVersion>> ts_partitions_bkup;
   if (only_last_ || only_last_row_) {
-    last_payload_valid = CLUSTER_SETTING_USE_LAST_ROW_OPTIMIZATION && vgroup_->isEntityLatestRowPayloadValid(entity_id);
+    last_payload_valid = (EngineOptions::last_cache_max_size > 0) && vgroup_->isEntityLatestRowPayloadValid(entity_id);
     if (last_payload_valid) {
       if (parser_ == nullptr) {
         parser_ = std::make_shared<TsRawPayloadRowParser>(&attrs_);

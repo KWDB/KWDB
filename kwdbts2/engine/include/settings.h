@@ -107,6 +107,7 @@ struct EngineOptions {
   static int64_t block_cache_max_size;
   static TsIOMode g_io_mode;
   static uint8_t compress_stage;
+  static size_t last_cache_max_size;
 
   TsIOEnv* io_env = &TsIOEnv::GetInstance();
 };
