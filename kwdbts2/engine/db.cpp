@@ -19,6 +19,7 @@
 #include "cm_fault_injection.h"
 #include "cm_task.h"
 #include "perf_stat.h"
+#include "settings.h"
 #include "sys_utils.h"
 #include "ee_mempool.h"
 #include "st_tier.h"
@@ -687,6 +688,8 @@ void TriggerSettingCallback(const std::string& key, const std::string& value) {
     TsLRUBlockCache::GetInstance().SetMaxMemorySize(EngineOptions::block_cache_max_size);
   } else if ("ts.compress.stage" == key) {
     EngineOptions::compress_stage = atoi(value.c_str());
+  } else if ("ts.force_sync_file.enabled" == key) {
+    EngineOptions::force_sync_counter_file = ("true" == value);
   } else if ("ts.last_cache_size.max_limit" == key) {
     EngineOptions::last_cache_max_size = atoll(value.c_str());
   }

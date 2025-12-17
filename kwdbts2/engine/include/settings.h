@@ -15,7 +15,6 @@
 #include <vector>
 #include "libkwdbts2.h"
 #include "ts_common.h"
-#include "ts_io.h"
 
 namespace kwdbts {
 
@@ -107,9 +106,8 @@ struct EngineOptions {
   static int64_t block_cache_max_size;
   static TsIOMode g_io_mode;
   static uint8_t compress_stage;
+  static bool force_sync_counter_file;
   static size_t last_cache_max_size;
-
-  TsIOEnv* io_env = &TsIOEnv::GetInstance();
 };
 extern std::atomic<int64_t> kw_used_anon_memory_size;
 

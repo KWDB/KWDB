@@ -140,6 +140,13 @@ KStatus TsMMapAppendOnlyFile::Close() {
     LOG_ERROR("flock file %s failed, reason: %s", path_.c_str(), strerror(errno));
     return FAIL;
   }
+
+  ok = fsync(fd_);
+  if (ok < 0) {
+    LOG_ERROR("fsync failed, reason: %s", strerror(errno));
+    return FAIL;
+  }
+
   ok = close(fd_);
   if (ok < 0) {
     LOG_ERROR("close file %s failed, reason: %s", path_.c_str(), strerror(errno));

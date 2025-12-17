@@ -45,6 +45,7 @@ int64_t EngineOptions::default_partition_interval = 3600 * 24 * 10;
 // default block cache max size is set to 0
 int64_t EngineOptions::block_cache_max_size = 0;
 uint8_t EngineOptions::compress_stage = 2;
+bool EngineOptions::force_sync_counter_file = true;
 size_t EngineOptions::last_cache_max_size = 1 << 30;
 
 extern std::map<std::string, std::string> g_cluster_settings;

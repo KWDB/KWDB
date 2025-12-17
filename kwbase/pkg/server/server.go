@@ -210,6 +210,16 @@ var (
 		"the maximum memory size of block lru cache",
 		0)
 
+	tsLastRowOptimization = settings.RegisterPublicBoolSetting(
+		"ts.last_row_optimization.enabled",
+		"enable optimization for last_row queries which can improve performance "+
+			"when working with tables containing large amounts of data",
+		false)
+
+	tsForceSyncCounterFile = settings.RegisterPublicBoolSetting(
+		"ts.force_sync_file.enabled",
+		"force sync counter file every time when writing to disk if enabled",
+		true)
 	maxLastCacheMaxSize = settings.RegisterPublicIntSetting(
 		"ts.last_cache_size.max_limit",
 		"the maximum size of last cache in vgroup",

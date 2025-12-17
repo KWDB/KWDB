@@ -24,13 +24,12 @@
 #include <memory>
 #include <string>
 #include <string_view>
-#include <type_traits>
 #include <vector>
 
-#include "data_type.h"
 #include "kwdb_type.h"
 #include "lg_api.h"
 #include "libkwdbts2.h"
+#include "settings.h"
 #include "sys_utils.h"
 #include "ts_file_vector_index.h"
 #include "ts_compressor.h"
@@ -509,24 +508,26 @@ class TsMMapAllocFile : public FileWithIndex {
   }
 
   KStatus NodeSync(size_t offset, size_t len) {
-    return SUCCESS;
-    // uint64_t cur_offset = 0;
-    // for (int i = 0; i < addrs_.size(); i++) {
-    //   if (cur_offset + addrs_[i].len > offset) {
-    //     int page_size = getpagesize();
-    //     char* p1 = addrs_[i].data + TruncateToPage(offset - cur_offset, page_size);
-    //     char* p2 = addrs_[i].data + TruncateToPage(offset - cur_offset + len - 1, page_size) + page_size;
-    //     int ok = msync(p1, p2 - p1, MS_SYNC);
-    //     if (ok < 0) {
-    //       LOG_ERROR("node msync failed, reason: %s", strerror(errno));
-    //       return KStatus::FAIL;
-    //     }
-    //     return KStatus::SUCCESS;
-    //   } else {
-    //     cur_offset += addrs_[i].len;
-    //   }
-    // }
-    // return KStatus::FAIL;
+    if (!EngineOptions::force_sync_counter_file) {
+      return SUCCESS;
+    }
+    uint64_t cur_offset = 0;
+    for (int i = 0; i < addrs_.size(); i++) {
+      if (cur_offset + addrs_[i].len > offset) {
+        int page_size = getpagesize();
+        char* p1 = addrs_[i].data + TruncateToPage(offset - cur_offset, page_size);
+        char* p2 = addrs_[i].data + TruncateToPage(offset - cur_offset + len - 1, page_size) + page_size;
+        int ok = msync(p1, p2 - p1, MS_SYNC);
+        if (ok < 0) {
+          LOG_ERROR("node msync failed, reason: %s", strerror(errno));
+          return KStatus::FAIL;
+        }
+        return KStatus::SUCCESS;
+      } else {
+        cur_offset += addrs_[i].len;
+      }
+    }
+    return KStatus::FAIL;
   }
 
   uint64_t AllocateAssigned(size_t size, uint8_t fill_number) override {
@@ -582,19 +583,21 @@ class TsMMapAllocFile : public FileWithIndex {
   }
 
   KStatus Sync() override {
-    return SUCCESS;
-    // RW_LATCH_X_LOCK(rw_lock_);
-    // KStatus s = KStatus::SUCCESS;
-    // for (auto addr : addrs_) {
-    //   int err = msync(addr.data, addr.len, MS_SYNC);
-    //   if (err != 0) {
-    //     LOG_ERROR("msync failed. err: %d", err);
-    //     s = KStatus::FAIL;
-    //     break;
-    //   }
-    // }
-    // RW_LATCH_UNLOCK(rw_lock_);
-    // return s;
+    if (!EngineOptions::force_sync_counter_file) {
+      return SUCCESS;
+    }
+    RW_LATCH_X_LOCK(rw_lock_);
+    KStatus s = KStatus::SUCCESS;
+    for (auto addr : addrs_) {
+      int err = msync(addr.data, addr.len, MS_SYNC);
+      if (err != 0) {
+        LOG_ERROR("msync failed. err: %d", err);
+        s = KStatus::FAIL;
+        break;
+      }
+    }
+    RW_LATCH_UNLOCK(rw_lock_);
+    return s;
   }
 };
 

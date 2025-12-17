@@ -146,12 +146,9 @@ func checkTsQueryOptMode(encodedValue string) error {
 	return nil
 }
 
-func checkTsCountUseStatistics(encodedValue string) error {
+func checkBool(encodedValue string) error {
 	_, err := strconv.ParseBool(encodedValue)
-	if err != nil {
-		return err
-	}
-	return nil
+	return err
 }
 
 // checkCapacityStatsPeriod checks whether the capacity stats period value set is valid
@@ -271,7 +268,7 @@ var CheckClusterSetting = map[string]CheckOperation{
 	"ts.dedup.rule":                      checkTsDedupRule,
 	"ts.rows_per_block.max_limit":        checkTsRowsPerBlockMaxLimit,
 	"ts.sql.query_opt_mode":              checkTsQueryOptMode,
-	"ts.count.use_statistics.enabled":    checkTsCountUseStatistics,
+	"ts.count.use_statistics.enabled":    checkBool,
 	"capacity.stats.period":              checkCapacityStatsPeriod,
 	"ts.table_cache.capacity":            checkTsTableCacheCapacity,
 	"ts.rows_per_block.min_limit":        checkTsRowsPerBlockMinLimit,
@@ -280,6 +277,7 @@ var CheckClusterSetting = map[string]CheckOperation{
 	"ts.reserved_last_segment.max_limit": checkTsReservedLastSegmentMaxLimit,
 	"ts.mem_segment_size.max_limit":      checkTsMemSegmentSizeMaxLimit,
 	"ts.block.lru_cache.max_limit":       checkTsBlockCacheMaxLimit,
+	"ts.force_sync_file.enabled":         checkBool,
 	"ts.last_cache_size.max_limit":       checkTsLastCacheSizeMaxLimit,
 }
 

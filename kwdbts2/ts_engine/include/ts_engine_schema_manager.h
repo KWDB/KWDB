@@ -30,6 +30,7 @@
 #include "lg_api.h"
 #include "ts_table_schema_manager.h"
 #include "ts_partition_interval_recorder.h"
+#include "sys_utils.h"
 
 namespace kwdbts {
 

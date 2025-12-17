@@ -98,7 +98,7 @@ KStatus TsLastSegment::TsLastSegBlockCache::BlockInfoCache::GetBlockInfo(int blo
   TsLastSegmentBlockInfoWithData tmp_info;
   s = LoadBlockInfo(lastseg_cache_->segment_->file_.get(), *index, &tmp_info);
   if (s == FAIL) {
-    LOG_ERROR("cannot load block info from last segment");
+    LOG_ERROR("cannot load block info from last segment: %s", lastseg_cache_->segment_->file_->GetFilePath().c_str());
   }
   block_infos_[block_id] = std::move(tmp_info);
   cache_flag_[block_id] = 1;

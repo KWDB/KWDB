@@ -10,8 +10,11 @@
 // See the Mulan PSL v2 for more details.
 
 #include "include/ts_metrics_table_version_manager.h"
+
 #include <dirent.h>
 #include <sys/stat.h>
+
+#include "sys_utils.h"
 
 namespace kwdbts {
 inline string IdToSchemaPath(const KTableKey& table_id, uint32_t ts_version) {

@@ -61,7 +61,7 @@ TsVGroup::TsVGroup(EngineOptions* engine_options, uint32_t vgroup_id, TsEngineSc
       max_entity_id_(0),
       engine_options_(engine_options),
       engine_wal_level_mutex_(engine_mutex),
-      version_manager_(std::make_unique<TsVersionManager>(engine_options->io_env, path_)),
+      version_manager_(std::make_unique<TsVersionManager>(&TsIOEnv::GetInstance(), path_)),
       mem_segment_mgr_(std::make_unique<TsMemSegmentManager>(this, version_manager_.get())),
       enable_compact_thread_(enable_compact_thread) {}
 
@@ -78,7 +78,7 @@ TsVGroup::~TsVGroup() {
 }
 
 KStatus TsVGroup::Init(kwdbContext_p ctx) {
-  auto s = engine_options_->io_env->NewDirectory(path_);
+  auto s = TsIOEnv::GetInstance().NewDirectory(path_);
   if (s == FAIL) {
     LOG_ERROR("Failed to create directory: %s", path_.c_str());
     return s;
