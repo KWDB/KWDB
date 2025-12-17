@@ -15,12 +15,12 @@ function log_init() {
   local user=$2
   local kw_log_date=$(date '+%Y-%m-%d')
   if [ ! -e $kw_log_path/log ];then
-    eval $kw_cmd_prefix mkdir -p $kw_log_path/log
+    eval $local_cmd_prefix mkdir -p $kw_log_path/log
     sudo chown -R $user:$user $kw_log_path/log
     sudo chmod 755 $kw_log_path/log
   fi
   if [ ! -e "$kw_log_path/log/$kw_log_date" ];then
-    eval $kw_cmd_prefix touch $kw_log_path/log/$kw_log_date
+    eval $local_cmd_prefix touch $kw_log_path/log/$kw_log_date
     sudo chown $user:$user $kw_log_path/log/$kw_log_date
     sudo chmod 755 $kw_log_path/log/$kw_log_date
   fi

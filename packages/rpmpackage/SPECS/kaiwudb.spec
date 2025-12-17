@@ -16,11 +16,9 @@ This package contains the infrastructure needed to setup system databases.
 %package server
 Summary: KaiwuDB server binaries and libraries
 Group: System Environment/Libraries
-Requires: protobuf >= 3.5.0
-Requires: squashfs-tools libgomp xz-libs
+Requires: server-deps
 Requires: %(echo ${KAIWUDB_PKG_NAME})-libcommon = %{version}
-Suggests: squashfuse geos
-Requires: libgcc
+Suggests: geos
 Autoprov: no
 Autoreq: no
 %description server
@@ -31,8 +29,7 @@ This package contains the infrastructure needed to setup system databases.
 %package libcommon
 Summary: KaiwuDB common library
 Group: System Environment/Libraries
-Requires: protobuf >= 3.5.0
-Requires: libgcc
+Requires: common-deps
 Autoprov: no
 Autoreq: no
 %description libcommon

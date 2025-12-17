@@ -60,7 +60,7 @@ function uninstall_dir() {
     prefix=$local_cmd_prefix
   fi
   local data_root=$(kw_data_dir)
-  eval $prefix rm -rf /etc/kaiwudb /etc/systemd/system/kaiwudb.service
+  eval $prefix rm -rf /etc/systemd/system/kaiwudb.service /usr/bin/kw-status /usr/bin/kw-sql
   if [ -n "$data_root" ];then
     if [ "$clear_opt" = "yes" ] || [ "$clear_opt" = "y" ]; then
       ret=$(umount_loop $data_root)
@@ -68,7 +68,7 @@ function uninstall_dir() {
         echo $ret
         return 1
       fi
-      ret=$(eval $prefix rm -rf $data_root 2>&1)
+      ret=$(eval $prefix rm -rf $data_root /etc/kaiwudb 2>&1)
       if [ $? -ne 0 ];then
         echo $ret
         return 1

@@ -174,10 +174,11 @@ function local_port() {
 
 function node_dir() {
   cd ~
-  if [ ! -d "~/kaiwudb_files" ];then
+  if [ ! -d "kaiwudb_files" ];then
     mkdir -p kaiwudb_files
   else
-    rm -rf ~/kaiwudb_files/*
+    eval $node_cmd_prefix rm -rf kaiwudb_files
+    mkdir -p kaiwudb_files
   fi
 }
 
@@ -203,7 +204,6 @@ function kw_status() {
 }
 
 function whether_running() {
-  local ret=""
   if [ "$REMOTE" = "ON" ];then
     prefix=$node_cmd_prefix
   else
@@ -212,13 +212,11 @@ function whether_running() {
   if [ "$(install_type)" = "bare" ];then
     cd /usr/local/kaiwudb/bin
     local cmd="$prefix -u $(user_name) bash -c \"./kwbase node status --host=127.0.0.1:$(local_port) $(secure_opt)\""
-    ret=$(eval $cmd 2>&1)
+    eval $cmd 2>&1
   else
-    ret=$(docker exec -it kaiwudb-container bash -c "./kwbase node status $(secure_opt)" 2>&1)
+    docker exec -it kaiwudb-container bash -c "./kwbase node status $(secure_opt)" 2>&1
   fi
-  if $?;then
-    return 1
-  fi
+    return $?
 }
 
 function rollback() {

@@ -33,23 +33,46 @@ Options:
 function install_usage() {
   eval set -- "$@"
   push_back "g_install_mode"
-  if [ $# -eq 3 ];then
-    case "$1" in
-      --single)
-        g_install_mode="single"
-        return
-        ;;
-      --single-replica)
-        g_install_mode="single-replication"
-        return
-        ;;
-      --multi-replica)
-        g_install_mode="multi-replication"
-        return
-        ;;
-      -h|--help)
-        ;;
-    esac
+  if [ $# -ge 3 ];then
+    while true;do
+      case "$1" in
+        --single)
+          g_install_mode="single"
+          shift 1
+          ;;
+        --single-replica)
+          g_install_mode="single-replication"
+          shift 1
+          ;;
+        --multi-replica)
+          g_install_mode="multi-replication"
+          shift 1
+          ;;
+        --use-certs)
+          local certs_dir=$(cd $(dirname $2);pwd)
+          g_use_certs=$(basename $2)
+          g_use_certs="$certs_dir/$g_use_certs"
+          if [ ! -f "$g_use_certs" ];then
+            tar -vtf $g_use_certs 2>&1 >/dev/null
+            if [ $? -ne 0 ];then
+              echo "The certs file is invalid.Must be tar file."
+              exit 1
+            fi
+            tar -vtf $g_use_certs | egrep -q '(ca\.(key|crt)){1,}|(node.*\.(key|crt)){1,}' 2>/dev/null
+            if [ $? -ne 0 ];then
+              echo "The certs file is invalid.Missing required certs."
+              exit 1
+            fi
+          fi
+          shift 2
+          ;;
+        --)
+          return
+          ;;
+        -h|--help)
+          ;;
+      esac
+    done
   fi
 
   echo "Usage:
@@ -59,6 +82,7 @@ Options:
   --single                  single mode(default)
   --single-replica          single replication mode
   --multi-replica           multi replication mode
+  --use-certs               use existing certs in /etc/kaiwudb/certs
   -h, --help                help message
 "
   exit 0
@@ -185,7 +209,7 @@ function cmd_check() {
   g_kw_cmd=""
   local global_flag=false
   local short_cmd="hsial"
-  local long_cmd="help,single,init,status,cpu:,addr:,single-replica,multi-replica,local,all,bypass-version-check,tls,tlcp"
+  local long_cmd="help,single,init,status,cpu:,addr:,single-replica,multi-replica,local,all,bypass-version-check,tls,tlcp,use-certs:"
   local options=$(getopt -a -o $short_cmd -l $long_cmd -n "deploy.sh" -- "$@" 2>/dev/null)
   if [ $? -ne 0 ];then
     global_usage
@@ -355,6 +379,45 @@ function cfg_check() {
       exit 1
     fi
   fi
+  if grep -Eq "^\[additional\]$" $g_deploy_path/deploy.cfg;then
+    g_ips=$(read_config_value $g_deploy_path/deploy.cfg additional IPs)
+    g_ips=(${g_ips//,/ })
+    if [ ${#g_ips[@]} -eq 0 ];then
+      log_err "[additional]IPs is missing in deploy.cfg."
+      exit 1
+    fi
+  fi
+}
+
+function show_deploy_info() {
+  tput cuu1 && tput el
+  confirm='y'
+  [ $g_cpu_usage -eq 0 ] && cpu_usage='unlimited' || cpu_usage=$g_cpu_usage
+  echo "================= KaiwuDB Basic Info ================="
+  echo -e "Deploy Mode: \e[1;34m$g_deploy_type\e[0m"
+  if [ "$g_deploy_type" = 'bare' ];then
+    echo -e "Management User: \e[1;34m$g_user\e[0m"
+  fi
+  echo -e "Start Mode: \e[1;34m$g_install_mode\e[0m"
+  echo -e "RESTful Port: \e[1;34m$g_rest_port\e[0m"
+  echo -e "KaiwuDB Port: \e[1;34m$g_kwdb_port\e[0m"
+  echo -e "BRPC Port: \e[1;34m$g_brpc_port\e[0m"
+  echo -e "Data Root: \e[1;34m$g_data_root\e[0m"
+  echo -e "Secure Mode: \e[1;34m$g_secure_mode\e[0m"
+  echo -e "CPU Usage Limit: \e[1;34m$cpu_usage\e[0m"
+  echo -e "Local Node Address: \e[1;34m$g_local_addr\e[0m"
+  if [ "$g_install_mode" != 'single' ] && [ ${#g_cls_array[*]} -ne 0 ];then
+    echo "================= KaiwuDB Cluster Info ================="
+    echo -e "Cluster Node Address: \e[1;34m${g_cls_array[*]}\e[0m"
+    echo -e "SSH User: \e[1;34m$g_ssh_user\e[0m"
+    echo -e "SSH Port: \e[1;34m$g_ssh_port\e[0m"
+  fi
+  echo -e "======================================================"
+  read -p "Please confirm the installation information above(Y/n):" confirm
+  if [ "$confirm" != "y" ] && [ "$confirm" != "Y" ];then
+    echo "Installation cancelled."
+    exit 0
+  fi
 }
 
 # cmd line parameter parsing
@@ -369,6 +432,10 @@ push_back "LOG_FILE"
 push_back "LOG_LEVEL"
 
 if [ "$g_kw_cmd" = "install" ];then
+  # parsing config file
+  cfg_check
+  verify_files
+  show_deploy_info
   # pipe
   kw_pipe=$g_deploy_path/kw_pipe
   if [ ! -p $kw_pipe ]; then
@@ -401,7 +468,7 @@ if [ "$g_kw_cmd" = "install" ];then
   if [ $? -eq 2 ];then
     log_warn "The memory does not meet the requirement. KaiwuDB may running failed."
   fi
-  verify_files
+
   echo "configure#file#check:15" >&10
   # parsing config file
   cfg_check
@@ -420,6 +487,9 @@ if [ "$g_kw_cmd" = "install" ];then
   trap "rollback_all \"${g_cls_array[*]}\" $g_ssh_port $g_ssh_user && kill -9 $process_pid" INT
   echo "create#node#dir:35" >&10
   parallel_exec "${g_cls_array[*]}" $g_ssh_port $g_ssh_user "node_dir"
+  if [ $? -ne 0 ];then
+    exit 1
+  fi
   echo "local#dir#init:45" >&10
   # local node init directory
   func_info=$(init_directory)
@@ -454,7 +524,7 @@ if [ "$g_kw_cmd" = "install" ];then
   fi
   echo "create#configure:70" >&10
   create_info_files "${g_cls_array[*]}" $g_ssh_port $g_ssh_user
-  if [ "$g_secure_mode" != "insecure" ];then
+  if [ "$g_secure_mode" != "insecure" ] || [ -n "$g_use_certs" ];then
     echo "create#certs:75" >&10
     create_certificate
     if [ $? -ne 0 ];then

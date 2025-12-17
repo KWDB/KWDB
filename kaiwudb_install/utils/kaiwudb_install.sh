@@ -69,7 +69,7 @@ services:
     ports:
       - $g_rest_port:8080
       - $g_kwdb_port:26257
-      - $g_brpc_port:$g_brpc_port
+      - $g_brpc_port:27257
     $cpus
     ulimits:
       memlock: -1
@@ -85,13 +85,15 @@ services:
     privileged: true
     environment:
       - LD_LIBRARY_PATH=/kaiwudb/lib
+    env_file:
+      - /etc/kaiwudb/script/kaiwudb_env
     tty: true
     working_dir: /kaiwudb/bin
     command: 
       - /bin/bash
       - -c
       - |
-        /kaiwudb/bin/kwbase  $start_type $secure_param --listen-addr=0.0.0.0:26257 --advertise-addr=$1:$g_kwdb_port --http-addr=0.0.0.0:8080 --brpc-addr=0.0.0.0:$g_brpc_port --store=/kaiwudb/deploy/kaiwudb-container $encrypto_opt $opt_join
+        /kaiwudb/bin/kwbase  $start_type \\\$KAIWUDB_START_ARG $secure_param --listen-addr=0.0.0.0:26257 --advertise-addr=$1:$g_kwdb_port --http-addr=0.0.0.0:8080 --brpc-addr=0.0.0.0:27257 --store=/kaiwudb/deploy/kaiwudb-container $encrypto_opt $opt_join
 \" >/etc/kaiwudb/script/docker-compose.yml"
 }
 
@@ -204,56 +206,64 @@ function create_info_files() {
 
 # Create certificate
 function create_certificate() {
-  local ret=""
-  if [ "$g_secure_mode" = "insecure" ];then
-    local secure_param="--insecure"
-  else
-    if [ "$g_secure_mode" = "tls" ];then
-      local secure_param=""
+  if [ -z "$g_use_certs" ];then
+    local ret=""
+    if [ "$g_secure_mode" = "insecure" ];then
+      local secure_param="--insecure"
     else
-      local secure_param="--tlcp"
-    fi
-  fi
-  log_info_without_console "start create certificate files in /etc/kaiwudb/certts."
-  if [ "$g_deploy_type" = "bare" ];then
-    local KWDB_CA_KEY_FILE=/etc/kaiwudb/certs/ca.key
-    local KWDB_CA_CRT_FILE=/etc/kaiwudb/certs/ca.crt
-    local KWDB_NODE_KEY_FILE=/etc/kaiwudb/certs/node.key
-    local KWDB_NODE_CRT_FILE=/etc/kaiwudb/certs/node.crt
-    local KWDB_ROOT_KEY_FILE=/etc/kaiwudb/certs/client.root.key
-    local KWDB_ROOT_CRT_FILE=/etc/kaiwudb/certs/client.root.crt
-    sudo ldconfig
-    cd /usr/local/kaiwudb/bin
-    if [ ! -f "${KWDB_CA_KEY_FILE}" -o ! -f "${KWDB_CA_CRT_FILE}" ]; then
-      ret=$(sudo bash -c "./kwbase cert create-ca --certs-dir=/etc/kaiwudb/certs --ca-key=${KWDB_CA_KEY_FILE} $secure_param 2>&1")
-      if [ $? -ne 0 ]; then
-        log_err "CA certificate creats failed: $ret"
-        return 1
+      if [ "$g_secure_mode" = "tls" ];then
+        local secure_param=""
+      else
+        local secure_param="--tlcp"
       fi
     fi
-
-    if [ ! -f "${KWDB_NODE_KEY_FILE}" -o ! -f "${KWDB_NODE_CRT_FILE}" ]; then
-      ret=$(sudo bash -c "./kwbase cert create-node $g_local_addr ${g_cls_array[*]} 127.0.0.1 0.0.0.0 localhost --certs-dir=/etc/kaiwudb/certs --ca-key=${KWDB_CA_KEY_FILE} $secure_param 2>&1")
-      if [ $? -ne 0 ]; then
-        log_err "Node certificate creats failed: $ret"
-        return 1
+    log_info_without_console "start create certificate files in /etc/kaiwudb/certs."
+    if [ "$g_deploy_type" = "bare" ];then
+      local KWDB_CA_KEY_FILE=/etc/kaiwudb/certs/ca.key
+      local KWDB_CA_CRT_FILE=/etc/kaiwudb/certs/ca.crt
+      local KWDB_NODE_KEY_FILE=/etc/kaiwudb/certs/node.key
+      local KWDB_NODE_CRT_FILE=/etc/kaiwudb/certs/node.crt
+      local KWDB_ROOT_KEY_FILE=/etc/kaiwudb/certs/client.root.key
+      local KWDB_ROOT_CRT_FILE=/etc/kaiwudb/certs/client.root.crt
+      sudo ldconfig
+      cd /usr/local/kaiwudb/bin
+      if [ ! -f "${KWDB_CA_KEY_FILE}" -o ! -f "${KWDB_CA_CRT_FILE}" ]; then
+        ret=$(sudo bash -c "./kwbase cert create-ca --certs-dir=/etc/kaiwudb/certs --ca-key=${KWDB_CA_KEY_FILE} $secure_param 2>&1")
+        if [ $? -ne 0 ]; then
+          log_err "CA certificate creats failed: $ret"
+          return 1
+        fi
       fi
-    fi
 
-    if [ ! -f "${KWDB_ROOT_KEY_FILE}" -o ! -f "${KWDB_ROOT_CRT_FILE}" ]; then
-      ret=$(sudo bash -c "./kwbase cert create-client root --certs-dir=/etc/kaiwudb/certs --ca-key=${KWDB_CA_KEY_FILE} $secure_param 2>&1")
-      if [ $? -ne 0 ]; then
-        log_err "Client certificate creats failed: $ret"
-        return 1
+      if [ ! -f "${KWDB_NODE_KEY_FILE}" -o ! -f "${KWDB_NODE_CRT_FILE}" ]; then
+        ret=$(sudo bash -c "./kwbase cert create-node $g_local_addr ${g_cls_array[*]} 127.0.0.1 0.0.0.0 ${g_ips[*]} localhost --certs-dir=/etc/kaiwudb/certs --ca-key=${KWDB_CA_KEY_FILE} $secure_param 2>&1")
+        if [ $? -ne 0 ]; then
+          log_err "Node certificate creats failed: $ret"
+          return 1
+        fi
+      fi
+
+      if [ ! -f "${KWDB_ROOT_KEY_FILE}" -o ! -f "${KWDB_ROOT_CRT_FILE}" ]; then
+        ret=$(sudo bash -c "./kwbase cert create-client root --certs-dir=/etc/kaiwudb/certs --ca-key=${KWDB_CA_KEY_FILE} $secure_param 2>&1")
+        if [ $? -ne 0 ]; then
+          log_err "Client certificate creats failed: $ret"
+          return 1
+        fi
+      fi
+    else
+      sudo rm -rf /etc/kaiwudb/certs/*
+      ret=$(docker run --rm --privileged --name init -e SE_MODE=$secure_param -v/etc/kaiwudb/certs:/kaiwudb/certs -v$g_deploy_path/utils/container_shell.sh:/kaiwudb/container_shell.sh $g_image_name bash -c "/kaiwudb/container_shell.sh $g_local_addr \"${g_cls_array[*]}\" \"${g_ips[*]}\"" 2>&1)
+      if [ $? -ne 0 ];then
+          log_err_without_console "$ret"
+          log_err "Container creats certificate failed. Please check the log to see more information."
+          return 1
       fi
     fi
   else
-    sudo rm -rf /etc/kaiwudb/certs/*
-    ret=$(docker run --rm -it --privileged --name init -e SE_MODE=$secure_param -v/etc/kaiwudb/certs:/kaiwudb/certs -v$g_deploy_path/utils/container_shell.sh:/kaiwudb/container_shell.sh $g_image_name bash -c "/kaiwudb/container_shell.sh $g_local_addr \"${g_cls_array[*]}\"" 2>&1)
+    sudo tar -zxvf $g_use_certs -C /etc/kaiwudb/certs >/dev/null 2>&1
     if [ $? -ne 0 ];then
-        log_err_without_console "$ret"
-        log_err "Container creats certificate failed. Please check the log to see more information."
-        return 1
+      log_err "Extract certs failed. Please check whether the certs file is valid."
+      return 1
     fi
   fi
   sudo chmod 755 /etc/kaiwudb/certs/*
@@ -273,7 +283,7 @@ function create_encrypto_key() {
       return 1
     fi
   else 
-    ret=$(docker run --rm -it --privileged -w /kaiwudb/bin -v/etc/kaiwudb/certs:/kaiwudb/certs $(install_dir) bash -c "
+    ret=$(docker run --rm --privileged -w /kaiwudb/bin -v/etc/kaiwudb/certs:/kaiwudb/certs $(install_dir) bash -c "
           ./kwbase gen encryption-key -s 128 /kaiwudb/certs/sm4.key" 2>&1)
     if [ $? -ne 0 ]; then
       log_err "Create encrypto key failed: $ret"
@@ -390,6 +400,18 @@ KillMode=control-group
 RestartPreventExitStatus=INVALIDARGUMENT
 [Install]
 WantedBy=multi-user.target\" > /etc/systemd/system/kaiwudb.service"
+    sudo bash -c "echo \"
+#!/bin/bash
+cd /usr/local/kaiwudb/bin
+sudo -u $g_user ./kwbase node status $secure_param --host=127.0.0.1:$g_kwdb_port\" > /usr/local/kaiwudb/bin/kw-status.sh"
+    sudo bash -c "echo \"
+#!/bin/bash
+cd /usr/local/kaiwudb/bin
+sudo -u $g_user ./kwbase sql $secure_param --host=127.0.0.1:$g_kwdb_port\" > /usr/local/kaiwudb/bin/kw-sql.sh"
+sudo chmod +x /usr/local/kaiwudb/bin/kw-status.sh
+sudo chmod +x /usr/local/kaiwudb/bin/kw-sql.sh
+sudo ln -s  /usr/local/kaiwudb/bin/kw-status.sh /usr/bin/kw-status
+sudo ln -s /usr/local/kaiwudb/bin/kw-sql.sh /usr/bin/kw-sql
 	else
 		sudo bash -c "echo \"
 [Unit]
@@ -413,10 +435,31 @@ ExecStop=$(which docker-compose) stop
 RestartPreventExitStatus=INVALIDARGUMENT
 [Install]
 WantedBy=multi-user.target\" > /etc/systemd/system/kaiwudb.service"
+    if [ "$g_secure_mode" != "insecure" ];then
+      if [ "$g_secure_mode" = "tls" ];then
+        local secure_param="--certs-dir=/kaiwudb/certs"
+      elif [ "$g_secure_mode" = "tlcp" ];then
+        local secure_param="--certs-dir=/kaiwudb/certs --tlcp"
+      fi
+    else
+      local secure_param="--insecure"
+    fi
+    sudo bash -c "echo \"
+#!/bin/bash
+docker exec -i kaiwudb-container ./kwbase node status $secure_param --host=127.0.0.1:26257\" > /etc/kaiwudb/script/kw-status.sh"
+    sudo bash -c "echo \"
+#!/bin/bash
+docker exec -it kaiwudb-container ./kwbase sql $secure_param --host=127.0.0.1:26257\" > /etc/kaiwudb/script/kw-sql.sh"
+    sudo ln -s  /etc/kaiwudb/script/kw-status.sh /usr/bin/kw-status
+    sudo ln -s /etc/kaiwudb/script/kw-sql.sh /usr/bin/kw-sql
+    sudo chmod +x /etc/kaiwudb/script/kw-status.sh
+    sudo chmod +x /etc/kaiwudb/script/kw-sql.sh
 	fi
   if [ "$g_secure_mode" != "insecure" ];then
     sudo chmod 700 /etc/kaiwudb/certs/*.key >/dev/null 2>&1
     sudo chmod 644 /etc/kaiwudb/certs/*.crt >/dev/null 2>&1
+    sudo chmod +x /usr/bin/kw-status
+    sudo chmod +x /usr/bin/kw-sql
   fi
 }
 
@@ -424,12 +467,16 @@ function compress_certs() {
   local ret=""
   local crt=""
   if [ "$g_secure_mode" != "insecure" ];then
-    log_info_without_console "start compress certs to $g_deploy_path/kaiwudb_certs.tar.gz"
+    log_info_without_console "start compress certs to $g_deploy_path/kw-certs.tar.gz"
     crt=$(basename $(ls /etc/kaiwudb/certs/*ca*.crt))
+    node_crt=$(basename $(ls /etc/kaiwudb/certs/*node*.crt))
+    node_key=$(basename $(ls /etc/kaiwudb/certs/*node*.key))
+    client_crt=$(basename $(ls /etc/kaiwudb/certs/*client*.crt))
+    client_key=$(basename $(ls /etc/kaiwudb/certs/*client*.key))
     if [ "$g_encrypto_store" = "true" ];then
       encrypto_key="sm4.key"
     fi
-    ret=$(eval $local_cmd_prefix tar -zcvf $g_deploy_path/kaiwudb_certs.tar.gz -C/etc/kaiwudb/certs ca.key $crt $encrypto_key 2>&1)
+    ret=$(eval $local_cmd_prefix tar -zcvf /etc/kaiwudb/certs/kw-certs.tar.gz -C/etc/kaiwudb/certs ca.key $crt $node_crt $node_key $client_crt $client_key $encrypto_key 2>&1)
     if [ $? -ne 0 ];then
       log_warn "Compress ca failed: $ret. Please manually compress the CA certificate."
       return
@@ -452,5 +499,4 @@ function cp_files() {
     sudo chmod 700 /etc/kaiwudb/certs/*.key >/dev/null 2>&1
     sudo chmod 644 /etc/kaiwudb/certs/*.crt >/dev/null 2>&1
   fi
-  eval $prefix cp -rf ~/kaiwudb_files/*
 }

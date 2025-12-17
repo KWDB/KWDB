@@ -317,7 +317,6 @@ set(TS_INCLUDE
         statistic/include
         ${SNAPPY_INCLUDE}
         brpc/include
-        ${SNAPPY_INCLUDE}
         )
 if (NOT KWBASE_OSS)
     list(APPEND TS_INCLUDE icl/autonomy/include)
@@ -383,7 +382,11 @@ set_target_properties(${KWDBTS2_SERVER_LIB} PROPERTIES
 
 include(CheckCXXCompilerFlag)
 set(STV3_CXX_BASIC_FLAGS "-Werror -Wfatal-errors -Wall -Wextra -Wno-sign-compare -Wno-unused-parameter -Wno-unused-variable -Wno-strict-aliasing")
-set(STV3_CXX_EXTRA_FLAGS "-Wno-overloaded-virtual -Wnon-virtual-dtor -Winit-self -Wuninitialized -Wno-return-local-addr -Wpointer-arith")
+if (CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL 9.0)
+    set(STV3_CXX_EXTRA_FLAGS "-Wno-overloaded-virtual -Wnon-virtual-dtor -Winit-self -Wuninitialized -Wno-return-local-addr -Wpointer-arith -Wno-redundant-move")
+else()
+    set(STV3_CXX_EXTRA_FLAGS "-Wno-overloaded-virtual -Wnon-virtual-dtor -Winit-self -Wuninitialized -Wno-return-local-addr -Wpointer-arith")
+endif()
 
 
 CHECK_CXX_COMPILER_FLAG(${STV3_CXX_BASIC_FLAGS} CXX_BASIC_WARNING_FLAGS)
@@ -421,9 +424,9 @@ if (WITH_TESTS)
   else ()
       file(GLOB_RECURSE KWDBTS2_SERVER_TEST_SRC
               mmap/tests/*.cpp
-#              storage/tests/*.cpp
+              storage/tests/*.cpp
               exec/tests/*.cpp
-#              engine/tests/*.cpp
+              engine/tests/*.cpp
               ts_engine/tests/*.cpp
               statistic/tests/*.cpp
               icl/autonomy/tests/*.cpp
