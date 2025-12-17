@@ -968,7 +968,7 @@ KStatus TsTableV2Impl::GetLastRowBatch(kwdbContext_p ctx, uint32_t table_version
 
   uint32_t last_vgroup_id = entity_id.subGroupId;
   auto vgroup = GetVGroupByID(last_vgroup_id);
-  if (!vgroup->isLastRowEntityPayloadValid(table_id_) || !vgroup->isEntityLatestRowPayloadValid(entity_id.entityId)) {
+  if (!vgroup->isLastRowEntityPayloadValid(table_id_)) {
     res->clear();
     valid = false;
     LOG_WARN("last payload is invalid for vgroup[%d]", vgroup->GetVGroupID());
@@ -976,13 +976,20 @@ KStatus TsTableV2Impl::GetLastRowBatch(kwdbContext_p ctx, uint32_t table_version
   }
   timestamp64 cur_last_ts = INT64_MIN;
   std::shared_ptr<TsRawPayloadRowParser> parser = nullptr;
+  bool last_payload_valid = false;
   KStatus ret = vgroup->GetEntityLastRowBatch(entity_id.entityId, table_version, table_schema_mgr_,
                                               schema, parser, {{INT64_MIN, INT64_MAX}}, scan_cols,
-                                              cur_last_ts, res);
+                                              cur_last_ts, last_payload_valid, res);
   if (ret != KStatus::SUCCESS) {
     res->clear();
     LOG_ERROR("Vgroup %d GetLastRowBatch failed.", vgroup->GetVGroupID());
     return KStatus::FAIL;
+  }
+  if (!last_payload_valid) {
+    res->clear();
+    valid = false;
+    LOG_WARN("last payload is invalid for vgroup[%d]", vgroup->GetVGroupID());
+    return KStatus::SUCCESS;
   }
   *count = 1;
   res->entity_index = entity_id;

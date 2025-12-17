@@ -344,7 +344,7 @@ void TsBlockSpan::GetTSRange(timestamp64* min_ts, timestamp64* max_ts) {
 }
 
 KStatus TsBlockSpan::GetColBitmap(uint32_t scan_idx, std::unique_ptr<TsBitmapBase>* bitmap,
-                                  TsScanStats* ts_scan_stats) {
+                                  TsScanStats* ts_scan_stats) const {
   if (!convert_) {
     if ((*scan_attrs_)[scan_idx].isFlag(AINFO_NOT_NULL)) {
       *bitmap = std::make_unique<TsUniformBitmap<DataFlags::kValid>>(nrow_);
@@ -362,7 +362,7 @@ KStatus TsBlockSpan::GetColBitmap(uint32_t scan_idx, std::unique_ptr<TsBitmapBas
 }
 
 KStatus TsBlockSpan::GetFixLenColAddr(uint32_t scan_idx, char** value, std::unique_ptr<TsBitmapBase>* bitmap,
-                                      TsScanStats* ts_scan_stats) {
+                                      TsScanStats* ts_scan_stats) const {
   if (!convert_) {
     auto s = GetColBitmap(scan_idx, bitmap, ts_scan_stats);
     if (s != KStatus::SUCCESS) {
@@ -383,7 +383,7 @@ KStatus TsBlockSpan::GetFixLenColAddr(uint32_t scan_idx, char** value, std::uniq
 }
 
 KStatus TsBlockSpan::GetVarLenTypeColAddr(uint32_t row_idx, uint32_t scan_idx, DataFlags& flag, TSSlice& data,
-                                          TsScanStats* ts_scan_stats) {
+                                          TsScanStats* ts_scan_stats) const {
   if (!convert_) {
     std::unique_ptr<TsBitmapBase> blk_bitmap;
     auto s = block_->GetColBitmap(scan_idx, scan_attrs_, &blk_bitmap, ts_scan_stats);
@@ -409,7 +409,7 @@ KStatus TsBlockSpan::GetVarLenTypeColAddr(uint32_t row_idx, uint32_t scan_idx, D
 }
 
 KStatus TsBlockSpan::GetVarLenTypeColAddr(uint32_t row_idx, uint32_t scan_idx, TSSlice& data,
-                                          TsScanStats* ts_scan_stats) {
+                                          TsScanStats* ts_scan_stats) const {
   if (!convert_) {
     TSSlice orig_value;
     auto s = block_->GetValueSlice(start_row_ + row_idx, scan_idx, scan_attrs_, orig_value, ts_scan_stats);

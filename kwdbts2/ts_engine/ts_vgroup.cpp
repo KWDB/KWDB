@@ -456,20 +456,20 @@ KStatus TsVGroup::GetEntityLastRow(std::shared_ptr<TsTableSchemaManager>& table_
 }
 
 KStatus TsVGroup::ConvertBlockSpanToResultSet(const std::vector<k_uint32>& kw_scan_cols,
-                                              std::shared_ptr<TsBlockSpan>& ts_blk_span,
+                                              const TsBlockSpan& ts_blk_span,
                                               const std::vector<AttributeInfo>& attrs,
                                               ResultSet* res) {
   KStatus ret;
   for (int i = 0; i < kw_scan_cols.size(); ++i) {
     Batch* batch;
     auto kw_col_idx = kw_scan_cols[i];
-    if (!ts_blk_span->IsColExist(kw_col_idx)) {
+    if (!ts_blk_span.IsColExist(kw_col_idx)) {
       batch = new AggBatch(nullptr, 0);
     } else {
-      if (!ts_blk_span->IsVarLenType(kw_col_idx)) {
+      if (!ts_blk_span.IsVarLenType(kw_col_idx)) {
         char* value;
         std::unique_ptr<TsBitmapBase> bitmap;
-        ret = ts_blk_span->GetFixLenColAddr(kw_col_idx, &value, &bitmap);
+        ret = ts_blk_span.GetFixLenColAddr(kw_col_idx, &value, &bitmap);
         if (ret != KStatus::SUCCESS) {
           LOG_ERROR("GetFixLenColAddr failed.");
           return ret;
@@ -485,7 +485,7 @@ KStatus TsVGroup::ConvertBlockSpanToResultSet(const std::vector<k_uint32>& kw_sc
       } else {
         TSSlice var_data;
         DataFlags var_bitmap;
-        ret = ts_blk_span->GetVarLenTypeColAddr(0, kw_col_idx, var_bitmap, var_data);
+        ret = ts_blk_span.GetVarLenTypeColAddr(0, kw_col_idx, var_bitmap, var_data);
         if (var_bitmap != DataFlags::kValid) {
           batch = new AggBatch(nullptr, 0);
         } else {
@@ -507,12 +507,18 @@ KStatus TsVGroup::GetEntityLastRowBatch(uint32_t entity_id, uint32_t scan_versio
                                         std::shared_ptr<MMapMetricsTable>& schema,
                                         std::shared_ptr<TsRawPayloadRowParser>& parser,
                                         const std::vector<KwTsSpan>& ts_spans, const std::vector<k_uint32>& scan_cols,
-                                        timestamp64& entity_last_ts, ResultSet* res) {
+                                        timestamp64& entity_last_ts, bool& last_payload_valid, ResultSet* res) {
   std::shared_lock<std::shared_mutex> lock(entity_latest_row_mutex_);
+  if (!entity_latest_row_.count(entity_id)
+      || entity_latest_row_[entity_id].status == TsEntityLatestRowStatus::Recovering
+      || !entity_latest_row_.count(entity_id) || !entity_latest_row_[entity_id].is_payload_valid) {
+    return KStatus::SUCCESS;
+  }
+  last_payload_valid = true;
   TsTableLastRow& last_row = entity_latest_row_[entity_id];
-  if (!entity_latest_row_.count(entity_id) || last_row.status != TsEntityLatestRowStatus::Valid ||
-      !last_row.is_payload_valid ||
-      TimestampCheckResult::NonOverlapping == checkTimestampWithSpans(ts_spans, last_row.last_ts, last_row.last_ts)) {
+  if (last_row.status != TsEntityLatestRowStatus::Valid
+      || TimestampCheckResult::NonOverlapping == checkTimestampWithSpans(ts_spans, last_row.last_ts,
+                                                 last_row.last_ts)) {
     return KStatus::SUCCESS;
   }
 
@@ -537,11 +543,14 @@ KStatus TsVGroup::GetEntityLastRowBatch(uint32_t entity_id, uint32_t scan_versio
       return KStatus::FAIL;
     }
   } else {
+    if (parser == nullptr) {
+      parser = std::make_shared<TsRawPayloadRowParser>(&attrs);
+    }
     mem_block->SetParser(parser);
   }
 
-  auto block_span = std::make_shared<TsBlockSpan>(vgroup_id_, entity_id, std::move(mem_block), 0, 1,
-                                                  convert, scan_version, &attrs);
+  TsBlockSpan block_span(vgroup_id_, entity_id, std::move(mem_block), 0, 1,
+                          convert, scan_version, &attrs);
   auto ret = ConvertBlockSpanToResultSet(scan_cols, block_span, attrs, res);
   if (ret != KStatus::SUCCESS) {
     LOG_ERROR("ConvertBlockSpanToResultSet failed");

@@ -193,7 +193,7 @@ class TsBlockSpan {
   // if just get timestamp, these function return fast.
   void GetTSRange(timestamp64* min_ts, timestamp64* max_ts);
 
-  bool IsColExist(uint32_t scan_idx) {
+  bool IsColExist(uint32_t scan_idx) const {
     if (!convert_) {
       return scan_idx <= scan_attrs_->size() - 1;
     }
@@ -211,7 +211,7 @@ class TsBlockSpan {
     }
     return convert_->IsSameType(scan_idx);
   }
-  bool IsVarLenType(uint32_t scan_idx) {
+  bool IsVarLenType(uint32_t scan_idx) const {
     if (!convert_) {
       return isVarLenType((*scan_attrs_)[scan_idx].type);
     }
@@ -230,15 +230,15 @@ class TsBlockSpan {
     return convert_->GetColType(scan_idx);
   }
 
-  KStatus GetColBitmap(uint32_t scan_idx, std::unique_ptr<TsBitmapBase>* bitmap, TsScanStats* ts_scan_stats = nullptr);
+  KStatus GetColBitmap(uint32_t scan_idx, std::unique_ptr<TsBitmapBase>* bitmap, TsScanStats* ts_scan_stats = nullptr) const;
   // dest type is fixed len datatype.
   KStatus GetFixLenColAddr(uint32_t scan_idx, char** value, std::unique_ptr<TsBitmapBase>* bitmap,
-                            TsScanStats* ts_scan_stats = nullptr);
+                            TsScanStats* ts_scan_stats = nullptr) const;
   // dest type is varlen datatype.
   KStatus GetVarLenTypeColAddr(uint32_t row_idx, uint32_t scan_idx, DataFlags& flag, TSSlice& data,
-                                TsScanStats* ts_scan_stats = nullptr);
+                                TsScanStats* ts_scan_stats = nullptr) const;
   KStatus GetVarLenTypeColAddr(uint32_t row_idx, uint32_t scan_idx, TSSlice& data,
-                                TsScanStats* ts_scan_stats = nullptr);
+                                TsScanStats* ts_scan_stats = nullptr) const;
 
   KStatus GetCount(uint32_t scan_idx, uint32_t& count, TsScanStats* ts_scan_stats = nullptr);
 

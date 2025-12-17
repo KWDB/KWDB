@@ -526,7 +526,7 @@ int TSBlkDataTypeConvert::ConvertDataTypeToMem(uint32_t scan_col, int32_t new_ty
   return 0;
 }
 
-KStatus TSBlkDataTypeConvert::GetColBitmap(TsBlockSpan* blk_span, uint32_t scan_idx,
+KStatus TSBlkDataTypeConvert::GetColBitmap(const TsBlockSpan* blk_span, uint32_t scan_idx,
                                            std::unique_ptr<TsBitmapBase>* bitmap, TsScanStats* ts_scan_stats) {
   assert(blk_span->GetTableVersion() == block_version_);
   auto blk_col_idx = version_conv_->blk_cols_extended_[scan_idx];
@@ -552,7 +552,7 @@ KStatus TSBlkDataTypeConvert::GetColBitmap(TsBlockSpan* blk_span, uint32_t scan_
   return s;
 }
 
-KStatus TSBlkDataTypeConvert::getColBitmapConverted(TsBlockSpan* blk_span, uint32_t scan_idx,
+KStatus TSBlkDataTypeConvert::getColBitmapConverted(const TsBlockSpan* blk_span, uint32_t scan_idx,
                                                     std::unique_ptr<TsBitmapBase>* bitmap, TsScanStats* ts_scan_stats) {
   assert(blk_span->GetTableVersion() == block_version_);
   auto dest_attr = (*version_conv_->scan_attrs_)[scan_idx];
@@ -634,7 +634,7 @@ KStatus TSBlkDataTypeConvert::GetVarPreMin(TsBlockSpan* blk_span, uint32_t scan_
   return blk_span->block_->GetVarPreMin(version_conv_->blk_cols_extended_[scan_idx], ts_scan_stats, pre_min);
 }
 
-KStatus TSBlkDataTypeConvert::GetFixLenColAddr(TsBlockSpan* blk_span, uint32_t scan_idx, char** value,
+KStatus TSBlkDataTypeConvert::GetFixLenColAddr(const TsBlockSpan* blk_span, uint32_t scan_idx, char** value,
                                                std::unique_ptr<TsBitmapBase>* bitmap, TsScanStats* ts_scan_stats) {
   assert(blk_span->GetTableVersion() == block_version_);
   if (!IsColExist(scan_idx)) {
@@ -712,7 +712,7 @@ KStatus TSBlkDataTypeConvert::GetFixLenColAddr(TsBlockSpan* blk_span, uint32_t s
   return KStatus::SUCCESS;
 }
 
-KStatus TSBlkDataTypeConvert::GetVarLenTypeColAddr(TsBlockSpan* blk_span, uint32_t row_idx, uint32_t scan_idx,
+KStatus TSBlkDataTypeConvert::GetVarLenTypeColAddr(const TsBlockSpan* blk_span, uint32_t row_idx, uint32_t scan_idx,
                                                    DataFlags& flag, TSSlice& data, TsScanStats* ts_scan_stats) {
   auto dest_type = (*version_conv_->scan_attrs_)[scan_idx];
   auto blk_col_idx = version_conv_->blk_cols_extended_[scan_idx];

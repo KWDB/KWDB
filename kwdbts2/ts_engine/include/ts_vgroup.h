@@ -354,7 +354,7 @@ class TsVGroup {
                                 std::shared_ptr<MMapMetricsTable>& schema,
                                 std::shared_ptr<TsRawPayloadRowParser>& parser,
                                 const std::vector<KwTsSpan>& ts_spans, const std::vector<k_uint32>& scan_cols,
-                                timestamp64& entity_last_ts, ResultSet* res);
+                                timestamp64& entity_last_ts, bool& last_payload_valid, ResultSet* res);
 
   bool isEntityLatestRowPayloadValid(EntityID entity_id) {
     std::shared_lock<std::shared_mutex> lock(entity_latest_row_mutex_);
@@ -473,7 +473,7 @@ class TsVGroup {
 
   KStatus PartitionCompact(std::shared_ptr<const TsPartitionVersion> partition, bool call_by_vacuum = false);
 
-  KStatus ConvertBlockSpanToResultSet(const std::vector<k_uint32>& kw_scan_cols, shared_ptr<TsBlockSpan>& ts_blk_span,
+  KStatus ConvertBlockSpanToResultSet(const std::vector<k_uint32>& kw_scan_cols, const TsBlockSpan& ts_blk_span,
                                       const vector<AttributeInfo>& attrs, ResultSet* res);
 };
 

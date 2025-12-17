@@ -24,6 +24,7 @@
 
 namespace kwdbts {
 
+static inline bool __isVarType(int type) { return ((type == VARSTRING) || (type == VARBINARY)); }
 
 class TsRawPayloadRowParser {
  private:
@@ -39,6 +40,7 @@ class TsRawPayloadRowParser {
   }
 
   bool GetColValueAddr(const TSSlice& row_data, int col_id, TSSlice* col_data);
+
   // ts used frequently,so optimize it.
   inline timestamp64 GetTimestamp(const TSSlice& row_data) const {
     return KTimestamp(row_data.data + col_offset_[0]);

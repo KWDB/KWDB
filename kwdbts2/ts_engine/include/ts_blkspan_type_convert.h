@@ -207,14 +207,14 @@ class TSBlkDataTypeConvert {
   int32_t GetColType(uint32_t scan_idx) { return (*version_conv_->scan_attrs_)[scan_idx].type; }
 
   // dest type is fixed len datatype.
-  KStatus GetFixLenColAddr(TsBlockSpan* blk_span, uint32_t scan_idx, char** value,
+  KStatus GetFixLenColAddr(const TsBlockSpan* blk_span, uint32_t scan_idx, char** value,
                            std::unique_ptr<TsBitmapBase>* bitmap, TsScanStats* ts_scan_stats = nullptr);
   // dest type is varlen datatype.
-  KStatus GetVarLenTypeColAddr(TsBlockSpan* blk_span, uint32_t row_idx, uint32_t scan_idx, DataFlags& flag,
+  KStatus GetVarLenTypeColAddr(const TsBlockSpan* blk_span, uint32_t row_idx, uint32_t scan_idx, DataFlags& flag,
                                 TSSlice& data, TsScanStats* ts_scan_stats = nullptr);
-  KStatus GetColBitmap(TsBlockSpan* blk_span, uint32_t scan_idx, std::unique_ptr<TsBitmapBase>* bitmap,
+  KStatus GetColBitmap(const TsBlockSpan* blk_span, uint32_t scan_idx, std::unique_ptr<TsBitmapBase>* bitmap,
                                 TsScanStats* ts_scan_stats = nullptr);
-  KStatus getColBitmapConverted(TsBlockSpan* blk_span, uint32_t scan_idx, std::unique_ptr<TsBitmapBase>* bitmap,
+  KStatus getColBitmapConverted(const TsBlockSpan* blk_span, uint32_t scan_idx, std::unique_ptr<TsBitmapBase>* bitmap,
                                 TsScanStats* ts_scan_stats = nullptr);
   KStatus GetPreCount(TsBlockSpan* blk_span, uint32_t scan_idx, TsScanStats* ts_scan_stats, uint16_t& count);
   KStatus GetPreSum(TsBlockSpan* blk_span, uint32_t scan_idx, int32_t size, TsScanStats* ts_scan_stats,

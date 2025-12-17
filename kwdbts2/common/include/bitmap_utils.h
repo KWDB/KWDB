@@ -37,7 +37,13 @@ void setRowValid(char* delete_flags, size_t row_index);
  * @param[in] row_index     row num of bitmap. start from 1.
  * 
 */
-bool isRowDeleted(char* delete_flags, size_t row_index);
+inline bool isRowDeleted(char* delete_flags, size_t row_index) {
+  // 0 ~ config_block_rows_ - 1
+  size_t row = row_index - 1;
+  size_t byte = row >> 3;
+  size_t bit = 1 << (row & 7);
+  return delete_flags[byte] & bit;
+}
 
 /**
  * @brief check column is deleted or column value is null.

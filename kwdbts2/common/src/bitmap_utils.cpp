@@ -24,14 +24,6 @@ void setRowValid(char* delete_flags, size_t row_index) {
   delete_flags[byte] -= (1 << bit);
 }
 
-bool isRowDeleted(char* delete_flags, size_t row_index) {
-  // 0 ~ config_block_rows_ - 1
-  size_t row = row_index - 1;
-  size_t byte = row >> 3;
-  size_t bit = 1 << (row & 7);
-  return delete_flags[byte] & bit;
-}
-
 bool isColDeleted(char* row_delete_flags, char* col_nullbitmap, size_t row_index) {
   return isRowDeleted(row_delete_flags, row_index) || isRowDeleted(col_nullbitmap, row_index);
 }

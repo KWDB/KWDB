@@ -16,8 +16,6 @@
 
 namespace kwdbts {
 
-static inline bool __isVarType(int type) { return ((type == VARSTRING) || (type == VARBINARY)); }
-
 TsRawPayloadRowParser::TsRawPayloadRowParser(const std::vector<AttributeInfo>* data_schema)
     : schema_(data_schema) {
   size_t col_size = schema_ != nullptr ? schema_->size() : 0;

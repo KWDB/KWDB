@@ -158,9 +158,8 @@ KStatus TsStorageIteratorV2Impl::Init(bool is_reversed) {
   attrs_ = schema_->getSchemaInfoExcludeDropped();
   table_id_ = table_schema_mgr_->GetTableId();
   db_id_ = schema_->metaData()->db_id;
-
-  auto current = vgroup_->CurrentVersion();
-  ts_partitions_ = current->GetPartitions(db_id_, ts_spans_, ts_col_type_);
+  vgroup_current_version_ = vgroup_->CurrentVersion();
+  ts_partitions_ = vgroup_current_version_->GetPartitions(db_id_, ts_spans_, ts_col_type_);
   filter_ = std::make_shared<TsScanFilterParams>(db_id_, table_id_, vgroup_->GetVGroupID(),
                                                   0, ts_col_type_, scan_osn_, ts_spans_);
   return KStatus::SUCCESS;
@@ -952,42 +951,41 @@ KStatus TsAggIteratorV2Impl::Next(ResultSet* res, k_uint32* count, bool* is_fini
   }
 
   KStatus ret;
-  bool last_payload_valid = true;
+  bool last_payload_valid = false;
   timestamp64 entity_last_ts = INVALID_TS;
   EntityID entity_id = entity_ids_[cur_entity_index_];
 
   std::vector<KwTsSpan> ts_spans_bkup;
   std::vector<std::shared_ptr<const TsPartitionVersion>> ts_partitions_bkup;
   if (only_last_ || only_last_row_) {
-    last_payload_valid = (EngineOptions::last_cache_max_size > 0) && vgroup_->isEntityLatestRowPayloadValid(entity_id);
-    if (last_payload_valid) {
-      if (parser_ == nullptr) {
-        parser_ = std::make_shared<TsRawPayloadRowParser>(&attrs_);
-      }
+    if (EngineOptions::last_cache_max_size) {
       ret = vgroup_->GetEntityLastRowBatch(entity_id, table_version_, table_schema_mgr_, schema_, parser_,
-                                           ts_spans_, kw_last_scan_cols_, entity_last_ts, res);
+                                           ts_spans_, kw_last_scan_cols_, entity_last_ts, last_payload_valid, res);
       if (ret != KStatus::SUCCESS) {
         LOG_ERROR("GetEntityLastRowBatch failed.");
         return KStatus::FAIL;
       }
-      if (entity_last_ts != INVALID_TS && (last_ts_points_.empty() || entity_last_ts <=
-                                           *min_element(last_ts_points_.begin(), last_ts_points_.end()))) {
-        bool has_null = false;
-        if (only_last_ && !only_last_row_) {
-          for (int i = 0; i < scan_agg_types_.size() && !has_null; ++i) {
-            res->data[i][0]->isNull(0, &has_null);
+      if (last_payload_valid) {
+        if (entity_last_ts != INVALID_TS && (last_ts_points_.empty() || entity_last_ts <=
+                                            *min_element(last_ts_points_.begin(), last_ts_points_.end()))) {
+          bool has_null = false;
+          if (only_last_ && !only_last_row_) {
+            for (int i = 0; i < scan_agg_types_.size() && !has_null; ++i) {
+              res->data[i][0]->isNull(0, &has_null);
+            }
+          }
+          if (!has_null) {
+            *count = 1;
+            res->col_num_ = kw_scan_cols_.size();
+            res->entity_index = {1, entity_id, vgroup_->GetVGroupID()};
+            ++cur_entity_index_;
+            return KStatus::SUCCESS;
           }
         }
-        if (!has_null) {
-          *count = 1;
-          res->col_num_ = kw_scan_cols_.size();
-          res->entity_index = {1, entity_id, vgroup_->GetVGroupID()};
-          ++cur_entity_index_;
-          return KStatus::SUCCESS;
-        }
+        res->clear();
       }
-      res->clear();
-    } else if (only_last_row_) {
+    }
+    if (!last_payload_valid && only_last_row_) {
       ret = vgroup_->GetEntityLastRow(table_schema_mgr_, entity_ids_[cur_entity_index_], ts_spans_, entity_last_ts);
       if (ret != KStatus::SUCCESS) {
         LOG_ERROR("GetEntityLastRow failed.");
@@ -999,8 +997,7 @@ KStatus TsAggIteratorV2Impl::Next(ResultSet* res, k_uint32* count, bool* is_fini
         ts_partitions_bkup.swap(ts_partitions_);
         ts_spans_.clear();
         ts_spans_.push_back({entity_last_ts, entity_last_ts});
-        auto current = vgroup_->CurrentVersion();
-        ts_partitions_ = current->GetPartitions(db_id_, ts_spans_, ts_col_type_);
+        ts_partitions_ = vgroup_current_version_->GetPartitions(db_id_, ts_spans_, ts_col_type_);
       }
     }
   }
@@ -1293,7 +1290,7 @@ KStatus TsAggIteratorV2Impl::RecalculateCountInfo(std::shared_ptr<const TsPartit
     return ret;
   }
   auto partition_id = partition->GetPartitionIdentifier();
-  auto latest_partition = vgroup_->CurrentVersion()->GetPartition(std::get<0>(partition_id), std::get<1>(partition_id));
+  auto latest_partition = vgroup_current_version_->GetPartition(std::get<0>(partition_id), std::get<1>(partition_id));
   std::list<shared_ptr<TsBlockSpan>> count_block_spans;
   std::vector<KwTsSpan> ts_spans = {{latest_partition->GetTsColTypeStartTime(ts_col_type_),
                                      latest_partition->GetTsColTypeEndTime(ts_col_type_)}};
@@ -2388,8 +2385,8 @@ KStatus TsRawDataIteratorV2ImplByOSN::Init() {
   table_id_ = table_schema_mgr_->GetTableId();
   db_id_ = schema_->metaData()->db_id;
   ts_col_type_ = schema_->GetTsColDataType();
-  auto current = vgroup_->CurrentVersion();
-  ts_partitions_ = current->GetPartitions(db_id_, ts_spans_, ts_col_type_);
+  vgroup_current_version_ = vgroup_->CurrentVersion();
+  ts_partitions_ = vgroup_current_version_->GetPartitions(db_id_, ts_spans_, ts_col_type_);
   filter_ = std::make_shared<TsScanFilterParams>(db_id_, table_id_, vgroup_->GetVGroupID(), 0,
               ts_col_type_, ts_spans_, osn_span_);
   return KStatus::SUCCESS;

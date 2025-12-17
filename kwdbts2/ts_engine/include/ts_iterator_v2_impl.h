@@ -87,6 +87,7 @@ class TsStorageIteratorV2Impl : public TsStorageIterator {
   uint32_t db_id_;
 
   std::shared_ptr<TsVGroup> vgroup_;
+  std::shared_ptr<const TsVGroupVersion> vgroup_current_version_;
   std::shared_ptr<TsTableSchemaManager> table_schema_mgr_;
   std::vector<std::shared_ptr<const TsPartitionVersion>> ts_partitions_;
 
