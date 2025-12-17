@@ -654,8 +654,8 @@ KStatus TsLastSegment::GetBlockSpans(const TsBlockItemFilterParams& filter,
       // find the first row in the block that matches (eid, ts) >= (filter.eid, filter.start_ts).
       auto start_idx = *std::upper_bound(IndexRange{0}, IndexRange(block->GetRowNum()), filter_ts_span_start,
                                          [&](const EntityTsPoint& val, int idx) {
-                                           EntityTsPoint data_point{entities[idx], ts[idx]};
-                                           return val <= data_point;
+                                           return std::get<0>(val) < entities[idx] ||
+                                                  (std::get<0>(val) == entities[idx] && std::get<1>(val) <= ts[idx]);
                                          });
       if (start_idx == block->GetRowNum()) {
         // move to the next block
@@ -668,8 +668,8 @@ KStatus TsLastSegment::GetBlockSpans(const TsBlockItemFilterParams& filter,
       // find the first row in the block that (eid, ts) > (filter.eid, filter.end_ts).
       auto end_idx = *std::upper_bound(IndexRange{start_idx}, IndexRange(block->GetRowNum()), filter_ts_span_end,
                                        [&](const EntityTsPoint& val, int idx) {
-                                         EntityTsPoint data_point{entities[idx], ts[idx]};
-                                         return data_point > val;
+                                         return entities[idx] > std::get<0>(val) ||
+                                                (entities[idx] == std::get<0>(val) && ts[idx] > std::get<1>(val));
                                        });
 
       // no need to check whether idx_it == end(), the caculation are consistent no matter idx_it is valid or not.

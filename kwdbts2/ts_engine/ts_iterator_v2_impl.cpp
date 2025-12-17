@@ -101,7 +101,7 @@ KStatus ConvertBlockSpanToResultSet(const std::vector<k_uint32>& kw_scan_cols, c
     res->push_back(i, batch);
   }
   res->entity_index = {1, (uint32_t)ts_blk_span->GetEntityID(), ts_blk_span->GetVGroupID()};
-  res->block_span = ts_blk_span;
+  res->block_span = std::move(ts_blk_span);
 
   return KStatus::SUCCESS;
 }
@@ -124,10 +124,10 @@ static std::vector<KwTsSpan> SortAndMergeSpan(const std::vector<KwTsSpan>& ts_sp
       merged_span.end = std::max(merged_span.end, sorted_spans[i].end);
       continue;
     }
-    merged_spans.push_back(merged_span);
+    merged_spans.emplace_back(merged_span);
     merged_span = sorted_spans[i];
   }
-  merged_spans.push_back(merged_span);
+  merged_spans.emplace_back(merged_span);
   return merged_spans;
 }
 
@@ -501,13 +501,14 @@ KStatus TsStorageIteratorV2Impl::isBlockFiltered(std::shared_ptr<TsBlockSpan>& b
 }
 
 KStatus TsStorageIteratorV2Impl::ScanEntityBlockSpans(timestamp64 ts, TsScanStats* ts_scan_stats) {
-  ts_block_spans_.clear();
+  assert(ts_block_spans_.empty());
   UpdateTsSpans(ts);
   if (cur_partition_index_ < ts_partitions_.size()) {
     filter_->entity_id_ = entity_ids_[cur_entity_index_];
     auto partition_version = ts_partitions_[cur_partition_index_];
     if (ts != INVALID_TS && IsFilteredOut(partition_version->GetTsColTypeStartTime(ts_col_type_),
                                           partition_version->GetTsColTypeEndTime(ts_col_type_), ts))  {
+      cur_entity_index_ = entity_ids_.size();
       return KStatus::SUCCESS;
     }
     auto s = partition_version->GetBlockSpans(*filter_, &ts_block_spans_, table_schema_mgr_, schema_, ts_scan_stats);
@@ -634,7 +635,6 @@ NextBlockStatus TsSortedRawDataIteratorV2Impl::NextBlockSpan(timestamp64 ts, TsS
       cur_partition_index_ = 0;
       is_entity_changed = true;
     }
-    block_span_sorted_iterator_ = nullptr;
     s = ScanAndSortEntityData(ts, ts_scan_stats);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("ScanAndSortEntityData failed. vgroup_id: %u, entity_id: %u",
@@ -716,11 +716,6 @@ KStatus TsSortedRawDataIteratorV2Impl::Next(ResultSet* res, k_uint32* count, boo
     return ret;
   }
   assert(*count > 0);
-  // We are returning memory address inside TsBlockSpan, so we need to keep it until iterator is destroyed
-  ts_block_spans_.push_back(cur_block_span_);
-  if (ts_block_spans_.size() > 1) {
-    ts_block_spans_.pop_front();
-  }
   cur_block_span_ = nullptr;
   // Return the result set.
   return KStatus::SUCCESS;
@@ -2426,7 +2421,6 @@ KStatus TsRawDataIteratorV2ImplByOSN::Next(ResultSet* res, k_uint32* count, bool
   timestamp64 ts, TsScanStats* ts_scan_stats) {
   *count = 0;
   *is_finished = false;
-  ts_block_spans_reserved_.clear();
   while (true) {
     if (ts_block_spans_.size() == 0 && SendingStatus::SENDING_METRIC_ROWS == cur_entity_status_) {
       auto ret = MoveToNextEntity(is_finished, ts_scan_stats);
@@ -2576,16 +2570,15 @@ KStatus TsRawDataIteratorV2ImplByOSN::GetMetricInsertRows(ResultSet* res, k_uint
     // append extern column: osn | processed_type | processed_event_info.
     AppendExtendColSpace(res, *count);
     size_t ext_idx = kw_scan_cols_.size();
-    assert(block_span->GetRowNum() == *count);
+    assert(res->block_span->GetRowNum() == *count);
     size_t vector_idx = res->data[0].size() - 1;
     for (size_t i = 0; i < *count; i++) {
-      KUint64(reinterpret_cast<char*>(res->data[ext_idx + 0][vector_idx]->mem) + 8 * i) = *(block_span->GetOSNAddr(i));
+      KUint64(reinterpret_cast<char*>(res->data[ext_idx + 0][vector_idx]->mem) + 8 * i) =
+        *(res->block_span->GetOSNAddr(i));
       KUint8(reinterpret_cast<char*>(res->data[ext_idx + 1][vector_idx]->mem) + 1 * i) =
         OperatorTypeOfRecord::OP_TYPE_INSERT;
     }
     setBatchDeleted(reinterpret_cast<char*>(res->data[ext_idx + 2][vector_idx]->bitmap), 1, *count);
-    // We are returning memory address inside TsBlockSpan, so we need to keep it until iterator is destroyed
-    ts_block_spans_reserved_.push_back(block_span);
   }
   return KStatus::SUCCESS;
 }
