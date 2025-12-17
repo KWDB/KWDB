@@ -81,11 +81,10 @@ func createTsTsInsertWithCDCNodeForDistributeMode(n *tsInsertWithCDCNode) (Physi
 			tsInsert.PrimaryTagKey[j] = n.allNodePayloadInfos[i][j].PrimaryTagKey
 			tsInsert.PayloadPrefix[j] = n.allNodePayloadInfos[i][j].Payload
 			payloadForDistributeMode := &execinfrapb.PayloadForDistributeMode{
-				Row:        n.allNodePayloadInfos[i][j].RowBytes,
-				TimeStamps: n.allNodePayloadInfos[i][j].RowTimestamps,
-				StartKey:   n.allNodePayloadInfos[i][j].StartKey,
-				EndKey:     n.allNodePayloadInfos[i][j].EndKey,
-				ValueSize:  n.allNodePayloadInfos[i][j].ValueSize,
+				Row:       n.allNodePayloadInfos[i][j].RowBytes,
+				StartKey:  n.allNodePayloadInfos[i][j].StartKey,
+				EndKey:    n.allNodePayloadInfos[i][j].EndKey,
+				ValueSize: n.allNodePayloadInfos[i][j].ValueSize,
 			}
 			tsInsert.AllPayload[j] = payloadForDistributeMode
 		}

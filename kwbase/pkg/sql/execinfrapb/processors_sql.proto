@@ -207,12 +207,10 @@ message TsInsertSelSpec {
 
 message payloadForDistributeMode {
   repeated bytes row = 1;
-  // timestamp for each row.
-  repeated int64 timeStamps = 2;
-  optional bytes startKey = 3;
-  optional bytes endKey = 4;
-  optional int32 valueSize = 5 [(gogoproto.nullable) = false];
-  optional uint64 hashNum = 6 [(gogoproto.nullable) = false];
+  optional bytes startKey = 2;
+  optional bytes endKey = 3;
+  optional int32 valueSize = 4 [(gogoproto.nullable) = false];
+  optional uint64 hashNum = 5 [(gogoproto.nullable) = false];
 }
 
 message TsInsertProSpec {

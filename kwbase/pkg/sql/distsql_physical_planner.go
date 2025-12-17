@@ -2789,12 +2789,11 @@ func createTsInsertNodeForDistributeMode(n *tsInsertNode) (PhysicalPlan, error) 
 			tsInsert.PrimaryTagKey[j] = n.allNodePayloadInfos[i][j].PrimaryTagKey
 			tsInsert.PayloadPrefix[j] = n.allNodePayloadInfos[i][j].Payload
 			payloadForDistributeMode := &execinfrapb.PayloadForDistributeMode{
-				Row:        n.allNodePayloadInfos[i][j].RowBytes,
-				TimeStamps: n.allNodePayloadInfos[i][j].RowTimestamps,
-				StartKey:   n.allNodePayloadInfos[i][j].StartKey,
-				EndKey:     n.allNodePayloadInfos[i][j].EndKey,
-				ValueSize:  n.allNodePayloadInfos[i][j].ValueSize,
-				HashNum:    n.allNodePayloadInfos[i][j].HashNum,
+				Row:       n.allNodePayloadInfos[i][j].RowBytes,
+				StartKey:  n.allNodePayloadInfos[i][j].StartKey,
+				EndKey:    n.allNodePayloadInfos[i][j].EndKey,
+				ValueSize: n.allNodePayloadInfos[i][j].ValueSize,
+				HashNum:   n.allNodePayloadInfos[i][j].HashNum,
 			}
 			tsInsert.AllPayload[j] = payloadForDistributeMode
 		}

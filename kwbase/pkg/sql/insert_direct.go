@@ -760,23 +760,11 @@ func BuildRowBytesForPrepareTsInsert(
 		if !evalCtx.StartSinglenode {
 			groupLen := len(priTagRowIdx)
 			groupBytes := make([][]byte, groupLen)
-			groupTimes := make([]int64, groupLen)
 			valueSize := int32(0)
-			minTs := rowTimestamps[priTagRowIdx[0]]
-			maxTs := minTs
 
 			for i, idx := range priTagRowIdx {
 				groupBytes[i] = rowBytes[idx]
-				ts := rowTimestamps[idx]
-				groupTimes[i] = ts
 				valueSize += int32(len(groupBytes[i]))
-
-				if ts < minTs {
-					minTs = ts
-				}
-				if ts > maxTs {
-					maxTs = ts
-				}
 			}
 
 			hashNum := Dit.HashNum
@@ -785,7 +773,6 @@ func BuildRowBytesForPrepareTsInsert(
 				RowNum:        uint32(groupLen),
 				PrimaryTagKey: primaryTagKey,
 				RowBytes:      groupBytes,
-				RowTimestamps: groupTimes,
 				StartKey:      sqlbase.MakeTsRangeKey(table.ID, uint64(hashPoints[0]), hashNum),
 				EndKey:        sqlbase.MakeTsRangeKey(table.ID, uint64(hashPoints[0])+1, hashNum),
 				ValueSize:     valueSize,
@@ -1728,22 +1715,11 @@ func GetPayloadMapForMuiltNode(
 		if !evalCtx.StartSinglenode {
 			rowCount := len(priTagRowIdx)
 			groupRowBytes := make([][]byte, rowCount)
-			groupRowTime := make([]int64, rowCount)
 
-			minTs, maxTs := int64(math.MaxInt64), int64(math.MinInt64)
 			var valueSize int32
 
 			for i, idx := range priTagRowIdx {
 				groupRowBytes[i] = rowBytes[idx]
-				ts := rowTimestamps[idx]
-				groupRowTime[i] = ts
-
-				if ts > maxTs {
-					maxTs = ts
-				}
-				if ts < minTs {
-					minTs = ts
-				}
 				valueSize += int32(len(groupRowBytes[i]))
 			}
 
@@ -1762,7 +1738,6 @@ func GetPayloadMapForMuiltNode(
 				RowNum:        uint32(rowCount),
 				PrimaryTagKey: primaryTagKey,
 				RowBytes:      groupRowBytes,
-				RowTimestamps: groupRowTime,
 				StartKey:      startKey,
 				EndKey:        endKey,
 				ValueSize:     valueSize,
