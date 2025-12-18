@@ -1,6 +1,6 @@
 CREATE TS DATABASE t1;
 
-CREATE TABLE t1.d1(k_timestamp  TIMESTAMP not null,e1 int8 not null, e2 timestamp not null) tags (code1 INT not null) primary tags(code1);
+CREATE TABLE t1.d1(k_timestamp  TIMESTAMPTZ not null,e1 int8 not null, e2 timestamp not null) tags (code1 INT not null) primary tags(code1);
 
 INSERT INTO t1.d1 VALUES('2018-10-10 10:00:00', 1, 156384292, 1);
 INSERT INTO t1.d1 VALUES('2018-10-10 10:00:01', 2, 1563842920, 1);
@@ -149,6 +149,11 @@ select date_trunc('month', 18409324-23425);
 select date_trunc('month', 432048203942.29362);
 select date_trunc('month', 432048203942.);
 select date_trunc('month', 0xC9023472524AFE);
+
+select e1,e2, extract('timezone', k_timestamp), date_trunc('second',e2), date_trunc('hour',e2) from t1.d1 order by e1;
+set timezone = 'Asia/Shanghai';
+select e1,e2, extract('timezone', k_timestamp), date_trunc('second',e2), date_trunc('hour',e2) from t1.d1 order by e1;
+set timezone = 'UTC';
 
 drop database t1 cascade;
 

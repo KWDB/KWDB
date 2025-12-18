@@ -414,7 +414,7 @@ inline k_double64 getExtract(k_int64 intvalue, String strvalue, roachpb::DataTyp
   } else if (item == "millennium") {  // millennium
     res = (ltm.tm_year + 1900) / 1000 + 1;
   } else if (item == "timezone") {  // time zone offset from UTC, in seconds
-    res = ltm.tm_gmtoff;
+    res = timezone * 3600;
   } else if (item == "timezone_m") {  // The minute portion of the time
                                       // zone offset "timezone_minute"
     res = ltm.tm_gmtoff / 60;
