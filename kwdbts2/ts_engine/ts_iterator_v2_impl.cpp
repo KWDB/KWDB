@@ -507,7 +507,6 @@ KStatus TsStorageIteratorV2Impl::ScanEntityBlockSpans(timestamp64 ts, TsScanStat
     auto partition_version = ts_partitions_[cur_partition_index_];
     if (ts != INVALID_TS && IsFilteredOut(partition_version->GetTsColTypeStartTime(ts_col_type_),
                                           partition_version->GetTsColTypeEndTime(ts_col_type_), ts))  {
-      cur_entity_index_ = entity_ids_.size();
       return KStatus::SUCCESS;
     }
     auto s = partition_version->GetBlockSpans(*filter_, &ts_block_spans_, table_schema_mgr_, schema_, ts_scan_stats);
@@ -528,6 +527,30 @@ KStatus TsStorageIteratorV2Impl::ScanEntityBlockSpans(timestamp64 ts, TsScanStat
         }
         return KStatus::SUCCESS;
       }
+      const size_t kMinSamplingCount = 5;
+      size_t sampling_count = ceil(EngineOptions::block_filter_sampling_ratio * ts_block_spans_.size());
+      if (sampling_count >= kMinSamplingCount) {
+        size_t count = 0, filtered_count = 0;
+        auto it = ts_block_spans_.begin();
+        while (count < sampling_count && it != ts_block_spans_.end()) {
+          bool is_filtered = false;
+          s = isBlockFiltered(*it, ts_scan_stats, is_filtered);
+          if (s != KStatus::SUCCESS) {
+            LOG_ERROR("isBlockFiltered failed, entityid is %lu", (*it)->GetEntityID());
+            return KStatus::FAIL;
+          }
+          if (is_filtered) {
+            ++filtered_count;
+          }
+          ++it;
+          ++count;
+        }
+        double filter_ratio = static_cast<double>(filtered_count) / count;
+        if (filter_ratio < 0.5) {
+          return KStatus::SUCCESS;
+        }
+      }
+
       vector<pair<timestamp64, timestamp64>> intervals;
       std::map<pair<timestamp64, timestamp64>, std::vector<std::shared_ptr<TsBlockSpan>>> interval_block_span_map;
       while (!ts_block_spans_.empty()) {

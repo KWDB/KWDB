@@ -263,6 +263,17 @@ func checkTsLastCacheSizeMaxLimit(encodedValue string) error {
 	return nil
 }
 
+func checkTsBlockFilterSamplingRatio(encodedValue string) error {
+	value, err := strconv.ParseFloat(encodedValue, 64)
+	if err != nil {
+		return err
+	}
+	if value <= 0 || value > 1.0 {
+		return errors.New("invalid value, the range of ts.block_filter.sampling_ratio is (0, 1.0]")
+	}
+	return nil
+}
+
 // CheckClusterSetting map of checking methods for saving cluster settings
 var CheckClusterSetting = map[string]CheckOperation{
 	"ts.dedup.rule":                      checkTsDedupRule,
@@ -279,6 +290,7 @@ var CheckClusterSetting = map[string]CheckOperation{
 	"ts.block.lru_cache.max_limit":       checkTsBlockCacheMaxLimit,
 	"ts.force_sync_file.enabled":         checkBool,
 	"ts.last_cache_size.max_limit":       checkTsLastCacheSizeMaxLimit,
+	"ts.block_filter.sampling_ratio":     checkTsBlockFilterSamplingRatio,
 }
 
 // TsRaftlogCombineWalClusterSettingName is the name of the ts raftlog combine wal cluster setting.

@@ -692,6 +692,8 @@ void TriggerSettingCallback(const std::string& key, const std::string& value) {
     EngineOptions::force_sync_counter_file = ("true" == value);
   } else if ("ts.last_cache_size.max_limit" == key) {
     EngineOptions::last_cache_max_size = atoll(value.c_str());
+  } else if ("ts.block_filter.sampling_ratio" == key) {
+    EngineOptions::block_filter_sampling_ratio = atof(value.c_str());
   }
 #ifndef KWBASE_OSS
   else if ("ts.storage.autonomy.mode" == key) {  // NOLINT

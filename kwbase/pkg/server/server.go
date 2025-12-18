@@ -224,6 +224,11 @@ var (
 		"ts.last_cache_size.max_limit",
 		"the maximum size of last cache in vgroup",
 		1024*1024*1024)
+
+	tsBlockFilterSamplingRatio = settings.RegisterPublicFloatSetting(
+		"ts.block_filter.sampling_ratio",
+		"sampling ratio for block filter, valid range is (0.0, 1.0]",
+		0.2)
 )
 
 // TODO(peter): Until go1.11, ServeMux.ServeHTTP was not safe to call

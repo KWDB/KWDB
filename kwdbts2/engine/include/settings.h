@@ -108,6 +108,7 @@ struct EngineOptions {
   static uint8_t compress_stage;
   static bool force_sync_counter_file;
   static size_t last_cache_max_size;
+  static double block_filter_sampling_ratio;
 };
 extern std::atomic<int64_t> kw_used_anon_memory_size;
 
