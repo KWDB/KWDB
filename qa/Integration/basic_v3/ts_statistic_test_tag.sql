@@ -133,3 +133,16 @@ INSERT INTO stream_test.vehicles (ts, vehicle_id, speed, lane_no, location) VALU
 explain SELECT avg(speed) as avg_speed, min(speed) as max_speed, location FROM stream_test.vehicles group by location;
 SELECT avg(speed) as avg_speed, min(speed) as max_speed, location FROM stream_test.vehicles group by location order by location;
 drop database stream_test cascade;
+
+create ts database count_test;
+use count_test;
+create table ct(ts timestamp not null, e1 int) tags(t int not null) primary tags(t);
+insert into ct values(1,1,1);
+insert into ct values(2,2,2);
+insert into ct values(3,3,3);
+select *  from ct order by ts;
+set cluster setting ts.count.use_statistics.enabled=false;
+select count(t),max(t) from ct where ts<='1970-01-01 00:00:00.002';
+set cluster setting ts.count.use_statistics.enabled=true;
+select count(t),max(t) from ct where ts<='1970-01-01 00:00:00.002';
+drop database count_test cascade;

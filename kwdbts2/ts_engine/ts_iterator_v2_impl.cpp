@@ -900,7 +900,7 @@ KStatus TsAggIteratorV2Impl::Init(bool is_reversed) {
     std::sort(ts_partitions_.begin(), ts_partitions_.end(), PartitionLessThan);
   }
 
-  only_count_ts_ = (CLUSTER_SETTING_COUNT_USE_STATISTICS && scan_agg_types_.size() == 1
+  only_count_ts_ = (scan_agg_types_.size() == 1
         && scan_agg_types_[0] == Sumfunctype::COUNT && kw_scan_cols_.size() == 1 && kw_scan_cols_[0] == 0);
 
   for (int i = 0; i < scan_agg_types_.size(); ++i) {
@@ -1025,7 +1025,7 @@ KStatus TsAggIteratorV2Impl::Next(ResultSet* res, k_uint32* count, bool* is_fini
     }
   }
 
-  if (only_count_ts_) {
+  if (CLUSTER_SETTING_COUNT_USE_STATISTICS && only_count_ts_) {
     ret = CountAggregate(ts_scan_stats);
   } else {
     ret = Aggregate(ts_scan_stats);

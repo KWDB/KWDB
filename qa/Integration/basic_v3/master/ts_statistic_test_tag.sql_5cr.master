@@ -413,3 +413,38 @@ INSERT 10
 (2 rows)
 > drop database stream_test cascade;
 DROP DATABASE
+> create ts database count_test;
+CREATE TS DATABASE
+> use count_test;
+SET
+> create table ct(ts timestamp not null, e1 int) tags(t int not null) primary tags(t);
+CREATE TABLE
+> insert into ct values(1,1,1);
+INSERT 1
+> insert into ct values(2,2,2);
+INSERT 1
+> insert into ct values(3,3,3);
+INSERT 1
+> select *  from ct order by ts;
+               ts               | e1 | t
+--------------------------------+----+----
+  1970-01-01 00:00:00.001+00:00 |  1 | 1
+  1970-01-01 00:00:00.002+00:00 |  2 | 2
+  1970-01-01 00:00:00.003+00:00 |  3 | 3
+(3 rows)
+> set cluster setting ts.count.use_statistics.enabled=false;
+SET CLUSTER SETTING
+> select count(t),max(t) from ct where ts<='1970-01-01 00:00:00.002';
+  count | max
+--------+------
+      2 |   2
+(1 row)
+> set cluster setting ts.count.use_statistics.enabled=true;
+SET CLUSTER SETTING
+> select count(t),max(t) from ct where ts<='1970-01-01 00:00:00.002';
+  count | max
+--------+------
+      2 |   2
+(1 row)
+> drop database count_test cascade;
+DROP DATABASE
