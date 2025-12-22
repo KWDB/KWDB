@@ -203,7 +203,7 @@ EEIteratorErrCode SortScanOperator::Next(kwdbContext_p ctx,
         break;
       }
     }
-    OPERATOR_DIRECT_ENCODING(ctx, output_encoding_, use_query_short_circuit_, thd, chunk);
+    OPERATOR_DIRECT_ENCODING(ctx, output_encoding_, use_query_short_circuit_, output_type_oid_, thd, chunk);
     is_done_ = true;
   } while (0);
 

@@ -125,9 +125,14 @@ insert into ts_db.t6 values(now(), 2147483647, 1);
 select avg(e1) from ts_db.t6;
 
 create table ts_db.t7(k_timestamp timestamp not null, e1 float) tags(a int not null) primary tags(a);
-insert into ts_db.t7 values(now(), 2147483647, 1);
-insert into ts_db.t7 values(now(), -2147483647, 1);
+insert into ts_db.t7 values('2022-01-04 11:22:33.456+08:00', 2147483647, 1);
+insert into ts_db.t7 values('2023-01-04 11:22:33.456+08:00', -2147483647, 1);
 select mod(e1,e1) from ts_db.t7;
+
+create table ts_db.t8(k_timestamp TIMESTAMPTZ NOT NULL,e1 float4, code1 float4) tags(a int not null)primary tags(a);
+insert into  ts_db.t8 values(now(), 33472098.11312001, 6900.00146484375, 1),(now(), 0, 6900.00146484375, 2);
+select acos(e1)from  ts_db.t8 order by a;
+select mod(e1,code1) from  ts_db.t8 order by a;
 
 drop database ts_db cascade;
 

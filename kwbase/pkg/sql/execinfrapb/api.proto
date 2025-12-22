@@ -89,6 +89,7 @@ message TSFlowSpec {
   repeated string brpcAddrs = 5;
   optional bool isDist = 6 [(gogoproto.nullable) = false];
   optional bool useQueryShortCircuit = 7 [(gogoproto.nullable) = false];
+  repeated uint32 output_type_oid = 8;
 }
 
 // TsInfo is info for AE.

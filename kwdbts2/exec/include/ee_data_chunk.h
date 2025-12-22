@@ -370,6 +370,7 @@ class DataChunk : public IChunk {
   ////////////////   Encoding func  ///////////////////
   KStatus Encoding(kwdbContext_p ctx, TsNextRetState nextState,
                    bool use_query_short_circuit, k_int64* command_limit,
+                   const vector<k_uint32>& output_type_oid,
                    std::atomic<k_int64>* count_for_limit);
   /**
    * @brief Encode data at coordinate location (row, col) using kwbase protocol.
@@ -388,7 +389,7 @@ class DataChunk : public IChunk {
    * @param[in] info
    */
   KStatus PgResultData(kwdbContext_p ctx, k_uint32 row,
-                       const EE_StringInfo& info);
+                       const EE_StringInfo& info, const vector<k_uint32> &t_is_float8);
 
   virtual EEIteratorErrCode VectorizeData(kwdbContext_p ctx,
                                           DataInfo* data_info);

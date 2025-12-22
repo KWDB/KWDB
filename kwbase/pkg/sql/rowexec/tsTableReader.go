@@ -424,6 +424,14 @@ func (ttr *TsTableReader) setupTsFlow(ctx context.Context) error {
 	tsFlowSpec.IsDist = ttr.tsInfo.IsDist
 	tsFlowSpec.UseQueryShortCircuit = ttr.tsInfo.UseQueryShortCircuit
 
+	// get output type oid.
+	finalProcessor := ttr.tsProcessorSpecs[len(tsFlowSpec.Processors)-1]
+	OutputTypeOid := make([]uint32, len(finalProcessor.Post.OutputTypes))
+	for i, typ := range finalProcessor.Post.OutputTypes {
+		OutputTypeOid[i] = uint32(typ.Oid())
+	}
+	tsFlowSpec.OutputTypeOid = OutputTypeOid
+
 	msg, err := protoutil.Marshal(tsFlowSpec)
 	if err != nil {
 		return err

@@ -783,6 +783,7 @@ k_int32 DataChunk::Compare(size_t left, size_t right, k_uint32 col_idx,
 // Encode datachunk
 KStatus DataChunk::Encoding(kwdbContext_p ctx, TsNextRetState nextState, bool use_query_short_circuit,
                             k_int64* command_limit,
+                            const vector<k_uint32>& output_type_oid,
                             std::atomic<k_int64>* count_for_limit) {
   KStatus st = KStatus::SUCCESS;
 
@@ -813,7 +814,7 @@ KStatus DataChunk::Encoding(kwdbContext_p ctx, TsNextRetState nextState, bool us
           break;
         }
       }
-      st = PgResultData(ctx, row, msgBuffer);
+      st = PgResultData(ctx, row, msgBuffer, output_type_oid);
       if (st != SUCCESS) {
         break;
       }
@@ -1383,7 +1384,8 @@ inline KStatus DataChunk::PgEncodeDecimal(DatumPtr raw, const EE_StringInfo& inf
   return SUCCESS;
 }
 
-KStatus DataChunk::PgResultData(kwdbContext_p ctx, k_uint32 row, const EE_StringInfo& info) {
+KStatus DataChunk::PgResultData(kwdbContext_p ctx, k_uint32 row,
+  const EE_StringInfo& info, const vector<k_uint32> &output_type_oid) {
   EnterFunc();
   k_uint32 temp_len = info->len;
   char* temp_addr = nullptr;
@@ -1497,9 +1499,7 @@ KStatus DataChunk::PgResultData(kwdbContext_p ctx, k_uint32 row, const EE_String
           std::memcpy(&d, raw, sizeof(k_double64));
         }
 
-        // Format based on sql_type (original type) or storage_type
-        if (col_info_[col].storage_type == roachpb::DataType::FLOAT ||
-          col_info_[col].sql_type == roachpb::DataType::FLOAT) {
+        if (output_type_oid[col] == T_FLOAT4) {
           n = ryu_snprintf_f(d, 6, buf, sizeof(buf));
         } else {
            n = ryu_snprintf_g(d, 17, buf);
@@ -1620,7 +1620,7 @@ KStatus DataChunk::PgResultData(kwdbContext_p ctx, k_uint32 row, const EE_String
         std::memcpy(&val, raw, sizeof(k_int64));
         CKTime ck_time = getCKTime(val, col_info_[col].storage_type, ctx->timezone);
         tm ts{};
-        ToGMT(ck_time.t_timespec.tv_sec, ts);
+        ToGMT(ck_time.t_timespec.tv_sec - ck_time.t_abbv, ts);
         strftime(ts_format_buf, 32, "%F %T", &ts);
         k_uint8 format_len = strlen(ts_format_buf);
         format_len = strlen(ts_format_buf);

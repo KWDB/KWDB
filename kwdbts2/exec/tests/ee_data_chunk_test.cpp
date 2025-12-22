@@ -195,7 +195,7 @@ TEST_F(TestDataChunk, TestChunk) {
   EE_StringInfo info = ee_makeStringInfo();
   EE_StringInfo info_pg = ee_makeStringInfo();
   for (row = 0; row < chunk3->Count(); ++row) {
-     chunk3->PgResultData(ctx, row, info_pg);
+     chunk3->PgResultData(ctx, row, info_pg, {});
      for (size_t col = 0; col < chunk3->ColumnNum(); ++col) {
        ASSERT_EQ(chunk2->EncodingValue(ctx, 0, col, info), SUCCESS);
      }

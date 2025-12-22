@@ -117,6 +117,9 @@ class BaseOperator {
   void SetUseQueryShortCircuit(bool use) { use_query_short_circuit_ = use; }
   bool IsUseQueryShortCircuit() { return use_query_short_circuit_; }
 
+  void SetOutputTypeOid(const vector<k_uint32>& output_type_oid) { output_type_oid_ = std::move(output_type_oid); }
+  vector<k_uint32> GetOutputTypeOid() { return output_type_oid_; }
+
   virtual bool isSink() { return false; }
 
   virtual bool isSource() { return false; }
@@ -284,6 +287,8 @@ class BaseOperator {
   PipelineGroup* pipeline_{nullptr};
 
   bool use_query_short_circuit_{false};
+
+  vector<k_uint32> output_type_oid_;
 
  public:
   PostProcessSpec* post_{nullptr};

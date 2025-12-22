@@ -223,7 +223,7 @@ EEIteratorErrCode TagScanOperator::Next(kwdbContext_p ctx, DataChunkPtr& chunk) 
   } while (0);
   auto end = std::chrono::high_resolution_clock::now();
   if (chunk != nullptr) {
-    OPERATOR_DIRECT_ENCODING(ctx, output_encoding_, use_query_short_circuit_, thd, chunk);
+    OPERATOR_DIRECT_ENCODING(ctx, output_encoding_, use_query_short_circuit_, output_type_oid_, thd, chunk);
     fetcher_.Update(chunk->Count(), (end - start).count(), 0, 0, 0, 0);
   }
 

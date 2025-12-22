@@ -20,7 +20,6 @@
 #include "ee_kwthd_context.h"
 #include "ee_op_factory.h"
 #include "ee_pb_plan.pb.h"
-#include "ee_pg_result.h"
 #include "lg_api.h"
 #include "ee_pipeline_group.h"
 #include "ee_pipeline_task.h"
@@ -322,6 +321,12 @@ KStatus Processors::BuildOperator(kwdbContext_p ctx) {
     if (processor_id == top_process_id_) {
       oper->SetOutputEncoding(true);
       oper->SetUseQueryShortCircuit(fspec_->usequeryshortcircuit());
+      vector<k_uint32> output_type_oid;
+      output_type_oid.reserve(fspec_->output_type_oid_size());
+      for (k_uint32 oid : fspec_->output_type_oid()) {
+        output_type_oid.push_back(oid);
+      }
+      oper->SetOutputTypeOid(output_type_oid);
     }
 
     // command_limit_ = post.commandlimit();
@@ -736,7 +741,7 @@ EEIteratorErrCode Processors::EncodeDataChunk(kwdbContext_p ctx,
   KStatus st = FAIL;
   if (is_pg) {
     for (k_uint32 row = 0; row < chunk->Count(); ++row) {
-      st = chunk->PgResultData(ctx, row, msgBuffer);
+      st = chunk->PgResultData(ctx, row, msgBuffer, {});
       if (st != SUCCESS) {
         EEPgErrorInfo::SetPgErrorInfo(ERRCODE_OUT_OF_MEMORY, "Insufficient memory");
         ret = EEIteratorErrCode::EE_ERROR;

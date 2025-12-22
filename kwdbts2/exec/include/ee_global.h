@@ -108,11 +108,11 @@ extern thread_local EEPgErrorInfo g_pg_error_info;
 
 enum TsNextRetState {  DML_NEXT, DML_VECTORIZE_NEXT, DML_PG_RESULT };
 
-#define OPERATOR_DIRECT_ENCODING(ctx, output_encoding, use_query_short_circuit, thd, chunk)       \
+#define OPERATOR_DIRECT_ENCODING(ctx, output_encoding, use_query_short_circuit, output_type_oid, thd, chunk)       \
   if (output_encoding) {                                                 \
     KStatus ret =                                                        \
         chunk->Encoding(ctx, thd->GetPgEncode(), use_query_short_circuit, thd->GetCommandLimit(), \
-                        thd->GetCountForLimit());                        \
+                        output_type_oid, thd->GetCountForLimit());                        \
     if (ret != SUCCESS) {                                                \
       EEPgErrorInfo::SetPgErrorInfo(ERRCODE_OUT_OF_MEMORY,               \
                                     "Insufficient memory");              \
@@ -147,6 +147,11 @@ enum SlidingWindowStep {
   SWS_NEXT_BATCH,
   SWS_RT_CHUNK,
   SWS_NEXT_ENTITY,
+};
+
+enum OutputTypeOid {
+  T_FLOAT4 = 700,
+  T_FLOAT8 = 701
 };
 
 #define IS_LEAP_YEAR(year) (((year) % 4 == 0 && (year) % 100!= 0) || (year) % 400 == 0)

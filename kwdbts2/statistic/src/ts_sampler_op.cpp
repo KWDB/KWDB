@@ -568,7 +568,7 @@ EEIteratorErrCode TsSamplerOperator::Next(kwdbContext_p ctx, DataChunkPtr& chunk
   if (ret != SUCCESS) {
     Return(EE_ERROR);
   }
-  OPERATOR_DIRECT_ENCODING(ctx, output_encoding_, use_query_short_circuit_, thd, chunk);
+  OPERATOR_DIRECT_ENCODING(ctx, output_encoding_, use_query_short_circuit_, output_type_oid_, thd, chunk);
   is_done_ = true;
   LOG_DEBUG("complete collecting timeseries table %lu statistics", childrens_[0]->table()->object_id_);
   Return(EE_OK);
