@@ -291,6 +291,10 @@ class TsEntityBlock : public TsBlock {
     memory_size_ += new_memory_size;
   }
 
+  uint64_t GetBlockID() override {
+    return block_id_;
+  }
+
   uint32_t GetNCols() { return n_cols_; }
 
   TSTableID GetTableId() override { return table_id_; }
@@ -480,6 +484,8 @@ class TsEntitySegment : public TsSegmentBase, public enable_shared_from_this<TsE
 
   std::string GetPath() { return dir_path_; }
   std::string GetHandleInfoStr();
+
+  uint64_t GetAggFileSize() { return agg_file_.Size(); }
 };
 
 }  // namespace kwdbts

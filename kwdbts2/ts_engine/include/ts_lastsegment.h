@@ -108,6 +108,12 @@ class TsLastSegment : public TsSegmentBase {
 
   KStatus Open();
 
+  KStatus GetBlockInfo(int block_id, TsLastSegmentBlockInfoWithData** info) const;
+
+  KStatus GetBlockIndex(int block_id, TsLastSegmentBlockIndex** index) const;
+
+  KStatus GetBlockRowCount(int block_id, uint64_t* row_count) const;
+
   uint32_t GetFileNumber() const { return file_number_; }
 
   std::string GetFilePath() const { return file_->GetFilePath(); }
@@ -127,6 +133,9 @@ class TsLastSegment : public TsSegmentBase {
                         TsScanStats* ts_scan_stats = nullptr) override;
 
   size_t GetFileSize() const { return file_->GetFileSize(); }
+
+  size_t GetBlockCount() const { return footer_.n_data_block; }
+  size_t GetBlockSize(size_t block_id) const;
 
   bool MayExistEntity(TSEntityID entity_id) const override {
     return bloom_filter_ ? bloom_filter_->MayExist(entity_id)

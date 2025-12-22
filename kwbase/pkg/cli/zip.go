@@ -95,7 +95,6 @@ var debugZipTablesPerCluster = []string{
 	"kwdb_internal.kwdb_triggers",
 	"kwdb_internal.kwdb_procedures",
 	"kwdb_internal.kwdb_streams",
-
 	"kwdb_internal.schema_changes",
 	"kwdb_internal.ts_inflight_transactions",
 	"kwdb_internal.partitions",

@@ -126,3 +126,22 @@ message CreateTsTable {
   // NTagIndexInfo
   repeated NTagIndexInfo index_info = 4;
 }
+
+message BlockInfo {
+  // level: last_segment, entity_segment, total
+  required string level = 1;
+  // Total number of blocks at this level
+  required uint32 blocks_num = 2;
+  // Total size of blocks at this level
+  required uint64 blocks_size = 3;
+  // Average size of blocks at this level
+  required double avg_size = 4;
+  optional float compression_ratio = 5;
+  optional uint32 last_seg_level0 = 6;
+  optional uint32 last_seg_level1 = 7;
+  optional uint32 last_seg_level2 = 8;
+}
+
+message BlocksDistribution {
+  repeated BlockInfo block_info = 1;
+}

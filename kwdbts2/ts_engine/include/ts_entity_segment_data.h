@@ -104,6 +104,8 @@ class TsEntitySegmentAggFile {
   KStatus Open();
   KStatus ReadAggData(uint64_t offset, TsSliceGuard* data, size_t len);
   void MarkDelete() { r_file_->MarkDelete(); }
+
+  uint64_t Size() { return r_file_->GetFileSize(); }
 };
 
 }  // namespace kwdbts

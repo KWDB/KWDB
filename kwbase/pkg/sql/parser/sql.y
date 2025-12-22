@@ -719,7 +719,7 @@ func (u *sqlSymUnion) triggerBody() tree.TriggerBody {
 
 %token <str> D DATA DATABASE DATABASES DATAS DATE DAY DDLREPLAY DEC DECLARE DECIMAL DEFAULT DELIMITER_EOF
 %token <str> DEALLOCATE DEFERRABLE DEFERRED DELETE DESC DESCRIBE DEVICE
-%token <str> DICT DISCARD DISTINCT DO DOMAIN DOUBLE DROP DISABLE
+%token <str> DICT DISCARD DISTINCT DISTRIBUTION DO DOMAIN DOUBLE DROP DISABLE
 
 %token <str> EACH ELSIF ENDIF ENDWHILE ENDCASE ENDLOOP ENDHANDLER
 %token <str> ELSE ENCODING END ENDPOINT ENDTIME ENUM ESCAPE ESTIMATED EXCEPT EXCLUDE ENABLE
@@ -1001,6 +1001,7 @@ func (u *sqlSymUnion) triggerBody() tree.TriggerBody {
 %type <tree.Statement> show_create_stmt
 %type <tree.Statement> show_csettings_stmt
 %type <tree.Statement> show_databases_stmt
+%type <tree.Statement> show_distribution_stmt
 %type <tree.Statement> show_fingerprints_stmt
 %type <tree.Statement> show_grants_stmt
 %type <tree.Statement> show_histogram_stmt
@@ -4127,6 +4128,7 @@ show_stmt:
 | show_create_stmt          // EXTEND WITH HELP: SHOW CREATE
 | show_csettings_stmt       // EXTEND WITH HELP: SHOW CLUSTER SETTING
 | show_databases_stmt       // EXTEND WITH HELP: SHOW DATABASES
+| show_distribution_stmt    // EXTEND WITH HELP: SHOW DISTRIBUTION
 | show_fingerprints_stmt
 | show_grants_stmt          // EXTEND WITH HELP: SHOW GRANTS
 | show_histogram_stmt       // EXTEND WITH HELP: SHOW HISTOGRAM
@@ -4496,6 +4498,21 @@ show_partitions_stmt:
   {
     $$.val = &tree.ShowPartitions{IsTable: true, Table: $5.unresolvedObjectName()}
   }
+
+// %Help: SHOW DISTRIBUTION - list distribution
+// %Category: DDL
+// %Text: SHOW DISTRIBUTION FROM [DATABASE | TABLE] <name>
+// %SeeAlso:
+show_distribution_stmt:
+	SHOW DISTRIBUTION FROM DATABASE database_name
+  {
+    $$.val = &tree.ShowDistribution{IsDB: true, Database: tree.Name($5)}
+  }
+| SHOW DISTRIBUTION FROM TABLE table_name
+  {
+    $$.val = &tree.ShowDistribution{IsTable: true, Table: $5.unresolvedObjectName()}
+  }
+| SHOW DISTRIBUTION error // SHOW HELP: SHOW DISTRIBUTION
 
 // %Help: SHOW DATABASES - list databases
 // %Category: DDL
@@ -13219,6 +13236,7 @@ unreserved_keyword:
 | DICT
 | DISCARD
 | DISABLE
+| DISTRIBUTION
 | DOMAIN
 | DOUBLE
 | DROP

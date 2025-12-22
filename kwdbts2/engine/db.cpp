@@ -56,6 +56,7 @@ TSStatus TSOpen(TSEngine** engine, TSSlice dir, TSOptions options,
   EngineOptions opts;
   std::string ts_store_path(dir.data, dir.len);
   opts.db_path = ts_store_path + "/tsdb";
+  opts.ts_store_path_ = ts_store_path;
   EngineOptions::is_single_node_ = options.is_single_node;
 
   // TODO(LSY): log settings from kwbase start params
@@ -688,6 +689,8 @@ void TriggerSettingCallback(const std::string& key, const std::string& value) {
     TsLRUBlockCache::GetInstance().SetMaxMemorySize(EngineOptions::block_cache_max_size);
   } else if ("ts.compress.stage" == key) {
     EngineOptions::compress_stage = atoi(value.c_str());
+  } else if ("ts.compress.last_segment.enabled" == key) {
+    EngineOptions::compress_last_segment = ("true" == value);
   } else if ("ts.force_sync_file.enabled" == key) {
     EngineOptions::force_sync_counter_file = ("true" == value);
   } else if ("ts.last_cache_size.max_limit" == key) {
@@ -1426,6 +1429,35 @@ TSStatus TSFlushVGroups(TSEngine* engine) {
 
 void TsGetRecentBlockCacheInfo(uint32_t* hit_count, uint32_t* miss_count, uint64_t* memory_size) {
   TsLRUBlockCache::GetInstance().GetRecentHitInfo(hit_count, miss_count, memory_size);
+}
+
+
+TSStatus TSGetTableBlocksDistribution(TSEngine* engine, TSTableID table_id, TSSlice* blocks_info) {
+  kwdbContext_t context;
+  kwdbContext_p ctx_p = &context;
+  KStatus s = InitServerKWDBContext(ctx_p);
+  if (s != KStatus::SUCCESS) {
+    return ToTsStatus("InitServerKWDBContext Error!");
+  }
+  s = engine->GetTableBlocksDistribution(table_id, blocks_info);
+  if (s != KStatus::SUCCESS) {
+    return ToTsStatus("GetTableBlocksDistribution Error!");
+  }
+  return kTsSuccess;
+}
+
+TSStatus TSGetDBBlocksDistribution(TSEngine* engine, uint32_t db_id, TSSlice* blocks_info) {
+  kwdbContext_t context;
+  kwdbContext_p ctx_p = &context;
+  KStatus s = InitServerKWDBContext(ctx_p);
+  if (s != KStatus::SUCCESS) {
+    return ToTsStatus("InitServerKWDBContext Error!");
+  }
+  s = engine->GetDBBlocksDistribution(db_id, blocks_info);
+  if (s != KStatus::SUCCESS) {
+    return ToTsStatus("GetDBBlocksDistribution Error!");
+  }
+  return kTsSuccess;
 }
 
 TSStatus TSRaftOpen(RaftStore** engine, TSSlice dir) {

@@ -65,6 +65,24 @@ TsVGroup::TsVGroup(EngineOptions* engine_options, uint32_t vgroup_id, TsEngineSc
       mem_segment_mgr_(std::make_unique<TsMemSegmentManager>(this, version_manager_.get())),
       enable_compact_thread_(enable_compact_thread) {}
 
+TsVGroup::TsVGroup(EngineOptions* engine_options, uint32_t vgroup_id, TsEngineSchemaManager* schema_mgr,
+                   std::shared_mutex* engine_mutex, TsHashRWLatch* tag_lock,  const std::string& user_defined_path,
+                   bool enable_compact_thread)
+    : vgroup_id_(vgroup_id),
+      schema_mgr_(schema_mgr),
+      tag_lock_(tag_lock),
+      path_(fs::path(engine_options->db_path) / VGroupDirName(vgroup_id)),
+      max_entity_id_(0),
+      engine_options_(engine_options),
+      engine_wal_level_mutex_(engine_mutex),
+      version_manager_(std::make_unique<TsVersionManager>(&TsIOEnv::GetInstance(), path_)),
+      mem_segment_mgr_(std::make_unique<TsMemSegmentManager>(this, version_manager_.get())),
+      enable_compact_thread_(enable_compact_thread) {
+  if (!user_defined_path.empty()) {
+    user_defined_path_ = fs::path(user_defined_path) / VGroupDirName(vgroup_id);
+  }
+}
+
 TsVGroup::~TsVGroup() {
   enable_compact_thread_ = false;
   closeCompactThread();
@@ -77,8 +95,58 @@ TsVGroup::~TsVGroup() {
   cur_mem_size_ = 0;
 }
 
+bool TsVGroup::createDirSymLink(const fs::path& target_path, const fs::path& symbol_path) {
+  std::error_code ec;
+  const fs::file_status st = fs::symlink_status(symbol_path, ec);
+  if (!ec) {
+    if (fs::is_symlink(st)) {
+      ec.clear();
+      const fs::path actual_path = fs::read_symlink(symbol_path, ec);
+      if (ec) {
+        LOG_ERROR("CreateDirSymLink failed: read_symlink [%s] failed: %s", symbol_path.string().c_str(),
+                   ec.message().c_str());
+        return false;
+      }
+      if (!ec) {
+        if (actual_path == target_path) {
+          return true;
+        }
+        LOG_ERROR("CreateDirSymLink failed: symlink [%s] exists but link to [%s], configure path is [%s]",
+                   symbol_path.string().c_str(), actual_path.string().c_str(), target_path.string().c_str());
+        return false;
+      }
+    }
+  } else if (ec.value() != static_cast<int>(std::errc::no_such_file_or_directory)) {
+    LOG_ERROR("CreateDirSymLink failed: symlink_status [%s] failed: %s", symbol_path.string().c_str(), ec.message().c_str());
+    return false;
+  }
+
+  if (target_path != symbol_path) {
+    ec.clear();
+    fs::create_directory_symlink(target_path, symbol_path, ec);
+    if (ec) {
+      LOG_ERROR("create symlink [%s] -> [%s] failed: %s",
+                symbol_path.string().c_str(), target_path.string().c_str(), ec.message().c_str());
+      return false;
+    }
+  }
+
+  return true;
+}
+
 KStatus TsVGroup::Init(kwdbContext_p ctx) {
-  auto s = TsIOEnv::GetInstance().NewDirectory(path_);
+  KStatus s;
+  if (user_defined_path_.empty()) {
+    s = TsIOEnv::GetInstance().NewDirectory(path_);
+  } else {
+    s = TsIOEnv::GetInstance().NewDirectory(user_defined_path_);
+    std::error_code ec;
+    bool ok = createDirSymLink(user_defined_path_, path_);
+    if (!ok) {
+      LOG_ERROR("Init VGroup %u failed, please check user defined vgroup path", vgroup_id_);
+      return FAIL;
+    }
+  }
   if (s == FAIL) {
     LOG_ERROR("Failed to create directory: %s", path_.c_str());
     return s;
@@ -1939,12 +2007,11 @@ KStatus TsVGroup::VacuumPartition(kwdbContext_p ctx, shared_ptr<const TsPartitio
   std::unordered_set<TSTableID> dropped_table_ids, bool force) {
   if (force) {
     while (!partition->TrySetBusy(PartitionStatus::Vacuuming)) {
-      using std::chrono_literals::operator""s;
-      this_thread::sleep_for(1s);
-      if (ctx->relation_ctx != 0 && isCanceledCtx(ctx->relation_ctx)) {
-        LOG_INFO("Context has been canceled, stop vacuum.");
-        return KStatus::SUCCESS;
-      }
+      this_thread::sleep_for(std::chrono::seconds(1));
+      // if (ctx->relation_ctx != 0 && isCanceledCtx(ctx->relation_ctx)) {
+      //   LOG_INFO("Context has been canceled, stop vacuum.");
+      //   return KStatus::SUCCESS;
+      // }
     }
   } else {
     if (!partition->TrySetBusy(PartitionStatus::Vacuuming)) {
@@ -2151,6 +2218,123 @@ KStatus TsVGroup::VacuumPartition(kwdbContext_p ctx, shared_ptr<const TsPartitio
   }
   LOG_INFO("Vacuum partition [vgroup_%d]-[%ld, %ld) succeeded", vgroup_id_, partition->GetStartTime(),
                                                                 partition->GetEndTime() - 1);
+  return SUCCESS;
+}
+
+BlocksDistribution GetEntityDistribution(const std::shared_ptr<TsEntitySegment>& entity_segment, const uint32_t& entity_id) {
+  std::vector<TsEntitySegmentBlockItem> entity_items;
+  BlocksDistribution blocks_distribution;
+  KStatus s = entity_segment->GetAllBlockItems(entity_id, &entity_items);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("GetEntityDistribution failed.");
+    blocks_distribution.blocks_num_ = 0;
+    blocks_distribution.blocks_size_ = 0;
+    blocks_distribution.rows_num_ = 0;
+    return blocks_distribution;
+  }
+  if (!entity_items.empty()) {
+    blocks_distribution.blocks_num_ += entity_items.size();
+    for (auto entity_item : entity_items) {
+      blocks_distribution.blocks_size_ += entity_item.block_len;
+      blocks_distribution.rows_num_ += entity_item.n_rows;
+    }
+  }
+  blocks_distribution.blocks_size_ += entity_segment->GetAggFileSize();
+  return blocks_distribution;
+}
+
+KStatus TsVGroup::GetTableBlocksDistribution(uint32_t target_db_id, TSTableID table_id,
+  const std::vector<uint32_t>& entity_ids, VGroupBlocksInfo* blocks_info) {
+  auto current = version_manager_->Current();
+  auto all_partitions = current->GetDBAllPartitions(target_db_id);
+  for (const auto& partition : all_partitions) {
+    // last segments distribution
+    std::vector<uint32_t> last_segments_level_count = partition->GetAllLevelLastSegmentsCount();
+    blocks_info->last_segments_info_.last_seg_level0 = last_segments_level_count[0];
+    blocks_info->last_segments_info_.last_seg_level1 = last_segments_level_count[1];
+    blocks_info->last_segments_info_.last_seg_level2 = last_segments_level_count[2];
+
+    std::vector<std::shared_ptr<TsLastSegment>> all_last_segments;
+    all_last_segments = partition->GetAllLastSegments();
+    for (const auto& last_segment : all_last_segments) {
+      std::vector<TsLastSegmentBlockIndex> block_indices;
+      KStatus s = last_segment->GetAllBlockIndex(&block_indices);
+      if (s != KStatus::SUCCESS) {
+        LOG_ERROR("GetAllBlockIndex failed, db_id:%d, table_id:%lu, partition:%s",
+          target_db_id, table_id, partition->GetPartitionIdentifierStr().c_str());
+        return s;
+      }
+      auto n = block_indices.size();
+      for (size_t j = 0; j < n; j++) {
+        auto block_idx = block_indices[j];
+        if (block_idx.table_id == table_id) {
+          blocks_info->last_segments_info_.blocks_num_++;
+          auto block_size = last_segment->GetBlockSize(j);
+          if (block_size == static_cast<size_t>(-1)) {
+            LOG_ERROR("GetBlockSize failed, db_id:%d, table_id:%lu, partition:%s",
+              target_db_id, table_id, partition->GetPartitionIdentifierStr().c_str());
+            return KStatus::FAIL;
+          }
+          blocks_info->last_segments_info_.blocks_size_ += block_size;
+          uint64_t row_count = 0;
+          s = last_segment->GetBlockRowCount(j, &row_count);
+          if (s != KStatus::SUCCESS) {
+            return s;
+          }
+          blocks_info->last_segments_info_.rows_num_ += row_count;
+        }
+      }
+    }
+
+    // entity segment distribution
+    std::shared_ptr<TsEntitySegment> entity_segment = partition->GetEntitySegment();
+    if (entity_segment != nullptr) {
+      for (auto entity_id : entity_ids) {
+        blocks_info->entity_segments_info_.Add(GetEntityDistribution(entity_segment, entity_id));
+      }
+    }
+  }
+  return SUCCESS;
+}
+
+KStatus TsVGroup::GetDBBlocksDistribution(uint32_t target_db_id, VGroupBlocksInfo* blocks_info) {
+  auto current = version_manager_->Current();
+  auto all_partitions = current->GetDBAllPartitions(target_db_id);
+  for (const auto& partition : all_partitions) {
+    // last segments distribution
+    std::vector<std::shared_ptr<TsLastSegment>> all_last_segments;
+    all_last_segments = partition->GetAllLastSegments();
+    for (const auto& last_segment : all_last_segments) {
+      size_t block_count = last_segment->GetBlockCount();
+      blocks_info->last_segments_info_.blocks_num_ += block_count;
+      TsLastSegmentBlockIndex* block_index;
+      KStatus s = last_segment->GetBlockIndex(0, &block_index);
+      if (s != KStatus::SUCCESS) {
+        LOG_ERROR("GetAllBlockIndex failed, db_id:%d, partition:%s", target_db_id,
+          partition->GetPartitionIdentifierStr().c_str());
+        return s;
+      }
+      blocks_info->last_segments_info_.blocks_size_ += block_index->info_offset;
+      for (size_t i = 0; i < block_count; i++) {
+        TsLastSegmentBlockInfoWithData* info;
+        s = last_segment->GetBlockInfo(i, &info);
+        if (s != KStatus::SUCCESS) {
+          LOG_ERROR("Last segment GetBlockInfo failed.");
+          return s;
+        }
+        blocks_info->last_segments_info_.rows_num_ += info->nrow;
+      }
+    }
+
+    // entity segment distribution
+    std::shared_ptr<TsEntitySegment> entity_segment = partition->GetEntitySegment();
+    if (entity_segment != nullptr) {
+      auto max_entity_id = entity_segment->GetEntityNum();
+      for (uint64_t entity_id = 0; entity_id < max_entity_id; entity_id++) {
+        blocks_info->entity_segments_info_.Add(GetEntityDistribution(entity_segment, entity_id));
+      }
+    }
+  }
   return SUCCESS;
 }
 }  //  namespace kwdbts

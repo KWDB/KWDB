@@ -213,6 +213,10 @@ class TsMemSegBlock : public TsBlock {
     }
     return can_insert;
   }
+
+  uint64_t GetBlockID() override {
+    return 0;
+  }
 };
 
 class TsVersionManager;

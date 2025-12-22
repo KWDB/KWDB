@@ -82,13 +82,6 @@ std::time_t ModifyTime(const std::string& filePath);
  */
 bool System(const string& cmd,  bool print_log = true, ErrorInfo& error_info = getDummyErrorInfo());
 
-/**
- * @brief Move the files in one directory to another directory
- * @param src_path Source directory path
- * @param dst_path Target directory path
- * @return true/false
- */
-bool CopyDirectory(std::vector<string>& src_path, const string& dst_path, ErrorInfo& error_info);
 
 /**
  * Change link directory for link_path
@@ -113,3 +106,10 @@ int64_t GetDiskFreeSpace(const std::string& path);
 bool IsDiskSpaceEnough(const std::string& path);
 
 bool isSoftLink(const std::string& path);
+
+/**
+ * @brief gcc 7 does not support std::filesystem::path().lexically_normal(), so we need to implement it ourselves
+ * @param path
+ * @return
+ */
+std::string lexically_normal(const std::string& path);

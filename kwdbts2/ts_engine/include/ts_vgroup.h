@@ -60,6 +60,7 @@ class TsVGroup {
   TsHashRWLatch* tag_lock_;
 
   fs::path path_;
+  fs::path user_defined_path_;
 
   // max entity id of this vgroup
   uint64_t max_entity_id_{0};
@@ -107,7 +108,13 @@ class TsVGroup {
   TsVGroup(EngineOptions* engine_options, uint32_t vgroup_id, TsEngineSchemaManager* schema_mgr,
            std::shared_mutex* engine_mutex, TsHashRWLatch* tag_lock, bool enable_compact_thread = true);
 
+  TsVGroup(EngineOptions* engine_options, uint32_t vgroup_id, TsEngineSchemaManager* schema_mgr,
+           std::shared_mutex* engine_mutex, TsHashRWLatch* tag_lock, const std::string& user_defined_path,
+           bool enable_compact_thread = true);
+
   ~TsVGroup();
+
+  bool createDirSymLink(const fs::path& target_path, const fs::path& symbol_link);
 
   KStatus Init(kwdbContext_p ctx);
 
@@ -455,6 +462,11 @@ class TsVGroup {
 
   KStatus VacuumPartition(kwdbContext_p ctx, shared_ptr<const TsPartitionVersion> partition,
     std::unordered_set<TSTableID> dropped_table_ids, bool force);
+
+  KStatus GetTableBlocksDistribution(uint32_t target_db_id, TSTableID table_id, const std::vector<uint32_t>& entity_ids,
+    VGroupBlocksInfo* blocks_info);
+
+  KStatus GetDBBlocksDistribution(uint32_t target_db_id, VGroupBlocksInfo* blocks_info);
 
  private:
   // check partition of rows exist. if not creating it.

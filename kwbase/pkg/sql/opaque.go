@@ -137,6 +137,8 @@ func buildOpaque(
 		plan, err = p.DropTrigger(ctx, n)
 	case *tree.ShowTriggers:
 		plan, err = p.ShowTriggers(ctx, n)
+	case *tree.ShowDistribution:
+		plan, err = p.ShowDistribution(ctx, n)
 	case *tree.DropView:
 		plan, err = p.DropView(ctx, n)
 	case *tree.DropSequence:
@@ -270,6 +272,7 @@ func init() {
 		&tree.DropProcedure{},
 		&tree.DropTrigger{},
 		&tree.ShowTriggers{},
+		&tree.ShowDistribution{},
 		&tree.DropAudit{},
 		&tree.ImportPortal{},
 		&tree.Grant{},

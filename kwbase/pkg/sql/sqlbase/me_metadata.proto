@@ -246,6 +246,24 @@ message CreateTsTable {
   repeated NTagIndexInfo index_info = 4 [(gogoproto.nullable) = false];
 }
 
+message BlockInfo {
+  // level: last_segment, entity_segment, total
+  required string level = 1 [(gogoproto.nullable) = false];
+  // Total number of blocks at this level
+  required uint32 blocks_num = 2 [(gogoproto.nullable) = false];
+  // Total size of blocks at this level
+  required uint64 blocks_size = 3 [(gogoproto.nullable) = false];
+  // Average size of blocks at this level
+  required double avg_size = 4 [(gogoproto.nullable) = false];
+  optional float compression_ratio = 5;
+  optional uint32 last_seg_level0 = 6 [(gogoproto.nullable) = false];
+  optional uint32 last_seg_level1 = 7 [(gogoproto.nullable) = false];
+  optional uint32 last_seg_level2 = 8 [(gogoproto.nullable) = false];
+}
+
+message BlocksDistribution {
+  repeated BlockInfo block_info = 1 [(gogoproto.nullable) = false];
+}
 
 message UpdateReplicationMetaData {
   optional KWDBReplicationMetaData kwdbRepMdt = 1 [(gogoproto.nullable) = false];

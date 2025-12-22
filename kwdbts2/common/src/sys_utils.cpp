@@ -122,21 +122,6 @@ bool System(const string& cmd, bool print_log, ErrorInfo& error_info) {
   return false;
 }
 
-bool CopyDirectory(std::vector<string>& src_path, const string& dst_path, ErrorInfo& error_info) {
-  for (size_t i = 0; i < src_path.size(); i++) {
-    std::string mv_cmd = "cp ";
-    if (src_path[i].back() == '/') {
-      src_path[i].pop_back();
-      mv_cmd += " -r ";
-    }
-    mv_cmd = mv_cmd + src_path[i] + " " + dst_path;
-    if (!System(mv_cmd, true, error_info)) {
-      return false;
-    }
-  }
-  return true;
-}
-
 bool ChangeDirLink(string link_path, string new_path, ErrorInfo& error_info) {
   if (link_path.back() == '/') {
     link_path = link_path.substr(0, link_path.length() - 1);
@@ -216,4 +201,51 @@ bool isSoftLink(const std::string& path) {
     return false;
   }
   return S_ISLNK(fileStat.st_mode);
+}
+
+std::string lexically_normal(const std::string& path) {
+  std::vector<std::string> parts;
+  std::stringstream ss(path);
+  std::string item;
+  bool is_absolute = false;
+
+  //  Check if it is an Absolute Path
+  if (!path.empty() && path[0] == '/') {
+    is_absolute = true;
+  }
+
+  while (std::getline(ss, item, '/')) {
+    if (item.empty() || item == ".") {
+      // Ignore empty parts and current directory
+      continue;
+    } else if (item == "..") {
+      if (!parts.empty() && parts.back() != "..") {
+        parts.pop_back();
+      } else {
+        if (!is_absolute) {
+          parts.emplace_back("..");
+        }
+      }
+    } else {
+      parts.emplace_back(item);
+    }
+  }
+
+  std::string normalized_path;
+  if (is_absolute) {
+    normalized_path += "/";
+  }
+
+  for (size_t i = 0; i < parts.size(); ++i) {
+    normalized_path += parts[i];
+    if (i != parts.size() - 1) {
+      normalized_path += "/";
+    }
+  }
+
+  if (normalized_path.empty()) {
+    return ".";
+  }
+
+  return normalized_path;
 }

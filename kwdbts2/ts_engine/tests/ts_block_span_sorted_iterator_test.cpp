@@ -61,7 +61,7 @@ class SimulatedTsEntityBlock : public TsBlock {
   }
   timestamp64 GetFirstTS() override { return first_ts_; }
   timestamp64 GetLastTS() override { return first_ts_ + rows_ - 1; }
-
+  uint64_t GetBlockID() override { return 0; }
   KStatus GetColAddr(uint32_t col_id, const std::vector<AttributeInfo>* schema,
                              char** value, TsScanStats* ts_scan_stats = nullptr) override {
     return KStatus::FAIL;
@@ -195,7 +195,7 @@ TEST_F(TsBlockSpanSortedIteratorTest, empty) {
   std::shared_ptr<kwdbts::TsBlockSpan> block_span;
   bool is_finished;
   do {
-    auto s = iter.Next(block_span, &is_finished);
+    s = iter.Next(block_span, &is_finished);
     EXPECT_TRUE(s == KStatus::SUCCESS);
     EXPECT_TRUE(is_finished);
   } while (!is_finished);
@@ -215,7 +215,7 @@ TEST_F(TsBlockSpanSortedIteratorTest, multiTS) {
       bool is_finished;
       std::shared_ptr<kwdbts::TsBlockSpan> block_span;
       do {
-        auto s = iter.Next(block_span, &is_finished);
+        s = iter.Next(block_span, &is_finished);
         EXPECT_TRUE(s == KStatus::SUCCESS);
         if (!is_finished) {
           total_rows += block_span->GetRowNum();
@@ -232,9 +232,9 @@ TEST_F(TsBlockSpanSortedIteratorTest, multiTS) {
       EXPECT_TRUE(s == KStatus::SUCCESS);
       bool is_finished;
       std::shared_ptr<kwdbts::TsBlockSpan> block_span;
-      uint32_t total_rows = 0;
+      total_rows = 0;
       do {
-        auto s = iter.Next(block_span, &is_finished);
+        s = iter.Next(block_span, &is_finished);
         EXPECT_TRUE(s == KStatus::SUCCESS);
         if (!is_finished) {
           total_rows += block_span->GetRowNum();
@@ -262,7 +262,7 @@ TEST_F(TsBlockSpanSortedIteratorTest, multi_SameBlockSpan) {
       bool is_finished;
       std::shared_ptr<kwdbts::TsBlockSpan> block_span;
       do {
-        auto s = iter.Next(block_span, &is_finished);
+        s = iter.Next(block_span, &is_finished);
         EXPECT_TRUE(s == KStatus::SUCCESS);
         if (!is_finished) {
           total_rows += block_span->GetRowNum();
@@ -296,9 +296,9 @@ TEST_F(TsBlockSpanSortedIteratorTest, multi_SameBlockSpan) {
       EXPECT_TRUE(s == KStatus::SUCCESS);
       bool is_finished;
       std::shared_ptr<kwdbts::TsBlockSpan> block_span;
-      uint32_t total_rows = 0;
+      total_rows = 0;
       do {
-        auto s = iter.Next(block_span, &is_finished);
+        s = iter.Next(block_span, &is_finished);
         EXPECT_TRUE(s == KStatus::SUCCESS);
         if (!is_finished) {
           total_rows += block_span->GetRowNum();
@@ -341,7 +341,7 @@ TEST_F(TsBlockSpanSortedIteratorTest, multiBlockSpanWithCrossData) {
       bool is_finished;
       std::shared_ptr<kwdbts::TsBlockSpan> block_span;
       do {
-        auto s = iter.Next(block_span, &is_finished);
+        s = iter.Next(block_span, &is_finished);
         EXPECT_TRUE(s == KStatus::SUCCESS);
         if (!is_finished) {
           total_rows += block_span->GetRowNum();
@@ -375,9 +375,9 @@ TEST_F(TsBlockSpanSortedIteratorTest, multiBlockSpanWithCrossData) {
       EXPECT_TRUE(s == KStatus::SUCCESS);
       bool is_finished;
       std::shared_ptr<kwdbts::TsBlockSpan> block_span;
-      uint32_t total_rows = 0;
+      total_rows = 0;
       do {
-        auto s = iter.Next(block_span, &is_finished);
+        s = iter.Next(block_span, &is_finished);
         EXPECT_TRUE(s == KStatus::SUCCESS);
         if (!is_finished) {
           total_rows += block_span->GetRowNum();
@@ -418,7 +418,7 @@ TEST_F(TsBlockSpanSortedIteratorTest, preAgg) {
     bool is_finished;
     std::shared_ptr<kwdbts::TsBlockSpan> block_span;
     do {
-      auto s = iter.Next(block_span, &is_finished);
+      s = iter.Next(block_span, &is_finished);
       EXPECT_TRUE(s == KStatus::SUCCESS);
       if (!is_finished) {
         total_rows += block_span->GetRowNum();

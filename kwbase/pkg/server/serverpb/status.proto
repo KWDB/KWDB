@@ -49,6 +49,8 @@ import "gogoproto/gogo.proto";
 import "google/api/annotations.proto";
 import "google/protobuf/timestamp.proto";
 
+import "sql/sqlbase/me_metadata.proto";
+
 message CertificatesRequest {
   // node_id is a string so that "local" can be used to specify that no
   // forwarding is necessary.
@@ -712,6 +714,21 @@ message HotRangesResponse {
   ];
 }
 
+message DistributionRequest{
+  string node_id = 1 [(gogoproto.customname) = "NodeID"];
+  bool is_db = 2 [(gogoproto.customname) = "IsDB"];
+  uint64 id = 3 [(gogoproto.customname) = "ID"];
+}
+
+message DistributionResponse{
+  repeated DistributionInfo distribution = 1;
+}
+
+message DistributionInfo {
+  string node_id = 1 [(gogoproto.customname) = "NodeID"];
+  repeated kwbase.sql.sqlbase.BlockInfo block_info = 2 [(gogoproto.nullable) = false];
+}
+
 message RangeRequest {
   int64 range_id = 1;
 }
@@ -1023,6 +1040,11 @@ service Status {
       returns (kwbase.server.diagnosticspb.DiagnosticReport) {
     option (google.api.http) = {
       get : "/_status/diagnostics/{node_id}"
+    };
+  }
+  rpc Distribution(DistributionRequest) returns (DistributionResponse) {
+    option (google.api.http) = {
+      get : "/_status/distribution"
     };
   }
   rpc Stores(StoresRequest) returns (StoresResponse) {

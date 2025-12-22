@@ -156,6 +156,16 @@ class TsPartitionVersion {
       return result;
     }
 
+    std::vector<uint32_t> GetAllLevelLastSegmentsCount() const {
+      std::vector<uint32_t> result(kMaxLevel, 0);
+      for (int level = 0; level < kMaxLevel; ++level) {
+        for (int group = 0; group < GetGroupSize(level); ++group) {
+          result[level] += last_segments_[level][group].size();
+        }
+      }
+      return result;
+    }
+
     int GetMaxLevel() const { return kMaxLevel; }
   };
 
@@ -214,6 +224,10 @@ class TsPartitionVersion {
 
   std::vector<std::shared_ptr<TsLastSegment>> GetAllLastSegments() const {
     return leveled_last_segments_.GetAllLastSegments();
+  }
+
+  std::vector<uint32_t> GetAllLevelLastSegmentsCount() const {
+    return leveled_last_segments_.GetAllLevelLastSegmentsCount();
   }
 
   int32_t GetLastSegmentsCount() const { return GetAllLastSegments().size(); }

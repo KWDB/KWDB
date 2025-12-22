@@ -1931,6 +1931,18 @@ func (*ShowIndexes) StatementTag() string { return "SHOW INDEXES FROM TABLE" }
 func (*ShowIndexes) StatTargetType() string { return "" }
 
 // StatementType implements the Statement interface.
+func (*ShowDistribution) StatementType() StatementType { return Rows }
+
+// StatOp implements the StatOp interface.
+func (*ShowDistribution) StatOp() string { return "" }
+
+// StatementTag returns a short string identifying the type of the statement.
+func (*ShowDistribution) StatementTag() string { return "SHOW DISTRIBUTION" }
+
+// StatTargetType implements the StatTargetType interface.
+func (*ShowDistribution) StatTargetType() string { return "" }
+
+// StatementType implements the Statement interface.
 func (*ShowPartitions) StatementType() StatementType { return Rows }
 
 // StatOp implements the StatOp interface.
@@ -2480,6 +2492,7 @@ func (n *ShowGrants) String() string                     { return AsString(n) }
 func (n *ShowHistogram) String() string                  { return AsString(n) }
 func (n *ShowSortHistogram) String() string              { return AsString(n) }
 func (n *ShowIndexes) String() string                    { return AsString(n) }
+func (n *ShowDistribution) String() string               { return AsString(n) }
 func (n *ShowPartitions) String() string                 { return AsString(n) }
 func (n *ShowJobs) String() string                       { return AsString(n) }
 func (n *ShowQueries) String() string                    { return AsString(n) }

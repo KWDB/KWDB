@@ -584,6 +584,10 @@ struct TSEngine {
     return SUCCESS;
   }
 
+  virtual KStatus GetTableBlocksDistribution(TSTableID table_id, TSSlice* blocks_info) = 0;
+
+  virtual KStatus GetDBBlocksDistribution(uint32_t db_id, TSSlice* blocks_info) = 0;
+
  protected:
   SharedLruUnorderedMap<KTableKey, TsTable>* tables_cache_{};
 };

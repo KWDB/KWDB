@@ -542,6 +542,10 @@ bool __attribute__((weak)) isCanceledCtx(uint64_t goCtxPtr);
 int __attribute__((weak)) goPrepareFlush();
 int __attribute__((weak)) goFlushed();
 
+TSStatus TSGetTableBlocksDistribution(TSEngine* engine, TSTableID table_id, TSSlice* blocks_info);
+
+TSStatus TSGetDBBlocksDistribution(TSEngine* engine, uint32_t db_id, TSSlice* blocks_info);
+
 TSStatus TSRaftOpen(RaftStore** engine, TSSlice dir);
 
 TSStatus TSWriteRaftLog(RaftStore *engine, int cnt, TSRaftlog *raftlog, bool sync);

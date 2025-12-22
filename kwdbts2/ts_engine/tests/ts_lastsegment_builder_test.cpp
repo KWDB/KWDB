@@ -502,6 +502,14 @@ TEST_F(LastSegmentReadWriteTest, IteratorTest1) {
   EXPECT_EQ(spans_list.front()->GetRowNum(), 2);
   spans_list.pop_front();
   EXPECT_EQ(spans_list.front()->GetRowNum(), 3);
+
+  size_t sum_size = 0;
+  for (int i = 0; i < last_segment->GetBlockCount(); ++i) {
+    auto size = last_segment->GetBlockSize(i);
+    ASSERT_NE(size, -1);
+    sum_size += size;
+  }
+  EXPECT_LT(sum_size, last_segment->GetFileSize());
 }
 
 TEST_F(LastSegmentReadWriteTest, IteratorTest2) {

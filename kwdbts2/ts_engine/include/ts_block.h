@@ -65,6 +65,8 @@ class TsBlock {
 
   virtual KStatus GetCompressDataFromFile(uint32_t table_version, int32_t nrow, std::string& data) = 0;
 
+  virtual uint64_t GetBlockID() = 0;
+
   /*
   * Pre agg includes count/min/max/sum, it doesn't have pre-agg by default
   */
@@ -133,6 +135,7 @@ class TsBlockSpan {
   int GetColCount() const { return scan_attrs_->size(); }
   std::shared_ptr<TsBlock> GetTsBlock() const { return block_; }
   TSTableID GetTableID() const { return block_->GetTableId(); }
+  uint64_t GetBlockID() const { return block_->GetBlockID(); }
   uint32_t GetTableVersion() const { return block_->GetTableVersion(); }
   timestamp64 GetTS(uint32_t row_idx, TsScanStats* ts_scan_stats = nullptr) const {
     return block_->GetTS(start_row_ + row_idx, ts_scan_stats);

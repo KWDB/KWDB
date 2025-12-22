@@ -308,6 +308,11 @@ class TSEngineImpl : public TSEngine {
   }
 
   KStatus Vacuum(kwdbContext_p ctx, bool force) override;
+
+  KStatus GetTableBlocksDistribution(TSTableID table_id, TSSlice* blocks_info) override;
+
+  KStatus GetDBBlocksDistribution(uint32_t db_id, TSSlice* blocks_info) override;
+
   void initRangeIndexMap(AppliedRangeIndex* applied_indexes, uint64_t range_num) {
     if (applied_indexes != nullptr) {
       for (int i = 0; i < range_num; i++) {

@@ -48,6 +48,7 @@ struct EngineOptions {
   static void init();
 
   std::string db_path;
+  std::string ts_store_path_;
   // WAL work level: 0:off, 1:sync, 2:flush, default is flush.
   uint8_t wal_level = WALMode::FLUSH;
   // whether use raft log as WAL
@@ -106,6 +107,7 @@ struct EngineOptions {
   static int64_t block_cache_max_size;
   static TsIOMode g_io_mode;
   static uint8_t compress_stage;
+  static bool compress_last_segment;
   static bool force_sync_counter_file;
   static size_t last_cache_max_size;
   static double block_filter_sampling_ratio;

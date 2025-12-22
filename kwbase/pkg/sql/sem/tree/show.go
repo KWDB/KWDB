@@ -813,6 +813,26 @@ func (node *ShowSortHistogram) Format(ctx *FmtCtx) {
 	ctx.Printf("SHOW SORT HISTOGRAM %d", node.HistogramID)
 }
 
+// ShowDistribution represents a SHOW DISTRIBUTION statement.
+type ShowDistribution struct {
+	IsDB     bool
+	Database Name
+
+	IsTable bool
+	Table   *UnresolvedObjectName
+}
+
+// Format implements the NodeFormatter interface.
+func (node *ShowDistribution) Format(ctx *FmtCtx) {
+	if node.IsDB {
+		ctx.Printf("SHOW DISTRIBUTION FROM DATABASE ")
+		ctx.FormatNode(&node.Database)
+	} else {
+		ctx.Printf("SHOW DISTRIBUTION FROM TABLE ")
+		ctx.FormatNode(node.Table)
+	}
+}
+
 // ShowPartitions represents a SHOW PARTITIONS statement.
 type ShowPartitions struct {
 	IsDB     bool

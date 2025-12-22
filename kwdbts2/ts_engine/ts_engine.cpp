@@ -30,6 +30,7 @@
 #include "ee_executor.h"
 #include "ts_compressor_impl.h"
 #include "ts_table_v2_impl.h"
+#include "sys_utils.h"
 
 // V2
 int EngineOptions::vgroup_max_num = 4;
@@ -45,6 +46,7 @@ int64_t EngineOptions::default_partition_interval = 3600 * 24 * 10;
 // default block cache max size is set to 0
 int64_t EngineOptions::block_cache_max_size = 0;
 uint8_t EngineOptions::compress_stage = 2;
+bool EngineOptions::compress_last_segment = false;
 bool EngineOptions::force_sync_counter_file = true;
 size_t EngineOptions::last_cache_max_size = 1 << 30;
 double EngineOptions::block_filter_sampling_ratio = 0.2;
@@ -57,7 +59,81 @@ namespace kwdbts {
 
 unsigned seed = std::chrono::system_clock::now().time_since_epoch().count();
 std::mt19937 gen(seed);
-const char schema_directory[]= "schema";
+const char schema_directory[] = "schema";
+constexpr char vroup_cfg_file[] = "ts-vgroup.cfg";
+
+KStatus loadVGroupCfg(const fs::path& ts_store_path, std::map<int, std::string>& vgroup_cfg) {
+  fs::path vgroup_cfg_path = ts_store_path / std::string(vroup_cfg_file);
+  std::ifstream ifs(vgroup_cfg_path);
+  if (!ifs.is_open()) {
+    return SUCCESS;
+  }
+
+  std::string line;
+  while (std::getline(ifs, line)) {
+    auto first_non_space = line.find_first_not_of(" \t\n\r");
+    if (first_non_space == std::string::npos) {
+      continue;
+    }
+    if (line[first_non_space] == '#') {
+      continue;
+    }
+
+    std::istringstream ss(line);
+    std::string id_str, dir_path;
+    std::getline(ss, id_str, ',');
+    std::getline(ss, dir_path, ',');
+
+    auto tmp_path = dir_path;
+
+    dir_path.erase(0, dir_path.find_first_not_of(" \t\n\r"));
+    dir_path.erase(dir_path.find_last_not_of(" \t\n\r") + 1);
+    while (!dir_path.empty() && dir_path.back() == '/') {
+      dir_path.pop_back();
+    }
+    if (dir_path.empty()) {
+      LOG_ERROR("User defined vgroup disk error: Invalid disk path [%s]", tmp_path.c_str());
+      return FAIL;
+    }
+#if defined(__GNUC__) && (__GNUC__ < 8)
+    dir_path = lexically_normal(dir_path);
+#else
+    dir_path = fs::path(dir_path).lexically_normal().string();
+#endif
+    int vgroup_id;
+    try {
+      vgroup_id = std::stoi(id_str);
+      if (vgroup_id <= 0 || vgroup_id > EngineOptions::vgroup_max_num) {
+        LOG_ERROR("User defined vgroup disk error: Invalid vgroup id %d", vgroup_id);
+        return FAIL;
+      }
+    } catch (std::exception& e) {
+      LOG_ERROR("User defined vgroup disk error: Invalid vgroup id %s", id_str.c_str());
+      return FAIL;
+    }
+    if (!DirExists(dir_path)) {
+      LOG_ERROR("User defined vgroup disk error: Directory [%s] does not exists ", dir_path.c_str());
+      return FAIL;
+    }
+    if (access(dir_path.c_str(), R_OK | W_OK) != 0) {
+      LOG_ERROR("User defined vgroup disk error: No R/W rights to directory [%s]", dir_path.c_str());
+      return FAIL;
+    }
+
+    if (vgroup_cfg.find(vgroup_id) != vgroup_cfg.end()) {
+      LOG_ERROR("User defined vgroup disk error: Duplicate vgroup id %d", vgroup_id);
+      return FAIL;
+    }
+    vgroup_cfg[vgroup_id] = dir_path;
+  }
+  auto count = vgroup_cfg.size();
+  if (count && count != EngineOptions::vgroup_max_num) {
+    LOG_ERROR("User defined vgroup disk error: The count of VGroup should be %d, but %lu groups are configured",
+               EngineOptions::vgroup_max_num, count);
+    return FAIL;
+  }
+  return SUCCESS;
+}
 
 TSEngineImpl::TSEngineImpl(const EngineOptions& engine_options)
     : options_(engine_options),
@@ -212,9 +288,22 @@ KStatus TSEngineImpl::Init(kwdbContext_p ctx) {
   }
 
   InitExecutor(ctx, options_);
+
+  std::map<int, std::string> vgroup_cfg;
+  s = loadVGroupCfg(options_.ts_store_path_, vgroup_cfg);
+  if (s != KStatus::SUCCESS) {
+    return s;
+  }
+  bool vgroup_configured = vgroup_cfg.size() == EngineOptions::vgroup_max_num ? true : false;
   vgroups_.clear();
   for (int vgroup_id = 1; vgroup_id <= EngineOptions::vgroup_max_num; vgroup_id++) {
-    auto vgroup = std::make_unique<TsVGroup>(&options_, vgroup_id, schema_mgr_.get(), &wal_level_mutex_, &tag_lock_);
+    std::unique_ptr<TsVGroup> vgroup{nullptr};
+    if (vgroup_configured) {
+      vgroup = std::make_unique<TsVGroup>(&options_, vgroup_id, schema_mgr_.get(), &wal_level_mutex_, &tag_lock_,
+                                          vgroup_cfg[vgroup_id]);
+    } else {
+      vgroup = std::make_unique<TsVGroup>(&options_, vgroup_id, schema_mgr_.get(), &wal_level_mutex_, &tag_lock_);
+    }
     s = vgroup->Init(ctx);
     if (s != KStatus::SUCCESS) {
       return s;
@@ -2492,6 +2581,167 @@ KStatus TSEngineImpl::GetMaxEntityIdByVGroupId(kwdbContext_p ctx, uint32_t vgrou
 KStatus TSEngineImpl::Vacuum(kwdbContext_p ctx, bool force) {
   for (const auto& vgroup : vgroups_) {
     vgroup->Vacuum(ctx, force);
+  }
+  return SUCCESS;
+}
+
+double divideAndRound(double a, double b, int precision) {
+  double result = a / b;
+  double factor = std::pow(10.0, precision);
+  return std::round(result * factor) / factor;
+}
+
+KStatus ConstructTableBlocksDistribution(const std::shared_ptr<TsTableSchemaManager>& tb_schema_mgr,
+                                VGroupBlocksInfo* vg_blocks_info, roachpb::BlocksDistribution* blocks_distribution) {
+  const std::vector<AttributeInfo>* metric_meta{nullptr};
+  KStatus s = tb_schema_mgr->GetMetricMeta(tb_schema_mgr->GetCurrentVersion(), &metric_meta);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("GetMetricMeta failed.");
+    return s;
+  }
+  uint32_t row_len = 0;
+  for (const auto& info : *metric_meta) {
+    row_len += info.max_len;
+  }
+  if (vg_blocks_info->last_segments_info_.blocks_size_ != 0) {
+    vg_blocks_info->last_segments_info_.compression_ratio_ = static_cast<float>(row_len) *
+      vg_blocks_info->last_segments_info_.rows_num_ / vg_blocks_info->last_segments_info_.blocks_size_;
+  }
+  if (vg_blocks_info->entity_segments_info_.blocks_size_ != 0) {
+    vg_blocks_info->entity_segments_info_.compression_ratio_ = static_cast<float>(row_len) *
+      vg_blocks_info->entity_segments_info_.rows_num_ / vg_blocks_info->entity_segments_info_.blocks_size_;
+  }
+
+  roachpb::BlockInfo* last_segments_info = blocks_distribution->add_block_info();
+  last_segments_info->set_level("last segments");
+  last_segments_info->set_blocks_num(vg_blocks_info->last_segments_info_.blocks_num_);
+  last_segments_info->set_blocks_size(vg_blocks_info->last_segments_info_.blocks_size_);
+  last_segments_info->set_avg_size(vg_blocks_info->last_segments_info_.avg_size_);
+  last_segments_info->set_compression_ratio(vg_blocks_info->last_segments_info_.compression_ratio_);
+  last_segments_info->set_last_seg_level0(vg_blocks_info->last_segments_info_.last_seg_level0);
+  last_segments_info->set_last_seg_level1(vg_blocks_info->last_segments_info_.last_seg_level1);
+  last_segments_info->set_last_seg_level2(vg_blocks_info->last_segments_info_.last_seg_level2);
+
+  roachpb::BlockInfo* entity_segments_info = blocks_distribution->add_block_info();
+  entity_segments_info->set_level("entity segments");
+  entity_segments_info->set_blocks_num(vg_blocks_info->entity_segments_info_.blocks_num_);
+  entity_segments_info->set_blocks_size(vg_blocks_info->entity_segments_info_.blocks_size_);
+  entity_segments_info->set_avg_size(vg_blocks_info->entity_segments_info_.avg_size_);
+  entity_segments_info->set_compression_ratio(vg_blocks_info->entity_segments_info_.compression_ratio_);
+
+  roachpb::BlockInfo* total_blocks_info = blocks_distribution->add_block_info();
+  total_blocks_info->set_level("total");
+  total_blocks_info->set_blocks_num(
+    vg_blocks_info->last_segments_info_.blocks_num_ + vg_blocks_info->entity_segments_info_.blocks_num_);
+  total_blocks_info->set_blocks_size(
+    vg_blocks_info->last_segments_info_.blocks_size_ + vg_blocks_info->entity_segments_info_.blocks_size_);
+  total_blocks_info->set_avg_size(0);
+  total_blocks_info->set_compression_ratio(0);
+  if (total_blocks_info->blocks_num() && total_blocks_info->blocks_size()) {
+    total_blocks_info->set_avg_size(static_cast<double>(total_blocks_info->blocks_size()) / total_blocks_info->blocks_num());
+    uint64_t total_row_num = vg_blocks_info->last_segments_info_.rows_num_ + vg_blocks_info->entity_segments_info_.rows_num_;
+    total_blocks_info->set_compression_ratio(
+      static_cast<float>(row_len) * total_row_num / total_blocks_info->blocks_size());
+  }
+  return KStatus::SUCCESS;
+}
+
+KStatus TSEngineImpl::GetTableBlocksDistribution(TSTableID table_id, TSSlice* blocks_info) {
+  VGroupBlocksInfo vg_blocks_info;
+  uint32_t db_id = schema_mgr_->GetDBIDByTableID(table_id);
+  std::shared_ptr<TsTableSchemaManager> tb_schema_mgr;
+  KStatus s = schema_mgr_->GetTableSchemaMgr(table_id, tb_schema_mgr);
+  if (s != KStatus::SUCCESS) {
+    if (tb_schema_mgr == nullptr) {
+      LOG_INFO("Table[%lu] has already been dropped.", table_id);
+    }
+    return s;
+  }
+
+  for (const auto& vgroup : vgroups_) {
+    VGroupBlocksInfo tmp;
+    std::vector<uint32_t> entity_ids;
+    tb_schema_mgr->GetTagTable()->GetEntityIdListByVGroupId(vgroup->GetVGroupID(), entity_ids);
+    vgroup->GetTableBlocksDistribution(db_id, table_id, entity_ids, &tmp);
+    vg_blocks_info.Add(tmp);
+  }
+  roachpb::BlocksDistribution blocks_distribution;
+  s = ConstructTableBlocksDistribution(tb_schema_mgr, &vg_blocks_info, &blocks_distribution);
+  if (s != KStatus::SUCCESS) {
+    return s;
+  }
+
+  blocks_info->len = blocks_distribution.ByteSizeLong();
+  blocks_info->data = static_cast<char*>(malloc(blocks_info->len));
+  if (!blocks_distribution.SerializeToArray(blocks_info->data, blocks_info->len)) {
+    LOG_ERROR("Serialize roachpb::BlocksDistribution to string failed.");
+    return KStatus::FAIL;
+  }
+  return SUCCESS;
+}
+
+KStatus TSEngineImpl::GetDBBlocksDistribution(uint32_t db_id, TSSlice* blocks_info) {
+  VGroupBlocksInfo db_blocks_info;
+  std::vector<std::shared_ptr<TsTableSchemaManager>> tb_schema_mgrs{};
+  KStatus s = GetAllTableSchemaMgrs(tb_schema_mgrs);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("GetAllTableSchemaMgrs failed.");
+    return  s;
+  }
+  uint64_t original_data_size = 0;
+  for (const auto& tb_schema_mgr : tb_schema_mgrs) {
+    if (tb_schema_mgr->GetDbID() == db_id) {
+      VGroupBlocksInfo tb_blocks_info;
+      for (const auto& vgroup : vgroups_) {
+        VGroupBlocksInfo tmp;
+        std::vector<uint32_t> entity_ids;
+        tb_schema_mgr->GetTagTable()->GetEntityIdListByVGroupId(vgroup->GetVGroupID(), entity_ids);
+        vgroup->GetTableBlocksDistribution(db_id, tb_schema_mgr->GetTableId(), entity_ids, &tmp);
+        tb_blocks_info.Add(tmp);
+      }
+      const std::vector<AttributeInfo>* metric_meta{nullptr};
+      s = tb_schema_mgr->GetMetricMeta(tb_schema_mgr->GetCurrentVersion(), &metric_meta);
+      if (s != KStatus::SUCCESS) {
+        LOG_ERROR("GetMetricMeta failed.");
+        return s;
+      }
+      uint32_t row_len = 0;
+      for (const auto& info : *metric_meta) {
+        row_len += info.max_len;
+      }
+      if (tb_blocks_info.last_segments_info_.rows_num_ != 0) {
+        original_data_size += row_len * tb_blocks_info.last_segments_info_.rows_num_;
+      }
+      if (tb_blocks_info.entity_segments_info_.rows_num_ != 0) {
+        original_data_size += row_len * tb_blocks_info.entity_segments_info_.rows_num_;
+      }
+      db_blocks_info.Add(tb_blocks_info);
+    }
+  }
+
+  roachpb::BlocksDistribution blocks_distribution;
+  roachpb::BlockInfo* total_blocks_info = blocks_distribution.add_block_info();
+  total_blocks_info->set_level("total");
+  total_blocks_info->set_blocks_num(
+    db_blocks_info.last_segments_info_.blocks_num_ + db_blocks_info.entity_segments_info_.blocks_num_);
+  total_blocks_info->set_blocks_size(
+    db_blocks_info.last_segments_info_.blocks_size_ + db_blocks_info.entity_segments_info_.blocks_size_);
+  total_blocks_info->set_avg_size(0);
+  total_blocks_info->set_compression_ratio(0);
+  if (total_blocks_info->blocks_num() && total_blocks_info->blocks_size()) {
+    total_blocks_info->set_avg_size(static_cast<double>(total_blocks_info->blocks_size()) / total_blocks_info->blocks_num());
+    total_blocks_info->set_compression_ratio(static_cast<float>(original_data_size) / total_blocks_info->blocks_size());
+  }
+
+  total_blocks_info->set_last_seg_level0(db_blocks_info.last_segments_info_.last_seg_level0);
+  total_blocks_info->set_last_seg_level1(db_blocks_info.last_segments_info_.last_seg_level1);
+  total_blocks_info->set_last_seg_level2(db_blocks_info.last_segments_info_.last_seg_level2);
+
+  blocks_info->len = blocks_distribution.ByteSizeLong();
+  blocks_info->data = static_cast<char*>(malloc(blocks_info->len));
+  if (!blocks_distribution.SerializeToArray(blocks_info->data, blocks_info->len)) {
+    LOG_ERROR("Serialize roachpb::BlocksDistribution to string failed.");
+    return KStatus::FAIL;
   }
   return SUCCESS;
 }

@@ -106,7 +106,27 @@ KStatus TsLastSegment::TsLastSegBlockCache::BlockInfoCache::GetBlockInfo(int blo
   return SUCCESS;
 }
 
-KStatus TsLastSegment::GetFooter(TsLastSegmentFooter* footer) {
+
+KStatus TsLastSegment::GetBlockInfo(int block_id, TsLastSegmentBlockInfoWithData** info) const {
+  return block_cache_->GetBlockInfo(block_id, info);
+}
+
+KStatus TsLastSegment::GetBlockIndex(int block_id, TsLastSegmentBlockIndex** index) const {
+  return block_cache_->GetBlockIndex(block_id, index);
+}
+
+KStatus TsLastSegment::GetBlockRowCount(int block_id, uint64_t* row_count) const {
+  TsLastSegmentBlockInfoWithData* info;
+  KStatus s = block_cache_->GetBlockInfo(block_id, &info);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("GetBlockInfo failed.");
+    return s;
+  }
+  *row_count = info->nrow;
+  return KStatus::SUCCESS;
+}
+
+  KStatus TsLastSegment::GetFooter(TsLastSegmentFooter* footer) {
   auto sz = file_->GetFileSize();
   if (sz < sizeof(TsLastSegmentFooter)) {
     LOG_ERROR("lastsegment file corrupted");
@@ -370,6 +390,10 @@ class TsLastBlock : public TsBlock {
     return &osn[row_num];
   }
 
+  uint64_t GetBlockID() override {
+    return block_id_;
+  }
+
   inline KStatus GetCompressDataFromFile(uint32_t table_version, int32_t nrow, std::string& data) override {
     return KStatus::FAIL;
   }
@@ -573,6 +597,28 @@ KStatus TsLastSegment::GetBlockSpans(std::list<shared_ptr<TsBlockSpan>>& block_s
     }
   }
   return SUCCESS;
+}
+
+size_t TsLastSegment::GetBlockSize(size_t block_id) const {
+  if (block_id >= footer_.n_data_block) {
+    return -1;
+  }
+  TsLastSegmentBlockInfoWithData* cur_info;
+  auto s = block_cache_->GetBlockInfo(block_id, &cur_info);
+  if (s == FAIL) {
+    return -1;
+  }
+  if (block_id + 1 == footer_.n_data_block) {
+    TsLastSegmentBlockIndex* first_index;
+    block_cache_->GetBlockIndex(0, &first_index);
+    return first_index->info_offset - cur_info->block_offset;
+  }
+  TsLastSegmentBlockInfoWithData* next_info;
+  s = block_cache_->GetBlockInfo(block_id + 1, &next_info);
+  if (s == FAIL) {
+    return -1;
+  }
+  return next_info->block_offset - cur_info->block_offset;
 }
 
 using EntityTsPoint = std::tuple<TSEntityID, timestamp64>;

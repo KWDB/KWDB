@@ -506,6 +506,30 @@ func (r *TsEngine) SetRaftLogCombinedWAL(combined bool) {
 	}
 }
 
+// GetTableBlocksDistribution get table block distribution info
+func (r *TsEngine) GetTableBlocksDistribution(tableID uint64) ([]byte, error) {
+	r.checkOrWaitForOpen()
+	var blockMeta C.TSSlice
+	status := C.TSGetTableBlocksDistribution(r.tdb, C.TSTableID(tableID), &blockMeta)
+	if err := statusToError(status); err != nil {
+		return nil, errors.Wrap(err, "could not GetTableBlocksDistribution")
+	}
+	defer C.free(unsafe.Pointer(blockMeta.data))
+	return cSliceToGoBytes(blockMeta), nil
+}
+
+// GetDBBlocksDistribution get database block distribution info
+func (r *TsEngine) GetDBBlocksDistribution(dbID uint64) ([]byte, error) {
+	r.checkOrWaitForOpen()
+	var blockMeta C.TSSlice
+	status := C.TSGetDBBlocksDistribution(r.tdb, C.uint32_t(dbID), &blockMeta)
+	if err := statusToError(status); err != nil {
+		return nil, errors.Wrap(err, "could not GetDBBlocksDistribution")
+	}
+	defer C.free(unsafe.Pointer(blockMeta.data))
+	return cSliceToGoBytes(blockMeta), nil
+}
+
 // CreateTsTable create ts table
 func (r *TsEngine) CreateTsTable(
 	tableID uint64, hashNum uint64, meta []byte, rangeGroups []api.RangeGroup,

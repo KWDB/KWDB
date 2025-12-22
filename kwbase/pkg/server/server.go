@@ -195,6 +195,11 @@ var (
 			"2 means two stage compression",
 		2)
 
+	compressLastSegment = settings.RegisterPublicBoolSetting(
+		"ts.compress.last_segment.enabled",
+		"weather compress last segment data",
+		false)
+
 	maxReservedLastSegNum = settings.RegisterPublicIntSetting(
 		"ts.reserved_last_segment.max_limit",
 		"the maximum number of last segments reserved in the latest partition",

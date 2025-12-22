@@ -1316,4 +1316,42 @@ struct IteratorParams {
   k_uint32 limit;
 };
 
+/**
+ * @brief Defines a structure for blocks distribution which returned to show db/table blocks distribution.
+ */
+struct BlocksDistribution {
+  uint32_t blocks_num_{0};
+  uint64_t blocks_size_{0};
+  uint64_t rows_num_{0};
+  double avg_size_{0};
+  float compression_ratio_{0};
+  uint32_t last_seg_level0{0};
+  uint32_t last_seg_level1{0};
+  uint32_t last_seg_level2{0};
+
+  void Add(const BlocksDistribution& a) {
+    if (a.rows_num_ == 0)
+      return;
+    blocks_num_ += a.blocks_num_;
+    blocks_size_ += a.blocks_size_;
+    rows_num_ += a.rows_num_;
+    if (blocks_num_ && blocks_size_) {
+      avg_size_ = static_cast<double>(blocks_size_) / blocks_num_;
+    }
+    last_seg_level0 += a.last_seg_level0;
+    last_seg_level1 += a.last_seg_level1;
+    last_seg_level2 += a.last_seg_level2;
+  }
+};
+
+struct VGroupBlocksInfo {
+  BlocksDistribution last_segments_info_;
+  BlocksDistribution entity_segments_info_;
+
+  void Add(const VGroupBlocksInfo& a) {
+    last_segments_info_.Add(a.last_segments_info_);
+    entity_segments_info_.Add(a.entity_segments_info_);
+  }
+};
+
 }  //  namespace kwdbts

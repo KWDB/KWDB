@@ -19,6 +19,7 @@
 #include <memory>
 #include <string>
 #include <string_view>
+#include <utility>
 
 #include "libkwdbts2.h"
 
@@ -140,6 +141,7 @@ class TsBitmap : public TsBitmapBase {
  public:
   TsBitmap() : nrows_(0) {}
   explicit TsBitmap(int nrows) { Reset(nrows); }
+  explicit TsBitmap(std::string rep, int nrows) : nrows_(nrows), rep_(std::move(rep)) {}
   explicit TsBitmap(TSSlice rep, int nrows) {
     nrows_ = nrows;
     rep_.assign(rep.data, rep.len);
