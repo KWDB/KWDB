@@ -159,32 +159,20 @@ KStatus TsMemSegBlock::GetColBitmap(uint32_t col_id, const std::vector<Attribute
   if (parser_ == nullptr) {
     parser_ = std::make_unique<TsRawPayloadRowParser>(schema);
   }
-  if (memory_addr_safe_) {
-    assert(row_data_.size() == 1);
-    auto row = row_data_[0];
-    auto temp_bitmap = std::make_unique<TsBitmap>(row_data_.size());
-    if (parser_->IsColNull(row->GetRowData(), col_id)) {
-      (*temp_bitmap)[0] = DataFlags::kNull;
-    } else {
-      (*temp_bitmap)[0] = DataFlags::kValid;
-    }
-    *bitmap = std::move(temp_bitmap);
-  } else {
-    auto iter = col_bitmaps_.find(col_id);
-    if (iter != col_bitmaps_.end()) {
-      *bitmap = iter->second->AsView();
-      return KStatus::SUCCESS;
-    }
-    auto tmp_bitmap = std::make_unique<TsBitmap>(row_data_.size());
-    for (int i = 0; i < row_data_.size(); i++) {
-      auto row = row_data_[i];
-      if (parser_->IsColNull(row->GetRowData(), col_id)) {
-        (*tmp_bitmap)[i] = DataFlags::kNull;
-      }
-    }
-    *bitmap = tmp_bitmap->AsView();
-    col_bitmaps_[col_id] = std::move(tmp_bitmap);
+  auto iter = col_bitmaps_.find(col_id);
+  if (iter != col_bitmaps_.end()) {
+    *bitmap = iter->second->AsView();
+    return KStatus::SUCCESS;
   }
+  auto tmp_bitmap = std::make_unique<TsBitmap>(row_data_.size());
+  for (int i = 0; i < row_data_.size(); i++) {
+    auto row = row_data_[i];
+    if (parser_->IsColNull(row->GetRowData(), col_id)) {
+      (*tmp_bitmap)[i] = DataFlags::kNull;
+    }
+  }
+  *bitmap = tmp_bitmap->AsView();
+  col_bitmaps_[col_id] = std::move(tmp_bitmap);
   return KStatus::SUCCESS;
 }
 
