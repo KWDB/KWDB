@@ -422,7 +422,7 @@ func checkUpdateFilter(expr tree.Expr) error {
 		if err := checkUpdateFilter(exp.Expr); err != nil {
 			return err
 		}
-	case *tree.UnresolvedName, *tree.NumVal, *tree.StrVal, *tree.DBool, *tree.Placeholder:
+	case *tree.UnresolvedName, *tree.NumVal, *tree.StrVal, *tree.DBool, *tree.Placeholder, *tree.UserDefinedVar:
 	default:
 		return sqlbase.UnsupportedUpdateConditionError("unsupported filter expression")
 	}
@@ -489,7 +489,7 @@ func (b *Builder) buildTSUpdate(
 	// resolve filter expr to get scope column and it's column id
 	texpr := inScope.resolveType(upd.Where.Expr, types.Bool)
 	meta := b.factory.Metadata()
-	if !checkTSUpdateFilter(texpr, exprs, primaryTagIDs, meta) {
+	if !checkTSUpdateFilter(b.evalCtx, texpr, exprs, primaryTagIDs, meta) {
 		panic(sqlbase.UnsupportedUpdateConditionError("unsupported binary operator or mismatching tag filter"))
 	}
 	if !checkUpdateTagIsComplete(exprs, primaryTagIDs) {
@@ -584,12 +584,16 @@ func (b *Builder) buildTSUpdate(
 
 // filters in TS update statement supports only one of primary tags
 func checkTSUpdateFilter(
-	filter tree.Expr, exprs map[int]tree.Datum, primaryTagIDs map[int]struct{}, meta *opt.Metadata,
+	evalCtx *tree.EvalContext,
+	filter tree.Expr,
+	exprs map[int]tree.Datum,
+	primaryTagIDs map[int]struct{},
+	meta *opt.Metadata,
 ) bool {
 
 	switch f := filter.(type) {
 	case *tree.AndExpr:
-		if !(checkTSUpdateFilter(f.Right, exprs, primaryTagIDs, meta) && checkTSUpdateFilter(f.Left, exprs, primaryTagIDs, meta)) {
+		if !(checkTSUpdateFilter(evalCtx, f.Right, exprs, primaryTagIDs, meta) && checkTSUpdateFilter(evalCtx, f.Left, exprs, primaryTagIDs, meta)) {
 			return false
 		}
 	case *tree.ComparisonExpr:
@@ -597,7 +601,7 @@ func checkTSUpdateFilter(
 		if f.Operator != tree.EQ {
 			return false
 		}
-		if !addPrimaryTagExpr(f.Left, f.Right, exprs, meta) {
+		if !addPrimaryTagExpr(evalCtx, f.Left, f.Right, exprs, meta) {
 			return false
 		}
 	default:
@@ -609,7 +613,9 @@ func checkTSUpdateFilter(
 // addPrimaryTagExpr resolve primary tag expr and build exprs map of id and datum
 // input: left expr, right expr, metadata
 // output: bool(if the same primary tag match different value, return false)
-func addPrimaryTagExpr(left, right tree.Expr, exprs map[int]tree.Datum, meta *opt.Metadata) bool {
+func addPrimaryTagExpr(
+	evalCtx *tree.EvalContext, left, right tree.Expr, exprs map[int]tree.Datum, meta *opt.Metadata,
+) bool {
 	switch ltype := left.(type) {
 	case *scopeColumn:
 		// id in expr is column's logical id, need to get column's physical id
@@ -626,6 +632,12 @@ func addPrimaryTagExpr(left, right tree.Expr, exprs map[int]tree.Datum, meta *op
 			}
 		} else if c, ok := right.(*scopeColumn); ok && c.isDeclared {
 			panic(sqlbase.UnsupportedUpdateConditionError(fmt.Sprintf("cannot use declared variable \"%s\" in time-series", c.name)))
+		} else if udv, ok := right.(*tree.UserDefinedVar); ok {
+			val, err := udv.Eval(evalCtx)
+			if err != nil {
+				panic(err)
+			}
+			exprs[id] = val
 		} else {
 			return false
 		}
@@ -644,6 +656,12 @@ func addPrimaryTagExpr(left, right tree.Expr, exprs map[int]tree.Datum, meta *op
 				}
 			} else if c, ok := left.(*scopeColumn); ok && c.isDeclared {
 				panic(sqlbase.UnsupportedUpdateConditionError(fmt.Sprintf("cannot use declared variable \"%s\" in time-series", c.name)))
+			} else if udv, ok := left.(*tree.UserDefinedVar); ok {
+				val, err := udv.Eval(evalCtx)
+				if err != nil {
+					panic(err)
+				}
+				exprs[id] = val
 			} else {
 				return false
 			}

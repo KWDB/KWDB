@@ -2175,6 +2175,13 @@ func TSTypeCheckForInput(
 		default:
 			return nil, tree.NewDatatypeMismatchError(column.Name, v.String(), colType.SQLString())
 		}
+	case *tree.UserDefinedVar:
+		val, err := v.Eval(evalCtx)
+		if err != nil {
+			return nil, err
+		}
+		actualExpr = tree.Expr(val)
+		return TSTypeCheckForInput(evalCtx, &actualExpr, colType, column)
 	case tree.DNullExtern:
 		if !column.Nullable {
 			return nil, sqlbase.NewNonNullViolationError(column.Name)

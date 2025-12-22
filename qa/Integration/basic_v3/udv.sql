@@ -344,4 +344,101 @@ execute p1_fix(@aa_fix);
 execute p1_fix(@aa_fix1);
 drop table test_fix;
 
+create ts database test_procedure_opt1_my1_ts;
+CREATE TABLE test_procedure_opt1_my1_ts.test1
+(k_tp timestamptz NOT NULL,
+ t1 INT2,
+ t2 INT4,
+ t3 INT8,
+ t4 FLOAT4,
+ t5 FLOAT8,
+ t6 CHAR(100),
+ t7 NCHAR(100),
+ t8 VARCHAR(100),
+ t9 NVARCHAR(100))
+    TAGS(code1 FLOAT4,code2 INT8 NOT NULL,code3 VARCHAR(100) NOT NULL,code4 CHAR(100) NOT NULL,code5 NCHAR(100))
+PRIMARY TAGS(code2,code3,code4);
+
+SET @id1 = 1;
+SET @id2 = 1092;
+SET @id3 = -2893782734;
+SET @id4 = 28937892.2897382::FLOAT4;
+SET @id5 = 21983.19289107::FLOAT8;
+SET @id6 = 'test_查询an！@！（...';
+SET @id7 = 'test_查询an！@！（...';
+SET @id8 = 'test_查询an！@！（...';
+SET @id9 = 'test_查询an！@！（...';
+PREPARE test1 as INSERT INTO test_procedure_opt1_my1_ts.test1 VALUES('2024-03-06 10:00:00',$1,$2,$3,$4,$5,$6,$7,$8,$9,$4,$3,$8,$6,$7);
+EXECUTE test1(@id1,@id2,@id3,@id4,@id5,@id6,@id7,@id8,@id9);
+select * from test_procedure_opt1_my1_ts.test1;
+SET @id4 = 111.111::FLOAT4;
+PREPARE test2 as UPDATE test_procedure_opt1_my1_ts.test1 SET code1 = $4 where code2 = $1 and code3 = $2 and code4 = $3;
+EXECUTE test2(@id3,@id8,@id6, @id4);
+select * from test_procedure_opt1_my1_ts.test1;
+PREPARE test3 as DELETE FROM test_procedure_opt1_my1_ts.test1 where code2 = $1 and code3 = $2 and code4 = $3;
+EXECUTE test3(@id3,@id8,@id6);
+select * from test_procedure_opt1_my1_ts.test1;
+EXECUTE test1(@id1,@id2,@id3,@id4,@id5,@id6,@id7,@id8,@id9);
+INSERT INTO test_procedure_opt1_my1_ts.test1 VALUES('2024-03-06 10:00:00',@id1,@id2,@id3,@id4,@id5,@id6,@id7,@id8,@id9,@id4,@id3,@id8,@id6,@id7);
+select * from test_procedure_opt1_my1_ts.test1;
+SET @id4 = 28937892.2897382::FLOAT4;
+update test_procedure_opt1_my1_ts.test1 set code1 = @id4 where code2 = @id3 and code3 = @id8 and code4 = @id6;
+select * from test_procedure_opt1_my1_ts.test1;
+DELETE FROM test_procedure_opt1_my1_ts.test1 where code2 = @id3 and code3 = @id8 and code4 = @id6;
+select * from test_procedure_opt1_my1_ts.test1;
+DROP TABLE test_procedure_opt1_my1_ts.test1;
+DROP DATABASE test_procedure_opt1_my1_ts CASCADE;
+
+SET @var = 100;
+PREPARE p2 AS SELECT @var;
+EXECUTE p2;
+PREPARE p3 AS SELECT @x, @y, @x + @y;
+EXECUTE p3;
+SET @num = 10;
+PREPARE P4 AS SELECT @num * 2 AS double_value, @num + 5 AS increased_value;
+EXECUTE p4;
+SET @prefix = 'Hello';
+PREPARE p5 AS SELECT CONCAT(@prefix, ' World!') AS greeting;
+EXECUTE p5;
+SET @score = 85;
+PREPARE p6 AS SELECT IF(@score >= 90, '优秀', '良好') AS performance;
+EXECUTE p6;
+SET @min_salary = 5000;
+PREPARE p7 AS SELECT * FROM employees WHERE salary > @min_salary;
+EXECUTE p7;
+SET @avg_salary := (SELECT AVG(salary) FROM employees);
+PREPARE P8 AS SELECT * FROM employees WHERE salary > @avg_salary;
+EXECUTE p8;
+SET @low_price := 5000;
+PREPARE p9 AS UPDATE products SET price = price * 2 WHERE price < @low_price;
+EXECUTE p9;
+set @discount=1000;
+PREPARE p10 AS UPDATE products SET price = price-@discount WHERE price > @low_price;
+EXECUTE p10;
+create table t2(a int, b int);
+set @ss = 1;
+prepare p11 as insert into t2 values(@ss, @ss);
+execute p11;
+select * from t2;
+set @ss = 99;
+execute p11;
+select * from t2;
+prepare p16 as delete from t2 where a = @ss;
+execute p16;
+select * from t2;
+
+SET @salary = 5000.0;
+PREPARE p17 AS SELECT salary-$1 FROM employees WHERE salary > $1;
+EXECUTE p17(@salary);
+SET @price = 1000.0;
+set @increase = 100.0;
+PREPARE p18 AS UPDATE products SET price = price + $2 WHERE price < $1;
+EXECUTE p18(@price, @increase);
+prepare p19 as insert into t2 values($1, $1);
+set @ss = 1;
+EXECUTE p19(@ss);
+SELECT * FROM t2;
+prepare p20 as delete from t2 where a = $1;
+execute p20(@ss);
+
 DROP DATABASE test_udvar CASCADE;

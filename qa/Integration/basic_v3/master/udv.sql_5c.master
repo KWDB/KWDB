@@ -867,5 +867,242 @@ SQLSTATE: 42809
 (1 row)
 > drop table test_fix;
 DROP TABLE
+> create ts database test_procedure_opt1_my1_ts;
+CREATE TS DATABASE
+> CREATE TABLE test_procedure_opt1_my1_ts.test1
+(k_tp timestamptz NOT NULL,
+ t1 INT2,
+ t2 INT4,
+ t3 INT8,
+ t4 FLOAT4,
+ t5 FLOAT8,
+ t6 CHAR(100),
+ t7 NCHAR(100),
+ t8 VARCHAR(100),
+ t9 NVARCHAR(100))
+    TAGS(code1 FLOAT4,code2 INT8 NOT NULL,code3 VARCHAR(100) NOT NULL,code4 CHAR(100) NOT NULL,code5 NCHAR(100))
+PRIMARY TAGS(code2,code3,code4);
+CREATE TABLE
+> SET @id1 = 1;
+SET
+> SET @id2 = 1092;
+SET
+> SET @id3 = -2893782734;
+SET
+> SET @id4 = 28937892.2897382::FLOAT4;
+SET
+> SET @id5 = 21983.19289107::FLOAT8;
+SET
+> SET @id6 = 'test_查询an！@！（...';
+SET
+> SET @id7 = 'test_查询an！@！（...';
+SET
+> SET @id8 = 'test_查询an！@！（...';
+SET
+> SET @id9 = 'test_查询an！@！（...';
+SET
+> PREPARE test1 as INSERT INTO test_procedure_opt1_my1_ts.test1 VALUES('2024-03-06 10:00:00',$1,$2,$3,$4,$5,$6,$7,$8,$9,$4,$3,$8,$6,$7);
+PREPARE
+> EXECUTE test1(@id1,@id2,@id3,@id4,@id5,@id6,@id7,@id8,@id9);
+INSERT 1
+> select * from test_procedure_opt1_my1_ts.test1;
+            k_tp            | t1 |  t2  |     t3      |      t4       |       t5       |          t6           |          t7           |          t8           |          t9           |     code1     |    code2    |         code3         |         code4         |         code5
+----------------------------+----+------+-------------+---------------+----------------+-----------------------+-----------------------+-----------------------+-----------------------+---------------+-------------+-----------------------+-----------------------+------------------------
+  2024-03-06 10:00:00+00:00 |  1 | 1092 | -2893782734 | 2.8937892e+07 | 21983.19289107 | test_查询an！@！（... | test_查询an！@！（... | test_查询an！@！（... | test_查询an！@！（... | 2.8937892e+07 | -2893782734 | test_查询an！@！（... | test_查询an！@！（... | test_查询an！@！（...
+(1 row)
+> SET @id4 = 111.111::FLOAT4;
+SET
+> PREPARE test2 as UPDATE test_procedure_opt1_my1_ts.test1 SET code1 = $4 where code2 = $1 and code3 = $2 and code4 = $3;
+PREPARE
+> EXECUTE test2(@id3,@id8,@id6, @id4);
+UPDATE 1
+> select * from test_procedure_opt1_my1_ts.test1;
+            k_tp            | t1 |  t2  |     t3      |      t4       |       t5       |          t6           |          t7           |          t8           |          t9           |  code1  |    code2    |         code3         |         code4         |         code5
+----------------------------+----+------+-------------+---------------+----------------+-----------------------+-----------------------+-----------------------+-----------------------+---------+-------------+-----------------------+-----------------------+------------------------
+  2024-03-06 10:00:00+00:00 |  1 | 1092 | -2893782734 | 2.8937892e+07 | 21983.19289107 | test_查询an！@！（... | test_查询an！@！（... | test_查询an！@！（... | test_查询an！@！（... | 111.111 | -2893782734 | test_查询an！@！（... | test_查询an！@！（... | test_查询an！@！（...
+(1 row)
+> PREPARE test3 as DELETE FROM test_procedure_opt1_my1_ts.test1 where code2 = $1 and code3 = $2 and code4 = $3;
+PREPARE
+> EXECUTE test3(@id3,@id8,@id6);
+DELETE 1
+> select * from test_procedure_opt1_my1_ts.test1;
+  k_tp | t1 | t2 | t3 | t4 | t5 | t6 | t7 | t8 | t9 | code1 | code2 | code3 | code4 | code5
+-------+----+----+----+----+----+----+----+----+----+-------+-------+-------+-------+--------
+(0 rows)
+> EXECUTE test1(@id1,@id2,@id3,@id4,@id5,@id6,@id7,@id8,@id9);
+INSERT 1
+> INSERT INTO test_procedure_opt1_my1_ts.test1 VALUES('2024-03-06 10:00:00',@id1,@id2,@id3,@id4,@id5,@id6,@id7,@id8,@id9,@id4,@id3,@id8,@id6,@id7);
+INSERT 1
+> select * from test_procedure_opt1_my1_ts.test1;
+            k_tp            | t1 |  t2  |     t3      |   t4    |       t5       |          t6           |          t7           |          t8           |          t9           |  code1  |    code2    |         code3         |         code4         |         code5
+----------------------------+----+------+-------------+---------+----------------+-----------------------+-----------------------+-----------------------+-----------------------+---------+-------------+-----------------------+-----------------------+------------------------
+  2024-03-06 10:00:00+00:00 |  1 | 1092 | -2893782734 | 111.111 | 21983.19289107 | test_查询an！@！（... | test_查询an！@！（... | test_查询an！@！（... | test_查询an！@！（... | 111.111 | -2893782734 | test_查询an！@！（... | test_查询an！@！（... | test_查询an！@！（...
+(1 row)
+> SET @id4 = 28937892.2897382::FLOAT4;
+SET
+> update test_procedure_opt1_my1_ts.test1 set code1 = @id4 where code2 = @id3 and code3 = @id8 and code4 = @id6;
+UPDATE 1
+> select * from test_procedure_opt1_my1_ts.test1;
+            k_tp            | t1 |  t2  |     t3      |   t4    |       t5       |          t6           |          t7           |          t8           |          t9           |     code1     |    code2    |         code3         |         code4         |         code5
+----------------------------+----+------+-------------+---------+----------------+-----------------------+-----------------------+-----------------------+-----------------------+---------------+-------------+-----------------------+-----------------------+------------------------
+  2024-03-06 10:00:00+00:00 |  1 | 1092 | -2893782734 | 111.111 | 21983.19289107 | test_查询an！@！（... | test_查询an！@！（... | test_查询an！@！（... | test_查询an！@！（... | 2.8937892e+07 | -2893782734 | test_查询an！@！（... | test_查询an！@！（... | test_查询an！@！（...
+(1 row)
+> DELETE FROM test_procedure_opt1_my1_ts.test1 where code2 = @id3 and code3 = @id8 and code4 = @id6;
+DELETE 1
+> select * from test_procedure_opt1_my1_ts.test1;
+  k_tp | t1 | t2 | t3 | t4 | t5 | t6 | t7 | t8 | t9 | code1 | code2 | code3 | code4 | code5
+-------+----+----+----+----+----+----+----+----+----+-------+-------+-------+-------+--------
+(0 rows)
+> DROP TABLE test_procedure_opt1_my1_ts.test1;
+DROP TABLE
+> DROP DATABASE test_procedure_opt1_my1_ts CASCADE;
+DROP DATABASE
+> SET @var = 100;
+SET
+> PREPARE p2 AS SELECT @var;
+PREPARE
+> EXECUTE p2;
+  @var
+--------
+   100
+(1 row)
+> PREPARE p3 AS SELECT @x, @y, @x + @y;
+PREPARE
+> EXECUTE p3;
+   @x  | @y  | ?column?
+-------+-----+-----------
+  10.5 | 4.2 |     14.7
+(1 row)
+> SET @num = 10;
+SET
+> PREPARE P4 AS SELECT @num * 2 AS double_value, @num + 5 AS increased_value;
+PREPARE
+> EXECUTE p4;
+  double_value | increased_value
+---------------+------------------
+            20 |              15
+(1 row)
+> SET @prefix = 'Hello';
+SET
+> PREPARE p5 AS SELECT CONCAT(@prefix, ' World!') AS greeting;
+PREPARE
+> EXECUTE p5;
+    greeting
+----------------
+  Hello World!
+(1 row)
+> SET @score = 85;
+SET
+> PREPARE p6 AS SELECT IF(@score >= 90, '优秀', '良好') AS performance;
+PREPARE
+> EXECUTE p6;
+  performance
+---------------
+  良好
+(1 row)
+> SET @min_salary = 5000;
+SET
+> PREPARE p7 AS SELECT * FROM employees WHERE salary > @min_salary;
+PREPARE
+> EXECUTE p7;
+  employee_id |  name   | salary  | department  |         hire_date
+--------------+---------+---------+-------------+----------------------------
+            2 | Bob     | 6000.00 | Sales       | 2023-02-20 00:00:00+00:00
+            3 | Charlie | 6000.00 | HR          | 2023-03-05 00:00:00+00:00
+            4 | David   | 5500.00 | Sales       | 2023-01-25 00:00:00+00:00
+            5 | Eve     | 7000.00 | Engineering | 2023-04-10 00:00:00+00:00
+            7 | Grace   | 8000.00 | Engineering | 2023-03-15 00:00:00+00:00
+(5 rows)
+> SET @avg_salary := (SELECT AVG(salary) FROM employees);
+SET
+> PREPARE P8 AS SELECT * FROM employees WHERE salary > @avg_salary;
+PREPARE
+> EXECUTE p8;
+  employee_id | name  | salary  | department  |         hire_date
+--------------+-------+---------+-------------+----------------------------
+            5 | Eve   | 7000.00 | Engineering | 2023-04-10 00:00:00+00:00
+            7 | Grace | 8000.00 | Engineering | 2023-03-15 00:00:00+00:00
+(2 rows)
+> SET @low_price := 5000;
+SET
+> PREPARE p9 AS UPDATE products SET price = price * 2 WHERE price < @low_price;
+PREPARE
+> EXECUTE p9;
+UPDATE 6
+> set @discount=1000;
+SET
+> PREPARE p10 AS UPDATE products SET price = price-@discount WHERE price > @low_price;
+PREPARE
+> EXECUTE p10;
+UPDATE 0
+> create table t2(a int, b int);
+CREATE TABLE
+> set @ss = 1;
+SET
+> prepare p11 as insert into t2 values(@ss, @ss);
+PREPARE
+> execute p11;
+INSERT 1
+> select * from t2;
+  a | b
+----+----
+  1 | 1
+(1 row)
+> set @ss = 99;
+SET
+> execute p11;
+INSERT 1
+> select * from t2;
+  a  | b
+-----+-----
+   1 |  1
+  99 | 99
+(2 rows)
+> prepare p16 as delete from t2 where a = @ss;
+PREPARE
+> execute p16;
+DELETE 1
+> select * from t2;
+  a | b
+----+----
+  1 | 1
+(1 row)
+> SET @salary = 5000.0;
+SET
+> PREPARE p17 AS SELECT salary-$1 FROM employees WHERE salary > $1;
+PREPARE
+> EXECUTE p17(@salary);
+  ?column?
+------------
+   1000.00
+   1000.00
+    500.00
+   2000.00
+   3000.00
+(5 rows)
+> SET @price = 1000.0;
+SET
+> set @increase = 100.0;
+SET
+> PREPARE p18 AS UPDATE products SET price = price + $2 WHERE price < $1;
+PREPARE
+> EXECUTE p18(@price, @increase);
+UPDATE 4
+> prepare p19 as insert into t2 values($1, $1);
+PREPARE
+> set @ss = 1;
+SET
+> EXECUTE p19(@ss);
+INSERT 1
+> SELECT * FROM t2;
+  a | b
+----+----
+  1 | 1
+  1 | 1
+(2 rows)
+> prepare p20 as delete from t2 where a = $1;
+PREPARE
+> execute p20(@ss);
+DELETE 2
 > DROP DATABASE test_udvar CASCADE;
 DROP DATABASE
