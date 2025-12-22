@@ -23,53 +23,8 @@ enum NextBlkStatus {
 
 namespace kwdbts {
 
-// Agreement between storage layer and execution layer:
-// 1. The SUM aggregation result of integer type returns the int64 type uniformly without overflow;
-//    In case of overflow, return double type
-// 2. The return type for floating-point numbers is double
-// This function is used for type conversion of SUM aggregation results.
-bool ChangeSumType(DATATYPE type, void* base, void** new_base) {
-  if (type != DATATYPE::INT8 && type != DATATYPE::INT16 && type != DATATYPE::INT32 && type != DATATYPE::FLOAT) {
-    *new_base = base;
-    return false;
-  }
-  void* sum_base = malloc(8);
-  memset(sum_base, 0, 8);
-  switch (type) {
-    case DATATYPE::INT8:
-      *(static_cast<int64_t*>(sum_base)) = *(static_cast<int8_t*>(base));
-      break;
-    case DATATYPE::INT16:
-      *(static_cast<int64_t*>(sum_base)) = *(static_cast<int16_t*>(base));
-      break;
-    case DATATYPE::INT32:
-      *(static_cast<int64_t*>(sum_base)) = *(static_cast<int32_t*>(base));
-      break;
-    case DATATYPE::FLOAT:
-      *(static_cast<double*>(sum_base)) = *(static_cast<float*>(base));
-  }
-  *new_base = sum_base;
-  return true;
-}
-
 TsStorageIterator::TsStorageIterator() {
 }
-
-TsStorageIterator::TsStorageIterator(uint64_t entity_group_id,
-                                     uint32_t subgroup_id, const vector<uint32_t>& entity_ids,
-                                     const std::vector<KwTsSpan>& ts_spans,
-                                     const std::vector<BlockFilter>& block_filter, DATATYPE ts_col_type,
-                                     const std::vector<uint32_t>& kw_scan_cols,
-                                     const std::vector<uint32_t>& ts_scan_cols, uint32_t table_version)
-    : entity_group_id_(entity_group_id),
-      subgroup_id_(subgroup_id),
-      entity_ids_(entity_ids),
-      ts_spans_(ts_spans),
-      block_filter_(block_filter),
-      ts_col_type_(ts_col_type),
-      kw_scan_cols_(kw_scan_cols),
-      ts_scan_cols_(ts_scan_cols),
-      table_version_(table_version) { }
 
 TsStorageIterator::~TsStorageIterator() {}
 

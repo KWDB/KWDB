@@ -33,27 +33,10 @@ class TsAggIterator;
 class TsStorageIterator {
  public:
   TsStorageIterator();
-  TsStorageIterator(uint64_t entity_group_id, uint32_t subgroup_id,
-                    const vector<uint32_t>& entity_ids, const std::vector<KwTsSpan>& ts_spans,
-                    const std::vector<BlockFilter>& block_filter, DATATYPE ts_col_type,
-                    const std::vector<uint32_t>& kw_scan_cols, const std::vector<uint32_t>& ts_scan_cols,
-                    uint32_t table_version);
 
   virtual ~TsStorageIterator();
 
   virtual KStatus Init(bool is_reversed) = 0;
-
-  static bool IsFirstAggType(const Sumfunctype& agg_type) {
-    return agg_type == FIRST || agg_type == FIRSTTS || agg_type == FIRST_ROW || agg_type == FIRSTROWTS;
-  }
-
-  static bool IsLastAggType(const Sumfunctype& agg_type) {
-    return agg_type == LAST || agg_type == LASTTS || agg_type == LAST_ROW || agg_type == LASTROWTS;
-  }
-
-  static bool IsLastTsAggType(const Sumfunctype& agg_type) {
-    return agg_type == LAST || agg_type == LASTTS;
-  }
 
   /**
    * @brief An internally implemented iterator query interface that provides a subgroup data query result to the TsTableIterator class
@@ -80,15 +63,7 @@ class TsStorageIterator {
 
   bool matchesFilterRange(const BlockFilter& filter, SpanValue min, SpanValue max, DATATYPE datatype);
 
-  void nextEntity() {
-    cur_block_ts_check_res_ = TimestampCheckResult::NonOverlapping;
-    cur_blockdata_offset_ = 1;
-    ++cur_entity_idx_;
-  }
-
  protected:
-  uint64_t entity_group_id_{0};
-  uint32_t subgroup_id_{0};
   vector<uint32_t> entity_ids_{};
   // the data time range queried by the iterator
   std::vector<KwTsSpan> ts_spans_;
@@ -101,9 +76,6 @@ class TsStorageIterator {
   DATATYPE ts_col_type_;
     // table version
   uint32_t table_version_;
-  // save the data offset within the BlockItem object being queried, used for traversal
-  k_uint32 cur_blockdata_offset_ = 1;
-  TimestampCheckResult cur_block_ts_check_res_ = TimestampCheckResult::NonOverlapping;
   k_uint32 cur_entity_idx_ = 0;
   // Identifies whether the iterator returns blocks in reverse order
   bool is_reversed_ = false;
