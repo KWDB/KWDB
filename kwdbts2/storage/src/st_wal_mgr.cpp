@@ -938,7 +938,7 @@ KStatus WALMgr::flushMeta(kwdbContext_p ctx) {
     };
     fsync(helper(meta_file_.rdbuf()));
   } else {
-    meta_file_.sync();
+    meta_file_.flush();
   }
   delete[] buf;
 

@@ -902,7 +902,7 @@ TS_OSN WALBufferMgr::getCurrentLsn() {
 
 KStatus WALBufferMgr::flush() {
   Lock();
-  KStatus s = flushInternal(true);
+  KStatus s = flushInternal(false);
   Unlock();
   return s;
 }

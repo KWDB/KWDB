@@ -180,24 +180,6 @@ KStatus WALFileMgr::writeBlocks(std::vector<EntryBlock*>& entry_blocks, HeaderBl
       LOG_ERROR("Failed to write the WAL log file_.")
       return FAIL;
     }
-
-    if (entry_block->getBlockNo() != 0 &&
-        entry_block->getBlockNo() == header.getEndBlockNo() &&
-        entry_block->getDataLen() == LOG_BLOCK_MAX_LOG_SIZE) {
-      writeHeaderBlock(header);
-      file_.flush();
-
-      TS_OSN start_lsn = header.getStartLSN() + BLOCK_SIZE + header.getBlockNum() * BLOCK_SIZE;
-      TS_OSN first_lsn = start_lsn + BLOCK_SIZE + LOG_BLOCK_HEADER_SIZE + entry_block->getFirstRecOffset();
-      header = HeaderBlock(table_id_, entry_block->getBlockNo() + 1, opt_->GetBlockNumPerFile(), start_lsn, first_lsn,
-                           header.getCheckpointLSN(), header.getCheckpointNo());
-
-      if (initWalFileWithHeader(header) == FAIL) {
-        LOG_ERROR("Failed init WAL log file %s", getFilePath().c_str())
-        return FAIL;
-      }
-      file_.seekp(BLOCK_SIZE, std::ios::beg);
-    }
   }
   if (flush_header) {
     writeHeaderBlock(header);
