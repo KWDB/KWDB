@@ -1499,7 +1499,14 @@ KStatus DataChunk::PgResultData(kwdbContext_p ctx, k_uint32 row,
           std::memcpy(&d, raw, sizeof(k_double64));
         }
 
-        if (output_type_oid[col] == T_FLOAT4) {
+        bool useLowPrecision = false;
+        if (col < output_type_oid.size()) {
+          useLowPrecision = output_type_oid[col] == T_FLOAT4;
+        } else {
+          useLowPrecision = col_info_[col].storage_type == roachpb::DataType::FLOAT ||
+          col_info_[col].sql_type == roachpb::DataType::FLOAT;
+        }
+        if (useLowPrecision) {
           n = ryu_snprintf_f(d, 6, buf, sizeof(buf));
         } else {
            n = ryu_snprintf_g(d, 17, buf);
