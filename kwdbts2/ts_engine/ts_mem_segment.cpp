@@ -399,6 +399,133 @@ KStatus TsMemSegment::GetBlockSpans(std::list<shared_ptr<TsBlockSpan>>& blocks, 
         last_row_data = cur_row;
       }
     }
+  } else if (EngineOptions::g_dedup_rule == DedupRule::MERGE) {
+    std::vector<const TSMemSegRowData*> dedup_rows;
+    const TSMemSegRowData* last_row_data = nullptr;
+    TSTableID dedup_table_id = 0;
+    uint32_t dedup_table_version = 0;
+    TsBlockSpan* template_blk_span = nullptr;
+    for (; iter.Valid(); iter.Next()) {
+      const TSMemSegRowData* row = skiplist_.ParseKey(iter.key());
+      if (last_row_data == nullptr || last_row_data->SameEntityAndTs(row)) {
+        dedup_table_id = row->GetTableId();
+        dedup_table_version = row->GetTableVersion() > dedup_table_version ?
+                              row->GetTableVersion() : dedup_table_version;
+        dedup_rows.push_back(row);
+        last_row_data = row;
+        continue;
+      }
+      if (dedup_rows.size() > 1) {
+        if (current_memblock) {
+          current_memblock = nullptr;
+        }
+        // dedup rows -> block spans
+        std::shared_ptr<TsTableSchemaManager> tbl_schema_mgr;
+        auto s = schema_mgr->GetTableSchemaMgr(dedup_table_id, tbl_schema_mgr);
+        if (s != SUCCESS) {
+          LOG_ERROR("GetTableSchemaMgr failed.");
+          return KStatus::FAIL;
+        }
+        std::shared_ptr<MMapMetricsTable> scan_schema;
+        tbl_schema_mgr->GetMetricSchema(dedup_table_version, &scan_schema);
+        std::list<std::shared_ptr<kwdbts::TsBlockSpan>> dedup_block_spans;
+        for (auto& dedup_row : dedup_rows) {
+          std::shared_ptr<TsMemSegBlock> mem_block = std::make_shared<TsMemSegBlock>(self);
+          mem_block->InsertRow(dedup_row);
+          std::shared_ptr<TsBlockSpan> cur_span;
+          s = TsBlockSpan::MakeNewBlockSpan(template_blk_span, 0, mem_block->GetEntityId(), mem_block, 0,
+                                            mem_block->GetRowNum(), dedup_table_version,
+                                            scan_schema->getSchemaInfoExcludeDroppedPtr(),
+                                            tbl_schema_mgr, cur_span);
+          if (s != SUCCESS) {
+            LOG_ERROR("MakeNewBlockSpan failed.");
+            return KStatus::FAIL;
+          }
+          dedup_block_spans.push_back(cur_span);
+        }
+        // generate merge mem block
+        std::shared_ptr<TsSliceGuard> row_data_guard;
+        s = TsBlockSpan::GenMergeRowData(dedup_block_spans, tbl_schema_mgr, row_data_guard);
+        if (s != SUCCESS) {
+          LOG_ERROR("GenMergeRowData failed.");
+          return KStatus::FAIL;
+        }
+        std::unique_ptr<TsMemSegBlock> mem_block = std::make_unique<TsMemSegBlock>(nullptr);
+        TSMemSegRowDataWithGuard& dedup_row_data = mem_block->AllocateRow(0, dedup_table_id, dedup_table_version,
+                                                                 dedup_block_spans.front()->GetEntityID());
+        dedup_row_data.SetData(dedup_block_spans.front()->GetTS(0), dedup_block_spans.back()->GetLastOSN());
+        dedup_row_data.SetRowData(row_data_guard);
+        mem_block->SetMemoryAddrSafe();
+        mem_block->InsertRow(&dedup_row_data);
+        mem_blocks.push_back(std::move(mem_block));
+      } else if (dedup_rows.size() == 1) {
+        if (current_memblock == nullptr || !current_memblock->InsertRow(last_row_data)) {
+          auto mem_block = std::make_unique<TsMemSegBlock>(self);
+          current_memblock = mem_block.get();
+          mem_blocks.push_back(std::move(mem_block));
+          current_memblock->InsertRow(last_row_data);
+        }
+      }
+      dedup_rows.clear();
+      // current row
+      dedup_table_id = row->GetTableId();
+      dedup_table_version = row->GetTableVersion() > dedup_table_version ?
+                            row->GetTableVersion() : dedup_table_version;
+      dedup_rows.push_back(row);
+      last_row_data = row;
+    }
+    if (dedup_rows.size() > 1) {
+      if (current_memblock) {
+        current_memblock = nullptr;
+      }
+      // dedup rows -> block spans
+      std::shared_ptr<TsTableSchemaManager> tbl_schema_mgr;
+      auto s = schema_mgr->GetTableSchemaMgr(dedup_table_id, tbl_schema_mgr);
+      if (s != SUCCESS) {
+        LOG_ERROR("GetTableSchemaMgr failed.");
+        return KStatus::FAIL;
+      }
+      std::shared_ptr<MMapMetricsTable> scan_schema;
+      tbl_schema_mgr->GetMetricSchema(dedup_table_version, &scan_schema);
+      std::list<std::shared_ptr<kwdbts::TsBlockSpan>> dedup_block_spans;
+      for (auto& dedup_row : dedup_rows) {
+        std::shared_ptr<TsMemSegBlock> mem_block = std::make_shared<TsMemSegBlock>(self);
+        mem_block->InsertRow(dedup_row);
+        std::shared_ptr<TsBlockSpan> cur_span;
+        s = TsBlockSpan::MakeNewBlockSpan(template_blk_span, 0, mem_block->GetEntityId(), mem_block, 0,
+                                          mem_block->GetRowNum(), dedup_table_version,
+                                          scan_schema->getSchemaInfoExcludeDroppedPtr(),
+                                          tbl_schema_mgr, cur_span);
+        if (s != SUCCESS) {
+          LOG_ERROR("MakeNewBlockSpan failed.");
+          return KStatus::FAIL;
+        }
+        dedup_block_spans.push_back(cur_span);
+      }
+      // generate merge mem block
+      std::shared_ptr<TsSliceGuard> row_data_guard;
+      s = TsBlockSpan::GenMergeRowData(dedup_block_spans, tbl_schema_mgr, row_data_guard);
+      if (s != SUCCESS) {
+        LOG_ERROR("GenMergeRowData failed.");
+        return KStatus::FAIL;
+      }
+      std::unique_ptr<TsMemSegBlock> mem_block = std::make_unique<TsMemSegBlock>(nullptr);
+      TSMemSegRowDataWithGuard& dedup_row_data = mem_block->AllocateRow(0, dedup_table_id, dedup_table_version,
+                                                               dedup_block_spans.front()->GetEntityID());
+      dedup_row_data.SetData(dedup_block_spans.front()->GetTS(0), dedup_block_spans.back()->GetLastOSN());
+      dedup_row_data.SetRowData(row_data_guard);
+      mem_block->SetMemoryAddrSafe();
+      mem_block->InsertRow(&dedup_row_data);
+      mem_blocks.push_back(std::move(mem_block));
+    } else if (dedup_rows.size() == 1) {
+      if (current_memblock == nullptr || !current_memblock->InsertRow(last_row_data)) {
+        auto mem_block = std::make_unique<TsMemSegBlock>(self);
+        current_memblock = mem_block.get();
+        mem_blocks.push_back(std::move(mem_block));
+        current_memblock->InsertRow(last_row_data);
+      }
+    }
+    dedup_rows.clear();
   } else {  // KEEP
     for (; iter.Valid(); iter.Next()) {
       const TSMemSegRowData* cur_row = skiplist_.ParseKey(iter.key());
@@ -476,6 +603,105 @@ KStatus TsMemSegment::GetBlockSpans(const TsBlockItemFilterParams& filter, std::
           cur_blk_item->InsertRow(row);
         }
         last_row_data = row;
+      }
+    }
+  } else if (EngineOptions::g_dedup_rule == DedupRule::MERGE) {
+    std::vector<const TSMemSegRowData*> dedup_rows;
+    const TSMemSegRowData* last_row_data = nullptr;
+    TsBlockSpan* template_blk_span = nullptr;
+    for (auto& row : row_datas) {
+      if (last_row_data == nullptr || last_row_data->SameEntityAndTs(row)) {
+        dedup_rows.push_back(row);
+        last_row_data = row;
+        continue;
+      }
+      if (dedup_rows.size() > 1) {
+        if (cur_blk_item) {
+          cur_blk_item = nullptr;
+        }
+        // dedup row -> block span
+        std::list<std::shared_ptr<kwdbts::TsBlockSpan>> dedup_block_spans;
+        for (auto& dedup_row : dedup_rows) {
+          std::shared_ptr<TsMemSegBlock> mem_block = std::make_shared<TsMemSegBlock>(self);
+          mem_block->InsertRow(dedup_row);
+          std::shared_ptr<TsBlockSpan> cur_span;
+          auto s = TsBlockSpan::MakeNewBlockSpan(template_blk_span, filter.vgroup_id, filter.entity_id, mem_block, 0,
+                                                          mem_block->GetRowNum(), scan_schema->GetVersion(),
+                                                          scan_schema->getSchemaInfoExcludeDroppedPtr(),
+                                                          tbl_schema_mgr, cur_span);
+          if (s != SUCCESS) {
+            LOG_ERROR("MakeNewBlockSpan failed.");
+            return KStatus::FAIL;
+          }
+          dedup_block_spans.push_back(cur_span);
+        }
+        // generate merge mem block
+        std::shared_ptr<TsSliceGuard> row_data_guard;
+        KStatus s = TsBlockSpan::GenMergeRowData(dedup_block_spans, tbl_schema_mgr, row_data_guard);
+        if (s != SUCCESS) {
+          LOG_ERROR("GenMergeRowData failed.");
+          return KStatus::FAIL;
+        }
+        std::shared_ptr<TsMemSegBlock> mem_block = std::make_shared<TsMemSegBlock>(nullptr);
+        TSMemSegRowDataWithGuard& dedup_row_data = mem_block->AllocateRow(0, tbl_schema_mgr->GetTableId(),
+                                                                 scan_schema->GetVersion(), filter.entity_id);
+        dedup_row_data.SetData(dedup_block_spans.front()->GetTS(0), dedup_block_spans.back()->GetLastOSN());
+        dedup_row_data.SetRowData(row_data_guard);
+        mem_blocks.push_back(mem_block);
+        mem_block->SetMemoryAddrSafe();
+        mem_block->InsertRow(&dedup_row_data);
+      } else if (dedup_rows.size() == 1) {
+        if (cur_blk_item == nullptr || !cur_blk_item->InsertRow(last_row_data)) {
+          cur_blk_item = std::make_shared<TsMemSegBlock>(self);
+          mem_blocks.push_back(cur_blk_item);
+          cur_blk_item->InsertRow(last_row_data);
+        }
+      }
+      dedup_rows.clear();
+      // current row
+      dedup_rows.push_back(row);
+      last_row_data = row;
+    }
+    if (dedup_rows.size() > 1) {
+      if (cur_blk_item) {
+        cur_blk_item = nullptr;
+      }
+      // dedup row -> block span
+      std::list<std::shared_ptr<kwdbts::TsBlockSpan>> dedup_block_spans;
+      for (auto& dedup_row : dedup_rows) {
+        std::shared_ptr<TsMemSegBlock> mem_block = std::make_shared<TsMemSegBlock>(self);
+        mem_block->InsertRow(dedup_row);
+        std::shared_ptr<TsBlockSpan> cur_span;
+        auto s = TsBlockSpan::MakeNewBlockSpan(template_blk_span, filter.vgroup_id, filter.entity_id, mem_block, 0,
+                                                        mem_block->GetRowNum(), scan_schema->GetVersion(),
+                                                        scan_schema->getSchemaInfoExcludeDroppedPtr(),
+                                                        tbl_schema_mgr, cur_span);
+        if (s != SUCCESS) {
+          LOG_ERROR("MakeNewBlockSpan failed.");
+          return KStatus::FAIL;
+        }
+        dedup_block_spans.push_back(cur_span);
+      }
+      // generate merge mem block
+      std::shared_ptr<TsSliceGuard> row_data_guard;
+      KStatus s = TsBlockSpan::GenMergeRowData(dedup_block_spans, tbl_schema_mgr, row_data_guard);
+      if (s != SUCCESS) {
+        LOG_ERROR("GenMergeRowData failed.");
+        return KStatus::FAIL;
+      }
+      std::shared_ptr<TsMemSegBlock> mem_block = std::make_shared<TsMemSegBlock>(nullptr);
+      TSMemSegRowDataWithGuard& dedup_row_data = mem_block->AllocateRow(0, tbl_schema_mgr->GetTableId(),
+                                                                        scan_schema->GetVersion(), filter.entity_id);
+      dedup_row_data.SetData(dedup_block_spans.front()->GetTS(0), dedup_block_spans.back()->GetLastOSN());
+      dedup_row_data.SetRowData(row_data_guard);
+      mem_blocks.push_back(mem_block);
+      mem_block->SetMemoryAddrSafe();
+      mem_block->InsertRow(&dedup_row_data);
+    } else if (dedup_rows.size() == 1) {
+      if (cur_blk_item == nullptr || !cur_blk_item->InsertRow(last_row_data)) {
+        cur_blk_item = std::make_shared<TsMemSegBlock>(self);
+        mem_blocks.push_back(cur_blk_item);
+        cur_blk_item->InsertRow(last_row_data);
       }
     }
   } else {

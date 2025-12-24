@@ -893,14 +893,14 @@ KStatus TsPartitionVersion::NeedVacuumEntitySegment(const fs::path& root_path, T
 
       if (force) {
         // CheckDeviceContinuity
-        std::vector<TsEntitySegmentBlockItem> block_items;
-        s = entity_segment_->GetAllBlockItems(entity_id, &block_items);
+        std::vector<TsEntitySegmentBlockItemWithData> block_datas;
+        s = entity_segment_->GetAllBlockItems(entity_id, &block_datas);
         if (s != KStatus::SUCCESS) {
           LOG_WARN("GetAllBlockItems failed, entity id [%u]", entity_id);
           continue;
         }
-        for (const auto& block_item : block_items) {
-          if (block_item.block_id - 1 != block_item.prev_block_id) {
+        for (const auto& block_data : block_datas) {
+          if (block_data.block_item->block_id - 1 != block_data.block_item->prev_block_id) {
             need_vacuum = true;
             return SUCCESS;
           }

@@ -18,6 +18,7 @@
 #include "ts_block.h"
 #include "ts_blkspan_type_convert.h"
 #include "ts_compressor.h"
+#include "ts_mem_segment_mgr.h"
 
 namespace kwdbts {
 inline bool TsBlock::HasPreAgg(uint32_t begin_row_idx, uint32_t row_num) {
@@ -90,6 +91,130 @@ KStatus TsBlockSpan::MakeNewBlockSpan(TsBlockSpan* src_blk_span, uint32_t vgroup
   } else {
     ret = std::make_shared<TsBlockSpan>(*src_blk_span, block, start, nrow, entity_id);
   }
+  return KStatus::SUCCESS;
+}
+
+KStatus TsBlockSpan::GenMergeRowData(std::list<std::shared_ptr<kwdbts::TsBlockSpan>>& dedup_block_spans,
+                                     const std::shared_ptr<TsTableSchemaManager>& tbl_schema_manager,
+                                     std::shared_ptr<TsSliceGuard>& row_data) {
+  assert(!dedup_block_spans.empty());
+  TSTableID table_id = dedup_block_spans.front()->GetTableID();
+  uint32_t scan_version = dedup_block_spans.front()->GetScanVersion();
+  std::shared_ptr<MMapMetricsTable> schema_tbl;
+  auto s = tbl_schema_manager->GetMetricSchema(scan_version, &schema_tbl);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("TsBlockSpan::GenMergeRowData GetMetricSchema failed, table_id=%lu", table_id);
+    return s;
+  }
+
+  auto& attrs = schema_tbl->getSchemaInfoExcludeDropped();
+  TsRawPayloadRowBuilder builder(attrs);
+  for (uint32_t idx = 0; idx < attrs.size(); ++idx) {
+    for (auto it = dedup_block_spans.rbegin(); it != dedup_block_spans.rend(); ++it) {
+      bool is_valid = false;
+      char* value = nullptr;
+      size_t length = 0;
+      std::unique_ptr<TsBitmapBase> bitmap;
+      if (isVarLenType(attrs[idx].type)) {
+        TSSlice result;
+        DataFlags flag;
+        s = (*it)->GetVarLenTypeColAddr(0, idx, flag, result);
+        if (s != KStatus::SUCCESS) {
+          LOG_ERROR("GetVarLenTypeColAddr failed.");
+          return s;
+        }
+        if (flag == DataFlags::kValid) {
+          is_valid = true;
+          value = result.data;
+          length = result.len;
+        }
+      } else {
+        char* result;
+        s = (*it)->GetFixLenColAddr(idx, &result, &bitmap);
+        if (s != KStatus::SUCCESS) {
+          LOG_ERROR("GetFixLenColAddr failed.");
+          return s;
+        }
+        if (bitmap->At(0) == DataFlags::kValid) {
+          is_valid = true;
+          value = result;
+          length = attrs[idx].size;
+        }
+      }
+      if (is_valid) {
+        builder.SetColValue(idx, {value, length});
+        break;
+      }
+    }
+  }
+
+  size_t bitmap_len;
+  size_t fixed_tuple_len;
+  size_t var_part_len;
+  builder.GetRowInfo(bitmap_len, fixed_tuple_len, var_part_len);
+
+  row_data = std::make_shared<TsSliceGuard>();
+  row_data->allocate(bitmap_len + fixed_tuple_len + var_part_len);
+
+  TSSlice result{row_data->data(), row_data->size()};
+  bool ret = builder.Build(&result, false);
+  if (!ret) {
+    LOG_ERROR("TSRowPayloadBuilder::BuildNoTagPayload failed.");
+    return KStatus::FAIL;
+  }
+  return KStatus::SUCCESS;
+}
+
+KStatus TsBlockSpan::MakeMergeBlockSpan(std::list<std::shared_ptr<kwdbts::TsBlockSpan>>& dedup_block_spans,
+                                        uint32_t scan_version,
+                                        const std::shared_ptr<TsTableSchemaManager>& tbl_schema_manager,
+                                        std::shared_ptr<kwdbts::TsBlockSpan>& block_span) {
+  assert(!dedup_block_spans.empty());
+  std::shared_ptr<TsBlockSpan>& first_block_span = dedup_block_spans.front();
+
+  TsBlockSpan* template_blk_span = nullptr;
+  for (auto& dedup_block_span : dedup_block_spans) {
+    if (dedup_block_span->GetScanVersion() != scan_version) {
+      std::shared_ptr<MMapMetricsTable> scan_schema;
+      auto s = tbl_schema_manager->GetMetricSchema(scan_version, &scan_schema);
+      if (s != KStatus::SUCCESS) {
+        LOG_ERROR("get metric schema failed, table_id=%lu, table_version=%d",
+                  tbl_schema_manager->GetTableId(), scan_version)
+        return s;
+      }
+      std::shared_ptr<TsBlockSpan> cur_span;
+      s = MakeNewBlockSpan(template_blk_span, dedup_block_span->GetVGroupID(), dedup_block_span->GetEntityID(),
+                           dedup_block_span->GetTsBlock(), 0, 1, scan_version,
+                           scan_schema->getSchemaInfoExcludeDroppedPtr(),
+                           tbl_schema_manager, cur_span);
+      if (s != KStatus::SUCCESS) {
+        LOG_ERROR("MakeNewBlockSpan failed.");
+        return s;
+      }
+      dedup_block_span = cur_span;
+    }
+  }
+
+  std::shared_ptr<TsSliceGuard> row_data_guard = nullptr;
+  KStatus s = GenMergeRowData(dedup_block_spans, tbl_schema_manager, row_data_guard);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("GenMergeRowData failed.");
+    return s;
+  }
+
+  std::shared_ptr<TsMemSegBlock> mem_block = std::make_shared<TsMemSegBlock>(nullptr);
+  TSMemSegRowDataWithGuard& dedup_row_data = mem_block->AllocateRow(0, first_block_span->GetTableID(), scan_version,
+                                                           first_block_span->GetEntityID());
+  dedup_row_data.SetData(first_block_span->GetTS(0), dedup_block_spans.back()->GetLastOSN());
+  dedup_row_data.SetRowData(row_data_guard);
+  mem_block->SetMemoryAddrSafe();
+  mem_block->InsertRow(&dedup_row_data);
+
+  std::shared_ptr<TSBlkDataTypeConvert> empty_convert = nullptr;
+  const std::vector<AttributeInfo>* scan_attrs{nullptr};
+  tbl_schema_manager->GetColumnsExcludeDroppedPtr(&scan_attrs, scan_version);
+  block_span = std::make_shared<TsBlockSpan>(first_block_span->GetVGroupID(), first_block_span->GetEntityID(), mem_block, 0,
+                                             1, empty_convert, scan_version, scan_attrs);
   return KStatus::SUCCESS;
 }
 

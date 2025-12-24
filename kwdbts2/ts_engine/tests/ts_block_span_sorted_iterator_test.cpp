@@ -189,7 +189,7 @@ class TsBlockSpanSortedIteratorTest : public ::testing::Test {
 
 TEST_F(TsBlockSpanSortedIteratorTest, empty) {
   std::list<shared_ptr<TsBlockSpan>> spans;
-  TsBlockSpanSortedIterator iter(spans);
+  TsBlockSpanSortedIterator iter(spans, nullptr);
   auto s = iter.Init();
   EXPECT_TRUE(s == KStatus::SUCCESS);
   std::shared_ptr<kwdbts::TsBlockSpan> block_span;
@@ -209,7 +209,7 @@ TEST_F(TsBlockSpanSortedIteratorTest, multiTS) {
     {
       std::list<shared_ptr<TsBlockSpan>> spans;
       spans.push_back(GenBlockWithSpan1(1000, 1, ts_num, 1));
-      TsBlockSpanSortedIterator iter(spans, rule);
+      TsBlockSpanSortedIterator iter(spans, nullptr, rule);
       auto s = iter.Init();
       EXPECT_TRUE(s == KStatus::SUCCESS);
       bool is_finished;
@@ -227,7 +227,7 @@ TEST_F(TsBlockSpanSortedIteratorTest, multiTS) {
     {
       std::list<shared_ptr<TsBlockSpan>> spans;
       spans.push_back(GenBlockWithSpan1(1000, 1, ts_num, 1));
-      TsBlockSpanSortedIterator iter(spans, rule, true);
+      TsBlockSpanSortedIterator iter(spans, nullptr, rule, true);
       auto s = iter.Init();
       EXPECT_TRUE(s == KStatus::SUCCESS);
       bool is_finished;
@@ -256,7 +256,7 @@ TEST_F(TsBlockSpanSortedIteratorTest, multi_SameBlockSpan) {
       for (size_t i = 0; i < span_num; i++) {
         spans.push_back(GenBlockWithSpan1(1000, 1, ts_num, 1));
       }
-      TsBlockSpanSortedIterator iter(spans, rule);
+      TsBlockSpanSortedIterator iter(spans, nullptr, rule);
       auto s = iter.Init();
       EXPECT_TRUE(s == KStatus::SUCCESS);
       bool is_finished;
@@ -291,7 +291,7 @@ TEST_F(TsBlockSpanSortedIteratorTest, multi_SameBlockSpan) {
       for (size_t i = 0; i < span_num; i++) {
         spans.push_back(GenBlockWithSpan1(1000, 1, ts_num, 1));
       }
-      TsBlockSpanSortedIterator iter(spans, rule, true);
+      TsBlockSpanSortedIterator iter(spans, nullptr, rule, true);
       auto s = iter.Init();
       EXPECT_TRUE(s == KStatus::SUCCESS);
       bool is_finished;
@@ -335,7 +335,7 @@ TEST_F(TsBlockSpanSortedIteratorTest, multiBlockSpanWithCrossData) {
       for (size_t i = 0; i < span_num; i++) {
         spans.push_back(GenBlockWithSpan1(1000 + i, 1, ts_num, 1));
       }
-      TsBlockSpanSortedIterator iter(spans, rule);
+      TsBlockSpanSortedIterator iter(spans, nullptr, rule);
       auto s = iter.Init();
       EXPECT_TRUE(s == KStatus::SUCCESS);
       bool is_finished;
@@ -370,7 +370,7 @@ TEST_F(TsBlockSpanSortedIteratorTest, multiBlockSpanWithCrossData) {
       for (size_t i = 0; i < span_num; i++) {
         spans.push_back(GenBlockWithSpan1(1000 + i, 1, ts_num, 1));
       }
-      TsBlockSpanSortedIterator iter(spans, rule, true);
+      TsBlockSpanSortedIterator iter(spans, nullptr, rule, true);
       auto s = iter.Init();
       EXPECT_TRUE(s == KStatus::SUCCESS);
       bool is_finished;
@@ -412,7 +412,7 @@ TEST_F(TsBlockSpanSortedIteratorTest, preAgg) {
     std::list<shared_ptr<TsBlockSpan>> spans;
     spans.push_back(GenSimulatedEntityBlockSpan(1000, 100, 1));
     spans.push_back(GenSimulatedEntityBlockSpan(1000, 120, 1));
-    TsBlockSpanSortedIterator iter(spans, rule);
+    TsBlockSpanSortedIterator iter(spans, nullptr, rule);
     auto s = iter.Init();
     EXPECT_TRUE(s == KStatus::SUCCESS);
     bool is_finished;

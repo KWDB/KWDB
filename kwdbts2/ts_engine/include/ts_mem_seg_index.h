@@ -19,11 +19,13 @@
 #include <cstdint>
 #include <cstring>
 #include <limits>
+#include <memory>
 #include <type_traits>
 
 #include "data_type.h"
 #include "libkwdbts2.h"
 #include "ts_arena.h"
+#include "ts_compressor.h"
 
 namespace kwdbts {
 
@@ -84,6 +86,20 @@ struct TSMemSegRowData {
 static_assert(sizeof(TSMemSegRowData) == 64, "TSMemSegRowData size is not 64");
 //  static_assert(std::has_unique_object_representations_v<TSMemSegRowData>,
 //                "TSMemSegRowData has some uninitialized padding");
+
+struct TSMemSegRowDataWithGuard : public TSMemSegRowData {
+ private:
+  std::shared_ptr<TsSliceGuard> row_data_guard = nullptr;
+ public:
+  TSMemSegRowDataWithGuard(uint32_t db_id, TSTableID tbl_id, uint32_t tbl_version, TSEntityID en_id)
+      : TSMemSegRowData(db_id, tbl_id, tbl_version, en_id) {}
+
+  void SetRowData(std::shared_ptr<TsSliceGuard>& crow_data_guard) {
+    row_data_guard = crow_data_guard;
+    TSSlice data_slice {row_data_guard->data(), crow_data_guard->size()};
+    TSMemSegRowData::SetRowData(data_slice);
+  }
+};
 
 struct TSRowDataComparator {
   inline const TSMemSegRowData* DecodeKeyValue(const char* b) const {

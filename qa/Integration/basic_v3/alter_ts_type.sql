@@ -234,7 +234,7 @@ alter table test_alter.t10 alter column a type double;
 alter table test_alter.t10 alter column b type varchar(120);
 alter table test_alter.t10 alter column c type varchar(120);
 alter table test_alter.t10 alter column d type int;
---insert into test_alter.t10 values(1672531211005, null, null,  null, null, 1);
+insert into test_alter.t10 values(1672531211005, null, null,  null, null, 1);
 select * from test_alter.t10 order by ts,attr;
 
 -- fixed -> str when check alter valid or not
@@ -253,8 +253,8 @@ insert into test_alter.t12 values(1672531211015, '12.3', 1);
 alter table test_alter.t12 alter column a type varchar(100);
 
 alter table test_alter.t12 alter column a type float4;
---insert into test_alter.t12 values(1672531211005, null, 1);
---insert into test_alter.t12 values(1672531211015, null, 1);
+insert into test_alter.t12 values(1672531211005, null, 1);
+insert into test_alter.t12 values(1672531211015, null, 1);
 select * from test_alter.t12 order by ts;
 
 -- fixed: ZDP-35471

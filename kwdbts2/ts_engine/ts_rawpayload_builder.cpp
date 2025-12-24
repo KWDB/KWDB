@@ -16,29 +16,24 @@ namespace kwdbts {
 #define IS_VAR_DATATYPE(type) ((type) == DATATYPE::VARSTRING || (type) == DATATYPE::VARBINARY)
 
 
-bool TsRawPayloadRowBuilder::Build(TSSlice* row_data) {
+bool TsRawPayloadRowBuilder::Build(TSSlice* row_data, bool need_malloc) {
   if (col_value_.size() == 0 || col_value_[0].len == 0) {
     return false;
   }
-  size_t bitmap_len = (schema_.size() + 7) / 8;
-  size_t fixed_tuple_len = 0;
-  size_t var_part_len = 0;
-  for (size_t i = 0; i < schema_.size(); i++) {
-    if (isVarLenType(schema_[i].type)) {
-      fixed_tuple_len += 8;
-      size_t cur_col_var_len = 2;
-      if (col_value_[i].data != nullptr) {
-        cur_col_var_len += col_value_[i].len;
-      }
-      var_part_len += cur_col_var_len;
-    } else {
-      fixed_tuple_len += schema_[i].size;
-    }
+  size_t bitmap_len;
+  size_t fixed_tuple_len;
+  size_t var_part_len;
+  GetRowInfo(bitmap_len, fixed_tuple_len, var_part_len);
+
+  char* mem = nullptr;
+  if (need_malloc) {
+    row_data->len = bitmap_len + fixed_tuple_len + var_part_len;
+    mem = reinterpret_cast<char*>(malloc(row_data->len));
+    row_data->data = mem;
+  } else {
+    mem = row_data->data;
   }
-  row_data->len = bitmap_len + fixed_tuple_len + var_part_len;
-  char* mem = reinterpret_cast<char*>(malloc(row_data->len));
   std::memset(mem, 0, row_data->len);
-  row_data->data = mem;
   size_t cur_var_offset = bitmap_len + fixed_tuple_len;
   size_t cur_tuple_offset = bitmap_len;
   for (size_t i = 0; i < schema_.size(); i++) {

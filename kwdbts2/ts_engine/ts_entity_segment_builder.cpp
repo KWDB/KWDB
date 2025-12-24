@@ -605,7 +605,8 @@ KStatus TsEntitySegmentBuilder::Compact(bool call_by_vacuum, TsVersionUpdate* up
   shared_ptr<TsBlockSpan> block_span{nullptr};
   bool is_finished = false;
 
-  TsBlockSpanSortedIterator iter(std::move(block_spans_), EngineOptions::g_dedup_rule);
+  assert(schema_manager_ != nullptr);
+  TsBlockSpanSortedIterator iter(std::move(block_spans_), schema_manager_, EngineOptions::g_dedup_rule);
   block_spans_.clear();
   iter.Init();
   TsEntityKey entity_key;

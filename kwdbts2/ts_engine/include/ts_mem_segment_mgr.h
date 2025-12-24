@@ -87,6 +87,7 @@ class TsMemSegBlock : public TsBlock {
  private:
   std::shared_ptr<TsMemSegment> mem_seg_;
   std::vector<const TSMemSegRowData*> row_data_;
+  std::vector<TSMemSegRowDataWithGuard> row_data_guard_;
   timestamp64 min_ts_{INVALID_TS};
   timestamp64 max_ts_{INVALID_TS};
   std::shared_ptr<TsRawPayloadRowParser> parser_ = nullptr;
@@ -192,6 +193,11 @@ class TsMemSegBlock : public TsBlock {
 
   void SetMemoryAddrSafe() {
     memory_addr_safe_ = true;
+  }
+
+  TSMemSegRowDataWithGuard& AllocateRow(uint32_t db_id, TSTableID tbl_id, uint32_t tbl_version, TSEntityID en_id) {
+    row_data_guard_.emplace_back(db_id, tbl_id, tbl_version, en_id);
+    return row_data_guard_.back();
   }
 
   bool InsertRow(const TSMemSegRowData* row) {

@@ -793,7 +793,7 @@ KStatus TsVGroup::FlushImmSegment(const std::shared_ptr<TsMemSegment>& mem_seg) 
                   return left_helper < right_helper;
                 });
     } else {
-      TsBlockSpanSortedIterator iter(all_block_spans, EngineOptions::g_dedup_rule);
+      TsBlockSpanSortedIterator iter(all_block_spans, schema_mgr_, EngineOptions::g_dedup_rule);
       iter.Init();
       std::shared_ptr<TsBlockSpan> dedup_block_span;
       bool is_finished = false;
@@ -1420,8 +1420,8 @@ KStatus TsVGroup::GetEntitySegmentBuilder(std::shared_ptr<const TsPartitionVersi
     auto entity_segment = partition->GetEntitySegment();
 
     auto root_path = this->GetPath() / PartitionDirName(partition->GetPartitionIdentifier());
-    builder = std::make_shared<TsEntitySegmentBuilder>(root_path.string(), version_manager_.get(), partition_id,
-                                                       entity_segment);
+    builder = std::make_shared<TsEntitySegmentBuilder>(root_path.string(), schema_mgr_, version_manager_.get(),
+                                                       partition_id, entity_segment);
     KStatus s = builder->Open();
     if (s != KStatus::SUCCESS) {
       partition->ResetStatus();
@@ -2221,8 +2221,9 @@ KStatus TsVGroup::VacuumPartition(kwdbContext_p ctx, shared_ptr<const TsPartitio
   return SUCCESS;
 }
 
-BlocksDistribution GetEntityDistribution(const std::shared_ptr<TsEntitySegment>& entity_segment, const uint32_t& entity_id) {
-  std::vector<TsEntitySegmentBlockItem> entity_items;
+BlocksDistribution GetEntityDistribution(const std::shared_ptr<TsEntitySegment>& entity_segment,
+                                         const uint32_t& entity_id) {
+  std::vector<TsEntitySegmentBlockItemWithData> entity_items;
   BlocksDistribution blocks_distribution;
   KStatus s = entity_segment->GetAllBlockItems(entity_id, &entity_items);
   if (s != KStatus::SUCCESS) {
@@ -2234,9 +2235,9 @@ BlocksDistribution GetEntityDistribution(const std::shared_ptr<TsEntitySegment>&
   }
   if (!entity_items.empty()) {
     blocks_distribution.blocks_num_ += entity_items.size();
-    for (auto entity_item : entity_items) {
-      blocks_distribution.blocks_size_ += entity_item.block_len;
-      blocks_distribution.rows_num_ += entity_item.n_rows;
+    for (auto& entity_item : entity_items) {
+      blocks_distribution.blocks_size_ += entity_item.block_item->block_len;
+      blocks_distribution.rows_num_ += entity_item.block_item->n_rows;
     }
   }
   blocks_distribution.blocks_size_ += entity_segment->GetAggFileSize();

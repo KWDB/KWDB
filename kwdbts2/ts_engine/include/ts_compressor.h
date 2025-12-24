@@ -86,6 +86,10 @@ class TsSliceGuard {
 
  public:
   TsSliceGuard() : slice{nullptr, 0} {}
+  explicit TsSliceGuard(char* data, size_t len) {
+    slice.data = data;
+    slice.len = len;
+  }
   explicit TsSliceGuard(TSSlice s) : slice{s} {}
   explicit TsSliceGuard(std::string&& str_) : str(std::move(str_)) {
     slice.data = str.data();

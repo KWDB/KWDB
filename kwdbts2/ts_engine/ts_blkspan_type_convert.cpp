@@ -714,6 +714,11 @@ KStatus TSBlkDataTypeConvert::GetFixLenColAddr(const TsBlockSpan* blk_span, uint
 
 KStatus TSBlkDataTypeConvert::GetVarLenTypeColAddr(const TsBlockSpan* blk_span, uint32_t row_idx, uint32_t scan_idx,
                                                    DataFlags& flag, TSSlice& data, TsScanStats* ts_scan_stats) {
+  if (!IsColExist(scan_idx)) {
+    data = {nullptr, 0};
+    flag = DataFlags::kNull;
+    return SUCCESS;
+  }
   auto dest_type = (*version_conv_->scan_attrs_)[scan_idx];
   auto blk_col_idx = version_conv_->blk_cols_extended_[scan_idx];
   assert(isVarLenType(dest_type.type));

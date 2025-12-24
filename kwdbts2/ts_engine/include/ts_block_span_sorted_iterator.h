@@ -23,6 +23,7 @@
 #include "libkwdbts2.h"
 #include "ts_block.h"
 #include "ts_common.h"
+#include "ts_engine_schema_manager.h"
 
 namespace kwdbts {
 
@@ -65,6 +66,7 @@ class TsBlockSpanSortedIterator {
     inline bool operator>=(const TsBlockSpanRowInfo& other) const { return !(*this < other); }
   };
   std::list<shared_ptr<TsBlockSpan>> block_spans_;
+  TsEngineSchemaManager* schema_mgr_;
   DedupRule dedup_rule_ = DedupRule::OVERRIDE;
   bool is_reverse_ = false;
   std::list<TsBlockSpanRowInfo> span_row_infos_;
@@ -151,13 +153,14 @@ class TsBlockSpanSortedIterator {
   }
 
  public:
-  TsBlockSpanSortedIterator(std::list<shared_ptr<TsBlockSpan>>& block_spans, DedupRule dedup_rule = DedupRule::OVERRIDE,
+  TsBlockSpanSortedIterator(std::list<shared_ptr<TsBlockSpan>>& block_spans, TsEngineSchemaManager* schema_mgr,
+                            DedupRule dedup_rule = DedupRule::OVERRIDE,
                             bool is_reverse = false)
-      : block_spans_(std::move(block_spans)), dedup_rule_(dedup_rule), is_reverse_(is_reverse) {}
+      : block_spans_(std::move(block_spans)), schema_mgr_(schema_mgr), dedup_rule_(dedup_rule), is_reverse_(is_reverse) {}
 
-  TsBlockSpanSortedIterator(std::vector<std::shared_ptr<TsBlockSpan>> block_spans,
+  TsBlockSpanSortedIterator(std::vector<std::shared_ptr<TsBlockSpan>> block_spans, TsEngineSchemaManager* schema_mgr,
                             DedupRule dedup_rule = DedupRule::OVERRIDE, bool is_reverse = false)
-      : dedup_rule_(dedup_rule), is_reverse_(is_reverse) {
+      : schema_mgr_(schema_mgr), dedup_rule_(dedup_rule), is_reverse_(is_reverse) {
     block_spans_.resize(block_spans.size());
     std::move(block_spans.begin(), block_spans.end(), block_spans_.begin());
   }
@@ -358,6 +361,97 @@ class TsBlockSpanSortedIterator {
           iter = span_row_infos_.erase(iter);
         } else {
           break;
+        }
+      }
+    } else if (dedup_rule_ == DedupRule::MERGE) {
+      auto iter = span_row_infos_.begin();
+      TsBlockSpanRowInfo dedup_row_info = defaultBlockSpanRowInfo();
+      if (!is_reverse_) {
+        int prev_row_idx = row_idx - 1;
+        assert(prev_row_idx >= 0);
+        getTsAndOSN(cur_block_span, prev_row_idx, cur_span_row_ts, cur_span_row_osn);
+        TsBlockSpanRowInfo prev_row_info = {cur_block_span->GetEntityID(), cur_span_row_ts};
+        if (prev_row_info.IsSameEntityAndTs(next_span_row_info)) {
+          if (prev_row_idx != 0) {
+            cur_block_span->SplitFront(prev_row_idx, block_span);
+            iter = span_row_infos_.end();
+          } else {
+            // need dedup
+            dedup_row_info = next_span_row_info;
+          }
+        } else {
+          if (cur_block_span->GetRowNum() == row_idx) {
+            block_span = std::move(cur_block_span);
+          } else {
+            cur_block_span->SplitFront(row_idx, block_span);
+          }
+          iter = span_row_infos_.end();
+        }
+      } else {
+        int next_row_idx = row_idx + 1;
+        assert(next_row_idx <= cur_block_span->GetRowNum() - 1);
+        getTsAndOSN(cur_block_span, next_row_idx, cur_span_row_ts, cur_span_row_osn);
+        TsBlockSpanRowInfo next_row_info = {cur_block_span->GetEntityID(), cur_span_row_ts};
+        cur_block_span->SplitBack(span_row_infos_.begin()->row_idx - row_idx, block_span);
+        if (next_row_info.IsSameEntityAndTs(next_span_row_info)) {
+          // need dedup
+          dedup_row_info = next_row_info;
+        } else {
+          iter = span_row_infos_.end();
+        }
+      }
+
+      // check whether the current TsBlockSpan is empty.
+      // If it is not empty, it needs to be readded to the linked list.
+      if (cur_block_span) {
+        if (cur_block_span->GetRowNum() != 0) {
+          TsBlockSpanRowInfo next_row_info = getFirstRowInfo(cur_block_span);
+          span_row_infos_.pop_front();
+          insertRowInfo(next_row_info);
+        } else {
+          span_row_infos_.pop_front();
+        }
+      } else {
+        span_row_infos_.pop_front();
+      }
+      bool need_dedup = iter != span_row_infos_.end();
+      // dealing with duplicate data in other TsBlockSpan
+      if (need_dedup) {
+        iter = span_row_infos_.begin();
+        uint32_t scan_version = 0;
+        std::list<std::shared_ptr<TsBlockSpan>> dedup_block_spans;
+        while (iter != span_row_infos_.end()) {
+          if (iter->IsSameEntityAndTs(dedup_row_info)) {
+            std::shared_ptr<TsBlockSpan> dedup_block_span;
+            if (!is_reverse_) {
+              iter->block_span->SplitFront(1, dedup_block_span);
+              dedup_block_spans.push_back(dedup_block_span);
+            } else {
+              iter->block_span->SplitBack(1, dedup_block_span);
+              dedup_block_spans.push_front(dedup_block_span);
+            }
+            if (dedup_block_span->GetScanVersion() > scan_version) {
+              scan_version = dedup_block_span->GetScanVersion();
+            }
+            if (iter->block_span->GetRowNum() != 0) {
+              TsBlockSpanRowInfo next_row_info = getFirstRowInfo(iter->block_span);
+              insertRowInfo(next_row_info, true);
+            }
+            iter = span_row_infos_.erase(iter);
+          } else {
+            break;
+          }
+        }
+        std::shared_ptr<TsTableSchemaManager> tbl_schema_mgr;
+        KStatus s = schema_mgr_->GetTableSchemaMgr(dedup_block_spans.front()->GetTableID(), tbl_schema_mgr);
+        if (s != SUCCESS) {
+          LOG_ERROR("GetTableSchemaMgr failed.");
+          return KStatus::FAIL;
+        }
+        s = TsBlockSpan::MakeMergeBlockSpan(dedup_block_spans, scan_version, tbl_schema_mgr, block_span);
+        if (s != KStatus::SUCCESS) {
+          LOG_ERROR("MakeMergeBlockSpan failed")
+          return KStatus::FAIL;
         }
       }
     } else {

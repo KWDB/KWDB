@@ -1019,6 +1019,10 @@ bool CompressorManager::DecompressData(TSSlice input, const TsBitmapBase *bitmap
     LOG_ERROR("Invalid input length, too short");
     return false;
   }
+  if (*reinterpret_cast<uint32_t*>(input.data) == 0) {
+    *out = TsSliceGuard(input.data + 4, input.len - 4);
+    return true;
+  }
   uint16_t v;
   GetFixed16(&input, &v);
   TsCompAlg first = static_cast<TsCompAlg>(v);

@@ -278,10 +278,6 @@ class TsEntitySegmentBuilder {
     agg_file_builder_ = new TsEntitySegmentAggFileBuilder(agg_file_path, agg_file_num, agg_file_size);
   }
 
-  TsEntitySegmentBuilder(const std::string& root_path, TsVersionManager* version_manager,
-                         PartitionIdentifier partition_id, std::shared_ptr<TsEntitySegment> entity_segment)
-      : TsEntitySegmentBuilder(root_path, nullptr, version_manager, partition_id, entity_segment) {}
-
   ~TsEntitySegmentBuilder() { ReleaseBuilders(); }
 
   KStatus Open();

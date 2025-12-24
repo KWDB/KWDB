@@ -187,7 +187,7 @@ KStatus TsMMapRandomReadFile::Read(size_t offset, size_t n, TsSliceGuard* result
               path_.c_str(), file_size_, offset, n);
     return FAIL;
   }
-  *result = TsSliceGuard(TSSlice{mmap_start_ + offset, n});
+  *result = TsSliceGuard(mmap_start_ + offset, n);
   return SUCCESS;
 }
 
@@ -197,7 +197,7 @@ KStatus TsMMapSequentialReadFile::Read(size_t n, TsSliceGuard* slice) {
               path_.c_str(), file_size_, offset_, n);
     return FAIL;
   }
-  *slice = TsSliceGuard(TSSlice{mmap_start_ + offset_, n});
+  *slice = TsSliceGuard(mmap_start_ + offset_, n);
   offset_ += n;
   return SUCCESS;
 }

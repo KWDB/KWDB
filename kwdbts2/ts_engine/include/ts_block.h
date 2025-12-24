@@ -12,6 +12,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <list>
 #include <memory>
 #include <string>
 #include <vector>
@@ -21,6 +22,7 @@
 #include "libkwdbts2.h"
 #include "ts_bitmap.h"
 #include "ts_blkspan_type_convert.h"
+#include "ts_compressor.h"
 
 namespace kwdbts {
 
@@ -115,6 +117,15 @@ class TsBlockSpan {
     TSEntityID entity_id, std::shared_ptr<TsBlock> block, int start, int nrow,
     uint32_t scan_version, const std::vector<AttributeInfo>* scan_attrs,
     const std::shared_ptr<TsTableSchemaManager>& tbl_schema_mgr, std::shared_ptr<TsBlockSpan>& ret);
+
+  static KStatus GenMergeRowData(std::list<std::shared_ptr<kwdbts::TsBlockSpan>>& dedup_block_spans,
+                                 const std::shared_ptr<TsTableSchemaManager>& tbl_schema_manager,
+                                 std::shared_ptr<TsSliceGuard>& row_data);
+
+  static KStatus MakeMergeBlockSpan(std::list<std::shared_ptr<TsBlockSpan>>& dedup_block_spans,
+                                    uint32_t scan_version, const std::shared_ptr<TsTableSchemaManager>& tbl_schema_manager,
+                                    std::shared_ptr<TsBlockSpan>& block_span);
+
   bool operator<(const TsBlockSpan& other) const;
   void operator=(TsBlockSpan& other) = delete;
 
@@ -137,6 +148,7 @@ class TsBlockSpan {
   TSTableID GetTableID() const { return block_->GetTableId(); }
   uint64_t GetBlockID() const { return block_->GetBlockID(); }
   uint32_t GetTableVersion() const { return block_->GetTableVersion(); }
+  uint32_t GetScanVersion() const { return convert_ ? convert_->scan_version_ : GetTableVersion(); }
   timestamp64 GetTS(uint32_t row_idx, TsScanStats* ts_scan_stats = nullptr) const {
     return block_->GetTS(start_row_ + row_idx, ts_scan_stats);
   }

@@ -149,7 +149,7 @@ KStatus TsEntitySegmentMetaManager::Open() {
 }
 
 KStatus TsEntitySegmentMetaManager::GetAllBlockItems(TSEntityID entity_id,
-                                                    std::vector<TsEntitySegmentBlockItem>* blk_items) {
+                                                    std::vector<TsEntitySegmentBlockItemWithData>* blk_items) {
   TsEntityItem entity_item{entity_id};
   bool is_exist;
   KStatus s = entity_header_.GetEntityItem(entity_id, entity_item, is_exist);
@@ -158,15 +158,14 @@ KStatus TsEntitySegmentMetaManager::GetAllBlockItems(TSEntityID entity_id,
   }
   uint64_t last_blk_id = entity_item.cur_block_id;
 
-  TsEntitySegmentBlockItem* cur_blk_item;
-  TsSliceGuard cur_blk_item_guard;
   while (last_blk_id > 0) {
-    s = block_header_.GetBlockItem(last_blk_id, &cur_blk_item, &cur_blk_item_guard);
+    TsEntitySegmentBlockItemWithData block_item_data;
+    s = block_header_.GetBlockItem(last_blk_id, &block_item_data.block_item, &block_item_data.data);
     if (s != KStatus::SUCCESS) {
       return s;
     }
-    blk_items->push_back(*cur_blk_item);
-    last_blk_id = cur_blk_item->prev_block_id;
+    last_blk_id = block_item_data.block_item->prev_block_id;
+    blk_items->push_back(std::move(block_item_data));
   }
   return KStatus::SUCCESS;
 }

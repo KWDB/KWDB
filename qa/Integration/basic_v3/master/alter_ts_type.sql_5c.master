@@ -639,6 +639,8 @@ ALTER TABLE
 ALTER TABLE
 > alter table test_alter.t10 alter column d type int;
 ALTER TABLE
+> insert into test_alter.t10 values(1672531211005, null, null,  null, null, 1);
+INSERT 1
 > select * from test_alter.t10 order by ts,attr;
                ts               |         a         |   b   |                  c                   |   d    | attr
 --------------------------------+-------------------+-------+--------------------------------------+--------+-------
@@ -676,6 +678,10 @@ INSERT 1
 ALTER TABLE
 > alter table test_alter.t12 alter column a type float4;
 ALTER TABLE
+> insert into test_alter.t12 values(1672531211005, null, 1);
+INSERT 1
+> insert into test_alter.t12 values(1672531211015, null, 1);
+INSERT 1
 > select * from test_alter.t12 order by ts;
                ts               |  a   | attr
 --------------------------------+------+-------

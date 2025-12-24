@@ -322,7 +322,7 @@ class TsRawPayloadRowBuilder {
   }
 
   void SetColValue(int col_id, TSSlice mem) {
-    if (mem.len == 0) {
+    if (mem.data == nullptr && mem.len == 0) {
       return;
     }
     if (col_value_[col_id].data == nullptr) {
@@ -341,7 +341,25 @@ class TsRawPayloadRowBuilder {
     col_value_[col_id].len = 0;
   }
 
-  bool Build(TSSlice* row_data);
+  void GetRowInfo(size_t& bitmap_len, size_t& fixed_tuple_len, size_t& var_part_len) {
+    bitmap_len = (schema_.size() + 7) / 8;
+    fixed_tuple_len = 0;
+    var_part_len = 0;
+    for (size_t i = 0; i < schema_.size(); i++) {
+      if (isVarLenType(schema_[i].type)) {
+        fixed_tuple_len += 8;
+        size_t cur_col_var_len = 2;
+        if (col_value_[i].data != nullptr) {
+          cur_col_var_len += col_value_[i].len;
+        }
+        var_part_len += cur_col_var_len;
+      } else {
+        fixed_tuple_len += schema_[i].size;
+      }
+    }
+  }
+
+  bool Build(TSSlice* row_data, bool need_malloc = true);
 };
 
 

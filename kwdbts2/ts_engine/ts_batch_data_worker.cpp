@@ -162,7 +162,9 @@ KStatus TsReadBatchDataWorker::NextBlockSpansIterator() {
   block_spans_iterator_ = nullptr;
   if (!block_spans.empty()) {
     // init block span iterator
-    block_spans_iterator_ = std::make_shared<TsBlockSpanSortedIterator>(block_spans, EngineOptions::g_dedup_rule);
+    block_spans_iterator_ = std::make_shared<TsBlockSpanSortedIterator>(block_spans,
+                                                                        ts_engine_->GetEngineSchemaManager().get(),
+                                                                        EngineOptions::g_dedup_rule);
     s = block_spans_iterator_->Init();
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("TsReadBatchDataWorker::Init failed, failed to init block span iterator, "

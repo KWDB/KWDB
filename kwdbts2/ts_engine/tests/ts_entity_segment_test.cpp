@@ -648,11 +648,11 @@ TEST_F(TsEntitySegmentTest, TestEntityMinMaxRowNum) {
       ASSERT_EQ(entity_segment->GetEntityItem(eid, entity_item, is_exist), SUCCESS);
 
       if (is_exist) {
-        std::vector<TsEntitySegmentBlockItem> blk_items;
+        std::vector<TsEntitySegmentBlockItemWithData> blk_items;
         ASSERT_EQ(entity_segment->GetAllBlockItems(eid, &blk_items), SUCCESS);
         ASSERT_EQ(blk_items.size(), expect.nblock_in_entity_segment);
         int nrow = std::accumulate(blk_items.begin(), blk_items.end(), 0,
-                                   [](int sum, TsEntitySegmentBlockItem& blk_item) { return sum + blk_item.n_rows; });
+                                   [](int sum, TsEntitySegmentBlockItemWithData& blk_item_data) { return sum + blk_item_data.block_item->n_rows; });
         EXPECT_EQ(nrow, expect.row_num_in_entity_segment);
       }
 

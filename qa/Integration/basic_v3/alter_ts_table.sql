@@ -16,7 +16,7 @@ alter table test_alter.t1 add column c int;
 insert into test_alter.t1 values(1672531205000, 555, NULL, 3);
 insert into test_alter.t1 values(1672531206000, 666, 11, 1);
 insert into test_alter.t1 values(1672531207000, 777, NULL, 2);
---insert into test_alter.t1 values(1672531207000, NULL, 0, 2);
+insert into test_alter.t1 values(1672531207000, NULL, 0, 2);
 insert into test_alter.t1 values(1672531208000, 888, 33, 3);
 
 alter table test_alter.t1 add column d float;
@@ -137,7 +137,7 @@ alter table test_alter.t4 add tag attr29_a1 nchar(254);
 alter table test_alter.t4 add tag attr30_a1 varchar;
 alter table test_alter.t4 add tag attr31_a1 varchar(1023);
 insert into test_alter.t4 (k_timestamp, e1, code1, attr17_a1, attr18_a1, attr19_a1, attr20_a1, attr21_a1, attr22_a1, attr25_a1, attr26_a1, attr27_a1, attr28_a1, attr29_a1, attr30_a1, attr31_a1) values ('2024-01-01t00:00:03+00:00',1,1, 1, 733, 969, 4593.82364066433, -3412.391887694972, false, 'y', 'e', 'x', 'w', 'r', 'f','l');
--- delete from test_alter.t4 where code1 = 1;
+delete from test_alter.t4 where code1 = 1;
 alter table test_alter.t4 add column if not exists c1 int8 null;
 alter table test_alter.t4 add column if not exists c2 int4 null;
 alter table test_alter.t4 add column if not exists c3 int2 null;
@@ -446,7 +446,7 @@ insert into test_alter.t11 values(1672531201000, '111', 100, 1);
 SET CLUSTER SETTING ts.dedup.rule = 'merge';
 alter table test_alter.t11 add column d int;
 alter table test_alter.t11 drop column d;
---insert into test_alter.t11 values(1672531201000, NULL, 101, 1);
+insert into test_alter.t11 values(1672531201000, NULL, 101, 1);
 select * from test_alter.t11;
 
 -- ZDP-34369

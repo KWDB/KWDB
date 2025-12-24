@@ -682,8 +682,8 @@ KStatus TsSortedRawDataIteratorV2Impl::ScanAndSortEntityData(timestamp64 ts, TsS
       block_span_sorted_iterator_ = nullptr;
     } else {
       // sort the block span data
-      block_span_sorted_iterator_ = std::make_shared<TsBlockSpanSortedIterator>(ts_block_spans_, EngineOptions::g_dedup_rule,
-                                                                                is_reversed_);
+      block_span_sorted_iterator_ = std::make_shared<TsBlockSpanSortedIterator>(ts_block_spans_, vgroup_->GetSchemaMgr(),
+                                                                                EngineOptions::g_dedup_rule, is_reversed_);
       ret = block_span_sorted_iterator_->Init();
       if (ret != KStatus::SUCCESS) {
         LOG_ERROR("Failed to init block span sorted iterator for entity(%d).", entity_ids_[cur_entity_index_]);
@@ -1261,7 +1261,7 @@ KStatus TsAggIteratorV2Impl::CountAggregate(TsScanStats* ts_scan_stats) {
       } else {
         uint64_t mem_count = 0;
         std::vector<KwTsSpan> mem_ts_spans;
-        TsBlockSpanSortedIterator iter(mem_block_spans, EngineOptions::g_dedup_rule);
+        TsBlockSpanSortedIterator iter(mem_block_spans, vgroup_->GetSchemaMgr(), EngineOptions::g_dedup_rule);
         iter.Init();
         std::shared_ptr<TsBlockSpan> mem_block;
         bool is_finished = false;
@@ -1324,7 +1324,7 @@ KStatus TsAggIteratorV2Impl::RecalculateCountInfo(std::shared_ptr<const TsPartit
     LOG_ERROR("RecalculateCountInfo get mem block span failed.");
     return ret;
   }
-  TsBlockSpanSortedIterator iter(count_block_spans, EngineOptions::g_dedup_rule);
+  TsBlockSpanSortedIterator iter(count_block_spans, vgroup_->GetSchemaMgr(), EngineOptions::g_dedup_rule);
   iter.Init();
   std::shared_ptr<TsBlockSpan> dedup_block_span;
   bool is_finished = false;
@@ -1363,7 +1363,7 @@ KStatus TsAggIteratorV2Impl::UpdateAggregation(bool can_remove_last_candidate, T
   KStatus ret;
 
   std::vector<shared_ptr<TsBlockSpan>> ts_block_spans;
-  TsBlockSpanSortedIterator iter(ts_block_spans_, EngineOptions::g_dedup_rule);
+  TsBlockSpanSortedIterator iter(ts_block_spans_, vgroup_->GetSchemaMgr(), EngineOptions::g_dedup_rule);
   iter.Init();
   std::shared_ptr<TsBlockSpan> dedup_block_span;
   bool is_finished = false;
@@ -2270,7 +2270,8 @@ KStatus TsOffsetIteratorV2Impl::ScanPartitionBlockSpans(uint32_t* cnt, TsScanSta
         }
       }
 
-      TsBlockSpanSortedIterator sorted_iter(dedup_block_spans, EngineOptions::g_dedup_rule, is_reversed_);
+      TsBlockSpanSortedIterator sorted_iter(dedup_block_spans, vgroup->GetSchemaMgr(),
+                                            EngineOptions::g_dedup_rule, is_reversed_);
       ret = sorted_iter.Init();
       if (ret != KStatus::SUCCESS) {
         LOG_ERROR("TsOffsetIteratorV2Impl failed to init block span sorted iterator for partition: %lu.", p_time_it_->first);

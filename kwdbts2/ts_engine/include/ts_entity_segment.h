@@ -57,6 +57,11 @@ static_assert(sizeof(TsEntitySegmentBlockItem) == 128,
 // static_assert(std::has_unique_object_representations_v<TsEntitySegmentBlockItem>,
 //               "check padding in TsEntitySegmentBlockItem");
 
+struct TsEntitySegmentBlockItemWithData {
+  TsEntitySegmentBlockItem* block_item = nullptr;
+  TsSliceGuard data{};
+};
+
 static constexpr uint64_t TS_ENTITY_SEGMENT_ENTITY_ITEM_FILE_MAGIC = 0xcb2ffe9321847272;
 static constexpr uint64_t TS_ENTITY_SEGMENT_BLOCK_ITEM_FILE_MAGIC = 0xcb2ffe9321847273;
 
@@ -207,7 +212,7 @@ class TsEntitySegmentMetaManager {
 
   KStatus Open();
 
-  KStatus GetAllBlockItems(TSEntityID entity_id, std::vector<TsEntitySegmentBlockItem>* blk_items);
+  KStatus GetAllBlockItems(TSEntityID entity_id, std::vector<TsEntitySegmentBlockItemWithData>* blk_items);
 
   KStatus GetBlockSpans(const TsBlockItemFilterParams& filter, std::shared_ptr<TsEntitySegment> entity_segment,
                         std::list<shared_ptr<TsBlockSpan>>& block_spans,
@@ -453,7 +458,7 @@ class TsEntitySegment : public TsSegmentBase, public enable_shared_from_this<TsE
     RW_LATCH_UNLOCK(&entity_blocks_rw_latch_);
   }
 
-  KStatus GetAllBlockItems(TSEntityID entity_id, std::vector<TsEntitySegmentBlockItem>* blk_items) {
+  KStatus GetAllBlockItems(TSEntityID entity_id, std::vector<TsEntitySegmentBlockItemWithData>* blk_items) {
     return meta_mgr_.GetAllBlockItems(entity_id, blk_items);
   }
 
