@@ -1995,6 +1995,10 @@ func intFormatBinary(
 	case types.IntFamily, types.TimestampTZFamily, types.TimestampFamily, types.BoolFamily:
 		switch column.Type.Oid() {
 		case oid.T_int2:
+			if len(Args[idx]) < 2 {
+				return pgerror.Newf(pgcode.ProtocolViolation,
+					"error in argument for $%d int2 requires 2 bytes for binary format", idx)
+			}
 			if infer == oid.T_int2 {
 				var intValue int16
 				for _, b := range Args[idx] {
@@ -2005,7 +2009,6 @@ func intFormatBinary(
 						"integer out of range for type %s (column %q)",
 						column.Type.SQLString(), column.Name)
 				}
-				Args[idx] = make([]uint8, len(Args[idx]))
 				binary.LittleEndian.PutUint16(Args[idx], uint16(intValue))
 			} else {
 				var intValue int32
@@ -2025,20 +2028,25 @@ func intFormatBinary(
 				}
 			}
 		case oid.T_int4:
-			if infer == oid.T_int2 {
-				binary.LittleEndian.PutUint16(Args[idx], binary.BigEndian.Uint16(Args[idx]))
-			} else {
-				if len(Args[idx]) > 4 {
-					intValue := int64(binary.BigEndian.Uint64(Args[idx]))
-					if intValue < math.MinInt32 || intValue > math.MaxInt32 {
-						return pgerror.Newf(pgcode.NumericValueOutOfRange,
-							"integer out of range for type %s (column %q)",
-							column.Type.SQLString(), column.Name)
-					}
-				}
-				binary.LittleEndian.PutUint32(Args[idx], binary.BigEndian.Uint32(Args[idx]))
+			if len(Args[idx]) < 4 {
+				return pgerror.Newf(pgcode.ProtocolViolation,
+					"error in argument for $%d int4 requires 4 bytes for binary format", idx)
 			}
+			var intValue int64
+			for _, b := range Args[idx] {
+				intValue = (intValue << 8) | int64(b)
+			}
+			if intValue < math.MinInt32 || intValue > math.MaxInt32 {
+				return pgerror.Newf(pgcode.NumericValueOutOfRange,
+					"integer out of range for type %s (column %q)",
+					column.Type.SQLString(), column.Name)
+			}
+			binary.LittleEndian.PutUint32(Args[idx], binary.BigEndian.Uint32(Args[idx]))
 		case oid.T_int8:
+			if len(Args[idx]) < 8 {
+				return pgerror.Newf(pgcode.ProtocolViolation,
+					"error in argument for $%d int8 requires 8 bytes for binary format", idx)
+			}
 			if infer == oid.T_int8 {
 				binary.LittleEndian.PutUint64(Args[idx], binary.BigEndian.Uint64(Args[idx]))
 			} else if infer == oid.T_int4 {
