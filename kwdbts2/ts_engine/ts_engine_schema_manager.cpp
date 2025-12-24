@@ -293,9 +293,18 @@ KStatus TsEngineSchemaManager::GetVGroup(kwdbContext_p ctx, const std::shared_pt
   uint32_t entityid, groupid;
   if (tag_schema->hasPrimaryKey(primary_key.data, primary_key.len, entityid, groupid)) {
     *entity_id = entityid;
-    *vgroup_id = groupid;
-    *new_tag = false;
-    return KStatus::SUCCESS;
+    if (groupid <= 0 || EngineOptions::vgroup_max_num < groupid) {
+      LOG_ERROR("Failed to obtain the vgroup id! vgroup_max_num is [%d], vgroup_id is [%u]",
+                EngineOptions::vgroup_max_num, groupid);
+      // After power failure, the tag data is incomplete. Delete the existing ptag.
+      ErrorInfo err_info;
+      std::pair<uint64_t, uint64_t> ignore;
+      tag_schema->DeleteTagRecord(primary_key.data, primary_key.len, err_info, 0, OperateType::Ignore, ignore);
+    } else {
+      *vgroup_id = groupid;
+      *new_tag = false;
+      return KStatus::SUCCESS;
+    }
   }
   // use consistent hash to allocate vgroup id
   *vgroup_id = GetConsistentVgroupId(primary_key.data, primary_key.len, EngineOptions::vgroup_max_num);
