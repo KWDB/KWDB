@@ -16,6 +16,7 @@
 #include "ee_timestamp_utils.h"
 #include "ee_sort_compare.h"
 #include "ee_ryu_dbconvert.h"
+#include "libkwdbts2.h"  // for goGetTzOffset
 namespace kwdbts {
 // %.g buffer size is 64 characters (including null terminator)
 #define BUF_SIZE 64
@@ -1215,19 +1216,26 @@ KStatus DataChunk::EncodingValue(kwdbContext_p ctx, k_uint32 row, k_uint32 col, 
   Return(ret);
 }
 
-static inline k_uint8 format_timestamp(const CKTime& ck_time, KWDBTypeFamily return_type, kwdbContext_p ctx,
-                                       char* buf) {
-  // copy
-  CKTime adjusted_time = ck_time;
-  if (return_type == KWDBTypeFamily::TimestampTZFamily) {
-    adjusted_time.t_timespec.tv_sec += adjusted_time.t_abbv;
+// Get DST-aware timezone offset via CGO callback
+// Returns the offset in seconds, or falls back to fixed offset if CGO fails
+static inline k_int32 get_dst_offset(k_int64 unix_sec, char* timezone_name,
+                                     k_int32 fallback_offset_sec) {
+  if (goGetTzOffset == nullptr) {
+    return fallback_offset_sec;
   }
+  int32_t dst_offset = 0;
+  char abbrev[16] = {0};
+  if (goGetTzOffset(unix_sec, timezone_name, &dst_offset, abbrev, sizeof(abbrev))) {
+    return dst_offset;
+  }
+  return fallback_offset_sec;
+}
 
-  // sec
+static inline k_uint8 format_timestamp_common(const CKTime& adjusted_time, k_bool include_timezone,
+                                              k_int32 tz_offset_sec, char* buf) {
   tm ts{};
   ToGMT(adjusted_time.t_timespec.tv_sec, ts);
 
-  // buf
   char* p = buf;
 
   // YYYY-MM-DD HH:MM:SS
@@ -1318,28 +1326,57 @@ static inline k_uint8 format_timestamp(const CKTime& ck_time, KWDBTypeFamily ret
     *p++ = '0' + (nsec % 10);
   }
 
-  // timezone +-HH:00
-  if (return_type == KWDBTypeFamily::TimestampTZFamily) {
-    const k_int32 timezone = ctx->timezone;
-    const k_int32 tz_hour = std::abs(timezone);
-
-    *p++ = (timezone >= 0) ? '+' : '-';
+  if (include_timezone) {
+    const k_int32 total_minutes = tz_offset_sec / 60;
+    const k_int32 tz_hour = std::abs(total_minutes) / 60;
+    const k_int32 tz_min = std::abs(total_minutes) % 60;
+    *p++ = (tz_offset_sec >= 0) ? '+' : '-';
     *p++ = '0' + (tz_hour / 10);
     *p++ = '0' + (tz_hour % 10);
     *p++ = ':';
-    *p++ = '0';
-    *p++ = '0';
+    *p++ = '0' + (tz_min / 10);
+    *p++ = '0' + (tz_min % 10);
   }
 
-  // Append " BC" suffix for BC years (pgwire format)
   if (is_bc) {
     *p++ = ' ';
     *p++ = 'B';
     *p++ = 'C';
   }
 
-  // return length
   return static_cast<k_uint8>(p - buf);
+}
+
+// Format timestamp with DST support (for DST-observing timezones)
+static inline k_uint8 format_timestamp_with_dst(const CKTime& ck_time, kwdbContext_p ctx,
+                                                char* buf) {
+  // Get DST-aware offset via CGO callback
+  k_int32 offset_sec =
+      get_dst_offset(ck_time.t_timespec.tv_sec, ctx->timezone_name, ctx->timezone * 3600);
+
+  // Adjust time with DST offset
+  CKTime adjusted_time = ck_time;
+  adjusted_time.t_timespec.tv_sec += offset_sec;
+  return format_timestamp_common(adjusted_time, true, offset_sec, buf);
+}
+
+// Format timestamp without DST (original logic)
+static inline k_uint8 format_timestamp(const CKTime& ck_time, KWDBTypeFamily return_type,
+                                       kwdbContext_p ctx, char* buf) {
+  const k_bool include_timezone = (return_type == KWDBTypeFamily::TimestampTZFamily);
+
+  // For TimestampTZFamily with DST support, use dedicated DST method
+  if (ctx->use_dst && include_timezone) {
+    return format_timestamp_with_dst(ck_time, ctx, buf);
+  }
+
+  // (no DST)
+  CKTime adjusted_time = ck_time;
+  if (include_timezone) {
+    adjusted_time.t_timespec.tv_sec += adjusted_time.t_abbv;
+  }
+
+  return format_timestamp_common(adjusted_time, include_timezone, ctx->timezone * 3600, buf);
 }
 
 /**

@@ -86,19 +86,22 @@ typedef uint32_t EntityID;
 #define TRACE_DIR_MAX_LEN (64)
 #define HOST_NAME_MAX_LEN (64)
 #define USER_NAME_MAX_LEN (64)
+#define TIMEZONE_MAX_LEN (64)
 
 typedef struct _KContext_t {
   _KContext_t() :
     max_stack_size(0),
     frame_level(0),
     connection_id(0),
-    timezone(8) {
+    timezone(8),
+    use_dst(false) {
     for (int i = 0; i < CTX_MAX_FRAME_LEVEL; i++) {
       memset(file_name[i], '\0', CTX_MAX_FILE_NAME_LEN);
       memset(func_name[i], '\0', CTX_MAX_FILE_NAME_LEN);
       func_start_time[i] = 0;
       func_end_time[i] = 0;
     }
+    memcpy(timezone_name, "UTC", 4);
     memset(msg_buf, '\0', 256);
     snprintf(assert_file_name, sizeof(assert_file_name), "./kwdb_assert.txt");
   }
@@ -110,6 +113,8 @@ typedef struct _KContext_t {
   k_uint8    frame_level;   //  current function frame level in file_name/func_name stack;
   KConnId connection_id;   // current connection id
   k_int8 timezone;  // current session timezone
+  char timezone_name[TIMEZONE_MAX_LEN];  // IANA timezone name (e.g. "Europe/Berlin") for DST support
+  k_bool use_dst;  // cached DST requirement flag
   char msg_buf[256];  // temp buffer for snprintf or sprint or other purpose
   char assert_file_name[128] = "./kwdb_assert.txt";  // file name used to store assert dump info
   uint64_t relation_ctx;

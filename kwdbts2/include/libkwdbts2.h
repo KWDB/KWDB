@@ -215,6 +215,8 @@ typedef struct _QueryInfo {
   int32_t ret;
   void* handle;
   int32_t time_zone;
+  TSSlice time_zone_name;  // IANA timezone name for DST support
+  bool use_dst;            // DST flag calculated by Go layer
   uint64_t relation_ctx;
   // only pass the rel data chunk pointer and count info to tse for multiple model processing
   // when the switch is on and the server starts with single node mode.
@@ -538,6 +540,18 @@ TSStatus TSFlushVGroups(TSEngine* engine);
 void TsGetRecentBlockCacheInfo(uint32_t* hit_count, uint32_t* miss_count, uint64_t* memory_size);
 
 bool __attribute__((weak)) isCanceledCtx(uint64_t goCtxPtr);
+
+/**
+ * @brief Get timezone offset for a specific UTC timestamp (supports DST)
+ * @param[in]  utc_sec      UTC seconds (Unix timestamp)
+ * @param[in]  tz_name      Timezone name (e.g. "Europe/Berlin")
+ * @param[out] offset_sec   Returns offset in seconds (e.g. 7200 for CEST, 3600 for CET)
+ * @param[out] abbrev       Returns timezone abbreviation (e.g. "CEST", "CET")
+ * @param[in]  abbrev_len   Length of abbrev buffer
+ * @return     true=success, false=failure (should fallback to ctx->timezone)
+ */
+bool __attribute__((weak)) goGetTzOffset(int64_t utc_sec, char* tz_name,
+                                          int32_t* offset_sec, char* abbrev, int abbrev_len);
 
 int __attribute__((weak)) goPrepareFlush();
 int __attribute__((weak)) goFlushed();

@@ -39,6 +39,7 @@ import (
 	"fmt"
 	"math"
 	"strconv"
+	"sync"
 	"time"
 	"unsafe"
 
@@ -230,14 +231,16 @@ type TsEngineConfig struct {
 
 // TsQueryInfo the parameter and return value passed by the query
 type TsQueryInfo struct {
-	Buf      []byte
-	RowNum   int
-	ID       int
-	UniqueID int
-	TimeZone int
-	Code     int
-	Handle   unsafe.Pointer
-	Fetcher  TsFetcher
+	Buf          []byte
+	RowNum       int
+	ID           int
+	UniqueID     int
+	TimeZone     int
+	TimeZoneName string // IANA timezone name (e.g. "Europe/Berlin") for DST support
+	UseDST       bool   // DST flag calculated by Go layer
+	Code         int
+	Handle       unsafe.Pointer
+	Fetcher      TsFetcher
 	// only pass the data chunk to tse for multiple model processing
 	// when the switch is on and the server starts with single node mode.
 	PushData *DataChunkGo
@@ -388,6 +391,56 @@ func isCanceledCtx(goCtxPtr C.uint64_t) C.bool {
 	default:
 		return C.bool(false)
 	}
+}
+
+// tzCache caches time.Location objects for performance
+var tzCache sync.Map // map[string]*time.Location
+
+// goGetTzOffset returns the timezone offset for a specific UTC timestamp (supports DST)
+// Returns true on success, false on failure (caller should fallback to default offset)
+//
+//export goGetTzOffset
+func goGetTzOffset(
+	utcSec C.int64_t, tzName *C.char, offsetSec *C.int32_t, abbrev *C.char, abbrevLen C.int,
+) C.bool {
+	tzNameStr := C.GoString(tzName)
+	if tzNameStr == "" {
+		return C.bool(false)
+	}
+
+	// Try to get from cache
+	var loc *time.Location
+	if cached, ok := tzCache.Load(tzNameStr); ok {
+		loc = cached.(*time.Location)
+	} else {
+		// Load and cache
+		var err error
+		loc, err = timeutil.TimeZoneStringToLocation(tzNameStr,
+			timeutil.TimeZoneStringToLocationISO8601Standard)
+		if err != nil {
+			return C.bool(false)
+		}
+		tzCache.Store(tzNameStr, loc)
+	}
+
+	// Get timezone info at the specific UTC timestamp
+	abbr, offset := timeutil.Unix(int64(utcSec), 0).In(loc).Zone()
+	*offsetSec = C.int32_t(offset) // offset in seconds (includes DST)
+
+	// Copy timezone abbreviation (e.g. "CET", "CEST", "PST", "PDT")
+	if abbrev != nil && abbrevLen > 0 {
+		abbrBytes := []byte(abbr)
+		maxLen := int(abbrevLen) - 1
+		if len(abbrBytes) > maxLen {
+			abbrBytes = abbrBytes[:maxLen]
+		}
+		for i, b := range abbrBytes {
+			*(*C.char)(unsafe.Pointer(uintptr(unsafe.Pointer(abbrev)) + uintptr(i))) = C.char(b)
+		}
+		*(*C.char)(unsafe.Pointer(uintptr(unsafe.Pointer(abbrev)) + uintptr(len(abbrBytes)))) = 0
+	}
+
+	return C.bool(true)
 }
 
 // NewTsEngine new ts engine
@@ -1063,6 +1116,18 @@ func (r *TsEngine) tsExecute(
 	queryInfo.handle = tsQueryInfo.Handle
 	queryInfo.unique_id = C.int(tsQueryInfo.UniqueID)
 	queryInfo.time_zone = C.int(tsQueryInfo.TimeZone)
+	var cTzNameSlice C.TSSlice
+	queryInfo.use_dst = C.bool(tsQueryInfo.UseDST)
+	if queryInfo.use_dst && tsQueryInfo.TimeZoneName != "" {
+		tzNameBytes := []byte(tsQueryInfo.TimeZoneName)
+		cTzName := C.CBytes(tzNameBytes)
+		defer C.free(unsafe.Pointer(cTzName))
+		cTzNameSlice = C.TSSlice{
+			data: (*C.char)(cTzName),
+			len:  C.size_t(len(tzNameBytes)),
+		}
+		queryInfo.time_zone_name = cTzNameSlice
+	}
 	queryInfo.relation_ctx = C.uint64_t(uintptr(unsafe.Pointer(ctx)))
 	cTsSlice := C.TSSlice{
 		data: (*C.char)(C.CBytes([]byte(tsQueryInfo.SQL))),

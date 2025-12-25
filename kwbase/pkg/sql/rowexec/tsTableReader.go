@@ -35,6 +35,7 @@ import (
 	"context"
 	"fmt"
 	"math/rand"
+	"strings"
 	"sync"
 	"time"
 	"unsafe"
@@ -75,6 +76,8 @@ type TsTableReader struct {
 	sid              execinfrapb.StreamID
 	tsProcessorSpecs []execinfrapb.ProcessorSpec
 	timeZone         int
+	timeZoneName     string // IANA timezone name for DST support
+	useDST           bool   // Whether timezone observes DST
 
 	value0 bool
 	rowNum int
@@ -270,11 +273,13 @@ func (ttr *TsTableReader) Next() (sqlbase.EncDatumRow, *execinfrapb.ProducerMeta
 		if len(ttr.Rev) == 0 || (ttr.value0 && ttr.rowNum == 0) {
 			// Prepare query info
 			tsQueryInfo := tse.TsQueryInfo{
-				ID:       int(ttr.sid),
-				Handle:   ttr.tsHandle,
-				TimeZone: ttr.timeZone,
-				Buf:      []byte(cmdExecNext),
-				Fetcher:  tse.TsFetcher{Collected: ttr.collected},
+				ID:           int(ttr.sid),
+				Handle:       ttr.tsHandle,
+				TimeZone:     ttr.timeZone,
+				TimeZoneName: ttr.timeZoneName,
+				UseDST:       ttr.useDST,
+				Buf:          []byte(cmdExecNext),
+				Fetcher:      tse.TsFetcher{Collected: ttr.collected},
 			}
 			// Init analyse fetcher.
 			if ttr.collected {
@@ -322,11 +327,13 @@ func (ttr *TsTableReader) Next() (sqlbase.EncDatumRow, *execinfrapb.ProducerMeta
 func (ttr *TsTableReader) NextPgWire() (val []byte, code int, err error) {
 	for ttr.State == execinfra.StateRunning {
 		var tsQueryInfo = tse.TsQueryInfo{
-			ID:       int(ttr.sid),
-			Handle:   ttr.tsHandle,
-			Buf:      []byte(cmdExecNext),
-			TimeZone: ttr.timeZone,
-			Fetcher:  tse.TsFetcher{Collected: ttr.collected},
+			ID:           int(ttr.sid),
+			Handle:       ttr.tsHandle,
+			Buf:          []byte(cmdExecNext),
+			TimeZone:     ttr.timeZone,
+			TimeZoneName: ttr.timeZoneName,
+			UseDST:       ttr.useDST,
+			Fetcher:      tse.TsFetcher{Collected: ttr.collected},
 		}
 
 		// Init analyse fetcher.
@@ -448,12 +455,14 @@ func (ttr *TsTableReader) setupTsFlow(ctx context.Context) error {
 
 	// Create query info for the TS engine
 	tsQueryInfo := tse.TsQueryInfo{
-		ID:       int(ttr.sid),
-		Buf:      msg,
-		UniqueID: randomNumber,
-		Handle:   ttr.tsHandle, // Will be set by the engine
-		TimeZone: timezone,
-		SQL:      ttr.EvalCtx.Planner.GetStmt(),
+		ID:           int(ttr.sid),
+		Buf:          msg,
+		UniqueID:     randomNumber,
+		Handle:       ttr.tsHandle, // Will be set by the engine
+		TimeZone:     timezone,
+		TimeZoneName: ttr.timeZoneName,
+		UseDST:       ttr.useDST,
+		SQL:          ttr.EvalCtx.Planner.GetStmt(),
 	}
 
 	respInfo, err := ttr.FlowCtx.Cfg.TsEngine.SetupTsFlow(&(ttr.Ctx), tsQueryInfo)
@@ -470,7 +479,7 @@ func (ttr *TsTableReader) setupTsFlow(ctx context.Context) error {
 	return nil
 }
 
-// setupTimezone determines the timezone offset to use for the query
+// setupTimezone determines the timezone offset and DST flag to use for the query
 func (ttr *TsTableReader) setupTimezone(ctx context.Context) (int, error) {
 	locStr := ttr.EvalCtx.GetLocation().String()
 	loc, err := timeutil.TimeZoneStringToLocation(locStr, timeutil.TimeZoneStringToLocationISO8601Standard)
@@ -487,7 +496,48 @@ func (ttr *TsTableReader) setupTimezone(ctx context.Context) (int, error) {
 	timezone := offset / 3600
 	ttr.timeZone = timezone
 
+	// Check if timezone observes DST by comparing winter and summer offsets
+	// Only store timezone name when DST is supported (for DST calculation)
+	ttr.useDST = ttr.checkDSTSupport(loc)
+	if ttr.useDST {
+		ttr.timeZoneName = loc.String()
+	}
+
 	return timezone, nil
+}
+
+// checkDSTSupport checks if a timezone observes Daylight Saving Time
+func (ttr *TsTableReader) checkDSTSupport(loc *time.Location) bool {
+	locName := loc.String()
+	// Fast path for high-frequency timezones (UTC, GMT, China, fixed offset)
+	switch locName {
+	case "UTC", "GMT", "Asia/Shanghai", "Asia/Chongqing", "PRC":
+		return false
+	}
+	if strings.HasPrefix(locName, "fixed offset:") {
+		return false
+	}
+
+	// Comprehensive DST detection for all other timezones
+	// Sample 4 points across the year to cover all DST patterns:
+	// - Northern hemisphere: DST typically Mar-Nov
+	// - Southern hemisphere: DST typically Oct-Apr
+	// - Special cases: Iran (Mar-Sep), Morocco (variable)
+	var samplePoints = [4]int64{
+		1736942400, // 2025-01-15 12:00:00 UTC
+		1744718400, // 2025-04-15 12:00:00 UTC
+		1752667200, // 2025-07-15 12:00:00 UTC
+		1760529600, // 2025-10-15 12:00:00 UTC
+	}
+	_, baseOffset := timeutil.Unix(samplePoints[0], 0).In(loc).Zone()
+	for i := 1; i < len(samplePoints); i++ {
+		_, compareOffset := timeutil.Unix(samplePoints[i], 0).In(loc).Zone()
+		if compareOffset != baseOffset {
+			return true
+		}
+	}
+
+	return false
 }
 
 // parseRowFromBuffer parses a row from the current buffer

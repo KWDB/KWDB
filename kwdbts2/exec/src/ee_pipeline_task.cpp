@@ -35,6 +35,11 @@ KStatus PipelineTask::Init(kwdbContext_p ctx) {
   is_stop_ = false;
   relation_ctx_ = ctx->relation_ctx;
   timezone_ = ctx->timezone;
+  use_dst_ = ctx->use_dst;
+  // Copy timezone name for DST support if enabled
+  if (use_dst_ && ctx->timezone_name[0] != '\0') {
+    memcpy(timezone_name_, ctx->timezone_name, sizeof(timezone_name_));
+  }
   KWThdContext *main_thd = current_thd;
   thd_ = KNEW KWThdContext();
   if (!thd_) {
@@ -215,6 +220,10 @@ void PipelineTask::Run(kwdbContext_p ctx) {
   ctx->relation_ctx = relation_ctx_;
   ctx->fetcher = fetcher_;
   ctx->timezone = timezone_;
+  ctx->use_dst = use_dst_;
+  if (use_dst_ && timezone_name_[0] != '\0') {
+    memcpy(ctx->timezone_name, timezone_name_, sizeof(ctx->timezone_name));
+  }
   EEIteratorErrCode code = EEIteratorErrCode::EE_ERROR;
   current_thd = thd_;
   thd_->SetPipelineTask(this);

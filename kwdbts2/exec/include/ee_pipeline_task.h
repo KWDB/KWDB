@@ -101,6 +101,8 @@ class PipelineTask : public ExecTask {
   std::atomic_bool in_exec_pool_{false};
   k_uint64 relation_ctx_{0};
   k_int8 timezone_;
+  char timezone_name_[TIMEZONE_MAX_LEN]{0};  // IANA timezone name for DST support
+  k_bool use_dst_{false};      // DST flag for timezone handling
   KWThdContext *thd_{nullptr};
   bool is_clone_{false};
   std::mutex mutex_;

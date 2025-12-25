@@ -124,6 +124,12 @@ KStatus DmlExec::ExecQuery(kwdbContext_p ctx, QueryInfo *req, RespInfo *resp) {
   KStatus ret = KStatus::FAIL;
   ctx->relation_ctx = req->relation_ctx;
   ctx->timezone = req->time_zone;
+  // Copy timezone_name for DST support
+  ctx->use_dst = req->use_dst;
+  if (req->use_dst && req->time_zone_name.len > 0 && req->time_zone_name.data != nullptr) {
+    memcpy(ctx->timezone_name, req->time_zone_name.data, req->time_zone_name.len);
+    ctx->timezone_name[req->time_zone_name.len] = '\0';
+  }
   EnMqType type = req->tp;
   k_char *message = static_cast<k_char *>(req->value);
   k_uint32 len = req->len;
