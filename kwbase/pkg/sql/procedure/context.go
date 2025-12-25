@@ -51,6 +51,15 @@ type SpExecContext struct {
 	// Fn saves function that optimize and build
 	Fn exec.ProcedurePlanFn
 
+	// GetResultFn saves get result columns function
+	GetResultFn GetResultCallBKFn
+
+	// RunPlanFn saves the function for run plan
+	RunPlanFn RunPlanCallBKFn
+
+	// StartPlanFn saves the function for start plan
+	StartPlanFn StartPlanCallBKFn
+
 	// TriggerReplaceValues is the interface for trigger replacement.
 	TriggerReplaceValues exec.PlaceHolderExecute
 }
@@ -97,6 +106,9 @@ func (c *SpExecContext) Inherit(src *SpExecContext) {
 	c.procedureTxn = src.procedureTxn
 	c.continueExec = src.continueExec
 	c.Fn = src.Fn
+	c.GetResultFn = src.GetResultFn
+	c.RunPlanFn = src.RunPlanFn
+	c.StartPlanFn = src.StartPlanFn
 	c.TriggerReplaceValues = src.TriggerReplaceValues
 }
 
@@ -264,6 +276,11 @@ func (c *SpExecContext) Close(ctx context.Context) {
 		*c.results = Result{}
 		c.results = nil
 	}
+	for _, v := range c.localCurSorMap {
+		if v.CursorPtr.isOpen {
+			v.CursorPtr.Close()
+		}
+	}
 	c.ret.labelName = ""
 	c.ret.retFlag = false
 	c.ret.handler = nil
@@ -279,13 +296,13 @@ func (c *SpExecContext) SetExceptionErr(err error) {
 	c.ret.exceptionErr = err
 }
 
-// GetHandlerByMode gets a local handler
-func (c *SpExecContext) GetHandlerByMode(m tree.HandlerMode) *HandlerHelper {
+// getHandlerByMode gets a local handler
+func (c *SpExecContext) getHandlerByMode(m tree.HandlerMode) *HandlerHelper {
 	return c.handler[m]
 }
 
-// AddReturn adds return flag and label name
-func (c *SpExecContext) AddReturn(labelName string, handler *HandlerHelper, exceptionErr error) {
+// addReturn adds return flag and label name
+func (c *SpExecContext) addReturn(labelName string, handler *HandlerHelper, exceptionErr error) {
 	c.ret.AddReturnLabel(labelName)
 	if labelName == HandlerLabel && handler != nil {
 		c.ret.AddReturnHandler(handler)

@@ -13,7 +13,6 @@ package optbuilder
 
 import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/opt/memo"
-	"gitee.com/kwbasedb/kwbase/pkg/sql/parser"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgcode"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgerror"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
@@ -68,13 +67,9 @@ func (b *Builder) buildCallProcedure(cp *tree.CallProcedure, inScope *scope) (ou
 	}
 
 	// get AST from metadata
-	procStmt, err := parser.ParseOne(source.BodyStr)
+	createProcStmt, err := ParseCreateProcedure(source.BodyStr)
 	if err != nil {
 		panic(err)
-	}
-	createProcStmt, ok := procStmt.AST.(*tree.CreateProcedure)
-	if !ok {
-		panic(procStmt.SQL)
 	}
 
 	blockComm := b.getProcCommand(&createProcStmt.Block, nil, inScope, inputParams, nil)

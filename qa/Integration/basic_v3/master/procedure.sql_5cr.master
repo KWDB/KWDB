@@ -1867,3 +1867,37 @@ DROP FUNCTION
 DROP TABLE
 > DROP DATABASE power;
 DROP DATABASE
+> DROP DATABASE IF EXISTS db1 cascade;
+DROP DATABASE
+> create ts database db1;
+CREATE TS DATABASE
+> CREATE TABLE db1.t1 (
+    ts TIMESTAMP NOT NULL,
+    e1 INT
+) TAGS (tag1 INT4 NOT NULL ) PRIMARY TAGS(tag1);
+CREATE TABLE
+> create procedure db1.pc1() begin insert into db1.t1 values (now(),1, 10); end;
+CREATE PROCEDURE
+> show create procedure db1.pc1;
+  procedure_name |                                procedure_body
+-----------------+--------------------------------------------------------------------------------
+  pc1            | create procedure db1.pc1() begin insert into db1.t1 values (now(),1, 10); end
+(1 row)
+> call db1.pc1();
+CALL PROCEDURE
+> create procedure db1.pc2() $$ begin insert into db1.t1 values (now(),1, 10); end $$;
+CREATE PROCEDURE
+> show create procedure db1.pc2;
+  procedure_name |                                   procedure_body
+-----------------+--------------------------------------------------------------------------------------
+  pc2            | create procedure db1.pc2() $$ begin insert into db1.t1 values (now(),1, 10); end $$
+(1 row)
+> call db1.pc2();
+CALL PROCEDURE
+> select count(*) from db1.t1;
+  count
+---------
+      2
+(1 row)
+> DROP DATABASE IF EXISTS db1 cascade;
+DROP DATABASE

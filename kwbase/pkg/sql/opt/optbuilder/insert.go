@@ -1569,14 +1569,14 @@ func (b *Builder) checkInputForTSInsert(
 				found := false
 				for k := range inScope.cols {
 					scopeCol := inScope.cols[k]
-					if v.String() == string(scopeCol.name) && scopeCol.isDeclared {
+					if v.String() == string(scopeCol.name) && scopeCol.IsDeclared() {
 						if column.Type.Family() != scopeCol.typ.Family() {
 							return nil, pgerror.Newf(pgcode.DatatypeMismatch,
 								"variable \"%s\" type is %s, does not match the column \"%s\" type: %s",
 								scopeCol.name.String(), scopeCol.typ.SQLString(), column.Name, column.Type.SQLString())
 						}
-						indexVal := tree.NewTypedOrdinalReference(scopeCol.realIdx, scopeCol.typ)
-						indexVal.IsDeclare = true
+						indexVal := tree.NewTypedOrdinalReference(scopeCol.RealIdx(), scopeCol.typ)
+						indexVal.ProcProperty = scopeCol.CopyProcedureProperty()
 						indexVal.SetColFormat(v)
 						inputValues[i][ord] = indexVal
 						found = true
@@ -1589,15 +1589,29 @@ func (b *Builder) checkInputForTSInsert(
 			case *tree.BinaryExpr:
 				return nil, pgerror.Newf(pgcode.Syntax, "unsupported input type BinaryOperator")
 			case *tree.UserDefinedVar:
-				val, ok := ctx.UserDefinedVars[v.VarName].(tree.Datum)
-				if !ok {
-					return nil, pgerror.Newf(pgcode.Syntax, "%s is not defined", v.VarName)
+				if b.insideObjectDef.HasFlags(InsidePrepareOfProcDef) {
+					panic(ProcPrepareUdvErr)
 				}
-				texpr, err := val.TypeCheck(ctx, &column.Type)
-				if err != nil {
-					return nil, err
+				if val1, ok1 := ctx.ProcUserDefinedVars[v.VarName]; ok1 {
+					sm, err1 := b.getColumnMeta(opt.ColumnID(val1.ColumnID))
+					if err1 != nil {
+						panic(err1)
+					}
+					indexVal := tree.NewTypedOrdinalReference(sm.RealIdx(), &column.Type)
+					indexVal.ProcProperty = tree.NewUDFColProperty(false, v.VarName)
+					indexVal.SetUdvColFormat(v)
+					inputValues[i][ord] = indexVal
+				} else {
+					val, ok := ctx.UserDefinedVars[v.VarName].(tree.Datum)
+					if !ok {
+						return nil, pgerror.Newf(pgcode.Syntax, "%s is not defined", v.VarName)
+					}
+					texpr, err := val.TypeCheck(ctx, &column.Type)
+					if err != nil {
+						return nil, err
+					}
+					inputValues[i][ord] = texpr
 				}
-				inputValues[i][ord] = texpr
 			default:
 				return nil, pgerror.Newf(pgcode.Syntax, "unsupported input type %T", v)
 			}

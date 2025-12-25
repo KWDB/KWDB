@@ -28,13 +28,16 @@ import (
 	"context"
 
 	"gitee.com/kwbasedb/kwbase/pkg/sql/delegate"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/lex"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/opt"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/opt/cat"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/opt/memo"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/opt/norm"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/opt/optgen/exprgen"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/parser"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgcode"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgerror"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/prepare"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/types"
@@ -184,9 +187,27 @@ type Builder struct {
 	OutPutCols []scopeColumn
 	// TriggerBuilder contains some fields that are only used to build trigger.
 	TriggerInfo *TriggerBuilder
+	// OriginalSQL is the original statement.
+	OriginalSQL string
 
 	// InStream is set to true if we build stream select
 	InStream bool
+
+	// PrepareHelper records the callback functions
+	// required for prepare stmt in procedure
+	PrepareHelper prepare.PreparedHelper
+
+	// ExecuteHelper records the callback functions
+	// required for execute stmt in procedure
+	ExecuteHelper prepare.ExecuteHelper
+
+	// DeallocateHelper records the callback functions
+	// required for deallocate stmt in procedure
+	DeallocateHelper prepare.DeallocateHelper
+
+	// PrepareNamespaces records sql.PreparedStatement
+	// during the compilation process in procedure
+	PrepareNamespaces map[string]interface{}
 }
 
 // TriggerBuilder contains some elements that are only used to build trigger.
@@ -206,11 +227,18 @@ const (
 	InsideProcedureDef // 00000010
 	// InsideTriggerDef is used in trigger.
 	InsideTriggerDef // 00000100
+	// InsidePrepareOfProcDef is used in prepare of procedure.
+	InsidePrepareOfProcDef // 00000100
 )
 
 // DefinitionFlags is a universal flag.
 type DefinitionFlags struct {
 	flags uint8
+}
+
+// SetProcPrepareFlags set procedure prepare flag
+func (b *Builder) SetProcPrepareFlags(flags uint8) {
+	b.insideObjectDef.SetFlags(flags)
 }
 
 // SetFlags set one or multiple flags
@@ -399,6 +427,8 @@ func (b *Builder) buildStmt(
 		case *tree.Declaration:
 		case *tree.SelectInto:
 		case *tree.ControlCursor:
+		case *tree.Prepare:
+		case *tree.Execute:
 
 		default:
 			panic(unimplemented.Newf("Stored Procedures", "%s usage inside a Stored Procedure definition", stmt.StatementTag()))
@@ -616,6 +646,12 @@ func (b *Builder) buildProcCommand(
 		default:
 			return b.buildProcStmt(stmt, desiredTypes, inScope)
 		}
+	case *tree.Prepare:
+		return b.buildProcPrepare(stmt)
+	case *tree.Execute:
+		return b.buildProcExecute(stmt)
+	case *tree.Deallocate:
+		return b.buildProcDeallocate(stmt)
 	default:
 		return b.buildProcStmt(stmt, desiredTypes, inScope)
 	}
@@ -636,4 +672,44 @@ func (b *Builder) addViewDep(tab cat.Table, colOrds []int) {
 	// We will track the ColumnID to Ord mapping so Ords can be added
 	// when a column is referenced.
 	b.viewDeps = append(b.viewDeps, dep)
+}
+
+// ParseCreateProcedure parse SQL into CreateProcedure.
+func ParseCreateProcedure(BodyStr string) (*tree.CreateProcedure, error) {
+	procStmt, err := parser.ParseOne(BodyStr)
+	if err != nil {
+		return nil, err
+	}
+	createProcStmt, ok := procStmt.AST.(*tree.CreateProcedure)
+	if !ok {
+		cp, ok2 := procStmt.AST.(*tree.CreateProcedurePG)
+		if !ok2 {
+			return nil, pgerror.Newf(pgcode.Syntax, "cannot parse \"%s\" into CREATE PROCEDURE", BodyStr)
+		}
+		ctx := tree.NewFmtCtx(tree.FmtSimple)
+		ctx.WriteString("CREATE ")
+		ctx.WriteString("PROCEDURE ")
+		ctx.FormatNode(&cp.Name)
+		ctx.WriteString("(")
+		for i, arg := range cp.Parameters {
+			lex.EncodeRestrictedSQLIdent(&ctx.Buffer, string(arg.Name), lex.EncNoFlags)
+			ctx.WriteString(" ")
+			ctx.WriteString(arg.Type.SQLString())
+			if i < len(cp.Parameters)-1 {
+				ctx.WriteString(", ")
+			}
+		}
+		ctx.WriteString(") ")
+		ctx.WriteString(cp.BodyStr)
+		newSQL := ctx.String()
+		newStmt, err := parser.Parse(newSQL)
+		if err != nil {
+			return nil, err
+		}
+		createProcStmt, ok = newStmt[0].AST.(*tree.CreateProcedure)
+		if !ok {
+			return nil, pgerror.Newf(pgcode.Syntax, "cannot parse \"%s\" into CREATE PROCEDURE", BodyStr)
+		}
+	}
+	return createProcStmt, nil
 }

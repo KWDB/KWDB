@@ -238,7 +238,11 @@ func (c *UserDefinedVar) TypeCheck(ctx *SemaContext, desired *types.T) (TypedExp
 	if val, ok := ctx.UserDefinedVars[varName]; ok {
 		c.typ = val.(Datum).ResolvedType()
 	} else {
-		return nil, pgerror.Newf(pgcode.UndefinedObject, "%s is not defined", c.VarName)
+		if v, ok1 := ctx.ProcUserDefinedVars[varName]; ok1 {
+			c.typ = v.Typ
+		} else {
+			return nil, pgerror.Newf(pgcode.UndefinedObject, "%s is not defined", c.VarName)
+		}
 	}
 	return c, nil
 }

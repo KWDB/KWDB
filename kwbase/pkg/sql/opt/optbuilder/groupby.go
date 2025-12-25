@@ -573,7 +573,13 @@ func (b *Builder) buildAggregation(having opt.ScalarExpr, fromScope *scope) (out
 			// ensures that finishBuildScalarRef doesn't add the outer columns by
 			// temporarily setting b.subquery to nil. See buildAggregateFunction
 			// for more details.)
-			b.subquery.outerCols.UnionWith(agg.colRefs.Difference(fromCols))
+			var newColSet opt.ColSet
+			agg.colRefs.ForEach(func(col opt.ColumnID) {
+				if !b.factory.Memo().Metadata().ColumnMeta(col).IsProcedureUsed() {
+					newColSet.Add(col)
+				}
+			})
+			b.subquery.outerCols.UnionWith(newColSet.Difference(fromCols))
 		}
 		if agg.aggOfInterpolate != "" {
 			aggFuncs = append(aggFuncs, agg.aggOfInterpolate)

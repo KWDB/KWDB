@@ -1,0 +1,744 @@
+> drop database if exists d1;
+DROP DATABASE
+> create database d1;
+CREATE DATABASE
+> use d1;
+SET
+> create table t1(a int, b int);
+CREATE TABLE
+> create table t2(a int, b int, c int);
+CREATE TABLE
+> insert into t1 values (1, 2), (3, 4);
+INSERT 2
+> insert into t2 values (1, 2, 3), (4, 5, 6);
+INSERT 2
+> create table t3(a int, b int, c int);
+CREATE TABLE
+> create table t4(a int);
+CREATE TABLE
+> create procedure pc1()
+begin
+declare a1 int;
+set a1=123;
+
+set @b1:=456;
+select @b1;
+set @b1=((a1)*3);
+select @b1;
+
+declare c1 string;
+set c1='abc';
+
+set @d1:='def';
+set @d1=c1;
+select @d1;
+
+end ;
+CREATE PROCEDURE
+> call pc1();
+  @b1
+-------
+  456
+(1 row)
+  @b1
+-------
+  369
+(1 row)
+  @d1
+-------
+  abc
+(1 row)
+> drop procedure pc1;
+DROP PROCEDURE
+> select @v;
+ERROR: @v is not defined
+SQLSTATE: 42704
+> create procedure pc2()
+begin
+set @v=10;
+end ;
+CREATE PROCEDURE
+> select @v;
+ERROR: @v is not defined
+SQLSTATE: 42704
+> call pc2();
+CALL PROCEDURE
+> select @v;
+  @v
+------
+  10
+(1 row)
+> drop procedure pc2;
+DROP PROCEDURE
+> create procedure pc3() begin start transaction;set @vv = 4;rollback;end;
+CREATE PROCEDURE
+> call pc3();
+CALL PROCEDURE
+> select @vv;
+  @vv
+-------
+    4
+(1 row)
+> drop procedure pc3;
+DROP PROCEDURE
+> set @v4 = 1;
+SET
+> create procedure pc4() begin set @v4 = 'abc'; select @v4; end;
+ERROR: new value of @v4 (type STRING) does not match previous type INT8
+SQLSTATE: 42804
+> call pc4();
+ERROR: procedure "pc4" does not exist
+SQLSTATE: 42704
+> drop procedure pc4;
+ERROR: procedure "pc4" does not exist
+SQLSTATE: 42704
+> select @v4;
+  @v4
+-------
+    1
+(1 row)
+> create procedure pc5() begin set @v5 = 1; select @v5; end;
+CREATE PROCEDURE
+> select @v5;
+ERROR: @v5 is not defined
+SQLSTATE: 42704
+> call pc5();
+  @v5
+-------
+    1
+(1 row)
+> select @v5;
+  @v5
+-------
+    1
+(1 row)
+> drop procedure pc5;
+DROP PROCEDURE
+> create procedure pc6() begin set @v6 = 1; select @v6; set @v6 = 6; select @v6+3 where @v6>0 group by @v6+1 having @v6 <10; end;
+CREATE PROCEDURE
+> call pc6();
+  @v6
+-------
+    1
+(1 row)
+  ?column?
+------------
+         9
+(1 row)
+> drop procedure pc6;
+DROP PROCEDURE
+> create procedure pc7() begin set @v7=7; select @v7; set @v7=8;select @v7; end;
+CREATE PROCEDURE
+> call pc7();
+  @v7
+-------
+    7
+(1 row)
+  @v7
+-------
+    8
+(1 row)
+> drop procedure pc7;
+DROP PROCEDURE
+> create procedure pc8() begin set @v8=8; select @v8; set @v8='abc'; end;
+ERROR: new value of @v8 (type STRING) does not match previous type INT8
+SQLSTATE: 42804
+> call pc8();
+ERROR: procedure "pc8" does not exist
+SQLSTATE: 42704
+> drop procedure pc8;
+ERROR: procedure "pc8" does not exist
+SQLSTATE: 42704
+> create procedure pc11()
+begin
+PREPARE p1 AS OPT PLAN '
+(Root
+  (Scan [ (Table "t2") (Cols "a,b") ])
+  (Presentation "a,b")
+  (OrderingChoice "+a")
+)';
+end ;
+ERROR: PREPARE AS OPT PLAN is a testing facility that should not be used directly
+SQLSTATE: 42501
+> call pc11();
+ERROR: procedure "pc11" does not exist
+SQLSTATE: 42704
+> drop procedure pc11;
+ERROR: procedure "pc11" does not exist
+SQLSTATE: 42704
+> create procedure pc12()
+begin
+PREPARE p12 AS select 1;
+end ;
+CREATE PROCEDURE
+> call pc12();
+CALL PROCEDURE
+> execute p12;
+  ?column?
+------------
+         1
+(1 row)
+> drop procedure pc12;
+DROP PROCEDURE
+> PREPARE p13 AS select 1;
+PREPARE
+> create procedure pc13()
+begin
+PREPARE p13 AS select 2;
+end ;
+ERROR: prepared statement "p13" already exists
+SQLSTATE: 42P05
+> call pc13();
+ERROR: procedure "pc13" does not exist
+SQLSTATE: 42704
+> drop procedure pc13;
+ERROR: procedure "pc13" does not exist
+SQLSTATE: 42704
+> create procedure pc14()
+begin
+PREPARE p14 AS select 'PREPARE pp14 as "SELECT 1"';
+end ;
+CREATE PROCEDURE
+> call pc14();
+CALL PROCEDURE
+> drop procedure pc14;
+DROP PROCEDURE
+> create procedure pc16()
+begin
+PREPARE p16 AS insert into t4 values (16);
+execute p16;
+end ;
+CREATE PROCEDURE
+> call pc16();
+CALL PROCEDURE
+> select a from t4 order by a;
+  a
+------
+  16
+(1 row)
+> drop procedure pc16;
+DROP PROCEDURE
+> create procedure pc17()
+begin
+PREPARE p17 AS update t4 set a=17 where a=16;
+execute p17;
+end ;
+CREATE PROCEDURE
+> call pc17();
+CALL PROCEDURE
+> select a from t4 order by a;
+  a
+------
+  17
+(1 row)
+> drop procedure pc17;
+DROP PROCEDURE
+> create procedure pc18()
+begin
+PREPARE p18 AS upsert into t4 values (18);
+execute p18;
+end ;
+CREATE PROCEDURE
+> call pc18();
+CALL PROCEDURE
+> select a from t4 order by a;
+  a
+------
+  17
+  18
+(2 rows)
+> drop procedure pc18;
+DROP PROCEDURE
+> create procedure pc19()
+begin
+PREPARE p19 AS select a from t4 order by a;
+execute p19;
+end ;
+CREATE PROCEDURE
+> call pc19();
+  a
+------
+  17
+  18
+(2 rows)
+> drop procedure pc19;
+DROP PROCEDURE
+> create procedure pc20()
+begin
+PREPARE p20 AS delete from t4 where 1=1;
+execute p20;
+end ;
+CREATE PROCEDURE
+> call pc20();
+CALL PROCEDURE
+> select a from t4 order by a;
+  a
+-----
+(0 rows)
+> drop procedure pc20;
+DROP PROCEDURE
+> create procedure pc102() begin declare a int8; set a=102; set @v102=a;prepare p102 as select 102 where 102 = $1; execute p102(@v102); deallocate p102; end;
+CREATE PROCEDURE
+> call pc102();
+  ?column?
+------------
+       102
+(1 row)
+> drop procedure pc102;
+DROP PROCEDURE
+> create procedure pc21(min_a int)
+begin
+set @param = min_a;
+PREPARE p21 AS select a, b from t1 where a >= $1;
+execute p21(@param);
+DEALLOCATE PREPARE p21;
+end ;
+CREATE PROCEDURE
+> call pc21(2);
+  a | b
+----+----
+  3 | 4
+(1 row)
+> drop procedure pc21;
+DROP PROCEDURE
+> create procedure pc22(batch_num int)
+begin
+set @v22 = 1;
+while @v22 <= batch_num do
+set @a_val = @v22;
+set @b_val = @v22 * 5;
+set @c_val = @b_val + 3;
+PREPARE p22 AS insert into t3(a, b, c) values($1, $2, $3);
+execute p22(@a_val, @b_val, @c_val);
+set @v22 = @v22 + 1;
+endwhile;
+DEALLOCATE PREPARE p22;
+select * from t3 order by a;
+end ;
+CREATE PROCEDURE
+> call pc22(3);
+  a | b  | c
+----+----+-----
+  1 |  5 |  8
+  2 | 10 | 13
+  3 | 15 | 18
+(3 rows)
+> drop procedure pc22;
+DROP PROCEDURE
+> CREATE PROCEDURE pc23()
+BEGIN
+SET @v23 = 1;
+WHILE @v23 < 5 DO
+SELECT @v23;
+SET @v23=@v23+1;
+ENDWHILE;
+END;
+CREATE PROCEDURE
+> CALL pc23();
+  @v23
+--------
+     1
+(1 row)
+  @v23
+--------
+     2
+(1 row)
+  @v23
+--------
+     3
+(1 row)
+  @v23
+--------
+     4
+(1 row)
+> drop procedure pc23;
+DROP PROCEDURE
+> create table t24 (e1 int, e2 timestamp);
+CREATE TABLE
+> insert into t24 values (1, '2000-1-1');
+INSERT 1
+> CREATE PROCEDURE pc24()
+BEGIN
+SET @v24 = 0;
+update t24 set e1 = 2 where e1 = 1 returning e1 into @v24;
+select @v24;
+
+SET @vv24 = timestamp'1999-1-1';
+delete from t24 where e1 = 2 returning e2 into @vv24;
+select @vv24;
+
+END;
+CREATE PROCEDURE
+> CALL pc24();
+  @v24
+--------
+     2
+(1 row)
+            @vv24
+-----------------------------
+  2000-01-01 00:00:00+00:00
+(1 row)
+> drop procedure pc24;
+DROP PROCEDURE
+> drop table t24 cascade;
+DROP TABLE
+> CREATE PROCEDURE pc25()
+BEGIN
+prepare p25 as select 1;
+execute p25;
+deallocate p25;
+END;
+CREATE PROCEDURE
+> CALL pc25();
+  ?column?
+------------
+         1
+(1 row)
+> CALL pc25();
+  ?column?
+------------
+         1
+(1 row)
+> drop procedure pc25;
+DROP PROCEDURE
+> CREATE PROCEDURE pc27()
+BEGIN
+SET @v27=27;
+SET @vv27=270;
+prepare p27 as select @v27+@vv27 from t1 order by a;
+execute p27;
+deallocate prepare p27;
+END ;
+ERROR: user defined variables cannot be used in prepare of procedure
+SQLSTATE: 0A000
+> CREATE PROCEDURE pc28()
+BEGIN
+SET @v28=28;
+prepare p28 as insert into t1 values(10, @v28);
+execute p28;
+deallocate prepare p28;
+END;
+ERROR: user defined variables cannot be used in prepare of procedure
+SQLSTATE: 0A000
+> CREATE PROCEDURE pc26()
+BEGIN
+SET @v26=26;
+prepare p26 as update t1 set a=@v26 where a=100;
+execute p26;
+deallocate prepare p26;
+END ;
+ERROR: user defined variables cannot be used in prepare of procedure
+SQLSTATE: 0A000
+> CREATE PROCEDURE pc29()
+BEGIN
+SET @v29=29;
+prepare p29 as delete from t1 where a=@v29;
+execute p29;
+deallocate prepare p29;
+END ;
+ERROR: user defined variables cannot be used in prepare of procedure
+SQLSTATE: 0A000
+> CREATE PROCEDURE pc30()
+BEGIN
+SET @v30=1;
+prepare p30 as select a from t1 order by @v30;
+execute p30;
+deallocate prepare p30;
+END ;
+ERROR: user defined variables cannot be used in prepare of procedure
+SQLSTATE: 0A000
+> CREATE PROCEDURE pc31()
+BEGIN
+SET @v31=31;
+prepare p31 as update t1 set a = $1 where a = 1;
+execute p31(@v31);
+deallocate prepare p31;
+END ;
+CREATE PROCEDURE
+> CALL pc31();
+CALL PROCEDURE
+> drop procedure pc31;
+DROP PROCEDURE
+> CREATE PROCEDURE pc32()
+BEGIN
+SET @v32=1;
+prepare p32 as update t1 set a = $1 where a = 31;
+execute p32(@v32);
+deallocate prepare p32;
+END ;
+CREATE PROCEDURE
+> CALL pc32();
+CALL PROCEDURE
+> drop procedure pc32;
+DROP PROCEDURE
+> select * from t1 order by a;
+  a | b
+----+----
+  1 | 2
+  3 | 4
+(2 rows)
+> drop database if exists d1 cascade;
+DROP DATABASE
+> create ts database d1;
+CREATE TS DATABASE
+> use d1;
+SET
+> create table t1(ts timestamp not null, e1 int) tags (tag1 int not null, tag2 int) primary tags (tag1);
+CREATE TABLE
+> create procedure pc33() begin set @v33=33; insert into t1 values ('2000-1-1', @v33, 10, 20);end;
+CREATE PROCEDURE
+> call pc33();
+CALL PROCEDURE
+> drop procedure pc33;
+DROP PROCEDURE
+> select * from t1 order by e1;
+             ts             | e1 | tag1 | tag2
+----------------------------+----+------+-------
+  2000-01-01 00:00:00+00:00 | 33 |   10 |   20
+(1 row)
+> create procedure pc38() begin set @v38=38; update t1 set tag2=@v38 where tag1=10;end;
+CREATE PROCEDURE
+> call pc38();
+CALL PROCEDURE
+> drop procedure pc38;
+DROP PROCEDURE
+> select * from t1 order by e1;
+             ts             | e1 | tag1 | tag2
+----------------------------+----+------+-------
+  2000-01-01 00:00:00+00:00 | 33 |   10 |   38
+(1 row)
+> create procedure pc34() begin set @v34=10; delete from t1 where tag1=@v34;end;
+CREATE PROCEDURE
+> call pc34();
+CALL PROCEDURE
+> drop procedure pc34;
+DROP PROCEDURE
+> select * from t1 order by e1;
+  ts | e1 | tag1 | tag2
+-----+----+------+-------
+(0 rows)
+> drop database if exists d1 cascade;
+DROP DATABASE
+> create database d1;
+CREATE DATABASE
+> use d1;
+SET
+> create table t1 (e1 int primary key);
+CREATE TABLE
+> insert into t1 values (1);
+INSERT 1
+> insert into t1 values (2);
+INSERT 1
+> insert into t1 values (3);
+INSERT 1
+> SET @v35=35;
+SET
+> create procedure pc35() begin
+DECLARE CONTINUE HANDLER FOR SQLEXCEPTION
+BEGIN
+    SET @v35=350;
+ENDHANDLER;
+SELECT @v35;
+insert into t1 values(1);
+SELECT @v35;
+end;
+CREATE PROCEDURE
+> call pc35();
+  @v35
+--------
+    35
+(1 row)
+  @v35
+--------
+   350
+(1 row)
+> drop procedure pc35;
+DROP PROCEDURE
+> create procedure pc36() begin
+SET @v36=36;
+DECLARE CONTINUE HANDLER FOR SQLEXCEPTION
+BEGIN
+    SET @v36=360;
+ENDHANDLER;
+SELECT @v36;
+insert into t1 values(1);
+SELECT @v36;
+end;
+CREATE PROCEDURE
+> call pc36();
+  @v36
+--------
+    36
+(1 row)
+  @v36
+--------
+   360
+(1 row)
+> drop procedure pc36;
+DROP PROCEDURE
+> create procedure pc37() begin
+DECLARE CONTINUE HANDLER FOR SQLEXCEPTION
+BEGIN
+    SET @v37=37;
+ENDHANDLER;
+SELECT @v37;
+insert into t1 values(1);
+SELECT @v37;
+end;
+CREATE PROCEDURE
+> call pc37();
+ERROR: user define col @v37 is not exist 
+> drop procedure pc37;
+DROP PROCEDURE
+> drop database if exists d1 cascade;
+DROP DATABASE
+> drop database if exists test_procedure_opt_dxy_ts cascade;
+DROP DATABASE
+> CREATE ts DATABASE test_procedure_opt_dxy_ts;
+CREATE TS DATABASE
+> CREATE TABLE test_procedure_opt_dxy_ts.t1(
+                                             k_timestamp TIMESTAMPTZ NOT NULL,
+                                             id INT NOT NULL,
+                                             e1 INT2,
+                                             e2 INT,
+                                             e3 INT8,
+                                             e4 FLOAT4,
+                                             e5 FLOAT8,
+                                             e6 BOOL,
+                                             e7 TIMESTAMPTZ,
+                                             e8 CHAR(1023),
+                                             e9 NCHAR(255),
+                                             e10 VARCHAR(4096),
+                                             e11 CHAR,
+                                             e12 CHAR(255),
+                                             e13 NCHAR,
+                                             e14 NVARCHAR(4096),
+                                             e15 VARCHAR(1023),
+                                             e16 NVARCHAR(200),
+                                             e17 NCHAR(255),
+                                             e18 CHAR(200),
+                                             e19 VARBYTES,
+                                             e20 VARBYTES(60),
+                                             e21 VARCHAR,
+                                             e22 NVARCHAR)
+    ATTRIBUTES (
+            code1 INT2,code2 INT,code3 INT8,
+            code4 FLOAT4 ,code5 FLOAT8,
+                        code6 BOOL,
+                        code7 VARCHAR,code8 VARCHAR(128) NOT NULL,
+                        code9 VARBYTES,code10 VARBYTES(60),
+                        code11 VARCHAR,code12 VARCHAR(60),
+                        code13 CHAR(2),code14 CHAR(1023) NOT NULL,
+                        code15 NCHAR,code16 NCHAR(254) NOT NULL)
+PRIMARY TAGS(code14,code8,code16);
+CREATE TABLE
+> INSERT INTO test_procedure_opt_dxy_ts.t1 VALUES(0,1,0,0,0,0,0,true,0,'','','','','','','','','','','','','','','',0,0,0,0,0,false,'','','','','','','','','','');
+INSERT 1
+> INSERT INTO test_procedure_opt_dxy_ts.t1 VALUES(1,2,0,0,0,0,0,true,999999,'          ','          ','          ',' ','          ',' ',' ','          ','          ','          ',' ',' ','          ','          ','          ',0,0,0,0,0,TRUE,'          ',' ',' ','          ','          ','          ','  ','          ',' ','          ');
+INSERT 1
+> CREATE PROCEDURE test_procedure_opt_dxy_ts.pro1()
+BEGIN
+SET @a=24;
+SET @b=123.123::float;
+SET @c=TRUE;
+SET @d='dxydxydxydxydxy';
+SET @e='\x647879647879647879647879647879';
+INSERT INTO test_procedure_opt_dxy_ts.t1 VALUES('1989-2-28 00:00:00',@a,20002,20000002,200000000002,-20873209.0220322201,@b,@c,123,@d,'test数据库语法查询测试！！！@TEST4-9','test数据库语法查询测试！！！@TEST4-10','t','test数据库语法查询测试！！！@TEST4-12','中','test数据库语法查询测试！！！@TEST4-14','test数据库语法查询测试！！！@TEST4-15','test数据库语法查询测试！TEST4-16xaa','test数据库语法查询测试！！！@TEST4-17','test数据库语法查询测试！！！@TEST4-18',b'\xca',@e,'test数据库语法查询测试！！！@TEST4-21','test数据库语法查询测试！！！@TEST4-22',20002,-20000002,200000000002,-20873209.0220322201,22012110.113011921,true,'test数据库语法查询测试！！！@TEST4-7','test数据库语法查询测试！！！@TEST4-8',b'\xbb','test数据库语法查询测试！！！@TEST4-10','test数据库语法查询测试！！！@TEST4-11','test数据库语法查询测试！！！@TEST4-12','t3','test数据库语法查询测试！！！@TEST4-14','中','test数据库语法查询测试！！！@TEST4-16');
+END;
+CREATE PROCEDURE
+> call test_procedure_opt_dxy_ts.pro1();
+CALL PROCEDURE
+> drop procedure test_procedure_opt_dxy_ts.pro1;
+DROP PROCEDURE
+> select id from test_procedure_opt_dxy_ts.t1 where id=24 order by id;
+  id
+------
+  24
+(1 row)
+> CREATE PROCEDURE test_procedure_opt_dxy_ts.pro1()
+BEGIN
+SET @vpro1=100;
+UPDATE test_procedure_opt_dxy_ts.t1 SET code2=@vpro1 WHERE code8='\0\0中文te@@~eng TE./。\0\0\0' AND code14='\0\0中文te@@~eng TE./。\0\0\0' AND code16='\0\0中文te@@~eng TE./。\0\0\0';SELECT code2,code8 FROM test_procedure_opt_dxy_ts.t1 WHERE code8='\0\0中文te@@~eng TE./。\0\0\0';
+END ;
+CREATE PROCEDURE
+> call test_procedure_opt_dxy_ts.pro1();
+--
+(0 rows)
+> drop procedure test_procedure_opt_dxy_ts.pro1;
+DROP PROCEDURE
+> select code2 from test_procedure_opt_dxy_ts.t1 where code2=100 order by code2;
+  code2
+---------
+(0 rows)
+> CREATE PROCEDURE test_procedure_opt_dxy_ts.pro1()
+BEGIN
+SET @vpro2='\0\0中文te@@~eng TE./。\0\0\0';
+DELETE FROM test_procedure_opt_dxy_ts.t1 WHERE code8=@vpro2 AND code14=@vpro2 AND code16='\0\0中文te@@~eng TE./。\0\0\0';SELECT code2,code8 FROM test_procedure_opt_dxy_ts.t1 WHERE code8='\0\0中文te@@~eng TE./。\0\0\0';
+END ;
+CREATE PROCEDURE
+> call test_procedure_opt_dxy_ts.pro1();
+--
+(0 rows)
+> drop procedure test_procedure_opt_dxy_ts.pro1;
+DROP PROCEDURE
+> select id from test_procedure_opt_dxy_ts.t1 WHERE code8=@vpro2 AND code14=@vpro2 AND code16='\0\0中文te@@~eng TE./。\0\0\0';SELECT code2,code8 FROM test_procedure_opt_dxy_ts.t1 WHERE code8='\0\0中文te@@~eng TE./
+。\0\0\0' order by id;
+  code2 | code8
+--------+--------
+(0 rows)
+> drop database if exists test_procedure_opt_dxy_ts cascade;
+DROP DATABASE
+> drop database if exists d2 cascade;
+DROP DATABASE
+> create database d2;
+CREATE DATABASE
+> use d2;
+SET
+> create table t2(e1 int);
+CREATE TABLE
+> CREATE PROCEDURE pc39()
+BEGIN
+SET @v39=39;
+insert into t2 values(@v39);
+END ;
+CREATE PROCEDURE
+> call pc39();
+CALL PROCEDURE
+> drop procedure pc39;
+DROP PROCEDURE
+> select * from t2 order by e1;
+  e1
+------
+  39
+(1 row)
+> CREATE PROCEDURE pc40()
+BEGIN
+SET @v40=40;
+update t2 set e1=@v40 where e1 = 39;
+END ;
+CREATE PROCEDURE
+> call pc40();
+CALL PROCEDURE
+> drop procedure pc40;
+DROP PROCEDURE
+> select * from t2 order by e1;
+  e1
+------
+  40
+(1 row)
+> CREATE PROCEDURE pc41()
+BEGIN
+SET @v41=40;
+delete from t2 where e1=@v41;
+END ;
+CREATE PROCEDURE
+> call pc41();
+CALL PROCEDURE
+> drop procedure pc41;
+DROP PROCEDURE
+> select * from t2 order by e1;
+  e1
+------
+(0 rows)
+> drop database if exists d2 cascade;
+DROP DATABASE

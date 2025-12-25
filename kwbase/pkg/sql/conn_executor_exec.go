@@ -435,6 +435,14 @@ func (ex *connExecutor) execStmtInOpenState(
 	}
 
 	p := &ex.planner
+	p.PrepareHelper.Exec = ex.prepare
+	p.PrepareHelper.Check = ex.checkAndGetTypeForPrepare
+	p.PrepareHelper.Add = ex.addMemAndSavePrepared
+	p.ExecuteHelper.Check = ex.checkPrepareExists
+	p.ExecuteHelper.GetPlaceholder = ex.fillInPlaceholders
+	p.ExecuteHelper.GetReplacedMemo = ex.GetReplacedMemo
+	p.ExecuteHelper.GetStatement = ex.GetStatement
+	p.DeallocateHelper.Check = ex.CheckPrepareExists
 	stmtTS := ex.server.cfg.Clock.PhysicalTime()
 	ex.statsCollector.reset(&ex.server.sqlStats, ex.appStats, &ex.phaseTimes)
 	ex.resetPlanner(ctx, p, ex.state.mu.txn, stmtTS)
@@ -564,55 +572,22 @@ func (ex *connExecutor) execStmtInOpenState(
 		return ev, payload, nil
 
 	case *tree.Prepare:
-		// This is handling the SQL statement "PREPARE". See execPrepare for
-		// handling of the protocol-level command for preparing statements.
-		name := s.Name.String()
-		if _, ok := ex.extraTxnState.prepStmtsNamespace.prepStmts[name]; ok {
-			err := pgerror.Newf(
-				pgcode.DuplicatePreparedStatement,
-				"prepared statement %q already exists", name,
-			)
+		typeHints, err := ex.checkAndGetTypeForPrepare(s)
+		if err != nil {
 			return makeErrEvent(err)
 		}
-		var typeHints tree.PlaceholderTypes
-		if len(s.Types) > 0 {
-			if len(s.Types) > stmt.NumPlaceholders {
-				err := pgerror.Newf(pgcode.Syntax, "too many types provided")
-				return makeErrEvent(err)
-			}
-			typeHints = make(tree.PlaceholderTypes, stmt.NumPlaceholders)
-			copy(typeHints, s.Types)
-		}
 
-		// get and parse prepared statement when user defined variable as sql
-		if s.Udv != nil && s.Statement == nil {
-			varName := strings.ToLower(s.Udv.String())
-			varStr := ex.sessionData.UserDefinedVars[varName]
-			if stmtStr, ok := varStr.(*tree.DString); ok {
-				resStmt, err := parser.ParseOne(string(*stmtStr))
-				if err != nil {
-					err := pgerror.Newf(pgcode.Syntax, "invalid syntax of query")
-					return makeErrEvent(err)
-				}
-				s.Statement = resStmt.AST
-			} else {
-				err := pgerror.Newf(pgcode.Syntax, "invalid syntax of query")
-				return makeErrEvent(err)
-			}
-		}
-		if _, err := ex.addPreparedStmt(
-			ctx, name,
-			Statement{
-				Statement: parser.Statement{
-					// We need the SQL string just for the part that comes after
-					// "PREPARE ... AS",
-					// TODO(radu): it would be nice if the parser would figure out this
-					// string and store it in tree.Prepare.
-					SQL:             tree.AsStringWithFlags(s.Statement, tree.FmtParsable),
-					AST:             s.Statement,
-					NumPlaceholders: stmt.NumPlaceholders,
-					NumAnnotations:  stmt.NumAnnotations,
-				},
+		if _, err = ex.addPreparedStmt(
+			ctx, s.Name.String(),
+			parser.Statement{
+				// We need the SQL string just for the part that comes after
+				// "PREPARE ... AS",
+				// TODO(radu): it would be nice if the parser would figure out this
+				// string and store it in tree.Prepare.
+				SQL:             tree.AsStringWithFlags(s.Statement, tree.FmtParsable),
+				AST:             s.Statement,
+				NumPlaceholders: stmt.NumPlaceholders,
+				NumAnnotations:  stmt.NumAnnotations,
 			},
 			typeHints,
 			PreparedStatementOriginSQL,
@@ -622,23 +597,16 @@ func (ex *connExecutor) execStmtInOpenState(
 		return nil, nil, nil
 
 	case *tree.Execute:
-		// Replace the `EXECUTE foo` statement with the prepared statement, and
-		// continue execution below.
-		name := s.Name.String()
-		ps, ok := ex.extraTxnState.prepStmtsNamespace.prepStmts[name]
-		if !ok {
-			err := pgerror.Newf(
-				pgcode.InvalidSQLStatementName,
-				"prepared statement %q does not exist", name,
-			)
-			return makeErrEvent(err)
-		}
-		var err error
-		pinfo, err = fillInPlaceholders(ps, name, s.Params, ex.sessionData.SearchPath, ex.planner.semaCtx.Location, ex.sessionData.UserDefinedVars)
+		psInterface, err := ex.checkPrepareExists(s)
 		if err != nil {
 			return makeErrEvent(err)
 		}
-
+		placeHolderInfo, err := ex.fillInPlaceholders(psInterface, s.Name.String(), s.Params, &tree.SemaContext{UserDefinedVars: ex.sessionData.UserDefinedVars})
+		if err != nil {
+			return makeErrEvent(err)
+		}
+		pinfo = placeHolderInfo
+		ps := psInterface.(*PreparedStatement)
 		stmt.Statement = ps.Statement
 		stmt.Prepared = ps
 		stmt.ExpectedTypes = ps.Columns

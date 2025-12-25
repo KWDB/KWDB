@@ -83,6 +83,15 @@ type SemaContext struct {
 
 	// UserDefinedVars stores variables defined by user
 	UserDefinedVars map[string]interface{}
+
+	// ProcUserDefinedVars stores variables defined by user in procedure
+	ProcUserDefinedVars map[string]ProcUdvInfo
+}
+
+// ProcUdvInfo stores type and column id of user-defined variables in procedure
+type ProcUdvInfo struct {
+	Typ      *types.T
+	ColumnID int32
 }
 
 // SemaProperties is a holder for required and derived properties

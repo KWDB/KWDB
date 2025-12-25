@@ -956,6 +956,8 @@ func (u *sqlSymUnion) triggerBody() tree.TriggerBody {
 %type <tree.Statement> explain_stmt
 %type <tree.Statement> prepare_stmt
 %type <tree.Statement> preparable_stmt
+%type <tree.Statement> proc_prepare_stmt
+%type <tree.Statement> proc_preparable_stmt
 %type <tree.Statement> row_source_extension_stmt
 %type <tree.Statement> export_stmt
 %type <tree.Statement> execute_stmt
@@ -985,6 +987,8 @@ func (u *sqlSymUnion) triggerBody() tree.TriggerBody {
 
 %type <tree.Statement> preparable_set_stmt nonpreparable_set_stmt
 %type <tree.Statement> set_session_stmt
+//%type <tree.Statement> set_var_stmt
+//%type <tree.Statement> var_set
 %type <tree.Statement> set_csetting_stmt
 %type <tree.Statement> set_transaction_stmt
 %type <tree.Statement> set_exprs_internal
@@ -2771,6 +2775,48 @@ procedure_body_stmt:
 | fetch_cursor_stmt
 | open_cursor_stmt
 | proc_leave_stmt
+| proc_prepare_stmt
+| execute_stmt
+| deallocate_stmt
+
+proc_prepare_stmt:
+  PREPARE table_alias_name prep_type_clause AS proc_preparable_stmt
+  {
+    $$.val = &tree.Prepare{
+      Name: tree.Name($2),
+      Types: $3.colTypes(),
+      Statement: $5.stmt(),
+      NumPlaceholders: sqllex.(*lexer).GetNumPlaceholders(),
+      NumAnnotations: sqllex.(*lexer).GetAnnotation(),
+    }
+  }
+| PREPARE table_alias_name prep_type_clause AS OPT PLAN SCONST
+  {
+    /* SKIP DOC */
+    $$.val = &tree.Prepare{
+      Name: tree.Name($2),
+      Types: $3.colTypes(),
+      Statement: &tree.CannedOptPlan{Plan: $7},
+    }
+  }
+| PREPARE table_alias_name prep_type_clause AS udv_expr
+  {
+    /* SKIP DOC */
+    udv := $5.UserDefinedVar()
+    $$.val = &tree.Prepare{
+      Name: tree.Name($2),
+      Types: $3.colTypes(),
+      Udv: &udv,
+    }
+  }
+| PREPARE error // SHOW HELP: PREPARE
+
+proc_preparable_stmt:
+ select_stmt
+| insert_stmt
+| update_stmt
+| upsert_stmt
+| delete_stmt
 
 proc_handler_one_stmt:
  select_stmt
@@ -3537,6 +3583,8 @@ prepare_stmt:
       Name: tree.Name($2),
       Types: $3.colTypes(),
       Statement: $5.stmt(),
+      NumPlaceholders: sqllex.(*lexer).GetNumPlaceholders(),
+      NumAnnotations: sqllex.(*lexer).GetAnnotation(),
     }
   }
 | PREPARE table_alias_name prep_type_clause AS OPT PLAN SCONST
@@ -7044,11 +7092,30 @@ handler_for:
   }
 
 proc_set_stmt:
-	SET var_name '=' a_expr
+  SET '@' name ASSIGN var_value
+	{
+		name := "@"+$3
+		$$.val = &tree.ProcSet{
+			Name: name,
+			Value: $5.expr(),
+			IsUserDefined: true,
+		}
+	}
+| SET '@' name to_or_eq var_value
+  {
+		name := "@"+$3
+		$$.val = &tree.ProcSet{
+			Name: name,
+			Value: $5.expr(),
+			IsUserDefined: true,
+		}
+  }
+| SET var_name '=' a_expr
   {
     $$.val = &tree.ProcSet{
       Name: strings.Join($2.strs(), "."),
       Value: $4.expr(),
+      IsUserDefined: false,
     }
   }
 

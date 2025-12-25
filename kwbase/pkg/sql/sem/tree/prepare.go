@@ -25,6 +25,20 @@ type Prepare struct {
 	Types     []*types.T
 	Statement Statement
 	Udv       *UserDefinedVar
+
+	// NumPlaceholders indicates the number of arguments to the statement (which
+	// are referenced through placeholders). This corresponds to the highest
+	// argument position (i.e. the x in "$x") that appears in the query.
+	//
+	// Note: where there are "gaps" in the placeholder positions, this number is
+	// based on the highest position encountered. For example, for `SELECT $3`,
+	// NumPlaceholders is 3. These cases are malformed and will result in a
+	// type-check error.
+	NumPlaceholders int
+
+	// NumAnnotations indicates the number of annotations in the tree. It is equal
+	// to the maximum annotation index.
+	NumAnnotations AnnotationIdx
 }
 
 // Format implements the NodeFormatter interface.

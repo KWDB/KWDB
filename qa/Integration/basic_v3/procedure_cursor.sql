@@ -326,11 +326,6 @@ CALL test_cur33();
 CALL test_cur33();
 DROP PROCEDURE test_cur33;
 
-CREATE PROCEDURE test_cur34()BEGIN PREPARE stmt FROM 'SELECT a FROM t1';DECLARE cur CURSOR FOR EXECUTE stmt;OPEN cur;CLOSE cur;END;
-CALL test_cur34();
-CALL test_cur34();
-DROP PROCEDURE test_cur34;
-
 CREATE PROCEDURE test_cur35() BEGIN DECLARE cur CURSOR;END;
 CALL test_cur35();
 CALL test_cur35();

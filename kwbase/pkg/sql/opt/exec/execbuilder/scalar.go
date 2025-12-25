@@ -152,9 +152,9 @@ func (b *Builder) indexedVar(
 	ctx *buildScalarCtx, md *opt.Metadata, colID opt.ColumnID,
 ) tree.TypedExpr {
 	col := md.ColumnMeta(colID)
-	if col.IsDeclaredInsideProcedure {
-		indexVal := tree.NewTypedOrdinalReference(col.RealIdx, col.Type)
-		indexVal.IsDeclare = col.IsDeclaredInsideProcedure
+	if col.IsProcedureUsed() {
+		indexVal := tree.NewTypedOrdinalReference(col.RealIdx(), col.Type)
+		indexVal.ProcProperty = tree.NewLocalColProperty(col.IsParam(), tree.DeclareValue, col.RealIdx())
 		return indexVal
 	}
 

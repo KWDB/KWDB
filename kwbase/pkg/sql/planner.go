@@ -35,6 +35,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/server/serverpb"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/opt/exec"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/parser"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/prepare"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/querycache"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/row"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/transform"
@@ -235,6 +236,18 @@ type planner struct {
 
 	// inStream used to block tsscan table ordered optimize,because stream is not ordered
 	inStream bool
+
+	// PrepareHelper records the callback functions
+	// required for prepare stmt in procedure
+	PrepareHelper prepare.PreparedHelper
+
+	// ExecuteHelper records the callback functions
+	// required for execute stmt in procedure
+	ExecuteHelper prepare.ExecuteHelper
+
+	// DeallocateHelper records the callback functions
+	// required for deallocate stmt in procedure
+	DeallocateHelper prepare.DeallocateHelper
 }
 
 // IsInternalSQL return IsInternalSQL

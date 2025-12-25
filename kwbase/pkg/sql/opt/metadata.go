@@ -440,9 +440,11 @@ func (md *Metadata) AddColumn(alias string, typ *types.T) ColumnID {
 
 // AddDeclareColumn assigns a new unique id to a declare column within the query and records
 // its alias and type.
-func (md *Metadata) AddDeclareColumn(alias string, typ *types.T, idx int) ColumnID {
+func (md *Metadata) AddDeclareColumn(
+	alias string, typ *types.T, prop *tree.ProcedureValueProperty,
+) ColumnID {
 	colID := ColumnID(len(md.cols) + 1)
-	md.cols = append(md.cols, ColumnMeta{MetaID: colID, Alias: alias, Type: typ, IsDeclaredInsideProcedure: true, RealIdx: idx})
+	md.cols = append(md.cols, ColumnMeta{MetaID: colID, Alias: alias, Type: typ, procProperty: prop})
 	return colID
 }
 
@@ -594,7 +596,7 @@ type TsSpan struct {
 
 // UpdateValue represents multiple rows of input values.
 // Currently used for interpolation in TS mode.
-type UpdateValue []tree.Datum
+type UpdateValue []tree.Expr
 
 // ColsMap is used to map the order of user input data and metadata.
 type ColsMap map[int]int

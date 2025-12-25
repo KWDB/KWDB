@@ -304,6 +304,9 @@ func (b *Builder) analyzeExtraArgument(
 	// column ordinals.
 	if idx == -1 {
 		if t, ok := expr.(*tree.UserDefinedVar); ok {
+			if b.insideObjectDef.HasFlags(InsidePrepareOfProcDef) {
+				panic(ProcPrepareUdvErr)
+			}
 			d, err := t.Eval(b.evalCtx)
 			if err != nil {
 				panic(err)

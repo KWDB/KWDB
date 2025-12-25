@@ -103,21 +103,19 @@ CREATE PROCEDURE
 > drop procedure test_dec7;
 DROP PROCEDURE
 > CREATE PROCEDURE test_dec8()BEGIN DECLARE a INT DEFAULT 5;SET @a = 10;SELECT a, @a; END;
-ERROR: at or near "@": syntax error
-SQLSTATE: 42601
-DETAIL: source SQL:
-CREATE PROCEDURE test_dec8()BEGIN DECLARE a INT DEFAULT 5;SET @a = 10;SELECT a, @a; END
-                                                              ^
-HINT: try \h CREATE PROCEDURE
+CREATE PROCEDURE
 > CALL test_dec8();
-ERROR: procedure "test_dec8" does not exist
-SQLSTATE: 42704
+  a | @a
+----+-----
+  5 | 10
+(1 row)
 > CALL test_dec8();
-ERROR: procedure "test_dec8" does not exist
-SQLSTATE: 42704
+  a | @a
+----+-----
+  5 | 10
+(1 row)
 > drop procedure test_dec8;
-ERROR: procedure "test_dec8" does not exist
-SQLSTATE: 42704
+DROP PROCEDURE
 > CREATE PROCEDURE test_dec9()BEGIN DECLARE x INVALID_TYPE;END;
 ERROR: at or near "invalid_type": syntax error: type does not exist
 SQLSTATE: 42601
@@ -604,7 +602,7 @@ ERROR: at or near "@": syntax error
 SQLSTATE: 42601
 DETAIL: source SQL:
 CREATE PROCEDURE test_cur16()BEGIN SET @sql = 'SELECT a FROM t1';DECLARE cur CURSOR FOR @sql;END
-                                       ^
+                                                                                        ^
 HINT: try \h CREATE PROCEDURE
 > CALL test_cur16();
 ERROR: procedure "test_cur16" does not exist
@@ -616,21 +614,15 @@ SQLSTATE: 42704
 ERROR: procedure "test_cur16" does not exist
 SQLSTATE: 42704
 > CREATE PROCEDURE test_cur17()BEGIN DECLARE cur CURSOR FOR SELECT 1;SET @cur = 5;OPEN cur;CLOSE cur;END;
-ERROR: at or near "@": syntax error
-SQLSTATE: 42601
-DETAIL: source SQL:
-CREATE PROCEDURE test_cur17()BEGIN DECLARE cur CURSOR FOR SELECT 1;SET @cur = 5;OPEN cur;CLOSE cur;END
-                                                                       ^
-HINT: try \h CREATE PROCEDURE
+CREATE PROCEDURE
 > CALL test_cur17();
-ERROR: procedure "test_cur17" does not exist
-SQLSTATE: 42704
+--
+(0 rows)
 > CALL test_cur17();
-ERROR: procedure "test_cur17" does not exist
-SQLSTATE: 42704
+--
+(0 rows)
 > DROP PROCEDURE test_cur17;
-ERROR: procedure "test_cur17" does not exist
-SQLSTATE: 42704
+DROP PROCEDURE
 > CREATE PROCEDURE test_cur18()BEGIN DECLARE done INT DEFAULT 0;DECLARE a INT;DECLARE cur CURSOR FOR SELECT a FROM t1;DECLARE CONTINUE HANDLER FOR NOT FOUND SET done = 1;OPEN cur;FETCH cur INTO a;select a;FETCH cur INTO a;select a;FETCH cur INTO a;select a;FETCH cur INTO a;select a;CLOSE cur;END;
 CREATE PROCEDURE
 > CALL test_cur18();
@@ -871,22 +863,6 @@ CREATE PROCEDURE
 (1 row)
 > DROP PROCEDURE test_cur33;
 DROP PROCEDURE
-> CREATE PROCEDURE test_cur34()BEGIN PREPARE stmt FROM 'SELECT a FROM t1';DECLARE cur CURSOR FOR EXECUTE stmt;OPEN cur;CLOSE cur;END;
-ERROR: at or near "prepare": syntax error
-SQLSTATE: 42601
-DETAIL: source SQL:
-CREATE PROCEDURE test_cur34()BEGIN PREPARE stmt FROM 'SELECT a FROM t1';DECLARE cur CURSOR FOR EXECUTE stmt;OPEN cur;CLOSE cur;END
-                                   ^
-HINT: try \h CREATE PROCEDURE
-> CALL test_cur34();
-ERROR: procedure "test_cur34" does not exist
-SQLSTATE: 42704
-> CALL test_cur34();
-ERROR: procedure "test_cur34" does not exist
-SQLSTATE: 42704
-> DROP PROCEDURE test_cur34;
-ERROR: procedure "test_cur34" does not exist
-SQLSTATE: 42704
 > CREATE PROCEDURE test_cur35() BEGIN DECLARE cur CURSOR;END;
 ERROR: at or near ";": syntax error
 SQLSTATE: 42601
@@ -1040,21 +1016,19 @@ SQLSTATE: 42704
 ERROR: procedure "test_set6" does not exist
 SQLSTATE: 42704
 > CREATE PROCEDURE test_set7()BEGIN DECLARE a INT DEFAULT 10;SET @a = 20;SELECT a, @a; END;
-ERROR: at or near "@": syntax error
-SQLSTATE: 42601
-DETAIL: source SQL:
-CREATE PROCEDURE test_set7()BEGIN DECLARE a INT DEFAULT 10;SET @a = 20;SELECT a, @a; END
-                                                               ^
-HINT: try \h CREATE PROCEDURE
+CREATE PROCEDURE
 > CALL test_set7();
-ERROR: procedure "test_set7" does not exist
-SQLSTATE: 42704
+  a  | @a
+-----+-----
+  10 | 20
+(1 row)
 > CALL test_set7();
-ERROR: procedure "test_set7" does not exist
-SQLSTATE: 42704
+  a  | @a
+-----+-----
+  10 | 20
+(1 row)
 > DROP PROCEDURE test_set7;
-ERROR: procedure "test_set7" does not exist
-SQLSTATE: 42704
+DROP PROCEDURE
 > CREATE PROCEDURE test_set9()BEGIN DECLARE x INT;SET x = (SELECT a FROM t1 limit 1);END;
 ERROR: Subquery inside condition expression is not supported
 SQLSTATE: 0A000

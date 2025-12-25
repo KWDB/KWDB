@@ -176,7 +176,23 @@ func makeDefaultExpr(ctx tree.ParseTimeContext, t *types.T) tree.Expr {
 func (b *Builder) buildBlock(
 	block *tree.Block, desiredTypes []*types.T, inScope *scope, labels map[string]struct{},
 ) memo.ProcCommand {
+	oldSessionUserDefinedVars := make(map[string]interface{})
+	for k, v := range b.evalCtx.SessionData.UserDefinedVars {
+		oldSessionUserDefinedVars[k] = v
+	}
+	oldSemaDefinedVars := make(map[string]interface{})
+	for k, v := range b.semaCtx.UserDefinedVars {
+		oldSemaDefinedVars[k] = v
+	}
+	defer func() {
+		b.evalCtx.SessionData.UserDefinedVars = oldSessionUserDefinedVars
+		b.semaCtx.UserDefinedVars = oldSemaDefinedVars
+	}()
 	blockExpr := memo.BlockCommand{Label: block.Label}
+
+	bodyScope := inScope.push()
+	bodyScope.cols = make([]scopeColumn, len(inScope.cols))
+	copy(bodyScope.cols, inScope.cols)
 
 	cursorMap := make(map[string]interface{})
 	for i := range block.Body {
@@ -195,7 +211,7 @@ func (b *Builder) buildBlock(
 				panic(pgerror.Newf(pgcode.UndefinedObject, "variable name: %s does not exist", string(controlCur.CurName)))
 			}
 		}
-		blockExpr.Body.Bodys = append(blockExpr.Body.Bodys, b.buildProcCommand(block.Body[i], desiredTypes, inScope, labels))
+		blockExpr.Body.Bodys = append(blockExpr.Body.Bodys, b.buildProcCommand(block.Body[i], desiredTypes, bodyScope, labels))
 	}
 
 	return &blockExpr
@@ -231,7 +247,7 @@ func (b *Builder) buildFetchCursor(
 	for _, name := range varName {
 		for _, col := range inScope.cols {
 			if string(col.name) == name {
-				dstVar = append(dstVar, b.factory.Metadata().ColumnMeta(col.id).RealIdx)
+				dstVar = append(dstVar, b.factory.Metadata().ColumnMeta(col.id).RealIdx())
 				isFind = true
 			}
 		}
@@ -267,9 +283,9 @@ func (b *Builder) buildDeclareVar(dv tree.DeclareVar, inScope *scope) memo.ProcC
 	nextIdx := 0
 	overWrite := -1
 	for i := range inScope.cols {
-		if inScope.cols[i].isDeclared {
+		if inScope.cols[i].IsDeclared() {
 			if dv.VarName == string(inScope.cols[i].name) {
-				if !inScope.cols[i].isPara {
+				if !inScope.cols[i].IsParam() {
 					panic(pgerror.Newf(pgcode.DuplicateColumn, "duplicate variable name: %q", dv.VarName))
 				}
 				overWrite = i
@@ -307,7 +323,8 @@ func (b *Builder) buildDeclareVar(dv tree.DeclareVar, inScope *scope) memo.ProcC
 		Idx:     nextIdx,
 		Mode:    tree.DeclareValue,
 	}}
-	b.synthesizeDeclareColumn(inScope, dv.VarName, dv.Typ, typedExp, nextIdx, dv.IsParameter, overWrite)
+	props := tree.NewLocalColProperty(dv.IsParameter, tree.DeclareValue, nextIdx)
+	b.synthesizeDeclareColumn(inScope, dv.VarName, dv.Typ, typedExp, props, overWrite)
 	return declComm
 }
 
@@ -342,14 +359,81 @@ func (b *Builder) buildDeclareHandler(
 	return &handComm
 }
 
+func (b *Builder) buildProcSetUdv(procSet *tree.ProcSet, inScope *scope) memo.ProcCommand {
+	nextIdx := 0
+	overWrite := -1
+
+	var typedExp tree.TypedExpr
+	typedExp = b.buildSQLExpr(procSet.Value, types.Any, inScope)
+
+	if val, ok := b.semaCtx.UserDefinedVars[procSet.Name]; ok {
+		oldType := val.(tree.Datum).ResolvedType()
+		if !oldType.Equivalent(typedExp.ResolvedType()) {
+			panic(pgerror.Newf(pgcode.DatatypeMismatch,
+				"new value of %s (type %s) does not match previous type %s",
+				procSet.Name, typedExp.ResolvedType().SQLString(), oldType.SQLString()))
+		}
+	}
+
+	if b.evalCtx.SessionData.UserDefinedVars == nil {
+		b.evalCtx.SessionData.UserDefinedVars = make(map[string]interface{})
+	}
+
+	if b.semaCtx.UserDefinedVars == nil {
+		b.semaCtx.UserDefinedVars = make(map[string]interface{})
+	}
+
+	if val1, ok := b.semaCtx.ProcUserDefinedVars[procSet.Name]; ok {
+		oldType := val1.Typ
+		if !oldType.Equivalent(typedExp.ResolvedType()) {
+			panic(pgerror.Newf(pgcode.DatatypeMismatch,
+				"new value of %s (type %s) does not match previous type %s",
+				procSet.Name, typedExp.ResolvedType().SQLString(), oldType.SQLString()))
+		}
+	}
+
+	for i := range inScope.cols {
+		if inScope.cols[i].IsDeclared() {
+			if procSet.Name == string(inScope.cols[i].name) {
+				overWrite = i
+				break
+			} else {
+				nextIdx++
+			}
+		}
+	}
+	props := tree.NewUDFColProperty(false, procSet.Name)
+	s := b.synthesizeDeclareColumn(inScope, procSet.Name, typedExp.ResolvedType(), typedExp, props, overWrite)
+	if b.semaCtx.ProcUserDefinedVars == nil {
+		b.semaCtx.ProcUserDefinedVars = make(map[string]tree.ProcUdvInfo)
+	}
+	b.semaCtx.ProcUserDefinedVars[procSet.Name] = tree.ProcUdvInfo{
+		Typ:      typedExp.ResolvedType(),
+		ColumnID: int32(s.id),
+	}
+
+	declComm := &memo.DeclareVarCommand{Col: memo.DeclareCol{
+		Name:    tree.Name(procSet.Name),
+		Typ:     typedExp.ResolvedType(),
+		Default: typedExp,
+		Idx:     nextIdx,
+		Mode:    tree.UDFValue,
+	}}
+
+	return declComm
+}
+
 // buildProcSet compiles proc_set_stmt (see sql.y)
 func (b *Builder) buildProcSet(procSet *tree.ProcSet, inScope *scope) memo.ProcCommand {
+	if procSet.IsUserDefined {
+		return b.buildProcSetUdv(procSet, inScope)
+	}
 	var typedExp tree.TypedExpr
 	var col *scopeColumn
 
 	for i := range inScope.cols {
 		if string(inScope.cols[i].name) == procSet.Name &&
-			inScope.cols[i].isDeclared {
+			inScope.cols[i].IsDeclared() {
 			col = &inScope.cols[i]
 			break
 		}
@@ -373,8 +457,9 @@ func (b *Builder) buildProcSet(procSet *tree.ProcSet, inScope *scope) memo.ProcC
 							if b.isTriggerUpdate() {
 								idx += int(opt.ColumnID(len(triTab.ColMetas)))
 							}
-							col = &scopeColumn{name: tree.Name(procSet.Name), typ: v.Type, realIdx: idx}
 							mode = tree.ExternalValue
+							prop := tree.NewLocalColProperty(false, mode, idx)
+							col = &scopeColumn{name: tree.Name(procSet.Name), typ: v.Type, procProperty: prop}
 							report = false
 							break
 						}
@@ -403,7 +488,7 @@ func (b *Builder) buildProcSet(procSet *tree.ProcSet, inScope *scope) memo.ProcC
 		Name:    tree.Name(procSet.Name),
 		Typ:     col.typ,
 		Default: typedExp,
-		Idx:     col.realIdx,
+		Idx:     col.RealIdx(),
 		Mode:    mode,
 	}}
 
@@ -481,7 +566,7 @@ func (b *Builder) buildIntoCommand(
 		found := false
 		for _, col := range inScope.cols {
 			if target.DeclareVar != "" && string(col.name) == target.DeclareVar {
-				intoHelper = append(intoHelper, tree.ProdureDeclareValue(b.factory.Metadata().ColumnMeta(col.id).RealIdx))
+				intoHelper = append(intoHelper, tree.ProdureDeclareValue(b.factory.Metadata().ColumnMeta(col.id).RealIdx()))
 				found = true
 				break
 			}

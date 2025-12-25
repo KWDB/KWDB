@@ -64,6 +64,71 @@ func (b *Builder) setConstDeductionEnabled(scalar opt.ScalarExpr, flag bool) opt
 	return scalar
 }
 
+// buildScopeColumnScalarRef builds a set of memo groups
+// that represent the given scopeColumn.
+func (b *Builder) buildScopeColumnScalarRef(
+	inGroupingContext bool,
+	t *scopeColumn,
+	inScope *scope,
+	outScope *scope,
+	outCol *scopeColumn,
+	colRefs *opt.ColSet,
+) (out opt.ScalarExpr) {
+	if inGroupingContext {
+		// Non-grouping column was referenced. Note that a column that is part
+		// of a larger grouping expression would have been detected by the
+		// groupStrs checking code above.
+		// Normally this would be a "column must appear in the GROUP BY clause"
+		// error. The only cases where we allow this (for compatibility with
+		// Postgres) is when this column is an outer column (and therefore
+		// effectively constant) or it is part of a table and we are already
+		// grouping on the entire PK of that table.
+		g := inScope.groupby
+		canApplyAggExtend := inScope.CanApplyAggExtend(nil)
+		if !inScope.isOuterColumn(t.id) && !b.allowImplicitGroupingColumn(t.id, g) {
+			if inScope.AggExHelper.bType == buildProjection {
+				// 1. can apply agg extend, not need report error, eg:
+				// select last(ts), e1,max(e2) from test.t
+				// 2. time_window used with first(ts) or last(ts), not need report error,
+				// because projection will add time_window_start(ts) or time_window_end(ts)
+				// eg: select last(ts),avg(e2) from test.t group by tag1, time_window(ts, '10min')
+				if !canApplyAggExtend {
+					panic(newGroupingError(&t.name))
+				} else {
+					inScope.AggExHelper.extendColSet.Add(t.id)
+				}
+			} else {
+				panic(newGroupingError(&t.name))
+			}
+		}
+
+		if !canApplyAggExtend {
+			// We add a new grouping column; these show up both in aggInScope and
+			// aggOutScope.
+			//
+			// Note that normalization rules will trim down the list of grouping
+			// columns based on FDs, so this is only for the purposes of building a
+			// valid operator.
+			aggInCol := b.addColumn(g.aggInScope, "" /* alias */, t, false)
+			b.finishBuildScalarRef(t, inScope, g.aggInScope, aggInCol, nil)
+			g.groupStrs[symbolicExprStr(t)] = aggInCol
+
+			g.aggOutScope.appendColumn(aggInCol)
+
+			res := b.finishBuildScalarRef(t, inScope, outScope, outCol, colRefs)
+			if res != nil {
+				res.SetConstDeductionEnabled(false)
+			}
+			return res
+		}
+	}
+	res := b.finishBuildScalarRef(t, inScope, outScope, outCol, colRefs)
+	if res != nil {
+		res.SetConstDeductionEnabled(false)
+	}
+	return res
+}
+
 // buildScalar builds a set of memo groups that represent the given scalar
 // expression. If outScope is not nil, then this is a projection context, and
 // the resulting memo group will be projected as the output column outCol.
@@ -108,59 +173,8 @@ func (b *Builder) buildScalar(
 
 	switch t := scalar.(type) {
 	case *scopeColumn:
-		if inGroupingContext {
-			// Non-grouping column was referenced. Note that a column that is part
-			// of a larger grouping expression would have been detected by the
-			// groupStrs checking code above.
-			// Normally this would be a "column must appear in the GROUP BY clause"
-			// error. The only cases where we allow this (for compatibility with
-			// Postgres) is when this column is an outer column (and therefore
-			// effectively constant) or it is part of a table and we are already
-			// grouping on the entire PK of that table.
-			g := inScope.groupby
-			canApplyAggExtend := inScope.CanApplyAggExtend(nil)
-			if !inScope.isOuterColumn(t.id) && !b.allowImplicitGroupingColumn(t.id, g) {
-				if inScope.AggExHelper.bType == buildProjection {
-					// 1. can apply agg extend, not need report error, eg:
-					// select last(ts), e1,max(e2) from test.t
-					// 2. time_window used with first(ts) or last(ts), not need report error,
-					// because projection will add time_window_start(ts) or time_window_end(ts)
-					// eg: select last(ts),avg(e2) from test.t group by tag1, time_window(ts, '10min')
-					if !canApplyAggExtend {
-						panic(newGroupingError(&t.name))
-					} else {
-						inScope.AggExHelper.extendColSet.Add(t.id)
-					}
-				} else {
-					panic(newGroupingError(&t.name))
-				}
-			}
 
-			if !canApplyAggExtend {
-				// We add a new grouping column; these show up both in aggInScope and
-				// aggOutScope.
-				//
-				// Note that normalization rules will trim down the list of grouping
-				// columns based on FDs, so this is only for the purposes of building a
-				// valid operator.
-				aggInCol := b.addColumn(g.aggInScope, "" /* alias */, t, false)
-				b.finishBuildScalarRef(t, inScope, g.aggInScope, aggInCol, nil)
-				g.groupStrs[symbolicExprStr(t)] = aggInCol
-
-				g.aggOutScope.appendColumn(aggInCol)
-
-				res := b.finishBuildScalarRef(t, inScope, outScope, outCol, colRefs)
-				if res != nil {
-					res.SetConstDeductionEnabled(false)
-				}
-				return res
-			}
-		}
-		res := b.finishBuildScalarRef(t, inScope, outScope, outCol, colRefs)
-		if res != nil {
-			res.SetConstDeductionEnabled(false)
-		}
-		return res
+		return b.buildScopeColumnScalarRef(inGroupingContext, t, inScope, outScope, outCol, colRefs)
 
 	case *aggregateInfo:
 		var aggOutScope *scope
@@ -562,15 +576,38 @@ func (b *Builder) buildScalar(
 		out = b.setConstDeductionEnabled(out, true)
 
 	case *tree.UserDefinedVar:
+		if b.insideObjectDef.HasFlags(InsidePrepareOfProcDef) {
+			panic(ProcPrepareUdvErr)
+		}
 		b.DisableMemoReuse = true
 		varName := strings.ToLower(t.VarName)
-		if b.evalCtx.SessionData.UserDefinedVars[varName] == nil {
-			panic(pgerror.Newf(pgcode.UndefinedObject, "%s is not defined", t.VarName))
+		if val, ok := b.semaCtx.ProcUserDefinedVars[t.VarName]; ok {
+			sm, err1 := b.getColumnMeta(opt.ColumnID(val.ColumnID))
+			if err1 != nil {
+				panic(err1)
+			}
+			prop := tree.NewLocalColProperty(false, tree.DeclareValue, sm.RealIdx())
+			s := &scopeColumn{
+				name:         tree.Name(sm.Name),
+				table:        tree.TableName{},
+				typ:          sm.Type,
+				id:           sm.MetaID,
+				hidden:       false,
+				mutation:     false,
+				descending:   false,
+				scalar:       nil,
+				expr:         sm.Expr,
+				exprStr:      "",
+				procProperty: prop,
+			}
+			return b.buildScopeColumnScalarRef(inGroupingContext, s, inScope, outScope, outCol, colRefs)
 		}
-		d := b.evalCtx.SessionData.UserDefinedVars[varName].(tree.Datum)
-		out = b.factory.ConstructConstVal(d, d.ResolvedType())
-		out = b.setConstDeductionEnabled(out, true)
 
+		if b.evalCtx.SessionData.UserDefinedVars[varName] != nil {
+			d := b.evalCtx.SessionData.UserDefinedVars[varName].(tree.Datum)
+			out = b.factory.ConstructConstVal(d, d.ResolvedType())
+			out = b.setConstDeductionEnabled(out, true)
+		}
 	default:
 		if b.AllowUnsupportedExpr {
 			out = b.factory.ConstructUnsupportedExpr(scalar)
@@ -580,6 +617,22 @@ func (b *Builder) buildScalar(
 	}
 
 	return b.finishBuildScalar(scalar, out, inScope, outScope, outCol)
+}
+
+// getColumnMeta gets the metadata of the column.
+// If it fails, it indicates that a user-defined variable
+// was used in the prepare-sql of the procedure, resulting in an error.
+// This scenario is prohibited.
+func (b *Builder) getColumnMeta(columnID opt.ColumnID) (sm *opt.ColumnMeta, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = errors.New("user defined variables cannot be used in this scenario")
+			sm = nil
+		}
+	}()
+
+	sm = b.factory.Metadata().ColumnMeta(columnID)
+	return sm, nil
 }
 
 func (b *Builder) hasSubOperator(t *tree.ComparisonExpr) bool {

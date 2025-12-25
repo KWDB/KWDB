@@ -147,6 +147,16 @@ func (l *lexer) UpdateNumPlaceholders(p *tree.Placeholder) {
 	}
 }
 
+// GetNumPlaceholders is called from the parser when get numPlaceholders.
+func (l *lexer) GetNumPlaceholders() int {
+	return l.numPlaceholders
+}
+
+// GetAnnotation returns annotation index.
+func (l *lexer) GetAnnotation() tree.AnnotationIdx {
+	return l.numAnnotations
+}
+
 // Unimplemented wraps Error, setting lastUnimplementedError.
 func (l *lexer) Unimplemented(feature string) {
 	l.lastError = unimp.New(feature, "this syntax")

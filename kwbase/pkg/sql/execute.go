@@ -25,12 +25,10 @@
 package sql
 
 import (
-	"time"
-
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgcode"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgerror"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/prepare"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
-	"gitee.com/kwbasedb/kwbase/pkg/sql/sessiondata"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
 	"github.com/cockroachdb/errors"
 )
@@ -39,14 +37,11 @@ import (
 // a prepared statement returning
 // the referenced prepared statement and correctly updated placeholder info.
 // See https://www.postgresql.org/docs/current/static/sql-execute.html for details.
-func fillInPlaceholders(
-	ps *PreparedStatement,
-	name string,
-	params tree.Exprs,
-	searchPath sessiondata.SearchPath,
-	loc **time.Location,
-	userDefinedVars map[string]interface{},
+func (ex *connExecutor) fillInPlaceholders(
+	psInterface prepare.PreparedResult, name string, params tree.Exprs, oldSemaCtx *tree.SemaContext,
 ) (*tree.PlaceholderInfo, error) {
+	ps := psInterface.(*PreparedStatement)
+	loc := ex.planner.semaCtx.Location
 	if len(ps.Types) != len(params) {
 		return nil, pgerror.Newf(pgcode.Syntax,
 			"wrong number of parameters for prepared statement %q: expected %d, got %d",
@@ -56,7 +51,8 @@ func fillInPlaceholders(
 	qArgs := make(tree.QueryArguments, len(params))
 	var semaCtx tree.SemaContext
 	semaCtx.Location = loc
-	semaCtx.UserDefinedVars = userDefinedVars
+	semaCtx.UserDefinedVars = oldSemaCtx.UserDefinedVars
+	semaCtx.ProcUserDefinedVars = oldSemaCtx.ProcUserDefinedVars
 	for i, e := range params {
 		idx := tree.PlaceholderIdx(i)
 

@@ -51,7 +51,8 @@ type IndexedVar struct {
 	Idx  int
 	Used bool
 
-	IsDeclare bool
+	// procProperty stores all procedure property
+	ProcProperty *ProcedureValueProperty
 
 	col NodeFormatter
 
@@ -73,6 +74,42 @@ func (v *IndexedVar) SetColFormat(col *UnresolvedName) {
 	v.col = col
 }
 
+// SetUdvColFormat sets IndexedVar's col.
+func (v *IndexedVar) SetUdvColFormat(col *UserDefinedVar) {
+	v.col = col
+}
+
+// IsProcedureUsed returns col is used by procedure
+func (v *IndexedVar) IsProcedureUsed() bool {
+	return v.ProcProperty != nil
+}
+
+// IsProcedureLocalValue returns cols from declare
+func (v *IndexedVar) IsProcedureLocalValue() bool {
+	return v.ProcProperty.IsDeclared()
+}
+
+// RealIdx returns value real local index
+func (v *IndexedVar) RealIdx() int {
+	if v.ProcProperty == nil {
+		return -1
+	}
+	return v.ProcProperty.RealIdx()
+}
+
+// UDVName returns value user define name
+func (v *IndexedVar) UDVName() string {
+	if v.ProcProperty == nil {
+		return ""
+	}
+	return v.ProcProperty.UDFName()
+}
+
+// IsParam returns cols from param
+func (v *IndexedVar) IsParam() bool {
+	return v.ProcProperty != nil && v.ProcProperty.IsParam()
+}
+
 // GetColName returns IndexedVar's col name.
 func (v *IndexedVar) GetColName() *UnresolvedName {
 	if name, ok := v.col.(*UnresolvedName); ok {
@@ -83,7 +120,7 @@ func (v *IndexedVar) GetColName() *UnresolvedName {
 
 // TypeCheck is part of the Expr interface.
 func (v *IndexedVar) TypeCheck(ctx *SemaContext, desired *types.T) (TypedExpr, error) {
-	if v.IsDeclare {
+	if v.IsProcedureUsed() {
 		return v, nil
 	}
 	if ctx.IVarContainer == nil || ctx.IVarContainer == unboundContainer {
@@ -279,7 +316,7 @@ var _ Visitor = &IndexedVarHelper{}
 // VisitPre implements the Visitor interface.
 func (h *IndexedVarHelper) VisitPre(expr Expr) (recurse bool, newExpr Expr) {
 	if iv, ok := expr.(*IndexedVar); ok {
-		if iv.IsDeclare {
+		if iv.IsProcedureUsed() {
 			return false, expr
 		}
 		return false, h.IndexedVar(iv.Idx)

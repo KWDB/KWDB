@@ -344,8 +344,9 @@ func (n *Declaration) IsHandler() bool {
 
 // ProcSet represents a SET statement.
 type ProcSet struct {
-	Name  string
-	Value Expr
+	Name          string
+	Value         Expr
+	IsUserDefined bool
 }
 
 // Format implements the NodeFormatter interface.
@@ -358,6 +359,9 @@ func (node *ProcSet) Format(ctx *FmtCtx) {
 		if triggerCol == triggerColNew || triggerCol == triggerColOld {
 			f.SetFlags(FmtBareIdentifiers)
 		}
+	}
+	if node.IsUserDefined {
+		f.SetFlags(FmtBareIdentifiers)
 	}
 	lex.EncodeRestrictedSQLIdent(&ctx.Buffer, node.Name, f.EncodeFlags())
 	ctx.WriteString(" = ")
@@ -557,3 +561,53 @@ const (
 	// ProcedureTransactionRollBack RollBack
 	ProcedureTransactionRollBack
 )
+
+// ProcedureValueProperty stores all procedure property
+type ProcedureValueProperty struct {
+	// isParam flags that value come from param
+	isParam bool
+	// from stores value mode
+	from ProcedureValueMode
+	// realIdx stores local value index
+	realIdx int
+
+	// udfName stores user define name
+	udfName string
+}
+
+// NewLocalColProperty returns new Property
+func NewLocalColProperty(
+	isParam bool, from ProcedureValueMode, realIdx int,
+) *ProcedureValueProperty {
+	return &ProcedureValueProperty{isParam: isParam, from: from, realIdx: realIdx}
+}
+
+// NewUDFColProperty returns new Property
+func NewUDFColProperty(isParam bool, name string) *ProcedureValueProperty {
+	return &ProcedureValueProperty{isParam: isParam, from: UDFValue, udfName: name}
+}
+
+// IsDeclared returns cols from declare
+func (p *ProcedureValueProperty) IsDeclared() bool {
+	return p.from == DeclareValue
+}
+
+// RealIdx returns value real local index
+func (p *ProcedureValueProperty) RealIdx() int {
+	return p.realIdx
+}
+
+// UDFName returns user define name
+func (p *ProcedureValueProperty) UDFName() string {
+	return p.udfName
+}
+
+// IsParam returns cols from param
+func (p *ProcedureValueProperty) IsParam() bool {
+	return p.isParam
+}
+
+// Copy returns new property
+func (p *ProcedureValueProperty) Copy() *ProcedureValueProperty {
+	return &ProcedureValueProperty{isParam: p.isParam, from: p.from, realIdx: p.realIdx}
+}

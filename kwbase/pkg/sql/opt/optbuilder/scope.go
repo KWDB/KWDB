@@ -782,8 +782,20 @@ func (s *scope) endAggFunc(aggInfo aggregateInfo) (g *groupby) {
 
 	for curr := s; curr != nil; curr = curr.parent {
 		var colSet opt.ColSet = curr.colSet()
+		create := aggInfo.colRefs.Len() == 0 || aggInfo.colRefs.Intersects(colSet) || aggInfo.Func.FunctionName() == Interpolate
+		if !create {
+			allDeclareCol := true
+			aggInfo.colRefs.ForEach(func(col opt.ColumnID) {
+				if !s.builder.factory.Metadata().ColumnMeta(col).IsProcedureUsed() {
+					allDeclareCol = false
+				}
+			})
 
-		if aggInfo.colRefs.Len() == 0 || aggInfo.colRefs.Intersects(colSet) || aggInfo.Func.FunctionName() == Interpolate {
+			if allDeclareCol {
+				create = true
+			}
+		}
+		if create {
 			curr.verifyAggregateContext(aggInfo.def.Name)
 			if curr.groupby == nil {
 				curr.initGrouping()

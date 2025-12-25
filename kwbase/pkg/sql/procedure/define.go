@@ -14,6 +14,8 @@ package procedure
 import (
 	"context"
 
+	"gitee.com/kwbasedb/kwbase/pkg/kv"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfrapb"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/rowcontainer"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
@@ -33,6 +35,52 @@ const HandlerLabel = "handler"
 
 // IntoLabel flags into
 const IntoLabel = "into"
+
+// RunParam is the interface of runParams
+type RunParam interface {
+	GetCtx() context.Context
+
+	EvalContext() *tree.EvalContext
+
+	SetUserDefinedVar(name string, v tree.Datum) error
+
+	DeallocatePrepare(name string) error
+
+	GetTxn() *kv.Txn
+
+	SetTxn(t *kv.Txn)
+
+	NewTxn()
+
+	Rollback() error
+
+	CommitOrCleanup() error
+}
+
+// Plan flags plan top interface
+type Plan interface {
+}
+
+// CursorExec flags cursor execute interface
+type CursorExec interface {
+	// RunClearUp controls txn Commit Or Cleanup
+	RunClearUp()
+	// NextRow gets plan next row data for cursor
+	NextRow() (sqlbase.EncDatumRow, *execinfrapb.ProducerMetadata)
+	// GetDatumAlloc gets datum alloc
+	GetDatumAlloc() *sqlbase.DatumAlloc
+}
+
+// GetResultCallBKFn func for get result columns
+type GetResultCallBKFn func(p Plan) (Plan, sqlbase.ResultColumns)
+
+// RunPlanCallBKFn func for run plan
+type RunPlanCallBKFn func(r RunParam, p Plan, rc *rowcontainer.RowContainer, s tree.StatementType) (int, error)
+
+// StartPlanCallBKFn func for start plan
+type StartPlanCallBKFn func(
+	r RunParam, h CursorExec, rc *rowcontainer.RowContainer, s tree.StatementType, p Plan,
+) error
 
 // QueryResult saves a sql query result
 type QueryResult struct {
@@ -151,9 +199,6 @@ func (r *ReturnHelper) NeedReturn() bool {
 	return r.retFlag
 }
 
-// Actions for Subsequent processing actions
-type Actions interface{}
-
 // HandlerHelper save exit handler type and action
 type HandlerHelper struct {
 	// Typ
@@ -163,16 +208,16 @@ type HandlerHelper struct {
 	Typ tree.HandlerType
 
 	// Action saves Subsequent processing actions
-	Action Actions
+	Action Instruction
 }
 
-// CheckFlag returns flag
-func (r *HandlerHelper) CheckFlag(flag tree.HandlerType) bool {
-	return r.Typ&flag != 0
+// checkFlag returns flag
+func (h *HandlerHelper) checkFlag(flag tree.HandlerType) bool {
+	return h.Typ&flag != 0
 }
 
 // CursorHelper save cursor action and result
 type CursorHelper struct {
-	// Action saves Subsequent processing actions
-	Action Actions
+	// CursorPtr saves Subsequent processing cursor
+	CursorPtr *Cursor
 }

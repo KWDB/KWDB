@@ -2895,8 +2895,8 @@ func (b *Builder) buildTSDelete(tsDelete *memo.TSDeleteExpr) (execPlan, error) {
 
 // buildTSUpdate builds time series update node.
 func (b *Builder) buildTSUpdate(tsUpdate *memo.TSUpdateExpr) (execPlan, error) {
-	// if primary tag values in filter don't exist，return update 0
-	if tsUpdate.PTagValueNotExist {
+
+	update0Func := func() (execPlan, error) {
 		node, err := b.factory.ConstructTSTagUpdate(
 			[]roachpb.NodeID{},
 			uint64(0),
@@ -2911,6 +2911,10 @@ func (b *Builder) buildTSUpdate(tsUpdate *memo.TSUpdateExpr) (execPlan, error) {
 			return execPlan{}, err
 		}
 		return execPlan{root: node}, nil
+	}
+	// if primary tag values in filter don't exist，return update 0
+	if tsUpdate.PTagValueNotExist {
+		return update0Func()
 	}
 
 	// prepare metadata used to construct TS delete node.
@@ -2934,10 +2938,10 @@ func (b *Builder) buildTSUpdate(tsUpdate *memo.TSUpdateExpr) (execPlan, error) {
 			}
 		}
 		colID := int(cols[i].ID)
-		if ord, ok := tsUpdate.ColsMap[colID]; ok {
+		if idx, ok := tsUpdate.ColsMap[colID]; ok {
 			// get value expr from colMap
-			colIndexs[colID] = ord
-			valIndexs[ord] = cols[i]
+			colIndexs[colID] = idx
+			valIndexs[idx] = cols[i]
 		}
 	}
 
@@ -2952,15 +2956,29 @@ func (b *Builder) buildTSUpdate(tsUpdate *memo.TSUpdateExpr) (execPlan, error) {
 	}
 	inputDatums := make([]tree.Datums, 1)
 	inputDatums[0] = make([]tree.Datum, len(tsUpdate.UpdateRows))
+
 	for i, value := range tsUpdate.UpdateRows {
 		if _, ok := value.(*tree.Placeholder); ok {
-			exp := tree.Expr(value)
+			exp := value
 			inputDatums[0][i], err = TSTypeCheckForInput(b.evalCtx, &exp, &valIndexs[i].Type, valIndexs[i])
 			if err != nil {
 				return execPlan{}, err
 			}
 		} else {
-			inputDatums[0][i] = value
+			val := value.(tree.Datum)
+			// 1 check primary tag out of range
+			// 2 check normal tag out of range and not null
+			if valIndexs[i].IsPrimaryTagCol() {
+				if tree.CheckIfIntOutOfRange(valIndexs[i].Type, val) {
+					return update0Func()
+				}
+			} else if valIndexs[i].IsTagCol() {
+				if err1 := tree.CheckNormalTagForTSUpdate(val, valIndexs[i].IsOrdinaryTagCol(),
+					valIndexs[i].IsNullable(), valIndexs[i].DatumType(), string(valIndexs[i].ColName())); err1 != nil {
+					return execPlan{}, err1
+				}
+			}
+			inputDatums[0][i] = val
 		}
 	}
 
@@ -3464,42 +3482,80 @@ func (b *Builder) replaceMemoBeforePlanning(
 	o.Memo().SetWhiteList(b.mem.GetWhiteList())
 	f := o.Factory()
 
+	replaceTreeExpr := func(input tree.Expr, inProcedure *bool) tree.Expr {
+		switch v := input.(type) {
+		case *tree.IndexedVar:
+			// replace the variables in the procedure,
+			// including local variables and user defined variables
+			if !v.IsProcedureUsed() {
+				return input
+			}
+			if inProcedure != nil {
+				*inProcedure = true
+			}
+			// replace local variables
+			if v.IsProcedureLocalValue() {
+				if v.Idx >= len(src) {
+					panic(fmt.Sprintf("col %v is not exist ", v.Idx))
+				}
+				return src[v.Idx].Data
+			}
+			// replace user defined variables
+			if varValue, ok := b.evalCtx.SessionData.UserDefinedVars[v.UDVName()]; ok {
+				return varValue.(tree.Datum)
+			}
+			panic(fmt.Sprintf("user define col %v is not exist ", v.UDVName()))
+		case *tree.UserDefinedVar:
+			if varValue, ok := b.evalCtx.SessionData.UserDefinedVars[v.VarName]; ok {
+				if inProcedure != nil {
+					*inProcedure = true
+				}
+				return varValue.(tree.Datum)
+			}
+			panic(fmt.Sprintf("user define col %v is not exist ", v.VarName))
+		default:
+			return input
+		}
+	}
+
 	// Copy the right expression into a new memo, replacing each bound column
 	// with the corresponding value from the left row.
 	var replaceFn norm.ReplaceFunc
 	replaceFn = func(e opt.Expr) opt.Expr {
 		switch t := e.(type) {
 		case *memo.VariableExpr:
-			meta := b.mem.Metadata().ColumnMeta(t.Col)
-			if meta.IsDeclaredInsideProcedure {
-
-				return f.ConstructConstVal(src[meta.RealIdx].Data, &src[meta.RealIdx].Typ)
+			meta := f.Metadata().ColumnMeta(t.Col)
+			if meta.IsProcedureUsed() {
+				if meta.IsProcedureLocalValue() {
+					if meta.RealIdx() >= len(src) {
+						panic(fmt.Sprintf("col %v:%v is not exist ", meta.Name, meta.RealIdx()))
+					}
+					return f.ConstructConstVal(src[meta.RealIdx()].Data, &src[meta.RealIdx()].Typ)
+				}
+				if varValue, ok := b.evalCtx.SessionData.UserDefinedVars[meta.UDVName()]; ok {
+					val := varValue.(tree.Datum)
+					return f.ConstructConstVal(val, val.ResolvedType())
+				}
+				panic(fmt.Sprintf("user define col %v is not exist ", meta.UDVName()))
 			}
 		case *memo.TSInsertExpr:
 			for i := range t.InputRows {
 				t.ActualRows[i] = make([]tree.Expr, len(t.InputRows[i]))
 				for j := range t.InputRows[i] {
-					if v, ok := t.InputRows[i][j].(*tree.IndexedVar); ok && v.IsDeclare {
-						t.RunInsideProcedure = true
-						// replace indexVal to Datum
-						t.ActualRows[i][j] = src[v.Idx].Data
-					} else {
-						t.ActualRows[i][j] = t.InputRows[i][j]
-					}
+					t.ActualRows[i][j] = replaceTreeExpr(t.InputRows[i][j], &t.RunInsideProcedure)
 				}
 			}
 		case *memo.TSDeleteExpr:
 			for i := range t.InputRows {
 				t.ActualRows[i] = make([]tree.Expr, len(t.InputRows[i]))
 				for j := range t.InputRows[i] {
-					if v, ok := t.InputRows[i][j].(*tree.IndexedVar); ok && v.IsDeclare {
-						t.RunInsideProcedure = true
-						// replace indexVal to Datum
-						t.ActualRows[i][j] = src[v.Idx].Data
-					} else {
-						t.ActualRows[i][j] = t.InputRows[i][j]
-					}
+					t.ActualRows[i][j] = replaceTreeExpr(t.InputRows[i][j], &t.RunInsideProcedure)
 				}
+			}
+		case *memo.TSUpdateExpr:
+			for i := range t.UpdateRows {
+				// replace indexVal to Datum
+				t.UpdateRows[i] = replaceTreeExpr(t.UpdateRows[i], nil)
 			}
 		}
 

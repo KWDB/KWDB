@@ -41,6 +41,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/opt/exec"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/opt/exec/execbuilder"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/opt/memo"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/procedure"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/row"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/rowexec"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/builtins"
@@ -2237,32 +2238,37 @@ func (ef *execFactory) ConstructCreateProcedure(
 	return nd, nil
 }
 
+func (ef *execFactory) buildSlice(
+	src []memo.ProcCommand, scalarFn exec.BuildScalarFn,
+) ([]procedure.Instruction, error) {
+	var childs []procedure.Instruction
+	for i := range src {
+		ins, err := ef.buildInstruction(src[i], scalarFn)
+		if err != nil {
+			return nil, err
+		}
+		childs = append(childs, ins)
+	}
+	return childs, nil
+}
+
 // buildInstruction recursively translates procCommand to Instruction
 func (ef *execFactory) buildInstruction(
 	pc memo.ProcCommand, scalarFn exec.BuildScalarFn,
-) (Instruction, error) {
+) (procedure.Instruction, error) {
 	switch t := pc.(type) {
 	case *memo.ArrayCommand:
-		var array ArrayIns
-		for i := range t.Bodys {
-			ins, err := ef.buildInstruction(t.Bodys[i], scalarFn)
-			if err != nil {
-				return nil, err
-			}
-			array.childs = append(array.childs, ins)
+		ins, err := ef.buildSlice(t.Bodys, scalarFn)
+		if err != nil {
+			return nil, err
 		}
-		return &array, nil
+		return procedure.NewArrayIns("", ins), nil
 	case *memo.BlockCommand:
-		var blockIns BlockIns
-		for i := range t.Body.Bodys {
-			ins, err := ef.buildInstruction(t.Body.Bodys[i], scalarFn)
-			if err != nil {
-				return nil, err
-			}
-			blockIns.childs = append(blockIns.childs, ins)
+		ins, err := ef.buildSlice(t.Body.Bodys, scalarFn)
+		if err != nil {
+			return nil, err
 		}
-		blockIns.labelName = t.Label
-		return &blockIns, nil
+		return procedure.NewBlockInsFromSlice(t.Label, ins), nil
 	case *memo.IfCommand:
 		tmp, err := scalarFn(t.Cond)
 		if err != nil {
@@ -2272,56 +2278,55 @@ func (ef *execFactory) buildInstruction(
 		if err2 != nil {
 			return nil, err2
 		}
-		return NewCaseWhenIns(tmp, true, result), nil
+		return procedure.NewCaseWhenIns(tmp, true, result), nil
 	case *memo.OpenCursorCommand:
-		ins := NewOpenCursorIns(t.Name)
+		ins := procedure.NewOpenCursorIns(t.Name)
 		return ins, nil
 	case *memo.FetchCursorCommand:
-		ins := NewFetchCursorIns(t.Name, t.DstVar)
+		ins := procedure.NewFetchCursorIns(t.Name, t.DstVar)
 		return ins, nil
 	case *memo.CloseCursorCommand:
-		ins := NewCloseCursorIns(t.Name)
+		ins := procedure.NewCloseCursorIns(t.Name)
 		return ins, nil
 	case *memo.DeclareVarCommand:
-		ins := NewSetIns(string(t.Col.Name), t.Col.Idx, t.Col.Typ, t.Col.Default, t.Col.Mode)
+		ins := procedure.NewSetIns(string(t.Col.Name), t.Col.Idx, t.Col.Typ, t.Col.Default, t.Col.Mode)
 		return ins, nil
 	case *memo.DeclCursorCommand:
-		var cur Cursor
-		stmtCommand := t.Body.(*memo.StmtCommand)
-		cur.rootExpr = stmtCommand.Body
-		cur.pr = stmtCommand.PhysicalProp
-		cur.stmt = stmtCommand.Name
-		cur.typ = stmtCommand.Typ
-		ins := NewSetCursorIns(string(t.Name), cur)
+		stmt := t.Body.(*memo.StmtCommand)
+		var cursorStruct CursorExecHelper
+		cur := procedure.NewCursor(stmt.Name, stmt.Body, stmt.Typ, stmt.PhysicalProp, &cursorStruct)
+		ins := procedure.NewSetCursorIns(string(t.Name), *cur)
 		return ins, nil
 	case *memo.DeclHandlerCommand:
 		insChild, err := ef.buildInstruction(t.Block, scalarFn)
 		if err != nil {
 			return nil, err
 		}
-		return NewSetHandlerIns(t.HandlerFor, insChild, t.HandlerOp), nil
+		return procedure.NewSetHandlerIns(t.HandlerFor, insChild, t.HandlerOp), nil
 	case *memo.WhileCommand:
-		var bodyIns BlockIns
-		for i := range t.Then {
-			ins, err := ef.buildInstruction(t.Then[i], scalarFn)
-			if err != nil {
-				return nil, err
-			}
-			bodyIns.childs = append(bodyIns.childs, ins)
+		ins, err := ef.buildSlice(t.Then, scalarFn)
+		if err != nil {
+			return nil, err
 		}
-
-		return NewLoopIns(t.Label, NewCaseWhenIns(t.Cond, false, &bodyIns)), nil
+		block := procedure.NewBlockInsFromSlice("", ins)
+		return procedure.NewLoopIns(t.Label, procedure.NewCaseWhenIns(t.Cond, false, block)), nil
 	case *memo.StmtCommand:
-		return NewStmtIns(t.Name, t.Body, t.Typ, t.PhysicalProp), nil
+		return procedure.NewStmtIns(t.Name, t.Body, t.Typ, t.PhysicalProp), nil
 	case *memo.ProcedureTxnCommand:
-		ins := NewTransactionIns(t.TxnType)
+		ins := procedure.NewTransactionIns(t.TxnType)
 		return ins, nil
 	case *memo.IntoCommand:
-		stmt := *NewStmtIns(t.Name, t.Body, tree.Rows, t.PhysicalProp)
-		ins := NewIntoIns(stmt, t.IntoValue)
+		stmt := *procedure.NewStmtIns(t.Name, t.Body, tree.Rows, t.PhysicalProp)
+		ins := procedure.NewIntoIns(stmt, t.IntoValue)
 		return ins, nil
 	case *memo.LeaveCommand:
-		return &LeaveIns{labelName: t.Label}, nil
+		return procedure.NewLeaveIns(t.Label), nil
+	case *memo.PrepareCommand:
+		return procedure.NewPrepareIns(t.Name, t.Res, t.AddFn), nil
+	case *memo.ExecuteCommand:
+		return procedure.NewExecuteIns(t.Execute, t.PhInfo, t.GetMemoFn, t.StatementType, t.SQLStr), nil
+	case *memo.DeallocateCommand:
+		return procedure.NewDeallocateIns(t.Name), nil
 	}
 	return nil, nil
 }
@@ -3833,7 +3838,7 @@ func (ef *execFactory) CanAddRender(expr memo.RelExpr, node exec.Node) bool {
 
 func (ef *execFactory) getTriggerInstructions(
 	table cat.Table, triggerCommands exec.TriggerExecute, event tree.TriggerEvent,
-) (beforeTriggerIns, afterTriggerIns Instruction, fn exec.ProcedurePlanFn, err error) {
+) (beforeTriggerIns, afterTriggerIns procedure.Instruction, fn exec.ProcedurePlanFn, err error) {
 	if len(table.GetTriggers(event)) > 0 {
 		// convert procCommand to Instructions, which is executed in BatchNext()
 		beforeTriggerIns, afterTriggerIns, err = ef.makeTriggerBlockIns(table, triggerCommands.GetCommands(), triggerCommands.GetScalarFn(), event)
@@ -3860,11 +3865,20 @@ func (ef *execFactory) makeTriggerBlockIns(
 	procComms memo.ArrayCommand,
 	scalarFn exec.BuildScalarFn,
 	event tree.TriggerEvent,
-) (beforeTriggerIns, afterTriggerIns Instruction, err error) {
-	var beforeTriggerInst []Instruction
-	var afterTriggerInst []Instruction
-
+) (beforeTriggerIns, afterTriggerIns procedure.Instruction, err error) {
 	eventTriggers := table.GetTriggers(event)
+	createInsFn := func(src []memo.ProcCommand) (procedure.Instruction, error) {
+		var ret procedure.Instruction
+		if len(src) > 0 {
+			childs, err1 := ef.buildSlice(src, scalarFn)
+			if err1 != nil {
+				return nil, err1
+			}
+
+			ret = procedure.NewBlockInsFromSlice("", childs)
+		}
+		return ret, nil
+	}
 	if len(eventTriggers) > 0 {
 		// convert procCommand to Instructions, which is executed in BatchNext(),
 		// extinguish BEFORE and AFTER
@@ -3876,30 +3890,19 @@ func (ef *execFactory) makeTriggerBlockIns(
 				break
 			}
 		}
-		for _, v := range procComms.Bodys[:beforeIdx] {
-			ins, err := ef.buildInstruction(v, scalarFn)
-			if err != nil {
-				return nil, nil, err
-			}
-			beforeTriggerInst = append(beforeTriggerInst, ins)
-		}
-		if len(beforeTriggerInst) != 0 {
-			beforeTriggerBlocks := BlockIns{}
-			beforeTriggerBlocks.childs = beforeTriggerInst
-			beforeTriggerIns = &beforeTriggerBlocks
+
+		BeforeBodys := make([]memo.ProcCommand, len(procComms.Bodys[:beforeIdx]))
+		copy(BeforeBodys, procComms.Bodys[:beforeIdx])
+		beforeTriggerIns, err = createInsFn(BeforeBodys)
+		if err != nil {
+			return nil, nil, err
 		}
 
-		for _, v := range procComms.Bodys[beforeIdx:] {
-			ins, err := ef.buildInstruction(v, scalarFn)
-			if err != nil {
-				return nil, nil, err
-			}
-			afterTriggerInst = append(afterTriggerInst, ins)
-		}
-		if len(afterTriggerInst) != 0 {
-			afterTriggerBlocks := BlockIns{}
-			afterTriggerBlocks.childs = afterTriggerInst
-			afterTriggerIns = &afterTriggerBlocks
+		afterBodys := make([]memo.ProcCommand, len(procComms.Bodys[beforeIdx:]))
+		copy(afterBodys, procComms.Bodys[beforeIdx:])
+		afterTriggerIns, err = createInsFn(afterBodys)
+		if err != nil {
+			return nil, nil, err
 		}
 	}
 	return beforeTriggerIns, afterTriggerIns, nil

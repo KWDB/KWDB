@@ -4331,3 +4331,36 @@ func StrRecord(record []*string, sep rune) string {
 	}
 	return strings.Join(strRecord, csvSep)
 }
+
+// CheckIfIntOutOfRange check if value oh type int out of range
+func CheckIfIntOutOfRange(typ types.T, d Datum) bool {
+	if v, ok := d.(*DInt); ok {
+		width := uint(typ.Width() - 1)
+
+		// We're performing bounds checks inline with Go's implementation of min and max ints in Math.go.
+		shifted := *v >> width
+		if (*v >= 0 && shifted > 0) || (*v < 0 && shifted < -1) {
+			return true
+		}
+	}
+	return false
+}
+
+// CheckNormalTagForTSUpdate checks normal tag col for ts update
+func CheckNormalTagForTSUpdate(
+	v Datum, isOrdinaryTagCol, isNullable bool, colTyp *types.T, colName string,
+) error {
+	if !isNullable && v == DNull {
+		return pgerror.Newf(pgcode.FeatureNotSupported, "unsupported conditions in update: tag %s is not null",
+			colName)
+	}
+	if !isOrdinaryTagCol {
+		return pgerror.Newf(pgcode.FeatureNotSupported,
+			"unsupported conditions in update: primary tags and columns cannot be set")
+	}
+	if CheckIfIntOutOfRange(*colTyp, v) {
+		return pgerror.Newf(pgcode.NumericValueOutOfRange, "integer out of range for type %s (column %s)",
+			colTyp.SQLString(), colName)
+	}
+	return nil
+}

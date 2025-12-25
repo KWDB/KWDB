@@ -288,33 +288,17 @@ func (b *Builder) synthesizeDeclareColumn(
 	alias string,
 	typ *types.T,
 	expr tree.TypedExpr,
-	idx int,
-	isPara bool,
+	prop *tree.ProcedureValueProperty,
 	overWrite int,
 ) *scopeColumn {
 	name := tree.Name(alias)
-	colID := b.factory.Metadata().AddDeclareColumn(alias, typ, idx)
+	colID := b.factory.Metadata().AddDeclareColumn(alias, typ, prop)
+	col := scopeColumn{name: name, typ: typ, id: colID, expr: expr, procProperty: prop}
 	if overWrite != -1 {
-		scope.cols[overWrite] = scopeColumn{
-			name:       name,
-			typ:        typ,
-			id:         colID,
-			expr:       expr,
-			isDeclared: true,
-			isPara:     isPara,
-			realIdx:    idx,
-		}
+		scope.cols[overWrite] = col
 		return &scope.cols[overWrite]
 	}
-	scope.cols = append(scope.cols, scopeColumn{
-		name:       name,
-		typ:        typ,
-		id:         colID,
-		expr:       expr,
-		isDeclared: true,
-		isPara:     isPara,
-		realIdx:    idx,
-	})
+	scope.cols = append(scope.cols, col)
 	return &scope.cols[len(scope.cols)-1]
 }
 
@@ -328,7 +312,7 @@ func (b *Builder) populateSynthesizedColumn(
 	if b.PhysType == tree.TS && name == "" {
 		name = col.expr.String()
 	}
-	if col.isDeclared {
+	if col.IsDeclared() {
 		col.scalar = scalar
 		return
 	}
@@ -391,21 +375,19 @@ func (b *Builder) addColumn(
 			return nil
 		}
 	} else {
-		isDeclare := false
-		idx := 0
 		var id opt.ColumnID
+		var prop *tree.ProcedureValueProperty
 		if col, ok := expr.(*scopeColumn); ok {
-			isDeclare = col.isDeclared
 			id = col.id
-			idx = col.realIdx
+			prop = col.CopyProcedureProperty()
 		}
+
 		scope.cols = append(scope.cols, scopeColumn{
-			name:       name,
-			id:         id,
-			typ:        expr.ResolvedType(),
-			expr:       expr,
-			isDeclared: isDeclare,
-			realIdx:    idx,
+			name:         name,
+			id:           id,
+			typ:          expr.ResolvedType(),
+			expr:         expr,
+			procProperty: prop,
 		})
 	}
 	return &scope.cols[len(scope.cols)-1]

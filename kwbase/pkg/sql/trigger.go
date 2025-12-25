@@ -21,8 +21,8 @@ import (
 )
 
 type triggerHelper struct {
-	beforeIns Instruction
-	afterIns  Instruction
+	beforeIns procedure.Instruction
+	afterIns  procedure.Instruction
 	execCtx   procedure.SpExecContext
 	// helper function, which is used to do optimization and generate execPlan for stmts in trigger
 	fn exec.ProcedurePlanFn
@@ -58,6 +58,9 @@ func (t *triggerHelper) GetInternalValues() tree.Datums {
 func (t *triggerHelper) InitContext() {
 	t.execCtx.Init()
 	t.execCtx.Fn = t.fn
+	t.execCtx.GetResultFn = GetPlanResultColumn
+	t.execCtx.RunPlanFn = RunPlanInsideProcedure
+	t.execCtx.StartPlanFn = StartPlanInsideProcedure
 	t.execCtx.TriggerReplaceValues = t
 }
 
@@ -80,7 +83,7 @@ func (t *triggerHelper) NeedExecuteAfterTrigger() bool {
 
 // ExecuteIns executes instruction
 func (t *triggerHelper) ExecuteIns(
-	params runParams, sourceValue *tree.Datums, ins Instruction,
+	params runParams, sourceValue *tree.Datums, ins procedure.Instruction,
 ) error {
 	t.internalValues = sourceValue
 
@@ -112,7 +115,7 @@ func (t *triggerHelper) ExecuteIns(
 	defer func() {
 		params.EvalContext().IsTrigger = false
 	}()
-	err := ins.Execute(params, &t.execCtx)
+	err := ins.Execute(&params, &t.execCtx)
 	if err != nil {
 		wrapErr := errors.Wrap(err, "TriggeredActionException")
 		return pgerror.Newf(pgcode.TriggeredActionException, wrapErr.Error())

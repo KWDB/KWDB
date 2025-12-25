@@ -12,6 +12,8 @@
 package optbuilder
 
 import (
+	"strings"
+
 	"gitee.com/kwbasedb/kwbase/pkg/sql/lex"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/opt/memo"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/parser"
@@ -44,7 +46,6 @@ func (b *Builder) buildCreateProcedure(cv *tree.CreateProcedure, inScope *scope)
 	oriName := cv.Name
 	sch, resName := b.resolveSchemaForCreate(&cv.Name, tree.RelationalTable)
 	cv.Name.TableNamePrefix = resName
-	schID := b.factory.Metadata().AddSchema(sch)
 	// resolve procDesc
 	found, _, err := b.catalog.ResolveProcCatalog(b.ctx, &cv.Name, false)
 	if err != nil {
@@ -54,8 +55,6 @@ func (b *Builder) buildCreateProcedure(cv *tree.CreateProcedure, inScope *scope)
 		panic(pgerror.Newf(pgcode.DuplicateRelation, "procedure %q already exists", tree.ErrString(&oriName)))
 	}
 
-	var input memo.RelExpr
-	input = b.factory.ConstructZeroValues()
 	// check duplicated params
 	paramNames := make(map[tree.Name]struct{})
 	for _, param := range cv.Parameters {
@@ -86,7 +85,15 @@ func (b *Builder) buildCreateProcedure(cv *tree.CreateProcedure, inScope *scope)
 	labels := make(map[string]struct{}, 0)
 	b.getProcCommand(&cv.Block, nil, inScope, inputParams, labels)
 	fmtCtx.FormatNode(cv)
-	cv.BodyStr = fmtCtx.CloseAndGetString()
+	bodyStr := fmtCtx.CloseAndGetString()
+	cv.BodyStr = bodyStr
+	if strings.Contains(bodyStr, "::") {
+		cv.BodyStr = b.OriginalSQL
+	}
+
+	var input memo.RelExpr
+	schID := b.factory.Metadata().AddSchema(sch)
+	input = b.factory.ConstructZeroValues()
 
 	outScope = b.allocScope()
 	outScope.expr = b.factory.ConstructCreateProcedure(

@@ -31,7 +31,7 @@ type callProcedureNode struct {
 	execCtx procedure.SpExecContext
 
 	// ins execute block
-	ins Instruction
+	ins procedure.Instruction
 
 	// params saves run param for next result execute
 	params runParams
@@ -68,8 +68,11 @@ func (n *callProcedureNode) startExec(params runParams) error {
 	}
 	n.execCtx.Init()
 	n.execCtx.Fn = n.fn
+	n.execCtx.GetResultFn = GetPlanResultColumn
+	n.execCtx.RunPlanFn = RunPlanInsideProcedure
+	n.execCtx.StartPlanFn = StartPlanInsideProcedure
 	n.params = params
-	if err := n.ins.Execute(params, &n.execCtx); err != nil {
+	if err := n.ins.Execute(&params, &n.execCtx); err != nil {
 		if params.p.extendedEvalCtx.TxnImplicit && n.execCtx.GetProcedureTxn() != tree.ProcedureTransactionDefault {
 			if err := params.p.txn.Rollback(params.ctx); err != nil {
 				n.err = err
@@ -99,15 +102,7 @@ func (n *callProcedureNode) Values() tree.Datums {
 
 func (n *callProcedureNode) Close(ctx context.Context) {
 	n.execCtx.Close(ctx)
-	if blockIns, ok := n.ins.(*BlockIns); ok {
-		// When the procedure execution is completed, clear the unreleased cursor
-		for _, cursorHelper := range blockIns.rCtx.GetLocalCurSorMap() {
-			cursor := cursorHelper.Action.(*Cursor)
-			if cursor.isOpen {
-				cursor.Clear()
-			}
-		}
-	}
+	n.ins.Close()
 }
 
 // HasNextResult checks next result for procedure . The stored procedure will generate multiple result sets,
@@ -131,7 +126,7 @@ func (n *callProcedureNode) HasNextResult(txnImplicit bool) (bool, error) {
 	n.execCtx.InitResult()
 	// if label is 'Handler', we should continue executing returnHandler.
 	if isExecHandler {
-		if err := execHandler(n.params, &n.execCtx, tree.ModeExit, returnHandler); err != nil {
+		if err := returnHandler.ExecHandler(&n.params, &n.execCtx, tree.ModeExit); err != nil {
 			return false, err
 		}
 		if n.execCtx.NeedReturn() && n.execCtx.ReturnLabel() == procedure.EndLabel && exceptionErr != nil {
@@ -139,7 +134,7 @@ func (n *callProcedureNode) HasNextResult(txnImplicit bool) (bool, error) {
 			n.endTransaction(txnImplicit)
 			return false, n.err
 		}
-	} else if err := n.ins.Execute(n.params, &n.execCtx); err != nil {
+	} else if err := n.ins.Execute(&n.params, &n.execCtx); err != nil {
 		n.err = err
 		n.endTransaction(txnImplicit)
 		return false, n.err

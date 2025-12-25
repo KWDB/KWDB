@@ -59,7 +59,9 @@ var autonomicOptimizationEnable = settings.RegisterBoolSetting(
 //   - Types
 //   - AnonymizedStr
 //   - Memo (for reuse during exec, if appropriate).
-func (p *planner) prepareUsingOptimizer(ctx context.Context) (planFlags, error) {
+func (p *planner) prepareUsingOptimizer(
+	ctx context.Context, insidePrepareOfProcFlag uint8,
+) (planFlags, error) {
 	stmt := p.stmt
 
 	opc := &p.optPlanningCtx
@@ -144,7 +146,7 @@ func (p *planner) prepareUsingOptimizer(ctx context.Context) (planFlags, error) 
 		opc.flags.Set(planFlagOptCacheMiss)
 	}
 
-	memo, err := opc.buildReusableMemo(ctx)
+	memo, err := opc.buildReusableMemo(ctx, insidePrepareOfProcFlag)
 	if err != nil {
 		return 0, err
 	}
@@ -357,7 +359,9 @@ func (opc *optPlanningCtx) log(ctx context.Context, msg string) {
 // prepared statements and can later be used as a starting point for
 // optimization. The returned memo is fully detached from the planner and can be
 // used with reuseMemo independently and concurrently by multiple threads.
-func (opc *optPlanningCtx) buildReusableMemo(ctx context.Context) (_ *memo.Memo, _ error) {
+func (opc *optPlanningCtx) buildReusableMemo(
+	ctx context.Context, insidePrepareOfProcFlag uint8,
+) (_ *memo.Memo, _ error) {
 	p := opc.p
 
 	_, isCanned := opc.p.stmt.AST.(*tree.CannedOptPlan)
@@ -397,6 +401,9 @@ func (opc *optPlanningCtx) buildReusableMemo(ctx context.Context) (_ *memo.Memo,
 
 	bld := optbuilder.New(ctx, &p.semaCtx, p.EvalContext(), &opc.catalog, f, opc.p.stmt.AST)
 	bld.KeepPlaceholders = true
+	if insidePrepareOfProcFlag == optbuilder.InsidePrepareOfProcDef {
+		bld.SetProcPrepareFlags(insidePrepareOfProcFlag)
+	}
 	// find sql of select in insert...select...
 	if err := bld.Build(); err != nil {
 		return nil, err
@@ -547,7 +554,7 @@ func (opc *optPlanningCtx) buildExecMemo(
 		if isStale, err := prepared.Memo.IsStale(ctx, p.EvalContext(), &opc.catalog); err != nil {
 			return nil, tree.Invalid, err
 		} else if isStale {
-			prepared.Memo, err = opc.buildReusableMemo(ctx)
+			prepared.Memo, err = opc.buildReusableMemo(ctx, 0)
 			opc.log(ctx, "rebuilding cached memo")
 			if err != nil {
 				return nil, tree.Invalid, err
@@ -566,7 +573,7 @@ func (opc *optPlanningCtx) buildExecMemo(
 			if isStale, err := cachedData.Memo.IsStale(ctx, p.EvalContext(), &opc.catalog); err != nil {
 				return nil, tree.Invalid, err
 			} else if isStale {
-				cachedData.Memo, err = opc.buildReusableMemo(ctx)
+				cachedData.Memo, err = opc.buildReusableMemo(ctx, 0)
 				if err != nil {
 					return nil, tree.Invalid, err
 				}
@@ -594,7 +601,11 @@ func (opc *optPlanningCtx) buildExecMemo(
 	// available.
 	bld := optbuilder.New(ctx, &p.semaCtx, p.EvalContext(), &opc.catalog, f, opc.p.stmt.AST)
 	bld.InStream = opc.p.inStream
+	bld.OriginalSQL = opc.p.stmt.SQL
 
+	bld.PrepareHelper = p.PrepareHelper
+	bld.ExecuteHelper = p.ExecuteHelper
+	bld.DeallocateHelper = p.DeallocateHelper
 	//computer queryingerPrint for a select sql,and get its external hint from pseudo catalog cache
 	//or pseudo catalog table.
 	bld.CleanIncludeTSTableFlag()

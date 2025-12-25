@@ -89,11 +89,9 @@ type ColumnMeta struct {
 	// TSType property of time series column(0: normal col; 1: tag col 2: primary tag)
 	TSType int
 
-	// IsDeclaredInsideProcedure indicates whether this column is declared in a stored procedure.
-	IsDeclaredInsideProcedure bool
-	// RealIdx is only used when IsDeclaredInsideProcedure is true, which indicates the index of
-	// variables declared inside a procedure(starts from zero)
-	RealIdx int
+	// procProperty stores all procedure property
+	procProperty *tree.ProcedureValueProperty
+
 	// Name is the ColName of this column, which is used to do semantic check for NEW/OLD expr in
 	// trigger.
 	Name string
@@ -117,6 +115,37 @@ func (c *ColumnMeta) IsNormalTag() bool {
 // IsPrimaryTag identify this column as a primary tag column.
 func (c *ColumnMeta) IsPrimaryTag() bool {
 	return c.TSType == TSColPrimaryTag
+}
+
+// IsProcedureUsed returns col is used by procedure
+func (c *ColumnMeta) IsProcedureUsed() bool {
+	return c.procProperty != nil
+}
+
+// IsProcedureLocalValue returns cols from declare
+func (c *ColumnMeta) IsProcedureLocalValue() bool {
+	return c.procProperty.IsDeclared()
+}
+
+// RealIdx returns value real local index
+func (c *ColumnMeta) RealIdx() int {
+	if c.procProperty == nil {
+		return -1
+	}
+	return c.procProperty.RealIdx()
+}
+
+// UDVName returns value user define name
+func (c *ColumnMeta) UDVName() string {
+	if c.procProperty == nil {
+		return ""
+	}
+	return c.procProperty.UDFName()
+}
+
+// IsParam returns cols from param
+func (c *ColumnMeta) IsParam() bool {
+	return c.procProperty != nil && c.procProperty.IsParam()
 }
 
 // property of time series column(0: normal col; 1: tag col 2: primary tag)

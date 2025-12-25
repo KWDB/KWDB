@@ -815,3 +815,20 @@ DROP PROCEDURE power.pro1;
 DROP FUNCTION calculate_growth_rate;
 DROP TABLE power.consumption;
 DROP DATABASE power;
+
+DROP DATABASE IF EXISTS db1 cascade;
+create ts database db1;
+CREATE TABLE db1.t1 (
+    ts TIMESTAMP NOT NULL,
+    e1 INT
+) TAGS (tag1 INT4 NOT NULL ) PRIMARY TAGS(tag1);
+
+create procedure db1.pc1() begin insert into db1.t1 values (now(),1, 10); end;
+show create procedure db1.pc1;
+call db1.pc1();
+
+create procedure db1.pc2() $$ begin insert into db1.t1 values (now(),1, 10); end $$;
+show create procedure db1.pc2;
+call db1.pc2();
+select count(*) from db1.t1;
+DROP DATABASE IF EXISTS db1 cascade;

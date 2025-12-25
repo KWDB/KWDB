@@ -468,7 +468,7 @@ func (b *Builder) buildTSUpdate(
 		}
 	}
 
-	exprs := make(map[int]tree.Datum, colCount)
+	exprs := make(map[int]tree.Expr, colCount)
 
 	// resolve primary tag filter to datum
 	var indexFlags *tree.IndexFlags
@@ -489,7 +489,7 @@ func (b *Builder) buildTSUpdate(
 	// resolve filter expr to get scope column and it's column id
 	texpr := inScope.resolveType(upd.Where.Expr, types.Bool)
 	meta := b.factory.Metadata()
-	if !checkTSUpdateFilter(b.evalCtx, texpr, exprs, primaryTagIDs, meta) {
+	if !checkTSUpdateFilter(b.evalCtx, texpr, exprs, primaryTagIDs, meta, b.insideObjectDef) {
 		panic(sqlbase.UnsupportedUpdateConditionError("unsupported binary operator or mismatching tag filter"))
 	}
 	if !checkUpdateTagIsComplete(exprs, primaryTagIDs) {
@@ -497,7 +497,10 @@ func (b *Builder) buildTSUpdate(
 	}
 	for pid, value := range exprs {
 		typ, ok := ptagType[pid]
-		if ok && checkIfIntOutOfRange(typ, value) {
+		if _, ok1 := value.(*tree.UserDefinedVar); ok1 {
+			continue
+		}
+		if ok && tree.CheckIfIntOutOfRange(typ, value.(tree.Datum)) {
 			isPtagOutOfRange = true
 			break
 		}
@@ -509,7 +512,7 @@ func (b *Builder) buildTSUpdate(
 	// Derive the columns that will be updated from the SET expressions.
 	mb.addTSTargetColsForUpdate(upd.Exprs)
 	// Build each of the SET expressions.
-	if err := mb.addTSUpdateCols(upd.Exprs, exprs); err != nil {
+	if err := mb.addTSUpdateCols(upd.Exprs, exprs, b.insideObjectDef); err != nil {
 		panic(err)
 	}
 	if b.insideObjectDef.HasFlags(InsideProcedureDef) {
@@ -555,7 +558,7 @@ func (b *Builder) buildTSUpdate(
 		}
 	}
 
-	var tagValue []tree.Datum
+	var tagValue []tree.Expr
 	for i, col := range tagCols {
 		// check if tags completed
 		if exp, ok := exprs[int(col.ColID())]; ok {
@@ -586,14 +589,16 @@ func (b *Builder) buildTSUpdate(
 func checkTSUpdateFilter(
 	evalCtx *tree.EvalContext,
 	filter tree.Expr,
-	exprs map[int]tree.Datum,
+	exprs map[int]tree.Expr,
 	primaryTagIDs map[int]struct{},
 	meta *opt.Metadata,
+	flag DefinitionFlags,
 ) bool {
 
 	switch f := filter.(type) {
 	case *tree.AndExpr:
-		if !(checkTSUpdateFilter(evalCtx, f.Right, exprs, primaryTagIDs, meta) && checkTSUpdateFilter(evalCtx, f.Left, exprs, primaryTagIDs, meta)) {
+		if !(checkTSUpdateFilter(evalCtx, f.Right, exprs, primaryTagIDs, meta, flag) &&
+			checkTSUpdateFilter(evalCtx, f.Left, exprs, primaryTagIDs, meta, flag)) {
 			return false
 		}
 	case *tree.ComparisonExpr:
@@ -601,7 +606,7 @@ func checkTSUpdateFilter(
 		if f.Operator != tree.EQ {
 			return false
 		}
-		if !addPrimaryTagExpr(evalCtx, f.Left, f.Right, exprs, meta) {
+		if !addPrimaryTagExpr(evalCtx, f.Left, f.Right, exprs, meta, flag) {
 			return false
 		}
 	default:
@@ -610,61 +615,59 @@ func checkTSUpdateFilter(
 	return true
 }
 
-// addPrimaryTagExpr resolve primary tag expr and build exprs map of id and datum
-// input: left expr, right expr, metadata
-// output: bool(if the same primary tag match different value, return false)
-func addPrimaryTagExpr(
-	evalCtx *tree.EvalContext, left, right tree.Expr, exprs map[int]tree.Datum, meta *opt.Metadata,
+func dealExprAndValue(
+	evalCtx *tree.EvalContext,
+	col *scopeColumn,
+	value tree.Expr,
+	exprs map[int]tree.Expr,
+	meta *opt.Metadata,
+	flag DefinitionFlags,
 ) bool {
-	switch ltype := left.(type) {
-	case *scopeColumn:
-		// id in expr is column's logical id, need to get column's physical id
-		t := meta.ColumnMeta(ltype.id).Table
-		index := t.ColumnOrdinal(ltype.id)
-		id := int(meta.Table(t).Column(index).ColID())
-		if d, ok := right.(tree.Datum); ok {
-			if val, ok := exprs[id]; ok {
-				if val.String() != right.String() {
-					return false
-				}
-			} else {
-				exprs[id] = d
+	// id in expr is column's logical id, need to get column's physical id
+	t := meta.ColumnMeta(col.id).Table
+	index := t.ColumnOrdinal(col.id)
+	id := int(meta.Table(t).Column(index).ColID())
+	if d, ok := value.(tree.Datum); ok {
+		if val, ok := exprs[id]; ok {
+			if val.String() != value.String() {
+				return false
 			}
-		} else if c, ok := right.(*scopeColumn); ok && c.isDeclared {
-			panic(sqlbase.UnsupportedUpdateConditionError(fmt.Sprintf("cannot use declared variable \"%s\" in time-series", c.name)))
-		} else if udv, ok := right.(*tree.UserDefinedVar); ok {
+		} else {
+			exprs[id] = d
+		}
+	} else if c, ok := value.(*scopeColumn); ok && c.IsDeclared() {
+		panic(sqlbase.UnsupportedUpdateConditionError(fmt.Sprintf("cannot use declared variable \"%s\" in time-series", c.name)))
+	} else if udv, ok := value.(*tree.UserDefinedVar); ok {
+		if !flag.HasFlags(InsideProcedureDef) {
 			val, err := udv.Eval(evalCtx)
 			if err != nil {
 				panic(err)
 			}
 			exprs[id] = val
 		} else {
-			return false
+			exprs[id] = udv
 		}
+	}
+	return false
+}
+
+// addPrimaryTagExpr resolve primary tag expr and build exprs map of id and datum
+// input: left expr, right expr, metadata
+// output: bool(if the same primary tag match different value, return false)
+func addPrimaryTagExpr(
+	evalCtx *tree.EvalContext,
+	left, right tree.Expr,
+	exprs map[int]tree.Expr,
+	meta *opt.Metadata,
+	flag DefinitionFlags,
+) bool {
+	switch ltype := left.(type) {
+	case *scopeColumn:
+		dealExprAndValue(evalCtx, ltype, right, exprs, meta, flag)
 	default:
 		switch rtype := right.(type) {
 		case *scopeColumn:
-			t := meta.ColumnMeta(rtype.id).Table
-			id := t.ColumnOrdinal(rtype.id) + 1
-			if d, ok := left.(tree.Datum); ok {
-				if val, ok := exprs[id]; ok {
-					if val.String() != ltype.String() {
-						return false
-					}
-				} else {
-					exprs[id] = d
-				}
-			} else if c, ok := left.(*scopeColumn); ok && c.isDeclared {
-				panic(sqlbase.UnsupportedUpdateConditionError(fmt.Sprintf("cannot use declared variable \"%s\" in time-series", c.name)))
-			} else if udv, ok := left.(*tree.UserDefinedVar); ok {
-				val, err := udv.Eval(evalCtx)
-				if err != nil {
-					panic(err)
-				}
-				exprs[id] = val
-			} else {
-				return false
-			}
+			dealExprAndValue(evalCtx, rtype, left, exprs, meta, flag)
 		default:
 			return false
 		}
@@ -673,7 +676,7 @@ func addPrimaryTagExpr(
 }
 
 // checkUpdateTagIsComplete check if primary tags in filter is completed
-func checkUpdateTagIsComplete(exprs map[int]tree.Datum, primaryTagIDs map[int]struct{}) bool {
+func checkUpdateTagIsComplete(exprs map[int]tree.Expr, primaryTagIDs map[int]struct{}) bool {
 	if len(exprs) != len(primaryTagIDs) {
 		return false
 	}
@@ -698,7 +701,7 @@ func (mb *mutationBuilder) addTSTargetColsForUpdate(exprs tree.UpdateExprs) {
 
 // addTSUpdateCols checks if target columns is tags except primary tags, add tag id and values into exprMap
 func (mb *mutationBuilder) addTSUpdateCols(
-	exprs tree.UpdateExprs, exprMap map[int]tree.Datum,
+	exprs tree.UpdateExprs, exprMap map[int]tree.Expr, flag DefinitionFlags,
 ) error {
 	// SET expressions should reject aggregates, generators, etc.
 	scalarProps := &mb.b.semaCtx.Properties
@@ -714,23 +717,21 @@ func (mb *mutationBuilder) addTSUpdateCols(
 	projectionsScope.appendColumnsFromScope(mb.outScope)
 
 	// check if values fit column type(including type check and nullable)
-	checkCol := func(sourceCol *scopeColumn, scopeOrd scopeOrdinal, targetColID opt.ColumnID, d tree.Datum, expr tree.Expr) error {
+	checkCol := func(sourceCol *scopeColumn, scopeOrd scopeOrdinal, targetColID opt.ColumnID, d tree.Expr, expr tree.Expr) error {
 		// Type check the input expression against the corresponding table column.
 		ord := mb.tabID.ColumnOrdinal(targetColID)
 		col := mb.tab.Column(ord)
 		checkDatumTypeFitsColumnType(col, sourceCol.typ, tree.RelationalTable)
-		if !col.IsNullable() && d == tree.DNull {
-			return sqlbase.UnsupportedUpdateConditionError(fmt.Sprintf("tag %s is not null", mb.tab.Column(ord).ColName()))
+
+		if value, ok := d.(tree.Datum); ok {
+			if err := tree.CheckNormalTagForTSUpdate(value, col.IsOrdinaryTagCol(),
+				col.IsNullable(), col.DatumType(), string(col.ColName())); err != nil {
+				return err
+			}
 		}
-		if !(col.IsOrdinaryTagCol()) {
-			return sqlbase.UnsupportedUpdateConditionError("primary tags and columns cannot be set")
-		}
-		typ := *col.DatumType()
-		if checkIfIntOutOfRange(typ, d) {
-			return sqlbase.IntOutOfRangeError(col.DatumType(), string(col.ColName()))
-		}
+
 		if s, ok := expr.(*tree.StrVal); ok {
-			_, err := s.TSTypeCheck(string(col.ColName()), &typ, mb.b.semaCtx)
+			_, err := s.TSTypeCheck(string(col.ColName()), col.DatumType(), mb.b.semaCtx)
 			if err != nil {
 				return err
 			}
@@ -738,37 +739,53 @@ func (mb *mutationBuilder) addTSUpdateCols(
 		return nil
 	}
 
-	addCol := func(expr tree.Expr, targetColID opt.ColumnID, exprMap map[int]tree.Datum) error {
+	addCol := func(expr tree.Expr, targetColID opt.ColumnID, exprMap map[int]tree.Expr) error {
 		// Allow right side of SET to be DEFAULT.
 		if _, ok := expr.(tree.DefaultVal); ok {
 			expr = mb.parseDefaultOrComputedExpr(targetColID)
 		}
-		if udv, ok := expr.(*tree.UserDefinedVar); ok {
-			d, err := udv.Eval(mb.b.evalCtx)
-			if err != nil {
-				return err
-			}
-			expr = d
-		}
-
+		var texpr tree.TypedExpr
+		var value tree.Expr
 		// Add new column to the projections scope.
 		desiredType := mb.md.ColumnMeta(targetColID).Type
-		texpr := inScope.resolveType(expr, desiredType)
-		d, ok := texpr.(tree.Datum)
-		if !ok {
+		texpr = inScope.resolveType(expr, desiredType)
+		switch s := texpr.(type) {
+		case *tree.UserDefinedVar:
+			if !flag.HasFlags(InsideProcedureDef) {
+				d, err := s.Eval(mb.b.evalCtx)
+				if err != nil {
+					return err
+				}
+				value = d
+			} else {
+				value = s
+			}
+		case *scopeColumn:
+			// procedure declare variable and user define value
+			if s.procProperty == nil {
+				return sqlbase.UnsupportedUpdateConditionError("unsupported expr in set")
+			}
+			indexVal := tree.NewTypedOrdinalReference(s.RealIdx(), s.typ)
+			indexVal.ProcProperty = s.CopyProcedureProperty()
+			value = indexVal
+		case tree.Datum:
+			value = s
+		default:
+			// only support cast null -> null
 			if exp, ok := texpr.(*tree.CastExpr); !(ok && exp.Expr == tree.DNull) {
 				return sqlbase.UnsupportedUpdateConditionError("unsupported expr in set")
 			}
-			d = tree.DNull
+			value = tree.DNull
 		}
+
 		scopeCol := mb.b.addColumn(projectionsScope, "" /* alias */, texpr, false)
 		scopeColOrd := scopeOrdinal(len(projectionsScope.cols) - 1)
 		mb.b.buildScalar(texpr, inScope, projectionsScope, scopeCol, nil)
-		if err := checkCol(scopeCol, scopeColOrd, targetColID, d, expr); err != nil {
+		if err := checkCol(scopeCol, scopeColOrd, targetColID, value, expr); err != nil {
 			return err
 		}
 		colMeta := mb.tab.Column(mb.tabID.ColumnOrdinal(targetColID))
-		exprMap[int(colMeta.ColID())] = d
+		exprMap[int(colMeta.ColID())] = value
 		return nil
 	}
 
@@ -784,20 +801,6 @@ func (mb *mutationBuilder) addTSUpdateCols(
 		}
 	}
 	return nil
-}
-
-// checkIfIntOutOfRange check if value oh type int out of range
-func checkIfIntOutOfRange(typ types.T, d tree.Datum) bool {
-	if v, ok := d.(*tree.DInt); ok {
-		width := uint(typ.Width() - 1)
-
-		// We're performing bounds checks inline with Go's implementation of min and max ints in Math.go.
-		shifted := *v >> width
-		if (*v >= 0 && shifted > 0) || (*v < 0 && shifted < -1) {
-			return true
-		}
-	}
-	return false
 }
 
 // changePlaceholder change placeholder with value in EvalContext.
@@ -831,3 +834,8 @@ func changePlaceholder(evalCtx *tree.EvalContext, filter *tree.Expr) error {
 	}
 	return nil
 }
+
+// ProcPrepareUdvErr indicates an error that the prepare in the procedure
+// does not support the use of user-defined variables
+var ProcPrepareUdvErr = pgerror.Newf(pgcode.FeatureNotSupported,
+	"user defined variables cannot be used in prepare of procedure")

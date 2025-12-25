@@ -14,6 +14,7 @@ package memo
 import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/opt"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/opt/props/physical"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/prepare"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/types"
 )
@@ -54,6 +55,12 @@ const (
 	ProcedureInto
 	// ProcArray  is cmd for proc array
 	ProcArray
+	// ProcPrepare is cmd for proc prepare
+	ProcPrepare
+	// ProcExecute is cmd for proc execute
+	ProcExecute
+	// ProcDeallocate is cmd for proc deallocate
+	ProcDeallocate
 )
 
 // ProcComms represents an array of ProcCommand
@@ -114,6 +121,42 @@ func (b *IntoCommand) Type() CmdType {
 	return ProcedureInto
 }
 
+// PrepareCommand creates instruction slice
+type PrepareCommand struct {
+	Name  tree.Name              // prepare name
+	Res   prepare.PreparedResult // prepare struct
+	AddFn prepare.PreparedAddFn  // the function that add prepare struct to map
+}
+
+// Type implements the ProcCommand interface for PrepareCommand.
+func (b *PrepareCommand) Type() CmdType {
+	return ProcPrepare
+}
+
+// ExecuteCommand execute instruction slice
+type ExecuteCommand struct {
+	Execute       *tree.Execute
+	PhInfo        *tree.PlaceholderInfo
+	GetMemoFn     prepare.ExecuteGetMemoFn
+	StatementType int
+	SQLStr        string
+}
+
+// Type implements the ProcCommand interface for ExecuteCommand.
+func (b *ExecuteCommand) Type() CmdType {
+	return ProcExecute
+}
+
+// DeallocateCommand deallocate instruction slice
+type DeallocateCommand struct {
+	Name string
+}
+
+// Type implements the ProcCommand interface for DeallocateCommand.
+func (b *DeallocateCommand) Type() CmdType {
+	return ProcDeallocate
+}
+
 // IfCommand creates instruction slice
 type IfCommand struct {
 	Cond opt.ScalarExpr
@@ -141,7 +184,7 @@ type DeclareCol struct {
 	Typ     *types.T
 	Default tree.TypedExpr
 	Idx     int
-	Mode    tree.SetValueMode // the value type for local variables inside procedure/trigger
+	Mode    tree.ProcedureValueMode // the value type for local variables inside procedure/trigger
 }
 
 // WhileCommand creates instruction slice

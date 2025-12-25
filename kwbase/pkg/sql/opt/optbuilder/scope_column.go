@@ -51,10 +51,6 @@ type scopeColumn struct {
 	// included.
 	hidden bool
 
-	isDeclared bool
-	isPara     bool
-	realIdx    int
-
 	// mutation is true if the column is in the process of being dropped or added
 	// to the table. It should not be visible to variable references.
 	mutation bool
@@ -74,6 +70,40 @@ type scopeColumn struct {
 	// exprStr contains a stringified representation of expr, or the original
 	// column name if expr is nil. It is populated lazily inside getExprStr().
 	exprStr string
+
+	// procProps saves all procedure property
+	procProperty *tree.ProcedureValueProperty
+}
+
+// ProcUsed returns cols used by procedure
+func (s *scopeColumn) ProcUsed() bool {
+	return s.procProperty != nil
+}
+
+// IsDeclared returns cols from declare
+func (s *scopeColumn) IsDeclared() bool {
+	return s.procProperty != nil && s.procProperty.IsDeclared()
+}
+
+// RealIdx returns value real local index
+func (s *scopeColumn) RealIdx() int {
+	if s.procProperty == nil {
+		return -1
+	}
+	return s.procProperty.RealIdx()
+}
+
+// IsParam returns cols from param
+func (s *scopeColumn) IsParam() bool {
+	return s.procProperty != nil && s.procProperty.IsParam()
+}
+
+// CopyProcedureProperty returns new property
+func (s *scopeColumn) CopyProcedureProperty() *tree.ProcedureValueProperty {
+	if s.procProperty == nil {
+		return nil
+	}
+	return s.procProperty.Copy()
 }
 
 // clearName sets the empty table and column name. This is used to make the
@@ -182,9 +212,9 @@ type ReplaceProcCond struct{}
 
 // Replace replaces the scopeColumn in the procStmt condition with IndexedVar
 func (d *ReplaceProcCond) Replace(expr tree.Expr) tree.TypedExpr {
-	if v, ok := (expr).(*scopeColumn); ok && v.isDeclared {
-		indexVal := tree.NewTypedOrdinalReference(v.realIdx, v.typ)
-		indexVal.IsDeclare = true
+	if v, ok := (expr).(*scopeColumn); ok && v.IsDeclared() {
+		indexVal := tree.NewTypedOrdinalReference(v.RealIdx(), v.typ)
+		indexVal.ProcProperty = v.CopyProcedureProperty()
 		return indexVal
 	}
 	return expr.Walk(d).(tree.TypedExpr)
@@ -192,9 +222,9 @@ func (d *ReplaceProcCond) Replace(expr tree.Expr) tree.TypedExpr {
 
 // VisitPre for ReplaceProcCond
 func (d *ReplaceProcCond) VisitPre(expr tree.Expr) (recurse bool, newExpr tree.Expr) {
-	if v, ok := (expr).(*scopeColumn); ok && v.isDeclared {
-		indexVal := tree.NewTypedOrdinalReference(v.realIdx, v.typ)
-		indexVal.IsDeclare = true
+	if v, ok := (expr).(*scopeColumn); ok && v.IsDeclared() {
+		indexVal := tree.NewTypedOrdinalReference(v.RealIdx(), v.typ)
+		indexVal.ProcProperty = v.CopyProcedureProperty()
 		return false, indexVal
 	}
 	return true, expr

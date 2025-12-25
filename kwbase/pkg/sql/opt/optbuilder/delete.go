@@ -298,7 +298,7 @@ func (b *Builder) buildTSDelete(
 	texpr := inScope.resolveType(del.Where.Expr, types.Bool)
 	meta := b.factory.Metadata()
 	// check if filter supported
-	spans = checkTSDeleteFilter(b.evalCtx, inScope, texpr, exprs, &filterTyp, primaryTagIDs, meta, spans, precision)
+	spans = b.checkTSDeleteFilter(inScope, texpr, exprs, &filterTyp, primaryTagIDs, meta, spans, precision)
 	if filterTyp == unsupportedType {
 		panic(sqlbase.UnsupportedDeleteConditionError("unsupported binary operator or mismatching tag filter"))
 	}
@@ -390,8 +390,7 @@ type filterType int
 
 // checkTSDeleteFilter check if filter in delete only
 // support one piece of primary tags or ts column
-func checkTSDeleteFilter(
-	evalCtx *tree.EvalContext,
+func (b *Builder) checkTSDeleteFilter(
 	inScope *scope,
 	filter tree.Expr,
 	exprs map[int]ExprWithLogicID,
@@ -404,17 +403,19 @@ func checkTSDeleteFilter(
 	if *typ == unsupportedType {
 		return nil
 	}
+	evalCtx := b.evalCtx
+	insideFlags := b.insideObjectDef
 
 	switch f := filter.(type) {
 	case *tree.AndExpr:
-		rightSpans := checkTSDeleteFilter(evalCtx, inScope, f.Right, exprs, typ, primaryTagIDs, meta, nil, precision)
-		leftSpans := checkTSDeleteFilter(evalCtx, inScope, f.Left, exprs, typ, primaryTagIDs, meta, nil, precision)
+		rightSpans := b.checkTSDeleteFilter(inScope, f.Right, exprs, typ, primaryTagIDs, meta, nil, precision)
+		leftSpans := b.checkTSDeleteFilter(inScope, f.Left, exprs, typ, primaryTagIDs, meta, nil, precision)
 		spans = mergeAndSpans(leftSpans, rightSpans, spans)
 	case *tree.OrExpr:
 		leftPri, rightPri := make(map[int]ExprWithLogicID), make(map[int]ExprWithLogicID)
-		rightSpans := checkTSDeleteFilter(evalCtx, inScope, f.Right, rightPri, typ, primaryTagIDs, meta, nil, precision)
+		rightSpans := b.checkTSDeleteFilter(inScope, f.Right, rightPri, typ, primaryTagIDs, meta, nil, precision)
 		right := checkPTagIsComplete(rightPri, primaryTagIDs)
-		leftSpans := checkTSDeleteFilter(evalCtx, inScope, f.Left, leftPri, typ, primaryTagIDs, meta, nil, precision)
+		leftSpans := b.checkTSDeleteFilter(inScope, f.Left, leftPri, typ, primaryTagIDs, meta, nil, precision)
 		left := checkPTagIsComplete(leftPri, primaryTagIDs)
 		if (*typ == onlyTag || *typ == tagAndTS) && right && left {
 			for key, value := range leftPri {
@@ -432,29 +433,57 @@ func checkTSDeleteFilter(
 			return nil
 		}
 		if udv, ok := f.Left.(*tree.UserDefinedVar); ok {
-			exp, err := udv.Eval(evalCtx)
-			if err != nil {
-				panic(err)
+			if insideFlags.HasFlags(InsidePrepareOfProcDef) {
+				panic(ProcPrepareUdvErr)
 			}
-			f.Left = exp
+			if val1, ok1 := b.semaCtx.ProcUserDefinedVars[udv.VarName]; ok1 {
+				sm, err1 := b.getColumnMeta(opt.ColumnID(val1.ColumnID))
+				if err1 != nil {
+					panic(err1)
+				}
+				indexVal := tree.NewTypedOrdinalReference(sm.RealIdx(), val1.Typ)
+				indexVal.ProcProperty = tree.NewUDFColProperty(false, udv.VarName)
+				indexVal.SetUdvColFormat(udv)
+				f.Left = indexVal
+			} else {
+				exp, err := udv.Eval(evalCtx)
+				if err != nil {
+					panic(err)
+				}
+				f.Left = exp
+			}
 		}
 		if udv, ok := f.Right.(*tree.UserDefinedVar); ok {
-			exp, err := udv.Eval(evalCtx)
-			if err != nil {
-				panic(err)
+			if insideFlags.HasFlags(InsidePrepareOfProcDef) {
+				panic(ProcPrepareUdvErr)
 			}
-			f.Right = exp
+			if val1, ok1 := b.semaCtx.ProcUserDefinedVars[udv.VarName]; ok1 {
+				sm, err1 := b.getColumnMeta(opt.ColumnID(val1.ColumnID))
+				if err1 != nil {
+					panic(err1)
+				}
+				indexVal := tree.NewTypedOrdinalReference(sm.RealIdx(), val1.Typ)
+				indexVal.ProcProperty = tree.NewUDFColProperty(false, udv.VarName)
+				indexVal.SetUdvColFormat(udv)
+				f.Right = indexVal
+			} else {
+				exp, err := udv.Eval(evalCtx)
+				if err != nil {
+					panic(err)
+				}
+				f.Right = exp
+			}
 		}
-		if col, ok := f.Left.(*scopeColumn); ok && col.isDeclared {
-			indexVal := tree.NewTypedOrdinalReference(col.realIdx, col.typ)
-			indexVal.IsDeclare = true
+		if col, ok := f.Left.(*scopeColumn); ok && col.IsDeclared() {
+			indexVal := tree.NewTypedOrdinalReference(col.RealIdx(), col.typ)
+			indexVal.ProcProperty = col.CopyProcedureProperty()
 			name := tree.MakeUnresolvedName(string(col.name))
 			indexVal.SetColFormat(&name)
 			f.Left = indexVal
 		}
-		if col, ok := f.Right.(*scopeColumn); ok && col.isDeclared {
-			indexVal := tree.NewTypedOrdinalReference(col.realIdx, col.typ)
-			indexVal.IsDeclare = true
+		if col, ok := f.Right.(*scopeColumn); ok && col.IsDeclared() {
+			indexVal := tree.NewTypedOrdinalReference(col.RealIdx(), col.typ)
+			indexVal.ProcProperty = col.CopyProcedureProperty()
 			name := tree.MakeUnresolvedName(string(col.name))
 			indexVal.SetColFormat(&name)
 			f.Right = indexVal

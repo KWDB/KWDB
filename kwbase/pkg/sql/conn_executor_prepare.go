@@ -27,11 +27,16 @@ package sql
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"gitee.com/kwbasedb/kwbase/pkg/kv"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/opt"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/opt/memo"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/parser"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgcode"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgerror"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgwirebase"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/prepare"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sessiondata"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
@@ -79,7 +84,7 @@ func (ex *connExecutor) execPrepare(
 	ps, err := ex.addPreparedStmt(
 		ctx,
 		parseCmd.Name,
-		Statement{Statement: parseCmd.Statement},
+		parseCmd.Statement,
 		parseCmd.TypeHints,
 		PreparedStatementOriginWire,
 	)
@@ -163,7 +168,7 @@ func (ex *connExecutor) execPrepare(
 func (ex *connExecutor) addPreparedStmt(
 	ctx context.Context,
 	name string,
-	stmt Statement,
+	stmtAST parser.Statement,
 	placeholderHints tree.PlaceholderTypes,
 	origin PreparedStatementOrigin,
 ) (*PreparedStatement, error) {
@@ -172,16 +177,29 @@ func (ex *connExecutor) addPreparedStmt(
 	}
 
 	// Prepare the query. This completes the typing of placeholders.
-	prepared, err := ex.prepare(ctx, stmt, placeholderHints, origin)
+	prepareResult, err := ex.prepare(ctx, stmtAST, placeholderHints, int(origin), nil, 0)
 	if err != nil {
 		return nil, err
 	}
 
+	prepared := prepareResult.(*PreparedStatement)
 	if err := prepared.memAcc.Grow(ctx, int64(len(name))); err != nil {
 		return nil, err
 	}
 	ex.extraTxnState.prepStmtsNamespace.prepStmts[name] = prepared
 	return prepared, nil
+}
+
+// addMemAndSavePrepared adds mem for prepare mem acc and saves prepare memo to map
+func (ex *connExecutor) addMemAndSavePrepared(
+	ctx context.Context, prepareResult prepare.PreparedResult, name string,
+) error {
+	prepared := prepareResult.(*PreparedStatement)
+	if err := prepared.memAcc.Grow(ctx, int64(len(name))); err != nil {
+		return err
+	}
+	ex.extraTxnState.prepStmtsNamespace.prepStmts[name] = prepared
+	return nil
 }
 
 // prepare prepares the given statement.
@@ -193,10 +211,13 @@ func (ex *connExecutor) addPreparedStmt(
 // returned PreparedStatement needs to be close()d once its no longer in use.
 func (ex *connExecutor) prepare(
 	ctx context.Context,
-	stmt Statement,
+	stmtAST parser.Statement,
 	placeholderHints tree.PlaceholderTypes,
-	origin PreparedStatementOrigin,
-) (*PreparedStatement, error) {
+	origin int,
+	procUserDefinedVars map[string]tree.ProcUdvInfo,
+	insidePrepareOfProcFlag uint8,
+) (prepare.PreparedResult, error) {
+	stmt := Statement{Statement: stmtAST}
 	if placeholderHints == nil {
 		placeholderHints = make(tree.PlaceholderTypes, stmt.NumPlaceholders)
 	}
@@ -211,7 +232,7 @@ func (ex *connExecutor) prepare(
 		refCount: 1,
 
 		createdAt: timeutil.Now(),
-		origin:    origin,
+		origin:    PreparedStatementOrigin(origin),
 	}
 	// NB: if we start caching the plan, we'll want to keep around the memory
 	// account used for the plan, rather than clearing it.
@@ -246,8 +267,9 @@ func (ex *connExecutor) prepare(
 		ex.resetPlanner(ctx, p, txn, ex.server.cfg.Clock.PhysicalTime() /* stmtTS */)
 		p.stmt = &stmt
 		p.semaCtx.Annotations = tree.MakeAnnotations(stmt.NumAnnotations)
+		p.semaCtx.ProcUserDefinedVars = procUserDefinedVars
 		if !stmt.Insertdirectstmt.InsertFast {
-			flags, err = ex.populatePrepared(ctx, txn, placeholderHints, p)
+			flags, err = ex.populatePrepared(ctx, txn, placeholderHints, p, insidePrepareOfProcFlag)
 		}
 		return err
 	}
@@ -282,7 +304,11 @@ func (ex *connExecutor) prepare(
 // populatePrepared analyzes and type-checks the query and populates
 // stmt.Prepared.
 func (ex *connExecutor) populatePrepared(
-	ctx context.Context, txn *kv.Txn, placeholderHints tree.PlaceholderTypes, p *planner,
+	ctx context.Context,
+	txn *kv.Txn,
+	placeholderHints tree.PlaceholderTypes,
+	p *planner,
+	insidePrepareOfProcFlag uint8,
 ) (planFlags, error) {
 	if before := ex.server.cfg.TestingKnobs.BeforePrepare; before != nil {
 		if err := before(ctx, ex.planner.stmt.String(), txn); err != nil {
@@ -312,7 +338,7 @@ func (ex *connExecutor) populatePrepared(
 	// As of right now, the optimizer only works on SELECT statements and will
 	// fallback for all others, so this should be safe for the foreseeable
 	// future.
-	flags, err := p.prepareUsingOptimizer(ctx)
+	flags, err := p.prepareUsingOptimizer(ctx, insidePrepareOfProcFlag)
 	if err != nil {
 		log.VEventf(ctx, 1, "optimizer prepare failed: %v", err)
 		return 0, err
@@ -751,4 +777,128 @@ func (ex *connExecutor) execDescribe(
 			"unknown describe type: %s", errors.Safe(descCmd.Type)))
 	}
 	return nil, nil
+}
+
+// CheckPrepareExists checks whether the prepared object exists
+func (ex *connExecutor) CheckPrepareExists(name string) bool {
+	_, ok := ex.extraTxnState.prepStmtsNamespace.prepStmts[name]
+	return ok
+}
+
+// checkAndGetTypeForPrepare checks prepare and gets placeholder types
+func (ex *connExecutor) checkAndGetTypeForPrepare(s *tree.Prepare) (tree.PlaceholderTypes, error) {
+	// This is handling the SQL statement "PREPARE". See execPrepare for
+	// handling of the protocol-level command for preparing statements.
+	name := s.Name.String()
+	if _, ok := ex.extraTxnState.prepStmtsNamespace.prepStmts[name]; ok {
+		return nil, pgerror.Newf(
+			pgcode.DuplicatePreparedStatement,
+			"prepared statement %q already exists", name,
+		)
+	}
+	var typeHints tree.PlaceholderTypes
+	if len(s.Types) > 0 {
+		if len(s.Types) > s.NumPlaceholders {
+			err := pgerror.Newf(pgcode.Syntax, "too many types provided")
+			return nil, err
+		}
+		typeHints = make(tree.PlaceholderTypes, s.NumPlaceholders)
+		copy(typeHints, s.Types)
+	}
+
+	// set @a=select * from t1;
+	// prepare p1 as @a;
+	// get and parse prepared statement when user defined variable as sql
+	if s.Udv != nil && s.Statement == nil {
+		varName := strings.ToLower(s.Udv.String())
+		varStr := ex.sessionData.UserDefinedVars[varName]
+		if stmtStr, ok := varStr.(*tree.DString); ok {
+			resStmt, err := parser.ParseOne(string(*stmtStr))
+			if err != nil {
+				return nil, pgerror.Newf(pgcode.Syntax, "invalid syntax of query")
+			}
+			s.Statement = resStmt.AST
+		} else {
+			return nil, pgerror.Newf(pgcode.Syntax, "invalid syntax of query")
+		}
+	}
+
+	return typeHints, nil
+}
+
+// checkPrepareExists function checks whether the object to be executed exists
+func (ex *connExecutor) checkPrepareExists(s *tree.Execute) (prepare.PreparedResult, error) {
+	name := s.Name.String()
+	ps, ok := ex.extraTxnState.prepStmtsNamespace.prepStmts[name]
+	if !ok {
+		err := pgerror.Newf(
+			pgcode.InvalidSQLStatementName,
+			"prepared statement %q does not exist", name,
+		)
+		return nil, err
+	}
+	return ps, nil
+}
+
+// GetStatement get statement type of AST
+func (ex *connExecutor) GetStatement(psInterface prepare.PreparedResult) (int, string) {
+	ps := psInterface.(*PreparedStatement)
+	return int(ps.Statement.AST.StatementType()), ps.Statement.AST.String()
+}
+
+// GetReplacedMemo gets the memo with the placeholder replaced
+// This function is only used when the execute statement in the procedure is called
+// It retrieves the memo cached by the prepare statement,
+// replaces the placeholder and then returns.
+func (ex *connExecutor) GetReplacedMemo(
+	ctx context.Context, s *tree.Execute, pinfo *tree.PlaceholderInfo,
+) (prepare.MemoResult, error) {
+	p := &ex.planner
+	psInterface, err := ex.checkPrepareExists(s)
+	if err != nil {
+		return nil, err
+	}
+	placeHolderInfo, err := ex.fillInPlaceholders(psInterface, s.Name.String(), s.Params, &tree.SemaContext{UserDefinedVars: ex.sessionData.UserDefinedVars})
+	if err != nil {
+		return nil, err
+	}
+	pinfo = placeHolderInfo
+	ps := psInterface.(*PreparedStatement)
+	stmt := Statement{}
+	stmt.Statement = ps.Statement
+	stmt.Prepared = ps
+	stmt.ExpectedTypes = ps.Columns
+	stmt.AnonymizedStr = ps.AnonymizedStr
+	stmt.queryID = ex.generateID()
+
+	if s.DiscardRows {
+		p.discardRows = true
+	}
+	if err = p.semaCtx.Placeholders.Assign(pinfo, stmt.NumPlaceholders); err != nil {
+		return nil, err
+	}
+	p.extendedEvalCtx.Placeholders = &p.semaCtx.Placeholders
+	p.stmt = &stmt
+
+	p.curPlan.init(p.stmt, ex.appStats)
+
+	if p.ExecCfg().StartMode != StartSingleNode {
+		p.EvalContext().StartDistributeMode = true
+	}
+	opc := &p.optPlanningCtx
+	opc.reset()
+
+	var execMemo *memo.Memo
+	useProcedureCache := stmt.AST.StatOp() == "CALL" && opt.CheckOptMode(opt.TSQueryOptMode.Get(&p.ExecCfg().Settings.SV), opt.EnableProcedureCache)
+
+	if useProcedureCache {
+		execMemo, _, err = p.handleProcedureCache(ctx, p.stmt, opc)
+	} else {
+		execMemo, _, err = opc.buildExecMemo(ctx)
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	return execMemo, nil
 }

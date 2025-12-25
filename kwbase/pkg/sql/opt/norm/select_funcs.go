@@ -121,7 +121,11 @@ func (c *CustomFuncs) GroupingAndConstCols(
 		item := &aggs[i]
 		if constAgg, ok := item.Agg.(*memo.ConstAggExpr); ok {
 			// Verify that the input and output column IDs match.
-			if item.Col == constAgg.Input.(*memo.VariableExpr).Col {
+			inputVar, isVarExpr := constAgg.Input.(*memo.VariableExpr)
+			if !isVarExpr {
+				continue
+			}
+			if item.Col == inputVar.Col {
 				result.Add(item.Col)
 			}
 		}

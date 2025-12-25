@@ -169,6 +169,7 @@ type Memo struct {
 	safeUpdates                 bool
 	saveTablesPrefix            string
 	insertFastPath              bool
+	isProcPrepare               bool
 
 	// The following are selected fields from global data which can affect
 	// planning. We need to cross-check these before reusing a cached memo.
@@ -1010,6 +1011,11 @@ func (m *Memo) CheckFlag(flag int) bool {
 // SetFlag set flag is true
 func (m *Memo) SetFlag(flag int) {
 	m.CheckHelper.flags |= flag
+}
+
+// SetProcPrepare set true if it is procedure prepare
+func (m *Memo) SetProcPrepare(isProcPrepare bool) {
+	m.isProcPrepare = isProcPrepare
 }
 
 // SetAllFlag set all flag
@@ -2949,7 +2955,8 @@ func (m *Memo) ProcedureCacheIsStale(
 		m.optimizerFKs != evalCtx.SessionData.OptimizerFKs ||
 		m.safeUpdates != evalCtx.SessionData.SafeUpdates ||
 		m.saveTablesPrefix != evalCtx.SessionData.SaveTablesPrefix ||
-		m.insertFastPath != evalCtx.SessionData.InsertFastPath {
+		m.insertFastPath != evalCtx.SessionData.InsertFastPath ||
+		m.isProcPrepare {
 		return true, nil
 	}
 

@@ -11,16 +11,18 @@
 
 package tree
 
-// SetValueMode represents value mode
-type SetValueMode uint8
+// ProcedureValueMode represents value mode
+type ProcedureValueMode uint8
 
 const (
 	// DeclareValue represents procedure declare value
-	DeclareValue SetValueMode = iota
+	DeclareValue ProcedureValueMode = iota
 	// InternalValue represents procedure set local value
 	InternalValue
 	// ExternalValue represents set external value, for trigger(new/old)
 	ExternalValue
+	// UDFValue represents user define value
+	UDFValue
 )
 
 // CreateTrigger represents a CREATE TRIGGER statement.
