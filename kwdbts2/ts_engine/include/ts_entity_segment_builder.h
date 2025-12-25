@@ -20,6 +20,7 @@
 #include <utility>
 #include <vector>
 #include "ts_block.h"
+#include "ts_bufferbuilder.h"
 #include "ts_engine_schema_manager.h"
 #include "ts_entity_segment_data.h"
 #include "ts_compressor.h"
@@ -137,6 +138,14 @@ class TsEntitySegmentAggFileBuilder {
 };
 
 class TsEntitySegmentBuilder;
+
+struct TsEntitySegmentColumnBlockBuilder {
+  std::unique_ptr<TsBitmapBase> bitmap;
+  TsBufferBuilder buffer;
+  TsBufferBuilder agg;
+  std::vector<std::string> var_rows;
+};
+
 class TsEntityBlockBuilder {
  private:
   uint32_t table_id_ = 0;
@@ -145,7 +154,7 @@ class TsEntityBlockBuilder {
   std::vector<AttributeInfo> metric_schema_;
 
   TsEntitySegmentBlockInfo block_info_;
-  std::vector<TsEntitySegmentColumnBlock> column_blocks_;
+  std::vector<TsEntitySegmentColumnBlockBuilder> column_blocks_;
 
   uint32_t n_rows_ = 0;
   uint32_t n_cols_ = 0;
@@ -174,7 +183,8 @@ class TsEntityBlockBuilder {
 
   KStatus Append(shared_ptr<TsBlockSpan> span, bool& is_full);
 
-  KStatus GetCompressData(TsEntitySegmentBlockItem& blk_item, string& data_buffer, string& agg_buffer);
+  KStatus GetCompressData(TsEntitySegmentBlockItem& blk_item, TsBufferBuilder* data_buffer,
+                          TsBufferBuilder* agg_buffer);
 
   void Clear();
 };

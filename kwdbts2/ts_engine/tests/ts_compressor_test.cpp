@@ -14,6 +14,8 @@
 #include "ts_coding.h"
 #include "ts_bitmap.h"
 #include "ts_compressor_impl.h"
+#include "ts_bufferbuilder.h"
+#include "ts_sliceguard.h"
 
 template <class Compressor>
 class TimestampCompressorTester : public ::testing::Test {};
@@ -43,12 +45,12 @@ TYPED_TEST(TimestampCompressorTester, CompressDecompress) {
     std::iota(ts.begin(), ts.end(), 1741851161);
     TSSlice data{reinterpret_cast<char *>(ts.data()), ts.size() * sizeof(dtype)};
 
-    std::string out;
+    kwdbts::TsBufferBuilder out;
     ASSERT_TRUE(comp.Compress(data, count, &out));
     EXPECT_LT(out.size(), data.len);
 
     TSSlice compressed{out.data(), out.size()};
-    std::string buf;
+    kwdbts::TsSliceGuard buf;
     ASSERT_TRUE(comp.Decompress(compressed, count, &buf));
 
     ASSERT_EQ(buf.size(), count * sizeof(dtype));
@@ -69,12 +71,12 @@ TYPED_TEST(TimestampCompressorTester, CompressDecompress) {
 
     TSSlice data{reinterpret_cast<char *>(ts.data()), ts.size() * sizeof(dtype)};
 
-    std::string out;
+    kwdbts::TsBufferBuilder out;
     ASSERT_TRUE(comp.Compress(data, count, &out));
     EXPECT_LT(out.size(), data.len);
 
     TSSlice compressed{out.data(), out.size()};
-    std::string buf;
+    kwdbts::TsSliceGuard buf;
     ASSERT_TRUE(comp.Decompress(compressed, count, &buf));
 
     ASSERT_EQ(buf.size(), count * sizeof(dtype));
@@ -93,7 +95,7 @@ TYPED_TEST(TimestampCompressorTester, CompressDecompressOneRow) {
   ts[0] = start;
   TSSlice data{reinterpret_cast<char *>(ts.data()), ts.size() * sizeof(dtype)};
 
-  std::string out;
+  kwdbts::TsBufferBuilder out;
   ASSERT_FALSE(comp.Compress(data, 1, &out));
 }
 
@@ -109,31 +111,29 @@ TYPED_TEST(IntegerCompressorTester, CompressDecompress) {
 // The following are testing for simple8b only
 
 template <class T>
-static bool Simple8BEncode(const std::vector<T> &input, std::string *out) {
+static bool Simple8BEncode(const std::vector<T> &input, kwdbts::TsBufferBuilder *out) {
   kwdbts::ConcreateTsCompressor<kwdbts::Simple8BInt<T>>::GetInstance();
   const TSSlice plain{(char *)(input.data()), sizeof(T) * input.size()};
   return kwdbts::Simple8BInt<T>::GetInstance().Compress(plain, input.size(), out);
 }
 
 template <class T>
-static bool Simple8BDecode(const std::string &data, int count, std::string *out) {
+static bool Simple8BDecode(TSSlice data, int count, kwdbts::TsSliceGuard *out) {
   kwdbts::ConcreateTsCompressor<kwdbts::Simple8BInt<T>>::GetInstance();
-  const TSSlice s_data{(char *)data.data(), data.size()};
-  return kwdbts::Simple8BInt<T>::GetInstance().Decompress(s_data, count, out);
+  return kwdbts::Simple8BInt<T>::GetInstance().Decompress(data, count, out);
 }
 
 template <class T>
-static bool Simple8BV2Encode(const std::vector<T> &input, std::string *out) {
+static bool Simple8BV2Encode(const std::vector<T> &input, kwdbts::TsBufferBuilder *out) {
   kwdbts::ConcreateTsCompressor<kwdbts::Simple8BInt<T>>::GetInstance();
   const TSSlice plain{(char *)(input.data()), sizeof(T) * input.size()};
   return kwdbts::Simple8BIntV2<T>::GetInstance().Compress(plain, input.size(), out);
 }
 
 template <class T>
-static bool Simple8BV2Decode(const std::string &data, int count, std::string *out) {
+static bool Simple8BV2Decode(TSSlice data, int count, kwdbts::TsSliceGuard *out) {
   kwdbts::ConcreateTsCompressor<kwdbts::Simple8BInt<T>>::GetInstance();
-  const TSSlice s_data{(char *)data.data(), data.size()};
-  return kwdbts::Simple8BIntV2<T>::GetInstance().Decompress(s_data, count, out);
+  return kwdbts::Simple8BIntV2<T>::GetInstance().Decompress(data, count, out);
 }
 
 alignas(64) static constexpr uint32_t ITEMWIDTH[16] = {0, 0, 1,  2,  3,  4,  5,  6,
@@ -175,14 +175,14 @@ TEST(Simple8B, EncodeOneNumberUint64) {
   }
   ASSERT_EQ(datasets.size(), success.size() + failed.size());
   for (int i = 0; i < datasets.size(); ++i) {
-    std::string compressed;
+    kwdbts::TsBufferBuilder compressed;
     if (i < success.size()) {
       EXPECT_TRUE(Simple8BEncode(datasets[i], &compressed));
       ASSERT_EQ(compressed.size(), 8) << i;
       EXPECT_EQ(*reinterpret_cast<const uint64_t *>(compressed.data()) >> 60, 15);
 
-      std::string data;
-      EXPECT_TRUE(Simple8BDecode<uint64_t>(compressed, 1, &data));
+      kwdbts::TsSliceGuard data;
+      EXPECT_TRUE(Simple8BDecode<uint64_t>(compressed.AsSlice(), 1, &data)) << i;
       ASSERT_EQ(datasets[i].size() * 8, data.size());
       EXPECT_EQ(std::memcmp(datasets[i].data(), data.data(), data.size()), 0);
     } else {
@@ -227,15 +227,15 @@ TEST(Simple8B, EncodeOneNumberInt64) {
 
   for (int selector = 2; selector <= 15; ++selector) {
     for (auto i : datas[selector]) {
-      std::string compressed;
+      kwdbts::TsBufferBuilder compressed;
       std::vector<int64_t> d(1);
       d[0] = i;
       EXPECT_TRUE(Simple8BEncode(d, &compressed)) << i;
       ASSERT_EQ(compressed.size(), 8) << i;
       EXPECT_EQ(*reinterpret_cast<const uint64_t *>(compressed.data()) >> 60, 15);
 
-      std::string raw;
-      EXPECT_TRUE(Simple8BDecode<int64_t>(compressed, 1, &raw));
+      kwdbts::TsSliceGuard raw;
+      EXPECT_TRUE(Simple8BDecode<int64_t>(compressed.AsSlice(), 1, &raw));
       ASSERT_EQ(8, raw.size());
       EXPECT_EQ(std::memcmp(d.data(), raw.data(), raw.size()), 0) << i;
     }
@@ -257,7 +257,7 @@ TEST(Simple8B, EncodeOneNumberInt64) {
   failed.push_back(std::numeric_limits<int64_t>::min());
   failed.push_back(std::numeric_limits<int64_t>::max());
   for (auto i : failed) {
-    std::string compressed;
+    kwdbts::TsBufferBuilder compressed;
     std::vector<int64_t> d(1);
     d[0] = i;
     EXPECT_FALSE(Simple8BEncode(d, &compressed));
@@ -267,13 +267,13 @@ TEST(Simple8B, EncodeOneNumberInt64) {
 TEST(Simple8B, EncodeSpecial) {
   size_t count = 119;
   std::vector<uint64_t> number(count, 1024);
-  std::string out;
+  kwdbts::TsBufferBuilder out;
   ASSERT_TRUE(Simple8BEncode(number, &out));
   //   ASSERT_EQ(out.size(), 8);
   //   EXPECT_EQ(*reinterpret_cast<const uint64_t*>(out.data()) >> 60, 1);
 
-  std::string v;
-  EXPECT_TRUE(Simple8BDecode<uint64_t>(out, count, &v));
+  kwdbts::TsSliceGuard v;
+  EXPECT_TRUE(Simple8BDecode<uint64_t>(out.AsSlice(), count, &v));
   ASSERT_EQ(number.size() * 8, v.size());
   EXPECT_EQ(std::memcmp(number.data(), v.data(), v.size()), 0);
 }
@@ -281,12 +281,12 @@ TEST(Simple8B, EncodeSpecial) {
 TEST(Simple8BV2, EncodeSpecial) {
   size_t count = 119;
   std::vector<uint64_t> number(count, 1024);
-  std::string out;
+  kwdbts::TsBufferBuilder out;
   ASSERT_TRUE(Simple8BV2Encode(number, &out));
   ASSERT_EQ(out.size(), 2 + 1 + 8);
 
-  std::string v;
-  EXPECT_TRUE(Simple8BV2Decode<uint64_t>(out, count, &v));
+  kwdbts::TsSliceGuard v;
+  EXPECT_TRUE(Simple8BV2Decode<uint64_t>(out.AsSlice(), count, &v));
   ASSERT_EQ(number.size() * 8, v.size());
   EXPECT_EQ(std::memcmp(number.data(), v.data(), v.size()), 0);
 }
@@ -295,11 +295,11 @@ TEST(Simple8B, OneBatch) {
   for (int selector = 0; selector < 16; ++selector) {
     auto v = GenBatch(selector);
 
-    std::string out;
+    kwdbts::TsBufferBuilder out;
     ASSERT_TRUE(Simple8BEncode<uint64_t>(v, &out));
     ASSERT_EQ(out.size(), 8);
-    std::string raw;
-    ASSERT_TRUE(Simple8BDecode<uint64_t>(out, v.size(), &raw));
+    kwdbts::TsSliceGuard raw;
+    ASSERT_TRUE(Simple8BDecode<uint64_t>(out.AsSlice(), v.size(), &raw));
     ASSERT_EQ(raw.size(), v.size() * sizeof(uint64_t));
     ASSERT_EQ(std::memcmp(raw.data(), v.data(), raw.size()), 0);
   }
@@ -313,11 +313,11 @@ TEST(Simple8B, MultiBatch) {
     auto v = GenBatch(d(drng));
     data.insert(data.end(), v.begin(), v.end());
   }
-  std::string out;
+  kwdbts::TsBufferBuilder out;
   ASSERT_TRUE(Simple8BEncode<uint64_t>(data, &out));
   ASSERT_EQ(out.size(), 8 * nbatch);
-  std::string raw;
-  ASSERT_TRUE(Simple8BDecode<uint64_t>(out, data.size(), &raw));
+  kwdbts::TsSliceGuard raw;
+  ASSERT_TRUE(Simple8BDecode<uint64_t>(out.AsSlice(), data.size(), &raw));
   ASSERT_EQ(raw.size(), data.size() * sizeof(uint64_t));
   ASSERT_EQ(std::memcmp(raw.data(), data.data(), raw.size()), 0);
 }
@@ -329,10 +329,10 @@ TEST(Simple8B, UnfullBatch) {
       v.pop_back();
     }
 
-    std::string out;
+    kwdbts::TsBufferBuilder out;
     ASSERT_TRUE(Simple8BEncode<uint64_t>(v, &out));
-    std::string raw;
-    ASSERT_TRUE(Simple8BDecode<uint64_t>(out, v.size(), &raw));
+    kwdbts::TsSliceGuard raw;
+    ASSERT_TRUE(Simple8BDecode<uint64_t>(out.AsSlice(), v.size(), &raw));
     ASSERT_EQ(raw.size(), v.size() * sizeof(uint64_t));
     ASSERT_EQ(std::memcmp(raw.data(), v.data(), raw.size()), 0);
   }
@@ -350,10 +350,10 @@ TEST(Simple8B, MultiUnfullBatch) {
     }
     data.insert(data.end(), v.begin(), v.end());
   }
-  std::string out;
+  kwdbts::TsBufferBuilder out;
   ASSERT_TRUE(Simple8BEncode<uint64_t>(data, &out));
-  std::string raw;
-  ASSERT_TRUE(Simple8BDecode<uint64_t>(out, data.size(), &raw));
+  kwdbts::TsSliceGuard raw;
+  ASSERT_TRUE(Simple8BDecode<uint64_t>(out.AsSlice(), data.size(), &raw));
   ASSERT_EQ(raw.size(), data.size() * sizeof(uint64_t));
   auto p = reinterpret_cast<uint64_t *>(raw.data());
   for (int i = 0; i < data.size(); ++i) {
@@ -363,10 +363,10 @@ TEST(Simple8B, MultiUnfullBatch) {
 
 TEST(Simple8B, Bug1) {
   std::vector<uint64_t> data{1 << 4, 1 << 14, 1 << 14, 1 << 14, 1 << 11};
-  std::string out;
+  kwdbts::TsBufferBuilder out;
   ASSERT_TRUE(Simple8BEncode<uint64_t>(data, &out));
-  std::string raw;
-  ASSERT_TRUE(Simple8BDecode<uint64_t>(out, data.size(), &raw));
+  kwdbts::TsSliceGuard raw;
+  ASSERT_TRUE(Simple8BDecode<uint64_t>(out.AsSlice(), data.size(), &raw));
   ASSERT_EQ(raw.size(), data.size() * sizeof(uint64_t));
   auto p = reinterpret_cast<uint64_t *>(raw.data());
   for (int i = 0; i < data.size(); ++i) {
@@ -376,10 +376,10 @@ TEST(Simple8B, Bug1) {
 
 TEST(Simple8BV2, Bug1) {
   std::vector<uint64_t> data{1 << 4, 1 << 14, 1 << 14, 1 << 14, 1 << 11};
-  std::string out;
+  kwdbts::TsBufferBuilder out;
   ASSERT_TRUE(Simple8BV2Encode<uint64_t>(data, &out));
-  std::string raw;
-  ASSERT_TRUE(Simple8BV2Decode<uint64_t>(out, data.size(), &raw));
+  kwdbts::TsSliceGuard raw;
+  ASSERT_TRUE(Simple8BV2Decode<uint64_t>(out.AsSlice(), data.size(), &raw));
   ASSERT_EQ(raw.size(), data.size() * sizeof(uint64_t));
   auto p = reinterpret_cast<uint64_t *>(raw.data());
   for (int i = 0; i < data.size(); ++i) {
@@ -392,10 +392,10 @@ TEST(Simple8B, Bug2) {
                             1631, 5734, 4339, 7815, 5237, 8829, 1245, 7099, 9217,
                             9274, 8227, 8881, 1461, 5528, 2946, 8872, 9103, 5161};
 
-  std::string out;
+  kwdbts::TsBufferBuilder out;
   ASSERT_TRUE(Simple8BEncode<int16_t>(data, &out));
-  std::string raw;
-  ASSERT_TRUE(Simple8BDecode<int16_t>(out, data.size(), &raw));
+  kwdbts::TsSliceGuard raw;
+  ASSERT_TRUE(Simple8BDecode<int16_t>(out.AsSlice(), data.size(), &raw));
   ASSERT_EQ(raw.size(), data.size() * sizeof(int16_t));
   auto p = reinterpret_cast<int16_t *>(raw.data());
   for (int i = 0; i < data.size(); ++i) {
@@ -407,10 +407,10 @@ TEST(Simple8BV2, Bug2) {
   std::vector<int16_t> data{5079, 8477, 1760, 3220, 4244, 4374, 4749, 6412, 5194, 1631, 5734, 4339, 7815, 5237,
                             8829, 1245, 7099, 9217, 9274, 8227, 8881, 1461, 5528, 2946, 8872, 9103, 5161};
 
-  std::string out;
+  kwdbts::TsBufferBuilder out;
   ASSERT_TRUE(Simple8BV2Encode<int16_t>(data, &out));
-  std::string raw;
-  ASSERT_TRUE(Simple8BV2Decode<int16_t>(out, data.size(), &raw));
+  kwdbts::TsSliceGuard raw;
+  ASSERT_TRUE(Simple8BV2Decode<int16_t>(out.AsSlice(), data.size(), &raw));
   ASSERT_EQ(raw.size(), data.size() * sizeof(int16_t));
   auto p = reinterpret_cast<int16_t *>(raw.data());
   for (int i = 0; i < data.size(); ++i) {
@@ -513,13 +513,13 @@ TEST(Simple8BV2, AllBranch) {
     }
   }
   for (const auto &c : cases) {
-    std::string out;
+    kwdbts::TsBufferBuilder out;
     ASSERT_TRUE(Simple8BV2Encode(c.data, &out));
     if (c.expected_size != -1) {
       ASSERT_EQ(out.size(), c.expected_size);
     }
-    std::string raw;
-    ASSERT_TRUE(Simple8BV2Decode<int64_t>(out, c.data.size(), &raw));
+    kwdbts::TsSliceGuard raw;
+    ASSERT_TRUE(Simple8BV2Decode<int64_t>(out.AsSlice(), c.data.size(), &raw));
     ASSERT_EQ(raw.size(), c.data.size() * sizeof(int64_t));
     auto p = reinterpret_cast<int64_t *>(raw.data());
     for (int i = 0; i < c.data.size(); ++i) {
@@ -550,13 +550,13 @@ void Simple8BUintTester() {
   }
 
   for (const auto &c : cases) {
-    std::string out;
+    kwdbts::TsBufferBuilder out;
     ASSERT_TRUE(Simple8BV2Encode(c.data, &out));
     if (c.expected_size != -1) {
       ASSERT_EQ(out.size(), c.expected_size);
     }
-    std::string raw;
-    ASSERT_TRUE(Simple8BV2Decode<Type>(out, c.data.size(), &raw));
+    kwdbts::TsSliceGuard raw;
+    ASSERT_TRUE(Simple8BV2Decode<Type>(out.AsSlice(), c.data.size(), &raw));
     ASSERT_EQ(raw.size(), c.data.size() * sizeof(Type));
     auto p = reinterpret_cast<Type *>(raw.data());
     for (int i = 0; i < c.data.size(); ++i) {
@@ -580,17 +580,17 @@ TEST(Snappy, CompressDecompress) {
   for (int i = 0; i < s.size(); ++i) {
     s[i] = str[i % sizeof(str)];
   }
-  std::string out;
+  kwdbts::TsBufferBuilder out;
   ASSERT_TRUE(comp.Compress({s.data(), s.size()}, 0, &out));
 
   EXPECT_LT(out.size(), s.size());
 
-  std::string origin;
+  kwdbts::TsSliceGuard origin;
   ASSERT_TRUE(comp.Decompress({out.data(), out.size()}, 0, &origin));
   size_t origin_size = comp.GetUncompressedSize({out.data(), out.size()}, 0);
   ASSERT_EQ(origin_size, s.size());
 
-  EXPECT_EQ(origin, s);
+  EXPECT_EQ(origin.AsStringView(), s);
 }
 
 // Float & Double
@@ -640,7 +640,8 @@ TYPED_TEST(FloatingPointCompressorTester, CompressDecompress) {
   }
 
   for (int i = 0; i < c.size(); ++i) {
-    std::string out, plain;
+    kwdbts::TsBufferBuilder out;
+    kwdbts::TsSliceGuard plain;
     ASSERT_TRUE(comp.Compress(
         TSSlice{reinterpret_cast<char *>(c[i].data()), c[i].size() * sizeof(TypeParam)},
         c[i].size(), &out))
@@ -657,14 +658,14 @@ TYPED_TEST(FloatingPointCompressorTester, CompressDecompress) {
 
 // bool
 
-static bool BitPackingEnc(const std::vector<uint8_t> &data, std::string *out) {
+static bool BitPackingEnc(const std::vector<uint8_t> &data, kwdbts::TsBufferBuilder *out) {
   return kwdbts::BitPacking::GetInstance().Compress(TSSlice{(char *)data.data(), data.size()}, data.size(), out);
 }
 
-static bool BitPackingDec(std::string &data, size_t size, std::vector<uint8_t> *out) {
-  std::string plain;
+static bool BitPackingDec(TSSlice data, size_t size, std::vector<uint8_t> *out) {
+  kwdbts::TsSliceGuard plain;
   out->resize(size);
-  bool ok = kwdbts::BitPacking::GetInstance().Decompress(TSSlice{data.data(), data.size()}, size, &plain);
+  bool ok = kwdbts::BitPacking::GetInstance().Decompress(data, size, &plain);
   std::copy(plain.begin(), plain.end(), out->begin());
   if (!ok) {
     return false;
@@ -682,11 +683,11 @@ TEST(Bool, CompressDecompress) {
       data[j] = d(drng);
     }
 
-    std::string out;
+    kwdbts::TsBufferBuilder out;
     ASSERT_TRUE(BitPackingEnc(data, &out));
 
     std::vector<uint8_t> x2;
-    ASSERT_TRUE(BitPackingDec(out, data.size(), &x2));
+    ASSERT_TRUE(BitPackingDec(out.AsSlice(), data.size(), &x2));
     ASSERT_EQ(data.size(), x2.size());
 
     EXPECT_EQ(data, x2);

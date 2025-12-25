@@ -210,7 +210,8 @@ TEST_F(TsVersionTest, EncodeDecodeTest) {
     TsVersionUpdate decoded;
     TSSlice slice = {encoded.data(), encoded.size()};
     ASSERT_EQ(decoded.DecodeFromSlice(slice), SUCCESS);
-    EXPECT_EQ(decoded.EncodeToString(), encoded);
+    auto decoded_str = decoded.EncodeToString();
+    EXPECT_EQ(decoded_str.AsStringView(), encoded.AsStringView());
   }
   {
     TsVersionUpdate update;
@@ -225,7 +226,8 @@ TEST_F(TsVersionTest, EncodeDecodeTest) {
     TsVersionUpdate decoded;
     TSSlice slice = {encoded.data(), encoded.size()};
     ASSERT_EQ(decoded.DecodeFromSlice(slice), SUCCESS);
-    EXPECT_EQ(decoded.EncodeToString(), encoded);
+    auto decoded_str = decoded.EncodeToString();
+    EXPECT_EQ(decoded_str.AsStringView(), encoded.AsStringView());
   }
   {
     TsVersionUpdate update;
@@ -240,7 +242,8 @@ TEST_F(TsVersionTest, EncodeDecodeTest) {
     TsVersionUpdate decoded;
     TSSlice slice = {encoded.data(), encoded.size()};
     ASSERT_EQ(decoded.DecodeFromSlice(slice), SUCCESS);
-    EXPECT_EQ(decoded.EncodeToString(), encoded);
+    auto decoded_str = decoded.EncodeToString();
+    EXPECT_EQ(decoded_str.AsStringView(), encoded.AsStringView());
   }
   {
     TsVersionUpdate update;
@@ -251,7 +254,8 @@ TEST_F(TsVersionTest, EncodeDecodeTest) {
     TsVersionUpdate decoded;
     TSSlice slice = {encoded.data(), encoded.size()};
     ASSERT_EQ(decoded.DecodeFromSlice(slice), SUCCESS);
-    EXPECT_EQ(decoded.EncodeToString(), encoded);
+    auto decoded_str = decoded.EncodeToString();
+    EXPECT_EQ(decoded_str.AsStringView(), encoded.AsStringView());
   }
 
   // {
@@ -283,7 +287,8 @@ TEST_F(TsVersionTest, EncodeDecodeTest) {
     TsVersionUpdate decoded;
     TSSlice slice = {encoded.data(), encoded.size()};
     ASSERT_EQ(decoded.DecodeFromSlice(slice), SUCCESS);
-    EXPECT_EQ(decoded.EncodeToString(), encoded);
+    auto decoded_str = decoded.EncodeToString();
+    EXPECT_EQ(decoded_str.AsStringView(), encoded.AsStringView());
   }
 }
 

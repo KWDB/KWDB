@@ -13,14 +13,17 @@
 
 #include <cstdint>
 #include <memory>
-#include <string>
 #include <tuple>
 #include <unordered_map>
 #include <utility>
 
 #include "data_type.h"
+#include "lg_api.h"
 #include "libkwdbts2.h"
 #include "ts_bitmap.h"
+#include "ts_bufferbuilder.h"
+#include "ts_coding.h"
+#include "ts_sliceguard.h"
 
 namespace kwdbts {
 
@@ -78,67 +81,6 @@ enum class BitmapType : uint8_t {
   BITMAP_COMP_ALG_LAST
 };
 
-class TsSliceGuard {
- private:
-  TSSlice slice;
-  std::string str;
-  std::unique_ptr<char[]> shared_data;
-
- public:
-  TsSliceGuard() : slice{nullptr, 0} {}
-  explicit TsSliceGuard(char* data, size_t len) {
-    slice.data = data;
-    slice.len = len;
-  }
-  explicit TsSliceGuard(TSSlice s) : slice{s} {}
-  explicit TsSliceGuard(std::string&& str_) : str(std::move(str_)) {
-    slice.data = str.data();
-    slice.len = str.size();
-  }
-
-  TsSliceGuard(const TsSliceGuard&) = delete;
-  TsSliceGuard& operator=(const TsSliceGuard&) = delete;
-
-  TsSliceGuard(TsSliceGuard&& other) noexcept { *this = std::move(other); }
-  TsSliceGuard& operator=(TsSliceGuard&& other) noexcept {
-    if (&other == this) {
-      return *this;
-    }
-    if (!other.str.empty()) {
-      this->str = std::move(other.str);
-      this->slice = TSSlice{this->str.data(), this->str.size()};
-    } else {
-      this->slice = other.slice;
-      this->shared_data = std::move(other.shared_data);
-    }
-    return *this;
-  }
-
-  TSSlice AsSlice() const { return slice; }
-  std::string_view AsStringView() const { return {slice.data, slice.len}; }
-  size_t size() const { return slice.len; }
-  const char* data() const { return slice.data; }
-  char* data() { return slice.data; }
-  bool empty() const { return slice.len == 0; }
-
-  const std::string& AsString() const { return str; }
-  void allocate(size_t n) {
-    std::unique_ptr<char[]> buffer(new char[n]);
-    shared_data = std::move(buffer);
-    slice.data = shared_data.get();
-    slice.len = n;
-  }
-  void swap(std::string& strVal) {
-    if (str.data() != slice.data) {
-      strVal = {slice.data, slice.len};
-    } else {
-      strVal.swap(str);
-      slice.data = str.data();
-      slice.len = str.size();
-    }
-  }
-};
-
 class TsCompressorBase;
 class GenCompressorBase;
 class CompressorManager {
@@ -158,9 +100,9 @@ class CompressorManager {
       first_algo_ = first == nullptr ? TsCompAlg::kPlain : first_algo;
       second_algo_ = second == nullptr ? GenCompAlg::kPlain : second_algo;
     }
-    bool Compress(const TSSlice& raw, const TsBitmapBase* bitmap, uint32_t count, std::string* out) const;
+    bool Compress(TSSlice raw, const TsBitmapBase* bitmap, uint32_t count, TsBufferBuilder* out) const;
 
-    bool Decompress(const TSSlice& raw, const TsBitmapBase* bitmap, uint32_t count, std::string* out) const;
+    bool Decompress(TSSlice raw, const TsBitmapBase* bitmap, uint32_t count, TsSliceGuard* out) const;
     bool IsPlain() const { return (first_ == nullptr && second_ == nullptr); }
 
     std::tuple<TsCompAlg, GenCompAlg> GetAlgorithms() const;
@@ -171,6 +113,10 @@ class CompressorManager {
   std::unordered_map<DATATYPE, std::tuple<TsCompAlg, GenCompAlg>> default_algs_;
 
   CompressorManager();
+
+  bool DoDecompressData(uint32_t alg, TsSliceGuard&& input, const TsBitmapBase* bitmap, uint64_t count,
+                        TsSliceGuard* out) const;
+  bool DoDecompressVarchar(GenCompAlg alg, TsSliceGuard&& input, TsSliceGuard* out) const;
 
  public:
   static CompressorManager& GetInstance() {
@@ -184,13 +130,39 @@ class CompressorManager {
   std::tuple<TsCompAlg, GenCompAlg> GetDefaultAlgorithm(DATATYPE dtype) const;
   TwoLevelCompressor GetDefaultCompressor(DATATYPE dtype) const;
 
-  bool CompressData(TSSlice input, const TsBitmapBase* bitmap, uint64_t count, std::string* output,
+  bool CompressData(TSSlice input, const TsBitmapBase* bitmap, uint64_t count, TsBufferBuilder* output,
                     TsCompAlg first, GenCompAlg second) const;
-  bool CompressVarchar(TSSlice input, std::string* output, GenCompAlg alg) const;
-  bool DecompressData(TSSlice input, const TsBitmapBase* bitmap, uint64_t count, TsSliceGuard* out) const;
-  bool DecompressVarchar(TSSlice input, TsSliceGuard* out) const;
+  bool CompressVarchar(TSSlice input, TsBufferBuilder* output, GenCompAlg alg) const;
+  bool DecompressData(TsSliceGuard&& input, const TsBitmapBase* bitmap, uint64_t count, TsSliceGuard* out) const {
+    if (input.size() < 4) {
+      LOG_ERROR("Invalid input length, too short");
+      return false;
+    }
+    uint32_t v;
+    GetFixed32(&input, &v);
+    if (v == 0) {
+      *out = std::move(input);
+      return true;
+    }
 
-  bool CompressBitmap(TsBitmapBase* bitmap, std::string* output) const;
+    return DoDecompressData(v, std::move(input), bitmap, count, out);
+  }
+  bool DecompressVarchar(TsSliceGuard&& input, TsSliceGuard* out) const {
+    if (input.size() < 2) {
+      LOG_ERROR("Invalid input length, too short");
+      return false;
+    }
+    uint16_t v;
+    GetFixed16(&input, &v);
+    auto alg = static_cast<GenCompAlg>(v);
+    if (alg == GenCompAlg::kPlain) {
+      *out = std::move(input);
+      return true;
+    }
+    return DoDecompressVarchar(alg, std::move(input), out);
+  }
+
+  bool CompressBitmap(TsBitmapBase* bitmap, TsBufferBuilder* output) const;
   bool DecompressBitmap(TSSlice input, std::unique_ptr<TsBitmapBase>* bitmap, uint64_t count,
                         uint64_t* bytes_consumed) const;
 };

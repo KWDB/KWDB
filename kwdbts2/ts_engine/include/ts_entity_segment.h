@@ -235,7 +235,7 @@ struct TsEntitySegmentBlockInfo {
 
 struct TsEntitySegmentColumnBlock {
   std::unique_ptr<TsBitmapBase> bitmap;
-  std::string buffer;
+  TsSliceGuard buffer;
   TsSliceGuard agg;
   std::vector<std::string> var_rows;
 };
@@ -339,7 +339,7 @@ class TsEntityBlock : public TsBlock {
 
   KStatus GetMetricColValue(uint32_t row_idx, uint32_t col_idx, TSSlice& value);
 
-  KStatus LoadColData(int32_t col_idx, const std::vector<AttributeInfo>* metric_schema, TSSlice buffer);
+  KStatus LoadColData(int32_t col_idx, const std::vector<AttributeInfo>* metric_schema, TsSliceGuard&& buffer);
 
   KStatus LoadAggData(int32_t col_idx, TsSliceGuard&& buffer);
 
@@ -376,7 +376,7 @@ class TsEntityBlock : public TsBlock {
 
   const uint64_t* GetOSNAddr(int row_num, TsScanStats* ts_scan_stats = nullptr) override;
 
-  KStatus GetCompressDataFromFile(uint32_t table_version, int32_t nrow, std::string& data) override;
+  KStatus GetCompressDataFromFile(uint32_t table_version, int32_t nrow, TsBufferBuilder* data) override;
 
   bool HasPreAgg(uint32_t begin_row_idx, uint32_t row_num) override;
   KStatus GetPreCount(uint32_t blk_col_idx, TsScanStats* ts_scan_stats, uint16_t& count) override;
@@ -467,12 +467,12 @@ class TsEntitySegment : public TsSegmentBase, public enable_shared_from_this<TsE
                         std::shared_ptr<MMapMetricsTable>& scan_schema,
                         TsScanStats* ts_scan_stats = nullptr) override;
 
-  KStatus GetBlockData(TsEntityBlock* block, std::string& data);
+  KStatus GetBlockData(TsEntityBlock* block, TsSliceGuard* data);
 
   KStatus GetColumnBlock(int32_t col_idx, const std::vector<AttributeInfo>* metric_schema,
                           TsEntityBlock* block, TsScanStats* ts_scan_stats);
 
-  KStatus GetAggData(TsEntityBlock *block, std::string& data);
+  KStatus GetAggData(TsEntityBlock* block, TsSliceGuard* data);
 
   KStatus GetColumnAgg(int32_t col_idx, TsEntityBlock* block, TsScanStats* ts_scan_stats);
 

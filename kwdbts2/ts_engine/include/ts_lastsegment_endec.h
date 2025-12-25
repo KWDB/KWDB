@@ -16,6 +16,7 @@
 
 #include "kwdb_type.h"
 #include "libkwdbts2.h"
+#include "ts_bufferbuilder.h"
 #include "ts_coding.h"
 
 namespace kwdbts {
@@ -64,7 +65,7 @@ struct TsLastSegmentFooter {
 static_assert(sizeof(TsLastSegmentFooter) == 64);
 // static_assert(std::has_unique_object_representations_v<TsLastSegmentFooter>);
 
-inline void EncodeBlockInfo(std::string* buf, const TsLastSegmentBlockInfo& info) {
+inline void EncodeBlockInfo(TsBufferBuilder* buf, const TsLastSegmentBlockInfo& info) {
   PutFixed64(buf, info.block_offset);
   PutFixed32(buf, info.entity_id_len);
   PutFixed32(buf, info.osn_len);
@@ -100,7 +101,7 @@ inline KStatus DecodeBlockInfo(TSSlice slice, TsLastSegmentBlockInfo* info) {
   return SUCCESS;
 }
 
-inline void EncodeBlockIndex(std::string* buf, const TsLastSegmentBlockIndex& index) {
+inline void EncodeBlockIndex(TsBufferBuilder* buf, const TsLastSegmentBlockIndex& index) {
   PutFixed64(buf, index.info_offset);
   PutFixed64(buf, index.length);
   PutFixed64(buf, index.table_id);
@@ -145,7 +146,7 @@ inline KStatus DecodeBlockIndex(TSSlice slice, TsLastSegmentBlockIndex* index) {
   return SUCCESS;
 }
 
-inline void EncodeFooter(std::string* buf, const TsLastSegmentFooter& footer) {
+inline void EncodeFooter(TsBufferBuilder* buf, const TsLastSegmentFooter& footer) {
   PutFixed64(buf, footer.block_info_idx_offset);
   PutFixed64(buf, footer.n_data_block);
   PutFixed64(buf, footer.meta_block_idx_offset);

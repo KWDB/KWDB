@@ -32,8 +32,10 @@
 #include "lg_api.h"
 #include "libkwdbts2.h"
 #include "ts_bitmap.h"
+#include "ts_bufferbuilder.h"
 #include "ts_coding.h"
 #include "ts_compressor.h"
+#include "ts_sliceguard.h"
 #include "settings.h"
 
 namespace kwdbts {
@@ -42,7 +44,7 @@ namespace kwdbts {
 // Ref: https://www.vldb.org/pvldb/vol8/p1816-teller.pdf
 // NOTE: We should do some extra optimization for this algorithm, because the
 //       timestamp is recorded as nanosecond.
-bool GorillaInt::Compress(const TSSlice &data, uint64_t count, std::string *out) const {
+bool GorillaInt::Compress(TSSlice data, uint64_t count, TsBufferBuilder *out) const {
   static constexpr int dsize = sizeof(int64_t);
   if (count < 2) {
     return false;
@@ -96,13 +98,14 @@ bool GorillaInt::Compress(const TSSlice &data, uint64_t count, std::string *out)
   return true;
 }
 
-bool GorillaInt::Decompress(const TSSlice &data, uint64_t count, std::string *out) const {
+bool GorillaInt::Decompress(TSSlice data, uint64_t count, TsSliceGuard *out) const {
   static constexpr int dsize = sizeof(int64_t);
   if (count == 0) {
-    out->clear();
+    *out = TsSliceGuard();
     return true;
   }
-  out->reserve(8 * count);
+  TsBufferBuilder builder;
+  builder.reserve(8 * count);
   TsBitReader reader(std::string_view{data.data, data.len});
 
   uint64_t v;
@@ -111,7 +114,7 @@ bool GorillaInt::Decompress(const TSSlice &data, uint64_t count, std::string *ou
     return false;
   }
   int64_t current_ts = v;
-  out->append(reinterpret_cast<char *>(&current_ts), dsize);
+  builder.append(reinterpret_cast<char *>(&current_ts), dsize);
   if (count == 1) {
     return true;
   }
@@ -121,7 +124,7 @@ bool GorillaInt::Decompress(const TSSlice &data, uint64_t count, std::string *ou
   }
   int32_t delta = v;
   current_ts += delta;
-  out->append(reinterpret_cast<char *>(&current_ts), dsize);
+  builder.append(reinterpret_cast<char *>(&current_ts), dsize);
   for (int i = 2; i < count; ++i) {
     bool bit;
     int64_t dod;
@@ -161,8 +164,9 @@ bool GorillaInt::Decompress(const TSSlice &data, uint64_t count, std::string *ou
     }
     delta += dod;
     current_ts += delta;
-    out->append(reinterpret_cast<char *>(&current_ts), dsize);
+    builder.append(reinterpret_cast<char *>(&current_ts), dsize);
   }
+  *out = builder.GetBuffer();
   return true;
 }
 
@@ -178,7 +182,7 @@ static inline bool CheckedSub(const T a, const T b, T *out) {
 }
 
 template <class T>
-static inline void TypedPutVarint(std::string *dst, T v) {
+static inline void TypedPutVarint(TsBufferBuilder *dst, T v) {
   static_assert(std::is_same_v<T, uint64_t> || std::is_same_v<T, uint32_t>);
   if constexpr (std::is_same_v<T, uint64_t>) {
     return PutVarint64(dst, v);
@@ -188,7 +192,7 @@ static inline void TypedPutVarint(std::string *dst, T v) {
 }
 
 template <class T>
-static inline void TypedPutFixed(std::string *dst, T v) {
+static inline void TypedPutFixed(TsBufferBuilder *dst, T v) {
   if constexpr (sizeof(T) == 8) {
     return PutFixed64(dst, v);
   } else {
@@ -207,7 +211,7 @@ static inline const char *TypedDecodeVarint(const char *ptr, const char *limit, 
 }
 
 template <class T>
-bool GorillaIntV2<T>::Compress(const TSSlice &data, uint64_t count, std::string *out) const {
+bool GorillaIntV2<T>::Compress(TSSlice data, uint64_t count, TsBufferBuilder *out) const {
   if (count <= 2) {
     return false;
   }
@@ -240,12 +244,13 @@ bool GorillaIntV2<T>::Compress(const TSSlice &data, uint64_t count, std::string 
 }
 
 template <class T>
-bool GorillaIntV2<T>::Decompress(const TSSlice &data, uint64_t count, std::string *out) const {
+bool GorillaIntV2<T>::Decompress(TSSlice data, uint64_t count, TsSliceGuard *out) const {
   if (count <= 2) {
     return false;
   }
-  out->resize(stride * count);
-  T *outdata = reinterpret_cast<T *>(out->data());
+  TsBufferBuilder builder(stride * count);
+  T *outdata = reinterpret_cast<T *>(builder.data());
+
   using utype = std::make_unsigned_t<T>;
   utype v;
   const char *limit = data.data + data.len;
@@ -273,12 +278,14 @@ bool GorillaIntV2<T>::Decompress(const TSSlice &data, uint64_t count, std::strin
     ts += delta;
     outdata[i] = ts;
   }
+
+  *out = builder.GetBuffer();
   return true;
 }
 
 static int leading_mapping[] = {0, 8, 12, 16, 18, 20, 22, 24};
 template <class T>
-bool Chimp<T>::Compress(const TSSlice &data, uint64_t count, std::string *out) const {
+bool Chimp<T>::Compress(TSSlice data, uint64_t count, TsBufferBuilder *out) const {
   assert(data.len == sizeof(T) * count);
   auto sz = sizeof(T) * 8;
   out->clear();
@@ -332,9 +339,10 @@ bool Chimp<T>::Compress(const TSSlice &data, uint64_t count, std::string *out) c
 }
 
 template <class T>
-bool Chimp<T>::Decompress(const TSSlice &data, uint64_t count, std::string *out) const {
+bool Chimp<T>::Decompress(TSSlice data, uint64_t count, TsSliceGuard *out) const {
   auto sz = sizeof(T) * 8;
-  out->clear();
+  TsBufferBuilder builder;
+  builder.reserve(count * sizeof(T));
   if (count == 0) {
     return true;
   }
@@ -345,9 +353,9 @@ bool Chimp<T>::Decompress(const TSSlice &data, uint64_t count, std::string *out)
     return false;
   }
   if constexpr (std::is_same_v<T, double>) {
-    PutFixed64(out, v);
+    PutFixed64(&builder, v);
   } else {
-    PutFixed32(out, v);
+    PutFixed32(&builder, v);
   }
   using utype = std::conditional_t<std::is_same_v<T, double>, uint64_t, uint32_t>;
   utype prev = v, prev_lead_idx = 0;
@@ -393,12 +401,13 @@ bool Chimp<T>::Decompress(const TSSlice &data, uint64_t count, std::string *out)
     }
     utype current = prev ^ xored;
     if constexpr (std::is_same_v<T, double>) {
-      PutFixed64(out, current);
+      PutFixed64(&builder, current);
     } else {
-      PutFixed32(out, current);
+      PutFixed32(&builder, current);
     }
     prev = current;
   }
+  *out = builder.GetBuffer();
   return true;
 }
 // export
@@ -443,7 +452,7 @@ static inline T DecodeZigZagIfNeeded(std::make_unsigned_t<T> v) {
 }
 
 template <typename T>
-static bool CompressImplGreedy(const T *data, uint64_t count, std::string *out) {
+static bool CompressImplGreedy(const T *data, uint64_t count, TsBufferBuilder *out) {
   static_assert(std::is_integral_v<T>);
   out->clear();
   for (int i = 0; i < count;) {
@@ -486,7 +495,7 @@ static bool CompressImplGreedy(const T *data, uint64_t count, std::string *out) 
     if (can_be_zero_data) {
       uint64_t special_selector = n_number == 240 ? 0 : 1;
       uint64_t batch = ((special_selector) << 60) + header;
-      out->append(reinterpret_cast<char *>(&batch), 8);
+      PutFixed64(out, batch);
       i += GROUPSIZE[special_selector];
       n_number -= GROUPSIZE[special_selector];
       if (n_number == 0) continue;
@@ -508,7 +517,7 @@ static bool CompressImplGreedy(const T *data, uint64_t count, std::string *out) 
       }
       batch <<= 60 % GROUPSIZE[selector];
       assert(batch >> 60 == selector);
-      out->append(reinterpret_cast<char *>(&batch), 8);
+      PutFixed64(out, batch);
       i += GROUPSIZE[selector];
       n_number -= GROUPSIZE[selector];
     }
@@ -533,12 +542,12 @@ static inline T Restore(uint64_t n, int width) {
 }
 
 template <typename T>
-bool Decompress(const TSSlice &data, uint64_t count, std::string *out) {
+bool Decompress(TSSlice data, uint64_t count, TsSliceGuard *out) {
   if (data.len % 8 != 0) {
     return false;
   }
-  out->resize(sizeof(T) * count);
-  T *outdata = reinterpret_cast<T *>(out->data());
+  TsBufferBuilder builder(sizeof(T) * count);
+  T *outdata = reinterpret_cast<T *>(builder.data());
   uint64_t idx = 0;
   const char *cursor = data.data;
   while (cursor < data.data + data.len && idx < count) {
@@ -563,6 +572,7 @@ bool Decompress(const TSSlice &data, uint64_t count, std::string *out) {
     }
     cursor += 8;
   }
+  *out = builder.GetBuffer();
   return out->size() / sizeof(T) == count;
 }
 
@@ -591,7 +601,7 @@ inline int64_t AutoSub(T a, T b) {
 
 //  delta-of-delta + simple8b
 template <typename T>
-bool V2CompressImplGreedy(const T *data, uint64_t count, std::string *out) {
+bool V2CompressImplGreedy(const T *data, uint64_t count, TsBufferBuilder *out) {
   if (count < 2) {
     return false;
   }
@@ -719,12 +729,12 @@ bool V2CompressImplGreedy(const T *data, uint64_t count, std::string *out) {
 }
 
 template <typename T>
-bool V2Decompress(const TSSlice &data, uint64_t count, std::string *out) {
+bool V2Decompress(TSSlice data, uint64_t count, TsSliceGuard *out) {
   if (count < 2) {
     return false;
   }
-  out->resize(sizeof(T) * count);
-  T *outdata = reinterpret_cast<T *>(out->data());
+  TsBufferBuilder builder(sizeof(T) * count);
+  T *outdata = reinterpret_cast<T *>(builder.data());
   uint64_t idx = 0;
 
   const char *cursor = data.data;
@@ -784,36 +794,37 @@ bool V2Decompress(const TSSlice &data, uint64_t count, std::string *out) {
     }
     // assert(shift + ITEMWIDTH[selector] == 0);
   }
+  *out = builder.GetBuffer();
   return idx == count && cursor == end;
 }
 
 };  // namespace __simple8b_detail
 
 template <class T>
-bool Simple8BInt<T>::Compress(const TSSlice &data, uint64_t count, std::string *out) const {
+bool Simple8BInt<T>::Compress(TSSlice data, uint64_t count, TsBufferBuilder *out) const {
   assert(data.len == sizeof(T) * count);
   const T *p_data = reinterpret_cast<const T *>(data.data);
   return __simple8b_detail::CompressImplGreedy<T>(p_data, count, out);
 }
 
 template <class T>
-bool Simple8BInt<T>::Decompress(const TSSlice &data, uint64_t count, std::string *out) const {
+bool Simple8BInt<T>::Decompress(TSSlice data, uint64_t count, TsSliceGuard *out) const {
   return __simple8b_detail::Decompress<T>(data, count, out);
 }
 
 template <class T>
-bool Simple8BIntV2<T>::Compress(const TSSlice &data, uint64_t count, std::string *out) const {
+bool Simple8BIntV2<T>::Compress(TSSlice data, uint64_t count, TsBufferBuilder *out) const {
   assert(data.len == sizeof(T) * count);
   const T *p_data = reinterpret_cast<const T *>(data.data);
   return __simple8b_detail::V2CompressImplGreedy<T>(p_data, count, out);
 }
 
 template <class T>
-bool Simple8BIntV2<T>::Decompress(const TSSlice &data, uint64_t count, std::string *out) const {
+bool Simple8BIntV2<T>::Decompress(TSSlice data, uint64_t count, TsSliceGuard *out) const {
   return __simple8b_detail::V2Decompress<T>(data, count, out);
 }
 
-bool BitPacking::Compress(const TSSlice &data, uint64_t count, std::string *out) const {
+bool BitPacking::Compress(TSSlice data, uint64_t count, TsBufferBuilder *out) const {
   assert(data.len == count);
   uint8_t c = 0;
   for (int i = 0; i < count; ++i) {
@@ -828,55 +839,55 @@ bool BitPacking::Compress(const TSSlice &data, uint64_t count, std::string *out)
   }
   return true;
 }
-bool BitPacking::Decompress(const TSSlice &data, uint64_t count, std::string *out) const {
-  out->resize(count);
-  char *ptr = out->data();
+bool BitPacking::Decompress(TSSlice data, uint64_t count, TsSliceGuard *out) const {
+  TsBufferBuilder builder(count);
+  char *ptr = builder.data();
   for (int i = 0; i < count; ++i) {
     uint8_t c = data.data[i / 8];
     ptr[i] = ((c >> (i % 8)) & 1);
   }
+  *out = builder.GetBuffer();
   return out->size() == count;
 }
 
-bool CompressorManager::TwoLevelCompressor::Compress(const TSSlice &raw, const TsBitmapBase *bitmap,
-                                                     uint32_t count, std::string *out) const {
+bool CompressorManager::TwoLevelCompressor::Compress(TSSlice raw, const TsBitmapBase *bitmap,
+                                                     uint32_t count, TsBufferBuilder *out) const {
   if (IsPlain()) return false;
-  std::string buf;
+  TsBufferBuilder buf;
   TSSlice data;
   bool ok = true;
   if (first_ == nullptr) {
     data = raw;
   } else {
     ok = first_->Compress(raw, bitmap, count, &buf);
-    data = {buf.data(), buf.size()};
+    data = buf.AsSlice();
   }
   if (!ok) {
     return false;
   }
   if (second_ == nullptr) {
-    out->swap(buf);
+    *out = std::move(buf);
     return true;
   }
   return second_->Compress(data, out);
 }
-bool CompressorManager::TwoLevelCompressor::Decompress(const TSSlice &raw, const TsBitmapBase *bitmap, uint32_t count,
-                                                       std::string *out) const {
+bool CompressorManager::TwoLevelCompressor::Decompress(TSSlice raw, const TsBitmapBase *bitmap, uint32_t count,
+                                                       TsSliceGuard *out) const {
   if (IsPlain()) return false;
-  out->clear();
-  std::string buf;
+  TsSliceGuard buf;
   TSSlice data;
   bool ok = true;
   if (second_ == nullptr) {
     data = raw;
   } else {
     ok = second_->Decompress(raw, &buf);
-    data = {buf.data(), buf.size()};
+    data = buf.AsSlice();
   }
   if (!ok) {
     return false;
   }
   if (first_ == nullptr) {
-    out->swap(buf);
+    std::swap(*out, buf);
     return true;
   }
   return first_->Decompress(data, bitmap, count, out);
@@ -968,7 +979,7 @@ auto CompressorManager::GetDefaultCompressor(DATATYPE dtype) const -> TwoLevelCo
   return GetCompressor(first, second);
 }
 
-bool CompressorManager::CompressData(TSSlice input, const TsBitmapBase *bitmap, uint64_t count, std::string *output,
+bool CompressorManager::CompressData(TSSlice input, const TsBitmapBase *bitmap, uint64_t count, TsBufferBuilder *output,
                                      TsCompAlg first, GenCompAlg second) const {
   if (EngineOptions::compress_stage == 0) {
     first = TsCompAlg::kPlain;
@@ -978,7 +989,7 @@ bool CompressorManager::CompressData(TSSlice input, const TsBitmapBase *bitmap, 
   static_assert(sizeof(first) == sizeof(uint16_t));
   static_assert(sizeof(second) == sizeof(uint16_t));
   auto compressor = GetCompressor(first, second);
-  std::string tmp;
+  TsBufferBuilder tmp;
   bool ok = compressor.Compress(input, bitmap, count, &tmp);
   if (!ok) {
     first = TsCompAlg::kPlain;
@@ -987,14 +998,14 @@ bool CompressorManager::CompressData(TSSlice input, const TsBitmapBase *bitmap, 
   PutFixed16(output, static_cast<uint16_t>(first));
   PutFixed16(output, static_cast<uint16_t>(second));
   if (ok) {
-    output->append(tmp);
+    output->append(tmp.AsSlice());
   } else {
     output->append(input.data, input.len);
   }
   return true;
 }
 
-bool CompressorManager::CompressVarchar(TSSlice input, std::string *output, GenCompAlg alg) const {
+bool CompressorManager::CompressVarchar(TSSlice input, TsBufferBuilder *output, GenCompAlg alg) const {
   assert(sizeof(alg) == sizeof(uint16_t));
   output->clear();
   PutFixed16(output, static_cast<uint16_t>(alg));
@@ -1004,72 +1015,43 @@ bool CompressorManager::CompressVarchar(TSSlice input, std::string *output, GenC
     output->append(input.data, input.len);
     return true;
   }
-  std::string tmp;
+  TsBufferBuilder tmp;
   bool ok = it->second->Compress(input, &tmp);
   if (!ok) {
     return false;
   }
-  output->append(tmp);
+  output->append(tmp.AsSlice());
   return true;
 }
 
-bool CompressorManager::DecompressData(TSSlice input, const TsBitmapBase *bitmap, uint64_t count,
-                                       TsSliceGuard *out) const {
-  if (input.len < 4) {
-    LOG_ERROR("Invalid input length, too short");
-    return false;
-  }
-  if (*reinterpret_cast<uint32_t*>(input.data) == 0) {
-    *out = TsSliceGuard(input.data + 4, input.len - 4);
-    return true;
-  }
+bool CompressorManager::DoDecompressData(uint32_t alg, TsSliceGuard &&input, const TsBitmapBase *bitmap, uint64_t count,
+                                         TsSliceGuard *out) const {
   uint16_t v;
-  GetFixed16(&input, &v);
+  TSSlice alg_slice{reinterpret_cast<char *>(&alg), sizeof(alg)};
+  GetFixed16(&alg_slice, &v);
   TsCompAlg first = static_cast<TsCompAlg>(v);
-  GetFixed16(&input, &v);
+  GetFixed16(&alg_slice, &v);
   GenCompAlg second = static_cast<GenCompAlg>(v);
   if (first >= TsCompAlg::TS_COMP_ALG_LAST || second >= GenCompAlg::GEN_COMP_ALG_LAST) {
     LOG_ERROR("Invalid algorithm id");
     return false;
   }
-  if (first == TsCompAlg::kPlain && second == GenCompAlg::kPlain) {
-    *out = TsSliceGuard{input};
-    return true;
-  }
   auto compressor = GetCompressor(first, second);
-  std::string tmp;
-  bool ok = compressor.Decompress(input, bitmap, count, &tmp);
-  *out = TsSliceGuard{std::move(tmp)};
-  return ok;
+  return compressor.Decompress(input.AsSlice(), bitmap, count, out);
 }
 
-bool CompressorManager::DecompressVarchar(TSSlice input, TsSliceGuard *out) const {
-  if (input.len < 2) {
-    return false;
-  }
-  uint16_t v;
-  GetFixed16(&input, &v);
-  GenCompAlg alg = static_cast<GenCompAlg>(v);
+bool CompressorManager::DoDecompressVarchar(GenCompAlg alg, TsSliceGuard &&input, TsSliceGuard *out) const {
   if (alg >= GenCompAlg::GEN_COMP_ALG_LAST) {
     return false;
   }
-
-  if (alg == GenCompAlg::kPlain) {
-    *out = TsSliceGuard{input};
-    return true;
-  }
-
   auto it = general_compressor_.find(alg);
   if (it == general_compressor_.end()) {
     return false;
   }
-  std::string tmp;
-  bool ok = it->second->Decompress(input, &tmp);
-  *out = TsSliceGuard{std::move(tmp)};
-  return ok;
+  return it->second->Decompress(input.AsSlice(), out);
 }
 
-bool CompressorManager::CompressBitmap(TsBitmapBase *bitmap, std::string *output) const {
+bool CompressorManager::CompressBitmap(TsBitmapBase *bitmap, TsBufferBuilder *output) const {
   if (bitmap->IsAllValid()) {
     output->push_back(static_cast<char>(BitmapType::kAllValid));
     return true;

@@ -187,7 +187,7 @@ class TsMemSegBlock : public TsBlock {
   KStatus GetColAddr(uint32_t col_id, const std::vector<AttributeInfo>* schema, char** value,
                       TsScanStats* ts_scan_stats = nullptr) override;
 
-  KStatus GetCompressDataFromFile(uint32_t table_version, int32_t nrow, std::string& data) override {
+  KStatus GetCompressDataFromFile(uint32_t table_version, int32_t nrow, TsBufferBuilder* data) override {
     return KStatus::FAIL;
   }
 

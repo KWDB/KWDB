@@ -21,6 +21,8 @@
 #include <algorithm>
 #include <type_traits>
 #include "libkwdbts2.h"
+#include "ts_bufferbuilder.h"
+#include "ts_sliceguard.h"
 
 namespace kwdbts {
 
@@ -32,9 +34,9 @@ char *EncodeFixed64(char *buf, uint64_t v);
 char *EncodeVarint32(char *buf, uint32_t v);
 char *EncodeVarint64(char *buf, uint64_t v);
 
-void PutFixed16(std::string *dst, uint16_t v);
-void PutFixed32(std::string *dst, uint32_t v);
-void PutFixed64(std::string *dst, uint64_t v);
+void PutFixed16(TsBufferBuilder *dst, uint16_t v);
+void PutFixed32(TsBufferBuilder *dst, uint32_t v);
+void PutFixed64(TsBufferBuilder *dst, uint64_t v);
 
 uint16_t DecodeFixed16(const char *ptr);
 uint32_t DecodeFixed32(const char *ptr);
@@ -117,17 +119,17 @@ inline uint64_t DecodeFixed64(const char *ptr) {
   return le64toh(result);
 }
 
-inline void PutFixed16(std::string *dst, uint16_t v) {
+inline void PutFixed16(TsBufferBuilder *dst, uint16_t v) {
   v = htole16(v);
   dst->append(reinterpret_cast<char *>(&v), sizeof(v));
 }
 
-inline void PutFixed32(std::string *dst, uint32_t v) {
+inline void PutFixed32(TsBufferBuilder *dst, uint32_t v) {
   v = htole32(v);
   dst->append(reinterpret_cast<char *>(&v), sizeof(v));
 }
 
-inline void PutFixed64(std::string *dst, uint64_t v) {
+inline void PutFixed64(TsBufferBuilder *dst, uint64_t v) {
   v = htole64(v);
   dst->append(reinterpret_cast<char *>(&v), sizeof(v));
 }
@@ -141,11 +143,23 @@ inline void GetFixed16(TSSlice *slice, uint16_t *v) {
   slice->len -= 2;
 }
 
+inline void GetFixed16(TsSliceGuard *slice, uint16_t *v) {
+  assert(slice->size() >= 2);
+  *v = DecodeFixed16(slice->data());
+  slice->RemovePrefix(2);
+}
+
 inline void GetFixed32(TSSlice *slice, uint32_t *v) {
   assert(slice->len >= 4);
   *v = DecodeFixed32(slice->data);
   slice->data += 4;
   slice->len -= 4;
+}
+
+inline void GetFixed32(TsSliceGuard *slice, uint32_t *v) {
+  assert(slice->size() >= 4);
+  *v = DecodeFixed32(slice->data());
+  slice->RemovePrefix(4);
 }
 
 inline void GetFixed64(TSSlice *slice, uint64_t *v) {
@@ -160,13 +174,13 @@ inline void RemovePrefix(TSSlice *slice, int n) {
   slice->len -= n;
 }
 
-inline void PutVarint32(std::string *dst, uint32_t v) {
+inline void PutVarint32(TsBufferBuilder *dst, uint32_t v) {
   char buf[5];
   char *ptr = EncodeVarint32(buf, v);
   dst->append(buf, ptr - buf);
 }
 
-inline void PutVarint64(std::string *dst, uint64_t v) {
+inline void PutVarint64(TsBufferBuilder *dst, uint64_t v) {
   char buf[10];
   char *ptr = EncodeVarint64(buf, v);
   dst->append(buf, ptr - buf);
@@ -208,12 +222,12 @@ std::make_signed_t<T> DecodeZigZag(T v) {
 
 class TsBitWriter {
  private:
-  std::string *rep_;
+  TsBufferBuilder *rep_;
   size_t pos_;
 
  public:
-  explicit TsBitWriter(std::string *rep) : rep_(rep), pos_(0) { rep_->clear(); }
-  const std::string &Str() const { return *rep_; }
+  explicit TsBitWriter(TsBufferBuilder *rep) : rep_(rep), pos_(0) { rep_->clear(); }
+  // const std::string &Str() const { return *rep_; }
   bool WriteBits(int nbits, uint64_t v) {
     assert(nbits > 0 && nbits <= 64);
     assert(nbits == 64 || v <= ((1ULL << nbits) - 1));
@@ -257,7 +271,7 @@ class TsBitReader {
 
  public:
   // TsBitReader(const std::string &rep, size_t pos = 0) : rep_(rep), pos_(pos) {}
-  explicit TsBitReader(const std::string_view &rep, size_t pos = 0) : rep_(rep), pos_(pos) {}
+  explicit TsBitReader(std::string_view rep, size_t pos = 0) : rep_(rep), pos_(pos) {}
   bool ReadByte(uint8_t *v) {
     int idx = pos_ / 8;
     if (idx >= rep_.size()) {

@@ -6,34 +6,35 @@
 #include <cstring>
 #include <string>
 #include <vector>
+#include "ts_bufferbuilder.h"
 
 TEST(BitWriter, WriteBits) {
-  std::string buffer;
+  kwdbts::TsBufferBuilder buffer;
   {
     kwdbts::TsBitWriter writer(&buffer);
     EXPECT_TRUE(writer.WriteBits(3, 0b101));
     EXPECT_TRUE(writer.WriteBits(4, 0b1100));
-    EXPECT_EQ(static_cast<uint8_t>(writer.Str()[0]), 0b10111000);
+    EXPECT_EQ(static_cast<uint8_t>(buffer[0]), 0b10111000);
 
     EXPECT_TRUE(writer.WriteBits(9, 0b110110111));
-    ASSERT_EQ(writer.Str().size(), 2);
-    EXPECT_EQ(static_cast<uint8_t>(writer.Str()[0]), 0b10111001);
-    EXPECT_EQ(static_cast<uint8_t>(writer.Str()[1]), 0b10110111);
+    ASSERT_EQ(buffer.size(), 2);
+    EXPECT_EQ(static_cast<uint8_t>(buffer[0]), 0b10111001);
+    EXPECT_EQ(static_cast<uint8_t>(buffer[1]), 0b10110111);
   }
   {
     kwdbts::TsBitWriter writer(&buffer);
     EXPECT_TRUE(writer.WriteBits(10, 0b101));
-    ASSERT_EQ(writer.Str().size(), 2);
-    EXPECT_EQ(static_cast<uint8_t>(writer.Str()[0]), 0b1);
-    EXPECT_EQ(static_cast<uint8_t>(writer.Str()[1]), 0b01000000);
+    ASSERT_EQ(buffer.size(), 2);
+    EXPECT_EQ(static_cast<uint8_t>(buffer[0]), 0b1);
+    EXPECT_EQ(static_cast<uint8_t>(buffer[1]), 0b01000000);
     EXPECT_TRUE(writer.WriteBits(10, 0b10101101));
-    ASSERT_EQ(writer.Str().size(), 3);
-    EXPECT_EQ(static_cast<uint8_t>(writer.Str()[1]), 0b01001010);
-    EXPECT_EQ(static_cast<uint8_t>(writer.Str()[2]), 0b11010000);
+    ASSERT_EQ(buffer.size(), 3);
+    EXPECT_EQ(static_cast<uint8_t>(buffer[1]), 0b01001010);
+    EXPECT_EQ(static_cast<uint8_t>(buffer[2]), 0b11010000);
   }
 
   for (int i = 0; i < 8; ++i) {
-    std::string buf;
+    kwdbts::TsBufferBuilder buf;
     for (int j = 1; j <= 64; ++j) {
       kwdbts::TsBitWriter w{&buf};
       for (int n = 0; n < i; ++n) {
@@ -45,9 +46,9 @@ TEST(BitWriter, WriteBits) {
         ASSERT_TRUE(w.WriteBits(j, -1));
       }
 
-      ASSERT_EQ(w.Str().size(), (i + j - 1) / 8 + 1);
+      ASSERT_EQ(buf.size(), (i + j - 1) / 8 + 1);
 
-      kwdbts::TsBitReader r{buf};
+      kwdbts::TsBitReader r{buf.AsStringView()};
       bool b;
       for (int k = 0; k < i; ++k) {
         ASSERT_TRUE(r.ReadBit(&b));
@@ -55,7 +56,7 @@ TEST(BitWriter, WriteBits) {
       }
       for(int k = 0; k < j; ++k){
         ASSERT_TRUE(r.ReadBit(&b));
-        EXPECT_EQ(b, 1) << i << " , " << j << buf;
+        EXPECT_EQ(b, 1) << i << " , " << j << buf.AsStringView();
       }
       for (int k = 0; k < (8 - (i + j) % 8) % 8; ++k) {
         ASSERT_TRUE(r.ReadBit(&b)) << (i + j);
@@ -65,17 +66,17 @@ TEST(BitWriter, WriteBits) {
     }
   }
   {
-    std::string buf;
+    kwdbts::TsBufferBuilder buf;
     kwdbts::TsBitWriter w{&buf};
     w.WriteBits(64, 0x12345678);
     std::string exp{"\0\0\0\0\x12\x34\x56\x78", 8};
-    ASSERT_EQ(w.Str().size(), 8);
-    EXPECT_EQ(buf, exp);
+    ASSERT_EQ(buf.size(), 8);
+    EXPECT_EQ(buf.AsStringView(), exp);
   }
 }
 
 TEST(BitWriter, WriteBit) {
-  std::string buffer;
+  kwdbts::TsBufferBuilder buffer;
   struct TestCase {
     std::string binary;
     std::vector<uint8_t> number;
@@ -90,15 +91,15 @@ TEST(BitWriter, WriteBit) {
     for (auto c : t.binary) {
       writer.WriteBit(c == '1');
     }
-    ASSERT_EQ(writer.Str().size(), t.number.size());
+    ASSERT_EQ(buffer.size(), t.number.size());
     for (int i = 0; i < t.number.size(); ++i) {
-      EXPECT_EQ(static_cast<uint8_t>(writer.Str()[i]), t.number[i]) << t.binary << " at: " << i;
+      EXPECT_EQ(static_cast<uint8_t>(buffer[i]), t.number[i]) << t.binary << " at: " << i;
     }
   }
 }
 
 TEST(BitWriter, WriteByte) {
-  std::string buffer;
+  kwdbts::TsBufferBuilder buffer;
   {  // aligned write;
     kwdbts::TsBitWriter writer(&buffer);
     std::string expected;
@@ -106,8 +107,8 @@ TEST(BitWriter, WriteByte) {
       ASSERT_TRUE(writer.WriteByte(i)) << i;
       expected.push_back(i);
     }
-    ASSERT_EQ(writer.Str().size(), expected.size());
-    EXPECT_EQ(writer.Str(), expected);
+    ASSERT_EQ(buffer.size(), expected.size());
+    EXPECT_EQ(buffer.AsStringView(), expected);
   }
   {  // non-aligned write;
     kwdbts::TsBitWriter writer(&buffer);
@@ -116,13 +117,13 @@ TEST(BitWriter, WriteByte) {
     for (int i = 0; i < 256; ++i) {
       writer.WriteByte(i);
     }
-    ASSERT_EQ(writer.Str().size(), 257);
-    EXPECT_EQ(writer.Str()[0], '\x80');
+    ASSERT_EQ(buffer.size(), 257);
+    EXPECT_EQ(buffer[0], '\x80');
     for (uint32_t i = 1; i < 256; ++i) {
-      EXPECT_EQ(static_cast<uint8_t>(writer.Str()[i]), (((i - 1) & 0x03) << 6) | ((i & 0xFC) >> 2))
+      EXPECT_EQ(static_cast<uint8_t>(buffer[i]), (((i - 1) & 0x03) << 6) | ((i & 0xFC) >> 2))
           << "idx " << i;
     }
-    EXPECT_EQ(static_cast<uint8_t>(writer.Str()[256]), 0xC0);
+    EXPECT_EQ(static_cast<uint8_t>(buffer[256]), 0xC0);
   }
 }
 

@@ -20,6 +20,8 @@
 #include "ts_agg.h"
 #include "ts_batch_data_worker.h"
 #include "ts_block_span_sorted_iterator.h"
+#include "ts_bufferbuilder.h"
+#include "ts_coding.h"
 #include "ts_compatibility.h"
 #include "ts_entity_segment_handle.h"
 #include "ts_filename.h"
@@ -131,7 +133,7 @@ TsEntityBlockBuilder::TsEntityBlockBuilder(uint32_t table_id, uint32_t table_ver
   n_cols_ = metric_schema.size() + 1;
   column_blocks_.resize(n_cols_);
   for (size_t col_idx = 1; col_idx < n_cols_; ++col_idx) {
-    TsEntitySegmentColumnBlock& column_block = column_blocks_[col_idx];
+    TsEntitySegmentColumnBlockBuilder& column_block = column_blocks_[col_idx];
     column_block.bitmap = std::make_unique<TsBitmap>(EngineOptions::max_rows_per_block);
     DATATYPE d_type = static_cast<DATATYPE>(metric_schema_[col_idx - 1].type);
     if (isVarLenType(d_type)) {
@@ -180,7 +182,7 @@ KStatus TsEntityBlockBuilder::Append(shared_ptr<TsBlockSpan> span, bool& is_full
     bool has_bitmap = col_idx != 0;
 
     bool is_var_col = isVarLenType(d_type);
-    TsEntitySegmentColumnBlock& block = column_blocks_[col_idx];
+    TsEntitySegmentColumnBlockBuilder& block = column_blocks_[col_idx];
     std::string var_offsets_data;
     uint32_t var_offsets_len = EngineOptions::max_rows_per_block * sizeof(uint32_t);
     size_t row_idx_in_block = n_rows_;
@@ -233,15 +235,16 @@ KStatus TsEntityBlockBuilder::Append(shared_ptr<TsBlockSpan> span, bool& is_full
   return KStatus::SUCCESS;
 }
 
-KStatus TsEntityBlockBuilder::GetCompressData(TsEntitySegmentBlockItem& blk_item, string& data_buffer, string& agg_buffer) {
+KStatus TsEntityBlockBuilder::GetCompressData(TsEntitySegmentBlockItem& blk_item, TsBufferBuilder* data_buffer,
+                                              TsBufferBuilder* agg_buffer) {
   // compressor manager
   const auto& mgr = CompressorManager::GetInstance();
   // init col data offsets to data buffer
   uint32_t block_header_size = n_cols_ * sizeof(uint32_t);
-  data_buffer.resize(block_header_size);
+  data_buffer->resize(block_header_size);
   // init col agg offsets to agg buffer, exclude osn col
   uint32_t agg_header_size = (n_cols_ - 1) * sizeof(uint32_t);
-  agg_buffer.resize(agg_header_size);
+  agg_buffer->resize(agg_header_size);
   // min osn && max osn
   uint64_t min_osn = UINT64_MAX;
   uint64_t max_osn = 0;
@@ -257,13 +260,13 @@ KStatus TsEntityBlockBuilder::GetCompressData(TsEntitySegmentBlockItem& blk_item
     bool has_bitmap = col_idx > 1;  // && !metric_schema_[col_idx - 1].isFlag(AINFO_NOT_NULL);
     bool is_var_col = isVarLenType(d_type);
 
-    TsEntitySegmentColumnBlock& block = column_blocks_[col_idx];
+    TsEntitySegmentColumnBlockBuilder& block = column_blocks_[col_idx];
     // compress
     // compress bitmap
     if (has_bitmap) {
       TsBitmap* loc_bitmap = static_cast<TsBitmap*>(block.bitmap.get());
       loc_bitmap->Truncate(n_rows_);
-      mgr.CompressBitmap(loc_bitmap, &data_buffer);
+      mgr.CompressBitmap(loc_bitmap, data_buffer);
     }
     TsBitmapBase* b = has_bitmap ? block.bitmap.get() : nullptr;
     // compress col data & write to buffer
@@ -272,7 +275,7 @@ KStatus TsEntityBlockBuilder::GetCompressData(TsEntitySegmentBlockItem& blk_item
       // varchar offset use simple8b algorithm
       first = TsCompAlg::kSimple8B_V2_u32;
       // var offset data
-      std::string compressed;
+      TsBufferBuilder compressed;
       TSSlice var_offsets = {block.buffer.data(), n_rows_ * sizeof(uint32_t)};
       bool ok = mgr.CompressData(var_offsets, nullptr, n_rows_, &compressed, first, second);
       if (!ok) {
@@ -280,8 +283,8 @@ KStatus TsEntityBlockBuilder::GetCompressData(TsEntitySegmentBlockItem& blk_item
         return KStatus::SUCCESS;
       }
       uint32_t compressed_len = compressed.size();
-      data_buffer.append(reinterpret_cast<const char *>(&compressed_len), sizeof(uint32_t));
-      data_buffer.append(compressed);
+      PutFixed32(data_buffer, compressed_len);
+      data_buffer->append(compressed);
       // var data
       compressed.clear();
       uint32_t var_data_offset = EngineOptions::max_rows_per_block * sizeof(uint32_t);
@@ -291,17 +294,17 @@ KStatus TsEntityBlockBuilder::GetCompressData(TsEntitySegmentBlockItem& blk_item
         LOG_ERROR("Compress var data failed");
         return KStatus::SUCCESS;
       }
-      data_buffer.append(compressed);
+      data_buffer->append(compressed);
     } else {
-      std::string compressed;
+      TsBufferBuilder compressed;
       TSSlice plain{block.buffer.data(), block.buffer.size()};
       mgr.CompressData(plain, b, n_rows_, &compressed, first, second);
-      data_buffer.append(compressed);
+      data_buffer->append(compressed);
     }
     // col offset
-    uint32_t col_offset = data_buffer.size() - block_header_size;
+    uint32_t col_offset = data_buffer->size() - block_header_size;
     // write col data offset
-    memcpy(data_buffer.data() + col_idx * sizeof(uint32_t), &col_offset, sizeof(uint32_t));
+    memcpy(data_buffer->data() + col_idx * sizeof(uint32_t), &col_offset, sizeof(uint32_t));
     // calculate aggregate
     if (0 == col_idx) {
       for (int row_idx = 0; row_idx < n_rows_; ++row_idx) {
@@ -319,9 +322,9 @@ KStatus TsEntityBlockBuilder::GetCompressData(TsEntitySegmentBlockItem& blk_item
     }
     string col_agg;
     Defer defer {[&]() {
-      agg_buffer.append(col_agg);
-      uint32_t offset = agg_buffer.size() - agg_header_size;
-      memcpy(agg_buffer.data() + (col_idx - 1) * sizeof(uint32_t), &offset, sizeof(uint32_t));
+      agg_buffer->append(col_agg);
+      uint32_t offset = agg_buffer->size() - agg_header_size;
+      memcpy(agg_buffer->data() + (col_idx - 1) * sizeof(uint32_t), &offset, sizeof(uint32_t));
     }};
     if (!is_var_col) {
       TsBitmapBase* bitmap = nullptr;
@@ -383,8 +386,8 @@ KStatus TsEntityBlockBuilder::GetCompressData(TsEntitySegmentBlockItem& blk_item
   blk_item.min_osn = min_osn;
   blk_item.first_osn = first_osn;
   blk_item.last_osn = last_osn;
-  blk_item.block_len = data_buffer.size();
-  blk_item.agg_len = agg_buffer.size();
+  blk_item.block_len = data_buffer->size();
+  blk_item.agg_len = agg_buffer->size();
 
   return KStatus::SUCCESS;
 }
@@ -395,7 +398,7 @@ void TsEntityBlockBuilder::Clear() {
     column_blocks_[0].buffer.clear();
   }
   for (size_t col_idx = 1; col_idx < n_cols_; ++col_idx) {
-    TsEntitySegmentColumnBlock& column_block = column_blocks_[col_idx];
+    TsEntitySegmentColumnBlockBuilder& column_block = column_blocks_[col_idx];
     column_block.bitmap = std::make_unique<TsBitmap>(EngineOptions::max_rows_per_block);
     column_block.buffer.clear();
     DATATYPE d_type = static_cast<DATATYPE>(metric_schema_[col_idx - 1].type);
@@ -477,11 +480,11 @@ KStatus TsEntitySegmentBuilder::UpdateEntityItem(TsEntityKey& entity_key, TsEnti
 }
 
 KStatus TsEntitySegmentBuilder::WriteBlock(TsEntityKey& entity_key) {
-  string data_buffer;
-  string agg_buffer;
+  TsBufferBuilder data_buffer;
+  TsBufferBuilder agg_buffer;
   TsEntitySegmentBlockItem block_item;
   block_item.block_version = CURRENT_BLOCK_VERSION;
-  KStatus s = block_->GetCompressData(block_item, data_buffer, agg_buffer);
+  KStatus s = block_->GetCompressData(block_item, &data_buffer, &agg_buffer);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("TsEntitySegmentBuilder::Compact failed, get block compress data failed.")
     return s;

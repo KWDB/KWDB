@@ -18,6 +18,7 @@
 #include <unordered_set>
 #include "kwdb_type.h"
 #include "libkwdbts2.h"
+#include "ts_bufferbuilder.h"
 
 TEST(BloomFilter, Test1) {
   double p = 0.001;
@@ -57,7 +58,7 @@ TEST(BloomFilter, Test1) {
   EXPECT_LT(n, 10 * sigma);
 
   // serialization test;
-  std::string data;
+  kwdbts::TsBufferBuilder data;
   filter.Serialize(&data);
   std::unique_ptr<kwdbts::TsBloomFilter> pfilter;
   auto s = kwdbts::TsBloomFilter::FromData({data.data(), data.size()}, &pfilter);

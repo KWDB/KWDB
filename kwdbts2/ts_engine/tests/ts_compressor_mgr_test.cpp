@@ -11,7 +11,9 @@
 #include "data_type.h"
 #include "libkwdbts2.h"
 #include "ts_bitmap.h"
+#include "ts_bufferbuilder.h"
 #include "ts_compressor.h"
+#include "ts_sliceguard.h"
 
 template <class T>
 struct Generator {
@@ -67,7 +69,8 @@ TYPED_TEST(CompressorManagerTester, TwoLevelCompress) {
   for (int i = 0; i < vec.size(); ++i) {
     vec[i] = gen(i);
   }
-  std::string out, raw;
+  kwdbts::TsBufferBuilder out;
+  kwdbts::TsSliceGuard raw;
   ASSERT_TRUE(comp.Compress({reinterpret_cast<char*>(vec.data()), vec.size() * sz}, nullptr, vec.size(), &out));
   ASSERT_TRUE(comp.Decompress({out.data(), out.size()}, nullptr, vec.size(), &raw));
   ASSERT_EQ(raw.size(), vec.size() * sz);
@@ -93,7 +96,7 @@ TEST(Bitmap, CompressDecompress) {
   for (kwdbts::DataFlags f : {kwdbts::kValid, kwdbts::kNull, kwdbts::kNone}) {
     bm.SetAll(f);
 
-    std::string output;
+    kwdbts::TsBufferBuilder output;
     ASSERT_EQ(mgr.CompressBitmap(&bm, &output), true);
     ASSERT_EQ(output.size(), 1);
 
@@ -132,7 +135,7 @@ TEST(Bitmap, CompressDecompress) {
     bm2[i] = flags[i];
   }
 
-  std::string output;
+  kwdbts::TsBufferBuilder output;
   ASSERT_TRUE(mgr.CompressBitmap(&bm2, &output));
   ASSERT_EQ(output.size(), 1 + kwdbts::TsBitmap::GetBitmapLen(997));
 

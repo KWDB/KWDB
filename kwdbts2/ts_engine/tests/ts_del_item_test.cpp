@@ -277,6 +277,7 @@ TEST(TsDelItemUtilTest, mergeSortedSpans2) {
   ASSERT_EQ(row_num, row_num_1);
   ASSERT_EQ(batch_data.len, batch_data_1.len);
   ASSERT_EQ(del_data.len, del_data_1.len);
+
   free(data.data);
 }
 
@@ -289,7 +290,7 @@ TEST(TsDelItemUtilTest, snapshot_pack_301_version) {
   TsBatchData batch_work;
   batch_work.SetHashPoint(1111);
   batch_work.UpdateBatchDataInfo();
-  TSSlice batch_data{batch_work.data_.data(), batch_work.data_.length()};
+  TSSlice batch_data{batch_work.data_.data(), batch_work.data_.size()};
   uint32_t row_num = 300;
   TSSlice del_data{tmp, 100};
   TSSlice data;

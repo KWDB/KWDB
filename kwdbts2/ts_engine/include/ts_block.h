@@ -22,7 +22,8 @@
 #include "libkwdbts2.h"
 #include "ts_bitmap.h"
 #include "ts_blkspan_type_convert.h"
-#include "ts_compressor.h"
+#include "ts_bufferbuilder.h"
+#include "ts_sliceguard.h"
 
 namespace kwdbts {
 
@@ -65,7 +66,7 @@ class TsBlock {
 
   virtual const uint64_t* GetOSNAddr(int row_num, TsScanStats* ts_scan_stats = nullptr) = 0;
 
-  virtual KStatus GetCompressDataFromFile(uint32_t table_version, int32_t nrow, std::string& data) = 0;
+  virtual KStatus GetCompressDataFromFile(uint32_t table_version, int32_t nrow, TsBufferBuilder* data) = 0;
 
   virtual uint64_t GetBlockID() = 0;
 
@@ -202,8 +203,8 @@ class TsBlockSpan {
   }
 
   // convert value to compressed entity block data
-  KStatus BuildCompressedData(std::string& data);
-  KStatus GetCompressData(std::string& data);
+  KStatus BuildCompressedData(TsBufferBuilder* data);
+  KStatus GetCompressData(TsBufferBuilder* data);
 
   // if just get timestamp, these function return fast.
   void GetTSRange(timestamp64* min_ts, timestamp64* max_ts);

@@ -18,6 +18,7 @@
 #include <vector>
 
 #include "ts_block_span_sorted_iterator.h"
+#include "ts_bufferbuilder.h"
 #include "ts_common.h"
 #include "ts_compatibility.h"
 #include "ts_table.h"
@@ -136,7 +137,7 @@ class TsBatchData {
   constexpr static uint8_t block_version_offset_in_span_data_ = offsetof(BlockSpanHeader, block_version);  // NOLINT
   constexpr static uint8_t block_version_size_in_span_data_ = sizeof(BlockSpanHeader::block_version);      // NOLINT
 
-  std::string data_;
+  TsBufferBuilder data_;
 
   void SetBatchVersion(uint32_t batch_version) {
     memcpy(data_.data() + batch_version_offset_, &batch_version, batch_version_size_);

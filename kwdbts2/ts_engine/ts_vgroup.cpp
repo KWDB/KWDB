@@ -33,6 +33,7 @@
 #include "libkwdbts2.h"
 #include "settings.h"
 #include "ts_block.h"
+#include "ts_bufferbuilder.h"
 #include "ts_common.h"
 #include "ts_compatibility.h"
 #include "ts_entity_segment.h"
@@ -2119,8 +2120,8 @@ KStatus TsVGroup::VacuumPartition(kwdbContext_p ctx, shared_ptr<const TsPartitio
     TsEntityItem cur_entity_item = {entity_id};
     cur_entity_item.table_id = entity_item.table_id;
     for (auto& block_span : block_spans) {
-      string data;
-      s = block_span->GetCompressData(data);
+      TsBufferBuilder data;
+      s = block_span->GetCompressData(&data);
       if (s != SUCCESS) {
         LOG_ERROR("Vacuum failed, GetCompressData failed");
         cancel_vacuumer = true;
@@ -2131,8 +2132,8 @@ KStatus TsVGroup::VacuumPartition(kwdbContext_p ctx, shared_ptr<const TsPartitio
       auto last_col_tail_offset = *reinterpret_cast<uint32_t *>(data.data() + col_count * sizeof(uint32_t));
       auto block_data_len = col_offsets_len + last_col_tail_offset;
       auto block_agg_len = data.size() - block_data_len;
-      string block_data = data.substr(0, block_data_len);
-      string block_agg = data.substr(block_data_len, block_agg_len);
+      auto block_data = data.SubSlice(0, block_data_len);
+      auto block_agg = data.SubSlice(block_data_len, block_agg_len);
 
       TsEntitySegmentBlockItem blk_item;
       blk_item.entity_id = entity_item.entity_id;
@@ -2141,16 +2142,16 @@ KStatus TsVGroup::VacuumPartition(kwdbContext_p ctx, shared_ptr<const TsPartitio
       blk_item.n_rows = block_span->GetRowNum();
       blk_item.min_ts = block_span->GetFirstTS();
       blk_item.max_ts = block_span->GetLastTS();
-      blk_item.block_len = block_data.size();
-      blk_item.agg_len = block_agg.size();
+      blk_item.block_len = block_data.len;
+      blk_item.agg_len = block_agg.len;
       blk_item.block_version = CURRENT_BLOCK_VERSION;
-      s = vacuumer->AppendBlock({block_data.data(), block_data.size()}, &blk_item.block_offset);
+      s = vacuumer->AppendBlock(block_data, &blk_item.block_offset);
       if (s != KStatus::SUCCESS) {
         LOG_ERROR("Vacuum failed, AppendBlock failed");
         cancel_vacuumer = true;
         return s;
       }
-      s = vacuumer->AppendAgg({block_agg.data(), block_agg.size()}, &blk_item.agg_offset);
+      s = vacuumer->AppendAgg(block_agg, &blk_item.agg_offset);
       if (s != KStatus::SUCCESS) {
         LOG_ERROR("Vacuum failed, AppendAgg failed");
         cancel_vacuumer = true;

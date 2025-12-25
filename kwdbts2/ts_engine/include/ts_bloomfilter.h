@@ -19,6 +19,7 @@
 
 #include "kwdb_type.h"
 #include "libkwdbts2.h"
+#include "ts_bufferbuilder.h"
 
 namespace kwdbts {
 // a simple bloom filter for filter entity_id in lastsegment;
@@ -40,7 +41,7 @@ class TsBloomFilter {
   explicit TsBloomFilter(const std::unordered_set<TSEntityID>& entities,
                          double p /*Probability of false positives*/);
   static KStatus FromData(TSSlice, std::unique_ptr<TsBloomFilter>*);
-  void Serialize(std::string* dst) const;
+  void Serialize(TsBufferBuilder* dst) const;
   bool MayExist(TSEntityID entity_id) const;
 };
 

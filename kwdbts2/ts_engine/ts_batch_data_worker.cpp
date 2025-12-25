@@ -11,6 +11,7 @@
 
 #include "ts_batch_data_worker.h"
 #include "ee_tag_row_batch.h"
+#include "libkwdbts2.h"
 #include "ts_engine.h"
 
 namespace kwdbts {
@@ -250,7 +251,7 @@ KStatus TsReadBatchDataWorker::GenerateBatchData(kwdbContext_p ctx, std::shared_
   if (block_span) {
     AddTsBlockSpanInfo(ctx, block_span);
     // get compress data
-    s = block_span->GetCompressData(cur_batch_data_.data_);
+    s = block_span->GetCompressData(&cur_batch_data_.data_);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("GetCompressData failed");
       return s;
@@ -283,8 +284,7 @@ KStatus TsReadBatchDataWorker::Read(kwdbContext_p ctx, TSSlice* data, uint32_t* 
       }
       *row_num = 1;
       total_read_ += *row_num;
-      data->data = cur_batch_data_.data_.data();
-      data->len = cur_batch_data_.data_.size();
+      *data = cur_batch_data_.data_.AsSlice();
       block_span_read_finished = true;
     } else {
       KStatus s = block_spans_iterator_->Next(cur_block_span, &block_span_read_finished);
@@ -318,8 +318,7 @@ KStatus TsReadBatchDataWorker::Read(kwdbContext_p ctx, TSSlice* data, uint32_t* 
   // set data
   *row_num = cur_block_span->GetRowNum();
   total_read_ += *row_num;
-  data->data = cur_batch_data_.data_.data();
-  data->len = cur_batch_data_.data_.size();
+  *data = cur_batch_data_.data_.AsSlice();
   LOG_DEBUG("current batch data read success, job_id[%lu], table_id[%lu], table_version[%lu], block_version[%u] row_num[%u]",
            job_id_, table_id_, table_version_, cur_block_span->GetTableVersion(), *row_num);
   return s;
@@ -378,14 +377,14 @@ TsWriteBatchDataWorker::~TsWriteBatchDataWorker() {
         LOG_ERROR("Read batch header failed, job_id[%lu]", job_id_);
         return;
       }
-      header = *reinterpret_cast<BatchDataHeader *>(batch_header.data());
+      header = *reinterpret_cast<BatchDataHeader*>(batch_header.data());
       TsSliceGuard block_data;
       s = r_file->Read(header.data_length, &block_data);
       if (s != KStatus::SUCCESS) {
         LOG_ERROR("Read batch data failed, job_id[%lu]", job_id_);
         return;
       }
-      TSSlice data{block_data.data(), block_data.size()};
+      TSSlice data = block_data.AsSlice();
       s = ts_engine_->GetTsVGroup(header.vgroup_id)
               ->WriteBatchData(header.table_id, header.table_version, header.entity_id, header.p_time,
                                header.batch_version, data);

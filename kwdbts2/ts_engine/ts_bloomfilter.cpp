@@ -23,6 +23,7 @@
 #include "kwdb_type.h"
 #include "lg_api.h"
 #include "libkwdbts2.h"
+#include "ts_bufferbuilder.h"
 #include "ts_coding.h"
 
 // functions that calculate m and k from given p and n,
@@ -131,7 +132,7 @@ bool TsBloomFilter::MayExist(TSEntityID entity_id) const {
   });
 }
 
-void TsBloomFilter::Serialize(std::string* dst) const {
+void TsBloomFilter::Serialize(TsBufferBuilder* dst) const {
   dst->clear();
   dst->append(MAGIC);
   PutFixed32(dst, k_);

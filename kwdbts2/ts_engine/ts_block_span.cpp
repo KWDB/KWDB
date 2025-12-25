@@ -17,6 +17,7 @@
 #include "ts_bitmap.h"
 #include "ts_block.h"
 #include "ts_blkspan_type_convert.h"
+#include "ts_bufferbuilder.h"
 #include "ts_compressor.h"
 #include "ts_mem_segment_mgr.h"
 
@@ -153,8 +154,8 @@ KStatus TsBlockSpan::GenMergeRowData(std::list<std::shared_ptr<kwdbts::TsBlockSp
   size_t var_part_len;
   builder.GetRowInfo(bitmap_len, fixed_tuple_len, var_part_len);
 
-  row_data = std::make_shared<TsSliceGuard>();
-  row_data->allocate(bitmap_len + fixed_tuple_len + var_part_len);
+  TsBufferBuilder tmp_builder(bitmap_len + fixed_tuple_len + var_part_len);
+  row_data = std::make_shared<TsSliceGuard>(tmp_builder.GetBuffer());
 
   TSSlice result{row_data->data(), row_data->size()};
   bool ret = builder.Build(&result, false);
@@ -259,16 +260,16 @@ bool TsBlockSpan::operator<(const TsBlockSpan& other) const {
   }
 }
 
-KStatus TsBlockSpan::BuildCompressedData(std::string& data) {
+KStatus TsBlockSpan::BuildCompressedData(TsBufferBuilder* data) {
   KStatus s = KStatus::SUCCESS;
   // compressor manager
   const auto& mgr = CompressorManager::GetInstance();
   // init col offsets
-  uint32_t block_data_begin_offset = data.size();
+  uint32_t block_data_begin_offset = data->size();
   size_t col_offsets_len = (scan_attrs_->size() + 1) * sizeof(uint32_t);
   std::vector<uint32_t> col_offset((col_offsets_len / sizeof(uint32_t)), 0);
-  data.append(reinterpret_cast<char*>(col_offset.data()), col_offsets_len);
-  std::string agg_data;
+  data->append(reinterpret_cast<char*>(col_offset.data()), col_offsets_len);
+  TsBufferBuilder agg_data;
   size_t agg_col_offsets_len = scan_attrs_->size() * sizeof(uint32_t);
   std::vector<uint32_t> agg_col_offset((col_offsets_len / sizeof(uint32_t)), 0);
   agg_data.append(reinterpret_cast<char*>(agg_col_offset.data()), agg_col_offsets_len);
@@ -276,18 +277,18 @@ KStatus TsBlockSpan::BuildCompressedData(std::string& data) {
   {
     DATATYPE d_type = DATATYPE::INT64;
     size_t d_size = sizeof(uint64_t);
-    std::string lsn_data;
+    TsBufferBuilder lsn_data;
     for (int row_idx = 0; row_idx < nrow_; ++row_idx) {
       lsn_data.append(reinterpret_cast<const char*>(block_->GetOSNAddr(start_row_ + row_idx)), d_size);
     }
-    std::string compressed;
+    TsBufferBuilder compressed;
     auto [first, second] = mgr.GetDefaultAlgorithm(d_type);
-    TSSlice plain{lsn_data.data(), nrow_ * d_size};
+    TSSlice plain = lsn_data.AsSlice();
     mgr.CompressData(plain, nullptr, nrow_, &compressed, first, second);
-    data.append(compressed);
+    data->append(compressed.AsSlice());
     // block data offset
-    uint32_t column_block_offset = data.size() - block_data_begin_offset - col_offsets_len;
-    memcpy(data.data() + block_data_begin_offset, &column_block_offset, sizeof(uint32_t));
+    uint32_t column_block_offset = data->size() - block_data_begin_offset - col_offsets_len;
+    memcpy(data->data() + block_data_begin_offset, &column_block_offset, sizeof(uint32_t));
   }
   // init column block data && column agg data
   for (uint32_t scan_idx = 0; scan_idx < scan_attrs_->size(); ++scan_idx) {
@@ -354,7 +355,7 @@ KStatus TsBlockSpan::BuildCompressedData(std::string& data) {
     }
     // compress bitmap
     if (has_bitmap) {
-      mgr.CompressBitmap(bitmap.get(), &data);
+      mgr.CompressBitmap(bitmap.get(), data);
       b = bitmap.get();
     }
     auto [first, second] = mgr.GetDefaultAlgorithm(static_cast<DATATYPE>(d_type));
@@ -362,7 +363,7 @@ KStatus TsBlockSpan::BuildCompressedData(std::string& data) {
       // varchar use Gorilla algorithm
       first = TsCompAlg::kSimple8B_V2_u32;
       // var offset data
-      std::string compressed;
+      TsBufferBuilder compressed;
       bool ok = mgr.CompressData({var_offset_data.data(), var_offset_data.size()},
                                  nullptr, nrow_, &compressed, first, second);
       if (!ok) {
@@ -370,8 +371,8 @@ KStatus TsBlockSpan::BuildCompressedData(std::string& data) {
         return KStatus::SUCCESS;
       }
       uint32_t compressed_len = compressed.size();
-      data.append(reinterpret_cast<const char *>(&compressed_len), sizeof(uint32_t));
-      data.append(compressed);
+      data->append(reinterpret_cast<const char *>(&compressed_len), sizeof(uint32_t));
+      data->append(compressed.AsSlice());
       // var data
       compressed.clear();
       ok = mgr.CompressVarchar({var_data.data(), var_data.size()}, &compressed, GenCompAlg::kSnappy);
@@ -379,22 +380,22 @@ KStatus TsBlockSpan::BuildCompressedData(std::string& data) {
         LOG_ERROR("Compress var data failed");
         return KStatus::SUCCESS;
       }
-      data.append(compressed);
+      data->append(compressed.AsSlice());
     } else {
       // compress col data & write to buffer
-      std::string compressed;
+      TsBufferBuilder compressed;
       size_t col_size = scan_idx == 0 ? 8 : d_size;
-      TSSlice plain{fixed_col_value_addr, nrow_ * col_size};
+      TSSlice plain{const_cast<char*>(fixed_col_value_addr), nrow_ * col_size};
       mgr.CompressData(plain, b, nrow_, &compressed, first, second);
-      data.append(compressed);
+      data->append(compressed.AsSlice());
     }
     // block data offset
-    uint32_t column_block_offset = data.size() - block_data_begin_offset - col_offsets_len;
-    memcpy(data.data() + block_data_begin_offset + sizeof(uint32_t) * (scan_idx + 1),
+    uint32_t column_block_offset = data->size() - block_data_begin_offset - col_offsets_len;
+    memcpy(data->data() + block_data_begin_offset + sizeof(uint32_t) * (scan_idx + 1),
            &column_block_offset, sizeof(uint32_t));
 
     // column agg data
-    string col_agg;
+    TsBufferBuilder col_agg;
     if (!is_var_col) {
       uint16_t count = 0;
       string max, min, sum;
@@ -412,7 +413,7 @@ KStatus TsBlockSpan::BuildCompressedData(std::string& data) {
       *reinterpret_cast<bool *>(sum.data()) = aggCalc.CalcAggForFlush(is_not_null, count, max.data(),
                                                                       min.data(), sum.data() + 1);
       if (0 != count) {
-        col_agg.resize(sizeof(uint16_t) + 2 * col_size + 9, '\0');
+        col_agg.resize(sizeof(uint16_t) + 2 * col_size + 9);
         memcpy(col_agg.data(), &count, sizeof(uint16_t));
         memcpy(col_agg.data() + sizeof(uint16_t), max.data(), col_size);
         memcpy(col_agg.data() + sizeof(uint16_t) + col_size, min.data(), col_size);
@@ -425,24 +426,24 @@ KStatus TsBlockSpan::BuildCompressedData(std::string& data) {
       uint64_t count = 0;
       aggCalc.CalcAggForFlush(max, min, count);
       if (0 != count) {
-        col_agg.resize(sizeof(uint16_t) + 2 * sizeof(uint32_t), '\0');
+        col_agg.resize(sizeof(uint16_t) + 2 * sizeof(uint32_t));
         memcpy(col_agg.data(), &count, sizeof(uint16_t));
         col_agg.append(max);
         col_agg.append(min);
-        *reinterpret_cast<uint32_t *>(col_agg.data() + sizeof(uint16_t)) = max.size();
-        *reinterpret_cast<uint32_t *>(col_agg.data() + sizeof(uint16_t) + sizeof(uint32_t)) = min.size();
+        *reinterpret_cast<uint32_t*>(col_agg.data() + sizeof(uint16_t)) = max.size();
+        *reinterpret_cast<uint32_t*>(col_agg.data() + sizeof(uint16_t) + sizeof(uint32_t)) = min.size();
       }
     }
-    agg_data.append(col_agg);
+    agg_data.append(col_agg.AsSlice());
     uint32_t offset = agg_data.size()- agg_col_offsets_len;
     memcpy(agg_data.data() + scan_idx * sizeof(uint32_t), &offset, sizeof(uint32_t));
   }
   // append column agg data
-  data.append(agg_data);
+  data->append(agg_data.AsSlice());
   return s;
 }
 
-KStatus TsBlockSpan::GetCompressData(std::string& data) {
+KStatus TsBlockSpan::GetCompressData(TsBufferBuilder* data) {
   assert(nrow_ > 0);
   // compressed data
   uint32_t table_version;

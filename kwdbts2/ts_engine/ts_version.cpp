@@ -36,6 +36,7 @@
 #include "lg_impl.h"
 #include "libkwdbts2.h"
 #include "settings.h"
+#include "ts_bufferbuilder.h"
 #include "ts_coding.h"
 #include "ts_entity_segment.h"
 #include "ts_entity_segment_handle.h"
@@ -413,7 +414,7 @@ KStatus TsVersionManager::ApplyUpdate(TsVersionUpdate *update) {
     update->SetNextFileNumber(this->next_file_number_.load(std::memory_order_relaxed));
   }
 
-  std::string encoded_update;
+  TsBufferBuilder encoded_update;
   if (update->NeedRecord()) {
     encoded_update = update->EncodeToString();
   }
@@ -543,7 +544,7 @@ KStatus TsVersionManager::ApplyUpdate(TsVersionUpdate *update) {
   }
 
   if (update->NeedRecord()) {
-    logger_->AddRecord(encoded_update);
+    logger_->AddRecord(encoded_update.AsStringView());
   }
   current_ = std::move(new_vgroup_version);
 
@@ -938,7 +939,9 @@ KStatus TsPartitionVersion::NeedVacuumEntitySegment(const fs::path& root_path, T
   return KStatus::SUCCESS;
 }
 
-inline void EncodePartitionID(std::string *result, const PartitionIdentifier &partition_id) {
+// version update
+
+inline void EncodePartitionID(TsBufferBuilder *result, const PartitionIdentifier &partition_id) {
   auto [dbid, start_time, end_time] = partition_id;
   PutVarint32(result, dbid);
   PutVarint64(result, start_time);
@@ -966,7 +969,7 @@ const char *DecodePartitionID(const char *ptr, const char *limit, PartitionIdent
 }
 
 inline void EncodeLastSegmentMetas(
-    std::string *result, const std::map<PartitionIdentifier, std::vector<LastSegmentMetaInfo>> &last_segment_metas) {
+    TsBufferBuilder *result, const std::map<PartitionIdentifier, std::vector<LastSegmentMetaInfo>> &last_segment_metas) {
   uint32_t npartition = last_segment_metas.size();
   PutVarint32(result, npartition);
   for (const auto &[par_id, meta_vec] : last_segment_metas) {
@@ -1075,7 +1078,7 @@ inline const char *DecodeLastSegmentMetas(
   return ptr;
 }
 
-inline void EncodePartitionFiles(std::string *result, const std::map<PartitionIdentifier, std::set<uint64_t>> &files) {
+inline void EncodePartitionFiles(TsBufferBuilder *result, const std::map<PartitionIdentifier, std::set<uint64_t>> &files) {
   uint32_t npartition = files.size();
   PutVarint32(result, npartition);
   for (const auto &[par_id, file_numbers] : files) {
@@ -1120,7 +1123,7 @@ inline const char *DecodePartitionFiles(const char *ptr, const char *limit,
   return ptr;
 }
 
-static inline void EncodeMetaInfo(std::string *result, const MetaFileInfo &meta_info) {
+static inline void EncodeMetaInfo(TsBufferBuilder *result, const MetaFileInfo &meta_info) {
   PutVarint64(result, meta_info.file_number);
   PutVarint64(result, meta_info.length);
 }
@@ -1131,7 +1134,7 @@ static inline const char *DecodeMetaInfo(const char *ptr, const char *limit, Met
   return ptr;
 }
 
-inline void EncodeEntitySegment(std::string *result,
+inline void EncodeEntitySegment(TsBufferBuilder *result,
                                 const std::map<PartitionIdentifier, EntitySegmentMetaInfo> &entity_segments) {
   uint32_t npartition = entity_segments.size();
   PutVarint32(result, npartition);
@@ -1172,8 +1175,8 @@ const char *DecodeEntitySegment(const char *ptr, const char *limit,
   return ptr;
 }
 
-std::string TsVersionUpdate::EncodeToString() const {
-  std::string result;
+TsBufferBuilder TsVersionUpdate::EncodeToString() const {
+  TsBufferBuilder result;
   if (has_new_partition_) {
     result.push_back(static_cast<char>(VersionUpdateType::kNewPartition));
     uint32_t npartition = partitions_created_.size();
@@ -1326,12 +1329,12 @@ KStatus TsVersionManager::Logger::AddRecord(std::string_view record) {
   for (uint32_t i = 0; i < record.size(); ++i) {
     checksum = checksum + static_cast<uint8_t>(record[i]);
   }
-  std::string data;
+  TsBufferBuilder data;
   PutFixed32(&data, kTsVersionMagicNumber);
   PutFixed16(&data, checksum);
   PutFixed32(&data, record.size());
   data.append(record);
-  auto s = file_->Append(data);
+  auto s = file_->Append(data.AsStringView());
   if (s != SUCCESS) {
     return FAIL;
   }

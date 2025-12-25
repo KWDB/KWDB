@@ -31,6 +31,7 @@
 #include "libkwdbts2.h"
 #include "settings.h"
 #include "sys_utils.h"
+#include "ts_bufferbuilder.h"
 #include "ts_file_vector_index.h"
 #include "ts_compressor.h"
 
@@ -298,14 +299,15 @@ class TsFIORandomReadFile : public TsRandomReadFile {
       return FAIL;
     }
 
-    result->allocate(n);
-    ssize_t bytes_read = pread(fd_, result->data(), n, offset);
+    TsBufferBuilder builder(n);
+    ssize_t bytes_read = pread(fd_, builder.data(), n, offset);
     if (bytes_read < 0) {
       LOG_ERROR("file read error, file path: %s, error: %s, file size: %zu, offset: %zu, length: %zu",
                 path_.c_str(), strerror(errno), file_size_, offset, n);
       return FAIL;
     }
 
+    *result = builder.GetBuffer();
     return SUCCESS;
   }
 
@@ -334,8 +336,8 @@ class TsFIOSequentialReadFile : public TsSequentialReadFile {
       return FAIL;
     }
 
-    result->allocate(n);
-    ssize_t bytes_read = pread(fd_, result->data(), n, offset_);
+    TsBufferBuilder builder(n);
+    ssize_t bytes_read = pread(fd_, builder.data(), n, offset_);
     if (bytes_read < 0) {
       LOG_ERROR("file read error, file path: %s, error: %s, file size: %zu, offset: %zu, length: %zu",
                 path_.c_str(), strerror(errno), file_size_, offset_, n);
@@ -343,6 +345,7 @@ class TsFIOSequentialReadFile : public TsSequentialReadFile {
     }
     offset_ += bytes_read;
 
+    *result = builder.GetBuffer();
     return SUCCESS;
   }
 

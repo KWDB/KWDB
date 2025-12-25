@@ -27,6 +27,7 @@
 #include "ts_arena.h"
 #include "ts_bitmap.h"
 #include "ts_bloomfilter.h"
+#include "ts_bufferbuilder.h"
 #include "ts_coding.h"
 #include "ts_io.h"
 #include "ts_segment.h"
@@ -37,14 +38,14 @@ namespace kwdbts {
 
 class LastSegmentMetaBlockBase {
  protected:
-  virtual void SerializeImpl(std::string* dst) = 0;
+  virtual void SerializeImpl(TsBufferBuilder* dst) = 0;
 
  public:
   virtual ~LastSegmentMetaBlockBase() {}
   virtual std::string GetName() const = 0;
-  void Serialize(std::string* dst) {
+  void Serialize(TsBufferBuilder* dst) {
     dst->clear();
-    std::string serialized;
+    TsBufferBuilder serialized;
     this->SerializeImpl(&serialized);
     if (serialized.empty()) {
       return;
@@ -67,7 +68,7 @@ class LastSegmentBloomFilter : public LastSegmentMetaBlockBase {
   static std::string Name() { return "LastSegmentBloomFilter"; }
   std::string GetName() const override { return Name(); }
   void Add(TSEntityID entity_id) { bloomfilter_->Add(entity_id); }
-  void SerializeImpl(std::string* dst) override {
+  void SerializeImpl(TsBufferBuilder* dst) override {
     if (!bloomfilter_->IsEmpty()) {
       auto filter = bloomfilter_->Finalize();
       filter.Serialize(dst);

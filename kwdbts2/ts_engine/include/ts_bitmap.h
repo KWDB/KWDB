@@ -15,13 +15,13 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
-#include <iostream>
 #include <memory>
 #include <string>
 #include <string_view>
 #include <utility>
 
 #include "libkwdbts2.h"
+#include "ts_bufferbuilder.h"
 
 namespace kwdbts {
 enum DataFlags : uint8_t { kValid = 0b00, kNull = 0b01, kNone = 0b10 };
@@ -136,12 +136,11 @@ class TsBitmap : public TsBitmapBase {
  private:
   constexpr static int nbit_per_row = 2;
   size_t nrows_;
-  std::string rep_;
+  TsBufferBuilder rep_;
 
  public:
   TsBitmap() : nrows_(0) {}
   explicit TsBitmap(int nrows) { Reset(nrows); }
-  explicit TsBitmap(std::string rep, int nrows) : nrows_(nrows), rep_(std::move(rep)) {}
   explicit TsBitmap(TSSlice rep, int nrows) {
     nrows_ = nrows;
     rep_.assign(rep.data, rep.len);
@@ -190,7 +189,7 @@ class TsBitmap : public TsBitmapBase {
 
   std::unique_ptr<TsBitmapBase> Slice(int start, int count) const override {
     assert(start + count <= nrows_);
-    return std::unique_ptr<TsBitmapView>(new TsBitmapView(rep_, count, start));
+    return std::unique_ptr<TsBitmapView>(new TsBitmapView(rep_.AsStringView(), count, start));
   }
   std::unique_ptr<TsBitmapBase> AsView() const override { return Slice(0, nrows_); }
 
@@ -199,8 +198,9 @@ class TsBitmap : public TsBitmapBase {
     rep_.resize(GetBitmapLen(nrows_));
   }
 
-  TSSlice GetData() { return {rep_.data(), rep_.size()}; }
-  std::string GetStr() const override { return rep_; }
+  TSSlice GetData() { return rep_.AsSlice(); }
+  std::string GetStr() const override { return std::string{rep_.AsStringView()}; }
+  TsBufferBuilder GetUnderlyingBuffer() { return std::move(rep_); }
 
   size_t GetCount() const override { return nrows_; }
 

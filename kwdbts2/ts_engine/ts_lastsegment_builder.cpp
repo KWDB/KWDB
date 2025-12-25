@@ -20,6 +20,7 @@
 #include "kwdb_type.h"
 #include "libkwdbts2.h"
 #include "ts_block.h"
+#include "ts_bufferbuilder.h"
 #include "ts_coding.h"
 #include "ts_common.h"
 #include "ts_compressor.h"
@@ -88,7 +89,7 @@ KStatus TsLastSegmentBuilder::Finalize() {
   uint64_t current_offset = last_segment_file_->GetFileSize();
   assert(block_info_buffer_.size() == block_index_buffer_.size());
   uint32_t nblock = block_index_buffer_.size();
-  std::string buffer;
+  TsBufferBuilder buffer;
   for (uint32_t i = 0; i < nblock; ++i) {
     auto offset = buffer.size();
     EncodeBlockInfo(&buffer, block_info_buffer_[i]);
@@ -116,7 +117,7 @@ KStatus TsLastSegmentBuilder::Finalize() {
   std::vector<size_t> meta_block_size;
 
   for (int i = 0; i < meta_blocks_.size(); ++i) {
-    std::string tmp;
+    TsBufferBuilder tmp;
     meta_blocks_[i]->Serialize(&tmp);
     if (!tmp.empty()) {
       meta_block_offset.push_back(current_offset + buffer.size());
@@ -132,7 +133,7 @@ KStatus TsLastSegmentBuilder::Finalize() {
   }
   footer_.n_meta_block = meta_block_offset.size();
   EncodeFooter(&buffer, footer_);
-  auto s = last_segment_file_->Append(buffer);
+  auto s = last_segment_file_->Append(buffer.AsSlice());
   last_segment_file_->Sync();
   s = last_segment_file_->Close();
   if (s == FAIL) {
@@ -188,13 +189,13 @@ KStatus TsLastSegmentBuilder::RecordAndWriteBlockToFile() {
   TSSlice entity_id_slice{reinterpret_cast<char*>(entity_id_buffer_.data()),
                           entity_id_buffer_.size() * sizeof(TSEntityID)};
   const auto& mgr = CompressorManager::GetInstance();
-  std::string compressed_data;
+  TsBufferBuilder compressed_data;
   bool ok = mgr.CompressData(entity_id_slice, nullptr, entity_id_buffer_.size(), &compressed_data, TsCompAlg::kPlain,
                              GenCompAlg::kPlain);
   if (!ok) {
     return FAIL;
   }
-  auto s = last_segment_file_->Append(compressed_data);
+  auto s = last_segment_file_->Append(compressed_data.AsSlice());
   if (s == FAIL) {
     return s;
   }
@@ -208,7 +209,7 @@ KStatus TsLastSegmentBuilder::RecordAndWriteBlockToFile() {
   if (!ok) {
     return FAIL;
   }
-  s = last_segment_file_->Append(compressed_data);
+  s = last_segment_file_->Append(compressed_data.AsSlice());
   if (s == FAIL) {
     return s;
   }

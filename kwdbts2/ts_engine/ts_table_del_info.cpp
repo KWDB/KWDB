@@ -430,7 +430,6 @@ bool STPackageSnapshotData::UnpackageData(TSSlice& data, uint32_t& package_id, T
   package_id = KUint32(data_with_rownum);
   data_with_rownum += 4;
   tbl_id = KUint64(data_with_rownum);
-  tbl_id = tbl_id;
   data_with_rownum += 8;
   tbl_version = KUint32(data_with_rownum);
   data_with_rownum += 4;

@@ -38,6 +38,7 @@
 #include "ts_io.h"
 #include "ts_lastsegment_endec.h"
 #include "ts_segment.h"
+#include "ts_sliceguard.h"
 #include "ts_std_utils.h"
 #include "ts_table_schema_manager.h"
 namespace kwdbts {
@@ -51,7 +52,7 @@ static KStatus LoadBlockInfo(TsRandomReadFile* file, const TsLastSegmentBlockInd
   if (s != SUCCESS) {
     return s;
   }
-  TSSlice data{info->data.data(), info->data.size()};
+  TSSlice data = info->data.AsSlice();
   return DecodeBlockInfo(data, info);
 }
 
@@ -139,7 +140,7 @@ KStatus TsLastSegment::GetBlockRowCount(int block_id, uint64_t* row_count) const
     return s;
   }
   // important, Read function may not fill the buffer;
-  TSSlice data{footer_guard_.data(), footer_guard_.size()};
+  TSSlice data = footer_guard_.AsSlice();
   return DecodeFooter(data, footer);
 }
 
@@ -159,7 +160,7 @@ KStatus TsLastSegment::GetAllBlockIndex(std::vector<TsLastSegmentBlockIndex>* bl
               file_->GetFilePath().c_str(), block_index_data_.size(), footer_.n_data_block * kIndexSize);
     return FAIL;
   }
-  TSSlice data{block_index_data_.data(), block_index_data_.size()};
+  TSSlice data = block_index_data_.AsSlice();
   for (int i = 0; i < tmp_indices.size(); ++i) {
     TSSlice slice{data.data, kIndexSize};
     DecodeBlockIndex(slice, &tmp_indices[i]);
@@ -187,11 +188,8 @@ class TsLastBlock : public TsBlock {
     std::vector<std::unique_ptr<TsColumnBlock>> column_blocks_;
 
     TsSliceGuard entity_ids_;
-    TsSliceGuard entity_ids_raw_data_;
     TsSliceGuard timestamps_;
-    TsSliceGuard timestamps_raw_data_;
     TsSliceGuard osn_;
-    TsSliceGuard osn_raw_data_;
 
    public:
     ColumnCache(TsRandomReadFile* file, TsLastSegmentBlockInfoWithData* block_info)
@@ -220,7 +218,7 @@ class TsLastBlock : public TsBlock {
       info.row_count = block_info_->nrow;
 
       std::unique_ptr<TsColumnBlock> colblock;
-      s = TsColumnBlock::ParseColumnData((*schema)[col_id], result, info, &colblock);
+      s = TsColumnBlock::ParseColumnData((*schema)[col_id], std::move(result), info, &colblock);
       if (s == FAIL) {
         LOG_ERROR("can not parse column data, col_id %d", col_id);
         return FAIL;
@@ -231,47 +229,47 @@ class TsLastBlock : public TsBlock {
       return SUCCESS;
     }
 
-    KStatus GetEntityIDs(TSEntityID** entity_ids) {
+    KStatus GetEntityIDs(const TSEntityID** entity_ids) {
       if (!entity_ids_.empty()) {
-        *entity_ids = reinterpret_cast<TSEntityID*>(entity_ids_.data());
+        *entity_ids = reinterpret_cast<const TSEntityID*>(entity_ids_.data());
         return SUCCESS;
       }
 
       const auto& mgr = CompressorManager::GetInstance();
       auto offset = block_info_->block_offset;
       size_t length = block_info_->entity_id_len;
-      auto s = file_->Read(offset, length, &entity_ids_raw_data_);
+      TsSliceGuard raw_data;
+      auto s = file_->Read(offset, length, &raw_data);
       if (s == FAIL) {
         return FAIL;
       }
-      TSSlice data{entity_ids_raw_data_.data(), entity_ids_raw_data_.size()};
-      bool ok = mgr.DecompressData(data, nullptr, block_info_->nrow, &entity_ids_);
-      *entity_ids = reinterpret_cast<TSEntityID*>(entity_ids_.data());
+      bool ok = mgr.DecompressData(std::move(raw_data), nullptr, block_info_->nrow, &entity_ids_);
+      *entity_ids = reinterpret_cast<const TSEntityID*>(entity_ids_.data());
       return ok ? SUCCESS : FAIL;
     }
 
-    KStatus GetOSN(uint64_t** osn) {
+    KStatus GetOSN(const uint64_t** osn) {
       if (!osn_.empty()) {
-        *osn = reinterpret_cast<uint64_t*>(osn_.data());
+        *osn = reinterpret_cast<const uint64_t*>(osn_.data());
         return SUCCESS;
       }
 
       const auto& mgr = CompressorManager::GetInstance();
       auto offset = block_info_->block_offset + block_info_->entity_id_len;
       size_t length = block_info_->entity_id_len;
-      auto s = file_->Read(offset, length, &osn_raw_data_);
+      TsSliceGuard raw_data;
+      auto s = file_->Read(offset, length, &raw_data);
       if (s == FAIL) {
         return FAIL;
       }
-      TSSlice result{osn_raw_data_.data(), osn_raw_data_.size()};
-      bool ok = mgr.DecompressData(result, nullptr, block_info_->nrow, &osn_);
-      *osn = reinterpret_cast<TS_OSN*>(osn_.data());
+      bool ok = mgr.DecompressData(std::move(raw_data), nullptr, block_info_->nrow, &osn_);
+      *osn = reinterpret_cast<const TS_OSN*>(osn_.data());
       return ok ? SUCCESS : FAIL;
     }
 
-    KStatus GetTimestamps(timestamp64** timestamps) {
+    KStatus GetTimestamps(const timestamp64** timestamps) {
       if (!timestamps_.empty()) {
-        *timestamps = reinterpret_cast<timestamp64*>(timestamps_.data());
+        *timestamps = reinterpret_cast<const timestamp64*>(timestamps_.data());
         return SUCCESS;
       }
 
@@ -279,13 +277,13 @@ class TsLastBlock : public TsBlock {
       offset += block_info_->col_infos[0].offset + block_info_->col_infos[0].bitmap_len;
       auto length = block_info_->col_infos[0].fixdata_len;
       const auto& mgr = CompressorManager::GetInstance();
-      auto s = file_->Read(offset, length, &timestamps_raw_data_);
+      TsSliceGuard raw_data;
+      auto s = file_->Read(offset, length, &raw_data);
       if (s == FAIL) {
         return FAIL;
       }
-      TSSlice result{timestamps_raw_data_.data(), timestamps_raw_data_.size()};
-      bool ok = mgr.DecompressData(result, nullptr, block_info_->nrow, &timestamps_);
-      *timestamps = reinterpret_cast<timestamp64*>(timestamps_.data());
+      bool ok = mgr.DecompressData(std::move(raw_data), nullptr, block_info_->nrow, &timestamps_);
+      *timestamps = reinterpret_cast<const timestamp64*>(timestamps_.data());
       return ok ? SUCCESS : FAIL;
     }
   };
@@ -394,7 +392,7 @@ class TsLastBlock : public TsBlock {
     return block_id_;
   }
 
-  inline KStatus GetCompressDataFromFile(uint32_t table_version, int32_t nrow, std::string& data) override {
+  inline KStatus GetCompressDataFromFile(uint32_t table_version, int32_t nrow, TsBufferBuilder* data) override {
     return KStatus::FAIL;
   }
 
@@ -404,7 +402,7 @@ class TsLastBlock : public TsBlock {
   friend class TsLastSegment;
 
   const TSEntityID* GetEntities() {
-    TSEntityID* entity_ids = nullptr;
+    const TSEntityID* entity_ids = nullptr;
     auto s = column_block_cache_->GetEntityIDs(&entity_ids);
     if (s == FAIL) {
       LOG_ERROR("cannot load entitiy column");
@@ -414,7 +412,7 @@ class TsLastBlock : public TsBlock {
   }
 
   inline const uint64_t* GetOSN() {
-    uint64_t* osn = nullptr;
+    const uint64_t* osn = nullptr;
     auto s = column_block_cache_->GetOSN(&osn);
     if (s == FAIL) {
       LOG_ERROR("cannot load osn column");
@@ -424,7 +422,7 @@ class TsLastBlock : public TsBlock {
   }
 
   inline const timestamp64* GetTimestamps() {
-    timestamp64* timestamps = nullptr;
+    const timestamp64* timestamps = nullptr;
     auto s = column_block_cache_->GetTimestamps(&timestamps);
     if (s == FAIL) {
       LOG_ERROR("cannot load timestamp column");
@@ -500,7 +498,7 @@ KStatus TsLastSegment::Open() {
     }
     std::vector<size_t> meta_offset(nmeta);
     std::vector<size_t> meta_len(nmeta);
-    TSSlice data{result.data(), result.size()};
+    TSSlice data = result.AsSlice();
     for (int i = 0; i < nmeta; ++i) {
       GetFixed64(&data, &meta_offset[i]);
       GetFixed64(&data, &meta_len[i]);
@@ -511,7 +509,7 @@ KStatus TsLastSegment::Open() {
       if (s == FAIL) {
         return FAIL;
       }
-      data = {result.data(), result.size()};
+      data = result.AsSlice();
       uint8_t len = static_cast<uint8_t>(data.data[0]);
       std::string_view sv{data.data + 1, len};
       data.data += len + 1;

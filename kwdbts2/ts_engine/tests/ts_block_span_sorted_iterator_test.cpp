@@ -20,6 +20,7 @@
 #include "settings.h"
 #include "test_util.h"
 #include "ts_block.h"
+#include "ts_bufferbuilder.h"
 #include "ts_entity_segment.h"
 #include "ts_vgroup.h"
 
@@ -91,7 +92,7 @@ class SimulatedTsEntityBlock : public TsBlock {
 
   const uint64_t* GetOSNAddr(int row_num, TsScanStats* ts_scan_stats = nullptr) override { return &osn_; }
 
-  KStatus GetCompressDataFromFile(uint32_t table_version, int32_t nrow, std::string& data) override {
+  KStatus GetCompressDataFromFile(uint32_t table_version, int32_t nrow, TsBufferBuilder* data) override {
     return KStatus::FAIL;
   }
 

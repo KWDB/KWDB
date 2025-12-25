@@ -20,8 +20,10 @@
 #include "data_type.h"
 #include "libkwdbts2.h"
 #include "ts_block.h"
+#include "ts_bufferbuilder.h"
 #include "ts_column_block.h"
 #include "ts_common.h"
+#include "ts_sliceguard.h"
 namespace kwdbts {
 
 struct TsMetricCompressInfo {
@@ -48,7 +50,7 @@ class TsMetricBlock {
       : count_(count), osn_buffer_(std::move(osn_buffer)), column_blocks_(std::move(column_blocks)) {}
 
  public:
-  static KStatus ParseCompressedMetricData(const std::vector<AttributeInfo>& schema, TSSlice compressed_data,
+  static KStatus ParseCompressedMetricData(const std::vector<AttributeInfo>& schema, TsSliceGuard&& compressed_data,
                                            const TsMetricCompressInfo& compress_info,
                                            std::unique_ptr<TsMetricBlock>* metric_block);
   const uint64_t* GetOSNAddr() const { return reinterpret_cast<const uint64_t*>(osn_buffer_.data()); }
@@ -56,7 +58,7 @@ class TsMetricBlock {
   int GetColNum() const { return column_blocks_.size(); }
   int GetRowNum() const { return count_; }
 
-  bool GetCompressedData(std::string* output, TsMetricCompressInfo* compress_info, bool compress_ts_and_osn,
+  bool GetCompressedData(TsBufferBuilder* output, TsMetricCompressInfo* compress_info, bool compress_ts_and_osn,
                          bool compress_columns);
 };
 

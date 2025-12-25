@@ -431,7 +431,7 @@ class TsVersionUpdate {
     need_record_ = true;
   }
 
-  std::string EncodeToString() const;
+  TsBufferBuilder EncodeToString() const;
   KStatus DecodeFromSlice(TSSlice input);
 
   std::string DebugStr() const;
