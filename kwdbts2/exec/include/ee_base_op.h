@@ -68,7 +68,8 @@ class BaseOperator {
         rpcSpecInfo_(other.rpcSpecInfo_),
         pipeline_(other.pipeline_),
         is_final_operator_(other.is_final_operator_),
-        use_query_short_circuit_(other.use_query_short_circuit_) {
+        use_query_short_circuit_(other.use_query_short_circuit_),
+        output_type_oid_(other.output_type_oid_) {
     if (nullptr != collection_) {
       collection_->emplace(processor_id_, &fetcher_);
     }
