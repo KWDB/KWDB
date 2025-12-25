@@ -104,7 +104,7 @@ void MMapTagColumnTable::sync_with_lsn(kwdbts::TS_OSN lsn) {
 void MMapTagColumnTable::sync(int flags) {
   m_ptag_file_->sync(flags);
   for (size_t i = 0; i < m_cols_.size(); ++i) {
-    if (!m_cols_[i]->isPrimaryTag()) {
+    if (m_cols_[i] && !m_cols_[i]->isPrimaryTag()) {
       m_cols_[i]->sync(flags);
     }
   }

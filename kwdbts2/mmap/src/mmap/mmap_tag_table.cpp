@@ -415,20 +415,22 @@ int TagTable::InsertTagRecord(kwdbts::TsRawPayload &payload, int32_t sub_group_i
     auto old_osn = old_tag_partition_table->getTagDataInfoByRowNum(del_row.second)->osn;
     TagDataInfo del_tag_info{operate_type, old_osn, row_no, payload.GetTableVersion()};
     old_tag_partition_table->setTagDataInfo(del_row.second, &del_tag_info);
-    if (EngineOptions::force_sync_counter_file) {
-      tag_partition_table->sync(MS_SYNC);
-      if (m_index_ != nullptr) {
-        m_index_->sync(MS_SYNC);
-      }
-      for (auto n_index : tag_partition_table->getMmapNTagHashIndex()) {
-        n_index->sync(MS_SYNC);
-      }
-      if (m_entity_row_index_ != nullptr) {
-        m_entity_row_index_->sync(MS_SYNC);
-      }
-    }
     old_tag_partition_table->stopRead();
   }
+  tag_partition_table->startRead();
+  if (EngineOptions::force_sync_counter_file) {
+    tag_partition_table->sync(MS_SYNC);
+    if (m_index_ != nullptr) {
+      m_index_->sync(MS_SYNC);
+    }
+    for (auto n_index : tag_partition_table->getMmapNTagHashIndex()) {
+      n_index->sync(MS_SYNC);
+    }
+    if (m_entity_row_index_ != nullptr) {
+      m_entity_row_index_->sync(MS_SYNC);
+    }
+  }
+  tag_partition_table->stopRead();
   return 0;
 }
 
