@@ -18,6 +18,7 @@
 
 #include <cstddef>
 #include <cstring>
+#include <filesystem>
 #include <string>
 #include <system_error>
 
@@ -25,6 +26,8 @@
 #include "lg_api.h"
 #include "libkwdbts2.h"
 #include "settings.h"
+#include "ts_bufferbuilder.h"
+#include "ts_sliceguard.h"
 
 namespace kwdbts {
 
@@ -158,12 +161,6 @@ KStatus TsMMapAppendOnlyFile::Close() {
   return SUCCESS;
 }
 
-TsMMapAppendOnlyFile::~TsMMapAppendOnlyFile() {
-  if (fd_ >= 0) {
-    this->Close();
-  }
-}
-
 KStatus TsMMapRandomReadFile::Prefetch(size_t offset, size_t n) {
   if (offset + n > file_size_) {
     n = offset > file_size_ ? 0 : file_size_ - offset;
@@ -182,7 +179,7 @@ KStatus TsMMapRandomReadFile::Prefetch(size_t offset, size_t n) {
 }
 
 KStatus TsMMapRandomReadFile::Read(size_t offset, size_t n, TsSliceGuard* result) const {
-  if (offset >= file_size_ || offset + n > file_size_) {
+  if (offset > file_size_ || offset + n > file_size_) {
     LOG_ERROR("file access overflow, file path: %s, file size: %zu, offset: %zu, length: %zu",
               path_.c_str(), file_size_, offset, n);
     return FAIL;
@@ -192,7 +189,7 @@ KStatus TsMMapRandomReadFile::Read(size_t offset, size_t n, TsSliceGuard* result
 }
 
 KStatus TsMMapSequentialReadFile::Read(size_t n, TsSliceGuard* slice) {
-  if (offset_ >= file_size_ || offset_ + n > file_size_) {
+  if (offset_ > file_size_ || offset_ + n > file_size_) {
     LOG_ERROR("file access overflow, file path: %s, file size: %zu, offset: %zu, length: %zu",
               path_.c_str(), file_size_, offset_, n);
     return FAIL;
@@ -238,6 +235,16 @@ KStatus TsMMapIOEnv::NewAppendOnlyFile(const std::string& filepath, std::unique_
   auto new_file = std::make_unique<TsMMapAppendOnlyFile>(filepath, fd, append_offset);
   *file = std::move(new_file);
   return SUCCESS;
+}
+
+TsMemoryAppendOnlyFile::~TsMemoryAppendOnlyFile() {
+  if (delete_after_free) return;
+  TsMemoryIOEnv::GetInstance().RegisterFile(path_, std::move(buffer_));
+}
+
+TsMemoryRandomReadFile::~TsMemoryRandomReadFile() {
+  if (!delete_after_free) return;
+  TsMemoryIOEnv::GetInstance().DeleteFile(path_);
 }
 
 static std::pair<int, size_t> OpenReadOnlyFile(const std::string& filepath, size_t file_size) {
@@ -443,5 +450,110 @@ TsIOEnv& TsIOEnv::GetInstance() {
   }
   return TsMMapIOEnv::GetInstance();
 }
+
+KStatus TsMemoryIOEnv::NewAppendOnlyFile(const std::string& filepath, std::unique_ptr<TsAppendOnlyFile>* file,
+                                         bool overwrite, size_t offset) {
+  fs::path abs = fs::weakly_canonical(fs::absolute(filepath));
+  std::shared_ptr<TsSliceGuard> data;
+  {
+    std::shared_lock lk(mutex_);
+    auto it = files_.find(abs.string());
+    if (it != files_.end()) {
+      data = it->second;
+    }
+  }
+  TsBufferBuilder builder;
+  if (data) {
+    if (overwrite == false) {
+      if (offset == -1) {
+        builder.append(*data);
+      } else {
+        size_t n = std::min(offset, data->size());
+        builder.append(data->SubSlice(0, n));
+      }
+    }
+  }
+  *file = std::make_unique<TsMemoryAppendOnlyFile>(abs.string(), std::move(builder));
+  return SUCCESS;
+}
+
+KStatus TsMemoryIOEnv::NewRandomReadFile(const std::string& filepath, std::unique_ptr<TsRandomReadFile>* file,
+                                         size_t file_size) {
+  fs::path abs = fs::weakly_canonical(fs::absolute(filepath));
+  std::shared_ptr<TsSliceGuard> data;
+  {
+    std::shared_lock lk(mutex_);
+    auto it = files_.find(abs.string());
+    if (it == files_.end()) {
+      LOG_ERROR("mem file %s not found", abs.c_str());
+      return FAIL;
+    }
+    data = it->second;
+  }
+  file_size = file_size == -1 ? data->size() : file_size;
+  if (data->size() < file_size) {
+    LOG_ERROR("unexpected file size, input: %lu, larger than actual: %lu", file_size, data->size());
+    return FAIL;
+  }
+  *file = std::make_unique<TsMemoryRandomReadFile>(abs, std::move(data), file_size);
+  return SUCCESS;
+}
+
+KStatus TsMemoryIOEnv::NewSequentialReadFile(const std::string& filepath, std::unique_ptr<TsSequentialReadFile>* file,
+                                             size_t file_size) {
+  fs::path abs = fs::weakly_canonical(fs::absolute(filepath));
+  std::shared_ptr<TsSliceGuard> data;
+  {
+    std::shared_lock lk(mutex_);
+    auto it = files_.find(abs.string());
+    if (it == files_.end()) {
+      LOG_ERROR("mem file %s not found", abs.c_str());
+      return FAIL;
+    }
+    data = it->second;
+  }
+  file_size = file_size == -1 ? data->size() : file_size;
+  if (data->size() < file_size) {
+    LOG_ERROR("unexpected file size, input: %lu, larger than actual: %lu", file_size, data->size());
+    return FAIL;
+  }
+  *file = std::make_unique<TsMemorySequentialReadFile>(abs, std::move(data), file_size);
+  return SUCCESS;
+}
+
+KStatus TsMemoryIOEnv::DeleteFile(const std::string& path) {
+  std::unique_lock lock(mutex_);
+  auto it = files_.find(path);
+  if (it == files_.end()) {
+    LOG_ERROR("file %s not found", path.c_str());
+    return FAIL;
+  }
+  files_.erase(it);
+  return SUCCESS;
+}
+
+KStatus FileRangeCopy(TsRandomReadFile* src, TsAppendOnlyFile* dst, size_t start, size_t end) {
+  TsSliceGuard slice;
+  if (end == -1) {
+    end = src->GetFileSize();
+  }
+  if (start > end) {
+    LOG_ERROR("invalid range, start: %lu, end: %lu", start, end);
+    return FAIL;
+  }
+  auto s = src->Read(start, end - start, &slice);
+  if (s == FAIL) {
+    LOG_ERROR("read failed");
+    return FAIL;
+  }
+
+  // std::printf("\e[33m File: %s\e[0m\n", dst->GetFilePath().c_str());
+  // std::printf("\e[31m Before copy, dst size: %lu\e[0m\n", dst->GetFileSize());
+  s = dst->Append(slice.AsSlice());
+  // std::printf("\e[31m After copy, dst size: %lu\e[0m\n", dst->GetFileSize());
+  return s;
+}
+
+// KStatus FileRangeCopy(TsSequentialReadFile* src, TsAppendOnlyFile* dst, size_t start, size_t end) { return FAIL; }
 
 }  // namespace kwdbts

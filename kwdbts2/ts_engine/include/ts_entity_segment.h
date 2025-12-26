@@ -94,7 +94,10 @@ static_assert(sizeof(TsEntityItem) == 128, "wrong size of TsEntityItem, please c
  * index of block items.
  */
 class TsEntitySegmentEntityItemFile {
+  friend class TsMemEntitySegmentModifier;
+
  private:
+  TsIOEnv* io_env_ = nullptr;
   string file_path_;
   std::unique_ptr<TsRandomReadFile> r_file_;
   TsEntityItemFileHeader* header_ = nullptr;
@@ -103,18 +106,8 @@ class TsEntitySegmentEntityItemFile {
  public:
   TsEntitySegmentEntityItemFile() {}
 
-  explicit TsEntitySegmentEntityItemFile(const string& file_path) : file_path_(file_path) {
-    TsIOEnv* env;
-    if (EngineOptions::g_io_mode >= TsIOMode::FIO_AND_MMAP) {
-      env = &TsMMapIOEnv::GetInstance();
-    } else {
-      env = &TsFIOEnv::GetInstance();
-    }
-    if (env->NewRandomReadFile(file_path_, &r_file_) != KStatus::SUCCESS) {
-      LOG_ERROR("TsEntitySegmentEntityItemFile NewRandomReadFile failed, file_path=%s", file_path_.c_str())
-      assert(false);
-    }
-  }
+  explicit TsEntitySegmentEntityItemFile(TsIOEnv* io_env, const string& file_path)
+      : io_env_(io_env), file_path_(file_path) {}
 
   ~TsEntitySegmentEntityItemFile() {}
 
@@ -143,8 +136,12 @@ static_assert(sizeof(TsBlockItemFileHeader) == 64, "wrong size of TsBlockItemFil
 // static_assert(std::has_unique_object_representations_v<TsBlockItemFileHeader>, "check padding in TsBlockItemFileHeader");
 
 class TsEntitySegmentBlockItemFile {
+  friend class TsMemEntitySegmentModifier;
+
  private:
+  TsIOEnv* io_env_ = nullptr;
   string file_path_;
+  uint64_t file_size_ = 0;
   std::unique_ptr<TsRandomReadFile> r_file_;
   TsBlockItemFileHeader* header_ = nullptr;
   TsSliceGuard header_guard_{};
@@ -152,18 +149,8 @@ class TsEntitySegmentBlockItemFile {
  public:
   TsEntitySegmentBlockItemFile() {}
 
-  explicit TsEntitySegmentBlockItemFile(const string& file_path, uint64_t file_size) : file_path_(file_path) {
-    TsIOEnv* env;
-    if (EngineOptions::g_io_mode >= TsIOMode::FIO_AND_MMAP) {
-      env = &TsMMapIOEnv::GetInstance();
-    } else {
-      env = &TsFIOEnv::GetInstance();
-    }
-    if (env->NewRandomReadFile(file_path_, &r_file_, file_size) != KStatus::SUCCESS) {
-      LOG_ERROR("TsEntitySegmentBlockItemFile NewRandomReadFile failed, file_path=%s", file_path_.c_str())
-      assert(false);
-    }
-  }
+  explicit TsEntitySegmentBlockItemFile(TsIOEnv* io_env, const string& file_path, uint64_t file_size)
+      : io_env_(io_env), file_path_(file_path), file_size_(file_size) {}
 
   ~TsEntitySegmentBlockItemFile() {}
 
@@ -182,15 +169,17 @@ class TsEntitySegmentBlockItemFile {
 
 class TsEntitySegment;
 class TsEntitySegmentMetaManager {
+  friend class TsMemEntitySegmentModifier;
+
  private:
   fs::path dir_path_;
   TsEntitySegmentEntityItemFile entity_header_;
   TsEntitySegmentBlockItemFile block_header_;
 
  public:
-  TsEntitySegmentMetaManager() {}
+  TsEntitySegmentMetaManager() = default;
 
-  explicit TsEntitySegmentMetaManager(const string& dir_path, EntitySegmentMetaInfo info);
+  explicit TsEntitySegmentMetaManager(TsIOEnv* env, const string& dir_path, EntitySegmentMetaInfo info);
 
   ~TsEntitySegmentMetaManager() {}
 
@@ -403,7 +392,13 @@ class TsEntityBlock : public TsBlock {
   }
 };
 
+struct EntitySegmentIOEnvSet {
+  TsIOEnv* block_agg_io_env;
+  TsIOEnv* header_io_env;
+};
 class TsEntitySegment : public TsSegmentBase, public enable_shared_from_this<TsEntitySegment> {
+  friend class TsMemEntitySegmentModifier;
+
  private:
   string dir_path_;
   TsEntitySegmentMetaManager meta_mgr_;
@@ -418,7 +413,7 @@ class TsEntitySegment : public TsSegmentBase, public enable_shared_from_this<TsE
  public:
   TsEntitySegment() = delete;
 
-  explicit TsEntitySegment(const fs::path& root, EntitySegmentMetaInfo info);
+  explicit TsEntitySegment(EntitySegmentIOEnvSet io_env, const fs::path& root, EntitySegmentMetaInfo info);
 
   // Only for LRU block cache unit tests
   explicit TsEntitySegment(uint32_t max_blocks);

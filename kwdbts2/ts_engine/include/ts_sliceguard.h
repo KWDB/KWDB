@@ -60,7 +60,8 @@ class TsSliceGuard {
   }
 
   size_t size() const { return slice.len; }
-  char* data() const { return slice.data; }
+  const char* data() const { return slice.data; }
+  char* data() { return slice.data; }
   bool empty() const { return slice.len == 0; }
 
   bool own_data() const { return mem_ != nullptr; }

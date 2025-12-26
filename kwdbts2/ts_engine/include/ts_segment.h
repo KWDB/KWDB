@@ -11,9 +11,11 @@
 
 #pragma once
 
-#include <memory>
-#include <vector>
+#include <cstdio>
 #include <list>
+#include <memory>
+#include <string>
+#include <vector>
 
 #include "data_type.h"
 #include "kwdb_type.h"
@@ -58,6 +60,26 @@ struct TsBlockItemFilterParams {
   uint32_t vgroup_id;
   TSEntityID entity_id;
   std::vector<STScanRange> spans_;
+};
+
+struct TsSegmentWriteStats {
+  uint64_t written_bytes = 0;
+  uint64_t written_blocks = 0;
+  uint64_t written_rows = 0;
+  uint64_t written_devices = 0;
+
+  void operator+=(const TsSegmentWriteStats& other) {
+    written_bytes += other.written_bytes;
+    written_blocks += other.written_blocks;
+    written_rows += other.written_rows;
+    written_devices += other.written_devices;
+  }
+  std::string ToString() const {
+    char buf[128];
+    std::snprintf(buf, sizeof(buf), "%lu rows, %lu blocks, %lu bytes, %lu entity", written_rows, written_blocks,
+                  written_bytes, written_devices);
+    return std::string(buf);
+  }
 };
 
 // base class for data segment

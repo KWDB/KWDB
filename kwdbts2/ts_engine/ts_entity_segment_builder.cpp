@@ -11,11 +11,15 @@
 
 #include "ts_entity_segment_builder.h"
 #include <sys/types.h>
+#include <algorithm>
 #include <cstdint>
+#include <cstdio>
+#include <filesystem>
 #include <utility>
 
 
 #include "data_type.h"
+#include "kwdb_type.h"
 #include "settings.h"
 #include "ts_agg.h"
 #include "ts_batch_data_worker.h"
@@ -23,16 +27,19 @@
 #include "ts_bufferbuilder.h"
 #include "ts_coding.h"
 #include "ts_compatibility.h"
+#include "ts_entity_segment.h"
+#include "ts_entity_segment_data.h"
 #include "ts_entity_segment_handle.h"
 #include "ts_filename.h"
+#include "ts_io.h"
 #include "ts_lastsegment_builder.h"
+#include "ts_sliceguard.h"
 #include "ts_version.h"
 
 namespace kwdbts {
 
 KStatus TsEntitySegmentEntityItemFileBuilder::Open() {
-  TsIOEnv* env = &TsIOEnv::GetInstance();
-  if (env->NewAppendOnlyFile(file_path_, &w_file_, true, -1) != KStatus::SUCCESS) {
+  if (io_env_->NewAppendOnlyFile(file_path_, &w_file_, true, -1) != KStatus::SUCCESS) {
     LOG_ERROR("TsEntitySegmentEntityItemFileBuilder NewAppendOnlyFile failed, file_path=%s", file_path_.c_str())
     return KStatus::FAIL;
   }
@@ -50,8 +57,7 @@ KStatus TsEntitySegmentEntityItemFileBuilder::AppendEntityItem(TsEntityItem& ent
 }
 
 KStatus TsEntitySegmentBlockItemFileBuilder::Open() {
-  TsIOEnv* env = &TsIOEnv::GetInstance();
-  if (env->NewAppendOnlyFile(file_path_, &w_file_, false, file_size_) != KStatus::SUCCESS) {
+  if (io_env_->NewAppendOnlyFile(file_path_, &w_file_, false, file_size_) != KStatus::SUCCESS) {
     LOG_ERROR("TsEntitySegmentBlockItemFile NewAppendOnlyFile failed, file_path=%s", file_path_.c_str())
     return KStatus::FAIL;
   }
@@ -79,15 +85,14 @@ KStatus TsEntitySegmentBlockItemFileBuilder::AppendBlockItem(TsEntitySegmentBloc
 }
 
 KStatus TsEntitySegmentBlockFileBuilder::Open() {
-  TsIOEnv* env = &TsIOEnv::GetInstance();
-  if (env->NewAppendOnlyFile(file_path_, &w_file_, false, file_size_) != KStatus::SUCCESS) {
+  if (io_env_->NewAppendOnlyFile(file_path_, &w_file_, false, file_size_) != KStatus::SUCCESS) {
     LOG_ERROR("TsEntitySegmentBlockFileBuilder NewAppendOnlyFile failed, file_path=%s", file_path_.c_str())
     return KStatus::FAIL;
   }
   if (w_file_->GetFileSize() == 0) {
     header_.status = TsFileStatus::READY;
     header_.magic = TS_ENTITY_SEGMENT_BLOCK_FILE_MAGIC;
-    KStatus s = w_file_->Append(TSSlice{reinterpret_cast<char *>(&header_), sizeof(TsAggAndBlockFileHeader)});
+    KStatus s = w_file_->Append(TSSlice{reinterpret_cast<char*>(&header_), sizeof(TsAggAndBlockFileHeader)});
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("TsEntitySegmentBlockFileBuilder append failed, file_path=%s", file_path_.c_str())
       return KStatus::FAIL;
@@ -103,8 +108,7 @@ KStatus TsEntitySegmentBlockFileBuilder::AppendBlock(const TSSlice& block, uint6
 }
 
 KStatus TsEntitySegmentAggFileBuilder::Open() {
-  TsIOEnv* env = &TsIOEnv::GetInstance();
-  if (env->NewAppendOnlyFile(file_path_, &w_file_, false, file_size_) != KStatus::SUCCESS) {
+  if (io_env_->NewAppendOnlyFile(file_path_, &w_file_, false, file_size_) != KStatus::SUCCESS) {
     LOG_ERROR("TsEntitySegmentAggFile NewAppendOnlyFile failed, file_path=%s", file_path_.c_str())
     return KStatus::FAIL;
   }
@@ -409,14 +413,6 @@ void TsEntityBlockBuilder::Clear() {
   }
 }
 
-KStatus TsEntitySegmentBuilder::NewLastSegmentFile(std::unique_ptr<TsAppendOnlyFile>* file,
-                                                   uint64_t* file_number) {
-  TsIOEnv* env = &TsIOEnv::GetInstance();
-  *file_number = version_manager_->NewFileNumber();
-  auto filepath = root_path_ / LastSegmentFileName(*file_number);
-  return env->NewAppendOnlyFile(filepath, file);
-}
-
 KStatus TsEntitySegmentBuilder::UpdateEntityItem(TsEntityKey& entity_key, TsEntitySegmentBlockItem& block_item) {
   KStatus s = KStatus::SUCCESS;
   if (cur_entity_item_.entity_id != entity_key.entity_id) {
@@ -479,7 +475,9 @@ KStatus TsEntitySegmentBuilder::UpdateEntityItem(TsEntityKey& entity_key, TsEnti
   return s;
 }
 
-KStatus TsEntitySegmentBuilder::WriteBlock(TsEntityKey& entity_key) {
+KStatus TsEntitySegmentBuilder::WriteBlock(TsEntityKey& entity_key, TsSegmentWriteStats* stats) {
+  stats->written_blocks++;
+  stats->written_rows += block_->GetRowNum();
   TsBufferBuilder data_buffer;
   TsBufferBuilder agg_buffer;
   TsEntitySegmentBlockItem block_item;
@@ -489,6 +487,7 @@ KStatus TsEntitySegmentBuilder::WriteBlock(TsEntityKey& entity_key) {
     LOG_ERROR("TsEntitySegmentBuilder::Compact failed, get block compress data failed.")
     return s;
   }
+  stats->written_bytes += data_buffer.size();
   s = block_file_builder_->AppendBlock({data_buffer.data(), data_buffer.size()}, &block_item.block_offset);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("TsEntitySegmentBuilder::Compact failed, append block failed.")
@@ -528,7 +527,8 @@ KStatus TsEntitySegmentBuilder::Open() {
   return s;
 }
 
-KStatus TsEntitySegmentBuilder::WriteCachedBlockSpan(bool call_by_vacuum, TsEntityKey& entity_key) {
+KStatus TsEntitySegmentBuilder::WriteCachedBlockSpan(bool call_by_vacuum, TsEntityKey& entity_key,
+                                                     TsSegmentWriteStats* stats) {
   KStatus s = KStatus::SUCCESS;
   while (!cached_spans_.empty()) {
     if (cached_spans_.front()->GetRowNum() == 0) {
@@ -553,7 +553,7 @@ KStatus TsEntitySegmentBuilder::WriteCachedBlockSpan(bool call_by_vacuum, TsEnti
     }
     if (is_full) {
       auto row_num = block_->GetRowNum();
-      s = WriteBlock(entity_key);
+      s = WriteBlock(entity_key, stats);
       if (s != KStatus::SUCCESS) {
         LOG_ERROR("TsEntitySegmentBuilder::Compact failed, write block failed.")
         return s;
@@ -564,7 +564,7 @@ KStatus TsEntitySegmentBuilder::WriteCachedBlockSpan(bool call_by_vacuum, TsEnti
   }
   if (block_ && block_->HasData()) {
     auto row_num = block_->GetRowNum();
-    s = WriteBlock(entity_key);
+    s = WriteBlock(entity_key, stats);
     if (s == FAIL) {
       LOG_ERROR("TsEntitySegmentBuilder::Compact failed, write block failed.")
       return s;
@@ -577,33 +577,16 @@ KStatus TsEntitySegmentBuilder::WriteCachedBlockSpan(bool call_by_vacuum, TsEnti
 }
 
 void TsEntitySegmentBuilder::ReleaseBuilders() {
-  if (entity_item_builder_) {
-    delete entity_item_builder_;
-    entity_item_builder_ = nullptr;
-  }
-  if (block_item_builder_) {
-    delete block_item_builder_;
-    block_item_builder_ = nullptr;
-  }
-  if (block_file_builder_) {
-    delete block_file_builder_;
-    block_file_builder_ = nullptr;
-  }
-  if (agg_file_builder_) {
-    delete agg_file_builder_;
-    agg_file_builder_ = nullptr;
-  }
+  entity_item_builder_.reset();
+  block_item_builder_.reset();
+  block_file_builder_.reset();
+  agg_file_builder_.reset();
 }
 
-KStatus TsEntitySegmentBuilder::Compact(bool call_by_vacuum, TsVersionUpdate* update, int level, int group) {
-  // assert(EngineOptions::min_rows_per_block < EngineOptions::max_rows_per_block);
+KStatus TsEntitySegmentBuilder::Compact(bool call_by_vacuum, TsVersionUpdate* update,
+                                        std::vector<std::shared_ptr<TsBlockSpan>>* residual_spans,
+                                        TsSegmentWriteStats* stats) {
   std::unique_lock lock{mutex_};
-  LOG_INFO("Compact [L%d, G%02d] begin, root_path: %s, entity_header_file_num: %lu", level, group, root_path_.c_str(),
-           entity_item_file_number_);
-  Defer defer([this]() {
-    LOG_INFO("Compact end, root_path: %s, entity_header_file_num: %lu", root_path_.c_str(),
-             entity_item_file_number_);
-  });
   KStatus s;
   shared_ptr<TsBlockSpan> block_span{nullptr};
   bool is_finished = false;
@@ -625,6 +608,7 @@ KStatus TsEntitySegmentBuilder::Compact(bool call_by_vacuum, TsVersionUpdate* up
     TsEntityKey cur_entity_key = {block_span->GetTableID(), block_span->GetTableVersion(), block_span->GetEntityID()};
     if (entity_key == TsEntityKey{}) {
       entity_key = cur_entity_key;
+      stats->written_devices++;
       std::shared_ptr<MMapMetricsTable> table_schema_;
       s = schema_manager_->GetTableMetricSchema({}, entity_key.table_id, entity_key.table_version, &table_schema_);
       if (s != KStatus::SUCCESS) {
@@ -642,7 +626,7 @@ KStatus TsEntitySegmentBuilder::Compact(bool call_by_vacuum, TsVersionUpdate* up
       continue;
     }
 
-    s = WriteCachedBlockSpan(call_by_vacuum, entity_key);
+    s = WriteCachedBlockSpan(call_by_vacuum, entity_key, stats);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("TsEntitySegmentBuilder::Compact failed, write cached block span failed.")
       return s;
@@ -666,11 +650,12 @@ KStatus TsEntitySegmentBuilder::Compact(bool call_by_vacuum, TsVersionUpdate* up
     block_ = std::make_shared<TsEntityBlockBuilder>(cur_entity_key.table_id, cur_entity_key.table_version,
                                                     cur_entity_key.entity_id, metric_schema);
     entity_key = cur_entity_key;
+    stats->written_devices++;
     cached_count_ += block_span->GetRowNum();
     cached_spans_.push_back(std::move(block_span));
   }
 
-  s = WriteCachedBlockSpan(call_by_vacuum, entity_key);
+  s = WriteCachedBlockSpan(call_by_vacuum, entity_key, stats);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("TsEntitySegmentBuilder::Compact failed, write cached block span failed.")
     return s;
@@ -700,49 +685,8 @@ KStatus TsEntitySegmentBuilder::Compact(bool call_by_vacuum, TsVersionUpdate* up
     }
   }
 
-  // write last segment
-  if (!lastsegment_block_spans_.empty()) {
-    assert(!call_by_vacuum);
-    int next_level = std::min<int>(level + 1, TsPartitionVersion::LastSegmentContainer::kMaxLevel - 1);
-
-    std::map<int, std::vector<std::shared_ptr<TsBlockSpan>>> grouped_spans;
-    std::map<int, std::unique_ptr<TsLastSegmentBuilder>> grouped_builders;
-    for (auto& span : lastsegment_block_spans_) {
-      int group = TsPartitionVersion::LastSegmentContainer::GetGroupByEntityID(next_level, span->GetEntityID());
-      grouped_spans[group].push_back(std::move(span));
-    }
-
-    for (auto it = grouped_spans.begin(); it != grouped_spans.end(); ++it) {
-      uint64_t file_number;
-      std::unique_ptr<TsAppendOnlyFile> last_segment;
-      s = NewLastSegmentFile(&last_segment, &file_number);
-      if (s != KStatus::SUCCESS) {
-        LOG_ERROR("TsEntitySegmentBuilder::Compact failed, new last segment failed.")
-        return s;
-      }
-      grouped_builders[it->first] =
-          std::make_unique<TsLastSegmentBuilder>(schema_manager_, std::move(last_segment), file_number);
-    }
-
-    for (auto it = grouped_spans.begin(); it != grouped_spans.end(); ++it) {
-      auto& span_vec = it->second;
-      auto& builder = grouped_builders[it->first];
-      for (auto& span : span_vec) {
-        auto s = builder->PutBlockSpan(span);
-        if (s != KStatus::SUCCESS) {
-          LOG_ERROR("TsEntitySegmentBuilder::Compact failed, TsLastSegmentBuilder put failed.")
-        }
-      }
-      s = builder->Finalize();
-      if (s != KStatus::SUCCESS) {
-        LOG_ERROR("TsEntitySegmentBuilder::Compact failed, TsLastSegmentBuilder finalize failed.")
-        return s;
-      }
-      LOG_INFO("LastSegment %lu in %s created by Compaction, level: %d, group: %d", builder->GetFileNumber(),
-               root_path_.string().c_str(), next_level, it->first);
-      update->AddLastSegment(partition_id_, {builder->GetFileNumber(), next_level, it->first});
-    }
-  }
+  residual_spans->clear();
+  residual_spans->swap(lastsegment_block_spans_);
 
   EntitySegmentMetaInfo info;
   info.agg_info = agg_file_builder_->GetFileInfo();
@@ -939,27 +883,29 @@ void TsEntitySegmentBuilder::WriteBatchCancel() {
 TsEntitySegmentVacuumer::TsEntitySegmentVacuumer(const std::string& root_path, TsVersionManager* version_manager)
     : root_path_(root_path), version_manager_(version_manager) {
   // entity header file
+  TsIOEnv* env = &TsIOEnv::GetInstance();
   fs::path root(root_path);
   uint64_t entity_header_file_number = version_manager->NewFileNumber();
   std::string entity_header_file_path = root / EntityHeaderFileName(entity_header_file_number);
   entity_item_builder_ =
-      std::make_unique<TsEntitySegmentEntityItemFileBuilder>(entity_header_file_path, entity_header_file_number);
+      std::make_unique<TsEntitySegmentEntityItemFileBuilder>(env, entity_header_file_path, entity_header_file_number);
 
   // block header file
   uint64_t block_item_file_number = version_manager->NewFileNumber();
   std::string block_header_file_path = root / BlockHeaderFileName(block_item_file_number);
-  block_item_builder_ = std::make_unique<TsEntitySegmentBlockItemFileBuilder>(block_header_file_path,
-                                                                              block_item_file_number, false);
+  block_item_builder_ =
+      std::make_unique<TsEntitySegmentBlockItemFileBuilder>(env, block_header_file_path, block_item_file_number, false);
 
   // block data file
   uint64_t block_data_file_number = version_manager->NewFileNumber();
   std::string block_file_path = root / DataBlockFileName(block_data_file_number);
-  block_file_builder_ = std::make_unique<TsEntitySegmentBlockFileBuilder>(block_file_path, block_data_file_number, false);
+  block_file_builder_ =
+      std::make_unique<TsEntitySegmentBlockFileBuilder>(env, block_file_path, block_data_file_number, false);
 
   // block agg file
   uint64_t agg_file_number = version_manager->NewFileNumber();
   std::string agg_file_path = root / EntityAggFileName(agg_file_number);
-  agg_file_builder_ = std::make_unique<TsEntitySegmentAggFileBuilder>(agg_file_path, agg_file_number, false);
+  agg_file_builder_ = std::make_unique<TsEntitySegmentAggFileBuilder>(env, agg_file_path, agg_file_number, false);
 }
 
 KStatus TsEntitySegmentVacuumer::Open() {
@@ -1015,5 +961,208 @@ EntitySegmentMetaInfo TsEntitySegmentVacuumer::GetHandleInfo() {
   info.header_b_info = block_item_builder_->GetFileInfo();
   info.header_e_file_number = entity_item_builder_->GetFileNumber();
   return info;
+}
+
+TsSliceGuard TsMemEntitySegmentModifier::GetEntityItems(TsEntitySegment* target) {
+  TsRandomReadFile* r_file = target->meta_mgr_.entity_header_.r_file_.get();
+  size_t header_size = sizeof(TsEntityItemFileHeader);
+  TsSliceGuard result;
+  auto s = r_file->Read(0, r_file->GetFileSize() - header_size, &result);
+  assert(s == KStatus::SUCCESS);
+  return result;
+}
+
+TsSliceGuard TsMemEntitySegmentModifier::GetBlockItems(TsEntitySegment* target) {
+  TsRandomReadFile* r_file = target->meta_mgr_.block_header_.r_file_.get();
+  size_t header_size = sizeof(TsBlockItemFileHeader);
+  TsSliceGuard result;
+  auto s = r_file->Read(header_size, r_file->GetFileSize() - header_size, &result);
+  assert(s == KStatus::SUCCESS);
+  return result;
+}
+
+auto TsMemEntitySegmentModifier::GetEntityAndBlockItems(TsEntitySegment* target) {
+  struct HeaderResult {
+    TsEntityItem* entity_items;
+    size_t entity_num;
+
+    TsEntitySegmentBlockItem* block_items;
+    size_t block_num;
+
+    TsSliceGuard entity_items_guard_;
+    TsSliceGuard block_items_guard_;
+  };
+
+  HeaderResult result;
+  result.entity_items_guard_ = GetEntityItems(target);
+  result.entity_items = reinterpret_cast<TsEntityItem*>(result.entity_items_guard_.data());
+
+  result.entity_num = target->GetEntityNum();
+  assert(result.entity_num * sizeof(TsEntityItem) == result.entity_items_guard_.size());
+
+  result.block_items_guard_ = GetBlockItems(target);
+  result.block_items = reinterpret_cast<TsEntitySegmentBlockItem*>(result.block_items_guard_.data());
+  result.block_num = result.block_items_guard_.size() / sizeof(TsEntitySegmentBlockItem);
+  assert(result.block_num * sizeof(TsEntitySegmentBlockItem) == result.block_items_guard_.size());
+
+  return result;
+}
+
+auto TsMemEntitySegmentModifier::Modify(TsEntitySegment* base) {
+  auto mem_entity_meta = GetEntityAndBlockItems(entity_segment_);
+  auto dsk_entity_meta = GetEntityAndBlockItems(base);
+  auto dsk_block_num = dsk_entity_meta.block_num;
+
+  size_t max_mem_eid = UINT64_MAX;
+  if (mem_entity_meta.entity_num < dsk_entity_meta.entity_num) {
+    auto len = dsk_entity_meta.entity_num * sizeof(TsEntityItem);
+    TsBufferBuilder builder(len);
+    auto guard = builder.GetBuffer();
+    std::copy_n(mem_entity_meta.entity_items, mem_entity_meta.entity_num,
+                reinterpret_cast<TsEntityItem*>(guard.data()));
+    max_mem_eid = mem_entity_meta.entity_num;
+    mem_entity_meta.entity_num = dsk_entity_meta.entity_num;
+    mem_entity_meta.entity_items_guard_ = std::move(guard);
+    mem_entity_meta.entity_items = reinterpret_cast<TsEntityItem*>(mem_entity_meta.entity_items_guard_.data());
+  }
+  // modify:
+  for (size_t i = 0; i < mem_entity_meta.entity_num; ++i) {
+    bool mem_exist = mem_entity_meta.entity_items[i].cur_block_id != 0 && i < max_mem_eid;
+    bool dsk_exist = i < dsk_entity_meta.entity_num && dsk_entity_meta.entity_items[i].cur_block_id != 0;
+
+    if (!mem_exist) {
+      if (dsk_exist) {
+        mem_entity_meta.entity_items[i] = dsk_entity_meta.entity_items[i];
+      } else {
+        mem_entity_meta.entity_items[i] = TsEntityItem();
+      }
+      continue;
+    }
+    if (!dsk_exist) {
+      mem_entity_meta.entity_items[i].cur_block_id += dsk_block_num;
+      continue;
+    }
+
+    timestamp64 min_ts = std::min(mem_entity_meta.entity_items[i].min_ts, dsk_entity_meta.entity_items[i].min_ts);
+    timestamp64 max_ts = std::max(mem_entity_meta.entity_items[i].max_ts, dsk_entity_meta.entity_items[i].max_ts);
+    size_t row_written = mem_entity_meta.entity_items[i].row_written + dsk_entity_meta.entity_items[i].row_written;
+
+    mem_entity_meta.entity_items[i].min_ts = min_ts;
+    mem_entity_meta.entity_items[i].max_ts = max_ts;
+    mem_entity_meta.entity_items[i].row_written = row_written;
+    mem_entity_meta.entity_items[i].cur_block_id += dsk_block_num;
+  }
+
+  // modify: block_id prev_block_id block_offset agg_offset;
+  size_t block_offset = base->block_file_.r_file_->GetFileSize();
+  size_t agg_offset = base->agg_file_.r_file_->GetFileSize();
+  for (int i = 0; i < mem_entity_meta.block_num; ++i) {
+    mem_entity_meta.block_items[i].block_id += dsk_block_num;
+    mem_entity_meta.block_items[i].block_offset += block_offset - sizeof(TsAggAndBlockFileHeader);
+    mem_entity_meta.block_items[i].agg_offset += agg_offset - sizeof(TsAggAndBlockFileHeader);
+
+    if (mem_entity_meta.block_items[i].prev_block_id != 0) {
+      mem_entity_meta.block_items[i].prev_block_id += dsk_block_num;
+    } else {
+      assert(mem_entity_meta.block_items[i].entity_id > 0);
+      auto entity_idx = mem_entity_meta.block_items[i].entity_id - 1;
+      if (entity_idx < dsk_entity_meta.entity_num) {
+        mem_entity_meta.block_items[i].prev_block_id = dsk_entity_meta.entity_items[entity_idx].cur_block_id;
+      }
+    }
+  }
+
+  return mem_entity_meta;
+}
+
+static KStatus CopyHelper(TsRandomReadFile* src) {
+  TsIOEnv* env = &TsIOEnv::GetInstance();
+  auto path = src->GetFilePath();
+  std::unique_ptr<TsAppendOnlyFile> w_file;
+  auto s = env->NewAppendOnlyFile(path, &w_file);
+  if (s == FAIL) {
+    return s;
+  }
+  return FileRangeCopy(src, w_file.get());
+}
+
+static KStatus AppendHelper(const std::string& dst_path, size_t offset, TsRandomReadFile* src, size_t start = 0,
+                            size_t end = -1) {
+  TsIOEnv* env = &TsIOEnv::GetInstance();
+  std::unique_ptr<TsAppendOnlyFile> w_file;
+  // std::printf("append to %s, offset %lu, start %lu, end %lu\n", dst_path.c_str(), offset, start, end);
+  auto s = env->NewAppendOnlyFile(dst_path, &w_file, false, offset);
+  if (s == FAIL) {
+    return s;
+  }
+  return FileRangeCopy(src, w_file.get(), start, end);
+}
+
+static KStatus DumpToEntityHeader(const std::string& dst_path, const TsSliceGuard& entity_items) {
+  TsIOEnv* env = &TsIOEnv::GetInstance();
+  std::unique_ptr<TsAppendOnlyFile> w_file;
+  auto s = env->NewAppendOnlyFile(dst_path, &w_file);
+  if (s == FAIL) {
+    return s;
+  }
+  auto s1 = w_file->Append(entity_items.AsSlice());
+  TsEntityItemFileHeader header;
+  std::memset(&header, 0, sizeof(header));
+  header.magic = TS_ENTITY_SEGMENT_ENTITY_ITEM_FILE_MAGIC;
+  header.status = TsFileStatus::READY;
+  header.entity_num = w_file->GetFileSize() / sizeof(TsEntityItem);
+  auto s2 = w_file->Append(TSSlice{reinterpret_cast<char*>(&header), sizeof(header)});
+  return s1 == SUCCESS && s2 == SUCCESS ? SUCCESS : FAIL;
+}
+
+KStatus TsMemEntitySegmentModifier::FirstFlushBypass(EntitySegmentMetaInfo* info) {
+  auto s = CopyHelper(entity_segment_->meta_mgr_.entity_header_.r_file_.get());
+  if (s != SUCCESS) return s;
+  s = CopyHelper(entity_segment_->meta_mgr_.block_header_.r_file_.get());
+  if (s != SUCCESS) return s;
+
+  s = CopyHelper(entity_segment_->block_file_.r_file_.get());
+  if (s != SUCCESS) return s;
+  s = CopyHelper(entity_segment_->agg_file_.r_file_.get());
+  if (s != SUCCESS) return s;
+  *info = entity_segment_->info_;
+  return SUCCESS;
+}
+
+KStatus TsMemEntitySegmentModifier::NormalFlush(TsEntitySegment* base, EntitySegmentMetaInfo* info) {
+  auto mem_entity_meta = Modify(base);
+  auto s = DumpToEntityHeader(entity_segment_->meta_mgr_.entity_header_.r_file_->GetFilePath(),
+                              mem_entity_meta.entity_items_guard_);
+  // auto s = CopyHelper(entity_segment_->meta_mgr_.entity_header_.r_file_.get());
+  if (s != SUCCESS) return s;
+  std::string path = base->meta_mgr_.block_header_.r_file_->GetFilePath();
+  s = AppendHelper(path, base->info_.header_b_info.length, entity_segment_->meta_mgr_.block_header_.r_file_.get(),
+                   sizeof(TsBlockItemFileHeader));
+  if (s != SUCCESS) return s;
+
+  path = base->block_file_.r_file_->GetFilePath();
+  s = AppendHelper(path, base->info_.datablock_info.length, entity_segment_->block_file_.r_file_.get(),
+                   sizeof(TsAggAndBlockFileHeader));
+  if (s != SUCCESS) return s;
+
+  path = base->agg_file_.r_file_->GetFilePath();
+  s = AppendHelper(path, base->info_.agg_info.length, entity_segment_->agg_file_.r_file_.get(),
+                   sizeof(TsAggAndBlockFileHeader));
+  if (s != SUCCESS) return s;
+
+
+  *info = base->info_;
+  info->header_e_file_number = entity_segment_->info_.header_e_file_number;
+  info->header_b_info.length += entity_segment_->info_.header_b_info.length - sizeof(TsBlockItemFileHeader);
+  info->datablock_info.length += entity_segment_->info_.datablock_info.length - sizeof(TsAggAndBlockFileHeader);
+  info->agg_info.length += entity_segment_->info_.agg_info.length - sizeof(TsAggAndBlockFileHeader);
+  return SUCCESS;
+}
+
+KStatus TsMemEntitySegmentModifier::PersistToDisk(TsEntitySegment* base, EntitySegmentMetaInfo* info) {
+  if (base) {
+    return NormalFlush(base, info);
+  }
+  return FirstFlushBypass(info);
 }
 }  //  namespace kwdbts

@@ -30,7 +30,10 @@ struct TsAggAndBlockFileHeader {
 };
 
 class TsEntitySegmentBlockFile {
+  friend class TsMemEntitySegmentModifier;
+
  private:
+  TsIOEnv* io_env_ = nullptr;
   fs::path root_path_;
   EntitySegmentMetaInfo info_;
 
@@ -39,9 +42,8 @@ class TsEntitySegmentBlockFile {
   TsSliceGuard header_guard_{};
 
  public:
-  TsEntitySegmentBlockFile() {}
-
-  explicit TsEntitySegmentBlockFile(const string& root, EntitySegmentMetaInfo info);
+  TsEntitySegmentBlockFile() = default;
+  explicit TsEntitySegmentBlockFile(TsIOEnv* io_env, const string& root, EntitySegmentMetaInfo info);
 
   ~TsEntitySegmentBlockFile();
 
@@ -87,7 +89,10 @@ class TsEntitySegmentBlockFile {
  * - min_str: Actual string length
  */
 class TsEntitySegmentAggFile {
+  friend class TsMemEntitySegmentModifier;
+
  private:
+  TsIOEnv* io_env_ = nullptr;
   fs::path root_;
   EntitySegmentMetaInfo info_;
   std::unique_ptr<TsRandomReadFile> r_file_ = nullptr;
@@ -95,9 +100,8 @@ class TsEntitySegmentAggFile {
   TsSliceGuard header_guard_{};
 
  public:
-  TsEntitySegmentAggFile() {}
-
-  explicit TsEntitySegmentAggFile(const string& root, EntitySegmentMetaInfo info);
+  TsEntitySegmentAggFile() = default;
+  explicit TsEntitySegmentAggFile(TsIOEnv* env, const string& root, EntitySegmentMetaInfo info);
 
   ~TsEntitySegmentAggFile() {}
 

@@ -451,8 +451,9 @@ KStatus TsMemSegment::GetBlockSpans(std::list<shared_ptr<TsBlockSpan>>& blocks, 
           return KStatus::FAIL;
         }
         std::unique_ptr<TsMemSegBlock> mem_block = std::make_unique<TsMemSegBlock>(nullptr);
-        TSMemSegRowDataWithGuard& dedup_row_data = mem_block->AllocateRow(0, dedup_table_id, dedup_table_version,
-                                                                 dedup_block_spans.front()->GetEntityID());
+        TSMemSegRowDataWithGuard& dedup_row_data = mem_block->AllocateRow(tbl_schema_mgr->GetDbID(),
+                                                                          dedup_table_id, dedup_table_version,
+                                                                          dedup_block_spans.front()->GetEntityID());
         dedup_row_data.SetData(dedup_block_spans.front()->GetTS(0), dedup_block_spans.back()->GetLastOSN());
         dedup_row_data.SetRowData(row_data_guard);
         mem_block->SetMemoryAddrSafe();
@@ -510,8 +511,9 @@ KStatus TsMemSegment::GetBlockSpans(std::list<shared_ptr<TsBlockSpan>>& blocks, 
         return KStatus::FAIL;
       }
       std::unique_ptr<TsMemSegBlock> mem_block = std::make_unique<TsMemSegBlock>(nullptr);
-      TSMemSegRowDataWithGuard& dedup_row_data = mem_block->AllocateRow(0, dedup_table_id, dedup_table_version,
-                                                               dedup_block_spans.front()->GetEntityID());
+      TSMemSegRowDataWithGuard& dedup_row_data = mem_block->AllocateRow(tbl_schema_mgr->GetDbID(),
+                                                                        dedup_table_id, dedup_table_version,
+                                                                        dedup_block_spans.front()->GetEntityID());
       dedup_row_data.SetData(dedup_block_spans.front()->GetTS(0), dedup_block_spans.back()->GetLastOSN());
       dedup_row_data.SetRowData(row_data_guard);
       mem_block->SetMemoryAddrSafe();
@@ -643,8 +645,9 @@ KStatus TsMemSegment::GetBlockSpans(const TsBlockItemFilterParams& filter, std::
           return KStatus::FAIL;
         }
         std::shared_ptr<TsMemSegBlock> mem_block = std::make_shared<TsMemSegBlock>(nullptr);
-        TSMemSegRowDataWithGuard& dedup_row_data = mem_block->AllocateRow(0, tbl_schema_mgr->GetTableId(),
-                                                                 scan_schema->GetVersion(), filter.entity_id);
+        TSMemSegRowDataWithGuard& dedup_row_data = mem_block->AllocateRow(tbl_schema_mgr->GetDbID(),
+                                                                          tbl_schema_mgr->GetTableId(),
+                                                                          scan_schema->GetVersion(), filter.entity_id);
         dedup_row_data.SetData(dedup_block_spans.front()->GetTS(0), dedup_block_spans.back()->GetLastOSN());
         dedup_row_data.SetRowData(row_data_guard);
         mem_blocks.push_back(mem_block);
@@ -690,7 +693,8 @@ KStatus TsMemSegment::GetBlockSpans(const TsBlockItemFilterParams& filter, std::
         return KStatus::FAIL;
       }
       std::shared_ptr<TsMemSegBlock> mem_block = std::make_shared<TsMemSegBlock>(nullptr);
-      TSMemSegRowDataWithGuard& dedup_row_data = mem_block->AllocateRow(0, tbl_schema_mgr->GetTableId(),
+      TSMemSegRowDataWithGuard& dedup_row_data = mem_block->AllocateRow(tbl_schema_mgr->GetDbID(),
+                                                                        tbl_schema_mgr->GetTableId(),
                                                                         scan_schema->GetVersion(), filter.entity_id);
       dedup_row_data.SetData(dedup_block_spans.front()->GetTS(0), dedup_block_spans.back()->GetLastOSN());
       dedup_row_data.SetRowData(row_data_guard);

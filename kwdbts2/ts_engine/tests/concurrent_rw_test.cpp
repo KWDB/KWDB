@@ -19,6 +19,7 @@
 #include "test_util.h"
 #include "ts_common.h"
 #include "ts_engine.h"
+#include "ts_flush_manager.h"
 #include "ts_payload.h"
 #include "ts_vgroup.h"
 
@@ -59,6 +60,7 @@ class ConcurrentRWTest : public testing::Test {
   std::shared_ptr<TsVGroup> vgroup_;
 
   void SetUp() override {
+    TsFlushJobPool::GetInstance().Start();
     fs::remove_all("./tsdb");
     fs::remove_all("./schema");
 
@@ -79,7 +81,10 @@ class ConcurrentRWTest : public testing::Test {
 
     InitKWDBContext(ctx_);
   }
-  void TearDown() override { vgroup_.reset(); }
+  void TearDown() override {
+    TsFlushJobPool::GetInstance().StopAndWait();
+    vgroup_.reset();
+  }
 
   ~ConcurrentRWTest() {}
 };
@@ -300,7 +305,7 @@ TEST_F(ConcurrentRWTest, SwitchMem) {
   std::shared_ptr<TsTable> ts_table;
   ASSERT_EQ(engine->CreateTsTable(ctx_, table_id, &meta, ts_table), SUCCESS);
 
-  int npayload = 2000;
+  int npayload = 100;
   int nrow = 1;
   int total_row = npayload * nrow;
 

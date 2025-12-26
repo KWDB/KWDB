@@ -38,7 +38,7 @@ struct TsEntityFlushInfo {
   timestamp64 min_ts;
   timestamp64 max_ts;
   uint64_t deduplicate_count;
-  char reserverd[32];
+  char reserved[32] = {0};
 };
 static_assert(sizeof(TsEntityFlushInfo) == 64, "wrong size of FileHeader, please check TsEntityFlushInfo.");
 

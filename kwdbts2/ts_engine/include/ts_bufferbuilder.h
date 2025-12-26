@@ -15,7 +15,6 @@
 #include <cassert>
 #include <cstdlib>
 #include <cstring>
-#include <iostream>
 #include <new>
 #include <string_view>
 #include <utility>

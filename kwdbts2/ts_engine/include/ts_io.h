@@ -24,6 +24,8 @@
 #include <memory>
 #include <string>
 #include <string_view>
+#include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include "kwdb_type.h"
@@ -33,7 +35,7 @@
 #include "sys_utils.h"
 #include "ts_bufferbuilder.h"
 #include "ts_file_vector_index.h"
-#include "ts_compressor.h"
+#include "ts_sliceguard.h"
 
 namespace kwdbts {
 
@@ -55,11 +57,7 @@ class TsAppendOnlyFile {
 
  public:
   explicit TsAppendOnlyFile(const std::string& path) : path_(path) {}
-  virtual ~TsAppendOnlyFile() {
-    if (delete_after_free) {
-      unlink(path_.c_str());
-    }
-  }
+  virtual ~TsAppendOnlyFile() {}
 
   virtual KStatus Append(std::string_view) = 0;
   KStatus Append(TSSlice slice) { return this->Append(std::string_view{slice.data, slice.len}); }
@@ -81,11 +79,7 @@ class TsRandomReadFile {
 
  public:
   explicit TsRandomReadFile(const std::string& path) : path_(path) {}
-  virtual ~TsRandomReadFile() {
-    if (delete_after_free) {
-      unlink(path_.c_str());
-    }
-  }
+  virtual ~TsRandomReadFile() {}
 
   virtual KStatus Prefetch(size_t offset, size_t n) = 0;
   virtual KStatus Read(size_t offset, size_t n, TsSliceGuard* result) const = 0;
@@ -106,11 +100,7 @@ class TsSequentialReadFile {
 
  public:
   explicit TsSequentialReadFile(const std::string& path, size_t file_size) : path_(path), file_size_(file_size) {}
-  virtual ~TsSequentialReadFile() {
-    if (delete_after_free) {
-      unlink(path_.c_str());
-    }
-  }
+  virtual ~TsSequentialReadFile() {}
 
   virtual KStatus Read(size_t n, TsSliceGuard* slice) = 0;
   virtual KStatus Skip(size_t n) {
@@ -148,7 +138,14 @@ class TsMMapAppendOnlyFile : public TsAppendOnlyFile {
  public:
   TsMMapAppendOnlyFile(const std::string& path, int fd, size_t offset /*append from offset*/)
       : TsAppendOnlyFile(path), fd_(fd), page_size_(getpagesize()), mmap_size_(16 * page_size_), file_size_(offset) {}
-  ~TsMMapAppendOnlyFile();
+  ~TsMMapAppendOnlyFile() {
+    if (fd_ >= 0) {
+      this->Close();
+    }
+    if (delete_after_free) {
+      unlink(path_.c_str());
+    }
+  }
 
   KStatus Append(std::string_view data) override;
   size_t GetFileSize() const override { return file_size_; }
@@ -178,6 +175,9 @@ class TsMMapRandomReadFile : public TsRandomReadFile {
       munmap(mmap_start_, file_size_);
     }
     close(fd_);
+    if (delete_after_free) {
+      unlink(path_.c_str());
+    }
   }
   KStatus Prefetch(size_t offset, size_t n) override;
   KStatus Read(size_t offset, size_t n, TsSliceGuard* result) const override;
@@ -207,6 +207,9 @@ class TsMMapSequentialReadFile : public TsSequentialReadFile {
       munmap(mmap_start_, file_size_);
     }
     close(fd_);
+    if (delete_after_free) {
+      unlink(path_.c_str());
+    }
   }
 };
 
@@ -223,6 +226,9 @@ class TsFIOAppendOnlyFile : public TsAppendOnlyFile {
 
   ~TsFIOAppendOnlyFile() {
     Close();
+    if (delete_after_free) {
+      unlink(path_.c_str());
+    }
   }
 
   KStatus Append(std::string_view data) override {
@@ -284,6 +290,9 @@ class TsFIORandomReadFile : public TsRandomReadFile {
     if (fd_ >= 0) {
       close(fd_);
     }
+    if (delete_after_free) {
+      unlink(path_.c_str());
+    }
   }
 
   KStatus Prefetch(size_t offset, size_t n) override {
@@ -292,7 +301,7 @@ class TsFIORandomReadFile : public TsRandomReadFile {
   }
 
   KStatus Read(size_t offset, size_t n, TsSliceGuard* result) const override {
-    if (offset >= file_size_ || offset + n > file_size_) {
+    if (offset > file_size_ || offset + n > file_size_) {
       *result = TsSliceGuard();
       LOG_ERROR("file access overflow, file path: %s, file size: %zu, offset: %zu, length: %zu",
                 path_.c_str(), file_size_, offset, n);
@@ -326,10 +335,13 @@ class TsFIOSequentialReadFile : public TsSequentialReadFile {
     if (fd_ >= 0) {
       close(fd_);
     }
+    if (delete_after_free) {
+      unlink(path_.c_str());
+    }
   }
 
   KStatus Read(size_t n, TsSliceGuard* result) override {
-    if (offset_ >= file_size_ || offset_ + n > file_size_) {
+    if (offset_ > file_size_ || offset_ + n > file_size_) {
       *result = TsSliceGuard();
       LOG_ERROR("file access overflow, file path: %s, file size: %zu, offset: %zu, length: %zu",
                 path_.c_str(), file_size_, offset_, n);
@@ -356,6 +368,75 @@ class TsFIOSequentialReadFile : public TsSequentialReadFile {
 
   KStatus Seek(size_t offset) override {
     offset_ = std::min(offset, file_size_);
+    return SUCCESS;
+  }
+};
+
+class TsMemoryAppendOnlyFile : public TsAppendOnlyFile {
+ private:
+  TsBufferBuilder buffer_;
+
+ public:
+  explicit TsMemoryAppendOnlyFile(const std::string& path, TsBufferBuilder&& buffer)
+      : TsAppendOnlyFile(path), buffer_(std::move(buffer)) {}
+  virtual ~TsMemoryAppendOnlyFile();
+
+  virtual KStatus Append(std::string_view sv) {
+    buffer_.append(sv);
+    return SUCCESS;
+  }
+  KStatus Append(TSSlice slice) { return this->Append(std::string_view{slice.data, slice.len}); }
+
+  virtual size_t GetFileSize() const { return buffer_.size(); }
+  std::string GetFilePath() const { return path_; }
+
+  virtual KStatus Sync() { return SUCCESS; }
+
+  virtual KStatus Close() { return SUCCESS; }
+};
+
+class TsMemoryRandomReadFile : public TsRandomReadFile {
+ private:
+  std::shared_ptr<TsSliceGuard> data_;
+  size_t file_size_;
+
+ public:
+  explicit TsMemoryRandomReadFile(const std::string& path, std::shared_ptr<TsSliceGuard> data, size_t file_size)
+      : TsRandomReadFile(path), data_(data), file_size_(file_size) {}
+  virtual ~TsMemoryRandomReadFile();
+
+  virtual KStatus Prefetch(size_t offset, size_t n) { return SUCCESS; }
+  virtual KStatus Read(size_t offset, size_t n, TsSliceGuard* result) const {
+    if (offset + n > file_size_) {
+      LOG_ERROR("file access overflow, file path: %s, file size: %zu, offset: %zu, length: %zu", path_.c_str(),
+                file_size_, offset, n);
+      return FAIL;
+    }
+    *result = TsSliceGuard(TSSlice{data_->data() + offset, n});
+    return SUCCESS;
+  }
+
+  virtual size_t GetFileSize() const { return data_->size(); }
+  std::string GetFilePath() const { return path_; }
+
+  void MarkDelete() { delete_after_free = true; }
+};
+
+class TsMemorySequentialReadFile : public TsSequentialReadFile {
+ private:
+  std::shared_ptr<TsSliceGuard> data_;
+
+ public:
+  TsMemorySequentialReadFile(const std::string& path, std::shared_ptr<TsSliceGuard> data, size_t file_size)
+      : TsSequentialReadFile(path, file_size), data_(std::move(data)) {}
+  KStatus Read(size_t n, TsSliceGuard* slice) override {
+    if (offset_ + n > file_size_) {
+      LOG_ERROR("file access overflow, file path: %s, file size: %zu, offset: %zu, length: %zu", path_.c_str(),
+                file_size_, offset_, n);
+      return FAIL;
+    }
+    *slice = TsSliceGuard(TSSlice{data_->data() + offset_, n});
+    offset_ += n;
     return SUCCESS;
   }
 };
@@ -401,6 +482,42 @@ class TsMMapIOEnv : public TsIOEnv {
   KStatus NewDirectory(const std::string& path) override;
   KStatus DeleteFile(const std::string& path) override;
   KStatus DeleteDir(const std::string& path) override;
+};
+
+class TsMemoryIOEnv : public TsIOEnv {
+  friend class TsMemoryAppendOnlyFile;
+
+ private:
+  mutable std::shared_mutex mutex_;
+  std::unordered_map<std::string, std::shared_ptr<TsSliceGuard>> files_;
+  KStatus RegisterFile(const std::string& path, TsBufferBuilder&& file) {
+    {
+      std::shared_lock s_lock(mutex_);
+      if (files_.find(path) != files_.end()) {
+        LOG_ERROR("file %s already exists.", path.c_str());
+        return KStatus::FAIL;
+      }
+    }
+    std::unique_lock lock(mutex_);
+    files_[path] = std::make_shared<TsSliceGuard>(file.GetBuffer());
+    return KStatus::SUCCESS;
+  }
+
+ public:
+  static TsMemoryIOEnv& GetInstance() {
+    static TsMemoryIOEnv instance;
+    return instance;
+  }
+  KStatus NewAppendOnlyFile(const std::string& filepath, std::unique_ptr<TsAppendOnlyFile>* file, bool overwrite = true,
+                            size_t offset = -1) override;
+  KStatus NewRandomReadFile(const std::string& filepath, std::unique_ptr<TsRandomReadFile>* file,
+                            size_t file_size = -1) override;
+  KStatus NewSequentialReadFile(const std::string& filepath, std::unique_ptr<TsSequentialReadFile>* file,
+                                size_t file_size = -1) override;
+
+  KStatus NewDirectory(const std::string& path) override { return SUCCESS; }
+  KStatus DeleteFile(const std::string& path) override;
+  KStatus DeleteDir(const std::string& path) override { return SUCCESS; }
 };
 
 class TsMMapAllocFile : public FileWithIndex {
@@ -603,5 +720,8 @@ class TsMMapAllocFile : public FileWithIndex {
     return s;
   }
 };
+
+KStatus FileRangeCopy(TsRandomReadFile* src, TsAppendOnlyFile* dst, size_t start = 0, size_t end = -1);
+// KStatus FileRangeCopy(TsSequentialReadFile* src, TsAppendOnlyFile* dst, size_t start, size_t end);
 
 }  // namespace kwdbts

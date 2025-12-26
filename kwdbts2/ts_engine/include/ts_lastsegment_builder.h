@@ -27,6 +27,7 @@
 #include "ts_lastsegment.h"
 #include "ts_metric_block.h"
 #include "ts_payload.h"
+#include "ts_segment.h"
 #include "ts_table_schema_manager.h"
 #include "ts_version.h"
 #include "ts_lastsegment_endec.h"
@@ -65,7 +66,7 @@ class TsLastSegmentBuilder {
     meta_blocks_.push_back(bloom_filter_.get());
   }
   KStatus PutBlockSpan(std::shared_ptr<TsBlockSpan> span);
-  KStatus Finalize();
+  KStatus Finalize(TsSegmentWriteStats* stats);
   uint64_t GetFileNumber() const { return file_number_; }
   uint64_t GetMaxOSN() const;
 

@@ -10,13 +10,16 @@
 // See the Mulan PSL v2 for more details.
 
 #include "ts_vgroup.h"
+#include <pthread.h>
 
 #include <cstdint>
+#include <cstdio>
 #include <cstring>
 #include <memory>
 #include <algorithm>
 #include <numeric>
 #include <sstream>
+#include <thread>
 #include <unordered_set>
 #include <utility>
 #include <vector>
@@ -44,6 +47,8 @@
 #include "ts_iterator_v2_impl.h"
 #include "ts_lastsegment_builder.h"
 #include "ts_mem_segment_mgr.h"
+#include "ts_partition_count_mgr.h"
+#include "ts_segment.h"
 #include "ts_std_utils.h"
 #include "ts_table_schema_manager.h"
 #include "ts_version.h"
@@ -673,6 +678,7 @@ void TsVGroup::closeCompactThread() {
 }
 
 KStatus TsVGroup::PartitionCompact(std::shared_ptr<const TsPartitionVersion> partition, bool call_by_vacuum) {
+  TsIOEnv* env = &TsIOEnv::GetInstance();
   auto partition_id = partition->GetPartitionIdentifier();
   if (!partition->TrySetBusy(PartitionStatus::Compacting)) {
     auto root_path = this->GetPath() / PartitionDirName(partition->GetPartitionIdentifier());
@@ -697,9 +703,21 @@ KStatus TsVGroup::PartitionCompact(std::shared_ptr<const TsPartitionVersion> par
   }
   auto entity_segment = partition->GetEntitySegment();
 
-  auto root_path = this->GetPath() / PartitionDirName(partition->GetPartitionIdentifier());
+  auto partition_name = PartitionDirName(partition_id);;
+  auto root_path = this->GetPath() / partition_name;
 
+  {
+    std::stringstream ss;
+    for (const auto& l : last_segments) {
+      ss << l->GetFileNumber() << ", ";
+    }
+    LOG_INFO("Compact %s at vgroup: %d, level: %d, group: %d, last segments:(%s)", partition_name.c_str(),
+             this->vgroup_id_, level, group, ss.str().c_str());
+  }
   // 2. Build the column block.
+  std::stringstream ss;
+  TsSegmentWriteStats entity_stats;
+  std::vector<std::shared_ptr<TsBlockSpan>> residual_spans;
   {
     std::vector<std::shared_ptr<TsBlockSpan>> block_spans;
     for (auto& last_segment : last_segments) {
@@ -713,8 +731,8 @@ KStatus TsVGroup::PartitionCompact(std::shared_ptr<const TsPartitionVersion> par
       std::move(curr_block_spans.begin(), curr_block_spans.end(), std::back_inserter(block_spans));
     }
 
-    TsEntitySegmentBuilder builder(root_path.string(), schema_mgr_, version_manager_.get(),
-                                   partition->GetPartitionIdentifier(), entity_segment);
+    TsEntitySegmentBuilder builder(env, root_path.string(), schema_mgr_, version_manager_.get(), partition_id,
+                                   entity_segment);
     builder.PutBlockSpans(std::move(block_spans));
 
     KStatus s = builder.Open();
@@ -722,17 +740,80 @@ KStatus TsVGroup::PartitionCompact(std::shared_ptr<const TsPartitionVersion> par
       LOG_ERROR("partition[%s] compact failed, TsEntitySegmentBuilder open failed", path_.c_str());
       return s;
     }
-    s = builder.Compact(call_by_vacuum, &update, level, group);
+
+    s = builder.Compact(call_by_vacuum, &update, &residual_spans, &entity_stats);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("partition[%s] compact failed, TsEntitySegmentBuilder build failed", path_.c_str());
       return s;
     }
+
+    EntitySegmentMetaInfo info;
+    update.GetEntitySegmentInfo(partition_id, &info);
+    ss << "entity segment: [" << info.datablock_info.length << "," << info.header_b_info.length << ","
+       << info.agg_info.length << "," << info.header_e_file_number << "];";
+  }
+
+  // 3. write last segment
+  if (!residual_spans.empty()) {
+    assert(!call_by_vacuum);
+    ss << "last segment: ";
+    int next_level = std::min<int>(level + 1, TsPartitionVersion::LastSegmentContainer::kMaxLevel - 1);
+
+    std::map<int, std::vector<std::shared_ptr<TsBlockSpan>>> grouped_spans;
+    std::map<int, std::unique_ptr<TsLastSegmentBuilder>> grouped_builders;
+    for (auto& span : residual_spans) {
+      int group = TsPartitionVersion::LastSegmentContainer::GetGroupByEntityID(next_level, span->GetEntityID());
+      grouped_spans[group].push_back(std::move(span));
+    }
+
+    TsIOEnv* env = &TsIOEnv::GetInstance();
+    for (auto it = grouped_spans.begin(); it != grouped_spans.end(); ++it) {
+      std::unique_ptr<TsAppendOnlyFile> last_segment;
+      uint64_t file_number = version_manager_->NewFileNumber();
+      auto filepath = root_path / LastSegmentFileName(file_number);
+      auto s = env->NewAppendOnlyFile(filepath, &last_segment);
+      if (s != KStatus::SUCCESS) {
+        LOG_ERROR("TsEntitySegmentBuilder::Compact failed, new last segment failed.")
+        return s;
+      }
+      grouped_builders[it->first] =
+          std::make_unique<TsLastSegmentBuilder>(schema_mgr_, std::move(last_segment), file_number);
+    }
+
+    ss << "{";
+    for (auto it = grouped_spans.begin(); it != grouped_spans.end(); ++it) {
+      TsSegmentWriteStats stats;
+      auto& span_vec = it->second;
+      auto& builder = grouped_builders[it->first];
+      for (auto& span : span_vec) {
+        auto s = builder->PutBlockSpan(span);
+        if (s != KStatus::SUCCESS) {
+          LOG_ERROR("TsEntitySegmentBuilder::Compact failed, TsLastSegmentBuilder put failed.")
+        }
+      }
+      auto s = builder->Finalize(&stats);
+      if (s != KStatus::SUCCESS) {
+        LOG_ERROR("TsEntitySegmentBuilder::Compact failed, TsLastSegmentBuilder finalize failed.")
+        return s;
+      }
+      LOG_INFO("LastSegment %lu in %s created by Compaction, level: %d, group: %d", builder->GetFileNumber(),
+               root_path.string().c_str(), next_level, it->first);
+      char log_buf[64];
+      std::snprintf(log_buf, sizeof(log_buf), "%lu: (%d, %d), ", builder->GetFileNumber(), level, group);
+      ss << log_buf;
+      update.AddLastSegment(partition_id, {builder->GetFileNumber(), next_level, it->first});
+    }
+    ss << "}";
+  } else {
+    ss << "no last segment created";
   }
 
   // 3. Set the compacted version.
   for (auto& last_segment : last_segments) {
     update.DeleteLastSegment(partition->GetPartitionIdentifier(), last_segment->GetFileNumber());
   }
+
+  LOG_INFO("Compact end. %s", ss.str().c_str());
 
   // 4. Update the version.
   return version_manager_->ApplyUpdate(&update);
@@ -767,15 +848,110 @@ KStatus TsVGroup::Compact(bool* compacted) {
   return KStatus::SUCCESS;
 }
 
+static auto SplitBlockSpansByPartition(const TsVGroupVersion* current, std::vector<std::shared_ptr<TsBlockSpan>> spans)
+    -> std::pair<bool, std::unordered_map<const TsPartitionVersion*, std::vector<std::shared_ptr<TsBlockSpan>>>> {
+  std::unordered_map<const TsPartitionVersion*, std::vector<std::shared_ptr<TsBlockSpan>>> result;
+  for (auto& span : spans) {
+    auto db_id = static_cast<TsMemSegBlock*>(span->GetTsBlockRaw())->GetDBId();
+    auto current_span = span;
+    while (current_span != nullptr && current_span->GetRowNum() != 0) {
+      DATATYPE ts_type = current_span->GetTSType();
+      timestamp64 first_ts = convertTsToPTime(current_span->GetFirstTS(), ts_type);
+      timestamp64 last_ts = convertTsToPTime(current_span->GetLastTS(), ts_type);
+      auto partition = current->GetPartition(db_id, first_ts);
+      if (partition == nullptr) {
+        LOG_WARN("cannot find partition: retry later.")
+        return {false, {}};
+      }
+      if (last_ts < partition->GetEndTime()) {
+        result[partition.get()].push_back(std::move(current_span));
+        continue;
+      }
+      int split_idx = *std::upper_bound(
+          IndexRange{0}, IndexRange(current_span->GetRowNum()), partition->GetEndTime(),
+          [&](timestamp64 val, int idx) { return val <= convertTsToPTime(current_span->GetTS(idx), ts_type); });
+      assert(split_idx > 0);
+
+      std::shared_ptr<TsBlockSpan> front_span;
+      current_span->SplitFront(split_idx, front_span);
+      result[partition.get()].push_back(std::move(front_span));
+    }
+  }
+  return {true, result};
+}
+
+std::vector<TsEntityFlushInfo> GetFlushInfoFromSpans(const std::vector<std::shared_ptr<TsBlockSpan>>& spans) {
+  assert(!spans.empty());
+  std::vector<int> transition_idx;
+  transition_idx.push_back(0);
+  for (int i = 1; i < spans.size(); ++i) {
+    if (spans[i]->GetEntityID() != spans[i - 1]->GetEntityID()) {
+      transition_idx.push_back(i);
+    }
+  }
+  transition_idx.push_back(spans.size());
+  std::vector<TsEntityFlushInfo> result;
+  result.reserve(transition_idx.size() - 1);
+  for (int i = 0; i + 1 < transition_idx.size(); ++i) {
+    int start_idx = transition_idx[i];
+    int end_idx = transition_idx[i + 1];
+    assert(start_idx < end_idx);
+    assert(spans[start_idx]->GetEntityID() == spans[end_idx - 1]->GetEntityID());
+    TsEntityFlushInfo flush_info;
+    flush_info.entity_id = spans[start_idx]->GetEntityID();
+    int sum = 0;
+    for (int j = start_idx; j < end_idx; ++j) {
+      sum += spans[j]->GetRowNum();
+    }
+    flush_info.deduplicate_count = sum;
+    flush_info.min_ts = spans[start_idx]->GetFirstTS();
+    flush_info.max_ts = spans[end_idx - 1]->GetLastTS();
+
+    result.push_back(std::move(flush_info));
+  }
+  return result;
+}
+
+static uint64_t GetMaxOsn(const std::vector<std::shared_ptr<TsBlockSpan>>& sorted_spans) {
+  uint64_t max_osn = 0;
+  for (auto& span : sorted_spans) {
+    uint64_t tmp_min_osn, tmp_max_osn;
+    span->GetMinAndMaxOSN(tmp_min_osn, tmp_max_osn);
+    if (tmp_max_osn > max_osn) {
+      max_osn = tmp_max_osn;
+    }
+  }
+  return max_osn;
+}
+
+static KStatus FlushToLastSegment(TsIOEnv* env, TsEngineSchemaManager* schema_mgr, TsVersionManager* version_mgr,
+                                  const TsPartitionVersion* partition,
+                                  const std::vector<std::shared_ptr<TsBlockSpan>>& spans, TsVersionUpdate* update,
+                                  TsSegmentWriteStats* stats) {
+  auto lastseg_file_number = version_mgr->NewFileNumber();
+  auto filepath = partition->GetPartitionPath() / LastSegmentFileName(lastseg_file_number);
+  std::unique_ptr<TsAppendOnlyFile> lastseg_file;
+  auto s = env->NewAppendOnlyFile(filepath, &lastseg_file);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("flush failed, new last segment failed.");
+    return s;
+  }
+  TsLastSegmentBuilder lastseg_builder(schema_mgr, std::move(lastseg_file), lastseg_file_number);
+  for (auto& span : spans) {
+    lastseg_builder.PutBlockSpan(span);
+  }
+  lastseg_builder.Finalize(stats);
+  update->AddLastSegment(partition->GetPartitionIdentifier(), LastSegmentMetaInfo{lastseg_file_number, 0, 0});
+  return SUCCESS;
+}
+
 KStatus TsVGroup::FlushImmSegment(const std::shared_ptr<TsMemSegment>& mem_seg) {
   TsIOEnv* env = &TsIOEnv::GetInstance();
 
-  std::unordered_map<std::shared_ptr<const TsPartitionVersion>, TsLastSegmentBuilder> builders;
-  std::unordered_set<std::shared_ptr<const TsPartitionVersion>> new_created_partitions;
-  TsVersionUpdate update;
+  std::unordered_set<const TsPartitionVersion*> flushed_partitions;
 
   std::vector<std::shared_ptr<TsBlockSpan>> sorted_spans;
-
+  TsVersionUpdate update;
   {
     std::list<std::shared_ptr<TsBlockSpan>> all_block_spans;
     auto s = mem_seg->GetBlockSpans(all_block_spans, schema_mgr_);
@@ -783,187 +959,142 @@ KStatus TsVGroup::FlushImmSegment(const std::shared_ptr<TsMemSegment>& mem_seg) 
       LOG_ERROR("cannot get block spans.");
       return FAIL;
     }
-    if (EngineOptions::g_dedup_rule == DedupRule::KEEP) {
-      sorted_spans.reserve(all_block_spans.size());
-      std::move(all_block_spans.begin(), all_block_spans.end(), std::back_inserter(sorted_spans));
-      std::sort(sorted_spans.begin(), sorted_spans.end(),
-                [](const std::shared_ptr<TsBlockSpan>& left, const std::shared_ptr<TsBlockSpan>& right) {
-                  using Helper = std::tuple<TSEntityID, timestamp64, TS_OSN>;
-                  auto left_helper = Helper(left->GetEntityID(), left->GetFirstTS(), *left->GetOSNAddr(0));
-                  auto right_helper = Helper(right->GetEntityID(), right->GetFirstTS(), *right->GetOSNAddr(0));
-                  return left_helper < right_helper;
-                });
-    } else {
-      TsBlockSpanSortedIterator iter(all_block_spans, schema_mgr_, EngineOptions::g_dedup_rule);
-      iter.Init();
-      std::shared_ptr<TsBlockSpan> dedup_block_span;
-      bool is_finished = false;
-      while (iter.Next(dedup_block_span, &is_finished) == KStatus::SUCCESS && !is_finished) {
-        sorted_spans.push_back(std::move(dedup_block_span));
-      }
-    }
+    sorted_spans.reserve(all_block_spans.size());
+    std::move(all_block_spans.begin(), all_block_spans.end(), std::back_inserter(sorted_spans));
+    update.SetMaxLSN(GetMaxOsn(sorted_spans));
   }
 
   auto current = version_manager_->Current();
 
-  TSEntityID cur_entity  = 0;
-  uint64_t entity_row_num = 0;
-  std::shared_ptr<const TsPartitionVersion> cur_partition = nullptr;
-  timestamp64 min_ts = INT64_MAX;
-  timestamp64 max_ts = INT64_MIN;
-  std::vector<std::pair<std::shared_ptr<const TsPartitionVersion>, TsEntityFlushInfo>> flush_infos;
+  const auto [success, partitioned_spans] = SplitBlockSpansByPartition(current.get(), std::move(sorted_spans));
+  if (!success) {
+    return KStatus::FAIL;
+  }
 
-  for (auto span : sorted_spans) {
-    if (cur_entity != span->GetEntityID()) {
-      if (cur_entity != 0 && entity_row_num > 0) {
-        TsEntityFlushInfo entity_flush_info = {cur_entity, min_ts, max_ts, entity_row_num, ""};
-        flush_infos.push_back({cur_partition, entity_flush_info});
-      }
-      cur_entity = span->GetEntityID();
-      entity_row_num = 0;
-      cur_partition = nullptr;
-      min_ts = INT64_MAX;
-      max_ts = INT64_MIN;
+  std::vector<const TsPartitionVersion*> locked_partitions;
+  locked_partitions.reserve(partitioned_spans.size());
+  Defer unlock_partitions([&]() {
+    for (auto partition : locked_partitions) {
+      partition->ResetStatus();
     }
-    auto table_id = span->GetTableID();
-    auto table_version = span->GetTableVersion();
-    std::shared_ptr<TsTableSchemaManager> table_schema_manager;
-    auto s = schema_mgr_->GetTableSchemaMgr(table_id, table_schema_manager);
-    if (s != KStatus::SUCCESS) {
-      if (table_schema_manager == nullptr) {
-        continue;
-      }
-      LOG_ERROR("cannot get table[%lu] schemainfo.", table_id);
-      return KStatus::FAIL;
-    }
+  });
 
-    const std::vector<AttributeInfo>* info{nullptr};
-    s = table_schema_manager->GetColumnsExcludeDroppedPtr(&info, span->GetTableVersion());
-    if (s != KStatus::SUCCESS) {
-      LOG_ERROR("cannot get table[%lu] version[%u] schema info.", table_id, table_version);
-      return KStatus::FAIL;
-    }
-
-    std::shared_ptr<TsBlockSpan> current_span = span;
-    while (current_span != nullptr && current_span->GetRowNum() != 0) {
-      timestamp64 first_ts = convertTsToPTime(current_span->GetFirstTS(), static_cast<DATATYPE>((*info)[0].type));
-      timestamp64 last_ts = convertTsToPTime(current_span->GetLastTS(), static_cast<DATATYPE>((*info)[0].type));
-      auto partition = current->GetPartition(table_schema_manager->GetDbID(), first_ts);
-      if (partition == nullptr) {
-        LOG_WARN("cannot find partition: retry later.")
-        return KStatus::FAIL;
-      }
-
-      if (!partition->HasDirectoryCreated() && new_created_partitions.find(partition) == new_created_partitions.end()) {
-        // create directory for partition.
+  std::stringstream ss;
+  TsSegmentWriteStats total_entity_stats;
+  TsSegmentWriteStats total_last_stats;
+  std::map<PartitionIdentifier, std::vector<TsEntityFlushInfo>> flush_infos;
+  for (auto& [partition, spans] : partitioned_spans) {
+    if (spans.empty()) continue;
+    auto partition_id = partition->GetPartitionIdentifier();
+    flush_infos[partition_id] = GetFlushInfoFromSpans(spans);
+    if (flushed_partitions.find(partition) == flushed_partitions.end()) {
+      if (!partition->HasDirectoryCreated()) {
         auto path = this->GetPath() / PartitionDirName(partition->GetPartitionIdentifier());
-        s = env->NewDirectory(path);
+        auto s = env->NewDirectory(path);
         if (s != SUCCESS) {
           LOG_ERROR("cannot create directory for partition.");
           return FAIL;
         }
-        update.PartitionDirCreated(partition->GetPartitionIdentifier());
-        new_created_partitions.insert(partition);
       }
+      update.PartitionDirCreated(partition_id);
+      flushed_partitions.insert(partition);
+    }
 
-      if (partition->IsMemoryOnly() && new_created_partitions.find(partition) == new_created_partitions.end()) {
-        update.PartitionDirCreated(partition->GetPartitionIdentifier());
-        new_created_partitions.insert(partition);
-      }
-
-      if (cur_partition == nullptr) {
-        cur_partition = partition;
-        min_ts = current_span->GetFirstTS();
-      } else if (cur_partition->GetPartitionIdentifier() != partition->GetPartitionIdentifier()) {
-        if (entity_row_num > 0) {
-          TsEntityFlushInfo entity_flush_info = {cur_entity, min_ts, max_ts, entity_row_num, ""};
-          flush_infos.push_back({cur_partition, entity_flush_info});
-        }
-        cur_partition = partition;
-        entity_row_num = 0;
-        min_ts = current_span->GetFirstTS();
-        max_ts = min_ts;
-      }
-      std::shared_ptr<TsBlockSpan> span_to_flush;
-      if (last_ts < partition->GetEndTime()) {
-        // all the data in this span is whithin the current partition, no need to split.
-        span_to_flush = std::move(current_span);
-        current_span = nullptr;
-        if (max_ts < span_to_flush->GetLastTS()) {
-          max_ts = span_to_flush->GetLastTS();
-        }
-        entity_row_num += span_to_flush->GetRowNum();
-      } else {
-        // split the span into two parts.
-        // find the first row that satisfies current_span->GetTS(idx) => partition->GetEndTime()
-        int split_idx = *std::upper_bound(IndexRange{0}, IndexRange(current_span->GetRowNum()), partition->GetEndTime(),
-                                          [&](timestamp64 val, int idx) {
-                                            return val <= convertTsToPTime(current_span->GetTS(idx),
-                                                                          static_cast<DATATYPE>((*info)[0].type));
-                                          });
-
-        std::shared_ptr<TsBlockSpan> front_span;
-        current_span->SplitFront(split_idx, front_span);
-        span_to_flush = std::move(front_span);
-        if (max_ts < span_to_flush->GetLastTS()) {
-          max_ts = span_to_flush->GetLastTS();
-        }
-        entity_row_num += span_to_flush->GetRowNum();
-      }
-
-      auto it = builders.find(partition);
-      if (it == builders.end()) {
-        std::unique_ptr<TsAppendOnlyFile> last_segment;
-        uint64_t file_number = version_manager_->NewFileNumber();
-        auto path =
-            this->GetPath() / PartitionDirName(partition->GetPartitionIdentifier()) / LastSegmentFileName(file_number);
-        s = env->NewAppendOnlyFile(path, &last_segment);
+    if (partition->TrySetBusy(PartitionStatus::Compacting)) {
+      locked_partitions.push_back(partition);
+      TsIOEnv* mem_env = &TsMemoryIOEnv::GetInstance();
+      EntitySegmentMetaInfo mem_entity_info;
+      auto root_path = this->GetPath() / PartitionDirName(partition_id);
+      std::vector<std::shared_ptr<TsBlockSpan>> lastseg_spans;
+      std::vector<std::shared_ptr<TsBlockSpan>> written_spans;
+      {
+        TsEntitySegmentBuilder entityseg_builder(mem_env, root_path, schema_mgr_, version_manager_.get(),
+                                                 partition->GetPartitionIdentifier(), nullptr);
+        auto s = entityseg_builder.Open();
         if (s == FAIL) {
-          LOG_ERROR("cannot create last segment file.");
+          return s;
+        }
+        entityseg_builder.PutBlockSpans(std::move(spans));
+        TsVersionUpdate temp_update;
+        TsSegmentWriteStats stats;
+        s = entityseg_builder.Compact(false, &temp_update, &lastseg_spans, &stats);
+        if (s == FAIL) {
+          LOG_ERROR("flush to entity segment failed.");
           return FAIL;
         }
-
-        auto result = builders.insert({partition, TsLastSegmentBuilder{schema_mgr_, std::move(last_segment),
-                                                                         static_cast<uint32_t>(file_number)}});
-        it = result.first;
+        total_entity_stats += stats;
+        temp_update.GetEntitySegmentInfo(partition_id, &mem_entity_info);
       }
-      TsLastSegmentBuilder& builder = it->second;
-      s = builder.PutBlockSpan(span_to_flush);
+
+      if (!lastseg_spans.empty()) {
+        TsSegmentWriteStats lastseg_stats;
+        auto s = FlushToLastSegment(env, schema_mgr_, version_manager_.get(), partition, lastseg_spans, &update,
+                                    &lastseg_stats);
+        total_last_stats += lastseg_stats;
+        if (s == FAIL) {
+          return s;
+        }
+      }
+
+      TsEntitySegment mem_entity_segment({mem_env, mem_env}, root_path, mem_entity_info);
+      auto s = mem_entity_segment.Open();
       if (s == FAIL) {
-        LOG_ERROR("PutBlockSpan failed.");
+        LOG_ERROR("open mem entity segment failed.");
+        return s;
+      }
+      mem_entity_segment.MarkDeleteAll();
+
+      if (mem_entity_segment.GetEntityNum() != 0) {
+        TsMemEntitySegmentModifier modifier(&mem_entity_segment);
+        auto newer_partition = version_manager_->Current()->GetPartition(partition_id);
+        auto base_entity_segment = newer_partition->GetEntitySegment();
+        EntitySegmentMetaInfo info;
+        s = modifier.PersistToDisk(base_entity_segment.get(), &info);
+        if (s == FAIL) {
+          return FAIL;
+        }
+        update.SetEntitySegment(partition_id, info, false);
+      }
+
+    } else {
+      // cannot fetch lock, drop all memory entity segment data and flush to last segment.
+      TsSegmentWriteStats lastseg_stats;
+      auto s = FlushToLastSegment(env, schema_mgr_, version_manager_.get(), partition, spans, &update, &lastseg_stats);
+      if (s == FAIL) {
         return FAIL;
       }
+      total_last_stats += lastseg_stats;
     }
   }
-  if (entity_row_num != 0) {
-    TsEntityFlushInfo entity_flush_info = {cur_entity, min_ts, max_ts, entity_row_num, ""};
-    flush_infos.push_back({cur_partition, entity_flush_info});
-  }
-
-  std::vector<uint64_t> file_numbers;
-  file_numbers.reserve(builders.size());
-  for (auto& [k, v] : builders) {
-    auto s = v.Finalize();
-    if (s == FAIL) {
-      return FAIL;
-    }
-    update.AddLastSegment(k->GetPartitionIdentifier(), {v.GetFileNumber(), 0, 0});
-    update.SetMaxLSN(v.GetMaxOSN());
-    file_numbers.push_back(v.GetFileNumber());
-  }
-
   update.RemoveMemSegment(mem_seg);
-
-  for (auto& [k, v] : flush_infos) {
-    k->GetCountManager()->AddFlushEntityAgg(v);
+  auto s = version_manager_->ApplyUpdate(&update);
+  if (s == FAIL) {
+    LOG_ERROR("apply update failed.");
+    return s;
   }
-  version_manager_->ApplyUpdate(&update);
 
-  std::stringstream ss;
-  for (auto file_number : file_numbers) {
-    ss << file_number << ", ";
+  for (auto& [partition, spans] : partitioned_spans) {
+    for (auto i_flush_info : flush_infos[partition->GetPartitionIdentifier()]) {
+      partition->GetCountManager()->AddFlushEntityAgg(i_flush_info);
+    }
   }
-  LOG_INFO("VGroup %d flush end, create lastsegments: %s", this->vgroup_id_, ss.str().c_str());
+
+  char entity_log_buf[128];
+  if (total_entity_stats.written_blocks != 0) {
+    auto log = total_entity_stats.ToString();
+    std::snprintf(entity_log_buf, sizeof(entity_log_buf), "%s write into EntitySegment;", log.c_str());
+  } else {
+    std::snprintf(entity_log_buf, sizeof(entity_log_buf), "no data write into EntitySegment");
+  }
+  char last_log_buf[128];
+  if (total_last_stats.written_blocks != 0) {
+    auto log = total_last_stats.ToString();
+    std::snprintf(last_log_buf, sizeof(last_log_buf), "%s write into LastSegment;", log.c_str());
+  } else {
+    std::snprintf(last_log_buf, sizeof(last_log_buf), "no data write into LastSegment");
+  }
+  LOG_INFO("vgroup: %d flush success. %lu partitions flushed. %s; %s", vgroup_id_, partitioned_spans.size(),
+           entity_log_buf, last_log_buf);
   return KStatus::SUCCESS;
 }
 
@@ -1411,6 +1542,7 @@ const std::vector<KwTsSpan>& ts_spans, bool user_del) {
 
 KStatus TsVGroup::GetEntitySegmentBuilder(std::shared_ptr<const TsPartitionVersion>& partition,
                                           std::shared_ptr<TsEntitySegmentBuilder>& builder) {
+  TsIOEnv* env = &TsIOEnv::GetInstance();
   PartitionIdentifier partition_id = partition->GetPartitionIdentifier();
   auto it = write_batch_segment_builders_.find(partition_id);
   if (it == write_batch_segment_builders_.end()) {
@@ -1421,7 +1553,7 @@ KStatus TsVGroup::GetEntitySegmentBuilder(std::shared_ptr<const TsPartitionVersi
     auto entity_segment = partition->GetEntitySegment();
 
     auto root_path = this->GetPath() / PartitionDirName(partition->GetPartitionIdentifier());
-    builder = std::make_shared<TsEntitySegmentBuilder>(root_path.string(), schema_mgr_, version_manager_.get(),
+    builder = std::make_shared<TsEntitySegmentBuilder>(env, root_path.string(), schema_mgr_, version_manager_.get(),
                                                        partition_id, entity_segment);
     KStatus s = builder->Open();
     if (s != KStatus::SUCCESS) {

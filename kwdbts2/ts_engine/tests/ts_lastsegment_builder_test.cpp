@@ -30,6 +30,7 @@
 #include "ts_lastsegment_endec.h"
 #include "ts_mem_segment_mgr.h"
 #include "ts_payload.h"
+#include "ts_segment.h"
 #include "ts_vgroup.h"
 
 static TsIOEnv *env = &TsIOEnv::GetInstance();
@@ -137,7 +138,8 @@ void LastSegmentReadWriteTest::BuilderWithBasicCheck(TSTableID table_id, int nro
       s = builder.PutBlockSpan(span);
       ASSERT_EQ(s, KStatus::SUCCESS);
     }
-    builder.Finalize();
+    TsSegmentWriteStats stats;
+    builder.Finalize(&stats);
     free(payload.data);
   }
 
@@ -316,7 +318,8 @@ void Finalize(R *builder) {
     s = builder->builder->PutBlockSpan(span);
     ASSERT_EQ(s, KStatus::SUCCESS);
   }
-  builder->builder->Finalize();
+  TsSegmentWriteStats stats;
+  builder->builder->Finalize(&stats);
   builder->builder.reset();
 }
 

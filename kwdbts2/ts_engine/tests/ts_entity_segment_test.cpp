@@ -78,8 +78,8 @@ class TsEntitySegmentTest : public ::testing::Test {
 };
 
 void TsEntitySegmentTest::SimpleInsert() {
-  EngineOptions::max_rows_per_block = 1000;
-  EngineOptions::min_rows_per_block = 1000;
+  EngineOptions::max_rows_per_block = 20000;
+  EngineOptions::min_rows_per_block = 20000;
   int64_t total_insert_row_num = 0;
   int64_t entity_row_num = 0;
   int64_t last_row_num = 0;
@@ -107,6 +107,8 @@ void TsEntitySegmentTest::SimpleInsert() {
       ASSERT_EQ(TsLRUBlockCache::GetInstance().VerifyCacheMemorySize(), true);
     }
 
+    EngineOptions::max_rows_per_block = 1000;
+    EngineOptions::min_rows_per_block = 1000;
     ASSERT_EQ(vgroup->Compact(), KStatus::SUCCESS);
     ASSERT_EQ(TsLRUBlockCache::GetInstance().VerifyCacheMemorySize(), true);
 
@@ -320,8 +322,8 @@ TEST_F(TsEntitySegmentTest, simpleInsertExtraLargeBlockCache) {
 TEST_F(TsEntitySegmentTest, simpleInsertDoubleCompact) {
   EngineOptions::g_dedup_rule = DedupRule::KEEP;
   EngineOptions::max_compact_num = 20;
-  EngineOptions::max_rows_per_block = 1000;
-  EngineOptions::min_rows_per_block = 1000;
+  EngineOptions::max_rows_per_block = 20000;
+  EngineOptions::min_rows_per_block = 20000;
   int64_t total_insert_row_num = 0;
   int64_t entity_row_num = 0;
   int64_t last_row_num = 0;
@@ -369,8 +371,14 @@ TEST_F(TsEntitySegmentTest, simpleInsertDoubleCompact) {
       ASSERT_EQ(vgroup->Flush(), KStatus::SUCCESS);
     }
 
+    EngineOptions::max_rows_per_block = 1000;
+    EngineOptions::min_rows_per_block = 1000;
+
     ASSERT_EQ(vgroup->Compact(), KStatus::SUCCESS);
     vgroup->Vacuum(&ctx, false);
+
+    EngineOptions::max_rows_per_block = 20000;
+    EngineOptions::min_rows_per_block = 20000;
 
     for (int i = 0; i < 10; ++i) {
       TSEntityID dev_id = 1 + i * 123;
@@ -389,6 +397,9 @@ TEST_F(TsEntitySegmentTest, simpleInsertDoubleCompact) {
       free(payload.data);
       ASSERT_EQ(vgroup->Flush(), KStatus::SUCCESS);
     }
+
+    EngineOptions::max_rows_per_block = 1000;
+    EngineOptions::min_rows_per_block = 1000;
 
     ASSERT_EQ(vgroup->Compact(), KStatus::SUCCESS);
 
@@ -639,7 +650,7 @@ TEST_F(TsEntitySegmentTest, TestEntityMinMaxRowNum) {
       int row_num_in_entity_segment;
       int row_num_in_last_segment;
     };
-    std::vector<Expect> expects{{1, 1500, 0}, {0, 0, 30}, {1, 2000, 900}, {2, 4000, 0}, {4, 7000, 0}};
+    std::vector<Expect> expects{{1, 1500, 0}, {0, 0, 30}, {2, 2900, 0}, {2, 3999, 1}, {4, 7000, 0}};
     for (int i = 0; i < 5; ++i) {
       auto eid = i + 1;
       auto expect = expects[i];
@@ -650,7 +661,7 @@ TEST_F(TsEntitySegmentTest, TestEntityMinMaxRowNum) {
       if (is_exist) {
         std::vector<TsEntitySegmentBlockItemWithData> blk_items;
         ASSERT_EQ(entity_segment->GetAllBlockItems(eid, &blk_items), SUCCESS);
-        ASSERT_EQ(blk_items.size(), expect.nblock_in_entity_segment);
+        ASSERT_EQ(blk_items.size(), expect.nblock_in_entity_segment) << eid;
         int nrow = std::accumulate(blk_items.begin(), blk_items.end(), 0,
                                    [](int sum, TsEntitySegmentBlockItemWithData& blk_item_data) { return sum + blk_item_data.block_item->n_rows; });
         EXPECT_EQ(nrow, expect.row_num_in_entity_segment);

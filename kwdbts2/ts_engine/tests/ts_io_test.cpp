@@ -24,6 +24,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <filesystem>
 #include <fstream>
 #include <mutex>
 #include <numeric>
@@ -441,3 +442,69 @@ TEST(MMap, WriteEmptyFile_BUG_ID7BNN) {
 //   wfile1.reset();
 //   env->NewAppendOnlyFile(filename, &wfile2);
 // }
+
+TEST(MemoryIO, MemoryIOTest) {
+  TsIOEnv* env = &TsMemoryIOEnv::GetInstance();
+  std::string filename = "filename";
+  {
+    std::unique_ptr<TsAppendOnlyFile> wfile;
+    ASSERT_EQ(env->NewAppendOnlyFile(filename, &wfile), SUCCESS);
+    wfile->Append("123456789");
+  }
+  {
+    std::unique_ptr<TsRandomReadFile> rfile;
+    ASSERT_EQ(env->NewRandomReadFile(filename, &rfile), SUCCESS);
+    TsSliceGuard result;
+    ASSERT_EQ(rfile->Read(0, 9, &result), SUCCESS);
+    ASSERT_EQ(result.AsStringView(), "123456789");
+  }
+  {
+    std::unique_ptr<TsRandomReadFile> rfile;
+    ASSERT_EQ(env->NewRandomReadFile(filename, &rfile), SUCCESS);
+    rfile->MarkDelete();
+  }
+  {
+    std::unique_ptr<TsRandomReadFile> rfile;
+    ASSERT_EQ(env->NewRandomReadFile(filename, &rfile), FAIL);
+  }
+
+  std::string same_filename = "././././filename";
+  {
+    std::unique_ptr<TsAppendOnlyFile> wfile;
+    ASSERT_EQ(env->NewAppendOnlyFile(filename, &wfile), SUCCESS);
+    wfile->Append("123456789");
+  }
+  {
+    std::unique_ptr<TsRandomReadFile> rfile;
+    ASSERT_EQ(env->NewRandomReadFile(same_filename, &rfile), SUCCESS);
+    TsSliceGuard result;
+    ASSERT_EQ(rfile->Read(0, 9, &result), SUCCESS);
+    ASSERT_EQ(result.AsStringView(), "123456789");
+
+    char* ptr = result.data();
+    memcpy(ptr, "abc_abc", 7);
+  }
+
+  {
+    std::unique_ptr<TsRandomReadFile> rfile;
+    ASSERT_EQ(env->NewRandomReadFile(same_filename, &rfile), SUCCESS);
+    TsSliceGuard result;
+    ASSERT_EQ(rfile->Read(0, 9, &result), SUCCESS);
+    ASSERT_EQ(result.AsStringView(), "abc_abc89");
+  }
+
+  {
+    std::unique_ptr<TsRandomReadFile> rfile;
+    ASSERT_EQ(env->NewRandomReadFile(same_filename, &rfile), SUCCESS);
+    TsSliceGuard result;
+    ASSERT_EQ(rfile->Read(0, 9, &result), SUCCESS);
+    ASSERT_EQ(result.AsStringView(), "abc_abc89");
+
+    std::unique_ptr<TsAppendOnlyFile> wfile;
+    TsIOEnv* mmap_env = &TsMMapIOEnv::GetInstance();
+    fs::remove("testing");
+    ASSERT_EQ(mmap_env->NewAppendOnlyFile("testing", &wfile), SUCCESS);
+    ASSERT_EQ(FileRangeCopy(rfile.get(), wfile.get()), SUCCESS);
+  }
+
+}

@@ -33,6 +33,10 @@
 namespace kwdbts {
 
 KStatus TsEntitySegmentEntityItemFile::Open() {
+  if (io_env_->NewRandomReadFile(file_path_, &r_file_) != KStatus::SUCCESS) {
+    LOG_ERROR("TsEntitySegmentEntityItemFile NewRandomReadFile failed, file_path=%s", file_path_.c_str())
+    return KStatus::FAIL;
+  }
   if (r_file_->GetFileSize() < sizeof(TsEntityItemFileHeader)) {
     LOG_ERROR("TsEntitySegmentEntityItemFile open failed, file_path=%s", file_path_.c_str())
     return KStatus::FAIL;
@@ -92,6 +96,10 @@ bool TsEntitySegmentEntityItemFile::IsReady() {
 }
 
 KStatus TsEntitySegmentBlockItemFile::Open() {
+  if (io_env_->NewRandomReadFile(file_path_, &r_file_, file_size_) != KStatus::SUCCESS) {
+    LOG_ERROR("TsEntitySegmentBlockItemFile NewRandomReadFile failed, file_path=%s", file_path_.c_str())
+    return KStatus::FAIL;
+  }
   if (r_file_->GetFileSize() < sizeof(TsBlockItemFileHeader)) {
     LOG_ERROR("TsEntitySegmentBlockItemFile open failed, file_path=%s", file_path_.c_str())
     return KStatus::FAIL;
@@ -128,14 +136,14 @@ KStatus TsEntitySegmentBlockItemFile::GetBlockItem(uint64_t blk_id, TsEntitySegm
   return KStatus::SUCCESS;
 }
 
-TsEntitySegmentMetaManager::TsEntitySegmentMetaManager(const string& dir_path, EntitySegmentMetaInfo info)
+TsEntitySegmentMetaManager::TsEntitySegmentMetaManager(TsIOEnv* env, const string& dir_path, EntitySegmentMetaInfo info)
     : dir_path_(dir_path),
-      entity_header_(dir_path_ / EntityHeaderFileName(info.header_e_file_number)),
-      block_header_(dir_path_ / BlockHeaderFileName(info.header_b_info.file_number), info.header_b_info.length) {}
+      entity_header_(env, dir_path_ / EntityHeaderFileName(info.header_e_file_number)),
+      block_header_(env, dir_path_ / BlockHeaderFileName(info.header_b_info.file_number), info.header_b_info.length) {}
 
 KStatus TsEntitySegmentMetaManager::Open() {
   // Attempt to access the directory
-  if (access(dir_path_.c_str(), 0)) {
+  if (access(dir_path_.c_str(), F_OK)) {
     LOG_ERROR("cannot open directory [%s].", dir_path_.c_str());
     return KStatus::FAIL;
   }
@@ -791,8 +799,12 @@ void TsEntityBlock::RemoveFromSegment() {
   entity_segment_->RemoveEntityBlock(block_id_);
 }
 
-TsEntitySegment::TsEntitySegment(const fs::path& root, EntitySegmentMetaInfo info)
-    : dir_path_(root), meta_mgr_(root, info), block_file_(root, info), agg_file_(root, info), info_(info),
+TsEntitySegment::TsEntitySegment(EntitySegmentIOEnvSet env_set, const fs::path& root, EntitySegmentMetaInfo info)
+    : dir_path_(root),
+      meta_mgr_(env_set.header_io_env, root, info),
+      block_file_(env_set.block_agg_io_env, root, info),
+      agg_file_(env_set.block_agg_io_env, root, info),
+      info_(info),
       entity_blocks_rw_latch_(RWLATCH_ID_ENTITY_BLOCKS_RWLOCK) {
   KStatus s = Open();
   if (s != KStatus::SUCCESS) {

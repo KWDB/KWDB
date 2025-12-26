@@ -91,15 +91,15 @@ KStatus TsVersionManager::AddPartition(DatabaseID dbid, timestamp64 ptime) {
   }
 
   // create new partition under exclusive lock
+  auto partition_dir = root_path_ / PartitionDirName(partition_id);
   auto new_version = std::make_unique<TsVGroupVersion>(*current_);
-  std::unique_ptr<TsPartitionVersion> partition(new TsPartitionVersion{partition_id});
+  std::unique_ptr<TsPartitionVersion> partition(new TsPartitionVersion{partition_dir, partition_id});
   partition->valid_memseg_ = new_version->valid_memseg_;
 
   {
     // create directory for new partition
     // TODO(zzr): optimization: create the directory only when flushing
     // this logic is only for deletion and will be removed later after optimize delete
-    auto partition_dir = root_path_ / PartitionDirName(partition_id);
     env_->DeleteDir(partition_dir);
     env_->NewDirectory(partition_dir);
     LOG_INFO("Partition directory created: %s", partition_dir.string().c_str());
@@ -419,6 +419,14 @@ KStatus TsVersionManager::ApplyUpdate(TsVersionUpdate *update) {
     encoded_update = update->EncodeToString();
   }
 
+  TsIOEnv *header_env = nullptr;
+  if (EngineOptions::g_io_mode >= TsIOMode::FIO_AND_MMAP) {
+    header_env = &TsMMapIOEnv::GetInstance();
+  } else {
+    header_env = &TsFIOEnv::GetInstance();
+  }
+  EntitySegmentIOEnvSet env_set{&TsIOEnv::GetInstance(), header_env};
+
   // TODO(zzr): thinking concurrency control carefully.
   std::unique_lock lk{mu_};
 
@@ -433,10 +441,11 @@ KStatus TsVersionManager::ApplyUpdate(TsVersionUpdate *update) {
       if (new_vgroup_version->partitions_.find(p) != new_vgroup_version->partitions_.end()) {
         continue;
       }
-      auto partition = std::unique_ptr<TsPartitionVersion>(new TsPartitionVersion{p});
-      partition->del_info_ = std::make_shared<TsDelItemManager>(root_path_ / PartitionDirName(p));
+      auto partition_dir = root_path_ / PartitionDirName(p);
+      auto partition = std::unique_ptr<TsPartitionVersion>(new TsPartitionVersion{partition_dir, p});
+      partition->del_info_ = std::make_shared<TsDelItemManager>(partition_dir);
       partition->del_info_->Open();
-      partition->count_info_ = std::make_shared<TsPartitionEntityCountManager>(root_path_ / PartitionDirName(p));
+      partition->count_info_ = std::make_shared<TsPartitionEntityCountManager>(partition_dir);
       partition->count_info_->Open();
       // partition->meta_info_ = std::make_shared<TsPartitionEntityMetaManager>(root_path_ / PartitionDirName(p));
       // partition->meta_info_->Open();
@@ -458,15 +467,12 @@ KStatus TsVersionManager::ApplyUpdate(TsVersionUpdate *update) {
     auto new_partition_version = std::make_unique<TsPartitionVersion>(*par);
 
     if (update->partitions_created_.find(par_id) != update->partitions_created_.end()) {
-      new_partition_version->memory_only_ = false;
+      new_partition_version->directory_created_ = true;
+      new_partition_version->flushed_ = true;
     }
 
     if (update->has_new_mem_segments_ || update->has_del_mem_segments_) {
       new_partition_version->valid_memseg_ = new_vgroup_version->valid_memseg_;
-    }
-
-    if (update->partitions_created_.find(par_id) != update->partitions_created_.end()) {
-      new_partition_version->directory_created_ = true;
     }
 
     // Process lastsegment deletion, used by Compact()
@@ -536,7 +542,8 @@ KStatus TsVersionManager::ApplyUpdate(TsVersionUpdate *update) {
           new_partition_version->entity_segment_->MarkDeleteAll();
         }
       }
-      new_partition_version->entity_segment_ = std::make_unique<TsEntitySegment>(root, it->second);
+
+      new_partition_version->entity_segment_ = std::make_unique<TsEntitySegment>(env_set, root, it->second);
     }
 
     // VGroupVersion accepts the new partition version
@@ -813,10 +820,7 @@ KStatus TsPartitionVersion::GetBlockSpans(const TsScanFilterParams& filter,
 
 bool TsPartitionVersion::TrySetBusy(PartitionStatus desired) const {
   PartitionStatus expected = PartitionStatus::None;
-  if (exclusive_status_->compare_exchange_strong(expected, desired)) {
-    return true;
-  }
-  return false;
+  return exclusive_status_->compare_exchange_strong(expected, desired);
 }
 
 void TsPartitionVersion::ResetStatus() const {

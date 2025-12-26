@@ -10,6 +10,7 @@
 // See the Mulan PSL v2 for more details.
 #pragma once
 
+#include <algorithm>
 #include <atomic>
 #include <list>
 #include <memory>
@@ -92,6 +93,7 @@ class TsMemSegBlock : public TsBlock {
   timestamp64 max_ts_{INVALID_TS};
   std::shared_ptr<TsRawPayloadRowParser> parser_ = nullptr;
   std::unordered_map<uint32_t, char*> col_based_mems_;
+  std::vector<uint64_t> col_major_osn_;
   std::unordered_map<uint32_t, std::unique_ptr<TsBitmap>> col_bitmaps_;
   // it's safe to return memory address if memory_addr_safe_ is true
   bool memory_addr_safe_{false};
@@ -125,6 +127,11 @@ class TsMemSegBlock : public TsBlock {
   uint32_t GetTableVersion() override {
     assert(row_data_.size() > 0);
     return row_data_[0]->GetTableVersion();
+  }
+
+  uint32_t GetDBId() const {
+    assert(row_data_.size() > 0);
+    return row_data_[0]->GetDatabaseId();
   }
   void GetTSRange(timestamp64* min_ts, timestamp64* max_ts) {
     *min_ts = min_ts_;
@@ -178,7 +185,12 @@ class TsMemSegBlock : public TsBlock {
 
   const uint64_t* GetOSNAddr(int row_num, TsScanStats* ts_scan_stats = nullptr) override {
     assert(row_data_.size() > row_num);
-    return row_data_[row_num]->GetOSNAddr();
+    if (col_major_osn_.empty()) {
+      col_major_osn_.resize(row_data_.size());
+      std::transform(row_data_.begin(), row_data_.end(), col_major_osn_.begin(),
+                     [](const TSMemSegRowData* row) { return row->GetOSN(); });
+    }
+    return col_major_osn_.data();
   }
 
   KStatus GetColBitmap(uint32_t col_id, const std::vector<AttributeInfo>* schema,

@@ -12,20 +12,20 @@
 #include "ts_entity_segment_data.h"
 #include "ts_entity_segment_handle.h"
 #include "ts_filename.h"
+#include "ts_io.h"
 
 namespace kwdbts {
 
-TsEntitySegmentBlockFile::TsEntitySegmentBlockFile(const string& root, EntitySegmentMetaInfo info)
-    : root_path_(root), info_(std::move(info)) {
+TsEntitySegmentBlockFile::TsEntitySegmentBlockFile(TsIOEnv* io_env, const string& root, EntitySegmentMetaInfo info)
+    : io_env_(io_env), root_path_(root), info_(std::move(info)) {
   memset(&header_, 0, sizeof(TsAggAndBlockFileHeader));
 }
 
 TsEntitySegmentBlockFile::~TsEntitySegmentBlockFile() {}
 
 KStatus TsEntitySegmentBlockFile::Open() {
-  TsIOEnv* env = &TsIOEnv::GetInstance();
   std::string file_path_ = root_path_ / DataBlockFileName(info_.datablock_info.file_number);
-  if (env->NewRandomReadFile(file_path_, &r_file_, info_.datablock_info.length) != KStatus::SUCCESS) {
+  if (io_env_->NewRandomReadFile(file_path_, &r_file_, info_.datablock_info.length) != KStatus::SUCCESS) {
     LOG_ERROR("TsEntitySegmentBlockFile NewRandomReadFile failed, file_path=%s", file_path_.c_str())
     assert(false);
   }
@@ -55,14 +55,12 @@ KStatus TsEntitySegmentBlockFile::ReadData(uint64_t offset, TsSliceGuard* data, 
   return KStatus::SUCCESS;
 }
 
-TsEntitySegmentAggFile::TsEntitySegmentAggFile(const string& root, EntitySegmentMetaInfo info)
-    : root_(root), info_(std::move(info)) {
-}
+TsEntitySegmentAggFile::TsEntitySegmentAggFile(TsIOEnv* io_env, const string& root, EntitySegmentMetaInfo info)
+    : io_env_(io_env), root_(root), info_(std::move(info)) {}
 
 KStatus TsEntitySegmentAggFile::Open() {
-  TsIOEnv* env = &TsIOEnv::GetInstance();
   std::string file_path_ = root_ / EntityAggFileName(info_.agg_info.file_number);
-  if (env->NewRandomReadFile(file_path_, &r_file_, info_.agg_info.length) != KStatus::SUCCESS) {
+  if (io_env_->NewRandomReadFile(file_path_, &r_file_, info_.agg_info.length) != KStatus::SUCCESS) {
     LOG_ERROR("TsEntitySegmentAggFile NewRandomReadFile failed, file_path=%s", file_path_.c_str())
     assert(false);
   }

@@ -9,6 +9,7 @@
 // MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
 // See the Mulan PSL v2 for more details.
 
+#include <cstdio>
 #include "test_util.h"
 #include "ts_engine.h"
 #include "ts_table.h"
@@ -577,7 +578,7 @@ TEST_F(TestV2Iterator, mulitEntityDeleteCount) {
       count_header.entity_id = entity_id;
       s = count_info->GetEntityCountHeader(&count_header);
       if (vgroup->GetVGroupID() == v_group_id && entity_id == del_entity_id) {
-        ASSERT_EQ(count_header.is_count_valid, false);
+        ASSERT_EQ(count_header.is_count_valid, false) << entity_id;
         ASSERT_EQ(count_header.valid_count, 0);
       } else {
         ASSERT_EQ(count_header.is_count_valid, true);

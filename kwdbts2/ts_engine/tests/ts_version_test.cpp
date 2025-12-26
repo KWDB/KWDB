@@ -18,6 +18,7 @@
 #include "ts_filename.h"
 #include "ts_io.h"
 #include "ts_lastsegment_builder.h"
+#include "ts_segment.h"
 
 class TsVersionTest : public testing::Test {
  protected:
@@ -134,7 +135,8 @@ class TsVersionTest : public testing::Test {
     std::unique_ptr<TsAppendOnlyFile> file;
     ASSERT_EQ(env->NewAppendOnlyFile(last_seg_filename, &file), SUCCESS);
     TsLastSegmentBuilder builder(nullptr, std::move(file), filenumber);
-    ASSERT_EQ(builder.Finalize(), SUCCESS);
+    TsSegmentWriteStats stats;
+    ASSERT_EQ(builder.Finalize(&stats), SUCCESS);
     update.AddLastSegment(par_id, {filenumber, 0, 0});
     if (!force_kill) {
       ASSERT_EQ(mgr->ApplyUpdate(&update), SUCCESS);
@@ -153,7 +155,8 @@ class TsVersionTest : public testing::Test {
     std::unique_ptr<TsAppendOnlyFile> file;
     ASSERT_EQ(env->NewAppendOnlyFile(last_seg_filename, &file), SUCCESS);
     TsLastSegmentBuilder builder(nullptr, std::move(file), filenumber);
-    ASSERT_EQ(builder.Finalize(), SUCCESS);
+    TsSegmentWriteStats stats;
+    ASSERT_EQ(builder.Finalize(&stats), SUCCESS);
     update.AddLastSegment(par_id, {filenumber, std::min(level + 1, 3), 0});
     ASSERT_GE(lastsegments.size(), 2);
     update.DeleteLastSegment(par_id, lastsegments[0]->GetFileNumber());

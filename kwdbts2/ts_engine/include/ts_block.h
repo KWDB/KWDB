@@ -95,7 +95,7 @@ class TsBlockSpan {
   TSEntityID entity_id_ = 0;
   int start_row_ = 0, nrow_ = 0;
   bool has_pre_agg_{false};
-  const std::vector<AttributeInfo>* scan_attrs_;  // used only if block version equals scan version.
+  const std::vector<AttributeInfo>* scan_attrs_ = nullptr;  // used only if block version equals scan version.
 
  public:
   std::shared_ptr<TSBlkDataTypeConvert> convert_;
@@ -103,8 +103,6 @@ class TsBlockSpan {
   friend TSBlkDataTypeConvert;
 
  public:
-  TsBlockSpan() = default;
-
   TsBlockSpan(uint32_t vgroup_id, TSEntityID entity_id, std::shared_ptr<TsBlock> block, int start, int nrow,
               std::shared_ptr<TSBlkDataTypeConvert>& convert,
               uint32_t scan_version, const std::vector<AttributeInfo>* scan_attrs);
@@ -146,12 +144,17 @@ class TsBlockSpan {
   int GetStartRow() const { return start_row_; }
   int GetColCount() const { return scan_attrs_->size(); }
   std::shared_ptr<TsBlock> GetTsBlock() const { return block_; }
+  TsBlock* GetTsBlockRaw() const { return block_.get(); }
   TSTableID GetTableID() const { return block_->GetTableId(); }
   uint64_t GetBlockID() const { return block_->GetBlockID(); }
   uint32_t GetTableVersion() const { return block_->GetTableVersion(); }
   uint32_t GetScanVersion() const { return convert_ ? convert_->scan_version_ : GetTableVersion(); }
   timestamp64 GetTS(uint32_t row_idx, TsScanStats* ts_scan_stats = nullptr) const {
     return block_->GetTS(start_row_ + row_idx, ts_scan_stats);
+  }
+  DATATYPE GetTSType() const {
+    assert(scan_attrs_ != nullptr && scan_attrs_->size() > 0);
+    return static_cast<DATATYPE>((*scan_attrs_)[0].type);
   }
   timestamp64 GetFirstTS(TsScanStats* ts_scan_stats = nullptr) const {
     if (start_row_ == 0) {

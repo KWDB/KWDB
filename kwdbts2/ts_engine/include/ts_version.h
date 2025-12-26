@@ -140,9 +140,6 @@ class TsPartitionVersion {
     auto GetLevelGroupToCompact() const { return std::make_tuple(level_to_compact_, group_to_compact_); }
 
     const std::vector<std::shared_ptr<TsLastSegment>> &GetLastSegments(int level, int group) const {
-      if (level >= last_segments_.size() || group > GetGroupSize(level)) {
-        return std::vector<std::shared_ptr<TsLastSegment>>();
-      }
       return last_segments_[level][group];
     }
 
@@ -174,10 +171,11 @@ class TsPartitionVersion {
   std::shared_ptr<TsEntitySegment> entity_segment_;
   LastSegmentContainer leveled_last_segments_;
 
+  fs::path partition_path_;
   PartitionIdentifier partition_info_;
 
   bool directory_created_ = false;
-  bool memory_only_ = true;  // TODO(zzr): remove this field later
+  bool flushed_ = false;  // TODO(zzr): remove this field later
   std::shared_ptr<std::atomic<PartitionStatus>> exclusive_status_;
 
   std::shared_ptr<TsDelItemManager> del_info_;
@@ -185,8 +183,9 @@ class TsPartitionVersion {
   // std::shared_ptr<TsPartitionEntityMetaManager> meta_info_;
 
   // Only TsVersionManager can create TsPartitionVersion
-  explicit TsPartitionVersion(PartitionIdentifier partition_info)
-      : partition_info_(partition_info),
+  explicit TsPartitionVersion(fs::path partition_path, PartitionIdentifier partition_info)
+      : partition_path_(std::move(partition_path)),
+        partition_info_(partition_info),
         exclusive_status_(std::make_shared<std::atomic<PartitionStatus>>(PartitionStatus::None)) {}
 
  public:
@@ -197,7 +196,7 @@ class TsPartitionVersion {
   std::vector<std::shared_ptr<TsSegmentBase>> GetAllSegments() const;
 
   bool HasDirectoryCreated() const { return directory_created_; }
-  bool IsMemoryOnly() const { return memory_only_; }
+  bool HasFlushed() const { return flushed_; }
 
   DatabaseID GetDatabaseID() const { return std::get<0>(partition_info_); }
 
@@ -210,6 +209,7 @@ class TsPartitionVersion {
     return convertSecondToPrecisionTS(GetEndTime(), ts_type) - 1;
   }
 
+  fs::path GetPartitionPath() const { return partition_path_; }
   PartitionIdentifier GetPartitionIdentifier() const { return partition_info_; }
 
   std::string GetPartitionIdentifierStr() const {
@@ -363,8 +363,6 @@ class TsVersionUpdate {
 
   std::set<PartitionIdentifier> updated_partitions_;
 
-  std::mutex mu_;
-
   bool NeedRecordFileNumber() const { return has_new_lastseg_ || has_entity_segment_ || has_delete_lastseg_; }
   bool NeedRecord() const { return need_record_; }
   bool MemSegmentsOnly() const {
@@ -385,7 +383,6 @@ class TsVersionUpdate {
     need_record_ = true;
   }
   void AddLastSegment(const PartitionIdentifier &partition_id, LastSegmentMetaInfo meta) {
-    std::unique_lock lk{mu_};
     updated_partitions_.insert(partition_id);
     new_lastsegs_[partition_id].push_back(meta);
     has_new_lastseg_ = true;
@@ -399,7 +396,6 @@ class TsVersionUpdate {
   }
 
   void DeleteLastSegment(const PartitionIdentifier &partition_id, uint64_t file_number) {
-    std::unique_lock lk{mu_};
     updated_partitions_.insert(partition_id);
     delete_lastsegs_[partition_id].insert(file_number);
     has_delete_lastseg_ = true;
@@ -417,12 +413,16 @@ class TsVersionUpdate {
   }
 
   void SetEntitySegment(const PartitionIdentifier &partition_id, EntitySegmentMetaInfo info, bool delete_all_prev_files) {
-    std::unique_lock lk{mu_};
     updated_partitions_.insert(partition_id);
     entity_segment_[partition_id] = info;
     has_entity_segment_ = true;
     delete_all_prev_entity_segment_ = delete_all_prev_files;
     need_record_ = true;
+  }
+
+  void GetEntitySegmentInfo(const PartitionIdentifier &partition_id, EntitySegmentMetaInfo *info) {
+    assert(entity_segment_.count(partition_id) == 1);
+    *info = entity_segment_[partition_id];
   }
 
   void SetNextFileNumber(uint64_t file_number) {

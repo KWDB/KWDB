@@ -14,6 +14,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <limits>
+#include <numeric>
 #include <tuple>
 
 #include "data_type.h"
@@ -79,7 +80,7 @@ KStatus TsLastSegmentBuilder::PutBlockSpan(std::shared_ptr<TsBlockSpan> span) {
   return SUCCESS;
 }
 
-KStatus TsLastSegmentBuilder::Finalize() {
+KStatus TsLastSegmentBuilder::Finalize(TsSegmentWriteStats* stats) {
   if (metric_block_builder_ != nullptr && metric_block_builder_->GetRowNum() != 0) {
     auto s = RecordAndWriteBlockToFile();
     if (s == FAIL) {
@@ -87,8 +88,10 @@ KStatus TsLastSegmentBuilder::Finalize() {
     }
   }
   uint64_t current_offset = last_segment_file_->GetFileSize();
+  stats->written_bytes = current_offset;
   assert(block_info_buffer_.size() == block_index_buffer_.size());
   uint32_t nblock = block_index_buffer_.size();
+  stats->written_blocks = nblock;
   TsBufferBuilder buffer;
   for (uint32_t i = 0; i < nblock; ++i) {
     auto offset = buffer.size();
@@ -97,6 +100,8 @@ KStatus TsLastSegmentBuilder::Finalize() {
     block_index_buffer_[i].info_offset = current_offset + offset;
     block_index_buffer_[i].length = length;
   }
+  stats->written_rows = std::accumulate(block_info_buffer_.begin(), block_info_buffer_.end(), 0,
+                                        [](int lhs, const TsLastSegmentBlockInfo& info) { return lhs + info.nrow; });
   TsLastSegmentFooter footer_;
   footer_.magic_number = FOOTER_MAGIC;
   footer_.n_data_block = nblock;
@@ -111,6 +116,11 @@ KStatus TsLastSegmentBuilder::Finalize() {
     std::tuple<TSEntityID, timestamp64> current{index.min_entity_id, index.min_ts};
     // assert(current >= prev);
     prev = current;
+
+    stats->written_devices += index.n_entity;
+  }
+  for (int i = 1; i < nblock; ++i) {
+    stats->written_devices -= (block_index_buffer_[i].min_entity_id == block_index_buffer_[i - 1].min_entity_id);
   }
 
   std::vector<size_t> meta_block_offset;

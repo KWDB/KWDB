@@ -204,8 +204,9 @@ KStatus TsBlockSpan::MakeMergeBlockSpan(std::list<std::shared_ptr<kwdbts::TsBloc
   }
 
   std::shared_ptr<TsMemSegBlock> mem_block = std::make_shared<TsMemSegBlock>(nullptr);
-  TSMemSegRowDataWithGuard& dedup_row_data = mem_block->AllocateRow(0, first_block_span->GetTableID(), scan_version,
-                                                           first_block_span->GetEntityID());
+  TSMemSegRowDataWithGuard& dedup_row_data = mem_block->AllocateRow(tbl_schema_manager->GetDbID(),
+                                                                    first_block_span->GetTableID(), scan_version,
+                                                                    first_block_span->GetEntityID());
   dedup_row_data.SetData(first_block_span->GetTS(0), dedup_block_spans.back()->GetLastOSN());
   dedup_row_data.SetRowData(row_data_guard);
   mem_block->SetMemoryAddrSafe();
