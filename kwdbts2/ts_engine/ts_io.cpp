@@ -31,6 +31,45 @@
 
 namespace kwdbts {
 
+bool CreateDirSymLink(const fs::path& target_path, const fs::path& symbol_path) {
+  std::error_code ec;
+  const fs::file_status st = fs::symlink_status(symbol_path, ec);
+  if (!ec) {
+    if (fs::is_symlink(st)) {
+      ec.clear();
+      const fs::path actual_path = fs::read_symlink(symbol_path, ec);
+      if (ec) {
+        LOG_ERROR("CreateDirSymLink failed: read_symlink [%s] failed: %s", symbol_path.string().c_str(),
+                   ec.message().c_str());
+        return false;
+      }
+      if (!ec) {
+        if (actual_path == target_path) {
+          return true;
+        }
+        LOG_ERROR("CreateDirSymLink failed: symlink [%s] exists but link to [%s], configure path is [%s]",
+                   symbol_path.string().c_str(), actual_path.string().c_str(), target_path.string().c_str());
+        return false;
+      }
+    }
+  } else if (ec.value() != static_cast<int>(std::errc::no_such_file_or_directory)) {
+    LOG_ERROR("CreateDirSymLink failed: symlink_status [%s] failed: %s", symbol_path.string().c_str(), ec.message().c_str());
+    return false;
+  }
+
+  if (target_path != symbol_path) {
+    ec.clear();
+    fs::create_directory_symlink(target_path, symbol_path, ec);
+    if (ec) {
+      LOG_ERROR("create symlink [%s] -> [%s] failed: %s",
+                symbol_path.string().c_str(), target_path.string().c_str(), ec.message().c_str());
+      return false;
+    }
+  }
+
+  return true;
+}
+
 KStatus TsMMapAppendOnlyFile::UnmapCurrent() {
   if (mmap_start_ == nullptr) {
     return SUCCESS;

@@ -47,7 +47,7 @@ int64_t EngineOptions::default_partition_interval = 3600 * 24 * 10;
 int64_t EngineOptions::block_cache_max_size = 0;
 uint8_t EngineOptions::compress_stage = 2;
 bool EngineOptions::compress_last_segment = false;
-bool EngineOptions::force_sync_counter_file = true;
+bool EngineOptions::force_sync_file = true;
 size_t EngineOptions::last_cache_max_size = 1 << 30;
 double EngineOptions::block_filter_sampling_ratio = 0.2;
 
@@ -296,6 +296,13 @@ KStatus TSEngineImpl::Init(kwdbContext_p ctx) {
   }
   bool vgroup_configured = vgroup_cfg.size() == EngineOptions::vgroup_max_num ? true : false;
   vgroups_.clear();
+  fs::path wal_path = db_path / "wal";
+  s = TsIOEnv::GetInstance().NewDirectory(wal_path);
+  if (s == FAIL) {
+    LOG_ERROR("Failed to create directory: %s", wal_path.c_str());
+    return s;
+  }
+
   for (int vgroup_id = 1; vgroup_id <= EngineOptions::vgroup_max_num; vgroup_id++) {
     std::unique_ptr<TsVGroup> vgroup{nullptr};
     if (vgroup_configured) {

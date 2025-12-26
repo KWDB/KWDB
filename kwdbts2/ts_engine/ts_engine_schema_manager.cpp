@@ -71,7 +71,7 @@ KStatus TsEngineSchemaManager::Init(kwdbContext_p ctx) {
           }
           s = PartitionIntervalRecorder::GetInstance()->RecordInterval(tb_schema_mgr->GetDbID(), partition_interval);
           if (s != KStatus::SUCCESS) {
-            LOG_ERROR("Partition interval of db_id %lu is %ld, not %ld for table id %u", tb_schema_mgr->GetDbID(),
+            LOG_ERROR("Partition interval of db_id %u is %ld, not %ld for table id %u", tb_schema_mgr->GetDbID(),
                        PartitionIntervalRecorder::GetInstance()->GetInterval(tb_schema_mgr->GetDbID()),
                        partition_interval, table_id);
             return s;
@@ -110,11 +110,11 @@ KStatus TsEngineSchemaManager::CreateTable(kwdbContext_p ctx, const uint32_t& db
   }
 
   ErrorInfo err_info;
-  string table_path = schema_root_path_.string() + "/" + std::to_string(table_id) + "/";
+  fs::path table_path = schema_root_path_ / std::to_string(table_id);
   MakeDirectory(table_path, err_info);
-  string metric_schema_path = table_path + "metric";
+  fs::path metric_schema_path = table_path / "metric";
   MakeDirectory(metric_schema_path, err_info);
-  string tag_schema_path = table_path + "tag";
+  fs::path tag_schema_path = table_path / "tag";
   MakeDirectory(tag_schema_path, err_info);
 
   auto tbl_schema_mgr = std::make_unique<TsTableSchemaManager>(schema_root_path_, table_id);
@@ -201,7 +201,7 @@ KStatus TsEngineSchemaManager::GetTableMetricSchema(kwdbContext_p ctx, TSTableID
 }
 
 bool TsEngineSchemaManager::IsTableExist(TSTableID tbl_id) {
-  auto tbl_schema_mgr = std::make_unique<TsTableSchemaManager>(schema_root_path_.string(), tbl_id);
+  auto tbl_schema_mgr = std::make_unique<TsTableSchemaManager>(schema_root_path_, tbl_id);
   if (tbl_schema_mgr->IsSchemaDirsExist()) {
     return true;
   }

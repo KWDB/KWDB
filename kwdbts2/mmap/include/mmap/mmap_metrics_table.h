@@ -24,7 +24,7 @@ class MMapMetricsTable : public TSObject, public TsTableObject {
   string name_;
 
  public:
-  MMapMetricsTable() : TSObject(), rw_latch_(RWLATCH_ID_MMAP_METRICS_TABLE_RWLOCK) {}
+  MMapMetricsTable() : rw_latch_(RWLATCH_ID_MMAP_METRICS_TABLE_RWLOCK) {}
 
   virtual ~MMapMetricsTable();
 
@@ -37,14 +37,13 @@ class MMapMetricsTable : public TSObject, public TsTableObject {
   /**
    * @brief	open a big object.
    *
-   * @param 	table_path			big object path to be opened.
-   * @param 	flag		option to open a file; O_CREAT to create new file.
+   * @param 	table_name			big object name to be opened.
+   * @param 	flags		option to open a file; O_CREAT to create new file.
    * @return	0 succeed, otherwise -1.
    */
-  int open(const string& table_path, const std::string& db_path, const string& tbl_sub_path,
-           int flags, ErrorInfo& err_info) override;
+  int open(const std::string& table_name, const fs::path& table_path, int flags, ErrorInfo& err_info);
 
-  int create(const vector<AttributeInfo>& schema, const uint32_t& table_version, const string& tbl_sub_path,
+  int create(const vector<AttributeInfo>& schema, const uint32_t& table_version,
              uint64_t partition_interval, int encoding, ErrorInfo& err_info, bool init_data,
              uint64_t hash_number = 2000);
 
@@ -74,11 +73,9 @@ class MMapMetricsTable : public TSObject, public TsTableObject {
     return meta_data_->schema_version;
   }
 
-  virtual const string& tbl_sub_path() const { return tbl_sub_path_; }
+  string name() const override { return name_; }
 
-  virtual string name() const override { return name_; }
-
-  virtual string path() const override;
+  string path() const override;
 
   uint64_t& partitionInterval() { return meta_data_->partition_interval; }
 
@@ -88,9 +85,7 @@ class MMapMetricsTable : public TSObject, public TsTableObject {
 
   virtual int remove();
 
-  int rename(const string& new_fp, const string& file_path);
-
-  virtual void sync(int flags) override;
+  void sync(int flags) override;
 
   LifeTime GetLifeTime() { return LifeTime{meta_data_->life_time, meta_data_->precision}; }
 
@@ -105,7 +100,5 @@ class MMapMetricsTable : public TSObject, public TsTableObject {
 
   int Sync(kwdbts::TS_OSN check_lsn, ErrorInfo& err_info);
 
-  int Sync(kwdbts::TS_OSN check_lsn, map<uint32_t, uint64_t>& rows, ErrorInfo& err_info);
-
-  int UndoDeleteEntity(uint32_t entity_id, kwdbts::TS_OSN lsn, uint64_t* count, ErrorInfo& err_info);
+  int Sync();
 };

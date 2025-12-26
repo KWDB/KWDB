@@ -31,6 +31,9 @@ class WALMgr {
 
   WALMgr(const string& db_path, std::string vgrp_name, EngineOptions* opt, bool read_chk = false);
 
+  WALMgr(const string& db_path, std::string vgrp_name, EngineOptions* opt,
+         const std::string& user_defined_path, bool read_chk = false);
+
   ~WALMgr();
 
   KStatus Create(kwdbContext_p ctx);
@@ -425,6 +428,8 @@ class WALMgr {
   KTableKey table_id_;
   uint64_t entity_grp_id_;
   string wal_path_;
+  string parent_dir_;
+  fs::path user_defined_wal_path_;
 
   WALBufferMgr* buffer_mgr_{nullptr};
   WALFileMgr* file_mgr_{nullptr};

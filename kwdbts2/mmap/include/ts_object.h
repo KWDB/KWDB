@@ -103,7 +103,6 @@ public:
   /// @brief	Open an object via PATH.
   ///
   /// @param	obj_path         TSObject PATH.
-  /// @param	sandobx		Name of tbl_sub_path(directory).
   /// @param	flags		Access modes of the object.
   /// @return	0 succeed, otherwise -1.
   ///

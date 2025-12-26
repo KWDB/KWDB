@@ -12,6 +12,7 @@
 #include "st_wal_mgr.h"
 #include "st_wal_internal_logfile_mgr.h"
 #include "sys_utils.h"
+#include "ts_io.h"
 
 namespace kwdbts {
 
@@ -32,8 +33,20 @@ WALMgr::WALMgr(const string& db_path, const KTableKey& table_id, uint64_t entity
 }
 
 WALMgr::WALMgr(const string &db_path, std::string vgrp_name, EngineOptions *opt, bool read_chk) :
-      db_path_(db_path), table_id_(0), entity_grp_id_(0), opt_(opt), read_chk_(read_chk) {
+      db_path_(db_path), table_id_(0), entity_grp_id_(0), parent_dir_(vgrp_name), opt_(opt), read_chk_(read_chk) {
   wal_path_ = db_path_ + "/wal/" + vgrp_name + "/";
+  file_mgr_ = KNEW WALFileMgr(wal_path_, table_id_, opt, read_chk);
+  buffer_mgr_ = KNEW WALBufferMgr(opt, file_mgr_);
+  meta_mutex_ = KNEW WALMgrLatch(LATCH_ID_WALMGR_META_MUTEX);
+}
+
+WALMgr::WALMgr(const string& db_path, std::string vgrp_name, EngineOptions* opt, const std::string& user_defined_path,
+    bool read_chk) : db_path_(db_path), table_id_(0), entity_grp_id_(0), parent_dir_(vgrp_name), opt_(opt), read_chk_
+  (read_chk) {
+  wal_path_ = db_path_ + "/wal/" + vgrp_name + "/";
+  if (!user_defined_path.empty()) {
+    user_defined_wal_path_ = fs::path(user_defined_path) / "wal/";
+  }
   file_mgr_ = KNEW WALFileMgr(wal_path_, table_id_, opt, read_chk);
   buffer_mgr_ = KNEW WALBufferMgr(opt, file_mgr_);
   meta_mutex_ = KNEW WALMgrLatch(LATCH_ID_WALMGR_META_MUTEX);
@@ -58,9 +71,25 @@ WALMgr::~WALMgr() {
 
 KStatus WALMgr::Create(kwdbContext_p ctx) {
   if (!IsExists(wal_path_)) {
-    if (!MakeDirectory(wal_path_)) {
-      LOG_ERROR("Failed to create the WAL log directory '%s'", wal_path_.c_str())
-      return FAIL;
+    if (user_defined_wal_path_.empty()) {
+      if (!MakeDirectory(wal_path_)) {
+        LOG_ERROR("Failed to create the WAL log directory '%s'", wal_path_.c_str())
+        return FAIL;
+      }
+    } else {
+      if (!MakeDirectory(user_defined_wal_path_)) {
+        LOG_ERROR("Failed to create the WAL log directory '%s'", user_defined_wal_path_.c_str())
+        return FAIL;
+      }
+      string symbol_path = wal_path_;
+      if (!symbol_path.empty()) {
+        symbol_path.pop_back();
+      }
+      bool ok = CreateDirSymLink(user_defined_wal_path_, symbol_path);
+      if (!ok) {
+        LOG_ERROR("Init %s/wal failed, please check user defined vgroup path", parent_dir_.c_str());
+        return FAIL;
+      }
     }
   }
 

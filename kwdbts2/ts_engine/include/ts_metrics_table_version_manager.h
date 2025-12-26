@@ -16,24 +16,24 @@
 #include <unordered_map>
 #include <vector>
 #include "mmap/mmap_metrics_table.h"
+#include "sys_utils.h"
 
 namespace kwdbts {
 
 class MetricsVersionManager {
-  std::string table_path_;
-  std::string tbl_sub_path_;
-  uint64_t table_id_{0};
+  fs::path metric_schema_path_;
+  KTableKey table_id_{0};
   uint32_t cur_metric_version_{0};
   // metric schema of current version
-  std::shared_ptr<MMapMetricsTable> cur_metric_table_;
+  std::shared_ptr<MMapMetricsTable> cur_metric_table_{nullptr};
   // schemas of all versions
   std::unordered_map<uint32_t, std::shared_ptr<MMapMetricsTable>> metric_tables_;
   KRWLatch schema_rw_lock_;
 
  public:
-  MetricsVersionManager(const std::string& table_path, const std::string& sub_path, uint64_t table_id) :
-                            table_path_(table_path), tbl_sub_path_(sub_path), table_id_(table_id),
-                            schema_rw_lock_(RWLATCH_ID_METRIC_VERSION_RWLOCK) {}
+  MetricsVersionManager(const fs::path& metric_schema_path, KTableKey table_id) :
+                        metric_schema_path_(metric_schema_path), table_id_(table_id),
+                        schema_rw_lock_(RWLATCH_ID_METRIC_VERSION_RWLOCK) {}
 
   ~MetricsVersionManager();
 
@@ -72,7 +72,7 @@ class MetricsVersionManager {
 
   void SetPartitionInterval(uint64_t partition_interval);
 
-  uint64_t GetDbID();
+  uint32_t GetDbID();
 
   void Sync(const kwdbts::TS_OSN& check_lsn, ErrorInfo& err_info);
 

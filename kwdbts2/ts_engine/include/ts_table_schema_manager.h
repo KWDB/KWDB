@@ -25,6 +25,7 @@
 #include "mmap/mmap_tag_table.h"
 #include "mmap/mmap_metrics_table.h"
 #include "ts_metrics_table_version_manager.h"
+#include "sys_utils.h"
 
 namespace kwdbts {
 class SchemaVersionConv {
@@ -45,12 +46,12 @@ class SchemaVersionConv {
  */
 class TsTableSchemaManager {
   TSTableID table_id_;
-  // schema path of the database
-  string table_path_;
+  // schema path of the table
+  fs::path table_path_;
   // schema path of the metric
-  string metric_schema_path_;
+  fs::path metric_path_;
   // schema path of the tag
-  string tag_schema_path_;
+  fs::path tag_path_;
   uint64_t hash_num_;
 
  protected:
@@ -65,12 +66,12 @@ class TsTableSchemaManager {
  public:
   TsTableSchemaManager() = delete;
 
-  TsTableSchemaManager(const string& root_path, TSTableID tbl_id) : table_id_(tbl_id),
+  TsTableSchemaManager(const fs::path& schema_root_path, const TSTableID tbl_id) : table_id_(tbl_id),
     table_version_rw_lock_(RWLATCH_ID_TABLE_VERSION_RWLOCK),
     ver_conv_rw_lock_(RWLATCH_ID_VERSION_CONV_RWLOCK) {
-    table_path_ = root_path + "/" + std::to_string(tbl_id) + "/";
-    metric_schema_path_ = "metric/";
-    tag_schema_path_ = "tag/";
+    table_path_ = schema_root_path / fs::path(std::to_string(tbl_id) + "/");
+    metric_path_ = "metric";
+    tag_path_ = "tag/";  // tag use '+' to generate file path, '/' is needed.
   }
 
   bool IsSchemaDirsExist();
@@ -139,9 +140,7 @@ class TsTableSchemaManager {
 
   void SetPartitionInterval(uint64_t partition_interval) const;
 
-  uint64_t GetDbID() const;
-
-  int Sync(const kwdbts::TS_OSN& check_lsn, ErrorInfo& err_info);
+  uint32_t GetDbID() const;
 
   KStatus SetDropped();
 

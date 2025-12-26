@@ -197,7 +197,7 @@ var (
 
 	compressLastSegment = settings.RegisterPublicBoolSetting(
 		"ts.compress.last_segment.enabled",
-		"weather compress last segment data",
+		"whether to compress last segment data",
 		false)
 
 	maxReservedLastSegNum = settings.RegisterPublicIntSetting(

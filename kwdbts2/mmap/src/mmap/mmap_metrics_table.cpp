@@ -28,18 +28,18 @@ MMapMetricsTable::~MMapMetricsTable() {
 
 impl_latch_virtual_func(MMapMetricsTable, &rw_latch_)
 
-int MMapMetricsTable::open(const string& table_path, const std::string& db_path, const string& tbl_sub_path,
+int MMapMetricsTable::open(const std::string& table_name, const fs::path& table_path,
                            int flags, ErrorInfo& err_info) {
-  string file_path = getTsFilePath(table_path);
-  if ((err_info.errcode = TsTableObject::open(file_path, db_path, tbl_sub_path,
+  const fs::path absolute_path = table_path / table_name;
+  if ((err_info.errcode = TsTableObject::open(table_name, absolute_path,
                                               magic(), flags)) < 0) {
-    err_info.setError(err_info.errcode, tbl_sub_path + getTsFilePath(table_path));
+    err_info.setError(err_info.errcode, absolute_path);
     return err_info.errcode;
   }
   name_ = getTsObjectName(path());
   if (metaDataLen() < (off_t) sizeof(TSTableFileMetadata)) {
     if (!(bt_file_.flags() & O_CREAT)) {
-      err_info.setError(KWECORR, tbl_sub_path + getTsFilePath(table_path));
+      err_info.setError(KWECORR, absolute_path);
     }
     return err_info.errcode;
   }
@@ -47,7 +47,7 @@ int MMapMetricsTable::open(const string& table_path, const std::string& db_path,
   return err_info.errcode;
 }
 
-int MMapMetricsTable::create(const vector<AttributeInfo>& schema, const uint32_t& table_version, const string& tbl_sub_path,
+int MMapMetricsTable::create(const vector<AttributeInfo>& schema, const uint32_t& table_version,
                              uint64_t partition_interval, int encoding, ErrorInfo& err_info, bool init_data,
                              uint64_t hash_number) {
   if (init(schema, err_info) < 0)
@@ -114,32 +114,12 @@ void MMapMetricsTable::sync(int flags) {
   bt_file_.sync(flags);
 }
 
-
 int MMapMetricsTable::Sync(kwdbts::TS_OSN check_lsn, ErrorInfo& err_info) {
   sync(MS_SYNC);
   return 0;
 }
 
-int MMapMetricsTable::Sync(kwdbts::TS_OSN check_lsn, map<uint32_t, uint64_t>& rows,
-                           ErrorInfo& err_info) {
+int MMapMetricsTable::Sync() {
+  sync(MS_SYNC);
   return 0;
-}
-
-int MMapMetricsTable::UndoDeleteEntity(uint32_t entity_id, kwdbts::TS_OSN lsn, uint64_t* count, ErrorInfo& err_info) {
-  return 0;
-}
-
-int MMapMetricsTable::rename(const string& new_fp, const string& file_path) {
-  int err_code = 0;
-  if (!realFilePath().empty()) {
-    err_code = ::rename(bt_file_.realFilePath().c_str(), new_fp.c_str());
-    if (err_code != 0) {
-      err_code = errnoToErrorCode();
-      return err_code;
-    }
-    bt_file_.realFilePath() = new_fp;
-    bt_file_.filePath() = file_path;
-    name_ = getTsObjectName(bt_file_.filePath());
-  }
-  return err_code;
 }

@@ -114,8 +114,6 @@ class TsVGroup {
 
   ~TsVGroup();
 
-  bool createDirSymLink(const fs::path& target_path, const fs::path& symbol_link);
-
   KStatus Init(kwdbContext_p ctx);
 
   KStatus CreateTable(kwdbContext_p ctx, const KTableKey& table_id, roachpb::CreateTsTable* meta);

@@ -17,6 +17,7 @@
 #include <string>
 #include <utility>
 #include "ts_object_error.h"
+#include "sys_utils.h"
 
 #define O_NORECURSIVE   0x01000000
 #define O_MATERIALIZATION  0x02000000
@@ -38,7 +39,7 @@ class MMapFile {
   void *mem_;  // memory mapped address.
   off_t file_length_;
   off_t new_length_;
-  std::string file_path_;  // file path
+  std::string file_name_;
   std::string absolute_file_path_;
   int flags_;
 
@@ -61,8 +62,6 @@ class MMapFile {
    */
   virtual ~MMapFile();
 
-  int open(const std::string &file_path, int flags);
-
   /**
    * @brief open temporary file for mmap file.
    * @return >= 0 if succeed, otherwise -1.
@@ -75,9 +74,10 @@ class MMapFile {
    * @param	flag		O_CREAT to create file or 0.
    * @return	>= 0 if succeed, otherwise -1.
    */
-  int open(const std::string &file_path, const std::string &absolute_file_path, int flags);
+  int open(const std::string &file_name, const std::string &absolute_file_path, int flags);
 
-  int open(const std::string &file_path, const std::string &absolute_file_path, int flags, size_t init_sz, ErrorInfo &err_info);
+  int open(const std::string &file_name, const std::string &absolute_file_path, int flags, size_t init_sz, ErrorInfo
+   &err_info);
 
   /**
    * @brief	open and memory map a file.
@@ -105,9 +105,9 @@ class MMapFile {
 
   off_t newLen() const { return new_length_; }
 
-  std::string filePath() const { return file_path_; }
+  std::string filePath() const { return file_name_; }
 
-  std::string& filePath() { return file_path_; }
+  std::string& filePath() { return file_name_; }
 
   std::string realFilePath() const { return absolute_file_path_; }
 

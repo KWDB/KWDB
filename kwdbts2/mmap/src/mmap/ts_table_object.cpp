@@ -21,11 +21,8 @@ TsTableObject::TsTableObject() {
 TsTableObject::~TsTableObject() {
 }
 
-int TsTableObject::open(const string& table_path, const std::string& db_path, const string& tbl_sub_path, int cc,
-                        int flags) {
-  db_path_ = db_path;
-  tbl_sub_path_ = tbl_sub_path;
-  int error_code = bt_file_.open(table_path, db_path_ + tbl_sub_path_ + table_path, flags);
+int TsTableObject::open(const fs::path& table_path, const fs::path& absolute_file_path, int cc, int flags) {
+  int error_code = bt_file_.open(table_path, absolute_file_path, flags);
   if (error_code < 0) {
     return error_code;
   }

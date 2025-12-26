@@ -19,6 +19,7 @@
 #include "utils/big_table_utils.h"
 #include "data_type.h"
 #include "settings.h"
+#include "sys_utils.h"
 
 using namespace kwdbts;
 
@@ -68,8 +69,6 @@ class TsTableObject {
   TSTableFileMetadata* meta_data_;
   void* mem_data_;        ///< data section starting address.
   string obj_name_;
-  string db_path_;  // file path
-  string tbl_sub_path_;
 
   vector<AttributeInfo> cols_info_include_dropped_;
   vector<AttributeInfo> cols_info_exclude_dropped_;
@@ -97,12 +96,11 @@ class TsTableObject {
   /**
    * @brief	open a big object.
    *
-   * @param 	table_path			big object path to be opened.
+   * @param 	absolute_file_path			big object path to be opened.
    * @param 	flag		option to open a file; O_CREAT to create new file
-   * @param	tbl_sub_path		sub path.
    * @return	>= 0 if succeed, otherwise -1.
    */
-  int open(const string& table_path, const std::string& db_path, const string& tbl_sub_path, int cc, int flags);
+  int open(const fs::path& table_path, const fs::path& absolute_file_path, int cc, int flags);
 
   int close();
 

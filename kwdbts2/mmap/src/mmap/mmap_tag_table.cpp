@@ -418,7 +418,7 @@ int TagTable::InsertTagRecord(kwdbts::TsRawPayload &payload, int32_t sub_group_i
     old_tag_partition_table->stopRead();
   }
   tag_partition_table->startRead();
-  if (EngineOptions::force_sync_counter_file) {
+  if (EngineOptions::force_sync_file) {
     tag_partition_table->sync(MS_SYNC);
     if (m_index_ != nullptr) {
       m_index_->sync(MS_SYNC);

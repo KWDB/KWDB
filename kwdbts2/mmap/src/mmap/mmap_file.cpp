@@ -43,7 +43,7 @@ int MMapFile::open() {
   if (flags_ & (O_ANONYMOUS|O_MATERIALIZATION))
     return 0;
 
-  if (absolute_file_path_ == "") {
+  if (absolute_file_path_.empty()) {
     // create a temporary file for mmap file since absolute_file_path_ is empty
     char file_name_template[] = "/tmp/kwdb_XXXXXX";
     if ((fd = ::mkstemp(file_name_template)) < 0) {
@@ -90,28 +90,22 @@ int MMapFile::open() {
 
 int MMapFile::openTemp() {
   // set file_path_ to empty and let it create a temporary file.
-  file_path_ = "";
-  absolute_file_path_ = file_path_;
+  file_name_ = "";
+  absolute_file_path_ = file_name_;
   flags_ = O_CREAT;
   return open();
 }
 
-int MMapFile::open(const std::string &file_path, int flags) {
-  file_path_ = file_path;
-  absolute_file_path_ = file_path_;
-  flags_ = flags;
-  return open();
-}
-
-int MMapFile::open(const std::string &file_path, const std::string &absolute_file_path, int flags) {
-  file_path_ = file_path;
+int MMapFile::open(const std::string& file_name, const std::string& absolute_file_path, int flags) {
+  file_name_ = file_name;
   absolute_file_path_ = absolute_file_path;
   flags_ = flags;
   return open();
 }
 
-int MMapFile::open(const std::string &file_path, const std::string &absolute_file_path, int flags, size_t init_sz, ErrorInfo &err_info) {
-  err_info.errcode = open(file_path, absolute_file_path, flags);
+int MMapFile::open(const std::string& file_name, const std::string& absolute_file_path, int flags, size_t init_sz, ErrorInfo
+  &err_info) {
+  err_info.errcode = open(file_name, absolute_file_path, flags);
   if (err_info.errcode < 0)
     return err_info.errcode;
   if (file_length_ < (off_t)init_sz) {
@@ -141,7 +135,7 @@ int MMapFile::mremap(size_t length) {
     if (err_code == KWENOMEM) {
         ErrorInfo err_info;
         err_info.setError(KWENOMEM);
-        LOG_FATAL("remmap file faild. %s", this->file_path_.c_str());
+        LOG_FATAL("remmap file faild. %s", this->file_name_.c_str());
     }
     return err_code;
 }
@@ -256,7 +250,7 @@ void MMapFile::copyMember(MMapFile& other) {
   absolute_file_path_ = other.absolute_file_path_;
   file_length_ = other.file_length_;
   new_length_ = other.new_length_;
-  file_path_ = other.file_path_;
+  file_name_ = other.file_name_;
   flags_ = other.flags_;
 }
 

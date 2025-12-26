@@ -85,7 +85,7 @@ int TagColumn::extend(size_t old_record_count, size_t new_record_count) {
   }
   if ((err_code = mremap(sizeof(TagColumnMetaData) + new_record_count*m_store_size_)) < 0) {
     LOG_ERROR("failed to extend the tag file %s, new size is: %lu",
-        file_path_.c_str(), new_record_count*m_store_size_);
+        file_name_.c_str(), new_record_count*m_store_size_);
     return err_code;
   }
   if (m_str_file_) {
@@ -120,7 +120,7 @@ int TagColumn::writeValue(size_t row, const char* data, uint32_t len) {
       loc_str = m_str_file_->push_back_binary(data, len);
     }
     if (loc_str == 0) {
-      LOG_ERROR("failed to write the tag file %s", file_path_.c_str());
+      LOG_ERROR("failed to write the tag file %s", file_name_.c_str());
       return -1;
     }
     memcpy(rowAddrNoNullBitmap(row), &loc_str, sizeof(uint64_t));
@@ -189,7 +189,7 @@ int TagColumn::rename(std::string& new_col_file_name) {
    goto str_file_error;
   }
   this->setFlags(MMAP_OPEN);
-  this->file_path_ = new_col_file_name;
+  this->file_name_ = new_col_file_name;
   // open new col file
   if ((err_code = MMapFile::open()) < 0) {
     LOG_ERROR("failed open mmap file %s after renaming.", realFilePath().c_str());

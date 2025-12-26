@@ -101,53 +101,13 @@ TsVGroup::~TsVGroup() {
   cur_mem_size_ = 0;
 }
 
-bool TsVGroup::createDirSymLink(const fs::path& target_path, const fs::path& symbol_path) {
-  std::error_code ec;
-  const fs::file_status st = fs::symlink_status(symbol_path, ec);
-  if (!ec) {
-    if (fs::is_symlink(st)) {
-      ec.clear();
-      const fs::path actual_path = fs::read_symlink(symbol_path, ec);
-      if (ec) {
-        LOG_ERROR("CreateDirSymLink failed: read_symlink [%s] failed: %s", symbol_path.string().c_str(),
-                   ec.message().c_str());
-        return false;
-      }
-      if (!ec) {
-        if (actual_path == target_path) {
-          return true;
-        }
-        LOG_ERROR("CreateDirSymLink failed: symlink [%s] exists but link to [%s], configure path is [%s]",
-                   symbol_path.string().c_str(), actual_path.string().c_str(), target_path.string().c_str());
-        return false;
-      }
-    }
-  } else if (ec.value() != static_cast<int>(std::errc::no_such_file_or_directory)) {
-    LOG_ERROR("CreateDirSymLink failed: symlink_status [%s] failed: %s", symbol_path.string().c_str(), ec.message().c_str());
-    return false;
-  }
-
-  if (target_path != symbol_path) {
-    ec.clear();
-    fs::create_directory_symlink(target_path, symbol_path, ec);
-    if (ec) {
-      LOG_ERROR("create symlink [%s] -> [%s] failed: %s",
-                symbol_path.string().c_str(), target_path.string().c_str(), ec.message().c_str());
-      return false;
-    }
-  }
-
-  return true;
-}
-
 KStatus TsVGroup::Init(kwdbContext_p ctx) {
   KStatus s;
   if (user_defined_path_.empty()) {
     s = TsIOEnv::GetInstance().NewDirectory(path_);
   } else {
     s = TsIOEnv::GetInstance().NewDirectory(user_defined_path_);
-    std::error_code ec;
-    bool ok = createDirSymLink(user_defined_path_, path_);
+    bool ok = CreateDirSymLink(user_defined_path_, path_);
     if (!ok) {
       LOG_ERROR("Init VGroup %u failed, please check user defined vgroup path", vgroup_id_);
       return FAIL;
@@ -165,7 +125,12 @@ KStatus TsVGroup::Init(kwdbContext_p ctx) {
   }
   initCompactThread();
 
-  wal_manager_ = std::make_unique<WALMgr>(engine_options_->db_path, VGroupDirName(vgroup_id_), engine_options_);
+  if (user_defined_path_.empty()) {
+    wal_manager_ = std::make_unique<WALMgr>(engine_options_->db_path, VGroupDirName(vgroup_id_), engine_options_);
+  } else {
+    wal_manager_ = std::make_unique<WALMgr>(engine_options_->db_path, VGroupDirName(vgroup_id_),
+      engine_options_, user_defined_path_);
+  }
   tsx_manager_ = std::make_unique<TSxMgr>(wal_manager_.get());
   auto res = wal_manager_->Init(ctx);
   if (res == KStatus::FAIL) {

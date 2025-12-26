@@ -44,6 +44,8 @@ enum TsFileStatus {
   READY = 1,
 };
 
+bool CreateDirSymLink(const fs::path& target_path, const fs::path& symbol_path);
+
 inline size_t TruncateToPage(size_t offset, size_t page_size) {
   assert((page_size & (page_size - 1)) == 0);
   offset -= offset & (page_size - 1);
@@ -628,7 +630,7 @@ class TsMMapAllocFile : public FileWithIndex {
   }
 
   KStatus NodeSync(size_t offset, size_t len) {
-    if (!EngineOptions::force_sync_counter_file) {
+    if (!EngineOptions::force_sync_file) {
       return SUCCESS;
     }
     uint64_t cur_offset = 0;
@@ -703,7 +705,7 @@ class TsMMapAllocFile : public FileWithIndex {
   }
 
   KStatus Sync() override {
-    if (!EngineOptions::force_sync_counter_file) {
+    if (!EngineOptions::force_sync_file) {
       return SUCCESS;
     }
     RW_LATCH_X_LOCK(rw_lock_);
