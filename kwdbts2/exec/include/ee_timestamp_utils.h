@@ -417,10 +417,10 @@ inline k_double64 getExtract(k_int64 intvalue, String strvalue, roachpb::DataTyp
     res = timezone * 3600;
   } else if (item == "timezone_m") {  // The minute portion of the time
                                       // zone offset "timezone_minute"
-    res = ltm.tm_gmtoff / 60;
+    res = 0;
   } else if (item == "timezone_h") {  // The hourly portion of the time zone
                                       // offset "timezone_hour"
-    res = ltm.tm_gmtoff / 60 * 60;
+    res = timezone;
   }
 
   return static_cast<double>(res);

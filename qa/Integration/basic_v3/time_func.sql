@@ -150,9 +150,13 @@ select date_trunc('month', 432048203942.29362);
 select date_trunc('month', 432048203942.);
 select date_trunc('month', 0xC9023472524AFE);
 
-select e1,e2, extract('timezone', k_timestamp), date_trunc('second',e2), date_trunc('hour',e2) from t1.d1 order by e1;
+select e1,e2, extract('TIMEZONE', k_timestamp) from t1.d1 order by e1;
+select e1,e2, extract('TIMEZONE_MINUTE', k_timestamp) from t1.d1 order by e1;
+select e1,e2, extract('TIMEZONE_HOUR', k_timestamp) from t1.d1 order by e1;
 set timezone = 'Asia/Shanghai';
-select e1,e2, extract('timezone', k_timestamp), date_trunc('second',e2), date_trunc('hour',e2) from t1.d1 order by e1;
+select e1,e2, extract('TIMEZONE', k_timestamp) from t1.d1 order by e1;
+select e1,e2, extract('TIMEZONE_MINUTE', k_timestamp) from t1.d1 order by e1;
+select e1,e2, extract('TIMEZONE_HOUR', k_timestamp) from t1.d1 order by e1;
 set timezone = 'UTC';
 
 drop database t1 cascade;
