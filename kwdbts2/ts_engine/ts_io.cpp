@@ -18,9 +18,9 @@
 
 #include <cstddef>
 #include <cstring>
-#include <filesystem>
 #include <string>
 #include <system_error>
+#include <vector>
 
 #include "kwdb_type.h"
 #include "lg_api.h"
@@ -490,9 +490,30 @@ TsIOEnv& TsIOEnv::GetInstance() {
   return TsMMapIOEnv::GetInstance();
 }
 
+static fs::path Regularization(const fs::path& p) {
+  auto abs = fs::absolute(p);
+  std::vector<fs::path> s;
+  for (auto c : p) {
+    if (c == ".") {
+      continue;
+    }
+    if (c == "..") {
+      s.pop_back();
+      continue;
+    }
+    s.push_back(std::move(c));
+  }
+
+  fs::path res;
+  for (auto c : s) {
+    res /= c;
+  }
+  return res;
+}
+
 KStatus TsMemoryIOEnv::NewAppendOnlyFile(const std::string& filepath, std::unique_ptr<TsAppendOnlyFile>* file,
                                          bool overwrite, size_t offset) {
-  fs::path abs = fs::weakly_canonical(fs::absolute(filepath));
+  fs::path abs = Regularization(filepath);
   std::shared_ptr<TsSliceGuard> data;
   {
     std::shared_lock lk(mutex_);
@@ -518,7 +539,7 @@ KStatus TsMemoryIOEnv::NewAppendOnlyFile(const std::string& filepath, std::uniqu
 
 KStatus TsMemoryIOEnv::NewRandomReadFile(const std::string& filepath, std::unique_ptr<TsRandomReadFile>* file,
                                          size_t file_size) {
-  fs::path abs = fs::weakly_canonical(fs::absolute(filepath));
+  fs::path abs = Regularization(filepath);
   std::shared_ptr<TsSliceGuard> data;
   {
     std::shared_lock lk(mutex_);
@@ -540,7 +561,7 @@ KStatus TsMemoryIOEnv::NewRandomReadFile(const std::string& filepath, std::uniqu
 
 KStatus TsMemoryIOEnv::NewSequentialReadFile(const std::string& filepath, std::unique_ptr<TsSequentialReadFile>* file,
                                              size_t file_size) {
-  fs::path abs = fs::weakly_canonical(fs::absolute(filepath));
+  fs::path abs = Regularization(filepath);
   std::shared_ptr<TsSliceGuard> data;
   {
     std::shared_lock lk(mutex_);
