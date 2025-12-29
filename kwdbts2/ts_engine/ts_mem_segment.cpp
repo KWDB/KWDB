@@ -52,6 +52,10 @@ bool TsMemSegmentManager::SwitchMemSegment(TsMemSegment* expected_old_mem_seg, b
   }
 
   auto row_num = cur_mem_seg_->GetRowNum();
+  if (row_num == 0) {
+    LOG_INFO("current mem segment is empty, no need SwitchMemSegment.");
+    return true;
+  }
   if (flush) {
     TsFlushJobPool::GetInstance().AddFlushJob(vgroup_, std::move(cur_mem_seg_));
   }
@@ -59,7 +63,7 @@ bool TsMemSegmentManager::SwitchMemSegment(TsMemSegment* expected_old_mem_seg, b
 
   TsVersionUpdate update;
   update.AddMemSegment(cur_mem_seg_);
-  uint32_t new_heigh = log2(row_num);
+  int32_t new_heigh = log2(row_num);
   if (EngineOptions::mem_segment_max_height < new_heigh) {
     EngineOptions::mem_segment_max_height = new_heigh;
   }
@@ -345,6 +349,9 @@ bool TsMemSegment::GetAllEntityRows(std::list<const TSMemSegRowData*>* rows) {
 }
 
 KStatus TsMemSegment::GetBlockSpans(std::list<shared_ptr<TsBlockSpan>>& blocks, TsEngineSchemaManager* schema_mgr) {
+  if (0 == intent_row_num_.load()) {
+    return KStatus::SUCCESS;
+  }
   int re_try_times = 0;
   while (intent_row_num_.load() != written_row_num_.load()) {
     if (++re_try_times % 10 == 0)
