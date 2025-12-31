@@ -31,7 +31,6 @@ class TsBufferBuilder {
 
   void ExtendTo(size_t sz) {
     size_t old_size = size();
-    size_t old_capacity = capacity();
     assert(sz >= old_size);
     head_ = static_cast<char *>(std::realloc(head_, sz));
     if (head_ == nullptr) {
@@ -39,7 +38,6 @@ class TsBufferBuilder {
     }
     tail_ = head_ + old_size;
     limit_ = head_ + sz;
-    std::fill(head_ + old_capacity, limit_, 0);
   }
 
  public:
@@ -89,7 +87,11 @@ class TsBufferBuilder {
     if (size > capacity()) {
       ExtendTo(size);
     }
-    tail_ = head_ + size;
+    char *new_tail = head_ + size;
+    if (new_tail > tail_) {
+      std::fill(tail_, new_tail, 0);
+    }
+    tail_ = new_tail;
   }
 
   void append(const char *data, size_t size) { append(std::string_view{data, size}); }
