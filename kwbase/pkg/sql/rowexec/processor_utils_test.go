@@ -156,17 +156,7 @@ func (p *ProcessorTest) RunTestCases(
 			tc.Output.Types, nil, distsqlutils.RowBufferArgs{},
 		)
 
-		processor, err := NewProcessor(
-			ctx,
-			p.config.FlowCtx,
-			processorID,
-			&tc.ProcessorCore,
-			&tc.Post,
-			inputs,
-			[]execinfra.RowReceiver{output},
-			nil, /* inputSyncSpecs */
-			nil, /* localProcessors */
-		)
+		processor, err := NewProcessor(ctx, p.config.FlowCtx, processorID, &tc.ProcessorCore, &tc.Post, inputs, []execinfra.RowReceiver{output}, nil)
 		if err != nil {
 			t.Fatalf("test case %s processor creation failed %s", tc.Name, err)
 		}

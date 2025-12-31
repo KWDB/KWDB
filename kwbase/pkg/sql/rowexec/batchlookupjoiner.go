@@ -122,11 +122,6 @@ type batchLookupJoiner struct {
 	rowCount uint32
 	// batch count for plan display
 	batchCount uint32
-
-	// inputSpecs is the input sync spec for the batchLookupJoiner.
-	// inputSpecs[0] is the input sync spec for leftSource.
-	// inputSpecs[1] is the input sync spec for rightSource.
-	inputSpecs *[]execinfrapb.InputSyncSpec
 }
 
 var _ execinfra.Processor = &batchLookupJoiner{}
@@ -144,13 +139,11 @@ func newBatchLookupJoiner(
 	rightSource execinfra.RowSource,
 	post *execinfrapb.PostProcessSpec,
 	output execinfra.RowReceiver,
-	inputSpecs *[]execinfrapb.InputSyncSpec,
 ) (*batchLookupJoiner, error) {
 	h := &batchLookupJoiner{
 		initialBufferSize: batchLookupJoinerInitialBufferSize,
 		leftSource:        leftSource,
 		rightSource:       rightSource,
-		inputSpecs:        inputSpecs,
 	}
 
 	if err := h.joinerBase.BLJInit(
@@ -485,7 +478,7 @@ func (h *batchLookupJoiner) pushToProbeSide() (
 		// Create DataChunk, step1 prepare all info for DataChunk
 		var rowSize uint32
 		rowSize = 0 // bytes
-		outputType := (*h.inputSpecs)[0].ColumnTypes
+		outputType := h.leftSource.OutputTypes()
 		// bitmap
 		bitmapSize := uint32((rowNums + 7) / 8)
 		bitmapOffset := uint32(0)

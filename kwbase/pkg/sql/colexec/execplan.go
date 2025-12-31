@@ -497,7 +497,6 @@ func (r *NewColOperatorResult) createAndWrapRowSource(
 			proc, err := processorConstructor(
 				ctx, flowCtx, spec.ProcessorID, &spec.Core, &spec.Post, inputs,
 				[]execinfra.RowReceiver{nil}, /* outputs */
-				&spec.Input,                  /* inputSpecs */
 				nil,                          /* localProcessors */
 			)
 			if err != nil {

@@ -128,7 +128,6 @@ func NewProcessor(
 	post *execinfrapb.PostProcessSpec,
 	inputs []execinfra.RowSource,
 	outputs []execinfra.RowReceiver,
-	inputSpecs *[]execinfrapb.InputSyncSpec,
 	localProcessors []execinfra.LocalProcessor,
 ) (execinfra.Processor, error) {
 	if core.Noop != nil {
@@ -275,7 +274,7 @@ func NewProcessor(
 		if err := checkNumInOut(inputs, outputs, 2, 1); err != nil {
 			return nil, err
 		}
-		return newBatchLookupJoiner(flowCtx, processorID, core.BatchLookupJoiner, inputs[0], inputs[1], post, outputs[0], inputSpecs)
+		return newBatchLookupJoiner(flowCtx, processorID, core.BatchLookupJoiner, inputs[0], inputs[1], post, outputs[0])
 	}
 	if core.Backfiller != nil {
 		if err := checkNumInOut(inputs, outputs, 0, 1); err != nil {

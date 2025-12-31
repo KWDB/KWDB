@@ -177,6 +177,9 @@ func (h *ProcOutputHelper) Init(
 				return err
 			}
 			h.OutputTypes[i] = *h.renderExprs[i].Expr.ResolvedType()
+			if i < len(post.OutputTypes) {
+				h.OutputTypes[i].InternalType.Width = post.OutputTypes[i].Width()
+			}
 		}
 	} else {
 		// No rendering or projection.
@@ -462,7 +465,6 @@ type ProcessorConstructor func(
 	post *execinfrapb.PostProcessSpec,
 	inputs []RowSource,
 	outputs []RowReceiver,
-	inputSpecs *[]execinfrapb.InputSyncSpec,
 	localProcessors []LocalProcessor,
 ) (Processor, error)
 

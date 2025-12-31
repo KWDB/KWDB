@@ -65,8 +65,7 @@ func runProcessorTest(
 
 	p, err := NewProcessor(
 		context.Background(), &flowCtx, 0 /* processorID */, &core, &post,
-		[]execinfra.RowSource{in}, []execinfra.RowReceiver{out}, nil, /* inputSyncSpecs */
-		[]execinfra.LocalProcessor{})
+		[]execinfra.RowSource{in}, []execinfra.RowReceiver{out}, []execinfra.LocalProcessor{})
 	if err != nil {
 		t.Fatal(err)
 	}
