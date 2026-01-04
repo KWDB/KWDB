@@ -1983,6 +1983,31 @@ func timeFormatBinary(
 	return nil
 }
 
+func getIntSize(t oid.Oid) int {
+	switch t {
+	case oid.T_int2:
+		return 2
+	case oid.T_int4:
+		return 4
+	case oid.T_int8:
+		return 8
+	default:
+		return 0
+	}
+}
+func getTypeName(t oid.Oid) string {
+	switch t {
+	case oid.T_int2:
+		return "int2"
+	case oid.T_int4:
+		return "int4"
+	case oid.T_int8:
+		return "int8"
+	default:
+		return "unknown"
+	}
+}
+
 func intFormatBinary(
 	Args [][]byte,
 	idx int,
@@ -1994,65 +2019,41 @@ func intFormatBinary(
 	switch column.Type.Family() {
 	case types.IntFamily, types.TimestampTZFamily, types.TimestampFamily, types.BoolFamily:
 		switch column.Type.Oid() {
-		case oid.T_int2:
-			if len(Args[idx]) < 2 {
-				return pgerror.Newf(pgcode.ProtocolViolation,
-					"error in argument for $%d int2 requires 2 bytes for binary format", idx)
+		case oid.T_int2, oid.T_int4, oid.T_int8:
+			srcType := infer
+			srcSize := getIntSize(srcType)
+			typeName := getTypeName(srcType)
+			if len(Args[idx]) < srcSize {
+				return pgerror.Newf(pgcode.ProtocolViolation, "error in argument for $%d %s requires %d bytes for binary format",
+					idx, typeName, srcSize)
 			}
+
 			if infer == oid.T_int2 {
-				var intValue int16
-				for _, b := range Args[idx] {
-					intValue = (intValue << 8) | int16(b)
-				}
-				if intValue < math.MinInt16 || intValue > math.MaxInt16 {
-					return pgerror.Newf(pgcode.NumericValueOutOfRange,
-						"integer out of range for type %s (column %q)",
-						column.Type.SQLString(), column.Name)
-				}
-				binary.LittleEndian.PutUint16(Args[idx], uint16(intValue))
-			} else {
-				var intValue int32
-				for _, b := range Args[idx] {
-					high, low := int32(b>>4), int32(b&0x0F)
-					intValue = (intValue << 8) | (high << 4) | low
-				}
-				if intValue < math.MinInt16 || intValue > math.MaxInt16 {
-					return pgerror.Newf(pgcode.NumericValueOutOfRange,
-						"integer out of range for type %s (column %q)",
-						column.Type.SQLString(), column.Name)
-				}
-				if infer == oid.T_int8 {
-					binary.LittleEndian.PutUint32(Args[idx], binary.BigEndian.Uint32(Args[idx]))
-				} else {
-					binary.LittleEndian.PutUint16(Args[idx], uint16(intValue))
-				}
-			}
-		case oid.T_int4:
-			if len(Args[idx]) < 4 {
-				return pgerror.Newf(pgcode.ProtocolViolation,
-					"error in argument for $%d int4 requires 4 bytes for binary format", idx)
-			}
-			var intValue int64
-			for _, b := range Args[idx] {
-				intValue = (intValue << 8) | int64(b)
-			}
-			if intValue < math.MinInt32 || intValue > math.MaxInt32 {
-				return pgerror.Newf(pgcode.NumericValueOutOfRange,
-					"integer out of range for type %s (column %q)",
-					column.Type.SQLString(), column.Name)
-			}
-			binary.LittleEndian.PutUint32(Args[idx], binary.BigEndian.Uint32(Args[idx]))
-		case oid.T_int8:
-			if len(Args[idx]) < 8 {
-				return pgerror.Newf(pgcode.ProtocolViolation,
-					"error in argument for $%d int8 requires 8 bytes for binary format", idx)
-			}
-			if infer == oid.T_int8 {
-				binary.LittleEndian.PutUint64(Args[idx], binary.BigEndian.Uint64(Args[idx]))
+				binary.LittleEndian.PutUint16(Args[idx], binary.BigEndian.Uint16(Args[idx]))
 			} else if infer == oid.T_int4 {
+				if column.Type.Oid() == oid.T_int2 {
+					if done, err := convertInt2Value(Args, idx, column); done {
+						return err
+					}
+				}
 				binary.LittleEndian.PutUint32(Args[idx], binary.BigEndian.Uint32(Args[idx]))
 			} else {
-				binary.LittleEndian.PutUint16(Args[idx], binary.BigEndian.Uint16(Args[idx]))
+				if column.Type.Oid() == oid.T_int2 {
+					if done, err := convertInt2Value(Args, idx, column); done {
+						return err
+					}
+				} else if column.Type.Oid() == oid.T_int4 {
+					var int64Value int64
+					for _, b := range Args[idx] {
+						int64Value = (int64Value << 8) | int64(b)
+					}
+					if int64Value < math.MinInt32 || int64Value > math.MaxInt32 {
+						return pgerror.Newf(pgcode.NumericValueOutOfRange, "integer out of range for type %s (column %q)",
+							column.Type.SQLString(), column.Name)
+					}
+					binary.LittleEndian.PutUint32(Args[idx], uint32(int32(int64Value)))
+				}
+				binary.LittleEndian.PutUint64(Args[idx], binary.BigEndian.Uint64(Args[idx]))
 			}
 		case oid.T_timestamptz, oid.T_timestamp:
 			tum := binary.BigEndian.Uint64(Args[idx])
@@ -2073,6 +2074,21 @@ func intFormatBinary(
 		return tree.NewDatatypeMismatchError(column.Name, string(Args[idx]), column.Type.SQLString())
 	}
 	return nil
+}
+
+func convertInt2Value(Args [][]byte, idx int, column *sqlbase.ColumnDescriptor) (bool, error) {
+	var intValue int32
+	for _, b := range Args[idx] {
+		high, low := int32(b>>4), int32(b&0x0F)
+		intValue = (intValue << 8) | (high << 4) | low
+	}
+	if intValue < math.MinInt16 || intValue > math.MaxInt16 {
+		return true, pgerror.Newf(pgcode.NumericValueOutOfRange,
+			"integer out of range for type %s (column %q)",
+			column.Type.SQLString(), column.Name)
+	}
+	binary.LittleEndian.PutUint16(Args[idx], uint16(intValue))
+	return false, nil
 }
 
 func float8FormatBinary(Args [][]byte, idx int, column *sqlbase.ColumnDescriptor) error {
