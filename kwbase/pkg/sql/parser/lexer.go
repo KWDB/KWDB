@@ -149,7 +149,9 @@ func (l *lexer) UpdateNumPlaceholders(p *tree.Placeholder) {
 
 // GetNumPlaceholders is called from the parser when get numPlaceholders.
 func (l *lexer) GetNumPlaceholders() int {
-	return l.numPlaceholders
+	n := l.numPlaceholders
+	l.numPlaceholders = 0
+	return n
 }
 
 // GetAnnotation returns annotation index.

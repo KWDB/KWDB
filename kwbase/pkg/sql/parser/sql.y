@@ -3583,8 +3583,6 @@ prepare_stmt:
       Name: tree.Name($2),
       Types: $3.colTypes(),
       Statement: $5.stmt(),
-      NumPlaceholders: sqllex.(*lexer).GetNumPlaceholders(),
-      NumAnnotations: sqllex.(*lexer).GetAnnotation(),
     }
   }
 | PREPARE table_alias_name prep_type_clause AS OPT PLAN SCONST

@@ -742,3 +742,198 @@ DROP PROCEDURE
 (0 rows)
 > drop database if exists d2 cascade;
 DROP DATABASE
+> create database d2;
+CREATE DATABASE
+> use d2;
+SET
+> create table t1(e1 int, e2 int);
+CREATE TABLE
+> insert into t1 values (1, 2);
+INSERT 1
+> CREATE PROCEDURE pc42()
+BEGIN
+prepare p42 as select e1 from t1 where e1=$1 and e2=$2;
+execute p42(1, 2);
+
+prepare p420 as select e1 from t1 where e1=$1;
+execute p420(1);
+END ;
+CREATE PROCEDURE
+> call pc42();
+  e1
+------
+   1
+(1 row)
+  e1
+------
+   1
+(1 row)
+> drop procedure pc42;
+DROP PROCEDURE
+> drop database if exists d2 cascade;
+DROP DATABASE
+> DROP DATABASE IF EXISTS test_procedure_opt1_my1_rel CASCADE;
+DROP DATABASE
+> DROP DATABASE IF EXISTS test_procedure_opt1_my1_ts CASCADE;
+DROP DATABASE
+> CREATE DATABASE test_procedure_opt1_my1_rel;
+CREATE DATABASE
+> CREATE TS DATABASE test_procedure_opt1_my1_ts;
+CREATE TS DATABASE
+> CREATE TABLE test_procedure_opt1_my1_rel.t1(
+                                               k_ts TIMESTAMPTZ NOT NULL,
+                                               id INT NOT NULL,
+                                               e1 INT2,
+                                               e2 INT,
+                                               e3 INT8,
+                                               e4 FLOAT4,
+                                               e5 FLOAT8,
+                                               e6 BOOL,
+                                               e7 TIMESTAMP,
+                                               e8 CHAR(1023),
+                                               e9 NCHAR(255),
+                                               e10 VARCHAR(4096),
+                                               e11 CHAR,
+                                               e12 CHAR(255),
+                                               e13 NCHAR,
+                                               e14 NVARCHAR(4096),
+                                               e15 VARCHAR(1023),
+                                               e16 NVARCHAR(200),
+                                               e17 NCHAR(255),
+                                               e18 CHAR(200),
+                                               e19 VARBYTES,
+                                               e20 VARBYTES,
+                                               e21 STRING,
+                                               e22 NVARCHAR,
+                                               code1 INT2 NOT NULL,
+                                               code2 INT,code3 INT8,
+                                               code4 DECIMAL(1000,10) ,
+                                               code5 DECIMAL,
+                                               code6 BOOL,
+                                               code7 VARCHAR,
+                                               code8 VARCHAR(128) NOT NULL,
+                                               code9 VARBYTES,
+                                               code10 VARBYTES,
+                                               code11 VARCHAR,
+                                               code12 VARCHAR(60),
+                                               code13 CHAR(2),
+                                               code14 CHAR(1023) NOT NULL,
+                                               code15 NCHAR,
+                                               code16 NCHAR(254) NOT NULL );
+CREATE TABLE
+> INSERT INTO test_procedure_opt1_my1_rel.t1 VALUES('1970-01-01 00:00:00+00:00',1,0,0,0,0,0,true,'1970-01-01 00:16:39.999+00:00','','','','','','','','','','','','','','','',0,0,0,0,0,false,'','','','','','','','','','');
+INSERT 1
+> CREATE TABLE test_procedure_opt1_my1_ts.t1(
+                k_ts   TIMESTAMPTZ NOT NULL,
+                id     INT NOT NULL,
+                e1     INT2,
+                e2     INT,
+                e3     INT8,
+                e4     FLOAT4,
+                e5     FLOAT8,
+                e6     BOOL,
+                e7     TIMESTAMP,
+                e8     CHAR(1023),
+                e9     NCHAR(255),
+                e10    VARCHAR(4096),
+                e11    CHAR,
+                e12    CHAR(255),
+                e13    NCHAR,
+                e14    NVARCHAR(4096),
+                e15    VARCHAR(1023),
+                e16    NVARCHAR(200),
+                e17    NCHAR(255),
+                e18    CHAR(200),
+                e19    VARBYTES,
+                e20    VARBYTES(60),
+                e21    VARCHAR,
+                e22    NVARCHAR)
+TAGS(
+                code1  INT2 NOT NULL,
+                code2  INT,
+                code3  INT8,
+                code4  FLOAT4 ,
+                code5  FLOAT8,
+                code6  BOOL,
+                code7  VARCHAR,
+                code8  VARCHAR(128) NOT NULL,
+                code9  VARBYTES,
+                code10 VARBYTES(60),
+                code11 VARCHAR,
+                code12 VARCHAR(60),
+                code13 CHAR(2),
+                code14 CHAR(1023) NOT NULL,
+                code15 NCHAR,
+                code16 NCHAR(254) NOT NULL)
+PRIMARY TAGS(code1,code14,code8,code16);
+CREATE TABLE
+> INSERT INTO test_procedure_opt1_my1_ts.t1 VALUES(0,1,0,0,0,0,0,true,0,'','','','','','','','','','','','','','','',0,0,0,0,0,false,'','','','','','','','','','');
+INSERT 1
+> CREATE PROCEDURE test_procedure_opt1_my1_ts.test_prepare(id1 INT2,id2 INT4,id3 INT8,id4 FLOAT4,id5 FLOAT8,id6 CHAR(100),id7 NCHAR(100),id8 VARCHAR(100),id9 NVARCHAR(100),id10 DECIMAL(10,5))
+BEGIN
+SET @id1 = id1;
+SET @id2 = id2;
+SET @id3 = id3;
+SET @id4 = id4;
+SET @id5 = id5;
+SET @id6 = id6;
+SET @ID7 = id7;
+SET @id8 = id8;
+SET @id9 = id9;
+SET @id10 = id10;
+PREPARE test1 as
+SELECT tst1.id,tst1.code3,tst1.code15,relt1.e20
+FROM test_procedure_opt1_my1_rel.t1 relt1 , test_procedure_opt1_my1_ts.t1 tst1
+WHERE
+    relt1.id = tst1.id AND
+    relt1.code3 = tst1.code3 AND
+    tst1.code3 >= $1 AND
+    tst1.e4 NOT IN ($2) AND
+    tst1.code16 NOT IN($3) AND
+    tst1.e18 NOT LIKE $3 AND
+    relt1.code4 !=$4 ;
+EXECUTE test1(@id3,@id4,@id9,@id10);
+
+PREPARE test2 as
+SELECT * FROM test_procedure_opt1_my1_ts.t1 WHERE id IN
+(SELECT id FROM test_procedure_opt1_my1_rel.t1 WHERE id = $1);
+EXECUTE test2(@id1);
+END ;
+CREATE PROCEDURE
+> call test_procedure_opt1_my1_ts.test_prepare(1,2,3,4,5,'6','7','8','9',10);
+            k_ts            | id | e1 | e2 | e3 | e4 | e5 |  e6  |            e7             | e8 | e9 | e10 | e11 | e12 | e13 | e14 | e15 | e16 | e17 | e18 | e19 | e20 | e21 | e22 | code1 | code2 | code3 | code4 | code5 | code6 | code7 | code8 | code9 | code10 | code11 | code12 | code13 | code14 | code15 | code16
+----------------------------+----+----+----+----+----+----+------+---------------------------+----+----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-------+-------+-------+-------+-------+-------+-------+-------+-------+--------+--------+--------+--------+--------+--------+---------
+  1970-01-01 00:00:00+00:00 |  1 |  0 |  0 |  0 |  0 |  0 | true | 1970-01-01 00:00:00+00:00 |    |    |     |     |     |     |     |     |     |     |     | \x  | \x  |     |     |     0 |     0 |     0 |     0 |     0 | false |       |       | \x    | \x     |        |        |        |        |        |
+(1 row)
+> drop procedure test_procedure_opt1_my1_ts.test_prepare;
+DROP PROCEDURE
+> DROP DATABASE IF EXISTS test_procedure_opt1_my1_rel CASCADE;
+DROP DATABASE
+> DROP DATABASE IF EXISTS test_procedure_opt1_my1_ts CASCADE;
+DROP DATABASE
+> drop database if exists d1 cascade;
+DROP DATABASE
+> create ts database d1;
+CREATE TS DATABASE
+> use d1;
+SET
+> create table t1(ts timestamp not null, e1 int) tags (tag1 int not null, tag2 int) primary tags (tag1);
+CREATE TABLE
+> insert into t1 values('2000-1-1', 1, 10, 20);
+INSERT 1
+> CREATE PROCEDURE pc43()
+BEGIN
+SET @v43 = 10;
+UPDATE t1 SET tag2=200 WHERE tag1=@v43;
+select * from t1 order by ts;
+END;
+ERROR: unsupported conditions in update: cannot use user-defined variable "@v43" in time-series of procedure
+SQLSTATE: 0A000
+> call pc43();
+ERROR: procedure "pc43" does not exist
+SQLSTATE: 42704
+> drop procedure pc43;
+ERROR: procedure "pc43" does not exist
+SQLSTATE: 42704
+> drop database if exists d1 cascade;
+DROP DATABASE

@@ -786,7 +786,9 @@ func (ex *connExecutor) CheckPrepareExists(name string) bool {
 }
 
 // checkAndGetTypeForPrepare checks prepare and gets placeholder types
-func (ex *connExecutor) checkAndGetTypeForPrepare(s *tree.Prepare) (tree.PlaceholderTypes, error) {
+func (ex *connExecutor) checkAndGetTypeForPrepare(
+	s *tree.Prepare, numPlaceholders int,
+) (tree.PlaceholderTypes, error) {
 	// This is handling the SQL statement "PREPARE". See execPrepare for
 	// handling of the protocol-level command for preparing statements.
 	name := s.Name.String()
@@ -798,11 +800,11 @@ func (ex *connExecutor) checkAndGetTypeForPrepare(s *tree.Prepare) (tree.Placeho
 	}
 	var typeHints tree.PlaceholderTypes
 	if len(s.Types) > 0 {
-		if len(s.Types) > s.NumPlaceholders {
+		if len(s.Types) > numPlaceholders {
 			err := pgerror.Newf(pgcode.Syntax, "too many types provided")
 			return nil, err
 		}
-		typeHints = make(tree.PlaceholderTypes, s.NumPlaceholders)
+		typeHints = make(tree.PlaceholderTypes, numPlaceholders)
 		copy(typeHints, s.Types)
 	}
 

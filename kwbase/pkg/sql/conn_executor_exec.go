@@ -572,7 +572,7 @@ func (ex *connExecutor) execStmtInOpenState(
 		return ev, payload, nil
 
 	case *tree.Prepare:
-		typeHints, err := ex.checkAndGetTypeForPrepare(s)
+		typeHints, err := ex.checkAndGetTypeForPrepare(s, stmt.NumPlaceholders)
 		if err != nil {
 			return makeErrEvent(err)
 		}

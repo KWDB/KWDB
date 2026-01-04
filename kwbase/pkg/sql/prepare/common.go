@@ -44,7 +44,7 @@ type PreparedFn func(
 ) (PreparedResult, error)
 
 // PreparedCheckFn checks prepare and gets placeholder types
-type PreparedCheckFn func(s *tree.Prepare) (tree.PlaceholderTypes, error)
+type PreparedCheckFn func(s *tree.Prepare, numPlaceholders int) (tree.PlaceholderTypes, error)
 
 // PreparedAddFn adds mem for prepare mem acc and saves prepare memo to map
 type PreparedAddFn func(

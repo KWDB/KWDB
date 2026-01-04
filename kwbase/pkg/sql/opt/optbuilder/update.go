@@ -645,7 +645,7 @@ func dealExprAndValue(
 			}
 			exprs[id] = val
 		} else {
-			exprs[id] = udv
+			panic(sqlbase.UnsupportedUpdateConditionError(fmt.Sprintf("cannot use user-defined variable \"%s\" in time-series of procedure", udv.VarName)))
 		}
 	}
 	return false

@@ -27,7 +27,7 @@ func (b *Builder) buildProcPrepare(procPrepare *tree.Prepare) memo.ProcCommand {
 	}
 	b.factory.Memo().SetProcPrepare(true)
 
-	typeHints, err := b.PrepareHelper.Check(procPrepare)
+	typeHints, err := b.PrepareHelper.Check(procPrepare, procPrepare.NumPlaceholders)
 	if err != nil {
 		panic(err)
 	}
