@@ -1,0 +1,2 @@
+-- warm up
+SELECT time_bucket(k_timestamp, '3600s') as k_timestamp, hostname, avg(usage_user1), avg(usage_system1), avg(usage_idle1), avg(usage_nice1), avg(usage_iowait1), avg(usage_irq1), avg(usage_softirq1), avg(usage_steal1), avg(usage_guest1), avg(usage_guest_nice1) FROM benchmark.cpu WHERE k_timestamp >= '2016-01-01 00:00:00.000' AND k_timestamp < '2016-01-16 00:00:00.000' GROUP BY hostname, time_bucket(k_timestamp, '3600s') ORDER BY hostname, time_bucket(k_timestamp, '3600s');
