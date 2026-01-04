@@ -111,61 +111,61 @@ explain select t1.time from test_ts.ts_table as t1, test_ts.ts_table2 as t2 wher
 explain select extract('second', '2024-01-01 00:00:00'::timestamp) from test_ts.ts_table as t1, test_ts.ts_table2 as t2 where t1.time < date_trunc('hour', '2024-01-01 00:00:00'::timestamp-1h) order by t1.e1;
 
 -- args has function
-explain select extract('year', localtimestamp()) from ts_table;
-explain select extract('year', localtimestamp()) from test_ts.ts_table group by e1 having e1 < 3000;
-explain select extract('year', localtimestamp()) from test_ts.ts_table order by e1 desc limit 1 offset 1;
-explain select extract('year', localtimestamp()) from test_ts.ts_table order by attr2 desc limit 1 offset 1;
-explain select extract('year', localtimestamp()) from test_ts.ts_table where time < date_trunc('hour', '2024-01-01 00:00:00'::timestamp-1h);
-explain select extract('year', localtimestamp()) from test_ts.ts_table where e3 < 300000000000000000;
-explain select extract('year', localtimestamp()) from test_ts.ts_table where e3 < 300000000000000000;
-explain select extract('year', localtimestamp()) from test_ts.ts_table where attr3 < 300000000000000000;
-explain select extract('year', localtimestamp()) from test_ts.ts_table where attr2 < 2000000;
+explain select extract('year', date_trunc('hour', timestamp '2025-01-01 12:34:56')) from ts_table;
+explain select extract('year', date_trunc('hour', timestamp '2025-01-01 12:34:56')) from test_ts.ts_table group by e1 having e1 < 3000;
+explain select extract('year', date_trunc('hour', timestamp '2025-01-01 12:34:56')) from test_ts.ts_table order by e1 desc limit 1 offset 1;
+explain select extract('year', date_trunc('hour', timestamp '2025-01-01 12:34:56')) from test_ts.ts_table order by attr2 desc limit 1 offset 1;
+explain select extract('year', date_trunc('hour', timestamp '2025-01-01 12:34:56')) from test_ts.ts_table where time < date_trunc('hour', '2024-01-01 00:00:00'::timestamp-1h);
+explain select extract('year', date_trunc('hour', timestamp '2025-01-01 12:34:56')) from test_ts.ts_table where e3 < 300000000000000000;
+explain select extract('year', date_trunc('hour', timestamp '2025-01-01 12:34:56')) from test_ts.ts_table where e3 < 300000000000000000;
+explain select extract('year', date_trunc('hour', timestamp '2025-01-01 12:34:56')) from test_ts.ts_table where attr3 < 300000000000000000;
+explain select extract('year', date_trunc('hour', timestamp '2025-01-01 12:34:56')) from test_ts.ts_table where attr2 < 2000000;
 
 -- args has function with UNION
-explain select extract('year', localtimestamp()) from test_ts.ts_table union select extract('year', localtimestamp()) from test_ts.ts_table2;
-explain select extract('year', localtimestamp()) from (select e1,e2,e3 from test_ts.ts_table union (select e1,e2,e3 from test_ts.ts_table2 union select e1,e2,e3 from test_ts.ts_table)) as t where t.e1 < 2000 order by e2;
-explain select extract('year', localtimestamp()) from (select e1,e2,e3 from test_ts.ts_table union (select e1,e2,e3 from test_ts.ts_table2 union select e1,e2,e3 from test_ts.ts_table)) as t where t.e1-1000 < 3000 order by e2 desc limit 1 offset 1;
+explain select extract('year', date_trunc('hour', timestamp '2025-01-01 12:34:56')) from test_ts.ts_table union select extract('year', date_trunc('hour', timestamp '2025-01-01 12:34:56')) from test_ts.ts_table2;
+explain select extract('year', date_trunc('hour', timestamp '2025-01-01 12:34:56')) from (select e1,e2,e3 from test_ts.ts_table union (select e1,e2,e3 from test_ts.ts_table2 union select e1,e2,e3 from test_ts.ts_table)) as t where t.e1 < 2000 order by e2;
+explain select extract('year', date_trunc('hour', timestamp '2025-01-01 12:34:56')) from (select e1,e2,e3 from test_ts.ts_table union (select e1,e2,e3 from test_ts.ts_table2 union select e1,e2,e3 from test_ts.ts_table)) as t where t.e1-1000 < 3000 order by e2 desc limit 1 offset 1;
 
 -- args has function with uncorrelated subquery
-explain select extract('year', localtimestamp()) from test_ts.ts_table where e1 in (select e1 from test_ts.ts_table2) order by e2;
-explain select extract('year', localtimestamp()) from test_ts.ts_table where e1 in (select e1 from test_ts.ts_table2 group by e1 having e1 < 3000) order by e2;
-explain select extract('year', localtimestamp()) from test_ts.ts_table where e1 in (select e1 from test_ts.ts_table2 order by e3 desc limit 1 offset 1) order by e2;
-explain select extract('year', localtimestamp()) from test_ts.ts_table where e1 in (select e1 from test_ts.ts_table2) group by e2 having e2 < 3000000 order by e2;
-explain select extract('year', localtimestamp()) from test_ts.ts_table where e1 in (select e1 from test_ts.ts_table2) order by e3 desc limit 1 offset 1;
-explain select extract('year', localtimestamp()) from test_ts.ts_table where e1 in (select e1 from test_ts.ts_table2) order by e2;
-explain select extract('year', localtimestamp()) from test_ts.ts_table where e1 in (select e1 from test_ts.ts_table2 where e3 = (select e3 from test_ts.ts_table where e6='test_ts1' limit 1)) group by e2 having e2 < 3000000 order by e2;
-explain select extract('year', localtimestamp()) from test_ts.ts_table where e1 in (select e1 from test_ts.ts_table2 where e3 = (select e3 from test_ts.ts_table where e6='test_ts1' limit 1)) order by e3 desc limit 1 offset 1;
+explain select extract('year', date_trunc('hour', timestamp '2025-01-01 12:34:56')) from test_ts.ts_table where e1 in (select e1 from test_ts.ts_table2) order by e2;
+explain select extract('year', date_trunc('hour', timestamp '2025-01-01 12:34:56')) from test_ts.ts_table where e1 in (select e1 from test_ts.ts_table2 group by e1 having e1 < 3000) order by e2;
+explain select extract('year', date_trunc('hour', timestamp '2025-01-01 12:34:56')) from test_ts.ts_table where e1 in (select e1 from test_ts.ts_table2 order by e3 desc limit 1 offset 1) order by e2;
+explain select extract('year', date_trunc('hour', timestamp '2025-01-01 12:34:56')) from test_ts.ts_table where e1 in (select e1 from test_ts.ts_table2) group by e2 having e2 < 3000000 order by e2;
+explain select extract('year', date_trunc('hour', timestamp '2025-01-01 12:34:56')) from test_ts.ts_table where e1 in (select e1 from test_ts.ts_table2) order by e3 desc limit 1 offset 1;
+explain select extract('year', date_trunc('hour', timestamp '2025-01-01 12:34:56')) from test_ts.ts_table where e1 in (select e1 from test_ts.ts_table2) order by e2;
+explain select extract('year', date_trunc('hour', timestamp '2025-01-01 12:34:56')) from test_ts.ts_table where e1 in (select e1 from test_ts.ts_table2 where e3 = (select e3 from test_ts.ts_table where e6='test_ts1' limit 1)) group by e2 having e2 < 3000000 order by e2;
+explain select extract('year', date_trunc('hour', timestamp '2025-01-01 12:34:56')) from test_ts.ts_table where e1 in (select e1 from test_ts.ts_table2 where e3 = (select e3 from test_ts.ts_table where e6='test_ts1' limit 1)) order by e3 desc limit 1 offset 1;
 
 -- args has function with correlated subquery
-explain select extract('year', localtimestamp()) = ( select e4 from test_ts.ts_table2 limit 1 ) from test_ts.ts_table;
-explain select extract('year', localtimestamp()) in ( select e4 from test_ts.ts_table2 where e2 > 1000000 group by e4) from test_ts.ts_table;
-explain select extract('year', localtimestamp()) in ( select e4 from test_ts.ts_table2 order by e3 desc limit 10 offset 1) from test_ts.ts_table;
-explain select extract('year', localtimestamp()) in ( select e4 from test_ts.ts_table2 ) from test_ts.ts_table order by e3 desc limit 10 offset 1;
-explain select extract('year', localtimestamp()) in ( select e4 from test_ts.ts_table2 ), case e2 when 1000000 then 10 when 2000000 then 20 end from test_ts.ts_table order by e3 desc limit 1 offset 1;
+explain select extract('year', date_trunc('hour', timestamp '2025-01-01 12:34:56')) = ( select e4 from test_ts.ts_table2 limit 1 ) from test_ts.ts_table;
+explain select extract('year', date_trunc('hour', timestamp '2025-01-01 12:34:56')) in ( select e4 from test_ts.ts_table2 where e2 > 1000000 group by e4) from test_ts.ts_table;
+explain select extract('year', date_trunc('hour', timestamp '2025-01-01 12:34:56')) in ( select e4 from test_ts.ts_table2 order by e3 desc limit 10 offset 1) from test_ts.ts_table;
+explain select extract('year', date_trunc('hour', timestamp '2025-01-01 12:34:56')) in ( select e4 from test_ts.ts_table2 ) from test_ts.ts_table order by e3 desc limit 10 offset 1;
+explain select extract('year', date_trunc('hour', timestamp '2025-01-01 12:34:56')) in ( select e4 from test_ts.ts_table2 ), case e2 when 1000000 then 10 when 2000000 then 20 end from test_ts.ts_table order by e3 desc limit 1 offset 1;
 
 -- args has function with JOIN
-explain select extract('year', localtimestamp()) from test_ts.ts_table as t1 join test_ts.ts_table2 as t2 on t1.e1=t2.e1 order by t1.e2;
-explain select extract('year', localtimestamp()) from test_ts.ts_table as t1 join test_ts.ts_table2 as t2 on t1.e1=t2.e1 where t1.e2 < 3000000 and t2.e4 > 1000.101 order by t1.e2;
-explain select extract('year', localtimestamp()) from test_ts.ts_table as t1 join test_ts.ts_table2 as t2 on t1.e1=t2.e1 group by t1.e2 having t1.e2 > 1000000 order by t1.e2;
+explain select extract('year', date_trunc('hour', timestamp '2025-01-01 12:34:56')) from test_ts.ts_table as t1 join test_ts.ts_table2 as t2 on t1.e1=t2.e1 order by t1.e2;
+explain select extract('year', date_trunc('hour', timestamp '2025-01-01 12:34:56')) from test_ts.ts_table as t1 join test_ts.ts_table2 as t2 on t1.e1=t2.e1 where t1.e2 < 3000000 and t2.e4 > 1000.101 order by t1.e2;
+explain select extract('year', date_trunc('hour', timestamp '2025-01-01 12:34:56')) from test_ts.ts_table as t1 join test_ts.ts_table2 as t2 on t1.e1=t2.e1 group by t1.e2 having t1.e2 > 1000000 order by t1.e2;
 
-explain select extract('year', localtimestamp()) from test_ts.ts_table as t1 left join test_ts.ts_table2 as t2 on t1.e1=t2.e1 order by t1.e2;
-explain select extract('year', localtimestamp()) from test_ts.ts_table as t1 left join test_ts.ts_table2 as t2 on t1.e1=t2.e1 where t1.e2 < 3000000 and t2.e4 > 1000.101 order by t1.e2;
-explain select extract('year', localtimestamp()) from test_ts.ts_table as t1 left join test_ts.ts_table2 as t2 on t1.e1=t2.e1 group by t1.e2 having t1.e2 > 1000000 order by t1.e2;
+explain select extract('year', date_trunc('hour', timestamp '2025-01-01 12:34:56')) from test_ts.ts_table as t1 left join test_ts.ts_table2 as t2 on t1.e1=t2.e1 order by t1.e2;
+explain select extract('year', date_trunc('hour', timestamp '2025-01-01 12:34:56')) from test_ts.ts_table as t1 left join test_ts.ts_table2 as t2 on t1.e1=t2.e1 where t1.e2 < 3000000 and t2.e4 > 1000.101 order by t1.e2;
+explain select extract('year', date_trunc('hour', timestamp '2025-01-01 12:34:56')) from test_ts.ts_table as t1 left join test_ts.ts_table2 as t2 on t1.e1=t2.e1 group by t1.e2 having t1.e2 > 1000000 order by t1.e2;
 
-explain select extract('year', localtimestamp()) from test_ts.ts_table as t1 right join test_ts.ts_table2 as t2 on t1.e1=t2.e1 order by t1.e2;
-explain select extract('year', localtimestamp()) from test_ts.ts_table as t1 right join test_ts.ts_table2 as t2 on t1.e1=t2.e1 where t1.e2 < 3000000 and t2.e4 > 1000.101 order by t1.e2;
-explain select extract('year', localtimestamp()) from test_ts.ts_table as t1 right join test_ts.ts_table2 as t2 on t1.e1=t2.e1 group by t1.e2 having t1.e2 > 1000000 order by t1.e2;
+explain select extract('year', date_trunc('hour', timestamp '2025-01-01 12:34:56')) from test_ts.ts_table as t1 right join test_ts.ts_table2 as t2 on t1.e1=t2.e1 order by t1.e2;
+explain select extract('year', date_trunc('hour', timestamp '2025-01-01 12:34:56')) from test_ts.ts_table as t1 right join test_ts.ts_table2 as t2 on t1.e1=t2.e1 where t1.e2 < 3000000 and t2.e4 > 1000.101 order by t1.e2;
+explain select extract('year', date_trunc('hour', timestamp '2025-01-01 12:34:56')) from test_ts.ts_table as t1 right join test_ts.ts_table2 as t2 on t1.e1=t2.e1 group by t1.e2 having t1.e2 > 1000000 order by t1.e2;
 
-explain select extract('year', localtimestamp()) from test_ts.ts_table as t1 full join test_ts.ts_table2 as t2 on t1.e1=t2.e1 order by t1.e2;
-explain select extract('year', localtimestamp()) from test_ts.ts_table as t1 full join test_ts.ts_table2 as t2 on t1.e1=t2.e1 where t1.e2 < 3000000 and t2.e4 > 1000.101 order by t1.e2;
-explain select extract('year', localtimestamp()) from test_ts.ts_table as t1 full join test_ts.ts_table2 as t2 on t1.e1=t2.e1 group by t1.e2 having t1.e2 > 1000000 order by t1.e2;
+explain select extract('year', date_trunc('hour', timestamp '2025-01-01 12:34:56')) from test_ts.ts_table as t1 full join test_ts.ts_table2 as t2 on t1.e1=t2.e1 order by t1.e2;
+explain select extract('year', date_trunc('hour', timestamp '2025-01-01 12:34:56')) from test_ts.ts_table as t1 full join test_ts.ts_table2 as t2 on t1.e1=t2.e1 where t1.e2 < 3000000 and t2.e4 > 1000.101 order by t1.e2;
+explain select extract('year', date_trunc('hour', timestamp '2025-01-01 12:34:56')) from test_ts.ts_table as t1 full join test_ts.ts_table2 as t2 on t1.e1=t2.e1 group by t1.e2 having t1.e2 > 1000000 order by t1.e2;
 
 -- args has function with multiple tables
-explain select extract('year', localtimestamp()) from test_ts.ts_table, test_ts.ts_table2;
-explain select extract('year', localtimestamp()) from test_ts.ts_table as t1, test_ts.ts_table2 as t2 where t1.e2 < 3000000 and t2.e4 > 1000.101 order by t1.e1;
-explain select extract('year', localtimestamp()) from test_ts.ts_table as t1, test_ts.ts_table2 as t2 group by t1.e1, t2.e1 having t1.e1 > 1000 or t2.e1 < 3000 order by t1.e1;
-explain select extract('year', localtimestamp()) from test_ts.ts_table as t1, test_ts.ts_table2 as t2 order by t1.e1 desc limit 10 offset 1;
-explain select extract('year', localtimestamp()) from test_ts.ts_table as t1, test_ts.ts_table2 as t2 order by t1.e1 desc limit 10 offset 1;
+explain select extract('year', date_trunc('hour', timestamp '2025-01-01 12:34:56')) from test_ts.ts_table, test_ts.ts_table2;
+explain select extract('year', date_trunc('hour', timestamp '2025-01-01 12:34:56')) from test_ts.ts_table as t1, test_ts.ts_table2 as t2 where t1.e2 < 3000000 and t2.e4 > 1000.101 order by t1.e1;
+explain select extract('year', date_trunc('hour', timestamp '2025-01-01 12:34:56')) from test_ts.ts_table as t1, test_ts.ts_table2 as t2 group by t1.e1, t2.e1 having t1.e1 > 1000 or t2.e1 < 3000 order by t1.e1;
+explain select extract('year', date_trunc('hour', timestamp '2025-01-01 12:34:56')) from test_ts.ts_table as t1, test_ts.ts_table2 as t2 order by t1.e1 desc limit 10 offset 1;
+explain select extract('year', date_trunc('hour', timestamp '2025-01-01 12:34:56')) from test_ts.ts_table as t1, test_ts.ts_table2 as t2 order by t1.e1 desc limit 10 offset 1;
 
 
 -- aggregate function
@@ -201,7 +201,7 @@ explain select max(extract('second', '2024-01-01 00:00:00'::timestamp)) from tes
 
 -- cross-mode
 explain select extract('second', '2024-01-01 00:00:00'::timestamp) from test.test1 as a join test_ts.ts_table as b on a.col1=b.e1 where a.col1=1000 group by e1 order by e1;
-explain select extract('year', localtimestamp()) from test.test1 as a join test_ts.ts_table as b on a.col1=b.e1 where a.col1=1000 group by e1 order by e1;
+explain select extract('year', date_trunc('hour', timestamp '2025-01-01 12:34:56')) from test.test1 as a join test_ts.ts_table as b on a.col1=b.e1 where a.col1=1000 group by e1 order by e1;
 explain select max(extract('second', '2024-01-01 00:00:00'::timestamp)) from test.test1 as a join test_ts.ts_table as b on a.col1=b.e1 where a.col1=1000 group by e1 order by e1;
 set cluster setting ts.sql.query_opt_mode= DEFAULT;
 -- ZDP-40972
