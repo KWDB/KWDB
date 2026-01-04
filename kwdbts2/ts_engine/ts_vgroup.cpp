@@ -1001,7 +1001,7 @@ KStatus TsVGroup::FlushImmSegment(const std::shared_ptr<TsMemSegment>& mem_seg) 
         }
       }
 
-      TsEntitySegment mem_entity_segment({mem_env, mem_env}, root_path, mem_entity_info);
+      TsEntitySegment mem_entity_segment({mem_env, mem_env}, root_path, mem_entity_info, nullptr);
       auto s = mem_entity_segment.Open();
       if (s == FAIL) {
         LOG_ERROR("open mem entity segment failed.");
@@ -1011,9 +1011,9 @@ KStatus TsVGroup::FlushImmSegment(const std::shared_ptr<TsMemSegment>& mem_seg) 
 
       if (mem_entity_segment.GetEntityNum() != 0) {
         TsMemEntitySegmentModifier modifier(&mem_entity_segment);
+        EntitySegmentMetaInfo info;
         auto newer_partition = version_manager_->Current()->GetPartition(partition_id);
         auto base_entity_segment = newer_partition->GetEntitySegment();
-        EntitySegmentMetaInfo info;
         s = modifier.PersistToDisk(base_entity_segment.get(), &info);
         if (s == FAIL) {
           return FAIL;

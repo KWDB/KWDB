@@ -309,8 +309,8 @@ KStatus TsTableV2Impl::GetOffsetIterator(kwdbContext_p ctx, const IteratorParams
     ts_scan_cols.emplace_back(actual_cols[col]);
   }
 
-  std::map<uint32_t, std::vector<EntityID>> vgroup_ids;
-  std::map<uint32_t, std::shared_ptr<TsVGroup>> vgroups;
+  std::unordered_map<uint32_t, std::vector<EntityID>> vgroup_ids;
+  std::unordered_map<uint32_t, std::shared_ptr<TsVGroup>> vgroups;
   if (params.entity_ids.empty()) {
     k_uint32 max_vgroup_id = vgroups_.size();
     for (k_uint32 vgroup_id = 1; vgroup_id <= max_vgroup_id; ++vgroup_id) {

@@ -542,8 +542,8 @@ KStatus TsVersionManager::ApplyUpdate(TsVersionUpdate *update) {
           new_partition_version->entity_segment_->MarkDeleteAll();
         }
       }
-
-      new_partition_version->entity_segment_ = std::make_unique<TsEntitySegment>(env_set, root, it->second);
+      new_partition_version->entity_segment_ = std::make_unique<TsEntitySegment>(env_set, root, it->second,
+                                                          new_vgroup_version->partitions_[par_id]->GetEntitySegment());
     }
 
     // VGroupVersion accepts the new partition version

@@ -229,6 +229,8 @@ struct TsEntitySegmentColumnBlock {
   std::vector<std::string> var_rows;
 };
 
+class TsSegmentBlockContainer;
+
 class TsEntityBlock : public TsBlock {
  public:
   // pre and next are used to support TsBlockCache.
@@ -256,7 +258,7 @@ class TsEntityBlock : public TsBlock {
   uint64_t min_osn_ = 0;
   uint64_t max_osn_ = 0;
 
-  std::shared_ptr<TsEntitySegment> entity_segment_ = nullptr;
+  std::shared_ptr<TsSegmentBlockContainer> segment_block_container_ = nullptr;
   uint64_t block_offset_ = 0;
   uint32_t block_length_ = 0;
   uint64_t agg_offset_ = 0;
@@ -271,7 +273,7 @@ class TsEntityBlock : public TsBlock {
  public:
   TsEntityBlock() = delete;
   TsEntityBlock(uint32_t table_id, TsEntitySegmentBlockItem* block_item,
-                std::shared_ptr<TsEntitySegment>& block_segment);
+                std::shared_ptr<TsSegmentBlockContainer>& segment_block_container);
   TsEntityBlock(const TsEntityBlock& other) = delete;
   ~TsEntityBlock() {}
 
@@ -396,9 +398,9 @@ struct EntitySegmentIOEnvSet {
   TsIOEnv* block_agg_io_env;
   TsIOEnv* header_io_env;
 };
-class TsEntitySegment : public TsSegmentBase, public enable_shared_from_this<TsEntitySegment> {
-  friend class TsMemEntitySegmentModifier;
 
+class TsSegmentFile {
+  friend class TsMemEntitySegmentModifier;
  private:
   string dir_path_;
   TsEntitySegmentMetaManager meta_mgr_;
@@ -407,18 +409,10 @@ class TsEntitySegment : public TsSegmentBase, public enable_shared_from_this<TsE
 
   EntitySegmentMetaInfo info_;
 
-  std::vector<std::shared_ptr<TsEntityBlock>> entity_blocks_;
-  KRWLatch entity_blocks_rw_latch_;
-
  public:
-  TsEntitySegment() = delete;
+  explicit TsSegmentFile(EntitySegmentIOEnvSet io_env, const fs::path& root, EntitySegmentMetaInfo info);
 
-  explicit TsEntitySegment(EntitySegmentIOEnvSet io_env, const fs::path& root, EntitySegmentMetaInfo info);
-
-  // Only for LRU block cache unit tests
-  explicit TsEntitySegment(uint32_t max_blocks);
-
-  ~TsEntitySegment() {}
+  ~TsSegmentFile() {}
 
   KStatus Open();
 
@@ -434,33 +428,23 @@ class TsEntitySegment : public TsSegmentBase, public enable_shared_from_this<TsE
 
   uint64_t GetEntityNum() { return meta_mgr_.GetEntityNum(); }
 
-  std::shared_ptr<TsEntityBlock> GetEntityBlock(uint64_t block_id) {
-    RW_LATCH_S_LOCK(&entity_blocks_rw_latch_);
-    std::shared_ptr<TsEntityBlock> block = entity_blocks_[block_id - 1];
-    RW_LATCH_UNLOCK(&entity_blocks_rw_latch_);
-    return block;
-  }
-
-  void AddEntityBlock(uint64_t block_id, std::shared_ptr<TsEntityBlock> block) {
-    RW_LATCH_X_LOCK(&entity_blocks_rw_latch_);
-    entity_blocks_[block_id - 1] = block;
-    RW_LATCH_UNLOCK(&entity_blocks_rw_latch_);
-  }
-
-  void RemoveEntityBlock(uint64_t block_id) {
-    RW_LATCH_X_LOCK(&entity_blocks_rw_latch_);
-    entity_blocks_[block_id - 1] = nullptr;
-    RW_LATCH_UNLOCK(&entity_blocks_rw_latch_);
-  }
-
   KStatus GetAllBlockItems(TSEntityID entity_id, std::vector<TsEntitySegmentBlockItemWithData>* blk_items) {
     return meta_mgr_.GetAllBlockItems(entity_id, blk_items);
   }
 
-  KStatus GetBlockSpans(const TsBlockItemFilterParams& filter, std::list<shared_ptr<TsBlockSpan>>& block_spans,
-                        std::shared_ptr<TsTableSchemaManager>& tbl_schema_mgr,
-                        std::shared_ptr<MMapMetricsTable>& scan_schema,
-                        TsScanStats* ts_scan_stats = nullptr) override;
+
+  KStatus GetBlockSpans(const TsBlockItemFilterParams& filter,
+                                          std::shared_ptr<TsEntitySegment> entity_segment,
+                                          std::list<shared_ptr<TsBlockSpan>>& block_spans,
+                                          std::shared_ptr<TsTableSchemaManager>& tbl_schema_mgr,
+                                          std::shared_ptr<MMapMetricsTable>& scan_schema,
+                                          TsScanStats* ts_scan_stats) {
+    if (filter.entity_id > meta_mgr_.GetEntityNum()) {
+      // LOG_WARN("entity id [%lu] > entity number [%lu]", filter.entity_id, meta_mgr_.GetEntityNum());
+      return KStatus::SUCCESS;
+    }
+    return meta_mgr_.GetBlockSpans(filter, entity_segment, block_spans, tbl_schema_mgr, scan_schema, ts_scan_stats);
+  }
 
   KStatus GetBlockData(TsEntityBlock* block, TsSliceGuard* data);
 
@@ -488,4 +472,70 @@ class TsEntitySegment : public TsSegmentBase, public enable_shared_from_this<TsE
   uint64_t GetAggFileSize() { return agg_file_.Size(); }
 };
 
+class TsEntitySegment : public TsSegmentBase, public enable_shared_from_this<TsEntitySegment> {
+ private:
+  std::shared_ptr<TsSegmentFile> segment_file_{nullptr};
+  std::shared_ptr<TsSegmentBlockContainer> segment_block_container_{nullptr};
+
+ public:
+  TsEntitySegment() = delete;
+
+  explicit TsEntitySegment(EntitySegmentIOEnvSet io_env, const fs::path& root, EntitySegmentMetaInfo info,
+                            const std::shared_ptr<TsEntitySegment>& pre_version_entity_segment);
+
+  // Only for LRU block cache unit tests
+  explicit TsEntitySegment(uint32_t max_blocks);
+
+  ~TsEntitySegment() {}
+
+  KStatus Open() {
+    return segment_file_->Open();
+  }
+
+  uint64_t GetEntityHeaderFileNum() { return segment_file_->GetEntityHeaderFileNum(); }
+
+  KStatus GetEntityItem(uint64_t entity_id, TsEntityItem& entity_item, bool& is_exist) {
+    return segment_file_->GetEntityItem(entity_id, entity_item, is_exist);
+  }
+
+  KStatus SetEntityItemDropped(uint64_t entity_id) {
+    return segment_file_->SetEntityItemDropped(entity_id);
+  }
+
+  uint64_t GetEntityNum() { return segment_file_->GetEntityNum(); }
+
+  std::shared_ptr<TsSegmentBlockContainer>& GetSegmentBlockContainer() {
+    return segment_block_container_;
+  }
+
+  std::shared_ptr<TsSegmentFile>& GetSegmentFile() {
+    return segment_file_;
+  }
+
+  KStatus GetAllBlockItems(TSEntityID entity_id, std::vector<TsEntitySegmentBlockItemWithData>* blk_items) {
+    return segment_file_->GetAllBlockItems(entity_id, blk_items);
+  }
+
+  KStatus GetBlockSpans(const TsBlockItemFilterParams& filter, std::list<shared_ptr<TsBlockSpan>>& block_spans,
+                        std::shared_ptr<TsTableSchemaManager>& tbl_schema_mgr,
+                        std::shared_ptr<MMapMetricsTable>& scan_schema,
+                        TsScanStats* ts_scan_stats = nullptr) override {
+    return segment_file_->GetBlockSpans(filter, shared_from_this(), block_spans, tbl_schema_mgr,
+                                        scan_schema, ts_scan_stats);
+  };
+
+  const EntitySegmentMetaInfo &GetHandleInfo() const { return segment_file_->GetHandleInfo(); }
+
+  void MarkDeleteEntityHeader() { segment_file_->MarkDeleteEntityHeader(); }
+
+  // used by Vacuum, delete all data files.
+  void MarkDeleteAll() {
+    segment_file_->MarkDeleteAll();
+  }
+
+  std::string GetPath() { return segment_file_->GetPath(); }
+  std::string GetHandleInfoStr() { return segment_file_->GetHandleInfoStr(); }
+
+  uint64_t GetAggFileSize() { return segment_file_->GetAggFileSize(); }
+};
 }  // namespace kwdbts

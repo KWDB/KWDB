@@ -287,6 +287,8 @@ class TsVGroupVersion {
     recorder_ = PartitionIntervalRecorder::GetInstance();
   }
 
+  ~TsVGroupVersion() {}
+
   std::vector<std::shared_ptr<const TsPartitionVersion>> GetPartitions(uint32_t dbid,
                                                                        const std::vector<KwTsSpan> &ts_spans,
                                                                        DATATYPE ts_type) const;

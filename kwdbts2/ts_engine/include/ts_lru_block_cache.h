@@ -17,6 +17,7 @@
 #include <mutex>
 #include <vector>
 #include "ts_entity_segment.h"
+#include "ts_segment_block_container.h"
 
 namespace kwdbts {
 

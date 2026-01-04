@@ -180,11 +180,11 @@ class TsAggIteratorV2Impl : public TsStorageIteratorV2Impl {
   std::vector<k_uint32> cur_first_col_idxs_;
   std::vector<k_uint32> cur_last_col_idxs_;
 
-  std::map<k_uint32, k_uint32> max_map_;
-  std::map<k_uint32, k_uint32> min_map_;
+  std::unordered_map<k_uint32, k_uint32> max_map_;
+  std::unordered_map<k_uint32, k_uint32> min_map_;
 
-  std::map<k_uint32, k_uint32> first_map_;
-  std::map<k_uint32, k_uint32> last_map_;
+  std::unordered_map<k_uint32, k_uint32> first_map_;
+  std::unordered_map<k_uint32, k_uint32> last_map_;
   std::vector<uint32_t> count_col_idxs_;
   std::vector<uint32_t> sum_col_idxs_;
   std::vector<uint32_t> max_col_idxs_;
@@ -206,8 +206,8 @@ class TsAggIteratorV2Impl : public TsStorageIteratorV2Impl {
 
 class TsOffsetIteratorV2Impl : public TsIterator {
  public:
-  TsOffsetIteratorV2Impl(std::map<uint32_t, std::shared_ptr<TsVGroup>>& vgroups,
-                         std::map<uint32_t, std::vector<EntityID>>& vgroup_ids, std::vector<KwTsSpan>& ts_spans,
+  TsOffsetIteratorV2Impl(std::unordered_map<uint32_t, std::shared_ptr<TsVGroup>>& vgroups,
+                         std::unordered_map<uint32_t, std::vector<EntityID>>& vgroup_ids, std::vector<KwTsSpan>& ts_spans,
                          std::vector<k_uint32>& kw_scan_cols, std::vector<k_uint32>& ts_scan_cols,
                          std::shared_ptr<TsTableSchemaManager>& table_schema_mgr,
                          std::shared_ptr<MMapMetricsTable>& schema,
@@ -283,8 +283,8 @@ class TsOffsetIteratorV2Impl : public TsIterator {
   std::vector<uint32_t> ts_scan_cols_;
   std::unordered_map<uint32_t, std::vector<uint32_t>> blk_scan_cols_;
 
-  std::map<uint32_t, std::vector<EntityID>> vgroup_ids_;
-  std::map<uint32_t, std::shared_ptr<TsVGroup>> vgroups_;
+  std::unordered_map<uint32_t, std::vector<EntityID>> vgroup_ids_;
+  std::unordered_map<uint32_t, std::shared_ptr<TsVGroup>> vgroups_;
   // map<timestamp, {vgroup_id, TsPartition}>
   TimestampComparator comparator_;
   map<timestamp64, std::vector<pair<uint32_t, std::shared_ptr<const TsPartitionVersion>>>, TimestampComparator> p_times_;

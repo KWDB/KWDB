@@ -12,11 +12,16 @@
 #include <cstdio>
 #include "test_util.h"
 #include "ts_engine.h"
+#include "ts_lru_block_cache.h"
 #include "ts_table.h"
+#include <atomic>
 
 using namespace kwdbts;
 
 const string engine_root_path = "./tsdb";
+extern atomic<int> destroyed_entity_block_file_count;
+extern atomic<int> created_entity_block_file_count;
+
 class TestV2Iterator : public ::testing::Test {
  public:
   EngineOptions opts_;
@@ -849,4 +854,141 @@ TEST_F(TestV2Iterator, mulitEntityDeleteCountBeforeFlush) {
       }
     }
   }
+}
+
+TEST_F(TestV2Iterator, blockCacheDetachMMAP) {
+  EngineOptions::max_rows_per_block = 30;
+  EngineOptions::min_rows_per_block = 15;
+  TSTableID table_id = 999;
+  roachpb::CreateTsTable pb_meta;
+  ConstructRoachpbTable(&pb_meta, table_id);
+  std::shared_ptr<TsTable> ts_table;
+  auto s = engine_->CreateTsTable(ctx_, table_id, &pb_meta, ts_table);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  bool is_dropped = false;
+  s = engine_->GetTsTable(ctx_, table_id, ts_table, is_dropped);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+
+  std::shared_ptr<TsTableSchemaManager> table_schema_mgr;
+  s = engine_->GetTableSchemaMgr(ctx_, table_id, is_dropped, table_schema_mgr);
+  ASSERT_EQ(s , KStatus::SUCCESS);
+
+  const std::vector<AttributeInfo>* metric_schema{nullptr};
+  s = table_schema_mgr->GetMetricMeta(1, &metric_schema);
+  ASSERT_EQ(s , KStatus::SUCCESS);
+
+  std::vector<TagInfo> tag_schema;
+  s = table_schema_mgr->GetTagMeta(1, tag_schema);
+  ASSERT_EQ(s , KStatus::SUCCESS);
+
+  timestamp64 start_ts = 3600;
+  KTimestamp interval = 100L;
+  int entity_num = 30;
+  int entity_row_num = 10;
+  int insert_times = 4;
+  uint16_t inc_entity_cnt;
+  uint32_t inc_unordered_cnt;
+  DedupResult dedup_result{0, 0, 0, TSSlice {nullptr, 0}};
+
+  std::vector<std::shared_ptr<TsVGroup>>* ts_vgroups = engine_->GetTsVGroups();
+
+  for (int j = 0; j < insert_times; ++j) {
+    start_ts += 1000;
+    for (size_t i = 0; i < entity_num; i++) {
+      auto pay_load = GenRowPayload(*metric_schema, tag_schema ,table_id, 1, 1 + i, entity_row_num, start_ts + 1 + i, interval);
+      s = engine_->PutData(ctx_, table_id, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
+      free(pay_load.data);
+      ASSERT_EQ(s, KStatus::SUCCESS);
+    }
+
+    for (const auto& vgroup : *ts_vgroups) {
+      ASSERT_EQ(vgroup->Flush(), KStatus::SUCCESS);
+      ASSERT_EQ(vgroup->Compact(), KStatus::SUCCESS);
+    }
+  }
+
+  // Four entity segments were created for four vgroups, so there are four entity block mmap files are open.
+  ASSERT_EQ(created_entity_block_file_count - destroyed_entity_block_file_count, 4);
+
+  for (const auto& vgroup : *ts_vgroups) {
+    TsStorageIterator* ts_iter;
+    KwTsSpan ts_span = {INT64_MIN, INT64_MAX};
+    std::vector<k_uint32> scan_cols = {0, 1, 2};
+    std::vector<Sumfunctype> scan_agg_types = {};
+
+    auto current = vgroup->CurrentVersion();
+    auto partitions = current->GetPartitions(1, {{INT64_MIN, INT64_MAX}}, DATATYPE::TIMESTAMP64);
+    ASSERT_EQ(partitions.size(), 1);
+    for (auto partition : partitions) {
+      for (k_uint32 entity_id = 1; entity_id <= vgroup->GetMaxEntityID(); entity_id++) {
+        auto count_info = partition->GetCountManager();
+        TsEntityCountHeader count_header{};
+        count_header.entity_id = entity_id;
+        s = count_info->GetEntityCountHeader(&count_header);
+        if (count_header.valid_count > 0) {
+          ASSERT_EQ(count_header.valid_count, 4 * entity_row_num);
+        }
+      }
+    }
+    for (k_uint32 entity_id = 1; entity_id <= vgroup->GetMaxEntityID(); entity_id++) {
+      std::shared_ptr<MMapMetricsTable> schema;
+      ASSERT_EQ(table_schema_mgr->GetMetricSchema(1, &schema), KStatus::SUCCESS);
+      std::vector<uint32_t> entity_ids = {entity_id};
+      std::vector<KwTsSpan> ts_spans = {ts_span};
+      std::vector<BlockFilter> block_filter = {};
+      std::vector<k_int32> agg_extend_cols = {};
+      std::vector<timestamp64> ts_points = {};
+      s = vgroup->GetIterator(ctx_, 1, entity_ids, ts_spans, block_filter,
+                              scan_cols, scan_cols, agg_extend_cols, scan_agg_types, table_schema_mgr,
+                              schema, &ts_iter, vgroup, ts_points, false, false);
+      ASSERT_EQ(s, KStatus::SUCCESS);
+      ResultSet res{(k_uint32) scan_cols.size()};
+      k_uint32 count;
+      bool is_finished = false;
+      ASSERT_EQ(ts_iter->Next(&res, &count, &is_finished), KStatus::SUCCESS);
+      ASSERT_EQ(is_finished, false);
+      ASSERT_EQ(count, 30);
+      ASSERT_EQ(ts_iter->Next(&res, &count, &is_finished), KStatus::SUCCESS);
+      ASSERT_EQ(is_finished, false);
+      ASSERT_EQ(count, 10);
+      ASSERT_EQ(ts_iter->Next(&res, &count, &is_finished), KStatus::SUCCESS);
+      ASSERT_EQ(is_finished, true);
+      ASSERT_EQ(count, 0);
+      delete ts_iter;
+    }
+  }
+
+  // After data query, there is no new entity block mmap file are opened.
+  ASSERT_EQ(created_entity_block_file_count - destroyed_entity_block_file_count, 4);
+  ASSERT_EQ(TsLRUBlockCache::GetInstance().GetMemorySize(), 18060);
+
+  for (int j = 0; j < insert_times; ++j) {
+    start_ts += 1000;
+    for (size_t i = 0; i < entity_num; i++) {
+      auto pay_load = GenRowPayload(*metric_schema, tag_schema ,table_id, 1, 1 + i, entity_row_num, start_ts + 1 + i, interval);
+      s = engine_->PutData(ctx_, table_id, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
+      free(pay_load.data);
+      ASSERT_EQ(s, KStatus::SUCCESS);
+    }
+
+    for (const auto& vgroup : *ts_vgroups) {
+      ASSERT_EQ(vgroup->Flush(), KStatus::SUCCESS);
+      ASSERT_EQ(vgroup->Compact(), KStatus::SUCCESS);
+    }
+  }
+
+  /**
+   * Four new version entity segments were created due to data insertion and four new entity block mmap files were opened,
+   * the blocks in LRU block cache will refer to new entity block mmap files instead of old entity block mmap files, so
+   * four old version entity segments and four old entity block mmap files were closed as well which means the total number
+   * of opening new entity block files should still be 4.
+   */
+  ASSERT_EQ(created_entity_block_file_count - destroyed_entity_block_file_count, 4);
+
+  TsLRUBlockCache::GetInstance().EvictAll();
+  /**
+   * Cleanup the LRU block cache doen't make any difference since LRU block cache won't hold the entity block mmap
+   * files anymore.
+   */
+  ASSERT_EQ(created_entity_block_file_count - destroyed_entity_block_file_count, 4);
 }

@@ -964,7 +964,7 @@ EntitySegmentMetaInfo TsEntitySegmentVacuumer::GetHandleInfo() {
 }
 
 TsSliceGuard TsMemEntitySegmentModifier::GetEntityItems(TsEntitySegment* target) {
-  TsRandomReadFile* r_file = target->meta_mgr_.entity_header_.r_file_.get();
+  TsRandomReadFile* r_file = target->GetSegmentFile()->meta_mgr_.entity_header_.r_file_.get();
   size_t header_size = sizeof(TsEntityItemFileHeader);
   TsSliceGuard result;
   auto s = r_file->Read(0, r_file->GetFileSize() - header_size, &result);
@@ -973,7 +973,7 @@ TsSliceGuard TsMemEntitySegmentModifier::GetEntityItems(TsEntitySegment* target)
 }
 
 TsSliceGuard TsMemEntitySegmentModifier::GetBlockItems(TsEntitySegment* target) {
-  TsRandomReadFile* r_file = target->meta_mgr_.block_header_.r_file_.get();
+  TsRandomReadFile* r_file = target->GetSegmentFile()->meta_mgr_.block_header_.r_file_.get();
   size_t header_size = sizeof(TsBlockItemFileHeader);
   TsSliceGuard result;
   auto s = r_file->Read(header_size, r_file->GetFileSize() - header_size, &result);
@@ -1054,8 +1054,8 @@ auto TsMemEntitySegmentModifier::Modify(TsEntitySegment* base) {
   }
 
   // modify: block_id prev_block_id block_offset agg_offset;
-  size_t block_offset = base->block_file_.r_file_->GetFileSize();
-  size_t agg_offset = base->agg_file_.r_file_->GetFileSize();
+  size_t block_offset = base->GetSegmentFile()->block_file_.r_file_->GetFileSize();
+  size_t agg_offset = base->GetSegmentFile()->agg_file_.r_file_->GetFileSize();
   for (int i = 0; i < mem_entity_meta.block_num; ++i) {
     mem_entity_meta.block_items[i].block_id += dsk_block_num;
     mem_entity_meta.block_items[i].block_offset += block_offset - sizeof(TsAggAndBlockFileHeader);
@@ -1116,46 +1116,52 @@ static KStatus DumpToEntityHeader(const std::string& dst_path, const TsSliceGuar
 }
 
 KStatus TsMemEntitySegmentModifier::FirstFlushBypass(EntitySegmentMetaInfo* info) {
-  auto s = CopyHelper(entity_segment_->meta_mgr_.entity_header_.r_file_.get());
+  auto s = CopyHelper(entity_segment_->GetSegmentFile()->meta_mgr_.entity_header_.r_file_.get());
   if (s != SUCCESS) return s;
-  s = CopyHelper(entity_segment_->meta_mgr_.block_header_.r_file_.get());
+  s = CopyHelper(entity_segment_->GetSegmentFile()->meta_mgr_.block_header_.r_file_.get());
   if (s != SUCCESS) return s;
 
-  s = CopyHelper(entity_segment_->block_file_.r_file_.get());
+  s = CopyHelper(entity_segment_->GetSegmentFile()->block_file_.r_file_.get());
   if (s != SUCCESS) return s;
-  s = CopyHelper(entity_segment_->agg_file_.r_file_.get());
+  s = CopyHelper(entity_segment_->GetSegmentFile()->agg_file_.r_file_.get());
   if (s != SUCCESS) return s;
-  *info = entity_segment_->info_;
+  *info = entity_segment_->GetSegmentFile()->info_;
   return SUCCESS;
 }
 
 KStatus TsMemEntitySegmentModifier::NormalFlush(TsEntitySegment* base, EntitySegmentMetaInfo* info) {
   auto mem_entity_meta = Modify(base);
-  auto s = DumpToEntityHeader(entity_segment_->meta_mgr_.entity_header_.r_file_->GetFilePath(),
+  auto s = DumpToEntityHeader(entity_segment_->GetSegmentFile()->meta_mgr_.entity_header_.r_file_->GetFilePath(),
                               mem_entity_meta.entity_items_guard_);
   // auto s = CopyHelper(entity_segment_->meta_mgr_.entity_header_.r_file_.get());
   if (s != SUCCESS) return s;
-  std::string path = base->meta_mgr_.block_header_.r_file_->GetFilePath();
-  s = AppendHelper(path, base->info_.header_b_info.length, entity_segment_->meta_mgr_.block_header_.r_file_.get(),
-                   sizeof(TsBlockItemFileHeader));
+  std::string path = base->GetSegmentFile()->meta_mgr_.block_header_.r_file_->GetFilePath();
+  s = AppendHelper(path, base->GetSegmentFile()->info_.header_b_info.length,
+                    entity_segment_->GetSegmentFile()->meta_mgr_.block_header_.r_file_.get(),
+                    sizeof(TsBlockItemFileHeader));
   if (s != SUCCESS) return s;
 
-  path = base->block_file_.r_file_->GetFilePath();
-  s = AppendHelper(path, base->info_.datablock_info.length, entity_segment_->block_file_.r_file_.get(),
-                   sizeof(TsAggAndBlockFileHeader));
+  path = base->GetSegmentFile()->block_file_.r_file_->GetFilePath();
+  s = AppendHelper(path, base->GetSegmentFile()->info_.datablock_info.length,
+                    entity_segment_->GetSegmentFile()->block_file_.r_file_.get(),
+                    sizeof(TsAggAndBlockFileHeader));
   if (s != SUCCESS) return s;
 
-  path = base->agg_file_.r_file_->GetFilePath();
-  s = AppendHelper(path, base->info_.agg_info.length, entity_segment_->agg_file_.r_file_.get(),
-                   sizeof(TsAggAndBlockFileHeader));
+  path = base->GetSegmentFile()->agg_file_.r_file_->GetFilePath();
+  s = AppendHelper(path, base->GetSegmentFile()->info_.agg_info.length,
+                    entity_segment_->GetSegmentFile()->agg_file_.r_file_.get(),
+                    sizeof(TsAggAndBlockFileHeader));
   if (s != SUCCESS) return s;
 
 
-  *info = base->info_;
-  info->header_e_file_number = entity_segment_->info_.header_e_file_number;
-  info->header_b_info.length += entity_segment_->info_.header_b_info.length - sizeof(TsBlockItemFileHeader);
-  info->datablock_info.length += entity_segment_->info_.datablock_info.length - sizeof(TsAggAndBlockFileHeader);
-  info->agg_info.length += entity_segment_->info_.agg_info.length - sizeof(TsAggAndBlockFileHeader);
+  *info = base->GetSegmentFile()->info_;
+  info->header_e_file_number = entity_segment_->GetSegmentFile()->info_.header_e_file_number;
+  info->header_b_info.length +=
+        entity_segment_->GetSegmentFile()->info_.header_b_info.length - sizeof(TsBlockItemFileHeader);
+  info->datablock_info.length +=
+        entity_segment_->GetSegmentFile()->info_.datablock_info.length - sizeof(TsAggAndBlockFileHeader);
+  info->agg_info.length +=
+        entity_segment_->GetSegmentFile()->info_.agg_info.length - sizeof(TsAggAndBlockFileHeader);
   return SUCCESS;
 }
 

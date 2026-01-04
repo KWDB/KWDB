@@ -14,14 +14,27 @@
 #include "ts_filename.h"
 #include "ts_io.h"
 
+#ifdef WITH_TESTS
+#include <atomic>
+std::atomic<int> created_entity_block_file_count = 0;
+std::atomic<int> destroyed_entity_block_file_count = 0;
+#endif
+
 namespace kwdbts {
 
 TsEntitySegmentBlockFile::TsEntitySegmentBlockFile(TsIOEnv* io_env, const string& root, EntitySegmentMetaInfo info)
     : io_env_(io_env), root_path_(root), info_(std::move(info)) {
   memset(&header_, 0, sizeof(TsAggAndBlockFileHeader));
+#ifdef WITH_TESTS
+  ++created_entity_block_file_count;
+#endif
 }
 
-TsEntitySegmentBlockFile::~TsEntitySegmentBlockFile() {}
+TsEntitySegmentBlockFile::~TsEntitySegmentBlockFile() {
+#ifdef WITH_TESTS
+  ++destroyed_entity_block_file_count;
+#endif
+}
 
 KStatus TsEntitySegmentBlockFile::Open() {
   std::string file_path_ = root_path_ / DataBlockFileName(info_.datablock_info.file_number);
