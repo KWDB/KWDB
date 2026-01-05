@@ -20,6 +20,7 @@
 #include "ts_iterator_v2_impl.h"
 #include "engine.h"
 #include "ee_global.h"
+#include "ts_ts_lsn_span_utils.h"
 
 namespace kwdbts {
 int64_t TsMaxMilliTimestamp = 31556995200000;  // be associated with 'kwbase/pkg/sql/sem/tree/type_check.go'
@@ -2509,25 +2510,34 @@ KStatus TsRawDataIteratorV2ImplByOSN::GetMetricDelRows(ResultSet* res, k_uint32*
     // if tag is deleted, no need search metric delete operation.
     return KStatus::SUCCESS;
   }
-  std::vector<KwTsSpan> del_spans;
-  auto s = vgroup_->GetDelInfoByOSN(nullptr, table_id_, entitys_[cur_entity_index_].entityId, osn_span_, &del_spans);
+  std::list<STDelRange> del_spans;
+  auto s = vgroup_->GetDelInfoWithOSN(nullptr, table_id_, entitys_[cur_entity_index_].entityId, &del_spans);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("GetDelInfoByOSN failed.");
     return s;
   }
-  if (del_spans.empty()) {
+  std::vector<STDelRange> del_ranges;
+  for (auto& del : del_spans) {
+    if (IsOsnInSpans(del.osn_span.end, osn_span_)) {
+      del_ranges.push_back(del);
+    }
+  }
+  if (del_ranges.empty()) {
     return KStatus::SUCCESS;
   }
-  *count = del_spans.size();
-  s = FillEmptyMetricRow(res, del_spans.size(), osn_span_[0].begin, OperatorTypeOfRecord::OP_TYPE_METRIC_DELETE);
+  *count = del_ranges.size();
+  s = FillEmptyMetricRow(res, del_ranges.size(), 1, OperatorTypeOfRecord::OP_TYPE_METRIC_DELETE);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("FillEmptyMetricRow failed.");
     return s;
   }
   size_t ext_event_idx = kw_scan_cols_.size() + 2;
-  for (size_t i = 0; i < del_spans.size(); i++) {
-    KUint64(reinterpret_cast<char*>(res->data[ext_event_idx][0]->mem) + i * 16) = del_spans[i].begin;
-    KUint64(reinterpret_cast<char*>(res->data[ext_event_idx][0]->mem) + i * 16 + 8) = del_spans[i].end;
+  size_t cur_idx = res->data[0].size() - 1;
+  for (size_t i = 0; i < del_ranges.size(); i++) {
+    STDelRange& cur_del = del_ranges[i];
+    KUint64(reinterpret_cast<char*>(res->data[ext_event_idx - 2][cur_idx]->mem) + i * 8) = cur_del.osn_span.end;
+    KUint64(reinterpret_cast<char*>(res->data[ext_event_idx][cur_idx]->mem) + i * 16) = cur_del.ts_span.begin;
+    KUint64(reinterpret_cast<char*>(res->data[ext_event_idx][cur_idx]->mem) + i * 16 + 8) = cur_del.ts_span.end;
   }
   return KStatus::SUCCESS;
 }

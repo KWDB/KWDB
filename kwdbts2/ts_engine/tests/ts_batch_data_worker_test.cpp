@@ -84,7 +84,7 @@ TEST_F(TsBatchDataWorkerTest, TestTsBatchDataWorker) {
   timestamp64 start_ts = 10086000;
   auto pay_load = GenRowPayload(*metric_schema, tag_schema ,table_id, 1, 1, 1000, start_ts);
   uint16_t inc_entity_cnt;
-  uint32_t inc_unordered_cnt;
+  uint32_t inc_unordered_cnt = 0;
   DedupResult dedup_result{0, 0, 0, TSSlice {nullptr, 0}};
   s = engine_->PutData(ctx_, table_id, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
   free(pay_load.data);

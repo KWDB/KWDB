@@ -323,7 +323,7 @@ TEST_F(ConcurrentRWTest, SwitchMem) {
     for (int i = 0; i < npayload; ++i) {
       auto payload = payloads[i];
       uint16_t inc_entity_cnt;
-      uint32_t inc_unordered_cnt;
+      uint32_t inc_unordered_cnt = 0;
       DedupResult dedup_result;
       bool is_dropped = false;
       engine->PutData(ctx_, table_id, 0, &payload, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
@@ -423,7 +423,7 @@ TEST_F(ConcurrentRWTest, RandomFlush) {
     for (int i = 0; i < npayload; ++i) {
       auto payload = payloads[i];
       uint16_t inc_entity_cnt;
-      uint32_t inc_unordered_cnt;
+      uint32_t inc_unordered_cnt = 0;
       DedupResult dedup_result;
       bool is_dropped = false;
       engine->PutData(ctx_, table_id, 0, &payload, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);

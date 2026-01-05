@@ -110,7 +110,7 @@ TEST_F(TestV2IteratorByOSN, basic_insert) {
   auto pay_load = GenRowPayload(*metric_schema_, tag_schema_ ,table_id_, table_version, 1, 1, start_ts);
   TsRawPayload::SetOSN(pay_load, 1760000);
   uint16_t inc_entity_cnt;
-  uint32_t inc_unordered_cnt;
+  uint32_t inc_unordered_cnt = 0;
   DedupResult dedup_result{0, 0, 0, TSSlice {nullptr, 0}};
   bool is_dropped = false;
   auto s = engine_->PutData(ctx_, table_id_, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
@@ -192,7 +192,7 @@ TEST_F(TestV2IteratorByOSN, basic_udpate) {
   auto pay_load = GenRowPayload(*metric_schema_, tag_schema_ ,table_id_, table_version, 1, 1, start_ts);
   TsRawPayload::SetOSN(pay_load, 1760000);
   uint16_t inc_entity_cnt;
-  uint32_t inc_unordered_cnt;
+  uint32_t inc_unordered_cnt = 0;
   DedupResult dedup_result{0, 0, 0, TSSlice {nullptr, 0}};
   bool is_dropped = false;
   auto s = engine_->PutData(ctx_, table_id_, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
@@ -314,7 +314,7 @@ TEST_F(TestV2IteratorByOSN, basic_delete) {
   auto pay_load = GenRowPayload(*metric_schema_, tag_schema_ ,table_id_, table_version, 1, 1, start_ts);
   TsRawPayload::SetOSN(pay_load, 1760000);
   uint16_t inc_entity_cnt;
-  uint32_t inc_unordered_cnt;
+  uint32_t inc_unordered_cnt = 0;
   DedupResult dedup_result{0, 0, 0, TSSlice {nullptr, 0}};
   bool is_dropped = false;
   auto s = engine_->PutData(ctx_, table_id_, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
@@ -465,7 +465,7 @@ TEST_F(TestV2IteratorByOSN, basic_metric_insert) {
   auto pay_load = GenRowPayload(*metric_schema_, tag_schema_ ,table_id_, table_version, 1, 1, start_ts);
   TsRawPayload::SetOSN(pay_load, 1760000);
   uint16_t inc_entity_cnt;
-  uint32_t inc_unordered_cnt;
+  uint32_t inc_unordered_cnt = 0;
   DedupResult dedup_result{0, 0, 0, TSSlice {nullptr, 0}};
   bool is_dropped = false;
   auto s = engine_->PutData(ctx_, table_id_, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
@@ -554,7 +554,7 @@ TEST_F(TestV2IteratorByOSN, basic_metric_delete) {
   auto pay_load = GenRowPayload(*metric_schema_, tag_schema_ ,table_id_, table_version, 1, 1, start_ts);
   TsRawPayload::SetOSN(pay_load, 1760000);
   uint16_t inc_entity_cnt;
-  uint32_t inc_unordered_cnt;
+  uint32_t inc_unordered_cnt = 0;
   DedupResult dedup_result{0, 0, 0, TSSlice {nullptr, 0}};
   bool is_dropped = false;
   auto s = engine_->PutData(ctx_, table_id_, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
@@ -628,7 +628,7 @@ TEST_F(TestV2IteratorByOSN, basic_metric_delete) {
   } while (count > 0);
   // while osn= 1780000, has one valid metric row ,but this row deleted later, so not return.
   ASSERT_EQ(total,  1);
-  ASSERT_EQ(KUint64(m_rs.data[1][0]->mem), 0);
+  ASSERT_EQ(KUint64(m_rs.data[1][0]->mem), 1770000);
   ASSERT_EQ(KUint8(m_rs.data[2][0]->mem), 4);
   ASSERT_EQ(KUint64(m_rs.data[3][0]->mem), 0);
   ASSERT_EQ(KUint64((char*)(m_rs.data[3][0]->mem) + 8), 3600);
@@ -645,11 +645,17 @@ TEST_F(TestV2IteratorByOSN, basic_metric_delete) {
     ASSERT_EQ(s, KStatus::SUCCESS);
     total += count;
   } while (count > 0);
-  ASSERT_EQ(total,  1);
-  ASSERT_EQ(KUint64(m_rs.data[1][0]->mem), 0);
+  ASSERT_EQ(total,  2);
+  ASSERT_EQ(KUint64(m_rs.data[1][0]->mem), 1770000);
   ASSERT_EQ(KUint8(m_rs.data[2][0]->mem), 4);
   ASSERT_EQ(KUint64(m_rs.data[3][0]->mem), 0);
-  ASSERT_EQ(KUint64((char*)(m_rs.data[3][0]->mem) + 8), 13600);
+  ASSERT_EQ(KUint64((char*)(m_rs.data[3][0]->mem) + 8), 3600);
+
+  ASSERT_EQ(KUint64((char*)(m_rs.data[1][0]->mem) + 8), 1790000);
+  ASSERT_EQ(KUint8((char*)(m_rs.data[2][0]->mem) + 1), 4);
+  ASSERT_EQ(KUint64((char*)(m_rs.data[3][0]->mem) + 16), 0);
+  ASSERT_EQ(KUint64((char*)(m_rs.data[3][0]->mem) + 24), 13600);
+
   delete m_iter;
 
   total = 0;
@@ -663,11 +669,20 @@ TEST_F(TestV2IteratorByOSN, basic_metric_delete) {
     ASSERT_EQ(s, KStatus::SUCCESS);
     total += count;
   } while (count > 0);
-  ASSERT_EQ(total,  1);
-  ASSERT_EQ(KUint64(m_rs.data[1][0]->mem), 0);
+  ASSERT_EQ(total,  3);
+  ASSERT_EQ(KUint64(m_rs.data[1][0]->mem), 1770000);
   ASSERT_EQ(KUint8(m_rs.data[2][0]->mem), 4);
   ASSERT_EQ(KUint64(m_rs.data[3][0]->mem), 0);
-  ASSERT_EQ(KUint64((char*)(m_rs.data[3][0]->mem) + 8), 23600);
+  ASSERT_EQ(KUint64((char*)(m_rs.data[3][0]->mem) + 8), 3600);
+  ASSERT_EQ(KUint64((char*)(m_rs.data[1][0]->mem) + 8), 1790000);
+  ASSERT_EQ(KUint8((char*)(m_rs.data[2][0]->mem) + 1), 4);
+  ASSERT_EQ(KUint64((char*)(m_rs.data[3][0]->mem) + 16), 0);
+  ASSERT_EQ(KUint64((char*)(m_rs.data[3][0]->mem) + 24), 13600);
+
+  ASSERT_EQ(KUint64((char*)(m_rs.data[1][0]->mem) + 16), 1810000);
+  ASSERT_EQ(KUint8((char*)(m_rs.data[2][0]->mem) + 2), 4);
+  ASSERT_EQ(KUint64((char*)(m_rs.data[3][0]->mem) + 32), 0);
+  ASSERT_EQ(KUint64((char*)(m_rs.data[3][0]->mem) + 40), 23600);
   delete m_iter;
 }
 // tag insert then delete all metric data. osn range return empty row, else return nothing.
@@ -677,7 +692,7 @@ TEST_F(TestV2IteratorByOSN, only_tag_data_exist) {
   auto pay_load = GenRowPayload(*metric_schema_, tag_schema_ ,table_id_, table_version, 1, 1, start_ts);
   TsRawPayload::SetOSN(pay_load, 1760000);
   uint16_t inc_entity_cnt;
-  uint32_t inc_unordered_cnt;
+  uint32_t inc_unordered_cnt = 0;
   DedupResult dedup_result{0, 0, 0, TSSlice {nullptr, 0}};
     bool is_dropped = false;
   auto s = engine_->PutData(ctx_, table_id_, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
@@ -776,7 +791,7 @@ TEST_F(TestV2IteratorByOSN, only_tag_data_exist) {
     total += count;
   } while (count > 0);
   ASSERT_EQ(total,  1);
-  ASSERT_EQ(KUint64(m_rs.data[1][0]->mem), 1760001);
+  ASSERT_EQ(KUint64(m_rs.data[1][0]->mem), 1770000);
   ASSERT_EQ(KUint8(m_rs.data[2][0]->mem), 4);
   ASSERT_EQ(KUint64(m_rs.data[3][0]->mem), 0);
   ASSERT_EQ(KUint64((char*)(m_rs.data[3][0]->mem) + 8), 45600);

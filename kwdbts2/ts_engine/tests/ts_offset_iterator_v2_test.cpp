@@ -82,7 +82,7 @@ TEST_F(TestOffsetIteratorV2, basic) {
   timestamp64 start_ts = 3600 * 1000;
   auto payload = GenRowPayload(*metric_schema, tag_schema ,table_id, 1, 1, 10000, start_ts, 10);
   uint16_t inc_entity_cnt;
-  uint32_t inc_unordered_cnt;
+  uint32_t inc_unordered_cnt = 0;
   DedupResult dedup_result{0, 0, 0, TSSlice {nullptr, 0}};
   s = engine_->PutData(ctx_, table_id, 0, &payload, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
   free(payload.data);
@@ -202,7 +202,7 @@ TEST_F(TestOffsetIteratorV2, multi_partition) {
   timestamp64 start_ts1 = 864000 * 1000;
   auto payload1 = GenRowPayload(*metric_schema, tag_schema ,table_id, 1, 1, 10000, start_ts1, 10);
   uint16_t inc_entity_cnt;
-  uint32_t inc_unordered_cnt;
+  uint32_t inc_unordered_cnt = 0;
   DedupResult dedup_result{0, 0, 0, TSSlice {nullptr, 0}};
   s = engine_->PutData(ctx_, table_id, 0, &payload1, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
   free(payload1.data);
@@ -334,7 +334,7 @@ TEST_F(TestOffsetIteratorV2, extreme) {
   timestamp64 start_ts1 = 3600 * 1000;
   auto payload1 = GenRowPayload(*metric_schema, tag_schema ,table_id, 1, 1, 2, start_ts1, 10);
   uint16_t inc_entity_cnt;
-  uint32_t inc_unordered_cnt;
+  uint32_t inc_unordered_cnt = 0;
   DedupResult dedup_result{0, 0, 0, TSSlice {nullptr, 0}};
   s = engine_->PutData(ctx_, table_id, 0, &payload1, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
   free(payload1.data);
@@ -455,7 +455,7 @@ TEST_F(TestOffsetIteratorV2, extreme) {
 //
 //  int write_count = 20;
 //  uint16_t inc_entity_cnt;
-//  uint32_t inc_unordered_cnt;
+//  uint32_t inc_unordered_cnt = 0;
 //  DedupResult dedup_result{0, 0, 0, TSSlice {nullptr, 0}};
 //  // Cross write unordered data
 //  for (int i = 0; i < write_count; ++i) {

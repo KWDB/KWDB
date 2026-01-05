@@ -97,7 +97,7 @@ class TestEngineSnapshotImgrate : public ::testing::Test {
     TsRawPayload::SetHashPoint(pay_load, 2);
     TsRawPayload::SetOSN(pay_load, osn);
     uint16_t inc_entity_cnt;
-    uint32_t inc_unordered_cnt;
+    uint32_t inc_unordered_cnt = 0;
     DedupResult dedup_result{0, 0, 0, TSSlice {nullptr, 0}};
     s = ts_e->PutData(ctx_, table_id, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
     EXPECT_EQ(s , KStatus::SUCCESS);
@@ -118,7 +118,7 @@ class TestEngineSnapshotImgrate : public ::testing::Test {
     TsRawPayload::SetHashPoint(pay_load, 2);
     TsRawPayload::SetOSN(pay_load, osn);
     uint16_t inc_entity_cnt;
-    uint32_t inc_unordered_cnt;
+    uint32_t inc_unordered_cnt = 0;
     DedupResult dedup_result{0, 0, 0, TSSlice {nullptr, 0}};
     s = ts_e->PutEntity(ctx_, table_id, 1, &pay_load, 1, 0, is_dropped);
     EXPECT_EQ(s , KStatus::SUCCESS);
@@ -700,7 +700,7 @@ TEST_F(TestEngineSnapshotImgrate, ConvertManyDataDiffEntitiesFaild1) {
         ASSERT_EQ(KUint8(rs.data[2][0]->mem), OperatorTypeOfRecord::OP_TYPE_TAG_DELETE);
       } else if (KUint64(rs.entity_index.mem.get()) == 2) {
         if (KUint8(rs.data[2][0]->mem) == OperatorTypeOfRecord::OP_TYPE_METRIC_DELETE) {
-          ASSERT_EQ(KUint64(rs.data[1][0]->mem), 1000);
+          ASSERT_EQ(KUint64(rs.data[1][0]->mem), 2000);
           ASSERT_EQ(KUint8(rs.data[2][0]->mem), OperatorTypeOfRecord::OP_TYPE_METRIC_DELETE);
           ASSERT_EQ(KUint64(rs.data[3][0]->mem), 0);
           ASSERT_EQ(KUint64((char*)(rs.data[3][0]->mem) + 8), 12345678);
@@ -1220,7 +1220,7 @@ TEST_F(TestEngineSnapshotImgrate, ConvertUpdateEntities) {
   } while (count > 0);
   ASSERT_EQ(total,  1);
   ASSERT_EQ(rs.data[1][0]->count, 1);
-  ASSERT_EQ(KUint64(rs.data[1][0]->mem), 10187);
+  ASSERT_EQ(KUint64(rs.data[1][0]->mem), 10188);
   ASSERT_EQ(KUint64(rs.data[2][0]->mem), OperatorTypeOfRecord::OP_TYPE_METRIC_DELETE);
   ASSERT_EQ(KUint64(rs.data[3][0]->mem), 0);
   ASSERT_EQ(KUint64((char*)(rs.data[3][0]->mem) + 8), 123456);
@@ -1251,7 +1251,7 @@ TEST_F(TestEngineSnapshotImgrate, ConvertUpdateEntities) {
     total += count;
   } while (count > 0);
   ASSERT_EQ(total,  2);
-  ASSERT_EQ(KUint64(rs.data[1][0]->mem), 10187);
+  ASSERT_EQ(KUint64(rs.data[1][0]->mem), 10188);
   ASSERT_EQ(KUint64(rs.data[1][1]->mem), 10189);
   ASSERT_EQ(KUint64(rs.data[2][0]->mem), OperatorTypeOfRecord::OP_TYPE_METRIC_DELETE);
   ASSERT_EQ(KUint64(rs.data[2][1]->mem), OperatorTypeOfRecord::OP_TYPE_TAG_UPDATE);

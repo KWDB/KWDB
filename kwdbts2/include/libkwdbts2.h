@@ -271,7 +271,7 @@ TSStatus TSPutEntity(TSEngine *engine, TSTableID tableId, TSSlice *payload, size
                      uint64_t mtr_id, uint64_t osn);
 
 TSStatus TSPutDataExplicit(TSEngine* engine, TSTableID tableId, TSSlice* payload, size_t payload_num, RangeGroup range_group,
-                   uint64_t mtr_id, uint16_t* inc_entity_cnt, uint32_t* inc_unordered_cnt, DedupResult* dedup_result,
+                   uint64_t mtr_id, uint16_t* inc_entity_cnt, uint32_t* not_create_entity, DedupResult* dedup_result,
                    bool writeWAL, const char* tsx_id);
 
 TSStatus TSExecQuery(TSEngine* engine, QueryInfo* req, RespInfo* resp, TsFetcher* fetchers, void* fetcher);
@@ -353,16 +353,18 @@ TSStatus TSGetDataVolumeHalfTS(TSEngine* engine, TSTableID table_id, uint64_t be
  * @param[in] table_id id of the time series table
  * @param[in] payload_row  row-based payload
  * @param[in] range_group  hash-point
+ * @param[in] inc_entity_cnt  the number of puta data operation created new entity.
+ * @param[in] not_create_entity  if entity of this primarykey tag no exist, just ignore this putdata operation.
  * @param[out] dedup_result deduplicate info
  * @return
  */
 TSStatus TSPutDataByRowType(TSEngine* engine, TSTableID table_id, TSSlice* payload_row, size_t payload_num,
                             RangeGroup range_group, uint64_t mtr_id, uint16_t* inc_entity_cnt,
-                            uint32_t* inc_unordered_cnt, DedupResult* dedup_result, bool writeWAL);
+                            uint32_t* not_create_entity, DedupResult* dedup_result, bool writeWAL);
 
 TSStatus TSPutDataByRowTypeExplicit(TSEngine* engine, TSTableID table_id, TSSlice* payload_row, size_t payload_num,
                                     RangeGroup range_group, uint64_t mtr_id, uint16_t* inc_entity_cnt,
-                                    uint32_t* inc_unordered_cnt, DedupResult* dedup_result, bool writeWAL,
+                                    uint32_t* not_create_entity, DedupResult* dedup_result, bool writeWAL,
                                     const char* tsx_id);
 
 TSStatus TsTestGetAndAddSchemaVersion(TSEngine* engine, TSTableID table_id, uint64_t version);

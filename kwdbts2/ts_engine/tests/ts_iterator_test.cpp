@@ -116,7 +116,7 @@ TEST_F(TestV2Iterator, basic) {
     timestamp64 start_ts = 3600;
     auto pay_load = GenRowPayload(*metric_schema, tag_schema ,table_id, 1, 1, 1, start_ts);
     uint16_t inc_entity_cnt;
-    uint32_t inc_unordered_cnt;
+    uint32_t inc_unordered_cnt = 0;
     DedupResult dedup_result{0, 0, 0, TSSlice {nullptr, 0}};
     s = engine_->PutData(ctx_, table_id, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
     free(pay_load.data);
@@ -190,7 +190,7 @@ TEST_F(TestV2Iterator, mulitEntity) {
     int entity_num = 30;
     int entity_row_num = 3;
     uint16_t inc_entity_cnt;
-    uint32_t inc_unordered_cnt;
+    uint32_t inc_unordered_cnt = 0;
     DedupResult dedup_result{0, 0, 0, TSSlice {nullptr, 0}};
     for (size_t i = 0; i < entity_num; i++) {
       auto pay_load = GenRowPayload(*metric_schema, tag_schema ,table_id, 1, 1 + i, entity_row_num, start_ts + 1 + i, interval);
@@ -259,7 +259,7 @@ TEST_F(TestV2Iterator, multiDBAndEntity) {
     int entity_num = db_num * 10;
     int entity_row_num = 3;
     uint16_t inc_entity_cnt;
-    uint32_t inc_unordered_cnt;
+    uint32_t inc_unordered_cnt = 0;
     DedupResult dedup_result{0, 0, 0, TSSlice {nullptr, 0}};
     for (size_t i = 0; i < entity_num; i++) {
       auto pay_load = GenRowPayload(*metric_schema, tag_schema ,table_id + i % db_num, 1, 1 + i, entity_row_num, start_ts + 1 + i, interval);
@@ -342,7 +342,7 @@ TEST_F(TestV2Iterator, mulitEntityCount) {
   int entity_num = 30;
   int entity_row_num = 10;
   uint16_t inc_entity_cnt;
-  uint32_t inc_unordered_cnt;
+  uint32_t inc_unordered_cnt = 0;
   DedupResult dedup_result{0, 0, 0, TSSlice {nullptr, 0}};
   for (size_t i = 0; i < entity_num; i++) {
     auto pay_load = GenRowPayload(*metric_schema, tag_schema ,table_id, 1, 1 + i, entity_row_num, start_ts + 1 + i, interval);
@@ -437,7 +437,7 @@ TEST_F(TestV2Iterator, mulitEntityDeleteCount) {
   int entity_num = 30;
   int entity_row_num = 10;
   uint16_t inc_entity_cnt;
-  uint32_t inc_unordered_cnt;
+  uint32_t inc_unordered_cnt = 0;
   DedupResult dedup_result{0, 0, 0, TSSlice {nullptr, 0}};
   for (size_t i = 0; i < entity_num; i++) {
     auto pay_load = GenRowPayload(*metric_schema, tag_schema ,table_id, 1, 1 + i,
@@ -671,7 +671,7 @@ TEST_F(TestV2Iterator, mulitEntityDeleteCountBeforeFlush) {
   int entity_num = 30;
   int entity_row_num = 10;
   uint16_t inc_entity_cnt;
-  uint32_t inc_unordered_cnt;
+  uint32_t inc_unordered_cnt = 0;
   DedupResult dedup_result{0, 0, 0, TSSlice {nullptr, 0}};
   for (size_t i = 0; i < entity_num; i++) {
     auto pay_load = GenRowPayload(*metric_schema, tag_schema ,table_id, 1, 1 + i,
@@ -887,7 +887,7 @@ TEST_F(TestV2Iterator, blockCacheDetachMMAP) {
   int entity_row_num = 10;
   int insert_times = 4;
   uint16_t inc_entity_cnt;
-  uint32_t inc_unordered_cnt;
+  uint32_t inc_unordered_cnt = 0;
   DedupResult dedup_result{0, 0, 0, TSSlice {nullptr, 0}};
 
   std::vector<std::shared_ptr<TsVGroup>>* ts_vgroups = engine_->GetTsVGroups();

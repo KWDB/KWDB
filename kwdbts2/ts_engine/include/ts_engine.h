@@ -134,7 +134,8 @@ class TSEngineImpl : public TSEngine {
   }
 
   KStatus InsertTagData(kwdbContext_p ctx, const std::shared_ptr<TsTableSchemaManager>& tb_schema,
-                        uint64_t mtr_id, TSSlice payload_data, bool write_wal, uint32_t& vgroup, TSEntityID& entity_id);
+                        uint64_t mtr_id, TSSlice payload_data, bool write_wal,
+                        uint32_t& vgroup, TSEntityID& entity_id, bool& new_tag);
 
   KStatus
   GetMetaData(kwdbContext_p ctx, const KTableKey& table_id, RangeGroup range, roachpb::CreateTsTable* meta,
@@ -144,7 +145,7 @@ class TSEngineImpl : public TSEngine {
                     TSSlice* payload_data, int payload_num, uint64_t mtr_id, bool& is_dropped) override;
 
   KStatus PutData(kwdbContext_p ctx, const KTableKey& table_id, uint64_t range_group_id,
-    TSSlice* payload_data, int payload_num, uint64_t mtr_id, uint16_t* inc_entity_cnt, uint32_t* inc_unordered_cnt,
+    TSSlice* payload_data, int payload_num, uint64_t mtr_id, uint16_t* inc_entity_cnt, uint32_t* not_create_entity,
     DedupResult* dedup_result, bool writeWAL = true, const char* tsx_id = nullptr) override;
 
   KStatus DeleteRangeData(kwdbContext_p ctx, const KTableKey& table_id, uint64_t range_group_id,

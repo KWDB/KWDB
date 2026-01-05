@@ -87,7 +87,7 @@ TEST_F(TsEngineV2Test, simpleInsert) {
   timestamp64 start_ts = 10086000;
   auto pay_load = GenRowPayload(*metric_schema, tag_schema ,table_id, 1, 1, 1, start_ts);
   uint16_t inc_entity_cnt;
-  uint32_t inc_unordered_cnt;
+  uint32_t inc_unordered_cnt = 0;
   DedupResult dedup_result{0, 0, 0, TSSlice {nullptr, 0}};
   s = engine_->PutData(ctx_, table_id, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
   free(pay_load.data);
@@ -116,7 +116,7 @@ TEST_F(TsEngineV2Test, InsertMulitMemSeg) {
   ASSERT_EQ(s , KStatus::SUCCESS);
   ASSERT_EQ(metric_schema->size(), metric_type.size());
   uint16_t inc_entity_cnt;
-  uint32_t inc_unordered_cnt;
+  uint32_t inc_unordered_cnt = 0;
   DedupResult dedup_result{0, 0, 0, TSSlice {nullptr, 0}};
   timestamp64 ts = 10086000;
   for (int i = 0; i < 100000; ++i) {
@@ -150,7 +150,7 @@ TEST_F(TsEngineV2Test, InsertMulitMemSeg2) {
   ASSERT_EQ(s , KStatus::SUCCESS);
   ASSERT_EQ(metric_schema->size(), metric_type.size());
   uint16_t inc_entity_cnt;
-  uint32_t inc_unordered_cnt;
+  uint32_t inc_unordered_cnt = 0;
   DedupResult dedup_result{0, 0, 0, TSSlice {nullptr, 0}};
   timestamp64 ts = 10086000;
   for (size_t j = 0; j < 5; j++) {
@@ -186,7 +186,7 @@ TEST_F(TsEngineV2Test, CreateCheckpoint){
   ASSERT_EQ(s , KStatus::SUCCESS);
   ASSERT_EQ(metric_schema->size(), metric_type.size());
   uint16_t inc_entity_cnt;
-  uint32_t inc_unordered_cnt;
+  uint32_t inc_unordered_cnt = 0;
   DedupResult dedup_result{0, 0, 0, TSSlice {nullptr, 0}};
   timestamp64 ts = 10086000;
   for (size_t j = 0; j < 5; j++) {
@@ -239,7 +239,7 @@ TEST_F(TsEngineV2Test, Recover){
   ASSERT_EQ(s , KStatus::SUCCESS);
   ASSERT_EQ(metric_schema->size(), metric_type.size());
   uint16_t inc_entity_cnt;
-  uint32_t inc_unordered_cnt;
+  uint32_t inc_unordered_cnt = 0;
   DedupResult dedup_result{0, 0, 0, TSSlice {nullptr, 0}};
   timestamp64 ts = 10086000;
   for (size_t j = 0; j < 5; j++) {

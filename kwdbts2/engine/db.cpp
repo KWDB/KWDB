@@ -285,7 +285,7 @@ TSStatus TSPutEntity(TSEngine *engine, TSTableID tableId, TSSlice *payload, size
 // TSPutDataExplicit is used for time-series data insertion with distributed transaction support.
 TSStatus TSPutDataExplicit(TSEngine* engine, TSTableID table_id, TSSlice* payload, size_t payload_num,
                            RangeGroup range_group, uint64_t mtr_id, uint16_t* inc_entity_cnt,
-                           uint32_t* inc_unordered_cnt, DedupResult* dedup_result, bool writeWAL, const char* tsx_id) {
+                           uint32_t* not_create_entity, DedupResult* dedup_result, bool writeWAL, const char* tsx_id) {
   KWDB_DURATION(StStatistics::Get().ts_put);
   // The CGO calls the interface, and the GO layer code will call this interface to write data
   kwdbContext_t context;
@@ -299,7 +299,7 @@ TSStatus TSPutDataExplicit(TSEngine* engine, TSTableID table_id, TSSlice* payloa
   // Parse range_group_id from payload
   uint64_t tmp_range_group_id = 1;
   s = engine->PutData(ctx_p, tmp_table_id, tmp_range_group_id, payload, payload_num, mtr_id,
-                      inc_entity_cnt, inc_unordered_cnt, dedup_result, writeWAL, tsx_id);
+                      inc_entity_cnt, not_create_entity, dedup_result, writeWAL, tsx_id);
   if (s != KStatus::SUCCESS) {
     std::ostringstream ss;
     ss << tmp_range_group_id;
@@ -885,7 +885,7 @@ TSStatus TSGetDataVolumeHalfTS(TSEngine* engine, TSTableID table_id, uint64_t be
 // Input data in Payload format based online storage mode
 TSStatus TSPutDataByRowType(TSEngine* engine, TSTableID table_id, TSSlice* payload_row, size_t payload_num,
                             RangeGroup range_group, uint64_t mtr_id, uint16_t* inc_entity_cnt,
-                            uint32_t* inc_unordered_cnt, DedupResult* dedup_result, bool writeWAL) {
+                            uint32_t* not_create_entity, DedupResult* dedup_result, bool writeWAL) {
   kwdbContext_t context;
   kwdbContext_p ctx_p = &context;
   KStatus s = InitServerKWDBContext(ctx_p);
@@ -910,7 +910,7 @@ TSStatus TSPutDataByRowType(TSEngine* engine, TSTableID table_id, TSSlice* paylo
 
   // todo(liangbo01) current interface dedup result no support multi-payload insert.
   s = engine->PutData(ctx_p, tmp_table_id, tmp_range_group_id, payload_row, payload_num, mtr_id,
-                      inc_entity_cnt, inc_unordered_cnt, dedup_result, writeWAL);
+                      inc_entity_cnt, not_create_entity, dedup_result, writeWAL);
   if (s != KStatus::SUCCESS) {
     std::ostringstream ss;
     ss << tmp_range_group_id;
@@ -921,7 +921,7 @@ TSStatus TSPutDataByRowType(TSEngine* engine, TSTableID table_id, TSSlice* paylo
 
 TSStatus TSPutDataByRowTypeExplicit(TSEngine* engine, TSTableID table_id, TSSlice* payload_row, size_t payload_num,
                             RangeGroup range_group, uint64_t mtr_id, uint16_t* inc_entity_cnt,
-                            uint32_t* inc_unordered_cnt, DedupResult* dedup_result, bool writeWAL, const char* tsx_id) {
+                            uint32_t* not_create_entity, DedupResult* dedup_result, bool writeWAL, const char* tsx_id) {
   kwdbContext_t context;
   kwdbContext_p ctx_p = &context;
   KStatus s = InitServerKWDBContext(ctx_p);
@@ -945,7 +945,7 @@ TSStatus TSPutDataByRowTypeExplicit(TSEngine* engine, TSTableID table_id, TSSlic
   }
   // todo(liangbo01) current interface dedup result no support multi-payload insert.
   s = engine->PutData(ctx_p, tmp_table_id, tmp_range_group_id, payload_row, payload_num, mtr_id,
-                      inc_entity_cnt, inc_unordered_cnt, dedup_result, writeWAL, tsx_id);
+                      inc_entity_cnt, not_create_entity, dedup_result, writeWAL, tsx_id);
   if (s != KStatus::SUCCESS) {
     std::ostringstream ss;
     ss << tmp_range_group_id;

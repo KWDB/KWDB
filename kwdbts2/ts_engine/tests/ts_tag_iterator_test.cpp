@@ -81,7 +81,7 @@ TEST_F(TestEngine, tagiterator) {
 
   TSTableID ts_id(cur_table_id);
   uint16_t inc_entity_cnt;
-  uint32_t inc_unordered_cnt;
+  uint32_t inc_unordered_cnt = 0;
   DedupResult dedup_result{0, 0, 0, TSSlice {nullptr, 0}};
   s = ts_engine_->PutData(ctx_, ts_id, 0, &data_value, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result, true);
   ASSERT_EQ(s , KStatus::SUCCESS);

@@ -679,8 +679,7 @@ KStatus TSEngineImpl::putTagData(kwdbContext_p ctx, TSTableID table_id, uint32_t
 
 KStatus TSEngineImpl::InsertTagData(kwdbContext_p ctx, const std::shared_ptr<TsTableSchemaManager>& tb_schema,
                                     uint64_t mtr_id, TSSlice payload_data, bool write_wal, uint32_t& vgroup_id,
-                                    TSEntityID& entity_id) {
-  bool new_tag;
+                                    TSEntityID& entity_id, bool& new_tag) {
   TSSlice primary_key = TsRawPayload::GetPrimaryKeyFromSlice(payload_data);
   KStatus s = schema_mgr_->GetVGroup(ctx, tb_schema, primary_key, &vgroup_id, &entity_id, &new_tag);
   if (s != KStatus::SUCCESS) {
@@ -726,7 +725,7 @@ KStatus TSEngineImpl::InsertTagData(kwdbContext_p ctx, const std::shared_ptr<TsT
 }
 
 KStatus TSEngineImpl::PutData(kwdbContext_p ctx, const KTableKey& table_id, uint64_t range_group_id,
-  TSSlice* payload_data, int payload_num, uint64_t mtr_id, uint16_t* inc_entity_cnt, uint32_t* inc_unordered_cnt,
+  TSSlice* payload_data, int payload_num, uint64_t mtr_id, uint16_t* inc_entity_cnt, uint32_t* not_create_entity,
   DedupResult* dedup_result, bool write_wal, const char* tsx_id) {
   std::shared_ptr<kwdbts::TsTable> ts_table;
   ErrorInfo err_info;
@@ -735,6 +734,7 @@ KStatus TSEngineImpl::PutData(kwdbContext_p ctx, const KTableKey& table_id, uint
   dedup_result->payload_num = payload_num;
   dedup_result->dedup_rule = static_cast<int>(EngineOptions::g_dedup_rule);
   bool is_dropped = false;
+  *inc_entity_cnt = 0;
   for (size_t i = 0; i < payload_num; i++) {
     TSSlice& cur_pd = payload_data[i];
     auto tbl_version = TsRawPayload::GetTableVersionFromSlice(cur_pd);
@@ -757,15 +757,32 @@ KStatus TSEngineImpl::PutData(kwdbContext_p ctx, const KTableKey& table_id, uint
       LOG_ERROR("GetTableSchemaManager failed, table id: %lu", table_id);
       return s;
     }
-    s = InsertTagData(ctx, tb_schema, mtr_id, cur_pd, write_wal, vgroup_id, entity_id);
+    if (not_create_entity != nullptr && 1 == *not_create_entity) {
+      bool new_tag = false;
+      TSSlice primary_key = TsRawPayload::GetPrimaryKeyFromSlice(cur_pd);
+      KStatus s = schema_mgr_->GetVGroup(ctx, tb_schema, primary_key, &vgroup_id, &entity_id, &new_tag);
+      if (s != KStatus::SUCCESS) {
+        LOG_ERROR("GetVGroup failed, table id: %lu", table_id);
+        return s;
+      }
+      if (new_tag) {
+        LOG_INFO("not_create_entity, so ingore this payload. table id: %lu", table_id);
+        return KStatus::SUCCESS;
+      }
+    }
+    bool new_tag;
+    s = InsertTagData(ctx, tb_schema, mtr_id, cur_pd, write_wal, vgroup_id, entity_id, new_tag);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("put tag data failed. table[%lu].", table_id);
       return s;
     }
+    if (new_tag) {
+      *inc_entity_cnt += 1;
+    }
     auto vgroup = GetVGroupByID(ctx, vgroup_id);
     // payload_size += cur_pd.len;
     s =  dynamic_pointer_cast<TsTableV2Impl>(ts_table)->PutData(ctx, vgroup, &cur_pd, 1, mtr_id, entity_id,
-            inc_unordered_cnt, dedup_result, (DedupRule)(dedup_result->dedup_rule), write_wal);
+            not_create_entity, dedup_result, (DedupRule)(dedup_result->dedup_rule), write_wal);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("put data failed. table[%lu].", table_id);
       return s;

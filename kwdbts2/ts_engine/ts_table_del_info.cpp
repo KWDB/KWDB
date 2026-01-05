@@ -332,6 +332,12 @@ KStatus STTableRangeDelAndTagInfo::WriteDelAndTagInfo(kwdbContext_p ctx, TSSlice
   TSSlice pkey;
   std::list<STDelRange> dels;
   ParseData(data, &type, &payload, &pkey, &dels);
+  auto table_version = TsRawPayload::GetTableVersionFromSlice(payload);
+  auto s = table_->CheckAndAddSchemaVersion(ctx, table_->GetTableId(), table_version);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("table[%lu],CheckAndAddSchemaVersion[%u] init failed.", table_->GetTableId(), table_version);
+    return s;
+  }
   if (type == STOSNDeleteInfoType::OSN_DELETE_TAG_RECORD) {
     auto s = WriteDeleteTagRecord(ctx, payload, OperateType::Delete, tag_lock);
     if (s != KStatus::SUCCESS) {

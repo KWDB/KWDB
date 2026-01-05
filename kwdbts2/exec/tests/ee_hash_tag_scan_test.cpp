@@ -267,7 +267,7 @@ class TestHashTagScanOp : public OperatorTestBase {
       TSSlice payload{data_value.get(), p_len};
       DedupResult dedup_result{0, 0, 0, TSSlice{nullptr, 0}};
       uint16_t inc_entity_cnt;
-      uint32_t inc_unordered_cnt;
+      uint32_t inc_unordered_cnt = 0;
       engine_->PutData(ctx_, table_id_, test_range.range_group_id, &payload, 1,
                        0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
     }

@@ -112,7 +112,7 @@ TEST_F(TestTsTableMaxTSV2, InsertOneRecord) {
   timestamp64 start_ts = 8640000;
   auto payload = GenRowPayload(*metric_schema, tag_schema ,table_id, 1, 1, 1, start_ts);
   uint16_t inc_entity_cnt;
-  uint32_t inc_unordered_cnt;
+  uint32_t inc_unordered_cnt = 0;
   DedupResult dedup_result{0, 0, 0, TSSlice {nullptr, 0}};
   s = engine_->PutData(ctx_, table_id, 0, &payload, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
   free(payload.data);
@@ -157,7 +157,7 @@ TEST_F(TestTsTableMaxTSV2, InsertManyTags) {
   uint32_t entity_num = 100;
   timestamp64 start_ts = 8640000;
   uint16_t inc_entity_cnt;
-  uint32_t inc_unordered_cnt;
+  uint32_t inc_unordered_cnt = 0;
   DedupResult dedup_result{0, 0, 0, TSSlice {nullptr, 0}};
   for (size_t i = 1; i <= entity_num; ++i) {
     auto payload = GenRowPayload(*metric_schema, tag_schema ,table_id, 1, i, 1, start_ts - i);
@@ -205,7 +205,7 @@ TEST_F(TestTsTableMaxTSV2, InsertManyTags1) {
   uint32_t entity_num = 100;
   timestamp64 start_ts = 8640000;
   uint16_t inc_entity_cnt;
-  uint32_t inc_unordered_cnt;
+  uint32_t inc_unordered_cnt = 0;
   DedupResult dedup_result{0, 0, 0, TSSlice {nullptr, 0}};
   for (size_t i = 1; i <= entity_num; ++i) {
     auto payload = GenRowPayload(*metric_schema, tag_schema ,table_id, 1, i, 1, start_ts + i);
@@ -254,7 +254,7 @@ TEST_F(TestTsTableMaxTSV2, restart) {
   uint32_t entity_num = 100;
   timestamp64 start_ts = 8640000;
   uint16_t inc_entity_cnt;
-  uint32_t inc_unordered_cnt;
+  uint32_t inc_unordered_cnt = 0;
   DedupResult dedup_result{0, 0, 0, TSSlice {nullptr, 0}};
   for (size_t i = 1; i <= entity_num; ++i) {
     auto payload = GenRowPayload(*metric_schema, tag_schema ,table_id, 1, i, 1, start_ts + i);
@@ -319,7 +319,7 @@ TEST_F(TestTsTableMaxTSV2, deleteSomeData) {
   uint32_t entity_num = 100;
   timestamp64 start_ts = 8640000;
   uint16_t inc_entity_cnt;
-  uint32_t inc_unordered_cnt;
+  uint32_t inc_unordered_cnt = 0;
   DedupResult dedup_result{0, 0, 0, TSSlice {nullptr, 0}};
   for (size_t i = 1; i <= entity_num; ++i) {
     auto payload = GenRowPayload(*metric_schema, tag_schema ,table_id, 1, i, 1, start_ts + i);
