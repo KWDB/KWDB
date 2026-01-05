@@ -234,6 +234,13 @@ func (n *dropDatabaseNode) startExec(params runParams) error {
 		return err
 	}
 
+	for i := range n.delProcs {
+		procDesc := n.delProcs[i]
+		if err := params.p.dropProcedureImpl(params.ctx, procDesc); err != nil {
+			return err
+		}
+	}
+
 	// When views, sequences, and tables are dropped, don't queue a separate job
 	// for each of them, since the single DROP DATABASE job will cover them all.
 	for _, toDel := range n.td {
@@ -254,12 +261,6 @@ func (n *dropDatabaseNode) startExec(params runParams) error {
 		}
 		tbNameStrings = append(tbNameStrings, cascadedObjects...)
 		tbNameStrings = append(tbNameStrings, toDel.tn.FQString())
-	}
-	for i := range n.delProcs {
-		procDesc := n.delProcs[i]
-		if err := params.p.dropProcedureImpl(params.ctx, procDesc); err != nil {
-			return err
-		}
 	}
 
 	descKey := sqlbase.MakeDescMetadataKey(n.dbDesc.ID)

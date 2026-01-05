@@ -1901,3 +1901,21 @@ CALL PROCEDURE
 (1 row)
 > DROP DATABASE IF EXISTS db1 cascade;
 DROP DATABASE
+> create ts database tsdb_procedure;
+CREATE TS DATABASE
+> create table tsdb_procedure.ts1(ts timestamp not null, a int) tags(b int not null) primary tags(b);
+CREATE TABLE
+> create database reldb_procedure;
+CREATE DATABASE
+> create table reldb_procedure.rel1(a int,b int);
+CREATE TABLE
+> create procedure tsdb_procedure.proc1() $$ BEGIN insert into reldb_procedure.rel1 values(1,1);insert into tsdb_procedure.ts1 values(now(),1,1);end $$;
+CREATE PROCEDURE
+> select * from reldb_procedure.rel1;
+  a | b
+----+----
+(0 rows)
+> drop database tsdb_procedure cascade;
+DROP DATABASE
+> drop database reldb_procedure cascade;
+DROP DATABASE

@@ -832,3 +832,12 @@ show create procedure db1.pc2;
 call db1.pc2();
 select count(*) from db1.t1;
 DROP DATABASE IF EXISTS db1 cascade;
+
+create ts database tsdb_procedure;
+create table tsdb_procedure.ts1(ts timestamp not null, a int) tags(b int not null) primary tags(b);
+create database reldb_procedure;
+create table reldb_procedure.rel1(a int,b int);
+create procedure tsdb_procedure.proc1() $$ BEGIN insert into reldb_procedure.rel1 values(1,1);insert into tsdb_procedure.ts1 values(now(),1,1);end $$;
+select * from reldb_procedure.rel1;
+drop database tsdb_procedure cascade;
+drop database reldb_procedure cascade;
