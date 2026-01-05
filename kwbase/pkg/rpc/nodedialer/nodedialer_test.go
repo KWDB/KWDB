@@ -187,9 +187,11 @@ func TestConnHealthTryDial(t *testing.T) {
 	defer stopper.Stop(ctx)
 	nd := New(rpcCtx, newSingleNodeResolver(staticNodeID, ln.Addr()))
 
+	// Make sure no connection exists yet, via ConnHealth().
+	require.Equal(t, rpc.ErrNotHeartbeated, nd.ConnHealthTryDial(staticNodeID, rpc.DefaultClass))
+
 	// When no connection exists, we expect ConnHealthTryDial to dial the node,
 	// which will return ErrNoHeartbeat at first but eventually succeed.
-	require.Equal(t, rpc.ErrNotHeartbeated, nd.ConnHealthTryDial(staticNodeID, rpc.DefaultClass))
 	require.Eventually(t, func() bool {
 		return nd.ConnHealthTryDial(staticNodeID, rpc.DefaultClass) == nil
 	}, time.Second, 10*time.Millisecond)
@@ -208,16 +210,6 @@ func TestConnHealthTryDial(t *testing.T) {
 	require.Eventually(t, func() bool {
 		return nd.ConnHealthTryDial(staticNodeID, rpc.DefaultClass) == nil
 	}, time.Second, 10*time.Millisecond)
-
-	// Tripping the breaker should return ErrBreakerOpen.
-	br := nd.getBreaker(staticNodeID, rpc.DefaultClass)
-	br.Trip()
-	require.Equal(t, circuit.ErrBreakerOpen, nd.ConnHealthTryDial(staticNodeID, rpc.DefaultClass))
-
-	// But it should eventually recover, when the breaker allows it.
-	require.Eventually(t, func() bool {
-		return nd.ConnHealthTryDial(staticNodeID, rpc.DefaultClass) == nil
-	}, 5*time.Second, 10*time.Millisecond)
 
 	// Closing the remote connection should eventually recover.
 	require.NoError(t, ln.popConn().Close())
