@@ -245,6 +245,7 @@ KStatus TsLastSegmentBuilder::RecordAndWriteBlockToFile() {
 }
 
 void TsLastSegmentBuilder::BlockIndexCollector::Collect(TsBlockSpan* span) {
+  assert(span->GetRowNum() != 0);
   n_entity_ += (span->GetEntityID() != prev_entity_id_);
   prev_entity_id_ = span->GetEntityID();
   max_entity_id_ = std::max(max_entity_id_, span->GetEntityID());
@@ -256,15 +257,13 @@ void TsLastSegmentBuilder::BlockIndexCollector::Collect(TsBlockSpan* span) {
   }
   last_ts_ = span->GetLastTS();
 
-  uint64_t min_osn = std::numeric_limits<uint64_t>::max();
-  uint64_t max_osn = std::numeric_limits<uint64_t>::min();
-  for (int i = 0; i < span->GetRowNum(); ++i) {
-    const uint64_t* osn_addr = span->GetOSNAddr(i);
-    min_osn = std::min(min_osn, *osn_addr);
-    max_osn = std::max(max_osn, *osn_addr);
-  }
-  min_osn_ = std::min(min_osn_, min_osn);
-  max_osn_ = std::max(max_osn_, max_osn);
+  auto osn_start = span->GetOSNAddr(0);
+  auto osn_end = osn_start + span->GetRowNum();
+
+  auto [min_osn_it, max_osn_it] = std::minmax_element(osn_start, osn_end);
+  min_osn_ = std::min(min_osn_, *min_osn_it);
+  max_osn_ = std::max(max_osn_, *max_osn_it);
+
   if (first_osn_ == std::numeric_limits<uint64_t>::max()) {
     first_osn_ = span->GetFirstOSN();
   }

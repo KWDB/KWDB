@@ -190,7 +190,7 @@ class TsMemSegBlock : public TsBlock {
       std::transform(row_data_.begin(), row_data_.end(), col_major_osn_.begin(),
                      [](const TSMemSegRowData* row) { return row->GetOSN(); });
     }
-    return col_major_osn_.data();
+    return &col_major_osn_[row_num];
   }
 
   KStatus GetColBitmap(uint32_t col_id, const std::vector<AttributeInfo>* schema,

@@ -62,12 +62,7 @@ bool TsMetricBlock::GetCompressedData(TsBufferBuilder* output, TsMetricCompressI
 
 KStatus TsMetricBlockBuilder::PutBlockSpan(std::shared_ptr<TsBlockSpan> span) {
   auto row_count = span->GetRowNum();
-
-  osn_buffer_.reserve(osn_buffer_.size() + span->GetRowNum());
-  for (int i = 0; i < span->GetRowNum(); ++i) {
-    auto osn_addr = span->GetOSNAddr(i);
-    osn_buffer_.push_back(*osn_addr);
-  }
+  std::copy_n(span->GetOSNAddr(0), row_count, std::back_inserter(osn_buffer_));
   for (int icol = 0; icol < col_schemas_->size(); icol++) {
     if (isVarLenType((*col_schemas_)[icol].type)) {
       // looping row by row to copy data
