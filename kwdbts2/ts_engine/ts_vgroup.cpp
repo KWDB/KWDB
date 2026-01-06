@@ -2338,7 +2338,6 @@ BlocksDistribution GetEntityDistribution(const std::shared_ptr<TsEntitySegment>&
       blocks_distribution.rows_num_ += entity_item.block_item->n_rows;
     }
   }
-  blocks_distribution.blocks_size_ += entity_segment->GetAggFileSize();
   return blocks_distribution;
 }
 
@@ -2388,6 +2387,7 @@ KStatus TsVGroup::GetTableBlocksDistribution(uint32_t target_db_id, TSTableID ta
     // entity segment distribution
     std::shared_ptr<TsEntitySegment> entity_segment = partition->GetEntitySegment();
     if (entity_segment != nullptr) {
+      blocks_info->entity_segments_info_.blocks_size_ += entity_segment->GetAggFileSize();
       for (auto entity_id : entity_ids) {
         blocks_info->entity_segments_info_.Add(GetEntityDistribution(entity_segment, entity_id));
       }

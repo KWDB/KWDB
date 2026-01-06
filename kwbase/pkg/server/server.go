@@ -205,15 +205,27 @@ var (
 		"the maximum number of last segments reserved in the latest partition",
 		3)
 
-	maxMemSegmentMaxSize = settings.RegisterPublicIntSetting(
+	maxMemSegmentMaxSize = settings.RegisterPublicValidatedByteSizeSetting(
 		"ts.mem_segment_size.max_limit",
 		"the maximum size of mem segment in vgroup",
-		536870912)
+		536870912,
+		func(v int64) error {
+			if v <= 0 || v > 1099511627776 {
+				return errors.New("invalid value, the range of ts.mem_segment_size.max_limit in BYTES is [1, 1099511627776]")
+			}
+			return nil
+		})
 
-	maxBlockLRUCacheMaxSize = settings.RegisterPublicIntSetting(
+	maxBlockLRUCacheMaxSize = settings.RegisterPublicValidatedByteSizeSetting(
 		"ts.block.lru_cache.max_limit",
 		"the maximum memory size of block lru cache",
-		1024*1024*1024)
+		1024*1024*1024,
+		func(v int64) error {
+			if v < 0 {
+				return errors.New("invalid value, the range of ts.block.lru_cache.max_limit in BYTES is [0, 9223372036854775807]")
+			}
+			return nil
+		})
 
 	tsLastRowOptimization = settings.RegisterPublicBoolSetting(
 		"ts.last_row_optimization.enabled",
@@ -225,10 +237,16 @@ var (
 		"ts.force_sync_file.enabled",
 		"force sync counter file every time when writing to disk if enabled",
 		true)
-	maxLastCacheMaxSize = settings.RegisterPublicIntSetting(
+	maxLastCacheMaxSize = settings.RegisterPublicValidatedByteSizeSetting(
 		"ts.last_cache_size.max_limit",
 		"the maximum size of last cache in vgroup",
-		1024*1024*1024)
+		1024*1024*1024,
+		func(v int64) error {
+			if v < 0 || v > 1073741824 {
+				return errors.New("invalid value, the range of ts.last_cache_size.max_limit in BYTES is [0, 1073741824]")
+			}
+			return nil
+		})
 
 	tsBlockFilterSamplingRatio = settings.RegisterPublicFloatSetting(
 		"ts.block_filter.sampling_ratio",

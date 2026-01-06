@@ -326,7 +326,7 @@ DROP TABLE
 DROP DATABASE
 > set cluster setting ts.dedup.rule='override';
 SET CLUSTER SETTING
-> set cluster setting ts.mem_segment_size.max_limit=1;
+> set cluster setting ts.mem_segment_size.max_limit="1";
 SET CLUSTER SETTING
 > use defaultdb;
 SET
@@ -348,7 +348,7 @@ INSERT 1
 (0 rows)
 > use defaultdb;
 SET
-> set cluster setting ts.mem_segment_size.max_limit=67108864;
+> set cluster setting ts.mem_segment_size.max_limit="64MiB";
 SET CLUSTER SETTING
 > drop database test_db cascade;
 DROP DATABASE

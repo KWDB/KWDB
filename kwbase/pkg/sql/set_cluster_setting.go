@@ -238,39 +238,6 @@ func checkTsReservedLastSegmentMaxLimit(encodedValue string) error {
 	return nil
 }
 
-func checkTsMemSegmentSizeMaxLimit(encodedValue string) error {
-	value, err := strconv.ParseInt(encodedValue, 10, 64)
-	if err != nil {
-		return err
-	}
-	if value <= 0 || value > 1099511627776 {
-		return errors.New("invalid value, the range of ts.mem_segment_size.max_limit is [1, 1099511627776]")
-	}
-	return nil
-}
-
-func checkTsBlockCacheMaxLimit(encodedValue string) error {
-	value, err := strconv.ParseInt(encodedValue, 10, 64)
-	if err != nil {
-		return err
-	}
-	if value < 0 {
-		return errors.New("invalid value, the range of ts.block.lru_cache.max_limit is [0, 9223372036854775807]")
-	}
-	return nil
-}
-
-func checkTsLastCacheSizeMaxLimit(encodedValue string) error {
-	value, err := strconv.ParseInt(encodedValue, 10, 64)
-	if err != nil {
-		return err
-	}
-	if value < 0 || value > 1073741824 {
-		return errors.New("invalid value, the range of ts.last_cache_size.max_limit is [0, 1073741824]")
-	}
-	return nil
-}
-
 func checkTsBlockFilterSamplingRatio(encodedValue string) error {
 	value, err := strconv.ParseFloat(encodedValue, 64)
 	if err != nil {
@@ -295,10 +262,7 @@ var CheckClusterSetting = map[string]CheckOperation{
 	"ts.compress.stage":                  checkTsCompressStage,
 	"ts.compress.last_segment.enabled":   checkTsCompressLastSegment,
 	"ts.reserved_last_segment.max_limit": checkTsReservedLastSegmentMaxLimit,
-	"ts.mem_segment_size.max_limit":      checkTsMemSegmentSizeMaxLimit,
-	"ts.block.lru_cache.max_limit":       checkTsBlockCacheMaxLimit,
 	"ts.force_sync_file.enabled":         checkBool,
-	"ts.last_cache_size.max_limit":       checkTsLastCacheSizeMaxLimit,
 	"ts.block_filter.sampling_ratio":     checkTsBlockFilterSamplingRatio,
 }
 

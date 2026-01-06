@@ -21,6 +21,7 @@
 #include <utility>
 #include <vector>
 #include <algorithm>
+
 #include "data_type.h"
 #include "kwdb_type.h"
 #include "lg_commonv2.h"
@@ -1347,11 +1348,12 @@ struct BlocksDistribution {
 struct VGroupBlocksInfo {
   BlocksDistribution last_segments_info_;
   BlocksDistribution entity_segments_info_;
+  uint64_t original_size_{0};
 
   void Add(const VGroupBlocksInfo& a) {
     last_segments_info_.Add(a.last_segments_info_);
     entity_segments_info_.Add(a.entity_segments_info_);
+    original_size_ += a.original_size_;
   }
 };
-
 }  //  namespace kwdbts

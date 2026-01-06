@@ -2615,7 +2615,7 @@ SET CLUSTER SETTING
 DROP DATABASE
 > set cluster setting ts.reserved_last_segment.max_limit=10000;
 SET CLUSTER SETTING
-> set cluster setting ts.mem_segment_size.max_limit=1;
+> set cluster setting ts.mem_segment_size.max_limit="1";
 SET CLUSTER SETTING
 > set cluster setting ts.dedup.rule='override';
 SET CLUSTER SETTING
@@ -2648,7 +2648,7 @@ SET
 SET CLUSTER SETTING
 > set cluster setting ts.reserved_last_segment.max_limit=3;
 SET CLUSTER SETTING
-> set cluster setting ts.mem_segment_size.max_limit=67108864;
+> set cluster setting ts.mem_segment_size.max_limit="65536KB";
 SET CLUSTER SETTING
 > drop database test_db cascade;
 DROP DATABASE

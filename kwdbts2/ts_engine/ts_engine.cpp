@@ -2625,7 +2625,7 @@ KStatus ConstructTableBlocksDistribution(const std::shared_ptr<TsTableSchemaMana
   }
   uint32_t row_len = 0;
   for (const auto& info : *metric_meta) {
-    row_len += info.max_len;
+    row_len += info.length;
   }
   if (vg_blocks_info->last_segments_info_.blocks_size_ != 0) {
     vg_blocks_info->last_segments_info_.compression_ratio_ = static_cast<float>(row_len) *
@@ -2666,6 +2666,7 @@ KStatus ConstructTableBlocksDistribution(const std::shared_ptr<TsTableSchemaMana
     uint64_t total_row_num = vg_blocks_info->last_segments_info_.rows_num_ + vg_blocks_info->entity_segments_info_.rows_num_;
     total_blocks_info->set_compression_ratio(
       static_cast<float>(row_len) * total_row_num / total_blocks_info->blocks_size());
+    total_blocks_info->set_original_size(row_len * total_row_num);
   }
   return KStatus::SUCCESS;
 }
@@ -2731,7 +2732,7 @@ KStatus TSEngineImpl::GetDBBlocksDistribution(uint32_t db_id, TSSlice* blocks_in
       }
       uint32_t row_len = 0;
       for (const auto& info : *metric_meta) {
-        row_len += info.max_len;
+        row_len += info.length;
       }
       if (tb_blocks_info.last_segments_info_.rows_num_ != 0) {
         original_data_size += row_len * tb_blocks_info.last_segments_info_.rows_num_;
@@ -2760,6 +2761,7 @@ KStatus TSEngineImpl::GetDBBlocksDistribution(uint32_t db_id, TSSlice* blocks_in
   total_blocks_info->set_last_seg_level0(db_blocks_info.last_segments_info_.last_seg_level0);
   total_blocks_info->set_last_seg_level1(db_blocks_info.last_segments_info_.last_seg_level1);
   total_blocks_info->set_last_seg_level2(db_blocks_info.last_segments_info_.last_seg_level2);
+  total_blocks_info->set_original_size(original_data_size);
 
   blocks_info->len = blocks_distribution.ByteSizeLong();
   blocks_info->data = static_cast<char*>(malloc(blocks_info->len));

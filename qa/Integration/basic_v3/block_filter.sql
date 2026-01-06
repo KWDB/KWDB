@@ -642,7 +642,7 @@ drop database test_block_filter cascade;
 
 -- bugfix ICZB1L
 set cluster setting ts.reserved_last_segment.max_limit=10000;
-set cluster setting ts.mem_segment_size.max_limit=1;
+set cluster setting ts.mem_segment_size.max_limit="1";
 set cluster setting ts.dedup.rule='override';
 USE defaultdb;
 DROP DATABASE IF EXISTS test_db;
@@ -658,5 +658,5 @@ SELECT id, k_timestamp, e1 FROM test_db.t1 WHERE e1 > 15 ORDER BY k_timestamp;
 use defaultdb;
 SET CLUSTER SETTING ts.rows_per_block.max_limit=1000;
 set cluster setting ts.reserved_last_segment.max_limit=3;
-set cluster setting ts.mem_segment_size.max_limit=67108864;
+set cluster setting ts.mem_segment_size.max_limit="65536KB";
 drop database test_db cascade;

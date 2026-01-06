@@ -74,6 +74,7 @@ func (p *planner) ShowDistribution(
 		var totalNum uint64
 		var totalSize uint64
 		var totalAvgSize float64
+		var totalOriginalSize uint64
 		var totalLevel0 uint32
 		var totalLevel1 uint32
 		var totalLevel2 uint32
@@ -88,6 +89,7 @@ func (p *planner) ShowDistribution(
 				avgSize := fmt.Sprintf("%.2f", block.AvgSize)
 				totalNum += uint64(block.BlocksNum)
 				totalSize += block.BlocksSize
+				totalOriginalSize += block.OriginalSize
 				row := tree.Datums{
 					tree.NewDString(info.NodeID),
 					tree.NewDInt(tree.DInt(block.BlocksNum)),
@@ -107,12 +109,13 @@ func (p *planner) ShowDistribution(
 			}
 		}
 		totalAvgSize = float64(totalSize) / float64(totalNum)
+		totalCompressionRatio := float64(totalOriginalSize) / float64(totalSize)
 		total := tree.Datums{
 			tree.NewDString("total"),
 			tree.NewDInt(tree.DInt(totalNum)),
 			tree.NewDInt(tree.DInt(totalSize)),
 			tree.NewDString(fmt.Sprintf("%.2f", totalAvgSize)),
-			tree.NewDString("0"),
+			tree.NewDString(fmt.Sprintf("%.2f", totalCompressionRatio)),
 			tree.NewDInt(tree.DInt(totalLevel0)),
 			tree.NewDInt(tree.DInt(totalLevel1)),
 			tree.NewDInt(tree.DInt(totalLevel2)),

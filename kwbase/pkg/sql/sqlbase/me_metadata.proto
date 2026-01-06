@@ -259,6 +259,7 @@ message BlockInfo {
   optional uint32 last_seg_level0 = 6 [(gogoproto.nullable) = false];
   optional uint32 last_seg_level1 = 7 [(gogoproto.nullable) = false];
   optional uint32 last_seg_level2 = 8 [(gogoproto.nullable) = false];
+  optional uint64 original_size = 9 [(gogoproto.nullable) = false];
 }
 
 message BlocksDistribution {

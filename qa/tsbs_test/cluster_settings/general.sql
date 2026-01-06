@@ -24,7 +24,9 @@ set cluster setting ts.last_row_optimization.enabled=true;
 -- adjust storage 3.0 configuration to achieve better performance
 set cluster setting ts.rows_per_block.min_limit=1024;
 set cluster setting ts.reserved_last_segment.max_limit=2;
-set cluster setting ts.mem_segment_size.max_limit=67108864;
-set cluster setting ts.block.lru_cache.max_limit =16106127360;
+
+-- Case-insensitive, support GB, MB e.g. and GiB, MiB e.g. if no unit is specified, the default is byte(B).
+set cluster setting ts.mem_segment_size.max_limit='67108864';
+set cluster setting ts.block.lru_cache.max_limit ='16106127360';
 
 set cluster setting ts.compress.stage=1;
