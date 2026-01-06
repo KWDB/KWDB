@@ -485,6 +485,14 @@ KStatus TsLastSegment::Open() {
     LOG_ERROR("lastsegment %s: footer magic mismatch", file_->GetFilePath().c_str());
     return FAIL;
   }
+  if (footer_.file_version == 0) {
+    LOG_ERROR("lastsegment %s: unexpected file version 0", file_->GetFilePath().c_str());
+    return FAIL;
+  }
+  if (footer_.file_version > CURRENT_LAST_SEGMENT_VERSION) {
+    LOG_ERROR("lastsegment %s: file version %lu is too new", file_->GetFilePath().c_str(), footer_.file_version);
+    return FAIL;
+  }
 
   // load necessary meta block to memory.
   // NOTICE: maybe we will support lazy loading later. For now, just load all meta blocks in

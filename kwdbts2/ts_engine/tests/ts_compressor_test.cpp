@@ -418,16 +418,58 @@ TEST(Simple8BV2, Bug2) {
   }
 }
 
-[[maybe_unused]]
-static std::vector<int64_t> GenBatchV2(const std::vector<uint64_t> &dod_zigzag) {
+template <class T>
+[[maybe_unused]] static std::vector<T> GenBatchV2(const std::vector<uint64_t> &dod_zigzag) {
   int delta = 0;
-  std::vector<int64_t> data{0, 0};
+  std::vector<T> data{0, 0};
   for (auto i : dod_zigzag) {
     int64_t dod = kwdbts::DecodeZigZag(i);
     delta += dod;
     data.push_back(data.back() + delta);
   }
   return data;
+}
+
+template <class T>
+[[maybe_unused]] static std::vector<T> GenDataByDelta(const std::vector<int64_t> delta) {
+  std::vector<T> data{0};
+  for (auto d : delta) {
+    data.push_back(data.back() + d);
+  }
+  return data;
+}
+
+TEST(Simple8BV2, OverFlowBugTest) {
+  std::vector<int> data{1533048815, -669919652, 1807837011, 169412123};
+  kwdbts::TsBufferBuilder out;
+  ASSERT_TRUE(Simple8BV2Encode<int>(data, &out));
+  kwdbts::TsSliceGuard raw;
+  ASSERT_TRUE(Simple8BV2Decode<int>(out.AsSlice(), data.size(), &raw));
+  EXPECT_EQ(std::memcmp(raw.data(), data.data(), raw.size()), 0);
+}
+
+TEST(Simple8BV2, RandomTest) {
+  std::default_random_engine drng{0};
+  int nsuccess = 0;
+  int n = 1000;
+  while (nsuccess < 100) {
+    auto seed = drng();
+    std::cout << "seed: " << seed << std::endl;
+    std::default_random_engine drng_inner{seed};
+    std::vector<uint64_t> data(n);
+    for (int i = 0; i < n; ++i) {
+      data[i] = drng_inner();
+    }
+    auto plain = GenBatchV2<int>(data);
+
+    kwdbts::TsBufferBuilder out;
+    if (Simple8BV2Encode<int>(plain, &out)) {
+      ++nsuccess;
+      kwdbts::TsSliceGuard raw;
+      ASSERT_TRUE(Simple8BV2Decode<int>(out.AsSlice(), plain.size(), &raw));
+      ASSERT_EQ(std::memcmp(raw.data(), plain.data(), raw.size()), 0);
+    }
+  }
 }
 
 TEST(Simple8BV2, AllBranch) {
@@ -480,14 +522,14 @@ TEST(Simple8BV2, AllBranch) {
     }
 
     {
-      data = GenBatchV2({8, 8, 8, 8, 8, 8, 9});
+      data = GenBatchV2<int64_t>({8, 8, 8, 8, 8, 8, 9});
       cases.push_back({std::move(data), -1});
     }
 
     {
       std::vector<uint64_t> dod(15, 8);
       dod.push_back(9);
-      data = GenBatchV2(std::move(dod));
+      data = GenBatchV2<int64_t>(std::move(dod));
       cases.push_back({std::move(data), -1});
     }
     {
@@ -507,7 +549,7 @@ TEST(Simple8BV2, AllBranch) {
       for (int i = 1; i < 64; ++i) {
         std::vector<uint64_t> dod(i, 7);
         dod.push_back(9);
-        std::vector<int64_t> data = GenBatchV2(std::move(dod));
+        std::vector<int64_t> data = GenBatchV2<int64_t>(std::move(dod));
         cases.push_back({std::move(data), -1});
       }
     }

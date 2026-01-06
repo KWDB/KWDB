@@ -587,16 +587,8 @@ inline auto CheckedSubForS8B(const T a, const T b) -> std::pair<int64_t, bool> {
   int64_t aa = static_cast<int64_t>(a);
   int64_t bb = static_cast<int64_t>(b);
   int64_t diff = 0;
-  bool overflow = __builtin_ssubl_overflow(a, b, &diff);
+  bool overflow = __builtin_ssubl_overflow(aa, bb, &diff);
   return {diff, overflow};
-}
-
-template <class T>
-inline int64_t AutoSub(T a, T b) {
-  if constexpr (std::is_signed_v<T>) {
-    return a - b;
-  }
-  return std::make_signed_t<T>(a - b);
 }
 
 //  delta-of-delta + simple8b
@@ -627,7 +619,8 @@ bool V2CompressImplGreedy(const T *data, uint64_t count, TsBufferBuilder *out) {
   int run_length_limit = 0xFFFF;
   for (int i = 2; i < count;) {
     auto [i_delta, i_overflow] = CheckedSubForS8B(data[i], data[i - 1]);
-    const int64_t prev_delta = AutoSub(data[i - 1], data[i - 2]);
+    const auto [prev_delta, prev_delta_overflow] = CheckedSubForS8B(data[i - 1], data[i - 2]);
+    assert(!prev_delta_overflow);
 
     auto [dod, dod_overflow] = CheckedSubForS8B(i_delta, prev_delta);
     if (i_overflow || dod_overflow) {
@@ -647,7 +640,8 @@ bool V2CompressImplGreedy(const T *data, uint64_t count, TsBufferBuilder *out) {
 
     for (; j < count && run_length < run_length_limit; ++j) {
       auto [j_delta, j_overflow] = CheckedSubForS8B(data[j], data[j - 1]);
-      int64_t prev_delta_j = AutoSub(data[j - 1], data[j - 2]);
+      const auto [prev_delta_j, prev_delta_j_overflow] = CheckedSubForS8B(data[j - 1], data[j - 2]);
+      assert(!prev_delta_j_overflow);
       auto [j_dod, j_dod_overflow] = CheckedSubForS8B(j_delta, prev_delta_j);
       if (j_overflow || j_dod_overflow) {
         return false;
@@ -712,14 +706,16 @@ bool V2CompressImplGreedy(const T *data, uint64_t count, TsBufferBuilder *out) {
       uint64_t batch = selector;
       for (int k = i; k < i + GROUPSIZE[selector]; ++k) {
         batch <<= ITEMWIDTH[selector];
-        int64_t d1 = AutoSub(data[k], data[k - 1]);
-        int64_t d2 = AutoSub(data[k - 1], data[k - 2]);
+        auto [d1, d1_overflow] = CheckedSubForS8B(data[k], data[k - 1]);
+        auto [d2, d2_overflow] = CheckedSubForS8B(data[k - 1], data[k - 2]);
+        assert(!d1_overflow && !d2_overflow);
         int64_t current_dod = d1 - d2;
         uint64_t current_dod_zigzag = EncodeZigZagIfNeeded(current_dod);
+        assert(current_dod_zigzag >> ITEMWIDTH[selector] == 0);
         batch += current_dod_zigzag;
       }
       j = i + GROUPSIZE[selector];
-      batch <<= 60 % GROUPSIZE[selector];
+      batch <<= 60 % ITEMWIDTH[selector];
       assert(batch >> 60 == selector);
       PutFixed64(out, batch);
     }

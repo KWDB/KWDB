@@ -36,6 +36,8 @@
 
 namespace kwdbts {
 
+constexpr uint64_t CURRENT_LAST_SEGMENT_VERSION = 1;
+
 class LastSegmentMetaBlockBase {
  protected:
   virtual void SerializeImpl(TsBufferBuilder* dst) = 0;
