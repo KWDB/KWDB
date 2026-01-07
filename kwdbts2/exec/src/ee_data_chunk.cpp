@@ -9,14 +9,15 @@
 // MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
 // See the Mulan PSL v2 for more details.
 
-#include "lg_api.h"
+#include <iomanip>
 #include "ee_data_chunk.h"
 #include "cm_func.h"
 #include "ee_common.h"
-#include "ee_timestamp_utils.h"
-#include "ee_sort_compare.h"
 #include "ee_ryu_dbconvert.h"
 #include "libkwdbts2.h"  // for goGetTzOffset
+#include "ee_sort_compare.h"
+#include "ee_timestamp_utils.h"
+#include "lg_api.h"
 namespace kwdbts {
 // %.g buffer size is 64 characters (including null terminator)
 #define BUF_SIZE 64
@@ -44,95 +45,6 @@ static inline k_int32 fast_exponent(double d) {
   else if (u.d < pow10)
     decimal_exp--;
   return decimal_exp;
-}
-static inline bool should_use_scientific(k_int32 exp, k_int32 precision) {
-  return (exp < -4) | (exp >= precision);
-}
-static inline void generate_scientific(double d, k_int32 precision, char* buf) {
-  d2exp_buffered(d, precision - 1, buf);
-  char* e = strchr(buf, 'e');
-  if (!e) return;
-  char* dot = strchr(buf, '.');
-  if (!dot || dot >= e) return;
-  k_int32 max_fractional = precision - 1;
-  char* end = dot + 1 + max_fractional;
-  if (end > e) end = e;
-  char* last_non_zero = end - 1;
-  while (last_non_zero > dot && *last_non_zero == '0') {
-    last_non_zero--;
-  }
-  if (last_non_zero == dot) {
-    *dot = 'e';
-    memmove(dot + 1, e + 1, strlen(e + 1) + 1);
-  } else {
-    *(last_non_zero + 1) = 'e';
-    memmove(last_non_zero + 2, e + 1, strlen(e + 1) + 1);
-  }
-}
-static inline void generate_fixed(double d, k_int32 precision, k_int32 exp, char* buf) {
-  k_int32 integer_len = exp + 1;
-  k_int32 fractional_digits = (precision > integer_len) ? (precision - integer_len) : 0;
-  d2fixed_buffered(d, fractional_digits, buf);
-  char* dot = strchr(buf, '.');
-  if (!dot) return;
-  char* end = buf + strlen(buf);
-  char* last_non_zero = end - 1;
-  while (last_non_zero > dot && *last_non_zero == '0') {
-    last_non_zero--;
-  }
-  if (last_non_zero == dot) {
-    *dot = '\0';
-  } else {
-    *(last_non_zero + 1) = '\0';
-  }
-}
-// %.g core conversion function: returns number of characters written (excluding null terminator)
-static inline k_int32 ryu_snprintf_g(double d, k_int32 precision, char* result) {
-  if (isnan(d)) {
-    snprintf(result, sizeof(result), "%s", "nan");
-    return 3;  // "nan" length is 3
-  }
-  if (isinf(d)) {
-    if (d > 0) {
-      snprintf(result, sizeof(result), "%s", "inf");
-      return 3;  // "inf" length is 3
-    } else {
-      snprintf(result, sizeof(result), "%s", "-inf");
-      return 4;  // "-inf" length is 4
-    }
-  }
-  if (d == 0.0) {
-    if (std::signbit(d)) {  // Check if it is negative zero.
-      snprintf(result, sizeof(result), "%s", "-0");
-      return 2;  // "-0"  length is 2
-    }
-    snprintf(result, sizeof(result), "%s", "0");
-    return 1;  // "0"  length is 1
-  }
-
-  k_int32 exp = fast_exponent(d);
-  bool use_scientific = should_use_scientific(exp, precision);
-
-  if (use_scientific) {
-    generate_scientific(d, precision, result);
-  } else {
-    generate_fixed(d, precision, exp, result);
-  }
-
-  // length same as snprintf behavior
-  return strlen(result);
-}
-
-static inline k_int32 ryu_snprintf_f(k_double64 d, k_int32 precision, char* buf, size_t buf_size) {
-    k_int32 len = d2fixed_buffered_n(d, precision, buf);
-    if (len < buf_size) {
-        buf[len] = '\0';
-        return len;
-    } else {
-        buf[buf_size - 1] = '\0';
-        return buf_size - 1;
-    }
-    return len;
 }
 
 template <typename T>
@@ -182,6 +94,111 @@ static inline k_int32 fastIntToString(T value, char* buffer) {
   pos += digit_count;
   buffer[pos] = '\0';
   return pos;
+}
+
+static inline bool should_use_scientific(k_int32 exp, k_int32 precision) {
+  return (exp < -4) | (exp >= precision);
+}
+static inline void generate_scientific(double d, k_int32 precision, char* buf) {
+  d2exp_buffered(d, precision - 1, buf);
+  char* e = strchr(buf, 'e');
+  if (!e) return;
+  char* dot = strchr(buf, '.');
+  if (!dot || dot >= e) return;
+  k_int32 max_fractional = precision - 1;
+  char* end = dot + 1 + max_fractional;
+  if (end > e) end = e;
+  char* last_non_zero = end - 1;
+  while (last_non_zero > dot && *last_non_zero == '0') {
+    last_non_zero--;
+  }
+  if (last_non_zero == dot) {
+    *dot = 'e';
+    memmove(dot + 1, e + 1, strlen(e + 1) + 1);
+  } else {
+    *(last_non_zero + 1) = 'e';
+    memmove(last_non_zero + 2, e + 1, strlen(e + 1) + 1);
+  }
+}
+static inline void generate_fixed(double d, k_int32 precision, k_int32 exp, char* buf) {
+  k_int32 integer_len = exp + 1;
+  k_int32 fractional_digits = (precision > integer_len) ? (precision - integer_len) : 0;
+  d2fixed_buffered(d, fractional_digits, buf);
+  char* dot = strchr(buf, '.');
+  if (!dot) return;
+  char* end = buf + strlen(buf);
+  char* last_non_zero = end - 1;
+  while (last_non_zero > dot && *last_non_zero == '0') {
+    last_non_zero--;
+  }
+  if (last_non_zero == dot) {
+    *dot = '\0';
+  } else {
+    *(last_non_zero + 1) = '\0';
+  }
+}
+// %.g core conversion function: returns number of characters written (excluding null terminator)
+static inline k_int32 ryu_snprintf_g(double d, k_int32 precision, char* result, k_bool isDecimal) {
+  if (isnan(d)) {
+    snprintf(result, sizeof(result), "%s", "nan");
+    return 3;  // "nan" length is 3
+  }
+  if (isinf(d)) {
+    if (d > 0) {
+      snprintf(result, sizeof(result), "%s", "inf");
+      return 3;  // "inf" length is 3
+    } else {
+      snprintf(result, sizeof(result), "%s", "-inf");
+      return 4;  // "-inf" length is 4
+    }
+  }
+  if (d == 0.0) {
+    if (std::signbit(d)) {  // Check if it is negative zero.
+      snprintf(result, sizeof(result), "%s", "-0");
+      return 2;  // "-0"  length is 2
+    }
+    snprintf(result, sizeof(result), "%s", "0");
+    return 1;  // "0"  length is 1
+  }
+
+  k_int32 exp = fast_exponent(d);
+  bool use_scientific = should_use_scientific(exp, precision);
+
+  if (use_scientific) {
+    // The maximum length of the result is 30.
+    if (isDecimal && exp > precision && exp < 29) {
+      k_int32 scale = exp - precision;
+      double divisor = 1.0;
+      for (k_int32 i = 0; i < scale; ++i) {
+        divisor *= 10.0;
+      }
+      double rounded = std::round(d / divisor);
+      k_int32 pos = fastIntToString(static_cast<k_int64>(rounded), result);
+      for (k_int32 i = 0; i < scale; ++i) {
+        result[pos++] = '0';
+      }
+      result[pos] = '\0';
+    } else {
+      generate_scientific(d, precision, result);
+    }
+  } else {
+    generate_fixed(d, precision, exp, result);
+  }
+
+  // length same as snprintf behavior
+  return strlen(result);
+}
+
+static inline k_int32 ryu_snprintf_f(k_double64 d, k_int32 precision, char* buf, size_t buf_size) {
+    k_int32 len = d2fixed_buffered_n(d, precision, buf);
+    if (len < buf_size) {
+        buf[len] = '\0';
+        return len;
+    } else {
+        buf[buf_size - 1] = '\0';
+        return buf_size - 1;
+    }
+    return len;
 }
 
 class MemCompare {
@@ -1407,7 +1424,7 @@ inline KStatus DataChunk::PgEncodeDecimal(DatumPtr raw, const EE_StringInfo& inf
     k_char buf[30] = {0};
     double d = static_cast<double>(val);
     // k_int32 n = snprintf(buf, sizeof(buf), "%.8g", d);
-    k_int32 n = ryu_snprintf_g(d, 16, buf);
+    k_int32 n = ryu_snprintf_g(d, 16, buf, true);
     // Write the length of the column value
     if (ee_sendint(info, n, 4) != SUCCESS) {
       return FAIL;
@@ -1539,7 +1556,7 @@ KStatus DataChunk::PgResultData(kwdbContext_p ctx, k_uint32 row,
         if (output_type_oid[col] == T_FLOAT4) {
           n = ryu_snprintf_f(d, 6, buf, sizeof(buf));
         } else {
-           n = ryu_snprintf_g(d, 17, buf);
+           n = ryu_snprintf_g(d, 17, buf, false);
          }
 
         if (std::isnan(d)) {

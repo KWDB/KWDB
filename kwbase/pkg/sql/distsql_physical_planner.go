@@ -6991,7 +6991,7 @@ func (dsp *DistSQLPlanner) newLocalPlanningCtx(
 }
 
 var pgEncodeShortCircuitEnabled = settings.RegisterBoolSetting(
-	"sql.pg_encode_short_circuit.enabled", "enable the short circuit optimization", false,
+	"sql.pg_encode_short_circuit.enabled", "enable the short circuit optimization", true,
 )
 
 // FinalizePlan adds a final "result" stage if necessary and populates the
