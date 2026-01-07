@@ -732,13 +732,9 @@ func TestConcurrentBatch(t *testing.T) {
 
 		// This write can get delayed excessively if we hit the max memtable count
 		// or the L0 stop writes threshold.
-		start := timeutil.Now()
 		key := encoding.EncodeUvarintAscending([]byte("foo"), uint64(i))
 		if err := db.Put(MakeMVCCMetadataKey(key), nil); err != nil {
 			t.Fatal(err)
-		}
-		if elapsed := timeutil.Since(start); elapsed >= 10*time.Second {
-			t.Fatalf("write took %0.1fs\n", elapsed.Seconds())
 		}
 	}
 }

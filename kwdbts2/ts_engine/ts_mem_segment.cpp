@@ -551,9 +551,13 @@ KStatus TsMemSegment::GetBlockSpans(std::list<shared_ptr<TsBlockSpan>>& blocks, 
   for (auto& mem_blk : mem_blocks) {
     auto table_id = mem_blk->GetTableId();
     auto version = mem_blk->GetTableVersion();
-    std::shared_ptr<TsTableSchemaManager> tbl_schema_mgr;
+    std::shared_ptr<TsTableSchemaManager> tbl_schema_mgr = nullptr;
     auto s = schema_mgr->GetTableSchemaMgr(table_id, tbl_schema_mgr);
     if (s == FAIL) {
+      if (tbl_schema_mgr == nullptr) {
+        LOG_INFO("table %lu was dropped, ignore it.", table_id);
+        continue;
+      }
       LOG_ERROR("can not get table schema manager for table_id[%lu].", table_id);
       return s;
     }
