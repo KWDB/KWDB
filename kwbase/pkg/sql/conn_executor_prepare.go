@@ -630,6 +630,9 @@ func (ex *connExecutor) execPreparedirectBind(
 				ex.implicitTxn(),
 			)
 
+			bindCmd.Args = nil
+			bindCmd.ArgFormatCodes = nil
+
 			ps.PrepareInsertDirect.payloadNodeMap = di.PayloadNodeMap
 			ps.PrepareInsertDirect.stmtRes = stmtRes
 			ps.PrepareInsertDirect.EvalContext = evalCtx

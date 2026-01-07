@@ -998,6 +998,10 @@ func (c *conn) handleSimpleQuery(
 					return err
 				}
 				di.DirectTimes[sql.OtherEnd] = timeutil.Now()
+
+				stmts[0].Insertdirectstmt.InsertValues = nil
+				stmts[0].Insertdirectstmt.ValuesType = nil
+
 				// Send insert_direct information
 				if err = Send(ctx, unqis, evalCtx, r, stmts, di, c, timeReceived, startParse, endParse, curStmt); err != nil {
 					return err
