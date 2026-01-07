@@ -734,7 +734,8 @@ KStatus TSEngineImpl::PutData(kwdbContext_p ctx, const KTableKey& table_id, uint
   dedup_result->payload_num = payload_num;
   dedup_result->dedup_rule = static_cast<int>(EngineOptions::g_dedup_rule);
   bool is_dropped = false;
-  *inc_entity_cnt = 0;
+  bool not_new_tag = (not_create_entity != nullptr && 1 == *not_create_entity);
+  uint16_t created_tag_num = 0;
   for (size_t i = 0; i < payload_num; i++) {
     TSSlice& cur_pd = payload_data[i];
     auto tbl_version = TsRawPayload::GetTableVersionFromSlice(cur_pd);
@@ -757,7 +758,7 @@ KStatus TSEngineImpl::PutData(kwdbContext_p ctx, const KTableKey& table_id, uint
       LOG_ERROR("GetTableSchemaManager failed, table id: %lu", table_id);
       return s;
     }
-    if (not_create_entity != nullptr && 1 == *not_create_entity) {
+    if (not_new_tag) {
       bool new_tag = false;
       TSSlice primary_key = TsRawPayload::GetPrimaryKeyFromSlice(cur_pd);
       KStatus s = schema_mgr_->GetVGroup(ctx, tb_schema, primary_key, &vgroup_id, &entity_id, &new_tag);
@@ -770,14 +771,14 @@ KStatus TSEngineImpl::PutData(kwdbContext_p ctx, const KTableKey& table_id, uint
         return KStatus::SUCCESS;
       }
     }
-    bool new_tag;
+    bool new_tag = false;
     s = InsertTagData(ctx, tb_schema, mtr_id, cur_pd, write_wal, vgroup_id, entity_id, new_tag);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("put tag data failed. table[%lu].", table_id);
       return s;
     }
     if (new_tag) {
-      *inc_entity_cnt += 1;
+      created_tag_num += 1;
     }
     auto vgroup = GetVGroupByID(ctx, vgroup_id);
     // payload_size += cur_pd.len;
@@ -788,6 +789,7 @@ KStatus TSEngineImpl::PutData(kwdbContext_p ctx, const KTableKey& table_id, uint
       return s;
     }
   }
+  *inc_entity_cnt = created_tag_num;
   return KStatus::SUCCESS;
 }
 
