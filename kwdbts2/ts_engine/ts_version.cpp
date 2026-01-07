@@ -111,12 +111,6 @@ KStatus TsVersionManager::AddPartition(DatabaseID dbid, timestamp64 ptime) {
       LOG_ERROR("Partition DelItemManager open failed: partition_dir[%s].", partition_dir.string().c_str());
       return KStatus::FAIL;
     }
-    partition->count_info_ = std::make_shared<TsPartitionEntityCountManager>(partition_dir);
-    s = partition->count_info_->Open();
-    if (s != KStatus::SUCCESS) {
-      LOG_ERROR("Partition EntityCountManager open failed: partition_dir[%s].", partition_dir.string().c_str());
-      return KStatus::FAIL;
-    }
   }
   new_version->partitions_.insert({partition_id, std::move(partition)});
 
@@ -326,7 +320,7 @@ KStatus TsVersionManager::Recover() {
     // 2. delete datafiles
     for (auto par_id : update.partitions_created_) {
       auto root = root_path_ / PartitionDirName(par_id);
-      std::set<fs::path> expected{DEL_FILE_NAME, COUNT_FILE_NAME};
+      std::set<fs::path> expected{DEL_FILE_NAME};
       {
         auto it = update.entity_segment_.find(par_id);
         if (it != update.entity_segment_.end()) {
@@ -352,6 +346,12 @@ KStatus TsVersionManager::Recover() {
           for (auto n : it->second) {
             expected.insert(LastSegmentFileName(n.file_number));
           }
+        }
+      }
+      {
+        auto it = update.count_flush_infos_.find(par_id);
+        if (it != update.count_flush_infos_.end()) {
+          expected.insert(CountStatFileName(it->second.file_number));
         }
       }
 
@@ -436,6 +436,14 @@ KStatus TsVersionManager::ApplyUpdate(TsVersionUpdate *update) {
     new_vgroup_version->max_osn_ = std::max(new_vgroup_version->max_osn_, update->max_lsn_);
   }
 
+  if (update->has_count_stats_ && update->count_stats_status_ == CountStatsStatus::FlushImmOrWriteBatch) {
+    update->has_new_version_number_ = true;
+    update->version_num_ = version_num_.fetch_add(1, std::memory_order_relaxed);
+    encoded_update.push_back(static_cast<char>(VersionUpdateType::kNewVersionNumber));
+    PutVarint64(&encoded_update, update->version_num_);
+    new_vgroup_version->version_num_ = update->version_num_;
+  }
+
   if (update->has_new_partition_) {
     for (const auto &p : update->partitions_created_) {
       if (new_vgroup_version->partitions_.find(p) != new_vgroup_version->partitions_.end()) {
@@ -445,8 +453,6 @@ KStatus TsVersionManager::ApplyUpdate(TsVersionUpdate *update) {
       auto partition = std::unique_ptr<TsPartitionVersion>(new TsPartitionVersion{partition_dir, p});
       partition->del_info_ = std::make_shared<TsDelItemManager>(partition_dir);
       partition->del_info_->Open();
-      partition->count_info_ = std::make_shared<TsPartitionEntityCountManager>(partition_dir);
-      partition->count_info_->Open();
       // partition->meta_info_ = std::make_shared<TsPartitionEntityMetaManager>(root_path_ / PartitionDirName(p));
       // partition->meta_info_->Open();
       new_vgroup_version->partitions_.insert({p, std::move(partition)});
@@ -546,8 +552,108 @@ KStatus TsVersionManager::ApplyUpdate(TsVersionUpdate *update) {
                                                           new_vgroup_version->partitions_[par_id]->GetEntitySegment());
     }
 
+    // Process count stats, used by Flush() and FinishWriteBatchData()
+    {
+      auto count_meta = update->count_flush_infos_.find(par_id);
+      if (count_meta != update->count_flush_infos_.end()) {
+        std::string count_path = root_path_ / PartitionDirName(par_id) / CountStatFileName(count_meta->second.file_number);
+        auto new_count_file = std::make_shared<TsPartitionEntityCountManager>(count_path);
+        switch (update->count_stats_status_) {
+          case CountStatsStatus::FlushImmOrWriteBatch: {
+            if (new_partition_version->count_info_) {
+              if (!CopyFile(new_partition_version->count_info_->FilePath(), count_path)) {
+                LOG_ERROR("copy count.stat file failed! source path [%s], dest path [%s]",
+                  new_partition_version->count_info_->FilePath().c_str(), count_path.c_str())
+                return KStatus::FAIL;
+              }
+            }
+            auto s = new_count_file->Open();
+            if (s != KStatus::SUCCESS) {
+              LOG_ERROR("count.stat open failed! path [%s]", count_path.c_str())
+              return KStatus::FAIL;
+            }
+            new_count_file->SetCountStatsHeader(1, update->version_num_, new_vgroup_version->max_osn_);
+            for (auto& v : count_meta->second.flush_infos) {
+              if (new_partition_version->ShouldSetCountStatsInvalid(v.entity_id)) {
+                v.is_count_valid = false;
+              }
+              new_count_file->AddEntityCountStats(v);
+            }
+            break;
+          }
+          case CountStatsStatus::Recalculate: {
+            if (new_partition_version->count_info_) {
+              TsCountStatsFileHeader header {};
+              new_partition_version->count_info_->GetCountStatsHeader(header);
+              if (header.version_num > update->version_num_) {
+                return KStatus::FAIL;
+              }
+              if (!CopyFile(new_partition_version->count_info_->FilePath(), count_path)) {
+                LOG_ERROR("copy count.stat file failed! source path [%s], dest path [%s]",
+                  new_partition_version->count_info_->FilePath().c_str(), count_path.c_str())
+                return KStatus::FAIL;
+              }
+            }
+            auto s = new_count_file->Open();
+            if (s != KStatus::SUCCESS) {
+              LOG_ERROR("count.stat open failed! path [%s]", count_path.c_str())
+              return KStatus::FAIL;
+            }
+            new_count_file->SetCountStatsHeader(1, update->version_num_, update->max_lsn_);
+            for (auto& v : count_meta->second.flush_infos) {
+              if (new_partition_version->count_info_) {
+                TsEntityCountStats stats {};
+                stats.entity_id = v.entity_id;
+                new_partition_version->count_info_->GetEntityCountStats(stats);
+                if (!stats.is_count_valid) {
+                  new_count_file->SetEntityCountStats(v);
+                }
+              } else {
+                new_count_file->SetEntityCountStats(v);
+              }
+            }
+            break;
+          }
+          case CountStatsStatus::Recover: {
+            auto s = new_count_file->Open();
+            if (s != KStatus::SUCCESS) {
+              LOG_ERROR("count.stat open failed! path [%s]", count_path.c_str())
+              return KStatus::FAIL;
+            }
+            break;
+          }
+          case CountStatsStatus::UpgradeRecover: {
+            auto s = new_count_file->Open();
+            if (s != KStatus::SUCCESS) {
+              LOG_ERROR("count.stat open failed! path [%s]", count_path.c_str())
+              return KStatus::FAIL;
+            }
+            new_count_file->SetCountStatsHeader(1, version_num_.load(memory_order_relaxed),
+              new_vgroup_version->max_osn_);
+            for (auto& v : count_meta->second.flush_infos) {
+              new_count_file->AddEntityCountStats(v);
+            }
+            break;
+          }
+        }
+        KStatus s = new_count_file->Sync();
+        if (s != KStatus::SUCCESS) {
+          LOG_ERROR("count.stat sync failed! path [%s]", count_path.c_str())
+          return KStatus::FAIL;
+        }
+        if (new_partition_version->count_info_) {
+          new_partition_version->count_info_->MarkDelete();
+        }
+        new_partition_version->count_info_ = std::move(new_count_file);
+      }
+    }
+
     // VGroupVersion accepts the new partition version
     new_vgroup_version->partitions_[par_id] = std::move(new_partition_version);
+  }
+
+  if (update->count_stats_status_ == CountStatsStatus::Recover && update->has_new_version_number_) {
+    this->version_num_.store(update->version_num_, std::memory_order_relaxed);
   }
 
   if (update->NeedRecord()) {
@@ -677,10 +783,6 @@ KStatus TsPartitionVersion::DeleteData(TSEntityID e_id, const std::vector<KwTsSp
       LOG_ERROR("AddDelItem failed. for entity[%lu]", e_id);
       return s;
     }
-    s = count_info_->SetEntityCountInValid(e_id, ts_span);
-    if (s != KStatus::SUCCESS) {
-      LOG_ERROR("SetEntityCountInValid failed. for entity[%lu]", e_id);
-    }
   }
   return KStatus::SUCCESS;
 }
@@ -764,8 +866,8 @@ KStatus TsPartitionVersion::getFilter(const TsScanFilterParams& filter, TsBlockI
 
 KStatus TsPartitionVersion::GetBlockSpans(const TsScanFilterParams& filter,
                                           std::list<shared_ptr<TsBlockSpan>>* ts_block_spans,
-                                          std::shared_ptr<TsTableSchemaManager>& tbl_schema_mgr,
-                                          std::shared_ptr<MMapMetricsTable>& scan_schema,
+                                          const std::shared_ptr<TsTableSchemaManager>& tbl_schema_mgr,
+                                          const std::shared_ptr<MMapMetricsTable>& scan_schema,
                                           TsScanStats* ts_scan_stats,
                                           bool skip_mem, bool skip_last, bool skip_entity) const {
   TsBlockItemFilterParams block_data_filter;
@@ -941,6 +1043,25 @@ KStatus TsPartitionVersion::NeedVacuumEntitySegment(const fs::path& root_path, T
     }
   }
   return KStatus::SUCCESS;
+}
+
+bool TsPartitionVersion::ShouldSetCountStatsInvalid(TSEntityID e_id) {
+  TS_OSN del_osn = 0;
+  auto s = del_info_->GetDelMaxOSN(e_id, del_osn);
+  if (s != KStatus::SUCCESS) {
+    return false;
+  }
+  if (del_osn == 0) {
+    return false;
+  }
+  if (count_info_) {
+    TsCountStatsFileHeader header {};
+    s = count_info_->GetCountStatsHeader(header);
+    if (del_osn > header.max_osn) {
+      return true;
+    }
+  }
+  return true;
 }
 
 // version update
@@ -1179,6 +1300,40 @@ const char *DecodeEntitySegment(const char *ptr, const char *limit,
   return ptr;
 }
 
+inline void EncodeCountStatFile(TsBufferBuilder *result,
+                                const std::map<PartitionIdentifier, CountStatMetaInfo> &count_stats) {
+  uint32_t npartition = count_stats.size();
+  PutVarint32(result, npartition);
+  for (const auto &[par_id, info] : count_stats) {
+    EncodePartitionID(result, par_id);
+    PutVarint64(result, info.file_number);
+  }
+}
+
+const char *DecodeCountStatFile(const char *ptr, const char *limit,
+                                std::map<PartitionIdentifier, CountStatMetaInfo> *count_stats) {
+  uint32_t npartition = 0;
+  ptr = DecodeVarint32(ptr, limit, &npartition);
+  if (ptr == nullptr) {
+    return nullptr;
+  }
+
+  for (uint32_t i = 0; i < npartition; ++i) {
+    PartitionIdentifier par_id;
+    ptr = DecodePartitionID(ptr, limit, &par_id);
+    if (ptr == nullptr) {
+      return nullptr;
+    }
+    CountStatMetaInfo info;
+    ptr = DecodeVarint64(ptr, limit, &info.file_number);
+    if (ptr == nullptr) {
+      return nullptr;
+    }
+    count_stats->insert_or_assign(par_id, info);
+  }
+  return ptr;
+}
+
 TsBufferBuilder TsVersionUpdate::EncodeToString() const {
   TsBufferBuilder result;
   if (has_new_partition_) {
@@ -1213,6 +1368,11 @@ TsBufferBuilder TsVersionUpdate::EncodeToString() const {
   if (has_max_lsn_) {
     result.push_back(static_cast<char>(VersionUpdateType::kMaxLSN));
     PutVarint64(&result, max_lsn_);
+  }
+
+  if (has_count_stats_) {
+    result.push_back(static_cast<char>(VersionUpdateType::kNewCountStatFile));
+    EncodeCountStatFile(&result, count_flush_infos_);
   }
 
   return result;
@@ -1312,6 +1472,26 @@ KStatus TsVersionUpdate::DecodeFromSlice(TSSlice input) {
           return FAIL;
         }
         this->has_max_lsn_ = true;
+        break;
+      }
+
+      case VersionUpdateType::kNewCountStatFile: {
+        ptr = DecodeCountStatFile(ptr, end, &this->count_flush_infos_);
+        if (ptr == nullptr) {
+          LOG_ERROR("Corrupted version update slice");
+          return FAIL;
+        }
+        this->has_count_stats_ = true;
+        break;
+      }
+
+      case VersionUpdateType::kNewVersionNumber: {
+        ptr = DecodeVarint64(ptr, end, &this->version_num_);
+        if (ptr == nullptr) {
+          LOG_ERROR("Corrupted version update slice");
+          return FAIL;
+        }
+        this->has_new_version_number_ = true;
         break;
       }
       default:
@@ -1450,6 +1630,19 @@ KStatus TsVersionManager::VersionBuilder::AddUpdate(const TsVersionUpdate &updat
     all_updates_.has_max_lsn_ = true;
     all_updates_.max_lsn_ = std::max(all_updates_.max_lsn_, update.max_lsn_);
   }
+
+  if (update.has_count_stats_) {
+    all_updates_.has_count_stats_ = true;
+    all_updates_.count_stats_status_ = CountStatsStatus::Recover;
+    for (auto [par_id, info] : update.count_flush_infos_) {
+      all_updates_.count_flush_infos_[par_id] = info;
+    }
+  }
+
+  if (update.has_new_version_number_) {
+    all_updates_.has_new_version_number_ = true;
+    all_updates_.version_num_ = std::max(all_updates_.version_num_, update.version_num_);
+  }
   return SUCCESS;
 }
 
@@ -1471,6 +1664,12 @@ void TsVersionManager::VersionBuilder::Finalize(TsVersionUpdate *update) {
 
   update->has_max_lsn_ = all_updates_.has_max_lsn_;
   update->max_lsn_ = all_updates_.max_lsn_;
+
+  update->has_count_stats_ = all_updates_.has_count_stats_;
+  update->count_stats_status_ = all_updates_.count_stats_status_;
+  update->count_flush_infos_ = std::move(all_updates_.count_flush_infos_);
+  update->has_new_version_number_ = all_updates_.has_new_version_number_;
+  update->version_num_ = all_updates_.version_num_;
 
   update->need_record_ = true;
 }

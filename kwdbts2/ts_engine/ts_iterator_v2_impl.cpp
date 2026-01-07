@@ -1245,11 +1245,24 @@ KStatus TsAggIteratorV2Impl::CountAggregate(TsScanStats* ts_scan_stats) {
                               entity_ids_[cur_entity_index_], ts_col_type_, scan_osn_, ts_spans_};
     auto partition_version = ts_partitions_[cur_partition_index_];
     auto count_manager = partition_version->GetCountManager();
-    TsEntityCountHeader count_header{};
-    count_header.entity_id = entity_ids_[cur_entity_index_];
-    count_manager->GetEntityCountHeader(&count_header);
-    if (count_header.is_count_valid && checkTimestampWithSpans(ts_spans_, count_header.min_ts, count_header.max_ts) ==
-    TimestampCheckResult::FullyContained) {
+    TsCountStatsFileHeader count_header{};
+    TsEntityCountStats count_stats{};
+    if (count_manager) {
+      count_stats.entity_id = entity_ids_[cur_entity_index_];
+      count_manager->GetCountStatsHeader(count_header);
+      count_manager->GetEntityCountStats(count_stats);
+    } else {
+      count_stats.entity_id = 0;
+      count_stats.is_count_valid = false;
+    }
+    TS_OSN del_osn;
+    auto s = partition_version->GetDelMaxOSN(count_stats.entity_id, del_osn);
+    if (s != KStatus::SUCCESS) {
+      LOG_ERROR("GetDelRange failed.");
+      return s;
+    }
+    if (count_stats.is_count_valid && checkTimestampWithSpans(ts_spans_, count_stats.min_ts, count_stats.max_ts) ==
+      TimestampCheckResult::FullyContained && (count_header.max_osn > del_osn)) {
       std::list<shared_ptr<TsBlockSpan>> mem_block_spans;
       ret = partition_version->GetBlockSpans(filter, &mem_block_spans, table_schema_mgr_, schema_,
                                               ts_scan_stats, false, true, true);
@@ -1258,7 +1271,7 @@ KStatus TsAggIteratorV2Impl::CountAggregate(TsScanStats* ts_scan_stats) {
         return ret;
       }
       if (mem_block_spans.empty()) {
-        KUint64(final_agg_data_[0].data) += count_header.valid_count;
+        KUint64(final_agg_data_[0].data) += count_stats.valid_count;
       } else {
         uint64_t mem_count = 0;
         std::vector<KwTsSpan> mem_ts_spans;
@@ -1271,9 +1284,9 @@ KStatus TsAggIteratorV2Impl::CountAggregate(TsScanStats* ts_scan_stats) {
           mem_count += mem_block->GetRowNum();
         }
         if (EngineOptions::g_dedup_rule == DedupRule::KEEP ||
-        (checkTimestampWithSpans(mem_ts_spans, count_header.min_ts, count_header.max_ts) ==
+        (checkTimestampWithSpans(mem_ts_spans, count_stats.min_ts, count_stats.max_ts) ==
         TimestampCheckResult::NonOverlapping)) {
-          KUint64(final_agg_data_[0].data) += count_header.valid_count + mem_count;
+          KUint64(final_agg_data_[0].data) += count_stats.valid_count + mem_count;
         } else {
           ret = partition_version->GetBlockSpans(filter, &ts_block_spans_, table_schema_mgr_, schema_, ts_scan_stats);
           if (ret != KStatus::SUCCESS) {
@@ -1288,61 +1301,16 @@ KStatus TsAggIteratorV2Impl::CountAggregate(TsScanStats* ts_scan_stats) {
         LOG_ERROR("e_paritition GetBlockSpan failed.");
         return ret;
       }
-      if (!count_header.is_count_valid && checkTimestampWithSpans(ts_spans_, count_header.min_ts, count_header.max_ts) ==
-                                          TimestampCheckResult::FullyContained) {
-        ret = RecalculateCountInfo(partition_version, count_manager, ts_scan_stats);
+      if (!count_stats.is_count_valid && count_stats.entity_id != 0 && EngineOptions::count_stats_recalc_cycle != 0) {
+        ret = vgroup_->AddRecalcEntity(partition_version->GetPartitionIdentifier(), table_id_, count_stats.entity_id);
         if (ret != KStatus::SUCCESS) {
-          LOG_ERROR("RecalculateCountInfo entity[%lu] failed.", count_header.entity_id);
+          LOG_ERROR("AddRecalcEntity partition[%s] table[%lu} entity[%lu] failed.",
+            partition_version->GetPartitionIdentifierStr().c_str(), table_id_, count_stats.entity_id);
         }
       }
     }
     ret = UpdateAggregation(false, ts_scan_stats);
     if (ret != KStatus::SUCCESS) {
-      return ret;
-    }
-  }
-  return KStatus::SUCCESS;
-}
-
-KStatus TsAggIteratorV2Impl::RecalculateCountInfo(std::shared_ptr<const TsPartitionVersion> partition,
-                                                  shared_ptr<TsPartitionEntityCountManager> count_manager,
-                                                  TsScanStats* ts_scan_stats) {
-  KStatus ret;
-  ret = count_manager->PrepareEntityCountValid(entity_ids_[cur_entity_index_]);
-  if (ret != KStatus::SUCCESS) {
-    LOG_ERROR("PrepareEntityCountValid entity[%u] failed.", entity_ids_[cur_entity_index_]);
-    return ret;
-  }
-  auto partition_id = partition->GetPartitionIdentifier();
-  auto latest_partition = vgroup_current_version_->GetPartition(std::get<0>(partition_id), std::get<1>(partition_id));
-  std::list<shared_ptr<TsBlockSpan>> count_block_spans;
-  std::vector<KwTsSpan> ts_spans = {{latest_partition->GetTsColTypeStartTime(ts_col_type_),
-                                     latest_partition->GetTsColTypeEndTime(ts_col_type_)}};
-  TsScanFilterParams count_filter{db_id_, table_id_, vgroup_->GetVGroupID(),
-                                  entity_ids_[cur_entity_index_], ts_col_type_, UINT64_MAX, ts_spans};
-  ret = latest_partition->GetBlockSpans(count_filter, &count_block_spans, table_schema_mgr_, schema_, ts_scan_stats, true);
-  if (ret != KStatus::SUCCESS) {
-    LOG_ERROR("RecalculateCountInfo get mem block span failed.");
-    return ret;
-  }
-  TsBlockSpanSortedIterator iter(count_block_spans, vgroup_->GetSchemaMgr(), EngineOptions::g_dedup_rule);
-  iter.Init();
-  std::shared_ptr<TsBlockSpan> dedup_block_span;
-  bool is_finished = false;
-  TsEntityFlushInfo flush_info{entity_ids_[cur_entity_index_], INVALID_TS, INVALID_TS, 0, ""};
-  while (iter.Next(dedup_block_span, &is_finished) == KStatus::SUCCESS && !is_finished) {
-    if (flush_info.min_ts > dedup_block_span->GetFirstTS()) {
-      flush_info.min_ts = dedup_block_span->GetFirstTS();
-    }
-    if (flush_info.max_ts == INVALID_TS || flush_info.max_ts < dedup_block_span->GetLastTS()) {
-      flush_info.max_ts = dedup_block_span->GetLastTS();
-    }
-    flush_info.deduplicate_count += dedup_block_span->GetRowNum();
-  }
-  if (flush_info.deduplicate_count > 0) {
-    ret = count_manager->SetEntityCountValid(flush_info.entity_id, &flush_info);
-    if (ret != KStatus::SUCCESS) {
-      LOG_ERROR("SetEntityCountValid entity[%lu] failed.", flush_info.entity_id);
       return ret;
     }
   }

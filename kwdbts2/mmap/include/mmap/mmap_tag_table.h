@@ -212,6 +212,8 @@ class TagTable {
 
   int DropHashIndex(uint32_t index_id,  const uint32_t cur_version, const uint32_t new_version, ErrorInfo& err_info);
 
+  bool HasEntityTag(int32_t sub_group_id, int32_t entity_id);
+
  private:
 
   int initHashIndex(int flags, ErrorInfo& err_info);

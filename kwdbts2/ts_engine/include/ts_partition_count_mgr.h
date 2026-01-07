@@ -12,61 +12,63 @@
 #pragma once
 #include <vector>
 #include <string>
-#include <list>
 #include "libkwdbts2.h"
 #include "ts_io.h"
 #include "ts_file_vector_index.h"
-#include "ts_hash_latch.h"
 
 namespace kwdbts {
 
-const char COUNT_FILE_NAME[] = "entity_count.item";
+struct TsCountStatsFileHeader {
+  uint8_t file_version;
+  uint64_t version_num;
+  TS_OSN max_osn;
+  char reserverd[8];
+};
+static_assert(sizeof(TsCountStatsFileHeader) == 32, "wrong size of FileHeader, please check TsEntityCountHeader.");
 
-struct TsEntityCountHeader {
-  uint64_t entity_id;
+struct TsEntityCountStats {
+  TSTableID table_id;
+  TSEntityID entity_id;
   timestamp64 min_ts;
   timestamp64 max_ts;
   uint64_t valid_count;
   bool is_count_valid;
-  bool changed_aft_prepare;
-  char reserverd[89];
+  char reserverd[17];
 };
-static_assert(sizeof(TsEntityCountHeader) == 128, "wrong size of FileHeader, please check TsEntityCountHeader.");
+static_assert(sizeof(TsEntityCountStats) == 64, "wrong size of TsEntityCountStat, please check TsEntityCountStat.");
 
-struct TsEntityFlushInfo {
-  TSEntityID entity_id;
-  timestamp64 min_ts;
-  timestamp64 max_ts;
-  uint64_t deduplicate_count;
-  char reserved[32] = {0};
+struct CountStatMetaInfo {
+  uint64_t file_number;
+  std::vector<TsEntityCountStats> flush_infos;
 };
-static_assert(sizeof(TsEntityFlushInfo) == 64, "wrong size of FileHeader, please check TsEntityFlushInfo.");
-
 
 class TsPartitionEntityCountManager {
  private:
   std::string path_;
   TsMMapAllocFile mmap_alloc_;
+  TsCountStatsFileHeader* header_{nullptr};
   // get offset of first index node.
   VectorIndexForFile<uint64_t> index_;
-  TsHashLatch count_lock_;
+  bool delete_after_free = false;
 
  public:
   explicit TsPartitionEntityCountManager(std::string path);
-  ~TsPartitionEntityCountManager() {}
+  ~TsPartitionEntityCountManager();
   KStatus Open();
-  KStatus AddFlushEntityAgg(TsEntityFlushInfo& info);
-  KStatus SetEntityCountInValid(TSEntityID e_id, const KwTsSpan& ts_range);
-  KStatus PrepareEntityCountValid(TSEntityID e_id);
-  KStatus SetEntityCountValid(TSEntityID e_id, TsEntityFlushInfo* info);
-  KStatus GetEntityCountHeader(TsEntityCountHeader* count_header);
-  KStatus Sync();
+  KStatus SetCountStatsHeader(uint8_t file_version, uint64_t version_num, TS_OSN max_osn);
+  KStatus AddEntityCountStats(TsEntityCountStats& info);
+  KStatus SetEntityCountStats(TsEntityCountStats& info);
+  KStatus GetCountStatsHeader(TsCountStatsFileHeader& file_header);
+  KStatus GetEntityCountStats(TsEntityCountStats& stats);
+  void MarkDelete() { delete_after_free = true; }
+  std::string FilePath() const { return path_; }
+
+  KStatus Sync() { return mmap_alloc_.Sync(); }
   void DropAll();
   KStatus Reset();
 
  private:
-  KStatus updateEntityCount(TsEntityCountHeader* header, TsEntityFlushInfo* info, bool update_ts = true);
+  KStatus updateEntityCount(TsEntityCountStats* header, TsEntityCountStats* info);
 };
-
 
 }  // namespace kwdbts

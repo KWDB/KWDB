@@ -74,4 +74,10 @@ inline std::string TempFileName(const std::string& filename) {
   return buffer;
 }
 
+inline std::string CountStatFileName(uint64_t file_number) {
+  char buffer[64];
+  std::snprintf(buffer, sizeof(buffer), "count.stat-%012lu", file_number);
+  return buffer;
+}
+
 };  // namespace kwdbts

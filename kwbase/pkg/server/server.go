@@ -252,6 +252,11 @@ var (
 		"ts.block_filter.sampling_ratio",
 		"sampling ratio for block filter, valid range is (0.0, 1.0]",
 		0.2)
+
+	tsCountRecalcPeriod = settings.RegisterPublicIntSetting(
+		"ts.count_recalc.cycle",
+		"the cycle of count recalculation, unit in seconds, set to 0 to disable count recalc",
+		60*5)
 )
 
 // TODO(peter): Until go1.11, ServeMux.ServeHTTP was not safe to call

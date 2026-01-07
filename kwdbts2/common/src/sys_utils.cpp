@@ -249,3 +249,14 @@ std::string lexically_normal(const std::string& path) {
 
   return normalized_path;
 }
+
+bool CopyFile(const string& src_path, const string& dst_path) {
+  std::error_code ec;
+  auto copied = fs::copy_file(src_path, dst_path, fs::copy_options::overwrite_existing, ec);
+  if (ec) {
+    LOG_ERROR("copy %s to %s failed: errno message[%s]", src_path.c_str(), dst_path.c_str(), ec.message().c_str());
+    return false;
+  }
+  // LOG_INFO("Copy [%s] to [%s] succeeded", src_path.c_str(), dst_path.c_str());
+  return true;
+}

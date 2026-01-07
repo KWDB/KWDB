@@ -249,6 +249,17 @@ func checkTsBlockFilterSamplingRatio(encodedValue string) error {
 	return nil
 }
 
+func checkTsCountRecalcCycle(encodedValue string) error {
+	value, err := strconv.ParseInt(encodedValue, 10, 64)
+	if err != nil {
+		return err
+	}
+	if value < 0 {
+		return errors.New("invalid value, the ts.count_recalc.cycle should be nonnegative integer")
+	}
+	return nil
+}
+
 // CheckClusterSetting map of checking methods for saving cluster settings
 var CheckClusterSetting = map[string]CheckOperation{
 	"ts.dedup.rule":                      checkTsDedupRule,
@@ -264,6 +275,7 @@ var CheckClusterSetting = map[string]CheckOperation{
 	"ts.reserved_last_segment.max_limit": checkTsReservedLastSegmentMaxLimit,
 	"ts.force_sync_file.enabled":         checkBool,
 	"ts.block_filter.sampling_ratio":     checkTsBlockFilterSamplingRatio,
+	"ts.count_recalc.cycle":              checkTsCountRecalcCycle,
 }
 
 // TsRaftlogCombineWalClusterSettingName is the name of the ts raftlog combine wal cluster setting.

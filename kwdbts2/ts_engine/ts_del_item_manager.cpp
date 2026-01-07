@@ -345,4 +345,22 @@ KStatus TsDelItemManager::GetDelRangeWithOSN(TSEntityID entity_id, std::vector<K
   return KStatus::SUCCESS;
 }
 
+KStatus TsDelItemManager::GetDelMaxOSN(TSEntityID entity_id, TS_OSN& max_osn) {
+  max_osn = 0;
+  std::list<TsEntityDelItem*> del_items;
+  auto s = GetDelItem(entity_id, del_items);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("GetDelItem failed. entity_id [%lu]", entity_id);
+    return s;
+  }
+  for (auto& item : del_items) {
+    if (item->status == DEL_ITEM_OK) {
+      if (item->range.osn_span.end > max_osn) {
+        max_osn = item->range.osn_span.end;
+      }
+    }
+  }
+  return KStatus::SUCCESS;
+}
+
 }  // namespace kwdbts

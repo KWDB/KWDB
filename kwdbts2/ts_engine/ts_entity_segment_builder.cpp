@@ -792,8 +792,8 @@ KStatus TsEntitySegmentBuilder::WriteBatch(TSTableID tbl_id, uint32_t entity_id,
   if (block_item.min_ts < entity_items_[entity_id].min_ts) {
     entity_items_[entity_id].min_ts = block_item.min_ts;
   }
-  TsEntityFlushInfo info = {entity_id, block_item.min_ts, block_item.max_ts, block_item.n_rows, ""};
-  flush_infos_.push_back(info);
+  TsEntityCountStats info = {tbl_id, entity_id, block_item.min_ts, block_item.max_ts, block_item.n_rows, true, ""};
+  flush_infos_.emplace_back(info);
   return KStatus::SUCCESS;
 }
 

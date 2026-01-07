@@ -113,3 +113,11 @@ bool isSoftLink(const std::string& path);
  * @return
  */
 std::string lexically_normal(const std::string& path);
+
+/**
+ * @brief Copy file
+ * @param src_path The path of source file
+ * @param dst_path The path of destination file
+ * @return false/true
+ */
+bool CopyFile(const string& src_path, const string& dst_path);

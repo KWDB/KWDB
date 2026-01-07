@@ -19,43 +19,61 @@ namespace kwdbts {
 #define ENTITY_COUNT_LATCH_BUCKET_NUM 10
 
 TsPartitionEntityCountManager::TsPartitionEntityCountManager(std::string path) :
-  path_(path + "/" + COUNT_FILE_NAME), mmap_alloc_(path_),
-  count_lock_(ENTITY_COUNT_LATCH_BUCKET_NUM, LATCH_ID_MMAP_ENTITY_COUNT_MGR_MUTEX) {}
+  path_(path), mmap_alloc_(path_) {}
+
+TsPartitionEntityCountManager::~TsPartitionEntityCountManager() {
+  mmap_alloc_.Close();
+  if (delete_after_free) {
+    unlink(path_.c_str());
+  }
+}
 
 KStatus TsPartitionEntityCountManager::Open() {
   if (mmap_alloc_.Open() == KStatus::SUCCESS) {
+    if (mmap_alloc_.GetAllocSize() >= sizeof(TsCountStatsFileHeader)) {
+      header_ = reinterpret_cast<TsCountStatsFileHeader*>(mmap_alloc_.addr(mmap_alloc_.GetStartPos()));
+    } else {
+      auto offset = mmap_alloc_.AllocateAssigned(sizeof(TsCountStatsFileHeader), 0);
+      header_ = reinterpret_cast<TsCountStatsFileHeader*>(mmap_alloc_.addr(offset));
+    }
     KStatus s = index_.Init(&mmap_alloc_, &(mmap_alloc_.getHeader()->index_header_offset));
     if (s == KStatus::SUCCESS) {
       return s;
     }
   }
-  LOG_ERROR("entity_count.item open failed.");
+  LOG_ERROR("count.stat open failed.");
   return KStatus::FAIL;
 }
 
-KStatus TsPartitionEntityCountManager::updateEntityCount(TsEntityCountHeader* header,
-  TsEntityFlushInfo* info, bool update_ts) {
+KStatus TsPartitionEntityCountManager::SetCountStatsHeader(uint8_t file_version, uint64_t version_num, TS_OSN max_osn) {
+  header_->file_version = file_version;
+  header_->version_num = version_num;
+  header_->max_osn = max_osn;
+  return KStatus::SUCCESS;
+}
+
+KStatus TsPartitionEntityCountManager::updateEntityCount(TsEntityCountStats* header, TsEntityCountStats* info) {
   Defer defer([&]() {
-    if (update_ts) {
-      // update min ts and max ts
-      if (info->min_ts < header->min_ts || header->min_ts == INVALID_TS) {
-        header->min_ts = info->min_ts;
-      }
-      if (info->max_ts > header->max_ts || header->max_ts == INVALID_TS) {
-        header->max_ts = info->max_ts;
-      }
+    // update min ts and max ts
+    if (info->min_ts < header->min_ts) {
+      header->min_ts = info->min_ts;
     }
-    header->changed_aft_prepare = true;
+    if (info->max_ts > header->max_ts) {
+      header->max_ts = info->max_ts;
+    }
   });
   if (!header->is_count_valid) {
     // no need do anything.
     return KStatus::SUCCESS;
-  } else if (EngineOptions::g_dedup_rule == DedupRule::KEEP && update_ts) {
-    header->valid_count += info->deduplicate_count;
+  } else if (!info->is_count_valid) {
+    header->valid_count = 0;
+    header->is_count_valid = false;
+  } else if (EngineOptions::g_dedup_rule == DedupRule::KEEP) {
+    header->valid_count += info->valid_count;
   } else {
     // ts span no cross with history ts span.
-    if (info->min_ts > header->max_ts || info->max_ts < header->min_ts || header->min_ts == INVALID_TS) {
-      header->valid_count += info->deduplicate_count;
+    if (info->min_ts > header->max_ts || info->max_ts < header->min_ts) {
+      header->valid_count += info->valid_count;
     } else {
       // if ts span crossed, set count invalid.
       header->valid_count = 0;
@@ -65,155 +83,93 @@ KStatus TsPartitionEntityCountManager::updateEntityCount(TsEntityCountHeader* he
   return KStatus::SUCCESS;
 }
 
-KStatus TsPartitionEntityCountManager::AddFlushEntityAgg(TsEntityFlushInfo& info) {
-  count_lock_.Lock(info.entity_id);
-  Defer defer{[&]() { count_lock_.Unlock(info.entity_id); }};
+KStatus TsPartitionEntityCountManager::AddEntityCountStats(TsEntityCountStats& info) {
   auto node = index_.GetIndexObject(info.entity_id, true);
   if (node == nullptr) {
     LOG_ERROR("get node from index file failed. entity [%lu] path [%s].", info.entity_id, path_.c_str());
     return KStatus::FAIL;
   }
   if (*node == INVALID_POSITION) {
-    auto offset = mmap_alloc_.AllocateAssigned(sizeof(TsEntityCountHeader), 0);
+    auto offset = mmap_alloc_.AllocateAssigned(sizeof(TsEntityCountStats), 0);
     if (offset == INVALID_POSITION) {
       LOG_ERROR("get node from index file failed. entity [%lu] path [%s].", info.entity_id, path_.c_str());
       return FAIL;
     }
-    TsEntityCountHeader* header = reinterpret_cast<TsEntityCountHeader*>(mmap_alloc_.addr(offset));
-    header->min_ts = INVALID_TS;
-    header->max_ts = INVALID_TS;
-    header->entity_id = info.entity_id;
-    header->valid_count = 0;
-    header->changed_aft_prepare = false;
-    header->is_count_valid = true;
+    auto* stats = reinterpret_cast<TsEntityCountStats*>(mmap_alloc_.addr(offset));
+    stats->min_ts = info.min_ts;
+    stats->max_ts = info.max_ts;
+    stats->table_id = info.table_id;
+    stats->entity_id = info.entity_id;
+    stats->valid_count = info.valid_count;
+    stats->is_count_valid = info.is_count_valid;
     *node = offset;
-    mmap_alloc_.Sync();
+    return KStatus::SUCCESS;
   }
   {
-    TsEntityCountHeader* header = reinterpret_cast<TsEntityCountHeader*>(mmap_alloc_.addr(*node));
-    assert(header != nullptr);
-    KStatus s = updateEntityCount(header, &info);
+    auto* stats = reinterpret_cast<TsEntityCountStats*>(mmap_alloc_.addr(*node));
+    assert(stats != nullptr);
+    KStatus s = updateEntityCount(stats, &info);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("updateEntityCount failed. entity [%lu] path [%s].", info.entity_id, path_.c_str());
       return KStatus::FAIL;
     }
-    s = mmap_alloc_.NodeSync(*node, sizeof(TsEntityCountHeader));
-    if (s != KStatus::SUCCESS) {
-      LOG_ERROR("NodeSync failed. entity [%lu] path [%s].", info.entity_id, path_.c_str());
-      return KStatus::FAIL;
-    }
   }
   return KStatus::SUCCESS;
 }
 
-KStatus TsPartitionEntityCountManager::SetEntityCountInValid(TSEntityID e_id, const KwTsSpan& ts_range) {
-  count_lock_.Lock(e_id);
-  Defer defer{[&]() { count_lock_.Unlock(e_id); }};
-  auto node = index_.GetIndexObject(e_id, true);
+KStatus TsPartitionEntityCountManager::SetEntityCountStats(TsEntityCountStats& info) {
+  auto node = index_.GetIndexObject(info.entity_id, true);
   if (node == nullptr) {
-    LOG_ERROR("get node from index file failed. entity [%lu] path [%s].", e_id, path_.c_str());
+    LOG_ERROR("get node from index file failed. entity [%lu] path [%s].", info.entity_id, path_.c_str());
     return KStatus::FAIL;
   }
-
   if (*node == INVALID_POSITION) {
-    auto offset = mmap_alloc_.AllocateAssigned(sizeof(TsEntityCountHeader), 0);
+    auto offset = mmap_alloc_.AllocateAssigned(sizeof(TsEntityCountStats), 0);
     if (offset == INVALID_POSITION) {
-      LOG_ERROR("get node from index file failed. entity [%lu] path [%s].", e_id, path_.c_str());
-      return KStatus::FAIL;
+      LOG_ERROR("get node from index file failed. entity [%lu] path [%s].", info.entity_id, path_.c_str());
+      return FAIL;
     }
-    TsEntityCountHeader* header = reinterpret_cast<TsEntityCountHeader*>(mmap_alloc_.addr(offset));
-    header->min_ts = INVALID_TS;
-    header->max_ts = INVALID_TS;
-    header->entity_id = e_id;
-    header->valid_count = 0;
-    header->changed_aft_prepare = true;
-    header->is_count_valid = false;
     *node = offset;
-    mmap_alloc_.Sync();
+  }
+  {
+    auto* stats = reinterpret_cast<TsEntityCountStats*>(mmap_alloc_.addr(*node));
+    assert(stats != nullptr);
+    stats->min_ts = info.min_ts;
+    stats->max_ts = info.max_ts;
+    stats->table_id = info.table_id;
+    stats->entity_id = info.entity_id;
+    stats->valid_count = info.valid_count;
+    stats->is_count_valid = info.is_count_valid;;
+  }
+
+  return KStatus::SUCCESS;
+}
+
+KStatus TsPartitionEntityCountManager::GetCountStatsHeader(TsCountStatsFileHeader& file_header) {
+  file_header.file_version = header_->file_version;
+  file_header.version_num = header_->version_num;
+  file_header.max_osn = header_->max_osn;
+  return KStatus::SUCCESS;
+}
+
+KStatus TsPartitionEntityCountManager::GetEntityCountStats(TsEntityCountStats& stats) {
+  auto node = index_.GetIndexObject(stats.entity_id, false);
+  if (node == nullptr) {
+    // LOG_DEBUG("not found node from index file. entity [%lu] path [%s].", stats.entity_id, path_.c_str());
+    stats.is_count_valid = true;
+    stats.valid_count = 0;
+    stats.min_ts = INVALID_TS;
+    stats.max_ts = INVALID_TS;
     return KStatus::SUCCESS;
   }
-  TsEntityFlushInfo info;
-  info.deduplicate_count = 0;
-  info.entity_id = e_id;
-  info.min_ts = ts_range.begin;
-  info.max_ts = ts_range.end;
   {
-    TsEntityCountHeader* header = reinterpret_cast<TsEntityCountHeader*>(mmap_alloc_.addr(*node));
+    TsEntityCountStats* header = reinterpret_cast<TsEntityCountStats*>(mmap_alloc_.addr(*node));
     assert(header != nullptr);
-    KStatus s = updateEntityCount(header, &info, false);
-    if (s != KStatus::SUCCESS) {
-      LOG_ERROR("updateEntityCount failed. entity [%lu] path [%s].", e_id, path_.c_str());
-      return KStatus::FAIL;
-    }
-    s = mmap_alloc_.NodeSync(*node, sizeof(TsEntityCountHeader));
-    if (s != KStatus::SUCCESS) {
-      LOG_ERROR("NodeSync failed. entity [%lu] path [%s].", e_id, path_.c_str());
-      return KStatus::FAIL;
-    }
-  }
-  return KStatus::SUCCESS;
-}
-
-KStatus TsPartitionEntityCountManager::PrepareEntityCountValid(TSEntityID e_id) {
-  auto node = index_.GetIndexObject(e_id, false);
-  if (node == nullptr) {
-    LOG_DEBUG("no found entity[%lu] from %s. no need prepare valid.", e_id, COUNT_FILE_NAME);
-    return KStatus::FAIL;
-  }
-  count_lock_.Lock(e_id);
-  Defer defer{[&]() { count_lock_.Unlock(e_id); }};
-  TsEntityCountHeader* header = reinterpret_cast<TsEntityCountHeader*>(mmap_alloc_.addr(*node));
-  assert(header != nullptr);
-  header->changed_aft_prepare = false;
-  return KStatus::SUCCESS;
-}
-
-KStatus TsPartitionEntityCountManager::SetEntityCountValid(TSEntityID e_id, TsEntityFlushInfo* info) {
-  auto node = index_.GetIndexObject(e_id, false);
-  if (node == nullptr) {
-    LOG_DEBUG("no found entity[%lu] from %s. no need set valid.", e_id, COUNT_FILE_NAME);
-    return KStatus::FAIL;
-  }
-  count_lock_.Lock(e_id);
-  Defer defer{[&]() { count_lock_.Unlock(e_id); }};
-  {
-    TsEntityCountHeader* header = reinterpret_cast<TsEntityCountHeader*>(mmap_alloc_.addr(*node));
-    assert(header != nullptr);
-    if (!header->changed_aft_prepare && !header->is_count_valid) {
-      header->min_ts = info->min_ts;
-      header->max_ts = info->max_ts;
-      header->valid_count = info->deduplicate_count;
-      header->changed_aft_prepare = true;
-      header->is_count_valid = true;
-      KStatus s = mmap_alloc_.NodeSync(*node, sizeof(TsEntityCountHeader));
-      if (s != KStatus::SUCCESS) {
-        LOG_ERROR("NodeSync failed. entity [%lu] path [%s].", e_id, path_.c_str());
-        return KStatus::FAIL;
-      }
-    }
-  }
-  return KStatus::SUCCESS;
-}
-
-KStatus TsPartitionEntityCountManager::GetEntityCountHeader(TsEntityCountHeader* count_header) {
-  auto node = index_.GetIndexObject(count_header->entity_id, false);
-  if (node == nullptr) {
-    LOG_DEBUG("not found node from index file. entity [%lu] path [%s].", count_header->entity_id, path_.c_str());
-    count_header->is_count_valid = true;
-    count_header->valid_count = 0;
-    count_header->min_ts = INVALID_TS;
-    count_header->max_ts = INVALID_TS;
-    return KStatus::SUCCESS;
-  }
-  count_lock_.Lock(count_header->entity_id);
-  Defer defer{[&]() { count_lock_.Unlock(count_header->entity_id); }};
-  {
-    TsEntityCountHeader* header = reinterpret_cast<TsEntityCountHeader*>(mmap_alloc_.addr(*node));
-    assert(header != nullptr);
-    count_header->min_ts = header->min_ts;
-    count_header->max_ts = header->max_ts;
-    count_header->is_count_valid = header->is_count_valid;
-    count_header->valid_count = header->valid_count;
+    stats.table_id = header->table_id;
+    stats.min_ts = header->min_ts;
+    stats.max_ts = header->max_ts;
+    stats.valid_count = header->valid_count;
+    stats.is_count_valid = header->is_count_valid;
   }
   return KStatus::SUCCESS;
 }

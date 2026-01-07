@@ -184,8 +184,8 @@ KStatus TsEntitySegmentMetaManager::GetAllBlockItems(TSEntityID entity_id,
 KStatus TsEntitySegmentMetaManager::GetBlockSpans(const TsBlockItemFilterParams& filter,
                                                   std::shared_ptr<TsEntitySegment> entity_segment,
                                                   std::list<shared_ptr<TsBlockSpan>>& block_spans,
-                                                  std::shared_ptr<TsTableSchemaManager>& tbl_schema_mgr,
-                                                  std::shared_ptr<MMapMetricsTable>& scan_schema,
+                                                  const std::shared_ptr<TsTableSchemaManager>& tbl_schema_mgr,
+                                                  const std::shared_ptr<MMapMetricsTable>& scan_schema,
                                                   TsScanStats* ts_scan_stats) {
   TsEntityItem entity_item{filter.entity_id};
   bool is_exist;

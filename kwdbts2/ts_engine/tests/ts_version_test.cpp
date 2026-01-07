@@ -190,6 +190,26 @@ class TsVersionTest : public testing::Test {
       ASSERT_EQ(mgr->ApplyUpdate(&update), SUCCESS);
     }
   }
+
+  void MimicCountStatFlushing(TsVersionManager* mgr, const PartitionIdentifier par_id, bool force_kill = false) {
+    TsVersionUpdate update;
+    auto root = vgroup_root / PartitionDirName(par_id);
+    uint64_t filenumber = mgr->NewFileNumber();
+    auto last_seg_filename = root / LastSegmentFileName(filenumber);
+    std::unique_ptr<TsAppendOnlyFile> file;
+    ASSERT_EQ(env->NewAppendOnlyFile(last_seg_filename, &file), SUCCESS);
+    TsLastSegmentBuilder builder(nullptr, std::move(file), filenumber);
+    TsSegmentWriteStats stats;
+    ASSERT_EQ(builder.Finalize(&stats), SUCCESS);
+    update.AddLastSegment(par_id, {filenumber, 0, 0});
+    filenumber = mgr->NewFileNumber();
+    std::vector<TsEntityCountStats> count_infos;
+    update.AddCountFile(par_id, {filenumber, count_infos});
+    update.SetCountStatsType(CountStatsStatus::FlushImmOrWriteBatch);
+    if (!force_kill) {
+      ASSERT_EQ(mgr->ApplyUpdate(&update), SUCCESS);
+    }
+  }
 };
 
 TEST_F(TsVersionTest, EncodeDecodeTest) {
@@ -287,6 +307,36 @@ TEST_F(TsVersionTest, EncodeDecodeTest) {
     auto encoded = update.EncodeToString();
     EXPECT_NE(encoded.size(), 0);
 
+    TsVersionUpdate decoded;
+    TSSlice slice = {encoded.data(), encoded.size()};
+    ASSERT_EQ(decoded.DecodeFromSlice(slice), SUCCESS);
+    auto decoded_str = decoded.EncodeToString();
+    EXPECT_EQ(decoded_str.AsStringView(), encoded.AsStringView());
+  }
+  {
+    TsVersionUpdate update;
+    update.PartitionDirCreated({1, 2, 3});
+    update.AddLastSegment({1, 2, 3}, {5, 0, 0});
+    update.AddLastSegment({1, 2, 3}, {6, 1, 3});
+    update.DeleteLastSegment({1, 2, 3}, 4);
+    update.AddCountFile({1, 2, 3}, {7, {}});
+    update.SetNextFileNumber(8);
+    update.SetCountStatsType(CountStatsStatus::FlushImmOrWriteBatch);
+    auto encoded = update.EncodeToString();
+    EXPECT_NE(encoded.size(), 0);
+    TsVersionUpdate decoded;
+    TSSlice slice = {encoded.data(), encoded.size()};
+    ASSERT_EQ(decoded.DecodeFromSlice(slice), SUCCESS);
+    auto decoded_str = decoded.EncodeToString();
+    EXPECT_EQ(decoded_str.AsStringView(), encoded.AsStringView());
+  }
+  {
+    TsVersionUpdate update;
+    update.AddCountFile({1, 2, 3}, {7, {}});
+    update.SetNextFileNumber(8);
+    update.SetCountStatsType(CountStatsStatus::Recalculate);
+    auto encoded = update.EncodeToString();
+    EXPECT_NE(encoded.size(), 0);
     TsVersionUpdate decoded;
     TSSlice slice = {encoded.data(), encoded.size()};
     ASSERT_EQ(decoded.DecodeFromSlice(slice), SUCCESS);
@@ -670,4 +720,33 @@ TEST_F(TsVersionTest, RecoverAndDelete_UnfinishedVacuum) {
   EXPECT_TRUE(fs::exists(partition_dir / EntityHeaderFileName(19)));
   EXPECT_TRUE(fs::exists(partition_dir / BlockHeaderFileName(20)));
   EXPECT_TRUE(fs::exists(partition_dir / DataBlockFileName(22)));
+}
+
+TEST_F(TsVersionTest, RecoverAndDelete_UnfinishedCountFlushing) {
+  PartitionIdentifier par_id = {1, 2, 3};
+  auto partition_dir = vgroup_root / PartitionDirName(par_id);
+  env->NewDirectory(partition_dir);
+  auto mgr = std::make_unique<TsVersionManager>(env, vgroup_root);
+  auto s = mgr->Recover();
+  EXPECT_EQ(s, SUCCESS);
+  TsVersionUpdate update;
+  update.PartitionDirCreated(par_id);
+  mgr->ApplyUpdate(&update);
+  for (int i = 0; i < 10; i++) {
+    MimicCountStatFlushing(mgr.get(), par_id);
+  }
+  MimicCountStatFlushing(mgr.get(), par_id, true);
+
+  mgr.reset();
+  mgr = std::make_unique<TsVersionManager>(env, vgroup_root);
+  s = mgr->Recover();
+  EXPECT_EQ(s, SUCCESS);
+
+  for (int i = 0; i < 10; ++i) {
+    EXPECT_TRUE(fs::exists(partition_dir / LastSegmentFileName(i * 2)));
+    EXPECT_FALSE(fs::exists(partition_dir / CountStatFileName(i * 2 - 1)));
+  }
+  EXPECT_EQ(mgr->CurrentVersionNum(), 9);
+  EXPECT_FALSE(fs::exists(partition_dir / LastSegmentFileName(20)));
+  EXPECT_FALSE(fs::exists(partition_dir / CountStatFileName(21)));
 }

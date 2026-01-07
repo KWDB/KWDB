@@ -142,9 +142,6 @@ class TsAggIteratorV2Impl : public TsStorageIteratorV2Impl {
  protected:
   KStatus Aggregate(TsScanStats* ts_scan_stats);
   KStatus CountAggregate(TsScanStats* ts_scan_stats = nullptr);
-  KStatus RecalculateCountInfo(std::shared_ptr<const TsPartitionVersion> partition,
-                                shared_ptr<TsPartitionEntityCountManager> count_manager,
-                                TsScanStats* ts_scan_stats);
   KStatus UpdateAggregation(bool can_remove_last_candidate, TsScanStats* ts_scan_stats);
   KStatus UpdateAggregation(std::shared_ptr<TsBlockSpan>& block_span,
                             bool aggregate_first_last_cols,

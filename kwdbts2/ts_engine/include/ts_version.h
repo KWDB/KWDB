@@ -56,6 +56,13 @@ enum class PartitionStatus : uint32_t {
   BatchDataWriting,
 };
 
+enum class CountStatsStatus {
+  FlushImmOrWriteBatch = 0,
+  Recalculate,
+  Recover,
+  UpgradeRecover,
+};
+
 class TsPartitionVersion {
   friend class TsVersionManager;
   friend class TsVGroupVersion;
@@ -259,8 +266,8 @@ class TsPartitionVersion {
 
   KStatus getFilter(const TsScanFilterParams& filter, TsBlockItemFilterParams& block_data_filter) const;
   KStatus GetBlockSpans(const TsScanFilterParams& filter, std::list<shared_ptr<TsBlockSpan>>* ts_block_spans,
-                       std::shared_ptr<TsTableSchemaManager>& tbl_schema_mgr,
-                       std::shared_ptr<MMapMetricsTable>& scan_schema,
+                       const std::shared_ptr<TsTableSchemaManager>& tbl_schema_mgr,
+                       const std::shared_ptr<MMapMetricsTable>& scan_schema,
                        TsScanStats* ts_scan_stats = nullptr,
                        bool skip_mem = false, bool skip_last = false, bool skip_entity = false) const;
 
@@ -268,6 +275,11 @@ class TsPartitionVersion {
   void ResetStatus() const;
   KStatus NeedVacuumEntitySegment(const fs::path& root_path, TsEngineSchemaManager* schema_manager,
                                   bool force, bool& need_vacuum) const;
+
+  KStatus GetDelMaxOSN(TSEntityID e_id, TS_OSN& max_osn) const {
+    return del_info_->GetDelMaxOSN(e_id, max_osn);
+  }
+  bool ShouldSetCountStatsInvalid(TSEntityID e_id);
 };
 
 class TsVGroupVersion {
@@ -280,6 +292,7 @@ class TsVGroupVersion {
   std::shared_ptr<MemSegList> valid_memseg_;
 
   uint64_t max_osn_ = 0;
+  uint64_t version_num_ = 0;
 
  public:
   TsVGroupVersion()
@@ -308,6 +321,8 @@ class TsVGroupVersion {
   std::vector<std::shared_ptr<const TsPartitionVersion>> GetDBAllPartitions(uint32_t target_dbid) const;
 
   TS_OSN GetMaxOSN() const { return max_osn_; }
+
+  uint64_t GetVersionNumber() const { return version_num_; }
 };
 
 enum class VersionUpdateType : uint8_t {
@@ -323,6 +338,9 @@ enum class VersionUpdateType : uint8_t {
   kMaxLSN = 7,
 
   kNewLastSegmentWithMeta = 8,
+
+  kNewCountStatFile = 9,
+  kNewVersionNumber = 10,
 };
 
 enum class LastSegmentMetaType : uint8_t {
@@ -365,17 +383,25 @@ class TsVersionUpdate {
 
   std::set<PartitionIdentifier> updated_partitions_;
 
-  bool NeedRecordFileNumber() const { return has_new_lastseg_ || has_entity_segment_ || has_delete_lastseg_; }
+  bool has_count_stats_ = false;
+  CountStatsStatus count_stats_status_ = CountStatsStatus::FlushImmOrWriteBatch;
+  bool has_new_version_number_ = false;
+  uint64_t version_num_ = 0;
+  std::map<PartitionIdentifier, CountStatMetaInfo> count_flush_infos_;
+
+  bool NeedRecordFileNumber() const {
+    return has_new_lastseg_ || has_entity_segment_ || has_delete_lastseg_ || has_count_stats_;
+  }
   bool NeedRecord() const { return need_record_; }
   bool MemSegmentsOnly() const {
     return (has_new_mem_segments_ || has_del_mem_segments_) && !has_new_partition_ && !has_new_lastseg_ &&
-           !has_delete_lastseg_ && !has_entity_segment_ && !has_next_file_number_;
+           !has_delete_lastseg_ && !has_entity_segment_ && !has_next_file_number_ && !has_count_stats_;
   }
 
  public:
   bool Empty() const {
     return !(has_new_partition_ || has_new_lastseg_ || has_delete_lastseg_ || has_new_mem_segments_ ||
-             has_del_mem_segments_ || has_entity_segment_ || has_max_lsn_);
+             has_del_mem_segments_ || has_entity_segment_ || has_max_lsn_ || has_count_stats_);
   }
 
   void PartitionDirCreated(const PartitionIdentifier &partition_id) {
@@ -433,6 +459,21 @@ class TsVersionUpdate {
     need_record_ = true;
   }
 
+  void AddCountFile(const PartitionIdentifier& partition_id, CountStatMetaInfo info) {
+    updated_partitions_.insert(partition_id);
+    count_flush_infos_[partition_id] = info;
+    has_count_stats_ = true;
+    need_record_ = true;
+  }
+
+  void SetCountStatsType(CountStatsStatus status) {
+    count_stats_status_ = status;
+  }
+
+  void SetVersionNum(uint64_t version_num) {
+    version_num_ = version_num;
+  }
+
   TsBufferBuilder EncodeToString() const;
   KStatus DecodeFromSlice(TSSlice input);
 
@@ -448,6 +489,7 @@ class TsVersionManager {
   std::shared_ptr<const TsVGroupVersion> current_;
 
   std::atomic<uint64_t> next_file_number_ = 0;
+  std::atomic<uint64_t> version_num_ = 0;
 
   fs::path root_path_;
 
@@ -472,6 +514,7 @@ class TsVersionManager {
   }
 
   uint64_t NewFileNumber() { return next_file_number_.fetch_add(1, std::memory_order_relaxed); }
+  uint64_t CurrentVersionNum() { return version_num_.load(std::memory_order_relaxed); }
   KStatus AddPartition(DatabaseID dbid, timestamp64 start);
 };
 

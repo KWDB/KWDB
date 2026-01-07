@@ -240,7 +240,7 @@ class TsEntitySegmentBuilder {
 
   std::deque<std::shared_ptr<TsBlockSpan>> cached_spans_;
   size_t cached_count_ = 0;
-  std::list<TsEntityFlushInfo> flush_infos_;
+  std::vector<TsEntityCountStats> flush_infos_;
 
   std::vector<std::shared_ptr<TsBlockSpan>> block_spans_;
   std::vector<std::shared_ptr<TsBlockSpan>> lastsegment_block_spans_;
@@ -316,7 +316,7 @@ class TsEntitySegmentBuilder {
 
   void WriteBatchCancel();
 
-  std::list<TsEntityFlushInfo> FlushInfos() {
+  std::vector<TsEntityCountStats> FlushInfos() {
     return flush_infos_;
   }
 };

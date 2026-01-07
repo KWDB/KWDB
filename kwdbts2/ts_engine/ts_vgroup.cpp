@@ -92,6 +92,8 @@ TsVGroup::TsVGroup(EngineOptions* engine_options, uint32_t vgroup_id, TsEngineSc
 TsVGroup::~TsVGroup() {
   enable_compact_thread_ = false;
   closeCompactThread();
+  enable_recalc_count_thread_ = false;
+  closeRecalcCountThread();
   for (auto it : entity_latest_row_) {
     if (it.second.last_payload.data != nullptr) {
       free(it.second.last_payload.data);
@@ -123,7 +125,23 @@ KStatus TsVGroup::Init(kwdbContext_p ctx) {
     LOG_ERROR("recover vgroup version failed, path: %s", path_.c_str());
     return s;
   }
+
+  auto version = version_manager_->Current();
+  auto partitions = version->GetAllPartitions();
+  bool need_recalc_count = false;
+  for (auto& [par_id, partition] : partitions) {
+    if (!partition->GetCountManager() && (partition->GetAllLastSegments().size() > 0 || partition->GetEntitySegment())) {
+      need_recalc_count = true;
+      break;
+    }
+  }
+  if (need_recalc_count) {
+    s = ResetCountStat();
+    LOG_ERROR("vgroup [%u] recover recalculate count stat failed.", vgroup_id_);
+  }
+
   initCompactThread();
+  initRecalcCountThread();
 
   if (user_defined_path_.empty()) {
     wal_manager_ = std::make_unique<WALMgr>(engine_options_->db_path, VGroupDirName(vgroup_id_), engine_options_);
@@ -845,7 +863,7 @@ static auto SplitBlockSpansByPartition(const TsVGroupVersion* current, std::vect
   return {true, result};
 }
 
-std::vector<TsEntityFlushInfo> GetFlushInfoFromSpans(const std::vector<std::shared_ptr<TsBlockSpan>>& spans) {
+std::vector<TsEntityCountStats> GetFlushInfoFromSpans(const std::vector<std::shared_ptr<TsBlockSpan>>& spans) {
   assert(!spans.empty());
   std::vector<int> transition_idx;
   transition_idx.push_back(0);
@@ -855,22 +873,24 @@ std::vector<TsEntityFlushInfo> GetFlushInfoFromSpans(const std::vector<std::shar
     }
   }
   transition_idx.push_back(spans.size());
-  std::vector<TsEntityFlushInfo> result;
+  std::vector<TsEntityCountStats> result;
   result.reserve(transition_idx.size() - 1);
   for (int i = 0; i + 1 < transition_idx.size(); ++i) {
     int start_idx = transition_idx[i];
     int end_idx = transition_idx[i + 1];
     assert(start_idx < end_idx);
     assert(spans[start_idx]->GetEntityID() == spans[end_idx - 1]->GetEntityID());
-    TsEntityFlushInfo flush_info;
+    TsEntityCountStats flush_info;
+    flush_info.table_id = spans[start_idx]->GetTableID();
     flush_info.entity_id = spans[start_idx]->GetEntityID();
     int sum = 0;
     for (int j = start_idx; j < end_idx; ++j) {
       sum += spans[j]->GetRowNum();
     }
-    flush_info.deduplicate_count = sum;
+    flush_info.valid_count = sum;
     flush_info.min_ts = spans[start_idx]->GetFirstTS();
     flush_info.max_ts = spans[end_idx - 1]->GetLastTS();
+    flush_info.is_count_valid = true;
 
     result.push_back(std::move(flush_info));
   }
@@ -947,7 +967,7 @@ KStatus TsVGroup::FlushImmSegment(const std::shared_ptr<TsMemSegment>& mem_seg) 
   std::stringstream ss;
   TsSegmentWriteStats total_entity_stats;
   TsSegmentWriteStats total_last_stats;
-  std::map<PartitionIdentifier, std::vector<TsEntityFlushInfo>> flush_infos;
+  std::map<PartitionIdentifier, std::vector<TsEntityCountStats>> flush_infos;
   for (auto& [partition, spans] : partitioned_spans) {
     if (spans.empty()) continue;
     auto partition_id = partition->GetPartitionIdentifier();
@@ -1032,16 +1052,17 @@ KStatus TsVGroup::FlushImmSegment(const std::shared_ptr<TsMemSegment>& mem_seg) 
     }
   }
   update.RemoveMemSegment(mem_seg);
+
+  for (auto& [par_id, info] : flush_infos) {
+    uint64_t file_number = version_manager_->NewFileNumber();
+    update.AddCountFile(par_id, {file_number, info});
+  }
+  update.SetCountStatsType(CountStatsStatus::FlushImmOrWriteBatch);
+
   auto s = version_manager_->ApplyUpdate(&update);
   if (s == FAIL) {
     LOG_ERROR("apply update failed.");
     return s;
-  }
-
-  for (auto& [partition, spans] : partitioned_spans) {
-    for (auto i_flush_info : flush_infos[partition->GetPartitionIdentifier()]) {
-      partition->GetCountManager()->AddFlushEntityAgg(i_flush_info);
-    }
   }
 
   char entity_log_buf[128];
@@ -1573,29 +1594,25 @@ KStatus TsVGroup::WriteBatchData(TSTableID tbl_id, uint32_t table_version, TSEnt
 
 KStatus TsVGroup::FinishWriteBatchData() {
   TsVersionUpdate update;
-  std::map<PartitionIdentifier, std::list<TsEntityFlushInfo>> partition_ids;
+  std::set<PartitionIdentifier> partition_ids;
   bool success = true;
   for (auto& kv : write_batch_segment_builders_) {
-    partition_ids.insert({kv.first, kv.second->FlushInfos()});
+    partition_ids.insert(kv.first);
     update.PartitionDirCreated(kv.first);
     KStatus s = kv.second->WriteBatchFinish(&update);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("Finish entity segment builder failed");
       success = false;
     }
+    uint64_t file_number = version_manager_->NewFileNumber();
+    update.AddCountFile(kv.first, {file_number, kv.second->FlushInfos()});
   }
   write_batch_segment_builders_.clear();
   if (success) {
-    for (auto& [k, v] : partition_ids) {
-      auto partition = version_manager_->Current()->GetPartition(std::get<0>(k), std::get<1>(k));
-      auto count_manager = partition->GetCountManager();
-      for (auto& info : v) {
-        count_manager->AddFlushEntityAgg(info);
-      }
-    }
+    update.SetCountStatsType(CountStatsStatus::FlushImmOrWriteBatch);
     version_manager_->ApplyUpdate(&update);
   }
-  for (auto& [k, v] : partition_ids) {
+  for (auto& k : partition_ids) {
     auto partition = version_manager_->Current()->GetPartition(std::get<0>(k), std::get<1>(k));
     partition->ResetStatus();
   }
@@ -2435,5 +2452,192 @@ KStatus TsVGroup::GetDBBlocksDistribution(uint32_t target_db_id, VGroupBlocksInf
     }
   }
   return SUCCESS;
+}
+
+void TsVGroup::recalcCountRoutine(void* args) {
+  while (!KWDBDynamicThreadPool::GetThreadPool().IsCancel() && enable_recalc_count_thread_) {
+    // If the thread pool stops or the system is no longer running, exit the loop
+    if (KWDBDynamicThreadPool::GetThreadPool().IsCancel() || !enable_recalc_count_thread_) {
+      break;
+    }
+    KStatus s = RecalcCountStat();
+    if (s != KStatus::SUCCESS) {
+      LOG_ERROR("RecalcCountStat failed.")
+    }
+    {
+      std::unique_lock<std::mutex> lock(recalc_count_mutex_);
+      count_cv_.wait_for(lock, EngineOptions::count_stats_recalc_cycle == 0 ?
+        std::chrono::minutes(5) : std::chrono::seconds(EngineOptions::count_stats_recalc_cycle),
+        [this]() { return !enable_recalc_count_thread_; });
+    }
+  }
+}
+
+void TsVGroup::initRecalcCountThread() {
+#ifdef WITH_TESTS
+  return;
+#endif
+  if (!enable_recalc_count_thread_) {
+    return;
+  }
+  KWDBOperatorInfo kwdb_operator_info;
+  // Set the name and owner of the operation
+  kwdb_operator_info.SetOperatorName("VGroup::RecalcCountThread");
+  kwdb_operator_info.SetOperatorOwner("VGroup");
+  time_t now;
+  // Record the start time of the operation
+  kwdb_operator_info.SetOperatorStartTime((k_uint64)time(&now));
+  // Start asynchronous thread
+  recalc_count_thread_id_ = KWDBDynamicThreadPool::GetThreadPool().ApplyThread(
+      std::bind(&TsVGroup::recalcCountRoutine, this, std::placeholders::_1), this, &kwdb_operator_info);
+  if (recalc_count_thread_id_ < 1) {
+    // If thread creation fails, record error message
+    LOG_ERROR("VGroup recalc count thread create failed");
+  }
+}
+
+void TsVGroup::closeRecalcCountThread() {
+  if (recalc_count_thread_id_ > 0) {
+    // Wake up potentially dormant count threads
+    enable_recalc_count_thread_ = false;
+    count_cv_.notify_all();
+    // Waiting for the count thread to complete
+    KWDBDynamicThreadPool::GetThreadPool().JoinThread(recalc_count_thread_id_, 0);
+  }
+}
+
+KStatus TsVGroup::AddRecalcEntity(PartitionIdentifier partition_id, TSTableID table_id, TSEntityID entity_id) {
+  std::unique_lock<std::mutex> lock(recalc_count_mutex_);
+  recalc_count_entities_[partition_id][table_id].emplace(entity_id);
+  return KStatus::SUCCESS;
+}
+
+KStatus TsVGroup::RecalcCountStat() {
+  std::map<PartitionIdentifier, std::map<TSTableID, std::unordered_set<TSEntityID>>> recalc_map;
+  {
+    std::unique_lock<std::mutex> lock(recalc_count_mutex_);
+    recalc_map.swap(recalc_count_entities_);
+  }
+  if (recalc_map.empty() || EngineOptions::count_stats_recalc_cycle == 0) {
+    return KStatus::SUCCESS;
+  }
+  auto current_version = version_manager_->Current();
+  uint64_t version_num = current_version->GetVersionNumber();
+  TS_OSN max_osn = current_version->GetMaxOSN();
+  KStatus s;
+  for (auto& [par_id, tables] : recalc_map) {
+    auto par_version = current_version->GetPartition(par_id);
+    if (par_version) {
+      TsVersionUpdate update;
+      for (auto& [tb_id, entities] : tables) {
+        std::shared_ptr<TsTableSchemaManager> tb_schema;
+        s = schema_mgr_->GetTableSchemaMgr(tb_id, tb_schema);
+        if (s != KStatus::SUCCESS) {
+          if (tb_schema == nullptr) {
+            continue;
+          }
+          LOG_ERROR("Get table schema manager [%lu] failed.", tb_id);
+          return s;
+        }
+        std::shared_ptr<TagTable> tag_table;
+        kwdbContext_t ctx;
+        auto s = tb_schema->GetTagSchema(&ctx, &tag_table);
+        if (s != KStatus::SUCCESS) {
+          LOG_ERROR("Failed get table id[%ld] tag schema.", tb_schema->GetTableId());
+          return s;
+        }
+        DATATYPE ts_col_type = tb_schema->GetTsColDataType();
+        std::vector<KwTsSpan> ts_spans = {{par_version->GetTsColTypeStartTime(ts_col_type),
+                                       par_version->GetTsColTypeEndTime(ts_col_type)}};
+        TsScanFilterParams filter{tb_schema->GetDbID(), tb_schema->GetTableId(), GetVGroupID(), 0,
+          ts_col_type, UINT64_MAX, ts_spans};
+        std::vector<TsEntityCountStats> flush_infos;
+        for (auto& entity_id : entities) {
+          if (!tag_table->HasEntityTag(GetVGroupID(), entity_id)) {
+            continue;
+          }
+          filter.entity_id_ = entity_id;
+          std::list<shared_ptr<TsBlockSpan>> block_spans;
+          s = par_version->GetBlockSpans(filter, &block_spans, tb_schema,
+            tb_schema->GetCurrentMetricsTable(), nullptr, true);
+          if (s != KStatus::SUCCESS) {
+            LOG_ERROR("RecalculateCountStat get block spans failed.");
+            return s;
+          }
+          TsBlockSpanSortedIterator iter(block_spans, schema_mgr_, EngineOptions::g_dedup_rule);
+          iter.Init();
+          std::shared_ptr<TsBlockSpan> dedup_block_span;
+          bool is_finished = false;
+          TsEntityCountStats flush_info{tb_schema->GetTableId(), entity_id, INT64_MAX, INT64_MIN, 0, true, ""};
+          while (iter.Next(dedup_block_span, &is_finished) == KStatus::SUCCESS && !is_finished) {
+            if (flush_info.min_ts > dedup_block_span->GetFirstTS()) {
+              flush_info.min_ts = dedup_block_span->GetFirstTS();
+            }
+            if (flush_info.max_ts < dedup_block_span->GetLastTS()) {
+              flush_info.max_ts = dedup_block_span->GetLastTS();
+            }
+            flush_info.valid_count += dedup_block_span->GetRowNum();
+          }
+          if (flush_info.min_ts != INT64_MAX && flush_info.max_ts != INT64_MIN) {
+            flush_infos.emplace_back(flush_info);
+          }
+        }
+        uint64_t file_number = version_manager_->NewFileNumber();
+        update.AddCountFile(par_id, {file_number, flush_infos});
+      }
+      update.SetCountStatsType(CountStatsStatus::Recalculate);
+      update.SetVersionNum(version_num);
+      update.SetMaxLSN(max_osn);
+      auto s = version_manager_->ApplyUpdate(&update);
+      if (s != SUCCESS) {
+        LOG_ERROR("partition [%s] count stat recalculate failed.", par_version->GetPartitionPath().c_str());
+      }
+    }
+  }
+  return KStatus::SUCCESS;
+}
+
+KStatus TsVGroup::ResetCountStat() {
+  std::vector<std::shared_ptr<TsTableSchemaManager> > tb_schema_manager;
+  KStatus s = schema_mgr_->GetAllTableSchemaMgrs(tb_schema_manager);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("Get all table schema mgrs failed.")
+  }
+
+  std::map<std::shared_ptr<TsTableSchemaManager>, std::vector<uint32_t>> table_entity_map;
+  for (auto& tb_schema : tb_schema_manager) {
+    DatabaseID db_id = tb_schema->GetDbID();
+    std::shared_ptr<TagTable> tag_table;
+    kwdbContext_t ctx;
+    auto s = tb_schema->GetTagSchema(&ctx, &tag_table);
+    if (s != KStatus::SUCCESS) {
+      LOG_ERROR("Failed get table id[%ld] tag schema.", tb_schema->GetTableId());
+      return s;
+    }
+    std::vector<uint32_t> entity_id_list;
+    tag_table->GetEntityIdListByVGroupId(vgroup_id_, entity_id_list);
+    table_entity_map.emplace(tb_schema, entity_id_list);
+  }
+  std::shared_ptr<const TsVGroupVersion> cur_version = version_manager_->Current();
+  auto all_partitions = cur_version->GetAllPartitions();
+
+  TsVersionUpdate update;
+  for (auto& [par_id, par_version] : all_partitions) {
+    for (auto& [tb, entities] : table_entity_map) {
+      if (tb->GetDbID() != std::get<0>(par_id)) {
+        continue;
+      }
+      std::vector<TsEntityCountStats> flush_infos;
+      for (auto& entity : entities) {
+        TsEntityCountStats flush_info{tb->GetTableId(), entity, INT64_MAX, INT64_MIN, 0, false, ""};
+        flush_infos.emplace_back(flush_info);
+      }
+      uint64_t file_number = version_manager_->NewFileNumber();
+      update.AddCountFile(par_id, {file_number, flush_infos});
+    }
+  }
+  update.SetCountStatsType(CountStatsStatus::UpgradeRecover);
+  version_manager_->ApplyUpdate(&update);
+  return KStatus::SUCCESS;
 }
 }  //  namespace kwdbts

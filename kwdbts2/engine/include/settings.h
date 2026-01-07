@@ -111,6 +111,7 @@ struct EngineOptions {
   static bool force_sync_file;
   static size_t last_cache_max_size;
   static double block_filter_sampling_ratio;
+  static int count_stats_recalc_cycle;
 };
 extern std::atomic<int64_t> kw_used_anon_memory_size;
 

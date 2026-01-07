@@ -2210,6 +2210,16 @@ int TagTable::UpdateForUndo(uint32_t group_id, uint32_t entity_id, uint64_t hash
   return 0;
 }
 
+bool TagTable::HasEntityTag(int32_t sub_group_id, int32_t entity_id) {
+  uint64_t joint_entity_id = (static_cast<uint64_t>(entity_id) << 32) | sub_group_id;
+  auto ret = m_entity_row_index_->get(reinterpret_cast<const char*>(&joint_entity_id),
+                                      m_entity_row_index_->keySize());
+  if (ret.second == 0) {
+    return false;
+  }
+  return true;
+}
+
 TagTable* OpenTagTable(const std::string& db_path, const std::string &dir_path,
                                 uint64_t table_id, int32_t entity_group_id, ErrorInfo &err_info) {
   // check path

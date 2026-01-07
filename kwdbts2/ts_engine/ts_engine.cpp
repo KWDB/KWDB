@@ -50,6 +50,7 @@ bool EngineOptions::compress_last_segment = false;
 bool EngineOptions::force_sync_file = true;
 size_t EngineOptions::last_cache_max_size = 1 << 30;
 double EngineOptions::block_filter_sampling_ratio = 0.2;
+int EngineOptions::count_stats_recalc_cycle = 60 * 5;
 
 extern std::map<std::string, std::string> g_cluster_settings;
 extern std::shared_mutex g_settings_mutex;

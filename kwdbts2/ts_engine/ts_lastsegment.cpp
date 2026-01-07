@@ -630,8 +630,8 @@ size_t TsLastSegment::GetBlockSize(size_t block_id) const {
 using EntityTsPoint = std::tuple<TSEntityID, timestamp64>;
 KStatus TsLastSegment::GetBlockSpans(const TsBlockItemFilterParams& filter,
                                       std::list<shared_ptr<TsBlockSpan>>& block_spans,
-                                      std::shared_ptr<TsTableSchemaManager>& tbl_schema_mgr,
-                                      std::shared_ptr<MMapMetricsTable>& scan_schema,
+                                      const std::shared_ptr<TsTableSchemaManager>& tbl_schema_mgr,
+                                      const std::shared_ptr<MMapMetricsTable>& scan_schema,
                                       TsScanStats* ts_scan_stats) {
   assert(block_cache_ != nullptr);
 

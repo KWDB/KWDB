@@ -766,9 +766,9 @@ TEST_F(TsEntitySegmentTest, simpleCount) {
         sum += entity_num;
         ASSERT_EQ(entity_num, 11 + i * 1000);
         auto count_info = partition->GetCountManager();
-        TsEntityCountHeader count_header{};
+        TsEntityCountStats count_header{};
         count_header.entity_id = (TSEntityID)i;
-        s = count_info->GetEntityCountHeader(&count_header);
+        s = count_info->GetEntityCountStats(count_header);
         ASSERT_EQ(s, KStatus::SUCCESS);
         ASSERT_TRUE(count_header.is_count_valid);
         ASSERT_EQ(count_header.valid_count, 11 + i * 1000);

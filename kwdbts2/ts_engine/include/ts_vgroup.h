@@ -83,6 +83,15 @@ class TsVGroup {
   // Id of the compact thread
   KThreadID compact_thread_id_{0};
 
+  // count thread flag
+  bool enable_recalc_count_thread_{true};
+  // Id of the count thread
+  KThreadID recalc_count_thread_id_{0};
+  std::mutex recalc_count_mutex_;
+  std::condition_variable count_cv_;
+
+  std::map<PartitionIdentifier, std::map<TSTableID, std::unordered_set<TSEntityID>>> recalc_count_entities_;
+
   std::atomic<uint64_t> max_osn_{LOG_BLOCK_HEADER_SIZE + BLOCK_SIZE};
 
   mutable std::shared_mutex last_row_entity_mutex_;
@@ -469,6 +478,13 @@ class TsVGroup {
 
   KStatus GetDBBlocksDistribution(uint32_t target_db_id, VGroupBlocksInfo* blocks_info);
 
+  // Add entity into recalc entities map
+  KStatus AddRecalcEntity(PartitionIdentifier partition_id, TSTableID table_id, TSEntityID entity_id);
+  // Reset count stat.
+  KStatus ResetCountStat();
+  // Recalculate count stat.
+  KStatus RecalcCountStat();
+
  private:
   // check partition of rows exist. if not creating it.
   // KStatus makeSurePartitionExist(TSTableID table_id, const std::list<TSMemSegRowData>& rows);
@@ -483,6 +499,13 @@ class TsVGroup {
   void initCompactThread();
   // Close compact thread.
   void closeCompactThread();
+
+  // Thread scheduling executes compact tasks to clean up items that require erasing.
+  void recalcCountRoutine(void* args);
+  // Initialize count thread.
+  void initRecalcCountThread();
+  // Close count thread.
+  void closeRecalcCountThread();
 
   KStatus PartitionCompact(std::shared_ptr<const TsPartitionVersion> partition, bool call_by_vacuum = false);
 

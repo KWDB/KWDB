@@ -104,6 +104,7 @@ class TsDelItemManager {
   TS_OSN GetMinLsn() { return header_->min_lsn; }
   TS_OSN GetClearMaxLsn() { return header_->clear_max_lsn; }
   uint64_t GetMaxEntityId() { return header_->max_entity_id; }
+  KStatus GetDelMaxOSN(TSEntityID entity_id, uint64_t& max_osn);
   void DropAll();
   KStatus Reset();
 };
