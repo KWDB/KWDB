@@ -183,10 +183,12 @@ KStatus TsMMapAppendOnlyFile::Close() {
     return FAIL;
   }
 
-  ok = fsync(fd_);
-  if (ok < 0) {
-    LOG_ERROR("fsync failed, reason: %s", strerror(errno));
-    return FAIL;
+  if (EngineOptions::force_sync_file) {
+    ok = fsync(fd_);
+    if (ok < 0) {
+      LOG_ERROR("fsync failed, reason: %s", strerror(errno));
+      return FAIL;
+    }
   }
 
   ok = close(fd_);

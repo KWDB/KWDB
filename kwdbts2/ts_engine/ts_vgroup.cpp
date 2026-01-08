@@ -120,7 +120,13 @@ KStatus TsVGroup::Init(kwdbContext_p ctx) {
     return s;
   }
 
-  s = version_manager_->Recover();
+  char* force_recover_env = getenv("KW_FORCE_RECOVER");
+  bool force_recover = force_recover_env ? std::strcmp(force_recover_env, "true") == 0 : false;
+  if (force_recover) {
+    LOG_INFO("Recover TsVersion forcibly.")
+  }
+
+  s = version_manager_->Recover(force_recover);
   if (s == FAIL) {
     LOG_ERROR("recover vgroup version failed, path: %s", path_.c_str());
     return s;
@@ -707,7 +713,7 @@ KStatus TsVGroup::PartitionCompact(std::shared_ptr<const TsPartitionVersion> par
       std::list<std::shared_ptr<TsBlockSpan>> curr_block_spans;
       auto s = last_segment->GetBlockSpans(curr_block_spans, schema_mgr_);
       if (s == FAIL) {
-        LOG_ERROR("get block spans failed. vgroup: %d, lastsegment: %u", this->vgroup_id_,
+        LOG_ERROR("get block spans failed. vgroup: %d, lastsegment: %lu", this->vgroup_id_,
                   last_segment->GetFileNumber());
         return FAIL;
       }

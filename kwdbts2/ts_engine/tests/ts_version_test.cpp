@@ -347,7 +347,7 @@ TEST_F(TsVersionTest, EncodeDecodeTest) {
 
 TEST_F(TsVersionTest, RecoverFromEmptyDirTest) {
   TsVersionManager mgr(env, vgroup_root);
-  auto s = mgr.Recover();
+  auto s = mgr.Recover(false);
   EXPECT_EQ(s, SUCCESS);
 }
 
@@ -356,7 +356,7 @@ TEST_F(TsVersionTest, RecoverFromExistingDirTest) {
   {
     std::unique_ptr<TsVersionManager> mgr;
     mgr = std::make_unique<TsVersionManager>(env, vgroup_root);
-    auto s = mgr->Recover();
+    auto s = mgr->Recover(false);
     EXPECT_EQ(s, SUCCESS);
 
     TsVersionUpdate update;
@@ -370,7 +370,7 @@ TEST_F(TsVersionTest, RecoverFromExistingDirTest) {
 
   {
     auto mgr = std::make_unique<TsVersionManager>(env, vgroup_root);
-    auto s = mgr->Recover();
+    auto s = mgr->Recover(false);
     EXPECT_EQ(s, SUCCESS);
 
     auto current = mgr->Current();
@@ -407,7 +407,7 @@ TEST_F(TsVersionTest, RecoverFromExistingDirTest) {
 
   {
     auto mgr = std::make_unique<TsVersionManager>(env, vgroup_root);
-    auto s = mgr->Recover();
+    auto s = mgr->Recover(false);
 
     EXPECT_EQ(s, SUCCESS);
 
@@ -437,7 +437,7 @@ TEST_F(TsVersionTest, RecoverFromCorruptedDirTest) {
   {
     env->NewDirectory(partition_dir);
     auto mgr = std::make_unique<TsVersionManager>(env, vgroup_root);
-    auto s = mgr->Recover();
+    auto s = mgr->Recover(false);
     EXPECT_EQ(s, SUCCESS);
     {
       TsVersionUpdate update;
@@ -482,7 +482,7 @@ TEST_F(TsVersionTest, RecoverFromCorruptedDirTest) {
 
   {
     auto mgr = std::make_unique<TsVersionManager>(env, vgroup_root);
-    auto s = mgr->Recover();
+    auto s = mgr->Recover(false);
     ASSERT_EQ(s, SUCCESS);
     auto current = mgr->Current();
     auto partitions = current->GetPartitions(1, {all_data}, TIMESTAMP64);
@@ -510,7 +510,7 @@ TEST_F(TsVersionTest, RecoverAndDeletePartitionDir) {
       ASSERT_TRUE(fs::exists(partition_dir));
     }
     auto mgr = std::make_unique<TsVersionManager>(env, vgroup_root);
-    auto s = mgr->Recover();
+    auto s = mgr->Recover(false);
     EXPECT_EQ(s, SUCCESS);
     {
       TsVersionUpdate update;
@@ -523,7 +523,7 @@ TEST_F(TsVersionTest, RecoverAndDeletePartitionDir) {
     mgr.reset();
 
     mgr = std::make_unique<TsVersionManager>(env, vgroup_root);
-    ASSERT_EQ(mgr->Recover(), SUCCESS);
+    ASSERT_EQ(mgr->Recover(false), SUCCESS);
 
     for (int i = 0; i < 10; ++i) {
       auto partition_dir = vgroup_root / PartitionDirName(par_ids[i]);
@@ -541,7 +541,7 @@ TEST_F(TsVersionTest, RecoverAndDelete_UnfinishedFlushing) {
   auto partition_dir = vgroup_root / PartitionDirName(par_id);
   env->NewDirectory(partition_dir);
   auto mgr = std::make_unique<TsVersionManager>(env, vgroup_root);
-  auto s = mgr->Recover();
+  auto s = mgr->Recover(false);
   EXPECT_EQ(s, SUCCESS);
   TsVersionUpdate update;
   update.PartitionDirCreated(par_id);
@@ -553,7 +553,7 @@ TEST_F(TsVersionTest, RecoverAndDelete_UnfinishedFlushing) {
 
   mgr.reset();
   mgr = std::make_unique<TsVersionManager>(env, vgroup_root);
-  s = mgr->Recover();
+  s = mgr->Recover(false);
   EXPECT_EQ(s, SUCCESS);
 
   for (int i = 0; i < 10; ++i) {
@@ -567,7 +567,7 @@ TEST_F(TsVersionTest, RecoverAndDelete_UnfinishedCompaction) {
   auto partition_dir = vgroup_root / PartitionDirName(par_id);
   env->NewDirectory(partition_dir);
   auto mgr = std::make_unique<TsVersionManager>(env, vgroup_root);
-  auto s = mgr->Recover();
+  auto s = mgr->Recover(false);
   EXPECT_EQ(s, SUCCESS);
   TsVersionUpdate update;
   update.PartitionDirCreated(par_id);
@@ -594,7 +594,7 @@ TEST_F(TsVersionTest, RecoverAndDelete_UnfinishedCompaction) {
 
   mgr.reset();
   mgr = std::make_unique<TsVersionManager>(env, vgroup_root);
-  s = mgr->Recover();
+  s = mgr->Recover(false);
   EXPECT_EQ(s, SUCCESS);
 
   EXPECT_TRUE(fs::exists(partition_dir / LastSegmentFileName(4)));
@@ -630,7 +630,7 @@ TEST_F(TsVersionTest, RecoverAndDelete_UnfinishedVacuum) {
   auto partition_dir = vgroup_root / PartitionDirName(par_id);
   env->NewDirectory(partition_dir);
   auto mgr = std::make_unique<TsVersionManager>(env, vgroup_root);
-  auto s = mgr->Recover();
+  auto s = mgr->Recover(false);
   EXPECT_EQ(s, SUCCESS);
   TsVersionUpdate update;
   update.PartitionDirCreated(par_id);
@@ -663,7 +663,7 @@ TEST_F(TsVersionTest, RecoverAndDelete_UnfinishedVacuum) {
 
   mgr.reset();
   mgr = std::make_unique<TsVersionManager>(env, vgroup_root);
-  s = mgr->Recover();
+  s = mgr->Recover(false);
   EXPECT_EQ(s, SUCCESS);
 
   EXPECT_TRUE(fs::exists(partition_dir / LastSegmentFileName(4)));
@@ -694,7 +694,7 @@ TEST_F(TsVersionTest, RecoverAndDelete_UnfinishedVacuum) {
   // recover again and do vacuum again
   mgr.reset();
   mgr = std::make_unique<TsVersionManager>(env, vgroup_root);
-  s = mgr->Recover();
+  s = mgr->Recover(false);
   EXPECT_EQ(s, SUCCESS);
 
   // unfinished vacuum
@@ -714,7 +714,7 @@ TEST_F(TsVersionTest, RecoverAndDelete_UnfinishedVacuum) {
 
   mgr.reset();
   mgr = std::make_unique<TsVersionManager>(env, vgroup_root);
-  s = mgr->Recover();
+  s = mgr->Recover(false);
   EXPECT_EQ(s, SUCCESS);
   EXPECT_TRUE(fs::exists(partition_dir / EntityAggFileName(21)));
   EXPECT_TRUE(fs::exists(partition_dir / EntityHeaderFileName(19)));
@@ -727,7 +727,7 @@ TEST_F(TsVersionTest, RecoverAndDelete_UnfinishedCountFlushing) {
   auto partition_dir = vgroup_root / PartitionDirName(par_id);
   env->NewDirectory(partition_dir);
   auto mgr = std::make_unique<TsVersionManager>(env, vgroup_root);
-  auto s = mgr->Recover();
+  auto s = mgr->Recover(false);
   EXPECT_EQ(s, SUCCESS);
   TsVersionUpdate update;
   update.PartitionDirCreated(par_id);
@@ -739,7 +739,7 @@ TEST_F(TsVersionTest, RecoverAndDelete_UnfinishedCountFlushing) {
 
   mgr.reset();
   mgr = std::make_unique<TsVersionManager>(env, vgroup_root);
-  s = mgr->Recover();
+  s = mgr->Recover(false);
   EXPECT_EQ(s, SUCCESS);
 
   for (int i = 0; i < 10; ++i) {
@@ -749,4 +749,54 @@ TEST_F(TsVersionTest, RecoverAndDelete_UnfinishedCountFlushing) {
   EXPECT_EQ(mgr->CurrentVersionNum(), 9);
   EXPECT_FALSE(fs::exists(partition_dir / LastSegmentFileName(20)));
   EXPECT_FALSE(fs::exists(partition_dir / CountStatFileName(21)));
+}
+
+TEST_F(TsVersionTest, ForceRecover) {
+  PartitionIdentifier par_id = {1, 2, 3};
+  auto partition_dir = vgroup_root / PartitionDirName(par_id);
+  env->NewDirectory(partition_dir);
+  auto mgr = std::make_unique<TsVersionManager>(env, vgroup_root);
+  auto s = mgr->Recover(false);
+  EXPECT_EQ(s, SUCCESS);
+  TsVersionUpdate update;
+  update.PartitionDirCreated(par_id);
+  mgr->ApplyUpdate(&update);
+  for (int i = 0; i < 10; i++) {
+    MimicFlushing(mgr.get(), par_id);
+  }
+
+  mgr.reset();
+  mgr = std::make_unique<TsVersionManager>(env, vgroup_root);
+  ASSERT_EQ(mgr->Recover(false), SUCCESS);
+
+  fs::remove(vgroup_root / PartitionDirName(par_id) / LastSegmentFileName(1));
+
+  mgr.reset();
+  mgr = std::make_unique<TsVersionManager>(env, vgroup_root);
+  ASSERT_EQ(mgr->Recover(false), FAIL);
+
+  mgr.reset();
+  mgr = std::make_unique<TsVersionManager>(env, vgroup_root);
+  ASSERT_EQ(mgr->Recover(true), SUCCESS);
+
+  mgr.reset();
+  mgr = std::make_unique<TsVersionManager>(env, vgroup_root);
+  ASSERT_EQ(mgr->Recover(false), SUCCESS);
+
+  auto filename = vgroup_root / PartitionDirName(par_id) / LastSegmentFileName(2);
+  int fd = open(filename.c_str(), O_RDWR | O_TRUNC, 0644);
+  ASSERT_NE(fd, -1);
+  close(fd);
+
+  mgr.reset();
+  mgr = std::make_unique<TsVersionManager>(env, vgroup_root);
+  ASSERT_EQ(mgr->Recover(false), FAIL);
+
+  mgr.reset();
+  mgr = std::make_unique<TsVersionManager>(env, vgroup_root);
+  ASSERT_EQ(mgr->Recover(true), SUCCESS);
+
+  mgr.reset();
+  mgr = std::make_unique<TsVersionManager>(env, vgroup_root);
+  ASSERT_EQ(mgr->Recover(false), SUCCESS);
 }

@@ -86,7 +86,7 @@ class TsLastSegment : public TsSegmentBase {
   friend class TsLastBlock;
 
  private:
-  uint32_t file_number_;
+  uint64_t file_number_;
   std::unique_ptr<TsRandomReadFile> file_;
   std::unique_ptr<TsBloomFilter> bloom_filter_;
 
@@ -98,7 +98,7 @@ class TsLastSegment : public TsSegmentBase {
 
   TsSliceGuard block_index_data_;
 
-  explicit TsLastSegment(uint32_t file_number, std::unique_ptr<TsRandomReadFile>&& file)
+  explicit TsLastSegment(uint64_t file_number, std::unique_ptr<TsRandomReadFile>&& file)
       : file_number_(file_number), file_(std::move(file)) {}
 
  public:
@@ -117,7 +117,7 @@ class TsLastSegment : public TsSegmentBase {
 
   KStatus GetBlockRowCount(int block_id, uint64_t* row_count) const;
 
-  uint32_t GetFileNumber() const { return file_number_; }
+  uint64_t GetFileNumber() const { return file_number_; }
 
   std::string GetFilePath() const { return file_->GetFilePath(); }
 

@@ -19,6 +19,7 @@
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <iterator>
 #include <memory>
 #include <mutex>
@@ -141,7 +142,7 @@ static KStatus TruncateFile(const fs::path path, size_t size) {
   return ret;
 }
 
-KStatus TsVersionManager::Recover() {
+KStatus TsVersionManager::Recover(bool force_recover) {
   // based on empty version, recover from log file
   current_ = std::make_shared<TsVGroupVersion>();
 
@@ -257,7 +258,7 @@ KStatus TsVersionManager::Recover() {
     int64_t interval = end - start;
     recorder_->RecordInterval(dbid, interval);
   }
-  s = ApplyUpdate(&update);
+  s = ApplyUpdate(&update, force_recover);
   LOG_INFO("recovered update: %s", update.DebugStr().c_str());
   if (s == FAIL) {
     return FAIL;
@@ -379,7 +380,7 @@ KStatus TsVersionManager::Recover() {
   return SUCCESS;
 }
 
-KStatus TsVersionManager::ApplyUpdate(TsVersionUpdate *update) {
+KStatus TsVersionManager::ApplyUpdate(TsVersionUpdate *update, bool force_apply) {
   if (update->Empty()) {
     // empty update, do nothing
     return SUCCESS;
@@ -469,6 +470,7 @@ KStatus TsVersionManager::ApplyUpdate(TsVersionUpdate *update) {
     }
   }
   // looping over all partitions
+  TsVersionUpdate clean_up_update;
   for (auto [par_id, par] : new_vgroup_version->partitions_) {
     auto new_partition_version = std::make_unique<TsPartitionVersion>(*par);
 
@@ -522,18 +524,26 @@ KStatus TsVersionManager::ApplyUpdate(TsVersionUpdate *update) {
             last_segment_env = &TsFIOEnv::GetInstance();
           }
           auto s = last_segment_env->NewRandomReadFile(filepath, &rfile);
-          if (s == FAIL) {
+          if (s == FAIL && !force_apply) {
             return FAIL;
           }
 
-          auto last_segment = TsLastSegment::Create(meta.file_number, std::move(rfile));
-          s = last_segment->Open();
-          if (s == FAIL) {
-            LOG_ERROR("can not open file %s", LastSegmentFileName(meta.file_number).c_str());
-            return FAIL;
+          if (s != FAIL) {
+            auto last_segment = TsLastSegment::Create(meta.file_number, std::move(rfile));
+            s = last_segment->Open();
+            if (s == FAIL && !force_apply) {
+              LOG_ERROR("can not open file %s", LastSegmentFileName(meta.file_number).c_str());
+              return FAIL;
+            }
+            if (s != FAIL) {
+              new_partition_version->leveled_last_segments_.AddLastSegment(meta.level, meta.group,
+                                                                           std::move(last_segment));
+            }
           }
 
-          new_partition_version->leveled_last_segments_.AddLastSegment(meta.level, meta.group, std::move(last_segment));
+          if (s == FAIL) {
+            clean_up_update.DeleteLastSegment(par_id, meta.file_number);
+          }
         }
       }
     }
@@ -658,6 +668,10 @@ KStatus TsVersionManager::ApplyUpdate(TsVersionUpdate *update) {
 
   if (update->NeedRecord()) {
     logger_->AddRecord(encoded_update.AsStringView());
+  }
+  if (clean_up_update.NeedRecord()) {
+    auto cleanup_encode = clean_up_update.EncodeToString();
+    logger_->AddRecord(cleanup_encode.AsStringView());
   }
   current_ = std::move(new_vgroup_version);
 

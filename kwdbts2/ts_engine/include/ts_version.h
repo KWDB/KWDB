@@ -505,8 +505,8 @@ class TsVersionManager {
       : env_(env), root_path_(root_path) {
     recorder_ = PartitionIntervalRecorder::GetInstance();
   }
-  KStatus Recover();
-  KStatus ApplyUpdate(TsVersionUpdate *update);
+  KStatus Recover(bool force_recover);
+  KStatus ApplyUpdate(TsVersionUpdate *update, bool force_apply = false);
 
   std::shared_ptr<const TsVGroupVersion> Current() const {
     std::shared_lock lk{mu_};

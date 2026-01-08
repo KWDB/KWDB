@@ -59,7 +59,7 @@ class TsAppendOnlyFile {
 
  public:
   explicit TsAppendOnlyFile(const std::string& path) : path_(path) {}
-  virtual ~TsAppendOnlyFile() {}
+  virtual ~TsAppendOnlyFile() = default;
 
   virtual KStatus Append(std::string_view) = 0;
   KStatus Append(TSSlice slice) { return this->Append(std::string_view{slice.data, slice.len}); }
@@ -81,7 +81,7 @@ class TsRandomReadFile {
 
  public:
   explicit TsRandomReadFile(const std::string& path) : path_(path) {}
-  virtual ~TsRandomReadFile() {}
+  virtual ~TsRandomReadFile() = default;
 
   virtual KStatus Prefetch(size_t offset, size_t n) = 0;
   virtual KStatus Read(size_t offset, size_t n, TsSliceGuard* result) const = 0;
@@ -102,7 +102,7 @@ class TsSequentialReadFile {
 
  public:
   explicit TsSequentialReadFile(const std::string& path, size_t file_size) : path_(path), file_size_(file_size) {}
-  virtual ~TsSequentialReadFile() {}
+  virtual ~TsSequentialReadFile() = default;
 
   virtual KStatus Read(size_t n, TsSliceGuard* slice) = 0;
   virtual KStatus Skip(size_t n) {
@@ -145,6 +145,7 @@ class TsMMapAppendOnlyFile : public TsAppendOnlyFile {
       this->Close();
     }
     if (delete_after_free) {
+      LOG_INFO("delete file %s", path_.c_str());
       unlink(path_.c_str());
     }
   }
@@ -178,6 +179,7 @@ class TsMMapRandomReadFile : public TsRandomReadFile {
     }
     close(fd_);
     if (delete_after_free) {
+      LOG_INFO("delete file %s", path_.c_str());
       unlink(path_.c_str());
     }
   }
@@ -210,6 +212,7 @@ class TsMMapSequentialReadFile : public TsSequentialReadFile {
     }
     close(fd_);
     if (delete_after_free) {
+      LOG_INFO("delete file %s", path_.c_str());
       unlink(path_.c_str());
     }
   }
@@ -229,6 +232,7 @@ class TsFIOAppendOnlyFile : public TsAppendOnlyFile {
   ~TsFIOAppendOnlyFile() {
     Close();
     if (delete_after_free) {
+      LOG_INFO("delete file %s", path_.c_str());
       unlink(path_.c_str());
     }
   }
@@ -252,9 +256,11 @@ class TsFIOAppendOnlyFile : public TsAppendOnlyFile {
       LOG_ERROR("file flush error, file_path: %s, error: %s", path_.c_str(), strerror(errno));
       return FAIL;
     }
-    if (fsync(fileno(fp_)) != 0) {
-      LOG_ERROR("file sync error, file_path: %s, error: %s", path_.c_str(), strerror(errno));
-      return FAIL;
+    if (EngineOptions::force_sync_file) {
+      if (fsync(fileno(fp_)) != 0) {
+        LOG_ERROR("file sync error, file_path: %s, error: %s", path_.c_str(), strerror(errno));
+        return FAIL;
+      }
     }
     return SUCCESS;
   }
@@ -293,6 +299,7 @@ class TsFIORandomReadFile : public TsRandomReadFile {
       close(fd_);
     }
     if (delete_after_free) {
+      LOG_INFO("delete file %s", path_.c_str());
       unlink(path_.c_str());
     }
   }
@@ -338,6 +345,7 @@ class TsFIOSequentialReadFile : public TsSequentialReadFile {
       close(fd_);
     }
     if (delete_after_free) {
+      LOG_INFO("delete file %s", path_.c_str());
       unlink(path_.c_str());
     }
   }

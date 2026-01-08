@@ -130,7 +130,7 @@ KStatus TsLastSegment::GetBlockRowCount(int block_id, uint64_t* row_count) const
   KStatus TsLastSegment::GetFooter(TsLastSegmentFooter* footer) {
   auto sz = file_->GetFileSize();
   if (sz < sizeof(TsLastSegmentFooter)) {
-    LOG_ERROR("lastsegment file corrupted");
+    LOG_ERROR("lastsegment %lu corrupted", this->file_number_);
     return FAIL;
   }
   size_t offset = file_->GetFileSize() - sizeof(TsLastSegmentFooter);
