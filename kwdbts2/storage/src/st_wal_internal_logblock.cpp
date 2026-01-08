@@ -52,7 +52,7 @@ void EntryBlock::reset(uint64_t block_no) {
 }
 
 char* EntryBlock::encode() {
-  char* value = KNEW char[BLOCK_SIZE];
+  char* value = new char[BLOCK_SIZE];
   if (value == nullptr) {
     LOG_ERROR("Failed to malloc memory.")
     return nullptr;
@@ -124,7 +124,11 @@ KStatus EntryBlock::readBytes(size_t& offset, char*& res, size_t length,
   if (length == 0) {
     return FAIL;
   }
-  res = KNEW char[length];
+  if (length > MAX_PER_READ_LSN_RANGES) {
+    LOG_ERROR("too large bytes for readBytes func, length:%ld", length)
+    return FAIL;
+  }
+  res = new char[length];
   if (res == nullptr) {
     LOG_ERROR("Failed to malloc memory, length:%ld", length)
     return FAIL;
@@ -174,7 +178,7 @@ void HeaderBlock::setFirstLSN(TS_OSN first_lsn) {
 }
 
 char* HeaderBlock::encode() {
-  char* value = KNEW char[BLOCK_SIZE];
+  char* value = new char[BLOCK_SIZE];
   if (value == nullptr) {
     LOG_ERROR("Failed to malloc memory.")
     return nullptr;

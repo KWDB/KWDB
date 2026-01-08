@@ -345,21 +345,44 @@ KStatus TSEngineImpl::Init(kwdbContext_p ctx) {
     return s;
   }
 
-  s = Recover(ctx);
-  if (s == KStatus::FAIL) {
-    LOG_ERROR("Recover fail.Now Reset All WAL.")
-    if (wal_mgr_->ResetWAL(ctx, true) == KStatus::FAIL) {
-      LOG_ERROR("Failed to Reset engine wal.")
-      return  KStatus::FAIL;
-    }
-    for (auto vgrp : vgroups_) {
-      if (vgrp->GetWALManager()->ResetWAL(ctx, true) == KStatus::FAIL) {
-        LOG_ERROR("Failed to Reset vgroup[%d] wal.", vgrp->GetVGroupID())
-        return  KStatus::FAIL;
+// try catch exception if malloc fail
+  try {
+    s = Recover(ctx);
+    if (s == KStatus::FAIL) {
+      LOG_ERROR("Recover fail. Now Reset ALL WAL.")
+      if (wal_mgr_->ResetWAL(ctx) == KStatus::FAIL) {
+        LOG_ERROR("Reset Engine WAL Failed.")
+        return KStatus::FAIL;
+      }
+      if (wal_sys_->ResetWAL(ctx) == KStatus::FAIL) {
+        LOG_ERROR("Reset DDL WAL Failed.")
+        return KStatus::FAIL;
+      }
+      for (auto vgroup : vgroups_) {
+        if (vgroup->GetWALManager()->ResetWAL(ctx) == KStatus::FAIL) {
+          LOG_ERROR("Reset VWAL[%d] Failed.", vgroup->GetVGroupID())
+          return KStatus::FAIL;
+        }
       }
     }
-    return SUCCESS;
+  } catch (...) {
+    LOG_ERROR("Recover fail. Now Reset ALL WAL.")
+    if (wal_mgr_->ResetWAL(ctx) == KStatus::FAIL) {
+      LOG_ERROR("Reset Engine WAL Failed.")
+      return KStatus::FAIL;
+    }
+    if (wal_sys_->ResetWAL(ctx) == KStatus::FAIL) {
+      LOG_ERROR("Reset DDL WAL Failed.")
+      return KStatus::FAIL;
+    }
+    for (auto vgroup : vgroups_) {
+      if (vgroup->GetWALManager()->ResetWAL(ctx) == KStatus::FAIL) {
+        LOG_ERROR("Reset VWAL[%d] Failed.", vgroup->GetVGroupID())
+        return KStatus::FAIL;
+      }
+    }
   }
+
   return KStatus::SUCCESS;
 }
 
@@ -1296,6 +1319,10 @@ KStatus TSEngineImpl::ParallelRemoveChkFiles(kwdbContext_p ctx) {
 }
 
 KStatus TSEngineImpl::CreateCheckpoint(kwdbContext_p ctx) {
+  LOG_INFO("WAL Checkpoint Start.")
+  Defer defer_log {[&]() {
+    LOG_INFO("WAL Checkpoint Complete.")
+  }};
   Defer defer_explict {[&]() {
     exist_explict_txn.store(false);
   }};
@@ -2090,9 +2117,13 @@ KStatus TSEngineImpl::Recover(kwdbContext_p ctx) {
   TS_OSN last_lsn = wal_mgr_->GetFirstLSN();
   s = wal_mgr_->ReadWALLog(logs, last_lsn, wal_mgr_->FetchCurrentLSN(), vgroup_lsn);
   if (s == KStatus::FAIL) {
-    LOG_ERROR("Failed to ReadWALLog from chk file while recovering, with Last LSN [%lu] and Current LSN [%lu].",
+    LOG_ERROR("Failed to ReadWALLog from chk file while recovering, with Last LSN [%lu] and Current LSN [%lu]. Now"
+              " reset WAL.",
               last_lsn, wal_mgr_->FetchCurrentLSN())
-    return KStatus::FAIL;
+    s = wal_mgr_->ResetWAL(ctx);
+    if (s == KStatus::FAIL) {
+      return KStatus::FAIL;
+    }
   }
   if (vgroup_lsn.empty()) {
     LOG_INFO("Cannot detect the end checkpoint wal, skipping this file's content.")
@@ -2108,8 +2139,12 @@ KStatus TSEngineImpl::Recover(kwdbContext_p ctx) {
     }
 
     if (vgrp->ReadLogFromLastCheckpoint(ctx, vlogs, lsn) == KStatus::FAIL) {
-      LOG_ERROR("Failed to ReadWALLogFromLastCheckpoint from vgroup : %d", vgrp->GetVGroupID())
-      return KStatus::FAIL;
+      LOG_ERROR("Failed to ReadWALLogFromLastCheckpoint from vgroup : %d, Now reset WAL.", vgrp->GetVGroupID())
+      vlogs.clear();
+      s = vgrp->GetWALManager()->ResetWAL(ctx);
+      if (s == KStatus::FAIL) {
+        return KStatus::FAIL;
+      }
     }
     logs.insert(logs.end(), vlogs.begin(), vlogs.end());
   }

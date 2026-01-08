@@ -38,7 +38,7 @@ class WALBufferMgr {
    */
   KStatus init(TS_OSN start_lsn = 0);
 
-  void ResetMeta(WALFileMgr* file_mgr);
+  void ResetMeta();
 
   /**
    * Write WAL log entry into WAL Buffer

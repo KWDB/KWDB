@@ -159,9 +159,9 @@ KStatus WALMgr::Init(kwdbContext_p ctx, bool for_eng_wal) {
   s = buffer_mgr_->init(buffer_lsn);
   if (s == KStatus::FAIL) {
     LOG_WARN("Failed to initialize the WAL buffer with LSN %lu, Now reset wal file.", buffer_lsn)
-    if (ResetWAL(ctx, true) == KStatus::FAIL) {
-      LOG_ERROR("Failed to Reset wal.")
-      return FAIL;
+    if (ResetWAL(ctx) == KStatus::FAIL) {
+      LOG_ERROR("Failed to reset wal .")
+      return KStatus::FAIL;
     }
   }
 
@@ -934,13 +934,40 @@ KStatus WALMgr::initWalMeta(kwdbContext_p ctx, bool is_create) {
 
   meta_file_.open(meta_path, std::ios::in | std::ios::out);
   if (!meta_file_.is_open()) {
-    LOG_ERROR("Failed to open the WAL metadata")
-    return FAIL;
+    LOG_WARN("Failed to open the WAL metadata. Now Reset WAL File.")
+    KStatus s = file_mgr_->Close();
+    if (s == KStatus::FAIL) {
+      LOG_ERROR("Failed to Close the WAL file ")
+      return FAIL;
+    }
+    meta_file_.close();
+    if (Remove(wal_path_) == KStatus::FAIL) {
+      LOG_ERROR("Failed to Remove WAL file.")
+      return KStatus::FAIL;
+    }
+    if (!IsExists(wal_path_)) {
+      ErrorInfo err_info;
+      if (!MakeDirectory(wal_path_)) {
+        LOG_ERROR("Failed to create the WAL log directory:%s, error:%s", wal_path_.c_str(), err_info.errmsg.c_str());
+        return KStatus::FAIL;
+      }
+    }
+    meta_file_.open(meta_path, std::ios::in | std::ios::out | std::ios::trunc);
+    if (!meta_file_.is_open()) {
+      LOG_ERROR("Failed to open the WAL metadata")
+      return FAIL;
+    }
+
+    // start_lsn is header block size + block header size
+    TS_OSN start_lsn = BLOCK_SIZE + LOG_BLOCK_HEADER_SIZE;
+    meta_ = {start_lsn, start_lsn, 0, start_lsn};
+
+    flushMeta(ctx);
   }
 
   streamsize size = sizeof(WALMeta);
 
-  char* buf = KNEW char[size];
+  char* buf = new char[size];
   meta_file_.seekg(0, std::ios::beg);
 
   meta_file_.read(buf, size);
@@ -953,7 +980,7 @@ KStatus WALMgr::initWalMeta(kwdbContext_p ctx, bool is_create) {
 KStatus WALMgr::flushMeta(kwdbContext_p ctx) {
   streamsize size = sizeof(WALMeta);
 
-  char* buf = KNEW char[size];
+  char* buf = new char[size];
   memcpy(buf, &meta_, size);
   meta_file_.seekg(0, std::ios::beg);
   meta_file_.write(buf, size);
@@ -988,56 +1015,18 @@ KStatus WALMgr::RemoveChkFile(kwdbContext_p ctx) {
   return Remove(file_mgr_->getChkFilePath()) ? KStatus::SUCCESS : KStatus::FAIL;
 }
 
-KStatus WALMgr::ResetWAL(kwdbContext_p ctx, bool reset) {
-  if (!IsExists(wal_path_)) {
-    if (!MakeDirectory(wal_path_)) {
-      LOG_ERROR("Failed to create the WAL log directory '%s'", wal_path_.c_str())
-      return FAIL;
-    }
-  }
-  TS_OSN current_lsn_recover = FetchCurrentLSN();
-  WALMeta old_meta = meta_;
-  if (reset) {
-    current_lsn_recover = BLOCK_SIZE + LOG_BLOCK_HEADER_SIZE;
-    old_meta = WALMeta{BLOCK_SIZE + LOG_BLOCK_HEADER_SIZE, BLOCK_SIZE + LOG_BLOCK_HEADER_SIZE, 0,
-                       BLOCK_SIZE + LOG_BLOCK_HEADER_SIZE};
-  }
-  if (meta_file_.is_open()) {
-    meta_file_.close();
-  }
-  string meta_path = wal_path_ + "kwdb_wal.meta";
-  if (IsExists(meta_path)) {
-    Remove(meta_path);
-  }
-
-  KStatus s = initWalMeta(ctx, true);
+KStatus WALMgr::ResetWAL(kwdbContext_p ctx) {
+  KStatus s = file_mgr_->Close();
   if (s == KStatus::FAIL) {
-    LOG_ERROR("Failed to initialize the WAL metadata.")
-    return s;
+    LOG_ERROR("Failed to Close the WAL file ")
+    return FAIL;
   }
-  meta_ = old_meta;
-  meta_.current_checkpoint_no = 0;
-
-  s = file_mgr_->ResetWALInternal(ctx, current_lsn_recover);
-  if (s == KStatus::FAIL) {
-    LOG_ERROR("Failed to Reset the WAL files.")
-    return s;
+  meta_file_.close();
+  if (Remove(wal_path_) == KStatus::FAIL) {
+    LOG_ERROR("Failed to Remove WAL file.")
+    return KStatus::FAIL;
   }
-
-  s = file_mgr_->Open();
-  if (s == KStatus::FAIL) {
-    LOG_ERROR("Failed to Open the WAL metadata.")
-    return s;
-  }
-
-  buffer_mgr_->ResetMeta(file_mgr_);
-
-  s = buffer_mgr_->init(current_lsn_recover);
-  if (s == KStatus::FAIL) {
-    LOG_ERROR("Failed to initialize the WAL buffer.")
-    return s;
-  }
-  return SUCCESS;
+  return Create(ctx);
 }
 
 bool WALMgr::NeedCheckpoint() {

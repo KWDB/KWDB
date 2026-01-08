@@ -130,7 +130,7 @@ class InsertLogTagsEntry : public InsertLogEntry {
                          const uint64_t offset, const uint64_t length, const char* data) {
     size_t len = fixed_length + length;
 
-    char* log_ptr = KNEW char[len];
+    char* log_ptr = new char[len];
     size_t location = 0;
     memcpy(log_ptr, &type, sizeof(type_));
     location += sizeof(type_);
@@ -214,7 +214,7 @@ class InsertLogMetricsEntry : public InsertLogEntry {
                          const char* encoded_primary_tags) {
     size_t len = fixed_length + length + p_tag_len;
 
-    char* log_ptr = KNEW char[len];
+    char* log_ptr = new char[len];
     size_t location = 0;
     memcpy(log_ptr, &type, sizeof(type_));
     location += sizeof(type_);
@@ -317,7 +317,7 @@ class UpdateLogTagsEntry : public UpdateLogEntry {
                          const char* old_data) {
     size_t len = fixed_length + length  + old_len;
 
-    char* log_ptr = KNEW char[len];
+    char* log_ptr = new char[len];
     size_t location = 0;
     memcpy(log_ptr, &type, sizeof(type_));
     location += sizeof(type_);
@@ -413,7 +413,7 @@ class DeleteLogMetricsEntry : public DeleteLogEntry {
                          const DelRowSpan* row_spans) {
     size_t len = fixed_length + (range_size) * sizeof(DelRowSpan) + p_tag_len;
 
-    char* log_ptr = KNEW char[len];
+    char* log_ptr = new char[len];
     size_t offset = 0;
 
     memcpy(log_ptr, &type, sizeof(type_));
@@ -499,7 +499,7 @@ class DeleteLogMetricsEntryV2 : public DeleteLogEntry {
                          const uint64_t range_size, const char* encoded_primary_tags, const KwTsSpan* row_spans) {
     size_t len = fixed_length + (range_size) * sizeof(KwTsSpan) + p_tag_len;
 
-    char* log_ptr = KNEW char[len];
+    char* log_ptr = new char[len];
     size_t offset = 0;
 
     memcpy(log_ptr, &type, sizeof(type_));
@@ -584,7 +584,7 @@ class DeleteLogTagsEntry : public DeleteLogEntry {
                          const size_t tag_len, const char* encoded_tags) {
     size_t len = fixed_length + p_tag_len + tag_len;
 
-    char* log_ptr = KNEW char[len];
+    char* log_ptr = new char[len];
     uint64_t location = 0;
 
     memcpy(log_ptr, &type, sizeof(type_));
@@ -660,7 +660,7 @@ class CheckpointEntry : public LogEntry {
     uint64_t partition_len = sizeof(CheckpointPartition) * partition_number;
     uint64_t len = fixed_length + partition_len;
 
-    char* log_ptr = KNEW char[len];
+    char* log_ptr = new char[len];
     int location = 0;
 
     memcpy(log_ptr, &type, sizeof(type_));
@@ -699,7 +699,7 @@ class MTREntry : public LogEntry {
   static const size_t fixed_length = sizeof(type_) + sizeof(x_id_) + TS_TRANS_ID_LEN;
 
   static char* construct(const WALLogType type, const uint64_t x_id, const char* tsx_id) {
-    char* log_ptr = KNEW char[fixed_length];
+    char* log_ptr = new char[fixed_length];
 
     int location = 0;
 
@@ -740,7 +740,7 @@ class MTRBeginEntry : public MTREntry {
 
   static char* construct(const WALLogType type, const uint64_t x_id, const char* tsx_id, const uint64_t range_id,
                          const uint64_t index) {
-    char* log_ptr = KNEW char[fixed_length];
+    char* log_ptr = new char[fixed_length];
     int location = 0;
 
     memcpy(log_ptr, &type, sizeof(type_));
@@ -771,7 +771,7 @@ class TTREntry : public LogEntry {
   static const size_t fixed_length = sizeof(type_) + sizeof(x_id_) + TS_TRANS_ID_LEN;
 
   static char* construct(const WALLogType type, uint64_t x_id, const char* ts_trans_id) {
-    char* log_ptr = KNEW char[fixed_length];
+    char* log_ptr = new char[fixed_length];
     int location = 0;
 
     memcpy(log_ptr, &type, sizeof(type_));
@@ -826,7 +826,7 @@ class SnapshotEntry : public LogEntry {
   static char* construct(const WALLogType type, const uint64_t x_id, TSTableID tbl_id, uint64_t b_hash, uint64_t e_hash,
                          timestamp64 b_ts, timestamp64 e_ts) {
     uint64_t len = fixed_length;
-    char* log_ptr = KNEW char[len];
+    char* log_ptr = new char[len];
     int location = 0;
 
     memcpy(log_ptr, &type, sizeof(type));
@@ -885,7 +885,7 @@ class TempDirectoryEntry : public LogEntry {
   static char* construct(const WALLogType type, const uint64_t x_id, std::string path) {
     uint64_t len = fixed_length;
     size_t string_len = path.length() + 1;
-    char* log_ptr = KNEW char[len + string_len];
+    char* log_ptr = new char[len + string_len];
     memset(log_ptr, 0, len + string_len);
     int location = 0;
     memcpy(log_ptr, &type, sizeof(type));
@@ -952,7 +952,7 @@ class DDLCreateEntry : public DDLEntry {
   static char* construct(WALLogType type, uint64_t x_id, uint64_t object_id, int meta_length,
                          uint64_t range_size, roachpb::CreateTsTable* meta, RangeGroup* ranges) {
     size_t len = fixed_length + (range_size) * range_length + meta_length;
-    char* log_ptr = KNEW char[len];
+    char* log_ptr = new char[len];
     int offset = 0;
 
     memcpy(log_ptr, &type, sizeof(type_));
@@ -966,7 +966,7 @@ class DDLCreateEntry : public DDLEntry {
     memcpy(log_ptr + offset, &range_size, sizeof(range_size_));
     offset += sizeof(range_size_);
 
-    auto* buffer = KNEW char[meta_length];
+    auto* buffer = new char[meta_length];
     meta->SerializeToArray(buffer, meta_length);
     memcpy(log_ptr + offset, buffer, meta_length);
 
@@ -1002,7 +1002,7 @@ class DDLDropEntry : public DDLEntry {
   static const size_t fixed_length = sizeof(type_) + sizeof(x_id_) + sizeof(object_id_);
 
   static char* construct(WALLogType type, uint64_t x_id, uint64_t object_id) {
-    char* log_ptr = KNEW char[fixed_length];
+    char* log_ptr = new char[fixed_length];
     int offset = 0;
 
     memcpy(log_ptr, &type, sizeof(type_));
@@ -1056,7 +1056,7 @@ class DDLAlterEntry : public DDLEntry {
 
   static char* construct(WALLogType type, uint64_t x_id, uint64_t object_id, AlterType alter_type,
                          uint32_t cur_version, uint32_t new_version, TSSlice& column_meta) {
-    char* log_ptr = KNEW char[fixed_length + column_meta.len];
+    char* log_ptr = new char[fixed_length + column_meta.len];
     int offset = 0;
 
     memcpy(log_ptr, &type, sizeof(type_));
@@ -1112,7 +1112,7 @@ class CreateIndexEntry : public LogEntry {
 
   static char* construct(WALLogType type, uint64_t x_id, uint64_t object_id, uint32_t index_id, uint32_t cur_ts_version,
                          uint32_t new_ts_version, std::array<int32_t, 10> col_ids) {
-    char* log_ptr = KNEW char[fixed_length];
+    char* log_ptr = new char[fixed_length];
     int offset = 0;
 
     memcpy(log_ptr, &type, sizeof(type_));
@@ -1166,7 +1166,7 @@ class DropIndexEntry : public LogEntry {
 
   static char* construct(WALLogType type, uint64_t x_id, uint64_t object_id, uint32_t index_id, uint32_t cur_ts_version,
                          uint32_t new_ts_version, std::array<int32_t, 10> col_ids) {
-    char* log_ptr = KNEW char[fixed_length];
+    char* log_ptr = new char[fixed_length];
     int offset = 0;
 
     memcpy(log_ptr, &type, sizeof(type_));
@@ -1206,7 +1206,7 @@ class EndCheckpointEntry : public LogEntry {
   static char* construct(const WALLogType type, const uint64_t x_id, uint64_t lsn_len, char* v_lsn) {
     uint64_t len = fixed_length + lsn_len;
 
-    char* log_ptr = KNEW char[len];
+    char* log_ptr = new char[len];
     int location = 0;
 
     memcpy(log_ptr, &type, sizeof(type_));

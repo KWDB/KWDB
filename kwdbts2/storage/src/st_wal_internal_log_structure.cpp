@@ -65,7 +65,7 @@ InsertLogTagsEntry::InsertLogTagsEntry(TS_OSN lsn, WALLogType type, uint64_t x_i
                                        uint64_t vgrp_id, TS_OSN old_lsn, uint64_t table_id)
     : InsertLogEntry(lsn, type, x_id, table_type, vgrp_id, old_lsn, table_id), time_partition_(time_partition),
     offset_(offset), length_(length), table_id_(table_id) {
-  data_ = KNEW char[length_];
+  data_ = new char[length_];
   memcpy(data_, data, length_);
 }
 
@@ -108,10 +108,10 @@ InsertLogMetricsEntry::InsertLogMetricsEntry(TS_OSN lsn, WALLogType type, uint64
                                              TS_OSN old_lsn)
     : InsertLogEntry(lsn, type, x_id, table_type, vgrp_id, old_lsn), time_partition_(time_partition),
       offset_(offset), length_(length), p_tag_len_(p_tag_len) {
-  encoded_primary_tags_ = KNEW char[p_tag_len_];
+  encoded_primary_tags_ = new char[p_tag_len_];
   memcpy(encoded_primary_tags_, encoded_primary_tags, p_tag_len_);
 
-  data_ = KNEW char[length_];
+  data_ = new char[length_];
   memcpy(data_, data, length_);
 }
 
@@ -120,10 +120,10 @@ InsertLogMetricsEntry::InsertLogMetricsEntry(TS_OSN lsn, WALLogType type, uint64
                                              size_t p_tag_len, char* data, uint64_t vgrp_id, TS_OSN old_lsn)
     : InsertLogEntry(lsn, type, x_id, table_type, vgrp_id, old_lsn), time_partition_(time_partition),
       offset_(offset), length_(length), p_tag_len_(p_tag_len) {
-  encoded_primary_tags_ = KNEW char[p_tag_len_];
+  encoded_primary_tags_ = new char[p_tag_len_];
   memcpy(encoded_primary_tags_, data, p_tag_len_);
 
-  data_ = KNEW char[length_];
+  data_ = new char[length_];
   memcpy(data_, data + p_tag_len_, length_);
 }
 
@@ -181,9 +181,9 @@ UpdateLogTagsEntry::UpdateLogTagsEntry(TS_OSN lsn, WALLogType type, uint64_t x_i
                                        uint64_t table_id)
     : UpdateLogEntry(lsn, type, x_id, table_type, vgrp_id, old_lsn, table_id), time_partition_(time_partition),
     offset_(offset), length_(length), old_len_(old_len), table_id_(table_id) {
-  data_ = KNEW char[length_];
+  data_ = new char[length_];
   memcpy(data_, data, length_);
-  old_data_ = KNEW char[old_len_];
+  old_data_ = new char[old_len_];
   memcpy(old_data_, data + length_, old_len_);
 }
 
@@ -245,10 +245,10 @@ DeleteLogMetricsEntry::DeleteLogMetricsEntry(TS_OSN lsn, WALLogType type, uint64
   start_ts_ = 0;
   end_ts_ = 0;
 
-  encoded_primary_tags_ = KNEW char[p_tag_len_];
+  encoded_primary_tags_ = new char[p_tag_len_];
   memcpy(encoded_primary_tags_, data, p_tag_len_);
 
-  row_spans_ = KNEW DelRowSpan[range_size];
+  row_spans_ = new DelRowSpan[range_size];
   size_t partition_size = range_size * sizeof(DelRowSpan);
   memcpy(row_spans_, data + p_tag_len_, partition_size);
 }
@@ -293,10 +293,10 @@ DeleteLogMetricsEntryV2::DeleteLogMetricsEntryV2(TS_OSN lsn, WALLogType type, ui
                                               uint64_t vgrp_id, TS_OSN old_lsn, uint64_t osn)
     : DeleteLogEntry(lsn, type, x_id, table_type, vgrp_id, old_lsn), p_tag_len_(p_tag_len), range_size_(range_size),
     table_id_(table_id), osn_(osn) {
-  encoded_primary_tags_ = KNEW char[p_tag_len_];
+  encoded_primary_tags_ = new char[p_tag_len_];
   memcpy(encoded_primary_tags_, data, p_tag_len_);
 
-  ts_spans_ = KNEW KwTsSpan[range_size];
+  ts_spans_ = new KwTsSpan[range_size];
   size_t partition_size = range_size * sizeof(KwTsSpan);
   memcpy(ts_spans_, data + p_tag_len_, partition_size);
 }
@@ -345,9 +345,9 @@ DeleteLogTagsEntry::DeleteLogTagsEntry(TS_OSN lsn, WALLogType type, uint64_t x_i
                                        uint64_t table_id, uint64_t osn)
     : DeleteLogEntry(lsn, type, x_id, table_type, vgrp_id, old_lsn, table_id), group_id_(group_id),
     entity_id_(entity_id), p_tag_len_(p_tag_len), tag_len_(tag_len), table_id_(table_id), osn_(osn) {
-  encoded_primary_tags_ = KNEW char[p_tag_len_];
+  encoded_primary_tags_ = new char[p_tag_len_];
   memcpy(encoded_primary_tags_, encoded_data, p_tag_len_);
-  encoded_tags_ = KNEW char[tag_len_];
+  encoded_tags_ = new char[tag_len_];
   memcpy(encoded_tags_, encoded_data + p_tag_len_, tag_len_);
 }
 
@@ -397,7 +397,7 @@ CheckpointEntry::CheckpointEntry(TS_OSN lsn, WALLogType type, char* data) : LogE
   read_offset += sizeof(tag_offset_);
   memcpy(&partition_number_, data + read_offset, sizeof(partition_number_));
   partition_len_ = sizeof(CheckpointPartition) * partition_number_;
-  data_ = KNEW CheckpointPartition[partition_len_];
+  data_ = new CheckpointPartition[partition_len_];
 
   len_ = header_length + partition_len_;
 }
@@ -459,8 +459,8 @@ DDLCreateEntry::DDLCreateEntry(TS_OSN lsn, WALLogType type, char* data) : DDLEnt
   read_offset += sizeof(meta_length_);
   memcpy(&range_size_, data + read_offset, sizeof(range_size_));
 
-  meta_ = KNEW roachpb::CreateTsTable();
-  ranges_ = KNEW RangeGroup[range_size_];
+  meta_ = new roachpb::CreateTsTable();
+  ranges_ = new RangeGroup[range_size_];
   len_ = fixed_length + meta_length_ + range_size_ * range_length;
 }
 
@@ -515,7 +515,7 @@ DDLAlterEntry::DDLAlterEntry(TS_OSN lsn, WALLogType type, char* data) : DDLEntry
   read_offset += sizeof(new_version_);
   memcpy(&length_, data + read_offset, sizeof(length_));
 
-  data_ = KNEW char[length_];
+  data_ = new char[length_];
   len_ = fixed_length + length_;
 }
 
