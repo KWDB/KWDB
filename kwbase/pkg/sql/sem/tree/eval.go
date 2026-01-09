@@ -3757,8 +3757,8 @@ func PerformCast(ctx *EvalContext, d Datum, t *types.T) (Datum, error) {
 		}
 		if ba != nil {
 			ba = formatBitArray(ba, t)
+			return ba, nil
 		}
-		return ba, nil
 
 	case types.BoolFamily:
 		switch v := d.(type) {

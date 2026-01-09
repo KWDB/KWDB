@@ -515,6 +515,8 @@ func (dsp *DistSQLPlanner) setupPipeFlows(
 		}
 	}
 	if len(appendProcessors) != 0 {
+		appendProcessors[len(appendProcessors)-1].Post.Limit = 1
+		appendProcessors[len(appendProcessors)-1].Post.Offset = 1
 		appendProcessors = append(appendProcessors, flows[thisNodeID].Processors...)
 		flows[thisNodeID].Processors = appendProcessors
 		flows[thisNodeID].TsInfo.IsDist = true
