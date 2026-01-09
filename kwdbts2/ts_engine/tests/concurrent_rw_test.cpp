@@ -57,8 +57,6 @@ class ConcurrentRWTest : public testing::Test {
   const std::vector<AttributeInfo>* metric_schema_{nullptr};
   std::vector<TagInfo> tag_schema_;
 
-  std::shared_ptr<TsVGroup> vgroup_;
-
   void SetUp() override {
     TsFlushJobPool::GetInstance().Start();
     fs::remove_all("./tsdb");
@@ -75,15 +73,10 @@ class ConcurrentRWTest : public testing::Test {
     ASSERT_EQ(table_schema_mgr_->GetMetricMeta(1, &metric_schema_), KStatus::SUCCESS);
     ASSERT_EQ(table_schema_mgr_->GetTagMeta(1, tag_schema_), KStatus::SUCCESS);
 
-    std::shared_mutex wal_level_mutex;
-    vgroup_ = std::make_shared<TsVGroup>(&opts_, 1, schema_mgr_.get(), &wal_level_mutex, nullptr, false);
-    ASSERT_EQ(vgroup_->Init(ctx_), KStatus::SUCCESS);
-
     InitKWDBContext(ctx_);
   }
   void TearDown() override {
     TsFlushJobPool::GetInstance().StopAndWait();
-    vgroup_.reset();
   }
 
   ~ConcurrentRWTest() {}
@@ -94,7 +87,10 @@ struct QueryResult {
 };
 
 TEST_F(ConcurrentRWTest, FlushOnly) {
-  if(RUNNING_ON_VALGRIND) return;
+  if (RUNNING_ON_VALGRIND) return;
+  std::shared_mutex wal_level_mutex;
+  auto vgroup_ = std::make_shared<TsVGroup>(&opts_, 1, schema_mgr_.get(), &wal_level_mutex, nullptr, false);
+  ASSERT_EQ(vgroup_->Init(ctx_), KStatus::SUCCESS);
   int npayload = 100;
   int nrow = 20;
   int total_row = npayload * nrow;
@@ -197,6 +193,10 @@ TEST_F(ConcurrentRWTest, CompactOnly) {
   int nrow_per_last_segment = 400;
   int nlast_segment = 5;
   int total_row = nrow_per_last_segment * nlast_segment;
+
+  std::shared_mutex wal_level_mutex;
+  auto vgroup_ = std::make_shared<TsVGroup>(&opts_, 1, schema_mgr_.get(), &wal_level_mutex, nullptr, false);
+  ASSERT_EQ(vgroup_->Init(ctx_), KStatus::SUCCESS);
   auto vgroup = vgroup_;
 
   for (int i = 0; i < nlast_segment; ++i) {

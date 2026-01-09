@@ -31,7 +31,10 @@
 
 namespace kwdbts {
 
-TsMemSegment::TsMemSegment(int32_t height) : skiplist_(height) {}
+int TsMemSegment::n_mem_segments_ = 0;
+std::mutex TsMemSegment::global_memseg_mutex_;
+std::condition_variable TsMemSegment::global_memseg_cv_;
+int32_t TsMemSegment::max_memsegments_ = -1;  // -1 means uninitialized
 
 TsMemSegmentManager::TsMemSegmentManager(TsVGroup* vgroup, TsVersionManager* version_manager)
     : vgroup_(vgroup),
@@ -59,6 +62,7 @@ bool TsMemSegmentManager::SwitchMemSegment(TsMemSegment* expected_old_mem_seg, b
   if (flush) {
     TsFlushJobPool::GetInstance().AddFlushJob(vgroup_, std::move(cur_mem_seg_));
   }
+  cur_mem_seg_.reset();  // avoid potential dead lock: release current memsegment first
   cur_mem_seg_ = TsMemSegment::Create(EngineOptions::mem_segment_max_height);
 
   TsVersionUpdate update;

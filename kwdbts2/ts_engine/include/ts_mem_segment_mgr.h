@@ -12,6 +12,8 @@
 
 #include <algorithm>
 #include <atomic>
+#include <condition_variable>
+#include <cstdint>
 #include <list>
 #include <memory>
 #include <string>
@@ -20,6 +22,7 @@
 #include <vector>
 
 #include "libkwdbts2.h"
+#include "settings.h"
 #include "ts_compatibility.h"
 #include "ts_engine_schema_manager.h"
 #include "ts_mem_seg_index.h"
@@ -38,6 +41,10 @@ enum TsMemSegmentStatus : uint8_t {
 
 class TsMemSegment : public TsSegmentBase, public enable_shared_from_this<TsMemSegment> {
   friend class TsMemSegmentManager;
+  static int n_mem_segments_;
+  static std::mutex global_memseg_mutex_;
+  static std::condition_variable global_memseg_cv_;
+  static int32_t max_memsegments_;
 
  private:
   std::atomic<uint32_t> intent_row_num_{0};
@@ -46,14 +53,34 @@ class TsMemSegment : public TsSegmentBase, public enable_shared_from_this<TsMemS
   std::atomic<TsMemSegmentStatus> status_{MEM_SEGMENT_IDLE};
   TsMemSegIndex skiplist_;
 
-  explicit TsMemSegment(int32_t max_height);
+  explicit TsMemSegment(int32_t max_height) : skiplist_(max_height) { n_mem_segments_++; }
 
  public:
   template <class... Args>
   static std::shared_ptr<TsMemSegment> Create(Args&&... args) {
+    std::unique_lock lk(global_memseg_mutex_);
+
+    if (max_memsegments_ == -1) {
+      char* envvar = getenv("KW_MAX_MEMSEGMENTS");
+      if (envvar == nullptr) {
+        max_memsegments_ = 3 * EngineOptions::vgroup_max_num;
+      } else {
+        int n = std::atoi(envvar);
+        max_memsegments_ = n < 0 ? INT32_MAX : n;
+        max_memsegments_ = std::max(max_memsegments_, EngineOptions::vgroup_max_num);
+      }
+    }
+
+    global_memseg_cv_.wait(lk, [] { return n_mem_segments_ < max_memsegments_; });
     return std::shared_ptr<TsMemSegment>(new TsMemSegment(std::forward<Args>(args)...));
   }
-  ~TsMemSegment() {}
+  ~TsMemSegment() {
+    {
+      std::unique_lock lk(global_memseg_mutex_);
+      n_mem_segments_--;
+    }
+    global_memseg_cv_.notify_all();
+  }
 
   uint32_t GetPayloadMemUsage() { return payload_mem_usage_.load(std::memory_order_relaxed); }
   size_t Size() { return skiplist_.GetAllocator().MemoryAllocatedBytes(); }
