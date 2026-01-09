@@ -5,7 +5,6 @@ SET CLUSTER SETTING sql.all_push_down.enabled = true;
 SET CLUSTER SETTING sql.pg_encode_short_circuit.enabled = true;
 SET CLUSTER SETTING ts.parallel_degree = 8;
 SET CLUSTER SETTING server.tsinsert_direct.enabled = true;
-SET CLUSTER SETTING ts.partition.interval = 600;
 
 
 --- Time-Series

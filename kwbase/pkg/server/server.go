@@ -159,11 +159,6 @@ var (
 		0,
 	)
 
-	partitionInterval = settings.RegisterPublicIntSetting(
-		"ts.partition.interval",
-		"time series data partition interval",
-		864000)
-
 	blockMaxRows = settings.RegisterPublicIntSetting(
 		"ts.rows_per_block.max_limit",
 		"the maximum number of rows that can be held in a block",
@@ -233,10 +228,11 @@ var (
 			"when working with tables containing large amounts of data",
 		false)
 
-	tsForceSyncCounterFile = settings.RegisterPublicBoolSetting(
+	tsForceSyncFile = settings.RegisterPublicBoolSetting(
 		"ts.force_sync_file.enabled",
 		"force sync counter file every time when writing to disk if enabled",
 		true)
+
 	maxLastCacheMaxSize = settings.RegisterPublicValidatedByteSizeSetting(
 		"ts.last_cache_size.max_limit",
 		"the maximum size of last cache in vgroup",
@@ -257,6 +253,17 @@ var (
 		"ts.count_recalc.cycle",
 		"the cycle of count recalculation, unit in seconds, set to 0 to disable count recalc",
 		60*5)
+
+	tsMetricSchemaCacheMaxSize = settings.RegisterPublicValidatedIntSetting(
+		"ts.metric_schema_cache.max_limit",
+		"the maximum number of metric schema cached in memory",
+		100,
+		func(v int64) error {
+			if v <= 0 || v > math.MaxInt32 {
+				return errors.New("invalid value, the range of ts.metric_schema_cache.max_limit is [1, 2147483647]")
+			}
+			return nil
+		})
 )
 
 // TODO(peter): Until go1.11, ServeMux.ServeHTTP was not safe to call
@@ -2276,9 +2283,6 @@ func (s *Server) Start(ctx context.Context) error {
 		return err
 	}
 	if err := sql.InitTsTxnJob(ctx, s.db, s.internalExecutor, s.jobRegistry); err != nil {
-		return err
-	}
-	if err := sql.InitCompressInterval(ctx, s.internalExecutor); err != nil {
 		return err
 	}
 

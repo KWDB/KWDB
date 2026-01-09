@@ -15,7 +15,6 @@ import (
 	"bytes"
 	"context"
 	"strconv"
-	"time"
 
 	"gitee.com/kwbasedb/kwbase/pkg/jobs"
 	"gitee.com/kwbasedb/kwbase/pkg/jobs/jobspb"
@@ -32,11 +31,8 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlutil"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/types"
-	"gitee.com/kwbasedb/kwbase/pkg/tse"
 	"gitee.com/kwbasedb/kwbase/pkg/util/hlc"
-	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 	"gitee.com/kwbasedb/kwbase/pkg/util/protoutil"
-	"gitee.com/kwbasedb/kwbase/pkg/util/timeutil"
 	"github.com/cockroachdb/errors"
 	"github.com/gorhill/cronexpr"
 	"github.com/lib/pq/oid"
@@ -3195,45 +3191,6 @@ func InitTSMetaData(
 		return err
 	}
 
-	return nil
-}
-
-// InitCompressInterval sends compress interval to AE when server start
-func InitCompressInterval(ctx context.Context, ie sqlutil.InternalExecutor) error {
-	const selectStmt = `select schedule_name,schedule_expr from system.scheduled_jobs`
-	rows, err := ie.Query(ctx, `select compress interval`, nil, selectStmt)
-	if err != nil {
-		return err
-	}
-	for _, row := range rows {
-		name := string(tree.MustBeDString(row[0]))
-		if name == ScheduleCompress || name == ScheduleVacuum {
-			scheduleExpr := string(tree.MustBeDString(row[1]))
-			expr, err := cronexpr.Parse(scheduleExpr)
-			if err != nil {
-				return err
-			}
-			// get new compress or vacuum interval
-			var duration int64
-			nextTime1 := expr.Next(timeutil.Now())
-			nextTime2 := expr.Next(nextTime1)
-			nextTime3 := expr.Next(nextTime2)
-			duration1 := nextTime2.Sub(nextTime1) / time.Second
-			duration2 := nextTime3.Sub(nextTime2) / time.Second
-			if duration2 > duration1 {
-				duration = int64(duration2)
-			} else {
-				duration = int64(duration1)
-			}
-			if name == ScheduleCompress {
-				tse.SetCompressInterval(strconv.AppendInt([]byte{}, duration, 10))
-			} else {
-				tse.SetVacuumInterval(strconv.AppendInt([]byte{}, duration, 10))
-			}
-			return nil
-		}
-	}
-	log.Error(ctx, "Can not find compress interval from system catalog at init stage")
 	return nil
 }
 

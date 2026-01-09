@@ -2074,16 +2074,6 @@ func (r *TsEngine) TSGetWaitThreadNum() (uint32, error) {
 	return uint32(info.wait_threads), nil
 }
 
-// SetCompressInterval send compress interval to AE
-func SetCompressInterval(interval []byte) {
-	C.TSSetClusterSetting(goToTSSlice([]byte(compressInterval)), goToTSSlice(interval))
-}
-
-// SetVacuumInterval send vacuum interval to AE
-func SetVacuumInterval(interval []byte) {
-	C.TSSetClusterSetting(goToTSSlice([]byte(vacuumInterval)), goToTSSlice(interval))
-}
-
 // Close close TsEngine
 func (r *TsEngine) Close() {
 	status := C.TSClose(r.tdb)

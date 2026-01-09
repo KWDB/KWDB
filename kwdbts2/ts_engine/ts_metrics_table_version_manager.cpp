@@ -25,6 +25,7 @@ impl_latch_virtual_func(MetricsVersionManager, &schema_rw_lock_)
 
 MetricsVersionManager::~MetricsVersionManager() {
   metric_tables_.clear();
+  opened_versions_.clear();
 }
 
 KStatus MetricsVersionManager::Init() {
@@ -98,7 +99,7 @@ KStatus MetricsVersionManager::CreateTable(kwdbContext_p ctx, std::vector<Attrib
     tmp_schema->create(meta, ts_version, partition_interval, encoding, err_info, false, hash_num);
   }
   if (err_info.errcode < 0) {
-    LOG_ERROR("root table[%s] create error : %s", schema_file_name .c_str(), err_info.errmsg.c_str());
+    LOG_ERROR("schema[%s] create error : %s", schema_file_name .c_str(), err_info.errmsg.c_str());
     tmp_schema->remove();
     return FAIL;
   }
@@ -132,6 +133,7 @@ KStatus MetricsVersionManager::CreateTable(kwdbContext_p ctx, std::vector<Attrib
   if (EngineOptions::force_sync_file) {
     tmp_schema->Sync();
   }
+  UpdateOpenedVersions(ts_version);
   return KStatus::SUCCESS;
 }
 
@@ -147,12 +149,26 @@ KStatus MetricsVersionManager::AddOneVersion(uint32_t ts_version, std::shared_pt
     cur_metric_table_ = metrics_table;
     cur_metric_version_ = ts_version;
   }
+  UpdateOpenedVersions(ts_version);
   return SUCCESS;
+}
+
+void MetricsVersionManager::UpdateOpenedVersions(uint32_t ts_version) {
+  opened_versions_.push_back(ts_version);
+  if (opened_versions_.size() > EngineOptions::metric_schema_cache_capacity) {
+    uint32_t pop_version = opened_versions_.front();
+    auto metric_iter = metric_tables_.find(pop_version);
+    if (metric_iter != metric_tables_.end()) {
+      // Only set to nullptr, cannot erase the version
+      metric_iter->second = nullptr;
+    }
+    opened_versions_.pop_front();
+  }
 }
 
 std::shared_ptr<MMapMetricsTable> MetricsVersionManager::GetMetricsTable(uint32_t ts_version, bool lock) {
   bool need_open = false;
-  // Try to get the root table using a read lock
+  // Try to get the schema using a read lock
   {
     if (lock) {
       rdLock();
@@ -161,30 +177,30 @@ std::shared_ptr<MMapMetricsTable> MetricsVersionManager::GetMetricsTable(uint32_
     if (ts_version == 0 || ts_version == cur_metric_version_) {
       return cur_metric_table_;
     }
-    auto bt_it = metric_tables_.find(ts_version);
-    if (bt_it != metric_tables_.end()) {
-      if (!bt_it->second) {
+    auto iter = metric_tables_.find(ts_version);
+    if (iter != metric_tables_.end()) {
+      if (!iter->second) {
         need_open = true;
       } else {
-        return bt_it->second;
+        return iter->second;
       }
     }
   }
   if (!need_open) {
     return nullptr;
   }
-  // Open the root table using a write lock
+  // Open the schema using a write lock
   if (lock) {
     wrLock();
   }
   Defer defer([&]() { if (lock) { unLock(); }});
-  auto bt_it = metric_tables_.find(ts_version);
-  if (bt_it != metric_tables_.end()) {
-    if (!bt_it->second) {
+  auto iter = metric_tables_.find(ts_version);
+  if (iter != metric_tables_.end()) {
+    if (!iter->second) {
       ErrorInfo err_info;
-      bt_it->second = open(bt_it->first, err_info);
+      iter->second = open(iter->first, err_info);
     }
-    return bt_it->second;
+    return iter->second;
   }
   return nullptr;
 }
@@ -231,13 +247,13 @@ KStatus MetricsVersionManager::SetDropped() {
   wrLock();
   Defer defer([&]() { unLock(); });
   std::vector<std::shared_ptr<MMapMetricsTable>> completed_tables;
-  // Iterate through all versions of the root table, updating the drop flag
+  // Iterate through all versions of the schema, updating the drop flag
   for (auto& root_table : metric_tables_) {
     if (!root_table.second) {
       ErrorInfo err_info;
       root_table.second = open(root_table.first, err_info);
       if (!root_table.second) {
-        LOG_ERROR("root table[%s] set drop failed", IdToSchemaFileName(table_id_, root_table.first).c_str());
+        LOG_ERROR("schema[%s] set drop failed", IdToSchemaFileName(table_id_, root_table.first).c_str());
         // rollback
         for (auto completed_table : completed_tables) {
           completed_table->setNotDropped();
@@ -258,7 +274,7 @@ bool MetricsVersionManager::IsDropped() {
 KStatus MetricsVersionManager::RemoveAll() {
   wrLock();
   Defer defer([&]() { unLock(); });
-  // Remove all root tables
+  // Remove all schemas
   for (auto& root_table : metric_tables_) {
     if (!root_table.second) {
       Remove(metric_schema_path_ / IdToSchemaFileName(table_id_, root_table.first));
@@ -285,21 +301,24 @@ KStatus MetricsVersionManager::UndoAlterCol(uint32_t old_version, uint32_t new_v
     return FAIL;
   }
 
-  auto new_bt = GetMetricsTable(new_version, false);
-  if (new_bt != nullptr) {
+  auto undo_schema = GetMetricsTable(new_version, false);
+  if (undo_schema != nullptr) {
     metric_tables_.erase(new_version);
+    if (opened_versions_.back() == new_version) {
+      opened_versions_.pop_back();
+    }
     if (cur_metric_table_->GetVersion() == new_version) {
       cur_metric_table_.reset();
     }
-    new_bt->remove();
+    undo_schema->remove();
   }
 
-  auto old_bt = GetMetricsTable(old_version, false);
-  if (old_bt == nullptr) {
+  auto prev_schema = GetMetricsTable(old_version, false);
+  if (prev_schema == nullptr) {
     LOG_ERROR("UndoAlterCol failed: metric version %u is null", old_version);
     return FAIL;
   }
-  cur_metric_table_ = old_bt;
+  cur_metric_table_ = prev_schema;
   cur_metric_version_ = old_version;
   LOG_INFO("UndoAlterCol succeed, table id [%lu], old version [%u], new version [%u]", table_id_, old_version, new_version);
   return SUCCESS;
@@ -314,9 +333,10 @@ std::shared_ptr<MMapMetricsTable> MetricsVersionManager::open(uint32_t ts_versio
   string schema_file_name  = IdToSchemaFileName(table_id_, ts_version);
   tmp_schema->open(schema_file_name , metric_schema_path_, MMAP_OPEN_NORECURSIVE, err_info);
   if (err_info.errcode < 0) {
-    LOG_ERROR("root table[%s] open failed: %s", schema_file_name .c_str(), err_info.errmsg.c_str())
+    LOG_ERROR("schema[%s] open failed: %s", schema_file_name .c_str(), err_info.errmsg.c_str())
     return nullptr;
   }
+  UpdateOpenedVersions(ts_version);
   return tmp_schema;
 }
 }  //  namespace kwdbts

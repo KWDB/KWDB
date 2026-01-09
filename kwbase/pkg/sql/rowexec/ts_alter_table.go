@@ -32,7 +32,6 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfrapb"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/types"
-	"gitee.com/kwbasedb/kwbase/pkg/tse"
 	"github.com/pkg/errors"
 )
 
@@ -202,12 +201,6 @@ func (tct *tsAlterTable) Start(ctx context.Context) context.Context {
 			tct.err = err
 			return ctx
 		}
-		tct.alterTsColumnSuccess = true
-	case execinfrapb.OperatorType_TsAlterCompressInterval:
-		tse.SetCompressInterval(tct.compressInterval)
-		tct.alterTsColumnSuccess = true
-	case execinfrapb.OperatorType_TsAlterVacuumInterval:
-		tse.SetVacuumInterval(tct.vacuumInterval)
 		tct.alterTsColumnSuccess = true
 	default:
 		tct.alterTsColumnSuccess = false

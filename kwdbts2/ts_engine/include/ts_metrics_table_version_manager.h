@@ -15,6 +15,7 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
+#include <deque>
 #include "mmap/mmap_metrics_table.h"
 #include "sys_utils.h"
 
@@ -28,6 +29,7 @@ class MetricsVersionManager {
   std::shared_ptr<MMapMetricsTable> cur_metric_table_{nullptr};
   // schemas of all versions
   std::unordered_map<uint32_t, std::shared_ptr<MMapMetricsTable>> metric_tables_;
+  std::deque<uint32_t> opened_versions_;
   KRWLatch schema_rw_lock_;
 
  public:
@@ -45,6 +47,8 @@ class MetricsVersionManager {
                       int64_t life_time, uint64_t partition_interval, uint64_t hash_num, ErrorInfo& err_info);
 
   KStatus AddOneVersion(uint32_t ts_version, std::shared_ptr<MMapMetricsTable> metrics_table);
+
+  void UpdateOpenedVersions(uint32_t ts_version);
 
   std::shared_ptr<MMapMetricsTable> GetMetricsTable(uint32_t ts_version, bool lock = true);
 

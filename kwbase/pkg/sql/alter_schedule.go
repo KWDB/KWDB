@@ -13,19 +13,14 @@ package sql
 
 import (
 	"context"
-	"strconv"
 	"strings"
 	"time"
 
 	"gitee.com/kwbasedb/kwbase/pkg/jobs/jobspb"
-	"gitee.com/kwbasedb/kwbase/pkg/kv/kvserver/storagepb"
-	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
 	"gitee.com/kwbasedb/kwbase/pkg/scheduledjobs"
-	"gitee.com/kwbasedb/kwbase/pkg/server/serverpb"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgcode"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgerror"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
-	"gitee.com/kwbasedb/kwbase/pkg/util/timeutil"
 	"github.com/cockroachdb/errors"
 	"github.com/gorhill/cronexpr"
 )
@@ -38,8 +33,6 @@ const (
 )
 
 const (
-	// ScheduleCompress is the name of scheduled_table_compress
-	ScheduleCompress = "scheduled_table_compress"
 	// ScheduleRetention is the name of scheduled_table_retention
 	ScheduleRetention = "scheduled_table_retention"
 	// ScheduleAutonomy is the name of scheduled_table_autonomy
@@ -154,47 +147,6 @@ func (n *alterScheduleNode) startExec(params runParams) error {
 		return err
 	}
 	params.p.SetAuditTarget(0, string(n.n.ScheduleName), nil)
-	// if alter compress schedule interval, we should send this interval to AE.
-	if n.n.ScheduleName == ScheduleCompress || n.n.ScheduleName == ScheduleVacuum {
-		// get new compress interval
-		var duration int
-		// nextTime1,2,3, are used to calculate compress interval which will be sent
-		// to AE. Due to the evaluation of CronExpr, this interval can not be accurate.
-		// So we calculate two approximate time, which is duration1 and duration2.
-		nextTime1 := expr.Next(timeutil.Now())
-		nextTime2 := expr.Next(nextTime1)
-		nextTime3 := expr.Next(nextTime2)
-		duration1 := nextTime2.Sub(nextTime1) / time.Second
-		duration2 := nextTime3.Sub(nextTime2) / time.Second
-		if duration2 > duration1 {
-			duration = int(duration2)
-		} else {
-			duration = int(duration1)
-		}
-
-		var nodeList []roachpb.NodeID
-		nodeStatus, err := params.ExecCfg().StatusServer.Nodes(params.ctx, &serverpb.NodesRequest{})
-		if err != nil {
-			return err
-		}
-		for _, n := range nodeStatus.Nodes {
-			if nodeStatus.LivenessByNodeID[n.Desc.NodeID] == storagepb.NodeLivenessStatus_LIVE {
-				nodeList = append(nodeList, n.Desc.NodeID)
-			}
-		}
-		var newPlanNode tsDDLNode
-		if n.n.ScheduleName == ScheduleCompress {
-			d := jobspb.SyncMetaCacheDetails{Type: alterCompressInterval}
-			newPlanNode = tsDDLNode{d: d, nodeID: nodeList, compressInterval: strconv.Itoa(duration)}
-		} else {
-			d := jobspb.SyncMetaCacheDetails{Type: alterVacuumInterval}
-			newPlanNode = tsDDLNode{d: d, nodeID: nodeList, vacuumInterval: strconv.Itoa(duration)}
-		}
-		_, err = params.p.makeNewPlanAndRun(params.ctx, params.p.txn, &newPlanNode)
-		if err != nil {
-			return err
-		}
-	}
 	return nil
 }
 
