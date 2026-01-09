@@ -23,7 +23,7 @@ void TimeWindowHelper::CalSkipTsSpan(kwdbts::KTimestampTz &ts) {
     KTimestampTz start = ts / MILLISECOND_PER_SECOND;
     struct tm tm, etm;
     time_t tt = (time_t)start;
-    localtime_r(&tt, &tm);
+    ToGMT(tt, tm);
     tm.tm_sec = 0;
     tm.tm_min = 0;
     tm.tm_hour = 0;
@@ -43,8 +43,8 @@ void TimeWindowHelper::CalSkipTsSpan(kwdbts::KTimestampTz &ts) {
       etm.tm_year = mon / 12;
       etm.tm_mon = mon % 12;
     }
-    first_ts_ = (k_int64)(mktime(&tm) * MILLISECOND_PER_SECOND);
-    last_ts_ = (k_int64)(mktime(&etm) * MILLISECOND_PER_SECOND);
+    first_ts_ = (k_int64)(timegm(&tm) * MILLISECOND_PER_SECOND);
+    last_ts_ = (k_int64)(timegm(&etm) * MILLISECOND_PER_SECOND);
     src_first_ts_ = first_ts_;
     src_last_ts_ = last_ts_;
     last_tm_ = etm;
@@ -68,7 +68,7 @@ void TimeWindowHelper::NextSkipTsSpan(KTimestampTz &ts) {
       last_tm_.tm_mon = mon % 12;
     }
     first_ts_ = last_ts_;
-    last_ts_ = (k_int64)(mktime(&last_tm_) * MILLISECOND_PER_SECOND);
+    last_ts_ = (k_int64)(timegm(&last_tm_) * MILLISECOND_PER_SECOND);
     src_first_ts_ = src_last_ts_;
     src_last_ts_ = last_ts_;
   } else {

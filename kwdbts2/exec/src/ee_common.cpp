@@ -171,7 +171,7 @@ KTimestampTz TimeAddDuration(KTimestampTz ts, k_int64 duration,
 
   struct tm tm;
   time_t tt = (time_t)(ts / MILLISECOND_PER_SECOND);
-  localtime_r(&tt, &tm);
+  ToGMT(tt, tm);
   int32_t mon = tm.tm_year * 12 + tm.tm_mon + (int32_t)numOfMonth;
   tm.tm_year = mon / 12;
   tm.tm_mon = mon % 12;
@@ -182,7 +182,7 @@ KTimestampTz TimeAddDuration(KTimestampTz ts, k_int64 duration,
   if (tm.tm_mday > daysOfMonth[tm.tm_mon]) {
     tm.tm_mday = daysOfMonth[tm.tm_mon];
   }
-  return (k_int64)(mktime(&tm) * MILLISECOND_PER_SECOND);
+  return (k_int64)(timegm(&tm) * MILLISECOND_PER_SECOND);
 }
 
 std::string parseUnicode2Utf8(const std::string &str) {
