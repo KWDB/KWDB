@@ -15,121 +15,122 @@ set -euo pipefail
 run_containers() {
     # 1. start single node container
     container_name=${CONTAINER_NAME_SINGLE}
-    if [ $(docker ps -a | grep ${container_name} | wc -l) -eq 0 ]; then
-        echo "create ${container_name} container"
-        docker run --name=${container_name} \
-            --hostname=${host_ip} \
-            --cpuset-cpus=0-15 \
-            --volume /var/run/docker.sock:/var/run/docker.sock \
-            --volume /dev:/dev \
-            --volume ${NODE_HOME_SINGLE}:/home/inspur/src/gitee.com \
-            --volume ${REPORT_DIR}:/home/inspur/src/reports \
-            --volume /usr/bin/docker:/usr/bin/docker \
-            --network=host \
-            --privileged \
-            --workdir=/home/inspur/src/github.com \
-            --runtime=runc \
-            --memory="34359738368" \
-            --detach=true \
-            ${KWDB_DOCKER_IMAGE} \
-            /bin/bash -c 'while true; do sleep 10000; done'
-    else
+    if [ $(docker ps -a | grep ${container_name} | wc -l) -ne 0 ]; then
         echo "${container_name} container already exists"
-        if [ $(docker inspect -f '{{.State.Running}}' ${container_name}) != "true" ]; then
-            echo "start ${container_name} container"
-            docker start ${container_name}
-        else
-            echo "${container_name} container is already running"
+        if [ $(docker inspect -f '{{.State.Running}}' ${container_name}) == "true" ]; then
+            echo "stop ${container_name} container"
+            docker stop ${container_name}
         fi
+        echo "remove ${container_name} container"
+        docker rm ${container_name}
     fi
+
+    echo "create ${container_name} container"
+    docker run --name=${container_name} \
+        --hostname=${host_ip} \
+        --cpuset-cpus=0-15 \
+        --volume /var/run/docker.sock:/var/run/docker.sock \
+        --volume /dev:/dev \
+        --volume ${NODE_HOME_SINGLE}:/home/inspur/src/gitee.com \
+        --volume ${REPORT_DIR}:/home/inspur/src/reports \
+        --volume /usr/bin/docker:/usr/bin/docker \
+        --network=host \
+        --privileged \
+        --workdir=/home/inspur/src/github.com \
+        --runtime=runc \
+        --memory="34359738368" \
+        --detach=true \
+        ${KWDB_DOCKER_IMAGE} \
+        /bin/bash -c 'while true; do sleep 10000; done'
 
     container_name=${CONTAINER_NAME_1}
-    if [ $(docker ps -a | grep ${container_name} | wc -l) -eq 0 ]; then
-        echo "create ${container_name} container"
-        docker run --name=${container_name} \
-            --hostname=${host_ip} \
-            --cpuset-cpus=16-31 \
-            --volume /var/run/docker.sock:/var/run/docker.sock \
-            --volume /dev:/dev \
-            --volume ${NODE_HOME_1}:/home/inspur/src/gitee.com \
-            --volume ${REPORT_DIR}:/home/inspur/src/reports \
-            --volume /usr/bin/docker:/usr/bin/docker \
-            --network=host \
-            --privileged \
-            --workdir=/home/inspur/src/github.com \
-            --runtime=runc \
-            --memory="34359738368" \
-            --detach=true \
-            ${KWDB_DOCKER_IMAGE} \
-            /bin/bash -c 'while true; do sleep 10000; done'
-    else
+    if [ $(docker ps -a | grep ${container_name} | wc -l) -ne 0 ]; then
         echo "${container_name} container already exists"
-        if [ $(docker inspect -f '{{.State.Running}}' ${container_name}) != "true" ]; then
-            echo "start ${container_name} container"
-            docker start ${container_name}
+        if [ $(docker inspect -f '{{.State.Running}}' ${container_name}) == "true" ]; then
+            echo "stop ${container_name} container"
+            docker stop ${container_name}
         else
-            echo "${container_name} container is already running"
+            echo "remove ${container_name} container"
+            docker rm ${container_name}
         fi
     fi
+    echo "create ${container_name} container"
+    docker run --name=${container_name} \
+        --hostname=${host_ip} \
+        --cpuset-cpus=16-31 \
+        --volume /var/run/docker.sock:/var/run/docker.sock \
+        --volume /dev:/dev \
+        --volume ${NODE_HOME_1}:/home/inspur/src/gitee.com \
+        --volume ${REPORT_DIR}:/home/inspur/src/reports \
+        --volume /usr/bin/docker:/usr/bin/docker \
+        --network=host \
+        --privileged \
+        --workdir=/home/inspur/src/github.com \
+        --runtime=runc \
+        --memory="34359738368" \
+        --detach=true \
+        ${KWDB_DOCKER_IMAGE} \
+        /bin/bash -c 'while true; do sleep 10000; done'
+
 
     container_name=${CONTAINER_NAME_2}
-    if [ $(docker ps -a | grep ${container_name} | wc -l) -eq 0 ]; then
-        echo "create ${container_name} container"
-        docker run --name=${container_name} \
-            --hostname=${host_ip} \
-            --cpuset-cpus=32-47 \
-            --volume /var/run/docker.sock:/var/run/docker.sock \
-            --volume /dev:/dev \
-            --volume ${NODE_HOME_2}:/home/inspur/src/gitee.com \
-            --volume ${REPORT_DIR}:/home/inspur/src/reports \
-            --volume /usr/bin/docker:/usr/bin/docker \
-            --network=host \
-            --privileged \
-            --workdir=/home/inspur/src/github.com \
-            --runtime=runc \
-            --memory="34359738368" \
-            --detach=true \
-            ${KWDB_DOCKER_IMAGE} \
-            /bin/bash -c 'while true; do sleep 10000; done'
-    else
+    if [ $(docker ps -a | grep ${container_name} | wc -l) -ne 0 ]; then
         echo "${container_name} container already exists"
-        if [ $(docker inspect -f '{{.State.Running}}' ${container_name}) != "true" ]; then
-            echo "start ${container_name} container"
-            docker start ${container_name}
-        else
-            echo "${container_name} container is already running"
+        if [ $(docker inspect -f '{{.State.Running}}' ${container_name}) == "true" ]; then
+            echo "stop ${container_name} container"
+            docker stop ${container_name}
         fi
+        echo "remove ${container_name} container"
+        docker rm ${container_name}
     fi
+
+    echo "create ${container_name} container"
+    docker run --name=${container_name} \
+        --hostname=${host_ip} \
+        --cpuset-cpus=32-47 \
+        --volume /var/run/docker.sock:/var/run/docker.sock \
+        --volume /dev:/dev \
+        --volume ${NODE_HOME_2}:/home/inspur/src/gitee.com \
+        --volume ${REPORT_DIR}:/home/inspur/src/reports \
+        --volume /usr/bin/docker:/usr/bin/docker \
+        --network=host \
+        --privileged \
+        --workdir=/home/inspur/src/github.com \
+        --runtime=runc \
+        --memory="34359738368" \
+        --detach=true \
+        ${KWDB_DOCKER_IMAGE} \
+        /bin/bash -c 'while true; do sleep 10000; done'
 
     container_name=${CONTAINER_NAME_3}
-    if [ $(docker ps -a | grep ${container_name} | wc -l) -eq 0 ]; then
-        echo "create ${container_name} container"
-        docker run --name=${container_name} \
-            --hostname=${host_ip} \
-            --cpuset-cpus=48-63 \
-            --volume /var/run/docker.sock:/var/run/docker.sock \
-            --volume /dev:/dev \
-            --volume ${NODE_HOME_3}:/home/inspur/src/gitee.com \
-            --volume ${REPORT_DIR}:/home/inspur/src/reports \
-            --volume /usr/bin/docker:/usr/bin/docker \
-            --volume ${cur_path}:/home/inspur/src/scripts \
-            --network=host \
-            --privileged \
-            --workdir=/home/inspur/src/github.com \
-            --runtime=runc \
-            --memory="34359738368" \
-            --detach=true \
-            ${KWDB_DOCKER_IMAGE} \
-            /bin/bash -c 'while true; do sleep 10000; done'
-    else
+    if [ $(docker ps -a | grep ${container_name} | wc -l) -ne 0 ]; then
         echo "${container_name} container already exists"
-        if [ $(docker inspect -f '{{.State.Running}}' ${container_name}) != "true" ]; then
-            echo "start ${container_name} container"
-            docker start ${container_name}
-        else
-            echo "${container_name} container is already running"
+        if [ $(docker inspect -f '{{.State.Running}}' ${container_name}) == "true" ]; then
+            echo "stop ${container_name} container"
+            docker stop ${container_name}
         fi
+        echo "remove ${container_name} container"
+        docker rm ${container_name}
     fi
 
+
+    echo "create ${container_name} container"
+    docker run --name=${container_name} \
+        --hostname=${host_ip} \
+        --cpuset-cpus=48-63 \
+        --volume /var/run/docker.sock:/var/run/docker.sock \
+        --volume /dev:/dev \
+        --volume ${NODE_HOME_3}:/home/inspur/src/gitee.com \
+        --volume ${REPORT_DIR}:/home/inspur/src/reports \
+        --volume /usr/bin/docker:/usr/bin/docker \
+        --volume ${cur_path}:/home/inspur/src/scripts \
+        --network=host \
+        --privileged \
+        --workdir=/home/inspur/src/github.com \
+        --runtime=runc \
+        --memory="34359738368" \
+        --detach=true \
+        ${KWDB_DOCKER_IMAGE} \
+        /bin/bash -c 'while true; do sleep 10000; done'
     return $?
 }

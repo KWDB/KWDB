@@ -11,7 +11,6 @@
 # See the Mulan PSL v2 for more details.
 QA_DIR=${QA_DIR:-"/home/inspur/src/gitee.com/kwbasedb/qa"}
 source ${QA_DIR}/tsbs_test/tsbs_env.sh
-
 # set default values
 node_num=${1:-"1"}
 scales=${2:-"100,4000,100000,1000000"}
@@ -145,10 +144,10 @@ for scale in ${TSBS_SCALE_LIST[@]}; do
         echo "clusterSettingsDir not found"
         exit 1
     fi
-    $KWBIN sql --host=${me_host_ip} --port=${me_host_port} --insecure < ${clusterSettingsDir}/general.sql > /dev/null 2>&1
+    $KWBIN sql --host=${me_host_ip} --port=${me_host_port} --insecure < ${clusterSettingsDir}/general.sql > /dev/null
 
     if [ -f "${clusterSettingsDir}/scale${scale}.sql" ]; then
-        $KWBIN sql --host=${me_host_ip} --port=${me_host_port} --insecure < ${clusterSettingsDir}/scale${scale}.sql > /dev/null 2>&1
+        $KWBIN sql --host=${me_host_ip} --port=${me_host_port} --insecure < ${clusterSettingsDir}/scale${scale}.sql > /dev/null
     fi
     load_data=${loadDataDir}/${format}/${tsbs_case}_${format}_scale_${scale}_${load_workers}order.dat
     mkdir -p ${loadDataDir}/${format}
@@ -201,7 +200,7 @@ for scale in ${TSBS_SCALE_LIST[@]}; do
 
     #region query data
     if [ -f "${clusterSettingsDir}/after_load_scale${scale}.sql" ]; then
-        $KWBIN sql --host=${me_host_ip} --port=${me_host_port} --insecure < ${clusterSettingsDir}/after_load_scale${scale}.sql > /dev/null 2>&1
+        $KWBIN sql --host=${me_host_ip} --port=${me_host_port} --insecure < ${clusterSettingsDir}/after_load_scale${scale}.sql > /dev/null
     fi
 
     for QUERY_TYPE in ${QUERY_TYPES_SIMPLE}; do
