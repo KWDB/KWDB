@@ -27,6 +27,7 @@
 #include "cm_func.h"
 #include "ts_table.h"
 #include "ts_blkspan_type_convert.h"
+#include "ts_std_utils.h"
 
 uint32_t k_entity_group_id_size = 8;
 uint32_t k_per_null_bitmap_size = 1;
@@ -1023,6 +1024,9 @@ void MMapTagColumnTable::getEntityIdGroupId(TagTableRowID row, uint32_t& entity_
   memcpy(&entity_id, rec_ptr, sizeof(uint32_t));
   memcpy(&group_id, rec_ptr + sizeof(entity_id), sizeof(uint32_t));
   stopRead();
+  if (CheckGroupID(group_id) == KStatus::FAIL) {
+    LOG_ERROR("Failed to obtain the vgroup id!");
+  }
   return ;
 }
 
@@ -1067,6 +1071,9 @@ int MMapTagColumnTable::getEntityIdByRownum(size_t row, std::vector<kwdbts::Enti
   record_ptr = entityIdStoreAddr(row);
   memcpy(&entity_id, record_ptr, sizeof(uint32_t));
   memcpy(&subgroup_id, record_ptr + sizeof(entity_id), sizeof(uint32_t));
+  if (CheckGroupID(subgroup_id) == KStatus::FAIL) {
+    LOG_ERROR("Failed to obtain the vgroup id!");
+  }
   char* mem = static_cast<char *>(std::malloc(primaryTagSize()));
   memcpy(mem, record_ptr + k_entity_group_id_size, primaryTagSize());
   std::shared_ptr<void> mem_ptr(mem, free);

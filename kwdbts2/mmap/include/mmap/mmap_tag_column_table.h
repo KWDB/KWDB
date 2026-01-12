@@ -23,6 +23,7 @@
 #include "lt_rw_latch.h"
 #include "lt_cond.h"
 #include "cm_func.h"
+#include "ts_std_utils.h"
 
 extern uint32_t k_entity_group_id_size;
 extern uint32_t k_per_null_bitmap_size;
@@ -335,6 +336,9 @@ class MMapTagColumnTable: public TSObject {
   // void push_back_primary(size_t r, const char * data);
 
   inline void push_back_entityid(size_t r, uint32_t entity_id, uint32_t group_id) {
+    if (CheckGroupID(group_id) == KStatus::FAIL) {
+      LOG_ERROR("Failed to obtain the vgroup id!");
+    }
     char *rec_ptr = entityIdStoreAddr(r);
     memcpy(rec_ptr, &entity_id, sizeof(uint32_t));
     memcpy(rec_ptr + sizeof(entity_id), &group_id, sizeof(uint32_t));

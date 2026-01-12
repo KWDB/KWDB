@@ -12,6 +12,7 @@
 #pragma once
 #include <cstdint>
 #include <iterator>
+#include "settings.h"
 
 namespace kwdbts {
 
@@ -95,4 +96,14 @@ class IndexRange {
     return tmp;
   }
 };
+
+inline KStatus CheckGroupID(uint32_t group_id) {
+  if (group_id <= 0 || EngineOptions::vgroup_max_num < group_id) {
+    LOG_ERROR("Failed to obtain the vgroup id! vgroup_max_num is [%d], vgroup_id is [%u]",
+              EngineOptions::vgroup_max_num, group_id);
+    assert((EngineOptions::vgroup_max_num >= group_id) && (group_id > 0));
+    return KStatus::FAIL;
+  }
+  return KStatus::SUCCESS;
+}
 }  // namespace kwdbts

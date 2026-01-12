@@ -31,6 +31,7 @@
 #include "ts_compressor_impl.h"
 #include "ts_table_v2_impl.h"
 #include "sys_utils.h"
+#include "ts_std_utils.h"
 
 // V2
 int EngineOptions::vgroup_max_num = 4;
@@ -1031,6 +1032,9 @@ std::vector<std::shared_ptr<TsVGroup>>* TSEngineImpl::GetTsVGroups() {
 }
 
 std::shared_ptr<TsVGroup> TSEngineImpl::GetTsVGroup(uint32_t vgroup_id) {
+  if (CheckGroupID(vgroup_id) == KStatus::FAIL) {
+    LOG_ERROR("Failed to obtain the vgroup id!");
+  }
   return vgroups_[vgroup_id - 1];
 }
 
