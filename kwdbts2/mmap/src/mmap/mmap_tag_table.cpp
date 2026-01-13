@@ -94,7 +94,7 @@ int TagTable::create(const vector<TagInfo> &schema, uint32_t table_version,
   return 0;
 }
 
-int TagTable::open(ErrorInfo &err_info) {
+int TagTable::open(std::vector<TableVersion>& invalid_versions, ErrorInfo &err_info) {
   if (nullptr == m_version_mgr_) {
     m_version_mgr_ = KNEW TagTableVersionManager(m_db_path_, m_tbl_sub_path_, m_table_id);
     if (m_version_mgr_ == nullptr) {
@@ -111,12 +111,13 @@ int TagTable::open(ErrorInfo &err_info) {
     }
   }
   // 1. load all versions id
-  std::vector<TableVersion> all_versions;
-  if (loadAllVersions(all_versions, err_info) < 0) {
+  std::vector<TableVersion> valid_versions;
+  if (loadAllVersions(valid_versions, invalid_versions, err_info) < 0) {
     return -1;
   }
+
   // 2. open all object
-  for (const auto it : all_versions) {
+  for (const auto it : valid_versions) {
     // open tag version object
     auto tag_ver_obj = m_version_mgr_->OpenTagVersionObject(it, err_info);
     if (nullptr == tag_ver_obj || !tag_ver_obj->isValid()) {
@@ -130,10 +131,11 @@ int TagTable::open(ErrorInfo &err_info) {
     m_version_mgr_->UpdateNewestTableVersion(it);
   }
 
-  for (const auto version : all_versions) {
+  for (const auto version : valid_versions) {
     TagVersionObject* tag_version_obj = m_version_mgr_->GetVersionObject(version);
     if (nullptr == tag_version_obj || !tag_version_obj->isValid()) {
       // tag version is invalid
+      invalid_versions.push_back(version);
       continue;
     }
     TagPartitionTable* tag_part_table = m_partition_mgr_->GetPartitionTable(tag_version_obj->metaData()->m_real_used_version_);
@@ -142,7 +144,7 @@ int TagTable::open(ErrorInfo &err_info) {
       return -1;
     }
     for (auto ntag_index : tag_part_table->getMmapNTagHashIndex()) {
-      for (const auto index_version : all_versions) {
+      for (const auto index_version : valid_versions) {
         TagVersionObject* index_tag_version_obj = m_version_mgr_->GetVersionObject(index_version);
         if (nullptr == index_tag_version_obj || !index_tag_version_obj->isValid()) {
           // tag version is invalid
@@ -169,11 +171,19 @@ int TagTable::open(ErrorInfo &err_info) {
   // 3. open hash index
   if (initHashIndex(MMAP_OPEN_NORECURSIVE, err_info) < 0) {
     LOG_ERROR("open HashIndex failed. error: %s ", err_info.errmsg.c_str());
+    if (!valid_versions.empty()) {
+      std::copy(valid_versions.begin(), valid_versions.end(), std::back_inserter(invalid_versions));
+      valid_versions.clear();
+    }
     return -1;
   }
   // 4. open entity row hash index
   if (initEntityRowHashIndex(MMAP_OPEN_NORECURSIVE, err_info) < 0) {
     LOG_ERROR("open Entity Row HashIndex failed. error: %s ", err_info.errmsg.c_str());
+    if (!valid_versions.empty()) {
+      std::copy(valid_versions.begin(), valid_versions.end(), std::back_inserter(invalid_versions));
+      valid_versions.clear();
+    }
     return -1;
   }
   m_version_mgr_->SyncCurrentTableVersion();
@@ -1270,8 +1280,33 @@ int TagTable::AddNewPartitionVersion(const vector<TagInfo> &schema, uint32_t new
     }
   }
 
+  TagPartitionTable* new_tag_partition_table = m_partition_mgr_->GetPartitionTable(new_version);
+  if (EngineOptions::force_sync_file) {
+    new_tag_partition_table->sync(MS_SYNC);
+    if (m_index_ != nullptr) {
+      m_index_->sync(MS_SYNC);
+    }
+    for (auto n_index : new_tag_partition_table->getMmapNTagHashIndex()) {
+      n_index->sync(MS_SYNC);
+    }
+    if (m_entity_row_index_ != nullptr) {
+      m_entity_row_index_->sync(MS_SYNC);
+    }
+  }
   tag_ver_obj->setStatus(TAG_STATUS_READY);
   m_version_mgr_->UpdateNewestTableVersion(new_version);
+  return 0;
+}
+
+
+int TagTable::CleanInvalidPartition(uint32_t version, const std::vector<roachpb::NTagIndexInfo> ntagidxinfo, ErrorInfo &err_info) {
+  LOG_INFO("CleanPartitionVersion table id:%lu, version:%d", this->m_table_id, version);
+  TagVersionObject* tag_ver_obj = m_version_mgr_->GetVersionObject(version);
+  if (nullptr != tag_ver_obj) {
+    // clear files
+    cleanPartition(version, ntagidxinfo, err_info);
+    m_version_mgr_->UpdataTagTableVersionManager();
+  }
   return 0;
 }
 
@@ -1641,7 +1676,7 @@ int TagTable::initEntityRowHashIndex(int flags, ErrorInfo& err_info) {
   return err_info.errcode;
 }
 
-int TagTable::loadAllVersions(std::vector<TableVersion>& all_versions, ErrorInfo& err_info) {
+int TagTable::loadAllVersions(std::vector<TableVersion>& valid_versions, std::vector<TableVersion>& invalid_versions, ErrorInfo& err_info) {
   string real_path = m_db_path_ + m_tbl_sub_path_;
   // Load all versions of root table
   DIR* dir_ptr = opendir(real_path.c_str());
@@ -1662,9 +1697,35 @@ int TagTable::loadAllVersions(std::vector<TableVersion>& all_versions, ErrorInfo
         closedir(dir_ptr);
         return -1;
       }
+
       if (S_ISREG(file_stat.st_mode) &&
-          strncmp(entry->d_name, prefix.c_str(), prefix_len) == 0) {
-        all_versions.push_back(std::stoi(entry->d_name + prefix_len));
+        strncmp(entry->d_name, prefix.c_str(), prefix_len) == 0) {  // tag.mt_id has been found.
+        int version_id = std::stoi(entry->d_name + prefix_len);
+        valid_versions.push_back(version_id);
+        // Check if the .tag.mt file exists in the tag_version_id directory
+        std::string tag_version_dir = real_path + "tag_version_"+ to_string(version_id);
+        string tag_mt_file = std::to_string(m_table_id) + ".tag" + ".mt";
+        struct stat stat_dir{};
+        if (stat(tag_version_dir.c_str(), &stat_dir) != 0) {
+          LOG_WARN("stat[%s] failed", tag_version_dir.c_str());
+          err_info.setError(KWENFILE, "stat[" + tag_version_dir + "] failed");
+          continue;
+        }
+
+        if (S_ISDIR(stat_dir.st_mode)) {
+         string tag_mt_path = tag_version_dir +"/" + tag_mt_file;
+          struct stat stat_mt{};
+          if (stat(tag_mt_path.c_str(), &stat_mt) != 0) {
+            LOG_ERROR("stat file [%s] failed: %s", tag_mt_path.c_str(), strerror(errno));
+            valid_versions.pop_back();
+            invalid_versions.push_back(version_id);
+            continue;
+          }
+          if (!S_ISREG(stat_mt.st_mode)) {
+            valid_versions.pop_back();
+            invalid_versions.push_back(version_id);
+          }
+        }
       }
     }
     closedir(dir_ptr);
@@ -1672,10 +1733,7 @@ int TagTable::loadAllVersions(std::vector<TableVersion>& all_versions, ErrorInfo
     LOG_ERROR("opendir [%s] failed.", real_path.c_str());
     return -1;
   }
-  if (all_versions.empty()) {
-    LOG_ERROR("read all tag table version is empty.");
-    return -1;
-  }
+
   return 0;
 }
 
@@ -2230,8 +2288,9 @@ TagTable* OpenTagTable(const std::string& db_path, const std::string &dir_path,
      return nullptr;
   }
   // open tag table
+  std::vector<TableVersion> invalid_versions;
   TagTable* tmp_bt = KNEW TagTable(db_path, new_sub_path, table_id, entity_group_id);
-  int err_code = tmp_bt->open(err_info);
+  int err_code = tmp_bt->open(invalid_versions, err_info);
   if (err_info.errcode == KWENOOBJ) {
     // table not exists.
     LOG_WARN("the tag table %s%s does not exist", new_sub_path.c_str(), std::to_string(table_id).c_str());

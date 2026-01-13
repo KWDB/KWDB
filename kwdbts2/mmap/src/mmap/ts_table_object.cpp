@@ -31,15 +31,10 @@ int TsTableObject::open(const fs::path& table_path, const fs::path& absolute_fil
     // initialize all pointers first
     initSection();
     if (meta_data_->magic != cc) {
-      return KWENOOBJ;
+      return KWECORR;
     }
 
-    error_code = getColumnInfo(meta_data_->attribute_offset,
-                               meta_data_->cols_num, cols_info_include_dropped_);
-    if (error_code < 0) {
-      return error_code;
-    }
-
+    getColumnInfo(meta_data_->attribute_offset, meta_data_->cols_num, cols_info_include_dropped_);
     cols_info_exclude_dropped_.clear();
     idx_for_valid_cols_.clear();
     int offset = 0;
@@ -50,9 +45,6 @@ int TsTableObject::open(const fs::path& table_path, const fs::path& absolute_fil
         offset += getDataTypeSize(cols_info_include_dropped_[i].type);
       }
     }
-
-    ErrorInfo err_info;
-
     meta_data_length_ = meta_data_->length;
   }
   if (meta_data_length_ == 0)

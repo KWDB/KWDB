@@ -113,7 +113,7 @@ class TsTableSchemaManager {
 
   vector<uint32_t> GetNTagIndexInfo(uint32_t ts_version, uint32_t index_id);
 
-  KStatus GetMeta(kwdbContext_p ctx, TSTableID table_id, uint32_t version, roachpb::CreateTsTable* meta);
+  KStatus GetMeta(kwdbContext_p ctx, uint32_t version, roachpb::CreateTsTable* meta);
 
   KStatus GetColumnsExcludeDropped(std::vector<AttributeInfo>& schema, uint32_t ts_version = 0);
 
@@ -205,6 +205,8 @@ class TsTableSchemaManager {
   static KStatus parseMetaToSchema(roachpb::CreateTsTable* meta,
                                    std::vector<AttributeInfo>& metric_schema,
                                    std::vector<TagInfo>& tag_schema);
+
+    KStatus removeTagVersion(uint32_t version);
 };
 
 }  // namespace kwdbts

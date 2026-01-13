@@ -442,16 +442,6 @@ KStatus TSEngineImpl::CreateTsTable(kwdbContext_p ctx, TSTableID table_id, roach
     db_id = meta->ts_table().database_id();
   }
 
-  uint64_t interval = EngineOptions::default_partition_interval;
-  if (meta->ts_table().has_partition_interval()) {
-    interval = meta->ts_table().partition_interval();
-  }
-  s = interval_recorder_->RecordInterval(db_id, interval);
-  if (s != KStatus::SUCCESS) {
-    LOG_ERROR("Record partition interval of db_id %d failed, interval %ld", db_id, interval);
-    return s;
-  }
-
   s = schema_mgr_->CreateTable(ctx, db_id, table_id, meta);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("schema Create Table[%lu] failed.", table_id);

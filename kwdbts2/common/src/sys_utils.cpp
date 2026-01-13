@@ -36,7 +36,7 @@ bool Remove(const string& path, ErrorInfo& error_info) {
   return true;
 }
 
-bool RemoveDirContents(const string& dir_path, ErrorInfo& error_info) {
+bool RemoveDirContents(const string& dir_path) {
   if (!fs::exists(dir_path) || !fs::is_directory(dir_path)) {
     LOG_WARN("RemoveDirContents[%s] failed: dir not exists", dir_path.c_str());
     return false;
@@ -44,9 +44,7 @@ bool RemoveDirContents(const string& dir_path, ErrorInfo& error_info) {
   try {
     for (auto& path : fs::directory_iterator(dir_path)) {
       if (!fs::remove_all(path) && errno != 0) {
-        error_info.errcode = errnumToErrorCode(errno);
-        error_info.errmsg = strerror(errno);
-        LOG_ERROR("%s remove failed: errno[%d], strerror[%s]", path.path().c_str(), errno, error_info.errmsg.c_str());
+        LOG_ERROR("%s remove failed: errno[%d], strerror[%s]", path.path().c_str(), errno, strerror(errno));
         return false;
       }
     }

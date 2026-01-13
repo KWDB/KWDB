@@ -28,7 +28,8 @@ MetricsVersionManager::~MetricsVersionManager() {
   opened_versions_.clear();
 }
 
-KStatus MetricsVersionManager::Init() {
+KStatus MetricsVersionManager::Init(std::vector<uint32_t>& remove_versions,
+                                    std::vector<uint32_t>& invalid_metric_versions, uint32_t tag_cur_version) {
   uint32_t max_table_version = 0;
   // load all versions
   DIR* dir_ptr = opendir(metric_schema_path_.c_str());
@@ -47,9 +48,13 @@ KStatus MetricsVersionManager::Init() {
         closedir(dir_ptr);
         return FAIL;
       }
-      if (S_ISREG(file_stat.st_mode) &&
-          strncmp(entry->d_name, prefix.c_str(), prefix_len) == 0) {
+      if (S_ISREG(file_stat.st_mode) && strncmp(entry->d_name, prefix.c_str(), prefix_len) == 0) {
         uint32_t ts_version = std::stoi(entry->d_name + prefix_len);
+        auto it = std::find(remove_versions.begin(), remove_versions.end(), ts_version);
+        if (it != remove_versions.end() || ts_version > tag_cur_version) {
+          fs::remove(full_path);
+          continue;
+        }
         InsertNull(ts_version);
         if (ts_version > max_table_version) {
           max_table_version = ts_version;
@@ -58,12 +63,21 @@ KStatus MetricsVersionManager::Init() {
     }
     closedir(dir_ptr);
   }
+  if (max_table_version == 0) {
+    return SUCCESS;
+  }
   // Open only the schema of the latest version.
   auto tmp_schema = std::make_shared<MMapMetricsTable>();
   string schema_file_name  = IdToSchemaFileName(table_id_, max_table_version);
   ErrorInfo err_info;
-  tmp_schema->open(schema_file_name , metric_schema_path_, MMAP_OPEN_NORECURSIVE, err_info);
-  if (err_info.errcode < 0) {
+  if (tmp_schema->open(schema_file_name , metric_schema_path_, MMAP_OPEN_NORECURSIVE, err_info) < 0) {
+    if (err_info.errcode == KWECORR) {
+      LOG_WARN("metric schema '%s' has been corrupted, remove it", schema_file_name.c_str());
+      tmp_schema->remove();
+      invalid_metric_versions.emplace_back(max_table_version);
+      metric_tables_.erase(max_table_version);
+      return SUCCESS;
+    }
     LOG_ERROR("schema[%s] open error : %s", schema_file_name .c_str(), err_info.errmsg.c_str());
     return FAIL;
   }
@@ -96,7 +110,7 @@ KStatus MetricsVersionManager::CreateTable(kwdbContext_p ctx, std::vector<Attrib
   auto tmp_schema = std::make_shared<MMapMetricsTable>();
   if (tmp_schema->open(schema_file_name , metric_schema_path_, MMAP_CREAT_EXCL, err_info) >= 0
       || err_info.errcode == KWECORR) {
-    tmp_schema->create(meta, ts_version, partition_interval, encoding, err_info, false, hash_num);
+    tmp_schema->create(meta, ts_version, partition_interval, encoding, err_info, hash_num);
   }
   if (err_info.errcode < 0) {
     LOG_ERROR("schema[%s] create error : %s", schema_file_name .c_str(), err_info.errmsg.c_str());

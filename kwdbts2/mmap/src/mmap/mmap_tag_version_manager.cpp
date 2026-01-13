@@ -89,6 +89,27 @@ TagVersionObject* TagTableVersionManager::GetVersionObject(uint32_t table_versio
   return nullptr;
 }
 
+int TagTableVersionManager::UpdataTagTableVersionManager() {
+  uint32_t max_version = 0;
+  if (m_version_tables_.empty()){
+    UpdateNewestTableVersion(0);
+    SyncCurrentTableVersion();
+    return 0;
+  }
+  for (const auto& it : m_version_tables_) {
+    uint32_t tmp_version = it.first;
+    if (tmp_version > max_version) {
+      max_version = tmp_version;
+    }
+  }
+  auto version_obj = m_version_tables_.find(max_version);
+  if (version_obj != m_version_tables_.end()) {
+    UpdateNewestTableVersion(version_obj->second->getTableVersion(), false);
+    SyncCurrentTableVersion();
+  }
+  return 0;
+}
+
 int TagTableVersionManager::RemoveAll(ErrorInfo& err_info) {
   wrLock();
   // remove all objects

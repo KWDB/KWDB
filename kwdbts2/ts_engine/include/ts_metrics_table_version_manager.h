@@ -39,7 +39,8 @@ class MetricsVersionManager {
 
   ~MetricsVersionManager();
 
-  KStatus Init();
+  KStatus Init(std::vector<uint32_t>& remove_versions, std::vector<uint32_t>& invalid_metric_versions,
+               uint32_t tag_cur_version);
 
   void InsertNull(uint32_t ts_version);
 

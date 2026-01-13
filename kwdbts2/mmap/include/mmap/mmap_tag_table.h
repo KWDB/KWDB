@@ -75,7 +75,7 @@ class TagTable {
   int create(const vector<TagInfo> &schema, uint32_t table_version, const std::vector<roachpb::NTagIndexInfo>& idx_info,
              ErrorInfo &err_info);
 
-  int open(ErrorInfo &err_info);
+  int open(std::vector<TableVersion>& invalid_versions, ErrorInfo &err_info);
 
   int remove(ErrorInfo &err_info);
   // check ptag exist & get entity id
@@ -202,6 +202,9 @@ class TagTable {
 
   int cleanPartition(uint32_t version, const std::vector<roachpb::NTagIndexInfo> ntagidxinfo, ErrorInfo &err_info);
 
+  int CleanInvalidPartition(uint32_t version, const std::vector<roachpb::NTagIndexInfo> ntagidxinfo,
+                            ErrorInfo &err_info);
+
   int createHashIndex(uint32_t new_version, ErrorInfo &err_info, const std::vector<uint32_t> &tags,
                       uint32_t index_id);
 
@@ -248,7 +251,8 @@ class TagTable {
 
   int initEntityRowHashIndex(int flags, ErrorInfo& err_info);
 
-  int loadAllVersions(std::vector<TableVersion>& all_versions, ErrorInfo& err_info);
+  int loadAllVersions(std::vector<TableVersion>& valid_versions, std::vector<TableVersion>& invalid_versions, ErrorInfo&
+    err_info);
 
   static const uint32_t max_rows_per_res = 200000;
 };

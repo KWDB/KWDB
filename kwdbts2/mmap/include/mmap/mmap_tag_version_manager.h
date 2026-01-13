@@ -64,6 +64,8 @@ public:
                           
   TagVersionObject* GetVersionObject(uint32_t table_version);
 
+  int UpdataTagTableVersionManager();
+
   int RemoveAll(ErrorInfo& err_info);
 
   TagVersionObject* OpenTagVersionObject(TableVersion table_version, ErrorInfo& err_info);
@@ -157,6 +159,8 @@ class TagVersionObject {
   int getTagColumnIndex(const TagInfo& tag_schema);
 
   inline void setStatus(int status) {m_meta_data_->m_status_ = status;}
+
+  TableVersion getTableVersion() {return m_table_version_;}
 
   inline bool isValid() const {return m_meta_data_->m_status_ == TAG_STATUS_READY;}
 

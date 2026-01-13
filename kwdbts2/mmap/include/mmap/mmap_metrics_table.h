@@ -44,8 +44,7 @@ class MMapMetricsTable : public TSObject, public TsTableObject {
   int open(const std::string& table_name, const fs::path& table_path, int flags, ErrorInfo& err_info);
 
   int create(const vector<AttributeInfo>& schema, const uint32_t& table_version,
-             uint64_t partition_interval, int encoding, ErrorInfo& err_info, bool init_data,
-             uint64_t hash_number = 2000);
+             uint64_t partition_interval, int encoding, ErrorInfo& err_info, uint64_t hash_number = 2000);
 
   int init(const vector<AttributeInfo>& schema, ErrorInfo& err_info);
 

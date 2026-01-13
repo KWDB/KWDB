@@ -28,11 +28,9 @@ MMapMetricsTable::~MMapMetricsTable() {
 
 impl_latch_virtual_func(MMapMetricsTable, &rw_latch_)
 
-int MMapMetricsTable::open(const std::string& table_name, const fs::path& table_path,
-                           int flags, ErrorInfo& err_info) {
+int MMapMetricsTable::open(const std::string& table_name, const fs::path& table_path, int flags, ErrorInfo& err_info) {
   const fs::path absolute_path = table_path / table_name;
-  if ((err_info.errcode = TsTableObject::open(table_name, absolute_path,
-                                              magic(), flags)) < 0) {
+  if ((err_info.errcode = TsTableObject::open(table_name, absolute_path, magic(), flags)) < 0) {
     err_info.setError(err_info.errcode, absolute_path);
     return err_info.errcode;
   }
@@ -48,18 +46,16 @@ int MMapMetricsTable::open(const std::string& table_name, const fs::path& table_
 }
 
 int MMapMetricsTable::create(const vector<AttributeInfo>& schema, const uint32_t& table_version,
-                             uint64_t partition_interval, int encoding, ErrorInfo& err_info, bool init_data,
-                             uint64_t hash_number) {
+                             uint64_t partition_interval, int encoding, ErrorInfo& err_info, uint64_t hash_number) {
   if (init(schema, err_info) < 0)
     return err_info.errcode;
 
-  meta_data_->magic = magic();
   meta_data_->struct_type |= (ST_COLUMN_TABLE);
   meta_data_->schema_version = table_version;
   meta_data_->partition_interval = partition_interval;
   meta_data_->encoding = encoding;
-  meta_data_->has_data = init_data;
   meta_data_->hash_num = hash_number;
+  meta_data_->magic = magic();
   setObjectReady();
 
   return 0;

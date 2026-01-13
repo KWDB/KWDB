@@ -45,11 +45,11 @@ KStatus TsEngineSchemaManager::Init(kwdbContext_p ctx) {
   std::regex num_regex("^[0-9]+$");
   try {
     if (!fs::exists(schema_root_path_)) {
-      LOG_ERROR("Schema directory does not exist: %s", schema_root_path_.c_str());
+      LOG_ERROR("Schema directory '%s' does not exist", schema_root_path_.c_str());
       return KStatus::FAIL;
     }
     if (!table_schema_mgrs_.empty()) {
-      LOG_WARN("Table schema managers is not empty before initialized");
+      LOG_WARN("table_schema_mgrs is not empty before initialized");
       table_schema_mgrs_.clear();
     }
     for (const auto& table_entry : fs::directory_iterator(schema_root_path_)) {
@@ -62,19 +62,21 @@ KStatus TsEngineSchemaManager::Init(kwdbContext_p ctx) {
           if (s != KStatus::SUCCESS) {
             return s;
           }
-          auto partition_interval = tb_schema_mgr->GetPartitionInterval();
-          // compatibility process for updating v3.0 to v3.1, partition interval is 0 or other random value in v3.0,
-          // set it to default value
-          if (partition_interval == 0 || partition_interval % 86400 != 0) {
-            partition_interval = EngineOptions::default_partition_interval;
-            tb_schema_mgr->SetPartitionInterval(partition_interval);
-          }
-          s = PartitionIntervalRecorder::GetInstance()->RecordInterval(tb_schema_mgr->GetDbID(), partition_interval);
-          if (s != KStatus::SUCCESS) {
-            LOG_ERROR("Partition interval of db_id %u is %ld, not %ld for table id %u", tb_schema_mgr->GetDbID(),
-                       PartitionIntervalRecorder::GetInstance()->GetInterval(tb_schema_mgr->GetDbID()),
-                       partition_interval, table_id);
-            return s;
+          if (tb_schema_mgr->GetCurrentVersion() != 0) {
+            auto partition_interval = tb_schema_mgr->GetPartitionInterval();
+            // compatibility process for updating v3.0 to v3.1, partition interval is 0 or other random value in v3.0,
+            // set it to default value
+            if (partition_interval == 0 || partition_interval % 86400 != 0) {
+              partition_interval = EngineOptions::default_partition_interval;
+              tb_schema_mgr->SetPartitionInterval(partition_interval);
+            }
+            s = PartitionIntervalRecorder::GetInstance()->RecordInterval(tb_schema_mgr->GetDbID(), partition_interval);
+            if (s != KStatus::SUCCESS) {
+              LOG_ERROR("Partition interval of db_id %u is %ld, not %ld for table id %u", tb_schema_mgr->GetDbID(),
+                         PartitionIntervalRecorder::GetInstance()->GetInterval(tb_schema_mgr->GetDbID()),
+                         partition_interval, table_id);
+              return s;
+            }
           }
           table_schema_mgrs_[table_id] = std::move(tb_schema_mgr);
         }
@@ -136,7 +138,7 @@ KStatus TsEngineSchemaManager::GetMeta(kwdbContext_p ctx, TSTableID table_id, ui
   if (it != table_schema_mgrs_.end()) {
     std::shared_ptr<TsTableSchemaManager> tb_schema = it->second;
     unLock();
-    s = tb_schema->GetMeta(ctx, table_id, version, meta);
+    s = tb_schema->GetMeta(ctx, version, meta);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("Table[%ld]-version[%d] get metric schema failed.", table_id, version);
       return s;
@@ -147,7 +149,7 @@ KStatus TsEngineSchemaManager::GetMeta(kwdbContext_p ctx, TSTableID table_id, ui
     Defer defer([&]() { unLock(); });
     it = table_schema_mgrs_.find(table_id);
     if (it != table_schema_mgrs_.end()) {
-      s = it->second->GetMeta(ctx, table_id, version, meta);
+      s = it->second->GetMeta(ctx, version, meta);
       if (s != KStatus::SUCCESS) {
         LOG_ERROR("Table[%ld]-version[%d] get metric schema failed.", table_id, version);
         return s;
@@ -159,7 +161,7 @@ KStatus TsEngineSchemaManager::GetMeta(kwdbContext_p ctx, TSTableID table_id, ui
     if (s != KStatus::SUCCESS) {
       return s;
     }
-    s = schema_mgr->GetMeta(ctx, table_id, version, meta);
+    s = schema_mgr->GetMeta(ctx, version, meta);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("Table[%ld]-version[%d] get metric schema failed.", table_id, version);
       return s;

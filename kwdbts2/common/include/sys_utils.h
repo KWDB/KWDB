@@ -56,10 +56,9 @@ bool Remove(const string& path, ErrorInfo& error_info = getDummyErrorInfo());
 /**
  * @brief Remove directory contents
  * @param dir_path The path of directory
- * @param error_info
  * @return
  */
-bool RemoveDirContents(const string& dir_path, ErrorInfo& error_info = getDummyErrorInfo());
+bool RemoveDirContents(const string& dir_path);
 
 /**
  * @brief Recursively create a directory (mkdir -p xxx)
