@@ -87,8 +87,6 @@ func checkCanReceiveLease(newLease *roachpb.Lease, rec EvalContext) error {
 		// lease evaluation succeed, though with a lease that's "invalid" so that
 		// a new lease can be requested right after.
 		return errors.Errorf(`replica %s of type %s cannot hold lease`, repDesc, t)
-	} else if !newLease.CheckLeaseFlag {
-		return errors.Errorf(`replica not allow transfer lease, repDesc is %+v`, repDesc)
 	}
 	return nil
 }
