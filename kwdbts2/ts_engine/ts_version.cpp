@@ -923,7 +923,7 @@ KStatus TsPartitionVersion::GetBlockSpans(const TsScanFilterParams& filter,
       // entity segment not exist
       return KStatus::SUCCESS;
     }
-    s = entity_segment_->GetBlockSpans(block_data_filter, *ts_block_spans,
+    s = entity_segment_->GetBlockSpans(entity_segment_, block_data_filter, *ts_block_spans,
              tbl_schema_mgr, scan_schema, ts_scan_stats);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("GetBlockSpans of entity segment failed.");

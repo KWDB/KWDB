@@ -203,7 +203,7 @@ class TsEntitySegmentMetaManager {
 
   KStatus GetAllBlockItems(TSEntityID entity_id, std::vector<TsEntitySegmentBlockItemWithData>* blk_items);
 
-  KStatus GetBlockSpans(const TsBlockItemFilterParams& filter, std::shared_ptr<TsEntitySegment> entity_segment,
+  KStatus GetBlockSpans(const TsBlockItemFilterParams& filter, const std::shared_ptr<TsEntitySegment>& entity_segment,
                         std::list<shared_ptr<TsBlockSpan>>& block_spans,
                         const std::shared_ptr<TsTableSchemaManager>& tbl_schema_mgr,
                         const std::shared_ptr<MMapMetricsTable>& scan_schema,
@@ -432,9 +432,8 @@ class TsSegmentFile {
     return meta_mgr_.GetAllBlockItems(entity_id, blk_items);
   }
 
-
   KStatus GetBlockSpans(const TsBlockItemFilterParams& filter,
-                                          std::shared_ptr<TsEntitySegment> entity_segment,
+                                          const std::shared_ptr<TsEntitySegment>& entity_segment,
                                           std::list<shared_ptr<TsBlockSpan>>& block_spans,
                                           const std::shared_ptr<TsTableSchemaManager>& tbl_schema_mgr,
                                           const std::shared_ptr<MMapMetricsTable>& scan_schema,
@@ -516,13 +515,23 @@ class TsEntitySegment : public TsSegmentBase, public enable_shared_from_this<TsE
     return segment_file_->GetAllBlockItems(entity_id, blk_items);
   }
 
+  KStatus GetBlockSpans(const std::shared_ptr<TsEntitySegment>& entity_segment,
+                        const TsBlockItemFilterParams& filter, std::list<shared_ptr<TsBlockSpan>>& block_spans,
+                        const std::shared_ptr<TsTableSchemaManager>& tbl_schema_mgr,
+                        const std::shared_ptr<MMapMetricsTable>& scan_schema,
+                        TsScanStats* ts_scan_stats = nullptr) {
+    return segment_file_->GetBlockSpans(filter, entity_segment, block_spans, tbl_schema_mgr,
+                                        scan_schema, ts_scan_stats);
+  }
+
   KStatus GetBlockSpans(const TsBlockItemFilterParams& filter, std::list<shared_ptr<TsBlockSpan>>& block_spans,
                         const std::shared_ptr<TsTableSchemaManager>& tbl_schema_mgr,
                         const std::shared_ptr<MMapMetricsTable>& scan_schema,
                         TsScanStats* ts_scan_stats = nullptr) override {
-    return segment_file_->GetBlockSpans(filter, shared_from_this(), block_spans, tbl_schema_mgr,
+    std::shared_ptr<TsEntitySegment> entity_segment = shared_from_this();
+    return segment_file_->GetBlockSpans(filter, entity_segment, block_spans, tbl_schema_mgr,
                                         scan_schema, ts_scan_stats);
-  };
+  }
 
   const EntitySegmentMetaInfo &GetHandleInfo() const { return segment_file_->GetHandleInfo(); }
 
