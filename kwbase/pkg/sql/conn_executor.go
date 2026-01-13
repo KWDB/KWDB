@@ -3196,7 +3196,6 @@ func (ex *connExecutor) SendDirectTsInsert(
 	defer recv.Release()
 
 	exEvalCtx := ex.planner.ExtendedEvalContext()
-	exEvalCtx.Tracing = &SessionTracing{}
 	var planCtx *PlanningCtx
 	distribute := false
 	distribute = shouldDistributePlan(
