@@ -509,12 +509,12 @@ KStatus TsVGroup::GetEntityLastRow(std::shared_ptr<TsTableSchemaManager>& table_
     if (!entity_latest_row_.count(entity_id) || last_block_span->GetLastTS() >= last_row.last_ts) {
       last_row.is_payload_valid = false;
       last_row.last_ts = last_block_span->GetLastTS();
+      last_row.status = TsEntityLatestRowStatus::Valid;
     }
     if (checkTimestampWithSpans(ts_spans, last_row.last_ts, last_row.last_ts) != TimestampCheckResult::NonOverlapping) {
       entity_last_ts = last_row.last_ts;
     }
   }
-  last_row.status = TsEntityLatestRowStatus::Valid;
   return KStatus::SUCCESS;
 }
 
