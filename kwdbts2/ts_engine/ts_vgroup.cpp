@@ -143,7 +143,9 @@ KStatus TsVGroup::Init(kwdbContext_p ctx) {
   }
   if (need_recalc_count) {
     s = ResetCountStat();
-    LOG_ERROR("vgroup [%u] recover recalculate count stat failed.", vgroup_id_);
+    if (s != KStatus::SUCCESS) {
+      LOG_ERROR("vgroup [%u] recover recalculate count stat failed.", vgroup_id_);
+    }
   }
 
   initCompactThread();
@@ -2535,6 +2537,7 @@ KStatus TsVGroup::RecalcCountStat() {
     auto par_version = current_version->GetPartition(par_id);
     if (par_version) {
       TsVersionUpdate update;
+      std::vector<TsEntityCountStats> flush_infos;
       for (auto& [tb_id, entities] : tables) {
         std::shared_ptr<TsTableSchemaManager> tb_schema;
         s = schema_mgr_->GetTableSchemaMgr(tb_id, tb_schema);
@@ -2557,7 +2560,6 @@ KStatus TsVGroup::RecalcCountStat() {
                                        par_version->GetTsColTypeEndTime(ts_col_type)}};
         TsScanFilterParams filter{tb_schema->GetDbID(), tb_schema->GetTableId(), GetVGroupID(), 0,
           ts_col_type, UINT64_MAX, ts_spans};
-        std::vector<TsEntityCountStats> flush_infos;
         for (auto& entity_id : entities) {
           if (!tag_table->HasEntityTag(GetVGroupID(), entity_id)) {
             continue;
@@ -2588,9 +2590,12 @@ KStatus TsVGroup::RecalcCountStat() {
             flush_infos.emplace_back(flush_info);
           }
         }
-        uint64_t file_number = version_manager_->NewFileNumber();
-        update.AddCountFile(par_id, {file_number, flush_infos});
       }
+      if (flush_infos.empty()) {
+        continue;
+      }
+      uint64_t file_number = version_manager_->NewFileNumber();
+      update.AddCountFile(par_id, {file_number, flush_infos});
       update.SetCountStatsType(CountStatsStatus::Recalculate);
       update.SetVersionNum(version_num);
       update.SetMaxLSN(max_osn);
@@ -2612,7 +2617,6 @@ KStatus TsVGroup::ResetCountStat() {
 
   std::map<std::shared_ptr<TsTableSchemaManager>, std::vector<uint32_t>> table_entity_map;
   for (auto& tb_schema : tb_schema_manager) {
-    DatabaseID db_id = tb_schema->GetDbID();
     std::shared_ptr<TagTable> tag_table;
     kwdbContext_t ctx;
     auto s = tb_schema->GetTagSchema(&ctx, &tag_table);
@@ -2629,18 +2633,18 @@ KStatus TsVGroup::ResetCountStat() {
 
   TsVersionUpdate update;
   for (auto& [par_id, par_version] : all_partitions) {
+    std::vector<TsEntityCountStats> flush_infos;
     for (auto& [tb, entities] : table_entity_map) {
       if (tb->GetDbID() != std::get<0>(par_id)) {
         continue;
       }
-      std::vector<TsEntityCountStats> flush_infos;
       for (auto& entity : entities) {
         TsEntityCountStats flush_info{tb->GetTableId(), entity, INT64_MAX, INT64_MIN, 0, false, ""};
         flush_infos.emplace_back(flush_info);
       }
-      uint64_t file_number = version_manager_->NewFileNumber();
-      update.AddCountFile(par_id, {file_number, flush_infos});
     }
+    uint64_t file_number = version_manager_->NewFileNumber();
+    update.AddCountFile(par_id, {file_number, flush_infos});
   }
   update.SetCountStatsType(CountStatsStatus::UpgradeRecover);
   version_manager_->ApplyUpdate(&update);
