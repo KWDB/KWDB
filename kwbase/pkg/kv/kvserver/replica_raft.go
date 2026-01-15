@@ -104,7 +104,7 @@ func (r *Replica) makeLocalIDKey() storagebase.CmdIDKey {
 func (r *Replica) evalAndPropose(
 	ctx context.Context, ba *roachpb.BatchRequest, g *concurrency.Guard, lease *roachpb.Lease,
 ) (chan proposalResult, func(), int64, *roachpb.Error) {
-	idKey := makeIDKey()
+	idKey := r.makeLocalIDKey()
 	proposal, pErr := r.requestToProposal(ctx, idKey, ba, g.LatchSpans())
 	log.Event(proposal.ctx, "evaluated request")
 
