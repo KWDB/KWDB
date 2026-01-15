@@ -937,3 +937,44 @@ ERROR: procedure "pc43" does not exist
 SQLSTATE: 42704
 > drop database if exists d1 cascade;
 DROP DATABASE
+> create database d1;
+CREATE DATABASE
+> use d1;
+SET
+> create procedure pc44()
+BEGIN
+SET @v44=44;SET @v440=440;
+IF @v44 IN (44) AND @v440 IN (440) THEN SELECT 'Number @v44 is equal to 44, Number @v440 is equal to 440';
+ELSE SELECT 'Number @v44, @v440 is not 44, 440';
+ENDIF;
+END;
+CREATE PROCEDURE
+> call pc44();
+                          ?column?
+------------------------------------------------------------
+  Number @v44 is equal to 44, Number @v440 is equal to 440
+(1 row)
+> drop procedure pc44;
+DROP PROCEDURE
+> CREATE PROCEDURE pc45()
+BEGIN
+SET @v45=1;SET @v450=0;
+IF @v45 IN (1,2,3) AND @v450 IN (0) THEN SELECT 'Number @v45 is bless 1,2,3 Number @v450 is equal to 0';
+ELSE SELECT 'Number @v45, @v450 is not 0,1,2,3';
+ENDIF;
+END;
+CREATE PROCEDURE
+> CALL pc45();
+                        ?column?
+---------------------------------------------------------
+  Number @v45 is bless 1,2,3 Number @v450 is equal to 0
+(1 row)
+> CALL pc45();
+                        ?column?
+---------------------------------------------------------
+  Number @v45 is bless 1,2,3 Number @v450 is equal to 0
+(1 row)
+> drop procedure pc45;
+DROP PROCEDURE
+> drop database if exists d1 cascade;
+DROP DATABASE

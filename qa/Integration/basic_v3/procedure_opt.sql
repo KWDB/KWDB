@@ -757,3 +757,33 @@ delimiter ;
 call pc43();
 drop procedure pc43;
 drop database if exists d1 cascade;
+
+create database d1;
+use d1;
+delimiter \\
+create procedure pc44()
+BEGIN
+SET @v44=44;SET @v440=440;
+IF @v44 IN (44) AND @v440 IN (440) THEN SELECT 'Number @v44 is equal to 44, Number @v440 is equal to 440';
+ELSE SELECT 'Number @v44, @v440 is not 44, 440';
+ENDIF;
+END\\
+
+delimiter ;
+call pc44();
+drop procedure pc44;
+
+delimiter \\
+CREATE PROCEDURE pc45()
+BEGIN
+SET @v45=1;SET @v450=0;
+IF @v45 IN (1,2,3) AND @v450 IN (0) THEN SELECT 'Number @v45 is bless 1,2,3 Number @v450 is equal to 0';
+ELSE SELECT 'Number @v45, @v450 is not 0,1,2,3';
+ENDIF;
+END\\
+
+delimiter ;
+CALL pc45();
+CALL pc45();
+drop procedure pc45;
+drop database if exists d1 cascade;

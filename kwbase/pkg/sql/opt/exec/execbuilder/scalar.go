@@ -154,7 +154,11 @@ func (b *Builder) indexedVar(
 	col := md.ColumnMeta(colID)
 	if col.IsProcedureUsed() {
 		indexVal := tree.NewTypedOrdinalReference(col.RealIdx(), col.Type)
-		indexVal.ProcProperty = tree.NewLocalColProperty(col.IsParam(), tree.DeclareValue, col.RealIdx())
+		if col.IsProcedureLocalValue() {
+			indexVal.ProcProperty = tree.NewLocalColProperty(col.IsParam(), tree.DeclareValue, col.RealIdx())
+		} else {
+			indexVal.ProcProperty = tree.NewUDFColProperty(col.IsParam(), col.UDVName())
+		}
 		return indexVal
 	}
 

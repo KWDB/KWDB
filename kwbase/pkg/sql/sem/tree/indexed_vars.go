@@ -143,6 +143,16 @@ func (v *IndexedVar) Eval(ctx *EvalContext) (Datum, error) {
 		return nil, errors.AssertionFailedf(
 			"indexed var must be bound to a container before evaluation")
 	}
+	if v.IsProcedureUsed() && v.ProcProperty.IsUdv() {
+		varName := v.ProcProperty.UDFName()
+		if ctx.SessionData.UserDefinedVars[varName] != nil {
+			if varValue, ok := ctx.SessionData.UserDefinedVars[varName]; ok {
+				d := varValue.(Datum)
+				return d, nil
+			}
+		}
+		panic(pgerror.Newf(pgcode.UndefinedObject, "%s is not defined", varName))
+	}
 	return ctx.IVarContainer.IndexedVarEval(v.Idx, ctx)
 }
 

@@ -592,6 +592,11 @@ func (p *ProcedureValueProperty) IsDeclared() bool {
 	return p.from == DeclareValue
 }
 
+// IsUdv returns cols from udv
+func (p *ProcedureValueProperty) IsUdv() bool {
+	return p.from == UDFValue
+}
+
 // RealIdx returns value real local index
 func (p *ProcedureValueProperty) RealIdx() int {
 	return p.realIdx
