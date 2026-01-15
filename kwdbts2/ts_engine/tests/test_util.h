@@ -418,6 +418,9 @@ TSSlice GenRowPayload(const std::vector<AttributeInfo>& metric, const std::vecto
   }
   TSSlice payload{nullptr, 0};
   builder.Build(table_id, version, &payload);
+  if (num == 0) {
+    KUint8(payload.data + TsRawPayload::row_type_offset_) = DataTagFlag::TAG_ONLY;
+  }
   return payload;
 }
 

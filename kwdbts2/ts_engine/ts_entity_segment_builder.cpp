@@ -838,7 +838,7 @@ KStatus TsEntitySegmentBuilder::WriteBatchFinish(TsVersionUpdate *update) {
     cur_entity_id = kv.first;
   }
   if (cur_entity_segment_) {
-    for (uint32_t entity_id = cur_entity_id + 1; entity_id < cur_entity_segment_->GetEntityNum(); ++entity_id) {
+    for (uint32_t entity_id = cur_entity_id + 1; entity_id <= cur_entity_segment_->GetEntityNum(); ++entity_id) {
       TsEntityItem entity_item{};
       bool is_exist = true;
       s = cur_entity_segment_->GetEntityItem(entity_id, entity_item, is_exist);
