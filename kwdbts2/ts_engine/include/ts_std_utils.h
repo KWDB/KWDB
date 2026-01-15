@@ -97,10 +97,15 @@ class IndexRange {
   }
 };
 
-inline KStatus CheckGroupID(uint32_t group_id) {
+inline KStatus CheckGroupID(uint32_t group_id, bool is_write = true) {
   if (group_id <= 0 || EngineOptions::vgroup_max_num < group_id) {
-    LOG_ERROR("Failed to obtain the vgroup id! vgroup_max_num is [%d], vgroup_id is [%u]",
-              EngineOptions::vgroup_max_num, group_id);
+    if (is_write) {
+      LOG_ERROR("Failed to write the vgroup id! vgroup_max_num is [%d], vgroup_id is [%u]",
+                EngineOptions::vgroup_max_num, group_id);
+    } else {
+      LOG_ERROR("Failed to obtain the vgroup id! vgroup_max_num is [%d], vgroup_id is [%u]",
+                EngineOptions::vgroup_max_num, group_id);
+    }
     assert((EngineOptions::vgroup_max_num >= group_id) && (group_id > 0));
     return KStatus::FAIL;
   }

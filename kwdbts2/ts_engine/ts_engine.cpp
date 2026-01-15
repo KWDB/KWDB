@@ -1022,7 +1022,7 @@ std::vector<std::shared_ptr<TsVGroup>>* TSEngineImpl::GetTsVGroups() {
 }
 
 std::shared_ptr<TsVGroup> TSEngineImpl::GetTsVGroup(uint32_t vgroup_id) {
-  if (CheckGroupID(vgroup_id) == KStatus::FAIL) {
+  if (CheckGroupID(vgroup_id, false) == KStatus::FAIL) {
     LOG_ERROR("Failed to obtain the vgroup id!");
   }
   return vgroups_[vgroup_id - 1];

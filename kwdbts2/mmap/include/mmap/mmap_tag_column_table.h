@@ -336,8 +336,8 @@ class MMapTagColumnTable: public TSObject {
   // void push_back_primary(size_t r, const char * data);
 
   inline void push_back_entityid(size_t r, uint32_t entity_id, uint32_t group_id) {
-    if (CheckGroupID(group_id) == KStatus::FAIL) {
-      LOG_ERROR("Failed to obtain the vgroup id!");
+    if (CheckGroupID(group_id, true) == KStatus::FAIL) {
+      LOG_ERROR("Failed to write the vgroup id!");
     }
     char *rec_ptr = entityIdStoreAddr(r);
     memcpy(rec_ptr, &entity_id, sizeof(uint32_t));
@@ -466,12 +466,15 @@ class MMapTagColumnTable: public TSObject {
     memcpy(tag_ptr, tag_info, sizeof(TagDataInfo));
   }
 
+  // init   (0x00)
+  // delete (0x01)
+  // valid  (0x02)
   inline void setDeleteMark(size_t row) {
     reinterpret_cast<uint8_t*>(header_(row))[0] = 1;
   }
 
   inline void unsetDeleteMark(size_t row) {
-    reinterpret_cast<uint8_t *>(header_(row))[0] = 0;
+    reinterpret_cast<uint8_t *>(header_(row))[0] = 2;
   }
 
   int getColumnsByRownum(size_t row, const std::vector<uint32_t>& src_scan_tags, const std::vector<TagInfo>& result_scan_tag_infos, kwdbts::ResultSet* res);
@@ -538,8 +541,8 @@ class MMapTagColumnTable: public TSObject {
   int getEntityIdByRownum(size_t row, std::vector<kwdbts::EntityResultIndex>* entityIdList);
 
   inline bool isValidRow(size_t row) {
-    return (((unsigned char *)header_(row))[0] & 0x01) ? false : true;
-    // return (((unsigned char *)header_(row))[0] == 0x00) ? true : false;
+    // valid(0x02)
+    return (((unsigned char *)header_(row))[0] & 0x02) ? true : false;
   }
 
   int startRead() {

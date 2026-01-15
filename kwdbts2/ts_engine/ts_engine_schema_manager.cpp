@@ -295,6 +295,7 @@ KStatus TsEngineSchemaManager::GetVGroup(kwdbContext_p ctx, const std::shared_pt
   uint32_t entityid, groupid;
   if (tag_schema->hasPrimaryKey(primary_key.data, primary_key.len, entityid, groupid)) {
     *entity_id = entityid;
+    // TODO(guanyanxin) clean up the code after adding the checksum.
     if (groupid <= 0 || EngineOptions::vgroup_max_num < groupid) {
       LOG_ERROR("Failed to obtain the vgroup id! vgroup_max_num is [%d], vgroup_id is [%u]",
                 EngineOptions::vgroup_max_num, groupid);

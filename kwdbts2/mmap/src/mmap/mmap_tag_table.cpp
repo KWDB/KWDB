@@ -559,10 +559,15 @@ int TagTable::DeleteTagRecord(const char *primary_tags, int len, ErrorInfo& err_
       src_scan_tags.push_back(col_id);
     }
     for (int i = 0; i < src_scan_tags.size(); i++) {
+      bool found = false;
       for (int tag_idx = 0; tag_idx < schema_info_exclude_dropped.size(); tag_idx++) {
         if (schema_info_exclude_dropped[tag_idx].m_id == src_scan_tags[i]) {
+          found = true;
           result_scan_tags_idx.emplace_back(tag_version_object->getValidSchemaIdxs()[tag_idx]);
         }
+      }
+      if (found == false) {
+        result_scan_tags_idx.emplace_back(INVALID_COL_IDX);
       }
     }
 
@@ -590,6 +595,10 @@ int TagTable::DeleteTagRecord(const char *primary_tags, int len, ErrorInfo& err_
     }
 
     char index_key[ntag_index->keySize()];
+    for (int i = 0; i < ntag_index->keySize(); i++) {
+      index_key[i] = '\0';
+    }
+
     int num = 0;
     for(int i = 0; i < tag_cols.size(); i++){
       memcpy(&index_key[num], (char*)tag_cols[i], result_scan_tag_infos[src_scan_tags_idx[i]].m_size);

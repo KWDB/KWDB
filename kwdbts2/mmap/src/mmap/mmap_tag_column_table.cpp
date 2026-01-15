@@ -1024,7 +1024,7 @@ void MMapTagColumnTable::getEntityIdGroupId(TagTableRowID row, uint32_t& entity_
   memcpy(&entity_id, rec_ptr, sizeof(uint32_t));
   memcpy(&group_id, rec_ptr + sizeof(entity_id), sizeof(uint32_t));
   stopRead();
-  if (CheckGroupID(group_id) == KStatus::FAIL) {
+  if (CheckGroupID(group_id, false) == KStatus::FAIL) {
     LOG_ERROR("Failed to obtain the vgroup id!");
   }
   return ;
@@ -1071,7 +1071,7 @@ int MMapTagColumnTable::getEntityIdByRownum(size_t row, std::vector<kwdbts::Enti
   record_ptr = entityIdStoreAddr(row);
   memcpy(&entity_id, record_ptr, sizeof(uint32_t));
   memcpy(&subgroup_id, record_ptr + sizeof(entity_id), sizeof(uint32_t));
-  if (CheckGroupID(subgroup_id) == KStatus::FAIL) {
+  if (CheckGroupID(subgroup_id, false) == KStatus::FAIL) {
     LOG_ERROR("Failed to obtain the vgroup id!");
   }
   char* mem = static_cast<char *>(std::malloc(primaryTagSize()));
