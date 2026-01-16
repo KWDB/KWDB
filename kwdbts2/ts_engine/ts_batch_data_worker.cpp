@@ -206,7 +206,7 @@ KStatus TsReadBatchDataWorker::Init(kwdbContext_p ctx) {
     LOG_ERROR("Failed to get metric schema, table id[%lu], version[%lu]", table_id_, table_version_);
     return KStatus::FAIL;
   }
-  const vector<AttributeInfo>& attrs = metric_schema->getSchemaInfoExcludeDropped();
+  const vector<AttributeInfo>& attrs = *metric_schema->getSchemaInfoExcludeDroppedPtr();
   assert(!attrs.empty());
   n_cols_ = attrs.size() + 1;  // add osn
   ts_col_type_ = static_cast<DATATYPE>(attrs[0].type);
@@ -524,7 +524,7 @@ KStatus TsWriteBatchDataWorker::Write(kwdbContext_p ctx, TSTableID table_id, uin
     LOG_ERROR("Failed to get metric schema, table id[%lu], version[%u]", table_id, table_version);
     return KStatus::FAIL;
   }
-  const vector<AttributeInfo>& attrs = metric_schema->getSchemaInfoExcludeDropped();
+  const vector<AttributeInfo>& attrs = *metric_schema->getSchemaInfoExcludeDroppedPtr();
   assert(!attrs.empty());
   DATATYPE ts_col_type = static_cast<DATATYPE>(attrs[0].type);
   timestamp64 p_time = convertTsToPTime(ts, ts_col_type);

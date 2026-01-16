@@ -95,6 +95,7 @@ class TsBlockSpan {
   TSEntityID entity_id_ = 0;
   int start_row_ = 0, nrow_ = 0;
   bool has_pre_agg_{false};
+  std::shared_ptr<MMapMetricsTable> scan_schema_{nullptr};
   const std::vector<AttributeInfo>* scan_attrs_ = nullptr;  // used only if block version equals scan version.
 
  public:
@@ -105,7 +106,7 @@ class TsBlockSpan {
  public:
   TsBlockSpan(uint32_t vgroup_id, TSEntityID entity_id, std::shared_ptr<TsBlock> block, int start, int nrow,
               std::shared_ptr<TSBlkDataTypeConvert>& convert,
-              uint32_t scan_version, const std::vector<AttributeInfo>* scan_attrs);
+              const std::shared_ptr<MMapMetricsTable>& scan_schema);
 
   TsBlockSpan(const TsBlockSpan& src, std::shared_ptr<TsBlock> block, int start, int nrow, TSEntityID entity_id = 0);
 
@@ -114,7 +115,7 @@ class TsBlockSpan {
 
   static KStatus MakeNewBlockSpan(TsBlockSpan* src_blk_span, uint32_t vgroup_id,
     TSEntityID entity_id, std::shared_ptr<TsBlock> block, int start, int nrow,
-    uint32_t scan_version, const std::vector<AttributeInfo>* scan_attrs,
+    const std::shared_ptr<MMapMetricsTable>& scan_schema,
     const std::shared_ptr<TsTableSchemaManager>& tbl_schema_mgr, std::shared_ptr<TsBlockSpan>& ret);
 
   static KStatus GenMergeRowData(std::list<std::shared_ptr<kwdbts::TsBlockSpan>>& dedup_block_spans,

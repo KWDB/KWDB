@@ -616,7 +616,7 @@ KStatus TsEntitySegmentBuilder::Compact(bool call_by_vacuum, TsVersionUpdate* up
                   block_span->GetTableVersion());
         return s;
       }
-      std::vector<AttributeInfo> metric_schema = table_schema_->getSchemaInfoExcludeDropped();
+      std::vector<AttributeInfo> metric_schema = *table_schema_->getSchemaInfoExcludeDroppedPtr();
       block_ = std::make_shared<TsEntityBlockBuilder>(entity_key.table_id, entity_key.table_version,
                                                       entity_key.entity_id, metric_schema);
     }
@@ -642,7 +642,7 @@ KStatus TsEntitySegmentBuilder::Compact(bool call_by_vacuum, TsVersionUpdate* up
                   cur_entity_key.table_version);
         return s;
       }
-      metric_schema = table_schema_->getSchemaInfoExcludeDropped();
+      metric_schema = *table_schema_->getSchemaInfoExcludeDroppedPtr();
     } else {
       metric_schema = block_->GetMetricSchema();
     }

@@ -48,14 +48,6 @@ class MMapMetricsTable : public TSObject, public TsTableObject {
 
   int init(const vector<AttributeInfo>& schema, ErrorInfo& err_info);
 
-  const vector<AttributeInfo>& getSchemaInfoIncludeDropped() const {
-    return cols_info_include_dropped_;
-  }
-
-  const vector<AttributeInfo>& getSchemaInfoExcludeDropped() const {
-    return cols_info_exclude_dropped_;
-  }
-
   const vector<AttributeInfo>* getSchemaInfoIncludeDroppedPtr() const {
     return &cols_info_include_dropped_;
   }

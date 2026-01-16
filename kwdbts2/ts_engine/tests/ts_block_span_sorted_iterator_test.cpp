@@ -165,26 +165,26 @@ class TsBlockSpanSortedIteratorTest : public ::testing::Test {
 
   shared_ptr<TsBlockSpan> GenBlockWithSpan(std::vector<timestamp64> tss, uint64_t osn) {
     auto block = AddBlockWithTs(tss, osn);
-    return std::make_shared<TsBlockSpan>(0, 1, block, 0, tss.size(), empty_convert, 1, nullptr);
+    return std::make_shared<TsBlockSpan>(0, 1, block, 0, tss.size(), empty_convert, nullptr);
   }
   shared_ptr<TsBlockSpan> GenBlockWithSpan1(timestamp64 start, int interval, int num, uint64_t osn) {
     if (num == 0) {
-      return std::make_shared<TsBlockSpan>(0, 1, nullptr, 0, 0, empty_convert, 1, nullptr);
+      return std::make_shared<TsBlockSpan>(0, 1, nullptr, 0, 0, empty_convert, nullptr);
     }
     std::vector<timestamp64> tss;
     for (size_t i = 0; i < num; i++) {
       tss.push_back(start + i * interval);
     }
     auto block = AddBlockWithTs(tss, osn);
-    return std::make_shared<TsBlockSpan>(0, 1, block, 0, tss.size(), empty_convert, 1, nullptr);
+    return std::make_shared<TsBlockSpan>(0, 1, block, 0, tss.size(), empty_convert, nullptr);
   }
 
   shared_ptr<TsBlockSpan> GenSimulatedEntityBlockSpan(timestamp64 start, int num, uint64_t osn) {
     if (num == 0) {
-      return std::make_shared<TsBlockSpan>(0, 1, nullptr, 0, 0, empty_convert, 1, nullptr);
+      return std::make_shared<TsBlockSpan>(0, 1, nullptr, 0, 0, empty_convert, nullptr);
     }
     auto block = std::make_shared<SimulatedTsEntityBlock>(start, num, osn);
-    return std::make_shared<TsBlockSpan>(0, 1, block, 0, num, empty_convert, 1, nullptr);
+    return std::make_shared<TsBlockSpan>(0, 1, block, 0, num, empty_convert, nullptr);
   }
 };
 

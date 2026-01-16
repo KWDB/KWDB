@@ -32,13 +32,19 @@ class SchemaVersionConv {
  public:
   uint32_t scan_version_{0};
   std::vector<uint32_t> blk_cols_extended_{};
+  std::shared_ptr<MMapMetricsTable> scan_metric_{nullptr};
+  std::shared_ptr<MMapMetricsTable> blk_metric_{nullptr};
   const std::vector<AttributeInfo>* scan_attrs_ = nullptr;
   const std::vector<AttributeInfo>* blk_attrs_ = nullptr;
 
   SchemaVersionConv(uint32_t scan_version, const std::vector<uint32_t>& blk_cols_extended,
-                    const std::vector<AttributeInfo>* scan_attrs, const std::vector<AttributeInfo>* blk_attrs) :
+                    const std::shared_ptr<MMapMetricsTable>& scan_metric,
+                    const std::shared_ptr<MMapMetricsTable>& blk_metric) :
     scan_version_(scan_version), blk_cols_extended_(blk_cols_extended),
-    scan_attrs_(scan_attrs), blk_attrs_(blk_attrs) { }
+    scan_metric_(scan_metric), blk_metric_(blk_metric) {
+    scan_attrs_ = scan_metric_->getSchemaInfoExcludeDroppedPtr();
+    blk_attrs_ = blk_metric_->getSchemaInfoExcludeDroppedPtr();
+  }
 };
 
 /**

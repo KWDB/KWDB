@@ -445,9 +445,7 @@ KStatus TsMemSegment::GetBlockSpans(std::list<shared_ptr<TsBlockSpan>>& blocks, 
           mem_block->InsertRow(dedup_row);
           std::shared_ptr<TsBlockSpan> cur_span;
           s = TsBlockSpan::MakeNewBlockSpan(template_blk_span, 0, mem_block->GetEntityId(), mem_block, 0,
-                                            mem_block->GetRowNum(), dedup_table_version,
-                                            scan_schema->getSchemaInfoExcludeDroppedPtr(),
-                                            tbl_schema_mgr, cur_span);
+                                            mem_block->GetRowNum(), scan_schema, tbl_schema_mgr, cur_span);
           if (s != SUCCESS) {
             LOG_ERROR("MakeNewBlockSpan failed.");
             return KStatus::FAIL;
@@ -481,8 +479,7 @@ KStatus TsMemSegment::GetBlockSpans(std::list<shared_ptr<TsBlockSpan>>& blocks, 
       dedup_rows.clear();
       // current row
       dedup_table_id = row->GetTableId();
-      dedup_table_version = row->GetTableVersion() > dedup_table_version ?
-                            row->GetTableVersion() : dedup_table_version;
+      dedup_table_version = row->GetTableVersion();
       dedup_rows.push_back(row);
       last_row_data = row;
     }
@@ -505,9 +502,7 @@ KStatus TsMemSegment::GetBlockSpans(std::list<shared_ptr<TsBlockSpan>>& blocks, 
         mem_block->InsertRow(dedup_row);
         std::shared_ptr<TsBlockSpan> cur_span;
         s = TsBlockSpan::MakeNewBlockSpan(template_blk_span, 0, mem_block->GetEntityId(), mem_block, 0,
-                                          mem_block->GetRowNum(), dedup_table_version,
-                                          scan_schema->getSchemaInfoExcludeDroppedPtr(),
-                                          tbl_schema_mgr, cur_span);
+                                          mem_block->GetRowNum(), scan_schema, tbl_schema_mgr, cur_span);
         if (s != SUCCESS) {
           LOG_ERROR("MakeNewBlockSpan failed.");
           return KStatus::FAIL;
@@ -571,7 +566,7 @@ KStatus TsMemSegment::GetBlockSpans(std::list<shared_ptr<TsBlockSpan>>& blocks, 
       LOG_ERROR("GetMetricSchema failed. table id [%u], table version [%lu]", version, table_id);
     }
     blocks.push_back(std::make_shared<TsBlockSpan>(0, mem_blk->GetEntityId(), std::move(mem_blk), 0, mem_blk->GetRowNum(),
-                                                  empty_convert, version, scan_metric->getSchemaInfoExcludeDroppedPtr()));
+                                                   empty_convert, scan_metric));
   }
   return SUCCESS;
 }
@@ -643,9 +638,7 @@ KStatus TsMemSegment::GetBlockSpans(const TsBlockItemFilterParams& filter, std::
           mem_block->InsertRow(dedup_row);
           std::shared_ptr<TsBlockSpan> cur_span;
           auto s = TsBlockSpan::MakeNewBlockSpan(template_blk_span, filter.vgroup_id, filter.entity_id, mem_block, 0,
-                                                          mem_block->GetRowNum(), scan_schema->GetVersion(),
-                                                          scan_schema->getSchemaInfoExcludeDroppedPtr(),
-                                                          tbl_schema_mgr, cur_span);
+                                                 mem_block->GetRowNum(), scan_schema, tbl_schema_mgr, cur_span);
           if (s != SUCCESS) {
             LOG_ERROR("MakeNewBlockSpan failed.");
             return KStatus::FAIL;
@@ -691,9 +684,7 @@ KStatus TsMemSegment::GetBlockSpans(const TsBlockItemFilterParams& filter, std::
         mem_block->InsertRow(dedup_row);
         std::shared_ptr<TsBlockSpan> cur_span;
         auto s = TsBlockSpan::MakeNewBlockSpan(template_blk_span, filter.vgroup_id, filter.entity_id, mem_block, 0,
-                                                        mem_block->GetRowNum(), scan_schema->GetVersion(),
-                                                        scan_schema->getSchemaInfoExcludeDroppedPtr(),
-                                                        tbl_schema_mgr, cur_span);
+                                               mem_block->GetRowNum(), scan_schema, tbl_schema_mgr, cur_span);
         if (s != SUCCESS) {
           LOG_ERROR("MakeNewBlockSpan failed.");
           return KStatus::FAIL;
@@ -736,8 +727,7 @@ KStatus TsMemSegment::GetBlockSpans(const TsBlockItemFilterParams& filter, std::
   for (auto& mem_blk : mem_blocks) {
     std::shared_ptr<TsBlockSpan> cur_span;
     auto s = TsBlockSpan::MakeNewBlockSpan(template_blk_span, filter.vgroup_id, filter.entity_id, mem_blk, 0,
-                                  mem_blk->GetRowNum(), scan_schema->GetVersion(),
-                                  scan_schema->getSchemaInfoExcludeDroppedPtr(), tbl_schema_mgr, cur_span);
+                                           mem_blk->GetRowNum(), scan_schema, tbl_schema_mgr, cur_span);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("TsBlockSpan::GenDataConvertfailed, entity_id=%lu.", filter.entity_id);
         return s;

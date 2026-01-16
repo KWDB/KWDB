@@ -77,18 +77,17 @@ KStatus TsBlockSpan::GenDataConvert(uint32_t blk_version, uint32_t scan_version,
 
 KStatus TsBlockSpan::MakeNewBlockSpan(TsBlockSpan* src_blk_span, uint32_t vgroup_id,
   TSEntityID entity_id, std::shared_ptr<TsBlock> block, int start, int nrow,
-  uint32_t scan_version, const std::vector<AttributeInfo>* scan_attrs,
+  const std::shared_ptr<MMapMetricsTable>& scan_schema,
   const std::shared_ptr<TsTableSchemaManager>& tbl_schema_mgr, std::shared_ptr<TsBlockSpan>& ret) {
   if (src_blk_span == nullptr ||
      (src_blk_span->block_->GetTableVersion() != block->GetTableVersion())) {
     std::shared_ptr<TSBlkDataTypeConvert> convert = nullptr;
-    auto s = GenDataConvert(block->GetTableVersion(), scan_version, tbl_schema_mgr, convert);
+    auto s = GenDataConvert(block->GetTableVersion(), scan_schema->GetVersion(), tbl_schema_mgr, convert);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("TsBlockSpan::MakeNewBlockSpan, entity_id=%lu", entity_id);
       return s;
     }
-    ret = std::make_shared<TsBlockSpan>(vgroup_id, entity_id, block, start,
-                                        nrow, convert, scan_version, scan_attrs);
+    ret = std::make_shared<TsBlockSpan>(vgroup_id, entity_id, block, start, nrow, convert, scan_schema);
   } else {
     ret = std::make_shared<TsBlockSpan>(*src_blk_span, block, start, nrow, entity_id);
   }
@@ -108,7 +107,7 @@ KStatus TsBlockSpan::GenMergeRowData(std::list<std::shared_ptr<kwdbts::TsBlockSp
     return s;
   }
 
-  auto& attrs = schema_tbl->getSchemaInfoExcludeDropped();
+  auto& attrs = *schema_tbl->getSchemaInfoExcludeDroppedPtr();
   TsRawPayloadRowBuilder builder(attrs);
   for (uint32_t idx = 0; idx < attrs.size(); ++idx) {
     for (auto it = dedup_block_spans.rbegin(); it != dedup_block_spans.rend(); ++it) {
@@ -174,20 +173,18 @@ KStatus TsBlockSpan::MakeMergeBlockSpan(std::list<std::shared_ptr<kwdbts::TsBloc
   std::shared_ptr<TsBlockSpan>& first_block_span = dedup_block_spans.front();
 
   TsBlockSpan* template_blk_span = nullptr;
+  std::shared_ptr<MMapMetricsTable> scan_schema;
+  auto s = tbl_schema_manager->GetMetricSchema(scan_version, &scan_schema);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("get metric schema failed, table_id=%lu, table_version=%d",
+              tbl_schema_manager->GetTableId(), scan_version)
+    return s;
+  }
   for (auto& dedup_block_span : dedup_block_spans) {
     if (dedup_block_span->GetScanVersion() != scan_version) {
-      std::shared_ptr<MMapMetricsTable> scan_schema;
-      auto s = tbl_schema_manager->GetMetricSchema(scan_version, &scan_schema);
-      if (s != KStatus::SUCCESS) {
-        LOG_ERROR("get metric schema failed, table_id=%lu, table_version=%d",
-                  tbl_schema_manager->GetTableId(), scan_version)
-        return s;
-      }
       std::shared_ptr<TsBlockSpan> cur_span;
       s = MakeNewBlockSpan(template_blk_span, dedup_block_span->GetVGroupID(), dedup_block_span->GetEntityID(),
-                           dedup_block_span->GetTsBlock(), 0, 1, scan_version,
-                           scan_schema->getSchemaInfoExcludeDroppedPtr(),
-                           tbl_schema_manager, cur_span);
+                           dedup_block_span->GetTsBlock(), 0, 1, scan_schema, tbl_schema_manager, cur_span);
       if (s != KStatus::SUCCESS) {
         LOG_ERROR("MakeNewBlockSpan failed.");
         return s;
@@ -197,7 +194,7 @@ KStatus TsBlockSpan::MakeMergeBlockSpan(std::list<std::shared_ptr<kwdbts::TsBloc
   }
 
   std::shared_ptr<TsSliceGuard> row_data_guard = nullptr;
-  KStatus s = GenMergeRowData(dedup_block_spans, tbl_schema_manager, row_data_guard);
+  s = GenMergeRowData(dedup_block_spans, tbl_schema_manager, row_data_guard);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("GenMergeRowData failed.");
     return s;
@@ -216,19 +213,25 @@ KStatus TsBlockSpan::MakeMergeBlockSpan(std::list<std::shared_ptr<kwdbts::TsBloc
   const std::vector<AttributeInfo>* scan_attrs{nullptr};
   tbl_schema_manager->GetColumnsExcludeDroppedPtr(&scan_attrs, scan_version);
   block_span = std::make_shared<TsBlockSpan>(first_block_span->GetVGroupID(), first_block_span->GetEntityID(), mem_block, 0,
-                                             1, empty_convert, scan_version, scan_attrs);
+                                             1, empty_convert, scan_schema);
   return KStatus::SUCCESS;
 }
 
 TsBlockSpan::TsBlockSpan(uint32_t vgroup_id, TSEntityID entity_id, std::shared_ptr<TsBlock> block, int start, int nrow,
                          std::shared_ptr<TSBlkDataTypeConvert>& convert,
-                         uint32_t scan_version, const std::vector<AttributeInfo>* scan_attrs)
+                         const std::shared_ptr<MMapMetricsTable>& scan_schema)
     : block_(block),
       vgroup_id_(vgroup_id),
       entity_id_(entity_id),
       start_row_(start),
       nrow_(nrow),
-      scan_attrs_(scan_attrs), convert_(convert) {
+      scan_schema_(scan_schema),
+      convert_(convert) {
+  uint32_t scan_version = 1;
+  if (scan_schema) {
+    scan_attrs_ = scan_schema->getSchemaInfoExcludeDroppedPtr();
+    scan_version = scan_schema->GetVersion();
+  }
   assert(nrow_ >= 1);
   if (convert == nullptr) {
     assert(block->GetTableVersion() == scan_version);
@@ -236,6 +239,7 @@ TsBlockSpan::TsBlockSpan(uint32_t vgroup_id, TSEntityID entity_id, std::shared_p
     assert(convert->scan_version_ == scan_version && convert->block_version_ == block_->GetTableVersion());
   }
   has_pre_agg_ = block_->HasPreAgg(start_row_, nrow_) && convert_ == nullptr;
+  (void)scan_version;  // avoid "set but not used" warning in release build
 }
 
 TsBlockSpan::TsBlockSpan(const TsBlockSpan& src, std::shared_ptr<TsBlock> block, int start, int nrow, TSEntityID e_id) :

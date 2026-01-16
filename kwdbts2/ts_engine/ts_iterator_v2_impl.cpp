@@ -137,8 +137,8 @@ TsStorageIteratorV2Impl::TsStorageIteratorV2Impl(const std::shared_ptr<TsVGroup>
                                                  std::vector<KwTsSpan>& ts_spans, std::vector<BlockFilter>& block_filter,
                                                  std::vector<k_uint32>& kw_scan_cols,
                                                  std::vector<k_uint32>& ts_scan_cols,
-                                                 std::shared_ptr<TsTableSchemaManager>& table_schema_mgr,
-                                                 std::shared_ptr<MMapMetricsTable>& schema) {
+                                                 const std::shared_ptr<TsTableSchemaManager>& table_schema_mgr,
+                                                 const std::shared_ptr<MMapMetricsTable>& schema) {
   vgroup_ = vgroup;
   table_version_ = version;
   entity_ids_ = entity_ids;
@@ -148,7 +148,7 @@ TsStorageIteratorV2Impl::TsStorageIteratorV2Impl(const std::shared_ptr<TsVGroup>
   ts_scan_cols_ = ts_scan_cols;
   kw_scan_cols_ = kw_scan_cols;
   table_schema_mgr_ = table_schema_mgr;
-  schema_ = std::move(schema);
+  scan_schema_ = std::move(schema);
 }
 
 TsStorageIteratorV2Impl::~TsStorageIteratorV2Impl() {
@@ -156,9 +156,9 @@ TsStorageIteratorV2Impl::~TsStorageIteratorV2Impl() {
 
 KStatus TsStorageIteratorV2Impl::Init(bool is_reversed) {
   is_reversed_ = is_reversed;
-  attrs_ = schema_->getSchemaInfoExcludeDropped();
+  attrs_ = *scan_schema_->getSchemaInfoExcludeDroppedPtr();
   table_id_ = table_schema_mgr_->GetTableId();
-  db_id_ = schema_->metaData()->db_id;
+  db_id_ = scan_schema_->metaData()->db_id;
   vgroup_current_version_ = vgroup_->CurrentVersion();
   ts_partitions_ = vgroup_current_version_->GetPartitions(db_id_, ts_spans_, ts_col_type_);
   filter_ = std::make_shared<TsScanFilterParams>(db_id_, table_id_, vgroup_->GetVGroupID(),
@@ -510,7 +510,7 @@ KStatus TsStorageIteratorV2Impl::ScanEntityBlockSpans(timestamp64 ts, TsScanStat
                                           partition_version->GetTsColTypeEndTime(ts_col_type_), ts))  {
       return KStatus::SUCCESS;
     }
-    auto s = partition_version->GetBlockSpans(*filter_, &ts_block_spans_, table_schema_mgr_, schema_, ts_scan_stats);
+    auto s = partition_version->GetBlockSpans(*filter_, &ts_block_spans_, table_schema_mgr_, scan_schema_, ts_scan_stats);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("partition_version GetBlockSpan failed.");
       return s;
@@ -616,8 +616,8 @@ TsSortedRawDataIteratorV2Impl::TsSortedRawDataIteratorV2Impl(const std::shared_p
                                                               std::vector<BlockFilter>& block_filter,
                                                               std::vector<k_uint32>& kw_scan_cols,
                                                               std::vector<k_uint32>& ts_scan_cols,
-                                                              std::shared_ptr<TsTableSchemaManager>& table_schema_mgr,
-                                                              std::shared_ptr<MMapMetricsTable>& schema,
+                                                              const std::shared_ptr<TsTableSchemaManager>& table_schema_mgr,
+                                                              const std::shared_ptr<MMapMetricsTable>& schema,
                                                               SortOrder order_type) :
                           TsStorageIteratorV2Impl::TsStorageIteratorV2Impl(vgroup, version, entity_ids, ts_spans,
                                                                            block_filter, kw_scan_cols,
@@ -751,8 +751,8 @@ TsAggIteratorV2Impl::TsAggIteratorV2Impl(const std::shared_ptr<TsVGroup>& vgroup
                                          std::vector<k_uint32>& ts_scan_cols, std::vector<k_int32>& agg_extend_cols,
                                          std::vector<Sumfunctype>& scan_agg_types,
                                          const std::vector<timestamp64>& ts_points,
-                                         std::shared_ptr<TsTableSchemaManager>& table_schema_mgr,
-                                         std::shared_ptr<MMapMetricsTable>& schema)
+                                         const std::shared_ptr<TsTableSchemaManager>& table_schema_mgr,
+                                         const std::shared_ptr<MMapMetricsTable>& schema)
     : TsStorageIteratorV2Impl::TsStorageIteratorV2Impl(vgroup, version, entity_ids, ts_spans, block_filter,
                                                        kw_scan_cols, ts_scan_cols, table_schema_mgr, schema),
       scan_agg_types_(scan_agg_types),
@@ -983,7 +983,7 @@ KStatus TsAggIteratorV2Impl::Next(ResultSet* res, k_uint32* count, bool* is_fini
   std::vector<std::shared_ptr<const TsPartitionVersion>> ts_partitions_bkup;
   if (only_last_ || only_last_row_) {
     if (EngineOptions::last_cache_max_size) {
-      ret = vgroup_->GetEntityLastRowBatch(entity_id, table_version_, table_schema_mgr_, schema_, parser_,
+      ret = vgroup_->GetEntityLastRowBatch(entity_id, table_version_, table_schema_mgr_, scan_schema_, parser_,
                                            ts_spans_, kw_last_scan_cols_, entity_last_ts, last_payload_valid, res);
       if (ret != KStatus::SUCCESS) {
         LOG_ERROR("GetEntityLastRowBatch failed.");
@@ -1087,7 +1087,7 @@ KStatus TsAggIteratorV2Impl::Aggregate(TsScanStats* ts_scan_stats) {
                               entity_ids_[cur_entity_index_], ts_col_type_, scan_osn_, ts_spans_};
     auto partition_version = ts_partitions_[cur_partition_index_];
     ts_block_spans_.clear();
-    auto ret = partition_version->GetBlockSpans(filter, &ts_block_spans_, table_schema_mgr_, schema_, ts_scan_stats);
+    auto ret = partition_version->GetBlockSpans(filter, &ts_block_spans_, table_schema_mgr_, scan_schema_, ts_scan_stats);
     if (ret != KStatus::SUCCESS) {
       LOG_ERROR("e_paritition GetBlockSpan failed.");
       return ret;
@@ -1109,7 +1109,7 @@ KStatus TsAggIteratorV2Impl::Aggregate(TsScanStats* ts_scan_stats) {
                               entity_ids_[cur_entity_index_], ts_col_type_, scan_osn_, ts_spans_};
     auto partition_version = ts_partitions_[cur_partition_index_];
     ts_block_spans_.clear();
-    auto ret = partition_version->GetBlockSpans(filter, &ts_block_spans_, table_schema_mgr_, schema_, ts_scan_stats);
+    auto ret = partition_version->GetBlockSpans(filter, &ts_block_spans_, table_schema_mgr_, scan_schema_, ts_scan_stats);
     if (ret != KStatus::SUCCESS) {
       LOG_ERROR("e_paritition GetBlockSpan failed.");
       return ret;
@@ -1130,7 +1130,7 @@ KStatus TsAggIteratorV2Impl::Aggregate(TsScanStats* ts_scan_stats) {
                                 entity_ids_[cur_entity_index_], ts_col_type_, scan_osn_, ts_spans_};
       auto partition_version = ts_partitions_[cur_partition_index_];
       ts_block_spans_.clear();
-      auto ret = partition_version->GetBlockSpans(filter, &ts_block_spans_, table_schema_mgr_, schema_, ts_scan_stats);
+      auto ret = partition_version->GetBlockSpans(filter, &ts_block_spans_, table_schema_mgr_, scan_schema_, ts_scan_stats);
       if (ret != KStatus::SUCCESS) {
         LOG_ERROR("e_paritition GetBlockSpan failed.");
         return ret;
@@ -1264,7 +1264,7 @@ KStatus TsAggIteratorV2Impl::CountAggregate(TsScanStats* ts_scan_stats) {
     if (count_stats.is_count_valid && checkTimestampWithSpans(ts_spans_, count_stats.min_ts, count_stats.max_ts) ==
       TimestampCheckResult::FullyContained && (count_header.max_osn > del_osn)) {
       std::list<shared_ptr<TsBlockSpan>> mem_block_spans;
-      ret = partition_version->GetBlockSpans(filter, &mem_block_spans, table_schema_mgr_, schema_,
+      ret = partition_version->GetBlockSpans(filter, &mem_block_spans, table_schema_mgr_, scan_schema_,
                                               ts_scan_stats, false, true, true);
       if (ret != KStatus::SUCCESS) {
         LOG_ERROR("partition_version get mem block span failed.");
@@ -1288,7 +1288,7 @@ KStatus TsAggIteratorV2Impl::CountAggregate(TsScanStats* ts_scan_stats) {
         TimestampCheckResult::NonOverlapping)) {
           KUint64(final_agg_data_[0].data) += count_stats.valid_count + mem_count;
         } else {
-          ret = partition_version->GetBlockSpans(filter, &ts_block_spans_, table_schema_mgr_, schema_, ts_scan_stats);
+          ret = partition_version->GetBlockSpans(filter, &ts_block_spans_, table_schema_mgr_, scan_schema_, ts_scan_stats);
           if (ret != KStatus::SUCCESS) {
             LOG_ERROR("e_paritition GetBlockSpan failed.");
             return ret;
@@ -1296,7 +1296,7 @@ KStatus TsAggIteratorV2Impl::CountAggregate(TsScanStats* ts_scan_stats) {
         }
       }
     } else {
-      ret = partition_version->GetBlockSpans(filter, &ts_block_spans_, table_schema_mgr_, schema_, ts_scan_stats);
+      ret = partition_version->GetBlockSpans(filter, &ts_block_spans_, table_schema_mgr_, scan_schema_, ts_scan_stats);
       if (ret != KStatus::SUCCESS) {
         LOG_ERROR("e_paritition GetBlockSpan failed.");
         return ret;
@@ -2264,7 +2264,7 @@ KStatus TsOffsetIteratorV2Impl::Init(bool is_reversed) {
   comparator_.is_reversed = is_reversed_;
   decltype(p_times_) t_map(comparator_);
   p_times_.swap(t_map);
-  attrs_ = schema_->getSchemaInfoExcludeDropped();
+  attrs_ = *schema_->getSchemaInfoExcludeDroppedPtr();
   db_id_ = table_schema_mgr_->GetDbID();
   table_id_ = table_schema_mgr_->GetTableId();
 
@@ -2359,7 +2359,7 @@ TsRawDataIteratorV2ImplByOSN::TsRawDataIteratorV2ImplByOSN(const std::shared_ptr
   uint32_t version, vector<EntityResultIndex>& entity_ids,
   std::vector<k_uint32>& scan_cols, std::vector<k_uint32>& ts_scan_cols,
   std::vector<KwOSNSpan>& osn_spans,
-  std::shared_ptr<TsTableSchemaManager>& table_schema_mgr) : osn_span_(osn_spans), entitys_(entity_ids) {
+  const std::shared_ptr<TsTableSchemaManager>& table_schema_mgr) : osn_span_(osn_spans), entitys_(entity_ids) {
   table_schema_mgr_ = table_schema_mgr;
   table_version_ = version;
   kw_scan_cols_ = scan_cols;
@@ -2368,16 +2368,16 @@ TsRawDataIteratorV2ImplByOSN::TsRawDataIteratorV2ImplByOSN(const std::shared_ptr
 }
 
 KStatus TsRawDataIteratorV2ImplByOSN::Init() {
-  auto s = table_schema_mgr_->GetMetricSchema(table_version_, &schema_);
+  auto s = table_schema_mgr_->GetMetricSchema(table_version_, &scan_schema_);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("get table version[%u] schema failed.", table_version_);
     return s;
   }
-  attrs_ = schema_->getSchemaInfoExcludeDropped();
+  attrs_ = *scan_schema_->getSchemaInfoExcludeDroppedPtr();
   ts_spans_.push_back({INT64_MIN, INT64_MAX});
   table_id_ = table_schema_mgr_->GetTableId();
-  db_id_ = schema_->metaData()->db_id;
-  ts_col_type_ = schema_->GetTsColDataType();
+  db_id_ = scan_schema_->metaData()->db_id;
+  ts_col_type_ = scan_schema_->GetTsColDataType();
   vgroup_current_version_ = vgroup_->CurrentVersion();
   ts_partitions_ = vgroup_current_version_->GetPartitions(db_id_, ts_spans_, ts_col_type_);
   filter_ = std::make_shared<TsScanFilterParams>(db_id_, table_id_, vgroup_->GetVGroupID(), 0,
@@ -2397,7 +2397,7 @@ KStatus TsRawDataIteratorV2ImplByOSN::MoveToNextEntity(bool* is_finished, TsScan
   auto op_osn = reinterpret_cast<OperatorInfoOfRecord*>(entitys_[cur_entity_index_].op_with_osn.get());
   if (op_osn->type != OperatorTypeOfRecord::OP_TYPE_TAG_DELETE) {
     for (auto& partition_version : ts_partitions_) {
-      auto s = partition_version->GetBlockSpans(*filter_, &ts_block_spans_, table_schema_mgr_, schema_, ts_scan_stats);
+      auto s = partition_version->GetBlockSpans(*filter_, &ts_block_spans_, table_schema_mgr_, scan_schema_, ts_scan_stats);
       if (s != KStatus::SUCCESS) {
         LOG_ERROR("partition_version GetBlockSpan failed.");
         return s;

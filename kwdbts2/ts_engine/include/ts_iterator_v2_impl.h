@@ -55,8 +55,8 @@ class TsStorageIteratorV2Impl : public TsStorageIterator {
   TsStorageIteratorV2Impl(const std::shared_ptr<TsVGroup>& vgroup, uint32_t version, vector<uint32_t>& entity_ids,
                           std::vector<KwTsSpan>& ts_spans, std::vector<BlockFilter>& block_filter,
                           std::vector<k_uint32>& kw_scan_cols, std::vector<k_uint32>& ts_scan_cols,
-                          std::shared_ptr<TsTableSchemaManager>& table_schema_mgr,
-                          std::shared_ptr<MMapMetricsTable>& schema);
+                          const std::shared_ptr<TsTableSchemaManager>& table_schema_mgr,
+                          const std::shared_ptr<MMapMetricsTable>& schema);
   ~TsStorageIteratorV2Impl();
 
   KStatus Init(bool is_reversed) override;
@@ -95,7 +95,7 @@ class TsStorageIteratorV2Impl : public TsStorageIterator {
   std::list<std::shared_ptr<TsBlockSpan>> ts_block_spans_;
 
   std::shared_ptr<TsScanFilterParams> filter_;
-  std::shared_ptr<MMapMetricsTable> schema_;
+  std::shared_ptr<MMapMetricsTable> scan_schema_;
 };
 
 class TsSortedRawDataIteratorV2Impl : public TsStorageIteratorV2Impl {
@@ -104,8 +104,8 @@ class TsSortedRawDataIteratorV2Impl : public TsStorageIteratorV2Impl {
                                 std::vector<KwTsSpan>& ts_spans, std::vector<BlockFilter>& block_filter,
                                 std::vector<k_uint32>& kw_scan_cols,
                                 std::vector<k_uint32>& ts_scan_cols,
-                                std::shared_ptr<TsTableSchemaManager>& table_schema_mgr,
-                                std::shared_ptr<MMapMetricsTable>& schema,
+                                const std::shared_ptr<TsTableSchemaManager>& table_schema_mgr,
+                                const std::shared_ptr<MMapMetricsTable>& schema,
                                 SortOrder order_type = ASC);
   ~TsSortedRawDataIteratorV2Impl();
 
@@ -129,8 +129,8 @@ class TsAggIteratorV2Impl : public TsStorageIteratorV2Impl {
                       std::vector<k_int32>& agg_extend_cols,
                       std::vector<Sumfunctype>& scan_agg_types,
                       const std::vector<timestamp64>& ts_points,
-                      std::shared_ptr<TsTableSchemaManager>& table_schema_mgr,
-                      std::shared_ptr<MMapMetricsTable>& schema);
+                      const std::shared_ptr<TsTableSchemaManager>& table_schema_mgr,
+                      const std::shared_ptr<MMapMetricsTable>& schema);
   ~TsAggIteratorV2Impl();
 
   KStatus Init(bool is_reversed) override;
@@ -206,8 +206,8 @@ class TsOffsetIteratorV2Impl : public TsIterator {
   TsOffsetIteratorV2Impl(std::unordered_map<uint32_t, std::shared_ptr<TsVGroup>>& vgroups,
                          std::unordered_map<uint32_t, std::vector<EntityID>>& vgroup_ids, std::vector<KwTsSpan>& ts_spans,
                          std::vector<k_uint32>& kw_scan_cols, std::vector<k_uint32>& ts_scan_cols,
-                         std::shared_ptr<TsTableSchemaManager>& table_schema_mgr,
-                         std::shared_ptr<MMapMetricsTable>& schema,
+                         const std::shared_ptr<TsTableSchemaManager>& table_schema_mgr,
+                         const std::shared_ptr<MMapMetricsTable>& schema,
                          uint32_t offset, uint32_t limit)
       : table_schema_mgr_(table_schema_mgr),
         ts_col_type_(schema->GetTsColDataType()),
@@ -309,7 +309,7 @@ class TsRawDataIteratorV2ImplByOSN : public TsStorageIteratorV2Impl {
   TsRawDataIteratorV2ImplByOSN(const std::shared_ptr<TsVGroup>& vgroup, uint32_t version,
     vector<EntityResultIndex>& entity_ids,
     std::vector<k_uint32>& scan_cols, std::vector<k_uint32>& ts_scan_cols,
-    std::vector<KwOSNSpan>& osn_spans, std::shared_ptr<TsTableSchemaManager>& table_schema_mgr);
+    std::vector<KwOSNSpan>& osn_spans, const std::shared_ptr<TsTableSchemaManager>& table_schema_mgr);
   ~TsRawDataIteratorV2ImplByOSN();
 
   KStatus Init();

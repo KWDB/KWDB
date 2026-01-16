@@ -431,19 +431,16 @@ KStatus TSBlkDataTypeConvert::Init() {
       std::shared_ptr<MMapMetricsTable> blk_metric{nullptr};
       KStatus s = tbl_schema_mgr_->GetMetricSchema(block_version_, &blk_metric);
       if (s != SUCCESS) {
-        LOG_ERROR("GetMetricSchema failed. table version [%u]", block_version_);
+        LOG_ERROR("GetMetricSchema failed. table %lu version %u", tbl_schema_mgr_->GetTableId(), block_version_);
         return FAIL;
       }
       std::shared_ptr<MMapMetricsTable> scan_metric{nullptr};
       s = tbl_schema_mgr_->GetMetricSchema(scan_version_, &scan_metric);
       if (s != SUCCESS) {
-        LOG_ERROR("GetMetricSchema failed. table version [%u]", scan_version_);
+        LOG_ERROR("GetMetricSchema failed. table %lu version %u", tbl_schema_mgr_->GetTableId(), scan_version_);
         return FAIL;
       }
       auto& scan_cols = scan_metric->getIdxForValidCols();
-      auto scan_attrs = static_cast<const std::vector<AttributeInfo>*>(&scan_metric->getSchemaInfoExcludeDropped());
-      auto blk_attrs = static_cast<const std::vector<AttributeInfo>*>(&blk_metric->getSchemaInfoExcludeDropped());
-
       const auto blk_cols = blk_metric->getIdxForValidCols();
       // calculate column index in current block
       std::vector<uint32_t> blk_cols_extended;
@@ -462,7 +459,7 @@ KStatus TSBlkDataTypeConvert::Init() {
           blk_cols_extended[i] = UINT32_MAX;
         }
       }
-      version_conv_ = std::make_shared<SchemaVersionConv>(scan_version_, blk_cols_extended, scan_attrs, blk_attrs);
+      version_conv_ = std::make_shared<SchemaVersionConv>(scan_version_, blk_cols_extended, scan_metric, blk_metric);
       tbl_schema_mgr_->InsertVersionConv(key_, version_conv_);
     }
   }

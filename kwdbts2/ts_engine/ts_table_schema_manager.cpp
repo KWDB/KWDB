@@ -449,7 +449,7 @@ KStatus TsTableSchemaManager::GetColumnsExcludeDropped(std::vector<AttributeInfo
     LOG_ERROR("Table %lu schema version [%u] does not exists", table_id_, ts_version);
     return FAIL;
   }
-  schema = schema_table->getSchemaInfoExcludeDropped();
+  schema = *schema_table->getSchemaInfoExcludeDroppedPtr();
   return SUCCESS;
 }
 
@@ -459,7 +459,7 @@ KStatus TsTableSchemaManager::GetColumnsIncludeDropped(std::vector<AttributeInfo
     LOG_ERROR("Table %lu schema version [%u] does not exists", table_id_, ts_version);
     return FAIL;
   }
-  schema = schema_table->getSchemaInfoIncludeDropped();
+  schema = *schema_table->getSchemaInfoIncludeDroppedPtr();
   return SUCCESS;
 }
 
@@ -516,7 +516,7 @@ KStatus TsTableSchemaManager::GetMetricSchema(uint32_t version,
   auto dst_version = version == 0 ? cur_version_ : version;
   *schema = getMetricsTable(dst_version);
   if (*schema == nullptr) {
-    LOG_WARN("schema version [%u] does not exists", dst_version);
+    LOG_WARN("table %lu schema version [%u] does not exists", table_id_, dst_version);
     return FAIL;
   }
   return SUCCESS;

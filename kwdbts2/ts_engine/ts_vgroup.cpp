@@ -378,7 +378,7 @@ KStatus TsVGroup::redoPut(kwdbContext_p ctx, kwdbts::TS_OSN log_lsn, const TSSli
   return s;
 }
 
-KStatus TsVGroup::GetLastRowEntity(kwdbContext_p ctx, std::shared_ptr<TsTableSchemaManager>& table_schema_mgr,
+KStatus TsVGroup::GetLastRowEntity(kwdbContext_p ctx, const std::shared_ptr<TsTableSchemaManager>& table_schema_mgr,
                                    pair<timestamp64, uint32_t>& last_row_entity) {
   KTableKey table_id = table_schema_mgr->GetTableId();
   {
@@ -449,7 +449,7 @@ KStatus TsVGroup::GetLastRowEntity(kwdbContext_p ctx, std::shared_ptr<TsTableSch
   return KStatus::SUCCESS;
 }
 
-KStatus TsVGroup::GetEntityLastRow(std::shared_ptr<TsTableSchemaManager>& table_schema_mgr,
+KStatus TsVGroup::GetEntityLastRow(const std::shared_ptr<TsTableSchemaManager>& table_schema_mgr,
                                    uint32_t entity_id, const std::vector<KwTsSpan>& ts_spans,
                                    timestamp64& entity_last_ts) {
   entity_last_ts = INVALID_TS;
@@ -568,8 +568,8 @@ KStatus TsVGroup::ConvertBlockSpanToResultSet(const std::vector<k_uint32>& kw_sc
 }
 
 KStatus TsVGroup::GetEntityLastRowBatch(uint32_t entity_id, uint32_t scan_version,
-                                        std::shared_ptr<TsTableSchemaManager>& table_schema_mgr,
-                                        std::shared_ptr<MMapMetricsTable>& schema,
+                                        const std::shared_ptr<TsTableSchemaManager>& table_schema_mgr,
+                                        const std::shared_ptr<MMapMetricsTable>& scan_schema,
                                         std::shared_ptr<TsRawPayloadRowParser>& parser,
                                         const std::vector<KwTsSpan>& ts_spans, const std::vector<k_uint32>& scan_cols,
                                         timestamp64& entity_last_ts, bool& last_payload_valid, ResultSet* res) {
@@ -587,7 +587,7 @@ KStatus TsVGroup::GetEntityLastRowBatch(uint32_t entity_id, uint32_t scan_versio
     return KStatus::SUCCESS;
   }
 
-  uint32_t db_id = schema->metaData()->db_id;
+  uint32_t db_id = scan_schema->metaData()->db_id;
   KTableKey table_id = table_schema_mgr->GetTableId();
   TSMemSegRowData last_row_data(db_id, table_id, last_row.version, entity_id);
   // TODO(liumengzhen) : set correct lsn
@@ -597,7 +597,7 @@ KStatus TsVGroup::GetEntityLastRowBatch(uint32_t entity_id, uint32_t scan_versio
   mem_block->SetMemoryAddrSafe();
   mem_block->InsertRow(&last_row_data);
 
-  const vector<AttributeInfo>& attrs = schema->getSchemaInfoExcludeDropped();
+  const vector<AttributeInfo>& attrs = *scan_schema->getSchemaInfoExcludeDroppedPtr();
 
   std::shared_ptr<TSBlkDataTypeConvert> convert = nullptr;
   if (last_row.version != scan_version) {
@@ -615,7 +615,7 @@ KStatus TsVGroup::GetEntityLastRowBatch(uint32_t entity_id, uint32_t scan_versio
   }
 
   TsBlockSpan block_span(vgroup_id_, entity_id, std::move(mem_block), 0, 1,
-                          convert, scan_version, &attrs);
+                          convert, scan_schema);
   auto ret = ConvertBlockSpanToResultSet(scan_cols, block_span, attrs, res);
   if (ret != KStatus::SUCCESS) {
     LOG_ERROR("ConvertBlockSpanToResultSet failed");
@@ -1097,8 +1097,8 @@ KStatus TsVGroup::GetIterator(kwdbContext_p ctx, uint32_t version, vector<uint32
                               std::vector<k_uint32>& scan_cols, std::vector<k_uint32>& ts_scan_cols,
                               std::vector<k_int32>& agg_extend_cols,
                               std::vector<Sumfunctype>& scan_agg_types,
-                              std::shared_ptr<TsTableSchemaManager>& table_schema_mgr,
-                              std::shared_ptr<MMapMetricsTable>& schema, TsStorageIterator** iter,
+                              const std::shared_ptr<TsTableSchemaManager>& table_schema_mgr,
+                              const std::shared_ptr<MMapMetricsTable>& schema, TsStorageIterator** iter,
                               const std::shared_ptr<TsVGroup>& vgroup,
                               const std::vector<timestamp64>& ts_points, bool reverse, bool sorted) {
   // TODO(liuwei) update to use read_lsn to fetch Metrics data optimistically.
@@ -1173,7 +1173,7 @@ KStatus TsVGroup::GetDelInfoWithOSN(kwdbContext_p ctx, TSTableID tbl_id, uint32_
 KStatus TsVGroup::GetMetricIteratorByOSN(kwdbContext_p ctx, const std::shared_ptr<TsVGroup>& vgroup,
     std::vector<EntityResultIndex>& entity_ids, std::vector<k_uint32>& scan_cols, std::vector<k_uint32>& ts_scan_cols,
     std::vector<KwOSNSpan>& osn_span,
-    uint32_t version, std::shared_ptr<TsTableSchemaManager>& table_schema_mgr, TsStorageIterator** iter) {
+    uint32_t version, const std::shared_ptr<TsTableSchemaManager>& table_schema_mgr, TsStorageIterator** iter) {
   auto ts_iter = new TsRawDataIteratorV2ImplByOSN(vgroup, version, entity_ids,
     scan_cols, ts_scan_cols, osn_span, table_schema_mgr);
   KStatus s = ts_iter->Init();

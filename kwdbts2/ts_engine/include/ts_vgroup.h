@@ -229,15 +229,15 @@ class TsVGroup {
                       std::vector<k_uint32>& scan_cols, std::vector<k_uint32>& ts_scan_cols,
                       std::vector<k_int32>& agg_extend_cols,
                       std::vector<Sumfunctype>& scan_agg_types,
-                      std::shared_ptr<TsTableSchemaManager>& table_schema_mgr,
-                      std::shared_ptr<MMapMetricsTable>& schema, TsStorageIterator** iter,
+                      const std::shared_ptr<TsTableSchemaManager>& table_schema_mgr,
+                      const std::shared_ptr<MMapMetricsTable>& schema, TsStorageIterator** iter,
                       const std::shared_ptr<TsVGroup>& vgroup,
                       const std::vector<timestamp64>& ts_points, bool reverse, bool sorted);
 
   KStatus GetMetricIteratorByOSN(kwdbContext_p ctx, const std::shared_ptr<TsVGroup>& vgroup,
     std::vector<EntityResultIndex>& entity_ids, std::vector<k_uint32>& scan_cols, std::vector<k_uint32>& ts_scan_cols,
     std::vector<KwOSNSpan>& osn_span,
-    uint32_t version, std::shared_ptr<TsTableSchemaManager>& table_schema_mgr, TsStorageIterator** iter);
+    uint32_t version, const std::shared_ptr<TsTableSchemaManager>& table_schema_mgr, TsStorageIterator** iter);
 
   KStatus GetDelInfoByOSN(kwdbContext_p ctx, TSTableID tbl_id, uint32_t entity_id, std::vector<KwOSNSpan>& osn_span,
     std::vector<KwTsSpan>* del_spans);
@@ -338,7 +338,7 @@ class TsVGroup {
   KStatus MtrRollback(kwdbContext_p ctx, uint64_t& mtr_id, bool is_skip = false, const char* tsx_id = nullptr);
   KStatus redoPut(kwdbContext_p ctx, kwdbts::TS_OSN log_lsn, const TSSlice& payload, uint64_t osn = 0);
 
-  KStatus GetLastRowEntity(kwdbContext_p ctx, std::shared_ptr<TsTableSchemaManager>& table_schema_mgr,
+  KStatus GetLastRowEntity(kwdbContext_p ctx, const std::shared_ptr<TsTableSchemaManager>& table_schema_mgr,
                            pair<timestamp64, uint32_t>& last_row_entity);
 
   bool isLastRowEntityPayloadValid(KTableKey table_id) {
@@ -362,13 +362,13 @@ class TsVGroup {
     }
   }
 
-  KStatus GetEntityLastRow(std::shared_ptr<TsTableSchemaManager>& table_schema_mgr,
+  KStatus GetEntityLastRow(const std::shared_ptr<TsTableSchemaManager>& table_schema_mgr,
                            uint32_t entity_id, const std::vector<KwTsSpan>& ts_spans,
                            timestamp64& entity_last_ts);
 
   KStatus GetEntityLastRowBatch(uint32_t entity_id, uint32_t scan_version,
-                                std::shared_ptr<TsTableSchemaManager>& table_schema_mgr,
-                                std::shared_ptr<MMapMetricsTable>& schema,
+                                const std::shared_ptr<TsTableSchemaManager>& table_schema_mgr,
+                                const std::shared_ptr<MMapMetricsTable>& scan_schema,
                                 std::shared_ptr<TsRawPayloadRowParser>& parser,
                                 const std::vector<KwTsSpan>& ts_spans, const std::vector<k_uint32>& scan_cols,
                                 timestamp64& entity_last_ts, bool& last_payload_valid, ResultSet* res);
