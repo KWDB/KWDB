@@ -385,6 +385,10 @@ struct TSEngine {
     return FAIL;
   }
 
+  virtual KStatus AllWriteBatchJobFinish(kwdbContext_p ctx) {
+    return FAIL;
+  }
+
   /**
  * @brief  calculate pushdown
  * @param[in] req

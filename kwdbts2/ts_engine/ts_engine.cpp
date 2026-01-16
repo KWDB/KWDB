@@ -1773,6 +1773,37 @@ KStatus TSEngineImpl::CancelBatchJob(kwdbContext_p ctx, uint64_t job_id, uint64_
   return KStatus::SUCCESS;
 }
 
+KStatus TSEngineImpl::AllWriteBatchJobFinish(kwdbContext_p ctx) {
+  RW_LATCH_X_LOCK(&write_batch_workers_lock_);
+  std::list<std::weak_ptr<TsBatchDataWorker>> weak_workers;
+  {
+    for (auto& worker : write_batch_data_workers_) {
+      weak_workers.push_back(worker.second);
+      worker.second->Finish(ctx);
+      LOG_INFO("Finish write batch data succeeded, job_id[%lu]", worker.first);
+    }
+    write_batch_data_workers_.clear();
+  }
+  // wait all weak_workers to be expired
+  {
+    while (!weak_workers.empty()) {
+      auto it = weak_workers.begin();
+      while (it != weak_workers.end()) {
+        if (it->expired()) {
+          it = weak_workers.erase(it);
+        } else {
+          ++it;
+        }
+      }
+      if (!weak_workers.empty()) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+      }
+    }
+  }
+  RW_LATCH_UNLOCK(&write_batch_workers_lock_);
+  return KStatus::SUCCESS;
+}
+
 KStatus TSEngineImpl::BatchJobFinish(kwdbContext_p ctx, uint64_t job_id) {
   // handle write worker
   {
@@ -2275,6 +2306,13 @@ uint64_t begin_hash, uint64_t end_hash, const KwTsSpan& ts_span, uint64_t* snaps
     LOG_ERROR("cannot find table [%lu]", table_id);
     return s;
   }
+  // force finish all write jobs
+  s = AllWriteBatchJobFinish(ctx);
+  if (s == KStatus::FAIL) {
+    LOG_ERROR("CreateSnapshotForRead AllWriteBatchJobFinish failed.");
+    return s;
+  }
+
   TsRangeImgrationInfo ts_snapshot_info;
   ts_snapshot_info.begin_hash = begin_hash;
   ts_snapshot_info.end_hash = end_hash;

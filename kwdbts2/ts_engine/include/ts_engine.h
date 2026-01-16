@@ -200,6 +200,7 @@ class TSEngineImpl : public TSEngine {
 
   KStatus BatchJobFinish(kwdbContext_p ctx, uint64_t job_id) override;
 
+  KStatus AllWriteBatchJobFinish(kwdbContext_p ctx) override;
 
   KStatus FlushBuffer(kwdbContext_p ctx) override;
 
