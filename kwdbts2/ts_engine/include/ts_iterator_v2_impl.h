@@ -62,6 +62,8 @@ class TsStorageIteratorV2Impl : public TsStorageIterator {
   KStatus Init(bool is_reversed) override;
 
  protected:
+  void SwitchEntity();
+
   bool IsFilteredOut(timestamp64 begin_ts, timestamp64 end_ts, timestamp64 ts);
   /*
    * Update ts_spans_ to reduce the data scanning from storage based on timestamp(ts)

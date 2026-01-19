@@ -10,6 +10,7 @@
 // See the Mulan PSL v2 for more details.
 
 #include <gtest/gtest.h>
+#include <chrono>
 #include <filesystem>
 
 #include "kwdb_type.h"
@@ -75,4 +76,33 @@ TEST_F(MemSegmentTester, OSN_BUG) {
   for (int i = 0; i < 1000; ++i) {
     EXPECT_EQ(*block->GetOSNAddr(i), i);
   }
+}
+
+TEST_F(MemSegmentTester, BackPressure) {
+  std::vector<std::shared_ptr<TsMemSegment>> segments;
+  for (int i = 0; i < 20; ++i) {
+    segments.push_back(TsMemSegment::Create(12));
+  }
+
+  EXPECT_EQ(TsMemSegment::GetMemSegmentCount(), 21);
+  EXPECT_EQ(TsMemSegment::IsApproachingLimit(), true);
+  ASSERT_NE(memseg, nullptr);
+  // test back pressure
+
+  auto t1 = std::chrono::steady_clock::now();
+  int n = 500;
+  for (int i = 0; i < n; ++i) {
+    auto payload = GenRowPayload(*metric_schema, tag_schema, table_id, 1, 1, 1, i * 2);
+    TsRawPayload pd(metric_schema);
+    TsRawPayload::SetOSN(payload, i);
+    ASSERT_EQ(pd.ParsePayLoadStruct(payload), SUCCESS);
+    memseg->AllocRowNum(1);
+    TSMemSegRowData* row_data = memseg->AllocOneRow(db_id, table_id, 1, 1, pd.GetRowData(0));
+    row_data->SetData(i * 2, i);
+    memseg->AppendOneRow(row_data);
+    free(payload.data);
+  }
+  auto t2 = std::chrono::steady_clock::now();
+  auto duration = std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count();
+  EXPECT_GE(duration, 2 * n);
 }

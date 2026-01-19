@@ -513,6 +513,11 @@ class TsVersionManager {
     return current_;
   }
 
+  std::shared_ptr<const TsPartitionVersion> GetPartitionVersion(PartitionIdentifier par_id) {
+    std::shared_lock lk{mu_};
+    return current_->GetPartition(par_id);
+  }
+
   uint64_t NewFileNumber() { return next_file_number_.fetch_add(1, std::memory_order_relaxed); }
   uint64_t CurrentVersionNum() { return version_num_.load(std::memory_order_relaxed); }
   KStatus AddPartition(DatabaseID dbid, timestamp64 start);

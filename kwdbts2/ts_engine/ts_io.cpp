@@ -153,11 +153,9 @@ KStatus TsMMapAppendOnlyFile::Sync() {
   if (dest_ == synced_) {
     return SUCCESS;
   }
-  char* p1 = mmap_start_ + TruncateToPage(synced_ - mmap_start_, page_size_);
-  char* p2 = mmap_start_ + TruncateToPage(dest_ - mmap_start_ - 1, page_size_) + page_size_;
-  int ok = msync(p1, p2 - p1, MS_SYNC);
+  int ok = fsync(fd_);
   if (ok < 0) {
-    LOG_ERROR("msync failed, reason: %s", strerror(errno));
+    LOG_ERROR("fsync failed, reason: %s", strerror(errno));
     return FAIL;
   }
   synced_ = dest_;

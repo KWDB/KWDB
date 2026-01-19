@@ -184,6 +184,9 @@ class TsVGroup {
   WALMgr* GetWALManager() { return wal_manager_.get(); }
 
   std::shared_ptr<const TsVGroupVersion> CurrentVersion() const { return version_manager_->Current(); }
+  std::shared_ptr<const TsPartitionVersion> GetCurrentPartitionVersion(const PartitionIdentifier& par_id) {
+    return version_manager_->GetPartitionVersion(par_id);
+  }
 
   // flush all mem segment data into last segment.
   KStatus Flush() {

@@ -41,10 +41,8 @@ enum TsMemSegmentStatus : uint8_t {
 
 class TsMemSegment : public TsSegmentBase, public enable_shared_from_this<TsMemSegment> {
   friend class TsMemSegmentManager;
-  static int n_mem_segments_;
-  static std::mutex global_memseg_mutex_;
-  static std::condition_variable global_memseg_cv_;
-  static int32_t max_memsegments_;
+  static std::atomic<int32_t> n_mem_segments_;
+  static std::atomic<int32_t> max_memsegments_;
 
  private:
   std::atomic<uint32_t> intent_row_num_{0};
@@ -53,33 +51,33 @@ class TsMemSegment : public TsSegmentBase, public enable_shared_from_this<TsMemS
   std::atomic<TsMemSegmentStatus> status_{MEM_SEGMENT_IDLE};
   TsMemSegIndex skiplist_;
 
-  explicit TsMemSegment(int32_t max_height) : skiplist_(max_height) { n_mem_segments_++; }
+  explicit TsMemSegment(int32_t max_height) : skiplist_(max_height) {
+    n_mem_segments_.fetch_add(1, std::memory_order_relaxed);
+  }
 
  public:
   template <class... Args>
   static std::shared_ptr<TsMemSegment> Create(Args&&... args) {
-    std::unique_lock lk(global_memseg_mutex_);
-
-    if (max_memsegments_ == -1) {
+    if (max_memsegments_.load(std::memory_order_relaxed) == -1) {
       char* envvar = getenv("KW_MAX_MEMSEGMENTS");
-      if (envvar == nullptr) {
-        max_memsegments_ = 3 * EngineOptions::vgroup_max_num;
-      } else {
+      int32_t desire = 3 * EngineOptions::vgroup_max_num;
+      if (envvar != nullptr) {
         int n = std::atoi(envvar);
-        max_memsegments_ = n < 0 ? INT32_MAX : n;
-        max_memsegments_ = std::max(max_memsegments_, EngineOptions::vgroup_max_num);
+        desire = std::max(n < 0 ? INT32_MAX : n, 2 * EngineOptions::vgroup_max_num);
       }
+      int32_t expect = -1;
+      max_memsegments_.compare_exchange_strong(expect, desire, std::memory_order_relaxed);
     }
 
-    global_memseg_cv_.wait(lk, [] { return n_mem_segments_ < max_memsegments_; });
     return std::shared_ptr<TsMemSegment>(new TsMemSegment(std::forward<Args>(args)...));
   }
-  ~TsMemSegment() {
-    {
-      std::unique_lock lk(global_memseg_mutex_);
-      n_mem_segments_--;
-    }
-    global_memseg_cv_.notify_all();
+  ~TsMemSegment() { n_mem_segments_.fetch_sub(1, std::memory_order_relaxed); }
+
+  static int32_t GetMemSegmentCount() { return n_mem_segments_.load(std::memory_order_relaxed); }
+  static int32_t GetMaxMemSegmentsCount() { return max_memsegments_.load(std::memory_order_relaxed); }
+  static bool IsApproachingLimit(double ratio = 0.8) {
+    assert(GetMaxMemSegmentsCount() > 0);
+    return GetMemSegmentCount() >= GetMaxMemSegmentsCount() * ratio;
   }
 
   uint32_t GetPayloadMemUsage() { return payload_mem_usage_.load(std::memory_order_relaxed); }

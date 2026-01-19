@@ -48,7 +48,11 @@ int64_t EngineOptions::default_partition_interval = 3600 * 24 * 10;
 int64_t EngineOptions::block_cache_max_size = 1024 * 1024 * 1024;
 uint8_t EngineOptions::compress_stage = 2;
 bool EngineOptions::compress_last_segment = false;
+#ifdef KWBASE_OSS
+bool EngineOptions::force_sync_file = false;
+#else
 bool EngineOptions::force_sync_file = true;
+#endif
 size_t EngineOptions::last_cache_max_size = 1 << 30;
 double EngineOptions::block_filter_sampling_ratio = 0.2;
 int EngineOptions::count_stats_recalc_cycle = 60 * 5;

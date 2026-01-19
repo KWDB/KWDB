@@ -231,7 +231,7 @@ var (
 	tsForceSyncFile = settings.RegisterPublicBoolSetting(
 		"ts.force_sync_file.enabled",
 		"force sync counter file every time when writing to disk if enabled",
-		true)
+		false)
 
 	maxLastCacheMaxSize = settings.RegisterPublicValidatedByteSizeSetting(
 		"ts.last_cache_size.max_limit",

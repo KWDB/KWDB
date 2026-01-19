@@ -15,6 +15,7 @@
 #include <list>
 #include <memory>
 #include <mutex>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -31,10 +32,8 @@
 
 namespace kwdbts {
 
-int TsMemSegment::n_mem_segments_ = 0;
-std::mutex TsMemSegment::global_memseg_mutex_;
-std::condition_variable TsMemSegment::global_memseg_cv_;
-int32_t TsMemSegment::max_memsegments_ = -1;  // -1 means uninitialized
+std::atomic<int32_t> TsMemSegment::n_mem_segments_ = 0;
+std::atomic<int32_t> TsMemSegment::max_memsegments_ = -1;  // -1 means uninitialized
 
 TsMemSegmentManager::TsMemSegmentManager(TsVGroup* vgroup, TsVersionManager* version_manager)
     : vgroup_(vgroup),
@@ -262,49 +261,19 @@ inline bool TsMemSegBlock::IsColNull(int row_num, int col_id, const std::vector<
 }
 
 void TsMemSegment::AppendOneRow(TSMemSegRowData* row) {
+  auto current_count = GetMemSegmentCount();
+  auto max_count = GetMaxMemSegmentsCount();
+  assert(max_count > 0);
+  if (current_count >= max_count) {
+    std::this_thread::sleep_for(1ms);
+    if (current_count > max_count * 1.5) {
+      std::this_thread::sleep_for(1ms);
+    }
+  }
   skiplist_.InsertRowData(row);
   written_row_num_.fetch_add(1);
   payload_mem_usage_.fetch_add(row->GetRowData().len, std::memory_order_relaxed);
 }
-
-// bool TsMemSegment::HasEntityRows(const TsScanFilterParams& filter) {
-//   SkiplistIterator iter(&skiplist_);
-//   char key[TSMemSegRowData::GetKeyLen() + sizeof(TSMemSegRowData)];
-//   uint32_t cur_version = 1;
-//   while (true) {
-//     TSMemSegRowData* begin = new (key + TSMemSegRowData::GetKeyLen())
-//         TSMemSegRowData(filter.db_id_, filter.table_id_, cur_version, filter.entity_id_);
-//     begin->SetData(INT64_MIN, 0, {nullptr, 0});
-//     begin->GenKey(key);
-//     iter.Seek(reinterpret_cast<char*>(&key));
-//     bool scan_over = false;
-//     while (iter.Valid()) {
-//       auto cur_row = skiplist_.ParseKey(iter.key());
-//       assert(cur_row != nullptr);
-//       if (!cur_row->SameTableId(begin)) {
-//         scan_over = true;
-//         break;
-//       }
-//       if (cur_row->entity_id > filter.entity_id_) {
-//         cur_version = cur_row->table_version + 1;
-//         break;
-//       }
-//       if (cur_row->entity_id < filter.entity_id_) {
-//         cur_version = cur_row->table_version;
-//         break;
-//       }
-//       if (checkTimestampWithSpans(filter.ts_spans_, cur_row->ts, cur_row->ts)
-//             == TimestampCheckResult::FullyContained) {
-//         return true;
-//       }
-//       iter.Next();
-//     }
-//     if (scan_over || !iter.Valid()) {
-//       break;
-//     }
-//   }
-//   return false;
-// }
 
 bool TsMemSegment::GetEntityRows(const TsBlockItemFilterParams& filter, std::list<const TSMemSegRowData*>* rows) {
   rows->clear();
