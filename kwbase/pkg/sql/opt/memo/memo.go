@@ -1432,14 +1432,22 @@ func (m *Memo) tsScanFillStatistic(tsScan *TSScanExpr, gp *GroupingPrivate) {
 // such as "WHERE device = 'Device01' GROUP BY item" is equl to"WHERE device = 'Device01' GROUP BY device, item",
 // it should be changed because the "WHERE device = 'Device01' GROUP BY device, item" can use the statistic.
 func addTagToGrouping(set *opt.ColSet, expr opt.Expr, md *opt.Metadata) {
-	if v, ok := expr.(*VariableExpr); ok {
-		if md.ColumnMeta(v.Col).IsPrimaryTag() {
-			set.Add(v.Col)
-			return
-		}
+	// expr must be the column equals a constant, will match the ReduceGroupingCols rule
+	eq, ok := expr.(*EqExpr)
+	if !ok {
+		return
 	}
-	for i := 0; i < expr.ChildCount(); i++ {
-		addTagToGrouping(set, expr.Child(i), md)
+	if _, ok := eq.Right.(*ConstExpr); !ok {
+		return
+	}
+	v, ok := eq.Left.(*VariableExpr)
+	if !ok {
+		return
+	}
+
+	if md.ColumnMeta(v.Col).IsPrimaryTag() {
+		set.Add(v.Col)
+		return
 	}
 }
 
