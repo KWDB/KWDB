@@ -131,6 +131,7 @@ type groupWindow struct {
 	timeWindowHelper    *TimeWindowHelper
 	sessionWindowHelper *SessionWindowHelper
 	startFlag           bool
+	loc                 *time.Location
 }
 
 // newGroupWindow return a new groupWindow with only one type of WindowHelper.
@@ -141,6 +142,12 @@ func newGroupWindow(
 	groupWindowID []int32,
 ) *groupWindow {
 	gWindow := &groupWindow{}
+	locStr := evalCtx.GetLocation().String()
+	var err error
+	gWindow.loc, err = timeutil.TimeZoneStringToLocation(locStr, timeutil.TimeZoneStringToLocationISO8601Standard)
+	if err != nil {
+		return gWindow
+	}
 
 	gWindow.groupWindowValue = 0
 	gWindow.groupWindowColID = groupWindowColID
@@ -435,7 +442,7 @@ func (gw *groupWindow) handleTimeWindowWithNoSlide(
 			sts := timeutil.Unix(0, result)
 			newTimeDur = tree.MakeDTimestampTZ(sts, 0)
 		} else {
-			newTimeDur = tree.MakeDTimestampTZ(getNewTime(v.Time, evalCtx.GroupWindow.TimeWindowHelper.Duration, time.UTC), 0)
+			newTimeDur = tree.MakeDTimestampTZ(getNewTime(v.Time, evalCtx.GroupWindow.TimeWindowHelper.Duration, gw.loc), 0)
 		}
 		newEndTimeDur = tree.MakeDTimestampTZ(duration.Add(newTimeDur.Time, evalCtx.GroupWindow.TimeWindowHelper.Duration.Duration), 0)
 
@@ -471,7 +478,7 @@ func (gw *groupWindow) handleTimeWindowWithNoSlide(
 			sts := timeutil.Unix(0, result)
 			newTimeDur = tree.MakeDTimestamp(sts, 0)
 		} else {
-			newTimeDur = tree.MakeDTimestamp(getNewTime(v.Time, evalCtx.GroupWindow.TimeWindowHelper.Duration, time.UTC), 0)
+			newTimeDur = tree.MakeDTimestamp(getNewTime(v.Time, evalCtx.GroupWindow.TimeWindowHelper.Duration, gw.loc), 0)
 		}
 		newEndTimeDur = tree.MakeDTimestamp(duration.Add(newTimeDur.Time, evalCtx.GroupWindow.TimeWindowHelper.Duration.Duration), 0)
 
@@ -571,15 +578,15 @@ func (gw *groupWindow) handleTimeTZWindowWithSlide(
 		}
 
 		v, _ = row1[gw.groupWindowColID].Datum.(*tree.DTimestampTZ)
-		newTimeDur = tree.MakeDTimestampTZ(getNewTime(v.Time, evalCtx.GroupWindow.TimeWindowHelper.Duration, time.UTC), 0)
+		newTimeDur = tree.MakeDTimestampTZ(getNewTime(v.Time, evalCtx.GroupWindow.TimeWindowHelper.Duration, gw.loc), 0)
 
 		if !gw.timeWindowHelper.noNeedReCompute {
 			// Receives the first data initialization window.
 			if evalCtx.GroupWindow.TimeWindowHelper.SlidingTime.Days != 0 || evalCtx.GroupWindow.TimeWindowHelper.SlidingTime.Nanos() != 0 {
-				startTimeDur = tree.MakeDTimestampTZ(getNewTimeForWin(v.Time, evalCtx.GroupWindow.TimeWindowHelper.SlidingTime, evalCtx.GroupWindow.TimeWindowHelper.Duration, time.UTC), 0)
+				startTimeDur = tree.MakeDTimestampTZ(getNewTimeForWin(v.Time, evalCtx.GroupWindow.TimeWindowHelper.SlidingTime, evalCtx.GroupWindow.TimeWindowHelper.Duration, gw.loc), 0)
 			} else {
 				startTimeDur = tree.MakeDTimestampTZ(duration.Subtract(duration.Add(getNewTime(v.Time, evalCtx.GroupWindow.TimeWindowHelper.SlidingTime,
-					time.UTC), evalCtx.GroupWindow.TimeWindowHelper.SlidingTime.Duration), evalCtx.GroupWindow.TimeWindowHelper.Duration.Duration), 0)
+					gw.loc), evalCtx.GroupWindow.TimeWindowHelper.SlidingTime.Duration), evalCtx.GroupWindow.TimeWindowHelper.Duration.Duration), 0)
 			}
 
 			gw.timeWindowHelper.WindowBucktTZ = *newTimeDur
@@ -712,15 +719,15 @@ func (gw *groupWindow) handleTimeWindowWithSlide(
 		}
 
 		v, _ = row1[gw.groupWindowColID].Datum.(*tree.DTimestamp)
-		newTimeDur = tree.MakeDTimestamp(getNewTime(v.Time, evalCtx.GroupWindow.TimeWindowHelper.Duration, time.UTC), 0)
+		newTimeDur = tree.MakeDTimestamp(getNewTime(v.Time, evalCtx.GroupWindow.TimeWindowHelper.Duration, gw.loc), 0)
 
 		if !gw.timeWindowHelper.noNeedReCompute {
 			// Receives the first data initialization window.
 			if evalCtx.GroupWindow.TimeWindowHelper.SlidingTime.Days != 0 || evalCtx.GroupWindow.TimeWindowHelper.SlidingTime.Nanos() != 0 {
-				startTimeDur = tree.MakeDTimestamp(getNewTimeForWin(v.Time, evalCtx.GroupWindow.TimeWindowHelper.SlidingTime, evalCtx.GroupWindow.TimeWindowHelper.Duration, time.UTC), 0)
+				startTimeDur = tree.MakeDTimestamp(getNewTimeForWin(v.Time, evalCtx.GroupWindow.TimeWindowHelper.SlidingTime, evalCtx.GroupWindow.TimeWindowHelper.Duration, gw.loc), 0)
 			} else {
 				startTimeDur = tree.MakeDTimestamp(duration.Subtract(duration.Add(getNewTime(v.Time, evalCtx.GroupWindow.TimeWindowHelper.SlidingTime,
-					time.UTC), evalCtx.GroupWindow.TimeWindowHelper.SlidingTime.Duration), evalCtx.GroupWindow.TimeWindowHelper.Duration.Duration), 0)
+					gw.loc), evalCtx.GroupWindow.TimeWindowHelper.SlidingTime.Duration), evalCtx.GroupWindow.TimeWindowHelper.Duration.Duration), 0)
 			}
 			if startTimeDur.Compare(evalCtx, &gw.timeWindowHelper.tsTimeStampStart) != 1 {
 				gw.rows.PopFirst()
@@ -737,7 +744,7 @@ func (gw *groupWindow) handleTimeWindowWithSlide(
 					return err
 				}
 				v, _ = row1[gw.groupWindowColID].Datum.(*tree.DTimestamp)
-				newTimeDur = tree.MakeDTimestamp(getNewTime(v.Time, evalCtx.GroupWindow.TimeWindowHelper.Duration, time.UTC), 0)
+				newTimeDur = tree.MakeDTimestamp(getNewTime(v.Time, evalCtx.GroupWindow.TimeWindowHelper.Duration, gw.loc), 0)
 				continue
 			}
 
@@ -993,6 +1000,12 @@ func (ag *aggregatorBase) init(
 	ag.arena = stringarena.Make(&ag.bucketsAcc)
 	ag.aggFuncsAcc = memMonitor.MakeBoundAccount()
 	ag.groupWindow = newGroupWindowWithAllHelpers(spec.GroupWindowId, spec.Group_WindowTscolid, spec.Group_WindowId)
+	locStr := flowCtx.EvalCtx.GetLocation().String()
+	var err error
+	ag.groupWindow.loc, err = timeutil.TimeZoneStringToLocation(locStr, timeutil.TimeZoneStringToLocationISO8601Standard)
+	if err != nil {
+		return err
+	}
 	ag.gapfill = gapfilltype{
 		groupTimeIndex:   groupTimeIndex,
 		anyNotNUllNum:    anyNotNUllNum,

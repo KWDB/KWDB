@@ -674,7 +674,6 @@ bool checkTzPresent(KString &str) {
   }
   return false;
 }
-time_t kwdbMktime(struct tm *timep) { return mktime(timep) + timep->tm_gmtoff; }
 
 #define LEAP_YEAR_MONTH_DAY 29
 static inline bool validateTm(struct tm *pTm) {
@@ -725,8 +724,8 @@ KStatus parseLocaltimeDst(KString timestr, k_int64 scale, k_int64 *utime, char d
       return FAIL;
     }
   }
-  /* mktime will be affected by TZ, set by using kwdb_options */
-  int64_t seconds = kwdbMktime(&tm);
+  /* mktime will be affected by TZ, set by using timegm */
+  int64_t seconds = timegm(&tm);
 
   int64_t fraction = 0;
   if (*str == '.') {

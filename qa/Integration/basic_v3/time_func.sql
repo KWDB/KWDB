@@ -2,11 +2,11 @@ CREATE TS DATABASE t1;
 
 CREATE TABLE t1.d1(k_timestamp  TIMESTAMPTZ not null,e1 int8 not null, e2 timestamp not null) tags (code1 INT not null) primary tags(code1);
 
-INSERT INTO t1.d1 VALUES('2018-10-10 10:00:00', 1, 156384292, 1);
-INSERT INTO t1.d1 VALUES('2018-10-10 10:00:01', 2, 1563842920, 1);
-INSERT INTO t1.d1 VALUES('2018-10-10 10:00:02', 3, 12356987402, 1);
-INSERT INTO t1.d1 VALUES('2018-10-10 10:00:03', 4, 102549672049, 1);
-INSERT INTO t1.d1 VALUES('2018-10-10 10:00:04', 5, 1254369870546, 1);
+INSERT INTO t1.d1 VALUES('2018-10-10 00:00:00', 1, 156384292, 1);
+INSERT INTO t1.d1 VALUES('2018-10-10 07:00:01', 2, 1563842920, 1);
+INSERT INTO t1.d1 VALUES('2018-10-10 08:00:02', 3, 12356987402, 1);
+INSERT INTO t1.d1 VALUES('2018-10-10 16:00:00', 4, 102549672049, 1);
+INSERT INTO t1.d1 VALUES('2018-10-10 18:00:00', 5, 1254369870546, 1);
 INSERT INTO t1.d1 VALUES('2018-10-10 10:00:05', 6, 1846942576287, 1);
 INSERT INTO t1.d1 VALUES('2018-10-10 10:00:06', 7, 1235405546970, 1);
 INSERT INTO t1.d1 VALUES('2018-10-10 10:00:07', 8, -62167219200001, 1);
@@ -117,6 +117,13 @@ select date_trunc('week', timestamp'2020');
 select date_trunc('week', timestamp'20201231123000000');
 select date_trunc('week', timestamp'20201231123000');
 
+select date_trunc('day', timestamp'2020-12-31 12:30:00.000');
+select date_trunc('day', timestamp'2020-12-31 12:30:00');
+select date_trunc('day', timestamp'2020-12-31');
+select date_trunc('day', timestamp'2020');
+select date_trunc('day', timestamp'20201231123000000');
+select date_trunc('day', timestamp'20201231123000');
+
 select date_trunc('hour', timestamp'2020-12-31 12:30:00.000');
 select date_trunc('hour', timestamp'2020-12-31 12:30:00');
 select date_trunc('hour', timestamp'2020-12-31');
@@ -153,10 +160,20 @@ select date_trunc('month', 0xC9023472524AFE);
 select e1,e2, extract('TIMEZONE', k_timestamp) from t1.d1 order by e1;
 select e1,e2, extract('TIMEZONE_MINUTE', k_timestamp) from t1.d1 order by e1;
 select e1,e2, extract('TIMEZONE_HOUR', k_timestamp) from t1.d1 order by e1;
+select date_trunc('day', k_timestamp) from t1.d1 order by e1;
+
 set timezone = 'Asia/Shanghai';
 select e1,e2, extract('TIMEZONE', k_timestamp) from t1.d1 order by e1;
 select e1,e2, extract('TIMEZONE_MINUTE', k_timestamp) from t1.d1 order by e1;
 select e1,e2, extract('TIMEZONE_HOUR', k_timestamp) from t1.d1 order by e1;
+select date_trunc('day', k_timestamp) from t1.d1 order by e1;
+
+SET TIME ZONE '+8:00';
+select e1,e2, extract('TIMEZONE', k_timestamp) from t1.d1 order by e1;
+select e1,e2, extract('TIMEZONE_MINUTE', k_timestamp) from t1.d1 order by e1;
+select e1,e2, extract('TIMEZONE_HOUR', k_timestamp) from t1.d1 order by e1;
+select date_trunc('day', k_timestamp) from t1.d1 order by e1;
+
 set timezone = 'UTC';
 
 drop database t1 cascade;

@@ -43,6 +43,8 @@ void TimeWindowHelper::CalSkipTsSpan(kwdbts::KTimestampTz &ts) {
       etm.tm_year = mon / 12;
       etm.tm_mon = mon % 12;
     }
+    tm.tm_hour -= time_zone_;
+    etm.tm_hour -= time_zone_;
     first_ts_ = (k_int64)(timegm(&tm) * MILLISECOND_PER_SECOND);
     last_ts_ = (k_int64)(timegm(&etm) * MILLISECOND_PER_SECOND);
     src_first_ts_ = first_ts_;

@@ -125,6 +125,12 @@ func newStreamAggregator(
 		spec.AggSpec.Group_WindowTscolid,
 		spec.AggSpec.Group_WindowId,
 	)
+	locStr := flowCtx.EvalCtx.GetLocation().String()
+	var err error
+	streamAgg.streamGroupWindow.loc, err = timeutil.TimeZoneStringToLocation(locStr, timeutil.TimeZoneStringToLocationISO8601Standard)
+	if err != nil {
+		return nil, err
+	}
 
 	// A new tree.EvalCtx was created during initializing aggregatorBase above
 	// and will be used only by this aggregator, so it is ok to update EvalCtx

@@ -38,6 +38,7 @@ class TimeWindowHelper : public WindowHelper {
   k_int32 group_id_{-1};
   bool fill_first_ts_{false};
   k_int64 type_scale_{1};
+  k_int8 time_zone_{0};
 
   struct tm first_tm_ {
   }, last_tm_{};
@@ -48,6 +49,7 @@ class TimeWindowHelper : public WindowHelper {
   EEIteratorErrCode NextChunk(kwdbContext_p ctx, DataChunkPtr &chunk) override;
   EEIteratorErrCode Init(kwdbContext_p ctx) override {
     KWThdContext *thd = current_thd;
+    time_zone_ = ctx->timezone;
     FieldFuncTimeWindow *field =
         static_cast<FieldFuncTimeWindow *>(thd->window_field_);
     bool is_sliding = false;

@@ -1190,18 +1190,17 @@ KStatus DataChunk::EncodingValue(kwdbContext_p ctx, k_uint32 row, k_uint32 col, 
         0
       };
       int year, mon, day;
+      // Timestamp in UTC timezone.
       k_int64 msec;
       std::memcpy(&msec, raw, sizeof(k_int64));
-      k_int64 seconds = msec / 1000;
-      time_t rawtime = (time_t) seconds;
+      k_int64 seconds = msec / 1000 - ctx->timezone * 3600;
       tm timeinfo;
-      ToGMT(rawtime, timeinfo);
+      ToGMT(seconds, timeinfo);
 
       stm.tm_year = timeinfo.tm_year;
       stm.tm_mon = timeinfo.tm_mon;
       stm.tm_mday = timeinfo.tm_mday;
-      time_t val = mktime(&stm) + stm.tm_gmtoff;
-      val += ctx->timezone * 60 * 60;
+      time_t val = timegm(&stm);
       val /= secondOfDay;
       k_int32 len = ValueEncoding::EncodeComputeLenInt(0, val);
       ret = ee_enlargeStringInfo(info, len);
