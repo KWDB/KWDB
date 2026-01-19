@@ -54,7 +54,7 @@ if __name__ == '__main__':
         if min_ms == -1 or int(count) != query_times:
             exit(1)
         
-        # Update threshold file, threshold formula=mean+2.5*stddev+2ms(prevent fast case from flapping)
-        threshold=float(mean_ms)+2.5*float(stddev_ms) + 1
+        # Update threshold file, threshold formula=mean+2*min(stddev, 5%mean) + 1ms(prevent fast case from flapping)
+        threshold=float(mean_ms)+2*min(float(stddev_ms), 0.05 * float(mean_ms)) + 1
         resStr=kwdb_version+","+tsbs_format+","+pipe_name+","+case_name+","+str(scale)+","+str(workers)+","+str(query_times)+","+min_ms+","+mean_ms+","+max_ms+","+med_ms+","+stddev_ms+","+dop+","+str(threshold)
         utils.write_lines_to_file(os.path.join(threshold_dir, 'TSBS_THRESHOLD.csv'), resStr)

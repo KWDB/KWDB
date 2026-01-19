@@ -54,7 +54,7 @@ if [[ ${is_test_container} == "true" ]]; then
     LD_LIBRARY_PATH=../lib ./kwbase sql --insecure --host=${ip}:$listenport --execute="set cluster setting cluster.license ='${license}';"
   fi
 
-  UPDATE_THRESHOLD=${update_threshold} /home/inspur/src/gitee.com/kwbasedb/qa/tsbs_test/excute_tsbs_test.sh ${cluster_node_num} ${scale} ${tsbs_result_dir} ${KWDB_CT_NAME} ${ip} ${listenport} /home/inspur/src/gitee.com
+  UPDATE_THRESHOLD=${update_threshold} /home/inspur/src/gitee.com/kwbasedb/qa/tsbs_test/excute_tsbs_test.sh ${cluster_node_num} ${scale} ${tsbs_result_dir} ${KWDB_CT_NAME} ${ip} ${listenport} /home/inspur/src/gitee.com ${query_workers}
   exit_code=$?
   if [ $exit_code -ne 0 ]; then
     exit 1

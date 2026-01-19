@@ -43,11 +43,17 @@ high-cpu-1 \
 lastpoint \
 groupby-orderby-limit"
 
-QUERY_TYPES_SIMPLE="\
+QUERY_TYPES_1="\
 single-groupby-1-1-1 \
 single-groupby-5-1-12 \
 single-groupby-5-8-1 \
 cpu-max-all-8 \
+double-groupby-all \
+high-cpu-all \
+lastpoint \
+groupby-orderby-limit"
+
+QUERY_TYPES_3="\
 double-groupby-all \
 high-cpu-all \
 lastpoint \

@@ -19,6 +19,7 @@ KWDB_CT_NAME=${4:-"kwdb"}
 me_host_ip=${5:-"127.0.102.145"}
 me_host_port=${6:-"26257"}
 DATA_DIR=${7:-"${QA_DIR}/tsbs_test/data"}
+QUERY_WORKERS=${8:-"8"}
 # 设置默认值为false，防止变量未定义导致的错误
 UPDATE_THRESHOLD=${UPDATE_THRESHOLD:-false}
 IFS=',' read -ra TSBS_SCALE_LIST <<< "${scales}"
@@ -183,13 +184,13 @@ for scale in ${TSBS_SCALE_LIST[@]}; do
       --workers=${load_workers} > ${loadResultDir}/${tsbs_case}_${format}_scale_${scale}.log
 
     if [ "${UPDATE_THRESHOLD}" = "true" ]; then
-        python3 ${QA_DIR}/tsbs_test/update_threshold.py -v tsbs -p ${time} -f ${format} -s ${scale} -n load -w ${query_workers} -t ${query_times} -r ${loadResultDir}/${tsbs_case}_${format}_scale_${scale}.log -d ${thresholdDir} -o ${parallel_degree}
+        python3 ${QA_DIR}/tsbs_test/update_threshold.py -v tsbs -p ${time} -f ${format} -s ${scale} -n load -w ${QUERY_WORKERS} -t ${query_times} -r ${loadResultDir}/${tsbs_case}_${format}_scale_${scale}.log -d ${thresholdDir} -o ${parallel_degree}
         if [ $? = 1 ]; then
             echo "update threshold failed"
             exit 1
         fi
     else
-        python3 ${QA_DIR}/tsbs_test/record_result.py -v tsbs -p ${time} -f ${format} -s ${scale} -n load -w ${query_workers} -t ${query_times} -r ${loadResultDir}/${tsbs_case}_${format}_scale_${scale}.log -d ${queryResultDir} -o ${parallel_degree} -c ${thresholdDir}
+        python3 ${QA_DIR}/tsbs_test/record_result.py -v tsbs -p ${time} -f ${format} -s ${scale} -n load -w ${QUERY_WORKERS} -t ${query_times} -r ${loadResultDir}/${tsbs_case}_${format}_scale_${scale}.log -d ${queryResultDir} -o ${parallel_degree} -c ${thresholdDir}
         if [ $? = 1 ]; then
             echo "record load result failed"
             exit 1
@@ -202,8 +203,15 @@ for scale in ${TSBS_SCALE_LIST[@]}; do
     if [ -f "${clusterSettingsDir}/after_load_scale${scale}.sql" ]; then
         $KWBIN sql --host=${me_host_ip} --port=${me_host_port} --insecure < ${clusterSettingsDir}/after_load_scale${scale}.sql > /dev/null
     fi
-
-    for QUERY_TYPE in ${QUERY_TYPES_SIMPLE}; do
+    eval "var_exists=\${QUERY_TYPES_${scale}+x}"
+    if [ -n "${var_exists}" ]; then
+        QUERY_TYPES_VAR="QUERY_TYPES_${scale}"
+    elif eval "var_exists=\${QUERY_TYPES_${node_num}+x}" && [ -n "$var_exists" ]; then
+        QUERY_TYPES_VAR="QUERY_TYPES_${node_num}"
+    else
+        QUERY_TYPES_VAR="QUERY_TYPES_ALL"
+    fi
+    for QUERY_TYPE in ${!QUERY_TYPES_VAR}; do
         query_data=${queryDataDir}/${format}_scale${scale}_${tsbs_case}_${QUERY_TYPE}_query_times${query_times}.dat
         if [ ! -f "${query_data}" ]; then
             LD_LIBRARY_PATH=${TSBS_PATH}/lib ${TSBS_PATH}/tsbs_generate_queries_${arch} \
@@ -222,7 +230,7 @@ for scale in ${TSBS_SCALE_LIST[@]}; do
         else
             echo ${QUERY_TYPE} query data already exists 
         fi
-        query_result=${queryResultDir}/${format}_scale${scale}_${tsbs_case}_${QUERY_TYPE}_worker${query_workers}.log
+        query_result=${queryResultDir}/${format}_scale${scale}_${tsbs_case}_${QUERY_TYPE}_worker${QUERY_WORKERS}.log
         LD_LIBRARY_PATH=${TSBS_PATH}/lib ${TSBS_PATH}/tsbs_run_queries_kwdb_${arch} \
             --file=${query_data} \
             --user=root \
@@ -230,16 +238,16 @@ for scale in ${TSBS_SCALE_LIST[@]}; do
             --host=${me_host_ip} \
             --port=${me_host_port} \
             --query-type=${QUERY_TYPE} \
-            --workers=${query_workers} > ${query_result}
+            --workers=${QUERY_WORKERS} > ${query_result}
         
         if [ "${UPDATE_THRESHOLD}" = "true" ]; then
-            python3 ${QA_DIR}/tsbs_test/update_threshold.py -v tsbs -p ${time} -f ${format} -s ${scale} -n ${QUERY_TYPE} -w ${query_workers} -t ${query_times} -r ${query_result} -d ${thresholdDir} -o ${parallel_degree}
+            python3 ${QA_DIR}/tsbs_test/update_threshold.py -v tsbs -p ${time} -f ${format} -s ${scale} -n ${QUERY_TYPE} -w ${QUERY_WORKERS} -t ${query_times} -r ${query_result} -d ${thresholdDir} -o ${parallel_degree}
             if [ $? = 1 ]; then
                 echo "update threshold failed"
                 exit 1
             fi
         else
-            python3 ${QA_DIR}/tsbs_test/record_result.py -v tsbs -p ${time} -f ${format} -s ${scale} -n ${QUERY_TYPE} -w ${query_workers} -t ${query_times} -r ${query_result} -d ${queryResultDir} -o ${parallel_degree} -c ${thresholdDir}
+            python3 ${QA_DIR}/tsbs_test/record_result.py -v tsbs -p ${time} -f ${format} -s ${scale} -n ${QUERY_TYPE} -w ${QUERY_WORKERS} -t ${query_times} -r ${query_result} -d ${queryResultDir} -o ${parallel_degree} -c ${thresholdDir}
             if [ $? = 1 ]; then
                 echo "record result ${QUERY_TYPE} failed"
                 exit 1
