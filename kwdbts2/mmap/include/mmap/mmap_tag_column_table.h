@@ -466,15 +466,15 @@ class MMapTagColumnTable: public TSObject {
     memcpy(tag_ptr, tag_info, sizeof(TagDataInfo));
   }
 
-  // init   (0x00)
+  // init   (0xFF)
+  // valid  (0x00)
   // delete (0x01)
-  // valid  (0x02)
   inline void setDeleteMark(size_t row) {
     reinterpret_cast<uint8_t*>(header_(row))[0] = 1;
   }
 
   inline void unsetDeleteMark(size_t row) {
-    reinterpret_cast<uint8_t *>(header_(row))[0] = 2;
+    reinterpret_cast<uint8_t *>(header_(row))[0] = 0;
   }
 
   int getColumnsByRownum(size_t row, const std::vector<uint32_t>& src_scan_tags, const std::vector<TagInfo>& result_scan_tag_infos, kwdbts::ResultSet* res);
@@ -541,8 +541,8 @@ class MMapTagColumnTable: public TSObject {
   int getEntityIdByRownum(size_t row, std::vector<kwdbts::EntityResultIndex>* entityIdList);
 
   inline bool isValidRow(size_t row) {
-    // valid(0x02)
-    return (((unsigned char *)header_(row))[0] & 0x02) ? true : false;
+    // valid(0x00)
+    return (((unsigned char *)header_(row))[0] & 0xFF) ? false : true;
   }
 
   int startRead() {

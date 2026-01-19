@@ -165,6 +165,9 @@ int MMapEntityRowHashIndex::rehash(size_t new_size) {
   int bkt_ins_idx = 0;
   int bkt_idx = 0;
   for (uint32_t rownum = 1; rownum <= metaData().m_row_count; ++rownum) {
+    if (row(rownum)->bt_row == 0) {
+      continue;
+    }
     bkt_ins_idx = (row(rownum)->hash_val >> 56) & (n_bkt_instances_ - 1);
     bkt_idx = buckets_[bkt_ins_idx]->get_bucket_index(row(rownum)->hash_val);
     row(rownum)->next_row = buckets_[bkt_ins_idx]->bucketValue(bkt_idx);

@@ -11,6 +11,7 @@
 #include "libkwdbts2.h"
 #include "ts_engine.h"
 #include "test_util.h"
+#include "../../mmap/include/mmap/mmap_ptag_hash_index.h"
 
 using namespace kwdbts;  // NOLINT
 
@@ -119,4 +120,42 @@ TEST_F(TestEngine, tagiterator) {
   iter->Close();
   delete iter;
   ts_table.reset();
+}
+
+TEST(TsTagHashIndexTest, MultiInsert) {
+  string index_name = "11.tag.ht";
+  System("rm -rf 11.tag.ht");
+  int primary_key_length = 8;
+  MMapHashIndex* m_index_ = new MMapPTagHashIndex(primary_key_length);
+  ErrorInfo err_info;
+  auto errcode = m_index_->open(index_name, "./", "./", MMAP_CREATOPEN, err_info);
+  assert(errcode == 0);
+  std::vector<uint64_t> pkeys;
+  int thread_num = 10;
+  int insert_rows = 10000;
+
+  for (size_t i = 0; i < insert_rows * thread_num; i++) {
+    pkeys.push_back(10086 + i);
+  }
+
+  std::vector<std::thread> threads;
+  for (size_t i = 0; i < thread_num; i++) {
+    int idx = i;
+    threads.push_back(thread([&](int index) {
+        for (size_t j = 0; j < insert_rows; j++) {
+          auto err_code = m_index_->insert((char*)(&pkeys[index * insert_rows + j]), primary_key_length, 1, index * insert_rows + j + 1);
+          ASSERT_TRUE(err_code == 0);
+        }
+    }, idx));
+  }
+  for (size_t i = 0; i < threads.size(); i++) {
+    threads[i].join();
+  }
+
+  for (size_t i = 0; i < insert_rows * thread_num; i++) {
+    auto ret = m_index_->get((char*)(&pkeys[i]), primary_key_length);
+    ASSERT_EQ(ret.first, 1);
+    ASSERT_EQ(ret.second, i + 1);
+  }
+  delete m_index_;
 }

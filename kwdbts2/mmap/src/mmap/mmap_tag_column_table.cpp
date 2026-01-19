@@ -774,6 +774,11 @@ int MMapTagColumnTable::reserve(size_t n, ErrorInfo& err_info) {
     stopWrite();
     return err_code;
   }
+  // init bitmap file
+  for (int i = m_meta_data_->m_reserve_row_count + 1; i <= n; i++) {
+    reinterpret_cast<uint8_t*>(header_(i))[0] = 0xFF;
+  }
+
   // row info mremap
   if (m_row_info_file_) {
     err_code = m_row_info_file_->extend(m_meta_data_->m_row_count, n);
@@ -923,7 +928,6 @@ int MMapTagColumnTable::insert(uint32_t entity_id, uint32_t subgroup_id, uint32_
   startRead();
   mutexUnlock();
   *row_id = row_no;
-  setDeleteMark(row_no);
   TagDataInfo tagInfo{ operate_type, osn, row_no, 0};
   setTagDataInfo(row_no, &tagInfo);
 
