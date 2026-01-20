@@ -2618,6 +2618,10 @@ KStatus TsVGroup::RecalcCountStat() {
   return KStatus::SUCCESS;
 }
 
+KStatus TsVGroup::CalPartitionAgg() {
+  return KStatus::SUCCESS;
+}
+
 KStatus TsVGroup::ResetCountStat() {
   std::vector<std::shared_ptr<TsTableSchemaManager> > tb_schema_manager;
   KStatus s = schema_mgr_->GetAllTableSchemaMgrs(tb_schema_manager);

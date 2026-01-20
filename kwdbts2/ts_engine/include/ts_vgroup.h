@@ -492,6 +492,8 @@ class TsVGroup {
   // Recalculate count stat.
   KStatus RecalcCountStat();
 
+  KStatus CalPartitionAgg();
+
  private:
   // check partition of rows exist. if not creating it.
   // KStatus makeSurePartitionExist(TSTableID table_id, const std::list<TSMemSegRowData>& rows);
