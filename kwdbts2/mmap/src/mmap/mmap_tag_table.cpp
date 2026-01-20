@@ -472,7 +472,7 @@ int TagTable::InsertDeletedTagRecord(kwdbts::TsRawPayload &payload, int32_t sub_
 
   // 3. set delete mark
   tag_partition_table->startRead();
-  tag_partition_table->setDeleteMark(row_no);
+  assert(!tag_partition_table->isValidRow(row_no));
   tag_partition_table->stopRead();
   return 0;
 }

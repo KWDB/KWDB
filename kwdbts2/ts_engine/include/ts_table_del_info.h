@@ -56,10 +56,14 @@ class STTableRangeDelAndTagInfo {
   std::unordered_map<std::string, TS_OSN> del_tag_osn_;
   std::unordered_map<std::string, std::list<STDelRange>> pkey_del_ranges_;
   std::unordered_map<std::string, EntityResultIndex> pkey_update_idx_;
+  uint32_t total_tag_row_num_ = 0;
+  uint32_t valid_tag_row_num_ = 0;
 
  public:
   STTableRangeDelAndTagInfo(std::shared_ptr<TsTableV2Impl> table, uint64_t b, uint64_t e, uint32_t v) :
     table_(table), begin_hash_(b), end_hash_(e), table_version_(v) {}
+
+  ~STTableRangeDelAndTagInfo();
 
   KStatus Init();
   // generate OSNDeleteInfo data.

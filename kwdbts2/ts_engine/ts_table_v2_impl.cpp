@@ -518,7 +518,8 @@ KStatus TsTableV2Impl::DeleteTotalRange(kwdbContext_p ctx, uint64_t begin_hash, 
 KwTsSpan ts_span, uint64_t mtr_id, uint64_t osn) {
   uint64_t row_num_bef = 0;
   uint64_t row_num_aft = 0;
-#ifdef K_DEBUG
+  LOG_INFO("DeleteTotalRange begin. table[%lu] hash[%lu ~ %lu].", table_id_, begin_hash, end_hash);
+  #ifdef K_DEBUG
   GetRangeRowCount(ctx, begin_hash, end_hash, ts_span, &row_num_bef);
   if (ts_span.begin != INT64_MIN || ts_span.end != INT64_MAX) {
     LOG_ERROR("DeleteTotalRange not support range split by timestamp.");
@@ -542,14 +543,25 @@ KwTsSpan ts_span, uint64_t mtr_id, uint64_t osn) {
       if (!EngineOptions::isSingleNode()) {
         uint32_t tag_hash;
         entity_tag_bt->getHashpointByRowNum(rownum, &tag_hash);
-        string primary_tag(reinterpret_cast<char*>(entity_tag_bt->record(rownum)),
-                                                  entity_tag_bt->primaryTagSize());
         if (!(hash_span.begin <= tag_hash && tag_hash <= hash_span.end)) {
           in_hash_span = false;
         }
       }
       if (in_hash_span) {
-        assert(!entity_tag_bt->isValidRow(rownum));
+        if (entity_tag_bt->isValidRow(rownum)) {
+          auto tag_table = table_schema_mgr_->GetTagTable();
+          uint32_t v_group_id, entity_id;
+          if (!tag_table->hasPrimaryKey(reinterpret_cast<char*>(entity_tag_bt->record(rownum)),
+                entity_tag_bt->primaryTagSize(), entity_id, v_group_id)) {
+            LOG_ERROR("DeleteTotalRange failed. current range has new tag insert.");
+          }
+          TagDataInfo* tag_info = entity_tag_bt->getTagDataInfoByRowNum(rownum);
+          LOG_ERROR("DeleteTotalRange failed. vec_idx[%lu], bt_size[%lu]. currow: rownum[%d], op_type[%d], osn[%lu],"
+            " target_row[%lu],target_vec[%lu].",
+            vec_idx, entity_tag_bt->size(), rownum, tag_info->operate_type, tag_info->osn,
+            tag_info->target_row, tag_info->target_ver);
+          assert(!entity_tag_bt->isValidRow(rownum));
+        }
         if (entity_tag_bt->getTagDataInfoByRowNum(rownum)->operate_type != OperateType::DeleteBySnapshot) {
           TagDataInfo tagInfo{OperateType::DeleteBySnapshot, osn, 0, 0};
           entity_tag_bt->setTagDataInfo(rownum, &tagInfo);
@@ -565,7 +577,7 @@ KwTsSpan ts_span, uint64_t mtr_id, uint64_t osn) {
   #ifdef K_DEBUG
     GetRangeRowCount(ctx, begin_hash, end_hash, ts_span, &row_num_aft);
   #endif
-  LOG_INFO("DeleteTotalRange table[%lu] hash[%lu ~ %lu], entity_rows[%lu], metric_rows[%lu-->%lu].",
+  LOG_INFO("DeleteTotalRange end. table[%lu] hash[%lu ~ %lu], entity_rows[%lu], metric_rows[%lu-->%lu].",
     table_id_, begin_hash, end_hash, entity_store.size(), row_num_bef, row_num_aft);
   return KStatus::SUCCESS;
 }
@@ -1339,8 +1351,10 @@ KStatus TsTableV2Impl::TrasvalAllTagPtable(kwdbContext_p ctx, std::function<bool
 
 KStatus TsTableV2Impl::GetImagrateTagBySnapshot(kwdbContext_p ctx, HashIdSpan hash_range,
   std::list<EntityResultIndex>* pkeys_status) {
+  int valid_tag_num = 0;
   auto s = TrasvalAllTagPtable(ctx, [&](TagPartitionTable* entity_tag_bt, size_t vec_idx) -> bool {
-    for (int rownum = 1; rownum <= entity_tag_bt->size(); rownum++) {
+    auto curr_rows = entity_tag_bt->size();
+    for (int rownum = 1; rownum <= curr_rows; rownum++) {
       bool is_in_hps = true;
       uint32_t tag_hash;
       if (!EngineOptions::isSingleNode()) {
@@ -1359,6 +1373,7 @@ KStatus TsTableV2Impl::GetImagrateTagBySnapshot(kwdbContext_p ctx, HashIdSpan ha
         } else if (tag_info->operate_type == OperateType::Insert) {
           if (entity_tag_bt->isValidRow(rownum)) {
             type = OperatorTypeOfRecord::OP_TYPE_INSERT;
+            valid_tag_num++;
           }
         }
         if (type != OperatorTypeOfRecord::OP_TYPE_UNKNOWN) {
@@ -1379,6 +1394,7 @@ KStatus TsTableV2Impl::GetImagrateTagBySnapshot(kwdbContext_p ctx, HashIdSpan ha
     LOG_ERROR("TrasvalAllTagPtable failed.");
     return s;
   }
+  LOG_INFO("GetImagrateTagBySnapshot tag total num[%lu], valid num[%d].", pkeys_status->size(), valid_tag_num);
   return KStatus::SUCCESS;
 }
 

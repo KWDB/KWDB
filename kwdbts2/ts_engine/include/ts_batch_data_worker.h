@@ -338,13 +338,13 @@ class TsReadBatchDataWorker : public TsBatchDataWorker {
 
   uint64_t total_read_ = 0;
 
-  KStatus GetTagValue(kwdbContext_p ctx);
+  KStatus GetTagValue(kwdbContext_p ctx, bool& not_found_tag);
 
   KStatus AddTsBlockSpanInfo(kwdbContext_p ctx, std::shared_ptr<TsBlockSpan>& block_span);
 
   KStatus NextBlockSpansIterator();
 
-  KStatus GenerateBatchData(kwdbContext_p ctx, std::shared_ptr<TsBlockSpan> block_span);
+  KStatus GenerateBatchData(kwdbContext_p ctx, std::shared_ptr<TsBlockSpan> block_span, bool& not_found_tag);
 
  public:
   TsReadBatchDataWorker(TSEngineImpl* ts_engine, TSTableID table_id, uint64_t table_version, KwTsSpan ts_span,
@@ -356,6 +356,8 @@ class TsReadBatchDataWorker : public TsBatchDataWorker {
                             uint64_t end_hash, KwTsSpan ts_span);
 
   KStatus Read(kwdbContext_p ctx, TSSlice* data, uint32_t* row_num) override;
+
+  KStatus Read(kwdbContext_p ctx, TSSlice* data, uint32_t* row_num, bool& not_found_tag);
 
   KStatus Finish(kwdbContext_p ctx) override;
 };

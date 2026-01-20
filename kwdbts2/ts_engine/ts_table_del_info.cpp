@@ -96,6 +96,11 @@ KStatus STTableRangeDelAndTagInfo::Init() {
   return KStatus::SUCCESS;
 }
 
+STTableRangeDelAndTagInfo::~STTableRangeDelAndTagInfo() {
+  LOG_INFO("STTableRangeDelAndTagInfo end. table[%lu], range[%lu - %lu], total tag num[%u], valid tag num[%u]",
+    table_->GetTableId(), begin_hash_, end_hash_, total_tag_row_num_, valid_tag_row_num_);
+}
+
 KStatus STTableRangeDelAndTagInfo::GetNextDeleteInfo(kwdbContext_p ctx, TSSlice* data, bool* is_finished) {
   *is_finished = false;
   while (true) {
@@ -135,7 +140,9 @@ KStatus STTableRangeDelAndTagInfo::GetNextDeleteInfo(kwdbContext_p ctx, TSSlice*
         KUint32(data->data) = STOSNDeleteInfoType::OSN_DELETE_TAG_RECORD;
       } else {
         KUint32(data->data) = STOSNDeleteInfoType::OSN_DELETE_METRIC_RANGE;
+        valid_tag_row_num_ += 1;
       }
+      total_tag_row_num_ += 1;
       free(payload.data);
       return KStatus::SUCCESS;
     }
@@ -338,6 +345,7 @@ KStatus STTableRangeDelAndTagInfo::WriteDelAndTagInfo(kwdbContext_p ctx, TSSlice
     LOG_ERROR("table[%lu],CheckAndAddSchemaVersion[%u] init failed.", table_->GetTableId(), table_version);
     return s;
   }
+  total_tag_row_num_ += 1;
   if (type == STOSNDeleteInfoType::OSN_DELETE_TAG_RECORD) {
     auto s = WriteDeleteTagRecord(ctx, payload, OperateType::Delete, tag_lock);
     if (s != KStatus::SUCCESS) {
@@ -369,6 +377,7 @@ KStatus STTableRangeDelAndTagInfo::WriteDelAndTagInfo(kwdbContext_p ctx, TSSlice
         pkey_del_ranges_[ptag].push_back(del);
       }
     }
+    valid_tag_row_num_ += 1;
   } else {
     LOG_ERROR("can not parse this STOSNDeleteInfoType [%u]", type);
     return KStatus::FAIL;

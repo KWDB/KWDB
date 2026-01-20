@@ -40,7 +40,7 @@ TsReadBatchDataWorker::TsReadBatchDataWorker(TSEngineImpl* ts_engine, TSTableID 
                                                table_version_(table_version), ts_span_(ts_span), actual_ts_span_(ts_span),
                                                entity_indexes_(std::move(entity_indexes)) {}
 
-KStatus TsReadBatchDataWorker::GetTagValue(kwdbContext_p ctx) {
+KStatus TsReadBatchDataWorker::GetTagValue(kwdbContext_p ctx, bool& not_found) {
   // get tag schema
   std::vector<TagInfo> tags_info;
   KStatus s = schema_->GetTagMeta(table_version_, tags_info);
@@ -61,9 +61,11 @@ KStatus TsReadBatchDataWorker::GetTagValue(kwdbContext_p ctx) {
     LOG_ERROR("GetTagIterator failed");
     return KStatus::FAIL;
   }
+  not_found = false;
   if (count != 1) {
-    LOG_ERROR("GetTagData failed, count=%d", count);
-    return KStatus::FAIL;
+    LOG_INFO("cannot find this tag, maybe be deleted rightnow. count=%d", count);
+    not_found = true;
+    return KStatus::SUCCESS;
   }
 
   // tag data
@@ -232,7 +234,8 @@ std::string TsReadBatchDataWorker::GenKey(TSTableID table_id, uint32_t table_ver
   return buffer;
 }
 
-KStatus TsReadBatchDataWorker::GenerateBatchData(kwdbContext_p ctx, std::shared_ptr<TsBlockSpan> block_span) {
+KStatus TsReadBatchDataWorker::GenerateBatchData(kwdbContext_p ctx,
+  std::shared_ptr<TsBlockSpan> block_span, bool& not_found_tag) {
   cur_batch_data_.Clear();
   // hash point
   cur_batch_data_.SetHashPoint(cur_entity_index_.hash_point);
@@ -242,10 +245,14 @@ KStatus TsReadBatchDataWorker::GenerateBatchData(kwdbContext_p ctx, std::shared_
   uint32_t ptags_size = cur_entity_index_.p_tags_size;
   cur_batch_data_.AddPrimaryTag({reinterpret_cast<char*>(cur_entity_index_.mem.get()), ptags_size});
   // tag value
-  KStatus s = GetTagValue(ctx);
+  KStatus s = GetTagValue(ctx, not_found_tag);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("add tag failed");
     return s;
+  }
+  if (not_found_tag) {
+    cur_batch_data_.Clear();
+    return KStatus::SUCCESS;
   }
   // add TsBlockSpan info
   if (block_span) {
@@ -263,6 +270,26 @@ KStatus TsReadBatchDataWorker::GenerateBatchData(kwdbContext_p ctx, std::shared_
 }
 
 KStatus TsReadBatchDataWorker::Read(kwdbContext_p ctx, TSSlice* data, uint32_t* row_num) {
+  do {
+    bool not_found_tag = false;
+    KStatus s = Read(ctx, data, row_num, not_found_tag);
+    if (s != KStatus::SUCCESS) {
+      return s;
+    }
+    if (not_found_tag) {
+      if (entity_indexes_.empty()) {
+        is_finished_ = true;
+        return KStatus::SUCCESS;
+      }
+      cur_entity_index_ = entity_indexes_[entity_indexes_.size() - 1];
+      entity_indexes_.pop_back();
+      block_spans_iterator_ = nullptr;
+    }
+  } while (*row_num == 0 && !is_finished_);
+  return KStatus::SUCCESS;
+}
+
+KStatus TsReadBatchDataWorker::Read(kwdbContext_p ctx, TSSlice* data, uint32_t* row_num, bool& not_found_tag) {
   *row_num = 0;
   data->data = nullptr;
   data->len = 0;
@@ -277,10 +304,14 @@ KStatus TsReadBatchDataWorker::Read(kwdbContext_p ctx, TSSlice* data, uint32_t* 
     if (block_spans_iterator_ == nullptr) {
       cur_entity_tag_only = true;
       // generate batch data
-      KStatus s = GenerateBatchData(ctx, nullptr);
+      KStatus s = GenerateBatchData(ctx, nullptr, not_found_tag);
       if (s != KStatus::SUCCESS) {
         LOG_ERROR("GenerateBatchData failed");
         return s;
+      }
+      if (not_found_tag) {
+        LOG_INFO("GenerateBatchData not found valid tag.");
+        return KStatus::SUCCESS;
       }
       *row_num = 1;
       total_read_ += *row_num;
@@ -310,10 +341,14 @@ KStatus TsReadBatchDataWorker::Read(kwdbContext_p ctx, TSSlice* data, uint32_t* 
     return KStatus::SUCCESS;
   }
   // generate batch data
-  KStatus s = GenerateBatchData(ctx, cur_block_span);
+  KStatus s = GenerateBatchData(ctx, cur_block_span, not_found_tag);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("GenerateBatchData failed");
     return s;
+  }
+  if (not_found_tag) {
+    LOG_INFO("GenerateBatchData not found valid tag.");
+    return KStatus::SUCCESS;
   }
   // set data
   *row_num = cur_block_span->GetRowNum();
