@@ -627,6 +627,22 @@ int TagTable::DeleteTagRecord(const char *primary_tags, int len, ErrorInfo& err_
   // 4. delete entity row index record
   uint64_t joint_entity_id = (static_cast<uint64_t>(entity_id) << 32) | sub_group_id;
   ret_del = m_entity_row_index_->delete_data(reinterpret_cast<const char *>(&joint_entity_id));
+
+  tag_part_table->startRead();
+  if (EngineOptions::force_sync_file) {
+    tag_part_table->sync(MS_SYNC);
+    if (m_index_ != nullptr) {
+      m_index_->sync(MS_SYNC);
+    }
+    for (auto n_index : tag_part_table->getMmapNTagHashIndex()) {
+      n_index->sync(MS_SYNC);
+    }
+    if (m_entity_row_index_ != nullptr) {
+      m_entity_row_index_->sync(MS_SYNC);
+    }
+  }
+  tag_part_table->stopRead();
+
   return 0;
 }
 
