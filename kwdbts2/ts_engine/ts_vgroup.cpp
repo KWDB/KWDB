@@ -253,11 +253,11 @@ KStatus TsVGroup::ReadWALLogFromLastCheckpoint(kwdbContext_p ctx, std::vector<Lo
   auto next_first_lsn = last_lsn;
   WALMeta meta = wal_manager_->GetMeta();
   KStatus s = wal_manager_->SwitchNextFile(next_first_lsn);
+  wal_manager_->Unlock();
   if (s == KStatus::FAIL) {
     LOG_ERROR("Failed to switch next WAL file.")
     return s;
   }
-  wal_manager_->Unlock();
 
   // new tmp wal mgr to read chk wal file
   WALMgr tmp_wal = WALMgr(engine_options_->db_path, VGroupDirName(vgroup_id_), engine_options_, true);
@@ -274,15 +274,23 @@ KStatus TsVGroup::ReadLogFromLastCheckpoint(kwdbContext_p ctx, std::vector<LogEn
   // 1. read chk wal log
   wal_manager_->Lock();
   std::vector<uint64_t> ignore;
-
-  // TODO(xy): code review here, last_lsn is not used, should we remove it?
-  // TS_OSN chk_lsn = wal_manager_->FetchCheckpointLSN();
-  // if (last_lsn != 0) {
-  //   chk_lsn = last_lsn;
-  // }
-
   KStatus s =
       wal_manager_->ReadWALLog(logs, wal_manager_->GetFirstLSN(), wal_manager_->FetchCurrentLSN(), ignore);
+  last_lsn = wal_manager_->FetchCurrentLSN();
+  wal_manager_->Unlock();
+  if (s == KStatus::FAIL) {
+    LOG_ERROR("Failed to ReadWALLog.")
+  }
+  return s;
+}
+
+KStatus TsVGroup::ReadLogAndApplyFromLastCheckpoint(kwdbContext_p ctx, std::vector<LogEntry*>& logs, TS_OSN& last_lsn,
+                                                    std::unordered_map<uint64_t, txnOp> txn_op) {
+  // 1. read chk wal log
+  wal_manager_->Lock();
+  KStatus s =
+          wal_manager_->ReadWALLogAndApply(logs, wal_manager_->GetFirstLSN(), wal_manager_->FetchCurrentLSN(), txn_op,
+                                           this);
   last_lsn = wal_manager_->FetchCurrentLSN();
   wal_manager_->Unlock();
   if (s == KStatus::FAIL) {

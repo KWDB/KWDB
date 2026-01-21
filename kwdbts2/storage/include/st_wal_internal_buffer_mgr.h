@@ -13,12 +13,16 @@
 
 #include <queue>
 #include <vector>
+#include <utility>
+#include <unordered_map>
 #include "st_wal_internal_logblock.h"
 #include "st_wal_internal_logfile_mgr.h"
 #include "st_wal_internal_log_structure.h"
 #include "st_wal_types.h"
 
 namespace kwdbts {
+
+class TsVGroup;
 
 /**
 * WAL Buffer Management class, each WALBufferMgr maintains a separate Buffer, its unit is LogBlock, and provides
@@ -87,10 +91,14 @@ class WALBufferMgr {
    * @param txn_id Only the log entries of this txn_id are read. The default value is 0, that is, all logs are read.
    * @return
    */
-  KStatus readWALLogs(std::vector<LogEntry*>& log_entries, TS_OSN start_lsn, TS_OSN end_lsn, std::vector<uint64_t>& end_chk,
+  KStatus readWALLogs(std::vector<LogEntry*>& log_entries, TS_OSN start_lsn, TS_OSN& end_lsn,
+                      std::vector<uint64_t>& end_chk,
                       uint64_t txn_id = 0, bool for_chk = false);
 
-  KStatus readUncommittedTxnID(std::vector<uint64_t>& log_entries, TS_OSN start_lsn, TS_OSN end_lsn);
+  KStatus readUncommittedTxnID(std::vector<uint64_t>& log_entries, TS_OSN start_lsn, TS_OSN& end_lsn);
+
+  KStatus readAllTxnID(std::unordered_map<uint64_t, txnOp>& txn_op, TS_OSN start_lsn, TS_OSN& end_lsn,
+                       TsVGroup* vgroup_mtr, std::unordered_map<TS_OSN, std::pair<uint64_t, uint64_t>>& incomplete_idx);
 
   /**
    * Cache specified length bytes from current EntryBlock.

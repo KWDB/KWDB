@@ -2160,7 +2160,17 @@ KStatus TSEngineImpl::Recover(kwdbContext_p ctx) {
     logs.clear();
   }
 
-  // 2. get all vgroup wal log
+  // 2.read mtr id first, only read uncommitted txn .
+  auto vgroup_mtr = GetVGroupByID(ctx, 1);
+  std::unordered_map<uint64_t, txnOp> txn_op;
+  std::unordered_map<TS_OSN, std::pair<uint64_t, uint64_t>> incomplete;
+  s = vgroup_mtr->GetWALManager()->ReadAllTxnID(txn_op, vgroup_mtr, incomplete);
+  if (s == KStatus::FAIL) {
+    LOG_ERROR("Failed to ReadAllTxnID.")
+    return s;
+  }
+
+  // 3. get all vgroup wal log && apply all wal log
   for (const auto &vgrp : vgroups_) {
     std::vector<LogEntry *> vlogs;
     TS_OSN lsn = 0;
@@ -2168,7 +2178,7 @@ KStatus TSEngineImpl::Recover(kwdbContext_p ctx) {
       lsn = vgroup_lsn[vgrp->GetVGroupID() - 1];
     }
 
-    if (vgrp->ReadLogFromLastCheckpoint(ctx, vlogs, lsn) == KStatus::FAIL) {
+    if (vgrp->ReadLogAndApplyFromLastCheckpoint(ctx, vlogs, lsn, txn_op) == KStatus::FAIL) {
       LOG_ERROR("Failed to ReadWALLogFromLastCheckpoint from vgroup : %d, Now reset WAL.", vgrp->GetVGroupID())
       vlogs.clear();
       s = vgrp->GetWALManager()->ResetWAL(ctx);
@@ -2176,66 +2186,36 @@ KStatus TSEngineImpl::Recover(kwdbContext_p ctx) {
         return KStatus::FAIL;
       }
     }
-    logs.insert(logs.end(), vlogs.begin(), vlogs.end());
   }
 
-  // 3. apply redo log && insert MtrID
-  auto vgroup_mtr = GetVGroupByID(ctx, 1);
-  std::unordered_map<TS_OSN, MTRBeginEntry*> incomplete;
-  std::vector<TS_OSN> rollback;
-  for (auto wal_log : logs) {
-    if (wal_log->getType() == WALLogType::MTR_BEGIN)  {
-      auto log = reinterpret_cast<MTRBeginEntry *>(wal_log);
-      incomplete.insert(std::pair<TS_OSN, MTRBeginEntry *>(log->getXID(), log));
-      if (log->getTsxID().c_str() != LogEntry::DEFAULT_TS_TRANS_ID) {
-        vgroup_mtr->SetMtrIDByTsxID(log->getXID(), log->getTsxID().c_str());
-      }
-    }
-  }
-
-  for (auto wal_log : logs) {
-    switch (wal_log->getType()) {
-      case WALLogType::MTR_ROLLBACK: {
-        auto log = reinterpret_cast<MTREntry*>(wal_log);
-        auto x_id = log->getXID();
-        rollback.emplace_back(x_id);
-        incomplete.erase(log->getXID());
-        break;
-      }
-      case WALLogType::CHECKPOINT:
-      case WALLogType::MTR_BEGIN: {
-        // do nothing
-        break;
-      }
-      case WALLogType::MTR_COMMIT: {
-        auto log = reinterpret_cast<MTREntry*>(wal_log);
-        incomplete.erase(log->getXID());
-        break;
-      }
-      default:
-        auto vgrp_id = wal_log->getVGroupID();
-        TsVGroup* vg = GetVGroupByID(ctx, vgrp_id);
-        vg->ApplyWal(ctx, wal_log, incomplete);
-    }
-  }
   // 4. do rollback
-  for (auto x_id : rollback) {
-    if (TSMtrRollback(ctx, 0, 0, x_id, true) == KStatus::FAIL) return KStatus::FAIL;
-  }
-  // 5. rollback incomplete wal
-  for (auto& it : incomplete) {
-    TS_OSN mtr_id = it.first;
-    auto log_entry = it.second;
-    if (vgroup_mtr->IsExplict(mtr_id)) {
-      break;
+  for (auto txn : txn_op) {
+    if (txn.second == txnOp::rollback) {
+      if (TSMtrRollback(ctx, 0, 0, txn.first, true) == KStatus::FAIL) return KStatus::FAIL;
     }
-    uint64_t applied_index = GetAppliedIndex(log_entry->getRangeID(), range_indexes_map_);
-    if (it.second->getIndex() <= applied_index) {
-      auto vgroup = GetVGroupByID(ctx, 1);
-      s = vgroup->MtrCommit(ctx, mtr_id);
-      if (s == FAIL) return s;
-    } else {
-      if (TSMtrRollback(ctx, 0, 0, mtr_id) == KStatus::FAIL) return KStatus::FAIL;
+    if (txn.second == txnOp::begin) {
+      TS_OSN mtr_id = txn.first;
+      auto xid_rangeID = incomplete[mtr_id];
+      if (vgroup_mtr->IsExplict(mtr_id)) {
+        break;
+      }
+      uint64_t applied_index = GetAppliedIndex(xid_rangeID.second, range_indexes_map_);
+      if (xid_rangeID.first <= applied_index) {
+        auto vgroup = GetVGroupByID(ctx, 1);
+        s = vgroup->MtrCommit(ctx, mtr_id);
+        if (s == FAIL) return s;
+      } else {
+        if (TSMtrRollback(ctx, 0, 0, mtr_id) == KStatus::FAIL) return KStatus::FAIL;
+      }
+    }
+  }
+
+  // 5. trig all vgroup flush
+  for (const auto &vgrp : vgroups_) {
+    s = vgrp->Flush();
+    if (s == KStatus::FAIL) {
+      LOG_ERROR("Failed to flush metric file.")
+      return s;
     }
   }
   LOG_INFO("Recover success.");

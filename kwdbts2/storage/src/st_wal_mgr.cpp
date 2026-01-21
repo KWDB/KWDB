@@ -11,6 +11,7 @@
 
 #include "st_wal_mgr.h"
 #include "st_wal_internal_logfile_mgr.h"
+#include "ts_vgroup.h"
 #include "sys_utils.h"
 #include "ts_io.h"
 
@@ -829,9 +830,113 @@ KStatus WALMgr::ResetCurLSNAndFlushMeta(kwdbContext_p ctx, TS_OSN cur_lsn) {
 KStatus WALMgr::ReadWALLog(std::vector<LogEntry*>& logs, TS_OSN start_lsn, TS_OSN end_lsn,
                            std::vector<uint64_t>& end_chk) {
   file_mgr_->Lock();
-  KStatus status = buffer_mgr_->readWALLogs(logs, start_lsn, end_lsn, end_chk);
-  file_mgr_->Unlock();
-  return status;
+  Defer defer{[&]() {
+    file_mgr_->Unlock();
+  }};
+  if (end_lsn <= start_lsn) {
+    return SUCCESS;
+  }
+
+  uint64_t start_block = file_mgr_->GetBlockNoFromLsn(start_lsn);
+  uint64_t end_block = file_mgr_->GetBlockNoFromLsn(end_lsn);
+  uint64_t cur_start_block = start_block;
+  uint64_t cur_end_block = end_block;
+  if (cur_end_block - cur_start_block + 1 > MAX_PER_READ_BLOCKS) {
+    cur_end_block = cur_start_block + MAX_PER_READ_BLOCKS - 1;
+  } else {
+    cur_end_block = end_block;
+  }
+  uint64_t cur_start_lsn = start_lsn;
+  uint64_t cur_end_lsn = file_mgr_->GetLSNFromBlockNo(cur_end_block);
+
+  while (cur_start_lsn < end_lsn) {
+    cur_end_lsn = file_mgr_->GetLSNFromBlockNo(cur_end_block);
+    if (cur_end_lsn > end_lsn || cur_end_block == end_block) {
+      cur_end_lsn = end_lsn;
+    }
+
+    KStatus status = buffer_mgr_->readWALLogs(logs, cur_start_lsn, cur_end_lsn, end_chk);
+    if (status == FAIL) {
+      LOG_ERROR("Failed to readWALLogs");
+      return FAIL;
+    }
+    if (cur_end_lsn < end_lsn) {
+      cur_start_lsn = cur_end_lsn;
+      if (cur_end_block + MAX_PER_READ_BLOCKS <= end_block) {
+        cur_end_block += MAX_PER_READ_BLOCKS;
+      } else {
+        cur_end_block = end_block;
+      }
+    } else {
+      cur_start_lsn = end_lsn;
+    }
+  }
+  return SUCCESS;
+}
+
+KStatus WALMgr::ReadWALLogAndApply(std::vector<LogEntry*>& logs, TS_OSN start_lsn, TS_OSN end_lsn,
+                                   std::unordered_map<uint64_t, txnOp> txn_op, TsVGroup* vgroup) {
+  kwdbContext_p ctx;
+  file_mgr_->Lock();
+  Defer defer{[&]() {
+    file_mgr_->Unlock();
+  }};
+  if (end_lsn <= start_lsn) {
+    return SUCCESS;
+  }
+
+  uint64_t start_block = file_mgr_->GetBlockNoFromLsn(start_lsn);
+  uint64_t end_block = file_mgr_->GetBlockNoFromLsn(end_lsn);
+  uint64_t cur_start_block = start_block;
+  uint64_t cur_end_block = end_block;
+  if (cur_end_block - cur_start_block + 1 > MAX_PER_READ_BLOCKS) {
+    cur_end_block = cur_start_block + MAX_PER_READ_BLOCKS - 1;
+  } else {
+    cur_end_block = end_block;
+  }
+  uint64_t cur_start_lsn = start_lsn;
+  uint64_t cur_end_lsn = file_mgr_->GetLSNFromBlockNo(cur_end_block);
+
+  while (cur_start_lsn < end_lsn) {
+    cur_end_lsn = file_mgr_->GetLSNFromBlockNo(cur_end_block);
+    if (cur_end_lsn > end_lsn || cur_end_block == end_block) {
+      cur_end_lsn = end_lsn;
+    }
+
+    std::vector<uint64_t> ignore;
+    KStatus status = buffer_mgr_->readWALLogs(logs, cur_start_lsn, cur_end_lsn, ignore);
+    if (status == FAIL) {
+      LOG_ERROR("Failed to readWALLogs");
+      return FAIL;
+    }
+    std::unordered_map<TS_OSN, MTRBeginEntry*> ignore_{};
+    for (auto log : logs) {
+      switch (log->getType()) {
+        case WALLogType::MTR_BEGIN:
+        case WALLogType::MTR_COMMIT:
+        case WALLogType::MTR_ROLLBACK:
+          break;
+        default :
+          vgroup->ApplyWal(ctx, log, ignore_);
+      }
+    }
+
+    for (auto& log : logs) {
+      delete log;
+    }
+    logs.clear();
+    if (cur_end_lsn < end_lsn) {
+      cur_start_lsn = cur_end_lsn;
+      if (cur_end_block + MAX_PER_READ_BLOCKS <= end_block) {
+        cur_end_block += MAX_PER_READ_BLOCKS;
+      } else {
+        cur_end_block = end_block;
+      }
+    } else {
+      cur_start_lsn = end_lsn;
+    }
+  }
+  return SUCCESS;
 }
 
 KStatus WALMgr::ReadUncommittedWALLog(std::vector<LogEntry*>& logs, TS_OSN start_lsn, TS_OSN end_lsn,
@@ -842,6 +947,7 @@ KStatus WALMgr::ReadUncommittedWALLog(std::vector<LogEntry*>& logs, TS_OSN start
     status = buffer_mgr_->readWALLogs(logs, start_lsn, end_lsn, end_chk, x_id);
     if (status == KStatus::FAIL) {
       LOG_ERROR("Failed to readWALLogs with txn_id : %ld", x_id)
+      file_mgr_->Unlock();
       return status;
     }
   }
@@ -868,29 +974,148 @@ KStatus WALMgr::ReadWALLogAndSwitchFile(std::vector<LogEntry*>& logs, TS_OSN sta
 
 KStatus WALMgr::ReadWALLogForMtr(uint64_t mtr_trans_id, std::vector<LogEntry*>& logs, std::vector<uint64_t>& end_chk) {
   file_mgr_->Lock();
+  Defer defer{[&]() {
+    file_mgr_->Unlock();
+  }};
   HeaderBlock hb = file_mgr_->readHeaderBlock();
   TS_OSN first_lsn = hb.getFirstLSN();
-  KStatus status = buffer_mgr_->readWALLogs(logs, first_lsn, meta_.current_lsn, end_chk, mtr_trans_id);
-  file_mgr_->Unlock();
-  if (status == FAIL) {
-    LOG_ERROR("Failed to read the WAL log with transaction id %lu", mtr_trans_id)
-    return FAIL;
+  TS_OSN last_lsn = meta_.current_lsn;
+  if (last_lsn <= first_lsn) {
+    return SUCCESS;
   }
 
+  uint64_t start_block = file_mgr_->GetBlockNoFromLsn(first_lsn);
+  uint64_t end_block = file_mgr_->GetBlockNoFromLsn(last_lsn);
+  uint64_t cur_start_block = start_block;
+  uint64_t cur_end_block = end_block;
+  if (cur_end_block - cur_start_block + 1 > MAX_PER_READ_BLOCKS) {
+    cur_end_block = cur_start_block + MAX_PER_READ_BLOCKS - 1;
+  } else {
+    cur_end_block = end_block;
+  }
+  uint64_t cur_start_lsn = first_lsn;
+  uint64_t cur_end_lsn = file_mgr_->GetLSNFromBlockNo(cur_end_block);
+
+  while (cur_start_lsn < last_lsn) {
+    cur_end_lsn = file_mgr_->GetLSNFromBlockNo(cur_end_block);
+    if (cur_end_lsn > last_lsn || cur_end_block == end_block) {
+      cur_end_lsn = last_lsn;
+    }
+
+    KStatus status = buffer_mgr_->readWALLogs(logs, cur_start_lsn, cur_end_lsn, end_chk, mtr_trans_id);
+    if (status == FAIL) {
+      LOG_ERROR("Failed to readWALLogs");
+      return FAIL;
+    }
+    if (cur_end_lsn < last_lsn) {
+      cur_start_lsn = cur_end_lsn;
+      if (cur_end_block + MAX_PER_READ_BLOCKS <= end_block) {
+        cur_end_block += MAX_PER_READ_BLOCKS;
+      } else {
+        cur_end_block = end_block;
+      }
+    } else {
+      cur_start_lsn = last_lsn;
+    }
+  }
   return SUCCESS;
 }
 
 KStatus WALMgr::ReadUncommittedTxnID(std::vector<uint64_t>& uncommitted_xid) {
   file_mgr_->Lock();
+  Defer defer{[&]() {
+    file_mgr_->Unlock();
+  }};
   auto first_lsn = GetFirstLSN();
   auto last_lsn = FetchCurrentLSN();
-  KStatus status = buffer_mgr_->readUncommittedTxnID(uncommitted_xid, first_lsn, last_lsn);
-  if (status == FAIL) {
-    LOG_ERROR("Failed to readUncommittedTxnID");
-    file_mgr_->Unlock();
-    return FAIL;
+  if (last_lsn <= first_lsn) {
+    return SUCCESS;
   }
-  file_mgr_->Unlock();
+
+  uint64_t start_block = file_mgr_->GetBlockNoFromLsn(first_lsn);
+  uint64_t end_block = file_mgr_->GetBlockNoFromLsn(last_lsn);
+  uint64_t cur_start_block = start_block;
+  uint64_t cur_end_block = end_block;
+  if (cur_end_block - cur_start_block + 1 > MAX_PER_READ_BLOCKS) {
+    cur_end_block = cur_start_block + MAX_PER_READ_BLOCKS - 1;
+  } else {
+    cur_end_block = end_block;
+  }
+  uint64_t cur_start_lsn = first_lsn;
+  uint64_t cur_end_lsn = file_mgr_->GetLSNFromBlockNo(cur_end_block);
+
+  while (cur_start_lsn < last_lsn) {
+    cur_end_lsn = file_mgr_->GetLSNFromBlockNo(cur_end_block);
+    if (cur_end_lsn > last_lsn || cur_end_block == end_block) {
+      cur_end_lsn = last_lsn;
+    }
+
+    KStatus status = buffer_mgr_->readUncommittedTxnID(uncommitted_xid, cur_start_lsn, cur_end_lsn);
+    if (status == FAIL) {
+      LOG_ERROR("Failed to readUncommittedTxnID");
+      return FAIL;
+    }
+    if (cur_end_lsn < last_lsn) {
+      cur_start_lsn = cur_end_lsn;
+      if (cur_end_block + MAX_PER_READ_BLOCKS <= end_block) {
+        cur_end_block += MAX_PER_READ_BLOCKS;
+      } else {
+        cur_end_block = end_block;
+      }
+    } else {
+      cur_start_lsn = last_lsn;
+    }
+  }
+  return SUCCESS;
+}
+
+KStatus WALMgr::ReadAllTxnID(std::unordered_map<uint64_t, txnOp>& txn_op, TsVGroup* vgroup_mtr,
+                             std::unordered_map<TS_OSN, std::pair<uint64_t, uint64_t>>& incomplete) {
+  file_mgr_->Lock();
+  Defer defer{[&]() {
+    file_mgr_->Unlock();
+  }};
+  auto first_lsn = GetFirstLSN();
+  auto last_lsn = FetchCurrentLSN();
+  if (last_lsn <= first_lsn) {
+    return SUCCESS;
+  }
+
+  uint64_t start_block = file_mgr_->GetBlockNoFromLsn(first_lsn);
+  uint64_t end_block = file_mgr_->GetBlockNoFromLsn(last_lsn);
+  uint64_t cur_start_block = start_block;
+  uint64_t cur_end_block = end_block;
+  if (cur_end_block - cur_start_block + 1 > MAX_PER_READ_BLOCKS) {
+    cur_end_block = cur_start_block + MAX_PER_READ_BLOCKS - 1;
+  } else {
+    cur_end_block = end_block;
+  }
+  uint64_t cur_start_lsn = first_lsn;
+
+  uint64_t cur_end_lsn = file_mgr_->GetLSNFromBlockNo(cur_end_block);
+
+  while (cur_start_lsn < last_lsn) {
+    cur_end_lsn = file_mgr_->GetLSNFromBlockNo(cur_end_block);
+    if (cur_end_lsn > last_lsn || cur_end_block == end_block) {
+      cur_end_lsn = last_lsn;
+    }
+
+    KStatus status = buffer_mgr_->readAllTxnID(txn_op, cur_start_lsn, cur_end_lsn, vgroup_mtr, incomplete);
+    if (status == FAIL) {
+      LOG_ERROR("Failed to readAllTxnID");
+      return FAIL;
+    }
+    if (cur_end_lsn < last_lsn) {
+      cur_start_lsn = cur_end_lsn;
+      if (cur_end_block + MAX_PER_READ_BLOCKS <= end_block) {
+        cur_end_block += MAX_PER_READ_BLOCKS;
+      } else {
+        cur_end_block = end_block;
+      }
+    } else {
+      cur_start_lsn = last_lsn;
+    }
+  }
   return SUCCESS;
 }
 

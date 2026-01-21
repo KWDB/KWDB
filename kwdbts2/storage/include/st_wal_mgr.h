@@ -14,12 +14,16 @@
 #include <string>
 #include <vector>
 #include <fstream>
+#include <utility>
+#include <unordered_map>
 #include "st_wal_internal_buffer_mgr.h"
 #include "st_wal_internal_logfile_mgr.h"
 #include "st_wal_internal_log_structure.h"
 #include "lt_rw_latch.h"
 
 namespace kwdbts {
+
+class TsVGroup;
 
 /**
  * Write-Ahead-Logging Management class, each EntityGroup have a WALMgr instance; Meanwhile, The global WALMgr is
@@ -302,6 +306,8 @@ class WALMgr {
    * @return
    */
   KStatus ReadWALLog(std::vector<LogEntry*>& logs, TS_OSN start_lsn, TS_OSN end_lsn, std::vector<uint64_t>& end_chk);
+  KStatus ReadWALLogAndApply(std::vector<LogEntry*>& logs, TS_OSN start_lsn, TS_OSN end_lsn,
+                             std::unordered_map<uint64_t, txnOp> txn_op, TsVGroup* vgroup);
 
   KStatus ReadUncommittedWALLog(std::vector<LogEntry*>& logs, TS_OSN start_lsn, TS_OSN end_lsn,
                                         std::vector<uint64_t>& end_chk, const std::vector<uint64_t>& uncommitted_xid);
@@ -328,6 +334,9 @@ class WALMgr {
   KStatus ReadWALLogForMtr(uint64_t mtr_trans_id, std::vector<LogEntry*>& logs, std::vector<uint64_t>& end_chk);
 
   KStatus ReadUncommittedTxnID(std::vector<uint64_t>& uncommitted_xid);
+
+  KStatus ReadAllTxnID(std::unordered_map<uint64_t, txnOp>& txn_op, TsVGroup* vgroup_mtr,
+                       std::unordered_map<TS_OSN, std::pair<uint64_t, uint64_t>>& incomplete);
 
   /**
    *  Read the relevant log entry according to the TS Transaction ID.

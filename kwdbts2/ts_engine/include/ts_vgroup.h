@@ -225,6 +225,9 @@ class TsVGroup {
 
   KStatus ReadLogFromLastCheckpoint(kwdbContext_p ctx, std::vector<LogEntry*>& logs, TS_OSN& last_lsn);
 
+  KStatus ReadLogAndApplyFromLastCheckpoint(kwdbContext_p ctx, std::vector<LogEntry*>& logs, TS_OSN& last_lsn,
+                                            std::unordered_map<uint64_t, txnOp> txn_op);
+
   KStatus ReadWALLogForMtr(uint64_t mtr_trans_id, std::vector<LogEntry*>& logs);
 
   KStatus GetIterator(kwdbContext_p ctx, uint32_t version, vector<uint32_t>& entity_ids,

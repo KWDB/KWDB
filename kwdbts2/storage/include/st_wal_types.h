@@ -57,6 +57,12 @@ enum AlterType : uint8_t {
   ALTER_PARTITION_INTERVAL = 4
 };
 
+enum txnOp {
+  begin = 0,
+  commit = 1,
+  rollback = 2
+};
+
 struct WALMeta {
   TS_OSN current_lsn;
   TS_OSN block_flush_to_disk_lsn;
@@ -76,6 +82,7 @@ const uint32_t LOG_BLOCK_DATA_LEN_SIZE = 2;
 const uint32_t LOG_BLOCK_FIRST_REC_GRP_SIZE = 2;
 const uint32_t LOG_BLOCK_CHECKSUM_SIZE = 4;
 const uint64_t MAX_PER_READ_LSN_RANGES = 64 * 1024 * 1024;
+const uint64_t MAX_PER_READ_BLOCKS = MAX_PER_READ_LSN_RANGES / BLOCK_SIZE;
 
 const uint32_t LOG_BLOCK_HEADER_SIZE = LOG_BLOCK_NUMBER_SIZE +
                                        LOG_BLOCK_DATA_LEN_SIZE +
