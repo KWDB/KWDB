@@ -1078,6 +1078,47 @@ bool TsPartitionVersion::ShouldSetCountStatsInvalid(TSEntityID e_id) {
   return true;
 }
 
+KStatus TsPartitionVersion::GetMaxOSN(uint32_t db_id, TSTableID table_id, TSEntityID entity_id,
+                                      DATATYPE ts_col_type, TS_OSN& max_osn) {
+  KStatus s = KStatus::SUCCESS;
+  max_osn = 0;
+  // get max osn in mem segment
+  KwTsSpan partition_ts_span = {GetTsColTypeStartTime(ts_col_type), GetTsColTypeEndTime(ts_col_type)};
+  if (valid_memseg_ != nullptr) {
+    for (auto &mem : *valid_memseg_) {
+      TS_OSN cur_max_osn;
+      s = mem->GetMaxOSN(db_id, table_id, entity_id, partition_ts_span, cur_max_osn);
+      if (s != KStatus::SUCCESS) {
+        LOG_ERROR("GetMaxOSN of mem segment failed.");
+        return s;
+      }
+      max_osn = std::max(max_osn, cur_max_osn);
+    }
+  }
+  // get max osn in last segment
+  std::vector<std::shared_ptr<TsLastSegment>> last_segments = leveled_last_segments_.GetAllLastSegments();
+  for (const auto& last_segment : last_segments) {
+    TS_OSN cur_max_osn;
+    s = last_segment->GetMaxOSN(entity_id, cur_max_osn);
+    if (s != KStatus::SUCCESS) {
+      LOG_ERROR("GetMaxOSN of last segment failed.");
+      return s;
+    }
+    max_osn = std::max(max_osn, cur_max_osn);
+  }
+  // get max osn in entity segment
+  if (entity_segment_) {
+    TS_OSN cur_max_osn;
+    s = entity_segment_->GetMaxOSN(entity_id, cur_max_osn);
+    if (s != KStatus::SUCCESS) {
+      LOG_ERROR("GetMaxOSN of entity segment failed.");
+      return s;
+    }
+    max_osn = std::max(max_osn, cur_max_osn);
+  }
+  return KStatus::SUCCESS;
+}
+
 // version update
 
 inline void EncodePartitionID(TsBufferBuilder *result, const PartitionIdentifier &partition_id) {

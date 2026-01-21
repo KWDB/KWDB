@@ -280,6 +280,7 @@ class TsPartitionVersion {
     return del_info_->GetDelMaxOSN(e_id, max_osn);
   }
   bool ShouldSetCountStatsInvalid(TSEntityID e_id);
+  KStatus GetMaxOSN(uint32_t db_id, TSTableID table_id, TSEntityID entity_id, DATATYPE ts_col_type, TS_OSN& max_osn);
 };
 
 class TsVGroupVersion {

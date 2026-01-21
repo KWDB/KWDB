@@ -539,6 +539,50 @@ KStatus TsLastSegment::Open() {
   return SUCCESS;
 }
 
+KStatus TsLastSegment::GetMaxOSN(TSEntityID entity_id, TS_OSN& max_osn) {
+  max_osn = 0;
+  std::vector<TsLastSegmentBlockIndex>* p_block_indices;
+  KStatus s = block_cache_->GetAllBlockIndex(&p_block_indices);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("GetAllBlockIndex failed.");
+    return s;
+  }
+
+  const std::vector<TsLastSegmentBlockIndex>& block_indices = *p_block_indices;
+  assert(block_indices.size() == footer_.n_data_block);
+
+  // find the first block which satisfies block.max_entity_id >= entity_id
+  auto begin_it = std::upper_bound(
+    block_indices.begin(), block_indices.end(), entity_id,
+    [](TSEntityID entity_id, const TsLastSegmentBlockIndex& element) { return element.max_entity_id >= entity_id; });
+  if (begin_it == block_indices.end()) {
+    return SUCCESS;
+  }
+
+  // find the first block which satisfies block.min_entity_id > entity_id
+  auto end_it = std::upper_bound(
+    block_indices.begin(), block_indices.end(), entity_id,
+    [](TSEntityID entity_id, const TsLastSegmentBlockIndex& element) { return element.min_entity_id > entity_id; });
+  if (begin_it == end_it) {
+    return SUCCESS;
+  }
+  assert(end_it > begin_it);
+
+  for (auto it = begin_it; it != end_it; ++it) {
+    assert(it->max_entity_id >= entity_id && it->min_entity_id <= entity_id);
+    //  we need to read the block to do further filtering.
+    int block_idx = it - block_indices.begin();
+
+    std::shared_ptr<TsLastBlock> block = nullptr;
+    s = this->GetBlock(block_idx, &block);
+    if (s == FAIL) {
+      return s;
+    }
+    max_osn = std::max(max_osn, *block->GetOSN());
+  }
+  return SUCCESS;
+}
+
 KStatus TsLastSegment::GetBlockSpans(std::list<shared_ptr<TsBlockSpan>>& block_spans,
                                      TsEngineSchemaManager* schema_mgr) {
   assert(block_cache_ != nullptr);
