@@ -39,6 +39,7 @@
 #include "ts_entity_segment_handle.h"
 #include "ts_partition_count_mgr.h"
 #include "ts_partition_meta_mgr.h"
+#include "ts_partition_agg.h"
 
 namespace kwdbts {
 using DatabaseID = uint32_t;
@@ -187,13 +188,20 @@ class TsPartitionVersion {
 
   std::shared_ptr<TsDelItemManager> del_info_;
   std::shared_ptr<TsPartitionEntityCountManager> count_info_;
-  // std::shared_ptr<TsPartitionEntityMetaManager> meta_info_;
+  std::shared_ptr<TsPartitionAggReader> agg_reader_;
 
   // Only TsVersionManager can create TsPartitionVersion
   explicit TsPartitionVersion(fs::path partition_path, PartitionIdentifier partition_info)
       : partition_path_(std::move(partition_path)),
         partition_info_(partition_info),
-        exclusive_status_(std::make_shared<std::atomic<PartitionStatus>>(PartitionStatus::None)) {}
+        exclusive_status_(std::make_shared<std::atomic<PartitionStatus>>(PartitionStatus::None)) {
+    TsIOEnv* env = &TsIOEnv::GetInstance();
+    agg_reader_ = std::make_shared<TsPartitionAggReader>(env, partition_path_);
+    auto s = agg_reader_->Open();
+    if (s != KStatus::SUCCESS) {
+      LOG_ERROR("Failed open agg reader for partition[%s]", partition_path_.c_str());
+    }
+  }
 
  public:
   TsPartitionVersion(const TsPartitionVersion &) = default;
@@ -242,6 +250,7 @@ class TsPartitionVersion {
   std::shared_ptr<TsEntitySegment> GetEntitySegment() const { return entity_segment_; }
   std::list<std::shared_ptr<TsMemSegment>> GetAllMemSegments() const;
   shared_ptr<TsPartitionEntityCountManager> GetCountManager() const { return count_info_; }
+  std::shared_ptr<TsPartitionAggReader> GetAggReader() const { return agg_reader_; }
 
   // TODO(zzr): optimize the following function ralate to deletions, deletion should also be atomic in future, this is
   // just a temporary solution
@@ -280,7 +289,7 @@ class TsPartitionVersion {
     return del_info_->GetDelMaxOSN(e_id, max_osn);
   }
   bool ShouldSetCountStatsInvalid(TSEntityID e_id);
-  KStatus GetMaxOSN(uint32_t db_id, TSTableID table_id, TSEntityID entity_id, DATATYPE ts_col_type, TS_OSN& max_osn);
+  KStatus GetMaxOSN(uint32_t db_id, TSTableID table_id, TSEntityID entity_id, DATATYPE ts_col_type, TS_OSN& max_osn) const;
 };
 
 class TsVGroupVersion {

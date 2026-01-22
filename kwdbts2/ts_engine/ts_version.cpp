@@ -1079,7 +1079,7 @@ bool TsPartitionVersion::ShouldSetCountStatsInvalid(TSEntityID e_id) {
 }
 
 KStatus TsPartitionVersion::GetMaxOSN(uint32_t db_id, TSTableID table_id, TSEntityID entity_id,
-                                      DATATYPE ts_col_type, TS_OSN& max_osn) {
+                                      DATATYPE ts_col_type, TS_OSN& max_osn) const {
   KStatus s = KStatus::SUCCESS;
   max_osn = 0;
   // get max osn in mem segment

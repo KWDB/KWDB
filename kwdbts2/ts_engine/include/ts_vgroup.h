@@ -52,7 +52,7 @@ enum class TsEntityLatestRowStatus {
  * in current time vgroup is same as database
  */
 // const pointer
-class TsVGroup {
+class TsVGroup : public std::enable_shared_from_this<TsVGroup> {
  private:
   uint32_t vgroup_id_{0};
   TsEngineSchemaManager* schema_mgr_ = nullptr;
@@ -99,6 +99,7 @@ class TsVGroup {
   KThreadID cal_agg_thread_id_{0};
   std::mutex cal_agg_mutex_;
   std::condition_variable agg_cv_;
+  std::atomic<bool> cal_agg_status_;
 
   std::atomic<uint64_t> max_osn_{LOG_BLOCK_HEADER_SIZE + BLOCK_SIZE};
 
@@ -247,7 +248,8 @@ class TsVGroup {
                       const std::shared_ptr<TsTableSchemaManager>& table_schema_mgr,
                       const std::shared_ptr<MMapMetricsTable>& schema, TsStorageIterator** iter,
                       const std::shared_ptr<TsVGroup>& vgroup,
-                      const std::vector<timestamp64>& ts_points, bool reverse, bool sorted);
+                      const std::vector<timestamp64>& ts_points, bool reverse, bool sorted,
+                      bool partition_agg_routine = false);
 
   KStatus GetMetricIteratorByOSN(kwdbContext_p ctx, const std::shared_ptr<TsVGroup>& vgroup,
     std::vector<EntityResultIndex>& entity_ids, std::vector<k_uint32>& scan_cols, std::vector<k_uint32>& ts_scan_cols,
@@ -536,6 +538,14 @@ class TsVGroup {
 
   KStatus ConvertBlockSpanToResultSet(const std::vector<k_uint32>& kw_scan_cols, const TsBlockSpan& ts_blk_span,
                                       const vector<AttributeInfo>& attrs, ResultSet* res);
+  bool TrySetAggBusy() {
+    bool expected = false;
+    return cal_agg_status_.compare_exchange_strong(expected, true);
+  }
+
+  void ResetAggStatus() {
+    cal_agg_status_.store(false);
+  }
 };
 
 }  // namespace kwdbts

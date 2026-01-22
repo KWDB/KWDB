@@ -12,7 +12,6 @@
 #pragma once
 
 #include <memory>
-#include "ts_version.h"
 #include "ts_common.h"
 #include "ts_io.h"
 
@@ -45,9 +44,10 @@ class TsPartitionAggEntityItemFile {
   explicit TsPartitionAggEntityItemFile(const fs::path& partition_path);
   ~TsPartitionAggEntityItemFile();
   KStatus Open();
+  KStatus Close();
   KStatus GetPartitionAggHeader(TsAggStatsFileHeader& header);
-  KStatus AddEntityAggStats(TsEntityAggStats& stats);
   KStatus SetEntityAggStats(TsEntityAggStats& stats);
+  KStatus GetEntityAggStats(TsEntityAggStats& stats);
 
  private:
   fs::path file_path_;
@@ -79,6 +79,7 @@ class TsPartitionAggFileBuilder {
   ~TsPartitionAggFileBuilder() {}
 
   KStatus Open();
+  KStatus Close();
   KStatus AppendAggBlock(const TSSlice& agg, uint64_t* offset);
 
  private:
@@ -95,15 +96,33 @@ class TsPartitionAggCalculator {
   explicit TsPartitionAggCalculator(TsIOEnv* io_env, const fs::path& path);
   ~TsPartitionAggCalculator();
   KStatus Open();
+  KStatus Close();
   KStatus GetPartitionAggHeader(TsAggStatsFileHeader& header);
-  KStatus CalcPartitionAgg(const TSSlice& agg, TsEntityAggStats& stats);
+  KStatus AppendEntityAgg(const TSSlice& agg, TsEntityAggStats& stats);
+  KStatus GetEntityAggStats(TsEntityAggStats& stats);
 
  private:
   TsIOEnv* io_env_{nullptr};
-  PartitionIdentifier partition_id;
+  // PartitionIdentifier partition_id;
   fs::path partition_path_;
   std::unique_ptr<TsPartitionAggEntityItemFile> entity_item_file_{nullptr};
   std::unique_ptr<TsPartitionAggFileBuilder> agg_builder_{nullptr};
 };
 
+class TsPartitionAggReader {
+ public:
+  explicit TsPartitionAggReader(TsIOEnv* io_env, const fs::path& path);
+  ~TsPartitionAggReader();
+  KStatus Open();
+  KStatus GetPartitionAggHeader(TsAggStatsFileHeader& header);
+  KStatus GetPartitionAggStats(TsEntityAggStats& stats);
+  KStatus GetPartitionAgg(TSEntityID entity_id, TsSliceGuard& agg);
+
+ private:
+  TsIOEnv* io_env_{nullptr};
+  // PartitionIdentifier partition_id;
+  fs::path partition_path_;
+  std::unique_ptr<TsPartitionAggEntityItemFile> entity_item_file_{nullptr};
+  std::unique_ptr<TsPartitionAggFile> agg_file_{nullptr};
+};
 }  // namespace kwdbts
