@@ -32,6 +32,7 @@
 #include "ts_mem_segment_mgr.h"
 #include "ts_version.h"
 #include "ts_partition_interval_recorder.h"
+#include "ts_partition_agg.h"
 
 extern uint16_t CLUSTER_SETTING_MAX_ROWS_PER_BLOCK;         // PARTITION_ROWS from cluster setting
 extern bool CLUSTER_SETTING_COUNT_USE_STATISTICS;          // COUNT_USE_STATISTICS from cluster setting
@@ -92,6 +93,13 @@ class TsVGroup {
 
   std::map<PartitionIdentifier, std::map<TSTableID, std::unordered_set<TSEntityID>>> recalc_count_entities_;
 
+  // agg thread flag
+  bool enable_cal_agg_thread_{true};
+  // Id of the agg thread
+  KThreadID cal_agg_thread_id_{0};
+  std::mutex cal_agg_mutex_;
+  std::condition_variable agg_cv_;
+
   std::atomic<uint64_t> max_osn_{LOG_BLOCK_HEADER_SIZE + BLOCK_SIZE};
 
   mutable std::shared_mutex last_row_entity_mutex_;
@@ -112,6 +120,7 @@ class TsVGroup {
 
  public:
   std::unique_ptr<WALMgr> wal_manager_ = nullptr;
+  std::map<PartitionIdentifier, std::shared_ptr<TsPartitionAggCalculator>> agg_map_;
   TsVGroup() = delete;
 
   TsVGroup(EngineOptions* engine_options, uint32_t vgroup_id, TsEngineSchemaManager* schema_mgr,
@@ -509,12 +518,19 @@ class TsVGroup {
   // Close compact thread.
   void closeCompactThread();
 
-  // Thread scheduling executes compact tasks to clean up items that require erasing.
+  // Thread scheduling executes count tasks.
   void recalcCountRoutine(void* args);
   // Initialize count thread.
   void initRecalcCountThread();
   // Close count thread.
   void closeRecalcCountThread();
+
+  // Thread scheduling executes calculate aggregation tasks.
+  void calAggRoutine(void* args);
+  // Initialize calculate aggregation thread.
+  void initCalAggThread();
+  // Close calculate aggregation thread.
+  void closeCalAggThread();
 
   KStatus PartitionCompact(std::shared_ptr<const TsPartitionVersion> partition, bool call_by_vacuum = false);
 

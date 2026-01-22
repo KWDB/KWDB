@@ -51,7 +51,31 @@ KStatus TsPartitionAggEntityItemFile::AddEntityAggStats(TsEntityAggStats& stats)
   return SUCCESS;
 }
 
-KStatus TsPartitionAggEntityItemFile::SetEntityAggStats(TsEntityAggStats& stats) {
+KStatus TsPartitionAggEntityItemFile::SetEntityAggStats(TsEntityAggStats& agg_stats) {
+  auto node = index_.GetIndexObject(agg_stats.entity_id, true);
+  if (node == nullptr) {
+    LOG_ERROR("get node from index file failed. entity [%lu] path [%s].", agg_stats.entity_id, file_path_.c_str());
+    return KStatus::FAIL;
+  }
+  if (*node == INVALID_POSITION) {
+    auto offset = file_.AllocateAssigned(sizeof(TsEntityAggStats), 0);
+    if (offset == INVALID_POSITION) {
+      LOG_ERROR("get node from index file failed. entity [%lu] path [%s].", agg_stats.entity_id, file_path_.c_str());
+      return FAIL;
+    }
+    *node = offset;
+  }
+  {
+    auto* stats = reinterpret_cast<TsEntityAggStats*>(file_.addr(*node));
+    assert(stats != nullptr);
+    stats->min_ts = agg_stats.min_ts;
+    stats->max_ts = agg_stats.max_ts;
+    stats->table_id = agg_stats.table_id;
+    stats->entity_id = agg_stats.entity_id;
+    stats->table_version = agg_stats.table_version;
+    stats->agg_offset = agg_stats.agg_offset;
+    stats->agg_len = agg_stats.agg_len;
+  }
   return SUCCESS;
 }
 
@@ -117,7 +141,19 @@ KStatus TsPartitionAggCalculator::GetPartitionAggHeader(TsAggStatsFileHeader& he
   return entity_item_file_->GetPartitionAggHeader(header);
 }
 
-KStatus TsPartitionAggCalculator::CalcPartitionAgg() {
+KStatus TsPartitionAggCalculator::CalcPartitionAgg(const TSSlice& agg, TsEntityAggStats& stats) {
+  uint64_t offset;
+  auto s = agg_builder_->AppendAggBlock(agg, &offset);
+  if (s != SUCCESS) {
+    LOG_ERROR("Append partition agg data failed");
+    return s;
+  }
+  stats.agg_offset = offset;
+  stats.agg_len = agg.len;
+  s = entity_item_file_->SetEntityAggStats(stats);
+  if (s != SUCCESS) {
+    LOG_ERROR("Set entity agg data failed");
+  }
   return SUCCESS;
 }
 }  // namespace kwdbts

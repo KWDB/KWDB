@@ -2618,10 +2618,6 @@ KStatus TsVGroup::RecalcCountStat() {
   return KStatus::SUCCESS;
 }
 
-KStatus TsVGroup::CalPartitionAgg() {
-  return KStatus::SUCCESS;
-}
-
 KStatus TsVGroup::ResetCountStat() {
   std::vector<std::shared_ptr<TsTableSchemaManager> > tb_schema_manager;
   KStatus s = schema_mgr_->GetAllTableSchemaMgrs(tb_schema_manager);
@@ -2663,5 +2659,148 @@ KStatus TsVGroup::ResetCountStat() {
   update.SetCountStatsType(CountStatsStatus::UpgradeRecover);
   version_manager_->ApplyUpdate(&update);
   return KStatus::SUCCESS;
+}
+
+KStatus TsVGroup::CalPartitionAgg() {
+  std::vector<std::shared_ptr<TsTableSchemaManager> > tb_schema_manager;
+  KStatus s = schema_mgr_->GetAllTableSchemaMgrs(tb_schema_manager);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("Get all table schema mgrs failed.")
+  }
+
+  std::map<std::shared_ptr<TsTableSchemaManager>, std::vector<uint32_t>> table_entity_map;
+  kwdbContext_t ctx;
+  for (auto& tb_schema : tb_schema_manager) {
+    std::shared_ptr<TagTable> tag_table;
+    auto s = tb_schema->GetTagSchema(&ctx, &tag_table);
+    if (s != KStatus::SUCCESS) {
+      LOG_ERROR("Failed get table id[%ld] tag schema.", tb_schema->GetTableId());
+      return s;
+    }
+    std::vector<uint32_t> entity_id_list;
+    tag_table->GetEntityIdListByVGroupId(vgroup_id_, entity_id_list);
+    table_entity_map.emplace(tb_schema, entity_id_list);
+  }
+  std::shared_ptr<const TsVGroupVersion> cur_version = version_manager_->Current();
+  auto all_partitions = cur_version->GetAllPartitions();
+  TsIOEnv* env = &TsIOEnv::GetInstance();
+  for (auto& [par_id, par_version] : all_partitions) {
+    auto agg_file = std::make_shared<TsPartitionAggCalculator>(env, par_version->GetPartitionPath());
+    s = agg_file->Open();
+    if (s != SUCCESS) {
+      LOG_ERROR("Open partition[%s] agg file failed", par_version->GetPartitionPath().c_str());
+      return s;
+    }
+    for (auto& [tb_schema, entity_id_list] : table_entity_map) {
+      if (tb_schema->GetDbID() != std::get<0>(par_id)) {
+        continue;
+      }
+      std::shared_ptr<MMapMetricsTable> metric_schema = tb_schema->GetCurrentMetricsTable();
+      const vector<AttributeInfo>& attrs = *metric_schema->getSchemaInfoExcludeDroppedPtr();
+      DATATYPE ts_col_type = tb_schema->GetTsColDataType();
+      std::vector<KwTsSpan> ts_spans = {{par_version->GetTsColTypeStartTime(ts_col_type),
+                                     par_version->GetTsColTypeEndTime(ts_col_type)}};
+      std::vector<BlockFilter> block_filter = {};
+      std::vector<k_int32> agg_extend_cols = {};
+      std::vector<timestamp64> ts_points = {};
+      std::vector<k_uint32> scan_cols;
+      std::vector<Sumfunctype> scan_agg_types;
+      for (auto & attr : attrs) {
+        scan_cols.push_back(attr.id);
+        scan_agg_types.push_back(Sumfunctype::COUNT);
+        if (isSumType(static_cast<DATATYPE>(attr.type))) {
+          scan_cols.push_back(attr.id);
+        scan_agg_types.push_back(Sumfunctype::SUM);
+        }
+      }
+      TsStorageIterator* ts_iter;
+      s = GetIterator(&ctx, metric_schema->GetVersion(), entity_id_list, ts_spans, block_filter,
+                              scan_cols, scan_cols, agg_extend_cols, scan_agg_types, tb_schema,
+                              metric_schema, &ts_iter, std::shared_ptr<TsVGroup>(this), ts_points, false, false);
+      for (auto& entity : entity_id_list) {
+        ResultSet res{(k_uint32) scan_cols.size()};
+        k_uint32 count;
+        bool is_finished = false;
+        s = ts_iter->Next(&res, &count, &is_finished);
+        TsBufferBuilder agg_buffer;
+        uint32_t agg_header_size = (attrs.size()) * sizeof(uint32_t);
+        agg_buffer.resize(agg_header_size);
+        for (int idx = 0; idx < attrs.size(); idx++) {
+          string col_agg;
+          col_agg.resize(sizeof(uint32_t) + 9, '\0');
+          memcpy(col_agg.data(), res.data[2 * idx][0]->mem, sizeof(uint32_t));
+          if (isSumType(static_cast<DATATYPE>(attrs[idx].type))) {
+            memcpy(col_agg.data() + sizeof(uint32_t), &(res.data[2 * idx + 1][0]->is_overflow), 1);
+            memcpy(col_agg.data() + sizeof(uint32_t) + 1, res.data[2 * idx + 1][0]->mem, 8);
+          }
+          agg_buffer.append(col_agg);
+          uint32_t offset = agg_buffer.size() - agg_header_size;
+          memcpy(agg_buffer.data() + idx * sizeof(uint32_t), &offset, sizeof(uint32_t));
+        }
+        TsEntityAggStats stats{tb_schema->GetTableId(), entity,  metric_schema->GetVersion(), 0, 0, 0, 0, 0, ""};
+        agg_file->CalcPartitionAgg({agg_buffer.data(), agg_buffer.size()}, stats);
+      }
+      delete ts_iter;
+    }
+    agg_map_.insert_or_assign(par_id, agg_file);
+  }
+  return KStatus::SUCCESS;
+}
+
+void TsVGroup::calAggRoutine(void* args)
+{
+  while (!KWDBDynamicThreadPool::GetThreadPool().IsCancel() && enable_cal_agg_thread_)
+  {
+    // If the thread pool stops or the system is no longer running, exit the loop
+    if (KWDBDynamicThreadPool::GetThreadPool().IsCancel() || !enable_cal_agg_thread_)
+    {
+      break;
+    }
+    KStatus s = CalPartitionAgg();
+    if (s != KStatus::SUCCESS) {
+      LOG_ERROR("CalPartitionAgg failed.")
+    }
+    {
+      std::unique_lock<std::mutex> lock(cal_agg_mutex_);
+      agg_cv_.wait_for(lock, std::chrono::minutes(5), [this]() { return !enable_cal_agg_thread_; });
+    }
+  }
+}
+
+void TsVGroup::initCalAggThread() {
+#ifdef WITH_TESTS
+  return;
+#endif
+  if (!enable_cal_agg_thread_)
+  {
+    return;
+  }
+  KWDBOperatorInfo kwdb_operator_info;
+  // Set the name and owner of the operation
+  kwdb_operator_info.SetOperatorName("VGroup::CalAggThread");
+  kwdb_operator_info.SetOperatorOwner("VGroup");
+  time_t now;
+  // Record the start time of the operation
+  kwdb_operator_info.SetOperatorStartTime((k_uint64)time(&now));
+  // Start asynchronous thread
+  cal_agg_thread_id_ = KWDBDynamicThreadPool::GetThreadPool().ApplyThread(
+    std::bind(&TsVGroup::calAggRoutine, this, std::placeholders::_1), this, &kwdb_operator_info);
+  if (cal_agg_thread_id_ < 1)
+  {
+    // If thread creation fails, record error message
+    LOG_ERROR("VGroup cal agg thread create failed");
+  }
+}
+
+void TsVGroup::closeCalAggThread()
+{
+  if (cal_agg_thread_id_ > 0)
+  {
+    // Wake up potentially dormant agg thread
+    enable_cal_agg_thread_ = false;
+    agg_cv_.notify_all();
+    // Waiting for the agg thread to complete
+    KWDBDynamicThreadPool::GetThreadPool().JoinThread(cal_agg_thread_id_, 0);
+  }
 }
 }  //  namespace kwdbts

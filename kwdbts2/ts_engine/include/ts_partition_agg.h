@@ -96,7 +96,7 @@ class TsPartitionAggCalculator {
   ~TsPartitionAggCalculator();
   KStatus Open();
   KStatus GetPartitionAggHeader(TsAggStatsFileHeader& header);
-  KStatus CalcPartitionAgg();
+  KStatus CalcPartitionAgg(const TSSlice& agg, TsEntityAggStats& stats);
 
  private:
   TsIOEnv* io_env_{nullptr};
