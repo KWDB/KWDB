@@ -1553,6 +1553,11 @@ func (r *Replica) applySnapshot(
 	r.mu.lastIndex = s.RaftAppliedIndex
 	r.mu.lastTerm = lastTerm
 	r.mu.raftLogSize = raftLogSize
+	// replica is consistent after snapshot applied, and the inconsistent status
+	// has already been cleared by unreplicatedSST.
+	if r.mu.inconsistent {
+		r.mu.inconsistent = false
+	}
 	// set tsFlushedIndex
 	if inSnap.IsTSSnapshot && tse.TsRaftLogCombineWAL.Get(&r.store.ClusterSettings().SV) {
 		if r.mu.tsFlushedIndex < s.TruncatedState.Index {
