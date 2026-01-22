@@ -787,3 +787,22 @@ CALL pc45();
 CALL pc45();
 drop procedure pc45;
 drop database if exists d1 cascade;
+
+create database d1;
+use d1;
+create table t1(id int);
+insert into t1 values(1);
+
+set cluster setting sql.trace.log_statement_execute=true;
+
+delimiter \\
+CREATE PROCEDURE pc46()
+BEGIN
+SET @v46=46;
+SET @v460=4600;
+prepare p46 as select @v46+@v460 from t1 order by id;
+END\\
+
+delimiter ;
+set cluster setting sql.trace.log_statement_execute=default;
+drop database if exists d1 cascade;

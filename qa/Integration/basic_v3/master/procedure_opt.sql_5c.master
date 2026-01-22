@@ -978,3 +978,25 @@ CREATE PROCEDURE
 DROP PROCEDURE
 > drop database if exists d1 cascade;
 DROP DATABASE
+> create database d1;
+CREATE DATABASE
+> use d1;
+SET
+> create table t1(id int);
+CREATE TABLE
+> insert into t1 values(1);
+INSERT 1
+> set cluster setting sql.trace.log_statement_execute=true;
+SET CLUSTER SETTING
+> CREATE PROCEDURE pc46()
+BEGIN
+SET @v46=46;
+SET @v460=4600;
+prepare p46 as select @v46+@v460 from t1 order by id;
+END;
+ERROR: user defined variables cannot be used in prepare of procedure
+SQLSTATE: 0A000
+> set cluster setting sql.trace.log_statement_execute=default;
+SET CLUSTER SETTING
+> drop database if exists d1 cascade;
+DROP DATABASE

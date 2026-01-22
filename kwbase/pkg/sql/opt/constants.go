@@ -64,6 +64,9 @@ const (
 	// NotPruneAgg is setted to avoid dead loops caused by unprune
 	// timebucketgapfill col or max col or min col.
 	NotPruneAgg = 1 << 6
+
+	// IsExecute is set when it's a execute statement.
+	IsExecute = 1 << 7
 )
 
 // AutoLimitQuantity is quantity of autolimit

@@ -525,7 +525,7 @@ func (b *Builder) buildTSUpdate(
 	outScope = inScope.push()
 
 	// if statement is to execute a prepared statement, resolve and change placeholder
-	if b.factory.CheckFlag(opt.IsPrepare) && b.evalCtx.Placeholders != nil {
+	if b.factory.CheckFlag(opt.IsExecute) {
 		if err := changePlaceholder(b.evalCtx, &upd.Where.Expr); err != nil {
 			panic(err)
 		}
@@ -539,7 +539,10 @@ func (b *Builder) buildTSUpdate(
 	// todo: add limit 1 to avoid finding multiple rows of values for the same PTAG in distributed scenarios
 	query = "select distinct * from (" + query + ") limit 1"
 	row, err := b.evalCtx.InternalExecutor.QueryRow(b.ctx, "queryTag", b.evalCtx.Txn, query)
-	if err != nil && !b.factory.CheckFlag(opt.IsPrepare) {
+	// Only the prepare statement does not need to return error,
+	// all other scenarios require an error.
+	skipErr := b.factory.CheckFlag(opt.IsPrepare) && !b.factory.CheckFlag(opt.IsExecute)
+	if err != nil && !skipErr {
 		panic(err)
 	}
 

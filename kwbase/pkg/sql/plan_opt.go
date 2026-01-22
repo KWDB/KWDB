@@ -543,7 +543,7 @@ func (opc *optPlanningCtx) buildExecMemo(
 	f.Memo().SetWhiteList(p.ExecCfg().TSWhiteListMap)
 
 	if p.stmt.Prepared != nil && p.stmt.NumPlaceholders != 0 {
-		f.TSFlags |= opt.IsPrepare
+		f.TSFlags |= opt.IsExecute
 	}
 	if opc.allowMemoReuse && prepared != nil && prepared.Memo != nil {
 		// We are executing a previously prepared statement and a reusable memo is

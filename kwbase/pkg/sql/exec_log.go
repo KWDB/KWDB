@@ -182,7 +182,10 @@ func (p *planner) maybeLogStatementInternal(
 	stmtStr := p.curPlan.stmt.String()
 
 	logTrigger := "{}"
-	plStr := p.extendedEvalCtx.Placeholders.Values.String()
+	plStr := "{}"
+	if p.extendedEvalCtx.Placeholders != nil {
+		plStr = p.extendedEvalCtx.Placeholders.Values.String()
+	}
 	queryDuration := timeutil.Now().Sub(startTime)
 	age := float64(queryDuration.Nanoseconds()) / 1e6
 

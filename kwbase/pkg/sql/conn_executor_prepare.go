@@ -319,6 +319,7 @@ func (ex *connExecutor) populatePrepared(
 	if err := p.semaCtx.Placeholders.Init(stmt.NumPlaceholders, placeholderHints); err != nil {
 		return 0, err
 	}
+	p.extendedEvalCtx.Placeholders = &p.semaCtx.Placeholders
 	p.extendedEvalCtx.PrepareOnly = true
 
 	protoTS, err := p.isAsOf(stmt.AST)
