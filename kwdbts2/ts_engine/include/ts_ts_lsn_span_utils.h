@@ -94,6 +94,41 @@ inline bool IsTsLsnSpanCrossSpans(const std::vector<STScanRange>& spans,
   return false;
 }
 
+inline bool IsTsSpanCrossSpan(const KwTsSpan& ts_span, int64_t min_ts, int64_t max_ts) {
+  if (ts_span.begin > max_ts || ts_span.end < min_ts) {
+    return false;
+  }
+  return true;
+}
+
+enum RangeRelationType : uint8_t {
+  RangeExclude = 1,
+  RangeCross = 2,
+  RangeInclude = 3,
+  RangeIncluded = 4
+};
+
+inline RangeRelationType GetRangeRelation(const KwOSNSpan& a, const KwOSNSpan& b) {
+  if (a.begin > b.end || b.begin > a.end) {
+    return RangeRelationType::RangeExclude;
+  }
+  if (a.begin <= b.begin) {
+    if (a.end >= b.end) {
+      return RangeRelationType::RangeInclude;
+    } else {
+      return RangeRelationType::RangeCross;
+    }
+  } else {
+    if (a.end <= b.end) {
+      return RangeRelationType::RangeIncluded;
+    } else {
+      return RangeRelationType::RangeCross;
+    }
+  }
+  return RangeRelationType::RangeExclude;
+}
+
+
 void MergeTsSpans(std::list<KwTsSpan>& raw_spans, std::vector<KwTsSpan>* ret_spans);
 
 void DeplicateTsSpans(list<STDelRange>& raw_spans, list<STDelRange>* ret_spans);

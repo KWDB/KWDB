@@ -524,7 +524,11 @@ KStatus TsEntityBlock::GetRowSpans(const std::vector<STScanRange>& spans,
   assert(n_rows_ * 8 == column_blocks_[0]->buffer.size());
 
   for (const auto& span : spans) {
-    if (!IsTsLsnSpanCrossSpans({span}, {first_ts_, last_ts_}, {min_osn_, max_osn_})) {
+    if (!IsTsSpanCrossSpan(span.ts_span, first_ts_, last_ts_)) {
+      continue;
+    }
+    auto range_type = GetRangeRelation(span.osn_span, {min_osn_, max_osn_});
+    if (range_type == RangeRelationType::RangeExclude) {
       continue;
     }
     // binary search to find the start and end index of the time range
@@ -533,23 +537,30 @@ KStatus TsEntityBlock::GetRowSpans(const std::vector<STScanRange>& spans,
     // osn_span filter
     int start_idx = ts_start - ts_col;
     int end_idx = ts_end - ts_col;
-    bool match_found = false;
-    int span_start = 0;
-    for (int i = start_idx; i < end_idx; i++) {
-      if (osn_col[i] >= span.osn_span.begin && osn_col[i] <= span.osn_span.end) {
-        if (!match_found) {
-          span_start = i;
-          match_found = true;
-        }
-      } else {
-        if (match_found) {
-          match_found = false;
-          row_spans.push_back({span_start, i - span_start});
+    if (range_type == RangeRelationType::RangeInclude) {
+      auto num = end_idx - start_idx;
+      if (num > 0) {
+        row_spans.push_back({start_idx, num});
+      }
+    } else {
+      bool match_found = false;
+      int span_start = 0;
+      for (int i = start_idx; i < end_idx; i++) {
+        if (osn_col[i] >= span.osn_span.begin && osn_col[i] <= span.osn_span.end) {
+          if (!match_found) {
+            span_start = i;
+            match_found = true;
+          }
+        } else {
+          if (match_found) {
+            match_found = false;
+            row_spans.push_back({span_start, i - span_start});
+          }
         }
       }
-    }
-    if (match_found) {
-      row_spans.push_back({span_start, end_idx - span_start});
+      if (match_found) {
+        row_spans.push_back({span_start, end_idx - span_start});
+      }
     }
   }
 #ifdef WITH_TESTS
