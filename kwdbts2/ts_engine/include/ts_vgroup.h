@@ -469,6 +469,7 @@ class TsVGroup {
     std::unique_lock<std::shared_mutex> lock(entity_latest_row_mutex_);
     if (entity_latest_row_.count(entity_id) && max_ts >= entity_latest_row_[entity_id].last_ts) {
       entity_latest_row_[entity_id].status = TsEntityLatestRowStatus::Recovering;
+      entity_latest_row_[entity_id].is_payload_valid = false;
     }
   }
 

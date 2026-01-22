@@ -516,13 +516,15 @@ KStatus TsVGroup::GetEntityLastRow(const std::shared_ptr<TsTableSchemaManager>& 
   }
   std::unique_lock<std::shared_mutex> lock3(entity_latest_row_mutex_);
   if (last_block_span != nullptr) {
-    if (!entity_latest_row_.count(entity_id) || last_block_span->GetLastTS() >= last_row.last_ts) {
+    if (!entity_latest_row_.count(entity_id) || last_row.status != TsEntityLatestRowStatus::Valid ||
+        last_block_span->GetLastTS() >= last_row.last_ts) {
       last_row.is_payload_valid = false;
       last_row.last_ts = last_block_span->GetLastTS();
       last_row.status = TsEntityLatestRowStatus::Valid;
-    }
-    if (checkTimestampWithSpans(ts_spans, last_row.last_ts, last_row.last_ts) != TimestampCheckResult::NonOverlapping) {
-      entity_last_ts = last_row.last_ts;
+      if (checkTimestampWithSpans(ts_spans, last_row.last_ts, last_row.last_ts) !=
+          TimestampCheckResult::NonOverlapping) {
+        entity_last_ts = last_row.last_ts;
+      }
     }
   }
   return KStatus::SUCCESS;
