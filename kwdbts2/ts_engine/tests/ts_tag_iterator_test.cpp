@@ -18,6 +18,15 @@ using namespace kwdbts;  // NOLINT
 std::string kDbPath = "./test_db";  // NOLINT The current directory is the storage directory for the big table
 
 RangeGroup kTestRange{1, 0};
+class TestMMapHashIndex : public :: MMapPTagHashIndex {
+ public:
+  void setHashFuncForTest(HashFunc hash_func) { hash_func_ = hash_func; }
+
+  TestMMapHashIndex(int key_len) : MMapPTagHashIndex(key_len) {}
+
+  ~TestMMapHashIndex() {};
+};
+
 class TestEngine : public ::testing::Test {
  public:
   kwdbContext_t context_;
@@ -158,4 +167,67 @@ TEST(TsTagHashIndexTest, MultiInsert) {
     ASSERT_EQ(ret.second, i + 1);
   }
   delete m_index_;
+}
+
+uint64_t TestHash(const char *data, int len) {
+  return 0;
+}
+
+TEST(TsTagHashIndexTest, loadDeletedRecord) {
+  const int primary_key_length = 8;
+  const int thread_num = 10;
+  const int insert_rows = 100;
+
+  string index_name = "11.tag.ht";
+  System("rm -rf 11.tag.ht");
+  TestMMapHashIndex* m_index_ = new TestMMapHashIndex(primary_key_length);
+  m_index_->setHashFuncForTest(TestHash);
+  ErrorInfo err_info;
+  auto errcode = m_index_->open(index_name, "./", "./", MMAP_CREATOPEN, err_info);
+  ASSERT_EQ(errcode, 0);
+  std::vector<uint64_t> pkeys;
+
+  for (size_t i = 0; i < insert_rows * thread_num; i++) {
+    pkeys.push_back(10086 + i);
+  }
+
+  std::vector<std::thread> threads;
+  for (size_t i = 0; i < thread_num; i++) {
+    int idx = i;
+    threads.push_back(thread([&](int index) {
+      for (size_t j = 0; j < insert_rows; j++) {
+        auto err_code = m_index_->insert((char*)(&pkeys[index * insert_rows + j]), primary_key_length, 1, index * insert_rows + j + 1);
+        ASSERT_TRUE(err_code == 0);
+      }
+    }, idx));
+  }
+
+  for (size_t i = 0; i < threads.size(); i++) {
+    threads[i].join();
+  }
+
+  for (size_t j = 0; j < insert_rows * thread_num; j++) {
+    if (j % 10086 == 0) {
+      continue;
+    }
+    auto ret = m_index_->remove((char*)(&pkeys[j]), primary_key_length);
+    ASSERT_EQ(ret.first, 1);
+  }
+
+  delete m_index_;
+
+  TestMMapHashIndex* m_index_load = new TestMMapHashIndex(primary_key_length);
+  auto errcode_ = m_index_load->open(index_name, "./", "./", MMAP_CREATOPEN, err_info);
+  ASSERT_EQ(errcode_, 0);
+  m_index_load->setHashFuncForTest(TestHash);
+
+  for (size_t i = 0; i < insert_rows * thread_num; i++) {
+    auto ret = m_index_load->get((char*)(&pkeys[i]), primary_key_length);
+    if (i % 10086 == 0) {
+      ASSERT_EQ(ret.first, 1);
+      continue;
+    }
+    ASSERT_EQ(ret.first, 0);
+  }
+  delete m_index_load;
 }

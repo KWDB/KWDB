@@ -198,6 +198,9 @@ void MMapHashIndex::loadRecord(size_t start, size_t end) {
     // HashIndexData* rec = addrHash();
     m_bucket_count_ = metaData().m_bucket_count;
     for (size_t idx = start; idx <= end; ++idx) {
+        if (row(idx)->bt_row == 0) {
+          continue;
+        }
         bkt_ins_idx = (row(idx)->hash_val >> 56) & (n_bkt_instances_ - 1);
         bkt_idx = buckets_[bkt_ins_idx]->get_bucket_index(row(idx)->hash_val);
         buckets_[bkt_ins_idx]->bucketValue(bkt_idx) = idx;
