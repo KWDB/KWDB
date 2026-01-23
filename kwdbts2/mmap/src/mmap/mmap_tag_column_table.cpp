@@ -775,9 +775,8 @@ int MMapTagColumnTable::reserve(size_t n, ErrorInfo& err_info) {
     return err_code;
   }
   // init bitmap file
-  for (int i = m_meta_data_->m_reserve_row_count + 1; i <= n; i++) {
-    reinterpret_cast<uint8_t*>(header_(i))[0] = 0xFF;
-  }
+  memset(reinterpret_cast<char *>((intptr_t)m_bitmap_file_->startAddr() + m_meta_data_->m_reserve_row_count),
+         0xFF, n - m_meta_data_->m_reserve_row_count);
 
   // row info mremap
   if (m_row_info_file_) {
