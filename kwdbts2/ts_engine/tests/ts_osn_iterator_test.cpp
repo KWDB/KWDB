@@ -170,7 +170,9 @@ TEST_F(TestV2IteratorByOSN, basic_insert) {
   osn_spans.push_back({0, 1760000});
   rs.clear();
   rs.setColumnNum(4);
-  s = ts_table_->GetMetricIteratorByOSN(ctx_, table_version, scan_cols, entity_id_list, osn_spans, &m_iter);
+  std::vector<KwTsSpan> ts_spans;
+  ts_spans.push_back({INT64_MIN, INT64_MAX});
+  s = ts_table_->GetMetricIteratorByOSN(ctx_, table_version, scan_cols, entity_id_list, osn_spans, ts_spans, &m_iter);
   ASSERT_EQ(s, KStatus::SUCCESS);
   do {
     m_iter->Next(&rs, &count);
@@ -234,7 +236,9 @@ TEST_F(TestV2IteratorByOSN, basic_udpate) {
   total = 0;
   osn_spans.clear();
   osn_spans.push_back({0, 1770000});
-  s = ts_table_->GetMetricIteratorByOSN(ctx_, table_version, scan_cols, entity_id_list, osn_spans, &m_iter);
+  std::vector<KwTsSpan> ts_spans;
+  ts_spans.push_back({INT64_MIN, INT64_MAX});
+  s = ts_table_->GetMetricIteratorByOSN(ctx_, table_version, scan_cols, entity_id_list, osn_spans, ts_spans, &m_iter);
   ASSERT_EQ(s, KStatus::SUCCESS);
   do {
     m_iter->Next(&m_rs, &count);
@@ -272,7 +276,7 @@ TEST_F(TestV2IteratorByOSN, basic_udpate) {
   m_rs.clear();
   osn_spans.clear();
   osn_spans.push_back({0, 1780000});
-  s = ts_table_->GetMetricIteratorByOSN(ctx_, table_version, scan_cols, entity_id_list, osn_spans, &m_iter);
+  s = ts_table_->GetMetricIteratorByOSN(ctx_, table_version, scan_cols, entity_id_list, osn_spans, ts_spans, &m_iter);
   ASSERT_EQ(s, KStatus::SUCCESS);
   do {
     m_iter->Next(&m_rs, &count);
@@ -379,7 +383,9 @@ TEST_F(TestV2IteratorByOSN, basic_delete) {
   total = 0;
   osn_spans.clear();
   osn_spans.push_back({0, 1780000});
-  s = ts_table_->GetMetricIteratorByOSN(ctx_, table_version, scan_cols, entity_id_list, osn_spans, &m_iter);
+  std::vector<KwTsSpan> ts_spans;
+  ts_spans.push_back({INT64_MIN, INT64_MAX});
+  s = ts_table_->GetMetricIteratorByOSN(ctx_, table_version, scan_cols, entity_id_list, osn_spans, ts_spans, &m_iter);
   ASSERT_EQ(s, KStatus::SUCCESS);
   do {
     m_iter->Next(&m_rs, &count);
@@ -421,7 +427,7 @@ TEST_F(TestV2IteratorByOSN, basic_delete) {
   m_rs.clear();
   osn_spans.clear();
   osn_spans.push_back({0, 1790000});
-  s = ts_table_->GetMetricIteratorByOSN(ctx_, table_version, scan_cols, entity_id_list, osn_spans, &m_iter);
+  s = ts_table_->GetMetricIteratorByOSN(ctx_, table_version, scan_cols, entity_id_list, osn_spans, ts_spans, &m_iter);
   ASSERT_EQ(s, KStatus::SUCCESS);
   do {
     m_iter->Next(&m_rs, &count);
@@ -453,9 +459,9 @@ TEST_F(TestV2IteratorByOSN, basic_delete) {
   ASSERT_EQ(s, KStatus::SUCCESS);
   ASSERT_EQ(entity_id_list.size(), 2);
   ASSERT_EQ(count, 2);
-  ASSERT_EQ(res.data[0].size(), 1);
+  ASSERT_EQ(res.data[0].size(), 2);
   ASSERT_EQ(KUint64(res.data[0][0]->mem), pkey);
-  ASSERT_EQ(KUint64((char*)(res.data[0][0]->mem) + 216), pkey);
+  ASSERT_EQ(KUint64((char*)(res.data[0][0]->mem)), pkey);
 }
 
 // insert one tag, then insert some metric datas
@@ -499,7 +505,9 @@ TEST_F(TestV2IteratorByOSN, basic_metric_insert) {
   osn_spans.push_back({0, 1760000 - 1});
   rs.clear();
   rs.setColumnNum(4);
-  s = ts_table_->GetMetricIteratorByOSN(ctx_, table_version, scan_cols, entity_id_list, osn_spans, &m_iter);
+  std::vector<KwTsSpan> ts_spans;
+  ts_spans.push_back({INT64_MIN, INT64_MAX});
+  s = ts_table_->GetMetricIteratorByOSN(ctx_, table_version, scan_cols, entity_id_list, osn_spans, ts_spans, &m_iter);
   ASSERT_EQ(s, KStatus::SUCCESS);
   do {
     m_iter->Next(&rs, &count);
@@ -514,7 +522,7 @@ TEST_F(TestV2IteratorByOSN, basic_metric_insert) {
   osn_spans.clear();
   osn_spans.push_back({0, 1760000});
   rs.clear();
-  s = ts_table_->GetMetricIteratorByOSN(ctx_, table_version, scan_cols, entity_id_list, osn_spans, &m_iter);
+  s = ts_table_->GetMetricIteratorByOSN(ctx_, table_version, scan_cols, entity_id_list, osn_spans, ts_spans, &m_iter);
   ASSERT_EQ(s, KStatus::SUCCESS);
   do {
     m_iter->Next(&rs, &count);
@@ -532,7 +540,7 @@ TEST_F(TestV2IteratorByOSN, basic_metric_insert) {
   osn_spans.clear();
   osn_spans.push_back({0, 1780000});
   rs.clear();
-  s = ts_table_->GetMetricIteratorByOSN(ctx_, table_version, scan_cols, entity_id_list, osn_spans, &m_iter);
+  s = ts_table_->GetMetricIteratorByOSN(ctx_, table_version, scan_cols, entity_id_list, osn_spans, ts_spans, &m_iter);
   ASSERT_EQ(s, KStatus::SUCCESS);
   do {
     m_iter->Next(&rs, &count);
@@ -605,7 +613,9 @@ TEST_F(TestV2IteratorByOSN, basic_metric_delete) {
   osn_spans.push_back({0, 1770000 - 1});
   m_rs.clear();
   m_rs.setColumnNum(4);
-  s = ts_table_->GetMetricIteratorByOSN(ctx_, table_version, scan_cols, entity_id_list, osn_spans, &m_iter);
+  ts_spans.clear();
+  ts_spans.push_back({INT64_MIN, INT64_MAX});
+  s = ts_table_->GetMetricIteratorByOSN(ctx_, table_version, scan_cols, entity_id_list, osn_spans, ts_spans, &m_iter);
   ASSERT_EQ(s, KStatus::SUCCESS);
   do {
     m_iter->Next(&m_rs, &count);
@@ -619,7 +629,7 @@ TEST_F(TestV2IteratorByOSN, basic_metric_delete) {
   osn_spans.clear();
   osn_spans.push_back({0, 1780000});
   m_rs.clear();
-  s = ts_table_->GetMetricIteratorByOSN(ctx_, table_version, scan_cols, entity_id_list, osn_spans, &m_iter);
+  s = ts_table_->GetMetricIteratorByOSN(ctx_, table_version, scan_cols, entity_id_list, osn_spans, ts_spans, &m_iter);
   ASSERT_EQ(s, KStatus::SUCCESS);
   do {
     m_iter->Next(&m_rs, &count);
@@ -638,7 +648,7 @@ TEST_F(TestV2IteratorByOSN, basic_metric_delete) {
   osn_spans.clear();
   osn_spans.push_back({0, 1790000});
   m_rs.clear();
-  s = ts_table_->GetMetricIteratorByOSN(ctx_, table_version, scan_cols, entity_id_list, osn_spans, &m_iter);
+  s = ts_table_->GetMetricIteratorByOSN(ctx_, table_version, scan_cols, entity_id_list, osn_spans, ts_spans, &m_iter);
   ASSERT_EQ(s, KStatus::SUCCESS);
   do {
     m_iter->Next(&m_rs, &count);
@@ -662,7 +672,7 @@ TEST_F(TestV2IteratorByOSN, basic_metric_delete) {
   osn_spans.clear();
   osn_spans.push_back({0, 1810000});
   m_rs.clear();
-  s = ts_table_->GetMetricIteratorByOSN(ctx_, table_version, scan_cols, entity_id_list, osn_spans, &m_iter);
+  s = ts_table_->GetMetricIteratorByOSN(ctx_, table_version, scan_cols, entity_id_list, osn_spans, ts_spans, &m_iter);
   ASSERT_EQ(s, KStatus::SUCCESS);
   do {
     m_iter->Next(&m_rs, &count);
@@ -729,7 +739,9 @@ TEST_F(TestV2IteratorByOSN, only_tag_data_exist) {
   osn_spans.push_back({1760000 + 1, 1770000 - 1});
   m_rs.clear();
   m_rs.setColumnNum(4);
-  s = ts_table_->GetMetricIteratorByOSN(ctx_, table_version, scan_cols, entity_id_list, osn_spans, &m_iter);
+  ts_spans.clear();
+  ts_spans.push_back({INT64_MIN, INT64_MAX});
+  s = ts_table_->GetMetricIteratorByOSN(ctx_, table_version, scan_cols, entity_id_list, osn_spans, ts_spans, &m_iter);
   ASSERT_EQ(s, KStatus::SUCCESS);
   do {
     m_iter->Next(&m_rs, &count);
@@ -754,7 +766,7 @@ TEST_F(TestV2IteratorByOSN, only_tag_data_exist) {
   osn_spans.clear();
   osn_spans.push_back({1760000, 1770000 - 1});
   m_rs.clear();
-  s = ts_table_->GetMetricIteratorByOSN(ctx_, table_version, scan_cols, entity_id_list, osn_spans, &m_iter);
+  s = ts_table_->GetMetricIteratorByOSN(ctx_, table_version, scan_cols, entity_id_list, osn_spans, ts_spans, &m_iter);
   ASSERT_EQ(s, KStatus::SUCCESS);
   do {
     m_iter->Next(&m_rs, &count);
@@ -783,7 +795,7 @@ TEST_F(TestV2IteratorByOSN, only_tag_data_exist) {
   osn_spans.clear();
   osn_spans.push_back({1760000 + 1, 1770000});
   m_rs.clear();
-  s = ts_table_->GetMetricIteratorByOSN(ctx_, table_version, scan_cols, entity_id_list, osn_spans, &m_iter);
+  s = ts_table_->GetMetricIteratorByOSN(ctx_, table_version, scan_cols, entity_id_list, osn_spans, ts_spans, &m_iter);
   ASSERT_EQ(s, KStatus::SUCCESS);
   do {
     m_iter->Next(&m_rs, &count);

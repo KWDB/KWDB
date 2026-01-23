@@ -309,9 +309,9 @@ class TsOffsetIteratorV2Impl : public TsIterator {
 class TsRawDataIteratorV2ImplByOSN : public TsStorageIteratorV2Impl {
  public:
   TsRawDataIteratorV2ImplByOSN(const std::shared_ptr<TsVGroup>& vgroup, uint32_t version,
-    vector<EntityResultIndex>& entity_ids,
-    std::vector<k_uint32>& scan_cols, std::vector<k_uint32>& ts_scan_cols,
-    std::vector<KwOSNSpan>& osn_spans, const std::shared_ptr<TsTableSchemaManager>& table_schema_mgr);
+    vector<EntityResultIndex>& entity_ids, std::vector<k_uint32>& scan_cols, std::vector<k_uint32>& ts_scan_cols,
+    std::vector<KwOSNSpan>& osn_spans, std::vector<KwTsSpan>& ts_spans,
+    const std::shared_ptr<TsTableSchemaManager>& table_schema_mgr);
   ~TsRawDataIteratorV2ImplByOSN();
 
   KStatus Init();

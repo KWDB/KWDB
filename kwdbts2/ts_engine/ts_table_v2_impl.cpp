@@ -1275,7 +1275,7 @@ KStatus TsTableV2Impl::GetMetricDelInfoWithOSN(kwdbContext_p ctx, const EntityRe
 KStatus TsTableV2Impl::GetMetricIteratorByOSN(kwdbContext_p ctx, k_uint32 table_version,
   std::vector<k_uint32>& scan_cols,
   std::vector<EntityResultIndex>& entity_ids,
-  std::vector<KwOSNSpan>& osn_span, TsIterator** iter) {
+  std::vector<KwOSNSpan>& osn_span, std::vector<KwTsSpan>& ts_spans, TsIterator** iter) {
   auto ts_table_iterator = new TsTableIterator();
   KStatus s = KStatus::SUCCESS;
   Defer defer{[&]() {
@@ -1318,7 +1318,7 @@ KStatus TsTableV2Impl::GetMetricIteratorByOSN(kwdbContext_p ctx, k_uint32 table_
     vgroup = (*ts_vgroups)[vgroup_iter.first];
     TsStorageIterator* ts_iter;
     s = vgroup->GetMetricIteratorByOSN(ctx, vgroup, vgroup_ids[vgroup_iter.first], scan_cols, ts_scan_cols,
-      osn_span, table_version, table_schema_mgr_, &ts_iter);
+      osn_span, ts_spans, table_version, table_schema_mgr_, &ts_iter);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("cannot create iterator for vgroup[%u].", vgroup_iter.first);
       return s;
@@ -1539,21 +1539,23 @@ KStatus TsTableV2Impl::GetEntityIdListByOSN(kwdbContext_p ctx, const std::vector
     LOG_ERROR("GetTagSchema failed.");
     return KStatus::FAIL;
   }
-  auto tag_iter = std::make_unique<TagIteratorByOSN>(tag_table, table_version, scan_cols, osn_span);
-  if (KStatus::SUCCESS != tag_iter->Init(hps, std::move(pkeys_left))) {
-    return KStatus::FAIL;
-  }
-  uint32_t cur_count;
-  while (true) {
-    ret = tag_iter->Next(entity_id_list, res, &cur_count);
+  for (auto pkey : pkeys_left) {
+    auto tag_iter = std::make_shared<TagIteratorByOSN>(tag_table, table_version, scan_cols, osn_span);
+    if (KStatus::SUCCESS != tag_iter->Init(hps, pkeys_left)) {
+      return KStatus::FAIL;
+    }
+    k_uint32 tag_count = 0;
+    ret = tag_iter->NextTag(pkey.second, res, &tag_count);
     if (ret != KStatus::SUCCESS) {
       LOG_ERROR("tag next failed.");
       return KStatus::FAIL;
     }
-    if (cur_count == 0) {
-      break;
+    if (tag_count > 0) {
+      *count += tag_count;
+    } else {
+      LOG_ERROR("Not found tag [%lu][%u][%u].", pkey.second.entityGroupId, pkey.second.entityId, pkey.second.subGroupId);
     }
-    *count += cur_count;
+    entity_id_list->emplace_back(pkey.second);
   }
   return KStatus::SUCCESS;
 }

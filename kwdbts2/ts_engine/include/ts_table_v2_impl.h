@@ -92,7 +92,8 @@ class TsTableV2Impl : public TsTable {
 
   // scan metric data by osn range. return all rows
   KStatus GetMetricIteratorByOSN(kwdbContext_p ctx, k_uint32 table_version, std::vector<k_uint32>& scan_cols,
-    std::vector<EntityResultIndex>& entity_ids, std::vector<KwOSNSpan>& osn_span, TsIterator** iter) override;
+    std::vector<EntityResultIndex>& entity_ids, std::vector<KwOSNSpan>& osn_span, std::vector<KwTsSpan>& ts_spans,
+    TsIterator** iter) override;
   KStatus GetMetricDelInfoByOSN(kwdbContext_p ctx, const EntityResultIndex& entity_ids,
     std::vector<KwOSNSpan>& osn_span, std::vector<KwTsSpan>* del_spans);
   KStatus GetTagRecordInfoByOSN(kwdbContext_p ctx, const std::unordered_set<uint32_t> hps,

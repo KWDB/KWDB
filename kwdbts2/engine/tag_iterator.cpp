@@ -152,6 +152,72 @@ success_end:
   return (KStatus::SUCCESS);
 }
 
+KStatus TagPartitionIterator::NextTag(EntityResultIndex entity_idx,
+                                     ResultSet* res, k_uint32* count, bool* is_finish) {
+  if  (cur_scan_rowid_ > cur_total_row_count_) {
+    LOG_DEBUG("fetch tag table %s%s, "
+      "cur_scan_rowid[%lu] > cur_total_row_count_[%lu], count: %u",
+      m_tag_partition_table_->sandbox().c_str(), m_tag_partition_table_->name().c_str(), cur_scan_rowid_,
+      cur_total_row_count_, *count);
+    *is_finish = true;
+    return(KStatus::SUCCESS);
+  }
+  *is_finish = false;
+  size_t row_num = 0;
+  ErrorInfo err_info;
+  m_tag_partition_table_->startRead();
+  for (row_num = cur_scan_rowid_; row_num <= cur_total_row_count_; row_num++) {
+    bool needSkip = false;
+    uint32_t hash_point;
+    if (!EngineOptions::isSingleNode()) {
+      m_tag_partition_table_->getHashpointByRowNum(row_num, &hash_point);
+      needSkip = !in(hash_point, hps_);
+      LOG_DEBUG("row %lu hashpoint is %u %s in search list", row_num, hash_point, needSkip?"not":"");
+    }
+    if (needSkip) {
+      continue;
+    }
+    std::vector<EntityResultIndex> entity_id_list;
+    if (!EngineOptions::isSingleNode()) {
+      m_tag_partition_table_->getHashedEntityIdByRownum(row_num, hash_point, &entity_id_list);
+    } else {
+      m_tag_partition_table_->getEntityIdByRownum(row_num, &entity_id_list);
+    }
+    if (entity_id_list[0].equalsWithoutMem(entity_idx)) {
+      for (int idx = 0; idx < src_version_scan_tags_.size(); idx++) {
+        if (src_version_scan_tags_[idx] == INVALID_COL_IDX) {
+          Batch* batch = new(std::nothrow) kwdbts::TagBatch(0, nullptr, 1);
+          res->push_back(idx, batch);
+          continue;
+        }
+        uint32_t col_idx = src_version_scan_tags_[idx];
+        Batch* batch = m_tag_partition_table_->GetTagBatchRecord(row_num, row_num + 1, col_idx,
+                                               result_version_tag_infos_[col_idx], err_info);
+        if (err_info.errcode < 0) {
+          delete batch;
+          LOG_ERROR("GetTagBatchRecord failed.");
+          return KStatus::FAIL;
+        }
+        if (UNLIKELY(batch == nullptr)) {
+          LOG_WARN("GetTagBatchRecord result is nullptr, skip this col[%u]", col_idx);
+          Batch* batch = new(std::nothrow) kwdbts::TagBatch(0, nullptr, 1);
+          res->push_back(idx, batch);
+          continue;
+        }
+        res->push_back(idx, batch);
+      }
+      *count += 1;
+      break;
+    }
+  }
+  m_tag_partition_table_->stopRead();
+  LOG_DEBUG("fatch the tag table %s%s, fetch_count: %u",
+    m_tag_partition_table_->sandbox().c_str(), m_tag_partition_table_->name().c_str(), *count);
+  cur_scan_rowid_ = row_num;
+  *is_finish = (row_num > cur_total_row_count_) ? true : false;
+  return (KStatus::SUCCESS);
+}
+
 void TagPartitionIterator::Init() {
   m_tag_partition_table_->mutexLock();
   cur_total_row_count_ = m_tag_partition_table_->actual_size();

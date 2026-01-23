@@ -1182,10 +1182,10 @@ KStatus TsVGroup::GetDelInfoWithOSN(kwdbContext_p ctx, TSTableID tbl_id, uint32_
 
 KStatus TsVGroup::GetMetricIteratorByOSN(kwdbContext_p ctx, const std::shared_ptr<TsVGroup>& vgroup,
     std::vector<EntityResultIndex>& entity_ids, std::vector<k_uint32>& scan_cols, std::vector<k_uint32>& ts_scan_cols,
-    std::vector<KwOSNSpan>& osn_span,
+    std::vector<KwOSNSpan>& osn_span, std::vector<KwTsSpan>& ts_spans,
     uint32_t version, const std::shared_ptr<TsTableSchemaManager>& table_schema_mgr, TsStorageIterator** iter) {
   auto ts_iter = new TsRawDataIteratorV2ImplByOSN(vgroup, version, entity_ids,
-    scan_cols, ts_scan_cols, osn_span, table_schema_mgr);
+    scan_cols, ts_scan_cols, osn_span, ts_spans, table_schema_mgr);
   KStatus s = ts_iter->Init();
   if (s != KStatus::SUCCESS) {
     delete ts_iter;

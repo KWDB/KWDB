@@ -682,13 +682,15 @@ TEST_F(TestEngineSnapshotImgrate, ConvertManyDataDiffEntitiesFaild1) {
   CheckTagValue(entity_id_list, rs, count);
   delete iter;
 
+  std::vector<KwTsSpan> ts_spans;
+  ts_spans.push_back({INT64_MIN, INT64_MAX});
   kwdbts::TsIterator *m_iter;
   uint32_t total = 0;
   osn_spans.clear();
   osn_spans.push_back({1000, 2000});
   rs.clear();
   rs.setColumnNum(4);
-  s = ts_table_v2->GetMetricIteratorByOSN(ctx_, 1, scan_cols, entity_id_list, osn_spans, &m_iter);
+  s = ts_table_v2->GetMetricIteratorByOSN(ctx_, 1, scan_cols, entity_id_list, osn_spans, ts_spans, &m_iter);
   ASSERT_EQ(s, KStatus::SUCCESS);
   do {
     rs.clear();
@@ -720,7 +722,7 @@ TEST_F(TestEngineSnapshotImgrate, ConvertManyDataDiffEntitiesFaild1) {
   osn_spans.clear();
   osn_spans.push_back({1000, 2000 - 1});
   rs.clear();
-  s = ts_table_v2->GetMetricIteratorByOSN(ctx_, 1, scan_cols, entity_id_list, osn_spans, &m_iter);
+  s = ts_table_v2->GetMetricIteratorByOSN(ctx_, 1, scan_cols, entity_id_list, osn_spans, ts_spans, &m_iter);
   ASSERT_EQ(s, KStatus::SUCCESS);
   do {
     rs.clear();
@@ -841,9 +843,12 @@ TEST_F(TestEngineSnapshotImgrate, ConvertManyDataSameEntityDestNoEmpty) {
   s = ts_engine_desc_->GetTsTable(ctx_, cur_table_id, ts_table_dest, is_dropped);
   EXPECT_EQ(s , KStatus::SUCCESS);
   ts_table_v2 = dynamic_pointer_cast<TsTableV2Impl>(ts_table_dest);
-  uint64_t pkey[26] = {1};
   std::vector<void*> pkeys;
-  pkeys.push_back(pkey);
+  std::vector<std::string> tmps;
+  for (size_t i = 0; i < entity_num; i++) {
+    tmps.push_back(GetPrimaryKey(ts_engine_desc_, cur_table_id, 1 + i));
+    pkeys.push_back(tmps.back().data());
+  }
   osn_spans.clear();
   osn_spans.push_back({0, UINT64_MAX});
   entity_id_list.clear();
@@ -1150,6 +1155,8 @@ TEST_F(TestEngineSnapshotImgrate, ConvertUpdateEntities) {
   std::vector<k_uint32> scan_cols = {0};
   std::vector<KwOSNSpan> osn_spans;
   osn_spans.push_back({0, 10187});
+  std::vector<KwTsSpan> ts_spans;
+  ts_spans.push_back({INT64_MIN, INT64_MAX});
   BaseEntityIterator *iter;
   std::vector<kwdbts::EntityResultIndex> entity_id_list;
   ResultSet rs;
@@ -1178,7 +1185,7 @@ TEST_F(TestEngineSnapshotImgrate, ConvertUpdateEntities) {
   uint32_t total = 0;
   rs.clear();
   rs.setColumnNum(4);
-  s = ts_table_v2->GetMetricIteratorByOSN(ctx_, 1, scan_cols, entity_id_list, osn_spans, &m_iter);
+  s = ts_table_v2->GetMetricIteratorByOSN(ctx_, 1, scan_cols, entity_id_list, osn_spans, ts_spans, &m_iter);
   ASSERT_EQ(s, KStatus::SUCCESS);
   do {
     m_iter->Next(&rs, &count);
@@ -1211,7 +1218,7 @@ TEST_F(TestEngineSnapshotImgrate, ConvertUpdateEntities) {
 
   total = 0;
   rs.clear();
-  s = ts_table_v2->GetMetricIteratorByOSN(ctx_, 1, scan_cols, entity_id_list, osn_spans, &m_iter);
+  s = ts_table_v2->GetMetricIteratorByOSN(ctx_, 1, scan_cols, entity_id_list, osn_spans, ts_spans, &m_iter);
   ASSERT_EQ(s, KStatus::SUCCESS);
   do {
     m_iter->Next(&rs, &count);
@@ -1243,7 +1250,7 @@ TEST_F(TestEngineSnapshotImgrate, ConvertUpdateEntities) {
 
   total = 0;
   rs.clear();
-  s = ts_table_v2->GetMetricIteratorByOSN(ctx_, 1, scan_cols, entity_id_list, osn_spans, &m_iter);
+  s = ts_table_v2->GetMetricIteratorByOSN(ctx_, 1, scan_cols, entity_id_list, osn_spans, ts_spans, &m_iter);
   ASSERT_EQ(s, KStatus::SUCCESS);
   do {
     m_iter->Next(&rs, &count);

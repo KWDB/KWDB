@@ -37,6 +37,7 @@ class TagIteratorV2Impl : public BaseEntityIterator {
 
   KStatus Init() override;
   virtual KStatus Next(std::vector<EntityResultIndex>* entity_id_list, ResultSet* res, k_uint32* count);
+  KStatus NextTag(EntityResultIndex entity_idx, ResultSet* res, k_uint32* count);
   KStatus Close() override;
 
  protected:

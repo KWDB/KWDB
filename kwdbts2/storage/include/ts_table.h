@@ -206,7 +206,8 @@ class TsTable {
 
   // scan metric data by osn range. return all rows
   virtual KStatus GetMetricIteratorByOSN(kwdbContext_p ctx, k_uint32 table_version, std::vector<k_uint32>& scan_cols,
-    std::vector<EntityResultIndex>& entity_ids, std::vector<KwOSNSpan>& osn_span, TsIterator** iter) = 0;
+    std::vector<EntityResultIndex>& entity_ids, std::vector<KwOSNSpan>& osn_span, std::vector<KwTsSpan>& ts_spans,
+    TsIterator** iter) = 0;
 
   // scan tag data by osn range. return all rows
   virtual KStatus GetTagIteratorByOSN(kwdbContext_p ctx, k_uint32 table_version, std::vector<k_uint32>& scan_cols,

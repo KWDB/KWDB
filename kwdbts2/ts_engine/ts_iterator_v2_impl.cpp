@@ -2368,13 +2368,14 @@ KStatus TsOffsetIteratorV2Impl::Next(ResultSet* res, k_uint32* count, timestamp6
 TsRawDataIteratorV2ImplByOSN::TsRawDataIteratorV2ImplByOSN(const std::shared_ptr<TsVGroup>& vgroup,
   uint32_t version, vector<EntityResultIndex>& entity_ids,
   std::vector<k_uint32>& scan_cols, std::vector<k_uint32>& ts_scan_cols,
-  std::vector<KwOSNSpan>& osn_spans,
+  std::vector<KwOSNSpan>& osn_spans, std::vector<KwTsSpan>& ts_spans,
   const std::shared_ptr<TsTableSchemaManager>& table_schema_mgr) : osn_span_(osn_spans), entitys_(entity_ids) {
   table_schema_mgr_ = table_schema_mgr;
   table_version_ = version;
   kw_scan_cols_ = scan_cols;
   ts_scan_cols_ = ts_scan_cols;
   vgroup_ = vgroup;
+  ts_spans_ = SortAndMergeSpan(ts_spans);
 }
 
 KStatus TsRawDataIteratorV2ImplByOSN::Init() {

@@ -39,6 +39,8 @@ class TagPartitionIterator {
 
   KStatus Next(std::vector<EntityResultIndex>* entity_id_list, ResultSet* res, k_uint32* count, bool* is_finish);
 
+  KStatus NextTag(EntityResultIndex entity_idx, ResultSet* res, k_uint32* count, bool* is_finish);
+
   void Init();
 
   void SetOSNSpan(const std::vector<KwOSNSpan>& osn) {

@@ -102,6 +102,29 @@ KStatus TagIteratorV2Impl::Next(std::vector<EntityResultIndex>* entity_id_list,
   return KStatus::SUCCESS;
 }
 
+KStatus TagIteratorV2Impl::NextTag(EntityResultIndex entity_id_list,
+                                     ResultSet* res, k_uint32* count) {
+  uint32_t fetch_count = 0;
+  KStatus status = KStatus::SUCCESS;
+  bool part_iter_finish = false;
+  while (cur_tag_part_idx_ < tag_partition_iters_.size())  {
+    cur_tag_part_iter_ = tag_partition_iters_[cur_tag_part_idx_];
+    if (KStatus::SUCCESS != cur_tag_part_iter_->NextTag(entity_id_list, res, &fetch_count, &part_iter_finish)) {
+      LOG_ERROR("failed to get next batch");
+      return KStatus::FAIL;
+    }
+    if (fetch_count > 0) {
+      break;
+    }
+    // each partition is one batch
+    if (part_iter_finish) {
+      cur_tag_part_idx_++;
+    }
+  }
+  *count = fetch_count;
+  return KStatus::SUCCESS;
+}
+
 KStatus TagIteratorV2Impl::Close() {
   return (KStatus::SUCCESS);
 }
