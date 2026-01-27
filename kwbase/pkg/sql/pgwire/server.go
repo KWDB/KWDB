@@ -704,7 +704,7 @@ func parseClientProvidedSessionParameters(
 		args.ConnResultsBufferSize = connResultsBufferSize.Get(sv)
 	}
 
-	if res := args.SessionDefaults.Get("database"); res == "" {
+	if res, _ := args.SessionDefaults.Get("database"); res == "" {
 		// CockroachDB-specific behavior: if no database is specified,
 		// default to "defaultdb". In PostgreSQL this would be "postgres".
 		args.SessionDefaults.Set("database", sessiondata.DefaultDatabaseName)

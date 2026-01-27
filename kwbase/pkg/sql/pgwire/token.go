@@ -31,14 +31,16 @@ type session struct {
 }
 
 func generateToken(c *conn, addr string) (int64, error) {
+	portalName, _ := c.sessionArgs.SessionDefaults.Get("portal")
+	applicationName, _ := c.sessionArgs.SessionDefaults.Get("application_name")
 	s := session{
 		Username:        c.sessionArgs.User,
-		PortalName:      c.sessionArgs.SessionDefaults.Get("portal"),
+		PortalName:      portalName,
 		CurrentTime:     timeutil.Now(),
 		Expire:          time.Time{},
 		ServerHost:      addr,
 		RemoteAddr:      c.sessionArgs.RemoteAddr,
-		ApplicationName: c.sessionArgs.SessionDefaults.Get("application_name"),
+		ApplicationName: applicationName,
 	}
 
 	bytes, err := json.Marshal(s)

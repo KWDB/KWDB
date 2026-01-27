@@ -745,7 +745,7 @@ type RestrictedCommandResult interface {
 	AddRow(ctx context.Context, row tree.Datums) error
 
 	// SetClient set client encoding to con
-	SetClient()
+	SetClient(s string)
 
 	// AddPGResult accumulates a pg result row.
 	AddPGResult(ctx context.Context, res []byte) error
@@ -999,7 +999,7 @@ func (r *bufferedCommandResult) AddRow(ctx context.Context, row tree.Datums) err
 }
 
 // SetClient is part of the RestrictedCommandResult interface.
-func (r *bufferedCommandResult) SetClient() {
+func (r *bufferedCommandResult) SetClient(s string) {
 	return
 }
 

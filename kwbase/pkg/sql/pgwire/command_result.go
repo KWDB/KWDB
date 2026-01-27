@@ -236,8 +236,8 @@ func (r *commandResult) AddRow(ctx context.Context, row tree.Datums) error {
 }
 
 // AddRow is part of the CommandResult interface.
-func (r *commandResult) SetClient() {
-	r.conv.ClientEncoding = r.conn.sessionArgs.SessionDefaults.Get("client_encoding")
+func (r *commandResult) SetClient(s string) {
+	r.conv.ClientEncoding = s
 }
 
 // DisableBuffering is part of the CommandResult interface.
@@ -520,8 +520,8 @@ func (r *limitedCommandResult) AddRow(ctx context.Context, row tree.Datums) erro
 }
 
 // SetClient is part of the CommandResult interface.
-func (r *limitedCommandResult) SetClient() {
-	r.conv.ClientEncoding = r.conn.sessionArgs.SessionDefaults.Get("client_encoding")
+func (r *limitedCommandResult) SetClient(s string) {
+	r.conv.ClientEncoding = s
 }
 
 // moreResultsNeeded is a restricted connection handler that waits for more

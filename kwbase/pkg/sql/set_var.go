@@ -113,7 +113,8 @@ func (p *planner) SetVar(ctx context.Context, n *tree.SetVar) (planNode, error) 
 		// Statement is RESET. Do we have a default available?
 		// We do not use getDefaultString here because we need to delay
 		// the computation of the default to the execute phase.
-		if _, ok := p.sessionDataMutator.defaults.SessionDefaultsMp[name]; !ok && v.GlobalDefault == nil {
+		_, ok := p.sessionDataMutator.defaults.Get(name)
+		if !ok && v.GlobalDefault == nil {
 			return nil, newCannotChangeParameterError(name)
 		}
 	}
@@ -196,7 +197,8 @@ func (n *setVarNode) startExec(params runParams) error {
 func getSessionVarDefaultString(
 	varName string, v sessionVar, m *sessionDataMutator,
 ) (bool, string) {
-	if defVal, ok := m.defaults.SessionDefaultsMp[varName]; ok {
+	defVal, ok := m.defaults.Get(varName)
+	if ok {
 		return true, defVal
 	}
 	if v.GlobalDefault != nil {

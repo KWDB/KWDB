@@ -228,7 +228,7 @@ func (ex *connExecutor) execStmt(
 
 	// Stop the session idle timeout when a new statement is executed.
 	ex.mu.IdleInSessionTimeout.Stop()
-	res.SetClient()
+	res.SetClient(ex.sessionData.ClientEncoding)
 
 	// Run observer statements in a separate code path; their execution does not
 	// depend on the current transaction state.

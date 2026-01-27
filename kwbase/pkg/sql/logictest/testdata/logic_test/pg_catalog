@@ -1789,7 +1789,7 @@ name                                      setting             unit  context  enu
 application_name                          ·                   NULL  user     NULL      ·                   ·
 avoid_buffering                           off                 NULL  user     NULL      false               false
 bytea_output                              hex                 NULL  user     NULL      hex                 hex
-client_encoding                           utf8                NULL  user     NULL      UTF8                utf8
+client_encoding                           utf8                NULL  user     NULL      UTF8                UTF8
 client_min_messages                       notice              NULL  user     NULL      notice              notice
 database                                  test                NULL  user     NULL      ·                   test
 datestyle                                 ISO, MDY            NULL  user     NULL      ISO, MDY            ISO, MDY

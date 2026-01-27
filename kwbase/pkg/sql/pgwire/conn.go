@@ -427,7 +427,7 @@ Loop:
 
 		// In order to make the session effective for both writing in and writing out,
 		// it is necessary to write the session into the conn
-		c.sessionArgs.SessionDefaults.Set("client_encoding", ClientEncoding)
+		// c.sessionArgs.SessionDefaults.Set("client_encoding", ClientEncoding)
 		log.VEventf(ctx, 2, "pgwire: processing %s", typ)
 
 		if !authDone {

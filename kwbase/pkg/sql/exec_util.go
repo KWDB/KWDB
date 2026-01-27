@@ -1235,14 +1235,14 @@ type SessionDefaults struct {
 }
 
 // Get is used to get value from map SessionDefaultsMp.
-func (s *SessionDefaults) Get(key string) string {
-	s.Lock()
+func (s *SessionDefaults) Get(key string) (string, bool) {
+	s.RLock()
 	res, ok := s.SessionDefaultsMp[key]
-	defer s.Unlock()
+	defer s.RUnlock()
 	if !ok {
-		return ""
+		return "", false
 	}
-	return res
+	return res, true
 }
 
 // Set is used to set key and value to SessionDefaultsMp.
