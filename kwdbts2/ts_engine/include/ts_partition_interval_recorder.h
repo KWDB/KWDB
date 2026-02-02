@@ -34,20 +34,21 @@ class PartitionIntervalRecorder {
     {
       std::shared_lock lk{mtx_};
       if (partition_interval_map_.find(db_id) != partition_interval_map_.end()) {
-        if (interval != partition_interval_map_[db_id]) {
-          LOG_ERROR("Partition interval of db_id %d is %ld, not %ld", db_id, partition_interval_map_[db_id], interval);
-          return FAIL;
+        if (interval !=0 && interval != partition_interval_map_[db_id]) {
+          LOG_WARN("Partition interval of db_id %d is %ld, not %ld", db_id, partition_interval_map_[db_id], interval);
         }
         return SUCCESS;
       }
     }
     std::unique_lock lk{mtx_};
     if (partition_interval_map_.find(db_id) != partition_interval_map_.end()) {
-      if (interval != partition_interval_map_[db_id]) {
-        LOG_ERROR("Partition interval of db_id %d is %ld, not %ld", db_id, partition_interval_map_[db_id], interval);
-        return FAIL;
+      if (interval !=0 && interval != partition_interval_map_[db_id]) {
+        LOG_WARN("Partition interval of db_id %d is %ld, not %ld", db_id, partition_interval_map_[db_id], interval);
       }
       return SUCCESS;
+    }
+    if (0 == interval) {
+      interval = EngineOptions::default_partition_interval;
     }
     partition_interval_map_[db_id] = interval;
     return SUCCESS;

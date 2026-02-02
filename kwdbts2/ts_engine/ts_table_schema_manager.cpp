@@ -243,6 +243,9 @@ KStatus TsTableSchemaManager::CreateTable(kwdbContext_p ctx, roachpb::CreateTsTa
     LOG_INFO("CreateTable: metric version [%u] already exists, but current version is [%u]", ts_version, cur_version_);
     return SUCCESS;
   }
+
+  assert(meta->has_ts_table());
+  assert(meta->ts_table().has_partition_interval());
   std::vector<TagInfo> tag_schema;
   std::vector<AttributeInfo> metric_schema;
   auto s = parseMetaToSchema(meta, metric_schema, tag_schema);
@@ -253,7 +256,10 @@ KStatus TsTableSchemaManager::CreateTable(kwdbContext_p ctx, roachpb::CreateTsTa
     attr.version = ts_version;
   }
   hash_num_ = meta->ts_table().hash_num();
-  uint64_t interval = meta->ts_table().partition_interval();
+  uint64_t interval{0};
+  if (meta->ts_table().has_partition_interval()) {
+    interval = meta->ts_table().partition_interval();
+  }
   s = metric_mgr_->CreateTable(ctx, metric_schema, db_id, ts_version, meta->ts_table().life_time(),
                                interval, hash_num_, err_info);
   if (s != SUCCESS) {

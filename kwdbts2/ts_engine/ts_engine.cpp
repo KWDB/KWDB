@@ -1555,7 +1555,12 @@ KStatus TSEngineImpl::GetMetaData(kwdbContext_p ctx, const KTableKey& table_id,
   auto ts_table = meta->mutable_ts_table();
   ts_table->set_ts_table_id(table_id);
   ts_table->set_ts_version(cur_table_version);
-  ts_table->set_partition_interval(table_v2->GetSchemaManager()->GetPartitionInterval());
+  auto interval = table_v2->GetSchemaManager()->GetPartitionInterval();
+  if (interval == 0 || interval % 86400 != 0) {
+    interval = EngineOptions::default_partition_interval;
+    table_v2->GetSchemaManager()->SetPartitionInterval(interval);
+  }
+  ts_table->set_partition_interval(interval);
   ts_table->set_hash_num(table->GetHashNum());
 
   // Get table data schema.
