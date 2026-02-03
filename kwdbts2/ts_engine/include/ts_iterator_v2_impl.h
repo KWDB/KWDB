@@ -132,7 +132,7 @@ class TsAggIteratorV2Impl : public TsStorageIteratorV2Impl {
                       std::vector<Sumfunctype>& scan_agg_types,
                       const std::vector<timestamp64>& ts_points,
                       const std::shared_ptr<TsTableSchemaManager>& table_schema_mgr,
-                      const std::shared_ptr<MMapMetricsTable>& schema, bool partition_agg_routine);
+                      const std::shared_ptr<MMapMetricsTable>& schema, bool partition_agg_invoke);
   ~TsAggIteratorV2Impl();
 
   KStatus Init(bool is_reversed) override;
@@ -192,7 +192,7 @@ class TsAggIteratorV2Impl : public TsStorageIteratorV2Impl {
   std::vector<k_uint32> kw_last_scan_cols_;
 
   bool first_last_only_agg_;
-  bool partition_agg_routine_{false};
+  bool partition_agg_invoke_{false};
 
   bool has_first_row_col_;
   bool has_last_row_col_;

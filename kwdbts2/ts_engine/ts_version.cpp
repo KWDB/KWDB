@@ -785,6 +785,13 @@ std::vector<std::shared_ptr<TsSegmentBase>> TsPartitionVersion::GetAllSegments()
   return result;
 }
 
+void TsPartitionVersion::reloadAggReader() const {
+  auto s = agg_reader_->Reload();
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("Failed reload agg reader for partition[%s]", partition_path_.c_str());
+  }
+}
+
 KStatus TsPartitionVersion::DeleteData(TSEntityID e_id, const std::vector<KwTsSpan> &ts_spans,
                                        const KwOSNSpan &lsn, bool user_del) const {
   kwdbts::TsEntityDelItem del_item(ts_spans[0], lsn, e_id,

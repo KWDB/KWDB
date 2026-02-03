@@ -12,117 +12,17 @@
 #include "ts_partition_agg.h"
 
 namespace kwdbts {
-constexpr char TS_PARTITION_AGG_ENTITY_ITEM_FILE_NAME[] = "partition_agg.e";
 constexpr char TS_PARTITION_AGG_FILE_NAME[] = "partition_agg";
 
 
-TsPartitionAggEntityItemFile::TsPartitionAggEntityItemFile(const fs::path& partition_path) :
-  file_path_(partition_path / TS_PARTITION_AGG_ENTITY_ITEM_FILE_NAME), file_(file_path_) {}
-
-TsPartitionAggEntityItemFile::~TsPartitionAggEntityItemFile() {
-  file_.Close();
+TsPartitionAggBuilder::TsPartitionAggBuilder(TsIOEnv* io_env, const fs::path& path, uint32_t max_entity_id):
+    io_env_(io_env), file_path_(path / TS_PARTITION_AGG_FILE_NAME), max_entity_id_(max_entity_id) {
+  entity_index_buffer_.assign(max_entity_id_, TsEntityPartitionAggIndex{});
 }
 
-KStatus TsPartitionAggEntityItemFile::Open() {
-  if (file_.Open() == SUCCESS) {
-    if (file_.GetAllocSize() >= sizeof(TsAggStatsFileHeader)) {
-      header_ = reinterpret_cast<TsAggStatsFileHeader*>(file_.addr(file_.GetStartPos()));
-    } else {
-      auto offset = file_.AllocateAssigned(sizeof(TsAggStatsFileHeader), 0);
-      header_ = reinterpret_cast<TsAggStatsFileHeader*>(file_.addr(offset));
-    }
-    KStatus s = index_.Init(&file_, &(file_.getHeader()->index_header_offset));
-    if (s == SUCCESS) {
-      return s;
-    }
-  }
-  LOG_ERROR("partition agg entity item file open failed, file_path='%s'", file_path_.c_str());
-  return FAIL;
-}
+TsPartitionAggBuilder::~TsPartitionAggBuilder() { }
 
-KStatus TsPartitionAggEntityItemFile::Close() {
-  return file_.Close();
-}
-
-KStatus TsPartitionAggEntityItemFile::GetPartitionAggHeader(TsAggStatsFileHeader& header) {
-  header.max_entity_id = header_->max_entity_id;
-  header.version_num = header_->version_num;
-  header.max_osn = header_->max_osn;
-  return KStatus::SUCCESS;
-}
-
-KStatus TsPartitionAggEntityItemFile::SetEntityAggStats(TsEntityAggStats& agg_stats) {
-  auto node = index_.GetIndexObject(agg_stats.entity_id, true);
-  if (node == nullptr) {
-    LOG_ERROR("get node from index file failed. entity [%lu] path [%s].", agg_stats.entity_id, file_path_.c_str());
-    return KStatus::FAIL;
-  }
-  if (*node == INVALID_POSITION) {
-    auto offset = file_.AllocateAssigned(sizeof(TsEntityAggStats), 0);
-    if (offset == INVALID_POSITION) {
-      LOG_ERROR("get node from index file failed. entity [%lu] path [%s].", agg_stats.entity_id, file_path_.c_str());
-      return FAIL;
-    }
-    *node = offset;
-  }
-  {
-    auto* stats = reinterpret_cast<TsEntityAggStats*>(file_.addr(*node));
-    assert(stats != nullptr);
-    stats->table_id = agg_stats.table_id;
-    stats->entity_id = agg_stats.entity_id;
-    stats->table_version = agg_stats.table_version;
-    stats->min_ts = agg_stats.min_ts;
-    stats->max_ts = agg_stats.max_ts;
-    stats->max_osn = agg_stats.max_osn;
-    stats->agg_offset = agg_stats.agg_offset;
-    stats->agg_len = agg_stats.agg_len;
-  }
-  return SUCCESS;
-}
-
-KStatus TsPartitionAggEntityItemFile::GetEntityAggStats(TsEntityAggStats& stats) {
-  auto node = index_.GetIndexObject(stats.entity_id, false);
-  if (node == nullptr) {
-    // LOG_DEBUG("not found node from index file. entity [%lu] path [%s].", stats.entity_id, file_path_.c_str());
-    stats.agg_offset = 0;
-    stats.agg_len = 0;
-    return KStatus::SUCCESS;
-  }
-  {
-    TsEntityAggStats* header = reinterpret_cast<TsEntityAggStats*>(file_.addr(*node));
-    assert(header != nullptr);
-    stats.table_id = header->table_id;
-    stats.min_ts = header->min_ts;
-    stats.max_ts = header->max_ts;
-    stats.table_version = header->table_version;
-    stats.agg_offset = header->agg_offset;
-    stats.agg_len = header->agg_len;
-  }
-  return KStatus::SUCCESS;
-}
-
-KStatus TsPartitionAggFile::Open() {
-  auto s = io_env_->NewRandomReadFile(file_path_, &r_file_);
-  if (s != SUCCESS) {
-    LOG_ERROR("TsPartitionAggFile NewRandomReadFile failed, file_path='%s'", file_path_.c_str())
-  }
-  return s;
-}
-
-KStatus TsPartitionAggFile::ReadAggData(uint64_t offset, TsSliceGuard* data, size_t len) {
-  r_file_->Read(offset, len, data);
-  if (data->size() != len) {
-    LOG_ERROR("TsPartitionAggFile read agg block failed, offset=%lu, len=%zu", offset, len)
-    return FAIL;
-  }
-  return SUCCESS;
-}
-
-TsPartitionAggFileBuilder::TsPartitionAggFileBuilder(TsIOEnv* env, const fs::path& partition_path)
-    : io_env_(env), file_path_(partition_path / TS_PARTITION_AGG_FILE_NAME) {
-}
-
-KStatus TsPartitionAggFileBuilder::Open() {
+KStatus TsPartitionAggBuilder::Open() {
   auto s = io_env_->NewAppendOnlyFile(file_path_, &w_file_, false);
   if (s != SUCCESS) {
     LOG_ERROR("TsPartitionAggFileBuilder NewAppendOnlyFile failed, file_path='%s'", file_path_.c_str())
@@ -130,132 +30,107 @@ KStatus TsPartitionAggFileBuilder::Open() {
   return s;
 }
 
-KStatus TsPartitionAggFileBuilder::Close() {
+KStatus TsPartitionAggBuilder::Close() {
   w_file_->Sync();
   return w_file_->Close();
 }
 
-KStatus TsPartitionAggFileBuilder::AppendAggBlock(const TSSlice& agg, uint64_t* offset) {
-  *offset = w_file_->GetFileSize();
+KStatus TsPartitionAggBuilder::AppendEntityAgg(const TSSlice& agg, TsEntityPartitionAggIndex& agg_index) {
+  uint64_t offset = w_file_->GetFileSize();
   auto s = w_file_->Append(agg);
   if (s != SUCCESS) {
     LOG_ERROR("Append partition agg data failed");
     return s;
   }
+  agg_index.agg_offset = offset;
+  agg_index.agg_len = agg.len;
+  entity_index_buffer_[agg_index.entity_id - 1] = agg_index;
   return SUCCESS;
 }
 
-TsPartitionAggCalculator::TsPartitionAggCalculator(TsIOEnv* io_env, const fs::path& path) :
-    io_env_(io_env), partition_path_(path) {
-  entity_item_file_ = std::make_unique<TsPartitionAggEntityItemFile>(partition_path_);
-  agg_builder_ = std::make_unique<TsPartitionAggFileBuilder>(io_env, partition_path_);
-}
+KStatus TsPartitionAggBuilder::Finalize() {
+  TsPartitionAggFooter footer{0, 0, 0, 0};
+  footer.entity_agg_stats_idx_offset = w_file_->GetFileSize();
+  footer.max_entity_id = entity_index_buffer_.size();
+  TSSlice agg_index_slice = {reinterpret_cast<char*>(entity_index_buffer_.data()),
+                   entity_index_buffer_.size() * sizeof(TsEntityPartitionAggIndex)};
+  w_file_->Append(agg_index_slice);
+  TSSlice footer_slice = {reinterpret_cast<char*>(&footer), sizeof(TsPartitionAggFooter)};
+  w_file_->Append(footer_slice);
+  // w_file_->Sync();
 
-TsPartitionAggCalculator::~TsPartitionAggCalculator() {
-}
-
-KStatus TsPartitionAggCalculator::Open() {
-  auto s = entity_item_file_->Open();
-  if (s != SUCCESS) {
-    LOG_ERROR("Open partition agg entity item file failed");
-    return s;
-  }
-  s = agg_builder_->Open();
-  if (s != SUCCESS) {
-    LOG_ERROR("Open partition agg data file failed");
-    return s;
-  }
   return SUCCESS;
 }
 
-KStatus TsPartitionAggCalculator::Close() {
-  auto s = entity_item_file_->Close();
-  if (s != SUCCESS) {
-    LOG_ERROR("Close partition agg entity item file '%s' failed",
-               (partition_path_ / TS_PARTITION_AGG_ENTITY_ITEM_FILE_NAME).c_str());
-    return s;
-  }
-  s = agg_builder_->Close();
-  if (s != SUCCESS) {
-    LOG_ERROR("Close partition agg data file '%s' failed", (partition_path_ / TS_PARTITION_AGG_FILE_NAME).c_str());
-    return s;
-  }
+KStatus TsPartitionAggBuilder::GetEntityAggIndex(TsEntityPartitionAggIndex& agg_index) {
   return SUCCESS;
 }
 
-KStatus TsPartitionAggCalculator::GetPartitionAggHeader(TsAggStatsFileHeader& header) {
-  return entity_item_file_->GetPartitionAggHeader(header);
-}
-
-KStatus TsPartitionAggCalculator::AppendEntityAgg(const TSSlice& agg, TsEntityAggStats& stats) {
-  uint64_t offset;
-  auto s = agg_builder_->AppendAggBlock(agg, &offset);
-  if (s != SUCCESS) {
-    LOG_ERROR("Append partition agg data failed");
-    return s;
-  }
-  stats.agg_offset = offset;
-  stats.agg_len = agg.len;
-  s = entity_item_file_->SetEntityAggStats(stats);
-  if (s != SUCCESS) {
-    LOG_ERROR("Set entity agg item failed, entity_id=%lu", stats.entity_id);
-  }
-  return SUCCESS;
-}
-
-KStatus TsPartitionAggCalculator::GetEntityAggStats(TsEntityAggStats& stats) {
-  return entity_item_file_->GetEntityAggStats(stats);
-}
-
-TsPartitionAggReader::TsPartitionAggReader(TsIOEnv* io_env, const fs::path& path) : io_env_(io_env), partition_path_(path) {
-  entity_item_file_ = std::make_unique<TsPartitionAggEntityItemFile>(partition_path_);
-  agg_file_ = std::make_unique<TsPartitionAggFile>(io_env, partition_path_ / TS_PARTITION_AGG_FILE_NAME);
-}
-
-TsPartitionAggReader::~TsPartitionAggReader() {
-  entity_item_file_->Close();
-}
+TsPartitionAggReader::TsPartitionAggReader(TsIOEnv* io_env, const fs::path& path) : io_env_(io_env),
+  file_path_(path / TS_PARTITION_AGG_FILE_NAME) {}
 
 KStatus TsPartitionAggReader::Open() {
-  auto s = entity_item_file_->Open();
+  auto s = io_env_->NewRandomReadFile(file_path_, &r_file_);
   if (s != SUCCESS) {
-    LOG_ERROR("Open partition agg entity item file failed");
+    LOG_WARN("TsPartitionAggFile NewRandomReadFile failed, file_path='%s'", file_path_.c_str());
+    return SUCCESS;
+  }
+  auto size = r_file_->GetFileSize();
+  if (size < sizeof(TsPartitionAggFooter)) {
+    LOG_ERROR("partition agg file %s corrupted", this->file_path_.c_str());
+    return FAIL;
+  }
+  size_t offset = size - sizeof(TsPartitionAggFooter);
+  s = r_file_->Read(offset, sizeof(TsPartitionAggFooter), &footer_guard_);
+  if (s == FAIL || footer_guard_.size() != sizeof(TsPartitionAggFooter)) {
+    LOG_ERROR("partition agg file[%s] GetFooter failed.", file_path_.c_str());
     return s;
   }
-  s = agg_file_->Open();
-  if (s != SUCCESS) {
-    LOG_ERROR("Open partition agg data file failed");
+  memcpy(&footer_, footer_guard_.data(), footer_guard_.size());
+  agg_index_buffer_.resize(footer_.max_entity_id);
+  s = r_file_->Read(footer_.entity_agg_stats_idx_offset, agg_index_buffer_.size() * sizeof(TsEntityPartitionAggIndex),
+                       &entity_index_data_);
+  if (s == FAIL || entity_index_data_.size() != agg_index_buffer_.size() * sizeof(TsEntityPartitionAggIndex)) {
+    LOG_ERROR("cannot read data from file");
     return s;
+  }
+  memcpy(agg_index_buffer_.data(), entity_index_data_.data(), entity_index_data_.size());
+  ready_ = true;
+  return SUCCESS;
+}
+
+KStatus TsPartitionAggReader::Reload() {
+  if (!ready_) {
+    r_file_.release();
+    return Open();
   }
   return SUCCESS;
 }
 
-KStatus TsPartitionAggReader::GetPartitionAggHeader(TsAggStatsFileHeader& header) {
-  return entity_item_file_->GetPartitionAggHeader(header);
-}
-
-KStatus TsPartitionAggReader::GetPartitionAggStats(TsEntityAggStats& stats) {
-  auto s = entity_item_file_->GetEntityAggStats(stats);
-  if (s != SUCCESS) {
-    LOG_ERROR("Get entity agg stats failed");
+KStatus TsPartitionAggReader::GetPartitionAggIndex(TsEntityPartitionAggIndex& agg_index) {
+  if (agg_index.entity_id > footer_.max_entity_id) {
+    LOG_ERROR("entity id %lu out of range", agg_index.entity_id);
+    return FAIL;
   }
-  return s;
+  agg_index = agg_index_buffer_[agg_index.entity_id - 1];
+  return SUCCESS;
 }
 
 KStatus TsPartitionAggReader::GetPartitionAgg(TSEntityID entity_id, TsSliceGuard& agg) {
-  TsEntityAggStats stats;
-  stats.entity_id = entity_id;
-  stats.agg_offset = 0;
-  stats.agg_len = 0;
-  auto s = entity_item_file_->GetEntityAggStats(stats);
+  TsEntityPartitionAggIndex agg_index;
+  agg_index.entity_id = entity_id;
+  agg_index.agg_offset = 0;
+  agg_index.agg_len = 0;
+
+  auto s = GetPartitionAggIndex(agg_index);
   if (s != SUCCESS) {
-    LOG_ERROR("Get entity agg stats failed");
+    LOG_ERROR("GetPartitionAggIndex failed.");
     return s;
   }
-  s = agg_file_->ReadAggData(stats.agg_offset, &agg, stats.agg_len);
-  if (s != SUCCESS) {
-    LOG_ERROR("Read partition agg data failed");
-    return s;
+  r_file_->Read(agg_index.agg_offset, agg_index.agg_len, &agg);
+  if (agg.size() != agg_index.agg_len) {
+    LOG_ERROR("TsPartitionAggFile read agg block failed, offset=%lu, len=%zu", agg_index.agg_offset, agg_index.agg_len)
+    return FAIL;
   }
   return SUCCESS;
 }

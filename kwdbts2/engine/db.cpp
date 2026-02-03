@@ -44,6 +44,7 @@ uint64_t g_duration_level1{90 * 24 * 60 * 60};
 
 uint16_t CLUSTER_SETTING_MAX_ROWS_PER_BLOCK = 1000;
 bool CLUSTER_SETTING_COUNT_USE_STATISTICS = true;
+bool CLUSTER_SETTING_PARTITION_AGG = true;
 
 TSStatus TSOpen(TSEngine** engine, TSSlice dir, TSOptions options,
                 AppliedRangeIndex* applied_indexes, size_t range_num) {
@@ -699,6 +700,8 @@ void TriggerSettingCallback(const std::string& key, const std::string& value) {
     EngineOptions::count_stats_recalc_cycle = atoi(value.c_str());
   } else if ("ts.metric_schema_cache.max_limit" == key) {
     EngineOptions::metric_schema_cache_capacity = atoi(value.c_str());
+  } else if ("ts.partition_agg.enabled" == key) {
+    CLUSTER_SETTING_PARTITION_AGG = "true" == value;
   }
 #ifndef KWBASE_OSS
   else if ("ts.storage.autonomy.mode" == key) {  // NOLINT

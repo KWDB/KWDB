@@ -135,7 +135,7 @@ TEST_F(TestPartitionAgg, basicPartitionAgg) {
   }
   std::vector<std::shared_ptr<TsVGroup>>* ts_vgroups = engine_->GetTsVGroups();
   for (const auto& vgroup : *ts_vgroups) {
-    ASSERT_EQ(vgroup->CalPartitionAgg(), KStatus::SUCCESS);
+    ASSERT_EQ(vgroup->CalcPartitionAgg(), KStatus::SUCCESS);
     TsStorageIterator* ts_iter;
     KwTsSpan ts_span = {INT64_MIN, INT64_MAX};
     std::vector<k_uint32> scan_cols = {0};

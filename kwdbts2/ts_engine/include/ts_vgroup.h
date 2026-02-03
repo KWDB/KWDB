@@ -36,6 +36,7 @@
 
 extern uint16_t CLUSTER_SETTING_MAX_ROWS_PER_BLOCK;         // PARTITION_ROWS from cluster setting
 extern bool CLUSTER_SETTING_COUNT_USE_STATISTICS;          // COUNT_USE_STATISTICS from cluster setting
+extern bool CLUSTER_SETTING_PARTITION_AGG;
 
 namespace kwdbts {
 
@@ -52,7 +53,7 @@ enum class TsEntityLatestRowStatus {
  * in current time vgroup is same as database
  */
 // const pointer
-class TsVGroup : public std::enable_shared_from_this<TsVGroup> {
+class TsVGroup {
  private:
   uint32_t vgroup_id_{0};
   TsEngineSchemaManager* schema_mgr_ = nullptr;
@@ -93,13 +94,13 @@ class TsVGroup : public std::enable_shared_from_this<TsVGroup> {
 
   std::map<PartitionIdentifier, std::map<TSTableID, std::unordered_set<TSEntityID>>> recalc_count_entities_;
 
-  // agg thread flag
+  // partition agg thread flag
   bool enable_cal_agg_thread_{true};
-  // Id of the agg thread
-  KThreadID cal_agg_thread_id_{0};
-  std::mutex cal_agg_mutex_;
+  // Id of the partition agg thread
+  KThreadID calc_agg_thread_id_{0};
+  std::mutex calc_agg_mutex_;
   std::condition_variable agg_cv_;
-  std::atomic<bool> cal_agg_status_;
+  std::atomic<bool> calc_agg_status_{false};
 
   std::atomic<uint64_t> max_osn_{LOG_BLOCK_HEADER_SIZE + BLOCK_SIZE};
 
@@ -121,7 +122,7 @@ class TsVGroup : public std::enable_shared_from_this<TsVGroup> {
 
  public:
   std::unique_ptr<WALMgr> wal_manager_ = nullptr;
-  std::map<PartitionIdentifier, std::shared_ptr<TsPartitionAggCalculator>> agg_map_;
+  std::map<PartitionIdentifier, std::shared_ptr<TsPartitionAggBuilder>> agg_map_;
   TsVGroup() = delete;
 
   TsVGroup(EngineOptions* engine_options, uint32_t vgroup_id, TsEngineSchemaManager* schema_mgr,
@@ -249,7 +250,7 @@ class TsVGroup : public std::enable_shared_from_this<TsVGroup> {
                       const std::shared_ptr<MMapMetricsTable>& schema, TsStorageIterator** iter,
                       const std::shared_ptr<TsVGroup>& vgroup,
                       const std::vector<timestamp64>& ts_points, bool reverse, bool sorted,
-                      bool partition_agg_routine = false);
+                      bool partition_agg_invoke = false);
 
   KStatus GetMetricIteratorByOSN(kwdbContext_p ctx, const std::shared_ptr<TsVGroup>& vgroup,
     std::vector<EntityResultIndex>& entity_ids, std::vector<k_uint32>& scan_cols, std::vector<k_uint32>& ts_scan_cols,
@@ -503,7 +504,7 @@ class TsVGroup : public std::enable_shared_from_this<TsVGroup> {
   // Recalculate count stat.
   KStatus RecalcCountStat();
 
-  KStatus CalPartitionAgg();
+  KStatus CalcPartitionAgg();
 
  private:
   // check partition of rows exist. if not creating it.
@@ -528,11 +529,11 @@ class TsVGroup : public std::enable_shared_from_this<TsVGroup> {
   void closeRecalcCountThread();
 
   // Thread scheduling executes calculate aggregation tasks.
-  void calAggRoutine(void* args);
+  void calcAggRoutine(void* args);
   // Initialize calculate aggregation thread.
-  void initCalAggThread();
+  void initCalcAggThread();
   // Close calculate aggregation thread.
-  void closeCalAggThread();
+  void closeCalcAggThread();
 
   KStatus PartitionCompact(std::shared_ptr<const TsPartitionVersion> partition, bool call_by_vacuum = false);
 
@@ -540,11 +541,11 @@ class TsVGroup : public std::enable_shared_from_this<TsVGroup> {
                                       const vector<AttributeInfo>& attrs, ResultSet* res);
   bool TrySetAggBusy() {
     bool expected = false;
-    return cal_agg_status_.compare_exchange_strong(expected, true);
+    return calc_agg_status_.compare_exchange_strong(expected, true);
   }
 
   void ResetAggStatus() {
-    cal_agg_status_.store(false);
+    calc_agg_status_.store(false);
   }
 };
 

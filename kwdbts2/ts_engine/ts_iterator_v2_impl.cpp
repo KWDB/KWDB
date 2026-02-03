@@ -762,13 +762,13 @@ TsAggIteratorV2Impl::TsAggIteratorV2Impl(const std::shared_ptr<TsVGroup>& vgroup
                                          std::vector<Sumfunctype>& scan_agg_types,
                                          const std::vector<timestamp64>& ts_points,
                                          const std::shared_ptr<TsTableSchemaManager>& table_schema_mgr,
-                                         const std::shared_ptr<MMapMetricsTable>& schema, bool partition_agg_routine)
+                                         const std::shared_ptr<MMapMetricsTable>& schema, bool partition_agg_invoke)
     : TsStorageIteratorV2Impl::TsStorageIteratorV2Impl(vgroup, version, entity_ids, ts_spans, block_filter,
                                                        kw_scan_cols, ts_scan_cols, table_schema_mgr, schema),
       scan_agg_types_(scan_agg_types),
       last_ts_points_(ts_points),
       agg_extend_cols_{agg_extend_cols},
-      partition_agg_routine_(partition_agg_routine) {}
+      partition_agg_invoke_(partition_agg_invoke) {}
 
 TsAggIteratorV2Impl::~TsAggIteratorV2Impl() {}
 
@@ -1039,8 +1039,11 @@ KStatus TsAggIteratorV2Impl::Next(ResultSet* res, k_uint32* count, bool* is_fini
 
   if (CLUSTER_SETTING_COUNT_USE_STATISTICS && only_count_ts_) {
     ret = CountAggregate(ts_scan_stats);
-  } else if (CLUSTER_SETTING_COUNT_USE_STATISTICS && !first_last_only_agg_ && !partition_agg_routine_) {
+  } else if (CLUSTER_SETTING_PARTITION_AGG && !first_last_only_agg_ && !partition_agg_invoke_) {
     ret = PartitionAggregate(ts_scan_stats);
+    if (ret != KStatus::SUCCESS) {
+      ret = Aggregate(ts_scan_stats);
+    }
   } else {
     ret = Aggregate(ts_scan_stats);
   }
@@ -1341,8 +1344,8 @@ KStatus TsAggIteratorV2Impl::PartitionAggregate(TsScanStats* ts_scan_stats) {
     auto path = partition_version->GetPartitionPath();
     TsIOEnv* env = &TsIOEnv::GetInstance();
     auto agg_reader = partition_version->GetAggReader();
-    if (!agg_reader) {
-      LOG_ERROR("agg reader is null.");
+    if (!agg_reader || !agg_reader->IsReady()) {
+      LOG_ERROR("partition agg not ready, path: %s", path.c_str());
       return KStatus::FAIL;
     }
 
@@ -1353,17 +1356,17 @@ KStatus TsAggIteratorV2Impl::PartitionAggregate(TsScanStats* ts_scan_stats) {
       return s;
     }
 
-    TsEntityAggStats agg_stats;
-    agg_stats.entity_id = entity_ids_[cur_entity_index_];
-    s = agg_reader->GetPartitionAggStats(agg_stats);
+    TsEntityPartitionAggIndex agg_index;
+    agg_index.entity_id = entity_ids_[cur_entity_index_];
+    s = agg_reader->GetPartitionAggIndex(agg_index);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("GetPartitionAggStats failed.");
     }
 
-    if (agg_stats.max_osn > del_osn) {
+    if (agg_index.max_osn > del_osn) {
       // Aggregate count col
       TsSliceGuard slice;
-      s = agg_reader->GetPartitionAgg(agg_stats.entity_id, slice);
+      s = agg_reader->GetPartitionAgg(agg_index.entity_id, slice);
       if (s != KStatus::SUCCESS) {
         LOG_ERROR("GetPartitionAgg failed");
         return s;

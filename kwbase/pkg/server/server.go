@@ -254,6 +254,11 @@ var (
 			}
 			return nil
 		})
+
+	tsPartitionAgg = settings.RegisterPublicBoolSetting(
+		"ts.partition_agg.enabled",
+		"use partition aggregation when querying count/sum/max/min",
+		true)
 )
 
 // TODO(peter): Until go1.11, ServeMux.ServeHTTP was not safe to call
