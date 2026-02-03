@@ -593,7 +593,7 @@ struct TSEngine {
   virtual KStatus GetDBBlocksDistribution(uint32_t db_id, TSSlice* blocks_info) = 0;
 
  protected:
-  SharedLruUnorderedMap<KTableKey, TsTable>* tables_cache_{};
+  SharedFixedUnorderedMap<KTableKey, TsTable>* tables_cache_{};
 };
 
 namespace kwdbts {

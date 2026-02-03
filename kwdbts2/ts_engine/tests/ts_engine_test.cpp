@@ -269,3 +269,26 @@ TEST_F(TsEngineV2Test, Recover){
   ASSERT_EQ(s , KStatus::SUCCESS);
 }
 
+TEST_F(TsEngineV2Test, TableCache){
+  SharedFixedUnorderedMap<KTableKey, TsTable> table_cache(50, true);
+  for (int i = 0; i < 30; ++i) {
+    table_cache.Put(i, nullptr);
+  }
+  ASSERT_EQ(table_cache.Size(), 30);
+  for (int i = 30; i < 60; ++i) {
+    table_cache.Put(i, nullptr);
+  }
+  ASSERT_EQ(table_cache.Size(), 50);
+  table_cache.SetCapacity(40);
+  ASSERT_EQ(table_cache.Size(), 40);
+  table_cache.SetCapacity(55);
+  for (int i = 60; i < 80; ++i) {
+    table_cache.Put(i, nullptr);
+  }
+  ASSERT_EQ(table_cache.Size(), 55);
+  auto kv = table_cache.GetAllValues();
+  for (auto it = kv.begin(); it != kv.end(); ++it) {
+    ASSERT_EQ(it->second, nullptr);
+    ASSERT_LT(it->first, 80);
+  }
+}

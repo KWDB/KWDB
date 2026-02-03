@@ -148,7 +148,7 @@ TSEngineImpl::TSEngineImpl(const EngineOptions& engine_options)
       write_batch_workers_lock_(RWLATCH_ID_WRITE_BATCH_DATA_JOB_RWLOCK),
       tag_lock_(EngineOptions::vgroup_max_num * 2, RWLATCH_ID_ENGINE_INSERT_TAG_RWLOCK) {
   LogInit();
-  tables_cache_ = new SharedLruUnorderedMap<KTableKey, TsTable>(EngineOptions::table_cache_capacity_, true);
+  tables_cache_ = new SharedFixedUnorderedMap<KTableKey, TsTable>(EngineOptions::table_cache_capacity_, true);
   char* vgroup_num = getenv("KW_VGROUP_NUM");
   if (vgroup_num != nullptr) {
     char *endptr;

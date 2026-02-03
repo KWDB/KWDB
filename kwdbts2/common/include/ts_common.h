@@ -728,11 +728,8 @@ enum WindowFunc {
  * @tparam value_t The type of value.
  */
 template<typename key_t, typename value_t>
-class SharedLruUnorderedMap {
+class SharedFixedUnorderedMap {
  public:
-  typedef typename std::pair<key_t, std::shared_ptr<value_t>> key_value_pair_t;
-  typedef typename std::list<key_value_pair_t>::iterator list_iterator_t;
-
   /**
    * @brief Constructor.
    *
@@ -740,7 +737,8 @@ class SharedLruUnorderedMap {
    * @param[in] async_clean Whether to enable asynchronous cleaning thread, default to true.
    * @note Ensure that capacity is greater than 0.
    */
-  explicit SharedLruUnorderedMap(size_t capacity, bool async_clean = true) : capacity_(capacity), async_clean_(async_clean) {
+  explicit SharedFixedUnorderedMap(size_t capacity, bool async_clean = true)
+    : capacity_(capacity), async_clean_(async_clean) {
     assert(capacity > 0);
     rw_latch_ = new KRWLatch(RWLATCH_ID_TSTABLE_LRU_CACHE_RWLOCK);
     is_running_ = true;
@@ -749,7 +747,7 @@ class SharedLruUnorderedMap {
   /**
    * @brief Destructor, clean up resources.
    */
-  ~SharedLruUnorderedMap() {
+  ~SharedFixedUnorderedMap() {
     is_running_ = false;
     if (async_clean_) {
       closeAsyncThread();
@@ -777,15 +775,7 @@ class SharedLruUnorderedMap {
     wrLock();
     Defer defer{[&]() { unLock(); }};
     try {
-      // If the key already exists, clean and insert a new kv.
-      auto it = cache_items_map_.find(key);
-      if (it != cache_items_map_.end()) {
-        cache_items_list_.erase(it->second);
-        cache_items_map_.erase(it);
-      }
-      cache_items_list_.push_front(key_value_pair_t(key, value));
-      cache_items_map_.insert(std::make_pair(key, cache_items_list_.begin()));
-
+      cache_items_map_[key] = value;
       if (cache_items_map_.size() > capacity_) {
         Clear(cache_items_map_.size() - capacity_, false);
       }
@@ -801,17 +791,14 @@ class SharedLruUnorderedMap {
    * @return A smart pointer to a value that returns nullptr if the key does not exist.
    */
   std::shared_ptr<value_t> Get(const key_t& key) {
-    wrLock();
+    rdLock();
     Defer defer{[&]() { unLock(); }};
     try {
       auto it = cache_items_map_.find(key);
       if (it == cache_items_map_.end()) {
         return nullptr;
       } else {
-        // Move the second element pointed to by the iterator it in the linked list cache_item_list_,
-        // which is it ->second, to the beginning of the linked list.
-        cache_items_list_.splice(cache_items_list_.begin(), cache_items_list_, it->second);
-        return it->second->second;
+        return it->second;
       }
     } catch (...) {
       return nullptr;
@@ -841,7 +828,6 @@ class SharedLruUnorderedMap {
 
     auto it = cache_items_map_.find(key);
     if (it != cache_items_map_.end()) {
-      cache_items_list_.erase(it->second);
       cache_items_map_.erase(it);
     }
   }
@@ -856,8 +842,7 @@ class SharedLruUnorderedMap {
     Defer defer{[&]() { unLock(); }};
 
     auto it = cache_items_map_.find(key);
-    if (it != cache_items_map_.end() && it->second->second.use_count() <= 1) {
-      cache_items_list_.erase(it->second);
+    if (it != cache_items_map_.end() && it->second.use_count() <= 1) {
       cache_items_map_.erase(it);
     } else if (it != cache_items_map_.end()) {
       erase_items_.insert(it->first);
@@ -872,7 +857,6 @@ class SharedLruUnorderedMap {
     Defer defer{[&]() { unLock(); }};
 
     erase_items_.clear();
-    cache_items_list_.clear();
     cache_items_map_.clear();
   }
 
@@ -893,15 +877,14 @@ class SharedLruUnorderedMap {
     }
 
     int clear_num = 0;
-    auto last_iter = cache_items_list_.rbegin();
-    while (clear_num < num && last_iter != cache_items_list_.rend()) {
-      if (last_iter->second.use_count() <= 1) {
-        cache_items_map_.erase(last_iter->first);
-        cache_items_list_.erase(std::next(last_iter).base());
+    auto it = cache_items_map_.begin();
+    while (it != cache_items_map_.end() && clear_num < num) {
+      if (it->second.use_count() <= 1) {
+        it = cache_items_map_.erase(it);
         clear_num++;
-        continue;
+      } else {
+        erase_items_.insert(it->first);
       }
-      ++last_iter;
     }
 
     if (lock) {
@@ -950,10 +933,10 @@ class SharedLruUnorderedMap {
    * @brief Get all values in the cache.
    * @return std::vector<std::shared_ptr<value_t>>
    */
-  std::list<key_value_pair_t> GetAllValues() {
+  std::unordered_map<key_t, std::shared_ptr<value_t>> GetAllValues() {
     rdLock();
     Defer defer{[&]() { unLock(); }};
-    return cache_items_list_;
+    return cache_items_map_;
   }
 
   /**
@@ -966,8 +949,8 @@ class SharedLruUnorderedMap {
     rdLock();
     Defer defer{[&]() { unLock(); }};
 
-    auto iter = cache_items_list_.begin();
-    while (iter != cache_items_list_.end()) {
+    auto iter = cache_items_map_.begin();
+    while (iter != cache_items_map_.end()) {
       if (!func(iter->first, iter->second)) {
         return false;
       }
@@ -1001,18 +984,18 @@ class SharedLruUnorderedMap {
   void initAsyncThread() {
     KWDBOperatorInfo kwdb_operator_info;
     // Set the name and owner of the operation
-    kwdb_operator_info.SetOperatorName("SharedLruUnorderedMap");
-    kwdb_operator_info.SetOperatorOwner("SharedLruUnorderedMap");
+    kwdb_operator_info.SetOperatorName("SharedFixedUnorderedMap");
+    kwdb_operator_info.SetOperatorOwner("SharedFixedUnorderedMap");
     time_t now;
     // Record the start time of the operation
     kwdb_operator_info.SetOperatorStartTime((k_uint64)time(&now));
     // Start asynchronous thread
     clean_thread_id_ = KWDBDynamicThreadPool::GetThreadPool().ApplyThread(
-        std::bind(&SharedLruUnorderedMap::routine, this, std::placeholders::_1), this,
-        &kwdb_operator_info);
+      std::bind(&SharedFixedUnorderedMap::routine, this, std::placeholders::_1), this,
+      &kwdb_operator_info);
     if (clean_thread_id_ < 1) {
       // If thread creation fails, record error message
-      LOG_ERROR("SharedLruUnorderedMap clean_thread create failed");
+      LOG_ERROR("SharedFixedUnorderedMap clean_thread create failed");
     }
   }
 
@@ -1037,9 +1020,8 @@ class SharedLruUnorderedMap {
 
     for (auto it = erase_items_.begin(); it != erase_items_.end();) {
       auto map_it = cache_items_map_.find(*it);
-      if (map_it != cache_items_map_.end() && map_it->second->second.use_count() <= 1) {
+      if (map_it != cache_items_map_.end() && map_it->second.use_count() <= 1) {
         // If the item is found and its usage count is not greater than 1, delete it
-        cache_items_list_.erase(map_it->second);
         cache_items_map_.erase(map_it);
         it = erase_items_.erase(it);
       } else {
@@ -1049,10 +1031,8 @@ class SharedLruUnorderedMap {
   }
 
  private:
-  // Cache item list, maintained in order of usage frequency
-  std::list<key_value_pair_t> cache_items_list_;
-  // Mapping of key to cache item list iterator
-  std::unordered_map<key_t, list_iterator_t> cache_items_map_;
+  // Mapping of key to cache item
+  std::unordered_map<key_t, std::shared_ptr<value_t>> cache_items_map_;
   // Record items that were not truly erased due to being in use
   std::set<key_t> erase_items_;
   // Read-write lock
