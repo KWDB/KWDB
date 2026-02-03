@@ -253,6 +253,9 @@ type TSCheckHelper struct {
 	// only have one primary tag value
 	onlyOnePTagValue bool
 
+	// cols of groupby contains all primary tag
+	groupByAllPTag bool
+
 	// OptHelper is used for opt inside-out
 	OptHelper *InsideOutOptHelper
 }
@@ -2029,17 +2032,13 @@ func (m *Memo) checkProject(source *ProjectExpr) (ret CrossEngCheckResults) {
 	findTimeBucket := false
 	for _, proj := range source.Projections {
 		// check group window can push to AE engine
-		// 1 filter contain only ptag filter that equal group by ptag, need push down AE engine, otherwise painic
+		// 1 filter contain only ptag filter that equal group by ptag, need push down AE engine, otherwise panic
 		// 2 filter has not only ptag filter, need execute in me engine
-		if exists, pros := GetGroupWindowForbiddenState(proj.Element); exists {
-			// 1 contain only ptag filter, push down
-			if pros.ForbiddenExecInTSEngine && m.CheckOnlyOnePTagValue() {
-				// force execute in AE engine
-				// select *  from ts_table where ptag = 1 group by count_window(3);
-				pros.ForbiddenExecInTSEngine = false
-			} else if pros.ForbiddenExecInTSEngine && !m.CheckOnlyOnePTagValue() {
-				// can not execute in AE engine
-				// select *  from ts_table group by count_window(3);
+		if _, exists := CheckGroupWindowExist(proj.Element); exists {
+			// 1. contain only ptag filter, push down (select *  from ts_table where ptag = 1 group by count_window(3);)
+			// 2. group by ptag filter, push down (select *  from ts_table group by count_window(3);)
+			// group window in all other cases, not push down.
+			if !m.CheckGroupByAllPTag() && !m.CheckOnlyOnePTagValue() {
 				selfExecInTS = false
 				break
 			}
@@ -2131,14 +2130,6 @@ func (m *Memo) checkGrouping(cols opt.ColSet, optTimeBucket *bool) bool {
 	if cols.Empty() && (*optTimeBucket) {
 		*optTimeBucket = false
 	}
-	// check whether group window function can exec in ts.
-	// case1: there is only one primary tag value in filters and group cols has group window function only
-	// case2: group cols has group window function and primary tag t
-	if m.CheckFlag(opt.GroupWindowUseOrderScan) {
-		if !m.CheckOnlyOnePTagValue() && cols.Len() < 2 {
-			execInTSEngine = false
-		}
-	}
 	return execInTSEngine
 }
 
@@ -2188,6 +2179,24 @@ func checkParallelAgg(expr opt.Expr) (bool, bool) {
 	return false, false
 }
 
+// if the group by columns only include the group window function columns and pTag columns, set groupByAllPTag
+func (m *Memo) setGroupByAllPTagForGroupWindow(gp *GroupingPrivate) {
+	if m.CheckFlag(opt.GroupWindowUseOrderScan) && gp.GroupWindowId > 0 && gp.GroupingCols.Len() > 1 {
+		groupByAllPTag := true
+		gp.GroupingCols.ForEach(func(colID opt.ColumnID) {
+			// if col is group window function, continue
+			if !groupByAllPTag || colID == gp.GroupWindowId {
+				return
+			}
+			colMeta := m.metadata.ColumnMeta(colID)
+			if !colMeta.IsPrimaryTag() {
+				groupByAllPTag = false
+			}
+		})
+		m.SetGroupByAllPTag(groupByAllPTag)
+	}
+}
+
 // checkGroupBy check if memo.SelectExpr can execute in ts engine.
 // input is the child of (memo.GroupByExpr or memo.ScalarGroupByExpr or memo.DistinctOnExpr) of memo tree.
 // aggs is the AggregationsExpr of (memo.GroupByExpr or memo.ScalarGroupByExpr or memo.DistinctOnExpr).
@@ -2197,6 +2206,7 @@ func checkParallelAgg(expr opt.Expr) (bool, bool) {
 func (m *Memo) checkGroupBy(
 	input RelExpr, aggs *AggregationsExpr, gp *GroupingPrivate,
 ) (ret aggCrossEngCheckResults) {
+	m.setGroupByAllPTagForGroupWindow(gp)
 	ret.commonRet = m.CheckWhiteListAndAddSynchronizeImp(&input)
 	if ret.commonRet.err != nil || m.CheckHelper.GroupHint == keys.ForceRelationalGroup {
 		// case: error or hint force group by can not execute in ts engine.
@@ -2206,9 +2216,9 @@ func (m *Memo) checkGroupBy(
 	ret.isParallel = true
 
 	// check group window
-	if m.CheckFlag(opt.GroupWindowUseOrderScan) {
+	if m.CheckFlag(opt.GroupWindowUseOrderScan) && gp.GroupWindowId > 0 {
 		// need execute in AE engine
-		if gp.OptFlags.GroupByPtags() || m.CheckOnlyOnePTagValue() {
+		if m.CheckGroupByAllPTag() || m.CheckOnlyOnePTagValue() {
 			if !ret.commonRet.execInTSEngine {
 				ret.commonRet.err = pgerror.Newf(pgcode.FeatureNotSupported, "group by group window and ptag column not execute in ae engine")
 				return ret
@@ -2543,6 +2553,16 @@ func (m *Memo) SetTsDop(num uint32) {
 	m.tsDop = num
 }
 
+// SetGroupByAllPTag sets groupByAllPTag.
+func (m *Memo) SetGroupByAllPTag(v bool) {
+	m.CheckHelper.groupByAllPTag = v
+}
+
+// CheckGroupByAllPTag return groupByAllPTag
+func (m *Memo) CheckGroupByAllPTag() bool {
+	return m.CheckHelper.groupByAllPTag
+}
+
 // SetOnlyOnePTagValue sets only One PTag Value
 func (m *Memo) SetOnlyOnePTagValue(v bool) {
 	m.CheckHelper.onlyOnePTagValue = v
@@ -2762,30 +2782,6 @@ func CheckGroupWindowExist(expr opt.Expr) (string, bool) {
 		}
 	}
 	return "", false
-}
-
-// GetGroupWindowForbiddenState if expr contains grouping window function, return true
-// ret Param
-// 1 group window exists
-// 2 ForbiddenState
-func GetGroupWindowForbiddenState(expr opt.Expr) (bool, *tree.FunctionProperties) {
-	if expr != nil {
-		if f, ok := expr.(*FunctionExpr); ok {
-			for _, name := range groupWindowNamelist {
-				if f.Name == name {
-					return true, f.Properties
-				}
-			}
-		}
-		if expr.ChildCount() > 0 {
-			for i := 0; i < expr.ChildCount(); i++ {
-				if exists, status := GetGroupWindowForbiddenState(expr.Child(i)); exists {
-					return exists, status
-				}
-			}
-		}
-	}
-	return false, nil
 }
 
 // checkApplyOutsideIn checks if agg can apply outside-in.

@@ -457,7 +457,6 @@ func (b *Builder) buildAggregation(having opt.ScalarExpr, fromScope *scope) (out
 			}
 			// if function is group windows, we should add groupWindowID and Idx to logical plan
 			if b.checkGroupWindow(f, fromScope) {
-				f.FunctionPrivate.Properties.ForbiddenExecInTSEngine = false
 				groupWindowID = groupingCols[i].id
 				groupWindowIdx = i
 			} else {
@@ -468,21 +467,13 @@ func (b *Builder) buildAggregation(having opt.ScalarExpr, fromScope *scope) (out
 		}
 	}
 
-	groupByPtag := false
-	if b.factory.Memo().CheckFlag(opt.GroupWindowUseOrderScan) {
-		fromScope.expr.ChildCount()
+	if b.factory.Memo().CheckFlag(opt.GroupWindowUseOrderScan) && groupWindowIdx >= 0 {
 		if len(groupingCols) > 1 {
 			// if there is more than one grouping column and tableID is null, we should return error
 			// if there is more than one grouping column and inconsistent number of primary tag, we should return error
 			if tableID == 0 || (pTagNum != b.factory.Metadata().TableMeta(tableID).PrimaryTagCount) ||
 				(hasOhterCol && pTagNum == b.factory.Metadata().TableMeta(tableID).PrimaryTagCount) {
 				panic(pgerror.Newf(pgcode.Syntax, "groupby cols are all ptags or without groupby cols for using group window function."))
-			}
-			groupByPtag = true
-		} else if groupWindowIdx >= 0 {
-			// function not push to AE if there are no other groupby cols except for the group window function
-			if f, ok := groupingCols[groupWindowIdx].scalar.(*memo.FunctionExpr); ok {
-				f.Properties.ForbiddenExecInTSEngine = true
 			}
 		}
 	}
@@ -611,13 +602,6 @@ func (b *Builder) buildAggregation(having opt.ScalarExpr, fromScope *scope) (out
 		}
 		if g, ok := g.aggOutScope.expr.(*memo.GroupByExpr); ok {
 			g.GroupingPrivate.Func = aggFuncs
-		}
-	}
-
-	// flag group by ptags for group window check
-	if b.factory.Memo().CheckFlag(opt.GroupWindowUseOrderScan) && groupByPtag {
-		if g, ok := g.aggOutScope.expr.(*memo.GroupByExpr); ok {
-			g.GroupingPrivate.OptFlags |= opt.GroupByPtag // add group by ptags flags
 		}
 	}
 

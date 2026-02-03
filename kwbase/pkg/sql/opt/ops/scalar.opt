@@ -704,7 +704,9 @@ define Function {
 define FunctionPrivate {
     Name string
     Typ Type
+    # read-only property; globally unique; non-modifiable.
     Properties FuncProps
+    # read-only property; globally unique; non-modifiable.
     Overload FuncOverload
 }
 
