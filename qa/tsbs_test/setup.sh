@@ -16,8 +16,6 @@ set -e
 export cur_path=`pwd`
 echo $cur_path
 
-chmod 777 /tmp
-
 curdate="`date +%Y-%m-%d,%H:%M:%S`"
 
 

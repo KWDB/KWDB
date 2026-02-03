@@ -99,7 +99,7 @@ class TsIterator {
  */
 class TsTableIterator : public TsIterator {
  public:
-  TsTableIterator() : latch_(LATCH_ID_TSTABLE_ITERATOR_MUTEX) {}
+  TsTableIterator() {}
   ~TsTableIterator() override {
     for (auto iter : iterators_) {
       delete iter;
@@ -135,7 +135,6 @@ class TsTableIterator : public TsIterator {
                 TsScanStats* ts_scan_stats = nullptr) override;
 
  private:
-  KLatch latch_;
   size_t current_iter_ = 0;
   // an array of TsStorageIterator objects, where one TsStorageIterator corresponds to the data of a subgroup
   std::vector<TsStorageIterator*> iterators_;
