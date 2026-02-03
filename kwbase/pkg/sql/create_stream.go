@@ -14,6 +14,7 @@ package sql
 import (
 	"context"
 	"go/constant"
+	"time"
 
 	"gitee.com/kwbasedb/kwbase/pkg/cdc/cdcpb"
 	"gitee.com/kwbasedb/kwbase/pkg/security"
@@ -325,6 +326,10 @@ VALUES ($1,$2,$3,$4,$5)`,
 
 func (n *createStreamNode) Next(params runParams) (bool, error) {
 	if n.run.resultsCh != nil {
+		var timeout timeutil.Timer
+		defer timeout.Stop()
+		timeout.Reset(time.Second * sqlutil.TimeoutFactor)
+
 		select {
 		case <-params.ctx.Done():
 			return false, params.ctx.Err()
@@ -332,6 +337,8 @@ func (n *createStreamNode) Next(params runParams) (bool, error) {
 			return false, err
 		case <-n.run.resultsCh:
 			return true, nil
+		case <-timeout.C:
+			return false, errors.New("timed out waiting for create stream job")
 		}
 	} else {
 		return false, nil
