@@ -413,7 +413,10 @@ KStatus DiskDataContainer::SortAndFlushLastChunk(k_bool force_merge) {
       return KStatus::FAIL;
     }
     // Copy and sort data from the temporary write chunk
-    chunk_reader.chunk_ptr_->CopyWithSortFrom(write_cache_chunk_ptr_);
+    ret = chunk_reader.chunk_ptr_->CopyWithSortFrom(write_cache_chunk_ptr_);
+    if (ret != KStatus::SUCCESS) {
+      return ret;
+    }
     chunk_reader.chunk_index_ = chunk_index;
   } else {
     // If the number of temporary chunks in memory is greater than or equal to
@@ -421,7 +424,10 @@ KStatus DiskDataContainer::SortAndFlushLastChunk(k_bool force_merge) {
     auto chunk_reader =
         &cache_chunk_readers_[ chunk_index % MAX_CHUNK_BATCH_NUM];
     chunk_reader->chunk_ptr_->Reset(false);
-    chunk_reader->chunk_ptr_->CopyWithSortFrom(write_cache_chunk_ptr_);
+    ret = chunk_reader->chunk_ptr_->CopyWithSortFrom(write_cache_chunk_ptr_);
+    if (ret != KStatus::SUCCESS) {
+      return ret;
+    }
     chunk_reader->chunk_index_ = chunk_index;
   }
   // Update information in read_merge_infos_

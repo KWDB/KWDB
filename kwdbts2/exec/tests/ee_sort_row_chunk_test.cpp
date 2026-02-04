@@ -177,4 +177,8 @@ TEST_F(TestSortRowChunk, TestChunk) {
   // check append fail
   ASSERT_EQ(row_chunk_3->Append(row_chunk_1, row_chunk_1->GetData()),
             KStatus::FAIL);
+
+  // check expand fail
+  ASSERT_EQ(row_chunk_3->Expand(100, true), KStatus::FAIL);
+  ASSERT_EQ(row_chunk_3->Expand(100, false), KStatus::FAIL);
 }

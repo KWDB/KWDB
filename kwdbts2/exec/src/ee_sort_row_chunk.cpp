@@ -830,8 +830,7 @@ KStatus SortRowChunk::Expand(k_uint32 new_count, k_bool copy) {
     return KStatus::FAIL;
   }
   auto estimate_row_size = ComputeRowSizeIfAllConstant();
-  if (non_constant_data_size_ + (new_count - count_) * estimate_row_size >
-      non_constant_max_size_) {
+  if (new_count * estimate_row_size > non_constant_max_size_) {
     capacity_ = count_;
     return KStatus::FAIL;
   } else {
@@ -921,17 +920,34 @@ KStatus SortRowChunk::Sort() {
   return KStatus::SUCCESS;
 }
 KStatus SortRowChunk::CopyWithSortFrom(SortRowChunkPtr& data_chunk_ptr) {
-  count_ = *(data_chunk_ptr->GetCount());
+  auto count = *(data_chunk_ptr->GetCount());
   auto src_data = data_chunk_ptr->GetData();
   all_constant_ = data_chunk_ptr->IsAllConstant();
   all_constant_in_order_col_ = data_chunk_ptr->IsAllConstantInOrderCol();
   is_ordered_ = data_chunk_ptr->IsOrdered();
-  if (count_ == 0) {
+  if (count == 0) {
     return KStatus::SUCCESS;
   }
-  if (count_ > capacity_) {
-    KStatus ret = Expand(count_, false);
+  if (count > capacity_) {
+    EE_MemPoolFree(g_pstBufferPoolInfo, data_);
+    capacity_ = count;
+    data_size_ = count * row_size_;
+    data_ = EE_MemPoolMalloc(g_pstBufferPoolInfo, data_size_);
+    if (data_ == nullptr) {
+      return KStatus::FAIL;
+    }
+    if (!all_constant_) {
+      //  Reallocate non-constant data memory and clean all non-constant data
+      EE_MemPoolFree(g_pstBufferPoolInfo, non_constant_data_);
+      non_constant_max_size_ = data_chunk_ptr->GetNonConstantDataSize();
+      non_constant_data_size_ = 0;
+      non_constant_data_ = EE_MemPoolMalloc(g_pstBufferPoolInfo, non_constant_max_size_);
+      if (non_constant_data_ == nullptr) {
+        return KStatus::FAIL;
+      }
+    }
   }
+  count_ = count;
   if (count_ == 1 || is_ordered_) {
     memcpy(data_, src_data, data_chunk_ptr->Size());
     if (!all_constant_) {
