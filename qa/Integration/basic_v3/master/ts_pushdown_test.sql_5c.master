@@ -567,7 +567,7 @@ INSERT 1
 DROP DATABASE
 > CREATE TS DATABASE  ts_db;
 CREATE TS DATABASE
-> CREATE TABLE ts_db.st(k_timestamp TIMESTAMP not null, e1 INT2, e2 INT, e3 INT8, e4 FLOAT4, e5 FLOAT8, e6 BOOL, e7 TIMESTAMP, e8 CHAR(100), e9 NCHAR(255), e10 VARCHAR(4096), e11 CHAR, e12 NCHAR, e13 VARCHAR, e14 NVARCHAR(4096),  e15 VARBYTES, e16 NVARCHAR, e17 varbytes, e18 varbytes(100), e19 VARBYTES(4096) ) tags (tabName varchar(10) not null, code1 INT2,code2 INT,code3 INT8,flag BOOL,val1 FLOAT4,val2 FLOAT8,location VARCHAR,color VARCHAR(65536),name varbytes,state varbytes(1023),tall VARBYTES,screen VARBYTES(65536),age CHAR,sex CHAR(1023),year NCHAR,type NCHAR(254)) primary tags(tabName);
+> CREATE TABLE ts_db.st(k_timestamp TIMESTAMP not null, e1 INT2, e2 INT, e3 INT8, e4 FLOAT4, e5 FLOAT8, e6 BOOL, e7 TIMESTAMP, e8 CHAR(100), e9 NCHAR(255), e10 VARCHAR(4096), e11 CHAR, e12 NCHAR, e13 VARCHAR, e14 NVARCHAR(4096),  e15 VARBYTES, e16 NVARCHAR, e17 varbytes, e18 varbytes(100), e19 VARBYTES(4096) ) tags (tabName varchar(10) not null, code1 INT2,code2 INT,code3 INT8,flag BOOL,val1 FLOAT4,val2 FLOAT8,location VARCHAR,color VARCHAR(65534),name varbytes,state varbytes(1023),tall VARBYTES,screen VARBYTES(65534),age CHAR,sex CHAR(1023),year NCHAR,type NCHAR(254)) primary tags(tabName);
 CREATE TABLE
 > INSERT INTO ts_db.st values(100000,100,1000000,1000,1000.0000,100.0,true,'2020-1-2 12:00:00.000','test时间精度通用查询测试！！！@TEST1','test时间精度通用查询测试！！！@TEST1','test时间精度通用查询测试！！！@TEST1','t','中','test时间精度通用查询测试！！！@TEST1','test时间精度通用查询测试！！！@TEST1','test时间精度通用查询测试！！！@TEST1','test时间精度通用查询测试！TEST1xaa',b'\xaa','test时间精度通用查询测试','test时间精度通用查询测试','st_t1', NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL);
 INSERT 1

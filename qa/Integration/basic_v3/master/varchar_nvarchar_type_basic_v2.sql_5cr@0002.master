@@ -1,16 +1,16 @@
 > CREATE ts DATABASE test_varchar1;
 CREATE TS DATABASE
 > CREATE TABLE test_varchar1.d11(k_timestamp timestamp not null,
-                               e1 varchar(65536) ,e2 nvarchar(16384))
+                               e1 varchar(65534) ,e2 nvarchar(16383))
                                attributes (t1_attribute int not null) primary tags(t1_attribute);
 CREATE TABLE
 > CREATE TABLE test_varchar1.d12(k_timestamp timestamp not null,
-                               e1 varchar(65537) ,e2 nvarchar(16384))
+                               e1 varchar(65535) ,e2 nvarchar(16383))
                                attributes (t1_attribute int not null) primary tags(t1_attribute);
 ERROR: column e1: unsupported width of VARCHAR
 SQLSTATE: 42809
 > CREATE TABLE test_varchar1.d13(k_timestamp timestamp not null,
-                               e1 varchar(65536) ,e2 nvarchar(16385))
+                               e1 varchar(65534) ,e2 nvarchar(16384))
                                attributes (t1_attribute int not null) primary tags(t1_attribute);
 ERROR: column e2: unsupported width of NVARCHAR
 SQLSTATE: 42809

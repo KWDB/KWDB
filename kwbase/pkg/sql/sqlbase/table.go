@@ -46,7 +46,7 @@ import (
 // Max length of fixed and indefinite length type.
 const (
 	TSMaxFixedLen         = 1024
-	TSMaxVariableLen      = 64 * 1024
+	TSMaxVariableLen      = 65534
 	TSMaxVariableTupleLen = 255
 	TSBOStringMaxLen      = 1023
 )

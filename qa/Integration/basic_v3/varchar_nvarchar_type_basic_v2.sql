@@ -16,13 +16,13 @@ DROP DATABASE test_varchar1 cascade;
 -----testcase0002 Create device-SQL-Column width test
 CREATE ts DATABASE test_varchar1;
 CREATE TABLE test_varchar1.d11(k_timestamp timestamp not null,
-                               e1 varchar(65536) ,e2 nvarchar(16384))
+                               e1 varchar(65534) ,e2 nvarchar(16383))
                                attributes (t1_attribute int not null) primary tags(t1_attribute);
 CREATE TABLE test_varchar1.d12(k_timestamp timestamp not null,
-                               e1 varchar(65537) ,e2 nvarchar(16384))
+                               e1 varchar(65535) ,e2 nvarchar(16383))
                                attributes (t1_attribute int not null) primary tags(t1_attribute);
 CREATE TABLE test_varchar1.d13(k_timestamp timestamp not null,
-                               e1 varchar(65536) ,e2 nvarchar(16385))
+                               e1 varchar(65534) ,e2 nvarchar(16384))
                                attributes (t1_attribute int not null) primary tags(t1_attribute);
 ---Test whether the creation was successful, insert data and test afterwards
 SELECT * FROM test_varchar1.d11;

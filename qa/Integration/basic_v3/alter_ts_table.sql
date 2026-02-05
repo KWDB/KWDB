@@ -121,7 +121,7 @@ create table test_alter.t4(
                             e14 varbytes,
                             e15 varbytes(50),
                             e16 timestamptz
-) tags (code1 int2 not null, code2 int, code3 int8, flag bool, val1 float, val2 float8, location varchar, color varchar(65536), age char, sex char(1023), year nchar, type nchar(254)) primary tags(code1);
+) tags (code1 int2 not null, code2 int, code3 int8, flag bool, val1 float, val2 float8, location varchar, color varchar(65534), age char, sex char(1023), year nchar, type nchar(254)) primary tags(code1);
 
 alter table test_alter.t4 add tag attr17_a1 smallint;
 alter table test_alter.t4 add tag attr18_a1 int;
@@ -176,7 +176,7 @@ create table test_alter.t5(
                             e14 varbytes,
                             e15 varbytes(50),
                             e16 timestamptz
-) tags (code1 int2 not null, code2 int, code3 int8, flag bool, val1 float, val2 float8, location varchar, color varchar(65536), age char, sex char(1023), year nchar, type nchar(254)) primary tags(code1);
+) tags (code1 int2 not null, code2 int, code3 int8, flag bool, val1 float, val2 float8, location varchar, color varchar(65534), age char, sex char(1023), year nchar, type nchar(254)) primary tags(code1);
 alter table test_alter.t5 add column c1 decimal;
 
 -- ZDP-31995: Show tag values error after inserting data
@@ -213,7 +213,7 @@ create table test_alter.t7(
                             e14 varbytes,
                             e15 varbytes(50),
                             e16 timestamptz
-) tags (code1 int2 not null, code2 int, code3 int8, flag bool, val1 float, val2 float8, location varchar, color varchar(65536), age char, sex char(1023), year nchar, type nchar(254)) primary tags(code1);
+) tags (code1 int2 not null, code2 int, code3 int8, flag bool, val1 float, val2 float8, location varchar, color varchar(65534), age char, sex char(1023), year nchar, type nchar(254)) primary tags(code1);
 alter table test_alter.t7 add if not exists c1 int8;
 show tag values from test_alter.t7;
 
@@ -261,7 +261,7 @@ create table test_alter.t9(
                              e14 varbytes,
                              e15 varbytes(50),
                              e16 timestamptz
-) tags (code1 int2 not null, code2 int, code3 int8, flag bool, val1 float, val2 float8, location varchar, color varchar(65536), age char, sex char(1023), year nchar, type nchar(254)) primary tags(code1);
+) tags (code1 int2 not null, code2 int, code3 int8, flag bool, val1 float, val2 float8, location varchar, color varchar(65534), age char, sex char(1023), year nchar, type nchar(254)) primary tags(code1);
 
 set sql_safe_updates = false;
 
@@ -421,7 +421,7 @@ k_timestamp TIMESTAMPTZ not null,
  e14 varbytes,
  e15 varbytes(50),
  e16 TIMESTAMPTZ
- ) tagS (code1 int2 not null,code2 int ,code3 int8 ,flag BOOL ,val1 float ,val2 float8 ,location VARCHAR ,color VARCHAR(65536) ,age CHAR ,sex CHAR(1023) ,year NCHAR ,type NCHAR(254) ) PRIMARY TAGS(code1);
+ ) tagS (code1 int2 not null,code2 int ,code3 int8 ,flag BOOL ,val1 float ,val2 float8 ,location VARCHAR ,color VARCHAR(65534) ,age CHAR ,sex CHAR(1023) ,year NCHAR ,type NCHAR(254) ) PRIMARY TAGS(code1);
 
 INSERT INTO test_alter.t10 values (50000008,9223372036854775807,2147483647,32767,2.712882,3.14159267890796,true,50000011,'test时间精度通用查询测试！！！@TEST1','test时间精度通用查询测试！！！@TEST1','test时间精度通用查询测试！！！@TEST1','t','中','test时间精度通用查询测试！！！@TEST1',b'\xaa',b'\xaabbccdd',50000011,4,2147483647,9223372036854775807,true,2.712882,3.14159267890796,'test时间精度通用查询测试！！！@TEST1','test时间精度通用查询测试！！！@TEST1','t','test时间精度通用查询测试！！！@TEST1','1','test时间精度通用查询测试！！！@TEST1');
 INSERT INTO test_alter.t10 values (50000009,-9223372036854775808,-2147483648,-32768,-2.712882,-3.14159267890796,true,50000011,'test时间精度通用查询测试！！！@TEST1','test时间精度通用查询测试！！！@TEST1','test时间精度通用查询测试！！！@TEST1','t','中','test时间精度通用查询测试！！！@TEST1',b'\xaa',b'\xaabbccdd',50000011,5,2147483647,9223372036854775807,true,2.712882,3.14159267890796,'test时间精度通用查询测试！！！@TEST1','test时间精度通用查询测试！！！@TEST1','t','test时间精度通用查询测试！！！@TEST1','1','test时间精度通用查询测试！！！@TEST1');

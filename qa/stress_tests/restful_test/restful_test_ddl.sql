@@ -36,7 +36,7 @@ create table test_alter.t3(
                               e14 varbytes,
                               e15 varbytes(50),
                               e16 timestamptz
-) tags (code1 int2 not null, code2 int, code3 int8, flag bool, val1 float, val2 float8, location varchar, color varchar(65536), age char, sex char(1023), year nchar, type nchar(254)) primary tags(code1);
+) tags (code1 int2 not null, code2 int, code3 int8, flag bool, val1 float, val2 float8, location varchar, color varchar(65534), age char, sex char(1023), year nchar, type nchar(254)) primary tags(code1);
 
 alter table test_alter.t3 add tag attr17_a1 smallint;
 alter table test_alter.t3 add tag attr18_a1 int;
