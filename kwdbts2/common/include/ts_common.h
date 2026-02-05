@@ -884,6 +884,7 @@ class SharedFixedUnorderedMap {
         clear_num++;
       } else {
         erase_items_.insert(it->first);
+        ++it;
       }
     }
 

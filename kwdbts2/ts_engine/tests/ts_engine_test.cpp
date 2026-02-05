@@ -270,6 +270,21 @@ TEST_F(TsEngineV2Test, Recover){
 }
 
 TEST_F(TsEngineV2Test, TableCache){
+  using namespace roachpb;
+  TSTableID table_id = 12345;
+  CreateTsTable pb_meta;
+  kwdbContext_t ctx;
+  std::vector<DataType> metric_type{roachpb::TIMESTAMP, roachpb::INT, roachpb::DOUBLE,
+                                    roachpb::DOUBLE};
+  ConstructRoachpbTableWithTypes(&pb_meta, table_id, metric_type);
+  std::shared_ptr<TsTable> ts_table;
+  auto s = engine_->CreateTsTable(ctx_, table_id, &pb_meta, ts_table);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  std::shared_ptr<TsTableSchemaManager> schema_mgr;
+  bool is_dropped = false;
+  s = engine_->GetTableSchemaMgr(ctx_, table_id, is_dropped, schema_mgr);
+  ASSERT_EQ(s , KStatus::SUCCESS);
+
   SharedFixedUnorderedMap<KTableKey, TsTable> table_cache(50, true);
   for (int i = 0; i < 30; ++i) {
     table_cache.Put(i, nullptr);
@@ -282,13 +297,19 @@ TEST_F(TsEngineV2Test, TableCache){
   table_cache.SetCapacity(40);
   ASSERT_EQ(table_cache.Size(), 40);
   table_cache.SetCapacity(55);
-  for (int i = 60; i < 80; ++i) {
-    table_cache.Put(i, nullptr);
+  std::vector<std::shared_ptr<TsTable>> tables;
+  const std::vector<std::shared_ptr<TsVGroup>> vgroups = {};
+  for (int i = 0; i < 60; ++i) {
+    std::shared_ptr<TsTable> table = std::make_shared<TsTableV2Impl>(schema_mgr, vgroups);
+    tables.push_back(table);
+    table_cache.Put(i, table);
   }
+  ASSERT_EQ(table_cache.Size(), 60);
+  tables.clear();
+  table_cache.SetCapacity(55);
   ASSERT_EQ(table_cache.Size(), 55);
   auto kv = table_cache.GetAllValues();
   for (auto it = kv.begin(); it != kv.end(); ++it) {
-    ASSERT_EQ(it->second, nullptr);
-    ASSERT_LT(it->first, 80);
+    ASSERT_LT(it->first, 60);
   }
 }
