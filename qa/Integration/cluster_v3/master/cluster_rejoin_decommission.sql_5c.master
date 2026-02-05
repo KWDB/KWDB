@@ -2,6 +2,8 @@
 SET CLUSTER SETTING
 > SET cluster setting server.time_until_store_dead = '1min15s'; 
 SET CLUSTER SETTING
+> SET CLUSTER SETTING ts.rows_per_block.min_limit = 10;
+SET CLUSTER SETTING
 > SET CLUSTER SETTING ts.rows_per_block.max_limit = 10; 
 SET CLUSTER SETTING
 > CREATE TS DATABASE tsdb; 

@@ -1,3 +1,5 @@
+> SET CLUSTER SETTING ts.rows_per_block.min_limit=100;
+SET CLUSTER SETTING
 > SET CLUSTER SETTING ts.rows_per_block.max_limit=100;
 SET CLUSTER SETTING
 > use defaultdb;drop database if exists test_timebucket_gapfill cascade;
@@ -270,6 +272,8 @@ INSERT 1
 (8 rows)
 > drop database if exists test cascade;
 DROP DATABASE
+> SET CLUSTER SETTING ts.rows_per_block.min_limit=100;
+SET CLUSTER SETTING
 > SET CLUSTER SETTING ts.rows_per_block.max_limit=100;
 SET CLUSTER SETTING
 > create ts database test_timebucket_gapfill1;
@@ -355,6 +359,8 @@ INSERT 1
 DROP DATABASE
 > use defaultdb;drop database if exists test_select_timebucket_ms cascade;
 DROP DATABASE
+> SET CLUSTER SETTING ts.rows_per_block.min_limit=50;
+SET CLUSTER SETTING
 > SET CLUSTER SETTING ts.rows_per_block.max_limit=50;
 SET CLUSTER SETTING
 > create ts database test_select_timebucket_ms;

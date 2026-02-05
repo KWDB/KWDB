@@ -54,6 +54,18 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
+var (
+	blockMinRows = settings.RegisterPublicIntSetting(
+		"ts.rows_per_block.min_limit",
+		"the minimum number of rows that can be held in a block",
+		512)
+
+	blockMaxRows = settings.RegisterPublicIntSetting(
+		"ts.rows_per_block.max_limit",
+		"the maximum number of rows that can be held in a block",
+		4096)
+)
+
 const rangemb = 1024 * 1024
 
 // setClusterSettingNode represents a SET CLUSTER SETTING statement.
@@ -180,8 +192,8 @@ func checkTsRowsPerBlockMaxLimit(encodedValue string) error {
 	if err != nil {
 		return err
 	}
-	if value <= 0 || value > 2147483647 {
-		return errors.New("invalid value, the range of ts.rows_per_block.max_limit is [1, 2147483647]")
+	if value <= 0 || value > 50000 {
+		return errors.New("invalid value, the range of ts.rows_per_block.max_limit is [1, 50000]")
 	}
 	return nil
 }
@@ -191,8 +203,8 @@ func checkTsRowsPerBlockMinLimit(encodedValue string) error {
 	if err != nil {
 		return err
 	}
-	if value <= 0 || value > 2147483647 {
-		return errors.New("invalid value, the range of ts.rows_per_block.min_limit is [1, 2147483647]")
+	if value <= 0 || value > 50000 {
+		return errors.New("invalid value, the range of ts.rows_per_block.min_limit is [1, 50000]")
 	}
 	return nil
 }
@@ -336,6 +348,20 @@ func (n *setClusterSettingNode) startExec(params runParams) error {
 			if function, ok := CheckClusterSetting[n.name]; ok {
 				if err = function(encoded); err != nil {
 					return err
+				}
+			}
+			if n.name == "ts.rows_per_block.min_limit" {
+				minLimit, _ := strconv.ParseInt(encoded, 10, 64)
+				maxLimit := blockMaxRows.Get(&n.st.SV)
+				if minLimit > maxLimit {
+					return errors.New("invalid value, ts.rows_per_block.min_limit needs to be less than or equal to ts.rows_per_block.max_limit")
+				}
+			}
+			if n.name == "ts.rows_per_block.max_limit" {
+				maxLimit, _ := strconv.ParseInt(encoded, 10, 64)
+				minLimit := blockMinRows.Get(&n.st.SV)
+				if maxLimit < minLimit {
+					return errors.New("invalid value, ts.rows_per_block.max_limit needs to be greater than or equal to ts.rows_per_block.min_limit")
 				}
 			}
 			if n.name == "ts.raftlog_combine_wal.enabled" {

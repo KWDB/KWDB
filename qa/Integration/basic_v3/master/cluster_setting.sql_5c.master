@@ -116,3 +116,27 @@ SET CLUSTER SETTING
 SET CLUSTER SETTING
 > SET CLUSTER SETTING ts.wal.wal_level = 2;
 SET CLUSTER SETTING
+> SET CLUSTER SETTING ts.rows_per_block.min_limit=100;
+SET CLUSTER SETTING
+> SET CLUSTER SETTING ts.rows_per_block.max_limit=10;
+ERROR: invalid value, ts.rows_per_block.max_limit needs to be greater than or equal to ts.rows_per_block.min_limit
+> SET CLUSTER SETTING ts.rows_per_block.max_limit=100;
+SET CLUSTER SETTING
+> SET CLUSTER SETTING ts.rows_per_block.max_limit=200;
+SET CLUSTER SETTING
+> SET CLUSTER SETTING ts.rows_per_block.min_limit=200;
+SET CLUSTER SETTING
+> SET CLUSTER SETTING ts.rows_per_block.min_limit=201;
+ERROR: invalid value, ts.rows_per_block.min_limit needs to be less than or equal to ts.rows_per_block.max_limit
+> SET CLUSTER SETTING ts.rows_per_block.max_limit=50000;
+SET CLUSTER SETTING
+> SET CLUSTER SETTING ts.rows_per_block.max_limit=50001;
+ERROR: invalid value, the range of ts.rows_per_block.max_limit is [1, 50000]
+> SET CLUSTER SETTING ts.rows_per_block.min_limit=50000;
+SET CLUSTER SETTING
+> SET CLUSTER SETTING ts.rows_per_block.min_limit=50001;
+ERROR: invalid value, the range of ts.rows_per_block.min_limit is [1, 50000]
+> SET CLUSTER SETTING ts.rows_per_block.min_limit=512;
+SET CLUSTER SETTING
+> SET CLUSTER SETTING ts.rows_per_block.max_limit=4096;
+SET CLUSTER SETTING

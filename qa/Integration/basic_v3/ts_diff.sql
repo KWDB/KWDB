@@ -1,5 +1,6 @@
 ---diff
 SET CLUSTER SETTING ts.rows_per_block.max_limit=100;
+SET CLUSTER SETTING ts.rows_per_block.min_limit=100;
 drop database test7 CASCADE;
 create ts database test7;
 create table test7.t1_1(ts timestamp not null, value1 int,deviceid int,station_id int) tags (id1 int not null,id2 int) PRIMARY TAGS (id1);

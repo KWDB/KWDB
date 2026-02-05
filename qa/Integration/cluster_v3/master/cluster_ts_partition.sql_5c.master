@@ -1,5 +1,7 @@
 > SET CLUSTER SETTING server.advanced_distributed_operations.enabled = true;
 SET CLUSTER SETTING
+> SET cluster setting ts.rows_per_block.min_limit=10;
+SET CLUSTER SETTING
 > SET cluster setting ts.rows_per_block.max_limit=10;
 SET CLUSTER SETTING
 > SET  cluster setting sql.hashrouter.partition_coefficient_num = 1;

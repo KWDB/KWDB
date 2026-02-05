@@ -1,3 +1,4 @@
+SET CLUSTER SETTING ts.rows_per_block.min_limit=100;
 SET CLUSTER SETTING ts.rows_per_block.max_limit=100;
 -- time_bucket_gapfill(timestamp_column:timestamptz,interval:string)
 -- time_bucket_gapfill
@@ -82,6 +83,7 @@ select time_bucket_gapfill(t1.time, '10 day') as tb, b from t1 group by tb, b or
 select time_bucket_gapfill(t1.time, '10 day') as tb, b from t1 group by tb, b order by b desc, tb desc;
 drop database if exists test cascade;
 
+SET CLUSTER SETTING ts.rows_per_block.min_limit=100;
 SET CLUSTER SETTING ts.rows_per_block.max_limit=100;
 create ts database test_timebucket_gapfill1;
 create table test_timebucket_gapfill1.tb(k_timestamp timestamptz not null,e1 timestamptz,e2 int2,e3 int,e4 int8,e5 float4,e6 float8,e7 bool,e8 char,e9 char(100),e10 nchar,e11 nchar(255),e12 varchar,e13 varchar(254),e14 varchar(4096),e15 nvarchar,e16 nvarchar(255),e17 nvarchar(4096),e18 varbytes,e19 varbytes(100),e20 varbytes,e21 varbytes(254),e22 varbytes(4096)) tags (t1 int2 not null,t2 int,t3 int8,t4 bool not null,t5 float4,t6 float8,t7 char,t8 char(100) not null,t9 nchar,t10 nchar(254),t11 varchar,t12 varchar(128) not null,t13 varbytes,t14 varbytes(100),t15 varbytes,t16 varbytes(255)) primary tags(t1,t4,t8,t12);
@@ -117,6 +119,7 @@ drop database if exists db1 cascade;
 
 -- fix(ZDP-43653)
 use defaultdb;drop database if exists test_select_timebucket_ms cascade;
+SET CLUSTER SETTING ts.rows_per_block.min_limit=50;
 SET CLUSTER SETTING ts.rows_per_block.max_limit=50;
 create ts database test_select_timebucket_ms;
 create table test_select_timebucket_ms.tb(k_timestamp timestamptz not null,e1 timestamp,e2 int2,e3 int,e4 int8,e5 float4,e6 float8,e7 bool,e8 char,e9 char(100),e10 nchar,e11 nchar(255),e12 varchar,e13 varchar(254),e14 varchar(4096),e15 nvarchar,e16 nvarchar(255),e17 nvarchar(4096),e18 varbytes,e19 varbytes(100),e20 varbytes,e21 varbytes(254),e22 varbytes(4096)) tags (t1 int2 not null,t2 int,t3 int8,t4 bool not null,t5 float4,t6 float8,t7 char,t8 char(100) not null,t9 nchar,t10 nchar(254),t11 varchar,t12 varchar(128) not null,t13 varbytes,t14 varbytes(100),t15 varbytes,t16 varbytes(255)) primary tags(t1,t4,t8,t12);

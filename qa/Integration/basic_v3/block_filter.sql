@@ -1,4 +1,5 @@
 DROP DATABASE IF EXISTS test_block_filter cascade;
+SET CLUSTER SETTING ts.rows_per_block.min_limit=10;
 SET CLUSTER SETTING ts.rows_per_block.max_limit=10;
 CREATE ts DATABASE test_block_filter;
 CREATE TABLE test_block_filter.t1(
@@ -570,9 +571,11 @@ select id,e7 from test_block_filter.t1 WHERE
   AND e22 = 'NVARCHAR测试样本';
 
 SET CLUSTER SETTING ts.rows_per_block.max_limit=1000;
+SET CLUSTER SETTING ts.rows_per_block.min_limit=1000;
 drop database test_block_filter cascade;
 
 DROP DATABASE IF EXISTS test_block_filter cascade;
+SET CLUSTER SETTING ts.rows_per_block.min_limit=10;
 SET CLUSTER SETTING ts.rows_per_block.max_limit=10;
 CREATE ts DATABASE test_block_filter;
 create table test_block_filter.t1(k_timestamp timestamptz not null, e1 timestamptz not null, e2 nchar(255) not null, e3 varchar(4096), e4 varchar) ATTRIBUTES (code1 int2 not null) primary tags(code1);
@@ -638,6 +641,7 @@ select * from test_block_filter.t13 where e1 = 1.23 order by code1;
 
 use defaultdb;
 SET CLUSTER SETTING ts.rows_per_block.max_limit=1000;
+SET CLUSTER SETTING ts.rows_per_block.min_limit=1000;
 drop database test_block_filter cascade;
 
 -- bugfix ICZB1L
@@ -656,6 +660,7 @@ SELECT id, k_timestamp, e1 FROM test_db.t1 ORDER BY k_timestamp;
 SELECT id, k_timestamp, e1 FROM test_db.t1 WHERE e1 > 15 ORDER BY k_timestamp;
 
 use defaultdb;
+SET CLUSTER SETTING ts.rows_per_block.min_limit=1000;
 SET CLUSTER SETTING ts.rows_per_block.max_limit=1000;
 set cluster setting ts.reserved_last_segment.max_limit=3;
 set cluster setting ts.mem_segment_size.max_limit="65536KB";

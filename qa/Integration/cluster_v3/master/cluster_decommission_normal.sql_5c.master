@@ -1,4 +1,6 @@
-> SET CLUSTER SETTING ts.rows_per_block.max_limit = 10; 
+> SET CLUSTER SETTING ts.rows_per_block.min_limit = 10;
+SET CLUSTER SETTING
+> SET CLUSTER SETTING ts.rows_per_block.max_limit = 10;
 SET CLUSTER SETTING
 > import database csv data ("nodelocal://1/tsdb1");
   job_id |  status   | fraction_completed |  rows  | abandon_rows | reject_rows | note

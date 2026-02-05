@@ -1,5 +1,7 @@
 > DROP DATABASE IF EXISTS test_block_filter cascade;
 DROP DATABASE
+> SET CLUSTER SETTING ts.rows_per_block.min_limit=10;
+SET CLUSTER SETTING
 > SET CLUSTER SETTING ts.rows_per_block.max_limit=10;
 SET CLUSTER SETTING
 > CREATE ts DATABASE test_block_filter;
@@ -2394,10 +2396,14 @@ INSERT 1
 (0 rows)
 > SET CLUSTER SETTING ts.rows_per_block.max_limit=1000;
 SET CLUSTER SETTING
+> SET CLUSTER SETTING ts.rows_per_block.min_limit=1000;
+SET CLUSTER SETTING
 > drop database test_block_filter cascade;
 DROP DATABASE
 > DROP DATABASE IF EXISTS test_block_filter cascade;
 DROP DATABASE
+> SET CLUSTER SETTING ts.rows_per_block.min_limit=10;
+SET CLUSTER SETTING
 > SET CLUSTER SETTING ts.rows_per_block.max_limit=10;
 SET CLUSTER SETTING
 > CREATE ts DATABASE test_block_filter;
@@ -2611,6 +2617,8 @@ INSERT 1
 SET
 > SET CLUSTER SETTING ts.rows_per_block.max_limit=1000;
 SET CLUSTER SETTING
+> SET CLUSTER SETTING ts.rows_per_block.min_limit=1000;
+SET CLUSTER SETTING
 > drop database test_block_filter cascade;
 DROP DATABASE
 > set cluster setting ts.reserved_last_segment.max_limit=10000;
@@ -2644,6 +2652,8 @@ INSERT 1
 (0 rows)
 > use defaultdb;
 SET
+> SET CLUSTER SETTING ts.rows_per_block.min_limit=1000;
+SET CLUSTER SETTING
 > SET CLUSTER SETTING ts.rows_per_block.max_limit=1000;
 SET CLUSTER SETTING
 > set cluster setting ts.reserved_last_segment.max_limit=3;

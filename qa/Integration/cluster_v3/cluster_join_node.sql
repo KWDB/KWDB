@@ -1,5 +1,6 @@
 -- create
 SET CLUSTER SETTING server.advanced_distributed_operations.enabled = true;
+SET cluster setting ts.rows_per_block.min_limit=10;
 SET cluster setting ts.rows_per_block.max_limit=10;
 SET CLUSTER SETTING kv.allocator.ts_consider_rebalance.enabled = true;
 SET CLUSTER SETTING ts.raft_log.sync_period = '0s';

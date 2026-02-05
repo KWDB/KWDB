@@ -1,3 +1,4 @@
+SET CLUSTER SETTING ts.rows_per_block.min_limit = 10;
 SET CLUSTER SETTING ts.rows_per_block.max_limit = 10;
 SET CLUSTER SETTING server.time_until_store_dead = '1min15s';
 SET CLUSTER SETTING kv.allocator.ts_consider_rebalance.enabled = true;

@@ -159,11 +159,6 @@ var (
 		0,
 	)
 
-	blockMaxRows = settings.RegisterPublicIntSetting(
-		"ts.rows_per_block.max_limit",
-		"the maximum number of rows that can be held in a block",
-		4096)
-
 	tsCountUseRowWritten = settings.RegisterPublicBoolSetting(
 		"ts.count.use_statistics.enabled",
 		"use row written when querying count",
@@ -173,11 +168,6 @@ var (
 		"ts.table_cache.capacity",
 		"maximum limit of ts table cache",
 		1000)
-
-	blockMinRows = settings.RegisterPublicIntSetting(
-		"ts.rows_per_block.min_limit",
-		"the minimum number of rows that can be held in a block",
-		512)
 
 	maxCompactLastSegNum = settings.RegisterPublicIntSetting(
 		"ts.compact.max_limit",

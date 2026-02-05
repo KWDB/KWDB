@@ -1,3 +1,4 @@
+SET CLUSTER SETTING ts.rows_per_block.min_limit = 10;
 SET CLUSTER SETTING ts.rows_per_block.max_limit = 10;
 SHOW CLUSTER SETTING ts.raft_log.sync_period;
 SHOW CLUSTER SETTING ts.raftlog_combine_wal.enabled;
