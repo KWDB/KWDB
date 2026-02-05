@@ -355,6 +355,12 @@ KStatus TsVersionManager::Recover(bool force_recover) {
           expected.insert(CountStatFileName(it->second.file_number));
         }
       }
+      {
+        auto it = update.new_agg_files_.find(par_id);
+        if (it != update.new_agg_files_.end()) {
+          expected.insert(AggFileName(it->second));
+        }
+      }
 
       std::error_code ec;
       fs::directory_iterator iter{root, ec};
@@ -566,7 +572,7 @@ KStatus TsVersionManager::ApplyUpdate(TsVersionUpdate *update, bool force_apply)
     {
       auto count_meta = update->count_flush_infos_.find(par_id);
       if (count_meta != update->count_flush_infos_.end()) {
-        std::string count_path = root_path_ / PartitionDirName(par_id) / CountStatFileName(count_meta->second.file_number);
+        std::string count_path = partition_dir / CountStatFileName(count_meta->second.file_number);
         auto new_count_file = std::make_shared<TsPartitionEntityCountManager>(count_path);
         switch (update->count_stats_status_) {
           case CountStatsStatus::FlushImmOrWriteBatch: {
@@ -655,6 +661,24 @@ KStatus TsVersionManager::ApplyUpdate(TsVersionUpdate *update, bool force_apply)
           new_partition_version->count_info_->MarkDelete();
         }
         new_partition_version->count_info_ = std::move(new_count_file);
+      }
+    }
+
+    // Process partition agg, used by CalcPartitionAgg()
+    {
+      auto agg_meta = update->new_agg_files_.find(par_id);
+      if (agg_meta != update->new_agg_files_.end()) {
+        std::string agg_path = partition_dir / AggFileName(agg_meta->second);
+        TsIOEnv* env = &TsIOEnv::GetInstance();
+        auto new_agg_file = std::make_shared<TsPartitionAggReader>(env, agg_path);
+        auto s = new_agg_file->Open();
+        if (s != KStatus::SUCCESS) {
+          LOG_ERROR("Failed open agg reader! path[%s]", agg_path.c_str());
+        }
+        if (new_partition_version->agg_reader_) {
+          new_partition_version->agg_reader_->MarkDelete();
+        }
+        new_partition_version->agg_reader_ = std::move(new_agg_file);
       }
     }
 
@@ -1396,6 +1420,40 @@ const char *DecodeCountStatFile(const char *ptr, const char *limit,
   return ptr;
 }
 
+inline void EncodeAggFile(TsBufferBuilder *result,
+                                const std::map<PartitionIdentifier, uint64_t> &agg_files) {
+  uint32_t npartition = agg_files.size();
+  PutVarint32(result, npartition);
+  for (const auto &[par_id, file_num] : agg_files) {
+    EncodePartitionID(result, par_id);
+    PutVarint64(result, file_num);
+  }
+}
+
+const char *DecodeAggFile(const char *ptr, const char *limit,
+                                std::map<PartitionIdentifier, uint64_t> *agg_files) {
+  uint32_t npartition = 0;
+  ptr = DecodeVarint32(ptr, limit, &npartition);
+  if (ptr == nullptr) {
+    return nullptr;
+  }
+
+  for (uint32_t i = 0; i < npartition; ++i) {
+    PartitionIdentifier par_id;
+    ptr = DecodePartitionID(ptr, limit, &par_id);
+    if (ptr == nullptr) {
+      return nullptr;
+    }
+    uint64_t file_num;
+    ptr = DecodeVarint64(ptr, limit, &file_num);
+    if (ptr == nullptr) {
+      return nullptr;
+    }
+    agg_files->insert_or_assign(par_id, file_num);
+  }
+  return ptr;
+}
+
 TsBufferBuilder TsVersionUpdate::EncodeToString() const {
   TsBufferBuilder result;
   if (has_new_partition_) {
@@ -1435,6 +1493,11 @@ TsBufferBuilder TsVersionUpdate::EncodeToString() const {
   if (has_count_stats_) {
     result.push_back(static_cast<char>(VersionUpdateType::kNewCountStatFile));
     EncodeCountStatFile(&result, count_flush_infos_);
+  }
+
+  if (has_new_agg_) {
+    result.push_back(static_cast<char>(VersionUpdateType::kNewAggFile));
+    EncodeAggFile(&result, new_agg_files_);
   }
 
   return result;
@@ -1554,6 +1617,15 @@ KStatus TsVersionUpdate::DecodeFromSlice(TSSlice input) {
           return FAIL;
         }
         this->has_new_version_number_ = true;
+        break;
+      }
+      case VersionUpdateType::kNewAggFile: {
+        ptr = DecodeAggFile(ptr, end, &this->new_agg_files_);
+        if (ptr == nullptr) {
+          LOG_ERROR("Corrupted version update slice");
+          return FAIL;
+        }
+        this->has_new_agg_ = true;
         break;
       }
       default:
@@ -1705,6 +1777,13 @@ KStatus TsVersionManager::VersionBuilder::AddUpdate(const TsVersionUpdate &updat
     all_updates_.has_new_version_number_ = true;
     all_updates_.version_num_ = std::max(all_updates_.version_num_, update.version_num_);
   }
+
+  if (update.has_new_agg_) {
+    all_updates_.has_new_agg_ = true;
+    for (auto [par_id, agg] : update.new_agg_files_) {
+      all_updates_.new_agg_files_[par_id] = agg;
+    }
+  }
   return SUCCESS;
 }
 
@@ -1732,6 +1811,9 @@ void TsVersionManager::VersionBuilder::Finalize(TsVersionUpdate *update) {
   update->count_flush_infos_ = std::move(all_updates_.count_flush_infos_);
   update->has_new_version_number_ = all_updates_.has_new_version_number_;
   update->version_num_ = all_updates_.version_num_;
+
+  update->has_new_agg_ = all_updates_.has_new_agg_;
+  update->new_agg_files_ = all_updates_.new_agg_files_;
 
   update->need_record_ = true;
 }

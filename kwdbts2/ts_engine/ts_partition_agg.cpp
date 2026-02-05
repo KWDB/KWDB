@@ -16,7 +16,7 @@ constexpr char TS_PARTITION_AGG_FILE_NAME[] = "partition_agg";
 
 
 TsPartitionAggBuilder::TsPartitionAggBuilder(TsIOEnv* io_env, const fs::path& path, uint32_t max_entity_id):
-    io_env_(io_env), file_path_(path / TS_PARTITION_AGG_FILE_NAME), max_entity_id_(max_entity_id) {
+    io_env_(io_env), file_path_(path), max_entity_id_(max_entity_id) {
   entity_index_buffer_.assign(max_entity_id_, TsEntityPartitionAggIndex{});
 }
 
@@ -66,8 +66,14 @@ KStatus TsPartitionAggBuilder::GetEntityAggIndex(TsEntityPartitionAggIndex& agg_
   return SUCCESS;
 }
 
-TsPartitionAggReader::TsPartitionAggReader(TsIOEnv* io_env, const fs::path& path) : io_env_(io_env),
-  file_path_(path / TS_PARTITION_AGG_FILE_NAME) {}
+TsPartitionAggReader::TsPartitionAggReader(TsIOEnv* io_env, fs::path  path) : io_env_(io_env),
+  file_path_(std::move(path)) {}
+
+TsPartitionAggReader::~TsPartitionAggReader() {
+  if (delete_after_free_) {
+    r_file_->MarkDelete();
+  }
+}
 
 KStatus TsPartitionAggReader::Open() {
   auto s = io_env_->NewRandomReadFile(file_path_, &r_file_);

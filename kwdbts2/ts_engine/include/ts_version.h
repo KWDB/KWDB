@@ -195,12 +195,6 @@ class TsPartitionVersion {
       : partition_path_(std::move(partition_path)),
         partition_info_(partition_info),
         exclusive_status_(std::make_shared<std::atomic<PartitionStatus>>(PartitionStatus::None)) {
-    TsIOEnv* env = &TsIOEnv::GetInstance();
-    agg_reader_ = std::make_shared<TsPartitionAggReader>(env, partition_path_);
-    auto s = agg_reader_->Open();
-    if (s != KStatus::SUCCESS) {
-      LOG_ERROR("Failed open agg reader for partition[%s]", partition_path_.c_str());
-    }
   }
 
  public:
@@ -352,6 +346,7 @@ enum class VersionUpdateType : uint8_t {
 
   kNewCountStatFile = 9,
   kNewVersionNumber = 10,
+  kNewAggFile = 11,
 };
 
 enum class LastSegmentMetaType : uint8_t {
@@ -400,19 +395,22 @@ class TsVersionUpdate {
   uint64_t version_num_ = 0;
   std::map<PartitionIdentifier, CountStatMetaInfo> count_flush_infos_;
 
+  bool has_new_agg_ = false;
+  std::map<PartitionIdentifier, uint64_t> new_agg_files_;
+
   bool NeedRecordFileNumber() const {
-    return has_new_lastseg_ || has_entity_segment_ || has_delete_lastseg_ || has_count_stats_;
+    return has_new_lastseg_ || has_entity_segment_ || has_delete_lastseg_ || has_count_stats_ || has_new_agg_;
   }
   bool NeedRecord() const { return need_record_; }
   bool MemSegmentsOnly() const {
     return (has_new_mem_segments_ || has_del_mem_segments_) && !has_new_partition_ && !has_new_lastseg_ &&
-           !has_delete_lastseg_ && !has_entity_segment_ && !has_next_file_number_ && !has_count_stats_;
+           !has_delete_lastseg_ && !has_entity_segment_ && !has_next_file_number_ && !has_count_stats_ && !has_new_agg_;
   }
 
  public:
   bool Empty() const {
     return !(has_new_partition_ || has_new_lastseg_ || has_delete_lastseg_ || has_new_mem_segments_ ||
-             has_del_mem_segments_ || has_entity_segment_ || has_max_lsn_ || has_count_stats_);
+             has_del_mem_segments_ || has_entity_segment_ || has_max_lsn_ || has_count_stats_ || has_new_agg_);
   }
 
   void PartitionDirCreated(const PartitionIdentifier &partition_id) {
@@ -483,6 +481,13 @@ class TsVersionUpdate {
 
   void SetVersionNum(uint64_t version_num) {
     version_num_ = version_num;
+  }
+
+  void AddAggFile(const PartitionIdentifier& partition_id, uint64_t agg_file_num) {
+    updated_partitions_.insert(partition_id);
+    new_agg_files_[partition_id] = agg_file_num;
+    has_new_agg_ = true;
+    need_record_ = true;
   }
 
   TsBufferBuilder EncodeToString() const;

@@ -27,7 +27,7 @@ class TestPartitionAgg : public ::testing::Test {
   EngineOptions opts_;
   TSEngineImpl *engine_;
   kwdbContext_t g_ctx_;
-  kwdbContext_p ctx_;  
+  kwdbContext_p ctx_;
 
   virtual void SetUp() override {
     ctx_ = &g_ctx_;
@@ -147,7 +147,6 @@ TEST_F(TestPartitionAgg, basicPartitionAgg) {
     for (auto partition : partitions) {
       auto agg_info = vgroup->agg_map_[partition->GetPartitionIdentifier()];
       for (k_uint32 entity_id = 1; entity_id <= vgroup->GetMaxEntityID(); entity_id++) {
-        agg_info->GetPartitionAggHeader()
       }
     }
     for (k_uint32 entity_id = 1; entity_id <= vgroup->GetMaxEntityID(); entity_id++) {

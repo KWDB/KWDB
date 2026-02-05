@@ -210,6 +210,24 @@ class TsVersionTest : public testing::Test {
       ASSERT_EQ(mgr->ApplyUpdate(&update), SUCCESS);
     }
   }
+  void MimicCalcPartitionAgg(TsVersionManager* mgr, const PartitionIdentifier par_id, bool force_kill = false) {
+    TsVersionUpdate update;
+    auto root = vgroup_root / PartitionDirName(par_id);
+    uint64_t filenumber = mgr->NewFileNumber();
+    auto agg_file_name = root / AggFileName(filenumber);
+    TsPartitionAggBuilder builder(env, agg_file_name, 1);
+    ASSERT_EQ(builder.Open(), SUCCESS);
+    TsEntityPartitionAggIndex stats{1, 1,  1, 0, 0, 0, 0, 0, ""};
+    TsBufferBuilder agg_buffer;
+    agg_buffer.resize(2 * sizeof(uint32_t));
+    ASSERT_EQ(builder.AppendEntityAgg({agg_buffer.data(), agg_buffer.size()}, stats), SUCCESS);
+    ASSERT_EQ(builder.Finalize(), SUCCESS);
+    ASSERT_EQ(builder.Close(), SUCCESS);
+    update.AddAggFile(par_id, filenumber);
+    if (!force_kill) {
+      ASSERT_EQ(mgr->ApplyUpdate(&update), SUCCESS);
+    }
+  }
 };
 
 TEST_F(TsVersionTest, EncodeDecodeTest) {
@@ -335,6 +353,18 @@ TEST_F(TsVersionTest, EncodeDecodeTest) {
     update.AddCountFile({1, 2, 3}, {7, {}});
     update.SetNextFileNumber(8);
     update.SetCountStatsType(CountStatsStatus::Recalculate);
+    auto encoded = update.EncodeToString();
+    EXPECT_NE(encoded.size(), 0);
+    TsVersionUpdate decoded;
+    TSSlice slice = {encoded.data(), encoded.size()};
+    ASSERT_EQ(decoded.DecodeFromSlice(slice), SUCCESS);
+    auto decoded_str = decoded.EncodeToString();
+    EXPECT_EQ(decoded_str.AsStringView(), encoded.AsStringView());
+  }
+  {
+    TsVersionUpdate update;
+    update.AddAggFile({1, 2, 3}, {8});
+    update.SetNextFileNumber(8);
     auto encoded = update.EncodeToString();
     EXPECT_NE(encoded.size(), 0);
     TsVersionUpdate decoded;
@@ -747,8 +777,8 @@ TEST_F(TsVersionTest, RecoverAndDelete_UnfinishedCountFlushing) {
     EXPECT_FALSE(fs::exists(partition_dir / CountStatFileName(i * 2 - 1)));
   }
   EXPECT_EQ(mgr->CurrentVersionNum(), 9);
+  EXPECT_TRUE(fs::exists(partition_dir / CountStatFileName(19)));
   EXPECT_FALSE(fs::exists(partition_dir / LastSegmentFileName(20)));
-  EXPECT_FALSE(fs::exists(partition_dir / CountStatFileName(21)));
 }
 
 TEST_F(TsVersionTest, ForceRecover) {
@@ -799,4 +829,31 @@ TEST_F(TsVersionTest, ForceRecover) {
   mgr.reset();
   mgr = std::make_unique<TsVersionManager>(env, vgroup_root);
   ASSERT_EQ(mgr->Recover(false), SUCCESS);
+}
+
+TEST_F(TsVersionTest, RecoverAndDelete_UnfinishedCalcPartitionAgg) {
+  PartitionIdentifier par_id = {1, 2, 3};
+  auto partition_dir = vgroup_root / PartitionDirName(par_id);
+  env->NewDirectory(partition_dir);
+  auto mgr = std::make_unique<TsVersionManager>(env, vgroup_root);
+  auto s = mgr->Recover(false);
+  EXPECT_EQ(s, SUCCESS);
+  TsVersionUpdate update;
+  update.PartitionDirCreated(par_id);
+  mgr->ApplyUpdate(&update);
+  for (int i = 0; i < 10; i++) {
+    MimicCalcPartitionAgg(mgr.get(), par_id);
+  }
+  MimicCalcPartitionAgg(mgr.get(), par_id, true);
+
+  mgr.reset();
+  mgr = std::make_unique<TsVersionManager>(env, vgroup_root);
+  s = mgr->Recover(false);
+  EXPECT_EQ(s, SUCCESS);
+
+  for (int i = 0; i < 9; ++i) {
+    EXPECT_FALSE(fs::exists(partition_dir / AggFileName(i)));
+  }
+  EXPECT_TRUE(fs::exists(partition_dir / AggFileName(9)));
+  EXPECT_FALSE(fs::exists(partition_dir / AggFileName(10)));
 }

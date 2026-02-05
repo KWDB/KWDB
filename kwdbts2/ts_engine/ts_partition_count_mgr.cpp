@@ -11,6 +11,7 @@
 
 #include <assert.h>
 #include <string>
+#include <utility>
 #include "data_type.h"
 #include "ts_partition_count_mgr.h"
 #include "settings.h"
@@ -19,11 +20,11 @@ namespace kwdbts {
 #define ENTITY_COUNT_LATCH_BUCKET_NUM 10
 
 TsPartitionEntityCountManager::TsPartitionEntityCountManager(std::string path) :
-  path_(path), mmap_alloc_(path_) {}
+  path_(std::move(path)), mmap_alloc_(path_) {}
 
 TsPartitionEntityCountManager::~TsPartitionEntityCountManager() {
   mmap_alloc_.Close();
-  if (delete_after_free) {
+  if (delete_after_free_) {
     unlink(path_.c_str());
   }
 }

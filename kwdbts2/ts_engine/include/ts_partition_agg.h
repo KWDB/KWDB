@@ -41,13 +41,13 @@ struct TsEntityPartitionAggIndex {
 static_assert(sizeof(TsEntityPartitionAggIndex) == 80, "wrong size of TsEntityAggStats, please check TsEntityAggStats");
 
 struct TsPartitionAggFooter {
-  uint64_t entity_agg_stats_idx_offset;
-  uint64_t max_entity_id;
-  // uint8_t padding[16] = {0};
-  uint64_t file_version;
-  uint64_t magic_number;
+  uint64_t entity_agg_stats_idx_offset = 0;
+  uint64_t max_entity_id = 0;
+  uint64_t file_version = 0;
+  uint64_t magic_number = 0;
+  char reserved[16] = {0};
 };
-static_assert(sizeof(TsPartitionAggFooter) == 32, "wrong size of TsPartitionAggFooter, please check TsPartitionAggFooter");
+static_assert(sizeof(TsPartitionAggFooter) == 48, "wrong size of TsPartitionAggFooter, please check TsPartitionAggFooter");
 
 
 class TsPartitionAggBuilder {
@@ -71,16 +71,17 @@ class TsPartitionAggBuilder {
 
 class TsPartitionAggReader {
  public:
-  explicit TsPartitionAggReader(TsIOEnv* io_env, const fs::path& path);
-  ~TsPartitionAggReader() = default;
+  explicit TsPartitionAggReader(TsIOEnv* io_env, fs::path path);
+  ~TsPartitionAggReader();
   KStatus Open();
   KStatus Reload();
   KStatus GetPartitionAggIndex(TsEntityPartitionAggIndex& stats);
   KStatus GetPartitionAgg(TSEntityID entity_id, TsSliceGuard& agg);
-  bool IsReady() const { return ready_; }
+  void MarkDelete() { delete_after_free_ = true; }
 
  private:
   bool ready_{false};
+  bool delete_after_free_{false};
   TsIOEnv* io_env_{nullptr};
   fs::path file_path_;
   std::unique_ptr<TsRandomReadFile> r_file_{nullptr};

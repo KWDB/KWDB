@@ -2666,13 +2666,6 @@ KStatus TsVGroup::ResetCountStat() {
 }
 
 KStatus TsVGroup::CalcPartitionAgg() {
-  if (!TrySetAggBusy()) {
-    return KStatus::SUCCESS;
-  }
-  Defer defer_status{[&]() {
-    ResetAggStatus();
-  }};
-
   // TsVGroup is managed by a `unique_ptr` in the engine.
   // An `std::shared_ptr` is required here to pass to the iterator interface,
   // but `shared_from_this()`/`weak_from_this()` cannot be used.
@@ -2709,6 +2702,7 @@ KStatus TsVGroup::CalcPartitionAgg() {
   std::shared_ptr<const TsVGroupVersion> cur_version = version_manager_->Current();
   auto all_partitions = cur_version->GetAllPartitions();
   TsIOEnv* env = &TsIOEnv::GetInstance();
+  TsVersionUpdate update;
   for (auto& [par_id, par_version] : all_partitions) {
     LOG_INFO("Calc partition[%s] agg begin", par_version->GetPartitionPath().c_str());
     auto partition_agg_builder =
@@ -2751,7 +2745,7 @@ KStatus TsVGroup::CalcPartitionAgg() {
       for (auto& entity : table_entity_id_list) {
         TsEntityPartitionAggIndex agg_index;
         agg_index.entity_id = entity;
-        if (par_version->GetAggReader()->IsReady()) {
+        if (par_version->GetAggReader()) {
           s = par_version->GetAggReader()->GetPartitionAggIndex(agg_index);
           if (s != KStatus::SUCCESS) {
             LOG_ERROR("Failed get entity[%d] agg stats.", entity);
@@ -2817,10 +2811,13 @@ KStatus TsVGroup::CalcPartitionAgg() {
       assert(is_finished == true);
     }
     partition_agg_builder->Finalize();
+    uint64_t file_number = version_manager_->NewFileNumber();
+    update.AddAggFile(par_id, file_number);
     par_version->reloadAggReader();
     LOG_INFO("Calc partition[%s] agg success", par_version->GetPartitionPath().c_str());
     agg_map_.insert_or_assign(par_id, partition_agg_builder);
   }
+  version_manager_->ApplyUpdate(&update);
   return KStatus::SUCCESS;
 }
 
@@ -2830,14 +2827,14 @@ void TsVGroup::calcAggRoutine(void* args) {
     if (KWDBDynamicThreadPool::GetThreadPool().IsCancel() || !enable_cal_agg_thread_) {
       break;
     }
-    KStatus s = CalcPartitionAgg();
-    if (s != KStatus::SUCCESS) {
-      LOG_ERROR("CalPartitionAgg failed")
+    if (CLUSTER_SETTING_PARTITION_AGG) {
+      KStatus s = CalcPartitionAgg();
+      if (s != KStatus::SUCCESS) {
+        LOG_ERROR("CalPartitionAgg failed")
+      }
     }
     std::unique_lock<std::mutex> lock(calc_agg_mutex_);
-    agg_cv_.wait_for(lock, EngineOptions::count_stats_recalc_cycle == 0 ? std::chrono::minutes(5) : std::chrono::seconds
-      (EngineOptions::count_stats_recalc_cycle),
-      [this]() { return !enable_cal_agg_thread_; });
+    agg_cv_.wait_for(lock, std::chrono::minutes(5), [this]() { return !enable_cal_agg_thread_; });
   }
 }
 

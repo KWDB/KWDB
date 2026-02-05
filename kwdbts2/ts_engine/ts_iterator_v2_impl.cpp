@@ -1344,7 +1344,7 @@ KStatus TsAggIteratorV2Impl::PartitionAggregate(TsScanStats* ts_scan_stats) {
     auto path = partition_version->GetPartitionPath();
     TsIOEnv* env = &TsIOEnv::GetInstance();
     auto agg_reader = partition_version->GetAggReader();
-    if (!agg_reader || !agg_reader->IsReady()) {
+    if (!agg_reader) {
       LOG_ERROR("partition agg not ready, path: %s", path.c_str());
       return KStatus::FAIL;
     }

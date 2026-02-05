@@ -100,7 +100,6 @@ class TsVGroup {
   KThreadID calc_agg_thread_id_{0};
   std::mutex calc_agg_mutex_;
   std::condition_variable agg_cv_;
-  std::atomic<bool> calc_agg_status_{false};
 
   std::atomic<uint64_t> max_osn_{LOG_BLOCK_HEADER_SIZE + BLOCK_SIZE};
 
@@ -539,14 +538,6 @@ class TsVGroup {
 
   KStatus ConvertBlockSpanToResultSet(const std::vector<k_uint32>& kw_scan_cols, const TsBlockSpan& ts_blk_span,
                                       const vector<AttributeInfo>& attrs, ResultSet* res);
-  bool TrySetAggBusy() {
-    bool expected = false;
-    return calc_agg_status_.compare_exchange_strong(expected, true);
-  }
-
-  void ResetAggStatus() {
-    calc_agg_status_.store(false);
-  }
 };
 
 }  // namespace kwdbts
