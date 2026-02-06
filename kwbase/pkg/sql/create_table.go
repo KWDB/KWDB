@@ -68,7 +68,6 @@ import (
 // Max length of fixed and indefinite length type.
 const (
 	MaxFixedLen                   = 1024
-	MaxVariableLen                = 64 * 1024
 	MaxNCharLen                   = 254
 	DefaultTypeWithLength         = 0
 	DefaultFixedLen               = 1
@@ -3252,7 +3251,7 @@ func checkTagType(tagName tree.Name, tagType *types.T) (*types.T, error) {
 				tagType = types.MakeVarChar(DefaultVariableLEN, tagType.TypeEngine())
 			}
 		}
-		if tagType.Width() > MaxVariableLen {
+		if tagType.Width() > sqlbase.TSMaxVariableLen {
 			return nil, pgerror.Newf(
 				pgcode.InvalidColumnDefinition,
 				"tag %s: %d exceeded the maximum width limit of the type: %s",

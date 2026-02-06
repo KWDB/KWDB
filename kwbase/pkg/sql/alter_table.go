@@ -2227,8 +2227,8 @@ func validateNumType(colName string, oldType, newType *types.T, validTypes []oid
 	for _, validType := range validTypes {
 		if newType.Oid() == validType {
 			if newType.Oid() == oid.T_varchar {
-				if newType.Width() > MaxVariableLen {
-					return newTypeExceedError(colName, newType, MaxVariableLen)
+				if newType.Width() > sqlbase.TSMaxVariableLen {
+					return newTypeExceedError(colName, newType, sqlbase.TSMaxVariableLen)
 				}
 				switch oldType.Oid() {
 				case oid.T_int2:
@@ -2291,8 +2291,8 @@ func validateTextType(colName string, oldType, newType *types.T, colType sqlbase
 		}
 
 	case oid.T_varchar:
-		if newType.Width() > MaxVariableLen {
-			return newTypeExceedError(colName, newType, MaxVariableLen)
+		if newType.Width() > sqlbase.TSMaxVariableLen {
+			return newTypeExceedError(colName, newType, sqlbase.TSMaxVariableLen)
 		}
 		if oldType.Oid() == oid.T_bpchar || oldType.Oid() == oid.T_varchar {
 			if newType.Width() < oldType.Width() {
@@ -2321,8 +2321,8 @@ func validateTextType(colName string, oldType, newType *types.T, colType sqlbase
 		if colType == sqlbase.ColumnType_TYPE_TAG {
 			return pgerror.Newf(pgcode.InvalidColumnDefinition, "tag %s does not support type %s", colName, newType.SQLString())
 		}
-		if newType.Width() > MaxVariableLen {
-			return newTypeExceedError(colName, newType, MaxVariableLen)
+		if newType.Width() > sqlbase.TSMaxVariableLen {
+			return newTypeExceedError(colName, newType, sqlbase.TSMaxVariableLen)
 		}
 		if oldType.Oid() == oid.T_bpchar || oldType.Oid() == oid.T_varchar {
 			if float64(newType.Width()) < float64(oldType.Width())/4 {
