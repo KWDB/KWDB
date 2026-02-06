@@ -51,7 +51,7 @@ NULL       /1       {5}       5
 query T
 SELECT url FROM [EXPLAIN ANALYZE SELECT count(*) FROM kv]
 ----
-eJzUll1ro0wUx--fTzGcq_RhsmbU9GWuGrpZCKSmGy37UqRYPWSl1nFnxtJS8t0XtbCxbEZLYBfv4sz8c86P3xz0BdTPDDj48-X8IiClzMin9eqS3My_Xi1nC4_MvNny2_c5GX1c-IH_eXlEXo_Gosz16P-j5vz9YwgUcpGgFz2gAn4DDCjYQMEBCi5QmEJIoZAiRqWErI681IFF8gR8QiHNi1JXyyGFWEgE_gI61RkChyC6y3CNUYLSmgCFBHWUZnWZ-8fzQqYPkXwGCn4R5YqTsVUVXpWaE0_k2PwuSh08F6g4SXPt7lm7i3T8AxUR9R4nFYQui-zNksIMY50-pvqZk8mHSdWT0lGWEZ0-ICcTBeGWQhN5ZVI62iBwtqX9uWebjcRNpIW0pm3si9W1F9yuV1_80dEfWA5DwSeMS52KvBvH3ovzm6LMhUxQYtJCCLdmYPZGtH99ebvwgtE5-6fAznv8eWIsCouxNsnfadRtNcr6DxjrHjDLHlvOQEasg3znxh0PYcTs_iLtHiKdseUORGQH-Y7IkyGIdPqLdHqIdMf1K2IIIjvId0SeDkGk21-k20PkdDwQjR3cOxrPhqCx41W-RlWIXGEbBSjs_ftJ9YGDyQabryElShnjlRRxXat5bNjrhQSVbnZZ87DIm62qy90wM4btVpi9DdvGsGOu7Jjbts1p15iemsPTQ6CPjeETc-WTQyqfGsNn5spnh1RmHXes65K975aF2_9-BQAA__8pTK8e
+eJzUlltr2zAYhu_3K8R3lQ5lPqYHXTV0GQRSp4tddiimuPZHZupYniSHhpD_PmwXloRFNuRi-K6W9PbVw_MRtAX5OwMG_mQ2uQtIKTLyZTG_J0-T7w-z8dQjY288-_FzQgafp37gf51dkPejMS9zNfh40Zx_XYdAIecJetEKJbAnsICCDRQcoOAChRGEFArBY5SSi-rItg5MkzdgJoU0L0pVLYcUYi4Q2BZUqjIEBkH0kuECowSFYQKFBFWUZnXN6_q2EOkqEhug4BdRLhkZGlXxvFSMeDzH5u-iVMGmQMlImiv3xNpLpOJfKAmv9xipIFRZZEdLEjOMVbpO1YYR85NZ3UmqKMuISlfIiCkh3FFoIu9MUkVLBGbtaHfu8XIpcBkpLozRIfbd_NELnhfzb_7g4h8s56HgG8alSnnejmOfxPlLUeZcJCgwOUAId3pg60i0_3j_PPWCwa31X4GdA2Cr-9xa7XNr2EPD6cnktpDvibzsw-Ta3UXaHUQ6Q8PticgW8j2RV30Q6XQX6XQQ6Q7rX94-iGwh3xN53QeRbneRbgeRo2FPNLZw72m86YPGlhfOAmXBc4mHKEDh5L83q3cDJktsHhmSlyLGB8Hjuqv5bNjrhQSlanat5mOaN1vVLffDljZsH4St47Ctb26pdrRpVx92z7n3SBu-1DdfntN8pQ1f65uvz2m-0bsyW8ZEP2TH3eHuw58AAAD__6IbYx4=
 
 query T
 SELECT url FROM [EXPLAIN ANALYZE SELECT * FROM kv JOIN kw ON kv.k = kw.k]
@@ -92,19 +92,18 @@ EXPLAIN (VEC, VERBOSE) SELECT count(*) FROM kv
 │
 ├ Node 1
 │ └ *colexec.Materializer
-│   └ *colexec.noopOperator
-│     └ *colexec.orderedAggregator
-│       └ *colexec.oneShotOp
-│         └ *colexec.distinctChainOps
-│           └ *colexec.ParallelUnorderedSynchronizer
-│             ├ *colexec.countOp
-│             │ └ *colexec.simpleProjectOp
-│             │   └ *colexec.CancelChecker
-│             │     └ *colexec.colBatchScan
-│             ├ *colrpc.Inbox
-│             ├ *colrpc.Inbox
-│             ├ *colrpc.Inbox
-│             └ *colrpc.Inbox
+│   └ *colexec.orderedAggregator
+│     └ *colexec.oneShotOp
+│       └ *colexec.distinctChainOps
+│         └ *colexec.ParallelUnorderedSynchronizer
+│           ├ *colexec.countOp
+│           │ └ *colexec.simpleProjectOp
+│           │   └ *colexec.CancelChecker
+│           │     └ *colexec.colBatchScan
+│           ├ *colrpc.Inbox
+│           ├ *colrpc.Inbox
+│           ├ *colrpc.Inbox
+│           └ *colrpc.Inbox
 ├ Node 2
 │ └ *colrpc.Outbox
 │   └ *colexec.deselectorOp
@@ -140,42 +139,41 @@ EXPLAIN (VEC, VERBOSE) SELECT count(*) FROM kv NATURAL INNER HASH JOIN kv kv2
 │
 ├ Node 1
 │ └ *colexec.Materializer
-│   └ *colexec.noopOperator
-│     └ *colexec.orderedAggregator
-│       └ *colexec.oneShotOp
-│         └ *colexec.distinctChainOps
-│           └ *colexec.ParallelUnorderedSynchronizer
-│             ├ *colexec.countOp
-│             │ └ *colexec.simpleProjectOp
-│             │   └ *colexec.diskSpillerBase
-│             │     ├ *colexec.hashJoiner
-│             │     │ ├ *colexec.ParallelUnorderedSynchronizer
-│             │     │ │ ├ *colexec.routerOutputOp
-│             │     │ │ │ └ *colexec.HashRouter
-│             │     │ │ │   └ *colexec.CancelChecker
-│             │     │ │ │     └ *colexec.colBatchScan
-│             │     │ │ ├ *colrpc.Inbox
-│             │     │ │ ├ *colrpc.Inbox
-│             │     │ │ ├ *colrpc.Inbox
-│             │     │ │ └ *colrpc.Inbox
-│             │     │ └ *colexec.ParallelUnorderedSynchronizer
-│             │     │   ├ *colexec.routerOutputOp
-│             │     │   │ └ *colexec.HashRouter
-│             │     │   │   └ *colexec.CancelChecker
-│             │     │   │     └ *colexec.colBatchScan
-│             │     │   ├ *colrpc.Inbox
-│             │     │   ├ *colrpc.Inbox
-│             │     │   ├ *colrpc.Inbox
-│             │     │   └ *colrpc.Inbox
-│             │     ├ *colexec.ParallelUnorderedSynchronizer
-│             │     ├ *colexec.ParallelUnorderedSynchronizer
-│             │     └ *colexec.externalHashJoiner
-│             │       ├ *colexec.bufferExportingOperator
-│             │       └ *colexec.bufferExportingOperator
-│             ├ *colrpc.Inbox
-│             ├ *colrpc.Inbox
-│             ├ *colrpc.Inbox
-│             └ *colrpc.Inbox
+│   └ *colexec.orderedAggregator
+│     └ *colexec.oneShotOp
+│       └ *colexec.distinctChainOps
+│         └ *colexec.ParallelUnorderedSynchronizer
+│           ├ *colexec.countOp
+│           │ └ *colexec.simpleProjectOp
+│           │   └ *colexec.diskSpillerBase
+│           │     ├ *colexec.hashJoiner
+│           │     │ ├ *colexec.ParallelUnorderedSynchronizer
+│           │     │ │ ├ *colexec.routerOutputOp
+│           │     │ │ │ └ *colexec.HashRouter
+│           │     │ │ │   └ *colexec.CancelChecker
+│           │     │ │ │     └ *colexec.colBatchScan
+│           │     │ │ ├ *colrpc.Inbox
+│           │     │ │ ├ *colrpc.Inbox
+│           │     │ │ ├ *colrpc.Inbox
+│           │     │ │ └ *colrpc.Inbox
+│           │     │ └ *colexec.ParallelUnorderedSynchronizer
+│           │     │   ├ *colexec.routerOutputOp
+│           │     │   │ └ *colexec.HashRouter
+│           │     │   │   └ *colexec.CancelChecker
+│           │     │   │     └ *colexec.colBatchScan
+│           │     │   ├ *colrpc.Inbox
+│           │     │   ├ *colrpc.Inbox
+│           │     │   ├ *colrpc.Inbox
+│           │     │   └ *colrpc.Inbox
+│           │     ├ *colexec.ParallelUnorderedSynchronizer
+│           │     ├ *colexec.ParallelUnorderedSynchronizer
+│           │     └ *colexec.externalHashJoiner
+│           │       ├ *colexec.bufferExportingOperator
+│           │       └ *colexec.bufferExportingOperator
+│           ├ *colrpc.Inbox
+│           ├ *colrpc.Inbox
+│           ├ *colrpc.Inbox
+│           └ *colrpc.Inbox
 ├ Node 2
 │ └ *colrpc.Outbox
 │   └ *colexec.deselectorOp

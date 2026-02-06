@@ -7008,7 +7008,6 @@ func (dsp *DistSQLPlanner) FinalizePlan(planCtx *PlanningCtx, plan *PhysicalPlan
 	thisNodeID := dsp.nodeDesc.NodeID
 
 	plan.SetTSEngineReturnEncode()
-	// add noop if it is a distributed plan
 	isDist := false
 	for _, p := range plan.Processors {
 		if p.Node != thisNodeID {
@@ -7016,180 +7015,38 @@ func (dsp *DistSQLPlanner) FinalizePlan(planCtx *PlanningCtx, plan *PhysicalPlan
 			break
 		}
 	}
-	if isDist {
-		if plan.ChildIsExecInTSEngine() {
-			resResultRouters := make([]physicalplan.ProcessorIdx, 0)
-			oldResultRouters := make([]physicalplan.ProcessorIdx, len(plan.ResultRouters))
-			copy(oldResultRouters, plan.ResultRouters)
 
-			// dist plan can all exec in AE, add ts noop to summary data
-			// add ME noop distribute Plan
+	if plan.ChildIsExecInTSEngine() && isDist {
+		// If all the processors can be executed in ts engine and need to be summarized,
+		// add ts-noop processor.
+		if len(plan.ResultRouters) != 1 || plan.Processors[plan.ResultRouters[0]].Node != thisNodeID {
 			post := execinfrapb.PostProcessSpec{OutputTypes: plan.ResultTypes}
 			plan.AddTSSingleGroupStage(thisNodeID, execinfrapb.ProcessorCoreUnion{Noop: &execinfrapb.NoopCoreSpec{
 				InputNum:   uint32(plan.GateNoopInput),
 				TsOperator: plan.TsOperator,
 			}}, post, plan.ResultTypes, true)
-			resResultRouters = append(resResultRouters, plan.ResultRouters...)
-
-			lastProcessors := make([]physicalplan.ProcessorIdx, 0)
-			if len(oldResultRouters) == 1 && plan.Processors[oldResultRouters[0]].Node == thisNodeID {
-				// we specially handle the secondary aggregation using statistical information.
-				// In this case, there is only one ResultRouters, but other nodes also need to add noop.
-				routerIdx := oldResultRouters[0]
-				for _, s := range plan.Streams {
-					if s.DestProcessor == routerIdx {
-						lastProcessors = append(lastProcessors, s.SourceProcessor)
-					}
-				}
-			} else {
-				lastProcessors = oldResultRouters
-			}
-			for _, v := range lastProcessors {
-				if plan.Processors[v].Node != thisNodeID {
-					proc := physicalplan.Processor{
-						Node: plan.Processors[v].Node,
-						Spec: execinfrapb.ProcessorSpec{
-							Input: []execinfrapb.InputSyncSpec{{
-								// The other fields will be filled in by mergeResultStreams.
-								ColumnTypes: plan.ResultTypes,
-							}},
-							Core: execinfrapb.ProcessorCoreUnion{Noop: &execinfrapb.NoopCoreSpec{}},
-							Post: execinfrapb.PostProcessSpec{},
-							Output: []execinfrapb.OutputRouterSpec{{
-								Type: execinfrapb.OutputRouterSpec_PASS_THROUGH,
-							}},
-							StageID: plan.NewStageID(),
-						},
-					}
-					pIdx := plan.AddProcessor(proc)
-					resResultRouters = append(resResultRouters, pIdx)
-					plan.Streams = append(plan.Streams, physicalplan.Stream{
-						SourceProcessor:  v,
-						DestProcessor:    pIdx,
-						SourceRouterSlot: 1,
-						DestInput:        0,
-					})
-					for k := range plan.Processors[v].Spec.Output {
-						plan.Processors[v].Spec.Output[k].Type = execinfrapb.OutputRouterSpec_BY_GATHER
-					}
-				}
-			}
-			// add gateway node noop.
-			proc := physicalplan.Processor{
-				Node: thisNodeID,
-				Spec: execinfrapb.ProcessorSpec{
-					Input: []execinfrapb.InputSyncSpec{{
-						// The other fields will be filled in by mergeResultStreams.
-						ColumnTypes: plan.ResultTypes,
-					}},
-					Core: execinfrapb.ProcessorCoreUnion{Noop: &execinfrapb.NoopCoreSpec{}},
-					Post: execinfrapb.PostProcessSpec{},
-					Output: []execinfrapb.OutputRouterSpec{{
-						Type: execinfrapb.OutputRouterSpec_PASS_THROUGH,
-					}},
-					StageID: plan.NewStageID(),
-				},
-			}
-
-			pIdx := plan.AddProcessor(proc)
-
-			// all noon gateway node noop connect to gateway node noop
-			for _, v := range resResultRouters {
-				plan.Streams = append(plan.Streams, physicalplan.Stream{
-					SourceProcessor:  v,
-					DestProcessor:    pIdx,
-					SourceRouterSlot: 0,
-					DestInput:        0,
-				})
-			}
-
-			// We now have a single result stream.
-			plan.ResultRouters = plan.ResultRouters[:1]
-			plan.ResultRouters[0] = pIdx
-		} else {
-			plan.AddSingleGroupStage(
-				thisNodeID,
-				execinfrapb.ProcessorCoreUnion{Noop: &execinfrapb.NoopCoreSpec{
-					InputNum:   uint32(plan.GateNoopInput),
-					TsOperator: plan.TsOperator,
-				}},
-				execinfrapb.PostProcessSpec{},
-				plan.ResultTypes,
-			)
-		}
-
-		if len(plan.ResultRouters) != 1 {
-			panic(fmt.Sprintf("%d results after single group stage", len(plan.ResultRouters)))
-		}
-		plan.Processors[plan.ResultRouters[0]].LogicalSequenceID = []uint64{0}
-	} else {
-		if plan.ChildIsExecInTSEngine() {
-			plan.AddNoGroupingStage(
-				execinfrapb.ProcessorCoreUnion{Noop: &execinfrapb.NoopCoreSpec{}},
-				execinfrapb.PostProcessSpec{},
-				plan.ResultTypes,
-				execinfrapb.Ordering{},
-			)
 		}
 	}
-	gatewayNoopIdx := len(plan.Processors) - 1
-	for i, p := range plan.Processors {
-		if p.ExecInTSEngine() {
-			childIdxs := make([]physicalplan.ProcessorIdx, 0)
-			addNoopIdxs := make([]physicalplan.ProcessorIdx, 0)
-			for _, s := range plan.Streams {
-				if int(s.DestProcessor) == i {
-					childIdxs = append(childIdxs, s.SourceProcessor)
-				}
-			}
-			for _, childIdx := range childIdxs {
-				childStreams := make([]physicalplan.Stream, 0)
-				for _, ss := range plan.Streams {
-					if ss.SourceProcessor == childIdx {
-						childStreams = append(childStreams, ss)
-					}
-				}
-				if plan.Processors[childIdx].Node != p.Node && len(childStreams) == 1 {
-					addNoopIdxs = append(addNoopIdxs, childIdx)
-				}
-			}
-			for _, v := range addNoopIdxs {
-				if plan.Processors[v].Node != thisNodeID {
-					proc := physicalplan.Processor{
-						Node: plan.Processors[v].Node,
-						Spec: execinfrapb.ProcessorSpec{
-							Input: []execinfrapb.InputSyncSpec{{
-								// The other fields will be filled in by mergeResultStreams.
-								ColumnTypes: plan.ResultTypes,
-							}},
-							Core: execinfrapb.ProcessorCoreUnion{Noop: &execinfrapb.NoopCoreSpec{}},
-							Post: execinfrapb.PostProcessSpec{},
-							Output: []execinfrapb.OutputRouterSpec{{
-								Type: execinfrapb.OutputRouterSpec_PASS_THROUGH,
-							}},
-							StageID: plan.NewStageID(),
-						},
-					}
-					pIdx := plan.AddProcessor(proc)
-					plan.Streams = append(plan.Streams, physicalplan.Stream{
-						SourceProcessor:  v,
-						DestProcessor:    pIdx,
-						SourceRouterSlot: 1,
-						DestInput:        0,
-					})
-					plan.Streams = append(plan.Streams, physicalplan.Stream{
-						SourceProcessor:  pIdx,
-						DestProcessor:    physicalplan.ProcessorIdx(gatewayNoopIdx),
-						SourceRouterSlot: 0,
-						DestInput:        0,
-					})
-					for k := range plan.Processors[v].Spec.Output {
-						plan.Processors[v].Spec.Output[k].Type = execinfrapb.OutputRouterSpec_BY_GATHER
-					}
-				}
-			}
-		}
+
+	if len(plan.ResultRouters) != 1 ||
+		plan.Processors[plan.ResultRouters[0]].Node != thisNodeID || plan.ChildIsExecInTSEngine() {
+		plan.AddSingleGroupStage(
+			thisNodeID,
+			execinfrapb.ProcessorCoreUnion{Noop: &execinfrapb.NoopCoreSpec{
+				InputNum:   uint32(plan.GateNoopInput),
+				TsOperator: plan.TsOperator,
+			}},
+			execinfrapb.PostProcessSpec{},
+			plan.ResultTypes,
+		)
 	}
+
+	if len(plan.ResultRouters) != 1 {
+		panic(fmt.Sprintf("%d results after single group stage", len(plan.ResultRouters)))
+	}
+	plan.Processors[plan.ResultRouters[0]].LogicalSequenceID = []uint64{0}
+
+	plan.addNoopForErr()
 
 	// This operation is used to pass the short-circuit flag to AE.
 	// If there is a subquery, it cannot be short-circuited and
@@ -7243,6 +7100,69 @@ func (dsp *DistSQLPlanner) FinalizePlan(planCtx *PlanningCtx, plan *PhysicalPlan
 	}
 
 	planCtx.EvalContext().SessionData.CommandLimit = 0
+}
+
+// addNoopForErr adds noop of ME for ts processors of non-gateway nodes to return error messages
+func (p *PhysicalPlan) addNoopForErr() {
+	gatewayNoopIdx := len(p.Processors) - 1
+	thisNodeID := p.Processors[gatewayNoopIdx].Node
+	for i, processor := range p.Processors {
+		if processor.ExecInTSEngine() {
+			childIdxs := make([]physicalplan.ProcessorIdx, 0)
+			addNoopIdxs := make([]physicalplan.ProcessorIdx, 0)
+			for _, s := range p.Streams {
+				if int(s.DestProcessor) == i {
+					childIdxs = append(childIdxs, s.SourceProcessor)
+				}
+			}
+			for _, childIdx := range childIdxs {
+				childStreams := make([]physicalplan.Stream, 0)
+				for _, ss := range p.Streams {
+					if ss.SourceProcessor == childIdx {
+						childStreams = append(childStreams, ss)
+					}
+				}
+				if p.Processors[childIdx].Node != processor.Node && len(childStreams) == 1 {
+					addNoopIdxs = append(addNoopIdxs, childIdx)
+				}
+			}
+			for _, v := range addNoopIdxs {
+				if p.Processors[v].Node != thisNodeID {
+					proc := physicalplan.Processor{
+						Node: p.Processors[v].Node,
+						Spec: execinfrapb.ProcessorSpec{
+							Input: []execinfrapb.InputSyncSpec{{
+								// The other fields will be filled in by mergeResultStreams.
+								ColumnTypes: p.ResultTypes,
+							}},
+							Core: execinfrapb.ProcessorCoreUnion{Noop: &execinfrapb.NoopCoreSpec{}},
+							Post: execinfrapb.PostProcessSpec{},
+							Output: []execinfrapb.OutputRouterSpec{{
+								Type: execinfrapb.OutputRouterSpec_PASS_THROUGH,
+							}},
+							StageID: p.NewStageID(),
+						},
+					}
+					pIdx := p.AddProcessor(proc)
+					p.Streams = append(p.Streams, physicalplan.Stream{
+						SourceProcessor:  v,
+						DestProcessor:    pIdx,
+						SourceRouterSlot: 1,
+						DestInput:        0,
+					})
+					p.Streams = append(p.Streams, physicalplan.Stream{
+						SourceProcessor:  pIdx,
+						DestProcessor:    physicalplan.ProcessorIdx(gatewayNoopIdx),
+						SourceRouterSlot: 0,
+						DestInput:        0,
+					})
+					for k := range p.Processors[v].Spec.Output {
+						p.Processors[v].Spec.Output[k].Type = execinfrapb.OutputRouterSpec_BY_GATHER
+					}
+				}
+			}
+		}
+	}
 }
 
 // FinalizeTopicPlan adds a final "result" stage if necessary and populates the
