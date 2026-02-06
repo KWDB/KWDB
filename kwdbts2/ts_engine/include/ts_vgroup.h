@@ -121,7 +121,6 @@ class TsVGroup {
 
  public:
   std::unique_ptr<WALMgr> wal_manager_ = nullptr;
-  std::map<PartitionIdentifier, std::shared_ptr<TsPartitionAggBuilder>> agg_map_;
   TsVGroup() = delete;
 
   TsVGroup(EngineOptions* engine_options, uint32_t vgroup_id, TsEngineSchemaManager* schema_mgr,
@@ -533,6 +532,15 @@ class TsVGroup {
   void initCalcAggThread();
   // Close calculate aggregation thread.
   void closeCalcAggThread();
+
+  struct ClassifiedEntities {
+    std::vector<uint32_t> calc_entities_;
+    std::vector<uint32_t> copy_entities_;
+  };
+
+  KStatus GetCalcEntities(PartitionIdentifier par_id, shared_ptr<const TsPartitionVersion> par_version,
+    const std::map<std::shared_ptr<TsTableSchemaManager>, std::vector<uint32_t>>& table_entity_map,
+    std::map<std::shared_ptr<TsTableSchemaManager>, ClassifiedEntities>& cla_entities, bool* should_calc);
 
   KStatus PartitionCompact(std::shared_ptr<const TsPartitionVersion> partition, bool call_by_vacuum = false);
 

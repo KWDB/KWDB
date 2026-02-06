@@ -2665,6 +2665,54 @@ KStatus TsVGroup::ResetCountStat() {
   return KStatus::SUCCESS;
 }
 
+KStatus TsVGroup::GetCalcEntities(PartitionIdentifier par_id, shared_ptr<const TsPartitionVersion> par_version,
+    const std::map<std::shared_ptr<TsTableSchemaManager>, std::vector<uint32_t>>& table_entity_map,
+    std::map<std::shared_ptr<TsTableSchemaManager>, ClassifiedEntities>& cla_entities, bool* should_calc) {
+  *should_calc = false;
+  if (!par_version->GetAggReader()) {
+    for (auto& [tb_schema, table_entity_id_list] : table_entity_map) {
+      if (tb_schema->GetDbID() != std::get<0>(par_id)) {
+        continue;
+      }
+      ClassifiedEntities entities = {table_entity_id_list, {}};
+      cla_entities.insert_or_assign(tb_schema, std::move(entities));
+    }
+    *should_calc = true;
+    return SUCCESS;
+  }
+  for (auto& [tb_schema, table_entity_id_list] : table_entity_map) {
+    if (tb_schema->GetDbID() != std::get<0>(par_id)) {
+      continue;
+    }
+    DATATYPE ts_col_type = tb_schema->GetTsColDataType();
+    std::vector<uint32_t> calc_agg_entities;
+    std::vector<uint32_t> copy_agg_entities;
+    for (auto& entity : table_entity_id_list) {
+      TsEntityPartitionAggIndex agg_index;
+      agg_index.entity_id = entity;
+      auto s = par_version->GetAggReader()->GetPartitionAggIndex(agg_index);
+      if (s != KStatus::SUCCESS) {
+        LOG_ERROR("Failed get entity[%d] agg stats.", entity);
+        calc_agg_entities.emplace_back(entity);
+        continue;
+      }
+      TS_OSN max_osn;
+      par_version->GetMaxOSN(tb_schema->GetDbID(), tb_schema->GetTableId(), entity, ts_col_type, max_osn);
+      if (max_osn > agg_index.max_osn) {
+        calc_agg_entities.emplace_back(entity);
+      } else {
+        copy_agg_entities.emplace_back(entity);
+      }
+    }
+    if (!calc_agg_entities.empty()) {
+      *should_calc = true;
+    }
+    ClassifiedEntities entities = {std::move(calc_agg_entities), std::move(copy_agg_entities)};
+    cla_entities.insert_or_assign(tb_schema, std::move(entities));
+  }
+  return SUCCESS;
+}
+
 KStatus TsVGroup::CalcPartitionAgg() {
   // TsVGroup is managed by a `unique_ptr` in the engine.
   // An `std::shared_ptr` is required here to pass to the iterator interface,
@@ -2682,7 +2730,6 @@ KStatus TsVGroup::CalcPartitionAgg() {
   kwdbContext_t context;
   kwdbContext_p ctx_p = &context;
   s = InitServerKWDBContext(ctx_p);
-  uint32_t max_entity_id{0};
   for (auto& tbl_schema : tbl_schema_managers) {
     std::shared_ptr<TagTable> tag_table;
     s = tbl_schema->GetTagSchema(ctx_p, &tag_table);
@@ -2693,8 +2740,6 @@ KStatus TsVGroup::CalcPartitionAgg() {
     std::vector<uint32_t> entities;
     tag_table->GetEntityIdListByVGroupId(vgroup_id_, entities);
     if (!entities.empty()) {
-      auto max = *std::max_element(entities.begin(), entities.end());
-      max_entity_id = std::max(max_entity_id, max);
       table_entity_map.emplace(tbl_schema, entities);
     }
   }
@@ -2705,20 +2750,25 @@ KStatus TsVGroup::CalcPartitionAgg() {
   TsVersionUpdate update;
   for (auto& [par_id, par_version] : all_partitions) {
     LOG_INFO("Calc partition[%s] agg begin", par_version->GetPartitionPath().c_str());
+    std::map<std::shared_ptr<TsTableSchemaManager>, ClassifiedEntities> cla_entities;
+    bool should_calc = false;
+    GetCalcEntities(par_id, par_version, table_entity_map, cla_entities, &should_calc);
+    if (!should_calc) {
+      continue;
+    }
+    auto file_number = version_manager_->NewFileNumber();
+    fs::path agg_path = par_version->GetPartitionPath() / AggFileName(file_number);
     auto partition_agg_builder =
-          std::make_shared<TsPartitionAggBuilder>(env, par_version->GetPartitionPath(), max_entity_id);
+          std::make_shared<TsPartitionAggBuilder>(env, agg_path, GetMaxEntityID());
     s = partition_agg_builder->Open();
     if (s != SUCCESS) {
-      LOG_ERROR("Open partition[%s] agg file failed", par_version->GetPartitionPath().c_str());
+      LOG_ERROR("Open partition[%s] agg file failed", agg_path.c_str());
       return s;
     }
     Defer defer{[&]() {
       partition_agg_builder->Close();
     }};
-    for (auto& [tb_schema, table_entity_id_list] : table_entity_map) {
-      if (tb_schema->GetDbID() != std::get<0>(par_id)) {
-        continue;
-      }
+    for (auto& [tb_schema, classified_entities] : cla_entities) {
       std::shared_ptr<MMapMetricsTable> metric_schema = tb_schema->GetCurrentMetricsTable();
       const vector<AttributeInfo>& attrs = *metric_schema->getSchemaInfoExcludeDroppedPtr();
       DATATYPE ts_col_type = tb_schema->GetTsColDataType();
@@ -2741,38 +2791,14 @@ KStatus TsVGroup::CalcPartitionAgg() {
       std::unique_ptr<TsStorageIterator> ts_iter_guard;
       TsStorageIterator* raw_iter = nullptr;
 
-      std::vector<uint32_t> iter_entity_id_list;
-      for (auto& entity : table_entity_id_list) {
-        TsEntityPartitionAggIndex agg_index;
-        agg_index.entity_id = entity;
-        if (par_version->GetAggReader()) {
-          s = par_version->GetAggReader()->GetPartitionAggIndex(agg_index);
-          if (s != KStatus::SUCCESS) {
-            LOG_ERROR("Failed get entity[%d] agg stats.", entity);
-            return s;
-          }
-          if (agg_index.agg_offset != 0) {
-            TS_OSN max_osn;
-            par_version->GetMaxOSN(tb_schema->GetDbID(), tb_schema->GetTableId(), entity, ts_col_type, max_osn);
-            if (max_osn > agg_index.max_osn) {
-              iter_entity_id_list.emplace_back(entity);;
-            }
-          }
-        } else {
-          iter_entity_id_list.emplace_back(entity);
-        }
-      }
-      if (iter_entity_id_list.empty()) {
-        continue;
-      }
-      s = GetIterator(ctx_p, metric_schema->GetVersion(), iter_entity_id_list, ts_spans, block_filter,
+      s = GetIterator(ctx_p, metric_schema->GetVersion(), classified_entities.calc_entities_, ts_spans, block_filter,
                               scan_cols, scan_cols, agg_extend_cols, scan_agg_types, tb_schema,
                               metric_schema, &raw_iter, self, ts_points, false, false, true);
       if (s != KStatus::SUCCESS) {
         return s;
       }
       ts_iter_guard.reset(raw_iter);
-      for (auto& entity_id : iter_entity_id_list) {
+      for (auto& entity_id : classified_entities.calc_entities_) {
         ResultSet res_set{static_cast<k_uint32>(scan_cols.size())};
         k_uint32 count;
         bool is_finished = false;
@@ -2809,13 +2835,30 @@ KStatus TsVGroup::CalcPartitionAgg() {
       bool is_finished = false;
       s = ts_iter_guard->Next(&res, &count, &is_finished);
       assert(is_finished == true);
+      auto agg_reader = par_version->GetAggReader();
+      for (auto& entity_id : classified_entities.copy_entities_) {
+        TsEntityPartitionAggIndex agg_index;
+        agg_index.entity_id = entity_id;
+        s = agg_reader->GetPartitionAggIndex(agg_index);
+        if (s != KStatus::SUCCESS) {
+          LOG_ERROR("Failed get entity[%d] agg stats.", entity_id);
+        }
+        TsSliceGuard slice;
+        s = agg_reader->GetPartitionAgg(agg_index.entity_id, slice);
+        if (s != KStatus::SUCCESS) {
+          LOG_ERROR("GetPartitionAgg failed");
+          return s;
+        }
+        s = partition_agg_builder->AppendEntityAgg(slice.AsSlice(), agg_index);
+        if (s != KStatus::SUCCESS) {
+          LOG_ERROR("Failed calc partition[%s] entity[%d] agg", par_version->GetPartitionPath().c_str(), entity_id);
+          return s;
+        }
+      }
     }
     partition_agg_builder->Finalize();
-    uint64_t file_number = version_manager_->NewFileNumber();
     update.AddAggFile(par_id, file_number);
-    par_version->reloadAggReader();
     LOG_INFO("Calc partition[%s] agg success", par_version->GetPartitionPath().c_str());
-    agg_map_.insert_or_assign(par_id, partition_agg_builder);
   }
   version_manager_->ApplyUpdate(&update);
   return KStatus::SUCCESS;

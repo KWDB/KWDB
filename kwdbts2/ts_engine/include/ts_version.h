@@ -245,7 +245,6 @@ class TsPartitionVersion {
   std::list<std::shared_ptr<TsMemSegment>> GetAllMemSegments() const;
   shared_ptr<TsPartitionEntityCountManager> GetCountManager() const { return count_info_; }
   std::shared_ptr<TsPartitionAggReader> GetAggReader() const { return agg_reader_; }
-  void reloadAggReader() const;
 
   // TODO(zzr): optimize the following function ralate to deletions, deletion should also be atomic in future, this is
   // just a temporary solution

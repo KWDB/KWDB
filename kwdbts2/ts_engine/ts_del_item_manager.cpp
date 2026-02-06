@@ -355,9 +355,7 @@ KStatus TsDelItemManager::GetDelMaxOSN(TSEntityID entity_id, TS_OSN& max_osn) {
   }
   for (auto& item : del_items) {
     if (item->status == DEL_ITEM_OK) {
-      if (item->range.osn_span.end > max_osn) {
-        max_osn = item->range.osn_span.end;
-      }
+      max_osn = std::max(max_osn, item->range.osn_span.end);
     }
   }
   return KStatus::SUCCESS;

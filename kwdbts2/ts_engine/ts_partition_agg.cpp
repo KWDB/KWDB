@@ -105,17 +105,9 @@ KStatus TsPartitionAggReader::Open() {
   return SUCCESS;
 }
 
-KStatus TsPartitionAggReader::Reload() {
-  if (!ready_) {
-    r_file_.release();
-    return Open();
-  }
-  return SUCCESS;
-}
-
 KStatus TsPartitionAggReader::GetPartitionAggIndex(TsEntityPartitionAggIndex& agg_index) {
   if (agg_index.entity_id > footer_.max_entity_id) {
-    LOG_ERROR("entity id %lu out of range", agg_index.entity_id);
+    LOG_DEBUG("entity id %lu out of range", agg_index.entity_id);
     return FAIL;
   }
   agg_index = agg_index_buffer_[agg_index.entity_id - 1];

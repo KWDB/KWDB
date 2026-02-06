@@ -122,6 +122,7 @@ TEST_F(TestPartitionAgg, basicPartitionAgg) {
   DedupResult dedup_result{0, 0, 0, TSSlice {nullptr, 0}};
   for (size_t i = 0; i < entity_num; i++) {
     auto pay_load = GenRowPayload(*metric_schema, tag_schema ,table_id, 1, 1 + i, entity_row_num, start_ts + 1 + i, interval);
+    TsRawPayload::SetOSN(pay_load, 10);
     s = engine_->PutData(ctx_, table_id, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
     free(pay_load.data);
     ASSERT_EQ(s, KStatus::SUCCESS);
@@ -129,29 +130,63 @@ TEST_F(TestPartitionAgg, basicPartitionAgg) {
   start_ts += 10000 * 86400;
   for (size_t i = 0; i < entity_num; i++) {
     auto pay_load = GenRowPayload(*metric_schema, tag_schema ,table_id, 1, 1 + i, entity_row_num, start_ts + 1 + i, interval);
+    TsRawPayload::SetOSN(pay_load, 10);
     s = engine_->PutData(ctx_, table_id, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
     free(pay_load.data);
     ASSERT_EQ(s, KStatus::SUCCESS);
   }
   std::vector<std::shared_ptr<TsVGroup>>* ts_vgroups = engine_->GetTsVGroups();
   for (const auto& vgroup : *ts_vgroups) {
+    auto current = vgroup->CurrentVersion();
+    auto partitions = current->GetPartitions(1, {{INT64_MIN, INT64_MAX}}, DATATYPE::TIMESTAMP64);
+    ASSERT_EQ(partitions.size(), 2);
+    for (const auto& partition : partitions) {
+      auto agg_reader = partition->GetAggReader();
+      ASSERT_EQ(agg_reader, nullptr);
+    }
+  }
+  std::shared_ptr<MMapMetricsTable> schema;
+  ASSERT_EQ(table_schema_mgr->GetMetricSchema(1, &schema), KStatus::SUCCESS);
+  uint32_t agg_header_size = schema->getSchemaInfoExcludeDroppedPtr()->size() * sizeof(uint32_t);
+  for (const auto& vgroup : *ts_vgroups) {
     ASSERT_EQ(vgroup->CalcPartitionAgg(), KStatus::SUCCESS);
     TsStorageIterator* ts_iter;
     KwTsSpan ts_span = {INT64_MIN, INT64_MAX};
-    std::vector<k_uint32> scan_cols = {0};
-    std::vector<Sumfunctype> scan_agg_types = {Sumfunctype::COUNT};
+    std::vector<k_uint32> scan_cols = {1, 2, 2};
+    std::vector<Sumfunctype> scan_agg_types = {Sumfunctype::COUNT, Sumfunctype::COUNT, Sumfunctype::SUM};
 
     auto current = vgroup->CurrentVersion();
     auto partitions = current->GetPartitions(1, {{INT64_MIN, INT64_MAX}}, DATATYPE::TIMESTAMP64);
     ASSERT_EQ(partitions.size(), 2);
-    for (auto partition : partitions) {
-      auto agg_info = vgroup->agg_map_[partition->GetPartitionIdentifier()];
+    for (const auto& partition : partitions) {
+      auto agg_reader = partition->GetAggReader();
       for (k_uint32 entity_id = 1; entity_id <= vgroup->GetMaxEntityID(); entity_id++) {
+        TsEntityPartitionAggIndex agg_index;
+        agg_index.entity_id = entity_id;
+        ASSERT_EQ(agg_reader->GetPartitionAggIndex(agg_index), KStatus::SUCCESS);
+        ASSERT_EQ(agg_index.max_osn, 10);
+        // Aggregate count col
+        TsSliceGuard slice;
+        ASSERT_EQ(agg_reader->GetPartitionAgg(agg_index.entity_id, slice), KStatus::SUCCESS);
+        for (auto idx : {1, 2}) {
+          // Use pre agg to calculate count
+          uint32_t start_offset = 0;
+          start_offset = *reinterpret_cast<uint32_t*>(slice.data() + (idx - 1) * sizeof(uint32_t));
+          uint32_t end_offset = *reinterpret_cast<uint32_t*>(slice.data() + (idx) * sizeof(uint32_t));
+
+          char* col_agg = slice.data() + agg_header_size + start_offset;
+          ASSERT_EQ(*reinterpret_cast<uint32_t*>(col_agg), entity_row_num);
+        }
+
+        // Aggregate sum col
+        uint32_t start_offset = 0;
+        start_offset = *reinterpret_cast<uint32_t*>(slice.data() + 1 * sizeof(uint32_t));
+        char* col_agg = slice.data() + agg_header_size + start_offset;
+        ASSERT_NE(col_agg, nullptr);
+        ASSERT_EQ(*reinterpret_cast<bool*>(col_agg + sizeof(uint32_t)), false);
       }
     }
     for (k_uint32 entity_id = 1; entity_id <= vgroup->GetMaxEntityID(); entity_id++) {
-      std::shared_ptr<MMapMetricsTable> schema;
-      ASSERT_EQ(table_schema_mgr->GetMetricSchema(1, &schema), KStatus::SUCCESS);
       std::vector<uint32_t> entity_ids = {entity_id};
       std::vector<KwTsSpan> ts_spans = {ts_span};
       std::vector<BlockFilter> block_filter = {};
@@ -169,6 +204,8 @@ TEST_F(TestPartitionAgg, basicPartitionAgg) {
         ASSERT_EQ(is_finished, false);
         ASSERT_EQ(count, 1);
         ASSERT_EQ(KInt16(res.data[0][0]->mem), 2 * entity_row_num);
+        ASSERT_EQ(KInt16(res.data[1][0]->mem), 2 * entity_row_num);
+        ASSERT_NE(res.data[2][0]->mem, nullptr);
         ASSERT_EQ(ts_iter->Next(&res, &count, &is_finished), KStatus::SUCCESS);
         ASSERT_EQ(is_finished, true);
         ASSERT_EQ(count, 0);
@@ -178,7 +215,7 @@ TEST_F(TestPartitionAgg, basicPartitionAgg) {
   }
 }
 
-TEST_F(TestPartitionAgg, mulitEntityDeleteCount) {
+TEST_F(TestPartitionAgg, basicPartitionAggDelete) {
   TSTableID table_id = 999;
   roachpb::CreateTsTable pb_meta;
   ConstructRoachpbTable(&pb_meta, table_id);
@@ -193,7 +230,7 @@ TEST_F(TestPartitionAgg, mulitEntityDeleteCount) {
   s = engine_->GetTableSchemaMgr(ctx_, table_id, is_dropped, table_schema_mgr);
   ASSERT_EQ(s , KStatus::SUCCESS);
 
-  const std::vector<AttributeInfo>* metric_schema;
+  const std::vector<AttributeInfo>* metric_schema{nullptr};
   s = table_schema_mgr->GetMetricMeta(1, &metric_schema);
   ASSERT_EQ(s , KStatus::SUCCESS);
 
@@ -209,8 +246,7 @@ TEST_F(TestPartitionAgg, mulitEntityDeleteCount) {
   uint32_t inc_unordered_cnt = 0;
   DedupResult dedup_result{0, 0, 0, TSSlice {nullptr, 0}};
   for (size_t i = 0; i < entity_num; i++) {
-    auto pay_load = GenRowPayload(*metric_schema, tag_schema ,table_id, 1, 1 + i,
-                                  entity_row_num, start_ts + 1 + i, interval);
+    auto pay_load = GenRowPayload(*metric_schema, tag_schema ,table_id, 1, 1 + i, entity_row_num, start_ts + 1 + i, interval);
     TsRawPayload::SetOSN(pay_load, 10);
     s = engine_->PutData(ctx_, table_id, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
     free(pay_load.data);
@@ -218,66 +254,23 @@ TEST_F(TestPartitionAgg, mulitEntityDeleteCount) {
   }
   start_ts += 10000 * 86400;
   for (size_t i = 0; i < entity_num; i++) {
-    auto pay_load = GenRowPayload(*metric_schema, tag_schema ,table_id, 1, 1 + i,
-                                  entity_row_num, start_ts + 1 + i, interval);
+    auto pay_load = GenRowPayload(*metric_schema, tag_schema ,table_id, 1, 1 + i, entity_row_num, start_ts + 1 + i, interval);
     TsRawPayload::SetOSN(pay_load, 10);
     s = engine_->PutData(ctx_, table_id, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
     free(pay_load.data);
     ASSERT_EQ(s, KStatus::SUCCESS);
   }
   std::vector<std::shared_ptr<TsVGroup>>* ts_vgroups = engine_->GetTsVGroups();
-
   for (const auto& vgroup : *ts_vgroups) {
-    ASSERT_EQ(vgroup->Flush(), KStatus::SUCCESS);
-    TsStorageIterator* ts_iter;
-    KwTsSpan ts_span = {INT64_MIN, INT64_MAX};
-    DATATYPE ts_col_type = table_schema_mgr->GetTsColDataType();
-    std::vector<k_uint32> scan_cols = {0};
-    std::vector<Sumfunctype> scan_agg_types = {Sumfunctype::COUNT};
-
     auto current = vgroup->CurrentVersion();
     auto partitions = current->GetPartitions(1, {{INT64_MIN, INT64_MAX}}, DATATYPE::TIMESTAMP64);
     ASSERT_EQ(partitions.size(), 2);
-    for (auto partition : partitions) {
-      for (k_uint32 entity_id = 1; entity_id <= vgroup->GetMaxEntityID(); entity_id++) {
-        auto count_info = partition->GetCountManager();
-        TsCountStatsFileHeader count_header{};
-        s = count_info->GetCountStatsHeader(count_header);
-        ASSERT_EQ(count_header.max_osn, 10);
-        TsEntityCountStats count_stats{};
-        count_stats.entity_id = entity_id;
-        s = count_info->GetEntityCountStats(count_stats);
-        ASSERT_EQ(count_stats.is_count_valid, true);
-        ASSERT_EQ(count_stats.valid_count, entity_row_num);
-      }
-    }
-    for (k_uint32 entity_id = 1; entity_id <= vgroup->GetMaxEntityID(); entity_id++) {
-      std::shared_ptr<MMapMetricsTable> schema;
-      ASSERT_EQ(table_schema_mgr->GetMetricSchema(1, &schema), KStatus::SUCCESS);
-      std::vector<uint32_t> entity_ids = {entity_id};
-      std::vector<KwTsSpan> ts_spans = {ts_span};
-      std::vector<BlockFilter> block_filter = {};
-      std::vector<k_int32> agg_extend_cols = {};
-      std::vector<timestamp64> ts_points = {};
-      s = vgroup->GetIterator(ctx_, 1, entity_ids, ts_spans, block_filter,
-                              scan_cols, scan_cols, agg_extend_cols, scan_agg_types, table_schema_mgr,
-                              schema, &ts_iter, vgroup, ts_points, false, false);
-      ASSERT_EQ(s, KStatus::SUCCESS);
-      ResultSet res{(k_uint32) scan_cols.size()};
-      k_uint32 count;
-      bool is_finished = false;
-      ASSERT_EQ(ts_iter->Next(&res, &count, &is_finished), KStatus::SUCCESS);
-      if (count > 0) {
-        ASSERT_EQ(is_finished, false);
-        ASSERT_EQ(count, 1);
-        ASSERT_EQ(KInt16(res.data[0][0]->mem), 2 * entity_row_num);
-        ASSERT_EQ(ts_iter->Next(&res, &count, &is_finished), KStatus::SUCCESS);
-        ASSERT_EQ(is_finished, true);
-        ASSERT_EQ(count, 0);
-      }
-      delete ts_iter;
+    for (const auto& partition : partitions) {
+      auto agg_reader = partition->GetAggReader();
+      ASSERT_EQ(agg_reader, nullptr);
     }
   }
+
   uint64_t tmp_count;
   uint64_t p_tag_entity_id = 3;
   std::string p_key = GetPrimaryKey(table_id, p_tag_entity_id);
@@ -289,31 +282,56 @@ TEST_F(TestPartitionAgg, mulitEntityDeleteCount) {
   uint32_t v_group_id, del_entity_id;
   ASSERT_TRUE(tag_table->hasPrimaryKey(p_key.data(), p_key.size(), del_entity_id, v_group_id));
 
+  std::shared_ptr<MMapMetricsTable> schema;
+  ASSERT_EQ(table_schema_mgr->GetMetricSchema(1, &schema), KStatus::SUCCESS);
+  uint32_t agg_header_size = schema->getSchemaInfoExcludeDroppedPtr()->size() * sizeof(uint32_t);
   for (const auto& vgroup : *ts_vgroups) {
+    ASSERT_EQ(vgroup->CalcPartitionAgg(), KStatus::SUCCESS);
     TsStorageIterator* ts_iter;
     KwTsSpan ts_span = {INT64_MIN, INT64_MAX};
-    DATATYPE ts_col_type = table_schema_mgr->GetTsColDataType();
-    std::vector<k_uint32> scan_cols = {0};
-    std::vector<Sumfunctype> scan_agg_types = {Sumfunctype::COUNT};
+    std::vector<k_uint32> scan_cols = {1, 2, 2};
+    std::vector<Sumfunctype> scan_agg_types = {Sumfunctype::COUNT, Sumfunctype::COUNT, Sumfunctype::SUM};
 
     auto current = vgroup->CurrentVersion();
-    auto partitions = current->GetPartitions(1, {{start_ts, INT64_MAX}}, DATATYPE::TIMESTAMP64);
-    ASSERT_EQ(partitions.size(), 1);
-    auto partition = partitions[0];
-    for (k_uint32 entity_id = 1; entity_id <= vgroup->GetMaxEntityID(); entity_id++) {
-      auto count_info = partition->GetCountManager();
-      TsCountStatsFileHeader count_header{};
-      s = count_info->GetCountStatsHeader(count_header);
-      ASSERT_EQ(count_header.max_osn, 10);
-      TsEntityCountStats count_stats{};
-      count_stats.entity_id = entity_id;
-      s = count_info->GetEntityCountStats(count_stats);
-      ASSERT_EQ(count_stats.is_count_valid, true);
-      ASSERT_EQ(count_stats.valid_count, entity_row_num);
+    auto partitions = current->GetPartitions(1, {{INT64_MIN, INT64_MAX}}, DATATYPE::TIMESTAMP64);
+    ASSERT_EQ(partitions.size(), 2);
+    for (const auto& partition : partitions) {
+      auto agg_reader = partition->GetAggReader();
+      for (k_uint32 entity_id = 1; entity_id <= vgroup->GetMaxEntityID(); entity_id++) {
+        TsEntityPartitionAggIndex agg_index;
+        agg_index.entity_id = entity_id;
+        ASSERT_EQ(agg_reader->GetPartitionAggIndex(agg_index), KStatus::SUCCESS);
+        if (partition->GetStartTime() != 0 && vgroup->GetVGroupID() == v_group_id && entity_id == del_entity_id) {
+          ASSERT_EQ(agg_index.max_osn, 11);
+        } else {
+          ASSERT_EQ(agg_index.max_osn, 10);
+        }
+        // Aggregate count col
+        TsSliceGuard slice;
+        ASSERT_EQ(agg_reader->GetPartitionAgg(agg_index.entity_id, slice), KStatus::SUCCESS);
+        for (auto idx : {1, 2}) {
+          // Use pre agg to calculate count
+          uint32_t start_offset = 0;
+          start_offset = *reinterpret_cast<uint32_t*>(slice.data() + (idx - 1) * sizeof(uint32_t));
+          uint32_t end_offset = *reinterpret_cast<uint32_t*>(slice.data() + (idx) * sizeof(uint32_t));
+
+          char* col_agg = slice.data() + agg_header_size + start_offset;
+          if (partition->GetStartTime() != 0 && vgroup->GetVGroupID() == v_group_id && entity_id == del_entity_id) {
+            ASSERT_EQ(*reinterpret_cast<uint32_t*>(col_agg), entity_row_num / 2);
+          } else {
+            ASSERT_EQ(*reinterpret_cast<uint32_t*>(col_agg), entity_row_num);
+          }
+        }
+
+        // Aggregate sum col
+        uint32_t start_offset = 0;
+        start_offset = *reinterpret_cast<uint32_t*>(slice.data() + 1 * sizeof(uint32_t));
+        char* col_agg = slice.data() + agg_header_size + start_offset;
+        ASSERT_NE(col_agg, nullptr);
+        ASSERT_EQ(*reinterpret_cast<bool*>(col_agg + sizeof(uint32_t)), false);
+      }
     }
     for (k_uint32 entity_id = 1; entity_id <= vgroup->GetMaxEntityID(); entity_id++) {
-      std::shared_ptr<MMapMetricsTable> schema;
-      ASSERT_EQ(table_schema_mgr->GetMetricSchema(1, &schema), KStatus::SUCCESS);
       std::vector<uint32_t> entity_ids = {entity_id};
       std::vector<KwTsSpan> ts_spans = {ts_span};
       std::vector<BlockFilter> block_filter = {};
@@ -332,329 +350,17 @@ TEST_F(TestPartitionAgg, mulitEntityDeleteCount) {
         ASSERT_EQ(count, 1);
         if (vgroup->GetVGroupID() == v_group_id && entity_id == del_entity_id) {
           ASSERT_EQ(KInt16(res.data[0][0]->mem), entity_row_num + entity_row_num / 2);
+          ASSERT_EQ(KInt16(res.data[1][0]->mem), entity_row_num + entity_row_num / 2);
         } else {
           ASSERT_EQ(KInt16(res.data[0][0]->mem), 2 * entity_row_num);
+          ASSERT_EQ(KInt16(res.data[1][0]->mem), 2 * entity_row_num);
         }
+        ASSERT_NE(res.data[2][0]->mem, nullptr);
         ASSERT_EQ(ts_iter->Next(&res, &count, &is_finished), KStatus::SUCCESS);
         ASSERT_EQ(is_finished, true);
         ASSERT_EQ(count, 0);
       }
       delete ts_iter;
-    }
-  }
-  start_ts += 20 * interval;
-  for (size_t i = 0; i < entity_num; i++) {
-    auto pay_load = GenRowPayload(*metric_schema, tag_schema ,table_id, 1, 1 + i,
-                                  entity_row_num, start_ts + 1 + i, interval);
-    TsRawPayload::SetOSN(pay_load, 20);
-    s = engine_->PutData(ctx_, table_id, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
-    free(pay_load.data);
-    ASSERT_EQ(s, KStatus::SUCCESS);
-  }
-  for (const auto& vgroup : *ts_vgroups) {
-    ASSERT_EQ(vgroup->Flush(), KStatus::SUCCESS);
-    TsStorageIterator* ts_iter;
-    KwTsSpan ts_span = {INT64_MIN, INT64_MAX};
-    DATATYPE ts_col_type = table_schema_mgr->GetTsColDataType();
-    std::vector<k_uint32> scan_cols = {0};
-    std::vector<Sumfunctype> scan_agg_types = {Sumfunctype::COUNT};
-
-    auto current = vgroup->CurrentVersion();
-    auto partitions = current->GetPartitions(1, {{start_ts, INT64_MAX}}, DATATYPE::TIMESTAMP64);
-    ASSERT_EQ(partitions.size(), 1);
-    auto partition = partitions[0];
-    for (k_uint32 entity_id = 1; entity_id <= vgroup->GetMaxEntityID(); entity_id++) {
-      auto count_info = partition->GetCountManager();
-      TsCountStatsFileHeader count_header{};
-      s = count_info->GetCountStatsHeader(count_header);
-      ASSERT_EQ(count_header.max_osn, 20);
-      TsEntityCountStats count_stats{};
-      count_stats.entity_id = entity_id;
-      s = count_info->GetEntityCountStats(count_stats);
-      if (vgroup->GetVGroupID() == v_group_id && entity_id == del_entity_id) {
-        ASSERT_EQ(count_stats.is_count_valid, false);
-        ASSERT_EQ(count_stats.valid_count, 0);
-      } else {
-        ASSERT_EQ(count_stats.is_count_valid, true);
-        ASSERT_EQ(count_stats.valid_count, entity_row_num * 2);
-      }
-    }
-    for (k_uint32 entity_id = 1; entity_id <= vgroup->GetMaxEntityID(); entity_id++) {
-      std::shared_ptr<MMapMetricsTable> schema;
-      ASSERT_EQ(table_schema_mgr->GetMetricSchema(1, &schema), KStatus::SUCCESS);
-      std::vector<uint32_t> entity_ids = {entity_id};
-      std::vector<KwTsSpan> ts_spans = {ts_span};
-      std::vector<BlockFilter> block_filter = {};
-      std::vector<k_int32> agg_extend_cols = {};
-      std::vector<timestamp64> ts_points = {};
-      s = vgroup->GetIterator(ctx_, 1, entity_ids, ts_spans, block_filter,
-                              scan_cols, scan_cols, agg_extend_cols, scan_agg_types, table_schema_mgr,
-                              schema, &ts_iter, vgroup, ts_points, false, false);
-      ASSERT_EQ(s, KStatus::SUCCESS);
-      ResultSet res{(k_uint32) scan_cols.size()};
-      k_uint32 count;
-      bool is_finished = false;
-      ASSERT_EQ(ts_iter->Next(&res, &count, &is_finished), KStatus::SUCCESS);
-      if (count > 0) {
-        ASSERT_EQ(is_finished, false);
-        ASSERT_EQ(count, 1);
-        if (vgroup->GetVGroupID() == v_group_id && entity_id == del_entity_id) {
-          ASSERT_EQ(KInt16(res.data[0][0]->mem), entity_row_num * 2 + entity_row_num / 2);
-        } else {
-          ASSERT_EQ(KInt16(res.data[0][0]->mem), 3 * entity_row_num);
-        }
-        ASSERT_EQ(ts_iter->Next(&res, &count, &is_finished), KStatus::SUCCESS);
-        ASSERT_EQ(is_finished, true);
-        ASSERT_EQ(count, 0);
-      }
-      delete ts_iter;
-    }
-  }
-}
-
-TEST_F(TestPartitionAgg, mulitEntityInvalidCount) {
-  TSTableID table_id = 999;
-  roachpb::CreateTsTable pb_meta;
-  ConstructRoachpbTable(&pb_meta, table_id);
-  std::shared_ptr<TsTable> ts_table;
-  auto s = engine_->CreateTsTable(ctx_, table_id, &pb_meta, ts_table);
-  ASSERT_EQ(s, KStatus::SUCCESS);
-  bool is_dropped = false;
-  s = engine_->GetTsTable(ctx_, table_id, ts_table, is_dropped);
-  ASSERT_EQ(s, KStatus::SUCCESS);
-
-  std::shared_ptr<TsTableSchemaManager> table_schema_mgr;
-  s = engine_->GetTableSchemaMgr(ctx_, table_id, is_dropped, table_schema_mgr);
-  ASSERT_EQ(s , KStatus::SUCCESS);
-
-  const std::vector<AttributeInfo>* metric_schema;
-  s = table_schema_mgr->GetMetricMeta(1, &metric_schema);
-  ASSERT_EQ(s , KStatus::SUCCESS);
-
-  std::vector<TagInfo> tag_schema;
-  s = table_schema_mgr->GetTagMeta(1, tag_schema);
-  ASSERT_EQ(s , KStatus::SUCCESS);
-
-  timestamp64 start_ts = 3600;
-  KTimestamp interval = 100L;
-  int entity_num = 30;
-  int entity_row_num = 10;
-  uint16_t inc_entity_cnt;
-  uint32_t inc_unordered_cnt = 0;
-  DedupResult dedup_result{0, 0, 0, TSSlice {nullptr, 0}};
-  for (size_t i = 0; i < entity_num; i++) {
-    auto pay_load = GenRowPayload(*metric_schema, tag_schema ,table_id, 1, 1 + i,
-                                  entity_row_num, start_ts + 1 + i, interval);
-    s = engine_->PutData(ctx_, table_id, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
-    free(pay_load.data);
-    ASSERT_EQ(s, KStatus::SUCCESS);
-  }
-
-  std::vector<std::shared_ptr<TsVGroup>>* ts_vgroups = engine_->GetTsVGroups();
-  for (const auto& vgroup : *ts_vgroups) {
-    auto current = vgroup->CurrentVersion();
-    ASSERT_EQ(current->GetVersionNumber(), 0);
-    auto partitions = current->GetPartitions(1, {{INT64_MIN, INT64_MAX}}, DATATYPE::TIMESTAMP64);
-    ASSERT_EQ(partitions.size(), 1);
-    for (auto partition : partitions) {
-      for (k_uint32 entity_id = 1; entity_id <= vgroup->GetMaxEntityID(); entity_id++) {
-        auto count_info = partition->GetCountManager();
-        ASSERT_EQ(count_info, nullptr);
-      }
-    }
-  }
-
-  for (const auto& vgroup : *ts_vgroups) {
-    ASSERT_EQ(vgroup->Flush(), KStatus::SUCCESS);
-    TsStorageIterator* ts_iter;
-    KwTsSpan ts_span = {INT64_MIN, INT64_MAX};
-    DATATYPE ts_col_type = table_schema_mgr->GetTsColDataType();
-    std::vector<k_uint32> scan_cols = {0};
-    std::vector<Sumfunctype> scan_agg_types = {Sumfunctype::COUNT};
-
-    auto current = vgroup->CurrentVersion();
-    ASSERT_EQ(current->GetVersionNumber(), 0);
-    auto partitions = current->GetPartitions(1, {{INT64_MIN, INT64_MAX}}, DATATYPE::TIMESTAMP64);
-    ASSERT_EQ(partitions.size(), 1);
-    for (auto partition : partitions) {
-      for (k_uint32 entity_id = 1; entity_id <= vgroup->GetMaxEntityID(); entity_id++) {
-        auto count_info = partition->GetCountManager();
-        TsCountStatsFileHeader count_header{};
-        s = count_info->GetCountStatsHeader(count_header);
-        ASSERT_EQ(count_header.version_num, 0);
-        TsEntityCountStats count_stats{};
-        count_stats.entity_id = entity_id;
-        s = count_info->GetEntityCountStats(count_stats);
-        ASSERT_EQ(count_stats.is_count_valid, true);
-        ASSERT_EQ(count_stats.valid_count, entity_row_num);
-      }
-    }
-    for (k_uint32 entity_id = 1; entity_id <= vgroup->GetMaxEntityID(); entity_id++) {
-      std::shared_ptr<MMapMetricsTable> schema;
-      ASSERT_EQ(table_schema_mgr->GetMetricSchema(1, &schema), KStatus::SUCCESS);
-      std::vector<uint32_t> entity_ids = {entity_id};
-      std::vector<KwTsSpan> ts_spans = {ts_span};
-      std::vector<BlockFilter> block_filter = {};
-      std::vector<k_int32> agg_extend_cols = {};
-      std::vector<timestamp64> ts_points = {};
-      s = vgroup->GetIterator(ctx_, 1, entity_ids, ts_spans, block_filter,
-                              scan_cols, scan_cols, agg_extend_cols, scan_agg_types, table_schema_mgr,
-                              schema, &ts_iter, vgroup, ts_points, false, false);
-      ASSERT_EQ(s, KStatus::SUCCESS);
-      ResultSet res{(k_uint32) scan_cols.size()};
-      k_uint32 count;
-      bool is_finished = false;
-      ASSERT_EQ(ts_iter->Next(&res, &count, &is_finished), KStatus::SUCCESS);
-      if (count > 0) {
-        ASSERT_EQ(is_finished, false);
-        ASSERT_EQ(count, 1);
-        ASSERT_EQ(KInt16(res.data[0][0]->mem), entity_row_num);
-        ASSERT_EQ(ts_iter->Next(&res, &count, &is_finished), KStatus::SUCCESS);
-        ASSERT_EQ(is_finished, true);
-        ASSERT_EQ(count, 0);
-      }
-      delete ts_iter;
-    }
-  }
-  start_ts = start_ts + 5 * interval;
-  for (size_t i = 0; i < entity_num; i++) {
-    auto pay_load = GenRowPayload(*metric_schema, tag_schema ,table_id, 1, 1 + i,
-                                  entity_row_num, start_ts + 1 + i, interval);
-    s = engine_->PutData(ctx_, table_id, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
-    free(pay_load.data);
-    ASSERT_EQ(s, KStatus::SUCCESS);
-  }
-
-  for (const auto& vgroup: *ts_vgroups) {
-    TsStorageIterator* ts_iter;
-    KwTsSpan ts_span = {INT64_MIN, INT64_MAX};
-    DATATYPE ts_col_type = table_schema_mgr->GetTsColDataType();
-    std::vector<k_uint32> scan_cols = {0};
-    std::vector<Sumfunctype> scan_agg_types = {Sumfunctype::COUNT};
-
-    auto current = vgroup->CurrentVersion();
-    ASSERT_EQ(current->GetVersionNumber(), 0);
-    auto partitions = current->GetPartitions(1, {{INT64_MIN, INT64_MAX}}, DATATYPE::TIMESTAMP64);
-    ASSERT_EQ(partitions.size(), 1);
-    for (auto partition: partitions) {
-      for (k_uint32 entity_id = 1; entity_id <= vgroup->GetMaxEntityID(); entity_id++) {
-        auto count_info = partition->GetCountManager();
-        TsCountStatsFileHeader count_header{};
-        s = count_info->GetCountStatsHeader(count_header);
-        ASSERT_EQ(count_header.version_num, 0);
-        TsEntityCountStats count_stats{};
-        count_stats.entity_id = entity_id;
-        s = count_info->GetEntityCountStats(count_stats);
-        ASSERT_EQ(count_stats.is_count_valid, true);
-        ASSERT_EQ(count_stats.valid_count, entity_row_num);
-      }
-    }
-    for (k_uint32 entity_id = 1; entity_id <= vgroup->GetMaxEntityID(); entity_id++) {
-      std::shared_ptr<MMapMetricsTable> schema;
-      ASSERT_EQ(table_schema_mgr->GetMetricSchema(1, &schema), KStatus::SUCCESS);
-      std::vector<uint32_t> entity_ids = {entity_id};
-      std::vector<KwTsSpan> ts_spans = {ts_span};
-      std::vector<BlockFilter> block_filter = {};
-      std::vector<k_int32> agg_extend_cols = {};
-      std::vector<timestamp64> ts_points = {};
-      s = vgroup->GetIterator(ctx_, 1, entity_ids, ts_spans, block_filter,
-                              scan_cols, scan_cols, agg_extend_cols, scan_agg_types, table_schema_mgr,
-                              schema, &ts_iter, vgroup, ts_points, false, false);
-      ASSERT_EQ(s, KStatus::SUCCESS);
-      ResultSet res{(k_uint32) scan_cols.size()};
-      k_uint32 count;
-      bool is_finished = false;
-      ASSERT_EQ(ts_iter->Next(&res, &count, &is_finished), KStatus::SUCCESS);
-      if (count > 0) {
-        ASSERT_EQ(is_finished, false);
-        ASSERT_EQ(count, 1);
-        ASSERT_EQ(KInt16(res.data[0][0]->mem), entity_row_num / 2 + entity_row_num);
-        ASSERT_EQ(ts_iter->Next(&res, &count, &is_finished), KStatus::SUCCESS);
-        ASSERT_EQ(is_finished, true);
-        ASSERT_EQ(count, 0);
-      }
-      delete ts_iter;
-    }
-
-    // create new version.
-    ASSERT_EQ(vgroup->Flush(), KStatus::SUCCESS);
-    // check old version.
-    for (auto partition: partitions) {
-      for (k_uint32 entity_id = 1; entity_id <= vgroup->GetMaxEntityID(); entity_id++) {
-        auto count_info = partition->GetCountManager();
-        TsCountStatsFileHeader count_header{};
-        s = count_info->GetCountStatsHeader(count_header);
-        ASSERT_EQ(count_header.version_num, 0);
-        TsEntityCountStats count_stats{};
-        count_stats.entity_id = entity_id;
-        s = count_info->GetEntityCountStats(count_stats);
-        ASSERT_EQ(count_stats.is_count_valid, true);
-        ASSERT_EQ(count_stats.valid_count, entity_row_num);
-      }
-    }
-    // check the latest version.
-    auto latest_version = vgroup->CurrentVersion();
-    ASSERT_EQ(latest_version->GetVersionNumber(), 1);
-    auto latest_partitions = latest_version->GetPartitions(1, {{INT64_MIN, INT64_MAX}}, DATATYPE::TIMESTAMP64);
-    ASSERT_EQ(partitions.size(), 1);
-    for (auto partition: latest_partitions) {
-      for (k_uint32 entity_id = 1; entity_id <= vgroup->GetMaxEntityID(); entity_id++) {
-        auto count_info = partition->GetCountManager();
-        TsCountStatsFileHeader count_header{};
-        s = count_info->GetCountStatsHeader(count_header);
-        ASSERT_EQ(count_header.version_num, 1);
-        TsEntityCountStats count_stats{};
-        count_stats.entity_id = entity_id;
-        s = count_info->GetEntityCountStats(count_stats);
-        ASSERT_EQ(count_stats.is_count_valid, false);
-        ASSERT_EQ(count_stats.valid_count, 0);
-      }
-    }
-    for (k_uint32 entity_id = 1; entity_id <= vgroup->GetMaxEntityID(); entity_id++) {
-      std::shared_ptr<MMapMetricsTable> schema;
-      ASSERT_EQ(table_schema_mgr->GetMetricSchema(1, &schema), KStatus::SUCCESS);
-      std::vector<uint32_t> entity_ids = {entity_id};
-      std::vector<KwTsSpan> ts_spans = {ts_span};
-      std::vector<BlockFilter> block_filter = {};
-      std::vector<k_int32> agg_extend_cols = {};
-      std::vector<timestamp64> ts_points = {};
-      s = vgroup->GetIterator(ctx_, 1, entity_ids, ts_spans, block_filter,
-                              scan_cols, scan_cols, agg_extend_cols, scan_agg_types, table_schema_mgr,
-                              schema, &ts_iter, vgroup, ts_points, false, false);
-      ASSERT_EQ(s, KStatus::SUCCESS);
-      ResultSet res{(k_uint32) scan_cols.size()};
-      k_uint32 count;
-      bool is_finished = false;
-      ASSERT_EQ(ts_iter->Next(&res, &count, &is_finished), KStatus::SUCCESS);
-      if (count > 0) {
-        ASSERT_EQ(is_finished, false);
-        ASSERT_EQ(count, 1);
-        ASSERT_EQ(KInt16(res.data[0][0]->mem), entity_row_num / 2 + entity_row_num);
-        ASSERT_EQ(ts_iter->Next(&res, &count, &is_finished), KStatus::SUCCESS);
-        ASSERT_EQ(is_finished, true);
-        ASSERT_EQ(count, 0);
-      }
-      delete ts_iter;
-    }
-    // recalculate count stats.
-    ASSERT_EQ(vgroup->RecalcCountStat(), KStatus::SUCCESS);
-    // check the latest version.
-    latest_version = vgroup->CurrentVersion();
-    ASSERT_EQ(latest_version->GetVersionNumber(), 1);
-    latest_partitions = latest_version->GetPartitions(1, {{INT64_MIN, INT64_MAX}}, DATATYPE::TIMESTAMP64);
-    ASSERT_EQ(partitions.size(), 1);
-    for (auto partition: latest_partitions) {
-      for (k_uint32 entity_id = 1; entity_id <= vgroup->GetMaxEntityID(); entity_id++) {
-        auto count_info = partition->GetCountManager();
-        TsCountStatsFileHeader count_header{};
-        s = count_info->GetCountStatsHeader(count_header);
-        ASSERT_EQ(count_header.version_num, 1);
-        TsEntityCountStats count_stats{};
-        count_stats.entity_id = entity_id;
-        s = count_info->GetEntityCountStats(count_stats);
-        ASSERT_EQ(count_stats.is_count_valid, true);
-        ASSERT_EQ(count_stats.valid_count, entity_row_num / 2 + entity_row_num);
-      }
     }
   }
 }

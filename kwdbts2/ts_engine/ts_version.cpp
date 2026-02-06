@@ -809,13 +809,6 @@ std::vector<std::shared_ptr<TsSegmentBase>> TsPartitionVersion::GetAllSegments()
   return result;
 }
 
-void TsPartitionVersion::reloadAggReader() const {
-  auto s = agg_reader_->Reload();
-  if (s != KStatus::SUCCESS) {
-    LOG_ERROR("Failed reload agg reader for partition[%s]", partition_path_.c_str());
-  }
-}
-
 KStatus TsPartitionVersion::DeleteData(TSEntityID e_id, const std::vector<KwTsSpan> &ts_spans,
                                        const KwOSNSpan &lsn, bool user_del) const {
   kwdbts::TsEntityDelItem del_item(ts_spans[0], lsn, e_id,
@@ -1146,6 +1139,15 @@ KStatus TsPartitionVersion::GetMaxOSN(uint32_t db_id, TSTableID table_id, TSEnti
       return s;
     }
     max_osn = std::max(max_osn, cur_max_osn);
+  }
+  if (del_info_) {
+    TS_OSN del_max_osn;
+    s = GetDelMaxOSN(entity_id, del_max_osn);
+    if (s != KStatus::SUCCESS) {
+      LOG_ERROR("GetMaxOSN of entity segment failed.");
+      return s;
+    }
+    max_osn = std::max(max_osn, del_max_osn);
   }
   return KStatus::SUCCESS;
 }
