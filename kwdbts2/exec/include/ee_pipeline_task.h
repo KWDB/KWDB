@@ -27,6 +27,7 @@ class BaseOperator;
 class TABLE;
 class KWThdContext;
 class Processors;
+class DmlExec;
 
 enum PipelineTaskState {
   PS_NOT_RUNNING = 0,
@@ -110,6 +111,7 @@ class PipelineTask : public ExecTask {
   PipelineTaskState state_{PS_NOT_RUNNING};
   static constexpr int64_t YIELD_MAX_TIME_SPENT_NS = 100'000'000L;  // 100ms
   std::chrono::_V2::system_clock::time_point start_time_;
+  DmlExec* dml_exec_handle_{nullptr};
 };
 
 }  // namespace kwdbts

@@ -566,9 +566,6 @@ EEIteratorErrCode StorageHandler::NewTsIterator(kwdbContext_p ctx) {
   KStatus ret = FAIL;
   EEIteratorErrCode code = EEIteratorErrCode::EE_OK;
   KWThdContext *thd = current_thd;
-  if (thd->auto_quit_) {
-    Return(EE_END_OF_RECORD);
-  }
   ScanRowBatch* data_handle =
       static_cast<ScanRowBatch *>(thd->GetRowBatch());
 

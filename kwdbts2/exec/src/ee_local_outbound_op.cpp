@@ -44,12 +44,13 @@ k_bool LocalOutboundOperator::NeedInput() {
   }
 }
 
-KStatus LocalOutboundOperator::PushChunk(DataChunkPtr& chunk, k_int32 stream_id, EEIteratorErrCode code) {
+KStatus LocalOutboundOperator::PushChunk(kwdbContext_p ctx, DataChunkPtr& chunk, k_int32 stream_id,
+                                         EEIteratorErrCode code) {
   for (auto parent : parent_operators_) {
     InboundOperator* parent_inbound =
         dynamic_cast<InboundOperator*>(parent);
     if (parent_inbound) {
-      KStatus ret = parent_inbound->PushChunk(chunk, stream_id, code);
+      KStatus ret = parent_inbound->PushChunk(ctx, chunk, stream_id, code);
       if (ret != KStatus::SUCCESS) {
         return ret;
       }
@@ -82,7 +83,7 @@ EEIteratorErrCode LocalOutboundOperator::Next(kwdbContext_p ctx,
   chunk = nullptr;
 
   if (chunk_tmp_) {
-    KStatus ret = PushChunk(chunk_tmp_, stream_id_, EEIteratorErrCode::EE_OK);
+    KStatus ret = PushChunk(ctx, chunk_tmp_, stream_id_, EEIteratorErrCode::EE_OK);
     if (ret != KStatus::SUCCESS) {
       Return(EEIteratorErrCode::EE_QUEUE_FULL);
     }
@@ -104,7 +105,7 @@ EEIteratorErrCode LocalOutboundOperator::Next(kwdbContext_p ctx,
   chunk_tmp->ResetLine();
   total_rows_ += chunk_tmp->Count();
   ++total_push_count_;
-  KStatus ret = PushChunk(chunk_tmp, stream_id_, code);
+  KStatus ret = PushChunk(ctx, chunk_tmp, stream_id_, code);
   if (ret != KStatus::SUCCESS) {
     chunk_tmp_ = std::move(chunk_tmp);
     Return(EEIteratorErrCode::EE_QUEUE_FULL);

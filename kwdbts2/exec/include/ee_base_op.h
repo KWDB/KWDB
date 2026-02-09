@@ -185,7 +185,7 @@ class BaseOperator {
 
   std::vector<BaseOperator*>& GetParent() { return parent_operators_; }
 
-  virtual KStatus PushChunk(DataChunkPtr& chunk, k_int32 stream_id,
+  virtual KStatus PushChunk(kwdbContext_p ctx, DataChunkPtr& chunk, k_int32 stream_id,
                             EEIteratorErrCode code = EEIteratorErrCode::EE_OK) {
     return KStatus::FAIL;
   }

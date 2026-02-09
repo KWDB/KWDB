@@ -608,10 +608,6 @@ KStatus Processors::Init(kwdbContext_p ctx, const TSFlowSpec* fspec) {
   }
   // DebugPrintPipeline(root_pipeline_);
 
-  if (CheckCancel(ctx) != SUCCESS) {
-    Return(FAIL);
-  }
-
   EEIteratorErrCode code = root_iterator_->Init(ctx);
   INJECT_DATA_FAULT(FAULT_EE_DML_SETUP_PREINIT_MSG_FAIL, code,
                     EEIteratorErrCode::EE_ERROR, nullptr);
@@ -619,7 +615,7 @@ KStatus Processors::Init(kwdbContext_p ctx, const TSFlowSpec* fspec) {
     LOG_ERROR("Preinit iterator error when initing processors.");
     Return(KStatus::FAIL);
   }
-  if (EEPgErrorInfo::IsError() || CheckCancel(ctx) != SUCCESS) {
+  if (EEPgErrorInfo::IsError()) {
     root_iterator_->Close(ctx);
     Return(KStatus::FAIL);
   }

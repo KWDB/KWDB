@@ -562,25 +562,29 @@ func (r *TsEngine) SetRaftLogCombinedWAL(combined bool) {
 // GetTableBlocksDistribution get table block distribution info
 func (r *TsEngine) GetTableBlocksDistribution(tableID uint64) ([]byte, error) {
 	r.checkOrWaitForOpen()
-	var blockMeta C.TSSlice
-	status := C.TSGetTableBlocksDistribution(r.tdb, C.TSTableID(tableID), &blockMeta)
+	var blockMeta *C.TSSlice
+	blockMeta = (*C.TSSlice)(C.malloc(C.size_t(unsafe.Sizeof(C.TSSlice{}))))
+	defer C.free(unsafe.Pointer(blockMeta))
+	status := C.TSGetTableBlocksDistribution(r.tdb, C.TSTableID(tableID), blockMeta)
 	if err := statusToError(status); err != nil {
 		return nil, errors.Wrap(err, "could not GetTableBlocksDistribution")
 	}
-	defer C.free(unsafe.Pointer(blockMeta.data))
-	return cSliceToGoBytes(blockMeta), nil
+	defer C.free(unsafe.Pointer((*blockMeta).data))
+	return cSliceToGoBytes(*blockMeta), nil
 }
 
 // GetDBBlocksDistribution get database block distribution info
 func (r *TsEngine) GetDBBlocksDistribution(dbID uint64) ([]byte, error) {
 	r.checkOrWaitForOpen()
-	var blockMeta C.TSSlice
-	status := C.TSGetDBBlocksDistribution(r.tdb, C.uint32_t(dbID), &blockMeta)
+	var blockMeta *C.TSSlice
+	blockMeta = (*C.TSSlice)(C.malloc(C.size_t(unsafe.Sizeof(C.TSSlice{}))))
+	defer C.free(unsafe.Pointer(blockMeta))
+	status := C.TSGetDBBlocksDistribution(r.tdb, C.uint32_t(dbID), blockMeta)
 	if err := statusToError(status); err != nil {
 		return nil, errors.Wrap(err, "could not GetDBBlocksDistribution")
 	}
-	defer C.free(unsafe.Pointer(blockMeta.data))
-	return cSliceToGoBytes(blockMeta), nil
+	defer C.free(unsafe.Pointer((*blockMeta).data))
+	return cSliceToGoBytes(*blockMeta), nil
 }
 
 // CreateTsTable create ts table
@@ -611,25 +615,30 @@ func (r *TsEngine) GetMetaData(tableID uint64, rangeGroup api.RangeGroup) ([]byt
 	cRangeGroup := C.RangeGroup{
 		range_group_id: C.uint64_t(rangeGroup.RangeGroupID),
 	}
-	var tableMeta C.TSSlice
-	status := C.TSGetMetaData(r.tdb, C.TSTableID(tableID), cRangeGroup, &tableMeta)
+	var tableMeta *C.TSSlice
+	tableMeta = (*C.TSSlice)(C.malloc(C.size_t(unsafe.Sizeof(C.TSSlice{}))))
+	defer C.free(unsafe.Pointer(tableMeta))
+	status := C.TSGetMetaData(r.tdb, C.TSTableID(tableID), cRangeGroup, tableMeta)
 	if err := statusToError(status); err != nil {
 		return nil, errors.Wrap(err, "could not CreateTsTable")
 	}
-	defer C.free(unsafe.Pointer(tableMeta.data))
-	meta := cSliceToGoBytes(tableMeta)
+	defer C.free(unsafe.Pointer((*tableMeta).data))
+	meta := cSliceToGoBytes(*tableMeta)
 	return meta, nil
 }
 
 // TSIsTsTableExist checks if ts table exists.
 func (r *TsEngine) TSIsTsTableExist(tableID uint64) (bool, error) {
 	r.checkOrWaitForOpen()
-	var isExist C.bool
-	status := C.TSIsTsTableExist(r.tdb, C.TSTableID(tableID), &isExist)
+	var isExist *C.bool
+	isExist = (*C.bool)(C.malloc(C.size_t(unsafe.Sizeof(C.bool(false)))))
+	defer C.free(unsafe.Pointer(isExist))
+	*isExist = C.bool(false)
+	status := C.TSIsTsTableExist(r.tdb, C.TSTableID(tableID), isExist)
 	if err := statusToError(status); err != nil {
 		return false, errors.Wrap(err, "get error")
 	}
-	return bool(isExist), nil
+	return bool(*isExist), nil
 }
 
 // DropTsTable drop ts table.
@@ -668,11 +677,20 @@ func (r *TsEngine) TSFlushVGroups() error {
 
 // TsGetRecentBlockCacheInfo get storage block cache hit, miss counts and current used memory size(M) for showing hit ratio in web console
 func (r *TsEngine) TsGetRecentBlockCacheInfo() (int, int, int64, error) {
-	var hitCount C.uint32_t
-	var missCount C.uint32_t
-	var memorySize C.uint64_t
-	C.TsGetRecentBlockCacheInfo(&hitCount, &missCount, &memorySize)
-	return int(hitCount), int(missCount), int64(memorySize), nil
+	var hitCount *C.uint32_t
+	var missCount *C.uint32_t
+	var memorySize *C.uint64_t
+	hitCount = (*C.uint32_t)(C.malloc(C.size_t(unsafe.Sizeof(C.uint32_t(0)))))
+	defer C.free(unsafe.Pointer(hitCount))
+	missCount = (*C.uint32_t)(C.malloc(C.size_t(unsafe.Sizeof(C.uint32_t(0)))))
+	defer C.free(unsafe.Pointer(missCount))
+	memorySize = (*C.uint64_t)(C.malloc(C.size_t(unsafe.Sizeof(C.uint64_t(0)))))
+	defer C.free(unsafe.Pointer(memorySize))
+	*hitCount = 0
+	*missCount = 0
+	*memorySize = 0
+	C.TsGetRecentBlockCacheInfo(hitCount, missCount, memorySize)
+	return int(*hitCount), int(*missCount), int64(*memorySize), nil
 }
 
 // SamplePeriodicMetrics sample tsengine metrics periodically (default 10s).
@@ -861,32 +879,41 @@ func (r *TsEngine) PutData(
 		typ:            C.int8_t(0),
 	}
 
-	var dedupResult C.DedupResult
+	var dedupResult *C.DedupResult
 	var affect EntitiesAffect
-	var entitiesAffected C.uint16_t
-	var unorderedAffected C.uint32_t
+	var entitiesAffected *C.uint16_t
+	var unorderedAffected *C.uint32_t
+	dedupResult = (*C.DedupResult)(C.malloc(C.size_t(unsafe.Sizeof(C.DedupResult{}))))
+	defer C.free(unsafe.Pointer(dedupResult))
+	C.memset(unsafe.Pointer(dedupResult), 0, C.size_t(unsafe.Sizeof(C.DedupResult{})))
+	entitiesAffected = (*C.uint16_t)(C.malloc(C.size_t(unsafe.Sizeof(C.uint16_t(0)))))
+	defer C.free(unsafe.Pointer(entitiesAffected))
+	unorderedAffected = (*C.uint32_t)(C.malloc(C.size_t(unsafe.Sizeof(C.uint32_t(0)))))
+	defer C.free(unsafe.Pointer(unorderedAffected))
+	(*entitiesAffected) = 0
+	(*unorderedAffected) = 0
 	var status C.TSStatus
 	if transactionID != nil {
 		cstr := C.CString(string(transactionID))
 		defer C.free(unsafe.Pointer(cstr))
 		status = C.TSPutDataByRowTypeExplicit(r.tdb, C.TSTableID(tableID), &cTsSlice[0], (C.size_t)(len(cTsSlice)), cRangeGroup, C.uint64_t(tsTxnID),
-			&entitiesAffected, &unorderedAffected, &dedupResult, C.bool(writeWAL), cstr)
+			entitiesAffected, unorderedAffected, dedupResult, C.bool(writeWAL), cstr)
 	} else {
 		status = C.TSPutDataByRowType(r.tdb, C.TSTableID(tableID), &cTsSlice[0], (C.size_t)(len(cTsSlice)), cRangeGroup, C.uint64_t(tsTxnID),
-			&entitiesAffected, &unorderedAffected, &dedupResult, C.bool(writeWAL))
+			entitiesAffected, unorderedAffected, dedupResult, C.bool(writeWAL))
 	}
 	if err := statusToError(status); err != nil {
 		return DedupResult{}, EntitiesAffect{}, errors.Wrap(err, "could not PutData")
 	}
 
 	res := DedupResult{
-		DedupRule:     int(dedupResult.dedup_rule),
-		DedupRows:     int(dedupResult.dedup_rows),
-		DiscardBitmap: cSliceToGoBytes(dedupResult.discard_bitmap),
+		DedupRule:     int((*dedupResult).dedup_rule),
+		DedupRows:     int((*dedupResult).dedup_rows),
+		DiscardBitmap: cSliceToGoBytes((*dedupResult).discard_bitmap),
 	}
-	defer C.free(unsafe.Pointer(dedupResult.discard_bitmap.data))
-	affect.EntityCount = uint16(entitiesAffected)
-	affect.UnorderedCount = uint32(unorderedAffected)
+	defer C.free(unsafe.Pointer((*dedupResult).discard_bitmap.data))
+	affect.EntityCount = uint16(*entitiesAffected)
+	affect.UnorderedCount = uint32(*unorderedAffected)
 	return res, affect, nil
 }
 
@@ -949,22 +976,34 @@ func (r *TsEngine) PutRowData(
 			*(*int32)(unsafe.Pointer(uintptr(unsafe.Pointer(cTsSlice.data)) + rowNumOffset)) = int32(partRowCnt)
 			// set tsSlice len
 			cTsSlice.len = C.size_t(payloadSize + headerLen + dataLen)
-			var dedupResult C.DedupResult
-			var entitiesAffected C.uint16_t
-			var unorderedAffected C.uint32_t
+			var dedupResult *C.DedupResult
+			var entitiesAffected *C.uint16_t
+			var unorderedAffected *C.uint32_t
+			dedupResult = (*C.DedupResult)(C.malloc(C.size_t(unsafe.Sizeof(C.DedupResult{}))))
+			C.memset(unsafe.Pointer(dedupResult), 0, C.size_t(unsafe.Sizeof(C.DedupResult{})))
+			entitiesAffected = (*C.uint16_t)(C.malloc(C.size_t(unsafe.Sizeof(C.uint16_t(0)))))
+			unorderedAffected = (*C.uint32_t)(C.malloc(C.size_t(unsafe.Sizeof(C.uint32_t(0)))))
+			(*entitiesAffected) = 0
+			(*unorderedAffected) = 0
 			status := C.TSPutDataByRowType(r.tdb, C.TSTableID(tableID), &cTsSlice, (C.size_t)(1), cRangeGroup, C.uint64_t(tsTxnID),
-				&entitiesAffected, &unorderedAffected, &dedupResult, C.bool(writeWAL))
+				entitiesAffected, unorderedAffected, dedupResult, C.bool(writeWAL))
 			if err := statusToError(status); err != nil {
+				C.free(unsafe.Pointer(dedupResult))
+				C.free(unsafe.Pointer(entitiesAffected))
+				C.free(unsafe.Pointer(unorderedAffected))
 				return DedupResult{}, EntitiesAffect{}, errors.Wrap(err, "could not PutData")
 			}
-			res.DedupRows += int(dedupResult.dedup_rows)
-			affect.EntityCount += uint16(entitiesAffected)
-			affect.UnorderedCount += uint32(unorderedAffected)
-			C.free(unsafe.Pointer(dedupResult.discard_bitmap.data))
+			res.DedupRows += int((*dedupResult).dedup_rows)
+			affect.EntityCount += uint16(*entitiesAffected)
+			affect.UnorderedCount += uint32(*unorderedAffected)
+			C.free(unsafe.Pointer((*dedupResult).discard_bitmap.data))
 
 			payloadSize = partLen
 			payloadPtr = dataPtr + uintptr(dataLen)
 			partRowCnt = 0
+			C.free(unsafe.Pointer(dedupResult))
+			C.free(unsafe.Pointer(entitiesAffected))
+			C.free(unsafe.Pointer(unorderedAffected))
 		}
 		partRowCnt++
 		C.memcpy(unsafe.Pointer(payloadPtr), unsafe.Pointer(&p[0]), C.size_t(partLen))
@@ -977,30 +1016,39 @@ func (r *TsEngine) PutRowData(
 	*(*int32)(unsafe.Pointer(uintptr(unsafe.Pointer(cTsSlice.data)) + rowNumOffset)) = int32(partRowCnt)
 	// set tsSlice len
 	cTsSlice.len = C.size_t(payloadSize + headerLen + dataLen)
-	var dedupResult C.DedupResult
-	var entitiesAffected C.uint16_t
-	var unorderedAffected C.uint32_t
+	var dedupResult *C.DedupResult
+	var entitiesAffected *C.uint16_t
+	var unorderedAffected *C.uint32_t
+	dedupResult = (*C.DedupResult)(C.malloc(C.size_t(unsafe.Sizeof(C.DedupResult{}))))
+	defer C.free(unsafe.Pointer(dedupResult))
+	C.memset(unsafe.Pointer(dedupResult), 0, C.size_t(unsafe.Sizeof(C.DedupResult{})))
+	entitiesAffected = (*C.uint16_t)(C.malloc(C.size_t(unsafe.Sizeof(C.uint16_t(0)))))
+	defer C.free(unsafe.Pointer(entitiesAffected))
+	unorderedAffected = (*C.uint32_t)(C.malloc(C.size_t(unsafe.Sizeof(C.uint32_t(0)))))
+	defer C.free(unsafe.Pointer(unorderedAffected))
+	(*entitiesAffected) = 0
+	(*unorderedAffected) = 0
 	var status C.TSStatus
 	if transactionID != nil {
 		cstr := C.CString(string(transactionID))
 		defer C.free(unsafe.Pointer(cstr))
 		status = C.TSPutDataByRowTypeExplicit(r.tdb, C.TSTableID(tableID), &cTsSlice, (C.size_t)(1), cRangeGroup, C.uint64_t(tsTxnID),
-			&entitiesAffected, &unorderedAffected, &dedupResult, C.bool(writeWAL), cstr)
+			entitiesAffected, unorderedAffected, dedupResult, C.bool(writeWAL), cstr)
 	} else {
 		status = C.TSPutDataByRowType(r.tdb, C.TSTableID(tableID), &cTsSlice, (C.size_t)(1), cRangeGroup, C.uint64_t(tsTxnID),
-			&entitiesAffected, &unorderedAffected, &dedupResult, C.bool(writeWAL))
+			entitiesAffected, unorderedAffected, dedupResult, C.bool(writeWAL))
 	}
 	if err := statusToError(status); err != nil {
 		return DedupResult{}, EntitiesAffect{}, errors.Wrap(err, "could not PutData")
 	}
 
-	res.DedupRows += int(dedupResult.dedup_rows)
-	res.DedupRule = int(dedupResult.dedup_rule)
-	affect.EntityCount += uint16(entitiesAffected)
-	affect.UnorderedCount += uint32(unorderedAffected)
+	res.DedupRows += int((*dedupResult).dedup_rows)
+	res.DedupRule = int((*dedupResult).dedup_rule)
+	affect.EntityCount += uint16(*entitiesAffected)
+	affect.UnorderedCount += uint32(*unorderedAffected)
 	// the DiscardBitmap is not complete if the payload is truncated due to the size limit.
-	res.DiscardBitmap = cSliceToGoBytes(dedupResult.discard_bitmap)
-	C.free(unsafe.Pointer(dedupResult.discard_bitmap.data))
+	res.DiscardBitmap = cSliceToGoBytes((*dedupResult).discard_bitmap)
+	C.free(unsafe.Pointer((*dedupResult).discard_bitmap.data))
 
 	return res, affect, nil
 }
@@ -1011,7 +1059,10 @@ func (r *TsEngine) GetDataVolume(
 	tableID uint64, startHashPoint, endHashPoint uint64, startTimestamp, endTimestamp int64,
 ) (uint64, error) {
 	r.checkOrWaitForOpen()
-	var volume C.uint64_t
+	var volume *C.uint64_t
+	volume = (*C.uint64_t)(C.malloc(C.size_t(unsafe.Sizeof(C.uint64_t(0)))))
+	defer C.free(unsafe.Pointer(volume))
+	*volume = 0
 	status := C.TSGetDataVolume(
 		r.tdb,
 		C.TSTableID(tableID),
@@ -1021,14 +1072,14 @@ func (r *TsEngine) GetDataVolume(
 			begin: C.int64_t(startTimestamp),
 			end:   C.int64_t(endTimestamp),
 		},
-		&volume,
+		volume,
 	)
 	if err := statusToError(status); err != nil {
 		log.Errorf(context.TODO(), "GetDataVolume failed. err is :%+v. tableID: %d startHashPoint: %d, endHashPoint:%d startTimeStamp: %d, endTimeStamp: %d",
 			err, tableID, startHashPoint, endHashPoint, startTimestamp, endTimestamp)
 		return 0, errors.Wrap(err, "get data Volume failed")
 	}
-	return uint64(volume), nil
+	return uint64(*volume), nil
 }
 
 // GetDataVolumeHalfTS returns haslTS
@@ -1036,7 +1087,10 @@ func (r *TsEngine) GetDataVolumeHalfTS(
 	tableID uint64, startHashPoint, endHashPoint uint64, startTimestamp, endTimestamp int64,
 ) (int64, error) {
 	r.checkOrWaitForOpen()
-	var halfTimestamp C.int64_t
+	var halfTimestamp *C.int64_t
+	halfTimestamp = (*C.int64_t)(C.malloc(C.size_t(unsafe.Sizeof(C.int64_t(0)))))
+	defer C.free(unsafe.Pointer(halfTimestamp))
+	*halfTimestamp = 0
 	status := C.TSGetDataVolumeHalfTS(
 		r.tdb,
 		C.TSTableID(tableID),
@@ -1046,28 +1100,31 @@ func (r *TsEngine) GetDataVolumeHalfTS(
 			begin: C.int64_t(startTimestamp),
 			end:   C.int64_t(endTimestamp),
 		},
-		&halfTimestamp,
+		halfTimestamp,
 	)
 	if err := statusToError(status); err != nil {
 		return 0, errors.Wrap(err, "get half timestamp data Volume failed")
 	}
 
-	return int64(halfTimestamp), nil
+	return int64(*halfTimestamp), nil
 }
 
 // GetAvgTableRowSize gets AvgTableRowSize
 func (r *TsEngine) GetAvgTableRowSize(tableID uint64) (uint64, error) {
 	r.checkOrWaitForOpen()
-	var avgRowSize C.uint64_t
+	var avgRowSize *C.uint64_t
+	avgRowSize = (*C.uint64_t)(C.malloc(C.size_t(unsafe.Sizeof(C.uint64_t(0)))))
+	defer C.free(unsafe.Pointer(avgRowSize))
+	*avgRowSize = 0
 	status := C.TSGetAvgTableRowSize(
 		r.tdb,
 		C.TSTableID(tableID),
-		&avgRowSize,
+		avgRowSize,
 	)
 	if err := statusToError(status); err != nil {
 		return 0, errors.Wrap(err, "get avg table row size failed")
 	}
-	return uint64(avgRowSize), nil
+	return uint64(*avgRowSize), nil
 }
 
 // TsFetcher collect information in explain analyse
@@ -1106,19 +1163,22 @@ func (r *TsEngine) tsExecute(
 	if len(tsQueryInfo.Buf) == 0 {
 		return tsRespInfo, errors.New("query buf is nul")
 	}
-	var queryInfo C.QueryInfo
+	var queryInfo *C.QueryInfo
+	queryInfo = (*C.QueryInfo)(C.malloc(C.size_t(unsafe.Sizeof(C.QueryInfo{}))))
+	C.memset(unsafe.Pointer(queryInfo), 0, C.size_t(unsafe.Sizeof(C.QueryInfo{})))
+	defer C.free(unsafe.Pointer(queryInfo))
 	bufC := C.CBytes(tsQueryInfo.Buf)
 	defer C.free(unsafe.Pointer(bufC))
-	queryInfo.value = bufC
-	queryInfo.len = C.uint(len(tsQueryInfo.Buf))
-	queryInfo.tp = tp
-	queryInfo.id = C.int(tsQueryInfo.ID)
-	queryInfo.handle = tsQueryInfo.Handle
-	queryInfo.unique_id = C.int(tsQueryInfo.UniqueID)
-	queryInfo.time_zone = C.int(tsQueryInfo.TimeZone)
+	(*queryInfo).value = bufC
+	(*queryInfo).len = C.uint(len(tsQueryInfo.Buf))
+	(*queryInfo).tp = tp
+	(*queryInfo).id = C.int(tsQueryInfo.ID)
+	(*queryInfo).handle = tsQueryInfo.Handle
+	(*queryInfo).unique_id = C.int(tsQueryInfo.UniqueID)
+	(*queryInfo).time_zone = C.int(tsQueryInfo.TimeZone)
 	var cTzNameSlice C.TSSlice
-	queryInfo.use_dst = C.bool(tsQueryInfo.UseDST)
-	if queryInfo.use_dst && tsQueryInfo.TimeZoneName != "" {
+	(*queryInfo).use_dst = C.bool(tsQueryInfo.UseDST)
+	if (*queryInfo).use_dst && tsQueryInfo.TimeZoneName != "" {
 		tzNameBytes := []byte(tsQueryInfo.TimeZoneName)
 		cTzName := C.CBytes(tzNameBytes)
 		defer C.free(unsafe.Pointer(cTzName))
@@ -1126,58 +1186,77 @@ func (r *TsEngine) tsExecute(
 			data: (*C.char)(cTzName),
 			len:  C.size_t(len(tzNameBytes)),
 		}
-		queryInfo.time_zone_name = cTzNameSlice
+		(*queryInfo).time_zone_name = cTzNameSlice
 	}
-	queryInfo.relation_ctx = C.uint64_t(uintptr(unsafe.Pointer(ctx)))
-	cTsSlice := C.TSSlice{
-		data: (*C.char)(C.CBytes([]byte(tsQueryInfo.SQL))),
-		len:  C.size_t(len(tsQueryInfo.SQL)),
-	}
-	defer C.free(unsafe.Pointer(cTsSlice.data))
-	queryInfo.sql = cTsSlice
+	/*
+		cTsSlice := C.TSSlice{
+			data: C.CString(tsQueryInfo.SQL),
+			len:  C.size_t(len(tsQueryInfo.SQL)),
+		}
+		defer C.free(unsafe.Pointer(cTsSlice.data))
+		(*queryInfo).sql = cTsSlice
+	*/
 	// process push data for batch lookup join for multiple model processing
 	// only store the data chunk pointer into tsQueryInfo and push it down to tse
 	// when the switch is on and the server starts with single node mode.
 	dataChunk := tsQueryInfo.PushData
 	if dataChunk != nil {
 		pushDatabufC := C.CBytes(dataChunk.Data)
-		queryInfo.relRowCount = C.int(dataChunk.RowCount)
+		(*queryInfo).relRowCount = C.int(dataChunk.RowCount)
 		defer C.free(unsafe.Pointer(pushDatabufC))
-		queryInfo.relBatchData = pushDatabufC
+		(*queryInfo).relBatchData = pushDatabufC
 		dataChunk = nil // clean datachunk
 	}
 
-	// init fetcher of analyse
-	var vecFetcher C.VecTsFetcher
-	vecFetcher.collected = C.bool(false)
+	var vecFetcher *C.VecTsFetcher
+	vecFetcher = nil
 	if tsQueryInfo.Fetcher.Collected {
-		vecFetcher.collected = C.bool(true)
-		vecFetcher.size = C.int8_t(tsQueryInfo.Fetcher.Size)
-		// vecFetcher.TsFetchers = &tsQueryInfo.Fetcher.CFetchers[0]
-	} else {
-		tsFetchers := make([]C.TsFetcher, 1)
-		tsFetchers[0].processor_id = C.int32_t(-1)
-		tsQueryInfo.Fetcher.CFetchers = tsFetchers
+		vecFetcher = (*C.VecTsFetcher)(C.malloc(C.size_t(unsafe.Sizeof(C.VecTsFetcher{}))))
+		(*vecFetcher).collected = C.bool(true)
+		(*vecFetcher).size = C.int8_t(tsQueryInfo.Fetcher.Size)
+		tsFetcherSize := unsafe.Sizeof(C.TsFetcher{})
+		vsize := C.size_t((*vecFetcher).size) * C.size_t(tsFetcherSize)
+		(*vecFetcher).TsFetchers = (*C.TsFetcher)(C.malloc(vsize))
+		C.memset(unsafe.Pointer((*vecFetcher).TsFetchers), 0, vsize)
+		for i := 0; i < tsQueryInfo.Fetcher.Size; i++ {
+			elemPtr := (*C.TsFetcher)(unsafe.Pointer(
+				uintptr(unsafe.Pointer((*vecFetcher).TsFetchers)) + uintptr(i)*tsFetcherSize,
+			))
+			(*elemPtr).processor_id = tsQueryInfo.Fetcher.CFetchers[i].processor_id
+		}
 	}
-	var retInfo C.QueryInfo
-	retInfo.value = nil
-	status := C.TSExecQuery(r.tdb, &queryInfo, &retInfo, &tsQueryInfo.Fetcher.CFetchers[0], unsafe.Pointer(&vecFetcher))
+	var retInfo *C.QueryInfo
+	retInfo = (*C.QueryInfo)(C.malloc(C.size_t(unsafe.Sizeof(C.QueryInfo{}))))
+	C.memset(unsafe.Pointer(retInfo), 0, C.size_t(unsafe.Sizeof(C.QueryInfo{})))
+	defer C.free(unsafe.Pointer(retInfo))
+	(*retInfo).value = nil
+	status := C.TSExecQuery(r.tdb, queryInfo, retInfo, vecFetcher)
 	if retErr := statusToError(status); retErr != nil {
 		// log.Errorf(context.TODO(), "failed to execute query")
 	}
-	fet := tsQueryInfo.Fetcher
-	tsRespInfo.Fetcher = fet
-	tsRespInfo.ID = int(retInfo.id)
-	tsRespInfo.UniqueID = int(retInfo.unique_id)
-	tsRespInfo.Handle = unsafe.Pointer(retInfo.handle)
-	tsRespInfo.Code = int(retInfo.code)
-	tsRespInfo.RowNum = int(retInfo.row_num)
-	if unsafe.Pointer(retInfo.value) != nil {
-		tsRespInfo.Buf = C.GoBytes(unsafe.Pointer(retInfo.value), C.int(retInfo.len))
-		C.TSFree(unsafe.Pointer(retInfo.value))
+	tsRespInfo.Fetcher = tsQueryInfo.Fetcher
+	if tsQueryInfo.Fetcher.Collected {
+		tsFetcherSize := unsafe.Sizeof(C.TsFetcher{})
+		for i := 0; i < tsQueryInfo.Fetcher.Size; i++ {
+			elemPtr := (*C.TsFetcher)(unsafe.Pointer(
+				uintptr(unsafe.Pointer((*vecFetcher).TsFetchers)) + uintptr(i)*tsFetcherSize,
+			))
+			tsRespInfo.Fetcher.CFetchers[i] = *elemPtr
+		}
+		C.free(unsafe.Pointer((*vecFetcher).TsFetchers))
+		C.free(unsafe.Pointer(vecFetcher))
 	}
-	if retInfo.ret < 1 {
-		if retInfo.len > 0 {
+	tsRespInfo.ID = int((*retInfo).id)
+	tsRespInfo.UniqueID = int((*retInfo).unique_id)
+	tsRespInfo.Handle = unsafe.Pointer((*retInfo).handle)
+	tsRespInfo.Code = int((*retInfo).code)
+	tsRespInfo.RowNum = int((*retInfo).row_num)
+	if unsafe.Pointer((*retInfo).value) != nil {
+		tsRespInfo.Buf = C.GoBytes(unsafe.Pointer((*retInfo).value), C.int((*retInfo).len))
+		C.TSFree(unsafe.Pointer((*retInfo).value))
+	}
+	if (*retInfo).ret < 1 {
+		if (*retInfo).len > 0 {
 			strCode := make([]byte, 5)
 			code := uint32(tsRespInfo.Code)
 			for i := 0; i < 5; i++ {
@@ -1222,26 +1301,41 @@ func (r *TsEngine) tsVectorizedExecute(
 		dataChunk = nil // clean datachunk
 	}
 
-	// init fetcher of analyse
-	var vecFetcher C.VecTsFetcher
-	vecFetcher.collected = C.bool(false)
+	var vecFetcher *C.VecTsFetcher
+	vecFetcher = nil
 	if tsQueryInfo.Fetcher.Collected {
-		vecFetcher.collected = C.bool(true)
-		vecFetcher.size = C.int8_t(tsQueryInfo.Fetcher.Size)
-		// vecFetcher.TsFetchers = &tsQueryInfo.Fetcher.CFetchers[0]
-	} else {
-		tsFetchers := make([]C.TsFetcher, 1)
-		tsFetchers[0].processor_id = C.int32_t(-1)
-		tsQueryInfo.Fetcher.CFetchers = tsFetchers
+		vecFetcher = (*C.VecTsFetcher)(C.malloc(C.size_t(unsafe.Sizeof(C.VecTsFetcher{}))))
+		(*vecFetcher).collected = C.bool(true)
+		(*vecFetcher).size = C.int8_t(tsQueryInfo.Fetcher.Size)
+		tsFetcherSize := unsafe.Sizeof(C.TsFetcher{})
+		vsize := C.size_t((*vecFetcher).size) * C.size_t(tsFetcherSize)
+		(*vecFetcher).TsFetchers = (*C.TsFetcher)(C.malloc(vsize))
+		C.memset(unsafe.Pointer((*vecFetcher).TsFetchers), 0, vsize)
+		for i := 0; i < tsQueryInfo.Fetcher.Size; i++ {
+			elemPtr := (*C.TsFetcher)(unsafe.Pointer(
+				uintptr(unsafe.Pointer((*vecFetcher).TsFetchers)) + uintptr(i)*tsFetcherSize,
+			))
+			(*elemPtr).processor_id = tsQueryInfo.Fetcher.CFetchers[i].processor_id
+		}
 	}
 	var retInfo C.QueryInfo
 	retInfo.value = nil
-	status := C.TSExecQuery(r.tdb, &queryInfo, &retInfo, &tsQueryInfo.Fetcher.CFetchers[0], unsafe.Pointer(&vecFetcher))
+	status := C.TSExecQuery(r.tdb, &queryInfo, &retInfo, vecFetcher)
 	if retErr := statusToError(status); retErr != nil {
 		// log.Errorf(context.TODO(), "failed to execute query")
 	}
-	fet := tsQueryInfo.Fetcher
-	tsRespInfo.Fetcher = fet
+	tsRespInfo.Fetcher = tsQueryInfo.Fetcher
+	if tsQueryInfo.Fetcher.Collected {
+		tsFetcherSize := unsafe.Sizeof(C.TsFetcher{})
+		for i := 0; i < tsQueryInfo.Fetcher.Size; i++ {
+			elemPtr := (*C.TsFetcher)(unsafe.Pointer(
+				uintptr(unsafe.Pointer((*vecFetcher).TsFetchers)) + uintptr(i)*tsFetcherSize,
+			))
+			tsRespInfo.Fetcher.CFetchers[i] = *elemPtr
+		}
+		C.free(unsafe.Pointer((*vecFetcher).TsFetchers))
+		C.free(unsafe.Pointer(vecFetcher))
+	}
 	tsRespInfo.ID = int(retInfo.id)
 	tsRespInfo.UniqueID = int(retInfo.unique_id)
 	tsRespInfo.Handle = unsafe.Pointer(retInfo.handle)
@@ -1580,16 +1674,19 @@ func (r *TsEngine) DeleteEntities(
 		}
 	}
 
-	var delCnt C.uint64_t
+	var delCnt *C.uint64_t
+	delCnt = (*C.uint64_t)(C.malloc(C.size_t(unsafe.Sizeof(C.uint64_t(0)))))
+	defer C.free(unsafe.Pointer(delCnt))
+	(*delCnt) = C.uint64_t(0)
 	status := C.TsDeleteEntities(r.tdb, C.TSTableID(tableID), &cTsSlice[0], (C.size_t)(len(cTsSlice)),
-		C.uint64_t(rangeGroupID), &delCnt, C.uint64_t(tsTxnID), C.uint64_t(osnID))
+		C.uint64_t(rangeGroupID), delCnt, C.uint64_t(tsTxnID), C.uint64_t(osnID))
 	if err := statusToError(status); err != nil {
 		if isDrop {
 			return 0, err
 		}
 		log.Errorf(context.TODO(), "failed to delete ts entities")
 	}
-	return uint64(delCnt), nil
+	return uint64(*delCnt), nil
 }
 
 // DeleteRangeData delete entities data in the range
@@ -1618,20 +1715,23 @@ func (r *TsEngine) DeleteRangeData(
 		len:   C.int32_t(len(tsSpans)),
 	}
 
-	var delCnt C.uint64_t
+	var delCnt *C.uint64_t
+	delCnt = (*C.uint64_t)(C.malloc(C.size_t(unsafe.Sizeof(C.uint64_t(0)))))
+	defer C.free(unsafe.Pointer(delCnt))
+	(*delCnt) = C.uint64_t(0)
 	status := C.TsDeleteRangeData(
 		r.tdb,
 		C.TSTableID(tableID),
 		C.uint64_t(rangeGroupID),
 		cKwHashIDSpans,
 		cKwTsSpans,
-		&delCnt,
+		delCnt,
 		C.uint64_t(tsTxnID),
 		C.uint64_t(osnID))
 	if err := statusToError(status); err != nil {
-		return uint64(delCnt), errors.New("Data deletion failed or partially failed")
+		return uint64(*delCnt), errors.New("Data deletion failed or partially failed")
 	}
-	return uint64(delCnt), nil
+	return uint64(*delCnt), nil
 }
 
 // DeleteTsRangeData delete entities data in the range
@@ -1687,20 +1787,23 @@ func (r *TsEngine) DeleteData(
 		len:   C.int32_t(len(tsSpans)),
 	}
 
-	var delCnt C.uint64_t
+	var delCnt *C.uint64_t
+	delCnt = (*C.uint64_t)(C.malloc(C.size_t(unsafe.Sizeof(C.uint64_t(0)))))
+	defer C.free(unsafe.Pointer(delCnt))
+	(*delCnt) = C.uint64_t(0)
 	status := C.TsDeleteData(
 		r.tdb,
 		C.TSTableID(tableID),
 		C.uint64_t(rangeGroupID),
 		cTsSlice,
 		cKwTsSpans,
-		&delCnt,
+		delCnt,
 		C.uint64_t(tsTxnID),
 		C.uint64_t(osnID))
 	if err := statusToError(status); err != nil {
-		return uint64(delCnt), errors.Wrap(err, "failed to delete ts data")
+		return uint64(*delCnt), errors.Wrap(err, "failed to delete ts data")
 	}
-	return uint64(delCnt), nil
+	return uint64(*delCnt), nil
 }
 
 // CountRangeData delete entities data in the range
@@ -1729,20 +1832,23 @@ func (r *TsEngine) CountRangeData(
 		len:   C.int32_t(len(tsSpans)),
 	}
 
-	var RangeCnt C.uint64_t
+	var RangeCnt *C.uint64_t
+	RangeCnt = (*C.uint64_t)(C.malloc(C.size_t(unsafe.Sizeof(C.uint64_t(0)))))
+	defer C.free(unsafe.Pointer(RangeCnt))
+	(*RangeCnt) = 0
 	status := C.TsCountRangeData(
 		r.tdb,
 		C.TSTableID(tableID),
 		C.uint64_t(rangeGroupID),
 		cKwHashIDSpans,
 		cKwTsSpans,
-		&RangeCnt,
+		RangeCnt,
 		C.uint64_t(tsTxnID),
 		C.uint64_t(osnID))
 	if err := statusToError(status); err != nil {
-		return uint64(RangeCnt), errors.New("Data count failed or partially failed")
+		return uint64(*RangeCnt), errors.New("Data count failed or partially failed")
 	}
-	return uint64(RangeCnt), nil
+	return uint64(*RangeCnt), nil
 }
 
 // Vacuum vacuum partitions
@@ -1819,6 +1925,13 @@ func (r *TsEngine) CloseTsFlow(ctx *context.Context, tsQueryInfo TsQueryInfo) (e
 	return err
 }
 
+// CancelTsFlow cancel the TS actuator corresponding to the current flow
+func (r *TsEngine) CancelTsFlow(ctx *context.Context, tsQueryInfo TsQueryInfo) (err error) {
+	r.checkOrWaitForOpen()
+	_, err = r.tsExecute(ctx, C.MQ_TYPE_DML_CANCEL, tsQueryInfo)
+	return err
+}
+
 // InitTsHandle corresponding to init ts handle
 func (r *TsEngine) InitTsHandle(
 	ctx *context.Context, tsQueryInfo TsQueryInfo,
@@ -1877,17 +1990,20 @@ func (r *TsEngine) CreateSnapshotForRead(
 	tableID uint64, beginHash uint64, endHash uint64, beginTs int64, endTs int64,
 ) (uint64, error) {
 	r.checkOrWaitForOpen()
-	var snapshotID C.uint64_t
+	var snapshotID *C.uint64_t
+	snapshotID = (*C.uint64_t)(C.malloc(C.size_t(unsafe.Sizeof(C.uint64_t(0)))))
+	defer C.free(unsafe.Pointer(snapshotID))
+	(*snapshotID) = 0
 	tsSpan := C.KwTsSpan{
 		begin: C.int64_t(beginTs),
 		end:   C.int64_t(endTs),
 	}
 	status := C.TSCreateSnapshotForRead(r.tdb, C.TSTableID(tableID),
-		C.uint64_t(beginHash), C.uint64_t(endHash), tsSpan, &snapshotID)
+		C.uint64_t(beginHash), C.uint64_t(endHash), tsSpan, snapshotID)
 	if err := statusToError(status); err != nil {
 		return 0, errors.Wrap(err, "failed to create snapshot")
 	}
-	return uint64(snapshotID), nil
+	return uint64(*snapshotID), nil
 }
 
 // CreateSnapshotForWrite preparing for writing snapshots
@@ -1896,29 +2012,34 @@ func (r *TsEngine) CreateSnapshotForWrite(
 ) (uint64, error) {
 	r.checkOrWaitForOpen()
 	osnID := r.cfg.TsIDGen.GetNextID()
-	var snapshotID C.uint64_t
+	var snapshotID *C.uint64_t
+	snapshotID = (*C.uint64_t)(C.malloc(C.size_t(unsafe.Sizeof(C.uint64_t(0)))))
+	defer C.free(unsafe.Pointer(snapshotID))
+	(*snapshotID) = 0
 	tsSpan := C.KwTsSpan{
 		begin: C.int64_t(beginTs),
 		end:   C.int64_t(endTs),
 	}
 	status := C.TSCreateSnapshotForWrite(r.tdb, C.TSTableID(tableID),
-		C.uint64_t(beginHash), C.uint64_t(endHash), tsSpan, &snapshotID, C.uint64_t(osnID))
+		C.uint64_t(beginHash), C.uint64_t(endHash), tsSpan, snapshotID, C.uint64_t(osnID))
 	if err := statusToError(status); err != nil {
 		return 0, errors.Wrap(err, "failed to create snapshot")
 	}
-	return uint64(snapshotID), nil
+	return uint64(*snapshotID), nil
 }
 
 // GetSnapshotNextBatchData get data of the snapshot
 func (r *TsEngine) GetSnapshotNextBatchData(tableID uint64, snapshotID uint64) ([]byte, error) {
 	r.checkOrWaitForOpen()
-	var data C.TSSlice
-	status := C.TSGetSnapshotNextBatchData(r.tdb, C.TSTableID(tableID), C.uint64_t(snapshotID), &data)
+	var data *C.TSSlice
+	data = (*C.TSSlice)(C.malloc(C.size_t(unsafe.Sizeof(C.TSSlice{}))))
+	defer C.free(unsafe.Pointer(data))
+	status := C.TSGetSnapshotNextBatchData(r.tdb, C.TSTableID(tableID), C.uint64_t(snapshotID), data)
 	if err := statusToError(status); err != nil {
 		return nil, errors.Wrap(err, "failed to get snapshot data")
 	}
-	defer C.free(unsafe.Pointer(data.data))
-	return cSliceToGoBytes(data), nil
+	defer C.free(unsafe.Pointer((*data).data))
+	return cSliceToGoBytes(*data), nil
 }
 
 // WriteSnapshotBatchData write snapshot data
@@ -1977,21 +2098,24 @@ func (r *TsEngine) MtrBegin(
 	tableID uint64, rangeGroupID uint64, rangeID uint64, index uint64, transactionID []byte,
 ) (uint64, error) {
 	r.checkOrWaitForOpen()
-	var miniTransID C.uint64_t
+	var miniTransID *C.uint64_t
+	miniTransID = (*C.uint64_t)(C.malloc(C.size_t(unsafe.Sizeof(C.uint64_t(0)))))
+	defer C.free(unsafe.Pointer(miniTransID))
+	(*miniTransID) = 0
 	var status C.TSStatus
 	if transactionID != nil {
 		cstr := C.CString(string(transactionID))
 		defer C.free(unsafe.Pointer(cstr))
 		status = C.TSMtrBeginExplicit(r.tdb, C.TSTableID(tableID), C.uint64_t(rangeGroupID), C.uint64_t(rangeID),
-			C.uint64_t(index), &miniTransID, cstr)
+			C.uint64_t(index), miniTransID, cstr)
 	} else {
 		status = C.TSMtrBegin(r.tdb, C.TSTableID(tableID), C.uint64_t(rangeGroupID), C.uint64_t(rangeID),
-			C.uint64_t(index), &miniTransID)
+			C.uint64_t(index), miniTransID)
 	}
 	if err := statusToError(status); err != nil {
 		return 0, errors.Wrap(err, "failed to BEGIN a TS mini-transaction")
 	}
-	return uint64(miniTransID), nil
+	return uint64(*miniTransID), nil
 }
 
 // MtrCommit COMMIT a TS mini-transaction
@@ -2065,13 +2189,15 @@ func (r *TsEngine) TransRollback(tableID uint64, transactionID []byte) error {
 // TSGetWaitThreadNum is used to get wait thread num from time series engine
 func (r *TsEngine) TSGetWaitThreadNum() (uint32, error) {
 	r.checkOrWaitForOpen()
-	var info C.ThreadInfo
-	status := C.TSGetWaitThreadNum(r.tdb, unsafe.Pointer(&info))
+	var info *C.ThreadInfo
+	info = (*C.ThreadInfo)(C.malloc(C.size_t(unsafe.Sizeof(C.ThreadInfo{}))))
+	defer C.free(unsafe.Pointer(info))
+	status := C.TSGetWaitThreadNum(r.tdb, unsafe.Pointer(info))
 	if err := statusToError(status); err != nil {
 		return 0, errors.Wrap(err, "failed to get wait threads number")
 	}
 
-	return uint32(info.wait_threads), nil
+	return uint32((*info).wait_threads), nil
 }
 
 // Close close TsEngine
@@ -2245,23 +2371,29 @@ func AddStatsList(tsFetcher TsFetcher, statss []TsFetcherStats) []TsFetcherStats
 // GetTsVersion get current version of ts table
 func (r *TsEngine) GetTsVersion(tableID uint64) (uint32, error) {
 	r.checkOrWaitForOpen()
-	var tsVersion C.uint32_t
-	status := C.TsGetTableVersion(r.tdb, C.TSTableID(tableID), &tsVersion)
+	var tsVersion *C.uint32_t
+	tsVersion = (*C.uint32_t)(C.malloc(C.size_t(unsafe.Sizeof(C.uint32_t(0)))))
+	defer C.free(unsafe.Pointer(tsVersion))
+	(*tsVersion) = 0
+	status := C.TsGetTableVersion(r.tdb, C.TSTableID(tableID), tsVersion)
 	if err := statusToError(status); err != nil {
-		return uint32(tsVersion), errors.Wrap(err, "failed to get ts version")
+		return uint32(*tsVersion), errors.Wrap(err, "failed to get ts version")
 	}
-	return uint32(tsVersion), nil
+	return uint32(*tsVersion), nil
 }
 
 // GetWalLevel get current wal level of ts engine
 func (r *TsEngine) GetWalLevel() (int, error) {
 	r.checkOrWaitForOpen()
-	var walLevel C.uint8_t
-	status := C.TsGetWalLevel(r.tdb, &walLevel)
+	var walLevel *C.uint8_t
+	walLevel = (*C.uint8_t)(C.malloc(C.size_t(unsafe.Sizeof(C.uint8_t(0)))))
+	defer C.free(unsafe.Pointer(walLevel))
+	(*walLevel) = 0
+	status := C.TsGetWalLevel(r.tdb, walLevel)
 	if err := statusToError(status); err != nil {
-		return int(walLevel), errors.Wrap(err, "failed to get ts version")
+		return int(*walLevel), errors.Wrap(err, "failed to get ts version")
 	}
-	return int(walLevel), nil
+	return int(*walLevel), nil
 }
 
 // GetTableMetaByVersion is used for unit test, try to get the tableMeta with specific tsVersion

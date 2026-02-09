@@ -14,16 +14,18 @@
 #include <libkwdbts2.h>
 
 #include "ee_global.h"
+#include "ee_dml_exec.h"
 #include "pgcode.h"
 
 namespace kwdbts {
 
 KStatus CheckCancel(kwdbContext_p ctx) {
-  if (isCanceledCtx(ctx->relation_ctx)) {
-    EEPgErrorInfo::SetPgErrorInfo(ERRCODE_QUERY_CANCELED,
-                                  "query execution canceled");
+#ifndef WITH_TESTS
+  if (ctx->dml_exec_handle->is_cancel_ == true) {
+    EEPgErrorInfo::SetPgErrorInfo(ERRCODE_QUERY_CANCELED, "query execution canceled");
     return KStatus::FAIL;
   }
+#endif
   return KStatus::SUCCESS;
 }
 

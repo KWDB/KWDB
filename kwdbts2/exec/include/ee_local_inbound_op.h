@@ -29,13 +29,14 @@ class LocalInboundOperator : public InboundOperator {
   void PushFinish(EEIteratorErrCode code, k_int32 stream_id,
                   const EEPgErrorInfo& pgInfo) override;
 
-  KStatus PushChunk(DataChunkPtr& chunk, k_int32 stream_id,
+  KStatus PushChunk(kwdbContext_p ctx, DataChunkPtr& chunk, k_int32 stream_id,
                     EEIteratorErrCode code = EEIteratorErrCode::EE_OK) override;
   KStatus PullChunk(kwdbContext_p ctx, DataChunkPtr& chunk) override;
 
   enum OperatorType Type() override {return OperatorType::OPERATOR_LOCAL_IN_BOUND;}
 
   k_bool HasOutput() override;
+  EEIteratorErrCode Close(kwdbContext_p ctx) override;
 
  private:
   DataChunkPtr PullPassthroughChunk();
@@ -46,6 +47,7 @@ class LocalInboundOperator : public InboundOperator {
   bool is_finished_{0};
   std::mutex chunk_lock_;
   std::condition_variable wait_cond_;
+  std::condition_variable wait_pull_cond_;
   EEPgErrorInfo pg_info_;
   EEIteratorErrCode local_inbound_code_{EEIteratorErrCode::EE_OK};
 };

@@ -85,6 +85,7 @@ typedef struct _kwdbContext_t: public _KContext_t {
   void *fetcher{nullptr};
   DmlExec* dml_exec_handle{nullptr};  // handle in DmlExec for multiple model processing
   k_bool *b_is_cancel{nullptr};
+  k_bool wait_for_output{false};
 } kwdbContext_t;
 // Defines the context structure pointer type
 typedef kwdbContext_t* kwdbContext_p;

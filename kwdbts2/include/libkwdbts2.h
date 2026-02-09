@@ -149,6 +149,7 @@ typedef enum _EnMqType {
   MQ_TYPE_DML_PG_RESULT,
   MQ_TYPE_DML_VECTORIZE_NEXT,
   MQ_TYPE_DML_INIT,
+  MQ_TYPE_DML_CANCEL,
   MQ_TYPE_MAX
 } EnMqType;
 
@@ -274,7 +275,7 @@ TSStatus TSPutDataExplicit(TSEngine* engine, TSTableID tableId, TSSlice* payload
                    uint64_t mtr_id, uint16_t* inc_entity_cnt, uint32_t* not_create_entity, DedupResult* dedup_result,
                    bool writeWAL, const char* tsx_id);
 
-TSStatus TSExecQuery(TSEngine* engine, QueryInfo* req, RespInfo* resp, TsFetcher* fetchers, void* fetcher);
+TSStatus TSExecQuery(TSEngine* engine, QueryInfo* req, RespInfo* resp, VecTsFetcher* fetcher);
 
 TSStatus TsDeleteEntities(TSEngine *engine, TSTableID table_id, TSSlice *primary_tags, size_t primary_tags_num,
                           uint64_t range_group_id, uint64_t *count, uint64_t mtr_id, uint64_t osn);

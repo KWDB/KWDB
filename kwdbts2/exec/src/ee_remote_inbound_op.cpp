@@ -249,7 +249,7 @@ void RemoteInboundOperator::PushFinish(EEIteratorErrCode code,
   chunk_request_.reset();
 }
 
-KStatus RemoteInboundOperator::PushChunk(DataChunkPtr& chunk, k_int32 stream_id,
+KStatus RemoteInboundOperator::PushChunk(kwdbContext_p ctx, DataChunkPtr& chunk, k_int32 stream_id,
                                          EEIteratorErrCode code) {
   std::unique_lock l(push_lock_);
   if (chunk_request_ == nullptr) {

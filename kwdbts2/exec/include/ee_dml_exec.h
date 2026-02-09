@@ -95,6 +95,8 @@ class DmlExec {
   // a queue to receive relation batch data from ME for multiple model processing
   RelBatchQueue* rel_batch_queue_{nullptr};
   BrpcInfo brpc_info_;
+
+ public:
+  std::atomic<bool> is_cancel_{false};
 };
 };  // namespace kwdbts
-

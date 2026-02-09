@@ -163,6 +163,11 @@ KStatus DmlExec::ExecQuery(kwdbContext_p ctx, QueryInfo *req, RespInfo *resp) {
         resp->ret = 1;
         resp->tp = req->tp;
         break;
+      case EnMqType::MQ_TYPE_DML_CANCEL:
+        handle->is_cancel_ = true;
+        resp->ret = 1;
+        resp->tp = req->tp;
+        break;
       case EnMqType::MQ_TYPE_DML_INIT:
         resp->ret = 1;
         resp->tp = req->tp;
@@ -309,9 +314,6 @@ KStatus DmlExec::InnerNext(kwdbContext_p ctx, TsScan *tsScan, TsNextRetState nex
       if (KStatus::SUCCESS != ret) {
         break;
       }
-    }
-    if (CheckCancel(ctx) != SUCCESS) {
-      break;
     }
     k_char *result{nullptr};
     k_uint32 count = 0;

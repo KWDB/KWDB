@@ -377,6 +377,7 @@ func (ds *ServerImpl) setupFlow(
 		monitor.Stop(ctx)
 		tracing.FinishSpan(sp)
 		ctx = opentracing.ContextWithSpan(ctx, nil)
+		f.Cleanup(ctx)
 		return ctx, nil, err
 	}
 	if !f.IsLocal() {
@@ -401,6 +402,7 @@ func (ds *ServerImpl) setupFlow(
 			var err error
 			leafTxn, err = makeLeaf(req)
 			if err != nil {
+				f.Cleanup(ctx)
 				return nil, nil, err
 			}
 		}

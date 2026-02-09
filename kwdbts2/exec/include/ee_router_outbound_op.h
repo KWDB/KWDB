@@ -104,7 +104,7 @@ class RouterOutboundOperator : public OutboundOperator {
   RouterOutboundOperator(const RouterOutboundOperator& other, int32_t processor_id);
   ~RouterOutboundOperator();
 
-  KStatus PushChunk(DataChunkPtr& chunk, k_int32 stream_id,
+  KStatus PushChunk(kwdbContext_p ctx, DataChunkPtr& chunk, k_int32 stream_id,
                     EEIteratorErrCode code = EEIteratorErrCode::EE_OK) override;
 
   EEIteratorErrCode Init(kwdbContext_p ctx) override;

@@ -493,7 +493,7 @@ EEIteratorErrCode RouterOutboundOperator::Next(kwdbContext_p ctx,
       Return(code);
     }
 
-    PushChunk(temp_chunk, 0);
+    PushChunk(ctx, temp_chunk, 0);
     code = EEIteratorErrCode::EE_NEXT_CONTINUE;
   }
 
@@ -686,7 +686,7 @@ EEIteratorErrCode RouterOutboundOperator::Close(kwdbContext_p ctx) {
   return EEIteratorErrCode::EE_OK;
 }
 
-KStatus RouterOutboundOperator::PushChunk(DataChunkPtr& chunk,
+KStatus RouterOutboundOperator::PushChunk(kwdbContext_p ctx, DataChunkPtr& chunk,
                                           k_int32 stream_id,
                                           EEIteratorErrCode code) {
   uint16_t num_rows = chunk->Count();

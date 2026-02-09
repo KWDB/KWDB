@@ -29,6 +29,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/tse"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 	"gitee.com/kwbasedb/kwbase/pkg/util/protoutil"
+	"gitee.com/kwbasedb/kwbase/pkg/util/syncutil"
 	"gitee.com/kwbasedb/kwbase/pkg/util/timeutil"
 	"gitee.com/kwbasedb/kwbase/pkg/util/tracing"
 	"gitee.com/kwbasedb/kwbase/pkg/util/uuid"
@@ -62,7 +63,9 @@ type TsReaderOp struct {
 	Rcv tse.TsDataChunkToGo
 
 	// tsInfo is information for ae.
-	tsInfo execinfrapb.TsInfo
+	tsInfo   execinfrapb.TsInfo
+	waitChan chan struct{}
+	mu       syncutil.Mutex
 }
 
 var _ Operator = &TsReaderOp{}
@@ -105,6 +108,7 @@ func NewTsReaderOp(
 	tro.FlowCtx = flowCtx
 	tro.ProcessorID = -1
 	tro.internalBatch = allocator.NewMemBatch(typs)
+	tro.waitChan = make(chan struct{})
 	return tro
 }
 
@@ -183,22 +187,35 @@ func (tro *TsReaderOp) Init() {
 			TimeZone: timezone,
 		}
 		respInfo, setupErr := tro.FlowCtx.Cfg.TsEngine.SetupTsFlow(&(tro.Ctx), tsQueryInfo)
+		tro.tsHandle = respInfo.Handle
 		if setupErr != nil {
-			var tsCloseInfo tse.TsQueryInfo
-			tsCloseInfo.Handle = respInfo.Handle
-			tsCloseInfo.Buf = []byte("close tsflow")
-			closeErr := tro.FlowCtx.Cfg.TsEngine.CloseTsFlow(&(tro.Ctx), tsCloseInfo)
-			if closeErr != nil {
-				// log.Warning(tro, closeErr)
-			}
+			tro.cleanup(context.Background())
 			execerror.VectorizedInternalPanic(setupErr)
 		}
-		tro.tsHandle = respInfo.Handle
 	}
 
 	tro.Rcv.NeedType = make([]coltypes.T, tro.internalBatch.Width())
 	for i := 0; i < tro.internalBatch.Width(); i++ {
 		tro.Rcv.NeedType[i] = tro.internalBatch.ColVec(i).Type()
+	}
+
+	go func() {
+		select {
+		case <-tro.Ctx.Done():
+			tro.cancelTsFlow()
+			tro.safeCloseWaitChan()
+		case <-tro.waitChan:
+			// Exit normally
+		}
+	}()
+
+}
+
+func (tro *TsReaderOp) safeCloseWaitChan() {
+	select {
+	case <-tro.waitChan:
+	default:
+		close(tro.waitChan)
 	}
 }
 
@@ -346,7 +363,24 @@ func (tro *TsReaderOp) ChildCount(verbose bool) int {
 	return 0
 }
 
+// cancelTsFlow is to cancel ts flow.
+func (tro *TsReaderOp) cancelTsFlow() {
+	tro.mu.Lock()
+	defer tro.mu.Unlock()
+	if tro.tsHandle != nil {
+		var tsInfo tse.TsQueryInfo
+		tsInfo.Handle = tro.tsHandle
+		tsInfo.Buf = []byte("cancel tsflow")
+		err := tro.FlowCtx.Cfg.TsEngine.CancelTsFlow(&(tro.Ctx), tsInfo)
+		if err != nil {
+			log.Warning(tro.Ctx, err)
+		}
+	}
+}
+
 func (tro *TsReaderOp) cleanup(ctx context.Context) {
+	tro.mu.Lock()
+	defer tro.mu.Unlock()
 	if tro.tsHandle != nil {
 		var tsCloseInfo tse.TsQueryInfo
 		tsCloseInfo.Handle = tro.tsHandle
@@ -358,6 +392,7 @@ func (tro *TsReaderOp) cleanup(ctx context.Context) {
 		tro.tsHandle = nil
 		tro.done = true
 	}
+	tro.safeCloseWaitChan()
 }
 
 // Child helps implement the Operator interface.

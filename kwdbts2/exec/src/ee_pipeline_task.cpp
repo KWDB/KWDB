@@ -34,6 +34,7 @@ KStatus PipelineTask::Init(kwdbContext_p ctx) {
   is_parallel_pg_ = false;
   is_stop_ = false;
   relation_ctx_ = ctx->relation_ctx;
+  dml_exec_handle_ = ctx->dml_exec_handle;
   timezone_ = ctx->timezone;
   use_dst_ = ctx->use_dst;
   // Copy timezone name for DST support if enabled
@@ -214,6 +215,7 @@ void PipelineTask::Run(kwdbContext_p ctx) {
     return;
   }
   ctx->b_is_cancel = &(processors_->b_is_cancel_);
+  ctx->dml_exec_handle = dml_exec_handle_;
   is_running_ = true;
   EEPgErrorInfo::ResetPgErrorInfo();
   ctx->ts_engine = ts_engine_;
@@ -237,7 +239,7 @@ void PipelineTask::Run(kwdbContext_p ctx) {
 
     if (PS_STARTED == state_) {
       code = operator_->Start(ctx);
-      if (code != EEIteratorErrCode::EE_OK || g_error_info.code > 0 || CheckCancel(ctx) != SUCCESS) {
+      if (code != EEIteratorErrCode::EE_OK || g_error_info.code > 0) {
         Close(ctx, code);
         return;
       }
@@ -277,9 +279,16 @@ void PipelineTask::Run(kwdbContext_p ctx) {
         }
       }
 
+      // comment this block, because it will block the pipeline when threadpool is idle
       if (EEIteratorErrCode::EE_QUEUE_FULL == code) {
-        Blocked(ctx);
-        break;
+        int64_t duration = DurationTimes();
+        if (!instance.IsEmpty() || duration > YIELD_MAX_TIME_SPENT_NS) {
+          ctx->wait_for_output = false;
+          Blocked(ctx);
+          break;
+        }
+        ctx->wait_for_output = true;
+        continue;
       }
 
       if (EEIteratorErrCode::EE_OK != code || g_error_info.code > 0 || is_stop_) {

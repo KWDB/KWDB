@@ -49,6 +49,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/tse"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 	"gitee.com/kwbasedb/kwbase/pkg/util/protoutil"
+	"gitee.com/kwbasedb/kwbase/pkg/util/syncutil"
 	"gitee.com/kwbasedb/kwbase/pkg/util/timeutil"
 	"gitee.com/kwbasedb/kwbase/pkg/util/tracing"
 	"gitee.com/kwbasedb/kwbase/pkg/util/uuid"
@@ -88,7 +89,9 @@ type TsTableReader struct {
 	collected bool
 	statsList []tse.TsFetcherStats
 
-	tsInfo execinfrapb.TsInfo
+	tsInfo   execinfrapb.TsInfo
+	waitChan chan struct{}
+	mu       syncutil.Mutex
 }
 
 var _ execinfra.Processor = &TsTableReader{}
@@ -152,8 +155,26 @@ func NewTsTableReader(
 	if err := ttr.setupTsFlow(ttr.Ctx); err != nil {
 		return nil, err
 	}
-
+	ttr.waitChan = make(chan struct{})
+	// to cancel ts flow when context is done.
+	go func() {
+		select {
+		case <-ttr.Ctx.Done():
+			ttr.cancelTsFlow()
+			ttr.safeCloseWaitChan()
+		case <-ttr.waitChan:
+			// Exit normally
+		}
+	}()
 	return ttr, nil
+}
+
+func (ttr *TsTableReader) safeCloseWaitChan() {
+	select {
+	case <-ttr.waitChan:
+	default:
+		close(ttr.waitChan)
+	}
 }
 
 func (ttr *TsTableReader) initTableReader(
@@ -263,7 +284,6 @@ func NewTSFlowSpec(flowID execinfrapb.FlowID, gateway roachpb.NodeID) *execinfra
 // Start is part of the RowSource interface.
 func (ttr *TsTableReader) Start(ctx context.Context) context.Context {
 	ctx = ttr.StartInternal(ctx, tsTableReaderProcName)
-
 	return ctx
 }
 
@@ -399,6 +419,8 @@ func (ttr *TsTableReader) cleanup(ctx context.Context) {
 
 // DropHandle is to close ts handle.
 func (ttr *TsTableReader) DropHandle(ctx context.Context) {
+	ttr.mu.Lock()
+	defer ttr.mu.Unlock()
 	if ttr.tsHandle != nil {
 		var tsCloseInfo tse.TsQueryInfo
 		tsCloseInfo.Handle = ttr.tsHandle
@@ -408,6 +430,22 @@ func (ttr *TsTableReader) DropHandle(ctx context.Context) {
 			log.Warning(ctx, closeErr)
 		}
 		ttr.tsHandle = nil
+	}
+	ttr.safeCloseWaitChan()
+}
+
+// cancelTsFlow is to cancel ts flow.
+func (ttr *TsTableReader) cancelTsFlow() {
+	ttr.mu.Lock()
+	defer ttr.mu.Unlock()
+	if ttr.tsHandle != nil {
+		var tsInfo tse.TsQueryInfo
+		tsInfo.Handle = ttr.tsHandle
+		tsInfo.Buf = []byte("cancel tsflow")
+		err := ttr.FlowCtx.Cfg.TsEngine.CancelTsFlow(&(ttr.Ctx), tsInfo)
+		if err != nil {
+			log.Warning(ttr.Ctx, err)
+		}
 	}
 }
 

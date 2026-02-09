@@ -28,7 +28,7 @@ class RemoteInboundOperator : public InboundOperator {
   EEIteratorErrCode Next(kwdbContext_p ctx, DataChunkPtr& chunk) override;
   EEIteratorErrCode Close(kwdbContext_p ctx) override;
   KStatus PullChunk(kwdbContext_p ctx, DataChunkPtr& chunk) override;
-  KStatus PushChunk(DataChunkPtr& chunk, k_int32 stream_id,
+  KStatus PushChunk(kwdbContext_p ctx, DataChunkPtr& chunk, k_int32 stream_id,
                     EEIteratorErrCode code = EEIteratorErrCode::EE_OK) override;
   void PushFinish(EEIteratorErrCode code, k_int32 stream_id,
                   const EEPgErrorInfo& pgInfo) override;

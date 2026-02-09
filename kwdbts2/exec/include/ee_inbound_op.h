@@ -39,11 +39,9 @@ class InboundOperator : public BaseOperator {
   EEIteratorErrCode Reset(kwdbContext_p ctx) override;
 
   EEIteratorErrCode Close(kwdbContext_p ctx) override;
-  KStatus PushChunk(
-      DataChunkPtr& chunk, k_int32 stream_id,
-      EEIteratorErrCode code = EEIteratorErrCode::EE_OK) override {
-    EEPgErrorInfo::SetPgErrorInfo(ERRCODE_INVALID_OPERATION,
-                                  "Insufficient memory");
+  KStatus PushChunk(kwdbContext_p ctx, DataChunkPtr& chunk, k_int32 stream_id,
+                    EEIteratorErrCode code = EEIteratorErrCode::EE_OK) override {
+    EEPgErrorInfo::SetPgErrorInfo(ERRCODE_INVALID_OPERATION, "Insufficient memory");
     return KStatus::FAIL;
   }
 

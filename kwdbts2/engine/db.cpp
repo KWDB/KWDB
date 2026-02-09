@@ -308,12 +308,10 @@ TSStatus TSPutDataExplicit(TSEngine* engine, TSTableID table_id, TSSlice* payloa
   return TSStatus{nullptr, 0};
 }
 
-TSStatus TSExecQuery(TSEngine* engine, QueryInfo* req, RespInfo* resp, TsFetcher* fetchers, void* fetcher) {
+TSStatus TSExecQuery(TSEngine* engine, QueryInfo* req, RespInfo* resp, VecTsFetcher* fetcher) {
   kwdbContext_t context;
   kwdbContext_p ctx_p = &context;
-  auto *fet = static_cast<VecTsFetcher *>(fetcher);
-  if (fet != nullptr && fet->collected) {
-    fet->TsFetchers = fetchers;
+  if (fetcher != nullptr && fetcher->collected) {
     ctx_p->fetcher = fetcher;
   }
   KStatus s = InitServerKWDBContext(ctx_p);

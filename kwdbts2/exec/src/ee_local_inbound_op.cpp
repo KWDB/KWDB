@@ -37,6 +37,18 @@ EEIteratorErrCode LocalInboundOperator::Init(kwdbContext_p ctx) {
   Return(EEIteratorErrCode::EE_OK);
 }
 
+EEIteratorErrCode LocalInboundOperator::Close(kwdbContext_p ctx) {
+  EnterFunc();
+  {
+    std::unique_lock l(chunk_lock_);
+    wait_cond_.notify_all();
+    wait_pull_cond_.notify_all();
+  }
+  EEIteratorErrCode code = EEIteratorErrCode::EE_OK;
+  code = InboundOperator::Close(ctx);
+  Return(code);
+}
+
 EEIteratorErrCode LocalInboundOperator::Next(kwdbContext_p ctx, DataChunkPtr& chunk) {
   EnterFunc();
   EEIteratorErrCode code = EEIteratorErrCode::EE_OK;
@@ -75,12 +87,15 @@ void LocalInboundOperator::PushFinish(EEIteratorErrCode code, k_int32 stream_id,
   wait_cond_.notify_one();
 }
 
-KStatus LocalInboundOperator::PushChunk(DataChunkPtr& chunk, k_int32 stream_id,
+KStatus LocalInboundOperator::PushChunk(kwdbContext_p ctx, DataChunkPtr& chunk, k_int32 stream_id,
                                         EEIteratorErrCode code) {
   // lock
-  std::lock_guard<std::mutex> l(chunk_lock_);
+  std::unique_lock l(chunk_lock_);
   if (chunks_.size() >= MAX_QUEUE_SIZE || queue_data_size_ > MAX_QUEUE_DATA_SIZE) {
-    return KStatus::FAIL;
+    if (!ctx->wait_for_output) {
+      return KStatus::FAIL;
+    }
+    wait_pull_cond_.wait_for(l, std::chrono::milliseconds(1));
   }
   // chunk push to queue。
   queue_data_size_ += chunk->Size();
@@ -121,6 +136,7 @@ KStatus LocalInboundOperator::PullChunk(kwdbContext_p ctx, DataChunkPtr& chunk) 
     queue_data_size_ -= chunk->Size();
     total_rows_ += chunk->Count();
     chunks_.pop_front();
+    wait_pull_cond_.notify_one();
     break;
   }
 

@@ -27,7 +27,7 @@ class LocalOutboundOperator : public OutboundOperator {
 
   EEIteratorErrCode Init(kwdbContext_p ctx) override;
 
-  KStatus PushChunk(DataChunkPtr &chunk, k_int32 stream_id, EEIteratorErrCode code) override;
+  KStatus PushChunk(kwdbContext_p ctx, DataChunkPtr &chunk, k_int32 stream_id, EEIteratorErrCode code) override;
 
   void PushFinish(EEIteratorErrCode code, k_int32 stream_id, const EEPgErrorInfo &pgInfo) override;
 
