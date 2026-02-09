@@ -2775,19 +2775,23 @@ KStatus TsVGroup::CalcPartitionAgg() {
       std::vector<KwTsSpan> ts_spans = {{par_version->GetTsColTypeStartTime(ts_col_type),
                                        par_version->GetTsColTypeEndTime(ts_col_type)}};
       std::vector<BlockFilter> block_filter = {};
-      std::vector<k_int32> agg_extend_cols = {};
+
       std::vector<timestamp64> ts_points = {};
       std::vector<k_uint32> scan_cols;
       std::vector<Sumfunctype> scan_agg_types;
-      for (auto & attr : attrs) {
-        scan_cols.push_back(attr.id - 1);
+      for (int i = 0; i < attrs.size(); i++) {
+        scan_cols.push_back(i);
         scan_agg_types.push_back(Sumfunctype::COUNT);
-        if (isSumType(static_cast<DATATYPE>(attr.type))) {
-          scan_cols.push_back(attr.id - 1);
+        scan_cols.push_back(i);
+        scan_agg_types.push_back(Sumfunctype::MAX);
+        scan_cols.push_back(i);
+        scan_agg_types.push_back(Sumfunctype::MIN);
+        if (isSumType(static_cast<DATATYPE>(attrs[i].type))) {
+          scan_cols.push_back(i);
           scan_agg_types.push_back(Sumfunctype::SUM);
         }
       }
-
+      std::vector<k_int32> agg_extend_cols(scan_cols.size(), -1);
       std::unique_ptr<TsStorageIterator> ts_iter_guard;
       TsStorageIterator* raw_iter = nullptr;
 
@@ -2809,16 +2813,46 @@ KStatus TsVGroup::CalcPartitionAgg() {
         int res_idx = 0;
         for (int idx = 0; idx < attrs.size(); idx++) {
           string col_agg;
+          DATATYPE col_type = idx == 0 ? DATATYPE::TIMESTAMP64 : static_cast<DATATYPE>(attrs[idx].type);
+          bool is_var_col = isVarLenType(col_type);
 
-          col_agg.resize(sizeof(uint32_t) + 9, '\0');
-          memcpy(col_agg.data(), res_set.data[res_idx][0]->mem, sizeof(uint32_t));
-          res_idx++;
-          if (isSumType(static_cast<DATATYPE>(attrs[idx].type))) {
-            memcpy(col_agg.data() + sizeof(uint32_t), &res_set.data[res_idx][0]->is_overflow, 1);
-            memcpy(col_agg.data() + sizeof(uint32_t) + 1, res_set.data[res_idx][0]->mem, 8);
+          if (!is_var_col) {
+            auto col_agg_size = sizeof(uint64_t) + attrs[idx].size * 2 + 9;
+            col_agg.resize(col_agg_size, '\0');
+            // count
+            memcpy(col_agg.data(), res_set.data[res_idx][0]->mem, sizeof(uint64_t));
+            res_idx++;
+            // max
+            memcpy(col_agg.data() + sizeof(uint64_t), res_set.data[res_idx][0]->mem, attrs[idx].size);
+            res_idx++;
+            // min
+            memcpy(col_agg.data() + sizeof(uint64_t) + attrs[idx].size, res_set.data[res_idx][0]->mem, attrs[idx].size);
+            res_idx++;
+            // sum
+            if (isSumType(static_cast<DATATYPE>(attrs[idx].type))) {
+              memcpy(col_agg.data() + sizeof(uint64_t) + attrs[idx].size * 2, &res_set.data[res_idx][0]->is_overflow, 1);
+              memcpy(col_agg.data() + sizeof(uint64_t) + attrs[idx].size * 2 + 1, res_set.data[res_idx][0]->mem, 8);
+              res_idx++;
+            }
+          } else {
+            auto col_agg_size = sizeof(uint64_t) + 2 * sizeof(uint16_t);
+            col_agg.resize(col_agg_size, '\0');
+            // count
+            memcpy(col_agg.data(), res_set.data[res_idx][0]->mem, sizeof(uint64_t));
+            res_idx++;
+            // max
+            uint16_t max_len =  res_set.data[res_idx][0]->getVarColDataLen(0);
+            memcpy(col_agg.data() + sizeof(uint64_t), &max_len, sizeof(uint16_t));
+            col_agg.append(static_cast<char*>(res_set.data[res_idx][0]->getVarColData(0)), max_len);
+            res_idx++;
+            // min
+            uint16_t min_len =  res_set.data[res_idx][0]->getVarColDataLen(0);
+            memcpy(col_agg.data() + sizeof(uint64_t) + sizeof(uint16_t), &min_len, sizeof(uint16_t));
+            col_agg.append(static_cast<char*>(res_set.data[res_idx][0]->getVarColData(0)), min_len);;
             res_idx++;
           }
           agg_buffer.append(col_agg);
+
           uint32_t offset = agg_buffer.size() - agg_header_size;
           memcpy(agg_buffer.data() + idx * sizeof(uint32_t), &offset, sizeof(uint32_t));
         }

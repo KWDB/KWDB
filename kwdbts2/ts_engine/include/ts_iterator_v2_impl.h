@@ -192,13 +192,14 @@ class TsAggIteratorV2Impl : public TsStorageIteratorV2Impl {
   std::vector<k_uint32> kw_last_scan_cols_;
 
   bool first_last_only_agg_;
-  bool partition_agg_invoke_{false};
+  bool calc_partition_agg_invoke_{false};
 
   bool has_first_row_col_;
   bool has_last_row_col_;
   bool only_count_ts_{false};
   bool only_last_{true};
   bool only_last_row_{true};
+  bool only_partition_agg_type_{true};
   AggCandidate first_row_candidate_{INT64_MAX, 0, nullptr};
   AggCandidate last_row_candidate_{INT64_MIN, 0, nullptr};
 
