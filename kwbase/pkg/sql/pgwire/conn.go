@@ -959,10 +959,16 @@ func (c *conn) handleSimpleQuery(
 
 				defer tables.ReleaseTSTables(ctx)
 				table, err := tables.GetTableVersion(ctx, txn, dit.Tname, tree.ObjectLookupFlags{})
-				if err != nil || table == nil {
+				if table == nil {
+					return c.stmtBuf.Push(ctx, sql.SendError{
+						Err: pgerror.Newf(
+							pgcode.UndefinedTable, "relation '%d.%d' does not exist", dit.DbID, dit.TabID,
+						),
+					})
+				}
+				if err != nil {
 					return c.stmtBuf.Push(ctx, sql.SendError{Err: err})
 				}
-
 				evalCtx.StartSinglenode = (server.GetCFG().StartMode == sql.StartSingleNode)
 				dit.DbID, dit.TabID = uint32(table.TableDescriptor.ParentID), uint32(table.TableDescriptor.ID)
 				if table.TsTable.HashNum == 0 {
