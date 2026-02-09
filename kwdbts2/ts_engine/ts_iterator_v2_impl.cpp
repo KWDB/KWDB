@@ -1541,17 +1541,17 @@ KStatus TsAggIteratorV2Impl::PartitionAggregate(TsScanStats* ts_scan_stats) {
           return KStatus::FAIL;
         }
       }
-      return KStatus::SUCCESS;
-    }
+    } else {
 general_query:
-    s = partition->GetBlockSpans(filter, &ts_block_spans_, table_schema_mgr_, scan_schema_, ts_scan_stats);
-    if (s != KStatus::SUCCESS) {
-      LOG_ERROR("e_paritition GetBlockSpan failed.");
-      return s;
-    }
-    s = UpdateAggregation(false, ts_scan_stats);
-    if (s != KStatus::SUCCESS) {
-      return s;
+      s = partition->GetBlockSpans(filter, &ts_block_spans_, table_schema_mgr_, scan_schema_, ts_scan_stats);
+      if (s != KStatus::SUCCESS) {
+        LOG_ERROR("e_paritition GetBlockSpan failed.");
+        return s;
+      }
+      s = UpdateAggregation(false, ts_scan_stats);
+      if (s != KStatus::SUCCESS) {
+        return s;
+      }
     }
   }
   return KStatus::SUCCESS;
