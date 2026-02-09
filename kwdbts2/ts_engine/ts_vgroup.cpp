@@ -2813,10 +2813,22 @@ KStatus TsVGroup::CalcPartitionAgg() {
         int res_idx = 0;
         for (int idx = 0; idx < attrs.size(); idx++) {
           string col_agg;
+          Defer agg_defer {[&]() {
+            agg_buffer.append(col_agg);
+            uint32_t offset = agg_buffer.size() - agg_header_size;
+            memcpy(agg_buffer.data() + idx * sizeof(uint32_t), &offset, sizeof(uint32_t));
+          }};
+
           DATATYPE col_type = idx == 0 ? DATATYPE::TIMESTAMP64 : static_cast<DATATYPE>(attrs[idx].type);
           bool is_var_col = isVarLenType(col_type);
 
+          bool is_null{false};
+          uint64_t col_count = *static_cast<uint64_t*>(res_set.data[res_idx][0]->mem);
           if (!is_var_col) {
+            if (col_count == 0) {
+              res_idx += 4;
+              continue;
+            }
             auto col_agg_size = sizeof(uint64_t) + attrs[idx].size * 2 + 9;
             col_agg.resize(col_agg_size, '\0');
             // count
@@ -2835,6 +2847,10 @@ KStatus TsVGroup::CalcPartitionAgg() {
               res_idx++;
             }
           } else {
+            if (col_count == 0) {
+              res_idx += 3;
+              continue;
+            }
             auto col_agg_size = sizeof(uint64_t) + 2 * sizeof(uint16_t);
             col_agg.resize(col_agg_size, '\0');
             // count
@@ -2848,13 +2864,9 @@ KStatus TsVGroup::CalcPartitionAgg() {
             // min
             uint16_t min_len =  res_set.data[res_idx][0]->getVarColDataLen(0);
             memcpy(col_agg.data() + sizeof(uint64_t) + sizeof(uint16_t), &min_len, sizeof(uint16_t));
-            col_agg.append(static_cast<char*>(res_set.data[res_idx][0]->getVarColData(0)), min_len);;
+            col_agg.append(static_cast<char*>(res_set.data[res_idx][0]->getVarColData(0)), min_len);
             res_idx++;
           }
-          agg_buffer.append(col_agg);
-
-          uint32_t offset = agg_buffer.size() - agg_header_size;
-          memcpy(agg_buffer.data() + idx * sizeof(uint32_t), &offset, sizeof(uint32_t));
         }
         TsEntityPartitionAggIndex stats{tb_schema->GetTableId(), entity_id,  metric_schema->GetVersion(), 0, 0, 0, 0, 0, ""};
         par_version->GetMaxOSN(tb_schema->GetDbID(), tb_schema->GetTableId(), entity_id, ts_col_type, stats.max_osn);

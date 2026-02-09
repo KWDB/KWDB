@@ -1401,6 +1401,7 @@ KStatus TsAggIteratorV2Impl::PartitionAggregate(TsScanStats* ts_scan_stats) {
           start_offset = *reinterpret_cast<uint32_t*>(entity_agg.data() + (kw_col_idx - 1) * sizeof(uint32_t));
         }
         uint32_t end_offset = *reinterpret_cast<uint32_t*>(entity_agg.data() + (kw_col_idx) * sizeof(uint32_t));
+        assert(end_offset >= start_offset);
         uint32_t len = end_offset - start_offset;
         if (len) {
           col_agg = TsSliceGuard(entity_agg.data() + agg_header_size + start_offset, len);
@@ -1442,8 +1443,8 @@ KStatus TsAggIteratorV2Impl::PartitionAggregate(TsScanStats* ts_scan_stats) {
             memcpy(agg_data.data, pre_max, kw_col_idx == 0 ? 8 : size);
           }
         } else {
-          auto max_len = *reinterpret_cast<const uint32_t*>(col_agg.data() + sizeof(uint64_t));
-          string pre_max_val(col_agg.data() + sizeof(uint64_t) + sizeof(uint32_t) * 2, max_len);
+          auto max_len = *reinterpret_cast<const uint16_t*>(col_agg.data() + sizeof(uint64_t));
+          string pre_max_val(col_agg.data() + sizeof(uint64_t) + sizeof(uint16_t) * 2, max_len);
           if (agg_data.data) {
             string current_max({agg_data.data + kStringLenLen, agg_data.len - kStringLenLen});
             if (current_max < pre_max_val) {
@@ -1485,9 +1486,9 @@ KStatus TsAggIteratorV2Impl::PartitionAggregate(TsScanStats* ts_scan_stats) {
             memcpy(agg_data.data, pre_min, kw_col_idx == 0 ? 8 : size);
           }
         } else {
-          uint32_t max_len = *reinterpret_cast<const uint32_t*>(col_agg.data() + sizeof(uint64_t));
-          auto min_len = *reinterpret_cast<const uint32_t*>(col_agg.data() + sizeof(uint64_t) + sizeof(uint32_t));
-          void* pre_min = col_agg.data() + sizeof(uint64_t) + sizeof(uint32_t) * 2 + max_len;
+          auto max_len = *reinterpret_cast<const uint16_t*>(col_agg.data() + sizeof(uint64_t));
+          auto min_len = *reinterpret_cast<const uint16_t*>(col_agg.data() + sizeof(uint64_t) + sizeof(uint16_t));
+          void* pre_min = col_agg.data() + sizeof(uint64_t) + sizeof(uint16_t) * 2 + max_len;
           string pre_min_val(static_cast<char*>(pre_min), min_len);
           if (agg_data.data) {
             string current_min({agg_data.data + kStringLenLen, agg_data.len - kStringLenLen});
