@@ -203,7 +203,6 @@ func (tro *TsReaderOp) Init() {
 		select {
 		case <-tro.Ctx.Done():
 			tro.cancelTsFlow()
-			tro.safeCloseWaitChan()
 		case <-tro.waitChan:
 			// Exit normally
 		}
@@ -212,11 +211,11 @@ func (tro *TsReaderOp) Init() {
 }
 
 func (tro *TsReaderOp) safeCloseWaitChan() {
-	select {
-	case <-tro.waitChan:
-	default:
-		close(tro.waitChan)
+	if tro.waitChan == nil {
+		return
 	}
+	close(tro.waitChan)
+	tro.waitChan = nil
 }
 
 // Next helps implement the Operator interface.
@@ -376,6 +375,7 @@ func (tro *TsReaderOp) cancelTsFlow() {
 			log.Warning(tro.Ctx, err)
 		}
 	}
+	tro.safeCloseWaitChan()
 }
 
 func (tro *TsReaderOp) cleanup(ctx context.Context) {

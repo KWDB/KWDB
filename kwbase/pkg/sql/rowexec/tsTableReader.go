@@ -161,7 +161,6 @@ func NewTsTableReader(
 		select {
 		case <-ttr.Ctx.Done():
 			ttr.cancelTsFlow()
-			ttr.safeCloseWaitChan()
 		case <-ttr.waitChan:
 			// Exit normally
 		}
@@ -170,11 +169,11 @@ func NewTsTableReader(
 }
 
 func (ttr *TsTableReader) safeCloseWaitChan() {
-	select {
-	case <-ttr.waitChan:
-	default:
-		close(ttr.waitChan)
+	if ttr.waitChan == nil {
+		return
 	}
+	close(ttr.waitChan)
+	ttr.waitChan = nil
 }
 
 func (ttr *TsTableReader) initTableReader(
@@ -447,6 +446,7 @@ func (ttr *TsTableReader) cancelTsFlow() {
 			log.Warning(ttr.Ctx, err)
 		}
 	}
+	ttr.safeCloseWaitChan()
 }
 
 // IsShortCircuitForPgEncode is part of the processor interface.
