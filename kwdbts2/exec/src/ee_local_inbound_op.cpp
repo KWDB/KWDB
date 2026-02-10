@@ -89,13 +89,15 @@ void LocalInboundOperator::PushFinish(EEIteratorErrCode code, k_int32 stream_id,
 
 KStatus LocalInboundOperator::PushChunk(kwdbContext_p ctx, DataChunkPtr& chunk, k_int32 stream_id,
                                         EEIteratorErrCode code) {
+  bool wait_once = false;
   // lock
   std::unique_lock l(chunk_lock_);
-  if (chunks_.size() >= MAX_QUEUE_SIZE || queue_data_size_ > MAX_QUEUE_DATA_SIZE) {
-    if (!ctx->wait_for_output) {
+  while (chunks_.size() >= MAX_QUEUE_SIZE || queue_data_size_ > MAX_QUEUE_DATA_SIZE) {
+    if (!ctx->wait_for_output || wait_once) {
       return KStatus::FAIL;
     }
-    wait_pull_cond_.wait_for(l, std::chrono::milliseconds(1));
+    wait_once = true;
+    wait_pull_cond_.wait_for(l, std::chrono::milliseconds(2));
   }
   // chunk push to queue。
   queue_data_size_ += chunk->Size();
