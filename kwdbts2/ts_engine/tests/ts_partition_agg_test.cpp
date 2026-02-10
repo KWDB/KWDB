@@ -113,7 +113,7 @@ TEST_F(TestPartitionAgg, basicPartitionAgg) {
   s = table_schema_mgr->GetTagMeta(1, tag_schema);
   ASSERT_EQ(s , KStatus::SUCCESS);
 
-  timestamp64 start_ts = 3600;
+  timestamp64 start_ts1 = 3600;
   KTimestamp interval = 100L;
   int entity_num = 30;
   int entity_row_num = 10;
@@ -121,15 +121,15 @@ TEST_F(TestPartitionAgg, basicPartitionAgg) {
   uint32_t inc_unordered_cnt = 0;
   DedupResult dedup_result{0, 0, 0, TSSlice {nullptr, 0}};
   for (size_t i = 0; i < entity_num; i++) {
-    auto pay_load = GenRowPayload(*metric_schema, tag_schema ,table_id, 1, 1 + i, entity_row_num, start_ts + 1 + i, interval);
+    auto pay_load = GenRowPayload(*metric_schema, tag_schema ,table_id, 1, 1 + i, entity_row_num, start_ts1, interval);
     TsRawPayload::SetOSN(pay_load, 10);
     s = engine_->PutData(ctx_, table_id, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
     free(pay_load.data);
     ASSERT_EQ(s, KStatus::SUCCESS);
   }
-  start_ts += 10000 * 86400;
+  timestamp64 start_ts2 = start_ts1 + 10000 * 86400;
   for (size_t i = 0; i < entity_num; i++) {
-    auto pay_load = GenRowPayload(*metric_schema, tag_schema ,table_id, 1, 1 + i, entity_row_num, start_ts + 1 + i, interval);
+    auto pay_load = GenRowPayload(*metric_schema, tag_schema ,table_id, 1, 1 + i, entity_row_num, start_ts2, interval);
     TsRawPayload::SetOSN(pay_load, 10);
     s = engine_->PutData(ctx_, table_id, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
     free(pay_load.data);
@@ -152,9 +152,9 @@ TEST_F(TestPartitionAgg, basicPartitionAgg) {
     ASSERT_EQ(vgroup->CalcPartitionAgg(), KStatus::SUCCESS);
     TsStorageIterator* ts_iter;
     KwTsSpan ts_span = {INT64_MIN, INT64_MAX};
-    std::vector<k_uint32> scan_cols = {1, 2, 2};
-    std::vector<Sumfunctype> scan_agg_types = {Sumfunctype::COUNT, Sumfunctype::COUNT, Sumfunctype::SUM};
-
+    std::vector<k_uint32> scan_cols = {0, 0, 0, 1, 1};
+    std::vector<Sumfunctype> scan_agg_types = {Sumfunctype::COUNT, Sumfunctype::MAX, Sumfunctype::MIN,
+      Sumfunctype::COUNT, Sumfunctype::SUM};
     auto current = vgroup->CurrentVersion();
     auto partitions = current->GetPartitions(1, {{INT64_MIN, INT64_MAX}}, DATATYPE::TIMESTAMP64);
     ASSERT_EQ(partitions.size(), 2);
@@ -168,29 +168,54 @@ TEST_F(TestPartitionAgg, basicPartitionAgg) {
         // Aggregate count col
         TsSliceGuard slice;
         ASSERT_EQ(agg_reader->GetPartitionAgg(agg_index.entity_id, slice), KStatus::SUCCESS);
-        for (auto idx : {1, 2}) {
-          // Use pre agg to calculate count
-          uint32_t start_offset = 0;
-          start_offset = *reinterpret_cast<uint32_t*>(slice.data() + (idx - 1) * sizeof(uint32_t));
-          uint32_t end_offset = *reinterpret_cast<uint32_t*>(slice.data() + (idx) * sizeof(uint32_t));
-
-          char* col_agg = slice.data() + agg_header_size + start_offset;
-          ASSERT_EQ(*reinterpret_cast<uint32_t*>(col_agg), entity_row_num);
+        if (partition->GetStartTime() == 0) {
+          timestamp64 max_val = start_ts1 + (entity_row_num - 1) * interval;
+          ASSERT_EQ(agg_index.min_ts, start_ts1);
+          ASSERT_EQ(agg_index.max_ts, max_val);
+        } else {
+          timestamp64 max_val = start_ts2 + (entity_row_num - 1) * interval;
+          ASSERT_EQ(agg_index.min_ts, start_ts2);
+          ASSERT_EQ(agg_index.max_ts, max_val);
         }
 
-        // Aggregate sum col
-        uint32_t start_offset = 0;
-        start_offset = *reinterpret_cast<uint32_t*>(slice.data() + 1 * sizeof(uint32_t));
-        char* col_agg = slice.data() + agg_header_size + start_offset;
-        ASSERT_NE(col_agg, nullptr);
-        ASSERT_EQ(*reinterpret_cast<bool*>(col_agg + sizeof(uint32_t)), false);
+        // verify agg value
+        for (auto col_idx : {0, 1}) {
+          TsSliceGuard col_agg;
+          uint32_t start_offset = 0;
+          if (col_idx != 0) {
+            start_offset = *reinterpret_cast<uint32_t*>(slice.data() + (col_idx - 1) * sizeof(uint32_t));
+          }
+          uint32_t end_offset = *reinterpret_cast<uint32_t*>(slice.data() + (col_idx) * sizeof(uint32_t));
+          assert(end_offset >= start_offset);
+          uint32_t len = end_offset - start_offset;
+          if (len) {
+            col_agg = TsSliceGuard(slice.data() + agg_header_size + start_offset, len);
+          }
+          ASSERT_EQ(*reinterpret_cast<uint64_t*>(col_agg.data()), entity_row_num);
+          if (col_idx == 0) {
+            // verify idx 0 max min
+            if (partition->GetStartTime() == 0) {
+              timestamp64 max_val = start_ts1 + (entity_row_num - 1) * interval;
+              ASSERT_EQ(*reinterpret_cast<timestamp64*>(col_agg.data() + sizeof(uint64_t)), max_val);
+              ASSERT_EQ(*reinterpret_cast<timestamp64*>(col_agg.data() + sizeof(uint64_t) + sizeof(timestamp64)), start_ts1);
+            } else {
+              timestamp64 max_val = start_ts2 + (entity_row_num - 1) * interval;
+              ASSERT_EQ(*reinterpret_cast<timestamp64*>(col_agg.data() + sizeof(uint64_t)), max_val);
+              ASSERT_EQ(*reinterpret_cast<timestamp64*>(col_agg.data() + sizeof(uint64_t) + sizeof(timestamp64)), start_ts2);
+            }
+          } else {
+            // verify idx 1 max min
+            ASSERT_EQ(*reinterpret_cast<uint64_t*>(col_agg.data()), entity_row_num);
+            ASSERT_EQ(*reinterpret_cast<bool*>(col_agg.data() + sizeof(uint64_t) + sizeof(int) * 2) , false);
+          }
+        }
       }
     }
     for (k_uint32 entity_id = 1; entity_id <= vgroup->GetMaxEntityID(); entity_id++) {
       std::vector<uint32_t> entity_ids = {entity_id};
       std::vector<KwTsSpan> ts_spans = {ts_span};
       std::vector<BlockFilter> block_filter = {};
-      std::vector<k_int32> agg_extend_cols = {};
+      std::vector<k_int32> agg_extend_cols = {-1, -1, -1, -1, -1};
       std::vector<timestamp64> ts_points = {};
       s = vgroup->GetIterator(ctx_, 1, entity_ids, ts_spans, block_filter,
                               scan_cols, scan_cols, agg_extend_cols, scan_agg_types, table_schema_mgr,
@@ -203,9 +228,12 @@ TEST_F(TestPartitionAgg, basicPartitionAgg) {
       if (count > 0) {
         ASSERT_EQ(is_finished, false);
         ASSERT_EQ(count, 1);
-        ASSERT_EQ(KInt16(res.data[0][0]->mem), 2 * entity_row_num);
-        ASSERT_EQ(KInt16(res.data[1][0]->mem), 2 * entity_row_num);
-        ASSERT_NE(res.data[2][0]->mem, nullptr);
+        ASSERT_EQ(KInt64(res.data[0][0]->mem), 2 * entity_row_num);
+        timestamp64 max_val = start_ts2 + (entity_row_num - 1) * interval;
+        ASSERT_EQ(KTimestamp(res.data[1][0]->mem), max_val);
+        ASSERT_EQ(KTimestamp(res.data[2][0]->mem), start_ts1);
+        ASSERT_EQ(KInt64(res.data[3][0]->mem), 2 * entity_row_num);
+        ASSERT_NE(res.data[4][0]->mem, nullptr);
         ASSERT_EQ(ts_iter->Next(&res, &count, &is_finished), KStatus::SUCCESS);
         ASSERT_EQ(is_finished, true);
         ASSERT_EQ(count, 0);
@@ -238,7 +266,7 @@ TEST_F(TestPartitionAgg, basicPartitionAggDelete) {
   s = table_schema_mgr->GetTagMeta(1, tag_schema);
   ASSERT_EQ(s , KStatus::SUCCESS);
 
-  timestamp64 start_ts = 3600;
+  timestamp64 start_ts1 = 3600;
   KTimestamp interval = 100L;
   int entity_num = 30;
   int entity_row_num = 10;
@@ -246,15 +274,15 @@ TEST_F(TestPartitionAgg, basicPartitionAggDelete) {
   uint32_t inc_unordered_cnt = 0;
   DedupResult dedup_result{0, 0, 0, TSSlice {nullptr, 0}};
   for (size_t i = 0; i < entity_num; i++) {
-    auto pay_load = GenRowPayload(*metric_schema, tag_schema ,table_id, 1, 1 + i, entity_row_num, start_ts + 1 + i, interval);
+    auto pay_load = GenRowPayload(*metric_schema, tag_schema ,table_id, 1, 1 + i, entity_row_num, start_ts1, interval);
     TsRawPayload::SetOSN(pay_load, 10);
     s = engine_->PutData(ctx_, table_id, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
     free(pay_load.data);
     ASSERT_EQ(s, KStatus::SUCCESS);
   }
-  start_ts += 10000 * 86400;
+  timestamp64 start_ts2 = start_ts1 + 10000 * 86400;
   for (size_t i = 0; i < entity_num; i++) {
-    auto pay_load = GenRowPayload(*metric_schema, tag_schema ,table_id, 1, 1 + i, entity_row_num, start_ts + 1 + i, interval);
+    auto pay_load = GenRowPayload(*metric_schema, tag_schema ,table_id, 1, 1 + i, entity_row_num, start_ts2, interval);
     TsRawPayload::SetOSN(pay_load, 10);
     s = engine_->PutData(ctx_, table_id, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
     free(pay_load.data);
@@ -275,7 +303,7 @@ TEST_F(TestPartitionAgg, basicPartitionAggDelete) {
   uint64_t p_tag_entity_id = 3;
   std::string p_key = GetPrimaryKey(table_id, p_tag_entity_id);
 
-  s = engine_->DeleteData(ctx_, table_id, 0, p_key, {{start_ts + entity_row_num / 2 * interval, INT64_MAX}},
+  s = engine_->DeleteData(ctx_, table_id, 0, p_key, {{start_ts2 + entity_row_num / 2 * interval, INT64_MAX}},
                           &tmp_count, 0, 11, is_dropped);
   ASSERT_EQ(s, KStatus::SUCCESS);
   auto tag_table = table_schema_mgr->GetTagTable();
@@ -289,8 +317,9 @@ TEST_F(TestPartitionAgg, basicPartitionAggDelete) {
     ASSERT_EQ(vgroup->CalcPartitionAgg(), KStatus::SUCCESS);
     TsStorageIterator* ts_iter;
     KwTsSpan ts_span = {INT64_MIN, INT64_MAX};
-    std::vector<k_uint32> scan_cols = {1, 2, 2};
-    std::vector<Sumfunctype> scan_agg_types = {Sumfunctype::COUNT, Sumfunctype::COUNT, Sumfunctype::SUM};
+    std::vector<k_uint32> scan_cols = {0, 0, 0, 1, 1};
+    std::vector<Sumfunctype> scan_agg_types = {Sumfunctype::COUNT, Sumfunctype::MAX, Sumfunctype::MIN,
+      Sumfunctype::COUNT, Sumfunctype::SUM};
 
     auto current = vgroup->CurrentVersion();
     auto partitions = current->GetPartitions(1, {{INT64_MIN, INT64_MAX}}, DATATYPE::TIMESTAMP64);
@@ -306,29 +335,70 @@ TEST_F(TestPartitionAgg, basicPartitionAggDelete) {
         } else {
           ASSERT_EQ(agg_index.max_osn, 10);
         }
-        // Aggregate count col
-        TsSliceGuard slice;
-        ASSERT_EQ(agg_reader->GetPartitionAgg(agg_index.entity_id, slice), KStatus::SUCCESS);
-        for (auto idx : {1, 2}) {
-          // Use pre agg to calculate count
-          uint32_t start_offset = 0;
-          start_offset = *reinterpret_cast<uint32_t*>(slice.data() + (idx - 1) * sizeof(uint32_t));
-          uint32_t end_offset = *reinterpret_cast<uint32_t*>(slice.data() + (idx) * sizeof(uint32_t));
-
-          char* col_agg = slice.data() + agg_header_size + start_offset;
-          if (partition->GetStartTime() != 0 && vgroup->GetVGroupID() == v_group_id && entity_id == del_entity_id) {
-            ASSERT_EQ(*reinterpret_cast<uint32_t*>(col_agg), entity_row_num / 2);
+        if (partition->GetStartTime() == 0) {
+          timestamp64 max_val = start_ts1 + (entity_row_num - 1) * interval;
+          ASSERT_EQ(agg_index.min_ts, start_ts1);
+          ASSERT_EQ(agg_index.max_ts, max_val);
+        } else {
+          if (vgroup->GetVGroupID() == v_group_id && entity_id == del_entity_id) {
+            timestamp64 max_val = start_ts2 + (entity_row_num / 2 - 1) * interval;
+            ASSERT_EQ(agg_index.min_ts, start_ts2);
+            ASSERT_EQ(agg_index.max_ts, max_val);
           } else {
-            ASSERT_EQ(*reinterpret_cast<uint32_t*>(col_agg), entity_row_num);
+            timestamp64 max_val = start_ts2 + (entity_row_num - 1) * interval;
+            ASSERT_EQ(agg_index.min_ts, start_ts2);
+            ASSERT_EQ(agg_index.max_ts, max_val);
           }
         }
 
-        // Aggregate sum col
-        uint32_t start_offset = 0;
-        start_offset = *reinterpret_cast<uint32_t*>(slice.data() + 1 * sizeof(uint32_t));
-        char* col_agg = slice.data() + agg_header_size + start_offset;
-        ASSERT_NE(col_agg, nullptr);
-        ASSERT_EQ(*reinterpret_cast<bool*>(col_agg + sizeof(uint32_t)), false);
+        // Aggregate count col
+        TsSliceGuard slice;
+        ASSERT_EQ(agg_reader->GetPartitionAgg(agg_index.entity_id, slice), KStatus::SUCCESS);
+        // verify agg value
+        for (auto col_idx : {0, 1}) {
+          TsSliceGuard col_agg;
+          uint32_t start_offset = 0;
+          if (col_idx != 0) {
+            start_offset = *reinterpret_cast<uint32_t*>(slice.data() + (col_idx - 1) * sizeof(uint32_t));
+          }
+          uint32_t end_offset = *reinterpret_cast<uint32_t*>(slice.data() + (col_idx) * sizeof(uint32_t));
+          assert(end_offset >= start_offset);
+          uint32_t len = end_offset - start_offset;
+          if (len) {
+            col_agg = TsSliceGuard(slice.data() + agg_header_size + start_offset, len);
+          }
+          if (partition->GetStartTime() != 0 && vgroup->GetVGroupID() == v_group_id && entity_id == del_entity_id) {
+            ASSERT_EQ(*reinterpret_cast<uint32_t*>(col_agg.data()), entity_row_num / 2);
+            if (col_idx == 0) {
+              // verify idx 0 max min
+              timestamp64 max_val = start_ts2 + (entity_row_num / 2 - 1) * interval;
+              ASSERT_EQ(*reinterpret_cast<timestamp64*>(col_agg.data() + sizeof(uint64_t)), max_val);
+              ASSERT_EQ(*reinterpret_cast<timestamp64*>(col_agg.data() + sizeof(uint64_t) + sizeof(timestamp64)), start_ts2);
+            } else {
+              // verify idx 1 count sum overflow
+              ASSERT_EQ(*reinterpret_cast<uint64_t*>(col_agg.data()), entity_row_num / 2);
+              ASSERT_EQ(*reinterpret_cast<bool*>(col_agg.data() + sizeof(uint64_t) + sizeof(int) * 2) , false);
+            }
+          } else {
+            ASSERT_EQ(*reinterpret_cast<uint32_t*>(col_agg.data()), entity_row_num);
+            if (col_idx == 0) {
+              // verify idx 0 max min
+              if (partition->GetStartTime() == 0) {
+                timestamp64 max_val = start_ts1 + (entity_row_num - 1) * interval;
+                ASSERT_EQ(*reinterpret_cast<timestamp64*>(col_agg.data() + sizeof(uint64_t)), max_val);
+                ASSERT_EQ(*reinterpret_cast<timestamp64*>(col_agg.data() + sizeof(uint64_t) + sizeof(timestamp64)), start_ts1);
+              } else {
+                timestamp64 max_val = start_ts2 + (entity_row_num - 1) * interval;
+                ASSERT_EQ(*reinterpret_cast<timestamp64*>(col_agg.data() + sizeof(uint64_t)), max_val);
+                ASSERT_EQ(*reinterpret_cast<timestamp64*>(col_agg.data() + sizeof(uint64_t) + sizeof(timestamp64)), start_ts2);
+              }
+            } else {
+              // verify idx 1 count sum overflow
+              ASSERT_EQ(*reinterpret_cast<uint64_t*>(col_agg.data()), entity_row_num);
+              ASSERT_EQ(*reinterpret_cast<bool*>(col_agg.data() + sizeof(uint64_t) + sizeof(int) * 2) , false);
+            }
+          }
+        }
       }
     }
     for (k_uint32 entity_id = 1; entity_id <= vgroup->GetMaxEntityID(); entity_id++) {
@@ -349,13 +419,19 @@ TEST_F(TestPartitionAgg, basicPartitionAggDelete) {
         ASSERT_EQ(is_finished, false);
         ASSERT_EQ(count, 1);
         if (vgroup->GetVGroupID() == v_group_id && entity_id == del_entity_id) {
-          ASSERT_EQ(KInt16(res.data[0][0]->mem), entity_row_num + entity_row_num / 2);
-          ASSERT_EQ(KInt16(res.data[1][0]->mem), entity_row_num + entity_row_num / 2);
+          ASSERT_EQ(KInt64(res.data[0][0]->mem), entity_row_num + entity_row_num / 2);
+          timestamp64 max_val = start_ts2 + (entity_row_num / 2 - 1) * interval;
+          ASSERT_EQ(KTimestamp(res.data[1][0]->mem), max_val);
+          ASSERT_EQ(KTimestamp(res.data[2][0]->mem), start_ts1);
+          ASSERT_EQ(KInt64(res.data[3][0]->mem), entity_row_num + entity_row_num / 2);
         } else {
           ASSERT_EQ(KInt16(res.data[0][0]->mem), 2 * entity_row_num);
-          ASSERT_EQ(KInt16(res.data[1][0]->mem), 2 * entity_row_num);
+          timestamp64 max_val = start_ts2 + (entity_row_num - 1) * interval;
+          ASSERT_EQ(KTimestamp(res.data[1][0]->mem), max_val);
+          ASSERT_EQ(KTimestamp(res.data[2][0]->mem), start_ts1);
+          ASSERT_EQ(KInt64(res.data[3][0]->mem), 2 * entity_row_num);
         }
-        ASSERT_NE(res.data[2][0]->mem, nullptr);
+        ASSERT_NE(res.data[4][0]->mem, nullptr);
         ASSERT_EQ(ts_iter->Next(&res, &count, &is_finished), KStatus::SUCCESS);
         ASSERT_EQ(is_finished, true);
         ASSERT_EQ(count, 0);

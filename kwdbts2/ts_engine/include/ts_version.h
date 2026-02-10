@@ -283,7 +283,17 @@ class TsPartitionVersion {
     return del_info_->GetDelMaxOSN(e_id, max_osn);
   }
   bool ShouldSetCountStatsInvalid(TSEntityID e_id);
+  /**
+   * @brief get the max osn of entity include delete operation
+   *
+   @param db_id        db id of entity
+   @param table_id     the table id of entity
+   @param entity_id    the id of entity
+   @param ts_col_type  the column type of ts column
+   @param max_osn  the max osn of entity
+   */
   KStatus GetMaxOSN(uint32_t db_id, TSTableID table_id, TSEntityID entity_id, DATATYPE ts_col_type, TS_OSN& max_osn) const;
+  KStatus NeedCalcPartitionAgg(bool& need_calc) const;
 };
 
 class TsVGroupVersion {

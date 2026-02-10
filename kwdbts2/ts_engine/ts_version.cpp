@@ -1152,6 +1152,43 @@ KStatus TsPartitionVersion::GetMaxOSN(uint32_t db_id, TSTableID table_id, TSEnti
   return KStatus::SUCCESS;
 }
 
+KStatus TsPartitionVersion::NeedCalcPartitionAgg(bool& need_calc) const {
+  need_calc = false;
+  size_t nlastseg = leveled_last_segments_.Size();
+  if (nlastseg == 0 && entity_segment_ == nullptr) {
+    return KStatus::SUCCESS;
+  }
+  timestamp64 latest_mtime = 0;
+  bool has_files = false;
+
+  std::error_code ec;
+  fs::directory_iterator dir_iter{GetPartitionPath(), ec};
+  if (ec.value() != 0) {
+    LOG_ERROR("fs::directory_iterator error:%s", ec.message().c_str());
+    return KStatus::FAIL;
+  }
+  for (const auto& entry : dir_iter) {
+    std::error_code file_ec;
+    if (fs::is_regular_file(entry, file_ec) && !file_ec && entry.path().filename() != DEL_FILE_NAME) {
+      auto mtime = ModifyTime(entry.path());
+      if (!has_files || mtime > latest_mtime) {
+        latest_mtime = mtime;
+        has_files = true;
+      }
+    }
+  }
+  if (!has_files) {
+    LOG_WARN("No regular files found in directory [%s]", GetPartitionPath().c_str());
+    return KStatus::SUCCESS;
+  }
+  auto now = std::chrono::time_point_cast<std::chrono::seconds>(std::chrono::system_clock::now());
+  if (now.time_since_epoch().count() - latest_mtime < EngineOptions::count_stats_recalc_cycle) {
+    return KStatus::SUCCESS;
+  }
+  need_calc = true;
+  return KStatus::SUCCESS;
+}
+
 // version update
 
 inline void EncodePartitionID(TsBufferBuilder *result, const PartitionIdentifier &partition_id) {

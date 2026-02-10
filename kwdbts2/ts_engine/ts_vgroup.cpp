@@ -2749,6 +2749,18 @@ KStatus TsVGroup::CalcPartitionAgg() {
   TsIOEnv* env = &TsIOEnv::GetInstance();
   TsVersionUpdate update;
   for (auto& [par_id, par_version] : all_partitions) {
+#ifndef WITH_TESTS
+    bool need_calc = false;
+    s = par_version->NeedCalcPartitionAgg(need_calc);
+    if (s != KStatus::SUCCESS) {
+      LOG_ERROR("NeedCalcPartitionAgg failed. path is [%s]", par_version->GetPartitionPath().c_str());
+      continue;
+    }
+    if (!need_calc) {
+      LOG_ERROR("Partition [%s] don't need calculate agg", par_version->GetPartitionPath().c_str());
+      continue;
+    }
+#endif
     LOG_INFO("Calc partition[%s] agg begin", par_version->GetPartitionPath().c_str());
     std::map<std::shared_ptr<TsTableSchemaManager>, ClassifiedEntities> cla_entities;
     bool should_calc = false;
@@ -2811,6 +2823,7 @@ KStatus TsVGroup::CalcPartitionAgg() {
         uint32_t agg_header_size = (attrs.size()) * sizeof(uint32_t);
         agg_buffer.resize(agg_header_size);
         int res_idx = 0;
+        timestamp64 max_ts, min_ts;
         for (int idx = 0; idx < attrs.size(); idx++) {
           string col_agg;
           Defer agg_defer {[&]() {
@@ -2835,9 +2848,15 @@ KStatus TsVGroup::CalcPartitionAgg() {
             memcpy(col_agg.data(), res_set.data[res_idx][0]->mem, sizeof(uint64_t));
             res_idx++;
             // max
+            if (idx == 0) {
+              max_ts = *static_cast<timestamp64*>(res_set.data[res_idx][0]->mem);
+            }
             memcpy(col_agg.data() + sizeof(uint64_t), res_set.data[res_idx][0]->mem, attrs[idx].size);
             res_idx++;
             // min
+            if (idx == 0) {
+              min_ts = *static_cast<timestamp64*>(res_set.data[res_idx][0]->mem);
+            }
             memcpy(col_agg.data() + sizeof(uint64_t) + attrs[idx].size, res_set.data[res_idx][0]->mem, attrs[idx].size);
             res_idx++;
             // sum
@@ -2868,7 +2887,8 @@ KStatus TsVGroup::CalcPartitionAgg() {
             res_idx++;
           }
         }
-        TsEntityPartitionAggIndex stats{tb_schema->GetTableId(), entity_id,  metric_schema->GetVersion(), 0, 0, 0, 0, 0, ""};
+        TsEntityPartitionAggIndex stats{tb_schema->GetTableId(), entity_id,  metric_schema->GetVersion(),
+          min_ts, max_ts, 0, 0, 0, ""};
         par_version->GetMaxOSN(tb_schema->GetDbID(), tb_schema->GetTableId(), entity_id, ts_col_type, stats.max_osn);
         s = partition_agg_builder->AppendEntityAgg({agg_buffer.data(), agg_buffer.size()}, stats);
         if (s != KStatus::SUCCESS) {
@@ -2923,7 +2943,9 @@ void TsVGroup::calcAggRoutine(void* args) {
       }
     }
     std::unique_lock<std::mutex> lock(calc_agg_mutex_);
-    agg_cv_.wait_for(lock, std::chrono::minutes(5), [this]() { return !enable_cal_agg_thread_; });
+    agg_cv_.wait_for(lock, EngineOptions::count_stats_recalc_cycle == 0 ?
+        std::chrono::minutes(5) : std::chrono::seconds(EngineOptions::count_stats_recalc_cycle),
+        [this]() { return !enable_cal_agg_thread_; });
   }
 }
 

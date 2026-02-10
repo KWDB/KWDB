@@ -1363,8 +1363,8 @@ KStatus TsAggIteratorV2Impl::PartitionAggregate(TsScanStats* ts_scan_stats) {
     auto partition = ts_partitions_[cur_partition_index_];
     auto path = partition->GetPartitionPath();
 
-    TS_OSN del_osn;
-    auto s = partition->GetDelMaxOSN(entity_ids_[cur_entity_index_], del_osn);
+    TS_OSN max_osn;
+    auto s = partition->GetMaxOSN(db_id_, table_id_, entity_ids_[cur_entity_index_], ts_col_type_, max_osn);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("GetDelMaxOSN failed");
       return s;
@@ -1384,7 +1384,7 @@ KStatus TsAggIteratorV2Impl::PartitionAggregate(TsScanStats* ts_scan_stats) {
 
     if (agg_reader && agg_index.table_version == table_version_ &&
         checkTimestampWithSpans(ts_spans_, partition->GetTsColTypeStartTime(ts_type),
-          partition->GetTsColTypeEndTime(ts_type)) == TimestampCheckResult::FullyContained && agg_index.max_osn > del_osn) {
+          partition->GetTsColTypeEndTime(ts_type)) == TimestampCheckResult::FullyContained && agg_index.max_osn >= max_osn) {
       TsSliceGuard entity_agg;
       s = agg_reader->GetPartitionAgg(agg_index.entity_id, entity_agg);
       if (s != KStatus::SUCCESS) {
