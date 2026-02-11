@@ -220,16 +220,23 @@ help: ## Print help for targets with comments.
 		"make fuzz PKG=./pkg/sql/... TESTTIMEOUT=1m" "Run all fuzz tests under the sql directory for 1m each." \
 		"make fuzz PKG=./pkg/sql/sem/tree TESTS=Decimal TESTTIMEOUT=1m" "Run the Decimal fuzz tests in the tree directory for 1m."
 
-BUILDTYPE := development
+ifneq "$(findstring Release,$(KWDB_BUILD_TYPE))" ""
+CFLAGS += -O3 -g
+CXXFLAGS += -O3 -g
+else ifneq "$(findstring RelWithDebInfo,$(KWDB_BUILD_TYPE))" ""
+CFLAGS += -O2 -g
+CXXFLAGS += -O2 -g
+else
+CFLAGS += -g
+CXXFLAGS += -g
+endif
 
-# Build C/C++ with basic debugging information.
-CFLAGS += -g1
-CXXFLAGS += -g1
+BUILDTYPE := $(KWDB_BUILD_TYPE)
 LDFLAGS ?=
 
 # TODO(benesch): remove filter-outs below when golang/go#26144 and
 # golang/go#16651, respectively, are fixed.
-CGO_CFLAGS = $(filter-out -g%,$(CFLAGS))
+CGO_CFLAGS = $(CFLAGS)
 CGO_CXXFLAGS = $(CXXFLAGS)
 CGO_LDFLAGS = $(filter-out -static,$(LDFLAGS)) -ldl
 
@@ -239,6 +246,27 @@ KWDB_LIB_DIR := $(PWD)/../build/lib
 ifdef KWDB_BUILD_DIR
 	KWDB_LIB_DIR = $(KWDB_BUILD_DIR)/lib
 endif
+
+# Ensure we have an unambiguous GOPATH.
+GOPATH ?= $(shell $(GO) env GOPATH)
+ifneq "$(or $(findstring :,$(GOPATH)),$(findstring ;,$(GOPATH)))" ""
+$(error GOPATHs with multiple entries are not supported)
+endif
+
+GOPATH := $(realpath $(GOPATH))
+ifeq "$(strip $(GOPATH))" ""
+$(error GOPATH is not set and could not be automatically determined)
+endif
+
+ifeq "$(filter $(GOPATH)%,$(CURDIR))" ""
+$(error Current directory "$(CURDIR)" is not within GOPATH "$(GOPATH)")
+endif
+
+ifeq "$(GOPATH)" "/"
+$(error GOPATH=/ is not supported)
+endif
+
+$(info GOPATH set to $(GOPATH))
 
 BUILD_DIR := $(GOPATH)/native/$(TARGET_TRIPLE)
 
@@ -263,7 +291,7 @@ SNAPPY_DIR   := $(BUILD_DIR)/snappy$(if $(use-msan),_msan)
 LIBEDIT_DIR  := $(BUILD_DIR)/libedit$(if $(use-msan),_msan)
 LIBROACH_DIR := $(BUILD_DIR)/libroach$(if $(use-msan),_msan)$(if $(ENABLE_LIBROACH_ASSERTIONS),_assert)
 
-LDFLAGS := $(LDFLAGS) -L$(KWDB_LIB_DIR) -L$(ROCKSDB_DIR) -L$(SNAPPY_DIR) -Wl,-rpath,$(KWDB_LIB_DIR),-rpath,$(ROCKSDB_DIR),-rpath,$(SNAPPY_DIR),-rpath,$$ORIGIN/../lib,-rpath,$$ORIGIN
+LDFLAGS := $(LDFLAGS) -L$(KWDB_LIB_DIR) -L$(ROCKSDB_DIR) -L$(SNAPPY_DIR) -Wl,--as-needed -Wl,-rpath,$(KWDB_LIB_DIR),-rpath,$(ROCKSDB_DIR),-rpath,$(SNAPPY_DIR),-rpath,$$ORIGIN/../lib,-rpath,$$ORIGIN
 # We intentionally use LINKFLAGS instead of the more traditional LDFLAGS
 # because LDFLAGS has built-in semantics that don't make sense with the Go
 # toolchain.
@@ -280,28 +308,7 @@ endif
 override LINKFLAGS = $(WITH_ASAN_LINK)
 
 GOFLAGS ?=
-TAR     ?= tar
-
-# Ensure we have an unambiguous GOPATH.
-GOPATH ?= $(shell $(GO) env GOPATH)
-ifneq "$(or $(findstring :,$(GOPATH)),$(findstring ;,$(GOPATH)))" ""
-$(error GOPATHs with multiple entries are not supported)
-endif
-
-GOPATH := $(realpath $(GOPATH))
-ifeq "$(strip $(GOPATH))" ""
-$(error GOPATH is not set and could not be automatically determined)
-endif
-
-ifeq "$(filter $(GOPATH)%,$(CURDIR))" ""
-$(error Current directory "$(CURDIR)" is not within GOPATH "$(GOPATH)")
-endif
-
-ifeq "$(GOPATH)" "/"
-$(error GOPATH=/ is not supported)
-endif
-
-$(info GOPATH set to $(GOPATH))
+TAR     ?= tar 
 
 # We install our vendored tools to a directory within this repository to avoid
 # overwriting any user-installed binaries of the same name in the default GOBIN.
@@ -486,29 +493,20 @@ use-msan               := $(findstring msan,$(GOFLAGS))
 LIBCRYPTOPP := $(CRYPTOPP_DIR)/libcryptopp.a
 LIBUNWIND   := $(LIBUNWIND_DIR)/src/.libs/libunwind.a
 LIBJEMALLOC := $(JEMALLOC_DIR)/lib/libjemalloc.a
-LIBPROTOBUF := protobuf
+LIBPROTOBUF := ${LIBPROTOBUF}
 LIBROCKSDB  := $(ROCKSDB_DIR)/librocksdb.a
 LIBSNAPPY   := $(SNAPPY_DIR)/libsnappy.a
 LIBEDIT     := $(LIBEDIT_DIR)/src/.libs/libedit.a
 LIBROACH    := $(LIBROACH_DIR)/libroach.a
-PROTOC      := protoc
+PROTOC 		:= ${PROTOBUF_C}
 
-PROTOBUF_DIR ?=
-ifneq (,$(PROTOBUF_DIR))
-CGO_LDFLAGS += -L$(PROTOBUF_DIR)/lib
-LDFLAGS += -L$(PROTOBUF_DIR)/lib
-LD_LIBRARY_PATH += :$(PROTOBUF_DIR)/lib
-PROTOC = $(PROTOBUF_DIR)/bin/protoc
-xcmake-flags += -DPROTOBUF_DIR=$(PROTOBUF_DIR)
-
-export LD_LIBRARY_PATH
-endif
+LDFLAGS += -L$(GOPATH)/native/kwdbts2/third_party/lib -L$(GOPATH)/native/kwdbts2/third_party/lib64 -Wl,-Bstatic -lz -Wl,-Bdynamic -lstdc++
 
 C_LIBS_COMMON = \
 	$(if $(use-stdmalloc),,$(LIBJEMALLOC)) \
 	$(if $(target-is-windows),,$(LIBEDIT)) \
 	$(LIBPROTOBUF) $(LIBSNAPPY) $(LIBROCKSDB) \
-	$(if $(findstring aarch64,$(TARGET_TRIPLE)),,$(LIBUNWIND))
+	$(if $(findstring aarch64,$(TARGET_TRIPLE)),,$(if $(findstring loongarch64, $(TARGET_TRIPLE)), ,$(LIBUNWIND)))
 C_LIBS_OSS = $(C_LIBS_COMMON) $(LIBROACH)
 C_LIBS = $(C_LIBS_COMMON) $(LIBROACH)
 
@@ -553,8 +551,8 @@ $(BASE_CGO_FLAGS_FILES): $(MAKEFILE_LIST) build/defs.mk.sig | bin/.submodules-in
 	@echo >> $@
 	@echo 'package $(if $($(@D)-package),$($(@D)-package),$(notdir $(@D)))' >> $@
 	@echo >> $@
-	@echo '// #cgo CPPFLAGS: $(addprefix -I,$(if $(findstring aarch64,$(TARGET_TRIPLE)),,$(LIBUNWIND_DIR)/include) $(JEMALLOC_DIR)/include $(KRB_CPPFLAGS))' >> $@
-	@echo '// #cgo LDFLAGS: $(addprefix -L,$(CRYPTOPP_DIR) $(if $(findstring aarch64,$(TARGET_TRIPLE)),,$(LIBUNWIND_DIR)/src/.libs) $(JEMALLOC_DIR)/lib $(SNAPPY_DIR) $(LIBEDIT_DIR)/src/.libs $(ROCKSDB_DIR) $(LIBROACH_DIR) $(KRB_DIR)) $(if $(findstring aarch64,$(TARGET_TRIPLE)),,-lunwind -llzma) -ldl' >> $@
+	@echo '// #cgo CPPFLAGS: $(addprefix -I,$(if $(findstring aarch64,$(TARGET_TRIPLE)),,$(if $(findstring loongarch64,$(TARGET_TRIPLE)),,$(LIBUNWIND_DIR)/include)) $(JEMALLOC_DIR)/include $(KRB5_DIR)/include)' >> $@
+	@echo '// #cgo LDFLAGS: $(addprefix -L,$(CRYPTOPP_DIR) $(if $(findstring aarch64,$(TARGET_TRIPLE)),,$(if $(findstring loongarch64,$(TARGET_TRIPLE)),,$(LIBUNWIND)/src/.libs)) $(JEMALLOC_DIR)/lib $(SNAPPY_DIR) $(LIBEDIT_DIR)/src/.libs $(ROCKSDB_DIR) $(LIBROACH_DIR) $(LIBINJECTION_DIR) $(KRB5_DIR))' >> $@
 	@echo 'import "C"' >> $@
 
 vendor/github.com/knz/go-libedit/unix/zcgo_flags_extra.go: $(MAKEFILE_LIST) | bin/.submodules-initialized
@@ -564,7 +562,7 @@ vendor/github.com/knz/go-libedit/unix/zcgo_flags_extra.go: $(MAKEFILE_LIST) | bi
 	@echo 'package $($(@D)-package)' >> $@
 	@echo >> $@
 	@echo '// #cgo CPPFLAGS: -DGO_LIBEDIT_NO_BUILD' >> $@
-	@echo '// #cgo !windows LDFLAGS: -ledit -lncurses' >> $@
+	@echo '// #cgo !windows LDFLAGS: -ledit -Wl,-Bstatic -ltinfo -Wl,-Bdynamic' >> $@
 	@echo 'import "C"' >> $@
 
 # BUILD ARTIFACT CACHING
@@ -599,14 +597,14 @@ $(CRYPTOPP_DIR)/Makefile: $(C_DEPS_DIR)/cryptopp-rebuild | bin/.submodules-initi
 	cd $(CRYPTOPP_DIR) && CFLAGS+=" $(aes)" && CXXFLAGS+=" $(aes)" cmake $(xcmake-flags) $(CRYPTOPP_SRC_DIR) \
 	  -DCMAKE_BUILD_TYPE=Release
 
-ifneq ($(findstring aarch64,$(TARGET_TRIPLE)),aarch64)
+ifeq ($(findstring aarch64,$(TARGET_TRIPLE))$(findstring loongarch64,$(TARGET_TRIPLE)),)
 $(LIBUNWIND_SRC_DIR)/configure: $(LIBUNWIND_SRC_DIR)/configure.ac
 	cd $(LIBUNWIND_SRC_DIR) && autoconf
 
 $(LIBUNWIND_DIR)/Makefile: $(C_DEPS_DIR)/libunwind-rebuild $(LIBUNWIND_SRC_DIR)/configure
 	rm -rf $(LIBUNWIND_DIR)
 	mkdir -p $(LIBUNWIND_DIR)
-	cd $(LIBUNWIND_DIR) && $(LIBUNWIND_SRC_DIR)/configure --enable-static --disable-shared
+	cd $(LIBUNWIND_DIR) && $(LIBUNWIND_SRC_DIR)/configure --enable-static --disable-shared  --disable-minidebuginfo
 endif
 
 $(JEMALLOC_SRC_DIR)/configure.ac: | bin/.submodules-initialized
@@ -614,7 +612,7 @@ $(JEMALLOC_SRC_DIR)/configure.ac: | bin/.submodules-initialized
 $(JEMALLOC_SRC_DIR)/configure: $(JEMALLOC_SRC_DIR)/configure.ac
 	cd $(JEMALLOC_SRC_DIR) && autoconf
 
-$(JEMALLOC_DIR)/Makefile: $(C_DEPS_DIR)/jemalloc-rebuild $(JEMALLOC_SRC_DIR)/configure $(if $(findstring aarch64,$(TARGET_TRIPLE)),,$(LIBUNWIND))
+$(JEMALLOC_DIR)/Makefile: $(C_DEPS_DIR)/jemalloc-rebuild $(JEMALLOC_SRC_DIR)/configure $(if $(findstring aarch64,$(TARGET_TRIPLE)),,$(if $(findstring loongarch64,$(TARGET_TRIPLE)),,$(LIBUNWIND)))
 	rm -rf $(JEMALLOC_DIR)
 	mkdir -p $(JEMALLOC_DIR)
 	@# NOTE: If you change the configure flags below, bump the version in
@@ -622,7 +620,7 @@ $(JEMALLOC_DIR)/Makefile: $(C_DEPS_DIR)/jemalloc-rebuild $(JEMALLOC_SRC_DIR)/con
 	@#
 	@# jemalloc profiling deadlocks when built against musl. See
 	@# https://github.com/jemalloc/jemalloc/issues/585.
-	cd $(JEMALLOC_DIR) && $(JEMALLOC_SRC_DIR)/configure $(xconfigure-flags) $(if $(findstring musl,$(TARGET_TRIPLE)),,--enable-prof $(if $(findstring aarch64,$(TARGET_TRIPLE)),,--enable-prof-libunwind --with-static-libunwind=$(LIBUNWIND) CFLAGS='-I$(LIBUNWIND_DIR)/include' LDFLAGS='-L$(LIBUNWIND_DIR)/src/.libs'))
+	cd $(JEMALLOC_DIR) && $(JEMALLOC_SRC_DIR)/configure $(xconfigure-flags) $(if $(findstring musl,$(TARGET_TRIPLE)),,--enable-prof $(if $(findstring aarch64,$(TARGET_TRIPLE)),,$(if $(findstring loongarch64,$(TARGET_TRIPLE)),,--enable-prof-libunwind --with-static-libunwind=$(LIBUNWIND) CFLAGS='-I$(LIBUNWIND_DIR)/include' LDFLAGS='-L$(LIBUNWIND_DIR)/src/.libs')))
 
 $(ROCKSDB_DIR)/Makefile: sse := $(if $(findstring x86_64,$(TARGET_TRIPLE)),-msse3)
 $(ROCKSDB_DIR)/Makefile: $(C_DEPS_DIR)/rocksdb-rebuild | bin/.submodules-initialized $(LIBSNAPPY) $(if $(use-stdmalloc),,$(LIBJEMALLOC))
@@ -671,6 +669,7 @@ $(LIBROACH_DIR)/Makefile: $(C_DEPS_DIR)/libroach-rebuild | bin/.submodules-initi
 	cd $(LIBROACH_DIR) && cmake $(xcmake-flags) $(LIBROACH_SRC_DIR) \
 		-DCMAKE_BUILD_TYPE=$(if $(ENABLE_LIBROACH_ASSERTIONS),Debug,Release) \
 		-DPROTOBUF_LIB=$(LIBPROTOBUF) -DROCKSDB_LIB=$(LIBROCKSDB) \
+		-DPROTOBUF_INC=$(PROTOBUF_INC) \
 		-DJEMALLOC_LIB=$(LIBJEMALLOC) -DSNAPPY_LIB=$(LIBSNAPPY) \
 		-DCRYPTOPP_LIB=$(LIBCRYPTOPP)
 
@@ -706,7 +705,7 @@ $(LIBROACH_DIR)/Makefile: $(C_DEPS_DIR)/libroach-rebuild | bin/.submodules-initi
 $(LIBCRYPTOPP): $(CRYPTOPP_DIR)/Makefile bin/uptodate .ALWAYS_REBUILD
 	@uptodate $@ $(CRYPTOPP_SRC_DIR) || $(MAKE) --no-print-directory -C $(CRYPTOPP_DIR) static
 
-ifneq ($(findstring aarch64,$(TARGET_TRIPLE)),aarch64)
+ifeq ($(findstring aarch64,$(TARGET_TRIPLE))$(findstring loongarch64,$(TARGET_TRIPLE)),)
 $(LIBUNWIND): $(LIBUNWIND_DIR)/Makefile bin/uptodate .ALWAYS_REBUILD
 	@uptodate $@ $(LIBUNWIND_SRC_DIR) || $(MAKE) --no-print-directory -C $(LIBUNWIND_DIR)
 endif
@@ -729,12 +728,12 @@ $(LIBROACH): $(LIBROACH_DIR)/Makefile bin/uptodate .ALWAYS_REBUILD
 	@uptodate $@ $(libroach-inputs) || $(MAKE) --no-print-directory -C $(LIBROACH_DIR) roach
 
 # Convenient names for maintainers. Not used by other targets in the Makefile.
-.PHONY: protoc $(if $(findstring aarch64,$(TARGET_TRIPLE)),,libunwind) libcryptopp libjemalloc libprotobuf libsnappy librocksdb libroach
+.PHONY: protoc $(if $(findstring aarch64,$(TARGET_TRIPLE)),,$(if $(findstring loongarch64,$(TARGET_TRIPLE)),,libunwind)) libcryptopp libjemalloc libprotobuf libsnappy librocksdb libroach
 protoc:
 libcryptopp: $(LIBCRYPTOPP)
 libedit:     $(LIBEDIT)
 
-ifneq ($(findstring aarch64,$(TARGET_TRIPLE)),aarch64)
+ifeq ($(findstring aarch64,$(TARGET_TRIPLE))$(findstring loongarch64,$(TARGET_TRIPLE)),)
 libunwind:   $(LIBUNWIND)
 endif
 
@@ -900,7 +899,7 @@ SETTINGS_DOC_PAGE := docs/generated/settings/settings.html
 # normal and race test builds.
 .PHONY: go-install
 $(KWBASE) $(KWBASEOSS) $(KWBASESHORT) go-install:
-	 $(xgo) $(build-mode) -v $(GOFLAGS) -tags '$(TAGS)' -ldflags '$(LINKFLAGS)' $(BUILDTARGET)
+	 $(xgo) $(build-mode) -v $(GOFLAGS) -tags '$(TAGS)' -ldflags='$(LINKFLAGS)' $(BUILDTARGET)
 
 # The build targets, in addition to producing a Cockroach binary, silently
 # regenerate SQL diagram BNFs and some other doc pages. Generating these docs

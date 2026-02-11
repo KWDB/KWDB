@@ -21,6 +21,7 @@ if (NOT DEFINED VERSION)
 endif ()
 message(STATUS "KWDBTS2 version:${VERSION}")
 add_definitions(-DPROJECT_VERSION=\"${VERSION}\")
+set(CMAKE_DEPENDS_IN_PROJECT_SOURCE OFF)
 
 # commit id
 if (NOT DEFINED GIT_COMMIT_ID)
@@ -112,16 +113,6 @@ if (KMALLOC_DEBUGGER)
     add_definitions(-DKMALLOC_DEBUGGER)
 endif ()
 
-# Whether to use shared_mem_info to manage concurrent memory access
-if (KMALLOC_SHARED_REFCOUNT)
-  add_definitions(-DKMALLOC_SHARED_REFCOUNT)
-endif ()
-
-# Whether to record the memory that is not released by the process and release it when the process crashes
-if (KMALLOC_RELEASE_PROCESS_MEMORY)
-    add_definitions(-DKMALLOC_RELEASE_PROCESS_MEMORY)
-endif ()
-
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pthread -Wreturn-type")
 
@@ -182,6 +173,8 @@ if (${DEDUCTED_PARALLEL_DEGREE} GREATER 1023)
 endif ()
 message(STATUS "Final decision on parallel degree is: ${DEDUCTED_PARALLEL_DEGREE}")
 
+set(ENV{PKG_CONFIG_PATH} "${NATIVE}/kwdbts2/third_party/lib64/pkgconfig:${NATIVE}/kwdbts2/third_party/lib64/pkgconfig:/usr/local/lib/pkgconfig:/usr/local/lib64/pkgconfig:/usr/lib/pkgconfig:/usr/lib64/pkgconfig:/usr/lib/x86_64-linux-gnu/pkgconfig/:/usr/lib/aarch64-linux-gnu/pkgconfig/")
+
 FIND_PACKAGE(OpenMP REQUIRED)
 if(OPENMP_FOUND)
     message("OPENMP FOUND")
@@ -191,33 +184,117 @@ if(OPENMP_FOUND)
 endif()
 
 # Build brpc external project
-message(STATUS "Building brpc from source: ${PROJECT_SOURCE_DIR}/third_party/brpc-1.9.0")
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(BRPC brpc)
+if (NOT BRPC_FOUND)
+  message(STATUS "Building brpc from source: ${PROJECT_SOURCE_DIR}/third_party/brpc-1.9.0")
+  set(BRPC_VERSION 1.9.0)
+  set(BRPC_STATIC_LIB "${NATIVE}/kwdbts2/third_party/lib/libbrpc.a")
+  set(BRPC_INCLUDE_DIRS "${NATIVE}/kwdbts2/third_party/include")
+  ExternalProject_Add(
+      brpc
+      SOURCE_DIR "${PROJECT_SOURCE_DIR}/third_party/brpc-${BRPC_VERSION}"
+      PREFIX "${CMAKE_CURRENT_BINARY_DIR}/third_party/brpc-${BRPC_VERSION}"
+      BINARY_DIR "${CMAKE_CURRENT_BINARY_DIR}/third_party/brpc-${BRPC_VERSION}/build"
+      LIST_SEPARATOR ","
+      CMAKE_ARGS
+        -S "${PROJECT_SOURCE_DIR}/third_party/brpc-${BRPC_VERSION}" 
+        -B "${CMAKE_CURRENT_BINARY_DIR}/third_party/brpc-${BRPC_VERSION}/build" 
+        -DCMAKE_INSTALL_LIBDIR=lib
+        -DCMAKE_BUILD_TYPE=Release 
+        -DWITH_DEBUG_SYMBOLS=OFF 
+        -DDOWNLOAD_GTEST=OFF
+        -DBUILD_BRPC_TOOLS=OFF
+        -DCMAKE_PREFIX_PATH=${NATIVE}/kwdbts2/third_party
+        -DCMAKE_INSTALL_PREFIX=${NATIVE}/kwdbts2/third_party
+      BUILD_COMMAND
+          $(MAKE) -j${DEDUCTED_PARALLEL_DEGREE}
+      BUILD_IN_SOURCE 0
+  )
+else()
+  set(BRPC_INCLUDE_DIRS ${BRPC_INCLUDE_DIRS})
+  set(BRPC_STATIC_LIB "${BRPC_LIBRARY_DIRS}/libbrpc.a")
+  message(STATUS "Found installed brpc library in ${BRPC_STATIC_LIB}")
+endif()
 
-set(BRPC_VERSION 1.9.0)
-set(BRPC_SOURCE_DIR "${PROJECT_SOURCE_DIR}/third_party/brpc-${BRPC_VERSION}")
-set(BRPC_PREFIX_DIR "${CMAKE_CURRENT_BINARY_DIR}/brpc-${BRPC_VERSION}")
-set(BRPC_BUILD_DIR "${BRPC_PREFIX_DIR}/build")
-set(BRPC_OUTPUT_DIR "${BRPC_PREFIX_DIR}/output")
-
-include(ExternalProject)
-
-ExternalProject_Add(
-    brpc
-    SOURCE_DIR "${BRPC_SOURCE_DIR}"
-    PREFIX "${BRPC_PREFIX_DIR}"
-    BINARY_DIR "${BRPC_BUILD_DIR}"
-    CONFIGURE_COMMAND
-        ${CMAKE_COMMAND} -E copy_directory "${BRPC_SOURCE_DIR}" "${BRPC_BUILD_DIR}"
-        COMMAND cd "${BRPC_BUILD_DIR}" && sh ./config_brpc.sh --headers=/usr/include "--libs=/usr/lib /usr/lib64"
-    BUILD_COMMAND
-        cd "${BRPC_BUILD_DIR}" && $(MAKE) -j${DEDUCTED_PARALLEL_DEGREE}
+pkg_check_modules(PROTOBUF protobuf)
+if (NOT PROTOBUF_FOUND OR USE_SOURCE)
+  message(STATUS "Building protobuf from source: ${PROJECT_SOURCE_DIR}/third_party/protobuf-3.12.4")
+  set(PROTOBUF_LIBRARY_DIR ${NATIVE}/kwdbts2/third_party/lib)
+  set(PROTOBUF_INCLUDE_DIR ${NATIVE}/kwdbts2/third_party/include)
+  set(PROTOBUF_STATIC_LIB ${NATIVE}/kwdbts2/third_party/lib/libprotobuf.a)
+  set(PROTOBUF_C ${NATIVE}/kwdbts2/third_party/bin/protoc)
+  ExternalProject_Add(
+    protobuf_src
+    SOURCE_DIR ${PROJECT_SOURCE_DIR}/third_party/protobuf-3.12.4
+    PREFIX ${CMAKE_CURRENT_BINARY_DIR}/third_party/protobuf-3.12.4
+    BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR}/third_party/protobuf-3.12.4/build
     BUILD_IN_SOURCE 0
-    INSTALL_COMMAND
-        ${CMAKE_COMMAND} -E make_directory "${BRPC_OUTPUT_DIR}/include"
-        COMMAND ${CMAKE_COMMAND} -E make_directory "${BRPC_OUTPUT_DIR}/lib"
-        COMMAND ${CMAKE_COMMAND} -E copy_directory "${BRPC_BUILD_DIR}/output/include" "${BRPC_OUTPUT_DIR}/include"
-        COMMAND ${CMAKE_COMMAND} -E copy_directory "${BRPC_BUILD_DIR}/output/lib" "${BRPC_OUTPUT_DIR}/lib"
-)
+    CONFIGURE_COMMAND
+      cmake -Dprotobuf_BUILD_TESTS=OFF -DCMAKE_CXX_FLAGS=-fPIC -DBUILD_SHARED_LIBS=OFF -DCMAKE_INSTALL_LIBDIR=lib -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=${NATIVE}/kwdbts2/third_party -S ${PROJECT_SOURCE_DIR}/third_party/protobuf-3.12.4/cmake
+    BUILD_COMMAND
+      $(MAKE) -j${DEDUCTED_PARALLEL_DEGREE}
+  )
+else()
+  set(PROTOBUF_C ${PROTOBUF_PREFIX}/bin/protoc)
+  set(PROTOBUF_INCLUDE_DIR ${PROTOBUF_INCLUDEDIR})
+  set(PROTOBUF_LIBRARY_DIR ${PROTOBUF_LIBDIR})
+  set(PROTOBUF_STATIC_LIB ${PROTOBUF_LIBRARY_DIR}/libprotobuf.a)
+  EXECUTE_PROCESS(
+      COMMAND mkdir -p ${NATIVE}/kwdbts2/third_party/lib
+      COMMAND cp ${PROTOBUF_LIBRARY_DIR}/libprotobuf.a ${NATIVE}/kwdbts2/third_party/lib
+  )
+  message(STATUS "Found installed protobuf binary in ${PROTOBUF_LIBRARY_DIR}")
+endif()
+
+pkg_check_modules(Gflags gflags)
+if (NOT Gflags_FOUND  OR USE_SOURCE)
+  message(STATUS "Building gflags from source: ${PROJECT_SOURCE_DIR}/third_party/gflags-2.2.2")
+  set(GFLAGS_STATIC_LIB ${NATIVE}/kwdbts2/third_party/lib/libgflags.a)
+  set(GFLAGS_INCLUDE_DIR ${NATIVE}/kwdbts2/third_party/include)
+  ExternalProject_Add(
+    gflags_src
+    SOURCE_DIR ${PROJECT_SOURCE_DIR}/third_party/gflags-2.2.2
+    PREFIX ${CMAKE_CURRENT_BINARY_DIR}/third_party/gflags-2.2.2
+    BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR}/third_party/gflags-2.2.2/build
+    BUILD_IN_SOURCE 0
+    CONFIGURE_COMMAND
+      cmake -DCMAKE_CXX_FLAGS=-fPIC -DBUILD_SHARED_LIBS=OFF -DCMAKE_INSTALL_LIBDIR=lib -DBUILD_STATIC_LIBS=ON -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=${NATIVE}/kwdbts2/third_party -S ${PROJECT_SOURCE_DIR}/third_party/gflags-2.2.2
+    BUILD_COMMAND
+      $(MAKE) -j${DEDUCTED_PARALLEL_DEGREE}
+  )
+else()
+  set(GFLAGS_STATIC_LIB ${Gflags_LIBRARY_DIRS}/libgflags.a)
+  set(GFLAGS_INCLUDE_DIR ${Gflags_INCLUDE_DIRS})
+  message(STATUS "Found installed gflags library in ${GFLAGS_STATIC_LIB}")
+endif()
+
+pkg_check_modules(LZ4 liblz4)
+if (NOT LZ4_FOUND  OR USE_SOURCE)
+  message(STATUS "Building gflags from source: ${PROJECT_SOURCE_DIR}/third_party/lz4-1.9.3")
+  set(LZ4_STATIC_LIB ${NATIVE}/kwdbts2/third_party/lib/liblz4.a)
+  set(LZ4_INCLUDE_DIR ${NATIVE}/kwdbts2/third_party/include)
+  ExternalProject_Add(
+    lz4_src
+    SOURCE_DIR ${PROJECT_SOURCE_DIR}/third_party/lz4-1.9.3
+    PREFIX ${CMAKE_CURRENT_BINARY_DIR}/third_party/lz4-1.9.3
+    BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR}/third_party/lz4-1.9.3/build
+    BUILD_IN_SOURCE 0
+    CONFIGURE_COMMAND
+      cmake -DBUILD_SHARED_LIBS=OFF -DBUILD_STATIC_LIBS=ON -DCMAKE_INSTALL_LIBDIR=lib -DCMAKE_BUILD_TYPE=Release -DLZ4_BUILD_CLI=OFF -DLZ4_BUILD_LEGACY_LZ4C=OFF -DCMAKE_INSTALL_PREFIX=${NATIVE}/kwdbts2/third_party -S ${PROJECT_SOURCE_DIR}/third_party/lz4-1.9.3/build/cmake
+    BUILD_COMMAND
+      $(MAKE) -j${DEDUCTED_PARALLEL_DEGREE}
+  )
+else()
+  set(LZ4_INCLUDE_DIR ${LZ4_INCLUDE_DIRS})
+  EXECUTE_PROCESS(
+      COMMAND find ${LZ4_LIBRARY_DIRS} -name liblz4.a -type f
+      OUTPUT_VARIABLE LZ4_STATIC_LIB
+      RESULT_VARIABLE RET
+      OUTPUT_STRIP_TRAILING_WHITESPACE
+  )
+  message(STATUS "Found installed lz4 library ${LZ4_STATIC_LIB}")
+endif()
 
 set(MODULE_NAME kwdbts2)
 set(KWDBTS2_SERVER_LIB kwdbts2)
@@ -229,39 +306,54 @@ function(generate_proto protofile)
   get_filename_component(protofolder ${protofile} PATH)
   get_filename_component(protoname ${protofile} NAME_WLE)
   message(STATUS "protoname:${protoname}")
-  if (EXISTS "${protofolder}/${protoname}.pb.cc")
-      message("${protoname}.pb.cc is exists")
-      message("mkdir -p ${CMAKE_BINARY_DIR}/tmp")
-      message("cp -arf ${protofile} ${CMAKE_BINARY_DIR}/tmp/${protoname}.proto")
-      message("${PROTOBUF_C} ${CMAKE_BINARY_DIR}/tmp/${protoname}.proto --cpp_out=${CMAKE_BINARY_DIR}/tmp -I ${CMAKE_BINARY_DIR}/tmp -I ${protofolder}")
-      EXECUTE_PROCESS(
-          COMMAND mkdir -p ${CMAKE_BINARY_DIR}/tmp
-          COMMAND cp -arf ${protofile} ${CMAKE_BINARY_DIR}/tmp/
-          COMMAND ${PROTOBUF_C} ${CMAKE_BINARY_DIR}/tmp/${protoname}.proto --cpp_out=${CMAKE_BINARY_DIR}/tmp -I ${CMAKE_BINARY_DIR}/tmp -I ${protofolder}
-      )
-      message("check diff file ${CMAKE_BINARY_DIR}/tmp/${protoname}.pb.cc ${protofolder}/${protoname}.pb.cc")
-      EXECUTE_PROCESS(
-	      COMMAND diff ${CMAKE_BINARY_DIR}/tmp/${protoname}.pb.cc ${protofolder}/${protoname}.pb.cc
-	      COMMAND diff ${CMAKE_BINARY_DIR}/tmp/${protoname}.pb.h ${protofolder}/${protoname}.pb.h
-	      RESULT_VARIABLE changed
-	      OUTPUT_QUIET
-	      )
-      if ( ${changed} EQUAL 1)
-	      message(STATUS "${protofile} has changed")
+  if (PROTOBUF_FOUND AND NOT USE_SOURCE)
+    if (EXISTS "${protofolder}/${protoname}.pb.cc")
+        message("${protoname}.pb.cc is exists")
+        message("mkdir -p ${CMAKE_BINARY_DIR}/tmp")
+        message("cp -arf ${protofile} ${CMAKE_BINARY_DIR}/tmp/${protoname}.proto")
+        message("${PROTOBUF_C} ${CMAKE_BINARY_DIR}/tmp/${protoname}.proto --cpp_out=${CMAKE_BINARY_DIR}/tmp -I ${CMAKE_BINARY_DIR}/tmp -I ${protofolder}")
+        EXECUTE_PROCESS(
+            COMMAND mkdir -p ${CMAKE_BINARY_DIR}/tmp
+            COMMAND cp -arf ${protofile} ${CMAKE_BINARY_DIR}/tmp/
+            COMMAND ${PROTOBUF_C} ${CMAKE_BINARY_DIR}/tmp/${protoname}.proto --cpp_out=${CMAKE_BINARY_DIR}/tmp -I ${CMAKE_BINARY_DIR}/tmp -I ${protofolder}
+        )
+        message("check diff file ${CMAKE_BINARY_DIR}/tmp/${protoname}.pb.cc ${protofolder}/${protoname}.pb.cc")
+        EXECUTE_PROCESS(
+          COMMAND diff ${CMAKE_BINARY_DIR}/tmp/${protoname}.pb.cc ${protofolder}/${protoname}.pb.cc
+          COMMAND diff ${CMAKE_BINARY_DIR}/tmp/${protoname}.pb.h ${protofolder}/${protoname}.pb.h
+          RESULT_VARIABLE changed
+          OUTPUT_QUIET
+          )
+        if ( ${changed} EQUAL 1)
+          message(STATUS "${protofile} has changed")
+          EXECUTE_PROCESS(
+              COMMAND ${PROTOBUF_C} ${protofile} --cpp_out=${protofolder} -I ${protofolder}
+          )
+        else()
+          message(STATUS "${protofile} has nothing to be done")
+        endif()
+        EXECUTE_PROCESS(
+          COMMAND rm -rf ${CMAKE_BINARY_DIR}/tmp
+        )
+    else()
+        message("${protoname}.pb.cc does not exist")
         EXECUTE_PROCESS(
             COMMAND ${PROTOBUF_C} ${protofile} --cpp_out=${protofolder} -I ${protofolder}
         )
-      else()
-	      message(STATUS "${protofile} has nothing to be done")
-      endif()
-      EXECUTE_PROCESS(
-         COMMAND rm -rf ${CMAKE_BINARY_DIR}/tmp
-      )
+    endif()
   else()
-      message("${protoname}.pb.cc does not exist")
-      EXECUTE_PROCESS(
-          COMMAND ${PROTOBUF_C} ${protofile} --cpp_out=${protofolder} -I ${protofolder}
-      )
+    message("Use source code compile protobuf, and start generate files.")
+    add_custom_command(
+        OUTPUT ${protofolder}/${protoname}.pb.cc ${protofolder}/${protoname}.pb.h
+        COMMAND ${PROTOBUF_C} ${protofile}
+                --cpp_out=${protofolder}
+                -I ${protofolder}
+        DEPENDS ${protofile} protobuf_src
+        COMMENT "Generating ${protoname}.pb.cc"
+    )
+    add_custom_target(${protoname}_proto
+        DEPENDS ${protofolder}/${protoname}.pb.cc ${protofolder}/${protoname}.pb.h
+    )
   endif()
 endfunction(generate_proto)
 
@@ -304,8 +396,7 @@ set(TS_INCLUDE
         ../common/src/h
         ../common/src/include
         third_party/gtest-1.8.1/fused-src
-        third_party/brpc-1.9.0/src
-        ${BRPC_OUTPUT_DIR}/include
+        ${NATIVE}/kwdbts2/third_party/include
         include
         roachpb
         engine/include
@@ -327,7 +418,6 @@ file(GLOB_RECURSE KWDBTS2_SERVER_LIB_SRC
         common/src/*.cpp
         exec/src/*.cpp
         storage/src/*.cpp
-        roachpb/*.cc
         engine/*.cpp
         ts_engine/*.cpp
         mmap/src/*.cpp
@@ -340,7 +430,6 @@ else ()
             common/src/*.cpp
             exec/src/*.cpp
             storage/src/*.cpp
-            roachpb/*.cc
             engine/*.cpp
             ts_engine/*.cpp
             mmap/src/*.cpp
@@ -350,6 +439,12 @@ else ()
             brpc/src/*.cpp
     )
 endif()
+
+list(APPEND KWDBTS2_SERVER_LIB_SRC
+    roachpb/ee_pb_plan.pb.cc
+    roachpb/me_metadata.pb.cc
+    roachpb/br_internal_service.pb.cc
+)
 list(FILTER KWDBTS2_SERVER_LIB_SRC EXCLUDE REGEX ".*/tests/.*")
 
 if (ENABLE_COVERAGE)
@@ -358,21 +453,34 @@ if (ENABLE_COVERAGE)
 endif()
 # Add the server module source files to the dynamic library
 add_library(${KWDBTS2_SERVER_LIB} SHARED ${KWDBTS2_SERVER_LIB_SRC})
+set(PROTOBUF_C ${PROTOBUF_C} PARENT_SCOPE)
+set(PROTOBUF_INC ${PROTOBUF_INCLUDE_DIR} PARENT_SCOPE)
+set(LIBPROTOBUF ${PROTOBUF_LIBRARY_DIR}/libprotobuf.a PARENT_SCOPE)
+if (NOT BRPC_FOUND)
+  add_dependencies(${KWDBTS2_SERVER_LIB} brpc)
+  if (NOT PROTOBUF_FOUND OR USE_SOURCE)
+    add_dependencies(brpc protobuf_src)
+    add_dependencies(${KWDBTS2_SERVER_LIB} ee_pb_plan_proto me_metadata_proto br_internal_service_proto)
+  endif()
+endif()
+if (NOT Gflags_FOUND OR USE_SOURCE)
+  add_dependencies(${KWDBTS2_SERVER_LIB} gflags_src)
+endif()
+if (NOT LZ4_FOUND OR USE_SOURCE)
+  add_dependencies(${KWDBTS2_SERVER_LIB} lz4_src)
+endif()
 add_dependencies(${KWDBTS2_SERVER_LIB} snappy)
-target_link_libraries(${KWDBTS2_SERVER_LIB}
-  PRIVATE ${SNAPPY_LIB}
-)
 
 # Set brpc library dependency
-add_dependencies(${KWDBTS2_SERVER_LIB} brpc)
-target_link_libraries(${KWDBTS2_SERVER_LIB} PRIVATE ${BRPC_OUTPUT_DIR}/lib/libbrpc.a)
-target_link_libraries(${KWDBTS2_SERVER_LIB} PRIVATE gflags ssl lz4)
+target_link_libraries(${KWDBTS2_SERVER_LIB} PRIVATE ${BRPC_STATIC_LIB} libssl.a libcrypto.a ${SNAPPY_LIB} ${LZ4_STATIC_LIB} ${GFLAGS_STATIC_LIB} ${PROTOBUF_STATIC_LIB})
 
 # Import the header files required by the server module
 target_include_directories(${KWDBTS2_SERVER_LIB} PRIVATE
     ${PROTOBUF_INCLUDE_DIR}
     ${TS_INCLUDE}
-    ${BRPC_OUTPUT_DIR}/include
+    ${LZ4_INCLUDE_DIR}
+    ${GFLAGS_INCLUDE_DIR}
+    ${BRPC_INCLUDE_DIRS}
 	)
 
 set_target_properties(${KWDBTS2_SERVER_LIB} PROPERTIES
@@ -456,7 +564,7 @@ if (WITH_TESTS)
                 third_party/gtest-1.8.1/fused-src
                 )
 
-        target_link_libraries(${tname} PRIVATE ${KWDBTS2_SERVER_LIB} ${PROTOBUF_LIB} common gtest dl rt)
+        target_link_libraries(${tname} PRIVATE ${KWDBTS2_SERVER_LIB} common ${PROTOBUF_STATIC_LIB} gtest dl rt z)
         set_target_properties(${tname} PROPERTIES
                 CXX_STANDARD_REQUIRED YES
                 CXX_EXTENSIONS NO

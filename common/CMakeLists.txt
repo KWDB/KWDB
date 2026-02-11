@@ -11,19 +11,6 @@
 
 cmake_minimum_required(VERSION 3.6 FATAL_ERROR)
 
-# LLVM options
-set(LLVM_DETECTOR "")
-if (KMALLOC_INSTRUMENTATION)
-    set (CMAKE_C_COMPILER "/usr/bin/clang")
-    set (CMAKE_CXX_COMPILER "/usr/bin/clang++")
-    add_subdirectory(src/instrumentation)
-    add_definitions(-Wno-varargs)
-    set(LLVM_DETECTOR "detector")
-    # LLVM requires K_DEBUG
-    set(WITH_DEFINITION K_DEBUG)
-    add_definitions(-DKMALLOC_INSTRUMENTATION)
-endif ()
-
 # COMMON
 project(COMMON)
 message(STATUS "Project:COMMON")
@@ -40,19 +27,15 @@ if (NOT WIN32)
 endif ()
 
 # gcc version verification
-if (KMALLOC_INSTRUMENTATION)
-    message(STATUS "CLANG version:" ${CMAKE_CXX_COMPILER_VERSION})
-else()
-    message(STATUS "GCC version:" ${CMAKE_CXX_COMPILER_VERSION})
-    if (CMAKE_COMPILER_IS_GNUCC)
-        if(CMAKE_C_COMPILER_VERSION VERSION_LESS 7.3 OR 
-            CMAKE_CXX_COMPILER_VERSION VERSION_LESS 7.3)
-            message(WARNING "GNU C/C++ compiler version should greater and equal than 7.3")
-        endif()
-        if(CMAKE_C_COMPILER_VERSION VERSION_GREATER 13.2 OR
-            CMAKE_CXX_COMPILER_VERSION VERSION_LESS 13.2)
-            message(WARNING "GNU C/C++ compiler version should less and equal than 13.2")
-        endif()
+message(STATUS "GCC version:" ${CMAKE_CXX_COMPILER_VERSION})
+if (CMAKE_COMPILER_IS_GNUCC)
+    if(CMAKE_C_COMPILER_VERSION VERSION_LESS 7.3 OR 
+        CMAKE_CXX_COMPILER_VERSION VERSION_LESS 7.3)
+        message(WARNING "GNU C/C++ compiler version should greater and equal than 7.3")
+    endif()
+    if(CMAKE_C_COMPILER_VERSION VERSION_GREATER 13.2 OR
+        CMAKE_CXX_COMPILER_VERSION VERSION_LESS 13.2)
+        message(WARNING "GNU C/C++ compiler version should less and equal than 13.2")
     endif()
 endif()
 
@@ -81,15 +64,6 @@ else()
     message(FATAL_ERROR "-DWITH_DEFINITION is not set correctly, please set to K_DEBUG or K_RELEASE")
 endif ()
 
-# Add K_DEBUG_FILE_INFO to control the error module information output
-option(K_DEBUG_FILE_INFO "display the complete error information" OFF)
-if(K_DEBUG_FILE_INFO)
-    message(STATUS "K_DEBUG_FILE_INFO:ON, The complete error information is displayed")
-    add_definitions(-DK_DEBUG_FILE_INFO)
-else()
-    message(STATUS "K_DEBUG_FILE_INFO:OFF, The complete error information is not displayed")
-endif()
-
 # Add K_DO_NOT_SHIP control to mask all code that doesn't need to be published
 if (K_DO_NOT_SHIP)
     message(STATUS "K_DO_NOT_SHIP:ON, block code that does not need to be released")
@@ -101,11 +75,6 @@ endif()
 if (KMALLOC_DEBUGGER)
     message(STATUS "Enable memory pool analysis")
     add_definitions(-DKMALLOC_DEBUGGER)
-endif ()
-
-# Whether to use shared_mem_info to manage concurrent memory access
-if (KMALLOC_SHARED_REFCOUNT)
-    add_definitions(-DKMALLOC_SHARED_REFCOUNT)
 endif ()
 
 option(KMALLOC_PERFORMANCE_OPTIMIZATION "enable kmalloc high performance mode" OFF)
@@ -169,7 +138,7 @@ target_include_directories(${COMMON_LIB}
         PUBLIC ../kwdbts2/latch/include
         ../kwdbts2/third_party/gtest-1.8.1/fused-src
         )
-target_link_libraries(${COMMON_LIB} protobuf dl)
+target_link_libraries(${COMMON_LIB} dl)
 
 if (KMALLOC_OVERRIDE)
     set(COMMON_SRC_OVERRIDE ${COMMON_SRC})
@@ -228,12 +197,6 @@ if (WITH_TESTS)
                 PRIVATE src/mem/test/h
                 ../kwdbts2/third_party/gtest-1.8.1/fused-src
                 )
-        if (KMALLOC_INSTRUMENTATION)
-            set_target_properties(${tname} PROPERTIES COMPILE_FLAGS
-            "-g -Wno-tautological-pointer-compare -flegacy-pass-manager \
-            -Xclang -load -Xclang ${CMAKE_BINARY_DIR}/src/instrumentation/llvm-pass/libUserPass.so")
-            add_dependencies(${tname} UserPass detector)
-        endif ()
         target_link_libraries(${tname} gtest common pthread atomic ${LLVM_DETECTOR})
         set_target_properties(${tname} PROPERTIES
                 CXX_STANDARD_REQUIRED YES

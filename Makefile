@@ -152,6 +152,7 @@ clean:
 	rm -rf kwbase/.buildinfo
 	rm -rf kwbase/bin
 	rm -rf kwbase/build/defs.mk kwbase/build/defs.mk.sig
+	rm -rf $(GOPATH)/native
 	rm -rf qa/TEST_integration
 	@echo Clean Done.
 
