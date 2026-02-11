@@ -484,7 +484,7 @@ target_include_directories(${KWDBTS2_SERVER_LIB} PRIVATE
 	)
 
 set_target_properties(${KWDBTS2_SERVER_LIB} PROPERTIES
-  COMPILE_FLAGS " -fno-plt"
+  COMPILE_FLAGS " -fno-plt -Wno-deprecated-declarations"
   POSITION_INDEPENDENT_CODE ON
 )
 
