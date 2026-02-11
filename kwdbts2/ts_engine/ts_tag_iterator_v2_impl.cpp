@@ -25,7 +25,7 @@ TagIteratorV2Impl::TagIteratorV2Impl(std::shared_ptr<TagTable> tag_bt, uint32_t 
     : scan_tags_(scan_tags), tag_bt_(tag_bt), table_version_(table_versioin) {}
 
 TagIteratorV2Impl::TagIteratorV2Impl(std::shared_ptr<TagTable> tag_bt, uint32_t table_versioin,
-                                     const std::vector<k_uint32>& scan_tags, const std::unordered_set<uint32_t>& hps)
+                                     const std::vector<k_uint32>& scan_tags, std::vector<HashIdSpan>* hps)
     : scan_tags_(scan_tags), hps_(hps), tag_bt_(tag_bt), table_version_(table_versioin) {}
 
 TagIteratorV2Impl::~TagIteratorV2Impl() {
@@ -137,7 +137,7 @@ TagIteratorByOSN::TagIteratorByOSN(std::shared_ptr<TagTable> tag_bt, uint32_t ta
   scan_tags_ = scan_cols;
 }
 
-KStatus TagIteratorByOSN::Init(const std::unordered_set<uint32_t>& hps,
+KStatus TagIteratorByOSN::Init(std::vector<HashIdSpan>* hps,
   std::unordered_map<uint64_t, EntityResultIndex> pkeys) {
   pkeys_status_ = std::move(pkeys);
   hps_ = hps;

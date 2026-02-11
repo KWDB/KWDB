@@ -31,7 +31,7 @@ void WindowHelper::MaterializeRow(KWThdContext *thd, DataChunk *chunk,
       chunk->SetNull(count, col);
       continue;
     }
-    if (col_info[col].is_string) {
+    if (col_info[col].is_string > KWStringType::NON_STRING) {
       kwdbts::String val = field->ValStr();
       if (val.isNull()) {
         chunk->SetNull(count, col);

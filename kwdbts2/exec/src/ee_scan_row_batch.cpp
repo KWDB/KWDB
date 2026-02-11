@@ -14,32 +14,24 @@
 namespace kwdbts {
 char* ScanRowBatch::GetData(k_uint32 col, k_uint32 offset, roachpb::KWDBKTSColumn::ColumnType ctype,
                             roachpb::DataType dt) {
-  if (roachpb::KWDBKTSColumn::TYPE_PTAG == ctype || roachpb::KWDBKTSColumn::TYPE_TAG == ctype) {
-    return static_cast<char*>(tagdata_[col].tag_data);
+  if (roachpb::KWDBKTSColumn::TYPE_DATA != ctype) {
+    return tagdata_[col].tag_data;
   } else {
-    if (dt == roachpb::VARCHAR || dt == roachpb::NVARCHAR || dt == roachpb::VARBINARY) {
-      return static_cast<char *>(res_.data[col][current_batch_no_]->getVarColData(
-          current_batch_line_));
-    } else {
-      return static_cast<char*>(res_.data[col][current_batch_no_]->mem) +
-             current_batch_line_ * offset;
-    }
+    return res_.data[col][current_batch_no_]->getData(current_batch_line_, offset);
   }
 }
 
 k_uint16 ScanRowBatch::GetDataLen(k_uint32 col, k_uint32 offset, roachpb::KWDBKTSColumn::ColumnType ctype) {
-  if (roachpb::KWDBKTSColumn::TYPE_PTAG == ctype || roachpb::KWDBKTSColumn::TYPE_TAG == ctype) {
+  if (roachpb::KWDBKTSColumn::TYPE_DATA != ctype) {
     return tagdata_[col].size;
   } else {
-    return res_.data[col][current_batch_no_]->getVarColDataLen(
-        current_batch_line_);
+    return res_.data[col][current_batch_no_]->getDataLen(current_batch_line_);
   }
 }
 
 k_bool ScanRowBatch::IsOverflow(k_uint32 col,
                                 roachpb::KWDBKTSColumn::ColumnType ctype) {
-  if (roachpb::KWDBKTSColumn::TYPE_PTAG == ctype ||
-      roachpb::KWDBKTSColumn::TYPE_TAG == ctype) {
+  if (roachpb::KWDBKTSColumn::TYPE_DATA != ctype) {
     return false;
   }
   return res_.data[col][current_batch_no_]->is_overflow;
@@ -118,7 +110,7 @@ void ScanRowBatch::ResetLine() {
 }
 
 bool ScanRowBatch::IsNull(k_uint32 col, roachpb::KWDBKTSColumn::ColumnType ctype) {
-  if (roachpb::KWDBKTSColumn::TYPE_PTAG == ctype || roachpb::KWDBKTSColumn::TYPE_TAG == ctype) {
+  if (roachpb::KWDBKTSColumn::TYPE_DATA != ctype) {
     if (ctype == roachpb::KWDBKTSColumn::TYPE_PTAG) {
       return false;
     }
@@ -135,7 +127,7 @@ bool ScanRowBatch::IsNull(k_uint32 col, roachpb::KWDBKTSColumn::ColumnType ctype
 
 void ScanRowBatch::CopyColumnData(k_uint32 col_idx, char* dest, k_uint32 data_len,
                                   roachpb::KWDBKTSColumn::ColumnType ctype, roachpb::DataType dt) {
-  if (roachpb::KWDBKTSColumn::TYPE_PTAG == ctype || roachpb::KWDBKTSColumn::TYPE_TAG == ctype) {
+  if (roachpb::KWDBKTSColumn::TYPE_DATA != ctype) {
     auto src = static_cast<char*>(tagdata_[col_idx].tag_data);
     if (src == nullptr) {
       return;
@@ -236,7 +228,7 @@ void ReverseScanRowBatch::ResetLine() {
 
 void ReverseScanRowBatch::CopyColumnData(k_uint32 col_idx, char* dest, k_uint32 data_len,
                                   roachpb::KWDBKTSColumn::ColumnType ctype, roachpb::DataType dt) {
-  if (roachpb::KWDBKTSColumn::TYPE_PTAG == ctype || roachpb::KWDBKTSColumn::TYPE_TAG == ctype) {
+  if (roachpb::KWDBKTSColumn::TYPE_DATA != ctype) {
     auto src = static_cast<char*>(tagdata_[col_idx].tag_data);
     if (src == nullptr) {
       return;

@@ -9,9 +9,11 @@
 // MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
 // See the Mulan PSL v2 for more details.
 
-#include <engine.h>
 #include "ee_tag_row_batch.h"
 
+#include <engine.h>
+
+#include "ee_common.h"
 #include "ee_field.h"
 #include "ee_table.h"
 
@@ -27,12 +29,8 @@ char *TagRowBatch::GetData(k_uint32 tagIndex, k_uint32 offset,
     return static_cast<char *>(res_.data[tagIndex][current_batch_no_]->mem) +
            current_batch_line_ * (tag_offsets_[table_->scan_tags_[tagIndex]]);
   } else {
-    if ((dt == roachpb::DataType::VARCHAR) ||
-        (dt == roachpb::DataType::NVARCHAR) ||
-        (dt == roachpb::DataType::VARBINARY)) {
-      return static_cast<char *>(
-          res_.data[tagIndex][current_batch_no_]->getVarColData(
-              current_batch_line_));
+    if (IsVarStringType(dt)) {
+      return static_cast<char*>(res_.data[tagIndex][current_batch_no_]->getData(current_batch_line_));
     }
 
     return static_cast<char*>(res_.data[tagIndex][current_batch_no_]->mem) +
@@ -47,7 +45,7 @@ k_uint16 TagRowBatch::GetDataLen(k_uint32 tagIndex, k_uint32 offset,
     return 0;
   }
 
-  return res_.data[tagIndex][current_batch_no_]->getVarColDataLen(
+  return res_.data[tagIndex][current_batch_no_]->getDataLen(
       current_batch_line_);
 }
 
@@ -72,12 +70,6 @@ bool TagRowBatch::IsNull(k_uint32 tagIndex,
   if (res_.data[tagIndex].empty()) {
     return true;
   }
-  // char* bitmap =
-  //    static_cast<char*>(res_.data[tagIndex][current_batch_no_]->mem) +
-  //    current_batch_line_ * (tag_offsets_[table_->scan_tags_[tagIndex] + tag_col_offset_]);
-  // if (bitmap[0] != 1) {
-  //  return true;
-  // }
   bool is_null = false;
   res_.data[tagIndex][current_batch_no_]->isNull(current_batch_line_, &is_null);
   return is_null;
@@ -160,46 +152,31 @@ KStatus TagRowBatch::GetCurrentTagData(TagData *tagData, void **bitmap) {
     roachpb::DataType dt = table_->fields_[index]->get_sql_type();
     char *ptr = nullptr;
     TagRawData rawData;
-    rawData.is_null = false;
-    rawData.size = 0;
-
     roachpb::KWDBKTSColumn::ColumnType type =
         table_->fields_[index]->get_column_type();
-    if (type == roachpb::KWDBKTSColumn::TYPE_PTAG) {
-      rawData.is_null = false;
-    } else {
+    if (type != roachpb::KWDBKTSColumn::TYPE_PTAG) {
       if (it.empty()) {
         rawData.is_null = true;
+        (*tagData)[idx] = rawData;
+        continue;
       } else {
         bool tmp_is_null = false;
         it[current_batch_no_]->isNull(current_batch_line_, &tmp_is_null);
-        rawData.is_null = tmp_is_null;
+        if (tmp_is_null) {
+          rawData.is_null = tmp_is_null;
+          (*tagData)[idx] = rawData;
+          continue;
+        }
       }
     }
-
-    if (rawData.is_null) {
-      rawData.size = 0;
-      rawData.tag_data = nullptr;
-      (*tagData)[idx] = rawData;
-      continue;
-    }
-
-    if ((type != roachpb::KWDBKTSColumn::TYPE_PTAG) &&
-        ((dt == roachpb::DataType::VARCHAR) ||
-         (dt == roachpb::DataType::NVARCHAR) ||
-         (dt == roachpb::DataType::VARBINARY))) {
-      if (dt != roachpb::DataType::VARCHAR) {
-        rawData.size = it[current_batch_no_]->getVarColDataLen(current_batch_line_);
-      }
-      rawData.tag_data =
-          static_cast<char *>(it[current_batch_no_]->getVarColData(current_batch_line_));
+    if (type == roachpb::KWDBKTSColumn::TYPE_PTAG) {
+      rawData.tag_data = static_cast<char*>(it[current_batch_no_]->mem) + current_batch_line_ * tag_offsets_[tag_index];
     } else {
-      if (type != roachpb::KWDBKTSColumn::TYPE_PTAG) {
-        rawData.tag_data = static_cast<char *>(it[current_batch_no_]->mem) +
-                           current_batch_line_ * tag_offsets_[tag_index] + 1;
+      if (IsVarStringType(dt)) {
+        rawData.tag_data = static_cast<char*>(it[current_batch_no_]->getData(current_batch_line_));
       } else {
-        rawData.tag_data = static_cast<char *>(it[current_batch_no_]->mem) +
-                           current_batch_line_ * tag_offsets_[tag_index];
+        rawData.tag_data =
+            static_cast<char*>(it[current_batch_no_]->mem) + current_batch_line_ * tag_offsets_[tag_index] + 1;
       }
     }
     (*tagData)[idx] = rawData;
@@ -224,10 +201,6 @@ KStatus TagRowBatch::GetTagData(TagData *tagData, void **bitmap,
   tagData->resize(tag_num);
 
   k_uint32 batch_no = 0, batch_line = 0;
-  // if (isFilter_) {
-  //   batch_no = selection_[line].batch_;
-  //   batch_line = selection_[line].line_;
-  // } else {
   auto &colBatchs = res_.data[0];
   batch_line = line;
   for (auto &it : colBatchs) {
@@ -237,7 +210,6 @@ KStatus TagRowBatch::GetTagData(TagData *tagData, void **bitmap,
     } else {
       break;
     }
-    // }
   }
 
   for (int idx = 0; idx < tag_num; idx++) {
@@ -248,52 +220,31 @@ KStatus TagRowBatch::GetTagData(TagData *tagData, void **bitmap,
     roachpb::DataType dt = table_->fields_[index]->get_sql_type();
     char *ptr = nullptr;
     TagRawData rawData;
-    rawData.is_null = false;
-    rawData.size = 0;
 
-    roachpb::KWDBKTSColumn::ColumnType type =
-        table_->fields_[index]->get_column_type();
-    if (type == roachpb::KWDBKTSColumn::TYPE_PTAG) {
-      rawData.is_null = false;
-    } else {
-      // char *bitmap = static_cast<char *>(it[batch_no]->mem) +
-      //               batch_line * tag_offsets_[index];
-      //
-      // if (bitmap[0] != 1) {
-      //   rawData.is_null = true;
-      // }
+    roachpb::KWDBKTSColumn::ColumnType type = table_->fields_[index]->get_column_type();
+    if (type != roachpb::KWDBKTSColumn::TYPE_PTAG) {
       if (it.empty()) {
         rawData.is_null = true;
+        rawData.tag_data = nullptr;
+        (*tagData)[idx] = rawData;
+        continue;
       } else {
         bool tmp_is_null = false;
         it[batch_no]->isNull(batch_line, &tmp_is_null);
-        rawData.is_null = tmp_is_null;
+        if (tmp_is_null) {
+          rawData.is_null = tmp_is_null;
+          (*tagData)[idx] = rawData;
+          continue;
+        }
       }
     }
-
-    if (rawData.is_null) {
-      rawData.size = 0;
-      rawData.tag_data = nullptr;
-      (*tagData)[idx] = rawData;
-      continue;
-    }
-
-    if ((type != roachpb::KWDBKTSColumn::TYPE_PTAG) &&
-        ((dt == roachpb::DataType::VARCHAR) ||
-         (dt == roachpb::DataType::NVARCHAR) ||
-         (dt == roachpb::DataType::VARBINARY))) {
-      if (dt != roachpb::DataType::VARCHAR) {
-        rawData.size = it[batch_no]->getVarColDataLen(batch_line);
-      }
-      rawData.tag_data =
-          static_cast<char *>(it[batch_no]->getVarColData(batch_line));
+    if (type == roachpb::KWDBKTSColumn::TYPE_PTAG) {
+      rawData.tag_data = static_cast<char*>(it[batch_no]->mem) + batch_line * tag_offsets_[tag_index];
     } else {
-      if (type != roachpb::KWDBKTSColumn::TYPE_PTAG) {
-        rawData.tag_data = static_cast<char *>(it[batch_no]->mem) +
-                           batch_line * tag_offsets_[tag_index] + 1;
+      if (IsVarStringType(dt)) {
+        rawData.tag_data = static_cast<char*>(it[batch_no]->getData(batch_line));
       } else {
-        rawData.tag_data = static_cast<char *>(it[batch_no]->mem) +
-                           batch_line * tag_offsets_[tag_index];
+        rawData.tag_data = static_cast<char*>(it[batch_no]->mem) + batch_line * tag_offsets_[tag_index] + 1;
       }
     }
     (*tagData)[idx] = rawData;

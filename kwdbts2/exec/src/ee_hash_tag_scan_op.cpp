@@ -27,6 +27,7 @@
 #include "ee_kwthd_context.h"
 #include "ee_dml_exec.h"
 #include "ee_cancel_checker.h"
+#include "ee_common.h"
 
 namespace kwdbts {
 
@@ -149,6 +150,10 @@ EEIteratorErrCode HashTagScanOperator::InitRelJointIndexes() {
     } else {
       rel_other_join_cols_.push_back(join_columns.first);
       tag_other_join_cols_.push_back(scan_tag_to_output[join_columns.second - table_->GetMinTagId()]);
+      other_join_column_length_ += table_->fields_[join_columns.second]->get_storage_length();
+      if (IsVarStringType(table_->fields_[join_columns.second]->get_storage_type())) {
+        other_join_column_length_ += STRING_WIDE;
+      }
     }
   }
   // all primary tags should be involved in join columns for primaryHashTagScan
@@ -393,6 +398,7 @@ EEIteratorErrCode HashTagScanOperator::GetJoinColumnValues(kwdbContext_p ctx,
                                                       k_uint32 row_index,
                                                       std::vector<void*>& primary_column_values,
                                                       std::vector<void*>& other_join_columns_values,
+                                                      char *other_column_value,
                                                       k_bool& has_null) {
   EnterFunc();
   EEIteratorErrCode code = EEIteratorErrCode::EE_OK;
@@ -402,16 +408,49 @@ EEIteratorErrCode HashTagScanOperator::GetJoinColumnValues(kwdbContext_p ctx,
       has_null = true;
       Return(code);
     }
-    memcpy(p, rel_data_chunk->GetDataPtr(row_index, primary_rel_cols_[i]),
-          min(rel_data_chunk->GetColumnInfo()[primary_rel_cols_[i]].storage_len, join_column_lengths_[i]));
+    roachpb::DataType type = rel_data_chunk->GetColumnInfo()[primary_rel_cols_[i]].storage_type;
+    switch (type) {
+      case roachpb::DataType::VARCHAR:
+      case roachpb::DataType::CHAR:
+      case roachpb::DataType::NVARCHAR:
+      case roachpb::DataType::VARBINARY: {
+        char* ptr = rel_data_chunk->GetData(row_index, primary_rel_cols_[i]);
+        k_uint16 len = *reinterpret_cast<k_uint16 *>(ptr);
+        memcpy(p, ptr + sizeof(k_uint16), len);
+        break;
+      }
+      default:
+        memcpy(p, rel_data_chunk->GetDataPtr(row_index, primary_rel_cols_[i]), join_column_lengths_[i]);
+        break;
+    }
     p += join_column_lengths_[i];
   }
+  p = other_column_value;
   for (int i = 0; i < rel_other_join_cols_.size(); ++i) {
     if (rel_data_chunk->IsNull(row_index, rel_other_join_cols_[i])) {
       has_null = true;
       Return(code);
     }
-    other_join_columns_values[i] = rel_data_chunk->GetDataPtr(row_index, rel_other_join_cols_[i]);
+    ColumnInfo &col_info = rel_data_chunk->GetColumnInfo()[rel_other_join_cols_[i]];
+    roachpb::DataType type = col_info.storage_type;
+    switch (type) {
+      case roachpb::DataType::VARCHAR:
+      case roachpb::DataType::CHAR:
+      case roachpb::DataType::NVARCHAR:
+      case roachpb::DataType::VARBINARY: {
+        char* ptr = rel_data_chunk->GetData(row_index, rel_other_join_cols_[i]);
+        k_uint16 len = *reinterpret_cast<k_uint16 *>(ptr);
+        memcpy(p, ptr + sizeof(k_uint16), len);
+        other_join_columns_values[i] = p;
+        p += len + 1;
+        break;
+      }
+      default:
+        memcpy(p, rel_data_chunk->GetDataPtr(row_index, rel_other_join_cols_[i]), col_info.storage_len);
+        other_join_columns_values[i] = p;
+        p += col_info.storage_len;
+        break;
+    }
   }
   Return(code);
 }
@@ -435,8 +474,12 @@ EEIteratorErrCode HashTagScanOperator::GetJoinColumnValues(kwdbContext_p ctx,
       case roachpb::DataType::VARCHAR:
       case roachpb::DataType::CHAR:
       case roachpb::DataType::NVARCHAR:
-        strncpy(p, data_chunk->GetDataPtr(row_index, key_cols[i]), join_column_lengths_[i]);
+      case roachpb::DataType::VARBINARY: {
+        char* ptr = data_chunk->GetData(row_index, key_cols[i]);
+        k_uint16 len = *reinterpret_cast<k_uint16 *>(ptr);
+        memcpy(p, ptr + sizeof(k_uint16), len);
         break;
+      }
       default:
         memcpy(p, data_chunk->GetDataPtr(row_index, key_cols[i]), join_column_lengths_[i]);
         break;
@@ -495,6 +538,7 @@ EEIteratorErrCode HashTagScanOperator::Next(kwdbContext_p ctx) {
       k_uint32 row_count = tag_data_chunk->Count();
       for (k_uint32 i = 0; i < row_count; ++i) {
         k_bool has_null = false;
+        memset(rel_join_column_value, 0, total_join_column_length_);
         code = GetJoinColumnValues(ctx, tag_data_chunk, i, primary_tag_cols_, rel_join_column_value, has_null);
         if (code != EEIteratorErrCode::EE_OK) {
           Return(code);
@@ -532,11 +576,17 @@ EEIteratorErrCode HashTagScanOperator::Next(kwdbContext_p ctx) {
       LOG_ERROR("primary_column_values[0] malloc failed\n");
       Return(EEIteratorErrCode::EE_ERROR);
     }
-    memset(primary_column_values[0], 0, total_join_column_length_);
+    char *other_column_value = static_cast<char *>(malloc(other_join_column_length_));
+    if (nullptr == other_column_value) {
+      EEPgErrorInfo::SetPgErrorInfo(ERRCODE_OUT_OF_MEMORY, "Insufficient memory");
+      LOG_ERROR("other_column_value malloc failed\n");
+      Return(EEIteratorErrCode::EE_ERROR);
+    }
     std::vector<void*> other_join_columns_values(rel_other_join_cols_.size());
     std::vector<void *> intersect_primary_tags;
     Defer defer{[&]() {
       free(primary_column_values[0]);
+      free(other_column_value);
     }};
 
     DataChunkPtr rel_data_chunk;
@@ -549,7 +599,10 @@ EEIteratorErrCode HashTagScanOperator::Next(kwdbContext_p ctx) {
         k_uint32 row_count = rel_data_chunk->Count();
         for (k_uint32 i = 0; i < row_count; ++i) {
           k_bool has_null = false;
-          code = GetJoinColumnValues(ctx, rel_data_chunk, i, primary_column_values, other_join_columns_values, has_null);
+          memset(primary_column_values[0], 0, total_join_column_length_);
+          memset(other_column_value, 0, other_join_column_length_);
+          code = GetJoinColumnValues(ctx, rel_data_chunk, i, primary_column_values, other_join_columns_values,
+                                     other_column_value, has_null);
           if (code != EEIteratorErrCode::EE_OK) {
             Return(code);
           }
@@ -594,7 +647,10 @@ EEIteratorErrCode HashTagScanOperator::Next(kwdbContext_p ctx) {
         k_uint32 row_count = rel_data_chunk->Count();
         for (k_uint32 i = 0; i < row_count; ++i) {
           k_bool has_null = false;
-          code = GetJoinColumnValues(ctx, rel_data_chunk, i, primary_column_values, other_join_columns_values, has_null);
+          memset(primary_column_values[0], 0, total_join_column_length_);
+          memset(other_column_value, 0, other_join_column_length_);
+          code = GetJoinColumnValues(ctx, rel_data_chunk, i, primary_column_values, other_join_columns_values,
+                                     other_column_value, has_null);
           if (code != EEIteratorErrCode::EE_OK) {
             Return(code);
           }

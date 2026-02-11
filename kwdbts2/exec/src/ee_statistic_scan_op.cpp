@@ -190,7 +190,7 @@ EEIteratorErrCode TableStatisticScanOperator::Reset(kwdbContext_p ctx) {
 EEIteratorErrCode TableStatisticScanOperator::Next(kwdbContext_p ctx, DataChunkPtr& chunk) {
   EnterFunc();
   auto start = std::chrono::high_resolution_clock::now();
-  if (table_->hash_points_.empty() && current_thd->IsRemote()) {
+  if (table_->hash_spans_.empty() && current_thd->IsRemote()) {
     Return(EEIteratorErrCode::EE_END_OF_RECORD);
   }
   if (CheckCancel(ctx) != SUCCESS) {

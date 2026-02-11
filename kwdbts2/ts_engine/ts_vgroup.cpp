@@ -554,7 +554,7 @@ KStatus TsVGroup::ConvertBlockSpanToResultSet(const std::vector<k_uint32>& kw_sc
         } else {
           char* buffer = static_cast<char*>(malloc(attrs[kw_col_idx].size));
           memcpy(buffer, value, attrs[kw_col_idx].size);
-          batch = new AggBatch(static_cast<void*>(buffer), 1);
+          batch = new AggBatch(buffer, 1);
           batch->is_new = true;
         }
       } else {
@@ -567,8 +567,8 @@ KStatus TsVGroup::ConvertBlockSpanToResultSet(const std::vector<k_uint32>& kw_sc
           char* buffer = static_cast<char*>(malloc(var_data.len + kStringLenLen));
           KUint16(buffer) = var_data.len;
           memcpy(buffer + kStringLenLen, var_data.data, var_data.len);
-          std::shared_ptr<void> ptr(buffer, free);
-          batch = new AggBatch(ptr, 1);
+          std::shared_ptr<char> ptr(buffer, free);
+          batch = new AggVarBatch(ptr, 1);
         }
       }
     }

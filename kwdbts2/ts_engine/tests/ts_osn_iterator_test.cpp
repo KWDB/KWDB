@@ -125,7 +125,9 @@ TEST_F(TestV2IteratorByOSN, basic_insert) {
   ResultSet rs;
   rs.setColumnNum(1);
   uint32_t count;
-  s = ts_table_->GetTagIteratorByOSN(ctx_, table_version, scan_cols, osn_spans, {2}, &iter);
+  std::vector<HashIdSpan> hash_id_spans;
+  hash_id_spans.push_back({2, 2});
+  s = ts_table_->GetTagIteratorByOSN(ctx_, table_version, scan_cols, osn_spans, &hash_id_spans, &iter);
   ASSERT_EQ(s, KStatus::SUCCESS);
   s = iter->Next(&entity_id_list, &rs, &count);
   ASSERT_EQ(s, KStatus::SUCCESS);
@@ -139,7 +141,7 @@ TEST_F(TestV2IteratorByOSN, basic_insert) {
   osn_spans.push_back({0, 1760000 - 1});
   entity_id_list.clear();
   rs.clear();
-  s = ts_table_->GetTagIteratorByOSN(ctx_, table_version, scan_cols, osn_spans, {2}, &iter);
+  s = ts_table_->GetTagIteratorByOSN(ctx_, table_version, scan_cols, osn_spans, &hash_id_spans, &iter);
   ASSERT_EQ(s, KStatus::SUCCESS);
   s = iter->Next(&entity_id_list, &rs, &count);
   ASSERT_EQ(s, KStatus::SUCCESS);
@@ -153,7 +155,7 @@ TEST_F(TestV2IteratorByOSN, basic_insert) {
   osn_spans.push_back({1760000 + 1, UINT64_MAX});
   entity_id_list.clear();
   rs.clear();
-  s = ts_table_->GetTagIteratorByOSN(ctx_, table_version, scan_cols, osn_spans, {2}, &iter);
+  s = ts_table_->GetTagIteratorByOSN(ctx_, table_version, scan_cols, osn_spans, &hash_id_spans, &iter);
   ASSERT_EQ(s, KStatus::SUCCESS);
   s = iter->Next(&entity_id_list, &rs, &count);
   ASSERT_EQ(s, KStatus::SUCCESS);
@@ -215,7 +217,9 @@ TEST_F(TestV2IteratorByOSN, basic_udpate) {
   ResultSet rs;
   rs.setColumnNum(1);
   uint32_t count;
-  s = ts_table_->GetTagIteratorByOSN(ctx_, table_version, scan_cols, osn_spans, {2}, &iter);
+  std::vector<HashIdSpan> hash_id_spans;
+  hash_id_spans.push_back({2, 2});
+  s = ts_table_->GetTagIteratorByOSN(ctx_, table_version, scan_cols, osn_spans, &hash_id_spans, &iter);
   ASSERT_EQ(s, KStatus::SUCCESS);
   uint32_t total = 0;
   do {
@@ -257,7 +261,7 @@ TEST_F(TestV2IteratorByOSN, basic_udpate) {
   osn_spans.push_back({0, 1780000});
   entity_id_list.clear();
   rs.clear();
-  s = ts_table_->GetTagIteratorByOSN(ctx_, table_version, scan_cols, osn_spans, {2}, &iter);
+  s = ts_table_->GetTagIteratorByOSN(ctx_, table_version, scan_cols, osn_spans, &hash_id_spans, &iter);
   ASSERT_EQ(s, KStatus::SUCCESS);
   total = 0;
   do {
@@ -303,7 +307,7 @@ TEST_F(TestV2IteratorByOSN, basic_udpate) {
   entity_id_list.clear();
   ResultSet res;
   res.setColumnNum(1);
-  s = ts_table_->GetEntityIdListByOSN(ctx_, pkeys, osn_spans, scan_cols, {2}, &entity_id_list, &res, &count, 1);
+  s = ts_table_->GetEntityIdListByOSN(ctx_, pkeys, osn_spans, scan_cols, &hash_id_spans, &entity_id_list, &res, &count, 1);
   ASSERT_EQ(s, KStatus::SUCCESS);
   ASSERT_EQ(entity_id_list.size(), 1);
   ASSERT_EQ(count, 1);
@@ -346,7 +350,9 @@ TEST_F(TestV2IteratorByOSN, basic_delete) {
   std::vector<kwdbts::EntityResultIndex> entity_id_list;
   ResultSet rs;
   rs.setColumnNum(1);
-  s = ts_table_->GetTagIteratorByOSN(ctx_, table_version, scan_cols, osn_spans, {2}, &iter);
+  std::vector<HashIdSpan> hash_id_spans;
+  hash_id_spans.push_back({2, 2}); // hash_id = 2
+  s = ts_table_->GetTagIteratorByOSN(ctx_, table_version, scan_cols, osn_spans, &hash_id_spans, &iter);
   ASSERT_EQ(s, KStatus::SUCCESS);
   uint32_t total = 0;
   uint32_t count;
@@ -363,7 +369,7 @@ TEST_F(TestV2IteratorByOSN, basic_delete) {
   entity_id_list.clear();
   rs.clear();
   total = 0;
-  s = ts_table_->GetTagIteratorByOSN(ctx_, table_version, scan_cols, osn_spans, {2}, &iter);
+  s = ts_table_->GetTagIteratorByOSN(ctx_, table_version, scan_cols, osn_spans, &hash_id_spans, &iter);
   ASSERT_EQ(s, KStatus::SUCCESS);
   do {
     s = iter->Next(&entity_id_list, &rs, &count);
@@ -405,7 +411,7 @@ TEST_F(TestV2IteratorByOSN, basic_delete) {
   entity_id_list.clear();
   rs.clear();
   total = 0;
-  s = ts_table_->GetTagIteratorByOSN(ctx_, table_version, scan_cols, osn_spans, {2}, &iter);
+  s = ts_table_->GetTagIteratorByOSN(ctx_, table_version, scan_cols, osn_spans, &hash_id_spans, &iter);
   ASSERT_EQ(s, KStatus::SUCCESS);
   do {
     s = iter->Next(&entity_id_list, &rs, &count);
@@ -455,7 +461,7 @@ TEST_F(TestV2IteratorByOSN, basic_delete) {
   entity_id_list.clear();
   ResultSet res;
   res.setColumnNum(1);
-  s = ts_table_->GetEntityIdListByOSN(ctx_, pkeys, osn_spans, scan_cols, {2}, &entity_id_list, &res, &count, 1);
+  s = ts_table_->GetEntityIdListByOSN(ctx_, pkeys, osn_spans, scan_cols, &hash_id_spans, &entity_id_list, &res, &count, 1);
   ASSERT_EQ(s, KStatus::SUCCESS);
   ASSERT_EQ(entity_id_list.size(), 2);
   ASSERT_EQ(count, 2);
@@ -492,7 +498,9 @@ TEST_F(TestV2IteratorByOSN, basic_metric_insert) {
   ResultSet rs;
   rs.setColumnNum(1);
   uint32_t count;
-  s = ts_table_->GetTagIteratorByOSN(ctx_, table_version, scan_cols, osn_spans, {2}, &iter);
+  std::vector<HashIdSpan> hash_id_spans;
+  hash_id_spans.push_back({2, 2}); // hash_id = 2
+  s = ts_table_->GetTagIteratorByOSN(ctx_, table_version, scan_cols, osn_spans, &hash_id_spans, &iter);
   ASSERT_EQ(s, KStatus::SUCCESS);
   s = iter->Next(&entity_id_list, &rs, &count);
   ASSERT_EQ(s, KStatus::SUCCESS);
@@ -599,7 +607,9 @@ TEST_F(TestV2IteratorByOSN, basic_metric_delete) {
   ResultSet rs;
   rs.setColumnNum(1);
   uint32_t count;
-  s = ts_table_->GetTagIteratorByOSN(ctx_, table_version, scan_cols, osn_spans, {2}, &iter);
+  std::vector<HashIdSpan> hash_id_spans;
+  hash_id_spans.push_back({2, 2});
+  s = ts_table_->GetTagIteratorByOSN(ctx_, table_version, scan_cols, osn_spans, &hash_id_spans, &iter);
   ASSERT_EQ(s, KStatus::SUCCESS);
   s = iter->Next(&entity_id_list, &rs, &count);
   ASSERT_EQ(s, KStatus::SUCCESS);
@@ -725,7 +735,9 @@ TEST_F(TestV2IteratorByOSN, only_tag_data_exist) {
   ResultSet rs;
   rs.setColumnNum(1);
   uint32_t count;
-  s = ts_table_->GetTagIteratorByOSN(ctx_, table_version, scan_cols, osn_spans, {2}, &iter);
+  std::vector<HashIdSpan> hash_id_spans;
+  hash_id_spans.push_back({2, 2});
+  s = ts_table_->GetTagIteratorByOSN(ctx_, table_version, scan_cols, osn_spans, &hash_id_spans, &iter);
   ASSERT_EQ(s, KStatus::SUCCESS);
   s = iter->Next(&entity_id_list, &rs, &count);
   ASSERT_EQ(s, KStatus::SUCCESS);
@@ -755,7 +767,7 @@ TEST_F(TestV2IteratorByOSN, only_tag_data_exist) {
   entity_id_list.clear();
   osn_spans.clear();
   osn_spans.push_back({1760000, 1770000 - 1});
-  s = ts_table_->GetTagIteratorByOSN(ctx_, table_version, scan_cols, osn_spans, {2}, &iter);
+  s = ts_table_->GetTagIteratorByOSN(ctx_, table_version, scan_cols, osn_spans, &hash_id_spans, &iter);
   ASSERT_EQ(s, KStatus::SUCCESS);
   s = iter->Next(&entity_id_list, &rs, &count);
   ASSERT_EQ(s, KStatus::SUCCESS);
@@ -784,7 +796,7 @@ TEST_F(TestV2IteratorByOSN, only_tag_data_exist) {
   entity_id_list.clear();
   osn_spans.clear();
   osn_spans.push_back({1760000 + 1, 1770000});
-  s = ts_table_->GetTagIteratorByOSN(ctx_, table_version, scan_cols, osn_spans, {2}, &iter);
+  s = ts_table_->GetTagIteratorByOSN(ctx_, table_version, scan_cols, osn_spans, &hash_id_spans, &iter);
   ASSERT_EQ(s, KStatus::SUCCESS);
   s = iter->Next(&entity_id_list, &rs, &count);
   ASSERT_EQ(s, KStatus::SUCCESS);

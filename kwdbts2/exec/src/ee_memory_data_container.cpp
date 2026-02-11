@@ -99,6 +99,10 @@ DatumPtr MemRowContainer::GetData(k_uint32 col) {
     return sorted_chunk_ptr_->GetData(selection_[current_sel_idx_], col);
 }
 
+DatumPtr MemRowContainer::GetRawData(k_uint32 col) {
+    return sorted_chunk_ptr_->GetRawData(selection_[current_sel_idx_], col);
+}
+
 k_uint32 MemRowContainer::ComputeCapacity() {
   int capacity = (OptimalDiskDataSize * 8 - 7 * col_num_) /
                  (col_num_ + 8 * static_cast<int>(row_size_));

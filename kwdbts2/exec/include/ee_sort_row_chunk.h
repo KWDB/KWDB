@@ -150,10 +150,10 @@ class SortRowChunk : public ISortableChunk {
                         k_int32 col_num, k_uint64 chunk_size,
                         k_int64 max_output_count, k_uint64 base_count,
                         k_bool force_constant)
-      : order_info_(order_info),
-        max_output_count_(max_output_count),
+      : chunk_size_(chunk_size),
+        order_info_(order_info),
         base_count_(base_count),
-        chunk_size_(chunk_size),
+        max_output_count_(max_output_count),
         force_constant_(force_constant) {
     col_info_ = col_info;
     col_num_ = col_num;
@@ -165,8 +165,8 @@ class SortRowChunk : public ISortableChunk {
                         k_int64 max_output_count, k_uint64 base_count,
                         k_bool force_constant)
       : order_info_(order_info),
-        max_output_count_(max_output_count),
         base_count_(base_count),
+        max_output_count_(max_output_count),
         force_constant_(force_constant) {
     capacity_ = capacity;
     col_info_ = col_info;

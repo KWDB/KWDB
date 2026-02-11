@@ -39,9 +39,9 @@ class MemRowContainer : public DataContainer, public std::enable_shared_from_thi
 
   MemRowContainer(std::vector<ColumnOrderInfo>& order_info,
                          ColumnInfo* col_info, k_int32 col_num)
-      : order_info_(order_info),
-        col_info_(col_info),
-        col_num_(col_num) {
+      : col_info_(col_info),
+        col_num_(col_num),
+        order_info_(order_info) {
     row_size_ = DataChunk::ComputeRowSize(col_info, col_num);
     capacity_ = ComputeCapacity();
   }
@@ -65,6 +65,8 @@ class MemRowContainer : public DataContainer, public std::enable_shared_from_thi
   DatumPtr GetData(k_uint32 row, k_uint32 col, k_uint16& len) override;
 
   DatumPtr GetData(k_uint32 col) override;
+
+  DatumPtr GetRawData(k_uint32 col) override;
 
   ColumnInfo* GetColumnInfo() override { return col_info_; }
 

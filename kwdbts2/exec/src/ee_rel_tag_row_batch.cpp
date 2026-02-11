@@ -13,6 +13,7 @@
 #include "ee_data_chunk.h"
 #include "ee_field.h"
 #include "ee_table.h"
+#include "ee_common.h"
 
 namespace kwdbts {
 
@@ -63,11 +64,25 @@ void RelTagRowBatch::Init(TABLE *table) {
   res_.setColumnNum(table_->scan_tags_.size());
 
   for (int i = 0; i < table_->scan_rel_cols_.size(); ++i) {
-    rel_data_len_ += table_->GetFieldWithColNum(table_->scan_rel_cols_[i] + table_->field_num_)->get_storage_length();
+    Field* f = table_->GetFieldWithColNum(table_->scan_rel_cols_[i] + table_->field_num_);
+    if (IsVarStringType(f->get_storage_type())) {
+      rel_data_len_ += f->get_storage_length() + sizeof(k_uint16) + 1;
+    } else if (IsFixedStringType(f->get_storage_type())) {
+      rel_data_len_ += f->get_storage_length() + 1;
+    } else {
+      rel_data_len_ += f->get_storage_length();
+    }
   }
 
   for (int i = 0; i < table_->scan_tags_.size(); ++i) {
-    tag_data_len_ += table_->GetFieldWithColNum(table_->scan_tags_[i] + tag_col_offset_)->get_storage_length();
+    Field* f = table_->GetFieldWithColNum(table_->scan_tags_[i] + tag_col_offset_);
+    if (IsVarStringType(f->get_storage_type())) {
+      tag_data_len_ += f->get_storage_length() + sizeof(k_uint16) + 1;
+    } else if (IsFixedStringType(f->get_storage_type())) {
+      tag_data_len_ += f->get_storage_length() + 1;
+    } else {
+      tag_data_len_ += f->get_storage_length();
+    }
   }
 }
 
@@ -91,6 +106,7 @@ KStatus RelTagRowBatch::AddRelTagJoinRecord(kwdbContext_p ctx, BatchDataContaine
       LOG_ERROR("tag_data_ptr malloc failed\n");
       Return(KStatus::FAIL);
     }
+    memset(tag_data_ptr, 0, tag_data_len_);
     data_ptrs_.push_back(tag_data_ptr);
     for (int i = 0; i < tag_col_num; ++i) {
       TagRawData rel_col_raw_data;
@@ -105,6 +121,7 @@ KStatus RelTagRowBatch::AddRelTagJoinRecord(kwdbContext_p ctx, BatchDataContaine
       LOG_ERROR("rel_data_ptr malloc failed\n");
       Return(KStatus::FAIL);
     }
+    memset(rel_data_ptr, 0, rel_data_len_);
     data_ptrs_.push_back(rel_data_ptr);
     for (int i = 0; i < rel_col_num; ++i) {
       TagRawData rel_col_raw_data;
@@ -142,6 +159,7 @@ KStatus RelTagRowBatch::AddTagRelJoinRecord(kwdbContext_p ctx, BatchDataContaine
       LOG_ERROR("tag_data_ptr malloc failed\n");
       Return(KStatus::FAIL);
     }
+    memset(tag_data_ptr, 0, tag_data_len_);
     data_ptrs_.push_back(tag_data_ptr);
     for (int i = 0; i < tag_col_num; ++i) {
       TagRawData rel_col_raw_data;
@@ -157,6 +175,7 @@ KStatus RelTagRowBatch::AddTagRelJoinRecord(kwdbContext_p ctx, BatchDataContaine
       LOG_ERROR("rel_data_ptr malloc failed\n");
       Return(KStatus::FAIL);
     }
+    memset(rel_data_ptr, 0, rel_data_len_);
     data_ptrs_.push_back(rel_data_ptr);
     for (int i = 0; i < rel_col_num; ++i) {
       TagRawData rel_col_raw_data;
@@ -197,6 +216,7 @@ KStatus RelTagRowBatch::AddPrimaryTagRelJoinRecord(kwdbContext_p ctx, DataChunkP
       LOG_ERROR("tag_data_ptr malloc failed\n");
       Return(KStatus::FAIL);
     }
+    memset(tag_data_ptr, 0, tag_data_len_);
     data_ptrs_.push_back(tag_data_ptr);
     for (int j = 0; j < tag_col_num; ++j) {
       TagRawData rel_col_raw_data;
@@ -211,6 +231,7 @@ KStatus RelTagRowBatch::AddPrimaryTagRelJoinRecord(kwdbContext_p ctx, DataChunkP
       LOG_ERROR("rel_data_ptr malloc failed\n");
       Return(KStatus::FAIL);
     }
+    memset(rel_data_ptr, 0, rel_data_len_);
     data_ptrs_.push_back(rel_data_ptr);
     for (int j = 0; j < rel_col_num; ++j) {
       TagRawData rel_col_raw_data;

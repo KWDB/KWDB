@@ -26,8 +26,6 @@
 #include "ee_pb_plan.pb.h"
 #include "ee_global.h"
 
-
-
 namespace kwdbts {
 
 typedef char* DatumPtr;
@@ -44,6 +42,7 @@ typedef std::unique_ptr<DataContainer> DataContainerPtr;
 typedef std::unique_ptr<DataChunk> DataChunkPtr;
 typedef std::shared_ptr<DataChunk> DataChunkSPtr;
 
+enum class KWStringType { NON_STRING = 0, FIXED_LENGTH = 1, VAR_LENGTH = 2 };
 /**
  * Structure to store column type, length.
  */
@@ -54,22 +53,17 @@ struct ColumnInfo {
   roachpb::DataType storage_type;
   roachpb::DataType sql_type{roachpb::UNKNOWN};
   KWDBTypeFamily return_type;
-  bool is_string{false};
+  KWStringType is_string{0};
   bool allow_null{true};
   ColumnInfo() {}
-  ColumnInfo(k_uint32 storage_len, roachpb::DataType storage_type,
-             KWDBTypeFamily return_type)
-      : storage_len(storage_len),
-        storage_type(storage_type),
-        sql_type(storage_type),
-        return_type(return_type) {
-    if (storage_type == roachpb::DataType::CHAR ||
-        storage_type == roachpb::DataType::VARCHAR ||
-        storage_type == roachpb::DataType::NCHAR ||
-        storage_type == roachpb::DataType::BINARY ||
-        storage_type == roachpb::DataType::NVARCHAR ||
-        storage_type == roachpb::DataType::VARBINARY) {
-      is_string = true;
+  ColumnInfo(k_uint32 storage_len, roachpb::DataType storage_type, KWDBTypeFamily return_type)
+      : storage_len(storage_len), storage_type(storage_type), sql_type(storage_type), return_type(return_type) {
+    if (storage_type == roachpb::DataType::CHAR || storage_type == roachpb::DataType::NCHAR ||
+        storage_type == roachpb::DataType::BINARY) {
+      is_string = KWStringType::FIXED_LENGTH;
+    } else if (storage_type == roachpb::DataType::VARCHAR || storage_type == roachpb::DataType::NVARCHAR ||
+               storage_type == roachpb::DataType::VARBINARY) {
+      is_string = KWStringType::VAR_LENGTH;
     }
   }
 };
@@ -102,6 +96,14 @@ class IChunk {
    * @param[in] col
    */
   virtual DatumPtr GetData(k_uint32 col) = 0;
+
+  virtual DatumPtr GetRawData(k_uint32 row, k_uint32 col) {
+    return nullptr;
+  }
+
+  virtual DatumPtr GetRawData(k_uint32 col) {
+    return nullptr;
+  }
 
   /**
    * @brief Get string pointer at  (row, col), and return the

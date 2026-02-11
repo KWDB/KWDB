@@ -120,7 +120,9 @@ class DiskDataContainer : public DataContainer, public ISortableChunk {
 
   DatumPtr GetData(k_uint32 col) override;
 
-    std::vector<ColumnOrderInfo>* GetOrderInfo() override { return &order_info_; }
+  DatumPtr GetRawData(k_uint32 col) override;
+
+  std::vector<ColumnOrderInfo>* GetOrderInfo() override { return &order_info_; }
 
   ColumnInfo* GetColumnInfo() override { return col_info_; }
 

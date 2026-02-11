@@ -14,6 +14,8 @@
 #include <cstdlib>
 #include <cstring>
 
+#include "mm_kmalloc.h"
+
 namespace kwdbts {
 /**
  *
@@ -34,14 +36,22 @@ EE_StringInfo ee_makeStringInfo(void) {
   return res;
 }
 
+void ee_destroyStringInfo(EE_StringInfo str) {
+  if (str == nullptr) {
+    return;
+  }
+  k_free(str->data);
+  delete str;
+}
+
 /**
  *
  * @param str
  */
 KStatus ee_initStringInfo(const EE_StringInfo &str) {
-  int size = 1024; /* initial default buffer size */
+  int size = 2048; /* initial default buffer size */
 
-  str->data = static_cast<char *>(malloc(size));
+  str->data = static_cast<char *>(k_malloc(size));
   if (str->data == nullptr) {
     // pusherrN
     return FAIL;
@@ -96,7 +106,7 @@ KStatus ee_enlargeStringInfo(const EE_StringInfo &str, k_int32 needed) {
   if (newlen > static_cast<int>(EE_MaxAllocSize))
     newlen = static_cast<int>(EE_MaxAllocSize);
 
-  str->data = static_cast<char *>(realloc(str->data, newlen));
+  str->data = static_cast<char *>(k_realloc(str->data, newlen));
   if (str->data == nullptr) {
     return FAIL;
   }
@@ -116,6 +126,17 @@ KStatus ee_appendBinaryStringInfo(const EE_StringInfo &str, const char *data,
   /*  attempt to expand*/
   KStatus ret = ee_enlargeStringInfo(str, datalen);
   if (ret != SUCCESS) {
+    return FAIL;
+  }
+  /* copy byte */
+  memcpy(str->data + str->len, data, datalen);
+  str->len += datalen;
+  return SUCCESS;
+}
+
+KStatus ee_appendBinaryStringInfoWithoutEnlarge(const EE_StringInfo &str, const char *data,
+                                  k_int32 datalen) {
+  if (str->len + datalen > str->cap) {
     return FAIL;
   }
   /* copy byte */

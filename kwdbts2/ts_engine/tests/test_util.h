@@ -436,10 +436,8 @@ class PayloadBuilder {
 };
 }  // namespace kwtest
 
-void make_hashpoint(std::unordered_set<k_uint32> *hps) {
-  for (uint32_t i=0; i< g_testcase_hash_num; i++) {
-    hps->insert(i);
-  }
+void make_hashpoint(std::vector<HashIdSpan>* hps) {
+  hps->push_back({0, g_testcase_hash_num});
 }
 
 KwTsSpan ConvertMsToPrecision(KwTsSpan& span, DATATYPE ts_type) {

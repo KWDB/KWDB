@@ -60,9 +60,41 @@ KStatus RelBatchQueue::Add(kwdbContext_p ctx, char *batchData, k_uint32 count) {
     EEPgErrorInfo::SetPgErrorInfo(ERRCODE_OUT_OF_MEMORY, "Insufficient memory");
     Return(KStatus::FAIL);
   }
-  if (data_chunk->PutData(ctx, batchData, count) != KStatus::SUCCESS) {
-    Return(KStatus::FAIL);
+  k_uint32 bitmap_size = (count + 7) / 8;;
+  k_uint32 capacity = count;
+  k_uint32 offset = 0;
+  std::vector<k_uint32> bitmap_offset;
+  std::vector<k_uint32> col_offset;
+  for (k_int32 i = 0; i < output_col_num_; i++) {
+    bitmap_offset.push_back(offset);
+    col_offset.push_back(offset + bitmap_size);
+    k_uint32 col_len = output_col_info_[i].fixed_storage_len;
+    if (output_col_info_[i].is_string == KWStringType::VAR_LENGTH) {
+      col_len = output_col_info_[i].storage_len + STRING_WIDE;
+    }
+    offset += col_len * capacity + bitmap_size;
   }
+  char* dst_ptr = data_chunk->GetData();
+  k_uint32* dst_bitmap_offset = data_chunk->GetBitmapOffset();
+  k_uint32* dst_col_offset = data_chunk->GetColumnOffset();
+  for (k_uint16 i = 0; i < output_col_num_; i++) {
+    memcpy(dst_ptr + dst_bitmap_offset[i], batchData + bitmap_offset[i], bitmap_size);
+    k_uint32 col_len = output_col_info_[i].fixed_storage_len;
+    if (output_col_info_[i].is_string == KWStringType::VAR_LENGTH) {
+      col_len = output_col_info_[i].storage_len + STRING_WIDE;
+      for (k_uint32 j = 0; j < capacity; j++) {
+        if (data_chunk->IsNull(j, i)) {
+          continue;
+        }
+        char* ptr = batchData + col_offset[i] + j * col_len;
+        k_uint32 len = *reinterpret_cast<k_uint16*>(ptr);
+        data_chunk->InsertData(j, i, ptr + STRING_WIDE, len);
+      }
+    } else {
+      memcpy(dst_ptr + dst_col_offset[i], batchData + col_offset[i], col_len * capacity);
+    }
+  }
+  data_chunk->SetCount(count);
   std::unique_lock<std::mutex> lk(mutex_);
   data_queue_.push_back(std::move(data_chunk));
   cv.notify_one();

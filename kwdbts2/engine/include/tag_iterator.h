@@ -33,7 +33,7 @@ class TagPartitionIterator {
  public:
   TagPartitionIterator() = delete;
   explicit TagPartitionIterator(TagPartitionTable* tag_partition_table, const std::vector<k_uint32>& src_scan_tags,
-                      const std::vector<TagInfo>& result_tag_infos, const std::unordered_set<kwdbts::k_uint32>& hps) :
+                      const std::vector<TagInfo>& result_tag_infos, std::vector<HashIdSpan>* hps) :
                                 m_tag_partition_table_(tag_partition_table), src_version_scan_tags_(src_scan_tags),
                                 result_version_tag_infos_(result_tag_infos), hps_(hps) {}
 
@@ -54,7 +54,7 @@ class TagPartitionIterator {
   std::vector<k_uint32> src_version_scan_tags_;
   // std::vector<k_uint32> result_version_scan_tags_;
   std::vector<TagInfo>  result_version_tag_infos_;
-  std::unordered_set<uint32_t> hps_;
+  std::vector<HashIdSpan> *hps_{nullptr};
   std::vector<KwOSNSpan> osn_spans_;
 };
 

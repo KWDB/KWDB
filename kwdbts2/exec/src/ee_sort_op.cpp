@@ -310,7 +310,6 @@ EEIteratorErrCode SortOperator::Next(kwdbContext_p ctx,
         break;
       }
     }
-
     if (scanned_rows_ == container_->Count()) {
       is_done_ = true;
     }

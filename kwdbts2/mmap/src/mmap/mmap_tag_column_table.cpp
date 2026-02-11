@@ -1217,7 +1217,7 @@ kwdbts::Batch* MMapTagColumnTable::GetTagBatchRecordWithNoConvert(size_t start_r
     }
     memset(data, 0x00, total_size);
     std::memcpy(data, this->getColumnAddr(start_row, col), total_size);
-    batch = new(std::nothrow) kwdbts::TagBatch(col_data_len, data, data_count);
+    batch = new(std::nothrow) kwdbts::TagBatch(col_data_len, static_cast<char *>(data), data_count);
     if (UNLIKELY(batch == nullptr)) {
       LOG_ERROR("failed to new TagBatch for fetching tag(%u) from the tag table "
         "%s%s, start_row: %lu end_row: %lu, row_count: %lu, actual_size: %lu",
@@ -1288,7 +1288,7 @@ kwdbts::Batch* MMapTagColumnTable::convertToFixedLen(size_t start_row, size_t en
   void* data = std::malloc(data_len * row_count);
   memset(data, 0x00, data_len * row_count);
 
-  TagBatch* batch = KNEW TagBatch(data_len, data, row_count);
+  TagBatch* batch = KNEW TagBatch(data_len, static_cast<char *>(data), row_count);
   if (UNLIKELY(batch == nullptr)) {
     LOG_ERROR("malloc TagBatch failed, out of memory");
     err_info.errcode = -4;

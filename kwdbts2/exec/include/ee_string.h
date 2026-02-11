@@ -78,6 +78,16 @@ struct String {
         is_alloc_(str.is_alloc_) {
     str.is_alloc_ = false;
   }
+
+  String clone() {
+    if (!ptr_) {
+      return *this;
+    }
+    String s(length_);
+    s.copy_string(*this);
+    return s;
+  }
+
   void mem_free() {
     if (is_alloc_) {
       free(ptr_);

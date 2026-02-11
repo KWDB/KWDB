@@ -99,6 +99,7 @@ class HashTagScanOperator : public TagScanBaseOperator {
                                         k_uint32 row_index,
                                         std::vector<void*>& primary_column_values,
                                         std::vector<void*>& other_join_columns_values,
+                                        char *other_column_value,
                                         k_bool& has_null);
   /**
    * @brief Get join column values
@@ -171,6 +172,8 @@ class HashTagScanOperator : public TagScanBaseOperator {
   std::vector<k_uint32> join_column_lengths_;
   // The total length of join columns.
   k_uint32 total_join_column_length_{0};
+
+  k_uint32 other_join_column_length_{0};
 
  private:
   mutable std::mutex tag_lock_;

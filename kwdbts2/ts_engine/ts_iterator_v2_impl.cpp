@@ -37,7 +37,7 @@ KStatus ConvertBlockSpanToResultSet(const std::vector<k_uint32>& kw_scan_cols, c
     Batch* batch;
     if (!ts_blk_span->IsColExist(kw_col_idx)) {
       // column is dropped at block version.
-      void* bitmap = nullptr;
+      char* bitmap = nullptr;
       batch = new Batch(bitmap, *count, bitmap, 1);
     } else {
       bool col_not_null = attrs[kw_scan_cols[i]].isFlag(AINFO_NOT_NULL);
@@ -63,10 +63,10 @@ KStatus ConvertBlockSpanToResultSet(const std::vector<k_uint32>& kw_scan_cols, c
             }
           }
         }
-        batch = new Batch(static_cast<void*>(value), *count, bitmap, 1);
+        batch = new Batch(value, *count, reinterpret_cast<char *>(bitmap), 1);
         batch->is_new = false;
       } else {
-        batch = new VarColumnBatch(*count, bitmap, 1);
+        batch = new VarColumnBatch(*count, reinterpret_cast<char *>(bitmap), 1);
         auto s = ts_blk_span->GetColBitmap(kw_col_idx, &ts_bitmap, ts_scan_stats);
         if (s != KStatus::SUCCESS) {
           LOG_ERROR("ts_blk_span->GetColBitmap failed.");
@@ -90,7 +90,7 @@ KStatus ConvertBlockSpanToResultSet(const std::vector<k_uint32>& kw_scan_cols, c
             }
             KUint16(buffer) = var_data.len;
             memcpy(buffer + kStringLenLen, var_data.data, var_data.len);
-            std::shared_ptr<void> ptr(buffer, free);
+            std::shared_ptr<char> ptr(buffer, free);
             batch->push_back(ptr);
           }
         }
@@ -1066,8 +1066,8 @@ KStatus TsAggIteratorV2Impl::Next(ResultSet* res, k_uint32* count, bool* is_fini
       b->is_new = final_agg_buffer_is_new_[i];
       b->is_overflow = is_overflow_[i];
     } else {
-      std::shared_ptr<void> ptr(slice.data, free);
-      b = new AggBatch(ptr, 1);
+      std::shared_ptr<char> ptr(slice.data, free);
+      b = new AggVarBatch(ptr, 1);
     }
     res->push_back(i, b);
   }
@@ -1611,6 +1611,7 @@ KStatus TsAggIteratorV2Impl::UpdateAggregation(std::shared_ptr<TsBlockSpan>& blo
                                                 TsScanStats* ts_scan_stats) {
   KStatus ret;
   std::unique_ptr<TsBitmapBase> bitmap;
+  TsBitmapBase *pbitmap = nullptr;
   int row_num = block_span->GetRowNum();
 
   if (aggregate_first_last_cols) {
@@ -1630,8 +1631,9 @@ KStatus TsAggIteratorV2Impl::UpdateAggregation(std::shared_ptr<TsBlockSpan>& blo
         if (ret != KStatus::SUCCESS) {
           return ret;
         }
+        pbitmap = bitmap.get();
         for (int row_idx = 0; row_idx < row_num; ++row_idx) {
-          if (bitmap->At(row_idx) != DataFlags::kValid) {
+          if (pbitmap->At(row_idx) != DataFlags::kValid) {
             continue;
           }
           int64_t ts = block_span->GetTS(row_idx);
@@ -1664,8 +1666,9 @@ KStatus TsAggIteratorV2Impl::UpdateAggregation(std::shared_ptr<TsBlockSpan>& blo
         if (ret != KStatus::SUCCESS) {
           return ret;
         }
+        pbitmap = bitmap.get();
         for (int row_idx = row_num - 1; row_idx >= 0; --row_idx) {
-          if (bitmap->At(row_idx) != DataFlags::kValid) {
+          if (pbitmap->At(row_idx) != DataFlags::kValid) {
             continue;
           }
           int64_t ts = block_span->GetTS(row_idx);
@@ -1765,12 +1768,12 @@ KStatus TsAggIteratorV2Impl::UpdateAggregation(std::shared_ptr<TsBlockSpan>& blo
         LOG_ERROR("GetFixLenColAddr failed.");
         return s;
       }
-
+      pbitmap = bitmap.get();
       int32_t size = block_span->GetColSize(kw_col_idx);
       bool col_not_null = attrs_[kw_col_idx].isFlag(AINFO_NOT_NULL);
-      bool all_valid = bitmap->IsAllValid();
+      bool all_valid = pbitmap->IsAllValid();
       for (int row_idx = 0; row_idx < row_num; ++row_idx) {
-        if (!col_not_null && !all_valid && bitmap->At(row_idx) != DataFlags::kValid) {
+        if (!col_not_null && !all_valid && pbitmap->At(row_idx) != DataFlags::kValid) {
           continue;
         }
         void* current = reinterpret_cast<void*>((intptr_t)(value + row_idx * size));
@@ -1861,10 +1864,10 @@ KStatus TsAggIteratorV2Impl::UpdateAggregation(std::shared_ptr<TsBlockSpan>& blo
           LOG_ERROR("GetFixLenColAddr failed.");
           return s;
         }
-
+        pbitmap = bitmap.get();
         int32_t size = block_span->GetColSize(kw_col_idx);
         for (int row_idx = 0; row_idx < row_num; ++row_idx) {
-          if (!attrs_[kw_col_idx].isFlag(AINFO_NOT_NULL) && bitmap->At(row_idx) != DataFlags::kValid) {
+          if (!attrs_[kw_col_idx].isFlag(AINFO_NOT_NULL) && pbitmap->At(row_idx) != DataFlags::kValid) {
             continue;
           }
           void* current = reinterpret_cast<void*>((intptr_t)(value + row_idx * size));
@@ -1987,10 +1990,10 @@ KStatus TsAggIteratorV2Impl::UpdateAggregation(std::shared_ptr<TsBlockSpan>& blo
           LOG_ERROR("GetFixLenColAddr failed.");
           return s;
         }
-
+        pbitmap = bitmap.get();
         int32_t size = block_span->GetColSize(kw_col_idx);
         for (int row_idx = 0; row_idx < row_num; ++row_idx) {
-          if (!attrs_[kw_col_idx].isFlag(AINFO_NOT_NULL) && bitmap->At(row_idx) != DataFlags::kValid) {
+          if (!attrs_[kw_col_idx].isFlag(AINFO_NOT_NULL) && pbitmap->At(row_idx) != DataFlags::kValid) {
             continue;
           }
           void* current = reinterpret_cast<void*>((intptr_t)(value + row_idx * size));
@@ -2062,50 +2065,50 @@ KStatus TsOffsetIteratorV2Impl::divideBlockSpans(timestamp64 begin_ts, timestamp
     std::shared_ptr<TsBlockSpan> block_span = filter_block_spans_.front().second;
     filter_block_spans_.pop_front();
     std::shared_ptr<TsBlock> block = block_span->GetTsBlock();
-    if ((is_reversed_ && min_ts > mid_ts) || (!is_reversed_ && max_ts <= mid_ts)) {
+    if ((is_reversed_ && min_ts > mid_ts) || (!is_reversed_ && max_ts < mid_ts)) {
       *lower_cnt += block_span->GetRowNum();
       lower_block_span.push_back({{min_ts, max_ts}, block_span});
-    } else if ((is_reversed_ && max_ts <= mid_ts) || (!is_reversed_ && min_ts > mid_ts)) {
+    } else if ((is_reversed_ && max_ts <= mid_ts) || (!is_reversed_ && min_ts >= mid_ts)) {
       filter_block_spans_.push_back({{min_ts, max_ts}, block_span});
     } else {
-      // TODO(lmz): code review here, is_lower_part is uninitialized. It may cause a bug.
-      //  is_lower_part = true to avoid compile error.
-      bool is_lower_part = true;
-      int first_row = block_span->GetStartRow(), start_row = block_span->GetStartRow();
-      uint32_t row_num = block_span->GetRowNum();
-      for (int j = start_row; j < start_row + row_num; ++j) {
-        timestamp64 cur_ts = block_span->GetTS(j - start_row);
-        if (j == start_row) {
-          is_lower_part = (is_reversed_ == (cur_ts > mid_ts));
-          min_ts = max_ts = cur_ts;
-        } else if (is_lower_part && ((is_reversed_ && cur_ts <= mid_ts) || (!is_reversed_ && cur_ts > mid_ts))) {
-          *lower_cnt += (j - first_row);
-          lower_block_span.push_back({{min_ts, max_ts},
-                                     make_shared<TsBlockSpan>(*block_span, block, first_row, j - first_row)});
-          first_row = j;
-          is_lower_part = false;
-          min_ts = max_ts = cur_ts;
-        } else if (!is_lower_part && ((is_reversed_ && cur_ts > mid_ts) || (!is_reversed_ && cur_ts <= mid_ts))) {
-          filter_block_spans_.push_back({{min_ts, max_ts},
-                                        make_shared<TsBlockSpan>(*block_span, block, first_row, j - first_row)});
-          first_row = j;
-          is_lower_part = true;
-          min_ts = max_ts = cur_ts;
+      int row_num = block_span->GetRowNum();
+      int begin_row = block_span->GetStartRow(), end_row = begin_row + row_num - 1;
+      int left = begin_row, right = end_row;
+      int split_row = -1;
+      timestamp64 split_ts = INVALID_TS;
+      while (left <= right) {
+        int mid = left + (right - left) / 2;
+        timestamp64 blk_mid_ts = block_span->GetTS(mid - begin_row);
+        bool is_lower = ((is_reversed_ && (blk_mid_ts > mid_ts)) || (!is_reversed_ && (blk_mid_ts < mid_ts)));
+        if (is_lower) {
+          split_row = mid;
+          split_ts = blk_mid_ts;
+          is_reversed_ ? right = mid - 1 : left = mid + 1;
         } else {
-          min_ts = min(min_ts, cur_ts);
-          max_ts = max(max_ts, cur_ts);
+          is_reversed_ ? left = mid + 1 : right = mid - 1;
         }
       }
-      if (first_row < start_row + row_num) {
-        if (is_lower_part) {
-          *lower_cnt += (start_row + row_num - first_row);
-          lower_block_span.push_back({{min_ts, max_ts}, make_shared<TsBlockSpan>(*block_span, block, first_row,
-                                                              start_row + row_num - first_row)});
-        } else {
-          filter_block_spans_.push_back({{min_ts, max_ts}, make_shared<TsBlockSpan>(*block_span, block, first_row,
-                                                                 start_row + row_num - first_row)});
-        }
+      assert((is_reversed_ && split_row != begin_row) || (!is_reversed_ && split_row != end_row));
+      if (!is_reversed_) {
+        lower_block_span.push_back({
+          {min_ts, split_ts},
+          make_shared<TsBlockSpan>(*block_span, block, begin_row, split_row - begin_row + 1)
+        });
+        filter_block_spans_.push_back({
+          {block_span->GetTS(split_row + 1 - begin_row), max_ts},
+          make_shared<TsBlockSpan>(*block_span, block, split_row + 1, end_row - split_row)
+        });
+      } else {
+        lower_block_span.push_back({
+          {split_ts, max_ts},
+          make_shared<TsBlockSpan>(*block_span, block, split_row, end_row - split_row + 1)
+        });
+        filter_block_spans_.push_back({
+          {min_ts, block_span->GetTS(split_row - 1 - begin_row)},
+          make_shared<TsBlockSpan>(*block_span, block, begin_row,  split_row - begin_row)
+        });
       }
+      *lower_cnt += is_reversed_ ? (end_row - split_row + 1) : (split_row - begin_row + 1);
     }
   }
   return KStatus::SUCCESS;
@@ -2345,6 +2348,13 @@ KStatus TsOffsetIteratorV2Impl::Next(ResultSet* res, k_uint32* count, timestamp6
     if (p_time_it_ == p_times_.end() || queried_cnt >= offset_ + limit_ - filter_cnt_) {
       return KStatus::SUCCESS;
     }
+    if (ts != INVALID_TS) {
+      timestamp64 p_begin = convertSecondToPrecisionTS(p_time_it_->second.begin()->second->GetStartTime(), ts_col_type_);
+      timestamp64 p_end = convertSecondToPrecisionTS(p_time_it_->second.begin()->second->GetEndTime(), ts_col_type_);
+      if ((is_reversed_ && p_end <= ts) || (!is_reversed_ && p_begin >= ts)) {
+        return KStatus::SUCCESS;
+      }
+    }
     ret = filterBlockSpan(ts_scan_stats);
     if (ret != KStatus::SUCCESS) {
       LOG_ERROR("call filterBlockSpan failed.");
@@ -2353,8 +2363,22 @@ KStatus TsOffsetIteratorV2Impl::Next(ResultSet* res, k_uint32* count, timestamp6
     ++p_time_it_;
   }
   // Return one block span data each time.
-  shared_ptr<TsBlockSpan> ts_block = block_spans_.front().second;
-  block_spans_.pop_front();
+  std::shared_ptr<TsBlockSpan> ts_block = nullptr;
+  while (nullptr == ts_block && !block_spans_.empty()) {
+    if (ts != INVALID_TS) {
+      timestamp64 min_ts = block_spans_.front().first.first;
+      timestamp64 max_ts = block_spans_.front().first.second;
+      if ((is_reversed_ && max_ts <= ts) || (!is_reversed_ && min_ts >= ts)) {
+        block_spans_.pop_front();
+        continue;
+      }
+    }
+    ts_block = block_spans_.front().second;
+    block_spans_.pop_front();
+  }
+  if (nullptr == ts_block) {
+    return KStatus::SUCCESS;
+  }
   ret = ConvertBlockSpanToResultSet(kw_scan_cols_, attrs_, ts_block, res, count, ts_scan_stats);
   if (ret != KStatus::SUCCESS) {
     LOG_ERROR("Failed to get next block span for current partition: %ld.", p_time_it_->first);

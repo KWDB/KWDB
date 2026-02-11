@@ -101,10 +101,10 @@ TEST_F(TestEngine, tagiterator) {
 
   std::vector<EntityResultIndex> entity_id_list;
   std::vector<k_uint32> scan_tags = {0};
-  std::unordered_set<k_uint32> hps;
+  std::vector<HashIdSpan> hps;
   make_hashpoint(&hps);
   BaseEntityIterator *iter;
-  ASSERT_EQ(ts_table->GetTagIterator(ctx_, scan_tags,hps, &iter, 1), KStatus::SUCCESS);
+  ASSERT_EQ(ts_table->GetTagIterator(ctx_, scan_tags, &hps, &iter, 1), KStatus::SUCCESS);
 
   ResultSet res{(k_uint32) scan_tags.size()};
   k_uint32 fetch_total_count = 0;

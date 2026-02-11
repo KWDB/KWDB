@@ -210,7 +210,7 @@ TEST_F(TestDataChunk, TestChunk) {
   // check copy
   chunk4 = std::make_unique<kwdbts::DataChunk>(col_info, col_num, total_sample_rows);
   ASSERT_EQ(chunk4->Initialize(), true);
-  chunk4->CopyFrom(chunk2, 0, 0);
+  chunk4->Append(chunk2.get(), 0, 1);
 
   // check row batch
   KStatus status = chunk4->AddRowBatchData(ctx, tag_data_handle.get(), renders, true);

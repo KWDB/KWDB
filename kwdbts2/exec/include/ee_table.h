@@ -100,7 +100,7 @@ class TABLE {
 
  private:
   KStatus InitField(kwdbContext_p ctx, const TSCol &col, k_uint32 index,
-                    Field **field);
+                    Field **field, bool force_tag = false);
 
  public:
   KDatabaseId schema_id_;
@@ -118,7 +118,7 @@ class TABLE {
   std::vector<Sumfunctype> scan_agg_types_;
   std::vector<Sumfunctype> scan_real_agg_types_;
   std::vector<k_int32> statistic_col_fix_idx_;  // for statistic
-  std::unordered_set<uint32_t> hash_points_;
+  std::vector<HashIdSpan> hash_spans_;
   std::vector<k_int64>
       scan_last_ts_points_;  // scan_last_ts_points_ and scan_real_agg_types_
                              // remain align

@@ -22,14 +22,16 @@ namespace kwdbts {
 
 static const k_uint16 STRING_WIDE = sizeof(k_uint16);
 static const k_uint16 BOOL_WIDE = sizeof(k_bool);
+static const k_uint16 VAR_STRING_WIDE = sizeof(k_uint32);
 
 static inline bool IsFixedStringType(roachpb::DataType storage_type) {
-  return storage_type == roachpb::DataType::CHAR || storage_type == roachpb::DataType::VARCHAR ||
-         storage_type == roachpb::DataType::NCHAR || storage_type == roachpb::DataType::BINARY;
+  return storage_type == roachpb::DataType::CHAR || storage_type == roachpb::DataType::NCHAR ||
+         storage_type == roachpb::DataType::BINARY;
 }
 
 static inline bool IsVarStringType(roachpb::DataType storage_type) {
-  return storage_type == roachpb::DataType::NVARCHAR || storage_type == roachpb::DataType::VARBINARY;
+  return storage_type == roachpb::DataType::VARCHAR || storage_type == roachpb::DataType::NVARCHAR ||
+         storage_type == roachpb::DataType::VARBINARY;
 }
 
 static inline bool IsStringType(roachpb::DataType storage_type) {

@@ -42,6 +42,7 @@ k_bool LocalOutboundOperator::NeedInput() {
       return parent_inbound->NeedInput();
     }
   }
+  return true;
 }
 
 KStatus LocalOutboundOperator::PushChunk(kwdbContext_p ctx, DataChunkPtr& chunk, k_int32 stream_id,

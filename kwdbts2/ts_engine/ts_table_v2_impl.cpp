@@ -89,7 +89,7 @@ KStatus TsTableV2Impl::PutData(kwdbContext_p ctx, TsVGroup* v_group, TsRawPayloa
 }
 
 KStatus TsTableV2Impl::GetTagIterator(kwdbContext_p ctx, std::vector<uint32_t> scan_tags,
-                                const std::unordered_set<uint32_t> hps,
+                                std::vector<HashIdSpan> *hps,
                                 BaseEntityIterator** iter, k_uint32 table_version) {
   std::shared_ptr<TagTable> tag_table;
   KStatus ret = this->table_schema_mgr_->GetTagSchema(ctx, &tag_table);
@@ -118,7 +118,7 @@ KStatus TsTableV2Impl::GetEntityIdList(kwdbContext_p ctx, const std::vector<void
                                  const std::vector<void*> tags,
                                  TSTagOpType op_type,
                                  const std::vector<uint32_t>& scan_tags,
-                                 const std::unordered_set<uint32_t> &hps,
+                                 const std::vector<HashIdSpan>* hps,
                                  std::vector<EntityResultIndex>* entity_id_list, ResultSet* res, uint32_t* count,
                                  uint32_t table_version) {
   std::shared_ptr<TagTable> tag_table;
@@ -1399,13 +1399,13 @@ KStatus TsTableV2Impl::GetImagrateTagBySnapshot(kwdbContext_p ctx, HashIdSpan ha
 }
 
 KStatus TsTableV2Impl::GetTagRecordInfoByOSN(kwdbContext_p ctx,
-  const std::unordered_set<uint32_t> hps,
+  const std::vector<HashIdSpan>* hps,
   std::vector<KwOSNSpan>& osn_span, std::unordered_map<uint64_t, EntityResultIndex>* pkeys_status) {
   return GetTagRecordInfoByOSN(ctx, [&](TagPartitionTable* entity_tag_bt, int row_num) -> bool {
     uint32_t tag_hash;
     entity_tag_bt->getHashpointByRowNum(row_num, &tag_hash);
-    if (hps.find(tag_hash) == hps.end()) {
-       return false;
+    if (!InHashIdSpan(tag_hash, hps)) {
+      return false;
     }
     return true;
   }, osn_span, pkeys_status);
@@ -1488,7 +1488,7 @@ KStatus TsTableV2Impl::GetTagRecordInfoByOSN(kwdbContext_p ctx,
 
 KStatus TsTableV2Impl::GetTagIteratorByOSN(kwdbContext_p ctx, k_uint32 table_version, std::vector<k_uint32>& scan_cols,
   std::vector<KwOSNSpan>& osn_span,
-  const std::unordered_set<uint32_t> hps, BaseEntityIterator** iter) {
+  std::vector<HashIdSpan>* hps, BaseEntityIterator** iter) {
   std::unordered_map<uint64_t, EntityResultIndex> pkeys_status;
   auto ret = GetTagRecordInfoByOSN(ctx, hps, osn_span, &pkeys_status);
   if (ret != KStatus::SUCCESS) {
@@ -1515,7 +1515,7 @@ KStatus TsTableV2Impl::GetTagIteratorByOSN(kwdbContext_p ctx, k_uint32 table_ver
 KStatus TsTableV2Impl::GetEntityIdListByOSN(kwdbContext_p ctx, const std::vector<void*>& primary_tags,
             std::vector<KwOSNSpan>& osn_span,
             std::vector<k_uint32>& scan_cols,
-            const std::unordered_set<uint32_t> &hps,
+            std::vector<HashIdSpan>* hps,
             std::vector<EntityResultIndex>* entity_id_list, ResultSet* res, uint32_t* count,
             uint32_t table_version) {
   std::unordered_map<uint64_t, EntityResultIndex> pkeys_status;
