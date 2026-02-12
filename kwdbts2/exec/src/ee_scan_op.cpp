@@ -177,8 +177,8 @@ EEIteratorErrCode TableScanOperator::Start(kwdbContext_p ctx) {
   if (childrens_[0]) {
     code = childrens_[0]->Start(ctx);
     if (code != EEIteratorErrCode::EE_OK) {
-      LOG_ERROR("table_->hash_points_ size : %lu, is remote : %d", table_->hash_points_.size(), current_thd->IsRemote());
-      if (table_->hash_points_.empty() && current_thd->IsRemote()) {
+      LOG_ERROR("table_->hash_spans_ size : %lu, is remote : %d", table_->hash_spans_.size(), current_thd->IsRemote());
+      if (table_->hash_spans_.empty() && current_thd->IsRemote()) {
         EEPgErrorInfo::ResetPgErrorInfo();
         Return(EEIteratorErrCode::EE_OK);
       }
@@ -192,7 +192,7 @@ EEIteratorErrCode TableScanOperator::Start(kwdbContext_p ctx) {
 
 EEIteratorErrCode TableScanOperator::Next(kwdbContext_p ctx) {
   EnterFunc();
-  if (table_->hash_points_.empty() && current_thd->IsRemote()) {
+  if (table_->hash_spans_.empty() && current_thd->IsRemote()) {
     Return(EEIteratorErrCode::EE_END_OF_RECORD);
   }
   EEIteratorErrCode code = EEIteratorErrCode::EE_ERROR;
@@ -218,7 +218,7 @@ EEIteratorErrCode TableScanOperator::Next(kwdbContext_p ctx, DataChunkPtr& chunk
   EnterFunc();
   EEIteratorErrCode code = EEIteratorErrCode::EE_ERROR;
   KWThdContext* thd = current_thd;
-  if (table_->hash_points_.empty() && thd->IsRemote()) {
+  if (table_->hash_spans_.empty() && thd->IsRemote()) {
     Return(EEIteratorErrCode::EE_END_OF_RECORD);
   }
   auto start = std::chrono::high_resolution_clock::now();

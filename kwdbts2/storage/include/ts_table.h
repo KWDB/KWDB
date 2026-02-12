@@ -211,12 +211,12 @@ class TsTable {
 
   // scan tag data by osn range. return all rows
   virtual KStatus GetTagIteratorByOSN(kwdbContext_p ctx, k_uint32 table_version, std::vector<k_uint32>& scan_cols,
-    std::vector<KwOSNSpan>& osn_span, const std::unordered_set<uint32_t> hps, BaseEntityIterator** iter) = 0;
+    std::vector<KwOSNSpan>& osn_span, std::vector<HashIdSpan>* hps, BaseEntityIterator** iter) = 0;
   // scan tag by primary key.
   virtual KStatus GetEntityIdListByOSN(kwdbContext_p ctx, const std::vector<void*>& primary_tags,
             std::vector<KwOSNSpan>& osn_span,
             std::vector<k_uint32>& scan_cols,
-            const std::unordered_set<uint32_t> &hps,
+            std::vector<HashIdSpan>* hps,
             std::vector<EntityResultIndex>* entity_id_list, ResultSet* res, uint32_t* count,
             uint32_t table_version) = 0;
   /**
@@ -235,7 +235,7 @@ class TsTable {
                   const std::vector<void*> tags,
                   TSTagOpType op_type,
                   const std::vector<uint32_t>& scan_tags,
-                  const std::unordered_set<uint32_t> &hps,
+                  const std::vector<HashIdSpan>* hps,
                   std::vector<EntityResultIndex>* entity_id_list, ResultSet* res, uint32_t* count,
                   uint32_t table_version = 1) = 0;
 
@@ -263,7 +263,7 @@ class TsTable {
    */
   virtual KStatus GetTagIterator(kwdbContext_p ctx,
                                  std::vector<uint32_t> scan_tags,
-                                 const std::unordered_set<uint32_t> hps,
+                                 std::vector<HashIdSpan>* hps,
                                  BaseEntityIterator** iter, k_uint32 table_version) = 0;
 
   virtual KStatus AlterTable(kwdbContext_p ctx, AlterType alter_type, roachpb::KWDBKTSColumn* column,

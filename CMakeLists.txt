@@ -13,11 +13,18 @@ endif()
 
 message(STATUS "CMAKE_BUILD_PARALLEL_LEVEL:${CMAKE_BUILD_PARALLEL_LEVEL}")
 
+option(USE_SOURCE "Compiled depend from source code" ON)
+
 # project version
 if (NOT DEFINED VERSION)
     set(VERSION "unknown")
 endif ()
 message(STATUS "KWDB version:${VERSION}")
+
+if(NOT CMAKE_SOURCE_DIR MATCHES "src/gitee\\.com/kwbasedb")
+    message(FATAL_ERROR "Current source path does not match GOPATH rule: \.*/src/gitee.com/kwbasedb")
+endif()
+set(NATIVE ${CMAKE_SOURCE_DIR}/../../../native)
 
 # commit id
 if (NOT DEFINED GIT_COMMIT_ID)
@@ -127,11 +134,6 @@ if (KMALLOC_DEBUGGER)
     add_definitions(-DKMALLOC_DEBUGGER)
 endif ()
 
-# Whether shared_mem_info should be used to manage concurrent memory access
-if (KMALLOC_SHARED_REFCOUNT)
-    add_definitions(-DKMALLOC_SHARED_REFCOUNT)
-endif ()
-
 # Whether to record the memory that is not released by the process and release it when the process crashes
 option(KMALLOC_RELEASE_PROCESS_MEMORY "Enable releasing process memory feature." OFF)
 if (KMALLOC_RELEASE_PROCESS_MEMORY)
@@ -179,39 +181,17 @@ if (ENABLE_COVERAGE)
     add_definitions(-DENABLE_COVERAGE)
 endif ()
 
+if (${CMAKE_BUILD_TYPE} STREQUAL "Release")
+    set(CMAKE_C_FLAGS_RELEASE "-O3 -g")
+    set(CMAKE_CXX_FLAGS_RELEASE "-O3 -g")
+    set(CMAKE_SHARED_LINKER_FLAGS_RELEASE "")
+endif()
+
 # installation path prefix
 if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
     set(CMAKE_INSTALL_PREFIX ${CMAKE_SOURCE_DIR}/install CACHE PATH "default install prefix" FORCE)
 endif()
 message(STATUS "Install prefix: ${CMAKE_INSTALL_PREFIX}")
-# compile with external protobuf
-# option(PROTOBUF_DIR "Compile with external protobuf." OFF)
-
-if ("${PROTOBUF_DIR}" STREQUAL "")
-    # Find the protobuf library installed on your system
-    find_package(Protobuf REQUIRED)
-    if (PROTOBUF_FOUND)
-        message(STATUS "protobuf found")
-        set(PROTOBUF_LIB protobuf)
-        set(PROTOBUF_C protoc)
-    else ()
-        message(FATAL_ERROR "Cannot find Protobuf")
-    endif ()
-else()
-    if (NOT EXISTS ${PROTOBUF_DIR}/include)
-        message(FATAL_ERROR "Protobuf include directory not found : ${PROTOBUF_DIR}/include")
-    endif()
-    include_directories(${PROTOBUF_DIR}/include)
-    if (NOT EXISTS ${PROTOBUF_DIR}/lib)
-        message(FATAL_ERROR "Protobuf library directory not found : ${PROTOBUF_DIR}/lib")
-    endif()
-    link_directories(${PROTOBUF_DIR}/lib)
-    if (NOT EXISTS ${PROTOBUF_DIR}/bin/protoc)
-        message(FATAL_ERROR "Protobuf compiler not found : ${PROTOBUF_DIR}/bin/protoc")
-    endif()
-    set(PROTOBUF_C ${PROTOBUF_DIR}/bin/protoc)
-
-endif()
 
 # compile unit test
 option(WITH_TESTS "build with tests" OFF)
@@ -220,9 +200,9 @@ message(STATUS "Build with tests:${WITH_TESTS}")
 option(WITH_OPENSSL "build with OPENSSL" OFF)
 message(STATUS "Build with OPENSSL:${WITH_OPENSSL}")
 
-add_subdirectory(common)
+add_subdirectory(common ${CMAKE_BINARY_DIR}/common)
 # compile kwdbts2
-add_subdirectory(kwdbts2)
+add_subdirectory(kwdbts2 ${CMAKE_BINARY_DIR}/kwdbts2)
 
 # compile kwbase
 if (BUILD_KWBASE)
@@ -234,15 +214,34 @@ if (BUILD_KWBASE)
     add_custom_target(
         kwbase ALL
         COMMAND make build/defs.mk && make build -f ${KWBASE_MAKEFILE}
-        PROTOBUF_DIR=${PROTOBUF_DIR}
+        KWDB_BUILD_TYPE=${CMAKE_BUILD_TYPE}
+        LIBPROTOBUF=${LIBPROTOBUF}
+        PROTOBUF_C=${PROTOBUF_C}
+        PROTOBUF_INC=${PROTOBUF_INC}
         OUTPUT_PATH=${CMAKE_BINARY_DIR}/bin
         KWDB_LIB_DIR=${CMAKE_BINARY_DIR}/lib WITH_ASAN=${WITH_ASAN}
-        GOPATH=$ENV{GOPATH} KWBASE_MAKEFILE=${KWBASE_MAKEFILE}
+        KWBASE_MAKEFILE=${KWBASE_MAKEFILE}
         ${PARALLEL_LEVEL}
         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/kwbase
         COMMENT "====== compile kwbase ======"
         DEPENDS kwdbts2 common
         )
+endif()
+
+if (${CMAKE_BUILD_TYPE} STREQUAL "Release")
+    add_custom_target(
+        strip_kwbase
+        COMMAND objcopy --only-keep-debug ${CMAKE_BINARY_DIR}/bin/kwbase ${CMAKE_BINARY_DIR}/bin/kwbase.debug &&
+        objcopy --only-keep-debug ${CMAKE_BINARY_DIR}/lib/libcommon.so ${CMAKE_BINARY_DIR}/lib/libcommon.debug &&
+        objcopy --only-keep-debug ${CMAKE_BINARY_DIR}/lib/libkwdbts2.so ${CMAKE_BINARY_DIR}/lib/libkwdbts2.debug &&
+        strip --strip-all ${CMAKE_BINARY_DIR}/bin/kwbase && strip --strip-all ${CMAKE_BINARY_DIR}/lib/libcommon.so &&
+        strip --strip-all ${CMAKE_BINARY_DIR}/lib/libkwdbts2.so
+        DEPENDS kwbase
+    )
+endif()
+
+if (CMAKE_BUILD_TYPE STREQUAL "Release")
+    install(CODE "execute_process(COMMAND ${CMAKE_COMMAND} --build ${CMAKE_BINARY_DIR} --target strip_kwbase)")
 endif()
 
 if (WITH_TESTS)

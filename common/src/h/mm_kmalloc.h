@@ -23,6 +23,7 @@ extern "C" {
 kwdbts::k_size_t malloc_used_bytes() noexcept;
 
 void *k_malloc(kwdbts::k_size_t size) noexcept;
+void *k_realloc(void *ptr, kwdbts::k_size_t size) noexcept;
 void k_free(void *ptr) noexcept;
 
 #ifdef __cplusplus

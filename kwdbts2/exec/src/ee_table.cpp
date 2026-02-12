@@ -90,9 +90,7 @@ KStatus TABLE::Init(kwdbContext_p ctx, const TSTagReaderSpec *spec) {
       const HashpointSpan &hps = spec->rangespans(i);
       k_uint32 from = hps.from();
       k_uint32 to = hps.to();
-      for (k_uint32 i = from; i <= to; i++) {
-        hash_points_.insert(i);
-      }
+      hash_spans_.push_back({from, to});
     }
 
     if (KStatus::FAIL == ret) {
@@ -110,7 +108,7 @@ KStatus TABLE::Init(kwdbContext_p ctx, const TSTagReaderSpec *spec) {
     for (k_int32 i = 0; i < spec->relationalcols_size(); ++i) {
       Field *rel_field = nullptr;
       const TSCol &col = spec->relationalcols(i);
-      ret = InitField(ctx, col, i + field_num_, &rel_field);
+      ret = InitField(ctx, col, i + field_num_, &rel_field, true);
       if (ret != SUCCESS) break;
       rel_fields_.push_back(rel_field);
     }
@@ -148,10 +146,11 @@ std::vector<k_uint32>& TABLE::GetScanTags() {
 }
 
 KStatus TABLE::InitField(kwdbContext_p ctx, const TSCol &col, k_uint32 index,
-                         Field **field) {
+                         Field **field, bool force_tag) {
   EnterFunc();
   KStatus ret = SUCCESS;
   roachpb::DataType sql_type = col.storage_type();
+  bool is_tag = col.column_type() == roachpb::KWDBKTSColumn::TYPE_TAG || force_tag;
   switch (sql_type) {
     case roachpb::DataType::TIMESTAMPTZ:
     case roachpb::DataType::TIMESTAMPTZ_MICRO:
@@ -202,15 +201,37 @@ KStatus TABLE::InitField(kwdbContext_p ctx, const TSCol &col, k_uint32 index,
       break;
     }
     case roachpb::DataType::VARCHAR: {
-      *field = new FieldVarchar();
+      if (col.column_type() == roachpb::KWDBKTSColumn::TYPE_PTAG) {
+        // ptag: varchar is fixed length type
+        sql_type = roachpb::DataType::CHAR;
+        *field = new FieldChar();
+      } else {
+        if (is_tag) {
+          *field = new FieldTagVarchar();
+        } else {
+          *field = new FieldVarchar();
+        }
+      }
       break;
     }
     case roachpb::DataType::NVARCHAR: {
-      *field = new FieldNvarchar();
+      if (col.column_type() == roachpb::KWDBKTSColumn::TYPE_PTAG) {
+        // ptag: NVARCHAR is fixed length type
+        sql_type = roachpb::DataType::CHAR;
+        *field = new FieldChar();
+      } else {
+        *field = new FieldNvarchar();
+      }
       break;
     }
     case roachpb::DataType::VARBINARY: {
-      *field = new FieldVarBlob();
+      if (col.column_type() == roachpb::KWDBKTSColumn::TYPE_PTAG) {
+        // ptag: VARBINARY is fixed length type
+        sql_type = roachpb::DataType::BINARY;
+        *field = new FieldBlob();
+      } else {
+        *field = new FieldVarBlob();
+      }
       break;
     }
     default: {

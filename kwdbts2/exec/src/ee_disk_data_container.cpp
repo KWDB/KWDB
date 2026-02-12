@@ -220,6 +220,10 @@ DatumPtr DiskDataContainer::GetData(k_uint32 col) {
   return output_chunk_ptr_->GetData(col);
 }
 
+DatumPtr DiskDataContainer::GetRawData(k_uint32 col) {
+  return output_chunk_ptr_->GetRawData(col);
+}
+
 KStatus DiskDataContainer::UpdateReadCacheChunk() {
   auto* reader = &cache_chunk_readers_[0];
   if (reader->chunk_ptr_->NextLine() != -1) {
@@ -463,7 +467,7 @@ KStatus DiskDataContainer::SortAndFlushLastChunk(k_bool force_merge) {
       // If there is variable-length data, flush it to disk separately
       if (!all_constant_) {
         for (k_int32 i = 0; i < col_num_; i++) {
-          if (col_info_[i].is_string) {
+          if (col_info_[i].is_string > KWStringType::NON_STRING) {
             col_info_[i].max_string_len = std::max(
                 col_info_[i].max_string_len,
                 write_cache_chunk_ptr_->GetColumnInfo()[i].max_string_len);

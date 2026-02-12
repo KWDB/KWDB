@@ -102,7 +102,7 @@ EEIteratorErrCode TagScanOperator::Start(kwdbContext_p ctx) {
   handler_ = new StorageHandler(table_);
   start_code_ = handler_->Init(ctx);
   if (start_code_ == EEIteratorErrCode::EE_ERROR) {
-    if (table_->hash_points_.empty() && current_thd->IsRemote()) {
+    if (table_->hash_spans_.empty() && current_thd->IsRemote()) {
       EEPgErrorInfo::ResetPgErrorInfo();
       Return(EEIteratorErrCode::EE_OK);
     }
@@ -138,7 +138,7 @@ EEIteratorErrCode TagScanOperator::Next(kwdbContext_p ctx) {
   auto start = std::chrono::high_resolution_clock::now();
   EEIteratorErrCode code = EEIteratorErrCode::EE_END_OF_RECORD;
   k_uint32 access_mode = table_->GetAccessMode();
-  if (table_->hash_points_.empty() && current_thd->IsRemote()) {
+  if (table_->hash_spans_.empty() && current_thd->IsRemote()) {
     Return(EEIteratorErrCode::EE_END_OF_RECORD);
   }
   do {
@@ -176,7 +176,7 @@ EEIteratorErrCode TagScanOperator::Next(kwdbContext_p ctx, DataChunkPtr& chunk) 
   KWThdContext *thd = current_thd;
   k_uint32 access_mode = table_->GetAccessMode();
   auto start = std::chrono::high_resolution_clock::now();
-  if (table_->hash_points_.empty() && thd->IsRemote()) {
+  if (table_->hash_spans_.empty() && thd->IsRemote()) {
     Return(EEIteratorErrCode::EE_END_OF_RECORD);
   }
   do {

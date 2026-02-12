@@ -1768,6 +1768,14 @@ Field *FieldFuncRightShift::field_to_copy() {
   return field;
 }
 
+char* FieldFuncTimeBucket::get_ptr(RowBatch* batch) {
+  // auto original_timestamp = *reinterpret_cast<KTimestampTz *>(args_[0]->get_ptr(batch));
+  auto original_timestamp =
+      batch->GetData(0, sizeof(KTimestampTz), roachpb::KWDBKTSColumn::TYPE_DATA, roachpb::DataType::TIMESTAMPTZ);
+  last_time_bucket_value_ = CalculateValue(*reinterpret_cast<KTimestampTz *>(original_timestamp));
+  return reinterpret_cast<char*>(&last_time_bucket_value_);
+}
+
 k_int64 FieldFuncTimeBucket::ValInt() {
   if (args_[0]->CheckNull()) {
     EEPgErrorInfo::SetPgErrorInfo(ERRCODE_INVALID_PARAMETER_VALUE,
@@ -1775,12 +1783,15 @@ k_int64 FieldFuncTimeBucket::ValInt() {
     return 0;
   }
   auto original_timestamp = args_[0]->ValInt();
+  return CalculateValue(original_timestamp);
+}
+
+k_int64 FieldFuncTimeBucket::CalculateValue(k_int64& original_timestamp) {
   if (type_scale_ != 1) {
     // multi
     if (type_scale_multi_or_divde_) {
       if (!I64_SAFE_MUL_CHECK(original_timestamp, type_scale_)) {
-        EEPgErrorInfo::SetPgErrorInfo(ERRCODE_INVALID_PARAMETER_VALUE,
-                                      "Timestamp/TimestampTZ out of range");
+        EEPgErrorInfo::SetPgErrorInfo(ERRCODE_INVALID_PARAMETER_VALUE, "Timestamp/TimestampTZ out of range");
         return 0;
       }
       original_timestamp *= type_scale_;
@@ -1790,8 +1801,7 @@ k_int64 FieldFuncTimeBucket::ValInt() {
     }
   }
   if (!var_interval_) {
-    if (last_time_bucket_value_ != INT64_MIN &&
-        original_timestamp > last_time_bucket_value_ &&
+    if (last_time_bucket_value_ != INT64_MIN && original_timestamp > last_time_bucket_value_ &&
         original_timestamp < (last_time_bucket_value_ + interval_seconds_)) {
       return last_time_bucket_value_;
     } else {
@@ -1814,14 +1824,12 @@ k_int64 FieldFuncTimeBucket::ValInt() {
     if (year_bucket_) {
       tm.tm_mon = 0;
       tm.tm_year =
-          (int32_t)((tm.tm_year + 1899) / static_cast<int>(interval_seconds_) *
-                        static_cast<int>(interval_seconds_) -
+          (int32_t)((tm.tm_year + 1899) / static_cast<int>(interval_seconds_) * static_cast<int>(interval_seconds_) -
                     1899);
       tm.tm_hour -= time_zone_;
     } else {
       int32_t mon = (tm.tm_year + 1899) * 12 + tm.tm_mon;
-      mon = (int32_t)(mon / static_cast<int>(interval_seconds_) *
-                      static_cast<int>(interval_seconds_));
+      mon = (int32_t)(mon / static_cast<int>(interval_seconds_) * static_cast<int>(interval_seconds_));
       tm.tm_year = (mon / 12) - 1899;
       tm.tm_mon = mon % 12;
       tm.tm_hour -= time_zone_;

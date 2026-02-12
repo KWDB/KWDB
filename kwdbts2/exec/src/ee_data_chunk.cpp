@@ -244,12 +244,13 @@ DataChunk::~DataChunk() {
   if (is_buf_owner_) {
     SafeFreePointer(encoding_buf_);
   }
+  ee_destroyStringInfo(var_str_container_);
 }
 
 k_bool DataChunk::Initialize() {
   // null bitmap
   // calculate row width and length
-  row_size_ = ComputeRowSize(col_info_, col_num_);
+  row_size_ = ComputeRowSize(col_info_, col_num_, &has_var_col_);
 
   if (capacity_ == 0) {
     // (capacity_ + 7)/8 * col_num_ + capacity_ * row_size_ <= DataChunk::SIZE_LIMIT
@@ -259,20 +260,15 @@ k_bool DataChunk::Initialize() {
 
   if (is_data_owner_) {
     if (capacity_ * row_size_ > 0) {
-      k_uint64 data_len = Size();
-      if (data_len <= DataChunk::SIZE_LIMIT) {
-        data_ = kwdbts::EE_MemPoolMalloc(g_pstBufferPoolInfo, ROW_BUFFER_SIZE);
-        data_len = ROW_BUFFER_SIZE;
-      } else {
-        data_ = kwdbts::EE_MemPoolMalloc(g_pstBufferPoolInfo, data_len);
-      }
+      data_ = kwdbts::EE_MemPoolMalloc(g_pstBufferPoolInfo, data_size_);
       // allocation failure
       if (data_ == nullptr) {
         LOG_ERROR("Allocate buffer in DataChunk failed.");
         return false;
       }
-      std::memset(data_, 0, data_len);
+      std::memset(data_, 0, data_size_);
     }
+    var_str_container_ = ee_makeStringInfo();
   }
 
   bitmap_size_ = (capacity_ + 7) / 8;
@@ -300,15 +296,47 @@ char* DataChunk::GetBitmapPtr(k_uint32 col) {
 KStatus DataChunk::InsertData(k_uint32 row, k_uint32 col, DatumPtr value, k_uint16 len, bool set_not_null) {
   k_uint32 col_offset = row * col_info_[col].fixed_storage_len + col_offset_[col];
 
-  if (col_info_[col].is_string) {
+  if (col_info_[col].is_string == KWStringType::FIXED_LENGTH) {
     std::memcpy(data_ + col_offset, &len, STRING_WIDE);
     std::memcpy(data_ + col_offset + STRING_WIDE, value, len);
+  } else if (col_info_[col].is_string == KWStringType::VAR_LENGTH) {
+    auto offset = var_str_container_->len;
+    KStatus ret = ee_appendBinaryStringInfo(var_str_container_, reinterpret_cast<char *>(&len), STRING_WIDE);
+    if (ret != SUCCESS) {
+      return ret;
+    }
+    ret = ee_appendBinaryStringInfo(var_str_container_, value, len);
+    if (ret != SUCCESS) {
+      return ret;
+    }
+    std::memcpy(data_ + col_offset, &offset, sizeof(k_uint32));
   } else {
     std::memcpy(data_ + col_offset, value, len);
   }
   if (set_not_null) {
     SetNotNull(row, col);
   }
+  return SUCCESS;
+}
+
+KStatus DataChunk::InsertData(k_uint32 row, k_uint32 col, DatumPtr value) {
+  ColumnInfo &col_info = col_info_[col];
+  k_uint32 col_offset = row * col_info.fixed_storage_len + col_offset_[col];
+
+  if (col_info.is_string == KWStringType::FIXED_LENGTH) {
+    std::memcpy(data_ + col_offset, value, *reinterpret_cast<k_uint16 *>(value) + STRING_WIDE);
+  } else if (col_info.is_string == KWStringType::VAR_LENGTH) {
+    auto offset = var_str_container_->len;
+    KStatus ret =
+        ee_appendBinaryStringInfo(var_str_container_, value, *reinterpret_cast<k_uint16*>(value) + STRING_WIDE);
+    if (ret != SUCCESS) {
+      return ret;
+    }
+    std::memcpy(data_ + col_offset, &offset, sizeof(k_uint32));
+  } else {
+    std::memcpy(data_ + col_offset, value, col_info.fixed_storage_len);
+  }
+  SetNotNull(row, col);
   return SUCCESS;
 }
 
@@ -347,8 +375,8 @@ KStatus DataChunk::InsertData(kwdbContext_p ctx, IChunk* value, Field** renders)
         SetNull(count_, col_idx);
       } else {
         SetNotNull(count_, col_idx);
-        std::memcpy(data_ + count_ * col_info_[col_idx].fixed_storage_len + col_offset_[col_idx],
-                    value->GetData(col_idx), col_info_[col_idx].fixed_storage_len);
+        DatumPtr ptr = value->GetData(col_idx);
+        InsertData(count_, col_idx, ptr);
       }
     }
     AddCount();
@@ -525,8 +553,11 @@ DatumPtr DataChunk::GetDataPtr(k_uint32 row, k_uint32 col) {
     return nullptr;
   }
   DatumPtr p = data_ + row * col_info_[col].fixed_storage_len + col_offset_[col];
-  if (col_info_[col].is_string) {
+  if (col_info_[col].is_string == KWStringType::FIXED_LENGTH) {
     p += STRING_WIDE;
+  } else if (col_info_[col].is_string == KWStringType::VAR_LENGTH) {
+    char* ptr = var_str_container_->data + *reinterpret_cast<k_uint32 *>(p);
+    p = ptr + STRING_WIDE;
   } else if (col_info_[col].storage_type == roachpb::DataType::DECIMAL) {
     p += BOOL_WIDE;
   }
@@ -534,23 +565,37 @@ DatumPtr DataChunk::GetDataPtr(k_uint32 row, k_uint32 col) {
 }
 
 DatumPtr DataChunk::GetData(k_uint32 row, k_uint32 col) {
-  return data_ + row * col_info_[col].fixed_storage_len + col_offset_[col];
+  DatumPtr p = data_ + row * col_info_[col].fixed_storage_len + col_offset_[col];
+  if (col_info_[col].is_string == KWStringType::VAR_LENGTH) {
+    return var_str_container_->data + *reinterpret_cast<k_uint32 *>(p);
+  }
+  return p;
 }
 
 DatumPtr DataChunk::GetData(k_uint32 row, k_uint32 col, k_uint16& len) {
   k_uint32 col_offset = row * col_info_[col].fixed_storage_len + col_offset_[col];
-  std::memcpy(&len, data_ + col_offset, sizeof(k_uint16));
-  return data_ + col_offset + sizeof(k_uint16);
+  DatumPtr p = data_ + col_offset;
+  if (col_info_[col].is_string == KWStringType::VAR_LENGTH) {
+    p = var_str_container_->data + *reinterpret_cast<k_uint32 *>(p);
+  }
+  std::memcpy(&len, p, sizeof(k_uint16));
+  return p + sizeof(k_uint16);
 }
 
 DatumPtr DataChunk::GetVarData(k_uint32 col, k_uint16& len) {
-  k_uint32 col_offset = current_line_ * col_info_[col].fixed_storage_len + col_offset_[col];
-  std::memcpy(&len, data_ + col_offset, sizeof(k_uint16));
-  return data_ + col_offset + sizeof(k_uint16);
+  return GetData(current_line_, col, len);
 }
 
 DatumPtr DataChunk::GetData(k_uint32 col) {
-  return data_ + current_line_ * col_info_[col].fixed_storage_len + col_offset_[col];
+  return GetData(current_line_, col);
+}
+
+DatumPtr DataChunk::GetRawData(k_uint32 row, k_uint32 col) {
+  return data_ + row * col_info_[col].fixed_storage_len + col_offset_[col];
+}
+
+DatumPtr DataChunk::GetRawData(k_uint32 col) {
+  return GetRawData(current_line_, col);
 }
 
 DatumPtr DataChunk::GetDataPtr(k_uint32 col) {
@@ -610,14 +655,34 @@ void DataChunk::SetAllNull() {
 }
 
 KStatus DataChunk::Append(DataChunk* chunk) {
+  EE_StringInfo src_str_info_ = chunk->GetVarStrContainer();
+  k_uint32 offset = var_str_container_->len;
+  if (src_str_info_->len > 0) {
+    KStatus ret = ee_appendBinaryStringInfo(var_str_container_, src_str_info_->data, src_str_info_->len);
+    if (ret != SUCCESS) {
+      return ret;
+    }
+  }
   for (uint32_t col_idx = 0; col_idx < col_num_; col_idx++) {
     size_t col_data_length = col_info_[col_idx].fixed_storage_len * chunk->Count();
-    std::memcpy(data_ + count_ * col_info_[col_idx].fixed_storage_len + col_offset_[col_idx],
-                chunk->GetData(0, col_idx), col_data_length);
-
-    for (k_uint32 row = 0; row < chunk->Count(); row++) {
-      if (chunk->IsNull(row, col_idx)) {
-        SetNull(count_ + row, col_idx);
+    if (col_info_[col_idx].is_string == KWStringType::VAR_LENGTH) {
+      for (k_uint32 row = 0; row < chunk->Count(); row++) {
+        if (chunk->IsNull(row, col_idx)) {
+          SetNull(count_ + row, col_idx);
+          continue;
+        }
+        DatumPtr src = chunk->GetRawData(row, col_idx);
+        DatumPtr dst = GetRawData(count_ + row, col_idx);
+        auto row_offset = *reinterpret_cast<k_uint32 *>(src) + offset;
+        std::memcpy(dst, &row_offset, sizeof(k_uint32));
+      }
+    } else {
+      std::memcpy(data_ + count_ * col_info_[col_idx].fixed_storage_len + col_offset_[col_idx],
+                  chunk->GetRawData(0, col_idx), col_data_length);
+      for (k_uint32 row = 0; row < chunk->Count(); row++) {
+        if (chunk->IsNull(row, col_idx)) {
+          SetNull(count_ + row, col_idx);
+        }
       }
     }
   }
@@ -642,16 +707,25 @@ KStatus DataChunk::Append(DataChunk* chunk, k_uint32 begin_row, k_uint32 end_row
   k_uint32 row_num = end_row - begin_row;
   for (uint32_t col_idx = 0; col_idx < col_num_; col_idx++) {
     size_t col_data_length = col_info_[col_idx].fixed_storage_len * row_num;
-    std::memcpy(data_ + count_ * col_info_[col_idx].fixed_storage_len + col_offset_[col_idx],
-                chunk->GetData(begin_row, col_idx), col_data_length);
-
-    for (k_uint32 row = begin_row; row < end_row; row++) {
-      if (chunk->IsNull(row, col_idx)) {
-        SetNull(count_ + row - begin_row, col_idx);
+    if (col_info_[col_idx].is_string == KWStringType::VAR_LENGTH) {
+      for (k_uint32 row = begin_row; row < end_row; row++) {
+        if (chunk->IsNull(row, col_idx)) {
+          SetNull(count_ + row - begin_row, col_idx);
+          continue;
+        }
+        DatumPtr src = chunk->GetData(row, col_idx);
+        InsertData(count_ + row - begin_row, col_idx, src);
+      }
+    } else {
+      std::memcpy(data_ + count_ * col_info_[col_idx].fixed_storage_len + col_offset_[col_idx],
+                  chunk->GetRawData(begin_row, col_idx), col_data_length);
+      for (k_uint32 row = begin_row; row < end_row; row++) {
+        if (chunk->IsNull(row, col_idx)) {
+          SetNull(count_ + row - begin_row, col_idx);
+        }
       }
     }
   }
-
   count_ += row_num;
   return SUCCESS;
 }
@@ -660,14 +734,18 @@ KStatus DataChunk::Append_Selective(DataChunk* src, const k_uint32* indexes, k_u
   for (size_t i = 0; i < size; i++) {
     k_int32 row = indexes[i];
     for (uint32_t col_idx = 0; col_idx < col_num_; col_idx++) {
-      size_t col_data_length = col_info_[col_idx].fixed_storage_len;
-      std::memcpy(data_ + count_ * col_info_[col_idx].fixed_storage_len +
-                      col_offset_[col_idx],
-                  src->GetData(row, col_idx), col_data_length);
-
-        if (src->IsNull(row, col_idx)) {
-          SetNull(count_ + i, col_idx);
-        }
+      if (src->IsNull(row, col_idx)) {
+        SetNull(count_ + i, col_idx);
+        continue;
+      }
+      if (col_info_[col_idx].is_string == KWStringType::VAR_LENGTH) {
+        DatumPtr ptr = src->GetData(row, col_idx);
+        InsertData(count_ + i, col_idx, ptr);
+      } else {
+        size_t col_data_length = col_info_[col_idx].fixed_storage_len;
+        std::memcpy(data_ + count_ * col_info_[col_idx].fixed_storage_len + col_offset_[col_idx],
+                    src->GetRawData(row, col_idx), col_data_length);
+      }
     }
     count_++;
   }
@@ -675,14 +753,19 @@ KStatus DataChunk::Append_Selective(DataChunk* src, const k_uint32* indexes, k_u
 }
 
 KStatus DataChunk::Append_Selective(DataChunk* src, k_uint32 row) {
+  EE_StringInfo src_str_info_ = src->GetVarStrContainer();
   for (uint32_t col_idx = 0; col_idx < col_num_; col_idx++) {
-    size_t col_data_length = col_info_[col_idx].fixed_storage_len;
-    std::memcpy(data_ + count_ * col_info_[col_idx].fixed_storage_len +
-                    col_offset_[col_idx],
-                src->GetData(row, col_idx), col_data_length);
-
     if (src->IsNull(row, col_idx)) {
       SetNull(count_, col_idx);
+      continue;
+    }
+    if (col_info_[col_idx].is_string == KWStringType::VAR_LENGTH) {
+      DatumPtr ptr = src->GetData(row, col_idx);
+      InsertData(count_, col_idx, ptr);
+    } else {
+      size_t col_data_length = col_info_[col_idx].fixed_storage_len;
+      std::memcpy(data_ + count_ * col_info_[col_idx].fixed_storage_len + col_offset_[col_idx],
+                  src->GetRawData(row, col_idx), col_data_length);
     }
   }
   count_++;
@@ -1791,7 +1874,9 @@ EEIteratorErrCode DataChunk::VectorizeData(kwdbContext_p ctx, DataInfo *data_inf
         vec_len.reserve(count_);
         for (k_uint32 j = 0; j < count_; ++j) {
           k_uint16 len = 0;
-          memcpy(&len, data_ptr + j * col_info_[i].fixed_storage_len, sizeof(k_uint16));
+          if (!IsNull(j, i)) {
+            GetData(j, i, len);
+          }
           offset[j] = total_len;
           total_len += len;
           vec_len.push_back(len);
@@ -1816,9 +1901,10 @@ EEIteratorErrCode DataChunk::VectorizeData(kwdbContext_p ctx, DataInfo *data_inf
         memset(ptr, 0, total_len);
         ColData[i].data_ptr_ = ptr;
         for (k_uint32 j = 0; j < count_; ++j) {
-          memcpy(ptr + offset[j], data_ptr + j * col_info_[i].fixed_storage_len + sizeof(k_uint16), vec_len[j]);
+          if (!IsNull(j, i)) {
+            memcpy(ptr + offset[j], GetData(j, i) + sizeof(k_uint16), vec_len[j]);
+          }
         }
-        ColData[i].data_ptr_ = ptr;
       }
     }
 
@@ -1989,73 +2075,102 @@ void DataChunk::AddRecordByRow(kwdbContext_p ctx, RowBatch* row_batch, k_uint32 
 
 KStatus DataChunk::AddRecordByColumn(kwdbContext_p ctx, RowBatch* row_batch, Field** renders) {
   EnterFunc()
+  const k_uint32 start_row = count_;
   for (k_uint32 col = 0; col < col_num_; ++col) {
     Field* field = renders[col];
     row_batch->ResetLine();
-    if (field->get_field_type() == Field::Type::FIELD_ITEM) {
-      switch (field->get_storage_type()) {
-        case roachpb::DataType::BOOL:
-        case roachpb::DataType::TIMESTAMP:
-        case roachpb::DataType::TIMESTAMPTZ:
-        case roachpb::DataType::TIMESTAMP_MICRO:
-        case roachpb::DataType::TIMESTAMP_NANO:
-        case roachpb::DataType::TIMESTAMPTZ_MICRO:
-        case roachpb::DataType::TIMESTAMPTZ_NANO:
-        case roachpb::DataType::DATE:
-        case roachpb::DataType::BIGINT:
-        case roachpb::DataType::INT:
-        case roachpb::DataType::SMALLINT:
-        case roachpb::DataType::FLOAT:
-        case roachpb::DataType::DOUBLE: {
-          k_uint32 len = field->get_storage_length();
-          k_uint32 col_offset = count_ * col_info_[col].fixed_storage_len + col_offset_[col];
-          row_batch->CopyColumnData(field->getColIdxInRs(), data_ + col_offset, len, field->get_column_type(),
+    const k_uint32 total_rows = row_batch->Count();
+    const auto storage_len = field->get_storage_length();
+    const auto offset_storage_len = storage_len;
+    const auto col_idx_in_rs = field->getColIdxInRs();
+    const auto column_type = field->get_column_type();
+    const bool is_tag =
+        (column_type == roachpb::KWDBKTSColumn::TYPE_PTAG) || (column_type == roachpb::KWDBKTSColumn::TYPE_TAG);
+    const auto storage_type = field->get_storage_type();
+    const bool not_null = !field->is_allow_null();
+    const bool is_string = IsStringType(storage_type);
+
+    // Handle tag type (special logic)
+    if (is_tag) {
+      if (!not_null && row_batch->IsNull(col_idx_in_rs, column_type)) {
+        // If it's a tag column, nullable, and the current column is null, set the entire column to NULL.
+        for (k_uint32 row = 0; row < total_rows; ++row) {
+          SetNull(start_row + row, col);
+        }
+        continue;
+      }
+
+      if (col_info_[col].is_string == KWStringType::VAR_LENGTH) {
+        // Tag and string type: all rows use the same value
+        kwdbts::String val = field->ValStr();
+        const char* mem = val.c_str();
+        size_t len = val.length();
+        auto offset = var_str_container_->len;
+        KStatus ret = ee_appendBinaryStringInfo(var_str_container_, reinterpret_cast<char*>(&len), STRING_WIDE);
+        if (ret != SUCCESS) {
+          return KStatus::FAIL;
+        }
+        ret = ee_appendBinaryStringInfo(var_str_container_, mem, len);
+        if (ret != SUCCESS) {
+          return KStatus::FAIL;
+        }
+        auto data_len = col_info_[col].fixed_storage_len;
+        k_uint32 col_offset = start_row * col_info_[col].fixed_storage_len + col_offset_[col];
+        for (k_uint32 row = 0; row < total_rows; ++row) {
+          memcpy(data_ + col_offset + row * data_len, reinterpret_cast<char*>(&offset), data_len);
+        }
+      } else if (col_info_[col].is_string == KWStringType::FIXED_LENGTH) {
+        kwdbts::String val = field->ValStr();
+        for (k_uint32 row = 0; row < total_rows; ++row) {
+          InsertData(start_row + row, col, val.ptr_, val.length_);
+        }
+      } else {
+        // non-string type: batch copy the entire column of data
+        k_uint32 col_offset = start_row * col_info_[col].fixed_storage_len + col_offset_[col];
+        row_batch->CopyColumnData(col_idx_in_rs, data_ + col_offset, storage_len, column_type, storage_type);
+      }
+      continue;
+    }
+
+    // Handle non-tag type
+    if (not_null) {
+      // not null
+      if (is_string) {
+        for (k_uint32 row = 0; row < total_rows; ++row) {
+          kwdbts::String val = field->ValStr();
+          InsertData(start_row + row, col, const_cast<char*>(val.c_str()), val.length());
+          row_batch->NextLine();
+        }
+      } else {
+        k_uint32 len = field->get_storage_length();
+        k_uint32 col_offset = start_row * col_info_[col].fixed_storage_len + col_offset_[col];
+        row_batch->CopyColumnData(field->getColIdxInRs(), data_ + col_offset, len, field->get_column_type(),
                                     field->get_storage_type());
-          if (field->is_allow_null()) {
-            for (int row = 0; row < row_batch->Count(); ++row) {
-              if (field->is_nullable()) {
-                SetNull(count_ + row, col);
-              }
-              row_batch->NextLine();
-            }
-          }
-
-          break;
-        }
-        case roachpb::DataType::CHAR:
-        case roachpb::DataType::NCHAR:
-        case roachpb::DataType::NVARCHAR:
-        case roachpb::DataType::VARCHAR:
-        case roachpb::DataType::BINARY:
-        case roachpb::DataType::VARBINARY: {
-          for (int row = 0; row < row_batch->Count(); ++row) {
-            if (field->CheckNull()) {
-              SetNull(count_ + row, col);
-              row_batch->NextLine();
-              continue;
-            }
-
-            kwdbts::String val = field->ValStr();
-            if (val.isNull()) {
-              SetNull(count_ + row, col);
-              row_batch->NextLine();
-              continue;
-            }
-            char* mem = const_cast<char*>(val.c_str());
-            InsertData(count_ + row, col, mem, val.length());
-            row_batch->NextLine();
-          }
-          break;
-        }
-        case roachpb::DataType::DECIMAL: {
-          Return(KStatus::FAIL)
-        }
-        default: {
-          break;
-        }
       }
     } else {
-      AddRecordByRow(ctx, row_batch, col, field);
+      // maybe null
+      if (is_string) {
+        for (k_uint32 row = 0; row < total_rows; ++row) {
+          if (row_batch->IsNull(col_idx_in_rs, column_type)) {
+            SetNull(start_row + row, col);
+          } else {
+            kwdbts::String val = field->ValStr();
+            InsertData(start_row + row, col, const_cast<char*>(val.c_str()), val.length());
+          }
+          row_batch->NextLine();
+        }
+      } else {
+        k_uint32 len = field->get_storage_length();
+        k_uint32 col_offset = count_ * col_info_[col].fixed_storage_len + col_offset_[col];
+        row_batch->CopyColumnData(field->getColIdxInRs(), data_ + col_offset, len, field->get_column_type(),
+                                  field->get_storage_type());
+        for (int row = 0; row < row_batch->Count(); ++row) {
+          if (field->is_nullable()) {
+            SetNull(count_ + row, col);
+          }
+          row_batch->NextLine();
+        }
+      }
     }
   }
   Return(KStatus::SUCCESS)
@@ -2087,14 +2202,29 @@ KStatus DataChunk::AddRecordByColumnWithSelection(kwdbContext_p ctx, RowBatch* r
         continue;
       }
 
-      if (is_string) {
+      if (col_info_[col].is_string == KWStringType::VAR_LENGTH) {
         // Tag and string type: all rows use the same value
         kwdbts::String val = field->ValStr();
         const char* mem = val.c_str();
-        const size_t len = val.length();
-
+        size_t len = val.length();
+        auto offset = var_str_container_->len;
+        KStatus ret = ee_appendBinaryStringInfo(var_str_container_, reinterpret_cast<char*>(&len), STRING_WIDE);
+        if (ret != SUCCESS) {
+          return KStatus::FAIL;
+        }
+        ret = ee_appendBinaryStringInfo(var_str_container_, mem, len);
+        if (ret != SUCCESS) {
+          return KStatus::FAIL;
+        }
+        auto data_len = col_info_[col].fixed_storage_len;
+        k_uint32 col_offset = start_row * col_info_[col].fixed_storage_len + col_offset_[col];
         for (k_uint32 row = 0; row < total_rows; ++row) {
-          InsertData(start_row + row, col, const_cast<char*>(mem), len);
+          memcpy(data_ + col_offset + row * data_len, reinterpret_cast<char*>(&offset), data_len);
+        }
+      } else if (col_info_[col].is_string == KWStringType::FIXED_LENGTH) {
+        kwdbts::String val = field->ValStr();
+        for (k_uint32 row = 0; row < total_rows; ++row) {
+          InsertData(start_row + row, col, val.ptr_, val.length_);
         }
       } else {
         // non-string type: batch copy the entire column of data
@@ -2208,7 +2338,7 @@ k_uint32 DataChunk::EstimateCapacity(ColumnInfo* column_info, k_int32 col_num) {
   return capacity;
 }
 
-k_uint32 DataChunk::ComputeRowSize(ColumnInfo *column_info, k_int32 col_num) {
+k_uint32 DataChunk::ComputeRowSize(ColumnInfo *column_info, k_int32 col_num, bool *has_var_col) {
   k_uint32 row_size = 0;
   for (int i = 0; i < col_num; ++i) {
     /**
@@ -2219,36 +2349,47 @@ k_uint32 DataChunk::ComputeRowSize(ColumnInfo *column_info, k_int32 col_num) {
      * necessary changes on all derived Field classes. Now we temporarily make
      * row size adjustment in several places.
      */
-    if (column_info[i].is_string) {
-      row_size += STRING_WIDE;
+    if (column_info[i].is_string == KWStringType::FIXED_LENGTH) {
       column_info[i].fixed_storage_len = column_info[i].storage_len + STRING_WIDE;
+    } else if (column_info[i].is_string == KWStringType::VAR_LENGTH) {
+      column_info[i].fixed_storage_len = VAR_STRING_WIDE;
+      if (has_var_col) {
+        *has_var_col = true;
+      }
     } else if (column_info[i].storage_type == roachpb::DataType::DECIMAL) {
-      row_size += BOOL_WIDE;
       column_info[i].fixed_storage_len = column_info[i].storage_len + BOOL_WIDE;
     } else {
       column_info[i].fixed_storage_len = column_info[i].storage_len;
     }
-    row_size += column_info[i].storage_len;
+    row_size += column_info[i].fixed_storage_len;
   }
   // In order to be consistent with the bigtable format, an additional byte of
   // delete is required
   row_size += 1;
-
   return row_size;
 }
 
 KStatus DataChunk::ConvertToTagData(kwdbContext_p ctx, k_uint32 row, k_uint32 col,
                                     TagRawData& tag_raw_data, DatumPtr &rel_data_ptr) {
   EnterFunc();
+  tag_raw_data.is_null = IsNull(row, col);
+  if (tag_raw_data.is_null) {
+    Return(KStatus::SUCCESS);
+  }
   tag_raw_data.tag_data = rel_data_ptr;
   // get the original rel data pointer
-  DatumPtr p = data_ + row * col_info_[col].fixed_storage_len + col_offset_[col];
-  if (col_info_[col].is_string) {
+  DatumPtr p = GetData(row, col);
+  if (col_info_[col].is_string == KWStringType::FIXED_LENGTH) {
     std::memcpy(&tag_raw_data.size, p, STRING_WIDE);
     p += STRING_WIDE;
     // copy data into the buffer
-    memcpy(rel_data_ptr, p, tag_raw_data.size + 1);
+    memcpy(rel_data_ptr, p, tag_raw_data.size);
     rel_data_ptr += tag_raw_data.size + 1;
+  } else if (col_info_[col].is_string == KWStringType::VAR_LENGTH) {
+    std::memcpy(&tag_raw_data.size, p, STRING_WIDE);
+    // copy data into the buffer
+    memcpy(rel_data_ptr, p, tag_raw_data.size + STRING_WIDE);
+    rel_data_ptr += tag_raw_data.size + STRING_WIDE + 1;
   } else if (col_info_[col].storage_type == roachpb::DataType::DECIMAL) {
     std::memcpy(&tag_raw_data.size, p, BOOL_WIDE);
     p += BOOL_WIDE;
@@ -2261,7 +2402,6 @@ KStatus DataChunk::ConvertToTagData(kwdbContext_p ctx, k_uint32 row, k_uint32 co
     memcpy(rel_data_ptr, p, tag_raw_data.size);
     rel_data_ptr += tag_raw_data.size;
   }
-  tag_raw_data.is_null = IsNull(row, col);
   Return(KStatus::SUCCESS);
 }
 
@@ -2300,6 +2440,41 @@ KStatus DataChunk::OffsetSort(std::vector<k_uint32> &selection, bool is_reverse)
   std::sort(it_begin, it_end, cmp);
 
   return KStatus::SUCCESS;
+}
+
+KStatus DataChunk::CopyFrom(std::unique_ptr<DataChunk>& other, k_uint32 begin, k_uint32 end, bool is_reverse) {
+  count_ = end - begin + 1;
+  if (count_ <= 0) {
+    return KStatus::SUCCESS;
+  }
+  std::vector<k_uint32> selection;
+  other->OffsetSort(selection, is_reverse);
+  EE_StringInfo src_str_info_ = other->GetVarStrContainer();
+  for (k_uint32 col_idx = 0; col_idx < col_num_; ++col_idx) {
+    for (k_uint32 row = 0, src_row = begin; row < count_; ++row, ++src_row) {
+      if (other->IsNull(selection[src_row], col_idx)) {
+        SetNull(row, col_idx);
+      } else {
+        char* src_ptr = other->GetRawData(selection[src_row], col_idx);
+        if (col_info_[col_idx].is_string == KWStringType::VAR_LENGTH) {
+          DatumPtr dst_offset = GetRawData(row, col_idx);
+          DatumPtr src_str = src_str_info_->data + *reinterpret_cast<k_uint32*>(src_ptr);
+          k_uint16 src_len = *reinterpret_cast<k_uint16*>(src_str);
+          k_uint32 row_offset = var_str_container_->len;
+          KStatus ret = ee_appendBinaryStringInfo(var_str_container_, src_str, src_len + STRING_WIDE);
+          if (ret != SUCCESS) {
+            return ret;
+          }
+          std::memcpy(dst_offset, &row_offset, sizeof(k_uint32));
+        } else {
+          k_uint32 col_offset = row * col_info_[col_idx].fixed_storage_len + col_offset_[col_idx];
+          std::memcpy(data_ + col_offset, src_ptr, col_info_[col_idx].fixed_storage_len);
+        }
+        SetNotNull(row, col_idx);
+      }
+    }
+  }
+  return SUCCESS;
 }
 
 }   // namespace kwdbts

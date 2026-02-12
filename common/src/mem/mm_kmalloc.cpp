@@ -23,6 +23,13 @@ void *k_malloc(std::size_t size) noexcept {
   return p;
 }
 
+void *k_realloc(void *ptr, std::size_t size) noexcept {
+  g_malloc_memory_size.fetch_sub(malloc_usable_size(ptr));
+  void *p = realloc(ptr, size);
+  g_malloc_memory_size.fetch_add(malloc_usable_size(p));
+  return p;
+}
+
 void k_free(void *ptr) noexcept {
   g_malloc_memory_size.fetch_sub(malloc_usable_size(ptr));
   free(ptr);

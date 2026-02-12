@@ -33,7 +33,7 @@ ChunkPB ProtobufChunkSerrialde::SerializeChunk(DataChunk* src,
       column->set_return_type(column_info[i].return_type);
       column->set_storage_len(column_info[i].storage_len);
       column->set_storage_type(column_info[i].storage_type);
-      column->set_is_string(column_info[i].is_string);
+      column->set_is_string(static_cast<k_int32>(column_info[i].is_string));
     }
 
     *is_first_chunk = false;
@@ -58,7 +58,7 @@ ChunkPB ProtobufChunkSerrialde::SerializeColumn(DataChunk* src,
       column->set_return_type(column_info[i].return_type);
       column->set_storage_len(column_info[i].storage_len);
       column->set_storage_type(column_info[i].storage_type);
-      column->set_is_string(column_info[i].is_string);
+      column->set_is_string(static_cast<k_int32>(column_info[i].is_string));
     }
 
     *is_first_chunk = false;
@@ -97,6 +97,7 @@ ChunkPB ProtobufChunkSerrialde::Serialize(DataChunk* src) {
     max_serialized_size = src->GetEncodingBufferLength() + 20;
   } else {
     max_serialized_size = src->Size() + 20;
+    max_serialized_size += src->GetVarStrContainer()->len;
   }
 
   serialized_data->resize(max_serialized_size);
@@ -115,6 +116,10 @@ ChunkPB ProtobufChunkSerrialde::Serialize(DataChunk* src) {
   } else {
     memcpy(buff, src->GetData(), src->Size());
     buff += src->Size();
+    if (src->GetVarStrContainer()->len > 0) {
+      memcpy(buff, src->GetVarStrContainer()->data, src->GetVarStrContainer()->len);
+      buff += src->GetVarStrContainer()->len;
+    }
   }
   chunk_pb.set_serialized_size(
       buff - reinterpret_cast<const uint8_t*>(serialized_data->data()));
@@ -125,6 +130,7 @@ ChunkPB ProtobufChunkSerrialde::Serialize(DataChunk* src) {
 
 bool ProtobufChunkSerrialde::Deserialize(DataChunkPtr& chunk,
                                          std::string_view buff,
+                                         k_uint32 serialized_size,
                                          bool is_encoding, ColumnInfo* col_info,
                                          k_int32 num) {
   auto* cur = reinterpret_cast<const uint8_t*>(buff.data());
@@ -159,6 +165,11 @@ bool ProtobufChunkSerrialde::Deserialize(DataChunkPtr& chunk,
       return false;
     }
     memcpy(chunk->GetData(), cur, real_data_size);
+    cur += real_data_size;
+    k_uint32 var_str_len = serialized_size - real_data_size - 20;
+    if (var_str_len > 0) {
+      memcpy(chunk->GetVarStrContainer()->data, cur, var_str_len);
+    }
   }
 
   chunk->SetCount(num_rows);

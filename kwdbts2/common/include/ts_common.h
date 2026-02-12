@@ -124,24 +124,24 @@ enum SortOrder {
 struct Batch {
   Batch() = delete;
 
-  Batch(void* m, k_uint32 c)
+  Batch(char* m, k_uint32 c)
       : mem(m), count(c) {}
 
-  Batch(void* m, k_uint32 c, void* b)
+  Batch(char* m, k_uint32 c, char* b)
       : mem(m), bitmap(b), count(c) {}
 
-  Batch(void* m, k_uint32 c, void* b, k_uint32 o)
+  Batch(char* m, k_uint32 c, char* b, k_uint32 o)
       : mem(m), bitmap(b), count(c), offset(o) {}
 
-  Batch(k_uint32 c, void* b, k_uint32 o)
+  Batch(k_uint32 c, char* b, k_uint32 o)
       : bitmap(b), count(c), offset(o) {}
 
   // Record whether mem_ is the memory space requested on the heap
   bool is_new = false;
   bool is_overflow = false;
   bool need_free_bitmap = false;
-  void* mem = nullptr;
-  void* bitmap = nullptr;
+  char* mem = nullptr;
+  char* bitmap = nullptr;
   k_uint32 count = 0;
   k_uint32 offset = 0;
 
@@ -157,11 +157,11 @@ struct Batch {
   }
 
   // row_idx  start from 0
-  virtual void* getVarColData(k_uint32 row_idx) const { return nullptr; }
+  virtual char* getData(k_uint32 row_idx, k_uint32 storage_len = 0) const { return mem + row_idx * storage_len; }
 
-  virtual uint16_t getVarColDataLen(k_uint32 row_idx) const { return 0; }
+  virtual uint16_t getDataLen(k_uint32 row_idx) const { return 0; }
 
-  virtual void push_back(const std::shared_ptr<void>& data) { return; }
+  virtual void push_back(const std::shared_ptr<char>& data) { return; }
 
   // row_idx  start from 0
   virtual KStatus isNull(k_uint32 row_idx, bool* is_null) const {
@@ -174,7 +174,7 @@ struct Batch {
     }
     int byte = (offset + row_idx - 1) >> 3;
     int bit = 1 << ((offset + row_idx - 1) & 7);
-    *is_null = static_cast<char*>(bitmap)[byte] & bit;
+    *is_null = bitmap[byte] & bit;
     return KStatus::SUCCESS;
   }
 
@@ -184,7 +184,7 @@ struct Batch {
     }
     size_t byte = (offset + row_idx - 1) >> 3;
     size_t bit = (offset + row_idx - 1) & 7;
-    static_cast<char*>(bitmap)[byte] |= (1 << bit);
+    bitmap[byte] |= (1 << bit);
     return KStatus::SUCCESS;
   }
 
@@ -192,14 +192,14 @@ struct Batch {
     if (bitmap == nullptr) {
       return true;
     }
-    return hasNonZeroBit(static_cast<char* >(bitmap), offset, count);
+    return hasNonZeroBit(bitmap, offset, count);
   }
 };
 
 struct TagBatch : public Batch {
   uint32_t data_length_;
 
-  TagBatch(uint32_t data_len, void* m, k_uint32 c) : Batch(m, c, nullptr) {
+  TagBatch(uint32_t data_len, char* m, k_uint32 c) : Batch(m, c, nullptr) {
     data_length_ = data_len;
   }
 
@@ -255,8 +255,8 @@ struct VarTagBatch : public Batch {
   char* var_end_;
   char* next_record_ptr_;
   uint32_t total_size_{0};
-  std::vector<void*> var_data_ptrs_;
-  std::vector<void*> m_blocks_;
+  std::vector<char*> var_data_ptrs_;
+  std::vector<char*> m_blocks_;
   VarTagBatch(uint32_t total_sz, char* var_data, uint32_t cnt) : Batch(nullptr, cnt, nullptr),
               var_data_(var_data), total_size_(total_sz) {
     var_end_ = var_data_ + total_sz;
@@ -328,15 +328,14 @@ struct VarTagBatch : public Batch {
     return 0;
   }
 
-  void* getVarColData(k_uint32 row_idx) const override {
+  char* getData(k_uint32 row_idx, k_uint32 storage_len = 0) const override {
     if (var_data_ptrs_[row_idx] == nullptr) {
       return nullptr;
     }
-    return reinterpret_cast<void*>((intptr_t)var_data_ptrs_[row_idx] +
-                                   sizeof(uint16_t));
+    return var_data_ptrs_[row_idx];
   }
 
-  uint16_t getVarColDataLen(k_uint32 row_idx) const override {
+  uint16_t getDataLen(k_uint32 row_idx) const override {
     if (var_data_ptrs_[row_idx] == nullptr) {
       return 0;
     }
@@ -364,9 +363,19 @@ struct VarTagBatch : public Batch {
 const uint32_t k_default_block_size = 4 * 1024;  // 4K
 
 struct AggBatch : public Batch {
-  AggBatch(void* m, k_uint32 c) : Batch(m, c) {}
+  AggBatch(char* m, k_uint32 c) : Batch(m, c) {}
 
-  AggBatch(const std::shared_ptr<void>& m, k_uint32 c)
+  // row_idx  start from 0
+  KStatus isNull(k_uint32 row_idx, bool* is_null) const override {
+    *is_null = (count == 0) || (mem == nullptr);
+    return KStatus::SUCCESS;
+  }
+};
+
+struct AggVarBatch : public Batch {
+  AggVarBatch(char* m, k_uint32 c) : Batch(m, c) {}
+
+  AggVarBatch(const std::shared_ptr<char>& m, k_uint32 c)
            : Batch(m.get(), c), var_mem_(m) {}
 
   // row_idx  start from 0
@@ -375,44 +384,43 @@ struct AggBatch : public Batch {
     return KStatus::SUCCESS;
   }
 
-  void* getVarColData(uint32_t row_idx) const override {
+  char* getData(k_uint32 row_idx, k_uint32 storage_len = 0) const override {
     if (!var_mem_) return nullptr;
-    return reinterpret_cast<void*>((intptr_t)var_mem_.get() + sizeof(uint16_t));
+    return var_mem_.get();
   }
 
-  uint16_t getVarColDataLen(k_uint32 row_idx) const override {
+  uint16_t getDataLen(k_uint32 row_idx) const override {
     if (!var_mem_) return 0;
     return *reinterpret_cast<uint16_t*>(var_mem_.get());
   }
 
-  std::shared_ptr<void> var_mem_ = nullptr;
+  std::shared_ptr<char> var_mem_ = nullptr;
 };
 
 struct VarColumnBatch : public Batch {
-  VarColumnBatch(k_uint32 c, void* b, k_uint32 o) : Batch(c, b, o) {}
+  VarColumnBatch(k_uint32 c, char* b, k_uint32 o) : Batch(c, b, o) {}
 
   ~VarColumnBatch() override {
     var_data_mem_.clear();
   }
 
-  void* getVarColData(k_uint32 row_idx) const override {
+  char* getData(k_uint32 row_idx, k_uint32 storage_len = 0) const override {
     if (var_data_mem_[row_idx] == nullptr) {
       return nullptr;
     }
-    return reinterpret_cast<void*>((intptr_t)var_data_mem_[row_idx].get() +
-                                   sizeof(uint16_t));
+    return var_data_mem_[row_idx].get();
   }
 
-  uint16_t getVarColDataLen(k_uint32 row_idx) const override {
+  uint16_t getDataLen(k_uint32 row_idx) const override {
     if (var_data_mem_[row_idx] == nullptr) {
       return 0;
     }
-    return *reinterpret_cast<uint16_t*>((intptr_t)var_data_mem_[row_idx].get());
+    return *reinterpret_cast<uint16_t*>(var_data_mem_[row_idx].get());
   }
 
-  void push_back(const std::shared_ptr<void>& data) override { var_data_mem_.emplace_back(data); }
+  void push_back(const std::shared_ptr<char>& data) override { var_data_mem_.emplace_back(data); }
 
-  std::vector<std::shared_ptr<void>> var_data_mem_;
+  std::vector<std::shared_ptr<char>> var_data_mem_;
 };
 
 // EntityResultIndex
@@ -1298,6 +1306,14 @@ struct IteratorParams {
   k_uint32 limit;
 };
 
+inline bool InHashIdSpan(uint32_t hp, const std::vector<HashIdSpan>* hps) {
+  for (const auto& span : *hps) {
+    if (span.begin <= hp && hp <= span.end) {
+      return true;
+    }
+  }
+  return false;
+}
 /**
  * @brief Defines a structure for blocks distribution which returned to show db/table blocks distribution.
  */

@@ -116,6 +116,10 @@ class DataChunk : public IChunk {
 
   virtual DatumPtr GetData(k_uint32 col);
 
+  DatumPtr GetRawData(k_uint32 row, k_uint32 col) override;
+
+  DatumPtr GetRawData(k_uint32 col) override;
+
   // get data pointer of a column for a specific row for multiple model
   // processing
   virtual DatumPtr GetDataPtr(k_uint32 row, k_uint32 col);
@@ -216,7 +220,7 @@ class DataChunk : public IChunk {
    */
   KStatus InsertData(k_uint32 row, k_uint32 col, DatumPtr value, k_uint16 len,
                      bool set_not_null = true);
-
+  KStatus InsertData(k_uint32 row, k_uint32 col, DatumPtr value);
   /**
    * @brief Put data into the data chunk, and the existing data will be
    * overwritten.
@@ -265,44 +269,7 @@ class DataChunk : public IChunk {
    * @param[in] begin
    * @param[in] end
    */
-  void CopyFrom(std::unique_ptr<DataChunk>& other, k_uint32 begin,
-                k_uint32 end) {
-    count_ = end - begin + 1;
-    size_t batch_buf_length = other->RowSize() * count_;
-    size_t offset = begin * RowSize();
-    memcpy(data_ + offset, other->GetData(), batch_buf_length);
-  }
-
-  /**
-   * @brief Copy data from another data chunk
-   * @param[in] other
-   * @param[in] begin
-   * @param[in] end
-   */
-  void CopyFrom(std::unique_ptr<DataChunk>& other, k_uint32 begin, k_uint32 end,
-                bool is_reverse) {
-    count_ = end - begin + 1;
-    if (count_ <= 0) {
-      return;
-    }
-    std::vector<k_uint32> selection;
-    other->OffsetSort(selection, is_reverse);
-
-    for (k_uint32 col_idx = 0; col_idx < col_num_; ++col_idx) {
-      for (k_uint32 row = 0, src_row = begin; row < count_; ++row, ++src_row) {
-        if (other->IsNull(selection[src_row], col_idx)) {
-          SetNull(row, col_idx);
-        } else {
-          char* src_ptr = other->GetData(selection[src_row], col_idx);
-          k_uint32 col_offset =
-              row * col_info_[col_idx].fixed_storage_len + col_offset_[col_idx];
-          std::memcpy(data_ + col_offset, src_ptr,
-                      col_info_[col_idx].fixed_storage_len);
-          SetNotNull(row, col_idx);
-        }
-      }
-    }
-  }
+  KStatus CopyFrom(std::unique_ptr<DataChunk>& other, k_uint32 begin, k_uint32 end, bool is_reverse);
 
   KStatus ReplaceRow(DataChunkPtr& other, k_uint32 row) {
     if (row >= count_) {
@@ -313,10 +280,7 @@ class DataChunk : public IChunk {
         SetNull(row, col_idx);
       } else {
         char* src_ptr = other->GetData(col_idx);
-        k_uint32 col_offset =
-            row * col_info_[col_idx].fixed_storage_len + col_offset_[col_idx];
-        std::memcpy(data_ + col_offset, src_ptr,
-                    col_info_[col_idx].fixed_storage_len);
+        InsertData(row, col_idx, src_ptr);
         SetNotNull(row, col_idx);
       }
     }
@@ -331,10 +295,7 @@ class DataChunk : public IChunk {
         SetNull(row, col_idx);
       } else {
         char* src_ptr = other->GetData(other_row, col_idx);
-        k_uint32 col_offset =
-            row * col_info_[col_idx].fixed_storage_len + col_offset_[col_idx];
-        std::memcpy(data_ + col_offset, src_ptr,
-                    col_info_[col_idx].fixed_storage_len);
+        InsertData(row, col_idx, src_ptr);
         SetNotNull(row, col_idx);
       }
     }
@@ -457,7 +418,7 @@ class DataChunk : public IChunk {
 
   static k_uint32 EstimateCapacity(ColumnInfo* column_info, k_int32 col_num);
 
-  static k_uint32 ComputeRowSize(ColumnInfo* column_info, k_int32 col_num);
+  static k_uint32 ComputeRowSize(ColumnInfo* column_info, k_int32 col_num, bool* has_var_col = nullptr);
 
   // convert one row to tag data format
   KStatus ConvertToTagData(kwdbContext_p ctx, k_uint32 row, k_uint32 col,
@@ -494,6 +455,15 @@ class DataChunk : public IChunk {
   void Reset() {
     count_ = 0;
     memset(data_, 0, data_size_);
+    ee_resetStringInfo(var_str_container_);
+  }
+
+  bool HasVarCol() {
+    return has_var_col_;
+  }
+
+  EE_StringInfo GetVarStrContainer() {
+    return var_str_container_;
   }
 
  protected:
@@ -524,6 +494,8 @@ class DataChunk : public IChunk {
 
  private:
   bool disorder_{false};
+  EE_StringInfo var_str_container_{nullptr};
+  bool has_var_col_{false};
 };
 
 }  //  namespace kwdbts

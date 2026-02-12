@@ -86,7 +86,15 @@ class Field {
   virtual k_bool is_real_over_flow() { return false; }
   virtual k_uint16 ValStrLength(k_char *ptr) { return 0; }
   String ValTempStr(char *ptr);
-
+  virtual String ValStrFromBatch(RowBatch* batch) {
+    char *ptr = get_ptr(batch);
+    if (!ptr) {
+      return String();
+    }
+    String str(storage_len_);
+    memcpy(str.getptr(), ptr, storage_len_);
+    return str;
+  }
   void set_num(k_uint32 num) { num_ = num; }
   k_uint32 get_num() const { return num_; }
 
@@ -193,6 +201,7 @@ class FieldNum : public Field {
   char *get_ptr(RowBatch *batch) override {
     return batch->GetData(col_idx_in_rs_, storage_len_, column_type_, storage_type_);
   }
+  String ValStrFromBatch(RowBatch* batch) override;
   k_bool fill_template_field(char *ptr) override;
   k_bool is_over_flow() override;
 };
@@ -209,6 +218,7 @@ class FieldChar : public FieldNum {
   String ValStr() override;
   String ValStr(k_char *ptr) override;
   Field *field_to_copy() override;
+  String ValStrFromBatch(RowBatch* batch) override;
 };
 
 // nchar
@@ -224,6 +234,7 @@ class FieldNchar : public FieldNum {
   String ValStr(k_char *ptr) override;
 
   Field *field_to_copy() override;
+  String ValStrFromBatch(RowBatch* batch) override;
 };
 
 // bool
@@ -390,8 +401,21 @@ class FieldVarchar : public FieldNum {
   k_double64 ValReal() override;
   k_double64 ValReal(char *ptr) override;
   String ValStr() override;
+  virtual String ValStr(char *ptr);
+  virtual Field *field_to_copy();
+  virtual String ValStrFromBatch(RowBatch* batch);
+};
+
+class FieldTagVarchar : public FieldVarchar {
+ public:
+  using FieldVarchar::FieldVarchar;
   String ValStr(char *ptr) override;
-  Field *field_to_copy() override;
+  String ValStrFromBatch(RowBatch* batch) override;
+  Field *field_to_copy() override {
+    FieldTagVarchar *field = new FieldTagVarchar(*this);
+    field->is_chunk_ = false;
+    return field;
+  }
 };
 
 // varblob
@@ -407,6 +431,7 @@ class FieldVarBlob : public FieldNum {
   String ValStr(char *ptr) override;
   Field *field_to_copy() override;
   k_uint16 ValStrLength(char *ptr) override;
+  String ValStrFromBatch(RowBatch* batch) override;
 };
 
 typedef FieldVarBlob FieldNvarchar;

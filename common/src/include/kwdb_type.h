@@ -43,7 +43,7 @@ typedef k_uint8 k_bits8;
 typedef k_uint16 k_bits16;
 typedef k_uint32 k_bits32;
 typedef k_uint64 k_bits64;
-typedef struct DummyDecimal{} k_decimal;
+typedef char* k_decimal;
 
 typedef k_int64 KTimestamp;
 typedef k_int64 KTimestampTz;

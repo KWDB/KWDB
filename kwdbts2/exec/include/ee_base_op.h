@@ -63,13 +63,13 @@ class BaseOperator {
       : table_(other.table_),
         processor_id_(other.processor_id_),
         output_encoding_(other.output_encoding_),
-        post_(other.post_),
-        collection_(other.collection_),
+        is_final_operator_(other.is_final_operator_),
         rpcSpecInfo_(other.rpcSpecInfo_),
         pipeline_(other.pipeline_),
-        is_final_operator_(other.is_final_operator_),
         use_query_short_circuit_(other.use_query_short_circuit_),
-        output_type_oid_(other.output_type_oid_) {
+        output_type_oid_(other.output_type_oid_),
+        post_(other.post_),
+        collection_(other.collection_) {
     if (nullptr != collection_) {
       collection_->emplace(processor_id_, &fetcher_);
     }
@@ -317,18 +317,18 @@ class GroupByMetadata {
       capacity_ = capacity;
       code = initialize();
     } else {
-      k_uint32 len = (capacity_ + 7) / 8;
+      k_uint32 len = (capacity + 7) / 8;
       std::memset(bitmap_, 0, len);
     }
     return code;
   }
 
   void setNewGroup(k_uint32 line) {
-    bitmap_[line >> 3] |= (1 << 7) >> (line & 7);
+    bitmap_[line >> 3] |= 0x80 >> (line & 7);
   }
 
-  bool isNewGroup(k_uint32 line) {
-    return (bitmap_[line >> 3] & ((1 << 7) >> (line & 7))) != 0;
+  __attribute__((always_inline)) bool isNewGroup(k_uint32 line) {
+    return (bitmap_[line >> 3] & (0x80 >> (line & 7))) != 0;
   }
 
   k_bool initialize() {

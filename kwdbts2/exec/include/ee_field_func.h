@@ -350,11 +350,12 @@ class  FieldFuncTimeBucket : public FieldFuncOp {
   enum Functype functype() override { return TIME_BUCKET_FUNC; }
 
   k_int64 ValInt() override;
+  k_int64 CalculateValue(k_int64& original_timestamp);
   k_double64 ValReal() override;
   String ValStr() override;
 
   Field *field_to_copy() override;
-
+  char *get_ptr(RowBatch *batch) override;
   // Replace keywords in the timestring
   // std::string replaceKeywords(const std::string& timestring);
 

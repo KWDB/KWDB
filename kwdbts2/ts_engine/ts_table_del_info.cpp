@@ -192,8 +192,7 @@ KStatus STTableRangeDelAndTagInfo::GenTagPayLoad(kwdbContext_p ctx, EntityResult
     }
     if (!is_null) {
       if (!tags_info[i].isPrimaryTag() && isVarLenType(tags_info[i].m_data_type)) {
-        build.SetTagValue(i, reinterpret_cast<char*>(res.data[i][0]->getVarColData(0)),
-          res.data[i][0]->getVarColDataLen(0));
+        build.SetTagValue(i, res.data[i][0]->getData(0) + sizeof(uint16_t), res.data[i][0]->getDataLen(0));
       } else {
         int null_bitmap_size = tags_info[i].isPrimaryTag() ? 0 : 1;
         build.SetTagValue(i, reinterpret_cast<char*>(res.data[i][0]->mem) + null_bitmap_size, tags_info[i].m_size);

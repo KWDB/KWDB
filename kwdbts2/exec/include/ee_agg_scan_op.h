@@ -79,8 +79,8 @@ class AggTableScanOperator : public TableScanOperator {
   // process group col
   k_bool ProcessGroupCols(k_int32& target_row, RowBatch* row_batch,
                           GroupByColumnInfo* group_by_cols,
-                          KTimestampTz& time_bucket, IChunk *chunk);
-
+                          KTimestampTz& time_bucket, IChunk *chunk, k_uint32 row);
+  KStatus FinishProcess(kwdbContext_p ctx);
   // resolve agg func
   KStatus ResolveAggFuncs(kwdbContext_p ctx);
 

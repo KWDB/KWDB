@@ -628,7 +628,7 @@ EEIteratorErrCode StorageHandler::NewTagIterator(kwdbContext_p ctx) {
     tag_iterator = iter;
   } else {
     BaseEntityIterator *tag = nullptr;
-    ret = ts_table_->GetTagIterator(ctx, table_->scan_tags_, table_->hash_points_, &tag, table_->table_version_);
+    ret = ts_table_->GetTagIterator(ctx, table_->scan_tags_, &(table_->hash_spans_), &tag, table_->table_version_);
     tag_iterator = tag;
   }
   if (ret == KStatus::FAIL) {
@@ -677,7 +677,7 @@ EEIteratorErrCode StorageHandler::GetEntityIdList(kwdbContext_p ctx,
       break;
     }
     ret = ts_table_->GetEntityIdList(ctx, primary_tags, tags_index_id, tags, tp, table_->scan_tags_,
-                                     table_->hash_points_, &tag_rowbatch_->entity_indexs_, &tag_rowbatch_->res_,
+                                     &(table_->hash_spans_), &tag_rowbatch_->entity_indexs_, &tag_rowbatch_->res_,
                                      &tag_rowbatch_->count_, table_->table_version_);
     if (ret != SUCCESS) {
       EEPgErrorInfo::SetPgErrorInfo(ERRCODE_FETCH_DATA_FAILED,
@@ -754,7 +754,7 @@ EEIteratorErrCode StorageHandler::GetTagDataChunkWithPrimaryTags(kwdbContext_p c
 
   do {
     KStatus ret = ts_table_->GetEntityIdList(ctx, primary_tags, tags_index_id, tags, TSTagOpType::opUnKnow,
-                                             table_->scan_tags_, table_->hash_points_, &tag_rowbatch_->entity_indexs_,
+                                             table_->scan_tags_, &(table_->hash_spans_), &tag_rowbatch_->entity_indexs_,
                                              &tag_rowbatch_->res_, &tag_rowbatch_->count_);
     if (ret != SUCCESS) {
       break;
@@ -1109,8 +1109,12 @@ void StorageHandler::tagRelFilter(kwdbContext_p ctx,
         k_uint32 index = table_->scan_tags_[cur_join_index] + tag_col_offset;
         switch (table_->fields_[index]->get_storage_type()) {
           case roachpb::DataType::CHAR:
-          case roachpb::DataType::VARCHAR:
             if (std::strcmp(cur_data[cur_join_index].tag_data, other_data) != 0) {
+              isEqual = false;
+            }
+            break;
+          case roachpb::DataType::VARCHAR:
+            if (std::strcmp(cur_data[cur_join_index].tag_data + sizeof(k_uint16), other_data) != 0) {
               isEqual = false;
             }
             break;
@@ -1118,7 +1122,7 @@ void StorageHandler::tagRelFilter(kwdbContext_p ctx,
           case roachpb::DataType::NVARCHAR:
           case roachpb::DataType::VARBINARY:
           case roachpb::DataType::BINARY:
-            if (std::memcmp(cur_data[cur_join_index].tag_data, other_data,
+            if (std::memcmp(cur_data[cur_join_index].tag_data + sizeof(k_uint16), other_data,
                     tag_rowbatch_->GetDataLen(i, cur_join_index, table_->fields_[index]->get_column_type())) != 0) {
               isEqual = false;
             }

@@ -102,7 +102,7 @@ EEIteratorErrCode SortScanOperator::Start(kwdbContext_p ctx) {
   KWThdContext* thd = current_thd;
   StorageHandler* handler = handler_;
 
-  if (table_->hash_points_.empty() && thd->IsRemote()) {
+  if (table_->hash_spans_.empty() && thd->IsRemote()) {
     Return(EEIteratorErrCode::EE_OK);
   }
 
@@ -175,7 +175,7 @@ EEIteratorErrCode SortScanOperator::Next(kwdbContext_p ctx,
   KWThdContext *thd = current_thd;
 
   do {
-    if (table_->hash_points_.empty() && thd->IsRemote()) {
+    if (table_->hash_spans_.empty() && thd->IsRemote()) {
       code = EEIteratorErrCode::EE_END_OF_RECORD;
       break;
     }
@@ -354,15 +354,18 @@ EEIteratorErrCode SortScanOperator::PrioritySort(kwdbContext_p ctx,
     for (k_uint32 i = num; i < count; ++i) {
       k_int64 ts = order_field_->ValInt();
       Data *top = data_asc_.top();
-      if (ts < top->ts_) {
-        data_asc_.pop();
-        Data* data = new Data;
-        data->ts_ = ts;
-        data->rowno_ = top->rowno_;
-        FieldsToChunk(tmp_renders_, renders_num, top->rowno_, data_chunk_);
-        data_asc_.push(data);
-        SafeDeletePointer(top);
+      // ts in ResultSet is ascending, so we can break when ts >= top->ts_
+      if (ts >= top->ts_) {
+        break;
       }
+      data_asc_.pop();
+      Data* data = new Data;
+      data->ts_ = ts;
+      data->rowno_ = top->rowno_;
+      FieldsToChunk(tmp_renders_, renders_num, top->rowno_, data_chunk_);
+      data_asc_.push(data);
+      SafeDeletePointer(top);
+
       row_batch->NextLine();
     }
     if (data_asc_.size() == limit) {
@@ -382,15 +385,17 @@ EEIteratorErrCode SortScanOperator::PrioritySort(kwdbContext_p ctx,
     for (k_uint32 i = num; i < count; ++i) {
       k_int64 ts = order_field_->ValInt();
       Data *top = data_desc_.top();
-      if (ts > top->ts_) {
-        data_desc_.pop();
-        Data* data = new Data;
-        data->ts_ = ts;
-        data->rowno_ = top->rowno_;
-        FieldsToChunk(tmp_renders_, renders_num, top->rowno_, data_chunk_);
-        data_desc_.push(data);
-        SafeDeletePointer(top);
+      // ts in ResultSet is ascending, so we can break when ts >= top->ts_
+      if (ts <= top->ts_) {
+        break;
       }
+      data_desc_.pop();
+      Data* data = new Data;
+      data->ts_ = ts;
+      data->rowno_ = top->rowno_;
+      FieldsToChunk(tmp_renders_, renders_num, top->rowno_, data_chunk_);
+      data_desc_.push(data);
+      SafeDeletePointer(top);
       row_batch->NextLine();
     }
     if (data_desc_.size() == limit) {

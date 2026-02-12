@@ -181,7 +181,7 @@ class OrderedAggregateOperator : public BaseAggregator {
   KStatus getAggResult(kwdbContext_p ctx, DataChunkPtr& chunk);
 
   KStatus ProcessData(kwdbContext_p ctx, DataChunkPtr& chunk);
-
+  KStatus FinishProcess(kwdbContext_p ctx);
   // construct agg info
   inline void constructAggResults() {
     // initialize the agg output buffer.

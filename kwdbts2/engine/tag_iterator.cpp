@@ -15,8 +15,6 @@
 
 namespace kwdbts {
 
-bool in(kwdbts::k_uint32 hp, const std::unordered_set<uint32_t>& hps);
-
 KStatus TagPartitionIterator::Next(std::vector<EntityResultIndex>* entity_id_list,
                                      ResultSet* res, k_uint32* count, bool* is_finish) {
   if  (cur_scan_rowid_ > cur_total_row_count_) {
@@ -45,7 +43,7 @@ KStatus TagPartitionIterator::Next(std::vector<EntityResultIndex>* entity_id_lis
     uint32_t hash_point;
     if (!EngineOptions::isSingleNode()) {
       m_tag_partition_table_->getHashpointByRowNum(row_num, &hash_point);
-      needSkip = !in(hash_point, hps_);
+      needSkip = !InHashIdSpan(hash_point, hps_);
       LOG_DEBUG("row %lu hashpoint is %u %s in search list", row_num, hash_point, needSkip?"not":"");
     }
     // if fliter by osn range, set osn_spans_.
@@ -171,7 +169,7 @@ KStatus TagPartitionIterator::NextTag(EntityResultIndex entity_idx,
     uint32_t hash_point;
     if (!EngineOptions::isSingleNode()) {
       m_tag_partition_table_->getHashpointByRowNum(row_num, &hash_point);
-      needSkip = !in(hash_point, hps_);
+      needSkip = !InHashIdSpan(hash_point, hps_);
       LOG_DEBUG("row %lu hashpoint is %u %s in search list", row_num, hash_point, needSkip?"not":"");
     }
     if (needSkip) {
@@ -222,10 +220,6 @@ void TagPartitionIterator::Init() {
   m_tag_partition_table_->mutexLock();
   cur_total_row_count_ = m_tag_partition_table_->actual_size();
   m_tag_partition_table_->mutexUnlock();
-}
-
-bool in(kwdbts::k_uint32 hp, const std::unordered_set<uint32_t>& hps) {
-  return hps.find(hp) != hps.end();
 }
 
 }  // namespace kwdbts

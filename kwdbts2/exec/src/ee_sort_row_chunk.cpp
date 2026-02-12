@@ -43,7 +43,7 @@ bool AllConstantColumnCompare::operator()(DatumPtr a_ptr, DatumPtr b_ptr) {
 bool HasNonConstantColumnCompare::operator()(DatumPtr a_ptr, DatumPtr b_ptr) {
   // Iterate through the ordering column
   for (auto order : *(order_info_)) {
-    if (col_info_[order.col_idx].is_string) {
+    if (col_info_[order.col_idx].is_string > KWStringType::NON_STRING) {
       auto order_direction = order.direction;
 
       // Check null indicators
@@ -122,7 +122,7 @@ k_bool SortRowChunk::Initialize() {
   sort_row_size_ = 0;
   // Initialize the fixed length of the column
   for (int i = 0; i < col_num_; ++i) {
-    if (col_info_[i].is_string) {
+    if (col_info_[i].is_string > KWStringType::NON_STRING) {
       col_info_[i].fixed_storage_len = col_info_[i].storage_len + STRING_WIDE;
     } else if (col_info_[i].storage_type == roachpb::DataType::DECIMAL) {
       col_info_[i].fixed_storage_len = col_info_[i].storage_len + BOOL_WIDE;
@@ -135,7 +135,7 @@ k_bool SortRowChunk::Initialize() {
     is_encoded_col_[sort_col.col_idx] = sort_col.direction;
     col_offset_[sort_col.col_idx] = sort_row_size_;
     sort_row_size_ += NULL_INDECATOR_WIDE;  // null indicator
-    if (col_info_[sort_col.col_idx].is_string) {
+    if (col_info_[sort_col.col_idx].is_string > KWStringType::NON_STRING) {
       if (force_constant_) {
         if (col_info_[sort_col.col_idx].max_string_len == 0) {
           col_info_[sort_col.col_idx].max_string_len = col_info_[sort_col.col_idx].storage_len;
@@ -174,7 +174,7 @@ k_bool SortRowChunk::Initialize() {
      */
     col_offset_[i] = row_size_;
     row_size_ += NULL_INDECATOR_WIDE;  // null indicator
-    if (col_info_[i].is_string) {
+    if (col_info_[i].is_string > KWStringType::NON_STRING) {
       if (force_constant_) {
         row_size_ += col_info_[i].max_string_len + STRING_WIDE;
       } else {
@@ -257,7 +257,7 @@ KStatus SortRowChunk::Append(DataChunkPtr& data_chunk_ptr, k_uint32& begin_row,
       k_uint8* val_ptr =
           reinterpret_cast<k_uint8*>(data_chunk_ptr->GetData(begin_row, col));
       if (!is_null) {
-        if (col_info_[col].is_string && !force_constant_) {
+        if (col_info_[col].is_string > KWStringType::NON_STRING && !force_constant_) {
           auto len = reinterpret_cast<k_uint16*>(val_ptr);
           col_info_[col].max_string_len =
               std::max(col_info_[col].max_string_len, *len);
@@ -301,7 +301,7 @@ KStatus SortRowChunk::Append(DataChunkPtr& data_chunk_ptr, k_uint32& begin_row,
       if (!is_null) {
         k_uint8* val_ptr =
             reinterpret_cast<k_uint8*>(data_chunk_ptr->GetData(begin_row, col));
-        if (col_info_[col].is_string) {
+        if (col_info_[col].is_string > KWStringType::NON_STRING) {
           auto len = reinterpret_cast<k_uint16*>(val_ptr);
           col_info_[col].max_string_len =
               std::max(col_info_[col].max_string_len, *len);
@@ -373,7 +373,7 @@ KStatus SortRowChunk::Append(SortRowChunkPtr& data_chunk_ptr,
     for (int col = 0; col < col_num_; col++) {
       DatumPtr input_col_data_ptr =
           input_row_data_ptr + data_chunk_ptr->col_offset_[col];
-      if (col_info_[col].is_string) {
+      if (col_info_[col].is_string > KWStringType::NON_STRING) {
         if (!*reinterpret_cast<k_bool*>(input_col_data_ptr)) {  // is null
           row_data_ptr[col_offset_[col]] = 0;
           memset(row_data_ptr + col_offset_[col] + NULL_INDECATOR_WIDE, 0,
@@ -414,7 +414,7 @@ KStatus SortRowChunk::Append(SortRowChunkPtr& data_chunk_ptr,
 }
 
 DatumPtr SortRowChunk::GetData(k_uint32 row, k_uint32 col) {
-  if (!all_constant_ && col_info_[col].is_string) {
+  if (!all_constant_ && col_info_[col].is_string > KWStringType::NON_STRING) {
     if (non_constant_save_mode_ == OFFSET_MODE) {
       auto non_constant_offset = reinterpret_cast<k_uint64*>(
           data_ + row * row_size_ + col_offset_[col] + NULL_INDECATOR_WIDE);
@@ -440,7 +440,7 @@ DatumPtr SortRowChunk::GetRowData() {
 }
 
 DatumPtr SortRowChunk::GetData(k_uint32 row, k_uint32 col, k_uint16& len) {
-  if (IsNull(row, col) || !col_info_[col].is_string) {
+  if (IsNull(row, col) || col_info_[col].is_string == KWStringType::NON_STRING) {
     return nullptr;
   }
   if (force_constant_) {
@@ -525,7 +525,8 @@ bool SortRowChunk::SetCurrentLine(k_int32 line) {
 
 KStatus SortRowChunk::DecodeData() {
   for (k_uint32 i = 0; i < col_num_; i++) {
-    if (is_encoded_col_[i] == NOT_ENCODED_COL || (!all_constant_ && col_info_[i].is_string)) {
+    if (is_encoded_col_[i] == NOT_ENCODED_COL ||
+        (!all_constant_ && col_info_[i].is_string > KWStringType::NON_STRING)) {
       continue;
     }
     if (is_encoded_col_[i] == TSOrdering_Column_Direction_DESC) {
@@ -800,7 +801,7 @@ k_uint32 SortRowChunk::ComputeRowSize(ColumnInfo* col_info,
   k_uint32 row_size = 0;
   for (k_uint32 i = 0; i < col_num; i++) {
     row_size += NULL_INDECATOR_WIDE;  // null indicator
-    if (col_info[i].is_string) {
+    if (col_info[i].is_string > KWStringType::NON_STRING) {
       row_size += NON_CONSTANT_PLACE_HOLDER_WIDE + STRING_WIDE;
     }
     row_size += col_info[i].fixed_storage_len;
@@ -815,7 +816,7 @@ k_uint32 SortRowChunk::ComputeSortRowSize(
   k_uint32 row_size = 0;
   for (auto& col : order_info) {
     row_size += NULL_INDECATOR_WIDE;
-    if (col_info[col.col_idx].is_string) {
+    if (col_info[col.col_idx].is_string > KWStringType::NON_STRING) {
       row_size += NON_CONSTANT_PLACE_HOLDER_WIDE;
     } else {
       row_size += col_info[col.col_idx].fixed_storage_len;
@@ -856,7 +857,7 @@ k_uint32 SortRowChunk::ComputeRowSizeIfAllConstant() {
   }
   k_uint32 estimate_row_size_ = 0;
   for (int i = 0; i < col_num_; i++) {
-    if (col_info_[i].is_string) {
+    if (col_info_[i].is_string > KWStringType::NON_STRING) {
       estimate_row_size_ += NON_CONSTANT_PLACE_HOLDER_WIDE + STRING_WIDE +
                             col_info_[i].max_string_len;
     } else {
@@ -1206,7 +1207,7 @@ EEIteratorErrCode SortRowChunk::VectorizeData(kwdbContext_p ctx,
       bitmap_offset_[i] = bitmap_offset;
       col_offsets[i] = bitmap_offset + bitmap_size_;
       bitmap_offset += bitmap_size_;
-      if (col_info_[i].is_string) {
+      if (col_info_[i].is_string > KWStringType::NON_STRING) {
         continue;
       }
       bitmap_offset += col_info_[i].fixed_storage_len * capacity_;

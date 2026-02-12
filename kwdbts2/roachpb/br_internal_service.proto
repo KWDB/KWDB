@@ -140,7 +140,7 @@ message ChunkColumnInfo {
     optional uint32 fixed_storage_len = 2;
     optional int32 storage_type = 3;
     optional int32 return_type = 4;
-    optional bool is_string = 5;
+    optional int32 is_string = 5;
     optional bool allow_null = 6;
 };
 

@@ -21,8 +21,8 @@
 // MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
 // See the Mulan PSL v2 for more details.
 
-//go:build amd64 || arm64 || arm64be || ppc64 || ppc64le || mips64 || mips64le || s390x || sparc64
-// +build amd64 arm64 arm64be ppc64 ppc64le mips64 mips64le s390x sparc64
+//go:build amd64 || arm64 || arm64be || ppc64 || ppc64le || mips64 || mips64le || s390x || sparc64 || loong64
+// +build amd64 arm64 arm64be ppc64 ppc64le mips64 mips64le s390x sparc64 loong64
 
 package storage
 

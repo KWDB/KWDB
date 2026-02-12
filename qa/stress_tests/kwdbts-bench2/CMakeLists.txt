@@ -103,7 +103,7 @@ add_definitions(-DDATA_DIR="${CMAKE_SOURCE_DIR}/qa/stress_tests/kwdbts-bench2/ts
 get_filename_component(PROJECT_BINARY_DIR_PARENT_DIR1 ${PROJECT_BINARY_DIR} DIRECTORY)
 get_filename_component(PROJECT_BINARY_DIR_PARENT_DIR2 ${PROJECT_BINARY_DIR_PARENT_DIR1} DIRECTORY)
 get_filename_component(PROJECT_BINARY_DIR_PARENT_DIR3 ${PROJECT_BINARY_DIR_PARENT_DIR2} DIRECTORY)
-set(BRPC_INCLUDE_DIR ${PROJECT_BINARY_DIR_PARENT_DIR3}/kwdbts2/brpc-1.9.0/output/include)
+set(BRPC_INCLUDE_DIR ${NATIVE}/kwdbts2/third_party/include)
 
 # embed will use the include file
 set(embed_includes worker ${PROTOBUF_INCLUDE_DIR} src/worker
@@ -129,7 +129,7 @@ aux_source_directory(src/worker WORKER_SRCS)
 aux_source_directory(src/worker/embed EMBED_SRCS)
 add_executable(kdp_bench src/kdp_bench.cpp ${WORKER_SRCS} ${EMBED_SRCS})
 target_include_directories(kdp_bench PRIVATE ${embed_includes})
-target_link_libraries(kdp_bench PUBLIC kwdbts2 protobuf common ssl atomic)
+target_link_libraries(kdp_bench PUBLIC kwdbts2 common ssl atomic z)
 
 INSTALL(FILES
         ${PROJECT_BINARY_DIR}/kdp_bench

@@ -832,14 +832,26 @@ KStatus RouterOutboundOperator::SerializeChunk(DataChunk* src, ChunkPB* dst,
     k_int64 data_size = 0;
     if (compress_codec_ != nullptr) {
       k_uint32 col_num = src->ColumnNum();
-      for (size_t i = 0; i < col_num; ++i) {
+      k_uint32 total_col_num = col_num;
+      if (src->GetVarStrContainer()->len > 0) {
+        total_col_num += 1;
+      }
+      for (size_t i = 0; i < total_col_num; ++i) {
         // ColumnPB* column_pb = dst->mutable_columns(i);
         // KSlice input(column_pb->data());
         // size_t serial_size = column_pb->data().size();
         ColumnPB* column_pb = dst->add_columns();
-        col_size = column_info[i].fixed_storage_len * src->Capacity() + bitmap_size;
-        KSlice input(src->GetData() + offset, col_size);
-        offset += col_size;
+        KSlice input;
+        if (i < col_num) {
+          col_size = column_info[i].fixed_storage_len * src->Capacity() + bitmap_size;
+          input = KSlice(src->GetData() + offset, col_size);
+          offset += col_size;
+        } else {
+          input = KSlice(src->GetVarStrContainer()->data, src->GetVarStrContainer()->len);
+          col_size = src->GetVarStrContainer()->len;
+          offset += col_size;
+        }
+
         if (UseCompressionPool(compress_codec_->GetCompressionType())) {
           KSlice compressed_slice;
           if (KStatus::FAIL ==
@@ -853,7 +865,6 @@ KStatus RouterOutboundOperator::SerializeChunk(DataChunk* src, ChunkPB* dst,
             compression_scratch_.resize(max_compressed_size);
           }
           KSlice compressed_slice{compression_scratch_.data(), compression_scratch_.size()};
-          KSlice input(column_pb->data());
           if (KStatus::FAIL == compress_codec_->CompressBlock(input, &compressed_slice)) {
             LOG_ERROR("compress fail");
             return KStatus::FAIL;
@@ -868,7 +879,7 @@ KStatus RouterOutboundOperator::SerializeChunk(DataChunk* src, ChunkPB* dst,
         compression_scratch_.clear();
       }
 
-      k_int64 metadata_size = src->ColumnNum() * 3 * 8;
+      k_int64 metadata_size = total_col_num * 3 * 8;
       std::string* serialized_data = dst->mutable_data();
       serialized_data->resize(20 + data_size + metadata_size);
       auto* buff = reinterpret_cast<uint8_t*>(serialized_data->data());
@@ -877,7 +888,7 @@ KStatus RouterOutboundOperator::SerializeChunk(DataChunk* src, ChunkPB* dst,
       encode_fixed32(buff + 8, src->Capacity());
       encode_fixed32(buff + 12, src->Size());
       buff = buff + 20;
-      for (int i = 0; i < col_num; ++i) {
+      for (int i = 0; i < total_col_num; ++i) {
         const ColumnPB& column = dst->columns(i);
         k_int64 column_uncompressed_size = column.uncompressed_size();
         encode_fixed32(buff + 0, column_uncompressed_size);
@@ -891,7 +902,7 @@ KStatus RouterOutboundOperator::SerializeChunk(DataChunk* src, ChunkPB* dst,
         buff = buff + column_compressed_size;
       }
       dst->set_compress_type(compress_type_);
-      for (int i = 0; i < col_num; ++i) {
+      for (int i = 0; i < total_col_num; ++i) {
         dst->mutable_columns(i)->clear_data();
       }
     }

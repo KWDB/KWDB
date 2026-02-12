@@ -42,6 +42,7 @@ KStatus BatchDataContainer::AddRelDataChunkAndBuildLinkedList(DynamicHashIndex* 
   new_row_indice.batch_no = rel_data_container_.GetBatchCount() + 1;
   for (new_row_indice.offset_in_batch = 1; new_row_indice.offset_in_batch <= row_count; ++new_row_indice.offset_in_batch) {
     // Get the join key value from relational batch
+    memset(rel_join_column_value, 0, total_join_column_length);
     char* p = rel_join_column_value;
     k_bool has_null = false;
     for (int i = 0; i < rel_key_cols.size(); ++i) {
@@ -54,9 +55,12 @@ KStatus BatchDataContainer::AddRelDataChunkAndBuildLinkedList(DynamicHashIndex* 
         case roachpb::DataType::VARCHAR:
         case roachpb::DataType::CHAR:
         case roachpb::DataType::NVARCHAR:
-          strncpy(p, rel_data_chunk->GetDataPtr(new_row_indice.offset_in_batch - 1, rel_key_cols[i]),
-                  join_column_lengths[i]);
+        case roachpb::DataType::VARBINARY: {
+          char* ptr = rel_data_chunk->GetData(new_row_indice.offset_in_batch - 1, rel_key_cols[i]);
+          k_uint16 len = *reinterpret_cast<k_uint16 *>(ptr);
+          memcpy(p, ptr + sizeof(k_uint16), len);
           break;
+        }
         default:
           memcpy(p, rel_data_chunk->GetDataPtr(new_row_indice.offset_in_batch - 1, rel_key_cols[i]),
                   join_column_lengths[i]);

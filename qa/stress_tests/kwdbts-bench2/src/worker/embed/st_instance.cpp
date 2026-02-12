@@ -351,7 +351,7 @@ bool checkColValue(const std::vector<AttributeInfo>& data_schema, const ResultSe
         case DATATYPE::VARSTRING:
         case DATATYPE::VARBINARY:
         {
-          string val(reinterpret_cast<char*>(batch->getVarColData(r)), batch->getVarColDataLen(r));
+          string val(batch->getData(r) + sizeof(uint16_t), batch->getDataLen(r));
           if (stoi(val) != value) {
             check_col_ok = false;
           }

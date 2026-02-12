@@ -648,7 +648,7 @@ int TagTable::DeleteTagRecord(const char *primary_tags, int len, ErrorInfo& err_
 
 // Get the column value of the tag using RowID.
 int TagTable::getDataWithRowID(TagPartitionTable* tag_partition, std::pair<TableVersionID, TagPartitionTableRowID> ret,
-                               const std::unordered_set<uint32_t> &hps,
+                               const std::vector<HashIdSpan>* hps,
                                std::vector<kwdbts::EntityResultIndex>* entity_id_list,
                                kwdbts::ResultSet* res, std::vector<uint32_t> &scan_tags, std::vector<uint32_t> &valid_scan_tags,
                                TagVersionObject* tag_version_obj, uint32_t scan_tags_num, bool get_partition) {
@@ -674,7 +674,7 @@ int TagTable::getDataWithRowID(TagPartitionTable* tag_partition, std::pair<Table
   if (!EngineOptions::isSingleNode()) {
     uint32_t hp;
     tag_partition->getHashpointByRowNum(row, &hp);
-    if (hps.find(hp) == hps.end()) {
+    if (!InHashIdSpan(hp, hps)) {
       tag_partition->stopRead();
       return 1;
     }
@@ -812,7 +812,7 @@ int TagTable::getRowIDByNTag(const std::vector<uint64_t> &tags_index_id, const s
 // Query tag through the index of the primary tag and normal tag.
 int TagTable::GetEntityIdList(const std::vector<void*>& primary_tags, const std::vector<uint64_t/*index_id*/> &tags_index_id,
                               const std::vector<void*> tags, TSTagOpType op_type, const std::vector<uint32_t> &scan_tags,
-                              const std::unordered_set<uint32_t> &hps,
+                              const std::vector<HashIdSpan>* hps,
                               std::vector<kwdbts::EntityResultIndex>* entity_id_list,
                               kwdbts::ResultSet* res, uint32_t* count, uint32_t table_version) {
   TagPartitionTableRowID row;

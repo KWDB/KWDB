@@ -15,6 +15,7 @@
 #include "ee_global.h"
 #include "ee_kwthd_context.h"
 #include "ee_table.h"
+#include "ee_common.h"
 
 namespace kwdbts {
 extern std::unordered_map<roachpb::DataType, Field_result> reslut_map;
@@ -136,6 +137,14 @@ k_bool FieldNum::fill_template_field(char *ptr) {
   return 0;
 }
 
+String FieldNum::ValStrFromBatch(RowBatch* batch) {
+  char* ptr = get_ptr(batch);
+  if (!ptr) {
+    return String();
+  }
+  return String(ptr, storage_len_);
+}
+
 k_int64 FieldChar::ValInt() { return 0; }
 
 k_int64 FieldChar::ValInt(char *ptr) { return 0; }
@@ -148,6 +157,14 @@ String FieldChar::ValStr() {
   char *c = get_ptr();
 
   return ValStr(c);
+}
+
+String FieldChar::ValStrFromBatch(RowBatch* batch) {
+  char* ptr = get_ptr(batch);
+  if (!ptr) {
+    return String();
+  }
+  return String(ptr);
 }
 
 String FieldChar::ValStr(char *ptr) {
@@ -196,6 +213,14 @@ Field *FieldNchar::field_to_copy() {
   FieldNchar *field = new FieldNchar(*this);
   field->is_chunk_ = false;
   return field;
+}
+
+String FieldNchar::ValStrFromBatch(RowBatch* batch) {
+  char* ptr = get_ptr(batch);
+  if (!ptr) {
+    return String();
+  }
+  return String(ptr);
 }
 
 k_int64 FieldBool::ValInt() { return ValInt(get_ptr()); }
@@ -592,12 +617,9 @@ String FieldVarchar::ValStr() { return ValStr(get_ptr()); }
 
 String FieldVarchar::ValStr(char *ptr) {
   if (false == is_chunk_) {
-    if (roachpb::KWDBKTSColumn::TYPE_DATA == column_type_) {
-      k_uint16 len = current_thd->GetRowBatch()->GetDataLen(col_idx_in_rs_, storage_len_, column_type_);
-      return String(ptr, len > 0 ? len - 1 : len, false);
-    } else {
-      return String(ptr);
-    }
+    k_uint16 len = 0;
+    memcpy(&len, ptr, STRING_WIDE);
+    return String(ptr + STRING_WIDE, len > 0 ? len - 1 : len, false);
   } else {
     return ValTempStr(ptr);
   }
@@ -607,6 +629,32 @@ Field *FieldVarchar::field_to_copy() {
   FieldVarchar *field = new FieldVarchar(*this);
   field->is_chunk_ = false;
   return field;
+}
+
+String FieldVarchar::ValStrFromBatch(RowBatch* batch) {
+  char* ptr = get_ptr(batch);
+  if (!ptr) {
+    return String();
+  }
+  k_uint16 len = 0;
+  memcpy(&len, ptr, STRING_WIDE);
+  return String(ptr + STRING_WIDE, len > 0 ? len - 1 : len, false);
+}
+
+String FieldTagVarchar::ValStr(char *ptr) {
+  if (false == is_chunk_) {
+    return String(ptr + STRING_WIDE);
+  } else {
+    return ValTempStr(ptr);
+  }
+}
+
+String FieldTagVarchar::ValStrFromBatch(RowBatch* batch) {
+  char* ptr = get_ptr(batch);
+  if (!ptr) {
+    return String();
+  }
+  return String(ptr + STRING_WIDE);
 }
 
 // varblob
@@ -621,21 +669,12 @@ k_double64 FieldVarBlob::ValReal(char *ptr) { return 0.0; }
 String FieldVarBlob::ValStr() { return ValStr(get_ptr()); }
 
 String FieldVarBlob::ValStr(char *ptr) {
-  if (false == is_chunk_) {
-    k_uint16 len = current_thd->GetRowBatch()->GetDataLen(
-        col_idx_in_rs_, storage_len_, column_type_);
-    return String(ptr, len, false);
-  } else {
-    return ValTempStr(ptr);
-  }
+  k_uint16 len = 0;
+  memcpy(&len, ptr, sizeof(k_uint16));
+  return {ptr + sizeof(k_uint16), len, false};
 }
 
 k_uint16 FieldVarBlob::ValStrLength(char *ptr) {
-  if (false == is_chunk_) {
-    return current_thd->GetRowBatch()->GetDataLen(
-        col_idx_in_rs_, storage_len_, column_type_);
-  }
-
   return *reinterpret_cast<k_uint16 *>(ptr);
 }
 
@@ -643,6 +682,16 @@ Field *FieldVarBlob::field_to_copy() {
   FieldVarBlob *field = new FieldVarBlob(*this);
   field->is_chunk_ = false;
   return field;
+}
+
+String FieldVarBlob::ValStrFromBatch(RowBatch* batch) {
+  char* ptr = get_ptr(batch);
+  if (!ptr) {
+    return String();
+  }
+  k_uint16 len = 0;
+  memcpy(&len, ptr, STRING_WIDE);
+  return String(ptr + STRING_WIDE, len, false);
 }
 
 template<class T>

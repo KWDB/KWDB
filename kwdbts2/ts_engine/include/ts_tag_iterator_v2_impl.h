@@ -33,7 +33,7 @@ class TagIteratorV2Impl : public BaseEntityIterator {
   ~TagIteratorV2Impl() override;
   TagIteratorV2Impl(std::shared_ptr<TagTable> tag_bt, uint32_t table_versioin, const std::vector<k_uint32>& scan_tags);
   TagIteratorV2Impl(std::shared_ptr<TagTable> tag_bt, uint32_t table_versioin, const std::vector<k_uint32>& scan_tags,
-                    const std::unordered_set<uint32_t>& hps);
+                    std::vector<HashIdSpan>* hps);
 
   KStatus Init() override;
   virtual KStatus Next(std::vector<EntityResultIndex>* entity_id_list, ResultSet* res, k_uint32* count);
@@ -42,7 +42,7 @@ class TagIteratorV2Impl : public BaseEntityIterator {
 
  protected:
   std::vector<k_uint32> scan_tags_;
-  std::unordered_set<uint32_t> hps_;
+  std::vector<HashIdSpan>* hps_{nullptr};
   std::shared_ptr<TagTable> tag_bt_;
   std::vector<TagPartitionIterator*> tag_partition_iters_;
   uint32_t table_version_;
@@ -54,7 +54,7 @@ class TagIteratorByOSN : public TagIteratorV2Impl {
  public:
   TagIteratorByOSN(std::shared_ptr<TagTable> tag_bt, uint32_t table_versioin,
     std::vector<k_uint32>& scan_cols, std::vector<KwOSNSpan>& osn_span);
-  KStatus Init(const std::unordered_set<uint32_t>& hps, std::unordered_map<uint64_t, EntityResultIndex> pkeys);
+  KStatus Init(std::vector<HashIdSpan>* hps, std::unordered_map<uint64_t, EntityResultIndex> pkeys);
   KStatus Next(std::vector<EntityResultIndex>* entity_id_list,
               ResultSet* res, k_uint32* count) override;
 

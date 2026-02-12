@@ -31,7 +31,7 @@ typedef EE_StringInfoData* EE_StringInfo;
  * Create an empty 'StringInfoData' & return a pointer to it.
  */
 extern EE_StringInfo ee_makeStringInfo(void);
-
+extern void ee_destroyStringInfo(EE_StringInfo str);
 /*------------------------
  * initStringInfo
  * Initialize a StringInfoData struct (with previously undefined contents)

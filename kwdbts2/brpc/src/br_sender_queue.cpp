@@ -398,7 +398,7 @@ KStatus DataStreamRecvr::SenderQueue::BuildChunkMeta(const ChunkPB& pb_chunk) {
       col_info.return_type = static_cast<KWDBTypeFamily>(pb_col_info.return_type());
       col_info.storage_len = pb_col_info.storage_len();
       col_info.storage_type = static_cast<roachpb::DataType>(pb_col_info.storage_type());
-      col_info.is_string = pb_col_info.is_string();
+      col_info.is_string = static_cast<KWStringType>(pb_col_info.is_string());
     }
 
     col_num_ = new_col_num;
@@ -419,7 +419,7 @@ KStatus DataStreamRecvr::SenderQueue::DeserializeChunk(const ChunkPB& pchunk, Da
   ProtobufChunkSerrialde serial;
   if (pchunk.compress_type() == CompressionTypePB::NO_COMPRESSION) {
     if (false ==
-        serial.Deserialize(chunk, pchunk.data(), pchunk.is_encoding(), col_info_, col_num_)) {
+        serial.Deserialize(chunk, pchunk.data(), pchunk.serialized_size(), pchunk.is_encoding(), col_info_, col_num_)) {
       return KStatus::FAIL;
     }
   } else {
@@ -448,7 +448,8 @@ KStatus DataStreamRecvr::SenderQueue::DeserializeChunk(const ChunkPB& pchunk, Da
         EEPgErrorInfo::SetPgErrorInfo(ERRCODE_DATA_EXCEPTION, "invalid compress type");
         return KStatus::FAIL;
       }
-      for (k_int32 i = 0; i < col_num_; i++) {
+      k_uint32 total_col_num = pchunk.columns_size();
+      for (k_int32 i = 0; i < total_col_num; i++) {
         uncompressed_size = decode_fixed64(cur);
         cur += 8;
         k_int64 compressed_size = decode_fixed64(cur);
@@ -484,8 +485,13 @@ KStatus DataStreamRecvr::SenderQueue::DeserializeChunk(const ChunkPB& pchunk, Da
           }
           chunk->SetCount(num_rows);
         }
-        memcpy(chunk->GetData() + offset, uncompress_buf, uncompressed_size);
-        offset += uncompressed_size;
+        if (i < col_num_) {
+          memcpy(chunk->GetData() + offset, uncompress_buf, uncompressed_size);
+          offset += uncompressed_size;
+        } else {
+          ee_appendBinaryStringInfo(chunk->GetVarStrContainer(), reinterpret_cast<const char*>(uncompress_buf),
+                                    uncompressed_size);
+        }
       }
     }
   }
