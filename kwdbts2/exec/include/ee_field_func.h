@@ -332,6 +332,7 @@ class  FieldFuncTimeBucket : public FieldFuncOp {
     sql_type_ = getTimeFieldType(args_[0]->get_storage_type(), unit, &time_diff, &type_scale_, &type_scale_multi_or_divde_);
     storage_type_ = sql_type_;
     storage_len_ = sizeof(k_int64);
+    input_col_id_ = args_[0]->getColIdxInRs();
     k_int64 mo = 0;
     if (interval_seconds_ != 0) {
       if (storage_type_ == roachpb::DataType::TIMESTAMP_NANO || storage_type_ == roachpb::DataType::TIMESTAMPTZ_NANO) {
@@ -374,6 +375,7 @@ class  FieldFuncTimeBucket : public FieldFuncOp {
   std::string error_info_{""};
   k_int64 last_time_bucket_value_{INT64_MIN};
   k_int64 time_diff_{0};
+  k_int32 input_col_id_{0};
 };
 
 class FieldFuncCastCheckTs : public FieldFunc {

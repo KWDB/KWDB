@@ -1771,8 +1771,9 @@ Field *FieldFuncRightShift::field_to_copy() {
 char* FieldFuncTimeBucket::get_ptr(RowBatch* batch) {
   // auto original_timestamp = *reinterpret_cast<KTimestampTz *>(args_[0]->get_ptr(batch));
   auto original_timestamp =
-      batch->GetData(0, sizeof(KTimestampTz), roachpb::KWDBKTSColumn::TYPE_DATA, roachpb::DataType::TIMESTAMPTZ);
-  last_time_bucket_value_ = CalculateValue(*reinterpret_cast<KTimestampTz *>(original_timestamp));
+      batch->GetData(input_col_id_, sizeof(KTimestampTz), roachpb::KWDBKTSColumn::TYPE_DATA, roachpb::DataType::TIMESTAMPTZ);
+  auto value = *reinterpret_cast<KTimestampTz *>(original_timestamp);
+  last_time_bucket_value_ = CalculateValue(value);
   return reinterpret_cast<char*>(&last_time_bucket_value_);
 }
 

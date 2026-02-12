@@ -95,7 +95,18 @@ EEIteratorErrCode TableScanOperator::Init(kwdbContext_p ctx) {
         break;
       }
     }
-
+    // parser input fields
+    ret = param_.ParserInputField(ctx);
+    if (ret != EEIteratorErrCode::EE_OK) {
+      LOG_ERROR("ParserInputFields failed.");
+      break;
+    }
+    if (!is_clone_) {
+      ret = param_.ParserScanCols(ctx);
+      if (ret != EEIteratorErrCode::EE_OK) {
+        Return(ret);
+      }
+    }
     // post->filter;
     ret = param_.ParserFilter(ctx, &filter_);
     if (EEIteratorErrCode::EE_OK != ret) {
@@ -103,12 +114,6 @@ EEIteratorErrCode TableScanOperator::Init(kwdbContext_p ctx) {
       break;
     }
 
-    // parser input fields
-    ret = param_.ParserInputField(ctx);
-    if (ret != EEIteratorErrCode::EE_OK) {
-      LOG_ERROR("ParserInputFields failed.");
-      break;
-    }
     // render num
     param_.RenderSize(ctx, &num_);
 
@@ -151,10 +156,6 @@ EEIteratorErrCode TableScanOperator::Init(kwdbContext_p ctx) {
     }
 
     if (!is_clone_) {
-      ret = param_.ParserScanCols(ctx);
-      if (ret != EEIteratorErrCode::EE_OK) {
-        Return(ret);
-      }
       ret = param_.ResolveBlockFilter();
     }
   } while (0);
