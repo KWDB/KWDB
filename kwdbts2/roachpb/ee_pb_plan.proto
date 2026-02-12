@@ -42,7 +42,9 @@ message TSFlowSpec {
   // when useQueryShortCircuit
   optional bool useQueryShortCircuit = 7;
 
-  repeated uint32 output_type_oid = 8;
+  // when UseCompressType
+  optional int64 UseCompressType = 8;
+  repeated uint32 output_type_oid = 9;
 }
 
 // Each processor has the following components:

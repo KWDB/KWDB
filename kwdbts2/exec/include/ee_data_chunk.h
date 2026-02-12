@@ -28,7 +28,7 @@
 #include "ee_tag_row_batch.h"
 #include "kwdb_type.h"
 #include "me_metadata.pb.h"
-
+#include "ee_block_compress.h"
 namespace kwdbts {
 
 /**
@@ -330,7 +330,7 @@ class DataChunk : public IChunk {
 
   ////////////////   Encoding func  ///////////////////
   KStatus Encoding(kwdbContext_p ctx, TsNextRetState nextState,
-                   bool use_query_short_circuit, k_int64* command_limit,
+                   bool use_query_short_circuit, k_int64 use_query_compress_type_, k_int64* command_limit,
                    const vector<k_uint32>& output_type_oid,
                    std::atomic<k_int64>* count_for_limit);
   /**
@@ -351,7 +351,9 @@ class DataChunk : public IChunk {
    */
   KStatus PgResultData(kwdbContext_p ctx, k_uint32 row,
                        const EE_StringInfo& info, const vector<k_uint32> &t_is_float8);
-
+  KStatus PgOriResultData(kwdbContext_p ctx, const EE_StringInfo& info);
+  KStatus PgCompressResultData(kwdbContext_p ctx, const BlockCompressor* compress_codec,
+                       const EE_StringInfo& info, CompressionTypePB type);
   virtual EEIteratorErrCode VectorizeData(kwdbContext_p ctx,
                                           DataInfo* data_info);
 

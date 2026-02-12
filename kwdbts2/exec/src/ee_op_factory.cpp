@@ -518,6 +518,7 @@ KStatus OpFactory::ReCreateOperoatr(kwdbContext_p ctx, BaseOperator *child, std:
     op->SetFinalOperator(parent->IsFinalOperator());
     op->SetOutputEncoding(parent->GetOutputEncoding());
     op->SetUseQueryShortCircuit(parent->IsUseQueryShortCircuit());
+    op->SetUseUseCompressType(parent->IsUseUseCompressType());
 
     SafeDeletePointer(parent);
   }

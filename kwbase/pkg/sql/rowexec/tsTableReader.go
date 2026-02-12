@@ -468,6 +468,7 @@ func (ttr *TsTableReader) setupTsFlow(ctx context.Context) error {
 	tsFlowSpec.Processors[len(tsFlowSpec.Processors)-1].FinalTsProcessor = true
 	tsFlowSpec.IsDist = ttr.tsInfo.IsDist
 	tsFlowSpec.UseQueryShortCircuit = ttr.tsInfo.UseQueryShortCircuit
+	tsFlowSpec.UseCompressType = ttr.tsInfo.UseCompressType
 
 	// get output type oid.
 	finalProcessor := ttr.tsProcessorSpecs[len(tsFlowSpec.Processors)-1]

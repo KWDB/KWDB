@@ -89,7 +89,8 @@ message TSFlowSpec {
   repeated string brpcAddrs = 5;
   optional bool isDist = 6 [(gogoproto.nullable) = false];
   optional bool useQueryShortCircuit = 7 [(gogoproto.nullable) = false];
-  repeated uint32 output_type_oid = 8;
+  optional int64 useCompressType = 8[(gogoproto.nullable) = false];
+  repeated uint32 output_type_oid = 9;
 }
 
 // TsInfo is info for AE.
@@ -100,6 +101,7 @@ message TsInfo {
   optional bool useAeGather = 3 [(gogoproto.nullable) = false];
   optional bool isDist = 4 [(gogoproto.nullable) = false];
   optional bool useQueryShortCircuit = 5 [(gogoproto.nullable) = false];
+  optional int64 useCompressType = 6[(gogoproto.nullable) = false];
 }
 
 // EvalContext is used to marshall some planner.EvalContext members.

@@ -385,7 +385,13 @@ EEIteratorErrCode WindowOperator::Next(kwdbContext_p ctx, DataChunkPtr& chunk) {
 
   if (!output_queue_.empty()) {
     chunk = std::move(output_queue_.front());
-    OPERATOR_DIRECT_ENCODING(ctx, output_encoding_, use_query_short_circuit_, output_type_oid_, thd, chunk);
+    OPERATOR_DIRECT_ENCODING(ctx,
+                             output_encoding_,
+                             use_query_short_circuit_,
+                             use_query_compress_type_,
+                             output_type_oid_,
+                             thd,
+                             chunk);
     output_queue_.pop();
     if (code == EEIteratorErrCode::EE_END_OF_RECORD) {
       Return(EEIteratorErrCode::EE_OK)

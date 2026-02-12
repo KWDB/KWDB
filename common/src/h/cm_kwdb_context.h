@@ -19,6 +19,7 @@
 #include <vector>
 #include "kwdb_type.h"
 #include "er_stack.h"
+#include <atomic>
 
 namespace kwdbts {
 

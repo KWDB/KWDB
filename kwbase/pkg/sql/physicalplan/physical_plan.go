@@ -178,6 +178,7 @@ type PhysicalPlan struct {
 	// if the SQL contains apply-join and set inputsToDrain for ts insert select, it break down.
 	InlcudeApplyJoin     bool
 	UseQueryShortCircuit bool
+	UseCompressType      int64
 }
 
 // IsRemotePlan is true when ts plan is dist.
@@ -1903,6 +1904,7 @@ func (p *PhysicalPlan) GenerateFlowSpecs(
 		flow.TsInfo.QueryID = queryID
 		if nodeID == gateway {
 			flow.TsInfo.UseQueryShortCircuit = p.UseQueryShortCircuit
+			flow.TsInfo.UseCompressType = p.UseCompressType
 		}
 	}
 

@@ -115,7 +115,13 @@ EEIteratorErrCode LocalOutboundOperator::Next(kwdbContext_p ctx,
   if (parent_operators_.empty()) {
     KWThdContext *thd = current_thd;
     chunk = std::move(chunk_tmp);
-    OPERATOR_DIRECT_ENCODING(ctx, output_encoding_, use_query_short_circuit_, output_type_oid_, thd, chunk);
+    OPERATOR_DIRECT_ENCODING(ctx,
+                             output_encoding_,
+                             use_query_short_circuit_,
+                             use_query_compress_type_,
+                             output_type_oid_,
+                             thd,
+                             chunk);
   }
 
   Return(code);

@@ -321,6 +321,7 @@ KStatus Processors::BuildOperator(kwdbContext_p ctx) {
     if (processor_id == top_process_id_) {
       oper->SetOutputEncoding(true);
       oper->SetUseQueryShortCircuit(fspec_->usequeryshortcircuit());
+      oper->SetUseUseCompressType(fspec_->usecompresstype());
       vector<k_uint32> output_type_oid;
       output_type_oid.reserve(fspec_->output_type_oid_size());
       for (k_uint32 oid : fspec_->output_type_oid()) {

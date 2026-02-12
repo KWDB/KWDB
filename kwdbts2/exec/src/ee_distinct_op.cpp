@@ -193,7 +193,13 @@ EEIteratorErrCode DistinctOperator::Next(kwdbContext_p ctx, DataChunkPtr& chunk)
   auto end = std::chrono::high_resolution_clock::now();
 
   if (chunk != nullptr && chunk->Count() > 0) {
-    OPERATOR_DIRECT_ENCODING(ctx, output_encoding_, use_query_short_circuit_, output_type_oid_, thd, chunk);
+    OPERATOR_DIRECT_ENCODING(ctx,
+                             output_encoding_,
+                             use_query_short_circuit_,
+                             use_query_compress_type_,
+                             output_type_oid_,
+                             thd,
+                             chunk);
     fetcher_.Update(read_row_num, (end - start).count(), chunk->Count() * chunk->RowSize(), 0, 0, chunk->Count());
     Return(EEIteratorErrCode::EE_OK)
   }

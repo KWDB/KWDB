@@ -270,7 +270,13 @@ EEIteratorErrCode TableStatisticScanOperator::Next(kwdbContext_p ctx, DataChunkP
 
   if (!output_queue_.empty()) {
     chunk = std::move(output_queue_.front());
-    OPERATOR_DIRECT_ENCODING(ctx, output_encoding_, use_query_short_circuit_, output_type_oid_, thd, chunk);
+    OPERATOR_DIRECT_ENCODING(ctx,
+                             output_encoding_,
+                             use_query_short_circuit_,
+                             use_query_compress_type_,
+                             output_type_oid_,
+                             thd,
+                             chunk);
     output_queue_.pop();
     auto end = std::chrono::high_resolution_clock::now();
     fetcher_.Update(chunk->Count(), (end - start).count(), chunk->Count() * chunk->RowSize(), 0, 0, 0, 0, &ts_scan_stats);

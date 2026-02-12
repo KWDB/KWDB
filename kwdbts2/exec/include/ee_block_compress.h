@@ -12,6 +12,10 @@
 #pragma once
 
 #include <lz4.h>
+#include <snappy-sinksource.h>
+#include <snappy.h>
+// #include <snappy/snappy-sinksource.h>
+// #include <snappy/snappy.h>
 
 #include <limits>
 #include <string>

@@ -14,6 +14,7 @@
 #include "cm_func.h"
 #include "ee_common.h"
 #include "ee_ryu_dbconvert.h"
+#include "ee_protobuf_serde.h"
 #include "libkwdbts2.h"  // for goGetTzOffset
 #include "ee_sort_compare.h"
 #include "ee_timestamp_utils.h"
@@ -882,10 +883,13 @@ k_int32 DataChunk::Compare(size_t left, size_t right, k_uint32 col_idx,
 }
 
 // Encode datachunk
-KStatus DataChunk::Encoding(kwdbContext_p ctx, TsNextRetState nextState, bool use_query_short_circuit,
-                            k_int64* command_limit,
-                            const vector<k_uint32>& output_type_oid,
-                            std::atomic<k_int64>* count_for_limit) {
+KStatus DataChunk::Encoding(kwdbContext_p ctx,
+                            TsNextRetState nextState,
+                            bool use_query_short_circuit,
+                            k_int64 use_query_compress_type_,
+                            k_int64 *command_limit,
+                            const vector<k_uint32> &output_type_oid,
+                            std::atomic<k_int64> *count_for_limit) {
   KStatus st = KStatus::SUCCESS;
 
   if (DML_VECTORIZE_NEXT == nextState) {
@@ -900,37 +904,58 @@ KStatus DataChunk::Encoding(kwdbContext_p ctx, TsNextRetState nextState, bool us
   if (msgBuffer == nullptr) {
     return KStatus::FAIL;
   }
-
-  if (DML_PG_RESULT == nextState || use_query_short_circuit) {
-    k_uint32 row = 0;
-    for (; row < Count(); ++row) {
-      if (*command_limit > 0) {
-        k_int64 current_value = count_for_limit->load();
-        while (current_value < (*command_limit) &&
-               !count_for_limit->compare_exchange_weak(current_value,
-                                                       current_value + 1)) {
-          current_value = count_for_limit->load();
-        }
-        if (current_value >= (*command_limit)) {
-          break;
-        }
-      }
-      st = PgResultData(ctx, row, msgBuffer, output_type_oid);
+  if (use_query_compress_type_ != 0 && use_query_short_circuit) {
+    const BlockCompressor* compress_codec = nullptr;
+    if (use_query_compress_type_ == 1) {
+      st = PgOriResultData(ctx, msgBuffer);
       if (st != SUCCESS) {
-        break;
+        return st;
+      }
+    } else if (use_query_compress_type_ == 2) {
+      GetBlockCompressor(CompressionTypePB::LZ4_COMPRESSION, &compress_codec);
+      st = PgCompressResultData(ctx, compress_codec, msgBuffer, CompressionTypePB::LZ4_COMPRESSION);
+      if (st != SUCCESS) {
+        return st;
+      }
+    } else if (use_query_compress_type_ == 3) {
+      GetBlockCompressor(CompressionTypePB::SNAPPY_COMPRESSION, &compress_codec);
+      st = PgCompressResultData(ctx, compress_codec, msgBuffer, CompressionTypePB::SNAPPY_COMPRESSION);
+      if (st != SUCCESS) {
+        return st;
       }
     }
-    count_ = row;
   } else {
-    for (k_uint32 row = 0; row < Count(); ++row) {
-      for (k_uint32 col = 0; col < ColumnNum(); ++col) {
-        st = EncodingValue(ctx, row, col, msgBuffer);
+    if (DML_PG_RESULT == nextState || use_query_short_circuit) {
+      k_uint32 row = 0;
+      for (; row < Count(); ++row) {
+        if (*command_limit > 0) {
+          k_int64 current_value = count_for_limit->load();
+          while (current_value < (*command_limit) &&
+                !count_for_limit->compare_exchange_weak(current_value,
+                                                        current_value + 1)) {
+            current_value = count_for_limit->load();
+          }
+          if (current_value >= (*command_limit)) {
+            break;
+          }
+        }
+        st = PgResultData(ctx, row, msgBuffer, output_type_oid);
         if (st != SUCCESS) {
           break;
         }
       }
-      if (st != SUCCESS) {
-        break;
+      count_ = row;
+    } else {
+      for (k_uint32 row = 0; row < Count(); ++row) {
+        for (k_uint32 col = 0; col < ColumnNum(); ++col) {
+          st = EncodingValue(ctx, row, col, msgBuffer);
+          if (st != SUCCESS) {
+            break;
+          }
+        }
+        if (st != SUCCESS) {
+          break;
+        }
       }
     }
   }
@@ -1823,6 +1848,159 @@ KStatus DataChunk::PgResultData(kwdbContext_p ctx, k_uint32 row,
     }
   }
 
+  temp_addr = &info->data[temp_len + 1];
+  k_uint32 n32 = be32toh(info->len - temp_len - 1);
+  memcpy(temp_addr, &n32, 4);
+  Return(SUCCESS);
+}
+
+KStatus DataChunk::PgOriResultData(kwdbContext_p ctx, const EE_StringInfo& info) {
+  EnterFunc();
+  k_uint32 temp_len = info->len;
+  char* temp_addr = nullptr;
+  if (ee_appendBinaryStringInfo(info, "M0000", 5) != SUCCESS) {
+    Return(FAIL);
+  }
+
+  // set count
+  if (ee_sendint(info, Count(), 4) != SUCCESS) {
+    Return(FAIL);
+  }
+  // set column count
+  if (ee_sendint(info, col_num_, 2) != SUCCESS) {
+    Return(FAIL);
+  }
+
+  if (ee_sendint(info, row_size_, 4) != SUCCESS) {
+    Return(FAIL);
+  }
+
+  for (size_t col = 0; col < col_num_; col++) {
+    if (ee_sendint(info, col_info_[col].fixed_storage_len, 4) != SUCCESS) {
+      Return(FAIL);
+    }
+    if (ee_sendint(info, col_offset_[col], 4) != SUCCESS) {
+      Return(FAIL);
+    }
+  }
+
+  // set capacity
+  if (ee_sendint(info, Capacity(), 4) != SUCCESS) {
+    Return(FAIL);
+  }
+
+
+  // set compress type
+  if (ee_sendint(info, CompressionTypePB::NO_COMPRESSION, 2) != SUCCESS) {
+    Return(FAIL);
+  }
+  if (ee_appendBinaryStringInfo(info, GetData(), Size()) != SUCCESS) {
+    Return(FAIL);
+  }
+
+  temp_addr = &info->data[temp_len + 1];
+  k_uint32 n32 = be32toh(info->len - temp_len - 1);
+  memcpy(temp_addr, &n32, 4);
+  Return(SUCCESS);
+}
+
+KStatus DataChunk::PgCompressResultData(kwdbContext_p ctx,
+                                        const BlockCompressor *compress_codec,
+                                        const EE_StringInfo &info,
+                                        CompressionTypePB type) {
+  EnterFunc();
+  k_uint32 temp_len = info->len;
+  char *temp_addr = nullptr;
+  if (ee_appendBinaryStringInfo(info, "M0000", 5) != SUCCESS) {
+    Return(FAIL);
+  }
+
+  // set count
+  if (ee_sendint(info, Count(), 4) != SUCCESS) {
+    Return(FAIL);
+  }
+  // set column count
+  if (ee_sendint(info, col_num_, 2) != SUCCESS) {
+    Return(FAIL);
+  }
+
+  if (ee_sendint(info, row_size_, 4) != SUCCESS) {
+    Return(FAIL);
+  }
+
+  for (size_t col = 0; col < col_num_; col++) {
+    if (ee_sendint(info, col_info_[col].fixed_storage_len, 4) != SUCCESS) {
+      Return(FAIL);
+    }
+    if (ee_sendint(info, col_offset_[col], 4) != SUCCESS) {
+      Return(FAIL);
+    }
+  }
+
+  // set capacity
+  if (ee_sendint(info, Capacity(), 4) != SUCCESS) {
+    Return(FAIL);
+  }
+
+  ProtobufChunkSerrialde serial;
+  if (Count() < 10) {
+    // set compress type
+    if (ee_sendint(info, CompressionTypePB::NO_COMPRESSION, 2) != SUCCESS) {
+      Return(FAIL);
+    }
+    if (ee_appendBinaryStringInfo(info, GetData(), Size()) != SUCCESS) {
+      Return(FAIL);
+    }
+  } else {
+    // set compress type
+    if (ee_sendint(info, type, 2) != SUCCESS) {
+      Return(FAIL);
+    }
+    size_t col_size = 0;
+    k_int64 offset = 0;
+    k_uint32 bitmap_size = BitmapSize();
+    k_int64 data_size = 0;
+    if (compress_codec != nullptr) {
+      for (size_t i = 0; i < col_num_; ++i) {
+        std::string compression_scratch;
+        col_size = GetColumnInfo()[i].fixed_storage_len * Capacity() + bitmap_size;
+        KSlice input(GetData() + offset, col_size);
+        offset += col_size;
+        if (UseCompressionPool(compress_codec->GetCompressionType())) {
+          KSlice compressed_slice;
+          if (KStatus::FAIL ==
+              compress_codec->CompressBlock(input, &compressed_slice, true, col_size, nullptr, &compression_scratch)) {
+            LOG_ERROR("compress fail");
+            Return(FAIL);
+          }
+        } else {
+          k_int32 max_compressed_size = compress_codec->CalculateMaxCompressedLength(col_size);
+          if (compression_scratch.size() < max_compressed_size) {
+            compression_scratch.resize(max_compressed_size);
+          }
+          KSlice compressed_slice{compression_scratch.data(), compression_scratch.size()};
+          if (KStatus::FAIL == compress_codec->CompressBlock(input, &compressed_slice)) {
+            LOG_ERROR("compress fail");
+            Return(FAIL);
+          }
+          compression_scratch.resize(compressed_slice.data_size_);
+        }
+        data_size += compression_scratch.size();
+        // set col uncompressed_size
+        if (ee_sendint(info, col_size, 4) != SUCCESS) {
+          Return(FAIL);
+        }
+        // set col compressed_size
+        if (ee_sendint(info, compression_scratch.size(), 4) != SUCCESS) {
+          Return(FAIL);
+        }
+        // set col data
+        if (ee_appendBinaryStringInfo(info, compression_scratch.data(), compression_scratch.size()) != SUCCESS) {
+          Return(FAIL);
+        }
+      }
+    }
+  }
   temp_addr = &info->data[temp_len + 1];
   k_uint32 n32 = be32toh(info->len - temp_len - 1);
   memcpy(temp_addr, &n32, 4);

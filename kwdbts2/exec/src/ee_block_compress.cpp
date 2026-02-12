@@ -247,8 +247,114 @@ class Lz4BlockCompressor : public BlockCompressor {
   }
 
  private:
-  LZ4CompressContext* context = nullptr;
+  LZ4CompressContext *context = nullptr;
 };
+
+class SnappySlicesSource : public snappy::Source {
+ public:
+  explicit SnappySlicesSource(const std::vector<KSlice>& slices) {
+    for (auto& slice : slices) {
+      // We filter empty slice here to avoid complicated process
+      if (slice.data_ == 0) {
+        continue;
+      }
+      available_ += slice.data_size_;
+      slices_.push_back(slice);
+    }
+  }
+
+  ~SnappySlicesSource() override = default;
+
+  // Return the number of bytes left to read from the source
+  size_t Available() const override { return available_; }
+
+  // Peek at the next flat region of the source.  Does not reposition
+  // the source.  The returned region is empty iff Available()==0.
+  //
+  // Returns a pointer to the beginning of the region and store its
+  // length in *len.
+  //
+  // The returned region is valid until the next call to Skip() or
+  // until this object is destroyed, whichever occurs first.
+  //
+  // The returned region may be larger than Available() (for example
+  // if this ByteSource is a view on a substring of a larger source).
+  // The caller is responsible for ensuring that it only reads the
+  // Available() bytes.
+  const char* Peek(size_t* len) override {
+    if (available_ == 0) {
+      *len = 0;
+      return nullptr;
+    }
+    // we should assure that *len is not 0
+    *len = slices_[cur_slice_].data_size_ - slice_off_;
+    return slices_[cur_slice_].data_ + slice_off_;
+  }
+
+  // Skip the next n bytes.  Invalidates any buffer returned by
+  // a previous call to Peek().
+  // REQUIRES: Available() >= n
+  void Skip(size_t n) override {
+    // DCHECK(available_ >= n);
+    available_ -= n;
+    while (n > 0) {
+      auto left = slices_[cur_slice_].data_size_ - slice_off_;
+      if (left > n) {
+        // n can be digest in current slice
+        slice_off_ += n;
+        return;
+      }
+      slice_off_ = 0;
+      cur_slice_++;
+      n -= left;
+    }
+  }
+
+ private:
+  std::vector<KSlice> slices_;
+  size_t available_{0};
+  size_t cur_slice_{0};
+  size_t slice_off_{0};
+};
+
+class SnappyBlockCompressor : public BlockCompressor {
+ public:
+  SnappyBlockCompressor() : BlockCompressor(CompressionTypePB::SNAPPY_COMPRESSION) {}
+
+  static const SnappyBlockCompressor* Instance() {
+    static SnappyBlockCompressor s_instance;
+    return &s_instance;
+  }
+
+  ~SnappyBlockCompressor() override = default;
+
+  KStatus CompressBlock(const KSlice& input, KSlice* output, k_bool use_compressed_buff, size_t uncompressed_size,
+                        QuickString* compressed_fast, std::string* compressed_std) const override {
+    snappy::RawCompress(input.data_, input.data_size_, output->data_, &output->data_size_);
+    return KStatus::SUCCESS;
+  }
+
+  KStatus DecompressBlock(const KSlice& input, KSlice* output) const override {
+    if (!snappy::RawUncompress(input.data_, input.data_size_, output->data_)) {
+      return KStatus::FAIL;
+    }
+    // NOTE: GetUncompressedLength only takes O(1) time
+    snappy::GetUncompressedLength(input.data_, input.data_size_, &output->data_size_);
+    return KStatus::SUCCESS;
+  }
+
+  KStatus CompressBlock(const std::vector<KSlice>& inputs, KSlice* output, k_bool use_compression_buffer,
+                        size_t uncompressed_size, QuickString* compressed_fast,
+                        std::string* compressed_std) const override {
+    SnappySlicesSource source(inputs);
+    snappy::UncheckedByteArraySink sink(output->data_);
+    output->data_size_ = snappy::Compress(&source, &sink);
+    return KStatus::SUCCESS;
+  }
+
+  size_t CalculateMaxCompressedLength(size_t len) const override { return snappy::MaxCompressedLength(len); }
+};
+
 KStatus GetBlockCompressor(CompressionTypePB type, const BlockCompressor** compressor, int compression_level) {
   switch (type) {
     case CompressionTypePB::NO_COMPRESSION:
@@ -256,6 +362,9 @@ KStatus GetBlockCompressor(CompressionTypePB type, const BlockCompressor** compr
       break;
     case CompressionTypePB::LZ4_COMPRESSION:
       *compressor = Lz4BlockCompressor::Instance();
+      break;
+    case CompressionTypePB::SNAPPY_COMPRESSION:
+      *compressor = SnappyBlockCompressor::Instance();
       break;
     default:
       return KStatus::FAIL;

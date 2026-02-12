@@ -66,6 +66,7 @@ class BaseOperator {
         is_final_operator_(other.is_final_operator_),
         rpcSpecInfo_(other.rpcSpecInfo_),
         pipeline_(other.pipeline_),
+        use_query_compress_type_(other.use_query_compress_type_),
         use_query_short_circuit_(other.use_query_short_circuit_),
         output_type_oid_(other.output_type_oid_),
         post_(other.post_),
@@ -116,7 +117,9 @@ class BaseOperator {
   bool isClone() { return is_clone_; }
 
   void SetUseQueryShortCircuit(bool use) { use_query_short_circuit_ = use; }
+  void SetUseUseCompressType(k_int64 use) { use_query_compress_type_ = use; }
   bool IsUseQueryShortCircuit() { return use_query_short_circuit_; }
+  k_int64 IsUseUseCompressType() { return use_query_compress_type_; }
 
   void SetOutputTypeOid(const vector<k_uint32>& output_type_oid) { output_type_oid_ = std::move(output_type_oid); }
   vector<k_uint32> GetOutputTypeOid() { return output_type_oid_; }
@@ -288,6 +291,7 @@ class BaseOperator {
   PipelineGroup* pipeline_{nullptr};
 
   bool use_query_short_circuit_{false};
+  k_int64 use_query_compress_type_{0};
 
   vector<k_uint32> output_type_oid_;
 
