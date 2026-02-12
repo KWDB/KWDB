@@ -2761,13 +2761,13 @@ KStatus TsVGroup::CalcPartitionAgg() {
       continue;
     }
 #endif
-    LOG_INFO("Calc partition[%s] agg begin", par_version->GetPartitionPath().c_str());
     std::map<std::shared_ptr<TsTableSchemaManager>, ClassifiedEntities> cla_entities;
     bool should_calc = false;
     GetCalcEntities(par_id, par_version, table_entity_map, cla_entities, &should_calc);
     if (!should_calc) {
       continue;
     }
+    LOG_INFO("Calc partition[%s] agg begin", par_version->GetPartitionPath().c_str());
     auto file_number = version_manager_->NewFileNumber();
     fs::path agg_path = par_version->GetPartitionPath() / AggFileName(file_number);
     auto partition_agg_builder =
@@ -2808,8 +2808,8 @@ KStatus TsVGroup::CalcPartitionAgg() {
       TsStorageIterator* raw_iter = nullptr;
 
       s = GetIterator(ctx_p, metric_schema->GetVersion(), classified_entities.calc_entities_, ts_spans, block_filter,
-                              scan_cols, scan_cols, agg_extend_cols, scan_agg_types, tb_schema,
-                              metric_schema, &raw_iter, self, ts_points, false, false, true);
+                      scan_cols, scan_cols, agg_extend_cols, scan_agg_types, tb_schema,
+                      metric_schema, &raw_iter, self, ts_points, false, false, true);
       if (s != KStatus::SUCCESS) {
         return s;
       }
@@ -2820,7 +2820,7 @@ KStatus TsVGroup::CalcPartitionAgg() {
         bool is_finished = false;
         s = ts_iter_guard->Next(&res_set, &count, &is_finished);
         TsBufferBuilder agg_buffer;
-        uint32_t agg_header_size = (attrs.size()) * sizeof(uint32_t);
+        uint32_t agg_header_size = attrs.size() * sizeof(uint32_t);
         agg_buffer.resize(agg_header_size);
         int res_idx = 0;
         timestamp64 max_ts, min_ts;
@@ -2828,17 +2828,16 @@ KStatus TsVGroup::CalcPartitionAgg() {
           string col_agg;
           Defer agg_defer {[&]() {
             agg_buffer.append(col_agg);
-            uint32_t offset = agg_buffer.size() - agg_header_size;
+            const uint32_t offset = agg_buffer.size() - agg_header_size;
             memcpy(agg_buffer.data() + idx * sizeof(uint32_t), &offset, sizeof(uint32_t));
           }};
 
           DATATYPE col_type = idx == 0 ? DATATYPE::TIMESTAMP64 : static_cast<DATATYPE>(attrs[idx].type);
           bool is_var_col = isVarLenType(col_type);
 
-          bool is_null{false};
-          uint64_t col_count = *static_cast<uint64_t*>(res_set.data[res_idx][0]->mem);
+          uint64_t agg_count = *reinterpret_cast<uint64_t*>(res_set.data[res_idx][0]->mem);
           if (!is_var_col) {
-            if (col_count == 0) {
+            if (agg_count == 0) {
               res_idx += 4;
               continue;
             }
@@ -2849,13 +2848,13 @@ KStatus TsVGroup::CalcPartitionAgg() {
             res_idx++;
             // max
             if (idx == 0) {
-              max_ts = *static_cast<timestamp64*>(res_set.data[res_idx][0]->mem);
+              max_ts = *reinterpret_cast<timestamp64*>(res_set.data[res_idx][0]->mem);
             }
             memcpy(col_agg.data() + sizeof(uint64_t), res_set.data[res_idx][0]->mem, attrs[idx].size);
             res_idx++;
             // min
             if (idx == 0) {
-              min_ts = *static_cast<timestamp64*>(res_set.data[res_idx][0]->mem);
+              min_ts = *reinterpret_cast<timestamp64*>(res_set.data[res_idx][0]->mem);
             }
             memcpy(col_agg.data() + sizeof(uint64_t) + attrs[idx].size, res_set.data[res_idx][0]->mem, attrs[idx].size);
             res_idx++;
@@ -2866,7 +2865,7 @@ KStatus TsVGroup::CalcPartitionAgg() {
               res_idx++;
             }
           } else {
-            if (col_count == 0) {
+            if (agg_count == 0) {
               res_idx += 3;
               continue;
             }
@@ -2876,14 +2875,14 @@ KStatus TsVGroup::CalcPartitionAgg() {
             memcpy(col_agg.data(), res_set.data[res_idx][0]->mem, sizeof(uint64_t));
             res_idx++;
             // max
-            uint16_t max_len =  res_set.data[res_idx][0]->getVarColDataLen(0);
+            uint16_t max_len =  res_set.data[res_idx][0]->getDataLen(0);
             memcpy(col_agg.data() + sizeof(uint64_t), &max_len, sizeof(uint16_t));
-            col_agg.append(static_cast<char*>(res_set.data[res_idx][0]->getVarColData(0)), max_len);
+            col_agg.append(res_set.data[res_idx][0]->getData(0) + sizeof(uint16_t), max_len);
             res_idx++;
             // min
-            uint16_t min_len =  res_set.data[res_idx][0]->getVarColDataLen(0);
+            uint16_t min_len =  res_set.data[res_idx][0]->getDataLen(0);
             memcpy(col_agg.data() + sizeof(uint64_t) + sizeof(uint16_t), &min_len, sizeof(uint16_t));
-            col_agg.append(static_cast<char*>(res_set.data[res_idx][0]->getVarColData(0)), min_len);
+            col_agg.append(res_set.data[res_idx][0]->getData(0) + sizeof(uint16_t), min_len);
             res_idx++;
           }
         }
