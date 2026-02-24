@@ -30,6 +30,6 @@ void k_free(void *ptr) noexcept;
 }
 #endif
 
-extern std::atomic<kwdbts::k_size_t> g_malloc_memory_size;
+extern std::atomic<int64_t> g_malloc_memory_size;
 
 #endif  // COMMON_SRC_H_MM_KMALLOC_H_

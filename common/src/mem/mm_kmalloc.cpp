@@ -15,7 +15,7 @@
 #include <cmath>
 #include <malloc.h>
 
-std::atomic<std::size_t> g_malloc_memory_size = 0; //  The requested memory size
+std::atomic<int64_t> g_malloc_memory_size = 0; //  The requested memory size
 
 void *k_malloc(std::size_t size) noexcept {
   void *p = malloc(size);

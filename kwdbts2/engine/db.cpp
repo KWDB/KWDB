@@ -26,6 +26,7 @@
 #include "raft_store.h"
 #include "ts_engine.h"
 #include "ts_lru_block_cache.h"
+#include "mm_kmalloc.h"
 
 #ifndef KWBASE_OSS
 #include "ts_config_autonomy.h"
@@ -1205,7 +1206,7 @@ TSStatus TSClose(TSEngine* engine) {
 }
 
 void TSFree(void* ptr) {
-  free(ptr);
+  k_free(ptr);
 }
 
 void TSRegisterExceptionHandler(char *dir) {

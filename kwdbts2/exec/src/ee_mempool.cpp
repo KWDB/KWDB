@@ -54,7 +54,7 @@ EE_PoolInfoDataPtr EE_MemPoolInit(k_uint32 numOfBlock, k_uint32 blockSize) {
   pstPoolMsg->iBlockSize = blockSize;
   pstPoolMsg->iNumOfSumBlock = numOfBlock;
   pstPoolMsg->iSumOffset = iSumSize;
-
+  pstPoolMsg->iStringHeapSize = iSumSize * 2;
   std::memset(pstPoolMsg->data_, 0, iSumSize);
   for (k_uint32 i = 0; i < numOfBlock; ++i) {
     pstPoolMsg->iFreeList[i] = i;
@@ -70,6 +70,7 @@ EE_PoolInfoDataPtr EE_MemPoolInit(k_uint32 numOfBlock, k_uint32 blockSize) {
 k_char *EE_MemPoolMalloc(kwdbts::EE_PoolInfoDataPtr pstPoolMsg, k_size_t iMallocLen) {
   k_char *data = nullptr;
   EE_PoolInfoDataPtr pstTemPtr = pstPoolMsg;
+  // || g_malloc_memory_size > MAX_STRING_HEAP_SIZE
   if (pstTemPtr == nullptr) {
     return nullptr;
   }

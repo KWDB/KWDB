@@ -19,6 +19,8 @@
 #include "ee_sort_compare.h"
 #include "ee_timestamp_utils.h"
 #include "lg_api.h"
+#include "mm_kmalloc.h"
+
 namespace kwdbts {
 // %.g buffer size is 64 characters (including null terminator)
 #define BUF_SIZE 64
@@ -1000,7 +1002,7 @@ KStatus DataChunk::Encoding(kwdbContext_p ctx,
     encoding_buf_ = msgBuffer->data;
     encoding_len_ = msgBuffer->len;
   } else {
-    free(msgBuffer->data);
+    k_free(msgBuffer->data);
   }
   delete msgBuffer;
   if (is_data_owner_) {

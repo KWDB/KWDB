@@ -44,7 +44,7 @@ namespace kwdbts {
 // Estimate sketch for each column
 struct SketchSpec {
     // Algorithm for calculating count-distinct
-    k_uint32 sketch_type{0};
+    k_int32 sketch_type{0};
     // Estimate sketch
     std::shared_ptr<Sketch> sketch;
     // Whether you use histogram

@@ -108,6 +108,7 @@ class DataChunk : public IChunk {
 
   // data size in data chunk
   inline k_uint32 Size() { return data_size_; }
+  inline k_uint32 TotalSize() const { return data_size_ + var_str_container_->len; }
 
   /* override methods */
   virtual DatumPtr GetData(k_uint32 row, k_uint32 col);

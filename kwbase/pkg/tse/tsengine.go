@@ -1606,8 +1606,8 @@ func (r *TsEngine) tsVectorizedExecute(
 				copy(offset[:], colOffset[:])
 				buf := C.GoBytes(unsafe.Pointer(colData.data_ptr_), C.int(offset[rev.DataCount]))
 				coldata.BytesFromArrowSerializationFormat(rev.Data[i].Bytes(), buf, offset)
-				C.TSFree(unsafe.Pointer(colData.data_ptr_))
-				C.TSFree(unsafe.Pointer(colData.offset_))
+				C.free(unsafe.Pointer(colData.data_ptr_))
+				C.free(unsafe.Pointer(colData.offset_))
 			default:
 				err = fmt.Errorf("Unknown column return type")
 				break
@@ -1617,8 +1617,8 @@ func (r *TsEngine) tsVectorizedExecute(
 		if rev.IsDataOwner {
 			C.TsMemPoolFree(unsafe.Pointer(retInfo.vectorize_data.data_))
 		}
-		C.TSFree(unsafe.Pointer(retInfo.vectorize_data.column_))
-		C.TSFree(unsafe.Pointer(retInfo.vectorize_data.column_data_))
+		C.free(unsafe.Pointer(retInfo.vectorize_data.column_))
+		C.free(unsafe.Pointer(retInfo.vectorize_data.column_data_))
 	}
 	if retInfo.ret < 1 {
 		if retInfo.len > 0 {
@@ -1629,7 +1629,7 @@ func (r *TsEngine) tsVectorizedExecute(
 				code = code >> 6
 			}
 			tsRespInfo.Buf = C.GoBytes(unsafe.Pointer(retInfo.value), C.int(retInfo.len))
-			C.TSFree(unsafe.Pointer(retInfo.value))
+			C.free(unsafe.Pointer(retInfo.value))
 			err = pgerror.Newf(string(strCode), string(tsRespInfo.Buf))
 		} else {
 			err = fmt.Errorf("Error Code: %d", tsRespInfo.Code)
