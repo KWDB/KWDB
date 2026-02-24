@@ -2823,7 +2823,8 @@ KStatus TsVGroup::CalcPartitionAgg() {
         uint32_t agg_header_size = attrs.size() * sizeof(uint32_t);
         agg_buffer.resize(agg_header_size);
         int res_idx = 0;
-        timestamp64 max_ts, min_ts;
+        timestamp64 max_ts{INVALID_TS};
+        timestamp64 min_ts{INVALID_TS};
         for (int idx = 0; idx < attrs.size(); idx++) {
           string col_agg;
           Defer agg_defer {[&]() {
