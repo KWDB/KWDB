@@ -108,12 +108,13 @@ extern thread_local EEPgErrorInfo g_pg_error_info;
 
 enum TsNextRetState {  DML_NEXT, DML_VECTORIZE_NEXT, DML_PG_RESULT };
 
-#define OPERATOR_DIRECT_ENCODING(ctx, output_encoding, use_query_short_circuit, \
-                                 use_query_compress_type_, output_type_oid, thd, chunk)       \
+#define OPERATOR_DIRECT_ENCODING(ctx, output_encoding, use_query_short_circuit,                   \
+                                 use_query_compress_type_, output_type_oid, floatPrec, thd, chunk) \
   if (output_encoding) {                                                 \
     KStatus ret =                                                        \
         chunk->Encoding(ctx, thd->GetPgEncode(), use_query_short_circuit, use_query_compress_type_, \
-                        thd->GetCommandLimit(), output_type_oid, thd->GetCountForLimit());    \
+                        thd->GetCommandLimit(), output_type_oid,         \
+                        floatPrec, thd->GetCountForLimit());             \
     if (ret != SUCCESS) {                                                \
       EEPgErrorInfo::SetPgErrorInfo(ERRCODE_OUT_OF_MEMORY,               \
                                     "Insufficient memory");              \

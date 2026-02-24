@@ -1678,7 +1678,6 @@ func (h ConnectionHandler) ExecRestfulStmt(ctx context.Context) (RestfulRes, err
 		ex.phaseTimes[sessionQueryReceived] = tcmd.TimeReceived
 		ex.phaseTimes[sessionStartParse] = tcmd.ParseStart
 		ex.phaseTimes[sessionEndParse] = tcmd.ParseEnd
-
 		if !curStmt.Insertdirectstmt.InsertFast {
 			stmtCtx := withStatement(ctx, ex.curStmt)
 			ev, payload, err = ex.execStmt(stmtCtx, curStmt, stmtRes, nil /* pinfo */)

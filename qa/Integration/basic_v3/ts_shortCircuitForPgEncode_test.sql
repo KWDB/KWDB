@@ -1,5 +1,3 @@
-set cluster setting sql.pg_encode_short_circuit.enabled = true;
-
 -- create database.
 drop database if exists test cascade;
 create database test;
@@ -159,4 +157,3 @@ insert into test_select_timebucket_ms.tb3 values('0002-06-06 11:15:15.783','2024
 
 select time_bucket(k_timestamp, '12960000000ms') as tb from test_select_timebucket_ms.tb group by tb order by tb;
 drop database if exists test_select_timebucket_ms cascade;
-set cluster setting sql.pg_encode_short_circuit.enabled = false;

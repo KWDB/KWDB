@@ -332,7 +332,7 @@ class DataChunk : public IChunk {
   KStatus Encoding(kwdbContext_p ctx, TsNextRetState nextState,
                    bool use_query_short_circuit, k_int64 use_query_compress_type_, k_int64* command_limit,
                    const vector<k_uint32>& output_type_oid,
-                   std::atomic<k_int64>* count_for_limit);
+                   k_int64 floatPrec, std::atomic<k_int64>* count_for_limit);
   /**
    * @brief Encode data at coordinate location (row, col) using kwbase protocol.
    * @param[in] ctx
@@ -349,8 +349,8 @@ class DataChunk : public IChunk {
    * @param[in] row
    * @param[in] info
    */
-  KStatus PgResultData(kwdbContext_p ctx, k_uint32 row,
-                       const EE_StringInfo& info, const vector<k_uint32> &t_is_float8);
+  KStatus PgResultData(kwdbContext_p ctx, k_uint32 row, const EE_StringInfo& info,
+                       const vector<k_uint32> &t_is_float8, k_int64 floatPrec);
   KStatus PgOriResultData(kwdbContext_p ctx, const EE_StringInfo& info);
   KStatus PgCompressResultData(kwdbContext_p ctx, const BlockCompressor* compress_codec,
                        const EE_StringInfo& info, CompressionTypePB type);

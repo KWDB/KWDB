@@ -39,6 +39,14 @@ void d2fixed_buffered(double d, uint32_t precision, char* result);
 int d2exp_buffered_n(double d, uint32_t precision, char* result);
 void d2exp_buffered(double d, uint32_t precision, char* result);
 
+int d2s_buffered_n(double f, char* result);
+void d2s_buffered(double f, char* result);
+
+// Convert scientific notation string to fixed-point notation.
+// Input: result from d2s_buffered (e.g., "1.23E+5")
+// Output: non-exponential format (e.g., "123" or "0.0123")
+void d2s_exp_to_fixed(char* result);
+
 #ifdef __cplusplus
 }
 

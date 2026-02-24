@@ -120,6 +120,7 @@ EEIteratorErrCode LocalOutboundOperator::Next(kwdbContext_p ctx,
                              use_query_short_circuit_,
                              use_query_compress_type_,
                              output_type_oid_,
+                             floatPrec_,
                              thd,
                              chunk);
   }

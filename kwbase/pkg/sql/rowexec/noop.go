@@ -27,7 +27,6 @@ package rowexec
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"gitee.com/kwbasedb/kwbase/pkg/kv"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfra"
@@ -119,8 +118,38 @@ func newNoopProcessor(
 
 // RunShortCircuit is part of the Processor interface.
 func (n *noopProcessor) RunShortCircuit(ctx context.Context, ttr execinfra.TSReader) error {
-	// start a goroutine to receive local data.
 	startTime := timeutil.Now()
+	n.execShortCircuit(ctx, ttr)
+
+	ctx = n.Start(ctx)
+	dst := n.Out.Output()
+	for {
+		row, meta := n.NextShortCircuitMeta()
+		// Emit the row; stop if no more rows are needed.
+		if row != nil || meta != nil {
+			switch dst.Push(row, meta) {
+			case execinfra.NeedMoreRows:
+				dst.AddStats(0, row != nil)
+				continue
+			case execinfra.DrainRequested:
+				execinfra.DrainAndForwardMetadata(ctx, n, dst)
+				dst.ProducerDone()
+				dst.AddStats(timeutil.Since(startTime), row != nil)
+				return nil
+			case execinfra.ConsumerClosed:
+				execinfra.HandleConsumerClosed(n, dst, startTime, row)
+				return nil
+			}
+		}
+		// row == nil && meta == nil: the source has been fully drained.
+		dst.ProducerDone()
+		dst.AddStats(timeutil.Since(startTime), row != nil)
+		return nil
+	}
+}
+
+// execShortCircuit get data from AE and push to commandResult.
+func (n *noopProcessor) execShortCircuit(ctx context.Context, ttr execinfra.TSReader) {
 	go func() {
 		ttr := ttr.(*TsTableReader)
 		dst := ttr.Out.Output()
@@ -146,21 +175,27 @@ func (n *noopProcessor) RunShortCircuit(ctx context.Context, ttr execinfra.TSRea
 			}
 		}
 	}()
+}
 
-	ctx = n.Start(ctx)
-	dst := n.Out.Output()
-	for {
+// NextShortCircuitMeta Receive the results of short circuiting goroutines and meta data from other nodes.
+func (n *noopProcessor) NextShortCircuitMeta() (
+	sqlbase.EncDatumRow,
+	*execinfrapb.ProducerMetadata,
+) {
+	for n.State == execinfra.StateRunning {
 		row, meta := n.input.Next()
-		if row == nil && meta == nil {
-			// query short circuit end.
-			if n.FinishTrace != nil {
-				meta := n.outputStatsToTraceShortCircuit(startTime)
-				dst.Push(nil, meta)
+		if meta != nil {
+			if meta.Err != nil {
+				n.MoveToDraining(nil /* err */)
 			}
-			return nil
+			return nil, meta
 		}
-		dst.Push(row, meta)
+		if row == nil {
+			n.MoveToDraining(nil /* err */)
+			break
+		}
 	}
+	return nil, n.DrainHelper()
 }
 
 // InitProcessorProcedure init processor in procedure
@@ -387,20 +422,4 @@ func (n *noopProcessor) outputStatsToTrace() {
 			sp, &OrdinalityStats{InputStats: is},
 		)
 	}
-}
-
-// outputStatsToTraceShortCircuit outputs the collected noop stats to the trace when RunShortCircuit.
-func (n *noopProcessor) outputStatsToTraceShortCircuit(
-	startTime time.Time,
-) *execinfrapb.ProducerMetadata {
-	if sp := opentracing.SpanFromContext(n.PbCtx()); sp != nil {
-		tracing.SetSpanStats(
-			sp, &OrdinalityStats{InputStats: InputStats{StallTime: timeutil.Since(startTime)}},
-		)
-	}
-	if trace := execinfra.GetTraceData(n.PbCtx()); trace != nil {
-		meta := execinfrapb.ProducerMetadata{TraceData: trace}
-		return &meta
-	}
-	return nil
 }

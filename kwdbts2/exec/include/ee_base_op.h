@@ -69,6 +69,7 @@ class BaseOperator {
         use_query_compress_type_(other.use_query_compress_type_),
         use_query_short_circuit_(other.use_query_short_circuit_),
         output_type_oid_(other.output_type_oid_),
+        floatPrec_(other.floatPrec_),
         post_(other.post_),
         collection_(other.collection_) {
     if (nullptr != collection_) {
@@ -123,6 +124,9 @@ class BaseOperator {
 
   void SetOutputTypeOid(const vector<k_uint32>& output_type_oid) { output_type_oid_ = std::move(output_type_oid); }
   vector<k_uint32> GetOutputTypeOid() { return output_type_oid_; }
+
+  void SetFloatPrec(const k_int64 floatPrec) { floatPrec_ = floatPrec; }
+  k_int64 GetFloatPrec() { return floatPrec_; }
 
   virtual bool isSink() { return false; }
 
@@ -294,6 +298,7 @@ class BaseOperator {
   k_int64 use_query_compress_type_{0};
 
   vector<k_uint32> output_type_oid_;
+  k_int64 floatPrec_;
 
  public:
   PostProcessSpec* post_{nullptr};

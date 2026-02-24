@@ -1,5 +1,3 @@
-> set cluster setting sql.pg_encode_short_circuit.enabled = true;
-SET CLUSTER SETTING
 > drop database if exists test cascade;
 DROP DATABASE
 > create database test;
@@ -361,5 +359,3 @@ INSERT 1
 (3 rows)
 > drop database if exists test_select_timebucket_ms cascade;
 DROP DATABASE
-> set cluster setting sql.pg_encode_short_circuit.enabled = false;
-SET CLUSTER SETTING

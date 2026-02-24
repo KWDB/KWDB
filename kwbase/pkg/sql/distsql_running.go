@@ -949,6 +949,7 @@ type rowResultWriter interface {
 	// Note that the caller owns the row slice and might reuse it.
 	AddRow(ctx context.Context, row tree.Datums) error
 	AddPGResult(ctx context.Context, res []byte) error
+	IsCommandResult() bool
 	// AddPGComplete adds a pg complete flag.
 	AddPGComplete(cmd string, typ tree.StatementType, rowsAffected int)
 	IncrementRowsAffected(n int)
@@ -976,6 +977,10 @@ func (w *metadataCallbackWriter) AddMeta(ctx context.Context, meta *execinfrapb.
 // error. All other functions that deal with producing results panic.
 type errOnlyResultWriter struct {
 	err error
+}
+
+func (w *errOnlyResultWriter) IsCommandResult() bool {
+	return false
 }
 
 var _ rowResultWriter = &errOnlyResultWriter{}
@@ -1601,6 +1606,7 @@ func (dsp *DistSQLPlanner) GetPhysPlan(
 		recv.SetError(err)
 		return nil
 	}
+	planCtx.isCommandResult = recv.resultWriter.IsCommandResult()
 	dsp.FinalizePlan(planCtx, &physPlan)
 	recv.expectedRowsRead = int64(physPlan.TotalEstimatedScannedRows)
 	physPlan.SQL = stmt

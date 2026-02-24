@@ -155,6 +155,7 @@ EEIteratorErrCode NoopOperator::Next(kwdbContext_p ctx, DataChunkPtr &chunk) {
                              use_query_short_circuit_,
                              use_query_compress_type_,
                              output_type_oid_,
+                             floatPrec_,
                              thd,
                              chunk);
     fetcher_.Update(read_rows, (end - start).count(), bytes_read, 0, 0, chunk->Count());
@@ -279,6 +280,7 @@ EEIteratorErrCode PassThroughNoopOperaotr::Next(kwdbContext_p ctx, DataChunkPtr&
                              use_query_short_circuit_,
                              use_query_compress_type_,
                              output_type_oid_,
+                             floatPrec_,
                              thd,
                              chunk);
     fetcher_.Update(chunk->Count(), (end - start).count(), chunk->Count() * chunk->RowSize(), 0, 0, 0);

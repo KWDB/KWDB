@@ -328,6 +328,7 @@ KStatus Processors::BuildOperator(kwdbContext_p ctx) {
         output_type_oid.push_back(oid);
       }
       oper->SetOutputTypeOid(output_type_oid);
+      oper->SetFloatPrec(fspec_->floatprec());
     }
 
     // command_limit_ = post.commandlimit();
@@ -738,7 +739,7 @@ EEIteratorErrCode Processors::EncodeDataChunk(kwdbContext_p ctx,
   KStatus st = FAIL;
   if (is_pg) {
     for (k_uint32 row = 0; row < chunk->Count(); ++row) {
-      st = chunk->PgResultData(ctx, row, msgBuffer, {});
+      st = chunk->PgResultData(ctx, row, msgBuffer, {}, 17);
       if (st != SUCCESS) {
         EEPgErrorInfo::SetPgErrorInfo(ERRCODE_OUT_OF_MEMORY, "Insufficient memory");
         ret = EEIteratorErrCode::EE_ERROR;

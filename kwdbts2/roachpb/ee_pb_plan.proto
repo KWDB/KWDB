@@ -44,7 +44,9 @@ message TSFlowSpec {
 
   // when UseCompressType
   optional int64 UseCompressType = 8;
+
   repeated uint32 output_type_oid = 9;
+  optional int64 floatPrec = 10;
 }
 
 // Each processor has the following components:

@@ -198,6 +198,7 @@ EEIteratorErrCode DistinctOperator::Next(kwdbContext_p ctx, DataChunkPtr& chunk)
                              use_query_short_circuit_,
                              use_query_compress_type_,
                              output_type_oid_,
+                             floatPrec_,
                              thd,
                              chunk);
     fetcher_.Update(read_row_num, (end - start).count(), chunk->Count() * chunk->RowSize(), 0, 0, chunk->Count());

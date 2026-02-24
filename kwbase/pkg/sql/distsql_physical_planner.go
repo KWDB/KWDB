@@ -767,6 +767,8 @@ type PlanningCtx struct {
 
 	// cdcCtx used to build cdc filter
 	cdcCtx *CDCContext
+
+	isCommandResult bool
 }
 
 // CDCContext used to build cdc filter.
@@ -6991,7 +6993,7 @@ func (dsp *DistSQLPlanner) newLocalPlanningCtx(
 }
 
 var pgEncodeShortCircuitEnabled = settings.RegisterBoolSetting(
-	"sql.pg_encode_short_circuit.enabled", "enable the short circuit optimization", false,
+	"sql.pg_encode_short_circuit.enabled", "enable the short circuit optimization", true,
 )
 
 var pgClientCompressEncodeMode = settings.RegisterValidatedIntSetting(
@@ -7092,7 +7094,8 @@ func (dsp *DistSQLPlanner) FinalizePlan(planCtx *PlanningCtx, plan *PhysicalPlan
 	if pgEncodeShortCircuitEnabled.Get(&dsp.st.SV) && !planCtx.runningSubquery && !planCtx.ExtendedEvalCtx.IsInternalSQL &&
 		!planCtx.ExtendedEvalCtx.SessionData.OutFormats && len(plan.PlanToStreamColMap) == len(plan.ResultTypes) &&
 		planCtx.planner != nil && planCtx.planner.stmt != nil && planCtx.planner.stmt.AST.StatOp() != "CALL" &&
-		plan.AllProcessorsExecInTSEngine {
+		plan.AllProcessorsExecInTSEngine && planCtx.ExtendedEvalCtx.SessionData.ClientEncoding == "utf8" &&
+		planCtx.isCommandResult {
 		plan.UseQueryShortCircuit = true
 	}
 	plan.UseCompressType = pgClientCompressEncodeMode.Get(&dsp.st.SV)

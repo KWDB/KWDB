@@ -200,6 +200,11 @@ func (r *commandResult) AddPGResult(ctx context.Context, res []byte) error {
 	return nil
 }
 
+// IsCommandResult is part of the CommandResult interface.
+func (r *commandResult) IsCommandResult() bool {
+	return true
+}
+
 // IsLimit is part of the RestrictedCommandResult interface.
 func (r *commandResult) IsLimit() bool {
 	return false

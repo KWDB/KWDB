@@ -91,6 +91,7 @@ message TSFlowSpec {
   optional bool useQueryShortCircuit = 7 [(gogoproto.nullable) = false];
   optional int64 useCompressType = 8[(gogoproto.nullable) = false];
   repeated uint32 output_type_oid = 9;
+  optional int64 floatPrec = 10[(gogoproto.nullable) = false];
 }
 
 // TsInfo is info for AE.

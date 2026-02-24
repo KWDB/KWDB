@@ -384,7 +384,6 @@ func (ttr *TsTableReader) NextPgWire() (val []byte, code int, err error) {
 						return nil, 0, errors.Errorf("error ingesting remote spans: %s", err)
 					}
 				}
-				ttr.Out.Output().Push(nil, meta)
 			}
 			return nil, respInfo.Code, nil
 		case 1: // Success
@@ -477,6 +476,7 @@ func (ttr *TsTableReader) setupTsFlow(ctx context.Context) error {
 		OutputTypeOid[i] = uint32(typ.Oid())
 	}
 	tsFlowSpec.OutputTypeOid = OutputTypeOid
+	tsFlowSpec.FloatPrec = int64(ttr.FlowCtx.EvalCtx.SessionData.DataConversion.GetFloatPrec())
 
 	msg, err := protoutil.Marshal(tsFlowSpec)
 	if err != nil {

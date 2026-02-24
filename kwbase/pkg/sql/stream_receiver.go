@@ -169,6 +169,11 @@ func (srw *StreamReceiver) AddPGResult(_ context.Context, _ []byte) error {
 	return nil
 }
 
+// IsCommandResult implements the rowResultWriter interface.
+func (srw *StreamReceiver) IsCommandResult() bool {
+	return false
+}
+
 // AddRow implements the rowResultWriter interface.
 func (srw *StreamReceiver) AddRow(ctx context.Context, row tree.Datums) error {
 	if srw.err != nil {

@@ -97,9 +97,11 @@ static inline k_int32 fastIntToString(T value, char* buffer) {
   return pos;
 }
 
-static inline bool should_use_scientific(k_int32 exp, k_int32 precision) {
-  return (exp < -4) | (exp >= precision);
+static inline bool should_use_scientific(k_int32 exp, k_int32 precision, k_int64 floatPrec) {
+  k_int32 effective_precision = (floatPrec < 0) ? 6 : precision;
+  return (exp < -4) || (exp >= effective_precision);
 }
+
 static inline void generate_scientific(double d, k_int32 precision, char* buf) {
   d2exp_buffered(d, precision - 1, buf);
   char* e = strchr(buf, 'e');
@@ -138,18 +140,44 @@ static inline void generate_fixed(double d, k_int32 precision, k_int32 exp, char
     *(last_non_zero + 1) = '\0';
   }
 }
-// %.g core conversion function: returns number of characters written (excluding null terminator)
-static inline k_int32 ryu_snprintf_g(double d, k_int32 precision, char* result, k_bool isDecimal) {
+
+// Formats a floating-point number using %.g format.
+//
+// This function converts a double-precision floating-point value to a string
+// representation following the printf %.g format specification, with support
+// for custom precision control.
+//
+// Args:
+//   d: The floating-point value to format.
+//   precision: Number of significant digits (valid range: 1-17).
+//   result: Output buffer for the formatted string. Must have sufficient
+//           capacity (recommended: at least 64 bytes).
+//   buf_size: Size of the output buffer.
+//   isDecimal: If true, treats the value as a DECIMAL type, which affects
+//              precision handling behavior.
+//   floatPrec: User-specified precision mode:
+//              * -1: Use default precision (typically 6 significant digits)
+//              * (1-17): Fixed precision with the specified number of digits
+//
+// Returns:
+//   The number of characters written to the buffer (excluding null terminator).
+//
+// Example:
+//   char buf[64];
+//   int len = ryu_snprintf_g(3.14159, 17, buf, false, -1);
+//   // buf now contains "3.14159", len = 7
+static inline k_int32 ryu_snprintf_g(double d, k_int32 precision, char* result, size_t buf_size,
+                                     k_bool isDecimal, k_int64 floatPrec) {
   if (isnan(d)) {
     snprintf(result, sizeof(result), "%s", "nan");
     return 3;  // "nan" length is 3
   }
   if (isinf(d)) {
     if (d > 0) {
-      snprintf(result, sizeof(result), "%s", "inf");
-      return 3;  // "inf" length is 3
+      snprintf(result, sizeof(result), "%s", "+Inf");
+      return 4;  // "inf" length is 3
     } else {
-      snprintf(result, sizeof(result), "%s", "-inf");
+      snprintf(result, sizeof(result), "%s", "-Inf");
       return 4;  // "-inf" length is 4
     }
   }
@@ -163,7 +191,7 @@ static inline k_int32 ryu_snprintf_g(double d, k_int32 precision, char* result, 
   }
 
   k_int32 exp = fast_exponent(d);
-  bool use_scientific = should_use_scientific(exp, precision);
+  bool use_scientific = should_use_scientific(exp, precision, floatPrec);
 
   if (use_scientific) {
     // The maximum length of the result is 30.
@@ -180,10 +208,20 @@ static inline k_int32 ryu_snprintf_g(double d, k_int32 precision, char* result, 
       }
       result[pos] = '\0';
     } else {
-      generate_scientific(d, precision, result);
+      if (floatPrec == -1) {
+        d2s_buffered(d, result);
+      } else {
+        generate_scientific(d, precision, result);
+      }
     }
   } else {
-    generate_fixed(d, precision, exp, result);
+    // When floatPrec == -1, use d2s_buffered to output the shortest precise representation
+    if (floatPrec == -1) {
+      d2s_buffered(d, result);
+      d2s_exp_to_fixed(result);
+    } else {
+      generate_fixed(d, precision, exp, result);
+    }
   }
 
   // length same as snprintf behavior
@@ -199,7 +237,6 @@ static inline k_int32 ryu_snprintf_f(k_double64 d, k_int32 precision, char* buf,
         buf[buf_size - 1] = '\0';
         return buf_size - 1;
     }
-    return len;
 }
 
 class MemCompare {
@@ -889,9 +926,9 @@ KStatus DataChunk::Encoding(kwdbContext_p ctx,
                             k_int64 use_query_compress_type_,
                             k_int64 *command_limit,
                             const vector<k_uint32> &output_type_oid,
+                            k_int64 floatPrec,
                             std::atomic<k_int64> *count_for_limit) {
   KStatus st = KStatus::SUCCESS;
-
   if (DML_VECTORIZE_NEXT == nextState) {
     return st;
   }
@@ -939,7 +976,7 @@ KStatus DataChunk::Encoding(kwdbContext_p ctx,
             break;
           }
         }
-        st = PgResultData(ctx, row, msgBuffer, output_type_oid);
+        st = PgResultData(ctx, row, msgBuffer, output_type_oid, floatPrec);
         if (st != SUCCESS) {
           break;
         }
@@ -1429,25 +1466,40 @@ static inline k_uint8 format_timestamp_common(const CKTime& adjusted_time, k_boo
 
   // ns .123456789
   if (adjusted_time.t_timespec.tv_nsec != 0) {
-    *p++ = '.';
-    k_int64 nsec = adjusted_time.t_timespec.tv_nsec;
+    // Pre-calculate divisors to avoid repeated calculation
+    static constexpr k_int64 divisors[] = {
+        100000000,  // 10^8
+        10000000,   // 10^7
+        1000000,    // 10^6
+        100000,     // 10^5
+        10000,      // 10^4
+        1000,       // 10^3
+        100,        // 10^2
+        10,         // 10^1
+        1           // 10^0
+    };
 
-    *p++ = '0' + (nsec / 100000000);
-    nsec %= 100000000;
-    *p++ = '0' + (nsec / 10000000);
-    nsec %= 10000000;
-    *p++ = '0' + (nsec / 1000000);
-    nsec %= 1000000;
-    *p++ = '0' + (nsec / 100000);
-    nsec %= 100000;
-    *p++ = '0' + (nsec / 10000);
-    nsec %= 10000;
-    *p++ = '0' + (nsec / 1000);
-    nsec %= 1000;
-    *p++ = '0' + (nsec / 100);
-    nsec %= 100;
-    *p++ = '0' + (nsec / 10);
-    *p++ = '0' + (nsec % 10);
+    const k_int64 nsec = adjusted_time.t_timespec.tv_nsec;
+    char digits[9];
+
+    // Extract all 9 digits
+    for (k_int32 i = 0; i < 9; i++) {
+      digits[i] = '0' + ((nsec / divisors[i]) % 10);
+    }
+
+    // Find last non-zero digit
+    int last_non_zero = 8;
+    while (last_non_zero >= 0 && digits[last_non_zero] == '0') {
+      last_non_zero--;
+    }
+
+    // Output if needed
+    if (last_non_zero >= 0) {
+      *p++ = '.';
+      for (int i = 0; i <= last_non_zero; i++) {
+        *p++ = digits[i];
+      }
+    }
   }
 
   if (include_timezone) {
@@ -1531,7 +1583,7 @@ inline KStatus DataChunk::PgEncodeDecimal(DatumPtr raw, const EE_StringInfo& inf
     k_char buf[30] = {0};
     double d = static_cast<double>(val);
     // k_int32 n = snprintf(buf, sizeof(buf), "%.8g", d);
-    k_int32 n = ryu_snprintf_g(d, 16, buf, true);
+    k_int32 n = ryu_snprintf_g(d, 16, buf, sizeof(buf), true, 0);
     // Write the length of the column value
     if (ee_sendint(info, n, 4) != SUCCESS) {
       return FAIL;
@@ -1545,8 +1597,8 @@ inline KStatus DataChunk::PgEncodeDecimal(DatumPtr raw, const EE_StringInfo& inf
   return SUCCESS;
 }
 
-KStatus DataChunk::PgResultData(kwdbContext_p ctx, k_uint32 row,
-  const EE_StringInfo& info, const vector<k_uint32> &output_type_oid) {
+KStatus DataChunk::PgResultData(kwdbContext_p ctx, k_uint32 row, const EE_StringInfo& info,
+                                const vector<k_uint32>& output_type_oid, k_int64 floatPrec) {
   EnterFunc();
   k_uint32 temp_len = info->len;
   char* temp_addr = nullptr;
@@ -1663,7 +1715,7 @@ KStatus DataChunk::PgResultData(kwdbContext_p ctx, k_uint32 row,
         if (output_type_oid[col] == T_FLOAT4) {
           n = ryu_snprintf_f(d, 6, buf, sizeof(buf));
         } else {
-           n = ryu_snprintf_g(d, 17, buf, false);
+          n = ryu_snprintf_g(d, 17, buf, sizeof(buf), false, floatPrec);
          }
 
         if (std::isnan(d)) {
@@ -1782,7 +1834,11 @@ KStatus DataChunk::PgResultData(kwdbContext_p ctx, k_uint32 row,
         CKTime ck_time = getCKTime(val, col_info_[col].storage_type, ctx->timezone);
         tm ts{};
         ToGMT(ck_time.t_timespec.tv_sec - ck_time.t_abbv, ts);
-        strftime(ts_format_buf, 32, "%F %T", &ts);
+        if (floatPrec == -1) {
+          strftime(ts_format_buf, 32, "%F", &ts);
+        } else {
+          strftime(ts_format_buf, 32, "%F %T", &ts);
+        }
         k_uint8 format_len = strlen(ts_format_buf);
         format_len = strlen(ts_format_buf);
         // write the length of column value

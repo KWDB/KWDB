@@ -79,6 +79,11 @@ func (b *RowResultWriter) AddPGResult(ctx context.Context, res []byte) error {
 	return nil
 }
 
+// IsCommandResult implements the rowResultWriter interface.
+func (b *RowResultWriter) IsCommandResult() bool {
+	return false
+}
+
 // AddPGComplete implements the rowResultWriter interface.
 func (b *RowResultWriter) AddPGComplete(_ string, _ tree.StatementType, _ int) {}
 
@@ -104,6 +109,10 @@ type callbackResultWriter struct {
 	fn           func(ctx context.Context, row tree.Datums) error
 	rowsAffected int
 	err          error
+}
+
+func (c *callbackResultWriter) IsCommandResult() bool {
+	return false
 }
 
 var _ rowResultWriter = &callbackResultWriter{}

@@ -236,6 +236,7 @@ EEIteratorErrCode TableScanOperator::Next(kwdbContext_p ctx, DataChunkPtr& chunk
                              use_query_short_circuit_,
                              use_query_compress_type_,
                              output_type_oid_,
+                             floatPrec_,
                              thd,
                              chunk);
     auto end = std::chrono::high_resolution_clock::now();

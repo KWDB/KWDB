@@ -228,6 +228,7 @@ EEIteratorErrCode TagScanOperator::Next(kwdbContext_p ctx, DataChunkPtr& chunk) 
                              use_query_short_circuit_,
                              use_query_compress_type_,
                              output_type_oid_,
+                             floatPrec_,
                              thd,
                              chunk);
     fetcher_.Update(chunk->Count(), (end - start).count(), 0, 0, 0, 0);
