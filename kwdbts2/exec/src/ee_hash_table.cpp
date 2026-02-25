@@ -308,7 +308,10 @@ void LinearProbingHashTable::CopyGroups(IChunk* chunk, k_uint64 row,
     DatumPtr src = chunk->GetData(row, col);
     DatumPtr dest = GetTuple(loc) + group_offsets_[i];
 
-    if (IsStringType(group_types_[i])) {
+    if (IsVarStringType(group_types_[i])) {
+      auto len = *reinterpret_cast<k_uint16*>(src);
+      std::memcpy(dest, src, len + STRING_WIDE);
+    } else if (IsFixedStringType(group_types_[i])) {
       std::memcpy(dest, src, group_lens_[i] + STRING_WIDE);
     } else if (group_types_[i] == roachpb::DataType::DECIMAL) {
       std::memcpy(dest, src, group_lens_[i] + BOOL_WIDE);

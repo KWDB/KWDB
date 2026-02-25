@@ -276,7 +276,7 @@ class AggregateFunc {
 
 ////////////////// AnyNotNullAggregate /////////////////////////
 
-template<typename T>
+template<typename T, bool IS_VAR_STRING = false>
 class AnyNotNullAggregate : public AggregateFunc {
  public:
   AnyNotNullAggregate(k_uint32 col_idx, k_uint32 arg_idx, k_uint32 len) : AggregateFunc(col_idx, arg_idx, len) {
@@ -293,7 +293,12 @@ class AnyNotNullAggregate : public AggregateFunc {
     k_bool is_dest_null = AggregateFunc::IsNull(bitmap, col_idx_);
     if (is_dest_null) {
       DatumPtr src = chunk->GetData(line, arg_idx_[0]);
-      std::memcpy(dest + offset_, src, len_);
+      if (IS_VAR_STRING) {
+        auto len = *reinterpret_cast<k_uint16*>(src);
+        std::memcpy(dest + offset_, src, len + STRING_WIDE);
+      } else {
+        std::memcpy(dest + offset_, src, len_);
+      }
       AggregateFunc::SetNotNull(bitmap, col_idx_);
     }
   }
@@ -380,7 +385,7 @@ class AnyNotNullAggregate : public AggregateFunc {
 
 ////////////////////////// MaxAggregate //////////////////////////
 
-template<typename T>
+template<typename T, bool IS_VAR_STRING = false>
 class MaxAggregate : public AggregateFunc {
  private:
   bool is_dest_null_ = true;
@@ -403,7 +408,12 @@ class MaxAggregate : public AggregateFunc {
     if (is_dest_null) {
       // The aggregate row of the bucket is assigned for the first time and then
       // returned
-      std::memcpy(dest + offset_, src, len_);
+      if (IS_VAR_STRING) {
+        auto len = *reinterpret_cast<k_uint16*>(src);
+        std::memcpy(dest + offset_, src, len + STRING_WIDE);
+      } else {
+        std::memcpy(dest + offset_, src, len_);
+      }
       AggregateFunc::SetNotNull(bitmap, col_idx_);
       return;
     }
@@ -414,7 +424,7 @@ class MaxAggregate : public AggregateFunc {
       k_uint16 dest_len = *reinterpret_cast<k_uint16*>(dest + offset_);
       auto dest_val = std::string_view(dest + offset_ + sizeof(k_uint16), dest_len);
       if (src_val.compare(dest_val) > 0) {
-        std::memcpy(dest + offset_, src, len_);
+        std::memcpy(dest + offset_, src, src_len + STRING_WIDE);
       }
     } else if constexpr (std::is_same_v<T, k_decimal>) {
       if (AggregateFunc::CompareDecimal(src, dest + offset_) > 0) {
@@ -789,7 +799,7 @@ class MaxAggregate : public AggregateFunc {
 };
 
 ////////////////////////// MinAggregate //////////////////////////
-template<typename T>
+template<typename T, bool IS_VAR_STRING = false>
 class MinAggregate : public AggregateFunc {
  private:
   bool is_dest_null_ = true;
@@ -812,7 +822,12 @@ class MinAggregate : public AggregateFunc {
     if (is_dest_null) {
       // The aggregate row of the bucket is assigned for the first time and then
       // returned
-      std::memcpy(dest + offset_, src, len_);
+      if (IS_VAR_STRING) {
+        auto src_len = *reinterpret_cast<k_uint16*>(src);
+        std::memcpy(dest + offset_, src, src_len + STRING_WIDE);
+      } else {
+        std::memcpy(dest + offset_, src, len_);
+      }
       AggregateFunc::SetNotNull(bitmap, col_idx_);
       return;
     }
@@ -823,7 +838,7 @@ class MinAggregate : public AggregateFunc {
       k_uint16 dest_len = *reinterpret_cast<k_uint16*>(dest + offset_);
       auto dest_val = std::string_view(dest + offset_ + sizeof(k_uint16), dest_len);
       if (src_val.compare(dest_val) < 0) {
-        std::memcpy(dest + offset_, src, len_);
+        std::memcpy(dest + offset_, src, src_len + STRING_WIDE);
       }
     } else if constexpr (std::is_same_v<T, k_decimal>) {
       if (AggregateFunc::CompareDecimal(src, dest + offset_) < 0) {
@@ -2539,7 +2554,12 @@ class LastAggregate : public AggregateFunc {
         return;
       }
       // first assign
-      std::memcpy(dest_ptr, src, len_ - sizeof(KTimestamp));
+      if (IS_STRING_FAMILY) {
+        auto len = *reinterpret_cast<k_uint16*>(src);
+        std::memcpy(dest_ptr, src, len + STRING_WIDE);
+      } else {
+        std::memcpy(dest_ptr, src, len_ - sizeof(KTimestamp));
+      }
       SetNotNull(bitmap, col_idx_);
       std::memcpy(dest_ptr + len_ - sizeof(KTimestamp), ts_ptr, sizeof(KTimestamp));
       return;
@@ -2547,7 +2567,12 @@ class LastAggregate : public AggregateFunc {
 
     auto last_ts = *reinterpret_cast<KTimestamp*>(dest_ptr + len_ - sizeof(KTimestamp));
     if (ts > last_ts && (ts <= point_ts)) {
-      std::memcpy(dest_ptr, src, len_ - sizeof(KTimestamp));
+      if (IS_STRING_FAMILY) {
+        auto len = *reinterpret_cast<k_uint16*>(src);
+        std::memcpy(dest_ptr, src, len + STRING_WIDE);
+      } else {
+        std::memcpy(dest_ptr, src, len_ - sizeof(KTimestamp));
+      }
       std::memcpy(dest_ptr + len_ - sizeof(KTimestamp), ts_ptr,
                   sizeof(KTimestamp));
     }
@@ -2715,7 +2740,12 @@ class LastRowAggregate : public AggregateFunc {
         SetNull(bitmap, col_idx_);
       } else {
         DatumPtr src = chunk->GetData(line, arg_idx_[0]);
-        std::memcpy(dest_ptr, src, len_ - sizeof(KTimestamp));
+        if (IS_STRING_FAMILY) {
+          auto len = *reinterpret_cast<k_uint16*>(src);
+          std::memcpy(dest_ptr, src, len + STRING_WIDE);
+        } else {
+          std::memcpy(dest_ptr, src, len_ - sizeof(KTimestamp));
+        }
         SetNotNull(bitmap, col_idx_);
       }
       std::memcpy(dest_ptr + len_ - sizeof(KTimestamp), ts_ptr, sizeof(KTimestamp));
@@ -3190,7 +3220,12 @@ class FirstAggregate : public AggregateFunc {
 
     if (is_dest_null) {
       //  first assign
-      std::memcpy(dest_ptr, src, len_ - sizeof(KTimestamp));
+      if (IS_STRING_FAMILY) {
+        auto len = *reinterpret_cast<k_uint16*>(src);
+        std::memcpy(dest_ptr, src, len + STRING_WIDE);
+      } else {
+        std::memcpy(dest_ptr, src, len_ - sizeof(KTimestamp));
+      }
       SetNotNull(bitmap, col_idx_);
       std::memcpy(dest_ptr + len_ - sizeof(KTimestamp), ts_ptr, sizeof(KTimestamp));
       return;
@@ -3199,7 +3234,12 @@ class FirstAggregate : public AggregateFunc {
     auto ts = *reinterpret_cast<KTimestamp*>(ts_ptr);
     auto first_ts = *reinterpret_cast<KTimestamp*>(dest_ptr + len_ - sizeof(KTimestamp));
     if (ts < first_ts) {
-      std::memcpy(dest_ptr, src, len_ - sizeof(KTimestamp));
+      if (IS_STRING_FAMILY) {
+        auto len = *reinterpret_cast<k_uint16*>(src);
+        std::memcpy(dest_ptr, src, len + STRING_WIDE);
+      } else {
+        std::memcpy(dest_ptr, src, len_ - sizeof(KTimestamp));
+      }
       std::memcpy(dest_ptr + len_ - sizeof(KTimestamp), ts_ptr, sizeof(KTimestamp));
     }
   }
@@ -3352,7 +3392,12 @@ class FirstRowAggregate : public AggregateFunc {
         SetNull(bitmap, col_idx_);
       } else {
         DatumPtr src = chunk->GetData(line, arg_idx_[0]);
-        std::memcpy(dest_ptr, src, len_ - sizeof(KTimestamp));
+        if (IS_STRING_FAMILY) {
+          auto len = *reinterpret_cast<k_uint16*>(src);
+          std::memcpy(dest_ptr, src, len + STRING_WIDE);
+        } else {
+          std::memcpy(dest_ptr, src, len_ - sizeof(KTimestamp));
+        }
         SetNotNull(bitmap, col_idx_);
       }
       std::memcpy(dest_ptr + len_ - sizeof(KTimestamp), ts_ptr, sizeof(KTimestamp));
@@ -4401,7 +4446,12 @@ class MaxExtendAggregate : public AggregateFunc {
           AggregateFunc::SetNull(bitmap, col_idx_);
         } else {
           AggregateFunc::SetNotNull(bitmap, col_idx_);
-          std::memcpy(dest + offset_, src_extend, len_);
+          if (is_string_) {
+            k_uint16 len = *reinterpret_cast<k_uint16*>(src_extend);
+            std::memcpy(dest + offset_, src_extend, len + STRING_WIDE);
+          } else {
+            std::memcpy(dest + offset_, src_extend, len_);
+          }
         }
       }
     } else if constexpr (std::is_same_v<T, k_decimal>) {
@@ -4415,7 +4465,12 @@ class MaxExtendAggregate : public AggregateFunc {
             AggregateFunc::SetNull(bitmap, col_idx_);
           } else {
             AggregateFunc::SetNotNull(bitmap, col_idx_);
-            std::memcpy(dest + offset_, src_extend, len_);
+            if (is_string_) {
+              k_uint16 len = *reinterpret_cast<k_uint16*>(src_extend);
+              std::memcpy(dest + offset_, src_extend, len + STRING_WIDE);
+            } else {
+              std::memcpy(dest + offset_, src_extend, len_);
+            }
           }
         }
       } else {
@@ -4424,7 +4479,12 @@ class MaxExtendAggregate : public AggregateFunc {
             AggregateFunc::SetNull(bitmap, col_idx_);
           } else {
             AggregateFunc::SetNotNull(bitmap, col_idx_);
-            std::memcpy(dest + offset_, src_extend, len_);
+            if (is_string_) {
+              k_uint16 len = *reinterpret_cast<k_uint16*>(src_extend);
+              std::memcpy(dest + offset_, src_extend, len + STRING_WIDE);
+            } else {
+              std::memcpy(dest + offset_, src_extend, len_);
+            }
           }
         }
       }
@@ -4821,7 +4881,12 @@ class MinExtendAggregate : public AggregateFunc {
           AggregateFunc::SetNull(bitmap, col_idx_);
         } else {
           AggregateFunc::SetNotNull(bitmap, col_idx_);
-          std::memcpy(dest + offset_, src_extend, len_);
+          if (is_string_) {
+            k_uint16 len = *reinterpret_cast<k_uint16*>(src_extend);
+            std::memcpy(dest + offset_, src_extend, len + STRING_WIDE);
+          } else {
+            std::memcpy(dest + offset_, src_extend, len_);
+          }
         }
       }
     } else if constexpr (std::is_same_v<T, k_decimal>) {
@@ -4835,7 +4900,12 @@ class MinExtendAggregate : public AggregateFunc {
             AggregateFunc::SetNull(bitmap, col_idx_);
           } else {
             AggregateFunc::SetNotNull(bitmap, col_idx_);
-            std::memcpy(dest + offset_, src_extend, len_);
+            if (is_string_) {
+              k_uint16 len = *reinterpret_cast<k_uint16*>(src_extend);
+              std::memcpy(dest + offset_, src_extend, len + STRING_WIDE);
+            } else {
+              std::memcpy(dest + offset_, src_extend, len_);
+            }
           }
         }
       } else {
@@ -4844,7 +4914,12 @@ class MinExtendAggregate : public AggregateFunc {
             AggregateFunc::SetNull(bitmap, col_idx_);
           } else {
             AggregateFunc::SetNotNull(bitmap, col_idx_);
-            std::memcpy(dest + offset_, src_extend, len_);
+            if (is_string_) {
+              k_uint16 len = *reinterpret_cast<k_uint16*>(src_extend);
+              std::memcpy(dest + offset_, src_extend, len + STRING_WIDE);
+            } else {
+              std::memcpy(dest + offset_, src_extend, len_);
+            }
           }
         }
       }

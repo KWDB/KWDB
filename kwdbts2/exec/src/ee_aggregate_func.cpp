@@ -85,12 +85,14 @@ AggregateFunc* AggregateFuncFactory::CreateMax(roachpb::DataType storage_type, k
       agg_func = KNEW MaxAggregate<k_double64>(col_index, col_id, len);
       break;
     case roachpb::DataType::CHAR:
-    case roachpb::DataType::VARCHAR:
-    case roachpb::DataType::NCHAR:
-    case roachpb::DataType::NVARCHAR:
     case roachpb::DataType::BINARY:
-    case roachpb::DataType::VARBINARY:
+    case roachpb::DataType::NCHAR:
       agg_func = KNEW MaxAggregate<String>(col_index, col_id, len + STRING_WIDE);
+      break;
+    case roachpb::DataType::VARCHAR:
+    case roachpb::DataType::NVARCHAR:
+    case roachpb::DataType::VARBINARY:
+      agg_func = KNEW MaxAggregate<String, true>(col_index, col_id, len + STRING_WIDE);
       break;
     case roachpb::DataType::DECIMAL:
       agg_func = KNEW MaxAggregate<k_decimal>(col_index, col_id, len + BOOL_WIDE);
@@ -133,12 +135,14 @@ AggregateFunc* AggregateFuncFactory::CreateMin(roachpb::DataType storage_type, k
       agg_func = KNEW MinAggregate<k_double64>(col_index, col_id, len);
       break;
     case roachpb::DataType::CHAR:
-    case roachpb::DataType::VARCHAR:
-    case roachpb::DataType::NCHAR:
-    case roachpb::DataType::NVARCHAR:
     case roachpb::DataType::BINARY:
-    case roachpb::DataType::VARBINARY:
+    case roachpb::DataType::NCHAR:
       agg_func = KNEW MinAggregate<String>(col_index, col_id, len + STRING_WIDE);
+      break;
+    case roachpb::DataType::VARCHAR:
+    case roachpb::DataType::NVARCHAR:
+    case roachpb::DataType::VARBINARY:
+      agg_func = KNEW MinAggregate<String, true>(col_index, col_id, len + STRING_WIDE);
       break;
     case roachpb::DataType::DECIMAL:
       agg_func = KNEW MinAggregate<k_decimal>(col_index, col_id, len + BOOL_WIDE);
@@ -181,12 +185,14 @@ AggregateFunc* AggregateFuncFactory::CreateAnyNotNull(roachpb::DataType storage_
       agg_func = KNEW AnyNotNullAggregate<k_double64>(col_index, col_id, len);
       break;
     case roachpb::DataType::CHAR:
-    case roachpb::DataType::VARCHAR:
     case roachpb::DataType::NCHAR:
-    case roachpb::DataType::NVARCHAR:
     case roachpb::DataType::BINARY:
-    case roachpb::DataType::VARBINARY:
       agg_func = KNEW AnyNotNullAggregate<std::string>(col_index, col_id, len + STRING_WIDE);
+      break;
+    case roachpb::DataType::VARCHAR:
+    case roachpb::DataType::NVARCHAR:
+    case roachpb::DataType::VARBINARY:
+      agg_func = KNEW AnyNotNullAggregate<std::string, true>(col_index, col_id, len + STRING_WIDE);
       break;
     case roachpb::DataType::DECIMAL:
       agg_func = KNEW AnyNotNullAggregate<k_decimal>(col_index, col_id, len + BOOL_WIDE);

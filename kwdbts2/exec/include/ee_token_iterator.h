@@ -31,7 +31,9 @@
 #include <vector>
 #include "ee_lexer.h"
 
+#ifndef ALWAYS_INLINE
 #define ALWAYS_INLINE __attribute__((__always_inline__))
+#endif
 
 namespace kwdbts {
 class Tokens {

@@ -140,7 +140,7 @@ struct String {
      * calling
      *       3. Null terminator is copied even if source string length is 0
      */
-    const size_t length = str.length_ + 1;
+    const size_t length = str.length_;
     if ((alloc_length_ < length) || (!is_alloc_)) {
       return false;
     }

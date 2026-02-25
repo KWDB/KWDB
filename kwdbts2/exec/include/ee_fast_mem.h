@@ -23,7 +23,9 @@
 
 namespace kwdbts {
 constexpr std::size_t kAvx2VectorSize = 32;
+#ifndef ALWAYS_INLINE
 #define ALWAYS_INLINE __attribute__((always_inline))
+#endif
 
 ALWAYS_INLINE inline int memcmp_inlined(const void* __restrict _lhs, const void* __restrict _rhs, size_t size) {
   const auto lhs = static_cast<const uint8_t*>(_lhs);
