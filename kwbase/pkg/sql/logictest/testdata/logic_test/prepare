@@ -225,8 +225,10 @@ ALTER TABLE f ADD COLUMN u int
 statement
 INSERT INTO f VALUES (1, 2)
 
-statement error cached plan must not change result type
+query II
 EXECUTE x
+----
+1 2
 
 # Ensure that plan changes prevent INSERTs from succeeding.
 
@@ -239,14 +241,17 @@ EXECUTE y (2, 3)
 statement
 ALTER TABLE f ADD COLUMN t int
 
-statement error cached plan must not change result type
+query III
 EXECUTE y (3, 4)
+----
+3 4 NULL
 
 query III
 SELECT * FROM f
 ----
 1 2 NULL
 2 3 NULL
+3 4 NULL
 
 # Ensure that we have a memory monitor for preparing statements
 

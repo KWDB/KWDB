@@ -1730,11 +1730,7 @@ func (c *conn) bufferRow(
 				fmtCode = formatCodes[i]
 			} else {
 				// default format code
-				if count == 1 {
-					fmtCode = formatCodes[0]
-				} else {
-					c.msgBuilder.setError(errors.Errorf("format code count %d less than result count %d", count, len(row)))
-				}
+				fmtCode = formatCodes[0]
 			}
 		}
 		switch fmtCode {

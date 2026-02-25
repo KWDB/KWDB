@@ -1720,7 +1720,7 @@ func TestPGWireResultChange(t *testing.T) {
 	if _, err := db.Exec(`INSERT INTO testing.f VALUES (1, 2)`); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := stmt.Exec(); !testutils.IsError(err, "must not change result type") {
+	if _, err := stmt.Exec(); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if err := stmt.Close(); err != nil {
@@ -1739,7 +1739,7 @@ func TestPGWireResultChange(t *testing.T) {
 	if err := db.QueryRow(`SELECT count(*) FROM testing.f`).Scan(&count); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := stmt.Exec(3, 4); !testutils.IsError(err, "must not change result type") {
+	if _, err := stmt.Exec(3, 4); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if err := stmt.Close(); err != nil {
@@ -1749,7 +1749,7 @@ func TestPGWireResultChange(t *testing.T) {
 	if err := db.QueryRow(`SELECT count(*) FROM testing.f`).Scan(&countAfter); err != nil {
 		t.Fatal(err)
 	}
-	if count != countAfter {
+	if count != countAfter-1 {
 		t.Fatalf("expected %d rows, got %d", count, countAfter)
 	}
 }

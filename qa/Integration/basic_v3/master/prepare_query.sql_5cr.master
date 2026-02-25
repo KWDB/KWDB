@@ -50,5 +50,178 @@ PREPARE
         12
         23
 (2 rows)
+> prepare p6 as select * from t1 order by ts;
+PREPARE
+> alter table t1 add column c int;
+ALTER TABLE
+> execute p1(0);
+             ts             | a  | b  |  c   | tag1 | tag2
+----------------------------+----+----+------+------+-------
+  2024-01-12 03:08:28+00:00 | 11 | 22 | NULL |   33 |   44
+  2024-01-12 03:08:29+00:00 | 22 | 33 | NULL |   33 |   44
+(2 rows)
+> execute p2(33);
+             ts             | a  | b  |  c   | tag1 | tag2
+----------------------------+----+----+------+------+-------
+  2024-01-12 03:08:28+00:00 | 11 | 22 | NULL |   33 |   44
+  2024-01-12 03:08:29+00:00 | 22 | 33 | NULL |   33 |   44
+(2 rows)
+> execute p3(0);
+  max
+-------
+   11
+   22
+(2 rows)
+> execute p4(33,0);
+  max
+-------
+   11
+   22
+(2 rows)
+> execute p5(1,33,0);
+  ?column?
+------------
+        12
+        23
+(2 rows)
+> execute p6;
+             ts             | a  | b  |  c   | tag1 | tag2
+----------------------------+----+----+------+------+-------
+  2024-01-12 03:08:28+00:00 | 11 | 22 | NULL |   33 |   44
+  2024-01-12 03:08:29+00:00 | 22 | 33 | NULL |   33 |   44
+(2 rows)
+> alter table t1 drop column c;
+ALTER TABLE
+> execute p1(0);
+             ts             | a  | b  | tag1 | tag2
+----------------------------+----+----+------+-------
+  2024-01-12 03:08:28+00:00 | 11 | 22 |   33 |   44
+  2024-01-12 03:08:29+00:00 | 22 | 33 |   33 |   44
+(2 rows)
+> execute p2(33);
+             ts             | a  | b  | tag1 | tag2
+----------------------------+----+----+------+-------
+  2024-01-12 03:08:28+00:00 | 11 | 22 |   33 |   44
+  2024-01-12 03:08:29+00:00 | 22 | 33 |   33 |   44
+(2 rows)
+> execute p3(0);
+  max
+-------
+   11
+   22
+(2 rows)
+> execute p4(33,0);
+  max
+-------
+   11
+   22
+(2 rows)
+> execute p5(1,33,0);
+  ?column?
+------------
+        12
+        23
+(2 rows)
+> execute p6;
+             ts             | a  | b  | tag1 | tag2
+----------------------------+----+----+------+-------
+  2024-01-12 03:08:28+00:00 | 11 | 22 |   33 |   44
+  2024-01-12 03:08:29+00:00 | 22 | 33 |   33 |   44
+(2 rows)
+> alter table t1 add tag tag3 varchar;
+ALTER TABLE
+> execute p1(0);
+             ts             | a  | b  | tag1 | tag2 | tag3
+----------------------------+----+----+------+------+-------
+  2024-01-12 03:08:28+00:00 | 11 | 22 |   33 |   44 | NULL
+  2024-01-12 03:08:29+00:00 | 22 | 33 |   33 |   44 | NULL
+(2 rows)
+> execute p2(33);
+             ts             | a  | b  | tag1 | tag2 | tag3
+----------------------------+----+----+------+------+-------
+  2024-01-12 03:08:28+00:00 | 11 | 22 |   33 |   44 | NULL
+  2024-01-12 03:08:29+00:00 | 22 | 33 |   33 |   44 | NULL
+(2 rows)
+> execute p3(0);
+  max
+-------
+   11
+   22
+(2 rows)
+> execute p4(33,0);
+  max
+-------
+   11
+   22
+(2 rows)
+> execute p5(1,33,0);
+  ?column?
+------------
+        12
+        23
+(2 rows)
+> execute p6;
+             ts             | a  | b  | tag1 | tag2 | tag3
+----------------------------+----+----+------+------+-------
+  2024-01-12 03:08:28+00:00 | 11 | 22 |   33 |   44 | NULL
+  2024-01-12 03:08:29+00:00 | 22 | 33 |   33 |   44 | NULL
+(2 rows)
+> alter table t1 drop column b;
+ALTER TABLE
+> execute p1(0);
+             ts             | a  | tag1 | tag2 | tag3
+----------------------------+----+------+------+-------
+  2024-01-12 03:08:28+00:00 | 11 |   33 |   44 | NULL
+  2024-01-12 03:08:29+00:00 | 22 |   33 |   44 | NULL
+(2 rows)
+> execute p2(33);
+             ts             | a  | tag1 | tag2 | tag3
+----------------------------+----+------+------+-------
+  2024-01-12 03:08:28+00:00 | 11 |   33 |   44 | NULL
+  2024-01-12 03:08:29+00:00 | 22 |   33 |   44 | NULL
+(2 rows)
+> execute p3(0);
+ERROR: column "b" does not exist
+SQLSTATE: 42703
+> execute p4(33,0);
+ERROR: column "b" does not exist
+SQLSTATE: 42703
+> execute p5(1,33,0);
+ERROR: column "b" does not exist
+SQLSTATE: 42703
+> execute p6;
+             ts             | a  | tag1 | tag2 | tag3
+----------------------------+----+------+------+-------
+  2024-01-12 03:08:28+00:00 | 11 |   33 |   44 | NULL
+  2024-01-12 03:08:29+00:00 | 22 |   33 |   44 | NULL
+(2 rows)
+> alter table t1 add column b int;
+ALTER TABLE
+> alter table t1 drop column a;
+ALTER TABLE
+> execute p1(0);
+ERROR: column "a" does not exist
+SQLSTATE: 42703
+> execute p2(33);
+             ts             |  b   | tag1 | tag2 | tag3
+----------------------------+------+------+------+-------
+  2024-01-12 03:08:28+00:00 | NULL |   33 |   44 | NULL
+  2024-01-12 03:08:29+00:00 | NULL |   33 |   44 | NULL
+(2 rows)
+> execute p3(0);
+ERROR: column "a" does not exist
+SQLSTATE: 42703
+> execute p4(33,0);
+ERROR: column "a" does not exist
+SQLSTATE: 42703
+> execute p5(1,33,0);
+ERROR: column "a" does not exist
+SQLSTATE: 42703
+> execute p6;
+             ts             |  b   | tag1 | tag2 | tag3
+----------------------------+------+------+------+-------
+  2024-01-12 03:08:28+00:00 | NULL |   33 |   44 | NULL
+  2024-01-12 03:08:29+00:00 | NULL |   33 |   44 | NULL
+(2 rows)
 > drop database tsdb cascade;
 DROP DATABASE

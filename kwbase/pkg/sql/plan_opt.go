@@ -559,6 +559,23 @@ func (opc *optPlanningCtx) buildExecMemo(
 			if err != nil {
 				return nil, tree.Invalid, err
 			}
+			md := prepared.Memo.Metadata()
+			physical := prepared.Memo.RootProps()
+			var resultCols sqlbase.ResultColumns
+			if len(opc.procedureCols) == 0 {
+				resultCols = make(sqlbase.ResultColumns, len(physical.Presentation))
+				for i, col := range physical.Presentation {
+					resultCols[i].Name = col.Alias
+					resultCols[i].Typ = md.ColumnMeta(col.ID).Type
+					if err := checkResultType(resultCols[i].Typ); err != nil {
+						return nil, tree.Invalid, err
+					}
+				}
+			} else {
+				resultCols = opc.procedureCols
+			}
+			prepared.Columns = resultCols
+			p.stmt.ExpectedTypes = prepared.Columns
 		}
 		opc.log(ctx, "reusing cached memo")
 		prepared.Memo.SetWhiteList(p.ExecCfg().TSWhiteListMap)
