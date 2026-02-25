@@ -36,6 +36,8 @@ KStatus TsPartitionAggBuilder::Close() {
 }
 
 KStatus TsPartitionAggBuilder::AppendEntityAgg(const TSSlice& agg, TsEntityPartitionAggIndex& agg_index) {
+  assert(w_file_ != nullptr);
+  assert(agg.len != 0);
   uint64_t offset = w_file_->GetFileSize();
   auto s = w_file_->Append(agg);
   if (s != SUCCESS) {
@@ -101,7 +103,6 @@ KStatus TsPartitionAggReader::Open() {
     return s;
   }
   memcpy(agg_index_buffer_.data(), entity_index_data_.data(), entity_index_data_.size());
-  ready_ = true;
   return SUCCESS;
 }
 
@@ -114,20 +115,10 @@ KStatus TsPartitionAggReader::GetPartitionAggIndex(TsEntityPartitionAggIndex& ag
   return SUCCESS;
 }
 
-KStatus TsPartitionAggReader::GetPartitionAgg(TSEntityID entity_id, TsSliceGuard& agg) {
-  TsEntityPartitionAggIndex agg_index;
-  agg_index.entity_id = entity_id;
-  agg_index.agg_offset = 0;
-  agg_index.agg_len = 0;
-
-  auto s = GetPartitionAggIndex(agg_index);
-  if (s != SUCCESS) {
-    LOG_ERROR("GetPartitionAggIndex failed.");
-    return s;
-  }
-  r_file_->Read(agg_index.agg_offset, agg_index.agg_len, &agg);
-  if (agg.size() != agg_index.agg_len) {
-    LOG_ERROR("TsPartitionAggFile read agg block failed, offset=%lu, len=%zu", agg_index.agg_offset, agg_index.agg_len)
+KStatus TsPartitionAggReader::GetPartitionAgg(uint64_t agg_offset, uint64_t agg_len, TsSliceGuard& agg) {
+  r_file_->Read(agg_offset, agg_len, &agg);
+  if (agg.size() != agg_len) {
+    LOG_ERROR("TsPartitionAggFile read agg block failed, offset=%lu, len=%zu", agg_offset, agg_len)
     return FAIL;
   }
   return SUCCESS;

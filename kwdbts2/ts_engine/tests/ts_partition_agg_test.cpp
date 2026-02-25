@@ -167,7 +167,7 @@ TEST_F(TestPartitionAgg, basicPartitionAgg) {
         ASSERT_EQ(agg_index.max_osn, 10);
         // Aggregate count col
         TsSliceGuard slice;
-        ASSERT_EQ(agg_reader->GetPartitionAgg(agg_index.entity_id, slice), KStatus::SUCCESS);
+        ASSERT_EQ(agg_reader->GetPartitionAgg(agg_index.agg_offset, agg_index.agg_len, slice), KStatus::SUCCESS);
         if (partition->GetStartTime() == 0) {
           timestamp64 max_val = start_ts1 + (entity_row_num - 1) * interval;
           ASSERT_EQ(agg_index.min_ts, start_ts1);
@@ -353,7 +353,7 @@ TEST_F(TestPartitionAgg, basicPartitionAggDelete) {
 
         // Aggregate count col
         TsSliceGuard slice;
-        ASSERT_EQ(agg_reader->GetPartitionAgg(agg_index.entity_id, slice), KStatus::SUCCESS);
+        ASSERT_EQ(agg_reader->GetPartitionAgg(agg_index.agg_offset, agg_index.agg_len, slice), KStatus::SUCCESS);
         // verify agg value
         for (auto col_idx : {0, 1}) {
           TsSliceGuard col_agg;

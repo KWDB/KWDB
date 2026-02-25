@@ -328,6 +328,7 @@ KStatus TSEngineImpl::Init(kwdbContext_p ctx) {
       LOG_ERROR("GetMaxEntityIdByVGroupId failed, vgroup id:%d", vgroup_id);
     }
     vgroup->InitEntityID(entity_id);
+    vgroup->initCalcAggThread();
     vgroups_.push_back(std::move(vgroup));
   }
   LOG_INFO("TS engine WAL level is: %d", options_.wal_level);

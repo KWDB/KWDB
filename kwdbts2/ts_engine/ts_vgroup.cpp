@@ -152,7 +152,6 @@ KStatus TsVGroup::Init(kwdbContext_p ctx) {
 
   initCompactThread();
   initRecalcCountThread();
-  initCalcAggThread();
 
   if (user_defined_path_.empty()) {
     wal_manager_ = std::make_unique<WALMgr>(engine_options_->db_path, VGroupDirName(vgroup_id_), engine_options_);
@@ -2692,7 +2691,7 @@ KStatus TsVGroup::GetCalcEntities(PartitionIdentifier par_id, shared_ptr<const T
       agg_index.entity_id = entity;
       auto s = par_version->GetAggReader()->GetPartitionAggIndex(agg_index);
       if (s != KStatus::SUCCESS) {
-        LOG_ERROR("Failed get entity[%d] agg stats.", entity);
+        LOG_WARN("Failed get entity[%d] agg stats", entity);
         calc_agg_entities.emplace_back(entity);
         continue;
       }
@@ -2730,6 +2729,10 @@ KStatus TsVGroup::CalcPartitionAgg() {
   kwdbContext_t context;
   kwdbContext_p ctx_p = &context;
   s = InitServerKWDBContext(ctx_p);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("InitServerKWDBContext failed");
+    return s;
+  }
   for (auto& tbl_schema : tbl_schema_managers) {
     std::shared_ptr<TagTable> tag_table;
     s = tbl_schema->GetTagSchema(ctx_p, &tag_table);
@@ -2757,7 +2760,6 @@ KStatus TsVGroup::CalcPartitionAgg() {
       continue;
     }
     if (!need_calc) {
-      LOG_ERROR("Partition [%s] don't need calculate agg", par_version->GetPartitionPath().c_str());
       continue;
     }
 #endif
@@ -2819,6 +2821,13 @@ KStatus TsVGroup::CalcPartitionAgg() {
         k_uint32 count;
         bool is_finished = false;
         s = ts_iter_guard->Next(&res_set, &count, &is_finished);
+        if (s != KStatus::SUCCESS) {
+          LOG_ERROR("Next error");
+          return s;
+        }
+        if (count == 0) {
+          continue;
+        }
         TsBufferBuilder agg_buffer;
         uint32_t agg_header_size = attrs.size() * sizeof(uint32_t);
         agg_buffer.resize(agg_header_size);
@@ -2835,11 +2844,18 @@ KStatus TsVGroup::CalcPartitionAgg() {
 
           DATATYPE col_type = idx == 0 ? DATATYPE::TIMESTAMP64 : static_cast<DATATYPE>(attrs[idx].type);
           bool is_var_col = isVarLenType(col_type);
-
-          uint64_t agg_count = *reinterpret_cast<uint64_t*>(res_set.data[res_idx][0]->mem);
+          bool is_sum_type = isSumType(col_type);
+          uint64_t agg_count{0};
+          if (res_set.data[res_idx][0]->count != 0) {
+            agg_count = *reinterpret_cast<uint64_t*>(res_set.data[res_idx][0]->mem);
+          }
           if (!is_var_col) {
             if (agg_count == 0) {
-              res_idx += 4;
+              if (is_sum_type) {
+                res_idx += 4;
+              } else {
+                res_idx += 3;
+              }
               continue;
             }
             auto col_agg_size = sizeof(uint64_t) + attrs[idx].size * 2 + 9;
@@ -2896,11 +2912,18 @@ KStatus TsVGroup::CalcPartitionAgg() {
           return s;
         }
       }
+
       ResultSet res{static_cast<k_uint32>(scan_cols.size())};
-      k_uint32 count;
       bool is_finished = false;
-      s = ts_iter_guard->Next(&res, &count, &is_finished);
-      assert(is_finished == true);
+      {
+        k_uint32 count{0};
+        s = ts_iter_guard->Next(&res, &count, &is_finished);
+        if (s != KStatus::SUCCESS) {
+          LOG_ERROR("Next error");
+          return s;
+        }
+      }
+
       auto agg_reader = par_version->GetAggReader();
       for (auto& entity_id : classified_entities.copy_entities_) {
         TsEntityPartitionAggIndex agg_index;
@@ -2908,9 +2931,10 @@ KStatus TsVGroup::CalcPartitionAgg() {
         s = agg_reader->GetPartitionAggIndex(agg_index);
         if (s != KStatus::SUCCESS) {
           LOG_ERROR("Failed get entity[%d] agg stats.", entity_id);
+          return s;
         }
         TsSliceGuard slice;
-        s = agg_reader->GetPartitionAgg(agg_index.entity_id, slice);
+        s = agg_reader->GetPartitionAgg(agg_index.agg_offset, agg_index.agg_len, slice);
         if (s != KStatus::SUCCESS) {
           LOG_ERROR("GetPartitionAgg failed");
           return s;

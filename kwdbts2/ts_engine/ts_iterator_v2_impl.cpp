@@ -1386,7 +1386,7 @@ KStatus TsAggIteratorV2Impl::PartitionAggregate(TsScanStats* ts_scan_stats) {
       checkTimestampWithSpans(ts_spans_, agg_index.min_ts,
                               agg_index.max_ts) == TimestampCheckResult::FullyContained) {
       TsSliceGuard entity_agg;
-      s = agg_reader->GetPartitionAgg(agg_index.entity_id, entity_agg);
+      s = agg_reader->GetPartitionAgg(agg_index.agg_offset, agg_index.agg_len, entity_agg);
       if (s != KStatus::SUCCESS) {
         LOG_ERROR("GetPartitionAgg failed");
         return s;

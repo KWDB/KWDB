@@ -504,6 +504,9 @@ class TsVGroup {
 
   KStatus CalcPartitionAgg();
 
+  // Initialize calculate aggregation thread.
+  void initCalcAggThread();
+
  private:
   // check partition of rows exist. if not creating it.
   // KStatus makeSurePartitionExist(TSTableID table_id, const std::list<TSMemSegRowData>& rows);
@@ -528,8 +531,6 @@ class TsVGroup {
 
   // Thread scheduling executes calculate aggregation tasks.
   void calcAggRoutine(void* args);
-  // Initialize calculate aggregation thread.
-  void initCalcAggThread();
   // Close calculate aggregation thread.
   void closeCalcAggThread();
 

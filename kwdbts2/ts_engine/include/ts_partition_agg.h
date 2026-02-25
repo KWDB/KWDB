@@ -75,11 +75,10 @@ class TsPartitionAggReader {
   ~TsPartitionAggReader();
   KStatus Open();
   KStatus GetPartitionAggIndex(TsEntityPartitionAggIndex& stats);
-  KStatus GetPartitionAgg(TSEntityID entity_id, TsSliceGuard& agg);
+  KStatus GetPartitionAgg(uint64_t agg_offset, uint64_t agg_len, TsSliceGuard& agg);
   void MarkDelete() { delete_after_free_ = true; }
 
  private:
-  bool ready_{false};
   bool delete_after_free_{false};
   TsIOEnv* io_env_{nullptr};
   fs::path file_path_;
