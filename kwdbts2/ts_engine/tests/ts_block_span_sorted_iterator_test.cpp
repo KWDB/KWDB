@@ -64,7 +64,8 @@ class SimulatedTsEntityBlock : public TsBlock {
   timestamp64 GetLastTS() override { return first_ts_ + rows_ - 1; }
   uint64_t GetBlockID() override { return 0; }
   KStatus GetColAddr(uint32_t col_id, const std::vector<AttributeInfo>* schema,
-                             char** value, TsScanStats* ts_scan_stats = nullptr) override {
+                      char** value, TsScanStats* ts_scan_stats = nullptr,
+                      DirectColumnDataCopy* direct_copy = nullptr) override {
     return KStatus::FAIL;
   }
   KStatus GetColBitmap(uint32_t col_id, const std::vector<AttributeInfo>* schema,

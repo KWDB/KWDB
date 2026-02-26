@@ -574,7 +574,7 @@ KStatus TsEntityBlock::GetRowSpans(const std::vector<STScanRange>& spans,
 }
 
 KStatus TsEntityBlock::GetColAddr(uint32_t col_id, const std::vector<AttributeInfo>* schema,
-                                  char** value, TsScanStats* ts_scan_stats) {
+                                  char** value, TsScanStats* ts_scan_stats, DirectColumnDataCopy* direct_copy) {
   if (!HasDataCached(col_id)) {
     KStatus s = segment_block_container_->GetColumnBlock(col_id, schema, this, ts_scan_stats);
     if (s != KStatus::SUCCESS) {

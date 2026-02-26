@@ -184,7 +184,7 @@ KStatus TsMemSegBlock::GetColBitmap(uint32_t col_id, const std::vector<Attribute
 }
 
 KStatus TsMemSegBlock::GetColAddr(uint32_t col_id, const std::vector<AttributeInfo>* schema, char** value,
-                                  TsScanStats* ts_scan_stats) {
+                                  TsScanStats* ts_scan_stats, DirectColumnDataCopy* direct_copy) {
   assert(!isVarLenType((*schema)[col_id].type));
   if (parser_ == nullptr) {
     parser_ = std::make_unique<TsRawPayloadRowParser>(schema);
@@ -212,28 +212,53 @@ KStatus TsMemSegBlock::GetColAddr(uint32_t col_id, const std::vector<AttributeIn
       return KStatus::SUCCESS;
     }
     auto col_len = (*schema)[col_id].size;
-    auto col_based_len = col_len * row_data_.size();
-    char* col_based_mem = reinterpret_cast<char*>(malloc(col_based_len));
-    if (col_based_mem == nullptr) {
-      LOG_ERROR("malloc memroy failed.");
-      return KStatus::FAIL;
-    }
-    col_based_mems_[col_id] = col_based_mem;
-    char* cur_offset = col_based_mem;
-    for (int i = 0; i < row_data_.size(); i++) {
-      auto row = row_data_[i];
-      if (!parser_->IsColNull(row->GetRowData(), col_id)) {
-        auto ok = parser_->GetColValueAddr(row->GetRowData(), col_id, &value_slice);
-        if (!ok) {
-          LOG_ERROR("GetColValueAddr failed.");
-          return KStatus::FAIL;
+    if (direct_copy && direct_copy->dest_buffer_builder) {
+      /* Instead of malloc a new buffer, copy data into the buffer and return the buffer address,
+       * we can copy the column data directly into dest_buffer_builder for better performance.
+       */
+      assert(direct_copy->copied_to_dest == false);
+      assert(direct_copy->start_row + direct_copy->copy_rows <= row_data_.size());
+      for (int i = direct_copy->start_row; i < direct_copy->start_row + direct_copy->copy_rows; i++) {
+        auto row = row_data_[i];
+        if (!parser_->IsColNull(row->GetRowData(), col_id)) {
+          auto ok = parser_->GetColValueAddr(row->GetRowData(), col_id, &value_slice);
+          if (!ok) {
+            LOG_ERROR("GetColValueAddr failed.");
+            return KStatus::FAIL;
+          }
+          assert(col_len == value_slice.len);
+          direct_copy->dest_buffer_builder->append(value_slice.data, col_len);
+        } else {
+          direct_copy->dest_buffer_builder->resize(direct_copy->dest_buffer_builder->size() + col_len);
         }
-        assert(col_len == value_slice.len);
-        memcpy(cur_offset, value_slice.data, col_len);
       }
-      cur_offset += col_len;
+      // The column data has been copied to dest_buffer_builder, so we don't provide valid column address.
+      *value = nullptr;
+      direct_copy->copied_to_dest = true;
+    } else {
+      auto col_based_len = col_len * row_data_.size();
+      char* col_based_mem = reinterpret_cast<char*>(malloc(col_based_len));
+      if (col_based_mem == nullptr) {
+        LOG_ERROR("malloc memroy failed.");
+        return KStatus::FAIL;
+      }
+      col_based_mems_[col_id] = col_based_mem;
+      char* cur_offset = col_based_mem;
+      for (int i = 0; i < row_data_.size(); i++) {
+        auto row = row_data_[i];
+        if (!parser_->IsColNull(row->GetRowData(), col_id)) {
+          auto ok = parser_->GetColValueAddr(row->GetRowData(), col_id, &value_slice);
+          if (!ok) {
+            LOG_ERROR("GetColValueAddr failed.");
+            return KStatus::FAIL;
+          }
+          assert(col_len == value_slice.len);
+          memcpy(cur_offset, value_slice.data, col_len);
+        }
+        cur_offset += col_len;
+      }
+      *value = col_based_mem;
     }
-    *value = col_based_mem;
   }
   return KStatus::SUCCESS;
 }

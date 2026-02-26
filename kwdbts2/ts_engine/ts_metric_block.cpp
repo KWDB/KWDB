@@ -78,14 +78,22 @@ KStatus TsMetricBlockBuilder::PutBlockSpan(std::shared_ptr<TsBlockSpan> span) {
     } else {
       char* data = nullptr;
       std::unique_ptr<TsBitmapBase> bitmap;
-      auto s = span->GetFixLenColAddr(icol, &data, &bitmap);
+      DirectColumnDataCopy direct_copy;
+      direct_copy.dest_buffer_builder = column_block_builders_[icol]->GetFixLenBufferBuilder();
+      direct_copy.copy_rows = row_count;
+      auto s = span->GetFixLenColAddr(icol, &data, &bitmap, nullptr, &direct_copy);
       if (s == FAIL) {
         return s;
       }
       TSSlice s_data;
       s_data.data = const_cast<char*>(data);
       s_data.len = (*col_schemas_)[icol].size * row_count;
-      column_block_builders_[icol]->AppendFixLenData(s_data, row_count, bitmap.get());
+      if (direct_copy.copied_to_dest) {
+        // The data is already copied into column_block_builders_[icol] buffer, so only need to append bitmap
+        column_block_builders_[icol]->AppendFixLenBitmap(row_count, bitmap.get());
+      } else {
+        column_block_builders_[icol]->AppendFixLenData(s_data, row_count, bitmap.get());
+      }
     }
   }
   count_ += row_count;

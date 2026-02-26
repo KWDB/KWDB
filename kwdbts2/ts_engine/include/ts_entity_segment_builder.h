@@ -193,6 +193,11 @@ class TsEntityBlockBuilder {
                           TsBufferBuilder* agg_buffer);
 
   void Clear();
+
+  void Reset(uint64_t entity_id) {
+    this->entity_id_ = entity_id;
+    Clear();
+  }
 };
 
 class TsEntitySegmentBuilder {

@@ -222,7 +222,7 @@ class TsMemSegBlock : public TsBlock {
                        std::unique_ptr<TsBitmapBase>* bitmap, TsScanStats* ts_scan_stats = nullptr) override;
 
   KStatus GetColAddr(uint32_t col_id, const std::vector<AttributeInfo>* schema, char** value,
-                      TsScanStats* ts_scan_stats = nullptr) override;
+                      TsScanStats* ts_scan_stats = nullptr, DirectColumnDataCopy* direct_copy = nullptr) override;
 
   KStatus GetCompressDataFromFile(uint32_t table_version, int32_t nrow, TsBufferBuilder* data) override {
     return KStatus::FAIL;

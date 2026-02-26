@@ -493,7 +493,8 @@ KStatus TsBlockSpan::GetColBitmap(uint32_t scan_idx, std::unique_ptr<TsBitmapBas
 }
 
 KStatus TsBlockSpan::GetFixLenColAddr(uint32_t scan_idx, char** value, std::unique_ptr<TsBitmapBase>* bitmap,
-                                      TsScanStats* ts_scan_stats) const {
+                                      TsScanStats* ts_scan_stats, DirectColumnDataCopy* direct_copy) const {
+  assert(direct_copy == nullptr || direct_copy->copied_to_dest == false);
   if (!convert_) {
     auto s = GetColBitmap(scan_idx, bitmap, ts_scan_stats);
     if (s != KStatus::SUCCESS) {
@@ -501,7 +502,11 @@ KStatus TsBlockSpan::GetFixLenColAddr(uint32_t scan_idx, char** value, std::uniq
       return s;
     }
     char* blk_value;
-    s = block_->GetColAddr(scan_idx, scan_attrs_, &blk_value, ts_scan_stats);
+    if (direct_copy) {
+      // Update the start row since only TsBlockSpan knows
+      direct_copy->start_row = start_row_;
+    }
+    s = block_->GetColAddr(scan_idx, scan_attrs_, &blk_value, ts_scan_stats, direct_copy);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("GetColAddr failed. col id [%u]", scan_idx);
       return s;

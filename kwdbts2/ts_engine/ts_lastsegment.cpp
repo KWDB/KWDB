@@ -316,7 +316,7 @@ class TsLastBlock : public TsBlock {
     return col_block->GetColBitmap(bitmap);
   }
   KStatus GetColAddr(uint32_t col_id, const std::vector<AttributeInfo>* schema, char** value,
-                      TsScanStats* ts_scan_stats = nullptr) override {
+                      TsScanStats* ts_scan_stats = nullptr, DirectColumnDataCopy* direct_copy = nullptr) override {
     TsColumnBlock* col_block = nullptr;
     auto s = column_block_cache_->GetColumnBlock(col_id, &col_block, schema);
     if (s == FAIL) {

@@ -35,6 +35,14 @@ void TsColumnBlockBuilder::AppendFixLenData(TSSlice data, int count, const TsBit
   count_ += count;
 }
 
+void TsColumnBlockBuilder::AppendFixLenBitmap(int count, const TsBitmapBase* bitmap) {
+  assert(bitmap != nullptr);
+  assert(count == bitmap->GetCount());
+  bitmap_->Append(bitmap);
+  assert(!isVarLenType(col_schema_.type));
+  count_ += count;
+}
+
 void TsColumnBlockBuilder::AppendVarLenData(TSSlice data, DataFlags flag) {
   assert(isVarLenType(col_schema_.type));
   PutFixed32(&fixlen_data_, varchar_data_.size());

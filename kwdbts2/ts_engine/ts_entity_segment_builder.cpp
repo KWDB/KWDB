@@ -192,8 +192,11 @@ KStatus TsEntityBlockBuilder::Append(shared_ptr<TsBlockSpan> span, bool& is_full
     size_t row_idx_in_block = n_rows_;
     char* col_val = nullptr;
     std::unique_ptr<TsBitmapBase> bitmap;
+    DirectColumnDataCopy direct_copy;
+    direct_copy.dest_buffer_builder = &block.buffer;
+    direct_copy.copy_rows = written_rows;
     if (!is_var_col && has_bitmap) {
-      KStatus s = span->GetFixLenColAddr(col_idx - 1, &col_val, &bitmap);
+      KStatus s = span->GetFixLenColAddr(col_idx - 1, &col_val, &bitmap, nullptr, &direct_copy);
       if (s != KStatus::SUCCESS) {
         LOG_ERROR("GetColBitmap failed");
         return s;
@@ -219,8 +222,6 @@ KStatus TsEntityBlockBuilder::Append(shared_ptr<TsBlockSpan> span, bool& is_full
         }
         uint32_t var_offset = block.buffer.size() - var_offsets_len;
         memcpy(block.buffer.data() + row_idx_in_block * sizeof(uint32_t), &var_offset, sizeof(uint32_t));
-      } else if (col_idx == 1) {
-        block.buffer.append(col_val + span_row_idx * d_size, sizeof(timestamp64));
       }
       row_idx_in_block++;
     }
@@ -228,8 +229,10 @@ KStatus TsEntityBlockBuilder::Append(shared_ptr<TsBlockSpan> span, bool& is_full
       if (col_idx == 0) {
         const char* osn_col_value = reinterpret_cast<const char*>(span->GetOSNAddr(0));
         block.buffer.append(osn_col_value, written_rows * d_size);
-      } else if (col_idx != 1) {
-        block.buffer.append(col_val, written_rows * d_size);
+      } else {
+        if (!direct_copy.copied_to_dest) {
+          block.buffer.append(col_val, written_rows * d_size);
+        }
       }
     }
   }
@@ -643,12 +646,13 @@ KStatus TsEntitySegmentBuilder::Compact(bool call_by_vacuum, TsVersionUpdate* up
         return s;
       }
       metric_schema = *table_schema_->getSchemaInfoExcludeDroppedPtr();
+      block_ = std::make_shared<TsEntityBlockBuilder>(cur_entity_key.table_id, cur_entity_key.table_version,
+                                                    cur_entity_key.entity_id, metric_schema);
     } else {
-      metric_schema = block_->GetMetricSchema();
+      // Only entity id change, so don't need to create a new block
+      block_->Reset(cur_entity_key.entity_id);
     }
 
-    block_ = std::make_shared<TsEntityBlockBuilder>(cur_entity_key.table_id, cur_entity_key.table_version,
-                                                    cur_entity_key.entity_id, metric_schema);
     entity_key = cur_entity_key;
     stats->written_devices++;
     cached_count_ += block_span->GetRowNum();

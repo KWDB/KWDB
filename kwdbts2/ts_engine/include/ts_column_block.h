@@ -72,11 +72,16 @@ class TsColumnBlockBuilder {
  public:
   explicit TsColumnBlockBuilder(const AttributeInfo& col_schema)
       : col_schema_(col_schema), bitmap_(std::make_unique<TsBitmap>()) {}
+  void AppendFixLenBitmap(int count, const TsBitmapBase* bitmap);
   void AppendFixLenData(TSSlice data, int count, const TsBitmapBase* bitmap);
   void AppendVarLenData(TSSlice data, DataFlags flag);
 
   // TODO(zzr) make it const ref
   void AppendColumnBlock(TsColumnBlock& col);
+
+  TsBufferBuilder* GetFixLenBufferBuilder() {
+    return &fixlen_data_;
+  }
 
   std::unique_ptr<TsColumnBlock> GetColumnBlock() {
     TsSliceGuard fixlen_guard = fixlen_data_.GetBuffer();

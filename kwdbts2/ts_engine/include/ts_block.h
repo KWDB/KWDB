@@ -35,6 +35,17 @@ struct AggCandidate {
   shared_ptr<TsBlockSpan> blk_span{nullptr};
 };
 
+struct DirectColumnDataCopy {
+  // Copy column data to dest buffer if it's not nullptr.
+  TsBufferBuilder* dest_buffer_builder{nullptr};
+  // The first row index to copy.
+  int start_row{0};
+  // The number of rows to copy.
+  size_t copy_rows{0};
+  // As return. True, if the column data is copied to dest_buffer_builder; false, otherwise.
+  bool copied_to_dest{false};
+};
+
 class TsBlock {
  public:
   virtual ~TsBlock() {}
@@ -43,8 +54,19 @@ class TsBlock {
   virtual uint32_t GetTableVersion() = 0;
   virtual size_t GetRowNum() = 0;
   // if has three rows, this return three value for certain column using col-based storege struct.
+  /**
+   * @brief Get column data address or column data will be copied to dest_buffer_builder directly.
+   *        Only if dest_buffer_builder is not nullptr and current block is mem segment block, we will copy
+   *        column data directly into dest_buffer_builder instead of returning column data addres.
+   * @param[in] col_id  column id.
+   * @param[in] schema  schema used to get column data.
+   * @param[out] value  nullable, buffer address of column data, which will be nullptr if data is copied
+   *                                  to dest_buffer_builder directly.
+   * @param[in, out] DirectColumnDataCopy the parameters for mem segment to copy column data directly into buffer.
+  */
   virtual KStatus GetColAddr(uint32_t col_id, const std::vector<AttributeInfo>* schema,
-                             char** value, TsScanStats* ts_scan_stats = nullptr) = 0;
+                              char** value, TsScanStats* ts_scan_stats = nullptr,
+                              DirectColumnDataCopy* direct_copy = nullptr) = 0;
   virtual KStatus GetColBitmap(uint32_t col_id, const std::vector<AttributeInfo>* schema,
                                std::unique_ptr<TsBitmapBase>* bitmap, TsScanStats* ts_scan_stats = nullptr) = 0;
   virtual KStatus GetValueSlice(int row_num, int col_id, const std::vector<AttributeInfo>* schema,
@@ -253,7 +275,7 @@ class TsBlockSpan {
   KStatus GetColBitmap(uint32_t scan_idx, std::unique_ptr<TsBitmapBase>* bitmap, TsScanStats* ts_scan_stats = nullptr) const;
   // dest type is fixed len datatype.
   KStatus GetFixLenColAddr(uint32_t scan_idx, char** value, std::unique_ptr<TsBitmapBase>* bitmap,
-                            TsScanStats* ts_scan_stats = nullptr) const;
+                            TsScanStats* ts_scan_stats = nullptr, DirectColumnDataCopy* direct_copy = nullptr) const;
   // dest type is varlen datatype.
   KStatus GetVarLenTypeColAddr(uint32_t row_idx, uint32_t scan_idx, DataFlags& flag, TSSlice& data,
                                 TsScanStats* ts_scan_stats = nullptr) const;

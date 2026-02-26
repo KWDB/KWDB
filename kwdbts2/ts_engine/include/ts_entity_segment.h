@@ -342,7 +342,7 @@ class TsEntityBlock : public TsBlock {
                       TsScanStats* ts_scan_stats);
 
   KStatus GetColAddr(uint32_t col_id, const std::vector<AttributeInfo>* schema, char** value,
-                      TsScanStats* ts_scan_stats = nullptr) override;
+                      TsScanStats* ts_scan_stats = nullptr, DirectColumnDataCopy* direct_copy = nullptr) override;
 
   KStatus GetColBitmap(uint32_t col_id, const std::vector<AttributeInfo>* schema,
                        std::unique_ptr<TsBitmapBase>* bitmap, TsScanStats* ts_scan_stats = nullptr) override;
