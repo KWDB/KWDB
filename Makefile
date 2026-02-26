@@ -154,6 +154,8 @@ clean:
 	rm -rf kwbase/build/defs.mk kwbase/build/defs.mk.sig
 	rm -rf $(GOPATH)/native
 	rm -rf qa/TEST_integration
+	rm -rf kwdbts2/roachpb/*.cc kwdbts2/roachpb/*.h
+	cd kwbase && GOPATH=$(GOPATH) $(MAKE) clean
 	@echo Clean Done.
 
 help:

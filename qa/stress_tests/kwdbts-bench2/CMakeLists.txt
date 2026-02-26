@@ -58,7 +58,7 @@ if (NOT DEFINED CMAKE_CXX_STANDARD)
     set(CMAKE_CXX_STANDARD 17)
 endif ()
 
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pthread -Wno-format-truncation")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pthread -Wno-format-truncation -Wno-deprecated-declarations")
 
 # Whether to enable span trace plug-in compilation
 option(ENABLE_TRACING "Compile with tracing plugin." ON)
@@ -120,6 +120,7 @@ set(embed_includes worker ${PROTOBUF_INCLUDE_DIR} src/worker
         ${KWDBTS_PROJ_DIR}/brpc/include
         ${BRPC_INCLUDE_DIR}
         ${KWDBTS_PROJ_DIR}/exec/include
+        ${PROJECT_BINARY_DIR}/../../../kwdbts2/third_party/snappy_install/include
         )
 #message("embed_includes:${embed_includes}")
 

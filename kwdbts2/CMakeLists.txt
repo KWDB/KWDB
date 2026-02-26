@@ -568,7 +568,7 @@ if (WITH_TESTS)
         set_target_properties(${tname} PROPERTIES
                 CXX_STANDARD_REQUIRED YES
                 CXX_EXTENSIONS NO
-                COMPILE_OPTIONS "-Wno-error;-Wall;-Wno-sign-compare"
+                COMPILE_OPTIONS "-Wno-error;-Wall;-Wno-sign-compare;-Wno-deprecated-declarations"
                 RUNTIME_OUTPUT_DIRECTORY ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${tname}.dir
                 )
     endif()

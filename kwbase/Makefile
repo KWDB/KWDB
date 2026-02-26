@@ -284,7 +284,6 @@ ENABLE_LIBROACH_ASSERTIONS ?=
 ENABLE_ROCKSDB_ASSERTIONS ?=
 
 CRYPTOPP_DIR := $(BUILD_DIR)/cryptopp$(if $(use-msan),_msan)
-LIBUNWIND_DIR := $(BUILD_DIR)/libunwind$(if $(use-msan),_msan)
 JEMALLOC_DIR := $(BUILD_DIR)/jemalloc$(if $(use-msan),_msan)
 ROCKSDB_DIR  := $(BUILD_DIR)/rocksdb$(if $(use-msan),_msan)$(if $(use-stdmalloc),_stdmalloc)$(if $(ENABLE_ROCKSDB_ASSERTIONS),_assert)
 SNAPPY_DIR   := $(BUILD_DIR)/snappy$(if $(use-msan),_msan)
@@ -479,7 +478,6 @@ override xgo := GOFLAGS= GOOS=$(XGOOS) GOARCH=$(XGOARCH) CC=$(XCC) CXX=$(XCXX) $
 endif
 
 C_DEPS_DIR := $(abspath c-deps)
-LIBUNWIND_SRC_DIR := $(C_DEPS_DIR)/libunwind
 JEMALLOC_SRC_DIR := $(C_DEPS_DIR)/jemalloc
 ROCKSDB_SRC_DIR  := $(C_DEPS_DIR)/rocksdb
 SNAPPY_SRC_DIR   := $(C_DEPS_DIR)/snappy
@@ -491,7 +489,6 @@ use-stdmalloc          := $(findstring stdmalloc,$(TAGS))
 use-msan               := $(findstring msan,$(GOFLAGS))
 
 LIBCRYPTOPP := $(CRYPTOPP_DIR)/libcryptopp.a
-LIBUNWIND   := $(LIBUNWIND_DIR)/src/.libs/libunwind.a
 LIBJEMALLOC := $(JEMALLOC_DIR)/lib/libjemalloc.a
 LIBPROTOBUF := ${LIBPROTOBUF}
 LIBROCKSDB  := $(ROCKSDB_DIR)/librocksdb.a
@@ -505,8 +502,7 @@ LDFLAGS += -L$(GOPATH)/native/kwdbts2/third_party/lib -L$(GOPATH)/native/kwdbts2
 C_LIBS_COMMON = \
 	$(if $(use-stdmalloc),,$(LIBJEMALLOC)) \
 	$(if $(target-is-windows),,$(LIBEDIT)) \
-	$(LIBPROTOBUF) $(LIBSNAPPY) $(LIBROCKSDB) \
-	$(if $(findstring aarch64,$(TARGET_TRIPLE)),,$(if $(findstring loongarch64, $(TARGET_TRIPLE)), ,$(LIBUNWIND)))
+	$(LIBPROTOBUF) $(LIBSNAPPY) $(LIBROCKSDB)
 C_LIBS_OSS = $(C_LIBS_COMMON) $(LIBROACH)
 C_LIBS = $(C_LIBS_COMMON) $(LIBROACH)
 
@@ -551,8 +547,8 @@ $(BASE_CGO_FLAGS_FILES): $(MAKEFILE_LIST) build/defs.mk.sig | bin/.submodules-in
 	@echo >> $@
 	@echo 'package $(if $($(@D)-package),$($(@D)-package),$(notdir $(@D)))' >> $@
 	@echo >> $@
-	@echo '// #cgo CPPFLAGS: $(addprefix -I,$(if $(findstring aarch64,$(TARGET_TRIPLE)),,$(if $(findstring loongarch64,$(TARGET_TRIPLE)),,$(LIBUNWIND_DIR)/include)) $(JEMALLOC_DIR)/include $(KRB5_DIR)/include)' >> $@
-	@echo '// #cgo LDFLAGS: $(addprefix -L,$(CRYPTOPP_DIR) $(if $(findstring aarch64,$(TARGET_TRIPLE)),,$(if $(findstring loongarch64,$(TARGET_TRIPLE)),,$(LIBUNWIND)/src/.libs)) $(JEMALLOC_DIR)/lib $(SNAPPY_DIR) $(LIBEDIT_DIR)/src/.libs $(ROCKSDB_DIR) $(LIBROACH_DIR) $(LIBINJECTION_DIR) $(KRB5_DIR))' >> $@
+	@echo '// #cgo CPPFLAGS: $(addprefix -I,$(JEMALLOC_DIR)/include $(KRB5_DIR)/include)' >> $@
+	@echo '// #cgo LDFLAGS: $(addprefix -L,$(CRYPTOPP_DIR) $(JEMALLOC_DIR)/lib $(SNAPPY_DIR) $(LIBEDIT_DIR)/src/.libs $(ROCKSDB_DIR) $(LIBROACH_DIR) $(LIBINJECTION_DIR) $(KRB5_DIR))' >> $@
 	@echo 'import "C"' >> $@
 
 vendor/github.com/knz/go-libedit/unix/zcgo_flags_extra.go: $(MAKEFILE_LIST) | bin/.submodules-initialized
@@ -597,22 +593,12 @@ $(CRYPTOPP_DIR)/Makefile: $(C_DEPS_DIR)/cryptopp-rebuild | bin/.submodules-initi
 	cd $(CRYPTOPP_DIR) && CFLAGS+=" $(aes)" && CXXFLAGS+=" $(aes)" cmake $(xcmake-flags) $(CRYPTOPP_SRC_DIR) \
 	  -DCMAKE_BUILD_TYPE=Release
 
-ifeq ($(findstring aarch64,$(TARGET_TRIPLE))$(findstring loongarch64,$(TARGET_TRIPLE)),)
-$(LIBUNWIND_SRC_DIR)/configure: $(LIBUNWIND_SRC_DIR)/configure.ac
-	cd $(LIBUNWIND_SRC_DIR) && autoconf
-
-$(LIBUNWIND_DIR)/Makefile: $(C_DEPS_DIR)/libunwind-rebuild $(LIBUNWIND_SRC_DIR)/configure
-	rm -rf $(LIBUNWIND_DIR)
-	mkdir -p $(LIBUNWIND_DIR)
-	cd $(LIBUNWIND_DIR) && $(LIBUNWIND_SRC_DIR)/configure --enable-static --disable-shared  --disable-minidebuginfo
-endif
-
 $(JEMALLOC_SRC_DIR)/configure.ac: | bin/.submodules-initialized
 
 $(JEMALLOC_SRC_DIR)/configure: $(JEMALLOC_SRC_DIR)/configure.ac
 	cd $(JEMALLOC_SRC_DIR) && autoconf
 
-$(JEMALLOC_DIR)/Makefile: $(C_DEPS_DIR)/jemalloc-rebuild $(JEMALLOC_SRC_DIR)/configure $(if $(findstring aarch64,$(TARGET_TRIPLE)),,$(if $(findstring loongarch64,$(TARGET_TRIPLE)),,$(LIBUNWIND)))
+$(JEMALLOC_DIR)/Makefile: $(C_DEPS_DIR)/jemalloc-rebuild $(JEMALLOC_SRC_DIR)/configure
 	rm -rf $(JEMALLOC_DIR)
 	mkdir -p $(JEMALLOC_DIR)
 	@# NOTE: If you change the configure flags below, bump the version in
@@ -620,7 +606,7 @@ $(JEMALLOC_DIR)/Makefile: $(C_DEPS_DIR)/jemalloc-rebuild $(JEMALLOC_SRC_DIR)/con
 	@#
 	@# jemalloc profiling deadlocks when built against musl. See
 	@# https://github.com/jemalloc/jemalloc/issues/585.
-	cd $(JEMALLOC_DIR) && $(JEMALLOC_SRC_DIR)/configure $(xconfigure-flags) $(if $(findstring musl,$(TARGET_TRIPLE)),,--enable-prof $(if $(findstring aarch64,$(TARGET_TRIPLE)),,$(if $(findstring loongarch64,$(TARGET_TRIPLE)),,--enable-prof-libunwind --with-static-libunwind=$(LIBUNWIND) CFLAGS='-I$(LIBUNWIND_DIR)/include' LDFLAGS='-L$(LIBUNWIND_DIR)/src/.libs')))
+	cd $(JEMALLOC_DIR) && $(JEMALLOC_SRC_DIR)/configure $(xconfigure-flags) $(if $(findstring musl,$(TARGET_TRIPLE)),,--enable-prof)
 
 $(ROCKSDB_DIR)/Makefile: sse := $(if $(findstring x86_64,$(TARGET_TRIPLE)),-msse3)
 $(ROCKSDB_DIR)/Makefile: $(C_DEPS_DIR)/rocksdb-rebuild | bin/.submodules-initialized $(LIBSNAPPY) $(if $(use-stdmalloc),,$(LIBJEMALLOC))
@@ -705,11 +691,6 @@ $(LIBROACH_DIR)/Makefile: $(C_DEPS_DIR)/libroach-rebuild | bin/.submodules-initi
 $(LIBCRYPTOPP): $(CRYPTOPP_DIR)/Makefile bin/uptodate .ALWAYS_REBUILD
 	@uptodate $@ $(CRYPTOPP_SRC_DIR) || $(MAKE) --no-print-directory -C $(CRYPTOPP_DIR) static
 
-ifeq ($(findstring aarch64,$(TARGET_TRIPLE))$(findstring loongarch64,$(TARGET_TRIPLE)),)
-$(LIBUNWIND): $(LIBUNWIND_DIR)/Makefile bin/uptodate .ALWAYS_REBUILD
-	@uptodate $@ $(LIBUNWIND_SRC_DIR) || $(MAKE) --no-print-directory -C $(LIBUNWIND_DIR)
-endif
-
 $(LIBJEMALLOC): $(JEMALLOC_DIR)/Makefile bin/uptodate .ALWAYS_REBUILD
 	@uptodate $@ $(JEMALLOC_SRC_DIR) || $(MAKE) --no-print-directory -C $(JEMALLOC_DIR) build_lib_static
 
@@ -728,14 +709,10 @@ $(LIBROACH): $(LIBROACH_DIR)/Makefile bin/uptodate .ALWAYS_REBUILD
 	@uptodate $@ $(libroach-inputs) || $(MAKE) --no-print-directory -C $(LIBROACH_DIR) roach
 
 # Convenient names for maintainers. Not used by other targets in the Makefile.
-.PHONY: protoc $(if $(findstring aarch64,$(TARGET_TRIPLE)),,$(if $(findstring loongarch64,$(TARGET_TRIPLE)),,libunwind)) libcryptopp libjemalloc libprotobuf libsnappy librocksdb libroach
+.PHONY: protoc libcryptopp libjemalloc libprotobuf libsnappy librocksdb libroach
 protoc:
 libcryptopp: $(LIBCRYPTOPP)
 libedit:     $(LIBEDIT)
-
-ifeq ($(findstring aarch64,$(TARGET_TRIPLE))$(findstring loongarch64,$(TARGET_TRIPLE)),)
-libunwind:   $(LIBUNWIND)
-endif
 
 libjemalloc: $(LIBJEMALLOC)
 libprotobuf:
@@ -1384,7 +1361,6 @@ c-deps-fmt:
 
 .PHONY: clean-c-deps
 clean-c-deps:
-	rm -rf $(LIBUNWIND_DIR)
 	rm -rf $(JEMALLOC_DIR)
 	rm -rf $(ROCKSDB_DIR)
 	rm -rf $(SNAPPY_DIR)
