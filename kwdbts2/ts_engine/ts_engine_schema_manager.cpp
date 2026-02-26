@@ -64,12 +64,6 @@ KStatus TsEngineSchemaManager::Init(kwdbContext_p ctx) {
           }
           if (tb_schema_mgr->GetCurrentVersion() != 0) {
             auto partition_interval = tb_schema_mgr->GetPartitionInterval();
-            // compatibility process for updating v3.0 to v3.1, partition interval is 0 or other random value in v3.0,
-            // set it to default value
-            if (partition_interval == 0 || partition_interval % 86400 != 0) {
-              partition_interval = EngineOptions::default_partition_interval;
-              tb_schema_mgr->SetPartitionInterval(partition_interval);
-            }
             s = PartitionIntervalRecorder::GetInstance()->RecordInterval(tb_schema_mgr->GetDbID(), partition_interval);
             if (s != KStatus::SUCCESS) {
               LOG_ERROR("Partition interval of db_id %u is %ld, not %ld for table id %u", tb_schema_mgr->GetDbID(),

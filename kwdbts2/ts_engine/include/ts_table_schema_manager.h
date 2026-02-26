@@ -60,6 +60,8 @@ class TsTableSchemaManager {
   fs::path tag_path_;
   uint64_t hash_num_;
 
+  int64_t partition_interval_ = -1;
+
  protected:
   uint32_t cur_version_{0};
   std::shared_ptr<MetricsVersionManager> metric_mgr_{nullptr};
@@ -142,9 +144,9 @@ class TsTableSchemaManager {
 
   void SetLifeTime(LifeTime life_time) const;
 
-  uint64_t GetPartitionInterval() const;
+  uint64_t GetPartitionInterval() const { return partition_interval_; }
 
-  void SetPartitionInterval(uint64_t partition_interval) const;
+  void SetPartitionInterval(uint64_t partition_interval);
 
   uint32_t GetDbID() const;
 

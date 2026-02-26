@@ -1506,7 +1506,7 @@ const std::vector<KwTsSpan>& ts_spans, bool user_del) {
     if (ptime > cur_time) {
       ptime = cur_time;
     }
-    s = version_manager_->AddPartition(db_id, ptime);
+    s = version_manager_->AddPartition(db_id, ptime, tb_schema_mgr->GetPartitionInterval());
     if (s == KStatus::FAIL) {
       LOG_ERROR("AddPartition [%lu] of current time failed.", ptime);
       return s;
@@ -1581,7 +1581,8 @@ KStatus TsVGroup::WriteBatchData(TSTableID tbl_id, uint32_t table_version, TSEnt
   }
   auto partition = current->GetPartition(database_id, p_time);
   if (partition == nullptr) {
-    KStatus s = version_manager_->AddPartition(database_id, p_time);
+    int64_t interval = PartitionIntervalRecorder::GetInstance()->GetInterval(database_id);
+    KStatus s = version_manager_->AddPartition(database_id, p_time, interval);
     if (s != KStatus::SUCCESS) {
       return s;
     }

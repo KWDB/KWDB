@@ -73,7 +73,7 @@ class MetricsVersionManager {
 
   void SetLifeTime(LifeTime life_time);
 
-  uint64_t GetPartitionInterval();
+  uint64_t GetPartitionInterval() { return GetCurrentMetricsTable()->metaData()->partition_interval; }
 
   void SetPartitionInterval(uint64_t partition_interval);
 

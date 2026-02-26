@@ -67,8 +67,8 @@ static int64_t GetPartitionStartTime(timestamp64 timestamp, int64_t ts_interval)
   return index * ts_interval;
 }
 
-KStatus TsVersionManager::AddPartition(DatabaseID dbid, timestamp64 ptime) {
-  int64_t interval = PartitionIntervalRecorder::GetInstance()->GetInterval(dbid);
+KStatus TsVersionManager::AddPartition(DatabaseID dbid, timestamp64 ptime, int64_t interval) {
+  // int64_t interval = PartitionIntervalRecorder::GetInstance()->GetInterval(dbid);
   timestamp64 start = GetPartitionStartTime(ptime, interval);
   PartitionIdentifier partition_id{dbid, start, start + interval};
   if (partition_id == this->last_created_partition_) {

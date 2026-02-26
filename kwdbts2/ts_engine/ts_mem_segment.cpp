@@ -112,6 +112,7 @@ KStatus TsMemSegmentManager::PutData(const TSSlice& payload, const std::shared_p
   }
 
   uint32_t db_id = tb_schema->GetDbID();
+  int64_t p_interval = tb_schema->GetPartitionInterval();
   // TSMemSegRowData row_data(db_id, table_id, table_version, entity_id);
   TsRawPayload pd(schema);
   auto s = pd.ParsePayLoadStruct(payload);
@@ -135,7 +136,7 @@ KStatus TsMemSegmentManager::PutData(const TSSlice& payload, const std::shared_p
     }
     auto p_time = convertTsToPTime(row_ts, ts_type);
     if (last_p_time != p_time || last_p_time == INVALID_TS) {
-      auto s = version_manager_->AddPartition(db_id, p_time);
+      auto s = version_manager_->AddPartition(db_id, p_time, p_interval);
       if (s != KStatus::SUCCESS) {
         return s;
       }

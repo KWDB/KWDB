@@ -202,6 +202,14 @@ KStatus TsTableSchemaManager::Init() {
     LOG_ERROR("table %lu metric manager init failed", table_id_)
     return s;
   }
+  int64_t partition_interval = metric_mgr_->GetPartitionInterval();
+  // compatibility process for updating v3.0 to v3.1, partition interval is 0 or other random value in v3.0,
+  // set it to default value
+  if (partition_interval == 0 || partition_interval % 86400 != 0) {
+    partition_interval = EngineOptions::default_partition_interval;
+    this->SetPartitionInterval(partition_interval);
+  }
+  partition_interval_ = metric_mgr_->GetPartitionInterval();
   if (!invalid_metric_versions.empty()) {
     for (auto& tag_version : invalid_metric_versions) {
       removeTagVersion(tag_version);
@@ -260,6 +268,7 @@ KStatus TsTableSchemaManager::CreateTable(kwdbContext_p ctx, roachpb::CreateTsTa
   if (meta->ts_table().has_partition_interval()) {
     interval = meta->ts_table().partition_interval();
   }
+  partition_interval_ = interval;
   s = metric_mgr_->CreateTable(ctx, metric_schema, db_id, ts_version, meta->ts_table().life_time(),
                                interval, hash_num_, err_info);
   if (s != SUCCESS) {
@@ -548,11 +557,8 @@ void TsTableSchemaManager::SetLifeTime(LifeTime life_time) const {
   metric_mgr_->SetLifeTime(life_time);
 }
 
-uint64_t TsTableSchemaManager::GetPartitionInterval() const {
-  return metric_mgr_->GetPartitionInterval();
-}
-
-void TsTableSchemaManager::SetPartitionInterval(uint64_t partition_interval) const {
+void TsTableSchemaManager::SetPartitionInterval(uint64_t partition_interval) {
+  partition_interval_ = partition_interval;
   metric_mgr_->SetPartitionInterval(partition_interval);
 }
 

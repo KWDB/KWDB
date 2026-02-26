@@ -235,10 +235,6 @@ void MetricsVersionManager::SetLifeTime(LifeTime life_time) {
   GetCurrentMetricsTable()->SetLifeTime(life_time);
 }
 
-uint64_t MetricsVersionManager::GetPartitionInterval() {
-  return GetCurrentMetricsTable()->metaData()->partition_interval;
-}
-
 void MetricsVersionManager::SetPartitionInterval(uint64_t partition_interval) {
   GetCurrentMetricsTable()->SetPartitionInterval(partition_interval);
 }

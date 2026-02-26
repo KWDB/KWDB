@@ -520,7 +520,7 @@ class TsVersionManager {
 
   uint64_t NewFileNumber() { return next_file_number_.fetch_add(1, std::memory_order_relaxed); }
   uint64_t CurrentVersionNum() { return version_num_.load(std::memory_order_relaxed); }
-  KStatus AddPartition(DatabaseID dbid, timestamp64 start);
+  KStatus AddPartition(DatabaseID dbid, timestamp64 start, int64_t interval);
 };
 
 class TsVersionManager::Logger {
