@@ -45,7 +45,7 @@ class TsTierPartitionManager {
   * @param error_info Reference to an ErrorInfo object to store error details if any.
   * @return KStatus::SUCCESS if the directory is created successfully, otherwise KStatus::FAIL.
   */
-  KStatus MakePartitionDir(std::string partition_full_path, int level, ErrorInfo& error_info);
+  KStatus MakePartitionDir(const std::string& partition_full_path, int level, ErrorInfo& error_info);
 
   /**
   * @brief Removes a partition directory.
@@ -67,7 +67,7 @@ class TsTierPartitionManager {
   * @return KStatus::SUCCESS if the directory is moved successfully, otherwise KStatus::FAIL.
   */
   KStatus MVPartitionDir(const std::string& partition_full_path, std::vector<std::string>& files, int to_level,
-                         std::function<bool(std::function<bool()>)> f, ErrorInfo& error_info);
+                         const std::function<bool(std::function<bool()>)>& f, ErrorInfo& error_info);
 
   /**
   * @brief Retrieves the tier level of a given partition.

@@ -51,7 +51,8 @@ struct TSMemSegRowData {
 
  public:
   TSMemSegRowData(uint32_t db_id, TSTableID tbl_id, uint32_t tbl_version, TSEntityID en_id)
-      : entity_id(htobe64(en_id)), table_id(tbl_id), table_version(tbl_version), database_id(db_id) {}
+      : entity_id(htobe64(en_id)), table_id(tbl_id), table_version(tbl_version),
+        database_id(db_id), row_data{nullptr, 0} {}
 
   void SetRowData(const TSSlice& crow_data) { row_data = crow_data; }
   void SetData(timestamp64 cts, TS_OSN clsn) {

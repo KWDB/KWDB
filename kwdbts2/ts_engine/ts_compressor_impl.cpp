@@ -414,7 +414,7 @@ bool Chimp<T>::Decompress(TSSlice data, uint64_t count, TsSliceGuard *out) const
 template class Chimp<double>;
 template class Chimp<float>;
 
-namespace __simple8b_detail {
+namespace _simple8b_detail {
 alignas(64) static constexpr uint32_t ITEMWIDTH[16] = {0, 0, 1, 2, 3, 4, 5, 6, 7, 8, 10, 12, 15, 20, 30, 60};
 /* The following array is generate by python code:
 >>> width = [0, 0, 1, 2, 3, 4, 5, 6, 7, 8, 10, 12, 15, 20, 30, 60]
@@ -579,7 +579,7 @@ bool Decompress(TSSlice data, uint64_t count, TsSliceGuard *out) {
 template <class T>
 inline auto CheckedSubForS8B(const T a, const T b) -> std::pair<int64_t, bool> {
   if constexpr (std::is_unsigned_v<T>) {
-    int64_t diff = static_cast<std::make_signed_t<T>>(a - b);
+    int64_t diff = static_cast<int64_t>(static_cast<std::make_signed_t<T>>(a - b));
     bool overflow = (a > b && diff < 0) || (a < b && diff > 0);
     return {diff, overflow};
   }
@@ -794,30 +794,30 @@ bool V2Decompress(TSSlice data, uint64_t count, TsSliceGuard *out) {
   return idx == count && cursor == end;
 }
 
-};  // namespace __simple8b_detail
+};  // namespace _simple8b_detail
 
 template <class T>
 bool Simple8BInt<T>::Compress(TSSlice data, uint64_t count, TsBufferBuilder *out) const {
   assert(data.len == sizeof(T) * count);
   const T *p_data = reinterpret_cast<const T *>(data.data);
-  return __simple8b_detail::CompressImplGreedy<T>(p_data, count, out);
+  return _simple8b_detail::CompressImplGreedy<T>(p_data, count, out);
 }
 
 template <class T>
 bool Simple8BInt<T>::Decompress(TSSlice data, uint64_t count, TsSliceGuard *out) const {
-  return __simple8b_detail::Decompress<T>(data, count, out);
+  return _simple8b_detail::Decompress<T>(data, count, out);
 }
 
 template <class T>
 bool Simple8BIntV2<T>::Compress(TSSlice data, uint64_t count, TsBufferBuilder *out) const {
   assert(data.len == sizeof(T) * count);
   const T *p_data = reinterpret_cast<const T *>(data.data);
-  return __simple8b_detail::V2CompressImplGreedy<T>(p_data, count, out);
+  return _simple8b_detail::V2CompressImplGreedy<T>(p_data, count, out);
 }
 
 template <class T>
 bool Simple8BIntV2<T>::Decompress(TSSlice data, uint64_t count, TsSliceGuard *out) const {
-  return __simple8b_detail::V2Decompress<T>(data, count, out);
+  return _simple8b_detail::V2Decompress<T>(data, count, out);
 }
 
 bool BitPacking::Compress(TSSlice data, uint64_t count, TsBufferBuilder *out) const {

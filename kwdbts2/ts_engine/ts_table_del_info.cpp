@@ -165,6 +165,7 @@ KStatus STTableRangeDelAndTagInfo::GenTagPayLoad(kwdbContext_p ctx, EntityResult
     return KStatus::FAIL;
   }
   std::vector<uint32_t> scan_tags;
+  scan_tags.reserve(scan_tags.size());
   for (int i = 0; i < tags_info.size(); ++i) {
     scan_tags.push_back(i);
   }
@@ -385,10 +386,10 @@ KStatus STTableRangeDelAndTagInfo::WriteDelAndTagInfo(kwdbContext_p ctx, TSSlice
 }
 
 KStatus STTableRangeDelAndTagInfo::CommitDeleteInfo(kwdbContext_p ctx) {
-  for (auto pkey : pkey_del_ranges_) {
+  for (const auto& pkey : pkey_del_ranges_) {
     std::string cur_pkey = pkey.first;
-    for (STDelRange& del : pkey.second) {
-      auto s = table_->DeleteData(ctx, 1, cur_pkey, {del.ts_span}, nullptr, 0, del.osn_span.end);
+    for (auto [ts_span, osn_span] : pkey.second) {
+      auto s = table_->DeleteData(ctx, 1, cur_pkey, {ts_span}, nullptr, 0, osn_span.end);
       if (s != KStatus::SUCCESS) {
         LOG_ERROR("Failed DeleteData [%lu].", table_->GetTableId());
         return s;
@@ -396,17 +397,6 @@ KStatus STTableRangeDelAndTagInfo::CommitDeleteInfo(kwdbContext_p ctx) {
     }
   }
   return KStatus::SUCCESS;
-}
-
-static inline uint64_t EncodeTableID(uint64_t table_id, uint32_t version) {
-  table_id &= 0x7FFFFFFF;
-  table_id |= (1ULL << 31);
-  return (static_cast<uint64_t>(version) << 32) | table_id;
-}
-static inline std::pair<uint64_t, uint32_t> DecodeTableID(uint64_t table_id) {
-  uint64_t table_id_mask = 0x7FFFFFFF;
-  uint32_t version = table_id >> 32;
-  return {table_id_mask & table_id, version};
 }
 
 bool STPackageSnapshotData::PackageData(uint32_t package_id, TSTableID tbl_id, uint32_t tbl_version,

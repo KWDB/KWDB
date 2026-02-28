@@ -187,7 +187,7 @@ class TsEntityBlockBuilder {
 
   KStatus GetMetricValue(uint32_t row_idx, std::vector<TSSlice>& value, std::vector<DataFlags>& data_flags);
 
-  KStatus Append(shared_ptr<TsBlockSpan> span, bool& is_full);
+  KStatus Append(const shared_ptr<TsBlockSpan>& span, bool& is_full);
 
   KStatus GetCompressData(TsEntitySegmentBlockItem& blk_item, TsBufferBuilder* data_buffer,
                           TsBufferBuilder* agg_buffer);

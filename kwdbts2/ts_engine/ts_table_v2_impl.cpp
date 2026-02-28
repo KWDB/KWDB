@@ -78,7 +78,6 @@ KStatus TsTableV2Impl::PutData(kwdbContext_p ctx, TsVGroup* v_group, TsRawPayloa
   }
   auto primary_key = p.GetPrimaryTag();
   auto payload = p.GetPayload();
-  auto version = p.GetTableVersion();
   auto s = v_group->PutData(ctx, table_schema_mgr_, mtr_id, &primary_key, entity_id, &payload, write_wal);
   if (s != KStatus::SUCCESS) {
     // todo(liangbo01) if failed. should we need rollback all inserted data?
@@ -167,6 +166,7 @@ KStatus TsTableV2Impl::GetTagListByRowNum(kwdbContext_p ctx, const std::vector<E
       return FAIL;
   }
   std::vector<uint32_t> result_scan_tags;
+  result_scan_tags.reserve(scan_tags.size());
   for (const auto& tag_idx : scan_tags) {
     result_scan_tags.emplace_back(result_ver_obj->getValidSchemaIdxs()[tag_idx]);
   }
@@ -229,8 +229,8 @@ KStatus TsTableV2Impl::GetNormalIterator(kwdbContext_p ctx, const IteratorParams
   }};
 
   std::shared_ptr<MMapMetricsTable> metric_schema;
-  auto ret = table_schema_mgr_->GetMetricSchema(params.table_version, &metric_schema);
-  if (ret != KStatus::SUCCESS) {
+  s = table_schema_mgr_->GetMetricSchema(params.table_version, &metric_schema);
+  if (s != KStatus::SUCCESS) {
     LOG_ERROR("schema version [%u] does not exists", params.table_version);
     return FAIL;
   }
@@ -272,7 +272,7 @@ KStatus TsTableV2Impl::GetNormalIterator(kwdbContext_p ctx, const IteratorParams
     }
     vgroup = (*ts_vgroups)[vgroup_iter.first];
     TsStorageIterator* ts_iter;
-    std::shared_ptr<MMapMetricsTable> schema = metric_schema;
+    const std::shared_ptr<MMapMetricsTable>& schema = metric_schema;
     s = vgroup->GetIterator(ctx, params.table_version, vgroup_ids[vgroup_iter.first], params.ts_spans,
                             params.block_filter, params.scan_cols, ts_scan_cols, params.agg_extend_cols,
                             params.scan_agg_types, table_schema_mgr_, schema,
@@ -1242,7 +1242,7 @@ KStatus TsTableV2Impl::GenerateMetaSchema(kwdbContext_p ctx, roachpb::CreateTsTa
   }
 
   auto tag_infos = table_schema_mgr_->GetTagTable()->GetAllNTagIndexs(schema_version);
-  for (auto tag_info : tag_infos) {
+  for (const auto& tag_info : tag_infos) {
     roachpb::NTagIndexInfo* idx_info = meta->add_index_info();
     idx_info->set_index_id(tag_info.first);
     for (auto col_id : tag_info.second) {
@@ -1331,7 +1331,7 @@ KStatus TsTableV2Impl::GetMetricIteratorByOSN(kwdbContext_p ctx, k_uint32 table_
   return s;
 }
 
-KStatus TsTableV2Impl::TrasvalAllTagPtable(kwdbContext_p ctx, std::function<bool(TagPartitionTable*, size_t)> func) {
+KStatus TsTableV2Impl::TrasvalAllTagPtable(kwdbContext_p ctx, const std::function<bool(TagPartitionTable*, size_t)>& func) {
   std::vector<TagPartitionTable*> all_tag_partition_tables;
   auto tag_bt = table_schema_mgr_->GetTagTable();
   TableVersion cur_tbl_version = tag_bt->GetTagTableVersionManager()->GetCurrentTableVersion();
@@ -1525,8 +1525,7 @@ KStatus TsTableV2Impl::GetEntityIdListByOSN(kwdbContext_p ctx, const std::vector
     return ret;
   }
   std::unordered_map<uint64_t, EntityResultIndex> pkeys_left;
-  for (auto idx : pkeys_status) {
-    bool found = false;
+  for (const auto& idx : pkeys_status) {
     for (auto pkey : primary_tags) {
       if (0 == memcmp(idx.second.mem.get(), pkey, idx.second.p_tags_size)) {
         pkeys_left[idx.first] = idx.second;
@@ -1539,7 +1538,7 @@ KStatus TsTableV2Impl::GetEntityIdListByOSN(kwdbContext_p ctx, const std::vector
     LOG_ERROR("GetTagSchema failed.");
     return KStatus::FAIL;
   }
-  for (auto pkey : pkeys_left) {
+  for (const auto& pkey : pkeys_left) {
     auto tag_iter = std::make_shared<TagIteratorByOSN>(tag_table, table_version, scan_cols, osn_span);
     if (KStatus::SUCCESS != tag_iter->Init(hps, pkeys_left)) {
       return KStatus::FAIL;

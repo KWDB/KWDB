@@ -49,6 +49,7 @@ KStatus TsReadBatchDataWorker::GetTagValue(kwdbContext_p ctx, bool& not_found) {
     return KStatus::FAIL;
   }
   std::vector<uint32_t> scan_tags;
+  scan_tags.reserve(tags_info.size());
   for (int i = 0; i < tags_info.size(); ++i) {
     scan_tags.push_back(i);
   }
@@ -87,7 +88,6 @@ KStatus TsReadBatchDataWorker::GetTagValue(kwdbContext_p ctx, bool& not_found) {
   std::string tag_data;
   tag_data.resize(tag_value_len_);
   assert(res.col_num_ == tags_info.size());
-  uint32_t tag_data_start_offset = cur_batch_data_.tags_data_offset_;
   for (int tag_idx = 0; tag_idx < res.col_num_; ++tag_idx) {
     const Batch* col_batch = res.data[tag_idx][0];
     bool is_null = false;
@@ -446,7 +446,6 @@ TsWriteBatchDataWorker::~TsWriteBatchDataWorker() {
 std::atomic<int64_t> w_file_no = 0;
 
 KStatus TsWriteBatchDataWorker::Init(kwdbContext_p ctx) {
-  auto vgroups = ts_engine_->GetTsVGroups();
   TsIOEnv* env = &TsIOEnv::GetInstance();
   std::string file_path = ts_engine_->GetDbDir() + "/temp_db_/" + std::to_string(job_id_)
                           + "." + std::to_string(w_file_no++) + ".data";
@@ -523,7 +522,6 @@ KStatus TsWriteBatchDataWorker::Write(kwdbContext_p ctx, TSTableID table_id, uin
   // insert tag record
   uint32_t vgroup_id;
   TSEntityID entity_id;
-  is_dropped = false;
   bool new_tag;
   s = ts_engine_->InsertTagData(ctx, schema, 0, {tag_payload_str.data(), tag_payload_str.size()}, false,
                                 vgroup_id, entity_id, new_tag);

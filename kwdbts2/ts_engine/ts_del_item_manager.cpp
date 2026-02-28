@@ -28,10 +28,10 @@ std::vector<STScanRange> LSNRangeUtil::MergeScanAndDelRange(const std::vector<ST
   return result;
 }
 
-#define  IsMinLSN(lsn) (lsn == 0)
-#define  IsMaxLSN(lsn) (lsn == UINT64_MAX)
-#define  IsMinTS(ts) (ts == INT64_MIN)
-#define  IsMaxTS(ts) (ts == INT64_MAX)
+#define  IsMinLSN(lsn) ((lsn) == 0)
+#define  IsMaxLSN(lsn) ((lsn) == UINT64_MAX)
+#define  IsMinTS(ts) ((ts) == INT64_MIN)
+#define  IsMaxTS(ts) ((ts) == INT64_MAX)
 
 void LSNRangeUtil::MergeRangeCross(const STScanRange& range, const STDelRange& del, std::vector<STScanRange>* result) {
   if (IsTSRangeNoCross(range.ts_span, del.ts_span)) {
@@ -111,11 +111,12 @@ void LSNRangeUtil::MergeRangeCross(const STScanRange& range, const STDelRange& d
   }
 }
 
-TsDelItemManager::TsDelItemManager(std::string path) : path_(path + "/" + DEL_FILE_NAME), mmap_alloc_(path_) {
+TsDelItemManager::TsDelItemManager(const std::string& path) : path_(path + "/" + DEL_FILE_NAME), mmap_alloc_(path_) {
   rw_lock_ = new KRWLatch(RWLATCH_ID_MMAP_DEL_ITEM_MGR_RWLOCK);
 }
 
 TsDelItemManager::~TsDelItemManager() {
+  mmap_alloc_.Close();
   if (rw_lock_) {
     delete rw_lock_;
   }

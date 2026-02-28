@@ -315,7 +315,7 @@ class ConcurrentAllocator final {
 };
 
 inline char *ConcurrentAllocator::AllocateBlock(size_t block_size) {
-  blocks_.emplace_back(nullptr);
+  blocks_.push_back(nullptr);
   auto block = new char[block_size];
   blocks_memory_ += block_size;
   blocks_.back() = block;

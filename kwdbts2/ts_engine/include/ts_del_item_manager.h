@@ -85,7 +85,7 @@ class TsDelItemManager {
   KRWLatch* rw_lock_{nullptr};
 
  public:
-  explicit TsDelItemManager(std::string path);
+  explicit TsDelItemManager(const std::string& path);
   ~TsDelItemManager();
   KStatus Open();
   KStatus AddDelItem(TSEntityID entity_id, const TsEntityDelItem& del_item);

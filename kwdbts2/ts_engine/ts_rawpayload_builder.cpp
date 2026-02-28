@@ -164,6 +164,7 @@ bool TSRowPayloadBuilder::Build(TSTableID table_id, uint32_t table_version, TSSl
   for (int i = 0; i < primary_tags_.size(); ++i) {
     primary_tag_len += primary_key_info_[i].m_size;
   }
+  assert(primary_tag_len != 0);
   char* primary_keys_mem = reinterpret_cast<char*>(malloc(primary_tag_len));
   memset(primary_keys_mem, 0, primary_tag_len);
   int begin_offset = 0;

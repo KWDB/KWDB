@@ -33,6 +33,8 @@ void LogObjectLockError(int type, TSObject *obj) {
       LOG_ERROR("%lx <Cannot lock(w)>: \"%s\", db: \"%s\"\n", pthread_self(),
                 obj->path().c_str(), obj->tbl_sub_path().c_str());
       break;
+    default:
+      break;
   }
 }
 

@@ -23,8 +23,8 @@ std::atomic<int> destroyed_entity_block_file_count = 0;
 namespace kwdbts {
 
 TsEntitySegmentBlockFile::TsEntitySegmentBlockFile(TsIOEnv* io_env, const string& root, EntitySegmentMetaInfo info)
-    : io_env_(io_env), root_path_(root), info_(std::move(info)) {
-  memset(&header_, 0, sizeof(TsAggAndBlockFileHeader));
+    : io_env_(io_env), root_path_(root), info_(info) {
+  memset(reinterpret_cast<void*>(&header_), 0, sizeof(TsAggAndBlockFileHeader));
 #ifdef WITH_TESTS
   ++created_entity_block_file_count;
 #endif
@@ -69,7 +69,7 @@ KStatus TsEntitySegmentBlockFile::ReadData(uint64_t offset, TsSliceGuard* data, 
 }
 
 TsEntitySegmentAggFile::TsEntitySegmentAggFile(TsIOEnv* io_env, const string& root, EntitySegmentMetaInfo info)
-    : io_env_(io_env), root_(root), info_(std::move(info)) {}
+    : io_env_(io_env), root_(root), info_(info) {}
 
 KStatus TsEntitySegmentAggFile::Open() {
   std::string file_path_ = root_ / EntityAggFileName(info_.agg_info.file_number);

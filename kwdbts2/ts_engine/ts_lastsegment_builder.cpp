@@ -74,6 +74,9 @@ KStatus TsLastSegmentBuilder::PutBlockSpan(std::shared_ptr<TsBlockSpan> span) {
 
     if (metric_block_builder_->GetRowNum() == TsLastSegment::kNRowPerBlock) {
       s = RecordAndWriteBlockToFile();
+      if (s == FAIL) {
+        return FAIL;
+      }
     }
     span = back_span;
   }
@@ -144,6 +147,10 @@ KStatus TsLastSegmentBuilder::Finalize(TsSegmentWriteStats* stats) {
   footer_.n_meta_block = meta_block_offset.size();
   EncodeFooter(&buffer, footer_);
   auto s = last_segment_file_->Append(buffer.AsSlice());
+  if (s == FAIL) {
+    LOG_ERROR("Failed to append last segment file: %s", last_segment_file_->GetFilePath().c_str());
+    return FAIL;
+  }
   last_segment_file_->Sync();
   s = last_segment_file_->Close();
   if (s == FAIL) {
@@ -226,7 +233,7 @@ KStatus TsLastSegmentBuilder::RecordAndWriteBlockToFile() {
 
   index.info_offset = -1;
   index.length = -1;
-  block_index_buffer_.push_back(std::move(index));
+  block_index_buffer_.push_back(index);
 
   block_info.osn_len = compress_info.osn_len;
   block_info.col_infos.resize(block_info.ncol);

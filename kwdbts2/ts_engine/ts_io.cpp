@@ -491,7 +491,6 @@ TsIOEnv& TsIOEnv::GetInstance() {
 }
 
 static fs::path Regularization(const fs::path& p) {
-  auto abs = fs::absolute(p);
   std::vector<fs::path> s;
   for (auto c : p) {
     if (c == ".") {
@@ -505,7 +504,7 @@ static fs::path Regularization(const fs::path& p) {
   }
 
   fs::path res;
-  for (auto c : s) {
+  for (const auto& c : s) {
     res /= c;
   }
   return res;

@@ -79,7 +79,7 @@ struct RaftStore {
   }
 
   KStatus Open();
-  KStatus init(std::string engine_root_path);
+  KStatus init(const std::string& engine_root_path);
 
   KStatus Get(kwdbContext_p ctx, uint64_t range_id, uint64_t start, uint64_t end, TSSlice* value);
   KStatus GetFirst(kwdbContext_p ctx, uint64_t range_id, TSSlice* value);

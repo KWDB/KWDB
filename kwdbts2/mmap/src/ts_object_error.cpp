@@ -46,7 +46,7 @@ const char * TsErrmsg[] = {
   "Disk free space reaches the alert threshold."   // KWEFREESPCLIMIT  -27
 };
 
-#define TsError(x)  (-x)
+#define TsError(x)  (-(x))
 
 
 ErrorInfo::ErrorInfo(bool is_mtx_needed): is_mutex_needed_(is_mtx_needed) {
@@ -112,6 +112,7 @@ int errnumToErrorCode(int errnum) {
     }
     case EROFS:  return KWEROFS;
     case EACCES: return KWEPERM;
+    default: break;
   }
   return (errno > 0) ? KWEOTHER : 0;
 }

@@ -79,7 +79,7 @@ KStatus TsColumnBlock::GetColBitmap(std::unique_ptr<TsBitmapBase>* bitmap) const
 KStatus TsColumnBlock::GetValueSlice(int row_num, TSSlice& value) {
   assert(row_num < count_);
   if (!isVarLenType(col_schema_.type)) {
-    size_t offset = col_schema_.size * row_num;
+    size_t offset = static_cast<size_t>(col_schema_.size) * static_cast<size_t>(row_num);
     assert(offset + col_schema_.size <= fixlen_guard_.size());
     value = fixlen_guard_.SubSlice(offset, col_schema_.size);
     return SUCCESS;

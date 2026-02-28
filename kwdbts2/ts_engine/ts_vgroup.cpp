@@ -243,7 +243,7 @@ KStatus TsVGroup::RemoveChkFile(kwdbContext_p ctx) {
 }
 
 KStatus TsVGroup::ReadWALLogFromLastCheckpoint(kwdbContext_p ctx, std::vector<LogEntry*>& logs, TS_OSN& last_lsn,
-                                               std::vector<uint64_t> uncommitted_xid) {
+                                               const std::vector<uint64_t>& uncommitted_xid) {
   // 1. read chk wal log
   // 2. switch new file
   wal_manager_->Lock();
@@ -337,7 +337,6 @@ KStatus TsVGroup::redoPut(kwdbContext_p ctx, kwdbts::TS_OSN log_lsn, const TSSli
   }
   auto table_id = p.GetTableID();
   TSSlice primary_key = p.GetPrimaryTag();
-  auto tbl_version = p.GetTableVersion();
   bool new_tag;
 
   uint32_t vgroup_id;
@@ -561,6 +560,10 @@ KStatus TsVGroup::ConvertBlockSpanToResultSet(const std::vector<k_uint32>& kw_sc
         TSSlice var_data;
         DataFlags var_bitmap;
         ret = ts_blk_span.GetVarLenTypeColAddr(0, kw_col_idx, var_bitmap, var_data);
+        if (ret != KStatus::SUCCESS) {
+          LOG_ERROR("GetVarLenTypeColAddr failed.");
+          return ret;
+        }
         if (var_bitmap != DataFlags::kValid) {
           batch = new AggBatch(nullptr, 0);
         } else {
@@ -603,7 +606,7 @@ KStatus TsVGroup::GetEntityLastRowBatch(uint32_t entity_id, uint32_t scan_versio
   // TODO(liumengzhen) : set correct lsn
   last_row_data.SetData(last_row.last_ts, UINT64_MAX);
   last_row_data.SetRowData(last_row.last_payload);
-  std::shared_ptr<TsMemSegBlock> mem_block = std::make_shared<TsMemSegBlock>(nullptr);
+  std::shared_ptr<TsMemSegBlock> mem_block = std::make_shared<TsMemSegBlock>(std::shared_ptr<TsMemSegment>(nullptr));
   mem_block->SetMemoryAddrSafe();
   mem_block->InsertRow(&last_row_data);
 
@@ -866,7 +869,7 @@ static auto SplitBlockSpansByPartition(const TsVGroupVersion* current, std::vect
       }
       if (last_ts < partition->GetEndTime()) {
         result[partition.get()].push_back(std::move(current_span));
-        continue;
+        break;
       }
       int split_idx = *std::upper_bound(
           IndexRange{0}, IndexRange(current_span->GetRowNum()), partition->GetEndTime(),
@@ -910,7 +913,7 @@ std::vector<TsEntityCountStats> GetFlushInfoFromSpans(const std::vector<std::sha
     flush_info.max_ts = spans[end_idx - 1]->GetLastTS();
     flush_info.is_count_valid = true;
 
-    result.push_back(std::move(flush_info));
+    result.push_back(flush_info);
   }
   return result;
 }
@@ -982,11 +985,10 @@ KStatus TsVGroup::FlushImmSegment(const std::shared_ptr<TsMemSegment>& mem_seg) 
     }
   });
 
-  std::stringstream ss;
   TsSegmentWriteStats total_entity_stats;
   TsSegmentWriteStats total_last_stats;
   std::map<PartitionIdentifier, std::vector<TsEntityCountStats>> flush_infos;
-  for (auto& [partition, spans] : partitioned_spans) {
+  for (const auto& [partition, spans] : partitioned_spans) {
     if (spans.empty()) continue;
     auto partition_id = partition->GetPartitionIdentifier();
     flush_infos[partition_id] = GetFlushInfoFromSpans(spans);
@@ -1017,7 +1019,7 @@ KStatus TsVGroup::FlushImmSegment(const std::shared_ptr<TsMemSegment>& mem_seg) 
         if (s == FAIL) {
           return s;
         }
-        entityseg_builder.PutBlockSpans(std::move(spans));
+        entityseg_builder.PutBlockSpans(spans);
         TsVersionUpdate temp_update;
         TsSegmentWriteStats stats;
         s = entityseg_builder.Compact(false, &temp_update, &lastseg_spans, &stats);
@@ -1142,7 +1144,7 @@ KStatus TsVGroup::GetDelInfoByOSN(kwdbContext_p ctx, TSTableID tbl_id, uint32_t 
   }
   auto ts_partitions = current->GetDBAllPartitions(db_id);
   list<KwTsSpan> del_items;
-  for (auto p : ts_partitions) {
+  for (const auto& p : ts_partitions) {
     list<KwTsSpan> del_item;
     auto s = p->GetDelRangeByOSN(entity_id, osn_span, del_item);
     if (s != KStatus::SUCCESS) {
@@ -1167,7 +1169,7 @@ KStatus TsVGroup::GetDelInfoWithOSN(kwdbContext_p ctx, TSTableID tbl_id, uint32_
   list<STDelRange> del_items;
   std::vector<KwOSNSpan> osn_span;
   osn_span.push_back({0, UINT64_MAX});
-  for (auto p : ts_partitions) {
+  for (const auto& p : ts_partitions) {
     list<STDelRange> del_item;
     auto s = p->GetDelRangeWithOSN(entity_id, osn_span, del_item);
     if (s != KStatus::SUCCESS) {
@@ -1196,7 +1198,7 @@ KStatus TsVGroup::GetMetricIteratorByOSN(kwdbContext_p ctx, const std::shared_pt
 }
 
 KStatus TsVGroup::GetBlockSpans(TSTableID table_id, uint32_t entity_id, KwTsSpan ts_span, DATATYPE ts_col_type,
-                                std::shared_ptr<TsTableSchemaManager> table_schema_mgr, uint32_t table_version,
+                                const std::shared_ptr<TsTableSchemaManager>& table_schema_mgr, uint32_t table_version,
                                 std::shared_ptr<const TsVGroupVersion>& current,
                                 std::list<std::shared_ptr<TsBlockSpan>>* block_spans) {
   uint32_t db_id = schema_mgr_->GetDBIDByTableID(table_id);
@@ -1271,25 +1273,15 @@ KStatus TsVGroup::rollback(kwdbContext_p ctx, LogEntry* wal_log, bool from_chk) 
     }
 
     case WALLogType::CHECKPOINT:
-      break;
     case WALLogType::MTR_BEGIN:
-      break;
     case WALLogType::MTR_COMMIT:
-      break;
     case WALLogType::MTR_ROLLBACK:
-      break;
     case WALLogType::TS_BEGIN:
-      break;
     case WALLogType::TS_COMMIT:
-      break;
     case WALLogType::TS_ROLLBACK:
-      break;
     case WALLogType::DDL_CREATE:
-      break;
     case WALLogType::DDL_DROP:
-      break;
     case WALLogType::DDL_ALTER_COLUMN:
-      break;
     case WALLogType::DB_SETTING:
       break;
     case WALLogType::RANGE_SNAPSHOT: {
@@ -1371,7 +1363,6 @@ KStatus TsVGroup::ApplyWal(kwdbContext_p ctx, LogEntry* wal_log,
     case WALLogType::UPDATE: {
       auto update_log = reinterpret_cast<UpdateLogEntry*>(wal_log);
       WALTableType t_type = update_log->getTableType();
-      std::string p_tag;
       if (t_type == WALTableType::TAG) {
         auto log = reinterpret_cast<UpdateLogTagsEntry*>(update_log);
         auto slice = log->getPayload();
@@ -1526,7 +1517,7 @@ const std::vector<KwTsSpan>& ts_spans, bool user_del) {
 
 KStatus TsVGroup::DropMetricEntity(kwdbContext_p ctx, TSTableID tbl_id, TSEntityID e_id) {
   auto s = TrasvalAllPartition(ctx, tbl_id, {KwTsSpan{INT64_MIN, INT64_MAX}},
-  [&](std::shared_ptr<const TsPartitionVersion> p) -> KStatus {
+  [&](const std::shared_ptr<const TsPartitionVersion>& p) -> KStatus {
     auto ret = p->DropEntity(e_id);
     if (ret != KStatus::SUCCESS) {
       LOG_ERROR("DeleteData partition[%u/%lu] failed!",
@@ -1535,7 +1526,7 @@ KStatus TsVGroup::DropMetricEntity(kwdbContext_p ctx, TSTableID tbl_id, TSEntity
     }
     return ret;
   });
-  return KStatus::SUCCESS;
+  return s;
 }
 
 KStatus TsVGroup::DeleteData(kwdbContext_p ctx, TSTableID tbl_id, TSEntityID e_id, TS_OSN osn,
@@ -1551,7 +1542,7 @@ KStatus TsVGroup::GetEntitySegmentBuilder(std::shared_ptr<const TsPartitionVersi
   auto it = write_batch_segment_builders_.find(partition_id);
   if (it == write_batch_segment_builders_.end()) {
     while (!partition->TrySetBusy(PartitionStatus::BatchDataWriting)) {
-      sleep(1);
+      std::this_thread::sleep_for(std::chrono::seconds(1));
     }
     partition = version_manager_->Current()->GetPartition(std::get<0>(partition_id), std::get<1>(partition_id));
     auto entity_segment = partition->GetEntitySegment();
@@ -1718,7 +1709,7 @@ KStatus TsVGroup::undoPut(kwdbContext_p ctx, TS_OSN log_lsn, TSSlice payload) {
 }
 
 KStatus TsVGroup::TrasvalAllPartition(kwdbContext_p ctx, TSTableID tbl_id,
-const std::vector<KwTsSpan>& ts_spans, std::function<KStatus(std::shared_ptr<const TsPartitionVersion>)> func) {
+const std::vector<KwTsSpan>& ts_spans, const std::function<KStatus(std::shared_ptr<const TsPartitionVersion>)>& func) {
   std::shared_ptr<kwdbts::TsTableSchemaManager> tb_schema_mgr;
   auto s = schema_mgr_->GetTableSchemaMgr(tbl_id, tb_schema_mgr);
   if (s == KStatus::FAIL) {
@@ -1751,7 +1742,7 @@ const std::vector<KwTsSpan>& ts_spans) {
   }
   if (entity_id > 0) {
     s = TrasvalAllPartition(ctx, tbl_id, ts_spans,
-      [&](std::shared_ptr<const TsPartitionVersion> p) -> KStatus {
+      [&](const std::shared_ptr<const TsPartitionVersion>& p) -> KStatus {
         auto ret = p->UndoDeleteData(entity_id, ts_spans, {0, log_lsn});
         if (ret != KStatus::SUCCESS) {
           LOG_ERROR("UndoDeleteData partition[%u/%lu] failed!",
@@ -1796,7 +1787,6 @@ KStatus TsVGroup::redoPutTag(kwdbContext_p ctx, kwdbts::TS_OSN log_lsn, const TS
   }
   auto table_id = p.GetTableID();
   TSSlice primary_key = p.GetPrimaryTag();
-  auto tbl_version = p.GetTableVersion();
   bool new_tag;
 
   uint32_t vgroup_id;
@@ -2102,7 +2092,6 @@ KStatus TsVGroup::Vacuum(kwdbContext_p ctx, bool force) {
       //   LOG_INFO("Context has been canceled, stop vacuum.");
       //   return KStatus::SUCCESS;
       // }
-      s = KStatus::SUCCESS;
       auto& partition = partitions[i];
       auto partition_id = partition->GetPartitionIdentifier();
       auto root_path = this->GetPath() / PartitionDirName(partition_id);

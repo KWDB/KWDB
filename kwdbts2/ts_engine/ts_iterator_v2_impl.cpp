@@ -54,6 +54,7 @@ KStatus ConvertBlockSpanToResultSet(const std::vector<k_uint32>& kw_scan_cols, c
         ret = ts_blk_span->GetFixLenColAddr(kw_col_idx, &value, &ts_bitmap, ts_scan_stats);
         if (ret != KStatus::SUCCESS) {
           LOG_ERROR("GetFixLenColAddr failed.");
+          free(bitmap);
           return ret;
         }
         if (bitmap != nullptr && !ts_bitmap->IsAllValid()) {
@@ -70,6 +71,8 @@ KStatus ConvertBlockSpanToResultSet(const std::vector<k_uint32>& kw_scan_cols, c
         auto s = ts_blk_span->GetColBitmap(kw_col_idx, &ts_bitmap, ts_scan_stats);
         if (s != KStatus::SUCCESS) {
           LOG_ERROR("ts_blk_span->GetColBitmap failed.");
+          delete batch;
+          free(bitmap);
           return s;
         }
         for (int row_idx = 0; row_idx < *count; ++row_idx) {
@@ -148,7 +151,7 @@ TsStorageIteratorV2Impl::TsStorageIteratorV2Impl(const std::shared_ptr<TsVGroup>
   ts_scan_cols_ = ts_scan_cols;
   kw_scan_cols_ = kw_scan_cols;
   table_schema_mgr_ = table_schema_mgr;
-  scan_schema_ = std::move(schema);
+  scan_schema_ = schema;
 }
 
 TsStorageIteratorV2Impl::~TsStorageIteratorV2Impl() {
@@ -399,6 +402,9 @@ KStatus TsStorageIteratorV2Impl::isBlockFiltered(std::shared_ptr<TsBlockSpan>& b
           } else {
             ret = getBlockSpanMinMaxValue(block_span, col_id, attrs_[col_id].type,
                                           ts_scan_stats, min_addr, max_addr);
+            if (ret != KStatus::SUCCESS) {
+              return KStatus::FAIL;
+            }
             is_new = true;
           }
           if (!min_addr || !max_addr) continue;
@@ -1490,23 +1496,8 @@ inline KStatus TsAggIteratorV2Impl::AddSumNotOverflowYetByPreSum(uint32_t col_id
   bool over_flow = false;
   switch (type) {
     case DATATYPE::INT8:
-      over_flow = AddAggInteger<int64_t>(
-          *reinterpret_cast<int64_t*>(agg_data.data),
-          *reinterpret_cast<int64_t*>(current));
-      ConvertToDoubleIfOverflow(col_idx, over_flow, agg_data);
-      break;
     case DATATYPE::INT16:
-      over_flow = AddAggInteger<int64_t>(
-          *reinterpret_cast<int64_t*>(agg_data.data),
-          *reinterpret_cast<int64_t*>(current));
-      ConvertToDoubleIfOverflow(col_idx, over_flow, agg_data);
-      break;
     case DATATYPE::INT32:
-      over_flow = AddAggInteger<int64_t>(
-          *reinterpret_cast<int64_t*>(agg_data.data),
-          *reinterpret_cast<int64_t*>(current));
-      ConvertToDoubleIfOverflow(col_idx, over_flow, agg_data);
-      break;
     case DATATYPE::INT64:
       over_flow = AddAggInteger<int64_t>(
           *reinterpret_cast<int64_t*>(agg_data.data),
@@ -1514,10 +1505,6 @@ inline KStatus TsAggIteratorV2Impl::AddSumNotOverflowYetByPreSum(uint32_t col_id
       ConvertToDoubleIfOverflow(col_idx, over_flow, agg_data);
       break;
     case DATATYPE::FLOAT:
-      AddAggFloat<double>(
-          *reinterpret_cast<double*>(agg_data.data),
-          *reinterpret_cast<double*>(current));
-      break;
     case DATATYPE::DOUBLE:
       AddAggFloat<double>(
           *reinterpret_cast<double*>(agg_data.data),
@@ -1573,20 +1560,8 @@ inline KStatus TsAggIteratorV2Impl::AddSumOverflowByPreSum(int32_t type,
                                                     TSSlice& agg_data) {
   switch (type) {
     case DATATYPE::INT8:
-      AddAggFloat<double, int64_t>(
-          *reinterpret_cast<double*>(agg_data.data),
-          *reinterpret_cast<int64_t*>(current));
-      break;
     case DATATYPE::INT16:
-      AddAggFloat<double, int64_t>(
-          *reinterpret_cast<double*>(agg_data.data),
-          *reinterpret_cast<int64_t*>(current));
-      break;
     case DATATYPE::INT32:
-      AddAggFloat<double, int64_t>(
-          *reinterpret_cast<double*>(agg_data.data),
-          *reinterpret_cast<int64_t*>(current));
-      break;
     case DATATYPE::INT64:
       AddAggFloat<double, int64_t>(
           *reinterpret_cast<double*>(agg_data.data),
@@ -2191,7 +2166,7 @@ KStatus TsOffsetIteratorV2Impl::filterUpper(uint32_t filter_num, uint32_t* cnt) 
 
 KStatus TsOffsetIteratorV2Impl::ScanPartitionBlockSpans(uint32_t* cnt, TsScanStats* ts_scan_stats) {
   *cnt = 0;
-  KStatus ret;
+  KStatus ret = KStatus::SUCCESS;
   for (const auto& it : p_time_it_->second) {
     uint32_t vgroup_id = it.first;
     std::shared_ptr<const TsPartitionVersion> partition_version = it.second;
@@ -2563,7 +2538,6 @@ KStatus TsRawDataIteratorV2ImplByOSN::AppendExtendColSpace(ResultSet* res, uint3
 KStatus TsRawDataIteratorV2ImplByOSN::FillEmptyMetricRow(ResultSet* res, uint32_t count,
   TS_OSN osn, OperatorTypeOfRecord type) {
   for (int i = 0; i < kw_scan_cols_.size(); ++i) {
-    auto kw_col_idx = kw_scan_cols_[i];
     Batch* batch = nullptr;
     // just as all column is dropped at block version.
     batch = new Batch(nullptr, count, nullptr);

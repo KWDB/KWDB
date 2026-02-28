@@ -32,7 +32,7 @@ bool AggCalculatorV2::CalcAggForFlush(int is_not_null, uint16_t& count, void* ma
       continue;
     }
     ++count;
-    auto current = reinterpret_cast<void*>(reinterpret_cast<intptr_t>(mem_) + i * size_);
+    auto current = static_cast<void*>(mem_ + static_cast<intptr_t>(i) * static_cast<intptr_t>(size_));
 
     if (!max || cmp(current, max, type_, size_) > 0) {
       max = current;

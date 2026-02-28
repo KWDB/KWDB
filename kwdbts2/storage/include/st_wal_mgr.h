@@ -33,9 +33,9 @@ class WALMgr {
  public:
   WALMgr(const string& db_path, const KTableKey& table_id, uint64_t tbl_grp_id, EngineOptions* opt);
 
-  WALMgr(const string& db_path, std::string vgrp_name, EngineOptions* opt, bool read_chk = false);
+  WALMgr(const string& db_path, const std::string& vgrp_name, EngineOptions* opt, bool read_chk = false);
 
-  WALMgr(const string& db_path, std::string vgrp_name, EngineOptions* opt,
+  WALMgr(const string& db_path, const std::string& vgrp_name, EngineOptions* opt,
          const std::string& user_defined_path, bool read_chk = false);
 
   ~WALMgr();
@@ -60,7 +60,7 @@ class WALMgr {
    */
   KStatus WriteWAL(kwdbContext_p ctx, k_char* wal_log, size_t length, TS_OSN& entry_lsn);
 
-  KStatus WriteIncompleteWAL(kwdbContext_p ctx, std::vector<LogEntry*> logs);
+  KStatus WriteIncompleteWAL(kwdbContext_p ctx, const std::vector<LogEntry*>& logs);
 
   inline KStatus writeWALInternal(kwdbContext_p ctx, k_char* wal_log, size_t length, TS_OSN& entry_lsn);
 
@@ -296,7 +296,7 @@ class WALMgr {
    * @param path  temp directory abslutly path.
    * @return
    */
-  KStatus WriteTempDirectoryWAL(kwdbContext_p ctx, uint64_t x_id, std::string path);
+  KStatus WriteTempDirectoryWAL(kwdbContext_p ctx, uint64_t x_id, const std::string& path);
 
   /**
    * Read WAL log entry.

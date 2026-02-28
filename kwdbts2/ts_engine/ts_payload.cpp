@@ -36,7 +36,6 @@ bool TsRawPayloadRowParser::GetColValueAddr(const TSSlice& row_data, int col_id,
                                             TSSlice* col_data) {
   bool parse_ok = false;
   // run here means column value is not null.
-  bool end_col_value = (col_id == schema_->size() - 1);
   if (col_id < schema_->size() && row_data.len > col_offset_[col_id]) {
     if (!__isVarType((*schema_)[col_id].type)) {
       col_data->data = row_data.data + col_offset_[col_id];

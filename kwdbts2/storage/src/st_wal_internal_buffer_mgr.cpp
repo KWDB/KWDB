@@ -124,7 +124,7 @@ KStatus WALBufferMgr::readWALLogs(std::vector<LogEntry*>& log_entries, TS_OSN st
     return FAIL;
   }
 
-  KStatus status;
+  KStatus status = KStatus::SUCCESS;
   do {
     uint64_t x_id = 0;
     current_lsn = current_offset;
@@ -365,7 +365,6 @@ KStatus WALBufferMgr::readWALLogs(std::vector<LogEntry*>& log_entries, TS_OSN st
         memcpy(&span.begin, read_loc, sizeof(span.begin));
         read_loc += sizeof(span.begin);
         memcpy(&span.end, read_loc, sizeof(span.end));
-        read_loc += sizeof(span.end);
         auto* drop_entry = new SnapshotEntry(current_lsn, x_id, table_id, b_hash, e_hash, span);
         delete[] read_buf;
         read_buf = nullptr;
@@ -812,7 +811,7 @@ KStatus WALBufferMgr::readAllTxnID(std::unordered_map<uint64_t, txnOp>& txn_op, 
   do {
     uint64_t x_id = 0;
     current_lsn = current_offset;
-    char* read_buf;
+    char* read_buf = nullptr;
 
     auto current_block = read_queue.front();
     size_t offset_in_block = current_offset - file_mgr_->GetLSNFromBlockNo(current_block->getBlockNo());
@@ -1342,7 +1341,7 @@ KStatus WALBufferMgr::flushWithoutLock(bool flush_header) {
 
 KStatus WALBufferMgr::readInsertLog(std::vector<LogEntry*>& log_entries, TS_OSN current_lsn, TS_OSN txn_id,
                                     TS_OSN& current_offset, std::queue<EntryBlock*>& read_queue, bool for_chk) {
-  char* read_buf;
+  char* read_buf = nullptr;
   WALTableType tbl_typ;
   uint64_t x_id = 0;
   uint64_t vgrp_id = 0;
@@ -1496,7 +1495,7 @@ KStatus WALBufferMgr::readInsertLog(std::vector<LogEntry*>& log_entries, TS_OSN 
 
 KStatus WALBufferMgr::readUpdateLog(std::vector<LogEntry*>& log_entries, TS_OSN current_lsn, TS_OSN txn_id,
                                     TS_OSN& current_offset, std::queue<EntryBlock*>& read_queue, bool for_chk) {
-  char* read_buf;
+  char* read_buf = nullptr;
   WALTableType tbl_typ;
   uint64_t x_id = 0;
   uint64_t vgrp_id = 0;
@@ -1604,7 +1603,7 @@ KStatus WALBufferMgr::readUpdateLog(std::vector<LogEntry*>& log_entries, TS_OSN 
 KStatus WALBufferMgr::readDeleteLog(vector<LogEntry*>& log_entries, TS_OSN current_lsn, TS_OSN txn_id,
                                     TS_OSN& current_offset, std::queue<EntryBlock*>& read_queue, bool for_chk) {
   WALTableType table_type;
-  char* res;
+  char* res = nullptr;
   uint64_t x_id = 0;
   uint64_t vgrp_id = 0;
   TS_OSN old_lsn = 0;
@@ -1824,7 +1823,7 @@ KStatus WALBufferMgr::readDeleteLog(vector<LogEntry*>& log_entries, TS_OSN curre
 
 KStatus WALBufferMgr::readCreateIndexLog(std::vector<LogEntry*>& log_entries, TS_OSN current_lsn, TS_OSN txn_id,
                            TS_OSN& current_offset, std::queue<EntryBlock*>& read_queue) {
-  char* res;
+  char* res = nullptr;
   KStatus  status;
   uint64_t x_id;
   uint64_t object_id;
@@ -1871,7 +1870,7 @@ KStatus WALBufferMgr::readCreateIndexLog(std::vector<LogEntry*>& log_entries, TS
 
 KStatus WALBufferMgr::readDropIndexLog(std::vector<LogEntry*>& log_entries, TS_OSN current_lsn, TS_OSN txn_id,
                          TS_OSN& current_offset, std::queue<EntryBlock*>& read_queue) {
-  char* res;
+  char* res = nullptr;
   KStatus  status;
   uint64_t x_id;
   uint64_t object_id;
@@ -1918,7 +1917,7 @@ KStatus WALBufferMgr::readDropIndexLog(std::vector<LogEntry*>& log_entries, TS_O
 
 KStatus WALBufferMgr::readCheckpointLog(vector<LogEntry*>& log_entries, TS_OSN current_lsn, TS_OSN txn_id,
                                         TS_OSN& current_offset, std::queue<EntryBlock*>& read_queue) {
-  char* read_buf;
+  char* read_buf = nullptr;
   KStatus status;
 
   status = readBytes(current_offset, read_queue, CheckpointEntry::header_length,
@@ -1972,7 +1971,7 @@ KStatus WALBufferMgr::readCheckpointLog(vector<LogEntry*>& log_entries, TS_OSN c
 
 KStatus WALBufferMgr::readDDLCreateLog(vector<LogEntry*>& log_entries, TS_OSN current_lsn, TS_OSN txn_id,
                                        TS_OSN& current_offset, std::queue<EntryBlock*>& read_queue) {
-  char* read_buf;
+  char* read_buf = nullptr;
   KStatus status;
 
   status = readBytes(current_offset, read_queue, DDLCreateEntry::head_length,
@@ -2039,7 +2038,7 @@ KStatus WALBufferMgr::readDDLCreateLog(vector<LogEntry*>& log_entries, TS_OSN cu
 
 KStatus WALBufferMgr::readDDLAlterLog(vector<LogEntry*>& log_entries, TS_OSN current_lsn, TS_OSN txn_id,
                                        TS_OSN& current_offset, std::queue<EntryBlock*>& read_queue) {
-  char* read_buf;
+  char* read_buf = nullptr;
   KStatus status;
 
   status = readBytes(current_offset, read_queue, DDLAlterEntry::head_length,

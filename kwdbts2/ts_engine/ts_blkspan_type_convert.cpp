@@ -400,7 +400,7 @@ std::shared_ptr<void> convertFixedToVar(DATATYPE old_type, DATATYPE new_type, ch
       var_data = static_cast<char*>(std::malloc(buffer_len));
       memset(var_data, 0, buffer_len);
       KInt16(var_data) = static_cast<k_int16>(char_len);
-      memcpy(var_data + kStringLenLen, data, strlen(data));
+      strcpy(var_data + kStringLenLen, data);  // NOLINT
       break;
     }
     default:
@@ -414,7 +414,7 @@ std::shared_ptr<void> convertFixedToVar(DATATYPE old_type, DATATYPE new_type, ch
     memset(var_data, 0, act_len + kStringLenLen);
     KUint16(var_data) = act_len;
     strcpy(var_data + kStringLenLen, res.data());  // NOLINT
-      }
+    }
   std::shared_ptr<void> ptr(var_data, free);
   return ptr;
 }
@@ -562,12 +562,13 @@ KStatus TSBlkDataTypeConvert::getColBitmapConverted(const TsBlockSpan* blk_span,
     return s;
   }
 
-  char* allc_mem = reinterpret_cast<char*>(malloc(dest_type_size * blk_span->nrow_));
+  size_t alloc_size = static_cast<size_t>(dest_type_size) * static_cast<size_t>(blk_span->nrow_);
+  char* allc_mem = reinterpret_cast<char*>(malloc(alloc_size));
   if (allc_mem == nullptr) {
-    LOG_ERROR("malloc failed. alloc size: %u", dest_type_size * blk_span->nrow_);
+    LOG_ERROR("malloc failed. alloc size: %lu", alloc_size);
     return KStatus::SUCCESS;
   }
-  memset(allc_mem, 0, dest_type_size * blk_span->nrow_);
+  memset(allc_mem, 0, alloc_size);
   Defer defer([&]() { free(allc_mem); });
 
   // bitmap.SetCount(blk_span->nrow_);
@@ -668,14 +669,15 @@ KStatus TSBlkDataTypeConvert::GetFixLenColAddr(const TsBlockSpan* blk_span, uint
     } else {
       *bitmap = std::make_unique<TsUniformBitmap<DataFlags::kValid>>(blk_span->nrow_);
     }
-    *value = blk_value + dest_type_size * blk_span->start_row_;
+    *value = blk_value + static_cast<size_t>(dest_type_size) * static_cast<size_t>(blk_span->start_row_);
   } else {
-    char* allc_mem = reinterpret_cast<char*>(malloc(dest_type_size * blk_span->nrow_));
+    size_t alloc_size = static_cast<size_t>(dest_type_size) * static_cast<size_t>(blk_span->nrow_);
+    char* allc_mem = reinterpret_cast<char*>(malloc(alloc_size));
     if (allc_mem == nullptr) {
-      LOG_ERROR("malloc failed. alloc size: %u", dest_type_size * blk_span->nrow_);
+      LOG_ERROR("malloc failed. alloc size: %lu", alloc_size);
       return FAIL;
     }
-    memset(allc_mem, 0, dest_type_size * blk_span->nrow_);
+    memset(allc_mem, 0, alloc_size);
     alloc_mems_.push_back(allc_mem);
 
     auto tmp_bitmap = std::make_unique<TsBitmap>(blk_span->nrow_);
@@ -770,7 +772,7 @@ CONVERT_DATA_FUNC getConvertFunc(int32_t old_data_type, int32_t new_data_type,
     if (new_data_type == DATATYPE::INT32) {
       return convertFixDataToData<int16_t, int32_t, false>;
     } else if (new_data_type == DATATYPE::INT64) {
-      return convertFixDataToData<int16_t, int32_t, false>;
+      return convertFixDataToData<int16_t, int64_t, false>;
     } else if (new_data_type == DATATYPE::VARSTRING) {
       return convertFixDataToData<int16_t, char, true>;
     }

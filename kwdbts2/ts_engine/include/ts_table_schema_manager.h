@@ -194,7 +194,7 @@ class TsTableSchemaManager {
  private:
   std::shared_ptr<MMapMetricsTable> open(uint32_t version, ErrorInfo& err_info);
 
-  int getColumnIndex(const AttributeInfo& attr_info);
+  KStatus getColumnIndex(const AttributeInfo& attr_info, int& col_no);
 
   static KStatus parseAttrInfo(const roachpb::KWDBKTSColumn& col, AttributeInfo& attr_info, bool first_col);
 

@@ -62,6 +62,9 @@ KStatus MetricsVersionManager::Init(std::vector<uint32_t>& remove_versions,
       }
     }
     closedir(dir_ptr);
+  } else {
+    LOG_ERROR("can't find table path [%s]", metric_schema_path_.c_str());
+    return FAIL;
   }
   if (max_table_version == 0) {
     return SUCCESS;
@@ -97,7 +100,7 @@ void MetricsVersionManager::InsertNull(uint32_t ts_version) {
     iter->second.reset();
     metric_tables_.erase(iter);
   }
-  metric_tables_.insert_or_assign(ts_version, nullptr);
+  metric_tables_.insert_or_assign(ts_version, std::shared_ptr<MMapMetricsTable>(nullptr));
 }
 
 KStatus MetricsVersionManager::CreateTable(kwdbContext_p ctx, std::vector<AttributeInfo> meta, uint32_t db_id,
@@ -265,7 +268,7 @@ KStatus MetricsVersionManager::SetDropped() {
       if (!root_table.second) {
         LOG_ERROR("schema[%s] set drop failed", IdToSchemaFileName(table_id_, root_table.first).c_str());
         // rollback
-        for (auto completed_table : completed_tables) {
+        for (const auto& completed_table : completed_tables) {
           completed_table->setNotDropped();
         }
         return FAIL;

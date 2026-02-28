@@ -40,7 +40,7 @@ KStatus TagPartitionIterator::Next(std::vector<EntityResultIndex>* entity_id_lis
       goto success_end;
     }
     bool needSkip = false;
-    uint32_t hash_point;
+    uint32_t hash_point = 0;
     if (!EngineOptions::isSingleNode()) {
       m_tag_partition_table_->getHashpointByRowNum(row_num, &hash_point);
       needSkip = !InHashIdSpan(hash_point, hps_);
@@ -150,7 +150,7 @@ success_end:
   return (KStatus::SUCCESS);
 }
 
-KStatus TagPartitionIterator::NextTag(EntityResultIndex entity_idx,
+KStatus TagPartitionIterator::NextTag(const EntityResultIndex& entity_idx,
                                      ResultSet* res, k_uint32* count, bool* is_finish) {
   if  (cur_scan_rowid_ > cur_total_row_count_) {
     LOG_DEBUG("fetch tag table %s%s, "

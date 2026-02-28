@@ -22,11 +22,11 @@ namespace kwdbts {
 
 TagIteratorV2Impl::TagIteratorV2Impl(std::shared_ptr<TagTable> tag_bt, uint32_t table_versioin,
                                      const std::vector<k_uint32>& scan_tags)
-    : scan_tags_(scan_tags), tag_bt_(tag_bt), table_version_(table_versioin) {}
+    : scan_tags_(scan_tags), tag_bt_(std::move(tag_bt)), table_version_(table_versioin) {}
 
 TagIteratorV2Impl::TagIteratorV2Impl(std::shared_ptr<TagTable> tag_bt, uint32_t table_versioin,
                                      const std::vector<k_uint32>& scan_tags, std::vector<HashIdSpan>* hps)
-    : scan_tags_(scan_tags), hps_(hps), tag_bt_(tag_bt), table_version_(table_versioin) {}
+    : scan_tags_(scan_tags), hps_(hps), tag_bt_(std::move(tag_bt)), table_version_(table_versioin) {}
 
 TagIteratorV2Impl::~TagIteratorV2Impl() {
   for (size_t idx = 0; idx < tag_partition_iters_.size(); ++idx) {
@@ -49,6 +49,7 @@ KStatus TagIteratorV2Impl::Init() {
       return FAIL;
   }
   std::vector<uint32_t> result_scan_tags;
+  result_scan_tags.reserve(scan_tags_.size());
   for (const auto& tag_idx : scan_tags_) {
     result_scan_tags.emplace_back(result_ver_obj->getValidSchemaIdxs()[tag_idx]);
   }
@@ -102,7 +103,7 @@ KStatus TagIteratorV2Impl::Next(std::vector<EntityResultIndex>* entity_id_list,
   return KStatus::SUCCESS;
 }
 
-KStatus TagIteratorV2Impl::NextTag(EntityResultIndex entity_id_list,
+KStatus TagIteratorV2Impl::NextTag(const EntityResultIndex& entity_id_list,
                                      ResultSet* res, k_uint32* count) {
   uint32_t fetch_count = 0;
   KStatus status = KStatus::SUCCESS;

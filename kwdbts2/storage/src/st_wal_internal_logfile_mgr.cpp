@@ -286,9 +286,9 @@ KStatus WALFileMgr::readEntryBlocks(std::vector<EntryBlock*>& entry_blocks,
       break;
     }*/
     if (entry_block->getBlockNo() != index) {
+      LOG_ERROR("Failed to get EntryBlock, BlockNo[%lu] != index[%lu].", entry_block->getBlockNo(), index)
       delete entry_block;
       s = FAIL;
-      LOG_ERROR("Failed to get EntryBlock, BlockNo[%lu] != index[%lu].", entry_block->getBlockNo(), index)
       break;
     }
     entry_blocks.emplace_back(entry_block);

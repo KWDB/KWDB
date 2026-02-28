@@ -19,7 +19,7 @@ namespace kwdbts {
 #define ENTITY_COUNT_LATCH_BUCKET_NUM 10
 
 TsPartitionEntityCountManager::TsPartitionEntityCountManager(std::string path) :
-  path_(path), mmap_alloc_(path_) {}
+  path_(std::move(path)), mmap_alloc_(path_) {}
 
 TsPartitionEntityCountManager::~TsPartitionEntityCountManager() {
   mmap_alloc_.Close();

@@ -102,7 +102,7 @@ class TsTableV2Impl : public TsTable {
   KStatus GetTagIteratorByOSN(kwdbContext_p ctx, k_uint32 table_version, std::vector<k_uint32>& scan_cols,
     std::vector<KwOSNSpan>& osn_span,
     std::vector<HashIdSpan>* hps, BaseEntityIterator** iter) override;
-  KStatus TrasvalAllTagPtable(kwdbContext_p ctx, std::function<bool(TagPartitionTable*, size_t)> func);
+  KStatus TrasvalAllTagPtable(kwdbContext_p ctx, const std::function<bool(TagPartitionTable*, size_t)>& func);
   // Get all tag operation info.
   KStatus GetImagrateTagBySnapshot(kwdbContext_p ctx, HashIdSpan hash_range,
     std::list<EntityResultIndex>* pkeys_status);

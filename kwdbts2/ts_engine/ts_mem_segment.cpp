@@ -353,9 +353,10 @@ KStatus TsMemSegment::GetBlockSpans(std::list<shared_ptr<TsBlockSpan>>& blocks, 
   }
   int re_try_times = 0;
   while (intent_row_num_.load() != written_row_num_.load()) {
-    if (++re_try_times % 10 == 0)
+    if (++re_try_times % 10 == 0) {
       LOG_WARN("TsMemSegment intent_row_num_[%u] != written_row_num_[%u], sleep 1ms. times[%d].",
                intent_row_num_.load(), written_row_num_.load(), re_try_times);
+    }
     usleep(1000);
   }
   SkiplistIterator iter(&skiplist_);
@@ -454,7 +455,8 @@ KStatus TsMemSegment::GetBlockSpans(std::list<shared_ptr<TsBlockSpan>>& blocks, 
           LOG_ERROR("GenMergeRowData failed.");
           return KStatus::FAIL;
         }
-        std::unique_ptr<TsMemSegBlock> mem_block = std::make_unique<TsMemSegBlock>(nullptr);
+        std::unique_ptr<TsMemSegBlock> mem_block =
+            std::make_unique<TsMemSegBlock>(std::shared_ptr<TsMemSegment>(nullptr));
         TSMemSegRowDataWithGuard& dedup_row_data = mem_block->AllocateRow(tbl_schema_mgr->GetDbID(),
                                                                           dedup_table_id, dedup_table_version,
                                                                           dedup_block_spans.front()->GetEntityID());
@@ -511,7 +513,8 @@ KStatus TsMemSegment::GetBlockSpans(std::list<shared_ptr<TsBlockSpan>>& blocks, 
         LOG_ERROR("GenMergeRowData failed.");
         return KStatus::FAIL;
       }
-      std::unique_ptr<TsMemSegBlock> mem_block = std::make_unique<TsMemSegBlock>(nullptr);
+      std::unique_ptr<TsMemSegBlock> mem_block =
+          std::make_unique<TsMemSegBlock>(std::shared_ptr<TsMemSegment>(nullptr));
       TSMemSegRowDataWithGuard& dedup_row_data = mem_block->AllocateRow(tbl_schema_mgr->GetDbID(),
                                                                         dedup_table_id, dedup_table_version,
                                                                         dedup_block_spans.front()->GetEntityID());
@@ -647,7 +650,8 @@ KStatus TsMemSegment::GetBlockSpans(const TsBlockItemFilterParams& filter, std::
           LOG_ERROR("GenMergeRowData failed.");
           return KStatus::FAIL;
         }
-        std::shared_ptr<TsMemSegBlock> mem_block = std::make_shared<TsMemSegBlock>(nullptr);
+        std::shared_ptr<TsMemSegBlock> mem_block =
+            std::make_shared<TsMemSegBlock>(std::shared_ptr<TsMemSegment>(nullptr));
         TSMemSegRowDataWithGuard& dedup_row_data = mem_block->AllocateRow(tbl_schema_mgr->GetDbID(),
                                                                           tbl_schema_mgr->GetTableId(),
                                                                           scan_schema->GetVersion(), filter.entity_id);
@@ -693,7 +697,8 @@ KStatus TsMemSegment::GetBlockSpans(const TsBlockItemFilterParams& filter, std::
         LOG_ERROR("GenMergeRowData failed.");
         return KStatus::FAIL;
       }
-      std::shared_ptr<TsMemSegBlock> mem_block = std::make_shared<TsMemSegBlock>(nullptr);
+      std::shared_ptr<TsMemSegBlock> mem_block =
+          std::make_shared<TsMemSegBlock>(std::shared_ptr<TsMemSegment>(nullptr));
       TSMemSegRowDataWithGuard& dedup_row_data = mem_block->AllocateRow(tbl_schema_mgr->GetDbID(),
                                                                         tbl_schema_mgr->GetTableId(),
                                                                         scan_schema->GetVersion(), filter.entity_id);

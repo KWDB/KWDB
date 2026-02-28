@@ -76,7 +76,7 @@ KStatus TsBlockSpan::GenDataConvert(uint32_t blk_version, uint32_t scan_version,
 }
 
 KStatus TsBlockSpan::MakeNewBlockSpan(TsBlockSpan* src_blk_span, uint32_t vgroup_id,
-  TSEntityID entity_id, std::shared_ptr<TsBlock> block, int start, int nrow,
+  TSEntityID entity_id, const std::shared_ptr<TsBlock>& block, int start, int nrow,
   const std::shared_ptr<MMapMetricsTable>& scan_schema,
   const std::shared_ptr<TsTableSchemaManager>& tbl_schema_mgr, std::shared_ptr<TsBlockSpan>& ret) {
   if (src_blk_span == nullptr ||
@@ -200,7 +200,7 @@ KStatus TsBlockSpan::MakeMergeBlockSpan(std::list<std::shared_ptr<kwdbts::TsBloc
     return s;
   }
 
-  std::shared_ptr<TsMemSegBlock> mem_block = std::make_shared<TsMemSegBlock>(nullptr);
+  std::shared_ptr<TsMemSegBlock> mem_block = std::make_shared<TsMemSegBlock>(std::shared_ptr<TsMemSegment>(nullptr));
   TSMemSegRowDataWithGuard& dedup_row_data = mem_block->AllocateRow(tbl_schema_manager->GetDbID(),
                                                                     first_block_span->GetTableID(), scan_version,
                                                                     first_block_span->GetEntityID());
@@ -217,8 +217,8 @@ KStatus TsBlockSpan::MakeMergeBlockSpan(std::list<std::shared_ptr<kwdbts::TsBloc
   return KStatus::SUCCESS;
 }
 
-TsBlockSpan::TsBlockSpan(uint32_t vgroup_id, TSEntityID entity_id, std::shared_ptr<TsBlock> block, int start, int nrow,
-                         std::shared_ptr<TSBlkDataTypeConvert>& convert,
+TsBlockSpan::TsBlockSpan(uint32_t vgroup_id, TSEntityID entity_id, const std::shared_ptr<TsBlock>& block,
+                         int start, int nrow, std::shared_ptr<TSBlkDataTypeConvert>& convert,
                          const std::shared_ptr<MMapMetricsTable>& scan_schema)
     : block_(block),
       vgroup_id_(vgroup_id),
@@ -324,7 +324,7 @@ KStatus TsBlockSpan::BuildCompressedData(TsBufferBuilder* data) {
         fixed_col_value_addr = ts_col_data.data();
       }
       if (fixed_col_value_addr == nullptr) {
-        null_col_data.resize(nrow_ * d_size);
+        null_col_data.resize(static_cast<size_t>(nrow_) * static_cast<size_t>(d_size));
         fixed_col_value_addr = null_col_data.data();
         bitmap = std::make_unique<TsUniformBitmap<DataFlags::kNull>>(nrow_);
       } else if (bitmap->GetCount() == 0) {
@@ -418,11 +418,11 @@ KStatus TsBlockSpan::BuildCompressedData(TsBufferBuilder* data) {
       *reinterpret_cast<bool *>(sum.data()) = aggCalc.CalcAggForFlush(is_not_null, count, max.data(),
                                                                       min.data(), sum.data() + 1);
       if (0 != count) {
-        col_agg.resize(sizeof(uint16_t) + 2 * col_size + 9);
+        col_agg.resize(sizeof(uint16_t) + 2 * static_cast<size_t>(col_size) + 9);
         memcpy(col_agg.data(), &count, sizeof(uint16_t));
         memcpy(col_agg.data() + sizeof(uint16_t), max.data(), col_size);
         memcpy(col_agg.data() + sizeof(uint16_t) + col_size, min.data(), col_size);
-        memcpy(col_agg.data() + sizeof(uint16_t) + col_size * 2, sum.data(), 9);
+        memcpy(col_agg.data() + sizeof(uint16_t) + static_cast<size_t>(col_size) * 2, sum.data(), 9);
       }
     } else {
       VarColAggCalculatorV2 aggCalc(var_rows);
@@ -511,7 +511,7 @@ KStatus TsBlockSpan::GetFixLenColAddr(uint32_t scan_idx, char** value, std::uniq
       LOG_ERROR("GetColAddr failed. col id [%u]", scan_idx);
       return s;
     }
-    *value = blk_value + (*scan_attrs_)[scan_idx].size * start_row_;
+    *value = blk_value + static_cast<size_t>((*scan_attrs_)[scan_idx].size) * static_cast<size_t>(start_row_);
     assert(bitmap->get() != nullptr);
     return SUCCESS;
   }

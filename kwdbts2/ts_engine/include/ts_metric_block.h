@@ -81,7 +81,7 @@ class TsMetricBlockBuilder {
     }
   }
 
-  KStatus PutBlockSpan(std::shared_ptr<TsBlockSpan> span);
+  KStatus PutBlockSpan(const std::shared_ptr<TsBlockSpan>& span);
   std::unique_ptr<TsMetricBlock> GetMetricBlock();
   int GetRowNum() const { return count_; }
   void Reset() {

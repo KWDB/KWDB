@@ -29,7 +29,7 @@ KStatus RaftStore::Open() {
 KStatus RaftStore::putIndex(kwdbContext_p ctx, uint64_t range_id, uint64_t index_id, TSSlice &value, string &mem) {
   auto indexes = ranges_.find(range_id);
   if (indexes == ranges_.end()) {
-    uint64_t val_len;
+    uint64_t val_len = 0;
     uint64_t off = buildRaftLog(ctx, range_id, index_id, &value, mem, val_len);
     std::shared_ptr<RaftValueOffset> index = std::make_shared<RaftValueOffset>(index_id, current_id_, off, val_len);
     index->next = nullptr;
@@ -46,7 +46,7 @@ KStatus RaftStore::putIndex(kwdbContext_p ctx, uint64_t range_id, uint64_t index
       header.rangeID = range_id;
       header.index = max_index_id + 1;
       mem.append(reinterpret_cast<const char *>(&header), sizeof(RaftLogHeader));
-      uint64_t val_len;
+      uint64_t val_len = 0;
       uint64_t off = buildRaftLog(ctx, range_id, index_id, &value, mem, val_len);
       std::shared_ptr<RaftValueOffset> index = std::make_shared<RaftValueOffset>(index_id, current_id_, off, val_len);
       ranges_.erase(range_id);
@@ -70,7 +70,7 @@ KStatus RaftStore::putIndex(kwdbContext_p ctx, uint64_t range_id, uint64_t index
       mem.append(reinterpret_cast<const char *>(&header), sizeof(RaftLogHeader));
       tmp_index = tmp_index->next;
     }
-    uint64_t val_len;
+    uint64_t val_len = 0;
     uint64_t off = buildRaftLog(ctx, range_id, index_id, &value, mem, val_len);
     std::shared_ptr<RaftValueOffset> index = std::make_shared<RaftValueOffset>(index_id, current_id_, off, val_len);
     index->next = tmp_index;
@@ -149,7 +149,7 @@ KStatus RaftStore::put(kwdbContext_p ctx, TSRaftlog *raftlog, std::string &mem) 
       }
       memcpy(value, log.data, log.len);
       // Compress and calculate the offset of the value.
-      uint64_t val_len;
+      uint64_t val_len = 0;
       uint64_t off = buildRaftLog(ctx, range_id, raftlog->indexes[i], &log, mem, val_len);
       state_[range_id] = std::make_shared<RaftValueOffset>(0, current_id_, off, val_len);
       // store cache
@@ -636,7 +636,7 @@ KStatus RaftStore::loadFile(kwdbContext_p ctx, FileHandle& file_handle, int file
   return KStatus::SUCCESS;
 }
 
-KStatus RaftStore::init(std::string engine_root_path) {
+KStatus RaftStore::init(const std::string& engine_root_path) {
   kwdbContext_t context;
   kwdbContext_p ctx_p = &context;
   KStatus s = InitServerKWDBContext(ctx_p);
@@ -654,9 +654,9 @@ KStatus RaftStore::init(std::string engine_root_path) {
   for (const auto& entry : fs::directory_iterator(engine_root_path)) {
     const std::string filename = entry.path().filename();
     if (filename.find("current_") != std::string::npos) {
-      file_path_ = engine_root_path + "/" + filename;
+      file_path_ = (fs::path(engine_root_path) / filename).string();
       Open();
-      current_id_ = std::stoul(filename.substr(filename.find("current_") + 8, filename.find(".")));
+      current_id_ = std::stoul(filename.substr(filename.find("current_") + 8, filename.find('.')));
     }
   }
   if (!file_path_.empty()) {
@@ -754,6 +754,10 @@ KStatus RaftStore::compact() {
   kwdbContext_t context;
   kwdbContext_p ctx_p = &context;
   KStatus s = InitServerKWDBContext(ctx_p);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("InitServerKWDBContext Error!");
+    return s;
+  }
   int files_size;
   wrLock();
   Defer defer{[&]() { unLock(); }};
@@ -800,14 +804,14 @@ KStatus RaftStore::compact() {
     FileHandle new_handle = FileHandle(compact_file_, new_file);
     previous_files_.insert(std::pair(previous_id, new_handle));
     std::string mem;
-    for (auto indexes : ranges_) {
-      auto index = indexes.second;
+    for (const auto& [first, second] : ranges_) {
+      auto index = second;
       while (true) {
         if (index->file_id == files_id[i] || index->file_id == files_id[i + 1]) {
           TSSlice value;
           getDiskValue(ctx_p, index, &value, true);
           index->file_id = previous_id;
-          index->offset = compactPut(indexes.first, index->index_id, value, mem);
+          index->offset = compactPut(first, index->index_id, value, mem);
         }
         if (index->next == nullptr) {
           break;
@@ -815,14 +819,14 @@ KStatus RaftStore::compact() {
         index = index->next;
       }
     }
-    for (auto indexes : state_) {
-      auto index = indexes.second;
+    for (const auto& [first, second] : state_) {
+      auto index = second;
       if (index != NULL) {
         if (index->file_id == files_id[i] || index->file_id == files_id[i + 1]) {
           TSSlice value;
           getDiskValue(ctx_p, index, &value, true);
           index->file_id = previous_id;
-          index->offset = compactPut(indexes.first, index->index_id, value, mem);
+          index->offset = compactPut(first, index->index_id, value, mem);
         }
       }
     }
@@ -853,14 +857,14 @@ KStatus RaftStore::Close() {
   stopCompact();
   close(file_);
   // Close the file handle that is already filled with raftlog.
-  for (auto file : previous_files_) {
-    if (file.second.file != -1) {
-      close(file.second.file);
+  for (const auto& [first, second] : previous_files_) {
+    if (second.file != -1) {
+      close(second.file);
     }
   }
   previous_files_.clear();
   ranges_.clear();
-  for (auto indexes : state_) {
+  for (const auto& indexes : state_) {
     if (indexes.second->value_ptr.data != nullptr) {
       free(indexes.second->value_ptr.data);
       indexes.second->value_ptr.data = nullptr;
@@ -887,8 +891,8 @@ KStatus RaftStore::HasRange(kwdbContext_p ctx, uint64_t rangeID) {
 
 bool RaftStore::checkIsCompact(int file1, int file2) {
   uint64_t len = 0;
-  for (auto indexes : ranges_) {
-    auto index = indexes.second;
+  for (const auto& [first, second] : ranges_) {
+    auto index = second;
     while (true) {
       if (index->file_id == file1 || index->file_id == file2) {
         len += index->len;
@@ -899,8 +903,8 @@ bool RaftStore::checkIsCompact(int file1, int file2) {
       index = index->next;
     }
   }
-  for (auto indexes : state_) {
-    auto index = indexes.second;
+  for (const auto& [first, second] : state_) {
+    auto index = second;
     if (index != NULL) {
       if (index->file_id == file1 || index->file_id == file2) {
         len += index->len;

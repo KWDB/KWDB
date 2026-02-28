@@ -175,7 +175,7 @@ KStatus TsEntityBlockBuilder::GetMetricValue(uint32_t row_idx, std::vector<TSSli
   return KStatus::SUCCESS;
 }
 
-KStatus TsEntityBlockBuilder::Append(shared_ptr<TsBlockSpan> span, bool& is_full) {
+KStatus TsEntityBlockBuilder::Append(const shared_ptr<TsBlockSpan>& span, bool& is_full) {
   size_t written_rows = span->GetRowNum() + n_rows_ > EngineOptions::max_rows_per_block ?
                         EngineOptions::max_rows_per_block - n_rows_ : span->GetRowNum();
   assert(span->GetRowNum() >= written_rows);
@@ -187,7 +187,6 @@ KStatus TsEntityBlockBuilder::Append(shared_ptr<TsBlockSpan> span, bool& is_full
 
     bool is_var_col = isVarLenType(d_type);
     TsEntitySegmentColumnBlockBuilder& block = column_blocks_[col_idx];
-    std::string var_offsets_data;
     uint32_t var_offsets_len = EngineOptions::max_rows_per_block * sizeof(uint32_t);
     size_t row_idx_in_block = n_rows_;
     char* col_val = nullptr;
@@ -263,7 +262,6 @@ KStatus TsEntityBlockBuilder::GetCompressData(TsEntitySegmentBlockItem& blk_item
   for (int col_idx = 0; col_idx < n_cols_; ++col_idx) {
     DATATYPE d_type = col_idx == 0 ? DATATYPE::INT64 : col_idx != 1 ?
                       static_cast<DATATYPE>(metric_schema_[col_idx - 1].type) : DATATYPE::TIMESTAMP64;
-    size_t d_size = col_idx == 0 ? 8 : metric_schema_[col_idx - 1].size;
     bool has_bitmap = col_idx > 1;  // && !metric_schema_[col_idx - 1].isFlag(AINFO_NOT_NULL);
     bool is_var_col = isVarLenType(d_type);
 
@@ -612,6 +610,16 @@ KStatus TsEntitySegmentBuilder::Compact(bool call_by_vacuum, TsVersionUpdate* up
     if (entity_key == TsEntityKey{}) {
       entity_key = cur_entity_key;
       stats->written_devices++;
+      std::shared_ptr<TsTableSchemaManager> tbl_schema_mgr = nullptr;
+      s = schema_manager_->GetTableSchemaMgr(entity_key.table_id, tbl_schema_mgr);
+      if (s == FAIL) {
+        if (tbl_schema_mgr == nullptr) {
+          LOG_INFO("table %lu was dropped, ignore it.", entity_key.table_id);
+          continue;
+        }
+        LOG_ERROR("can not get table schema manager for table_id[%lu].", entity_key.table_id);
+        return s;
+      }
       std::shared_ptr<MMapMetricsTable> table_schema_;
       s = schema_manager_->GetTableMetricSchema({}, entity_key.table_id, entity_key.table_version, &table_schema_);
       if (s != KStatus::SUCCESS) {
@@ -637,6 +645,16 @@ KStatus TsEntitySegmentBuilder::Compact(bool call_by_vacuum, TsVersionUpdate* up
 
     std::vector<AttributeInfo> metric_schema;
     if (entity_key.table_id != cur_entity_key.table_id || entity_key.table_version != cur_entity_key.table_version) {
+      std::shared_ptr<TsTableSchemaManager> tbl_schema_mgr = nullptr;
+      s = schema_manager_->GetTableSchemaMgr(cur_entity_key.table_id, tbl_schema_mgr);
+      if (s == FAIL) {
+        if (tbl_schema_mgr == nullptr) {
+          LOG_INFO("table %lu was dropped, ignore it.", cur_entity_key.table_id);
+          continue;
+        }
+        LOG_ERROR("can not get table schema manager for table_id[%lu].", cur_entity_key.table_id);
+        return s;
+      }
       std::shared_ptr<MMapMetricsTable> table_schema_;
       s = schema_manager_->GetTableMetricSchema({}, cur_entity_key.table_id, cur_entity_key.table_version,
                                                 &table_schema_);

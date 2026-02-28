@@ -215,7 +215,7 @@ KStatus TsEngineSchemaManager::GetTableList(std::vector<TSTableID>* table_ids) {
   for (const auto& it : dir_iter) {
     std::string fname = it.path().filename();
     TSTableID tbl_id = 0;
-    auto split_pos = fname.find(".");
+    auto split_pos = fname.find('.');
     if (split_pos != std::string::npos) {
       tbl_id = std::stol(fname.substr(split_pos + 1));
     } else {
@@ -262,7 +262,7 @@ KStatus TsEngineSchemaManager::GetTableSchemaMgr(TSTableID tbl_id,
 
 KStatus TsEngineSchemaManager::GetAllTableSchemaMgrs(std::vector<std::shared_ptr<TsTableSchemaManager>>& tb_schema_mgr) {
   rdLock();
-  for (auto it : table_schema_mgrs_) {
+  for (const auto& it : table_schema_mgrs_) {
     tb_schema_mgr.emplace_back(it.second);
   }
   unLock();

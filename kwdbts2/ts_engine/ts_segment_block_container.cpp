@@ -36,7 +36,7 @@ void TsSegmentBlockContainer::UpgradeSegmentFile(const std::shared_ptr<TsSegment
 
 const EntitySegmentMetaInfo& TsSegmentBlockContainer::GetHandleInfo() {
   RW_LATCH_S_LOCK(&segment_file_rw_latch_);
-  EntitySegmentMetaInfo info = segment_file_->GetHandleInfo();
+  const EntitySegmentMetaInfo& info = segment_file_->GetHandleInfo();
   RW_LATCH_UNLOCK(&segment_file_rw_latch_);
   return info;
 }

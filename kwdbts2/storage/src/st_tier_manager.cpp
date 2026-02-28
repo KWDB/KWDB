@@ -34,7 +34,12 @@ std::string TsTierPartitionManager::parsePartitionDirToOneLevel(const std::strin
   for (int i = partition_full_path.size() - 1; i >= 0; --i) {
     if (partition_full_path[i] == '/') {
       if (i + 1 < end_idx) {
-        OneLevelName = partition_full_path.substr(i + 1, end_idx - i - 1) + (scan_level > 0 ? "_" : "") + OneLevelName;
+        std::string prefix = partition_full_path.substr(i + 1, end_idx - i - 1);
+        if (scan_level > 0) {
+          prefix += '_';
+        }
+        prefix += OneLevelName;
+        OneLevelName = std::move(prefix);
         ++scan_level;
         if (scan_level >= partition_directory_level) {
           break;
@@ -46,7 +51,7 @@ std::string TsTierPartitionManager::parsePartitionDirToOneLevel(const std::strin
   return OneLevelName;
 }
 
-KStatus TsTierPartitionManager::MakePartitionDir(std::string partition_full_path, int level,
+KStatus TsTierPartitionManager::MakePartitionDir(const std::string& partition_full_path, int level,
                                                  ErrorInfo& error_info) {
   if (!MakeDirectory(partition_full_path, error_info)) {
     return KStatus::FAIL;
@@ -76,7 +81,7 @@ KStatus TsTierPartitionManager::RMPartitionDir(std::string partition_full_path, 
 }
 
 KStatus TsTierPartitionManager::MVPartitionDir(const std::string& partition_full_path, std::vector<std::string>& files,
-                                               int to_level, std::function<bool(std::function<bool()>)> f,
+                                               int to_level, const std::function<bool(std::function<bool()>)>& f,
                                                ErrorInfo& error_info) {
   return KStatus::SUCCESS;
 }

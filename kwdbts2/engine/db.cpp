@@ -61,7 +61,6 @@ TSStatus TSOpen(TSEngine** engine, TSSlice dir, TSOptions options,
   EngineOptions::is_single_node_ = options.is_single_node;
 
   // TODO(LSY): log settings from kwbase start params
-  string lg_path = ts_store_path;
   try {
     opts.lg_opts.path = string(options.lg_opts.Dir.data, options.lg_opts.Dir.len);
   } catch (...) {
@@ -94,8 +93,8 @@ TSStatus TSOpen(TSEngine** engine, TSSlice dir, TSOptions options,
   setenv("KW_HOME", ts_store_path.c_str(), 1);
 
 #ifndef K_DO_NOT_SHIP
-  char* port_str;
-  if (port_str = getenv("KW_ERR_INJECT_PORT")) {
+  char* port_str = getenv("KW_ERR_INJECT_PORT");
+  if (port_str) {
     int port = atoi(port_str);
     if (port > 0) {
       k_int64 server_args[1] = {port};

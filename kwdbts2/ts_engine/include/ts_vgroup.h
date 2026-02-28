@@ -221,7 +221,7 @@ class TsVGroup {
   KStatus RemoveChkFile(kwdbContext_p ctx);
 
   KStatus ReadWALLogFromLastCheckpoint(kwdbContext_p ctx, std::vector<LogEntry*>& logs,
-                                       TS_OSN& last_lsn, std::vector<uint64_t> uncommitted_xid);
+                                       TS_OSN& last_lsn, const std::vector<uint64_t>& uncommitted_xid);
 
   KStatus ReadLogFromLastCheckpoint(kwdbContext_p ctx, std::vector<LogEntry*>& logs, TS_OSN& last_lsn);
 
@@ -251,7 +251,7 @@ class TsVGroup {
     list<STDelRange>* del_spans);
 
   KStatus GetBlockSpans(TSTableID table_id, uint32_t entity_id, KwTsSpan ts_span, DATATYPE ts_col_type,
-                        std::shared_ptr<TsTableSchemaManager> table_schema_mgr, uint32_t table_version,
+                        const std::shared_ptr<TsTableSchemaManager>& table_schema_mgr, uint32_t table_version,
                         std::shared_ptr<const TsVGroupVersion>& current,
                         std::list<std::shared_ptr<TsBlockSpan>>* block_spans);
 
@@ -497,7 +497,7 @@ class TsVGroup {
   // KStatus makeSurePartitionExist(TSTableID table_id, const std::list<TSMemSegRowData>& rows);
 
   KStatus TrasvalAllPartition(kwdbContext_p ctx, TSTableID tbl_id,
-    const std::vector<KwTsSpan>& ts_spans, std::function<KStatus(std::shared_ptr<const TsPartitionVersion>)> func);
+    const std::vector<KwTsSpan>& ts_spans, const std::function<KStatus(std::shared_ptr<const TsPartitionVersion>)>& func);
 
   int saveToFile(uint32_t new_id) const;
   // Thread scheduling executes compact tasks to clean up items that require erasing.

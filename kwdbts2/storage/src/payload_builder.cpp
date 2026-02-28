@@ -151,6 +151,7 @@ bool PayloadBuilder::Build(TSSlice *payload, uint64_t hash_num) {
   for (int i = 0; i < primary_tags_.size(); ++i) {
     primary_tag_len += primary_tags_[i].len_;
   }
+  assert(primary_tag_len != 0);
   char* primary_keys_mem = reinterpret_cast<char*>(malloc(primary_tag_len));
   int begin_offset = 0;
   for (int i = 0; i < primary_tags_.size(); ++i) {

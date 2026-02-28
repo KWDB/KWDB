@@ -579,8 +579,7 @@ class TsMMapAllocFile : public FileWithIndex {
     return KStatus::SUCCESS;
   }
 
-  ~TsMMapAllocFile() {
-    Close();
+  ~TsMMapAllocFile() override {
     if (rw_lock_) {
       delete rw_lock_;
     }

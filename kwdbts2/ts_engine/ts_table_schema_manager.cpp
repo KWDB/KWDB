@@ -22,17 +22,20 @@ inline string IdToSchemaFileName(const KTableKey& table_id, uint32_t ts_version)
   return nameToEntityBigTablePath(std::to_string(table_id), s_bt + "_" + std::to_string(ts_version));
 }
 
-int TsTableSchemaManager::getColumnIndex(const AttributeInfo& attr_info) {
-  int col_no = -1;
+KStatus TsTableSchemaManager::getColumnIndex(const AttributeInfo& attr_info, int& col_no) {
+  col_no = -1;
   const std::vector<AttributeInfo>* schema_info{nullptr};
-  GetColumnsIncludeDroppedPtr(&schema_info);
+  auto s = GetColumnsIncludeDroppedPtr(&schema_info);
+  if (s != SUCCESS) {
+    return FAIL;
+  }
   for (int i = 0; i < schema_info->size(); ++i) {
     if ((*schema_info)[i].id == attr_info.id && !(*schema_info)[i].isFlag(AINFO_DROPPED)) {
       col_no = i;
       break;
     }
   }
-  return col_no;
+  return SUCCESS;
 }
 
 KStatus TsTableSchemaManager::alterTableTag(kwdbContext_p ctx, AlterType alter_type, const AttributeInfo& attr_info,
@@ -53,10 +56,15 @@ KStatus TsTableSchemaManager::alterTableTag(kwdbContext_p ctx, AlterType alter_t
 KStatus TsTableSchemaManager::alterTableCol(kwdbContext_p ctx, AlterType alter_type, const AttributeInfo& attr_info,
                                             uint32_t cur_version, uint32_t new_version, string& msg) {
   ErrorInfo err_info;
-  auto col_idx = getColumnIndex(attr_info);
+  int col_idx = -1;
+  KStatus s = getColumnIndex(attr_info, col_idx);
+  if (s != SUCCESS) {
+    msg = "getColumnIndex failed";
+    return FAIL;
+  }
   auto latest_version = cur_version_;
   vector<AttributeInfo> schema;
-  KStatus s = GetColumnsIncludeDropped(schema, cur_version);
+  s = GetColumnsIncludeDropped(schema, cur_version);
   if (s != SUCCESS) {
     msg = "schema version " + to_string(cur_version) + " does not exists";
     return FAIL;
@@ -285,6 +293,7 @@ KStatus TsTableSchemaManager::CreateTable(kwdbContext_p ctx, roachpb::CreateTsTa
   if (tag_table_ == nullptr || tag_table_->GetTagTableVersionManager()->GetCurrentTableVersion() == 0) {
     tag_table_ = std::make_shared<TagTable>(table_path_, tag_path_, table_id_, 1);
     std::vector<roachpb::NTagIndexInfo> idx_info;
+    idx_info.reserve(meta->index_info_size());
     for (int i = 0; i < meta->index_info_size(); i++) {
       idx_info.emplace_back(meta->index_info(i));
     }
@@ -295,6 +304,7 @@ KStatus TsTableSchemaManager::CreateTable(kwdbContext_p ctx, roachpb::CreateTsTa
     }
   } else {
     std::vector<roachpb::NTagIndexInfo> idx_info;
+    idx_info.reserve(meta->index_info_size());
     for (int i = 0; i < meta->index_info_size(); i++) {
       idx_info.emplace_back(meta->index_info(i));
     }
@@ -412,6 +422,7 @@ KStatus TsTableSchemaManager::removeTagVersion(uint32_t version) {
     return FAIL;
   }
   std::vector<roachpb::NTagIndexInfo> idx_info;
+  idx_info.reserve(meta.index_info_size());
   for (int i = 0; i < meta.index_info_size(); i++) {
     idx_info.emplace_back(meta.index_info(i));
   }

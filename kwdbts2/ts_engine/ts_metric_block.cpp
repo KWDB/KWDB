@@ -60,7 +60,7 @@ bool TsMetricBlock::GetCompressedData(TsBufferBuilder* output, TsMetricCompressI
   return SUCCESS;
 }
 
-KStatus TsMetricBlockBuilder::PutBlockSpan(std::shared_ptr<TsBlockSpan> span) {
+KStatus TsMetricBlockBuilder::PutBlockSpan(const std::shared_ptr<TsBlockSpan>& span) {
   auto row_count = span->GetRowNum();
   std::copy_n(span->GetOSNAddr(0), row_count, std::back_inserter(osn_buffer_));
   for (int icol = 0; icol < col_schemas_->size(); icol++) {
@@ -102,8 +102,9 @@ KStatus TsMetricBlockBuilder::PutBlockSpan(std::shared_ptr<TsBlockSpan> span) {
 
 std::unique_ptr<TsMetricBlock> TsMetricBlockBuilder::GetMetricBlock() {
   std::vector<std::unique_ptr<TsColumnBlock>> column_blocks;
-  for (int i = 0; i < column_block_builders_.size(); ++i) {
-    column_blocks.push_back(column_block_builders_[i]->GetColumnBlock());
+  column_blocks.reserve(column_block_builders_.size());
+  for (const auto & column_block_builder : column_block_builders_) {
+    column_blocks.push_back(column_block_builder->GetColumnBlock());
   }
 
   std::vector<uint64_t> osn_buffer;

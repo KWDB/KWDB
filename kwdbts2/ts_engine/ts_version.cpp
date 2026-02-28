@@ -121,7 +121,7 @@ KStatus TsVersionManager::AddPartition(DatabaseID dbid, timestamp64 ptime, int64
   return KStatus::SUCCESS;
 }
 
-static KStatus TruncateFile(const fs::path path, size_t size) {
+static KStatus TruncateFile(const fs::path& path, size_t size) {
   int fd = open(path.c_str(), O_WRONLY);
   if (fd < 0) {
     LOG_ERROR("can not open file: %s, reason: %s", path.c_str(), std::strerror(errno));
@@ -307,7 +307,7 @@ KStatus TsVersionManager::Recover(bool force_recover) {
       if (!fs::is_directory(dir_entry)) {
         continue;
       }
-      fs::path path{dir_entry};
+      const fs::path& path{dir_entry};
       if (partition_name.find(path.filename()) == partition_name.end()) {
         LOG_INFO("unexpected partition directory: %s, remove it", path.c_str());
         s = env_->DeleteDir(path);
@@ -364,7 +364,7 @@ KStatus TsVersionManager::Recover(bool force_recover) {
       }
 
       for (auto const &dir_entry : iter) {
-        fs::path p{dir_entry};
+        const fs::path& p{dir_entry};
         if (expected.find(p.filename()) == expected.end()) {
           LOG_INFO("unexpected file: %s, remove it", p.c_str());
           s = env_->DeleteFile(p);
@@ -397,7 +397,7 @@ KStatus TsVersionManager::ApplyUpdate(TsVersionUpdate *update, bool force_apply)
     if (update->has_new_mem_segments_) {
       new_vgroup_version->valid_memseg_->push_back(update->new_memseg_);
     }
-    for (auto [par_id, par] : new_vgroup_version->partitions_) {
+    for (const auto& [par_id, par] : new_vgroup_version->partitions_) {
       auto new_partition_version = std::make_unique<TsPartitionVersion>(*par);
       new_partition_version->valid_memseg_ = new_vgroup_version->valid_memseg_;
       new_vgroup_version->partitions_[par_id] = std::move(new_partition_version);
@@ -471,7 +471,7 @@ KStatus TsVersionManager::ApplyUpdate(TsVersionUpdate *update, bool force_apply)
   }
   // looping over all partitions
   TsVersionUpdate clean_up_update;
-  for (auto [par_id, par] : new_vgroup_version->partitions_) {
+  for (const auto& [par_id, par] : new_vgroup_version->partitions_) {
     auto new_partition_version = std::make_unique<TsPartitionVersion>(*par);
 
     if (update->partitions_created_.find(par_id) != update->partitions_created_.end()) {
@@ -688,7 +688,7 @@ std::vector<std::shared_ptr<const TsPartitionVersion>> TsVGroupVersion::GetParti
   const std::vector<KwTsSpan>& ts_spans, DATATYPE ts_type) const {
   std::vector<std::shared_ptr<const TsPartitionVersion>> result;
   for (const auto &[k, v] : partitions_) {
-    const auto &[dbid, _, __] = k;
+    const auto &[dbid, ignore1, ignore2] = k;
     if (dbid == target_dbid) {
       // check if current partition is cross with ts_spans.
       if (checkTimestampWithSpans(ts_spans, v->GetTsColTypeStartTime(ts_type), v->GetTsColTypeEndTime(ts_type))
@@ -1070,7 +1070,7 @@ bool TsPartitionVersion::ShouldSetCountStatsInvalid(TSEntityID e_id) {
   }
   if (count_info_) {
     TsCountStatsFileHeader header {};
-    s = count_info_->GetCountStatsHeader(header);
+    count_info_->GetCountStatsHeader(header);
     if (del_osn > header.max_osn) {
       return true;
     }
@@ -1579,7 +1579,6 @@ KStatus TsVersionManager::RecordReader::ReadRecord(std::string *record, bool *eo
   uint32_t checksum = DecodeFixed16(ptr);
   ptr += sizeof(uint16_t);
   uint32_t size = DecodeFixed32(ptr);
-  ptr += sizeof(uint32_t);
 
   file_->Read(size, &result);
   if (result.size() != size) {
@@ -1648,7 +1647,7 @@ KStatus TsVersionManager::VersionBuilder::AddUpdate(const TsVersionUpdate &updat
   if (update.has_count_stats_) {
     all_updates_.has_count_stats_ = true;
     all_updates_.count_stats_status_ = CountStatsStatus::Recover;
-    for (auto [par_id, info] : update.count_flush_infos_) {
+    for (const auto& [par_id, info] : update.count_flush_infos_) {
       all_updates_.count_flush_infos_[par_id] = info;
     }
   }

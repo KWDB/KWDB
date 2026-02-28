@@ -178,7 +178,7 @@ TSEngineImpl::~TSEngineImpl() {
 }
 
 KStatus TSEngineImpl::FlushVGroups(kwdbContext_p ctx) {
-  for (auto vgroup : vgroups_) {
+  for (const auto& vgroup : vgroups_) {
     KStatus s = vgroup->Flush();
     if (s == KStatus::FAIL) {
       LOG_ERROR("Failed to flush metric file.")
@@ -203,6 +203,10 @@ KStatus TSEngineImpl::SortWALFile(kwdbContext_p ctx) {
 
   TS_OSN last_lsn = wal_mgr_->GetFirstLSN();
   auto res = wal_mgr_->ReadWALLog(cur_eng_logs, last_lsn, wal_mgr_->FetchCurrentLSN(), ignore);
+  if (res == KStatus::FAIL) {
+    LOG_ERROR("ReadWALLog failed.")
+    return KStatus::FAIL;
+  }
   if (!cur_eng_logs.empty()) {
     if ((*cur_eng_logs.end())->getType() == WALLogType::END_CHECKPOINT) {
       is_end_chk = true;
@@ -213,7 +217,7 @@ KStatus TSEngineImpl::SortWALFile(kwdbContext_p ctx) {
       LOG_ERROR("RemoveChkFile fail while Sorting WAL File.")
       return KStatus::FAIL;
     }
-    for (auto vgroup : vgroups_) {
+    for (const auto& vgroup : vgroups_) {
       if (vgroup->GetWALManager()->RemoveChkFile(ctx) == KStatus::FAIL) {
         LOG_ERROR("Remove vgroup[%d] wal file fail while Sorting WAL File.", vgroup->GetVGroupID())
         return KStatus::FAIL;
@@ -225,7 +229,7 @@ KStatus TSEngineImpl::SortWALFile(kwdbContext_p ctx) {
       LOG_ERROR("ResetCurLSNAndFlushMeta failed.")
       return KStatus::FAIL;
     }
-    wal_mgr_.release();
+    wal_mgr_.reset();
     auto cur_eng_path = options_.db_path + "/wal/engine/" + "kwdb_wal.cur";
     auto chk_eng_path = options_.db_path + "/wal/engine/" + "kwdb_wal.chk";
     if (Remove(cur_eng_path) == KStatus::FAIL) {
@@ -244,7 +248,7 @@ KStatus TSEngineImpl::SortWALFile(kwdbContext_p ctx) {
     }
 
     // append cur log to chk log, rename chk to cur
-    for (auto vgroup : vgroups_) {
+    for (const auto& vgroup : vgroups_) {
       if (!IsExists(vgroup->GetWALManager()->GetWALChkFilePath())) {
         continue;
       }
@@ -311,7 +315,7 @@ KStatus TSEngineImpl::Init(kwdbContext_p ctx) {
   }
 
   for (int vgroup_id = 1; vgroup_id <= EngineOptions::vgroup_max_num; vgroup_id++) {
-    std::unique_ptr<TsVGroup> vgroup{nullptr};
+    std::unique_ptr<TsVGroup> vgroup = nullptr;
     if (vgroup_configured) {
       vgroup = std::make_unique<TsVGroup>(&options_, vgroup_id, schema_mgr_.get(), &wal_level_mutex_, &tag_lock_,
                                           vgroup_cfg[vgroup_id]);
@@ -364,7 +368,7 @@ KStatus TSEngineImpl::Init(kwdbContext_p ctx) {
         LOG_ERROR("Reset DDL WAL Failed.")
         return KStatus::FAIL;
       }
-      for (auto vgroup : vgroups_) {
+      for (const auto& vgroup : vgroups_) {
         if (vgroup->GetWALManager()->ResetWAL(ctx) == KStatus::FAIL) {
           LOG_ERROR("Reset VWAL[%d] Failed.", vgroup->GetVGroupID())
           return KStatus::FAIL;
@@ -381,7 +385,7 @@ KStatus TSEngineImpl::Init(kwdbContext_p ctx) {
       LOG_ERROR("Reset DDL WAL Failed.")
       return KStatus::FAIL;
     }
-    for (auto vgroup : vgroups_) {
+    for (const auto& vgroup : vgroups_) {
       if (vgroup->GetWALManager()->ResetWAL(ctx) == KStatus::FAIL) {
         LOG_ERROR("Reset VWAL[%d] Failed.", vgroup->GetVGroupID())
         return KStatus::FAIL;
@@ -401,7 +405,7 @@ void TSEngineImpl::PreClearDroppedTables() {
   }
   for (const auto& it : dir_iter) {
     std::string fname = it.path().filename();
-    auto split_pos = fname.find(".");
+    auto split_pos = fname.find('.');
     if (split_pos != std::string::npos) {
       // This directory might not exist, but we don't mind, we just need to delete.
       Remove(db_path / schema_directory / fname.substr(split_pos + 1));
@@ -1119,7 +1123,7 @@ KStatus TSEngineImpl::TSMtrRollback(kwdbContext_p ctx, const KTableKey& table_id
   }
 
   // for range
-  for (auto vgrp : vgroups_) {
+  for (const auto& vgrp : vgroups_) {
     std::vector<LogEntry*> wal_logs;
     Defer defer{[&]() {
       for (auto& log : wal_logs) {
@@ -1302,7 +1306,7 @@ KStatus TSEngineImpl::RemoveChkFile(kwdbContext_p ctx, uint32_t vgroup_id) {
 KStatus TSEngineImpl::ParallelRemoveChkFiles(kwdbContext_p ctx) {
   std::vector<std::future<KStatus >> res;
 
-  for (auto vgroup : vgroups_) {
+  for (const auto& vgroup : vgroups_) {
     res.emplace_back(std::async(std::launch::async,
                                     [this, ctx, vgroup_id = vgroup->GetVGroupID()]
                                     { return RemoveChkFile(ctx, vgroup_id); }));
@@ -2239,7 +2243,7 @@ KStatus TSEngineImpl::GetClusterSetting(kwdbContext_p ctx, const std::string& ke
 }
 
 KStatus TSEngineImpl::UpdateAtomicLSN() {
-  for (auto vgrp : vgroups_) {
+  for (const auto& vgrp : vgroups_) {
     vgrp->UpdateAtomicOSN();
   }
   return KStatus::SUCCESS;
@@ -2652,7 +2656,7 @@ KStatus TSEngineImpl::GetMaxEntityIdByVGroupId(kwdbContext_p ctx, uint32_t vgrou
     LOG_ERROR("Get all schema manager failed.");
   }
   std::shared_ptr<TagTable> tag_table;
-  for (auto schema_mgr : tb_schema_manager) {
+  for (const auto& schema_mgr : tb_schema_manager) {
     s = schema_mgr->GetTagSchema(ctx, &tag_table);
     if (s != KStatus::SUCCESS) {
       return s;

@@ -68,11 +68,6 @@ typedef uint32_t HASHTYPE;
 typedef uint64_t HASHTYPE;
 #endif
 
-/* Test for GCC < 4.6. However, gcc 4.4 or above is required */
-#if __GNUC__ < 4 || (__GNUC__ == 4 && __GNUC_MINOR__ < 6)
-#define nullptr		NULL
-#endif
-
 #if defined(ANDROID)
 #if !defined(__ANDROID__)
 #define __ANDROID__
