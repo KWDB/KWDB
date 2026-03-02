@@ -892,6 +892,7 @@ TEST_F(TestV2Iterator, mulitEntityInvalidCount) {
 TEST_F(TestV2Iterator, blockCacheDetachMMAP) {
   EngineOptions::max_rows_per_block = 30;
   EngineOptions::min_rows_per_block = 15;
+  EngineOptions::g_io_mode = TsIOMode::MMAP;
   TSTableID table_id = 999;
   roachpb::CreateTsTable pb_meta;
   ConstructRoachpbTable(&pb_meta, table_id);
@@ -946,7 +947,7 @@ TEST_F(TestV2Iterator, blockCacheDetachMMAP) {
   for (const auto& vgroup : *ts_vgroups) {
     TsStorageIterator* ts_iter;
     KwTsSpan ts_span = {INT64_MIN, INT64_MAX};
-    std::vector<k_uint32> scan_cols = {0, 1, 2};
+    std::vector<k_uint32> scan_cols = {0, 1};
     std::vector<Sumfunctype> scan_agg_types = {};
 
     auto current = vgroup->CurrentVersion();
@@ -993,7 +994,12 @@ TEST_F(TestV2Iterator, blockCacheDetachMMAP) {
 
   // After data query, there is no new entity block mmap file are opened.
   ASSERT_EQ(created_entity_block_file_count - destroyed_entity_block_file_count, 4);
-  ASSERT_EQ(TsLRUBlockCache::GetInstance().GetMemorySize(), 18060);
+  /* block cache memory size is: 10830 = (30 * 8 bytes + (30 * 4 bytes + 1 byte)) * 30
+   * 30 entities, 30 rows per entity
+   * timestamp column size is 8 bytes
+   * int column size is 4 bytes, each block has one byte bitmap
+   */
+  ASSERT_EQ(TsLRUBlockCache::GetInstance().GetMemorySize(), 10830);
 
   for (int j = 0; j < insert_times; ++j) {
     start_ts += 1000;
@@ -1017,6 +1023,59 @@ TEST_F(TestV2Iterator, blockCacheDetachMMAP) {
    * of opening new entity block files should still be 4.
    */
   ASSERT_EQ(created_entity_block_file_count - destroyed_entity_block_file_count, 4);
+
+
+  for (const auto& vgroup : *ts_vgroups) {
+    TsStorageIterator* ts_iter;
+    KwTsSpan ts_span = {INT64_MIN, INT64_MAX};
+    std::vector<k_uint32> scan_cols = {0, 2};
+    std::vector<Sumfunctype> scan_agg_types = {};
+
+    auto current = vgroup->CurrentVersion();
+    auto partitions = current->GetPartitions(1, {{INT64_MIN, INT64_MAX}}, DATATYPE::TIMESTAMP64);
+    ASSERT_EQ(partitions.size(), 1);
+    for (auto partition : partitions) {
+      for (k_uint32 entity_id = 1; entity_id <= vgroup->GetMaxEntityID(); entity_id++) {
+        auto count_info = partition->GetCountManager();
+        TsEntityCountStats count_stats{};
+        count_stats.entity_id = entity_id;
+        s = count_info->GetEntityCountStats(count_stats);
+        if (count_stats.valid_count > 0) {
+          ASSERT_EQ(count_stats.valid_count, 8 * entity_row_num);
+        }
+      }
+    }
+    for (k_uint32 entity_id = 1; entity_id <= vgroup->GetMaxEntityID(); entity_id++) {
+      std::shared_ptr<MMapMetricsTable> schema;
+      ASSERT_EQ(table_schema_mgr->GetMetricSchema(1, &schema), KStatus::SUCCESS);
+      std::vector<uint32_t> entity_ids = {entity_id};
+      std::vector<KwTsSpan> ts_spans = {ts_span};
+      std::vector<BlockFilter> block_filter = {};
+      std::vector<k_int32> agg_extend_cols = {};
+      std::vector<timestamp64> ts_points = {};
+      s = vgroup->GetIterator(ctx_, 1, entity_ids, ts_spans, block_filter,
+                              scan_cols, scan_cols, agg_extend_cols, scan_agg_types, table_schema_mgr,
+                              schema, &ts_iter, vgroup, ts_points, false, false);
+      ASSERT_EQ(s, KStatus::SUCCESS);
+      ResultSet res{(k_uint32) scan_cols.size()};
+      k_uint32 count;
+      bool is_finished = false;
+      ASSERT_EQ(ts_iter->Next(&res, &count, &is_finished), KStatus::SUCCESS);
+      ASSERT_EQ(is_finished, false);
+      ASSERT_EQ(count, 30);
+      ASSERT_EQ(ts_iter->Next(&res, &count, &is_finished), KStatus::SUCCESS);
+      ASSERT_EQ(is_finished, false);
+      ASSERT_EQ(count, 10);
+      ASSERT_EQ(ts_iter->Next(&res, &count, &is_finished), KStatus::SUCCESS);
+      ASSERT_EQ(is_finished, false);
+      ASSERT_EQ(ts_iter->Next(&res, &count, &is_finished), KStatus::SUCCESS);
+      ASSERT_EQ(is_finished, false);
+      ASSERT_EQ(count, 10);
+      ASSERT_EQ(ts_iter->Next(&res, &count, &is_finished), KStatus::SUCCESS);
+      ASSERT_EQ(is_finished, true);
+      delete ts_iter;
+    }
+  }
 
   TsLRUBlockCache::GetInstance().EvictAll();
   /**

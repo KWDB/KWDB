@@ -883,7 +883,8 @@ KStatus TsSegmentFile::GetColumnBlock(int32_t col_idx, const std::vector<Attribu
   block->WrLock();
   Defer defer([&]() { block->Unlock(); });
   // init block info
-  if (block->GetBlockInfo().col_block_offset.empty()) {
+  if (!block_file_.IsFIOMode() || block->GetBlockInfo().col_block_offset.empty()) {
+    // In mmap / memory mode, we should always read block info since the memory address could change.
     TsSliceGuard buffer;
     KStatus s = block_file_.ReadData(block->GetBlockOffset(), &buffer, sizeof(uint32_t) * block->GetNCols());
     if (s != KStatus::SUCCESS) {

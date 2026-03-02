@@ -50,6 +50,7 @@ class TsEntitySegmentBlockFile {
   KStatus Open();
   KStatus ReadData(uint64_t offset, TsSliceGuard* data, size_t len);
   void MarkDelete() { r_file_->MarkDelete(); }
+  bool  IsFIOMode() { return io_env_ && io_env_->IsFIOMode(); }
 };
 
 /*

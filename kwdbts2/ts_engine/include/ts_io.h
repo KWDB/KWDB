@@ -464,6 +464,7 @@ class TsIOEnv {
   virtual KStatus NewDirectory(const std::string& path) = 0;
   virtual KStatus DeleteDir(const std::string& path) = 0;
   virtual KStatus DeleteFile(const std::string& path) = 0;
+  virtual bool  IsFIOMode() = 0;
 };
 
 class TsFIOEnv : public TsIOEnv {
@@ -478,6 +479,7 @@ class TsFIOEnv : public TsIOEnv {
   KStatus NewDirectory(const std::string& path) override;
   KStatus DeleteFile(const std::string& path) override;
   KStatus DeleteDir(const std::string& path) override;
+  bool  IsFIOMode() override { return true; }
 };
 
 class TsMMapIOEnv : public TsIOEnv {
@@ -492,6 +494,7 @@ class TsMMapIOEnv : public TsIOEnv {
   KStatus NewDirectory(const std::string& path) override;
   KStatus DeleteFile(const std::string& path) override;
   KStatus DeleteDir(const std::string& path) override;
+  bool  IsFIOMode() override { return false; }
 };
 
 class TsMemoryIOEnv : public TsIOEnv {
@@ -528,6 +531,7 @@ class TsMemoryIOEnv : public TsIOEnv {
   KStatus NewDirectory(const std::string& path) override { return SUCCESS; }
   KStatus DeleteFile(const std::string& path) override;
   KStatus DeleteDir(const std::string& path) override { return SUCCESS; }
+  bool  IsFIOMode() override { return false; }
 };
 
 class TsMMapAllocFile : public FileWithIndex {
