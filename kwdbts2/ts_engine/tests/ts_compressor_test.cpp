@@ -87,6 +87,33 @@ TYPED_TEST(TimestampCompressorTester, CompressDecompress) {
   }
 }
 
+TYPED_TEST(TimestampCompressorTester, CompressDecompress_FewRows) {
+  using dtype = typename TargetType<TypeParam>::Type;
+  const kwdbts::CompressorImpl &comp = TypeParam::GetInstance();
+  auto CheckFunc = [&](int count) {
+    std::vector<dtype> ts(count);
+    std::iota(ts.begin(), ts.end(), 1741851161);
+    TSSlice data{reinterpret_cast<char *>(ts.data()), ts.size() * sizeof(dtype)};
+
+    kwdbts::TsBufferBuilder out;
+    ASSERT_TRUE(comp.Compress(data, count, &out));
+
+    TSSlice compressed{out.data(), out.size()};
+    kwdbts::TsSliceGuard buf;
+    ASSERT_TRUE(comp.Decompress(compressed, count, &buf));
+
+    ASSERT_EQ(buf.size(), count * sizeof(dtype));
+    dtype *p_ts = reinterpret_cast<dtype *>(buf.data());
+    for (int i = 0; i < count; ++i) {
+      ASSERT_EQ(ts[i], p_ts[i]) << "IDX: " << i;
+    }
+  };
+
+  CheckFunc(0);
+  CheckFunc(1);
+  CheckFunc(2);
+}
+
 TYPED_TEST(TimestampCompressorTester, CompressDecompressOneRow) {
   using dtype = typename TargetType<TypeParam>::Type;
   int start = 0x12345678;
@@ -96,7 +123,7 @@ TYPED_TEST(TimestampCompressorTester, CompressDecompressOneRow) {
   TSSlice data{reinterpret_cast<char *>(ts.data()), ts.size() * sizeof(dtype)};
 
   kwdbts::TsBufferBuilder out;
-  ASSERT_FALSE(comp.Compress(data, 1, &out));
+  ASSERT_TRUE(comp.Compress(data, 1, &out));
 }
 
 template <class Compressor>
@@ -657,6 +684,14 @@ TYPED_TEST(FloatingPointCompressorTester, CompressDecompress) {
       data[i] = 0.112345676545;
     }
     c.push_back(std::move(data));
+  }
+  {
+    // empty no data
+    c.push_back({});
+  }
+  {
+    // one number
+    c.push_back({1.345});
   }
   {
     // just two number

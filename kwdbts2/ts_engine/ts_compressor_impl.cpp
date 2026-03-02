@@ -46,8 +46,8 @@ namespace kwdbts {
 //       timestamp is recorded as nanosecond.
 bool GorillaInt::Compress(TSSlice data, uint64_t count, TsBufferBuilder *out) const {
   static constexpr int dsize = sizeof(int64_t);
-  if (count < 2) {
-    return false;
+  if (count == 0) {
+    return true;
   }
   assert(data.len == count * dsize);
   out->reserve(dsize * count);
@@ -116,6 +116,8 @@ bool GorillaInt::Decompress(TSSlice data, uint64_t count, TsSliceGuard *out) con
   int64_t current_ts = v;
   builder.append(reinterpret_cast<char *>(&current_ts), dsize);
   if (count == 1) {
+    assert(builder.size() == dsize);
+    *out = builder.GetBuffer();
     return true;
   }
   ok = reader.ReadBits(32, &v);
@@ -212,8 +214,8 @@ static inline const char *TypedDecodeVarint(const char *ptr, const char *limit, 
 
 template <class T>
 bool GorillaIntV2<T>::Compress(TSSlice data, uint64_t count, TsBufferBuilder *out) const {
-  if (count <= 2) {
-    return false;
+  if (count == 0) {
+    return true;
   }
   assert(data.len == count * stride);
   out->reserve(stride * count);
@@ -221,6 +223,9 @@ bool GorillaIntV2<T>::Compress(TSSlice data, uint64_t count, TsBufferBuilder *ou
 
   // 1. record the first timestamp;
   TypedPutVarint(out, EncodeZigZag(ts_data[0]));
+  if (count == 1) {
+    return true;
+  }
   // 2. record delta
   T delta;
   if (CheckedSub(ts_data[1], ts_data[0], &delta)) {
@@ -245,8 +250,8 @@ bool GorillaIntV2<T>::Compress(TSSlice data, uint64_t count, TsBufferBuilder *ou
 
 template <class T>
 bool GorillaIntV2<T>::Decompress(TSSlice data, uint64_t count, TsSliceGuard *out) const {
-  if (count <= 2) {
-    return false;
+  if (count == 0) {
+    return true;
   }
   TsBufferBuilder builder(stride * count);
   T *outdata = reinterpret_cast<T *>(builder.data());
@@ -260,6 +265,10 @@ bool GorillaIntV2<T>::Decompress(TSSlice data, uint64_t count, TsSliceGuard *out
   }
   T ts = DecodeZigZag(v);
   outdata[0] = ts;
+  if (count == 1) {
+    *out = builder.GetBuffer();
+    return true;
+  }
 
   ptr = TypedDecodeVarint(ptr, limit, &v);
   if (ptr == nullptr) {
@@ -289,9 +298,11 @@ bool Chimp<T>::Compress(TSSlice data, uint64_t count, TsBufferBuilder *out) cons
   assert(data.len == sizeof(T) * count);
   auto sz = sizeof(T) * 8;
   out->clear();
-  if (count <= 1) {
-    return false;
+
+  if (count == 0) {
+    return true;  // no data, no need to compress
   }
+
   using utype = std::conditional_t<std::is_same_v<T, double>, uint64_t, uint32_t>;
   const utype *ptr = reinterpret_cast<utype *>(data.data);
   TsBitWriter writer(out);
@@ -340,12 +351,12 @@ bool Chimp<T>::Compress(TSSlice data, uint64_t count, TsBufferBuilder *out) cons
 
 template <class T>
 bool Chimp<T>::Decompress(TSSlice data, uint64_t count, TsSliceGuard *out) const {
-  auto sz = sizeof(T) * 8;
-  TsBufferBuilder builder;
-  builder.reserve(count * sizeof(T));
   if (count == 0) {
     return true;
   }
+  auto sz = sizeof(T) * 8;
+  TsBufferBuilder builder;
+  builder.reserve(count * sizeof(T));
   TsBitReader reader(std::string_view{data.data, data.len});
   uint64_t v;
   bool ok = reader.ReadBits(sz, &v);
@@ -594,17 +605,12 @@ inline auto CheckedSubForS8B(const T a, const T b) -> std::pair<int64_t, bool> {
 //  delta-of-delta + simple8b
 template <typename T>
 bool V2CompressImplGreedy(const T *data, uint64_t count, TsBufferBuilder *out) {
-  if (count < 2) {
-    return false;
-  }
   static_assert(std::is_integral_v<T>);
-
-  auto [delta, overflow] = CheckedSubForS8B(data[1], data[0]);
-  if (overflow) {
-    return false;
+  if (count == 0) {
+    return true;
   }
-
   out->clear();
+
   if constexpr (sizeof(T) >= 4) {
     auto v1 = EncodeZigZagIfNeeded(data[0]);
     TypedPutVarint(out, v1);
@@ -613,6 +619,16 @@ bool V2CompressImplGreedy(const T *data, uint64_t count, TsBufferBuilder *out) {
   } else {
     out->append(reinterpret_cast<const char *>(&data[0]), sizeof(T));
   }
+
+  if (count == 1) {
+    return true;
+  }
+
+  auto [delta, overflow] = CheckedSubForS8B(data[1], data[0]);
+  if (overflow) {
+    return false;
+  }
+
   auto v2 = EncodeZigZagIfNeeded(delta);
   TypedPutVarint(out, v2);
 
@@ -726,8 +742,8 @@ bool V2CompressImplGreedy(const T *data, uint64_t count, TsBufferBuilder *out) {
 
 template <typename T>
 bool V2Decompress(TSSlice data, uint64_t count, TsSliceGuard *out) {
-  if (count < 2) {
-    return false;
+  if (count == 0) {
+    return true;
   }
   TsBufferBuilder builder(sizeof(T) * count);
   T *outdata = reinterpret_cast<T *>(builder.data());
@@ -751,13 +767,18 @@ bool V2Decompress(TSSlice data, uint64_t count, TsSliceGuard *out) {
     cursor += sizeof(utype_t);
   }
 
+  outdata[idx++] = prev_value;
+  if (count == 1) {
+    *out = builder.GetBuffer();
+    return idx == count && cursor == end;
+  }
+
   uint64_t v2 = 0;
   cursor = TypedDecodeVarint(cursor, end, &v2);
   int64_t delta = DecodeZigZagIfNeeded<int64_t>(v2);
   curr_value = prev_value + delta;
 
 
-  outdata[idx++] = prev_value;
   outdata[idx++] = curr_value;
 
   while (cursor + 8 <= end && idx < count) {

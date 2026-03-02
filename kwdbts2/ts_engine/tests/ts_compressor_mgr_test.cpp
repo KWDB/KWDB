@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -129,9 +130,10 @@ TEST(Bitmap, CompressDecompress) {
   std::default_random_engine drng{0};
   std::vector<kwdbts::DataFlags> flags(bm2.GetCount());
   std::uniform_int_distribution<int> udist(0, 2);
+
+  static kwdbts::DataFlags all_flags[] = {kwdbts::kValid, kwdbts::kNull, kwdbts::kNone};
   for (int i = 0; i < bm2.GetCount(); ++i) {
-    flags[i] = static_cast<kwdbts::DataFlags>(
-        std::vector<kwdbts::DataFlags>{kwdbts::kValid, kwdbts::kNull, kwdbts::kNone}[udist(drng)]);
+    flags[i] = all_flags[udist(drng)];
     bm2[i] = flags[i];
   }
 
@@ -151,4 +153,61 @@ TEST(Bitmap, CompressDecompress) {
   }
 
   ASSERT_NE(dynamic_cast<kwdbts::TsBitmap*>(bitmap.get()), nullptr);
+}
+
+
+
+template <class T>
+std::vector<T> GenerateMockData(size_t count) {
+  std::vector<T> data(count);
+  std::iota(data.begin(), data.end(), 0);
+  return data;
+}
+
+std::unique_ptr<kwdbts::TsBitmapBase> GenerateMockBitmap(size_t count, double p_valid) {
+  if (p_valid == 0) {
+    return std::make_unique<kwdbts::TsUniformBitmap<kwdbts::kNone>>(count);
+  }
+
+  if (p_valid == 1) {
+    return std::make_unique<kwdbts::TsUniformBitmap<kwdbts::kValid>>(count);
+  }
+
+  std::default_random_engine drng{0};
+  std::bernoulli_distribution bdist(p_valid);
+  auto bitmap = std::make_unique<kwdbts::TsBitmap>(count);
+  for (int i = 0; i < count; ++i) {
+    (*bitmap)[i] = bdist(drng) ? kwdbts::kValid : kwdbts::kNull;
+  }
+  return bitmap;
+}
+
+TYPED_TEST(CompressorManagerTester, Null_Compressions) {
+  int count = 1000;
+  const auto& inst = kwdbts::CompressorManager::GetInstance();
+
+  auto raw_data = GenerateMockData<TypeParam>(count);
+  TSSlice raw_slice{reinterpret_cast<char*>(raw_data.data()), raw_data.size() * sizeof(TypeParam)};
+  static double probabilities[] = {0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0};
+
+  for (auto p : probabilities) {
+    auto bitmap = GenerateMockBitmap(raw_data.size(), p);
+
+    kwdbts::TsBufferBuilder compressed;
+    bool ok = inst.CompressData(raw_slice, bitmap.get(), count, &compressed, GetCompressorAlg<TypeParam>::Alg,
+                                kwdbts::GenCompAlg::kPlain);
+    ASSERT_TRUE(ok);
+    ASSERT_LE(compressed.size() - 4 /* header */, sizeof(TypeParam) * bitmap->GetValidCount());
+
+    kwdbts::TsSliceGuard out;
+    inst.DecompressData(compressed.GetBuffer(), bitmap.get(), count, &out);
+
+    ASSERT_EQ(out.size(), raw_slice.len);
+    const TypeParam* pdata = reinterpret_cast<TypeParam*>(out.data());
+    for (int i = 0; i < count; ++i) {
+      if (bitmap->At(i) == kwdbts::kValid) {
+        EXPECT_EQ(raw_data[i], pdata[i]);
+      }
+    }
+  }
 }
