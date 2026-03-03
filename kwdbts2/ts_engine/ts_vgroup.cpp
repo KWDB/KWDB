@@ -2175,6 +2175,7 @@ KStatus TsVGroup::VacuumPartition(kwdbContext_p ctx, shared_ptr<const TsPartitio
 
   auto mem_segments = partition->GetAllMemSegments();
   std::list<std::pair<TSEntityID, TS_OSN>> entity_max_lsn;
+  std::vector<TsEntityCountStats> invalid_counts;
   for (uint32_t entity_id = 1; entity_id <= max_entity_id; entity_id++) {
     TsEntityItem entity_item;
     bool found = false;
@@ -2326,6 +2327,18 @@ KStatus TsVGroup::VacuumPartition(kwdbContext_p ctx, shared_ptr<const TsPartitio
       }
       if (mem_block_spans.empty()) {
         entity_max_lsn.emplace_back(entity_id, UINT64_MAX);
+        std::list<STDelRange> del_range;
+        // Get the valid deletion records for this device.
+        s = partition->GetDelRange(filter.entity_id_, del_range);
+        if (s != KStatus::SUCCESS) {
+          LOG_ERROR("GetDelRange failed.");
+          return s;
+        }
+        // If there are valid deletion records, the count value in the count.stat file must be marked as invalid.
+        if (!del_range.empty()) {
+          TsEntityCountStats invalid_count{entity_item.table_id, entity_id, INT64_MAX, INT64_MIN, 0, false, ""};
+          invalid_counts.emplace_back(invalid_count);
+        }
       }
     }
   }
@@ -2333,6 +2346,10 @@ KStatus TsVGroup::VacuumPartition(kwdbContext_p ctx, shared_ptr<const TsPartitio
   auto info = vacuumer->GetHandleInfo();
   update.SetEntitySegment(partition->GetPartitionIdentifier(), info, true);
   vacuumer.reset();
+  if (!invalid_counts.empty()) {
+    uint64_t file_number = version_manager_->NewFileNumber();
+    update.AddCountFile(partition->GetPartitionIdentifier(), {file_number, invalid_counts});
+  }
   version_manager_->ApplyUpdate(&update);
 
   s = partition->RmDeleteItems(entity_max_lsn);
