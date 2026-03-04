@@ -254,6 +254,11 @@ var (
 			}
 			return nil
 		})
+
+	tsForceReCompress = settings.RegisterPublicBoolSetting(
+		"ts.force_re_compress.enabled",
+		"whether to force recompression when block span gets compressed data",
+		false)
 )
 
 // TODO(peter): Until go1.11, ServeMux.ServeHTTP was not safe to call

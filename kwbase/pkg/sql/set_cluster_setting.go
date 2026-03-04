@@ -288,6 +288,7 @@ var CheckClusterSetting = map[string]CheckOperation{
 	"ts.force_sync_file.enabled":         checkBool,
 	"ts.block_filter.sampling_ratio":     checkTsBlockFilterSamplingRatio,
 	"ts.count_recalc.cycle":              checkTsCountRecalcCycle,
+	"ts.force_re_compress.enabled":       checkBool,
 }
 
 // TsRaftlogCombineWalClusterSettingName is the name of the ts raftlog combine wal cluster setting.

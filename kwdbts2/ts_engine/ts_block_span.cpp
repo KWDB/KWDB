@@ -457,12 +457,15 @@ KStatus TsBlockSpan::GetCompressData(TsBufferBuilder* data) {
   } else {
     table_version = convert_->scan_version_;
   }
-  KStatus s = block_->GetCompressDataFromFile(table_version, nrow_, data);
-  if (s == KStatus::SUCCESS) {
-    return s;
+
+  if (!EngineOptions::force_re_compress) {
+    KStatus s = block_->GetCompressDataFromFile(table_version, nrow_, data);
+    if (s == KStatus::SUCCESS) {
+      return s;
+    }
   }
   // build compressed data
-  s = BuildCompressedData(data);
+  KStatus s = BuildCompressedData(data);
   if (s != KStatus::SUCCESS) {
     return s;
   }

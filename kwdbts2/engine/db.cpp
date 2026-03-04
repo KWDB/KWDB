@@ -699,6 +699,8 @@ void TriggerSettingCallback(const std::string& key, const std::string& value) {
     EngineOptions::count_stats_recalc_cycle = atoi(value.c_str());
   } else if ("ts.metric_schema_cache.max_limit" == key) {
     EngineOptions::metric_schema_cache_capacity = atoi(value.c_str());
+  } else if ("ts.force_re_compress.enabled" == key) {
+    EngineOptions::force_re_compress = ("true" == value);
   }
 #ifndef KWBASE_OSS
   else if ("ts.storage.autonomy.mode" == key) {  // NOLINT

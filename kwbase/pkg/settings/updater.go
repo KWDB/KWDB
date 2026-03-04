@@ -109,7 +109,7 @@ var SendToAeList = []string{"ts.trace.on_off_list", "ts.dedup.rule", "ts.wal.fil
 	"ts.reserved_last_segment.max_limit", "ts.mem_segment_size.max_limit", "ts.block.lru_cache.max_limit",
 	"ts.compress.stage", "ts.compress.last_segment.enabled", "ts.last_cache_size.max_limit",
 	"ts.force_sync_file.enabled", "ts.block_filter.sampling_ratio", "ts.count_recalc.cycle",
-	"ts.metric_schema_cache.max_limit"}
+	"ts.metric_schema_cache.max_limit", "ts.force_re_compress.enabled"}
 
 func needSendToAE(key string) bool {
 	for _, value := range SendToAeList {
