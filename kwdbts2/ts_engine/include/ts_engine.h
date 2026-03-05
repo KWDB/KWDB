@@ -334,6 +334,8 @@ class TSEngineImpl : public TSEngine {
 
   bool HasDroppedFlag(TSTableID id);
 
+  KStatus ResetAllWALMgr(kwdbContext_p ctx);
+
  private:
   TsVGroup* GetVGroupByID(kwdbContext_p ctx, uint32_t vgroup_id);
 

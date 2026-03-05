@@ -343,11 +343,6 @@ KStatus TSEngineImpl::Init(kwdbContext_p ctx) {
     return res;
   }
 
-  if (SortWALFile(ctx) != KStatus::SUCCESS) {
-    LOG_ERROR("Failed to SortWALFile.")
-    return res;
-  }
-
   wal_sys_ = std::make_unique<WALMgr>(options_.db_path, "ddl", &options_);
   tsx_manager_sys_ = std::make_unique<TSxMgr>(wal_sys_.get());
   s = wal_sys_->Init(ctx);
@@ -356,41 +351,29 @@ KStatus TSEngineImpl::Init(kwdbContext_p ctx) {
     return s;
   }
 
+  if (SortWALFile(ctx) != KStatus::SUCCESS) {
+    LOG_ERROR("Failed to SortWALFile.Now Reset ALL WAL.")
+    if (ResetAllWALMgr(ctx) == KStatus::FAIL) {
+      LOG_ERROR("Reset Engine WAL Failed.")
+      return KStatus::FAIL;
+    }
+  }
+
 // try catch exception if malloc fail
   try {
     s = Recover(ctx);
     if (s == KStatus::FAIL) {
       LOG_ERROR("Recover fail. Now Reset ALL WAL.")
-      if (wal_mgr_->ResetWAL(ctx) == KStatus::FAIL) {
+      if (ResetAllWALMgr(ctx) == KStatus::FAIL) {
         LOG_ERROR("Reset Engine WAL Failed.")
         return KStatus::FAIL;
       }
-      if (wal_sys_->ResetWAL(ctx) == KStatus::FAIL) {
-        LOG_ERROR("Reset DDL WAL Failed.")
-        return KStatus::FAIL;
-      }
-      for (const auto& vgroup : vgroups_) {
-        if (vgroup->GetWALManager()->ResetWAL(ctx) == KStatus::FAIL) {
-          LOG_ERROR("Reset VWAL[%d] Failed.", vgroup->GetVGroupID())
-          return KStatus::FAIL;
-        }
-      }
     }
   } catch (...) {
-    LOG_ERROR("Recover fail. Now Reset ALL WAL.")
-    if (wal_mgr_->ResetWAL(ctx) == KStatus::FAIL) {
+    LOG_ERROR("Catch Exception while Recovering. Now Reset ALL WAL.")
+    if (ResetAllWALMgr(ctx) == KStatus::FAIL) {
       LOG_ERROR("Reset Engine WAL Failed.")
       return KStatus::FAIL;
-    }
-    if (wal_sys_->ResetWAL(ctx) == KStatus::FAIL) {
-      LOG_ERROR("Reset DDL WAL Failed.")
-      return KStatus::FAIL;
-    }
-    for (const auto& vgroup : vgroups_) {
-      if (vgroup->GetWALManager()->ResetWAL(ctx) == KStatus::FAIL) {
-        LOG_ERROR("Reset VWAL[%d] Failed.", vgroup->GetVGroupID())
-        return KStatus::FAIL;
-      }
     }
   }
 
@@ -2860,5 +2843,24 @@ bool TSEngineImpl::HasDroppedFlag(TSTableID table_id) {
     return true;
   }
   return false;
+}
+
+KStatus TSEngineImpl::ResetAllWALMgr(kwdbts::kwdbContext_p ctx) {
+  LOG_INFO("ResetAllWALMgr Start.")
+  if (wal_mgr_->ResetWAL(ctx) == KStatus::FAIL) {
+    LOG_ERROR("Reset Engine WAL Failed.")
+    return KStatus::FAIL;
+  }
+  if (wal_sys_->ResetWAL(ctx) == KStatus::FAIL) {
+    LOG_ERROR("Reset DDL WAL Failed.")
+    return KStatus::FAIL;
+  }
+  for (auto vgroup : vgroups_) {
+    if (vgroup->GetWALManager()->ResetWAL(ctx) == KStatus::FAIL) {
+      LOG_ERROR("Reset VWAL[%d] Failed.", vgroup->GetVGroupID())
+      return KStatus::FAIL;
+    }
+  }
+  return KStatus::SUCCESS;
 }
 }  // namespace kwdbts
