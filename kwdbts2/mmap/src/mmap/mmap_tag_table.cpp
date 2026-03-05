@@ -224,10 +224,6 @@ int TagTable::remove(ErrorInfo &err_info) {
 
 // check ptag exist
 bool TagTable::hasPrimaryKey(const char* primary_tag_val, int len, uint32_t& entity_id, uint32_t& sub_group_id) {
-  mutexLock();
-  Defer defer{[&]() {
-    mutexUnlock();
-  }};
   auto ret = m_index_->get(primary_tag_val, len);
   if (ret.first == INVALID_TABLE_VERSION_ID) {
     return false;
