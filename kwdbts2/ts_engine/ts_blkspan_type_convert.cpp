@@ -400,7 +400,8 @@ std::shared_ptr<void> convertFixedToVar(DATATYPE old_type, DATATYPE new_type, ch
       var_data = static_cast<char*>(std::malloc(buffer_len));
       memset(var_data, 0, buffer_len);
       KInt16(var_data) = static_cast<k_int16>(char_len);
-      strcpy(var_data + kStringLenLen, data);  // NOLINT
+      // char len includes null terminator; use memcpy instead of strcpy
+      memcpy(var_data + kStringLenLen, data, strlen(data));
       break;
     }
     default:
