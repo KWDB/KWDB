@@ -26,9 +26,13 @@
 #include "sys_utils.h"
 #include "test_util.h"
 #include "ts_block.h"
+#include "ts_drop_manager.h"
+#include "ts_entity_segment_builder.h"
 #include "ts_entity_segment_data.h"
 #include "ts_filename.h"
 #include "ts_io.h"
+#include "ts_mem_segment_mgr.h"
+#include "ts_version.h"
 #include "ts_vgroup.h"
 #include "ts_lru_block_cache.h"
 
@@ -1166,4 +1170,66 @@ TEST_F(TsEntitySegmentTest, varColumnCompression) {
             0);
   EXPECT_EQ(compressed_len, 4 + 1 + 1 + 8);
   close(fd);
+}
+
+TEST_F(TsEntitySegmentTest, BUG_IEOYSN) {
+  EngineOptions::max_rows_per_block = 1500;
+  EngineOptions::min_rows_per_block = 1500;
+  // TSTableID table_ids[] = {333, 444, 555};
+  std::vector<DataType> metric_types{DataType::TIMESTAMP, DataType::VARCHAR};
+  const std::vector<AttributeInfo> *metric_schema = nullptr;
+  std::vector<TagInfo> tag_schema;
+  std::shared_ptr<TsTableSchemaManager> schema_mgr;
+  TSTableID table_id = 987654;
+  CreateTable(table_id, metric_types, &metric_schema, &tag_schema, schema_mgr);
+
+  auto env = &TsIOEnv::GetInstance();
+
+  std::string tmp_path = "bug-IEOYSN";
+  env->DeleteDir(tmp_path);
+  env->NewDirectory(tmp_path);
+
+  TsVersionManager v_mgr(env, tmp_path);
+  ASSERT_EQ(v_mgr.Recover(false), SUCCESS);
+
+  TsMemSegmentManager mem_mgr(vgroup.get(), &v_mgr);
+  std::shared_ptr<TsTableSchemaManager> table_schema;
+  ASSERT_EQ(mgr->GetTableSchemaMgr(table_id, table_schema), SUCCESS);
+
+  for (int k = 0; k < 10; ++k) {
+    uint64_t dev_id = 100 + k;
+    auto payload = GenRowPayload(*metric_schema, tag_schema, table_id, 1, dev_id, 1000, 123 + k * 1000, 1);
+    TsRawPayloadRowParser parser{metric_schema};
+    TsRawPayload p{metric_schema};
+    p.ParsePayLoadStruct(payload);
+    // auto ptag = p.GetPrimaryTag();
+    mem_mgr.PutData(payload, table_schema, k);
+    free(payload.data);
+    ASSERT_EQ(vgroup->Flush(), KStatus::SUCCESS);
+  }
+
+  
+  auto current = v_mgr.Current();
+  ASSERT_TRUE(current != nullptr);
+  auto partitions = current->GetAllPartitions();
+  ASSERT_EQ(partitions.size(), 1);
+  auto p_version = partitions.begin()->second;
+  TsEntitySegmentBuilder builder(env, tmp_path, mgr.get(), &v_mgr, p_version->GetPartitionIdentifier(), nullptr);
+  ASSERT_EQ(builder.Open(), SUCCESS);
+
+  auto memseg = mem_mgr.CurrentMemSegment();
+  std::list<std::shared_ptr<TsBlockSpan>> block_spans;
+  ASSERT_EQ(memseg->GetBlockSpans(block_spans, mgr.get()), SUCCESS);
+  ASSERT_EQ(block_spans.size(), 10);
+
+  for (auto span : block_spans) {
+    builder.PutBlockSpan(std::move(span));
+  }
+
+  ASSERT_EQ(mgr->DropTableSchemaMgr(table_id), SUCCESS);
+
+  TsVersionUpdate update;
+  std::vector<std::shared_ptr<TsBlockSpan>> residual;
+  TsSegmentWriteStats stats;
+  ASSERT_EQ(builder.Compact(true, &update, &residual, &stats), SUCCESS);
 }

@@ -665,8 +665,9 @@ KStatus TsEntitySegmentBuilder::Compact(bool call_by_vacuum, TsVersionUpdate* up
       }
       metric_schema = *table_schema_->getSchemaInfoExcludeDroppedPtr();
       block_ = std::make_shared<TsEntityBlockBuilder>(cur_entity_key.table_id, cur_entity_key.table_version,
-                                                    cur_entity_key.entity_id, metric_schema);
+                                                      cur_entity_key.entity_id, metric_schema);
     } else {
+      if (block_ == nullptr) continue;
       // Only entity id change, so don't need to create a new block
       block_->Reset(cur_entity_key.entity_id);
     }

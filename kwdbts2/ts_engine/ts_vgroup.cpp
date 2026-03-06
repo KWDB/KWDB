@@ -944,7 +944,11 @@ static KStatus FlushToLastSegment(TsIOEnv* env, TsEngineSchemaManager* schema_mg
   }
   TsLastSegmentBuilder lastseg_builder(schema_mgr, std::move(lastseg_file), lastseg_file_number);
   for (auto& span : spans) {
-    lastseg_builder.PutBlockSpan(span);
+    s = lastseg_builder.PutBlockSpan(span);
+    if (s == FAIL) {
+      LOG_ERROR("flush failed, TsLastSegmentBuilder put failed.");
+      return FAIL;
+    }
   }
   lastseg_builder.Finalize(stats);
   update->AddLastSegment(partition->GetPartitionIdentifier(), LastSegmentMetaInfo{lastseg_file_number, 0, 0});
@@ -1318,8 +1322,8 @@ KStatus TsVGroup::rollback(kwdbContext_p ctx, LogEntry* wal_log, bool from_chk) 
     case WALLogType::CREATE_INDEX:
     case WALLogType::DROP_INDEX:
     case WALLogType::END_CHECKPOINT: {
-      assert(false);
-      break;
+      LOG_ERROR("unsupported WALLogType: %d", wal_log->getType());
+      return KStatus::FAIL;
     }
   }
 

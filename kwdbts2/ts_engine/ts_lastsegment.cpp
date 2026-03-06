@@ -525,7 +525,8 @@ KStatus TsLastSegment::Open() {
       if (sv == LastSegmentBloomFilter::Name()) {
         s = TsBloomFilter::FromData(data, &bloom_filter_);
       } else {
-        assert(false);
+        LOG_ERROR("unknown meta block %.*s", static_cast<int>(sv.size()), sv.data());
+        s = FAIL;
       }
       if (s == FAIL) {
         return FAIL;

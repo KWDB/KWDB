@@ -40,7 +40,7 @@ KStatus TsEntitySegmentBlockFile::Open() {
   std::string file_path_ = root_path_ / DataBlockFileName(info_.datablock_info.file_number);
   if (io_env_->NewRandomReadFile(file_path_, &r_file_, info_.datablock_info.length) != KStatus::SUCCESS) {
     LOG_ERROR("TsEntitySegmentBlockFile NewRandomReadFile failed, file_path=%s", file_path_.c_str())
-    assert(false);
+    return KStatus::FAIL;
   }
 
   if (r_file_->GetFileSize() < sizeof(TsAggAndBlockFileHeader)) {

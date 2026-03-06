@@ -134,8 +134,8 @@ KStatus MetricsVersionManager::CreateTable(kwdbContext_p ctx, std::vector<Attrib
     precision = 1000000000;
     break;
   default:
-    assert(false);
-    break;
+    LOG_ERROR("unsupported data type %d", meta[0].type);
+    return FAIL;
   }
   LifeTime life_time {lifetime, precision};
   tmp_schema->SetLifeTime(life_time);
