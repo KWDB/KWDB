@@ -28,7 +28,8 @@ class TsLRUBlockCacheTest : public ::testing::Test {
     EngineOptions::block_cache_max_size = 100 * 1024;
     entity_segment.resize(10);
     for (int i = 0; i < 10; ++i) {
-      entity_segment[i] = std::make_shared<TsEntitySegment>((i + 1) * 1000);
+      // Initial max_blocks is set to 0 for segment block container's resize testing.
+      entity_segment[i] = std::make_shared<TsEntitySegment>(0);
     }
   }
 
@@ -123,7 +124,7 @@ TEST_F(TsLRUBlockCacheTest, basicTest) {
 TEST_F(TsLRUBlockCacheTest, multiThreads) {
   auto EntityBlockReader = [&](int thread_index) {
     TsEntitySegmentBlockItem block_item;
-    for (int j = 0; j < 2 * (10 - thread_index); ++j) {
+    for (int j = 0; j < 10 * (10 - thread_index); ++j) {
       for (int i = 0; i < (thread_index + 1) * 1000; ++i) {
         block_item.block_id = i + 1;
         block_item.n_cols = 5;

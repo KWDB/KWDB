@@ -31,7 +31,6 @@ TsLRUBlockCache::~TsLRUBlockCache() {
 
 bool TsLRUBlockCache::Add(std::shared_ptr<TsEntityBlock>& block) {
   assert(block != nullptr);
-  block->pre_ = nullptr;
   lock_.lock();
   ++current_visit_cache_index_;
   if (current_visit_cache_index_ >= MAX_VISIT_CACHE_HISTORY_COUNT) {
@@ -53,7 +52,25 @@ bool TsLRUBlockCache::Add(std::shared_ptr<TsEntityBlock>& block) {
 }
 inline void TsLRUBlockCache::KickOffBlocks() {
   while (cur_memory_size_ > max_memory_size_ && tail_) {
+    // The following code is used to show the info of tail_ for ZDP-51096 bug.
+    int64_t tail_use_count = tail_.use_count();
+    uint64_t tail_block_id = tail_->GetBlockID();
+    if (tail_use_count < 2 || tail_block_id == 0) {
+      assert(tail_use_count >= 2);
+      assert(tail_block_id > 0);
+      LOG_ERROR("TsLRUBlockCache::KickOffBlocks, tail_use_count is %ld, tail_block_id is %lu.",
+                tail_use_count, tail_block_id);
+    }
     std::shared_ptr<TsEntityBlock> tail_block = std::move(tail_);
+    // The following code is used to show the info of tail_block for ZDP-51096 bug.
+    int64_t tail_block_use_count = tail_block.use_count();
+    uint64_t tail_block_block_id = tail_block->GetBlockID();
+    if (tail_block_use_count < 2 || tail_block_block_id == 0) {
+      assert(tail_block_use_count >= 2);
+      assert(tail_block_block_id > 0);
+      LOG_ERROR("TsLRUBlockCache::KickOffBlocks, tail_block_use_count is %ld, tail_block_block_id is %lu.",
+                tail_block_use_count, tail_block_block_id);
+    }
     tail_ = tail_block->pre_;
     if (tail_) {
       tail_->next_ = nullptr;
