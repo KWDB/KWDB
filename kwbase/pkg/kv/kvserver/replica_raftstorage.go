@@ -736,7 +736,7 @@ func (r *Replica) GetTSSnapshot(
 	var errMsg string
 	// The CreateTSSnapshotRequest sender and receiver must be equal, otherwise the sender cannot getTSSnapshotData
 	tsSnapshotID, err := r.CreateSnapshotForRead(ctx, startKey, endKey, hashNum)
-	log.Infof(ctx, "(r%d)TSEngine.CreateSnapshotForRead(ID:%d)", r.RangeID, tsSnapshotID)
+	log.Infof(ctx, "(r%d)TSEngine.CreateSnapshotForRead(ID:%d), type is %s", r.RangeID, tsSnapshotID, snapType)
 	if err != nil {
 		errMsg = fmt.Sprintf("[n%v,s%v]r%v stageWriteBatch Ts CreateSnapshotForRead err: %v",
 			r.store.nodeDesc.NodeID, r.store.StoreID(), r.RangeID, err)
@@ -1296,7 +1296,7 @@ func (r *Replica) applySnapshot(
 	if inSnap.IsTSSnapshot && inSnap.WriteSnapshotID != 0 {
 		rangeID := inSnap.State.Desc.RangeID
 		if err = r.store.TsEngine.WriteSnapshotSuccess(inSnap.TableID, inSnap.WriteSnapshotID); err != nil {
-			log.Errorf(ctx, "TsEngine.WriteSnapshotSuccess failed r%v, %v, %v, %v", rangeID, inSnap.TableID, inSnap.WriteSnapshotID, err)
+			log.Warningf(ctx, "WriteSnapshotSuccess failed r%v, %v, %v, %v", rangeID, inSnap.TableID, inSnap.WriteSnapshotID, err)
 			if rollbackErr := r.store.TsEngine.WriteSnapshotRollback(inSnap.TableID, inSnap.WriteSnapshotID); rollbackErr != nil {
 				log.Errorf(ctx, "applySnapshot TsEngine.WriteSnapshotRollback failed r%v, %v, %v, %v", rangeID, inSnap.TableID, inSnap.WriteSnapshotID, rollbackErr)
 			}

@@ -222,7 +222,7 @@ func (s *Store) processRaftRequestWithReplica(
 	ctx context.Context, r *Replica, req *RaftMessageRequest,
 ) *roachpb.Error {
 	if verboseRaftLoggingEnabled() {
-		log.Infof(ctx, "incoming raft message:\n%s", raftDescribeMessage(req.Message, raftEntryFormatter))
+		log.Infof(ctx, "incoming raft message: %s", raftDescribeMessage(req.Message, raftEntryFormatter))
 	}
 
 	if req.Message.Type == raftpb.MsgSnap {
@@ -347,6 +347,7 @@ func (s *Store) processRaftSnapshotRequest(
 		}
 		var expl string
 		var err error
+		log.Infof(ctx, "snapshot id is %s start", inSnap.SnapUUID)
 		if inSnap.IsTSSnapshot {
 			_, expl, err = r.handleRaftTSReadyRaftMuLocked(ctx, inSnap)
 		} else {

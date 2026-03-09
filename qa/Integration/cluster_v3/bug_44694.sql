@@ -1,5 +1,5 @@
 create ts database test_rebalance;
-ALTER DATABASE test_rebalance CONFIGURE ZONE USING gc.ttlseconds=10;
+ALTER DATABASE test_rebalance CONFIGURE ZONE USING gc.ttlseconds=600;
 CREATE TABLE test_rebalance.t1(
                                   ts TIMESTAMPTZ NOT NULL,e1 TIMESTAMP,e2 INT2,e3 INT4,e4 INT8,e5 FLOAT4,e6 FLOAT8,e7 BOOL,e8 CHAR,e10 NCHAR,e16 VARBYTES
 ) TAGS (

@@ -553,7 +553,8 @@ KStatus TSEngineImpl::ProcessDrop(const KTableKey& table_id) {
   if (!HasDroppedFlag(table_id)) {
     createDroppedFlag(table_id);
   }
-  // set flag, insert into dropped_tables_ and remove table schema
+  LOG_INFO("Process Table Drop, table id:%ld", table_id);
+    // set flag, insert into dropped_tables_ and remove table schema
   // is_dropped = true;
   if (schema_mgr_->IsTableExist(table_id)) {
     auto s = schema_mgr_->DropTableSchemaMgr(table_id);

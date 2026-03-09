@@ -1007,6 +1007,10 @@ func (r *Replica) requestToProposalTS(
 		Request: ba,
 	}
 
+	result := make([]byte, 12)
+	res.WriteBatch = &storagepb.WriteBatch{
+		Data: result,
+	}
 	if needConsensus {
 		proposal.command = &storagepb.RaftCommand{
 			ReplicatedEvalResult: res.Replicated,

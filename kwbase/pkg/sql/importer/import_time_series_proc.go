@@ -812,6 +812,7 @@ func (t *timeSeriesImportInfo) ingest(
 	}
 
 	ba := t.txn.NewBatch()
+	ba.SetIsTsInsert(true)
 	for _, val := range payloadNodeMap[int(t.flowCtx.EvalCtx.NodeID)].PerNodePayloads {
 		ba.AddRawRequest(&roachpb.TsRowPutRequest{
 			RequestHeader: roachpb.RequestHeader{

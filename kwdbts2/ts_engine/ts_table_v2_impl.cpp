@@ -536,6 +536,10 @@ KwTsSpan ts_span, uint64_t mtr_id, uint64_t osn) {
     LOG_ERROR("DeleteRangeEntities failed.");
     return s;
   }
+  if (DropTableManager::getInstance().isTableDropped(table_id_)) {
+    LOG_WARN("table[%lu] is dropped. DeleteTotalRange skip end.", table_id_);
+    return KStatus::SUCCESS;
+  }
   // mark all deleted tags to delete_by_snapshot.
   s = TrasvalAllTagPtable(ctx, [&](TagPartitionTable* entity_tag_bt, size_t vec_idx) -> bool {
     for (int rownum = 1; rownum <= entity_tag_bt->size(); rownum++) {

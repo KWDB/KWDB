@@ -57,7 +57,7 @@ const (
 	// defaultProcessTimeout is the timeout when processing a replica.
 	// The timeout prevents a queue from getting stuck on a replica.
 	// For example, a replica whose range is not reachable for quorum.
-	defaultProcessTimeout = 1 * time.Minute
+	defaultProcessTimeout = 5 * time.Minute
 	// defaultQueueMaxSize is the default max size for a queue.
 	defaultQueueMaxSize = 10000
 )

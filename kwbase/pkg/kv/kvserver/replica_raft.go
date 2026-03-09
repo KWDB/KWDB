@@ -1229,7 +1229,6 @@ func (r *Replica) handleRaftTSReadyRaftMuLocked(
 		}
 		leaderID = roachpb.ReplicaID(rd.SoftState.Lead)
 	}
-
 	if !raft.IsEmptySnap(rd.Snapshot) {
 		snapUUID, err := uuid.FromBytes(rd.Snapshot.Data)
 		if err != nil {
@@ -1275,6 +1274,9 @@ func (r *Replica) handleRaftTSReadyRaftMuLocked(
 			refreshReason == noReason {
 			refreshReason = reasonSnapshotApplied
 		}
+	} else if inSnap.SnapUUID != (uuid.UUID{}) && inSnap.IsTSSnapshot {
+		log.Warningf(ctx, "snapshot id is %s and rd.Snapshot is empty, removed", inSnap.SnapUUID)
+		return stats, "", apply.ErrRemoved
 	}
 
 	// If the ready struct includes entries that have been committed, these

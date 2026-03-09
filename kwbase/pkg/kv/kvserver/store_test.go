@@ -3182,8 +3182,8 @@ func TestSnapshotRateLimit(t *testing.T) {
 		expectedErr   string
 	}{
 		{SnapshotRequest_UNKNOWN, 0, "unknown snapshot priority"},
-		{SnapshotRequest_RECOVERY, 8 << 20, ""},
-		{SnapshotRequest_REBALANCE, 8 << 20, ""},
+		{SnapshotRequest_RECOVERY, 16 << 20, ""},
+		{SnapshotRequest_REBALANCE, 16 << 20, ""},
 	}
 	for _, c := range testCases {
 		t.Run(c.priority.String(), func(t *testing.T) {

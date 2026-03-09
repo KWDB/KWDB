@@ -1155,7 +1155,7 @@ func (r *Replica) changeReplicasImpl(
 	// If in a joint config, clean up. The assumption here is that the caller
 	// of ChangeReplicas didn't even realize that they were holding on to a
 	// joint descriptor and would rather not have to deal with that fact.
-	log.VEventf(ctx, 3, "changeReplicasImpl begin, desc is %+v, details is %s", desc, details)
+	log.Infof(ctx, "changeReplicasImpl begin, desc is %+v, reason is %s, details is %s", desc, reason, details)
 	desc, err = maybeLeaveAtomicChangeReplicas(ctx, r.store, desc)
 	if err != nil {
 		return nil, err
@@ -1166,35 +1166,35 @@ func (r *Replica) changeReplicasImpl(
 	}
 
 	if adds := chgs.Additions(); len(adds) > 0 {
-		log.Infof(ctx, "TsEngine.TSIsTsTableExist r%v, desc.TableId %v,  %v", desc.RangeID, desc.TableId, err)
-		if desc.GetRangeType() == roachpb.TS_RANGE && r.store.TsEngine != nil && desc.TableId != 0 {
-			exist, err := r.store.TsEngine.TSIsTsTableExist(uint64(desc.TableId))
-			log.VEventf(ctx, 3, "TsEngine.TSIsTsTableExist r%v, %v, %v, %v", desc.RangeID, desc.TableId, exist, err)
-			if err != nil {
-				log.Errorf(ctx, "TSIsTsTableExist failed: %v", err)
-				return nil, err
-			}
-			if !exist {
-				log.Errorf(ctx, "TSIsTsTableExist not exist: %v", exist)
-				return nil, errors.New("TSIsTsTableExist not exist")
-			}
-			tsMeta, err := r.store.TsEngine.GetMetaData(uint64(desc.TableId), api.RangeGroup{RangeGroupID: 1})
-			if err != nil {
-				log.Errorf(ctx, "GetMetaData failed: %v", err)
-				return nil, err
-			}
-			for _, add := range adds {
-				log.Infof(ctx, "TsEngine.CreateTSTable create table %d ts meta on node %v, r%v, %v", desc.TableId, add.NodeID, desc.RangeID, len(tsMeta))
-				hashNum := desc.HashNum
-				if hashNum == 0 {
-					hashNum = api.HashParamV2
-				}
-				if err := api.CreateTSTable(ctx, desc.TableId, hashNum, add.NodeID, tsMeta); err != nil {
-					log.Errorf(ctx, "CreateTSTable failed: %v", err)
-					return nil, err
-				}
-			}
-		}
+		// TODO remove by fyx, because ts engine snapshot auto create table with write snapshot
+		//log.Infof(ctx, "TsEngine.GeTable Start rangeID: %d, desc.TableId: %d", desc.RangeID, desc.TableId)
+		//if desc.GetRangeType() == roachpb.TS_RANGE && r.store.TsEngine != nil && desc.TableId != 0 {
+		//	exist, err := r.store.TsEngine.TSIsTsTableExist(uint64(desc.TableId))
+		//	if err != nil {
+		//		log.Errorf(ctx, "TSIsTsTableExist check failed: %v", err)
+		//		return nil, err
+		//	}
+		//	if !exist {
+		//		log.Errorf(ctx, "TSIsTsTableExist not exist: %v", exist)
+		//		return nil, errors.New("TSIsTsTableExist not exist")
+		//	}
+		//	tsMeta, err := r.store.TsEngine.GetMetaData(uint64(desc.TableId), api.RangeGroup{RangeGroupID: 1})
+		//	if err != nil {
+		//		log.Errorf(ctx, "GetMetaData failed: %v", err)
+		//		return nil, err
+		//	}
+		//	for _, add := range adds {
+		//		log.Infof(ctx, "TsEngine.CreateTSTable create table %d ts meta on node %v, r%v, %v", desc.TableId, add.NodeID, desc.RangeID, len(tsMeta))
+		//		hashNum := desc.HashNum
+		//		if hashNum == 0 {
+		//			hashNum = api.HashParamV2
+		//		}
+		//		if err := api.CreateTSTable(ctx, desc.TableId, hashNum, add.NodeID, tsMeta); err != nil {
+		//			log.Errorf(ctx, "CreateTSTable failed: %v", err)
+		//			return nil, err
+		//		}
+		//	}
+		//}
 
 		// Lock learner snapshots even before we run the ConfChange txn to add them
 		// to prevent a race with the raft snapshot queue trying to send it first.
@@ -1836,6 +1836,19 @@ func execChangeReplicasTxn(
 		if err != nil {
 			return err
 		}
+		//// ts range table drop, not support rebalanced
+		//if desc.RangeType != nil && *desc.RangeType == roachpb.TS_RANGE && desc.TableId != 0{
+		//	log.Infof(ctx, "check ts range rebalanced table status begin")
+		//	tableDesc, err :=sqlbase.GetTableDescFromID(ctx, txn, sqlbase.ID(desc.TableId))
+		//	if err != nil {
+		//		return  err
+		//	}
+		//	if tableDesc != nil && tableDesc.State == sqlbase.TableDescriptor_DROP || tableDesc.State == sqlbase.TableDescriptor_OFFLINE {
+		//		log.Warningf(ctx, "check ts range rebalanced, table state is not ok, ignore it, name is %d", tableDesc.Name)
+		//		return errors.Errorf("check ts range rebalanced, table state is not ok, ignore it, name is %d", tableDesc.Name)
+		//	}
+		//	log.Infof(ctx, "check ts range table status end")
+		//}
 		if chgs.leaveJoint() && !desc.Replicas().InAtomicReplicationChange() {
 			// Nothing to do. See comment in 'check' above for details.
 			returnDesc = desc
