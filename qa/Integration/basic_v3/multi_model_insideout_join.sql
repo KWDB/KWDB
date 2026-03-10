@@ -40,12 +40,12 @@ INSERT INTO test_select_subquery.t1 VALUES(
     '2023-05-10 10:00:00.000', -- e7 TIMESTAMPTZ
     'char_test_1023', -- e8 CHAR(1023)
     '中文字符测试', -- e9 NCHAR(255)
-    'varchar_4096_test', -- e10 VARCHAR(4096)
+    '1234567890987654321', -- e10 VARCHAR(4096)
     'a', -- e11 CHAR
     'char_255_test', -- e12 CHAR(255)
     '中', -- e13 NCHAR
     'nvarchar_4096_test', -- e14 NVARCHAR(4096)
-    'varchar_1023_test', -- e15 VARCHAR(1023)
+    '1234567890987654321', -- e15 VARCHAR(1023)
     'nvarchar_200_test', -- e16 NVARCHAR(200)
     'nchar_255_test', -- e17 NCHAR(255)
     'char_200_test', -- e18 CHAR(200)
@@ -123,6 +123,20 @@ FROM test_select_subquery.t1 t1
 JOIN test_select_subquery2.t1 t2 
 ON t1.code17 = t2.code17 
 ORDER BY t1.id;
+
+SELECT t1.e10
+FROM  test_select_subquery.t1 t1
+INNER JOIN (
+  SELECT
+    t2_i.e15
+  FROM test_select_subquery2.t1 t2_i
+) t2 ON t1.e10 = t2.e15
+LIMIT 1;
+
+SELECT t1.e10
+FROM test_select_subquery.t1 t1
+LEFT JOIN test_select_subquery2.t1 t2
+ON (t1.e10 = t2.e15);
 
 CREATE TABLE test_select_subquery.t2 (
 	k_timestamp TIMESTAMPTZ(3) NOT NULL,

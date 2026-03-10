@@ -279,7 +279,7 @@ EEIteratorErrCode HashTagScanOperator::CreateDynamicHashIndexes(kwdbContext_p ct
   for (auto join_index : rel_tag_join_column_indexes) {
     primary_rel_cols_.push_back(join_index.first);
     primary_tag_cols_.push_back(scan_tag_to_output[join_index.second - table_->GetMinTagId()]);
-    k_uint32 length = min(rel_fields[join_index.first]->get_storage_length(),
+    k_uint32 length = max(rel_fields[join_index.first]->get_storage_length(),
                           table_->GetFieldWithColNum(join_index.second)->get_storage_length());
     join_column_lengths_.push_back(length);
     total_join_column_length_ += length;
