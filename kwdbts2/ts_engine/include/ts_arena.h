@@ -10,9 +10,11 @@
 // See the Mulan PSL v2 for more details.
 
 #pragma once
+#include <atomic>
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
+#include <iostream>
 #include <memory>
 #include <utility>
 #include <vector>
@@ -103,9 +105,9 @@ template <typename T> class TLSArray {
  public:
   TLSArray();
 
-  auto Size() const { return 1ul << size_shift_; }     // NOLINT
-  auto Access() const { return AccessElementAndIndex().first; } // NOLINT
-  auto AccessAtCore(size_t core_idx) const {                    // NOLINT
+  auto Size() const { return 1ul << size_shift_; }               // NOLINT
+  auto Access() const { return AccessElementAndIndex().first; }  // NOLINT
+  auto AccessAtCore(size_t core_idx) const {                     // NOLINT
     assert(core_idx < (1ul << size_shift_));
     return &data_[core_idx];
   }
@@ -126,7 +128,19 @@ template <typename T> TLSArray<T>::TLSArray() {
   data_.reset(new T[static_cast<size_t>(1) << size_shift_]);
 }
 
-int GetCPUID();
+inline int GetCPUID() {
+#if defined(__x86_64__) && (__GNUC__ > 2 || (__GNUC__ == 2 && __GNUC_MINOR__ >= 22))
+  return sched_getcpu();
+#elif defined(__x86_64__) || defined(__i386__)
+  unsigned eax, ebx = 0, ecx, edx;
+  if (!__get_cpuid(1, &eax, &ebx, &ecx, &edx)) {
+    return -1;
+  }
+  return ebx >> 24;
+#else
+  return -1;
+#endif
+}
 
 template <typename T>
 std::pair<T *, size_t> TLSArray<T>::AccessElementAndIndex() const {
@@ -148,6 +162,17 @@ static_assert((ALIGNED_SIZE & (ALIGNED_SIZE - 1)) == 0,
               "Aligned size must be pow of 2");
 
 class ConcurrentAllocator final {
+  struct alignas(64) ShardedMemUseageCounter {
+    std::atomic<int64_t> mem_useage_counter_{0};
+    void Add(int64_t x) { mem_useage_counter_.fetch_add(x); }
+    void Sub(int64_t x) { mem_useage_counter_.fetch_sub(x); }
+    int64_t Get() const { return mem_useage_counter_.load(); }
+  };
+  static_assert(alignof(ShardedMemUseageCounter) == 64, "ShardMemUseageCounter size is not 64");
+
+  inline static TLSArray<ShardedMemUseageCounter> mem_alloc_;
+  // inline static TLSArray<ShardedMemUseageCounter> mem_written_;
+
  public:
   explicit ConcurrentAllocator(size_t size = MIN_BLOCK_SIZE);
   ~ConcurrentAllocator();
@@ -155,6 +180,14 @@ class ConcurrentAllocator final {
   // NOCOPY
   ConcurrentAllocator(const ConcurrentAllocator &) = delete;
   ConcurrentAllocator &operator=(const ConcurrentAllocator &) = delete;
+
+  static int64_t GetMemoryAllocUsage() {
+    int64_t total = 0;
+    for (int i = 0; i < mem_alloc_.Size(); ++i) {
+      total += mem_alloc_.AccessAtCore(i)->Get();
+    }
+    return total;
+  }
 
   char *Allocate(size_t bytes) {
     return AllocateImpl(bytes, false, [=] {
@@ -318,6 +351,7 @@ inline char *ConcurrentAllocator::AllocateBlock(size_t block_size) {
   blocks_.push_back(nullptr);
   auto block = new char[block_size];
   blocks_memory_ += block_size;
+  mem_alloc_.AccessAtCore(tls_cpuid & (shards_.Size() - 1))->Add(block_size);
   blocks_.back() = block;
   return block;
 }

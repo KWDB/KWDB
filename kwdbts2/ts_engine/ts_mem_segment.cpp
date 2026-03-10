@@ -10,12 +10,13 @@
 // See the Mulan PSL v2 for more details.
 
 #include <atomic>
+#include <chrono>
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <list>
 #include <memory>
 #include <mutex>
-#include <thread>
 #include <utility>
 #include <vector>
 
@@ -34,6 +35,11 @@ namespace kwdbts {
 
 std::atomic<int32_t> TsMemSegment::n_mem_segments_ = 0;
 std::atomic<int32_t> TsMemSegment::max_memsegments_ = -1;  // -1 means uninitialized
+std::atomic<int64_t> TsMemSegment::mem_segment_id_counter_ = 0;
+std::atomic<int64_t> TsMemSegment::mem_segment_bp_counter_ = -1;  // -1 means uninitialized
+
+std::mutex TsMemSegment::global_mem_seg_mutex_;
+std::condition_variable TsMemSegment::global_mem_seg_cv_;
 
 TsMemSegmentManager::TsMemSegmentManager(TsVGroup* vgroup, TsVersionManager* version_manager)
     : vgroup_(vgroup),
@@ -124,6 +130,7 @@ KStatus TsMemSegmentManager::PutData(const TSSlice& payload, const std::shared_p
   // no use lsn anymore, using osn from payload instead.
   auto osn = pd.GetOSN();
   auto cur_mem_seg = CurrentMemSegmentAndAllocateRow(row_num);
+  cur_mem_seg->BackPressureIfNecessary(row_num);
   size_t max_row_idx = 0;
   timestamp64 max_ts = INT64_MIN;
   timestamp64 last_p_time = INVALID_TS;
@@ -286,18 +293,29 @@ inline bool TsMemSegBlock::IsColNull(int row_num, int col_id, const std::vector<
   return parser_->IsColNull(row_data_[row_num]->GetRowData(), col_id);
 }
 
-void TsMemSegment::AppendOneRow(TSMemSegRowData* row) {
-  auto current_count = GetMemSegmentCount();
+void TsMemSegment::BackPressureSlowPath(int row_num) {
+  static std::atomic<int64_t> last_log_time = INT64_MIN;
+  constexpr int64_t interval_threshold = 30;  // report every 30s
+  auto now = std::chrono::steady_clock::now().time_since_epoch();
+  auto now_s = std::chrono::duration_cast<std::chrono::seconds>(now).count();
+  auto last_time_loc = last_log_time.load(std::memory_order_relaxed);
+  auto current_count = GetMemSegmentsCount();
   auto max_count = GetMaxMemSegmentsCount();
-  assert(max_count > 0);
-  if (current_count >= max_count) {
-    std::this_thread::sleep_for(1ms);
-    if (current_count > max_count * 1.5) {
-      std::this_thread::sleep_for(1ms);
-    }
+
+  double ratio = std::max(0., static_cast<double>(current_count) / max_count - 1);
+  int64_t delay_time_ms = std::min<int64_t>(std::ceil(ratio * 5), 10);
+
+  if ((last_time_loc == INT64_MIN || now_s - last_time_loc > interval_threshold) &&
+      last_log_time.compare_exchange_strong(last_time_loc, now_s)) {
+    LOG_WARN("memsegment count [%d] exceeds maximum [%d]. applying %ld ms delay", current_count, max_count,
+             delay_time_ms);
   }
+  TsMemSegment::BackPressureWaitFor(delay_time_ms);
+}
+
+void TsMemSegment::AppendOneRow(TSMemSegRowData* row) {
   skiplist_.InsertRowData(row);
-  written_row_num_.fetch_add(1);
+  written_row_num_.fetch_add(1, std::memory_order_acq_rel);
   payload_mem_usage_.fetch_add(row->GetRowData().len, std::memory_order_relaxed);
 }
 
@@ -348,14 +366,15 @@ bool TsMemSegment::GetAllEntityRows(std::list<const TSMemSegRowData*>* rows) {
 }
 
 KStatus TsMemSegment::GetBlockSpans(std::list<shared_ptr<TsBlockSpan>>& blocks, TsEngineSchemaManager* schema_mgr) {
-  if (0 == intent_row_num_.load()) {
+  if (0 == intent_row_num_.load(std::memory_order_relaxed)) {
     return KStatus::SUCCESS;
   }
   int re_try_times = 0;
-  while (intent_row_num_.load() != written_row_num_.load()) {
+  while (intent_row_num_.load(std::memory_order_relaxed) != written_row_num_.load(std::memory_order_acquire)) {
     if (++re_try_times % 10 == 0) {
       LOG_WARN("TsMemSegment intent_row_num_[%u] != written_row_num_[%u], sleep 1ms. times[%d].",
-               intent_row_num_.load(), written_row_num_.load(), re_try_times);
+               intent_row_num_.load(std::memory_order_relaxed), written_row_num_.load(std::memory_order_relaxed),
+               re_try_times);
     }
     usleep(1000);
   }

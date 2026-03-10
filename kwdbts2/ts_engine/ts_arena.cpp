@@ -10,26 +10,12 @@
 // See the Mulan PSL v2 for more details.
 
 #include "ts_arena.h"
+#include "lg_api.h"
 #if defined(__i386__) || defined(__x86_64__)
 #include <cpuid.h>
 #endif
 
 namespace kwdbts {
-
-int GetCPUID() {
-#if defined(__x86_64__) &&                                                     \
-    (__GNUC__ > 2 || (__GNUC__ == 2 && __GNUC_MINOR__ >= 22))
-  return sched_getcpu();
-#elif defined(__x86_64__) || defined(__i386__)
-  unsigned eax, ebx = 0, ecx, edx;
-  if (!__get_cpuid(1, &eax, &ebx, &ecx, &edx)) {
-    return -1;
-  }
-  return ebx >> 24;
-#else
-  return -1;
-#endif
-}
 
 static size_t FixedBlockSize(size_t size) {
   size = std::max(MIN_BLOCK_SIZE, size);
@@ -60,6 +46,7 @@ ConcurrentAllocator::~ConcurrentAllocator() {
   for (const auto &block : blocks_) {
     delete[] block;
   }
+  mem_alloc_.AccessAtCore(tls_cpuid & (shards_.Size() - 1))->Sub(blocks_memory_ - INTERNAL_SIZE);
 }
 
 char *ConcurrentAllocator::AllocateAlignedUnsafe(size_t size) {

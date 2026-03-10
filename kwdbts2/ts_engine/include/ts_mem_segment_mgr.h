@@ -16,13 +16,13 @@
 #include <cstdint>
 #include <list>
 #include <memory>
-#include <string>
 #include <unordered_map>
 #include <utility>
 #include <vector>
 
 #include "libkwdbts2.h"
 #include "settings.h"
+#include "ts_arena.h"
 #include "ts_compatibility.h"
 #include "ts_engine_schema_manager.h"
 #include "ts_mem_seg_index.h"
@@ -43,15 +43,39 @@ class TsMemSegment : public TsSegmentBase, public enable_shared_from_this<TsMemS
   friend class TsMemSegmentManager;
   static std::atomic<int32_t> n_mem_segments_;
   static std::atomic<int32_t> max_memsegments_;
+  static std::atomic<int64_t> mem_segment_id_counter_;
+  static std::atomic<int64_t> mem_segment_bp_counter_;  // backpressure counter
+
+  static std::mutex global_mem_seg_mutex_;
+  static std::condition_variable global_mem_seg_cv_;
+
+  void BackPressureSlowPath(int row_num);
+  void BackPressureIfNecessary(int row_num) {
+    if (id_ < mem_segment_bp_counter_.load(std::memory_order_relaxed)) {
+      return;
+    }
+    BackPressureSlowPath(row_num);
+  }
+
+  void BackPressureWaitFor(int ms) {
+    auto pred = [this]() { return id_ < mem_segment_bp_counter_.load(std::memory_order_relaxed); };
+    if (pred()) {
+      return;
+    }
+    std::unique_lock lk{global_mem_seg_mutex_};
+    global_mem_seg_cv_.wait_for(lk, std::chrono::milliseconds(ms), pred);
+  }
 
  private:
   std::atomic<uint32_t> intent_row_num_{0};
   std::atomic<uint32_t> written_row_num_{0};
   std::atomic<uint32_t> payload_mem_usage_{0};
   std::atomic<TsMemSegmentStatus> status_{MEM_SEGMENT_IDLE};
+
+  int64_t id_;
   TsMemSegIndex skiplist_;
 
-  explicit TsMemSegment(int32_t max_height) : skiplist_(max_height) {
+  explicit TsMemSegment(int64_t id, int32_t max_height) : id_(id), skiplist_(max_height) {
     n_mem_segments_.fetch_add(1, std::memory_order_relaxed);
   }
 
@@ -66,24 +90,38 @@ class TsMemSegment : public TsSegmentBase, public enable_shared_from_this<TsMemS
         desire = std::max(n < 0 ? INT32_MAX : n, 2 * EngineOptions::vgroup_max_num);
       }
       int32_t expect = -1;
-      max_memsegments_.compare_exchange_strong(expect, desire, std::memory_order_relaxed);
+      if (max_memsegments_.compare_exchange_strong(expect, desire, std::memory_order_relaxed)) {
+        mem_segment_bp_counter_.store(desire, std::memory_order_release);
+      }
     }
 
-    return std::shared_ptr<TsMemSegment>(new TsMemSegment(std::forward<Args>(args)...));
+    int64_t sz = ConcurrentAllocator::GetMemoryAllocUsage();
+    LOG_INFO("memsegment: count %2d, mem usage %.2f MB", GetMemSegmentsCount() + 1,
+             sz / static_cast<double>(1UL << 20));
+    assert(mem_segment_bp_counter_.load(std::memory_order_relaxed) >= (2L * EngineOptions::vgroup_max_num));
+    return std::shared_ptr<TsMemSegment>(
+        new TsMemSegment(mem_segment_id_counter_.fetch_add(1, std::memory_order_relaxed), std::forward<Args>(args)...));
   }
-  ~TsMemSegment() { n_mem_segments_.fetch_sub(1, std::memory_order_relaxed); }
+  ~TsMemSegment() {
+    n_mem_segments_.fetch_sub(1, std::memory_order_relaxed);
+    {
+      std::unique_lock lk{global_mem_seg_mutex_};
+      mem_segment_bp_counter_.fetch_add(1, std::memory_order_relaxed);
+    }
+    global_mem_seg_cv_.notify_all();
+  }
 
-  static int32_t GetMemSegmentCount() { return n_mem_segments_.load(std::memory_order_relaxed); }
+  static int32_t GetMemSegmentsCount() { return n_mem_segments_.load(std::memory_order_relaxed); }
   static int32_t GetMaxMemSegmentsCount() { return max_memsegments_.load(std::memory_order_relaxed); }
   static bool IsApproachingLimit(double ratio = 0.8) {
     assert(GetMaxMemSegmentsCount() > 0);
-    return GetMemSegmentCount() >= GetMaxMemSegmentsCount() * ratio;
+    return GetMemSegmentsCount() >= GetMaxMemSegmentsCount() * ratio;
   }
 
   uint32_t GetPayloadMemUsage() { return payload_mem_usage_.load(std::memory_order_relaxed); }
   size_t Size() { return skiplist_.GetAllocator().MemoryAllocatedBytes(); }
 
-  uint32_t GetRowNum() { return intent_row_num_.load(); }
+  uint32_t GetRowNum() { return intent_row_num_.load(std::memory_order_relaxed); }
 
   inline void AllocRowNum(uint32_t row_num) { intent_row_num_.fetch_add(row_num); }
 
