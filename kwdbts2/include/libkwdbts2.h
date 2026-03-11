@@ -287,6 +287,14 @@ TSStatus
 TsDeleteData(TSEngine *engine, TSTableID table_id, uint64_t range_group_id, TSSlice primary_tag, KwTsSpans ts_spans,
              uint64_t *count, uint64_t mtr_id, uint64_t osn);
 
+TSStatus TsDeleteEntitiesByTag(TSEngine *engine, TSTableID table_id, TSSlice *primary_tags,
+                               size_t primary_tags_num, IndexColumns index_tags, uint64_t *count, HashIdSpan hash_span,
+                               uint64_t mtr_id, uint64_t osn);
+
+TSStatus TsDeleteMetricByTag(TSEngine *engine, TSTableID table_id, TSSlice *primary_tag, size_t primary_tags_num,
+                             IndexColumns index_tags, KwTsSpans ts_spans, uint64_t *count,
+                             uint64_t mtr_id, HashIdSpan hash_span, uint64_t osn);
+
 TSStatus TsCountRangeData(TSEngine *engine, TSTableID table_id, uint64_t range_group_id, HashIdSpan hash_span,
                            KwTsSpans ts_spans, uint64_t *count, uint64_t mtr_id, uint64_t osn);
 

@@ -1630,7 +1630,8 @@ func (ef *execFactory) ConstructTSDelete(
 	hashNum uint64,
 	spans []execinfrapb.Span,
 	delTyp uint8,
-	primaryTagKey, primaryTagValues [][]byte,
+	primaryTagID []uint32,
+	primaryTagValues, partOfPTagValue [][]byte,
 	isOutOfRange bool,
 ) (exec.Node, error) {
 	tsDel := tsDeleteNodePool.Get().(*tsDeleteNode)
@@ -1638,8 +1639,9 @@ func (ef *execFactory) ConstructTSDelete(
 	tsDel.tableID = tblID
 	tsDel.hashNum = hashNum
 	tsDel.delTyp = delTyp
-	tsDel.primaryTagKey = primaryTagKey
+	tsDel.primaryTagID = primaryTagID
 	tsDel.primaryTagValue = primaryTagValues
+	tsDel.partOfPTagValue = partOfPTagValue
 	tsDel.spans = spans
 	tsDel.wrongPTag = isOutOfRange
 

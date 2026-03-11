@@ -362,6 +362,58 @@ TSStatus TsDeleteEntities(TSEngine *engine, TSTableID table_id, TSSlice *primary
   return kTsSuccess;
 }
 
+TSStatus TsDeleteEntitiesByTag(TSEngine *engine, TSTableID table_id, TSSlice *primary_tags, size_t primary_tags_num,
+                               IndexColumns index_tags, uint64_t *count, HashIdSpan hash_span,
+                               uint64_t mtr_id, uint64_t osn) {
+  kwdbContext_t context;
+  kwdbContext_p ctx_p = &context;
+  KStatus s = InitServerKWDBContext(ctx_p);
+  if (s != KStatus::SUCCESS) {
+    return ToTsStatus("InitServerKWDBContext Error!");
+  }
+  std::vector<string> p_tags;
+  for (size_t i = 0; i < primary_tags_num; ++i) {
+    p_tags.emplace_back(primary_tags[i].data, primary_tags[i].len);
+  }
+  std::vector<uint32_t> tags(index_tags.index_column, index_tags.index_column + index_tags.len);
+  bool is_dropped = false;
+  s = engine->DeleteEntityByTag(ctx_p, table_id, is_dropped, tags, p_tags, count, mtr_id, hash_span, osn);
+  if (s != KStatus::SUCCESS) {
+    if (is_dropped) {
+      return kTsSuccess;
+    }
+    return ToTsStatus("DeleteEntities Error!");
+  }
+  return kTsSuccess;
+}
+
+TSStatus TsDeleteMetricByTag(TSEngine *engine, TSTableID table_id, TSSlice *primary_tag, size_t primary_tags_num,
+                             IndexColumns index_tags, KwTsSpans ts_spans, uint64_t *count, uint64_t mtr_id,
+                             HashIdSpan hash_span, uint64_t osn) {
+  kwdbContext_t context;
+  kwdbContext_p ctx_p = &context;
+  KStatus s = InitServerKWDBContext(ctx_p);
+  if (s != KStatus::SUCCESS) {
+    return ToTsStatus("InitServerKWDBContext Error!");
+  }
+  std::vector<string> p_tags;
+  for (size_t i = 0; i < primary_tags_num; ++i) {
+    p_tags.emplace_back(primary_tag[i].data, primary_tag[i].len);
+  }
+
+  std::vector<uint32_t> tags(index_tags.index_column, index_tags.index_column + index_tags.len);
+  std::vector<KwTsSpan> spans(ts_spans.spans, ts_spans.spans + ts_spans.len);
+  bool is_dropped = false;
+  s = engine->DeleteMetricByTag(ctx_p, table_id, is_dropped, tags, p_tags, spans, count, mtr_id, hash_span, osn);
+  if (s != KStatus::SUCCESS) {
+    if (is_dropped) {
+      return kTsSuccess;
+    }
+    return ToTsStatus("DeleteMetric Error!");
+  }
+  return kTsSuccess;
+}
+
 TSStatus TsDeleteRangeData(TSEngine *engine, TSTableID table_id, uint64_t range_group_id, HashIdSpan hash_span,
                            KwTsSpans ts_spans, uint64_t *count, uint64_t mtr_id, uint64_t osn) {
   kwdbContext_t context;

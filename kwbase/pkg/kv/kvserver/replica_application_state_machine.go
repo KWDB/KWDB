@@ -894,15 +894,24 @@ func (r *Replica) stageTsBatchRequest(
 					}
 					return tableID, rangeGroupID, tsTxnID, needAutoCommit, wrapWithNonDeterministicFailure(err, "unable to get endhash")
 				}
+
 				var tsSpans = req.TsSpans
-				if len(tsSpans) > 0 {
-					if delCnt, err = r.store.TsEngine.DeleteRangeData(req.TableId, uint64(1), beginHash, endHash, tsSpans, tsTxnID, req.OsnId); err != nil {
-						errRollback := r.store.TsEngine.MtrRollback(tableID, rangeGroupID, tsTxnID, nil)
-						if errRollback != nil {
-							return tableID, rangeGroupID, tsTxnID, needAutoCommit, wrapWithNonDeterministicFailure(err, "unable to rollback mini-transaction")
-						}
-						return tableID, rangeGroupID, tsTxnID, needAutoCommit, wrapWithNonDeterministicFailure(err, "unable to delete MultiEntities")
+				switch req.DeleteType {
+				case roachpb.DELETE_MULTI_ENTITIES_DATA:
+					if len(tsSpans) > 0 {
+						delCnt, err = r.store.TsEngine.DeleteRangeData(req.TableId, uint64(1), beginHash, endHash, tsSpans, tsTxnID, req.OsnId)
 					}
+				case roachpb.DELETE_MULTI_ENTITIES_DATA_BY_TAG:
+					delCnt, err = r.store.TsEngine.TsDeleteMetricByTag(req.TableId, beginHash, endHash, req.PartPrimaryTags, req.TagIDs, tsSpans, tsTxnID, req.OsnId)
+				case roachpb.DELETE_MULTI_ENTITIES_BY_TAG:
+					delCnt, err = r.store.TsEngine.TsDeleteEntitiesByTag(req.TableId, beginHash, endHash, req.PartPrimaryTags, req.TagIDs, false, tsTxnID, req.OsnId)
+				}
+				if err != nil {
+					errRollback := r.store.TsEngine.MtrRollback(tableID, rangeGroupID, tsTxnID, nil)
+					if errRollback != nil {
+						return tableID, rangeGroupID, tsTxnID, needAutoCommit, wrapWithNonDeterministicFailure(err, "unable to rollback mini-transaction")
+					}
+					return tableID, rangeGroupID, tsTxnID, needAutoCommit, wrapWithNonDeterministicFailure(err, "unable to delete MultiEntities")
 				}
 				if isLocal && responses != nil {
 					responses[idx] = roachpb.ResponseUnion{

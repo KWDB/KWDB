@@ -319,7 +319,8 @@ func (f *stubFactory) ConstructTSDelete(
 	hashNum uint64,
 	spans []execinfrapb.Span,
 	delTyp uint8,
-	primaryTagKey, primaryTagValues [][]byte,
+	primaryTagID []uint32,
+	primaryTagValues, partOfPTagValues [][]byte,
 	isOutOfRange bool,
 ) (exec.Node, error) {
 	return struct{}{}, nil

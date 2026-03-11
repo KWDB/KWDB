@@ -1689,6 +1689,74 @@ func (r *TsEngine) DeleteEntities(
 	return uint64(*delCnt), nil
 }
 
+// TsDeleteEntitiesByTag delete entity, including tag data and ts data
+// Parameters:
+//
+//	beginHash - Start value of the replica hash range
+//	endHash - End value of the replica hash range
+//	primaryTags - List of part primary tag values
+//	indexColumns - List of tag IDs corresponding to the primaryTags
+//
+// Returns:
+//
+//	uint64 - Number of rows successfully deleted
+func (r *TsEngine) TsDeleteEntitiesByTag(
+	tableID uint64,
+	beginHash uint64,
+	endHash uint64,
+	primaryTags [][]byte,
+	indexColumns []uint32,
+	isDrop bool,
+	tsTxnID uint64,
+	osnID uint64,
+) (uint64, error) {
+	if len(primaryTags) == 0 {
+		return 0, errors.New("primaryTags is null")
+	}
+
+	r.checkOrWaitForOpen()
+	cTsSlice := make([]C.TSSlice, len(primaryTags))
+	defer freeTSSlice(cTsSlice)
+	for i, p := range primaryTags {
+		if len(p) == 0 {
+			cTsSlice[i].data = nil
+			cTsSlice[i].len = 0
+		} else {
+			dataPtr := C.CBytes(p)
+			cTsSlice[i].data = (*C.char)(dataPtr)
+			cTsSlice[i].len = C.size_t(len(p))
+		}
+	}
+	numColumn := len(indexColumns)
+	cIndexs := make([]C.uint, numColumn)
+	for i := 0; i < numColumn; i++ {
+		cIndexs[i] = C.uint(indexColumns[i])
+	}
+	cIndexColumns := C.IndexColumns{
+		index_column: (*C.uint32_t)(unsafe.Pointer(&cIndexs[0])),
+		len:          C.int32_t(len(cIndexs)),
+	}
+
+	cKwHashIDSpans := C.HashIdSpan{
+		begin: C.uint64_t(beginHash),
+		end:   C.uint64_t(endHash),
+	}
+	var delCnt *C.uint64_t
+	delCnt = (*C.uint64_t)(C.malloc(C.size_t(unsafe.Sizeof(C.uint64_t(0)))))
+	defer C.free(unsafe.Pointer(delCnt))
+	(*delCnt) = C.uint64_t(0)
+
+	status := C.TsDeleteEntitiesByTag(r.tdb, C.TSTableID(tableID), &cTsSlice[0], (C.size_t)(len(cTsSlice)),
+		cIndexColumns, delCnt, cKwHashIDSpans, C.uint64_t(tsTxnID), C.uint64_t(osnID))
+	if err := statusToError(status); err != nil {
+		if isDrop {
+			return 0, err
+		}
+		log.Errorf(context.TODO(), "failed to delete ts entities")
+	}
+	return uint64(*delCnt), nil
+}
+
 // DeleteRangeData delete entities data in the range
 func (r *TsEngine) DeleteRangeData(
 	tableID uint64,
@@ -1799,6 +1867,96 @@ func (r *TsEngine) DeleteData(
 		cKwTsSpans,
 		delCnt,
 		C.uint64_t(tsTxnID),
+		C.uint64_t(osnID))
+	if err := statusToError(status); err != nil {
+		return uint64(*delCnt), errors.Wrap(err, "failed to delete ts data")
+	}
+	return uint64(*delCnt), nil
+}
+
+// TsDeleteMetricByTag deletes metric data by specific tag values and ts span
+// Parameters:
+//
+//	beginHash - Start value of the replica hash range
+//	endHash - End value of the replica hash range
+//	primaryTags - List of primary tag values
+//	indexColumns - List of tag IDs (uint32) corresponding to the primaryTags
+//	tsSpans - Time range spans to filter data (only delete data within these time ranges)
+//
+// Returns:
+//
+//	uint64 - Number of rows successfully deleted
+func (r *TsEngine) TsDeleteMetricByTag(
+	tableID uint64,
+	beginHash uint64,
+	endHash uint64,
+	primaryTags [][]byte,
+	indexColumns []uint32,
+	tsSpans []*roachpb.TsSpan,
+	tsTxnID uint64,
+	osnID uint64,
+) (uint64, error) {
+	if len(primaryTags) == 0 {
+		return 0, errors.New("primaryTag is null")
+	}
+
+	r.checkOrWaitForOpen()
+	cTsSlice := make([]C.TSSlice, len(primaryTags))
+	defer freeTSSlice(cTsSlice)
+	for i, p := range primaryTags {
+		if len(p) == 0 {
+			cTsSlice[i].data = nil
+			cTsSlice[i].len = 0
+		} else {
+			dataPtr := C.CBytes(p)
+			cTsSlice[i].data = (*C.char)(dataPtr)
+			cTsSlice[i].len = C.size_t(len(p))
+		}
+	}
+
+	cTsSpans := make([]C.KwTsSpan, len(tsSpans))
+	for i := 0; i < len(tsSpans); i++ {
+		if tsSpans[i].TsStart > tsSpans[i].TsEnd {
+			log.Infof(context.TODO(), "DeleteData ignore ts_span [%s ~ %s]", tsSpans[i].TsStart, tsSpans[i].TsEnd)
+			continue
+		}
+		cTsSpans[i].begin = C.int64_t(tsSpans[i].TsStart)
+		cTsSpans[i].end = C.int64_t(tsSpans[i].TsEnd)
+	}
+	cKwTsSpans := C.KwTsSpans{
+		spans: (*C.KwTsSpan)(unsafe.Pointer(&cTsSpans[0])),
+		len:   C.int32_t(len(tsSpans)),
+	}
+
+	numColumn := len(indexColumns)
+	cIndexs := make([]C.uint, numColumn)
+	for i := 0; i < numColumn; i++ {
+		cIndexs[i] = C.uint(indexColumns[i])
+	}
+	cIndexColumns := C.IndexColumns{
+		index_column: (*C.uint32_t)(unsafe.Pointer(&cIndexs[0])),
+		len:          C.int32_t(len(cIndexs)),
+	}
+	cKwHashIDSpans := C.HashIdSpan{
+		begin: C.uint64_t(beginHash),
+		end:   C.uint64_t(endHash),
+	}
+
+	var delCnt *C.uint64_t
+	delCnt = (*C.uint64_t)(C.malloc(C.size_t(unsafe.Sizeof(C.uint64_t(0)))))
+	defer C.free(unsafe.Pointer(delCnt))
+	(*delCnt) = C.uint64_t(0)
+
+	status := C.TsDeleteMetricByTag(
+		r.tdb,
+		C.TSTableID(tableID),
+		&cTsSlice[0],
+		(C.size_t)(len(cTsSlice)),
+		cIndexColumns,
+		cKwTsSpans,
+		delCnt,
+		C.uint64_t(tsTxnID),
+		cKwHashIDSpans,
 		C.uint64_t(osnID))
 	if err := statusToError(status); err != nil {
 		return uint64(*delCnt), errors.Wrap(err, "failed to delete ts data")

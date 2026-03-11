@@ -140,8 +140,16 @@ func (s *TsSender) Send(
 				})
 			case *roachpb.TsDeleteMultiEntitiesDataRequest:
 				var deleteRows uint64
-				// only one rangeGroup
-				cnt, err := s.tsEngine.DeleteRangeData(tdr.TableId, rangeGroupID, 0, tdr.HashNum-1, tdr.TsSpans, 0, tdr.OsnId)
+				var cnt uint64
+				var err error
+				switch tdr.DeleteType {
+				case roachpb.DELETE_MULTI_ENTITIES_DATA:
+					cnt, err = s.tsEngine.DeleteRangeData(tdr.TableId, rangeGroupID, 0, tdr.HashNum-1, tdr.TsSpans, 0, tdr.OsnId)
+				case roachpb.DELETE_MULTI_ENTITIES_DATA_BY_TAG:
+					cnt, err = s.tsEngine.TsDeleteMetricByTag(tdr.TableId, 0, tdr.HashNum-1, tdr.PartPrimaryTags, tdr.TagIDs, tdr.TsSpans, 0, tdr.OsnId)
+				case roachpb.DELETE_MULTI_ENTITIES_BY_TAG:
+					cnt, err = s.tsEngine.TsDeleteEntitiesByTag(tdr.TableId, 0, tdr.HashNum-1, tdr.PartPrimaryTags, tdr.TagIDs, false, 0, tdr.OsnId)
+				}
 				if err != nil {
 					return nil, &roachpb.Error{Message: err.Error()}
 				}

@@ -129,6 +129,12 @@ class TagTable {
                               const std::vector<TagInfo>& result_tag_infos,
                               kwdbts::ResultSet* res);
 
+  int GetTagInfoByTag(const std::vector<uint32_t/*index_id*/> &tags_index_id,
+                     const std::vector<std::string> tags,
+                     std::vector<std::pair<TableVersionID, TagPartitionTableRowID>>& row_id,
+                     std::vector<uint64_t>& range_group_ids,
+                     uint32_t cur_table_version, const HashIdSpan& hash_span);
+
   int CalculateSchemaIdxs(TableVersion src_table_version, const std::vector<uint32_t>& result_scan_idxs,
                                    const std::vector<TagInfo>& result_tag_infos,
                                   std::vector<uint32_t>* src_scan_idxs);

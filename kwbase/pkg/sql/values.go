@@ -130,8 +130,9 @@ type tsDeleteNode struct {
 	nodeIDs         []roachpb.NodeID
 	tableID         uint64
 	hashNum         uint64
-	primaryTagKey   [][]byte
+	primaryTagID    []uint32
 	primaryTagValue [][]byte
+	partOfPTagValue [][]byte
 	delTyp          uint8
 	spans           []execinfrapb.Span
 	// if primary tag of type int out of range, we will return delete 0 directly

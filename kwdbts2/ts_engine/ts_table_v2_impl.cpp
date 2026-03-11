@@ -834,6 +834,67 @@ KStatus TsTableV2Impl::DeleteData(kwdbContext_p ctx, uint64_t range_group_id, st
   return KStatus::SUCCESS;
 }
 
+KStatus TsTableV2Impl::DeleteEntityByTag(kwdbContext_p ctx, const std::vector<uint32_t/*index_id*/> &tags_index_id,
+                        std::vector<std::string> tags, uint64_t* count, uint64_t mtr_id, uint64_t osn,
+                        uint32_t cur_table_version, const HashIdSpan& hash_span) {
+  *count = 0;
+  auto tag_table = table_schema_mgr_->GetTagTable();
+
+  // 1. get ptag and entityid by tag
+  std::vector<std::pair<TableVersionID, TagPartitionTableRowID>> row_ids;
+  std::vector<uint64_t> range_group_ids;
+  if (tag_table->GetTagInfoByTag(tags_index_id, tags, row_ids, range_group_ids, cur_table_version, hash_span) < 0) {
+    LOG_ERROR("Failed to GetTagInfoByTag.")
+    return KStatus::FAIL;
+  }
+
+  // 2. delete metric && tag data by ptag
+  std::vector<std::string> primary_tags;
+  for (auto it : row_ids) {
+    auto tag_part_table = tag_table->GetTagPartitionTableManager()->GetPartitionTable(it.first);
+    string primary_tag(reinterpret_cast<char*>(tag_part_table->record(it.second)),
+                       tag_part_table->primaryTagSize());
+    primary_tags.emplace_back(primary_tag);
+  }
+  return DeleteEntities(ctx, primary_tags, count, 0, osn, true);
+}
+
+KStatus TsTableV2Impl::DeleteMetricByTag(kwdbContext_p ctx, const std::vector<uint32_t/*index_id*/> &tags_index_id,
+                                         std::vector<std::string> tags, const std::vector<KwTsSpan>& ts_spans,
+                                         uint64_t* count, uint64_t mtr_id, uint64_t osn, uint32_t cur_table_version,
+                                         const HashIdSpan& hash_span) {
+  *count = 0;
+  uint64_t loop_count = 0;
+  auto tag_table = table_schema_mgr_->GetTagTable();
+
+  // 1. get ptag and entityid by tag
+  std::vector<std::pair<TableVersionID, TagPartitionTableRowID>> row_ids;
+  std::vector<uint64_t> range_group_ids;
+  if (tag_table->GetTagInfoByTag(tags_index_id, tags, row_ids, range_group_ids, cur_table_version, hash_span) < 0) {
+    LOG_ERROR("Failed to GetTagInfoByTag.")
+    return KStatus::FAIL;
+  }
+
+  // 2. delete metric && tag data by ptag
+  std::vector<std::string> primary_tags;
+  for (auto it : row_ids) {
+    auto tag_part_table = tag_table->GetTagPartitionTableManager()->GetPartitionTable(it.first);
+    string primary_tag(reinterpret_cast<char*>(tag_part_table->record(it.second)),
+                       tag_part_table->primaryTagSize());
+    primary_tags.emplace_back(primary_tag);
+  }
+  KStatus status;
+  for (int i = 0; i < primary_tags.size(); i++) {
+    if (DeleteData(ctx, range_group_ids[i], primary_tags[i], ts_spans, &loop_count, mtr_id, osn) != KStatus::SUCCESS) {
+      LOG_ERROR("Failed to DeleteData with range_group_id[%lu].", range_group_ids[i])
+      return KStatus::FAIL;
+    }
+    *count += loop_count;
+  }
+
+  return KStatus::SUCCESS;
+}
+
 KStatus TsTableV2Impl::CountRangeData(kwdbContext_p ctx, uint64_t range_group_id, HashIdSpan& hash_span,
                                        const std::vector<KwTsSpan>& ts_spans, uint64_t* count,
                                        uint64_t mtr_id, uint64_t osn) {

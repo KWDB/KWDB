@@ -300,7 +300,9 @@ func (b *Builder) buildTSDelete(
 	// check if filter supported
 	spans = b.checkTSDeleteFilter(inScope, texpr, exprs, &filterTyp, primaryTagIDs, meta, spans, precision)
 	if filterTyp == unsupportedType {
-		panic(sqlbase.UnsupportedDeleteConditionError("unsupported binary operator or mismatching tag filter"))
+		panic(sqlbase.UnsupportedDeleteConditionError("unsupported binary operator or expressions"))
+	} else if filterTyp == multiTagFilter {
+		panic(sqlbase.UnsupportedDeleteConditionError("multiple tag filter"))
 	}
 
 	if filterTyp == tagAndTS && len(exprs) == 0 {
@@ -324,13 +326,10 @@ func (b *Builder) buildTSDelete(
 	}
 
 	if filterTyp == onlyTag || filterTyp == tagAndTS {
-		for i, col := range priTagCols {
-			// check if primary tags completed
+		for _, col := range priTagCols {
 			if exp, ok := exprs[int(col.ColID())]; ok {
+				colMap[int(col.ID)] = len(filter)
 				filter = append(filter, exp.exp)
-				colMap[int(col.ID)] = i
-			} else {
-				panic(sqlbase.UnsupportedDeleteConditionError("incomplete tag filter"))
 			}
 		}
 		filters = append(filters, filter)
@@ -379,9 +378,19 @@ const (
 	onlyTS
 	// tagAndTS means tags and timestamp filter in time-series table
 	tagAndTS
-	// unsupportedType unsupported filter in time-series table
+	// unsupportedType means unsupported binary operator or expressions in ts delete
 	unsupportedType
+	// multiTagFilter means multiple tag filter in ts delete
+	multiTagFilter
 )
+
+// errorTypeOfFilter returns true if filterType in ts delete is unsupported
+func errorTypeOfFilter(typ filterType) bool {
+	if typ == unsupportedType || typ == multiTagFilter {
+		return true
+	}
+	return false
+}
 
 // tsColumnID means first timestamp column id
 const tsColumnID = 1
@@ -400,7 +409,7 @@ func (b *Builder) checkTSDeleteFilter(
 	spans []opt.TsSpan,
 	precision int64,
 ) []opt.TsSpan {
-	if *typ == unsupportedType {
+	if errorTypeOfFilter(*typ) {
 		return nil
 	}
 	evalCtx := b.evalCtx
@@ -409,22 +418,35 @@ func (b *Builder) checkTSDeleteFilter(
 	switch f := filter.(type) {
 	case *tree.AndExpr:
 		rightSpans := b.checkTSDeleteFilter(inScope, f.Right, exprs, typ, primaryTagIDs, meta, nil, precision)
+		if errorTypeOfFilter(*typ) {
+			return nil
+		}
 		leftSpans := b.checkTSDeleteFilter(inScope, f.Left, exprs, typ, primaryTagIDs, meta, nil, precision)
+		if errorTypeOfFilter(*typ) {
+			return nil
+		}
 		spans = mergeAndSpans(leftSpans, rightSpans, spans)
 	case *tree.OrExpr:
 		leftPri, rightPri := make(map[int]ExprWithLogicID), make(map[int]ExprWithLogicID)
 		rightSpans := b.checkTSDeleteFilter(inScope, f.Right, rightPri, typ, primaryTagIDs, meta, nil, precision)
-		right := checkPTagIsComplete(rightPri, primaryTagIDs)
+		if errorTypeOfFilter(*typ) {
+			return nil
+		}
 		leftSpans := b.checkTSDeleteFilter(inScope, f.Left, leftPri, typ, primaryTagIDs, meta, nil, precision)
-		left := checkPTagIsComplete(leftPri, primaryTagIDs)
-		if (*typ == onlyTag || *typ == tagAndTS) && right && left {
+		if errorTypeOfFilter(*typ) {
+			return nil
+		}
+		if len(leftPri) == len(rightPri) {
 			for key, value := range leftPri {
-				if rightPri[key].exp.String() != value.exp.String() {
-					*typ = unsupportedType
+				if rightValue, exist := rightPri[key]; exist && rightValue.exp.String() == value.exp.String() {
+					exprs[key] = value
+				} else {
+					*typ = multiTagFilter
 					return nil
 				}
-				exprs[key] = value
 			}
+		} else {
+			*typ = multiTagFilter
 		}
 		spans = mergeOrSpans(leftSpans, rightSpans, spans)
 	case *tree.ComparisonExpr:
@@ -836,15 +858,6 @@ func checkFilterType(id int, typ *filterType, primaryTagIDs map[int]struct{}) {
 	} else {
 		*typ = unsupportedType
 	}
-}
-
-func checkPTagIsComplete(exprs map[int]ExprWithLogicID, primaryTagIDs map[int]struct{}) bool {
-	for key := range primaryTagIDs {
-		if _, ok := exprs[key]; !ok {
-			return false
-		}
-	}
-	return true
 }
 
 // max return the maximum of two integers.

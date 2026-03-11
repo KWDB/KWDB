@@ -334,7 +334,19 @@ class TSEngineImpl : public TSEngine {
 
   bool HasDroppedFlag(TSTableID id);
 
+
+  KStatus DeleteEntityByTag(kwdbContext_p ctx, const KTableKey& table_id, bool& is_dropped,
+                            const std::vector<uint32_t/*index_id*/> &tags_index_id,
+                            std::vector<std::string> tags, uint64_t* count, uint64_t mtr_id, const HashIdSpan& hash_span,
+                            uint64_t osn) override;
+
+  KStatus DeleteMetricByTag(kwdbContext_p ctx, const KTableKey& table_id, bool& is_dropped,
+                            const std::vector<uint32_t/*index_id*/> &tags_index_id,
+                            std::vector<std::string> tags, const std::vector<KwTsSpan>& ts_spans,
+                            uint64_t* count, uint64_t mtr_id, const HashIdSpan& hash_span, uint64_t osn) override;
+
   KStatus ResetAllWALMgr(kwdbContext_p ctx);
+
 
  private:
   TsVGroup* GetVGroupByID(kwdbContext_p ctx, uint32_t vgroup_id);

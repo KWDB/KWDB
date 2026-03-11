@@ -46,8 +46,9 @@ type tsDeleter struct {
 	tableID uint64
 	hashNum uint64
 
-	primaryTagKeys [][]byte
-	primaryTags    [][]byte
+	primaryTagIDs    []uint32
+	primaryTags      [][]byte
+	partOfPTagValues [][]byte
 
 	spans []execinfrapb.Span
 
@@ -71,11 +72,12 @@ func newTsDeleter(
 	output execinfra.RowReceiver,
 ) (*tsDeleter, error) {
 	td := &tsDeleter{
-		tsOperatorType: tsDeleteSpec.TsOperator,
-		tableID:        tsDeleteSpec.TableId,
-		hashNum:        tsDeleteSpec.HashNum,
-		primaryTagKeys: tsDeleteSpec.PrimaryTagKeys,
-		primaryTags:    tsDeleteSpec.PrimaryTags,
+		tsOperatorType:   tsDeleteSpec.TsOperator,
+		tableID:          tsDeleteSpec.TableId,
+		hashNum:          tsDeleteSpec.HashNum,
+		primaryTagIDs:    tsDeleteSpec.PrimaryTagIDs,
+		primaryTags:      tsDeleteSpec.PrimaryTags,
+		partOfPTagValues: tsDeleteSpec.PartPrimaryTags,
 	}
 	td.spans = tsDeleteSpec.Spans
 
@@ -112,6 +114,56 @@ func (td *tsDeleter) Start(ctx context.Context) context.Context {
 
 	ba := td.FlowCtx.Txn.NewBatch()
 	OsnID := td.FlowCtx.Cfg.TsIDGen.GetNextID()
+
+	// Check if there are partial primary tag values and build request
+	if len(td.partOfPTagValues) != 0 {
+		// generate key of request based on table ID and hashNum
+		startKey := sqlbase.MakeTsHashPointKey(sqlbase.ID(td.tableID), uint64(0), td.hashNum)
+		endKey := sqlbase.MakeTsRangeKey(sqlbase.ID(td.tableID), td.hashNum, td.hashNum)
+		req := &roachpb.TsDeleteMultiEntitiesDataRequest{
+			RequestHeader: roachpb.RequestHeader{
+				Key:    startKey,
+				EndKey: endKey,
+			},
+			TableId:         td.tableID,
+			HashNum:         td.hashNum,
+			OsnId:           OsnID,
+			TagIDs:          td.primaryTagIDs,
+			PartPrimaryTags: td.partOfPTagValues,
+		}
+		// Distinguish delete type based on whether time spans (TsSpan) exist
+		if td.spans != nil {
+			for _, span := range td.spans {
+				req.TsSpans = append(req.TsSpans, &roachpb.TsSpan{TsStart: span.StartTs, TsEnd: span.EndTs})
+			}
+			req.DeleteType = roachpb.DELETE_MULTI_ENTITIES_DATA_BY_TAG
+		} else {
+			req.DeleteType = roachpb.DELETE_MULTI_ENTITIES_BY_TAG
+		}
+
+		ba.AddRawRequest(req)
+
+		// Execute TS DB delete operation and submit batch request
+		err = td.FlowCtx.Cfg.TseDB.Run(ctx, ba)
+		if err == nil {
+			for i := range ba.RawResponse().Responses {
+				if v, ok := ba.RawResponse().Responses[i].Value.(*roachpb.ResponseUnion_TsDeleteMultiEntitiesData); ok {
+					// Accumulate the number of deleted rows
+					deletedRow += uint64(v.TsDeleteMultiEntitiesData.NumKeys)
+				}
+			}
+		}
+		// Handle delete operation exceptions
+		if err != nil {
+			td.deleteSuccess = false
+			td.err = err
+			return ctx
+		}
+		td.deleteSuccess = true
+		td.deleteRow = deletedRow
+		return ctx
+	}
+
 	switch td.tsOperatorType {
 	case execinfrapb.OperatorType_TsDeleteData:
 		hashPoints, err := api.GetHashPointByPrimaryTag(td.hashNum, td.primaryTags[0])

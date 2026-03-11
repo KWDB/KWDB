@@ -23,7 +23,7 @@ SQLSTATE: 0A000
 ERROR: unsupported conditions found in the deletion operation: unsupported filter expression
 SQLSTATE: 0A000
 > delete from t3 where b = b and c = c;
-ERROR: unsupported conditions found in the deletion operation: unsupported binary operator or mismatching tag filter
+ERROR: unsupported conditions found in the deletion operation: unsupported binary operator or expressions
 SQLSTATE: 0A000
 > delete from t3 where b is not null and c is not null;
 ERROR: unsupported conditions found in the deletion operation: unsupported filter expression
@@ -61,16 +61,15 @@ DELETE 0
 > delete from t4 where false;
 DELETE 0
 > delete from t4 where c like '1';
-ERROR: unsupported conditions found in the deletion operation: unsupported binary operator or mismatching tag filter
+ERROR: unsupported conditions found in the deletion operation: unsupported binary operator or expressions
 SQLSTATE: 0A000
 > delete from t4 where b = 1;
-ERROR: unsupported conditions found in the deletion operation: incomplete tag filter
-SQLSTATE: 0A000
+DELETE 0
 > delete from t4 where b >= 1;
-ERROR: unsupported conditions found in the deletion operation: unsupported binary operator or mismatching tag filter
+ERROR: unsupported conditions found in the deletion operation: unsupported binary operator or expressions
 SQLSTATE: 0A000
 > delete from t4 where b != 1;
-ERROR: unsupported conditions found in the deletion operation: unsupported binary operator or mismatching tag filter
+ERROR: unsupported conditions found in the deletion operation: unsupported binary operator or expressions
 SQLSTATE: 0A000
 > delete from t4 where b between 1 and 10;
 ERROR: unsupported conditions found in the deletion operation: unsupported filter expression
@@ -79,10 +78,10 @@ SQLSTATE: 0A000
 ERROR: unsupported comparison operator: <int4> = <string>
 SQLSTATE: 22023
 > delete from t4 where b = 1 and c ='k' and d = false and e =1;
-ERROR: unsupported conditions found in the deletion operation: unsupported binary operator or mismatching tag filter
+ERROR: unsupported conditions found in the deletion operation: unsupported binary operator or expressions
 SQLSTATE: 0A000
 > delete from t4 where b = 1 and c ='k' and d = false or e =1;
-ERROR: unsupported conditions found in the deletion operation: unsupported binary operator or mismatching tag filter
+ERROR: unsupported conditions found in the deletion operation: unsupported binary operator or expressions
 SQLSTATE: 0A000
 > delete from t4 where b = 1 and c ='k' and d = false and 1 = 1;
 DELETE 0
@@ -181,10 +180,16 @@ INSERT 1
 > insert into t6 values(1674272800000, 0, 1, 'abc');
 INSERT 1
 > delete from t6 where ts < '2023-01-05 7:55:00' or b = 1 and c = 'abc';
-DELETE 5
+ERROR: unsupported conditions found in the deletion operation: multiple tag filter
+SQLSTATE: 0A000
 > select * from t6 order by ts;
              ts             | a | b |  c
 ----------------------------+---+---+------
+  2023-01-01 12:35:00+00:00 | 1 | 1 | abc
+  2023-01-04 23:55:00+00:00 | 1 | 1 | abc
+  2023-01-04 23:56:40+00:00 | 1 | 1 | abc
+  2023-01-04 23:58:20+00:00 | 1 | 1 | abc
+  2023-01-05 00:00:00+00:00 | 0 | 1 | abc
   2023-01-09 23:55:00+00:00 | 2 | 1 | abc
   2023-01-09 23:56:40+00:00 | 2 | 1 | abc
   2023-01-09 23:58:20+00:00 | 2 | 1 | abc
@@ -198,9 +203,9 @@ DELETE 5
   2023-01-19 23:43:20+00:00 | 4 | 1 | abc
   2023-01-20 00:00:00+00:00 | 0 | 1 | abc
   2023-01-21 03:46:40+00:00 | 0 | 1 | abc
-(13 rows)
+(18 rows)
 > delete from t6 where ts <= '2023-01-05 7:55:00' and b = 1 and c = 'abc';
-DELETE 0
+DELETE 5
 > select * from t6 order by ts;
              ts             | a | b |  c
 ----------------------------+---+---+------
@@ -409,7 +414,8 @@ DELETE 0
   2023-01-21 03:46:40+00:00 | 0 | 1 | abc
 (13 rows)
 > delete from t6 where ts < '2023-01-06 11:46:40' or ts < '2023-01-05 7:55:00' and b = 1 and c = 'abc';
-DELETE 0
+ERROR: unsupported conditions found in the deletion operation: multiple tag filter
+SQLSTATE: 0A000
 > select * from t6 order by ts;
              ts             | a | b |  c
 ----------------------------+---+---+------
@@ -447,6 +453,26 @@ DELETE 0
   2023-01-21 03:46:40+00:00 | 0 | 1 | abc
 (13 rows)
 > delete from t6 where ts > '2023-01-21 11:46:40' or ts > '2023-01-20 7:55:00' and b = 1 and c = 'abc';
+ERROR: unsupported conditions found in the deletion operation: multiple tag filter
+SQLSTATE: 0A000
+> select * from t6 order by ts;
+             ts             | a | b |  c
+----------------------------+---+---+------
+  2023-01-09 23:55:00+00:00 | 2 | 1 | abc
+  2023-01-09 23:56:40+00:00 | 2 | 1 | abc
+  2023-01-09 23:58:20+00:00 | 2 | 1 | abc
+  2023-01-10 00:00:00+00:00 | 0 | 1 | abc
+  2023-01-11 03:46:40+00:00 | 3 | 1 | abc
+  2023-01-12 07:33:20+00:00 | 3 | 1 | abc
+  2023-01-13 11:20:00+00:00 | 3 | 1 | abc
+  2023-01-18 00:00:00+00:00 | 0 | 1 | abc
+  2023-01-19 18:26:40+00:00 | 4 | 1 | abc
+  2023-01-19 21:13:20+00:00 | 4 | 1 | abc
+  2023-01-19 23:43:20+00:00 | 4 | 1 | abc
+  2023-01-20 00:00:00+00:00 | 0 | 1 | abc
+  2023-01-21 03:46:40+00:00 | 0 | 1 | abc
+(13 rows)
+> delete from t6 where ts > '2023-01-21 11:46:40' and b = 1 and c = 'abc' or ts >= '2023-01-20 7:55:00' and b = 1 and c = 'abc';
 DELETE 1
 > select * from t6 order by ts;
              ts             | a | b |  c
@@ -464,26 +490,8 @@ DELETE 1
   2023-01-19 23:43:20+00:00 | 4 | 1 | abc
   2023-01-20 00:00:00+00:00 | 0 | 1 | abc
 (12 rows)
-> delete from t6 where ts > '2023-01-21 11:46:40' and b = 1 and c = 'abc' or ts >= '2023-01-20 7:55:00' and b = 1 and c = 'abc';
-DELETE 0
-> select * from t6 order by ts;
-             ts             | a | b |  c
-----------------------------+---+---+------
-  2023-01-09 23:55:00+00:00 | 2 | 1 | abc
-  2023-01-09 23:56:40+00:00 | 2 | 1 | abc
-  2023-01-09 23:58:20+00:00 | 2 | 1 | abc
-  2023-01-10 00:00:00+00:00 | 0 | 1 | abc
-  2023-01-11 03:46:40+00:00 | 3 | 1 | abc
-  2023-01-12 07:33:20+00:00 | 3 | 1 | abc
-  2023-01-13 11:20:00+00:00 | 3 | 1 | abc
-  2023-01-18 00:00:00+00:00 | 0 | 1 | abc
-  2023-01-19 18:26:40+00:00 | 4 | 1 | abc
-  2023-01-19 21:13:20+00:00 | 4 | 1 | abc
-  2023-01-19 23:43:20+00:00 | 4 | 1 | abc
-  2023-01-20 00:00:00+00:00 | 0 | 1 | abc
-(12 rows)
 > delete from t6 where ts > '2023-01-21 11:46:40' and b = 12 and c = 'abc' or ts < '2023-01-10 7:55:00' and b = 1 and c = 'abc';
-ERROR: unsupported conditions found in the deletion operation: unsupported binary operator or mismatching tag filter
+ERROR: unsupported conditions found in the deletion operation: multiple tag filter
 SQLSTATE: 0A000
 > select * from t6 order by ts;
              ts             | a | b |  c
@@ -553,7 +561,8 @@ DELETE 1
 > delete from t6 where (ts <= '2023-01-09 08:00:00' or ts >= '2023-01-10 08:56:40' and b = 1 and c = 'abc') and
                      (ts <= '2023-01-04 08:00:00' or ts >= '2023-01-05 08:56:40') and
                      (ts <= '2023-01-18 08:00:00');
-DELETE 0
+ERROR: unsupported conditions found in the deletion operation: multiple tag filter
+SQLSTATE: 0A000
 > select * from t6 order by ts;
   ts | a | b | c
 -----+---+---+----
@@ -585,12 +594,13 @@ INSERT 1
 > insert into t6 values(1672577100000, 1, 1, 'abc');
 INSERT 1
 > delete from t6 where ts in ('2023-01-05 12:35:00') or b = 1 and c = 'abc';
-DELETE 0
+ERROR: unsupported conditions found in the deletion operation: multiple tag filter
+SQLSTATE: 0A000
 > delete from t6 where ts in ('ABC') or b = 1 and c = 'abc';
 ERROR: unsupported comparison operator: ts IN ('ABC',): parsing as type timestamp: could not parse "ABC"
 SQLSTATE: 22023
 > delete from t6 where ts >'2023-01-01 12:45:00' and b in (1, 2) and c = 'abc';
-ERROR: unsupported conditions found in the deletion operation: unsupported binary operator or mismatching tag filter
+ERROR: unsupported conditions found in the deletion operation: unsupported binary operator or expressions
 SQLSTATE: 0A000
 > select ts from t6 order by ts;
              ts
@@ -900,30 +910,26 @@ INSERT 5
 > set sql_safe_updates = false;
 SET
 > prepare p3 as delete from t4 where c like '1';
-ERROR: unsupported conditions found in the deletion operation: unsupported binary operator or mismatching tag filter
+ERROR: unsupported conditions found in the deletion operation: unsupported binary operator or expressions
 SQLSTATE: 0A000
 > prepare p3 as delete from t4 where b = $1;
-ERROR: unsupported conditions found in the deletion operation: incomplete tag filter
+PREPARE
+> prepare p4 as delete from t4 where b >= $1;
+ERROR: unsupported conditions found in the deletion operation: unsupported binary operator or expressions
 SQLSTATE: 0A000
-> prepare p3 as delete from t4 where b >= $1;
-ERROR: unsupported conditions found in the deletion operation: unsupported binary operator or mismatching tag filter
+> prepare p4 as delete from t4 where b != $1;
+ERROR: unsupported conditions found in the deletion operation: unsupported binary operator or expressions
 SQLSTATE: 0A000
-> prepare p3 as delete from t4 where b != $1;
-ERROR: unsupported conditions found in the deletion operation: unsupported binary operator or mismatching tag filter
-SQLSTATE: 0A000
-> prepare p3 as delete from t4 where b between $1 and $2;
+> prepare p4 as delete from t4 where b between $1 and $2;
 ERROR: unsupported conditions found in the deletion operation: unsupported filter expression
 SQLSTATE: 0A000
-> prepare p3 as delete from t4 where b = $1;
-ERROR: unsupported conditions found in the deletion operation: incomplete tag filter
+> prepare p4 as delete from t4 where b = $1 and c = $2 and d = $3 and e = $4;
+ERROR: unsupported conditions found in the deletion operation: unsupported binary operator or expressions
 SQLSTATE: 0A000
-> prepare p3 as delete from t4 where b = $1 and c = $2 and d = $3 and e = $4;
-ERROR: unsupported conditions found in the deletion operation: unsupported binary operator or mismatching tag filter
+> prepare p4 as delete from t4 where b = $1 and c = $2 and d = $3 or e = $4;
+ERROR: unsupported conditions found in the deletion operation: unsupported binary operator or expressions
 SQLSTATE: 0A000
-> prepare p3 as delete from t4 where b = $1 and c = $2 and d = $3 or e = $4;
-ERROR: unsupported conditions found in the deletion operation: unsupported binary operator or mismatching tag filter
-SQLSTATE: 0A000
-> prepare p3 as delete from t4 where b = $1 and c = $2 and d = $3 and 1 = 1;
+> prepare p14 as delete from t4 where b = $1 and c = $2 and d = $3 and 1 = 1;
 PREPARE
 > select * from t4 order by ts;
              ts             | a | b | c |   d   | e
@@ -954,10 +960,9 @@ PREPARE
   2023-02-16 08:03:20+00:00 | 1 | 1 | 1 | false | 1
   2023-02-16 08:20:00+00:00 | 1 | 1 | 1 | false | 1
 (25 rows)
-> prepare p3 as delete from t4 where b = $1 and c =$2 and d = $3;
-ERROR: prepared statement "p3" already exists
-SQLSTATE: 42P05
-> execute p3(1,'k',false);
+> prepare p4 as delete from t4 where b = $1 and c =$2 and d = $3;
+PREPARE
+> execute p4(1,'k',false);
 DELETE 5
 > select * from t4 order by ts;
              ts             | a | b | c |   d   | e
@@ -983,7 +988,7 @@ DELETE 5
   2023-02-16 08:03:20+00:00 | 1 | 1 | 1 | false | 1
   2023-02-16 08:20:00+00:00 | 1 | 1 | 1 | false | 1
 (20 rows)
-> execute p3('2','k',false);
+> execute p4('2','k',false);
 DELETE 5
 > select * from t4 order by ts;
              ts             | a | b | c |   d   | e
@@ -1004,7 +1009,7 @@ DELETE 5
   2023-02-16 08:03:20+00:00 | 1 | 1 | 1 | false | 1
   2023-02-16 08:20:00+00:00 | 1 | 1 | 1 | false | 1
 (15 rows)
-> execute p3(1,'k',true);
+> execute p4(1,'k',true);
 DELETE 5
 > select * from t4 order by ts;
              ts             | a | b | c |   d   | e
@@ -1020,8 +1025,8 @@ DELETE 5
   2023-02-16 08:03:20+00:00 | 1 | 1 | 1 | false | 1
   2023-02-16 08:20:00+00:00 | 1 | 1 | 1 | false | 1
 (10 rows)
-> prepare p4 as delete from t4 where b = $1 and c =$2 and d = $3 or b = $4 and c = $5 and d = $6;
-ERROR: unsupported conditions found in the deletion operation: unsupported binary operator or mismatching tag filter
+> prepare p114 as delete from t4 where b = $1 and c =$2 and d = $3 or b = $4 and c = $5 and d = $6;
+ERROR: unsupported conditions found in the deletion operation: multiple tag filter
 SQLSTATE: 0A000
 > prepare p5 as delete from t5 where b = $1 and c =$2 and d = $3 and false;
 PREPARE
@@ -1169,8 +1174,7 @@ SQLSTATE: 22023
 ERROR: unsupported comparison operator: k_timestamp IN ('123',): parsing as type timestamp: missing required date fields
 SQLSTATE: 22023
 > delete from test_delete.tb1 where k_timestamp >'2024-1-1 08:00:00' and code1=0;
-ERROR: unsupported conditions found in the deletion operation: incomplete tag filter
-SQLSTATE: 0A000
+DELETE 0
 > USE defaultdb;DROP DATABASE IF EXISTS test_delete CASCADE;
 DROP DATABASE
 > CREATE TS DATABASE test_delete;

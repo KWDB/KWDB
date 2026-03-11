@@ -399,7 +399,8 @@ type Factory interface {
 		hashNum uint64,
 		spans []execinfrapb.Span,
 		delTyp uint8,
-		primaryTagKey, primaryTagValues [][]byte,
+		primaryTagID []uint32,
+		primaryTagValues, partOfPTgValues [][]byte,
 		isOutOfRange bool,
 	) (Node, error)
 

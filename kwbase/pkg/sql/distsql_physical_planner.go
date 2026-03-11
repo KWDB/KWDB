@@ -2829,12 +2829,13 @@ func (dsp *DistSQLPlanner) createTSDelete(
 	// Construct a processor for the payload of each node
 	for i := 0; i < len(n.nodeIDs); i++ {
 		var tsDelete = &execinfrapb.TsDeleteProSpec{
-			TsOperator:     execinfrapb.OperatorType(n.delTyp),
-			TableId:        n.tableID,
-			HashNum:        n.hashNum,
-			PrimaryTagKeys: n.primaryTagKey,
-			PrimaryTags:    n.primaryTagValue,
-			Spans:          n.spans,
+			TsOperator:      execinfrapb.OperatorType(n.delTyp),
+			TableId:         n.tableID,
+			HashNum:         n.hashNum,
+			PrimaryTagIDs:   n.primaryTagID,
+			PrimaryTags:     n.primaryTagValue,
+			PartPrimaryTags: n.partOfPTagValue,
+			Spans:           n.spans,
 		}
 
 		proc := physicalplan.Processor{

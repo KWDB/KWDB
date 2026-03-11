@@ -359,6 +359,18 @@ message TsDeleteResponse {
   ResponseHeader header = 1 [(gogoproto.nullable) = false, (gogoproto.embed) = true];
 }
 
+// TsDeleteMultiDataType specifies what type of ts delete
+enum TsDeleteMultiDataType {
+  option (gogoproto.goproto_enum_prefix) = false;
+
+  // DELETE_MULTI_ENTITIES_DATA deletes metric data by timestamp
+  DELETE_MULTI_ENTITIES_DATA = 0;
+  // DELETE_MULTI_ENTITIES_BY_TAG deletes tag data and metric data only by primary tag
+  DELETE_MULTI_ENTITIES_BY_TAG = 1;
+  // DELETE_MULTI_ENTITIES_DATA_BY_TAG deletes metric data by timestamp and primary tag
+  DELETE_MULTI_ENTITIES_DATA_BY_TAG = 2;
+}
+
 // TsDeleteMultiEntitiesDataRequest is the argument to delete data from TS DB
 message TsDeleteMultiEntitiesDataRequest {
   option (gogoproto.equal) = true;
@@ -370,6 +382,12 @@ message TsDeleteMultiEntitiesDataRequest {
   repeated DelEntityGroup del_entity_groups = 4 [(gogoproto.nullable) = true];
   uint64 hashNum = 5;
   uint64 OsnId = 6;
+  // The IDs of partial tags used as filter conditions in delete operation
+  repeated uint32 tagIDs = 7;
+  // The values corresponding to the partial tags used as filter conditions in delete operation
+  repeated bytes partPrimaryTags = 8;
+  // The type of delete operation
+  TsDeleteMultiDataType deleteType = 9;
 }
 
 // DelEntityGroup just for del_multi_entities_req.

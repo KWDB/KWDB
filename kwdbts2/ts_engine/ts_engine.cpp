@@ -1623,6 +1623,37 @@ KStatus TSEngineImpl::DeleteEntities(kwdbContext_p ctx, const KTableKey& table_i
   return (dynamic_pointer_cast<TsTableV2Impl>(ts_table))->DeleteEntities(ctx, primary_tags, count, mtr_id, osn, true);
 }
 
+KStatus TSEngineImpl::DeleteEntityByTag(kwdbContext_p ctx, const KTableKey& table_id, bool& is_dropped,
+        const std::vector<uint32_t/*index_id*/> &tags_index_id, std::vector<std::string> tags,
+        uint64_t* count, uint64_t mtr_id, const HashIdSpan& hash_span, uint64_t osn) {
+  ErrorInfo err_info;
+  std::shared_ptr<kwdbts::TsTable> ts_table;
+  auto s = GetTsTable(ctx, table_id, ts_table, is_dropped, true, err_info, 0);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("cannot found table[%lu] with version[%u], errmsg[%s]", table_id, 0, err_info.errmsg.c_str());
+    return s;
+  }
+  uint32_t cur_table_version = ts_table->GetCurrentTableVersion();
+  return (dynamic_pointer_cast<TsTableV2Impl>(ts_table))->DeleteEntityByTag(ctx, tags_index_id, tags, count, mtr_id,
+                                                                            osn, cur_table_version, hash_span);
+}
+
+KStatus TSEngineImpl::DeleteMetricByTag(kwdbContext_p ctx, const KTableKey& table_id, bool& is_dropped,
+                          const std::vector<uint32_t/*index_id*/> &tags_index_id,
+                          std::vector<std::string> tags, const std::vector<KwTsSpan>& ts_spans,
+                          uint64_t* count, uint64_t mtr_id, const HashIdSpan& hash_span, uint64_t osn) {
+  ErrorInfo err_info;
+  std::shared_ptr<kwdbts::TsTable> ts_table;
+  auto s = GetTsTable(ctx, table_id, ts_table, is_dropped, true, err_info, 0);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("cannot found table[%lu] with version[%u], errmsg[%s]", table_id, 0, err_info.errmsg.c_str());
+    return s;
+  }
+  uint32_t cur_table_version = ts_table->GetCurrentTableVersion();
+  return (dynamic_pointer_cast<TsTableV2Impl>(ts_table))->DeleteMetricByTag(ctx, tags_index_id, tags, ts_spans, count,
+                                                                            mtr_id, osn, cur_table_version, hash_span);
+}
+
 KStatus TSEngineImpl::DeleteRangeEntities(kwdbContext_p ctx, const KTableKey& table_id, const uint64_t& range_grp_id,
                             const HashIdSpan& hash_span, uint64_t* count, uint64_t& mtr_id, bool& is_dropped,
                             uint64_t osn) {

@@ -230,12 +230,13 @@ message TsDeleteProSpec {
   optional OperatorType TsOperator = 1 [(gogoproto.nullable) = false];
   optional uint64 tableId = 2 [(gogoproto.nullable) = false];
   optional uint64 rangeGroupId = 3 [(gogoproto.nullable) = false];
-  repeated bytes primary_tag_keys = 4;
+  repeated uint32 primaryTagIDs = 4;
   repeated bytes primary_tags = 5;
   repeated Span spans = 6 [(gogoproto.nullable) = false];
   // Delete multi entities for MPP mode
   repeated DeleteEntityGroup entity_groups = 7 [(gogoproto.nullable) = false];
   optional uint64 hashNum = 8 [(gogoproto.nullable) = false];
+  repeated bytes part_primary_tags = 9;
 }
 
 // DeleteEntityGroup just for delete multi entities.

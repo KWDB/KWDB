@@ -1895,14 +1895,16 @@ func BuildInputForTSDelete(
 	primaryTagRowIdx []int,
 	primaryTagCols []*sqlbase.ColumnDescriptor,
 	colIndexs map[int]int,
-) ([]byte, bool, error) {
+) ([]byte, [][]byte, bool, error) {
 	var isOutOfRange bool
 	primaryTagSize, _, err := ComputeColumnSize(primaryTagCols)
 	if err != nil {
-		return nil, isOutOfRange, err
+		return nil, nil, isOutOfRange, err
 	}
 	// Allocating payload space
 	payload := make([]byte, primaryTagSize)
+	totalFields := len(primaryTagCols) * len(primaryTagRowIdx)
+	fieldPayloads := make([][]byte, 0, totalFields)
 	var putbuf [8]byte
 	var offset int
 	for j := range primaryTagCols {
@@ -1915,11 +1917,11 @@ func BuildInputForTSDelete(
 				var resValue tree.Expr
 				resValue, err = v.Eval(evalCtx)
 				if err != nil {
-					return nil, isOutOfRange, err
+					return nil, nil, isOutOfRange, err
 				}
 				if _, ok := resValue.(tree.DNullExtern); ok {
 					if !column.Nullable {
-						return nil, isOutOfRange, sqlbase.NewNonNullViolationError(column.Name)
+						return nil, nil, isOutOfRange, sqlbase.NewNonNullViolationError(column.Name)
 					}
 					break
 				}
@@ -1942,7 +1944,7 @@ func BuildInputForTSDelete(
 				case oid.T_int8, oid.T_timestamp, oid.T_timestamptz:
 					binary.LittleEndian.PutUint64(payload[offset+curColLenth*i:], uint64(*v))
 				default:
-					return nil, isOutOfRange, errors.Errorf("unsupported int oid")
+					return nil, nil, isOutOfRange, errors.Errorf("unsupported int oid")
 				}
 			case *tree.DFloat:
 				switch column.Type.Oid() {
@@ -1953,7 +1955,7 @@ func BuildInputForTSDelete(
 					binary.LittleEndian.PutUint64(putbuf[:], uint64(int64(math.Float64bits(float64(*v)))))
 					copy(payload[offset+curColLenth*i:], putbuf[:8])
 				default:
-					return nil, isOutOfRange, errors.Errorf("unsupported float oid")
+					return nil, nil, isOutOfRange, errors.Errorf("unsupported float oid")
 				}
 
 			case *tree.DBool:
@@ -1984,7 +1986,7 @@ func BuildInputForTSDelete(
 				case oid.T_varchar, types.T_nvarchar:
 					copy(payload[offset:], *v)
 				default:
-					return nil, isOutOfRange, errors.Errorf("unsupported int oid %v", column.Type.Oid())
+					return nil, nil, isOutOfRange, errors.Errorf("unsupported string oid %v", column.Type.Oid())
 				}
 
 			case *tree.DBytes:
@@ -1997,7 +1999,7 @@ func BuildInputForTSDelete(
 				case types.T_varbytea:
 					copy(payload[offset+curColLenth*i:], *v)
 				default:
-					return nil, isOutOfRange, errors.Errorf("unsupported int oid %v", column.Type.Oid())
+					return nil, nil, isOutOfRange, errors.Errorf("unsupported bytes oid %v", column.Type.Oid())
 				}
 
 			// decimal means out of range when primary tag is type int
@@ -2005,13 +2007,19 @@ func BuildInputForTSDelete(
 				isOutOfRange = true
 
 			default:
-				return nil, isOutOfRange, pgerror.Newf(pgcode.FeatureNotSupported, "unsupported input type %s while building ts delete", column.Type.String())
+				return nil, nil, isOutOfRange, pgerror.Newf(pgcode.FeatureNotSupported, "unsupported input type %s while building ts delete", column.Type.String())
 			}
+
+			// build array of primary tag values byte for incomplete tag filter
+			fieldStart := offset + curColLenth*i
+			fieldEnd := fieldStart + curColLenth
+			fieldData := make([]byte, curColLenth)
+			copy(fieldData, payload[fieldStart:fieldEnd])
+			fieldPayloads = append(fieldPayloads, fieldData)
 		}
 		offset += curColLenth
 	}
-	// primary tag value
-	return payload, isOutOfRange, nil
+	return payload, fieldPayloads, isOutOfRange, nil
 }
 
 // ComputePayloadSize calculates the fixed-length part size for payload
@@ -2802,8 +2810,9 @@ func (b *Builder) buildTSDelete(tsDelete *memo.TSDeleteExpr) (execPlan, error) {
 			uint64(hashNum),
 			spans,
 			uint8(tsDelete.DeleteType),
-			[][]byte{}, // primary tag key
+			[]uint32{}, // primary tag IDs
 			[][]byte{}, // primary tag value
+			[][]byte{}, // incomplete tag values
 			false)
 		if err != nil {
 			return execPlan{}, err
@@ -2816,17 +2825,23 @@ func (b *Builder) buildTSDelete(tsDelete *memo.TSDeleteExpr) (execPlan, error) {
 	var primaryTagCols []*sqlbase.ColumnDescriptor
 
 	// get table's primary tag metadata and it's filter expr
-	childColIndexs := make(map[int]int, 1)
 	colIndexs := make(map[int]int, len(cols))
+	// isIncompletePtag indicates whether the ptags in the filter conditions
+	// cover all ptags of the table
+	var isIncompletePtag bool
+	var tagIDs []uint32
 	for i := 0; i < len(cols); i++ {
 		cols[i] = tab.Column(i).(*sqlbase.ColumnDescriptor)
 		if cols[i].IsPrimaryTagCol() {
-			primaryTagCols = append(primaryTagCols, cols[i])
-			childColIndexs[int(cols[i].ID)] = 0
-		}
-		if ord, ok := tsDelete.ColsMap[int(cols[i].ID)]; ok {
-			// get value expr from colMap
-			colIndexs[int(cols[i].ID)] = ord
+			if ord, ok := tsDelete.ColsMap[int(cols[i].ID)]; ok {
+				primaryTagCols = append(primaryTagCols, cols[i])
+				colIndexs[int(cols[i].ID)] = ord
+				// IDs of primary tags matched in filter conditions
+				tagIDs = append(tagIDs, uint32(cols[i].ID))
+			} else {
+				// this primary tag of the table is NOT in the filter conditions,
+				isIncompletePtag = true
+			}
 		}
 	}
 	var inputRowVal opt.RowsValue
@@ -2837,44 +2852,23 @@ func (b *Builder) buildTSDelete(tsDelete *memo.TSDeleteExpr) (execPlan, error) {
 	}
 
 	var primaryTagVal []byte
+	var partOfPTagValues [][]byte
 	var isOutOfRange bool
-	// time series table support delete entity and delete data
-	if tab.GetTableType() == tree.TimeseriesTable {
-		// build time series table's primary tags values through expr
-		primaryTagVal, isOutOfRange, err = BuildInputForTSDelete(
-			b.evalCtx,
-			inputRowVal,
-			[]int{0},
-			primaryTagCols,
-			colIndexs,
-		)
-		if err != nil {
-			return execPlan{}, err
-		}
-		// instance table only support delete data
-	} else if tab.GetTableType() == tree.InstanceTable {
-		// build instance table's primary tags values through it's table name
-		var inputRow tree.Exprs
-		name := tab.Name()
-		inputRow = append(inputRow, tree.NewDString(name.String()))
-		var inputRows opt.RowsValue
-		inputRows = append(inputRows, inputRow)
-		primaryTagVal, _, err = BuildInputForTSDelete(
-			b.evalCtx,
-			inputRows,
-			[]int{0},
-			primaryTagCols,
-			childColIndexs,
-		)
-		if err != nil {
-			return execPlan{}, err
-		}
+	// build time series table's primary tags values through expr
+	primaryTagVal, partOfPTagValues, isOutOfRange, err = BuildInputForTSDelete(
+		b.evalCtx,
+		inputRowVal,
+		[]int{0},
+		primaryTagCols,
+		colIndexs,
+	)
+	if !isIncompletePtag {
+		partOfPTagValues = [][]byte{}
 	}
-	hashPoints, err := api.GetHashPointByPrimaryTag(uint64(hashNum), primaryTagVal)
+
 	if err != nil {
 		return execPlan{}, err
 	}
-	primaryTagKey := sqlbase.MakeTsPrimaryTagKey(sqlbase.ID(tab.ID()), hashPoints)
 	primaryTagVals := [][]byte{primaryTagVal}
 
 	node, err := b.factory.ConstructTSDelete(
@@ -2883,8 +2877,9 @@ func (b *Builder) buildTSDelete(tsDelete *memo.TSDeleteExpr) (execPlan, error) {
 		uint64(hashNum),
 		spans,
 		uint8(tsDelete.DeleteType),
-		[][]byte{primaryTagKey},
+		tagIDs,
 		primaryTagVals,
+		partOfPTagValues,
 		isOutOfRange)
 	if err != nil {
 		return execPlan{}, err

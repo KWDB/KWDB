@@ -309,23 +309,22 @@ set sql_safe_updates = false;
 --prepare p3 as delete from t4 where false;
 prepare p3 as delete from t4 where c like '1';
 prepare p3 as delete from t4 where b = $1;
-prepare p3 as delete from t4 where b >= $1;
-prepare p3 as delete from t4 where b != $1;
-prepare p3 as delete from t4 where b between $1 and $2;
-prepare p3 as delete from t4 where b = $1;
-prepare p3 as delete from t4 where b = $1 and c = $2 and d = $3 and e = $4;
-prepare p3 as delete from t4 where b = $1 and c = $2 and d = $3 or e = $4;
-prepare p3 as delete from t4 where b = $1 and c = $2 and d = $3 and 1 = 1;
+prepare p4 as delete from t4 where b >= $1;
+prepare p4 as delete from t4 where b != $1;
+prepare p4 as delete from t4 where b between $1 and $2;
+prepare p4 as delete from t4 where b = $1 and c = $2 and d = $3 and e = $4;
+prepare p4 as delete from t4 where b = $1 and c = $2 and d = $3 or e = $4;
+prepare p14 as delete from t4 where b = $1 and c = $2 and d = $3 and 1 = 1;
 
 select * from t4 order by ts;
-prepare p3 as delete from t4 where b = $1 and c =$2 and d = $3;
-execute p3(1,'k',false);
+prepare p4 as delete from t4 where b = $1 and c =$2 and d = $3;
+execute p4(1,'k',false);
 select * from t4 order by ts;
-execute p3('2','k',false);
+execute p4('2','k',false);
 select * from t4 order by ts;
-execute p3(1,'k',true);
+execute p4(1,'k',true);
 select * from t4 order by ts;
-prepare p4 as delete from t4 where b = $1 and c =$2 and d = $3 or b = $4 and c = $5 and d = $6;
+prepare p114 as delete from t4 where b = $1 and c =$2 and d = $3 or b = $4 and c = $5 and d = $6;
 
 
 prepare p5 as delete from t5 where b = $1 and c =$2 and d = $3 and false;
