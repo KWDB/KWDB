@@ -14,7 +14,13 @@
 #include <algorithm>
 #include <cstdint>
 #include <cstdio>
-#include <filesystem>
+#if defined(__GNUC__) && (__GNUC__ < 8)
+  #include <experimental/filesystem>
+  namespace fs = std::experimental::filesystem;
+#else
+  #include <filesystem>
+  namespace fs = std::filesystem;
+#endif
 #include <utility>
 
 

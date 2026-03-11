@@ -3,7 +3,13 @@
 #include <random>
 #include <chrono>
 #include <fstream>
-#include <filesystem>
+#if defined(__GNUC__) && (__GNUC__ < 8)
+  #include <experimental/filesystem>
+  namespace fs = std::experimental::filesystem;
+#else
+  #include <filesystem>
+  namespace fs = std::filesystem;
+#endif
 #include <utility>
 #include "utils/big_table_utils.h"
 #include "mmap/mmap_tag_column_table.h"

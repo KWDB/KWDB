@@ -24,7 +24,13 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
-#include <filesystem>
+#if defined(__GNUC__) && (__GNUC__ < 8)
+  #include <experimental/filesystem>
+  namespace fs = std::experimental::filesystem;
+#else
+  #include <filesystem>
+  namespace fs = std::filesystem;
+#endif
 #include <fstream>
 #include <mutex>
 #include <numeric>

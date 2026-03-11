@@ -11,7 +11,13 @@
 
 #include <gtest/gtest.h>
 #include <chrono>
-#include <filesystem>
+#if defined(__GNUC__) && (__GNUC__ < 8)
+  #include <experimental/filesystem>
+  namespace fs = std::experimental::filesystem;
+#else
+  #include <filesystem>
+  namespace fs = std::filesystem;
+#endif
 
 #include "kwdb_type.h"
 #include "me_metadata.pb.h"
