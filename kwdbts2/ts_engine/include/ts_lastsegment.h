@@ -76,6 +76,7 @@ class LastSegmentBloomFilter : public LastSegmentMetaBlockBase {
       filter.Serialize(dst);
     }
   }
+  void Reset() { bloomfilter_->Reset(); }
 };
 
 class TsLastBlock;

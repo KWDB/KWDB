@@ -39,7 +39,45 @@ class TsLastSegmentBuilder {
   TsEngineSchemaManager* engine_schema_manager_;
   std::unique_ptr<TsAppendOnlyFile> last_segment_file_;
 
-  class BlockIndexCollector;
+  class BlockIndexCollector  {
+   private:
+    TSTableID table_id_;
+    uint32_t version_;
+
+    TSEntityID prev_entity_id_ = -1;
+    uint32_t n_entity_ = 0;
+
+    TSEntityID max_entity_id_ = 0;
+    TSEntityID min_entity_id_ = std::numeric_limits<TSEntityID>::max();
+    uint64_t max_osn_ = 0;
+    uint64_t min_osn_ = std::numeric_limits<uint64_t>::max();
+    uint64_t first_osn_ = std::numeric_limits<uint64_t>::max();
+    uint64_t last_osn_ = std::numeric_limits<uint64_t>::max();
+    timestamp64 max_ts_ = std::numeric_limits<timestamp64>::min();
+    timestamp64 min_ts_ = std::numeric_limits<timestamp64>::max();
+    timestamp64 first_ts_ = std::numeric_limits<timestamp64>::max();
+    timestamp64 last_ts_ = std::numeric_limits<timestamp64>::max();
+
+   public:
+    BlockIndexCollector(TSTableID table_id, uint32_t version) : table_id_(table_id), version_(version) {}
+    void Collect(TsBlockSpan* span);
+    TsLastSegmentBlockIndex GetIndex() const;
+
+    void Reset() {
+      prev_entity_id_ = -1;
+      n_entity_ = 0;
+      max_entity_id_ = 0;
+      min_entity_id_ = std::numeric_limits<TSEntityID>::max();
+      max_osn_ = 0;
+      min_osn_ = std::numeric_limits<uint64_t>::max();
+      first_osn_ = std::numeric_limits<uint64_t>::max();
+      last_osn_ = std::numeric_limits<uint64_t>::max();
+      max_ts_ = std::numeric_limits<timestamp64>::min();
+      min_ts_ = std::numeric_limits<timestamp64>::max();
+      first_ts_ = std::numeric_limits<timestamp64>::max();
+      last_ts_ = std::numeric_limits<timestamp64>::max();
+    }
+  };
   std::unique_ptr<BlockIndexCollector> block_index_collector_;
   std::unique_ptr<TsMetricBlockBuilder> metric_block_builder_;
 
@@ -69,35 +107,22 @@ class TsLastSegmentBuilder {
   KStatus Finalize(TsSegmentWriteStats* stats);
   uint64_t GetFileNumber() const { return file_number_; }
   uint64_t GetMaxOSN() const;
+  void Reset(std::unique_ptr<TsAppendOnlyFile>&& last_segment, uint64_t file_number) {
+    last_segment_file_ = std::move(last_segment);
+    file_number_ = file_number;
+    bloom_filter_->Reset();
+    metric_block_builder_->Reset();
+    block_index_collector_->Reset();
+    entity_id_buffer_.clear();
+
+    block_index_buffer_.clear();
+    block_info_buffer_.clear();
+  }
+  TsEngineSchemaManager* GetSchemaManager() {
+    return this->engine_schema_manager_;
+  }
 
  private:
   KStatus RecordAndWriteBlockToFile();
-};
-
-class TsLastSegmentBuilder::BlockIndexCollector {
- private:
-  TSTableID table_id_;
-  uint32_t version_;
-
-  TSEntityID prev_entity_id_ = -1;
-  uint32_t n_entity_ = 0;
-
-  TSEntityID max_entity_id_ = 0;
-  TSEntityID min_entity_id_ = std::numeric_limits<TSEntityID>::max();
-  uint64_t max_osn_ = 0;
-  uint64_t min_osn_ = std::numeric_limits<uint64_t>::max();
-  uint64_t first_osn_ = std::numeric_limits<uint64_t>::max();
-  uint64_t last_osn_ = std::numeric_limits<uint64_t>::max();
-  timestamp64 max_ts_ = std::numeric_limits<timestamp64>::min();
-  timestamp64 min_ts_ = std::numeric_limits<timestamp64>::max();
-  timestamp64 first_ts_ = std::numeric_limits<timestamp64>::max();
-  timestamp64 last_ts_ = std::numeric_limits<timestamp64>::max();
-
- public:
-  BlockIndexCollector(TSTableID table_id, uint32_t version) : table_id_(table_id), version_(version) {}
-  void Collect(TsBlockSpan* span);
-  TsLastSegmentBlockIndex GetIndex() const;
-
-  void Reset() { new (this) BlockIndexCollector(table_id_, version_); }
 };
 }  // namespace kwdbts

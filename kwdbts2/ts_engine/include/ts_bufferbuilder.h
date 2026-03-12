@@ -132,6 +132,16 @@ class TsBufferBuilder {
   std::string_view AsStringView() const & { return {head_, size()}; }
   std::string_view AsStringView() && = delete;
 
+  TsSliceGuard GetSharedBuffer() {
+    /* Do not delete head_ because we want to share it, this object still own the buffer,
+     * anyone else who get the buffer should not free it and should not use it after this
+     * object is deleted.
+     */
+    TsSliceGuard::BufferPtr buffer(head_, [](char* /*p*/){});
+    TsSliceGuard result{std::move(buffer), size()};
+    return result;
+  }
+
   TsSliceGuard GetBuffer() {
     TsSliceGuard::BufferPtr buffer(head_, &std::free);
     TsSliceGuard result{std::move(buffer), size()};

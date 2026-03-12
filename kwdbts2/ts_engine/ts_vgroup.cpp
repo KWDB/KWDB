@@ -930,6 +930,9 @@ static uint64_t GetMaxOsn(const std::vector<std::shared_ptr<TsBlockSpan>>& sorte
   return max_osn;
 }
 
+thread_local std::unique_ptr<TsLastSegmentBuilder> tl_lastseg_builder = nullptr;
+
+
 static KStatus FlushToLastSegment(TsIOEnv* env, TsEngineSchemaManager* schema_mgr, TsVersionManager* version_mgr,
                                   const TsPartitionVersion* partition,
                                   const std::vector<std::shared_ptr<TsBlockSpan>>& spans, TsVersionUpdate* update,
@@ -942,15 +945,19 @@ static KStatus FlushToLastSegment(TsIOEnv* env, TsEngineSchemaManager* schema_mg
     LOG_ERROR("flush failed, new last segment failed.");
     return s;
   }
-  TsLastSegmentBuilder lastseg_builder(schema_mgr, std::move(lastseg_file), lastseg_file_number);
+  if (tl_lastseg_builder == nullptr || tl_lastseg_builder->GetSchemaManager() != schema_mgr) {
+    tl_lastseg_builder = std::make_unique<TsLastSegmentBuilder>(schema_mgr, std::move(lastseg_file), lastseg_file_number);
+  } else {
+    tl_lastseg_builder->Reset(std::move(lastseg_file), lastseg_file_number);
+  }
   for (auto& span : spans) {
-    s = lastseg_builder.PutBlockSpan(span);
+    s = tl_lastseg_builder->PutBlockSpan(span);
     if (s == FAIL) {
       LOG_ERROR("flush failed, TsLastSegmentBuilder put failed.");
       return FAIL;
     }
   }
-  lastseg_builder.Finalize(stats);
+  tl_lastseg_builder->Finalize(stats);
   update->AddLastSegment(partition->GetPartitionIdentifier(), LastSegmentMetaInfo{lastseg_file_number, 0, 0});
   return SUCCESS;
 }

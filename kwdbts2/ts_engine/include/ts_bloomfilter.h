@@ -55,5 +55,6 @@ class TsBloomFilterBuiler {
   void Add(TSEntityID entity_id) { all_entities_.insert(entity_id); }
   bool IsEmpty() const { return all_entities_.empty(); }
   TsBloomFilter Finalize() { return TsBloomFilter{all_entities_, p_}; }
+  void Reset() { all_entities_.clear(); }
 };
 }  // namespace kwdbts
