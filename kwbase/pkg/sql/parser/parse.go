@@ -83,6 +83,7 @@ type Insertdirectstmt struct {
 	InsertFast   bool
 	RowsAffected int64
 	ErrorInfo    error
+	NeedReparse  bool
 	UseDeepRule  bool
 	// DedupRule mode, 2 is reject mode, and 3 is discard mode
 	DedupRule          int64
@@ -321,6 +322,19 @@ func extractDBAndTable(tokens []sqlSymType, dot int, NoSchema *bool) (db, tb str
 	return db, tb
 }
 
+func (p *Parser) validateDirectStmt(stmt *Statement) error {
+	if !p.scanner.shortinsert.PrepareMode || p.scanner.shortinsert.Prepareplaceholder == 0 {
+		return nil
+	}
+	if p.scanner.shortinsert.ValueBracketCount != 0 || stmt.Insertdirectstmt.RowsAffected <= 0 {
+		return pgerror.New(pgcode.Syntax, "syntax error")
+	}
+	if int64(stmt.NumPlaceholders)%stmt.Insertdirectstmt.RowsAffected != 0 {
+		return pgerror.New(pgcode.Syntax, "syntax error")
+	}
+	return nil
+}
+
 // MakeDirectSTmt constructs the stmt structure required for tsinsert_direct
 func makeDirectStmt(p *Parser, NoScheNameList tree.NoSchemaNameList, sql string) Statement {
 	if p.scanner.shortinsert.NoSchema {
@@ -349,10 +363,12 @@ func makeDirectStmt(p *Parser, NoScheNameList tree.NoSchemaNameList, sql string)
 			InsertValues:       p.scanner.shortinsert.InsertValues,
 			ValuesType:         p.scanner.shortinsert.ValuesType,
 			RowsAffected:       int64(p.scanner.shortinsert.RowCount),
+			NeedReparse:        p.scanner.shortinsert.NeedReparse,
 			PreparePlaceholder: p.scanner.shortinsert.Prepareplaceholder,
 		},
 		NumPlaceholders: p.scanner.shortinsert.Prepareplaceholder,
 	}
+	stmt.Insertdirectstmt.ErrorInfo = p.validateDirectStmt(&stmt)
 	return stmt
 }
 

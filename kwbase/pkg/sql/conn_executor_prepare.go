@@ -68,7 +68,9 @@ func (ex *connExecutor) execPrepare(
 		// Deallocate the unnamed statement, if it exists.
 		ex.deletePreparedStmt(ctx, "")
 	}
-
+	if parseCmd.Statement.Insertdirectstmt.InsertFast && parseCmd.Statement.Insertdirectstmt.ErrorInfo != nil {
+		return retErr(parseCmd.Statement.Insertdirectstmt.ErrorInfo)
+	}
 	// build SelectInto statement when subquery as value in setting user defined variables
 	if astSetVar, ok := parseCmd.Statement.AST.(*tree.SetVar); ok && len(astSetVar.Name) > 0 && astSetVar.Name[0] == '@' && len(astSetVar.Values) == 1 {
 		if sub, ok := astSetVar.Values[0].(*tree.Subquery); ok {
@@ -105,13 +107,26 @@ func (ex *connExecutor) execPrepare(
 		ps.PrepareInsertDirect = parseCmd.PrepareInsertDirect
 		types = ps.TypeHints
 
-		if int64(ps.PrepareMetadata.Statement.NumPlaceholders)/
-			ps.PrepareMetadata.Insertdirectstmt.RowsAffected != int64(ps.PrepareInsertDirect.Inscolsnum) {
+		rowsAffected := ps.PrepareMetadata.Insertdirectstmt.RowsAffected
+		numPlaceholders := int64(ps.PrepareMetadata.Statement.NumPlaceholders)
+		syntaxErr := parseCmd.Statement.Insertdirectstmt.ErrorInfo
+		if syntaxErr == nil {
+			syntaxErr = pgerror.New(pgcode.Syntax, "syntax error")
+		}
+		if rowsAffected <= 0 {
+			ex.deletePreparedStmt(ctx, parseCmd.Name)
+			return retErr(syntaxErr)
+		}
+		if numPlaceholders%rowsAffected != 0 {
+			ex.deletePreparedStmt(ctx, parseCmd.Name)
+			return retErr(syntaxErr)
+		}
+		if numPlaceholders/rowsAffected != int64(ps.PrepareInsertDirect.Inscolsnum) {
 			ex.deletePreparedStmt(ctx, parseCmd.Name)
 			return retErr(pgerror.Newf(
 				pgcode.Syntax,
 				"insert (row %d) has more expressions than target columns, %d expressions for %d targets",
-				parseCmd.Insertdirectstmt.RowsAffected, ps.PrepareMetadata.Statement.NumPlaceholders, ps.PrepareInsertDirect.Inscolsnum))
+				rowsAffected, ps.PrepareMetadata.Statement.NumPlaceholders, ps.PrepareInsertDirect.Inscolsnum))
 		}
 	} else {
 		types = ps.Types

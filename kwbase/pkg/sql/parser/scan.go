@@ -80,6 +80,8 @@ type Shortinsert struct {
 	RowCount           int
 	Prepareplaceholder int
 	PrepareMode        bool
+	ValueBracketCount  int
+	NeedReparse        bool
 	isValues           bool
 	Customize          bool
 }
@@ -123,6 +125,8 @@ func (s *Shortinsert) init() {
 	s.tb = ""
 	s.RowCount = 0
 	s.Prepareplaceholder = 0
+	s.ValueBracketCount = 0
+	s.NeedReparse = false
 	s.isValues = false
 }
 
@@ -497,9 +501,18 @@ func (s *scanner) scan(lval *sqlSymType) {
 	case '(':
 		if s.shortinsert.isInsert && !s.shortinsert.isValues {
 			s.shortinsert.bracket.elements = append(s.shortinsert.bracket.elements, 1)
+		} else if s.shortinsert.isValues && s.shortinsert.isTsTable && s.shortinsert.PrepareMode {
+			if s.shortinsert.ValueBracketCount > 0 {
+				s.shortinsert.NeedReparse = true
+			}
+			s.shortinsert.ValueBracketCount++
 		}
 	case ')':
-		if len(s.shortinsert.bracket.elements) != 0 {
+		if s.shortinsert.isValues && s.shortinsert.isTsTable && s.shortinsert.PrepareMode {
+			if s.shortinsert.ValueBracketCount > 0 {
+				s.shortinsert.ValueBracketCount--
+			}
+		} else if len(s.shortinsert.bracket.elements) != 0 {
 			s.shortinsert.bracket.elements = s.shortinsert.bracket.elements[:len(s.shortinsert.bracket.elements)-1]
 		}
 		s.shortinsert.RowCount++

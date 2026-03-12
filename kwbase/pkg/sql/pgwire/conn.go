@@ -1358,9 +1358,13 @@ Reparse:
 	}
 	// len(stmts) == 0 results in a nil (empty) statement.
 	stmt.Insertdirectstmt.InsertFast = c.parser.GetIsTsTable()
-	if stmt.Insertdirectstmt.InsertFast && (stmt.NumPlaceholders == 0 || len(stmt.Insertdirectstmt.InsertValues) > 0) {
+	if stmt.Insertdirectstmt.InsertFast &&
+		(stmt.Insertdirectstmt.NeedReparse || stmt.NumPlaceholders == 0 || len(stmt.Insertdirectstmt.InsertValues) > 0) {
 		c.parser.IsShortcircuit = false
 		goto Reparse
+	}
+	if stmt.Insertdirectstmt.InsertFast && stmt.Insertdirectstmt.ErrorInfo != nil {
+		return c.stmtBuf.Push(ctx, sql.SendError{Err: stmt.Insertdirectstmt.ErrorInfo})
 	}
 	if len(inTypeHints) > stmt.NumPlaceholders {
 		err := pgwirebase.NewProtocolViolationErrorf(
