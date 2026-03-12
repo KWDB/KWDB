@@ -145,7 +145,9 @@ std::vector<ZTableColumnMeta> g_all_col_types({
   {roachpb::DataType::TIMESTAMPTZ, 8, 8, roachpb::VariableLengthType::ColStorageTypeTuple},
 });
 
-void ConstructRoachpbTable(roachpb::CreateTsTable* meta, KTableKey table_id, uint32_t db_id = 1) {
+void ConstructRoachpbTable(roachpb::CreateTsTable* meta, KTableKey table_id, uint32_t db_id = 1,
+                           std::vector<roachpb::DataType> col_types = {
+                           roachpb::DataType::TIMESTAMP, roachpb::DataType::INT, roachpb::DataType::DOUBLE}) {
   // create table :  TIMESTAMP | INT | DOUBLE
   roachpb::KWDBTsTable *table = KNEW roachpb::KWDBTsTable();
   table->set_ts_table_id(table_id);
@@ -157,9 +159,39 @@ void ConstructRoachpbTable(roachpb::CreateTsTable* meta, KTableKey table_id, uin
   meta->set_allocated_ts_table(table);
 
   std::vector<ZTableColumnMeta> col_meta;
-  col_meta.push_back({roachpb::DataType::TIMESTAMP, 8, 8, roachpb::VariableLengthType::ColStorageTypeTuple});
-  col_meta.push_back({roachpb::DataType::INT, 4, 4, roachpb::VariableLengthType::ColStorageTypeTuple});
-  col_meta.push_back({roachpb::DataType::DOUBLE, 8, 8, roachpb::VariableLengthType::ColStorageTypeTuple});
+  for (auto it : col_types) {
+    switch (it) {
+    case roachpb::DataType::TIMESTAMP:
+      col_meta.push_back({roachpb::DataType::TIMESTAMP, 8, 8, roachpb::VariableLengthType::ColStorageTypeTuple});
+      break;
+    case roachpb::DataType::SMALLINT:
+      col_meta.push_back({roachpb::DataType::SMALLINT, 2, 2, roachpb::VariableLengthType::ColStorageTypeTuple});
+      break;
+    case roachpb::DataType::INT:
+      col_meta.push_back({roachpb::DataType::INT, 4, 4, roachpb::VariableLengthType::ColStorageTypeTuple});
+      break;
+    case roachpb::DataType::BIGINT:
+      col_meta.push_back({roachpb::DataType::BIGINT, 8, 8, roachpb::VariableLengthType::ColStorageTypeTuple});
+      break;
+    case roachpb::DataType::FLOAT:
+      col_meta.push_back({roachpb::DataType::FLOAT, 4, 4, roachpb::VariableLengthType::ColStorageTypeTuple});
+      break;
+    case roachpb::DataType::DOUBLE:
+      col_meta.push_back({roachpb::DataType::DOUBLE, 8, 8, roachpb::VariableLengthType::ColStorageTypeTuple});
+      break;
+    case roachpb::DataType::CHAR:
+      col_meta.push_back({roachpb::DataType::CHAR, 20, 20, roachpb::VariableLengthType::ColStorageTypeTuple});
+      break;
+    case roachpb::DataType::VARBINARY:
+      col_meta.push_back({roachpb::DataType::VARBINARY, 8, 80, roachpb::VariableLengthType::ColStorageTypeTuple});
+      break;
+    case roachpb::DataType::VARCHAR:
+      col_meta.push_back({roachpb::DataType::VARCHAR, 8, 100, roachpb::VariableLengthType::ColStorageTypeTuple});
+      break;
+    default:
+      break;
+    }
+  }
 
   for (int i = 0; i < col_meta.size(); i++) {
     roachpb::KWDBKTSColumn* column = meta->mutable_k_column()->Add();
@@ -408,6 +440,47 @@ TSSlice GenRowPayload(const std::vector<AttributeInfo>& metric, const std::vecto
           char buf[128];
           std::sprintf(buf, "varstring_%07lu_%07" PRIu64, i, GetRandomNumber(100000));
           builder.SetColumnValue(i, j, buf, string(buf).size());
+          break;
+        }
+        default:
+          assert(false);
+      }
+    }
+    cur_ts += interval;
+  }
+  TSSlice payload{nullptr, 0};
+  builder.Build(table_id, version, &payload);
+  if (num == 0) {
+    KUint8(payload.data + TsRawPayload::row_type_offset_) = DataTagFlag::TAG_ONLY;
+  }
+  return payload;
+}
+
+TSSlice GenRowPayloadForSumOverflow(const std::vector<AttributeInfo>& metric, const std::vector<TagInfo>& tag,
+                                    TSTableID table_id, uint32_t version, TSEntityID dev_id, int num, KTimestamp ts,
+                                    KTimestamp interval = 1000) {
+  TSRowPayloadBuilder builder(tag, metric, num);
+  builder.SetTagValue(0, (char*)(&dev_id), sizeof(dev_id));
+  string var_str = intToString(dev_id);
+  for (size_t i = 1; i < tag.size(); i++) {
+    if (tag[i].m_data_type == DATATYPE::VARSTRING) {
+      builder.SetTagValue(i, var_str.data(), var_str.length());
+    } else {
+      builder.SetTagValue(i, (char*)(&dev_id), tag[i].m_size);
+    }
+  }
+
+  timestamp64 cur_ts = ts;
+  for (size_t i = 0; i < num; i++) {
+    for (int j = 0; j < metric.size(); ++j) {
+      switch (metric[j].type) {
+        case DATATYPE::TIMESTAMP64: {
+          builder.SetColumnValue(i, j, (char*)(&cur_ts), sizeof(cur_ts));
+          break;
+        }
+        case DATATYPE::INT64: {
+          uint64_t data = INT64_MAX;
+          builder.SetColumnValue(i, j, (char*)(&data), sizeof(data));
           break;
         }
         default:

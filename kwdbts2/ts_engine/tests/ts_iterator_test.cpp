@@ -97,7 +97,7 @@ TEST_F(TestV2Iterator, basic) {
     std::shared_ptr<TsTable> ts_table;
     auto s = engine_->CreateTsTable(ctx_, table_id, &pb_meta, ts_table);
     ASSERT_EQ(s, KStatus::SUCCESS);
-  bool is_dropped = false;
+    bool is_dropped = false;
     s = engine_->GetTsTable(ctx_, table_id, ts_table, is_dropped);
     ASSERT_EQ(s, KStatus::SUCCESS);
 
@@ -1083,4 +1083,93 @@ TEST_F(TestV2Iterator, blockCacheDetachMMAP) {
    * files anymore.
    */
   ASSERT_EQ(created_entity_block_file_count - destroyed_entity_block_file_count, 4);
+}
+
+TEST_F(TestV2Iterator, overflow) {
+  TSTableID table_id = 999;
+  roachpb::CreateTsTable pb_meta;
+  ConstructRoachpbTable(&pb_meta, table_id, 1, {roachpb::DataType::TIMESTAMP, roachpb::DataType::BIGINT});
+  std::shared_ptr<TsTable> ts_table;
+  auto s = engine_->CreateTsTable(ctx_, table_id, &pb_meta, ts_table);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  bool is_dropped = false;
+  s = engine_->GetTsTable(ctx_, table_id, ts_table, is_dropped);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+
+  std::shared_ptr<TsTableSchemaManager> table_schema_mgr;
+  s = engine_->GetTableSchemaMgr(ctx_, table_id, is_dropped, table_schema_mgr);
+  ASSERT_EQ(s , KStatus::SUCCESS);
+
+  const std::vector<AttributeInfo>* metric_schema{nullptr};
+  s = table_schema_mgr->GetMetricMeta(1, &metric_schema);
+  ASSERT_EQ(s , KStatus::SUCCESS);
+
+  std::vector<TagInfo> tag_schema;
+  s = table_schema_mgr->GetTagMeta(1, tag_schema);
+  ASSERT_EQ(s , KStatus::SUCCESS);
+
+  timestamp64 start_ts = 3600;
+  auto pay_load = GenRowPayloadForSumOverflow(*metric_schema, tag_schema ,table_id, 1, 1, 1000, start_ts);
+  uint16_t inc_entity_cnt;
+  uint32_t inc_unordered_cnt = 0;
+  DedupResult dedup_result{0, 0, 0, TSSlice {nullptr, 0}};
+  s = engine_->PutData(ctx_, table_id, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
+  free(pay_load.data);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+
+  std::vector<std::shared_ptr<TsVGroup>>* ts_vgroups = engine_->GetTsVGroups();
+  for (const auto& vgroup : *ts_vgroups) {
+    if (!vgroup || vgroup->GetMaxEntityID() < 1) {
+        continue;
+    }
+    k_uint32 entity_id = 1;
+    KwTsSpan ts_span = {INT64_MIN, INT64_MAX};
+    DATATYPE ts_col_type = table_schema_mgr->GetTsColDataType();
+    ts_span = ConvertMsToPrecision(ts_span, ts_col_type);
+    std::vector<k_uint32> scan_cols = {1};
+    std::vector<Sumfunctype> scan_agg_types = {Sumfunctype::SUM};
+
+    std::shared_ptr<MMapMetricsTable> schema;
+    ASSERT_EQ(table_schema_mgr->GetMetricSchema(1, &schema), KStatus::SUCCESS);
+    std::vector<uint32_t> entity_ids = {entity_id};
+    std::vector<KwTsSpan> ts_spans = {ts_span};
+    std::vector<BlockFilter> block_filter = {};
+    std::vector<k_int32> agg_extend_cols = {};
+    std::vector<timestamp64> ts_points = {};
+
+    TsStorageIterator* ts_iter1;
+    s = vgroup->GetIterator(ctx_, 1, entity_ids, ts_spans, block_filter,
+                            scan_cols, scan_cols, agg_extend_cols, scan_agg_types, table_schema_mgr,
+                            schema, &ts_iter1, vgroup, ts_points, false, false);
+    ASSERT_EQ(s, KStatus::SUCCESS);
+
+    k_uint32 count;
+    bool is_finished = false;
+    ResultSet res1{(k_uint32) scan_cols.size()};
+    ASSERT_EQ(ts_iter1->Next(&res1, &count, &is_finished), KStatus::SUCCESS);
+    ASSERT_EQ(count, 1);
+    ASSERT_EQ(KDouble64(res1.data[0][0]->mem), 1000 * (double)INT64_MAX);
+
+    ASSERT_EQ(ts_iter1->Next(&res1, &count, &is_finished), KStatus::SUCCESS);
+    ASSERT_EQ(count, 0);
+    delete ts_iter1;
+
+    // use pre agg
+    vgroup->Flush();
+
+    TsStorageIterator* ts_iter2;
+    s = vgroup->GetIterator(ctx_, 1, entity_ids, ts_spans, block_filter,
+                            scan_cols, scan_cols, agg_extend_cols, scan_agg_types, table_schema_mgr,
+                            schema, &ts_iter2, vgroup, ts_points, false, false);
+    ASSERT_EQ(s, KStatus::SUCCESS);
+
+    ResultSet res2{(k_uint32) scan_cols.size()};
+    ASSERT_EQ(ts_iter2->Next(&res2, &count, &is_finished), KStatus::SUCCESS);
+    ASSERT_EQ(count, 1);
+    ASSERT_EQ(KDouble64(res2.data[0][0]->mem), 1000 * (double)INT64_MAX);
+
+    ASSERT_EQ(ts_iter2->Next(&res2, &count, &is_finished), KStatus::SUCCESS);
+    ASSERT_EQ(count, 0);
+    delete ts_iter2;
+  }
 }
