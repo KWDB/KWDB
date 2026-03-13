@@ -927,7 +927,7 @@ int MMapTagColumnTable::insert(uint32_t entity_id, uint32_t subgroup_id, uint32_
   startRead();
   mutexUnlock();
   *row_id = row_no;
-  TagDataInfo tagInfo{ operate_type, osn, row_no, 0};
+  TagDataInfo tagInfo{ operate_type, 0, 0, 0, 0, 0, 0, 0, osn, 0, 0};
   setTagDataInfo(row_no, &tagInfo);
 
   // put entity id

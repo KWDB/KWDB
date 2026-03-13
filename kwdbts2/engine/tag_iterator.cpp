@@ -48,16 +48,46 @@ KStatus TagPartitionIterator::Next(std::vector<EntityResultIndex>* entity_id_lis
     }
     // if fliter by osn range, set osn_spans_.
     if (!needSkip) {
-      if (osn_spans_.size() == 0) {
-        if (!m_tag_partition_table_->isValidRow(row_num)) {
+      OperateType scan_type;
+      TS_OSN op_osn;
+      if (m_tag_partition_table_->GetOpTypeAtOSN(row_num, scan_osn_, scan_type, op_osn)) {
+        if (scan_type == OperateType::DeleteBySnapshot) {
+          // this tag already moved to other node.
           needSkip = true;
         }
       } else {
-        auto row_info = m_tag_partition_table_->getTagDataInfoByRowNum(row_num);
-        if (!(row_info->operate_type == OperateType::Insert ||
-              (row_info->operate_type == OperateType::Delete &&
-                IsOsnInSpans(row_info->osn, osn_spans_)))) {
+        needSkip = true;
+      }
+      
+      if (!needSkip && osn_spans_.size() == 0) {
+        if (scan_type != OperateType::Insert) {
+          // this tag already moved to other node.
           needSkip = true;
+        }
+      }
+      if (!needSkip && osn_spans_.size() > 0) {
+        TS_OSN create_osn;
+        TS_OSN del_osn;
+        OperateType del_type;
+        bool valid_row = m_tag_partition_table_->GetOperOSN(row_num, create_osn, del_osn, del_type);
+        if (!valid_row) {
+          needSkip = true;
+        } else {
+          bool create_osn_in_span = IsOsnInSpans(create_osn, osn_spans_);
+          bool del_osn_in_span = (del_type != OperateType::Invalid && IsOsnInSpans(del_osn, osn_spans_));
+          OperatorTypeOfRecord type = OperatorTypeOfRecord::OP_TYPE_UNKNOWN;
+          bool need_check_del_type = false;
+          if (del_osn_in_span &&  del_type == OperateType::Update) {
+            needSkip = true;
+          } else if (!create_osn_in_span) {
+            if (IsOsnAfterSpans(create_osn, osn_spans_)) {
+              needSkip = true;
+            } else if (!del_osn_in_span) {
+              if (del_type != OperateType::Invalid && IsOsnBeforeSpans(del_osn, osn_spans_)) {
+                needSkip = true;
+              }
+            }
+          }
         }
       }
     }
@@ -99,6 +129,8 @@ KStatus TagPartitionIterator::Next(std::vector<EntityResultIndex>* entity_id_lis
     } else {
       m_tag_partition_table_->getEntityIdByRownum(row_num, entity_id_list);
     }
+    entity_id_list->back().op_with_osn = std::make_shared<OperatorInfoOfRecord>
+    (OperatorTypeOfRecord::OP_TYPE_INSERT, 0, m_tag_partition_table_->metaData().m_ts_version, row_num);
     fetch_count++;
   }  // end for
 if (fetch_count == *count) {

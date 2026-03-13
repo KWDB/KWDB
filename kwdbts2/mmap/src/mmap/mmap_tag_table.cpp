@@ -246,6 +246,16 @@ bool TagTable::hasPrimaryKey(const char* primary_tag_val, int len) {
   return true;
 }
 
+bool TagTable::GetPrimaryKeyRowInfo(const char* primary_tag_val, int len, std::pair<uint64_t, uint64_t>& row_info) {
+  auto ret = m_index_->get(primary_tag_val, len);
+  if (ret.first == INVALID_TABLE_VERSION_ID) {
+    return false;
+  }
+  row_info.first = ret.first;
+  row_info.second = ret.second;
+  return true;
+}
+
 void TagTable::GetMaxEntityIdByVGroupId(uint32_t vgroup_id, uint32_t& entity_id) {
   std::vector<std::pair<uint32_t, TagPartitionTable*>> tag_part_tables;
   m_partition_mgr_->GetAllPartitionTables(tag_part_tables);
@@ -403,27 +413,6 @@ int TagTable::InsertTagRecord(kwdbts::TsRawPayload &payload, int32_t sub_group_i
   // 6. set undelete mark
   tag_partition_table->startRead();
   tag_partition_table->unsetDeleteMark(row_no);
-  tag_partition_table->stopRead();
-
-  //
-  // 1. check version
-  if (operate_type == OperateType::Update) {
-    auto old_tag_partition_table = tag_partition_table;
-    if (payload.GetTableVersion() != del_row.first) {
-      old_tag_partition_table = m_partition_mgr_->GetPartitionTable(del_row.first);
-      if (nullptr == old_tag_partition_table) {
-        LOG_ERROR("Tag partition table[%lu] version[%lu] doesn't exist.", this->m_table_id, del_row.first);
-        return -1;
-      }
-    }
-    old_tag_partition_table->startRead();
-    // need to keep old del row osn
-    auto old_osn = old_tag_partition_table->getTagDataInfoByRowNum(del_row.second)->osn;
-    TagDataInfo del_tag_info{operate_type, old_osn, row_no, payload.GetTableVersion()};
-    old_tag_partition_table->setTagDataInfo(del_row.second, &del_tag_info);
-    old_tag_partition_table->stopRead();
-  }
-  tag_partition_table->startRead();
   if (EngineOptions::force_sync_file) {
     tag_partition_table->sync(MS_SYNC);
     if (m_index_ != nullptr) {
@@ -443,7 +432,7 @@ int TagTable::InsertTagRecord(kwdbts::TsRawPayload &payload, int32_t sub_group_i
 
 // V3 insert history tag record
 int TagTable::InsertDeletedTagRecord(kwdbts::TsRawPayload &payload, int32_t sub_group_id, int32_t entity_id,
-   uint64_t osn, OperateType operate_type) {
+   uint64_t osn, OperateType operate_type, std::pair<uint64_t, uint64_t>& row_info) {
   // 1. check version
   auto tag_version_object = m_version_mgr_->GetVersionObject(payload.GetTableVersion());
   if (nullptr == tag_version_object) {
@@ -457,10 +446,10 @@ int TagTable::InsertDeletedTagRecord(kwdbts::TsRawPayload &payload, int32_t sub_
     return -1;
   }
 
+  row_info.first = tag_partition_version;
   // 2. insert partition data
-  size_t row_no = 0;
   if (tag_partition_table->insert(entity_id, sub_group_id, payload.GetHashPoint(), osn, operate_type,
-                                  payload.GetTags().data, &row_no) < 0) {
+                                  payload.GetTags().data, &row_info.second) < 0) {
     LOG_ERROR("insert tag partition table[%s/%s] failed. ",
               tag_partition_table->m_tbl_sub_path_.c_str(), tag_partition_table->m_name_.c_str());
     return -1;
@@ -468,7 +457,7 @@ int TagTable::InsertDeletedTagRecord(kwdbts::TsRawPayload &payload, int32_t sub_
 
   // 3. set delete mark
   tag_partition_table->startRead();
-  assert(!tag_partition_table->isValidRow(row_no));
+  assert(!tag_partition_table->isValidRow(row_info.second));
   tag_partition_table->stopRead();
   return 0;
 }
@@ -533,6 +522,12 @@ int TagTable::DeleteTagRecord(const char *primary_tags, int len, ErrorInfo& err_
     err_info.errmsg = "delete data not found";
     err_info.errcode = -1;
     return -1;
+  }
+  auto tag_info = tag_part_table->getTagDataInfoByRowNum(ret.second);
+  if (tag_info->osn[tag_info->operate_idx] > osn) {
+    LOG_WARN("tag insert osn[%lu] is behind current delete osn[%lu], ignore this deletion.",
+              tag_info->osn[tag_info->operate_idx], osn );
+    return 0;
   }
 
   // 1. delete normal index record
@@ -608,12 +603,12 @@ int TagTable::DeleteTagRecord(const char *primary_tags, int len, ErrorInfo& err_
   // 2. delete mark
   uint32_t entity_id{0}, sub_group_id{0};
   tag_part_table->startRead();
+  // insert operate info to vector.
+  tag_part_table->AddTagStatus(ret.second, (OperateType)operate_type, osn);
   tag_part_table->setDeleteMark(ret.second);
   if (operate_type == OperateType::Update) {
    del_row = ret;
   }
-  TagDataInfo tagInfo{operate_type, osn, 0, 0};
-  tag_part_table->setTagDataInfo(ret.second, &tagInfo);
   tag_part_table->getEntityIdGroupId(ret.second, entity_id, sub_group_id);
   tag_part_table->stopRead();
 
@@ -647,7 +642,7 @@ int TagTable::getDataWithRowID(TagPartitionTable* tag_partition, std::pair<Table
                                const std::vector<HashIdSpan>* hps,
                                std::vector<kwdbts::EntityResultIndex>* entity_id_list,
                                kwdbts::ResultSet* res, std::vector<uint32_t> &scan_tags, std::vector<uint32_t> &valid_scan_tags,
-                               TagVersionObject* tag_version_obj, uint32_t scan_tags_num, bool get_partition) {
+                               TagVersionObject* tag_version_obj, uint32_t scan_tags_num, bool get_partition, TS_OSN osn) {
   TableVersionID tbl_version = ret.first;
   TagPartitionTableRowID row = ret.second;
   if(get_partition) {
@@ -667,6 +662,14 @@ int TagTable::getDataWithRowID(TagPartitionTable* tag_partition, std::pair<Table
     }
   }
   tag_partition->startRead();
+  TS_OSN create_osn;
+  TS_OSN del_osn;
+  OperateType del_type;
+  bool valid_row = tag_partition->GetOperOSN(row, create_osn, del_osn, del_type);
+  if (!valid_row || create_osn > osn || del_osn < osn) {
+    tag_partition->stopRead();
+    return 1;
+  }
   if (!EngineOptions::isSingleNode()) {
     uint32_t hp;
     tag_partition->getHashpointByRowNum(row, &hp);
@@ -678,6 +681,16 @@ int TagTable::getDataWithRowID(TagPartitionTable* tag_partition, std::pair<Table
   } else {
     tag_partition->getEntityIdByRownum(row, entity_id_list);
   }
+  EntityResultIndex& cur_entity = entity_id_list->back();
+  auto scan_row_info = GetEntityTag(cur_entity.subGroupId, cur_entity.entityId, osn);
+  if (scan_row_info.second == 0) {
+    // not found
+    LOG_ERROR("entity[%u,%u] not found at osn[%lu].", cur_entity.subGroupId, cur_entity.entityId, osn);
+    tag_partition->stopRead();
+    return KStatus::FAIL;
+  }
+  cur_entity.op_with_osn = std::make_shared<OperatorInfoOfRecord>
+  (OperatorTypeOfRecord::OP_TYPE_INSERT, create_osn, scan_row_info.first, scan_row_info.second);
   int err_code = 0;
   if ((err_code = tag_partition->getColumnsByRownum(
       row, valid_scan_tags,
@@ -810,7 +823,7 @@ int TagTable::GetEntityIdList(const std::vector<void*>& primary_tags, const std:
                               const std::vector<void*> tags, TSTagOpType op_type, const std::vector<uint32_t> &scan_tags,
                               const std::vector<HashIdSpan>* hps,
                               std::vector<kwdbts::EntityResultIndex>* entity_id_list,
-                              kwdbts::ResultSet* res, uint32_t* count, uint32_t table_version) {
+                              kwdbts::ResultSet* res, uint32_t* count, uint32_t table_version, TS_OSN osn) {
   TagPartitionTableRowID row;
   uint32_t fetch_count = 0;
   TagVersionObject*   result_tag_version_obj = nullptr;
@@ -868,7 +881,8 @@ int TagTable::GetEntityIdList(const std::vector<void*>& primary_tags, const std:
         get_partition = true;
         last_tbl_version = tbl_version;
       }
-      int err_code = getDataWithRowID(src_tag_partition_tbl, result_value[idx], hps, entity_id_list, res, result_scan_tags, src_scan_tags, result_tag_version_obj, scan_tag_num, get_partition);
+      int err_code = getDataWithRowID(src_tag_partition_tbl, result_value[idx], hps, entity_id_list, res, result_scan_tags,
+        src_scan_tags, result_tag_version_obj, scan_tag_num, get_partition, osn);
       if (err_code < 0) {
         return err_code;
       }
@@ -1341,6 +1355,27 @@ int TagTable::addNewPartitionVersion(const vector<TagInfo> &schema, uint32_t new
 
   tag_ver_obj->setStatus(TAG_STATUS_READY);
   m_version_mgr_->UpdateNewestTableVersion(new_version);
+  return 0;
+}
+
+TS_OSN TagTable::GetLatestOSN() {
+  std::vector<TagPartitionTable*> all_tag_partition_tables;
+  TableVersion cur_tbl_version = m_version_mgr_->GetCurrentTableVersion();
+  m_partition_mgr_->GetAllPartitionTablesLessVersion(all_tag_partition_tables, cur_tbl_version);
+  for (int i = all_tag_partition_tables.size() - 1; i >= 0; i--) {
+    auto entity_tag_bt = all_tag_partition_tables[i];
+    entity_tag_bt->startRead();
+    auto entity_rows = entity_tag_bt->size();
+    OperateType type;
+    TS_OSN op_osn;
+    for (int i = entity_rows; i > 0; i--) {
+      if (entity_tag_bt->GetLatestOpOSN(i, type, op_osn)) {
+        entity_tag_bt->stopRead();
+        return op_osn;
+      }
+    }
+    entity_tag_bt->stopRead();
+  }
   return 0;
 }
 
@@ -2017,7 +2052,7 @@ int TagTable::InsertForRedo(uint32_t group_id, uint32_t entity_id, kwdbts::Paylo
 }
 
 int TagTable::DeleteForUndo(uint32_t group_id, uint32_t entity_id, uint64_t hash_num,
-		    const TSSlice& primary_tag, const TSSlice& tag_pack) {
+		    const TSSlice& primary_tag, const TSSlice& tag_pack, uint64_t osn) {
     // 1. search primary tag
   auto ret = m_index_->get(primary_tag.data, primary_tag.len);
   TagPartitionTable* tag_partition_table = nullptr;
@@ -2088,7 +2123,7 @@ int TagTable::DeleteForUndo(uint32_t group_id, uint32_t entity_id, uint64_t hash
 
   // 3. insert partition data
   size_t row_no = 0;
-  if (tag_partition_table->insert(entity_id, group_id, tag_hash_point, tag_tuple.getOSN(), OperateType::Insert,
+  if (tag_partition_table->insert(entity_id, group_id, tag_hash_point, osn, OperateType::Insert,
                                   tag_tuple.getTags().data, &row_no) < 0) {
     LOG_ERROR("insert tag partition table[%s/%s] failed. ",
        tag_partition_table->m_tbl_sub_path_.c_str(), tag_partition_table->m_name_.c_str());
@@ -2141,7 +2176,7 @@ int TagTable::DeleteForUndo(uint32_t group_id, uint32_t entity_id, uint64_t hash
 }
 
 int TagTable::DeleteForRedo(uint32_t group_id, uint32_t entity_id,
-		    const TSSlice& primary_tag, TSSlice& tag_pack) {
+		    const TSSlice& primary_tag, TSSlice& tag_pack, TS_OSN osn) {
   // 1. search primary tag
   auto ret = m_index_->get(primary_tag.data, primary_tag.len);
   if (ret.first == INVALID_TABLE_VERSION_ID) {
@@ -2158,8 +2193,32 @@ int TagTable::DeleteForRedo(uint32_t group_id, uint32_t entity_id,
   // 2. delete data
   TagPartitionTableRowID row_no = ret.second;
   tag_partition_table->startRead();
-  TagDataInfo tag_info {OperateType::Delete, tag_tuple.getOSN(), 0, 0};
-  tag_partition_table->setTagDataInfo(ret.second, &tag_info);
+  uint32_t cur_entity_id;
+  uint32_t cur_group_id;
+  tag_partition_table->getEntityIdGroupId(ret.second, cur_entity_id, cur_group_id);
+  auto tag_info = tag_partition_table->getTagDataInfoByRowNum(ret.second);
+  auto op_type_idx = tag_info->operate_idx;
+  // make
+  if (group_id != cur_group_id || entity_id != cur_entity_id) {
+    LOG_INFO("redo entity[%u,%u] find entity[%u,%u], redo osn[%lu] find osn[%lu] osn num[%d], no need delete.",
+     group_id, entity_id, cur_group_id, cur_entity_id, osn, tag_info->osn[op_type_idx], op_type_idx);
+    tag_partition_table->stopRead();
+    return KStatus::SUCCESS;
+  }
+  bool already_done = false;
+  for (size_t i = 0; i <= op_type_idx; i++) {
+    if (tag_info->operate_type[i] == OperateType::Delete) {
+      if (osn != tag_info->osn[i]) {
+        LOG_INFO("idx[%u], row[%u] has type delete with osn[%lu] but not redodel osn[%lu]",
+                ret.first, ret.second, tag_info->osn[i], osn);
+        tag_info->osn[i] = osn;
+      }
+      already_done = true;
+    }
+  }
+  if (!already_done) {
+    tag_partition_table->AddTagStatus(ret.second, OperateType::Delete, osn);
+  }
   tag_partition_table->setDeleteMark(ret.second);
   tag_partition_table->stopRead();
 
@@ -2265,6 +2324,23 @@ int TagTable::UpdateForRedo(uint32_t group_id, uint32_t entity_id, const TSSlice
     }
     // delete mark
     tag_partition_table->startRead();
+     OperateType type;
+     TS_OSN op_osn;
+    if (!tag_partition_table->GetOpTypeAtOSN(ret.second, payload.GetOSN(), type, op_osn)) {
+      auto tag_info = tag_partition_table->getTagDataInfoByRowNum(ret.second);
+      LOG_INFO("no need redo. tag_idx[%u,%u] taginfo: num[%u] osn[%lu,%lu] type[%u,%u], update osn[%lu]",
+        ret.first, ret.second, tag_info->operate_idx, tag_info->osn[0],
+        tag_info->osn[1], tag_info->operate_type[0], tag_info->operate_type[1], payload.GetOSN());
+      tag_partition_table->stopRead();
+      return 0;
+    }
+    if (type != OperateType::Insert || op_osn == payload.GetOSN()) {
+      LOG_WARN("no need redo. GetOpTypeAtOSN osn[%lu] type[%u], update osn[%lu]",
+          op_osn, type, payload.GetOSN());
+      tag_partition_table->stopRead();
+      return 0;
+    }
+    tag_partition_table->AddTagStatus(ret.second, OperateType::Update, payload.GetOSN());
     tag_partition_table->setDeleteMark(ret.second);
     tag_partition_table->stopRead();
     // delete index data
@@ -2331,7 +2407,7 @@ int TagTable::UpdateForUndo(uint32_t group_id, uint32_t entity_id, uint64_t hash
   std::vector<TagInfo> schemas;
   TagTuplePack tag_tuple(schemas, old_tag.data, old_tag.len);
   size_t row_no = 0;
-  if (tag_partition_table->insert(entity_id, group_id, tag_hash_point, tag_tuple.getOSN(), OperateType::Insert,
+  if (tag_partition_table->insert(entity_id, group_id, tag_hash_point, osn, OperateType::Insert,
                                   tag_tuple.getTags().data, &row_no) < 0) {
     LOG_ERROR("UpdateForUndo insert tag failed.");
     return -1;
@@ -2391,6 +2467,93 @@ bool TagTable::HasEntityTag(int32_t sub_group_id, int32_t entity_id) {
   }
   return true;
 }
+
+std::pair<TableVersionID, TagPartitionTableRowID> TagTable::GetEntityTag(int32_t sub_group_id, int32_t entity_id, TS_OSN osn) {
+  std::pair<TableVersionID, TagPartitionTableRowID> ret;
+  ret.first = INVALID_TABLE_VERSION_ID;
+  ret.second = 0;
+  uint64_t joint_entity_id = (static_cast<uint64_t>(entity_id) << 32) | sub_group_id;
+  auto idex_ret = m_entity_row_index_->get(reinterpret_cast<const char*>(&joint_entity_id),
+                                      m_entity_row_index_->keySize());
+  if (idex_ret.second != 0) {
+    auto tag_partition_table = m_partition_mgr_->GetPartitionTable(idex_ret.first);
+    if (nullptr != tag_partition_table) {
+      LOG_WARN("primary key record's table_version[%u] does not exist.", idex_ret.first);
+      OperateType type;
+      TS_OSN op_osn;
+      tag_partition_table->GetOpTypeAtOSN(idex_ret.second, osn, type, op_osn);
+      if (type == OperateType::Insert) {
+        ret = idex_ret;
+      }
+    }
+  }
+  if (ret.second == 0) {
+    ret = ScanTagByEntityID(sub_group_id, entity_id, osn);
+  }
+  return ret;
+}
+
+std::pair<TableVersionID, TagPartitionTableRowID> TagTable::ScanTagByPKey(TSSlice pri_key, TS_OSN osn,
+uint32_t& sub_group_id, uint32_t& entity_id) {
+  std::pair<TableVersionID, TagPartitionTableRowID> ret;
+  ret.first = INVALID_TABLE_VERSION_ID;
+  ret.second = 0;
+  std::vector<std::pair<uint32_t, TagPartitionTable*>> tag_part_tables;
+  m_partition_mgr_->GetAllPartitionTables(tag_part_tables);
+  OperateType type;
+  TS_OSN op_osn;
+  for (auto& p_tag : tag_part_tables) {
+    for (size_t i = 1; i <= p_tag.second->size(); i++) {
+      if (0 != memcmp(p_tag.second->record(i), pri_key.data, pri_key.len)) {
+        continue;
+      }
+      if (p_tag.second->GetOpTypeAtOSN(i, osn, type, op_osn)) {
+        if (type == OperateType::Insert) {
+          ret.first = p_tag.first;
+          ret.second = i;
+          p_tag.second->getEntityIdGroupId(i, entity_id, sub_group_id);
+          break;
+        }
+      }
+    }
+    if (ret.second != 0) {
+      break;
+    }
+  }
+  return ret;
+}
+std::pair<TableVersionID, TagPartitionTableRowID> TagTable::ScanTagByEntityID(int32_t sub_group_id,
+int32_t entity_id, TS_OSN osn) {
+  std::pair<TableVersionID, TagPartitionTableRowID> ret;
+  ret.first = INVALID_TABLE_VERSION_ID;
+  ret.second = 0;
+  std::vector<std::pair<uint32_t, TagPartitionTable*>> tag_part_tables;
+  m_partition_mgr_->GetAllPartitionTables(tag_part_tables);
+  uint32_t e_id;
+  uint32_t group_id;
+  OperateType type;
+  TS_OSN op_osn;
+  for (auto& p_tag : tag_part_tables) {
+    for (size_t i = 1; i <= p_tag.second->size(); i++) {
+      p_tag.second->getEntityIdGroupId(i, e_id, group_id);
+      if (sub_group_id != group_id || entity_id != e_id) {
+        continue;
+      }
+      if (p_tag.second->GetOpTypeAtOSN(i, osn, type, op_osn)) {
+        if (type == OperateType::Insert) {
+          ret.first = p_tag.first;
+          ret.second = i;
+          break;
+        }
+      }
+    }
+    if (ret.second != 0) {
+      break;
+    }
+  }
+  return ret;
+}
+
 
 TagTable* OpenTagTable(const std::string& db_path, const std::string &dir_path,
                                 uint64_t table_id, int32_t entity_group_id, ErrorInfo &err_info) {

@@ -43,8 +43,9 @@ class TagPartitionIterator {
 
   void Init();
 
-  void SetOSNSpan(const std::vector<KwOSNSpan>& osn) {
+  void SetOSNSpan(const std::vector<KwOSNSpan>& osn, TS_OSN scan_osn) {
     osn_spans_ = osn;
+    scan_osn_ = scan_osn;
   }
 
  private:
@@ -56,6 +57,7 @@ class TagPartitionIterator {
   std::vector<TagInfo>  result_version_tag_infos_;
   std::vector<HashIdSpan> *hps_{nullptr};
   std::vector<KwOSNSpan> osn_spans_;
+  TS_OSN scan_osn_;
 };
 
 }  //  namespace kwdbts
