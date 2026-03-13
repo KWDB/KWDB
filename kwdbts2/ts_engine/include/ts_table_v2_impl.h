@@ -71,7 +71,7 @@ class TsTableV2Impl : public TsTable {
   KStatus GetTagIterator(kwdbContext_p ctx,
                           std::vector<uint32_t> scan_tags,
                           std::vector<HashIdSpan>* hps,
-                          BaseEntityIterator** iter, k_uint32 table_version) override;
+                          BaseEntityIterator** iter, k_uint32 table_version, TS_OSN scan_osn) override;
 
   KStatus GetEntityIdList(kwdbContext_p ctx, const std::vector<void*>& primary_tags,
                           const std::vector<uint64_t/*index_id*/> &tags_index_id,
@@ -80,11 +80,11 @@ class TsTableV2Impl : public TsTable {
                           const std::vector<uint32_t>& scan_tags,
                           const std::vector<HashIdSpan> *hps,
                           std::vector<EntityResultIndex>* entity_id_list, ResultSet* res, uint32_t* count,
-                          uint32_t table_version = 1) override;
+                          uint32_t table_version, TS_OSN scan_osn) override;
 
   KStatus GetTagList(kwdbContext_p ctx, const std::vector<EntityResultIndex>& entity_id_list,
                                     const std::vector<uint32_t>& scan_tags, ResultSet* res, uint32_t* count,
-                                    uint32_t table_version) override;
+                                    uint32_t table_version, TS_OSN scan_osn) override;
 
   KStatus GetNormalIterator(kwdbContext_p ctx, const IteratorParams &params, TsIterator** iter) override;
 
@@ -97,32 +97,33 @@ class TsTableV2Impl : public TsTable {
   KStatus GetMetricDelInfoByOSN(kwdbContext_p ctx, const EntityResultIndex& entity_ids,
     std::vector<KwOSNSpan>& osn_span, std::vector<KwTsSpan>* del_spans);
   KStatus GetTagRecordInfoByOSN(kwdbContext_p ctx, const std::vector<HashIdSpan>* hps,
-    std::vector<KwOSNSpan>& osn_span, std::unordered_map<uint64_t, EntityResultIndex>* del_pkeys);
+    std::vector<KwOSNSpan>& osn_span, TS_OSN scan_osn, std::unordered_map<uint64_t, EntityResultIndex>* del_pkeys);
   // scan tag data by osn range. return all rows
   KStatus GetTagIteratorByOSN(kwdbContext_p ctx, k_uint32 table_version, std::vector<k_uint32>& scan_cols,
-    std::vector<KwOSNSpan>& osn_span,
+    std::vector<KwOSNSpan>& osn_span, TS_OSN scan_osn,
     std::vector<HashIdSpan>* hps, BaseEntityIterator** iter) override;
-  KStatus TrasvalAllTagPtable(kwdbContext_p ctx, const std::function<bool(TagPartitionTable*, size_t)>& func);
+  KStatus TrasvalAllTagPtable(kwdbContext_p ctx, const std::function<bool(TagPartitionTable*, TableVersionID)>& func);
   // Get all tag operation info.
   KStatus GetImagrateTagBySnapshot(kwdbContext_p ctx, HashIdSpan hash_range,
-    std::list<EntityResultIndex>* pkeys_status);
+    TS_OSN scan_osn, std::list<EntityResultIndex>* pkeys_status);
   KStatus GetTagRecordInfoByOSN(kwdbContext_p ctx,
     std::function<bool(TagPartitionTable* entity_tag_bt, int row_num)> in_span_func,
-    std::vector<KwOSNSpan>& osn_span, std::unordered_map<uint64_t, EntityResultIndex>* pkeys_status);
+    std::vector<KwOSNSpan>& osn_span, TS_OSN scan_osn, std::unordered_map<uint64_t, EntityResultIndex>* pkeys_status);
   // get entity all delete range infos.
   KStatus GetMetricDelInfoWithOSN(kwdbContext_p ctx, const EntityResultIndex& entity_id,
     list<STDelRange>* del_osns);
   KStatus GetEntityIdListByOSN(kwdbContext_p ctx, const std::vector<void*>& primary_tags,
-            std::vector<KwOSNSpan>& osn_span,
+            std::vector<KwOSNSpan>& osn_span, TS_OSN scan_osn,
             std::vector<k_uint32>& scan_cols,
             std::vector<HashIdSpan>* hps,
             std::vector<EntityResultIndex>* entity_id_list, ResultSet* res, uint32_t* count,
             uint32_t table_version) override;
   KStatus GetTagListByRowNum(kwdbContext_p ctx, const std::vector<EntityResultIndex>& entity_id_list,
-                            const std::vector<uint32_t>& scan_tags, ResultSet* res, uint32_t* count,
+                            const std::vector<uint32_t>& scan_tags, TS_OSN osn, ResultSet* res, uint32_t* count,
                             uint32_t table_version);
-
-
+  KStatus GetTagOSNInfoByRowNum(kwdbContext_p ctx, EntityResultIndex entity_id_list, TagDataInfo& info);
+  KStatus GetTagOSNInfoByRowNum(kwdbContext_p ctx, std::pair<uint64_t, uint64_t>& row_info, TagDataInfo& info);
+  KStatus SetTagOSNInfoByRowNum(kwdbContext_p ctx, std::pair<uint64_t, uint64_t>& row_info, TagDataInfo& info);
   KStatus AlterTable(kwdbContext_p ctx, AlterType alter_type, roachpb::KWDBKTSColumn* column,
                      uint32_t cur_version, uint32_t new_version, string& msg) override;
 
@@ -169,9 +170,10 @@ class TsTableV2Impl : public TsTable {
     */
   KStatus TSxClean(kwdbContext_p ctx) override;
 
-  KStatus GetLastRowEntity(kwdbContext_p ctx, EntityResultIndex& entity_id, timestamp64& entity_last_ts) override;
+  KStatus GetLastRowEntity(kwdbContext_p ctx, EntityResultIndex& entity_id,
+                          timestamp64& entity_last_ts, TS_OSN osn) override;
 
-  KStatus GetLastRowBatch(kwdbContext_p ctx, uint32_t table_version, std::vector<uint32_t> scan_cols,
+  KStatus GetLastRowBatch(kwdbContext_p ctx, uint32_t table_version, std::vector<uint32_t> scan_cols, TS_OSN osn,
                           ResultSet* res, k_uint32* count, bool& valid) override;
 
   KStatus DropNormalTagIndex(kwdbContext_p ctx, const uint64_t transaction_id,
@@ -200,7 +202,7 @@ class TsTableV2Impl : public TsTable {
   KStatus GetDataVolumeHalfTS(kwdbContext_p ctx, uint64_t begin_hash, uint64_t end_hash,
                                 const KwTsSpan& ts_span, timestamp64* half_ts) override;
   KStatus GetRangeRowCount(kwdbContext_p ctx, uint64_t begin_hash, uint64_t end_hash,
-                            KwTsSpan ts_span, uint64_t* count) override;
+                            KwTsSpan ts_span, TS_OSN osn, uint64_t* count) override;
   /**
    * @brief Delete data within a hash range, usually used for data migration.
    * @param[in] range_group_id RangeGroupID
@@ -224,7 +226,7 @@ class TsTableV2Impl : public TsTable {
    */
   KStatus DeleteRangeData(kwdbContext_p ctx, uint64_t range_group_id, HashIdSpan& hash_span,
                                   const std::vector<KwTsSpan>& ts_spans, uint64_t* count,
-                                  uint64_t mtr_id, uint64_t osn) override;
+                                  uint64_t mtr_id, TS_OSN osn) override;
 
   /**
    * @brief Delete data based on the primary tag and timestamp range.
@@ -236,7 +238,7 @@ class TsTableV2Impl : public TsTable {
    * @return KStatus
    */
   KStatus DeleteData(kwdbContext_p ctx, uint64_t range_group_id, std::string& primary_tag,
-                  const std::vector<KwTsSpan>& ts_spans, uint64_t* count, uint64_t mtr_id, uint64_t osn) override;
+                  const std::vector<KwTsSpan>& ts_spans, uint64_t* count, uint64_t mtr_id, TS_OSN osn) override;
 
   KStatus DeleteEntityByTag(kwdbContext_p ctx, const std::vector<uint32_t/*index_id*/> &tags_index_id,
                           std::vector<std::string> tags, uint64_t* count, uint64_t mtr_id, uint64_t osn,
@@ -248,14 +250,18 @@ class TsTableV2Impl : public TsTable {
 
   KStatus CountRangeData(kwdbContext_p ctx, uint64_t range_group_id, HashIdSpan& hash_span,
                           const std::vector<KwTsSpan>& ts_spans, uint64_t* count,
-                          uint64_t mtr_id, uint64_t osn) override;
+                          uint64_t mtr_id, TS_OSN osn) override;
 
   KStatus GetEntityRowCount(kwdbContext_p ctx, std::vector<EntityResultIndex>& entity_ids,
-                             const std::vector<KwTsSpan>& ts_spans, uint64_t* row_count);
-  KStatus getPTagsByHashSpan(kwdbContext_p ctx, const HashIdSpan& hash_span, vector<string>* primary_tags);
-  KStatus GetEntityIdByHashSpan(kwdbContext_p ctx, const HashIdSpan& hash_span,
+                             const std::vector<KwTsSpan>& ts_spans, TS_OSN osn, uint64_t* row_count);
+  KStatus getPTagsByHashSpan(kwdbContext_p ctx, const HashIdSpan& hash_span, TS_OSN scan_osn, vector<string>* primary_tags);
+  KStatus GetEntityIdByHashSpan(kwdbContext_p ctx, const HashIdSpan& hash_span, TS_OSN scan_osn,
                                 vector<EntityResultIndex>& entity_store) override;
-
+  KStatus GetEntityIdByPriKeys(kwdbContext_p ctx, const std::vector<void*> &primary_keys,
+                                            TS_OSN scan_osn, vector<EntityResultIndex>& entity_store);
+  KStatus GetEntityIdByNorKeys(kwdbContext_p ctx, std::shared_ptr<TagTable> tag_table, const std::vector<void*> tags,
+                               const std::vector<uint32_t>& scan_tags, TS_OSN scan_osn,
+                               vector<EntityResultIndex>& entity_store, uint32_t table_version);
   KStatus undoAlterTable(kwdbContext_p ctx, AlterType alter_type, roachpb::KWDBKTSColumn* column, uint32_t cur_version,
     uint32_t new_version) override;
 

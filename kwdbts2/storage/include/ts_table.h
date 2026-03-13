@@ -55,10 +55,10 @@ enum OperatorTypeOfRecord : uint8_t {
 struct OperatorInfoOfRecord {
   OperatorTypeOfRecord type;
   TS_OSN osn;
-  uint32_t p_tag_id;
+  uint32_t p_tag_version;
   uint32_t row_num;
   OperatorInfoOfRecord(OperatorTypeOfRecord t, TS_OSN o, uint32_t ptag_id, int rownum) :
-    type(t), osn(o), p_tag_id(ptag_id), row_num(rownum) {}
+    type(t), osn(o), p_tag_version(ptag_id), row_num(rownum) {}
 };
 
 class TsTable {
@@ -139,7 +139,7 @@ class TsTable {
    * @return KStatus
    */
   virtual KStatus DeleteTotalRange(kwdbContext_p ctx, uint64_t begin_hash, uint64_t end_hash,
-                                    KwTsSpan ts_span, uint64_t mtr_id, uint64_t osn) = 0;
+                                    KwTsSpan ts_span, uint64_t mtr_id, TS_OSN osn) = 0;
 
   /**
    * @brief Get range row count.
@@ -149,7 +149,7 @@ class TsTable {
    * @return KStatus
    */
   virtual KStatus GetRangeRowCount(kwdbContext_p ctx, uint64_t begin_hash, uint64_t end_hash,
-                            KwTsSpan ts_span, uint64_t* count) = 0;
+                            KwTsSpan ts_span, TS_OSN osn, uint64_t* count) = 0;
 
   /**
    * @brief Delete data within a hash range, usually used for data migration.
@@ -161,7 +161,7 @@ class TsTable {
    * @return KStatus
    */
   virtual KStatus DeleteRangeEntities(kwdbContext_p ctx, const uint64_t& range_group_id, const HashIdSpan& hash_span,
-                                      uint64_t* count, uint64_t mtr_id, uint64_t osn, bool user_del) = 0;
+                                      uint64_t* count, uint64_t mtr_id, TS_OSN osn, bool user_del) = 0;
 
   /**
    * @brief Delete data based on the hash id range and timestamp range.
@@ -173,7 +173,7 @@ class TsTable {
    * @return
    */
   virtual KStatus DeleteRangeData(kwdbContext_p ctx, uint64_t range_group_id, HashIdSpan &hash_span,
-                            const std::vector<KwTsSpan> &ts_spans, uint64_t *count, uint64_t mtr_id, uint64_t osn) = 0;
+                            const std::vector<KwTsSpan> &ts_spans, uint64_t *count, uint64_t mtr_id, TS_OSN osn) = 0;
 
   /**
    * @brief Delete data based on the primary tag and timestamp range.
@@ -211,10 +211,10 @@ class TsTable {
 
   // scan tag data by osn range. return all rows
   virtual KStatus GetTagIteratorByOSN(kwdbContext_p ctx, k_uint32 table_version, std::vector<k_uint32>& scan_cols,
-    std::vector<KwOSNSpan>& osn_span, std::vector<HashIdSpan>* hps, BaseEntityIterator** iter) = 0;
+    std::vector<KwOSNSpan>& osn_span, TS_OSN scan_osn, std::vector<HashIdSpan>* hps, BaseEntityIterator** iter) = 0;
   // scan tag by primary key.
   virtual KStatus GetEntityIdListByOSN(kwdbContext_p ctx, const std::vector<void*>& primary_tags,
-            std::vector<KwOSNSpan>& osn_span,
+            std::vector<KwOSNSpan>& osn_span, TS_OSN scan_osn,
             std::vector<k_uint32>& scan_cols,
             std::vector<HashIdSpan>* hps,
             std::vector<EntityResultIndex>* entity_id_list, ResultSet* res, uint32_t* count,
@@ -237,7 +237,7 @@ class TsTable {
                   const std::vector<uint32_t>& scan_tags,
                   const std::vector<HashIdSpan>* hps,
                   std::vector<EntityResultIndex>* entity_id_list, ResultSet* res, uint32_t* count,
-                  uint32_t table_version = 1) = 0;
+                  uint32_t table_version, TS_OSN scan_osn) = 0;
 
   /**
  * @brief get entity row
@@ -251,10 +251,10 @@ class TsTable {
   virtual KStatus
   GetTagList(kwdbContext_p ctx, const std::vector<EntityResultIndex>& entity_id_list,
              const std::vector<uint32_t>& scan_tags, ResultSet* res, uint32_t* count,
-             uint32_t table_version) = 0;
+             uint32_t table_version, TS_OSN scan_osn) = 0;
 
   virtual KStatus GetEntityIdByHashSpan(kwdbContext_p ctx, const HashIdSpan& hash_span,
-                                        vector<EntityResultIndex>& entity_store) = 0;
+                    TS_OSN scan_osn, vector<EntityResultIndex>& entity_store) = 0;
 
   /**
    * @brief Create an iterator TsStorageIterator for Tag tables
@@ -264,7 +264,7 @@ class TsTable {
   virtual KStatus GetTagIterator(kwdbContext_p ctx,
                                  std::vector<uint32_t> scan_tags,
                                  std::vector<HashIdSpan>* hps,
-                                 BaseEntityIterator** iter, k_uint32 table_version) = 0;
+                                 BaseEntityIterator** iter, k_uint32 table_version, TS_OSN scan_osn) = 0;
 
   virtual KStatus AlterTable(kwdbContext_p ctx, AlterType alter_type, roachpb::KWDBKTSColumn* column,
                              uint32_t cur_version, uint32_t new_version, string& msg) = 0;
@@ -304,10 +304,11 @@ class TsTable {
 
   virtual uint64_t GetHashNum();
 
-  virtual KStatus GetLastRowEntity(kwdbContext_p ctx, EntityResultIndex& entity_id, timestamp64& entity_last_ts) = 0;
+  virtual KStatus GetLastRowEntity(kwdbContext_p ctx, EntityResultIndex& entity_id,
+                                  timestamp64& entity_last_ts, TS_OSN osn) = 0;
 
   virtual KStatus GetLastRowBatch(kwdbContext_p ctx, uint32_t table_version, std::vector<uint32_t> scan_cols,
-                                  ResultSet* res, k_uint32* count, bool& valid);
+                                  TS_OSN osn, ResultSet* res, k_uint32* count, bool& valid);
 
  protected:
   string db_path_;
