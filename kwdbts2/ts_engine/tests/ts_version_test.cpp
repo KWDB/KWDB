@@ -57,6 +57,7 @@ class TsVersionTest : public testing::Test {
       std::unique_ptr<TsAppendOnlyFile> file_agg;
       ASSERT_EQ(env->NewAppendOnlyFile(agg_filename, &file_agg), SUCCESS);
       TsAggAndBlockFileHeader header_agg;
+      std::memset(&header_agg, 0, sizeof(header_agg));
       header_agg.magic = TS_ENTITY_SEGMENT_AGG_FILE_MAGIC;
       header_agg.status = TsFileStatus::READY;
       file_agg->Append(TSSlice{(char *)&header_agg, sizeof(TsAggAndBlockFileHeader)});
@@ -68,6 +69,7 @@ class TsVersionTest : public testing::Test {
       std::unique_ptr<TsAppendOnlyFile> data_file;
       ASSERT_EQ(env->NewAppendOnlyFile(data_filename, &data_file), SUCCESS);
       TsAggAndBlockFileHeader header_block;
+      std::memset(&header_block, 0, sizeof(header_block));
       header_block.magic = TS_ENTITY_SEGMENT_BLOCK_FILE_MAGIC;
       header_block.status = TsFileStatus::READY;
       data_file->Append(TSSlice{(char *)&header_block, sizeof(TsAggAndBlockFileHeader)});
