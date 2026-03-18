@@ -652,6 +652,29 @@ inline void TsEntityBlock::GetMinAndMaxOSN(uint64_t& min_osn, uint64_t& max_osn)
   max_osn = max_osn_;
 }
 
+inline void TsEntityBlock::GetMinAndMaxOSN(int start_row, int row_num, uint64_t& min_osn, uint64_t& max_osn) {
+    const uint64_t* osn = GetOSNAddr(start_row);
+    for (int i = 0; i < row_num; i++) {
+      if (*(osn + i) < min_osn) {
+        min_osn = *(osn + i);
+      }
+      if (*(osn + i) > max_osn) {
+        max_osn = *(osn + i);
+      }
+    }
+}
+
+inline uint64_t TsEntityBlock::GetOSN(int row_num) {
+  if (!HasDataCached(-1)) {
+    KStatus s = segment_block_container_->GetColumnBlock(-1, {}, this, nullptr);
+    if (s != KStatus::SUCCESS) {
+      LOG_ERROR("block segment column[osn] data load failed");
+      return 0;
+    }
+  }
+  return *(reinterpret_cast<const uint64_t*>(column_blocks_[0]->buffer.data() + row_num * sizeof(uint64_t)));
+}
+
 inline uint64_t TsEntityBlock::GetFirstOSN() {
   return first_osn_;
 }

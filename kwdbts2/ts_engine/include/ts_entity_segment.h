@@ -361,6 +361,10 @@ class TsEntityBlock : public TsBlock {
 
   void GetMinAndMaxOSN(uint64_t& min_osn, uint64_t& max_osn) override;
 
+  void GetMinAndMaxOSN(int start_row, int row_num, uint64_t& min_osn, uint64_t& max_osn) override;
+
+  uint64_t GetOSN(int row_num) override;
+
   uint64_t GetFirstOSN() override;
 
   uint64_t GetLastOSN() override;

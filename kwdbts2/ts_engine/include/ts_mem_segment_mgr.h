@@ -236,6 +236,24 @@ class TsMemSegBlock : public TsBlock {
     }
   }
 
+  void GetMinAndMaxOSN(int start_row, int row_num, uint64_t& min_osn, uint64_t& max_osn) override {
+    assert(row_data_.size() > 0);
+    assert(start_row + row_num <= row_data_.size());
+    for (int i = start_row; i < start_row + row_num; ++i) {
+      if (row_data_[i]->GetOSN() < min_osn) {
+        min_osn = row_data_[i]->GetOSN();
+      }
+      if (row_data_[i]->GetOSN() > max_osn) {
+        max_osn = row_data_[i]->GetOSN();
+      }
+    }
+  }
+
+  uint64_t GetOSN(int row_num) {
+    assert(row_data_.size() > row_num);
+    return row_data_[row_num]->GetOSN();
+  }
+
   uint64_t GetFirstOSN() override {
     assert(row_data_.size() > 0);
     return row_data_[0]->GetOSN();

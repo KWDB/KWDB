@@ -87,6 +87,14 @@ class SimulatedTsEntityBlock : public TsBlock {
     return;
   }
 
+  void GetMinAndMaxOSN(int start_row, int row_num, uint64_t& min_osn, uint64_t& max_osn) override {
+    return;
+  }
+
+  uint64_t GetOSN(int row_num) override {
+    return 0;
+  }
+
   uint64_t GetFirstOSN() override { return KStatus::FAIL; }
 
   uint64_t GetLastOSN() override { return KStatus::FAIL; }

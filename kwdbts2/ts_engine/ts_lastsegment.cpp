@@ -371,8 +371,29 @@ class TsLastBlock : public TsBlock {
     max_osn = block_index_.max_osn;
   }
 
+  inline void GetMinAndMaxOSN(int start_row, int row_num, uint64_t& min_osn, uint64_t& max_osn) {
+    const uint64_t* osn = GetOSNAddr(start_row);
+    for (int i = 0; i < row_num; i++) {
+      if (*(osn + i) < min_osn) {
+        min_osn = *(osn + i);
+      }
+      if (*(osn + i) > max_osn) {
+        max_osn = *(osn + i);
+      }
+    }
+  }
+
   inline uint64_t GetFirstOSN() override {
     return block_index_.first_osn;
+  }
+
+  inline uint64_t GetOSN(int row_num) override {
+    auto osn = GetOSN();
+    if (osn == nullptr) {
+      LOG_ERROR("cannot get osn addr");
+      return 0;
+    }
+    return osn[row_num];
   }
 
   inline uint64_t GetLastOSN() override {
