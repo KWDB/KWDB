@@ -306,7 +306,6 @@ k_bool DataChunk::Initialize() {
         LOG_ERROR("Allocate buffer in DataChunk failed.");
         return false;
       }
-      std::memset(data_, 0, data_size_);
     }
     var_str_container_ = ee_makeStringInfo();
   }
