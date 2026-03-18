@@ -365,6 +365,7 @@ class TsReadBatchDataWorker : public TsBatchDataWorker {
 class TsWriteBatchDataWorker : public TsBatchDataWorker {
  private:
   TSEngineImpl* ts_engine_;
+  TsDataSource source_;
 
   struct BatchDataHeader {
     TSTableID table_id;
@@ -382,7 +383,7 @@ class TsWriteBatchDataWorker : public TsBatchDataWorker {
   KStatus GetTagPayload(uint32_t table_version, TSSlice* data, std::string& tag_payload_str);
 
  public:
-  TsWriteBatchDataWorker(TSEngineImpl* ts_engine, uint64_t job_id);
+  TsWriteBatchDataWorker(TSEngineImpl* ts_engine, uint64_t job_id, TsDataSource source);
   ~TsWriteBatchDataWorker();
 
   KStatus Init(kwdbContext_p ctx) override;

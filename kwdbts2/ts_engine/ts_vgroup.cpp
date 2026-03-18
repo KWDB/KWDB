@@ -145,6 +145,7 @@ KStatus TsVGroup::Init(kwdbContext_p ctx) {
     s = ResetCountStat();
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("vgroup [%u] recover recalculate count stat failed.", vgroup_id_);
+      return s;
     }
   }
 
@@ -736,7 +737,7 @@ KStatus TsVGroup::PartitionCompact(std::shared_ptr<const TsPartitionVersion> par
     }
 
     TsEntitySegmentBuilder builder(env, root_path.string(), schema_mgr_, version_manager_.get(), partition_id,
-                                   entity_segment);
+                                   entity_segment, TsDataSource::Compact);
     builder.PutBlockSpans(std::move(block_spans));
 
     KStatus s = builder.Open();
@@ -793,6 +794,7 @@ KStatus TsVGroup::PartitionCompact(std::shared_ptr<const TsPartitionVersion> par
         auto s = builder->PutBlockSpan(span);
         if (s != KStatus::SUCCESS) {
           LOG_ERROR("TsEntitySegmentBuilder::Compact failed, TsLastSegmentBuilder put failed.")
+          return s;
         }
       }
       auto s = builder->Finalize(&stats);
@@ -1025,7 +1027,7 @@ KStatus TsVGroup::FlushImmSegment(const std::shared_ptr<TsMemSegment>& mem_seg) 
       std::vector<std::shared_ptr<TsBlockSpan>> written_spans;
       {
         TsEntitySegmentBuilder entityseg_builder(mem_env, root_path, schema_mgr_, version_manager_.get(),
-                                                 partition->GetPartitionIdentifier(), nullptr);
+                                                 partition->GetPartitionIdentifier(), nullptr, TsDataSource::Flush);
         auto s = entityseg_builder.Open();
         if (s == FAIL) {
           return s;
@@ -1494,7 +1496,7 @@ const std::vector<KwTsSpan>& ts_spans, bool user_del) {
   std::shared_ptr<kwdbts::TsTableSchemaManager> tb_schema_mgr;
   auto s = schema_mgr_->GetTableSchemaMgr(tbl_id, tb_schema_mgr);
   if (s == KStatus::FAIL) {
-    LOG_ERROR("GetTableSchemaMgr failed.");
+    LOG_ERROR("GetTableSchemaMgr %lu failed", tbl_id);
     return s;
   }
   auto db_id = tb_schema_mgr->GetDbID();
@@ -1546,7 +1548,7 @@ const std::vector<KwTsSpan>& ts_spans, bool user_del) {
   return deleteData(ctx, tbl_id, e_id, {0, osn}, ts_spans, user_del);
 }
 
-KStatus TsVGroup::GetEntitySegmentBuilder(std::shared_ptr<const TsPartitionVersion>& partition,
+KStatus TsVGroup::GetEntitySegmentBuilder(std::shared_ptr<const TsPartitionVersion>& partition, TsDataSource source,
                                           std::shared_ptr<TsEntitySegmentBuilder>& builder) {
   TsIOEnv* env = &TsIOEnv::GetInstance();
   PartitionIdentifier partition_id = partition->GetPartitionIdentifier();
@@ -1560,7 +1562,7 @@ KStatus TsVGroup::GetEntitySegmentBuilder(std::shared_ptr<const TsPartitionVersi
 
     auto root_path = this->GetPath() / PartitionDirName(partition->GetPartitionIdentifier());
     builder = std::make_shared<TsEntitySegmentBuilder>(env, root_path.string(), schema_mgr_, version_manager_.get(),
-                                                       partition_id, entity_segment);
+                                                       partition_id, entity_segment, source);
     KStatus s = builder->Open();
     if (s != KStatus::SUCCESS) {
       partition->ResetStatus();
@@ -1575,7 +1577,7 @@ KStatus TsVGroup::GetEntitySegmentBuilder(std::shared_ptr<const TsPartitionVersi
 }
 
 KStatus TsVGroup::WriteBatchData(TSTableID tbl_id, uint32_t table_version, TSEntityID entity_id, timestamp64 p_time,
-                                 uint32_t batch_version, TSSlice data) {
+                                 uint32_t batch_version, TSSlice data, TsDataSource source) {
   auto current = version_manager_->Current();
   uint32_t database_id = schema_mgr_->GetDBIDByTableID(tbl_id);
   if (database_id == 0) {
@@ -1597,7 +1599,7 @@ KStatus TsVGroup::WriteBatchData(TSTableID tbl_id, uint32_t table_version, TSEnt
   }
 
   std::shared_ptr<TsEntitySegmentBuilder> builder;
-  KStatus s = GetEntitySegmentBuilder(partition, builder);
+  KStatus s = GetEntitySegmentBuilder(partition, source, builder);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("GetEntitySegmentBuilder failed.");
     return s;
@@ -2052,44 +2054,6 @@ KStatus TsVGroup::MtrRollback(kwdbContext_p ctx, uint64_t& mtr_id, bool is_skip,
   return KStatus::SUCCESS;
 }
 
-bool TsVGroup::getDroppedTables(uint32_t db_id, std::unordered_set<TSTableID>* dropped_table_ids, bool force) {
-  bool has_dropped = false;
-  std::vector<TSTableID> table_ids;
-  // vacuum immediately, we can check table dropped by rocksdb's meta,
-  // don't care about parallel r&w
-  if (force) {
-    KStatus s = schema_mgr_->GetTableList(&table_ids);
-    if (s != SUCCESS) {
-      LOG_WARN("GetTableList failed.");
-      return has_dropped;
-    }
-    for (auto tb_id : table_ids) {
-      if (!checkTableMetaExist(tb_id)) {
-        if (schema_mgr_->GetDBIDByTableID(tb_id) == db_id) {
-          has_dropped = true;
-          dropped_table_ids->insert(tb_id);
-        }
-      }
-    }
-    return has_dropped;
-  }
-  // not vacuum immediately, check table dropped by schema manager,
-  // this is original code logic.
-  std::vector<std::shared_ptr<TsTableSchemaManager>> tb_schema_mgr;
-  KStatus s = schema_mgr_->GetAllTableSchemaMgrs(tb_schema_mgr);
-  if (s != SUCCESS) {
-    LOG_WARN("GetAllTableSchemaMgrs failed.");
-    return has_dropped;
-  }
-  for (const auto& tb_mgr : tb_schema_mgr) {
-    if (tb_mgr->IsDropped()) {
-      has_dropped = true;
-      dropped_table_ids->insert(tb_mgr->GetTableId());
-    }
-  }
-  return has_dropped;
-}
-
 KStatus TsVGroup::Vacuum(kwdbContext_p ctx, bool force) {
   KStatus s = KStatus::SUCCESS;
   auto current = version_manager_->Current();
@@ -2116,19 +2080,15 @@ KStatus TsVGroup::Vacuum(kwdbContext_p ctx, bool force) {
         }
         partition = version_manager_->Current()->GetPartition(std::get<0>(partition_id), std::get<1>(partition_id));
       }
-      std::unordered_set<TSTableID> dropped_table_ids;
-      need_vacuum = getDroppedTables(db_id, &dropped_table_ids, force);
-      if (!need_vacuum) {
-        s = partition->NeedVacuumEntitySegment(root_path, schema_mgr_, force, need_vacuum);
-        if (s != SUCCESS) {
-          LOG_ERROR("NeedVacuumEntitySegment failed.");
-          continue;
-        }
+      s = partition->NeedVacuumEntitySegment(root_path, schema_mgr_, force, need_vacuum);
+      if (s != SUCCESS) {
+        LOG_ERROR("NeedVacuumEntitySegment failed.");
+        continue;
       }
       if (need_vacuum) {
-        s = VacuumPartition(ctx, partition, dropped_table_ids, force);
+        s = VacuumPartition(ctx, partition, force);
         if (s != SUCCESS) {
-          LOG_WARN("Vacuum partition [vgroup_%d]-[%ld, %ld) failed", vgroup_id_,
+          LOG_WARN("Vacuum partition [vgroup_%d]-[db_%u]-[%ld, %ld) failed", vgroup_id_, partition->GetDatabaseID(),
                     partition->GetStartTime(), partition->GetEndTime() - 1);
         }
       }
@@ -2137,8 +2097,7 @@ KStatus TsVGroup::Vacuum(kwdbContext_p ctx, bool force) {
   return KStatus::SUCCESS;
 }
 
-KStatus TsVGroup::VacuumPartition(kwdbContext_p ctx, shared_ptr<const TsPartitionVersion> partition,
-  std::unordered_set<TSTableID> dropped_table_ids, bool force) {
+KStatus TsVGroup::VacuumPartition(kwdbContext_p ctx, shared_ptr<const TsPartitionVersion> partition, bool force) {
   if (force) {
     while (!partition->TrySetBusy(PartitionStatus::Vacuuming)) {
       this_thread::sleep_for(std::chrono::seconds(1));
@@ -2156,6 +2115,7 @@ KStatus TsVGroup::VacuumPartition(kwdbContext_p ctx, shared_ptr<const TsPartitio
     partition->ResetStatus();
   }};
 
+  partition = version_manager_->GetPartitionVersion(partition->GetPartitionIdentifier());
   auto entity_segment = partition->GetEntitySegment();
   if (entity_segment == nullptr) {
     return SUCCESS;
@@ -2166,7 +2126,8 @@ KStatus TsVGroup::VacuumPartition(kwdbContext_p ctx, shared_ptr<const TsPartitio
 
   auto partition_id = partition->GetPartitionIdentifier();
   auto root_path = this->GetPath() / PartitionDirName(partition_id);
-  auto vacuumer = std::make_unique<TsEntitySegmentVacuumer>(root_path, this->version_manager_.get());
+  TsDataSource source = force ? TsDataSource::ManualVacuum : TsDataSource::ScheduleVacuum;
+  auto vacuumer = std::make_unique<TsEntitySegmentVacuumer>(root_path, this->version_manager_.get(), source);
   bool cancel_vacuumer = false;
   auto s = vacuumer->Open();
   if (s != SUCCESS) {
@@ -2179,8 +2140,8 @@ KStatus TsVGroup::VacuumPartition(kwdbContext_p ctx, shared_ptr<const TsPartitio
     }
   }};
   auto handle_info = vacuumer->GetHandleInfo();
-  LOG_INFO("Vacuum partition [vgroup_%d]-[%ld, %ld) begin, handle info {%lu, %lu, %lu, %lu}",
-            vgroup_id_, partition->GetStartTime(), partition->GetEndTime() - 1,
+  LOG_INFO("Vacuum partition [vgroup_%d]-[db_%u]-[%ld, %ld) begin, handle info {%lu, %lu, %lu, %lu}",
+            vgroup_id_, partition->GetDatabaseID(), partition->GetStartTime(), partition->GetEndTime() - 1,
             handle_info.header_e_file_number, handle_info.header_b_info.file_number,
             handle_info.datablock_info.file_number, handle_info.agg_info.file_number);
 
@@ -2189,15 +2150,24 @@ KStatus TsVGroup::VacuumPartition(kwdbContext_p ctx, shared_ptr<const TsPartitio
   std::vector<TsEntityCountStats> invalid_counts;
   for (uint32_t entity_id = 1; entity_id <= max_entity_id; entity_id++) {
     TsEntityItem entity_item;
-    bool found = false;
-    s = entity_segment->GetEntityItem(entity_id, entity_item, found);
+    bool is_exist = false;
+    s = entity_segment->GetEntityItem(entity_id, entity_item, is_exist);
     if (s != SUCCESS) {
       LOG_ERROR("Vacuum failed, GetEntityItem [%u] failed", entity_id);
       cancel_vacuumer = true;
       return s;
     }
-    bool is_dropped = dropped_table_ids.find(entity_item.table_id) != dropped_table_ids.end();
-    if (!found || 0 == entity_item.cur_block_id || is_dropped) {
+    std::shared_ptr<TsTableSchemaManager> tb_schema_mgr{nullptr};
+    bool is_dropped = false;
+    if (is_exist) {
+      s = schema_mgr_->GetTableSchemaMgr(entity_item.table_id, tb_schema_mgr, &is_dropped);
+      if (s != SUCCESS && !is_dropped) {
+        LOG_ERROR("Vacuum failed, GetTableSchemaMgr [%lu] failed", entity_item.table_id);
+        cancel_vacuumer = true;
+        return s;
+      }
+    }
+    if (!is_exist || 0 == entity_item.cur_block_id || is_dropped) {
       TsEntityItem empty_entity_item{entity_id};
       empty_entity_item.table_id = entity_item.table_id;
       s = vacuumer->AppendEntityItem(empty_entity_item);
@@ -2211,13 +2181,7 @@ KStatus TsVGroup::VacuumPartition(kwdbContext_p ctx, shared_ptr<const TsPartitio
       }
       continue;
     }
-    // not dropped
-    std::shared_ptr<TsTableSchemaManager> tb_schema_mgr{nullptr};
-    s = schema_mgr_->GetTableSchemaMgr(entity_item.table_id, tb_schema_mgr);
-    if (s != SUCCESS) {
-      cancel_vacuumer = true;
-      return s;
-    }
+
     auto life_time = tb_schema_mgr->GetLifeTime();
     int64_t start_ts = INT64_MIN;
     int64_t end_ts = INT64_MAX;
@@ -2276,6 +2240,9 @@ KStatus TsVGroup::VacuumPartition(kwdbContext_p ctx, shared_ptr<const TsPartitio
       blk_item.n_rows = block_span->GetRowNum();
       blk_item.min_ts = block_span->GetFirstTS();
       blk_item.max_ts = block_span->GetLastTS();
+      block_span->GetMinAndMaxOSN(blk_item.min_osn, blk_item.max_osn);
+      blk_item.first_osn = block_span->GetFirstOSN();
+      blk_item.last_osn = block_span->GetLastOSN();
       blk_item.block_len = block_data.len;
       blk_item.agg_len = block_agg.len;
       blk_item.block_version = CURRENT_BLOCK_VERSION;
@@ -2292,6 +2259,7 @@ KStatus TsVGroup::VacuumPartition(kwdbContext_p ctx, shared_ptr<const TsPartitio
         return s;
       }
       blk_item.prev_block_id = cur_entity_item.cur_block_id;
+      blk_item.table_id = cur_entity_item.table_id;
       s = vacuumer->AppendBlockItem(blk_item);  // block_id is set when append
       if (s != KStatus::SUCCESS) {
         LOG_ERROR("Vacuum failed, AppendBlockItem failed");
@@ -2367,7 +2335,8 @@ KStatus TsVGroup::VacuumPartition(kwdbContext_p ctx, shared_ptr<const TsPartitio
   if (s != KStatus::SUCCESS) {
     LOG_INFO("delete delitem failed. can ignore this.");
   }
-  LOG_INFO("Vacuum partition [vgroup_%d]-[%ld, %ld) succeeded", vgroup_id_, partition->GetStartTime(),
+  LOG_INFO("Vacuum partition [vgroup_%d]-[db_%u]-[%ld, %ld) succeeded", vgroup_id_, partition->GetDatabaseID(),
+                                                                partition->GetStartTime(),
                                                                 partition->GetEndTime() - 1);
   return SUCCESS;
 }
@@ -2567,10 +2536,11 @@ KStatus TsVGroup::RecalcCountStat() {
       TsVersionUpdate update;
       std::vector<TsEntityCountStats> flush_infos;
       for (auto& [tb_id, entities] : tables) {
+        bool is_dropped = false;
         std::shared_ptr<TsTableSchemaManager> tb_schema;
-        s = schema_mgr_->GetTableSchemaMgr(tb_id, tb_schema);
+        s = schema_mgr_->GetTableSchemaMgr(tb_id, tb_schema, &is_dropped);
         if (s != KStatus::SUCCESS) {
-          if (tb_schema == nullptr) {
+          if (is_dropped) {
             continue;
           }
           LOG_ERROR("Get table schema manager [%lu] failed.", tb_id);
@@ -2641,6 +2611,7 @@ KStatus TsVGroup::ResetCountStat() {
   KStatus s = schema_mgr_->GetAllTableSchemaMgrs(tb_schema_manager);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("Get all table schema mgrs failed.")
+    return s;
   }
 
   std::map<std::shared_ptr<TsTableSchemaManager>, std::vector<uint32_t>> table_entity_map;

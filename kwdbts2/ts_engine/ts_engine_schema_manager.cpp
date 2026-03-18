@@ -18,7 +18,6 @@
 #include "kwdb_type.h"
 #include "lg_api.h"
 #include "sys_utils.h"
-#include "ts_drop_manager.h"
 #include "ts_table_schema_manager.h"
 
 unsigned seed = std::chrono::system_clock::now().time_since_epoch().count();
@@ -60,7 +59,9 @@ KStatus TsEngineSchemaManager::Init(kwdbContext_p ctx) {
           auto tb_schema_mgr = std::make_unique<TsTableSchemaManager>(schema_root_path_, table_id);
           KStatus s = tb_schema_mgr->Init();
           if (s != KStatus::SUCCESS) {
-            return s;
+            if (fs::exists(tb_schema_mgr->GetMetricSchemaPath())) {
+              return s;  // engine can start up when metric schema dir not exists.
+            }
           }
           if (tb_schema_mgr->GetCurrentVersion() != 0) {
             auto partition_interval = tb_schema_mgr->GetPartitionInterval();
@@ -165,37 +166,6 @@ KStatus TsEngineSchemaManager::GetMeta(kwdbContext_p ctx, TSTableID table_id, ui
   return KStatus::SUCCESS;
 }
 
-KStatus TsEngineSchemaManager::GetTableMetricSchema(kwdbContext_p ctx, TSTableID tbl_id, uint32_t version,
-                                                    std::shared_ptr<MMapMetricsTable>* metric_schema) {
-  rdLock();
-  auto it = table_schema_mgrs_.find(tbl_id);
-  if (it != table_schema_mgrs_.end()) {
-    std::shared_ptr<TsTableSchemaManager> tb_schema = it->second;
-    unLock();
-    return tb_schema->GetMetricSchema(version, metric_schema);
-  } else {
-    unLock();
-    wrLock();
-    Defer defer([&]() { unLock(); });
-    it = table_schema_mgrs_.find(tbl_id);
-    if (it != table_schema_mgrs_.end()) {
-      return it->second->GetMetricSchema(version, metric_schema);
-    }
-    auto schema_mgr = std::make_unique<TsTableSchemaManager>(schema_root_path_, tbl_id);
-    KStatus s = schema_mgr->Init();
-    if (s != KStatus::SUCCESS) {
-      return s;
-    }
-    s = schema_mgr->GetMetricSchema(version, metric_schema);
-    if (s != KStatus::SUCCESS) {
-      LOG_ERROR("Table[%ld]-version[%d] get metric schema failed.", tbl_id, version);
-      return s;
-    }
-    table_schema_mgrs_[tbl_id] = std::move(schema_mgr);
-  }
-  return KStatus::FAIL;
-}
-
 bool TsEngineSchemaManager::IsTableExist(TSTableID tbl_id) {
   auto tbl_schema_mgr = std::make_unique<TsTableSchemaManager>(schema_root_path_, tbl_id);
   if (tbl_schema_mgr->IsSchemaDirsExist()) {
@@ -213,50 +183,48 @@ KStatus TsEngineSchemaManager::GetTableList(std::vector<TSTableID>* table_ids) {
     return KStatus::FAIL;
   }
   for (const auto& it : dir_iter) {
-    std::string fname = it.path().filename();
-    TSTableID tbl_id = 0;
-    auto split_pos = fname.find('.');
-    if (split_pos != std::string::npos) {
-      tbl_id = std::stol(fname.substr(split_pos + 1));
-    } else {
-      tbl_id = std::stol(fname);
+    try {
+      std::string fname = it.path().filename();
+      TSTableID tbl_id = 0;
+      auto split_pos = fname.find('.');
+      if (split_pos != std::string::npos) {
+        tbl_id = std::stol(fname.substr(split_pos + 1));
+      } else {
+        tbl_id = std::stol(fname);
+      }
+      table_ids->push_back(tbl_id);
+    } catch (const fs::filesystem_error& e) {
+      LOG_ERROR("GetTableList failed, table entry parse exception: %s, reason: %s",
+          it.path().filename().string().c_str(), e.what());
     }
-    table_ids->push_back(tbl_id);
   }
   return KStatus::SUCCESS;
 }
 
-KStatus TsEngineSchemaManager::GetTableSchemaMgr(TSTableID tbl_id,
-                                                 std::shared_ptr<TsTableSchemaManager>& tb_schema_mgr) {
+KStatus TsEngineSchemaManager::GetTableSchemaMgr(TSTableID tbl_id, std::shared_ptr<TsTableSchemaManager>& tb_schema_mgr,
+                                                 bool* is_dropped) {
   assert(tbl_id != 0);
+  if (is_dropped) {
+    *is_dropped = false;
+  }
+
   rdLock();
-  auto it = table_schema_mgrs_.find(tbl_id);
+  const auto it = table_schema_mgrs_.find(tbl_id);
   if (it == table_schema_mgrs_.end()) {
     unLock();
-    std::string file_name = schema_root_path_ / ("." +to_string(tbl_id));
-    if (DropTableManager::getInstance().isTableDropped(tbl_id) || fs::exists(file_name)) {
-      LOG_WARN("Table[%ld] has already been dropped.", tbl_id);
-      tb_schema_mgr = nullptr;
+#ifndef WITH_TESTS
+    if (checkTableMetaExist(tbl_id)) {
+      LOG_WARN("table %ld schema not found", tbl_id);
       return KStatus::FAIL;
     }
-    wrLock();
-    Defer defer([&]() { unLock(); });
-    it = table_schema_mgrs_.find(tbl_id);
-    if (it != table_schema_mgrs_.end()) {
-      tb_schema_mgr = it->second;
-      return KStatus::SUCCESS;
+#endif
+    if (is_dropped) {
+      *is_dropped = true;
     }
-    auto schema_mgr = std::make_unique<TsTableSchemaManager>(schema_root_path_, tbl_id);
-    KStatus s = schema_mgr->Init();
-    if (s != KStatus::SUCCESS) {
-      return s;
-    }
-    table_schema_mgrs_[tbl_id] = std::move(schema_mgr);
-    tb_schema_mgr = table_schema_mgrs_.find(tbl_id)->second;
-  } else {
-    tb_schema_mgr = it->second;
-    unLock();
+    return KStatus::FAIL;
   }
+  tb_schema_mgr = it->second;
+  unLock();
   return KStatus::SUCCESS;
 }
 
@@ -269,15 +237,13 @@ KStatus TsEngineSchemaManager::GetAllTableSchemaMgrs(std::vector<std::shared_ptr
   return KStatus::SUCCESS;
 }
 
-KStatus TsEngineSchemaManager::DropTableSchemaMgr(TSTableID tbl_id) {
+KStatus TsEngineSchemaManager::SetTableDropped(TSTableID tbl_id) {
   wrLock();
   Defer defer([&]() { unLock(); });
-  if (table_schema_mgrs_.find(tbl_id) != table_schema_mgrs_.end()) {
+  auto iter = table_schema_mgrs_.find(tbl_id);
+  if (iter != table_schema_mgrs_.end()) {
+    iter->second->SetDropped();
     table_schema_mgrs_.erase(tbl_id);
-  }
-  if (!Remove(schema_root_path_ / to_string(tbl_id))) {
-    LOG_ERROR("DropTableSchemaManager failed, table_id: %lu", tbl_id);
-    return KStatus::FAIL;
   }
   return KStatus::SUCCESS;
 }

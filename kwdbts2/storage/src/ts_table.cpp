@@ -45,19 +45,6 @@ TsTable::TsTable(kwdbContext_p ctx, const string& db_path, const KTableKey& tabl
 }
 
 TsTable::~TsTable() {
-  if (is_dropped_) {
-    kwdbContext_t context;
-    kwdbContext_p ctx = &context;
-    KStatus s = InitServerKWDBContext(ctx);
-    if (s != KStatus::SUCCESS) {
-      LOG_ERROR("InitServerKWDBContext Error!");
-    }
-    // s = DropAll(ctx);
-    // if (s != KStatus::SUCCESS) {
-    //   LOG_ERROR("DropAll Error!");
-    // }
-  }
-
   if (entity_groups_mtx_) {
     delete entity_groups_mtx_;
     entity_groups_mtx_ = nullptr;
@@ -160,14 +147,6 @@ KStatus TsTable::AlterPartitionInterval(kwdbContext_p ctx, uint64_t partition_in
 
 uint64_t TsTable::GetPartitionInterval() {
   return 0;
-}
-
-void TsTable::SetDropped() {
-  is_dropped_.store(true);
-}
-
-bool TsTable::IsDropped() {
-  return is_dropped_.load();
 }
 
 uint64_t beginOfDay(uint64_t timestamp) {

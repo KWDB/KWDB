@@ -276,11 +276,11 @@ class TsVGroup {
   KStatus redoDeleteData(kwdbContext_p ctx, TSTableID tbl_id, std::string& primary_tag, TS_OSN log_lsn,
   const std::vector<KwTsSpan>& ts_spans);
 
-  KStatus GetEntitySegmentBuilder(std::shared_ptr<const TsPartitionVersion>& partition,
+  KStatus GetEntitySegmentBuilder(std::shared_ptr<const TsPartitionVersion>& partition, TsDataSource source,
                                   std::shared_ptr<TsEntitySegmentBuilder>& builder);
 
   KStatus WriteBatchData(TSTableID tbl_id, uint32_t table_version, TSEntityID entity_id, timestamp64 p_time,
-                         uint32_t batch_version, TSSlice data);
+                         uint32_t batch_version, TSSlice data, TsDataSource source);
 
   KStatus FinishWriteBatchData();
 
@@ -473,12 +473,9 @@ class TsVGroup {
     }
   }
 
-  bool getDroppedTables(uint32_t db_id, std::unordered_set<TSTableID>* dropped_table_ids, bool force);
-
   KStatus Vacuum(kwdbContext_p ctx, bool force);
 
-  KStatus VacuumPartition(kwdbContext_p ctx, shared_ptr<const TsPartitionVersion> partition,
-    std::unordered_set<TSTableID> dropped_table_ids, bool force);
+  KStatus VacuumPartition(kwdbContext_p ctx, shared_ptr<const TsPartitionVersion> partition, bool force);
 
   KStatus GetTableBlocksDistribution(uint32_t target_db_id, TSTableID table_id, const std::vector<uint32_t>& entity_ids,
     VGroupBlocksInfo* blocks_info);

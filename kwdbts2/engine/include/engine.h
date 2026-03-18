@@ -383,7 +383,7 @@ struct TSEngine {
   }
 
   virtual KStatus WriteBatchData(kwdbContext_p ctx, TSTableID table_id, uint64_t table_version, uint64_t job_id,
-                                 TSSlice* data, uint32_t* row_num, bool& is_dropped) {
+                                 TSSlice* data, uint32_t* row_num, TsDataSource source, bool& is_dropped) {
     return FAIL;
   }
 

@@ -315,6 +315,11 @@ KStatus TSEngineImpl::Init(kwdbContext_p ctx) {
     return s;
   }
 
+  std::vector<uint32_t> max_entity_id_MEI(options_.vgroup_max_num, 0);
+  if (readEntityIds(max_entity_id_MEI) == KStatus::FAIL) {
+    LOG_ERROR("Failed to read entity ids from MEI file.")
+  }
+
   for (int vgroup_id = 1; vgroup_id <= EngineOptions::vgroup_max_num; vgroup_id++) {
     std::unique_ptr<TsVGroup> vgroup = nullptr;
     if (vgroup_configured) {
@@ -331,7 +336,10 @@ KStatus TSEngineImpl::Init(kwdbContext_p ctx) {
     s = GetMaxEntityIdByVGroupId(ctx, vgroup_id, entity_id);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("GetMaxEntityIdByVGroupId failed, vgroup id:%d", vgroup_id);
+      return s;
     }
+    entity_id = max(entity_id, max_entity_id_MEI[vgroup_id - 1]);
+
     vgroup->InitEntityID(entity_id);
     vgroups_.push_back(std::move(vgroup));
   }
@@ -395,7 +403,6 @@ void TSEngineImpl::PreClearDroppedTables() {
       Remove(db_path / schema_directory / fname.substr(split_pos + 1));
       Remove(db_path / schema_directory / fname);
       auto table_id = std::stol(fname.substr(split_pos + 1));
-      DropTableManager::getInstance().markTableDropped(table_id);
     }
   }
 }
@@ -452,21 +459,23 @@ KStatus TSEngineImpl::CreateTsTable(kwdbContext_p ctx, TSTableID table_id, roach
   return s;
 }
 
-KStatus TSEngineImpl::CheckAndDropTsTable(kwdbContext_p ctx, const KTableKey& table_id,
-                    bool& is_dropped, ErrorInfo& err_info) {
-  if (DropTableManager::getInstance().isTableDropped(table_id)) {
-    is_dropped = true;
-    LOG_INFO("Find table: %ld in DropTableManager, already dropped.", table_id);
-    return KStatus::SUCCESS;
+KStatus TSEngineImpl::CheckAndDropTsTable(kwdbContext_p ctx, const KTableKey& table_id) {
+  bool is_dropped = false;
+  std::shared_ptr<TsTableSchemaManager> table_schema_mgr = nullptr;
+  auto s = schema_mgr_->GetTableSchemaMgr(table_id, table_schema_mgr, &is_dropped);
+  if (s != KStatus::SUCCESS) {
+    if (is_dropped) {
+      LOG_WARN("table %lu has been dropped", table_id);
+      return KStatus::SUCCESS;
+    }
+    LOG_ERROR("Get table [%lu] schema manager failed", table_id);
+    return s;
   }
   if (tables_cache_->Exists(table_id)) {
     tables_cache_->Erase(table_id);
   }
-  KStatus s = ProcessDrop(table_id);
-  if (s != KStatus::SUCCESS) {
-    LOG_ERROR("Process drop table failed, table id: %ld", table_id);
-  }
-  is_dropped = true;
+  schema_mgr_->SetTableDropped(table_id);
+  LOG_INFO("Drop table %lu begin, set dropped flag", table_id);
   return KStatus::SUCCESS;
 }
 
@@ -474,46 +483,39 @@ KStatus TSEngineImpl::GetTsTable(kwdbContext_p ctx, const KTableKey& table_id, s
                     bool& is_dropped, bool create_if_not_exist, ErrorInfo& err_info, uint32_t version) {
   ctx->ts_engine = this;
   ts_table = tables_cache_->Get(table_id);
+  bool table_not_exist = false;
   if (ts_table == nullptr) {
-    if (DropTableManager::getInstance().isTableDropped(table_id)) {
-      is_dropped = true;
-      LOG_INFO("Find table: %ld in DropTableManager, already dropped.", table_id);
-      return KStatus::FAIL;
-    }
-    if (HasDroppedFlag(table_id)) {
-      ProcessDrop(table_id);
-      // set flag, insert into dropped_tables_ and remove table schema
-      is_dropped = true;
-      return KStatus::FAIL;
-    }
-    // 1. if table exist, open table.
-    if (schema_mgr_->IsTableExist(table_id)) {
-      std::shared_ptr<TsTableSchemaManager> schema;
-      KStatus s = schema_mgr_->GetTableSchemaMgr(table_id, schema);
-      if (s != KStatus::SUCCESS) {
-        LOG_ERROR("can not GetTableSchemaMgr table[%lu]", table_id);
+    std::shared_ptr<TsTableSchemaManager> schema;
+    KStatus s = schema_mgr_->GetTableSchemaMgr(table_id, schema, &is_dropped);
+    if (s != KStatus::SUCCESS) {
+      if (is_dropped) {
+        LOG_ERROR("Can not GetTableSchemaMgr, table[%lu] has been dropped", table_id);
         return KStatus::FAIL;
       }
+      table_not_exist = true;
+    }
+    if (!table_not_exist) {
+      // 1. if table exist, open table.
       auto table = std::make_shared<TsTableV2Impl>(schema, vgroups_);
-      if (table.get() != nullptr) {
+      if (table != nullptr) {
         ts_table = table;
         tables_cache_->Put(table_id, ts_table);
-      } else {
-        LOG_ERROR("make TsTableV2Impl failed for table[%lu]", table_id);
-        return KStatus::FAIL;
+        return KStatus::SUCCESS;
       }
+      LOG_ERROR("make TsTableV2Impl failed for table[%lu]", table_id);
+      return KStatus::FAIL;
     }
   }
 
-  if (ts_table == nullptr) {
+  if (table_not_exist) {
     if (!create_if_not_exist) {
       LOG_ERROR("cannot found table[%lu], and cannot create it.", table_id);
       err_info.errcode = KWENOOBJ;
       return KStatus::FAIL;
     }
-    // 2. if table no exist. try get schema from go level.
+    // 2. if table no exist. try to get schema from go level.
     LOG_INFO("try creating table[%lu] by schema from rocksdb. ", table_id);
-    if (!g_go_start_service) {  // unit test from c, just return falsed.
+    if (!g_go_start_service) {  // unit test from c, just return false.
       return KStatus::FAIL;
     }
     char* error;
@@ -549,25 +551,6 @@ KStatus TSEngineImpl::GetTsTable(kwdbContext_p ctx, const KTableKey& table_id, s
   return KStatus::SUCCESS;
 }
 
-KStatus TSEngineImpl::ProcessDrop(const KTableKey& table_id) {
-  if (!HasDroppedFlag(table_id)) {
-    createDroppedFlag(table_id);
-  }
-  LOG_INFO("Process Table Drop, table id:%ld", table_id);
-    // set flag, insert into dropped_tables_ and remove table schema
-  // is_dropped = true;
-  if (schema_mgr_->IsTableExist(table_id)) {
-    auto s = schema_mgr_->DropTableSchemaMgr(table_id);
-    if (s != KStatus::SUCCESS) {
-      LOG_ERROR("DropTableSchemaMgr failed, table id:%ld", table_id);
-      return s;
-    }
-  }
-  DropTableManager::getInstance().markTableDropped(table_id);
-  removeDroppedFlag(table_id);
-  return KStatus::SUCCESS;
-}
-
 KStatus TSEngineImpl::GetTableSchemaMgr(kwdbContext_p ctx, const KTableKey& table_id, bool& is_dropped,
                                           std::shared_ptr<TsTableSchemaManager>& schema) {
   std::shared_ptr<TsTable> tb;
@@ -580,11 +563,12 @@ KStatus TSEngineImpl::GetTableSchemaMgr(kwdbContext_p ctx, const KTableKey& tabl
     return s;
   }
   // TODO(liangbo01)  need input change version
-  s = schema_mgr_->GetTableSchemaMgr(table_id, schema);
+  s = schema_mgr_->GetTableSchemaMgr(table_id, schema, &is_dropped);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("GetTableSchemaMgr failed. table id: %lu", table_id);
+    return s;
   }
-  return s;
+  return KStatus::SUCCESS;
 }
 
 KStatus TSEngineImpl::CreateNormalTagIndex(kwdbContext_p ctx, const KTableKey& table_id, const uint64_t index_id,
@@ -670,7 +654,9 @@ KStatus TSEngineImpl::putTagData(kwdbContext_p ctx, TSTableID table_id, uint32_t
     std::shared_ptr<TsTableSchemaManager> tb_schema_manager;
     s = schema_mgr_->GetTableSchemaMgr(table_id, tb_schema_manager);
     if (s != KStatus::SUCCESS) {
+      is_dropped = true;
       LOG_ERROR("GetTableSchemaMgr failed. table id: %lu", table_id);
+      return s;
     }
     std::shared_ptr<TagTable> tag_table;
     s = tb_schema_manager->GetTagSchema(ctx, &tag_table);
@@ -814,6 +800,7 @@ KStatus TSEngineImpl::PutEntity(kwdbContext_p ctx, const KTableKey& table_id, ui
   KStatus s = GetTableSchemaMgr(ctx, table_id, is_dropped, tb_schema_manager);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("Get schema manager failed, table id[%lu]", table_id);
+    return s;
   }
   std::shared_ptr<TagTable> tag_table;
   s = tb_schema_manager->GetTagSchema(ctx, &tag_table);
@@ -925,8 +912,9 @@ KStatus TSEngineImpl::AddColumn(kwdbContext_p ctx, const KTableKey &table_id, ch
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("Add column failed, table id: %lu, cur_version: %d, new_version: %d, error message: %s.",
           table_id, cur_version, new_version, err_msg.c_str());
+    return s;
   }
-  return s;
+  return KStatus::SUCCESS;
 }
 
 KStatus TSEngineImpl::DropColumn(kwdbContext_p ctx, const KTableKey &table_id, char *transaction_id, bool& is_dropped,
@@ -958,8 +946,9 @@ KStatus TSEngineImpl::DropColumn(kwdbContext_p ctx, const KTableKey &table_id, c
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("Drop column failed, table id: %lu, cur_version: %d, new_version: %d, error message: %s.",
           table_id, cur_version, new_version, err_msg.c_str());
+    return s;
   }
-  return s;
+  return KStatus::SUCCESS;
 }
 
 KStatus TSEngineImpl::AlterColumnType(kwdbContext_p ctx, const KTableKey &table_id, char *transaction_id,
@@ -991,8 +980,9 @@ KStatus TSEngineImpl::AlterColumnType(kwdbContext_p ctx, const KTableKey &table_
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("Alter column type failed, table id: %lu, cur_version: %d, new_version: %d, error message: %s.",
     table_id, cur_version, new_version, err_msg.c_str());
+    return s;
   }
-  return s;
+  return KStatus::SUCCESS;
 }
 
 KStatus TSEngineImpl::AlterLifetime(kwdbContext_p ctx, const KTableKey& table_id, uint64_t lifetime, bool& is_dropped) {
@@ -1745,7 +1735,7 @@ KStatus TSEngineImpl::ReadBatchData(kwdbContext_p ctx, TSTableID table_id, uint6
 }
 
 KStatus TSEngineImpl::WriteBatchData(kwdbContext_p ctx, TSTableID table_id, uint64_t table_version, uint64_t job_id,
-                         TSSlice* data, uint32_t* row_num, bool& is_dropped) {
+                         TSSlice* data, uint32_t* row_num, TsDataSource source, bool& is_dropped) {
   std::shared_ptr<TsBatchDataWorker> worker = nullptr;
   RW_LATCH_S_LOCK(&write_batch_workers_lock_);
   auto it = write_batch_data_workers_.find(job_id);
@@ -1761,7 +1751,7 @@ KStatus TSEngineImpl::WriteBatchData(kwdbContext_p ctx, TSTableID table_id, uint
   if (it != write_batch_data_workers_.end()) {
     worker = it->second;
   } else {
-    worker = std::make_shared<TsWriteBatchDataWorker>(this, job_id);
+    worker = std::make_shared<TsWriteBatchDataWorker>(this, job_id, source);
     KStatus s = worker->Init(ctx);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("TsWriteBatchDataWorker init failed");
@@ -1886,14 +1876,85 @@ KStatus TSEngineImpl::DropResidualTsTable(kwdbContext_p ctx) {
   return KStatus::SUCCESS;
 }
 
+KStatus TSEngineImpl::readEntityIds(std::vector<uint32_t>& max_entity_ids) {
+  fs::path filePath = fs::path(options_.db_path) / "vg.mei";
+  if (!fs::exists(filePath)) {
+    return KStatus::SUCCESS;
+  }
+
+  max_entity_id_file_.open(filePath, std::ios::in | std::ios::out | std::ios::binary);
+  if (!max_entity_id_file_.is_open()) {
+    LOG_ERROR("Failed to open the MEI file.[%s]", filePath.c_str())
+    return KStatus::FAIL;
+  }
+  Defer defer {[&]() {
+    max_entity_id_file_.close();
+    max_entity_id_file_.clear();
+  }};
+
+  max_entity_id_file_.seekg(0, std::ios::beg);
+  size_t file_size = kwdbts::EngineOptions::vgroup_max_num * sizeof(uint32_t);
+
+  max_entity_id_file_.read(reinterpret_cast<char*>(max_entity_ids.data()), file_size);
+
+  if (!max_entity_id_file_) {
+    LOG_ERROR("Failed to read the MEI file.[%s]", filePath.c_str())
+    return KStatus::FAIL;
+  }
+
+  return KStatus::SUCCESS;
+}
+
+KStatus TSEngineImpl::writeEntityIdsBinary(const std::vector<uint32_t>& max_entity_ids) {
+  fs::path filePath = fs::path(options_.db_path) / "vg.mei";
+  std::lock_guard<std::mutex> lock(file_mutex_);
+  max_entity_id_file_.open(filePath, std::ios::out | std::ios::binary);
+  if (!max_entity_id_file_.is_open()) {
+    LOG_ERROR("Cannot open the MEI file.[%s]", filePath.c_str())
+    return KStatus::FAIL;
+  }
+  Defer defer {[&]() {
+    max_entity_id_file_.close();
+    max_entity_id_file_.clear();
+  }};
+  max_entity_id_file_.seekp(0, std::ios::beg);
+
+  size_t size = EngineOptions::vgroup_max_num * sizeof(uint32_t);
+  char* data = new char[size];
+  uint64_t offset = 0;
+  for (auto entity_id : max_entity_ids) {
+    memcpy(data + offset, &entity_id, sizeof(uint32_t));
+    offset += sizeof(uint32_t);
+  }
+  max_entity_id_file_.write(data, size);
+  max_entity_id_file_.flush();
+  delete []data;
+  return KStatus::SUCCESS;
+}
+
 KStatus TSEngineImpl::DropTsTable(kwdbContext_p ctx, const KTableKey& table_id) {
-  ErrorInfo err_info;
-  bool is_dropped = false;
-  auto s = CheckAndDropTsTable(ctx, table_id, is_dropped, err_info);
+  // wirte cur max entity id to MEI file.
+  std::vector<uint32_t> max_entity_ids(kwdbts::EngineOptions::vgroup_max_num, 0);
+  for (auto vgrp_id = 1; vgrp_id <= kwdbts::EngineOptions::vgroup_max_num; ++vgrp_id) {
+    uint32_t entity_id{0};
+    if (GetMaxEntityIdByVGroupId(ctx, vgrp_id, entity_id) == KStatus::FAIL) {
+      LOG_ERROR("Failed to GetMaxEntityIdByVGroupId for vgroup[%d]", vgrp_id)
+      return KStatus::FAIL;
+    }
+    max_entity_ids[vgrp_id - 1] = entity_id;
+  }
+
+  if (writeEntityIdsBinary(max_entity_ids) == KStatus::FAIL) {
+    LOG_ERROR("Failed to writeEntityIdsBinary.")
+    return KStatus::FAIL;
+  }
+
+  auto s = CheckAndDropTsTable(ctx, table_id);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("DropTsTable table[%lu] failed.", table_id);
+    return s;
   }
-  return s;
+  return KStatus::SUCCESS;
 }
 
 KStatus TSEngineImpl::recover(kwdbts::kwdbContext_p ctx) {
@@ -1966,10 +2027,6 @@ KStatus TSEngineImpl::recover(kwdbts::kwdbContext_p ctx) {
               }
               return s;
             }
-            if (table->IsDropped()) {
-              LOG_INFO("table[%lu] is dropped and does not require recover", table_id);
-              continue;
-            }
 
             s = table->UndoAlterTable(ctx, incomplete[mtr_id]);
             if (s == KStatus::FAIL) {
@@ -1996,10 +2053,6 @@ KStatus TSEngineImpl::recover(kwdbts::kwdbContext_p ctx) {
               }
               return s;
             }
-            if (table->IsDropped()) {
-              LOG_INFO("table[%lu] is dropped and does not require recover", table_id);
-              continue;
-            }
 
             s = table->UndoCreateIndex(ctx, incomplete[mtr_id]);
             if (s == KStatus::FAIL) {
@@ -2025,10 +2078,6 @@ KStatus TSEngineImpl::recover(kwdbts::kwdbContext_p ctx) {
                 continue;
               }
               return s;
-            }
-            if (table->IsDropped()) {
-              LOG_INFO("table[%lu] is dropped and does not require recover", table_id);
-              continue;
             }
 
             s = table->UndoDropIndex(ctx, incomplete[mtr_id]);
@@ -2089,10 +2138,6 @@ KStatus TSEngineImpl::recover(kwdbts::kwdbContext_p ctx) {
           }
           return s;
         }
-        if (table->IsDropped()) {
-          LOG_INFO("table[%lu] is dropped and does not require recover", table_id);
-          continue;
-        }
         s = table->UndoCreateIndex(ctx, index_log);
         if (s == KStatus::FAIL) {
           LOG_ERROR("Failed to recover create index %ld.", table_id)
@@ -2117,10 +2162,6 @@ KStatus TSEngineImpl::recover(kwdbts::kwdbContext_p ctx) {
             continue;
           }
           return s;
-        }
-        if (table->IsDropped()) {
-          LOG_INFO("table[%lu] is dropped and does not require recover", table_id);
-          continue;
         }
 
         s = table->UndoDropIndex(ctx, index_log);
@@ -2512,7 +2553,8 @@ KStatus TSEngineImpl::WriteSnapshotBatchData(kwdbContext_p ctx, uint64_t snapsho
     return KStatus::SUCCESS;
   }
   if (row_num > 0) {
-    auto s = WriteBatchData(ctx, table_id, table_version, ts_snapshot_info.id, &batch_data, &row_num, is_dropped);
+    auto s = WriteBatchData(ctx, table_id, table_version, ts_snapshot_info.id,
+                            &batch_data, &row_num, TsDataSource::Snapshot, is_dropped);
     if (s == KStatus::FAIL) {
       LOG_ERROR("WriteBatchData snapshot [%lu] failed.", snapshot_id);
       return s;
@@ -2553,6 +2595,7 @@ KStatus TSEngineImpl::WriteSnapshotSuccess(kwdbContext_p ctx, uint64_t snapshot_
   auto s = BatchJobFinish(ctx, snapshot_id);
   if (s != KStatus::SUCCESS) {
       LOG_ERROR("BatchJobFinish failed.");
+      return s;
   }
   s = ts_snapshot_info.del_iter->CommitDeleteInfo(ctx);
   if (s != KStatus::SUCCESS) {
@@ -2582,6 +2625,7 @@ KStatus TSEngineImpl::WriteSnapshotRollback(kwdbContext_p ctx, uint64_t snapshot
   auto s = CancelBatchJob(ctx, snapshot_id, osn);
   if (s != KStatus::SUCCESS) {
       LOG_ERROR("CancelBatchJob failed.");
+      return s;
   }
   uint64_t count;
   s = ts_snapshot_info.table->DeleteTotalRange(ctx, ts_snapshot_info.begin_hash, ts_snapshot_info.end_hash,
@@ -2670,6 +2714,7 @@ KStatus TSEngineImpl::GetMaxEntityIdByVGroupId(kwdbContext_p ctx, uint32_t vgrou
   KStatus s = GetAllTableSchemaMgrs(tb_schema_manager);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("Get all schema manager failed.");
+    return s;
   }
   std::shared_ptr<TagTable> tag_table;
   for (const auto& schema_mgr : tb_schema_manager) {
@@ -2757,9 +2802,7 @@ KStatus TSEngineImpl::GetTableBlocksDistribution(TSTableID table_id, TSSlice* bl
   std::shared_ptr<TsTableSchemaManager> tb_schema_mgr;
   KStatus s = schema_mgr_->GetTableSchemaMgr(table_id, tb_schema_mgr);
   if (s != KStatus::SUCCESS) {
-    if (tb_schema_mgr == nullptr) {
-      LOG_INFO("Table[%lu] has already been dropped.", table_id);
-    }
+    LOG_INFO("Table[%lu] has already been dropped.", table_id);
     return s;
   }
 
@@ -2850,31 +2893,6 @@ KStatus TSEngineImpl::GetDBBlocksDistribution(uint32_t db_id, TSSlice* blocks_in
     return KStatus::FAIL;
   }
   return SUCCESS;
-}
-
-void TSEngineImpl::createDroppedFlag(TSTableID table_id) {
-  std::string file_name = options_.db_path + "/" + schema_directory + "/." + to_string(table_id);
-  std::ofstream tmp_file(file_name);
-  if (tmp_file.is_open()) {
-    tmp_file.close();
-  } else {
-    LOG_ERROR("Failed to create drop flag file for table:%ld", table_id);
-  }
-}
-
-void TSEngineImpl::removeDroppedFlag(TSTableID table_id) {
-  std::string file_name = options_.db_path + "/" + schema_directory + "/." + to_string(table_id);
-  if (fs::exists(file_name)) {
-    fs::remove(file_name);
-  }
-}
-
-bool TSEngineImpl::HasDroppedFlag(TSTableID table_id) {
-  std::string file_name = options_.db_path + "/" + schema_directory + "/." + to_string(table_id);
-  if (fs::exists(file_name)) {
-    return true;
-  }
-  return false;
 }
 
 KStatus TSEngineImpl::ResetAllWALMgr(kwdbts::kwdbContext_p ctx) {

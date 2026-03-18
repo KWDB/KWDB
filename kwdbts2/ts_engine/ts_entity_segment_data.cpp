@@ -55,8 +55,9 @@ KStatus TsEntitySegmentBlockFile::Open() {
   header_ = reinterpret_cast<TsAggAndBlockFileHeader*>(header_guard_.data());
   if (header_->status != TsFileStatus::READY) {
     LOG_ERROR("TsEntitySegmentBlockFile not ready, file_path=%s", file_path_.c_str())
+    return KStatus::FAIL;
   }
-  return s;
+  return KStatus::SUCCESS;
 }
 
 KStatus TsEntitySegmentBlockFile::ReadData(uint64_t offset, TsSliceGuard* data, size_t len) {
@@ -75,7 +76,7 @@ KStatus TsEntitySegmentAggFile::Open() {
   std::string file_path_ = root_ / EntityAggFileName(info_.agg_info.file_number);
   if (io_env_->NewRandomReadFile(file_path_, &r_file_, info_.agg_info.length) != KStatus::SUCCESS) {
     LOG_ERROR("TsEntitySegmentAggFile NewRandomReadFile failed, file_path=%s", file_path_.c_str())
-    assert(false);
+    return KStatus::FAIL;
   }
 
   if (r_file_->GetFileSize() < sizeof(TsAggAndBlockFileHeader)) {
@@ -90,8 +91,9 @@ KStatus TsEntitySegmentAggFile::Open() {
   header_ = reinterpret_cast<TsAggAndBlockFileHeader*>(header_guard_.data());
   if (header_->status != TsFileStatus::READY) {
     LOG_ERROR("TsEntitySegmentAggFile not ready, file_path=%s", file_path_.c_str())
+    return KStatus::FAIL;
   }
-  return s;
+  return KStatus::SUCCESS;
 }
 
 KStatus TsEntitySegmentAggFile::ReadAggData(uint64_t offset, TsSliceGuard* data, size_t len) {

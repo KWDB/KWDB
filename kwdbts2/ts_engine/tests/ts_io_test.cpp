@@ -43,7 +43,7 @@
 #include "libkwdbts2.h"
 
 using namespace kwdbts;  // NOLINT
-TEST(MMapIOV2, Write) {
+TEST(TsFIOEnv, Write) {
   TsIOEnv* env = &TsIOEnv::GetInstance();
   std::unique_ptr<TsAppendOnlyFile> wfile;
   std::string filename = "append1";
@@ -164,7 +164,90 @@ TEST(MMapIOV2, Write) {
   fs::remove(filename);
 }
 
-TEST(MMapIOV2, SequentialRead) {
+TEST(TsFIOEnv, AppendOnlyFileCloseAndClosedOperations) {
+  TsFIOEnv fio_env;
+  std::unique_ptr<TsAppendOnlyFile> wfile;
+  std::string filename = "fio_append_close_test";
+  fs::remove(filename);
+
+  auto s = fio_env.NewAppendOnlyFile(filename, &wfile);
+  ASSERT_EQ(s, SUCCESS);
+  ASSERT_NE(wfile, nullptr);
+
+  EXPECT_EQ(wfile->Append("abc"), SUCCESS);
+  EXPECT_EQ(wfile->Close(), SUCCESS);
+  EXPECT_EQ(wfile->Close(), SUCCESS);
+  EXPECT_EQ(wfile->Append("def"), FAIL);
+  EXPECT_EQ(wfile->Sync(), FAIL);
+
+  std::unique_ptr<TsRandomReadFile> rfile;
+  s = fio_env.NewRandomReadFile(filename, &rfile);
+  ASSERT_EQ(s, SUCCESS);
+  TsSliceGuard result;
+  ASSERT_EQ(rfile->Read(0, rfile->GetFileSize(), &result), SUCCESS);
+  std::string_view sv{result.data(), result.size()};
+  EXPECT_EQ(sv, "abc");
+
+  fs::remove(filename);
+}
+
+TEST(TsFIOEnv, RandomReadFileShortReadAfterTruncate) {
+  TsFIOEnv fio_env;
+  std::unique_ptr<TsAppendOnlyFile> wfile;
+  std::string filename = "fio_random_short_read_test";
+  fs::remove(filename);
+
+  auto s = fio_env.NewAppendOnlyFile(filename, &wfile);
+  ASSERT_EQ(s, SUCCESS);
+  ASSERT_NE(wfile, nullptr);
+  ASSERT_EQ(wfile->Append("abcdef"), SUCCESS);
+  ASSERT_EQ(wfile->Close(), SUCCESS);
+
+  std::unique_ptr<TsRandomReadFile> rfile;
+  s = fio_env.NewRandomReadFile(filename, &rfile);
+  ASSERT_EQ(s, SUCCESS);
+  TsSliceGuard result;
+  ASSERT_EQ(rfile->Read(0, 2, &result), SUCCESS);
+  EXPECT_EQ(result.size(), 2);
+  ASSERT_EQ(truncate(filename.c_str(), 3), 0);
+
+  EXPECT_EQ(rfile->Read(0, 6, &result), FAIL);
+  EXPECT_EQ(result.size(), 0);
+
+  fs::remove(filename);
+}
+
+TEST(TsFIOEnv, SequentialReadFileShortReadAfterTruncate) {
+  TsFIOEnv fio_env;
+  std::unique_ptr<TsAppendOnlyFile> wfile;
+  std::string filename = "fio_sequential_short_read_test";
+  fs::remove(filename);
+
+  auto s = fio_env.NewAppendOnlyFile(filename, &wfile);
+  ASSERT_EQ(s, SUCCESS);
+  ASSERT_NE(wfile, nullptr);
+  ASSERT_EQ(wfile->Append("abcdef"), SUCCESS);
+  ASSERT_EQ(wfile->Close(), SUCCESS);
+
+  std::unique_ptr<TsSequentialReadFile> sfile;
+  s = fio_env.NewSequentialReadFile(filename, &sfile);
+  ASSERT_EQ(s, SUCCESS);
+  TsSliceGuard result;
+  ASSERT_EQ(sfile->Read(2, &result), SUCCESS);
+  EXPECT_EQ(result.size(), 2);
+  ASSERT_EQ(sfile->Seek(0), SUCCESS);
+  ASSERT_EQ(truncate(filename.c_str(), 3), 0);
+
+  EXPECT_EQ(sfile->Read(6, &result), FAIL);
+  EXPECT_EQ(result.size(), 0);
+  ASSERT_EQ(sfile->Read(3, &result), SUCCESS);
+  std::string_view sv{result.data(), result.size()};
+  EXPECT_EQ(sv, "abc");
+
+  fs::remove(filename);
+}
+
+TEST(TsFIOEnv, SequentialRead) {
   std::string filename = "sequential_test";
   fs::remove(filename);
   std::ofstream f(filename);
@@ -192,7 +275,7 @@ TEST(MMapIOV2, SequentialRead) {
   EXPECT_EQ(sfile->Read(10, &result), FAIL);
 }
 
-TEST(MMapIOV2, OpenZeroSizeFile) {
+TEST(TsFIOEnv, OpenZeroSizeFile) {
   TsIOEnv* env = &TsIOEnv::GetInstance();
 
   std::string filename = "zero_size_file";
@@ -247,7 +330,7 @@ TEST(MMapIOV2, OpenZeroSizeFile) {
   }
 }
 
-TEST(MMapIOV2, FailedCases) {
+TEST(TsFIOEnv, FailedCases) {
   TsIOEnv* env = &TsIOEnv::GetInstance();
 
   // open a non-exist file
@@ -278,7 +361,7 @@ TEST(MMapIOV2, FailedCases) {
   fs::remove(filename);
 }
 
-TEST(MMapIOV2, ReadAfterAllocate) {
+TEST(TsFIOEnv, ReadAfterAllocate) {
   TsIOEnv* env = &TsIOEnv::GetInstance();
   char block[4096];
   for (int i = 0; i < 4096; ++i) {
@@ -308,10 +391,13 @@ TEST(MMapIOV2, ReadAfterAllocate) {
   for (int i = 0; i < 4096; ++i) {
     ASSERT_EQ(result.data()[i], block[i]);
   }
+  ASSERT_EQ(wfile->Close(), SUCCESS);
+  wfile.reset();
+  rfile.reset();
   fs::remove(filepath);
 }
 
-TEST(MMapIOV2, ConcurrentReadWrite) {
+TEST(TsFIOEnv, ConcurrentReadWrite) {
   TsIOEnv* env = &TsIOEnv::GetInstance();
   std::atomic<size_t> file_size{0};
   std::atomic_bool finished{false};

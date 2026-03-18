@@ -60,7 +60,7 @@ int MMapFile::open() {
           S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP)) < 0) {
   open_error:
           mem_ = 0;
-          LOG_ERROR("open() failed: errno[%d], file[%s]", errno, absolute_file_path_.c_str());
+          LOG_ERROR("open() failed: errno[%d], errmsg[%s], file[%s]", errno, strerror(errno), absolute_file_path_.c_str());
           return reportError();
         }
       } else {

@@ -44,9 +44,6 @@ class TsTableV2Impl : public TsTable {
     return table_schema_mgr_->GetCurrentVersion();
   }
 
-  void SetDropped() override;
-  bool IsDropped() override;
-
   std::shared_ptr<TsTableSchemaManager> GetSchemaManager() {
     return table_schema_mgr_;
   }

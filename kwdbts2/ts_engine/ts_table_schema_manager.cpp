@@ -188,6 +188,28 @@ std::shared_ptr<MMapMetricsTable> TsTableSchemaManager::open(uint32_t ts_version
   return tmp_schema;
 }
 
+void TsTableSchemaManager::ReleaseOwnedSchemaResources() {
+  {
+    RW_LATCH_X_LOCK(&ver_conv_rw_lock_);
+    Defer defer{[&]() { RW_LATCH_UNLOCK(&ver_conv_rw_lock_); }};
+    version_conv_map.clear();
+  }
+  tag_table_.reset();
+  metric_mgr_.reset();
+}
+
+TsTableSchemaManager::~TsTableSchemaManager() {
+  if (dropped_) {
+    ReleaseOwnedSchemaResources();
+    ErrorInfo err_info;
+    if (!Remove(table_path_, err_info)) {
+      LOG_WARN("remove dropped table path [%s] failed: %s", table_path_.string().c_str(), err_info.errmsg.c_str());
+    } else {
+      LOG_INFO("Drop table %lu succeeded", table_id_);
+    }
+  }
+}
+
 bool TsTableSchemaManager::IsSchemaDirsExist() {
   return IsExists(table_path_ / metric_path_) && IsExists(table_path_ / tag_path_);
 }
@@ -201,8 +223,8 @@ KStatus TsTableSchemaManager::Init() {
               tag_path_.c_str(), table_id_, err_info.errmsg.c_str());
   }
 
-  metric_mgr_ = std::make_shared<MetricsVersionManager>(table_path_ / metric_path_, table_id_);
   uint32_t tag_cur_version = tag_table_->GetTagTableVersionManager()->GetCurrentTableVersion();
+  metric_mgr_ = std::make_shared<MetricsVersionManager>(table_path_ / metric_path_, table_id_);
 
   std::vector<uint32_t> invalid_metric_versions;
   auto s = metric_mgr_->Init(invalid_tag_versions, invalid_metric_versions, tag_cur_version);
@@ -210,6 +232,11 @@ KStatus TsTableSchemaManager::Init() {
     LOG_ERROR("table %lu metric manager init failed", table_id_)
     return s;
   }
+
+  if (0 == metric_mgr_->GetCurrentMetricsVersion()) {
+    return SUCCESS;
+  }
+
   int64_t partition_interval = metric_mgr_->GetPartitionInterval();
   // compatibility process for updating v3.0 to v3.1, partition interval is 0 or other random value in v3.0,
   // set it to default value
@@ -575,14 +602,6 @@ void TsTableSchemaManager::SetPartitionInterval(uint64_t partition_interval) {
 
 uint32_t TsTableSchemaManager::GetDbID() const {
   return metric_mgr_->GetDbID();
-}
-
-KStatus TsTableSchemaManager::SetDropped() {
-  return metric_mgr_->SetDropped();
-}
-
-bool TsTableSchemaManager::IsDropped() {
-  return metric_mgr_->IsDropped();
 }
 
 KStatus TsTableSchemaManager::RemoveAll() {

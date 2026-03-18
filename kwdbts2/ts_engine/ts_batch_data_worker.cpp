@@ -366,8 +366,8 @@ KStatus TsReadBatchDataWorker::Finish(kwdbContext_p ctx) {
   return KStatus::SUCCESS;
 }
 
-TsWriteBatchDataWorker::TsWriteBatchDataWorker(TSEngineImpl* ts_engine, uint64_t job_id)
-                                               : TsBatchDataWorker(job_id), ts_engine_(ts_engine),
+TsWriteBatchDataWorker::TsWriteBatchDataWorker(TSEngineImpl* ts_engine, uint64_t job_id, TsDataSource source)
+                                               : TsBatchDataWorker(job_id), ts_engine_(ts_engine), source_(source),
                                                  w_file_latch_(LATCH_ID_TAG_TABLE_VERSION_MUTEX) {}
 
 TsWriteBatchDataWorker::~TsWriteBatchDataWorker() {
@@ -422,7 +422,7 @@ TsWriteBatchDataWorker::~TsWriteBatchDataWorker() {
       TSSlice data = block_data.AsSlice();
       s = ts_engine_->GetTsVGroup(header.vgroup_id)
               ->WriteBatchData(header.table_id, header.table_version, header.entity_id, header.p_time,
-                               header.batch_version, data);
+                               header.batch_version, data, source_);
       if (s != KStatus::SUCCESS) {
         LOG_ERROR("WriteBatchData failed, table_id[%lu], entity_id[%lu]", header.table_id, header.entity_id);
         return;
@@ -490,6 +490,10 @@ KStatus TsWriteBatchDataWorker::Write(kwdbContext_p ctx, TSTableID table_id, uin
   bool is_dropped = false;
   KStatus s = ts_engine_->GetTsTable(ctx, table_id, ts_table, is_dropped, true, err_info, table_version);
   if (s != KStatus::SUCCESS) {
+    if (is_dropped) {
+      LOG_WARN("TsWriteBatchDataWorker::Write abort, table %lu has been dropped", table_id);
+      return KStatus::SUCCESS;
+    }
     LOG_ERROR("GetTsTable[%lu] failed, %s", table_id, err_info.toString().c_str());
     return KStatus::FAIL;
   }

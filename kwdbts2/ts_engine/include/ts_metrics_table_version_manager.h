@@ -81,10 +81,6 @@ class MetricsVersionManager {
 
   void Sync(const kwdbts::TS_OSN& check_lsn, ErrorInfo& err_info);
 
-  KStatus SetDropped();
-
-  bool IsDropped();
-
   KStatus RemoveAll();
 
   KStatus UndoAlterCol(uint32_t old_version, uint32_t new_version);

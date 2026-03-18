@@ -59,8 +59,8 @@ class TsTableSchemaManager {
   // schema path of the tag
   fs::path tag_path_;
   uint64_t hash_num_;
-
   int64_t partition_interval_ = -1;
+  std::atomic<bool> dropped_ = false;
 
  protected:
   uint32_t cur_version_{0};
@@ -81,6 +81,8 @@ class TsTableSchemaManager {
     metric_path_ = "metric";
     tag_path_ = "tag/";  // tag use '+' to generate file path, '/' is needed.
   }
+
+  ~TsTableSchemaManager();
 
   bool IsSchemaDirsExist();
 
@@ -150,10 +152,6 @@ class TsTableSchemaManager {
 
   uint32_t GetDbID() const;
 
-  KStatus SetDropped();
-
-  bool IsDropped();
-
   KStatus RemoveAll();
 
   KStatus AlterTable(kwdbContext_p ctx, AlterType alter_type, roachpb::KWDBKTSColumn* column,
@@ -191,7 +189,21 @@ class TsTableSchemaManager {
     return metric_mgr_->GetCurrentMetricsTable();
   }
 
+  void SetDropped() {
+    dropped_ = true;
+  }
+
+  bool IsDropped() {
+    return dropped_;
+  }
+
+  fs::path GetMetricSchemaPath() const { return metric_path_;}
+
+  fs::path GetTagSchemaPath() const { return tag_path_;}
+
  private:
+  void ReleaseOwnedSchemaResources();
+
   std::shared_ptr<MMapMetricsTable> open(uint32_t version, ErrorInfo& err_info);
 
   KStatus getColumnIndex(const AttributeInfo& attr_info, int& col_no);

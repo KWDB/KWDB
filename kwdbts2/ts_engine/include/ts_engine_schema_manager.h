@@ -49,16 +49,14 @@ class TsEngineSchemaManager {
 
   KStatus CreateTable(kwdbContext_p ctx, const uint32_t& db_id, const KTableKey& table_id, roachpb::CreateTsTable* meta);
 
-  KStatus GetTableMetricSchema(kwdbContext_p ctx, TSTableID tbl_id, uint32_t version,
-                               std::shared_ptr<MMapMetricsTable>* metric_schema);
-
   bool IsTableExist(TSTableID tbl_id);
 
-  KStatus GetTableSchemaMgr(TSTableID tbl_id, std::shared_ptr<TsTableSchemaManager>& tb_schema_mgr);
+  KStatus GetTableSchemaMgr(TSTableID tbl_id, std::shared_ptr<TsTableSchemaManager>& tb_schema_mgr,
+                            bool* is_dropped = nullptr);
 
   KStatus GetAllTableSchemaMgrs(std::vector<std::shared_ptr<TsTableSchemaManager>>& tb_schema_mgr);
 
-  KStatus DropTableSchemaMgr(TSTableID tbl_id);
+  KStatus SetTableDropped(TSTableID tbl_id);
 
   KStatus GetTableList(std::vector<TSTableID>* table_ids);
 
@@ -72,6 +70,8 @@ class TsEngineSchemaManager {
 
   KStatus AlterTable(kwdbContext_p ctx, const KTableKey& table_id, AlterType alter_type, roachpb::KWDBKTSColumn* column,
                      uint32_t cur_version, uint32_t new_version, string& msg);
+
+  fs::path GetSchemaPath() const {return schema_root_path_;}
 
   int rdLock();
 

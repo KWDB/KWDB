@@ -51,8 +51,9 @@ KStatus TsEntitySegmentEntityItemFile::Open() {
   header_ = reinterpret_cast<TsEntityItemFileHeader*>(header_guard_.data());
   if (header_->status != TsFileStatus::READY) {
     LOG_ERROR("TsEntitySegmentEntityItemFile not ready, file_path=%s", file_path_.c_str())
+    return KStatus::FAIL;
   }
-  return s;
+  return KStatus::SUCCESS;
 }
 KStatus TsEntitySegmentEntityItemFile::SetEntityItemDropped(uint64_t entity_id) {
   // todo(liangbo01) readonly_file ,cannot modify.

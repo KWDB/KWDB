@@ -200,6 +200,11 @@ class TsBlockSpan {
   void GetMinAndMaxOSN(uint64_t& min_osn, uint64_t& max_osn, TsScanStats* ts_scan_stats = nullptr) const {
     if (nrow_ == block_->GetRowNum()) {
       block_->GetMinAndMaxOSN(min_osn, max_osn);
+      if (min_osn == UINT64_MAX || max_osn == 0) {
+        min_osn = UINT64_MAX;
+        max_osn = 0;
+        block_->GetMinAndMaxOSN(start_row_, nrow_, min_osn, max_osn);
+      }
     } else {
       min_osn = UINT64_MAX;
       max_osn = 0;
@@ -209,14 +214,16 @@ class TsBlockSpan {
 
   uint64_t GetFirstOSN(TsScanStats* ts_scan_stats = nullptr) const {
     if (start_row_ == 0) {
-      return block_->GetFirstOSN();
+      uint64_t osn = block_->GetFirstOSN();
+      return osn != 0 ? osn : block_->GetOSN(start_row_);
     } else {
       return block_->GetOSN(start_row_);
     }
   }
   uint64_t GetLastOSN(TsScanStats* ts_scan_stats = nullptr) const {
     if (start_row_ + nrow_ == block_->GetRowNum()) {
-      return block_->GetLastOSN();
+      uint64_t osn = block_->GetLastOSN();
+      return osn != 0 ? osn : block_->GetOSN(start_row_ + nrow_ - 1);
     } else {
       return block_->GetOSN(start_row_ + nrow_ - 1);
     }

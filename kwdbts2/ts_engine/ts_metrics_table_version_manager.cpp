@@ -15,6 +15,7 @@
 #include <sys/stat.h>
 
 #include "sys_utils.h"
+#include  "ts_io.h"
 
 namespace kwdbts {
 inline string IdToSchemaFileName(const KTableKey& table_id, uint32_t ts_version) {
@@ -108,6 +109,10 @@ KStatus MetricsVersionManager::CreateTable(kwdbContext_p ctx, std::vector<Attrib
                                            uint64_t hash_num, ErrorInfo& err_info) {
   wrLock();
   Defer defer([&]() { unLock(); });
+  auto s = TsIOEnv::GetInstance().NewDirectory(metric_schema_path_);
+  if (s != SUCCESS) {
+    return s;
+  }
   string schema_file_name  = IdToSchemaFileName(table_id_, ts_version);
   int encoding = ENTITY_TABLE | NO_DEFAULT_TABLE;
   auto tmp_schema = std::make_shared<MMapMetricsTable>();
@@ -254,34 +259,6 @@ void MetricsVersionManager::Sync(const kwdbts::TS_OSN& check_lsn, ErrorInfo& err
       root_table.second->Sync(check_lsn, err_info);
     }
   }
-}
-
-KStatus MetricsVersionManager::SetDropped() {
-  wrLock();
-  Defer defer([&]() { unLock(); });
-  std::vector<std::shared_ptr<MMapMetricsTable>> completed_tables;
-  // Iterate through all versions of the schema, updating the drop flag
-  for (auto& root_table : metric_tables_) {
-    if (!root_table.second) {
-      ErrorInfo err_info;
-      root_table.second = open(root_table.first, err_info);
-      if (!root_table.second) {
-        LOG_ERROR("schema[%s] set drop failed", IdToSchemaFileName(table_id_, root_table.first).c_str());
-        // rollback
-        for (const auto& completed_table : completed_tables) {
-          completed_table->setNotDropped();
-        }
-        return FAIL;
-      }
-    }
-    root_table.second->setDropped();
-    completed_tables.push_back(root_table.second);
-  }
-  return SUCCESS;
-}
-
-bool MetricsVersionManager::IsDropped() {
-  return GetCurrentMetricsTable()->isDropped();
 }
 
 KStatus MetricsVersionManager::RemoveAll() {

@@ -1021,29 +1021,27 @@ KStatus TsPartitionVersion::NeedVacuumEntitySegment(const fs::path& root_path, T
           continue;
         }
         for (const auto& block_data : block_datas) {
-          if (block_data.block_item->block_id - 1 != block_data.block_item->prev_block_id) {
+          if (block_data.block_item->prev_block_id != 0 &&
+              block_data.block_item->block_id - 1 != block_data.block_item->prev_block_id) {
             need_vacuum = true;
             return SUCCESS;
           }
         }
       }
       if (traversed_table.count(entity_item.table_id) == 0) {
+        bool is_dropped = false;
         std::shared_ptr<TsTableSchemaManager> tb_schema_mgr{nullptr};
-        s = schema_manager->GetTableSchemaMgr(entity_item.table_id, tb_schema_mgr);
+        s = schema_manager->GetTableSchemaMgr(entity_item.table_id, tb_schema_mgr, &is_dropped);
         if (s != SUCCESS) {
-          if (tb_schema_mgr == nullptr) {
+          if (is_dropped) {
             need_vacuum = true;
             return SUCCESS;
           }
-          return s;
+          LOG_ERROR("GetTableSchemaMgr failed, table id [%lu]", entity_item.table_id);
+          return FAIL;
         }
         auto life_time = tb_schema_mgr->GetLifeTime();
-
         bool has_lifetime = life_time.ts != 0;
-        if (tb_schema_mgr->IsDropped()) {
-          need_vacuum = true;
-          return SUCCESS;
-        }
         if (has_lifetime) {
           auto start_ts = (now.time_since_epoch().count() - life_time.ts) * life_time.precision;
           auto end_time = GetTsColTypeEndTime(tb_schema_mgr->GetTsColDataType());

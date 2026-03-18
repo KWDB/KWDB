@@ -35,7 +35,6 @@
 #include "ts_version.h"
 #include "ts_vgroup.h"
 #include "ts_table_del_info.h"
-#include "ts_drop_manager.h"
 
 extern bool g_go_start_service;
 
@@ -73,6 +72,8 @@ class TSEngineImpl : public TSEngine {
   std::map<uint64_t, uint64_t> range_indexes_map_;
   std::unique_ptr<WALMgr> wal_sys_ = nullptr;
   std::unique_ptr<TSxMgr> tsx_manager_sys_ = nullptr;
+  std::fstream max_entity_id_file_;
+  std::mutex file_mutex_;
 
   std::unordered_map<uint64_t, std::unordered_map<std::string, std::shared_ptr<TsBatchDataWorker>>> read_batch_data_workers_;
   KRWLatch read_batch_workers_lock_;
@@ -110,13 +111,11 @@ class TSEngineImpl : public TSEngine {
     return KStatus::SUCCESS;
   }
 
-  KStatus CheckAndDropTsTable(kwdbContext_p ctx, const KTableKey& table_id, bool& is_dropped, ErrorInfo& err_info);
+    KStatus CheckAndDropTsTable(kwdbContext_p ctx, const KTableKey& table_id);
 
   KStatus GetTsTable(kwdbContext_p ctx, const KTableKey& table_id, std::shared_ptr<TsTable>& ts_table, bool& is_dropped,
                      bool create_if_not_exist = true, ErrorInfo& err_info = getDummyErrorInfo(),
                      uint32_t version = 0) override;
-
-  KStatus ProcessDrop(const KTableKey& table_id);
 
   std::vector<std::shared_ptr<TsVGroup>>* GetTsVGroups();
 
@@ -194,7 +193,7 @@ class TSEngineImpl : public TSEngine {
                         uint32_t* row_num, bool& is_dropped) override;
 
   KStatus WriteBatchData(kwdbContext_p ctx, TSTableID table_id, uint64_t table_version, uint64_t job_id,
-                         TSSlice* data, uint32_t* row_num, bool& is_dropped) override;
+                         TSSlice* data, uint32_t* row_num, TsDataSource source, bool& is_dropped) override;
 
   KStatus CancelBatchJob(kwdbContext_p ctx, uint64_t job_id, uint64_t osn) override;
 
@@ -332,9 +331,6 @@ class TSEngineImpl : public TSEngine {
 
   KStatus ParallelRemoveChkFiles(kwdbContext_p ctx);
 
-  bool HasDroppedFlag(TSTableID id);
-
-
   KStatus DeleteEntityByTag(kwdbContext_p ctx, const KTableKey& table_id, bool& is_dropped,
                             const std::vector<uint32_t/*index_id*/> &tags_index_id,
                             std::vector<std::string> tags, uint64_t* count, uint64_t mtr_id, const HashIdSpan& hash_span,
@@ -355,9 +351,9 @@ class TSEngineImpl : public TSEngine {
 
   uint64_t insertToSnapshotCache(TsRangeImgrationInfo& snapshot);
 
-  void createDroppedFlag(TSTableID table_id);
+  KStatus writeEntityIdsBinary(const std::vector<uint32_t>& max_entity_id);
 
-  void removeDroppedFlag(TSTableID table_id);
+  KStatus readEntityIds(std::vector<uint32_t>& max_entity_id);
 };
 
 }  //  namespace kwdbts

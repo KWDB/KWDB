@@ -50,7 +50,10 @@ struct TsEntitySegmentBlockItem {
   uint64_t agg_offset = 0;
   uint32_t agg_len = 0;
   uint32_t block_version = INVALID_BLOCK_VERSION;
-  char reserved[16] = {0};  // reserved for user-defined information.
+  uint8_t source = TsDataSource::None;
+  char reserved_1[3] = {0};
+  uint32_t table_id = 0;
+  char reserved_2[8] = {0};  // reserved for user-defined information.
 };
 static_assert(sizeof(TsEntitySegmentBlockItem) == 128,
               "wrong size of TsEntitySegmentBlockItem, please check compatibility.");

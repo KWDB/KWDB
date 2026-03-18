@@ -291,10 +291,6 @@ class TsTable {
 
   virtual uint64_t GetPartitionInterval();
 
-  virtual void SetDropped();
-
-  virtual bool IsDropped();
-
   /**
     * @brief clean ts table
     *

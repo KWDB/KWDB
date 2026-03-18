@@ -10,6 +10,7 @@
 // See the Mulan PSL v2 for more details.
 
 #include "libkwdbts2.h"
+#include "sys_utils.h"
 #include "test_util.h"
 #include "ts_engine.h"
 #include "ts_table.h"
@@ -28,7 +29,6 @@ class TestDropTable : public ::testing::Test {
     ctx_ = &g_ctx_;
     InitKWDBContext(ctx_);
     KWDBDynamicThreadPool::GetThreadPool().Init(8, ctx_);
-    DropTableManager::getInstance().clearAllDroppedTables();
   }
 
   virtual void TearDown() override {
@@ -58,6 +58,7 @@ class TestDropTable : public ::testing::Test {
 
 TEST_F(TestDropTable, basicDrop) {
   TSTableID table_id = 999;
+  fs::path table_schema_path = fs::path(engine_root_path) / "schema" / std::to_string(table_id);
   roachpb::CreateTsTable pb_meta;
   ConstructRoachpbTable(&pb_meta, table_id);
   std::shared_ptr<TsTable> ts_table;
@@ -84,45 +85,12 @@ TEST_F(TestDropTable, basicDrop) {
   s = engine_->DropTsTable(ctx_, table_id);
   ASSERT_EQ(s, KStatus::SUCCESS);
 
+  is_dropped = table_schema_mgr->IsDropped();
+  ASSERT_TRUE(is_dropped);
+  ASSERT_TRUE(IsExists(table_schema_path));
 
-  is_dropped = DropTableManager::getInstance().isTableDropped(table_id);
-  ASSERT_TRUE(is_dropped);
+  ts_table.reset();
+  table_schema_mgr.reset();
 
-  is_dropped = false;
-  s = engine_->GetTsTable(ctx_, table_id, ts_table, is_dropped);
-  ASSERT_EQ(s, KStatus::FAIL);
-  ASSERT_TRUE(is_dropped);
-
-  table_schema_mgr = nullptr;
-  s = engine_->GetTableSchemaMgr(ctx_, table_id, is_dropped, table_schema_mgr);
-  ASSERT_EQ(s , KStatus::FAIL);
-  ASSERT_TRUE(is_dropped);
-  ASSERT_EQ(table_schema_mgr, nullptr);
-}
-
-TEST_F(TestDropTable, hasFlagFile)
-{
-  TSTableID table_id = 999;
-  roachpb::CreateTsTable pb_meta;
-  ConstructRoachpbTable(&pb_meta, table_id);
-  std::shared_ptr<TsTable> ts_table;
-  auto s = engine_->CreateTsTable(ctx_, table_id, &pb_meta, ts_table);
-  ASSERT_EQ(s, KStatus::SUCCESS);
-  std::string file_name = opts_.db_path + "/schema/." + to_string(table_id);
-  std::ofstream tmp_file(file_name);
-  if (tmp_file.is_open())
-  {
-    tmp_file.close();
-  }
-  bool is_dropped = engine_->HasDroppedFlag(table_id);
-  ASSERT_TRUE(is_dropped);
-  is_dropped = false;
-  ErrorInfo err_info;
-  s = engine_->CheckAndDropTsTable(ctx_, table_id, is_dropped, err_info);
-  ASSERT_EQ(s, KStatus::SUCCESS);
-  ASSERT_TRUE(is_dropped);
-
-  is_dropped = false;
-  is_dropped = DropTableManager::getInstance().isTableDropped(table_id);
-  ASSERT_TRUE(is_dropped);
+  ASSERT_FALSE(IsExists(table_schema_path));
 }

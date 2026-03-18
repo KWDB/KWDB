@@ -24,6 +24,7 @@
 #include "ts_column_block.h"
 #include "ts_common.h"
 #include "ts_sliceguard.h"
+#include "ts_table_schema_manager.h"
 namespace kwdbts {
 
 struct TsMetricCompressInfo {
@@ -67,6 +68,7 @@ class TsMetricBlockBuilder {
   // TODO(zzr): avoid copy schema;
   // Note: DO NOT USE const reference. If so, col_schemas_ may point to an object created on
   // stack and will be destroyed after the function returns.
+  std::shared_ptr<TsTableSchemaManager> table_schema_manager_;
   const std::vector<AttributeInfo>* col_schemas_{nullptr};
   std::vector<std::unique_ptr<TsColumnBlockBuilder>> column_block_builders_;
 
@@ -74,8 +76,11 @@ class TsMetricBlockBuilder {
   std::vector<uint64_t> osn_buffer_;
 
  public:
-  explicit TsMetricBlockBuilder(const std::vector<AttributeInfo>* col_schemas)
-      : col_schemas_(col_schemas), column_block_builders_(col_schemas_->size()) {
+  explicit TsMetricBlockBuilder(const std::vector<AttributeInfo>* col_schemas,
+                                std::shared_ptr<TsTableSchemaManager> table_schema_manager)
+      : table_schema_manager_(std::move(table_schema_manager)),
+        col_schemas_(col_schemas),
+        column_block_builders_(col_schemas_->size()) {
     for (size_t i = 0; i < col_schemas->size(); i++) {
       column_block_builders_[i] = std::make_unique<TsColumnBlockBuilder>((*col_schemas_)[i]);
     }

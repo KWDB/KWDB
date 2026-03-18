@@ -994,12 +994,13 @@ TEST_F(TestV2Iterator, blockCacheDetachMMAP) {
 
   // After data query, there is no new entity block mmap file are opened.
   ASSERT_EQ(created_entity_block_file_count - destroyed_entity_block_file_count, 4);
-  /* block cache memory size is: 10830 = (30 * 8 bytes + (30 * 4 bytes + 1 byte)) * 30
+  /* block cache memory size is: 10830 = (30 * 8 bytes + 30 * 8 bytes + (30 * 4 bytes + 1 byte)) * 30
    * 30 entities, 30 rows per entity
    * timestamp column size is 8 bytes
+   * osn column size is 8 bytes
    * int column size is 4 bytes, each block has one byte bitmap
    */
-  ASSERT_EQ(TsLRUBlockCache::GetInstance().GetMemorySize(), 10830);
+  ASSERT_EQ(TsLRUBlockCache::GetInstance().GetMemorySize(), 18030);
 
   for (int j = 0; j < insert_times; ++j) {
     start_ts += 1000;

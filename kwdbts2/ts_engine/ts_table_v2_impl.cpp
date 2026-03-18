@@ -37,15 +37,6 @@ TsTableV2Impl::~TsTableV2Impl() {
   // }
 }
 
-void TsTableV2Impl::SetDropped() {
-  table_dropped_.store(true);
-  table_schema_mgr_->SetDropped();
-}
-
-bool TsTableV2Impl::IsDropped() {
-  return table_dropped_.load();
-}
-
 KStatus TsTableV2Impl::PutData(kwdbContext_p ctx, TsVGroup* v_group, TSSlice* payload, int payload_num,
                           uint64_t mtr_id, TSEntityID entity_id, uint32_t* inc_unordered_cnt,
                           DedupResult* dedup_result, const DedupRule& dedup_rule, bool write_wal) {
@@ -536,10 +527,11 @@ KwTsSpan ts_span, uint64_t mtr_id, uint64_t osn) {
     LOG_ERROR("DeleteRangeEntities failed.");
     return s;
   }
-  if (DropTableManager::getInstance().isTableDropped(table_id_)) {
+  if (table_schema_mgr_->IsDropped()) {
     LOG_WARN("table[%lu] is dropped. DeleteTotalRange skip end.", table_id_);
     return KStatus::SUCCESS;
   }
+
   // mark all deleted tags to delete_by_snapshot.
   s = TrasvalAllTagPtable(ctx, [&](TagPartitionTable* entity_tag_bt, size_t vec_idx) -> bool {
     for (int rownum = 1; rownum <= entity_tag_bt->size(); rownum++) {

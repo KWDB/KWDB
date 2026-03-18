@@ -238,11 +238,25 @@ class TsFIOAppendOnlyFile : public TsAppendOnlyFile {
   }
 
   KStatus Append(std::string_view data) override {
+    if (fp_ == nullptr) {
+      LOG_ERROR("file append error, file_path: %s, file is already closed", path_.c_str());
+      return FAIL;
+    }
+
     const char* ptr = data.data();
     size_t remaining = data.size();
 
+    clearerr(fp_);
+    errno = 0;
     size_t written = fwrite(ptr, 1, remaining, fp_);
     if (written != remaining) {
+      if (ferror(fp_)) {
+        LOG_ERROR("file write error, file_path: %s, expected: %zu, written: %zu, errno: %d, error: %s",
+                  path_.c_str(), remaining, written, errno, strerror(errno));
+      } else {
+        LOG_ERROR("file write incomplete, file_path: %s, expected: %zu, written: %zu",
+                  path_.c_str(), remaining, written);
+      }
       return FAIL;
     }
     file_size_ += remaining;
@@ -252,13 +266,32 @@ class TsFIOAppendOnlyFile : public TsAppendOnlyFile {
   size_t GetFileSize() const override { return file_size_; }
 
   KStatus Sync() override {
+    if (fp_ == nullptr) {
+      LOG_ERROR("file sync error, file_path: %s, file is already closed", path_.c_str());
+      return FAIL;
+    }
+
+    errno = 0;
     if (fflush(fp_) != 0) {
-      LOG_ERROR("file flush error, file_path: %s, error: %s", path_.c_str(), strerror(errno));
+      int saved_errno = errno;
+      LOG_ERROR("file flush error, file_path: %s, errno: %d, error: %s",
+                path_.c_str(), saved_errno, strerror(saved_errno));
       return FAIL;
     }
     if (EngineOptions::force_sync_file) {
-      if (fsync(fileno(fp_)) != 0) {
-        LOG_ERROR("file sync error, file_path: %s, error: %s", path_.c_str(), strerror(errno));
+      errno = 0;
+      int fd = fileno(fp_);
+      if (fd < 0) {
+        int saved_errno = errno;
+        LOG_ERROR("file get fd error, file_path: %s, errno: %d, error: %s",
+                  path_.c_str(), saved_errno, strerror(saved_errno));
+        return FAIL;
+      }
+      errno = 0;
+      if (fsync(fd) != 0) {
+        int saved_errno = errno;
+        LOG_ERROR("file sync error, file_path: %s, errno: %d, error: %s",
+                  path_.c_str(), saved_errno, strerror(saved_errno));
         return FAIL;
       }
     }
@@ -272,13 +305,19 @@ class TsFIOAppendOnlyFile : public TsAppendOnlyFile {
     if (Sync() == FAIL) {
       return FAIL;
     }
+    errno = 0;
     if (fclose(fp_) != 0) {
-      LOG_ERROR("file close error, file_path: %s, error: %s", path_.c_str(), strerror(errno));
+      int saved_errno = errno;
+      LOG_ERROR("file close error, file_path: %s, errno: %d, error: %s",
+                path_.c_str(), saved_errno, strerror(saved_errno));
       return FAIL;
     }
     fp_ = nullptr;
+    errno = 0;
     if (truncate(path_.c_str(), file_size_) != 0) {
-      LOG_ERROR("file truncate error, file_path: %s, error: %s", path_.c_str(), strerror(errno));
+      int saved_errno = errno;
+      LOG_ERROR("file truncate error, file_path: %s, errno: %d, error: %s",
+                path_.c_str(), saved_errno, strerror(saved_errno));
       return FAIL;
     }
     return SUCCESS;
@@ -305,7 +344,11 @@ class TsFIORandomReadFile : public TsRandomReadFile {
   }
 
   KStatus Prefetch(size_t offset, size_t n) override {
-    posix_fadvise(fd_, offset, n, POSIX_FADV_WILLNEED);
+    int rc = posix_fadvise(fd_, offset, n, POSIX_FADV_WILLNEED);
+    if (rc != 0) {
+      LOG_ERROR("file prefetch error, file path: %s, file size: %zu, offset: %zu, length: %zu, error: %s",
+                path_.c_str(), file_size_, offset, n, strerror(rc));
+    }
     return SUCCESS;
   }
 
@@ -318,10 +361,19 @@ class TsFIORandomReadFile : public TsRandomReadFile {
     }
 
     TsBufferBuilder builder(n);
+    errno = 0;
     ssize_t bytes_read = pread(fd_, builder.data(), n, offset);
     if (bytes_read < 0) {
-      LOG_ERROR("file read error, file path: %s, error: %s, file size: %zu, offset: %zu, length: %zu",
-                path_.c_str(), strerror(errno), file_size_, offset, n);
+      int saved_errno = errno;
+      *result = TsSliceGuard();
+      LOG_ERROR("file read error, file path: %s, errno: %d, error: %s, file size: %zu, offset: %zu, length: %zu",
+                path_.c_str(), saved_errno, strerror(saved_errno), file_size_, offset, n);
+      return FAIL;
+    }
+    if (static_cast<size_t>(bytes_read) != n) {
+      *result = TsSliceGuard();
+      LOG_ERROR("file read incomplete, file path: %s, file size: %zu, offset: %zu, length: %zu, actual: %zd",
+                path_.c_str(), file_size_, offset, n, bytes_read);
       return FAIL;
     }
 
@@ -359,10 +411,19 @@ class TsFIOSequentialReadFile : public TsSequentialReadFile {
     }
 
     TsBufferBuilder builder(n);
+    errno = 0;
     ssize_t bytes_read = pread(fd_, builder.data(), n, offset_);
     if (bytes_read < 0) {
-      LOG_ERROR("file read error, file path: %s, error: %s, file size: %zu, offset: %zu, length: %zu",
-                path_.c_str(), strerror(errno), file_size_, offset_, n);
+      int saved_errno = errno;
+      *result = TsSliceGuard();
+      LOG_ERROR("file read error, file path: %s, errno: %d, error: %s, file size: %zu, offset: %zu, length: %zu",
+                path_.c_str(), saved_errno, strerror(saved_errno), file_size_, offset_, n);
+      return FAIL;
+    }
+    if (static_cast<size_t>(bytes_read) != n) {
+      *result = TsSliceGuard();
+      LOG_ERROR("file read incomplete, file path: %s, file size: %zu, offset: %zu, length: %zu, actual: %zd",
+                path_.c_str(), file_size_, offset_, n, bytes_read);
       return FAIL;
     }
     offset_ += bytes_read;

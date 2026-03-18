@@ -168,13 +168,9 @@ class TsTableObject {
 
   TSTableFileMetadata* metaData() { return meta_data_; }
 
-  void setDropped() { meta_data_->is_dropped = true; }
-
   void setNotDropped() { meta_data_->is_dropped = false; }
 
   void setDBid(uint32_t id) { meta_data_->db_id = id; }
-
-  bool isDropped() { return meta_data_->is_dropped; }
 
   int getColumnIndex(const AttributeInfo& attr_info);
 

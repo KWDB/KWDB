@@ -14,6 +14,45 @@
 #include <unistd.h>
 #include <sys/stat.h>
 
+namespace {
+
+void LogRemainingDirectoryEntries(const fs::path& dir_path) {
+  std::error_code ec;
+  if (!fs::exists(dir_path, ec) || ec) {
+    LOG_WARN("cannot inspect remaining entries for [%s]: %s",
+             dir_path.string().c_str(), ec ? ec.message().c_str() : "path does not exist");
+    return;
+  }
+  ec.clear();
+  if (!fs::is_directory(dir_path, ec) || ec) {
+    LOG_WARN("path [%s] is not a directory when inspecting remaining entries: %s",
+             dir_path.string().c_str(), ec ? ec.message().c_str() : "not a directory");
+    return;
+  }
+
+  constexpr size_t kMaxLoggedEntries = 32;
+  size_t total_entries = 0;
+  for (fs::directory_iterator iter(dir_path, ec), end; iter != end && !ec; iter.increment(ec)) {
+    ++total_entries;
+    if (total_entries <= kMaxLoggedEntries) {
+      LOG_WARN("remaining entry under [%s]: [%s]",
+               dir_path.string().c_str(), iter->path().string().c_str());
+    }
+  }
+  if (ec) {
+    LOG_WARN("iterate remaining entries under [%s] failed: %s", dir_path.string().c_str(), ec.message().c_str());
+    return;
+  }
+  if (total_entries > kMaxLoggedEntries) {
+    LOG_WARN("remaining entry count under [%s]: %zu (only first %zu logged)",
+             dir_path.string().c_str(), total_entries, kMaxLoggedEntries);
+  } else {
+    LOG_WARN("remaining entry count under [%s]: %zu", dir_path.string().c_str(), total_entries);
+  }
+}
+
+}  // namespace
+
 int64_t g_free_space_alert_threshold = 0;
 
 bool IsExists(const fs::path& path) {
@@ -21,15 +60,16 @@ bool IsExists(const fs::path& path) {
 }
 
 bool Remove(const string& path, ErrorInfo& error_info) {
-  try {
-    if (!fs::remove_all(path) && errno != 0) {
-      error_info.errcode = errnumToErrorCode(errno);
-      error_info.errmsg = strerror(errno);
-      LOG_ERROR("%s remove failed: errno[%d], strerror[%s]", path.c_str(), errno, error_info.errmsg.c_str());
-      return false;
+  std::error_code ec;
+  fs::remove_all(path, ec);
+  if (ec) {
+    error_info.errcode = errnumToErrorCode(ec.value());
+    error_info.errmsg = ec.message();
+    LOG_ERROR("%s remove failed: errcode[%d], errno[%d], errmsg[%s]",
+              path.c_str(), error_info.errcode, ec.value(), error_info.errmsg.c_str());
+    if (ec.value() == ENOTEMPTY) {
+      LogRemainingDirectoryEntries(path);
     }
-  } catch (const std::exception& e) {
-    LOG_ERROR("%s remove failed: errno message[%s]", path.c_str(), e.what());
     return false;
   }
 //  LOG_INFO("Remove path [%s] succeeded", path.c_str());

@@ -120,11 +120,11 @@ TEST_F(TsBatchDataWorkerTest, TestTsBatchDataWorker) {
   data.data = backup_data.data();
   data.len = backup_data.size();
   // first write
-  s = engine_->WriteBatchData(ctx_, table_id, 1, write_job_id, &data, &n_rows, is_dropped);
+  s = engine_->WriteBatchData(ctx_, table_id, 1, write_job_id, &data, &n_rows, TsDataSource::Restore, is_dropped);
   ASSERT_EQ(s, KStatus::SUCCESS);
   ASSERT_EQ(n_rows, row_num);
   // second write
-  s = engine_->WriteBatchData(ctx_, table_id, 1, write_job_id, &data, &n_rows, is_dropped);
+  s = engine_->WriteBatchData(ctx_, table_id, 1, write_job_id, &data, &n_rows, TsDataSource::Restore, is_dropped);
   ASSERT_EQ(s, KStatus::SUCCESS);
   ASSERT_EQ(n_rows, row_num);
   //  finish
@@ -264,7 +264,7 @@ TEST_F(TsBatchDataWorkerTest, LoseData) {
   uint64_t write_job_id = 3;
   data.data = backup_data2.data();
   data.len = backup_data2.size();
-  s = engine_->WriteBatchData(ctx_, table_id, 1, write_job_id, &data, &n_rows, is_dropped);
+  s = engine_->WriteBatchData(ctx_, table_id, 1, write_job_id, &data, &n_rows, TsDataSource::Restore, is_dropped);
   ASSERT_EQ(s, KStatus::SUCCESS);
   ASSERT_EQ(n_rows, 1000);
   //  finish
@@ -274,7 +274,7 @@ TEST_F(TsBatchDataWorkerTest, LoseData) {
   write_job_id = 4;
   data.data = backup_data1.data();
   data.len = backup_data1.size();
-  s = engine_->WriteBatchData(ctx_, table_id, 1, write_job_id, &data, &n_rows, is_dropped);
+  s = engine_->WriteBatchData(ctx_, table_id, 1, write_job_id, &data, &n_rows, TsDataSource::Restore, is_dropped);
   ASSERT_EQ(s, KStatus::SUCCESS);
   ASSERT_EQ(n_rows, 1000);
   //  finish

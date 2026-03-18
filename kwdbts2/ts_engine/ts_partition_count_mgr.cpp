@@ -65,7 +65,7 @@ KStatus TsPartitionEntityCountManager::updateEntityCount(TsEntityCountStats* hea
   if (!header->is_count_valid) {
     // no need do anything.
     return KStatus::SUCCESS;
-  } else if (!info->is_count_valid) {
+  } else if (!info->is_count_valid || info->table_id != header->table_id) {
     header->valid_count = 0;
     header->is_count_valid = false;
   } else if (EngineOptions::g_dedup_rule == DedupRule::KEEP) {

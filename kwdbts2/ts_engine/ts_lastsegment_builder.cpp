@@ -51,7 +51,7 @@ KStatus TsLastSegmentBuilder::PutBlockSpan(std::shared_ptr<TsBlockSpan> span) {
       if (s == FAIL) {
         return FAIL;
       }
-      metric_block_builder_ = std::make_unique<TsMetricBlockBuilder>(col_schema);
+      metric_block_builder_ = std::make_unique<TsMetricBlockBuilder>(col_schema, std::move(table_schema_mgr));
       block_index_collector_ = std::make_unique<BlockIndexCollector>(span->GetTableID(), span->GetTableVersion());
       entity_id_buffer_.clear();
       table_version_ = current_table_version;

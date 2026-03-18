@@ -26,7 +26,6 @@
 #include "sys_utils.h"
 #include "test_util.h"
 #include "ts_block.h"
-#include "ts_drop_manager.h"
 #include "ts_entity_segment_builder.h"
 #include "ts_entity_segment_data.h"
 #include "ts_filename.h"
@@ -1214,7 +1213,7 @@ TEST_F(TsEntitySegmentTest, BUG_IEOYSN) {
   auto partitions = current->GetAllPartitions();
   ASSERT_EQ(partitions.size(), 1);
   auto p_version = partitions.begin()->second;
-  TsEntitySegmentBuilder builder(env, tmp_path, mgr.get(), &v_mgr, p_version->GetPartitionIdentifier(), nullptr);
+  TsEntitySegmentBuilder builder(env, tmp_path, mgr.get(), &v_mgr, p_version->GetPartitionIdentifier(), nullptr, TsDataSource::Flush);
   ASSERT_EQ(builder.Open(), SUCCESS);
 
   auto memseg = mem_mgr.CurrentMemSegment();
@@ -1226,7 +1225,7 @@ TEST_F(TsEntitySegmentTest, BUG_IEOYSN) {
     builder.PutBlockSpan(std::move(span));
   }
 
-  ASSERT_EQ(mgr->DropTableSchemaMgr(table_id), SUCCESS);
+  ASSERT_EQ(mgr->SetTableDropped(table_id), SUCCESS);
 
   TsVersionUpdate update;
   std::vector<std::shared_ptr<TsBlockSpan>> residual;

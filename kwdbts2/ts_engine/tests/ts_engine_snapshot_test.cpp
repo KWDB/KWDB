@@ -37,7 +37,6 @@ class TestEngineSnapshotImgrate : public ::testing::Test {
     ctx_ = &context_;
     InitKWDBContext(ctx_);
     KWDBDynamicThreadPool::GetThreadPool().Init(8, ctx_);
-    DropTableManager::getInstance().clearAllDroppedTables();
   }
 
   virtual void TearDown() override {

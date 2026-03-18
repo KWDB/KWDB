@@ -99,6 +99,7 @@ class TsBlockSpanSortedIterator {
   }
 
   inline void binarySearch(TsBlockSpanRowInfo& target_row_info, shared_ptr<TsBlockSpan>& block_span, int& row_idx) {
+    assert(block_span != nullptr);
     int left = 0;
     int right = block_span->GetRowNum() - 1;
     int result;
@@ -131,6 +132,7 @@ class TsBlockSpanSortedIterator {
   }
 
   TsBlockSpanRowInfo getFirstRowInfo(std::shared_ptr<TsBlockSpan>& block_span) {
+    assert(block_span != nullptr);
     if (!is_reverse_) {
       return {block_span->GetEntityID(), block_span->GetFirstTS(), block_span, 0};
     } else {
@@ -140,6 +142,20 @@ class TsBlockSpanSortedIterator {
   }
 
   inline void getTsAndOSN(std::shared_ptr<TsBlockSpan>& block_span, int row_idx, timestamp64& row_ts, uint64_t& row_osn) {
+    assert(block_span != nullptr);
+    if (block_span == nullptr) {
+      LOG_ERROR("getTsAndOSN error, block_span is null");
+      return;
+    }
+    if (row_idx < 0 || row_idx > block_span->GetRowNum() - 1) {
+      LOG_ERROR("getTsAndOSN error, vgroup_id %u, table_id %lu, entity_id %lu, block_id %lu, row_idx=%d, row_num=%d, "
+                "first_ts=%lu, last_ts=%lu",
+                block_span->GetVGroupID(), block_span->GetTableID(), block_span->GetEntityID(),
+                block_span->GetBlockID(), row_idx, block_span->GetRowNum(),
+                block_span->GetFirstTS(), block_span->GetLastTS());
+      return;
+    }
+
     if (row_idx == 0) {
       row_ts = block_span->GetFirstTS();
       row_osn = block_span->GetFirstOSN();

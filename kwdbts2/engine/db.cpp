@@ -209,6 +209,12 @@ TSStatus TSDropTsTable(TSEngine* engine, TSTableID table_id) {
 }
 
 TSStatus TSDropResidualTsTable(TSEngine* engine) {
+  bool expected = false;
+  if (!g_is_vacuuming.compare_exchange_strong(expected, true)) {
+    LOG_INFO("The engine is vacuuming, ignore drop residual ts table request");
+    return kTsSuccess;
+  }
+  Defer defer([&](){ g_is_vacuuming.store(false); });
   kwdbContext_t context;
   kwdbContext_p ctx_p = &context;
   KStatus s = InitServerKWDBContext(ctx_p);
@@ -959,7 +965,8 @@ TSStatus TSPutDataByRowType(TSEngine* engine, TSTableID table_id, TSSlice* paylo
   s = engine->GetTsTable(ctx_p, tmp_table_id, ts_tb, is_dropped);
   if (s != KStatus::SUCCESS) {
     if (is_dropped) {
-      return ToTsStatus("TsTable has already been dropped.");
+      LOG_WARN("TsTable has already been dropped, table_id: %lu", tmp_table_id);
+      return kTsSuccess;
     }
     return ToTsStatus("GetTsTable Error!");
   }
@@ -995,7 +1002,8 @@ TSStatus TSPutDataByRowTypeExplicit(TSEngine* engine, TSTableID table_id, TSSlic
   s = engine->GetTsTable(ctx_p, tmp_table_id, ts_tb, is_dropped);
   if (s != KStatus::SUCCESS) {
     if (is_dropped) {
-      return ToTsStatus("TsTable has already been dropped.");
+      LOG_WARN("TsTable has already been dropped, table_id: %lu", tmp_table_id);
+      return kTsSuccess;
     }
     return ToTsStatus("GetTsTable Error!");
   }
@@ -1210,7 +1218,7 @@ TSStatus TSWriteBatchData(TSEngine* engine, TSTableID table_id, uint64_t table_v
     return ToTsStatus("InitServerKWDBContext Error!");
   }
   bool is_dropped = false;
-  s = engine->WriteBatchData(ctx, table_id, table_version, job_id, data, row_num, is_dropped);
+  s = engine->WriteBatchData(ctx, table_id, table_version, job_id, data, row_num, TsDataSource::Restore, is_dropped);
   if (s != KStatus::SUCCESS) {
     return ToTsStatus("WriteBatchData Error!");
   }

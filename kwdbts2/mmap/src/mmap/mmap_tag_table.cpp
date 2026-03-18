@@ -16,6 +16,7 @@
 #include "mmap/mmap_tag_table.h"
 #include "mmap/mmap_ptag_hash_index.h"
 #include "ts_table.h"
+#include "ts_io.h"
 
 TagTable::TagTable(const std::string& db_path,
                    const std::string& sub_path,
@@ -45,6 +46,10 @@ TagTable::~TagTable() {
 int TagTable::create(const vector<TagInfo> &schema, uint32_t table_version,
                      const std::vector<roachpb::NTagIndexInfo>& idx_info, ErrorInfo &err_info) {
   LOG_INFO("Create TagTable table_version:%d", table_version)
+  auto s = TsIOEnv::GetInstance().NewDirectory(fs::path(m_db_path_) / fs::path(m_tbl_sub_path_));
+  if (s != SUCCESS) {
+    return -1;
+  }
   // 1. create table version
   m_version_mgr_ = KNEW TagTableVersionManager(m_db_path_, m_tbl_sub_path_, m_table_id);
   if (m_version_mgr_ == nullptr) {

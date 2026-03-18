@@ -71,6 +71,7 @@ KStatus TsLastSegment::TsLastSegBlockCache::BlockIndexCache::GetBlockIndices(
   auto s = lastseg_->GetAllBlockIndex(indices.get());
   if (s == FAIL) {
     LOG_ERROR("cannot get block index from last segment");
+    return s;
   }
   // indices is ready to use after GetAllBlockIndex.
   block_indices_ = std::move(indices);
@@ -95,11 +96,13 @@ KStatus TsLastSegment::TsLastSegBlockCache::BlockInfoCache::GetBlockInfo(int blo
   auto s = lastseg_cache_->GetBlockIndex(block_id, &index);
   if (s == FAIL) {
     LOG_ERROR("cannot load block index from last segment");
+    return s;
   }
   TsLastSegmentBlockInfoWithData tmp_info;
   s = LoadBlockInfo(lastseg_cache_->segment_->file_.get(), *index, &tmp_info);
   if (s == FAIL) {
     LOG_ERROR("cannot load block info from last segment: %s", lastseg_cache_->segment_->file_->GetFilePath().c_str());
+    return s;
   }
   block_infos_[block_id] = std::move(tmp_info);
   cache_flag_[block_id] = 1;
@@ -586,9 +589,10 @@ KStatus TsLastSegment::GetBlockSpans(std::list<shared_ptr<TsBlockSpan>>& block_s
     }
 
     if (tbl_schema_mgr == nullptr || tbl_schema_mgr->GetTableId() != block->GetTableId()) {
-      auto s = schema_mgr->GetTableSchemaMgr(block->GetTableId(), tbl_schema_mgr);
+      bool is_dropped = false;
+      auto s = schema_mgr->GetTableSchemaMgr(block->GetTableId(), tbl_schema_mgr, &is_dropped);
       if (s != KStatus::SUCCESS) {
-        if (tbl_schema_mgr == nullptr) {
+        if (is_dropped) {
           LOG_DEBUG("Table has already been dropped, table id:%ld", block->GetTableId());
           continue;
         }
@@ -608,8 +612,9 @@ KStatus TsLastSegment::GetBlockSpans(std::list<shared_ptr<TsBlockSpan>>& block_s
       if (scan_metric == nullptr || scan_metric->GetVersion() != block->GetTableVersion()) {
         auto s = tbl_schema_mgr->GetMetricSchema(block->GetTableVersion(), &scan_metric);
         if (s != SUCCESS) {
-          LOG_ERROR("GetMetricSchema failed. table id [%u], table version [%lu]",
-            block->GetTableVersion(), block->GetTableId());
+          LOG_ERROR("GetMetricSchema failed. table id [%lu], table version [%u]",
+            block->GetTableId(), block->GetTableVersion());
+          return s;
         }
       }
       std::shared_ptr<TsBlockSpan> cur_blk_span;
