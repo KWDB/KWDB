@@ -3299,7 +3299,7 @@ func checkTimeUnit(str string) error {
 	}
 	unit := newStr[len(newStr)-1]
 	if unit != 'y' && unit != 'n' && unit != 'w' && unit != 'd' && unit != 'h' && unit != 'm' && unit != 's' {
-		return pgerror.New(pgcode.InvalidParameterValue, "wrong interval time unit for time_bucket or time_bucket_gapfill")
+		return pgerror.New(pgcode.InvalidParameterValue, "wrong interval time unit")
 	}
 	var numVal string
 	if len(newStr) == 2 {

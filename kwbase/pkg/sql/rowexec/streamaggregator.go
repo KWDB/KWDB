@@ -259,7 +259,6 @@ func (streamAgg *streamAggregator) accumulateRows() (
 			if streamAgg.isSlidingWindowCompleted {
 				streamAgg.forceEmitRow()
 				if len(streamAgg.forceEmitRows) != 0 {
-					//streamAgg.forceCloseWindow = false
 					return aggForceEmittingRows, nil, nil
 				}
 
@@ -509,6 +508,15 @@ func (streamAgg *streamAggregator) forceEmitRow() {
 	streamAgg.forceEmitRows = make(sqlbase.EncDatumRows, 0)
 	if streamAgg.streamBuckets == nil || len(streamAgg.streamBuckets) == 0 {
 		return
+	}
+
+	// For an EventWindow, uncompleted window data is discarded from the select operation.
+	// Therefore, in stream processing, windows that have not yet ended do not need to be forcibly closed and sent.
+	// Instead, they wait continuously for the record that will trigger their end condition to be inserted.
+	if streamAgg.FlowCtx.EvalCtx.GroupWindow.GroupWindowFunc == tree.EventWindow {
+		if !streamAgg.EvalCtx.GroupWindow.EventWindowHelper.EndFlag {
+			return
+		}
 	}
 
 	currentTime := timeutil.Now().UTC()

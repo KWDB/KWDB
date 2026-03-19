@@ -53,6 +53,10 @@ class FieldFuncStateWindow : public FieldFunc {
     str_val_ = old_str_val_;
   }
 
+  void reset() {
+    group_id_ = 0;
+  }
+
  private:
   roachpb::DataType val_tp_{roachpb::DataType::INT};
   k_int64 int_val_{0};
@@ -89,6 +93,8 @@ class FieldFuncEventWindow : public FieldFunc {
     begin_ = false;
     old_begin_ = false;
   }
+  bool IsBegin();
+  bool IsEnd();
 
  private:
   k_int32 group_id_{0};

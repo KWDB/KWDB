@@ -615,6 +615,13 @@ func (o *Optimizer) enforceProps(
 	if !required.Ordering.Any() {
 		// Try Sort enforcer that requires no ordering from its input.
 		enforcer := &memo.SortExpr{Input: member}
+		// For scenarios using grouped window functions, if the user explicitly specifies ORDER BY,
+		// it must be forcibly added below the grouped window functions.
+		if member.ChildCount() > 0 {
+			if groupWindow, ok := member.Child(0).(*memo.GroupByExpr); ok && groupWindow.GroupWindowId > 0 {
+				required.MustAddSort = true
+			}
+		}
 		memberProps := BuildChildPhysicalProps(o.mem, enforcer, 0, required)
 		fullyOptimized = o.optimizeEnforcer(state, enforcer, required, member, memberProps)
 
@@ -1472,13 +1479,14 @@ func processRemainingRelTables(mem *memo.Memo) {
 	}
 }
 
-func findTSTableID(expr memo.RelExpr, mem *memo.Memo) opt.TableID {
+// FindTSTableID find tsTableID from expr
+func FindTSTableID(expr memo.RelExpr, mem *memo.Memo) opt.TableID {
+	if tsScanExpr, ok := expr.(*memo.TSScanExpr); ok {
+		return tsScanExpr.TSScanPrivate.Table
+	}
 	for i := 0; i < expr.ChildCount(); i++ {
 		if v, ok := expr.Child(i).(memo.RelExpr); ok {
-			if tsScanExpr, ok := v.(*memo.TSScanExpr); ok {
-				return tsScanExpr.TSScanPrivate.Table
-			}
-			if tableID := findTSTableID(v, mem); tableID != 0 {
+			if tableID := FindTSTableID(v, mem); tableID != 0 {
 				return tableID
 			}
 		}
@@ -1761,7 +1769,7 @@ func processGroupByOrScalarGroupByExpr(expr memo.RelExpr, mem *memo.Memo) {
 		// skip the pregrouping analysis for count(*) expression
 		if agg.Agg.ChildCount() == 0 {
 			if _, ok := agg.Agg.(*memo.CountRowsExpr); ok {
-				aggColTableID = findTSTableID(expr, mem)
+				aggColTableID = FindTSTableID(expr, mem)
 				hasCountRow = true
 			}
 		} else {

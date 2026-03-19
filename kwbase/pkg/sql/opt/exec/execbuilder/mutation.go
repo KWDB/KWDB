@@ -3476,6 +3476,11 @@ func (b *Builder) replaceMemoBeforePlanning(
 	o.Init(b.evalCtx, b.catalog)
 	o.Memo().SetWhiteList(b.mem.GetWhiteList())
 	f := o.Factory()
+	f.TSWhiteListMap = b.mem.GetWhiteList()
+	// we need to SetFlags if it is time series query
+	if xform.FindTSTableID(expr, b.mem) > 0 {
+		o.Memo().SetFlag(b.mem.GetAllFlag())
+	}
 
 	replaceTreeExpr := func(input tree.Expr, inProcedure *bool) tree.Expr {
 		switch v := input.(type) {

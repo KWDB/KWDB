@@ -363,8 +363,9 @@ func makeOriginalQuery(
 
 	if len(selectClause.GroupBy) != 0 {
 		streamSink.HasAgg = true
-		expr := selectClause.GroupBy[0]
-		switch selectClause.GroupBy[0].(type) {
+		last := len(selectClause.GroupBy) - 1
+		expr := selectClause.GroupBy[last]
+		switch expr.(type) {
 		case *tree.FuncExpr:
 			funcExpr := expr.(*tree.FuncExpr)
 			streamSink.Function = funcExpr.Func.FunctionName()

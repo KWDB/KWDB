@@ -27,17 +27,17 @@ class WindowHelper : public ScanHelper {
   k_int32 current_line_{0};
   EntityResultIndex current_entity_index_{};
 
- private:
+ public:
   std::vector<ScanRowBatch *> rowbatchs_;
-
-  k_int32 mem_size_{0};
-  k_int32 current_rowbatch_index_{-1};
   ScanRowBatch *rowbatch_{nullptr};
-
   SlidingWindowStep sliding_status_{SWS_NEXT_WINDOW};
   bool no_more_data_{false};
-  k_int32 last_rowbatch_line_{0};
   bool continue_last_rowbatch_{false};
+
+ private:
+  k_int32 mem_size_{0};
+  k_int32 current_rowbatch_index_{-1};
+  k_int32 last_rowbatch_line_{0};
 
  public:
   explicit WindowHelper(TableScanOperator *op) : ScanHelper(op) {}
@@ -52,6 +52,8 @@ class WindowHelper : public ScanHelper {
   EEIteratorErrCode ReadRowBatch(kwdbContext_p ctx, ScanRowBatch *rowbatch,
                                  DataChunk *chunk,
                                  bool continue_last_rowbatch = false);
+
+ public:
   EEIteratorErrCode NextBatch(kwdbContext_p ctx, ScanRowBatch *&rowbatch);
   KStatus PushBatch(ScanRowBatch *rowbatch) {
     mem_size_ = mem_size_ + rowbatch->Count() * row_size_;

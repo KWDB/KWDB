@@ -231,7 +231,7 @@ class BaseOperator {
   void SetFinalOperator(bool is_final) { is_final_operator_ = is_final; }
   bool IsFinalOperator() { return is_final_operator_; }
 
- protected:
+ public:
   inline void constructDataChunk(k_uint32 capacity = 0) {
     current_data_chunk_ = std::make_unique<DataChunk>(
         output_col_info_, output_col_num_, capacity);
@@ -240,6 +240,8 @@ class BaseOperator {
       return;
     }
   }
+
+ protected:
   inline void constructFilterDataChunk(ColumnInfo* column_info, k_int32 num,
                                        k_uint32 capacity = 0) {
     current_filter_data_chunk_ =
@@ -281,7 +283,6 @@ class BaseOperator {
   ColumnInfo* output_col_info_{nullptr};
   k_int32 output_col_num_{0};
 
-  DataChunkPtr current_data_chunk_;
   DataChunkPtr current_filter_data_chunk_;
   std::queue<DataChunkPtr> output_queue_;
   k_bool is_done_{false};
@@ -305,6 +306,7 @@ class BaseOperator {
   DataChunkPtr temporary_data_chunk_;
   OperatorFetcher fetcher_;
   TsFetcherCollection* collection_{nullptr};
+  DataChunkPtr current_data_chunk_;
 };
 
 template <class RealNode, class... Args>

@@ -2393,11 +2393,9 @@ func (b *Builder) buildGroupBy(groupBy memo.RelExpr) (execPlan, error) {
 	groupingCols := private.GroupingCols
 	funcs := private.Func
 	groupingColIdx := make([]exec.ColumnOrdinal, 0, groupingCols.Len())
-	var groupOrdering physical.OrderingChoice
 	for i, ok := groupingCols.Next(0); ok; i, ok = groupingCols.Next(i + 1) {
 		ep.outputCols.Set(int(i), len(groupingColIdx))                     // add group by col to output
 		groupingColIdx = append(groupingColIdx, input.getColumnOrdinal(i)) // record group by cols ordinal column id
-		groupOrdering.AppendCol(i, false)
 	}
 	aggregations := *groupBy.Child(1).(*memo.AggregationsExpr)
 	aggInfos := make([]exec.AggInfo, len(aggregations))
@@ -2442,11 +2440,12 @@ func (b *Builder) buildGroupBy(groupBy memo.RelExpr) (execPlan, error) {
 			if private.GroupWindowId > 0 {
 				// we must use order aggregation if sql has group window function, so we must add group column to order column of aggregation.
 				if !groupBy.IsTSEngine() {
-					private.Ordering = groupOrdering
+					private.Ordering = private.GroupWindowOrdering
 				}
 				private.GroupWindowIdOrdinal = opt.ColumnID(input.getColumnOrdinal(private.GroupWindowId))
 				// set ts col to GroupWindowTSColOrdinal
-				if v, ok := input.outputCols.Get(memo.TsColID); ok {
+				tsColID := b.mem.GetTSColIDInGroupWindow(nil, 0, private.GroupWindowId)
+				if v, ok := input.outputCols.Get(int(tsColID)); ok {
 					private.GroupWindowTSColOrdinal = opt.ColumnID(v)
 				} else {
 					private.GroupWindowTSColOrdinal = -1

@@ -1303,7 +1303,7 @@ SQLSTATE: 22007
 ERROR: time_bucket_gapfill(): could not parse "s" as type interval: interval: missing unit at position 0: "s"
 SQLSTATE: 22007
 > select time_bucket_gapfill(k_timestamp,'10') as tb from test_select_timebucket_gapfill.tb group by tb order by tb limit 10;
-ERROR: time_bucket_gapfill(): wrong interval time unit for time_bucket or time_bucket_gapfill
+ERROR: time_bucket_gapfill(): wrong interval time unit
 SQLSTATE: 22023
 > select time_bucket_gapfill(k_timestamp,'5min1s') as tb from test_select_timebucket_gapfill.tb group by tb order by tb limit 10;
 ERROR: time_bucket_gapfill(): invalid input interval time

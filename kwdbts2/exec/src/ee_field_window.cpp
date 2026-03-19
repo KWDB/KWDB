@@ -18,13 +18,16 @@
 namespace kwdbts {
 
 k_bool FieldFuncStateWindow::is_nullable() {
-  if (args_[0]->CheckNull()) {
+  if (args_[0]->CheckNull() && group_id_ == 0) {
     return true;
   }
   return false;
 }
 
 k_int64 FieldFuncStateWindow::ValInt() {
+  if (args_[0]->CheckNull()) {
+    return group_id_;
+  }
   if (val_tp_ == roachpb::DataType::INT) {
     if (group_id_ == 0) {
       int_val_ = args_[0]->ValInt();
@@ -89,6 +92,20 @@ k_int64 FieldFuncEventWindow::ValInt() {
     }
   }
   return group_id_;
+}
+
+bool FieldFuncEventWindow::IsBegin() {
+  if (args_[0]->CheckNull()) {
+    return false;
+  }
+  return args_[0]->ValInt() > 0;
+}
+
+bool FieldFuncEventWindow::IsEnd() {
+  if (args_[1]->CheckNull()) {
+    return false;
+  }
+  return args_[1]->ValInt() > 0;
 }
 
 // Accurate to milliseconds

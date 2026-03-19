@@ -31,8 +31,10 @@ class ScanHelper {
 
   TsScanStats& GetTsScanStats() {return ts_scan_stats;}
 
+ public:
+  TableScanOperator* op_{nullptr};
+
  protected:
-  TableScanOperator *op_{nullptr};
   // Scan stats for TsFetcher
   TsScanStats ts_scan_stats;
 };

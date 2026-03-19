@@ -1521,6 +1521,11 @@ func (b *logicalPropsBuilder) buildProjectionsItemProps(
 	item *ProjectionsItem, scalar *props.Scalar,
 ) {
 	item.Typ = item.Element.DataType()
+	// if the grouped window function is count_window(count),
+	// we need to add TsCol to outerCol so that TsCol can be found when adding Orderby later.
+	if tsColID := b.mem.GetTSColIDInGroupWindow(item.Element, item.Col, -1); tsColID >= 0 {
+		scalar.Shared.OuterCols.Add(tsColID)
+	}
 	BuildSharedProps(item.Element, &scalar.Shared)
 }
 
@@ -1591,10 +1596,6 @@ func BuildSharedProps(e opt.Expr, shared *props.Shared) {
 		if t.Properties.Impure {
 			// Impure functions can return different value on each call.
 			shared.CanHaveSideEffects = true
-		}
-		// we must add ts cols to ensure order col is existed when function is group window function
-		if _, ok := CheckGroupWindowExist(t); ok {
-			shared.OuterCols.Add(opt.ColumnID(TsColID))
 		}
 
 	default:

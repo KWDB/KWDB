@@ -77,8 +77,7 @@ EEIteratorErrCode StorageHandler::TsNextAndFilter(
     TsScanStats* ts_scan_stats) {
   EEIteratorErrCode code = EEIteratorErrCode::EE_OK;
   KWThdContext *thd = current_thd;
-  bool null_filter = (thd->wtyp_ == WindowGroupType::EE_WGT_EVENT) ||
-                     (thd->wtyp_ == WindowGroupType::EE_WGT_STATE);
+  bool null_filter = (thd->wtyp_ == WindowGroupType::EE_WGT_STATE);
   while (true) {
     code = this->TsNext(ctx, ts_scan_stats);
     if (EEIteratorErrCode::EE_OK != code) {
@@ -142,7 +141,8 @@ EEIteratorErrCode StorageHandler::TsNextAndFilter(
 EEIteratorErrCode StorageHandler::TsNext(kwdbContext_p ctx, TsScanStats* ts_scan_stats) {
   EEIteratorErrCode code = EEIteratorErrCode::EE_OK;
   KWThdContext *thd = current_thd;
-  bool need_reset = (thd->wtyp_ == WindowGroupType::EE_WGT_EVENT || thd->wtyp_ == WindowGroupType::EE_WGT_COUNT);
+  bool need_reset = (thd->wtyp_ == WindowGroupType::EE_WGT_EVENT || thd->wtyp_ == WindowGroupType::EE_WGT_COUNT ||
+                     thd->wtyp_ == WindowGroupType::EE_WGT_STATE);
   while (true) {
     ScanRowBatch* row_batch =
         static_cast<ScanRowBatch *>(thd->GetRowBatch());

@@ -35,6 +35,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/opt/exec/execbuilder"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/opt/memo"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/opt/norm"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/opt/xform"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgcode"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgerror"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
@@ -715,7 +716,13 @@ func (b *Builder) buildFunction(
 		return b.finishBuildGeneratorFunction(f, out, inScope, outScope, outCol)
 	}
 
-	return b.finishBuildScalar(f, out, inScope, outScope, outCol)
+	scalar := b.finishBuildScalar(f, out, inScope, outScope, outCol)
+	// get tsTableID from fromScope and assign it to the group window function.
+	if _, ok := memo.CheckGroupWindowExist(out); ok && outCol != nil {
+		tsTableID := xform.FindTSTableID(inScope.expr, b.factory.Memo())
+		b.factory.Memo().Metadata().ColumnMeta(outCol.id).Table = tsTableID
+	}
+	return scalar
 }
 
 // check IsConstForLogicPlan

@@ -469,6 +469,16 @@ func (md *Metadata) ColumnMeta(colID ColumnID) *ColumnMeta {
 	return &md.cols[colID.index()]
 }
 
+// FirstColumnMetaFromTable returns the first columnMeta of table.
+func (md *Metadata) FirstColumnMetaFromTable(tabID TableID) *ColumnMeta {
+	for _, c := range md.cols {
+		if c.Table == tabID {
+			return &c
+		}
+	}
+	return nil
+}
+
 // QualifiedAlias returns the column alias, possibly qualified with the table,
 // schema, or database name:
 //

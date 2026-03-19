@@ -57,6 +57,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/opt"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/opt/cat"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/opt/memo"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/opt/props/physical"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgcode"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgerror"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
@@ -310,6 +311,7 @@ func (b *Builder) constructGroupBy(
 	groupWindowID opt.ColumnID,
 	canApplyAggExtend bool,
 	aggExHelper *aggExtendHelper,
+	groupWindowOrdering physical.OrderingChoice,
 ) memo.RelExpr {
 	aggs := make(memo.AggregationsExpr, 0, len(aggCols))
 
@@ -364,6 +366,9 @@ func (b *Builder) constructGroupBy(
 		private.TimeBucketGapFillColId = timeBucketGapFillColID
 	}
 	private.GroupWindowId = groupWindowID
+	if groupWindowID >= 0 {
+		private.GroupWindowOrdering = groupWindowOrdering
+	}
 	return b.factory.ConstructGroupBy(input, aggs, &private)
 }
 
@@ -437,19 +442,19 @@ func (b *Builder) buildAggregation(having opt.ScalarExpr, fromScope *scope) (out
 	var groupingColSet opt.ColSet
 	// Representing the column ID of timebucketGapFill in the group.
 	var timeBucketGapFillColID opt.ColumnID
-	var pTagNum int
+	//var pTagNum int
 	// columns other than group window function and pTag
 	hasOhterCol := false
-	tableID := opt.TableID(0)
+	//tableID := opt.TableID(0)
 	var groupWindowID opt.ColumnID = -1
-	groupWindowIdx := -1
+	//groupWindowIdx := -1
+	var groupWindowOrdering physical.OrderingChoice
 	for i := range groupingCols {
 		groupingColSet.Add(groupingCols[i].id)
-		colMeta := b.factory.Metadata().ColumnMeta(groupingCols[i].id)
-		if colMeta.IsPrimaryTag() {
-			tableID = colMeta.Table
-			pTagNum++
-			continue
+		groupWindowOrdering.AppendCol(groupingCols[i].id, false)
+		//colMeta := b.factory.Metadata().ColumnMeta(groupingCols[i].id)
+		if groupWindowID >= 0 {
+			panic(pgerror.Newf(pgcode.Syntax, "no other columns can follow grouped window function"))
 		}
 		if f, ok := groupingCols[i].scalar.(*memo.FunctionExpr); ok {
 			if f.Name == "time_bucket_gapfill" {
@@ -457,24 +462,15 @@ func (b *Builder) buildAggregation(having opt.ScalarExpr, fromScope *scope) (out
 			}
 			// if function is group windows, we should add groupWindowID and Idx to logical plan
 			if b.checkGroupWindow(f, fromScope) {
+				if hasOhterCol {
+					panic(pgerror.Newf(pgcode.Syntax, "groupby cols support only single col and group window function"))
+				}
 				groupWindowID = groupingCols[i].id
-				groupWindowIdx = i
 			} else {
 				hasOhterCol = true
 			}
-		} else {
+		} else if _, ok1 := groupingCols[i].expr.(*scopeColumn); !ok1 {
 			hasOhterCol = true
-		}
-	}
-
-	if b.factory.Memo().CheckFlag(opt.GroupWindowUseOrderScan) && groupWindowIdx >= 0 {
-		if len(groupingCols) > 1 {
-			// if there is more than one grouping column and tableID is null, we should return error
-			// if there is more than one grouping column and inconsistent number of primary tag, we should return error
-			if tableID == 0 || (pTagNum != b.factory.Metadata().TableMeta(tableID).PrimaryTagCount) ||
-				(hasOhterCol && pTagNum == b.factory.Metadata().TableMeta(tableID).PrimaryTagCount) {
-				panic(pgerror.Newf(pgcode.Syntax, "groupby cols are all ptags or without groupby cols for using group window function."))
-			}
 		}
 	}
 
@@ -595,7 +591,8 @@ func (b *Builder) buildAggregation(having opt.ScalarExpr, fromScope *scope) (out
 	}
 
 	g.aggOutScope.expr = b.constructGroupBy(g.aggInScope.expr, groupingColSet, aggCols,
-		g.aggInScope.ordering, timeBucketGapFillColID, groupWindowID, canApplyAggExtend, &fromScope.AggExHelper)
+		g.aggInScope.ordering, timeBucketGapFillColID, groupWindowID, canApplyAggExtend, &fromScope.AggExHelper, groupWindowOrdering)
+
 	if len(aggFuncs) != 0 {
 		if g, ok := g.aggOutScope.expr.(*memo.ScalarGroupByExpr); ok {
 			g.GroupingPrivate.Func = aggFuncs

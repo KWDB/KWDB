@@ -536,6 +536,7 @@ define GroupingPrivate {
 
     GroupWindowId ColumnID
     GroupWindowIdOrdinal ColumnID
+    GroupWindowOrdering OrderingChoice
     # GroupWindowTSColOrdinal: set idx of ts col, default value is 0
     GroupWindowTSColOrdinal ColumnID
 

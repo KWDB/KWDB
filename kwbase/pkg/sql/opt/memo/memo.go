@@ -1101,17 +1101,19 @@ func (m *Memo) addOrderedColumn(src *bestProps) {
 func (m *Memo) addOrderInGroupWindow(source *GroupByExpr, input RelExpr) {
 	// set sortExpr to input of project if group window function not exec in ts engine.
 	// sort columns are ptag(if group cols contain ptag) and tsCol.
-	if proj, ok1 := input.(*ProjectExpr); ok1 && m.CheckFlag(opt.GroupWindowUseOrderScan) {
+	if proj, ok1 := input.(*ProjectExpr); ok1 && m.CheckFlag(opt.GroupWindowUseOrderScan) && source.GroupWindowId > 0 {
 		sortExpr1 := &SortExpr{Input: proj.Input}
 		provided := sortExpr1.ProvidedPhysical()
-		if source.GroupingCols.Len() > 1 {
-			source.GroupingCols.ForEach(func(colID opt.ColumnID) {
-				if m.Metadata().ColumnMeta(colID).IsPrimaryTag() {
-					provided.Ordering = append(provided.Ordering, opt.MakeOrderingColumn(colID, false))
-				}
-			})
+		if tsColID := m.GetTSColIDInGroupWindow(nil, 0, source.GroupWindowId); tsColID > 0 {
+			if source.GroupingCols.Len() > 1 {
+				source.GroupingCols.ForEach(func(colID opt.ColumnID) {
+					if colID != source.GroupWindowId && colID != tsColID {
+						provided.Ordering = append(provided.Ordering, opt.MakeOrderingColumn(colID, false))
+					}
+				})
+			}
+			provided.Ordering = append(provided.Ordering, opt.MakeOrderingColumn(tsColID, false))
 		}
-		provided.Ordering = append(provided.Ordering, opt.MakeOrderingColumn(opt.ColumnID(TsColID), false))
 		proj.Input = sortExpr1
 		source.Input = proj
 	}
@@ -2183,16 +2185,33 @@ func checkParallelAgg(expr opt.Expr) (bool, bool) {
 func (m *Memo) setGroupByAllPTagForGroupWindow(gp *GroupingPrivate) {
 	if m.CheckFlag(opt.GroupWindowUseOrderScan) && gp.GroupWindowId > 0 && gp.GroupingCols.Len() > 1 {
 		groupByAllPTag := true
+		var tableID opt.TableID
+		pTagNum := 0
 		gp.GroupingCols.ForEach(func(colID opt.ColumnID) {
 			// if col is group window function, continue
 			if !groupByAllPTag || colID == gp.GroupWindowId {
 				return
 			}
+			if m.metadata.ColumnMeta(colID).Table == 0 {
+				groupByAllPTag = false
+				return
+			}
+			if tableID == 0 {
+				tableID = m.metadata.ColumnMeta(colID).Table
+			}
+			if tableID != m.metadata.ColumnMeta(colID).Table {
+				groupByAllPTag = false
+			}
 			colMeta := m.metadata.ColumnMeta(colID)
-			if !colMeta.IsPrimaryTag() {
+			if colMeta.IsPrimaryTag() {
+				pTagNum++
+			} else {
 				groupByAllPTag = false
 			}
 		})
+		if groupByAllPTag && pTagNum != m.metadata.TableMeta(tableID).PrimaryTagCount {
+			groupByAllPTag = false
+		}
 		m.SetGroupByAllPTag(groupByAllPTag)
 	}
 }
@@ -2782,6 +2801,33 @@ func CheckGroupWindowExist(expr opt.Expr) (string, bool) {
 		}
 	}
 	return "", false
+}
+
+// GetTSColIDInGroupWindow get tsColID by groupWindowExpr or groupWindowID
+func (m *Memo) GetTSColIDInGroupWindow(
+	expr opt.Expr, exprID opt.ColumnID, id opt.ColumnID,
+) opt.ColumnID {
+	if id <= 0 && expr == nil {
+		return opt.ColumnID(-1)
+	}
+	if id <= 0 {
+		// get groupWindowId from groupWindowExpr
+		if _, ok := expr.(*FunctionExpr); ok {
+			if _, ok1 := CheckGroupWindowExist(expr); ok1 {
+				id = exprID
+			}
+		}
+	}
+	if id > 0 {
+		// get tsColMetaID
+		if col := m.Metadata().ColumnMeta(id); col != nil && col.Table > 0 {
+			if tsCol := m.Metadata().FirstColumnMetaFromTable(col.Table); tsCol != nil {
+				return tsCol.MetaID
+			}
+		}
+		return opt.ColumnID(TsColID)
+	}
+	return opt.ColumnID(-1)
 }
 
 // checkApplyOutsideIn checks if agg can apply outside-in.
