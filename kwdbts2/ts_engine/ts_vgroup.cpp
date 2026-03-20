@@ -57,6 +57,8 @@
 
 namespace kwdbts {
 
+thread_local std::unique_ptr<TsLastSegmentBuilder> tl_lastseg_builder = nullptr;
+
 // todo(liangbo01) using normal path for mem_segment.
 TsVGroup::TsVGroup(EngineOptions* engine_options, uint32_t vgroup_id, TsEngineSchemaManager* schema_mgr,
                    std::shared_mutex* engine_mutex, TsHashRWLatch* tag_lock, bool enable_compact_thread)
@@ -101,6 +103,7 @@ TsVGroup::~TsVGroup() {
     }
   }
   cur_mem_size_ = 0;
+  tl_lastseg_builder = nullptr;
 }
 
 KStatus TsVGroup::Init(kwdbContext_p ctx) {
@@ -932,9 +935,6 @@ static uint64_t GetMaxOsn(const std::vector<std::shared_ptr<TsBlockSpan>>& sorte
   return max_osn;
 }
 
-thread_local std::unique_ptr<TsLastSegmentBuilder> tl_lastseg_builder = nullptr;
-
-
 static KStatus FlushToLastSegment(TsIOEnv* env, TsEngineSchemaManager* schema_mgr, TsVersionManager* version_mgr,
                                   const TsPartitionVersion* partition,
                                   const std::vector<std::shared_ptr<TsBlockSpan>>& spans, TsVersionUpdate* update,
@@ -947,7 +947,7 @@ static KStatus FlushToLastSegment(TsIOEnv* env, TsEngineSchemaManager* schema_mg
     LOG_ERROR("flush failed, new last segment failed.");
     return s;
   }
-  if (tl_lastseg_builder == nullptr || tl_lastseg_builder->GetSchemaManager() != schema_mgr) {
+  if (tl_lastseg_builder == nullptr) {
     tl_lastseg_builder = std::make_unique<TsLastSegmentBuilder>(schema_mgr, std::move(lastseg_file), lastseg_file_number);
   } else {
     tl_lastseg_builder->Reset(std::move(lastseg_file), lastseg_file_number);
