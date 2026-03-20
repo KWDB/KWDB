@@ -99,6 +99,7 @@ TEST_F(TestOffsetIteratorV2, basic) {
   std::vector<k_int32> agg_extend_cols;
   std::vector<BlockFilter> block_filter;
   std::vector<KwTsSpan> ts_spans = {ts_span};
+  FillParams fill_params;
   IteratorParams params = {
       .entity_ids = entity_results,
       .ts_spans = ts_spans,
@@ -112,6 +113,7 @@ TEST_F(TestOffsetIteratorV2, basic) {
       .sorted = false,
       .offset = 5000,
       .limit = 10,
+      .fill_params = fill_params,
   };
   // ASSERT_EQ(ts_table->GetEntityIdList(ctx_, 0, UINT64_MAX, entity_results), KStatus::SUCCESS);
   ASSERT_EQ(ts_table->GetIterator(ctx_, params, &iter1), KStatus::SUCCESS);
@@ -231,6 +233,7 @@ TEST_F(TestOffsetIteratorV2, multi_partition) {
   std::vector<k_int32> agg_extend_cols;
   std::vector<BlockFilter> block_filter;
   std::vector<KwTsSpan> ts_spans = {ts_span};
+  FillParams fill_params;
   IteratorParams params = {
       .entity_ids = entity_results,
       .ts_spans = ts_spans,
@@ -244,6 +247,7 @@ TEST_F(TestOffsetIteratorV2, multi_partition) {
       .sorted = false,
       .offset = 15000,
       .limit = 10,
+      .fill_params = fill_params,
   };
   // ASSERT_EQ(ts_table->GetEntityIndex(ctx_, 0, UINT64_MAX, entity_results), KStatus::SUCCESS);
   ASSERT_EQ(ts_table->GetIterator(ctx_, params, &iter1), KStatus::SUCCESS);
@@ -351,6 +355,7 @@ TEST_F(TestOffsetIteratorV2, extreme) {
   std::vector<k_int32> agg_extend_cols;
   std::vector<BlockFilter> block_filter;
   std::vector<KwTsSpan> ts_spans = {ts_span};
+  FillParams fill_params;
   IteratorParams params = {
       .entity_ids = entity_results,
       .ts_spans = ts_spans,
@@ -364,6 +369,7 @@ TEST_F(TestOffsetIteratorV2, extreme) {
       .sorted = false,
       .offset = 1,
       .limit = 1,
+      .fill_params = fill_params,
   };
   // ASSERT_EQ(ts_table->GetEntityIndex(ctx_, 0, UINT64_MAX, entity_results), KStatus::SUCCESS);
   ASSERT_EQ(ts_table->GetIterator(ctx_, params, &iter1), KStatus::SUCCESS);

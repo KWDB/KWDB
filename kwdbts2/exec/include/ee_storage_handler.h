@@ -88,6 +88,7 @@ class StorageHandler {
    * @param max_ts
    */
   virtual void SetSpans(std::vector<KwTsSpan> *ts_spans);
+  virtual void SetFill(const TSFill *ts_fill);
 
   /**
    * @brief           read data
@@ -211,6 +212,8 @@ class StorageHandler {
   k_uint32 current_line_{0};
   std::vector<EntityResultIndex> entities_;
   uint64_t total_read_rows_{0};
+
+  FillParams ts_fill_params_{};
 };
 
 }  // namespace kwdbts

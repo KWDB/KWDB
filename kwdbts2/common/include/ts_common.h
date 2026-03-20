@@ -18,6 +18,7 @@
 #include <set>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 #include <algorithm>
@@ -119,6 +120,29 @@ enum class DedupRule {
 enum SortOrder {
   ASC = 0,
   DESC,
+};
+
+enum FillType {
+  NONE = 0,
+  EXACT,
+  PREVIOUS,
+  NEXT,
+  CLOSER,
+  LINEAR,
+  CONSTANT,
+};
+
+struct FillParams {
+  FillType fill_type = FillType::NONE;
+  timestamp64 before_range = 0;
+  timestamp64 after_range = 0;
+  DATATYPE const_data_type = DATATYPE::NO_TYPE;
+  string const_data_value = "";
+  uint32_t const_data_length = 0;
+  uint32_t const_n_data_length = 0;
+  std::unordered_set<uint32_t> varbytes_col_ids;
+  k_int64 const_int_value = 0;
+  bool int_value_flag = false;
 };
 
 enum TsDataSource {
@@ -1212,6 +1236,19 @@ inline timestamp64 convertMSToPrecisionTS(timestamp64 ts, DATATYPE ts_type) {
   return ts > 0 ? INT64_MAX : INT64_MIN;
 }
 
+inline timestamp64 convertNanoToPrecisionTS(timestamp64 ts, DATATYPE ts_type) {
+  switch (ts_type) {
+  case TIMESTAMP64:
+    return ts / 1000000LL;
+  case TIMESTAMP64_MICRO:
+    return ts / 1000LL;
+  case TIMESTAMP64_NANO:
+    return ts;
+  default:
+    assert(false);
+  }
+}
+
 inline uint32_t GetConsistentHashId(const char* data, size_t length, uint64_t hash_num) {
   const uint32_t offset_basis = 2166136261;  // 32 bit offset basis
   const uint32_t prime = 16777619;
@@ -1314,6 +1351,7 @@ struct IteratorParams {
   bool sorted;
   k_uint32 offset;
   k_uint32 limit;
+  FillParams fill_params;
 };
 
 inline bool InHashIdSpan(uint32_t hp, const std::vector<HashIdSpan>* hps) {

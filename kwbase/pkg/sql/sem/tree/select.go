@@ -35,6 +35,7 @@ package tree
 
 import (
 	"fmt"
+	"strconv"
 
 	"gitee.com/kwbasedb/kwbase/pkg/keys"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgcode"
@@ -109,6 +110,7 @@ type SelectClause struct {
 	GroupBy      GroupBy
 	Having       *Where
 	Window       Window
+	Fill         Fill
 	TableSelect  bool
 	HintSet      HintSet
 	HintForest   HintForest
@@ -153,6 +155,10 @@ func (node *SelectClause) Format(ctx *FmtCtx) {
 		if node.Where != nil {
 			ctx.WriteByte(' ')
 			ctx.FormatNode(node.Where)
+		}
+		if node.Fill.FillType > 0 {
+			ctx.WriteByte(' ')
+			ctx.FormatNode(node.Fill)
 		}
 		if len(node.GroupBy) > 0 {
 			ctx.WriteByte(' ')
@@ -1169,4 +1175,87 @@ func max(a, b byte) byte {
 		return a
 	}
 	return b
+}
+
+// FillType type of fill clause
+type FillType int8
+
+const (
+	// DefaultFillType default.
+	DefaultFillType FillType = iota
+	// ExactFill Exact fill
+	ExactFill
+	// PreviousFill Previous
+	PreviousFill
+	// NextFill Next
+	NextFill
+	// CloserFill Closer
+	CloserFill
+	// LinearFill Linear fill clause(It only supports calculations of numeric types)
+	LinearFill
+
+	// ConstantFill Constant fill clause(it indicates the full table range, no need to build FillRange)
+	ConstantFill
+)
+
+// FillRange before and end range.(PreviousFill, NextFill, CloserFill, LinearFill)
+type FillRange struct {
+	BeforeRange int64
+	AfterRange  int64
+}
+
+// CheckIsNull check if the FillRange is null
+func (f *FillRange) CheckIsNull() bool {
+	if f.BeforeRange == 0 && f.AfterRange == 0 {
+		return true
+	}
+	return false
+}
+
+// Fill fill clause
+type Fill struct {
+	FillType FillType
+	// If FillRange is empty, it indicates the full table range;
+	// otherwise, it explicitly sets the Range.
+	FillRange *FillRange
+	// ConstValue has a value when FillType is ConstantFill.
+	ConstValue Expr
+}
+
+// GetFillTypeString get fillType name
+func GetFillTypeString(typ FillType) string {
+	switch typ {
+	case ExactFill:
+		return "EXACT"
+	case PreviousFill:
+		return "PREVIOUS"
+	case NextFill:
+		return "NEXT"
+	case CloserFill:
+		return "CLOSER"
+	case LinearFill:
+		return "LINEAR"
+	case ConstantFill:
+		return "CONSTANT"
+	}
+	return ""
+}
+
+// Format implements the NodeFormatter interface.
+func (f Fill) Format(ctx *FmtCtx) {
+	ctx.WriteString("FILL(")
+	ctx.WriteString(GetFillTypeString(f.FillType))
+	if f.FillRange != nil && f.FillRange.BeforeRange > 0 {
+		ctx.WriteString(", ")
+		ctx.WriteString(strconv.FormatInt(f.FillRange.BeforeRange, 10))
+	}
+	if f.FillRange != nil && f.FillType != CloserFill && f.FillRange.AfterRange > 0 {
+		ctx.WriteString(", ")
+		ctx.WriteString(strconv.FormatInt(f.FillRange.AfterRange, 10))
+	}
+	if f.ConstValue != nil {
+		ctx.WriteString(", ")
+		ctx.FormatNode(f.ConstValue)
+	}
+	ctx.WriteString(")")
 }

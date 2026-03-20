@@ -58,6 +58,60 @@ void StorageHandler::SetSpans(std::vector<KwTsSpan> *ts_spans) {
   ts_spans_ = ts_spans;
 }
 
+void StorageHandler::SetFill(const TSFill *ts_fill) {
+  ts_fill_params_.fill_type = static_cast<FillType>(static_cast<int>(ts_fill->filltype()));
+  ts_fill_params_.before_range = (timestamp64)ts_fill->beforerange();
+  ts_fill_params_.after_range = (timestamp64)ts_fill->afterrange();
+  ts_fill_params_.const_data_value = ts_fill->constvalue();
+  ts_fill_params_.const_data_length = ts_fill->constwidh();
+  ts_fill_params_.const_n_data_length = ts_fill->nconstwidh();
+  ts_fill_params_.const_int_value = ts_fill->constintvalue();
+  ts_fill_params_.int_value_flag = ts_fill->intvalueflag();
+  // convert datatype to enum DATATYPE
+  switch (ts_fill->datatype()) {
+    case roachpb::DataType::BOOL:
+      ts_fill_params_.const_data_type = DATATYPE::BOOL;
+      break;
+    case roachpb::DataType::SMALLINT:
+      ts_fill_params_.const_data_type = DATATYPE::INT16;
+      break;
+    case roachpb::DataType::INT:
+      ts_fill_params_.const_data_type = DATATYPE::INT32;
+      break;
+    case roachpb::DataType::BIGINT:
+      ts_fill_params_.const_data_type = DATATYPE::INT64;
+      break;
+    case roachpb::DataType::FLOAT:
+      ts_fill_params_.const_data_type = DATATYPE::FLOAT;
+      break;
+    case roachpb::DataType::DOUBLE:
+      ts_fill_params_.const_data_type = DATATYPE::DOUBLE;
+      break;
+    case roachpb::DataType::CHAR:
+    ts_fill_params_.const_data_type = DATATYPE::CHAR;
+    break;
+    case roachpb::DataType::VARCHAR:
+    ts_fill_params_.const_data_type = DATATYPE::VARSTRING;
+    break;
+    case roachpb::DataType::NCHAR:
+    case roachpb::DataType::BINARY:
+    ts_fill_params_.const_data_type = DATATYPE::BINARY;
+    break;
+    case roachpb::DataType::NVARCHAR:
+    case roachpb::DataType::VARBINARY:
+      ts_fill_params_.const_data_type = DATATYPE::VARBINARY;
+      break;
+    default:
+      ts_fill_params_.const_data_type = DATATYPE::NO_TYPE;
+      break;
+  }
+  for (const auto& col_id : table_->scan_cols_) {
+    if (table_->fields_[col_id]->get_storage_type() == roachpb::DataType::VARBINARY) {
+      ts_fill_params_.varbytes_col_ids.insert(col_id);
+    }
+  }
+}
+
 EEIteratorErrCode StorageHandler::HandleTsItrAndGetTagData(
     kwdbContext_p ctx, ScanRowBatch *row_batch, bool init_itr) {
   EEIteratorErrCode code = EEIteratorErrCode::EE_OK;
@@ -599,8 +653,8 @@ EEIteratorErrCode StorageHandler::NewTsIterator(kwdbContext_p ctx) {
       .sorted = table_->ordered_scan_,
       .offset = table_->offset_,
       .limit = table_->limit_,
+      .fill_params = ts_fill_params_,
     };
-
     ret = ts_table_->GetIterator(ctx, params, &ts_iterator);
 
     if (KStatus::FAIL == ret) {

@@ -1978,7 +1978,7 @@ func (p *PhysicalPlan) initPhyPlanForTsReaders(
 		}
 	}
 	tr := execinfrapb.TSReaderSpec{TableID: uint64(n.Table.ID()), TsSpans: n.tsSpans, TableVersion: n.Table.GetTSVersion(),
-		OrderedScan: n.orderedType.UserOrderedScan(), TsTablereaderId: planCtx.tsTableReaderID, BlockFilter: n.blockFilter}
+		OrderedScan: n.orderedType.UserOrderedScan(), TsTablereaderId: planCtx.tsTableReaderID, BlockFilter: n.blockFilter, TsFill: n.tsFill}
 
 	if n.orderedType.NeedReverse() || n.reverse {
 		reverse := true

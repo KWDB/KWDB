@@ -267,7 +267,8 @@ KStatus TsTableV2Impl::GetNormalIterator(kwdbContext_p ctx, const IteratorParams
     s = vgroup->GetIterator(ctx, params.table_version, vgroup_ids[vgroup_iter.first], params.ts_spans,
                             params.block_filter, params.scan_cols, ts_scan_cols, params.agg_extend_cols,
                             params.scan_agg_types, table_schema_mgr_, schema,
-                            &ts_iter, vgroup, params.ts_points, params.reverse, params.sorted);
+                            &ts_iter, vgroup, params.ts_points, params.reverse, params.sorted,
+                            params.fill_params);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("cannot create iterator for vgroup[%u].", vgroup_iter.first);
       return s;
@@ -323,7 +324,7 @@ KStatus TsTableV2Impl::GetOffsetIterator(kwdbContext_p ctx, const IteratorParams
 
   std::shared_ptr<MMapMetricsTable> schema = metric_schema;
 
-  TsOffsetIteratorV2Impl* ts_iter = new TsOffsetIteratorV2Impl(vgroups, vgroup_ids, params.ts_spans,
+  TsOffsetIteratorImpl* ts_iter = new TsOffsetIteratorImpl(vgroups, vgroup_ids, params.ts_spans,
                                                                params.scan_cols, ts_scan_cols, table_schema_mgr_,
                                                                schema, params.offset, params.limit);
   KStatus s = ts_iter->Init(params.reverse);
@@ -654,6 +655,7 @@ KStatus TsTableV2Impl::GetDataVolumeHalfTS(kwdbContext_p ctx, uint64_t begin_has
   std::vector<BlockFilter> block_filter;
   std::vector<k_int32> agg_extend_cols;
   std::vector<Sumfunctype> scan_agg_types;
+  FillParams fill_params;
   IteratorParams params = {
       .entity_ids = entity_store,
       .ts_spans = ts_spans,
@@ -667,6 +669,7 @@ KStatus TsTableV2Impl::GetDataVolumeHalfTS(kwdbContext_p ctx, uint64_t begin_has
       .sorted = false,
       .offset = offset,
       .limit = 1,
+      .fill_params = fill_params,
   };
   s = GetOffsetIterator(ctx, params, &iter);
   if (s != KStatus::SUCCESS) {
@@ -918,6 +921,7 @@ const std::vector<KwTsSpan>& ts_spans, uint64_t* row_count) {
   std::vector<BlockFilter> block_filter;
   std::vector<k_int32> agg_extend_cols;
   std::vector<timestamp64> ts_points;
+  FillParams fill_params;
   IteratorParams params = {
       .entity_ids = entity_ids,
       .ts_spans = const_cast<vector<KwTsSpan>&>(ts_spans),
@@ -931,6 +935,7 @@ const std::vector<KwTsSpan>& ts_spans, uint64_t* row_count) {
       .sorted = false,
       .offset = 0,
       .limit = 0,
+      .fill_params = fill_params,
   };
   KStatus s = GetNormalIterator(ctx, params, &iter);
   if (s != KStatus::SUCCESS) {

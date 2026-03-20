@@ -2297,6 +2297,7 @@ func (s *Server) Start(ctx context.Context) error {
 	s.stopper.RunWorker(workersCtx, func(workersCtx context.Context) {
 		restConnTimeout := time.Duration(SQLRestfulTimeOut.Get(&s.cfg.Settings.SV)*60/2) * time.Second
 		checkRestfulTicker := time.NewTicker(restConnTimeout)
+		defer checkRestfulTicker.Stop()
 
 		for {
 			select {

@@ -497,6 +497,58 @@ TSSlice GenRowPayloadForSumOverflow(const std::vector<AttributeInfo>& metric, co
   return payload;
 }
 
+TSSlice GenRowPayload(const std::vector<AttributeInfo>& metric, const std::vector<TagInfo>& tag,
+                      TSTableID table_id, TSEntityID dev_id, uint32_t version, int num,
+                      vector<timestamp64>& ts,
+                      vector<int32_t>& col1_value, vector<bool>& col1_is_null,
+                      vector<double>& col2_value, vector<bool>& col2_is_null) {
+  TSRowPayloadBuilder builder(tag, metric, num);
+  builder.SetTagValue(0, (char*)(&dev_id), sizeof(dev_id));
+  string var_str = intToString(dev_id);
+  for (size_t i = 1; i < tag.size(); i++) {
+    if (tag[i].m_data_type == DATATYPE::VARSTRING) {
+      builder.SetTagValue(i, var_str.data(), var_str.length());
+    } else {
+      builder.SetTagValue(i, (char*)(&dev_id), tag[i].m_size);
+    }
+  }
+
+  for (size_t i = 0; i < ts.size(); ++i) {
+    for (int j = 0; j < metric.size(); ++j) {
+      switch (metric[j].type) {
+        case DATATYPE::TIMESTAMP:
+        case DATATYPE::TIMESTAMP64: {
+          builder.SetColumnValue(i, j, (char*)(&ts[i]), sizeof(timestamp64));
+          break;
+        }
+        case DATATYPE::INT32: {
+          if (col1_is_null[i]) {
+            builder.SetColumnNull(i, j);
+          } else {
+            int data = col1_value[i];
+            builder.SetColumnValue(i, j, (char*)(&data), sizeof(data));
+          }
+          break;
+        }
+        case DATATYPE::DOUBLE: {
+          if (col2_is_null[i]) {
+            builder.SetColumnNull(i, j);
+          } else {
+            double data = col2_value[i];
+            builder.SetColumnValue(i, j, (char*)(&data), sizeof(data));
+          }
+          break;
+        }
+        default:
+          break;
+      }
+    }
+  }
+  TSSlice payload{nullptr, 0};
+  builder.Build(table_id, version, &payload);
+  return payload;
+}
+
 namespace kwtest {
 class PayloadBuilder {
  private:

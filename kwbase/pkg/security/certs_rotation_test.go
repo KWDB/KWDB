@@ -35,6 +35,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"gitee.com/kwbasedb/kwbase/pkg/base"
 	"gitee.com/kwbasedb/kwbase/pkg/security"
@@ -42,6 +43,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/testutils/serverutils"
 	"gitee.com/kwbasedb/kwbase/pkg/util/leaktest"
 	"github.com/pkg/errors"
+	"golang.org/x/net/http2"
 	"golang.org/x/sys/unix"
 )
 
@@ -111,9 +113,15 @@ func TestRotateCerts(t *testing.T) {
 	const kBadCertificate = "tls: bad certificate"
 	const kUnknownCertificate = "unknown certificate authority"
 
-	// Test client with the same certs.
+	// --- SAVE OLD TLS CONFIG BEFORE ROTATION ---
 	clientContext := testutils.NewNodeTestBaseContext()
 	clientContext.SSLCertsDir = certsDir
+	oldTLSConfig, err := clientContext.GetUIClientTLSConfig()
+	if err != nil {
+		t.Fatalf("could not load old TLS config: %v", err)
+	}
+
+	// Create first client (with old certs)
 	firstClient, err := clientContext.GetHTTPClient()
 	if err != nil {
 		t.Fatalf("could not create http client: %v", err)
@@ -174,18 +182,31 @@ func TestRotateCerts(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Try again, the first HTTP client should now fail, the second should succeed.
-	testutils.SucceedsSoon(t,
-		func() error {
-			if err := clientTest(firstClient); !testutils.IsError(err, "unknown authority") {
-				return errors.Errorf("expected unknown authority, got %v", err)
-			}
+	// --- VALIDATE WITH FRESH CLIENT USING OLD CA (MUST FAIL) ---
+	testutils.SucceedsSoon(t, func() error {
+		// Build a brand-new client with the OLD TLS config.
+		transport := &http.Transport{
+			TLSClientConfig: oldTLSConfig.Clone(),
+		}
+		if err := http2.ConfigureTransport(transport); err != nil {
+			return err
+		}
+		freshOldClient := http.Client{
+			Timeout:   10 * time.Second,
+			Transport: transport,
+		}
 
-			if err := clientTest(secondClient); err != nil {
-				return err
-			}
-			return nil
-		})
+		// This should fail: old CA can't verify new server cert.
+		if err := clientTest(freshOldClient); !testutils.IsError(err, "unknown authority") {
+			return errors.Errorf("expected unknown authority, got %v", err)
+		}
+
+		// Second client (new CA) should now succeed.
+		if err := clientTest(secondClient); err != nil {
+			return err
+		}
+		return nil
+	})
 
 	// Nothing changed in the first SQL client: the connection is already established.
 	if _, err := firstSQLClient.Exec("SELECT 1"); err != nil {
@@ -239,15 +260,14 @@ func TestRotateCerts(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Wait until client3 succeeds (both http and sql).
-	testutils.SucceedsSoon(t,
-		func() error {
-			if err := clientTest(thirdClient); err != nil {
-				return errors.Errorf("third HTTP client failed: %v", err)
-			}
-			if _, err := thirdSQLClient.Exec("SELECT 1"); err != nil {
-				return errors.Errorf("third SQL client failed: %v", err)
-			}
-			return nil
-		})
+	// Wait until third client succeeds (both HTTP and SQL).
+	testutils.SucceedsSoon(t, func() error {
+		if err := clientTest(thirdClient); err != nil {
+			return errors.Errorf("third HTTP client failed: %v", err)
+		}
+		if _, err := thirdSQLClient.Exec("SELECT 1"); err != nil {
+			return errors.Errorf("third SQL client failed: %v", err)
+		}
+		return nil
+	})
 }

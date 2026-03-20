@@ -26,15 +26,22 @@ package memo
 
 import (
 	"fmt"
+	"math"
 	"math/bits"
 	"sort"
+	"strconv"
 	"strings"
+	"time"
+	"unicode/utf8"
 
 	"gitee.com/kwbasedb/kwbase/pkg/keys"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfrapb"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/opt"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/opt/cat"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/opt/props"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/opt/props/physical"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgcode"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgerror"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/types"
@@ -433,7 +440,126 @@ type TSScanFlags struct {
 	Direction tree.Direction
 
 	InStream bool
+
+	// Fill fill clause
+	Fill TSFill
 }
+
+// TSFill fill clause
+type TSFill interface {
+	// ConvertFill convert TSFill of memo to TSFill of AE
+	ConvertFill() *execinfrapb.TSFill
+}
+
+// RangeFill extractFill, previousFill, nextFill, closerFill and linearFill
+type RangeFill struct {
+	FillType tree.FillType
+	// If FillRange is empty, it indicates the full table range;
+	// otherwise, it explicitly sets the Range.
+	FillRange *tree.FillRange
+}
+
+// ConvertFill convert RangeFill of memo to TSFill of AE
+func (r *RangeFill) ConvertFill() *execinfrapb.TSFill {
+	var fill execinfrapb.TSFill
+	fill.FillType = execinfrapb.TSFill_TSFillType(r.FillType)
+	if r.FillRange != nil {
+		fill.BeforeRange = uint32(r.FillRange.BeforeRange)
+		fill.AfterRange = uint32(r.FillRange.AfterRange)
+	}
+
+	return &fill
+}
+
+var _ TSFill = &RangeFill{}
+
+// ConstFill constFill
+type ConstFill struct {
+	ConstExpr opt.ScalarExpr
+}
+
+// build ConstFill and deal with opt.ScalarExpr
+// ConstValue stores the value of constFill,
+// DataType stores the type of constFill(support types: string, int, float, decimal, bytes, timestamp, bool),
+// ConstWidh and NConstWidh stores width of varchar and width of nvarchar.
+// inParams: const value, TSFill
+func makeConstFill(value opt.ScalarExpr, fill *execinfrapb.TSFill) {
+	switch v := value.(type) {
+	case *ConstExpr:
+		switch e := v.Value.(type) {
+		case *tree.DString:
+			fill.ConstValue = string(*e)
+			fill.DataType = int32(sqlbase.DataType_CHAR)
+			t, err := tree.ParseDTimestamp(nil, string(*e), time.Nanosecond)
+			if err != nil {
+				break
+			}
+			// ConstIntValue stores the timestamp value.
+			fill.ConstIntValue = t.UnixNano()
+			fill.IntValueFlag = true
+			break
+		case *tree.DInt:
+			fill.ConstValue = strconv.FormatInt(int64(*e), 10)
+			if *e >= math.MinInt16 && *e <= math.MaxInt16 {
+				fill.DataType = int32(sqlbase.DataType_SMALLINT)
+			} else if *e >= math.MinInt32 && *e <= math.MaxInt32 {
+				fill.DataType = int32(sqlbase.DataType_INT)
+			} else {
+				fill.DataType = int32(sqlbase.DataType_BIGINT)
+			}
+			break
+		case *tree.DFloat:
+			fill.ConstValue = strconv.FormatFloat(float64(*e), 'f', -1, 64)
+			fill.DataType = int32(sqlbase.DataType_DOUBLE)
+			break
+		case *tree.DDecimal:
+			fill.ConstValue = e.Decimal.String()
+			fill.DataType = int32(sqlbase.DataType_FLOAT)
+			break
+		case *tree.DBytes:
+			fill.ConstValue = string(*e)
+			fill.DataType = int32(sqlbase.DataType_BYTES)
+		case *tree.DTimestamp:
+			fill.ConstValue = e.String()
+			fill.ConstIntValue = e.UnixNano()
+			fill.DataType = int32(sqlbase.DataType_TIMESTAMP)
+		default:
+			panic(pgerror.Newf(pgcode.Syntax, "CONSTANT FILL: Constant type cannot be recognized, %v", v.Typ.Name()))
+		}
+		break
+	case *FalseExpr:
+		fill.ConstValue = "false"
+		fill.DataType = int32(sqlbase.DataType_BOOL)
+		break
+	case *TrueExpr:
+		fill.ConstValue = "true"
+		fill.DataType = int32(sqlbase.DataType_BOOL)
+		break
+	case *CastExpr:
+		makeConstFill(v.Input, fill)
+		castDataType := sqlbase.GetTSDataType(v.Typ)
+		if castDataType != sqlbase.DataType_UNKNOWN {
+			fill.DataType = int32(castDataType)
+		}
+		if fill.DataType == int32(sqlbase.DataType_UNKNOWN) {
+			panic(pgerror.Newf(pgcode.Syntax, "CONSTANT FILL: Constant type cannot be recognized, %v", v.Typ.Name()))
+		}
+		break
+	}
+	fill.ConstWidh = int64(len(fill.ConstValue))
+	fill.NConstWidh = int64(utf8.RuneCountInString(fill.ConstValue))
+}
+
+// ConvertFill convert ConstFill of memo to TSFill of AE
+func (c *ConstFill) ConvertFill() *execinfrapb.TSFill {
+	var fill execinfrapb.TSFill
+	fill.FillType = execinfrapb.TSFill_ConstantFill
+	makeConstFill(c.ConstExpr, &fill)
+
+	return &fill
+}
+
+var _ TSFill = &ConstFill{}
 
 // Empty returns true if there are no flags set.
 func (sf *ScanFlags) Empty() bool {

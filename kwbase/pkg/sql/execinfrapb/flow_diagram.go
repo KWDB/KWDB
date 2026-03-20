@@ -305,6 +305,10 @@ func (tr *TSReaderSpec) summary() (string, []string) {
 		}
 	}
 
+	if tr.TsFill != nil {
+		details = append(details, fmt.Sprintf("FILL: %s", PrintFill(*tr.TsFill)))
+	}
+
 	return "TSTableReader", details
 }
 
@@ -1234,6 +1238,40 @@ func PrintBlockFilter(filter TSBlockFilter) string {
 			buf.WriteString("]")
 		} else {
 			buf.WriteString(")")
+		}
+	}
+	return buf.String()
+}
+
+// PrintFill print ts fill clause in explain distsql.
+func PrintFill(fill TSFill) string {
+	var buf bytes.Buffer
+	buf.WriteString(tree.GetFillTypeString(tree.FillType(fill.FillType)))
+	if fill.FillType == TSFill_ConstantFill && fill.ConstValue != "" {
+		if buf.Len() > 0 {
+			buf.WriteString(", ")
+		}
+		buf.WriteString("Const[")
+		buf.WriteString(fill.ConstValue)
+		buf.WriteString("::")
+		buf.WriteString(sqlbase.DataType_name[fill.DataType])
+		buf.WriteString("]")
+	} else {
+		if fill.BeforeRange > 0 {
+			if buf.Len() > 0 {
+				buf.WriteString(", ")
+			}
+			buf.WriteString("BeforeRange[")
+			buf.WriteString(strconv.FormatUint(uint64(fill.BeforeRange), 10))
+			buf.WriteString("]")
+		}
+		if fill.AfterRange > 0 {
+			if buf.Len() > 0 {
+				buf.WriteString(", ")
+			}
+			buf.WriteString("AfterRange[")
+			buf.WriteString(strconv.FormatUint(uint64(fill.AfterRange), 10))
+			buf.WriteString("] ")
 		}
 	}
 	return buf.String()

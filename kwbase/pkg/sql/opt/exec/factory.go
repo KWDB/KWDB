@@ -95,6 +95,7 @@ type Factory interface {
 		tagFilter, primaryFilter, tagIndexFilter []tree.TypedExpr,
 		blockFilter []*execinfrapb.TSBlockFilter,
 		rowCount float64,
+		tsFill memo.TSFill,
 	) (Node, error)
 
 	// MakeTSSpans push down time to tsScanNode.

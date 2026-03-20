@@ -304,6 +304,9 @@ func (v *planVisitor) visitInternal(plan planNode, name string) {
 				}
 			}
 		}
+		if n.tsFill != nil {
+			v.observer.attr(name, "FILL", execinfrapb.PrintFill(*n.tsFill))
+		}
 
 	case *filterNode:
 		if v.observer.attr != nil {

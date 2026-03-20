@@ -53,6 +53,12 @@ func (b *Builder) buildCTE(
 	cte *tree.CTE, inScope *scope, isRecursive bool,
 ) (memo.RelExpr, physical.Presentation) {
 	if !isRecursive {
+		// check fill clause
+		if sel, ok := cte.Stmt.(*tree.Select); ok {
+			if selClause, ok := sel.Select.(*tree.SelectClause); ok && selClause.Fill.FillType > 0 {
+				panic(pgerror.New(pgcode.Syntax, "FILL clause is not supported in WITH...AS..."))
+			}
+		}
 		cteScope := b.buildStmt(cte.Stmt, nil /* desiredTypes */, inScope)
 		cteScope.removeHiddenCols()
 		b.dropOrderingAndExtraCols(cteScope)

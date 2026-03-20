@@ -1125,17 +1125,22 @@ KStatus TsVGroup::GetIterator(kwdbContext_p ctx, uint32_t version, vector<uint32
                               const std::shared_ptr<TsTableSchemaManager>& table_schema_mgr,
                               const std::shared_ptr<MMapMetricsTable>& schema, TsStorageIterator** iter,
                               const std::shared_ptr<TsVGroup>& vgroup,
-                              const std::vector<timestamp64>& ts_points, bool reverse, bool sorted) {
+                              const std::vector<timestamp64>& ts_points, bool reverse, bool sorted,
+                              const FillParams& fill_params) {
   // TODO(liuwei) update to use read_lsn to fetch Metrics data optimistically.
   // if the read_lsn is 0, ignore the read lsn checking and return all data (it's no WAL support
   // case). TS_OSN read_lsn = GetOptimisticReadLsn();
   TsStorageIterator* ts_iter = nullptr;
-  if (scan_agg_types.empty()) {
-    ts_iter = new TsSortedRawDataIteratorV2Impl(vgroup, version, entity_ids, ts_spans, block_filter, scan_cols,
+  if (fill_params.fill_type != FillType::NONE) {
+    ts_iter = new TsFillRawDataIteratorImpl(vgroup, version, entity_ids, ts_spans, block_filter, scan_cols,
+                                            ts_scan_cols, table_schema_mgr, schema, fill_params);
+
+  } else if (scan_agg_types.empty()) {
+    ts_iter = new TsSortedRawDataIteratorImpl(vgroup, version, entity_ids, ts_spans, block_filter, scan_cols,
                                                 ts_scan_cols, table_schema_mgr, schema, ASC);
   } else {
     // need call Next function times: entity_ids.size(), no matter Next return what.
-    ts_iter = new TsAggIteratorV2Impl(vgroup, version, entity_ids, ts_spans, block_filter, scan_cols, ts_scan_cols,
+    ts_iter = new TsAggIteratorImpl(vgroup, version, entity_ids, ts_spans, block_filter, scan_cols, ts_scan_cols,
                                       agg_extend_cols, scan_agg_types, ts_points, table_schema_mgr, schema);
   }
   KStatus s = ts_iter->Init(reverse);
@@ -1199,7 +1204,7 @@ KStatus TsVGroup::GetMetricIteratorByOSN(kwdbContext_p ctx, const std::shared_pt
     std::vector<EntityResultIndex>& entity_ids, std::vector<k_uint32>& scan_cols, std::vector<k_uint32>& ts_scan_cols,
     std::vector<KwOSNSpan>& osn_span, std::vector<KwTsSpan>& ts_spans,
     uint32_t version, const std::shared_ptr<TsTableSchemaManager>& table_schema_mgr, TsStorageIterator** iter) {
-  auto ts_iter = new TsRawDataIteratorV2ImplByOSN(vgroup, version, entity_ids,
+  auto ts_iter = new TsRawDataIteratorImplByOSN(vgroup, version, entity_ids,
     scan_cols, ts_scan_cols, osn_span, ts_spans, table_schema_mgr);
   KStatus s = ts_iter->Init();
   if (s != KStatus::SUCCESS) {

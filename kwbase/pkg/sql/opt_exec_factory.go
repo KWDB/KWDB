@@ -153,6 +153,7 @@ func (ef *execFactory) ConstructTSScan(
 	tagFilter, primaryFilter, tagIndexFilter []tree.TypedExpr,
 	blockFilter []*execinfrapb.TSBlockFilter,
 	rowCount float64,
+	tsFill memo.TSFill,
 ) (exec.Node, error) {
 	// Create a tsScanNode.
 	tsScan := ef.planner.TSScan()
@@ -214,6 +215,11 @@ func (ef *execFactory) ConstructTSScan(
 	tsScan.estimatedRowCount = uint64(rowCount)
 	tsScan.blockFilter = blockFilter
 	tsScan.reverse = flags.Direction == tree.Descending
+
+	// deal with fill
+	if tsFill != nil {
+		tsScan.tsFill = tsFill.ConvertFill()
+	}
 
 	// bind tag filter and primary filter to tsScanNode.
 	bindFilter := func(filters []tree.TypedExpr, primaryTag bool, tagIndex bool) bool {

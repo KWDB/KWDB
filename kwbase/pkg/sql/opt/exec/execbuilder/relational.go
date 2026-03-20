@@ -760,7 +760,7 @@ func (b *Builder) buildTimesScan(scan *memo.TSScanExpr) (execPlan, error) {
 	}
 
 	// build scanNode.
-	root, err := b.factory.ConstructTSScan(table, &scan.TSScanPrivate, tagFilter, primaryFilter, tagIndexFilter, blockFilter, rowCount)
+	root, err := b.factory.ConstructTSScan(table, &scan.TSScanPrivate, tagFilter, primaryFilter, tagIndexFilter, blockFilter, rowCount, scan.Flags.Fill)
 	if err != nil {
 		return execPlan{}, err
 	}

@@ -174,6 +174,9 @@ enum KWDB_TYPE {
 #define KFloat64(buf) (*(static_cast<k_float64 *>(static_cast<void *>(buf))))
 
 // change char* memory to k_int16
+#define KInt8(buf) (*(static_cast<int8_t *>(static_cast<void *>(buf))))
+
+// change char* memory to k_int16
 #define KInt16(buf) (*(static_cast<int16_t *>(static_cast<void *>(buf))))
 
 // change char* memory to k_int32

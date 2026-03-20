@@ -277,6 +277,37 @@ message TSBlockFilter {
   repeated Span columnSpan = 3; // multi filter spans
 }
 
+message TSFill {
+  enum TSFillType {
+    // default.
+    DefaultFillType = 0;
+    // Exact
+    ExactFill = 1;
+    
+    // Previous
+    PreviousFill = 2;
+    // Next
+    NextFill = 3;
+    // Closer
+    CloserFill = 4;
+    // Linear
+    LinearFill =5;
+
+    // Constant
+    ConstantFill = 6;
+
+  }
+  optional TSFillType fillType = 1;   // fill type
+  optional uint32 beforeRange = 2; // before range
+  optional uint32 afterRange = 3; // after range
+  optional string constValue = 4; // constant value
+  optional int32 dataType = 5; // constant type
+  optional int64 constWidh = 6; // length of char, varchar and varbytes
+  optional int64 nConstWidh = 7; // length of nchar and nvarchar
+  optional int64 constIntValue = 8; // int value
+  optional bool intValueFlag = 9; // If intValueFlag is true, then constIntValue is valid
+}
+
 // TSReaderSpec table reader
 message TSReaderSpec {
   // time range
@@ -303,6 +334,7 @@ message TSReaderSpec {
 
   required bool OrderedScan = 12;
   repeated TSBlockFilter blockFilter = 13;
+  optional TSFill tsFill = 14;
 }
 
 enum SketchMethod {

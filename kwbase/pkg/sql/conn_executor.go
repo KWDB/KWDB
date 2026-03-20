@@ -467,6 +467,11 @@ type ConnectionHandler struct {
 	ex *connExecutor
 }
 
+// GetEvalContext gets evalctx
+func (h *ConnectionHandler) GetEvalContext() *tree.EvalContext {
+	return h.ex.planner.EvalContext()
+}
+
 // RestfulRes is used for restful apt to get result
 type RestfulRes struct {
 	Rows         []tree.Datums

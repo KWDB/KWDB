@@ -15,6 +15,7 @@
 #include <vector>
 #include <list>
 #include <map>
+#include <string>
 #include <utility>
 #include <unordered_map>
 #include <unordered_set>
@@ -49,15 +50,15 @@ class TsMemSegmentIterator;
 class TsLastSegmentIterator;
 class TsEntitySegmentIterator;
 
-class TsStorageIteratorV2Impl : public TsStorageIterator {
+class TsStorageIteratorImpl : public TsStorageIterator {
  public:
-  TsStorageIteratorV2Impl();
-  TsStorageIteratorV2Impl(const std::shared_ptr<TsVGroup>& vgroup, uint32_t version, vector<uint32_t>& entity_ids,
+  TsStorageIteratorImpl();
+  TsStorageIteratorImpl(const std::shared_ptr<TsVGroup>& vgroup, uint32_t version, vector<uint32_t>& entity_ids,
                           std::vector<KwTsSpan>& ts_spans, std::vector<BlockFilter>& block_filter,
                           std::vector<k_uint32>& kw_scan_cols, std::vector<k_uint32>& ts_scan_cols,
                           const std::shared_ptr<TsTableSchemaManager>& table_schema_mgr,
                           const std::shared_ptr<MMapMetricsTable>& schema);
-  ~TsStorageIteratorV2Impl();
+  ~TsStorageIteratorImpl();
 
   KStatus Init(bool is_reversed) override;
 
@@ -100,16 +101,16 @@ class TsStorageIteratorV2Impl : public TsStorageIterator {
   std::shared_ptr<MMapMetricsTable> scan_schema_;
 };
 
-class TsSortedRawDataIteratorV2Impl : public TsStorageIteratorV2Impl {
+class TsSortedRawDataIteratorImpl : public TsStorageIteratorImpl {
  public:
-  TsSortedRawDataIteratorV2Impl(const std::shared_ptr<TsVGroup>& vgroup, uint32_t version, vector<uint32_t>& entity_ids,
+  TsSortedRawDataIteratorImpl(const std::shared_ptr<TsVGroup>& vgroup, uint32_t version, vector<uint32_t>& entity_ids,
                                 std::vector<KwTsSpan>& ts_spans, std::vector<BlockFilter>& block_filter,
                                 std::vector<k_uint32>& kw_scan_cols,
                                 std::vector<k_uint32>& ts_scan_cols,
                                 const std::shared_ptr<TsTableSchemaManager>& table_schema_mgr,
                                 const std::shared_ptr<MMapMetricsTable>& schema,
                                 SortOrder order_type = ASC);
-  ~TsSortedRawDataIteratorV2Impl();
+  ~TsSortedRawDataIteratorImpl();
 
   KStatus Init(bool is_reversed) override;
   KStatus Next(ResultSet* res, k_uint32* count, bool* is_finished,
@@ -123,9 +124,59 @@ class TsSortedRawDataIteratorV2Impl : public TsStorageIteratorV2Impl {
   std::shared_ptr<TsBlockSpanSortedIterator> block_span_sorted_iterator_{nullptr};
 };
 
-class TsAggIteratorV2Impl : public TsStorageIteratorV2Impl {
+class TsFillRawDataIteratorImpl : public TsSortedRawDataIteratorImpl {
  public:
-  TsAggIteratorV2Impl(const std::shared_ptr<TsVGroup>& vgroup, uint32_t version, vector<uint32_t>& entity_ids,
+  TsFillRawDataIteratorImpl(const std::shared_ptr<TsVGroup>& vgroup, uint32_t version,
+                            vector<uint32_t>& entity_ids, std::vector<KwTsSpan>& ts_spans,
+                            std::vector<BlockFilter>& block_filter,
+                            std::vector<k_uint32>& kw_scan_cols, std::vector<k_uint32>& ts_scan_cols,
+                            const std::shared_ptr<TsTableSchemaManager>& table_schema_mgr,
+                            const std::shared_ptr<MMapMetricsTable>& schema, const FillParams fill_params);
+  ~TsFillRawDataIteratorImpl() {}
+
+  KStatus Init(bool is_reversed) override;
+  KStatus Next(ResultSet* res, k_uint32* count, bool* is_finished,
+               timestamp64 ts = INVALID_TS, TsScanStats* ts_scan_stats = nullptr) override;
+  bool IsDisordered() override;
+
+ protected:
+  template <typename T>
+  T round_to_n_decimals(T value, int n) {
+    T scale = static_cast<T>(pow(static_cast<double>(10), n));
+    return round(value * scale) / scale;
+  }
+  void switchEntity();
+  bool isConstFillTypeIllegal(uint32_t col_idx);
+  KStatus copyBatch(uint32_t col_idx, const Batch* old_batch, Batch** new_batch);
+  KStatus fillColumnResultSet(ResultSet* res, uint32_t idx, const std::string& data_value);
+  KStatus getExactFillTsPointResultSet(ResultSet* res, k_uint32* count, TsScanStats* ts_scan_stats);
+  KStatus calculateLinearResultSet(ResultSet* res, uint32_t idx, timestamp64 t1, timestamp64 t2,
+                                   void* before_value, void* after_value);
+
+  uint32_t cur_entity_id_;
+  timestamp64 fill_ts_point_;
+  std::vector<KwTsSpan> before_ts_span_;
+  std::vector<KwTsSpan> after_ts_span_;
+  std::vector<k_uint32> fill_kw_scan_cols_;
+  std::vector<k_uint32> fill_ts_scan_cols_;
+  std::unordered_map<uint32_t, uint32_t> fill_cols_map_;
+
+  FillType fill_type_;
+  std::unordered_set<uint32_t> varbytes_cols_;
+  timestamp64 before_range_ = 0;
+  timestamp64 after_range_ = 0;
+  DATATYPE const_fill_type_ = DATATYPE::NO_TYPE;
+  string const_fill_value_ = {};
+  uint32_t const_data_length_ = 0;
+  uint32_t const_n_data_length_ = 0;
+
+  bool int_value_flag_ = false;
+  int64_t const_int_value_ = INVALID_TS;
+};
+
+class TsAggIteratorImpl : public TsStorageIteratorImpl {
+ public:
+  TsAggIteratorImpl(const std::shared_ptr<TsVGroup>& vgroup, uint32_t version, vector<uint32_t>& entity_ids,
                       std::vector<KwTsSpan>& ts_spans, std::vector<BlockFilter>& block_filter,
                       std::vector<k_uint32>& kw_scan_cols, std::vector<k_uint32>& ts_scan_cols,
                       std::vector<k_int32>& agg_extend_cols,
@@ -133,7 +184,7 @@ class TsAggIteratorV2Impl : public TsStorageIteratorV2Impl {
                       const std::vector<timestamp64>& ts_points,
                       const std::shared_ptr<TsTableSchemaManager>& table_schema_mgr,
                       const std::shared_ptr<MMapMetricsTable>& schema);
-  ~TsAggIteratorV2Impl();
+  ~TsAggIteratorImpl();
 
   KStatus Init(bool is_reversed) override;
   // need call Next function times: entity_ids.size(), no matter Next return what.
@@ -203,9 +254,9 @@ class TsAggIteratorV2Impl : public TsStorageIteratorV2Impl {
   std::shared_ptr<TsRawPayloadRowParser> parser_;
 };
 
-class TsOffsetIteratorV2Impl : public TsIterator {
+class TsOffsetIteratorImpl : public TsIterator {
  public:
-  TsOffsetIteratorV2Impl(std::unordered_map<uint32_t, std::shared_ptr<TsVGroup>>& vgroups,
+  TsOffsetIteratorImpl(std::unordered_map<uint32_t, std::shared_ptr<TsVGroup>>& vgroups,
                          std::unordered_map<uint32_t, std::vector<EntityID>>& vgroup_ids, std::vector<KwTsSpan>& ts_spans,
                          std::vector<k_uint32>& kw_scan_cols, std::vector<k_uint32>& ts_scan_cols,
                          const std::shared_ptr<TsTableSchemaManager>& table_schema_mgr,
@@ -222,7 +273,7 @@ class TsOffsetIteratorV2Impl : public TsIterator {
         offset_(offset),
         limit_(limit) {}
 
-  ~TsOffsetIteratorV2Impl() override {}
+  ~TsOffsetIteratorImpl() override {}
 
   KStatus Init(bool is_reversed);
 
@@ -306,13 +357,13 @@ class TsOffsetIteratorV2Impl : public TsIterator {
   TS_OSN scan_osn_{UINT64_MAX};
 };
 
-class TsRawDataIteratorV2ImplByOSN : public TsStorageIteratorV2Impl {
+class TsRawDataIteratorImplByOSN : public TsStorageIteratorImpl {
  public:
-  TsRawDataIteratorV2ImplByOSN(const std::shared_ptr<TsVGroup>& vgroup, uint32_t version,
+  TsRawDataIteratorImplByOSN(const std::shared_ptr<TsVGroup>& vgroup, uint32_t version,
     vector<EntityResultIndex>& entity_ids, std::vector<k_uint32>& scan_cols, std::vector<k_uint32>& ts_scan_cols,
     std::vector<KwOSNSpan>& osn_spans, std::vector<KwTsSpan>& ts_spans,
     const std::shared_ptr<TsTableSchemaManager>& table_schema_mgr);
-  ~TsRawDataIteratorV2ImplByOSN();
+  ~TsRawDataIteratorImplByOSN();
 
   KStatus Init();
 

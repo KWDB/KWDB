@@ -56,6 +56,8 @@ type tsScanNode struct {
 	// block filters
 	blockFilter []*execinfrapb.TSBlockFilter
 
+	tsFill *execinfrapb.TSFill
+
 	// tsSpansPre represents the precision of the tsSpans
 	tsSpansPre int32
 

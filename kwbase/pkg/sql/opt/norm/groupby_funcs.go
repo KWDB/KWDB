@@ -403,6 +403,7 @@ func onlyTagPrivateTSScan(tsScan *memo.TSScanExpr) *memo.TSScanPrivate {
 			OrderedScanType    opt.OrderedTableType
 			Direction          tree.Direction
 			InStream           bool
+			Fill               memo.TSFill
 		}{AccessMode: flags.AccessMode,
 			ScanAggs:         flags.ScanAggs,
 			TagFilter:        flags.TagFilter,
@@ -439,6 +440,7 @@ func newTSScanPrivateFromOldPrivate(
 			OrderedScanType    opt.OrderedTableType
 			Direction          tree.Direction
 			InStream           bool
+			Fill               memo.TSFill
 		}{AccessMode: flags.AccessMode,
 			ScanAggs:         flags.ScanAggs,
 			TagFilter:        flags.TagFilter,

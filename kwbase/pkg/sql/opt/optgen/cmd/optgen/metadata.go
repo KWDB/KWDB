@@ -265,6 +265,7 @@ func newMetadata(compiled *lang.CompiledExpr, pkg string) *metadata {
 		"TagIndexInfo":   {fullName: "memo.TagIndexInfo", passByVal: true},
 		"ProcComms":      {fullName: "memo.ProcComms", passByVal: true},
 		"VarNames":       {fullName: "opt.VarNames", passByVal: true},
+		"TSFill":         {fullName: "memo.TSFill", isPointer: true, usePointerIntern: true},
 	}
 
 	// Add types of generated op and private structs.

@@ -38,6 +38,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/util/envutil"
 	"gitee.com/kwbasedb/kwbase/pkg/util/mon"
 	"gitee.com/kwbasedb/kwbase/pkg/util/retry"
+	"golang.org/x/net/http2"
 )
 
 // Base config defaults.
@@ -516,12 +517,27 @@ func (cfg *Config) GetUIServerTLSConfig() (*tls.Config, error) {
 func (cfg *Config) GetHTTPClient() (http.Client, error) {
 	cfg.httpClient.once.Do(func() {
 		cfg.httpClient.httpClient.Timeout = 10 * time.Second
-		var transport http.Transport
-		cfg.httpClient.httpClient.Transport = &transport
-		transport.TLSClientConfig, cfg.httpClient.err = cfg.getUIClientTLSConfig()
+		transport := &http.Transport{}
+		cfg.httpClient.httpClient.Transport = transport
+
+		var err error
+		// Get TLS configuration for UI client (certificates, keys, etc.)
+		transport.TLSClientConfig, err = cfg.getUIClientTLSConfig()
+		if err != nil {
+			cfg.httpClient.err = err
+			return
+		}
+		// Configure HTTP/2 support for the transport and save any potential error
+		cfg.httpClient.err = http2.ConfigureTransport(transport)
 	})
 
 	return cfg.httpClient.httpClient, cfg.httpClient.err
+}
+
+// GetUIClientTLSConfig returns the TLS config used for UI/HTTP clients.
+// Exported only for testing certificate rotation.
+func (cfg *Config) GetUIClientTLSConfig() (*tls.Config, error) {
+	return cfg.getUIClientTLSConfig()
 }
 
 // RaftConfig holds raft tuning parameters.

@@ -142,10 +142,11 @@ TEST_F(TestV2Iterator, basic) {
         std::vector<BlockFilter> block_filter = {};
         std::vector<k_int32> agg_extend_cols = {};
         std::vector<timestamp64> ts_points = {};
+        FillParams fill_params;
 
         s = vgroup->GetIterator(ctx_, 1, entity_ids, ts_spans, block_filter,
                             scan_cols, scan_cols, agg_extend_cols, scan_agg_types, table_schema_mgr,
-                            schema, &ts_iter, vgroup, ts_points, false, false);
+                            schema, &ts_iter, vgroup, ts_points, false, false, fill_params);
         ASSERT_EQ(s, KStatus::SUCCESS);
 
         ResultSet res{(k_uint32) scan_cols.size()};
@@ -214,9 +215,10 @@ TEST_F(TestV2Iterator, mulitEntity) {
         std::vector<BlockFilter> block_filter = {};
         std::vector<k_int32> agg_extend_cols = {};
         std::vector<timestamp64> ts_points = {};
+        FillParams fill_params;
         s = vgroup->GetIterator(ctx_, 1, entity_ids, ts_spans, block_filter,
                           scan_cols, scan_cols, agg_extend_cols, scan_agg_types, table_schema_mgr,
-                          schema, &ts_iter, vgroup, ts_points, false, false);
+                          schema, &ts_iter, vgroup, ts_points, false, false, fill_params);
         ASSERT_EQ(s, KStatus::SUCCESS);
         ResultSet res{(k_uint32) scan_cols.size()};
         k_uint32 count;
@@ -291,10 +293,11 @@ TEST_F(TestV2Iterator, multiDBAndEntity) {
         std::vector<BlockFilter> block_filter = {};
         std::vector<k_int32> agg_extend_cols = {};
         std::vector<timestamp64> ts_points = {};
+        FillParams fill_params;
         auto vgroup = engine_->GetTsVGroup(entity.subGroupId);
         s = vgroup->GetIterator(ctx_, 1, entity_ids, ts_spans, block_filter,
                         scan_cols, scan_cols, agg_extend_cols, scan_agg_types, table_schema_mgr,
-                        schema, &ts_iter, vgroup, ts_points, false, false);
+                        schema, &ts_iter, vgroup, ts_points, false, false, fill_params);
         ASSERT_EQ(s, KStatus::SUCCESS);
         ResultSet res{(k_uint32) scan_cols.size()};
         k_uint32 count;
@@ -387,9 +390,10 @@ TEST_F(TestV2Iterator, mulitEntityCount) {
       std::vector<BlockFilter> block_filter = {};
       std::vector<k_int32> agg_extend_cols = {};
       std::vector<timestamp64> ts_points = {};
+      FillParams fill_params;
       s = vgroup->GetIterator(ctx_, 1, entity_ids, ts_spans, block_filter,
                               scan_cols, scan_cols, agg_extend_cols, scan_agg_types, table_schema_mgr,
-                              schema, &ts_iter, vgroup, ts_points, false, false);
+                              schema, &ts_iter, vgroup, ts_points, false, false, fill_params);
       ASSERT_EQ(s, KStatus::SUCCESS);
       ResultSet res{(k_uint32) scan_cols.size()};
       k_uint32 count;
@@ -489,9 +493,10 @@ TEST_F(TestV2Iterator, mulitEntityDeleteCount) {
       std::vector<BlockFilter> block_filter = {};
       std::vector<k_int32> agg_extend_cols = {};
       std::vector<timestamp64> ts_points = {};
+      FillParams fill_params;
       s = vgroup->GetIterator(ctx_, 1, entity_ids, ts_spans, block_filter,
                               scan_cols, scan_cols, agg_extend_cols, scan_agg_types, table_schema_mgr,
-                              schema, &ts_iter, vgroup, ts_points, false, false);
+                              schema, &ts_iter, vgroup, ts_points, false, false, fill_params);
       ASSERT_EQ(s, KStatus::SUCCESS);
       ResultSet res{(k_uint32) scan_cols.size()};
       k_uint32 count;
@@ -549,9 +554,10 @@ TEST_F(TestV2Iterator, mulitEntityDeleteCount) {
       std::vector<BlockFilter> block_filter = {};
       std::vector<k_int32> agg_extend_cols = {};
       std::vector<timestamp64> ts_points = {};
+      FillParams fill_params;
       s = vgroup->GetIterator(ctx_, 1, entity_ids, ts_spans, block_filter,
                               scan_cols, scan_cols, agg_extend_cols, scan_agg_types, table_schema_mgr,
-                              schema, &ts_iter, vgroup, ts_points, false, false);
+                              schema, &ts_iter, vgroup, ts_points, false, false, fill_params);
       ASSERT_EQ(s, KStatus::SUCCESS);
       ResultSet res{(k_uint32) scan_cols.size()};
       k_uint32 count;
@@ -617,9 +623,10 @@ TEST_F(TestV2Iterator, mulitEntityDeleteCount) {
       std::vector<BlockFilter> block_filter = {};
       std::vector<k_int32> agg_extend_cols = {};
       std::vector<timestamp64> ts_points = {};
+      FillParams fill_params;
       s = vgroup->GetIterator(ctx_, 1, entity_ids, ts_spans, block_filter,
                               scan_cols, scan_cols, agg_extend_cols, scan_agg_types, table_schema_mgr,
-                              schema, &ts_iter, vgroup, ts_points, false, false);
+                              schema, &ts_iter, vgroup, ts_points, false, false, fill_params);
       ASSERT_EQ(s, KStatus::SUCCESS);
       ResultSet res{(k_uint32) scan_cols.size()};
       k_uint32 count;
@@ -727,9 +734,10 @@ TEST_F(TestV2Iterator, mulitEntityInvalidCount) {
       std::vector<BlockFilter> block_filter = {};
       std::vector<k_int32> agg_extend_cols = {};
       std::vector<timestamp64> ts_points = {};
+      FillParams fill_params;
       s = vgroup->GetIterator(ctx_, 1, entity_ids, ts_spans, block_filter,
                               scan_cols, scan_cols, agg_extend_cols, scan_agg_types, table_schema_mgr,
-                              schema, &ts_iter, vgroup, ts_points, false, false);
+                              schema, &ts_iter, vgroup, ts_points, false, false, fill_params);
       ASSERT_EQ(s, KStatus::SUCCESS);
       ResultSet res{(k_uint32) scan_cols.size()};
       k_uint32 count;
@@ -787,9 +795,10 @@ TEST_F(TestV2Iterator, mulitEntityInvalidCount) {
       std::vector<BlockFilter> block_filter = {};
       std::vector<k_int32> agg_extend_cols = {};
       std::vector<timestamp64> ts_points = {};
+      FillParams fill_params;
       s = vgroup->GetIterator(ctx_, 1, entity_ids, ts_spans, block_filter,
                               scan_cols, scan_cols, agg_extend_cols, scan_agg_types, table_schema_mgr,
-                              schema, &ts_iter, vgroup, ts_points, false, false);
+                              schema, &ts_iter, vgroup, ts_points, false, false, fill_params);
       ASSERT_EQ(s, KStatus::SUCCESS);
       ResultSet res{(k_uint32) scan_cols.size()};
       k_uint32 count;
@@ -848,9 +857,10 @@ TEST_F(TestV2Iterator, mulitEntityInvalidCount) {
       std::vector<BlockFilter> block_filter = {};
       std::vector<k_int32> agg_extend_cols = {};
       std::vector<timestamp64> ts_points = {};
+      FillParams fill_params;
       s = vgroup->GetIterator(ctx_, 1, entity_ids, ts_spans, block_filter,
                               scan_cols, scan_cols, agg_extend_cols, scan_agg_types, table_schema_mgr,
-                              schema, &ts_iter, vgroup, ts_points, false, false);
+                              schema, &ts_iter, vgroup, ts_points, false, false, fill_params);
       ASSERT_EQ(s, KStatus::SUCCESS);
       ResultSet res{(k_uint32) scan_cols.size()};
       k_uint32 count;
@@ -972,9 +982,10 @@ TEST_F(TestV2Iterator, blockCacheDetachMMAP) {
       std::vector<BlockFilter> block_filter = {};
       std::vector<k_int32> agg_extend_cols = {};
       std::vector<timestamp64> ts_points = {};
+      FillParams fill_params;
       s = vgroup->GetIterator(ctx_, 1, entity_ids, ts_spans, block_filter,
                               scan_cols, scan_cols, agg_extend_cols, scan_agg_types, table_schema_mgr,
-                              schema, &ts_iter, vgroup, ts_points, false, false);
+                              schema, &ts_iter, vgroup, ts_points, false, false, fill_params);
       ASSERT_EQ(s, KStatus::SUCCESS);
       ResultSet res{(k_uint32) scan_cols.size()};
       k_uint32 count;
@@ -1054,9 +1065,10 @@ TEST_F(TestV2Iterator, blockCacheDetachMMAP) {
       std::vector<BlockFilter> block_filter = {};
       std::vector<k_int32> agg_extend_cols = {};
       std::vector<timestamp64> ts_points = {};
+      FillParams fill_params;
       s = vgroup->GetIterator(ctx_, 1, entity_ids, ts_spans, block_filter,
                               scan_cols, scan_cols, agg_extend_cols, scan_agg_types, table_schema_mgr,
-                              schema, &ts_iter, vgroup, ts_points, false, false);
+                              schema, &ts_iter, vgroup, ts_points, false, false, fill_params);
       ASSERT_EQ(s, KStatus::SUCCESS);
       ResultSet res{(k_uint32) scan_cols.size()};
       k_uint32 count;
@@ -1137,11 +1149,12 @@ TEST_F(TestV2Iterator, overflow) {
     std::vector<BlockFilter> block_filter = {};
     std::vector<k_int32> agg_extend_cols = {};
     std::vector<timestamp64> ts_points = {};
+    FillParams fill_params;
 
     TsStorageIterator* ts_iter1;
     s = vgroup->GetIterator(ctx_, 1, entity_ids, ts_spans, block_filter,
                             scan_cols, scan_cols, agg_extend_cols, scan_agg_types, table_schema_mgr,
-                            schema, &ts_iter1, vgroup, ts_points, false, false);
+                            schema, &ts_iter1, vgroup, ts_points, false, false, fill_params);
     ASSERT_EQ(s, KStatus::SUCCESS);
 
     k_uint32 count;
@@ -1161,7 +1174,7 @@ TEST_F(TestV2Iterator, overflow) {
     TsStorageIterator* ts_iter2;
     s = vgroup->GetIterator(ctx_, 1, entity_ids, ts_spans, block_filter,
                             scan_cols, scan_cols, agg_extend_cols, scan_agg_types, table_schema_mgr,
-                            schema, &ts_iter2, vgroup, ts_points, false, false);
+                            schema, &ts_iter2, vgroup, ts_points, false, false, fill_params);
     ASSERT_EQ(s, KStatus::SUCCESS);
 
     ResultSet res2{(k_uint32) scan_cols.size()};

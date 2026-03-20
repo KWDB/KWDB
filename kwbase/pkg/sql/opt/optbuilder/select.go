@@ -1129,6 +1129,208 @@ func (b *Builder) addInstanceTablePTag(sel *tree.SelectClause) {
 	sel.Where.Expr = andExpr
 }
 
+// convert tree.Fill to TSFill
+// ConstangFill is necessary to convert tree.Expr to opt.ScalarExpr, return memo.ConstFill
+// ExactFill and RnageFill return memo.RangeFill
+// inParams: fromScope, fill
+// outParams: TSFill
+func (b *Builder) makeTSFill(scope *scope, fill tree.Fill) memo.TSFill {
+	if fill.FillType == tree.ConstantFill {
+		if fill.ConstValue == nil {
+			panic(pgerror.New(pgcode.Syntax, "CONSTANT FILL: Constant empty"))
+		}
+		// constant values of type Placeholder are not supported in prepare.
+		if _, ok := fill.ConstValue.(*tree.Placeholder); ok {
+			panic(pgerror.Newf(pgcode.Syntax, "CONSTANT FILL: Only constant is supported: %v", fill.ConstValue.String()))
+		}
+		// convert tree.Expr to tree.TypedExpr
+		tExpr, err := tree.TypeCheck(fill.ConstValue, b.semaCtx, types.Any)
+		if err != nil {
+			return &memo.ConstFill{ConstExpr: nil}
+		}
+		switch tExpr.(type) {
+		case tree.Datum, *tree.CastExpr:
+		default:
+			panic(pgerror.Newf(pgcode.Syntax, "CONSTANT FILL: Only constant is supported: %v", tExpr.String()))
+		}
+		// convert tree.TypedExpr to opt.ScalarExpr
+		return &memo.ConstFill{ConstExpr: b.buildScalar(tExpr, scope, nil, nil, nil)}
+	}
+	return &memo.RangeFill{FillType: fill.FillType, FillRange: fill.FillRange}
+}
+
+// check whether there are relational tables or multi-table queries.
+func (b *Builder) checkFill(scope *scope, fill tree.Fill) bool {
+	if scope.TableType == nil || scope.TableType.HasRtable() || len(b.factory.Metadata().AllTables()) > 1 {
+		panic(pgerror.New(pgcode.Syntax, "FILL is only supported for use in single time series table query."))
+	}
+	return true
+}
+
+// deal with filter
+// outParams:
+// 1. hasTimestamp(check whether there is timestamp condition).
+// 2. hasPTag(check whether there is pTag condition).
+// 3. hasVar(column of timestamp or pTag condition).
+// 4. hasConst(const value of timestamp or pTag condition).
+func (b *Builder) dealFillFilter(
+	expr opt.ScalarExpr,
+) (hasTimestamp, hasPTag, hasConst, hasVar bool) {
+	switch e := expr.(type) {
+	case *memo.VariableExpr:
+		leftCol := b.factory.Metadata().ColumnMeta(e.Col)
+		if e.Col == 1 {
+			hasTimestamp = true
+		} else if leftCol.TSType == 3 {
+			hasPTag = true
+		}
+		// if variable defined in procedure are treated as const.
+		if leftCol.IsProcedureUsed() && leftCol.IsProcedureLocalValue() {
+			hasConst = true
+		} else {
+			hasVar = true
+		}
+		break
+	case *memo.ConstExpr, *memo.PlaceholderExpr:
+		hasConst = true
+		break
+	default:
+		panic(pgerror.New(pgcode.Syntax, "the conditions of FILL clause only supports single column and constant"))
+	}
+	return
+}
+
+// deal with Fill clause and check whether the syntax is standardized.
+// inParams: SelectClause, fromScope, cols of table, tableID
+func (b *Builder) dealFill(
+	sel *tree.SelectClause, scope *scope, cols []scopeColumn, tsTableID opt.TableID,
+) {
+	if sel.Fill.FillType > tree.DefaultFillType && b.checkFill(scope, sel.Fill) {
+		if tsTableID <= 0 {
+			panic(pgerror.New(pgcode.Syntax, "FILL clause is not supported for from subquery"))
+		}
+		if selectExpr, ok := scope.expr.(*memo.SelectExpr); ok {
+			filterNum := 0
+			hasTimestamp := false
+			hasPTag := false
+
+			// check filters:
+			// The filters can only contain time-series conditions and ptag column conditions,
+			// and variables or other exprs are not supported.
+			for _, filter := range selectExpr.Filters {
+				if eq, ok1 := filter.Condition.(*memo.EqExpr); ok1 {
+					lTimestamp, lPTag, lVar, lConst := b.dealFillFilter(eq.Left)
+					rTimestamp, rPTag, rVar, rConst := b.dealFillFilter(eq.Right)
+					if !hasTimestamp {
+						hasTimestamp = lTimestamp || rTimestamp
+					}
+					if !hasPTag {
+						hasPTag = lPTag || rPTag
+					}
+					hasVar := lVar || rVar
+					hasConst := lConst || rConst
+					if !hasConst || !hasVar {
+						panic(pgerror.New(pgcode.Syntax, "the conditions of FILL clause must contains single column and constant"))
+					}
+					filterNum++
+				} else if in, ok2 := filter.Condition.(*memo.InExpr); ok2 {
+					hasVar := false
+					switch left := in.Left.(type) {
+					case *memo.VariableExpr:
+						if left.Col == 1 {
+							panic(pgerror.New(pgcode.Syntax, "the FILL clause is only supported for point-in-time queries."))
+						} else if b.factory.Metadata().ColumnMeta(left.Col).TSType == 3 {
+							hasPTag = true
+						}
+						hasVar = true
+						filterNum++
+						break
+					case *memo.TupleExpr:
+						hasPTag = true
+						hasVar = true
+						for _, e := range left.Elems {
+							if v, ok3 := e.(*memo.VariableExpr); ok3 {
+								if v.Col == 1 {
+									panic(pgerror.New(pgcode.Syntax, "the FILL clause is only supported for point-in-time queries."))
+								}
+								if b.factory.Metadata().ColumnMeta(v.Col).TSType != 3 {
+									hasPTag = false
+								}
+							} else {
+								hasVar = false
+							}
+							filterNum++
+						}
+						break
+					default:
+						panic(pgerror.New(pgcode.Syntax, "the conditions of PTag illegal in FILL clause"))
+					}
+					hasConst := true
+					if right, ok4 := in.Right.(*memo.TupleExpr); ok4 {
+						for _, elem := range right.Elems {
+							switch e := elem.(type) {
+							case *memo.VariableExpr:
+								rCol := b.factory.Metadata().ColumnMeta(e.Col)
+								if !rCol.IsProcedureUsed() || !rCol.IsProcedureLocalValue() {
+									hasConst = false
+								}
+							case *memo.ConstExpr, *memo.PlaceholderExpr:
+								break
+							case *memo.TupleExpr:
+								for _, ee := range e.Elems {
+									isProcedure := false
+									if declare, ok7 := ee.(*memo.VariableExpr); ok7 {
+										dCol := b.factory.Metadata().ColumnMeta(declare.Col)
+										if dCol.IsProcedureUsed() && dCol.IsProcedureLocalValue() {
+											isProcedure = true
+										}
+									}
+									_, ok5 := ee.(*memo.ConstExpr)
+									_, ok6 := ee.(*memo.PlaceholderExpr)
+									if !ok5 && !ok6 && isProcedure {
+										hasConst = false
+									}
+								}
+								break
+							default:
+								hasConst = false
+							}
+						}
+					} else {
+						panic(pgerror.New(pgcode.Syntax, "the conditions of PTag illegal in FILL clause"))
+					}
+					if !hasConst || !hasVar {
+						panic(pgerror.New(pgcode.Syntax, "the conditions of PTag must contains single column and constants in FILL clause"))
+					}
+				} else {
+					panic(pgerror.New(pgcode.Syntax, "FILL clause only supports equality or in conditions."))
+				}
+			}
+			if filterNum != b.factory.Metadata().TableMeta(tsTableID).PrimaryTagCount+1 {
+				panic(pgerror.New(pgcode.Syntax, "FILL clause requires the use of timestamp and pTag column conditions."))
+			}
+			if !hasTimestamp || !hasPTag {
+				panic(pgerror.New(pgcode.Syntax, "the conditions of FILL clause must contains ts col and pTag"))
+			}
+			// check projections:
+			// only a single column is allowed for the projection column.
+			for _, col := range cols {
+				if _, ok2 := col.expr.(*scopeColumn); !ok2 {
+					panic(pgerror.New(pgcode.Syntax, "the projections of FILL clause must must be single column"))
+				}
+			}
+			// deal with fill clause
+			if tsScan, ok2 := selectExpr.Input.(*memo.TSScanExpr); ok2 {
+				tsScan.Flags.Fill = b.makeTSFill(scope, sel.Fill)
+			} else {
+				panic(pgerror.New(pgcode.Syntax, "FILL is only supported for use in single time series table query."))
+			}
+		} else {
+			panic(pgerror.New(pgcode.Syntax, "FILL clause requires the use of timestamp and pTag column conditions."))
+		}
+	}
+}
+
 // buildSelectClause builds a set of memo groups that represent the given
 // select clause. We pass the entire select statement rather than just the
 // select clause in order to handle ORDER BY scoping rules. ORDER BY can sort
@@ -1154,6 +1356,10 @@ func (b *Builder) buildSelectClause(
 		b.addInstanceTablePTag(sel)
 		b.InstanceTabNames = nil
 	}
+	var tsTableID opt.TableID
+	if tsScan, ok := fromScope.expr.(*memo.TSScanExpr); ok {
+		tsTableID = tsScan.Table
+	}
 
 	b.buildOrderByFromInSope(fromScope, sel, orderBy)
 
@@ -1171,6 +1377,8 @@ func (b *Builder) buildSelectClause(
 	// buildAggregateFunction is called which adds columns to the appropriate
 	// aggInScope and aggOutScope.
 	b.analyzeProjectionList(&sel.Exprs, desiredTypes, fromScope, projectionsScope)
+
+	b.dealFill(sel, fromScope, projectionsScope.cols, tsTableID)
 
 	hasInterpolate := checkoutInterpolate(sel.GroupBy, fromScope)
 
