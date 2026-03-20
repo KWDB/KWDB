@@ -30,15 +30,10 @@ KStatus TsTable::GetLastRowBatch(kwdbContext_p ctx, uint32_t table_version, std:
   return KStatus::SUCCESS;
 }
 
-TsTable::TsTable() {
-  is_dropped_.store(false);
-}
-
 TsTable::TsTable(kwdbContext_p ctx, const string& db_path, const KTableKey& table_id)
     : db_path_(db_path), table_id_(table_id) {
   tbl_sub_path_ = std::to_string(table_id_) + "/";
   db_path_ = db_path_ + "/";
-  is_dropped_.store(false);
   entity_groups_mtx_ = new TsTableEntityGrpsRwLatch(RWLATCH_ID_TS_TABLE_ENTITYGRPS_RWLOCK);
   snapshot_manage_mtx_ = new TsTableSnapshotLatch(LATCH_ID_TSTABLE_SNAPSHOT_MUTEX);
   table_version_rw_lock_ = new TsTableVersionRwLatch(RWLATCH_ID_TABLE_VERSION_RWLOCK);

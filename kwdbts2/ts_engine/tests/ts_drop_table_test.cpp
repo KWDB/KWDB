@@ -82,6 +82,7 @@ TEST_F(TestDropTable, basicDrop) {
   s = table_schema_mgr->GetTagMeta(1, tag_schema);
   ASSERT_EQ(s , KStatus::SUCCESS);
 
+  ASSERT_FALSE(ts_table->IsDropped());
   s = engine_->DropTsTable(ctx_, table_id);
   ASSERT_EQ(s, KStatus::SUCCESS);
 
@@ -89,6 +90,7 @@ TEST_F(TestDropTable, basicDrop) {
   ASSERT_TRUE(is_dropped);
   ASSERT_TRUE(IsExists(table_schema_path));
 
+  ASSERT_TRUE(ts_table->IsDropped());
   ts_table.reset();
   table_schema_mgr.reset();
 

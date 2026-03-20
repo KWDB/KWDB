@@ -189,7 +189,7 @@ TSStatus TSIsTsTableExist(TSEngine* engine, TSTableID table_id, bool* find) {
     return ToTsStatus("GetTsTable Error!");
   }
   if (tags_table != nullptr) {
-    *find = tags_table->IsExist();
+    *find = true;
   }
   return kTsSuccess;
 }

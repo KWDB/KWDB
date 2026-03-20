@@ -110,7 +110,7 @@ struct TSEngine {
    * @return KStatus
    */
   virtual KStatus GetTsTable(kwdbContext_p ctx, const KTableKey& table_id, std::shared_ptr<TsTable>& ts_table,
-                             bool& is_dropped, bool create_if_not_exist = true, ErrorInfo& err_info = getDummyErrorInfo(),
+                             bool& is_dropped, bool create_if_not_exist = true,
                              uint32_t version = 0) = 0;
 
 

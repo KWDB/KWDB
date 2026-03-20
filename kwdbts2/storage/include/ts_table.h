@@ -31,6 +31,7 @@
 #include "st_wal_internal_log_structure.h"
 #include "lt_rw_latch.h"
 #include "mmap/mmap_tag_table.h"
+#include "ts_table_schema_manager.h"
 
 namespace kwdbts {
 
@@ -69,14 +70,11 @@ class TsTable {
 
   virtual ~TsTable();
 
-  /**
-   * @brief Is the current table created and does it really exist
-   *
-   * @return bool
-   */
-  virtual bool IsExist() {
-    return false;
-  }
+  virtual void SetDropped() = 0;
+
+  virtual bool IsDropped() = 0;
+
+  virtual std::shared_ptr<TsTableSchemaManager> GetSchemaManager() = 0;
 
   virtual KStatus CheckAndAddSchemaVersion(kwdbContext_p ctx, const KTableKey& table_id, uint64_t version) = 0;
 
@@ -310,10 +308,6 @@ class TsTable {
   KTableKey table_id_;
   string tbl_sub_path_;
   uint64_t hash_num_ = 0;
-
-//  MMapTagColumnTable* tag_bt_;
-
-  std::atomic_bool is_dropped_;
 
  protected:
   using TsTableEntityGrpsRwLatch = KRWLatch;

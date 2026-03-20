@@ -114,8 +114,7 @@ class TSEngineImpl : public TSEngine {
     KStatus CheckAndDropTsTable(kwdbContext_p ctx, const KTableKey& table_id);
 
   KStatus GetTsTable(kwdbContext_p ctx, const KTableKey& table_id, std::shared_ptr<TsTable>& ts_table, bool& is_dropped,
-                     bool create_if_not_exist = true, ErrorInfo& err_info = getDummyErrorInfo(),
-                     uint32_t version = 0) override;
+                     bool create_if_not_exist = true, uint32_t version = 0) override;
 
   std::vector<std::shared_ptr<TsVGroup>>* GetTsVGroups();
 

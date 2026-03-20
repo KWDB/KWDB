@@ -527,7 +527,7 @@ KwTsSpan ts_span, uint64_t mtr_id, uint64_t osn) {
     LOG_ERROR("DeleteRangeEntities failed.");
     return s;
   }
-  if (table_schema_mgr_->IsDropped()) {
+  if (IsDropped()) {
     LOG_WARN("table[%lu] is dropped. DeleteTotalRange skip end.", table_id_);
     return KStatus::SUCCESS;
   }

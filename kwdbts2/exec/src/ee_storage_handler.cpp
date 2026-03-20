@@ -35,12 +35,11 @@ StorageHandler::~StorageHandler() {
 
 EEIteratorErrCode StorageHandler::Init(kwdbContext_p ctx) {
   EnterFunc();
-  ErrorInfo err_info;
   KStatus ret = KStatus::FAIL;
   TSEngine *ts_engine = static_cast<TSEngine *>(ctx->ts_engine);
   if (ts_engine) {
     bool is_dropped = false;
-    ret = ts_engine->GetTsTable(ctx, table_->object_id_, ts_table_, is_dropped, true, err_info, table_->table_version_);
+    ret = ts_engine->GetTsTable(ctx, table_->object_id_, ts_table_, is_dropped, true, table_->table_version_);
   }
   if (ret == KStatus::FAIL) {
     EEPgErrorInfo::SetPgErrorInfo(ERRCODE_FETCH_DATA_FAILED,

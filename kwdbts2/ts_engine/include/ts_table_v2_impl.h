@@ -40,11 +40,19 @@ class TsTableV2Impl : public TsTable {
 
   ~TsTableV2Impl();
 
+  void SetDropped() override {
+    return table_schema_mgr_->SetDropped();
+  }
+
+  bool IsDropped() override {
+    return table_schema_mgr_->IsDropped();
+  }
+
   uint32_t GetCurrentTableVersion() override {
     return table_schema_mgr_->GetCurrentVersion();
   }
 
-  std::shared_ptr<TsTableSchemaManager> GetSchemaManager() {
+  std::shared_ptr<TsTableSchemaManager> GetSchemaManager() override {
     return table_schema_mgr_;
   }
 
@@ -127,10 +135,6 @@ class TsTableV2Impl : public TsTable {
 
   bool IsExistTableVersion(uint64_t version) {
     return table_schema_mgr_->IsExistTableVersion(version);
-  }
-
-  bool IsExist() override {
-    return true;
   }
 
   LifeTime GetLifeTime() {
