@@ -125,13 +125,21 @@ class AggregateFunc {
                            RowBatch* row_batch, GroupByMetadata& group_by_metadata, Field** renders) {}
 
   /**
+   * @brief combine agg result from other bucket into main bucket
+   * @param dest the target location that the agg result is saving to.
+   * @param bitmap the nullable bitmap of agg results.
+   * @param agg_result the agg result from other bucket.
+   */
+  virtual void combine(DatumRowPtr dest, DatumPtr bitmap, DatumRowPtr src, DatumPtr src_bitmap) {}
+
+  /**
    * @brief agg update function used by Agg Scan OP to process input data chunk using batch mode.
    * @param chunk the input data chunk coming from previous OP.
    * @param ht the hash table to save the agg results.
    * @param bitmap_offset the bitmap of agg results.
    * @param distinctOpt the distinct options.
    */
-  int AddOrUpdate(IChunk* chunk, LinearProbingHashTable* ht,
+  int AddOrUpdate(IChunk* chunk, BaseHashTable* ht,
                   k_uint32 bitmap_offset, DistinctOpt& distinctOpt) {
     for (k_uint32 line = 0; line < chunk->Count(); ++line) {
       // Distinct Agg
@@ -146,13 +154,23 @@ class AggregateFunc {
         }
       }
 
-      k_uint64 loc;
-      if (ht->FindOrCreateGroups(chunk, line, distinctOpt.group_cols, &loc) < 0) {
+      DatumPtr agg_ptr = nullptr;
+      size_t hash_val;
+      k_bool is_used;
+      k_bool is_abandoned;
+      if (ht->FindOrCreateGroupsAndAddTuple(chunk, line, distinctOpt.group_cols,
+                                            agg_ptr, &hash_val, &is_used,
+                                            &is_abandoned) < 0) {
         return -1;
       }
-      auto agg_ptr = ht->GetAggResult(loc);
 
       addOrUpdate(agg_ptr, agg_ptr + bitmap_offset, chunk, line);
+
+      if (is_abandoned) {
+        if (KStatus::SUCCESS != ht->SaveAggTupleToDisk(agg_ptr)) {
+          return KStatus::FAIL;
+        }
+      }
     }
     return 0;
   }
@@ -381,6 +399,18 @@ class AnyNotNullAggregate : public AggregateFunc {
       row_batch->NextLine();
     }
   }
+
+  void combine(DatumRowPtr dest, char* bitmap, DatumRowPtr src, char* src_bitmap) override {
+    if (AggregateFunc::IsNull(src_bitmap, col_idx_)) {
+      // src is null, do nothing
+      return;
+    }
+    k_bool is_dest_null = AggregateFunc::IsNull(bitmap, col_idx_);
+    if (is_dest_null) {
+      std::memcpy(dest + offset_, src + offset_, len_);
+      AggregateFunc::SetNotNull(bitmap, col_idx_);
+    }
+  }
 };
 
 ////////////////////////// MaxAggregate //////////////////////////
@@ -396,53 +426,56 @@ class MaxAggregate : public AggregateFunc {
   }
 
   ~MaxAggregate() override = default;
-  void addOrUpdate(DatumRowPtr dest, char* bitmap, IChunk* chunk, k_uint32 line) override {
-    // if the data's value is NULL，return directly
-    if (chunk->IsNull(line, arg_idx_[0])) {
-      return;
-    }
 
+
+  void addOrUpdate(DatumRowPtr dest, char* bitmap, DatumPtr src_agg_col_data) {
     k_bool is_dest_null = AggregateFunc::IsNull(bitmap, col_idx_);
-    DatumPtr src = chunk->GetData(line, arg_idx_[0]);
 
     if (is_dest_null) {
       // The aggregate row of the bucket is assigned for the first time and then
       // returned
       if (IS_VAR_STRING) {
-        auto len = *reinterpret_cast<k_uint16*>(src);
-        std::memcpy(dest + offset_, src, len + STRING_WIDE);
+        auto len = *reinterpret_cast<k_uint16*>(src_agg_col_data);
+        std::memcpy(dest + offset_, src_agg_col_data, len + STRING_WIDE);
       } else {
-        std::memcpy(dest + offset_, src, len_);
+        std::memcpy(dest + offset_, src_agg_col_data, len_);
       }
       AggregateFunc::SetNotNull(bitmap, col_idx_);
       return;
     }
 
     if constexpr (std::is_same_v<T, String>) {
-      k_uint16 src_len = *reinterpret_cast<k_uint16*>(src);
-      auto src_val = std::string_view(src + sizeof(k_uint16), src_len);
+      k_uint16 src_len = *reinterpret_cast<k_uint16*>(src_agg_col_data);
+      auto src_val = std::string_view(src_agg_col_data + sizeof(k_uint16), src_len);
       k_uint16 dest_len = *reinterpret_cast<k_uint16*>(dest + offset_);
       auto dest_val = std::string_view(dest + offset_ + sizeof(k_uint16), dest_len);
       if (src_val.compare(dest_val) > 0) {
-        std::memcpy(dest + offset_, src, src_len + STRING_WIDE);
+        std::memcpy(dest + offset_, src_agg_col_data, src_len + STRING_WIDE);
       }
     } else if constexpr (std::is_same_v<T, k_decimal>) {
-      if (AggregateFunc::CompareDecimal(src, dest + offset_) > 0) {
-        std::memcpy(dest + offset_, src, len_);
+      if (AggregateFunc::CompareDecimal(src_agg_col_data, dest + offset_) > 0) {
+        std::memcpy(dest + offset_, src_agg_col_data, len_);
       }
     } else {
-      T src_val = *reinterpret_cast<T*>(src);
+      T src_val = *reinterpret_cast<T*>(src_agg_col_data);
       T dest_val = *reinterpret_cast<T*>(dest + offset_);
       if constexpr (std::is_floating_point<T>::value) {
         if (src_val - dest_val > std::numeric_limits<T>::epsilon()) {
-          std::memcpy(dest + offset_, src, len_);
+          std::memcpy(dest + offset_, src_agg_col_data, len_);
         }
       } else {
         if (src_val > dest_val) {
-          std::memcpy(dest + offset_, src, len_);
+          std::memcpy(dest + offset_, src_agg_col_data, len_);
         }
       }
     }
+  }
+  void addOrUpdate(DatumRowPtr dest, char* bitmap, IChunk* chunk, k_uint32 line) override {
+    // if the data's value is NULL，return directly
+    if (chunk->IsNull(line, arg_idx_[0])) {
+      return;
+    }
+    addOrUpdate(dest, bitmap, chunk->GetData(line, arg_idx_[0]));
   }
 
   void handleNumber(std::vector<DataChunk*>& chunks, k_int32 start_line_in_begin_chunk, IChunk* data_container,
@@ -796,6 +829,13 @@ class MaxAggregate : public AggregateFunc {
       handleNumber(chunks, start_line_in_begin_chunk, row_batch, group_by_metadata, renders);
     }
   }
+
+  void combine(DatumRowPtr dest, DatumPtr bitmap, DatumRowPtr src, DatumPtr src_bitmap) override {
+    if (AggregateFunc::IsNull(src_bitmap, col_idx_)) {
+      return;
+    }
+    addOrUpdate(dest, bitmap, src + offset_);
+  }
 };
 
 ////////////////////////// MinAggregate //////////////////////////
@@ -811,13 +851,8 @@ class MinAggregate : public AggregateFunc {
 
   ~MinAggregate() override = default;
 
-  void addOrUpdate(DatumRowPtr dest, char* bitmap, IChunk* chunk, k_uint32 line) override {
-    if (chunk->IsNull(line, arg_idx_[0])) {
-      return;
-    }
-
+  void addOrUpdate(DatumRowPtr dest, DatumPtr bitmap, DatumPtr src) {
     k_bool is_dest_null = AggregateFunc::IsNull(bitmap, col_idx_);
-    DatumPtr src = chunk->GetData(line, arg_idx_[0]);
 
     if (is_dest_null) {
       // The aggregate row of the bucket is assigned for the first time and then
@@ -857,6 +892,12 @@ class MinAggregate : public AggregateFunc {
         }
       }
     }
+  }
+  void addOrUpdate(DatumRowPtr dest, char* bitmap, IChunk* chunk, k_uint32 line) override {
+    if (chunk->IsNull(line, arg_idx_[0])) {
+      return;
+    }
+    addOrUpdate(dest, bitmap, chunk->GetData(line, arg_idx_[0]));
   }
 
   void handleNumber(std::vector<DataChunk*>& chunks, k_int32 start_line_in_begin_chunk, IChunk* data_container,
@@ -1208,6 +1249,14 @@ class MinAggregate : public AggregateFunc {
       handleNumber(chunks, start_line_in_begin_chunk, row_batch, group_by_metadata, renders);
     }
   }
+
+  void combine(DatumRowPtr dest, DatumPtr bitmap, DatumRowPtr src, DatumPtr src_bitmap) override {
+    if (AggregateFunc::IsNull(src_bitmap, col_idx_)) {
+      // src is null, do nothing
+      return;
+    }
+    addOrUpdate(dest, bitmap, src + offset_);
+  }
 };
 
 ////////////////////////// SumIntAggregate //////////////////////////
@@ -1305,6 +1354,26 @@ class SumIntAggregate : public AggregateFunc {
       std::memcpy(dest_ptr, &sum_val_i, sizeof(k_int64));
     }
     return 0;
+  }
+
+  void combine(DatumRowPtr dest, char* bitmap, DatumRowPtr src, char* src_bitmap) override {
+    if (AggregateFunc::IsNull(src_bitmap, col_idx_)) {
+      // src is null, do nothing
+      return;
+    }
+    k_bool is_dest_null = AggregateFunc::IsNull(bitmap, col_idx_);
+
+    if (is_dest_null) {
+      std::memcpy(dest + offset_, src + offset_, len_);
+      // set not null
+      AggregateFunc::SetNotNull(bitmap, col_idx_);
+      return;
+    }
+
+    k_int64 src_val = *reinterpret_cast<k_int64*>(src + offset_);
+    k_int64 dest_val = *reinterpret_cast<k_int64*>(dest + offset_);
+    k_int64 sum_int = src_val + dest_val;
+    std::memcpy(dest + offset_, &sum_int, len_);
   }
 };
 
@@ -1432,24 +1501,25 @@ class SumAggregate : public AggregateFunc {
     }
   }
 
+  void addOrUpdate(DatumRowPtr dest, char* bitmap, DatumPtr src_agg_col_data) {
+    k_bool is_dest_null = AggregateFunc::IsNull(bitmap, col_idx_);
+
+    if constexpr (std::is_floating_point<T_SRC>::value) {
+      // input type: float/double
+      handleDouble(src_agg_col_data, dest + offset_, is_dest_null, bitmap);
+    } else if constexpr (std::is_same_v<T_SRC, k_decimal>) {
+      // input type: decimal
+      handleDecimal(src_agg_col_data, dest + offset_, is_dest_null, bitmap);
+    } else {
+      // input type: int16/int32/int64
+      handleInteger(src_agg_col_data, dest + offset_, is_dest_null, bitmap);
+    }
+  }
   void addOrUpdate(DatumRowPtr dest, char* bitmap, IChunk* chunk, k_uint32 line) override {
     if (chunk->IsNull(line, arg_idx_[0])) {
       return;
     }
-
-    k_bool is_dest_null = AggregateFunc::IsNull(bitmap, col_idx_);
-    DatumPtr src = chunk->GetData(line, arg_idx_[0]);
-
-    if constexpr (std::is_floating_point<T_SRC>::value) {
-      // input type: float/double
-      handleDouble(src, dest + offset_, is_dest_null, bitmap);
-    } else if constexpr (std::is_same_v<T_SRC, k_decimal>) {
-      // input type: decimal
-      handleDecimal(src, dest + offset_, is_dest_null, bitmap);
-    } else {
-      // input type: int16/int32/int64
-      handleInteger(src, dest + offset_, is_dest_null, bitmap);
-    }
+    addOrUpdate(dest, bitmap, chunk->GetData(line, arg_idx_[0]));
   }
 
   int handleDouble(std::vector<DataChunk*>& chunks, k_int32 start_line_in_begin_chunk, IChunk* data_container,
@@ -2047,6 +2117,13 @@ class SumAggregate : public AggregateFunc {
       handleInteger(chunks, start_line_in_begin_chunk, row_batch, group_by_metadata, renders);
     }
   }
+
+  void combine(DatumRowPtr dest, DatumPtr bitmap, DatumRowPtr src, DatumPtr src_bitmap) override {
+    if (AggregateFunc::IsNull(src_bitmap, col_idx_)) {
+      return;
+    }
+    addOrUpdate(dest, bitmap, src + offset_);
+  }
 };
 
 ////////////////////////// CountAggregate //////////////////////////
@@ -2205,6 +2282,25 @@ class CountAggregate : public AggregateFunc {
       std::memcpy(dest_ptr, &val, len_);
     }
   }
+
+  void combine(DatumRowPtr dest, DatumPtr bitmap, DatumRowPtr src, DatumPtr src_bitmap) override {
+    if (AggregateFunc::IsNull(src_bitmap, col_idx_)) {
+      return;
+    }
+
+    k_bool is_dest_null = AggregateFunc::IsNull(bitmap, col_idx_);
+    if (is_dest_null) {
+      // first assign
+      k_int64 count = 0;
+      std::memcpy(dest + offset_, &count, len_);
+      AggregateFunc::SetNotNull(bitmap, col_idx_);
+    }
+
+    k_int64 val = *reinterpret_cast<k_int64*>(dest + offset_);
+    k_int64 src_val = *reinterpret_cast<k_int64*>(src + offset_);
+    val += src_val;
+    std::memcpy(dest + offset_, &val, len_);
+  }
 };
 
 ////////////////////////// CountRowAggregate //////////////////////////
@@ -2336,6 +2432,24 @@ class CountRowAggregate : public AggregateFunc {
       current_data_chunk_->SetNotNull(target_row, col_idx_);
       std::memcpy(dest_ptr, &val, len_);
     }
+  }
+  void combine(DatumRowPtr dest, DatumPtr bitmap, DatumRowPtr src, DatumPtr src_bitmap) override {
+    if (AggregateFunc::IsNull(src_bitmap, col_idx_)) {
+      return;
+    }
+
+    k_bool is_dest_null = AggregateFunc::IsNull(bitmap, col_idx_);
+    if (is_dest_null) {
+      // first assign
+      k_int64 count = 0;
+      std::memcpy(dest + offset_, &count, len_);
+      AggregateFunc::SetNotNull(bitmap, col_idx_);
+    }
+
+    k_int64 val = *reinterpret_cast<k_int64*>(dest + offset_);
+    k_int64 src_val = *reinterpret_cast<k_int64*>(src + offset_);
+    val += src_val;
+    std::memcpy(dest + offset_, &val, len_);
   }
 };
 
@@ -2508,6 +2622,32 @@ class AVGRowAggregate : public AggregateFunc {
       std::memcpy(dest_ptr, &sum_val, len_);
       std::memcpy(dest_ptr + sizeof(k_double64), &count, sizeof(k_int64));
     }
+  }
+
+  void combine(DatumRowPtr dest, DatumPtr bitmap, DatumRowPtr src, DatumPtr src_bitmap) override {
+    if (AggregateFunc::IsNull(src_bitmap, col_idx_)) {
+      return;
+    }
+
+    k_bool is_dest_null = AggregateFunc::IsNull(bitmap, col_idx_);
+    if (is_dest_null) {
+      // first assign
+      k_double64 sum = 0.0f;
+      std::memcpy(dest + offset_, &sum, sizeof(k_double64));
+      k_int64 count = 0;
+      std::memcpy(dest + offset_ + sizeof(k_double64), &count, sizeof(k_int64));
+      AggregateFunc::SetNotNull(bitmap, col_idx_);
+    }
+
+    k_double64 src_val = *reinterpret_cast<k_double64*>(src + offset_);
+    k_double64 dest_val = *reinterpret_cast<k_double64*>(dest + offset_);
+    k_double64 sum_val = src_val + dest_val;
+    std::memcpy(dest + offset_, &sum_val, sizeof(k_double64));
+
+    k_int64 src_count_val = *reinterpret_cast<k_int64*>(src + offset_ + sizeof(k_double64));
+    k_int64 dest_count_val = *reinterpret_cast<k_int64*>(dest + offset_ + sizeof(k_double64));
+    dest_count_val += src_count_val;
+    std::memcpy(dest + offset_ + sizeof(k_double64), &dest_count_val, sizeof(k_int64));
   }
 };
 
@@ -2704,6 +2844,37 @@ class LastAggregate : public AggregateFunc {
     }
   }
 
+  void combine(DatumRowPtr dest, DatumPtr bitmap, DatumRowPtr src, DatumPtr src_bitmap) override {
+    if (AggregateFunc::IsNull(src_bitmap, col_idx_)) {
+      return;
+    }
+    k_bool is_dest_null = AggregateFunc::IsNull(bitmap, col_idx_);
+    DatumPtr dest_ptr = dest + offset_;
+    DatumPtr src_ptr = src + offset_;
+    DatumPtr src_ts_ptr = src_ptr + len_ - sizeof(KTimestamp);
+    auto src_ts = *reinterpret_cast<KTimestamp*>(src_ts_ptr);
+    k_int64 point_ts = point_time_;
+
+
+    if (is_dest_null) {
+      if (src_ts > point_ts) {
+        return;
+      }
+      // first assign
+      std::memcpy(dest_ptr, src_ptr, len_ - sizeof(KTimestamp));
+      SetNotNull(bitmap, col_idx_);
+      std::memcpy(dest_ptr + len_ - sizeof(KTimestamp), src_ts_ptr, sizeof(KTimestamp));
+      return;
+    }
+
+    auto last_ts = *reinterpret_cast<KTimestamp*>(dest_ptr + len_ - sizeof(KTimestamp));
+    if (src_ts > last_ts && (src_ts <= point_ts)) {
+      std::memcpy(dest_ptr, src_ptr, len_ - sizeof(KTimestamp));
+      std::memcpy(dest_ptr + len_ - sizeof(KTimestamp), src_ts_ptr,
+                  sizeof(KTimestamp));
+    }
+  }
+
  private:
   k_uint32 ts_idx_;
   KTimestamp last_ts_ = INT64_MIN;
@@ -2860,8 +3031,31 @@ class LastRowAggregate : public AggregateFunc {
       }
       row_batch->NextLine();
     }
+
     if (last_data_str_.ptr_ != nullptr) {
       last_data_str_ = last_data_str_.clone();
+    }
+  }
+
+  void combine(DatumRowPtr dest, DatumPtr bitmap, DatumRowPtr src, DatumPtr src_bitmap) override {
+    if (AggregateFunc::IsNull(src_bitmap, ts_idx_)) {
+      return;
+    }
+    DatumPtr dest_ptr = dest + offset_;
+    DatumPtr src_ptr = src + offset_;
+    DatumPtr src_ts_ptr = src_ptr + len_ - sizeof(KTimestamp);
+    auto src_ts = *reinterpret_cast<KTimestamp*>(src_ts_ptr);
+    auto last_ts = *reinterpret_cast<KTimestamp*>(dest_ptr + len_ - sizeof(KTimestamp));
+
+    if (src_ts > last_ts) {
+      k_bool is_data_null = AggregateFunc::IsNull(src_bitmap, arg_idx_[0]);
+      if (is_data_null) {
+        SetNull(bitmap, col_idx_);
+      } else {
+        std::memcpy(dest_ptr, src_ptr, len_ - sizeof(KTimestamp));
+        SetNotNull(bitmap, col_idx_);
+      }
+      std::memcpy(dest_ptr + len_ - sizeof(KTimestamp), src_ts_ptr, sizeof(KTimestamp));
     }
   }
 
@@ -3040,6 +3234,37 @@ class LastTSAggregate : public AggregateFunc {
     }
   }
 
+  void combine(DatumRowPtr dest, DatumPtr bitmap, DatumRowPtr src, DatumPtr src_bitmap) override {
+    if (AggregateFunc::IsNull(src_bitmap, col_idx_)) {
+      return;
+    }
+    k_bool is_dest_null = AggregateFunc::IsNull(bitmap, col_idx_);
+    DatumPtr dest_ptr = dest + offset_;
+    DatumPtr src_ptr = src + offset_;
+    DatumPtr src_ts_ptr = src_ptr + len_ - sizeof(KTimestamp);
+    auto src_ts = *reinterpret_cast<KTimestamp*>(src_ts_ptr);
+    k_int64 point_ts = point_time_;
+
+
+    if (is_dest_null) {
+      if (src_ts > point_ts) {
+        return;
+      }
+      // first assign
+      std::memcpy(dest_ptr, src_ptr, len_ - sizeof(KTimestamp));
+      SetNotNull(bitmap, col_idx_);
+      std::memcpy(dest_ptr + len_ - sizeof(KTimestamp), src_ts_ptr, sizeof(KTimestamp));
+      return;
+    }
+
+    auto last_ts = *reinterpret_cast<KTimestamp*>(dest_ptr + len_ - sizeof(KTimestamp));
+    if (src_ts > last_ts && (src_ts <= point_ts)) {
+      std::memcpy(dest_ptr, src_ptr, len_ - sizeof(KTimestamp));
+      std::memcpy(dest_ptr + len_ - sizeof(KTimestamp), src_ts_ptr,
+                  sizeof(KTimestamp));
+    }
+  }
+
  private:
   k_uint32 ts_idx_;
   KTimestamp last_ts_ = INT64_MIN;
@@ -3189,6 +3414,23 @@ class LastRowTSAggregate : public AggregateFunc {
     if (last_line_ptr != nullptr) {
       current_data_chunk_->SetNotNull(target_row, col_idx_);
       std::memcpy(dest_ptr, last_line_ptr, len_);
+    }
+  }
+
+  void combine(DatumRowPtr dest, DatumPtr bitmap, DatumRowPtr src, DatumPtr src_bitmap) override {
+    if (AggregateFunc::IsNull(src_bitmap, ts_idx_)) {
+      return;
+    }
+    DatumPtr dest_ptr = dest + offset_;
+    DatumPtr src_ptr = src + offset_;
+    DatumPtr src_ts_ptr = src_ptr + sizeof(KTimestamp);
+    auto src_ts = *reinterpret_cast<KTimestamp*>(src_ts_ptr);
+    auto last_ts = *reinterpret_cast<KTimestamp*>(dest_ptr + sizeof(KTimestamp));
+
+    if (src_ts > last_ts) {
+      std::memcpy(dest_ptr, src_ptr, sizeof(KTimestamp));
+      SetNotNull(bitmap, col_idx_);
+      std::memcpy(dest_ptr + sizeof(KTimestamp), src_ts_ptr, sizeof(KTimestamp));
     }
   }
 
@@ -3356,6 +3598,31 @@ class FirstAggregate : public AggregateFunc {
     }
   }
 
+  void combine(DatumRowPtr dest, DatumPtr bitmap, DatumRowPtr src, DatumPtr src_bitmap) override {
+    if (AggregateFunc::IsNull(src_bitmap, col_idx_)) {
+      return;
+    }
+    k_bool is_dest_null = AggregateFunc::IsNull(bitmap, col_idx_);
+    DatumPtr dest_ptr = dest + offset_;
+    DatumPtr src_ptr = src + offset_;
+    DatumPtr src_ts_ptr = src_ptr + len_ - sizeof(KTimestamp);
+    auto src_ts = *reinterpret_cast<KTimestamp*>(src_ts_ptr);
+
+    if (is_dest_null) {
+      // first assign
+      std::memcpy(dest_ptr, src_ptr, len_ - sizeof(KTimestamp));
+      SetNotNull(bitmap, col_idx_);
+      std::memcpy(dest_ptr + len_ - sizeof(KTimestamp), src_ts_ptr, sizeof(KTimestamp));
+      return;
+    }
+
+    auto first_ts = *reinterpret_cast<KTimestamp*>(dest_ptr + len_ - sizeof(KTimestamp));
+    if (src_ts < first_ts) {
+      std::memcpy(dest_ptr, src_ptr, len_ - sizeof(KTimestamp));
+      std::memcpy(dest_ptr + len_ - sizeof(KTimestamp), src_ts_ptr,
+                  sizeof(KTimestamp));
+    }
+  }
 
  private:
   k_uint32 ts_idx_;
@@ -3521,6 +3788,28 @@ class FirstRowAggregate : public AggregateFunc {
     }
     if (first_data_str_.ptr_ != nullptr) {
       first_data_str_ = first_data_str_.clone();
+    }
+  }
+
+  void combine(DatumRowPtr dest, DatumPtr bitmap, DatumRowPtr src, DatumPtr src_bitmap) override {
+    if (AggregateFunc::IsNull(src_bitmap, ts_idx_)) {
+      return;
+    }
+    DatumPtr dest_ptr = dest + offset_;
+    DatumPtr src_ptr = src + offset_;
+    DatumPtr src_ts_ptr = src_ptr + len_ - sizeof(KTimestamp);
+    auto src_ts = *reinterpret_cast<KTimestamp*>(src_ts_ptr);
+    auto first_ts = *reinterpret_cast<KTimestamp*>(dest_ptr + len_ - sizeof(KTimestamp));
+
+    if (src_ts < first_ts) {
+      k_bool is_data_null = AggregateFunc::IsNull(src_bitmap, arg_idx_[0]);
+      if (is_data_null) {
+        SetNull(bitmap, col_idx_);
+      } else {
+        std::memcpy(dest_ptr, src_ptr, len_ - sizeof(KTimestamp));
+        SetNotNull(bitmap, col_idx_);
+      }
+      std::memcpy(dest_ptr + len_ - sizeof(KTimestamp), src_ts_ptr, sizeof(KTimestamp));
     }
   }
 
@@ -3691,6 +3980,33 @@ class FirstTSAggregate : public AggregateFunc {
     }
   }
 
+  void combine(DatumRowPtr dest, DatumPtr bitmap, DatumRowPtr src, DatumPtr src_bitmap) override {
+    if (AggregateFunc::IsNull(src_bitmap, col_idx_)) {
+      return;
+    }
+    k_bool is_dest_null = AggregateFunc::IsNull(bitmap, col_idx_);
+    DatumPtr dest_ptr = dest + offset_;
+    DatumPtr src_ptr = src + offset_;
+    DatumPtr src_ts_ptr = src_ptr + len_ - sizeof(KTimestamp);
+    auto src_ts = *reinterpret_cast<KTimestamp*>(src_ts_ptr);
+
+
+    if (is_dest_null) {
+      // first assign
+      std::memcpy(dest_ptr, src_ptr, len_ - sizeof(KTimestamp));
+      SetNotNull(bitmap, col_idx_);
+      std::memcpy(dest_ptr + len_ - sizeof(KTimestamp), src_ts_ptr, sizeof(KTimestamp));
+      return;
+    }
+
+    auto first_ts = *reinterpret_cast<KTimestamp*>(dest_ptr + len_ - sizeof(KTimestamp));
+    if (src_ts > first_ts) {
+      std::memcpy(dest_ptr, src_ptr, len_ - sizeof(KTimestamp));
+      std::memcpy(dest_ptr + len_ - sizeof(KTimestamp), src_ts_ptr,
+                  sizeof(KTimestamp));
+    }
+  }
+
  private:
   k_uint32 ts_idx_;
   KTimestamp first_ts_ = INT64_MAX;
@@ -3839,6 +4155,23 @@ class FirstRowTSAggregate : public AggregateFunc {
     if (first_line_ptr != nullptr) {
       current_data_chunk_->SetNotNull(target_row, col_idx_);
       std::memcpy(dest_ptr, first_line_ptr, len_);
+    }
+  }
+
+  void combine(DatumRowPtr dest, DatumPtr bitmap, DatumRowPtr src, DatumPtr src_bitmap) override {
+    if (AggregateFunc::IsNull(src_bitmap, ts_idx_)) {
+      return;
+    }
+    DatumPtr dest_ptr = dest + offset_;
+    DatumPtr src_ptr = src + offset_;
+    DatumPtr src_ts_ptr = src_ptr + sizeof(KTimestamp);
+    auto src_ts = *reinterpret_cast<KTimestamp*>(src_ts_ptr);
+    auto first_ts = *reinterpret_cast<KTimestamp*>(dest_ptr + sizeof(KTimestamp));
+
+    if (src_ts > first_ts) {
+      std::memcpy(dest_ptr, src_ptr, sizeof(KTimestamp));
+      SetNotNull(bitmap, col_idx_);
+      std::memcpy(dest_ptr + sizeof(KTimestamp), src_ts_ptr, sizeof(KTimestamp));
     }
   }
 
@@ -4100,6 +4433,14 @@ class TwaAggregate : public AggregateFunc {
       std::memcpy(dest_ptr, &out, sizeof(k_double64));
       std::memcpy(dest_ptr + sizeof(k_double64), &twa, sizeof(TwaInfo));
     }
+  }
+
+
+  void combine(DatumRowPtr dest, DatumPtr bitmap, DatumRowPtr src, DatumPtr src_bitmap) override {
+    LOG_ERROR("Twa combine function shouldn't be called.");
+    // This func shoudln't be called. Because the source data is ordered according to the PTAG column.
+    // Two different HashTables will not contain the same groupby columns.
+    return;
   }
 
   char* Result(DatumRowPtr dest) {
@@ -4384,6 +4725,32 @@ class ElapsedAggregate : public AggregateFunc {
       std::memcpy(dest_ptr + sizeof(k_double64), &info, sizeof(ElapsedInfo));
     }
   }
+
+  void combine(DatumRowPtr dest, DatumPtr bitmap, DatumRowPtr src, DatumPtr src_bitmap) override {
+    if (AggregateFunc::IsNull(src_bitmap, col_idx_)) {
+      return;
+    }
+
+    k_bool is_dest_null = AggregateFunc::IsNull(bitmap, col_idx_);
+    if (is_dest_null) {
+      // first assign
+      std::memcpy(dest + offset_, src + offset_, sizeof(k_double64) + sizeof(ElapsedInfo));
+      AggregateFunc::SetNotNull(bitmap, col_idx_);
+      return;
+    }
+
+    ElapsedInfo src_info = *reinterpret_cast<ElapsedInfo*>(src + offset_ + sizeof(k_double64));
+    ElapsedInfo info = *reinterpret_cast<ElapsedInfo*>(dest + offset_ + sizeof(k_double64));
+    if (src_info.min < info.min) {
+      info.min = src_info.min;
+    }
+    if (info.max < src_info.max) {
+      info.max = src_info.max;
+    }
+
+    std::memcpy(dest + offset_ + sizeof(k_double64), &info, sizeof(ElapsedInfo));
+  }
+
   char* Result(DatumRowPtr dest) {
     ElapsedInfo info = *reinterpret_cast<ElapsedInfo*>(dest + offset_ + sizeof(k_double64));
     k_double64 result = (k_double64)(info.max - info.min);
@@ -4425,6 +4792,63 @@ class MaxExtendAggregate : public AggregateFunc {
 
   ~MaxExtendAggregate() override = default;
 
+  void addOrUpdate(DatumRowPtr dest, DatumPtr bitmap, DatumPtr src_ptr, DatumPtr src_extend_ptr, k_bool is_extend_null) {
+    if constexpr (std::is_same_v<T, String>) {
+      k_uint16 src_len = *reinterpret_cast<k_uint16*>(src_ptr);
+      auto src_val = std::string_view(src_ptr + sizeof(k_uint16), src_len);
+      k_uint16 dest_len = *reinterpret_cast<k_uint16*>(dest + ref_offset_);
+      auto dest_val =
+          std::string_view(dest + ref_offset_ + sizeof(k_uint16), dest_len);
+      if (src_val.compare(dest_val) == 0) {
+        if (is_extend_null) {
+          AggregateFunc::SetNull(bitmap, col_idx_);
+        } else {
+          AggregateFunc::SetNotNull(bitmap, col_idx_);
+          if (is_string_) {
+            k_uint16 len = *reinterpret_cast<k_uint16*>(src_extend_ptr);
+            std::memcpy(dest + offset_, src_extend_ptr, len + STRING_WIDE);
+          } else {
+            std::memcpy(dest + offset_, src_extend_ptr, len_);
+          }
+        }
+      }
+    } else if constexpr (std::is_same_v<T, k_decimal>) {
+      LOG_ERROR("not support decimal type.")
+    } else {
+      T src_val = *reinterpret_cast<T*>(src_ptr);
+      T dest_val = *reinterpret_cast<T*>(dest + ref_offset_);
+      if constexpr (std::is_floating_point<T>::value) {
+        if (std::abs(src_val - dest_val) <= std::numeric_limits<T>::epsilon()) {
+          if (is_extend_null) {
+            AggregateFunc::SetNull(bitmap, col_idx_);
+          } else {
+            AggregateFunc::SetNotNull(bitmap, col_idx_);
+            if (is_string_) {
+              k_uint16 len = *reinterpret_cast<k_uint16*>(src_extend_ptr);
+              std::memcpy(dest + offset_, src_extend_ptr, len + STRING_WIDE);
+            } else {
+              std::memcpy(dest + offset_, src_extend_ptr, len_);
+            }
+          }
+        }
+      } else {
+        if (src_val == dest_val) {
+          if (is_extend_null) {
+            AggregateFunc::SetNull(bitmap, col_idx_);
+          } else {
+            AggregateFunc::SetNotNull(bitmap, col_idx_);
+            if (is_string_) {
+              k_uint16 len = *reinterpret_cast<k_uint16*>(src_extend_ptr);
+              std::memcpy(dest + offset_, src_extend_ptr, len + STRING_WIDE);
+            } else {
+              std::memcpy(dest + offset_, src_extend_ptr, len_);
+            }
+          }
+        }
+      }
+    }
+  }
+
   void addOrUpdate(DatumRowPtr dest, char* bitmap, IChunk* chunk, k_uint32 line) override {
     auto arg_idx = arg_idx_[0];
     auto arg_idx2 = arg_idx_[1];
@@ -4434,61 +4858,7 @@ class MaxExtendAggregate : public AggregateFunc {
     }
     DatumPtr src = chunk->GetData(line, arg_idx);
     DatumPtr src_extend = chunk->GetData(line, arg_idx2);
-
-    if constexpr (std::is_same_v<T, String>) {
-      k_uint16 src_len = *reinterpret_cast<k_uint16*>(src);
-      auto src_val = std::string_view(src + sizeof(k_uint16), src_len);
-      k_uint16 dest_len = *reinterpret_cast<k_uint16*>(dest + ref_offset_);
-      auto dest_val =
-          std::string_view(dest + ref_offset_ + sizeof(k_uint16), dest_len);
-      if (src_val.compare(dest_val) == 0) {
-        if (chunk->IsNull(line, arg_idx2)) {
-          AggregateFunc::SetNull(bitmap, col_idx_);
-        } else {
-          AggregateFunc::SetNotNull(bitmap, col_idx_);
-          if (is_string_) {
-            k_uint16 len = *reinterpret_cast<k_uint16*>(src_extend);
-            std::memcpy(dest + offset_, src_extend, len + STRING_WIDE);
-          } else {
-            std::memcpy(dest + offset_, src_extend, len_);
-          }
-        }
-      }
-    } else if constexpr (std::is_same_v<T, k_decimal>) {
-      LOG_ERROR("not support decimal type.")
-    } else {
-      T src_val = *reinterpret_cast<T*>(src);
-      T dest_val = *reinterpret_cast<T*>(dest + ref_offset_);
-      if constexpr (std::is_floating_point<T>::value) {
-        if (std::abs(src_val - dest_val) <= std::numeric_limits<T>::epsilon()) {
-          if (chunk->IsNull(line, arg_idx2)) {
-            AggregateFunc::SetNull(bitmap, col_idx_);
-          } else {
-            AggregateFunc::SetNotNull(bitmap, col_idx_);
-            if (is_string_) {
-              k_uint16 len = *reinterpret_cast<k_uint16*>(src_extend);
-              std::memcpy(dest + offset_, src_extend, len + STRING_WIDE);
-            } else {
-              std::memcpy(dest + offset_, src_extend, len_);
-            }
-          }
-        }
-      } else {
-        if (src_val == dest_val) {
-          if (chunk->IsNull(line, arg_idx2)) {
-            AggregateFunc::SetNull(bitmap, col_idx_);
-          } else {
-            AggregateFunc::SetNotNull(bitmap, col_idx_);
-            if (is_string_) {
-              k_uint16 len = *reinterpret_cast<k_uint16*>(src_extend);
-              std::memcpy(dest + offset_, src_extend, len + STRING_WIDE);
-            } else {
-              std::memcpy(dest + offset_, src_extend, len_);
-            }
-          }
-        }
-      }
-    }
+    addOrUpdate(dest, bitmap, src, src_extend, chunk->IsNull(line, arg_idx2));
   }
 
   void handleNumber(std::vector<DataChunk*>& chunks, k_int32 start_line_in_begin_chunk, IChunk* data_container,
@@ -4832,6 +5202,10 @@ class MaxExtendAggregate : public AggregateFunc {
       handleNumber(chunks, start_line_in_begin_chunk, row_batch, group_by_metadata, renders);
     }
   }
+
+  void combine(DatumRowPtr dest, DatumPtr bitmap, DatumRowPtr src, DatumPtr src_bitmap) override {
+    addOrUpdate(dest, bitmap, src + offset_, src + offset_ + ref_offset_, AggregateFunc::IsNull(src_bitmap, col_idx_));
+  }
 };
 
 ////////////////////////// MinExtendAggregate //////////////////////////
@@ -4858,6 +5232,49 @@ class MinExtendAggregate : public AggregateFunc {
   }
 
   ~MinExtendAggregate() override = default;
+
+  void addOrUpdate(DatumRowPtr dest, DatumPtr bitmap, DatumPtr src_ptr, DatumPtr src_extend_ptr, k_bool is_extend_null) {
+    if constexpr (std::is_same_v<T, String>) {
+      // Handle kwdbts::String type - stored as length-prefixed data
+      k_uint16 src_len = *reinterpret_cast<k_uint16*>(src_ptr);
+      auto src_val = std::string_view(src_ptr + sizeof(k_uint16), src_len);
+      k_uint16 dest_len = *reinterpret_cast<k_uint16*>(dest + ref_offset_);
+      auto dest_val =
+          std::string_view(dest + ref_offset_ + sizeof(k_uint16), dest_len);
+      if (src_val.compare(dest_val) == 0) {
+        if (is_extend_null) {
+          AggregateFunc::SetNull(bitmap, col_idx_);
+        } else {
+          AggregateFunc::SetNotNull(bitmap, col_idx_);
+          std::memcpy(dest + offset_, src_extend_ptr, len_);
+        }
+      }
+    } else if constexpr (std::is_same_v<T, k_decimal>) {
+      LOG_ERROR("not support decimal type.")
+    } else {
+      T src_val = *reinterpret_cast<T*>(src_ptr);
+      T dest_val = *reinterpret_cast<T*>(dest + ref_offset_);
+      if constexpr (std::is_floating_point<T>::value) {
+        if (std::abs(src_val - dest_val) <= std::numeric_limits<T>::epsilon()) {
+          if (is_extend_null) {
+            AggregateFunc::SetNull(bitmap, col_idx_);
+          } else {
+            AggregateFunc::SetNotNull(bitmap, col_idx_);
+            std::memcpy(dest + offset_, src_extend_ptr, len_);
+          }
+        }
+      } else {
+        if (src_val == dest_val) {
+          if (is_extend_null) {
+            AggregateFunc::SetNull(bitmap, col_idx_);
+          } else {
+            AggregateFunc::SetNotNull(bitmap, col_idx_);
+            std::memcpy(dest + offset_, src_extend_ptr, len_);
+          }
+        }
+      }
+    }
+  }
 
   void addOrUpdate(DatumRowPtr dest, char* bitmap, IChunk* chunk,
                    k_uint32 line) override {
@@ -5269,6 +5686,10 @@ class MinExtendAggregate : public AggregateFunc {
     } else {
       handleNumber(chunks, start_line_in_begin_chunk, row_batch, group_by_metadata, renders);
     }
+  }
+
+  void combine(DatumRowPtr dest, DatumPtr bitmap, DatumRowPtr src, DatumPtr src_bitmap) override {
+    addOrUpdate(dest, bitmap, src + offset_, src + offset_ + ref_offset_, AggregateFunc::IsNull(src_bitmap, col_idx_));
   }
 };
 
