@@ -333,6 +333,7 @@ func (tr *TSTagReaderSpec) summary() (string, []string) {
 		}
 	}
 	res = append(res, fmt.Sprintf("span(%v)", buf.String()))
+	res = append(res, fmt.Sprintf("osn: %v", tr.OsnID))
 
 	if tr.OnlyTag {
 		res = append(res, "OnlyScanTag")

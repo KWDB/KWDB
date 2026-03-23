@@ -142,7 +142,8 @@ TsStorageIteratorImpl::TsStorageIteratorImpl(const std::shared_ptr<TsVGroup>& vg
                                                  std::vector<k_uint32>& kw_scan_cols,
                                                  std::vector<k_uint32>& ts_scan_cols,
                                                  const std::shared_ptr<TsTableSchemaManager>& table_schema_mgr,
-                                                 const std::shared_ptr<MMapMetricsTable>& schema) {
+                                                 const std::shared_ptr<MMapMetricsTable>& schema,
+                                                 TS_OSN scan_osn) {
   vgroup_ = vgroup;
   table_version_ = version;
   entity_ids_ = entity_ids;
@@ -153,6 +154,7 @@ TsStorageIteratorImpl::TsStorageIteratorImpl(const std::shared_ptr<TsVGroup>& vg
   kw_scan_cols_ = kw_scan_cols;
   table_schema_mgr_ = table_schema_mgr;
   scan_schema_ = schema;
+  scan_osn_ = scan_osn;
 }
 
 TsStorageIteratorImpl::~TsStorageIteratorImpl() {
@@ -224,23 +226,32 @@ KStatus TsStorageIteratorImpl::getBlockSpanMinMaxValue(std::shared_ptr<TsBlockSp
   }
   uint32_t row_num = block_span->GetRowNum();
   int32_t size = block_span->GetColSize(col_id);
+  void* cur_max = nullptr;
+  void* cur_min = nullptr;
+  void* current;
+  bool need_check_bt = !bitmap->IsAllValid();
   for (int row_idx = 0; row_idx < row_num; ++row_idx) {
-    if (bitmap->At(row_idx) != DataFlags::kValid) {
+    if (need_check_bt && bitmap->At(row_idx) != DataFlags::kValid) {
       continue;
     }
-    void* current = reinterpret_cast<void*>((intptr_t)(value + row_idx * size));
-    if (min == nullptr) {
-      min = malloc(size);
-      memcpy(min, current, size);
-    } else if (cmp(min, current, type, size) > 0) {
-      memcpy(min, current, size);
+    current = reinterpret_cast<void*>((intptr_t)(value + row_idx * size));
+    if (cur_max != nullptr) {
+      auto ret = cmpWithSpan(cur_min, cur_max, current, type, size);
+      if (ret < 0) {
+        cur_min = current;
+      } else if (ret > 0) {
+        cur_max = current;
+      }
+    } else {
+      cur_max = current;
+      cur_min = current;
     }
-    if (max == nullptr) {
-      max = malloc(size);
-      memcpy(max, current, size);
-    } else if (cmp(current, max, type, size) > 0) {
-      memcpy(max, current, size);
-    }
+  }
+  if (cur_max != nullptr) {
+    min = malloc(size);
+    memcpy(min, cur_min, size);
+    max = malloc(size);
+    memcpy(max, cur_max, size);
   }
   return KStatus::SUCCESS;
 }
@@ -635,11 +646,11 @@ TsSortedRawDataIteratorImpl::TsSortedRawDataIteratorImpl(const std::shared_ptr<T
                                                               std::vector<k_uint32>& ts_scan_cols,
                                                               const std::shared_ptr<TsTableSchemaManager>& table_schema_mgr,
                                                               const std::shared_ptr<MMapMetricsTable>& schema,
-                                                              SortOrder order_type) :
+                                                              TS_OSN scan_osn, SortOrder order_type) :
                           TsStorageIteratorImpl::TsStorageIteratorImpl(vgroup, version, entity_ids, ts_spans,
                                                                            block_filter, kw_scan_cols,
                                                                            ts_scan_cols, table_schema_mgr,
-                                                                           schema) {
+                                                                           schema, scan_osn) {
 }
 
 TsSortedRawDataIteratorImpl::~TsSortedRawDataIteratorImpl() {
@@ -772,7 +783,7 @@ TsFillRawDataIteratorImpl::TsFillRawDataIteratorImpl(const std::shared_ptr<TsVGr
               TsSortedRawDataIteratorImpl(vgroup, version, entity_ids, ts_spans,
                                           block_filter, kw_scan_cols,
                                           ts_scan_cols, table_schema_mgr,
-                                          schema),
+                                          schema, UINT64_MAX),
               fill_type_(fill_params.fill_type), varbytes_cols_(fill_params.varbytes_col_ids),
               before_range_(fill_params.before_range), after_range_(fill_params.after_range),
               const_fill_type_(fill_params.const_data_type), const_fill_value_(fill_params.const_data_value),
@@ -1333,7 +1344,7 @@ KStatus TsFillRawDataIteratorImpl::Next(ResultSet* res, k_uint32* count, bool* i
       std::vector<Sumfunctype> scan_agg_type(col_num, Sumfunctype::LAST);
       auto agg_iter = new TsAggIteratorImpl(vgroup_, table_version_, entity_ids, before_ts_span_, block_filter_,
                                             fill_kw_scan_cols_, fill_ts_scan_cols_, agg_extend_cols, scan_agg_type,
-                                            {}, table_schema_mgr_, scan_schema_);
+                                            {}, table_schema_mgr_, scan_schema_, UINT64_MAX);
       s = agg_iter->Init(is_reversed_);
       if (s != KStatus::SUCCESS) {
         LOG_ERROR("AggIterator Init failed.")
@@ -1367,7 +1378,7 @@ KStatus TsFillRawDataIteratorImpl::Next(ResultSet* res, k_uint32* count, bool* i
       std::vector<Sumfunctype> scan_agg_type(col_num, Sumfunctype::FIRST);
       auto agg_iter = new TsAggIteratorImpl(vgroup_, table_version_, entity_ids, after_ts_span_, block_filter_,
                                             fill_kw_scan_cols_, fill_ts_scan_cols_, agg_extend_cols, scan_agg_type,
-                                            {}, table_schema_mgr_, scan_schema_);
+                                            {}, table_schema_mgr_, scan_schema_, UINT64_MAX);
       s = agg_iter->Init(is_reversed_);
       if (s != KStatus::SUCCESS) {
         LOG_ERROR("AggIterator Init failed.")
@@ -1411,7 +1422,7 @@ KStatus TsFillRawDataIteratorImpl::Next(ResultSet* res, k_uint32* count, bool* i
 
       auto previous_agg_iter = new TsAggIteratorImpl(vgroup_, table_version_, entity_ids, before_ts_span_, block_filter_,
                                             kw_scan_cols, ts_scan_cols, agg_extend_cols, previous_agg_type,
-                                            {}, table_schema_mgr_, scan_schema_);
+                                            {}, table_schema_mgr_, scan_schema_, UINT64_MAX);
       s = previous_agg_iter->Init(is_reversed_);
       if (s != KStatus::SUCCESS) {
         LOG_ERROR("AggIterator Init failed.")
@@ -1427,7 +1438,7 @@ KStatus TsFillRawDataIteratorImpl::Next(ResultSet* res, k_uint32* count, bool* i
 
       auto after_agg_iter = new TsAggIteratorImpl(vgroup_, table_version_, entity_ids, after_ts_span_, block_filter_,
                                          kw_scan_cols, ts_scan_cols, agg_extend_cols, after_agg_type,
-                                          {}, table_schema_mgr_, scan_schema_);
+                                          {}, table_schema_mgr_, scan_schema_, UINT64_MAX);
       s = after_agg_iter->Init(is_reversed_);
       if (s != KStatus::SUCCESS) {
         LOG_ERROR("AggIterator Init failed.")
@@ -1510,7 +1521,7 @@ KStatus TsFillRawDataIteratorImpl::Next(ResultSet* res, k_uint32* count, bool* i
 
       auto previous_agg_iter = new TsAggIteratorImpl(vgroup_, table_version_, entity_ids, before_ts_span_,
                                                      block_filter_, kw_scan_cols, ts_scan_cols, agg_extend_cols,
-                                                     previous_agg_type, {}, table_schema_mgr_, scan_schema_);
+                                                     previous_agg_type, {}, table_schema_mgr_, scan_schema_, UINT64_MAX);
       s = previous_agg_iter->Init(is_reversed_);
       if (s != KStatus::SUCCESS) {
         LOG_ERROR("AggIterator Init failed.")
@@ -1526,7 +1537,7 @@ KStatus TsFillRawDataIteratorImpl::Next(ResultSet* res, k_uint32* count, bool* i
 
       auto after_agg_iter = new TsAggIteratorImpl(vgroup_, table_version_, entity_ids, after_ts_span_, block_filter_,
                                                   kw_scan_cols, ts_scan_cols, agg_extend_cols, after_agg_type,
-                                                  {}, table_schema_mgr_, scan_schema_);
+                                                  {}, table_schema_mgr_, scan_schema_, UINT64_MAX);
       s = after_agg_iter->Init(is_reversed_);
       if (s != KStatus::SUCCESS) {
         LOG_ERROR("AggIterator Init failed.")
@@ -1591,9 +1602,9 @@ TsAggIteratorImpl::TsAggIteratorImpl(const std::shared_ptr<TsVGroup>& vgroup, ui
                                          std::vector<Sumfunctype>& scan_agg_types,
                                          const std::vector<timestamp64>& ts_points,
                                          const std::shared_ptr<TsTableSchemaManager>& table_schema_mgr,
-                                         const std::shared_ptr<MMapMetricsTable>& schema)
+                                         const std::shared_ptr<MMapMetricsTable>& schema, TS_OSN scan_osn)
     : TsStorageIteratorImpl::TsStorageIteratorImpl(vgroup, version, entity_ids, ts_spans, block_filter,
-                                                       kw_scan_cols, ts_scan_cols, table_schema_mgr, schema),
+                                                       kw_scan_cols, ts_scan_cols, table_schema_mgr, schema, scan_osn),
       scan_agg_types_(scan_agg_types),
       last_ts_points_(ts_points),
       agg_extend_cols_{agg_extend_cols} {}

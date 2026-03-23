@@ -235,6 +235,7 @@ KBStatus StScanWorker::do_work(KTimestamp  new_ts) {
       .sorted = false,
       .offset = 0,
       .limit = 0,
+      .scan_osn = UINT64_MAX,
   };
   auto status = tablev2->GetNormalIterator(ctx, params, &iter);
   s = dump_zstatus("GetIterator", ctx, status);
@@ -295,7 +296,7 @@ KBStatus StSnapshotWorker::do_work(KTimestamp  new_ts) {
   {
     KWDB_START();
     s = st_inst_->GetTSEngine()->CreateSnapshotForRead(ctx, table_ids_[table_i], 0, UINT64_MAX,
-                                                        {INT64_MIN, INT64_MAX}, &read_snapshot_id, is_dropped);
+                                                        {INT64_MIN, INT64_MAX}, UINT64_MAX, &read_snapshot_id, is_dropped);
     if (s != KStatus::SUCCESS) {
       return dump_zstatus("CreateSnapshotForRead", ctx, s);
     }

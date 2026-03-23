@@ -28,6 +28,7 @@ void CreateTagReaderSpec(TSTagReaderSpec **spec, k_uint64 table_id) {
   col1->set_storage_len(4);
   (*spec)->set_tableid(table_id);
   (*spec)->set_accessmode(TSTableReadMode::metaTable);
+  (*spec)->set_osnid(UINT64_MAX);
 }
 
 void CreateReaderSpec(TSReaderSpec **spec, k_uint64 objid) {

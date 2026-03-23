@@ -38,7 +38,7 @@ class TsBatchData {
     char checksum[16];
     uint16_t hash_point_id;
     uint32_t data_length;
-    char reserve[8];
+    TS_OSN tag_osn;
     uint32_t batch_version;
     uint32_t ts_version;
     uint32_t row_num;
@@ -50,7 +50,7 @@ class TsBatchData {
   ____________________________________________________________________________________________________________________
   |    16    |       2       |         4        |        8       |       4       |       4        |   4    |    1    |
   |----------|---------------|------------------|----------------|---------------|----------------|--------|---------|
-  | checksum |   hash point  |    data length   |     reserve    |  BatchVersion |    TSVersion   | rowNum | rowType |
+  | checksum |   hash point  |    data length   |     tag_osn    |  BatchVersion |    TSVersion   | rowNum | rowType |
   */
   constexpr static uint8_t checksum_offset_ = offsetof(BatchHeader, checksum);  // NOLINT
   constexpr static uint8_t checksum_size_ = sizeof(BatchHeader::checksum);  // NOLINT
@@ -61,8 +61,8 @@ class TsBatchData {
   constexpr static uint8_t data_length_offset_ = offsetof(BatchHeader, data_length);  // NOLINT
   constexpr static uint8_t data_length_size_ = sizeof(BatchHeader::data_length);  // NOLINT
 
-  constexpr static uint8_t reserve_offset_ = offsetof(BatchHeader, reserve);  // NOLINT
-  constexpr static uint8_t reserve_size_ = sizeof(BatchHeader::reserve);  // NOLINT
+  constexpr static uint8_t tag_osn_offset_ = offsetof(BatchHeader, tag_osn);  // NOLINT
+  constexpr static uint8_t tag_osn_size_ = sizeof(BatchHeader::tag_osn);  // NOLINT
 
   constexpr static uint8_t batch_version_offset_ = offsetof(BatchHeader, batch_version);  // NOLINT
   constexpr static uint8_t batch_version_size_ = sizeof(BatchHeader::batch_version);  // NOLINT
@@ -143,6 +143,10 @@ class TsBatchData {
     memcpy(data_.data() + batch_version_offset_, &batch_version, batch_version_size_);
   }
 
+  void SetTagOSN(TS_OSN osn) {
+    memcpy(data_.data() + tag_osn_offset_, &osn, tag_osn_size_);
+  }
+
  public:
   // explicit TsBatchData(std::string batch_data) : data_(batch_data) {
   //   p_tag_size_ = KUint16(const_cast<char *>(data_.data()) + header_size_);
@@ -162,6 +166,8 @@ class TsBatchData {
   ~TsBatchData() = default;
 
   uint32_t GetBatchVersion() const { return *reinterpret_cast<const uint32_t *>(data_.data() + batch_version_offset_); }
+
+  TS_OSN GetTagOSN() const { return *reinterpret_cast<const TS_OSN *>(data_.data() + tag_osn_offset_); }
 
   TSSlice GetCheckSum() const {
     return TSSlice{const_cast<char *>(const_cast<char *>(data_.data()) + checksum_offset_), checksum_size_};
@@ -338,13 +344,13 @@ class TsReadBatchDataWorker : public TsBatchDataWorker {
 
   uint64_t total_read_ = 0;
 
-  KStatus GetTagValue(kwdbContext_p ctx, bool& not_found_tag);
+  KStatus GetTagValue(kwdbContext_p ctx);
 
   KStatus AddTsBlockSpanInfo(kwdbContext_p ctx, std::shared_ptr<TsBlockSpan>& block_span);
 
   KStatus NextBlockSpansIterator();
 
-  KStatus GenerateBatchData(kwdbContext_p ctx, std::shared_ptr<TsBlockSpan> block_span, bool& not_found_tag);
+  KStatus GenerateBatchData(kwdbContext_p ctx, std::shared_ptr<TsBlockSpan> block_span);
 
  public:
   TsReadBatchDataWorker(TSEngineImpl* ts_engine, TSTableID table_id, uint64_t table_version, KwTsSpan ts_span,
@@ -357,7 +363,7 @@ class TsReadBatchDataWorker : public TsBatchDataWorker {
 
   KStatus Read(kwdbContext_p ctx, TSSlice* data, uint32_t* row_num) override;
 
-  KStatus Read(kwdbContext_p ctx, TSSlice* data, uint32_t* row_num, bool& not_found_tag);
+  KStatus ReadOnce(kwdbContext_p ctx, TSSlice* data, uint32_t* row_num);
 
   KStatus Finish(kwdbContext_p ctx) override;
 };

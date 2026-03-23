@@ -52,7 +52,9 @@ struct TsRangeImgrationInfo {
   uint64_t imgrated_rows;
   std::shared_ptr<TsTable> table;
   bool batch_read_finished;
+  bool del_info_read_finished;
   std::shared_ptr<STTableRangeDelAndTagInfo> del_iter;
+  TS_OSN op_osn;
 };
 
 /**
@@ -112,6 +114,8 @@ class TSEngineImpl : public TSEngine {
   }
 
     KStatus CheckAndDropTsTable(kwdbContext_p ctx, const KTableKey& table_id);
+
+  bool IsTableDropped(TSTableID table_id);
 
   KStatus GetTsTable(kwdbContext_p ctx, const KTableKey& table_id, std::shared_ptr<TsTable>& ts_table, bool& is_dropped,
                      bool create_if_not_exist = true, uint32_t version = 0) override;
@@ -174,7 +178,7 @@ class TSEngineImpl : public TSEngine {
 
   // range imgration snapshot using interface...............begin................................
   KStatus CreateSnapshotForRead(kwdbContext_p ctx, const KTableKey& table_id, uint64_t begin_hash, uint64_t end_hash,
-                              const KwTsSpan& ts_span, uint64_t* snapshot_id, bool& is_dropped) override;
+                    const KwTsSpan& ts_span, TS_OSN scan_osn, uint64_t* snapshot_id, bool& is_dropped) override;
   KStatus DeleteSnapshot(kwdbContext_p ctx, uint64_t snapshot_id) override;
   KStatus GetSnapshotNextBatchData(kwdbContext_p ctx, uint64_t snapshot_id, TSSlice* data, bool& is_dropped) override;
   KStatus CreateSnapshotForWrite(kwdbContext_p ctx, const KTableKey& table_id, uint64_t begin_hash, uint64_t end_hash,

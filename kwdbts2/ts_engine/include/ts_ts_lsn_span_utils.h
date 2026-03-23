@@ -74,6 +74,24 @@ inline bool IsOsnInSpans(TS_OSN a, const std::vector<KwOSNSpan>& b) {
   return false;
 }
 
+inline bool IsOsnInSpansExcludePoint(TS_OSN a, const std::vector<KwOSNSpan>& b) {
+  for (auto span : b) {
+    if (span.begin < a && a < span.end) {
+      return true;
+    }
+  }
+  return false;
+}
+
+inline bool IsOsnAfterSpans(TS_OSN a, const std::vector<KwOSNSpan>& b) {
+  for (auto span : b) {
+    if (span.end >= a) {
+      return false;
+    }
+  }
+  return true;
+}
+
 inline bool IsOsnBeforeSpans(TS_OSN a, const std::vector<KwOSNSpan>& b) {
   for (auto span : b) {
     if (span.begin <= a) {

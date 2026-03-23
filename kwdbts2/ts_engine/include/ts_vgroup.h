@@ -238,7 +238,7 @@ class TsVGroup {
                       const std::shared_ptr<TsTableSchemaManager>& table_schema_mgr,
                       const std::shared_ptr<MMapMetricsTable>& schema, TsStorageIterator** iter,
                       const std::shared_ptr<TsVGroup>& vgroup,
-                      const std::vector<timestamp64>& ts_points, bool reverse, bool sorted,
+                      const std::vector<timestamp64>& ts_points, bool reverse, bool sorted, TS_OSN scan_osn,
                       const FillParams& fill_params);
 
   KStatus GetMetricIteratorByOSN(kwdbContext_p ctx, const std::shared_ptr<TsVGroup>& vgroup,
@@ -303,19 +303,18 @@ class TsVGroup {
   KStatus getEntityIdByPTag(kwdbContext_p ctx, TSTableID table_id, TSSlice& ptag, TSEntityID* entity_id);
 
   KStatus undoDeleteTag(kwdbContext_p ctx, uint64_t table_id, TSSlice& primary_tag, TS_OSN log_lsn,
-                        uint32_t group_id, uint32_t entity_id, TSSlice& tags, uint64_t osn = 0);
+                        uint32_t group_id, uint32_t entity_id, TSSlice& tags, uint64_t osn);
 
   KStatus redoPutTag(kwdbContext_p ctx, kwdbts::TS_OSN log_lsn, const TSSlice& payload);
 
   KStatus undoPutTag(kwdbContext_p ctx, TS_OSN log_lsn, const TSSlice& payload);
 
-  KStatus redoUpdateTag(kwdbContext_p ctx, kwdbts::TS_OSN log_lsn, const TSSlice& payload, uint64_t osn = 0);
+  KStatus redoUpdateTag(kwdbContext_p ctx, kwdbts::TS_OSN log_lsn, const TSSlice& payload);
 
-  KStatus undoUpdateTag(kwdbContext_p ctx, TS_OSN log_lsn, TSSlice payload, const TSSlice& old_payload,
-                        uint64_t osn = 0);
+  KStatus undoUpdateTag(kwdbContext_p ctx, TS_OSN log_lsn, TSSlice payload, const TSSlice& old_payload);
 
   KStatus redoDeleteTag(kwdbContext_p ctx, uint64_t table_id, TSSlice& primary_tag, kwdbts::TS_OSN log_lsn,
-                        uint32_t group_id, uint32_t entity_id, TSSlice& tags, uint64_t osn = 0);
+                        uint32_t group_id, uint32_t entity_id, TSSlice& tags, uint64_t osn);
 
   /**
    * @brief Start a mini-transaction for the current EntityGroup.

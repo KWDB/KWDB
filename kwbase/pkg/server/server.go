@@ -1949,6 +1949,7 @@ func (s *Server) Start(ctx context.Context) error {
 			s.node.storeCfg.TsEngine = s.tsEngine
 			s.distSQLServer.ServerConfig.TsEngine = s.tsEngine
 			s.distSQLServer.ServerConfig.TsIDGen = s.execCfg.TsIDGen
+			s.tsEngine.TsIDGen = s.execCfg.TsIDGen
 
 			tsDBCfg := kvcoord.TsDBConfig{
 				KvDB:         s.db,

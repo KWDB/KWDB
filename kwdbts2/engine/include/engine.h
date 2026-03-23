@@ -302,7 +302,8 @@ struct TSEngine {
     * @return KStatus
     */
   virtual KStatus CreateSnapshotForRead(kwdbContext_p ctx, const KTableKey& table_id,
-    uint64_t begin_hash, uint64_t end_hash, const KwTsSpan& ts_span, uint64_t* snapshot_id, bool& is_dropped) {
+    uint64_t begin_hash, uint64_t end_hash, const KwTsSpan& ts_span, TS_OSN scan_osn,
+    uint64_t* snapshot_id, bool& is_dropped) {
     return KStatus::FAIL;
   }
 
