@@ -777,3 +777,45 @@ func (p *planner) GetRangeRowCountFromNode(
 ) (uint64, error) {
 	return p.ExecCfg().TsDB.GetRangeRowCount(ctx, rangeID, nodeID)
 }
+
+// RelocateRange relocate the range from source node to desc node.
+func (p *planner) RelocateRange(ctx context.Context, rangeID int64, src, dst roachpb.NodeID) error {
+	if err := p.RequireAdminRole(ctx, "relocate range"); err != nil {
+		return err
+	}
+	req := &serverpb.RangeRequest{
+		RangeId: rangeID,
+	}
+	var resp *serverpb.RangeResponse
+	var err error
+	if resp, err = p.execCfg.StatusServer.Range(ctx, req); err != nil {
+		return err
+	}
+	var foundRange bool
+	var key roachpb.RKey
+	var targets []roachpb.ReplicationTarget
+	for _, v := range resp.ResponsesByNodeID {
+		if v.Infos != nil && v.ErrorMessage == "" {
+			target := roachpb.ReplicationTarget{
+				NodeID:  v.Infos[0].SourceNodeID,
+				StoreID: v.Infos[0].SourceStoreID,
+			}
+			if v.Infos[0].SourceNodeID == src {
+				target = roachpb.ReplicationTarget{
+					NodeID:  dst,
+					StoreID: roachpb.StoreID(dst), // todo(qzy): get storeID by nodeID
+				}
+				key = v.Infos[0].State.Desc.StartKey
+				foundRange = true
+			}
+			targets = append(targets, target)
+		}
+	}
+	if !foundRange {
+		return errors.New("range not found")
+	}
+	if err = p.ExecCfg().DB.AdminRelocateRange(ctx, key, targets); err != nil {
+		return err
+	}
+	return nil
+}

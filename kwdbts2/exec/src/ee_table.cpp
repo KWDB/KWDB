@@ -128,6 +128,9 @@ KStatus TABLE::Init(kwdbContext_p ctx, const TSTagReaderSpec *spec) {
     for (k_int32 i = 0; i < spec->probecolids_size(); ++i) {
       rel_tag_join_column_indexes_.push_back({spec->probecolids(i), spec->hashcolids(i)});
     }
+    if (spec->has_osnid() && spec->osnid() != 0) {
+      osn_id_ = spec->osnid();
+    }
   } while (0);
 
   Return(ret);

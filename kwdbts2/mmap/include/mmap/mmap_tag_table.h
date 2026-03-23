@@ -67,6 +67,7 @@ class TagTable {
   uint64_t m_table_id{0};
   uint32_t m_entity_group_id_{0};
   size_t   m_primary_tag_size{0};
+  std::atomic<TS_OSN> max_osn_{0};
  public:
   explicit TagTable(const std::string& db_path, const std::string& sub_path, uint64_t table_id, int32_t entity_group_id);
 
@@ -84,6 +85,8 @@ class TagTable {
   // check ptag exist
   bool hasPrimaryKey(const char* primary_tag_val, int len);
 
+  bool GetPrimaryKeyRowInfo(const char* primary_tag_val, int len, std::pair<uint64_t, uint64_t>& row_info);
+
   // get max entity id
   void GetMaxEntityIdByVGroupId(uint32_t vgroup_id, uint32_t& entity_id);
   // get entity id list
@@ -94,7 +97,7 @@ class TagTable {
   int InsertTagRecord(kwdbts::TsRawPayload &payload, int32_t sub_group_id, int32_t entity_id, uint64_t osn,
                       uint8_t operate_type, std::pair<uint64_t, uint64_t> del_row = { 0, 0 });
   int InsertDeletedTagRecord(kwdbts::TsRawPayload &payload, int32_t sub_group_id, int32_t entity_id, uint64_t osn,
-                              OperateType operate_type);
+                              OperateType operate_type, std::pair<uint64_t, uint64_t>& row_info);
   // update tag record
   int UpdateTagRecord(kwdbts::Payload &payload, int32_t sub_group_id, int32_t entity_id, ErrorInfo& err_info);
   int UpdateTagRecord(kwdbts::TsRawPayload &payload, int32_t sub_group_id, int32_t entity_id, ErrorInfo& err_info,
@@ -118,7 +121,7 @@ class TagTable {
                       const std::vector<void*> tags, TSTagOpType op_type, const std::vector<uint32_t> &scan_tags,
                       const std::vector<HashIdSpan> *hps,
                       std::vector<kwdbts::EntityResultIndex>* entity_id_list,
-                      kwdbts::ResultSet* res, uint32_t* count, uint32_t table_version = 0);
+                      kwdbts::ResultSet* res, uint32_t* count, uint32_t table_version = 0, TS_OSN osn = UINT64_MAX);
 
   // query tag by entityid
   int GetTagList(kwdbContext_p ctx, const std::vector<EntityResultIndex>& entity_id_list,
@@ -158,6 +161,8 @@ class TagTable {
 
   KStatus Init();
 
+  TS_OSN GetLatestOSN();
+
   // wal
   void sync_with_lsn(kwdbts::TS_OSN lsn);
 
@@ -172,16 +177,16 @@ class TagTable {
   int InsertForRedo(uint32_t group_id, uint32_t entity_id,
 		    kwdbts::Payload &payload);
   int DeleteForUndo(uint32_t group_id, uint32_t entity_id, uint64_t hash_num,
-		    const TSSlice& primary_tag, const TSSlice& tag_pack);
+		    const TSSlice& primary_tag, const TSSlice& tag_pack, uint64_t osn);
 
   int DeleteForRedo(uint32_t group_id, uint32_t entity_id,
-		    const TSSlice& primary_tag, TSSlice& tags);
+		    const TSSlice& primary_tag, TSSlice& tags, TS_OSN osn);
   int UpdateForRedo(uint32_t group_id, uint32_t entity_id,
                     const TSSlice& primary_tag, kwdbts::Payload &payload);
   int UpdateForRedo(uint32_t group_id, uint32_t entity_id,
                     const TSSlice& primary_tag, kwdbts::TsRawPayload &payload);
   int UpdateForUndo(uint32_t group_id, uint32_t entity_id, uint64_t hash_num,
-                    const TSSlice& primary_tag, const TSSlice& old_tag, uint64_t osn = 0);
+                    const TSSlice& primary_tag, const TSSlice& old_tag, uint64_t osn);
 
   int UndoCreateHashIndex(uint32_t index_id, uint32_t cur_ts_version, uint32_t new_ts_version, ErrorInfo& err_info);
 
@@ -223,6 +228,11 @@ class TagTable {
 
   bool HasEntityTag(int32_t sub_group_id, int32_t entity_id);
 
+  std::pair<TableVersionID, TagPartitionTableRowID> GetEntityTag(int32_t sub_group_id, int32_t entity_id, TS_OSN osn);
+  std::pair<TableVersionID, TagPartitionTableRowID> ScanTagByPKey(TSSlice pri_key, TS_OSN osn, uint32_t hash_point,
+    uint32_t& sub_group_id, uint32_t& entity_id);
+  std::pair<TableVersionID, TagPartitionTableRowID> ScanTagByEntityID(int32_t sub_group_id, int32_t entity_id, TS_OSN osn);
+
  private:
 
   int initHashIndex(int flags, ErrorInfo& err_info);
@@ -233,8 +243,9 @@ class TagTable {
   int getDataWithRowID(TagPartitionTable* tag_partition, std::pair<TableVersionID, TagPartitionTableRowID> ret,
                                  const std::vector<HashIdSpan> *hps,
                                  std::vector<kwdbts::EntityResultIndex>* entity_id_list,
-                                 kwdbts::ResultSet* res, std::vector<uint32_t> &scan_tags, std::vector<uint32_t> &valid_scan_tags,
-                                 TagVersionObject* tag_version_obj, uint32_t scan_tags_num, bool get_partition);
+                                 kwdbts::ResultSet* res, std::vector<uint32_t> &scan_tags,
+                                 std::vector<uint32_t> &valid_scan_tags,
+                                 TagVersionObject* tag_version_obj, uint32_t scan_tags_num, bool get_partition, TS_OSN osn);
 
   // Query RowID using primary tag indexes.
   int getRowIDByPTag(const std::vector<void*>& primary_tags,
@@ -244,7 +255,6 @@ class TagTable {
   int getRowIDByNTag(const std::vector<uint64_t> &tags_index_id, std::vector<void*> tags,
                      TSTagOpType op_type, TagPartitionTable* tag_part_table,
                      std::vector<std::pair<TableVersionID, TagPartitionTableRowID>> &result_val);
-
   // Get the intersection of results.
   int getIntersectionValue(uint32_t value_size, std::vector<std::pair<TableVersionID, TagPartitionTableRowID>> value[],
                            std::vector<std::pair<TableVersionID, TagPartitionTableRowID>> &result);

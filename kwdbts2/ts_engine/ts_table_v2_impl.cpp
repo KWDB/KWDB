@@ -80,7 +80,7 @@ KStatus TsTableV2Impl::PutData(kwdbContext_p ctx, TsVGroup* v_group, TsRawPayloa
 
 KStatus TsTableV2Impl::GetTagIterator(kwdbContext_p ctx, std::vector<uint32_t> scan_tags,
                                 std::vector<HashIdSpan> *hps,
-                                BaseEntityIterator** iter, k_uint32 table_version) {
+                                BaseEntityIterator** iter, k_uint32 table_version, TS_OSN osn) {
   std::shared_ptr<TagTable> tag_table;
   KStatus ret = this->table_schema_mgr_->GetTagSchema(ctx, &tag_table);
   if (ret != KStatus::SUCCESS) {
@@ -88,9 +88,9 @@ KStatus TsTableV2Impl::GetTagIterator(kwdbContext_p ctx, std::vector<uint32_t> s
   }
   TagIteratorV2Impl* tag_iter;
   if (!EngineOptions::isSingleNode()) {
-    tag_iter = new TagIteratorV2Impl(tag_table, table_version, scan_tags, hps);
+    tag_iter = new TagIteratorV2Impl(tag_table, table_version, scan_tags, hps, osn);
   } else {
-    tag_iter = new TagIteratorV2Impl(tag_table, table_version, scan_tags);
+    tag_iter = new TagIteratorV2Impl(tag_table, table_version, scan_tags, osn);
   }
   if (KStatus::SUCCESS != tag_iter->Init()) {
     delete tag_iter;
@@ -102,7 +102,6 @@ KStatus TsTableV2Impl::GetTagIterator(kwdbContext_p ctx, std::vector<uint32_t> s
   return KStatus::SUCCESS;
 }
 
-
 KStatus TsTableV2Impl::GetEntityIdList(kwdbContext_p ctx, const std::vector<void*>& primary_tags,
                                  const std::vector<uint64_t/*index_id*/> &tags_index_id,
                                  const std::vector<void*> tags,
@@ -110,16 +109,44 @@ KStatus TsTableV2Impl::GetEntityIdList(kwdbContext_p ctx, const std::vector<void
                                  const std::vector<uint32_t>& scan_tags,
                                  const std::vector<HashIdSpan>* hps,
                                  std::vector<EntityResultIndex>* entity_id_list, ResultSet* res, uint32_t* count,
-                                 uint32_t table_version) {
+                                 uint32_t table_version, TS_OSN osn) {
   std::shared_ptr<TagTable> tag_table;
   KStatus ret = this->table_schema_mgr_->GetTagSchema(ctx, &tag_table);
   if (ret != KStatus::SUCCESS) {
     return KStatus::FAIL;
   }
   if (tag_table->GetEntityIdList(primary_tags, tags_index_id, tags, op_type, scan_tags, hps,
-                                    entity_id_list, res, count, table_version) < 0) {
+                                    entity_id_list, res, count, table_version, osn) < 0) {
     LOG_ERROR("GetEntityIdList error ");
     return KStatus::FAIL;
+  }
+  if (*count < (primary_tags.size() + tags.size())) {
+    TS_OSN max_osn = tag_table->GetLatestOSN();
+    if (max_osn > osn) {
+      // trasval all tag rows, found satisfied ones.
+      std::vector<kwdbts::EntityResultIndex> entity_store;
+      if (primary_tags.size() > 0) {
+        ret = GetEntityIdByPriKeys(ctx, primary_tags, osn, entity_store);
+        if (ret != KStatus::SUCCESS) {
+          LOG_ERROR("GetEntityIdByPriKeys error ");
+          return KStatus::FAIL;
+        }
+      }
+      if (tags.size() > 0) {
+        // todo(xinyue) scan normal tag index for entity_store.
+      }
+      if (entity_store.size() > *count) {
+        res->clear();
+        res->setColumnNum(scan_tags.size());
+        *count = 0;
+        *entity_id_list = entity_store;
+        ret = GetTagListByRowNum(ctx, entity_store, scan_tags, osn, res, count, table_version);
+        if (ret != KStatus::SUCCESS) {
+          LOG_ERROR("GetTagListByRowNum error ");
+          return KStatus::FAIL;
+        }
+      }
+    }
   }
 
   return KStatus::SUCCESS;
@@ -127,29 +154,26 @@ KStatus TsTableV2Impl::GetEntityIdList(kwdbContext_p ctx, const std::vector<void
 
 KStatus TsTableV2Impl::GetTagList(kwdbContext_p ctx, const std::vector<EntityResultIndex>& entity_id_list,
                             const std::vector<uint32_t>& scan_tags, ResultSet* res, uint32_t* count,
-                            uint32_t table_version) {
+                            uint32_t table_version, TS_OSN osn) {
   std::shared_ptr<TagTable> tag_table;
   KStatus ret = this->table_schema_mgr_->GetTagSchema(ctx, &tag_table);
   if (ret != KStatus::SUCCESS) {
     return KStatus::FAIL;
   }
-  if (tag_table->GetTagList(ctx, entity_id_list, scan_tags, res, count,
-                            table_version) < 0) {
-    LOG_ERROR("GetTagList error ");
-    return KStatus::FAIL;
+  if (entity_id_list.size() > 0) {
+    return GetTagListByRowNum(ctx, entity_id_list, scan_tags, osn, res, count, table_version);
   }
-
   return KStatus::SUCCESS;
 }
 
 KStatus TsTableV2Impl::GetTagListByRowNum(kwdbContext_p ctx, const std::vector<EntityResultIndex>& entity_id_list,
-  const std::vector<uint32_t>& scan_tags, ResultSet* res, uint32_t* count,
+  const std::vector<uint32_t>& scan_tags, TS_OSN osn, ResultSet* res, uint32_t* count,
   uint32_t table_version) {
   *count = 0;
   std::vector<TagPartitionTable*> all_tag_partition_tables;
   auto tag_bt = table_schema_mgr_->GetTagTable();
   tag_bt->GetTagPartitionTableManager()->
-    GetAllPartitionTablesLessVersion(all_tag_partition_tables, table_version);
+    GetAllPartitionTablesLessVersion(all_tag_partition_tables, UINT32_MAX);
 
   TagVersionObject* result_ver_obj = tag_bt->GetTagTableVersionManager()->GetVersionObject(table_version);
   if (nullptr == result_ver_obj) {
@@ -164,11 +188,26 @@ KStatus TsTableV2Impl::GetTagListByRowNum(kwdbContext_p ctx, const std::vector<E
   const std::vector<TagInfo>& result_schema = result_ver_obj->getIncludeDroppedSchemaInfos();
 
   ErrorInfo err_info;
+  std::shared_ptr<OperatorInfoOfRecord> tmp_op_record = nullptr;
   for (auto& entity : entity_id_list) {
     OperatorInfoOfRecord* opt_osn = reinterpret_cast<OperatorInfoOfRecord*>(entity.op_with_osn.get());
-    assert(opt_osn != nullptr);
+    if (opt_osn == nullptr) {
+      auto v_row = table_schema_mgr_->GetTagTable()->GetEntityTag(entity.subGroupId, entity.entityId, osn);
+      if (v_row.second == 0) {
+        LOG_ERROR("table[%lu] cannot found entity[%u,%u].", table_id_, entity.subGroupId, entity.entityId);
+        return KStatus::FAIL;
+      }
+      tmp_op_record = std::make_shared<OperatorInfoOfRecord>
+      (OperatorTypeOfRecord::OP_TYPE_INSERT, 0, v_row.first, v_row.second);
+      opt_osn = tmp_op_record.get();
+    }
     assert(opt_osn->row_num > 0);
-    auto entity_tag_bt = all_tag_partition_tables[opt_osn->p_tag_id];
+    auto entity_tag_bt = GetSchemaManager()->GetTagTable()->
+    GetTagPartitionTableManager()->GetPartitionTable(opt_osn->p_tag_version);
+    if (entity_tag_bt == nullptr) {
+      LOG_ERROR("GetPartitionTable[%lu] version[%u] failed.", table_id_, opt_osn->p_tag_version);
+      return KStatus::FAIL;
+    }
     entity_tag_bt->startRead();
     // get source scan tags
     std::vector<uint32_t> src_scan_tags;
@@ -205,6 +244,56 @@ KStatus TsTableV2Impl::GetTagListByRowNum(kwdbContext_p ctx, const std::vector<E
     *count += 1;
     entity_tag_bt->stopRead();
   }
+  return KStatus::SUCCESS;
+}
+
+KStatus TsTableV2Impl::GetTagOSNInfoByRowNum(kwdbContext_p ctx, EntityResultIndex entity, TagDataInfo& info) {
+  std::vector<TagPartitionTable*> all_tag_partition_tables;
+  auto tag_bt = table_schema_mgr_->GetTagTable();
+  tag_bt->GetTagPartitionTableManager()->
+    GetAllPartitionTablesLessVersion(all_tag_partition_tables, UINT32_MAX);
+  OperatorInfoOfRecord* opt_osn = reinterpret_cast<OperatorInfoOfRecord*>(entity.op_with_osn.get());
+  assert(opt_osn != nullptr);
+  assert(opt_osn->row_num > 0);
+  auto entity_tag_bt = GetSchemaManager()->GetTagTable()->
+  GetTagPartitionTableManager()->GetPartitionTable(opt_osn->p_tag_version);
+  if (entity_tag_bt == nullptr) {
+    LOG_ERROR("GetPartitionTable[%lu] version[%u] failed.", table_id_, opt_osn->p_tag_version);
+    return KStatus::FAIL;
+  }
+  entity_tag_bt->startRead();
+  info = *(entity_tag_bt->getTagDataInfoByRowNum(opt_osn->row_num));
+  entity_tag_bt->stopRead();
+  return KStatus::SUCCESS;
+}
+
+KStatus TsTableV2Impl::GetTagOSNInfoByRowNum(kwdbContext_p ctx, std::pair<uint64_t, uint64_t>& row_info,
+  TagDataInfo& info) {
+  auto tag_bt = table_schema_mgr_->GetTagTable();
+  auto entity_tag_bt = tag_bt->GetTagPartitionTableManager()->GetPartitionTable(row_info.first);
+  if (entity_tag_bt == nullptr) {
+    logic_error("GetPartitionTable failed.");
+    return KStatus::FAIL;
+  }
+  assert(row_info.second > 0);
+  entity_tag_bt->startRead();
+  info = *(entity_tag_bt->getTagDataInfoByRowNum(row_info.second));
+  entity_tag_bt->stopRead();
+  return KStatus::SUCCESS;
+}
+
+KStatus TsTableV2Impl::SetTagOSNInfoByRowNum(kwdbContext_p ctx, std::pair<uint64_t, uint64_t>& row_info,
+  TagDataInfo& info) {
+  auto tag_bt = table_schema_mgr_->GetTagTable();
+  auto entity_tag_bt = tag_bt->GetTagPartitionTableManager()->GetPartitionTable(row_info.first);
+  if (entity_tag_bt == nullptr) {
+    logic_error("GetPartitionTable failed.");
+    return KStatus::FAIL;
+  }
+  assert(row_info.second > 0);
+  entity_tag_bt->startRead();
+  entity_tag_bt->setTagDataInfo(row_info.second, &info);
+  entity_tag_bt->stopRead();
   return KStatus::SUCCESS;
 }
 
@@ -267,7 +356,7 @@ KStatus TsTableV2Impl::GetNormalIterator(kwdbContext_p ctx, const IteratorParams
     s = vgroup->GetIterator(ctx, params.table_version, vgroup_ids[vgroup_iter.first], params.ts_spans,
                             params.block_filter, params.scan_cols, ts_scan_cols, params.agg_extend_cols,
                             params.scan_agg_types, table_schema_mgr_, schema,
-                            &ts_iter, vgroup, params.ts_points, params.reverse, params.sorted,
+                            &ts_iter, vgroup, params.ts_points, params.reverse, params.sorted, params.scan_osn,
                             params.fill_params);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("cannot create iterator for vgroup[%u].", vgroup_iter.first);
@@ -459,7 +548,7 @@ std::vector<uint32_t> TsTableV2Impl::GetNTagIndexInfo(uint32_t ts_version, uint3
 }
 
 KStatus TsTableV2Impl::DeleteEntities(kwdbContext_p ctx,  std::vector<std::string>& primary_tag,
-  uint64_t* count, uint64_t mtr_id, uint64_t osn, bool user_del) {
+  uint64_t* count, uint64_t mtr_id, TS_OSN osn, bool user_del) {
   *count = 0;
   auto tag_table = table_schema_mgr_->GetTagTable();
   for (auto p_tags : primary_tag) {
@@ -471,7 +560,7 @@ KStatus TsTableV2Impl::DeleteEntities(kwdbContext_p ctx,  std::vector<std::strin
     std::vector<EntityResultIndex> es{EntityResultIndex(0, entity_id, v_group_id)};
     std::vector<KwTsSpan> ts_spans{{INT64_MIN, INT64_MAX}};
     uint64_t cur_entity_count = 0;
-    auto s = GetEntityRowCount(ctx, es, ts_spans, &cur_entity_count);
+    auto s = GetEntityRowCount(ctx, es, ts_spans, osn, &cur_entity_count);
     if (s != KStatus::SUCCESS) {
       LOG_WARN("GetEntityRowCount failed. vgrp[%u], entity_id[%u]", v_group_id, entity_id);
     }
@@ -489,16 +578,16 @@ KStatus TsTableV2Impl::DeleteEntities(kwdbContext_p ctx,  std::vector<std::strin
 }
 
 KStatus TsTableV2Impl::GetRangeRowCount(kwdbContext_p ctx, uint64_t begin_hash, uint64_t end_hash,
-KwTsSpan ts_span, uint64_t* count) {
+KwTsSpan ts_span, TS_OSN osn, uint64_t* count) {
   HashIdSpan hash_span{begin_hash, end_hash};
   vector<EntityResultIndex> entity_store;
-  auto s = GetEntityIdByHashSpan(ctx, hash_span, entity_store);
+  auto s = GetEntityIdByHashSpan(ctx, hash_span, osn, entity_store);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("GetEntityIdByHashSpan failed.");
     return s;
   }
   LOG_INFO("GetEntityIdByHashSpan entity num[%lu]", entity_store.size());
-  s = GetEntityRowCount(ctx, entity_store, {ts_span}, count);
+  s = GetEntityRowCount(ctx, entity_store, {ts_span}, osn, count);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("GetEntityRowCount failed.");
     return s;
@@ -512,7 +601,7 @@ KwTsSpan ts_span, uint64_t mtr_id, uint64_t osn) {
   uint64_t row_num_aft = 0;
   LOG_INFO("DeleteTotalRange begin. table[%lu] hash[%lu ~ %lu].", table_id_, begin_hash, end_hash);
   #ifdef K_DEBUG
-  GetRangeRowCount(ctx, begin_hash, end_hash, ts_span, &row_num_bef);
+  GetRangeRowCount(ctx, begin_hash, end_hash, ts_span, osn, &row_num_bef);
   if (ts_span.begin != INT64_MIN || ts_span.end != INT64_MAX) {
     LOG_ERROR("DeleteTotalRange not support range split by timestamp.");
     return KStatus::FAIL;
@@ -534,7 +623,7 @@ KwTsSpan ts_span, uint64_t mtr_id, uint64_t osn) {
   }
 
   // mark all deleted tags to delete_by_snapshot.
-  s = TrasvalAllTagPtable(ctx, [&](TagPartitionTable* entity_tag_bt, size_t vec_idx) -> bool {
+  s = TrasvalAllTagPtable(ctx, [&](TagPartitionTable* entity_tag_bt, TableVersionID vec_idx) -> bool {
     for (int rownum = 1; rownum <= entity_tag_bt->size(); rownum++) {
       bool in_hash_span = true;
       if (!EngineOptions::isSingleNode()) {
@@ -545,23 +634,26 @@ KwTsSpan ts_span, uint64_t mtr_id, uint64_t osn) {
         }
       }
       if (in_hash_span) {
+        TagDataInfo* tag_info = entity_tag_bt->getTagDataInfoByRowNum(rownum);
         if (entity_tag_bt->isValidRow(rownum)) {
+          // print error tag info, then assert fail.
           auto tag_table = table_schema_mgr_->GetTagTable();
           uint32_t v_group_id, entity_id;
-          if (!tag_table->hasPrimaryKey(reinterpret_cast<char*>(entity_tag_bt->record(rownum)),
+          if (tag_table->hasPrimaryKey(reinterpret_cast<char*>(entity_tag_bt->record(rownum)),
                 entity_tag_bt->primaryTagSize(), entity_id, v_group_id)) {
-            LOG_ERROR("DeleteTotalRange failed. current range has new tag insert.");
+            LOG_WARN("DeleteTotalRange failed. current range has new tag insert.");
           }
-          TagDataInfo* tag_info = entity_tag_bt->getTagDataInfoByRowNum(rownum);
-          LOG_ERROR("DeleteTotalRange failed. vec_idx[%lu], bt_size[%lu]. currow: rownum[%d], op_type[%d], osn[%lu],"
-            " target_row[%lu],target_vec[%lu].",
-            vec_idx, entity_tag_bt->size(), rownum, tag_info->operate_type, tag_info->osn,
-            tag_info->target_row, tag_info->target_ver);
-          assert(!entity_tag_bt->isValidRow(rownum));
+          LOG_WARN("DeleteTotalRange failed. version[%u], bt_size[%lu]. currow: rownum[%d]"
+            " op_type[%d], osn[%lu], op idx[%d]. delete osn[%lu]",
+            vec_idx, entity_tag_bt->size(), rownum, tag_info->operate_type[tag_info->operate_idx],
+            tag_info->osn[tag_info->operate_idx], tag_info->operate_idx, osn);
+          // assert(!entity_tag_bt->isValidRow(rownum));
         }
-        if (entity_tag_bt->getTagDataInfoByRowNum(rownum)->operate_type != OperateType::DeleteBySnapshot) {
-          TagDataInfo tagInfo{OperateType::DeleteBySnapshot, osn, 0, 0};
-          entity_tag_bt->setTagDataInfo(rownum, &tagInfo);
+        if (tag_info->osn[tag_info->operate_idx] <= osn &&
+            !entity_tag_bt->isValidRow(rownum) &&
+            tag_info->operate_type[tag_info->operate_idx] != OperateType::DeleteBySnapshot) {
+          //  convert the type of tags which deleted by user
+          entity_tag_bt->AddTagStatus(rownum, OperateType::DeleteBySnapshot, osn);
         }
       }
     }
@@ -572,7 +664,7 @@ KwTsSpan ts_span, uint64_t mtr_id, uint64_t osn) {
     return s;
   }
   #ifdef K_DEBUG
-    GetRangeRowCount(ctx, begin_hash, end_hash, ts_span, &row_num_aft);
+    GetRangeRowCount(ctx, begin_hash, end_hash, ts_span, osn, &row_num_aft);
   #endif
   LOG_INFO("DeleteTotalRange end. table[%lu] hash[%lu ~ %lu], entity_rows[%lu], metric_rows[%lu-->%lu].",
     table_id_, begin_hash, end_hash, entity_store.size(), row_num_bef, row_num_aft);
@@ -603,7 +695,7 @@ KStatus TsTableV2Impl::GetAvgTableRowSize(kwdbContext_p ctx, uint64_t* row_size)
 KStatus TsTableV2Impl::GetDataVolume(kwdbContext_p ctx, uint64_t begin_hash, uint64_t end_hash,
 const KwTsSpan& ts_span, uint64_t* volume) {
   uint64_t row_num = 0;
-  auto s = GetRangeRowCount(ctx, begin_hash, end_hash, ts_span, &row_num);
+  auto s = GetRangeRowCount(ctx, begin_hash, end_hash, ts_span, UINT64_MAX, &row_num);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("GetDataVolume hash[%lu ~ %lu], ts[%ld ~ %ld] failed.",
       begin_hash, end_hash, ts_span.begin, ts_span.end);
@@ -625,12 +717,12 @@ KStatus TsTableV2Impl::GetDataVolumeHalfTS(kwdbContext_p ctx, uint64_t begin_has
   uint64_t row_num = 0;
   HashIdSpan hash_span{begin_hash, end_hash};
   vector<EntityResultIndex> entity_store;
-  auto s = GetEntityIdByHashSpan(ctx, hash_span, entity_store);
+  auto s = GetEntityIdByHashSpan(ctx, hash_span, UINT64_MAX, entity_store);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("GetEntityIdByHashSpan failed.");
     return s;
   }
-  s = GetEntityRowCount(ctx, entity_store, {ts_span}, &row_num);
+  s = GetEntityRowCount(ctx, entity_store, {ts_span}, UINT64_MAX, &row_num);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("GetDataVolumeHalfTS hash[%lu ~ %lu], ts[%ld ~ %ld] failed, row_num[%lu].",
       begin_hash, end_hash, ts_span.begin, ts_span.end, row_num);
@@ -669,6 +761,7 @@ KStatus TsTableV2Impl::GetDataVolumeHalfTS(kwdbContext_p ctx, uint64_t begin_has
       .sorted = false,
       .offset = offset,
       .limit = 1,
+      .scan_osn = UINT64_MAX,
       .fill_params = fill_params,
   };
   s = GetOffsetIterator(ctx, params, &iter);
@@ -710,28 +803,154 @@ KStatus TsTableV2Impl::GetDataVolumeHalfTS(kwdbContext_p ctx, uint64_t begin_has
 }
 
 KStatus TsTableV2Impl::GetEntityIdByHashSpan(kwdbContext_p ctx, const HashIdSpan& hash_span,
-                                             vector<EntityResultIndex>& entity_store) {
-  return TrasvalAllTagPtable(ctx, [&](TagPartitionTable* entity_tag_bt, size_t vec_idx) -> bool {
+                                            TS_OSN scan_osn, vector<EntityResultIndex>& entity_store) {
+  return TrasvalAllTagPtable(ctx, [&](TagPartitionTable* entity_tag_bt, TableVersionID vec_idx) -> bool {
     for (int rownum = 1; rownum <= entity_tag_bt->size(); rownum++) {
-      if (!entity_tag_bt->isValidRow(rownum)) {
+      OperateType type;
+      TS_OSN op_osn;
+      bool found = entity_tag_bt->GetOpTypeAtOSN(rownum, scan_osn, type, op_osn);
+      if (!found || type != OperateType::Insert) {
         continue;
       }
+      bool find_entity = false;
       if (!EngineOptions::isSingleNode()) {
         uint32_t tag_hash;
         entity_tag_bt->getHashpointByRowNum(rownum, &tag_hash);
         if (hash_span.begin <= tag_hash && tag_hash <= hash_span.end) {
           entity_tag_bt->getHashedEntityIdByRownum(rownum, tag_hash, &entity_store);
+          find_entity = true;
         }
       } else {
         entity_tag_bt->getEntityIdByRownum(rownum, &entity_store);
+        find_entity = true;
+      }
+      if (find_entity) {
+        auto tag_info = entity_tag_bt->getTagDataInfoByRowNum(rownum);
+        assert(type == OperateType::Insert);
+        entity_store.back().op_with_osn = std::make_shared<OperatorInfoOfRecord>(OperatorTypeOfRecord::OP_TYPE_INSERT,
+          op_osn, vec_idx, rownum);
       }
     }
     return true;
   });
 }
 
-KStatus TsTableV2Impl::getPTagsByHashSpan(kwdbContext_p ctx, const HashIdSpan& hash_span, vector<string>* primary_tags) {
+KStatus TsTableV2Impl::GetEntityIdByPriKeys(kwdbContext_p ctx, const std::vector<void*> &primary_keys,
+                                            TS_OSN scan_osn, vector<EntityResultIndex>& entity_store) {
+  return TrasvalAllTagPtable(ctx, [&](TagPartitionTable* entity_tag_bt, TableVersionID vec_idx) -> bool {
+    auto pri_size = entity_tag_bt->primaryTagSize();
+    for (int rownum = 1; rownum <= entity_tag_bt->size(); rownum++) {
+      auto cur_key = entity_tag_bt->record(rownum);
+      bool match_one = false;
+      for (auto pkey : primary_keys) {
+        if (0 == memcmp(pkey, cur_key, pri_size)) {
+          match_one = true;
+          break;
+        }
+      }
+      if (!match_one) {
+        continue;
+      }
+      OperateType type;
+      TS_OSN op_osn;
+      bool found = entity_tag_bt->GetOpTypeAtOSN(rownum, scan_osn, type, op_osn);
+      if (!found || type != OperateType::Insert) {
+        continue;
+      }
+      entity_tag_bt->getEntityIdByRownum(rownum, &entity_store);
+      assert(type == OperateType::Insert);
+      entity_store.back().op_with_osn = std::make_shared<OperatorInfoOfRecord>(OperatorTypeOfRecord::OP_TYPE_INSERT,
+        op_osn, vec_idx, rownum);
+    }
+    return true;
+  });
+}
+
+KStatus TsTableV2Impl::GetEntityIdByNorKeys(kwdbContext_p ctx, std::shared_ptr<TagTable> tag_table,
+                                            const std::vector<void*> tags,
+                                            const std::vector<uint32_t>& src_scan_tags, TS_OSN scan_osn,
+                                            vector<EntityResultIndex>& entity_store, uint32_t table_version) {
   return TrasvalAllTagPtable(ctx, [&](TagPartitionTable* entity_tag_bt, size_t vec_idx) -> bool {
+    auto tag_version_object = tag_table->GetTagTableVersionManager()->GetVersionObject(table_version);
+    // get source scan tags
+    std::vector<uint32_t> src_scan_tags_idx;
+    std::vector<uint32_t> result_scan_tags_idx;
+    std::vector<TagInfo> result_scan_tag_infos;
+    auto schema_info_exclude_dropped = tag_version_object->getExcludeDroppedSchemaInfos();
+    for (int i = 0; i < src_scan_tags.size(); i++) {
+      bool found = false;
+      for (int tag_idx = 0; tag_idx < schema_info_exclude_dropped.size(); tag_idx++) {
+        if (schema_info_exclude_dropped[tag_idx].m_id == src_scan_tags[i]) {
+          found = true;
+          result_scan_tags_idx.emplace_back(tag_version_object->getValidSchemaIdxs()[tag_idx]);
+        }
+      }
+      if (found == false) {
+        result_scan_tags_idx.emplace_back(INVALID_COL_IDX);
+      }
+    }
+
+    for (int idx = 0; idx < src_scan_tags.size(); idx++) {
+      if (result_scan_tags_idx[idx] >= entity_tag_bt->getIncludeDroppedSchemaInfos().size()) {
+        src_scan_tags_idx.push_back(INVALID_COL_IDX);
+      } else {
+        src_scan_tags_idx.push_back(result_scan_tags_idx[idx]);
+      }
+    }
+    result_scan_tag_infos = tag_version_object->getIncludeDroppedSchemaInfos();
+    uint32_t tag_size = 0;
+    for (auto id : src_scan_tags_idx) {
+      tag_size += result_scan_tag_infos[id].m_size;
+    }
+    kwdbts::ResultSet res;
+    for (int rownum = 1; rownum <= entity_tag_bt->size(); rownum++) {
+      entity_tag_bt->getColumnsByRownum(rownum, src_scan_tags_idx, result_scan_tag_infos, &res);
+      bool match_one = false;
+      // memset tags value
+      void* tag_val = malloc(tag_size);
+      memset(tag_val, 0, tag_size);
+      // todo defer free(tag_val)
+      Defer defer {[&]() {
+        free(tag_val);
+      }};
+      uint32_t offset = 0;
+      for (auto col = 0; col < res.col_num_; col++) {
+        memcpy(static_cast<char*>(tag_val) + offset, res.data[col][0]->mem, result_scan_tag_infos[col].m_size);
+        offset += result_scan_tag_infos[col].m_size;
+      }
+
+      for (auto tag : tags) {
+        if (0 == memcmp(tag, tag_val, tag_size)) {
+          match_one = true;
+          break;
+        }
+      }
+      if (!match_one) {
+        continue;
+      }
+      OperateType type;
+      TS_OSN op_osn;
+      bool found = entity_tag_bt->GetOpTypeAtOSN(rownum, scan_osn, type, op_osn);
+      if (!found || type != OperateType::Insert) {
+        continue;
+      }
+      if (!EngineOptions::isSingleNode()) {
+        entity_tag_bt->getHashedEntityIdByRownum(rownum, 0, &entity_store);
+      } else {
+        entity_tag_bt->getEntityIdByRownum(rownum, &entity_store);
+      }
+      auto tag_info = entity_tag_bt->getTagDataInfoByRowNum(rownum);
+      assert(type == OperateType::Insert);
+      entity_store.back().op_with_osn = std::make_shared<OperatorInfoOfRecord>(OperatorTypeOfRecord::OP_TYPE_INSERT,
+                                                                               op_osn, vec_idx, rownum);
+    }
+    return true;
+  });
+}
+
+KStatus TsTableV2Impl::getPTagsByHashSpan(kwdbContext_p ctx, const HashIdSpan& hash_span,
+  TS_OSN scan_osn, vector<string>* primary_tags) {
+  return TrasvalAllTagPtable(ctx, [&](TagPartitionTable* entity_tag_bt, TableVersionID vec_idx) -> bool {
     for (int rownum = 1; rownum <= entity_tag_bt->size(); rownum++) {
       if (!entity_tag_bt->isValidRow(rownum)) {
         continue;
@@ -759,7 +978,7 @@ KStatus TsTableV2Impl::DeleteRangeEntities(kwdbContext_p ctx, const uint64_t& ra
                                     uint64_t* count, uint64_t mtr_id, uint64_t osn, bool user_del) {
   *count = 0;
   vector<string> primary_tags;
-  auto s = getPTagsByHashSpan(ctx, hash_span, &primary_tags);
+  auto s = getPTagsByHashSpan(ctx, hash_span, osn, &primary_tags);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("getPTagsByHashSpan failed.hash[%lu - %lu]", hash_span.begin, hash_span.end);
     return s;
@@ -775,7 +994,7 @@ KStatus TsTableV2Impl::DeleteRangeData(kwdbContext_p ctx, uint64_t range_group_i
                         const std::vector<KwTsSpan>& ts_spans, uint64_t* count, uint64_t mtr_id, uint64_t osn) {
   *count = 0;
   vector<string> primary_tags;
-  auto s = getPTagsByHashSpan(ctx, hash_span, &primary_tags);
+  auto s = getPTagsByHashSpan(ctx, hash_span, osn, &primary_tags);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("getPTagsByHashSpan failed.hash[%lu - %lu]", hash_span.begin, hash_span.end);
     return s;
@@ -795,7 +1014,7 @@ KStatus TsTableV2Impl::DeleteRangeData(kwdbContext_p ctx, uint64_t range_group_i
 }
 
 KStatus TsTableV2Impl::DeleteData(kwdbContext_p ctx, uint64_t range_group_id, std::string& primary_tag,
-  const std::vector<KwTsSpan>& ts_spans, uint64_t* count, uint64_t mtr_id, uint64_t osn) {
+  const std::vector<KwTsSpan>& ts_spans, uint64_t* count, uint64_t mtr_id, TS_OSN osn) {
   ErrorInfo err_info;
   auto tag_table = table_schema_mgr_->GetTagTable();
   uint32_t v_group_id, entity_id;
@@ -805,7 +1024,7 @@ KStatus TsTableV2Impl::DeleteData(kwdbContext_p ctx, uint64_t range_group_id, st
   }
   if (count != nullptr) {
     std::vector<EntityResultIndex> es{EntityResultIndex(0, entity_id, v_group_id)};
-    auto s = GetEntityRowCount(ctx, es, ts_spans, count);
+    auto s = GetEntityRowCount(ctx, es, ts_spans, osn, count);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("GetEntityRowCount failed.");
       return s;
@@ -892,14 +1111,14 @@ KStatus TsTableV2Impl::DeleteMetricByTag(kwdbContext_p ctx, const std::vector<ui
 
 KStatus TsTableV2Impl::CountRangeData(kwdbContext_p ctx, uint64_t range_group_id, HashIdSpan& hash_span,
                                        const std::vector<KwTsSpan>& ts_spans, uint64_t* count,
-                                       uint64_t mtr_id, uint64_t osn) {
+                                       uint64_t mtr_id, TS_OSN osn) {
   vector<EntityResultIndex> entity_store;
-  auto s = GetEntityIdByHashSpan(ctx, hash_span, entity_store);
+  auto s = GetEntityIdByHashSpan(ctx, hash_span, osn, entity_store);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("GetEntityIdByHashSpan failed.");
     return s;
   }
-  s = GetEntityRowCount(ctx, entity_store, ts_spans, count);
+  s = GetEntityRowCount(ctx, entity_store, ts_spans, osn, count);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("GetEntityRowCount failed.");
     return s;
@@ -908,7 +1127,7 @@ KStatus TsTableV2Impl::CountRangeData(kwdbContext_p ctx, uint64_t range_group_id
 }
 
 KStatus TsTableV2Impl::GetEntityRowCount(kwdbContext_p ctx, std::vector<EntityResultIndex>& entity_ids,
-const std::vector<KwTsSpan>& ts_spans, uint64_t* row_count) {
+const std::vector<KwTsSpan>& ts_spans, TS_OSN osn, uint64_t* row_count) {
   std::vector<k_uint32> scan_cols = {0};
   std::vector<Sumfunctype> scan_agg_types = {Sumfunctype::COUNT};
   uint32_t table_version = table_schema_mgr_->GetCurrentVersion();
@@ -935,6 +1154,7 @@ const std::vector<KwTsSpan>& ts_spans, uint64_t* row_count) {
       .sorted = false,
       .offset = 0,
       .limit = 0,
+      .scan_osn = osn,
       .fill_params = fill_params,
   };
   KStatus s = GetNormalIterator(ctx, params, &iter);
@@ -960,7 +1180,8 @@ const std::vector<KwTsSpan>& ts_spans, uint64_t* row_count) {
   return KStatus::SUCCESS;
 }
 
-KStatus TsTableV2Impl::GetLastRowEntity(kwdbContext_p ctx, EntityResultIndex& entity_id, timestamp64& entity_last_ts) {
+KStatus TsTableV2Impl::GetLastRowEntity(kwdbContext_p ctx, EntityResultIndex& entity_id,
+  timestamp64& entity_last_ts, TS_OSN osn) {
   entity_id = {0, 0, 0};
   entity_last_ts = INT64_MIN;
 
@@ -981,11 +1202,21 @@ KStatus TsTableV2Impl::GetLastRowEntity(kwdbContext_p ctx, EntityResultIndex& en
       entity_last_ts = cur_last_entity.first;
     }
   }
+  if (entity_id.entityId > 0) {
+    auto ret = table_schema_mgr_->GetTagTable()->GetEntityTag(entity_id.subGroupId, entity_id.entityId, osn);
+    if (ret.second == 0) {
+      // not found
+      LOG_ERROR("entity[%u,%u] not found at osn[%lu].", entity_id.subGroupId, entity_id.entityId, osn);
+      return KStatus::FAIL;
+    }
+    entity_id.op_with_osn = std::make_shared<OperatorInfoOfRecord>
+    (OperatorTypeOfRecord::OP_TYPE_INSERT, 0, ret.first, ret.second);
+  }
   return KStatus::SUCCESS;
 }
 
 KStatus TsTableV2Impl::GetLastRowBatch(kwdbContext_p ctx, uint32_t table_version, std::vector<uint32_t> scan_cols,
-                                       ResultSet* res, k_uint32* count, bool& valid) {
+                                       TS_OSN osn, ResultSet* res, k_uint32* count, bool& valid) {
   *count = 0;
   if (0 == EngineOptions::last_cache_max_size) {
     valid = false;
@@ -1018,6 +1249,16 @@ KStatus TsTableV2Impl::GetLastRowBatch(kwdbContext_p ctx, uint32_t table_version
       entity_id.entityId = cur_last_entity.second;
       entity_max_ts = cur_last_entity.first;
     }
+  }
+  if (entity_id.entityId > 0) {
+    auto ret = table_schema_mgr_->GetTagTable()->GetEntityTag(entity_id.subGroupId, entity_id.entityId, osn);
+    if (ret.second == 0) {
+      // not found
+      LOG_ERROR("entity[%u,%u] not found at osn[%lu].", entity_id.subGroupId, entity_id.entityId, osn);
+      return KStatus::FAIL;
+    }
+    entity_id.op_with_osn = std::make_shared<OperatorInfoOfRecord>
+    (OperatorTypeOfRecord::OP_TYPE_INSERT, 0, ret.first, ret.second);
   }
 
   if (entity_id.equalsWithoutMem({0, 0, 0})) {
@@ -1393,16 +1634,15 @@ KStatus TsTableV2Impl::GetMetricIteratorByOSN(kwdbContext_p ctx, k_uint32 table_
   return s;
 }
 
-KStatus TsTableV2Impl::TrasvalAllTagPtable(kwdbContext_p ctx, const std::function<bool(TagPartitionTable*, size_t)>& func) {
-  std::vector<TagPartitionTable*> all_tag_partition_tables;
+KStatus TsTableV2Impl::TrasvalAllTagPtable(kwdbContext_p ctx,
+const std::function<bool(TagPartitionTable*, TableVersionID)>& func) {
+  std::vector<std::pair<TableVersionID, TagPartitionTable *>> tag_part_tables;
   auto tag_bt = table_schema_mgr_->GetTagTable();
-  TableVersion cur_tbl_version = tag_bt->GetTagTableVersionManager()->GetCurrentTableVersion();
-  tag_bt->GetTagPartitionTableManager()->
-    GetAllPartitionTablesLessVersion(all_tag_partition_tables, cur_tbl_version);
-  for (size_t i = 0; i < all_tag_partition_tables.size(); i++) {
-    auto entity_tag_bt = all_tag_partition_tables[i];
+  tag_bt->GetTagPartitionTableManager()->GetAllPartitionTables(tag_part_tables);
+  for (auto& p_tag : tag_part_tables) {
+    auto entity_tag_bt = p_tag.second;
     entity_tag_bt->startRead();
-    bool ret = func(entity_tag_bt, i);
+    bool ret = func(entity_tag_bt, p_tag.first);
     entity_tag_bt->stopRead();
     if (!ret) {
       return KStatus::SUCCESS;
@@ -1412,9 +1652,9 @@ KStatus TsTableV2Impl::TrasvalAllTagPtable(kwdbContext_p ctx, const std::functio
 }
 
 KStatus TsTableV2Impl::GetImagrateTagBySnapshot(kwdbContext_p ctx, HashIdSpan hash_range,
-  std::list<EntityResultIndex>* pkeys_status) {
+   TS_OSN scan_osn, std::list<EntityResultIndex>* pkeys_status) {
   int valid_tag_num = 0;
-  auto s = TrasvalAllTagPtable(ctx, [&](TagPartitionTable* entity_tag_bt, size_t vec_idx) -> bool {
+  auto s = TrasvalAllTagPtable(ctx, [&](TagPartitionTable* entity_tag_bt, TableVersionID vec_idx) -> bool {
     auto curr_rows = entity_tag_bt->size();
     for (int rownum = 1; rownum <= curr_rows; rownum++) {
       bool is_in_hps = true;
@@ -1426,14 +1666,16 @@ KStatus TsTableV2Impl::GetImagrateTagBySnapshot(kwdbContext_p ctx, HashIdSpan ha
         }
       }
       if (is_in_hps) {
-        auto tag_info = entity_tag_bt->getTagDataInfoByRowNum(rownum);
+        OperateType op_type;
+        TS_OSN op_osn;
+        bool found = entity_tag_bt->GetOpTypeAtOSN(rownum, scan_osn, op_type, op_osn);
         OperatorTypeOfRecord type = OperatorTypeOfRecord::OP_TYPE_UNKNOWN;
-        if (tag_info->operate_type == OperateType::Delete) {
-          type = OperatorTypeOfRecord::OP_TYPE_TAG_DELETE;
-        } else if (tag_info->operate_type == OperateType::Update) {
-          type = OperatorTypeOfRecord::OP_TYPE_TAG_UPDATE;
-        } else if (tag_info->operate_type == OperateType::Insert) {
-          if (entity_tag_bt->isValidRow(rownum)) {
+        if (found) {
+          if (op_type == OperateType::Delete) {
+            type = OperatorTypeOfRecord::OP_TYPE_TAG_DELETE;
+          } else if (op_type == OperateType::Update) {
+            type = OperatorTypeOfRecord::OP_TYPE_TAG_UPDATE;
+          } else if (op_type == OperateType::Insert) {
             type = OperatorTypeOfRecord::OP_TYPE_INSERT;
             valid_tag_num++;
           }
@@ -1445,7 +1687,7 @@ KStatus TsTableV2Impl::GetImagrateTagBySnapshot(kwdbContext_p ctx, HashIdSpan ha
           } else {
             entity_tag_bt->getEntityIdByRownum(rownum, &entity_id_list);
           }
-          entity_id_list[0].op_with_osn = std::make_shared<OperatorInfoOfRecord>(type, tag_info->osn, vec_idx, rownum);
+          entity_id_list[0].op_with_osn = std::make_shared<OperatorInfoOfRecord>(type, op_osn, vec_idx, rownum);
           pkeys_status->push_back(entity_id_list[0]);
         }
       }
@@ -1462,7 +1704,7 @@ KStatus TsTableV2Impl::GetImagrateTagBySnapshot(kwdbContext_p ctx, HashIdSpan ha
 
 KStatus TsTableV2Impl::GetTagRecordInfoByOSN(kwdbContext_p ctx,
   const std::vector<HashIdSpan>* hps,
-  std::vector<KwOSNSpan>& osn_span, std::unordered_map<uint64_t, EntityResultIndex>* pkeys_status) {
+  std::vector<KwOSNSpan>& osn_span, TS_OSN scan_osn, std::unordered_map<uint64_t, EntityResultIndex>* pkeys_status) {
   return GetTagRecordInfoByOSN(ctx, [&](TagPartitionTable* entity_tag_bt, int row_num) -> bool {
     uint32_t tag_hash;
     entity_tag_bt->getHashpointByRowNum(row_num, &tag_hash);
@@ -1470,73 +1712,90 @@ KStatus TsTableV2Impl::GetTagRecordInfoByOSN(kwdbContext_p ctx,
       return false;
     }
     return true;
-  }, osn_span, pkeys_status);
+  }, osn_span, scan_osn, pkeys_status);
 }
 
 KStatus TsTableV2Impl::GetTagRecordInfoByOSN(kwdbContext_p ctx,
   std::function<bool(TagPartitionTable* entity_tag_bt, int row_num)> in_span_func,
-  std::vector<KwOSNSpan>& osn_span, std::unordered_map<uint64_t, EntityResultIndex>* pkeys_status) {
+  std::vector<KwOSNSpan>& osn_span, TS_OSN scan_osn, std::unordered_map<uint64_t, EntityResultIndex>* pkeys_status) {
   std::unordered_map<uint64_t, EntityResultIndex> history_tag_status;
-  auto s = TrasvalAllTagPtable(ctx, [&](TagPartitionTable* entity_tag_bt, size_t vec_idx) -> bool {
+  auto s = TrasvalAllTagPtable(ctx, [&](TagPartitionTable* entity_tag_bt, TableVersionID vec_idx) -> bool {
     for (int rownum = 1; rownum <= entity_tag_bt->size(); rownum++) {
-      bool is_in_hps = true;
-      if (!EngineOptions::isSingleNode()) {
-        if (!in_span_func(entity_tag_bt, rownum)) {
-          is_in_hps = false;
+      if (!in_span_func(entity_tag_bt, rownum)) {
+        continue;
+      }
+      OperateType scan_type;
+      TS_OSN op_osn;
+      entity_tag_bt->GetOpTypeAtOSN(rownum, scan_osn, scan_type, op_osn);
+      if (scan_type == OperateType::DeleteBySnapshot) {
+        // this tag already moved to other node.
+        continue;
+      }
+      TS_OSN create_osn;
+      TS_OSN del_osn;
+      OperateType del_type;
+      bool valid_row = entity_tag_bt->GetOperOSN(rownum, create_osn, del_osn, del_type);
+      if (!valid_row) {
+        continue;
+      }
+      bool create_osn_in_span = IsOsnInSpans(create_osn, osn_span);
+      bool del_osn_in_span = (del_type != OperateType::Invalid && IsOsnInSpans(del_osn, osn_span));
+      OperatorTypeOfRecord type = OperatorTypeOfRecord::OP_TYPE_UNKNOWN;
+      bool need_check_del_type = false;
+      if (create_osn_in_span) {
+        if (del_osn_in_span) {
+          need_check_del_type = true;
+          op_osn = del_osn;
+        } else {
+          type = OperatorTypeOfRecord::OP_TYPE_INSERT;
+          op_osn = create_osn;
+        }
+      } else {
+        if (del_osn_in_span) {
+          need_check_del_type = true;
+          op_osn = del_osn;
+        } else if (!IsOsnAfterSpans(op_osn, osn_span)) {
+          type = OperatorTypeOfRecord::OP_TYPE_TAG_EXISTED;
+          op_osn = create_osn;
         }
       }
-      if (is_in_hps) {
-        auto tag_info = entity_tag_bt->getTagDataInfoByRowNum(rownum);
-        if (tag_info->operate_type == OperateType::Update) {
-          std::vector<kwdbts::EntityResultIndex> entity_id_list;
-          if (!EngineOptions::isSingleNode()) {
-            entity_tag_bt->getHashedEntityIdByRownum(rownum, 0, &entity_id_list);
-          } else {
-            entity_tag_bt->getEntityIdByRownum(rownum, &entity_id_list);
-          }
-          uint64_t key = entity_id_list[0].GenUniqueKey();
-          if (history_tag_status.find(key) == history_tag_status.end()) {
+      if (need_check_del_type) {
+        switch (del_type) {
+        case OperateType::Update:
+          type = OperatorTypeOfRecord::OP_TYPE_TAG_UPDATE;
+          break;
+        case OperateType::Delete:
+          type = OperatorTypeOfRecord::OP_TYPE_TAG_DELETE;
+          break;
+        default:
+          break;
+        }
+      }
+
+      if (type != OperatorTypeOfRecord::OP_TYPE_UNKNOWN) {
+        std::vector<kwdbts::EntityResultIndex> entity_id_list;
+        if (!EngineOptions::isSingleNode()) {
+          entity_tag_bt->getHashedEntityIdByRownum(rownum, 0, &entity_id_list);
+        } else {
+          entity_tag_bt->getEntityIdByRownum(rownum, &entity_id_list);
+        }
+        uint64_t key = entity_id_list[0].GenUniqueKey();
+        bool find_in_his = (history_tag_status.find(key) != history_tag_status.end());
+        if (type == OperatorTypeOfRecord::OP_TYPE_TAG_UPDATE) {
+          if (!find_in_his) {
             history_tag_status[key] = entity_id_list[0];
             history_tag_status[key].op_with_osn =
               std::make_shared<OperatorInfoOfRecord>(
-                OperatorTypeOfRecord::OP_TYPE_TAG_UPDATE, tag_info->osn, vec_idx, rownum);
+                OperatorTypeOfRecord::OP_TYPE_TAG_UPDATE, op_osn, vec_idx, rownum);
           }
-        } else if (IsOsnInSpans(tag_info->osn, osn_span)) {
-          OperatorTypeOfRecord type = OperatorTypeOfRecord::OP_TYPE_UNKNOWN;
-          if (tag_info->operate_type == OperateType::Delete) {
-            type = OperatorTypeOfRecord::OP_TYPE_TAG_DELETE;
-          } else if (tag_info->operate_type == OperateType::Insert) {
-            if (entity_tag_bt->isValidRow(rownum)) {
-              type = OperatorTypeOfRecord::OP_TYPE_INSERT;
-            }
-          }
-          if (type != OperatorTypeOfRecord::OP_TYPE_UNKNOWN) {
-            std::vector<kwdbts::EntityResultIndex> entity_id_list;
-            if (!EngineOptions::isSingleNode()) {
-              entity_tag_bt->getHashedEntityIdByRownum(rownum, 0, &entity_id_list);
-            } else {
-              entity_tag_bt->getEntityIdByRownum(rownum, &entity_id_list);
-            }
-            uint64_t key = entity_id_list[0].GenUniqueKey();
-            auto iter_tmp = history_tag_status.find(key);
-            if (iter_tmp != history_tag_status.end() &&
-                type == OperatorTypeOfRecord::OP_TYPE_INSERT) {
-              type = OperatorTypeOfRecord::OP_TYPE_TAG_UPDATE;
-              assert(reinterpret_cast<OperatorInfoOfRecord*>(iter_tmp->second.op_with_osn.get())->type ==
-                    OperatorTypeOfRecord::OP_TYPE_TAG_UPDATE);
-            }
-            if (pkeys_status->find(key) == pkeys_status->end()) {
-              (*pkeys_status)[key] = entity_id_list[0];
-              (*pkeys_status)[key].op_with_osn = std::make_shared<OperatorInfoOfRecord>(
-                type, tag_info->osn, vec_idx, rownum);
-            } else {
-              // todo(liangbo01) if one insert tag record readed to pkeys_status,
-              //  then this tag record updated, and store at new verison table.
-              //  new stored tag record may be readed again.
-              // assert(false);
-            }
+        } else if (type == OperatorTypeOfRecord::OP_TYPE_INSERT) {
+          if (find_in_his) {
+            type = OperatorTypeOfRecord::OP_TYPE_TAG_UPDATE;
           }
         }
+        (*pkeys_status)[key] = entity_id_list[0];
+        (*pkeys_status)[key].op_with_osn = std::make_shared<OperatorInfoOfRecord>(
+          type, op_osn, vec_idx, rownum);
       }
     }
     return true;
@@ -1549,10 +1808,10 @@ KStatus TsTableV2Impl::GetTagRecordInfoByOSN(kwdbContext_p ctx,
 }
 
 KStatus TsTableV2Impl::GetTagIteratorByOSN(kwdbContext_p ctx, k_uint32 table_version, std::vector<k_uint32>& scan_cols,
-  std::vector<KwOSNSpan>& osn_span,
+  std::vector<KwOSNSpan>& osn_span, TS_OSN scan_osn,
   std::vector<HashIdSpan>* hps, BaseEntityIterator** iter) {
   std::unordered_map<uint64_t, EntityResultIndex> pkeys_status;
-  auto ret = GetTagRecordInfoByOSN(ctx, hps, osn_span, &pkeys_status);
+  auto ret = GetTagRecordInfoByOSN(ctx, hps, osn_span, scan_osn, &pkeys_status);
   if (ret != KStatus::SUCCESS) {
     LOG_ERROR("GetTagRecordInfoByOSN failed.");
     return ret;
@@ -1564,7 +1823,7 @@ KStatus TsTableV2Impl::GetTagIteratorByOSN(kwdbContext_p ctx, k_uint32 table_ver
     return KStatus::FAIL;
   }
   TagIteratorByOSN* tag_iter = new TagIteratorByOSN(tag_table, table_version, scan_cols, osn_span);
-  if (KStatus::SUCCESS != tag_iter->Init(hps, std::move(pkeys_status))) {
+  if (KStatus::SUCCESS != tag_iter->Init(hps, scan_osn, std::move(pkeys_status))) {
     delete tag_iter;
     tag_iter = nullptr;
     *iter = nullptr;
@@ -1575,13 +1834,13 @@ KStatus TsTableV2Impl::GetTagIteratorByOSN(kwdbContext_p ctx, k_uint32 table_ver
 }
 
 KStatus TsTableV2Impl::GetEntityIdListByOSN(kwdbContext_p ctx, const std::vector<void*>& primary_tags,
-            std::vector<KwOSNSpan>& osn_span,
+            std::vector<KwOSNSpan>& osn_span, TS_OSN scan_osn,
             std::vector<k_uint32>& scan_cols,
             std::vector<HashIdSpan>* hps,
             std::vector<EntityResultIndex>* entity_id_list, ResultSet* res, uint32_t* count,
             uint32_t table_version) {
   std::unordered_map<uint64_t, EntityResultIndex> pkeys_status;
-  auto ret = GetTagRecordInfoByOSN(ctx, hps, osn_span, &pkeys_status);
+  auto ret = GetTagRecordInfoByOSN(ctx, hps, osn_span, scan_osn, &pkeys_status);
   if (ret != KStatus::SUCCESS) {
     LOG_ERROR("GetTagRecordInfoByOSN failed.");
     return ret;
@@ -1602,7 +1861,7 @@ KStatus TsTableV2Impl::GetEntityIdListByOSN(kwdbContext_p ctx, const std::vector
   }
   for (const auto& pkey : pkeys_left) {
     auto tag_iter = std::make_shared<TagIteratorByOSN>(tag_table, table_version, scan_cols, osn_span);
-    if (KStatus::SUCCESS != tag_iter->Init(hps, pkeys_left)) {
+    if (KStatus::SUCCESS != tag_iter->Init(hps, scan_osn, pkeys_left)) {
       return KStatus::FAIL;
     }
     k_uint32 tag_count = 0;

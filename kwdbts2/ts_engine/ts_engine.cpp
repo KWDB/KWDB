@@ -479,6 +479,19 @@ KStatus TSEngineImpl::CheckAndDropTsTable(kwdbContext_p ctx, const KTableKey& ta
   return KStatus::SUCCESS;
 }
 
+bool TSEngineImpl::IsTableDropped(TSTableID table_id) {
+  std::shared_ptr<TsTableSchemaManager> schema;
+  bool is_dropped;
+  KStatus s = schema_mgr_->GetTableSchemaMgr(table_id, schema, &is_dropped);
+  if (s != KStatus::SUCCESS) {
+    if (is_dropped) {
+      LOG_ERROR("Can not GetTableSchemaMgr, table[%lu] has been dropped", table_id);
+      return true;
+    }
+  }
+  return false;
+}
+
 KStatus TSEngineImpl::GetTsTable(kwdbContext_p ctx, const KTableKey& table_id, std::shared_ptr<TsTable>& ts_table,
                     bool& is_dropped, bool create_if_not_exist, uint32_t version) {
   ctx->ts_engine = this;
@@ -1665,7 +1678,9 @@ KStatus TSEngineImpl::ReadBatchData(kwdbContext_p ctx, TSTableID table_id, uint6
     return s;
   }
   vector<EntityResultIndex> entity_indexes;
-  s = ts_table->GetEntityIdByHashSpan(ctx, {begin_hash, end_hash}, entity_indexes);
+  // todo(liangbo01) transfer osn to this fucntion.
+  TS_OSN osn = UINT64_MAX;
+  s = ts_table->GetEntityIdByHashSpan(ctx, {begin_hash, end_hash}, osn, entity_indexes);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("cannot get entity_ids by hash span[%lu, %lu]", begin_hash, end_hash);
     return s;
@@ -2312,7 +2327,8 @@ uint64_t TSEngineImpl::insertToSnapshotCache(TsRangeImgrationInfo& snapshot) {
 }
 
 KStatus TSEngineImpl::CreateSnapshotForRead(kwdbContext_p ctx, const KTableKey& table_id,
-uint64_t begin_hash, uint64_t end_hash, const KwTsSpan& ts_span, uint64_t* snapshot_id, bool& is_dropped) {
+uint64_t begin_hash, uint64_t end_hash, const KwTsSpan& ts_span, TS_OSN scan_osn,
+uint64_t* snapshot_id, bool& is_dropped) {
   std::shared_ptr<TsTable> table;
   KStatus s = GetTsTable(ctx, table_id, table, is_dropped, false);
   if (s == FAIL) {
@@ -2336,11 +2352,13 @@ uint64_t begin_hash, uint64_t end_hash, const KwTsSpan& ts_span, uint64_t* snaps
   ts_snapshot_info.package_id = 0;
   ts_snapshot_info.imgrated_rows = 0;
   ts_snapshot_info.batch_read_finished = false;
+  ts_snapshot_info.del_info_read_finished = false;
   // todo(liangbo01) maybe we need use available version.
   ts_snapshot_info.table_version = table->GetCurrentTableVersion();
   ts_snapshot_info.del_iter = std::make_shared<STTableRangeDelAndTagInfo>(
       reinterpret_pointer_cast<TsTableV2Impl>(ts_snapshot_info.table),
-      ts_snapshot_info.begin_hash, ts_snapshot_info.end_hash, ts_snapshot_info.table_version);
+      ts_snapshot_info.begin_hash, ts_snapshot_info.end_hash, ts_snapshot_info.table_version, scan_osn);
+  ts_snapshot_info.op_osn = scan_osn;
   s = ts_snapshot_info.del_iter->Init();
   if (s == KStatus::FAIL) {
     LOG_ERROR("CreateSnapshotForRead STTableRangeDelAndTagInfo [%lu] failed.", table_id);
@@ -2349,7 +2367,7 @@ uint64_t begin_hash, uint64_t end_hash, const KwTsSpan& ts_span, uint64_t* snaps
   *snapshot_id = insertToSnapshotCache(ts_snapshot_info);
   ts_snapshot_info.id = *snapshot_id;
   uint64_t count;
-  s = table->GetRangeRowCount(ctx, begin_hash, end_hash, ts_span, &count);
+  s = table->GetRangeRowCount(ctx, begin_hash, end_hash, ts_span, scan_osn, &count);
   if (s == KStatus::FAIL) {
     LOG_ERROR("GetRangeRowCount [%lu] failed.", table_id);
     return s;
@@ -2377,9 +2395,11 @@ KStatus TSEngineImpl::CreateSnapshotForWrite(kwdbContext_p ctx, const KTableKey&
   ts_snapshot_info.package_id = 0;
   ts_snapshot_info.imgrated_rows = 0;
   ts_snapshot_info.batch_read_finished = false;
+  ts_snapshot_info.del_info_read_finished = false;
   ts_snapshot_info.del_iter = std::make_shared<STTableRangeDelAndTagInfo>(
       reinterpret_pointer_cast<TsTableV2Impl>(ts_snapshot_info.table),
-      ts_snapshot_info.begin_hash, ts_snapshot_info.end_hash, ts_snapshot_info.table_version);
+      ts_snapshot_info.begin_hash, ts_snapshot_info.end_hash, ts_snapshot_info.table_version, osn);
+  ts_snapshot_info.op_osn = osn;
   s = ts_snapshot_info.del_iter->Init();
   if (s == KStatus::FAIL) {
     LOG_ERROR("CreateSnapshotForRead STTableRangeDelAndTagInfo [%lu] failed.", table_id);
@@ -2388,7 +2408,7 @@ KStatus TSEngineImpl::CreateSnapshotForWrite(kwdbContext_p ctx, const KTableKey&
   *snapshot_id = insertToSnapshotCache(ts_snapshot_info);
   ts_snapshot_info.id = *snapshot_id;
   uint64_t count;
-  s = table->GetRangeRowCount(ctx, begin_hash, end_hash, ts_span, &count);
+  s = table->GetRangeRowCount(ctx, begin_hash, end_hash, ts_span, osn, &count);
   if (s == KStatus::FAIL) {
     LOG_ERROR("GetRangeRowCount [%lu] failed.", table_id);
     return s;
@@ -2421,37 +2441,57 @@ KStatus TSEngineImpl::GetSnapshotNextBatchData(kwdbContext_p ctx, uint64_t snaps
       return KStatus::FAIL;
     }
   }
-  uint32_t row_num = 0;
-  TSSlice batch_data = {nullptr, 0};
-  TSSlice del_data{nullptr, 0};
-  Defer free_del_data([&]() { free(del_data.data); });
-  if (!ts_snapshot_info.batch_read_finished) {
-    bool is_del_iter_finished = false;
-    // gen data from tabledelteinfo.
-    auto s = ts_snapshot_info.del_iter->GetNextDeleteInfo(ctx, &del_data, &is_del_iter_finished);
-    if (s == KStatus::FAIL) {
-      LOG_ERROR("GetNextDeleteInfo snapshot [%lu] failed.", snapshot_id);
-      return s;
-    }
-    if (is_del_iter_finished) {
-      ts_snapshot_info.batch_read_finished = true;
-    }
+  if (ts_snapshot_info.del_info_read_finished && ts_snapshot_info.batch_read_finished) {
+    *data = {nullptr, 0};
+    return KStatus::SUCCESS;
   }
-  if (ts_snapshot_info.batch_read_finished) {
-    auto s = ReadBatchData(ctx, ts_snapshot_info.table_id, ts_snapshot_info.table_version, ts_snapshot_info.begin_hash,
-        ts_snapshot_info.end_hash, ts_snapshot_info.ts_span, ts_snapshot_info.id, &batch_data, &row_num, is_dropped);
-    if (s == KStatus::FAIL) {
-      LOG_ERROR("ReadBatchData snapshot [%lu] failed.", snapshot_id);
-      return s;
-    }
-    if (row_num == 0) {
-      s = BatchJobFinish(ctx, ts_snapshot_info.id);
+  bool has_batch_data = false;
+  uint32_t total_row_num = 0;
+  STSnapshotPackageBuilder pack(ts_snapshot_info.package_id + 1, ts_snapshot_info.table_id, ts_snapshot_info.table_version);
+  do {
+    uint32_t row_num = 0;
+    TSSlice batch_data = {nullptr, 0};
+    TSSlice del_data{nullptr, 0};
+    Defer free_del_data([&]() { free(del_data.data); });
+    if (!ts_snapshot_info.del_info_read_finished) {
+      bool is_del_iter_finished = false;
+      // gen data from tabledelteinfo.
+      auto s = ts_snapshot_info.del_iter->GetNextDeleteInfo(ctx, &del_data, &is_del_iter_finished);
       if (s == KStatus::FAIL) {
-        LOG_ERROR("BatchJobFinish snapshot [%lu] failed.", snapshot_id);
+        LOG_ERROR("GetNextDeleteInfo snapshot [%lu] failed.", snapshot_id);
         return s;
       }
+      if (is_del_iter_finished) {
+        ts_snapshot_info.del_info_read_finished = true;
+      }
     }
-  }
+    if (ts_snapshot_info.del_info_read_finished &&
+        !ts_snapshot_info.batch_read_finished) {
+      auto s = ReadBatchData(ctx, ts_snapshot_info.table_id, ts_snapshot_info.table_version, ts_snapshot_info.begin_hash,
+          ts_snapshot_info.end_hash, ts_snapshot_info.ts_span, ts_snapshot_info.id, &batch_data, &row_num, is_dropped);
+      if (s == KStatus::FAIL) {
+        LOG_ERROR("ReadBatchData snapshot [%lu] failed.", snapshot_id);
+        return s;
+      }
+      if (row_num == 0) {
+        s = BatchJobFinish(ctx, ts_snapshot_info.id);
+        if (s == KStatus::FAIL) {
+          LOG_ERROR("BatchJobFinish snapshot [%lu] failed.", snapshot_id);
+          return s;
+        }
+        ts_snapshot_info.batch_read_finished = true;
+      }
+    }
+    total_row_num += row_num;
+    has_batch_data = (row_num > 0 || del_data.len > 0);
+    if (has_batch_data) {
+      if (!pack.AddBatchData(batch_data, row_num, del_data)) {
+        LOG_ERROR("PackageData snapshot [%lu] failed.", snapshot_id);
+        return KStatus::FAIL;
+      }
+    }
+  } while (!pack.OverMinThreshold() && has_batch_data);
+
   {
     snapshot_mutex_.lock();
     Defer defer{[&](){
@@ -2459,19 +2499,16 @@ KStatus TSEngineImpl::GetSnapshotNextBatchData(kwdbContext_p ctx, uint64_t snaps
     }};
     TsRangeImgrationInfo& map_info = snapshots_[snapshot_id];
     map_info.package_id += 1;
-    map_info.imgrated_rows += row_num;
+    map_info.imgrated_rows += total_row_num;
     map_info.batch_read_finished = ts_snapshot_info.batch_read_finished;
+    map_info.del_info_read_finished = ts_snapshot_info.del_info_read_finished;
   }
-  if (row_num > 0 || del_data.len > 0) {
-    if (!STPackageSnapshotData::PackageData(ts_snapshot_info.package_id + 1, ts_snapshot_info.table_id,
-            ts_snapshot_info.table_version, batch_data, row_num, del_data, data)) {
-      LOG_ERROR("PackageData snapshot [%lu] failed.", snapshot_id);
-      return KStatus::FAIL;
-    }
-  } else {
-    *data = {nullptr, 0};
+  if (!pack.Package(data)) {
+    LOG_ERROR("Package snapshot [%lu] failed.", snapshot_id);
+    return KStatus::FAIL;
   }
-  LOG_DEBUG("GetSnapshotNextBatchData succeeded, snapshot[%lu] row_num[%u]", snapshot_id, row_num);
+
+  LOG_DEBUG("GetSnapshotNextBatchData succeeded, snapshot[%lu] row_num[%u]", snapshot_id, total_row_num);
   return KStatus::SUCCESS;
 }
 
@@ -2500,45 +2537,58 @@ KStatus TSEngineImpl::WriteSnapshotBatchData(kwdbContext_p ctx, uint64_t snapsho
   uint32_t row_num = 0;
   TSSlice batch_data{nullptr, 0};
   TSSlice del_data{nullptr, 0};
-  bool ok = STPackageSnapshotData::UnpackageData(data, package_id, table_id, table_version, batch_data, row_num, del_data);
+  STSnapshotPackageParser parser;
+  bool ok = parser.Parser(data);
   if (!ok) {
-    LOG_ERROR("UnpackageData failed, last package id [%u].", ts_snapshot_info.package_id);
+    LOG_ERROR("STSnapshotPackageParser failed, last package id [%u].", ts_snapshot_info.package_id);
     return KStatus::FAIL;
   }
-  if (package_id - 1 != ts_snapshot_info.package_id) {
-    if (package_id - 1 > ts_snapshot_info.package_id) {
-      LOG_ERROR("last package id [%u] is behind of current package [%u], failed.",
-        ts_snapshot_info.package_id, package_id);
+  uint32_t total_row_num = 0;
+  do {
+    ok = parser.NextPackage(package_id, table_id, table_version, batch_data, row_num, del_data);
+    if (!ok) {
+      LOG_ERROR("NextPackage failed, last package id [%u].", ts_snapshot_info.package_id);
       return KStatus::FAIL;
     }
-    LOG_WARN("last package id [%u] not front of current package [%u], ignore it.",
-      ts_snapshot_info.package_id, package_id);
-    return KStatus::SUCCESS;
-  }
-  if (row_num > 0) {
-    auto s = WriteBatchData(ctx, table_id, table_version, ts_snapshot_info.id,
-                            &batch_data, &row_num, TsDataSource::Snapshot, is_dropped);
-    if (s == KStatus::FAIL) {
-      LOG_ERROR("WriteBatchData snapshot [%lu] failed.", snapshot_id);
-      return s;
+    if (package_id == 0) {
+      break;
     }
-  }
-  if (del_data.len > 0) {
-    auto s = ts_snapshot_info.del_iter->WriteDelAndTagInfo(ctx, del_data, tag_lock_);
-    if (s == KStatus::FAIL) {
-      LOG_ERROR("WriteDelAndTagInfo snapshot [%lu] failed.", snapshot_id);
-      return s;
+    if (package_id - 1 != ts_snapshot_info.package_id) {
+      if (package_id - 1 > ts_snapshot_info.package_id) {
+        LOG_ERROR("last package id [%u] is behind of current package [%u], failed.",
+          ts_snapshot_info.package_id, package_id);
+        return KStatus::FAIL;
+      }
+      LOG_WARN("last package id [%u] not front of current package [%u], ignore it.",
+        ts_snapshot_info.package_id, package_id);
+      return KStatus::SUCCESS;
     }
-  }
+    if (row_num > 0) {
+      auto s = WriteBatchData(ctx, table_id, table_version, ts_snapshot_info.id, &batch_data, &row_num,
+         TsDataSource::Snapshot, is_dropped);
+      if (s == KStatus::FAIL) {
+        LOG_ERROR("WriteBatchData snapshot [%lu] failed.", snapshot_id);
+        return s;
+      }
+    }
+    if (del_data.len > 0) {
+      auto s = ts_snapshot_info.del_iter->WriteDelAndTagInfo(ctx, del_data, tag_lock_);
+      if (s == KStatus::FAIL) {
+        LOG_ERROR("WriteDelAndTagInfo snapshot [%lu] failed.", snapshot_id);
+        return s;
+      }
+    }
+    total_row_num += row_num;
+  } while (package_id > 0);
   {
     snapshot_mutex_.lock();
     Defer defer{[&](){
       snapshot_mutex_.unlock();
     }};
-    snapshots_[snapshot_id].package_id = package_id;
-    snapshots_[snapshot_id].imgrated_rows += row_num;
+    snapshots_[snapshot_id].package_id += 1;
+    snapshots_[snapshot_id].imgrated_rows += total_row_num;
   }
-  LOG_DEBUG("WriteSnapshotBatchData succeeded, snapshot[%lu] row_num[%u]", snapshot_id, row_num);
+  LOG_DEBUG("WriteSnapshotBatchData succeeded, snapshot[%lu] row_num[%u]", snapshot_id, total_row_num);
   return KStatus::SUCCESS;
 }
 KStatus TSEngineImpl::WriteSnapshotSuccess(kwdbContext_p ctx, uint64_t snapshot_id) {
@@ -2594,27 +2644,34 @@ KStatus TSEngineImpl::WriteSnapshotRollback(kwdbContext_p ctx, uint64_t snapshot
   s = ts_snapshot_info.table->DeleteTotalRange(ctx, ts_snapshot_info.begin_hash, ts_snapshot_info.end_hash,
     ts_snapshot_info.ts_span, 1, osn);
   if (s == KStatus::FAIL) {
-    LOG_ERROR("DeleteTotalRange [%lu] failed.", ts_snapshot_info.table_id);
-    return s;
+    if (!IsTableDropped(ts_snapshot_info.table_id)) {
+      LOG_ERROR("DeleteTotalRange [%lu] failed.", ts_snapshot_info.table_id);
+      return s;
+    }
+    LOG_INFO("table[%lu] is already dropped. ignore DeleteTotalRange error.", ts_snapshot_info.table_id);
   }
   s = DeleteSnapshot(ctx, snapshot_id);
   if (s != KStatus::SUCCESS) {
-    LOG_ERROR("DeleteSnapshot failed.");
-    return s;
+        if (!IsTableDropped(ts_snapshot_info.table_id)) {
+      LOG_ERROR("DeleteSnapshot [%lu] failed.", ts_snapshot_info.table_id);
+      return s;
+    }
+    LOG_INFO("table[%lu] is already dropped. ignore DeleteSnapshot error.", ts_snapshot_info.table_id);
   }
   LOG_INFO("WriteSnapshotRollback [%d] table[%lu] range hash[%lu ~ %lu], ts[%ld ~ %ld] row count[%lu].",
       ts_snapshot_info.type, ts_snapshot_info.table_id, ts_snapshot_info.begin_hash, ts_snapshot_info.end_hash,
       ts_snapshot_info.ts_span.begin, ts_snapshot_info.ts_span.end, ts_snapshot_info.imgrated_rows);
   LOG_INFO("WriteSnapshotRollback succeeded, snapshot[%lu]", snapshot_id);
-  return s;
+  return KStatus::SUCCESS;
 }
+
 KStatus TSEngineImpl::DeleteSnapshot(kwdbContext_p ctx, uint64_t snapshot_id) {
   auto s = BatchJobFinish(ctx, snapshot_id);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("BatchJobFinish failed.");
     return s;
   }
-  TsRangeImgrationInfo ts_snapshot_info{0, 0, 0, 0, {0, 0}, 0, 0, 0, 0, nullptr, false, nullptr};
+  TsRangeImgrationInfo ts_snapshot_info{0, 0, 0, 0, {0, 0}, 0, 0, 0, 0, nullptr, false, false, nullptr, UINT64_MAX};
   {
     snapshot_mutex_.lock();
     Defer defer{[&](){
@@ -2627,8 +2684,10 @@ KStatus TSEngineImpl::DeleteSnapshot(kwdbContext_p ctx, uint64_t snapshot_id) {
   }
   if (ts_snapshot_info.table_id != 0) {
     uint64_t count = 0;
+    // todo(zhaochunze) transfer osn to this fucntion.
+    TS_OSN osn = UINT64_MAX;
     ts_snapshot_info.table->GetRangeRowCount(ctx, ts_snapshot_info.begin_hash, ts_snapshot_info.end_hash,
-      {INT64_MIN, INT64_MAX}, &count);
+      {INT64_MIN, INT64_MAX}, osn, &count);
     LOG_INFO("DeleteSnapshot [%d] table[%lu] range hash[%lu ~ %lu] row count[%lu].",
         ts_snapshot_info.type, ts_snapshot_info.table_id, ts_snapshot_info.begin_hash,
         ts_snapshot_info.end_hash, count);

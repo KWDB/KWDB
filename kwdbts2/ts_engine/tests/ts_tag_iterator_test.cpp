@@ -115,7 +115,7 @@ TEST_F(TestEngine, tagiterator) {
   std::vector<HashIdSpan> hps;
   make_hashpoint(&hps);
   BaseEntityIterator *iter;
-  ASSERT_EQ(ts_table->GetTagIterator(ctx_, scan_tags, &hps, &iter, 1), KStatus::SUCCESS);
+  ASSERT_EQ(ts_table->GetTagIterator(ctx_, scan_tags, &hps, &iter, 1, UINT64_MAX), KStatus::SUCCESS);
 
   ResultSet res{(k_uint32) scan_tags.size()};
   k_uint32 fetch_total_count = 0;

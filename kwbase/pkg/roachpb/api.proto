@@ -1534,6 +1534,7 @@ message LeaseInfoResponse{
   Lease lease = 2 [(gogoproto.nullable) = false];
 
   double lease_qps = 3;
+  uint64 OsnID = 4;
 }
 
 // A RequestLeaseResponse is the response to a RequestLease() or TransferLease()

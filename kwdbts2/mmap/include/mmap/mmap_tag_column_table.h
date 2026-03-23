@@ -38,6 +38,7 @@ enum TagType {
 };
 
 enum OperateType {
+  Invalid = 0,
   Insert = 1,
   Update = 2,
   Delete = 3,
@@ -47,10 +48,10 @@ enum OperateType {
 
 // This struct use to store tag data info, reserved space is BITMAP_PER_ROW_LENGTH.
 struct TagDataInfo {
-  uint8_t operate_type; // 1:InsertTag 2:UpdateTag 3.DeleteTag 4.DeleteTagBySnapshot
-  uint64_t osn; // HLC
-  uint64_t target_row; // update tag data target row
-  uint64_t target_ver; // update tag data target version
+  uint8_t operate_type[TAG_INFO_MAX_CHAIN_LEN]; // 1:InsertTag 2:UpdateTag 3.DeleteTag 4.DeleteTagBySnapshot
+  char reserved[4];
+  uint8_t operate_idx;     // latest operate index for operate_type and osn.
+  uint64_t osn[TAG_INFO_MAX_CHAIN_LEN]; // HLC
 };
 
 struct TagInfo {
@@ -466,6 +467,16 @@ class MMapTagColumnTable: public TSObject {
     memcpy(tag_ptr, tag_info, sizeof(TagDataInfo));
   }
 
+  inline void AddTagStatus(size_t row, OperateType type, TS_OSN osn) {
+    auto tag_info = getTagDataInfoByRowNum(row);
+    auto next_idx = tag_info->operate_idx + 1;
+    assert(next_idx < TAG_INFO_MAX_CHAIN_LEN && next_idx > 0);
+    assert(tag_info->osn[next_idx - 1] <= osn);
+    tag_info->operate_type[next_idx] = type;
+    tag_info->osn[next_idx] = osn;
+    tag_info->operate_idx  = next_idx;
+  }
+
   // init   (0xFF)
   // valid  (0x00)
   // delete (0x01)
@@ -543,6 +554,75 @@ class MMapTagColumnTable: public TSObject {
   inline bool isValidRow(size_t row) {
     // valid(0x00)
     return (((unsigned char *)header_(row))[0] & 0xFF) ? false : true;
+  }
+
+  inline bool GetOperOSN(size_t rownum, TS_OSN& create_osn, TS_OSN& del_osn, OperateType& del_type) {
+    auto tag_info = getTagDataInfoByRowNum(rownum);
+    assert(tag_info != nullptr);
+    auto op_idxs = tag_info->operate_idx;
+    create_osn = 0;
+    del_type = OperateType::Invalid;
+    del_osn = UINT64_MAX;
+    for (size_t i = 0; i <= op_idxs; i++) {
+      switch (tag_info->operate_type[i]) {
+      case OperateType::Insert: 
+        create_osn = tag_info->osn[i];
+        break;
+      case OperateType::Delete:
+      case OperateType::Update:
+      case OperateType::DeleteBySnapshot:
+        if (del_osn > tag_info->osn[i]) {
+          del_osn = tag_info->osn[i];
+          del_type = (OperateType)(tag_info->operate_type[i]);
+        }
+        break;
+      case OperateType::Ignore:
+        return false;
+      default:
+        break;
+      }
+    }
+    return true;
+  }
+
+  inline bool GetOpTypeAtOSN(size_t rownum, TS_OSN osn, OperateType& type, TS_OSN& op_osn) {
+    auto tag_info = getTagDataInfoByRowNum(rownum);
+    assert(tag_info != nullptr);
+    auto op_idx = tag_info->operate_idx;
+    bool found = false;
+    for (int i = op_idx; i >= 0; i--) {
+      type = (OperateType)(tag_info->operate_type[i]);
+      op_osn = tag_info->osn[i];
+      if (op_osn <= osn) {
+        found = true;
+        break;
+      }
+    }
+    // check if this tag is inserting.
+    if (op_idx == 0 &&
+        (tag_info->operate_type[0] == OperateType::Invalid ||
+         tag_info->operate_type[0] == OperateType::Insert) &&
+        !isValidRow(rownum)) {
+      found = false;
+    }
+    return found;
+  }
+
+  inline bool GetLatestOpOSN(size_t rownum, OperateType& type, TS_OSN& op_osn) {
+    auto tag_info = getTagDataInfoByRowNum(rownum);
+    assert(tag_info != nullptr);
+    auto op_idx = tag_info->operate_idx;
+    assert(op_idx < TAG_INFO_MAX_CHAIN_LEN);
+    // check if this tag is inserting.
+    if (op_idx == 0 &&
+        (tag_info->operate_type[0] == OperateType::Invalid ||
+         tag_info->operate_type[0] == OperateType::Insert) &&
+        !isValidRow(rownum)) {
+      return false;
+    }
+    type = (OperateType)(tag_info->operate_type[op_idx]);
+    op_osn = tag_info->osn[op_idx];
+    return true;
   }
 
   int startRead() {

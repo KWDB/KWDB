@@ -147,7 +147,7 @@ TEST_F(TestV2Iterator, basic) {
 
         s = vgroup->GetIterator(ctx_, 1, entity_ids, ts_spans, block_filter,
                             scan_cols, scan_cols, agg_extend_cols, scan_agg_types, table_schema_mgr,
-                            schema, &ts_iter, vgroup, ts_points, false, false, fill_params);
+                            schema, &ts_iter, vgroup, ts_points, false, false, UINT64_MAX, fill_params);
         ASSERT_EQ(s, KStatus::SUCCESS);
 
         ResultSet res{(k_uint32) scan_cols.size()};
@@ -219,7 +219,7 @@ TEST_F(TestV2Iterator, mulitEntity) {
         FillParams fill_params;
         s = vgroup->GetIterator(ctx_, 1, entity_ids, ts_spans, block_filter,
                           scan_cols, scan_cols, agg_extend_cols, scan_agg_types, table_schema_mgr,
-                          schema, &ts_iter, vgroup, ts_points, false, false, fill_params);
+                          schema, &ts_iter, vgroup, ts_points, false, false, UINT64_MAX, fill_params);
         ASSERT_EQ(s, KStatus::SUCCESS);
         ResultSet res{(k_uint32) scan_cols.size()};
         k_uint32 count;
@@ -276,7 +276,7 @@ TEST_F(TestV2Iterator, multiDBAndEntity) {
       s = engine_->GetTsTable(ctx_, table_id + i, ts_table, is_dropped, false);
       ASSERT_EQ(s , KStatus::SUCCESS);
       vector<EntityResultIndex> entity_store;
-      s = dynamic_pointer_cast<TsTableV2Impl>(ts_table)->GetEntityIdByHashSpan(ctx_, {0, UINT64_MAX}, entity_store);
+      s = dynamic_pointer_cast<TsTableV2Impl>(ts_table)->GetEntityIdByHashSpan(ctx_, {0, UINT64_MAX}, UINT64_MAX, entity_store);
       ASSERT_EQ(s, KStatus::SUCCESS);
       entity_scan_num += entity_store.size();
       s = engine_->GetTableSchemaMgr(ctx_, table_id + i, is_dropped, table_schema_mgr);
@@ -298,7 +298,7 @@ TEST_F(TestV2Iterator, multiDBAndEntity) {
         auto vgroup = engine_->GetTsVGroup(entity.subGroupId);
         s = vgroup->GetIterator(ctx_, 1, entity_ids, ts_spans, block_filter,
                         scan_cols, scan_cols, agg_extend_cols, scan_agg_types, table_schema_mgr,
-                        schema, &ts_iter, vgroup, ts_points, false, false, fill_params);
+                        schema, &ts_iter, vgroup, ts_points, false, false, UINT64_MAX, fill_params);
         ASSERT_EQ(s, KStatus::SUCCESS);
         ResultSet res{(k_uint32) scan_cols.size()};
         k_uint32 count;
@@ -394,7 +394,7 @@ TEST_F(TestV2Iterator, mulitEntityCount) {
       FillParams fill_params;
       s = vgroup->GetIterator(ctx_, 1, entity_ids, ts_spans, block_filter,
                               scan_cols, scan_cols, agg_extend_cols, scan_agg_types, table_schema_mgr,
-                              schema, &ts_iter, vgroup, ts_points, false, false, fill_params);
+                              schema, &ts_iter, vgroup, ts_points, false, false, UINT64_MAX, fill_params);
       ASSERT_EQ(s, KStatus::SUCCESS);
       ResultSet res{(k_uint32) scan_cols.size()};
       k_uint32 count;
@@ -497,7 +497,7 @@ TEST_F(TestV2Iterator, mulitEntityDeleteCount) {
       FillParams fill_params;
       s = vgroup->GetIterator(ctx_, 1, entity_ids, ts_spans, block_filter,
                               scan_cols, scan_cols, agg_extend_cols, scan_agg_types, table_schema_mgr,
-                              schema, &ts_iter, vgroup, ts_points, false, false, fill_params);
+                              schema, &ts_iter, vgroup, ts_points, false, false, UINT64_MAX, fill_params);
       ASSERT_EQ(s, KStatus::SUCCESS);
       ResultSet res{(k_uint32) scan_cols.size()};
       k_uint32 count;
@@ -558,7 +558,7 @@ TEST_F(TestV2Iterator, mulitEntityDeleteCount) {
       FillParams fill_params;
       s = vgroup->GetIterator(ctx_, 1, entity_ids, ts_spans, block_filter,
                               scan_cols, scan_cols, agg_extend_cols, scan_agg_types, table_schema_mgr,
-                              schema, &ts_iter, vgroup, ts_points, false, false, fill_params);
+                              schema, &ts_iter, vgroup, ts_points, false, false, UINT64_MAX, fill_params);
       ASSERT_EQ(s, KStatus::SUCCESS);
       ResultSet res{(k_uint32) scan_cols.size()};
       k_uint32 count;
@@ -627,7 +627,7 @@ TEST_F(TestV2Iterator, mulitEntityDeleteCount) {
       FillParams fill_params;
       s = vgroup->GetIterator(ctx_, 1, entity_ids, ts_spans, block_filter,
                               scan_cols, scan_cols, agg_extend_cols, scan_agg_types, table_schema_mgr,
-                              schema, &ts_iter, vgroup, ts_points, false, false, fill_params);
+                              schema, &ts_iter, vgroup, ts_points, false, false, UINT64_MAX, fill_params);
       ASSERT_EQ(s, KStatus::SUCCESS);
       ResultSet res{(k_uint32) scan_cols.size()};
       k_uint32 count;
@@ -738,7 +738,7 @@ TEST_F(TestV2Iterator, mulitEntityInvalidCount) {
       FillParams fill_params;
       s = vgroup->GetIterator(ctx_, 1, entity_ids, ts_spans, block_filter,
                               scan_cols, scan_cols, agg_extend_cols, scan_agg_types, table_schema_mgr,
-                              schema, &ts_iter, vgroup, ts_points, false, false, fill_params);
+                              schema, &ts_iter, vgroup, ts_points, false, false, UINT64_MAX, fill_params);
       ASSERT_EQ(s, KStatus::SUCCESS);
       ResultSet res{(k_uint32) scan_cols.size()};
       k_uint32 count;
@@ -799,7 +799,7 @@ TEST_F(TestV2Iterator, mulitEntityInvalidCount) {
       FillParams fill_params;
       s = vgroup->GetIterator(ctx_, 1, entity_ids, ts_spans, block_filter,
                               scan_cols, scan_cols, agg_extend_cols, scan_agg_types, table_schema_mgr,
-                              schema, &ts_iter, vgroup, ts_points, false, false, fill_params);
+                              schema, &ts_iter, vgroup, ts_points, false, false, UINT64_MAX, fill_params);
       ASSERT_EQ(s, KStatus::SUCCESS);
       ResultSet res{(k_uint32) scan_cols.size()};
       k_uint32 count;
@@ -861,7 +861,7 @@ TEST_F(TestV2Iterator, mulitEntityInvalidCount) {
       FillParams fill_params;
       s = vgroup->GetIterator(ctx_, 1, entity_ids, ts_spans, block_filter,
                               scan_cols, scan_cols, agg_extend_cols, scan_agg_types, table_schema_mgr,
-                              schema, &ts_iter, vgroup, ts_points, false, false, fill_params);
+                              schema, &ts_iter, vgroup, ts_points, false, false, UINT64_MAX, fill_params);
       ASSERT_EQ(s, KStatus::SUCCESS);
       ResultSet res{(k_uint32) scan_cols.size()};
       k_uint32 count;
@@ -986,7 +986,7 @@ TEST_F(TestV2Iterator, blockCacheDetachMMAP) {
       FillParams fill_params;
       s = vgroup->GetIterator(ctx_, 1, entity_ids, ts_spans, block_filter,
                               scan_cols, scan_cols, agg_extend_cols, scan_agg_types, table_schema_mgr,
-                              schema, &ts_iter, vgroup, ts_points, false, false, fill_params);
+                              schema, &ts_iter, vgroup, ts_points, false, false, UINT64_MAX, fill_params);
       ASSERT_EQ(s, KStatus::SUCCESS);
       ResultSet res{(k_uint32) scan_cols.size()};
       k_uint32 count;
@@ -1069,7 +1069,7 @@ TEST_F(TestV2Iterator, blockCacheDetachMMAP) {
       FillParams fill_params;
       s = vgroup->GetIterator(ctx_, 1, entity_ids, ts_spans, block_filter,
                               scan_cols, scan_cols, agg_extend_cols, scan_agg_types, table_schema_mgr,
-                              schema, &ts_iter, vgroup, ts_points, false, false, fill_params);
+                              schema, &ts_iter, vgroup, ts_points, false, false, UINT64_MAX, fill_params);
       ASSERT_EQ(s, KStatus::SUCCESS);
       ResultSet res{(k_uint32) scan_cols.size()};
       k_uint32 count;
@@ -1155,7 +1155,7 @@ TEST_F(TestV2Iterator, overflow) {
     TsStorageIterator* ts_iter1;
     s = vgroup->GetIterator(ctx_, 1, entity_ids, ts_spans, block_filter,
                             scan_cols, scan_cols, agg_extend_cols, scan_agg_types, table_schema_mgr,
-                            schema, &ts_iter1, vgroup, ts_points, false, false, fill_params);
+                            schema, &ts_iter1, vgroup, ts_points, false, false, UINT64_MAX, fill_params);
     ASSERT_EQ(s, KStatus::SUCCESS);
 
     k_uint32 count;
@@ -1175,7 +1175,7 @@ TEST_F(TestV2Iterator, overflow) {
     TsStorageIterator* ts_iter2;
     s = vgroup->GetIterator(ctx_, 1, entity_ids, ts_spans, block_filter,
                             scan_cols, scan_cols, agg_extend_cols, scan_agg_types, table_schema_mgr,
-                            schema, &ts_iter2, vgroup, ts_points, false, false, fill_params);
+                            schema, &ts_iter2, vgroup, ts_points, false, false, UINT64_MAX, fill_params);
     ASSERT_EQ(s, KStatus::SUCCESS);
 
     ResultSet res2{(k_uint32) scan_cols.size()};

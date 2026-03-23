@@ -619,6 +619,105 @@ inline int cmp(void* l, void* r, int32_t type, int32_t size) {
   return false;
 }
 
+inline int cmpWithSpan(void* s, void* e, void* m, int32_t type, int32_t size) {
+  switch (type) {
+    case DATATYPE::INT8:
+    case DATATYPE::BYTE:
+    case DATATYPE::CHAR:
+    case DATATYPE::BOOL:
+    case DATATYPE::BINARY: {
+      k_int32 ret = memcmp(s, m, size);
+      if (ret < 0) {
+        auto ret_1 = memcmp(m, e, size);
+        if (ret_1 <= 0) {
+          return 0;
+        }
+        return 1;
+      }
+      return ret == 0 ? 0 : -1;
+    }
+    case DATATYPE::INT16: {
+      k_int16 ls = *(static_cast<k_int16*>(s));
+      k_int16 le = *(static_cast<k_int16*>(e));
+      k_int16 mm = *(static_cast<k_int16*>(m));
+      if (ls < mm) {
+        if (mm <= le) {
+          return 0;
+        }
+        return 1;
+      }
+      return ls == mm ? 0 : -1;
+    }
+    case DATATYPE::INT32:
+    case DATATYPE::TIMESTAMP: {
+      k_int32 ls = *(static_cast<k_int32*>(s));
+      k_int32 le = *(static_cast<k_int32*>(e));
+      k_int32 mm = *(static_cast<k_int32*>(m));
+      if (ls < mm) {
+        if (mm <= le) {
+          return 0;
+        }
+        return 1;
+      }
+      return ls == mm ? 0 : -1;
+    }
+    case DATATYPE::INT64:
+    case DATATYPE::TIMESTAMP64:
+    case DATATYPE::TIMESTAMP64_MICRO:
+    case DATATYPE::TIMESTAMP64_NANO: {
+      k_int64 ls = *(static_cast<k_int64*>(s));
+      k_int64 le = *(static_cast<k_int64*>(e));
+      k_int64 mm = *(static_cast<k_int64*>(m));
+      if (ls < mm) {
+        if (mm <= le) {
+          return 0;
+        }
+        return 1;
+      }
+      return ls == mm ? 0 : -1;
+    }
+    case DATATYPE::FLOAT: {
+      float ls = *(static_cast<float*>(s));
+      float le = *(static_cast<float*>(e));
+      float mm = *(static_cast<float*>(m));
+      if (ls < mm) {
+        if (mm <= le) {
+          return 0;
+        }
+        return 1;
+      }
+      return ls == mm ? 0 : -1;
+    }
+    case DATATYPE::DOUBLE: {
+      double ls = *(static_cast<double*>(s));
+      double le = *(static_cast<double*>(e));
+      double mm = *(static_cast<double*>(m));
+      if (ls < mm) {
+        if (mm <= le) {
+          return 0;
+        }
+        return 1;
+      }
+      return ls == mm ? 0 : -1;
+    }
+    case DATATYPE::STRING: {
+      k_int32 ret = strncmp(static_cast<char*>(s), static_cast<char*>(m), size);
+      if (ret < 0) {
+        auto ret_1 = strncmp(static_cast<char*>(m), static_cast<char*>(e), size);
+        if (ret_1 <= 0) {
+          return 0;
+        }
+        return 1;
+      }
+      return ret == 0 ? 0 : -1;
+    }
+      break;
+    default:
+      break;
+  }
+  return false;
+}
+
 enum class TimestampCheckResult {
   FullyContained = 0,
   Overlapping = 1,
@@ -1351,6 +1450,7 @@ struct IteratorParams {
   bool sorted;
   k_uint32 offset;
   k_uint32 limit;
+  TS_OSN scan_osn;
   FillParams fill_params;
 };
 

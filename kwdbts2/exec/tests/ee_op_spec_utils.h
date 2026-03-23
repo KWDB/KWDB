@@ -238,6 +238,7 @@ class SpecBase {
 
     spec.set_tableid(table_id_);
     spec.set_accessmode(TSTableReadMode::metaTable);
+    spec.set_osnid(UINT64_MAX);
   }
 
   // include all columns of TSBS in the Tag Reader Post Spec.

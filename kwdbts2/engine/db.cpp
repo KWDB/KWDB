@@ -1072,7 +1072,7 @@ TSStatus TsDeleteTotalRange(TSEngine* engine, TSTableID table_id, uint64_t begin
 
 // Create a snapshot object to read local data
 TSStatus TSCreateSnapshotForRead(TSEngine* engine, TSTableID table_id, uint64_t begin_hash, uint64_t end_hash,
-                                 KwTsSpan ts_span, uint64_t* snapshot_id) {
+                                 KwTsSpan ts_span, uint64_t osn, uint64_t* snapshot_id) {
   kwdbContext_t context;
   kwdbContext_p ctx_p = &context;
   KStatus s = InitServerKWDBContext(ctx_p);
@@ -1082,7 +1082,7 @@ TSStatus TSCreateSnapshotForRead(TSEngine* engine, TSTableID table_id, uint64_t 
 
   ctx_p->ts_engine = engine;
   bool is_dropped = false;
-  s = engine->CreateSnapshotForRead(ctx_p, table_id, begin_hash, end_hash, ts_span, snapshot_id, is_dropped);
+  s = engine->CreateSnapshotForRead(ctx_p, table_id, begin_hash, end_hash, ts_span, osn, snapshot_id, is_dropped);
   if (s != KStatus::SUCCESS) {
     return ToTsStatus("CreateSnapshot Error!");
   }

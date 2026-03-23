@@ -2951,6 +2951,8 @@ type ClientNoticeSender interface {
 
 // TsDBAccessor is a limited interface to access tsDB interface.
 type TsDBAccessor interface {
+	// RelocateRange relocate the range from source node to desc node.
+	RelocateRange(ctx context.Context, rangeID int64, src, dst roachpb.NodeID) error
 	// GetRangeRowCountFromNode get range row count from remote by tsDB.
 	GetRangeRowCountFromNode(ctx context.Context, rangeID roachpb.RangeID, nodeID roachpb.NodeID) (uint64, error)
 }

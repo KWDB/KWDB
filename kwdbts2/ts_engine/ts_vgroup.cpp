@@ -358,6 +358,38 @@ KStatus TsVGroup::redoPut(kwdbContext_p ctx, kwdbts::TS_OSN log_lsn, const TSSli
     return s;
   }
   uint8_t payload_data_flag = p.GetRowType();
+  bool tag_idx_row_ok = false;
+  if (!new_tag) {
+    std::pair<uint64_t, uint64_t> row_info;
+    if (!tb_schema_manager->GetTagTable()->GetPrimaryKeyRowInfo(primary_key.data, primary_key.len, row_info)) {
+      LOG_ERROR("GetPrimaryKeyRowInfo failed.");
+      return KStatus::FAIL;
+    }
+    auto p_tag = tb_schema_manager->GetTagTable()->GetTagPartitionTableManager()->GetPartitionTable(row_info.first);
+    if (p_tag == nullptr) {
+      LOG_ERROR("GetPartitionTable failed.table [%lu], tag[%lu,%lu]", table_id, row_info.first, row_info.second);
+      return KStatus::FAIL;
+    }
+    OperateType type;
+    TS_OSN op_osn;
+    if (!p_tag->GetOpTypeAtOSN(row_info.second, p.GetOSN(), type, op_osn)) {
+      LOG_INFO("GetOpTypeAtOSN empty.table [%lu], tag[%lu,%lu], ignore.", table_id, row_info.first, row_info.second);
+      tag_idx_row_ok = false;
+    } else {
+      tag_idx_row_ok = true;
+    }
+  }
+  if (!tag_idx_row_ok) {
+    uint32_t cur_entity_id;
+    auto tag_row = tb_schema_manager->GetTagTable()->ScanTagByPKey(primary_key, p.GetOSN(),
+      p.GetHashPoint(), vgroup_id, cur_entity_id);
+    if (tag_row.first != INVALID_TABLE_VERSION_ID) {
+      new_tag = false;
+      entity_id = cur_entity_id;
+    } else {
+      new_tag = true;
+    }
+  }
   if (new_tag) {
     vgroup_id = GetVGroupID();
     entity_id = AllocateEntityID();
@@ -1125,8 +1157,8 @@ KStatus TsVGroup::GetIterator(kwdbContext_p ctx, uint32_t version, vector<uint32
                               const std::shared_ptr<TsTableSchemaManager>& table_schema_mgr,
                               const std::shared_ptr<MMapMetricsTable>& schema, TsStorageIterator** iter,
                               const std::shared_ptr<TsVGroup>& vgroup,
-                              const std::vector<timestamp64>& ts_points, bool reverse, bool sorted,
-                              const FillParams& fill_params) {
+                              const std::vector<timestamp64>& ts_points,
+                              bool reverse, bool sorted, TS_OSN scan_osn, const FillParams& fill_params) {
   // TODO(liuwei) update to use read_lsn to fetch Metrics data optimistically.
   // if the read_lsn is 0, ignore the read lsn checking and return all data (it's no WAL support
   // case). TS_OSN read_lsn = GetOptimisticReadLsn();
@@ -1137,11 +1169,11 @@ KStatus TsVGroup::GetIterator(kwdbContext_p ctx, uint32_t version, vector<uint32
 
   } else if (scan_agg_types.empty()) {
     ts_iter = new TsSortedRawDataIteratorImpl(vgroup, version, entity_ids, ts_spans, block_filter, scan_cols,
-                                                ts_scan_cols, table_schema_mgr, schema, ASC);
+                                                ts_scan_cols, table_schema_mgr, schema, scan_osn, ASC);
   } else {
     // need call Next function times: entity_ids.size(), no matter Next return what.
     ts_iter = new TsAggIteratorImpl(vgroup, version, entity_ids, ts_spans, block_filter, scan_cols, ts_scan_cols,
-                                      agg_extend_cols, scan_agg_types, ts_points, table_schema_mgr, schema);
+                                      agg_extend_cols, scan_agg_types, ts_points, table_schema_mgr, schema, scan_osn);
   }
   KStatus s = ts_iter->Init(reverse);
   if (s != KStatus::SUCCESS) {
@@ -1375,7 +1407,8 @@ KStatus TsVGroup::ApplyWal(kwdbContext_p ctx, LogEntry* wal_log,
         auto log = reinterpret_cast<DeleteLogTagsEntry*>(del_log);
         auto p_tag_slice = log->getPrimaryTag();
         auto tag_slice = log->getTags();
-        return redoDeleteTag(ctx, log->getTableID(), p_tag_slice, log->getOSN(), log->group_id_, log->entity_id_, tag_slice);
+        return redoDeleteTag(ctx, log->getTableID(), p_tag_slice, log->getOSN(),
+                            log->group_id_, log->entity_id_, tag_slice, log->getOSN());
       }
     }
     case WALLogType::UPDATE: {
@@ -1827,7 +1860,6 @@ KStatus TsVGroup::redoPutTag(kwdbContext_p ctx, kwdbts::TS_OSN log_lsn, const TS
     entity_id = AllocateEntityID();
     // 1. Write tag data
     assert(payload_data_flag == DataTagFlag::DATA_AND_TAG || payload_data_flag == DataTagFlag::TAG_ONLY);
-    LOG_DEBUG("tag bt insert hashPoint=%hu", p.GetHashPoint());
     std::shared_ptr<TsTableSchemaManager> tb_schema_manager;
     s = schema_mgr_->GetTableSchemaMgr(table_id, tb_schema_manager);
     if (s != KStatus::SUCCESS) {
@@ -1840,10 +1872,19 @@ KStatus TsVGroup::redoPutTag(kwdbContext_p ctx, kwdbts::TS_OSN log_lsn, const TS
       LOG_ERROR("GetTagSchema failed, table id[%lu]", table_id);
       return s;
     }
-    auto err_no = tag_table->InsertTagRecord(p, vgroup_id, entity_id, p.GetOSN(), OperateType::Insert);
-    if (err_no < 0) {
-      LOG_ERROR("InsertTagRecord failed, table id[%lu]", table_id);
-      return KStatus::FAIL;
+    uint32_t cur_entity_id;
+    auto ptag_value = tag_table->ScanTagByPKey(primary_key, p.GetOSN(), p.GetHashPoint(), vgroup_id, cur_entity_id);
+    if (ptag_value.first == INVALID_TABLE_VERSION_ID) {
+      LOG_DEBUG("tag bt insert hashPoint=%hu", p.GetHashPoint());
+      auto err_no = tag_table->InsertTagRecord(p, vgroup_id, entity_id, p.GetOSN(), OperateType::Insert);
+      if (err_no < 0) {
+        LOG_ERROR("InsertTagRecord failed, table id[%lu]", table_id);
+        return KStatus::FAIL;
+      }
+    } else {
+      std::string ret;
+      BinaryToHexStr(primary_key, ret);
+      LOG_INFO(" table[%lu] tag[%s] is inserted then drop, so no need reputtag again.", table_id, ret.c_str());
     }
   }
   return s;
@@ -1887,7 +1928,7 @@ KStatus TsVGroup::undoPutTag(kwdbContext_p ctx, TS_OSN log_lsn, const TSSlice& p
   return SUCCESS;
 }
 
-KStatus TsVGroup::redoUpdateTag(kwdbContext_p ctx, kwdbts::TS_OSN log_lsn, const TSSlice& payload, uint64_t osn) {
+KStatus TsVGroup::redoUpdateTag(kwdbContext_p ctx, kwdbts::TS_OSN log_lsn, const TSSlice& payload) {
   TsRawPayload p;
   auto s = p.ParsePayLoadStruct(payload);
   if (s != KStatus::SUCCESS) {
@@ -1925,8 +1966,7 @@ KStatus TsVGroup::redoUpdateTag(kwdbContext_p ctx, kwdbts::TS_OSN log_lsn, const
   return SUCCESS;
 }
 
-KStatus TsVGroup::undoUpdateTag(kwdbContext_p ctx, TS_OSN log_lsn, TSSlice payload, const TSSlice& old_payload,
-                                uint64_t osn) {
+KStatus TsVGroup::undoUpdateTag(kwdbContext_p ctx, TS_OSN log_lsn, TSSlice payload, const TSSlice& old_payload) {
   TsRawPayload p;
   auto s = p.ParsePayLoadStruct(payload);
   if (s != KStatus::SUCCESS) {
@@ -1978,15 +2018,9 @@ KStatus TsVGroup::redoDeleteTag(kwdbContext_p ctx, uint64_t table_id, TSSlice& p
     LOG_ERROR("GetTagSchema failed, table id[%lu]", table_id);
     return s;
   }
-
-  ErrorInfo err_info;
-  if (!tag_table->hasPrimaryKey(primary_key.data, primary_key.len, entity_id, group_id)) {
-    LOG_WARN("redoDeleteTag: can not find primary tag[%s].", primary_key.data)
-    return KStatus::SUCCESS;
-  }
-
-  int res = tag_table->DeleteForRedo(group_id, entity_id, primary_key, tags);
-  if (res) {
+  int res = tag_table->DeleteForRedo(group_id, entity_id, primary_key, tags, osn);
+  if (res < 0) {
+    LOG_ERROR("DeleteForRedo failed, table id[%lu]", table_id);
     return KStatus::FAIL;
   }
   return KStatus::SUCCESS;
@@ -2012,7 +2046,7 @@ KStatus TsVGroup::undoDeleteTag(kwdbContext_p ctx, uint64_t table_id, TSSlice& p
     LOG_WARN("redoDeleteTag: can not find primary tag[%s].", primary_key.data)
     return KStatus::SUCCESS;
   }
-  int res = tag_table->DeleteForUndo(group_id, entity_id, tb_schema_manager->GetHashNum(), primary_key, tags);
+  int res = tag_table->DeleteForUndo(group_id, entity_id, tb_schema_manager->GetHashNum(), primary_key, tags, osn);
   if (res < 0) {
     return KStatus::FAIL;
   }

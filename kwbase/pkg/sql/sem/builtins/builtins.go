@@ -5106,6 +5106,44 @@ may increase either contention or retry errors, or both.`,
 	//	},
 	//),
 
+	"relocate_range": makeBuiltin(
+		tree.FunctionProperties{DistsqlBlacklist: true, Impure: true},
+		tree.Overload{
+			Types: tree.ArgTypes{{"range_id", types.Int},
+				{"src_node_id", types.Int}, {"dst_node_id", types.Int}},
+			ReturnType: tree.FixedReturnType(types.Bool),
+			Fn: func(evalCtx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				var id *tree.DInt
+				var ok bool
+				if id, ok = args[0].(*tree.DInt); !ok {
+					return nil, pgerror.New(pgcode.InvalidParameterValue, "first arg should be int.")
+				}
+				rangeID := int64(*id)
+				if id, ok = args[1].(*tree.DInt); !ok {
+					return nil, pgerror.New(pgcode.InvalidParameterValue, "second arg should be int.")
+				}
+				src := roachpb.NodeID(*id)
+				if id, ok = args[2].(*tree.DInt); !ok {
+					return nil, pgerror.New(pgcode.InvalidParameterValue, "third arg should be int.")
+				}
+				dst := roachpb.NodeID(*id)
+				if rangeID < 1 {
+					return nil, errors.New("range not exist")
+				}
+				if src == dst {
+					return nil, errors.New("nothing to do")
+				}
+				err := evalCtx.TsDBAccessor.RelocateRange(evalCtx.Ctx(), rangeID, src, dst)
+				if err != nil {
+					return nil, err
+				}
+
+				return tree.DBoolTrue, err
+			},
+			Info: "get_range_data get the row count of the range data on the specified node",
+		},
+	),
+
 	"get_range_count": makeBuiltin(
 		tree.FunctionProperties{DistsqlBlacklist: true, Impure: true},
 		tree.Overload{

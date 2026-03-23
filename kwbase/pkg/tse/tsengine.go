@@ -317,6 +317,7 @@ type TsEngine struct {
 	opened  bool
 	openCh  chan struct{}
 	metrics *TsEngineMetrics
+	TsIDGen *sqlbase.TSIDGenerator
 }
 
 // IsSingleNode Returns whether TsEngine is started in singleNode mode
@@ -2156,8 +2157,11 @@ func (r *TsEngine) CreateSnapshotForRead(
 		begin: C.int64_t(beginTs),
 		end:   C.int64_t(endTs),
 	}
+	// todo(fengyouxu) exchange
+	var scanOSN C.uint64_t
+	scanOSN = C.uint64_t(math.MaxUint64)
 	status := C.TSCreateSnapshotForRead(r.tdb, C.TSTableID(tableID),
-		C.uint64_t(beginHash), C.uint64_t(endHash), tsSpan, snapshotID)
+		C.uint64_t(beginHash), C.uint64_t(endHash), tsSpan, scanOSN, snapshotID)
 	if err := statusToError(status); err != nil {
 		return 0, errors.Wrap(err, "failed to create snapshot")
 	}

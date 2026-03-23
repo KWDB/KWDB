@@ -17,5 +17,9 @@ namespace kwdbts {
 
 const int64_t INVALID_TS = INT64_MAX;
 const uint64_t INVALID_OSN = UINT64_MAX;
+const uint32_t SNAPSHOT_MIN_PACKAGE_SIZE = 32 << 20;
+
+// tag record status max number.
+const uint32_t TAG_INFO_MAX_CHAIN_LEN = 3;
 
 }  //  namespace kwdbts

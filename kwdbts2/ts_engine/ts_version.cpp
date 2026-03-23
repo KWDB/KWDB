@@ -860,6 +860,9 @@ KStatus TsPartitionVersion::getFilter(const TsScanFilterParams& filter, TsBlockI
     }
   }
   for (auto& del : del_range) {
+    if (IsOsnAfterSpans(del.osn_span.end, filter.osn_spans_)) {
+      continue;
+    }
     cur_scan_range = LSNRangeUtil::MergeScanAndDelRange(cur_scan_range, del);
   }
 
