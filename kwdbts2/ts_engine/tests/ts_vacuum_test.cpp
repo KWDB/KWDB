@@ -67,8 +67,6 @@ class VacuumTest : public testing::Test {
     std::shared_mutex wal_level_mutex;
     vgroup_ = std::make_shared<TsVGroup>(&opts_, 1, schema_mgr_.get(), &wal_level_mutex, nullptr, false);
     ASSERT_EQ(vgroup_->Init(ctx_), KStatus::SUCCESS);
-
-    InitKWDBContext(ctx_);
   }
   void TearDown() override { vgroup_.reset(); }
 

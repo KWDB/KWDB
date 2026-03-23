@@ -24,15 +24,14 @@ class TestWALManagerV2 : public ::testing::Test {
  protected:
   std::shared_ptr<TsEngineSchemaManager> mgr = nullptr;
  public:
-  kwdbContext_t context_;
-  kwdbContext_p ctx_;
+  kwdbContext_t context_{};
+  kwdbContext_p ctx_{&context_};
   uint64_t table_id_ = 10001;
   uint64_t tbl_grp_id_ = 123;
-  WALMgr* wal_;
+  WALMgr* wal_{nullptr};
   EngineOptions opts_;
 
   TestWALManagerV2() {
-    ctx_ = &context_;
     InitServerKWDBContext(ctx_);
     opts_.wal_level = 1;
     opts_.wal_buffer_size = 4;
@@ -45,12 +44,7 @@ class TestWALManagerV2 : public ::testing::Test {
     EXPECT_EQ(s, KStatus::SUCCESS);
   }
 
-  ~TestWALManagerV2() {
-    if (wal_ != nullptr) {
-      delete wal_;
-      wal_ = nullptr;
-    }
-  }
+  ~TestWALManagerV2() override { delete wal_; }
 };
 
 TEST_F(TestWALManagerV2, TestWALDeleteData) {

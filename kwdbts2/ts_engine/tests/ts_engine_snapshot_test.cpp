@@ -27,26 +27,29 @@ RangeGroup test_range{default_entitygroup_id_in_dist_v2, 0};
 
 class TestEngineSnapshotImgrate : public ::testing::Test {
  public:
-  kwdbContext_t context_;
-  kwdbContext_p ctx_;
+  kwdbContext_t context_{};
+  kwdbContext_p ctx_{&context_};
   EngineOptions opts_;
-  TSEngineImpl* ts_engine_src_;
-  TSEngineImpl* ts_engine_desc_;
+  TSEngineImpl* ts_engine_src_{nullptr};
+  TSEngineImpl* ts_engine_desc_{nullptr};
 
-  virtual void SetUp() override {
-    ctx_ = &context_;
-    InitKWDBContext(ctx_);
-    KWDBDynamicThreadPool::GetThreadPool().Init(8, ctx_);
+  static void SetUpTestCase() {
+    KWDBDynamicThreadPool::GetThreadPool().InitImplicitly();
   }
 
-  virtual void TearDown() override {
-    KWDBDynamicThreadPool::GetThreadPool().Stop();
+  static void TearDownTestCase() {
+    auto& pool = KWDBDynamicThreadPool::GetThreadPool();
+    if (!pool.IsStop()) {
+      pool.Stop();
+    }
+#ifdef WITH_TESTS
+    KWDBDynamicThreadPool::Destroy();
+#endif
   }
 
   TestEngineSnapshotImgrate() {
     auto ret = system(("rm -rf " + db_path + "/*").c_str());
     EXPECT_EQ(ret, 0);
-    ctx_ = &context_;
     InitServerKWDBContext(ctx_);
     opts_.db_path = db_path + "/srcdb/";
     // clear path files.
@@ -70,15 +73,9 @@ class TestEngineSnapshotImgrate : public ::testing::Test {
     g_go_start_service = false;
   }
 
-  ~TestEngineSnapshotImgrate() {
-    if (ts_engine_src_ != nullptr) {
-      delete ts_engine_src_;
-      ts_engine_src_ = nullptr;
-    }
-    if (ts_engine_desc_ != nullptr) {
-      delete ts_engine_desc_;
-      ts_engine_desc_ = nullptr;
-    }
+  ~TestEngineSnapshotImgrate() override {
+    delete ts_engine_src_;
+    delete ts_engine_desc_;
   }
   
   void InsertData(TSEngineImpl* ts_e, TSTableID table_id, TSEntityID dev_id, timestamp64 start_ts, int num, KTimestamp interval = 1000, TS_OSN osn = 10) {

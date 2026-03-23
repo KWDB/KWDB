@@ -62,9 +62,23 @@ class TsEntitySegmentTest : public ::testing::Test {
   void SimpleInsert();
 
  public:
+  static void SetUpTestCase() {
+    KWDBDynamicThreadPool::GetThreadPool().InitImplicitly();
+  }
+
+  static void TearDownTestCase() {
+    auto& pool = KWDBDynamicThreadPool::GetThreadPool();
+    if (!pool.IsStop()) {
+      pool.Stop();
+    }
+#ifdef WITH_TESTS
+    KWDBDynamicThreadPool::Destroy();
+#endif
+  }
+
   TsEntitySegmentTest() { EngineOptions::mem_segment_max_size = INT32_MAX; }
 
-  ~TsEntitySegmentTest() { KWDBDynamicThreadPool::GetThreadPool().Stop(); }
+  ~TsEntitySegmentTest() override = default;
 
   void SetUp() override {
     System("rm -rf schema");

@@ -189,7 +189,7 @@ class KWDBDynamicThreadPool {
       return *instance_;
     }
 
-    static void Destory() {
+    static void Destroy() {
       if (instance_) {
         instance_.reset();
       }

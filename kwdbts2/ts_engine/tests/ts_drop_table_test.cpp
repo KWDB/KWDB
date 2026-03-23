@@ -21,23 +21,27 @@ const string engine_root_path = "./tsdb";
 class TestDropTable : public ::testing::Test {
  public:
   EngineOptions opts_;
-  TSEngineImpl *engine_;
-  kwdbContext_t g_ctx_;
-  kwdbContext_p ctx_;
+  TSEngineImpl *engine_{nullptr};
+  kwdbContext_t g_ctx_{};
+  kwdbContext_p ctx_{&g_ctx_};
 
-  virtual void SetUp() override {
-    ctx_ = &g_ctx_;
-    InitKWDBContext(ctx_);
-    KWDBDynamicThreadPool::GetThreadPool().Init(8, ctx_);
+  static void SetUpTestCase() {
+    KWDBDynamicThreadPool::GetThreadPool().InitImplicitly();
   }
 
-  virtual void TearDown() override {
-    KWDBDynamicThreadPool::GetThreadPool().Stop();
+  static void TearDownTestCase() {
+    auto& pool = KWDBDynamicThreadPool::GetThreadPool();
+    if (!pool.IsStop()) {
+      pool.Stop();
+    }
+#ifdef WITH_TESTS
+    KWDBDynamicThreadPool::Destroy();
+#endif
   }
+
 
  public:
   TestDropTable() {
-    ctx_ = &g_ctx_;
     InitKWDBContext(ctx_);
     opts_.db_path = engine_root_path;
     Remove(engine_root_path);
@@ -48,10 +52,8 @@ class TestDropTable : public ::testing::Test {
     EngineOptions::g_dedup_rule = DedupRule::KEEP;
   }
 
-  ~TestDropTable() {
-    if (engine_) {
-      delete engine_;
-    }
+  ~TestDropTable() override {
+    delete engine_;
   }
 };
 

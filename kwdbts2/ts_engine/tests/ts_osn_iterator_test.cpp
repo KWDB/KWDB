@@ -19,9 +19,9 @@ const string engine_root_path = "./tsdb";
 class TestV2IteratorByOSN : public ::testing::Test {
  public:
   EngineOptions opts_;
-  TSEngineImpl *engine_;
-  kwdbContext_t g_ctx_;
-  kwdbContext_p ctx_;
+  TSEngineImpl *engine_{nullptr};
+  kwdbContext_t g_ctx_{};
+  kwdbContext_p ctx_{&g_ctx_};
   TSTableID table_id_ = 999;
   std::shared_ptr<TsTable> ts_table_;
   const std::vector<AttributeInfo>* metric_schema_{nullptr};
@@ -29,19 +29,22 @@ class TestV2IteratorByOSN : public ::testing::Test {
   DATATYPE ts_col_type_;
    std::shared_ptr<TsTableSchemaManager> table_schema_mgr_;
 
-  virtual void SetUp() override {
-    ctx_ = &g_ctx_;
-    InitKWDBContext(ctx_);
-    KWDBDynamicThreadPool::GetThreadPool().Init(8, ctx_);
+  static void SetUpTestCase() {
+    KWDBDynamicThreadPool::GetThreadPool().InitImplicitly();
   }
 
-  virtual void TearDown() override {
-    KWDBDynamicThreadPool::GetThreadPool().Stop();
+  static void TearDownTestCase() {
+    auto& pool = KWDBDynamicThreadPool::GetThreadPool();
+    if (!pool.IsStop()) {
+      pool.Stop();
+    }
+#ifdef WITH_TESTS
+    KWDBDynamicThreadPool::Destroy();
+#endif
   }
 
  public:
   TestV2IteratorByOSN() {
-    ctx_ = &g_ctx_;
     InitKWDBContext(ctx_);
     opts_.db_path = engine_root_path;
     Remove(engine_root_path);
@@ -64,10 +67,8 @@ class TestV2IteratorByOSN : public ::testing::Test {
     ts_col_type_ = table_schema_mgr_->GetTsColDataType();
   }
 
-  ~TestV2IteratorByOSN() {
-    if (engine_) {
-      delete engine_;
-    }
+  ~TestV2IteratorByOSN() override {
+    delete engine_;
   }
     std::string GetPrimaryKey(TSEntityID dev_id) {
     std::shared_ptr<kwdbts::TsTableSchemaManager> schema_mgr;

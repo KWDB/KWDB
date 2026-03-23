@@ -72,8 +72,6 @@ class ConcurrentRWTest : public testing::Test {
     ASSERT_EQ(schema_mgr_->GetTableSchemaMgr(table_id, table_schema_mgr_), KStatus::SUCCESS);
     ASSERT_EQ(table_schema_mgr_->GetMetricMeta(1, &metric_schema_), KStatus::SUCCESS);
     ASSERT_EQ(table_schema_mgr_->GetTagMeta(1, tag_schema_), KStatus::SUCCESS);
-
-    InitKWDBContext(ctx_);
   }
   void TearDown() override {
     TsFlushJobPool::GetInstance().StopAndWait();

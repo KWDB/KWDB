@@ -29,17 +29,30 @@ class TestMMapHashIndex : public :: MMapPTagHashIndex {
 
 class TestEngine : public ::testing::Test {
  public:
-  kwdbContext_t context_;
-  kwdbContext_p ctx_;
+  kwdbContext_t context_{};
+  kwdbContext_p ctx_{&context_};
   EngineOptions opts_;
-  TSEngineImpl* ts_engine_;
+  TSEngineImpl* ts_engine_{nullptr};
+
+  static void SetUpTestCase() {
+    KWDBDynamicThreadPool::GetThreadPool().InitImplicitly();
+  }
+
+  static void TearDownTestCase() {
+    auto& pool = KWDBDynamicThreadPool::GetThreadPool();
+    if (!pool.IsStop()) {
+      pool.Stop();
+    }
+#ifdef WITH_TESTS
+    KWDBDynamicThreadPool::Destroy();
+#endif
+  }
 
   TestEngine() {
-    ctx_ = &context_;
     InitServerKWDBContext(ctx_);
     opts_.wal_level = 0;
     opts_.db_path = kDbPath;
-    opts_.is_single_node_ = true;
+    EngineOptions::is_single_node_ = true;
 
     fs::remove_all(kDbPath);
     // Clean up file directory
@@ -48,10 +61,8 @@ class TestEngine : public ::testing::Test {
     ts_engine_ = engine;
   }
 
-  ~TestEngine() {
+  ~TestEngine() override {
     delete ts_engine_;
-    ts_engine_ = nullptr;
-    kwdbts::KWDBDynamicThreadPool::GetThreadPool().Stop();
   }
 
   // Store in header

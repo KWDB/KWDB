@@ -26,26 +26,34 @@ std::unordered_map<int, string> value = {{1, "value1"},
                                          {6, "value6"}};
 class TsRaftStoreTest : public ::testing::Test {
  public:
-  RaftStore *raft_store_;
-  kwdbContext_t g_ctx_;
-  kwdbContext_p ctx_;
+  RaftStore *raft_store_{nullptr};
+  kwdbContext_t g_ctx_{};
+  kwdbContext_p ctx_{&g_ctx_};
+
+  static void SetUpTestCase() {
+    KWDBDynamicThreadPool::GetThreadPool().InitImplicitly();
+  }
+
+  static void TearDownTestCase() {
+    auto& pool = KWDBDynamicThreadPool::GetThreadPool();
+    if (!pool.IsStop()) {
+      pool.Stop();
+    }
+#ifdef WITH_TESTS
+    KWDBDynamicThreadPool::Destroy();
+#endif
+  }
 
  public:
   TsRaftStoreTest() {
     Remove(engine_root_path);
     MakeDirectory(engine_root_path);
-    ctx_ = &g_ctx_;
     InitKWDBContext(ctx_);
     raft_store_ = new RaftStore();
     raft_store_->init(engine_root_path + "/rs");
   }
 
-  ~TsRaftStoreTest() {
-    if (raft_store_) {
-      delete raft_store_;
-    }
-    KWDBDynamicThreadPool::GetThreadPool().Stop();
-  }
+  ~TsRaftStoreTest() override { delete raft_store_; }
 };
 
 TEST_F(TsRaftStoreTest, put) {
