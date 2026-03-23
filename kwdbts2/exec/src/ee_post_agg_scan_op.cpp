@@ -68,8 +68,8 @@ EEIteratorErrCode PostAggScanOperator::Init(kwdbContext_p ctx) {
     group_types.push_back(output_fields_[col]->get_storage_type());
     group_allow_null.push_back(output_fields_[col]->is_allow_null());
   }
-  ht_ = KNEW LinearProbingHashTable(group_types, group_lens, agg_row_size_, group_allow_null);
-  if (ht_ == nullptr || ht_->Resize() < 0) {
+  ht_ = std::make_unique<LinearProbingHashTable>(group_types, group_lens, agg_row_size_, group_allow_null, true);
+  if (ht_ == nullptr || ht_->Initialize() != KStatus::SUCCESS) {
     EEPgErrorInfo::SetPgErrorInfo(ERRCODE_OUT_OF_MEMORY, "Insufficient memory");
     Return(EEIteratorErrCode::EE_ERROR);
   }
@@ -132,11 +132,12 @@ KStatus PostAggScanOperator::accumulateRows(kwdbContext_p ctx) {
     if (ht_->Empty() && group_cols_.empty() &&
         group_type_ == TSAggregatorSpec_Type::TSAggregatorSpec_Type_SCALAR) {
       // return null
-      k_uint64 loc = ht_->CreateNullGroups();
+      k_uint64 loc;
+      k_bool is_used;
+      ht_->CreateNullGroups(&loc, &is_used);
       auto agg_ptr = ht_->GetAggResult(loc);
 
-      if (!ht_->IsUsed(loc)) {
-        ht_->SetUsed(loc);
+      if (!is_used) {
         InitFirstLastTimeStamp(agg_ptr);
       }
 
@@ -227,8 +228,11 @@ KStatus PostAggScanOperator::getAggResults(kwdbContext_p ctx, DataChunkPtr& resu
 
     // assembling rows
     k_uint32 index = 0;
-    while (total_read_row_ < ht_->Size()) {
-      DatumRowPtr data = *iter_;
+    while (true) {
+      DatumRowPtr data = ht_->NextLine();
+      if (data == nullptr) {
+        break;
+      }
       for (int col = 0; col < output_fields_.size(); col++) {
         // dispose null
         char* bitmap = data + agg_row_size_ - (output_fields_.size() + 7) / 8;
@@ -252,7 +256,6 @@ KStatus PostAggScanOperator::getAggResults(kwdbContext_p ctx, DataChunkPtr& resu
       }
       results->AddCount();
       ++index;
-      ++iter_;
       ++examined_rows_;
       ++total_read_row_;
 

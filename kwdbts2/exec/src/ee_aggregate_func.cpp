@@ -32,24 +32,29 @@ int AggregateFunc::isDistinct(IChunk* chunk, k_uint32 line,
       distinct_lens.push_back(col_lens[col]);
       distinct_allow_null.push_back(group_allow_null[col]);
     }
-    seen_ = KNEW LinearProbingHashTable(distinct_types, distinct_lens, 0, distinct_allow_null);
-    if (seen_->Resize() < 0) {
+    seen_ = KNEW LinearProbingHashTable(distinct_types, distinct_lens, 0, distinct_allow_null, false);
+    if (seen_ == nullptr || seen_->Initialize() != KStatus::SUCCESS) {
       return -1;
     }
   }
 
-  k_uint64 loc;
-  if (seen_->FindOrCreateGroups(chunk, line, all_cols, &loc) < 0) {
+  DatumPtr agg_ptr = nullptr;
+  size_t hash_val;
+  k_bool is_used;
+  k_bool is_abandoned;
+  if (seen_->FindOrCreateGroupsAndAddTuple(chunk, line, all_cols, agg_ptr,
+                                           &hash_val, &is_used,
+                                           &is_abandoned) != KStatus::SUCCESS) {
     return -1;
   }
+  if (is_abandoned) {
+    return -1;  // distinct operation is abandoned,this is not allowed
+  }
 
-  if (seen_->IsUsed(loc)) {
+  if (is_used) {
     *is_distinct = false;
     return 0;
   }
-
-  seen_->SetUsed(loc);
-  seen_->CopyGroups(chunk, line, all_cols, loc);
 
   *is_distinct = true;
   return 0;

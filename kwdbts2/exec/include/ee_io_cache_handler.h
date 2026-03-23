@@ -1,20 +1,20 @@
 // Copyright (c) 2022-present, Shanghai Yunxi Technology Co, Ltd.
 //
 // This software (KWDB) is licensed under Mulan PSL v2.
-// You can use this software according to the terms and conditions of the Mulan PSL v2.
-// You may obtain a copy of Mulan PSL v2 at:
+// You can use this software according to the terms and conditions of the Mulan
+// PSL v2. You may obtain a copy of Mulan PSL v2 at:
 //          http://license.coscl.org.cn/MulanPSL2
-// THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND,
-// EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT,
-// MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
-// See the Mulan PSL v2 for more details.
+// THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY
+// KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO
+// NON-INFRINGEMENT, MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE. See the
+// Mulan PSL v2 for more details.
 
 #pragma once
 
 #include <chrono>
-#include <vector>
 #include <list>
 #include <unordered_map>
+#include <vector>
 
 #include "kwdb_type.h"
 
@@ -34,7 +34,8 @@ enum cache_type {
 };
 /**
  * @class IOCacheHandler
- * @brief A handler class for IO caching operations, managing file I/O with caching and LRU eviction.
+ * @brief A handler class for IO caching operations, managing file I/O with
+ * caching and LRU eviction.
  */
 class IOCacheHandler {
  protected:
@@ -43,20 +44,32 @@ class IOCacheHandler {
    * @brief Structure to hold information about an opened file.
    */
   struct IO_INFO {
-    k_int32 fd_{-1};           ///< File descriptor, initialized to -1 indicating no open file.
-    k_char *path_{nullptr};         ///< Pointer to the file path, initialized to nullptr.
-    k_uint64 size_{0};        ///< Size of the file, initialized to 0.
-    cache_type type_{CACHE_UNKNOW};      ///< Cache type of the file, initialized to CACHE_UNKNOW.
-    std::chrono::steady_clock::time_point last_access_;  ///< Last access time of the file.
+    k_int32 fd_{
+        -1};  ///< File descriptor, initialized to -1 indicating no open file.
+    k_char* path_{
+        nullptr};       ///< Pointer to the file path, initialized to nullptr.
+    k_uint64 size_{0};  ///< Size of the file, initialized to 0.
+    cache_type type_{CACHE_UNKNOW};  ///< Cache type of the file, initialized to
+                                     ///< CACHE_UNKNOW.
+    std::chrono::steady_clock::time_point
+        last_access_;  ///< Last access time of the file.
   };
 
-  std::vector<IO_INFO> io_info_;  ///< Vector to store information of all managed files.
-  k_uint32 current_file_id_{UINT32_MAX};    ///< ID of the currently accessed file, initialized to UINT32_MAX.
+  std::vector<IO_INFO>
+      io_info_;  ///< Vector to store information of all managed files.
+  k_uint32 current_file_id_{UINT32_MAX};  ///< ID of the currently accessed
+                                          ///< file, initialized to UINT32_MAX.
 
-  using LRUList = std::list<k_uint32>;  ///< Type alias for a list used in LRU cache management.
-  using LRUMap = std::unordered_map<k_uint32, LRUList::iterator>;  ///< Type alias for a map used in LRU cache management.
-  LRUList lru_list_;  ///< List to implement LRU (Least Recently Used) caching strategy.
-  LRUMap lru_map_;    ///< Map to keep track of the position of file IDs in the LRU list.
+  using LRUList = std::list<k_uint32>;  ///< Type alias for a list used in LRU
+                                        ///< cache management.
+  using LRUMap =
+      std::unordered_map<k_uint32,
+                         LRUList::iterator>;  ///< Type alias for a map used in
+                                              ///< LRU cache management.
+  LRUList lru_list_;  ///< List to implement LRU (Least Recently Used) caching
+                      ///< strategy.
+  LRUMap lru_map_;    ///< Map to keep track of the position of file IDs in the
+                      ///< LRU list.
   k_uint32 max_file_size_{0};  ///< Maximum size of a file that can be managed.
 
   /**
@@ -78,10 +91,21 @@ class IOCacheHandler {
    */
   void remove_lru();
 
-  char* read_buffer_{nullptr};         ///< Pointer to the read buffer, initialized to nullptr.
-  k_uint64 read_buffer_offset_{UINT64_MAX};  ///< Offset of the read buffer, initialized to UINT64_MAX.
-  k_uint64 read_buffer_size_{64 * 1024};  ///< Size of the read buffer, initialized to 64KB.
-  k_uint64 total_size_{0};       ///< Total size of all managed files.
+  char* read_buffer_{
+      nullptr};  ///< Pointer to the read buffer, initialized to nullptr.
+  k_uint64 read_buffer_offset_{
+      UINT64_MAX};  ///< Offset of the read buffer, initialized to UINT64_MAX.
+  k_uint64 read_buffer_size_{
+      64 * 1024};  ///< Size of the read buffer, initialized to 64KB.
+
+  char* write_buffer_{
+      nullptr};  ///< Pointer to the write buffer, initialized to nullptr.
+  k_uint64 write_buffer_offset_{
+      0};  ///< Offset of the write buffer, initialized to 0.
+  k_uint64 write_buffer_size_{
+      64 * 1024};  ///< Size of the write buffer, initialized to 64KB.
+
+  k_uint64 total_size_{0};  ///< Total size of all managed files.
 
   /**
    * @brief Read data from the buffer.
@@ -90,7 +114,7 @@ class IOCacheHandler {
    * @param len Length of data to read.
    * @return KStatus indicating the result of the operation.
    */
-  KStatus ReadFromBuffer(k_char *buf, k_uint64 offset, k_uint64 len);
+  KStatus ReadFromBuffer(k_char* buf, k_uint64 offset, k_uint64 len);
 
   /**
    * @brief Read data directly from the file.
@@ -99,7 +123,7 @@ class IOCacheHandler {
    * @param len Length of data to read.
    * @return KStatus indicating the result of the operation.
    */
-  KStatus ReadFromFile(k_char *buf, k_uint64 offset, k_uint64 len);
+  KStatus ReadFromFile(k_char* buf, k_uint64 offset, k_uint64 len);
 
  public:
   /**
@@ -119,7 +143,7 @@ class IOCacheHandler {
    * @param len Length of data to write.
    * @return KStatus indicating the result of the operation.
    */
-  KStatus Write(const k_char *buf, k_uint64 len);
+  KStatus Write(const k_char* buf, k_uint64 len);
 
   /**
    * @brief Read data from the file at the specified offset.
@@ -128,7 +152,7 @@ class IOCacheHandler {
    * @param len Length of data to read.
    * @return KStatus indicating the result of the operation.
    */
-  KStatus Read(k_char *buf, k_uint64 offset, k_uint64 len);
+  KStatus Read(k_char* buf, k_uint64 offset, k_uint64 len);
 
   /**
    * @brief Read data from the end of the file.
@@ -136,18 +160,24 @@ class IOCacheHandler {
    * @param len Length of data to read.
    * @return KStatus indicating the result of the operation.
    */
-  KStatus ReadAppend(k_char *buf, k_uint64 len);
+  KStatus ReadAppend(k_char* buf, k_uint64 len);
 
   /**
    * @brief Get the total size of all managed files.
    * @return Total size of all managed files.
    */
-  k_uint64 Size() {return total_size_;}
+  k_uint64 Size() { return total_size_; }
 
   /**
    * @brief Reset the cache handler to its initial state.
    * @return KStatus indicating the result of the operation.
    */
   KStatus Reset();
+
+  /**
+   * @brief Flush the write buffer to the file.
+   * @return KStatus indicating the result of the operation.
+   */
+  KStatus Flush();
 };
 }  // namespace kwdbts
