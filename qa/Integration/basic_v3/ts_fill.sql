@@ -1198,6 +1198,7 @@ CREATE PROCEDURE select_fill_test.pro4(a TIMESTAMP, b VARCHAR) $$BEGIN SELECT k_
 
 call select_fill_test.pro4('2026-03-06 08:00:08+00:00', 'JISCO.BOF2.出钢温度1');
 
+CREATE PROCEDURE select_fill_test.pro5(a TIMESTAMP, b VARCHAR, c INT) $$BEGIN SELECT k_timestamp,tag16,e1,e2,e3,e4,e5,e6,e7,e8,e9,e10,e11,e12,e13,e14,e15,e16,e17,e18,e19 FROM select_fill_test.t1 WHERE k_timestamp=a and tag16=b FILL(CONSTANT, c) ORDER BY tag16; END $$;
 CREATE PROCEDURE select_fill_test.pro5(a TIMESTAMP, b VARCHAR) $$BEGIN SELECT k_timestamp,tag16,e1,e2,e3,e4,e5,e6,e7,e8,e9,e10,e11,e12,e13,e14,e15,e16,e17,e18,e19 FROM select_fill_test.t1 WHERE k_timestamp=a and tag16=b FILL(CONSTANT, 11) ORDER BY tag16; END $$;
 
 call select_fill_test.pro5('2026-03-06 08:00:08+00:00', 'JISCO.BOF2.出钢温度1');
