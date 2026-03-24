@@ -355,6 +355,12 @@ KStatus TsVersionManager::Recover(bool force_recover) {
           expected.insert(CountStatFileName(it->second.file_number));
         }
       }
+      {
+        auto it = update.new_agg_files_.find(par_id);
+        if (it != update.new_agg_files_.end()) {
+          expected.insert(AggFileName(it->second));
+        }
+      }
 
       std::error_code ec;
       fs::directory_iterator iter{root, ec};
@@ -566,7 +572,7 @@ KStatus TsVersionManager::ApplyUpdate(TsVersionUpdate *update, bool force_apply)
     {
       auto count_meta = update->count_flush_infos_.find(par_id);
       if (count_meta != update->count_flush_infos_.end()) {
-        std::string count_path = root_path_ / PartitionDirName(par_id) / CountStatFileName(count_meta->second.file_number);
+        std::string count_path = partition_dir / CountStatFileName(count_meta->second.file_number);
         auto new_count_file = std::make_shared<TsPartitionEntityCountManager>(count_path);
         switch (update->count_stats_status_) {
           case CountStatsStatus::FlushImmOrWriteBatch: {
@@ -655,6 +661,24 @@ KStatus TsVersionManager::ApplyUpdate(TsVersionUpdate *update, bool force_apply)
           new_partition_version->count_info_->MarkDelete();
         }
         new_partition_version->count_info_ = std::move(new_count_file);
+      }
+    }
+
+    // Process partition agg, used by CalcPartitionAgg()
+    {
+      auto agg_meta = update->new_agg_files_.find(par_id);
+      if (agg_meta != update->new_agg_files_.end()) {
+        std::string agg_path = partition_dir / AggFileName(agg_meta->second);
+        TsIOEnv* env = &TsIOEnv::GetInstance();
+        auto new_agg_file = std::make_shared<TsPartitionAggReader>(env, agg_path);
+        auto s = new_agg_file->Open();
+        if (s != KStatus::SUCCESS) {
+          LOG_ERROR("Failed open agg reader! path[%s]", agg_path.c_str());
+        }
+        if (new_partition_version->agg_reader_) {
+          new_partition_version->agg_reader_->MarkDelete();
+        }
+        new_partition_version->agg_reader_ = std::move(new_agg_file);
       }
     }
 
@@ -1079,6 +1103,93 @@ bool TsPartitionVersion::ShouldSetCountStatsInvalid(TSEntityID e_id) {
   return true;
 }
 
+KStatus TsPartitionVersion::GetMaxOSN(uint32_t db_id, TSTableID table_id, TSEntityID entity_id,
+                                      DATATYPE ts_col_type, TS_OSN& max_osn) const {
+  KStatus s = KStatus::SUCCESS;
+  max_osn = 0;
+  // get max osn in mem segment
+  KwTsSpan partition_ts_span = {GetTsColTypeStartTime(ts_col_type), GetTsColTypeEndTime(ts_col_type)};
+  if (valid_memseg_ != nullptr) {
+    for (auto &mem : *valid_memseg_) {
+      TS_OSN cur_max_osn;
+      s = mem->GetMaxOSN(db_id, table_id, entity_id, partition_ts_span, cur_max_osn);
+      if (s != KStatus::SUCCESS) {
+        LOG_ERROR("GetMaxOSN of mem segment failed.");
+        return s;
+      }
+      max_osn = std::max(max_osn, cur_max_osn);
+    }
+  }
+  // get max osn in last segment
+  std::vector<std::shared_ptr<TsLastSegment>> last_segments = leveled_last_segments_.GetAllLastSegments();
+  for (const auto& last_segment : last_segments) {
+    TS_OSN cur_max_osn;
+    s = last_segment->GetMaxOSN(entity_id, cur_max_osn);
+    if (s != KStatus::SUCCESS) {
+      LOG_ERROR("GetMaxOSN of last segment failed.");
+      return s;
+    }
+    max_osn = std::max(max_osn, cur_max_osn);
+  }
+  // get max osn in entity segment
+  if (entity_segment_) {
+    TS_OSN cur_max_osn;
+    s = entity_segment_->GetMaxOSN(entity_id, cur_max_osn);
+    if (s != KStatus::SUCCESS) {
+      LOG_ERROR("GetMaxOSN of entity segment failed.");
+      return s;
+    }
+    max_osn = std::max(max_osn, cur_max_osn);
+  }
+  if (del_info_) {
+    TS_OSN del_max_osn;
+    s = GetDelMaxOSN(entity_id, del_max_osn);
+    if (s != KStatus::SUCCESS) {
+      LOG_ERROR("GetMaxOSN of entity segment failed.");
+      return s;
+    }
+    max_osn = std::max(max_osn, del_max_osn);
+  }
+  return KStatus::SUCCESS;
+}
+
+KStatus TsPartitionVersion::NeedCalcPartitionAgg(bool& need_calc) const {
+  need_calc = false;
+  size_t nlastseg = leveled_last_segments_.Size();
+  if (nlastseg == 0 && entity_segment_ == nullptr) {
+    return KStatus::SUCCESS;
+  }
+  timestamp64 latest_mtime = 0;
+  bool has_files = false;
+
+  std::error_code ec;
+  fs::directory_iterator dir_iter{GetPartitionPath(), ec};
+  if (ec.value() != 0) {
+    LOG_ERROR("fs::directory_iterator error:%s", ec.message().c_str());
+    return KStatus::FAIL;
+  }
+  for (const auto& entry : dir_iter) {
+    std::error_code file_ec;
+    if (fs::is_regular_file(entry, file_ec) && !file_ec && entry.path().filename() != DEL_FILE_NAME) {
+      auto mtime = ModifyTime(entry.path());
+      if (!has_files || mtime > latest_mtime) {
+        latest_mtime = mtime;
+        has_files = true;
+      }
+    }
+  }
+  if (!has_files) {
+    LOG_WARN("No regular files found in directory [%s]", GetPartitionPath().c_str());
+    return KStatus::SUCCESS;
+  }
+  auto now = std::chrono::time_point_cast<std::chrono::seconds>(std::chrono::system_clock::now());
+  if (now.time_since_epoch().count() - latest_mtime < EngineOptions::agg_stats_recalc_cycle) {
+    return KStatus::SUCCESS;
+  }
+  need_calc = true;
+  return KStatus::SUCCESS;
+}
+
 // version update
 
 inline void EncodePartitionID(TsBufferBuilder *result, const PartitionIdentifier &partition_id) {
@@ -1349,6 +1460,40 @@ const char *DecodeCountStatFile(const char *ptr, const char *limit,
   return ptr;
 }
 
+inline void EncodeAggFile(TsBufferBuilder *result,
+                                const std::map<PartitionIdentifier, uint64_t> &agg_files) {
+  uint32_t npartition = agg_files.size();
+  PutVarint32(result, npartition);
+  for (const auto &[par_id, file_num] : agg_files) {
+    EncodePartitionID(result, par_id);
+    PutVarint64(result, file_num);
+  }
+}
+
+const char *DecodeAggFile(const char *ptr, const char *limit,
+                                std::map<PartitionIdentifier, uint64_t> *agg_files) {
+  uint32_t npartition = 0;
+  ptr = DecodeVarint32(ptr, limit, &npartition);
+  if (ptr == nullptr) {
+    return nullptr;
+  }
+
+  for (uint32_t i = 0; i < npartition; ++i) {
+    PartitionIdentifier par_id;
+    ptr = DecodePartitionID(ptr, limit, &par_id);
+    if (ptr == nullptr) {
+      return nullptr;
+    }
+    uint64_t file_num;
+    ptr = DecodeVarint64(ptr, limit, &file_num);
+    if (ptr == nullptr) {
+      return nullptr;
+    }
+    agg_files->insert_or_assign(par_id, file_num);
+  }
+  return ptr;
+}
+
 TsBufferBuilder TsVersionUpdate::EncodeToString() const {
   TsBufferBuilder result;
   if (has_new_partition_) {
@@ -1388,6 +1533,11 @@ TsBufferBuilder TsVersionUpdate::EncodeToString() const {
   if (has_count_stats_) {
     result.push_back(static_cast<char>(VersionUpdateType::kNewCountStatFile));
     EncodeCountStatFile(&result, count_flush_infos_);
+  }
+
+  if (has_new_agg_) {
+    result.push_back(static_cast<char>(VersionUpdateType::kNewAggFile));
+    EncodeAggFile(&result, new_agg_files_);
   }
 
   return result;
@@ -1507,6 +1657,15 @@ KStatus TsVersionUpdate::DecodeFromSlice(TSSlice input) {
           return FAIL;
         }
         this->has_new_version_number_ = true;
+        break;
+      }
+      case VersionUpdateType::kNewAggFile: {
+        ptr = DecodeAggFile(ptr, end, &this->new_agg_files_);
+        if (ptr == nullptr) {
+          LOG_ERROR("Corrupted version update slice");
+          return FAIL;
+        }
+        this->has_new_agg_ = true;
         break;
       }
       default:
@@ -1657,6 +1816,13 @@ KStatus TsVersionManager::VersionBuilder::AddUpdate(const TsVersionUpdate &updat
     all_updates_.has_new_version_number_ = true;
     all_updates_.version_num_ = std::max(all_updates_.version_num_, update.version_num_);
   }
+
+  if (update.has_new_agg_) {
+    all_updates_.has_new_agg_ = true;
+    for (auto [par_id, agg] : update.new_agg_files_) {
+      all_updates_.new_agg_files_[par_id] = agg;
+    }
+  }
   return SUCCESS;
 }
 
@@ -1684,6 +1850,9 @@ void TsVersionManager::VersionBuilder::Finalize(TsVersionUpdate *update) {
   update->count_flush_infos_ = std::move(all_updates_.count_flush_infos_);
   update->has_new_version_number_ = all_updates_.has_new_version_number_;
   update->version_num_ = all_updates_.version_num_;
+
+  update->has_new_agg_ = all_updates_.has_new_agg_;
+  update->new_agg_files_ = all_updates_.new_agg_files_;
 
   update->need_record_ = true;
 }

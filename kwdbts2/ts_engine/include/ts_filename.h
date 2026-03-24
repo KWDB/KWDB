@@ -80,4 +80,10 @@ inline std::string CountStatFileName(uint64_t file_number) {
   return buffer;
 }
 
+inline std::string AggFileName(uint64_t file_number) {
+  char buffer[64];
+  std::snprintf(buffer, sizeof(buffer), "partition.agg-%012lu", file_number);
+  return buffer;
+}
+
 };  // namespace kwdbts

@@ -128,6 +128,8 @@ class TsLastSegment : public TsSegmentBase {
 
   KStatus GetAllBlockIndex(std::vector<TsLastSegmentBlockIndex>* block_indexes);
 
+  KStatus GetMaxOSN(TSEntityID entity_id, TS_OSN& max_osn);
+
   KStatus GetBlockSpans(std::list<shared_ptr<TsBlockSpan>>& block_spans, TsEngineSchemaManager* schema_mgr);
 
   KStatus GetBlockSpans(const TsBlockItemFilterParams& filter,

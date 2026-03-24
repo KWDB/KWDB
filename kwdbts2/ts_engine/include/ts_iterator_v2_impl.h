@@ -195,6 +195,7 @@ class TsAggIteratorImpl : public TsStorageIteratorImpl {
  protected:
   KStatus Aggregate(TsScanStats* ts_scan_stats);
   KStatus CountAggregate(TsScanStats* ts_scan_stats = nullptr);
+  KStatus PartitionAggregate(TsScanStats* ts_scan_stats = nullptr);
   KStatus UpdateAggregation(bool can_remove_last_candidate, TsScanStats* ts_scan_stats);
   KStatus UpdateAggregation(std::shared_ptr<TsBlockSpan>& block_span,
                             bool aggregate_first_last_cols,
@@ -248,6 +249,7 @@ class TsAggIteratorImpl : public TsStorageIteratorImpl {
   bool only_count_ts_{false};
   bool only_last_{true};
   bool only_last_row_{true};
+  bool only_partition_agg_type_{true};
   AggCandidate first_row_candidate_{INT64_MAX, 0, nullptr};
   AggCandidate last_row_candidate_{INT64_MIN, 0, nullptr};
 

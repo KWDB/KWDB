@@ -11,6 +11,7 @@
 
 #include <assert.h>
 #include <string>
+#include <utility>
 #include "data_type.h"
 #include "ts_partition_count_mgr.h"
 #include "settings.h"
@@ -23,7 +24,7 @@ TsPartitionEntityCountManager::TsPartitionEntityCountManager(std::string path) :
 
 TsPartitionEntityCountManager::~TsPartitionEntityCountManager() {
   mmap_alloc_.Close();
-  if (delete_after_free) {
+  if (delete_after_free_) {
     unlink(path_.c_str());
   }
 }

@@ -51,6 +51,8 @@ class TsStorageIterator {
 
   virtual bool IsDisordered() = 0;
 
+  void SetInvoker(bool is_partition_agg_invoke);
+
  protected:
   inline bool checkIfTsInSpan(timestamp64 ts) {
     for (auto& ts_span : ts_spans_) {
@@ -83,6 +85,7 @@ class TsStorageIterator {
   bool sort_flag_ = false;
   // todo(liangbo) set lsn parameter.
   TS_OSN scan_osn_{UINT64_MAX};
+  bool calc_partition_agg_invoke_{false};
 };
 
 class TsIterator {
