@@ -140,6 +140,8 @@ class TsMemSegment : public TsSegmentBase, public enable_shared_from_this<TsMemS
 
   inline uint32_t GetMemSegmentSize() { return skiplist_.GetAllocator().MemoryAllocatedBytes(); }
 
+  KStatus GetMaxOSN(uint32_t db_id, TSTableID table_id, TSEntityID entity_id, const KwTsSpan& span, TS_OSN& max_osn);
+
   KStatus GetBlockSpans(const TsBlockItemFilterParams& filter, std::list<shared_ptr<TsBlockSpan>>& blocks,
                         const std::shared_ptr<TsTableSchemaManager>& tbl_schema_mgr,
                         const std::shared_ptr<MMapMetricsTable>& scan_schema,

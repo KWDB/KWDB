@@ -55,7 +55,7 @@ bool EngineOptions::force_sync_file = true;
 #endif
 size_t EngineOptions::last_cache_max_size = 1 << 30;
 double EngineOptions::block_filter_sampling_ratio = 0.2;
-int EngineOptions::count_stats_recalc_cycle = 60 * 5;
+int EngineOptions::agg_stats_recalc_cycle = 60 * 30;
 uint32_t EngineOptions::metric_schema_cache_capacity = 100;
 bool EngineOptions::force_re_compress = false;
 
@@ -384,7 +384,9 @@ KStatus TSEngineImpl::Init(kwdbContext_p ctx) {
       return KStatus::FAIL;
     }
   }
-
+  for (const auto& vgroup : vgroups_) {
+    vgroup->initCalcAggThread();
+  }
   return KStatus::SUCCESS;
 }
 

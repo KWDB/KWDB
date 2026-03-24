@@ -49,7 +49,7 @@ class TsPartitionEntityCountManager {
   TsCountStatsFileHeader* header_{nullptr};
   // get offset of first index node.
   VectorIndexForFile<uint64_t> index_;
-  bool delete_after_free = false;
+  bool delete_after_free_ = false;
 
  public:
   explicit TsPartitionEntityCountManager(std::string path);
@@ -60,7 +60,7 @@ class TsPartitionEntityCountManager {
   KStatus SetEntityCountStats(TsEntityCountStats& info);
   KStatus GetCountStatsHeader(TsCountStatsFileHeader& file_header);
   KStatus GetEntityCountStats(TsEntityCountStats& stats);
-  void MarkDelete() { delete_after_free = true; }
+  void MarkDelete() { delete_after_free_ = true; }
   std::string FilePath() const { return path_; }
 
   KStatus Sync() { return mmap_alloc_.Sync(); }

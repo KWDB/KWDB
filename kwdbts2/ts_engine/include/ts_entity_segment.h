@@ -10,6 +10,7 @@
 // See the Mulan PSL v2 for more details.
 #pragma once
 
+#include <algorithm>
 #include <cstdint>
 #include <list>
 #include <map>
@@ -435,6 +436,19 @@ class TsSegmentFile {
 
   uint64_t GetEntityNum() { return meta_mgr_.GetEntityNum(); }
 
+  KStatus GetMaxOSN(TSEntityID entity_id, TS_OSN& max_osn) {
+    max_osn = 0;
+    std::vector<TsEntitySegmentBlockItemWithData> blk_items;
+    KStatus s = meta_mgr_.GetAllBlockItems(entity_id, &blk_items);
+    if (s != KStatus::SUCCESS) {
+      return s;
+    }
+    for (auto& blk_item : blk_items) {
+      max_osn = std::max(max_osn, blk_item.block_item->max_osn);
+    }
+    return KStatus::SUCCESS;
+  }
+
   KStatus GetAllBlockItems(TSEntityID entity_id, std::vector<TsEntitySegmentBlockItemWithData>* blk_items) {
     return meta_mgr_.GetAllBlockItems(entity_id, blk_items);
   }
@@ -509,6 +523,10 @@ class TsEntitySegment : public TsSegmentBase, public enable_shared_from_this<TsE
   }
 
   uint64_t GetEntityNum() { return segment_file_->GetEntityNum(); }
+
+  KStatus GetMaxOSN(TSEntityID entity_id, TS_OSN& max_osn) {
+    return segment_file_->GetMaxOSN(entity_id, max_osn);
+  }
 
   std::shared_ptr<TsSegmentBlockContainer>& GetSegmentBlockContainer() {
     return segment_block_container_;
