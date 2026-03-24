@@ -2955,6 +2955,12 @@ type TsDBAccessor interface {
 	RelocateRange(ctx context.Context, rangeID int64, src, dst roachpb.NodeID) error
 	// GetRangeRowCountFromNode get range row count from remote by tsDB.
 	GetRangeRowCountFromNode(ctx context.Context, rangeID roachpb.RangeID, nodeID roachpb.NodeID) (uint64, error)
+
+	// GetRangeDebugInfo get range debug info by request.
+	GetRangeDebugInfo(ctx context.Context, resp int64) (interface{}, error)
+
+	// GetProblemRangesInfo get the info of the problem ranges.
+	GetProblemRangesInfo(ctx context.Context) (interface{}, error)
 }
 
 // InternalExecutor is a subset of sqlutil.InternalExecutor (which, in turn, is

@@ -52,6 +52,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/kv"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
 	"gitee.com/kwbasedb/kwbase/pkg/security"
+	"gitee.com/kwbasedb/kwbase/pkg/server/serverpb"
 	"gitee.com/kwbasedb/kwbase/pkg/settings/cluster"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/lex"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/parser"
@@ -4381,6 +4382,80 @@ may increase either contention or retry errors, or both.`,
 				return tree.NewDInt(tree.DInt(resp.Lease.Replica.StoreID)), nil
 			},
 			Info: "This function is used to fetch the leaseholder corresponding to a request key",
+		},
+	),
+
+	// Fetches the corresponding range_info_debug for the rangeID.
+	"kwdb_internal.range_info_debug": makeBuiltin(
+		tree.FunctionProperties{
+			Category: categorySystemInfo,
+		},
+		tree.Overload{
+			Types:      tree.ArgTypes{{"range_id", types.Int}},
+			ReturnType: tree.FixedReturnType(types.String),
+			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				var id *tree.DInt
+				var ok bool
+				if id, ok = args[0].(*tree.DInt); !ok {
+					return nil, pgerror.New(pgcode.InvalidParameterValue, "first arg should be int.")
+				}
+				rangeResp, err := ctx.TsDBAccessor.GetRangeDebugInfo(ctx.Context, int64(*id))
+				if err != nil {
+					return nil, err
+				}
+
+				resp, _ := rangeResp.(*serverpb.RangeResponse)
+				for k, v := range resp.ResponsesByNodeID {
+					if v.Infos == nil && v.ErrorMessage == "" {
+						delete(resp.ResponsesByNodeID, k)
+					}
+				}
+
+				jsonStr, err := gojson.Marshal(&resp.ResponsesByNodeID)
+				if err != nil {
+					return nil, err
+				}
+				jsonDatum, err := tree.ParseDJSON(string(jsonStr))
+				if err != nil {
+					return nil, err
+				}
+				prettyJSON, err := json.Pretty(tree.MustBeDJSON(jsonDatum).JSON)
+				if err != nil {
+					return nil, err
+				}
+
+				return tree.NewDString(prettyJSON), nil
+			},
+			Info: "This function is used to get range info debug message",
+		},
+	),
+
+	// Show all problem ranges.
+	"kwdb_internal.problem_ranges_debug": makeBuiltin(
+		tree.FunctionProperties{
+			Category: categorySystemInfo,
+		},
+		tree.Overload{
+			Types:      tree.ArgTypes{},
+			ReturnType: tree.FixedReturnType(types.Jsonb),
+			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				rangeResp, err := ctx.TsDBAccessor.GetProblemRangesInfo(ctx.Context)
+				if err != nil {
+					return nil, err
+				}
+				resp, _ := rangeResp.(*serverpb.ProblemRangesResponse)
+
+				jsonStr, err := gojson.Marshal(&resp.ProblemsByNodeID)
+				if err != nil {
+					return nil, err
+				}
+				jsonDatum, err := tree.ParseDJSON(string(jsonStr))
+				if err != nil {
+					return nil, err
+				}
+				return jsonDatum, nil
+			},
+			Info: "This function is used to get problem ranges debug message",
 		},
 	),
 
