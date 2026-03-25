@@ -376,6 +376,7 @@ void ConstructRoachpbTableWithTypes(roachpb::CreateTsTable* meta, KTableKey tabl
   // add tag infos
   std::vector<ZTableColumnMeta> tag_metas;
   tag_metas.push_back({roachpb::DataType::TIMESTAMP, 8, 8, roachpb::VariableLengthType::ColStorageTypeTuple});
+  tag_metas.push_back({roachpb::DataType::VARCHAR, 30, 30, roachpb::VariableLengthType::ColStorageTypeTuple});
   for (int i = 0; i< tag_metas.size(); i++) {
     roachpb::KWDBKTSColumn* column = meta->mutable_k_column()->Add();
     column->set_storage_type((roachpb::DataType)(tag_metas[i].type));

@@ -270,6 +270,7 @@ class TsBatchData {
     SetDataLength(data_.size());
     // block span length
     if (block_span_data_offset_ != 0) {
+      assert(data_.size() > tags_data_offset_ + tags_data_size_);
       block_span_data_size_ = data_.size() - block_span_data_offset_;
       memcpy(data_.data() + block_span_data_offset_, &block_span_data_size_, sizeof(block_span_data_size_));
       SetRowType(DataTagFlag::DATA_AND_TAG);
@@ -283,6 +284,12 @@ class TsBatchData {
   }
 
   void Clear() {
+    p_tag_offset_ = 0;
+    p_tag_size_ = 0;
+    tags_data_offset_ = 0;
+    tags_data_size_ = 0;
+    block_span_data_offset_ = 0;
+    block_span_data_size_ = 0;
     data_.clear();
     data_.resize(header_size_);
     SetBatchVersion(CURRENT_BATCH_VERSION);
