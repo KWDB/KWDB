@@ -372,8 +372,9 @@ KStatus TsBlockSpan::BuildCompressedData(TsBufferBuilder* data) {
       bool ok = mgr.CompressData({var_offset_data.data(), var_offset_data.size()},
                                  nullptr, nrow_, &compressed, first, second);
       if (!ok) {
-        LOG_ERROR("Compress var offset data failed");
-        return KStatus::SUCCESS;
+        LOG_ERROR("Compress var offset data failed. vg_id [%u] entity_id [%lu] col_id[%u]",
+          vgroup_id_, entity_id_, scan_idx)
+        return KStatus::FAIL;
       }
       uint32_t compressed_len = compressed.size();
       data->append(reinterpret_cast<const char *>(&compressed_len), sizeof(uint32_t));
@@ -382,8 +383,8 @@ KStatus TsBlockSpan::BuildCompressedData(TsBufferBuilder* data) {
       compressed.clear();
       ok = mgr.CompressVarchar({var_data.data(), var_data.size()}, &compressed, GenCompAlg::kSnappy);
       if (!ok) {
-        LOG_ERROR("Compress var data failed");
-        return KStatus::SUCCESS;
+        LOG_ERROR("Compress var data failed. vg_id [%u] entity_id [%lu] col_id[%u]", vgroup_id_, entity_id_, scan_idx)
+        return KStatus::FAIL;
       }
       data->append(compressed.AsSlice());
     } else {

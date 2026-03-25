@@ -1344,8 +1344,9 @@ inline timestamp64 convertNanoToPrecisionTS(timestamp64 ts, DATATYPE ts_type) {
   case TIMESTAMP64_NANO:
     return ts;
   default:
-    assert(false);
+    throw std::out_of_range("Convert nano to precision ts failed, type=" + std::to_string(ts_type));
   }
+  return ts;
 }
 
 inline uint32_t GetConsistentHashId(const char* data, size_t length, uint64_t hash_num) {
