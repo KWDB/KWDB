@@ -1872,8 +1872,6 @@ KStatus TsTableV2Impl::GetEntityIdListByOSN(kwdbContext_p ctx, const std::vector
     }
     if (tag_count > 0) {
       *count += tag_count;
-    } else {
-      LOG_ERROR("Not found tag [%lu][%u][%u].", pkey.second.entityGroupId, pkey.second.entityId, pkey.second.subGroupId);
     }
     entity_id_list->emplace_back(pkey.second);
   }

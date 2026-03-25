@@ -2163,7 +2163,7 @@ KStatus TsAggIteratorImpl::CountAggregate(TsScanStats* ts_scan_stats) {
       if (!count_stats.is_count_valid && count_stats.entity_id != 0 && EngineOptions::agg_stats_recalc_cycle != 0) {
         ret = vgroup_->AddRecalcEntity(partition_version->GetPartitionIdentifier(), table_id_, count_stats.entity_id);
         if (ret != KStatus::SUCCESS) {
-          LOG_ERROR("AddRecalcEntity partition[%s] table[%lu} entity[%lu] failed.",
+          LOG_WARN("AddRecalcEntity partition[%s] table[%lu} entity[%lu] failed.",
             partition_version->GetPartitionIdentifierStr().c_str(), table_id_, count_stats.entity_id);
         }
       }
@@ -3535,8 +3535,8 @@ KStatus TsRawDataIteratorImplByOSN::Next(ResultSet* res, k_uint32* count, bool* 
         break;
       }
       default:
-        LOG_ERROR("sending status cannot be this.");
-        break;
+        LOG_ERROR("sending status cannot be this. sending status is %d", cur_entity_status_);
+        return KStatus::FAIL;
     }
     if (*count > 0) {
       return KStatus::SUCCESS;

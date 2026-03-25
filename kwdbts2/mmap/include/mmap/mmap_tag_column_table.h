@@ -339,6 +339,7 @@ class MMapTagColumnTable: public TSObject {
   inline void push_back_entityid(size_t r, uint32_t entity_id, uint32_t group_id) {
     if (CheckGroupID(group_id, true) == KStatus::FAIL) {
       LOG_ERROR("Failed to write the vgroup id!");
+      return;
     }
     char *rec_ptr = entityIdStoreAddr(r);
     memcpy(rec_ptr, &entity_id, sizeof(uint32_t));

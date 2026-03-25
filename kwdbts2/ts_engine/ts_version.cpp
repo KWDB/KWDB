@@ -1752,7 +1752,7 @@ KStatus TsVersionManager::RecordReader::ReadRecord(std::string *record, bool *eo
     tmp += static_cast<uint8_t>(result.data()[i]);
   }
   if (checksum != tmp) {
-    LOG_ERROR("Checksum mismatch, expect %u, actual %u, ignore following records", checksum, tmp);
+    LOG_WARN("Checksum mismatch, expect %u, actual %u, ignore following records", checksum, tmp);
     *eof = true;
     return SUCCESS;
   }

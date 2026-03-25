@@ -79,8 +79,10 @@ KStatus TsEngineSchemaManager::Init(kwdbContext_p ctx) {
     }
   } catch (const fs::filesystem_error& e) {
     LOG_ERROR("Filesystem error: %s", e.what());
+    return KStatus::FAIL;
   } catch (const std::exception& e) {
     LOG_ERROR("Error: %s", e.what());
+    return KStatus::FAIL;
   }
   return KStatus::SUCCESS;
 }

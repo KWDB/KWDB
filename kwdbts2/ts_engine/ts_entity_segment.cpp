@@ -114,6 +114,7 @@ KStatus TsEntitySegmentBlockItemFile::Open() {
   header_ = reinterpret_cast<TsBlockItemFileHeader*>(header_guard_.data());
   if (header_->status != TsFileStatus::READY) {
     LOG_ERROR("TsEntitySegmentBlockItemFile not ready, file_path=%s", file_path_.c_str())
+    return KStatus::FAIL;
   }
   return s;
 }

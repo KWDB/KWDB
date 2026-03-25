@@ -318,6 +318,7 @@ KStatus TSEngineImpl::Init(kwdbContext_p ctx) {
   std::vector<uint32_t> max_entity_id_MEI(options_.vgroup_max_num, 0);
   if (readEntityIds(max_entity_id_MEI) == KStatus::FAIL) {
     LOG_ERROR("Failed to read entity ids from MEI file.")
+    return KStatus::FAIL;
   }
 
   for (int vgroup_id = 1; vgroup_id <= EngineOptions::vgroup_max_num; vgroup_id++) {
@@ -2298,6 +2299,7 @@ KStatus TSEngineImpl::UpdateSetting(kwdbContext_p ctx) {
       KStatus s = CreateCheckpoint(ctx);
       if (s == KStatus::FAIL) {
         LOG_ERROR("Failed to CreateCheckpoint while UpdateSetting.")
+        return KStatus::FAIL;
       }
       options_.wal_level = std::stoll(value);
       LOG_INFO("update wal level to %hhu", options_.wal_level)
