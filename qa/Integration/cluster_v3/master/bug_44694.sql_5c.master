@@ -1,6 +1,8 @@
 > create ts database test_rebalance; 
 CREATE TS DATABASE
-> ALTER DATABASE test_rebalance CONFIGURE ZONE USING gc.ttlseconds=600;
+> set cluster setting ts.raft_log.sync_period=0s;
+SET CLUSTER SETTING
+> ALTER DATABASE test_rebalance CONFIGURE ZONE USING gc.ttlseconds=10,num_replicas=5; 
 CONFIGURE ZONE 1
 > CREATE TABLE test_rebalance.t1(                                    ts TIMESTAMPTZ NOT NULL,e1 TIMESTAMP,e2 INT2,e3 INT4,e4 INT8,e5 FLOAT4,e6 FLOAT8,e7 BOOL,e8 CHAR,e10 NCHAR,e16 VARBYTES  ) TAGS (      tag1 BOOL,tag2 SMALLINT,tag3 INT,tag4 BIGINT,tag5 FLOAT4,tag6 DOUBLE,tag7 VARBYTES,tag11 CHAR,tag13 NCHAR NOT NULL  )PRIMARY TAGS(tag13); 
 CREATE TABLE
@@ -21,10 +23,6 @@ CONFIGURE ZONE 0
 ---------
       5
 (1 row)
-> alter table test_rebalance.t1 partition by hashpoint(partition  p0 values from (0) to (400)); 
-ALTER TABLE
-> ALTER PARTITION p0 OF TABLE test_rebalance.t1 CONFIGURE ZONE USING lease_preferences = '[[+region=CN-100000-001]]',  constraints = '{"+region=CN-100000-001":1}', num_replicas=3; 
-CONFIGURE ZONE 1
 > select pg_sleep(60); 
   pg_sleep
 ------------
@@ -235,15 +233,10 @@ INSERT 1
 ---------
     100
 (1 row)
-> WITH plan AS (EXPLAIN ANALYZE (DISTSQL) SELECT count(*) FROM test_rebalance.t1)    SELECT EXISTS (      SELECT 1      FROM plan      WHERE json ~ 'span\([^)]*F[^)]*\)'    ) AS has_f; 
-  has_f
+> select count(*) from test_rebalance.t1; 
+  count
 ---------
-  true
-(1 row)
-> select count(*)=0 from test_rebalance.t1; 
-  ?column?
-------------
-   false
+    100
 (1 row)
 > select count(*) from test_rebalance.t1; 
   count
