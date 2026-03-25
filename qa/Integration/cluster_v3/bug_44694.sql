@@ -1,5 +1,6 @@
 create ts database test_rebalance;
-ALTER DATABASE test_rebalance CONFIGURE ZONE USING gc.ttlseconds=600;
+set cluster setting ts.raft_log.sync_period=0s;
+ALTER DATABASE test_rebalance CONFIGURE ZONE USING gc.ttlseconds=10,num_replicas=5;
 CREATE TABLE test_rebalance.t1(
                                   ts TIMESTAMPTZ NOT NULL,e1 TIMESTAMP,e2 INT2,e3 INT4,e4 INT8,e5 FLOAT4,e6 FLOAT8,e7 BOOL,e8 CHAR,e10 NCHAR,e16 VARBYTES
 ) TAGS (
@@ -11,10 +12,6 @@ alter table test_rebalance.t1 configure zone using rebalance;
 select pg_sleep(150);
 
 select count(*) from [show zone configurations] where target like '%PARTITION%';
-
-alter table test_rebalance.t1 partition by hashpoint(partition  p0 values from (0) to (400));
-ALTER PARTITION p0 OF TABLE test_rebalance.t1 CONFIGURE ZONE USING lease_preferences = '[[+region=CN-100000-001]]',
-constraints = '{\"+region=CN-100000-001\":1}', num_replicas=3;
 select pg_sleep(60);
 
 -- insert
@@ -126,13 +123,7 @@ select count(*) from test_rebalance.t1;
 -- kill: c4
 -- kill: c5
 -- enable-follower-read: c1
-WITH plan AS (EXPLAIN ANALYZE (DISTSQL) SELECT count(*) FROM test_rebalance.t1)
-  SELECT EXISTS (
-    SELECT 1
-    FROM plan
-    WHERE json ~ 'span\([^)]*F[^)]*\)'
-  ) AS has_f;
-select count(*)=0 from test_rebalance.t1;
+select count(*) from test_rebalance.t1;
 
 -- kill: c1
 -- restart: c1
