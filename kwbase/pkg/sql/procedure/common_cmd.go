@@ -211,7 +211,7 @@ func (ins *SetValueIns) Execute(params RunParam, rCtx *SpExecContext) error {
 			rCtx.SetVariableType(ins.index, *ins.typ) // update value type
 		}
 		if ins.typ.Equivalent(value.ResolvedType()) || value == tree.DNull {
-			rCtx.SetVariable(ins.index, &value)
+			rCtx.SetVariable(ins.index, value)
 		} else {
 			return pgerror.Newf(pgcode.DatatypeMismatch, "variable %s type %s not save type %s ", ins.name, ins.typ.String(),
 				value.ResolvedType().String())
@@ -219,7 +219,7 @@ func (ins *SetValueIns) Execute(params RunParam, rCtx *SpExecContext) error {
 	case tree.ExternalValue:
 		// replace placeholder with values inside EvalCtx
 		if ins.typ.Equivalent(value.ResolvedType()) || value == tree.DNull {
-			rCtx.SetExternalVariable(ins.index, &value)
+			rCtx.SetExternalVariable(ins.index, value)
 		} else {
 			return pgerror.Newf(pgcode.DatatypeMismatch, "variable %s type %s not save type %s ", ins.name, ins.typ.String(),
 				value.ResolvedType().String())
