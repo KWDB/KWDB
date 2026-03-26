@@ -352,7 +352,6 @@ class DataChunk : public IChunk {
    */
   KStatus PgResultData(kwdbContext_p ctx, k_uint32 row, const EE_StringInfo& info,
                        const vector<k_uint32> &t_is_float8, k_int64 floatPrec);
-  KStatus PgOriResultData(kwdbContext_p ctx, const EE_StringInfo& info);
   KStatus PgCompressResultData(kwdbContext_p ctx, const BlockCompressor* compress_codec,
                        const EE_StringInfo& info, CompressionTypePB type);
   virtual EEIteratorErrCode VectorizeData(kwdbContext_p ctx,

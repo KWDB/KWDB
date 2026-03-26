@@ -2127,6 +2127,10 @@ func (m *sessionDataMutator) SetVectorize(val sessiondata.VectorizeExecMode) {
 	m.data.VectorizeMode = val
 }
 
+func (m *sessionDataMutator) SetPgExtend(val sessiondata.PgCompressMode) {
+	m.data.PgExtendCompressMode = val
+}
+
 func (m *sessionDataMutator) SetVectorizeRowCountThreshold(val uint64) {
 	m.data.VectorizeRowCountThreshold = val
 }
