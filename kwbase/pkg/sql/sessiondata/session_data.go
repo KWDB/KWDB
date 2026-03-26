@@ -162,6 +162,9 @@ type SessionData struct {
 	UserDefinedVars map[string]interface{}
 
 	RowCount int
+
+	// PgExtendCompressMode indicates which kinds of pgExtend to use
+	PgExtendCompressMode PgCompressMode
 }
 
 // DataConversionConfig contains the parameters that influence
@@ -373,6 +376,51 @@ func VectorizeExecModeFromString(val string) (VectorizeExecMode, bool) {
 		m = VectorizeOn
 	case "EXPERIMENTAL_ALWAYS":
 		m = VectorizeExperimentalAlways
+	default:
+		return 0, false
+	}
+	return m, true
+}
+
+// PgCompressMode controls if an when the Executor executes queries using the
+// columnar execution engine.
+type PgCompressMode int64
+
+const (
+	// PgCompressOff means that pg extend is disabled.
+	PgCompressOff PgCompressMode = iota
+	// PgWithoutCompress means that that use pg extend but without compress.
+	PgWithoutCompress
+	// PgWithLz4Compress means that ause pg extend but with lz4
+	PgWithLz4Compress
+	// PgWithSnappyCompress means that ause pg extend but with snappy
+	PgWithSnappyCompress
+)
+
+func (m PgCompressMode) String() string {
+	switch m {
+	case PgCompressOff:
+		return "off"
+	case PgWithLz4Compress:
+		return "lz4_compress"
+	case PgWithSnappyCompress:
+		return "snappy_compress"
+	default:
+		return fmt.Sprintf("invalid (%d)", m)
+	}
+}
+
+// PgCompressModeFromString converts a string into a pgCompressMode. False
+// is returned if the conversion was unsuccessful.
+func PgCompressModeFromString(val string) (PgCompressMode, bool) {
+	var m PgCompressMode
+	switch strings.ToLower(val) {
+	case "off":
+		m = PgCompressOff
+	case "lz4_compress":
+		m = PgWithLz4Compress
+	case "snappy_compress":
+		m = PgWithSnappyCompress
 	default:
 		return 0, false
 	}

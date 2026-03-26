@@ -1753,6 +1753,7 @@ multi_model_reorder_joins_limit           8                   NULL      NULL    
 need_control_inside_out                   off                 NULL      NULL        NULL        string
 node_id                                   1                   NULL      NULL        NULL        string
 optimizer_foreign_keys                    on                  NULL      NULL        NULL        string
+pg_extend_compress                        off                 NULL      NULL        NULL        string
 reorder_joins_limit                       4                   NULL      NULL        NULL        string
 require_explicit_primary_keys             off                 NULL      NULL        NULL        string
 results_buffer_size                       16384               NULL      NULL        NULL        string
@@ -1822,6 +1823,7 @@ multi_model_reorder_joins_limit           8                   NULL  user     NUL
 need_control_inside_out                   off                 NULL  user     NULL      off                 off
 node_id                                   1                   NULL  user     NULL      1                   1
 optimizer_foreign_keys                    on                  NULL  user     NULL      on                  on
+pg_extend_compress                        off                 NULL  user     NULL      off                 off
 reorder_joins_limit                       4                   NULL  user     NULL      4                   4
 require_explicit_primary_keys             off                 NULL  user     NULL      off                 off
 results_buffer_size                       16384               NULL  user     NULL      16384               16384
@@ -1888,6 +1890,7 @@ need_control_inside_out                   NULL    NULL     NULL     NULL        
 node_id                                   NULL    NULL     NULL     NULL        NULL
 optimizer                                 NULL    NULL     NULL     NULL        NULL
 optimizer_foreign_keys                    NULL    NULL     NULL     NULL        NULL
+pg_extend_compress                        NULL    NULL     NULL     NULL        NULL
 reorder_joins_limit                       NULL    NULL     NULL     NULL        NULL
 require_explicit_primary_keys             NULL    NULL     NULL     NULL        NULL
 results_buffer_size                       NULL    NULL     NULL     NULL        NULL

@@ -7009,18 +7009,6 @@ var pgEncodeShortCircuitEnabled = settings.RegisterBoolSetting(
 	"sql.pg_encode_short_circuit.enabled", "enable the short circuit optimization", true,
 )
 
-var pgClientCompressEncodeMode = settings.RegisterValidatedIntSetting(
-	"ts.client_compress_encode.mode",
-	"compression and encode for server and decompression and decode for client: 0 means do not use K pg encode,compress, 1 means do not use compress, "+
-		"2 means lz4 compression, "+"3 means snappy compression",
-	0,
-	func(v int64) error {
-		if v < 0 || v > 3 {
-			return errors.Errorf("value must be between 0 and 3, got %d", v)
-		}
-		return nil
-	})
-
 // FinalizePlan adds a final "result" stage if necessary and populates the
 // endpoints of the plan.
 func (dsp *DistSQLPlanner) FinalizePlan(planCtx *PlanningCtx, plan *PhysicalPlan) {
@@ -7111,7 +7099,7 @@ func (dsp *DistSQLPlanner) FinalizePlan(planCtx *PlanningCtx, plan *PhysicalPlan
 		planCtx.isCommandResult {
 		plan.UseQueryShortCircuit = true
 	}
-	plan.UseCompressType = pgClientCompressEncodeMode.Get(&dsp.st.SV)
+	plan.UseCompressType = int64(planCtx.ExtendedEvalCtx.SessionData.PgExtendCompressMode)
 	// Assign processor IDs.
 	for i := range plan.Processors {
 		plan.Processors[i].Spec.ProcessorID = int32(i)
