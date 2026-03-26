@@ -347,18 +347,18 @@ func (tc *Catalog) resolveFK(tab *Table, d *tree.ForeignKeyConstraintTableDef) {
 	}
 
 	fk := ForeignKeyConstraint{
-		name:                     constraintName,
-		originTableID:            tab.ID(),
-		referencedTableID:        targetTable.ID(),
-		originColumnOrdinals:     fromCols,
-		referencedColumnOrdinals: toCols,
-		validated:                true,
-		matchMethod:              d.Match,
-		deleteAction:             d.Actions.Delete,
-		updateAction:             d.Actions.Update,
+		FkName:                     constraintName,
+		FkOriginTableID:            tab.ID(),
+		FkReferencedTableID:        targetTable.ID(),
+		FkOriginColumnOrdinals:     fromCols,
+		FkReferencedColumnOrdinals: toCols,
+		validated:                  true,
+		matchMethod:                d.Match,
+		deleteAction:               d.Actions.Delete,
+		updateAction:               d.Actions.Update,
 	}
-	tab.outboundFKs = append(tab.outboundFKs, fk)
-	targetTable.inboundFKs = append(targetTable.inboundFKs, fk)
+	tab.OutboundFKs = append(tab.OutboundFKs, fk)
+	targetTable.InboundFKs = append(targetTable.InboundFKs, fk)
 }
 
 func (tt *Table) addColumn(def *tree.ColumnTableDef) {
@@ -399,7 +399,7 @@ func (tt *Table) addIndex(def *tree.IndexTableDef, typ indexType) *Index {
 		Unique:      typ != nonUniqueIndex,
 		Inverted:    def.Inverted,
 		IdxZone:     &zonepb.ZoneConfig{},
-		table:       tt,
+		IdxTable:    tt,
 		partitionBy: def.PartitionBy,
 	}
 
@@ -440,7 +440,7 @@ func (tt *Table) addIndex(def *tree.IndexTableDef, typ indexType) *Index {
 		if len(tt.Indexes) != 0 {
 			panic("primary index should always be 0th index")
 		}
-		idx.ordinal = len(tt.Indexes)
+		idx.IdxOrdinal = len(tt.Indexes)
 		tt.Indexes = append(tt.Indexes, idx)
 		return idx
 	}
@@ -493,7 +493,7 @@ func (tt *Table) addIndex(def *tree.IndexTableDef, typ indexType) *Index {
 		}
 	}
 
-	idx.ordinal = len(tt.Indexes)
+	idx.IdxOrdinal = len(tt.Indexes)
 	tt.Indexes = append(tt.Indexes, idx)
 
 	return idx
