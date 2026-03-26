@@ -130,13 +130,13 @@ func (c *SpExecContext) AddVariable(v *exec.LocalVariable) {
 }
 
 // SetVariable sets a local variable
-func (c *SpExecContext) SetVariable(idx int, v *tree.Datum) {
-	c.localVariable[idx].Data = *v
+func (c *SpExecContext) SetVariable(idx int, v tree.Datum) {
+	c.localVariable[idx].Data = v
 }
 
 // SetExternalVariable sets a external variable
-func (c *SpExecContext) SetExternalVariable(idx int, v *tree.Datum) {
-	c.TriggerReplaceValues.SetValue(tree.PlaceholderIdx(idx), *v)
+func (c *SpExecContext) SetExternalVariable(idx int, v tree.Datum) {
+	c.TriggerReplaceValues.SetValue(tree.PlaceholderIdx(idx), v)
 }
 
 // GetVariableName gets the local variable name.
