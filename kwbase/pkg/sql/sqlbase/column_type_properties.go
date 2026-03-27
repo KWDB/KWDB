@@ -45,6 +45,9 @@ import (
 // then a truncated copy is returned. Otherwise, an error is returned.
 // This method is used by INSERT and UPDATE.
 func LimitValueWidth(typ *types.T, inVal tree.Datum, name *string) (outVal tree.Datum, err error) {
+	if name == nil {
+		return nil, pgerror.Newf(pgcode.StringDataRightTruncation, "nil identifier")
+	}
 	switch typ.Family() {
 	case types.BytesFamily:
 		var sv string
