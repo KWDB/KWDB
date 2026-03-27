@@ -239,10 +239,10 @@ var (
 		"sampling ratio for block filter, valid range is (0.0, 1.0]",
 		0.2)
 
-	tsCountRecalcPeriod = settings.RegisterPublicIntSetting(
-		"ts.count_recalc.cycle",
-		"the cycle of count recalculation, unit in seconds, set to 0 to disable count recalc",
-		60*5)
+	tsAggRecalcPeriod = settings.RegisterPublicIntSetting(
+		"ts.agg_recalc.cycle",
+		"the cycle of agg recalculation, unit in seconds, set to 0 to disable agg recalc",
+		60*30)
 
 	tsMetricSchemaCacheMaxSize = settings.RegisterPublicValidatedIntSetting(
 		"ts.metric_schema_cache.max_limit",
@@ -259,6 +259,11 @@ var (
 		"ts.force_re_compress.enabled",
 		"whether to force recompression when block span gets compressed data",
 		false)
+
+	tsPartitionAgg = settings.RegisterPublicBoolSetting(
+		"ts.partition_agg.enabled",
+		"use partition aggregation when querying count/sum/max/min",
+		true)
 )
 
 // TODO(peter): Until go1.11, ServeMux.ServeHTTP was not safe to call
@@ -1949,6 +1954,7 @@ func (s *Server) Start(ctx context.Context) error {
 			s.node.storeCfg.TsEngine = s.tsEngine
 			s.distSQLServer.ServerConfig.TsEngine = s.tsEngine
 			s.distSQLServer.ServerConfig.TsIDGen = s.execCfg.TsIDGen
+			s.tsEngine.TsIDGen = s.execCfg.TsIDGen
 
 			tsDBCfg := kvcoord.TsDBConfig{
 				KvDB:         s.db,

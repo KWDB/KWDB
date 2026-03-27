@@ -45,6 +45,7 @@ uint64_t g_duration_level1{90 * 24 * 60 * 60};
 
 uint16_t CLUSTER_SETTING_MAX_ROWS_PER_BLOCK = 1000;
 bool CLUSTER_SETTING_COUNT_USE_STATISTICS = true;
+bool CLUSTER_SETTING_PARTITION_AGG = true;
 
 TSStatus TSOpen(TSEngine** engine, TSSlice dir, TSOptions options,
                 AppliedRangeIndex* applied_indexes, size_t range_num) {
@@ -707,8 +708,8 @@ void TriggerSettingCallback(const std::string& key, const std::string& value) {
       EngineOptions::g_dedup_rule = kwdbts::DedupRule::OVERRIDE;
     } else if ("merge" == value) {
       EngineOptions::g_dedup_rule = kwdbts::DedupRule::MERGE;
-    } else if ("keep" == value) {
-      EngineOptions::g_dedup_rule = kwdbts::DedupRule::KEEP;
+    } else if ("keep.experimental" == value) {
+      EngineOptions::g_dedup_rule = kwdbts::DedupRule::KEEP_EXPERIMENTAL;
     } else if ("discard" == value) {
       EngineOptions::g_dedup_rule = kwdbts::DedupRule::DISCARD;
     } else {
@@ -753,12 +754,14 @@ void TriggerSettingCallback(const std::string& key, const std::string& value) {
     EngineOptions::last_cache_max_size = atoll(value.c_str());
   } else if ("ts.block_filter.sampling_ratio" == key) {
     EngineOptions::block_filter_sampling_ratio = atof(value.c_str());
-  } else if ("ts.count_recalc.cycle" == key) {
-    EngineOptions::count_stats_recalc_cycle = atoi(value.c_str());
+  } else if ("ts.agg_recalc.cycle" == key) {
+    EngineOptions::agg_stats_recalc_cycle = atoi(value.c_str());
   } else if ("ts.metric_schema_cache.max_limit" == key) {
     EngineOptions::metric_schema_cache_capacity = atoi(value.c_str());
   } else if ("ts.force_re_compress.enabled" == key) {
     EngineOptions::force_re_compress = ("true" == value);
+  } else if ("ts.partition_agg.enabled" == key) {
+    CLUSTER_SETTING_PARTITION_AGG = "true" == value;
   }
 #ifndef KWBASE_OSS
   else if ("ts.storage.autonomy.mode" == key) {  // NOLINT
@@ -1072,7 +1075,7 @@ TSStatus TsDeleteTotalRange(TSEngine* engine, TSTableID table_id, uint64_t begin
 
 // Create a snapshot object to read local data
 TSStatus TSCreateSnapshotForRead(TSEngine* engine, TSTableID table_id, uint64_t begin_hash, uint64_t end_hash,
-                                 KwTsSpan ts_span, uint64_t* snapshot_id) {
+                                 KwTsSpan ts_span, uint64_t osn, uint64_t* snapshot_id) {
   kwdbContext_t context;
   kwdbContext_p ctx_p = &context;
   KStatus s = InitServerKWDBContext(ctx_p);
@@ -1082,7 +1085,7 @@ TSStatus TSCreateSnapshotForRead(TSEngine* engine, TSTableID table_id, uint64_t 
 
   ctx_p->ts_engine = engine;
   bool is_dropped = false;
-  s = engine->CreateSnapshotForRead(ctx_p, table_id, begin_hash, end_hash, ts_span, snapshot_id, is_dropped);
+  s = engine->CreateSnapshotForRead(ctx_p, table_id, begin_hash, end_hash, ts_span, osn, snapshot_id, is_dropped);
   if (s != KStatus::SUCCESS) {
     return ToTsStatus("CreateSnapshot Error!");
   }

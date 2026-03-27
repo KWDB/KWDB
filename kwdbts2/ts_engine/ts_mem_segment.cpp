@@ -365,6 +365,33 @@ bool TsMemSegment::GetAllEntityRows(std::list<const TSMemSegRowData*>* rows) {
   return true;
 }
 
+KStatus TsMemSegment::GetMaxOSN(uint32_t db_id, TSTableID table_id, TSEntityID entity_id,
+                                const KwTsSpan& span, TS_OSN& max_osn) {
+  max_osn = 0;
+  if (0 == intent_row_num_.load()) {
+    return KStatus::SUCCESS;
+  }
+  SkiplistIterator iter(&skiplist_);
+  TSMemSegRowData key_begin(db_id, table_id, 0, entity_id);
+  key_begin.SetData(span.begin, 0);
+  iter.Seek(&key_begin);
+  while (iter.Valid()) {
+    const TSMemSegRowData* row_data = skiplist_.ParseKey(iter.key());
+    if (row_data->GetTableId() != table_id) {
+      break;
+    }
+    if (row_data->GetEntityId() != entity_id) {
+      break;
+    }
+    if (row_data->GetTS() > span.end) {
+      break;
+    }
+    max_osn = std::max(max_osn, row_data->GetOSN());
+    iter.Next();
+  }
+  return KStatus::SUCCESS;
+}
+
 KStatus TsMemSegment::GetBlockSpans(std::list<shared_ptr<TsBlockSpan>>& blocks, TsEngineSchemaManager* schema_mgr) {
   if (0 == intent_row_num_.load(std::memory_order_relaxed)) {
     return KStatus::SUCCESS;

@@ -32,9 +32,11 @@
 #include "ts_mem_segment_mgr.h"
 #include "ts_version.h"
 #include "ts_partition_interval_recorder.h"
+#include "ts_partition_agg.h"
 
 extern uint16_t CLUSTER_SETTING_MAX_ROWS_PER_BLOCK;         // PARTITION_ROWS from cluster setting
 extern bool CLUSTER_SETTING_COUNT_USE_STATISTICS;          // COUNT_USE_STATISTICS from cluster setting
+extern bool CLUSTER_SETTING_PARTITION_AGG;
 
 namespace kwdbts {
 
@@ -83,14 +85,15 @@ class TsVGroup {
   // Id of the compact thread
   KThreadID compact_thread_id_{0};
 
-  // count thread flag
-  bool enable_recalc_count_thread_{true};
-  // Id of the count thread
-  KThreadID recalc_count_thread_id_{0};
   std::mutex recalc_count_mutex_;
-  std::condition_variable count_cv_;
-
   std::map<PartitionIdentifier, std::map<TSTableID, std::unordered_set<TSEntityID>>> recalc_count_entities_;
+
+  // partition agg thread flag
+  bool enable_cal_agg_thread_{true};
+  // Id of the partition agg thread
+  KThreadID calc_agg_thread_id_{0};
+  std::mutex calc_agg_mutex_;
+  std::condition_variable agg_cv_;
 
   std::atomic<uint64_t> max_osn_{LOG_BLOCK_HEADER_SIZE + BLOCK_SIZE};
 
@@ -238,7 +241,7 @@ class TsVGroup {
                       const std::shared_ptr<TsTableSchemaManager>& table_schema_mgr,
                       const std::shared_ptr<MMapMetricsTable>& schema, TsStorageIterator** iter,
                       const std::shared_ptr<TsVGroup>& vgroup,
-                      const std::vector<timestamp64>& ts_points, bool reverse, bool sorted,
+                      const std::vector<timestamp64>& ts_points, bool reverse, bool sorted, TS_OSN scan_osn,
                       const FillParams& fill_params);
 
   KStatus GetMetricIteratorByOSN(kwdbContext_p ctx, const std::shared_ptr<TsVGroup>& vgroup,
@@ -303,19 +306,18 @@ class TsVGroup {
   KStatus getEntityIdByPTag(kwdbContext_p ctx, TSTableID table_id, TSSlice& ptag, TSEntityID* entity_id);
 
   KStatus undoDeleteTag(kwdbContext_p ctx, uint64_t table_id, TSSlice& primary_tag, TS_OSN log_lsn,
-                        uint32_t group_id, uint32_t entity_id, TSSlice& tags, uint64_t osn = 0);
+                        uint32_t group_id, uint32_t entity_id, TSSlice& tags, uint64_t osn);
 
   KStatus redoPutTag(kwdbContext_p ctx, kwdbts::TS_OSN log_lsn, const TSSlice& payload);
 
   KStatus undoPutTag(kwdbContext_p ctx, TS_OSN log_lsn, const TSSlice& payload);
 
-  KStatus redoUpdateTag(kwdbContext_p ctx, kwdbts::TS_OSN log_lsn, const TSSlice& payload, uint64_t osn = 0);
+  KStatus redoUpdateTag(kwdbContext_p ctx, kwdbts::TS_OSN log_lsn, const TSSlice& payload);
 
-  KStatus undoUpdateTag(kwdbContext_p ctx, TS_OSN log_lsn, TSSlice payload, const TSSlice& old_payload,
-                        uint64_t osn = 0);
+  KStatus undoUpdateTag(kwdbContext_p ctx, TS_OSN log_lsn, TSSlice payload, const TSSlice& old_payload);
 
   KStatus redoDeleteTag(kwdbContext_p ctx, uint64_t table_id, TSSlice& primary_tag, kwdbts::TS_OSN log_lsn,
-                        uint32_t group_id, uint32_t entity_id, TSSlice& tags, uint64_t osn = 0);
+                        uint32_t group_id, uint32_t entity_id, TSSlice& tags, uint64_t osn);
 
   /**
    * @brief Start a mini-transaction for the current EntityGroup.
@@ -490,6 +492,11 @@ class TsVGroup {
   // Recalculate count stat.
   KStatus RecalcCountStat();
 
+  KStatus CalcPartitionAgg();
+
+  // Initialize calculate aggregation thread.
+  void initCalcAggThread();
+
  private:
   // check partition of rows exist. if not creating it.
   // KStatus makeSurePartitionExist(TSTableID table_id, const std::list<TSMemSegRowData>& rows);
@@ -505,14 +512,22 @@ class TsVGroup {
   // Close compact thread.
   void closeCompactThread();
 
-  // Thread scheduling executes compact tasks to clean up items that require erasing.
-  void recalcCountRoutine(void* args);
-  // Initialize count thread.
-  void initRecalcCountThread();
-  // Close count thread.
-  void closeRecalcCountThread();
+  // Thread scheduling executes calculate aggregation tasks.
+  void calcAggRoutine(void* args);
+  // Close calculate aggregation thread.
+  void closeCalcAggThread();
 
-  KStatus PartitionCompact(std::shared_ptr<const TsPartitionVersion> partition, bool call_by_vacuum = false);
+  struct ClassifiedEntities {
+    std::vector<uint32_t> calc_entities_;
+    std::vector<uint32_t> copy_entities_;
+  };
+
+  KStatus GetCalcEntities(PartitionIdentifier par_id, const shared_ptr<const TsPartitionVersion>& partition,
+    const std::map<std::shared_ptr<TsTableSchemaManager>, std::vector<uint32_t>>& table_entity_map,
+    std::map<std::shared_ptr<TsTableSchemaManager>, ClassifiedEntities>& cla_entities, bool* should_calc);
+
+  KStatus PartitionCompact(std::shared_ptr<const TsPartitionVersion> partition,
+                           bool call_by_vacuum = false, bool force_vacuum = false);
 
   KStatus ConvertBlockSpanToResultSet(const std::vector<k_uint32>& kw_scan_cols, const TsBlockSpan& ts_blk_span,
                                       const vector<AttributeInfo>& attrs, ResultSet* res);

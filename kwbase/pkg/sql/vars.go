@@ -1127,6 +1127,23 @@ var varGen = map[string]sessionVar{
 			return "off"
 		},
 	},
+	`pg_extend_compress`: {
+		Set: func(_ context.Context, m *sessionDataMutator, s string) error {
+			mode, ok := sessiondata.PgCompressModeFromString(s)
+			if !ok {
+				return newVarValueError(`pg_extend_compress`, s,
+					"off", "lz4_compress", "snappy_compress")
+			}
+			m.SetPgExtend(mode)
+			return nil
+		},
+		Get: func(evalCtx *extendedEvalContext) string {
+			return evalCtx.SessionData.PgExtendCompressMode.String()
+		},
+		GlobalDefault: func(sv *settings.Values) string {
+			return "off"
+		},
+	},
 }
 
 const compatErrMsg = "this parameter is currently recognized only for compatibility and has no effect in CockroachDB."

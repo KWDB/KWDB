@@ -60,8 +60,8 @@ enum TSTableReadMode {
 message TSBlockFilter {
   // filter type
   enum type {
-    T_SPAN = 0;  // span
-    T_NULL = 1;  // is null
+    T_SPAN = 0; // span
+    T_NULL = 1; // is null
     T_NOTNULL = 2; // is not null
   }
   // filter span
@@ -69,14 +69,14 @@ message TSBlockFilter {
     // Boundary type
     enum SpanBoundary {
       IncludeBoundary = 0; // include
-      ExcludeBoundary= 1;  // exclude
+      ExcludeBoundary= 1; // exclude
     }
     optional string start = 1; // left value
     optional string end = 2;  // right value
     optional SpanBoundary startBoundary= 3; // left boundary type
     optional SpanBoundary endBoundary= 4; // right boundary type
   }
-  required uint32 colID = 1;   // column id
+  required uint32 colID = 1; // column id
   required type filterType = 2; // filter type
   repeated Span columnSpan = 3; // multi filter spans
 }
@@ -213,6 +213,7 @@ message TSTagReaderSpec {
     repeated TagValueArray TagValues = 1[(gogoproto.nullable) = false];
   }
   repeated TagIndexInfo TagIndexes = 13 [(gogoproto.nullable) = false];
+  optional uint64 osnID = 14 [(gogoproto.nullable) = false];
 }
 
 enum SketchMethod {

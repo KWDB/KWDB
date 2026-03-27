@@ -421,6 +421,45 @@ void BaseAggregator::CalculateAggOffsets() {
   }
 }
 
+k_uint32 BaseAggregator::CalculateAggEffectiveWidth(DatumRowPtr bucket) const {
+  if (bucket == nullptr || param_.aggs_size_ == 0) {
+    return 0;
+  }
+
+  k_uint32 width = (param_.aggs_size_ + 7) / 8;
+  const char* agg_null_bitmap = bucket + agg_null_offset_;
+  for (int i = 0; i < param_.aggs_size_; ++i) {
+    if (AggregateFunc::IsNull(agg_null_bitmap, i)) {
+      continue;
+    }
+
+    k_uint32 col_width = param_.aggs_[i]->get_storage_length();
+    roachpb::DataType storage_type = param_.aggs_[i]->get_storage_type();
+    DatumPtr val_ptr = bucket + func_offsets_[i];
+    if (IsVarStringType(storage_type)) {
+      col_width = STRING_WIDE + *reinterpret_cast<k_uint16*>(val_ptr);
+    } else if (IsFixedStringType(storage_type)) {
+      col_width += STRING_WIDE;
+    } else if (storage_type == roachpb::DataType::DECIMAL) {
+      col_width += BOOL_WIDE;
+    }
+
+    if (aggregations_[i].func() == TSAggregatorSpec_Func::TSAggregatorSpec_Func_AVG) {
+      col_width += sizeof(k_int64);
+    } else if (aggregations_[i].func() == TSAggregatorSpec_Func::TSAggregatorSpec_Func_ELAPSED) {
+      col_width += sizeof(ElapsedInfo);
+    } else if (aggregations_[i].func() == TSAggregatorSpec_Func::TSAggregatorSpec_Func_TWA) {
+      col_width += sizeof(TwaInfo);
+    }
+
+    if (IsFirstLastAggFunc(aggregations_[i].func())) {
+      col_width += sizeof(KTimestamp);
+    }
+    width += col_width;
+  }
+  return width;
+}
+
 void BaseAggregator::InitFirstLastTimeStamp(DatumRowPtr ptr) {
   for (int i = 0; i < aggregations_.size(); i++) {
     auto func_type = aggregations_[i].func();
@@ -484,8 +523,6 @@ HashAggregateOperator::~HashAggregateOperator() {
   if (is_clone_) {
     delete childrens_[0];
   }
-
-  SafeDeletePointer(ht_);
 }
 
 EEIteratorErrCode HashAggregateOperator::Init(kwdbContext_p ctx) {
@@ -504,8 +541,8 @@ EEIteratorErrCode HashAggregateOperator::Init(kwdbContext_p ctx) {
     group_types.push_back(input_fields[col]->get_storage_type());
     group_allow_null.push_back(input_fields[col]->is_allow_null());
   }
-  ht_ = KNEW LinearProbingHashTable(group_types, group_lens, agg_row_size_, group_allow_null);
-  if (ht_ == nullptr || ht_->Resize() < 0) {
+  ht_ = std::make_unique<LinearProbingHashTable>(group_types, group_lens, agg_row_size_, group_allow_null, true);
+  if (ht_ == nullptr || ht_->Initialize() != KStatus::SUCCESS) {
     EEPgErrorInfo::SetPgErrorInfo(ERRCODE_OUT_OF_MEMORY, "Insufficient memory");
     Return(EEIteratorErrCode::EE_ERROR);
   }
@@ -532,8 +569,6 @@ EEIteratorErrCode HashAggregateOperator::Start(kwdbContext_p ctx) {
     code = EEIteratorErrCode::EE_ERROR;
   }
 
-  iter_ = ht_->begin();
-
   Return(code);
 }
 
@@ -541,7 +576,7 @@ EEIteratorErrCode HashAggregateOperator::Next(kwdbContext_p ctx,
                                               DataChunkPtr& chunk) {
   EnterFunc();
   if (is_done_) {
-    fetcher_.Update(0, 0, 0, ht_->Capacity() * ht_->tupleSize(), 0, 0);
+    fetcher_.Update(0, 0, 0, ht_->Capacity() * ht_->TupleSize(), 0, 0);
     Return(EEIteratorErrCode::EE_END_OF_RECORD);
   }
   KWThdContext *thd = current_thd;
@@ -586,17 +621,17 @@ KStatus HashAggregateOperator::accumulateBatch(kwdbContext_p ctx,
     Return(KStatus::SUCCESS);
   }
   for (k_uint32 line = 0; line < chunk->Count(); ++line) {
-    k_uint64 loc;
-    int ret = ht_->FindOrCreateGroups(chunk, line, group_cols_, &loc);
-    if (ret < 0) {
-      Return(KStatus::FAIL);
+    DatumPtr agg_ptr = nullptr;
+    size_t hash_val;
+    k_bool is_used;
+    k_bool is_abandoned;
+    KStatus ret = ht_->FindOrCreateGroupsAndAddTuple(chunk, line, group_cols_, agg_ptr, &hash_val, &is_used, &is_abandoned);
+    if (ret != KStatus::SUCCESS) {
+      Return(ret);
     }
-    auto agg_ptr = ht_->GetAggResult(loc);
-
-    if (ret == 1) {
-      ht_->SetUsed(loc);
+    if (!is_used) {
       // copy group keys from data chunk to hash table
-      ht_->CopyGroups(chunk, line, group_cols_, loc);
+      // ht_->CopyGroups(chunk, line, group_cols_, loc, hash_val);
 
       InitFirstLastTimeStamp(agg_ptr);
     }
@@ -613,27 +648,13 @@ KStatus HashAggregateOperator::accumulateBatch(kwdbContext_p ctx,
       }
       funcs_[i]->addOrUpdate(agg_ptr, agg_ptr + agg_null_offset_, chunk, line);
     }
+    ht_->UpdateAggEffectiveWidth(CalculateAggEffectiveWidth(agg_ptr));
+    if (is_abandoned) {
+      if (KStatus::SUCCESS != ht_->SaveAggTupleToDisk(agg_ptr)) {
+        return KStatus::FAIL;
+      }
+    }
   }
-  Return(KStatus::SUCCESS);
-}
-
-KStatus HashAggregateOperator::accumulateRow(kwdbContext_p ctx, DataChunkPtr& chunk, k_uint32 line) {
-  EnterFunc();
-
-  k_uint64 loc;
-  if (ht_->FindOrCreateGroups(chunk.get(), line, group_cols_, &loc) < 0) {
-    Return(KStatus::FAIL);
-  }
-  auto agg_ptr = ht_->GetAggResult(loc);
-  if (!ht_->IsUsed(loc)) {
-    ht_->SetUsed(loc);
-    // copy group keys from data chunk to hash table
-    ht_->CopyGroups(chunk.get(), line, group_cols_, loc);
-
-    InitFirstLastTimeStamp(agg_ptr);
-  }
-  accumulateRowIntoBucket(ctx, agg_ptr, agg_null_offset_, chunk.get(), line);
-
   Return(KStatus::SUCCESS);
 }
 
@@ -657,7 +678,9 @@ KStatus HashAggregateOperator::accumulateRows(kwdbContext_p ctx) {
     }
     // LOG_ERROR("begin to print HashAggregateOperator child chunk data :");
     // chunk->DebugPrintData();
-    accumulateBatch(ctx, chunk.get());
+    if (KStatus::SUCCESS != accumulateBatch(ctx, chunk.get())) {
+      Return(KStatus::FAIL);
+    }
     auto end = std::chrono::high_resolution_clock::now();
     fetcher_.Update(chunk->Count(), (end - start).count(), 0, 0, 0, 0);
   }
@@ -666,10 +689,11 @@ KStatus HashAggregateOperator::accumulateRows(kwdbContext_p ctx) {
   auto start = std::chrono::high_resolution_clock::now();
   if (ht_->Empty() && group_cols_.empty()) {
     // retrun NULL
-    k_uint64 loc = ht_->CreateNullGroups();
+    k_uint64 loc;
+    k_bool is_used;
+    ht_->CreateNullGroups(&loc, &is_used);
     auto agg_ptr = ht_->GetAggResult(loc);
-    if (!ht_->IsUsed(loc)) {
-      ht_->SetUsed(loc);
+    if (!is_used) {
       InitFirstLastTimeStamp(agg_ptr);
     }
 
@@ -682,6 +706,7 @@ KStatus HashAggregateOperator::accumulateRows(kwdbContext_p ctx) {
         AggregateFunc::SetNotNull(agg_ptr + agg_null_offset_, i);
       }
     }
+    ht_->UpdateAggEffectiveWidth(CalculateAggEffectiveWidth(agg_ptr));
   }
   auto end = std::chrono::high_resolution_clock::now();
   fetcher_.Update(0, (end - start).count(), 0, 0, 0, 0);
@@ -697,12 +722,23 @@ KStatus HashAggregateOperator::getAggResults(kwdbContext_p ctx,
   // row indicates indicates the row position inserted into the current
   // DataChunk
   k_uint32 row = 0;
-  while (total_read_row_ < ht_->Size()) {
+  while (true) {
+    DatumPtr ptr = ht_->NextLine();
+
+    if (ptr == nullptr) {
+      // load from disk
+      if (ht_->Combine(&funcs_, agg_null_offset_) != KStatus::SUCCESS) {
+        Return(KStatus::FAIL);
+      }
+      ptr = ht_->NextLine();
+      if (ptr == nullptr) {
+        break;
+      }
+    }
     // filter
     if (nullptr != having_filter_) {
       k_int64 ret = having_filter_->ValInt();
       if (0 == ret) {
-        ++iter_;
         ++total_read_row_;
         continue;
       }
@@ -717,14 +753,12 @@ KStatus HashAggregateOperator::getAggResults(kwdbContext_p ctx,
     // offset
     if (cur_offset_ > 0) {
       --cur_offset_;
-      ++iter_;
       ++total_read_row_;
       continue;
     }
 
     FieldsToChunk(GetRender(), GetRenderSize(), row, results);
 
-    ++iter_;
     ++examined_rows_;
     ++total_read_row_;
     results->AddCount();
@@ -737,7 +771,7 @@ KStatus HashAggregateOperator::getAggResults(kwdbContext_p ctx,
     }
   }
 
-  if (total_read_row_ == ht_->Size()) {
+  if (total_read_row_ == ht_->Size() && ht_->AbandonedSize() == 0) {
     is_done_ = true;
   }
   Return(KStatus::SUCCESS);

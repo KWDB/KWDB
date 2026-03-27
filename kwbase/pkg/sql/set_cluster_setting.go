@@ -143,7 +143,7 @@ func (p *planner) SetClusterSetting(
 type CheckOperation func(string) error
 
 func checkTsDedupRule(encodedValue string) error {
-	if encodedValue != "merge" && encodedValue != "keep" && encodedValue != "discard" && encodedValue != "override" {
+	if encodedValue != "merge" && encodedValue != "keep.experimental" && encodedValue != "discard" && encodedValue != "override" {
 		return errors.New("ts.dedup.rule setting value is not right")
 	}
 	return nil
@@ -266,8 +266,8 @@ func checkTsCountRecalcCycle(encodedValue string) error {
 	if err != nil {
 		return err
 	}
-	if value < 0 {
-		return errors.New("invalid value, the ts.count_recalc.cycle should be nonnegative integer")
+	if value < 0 || value > 86400 {
+		return errors.New("invalid value, the range of ts.agg_recalc.cycle is [0, 86400]")
 	}
 	return nil
 }
@@ -287,8 +287,9 @@ var CheckClusterSetting = map[string]CheckOperation{
 	"ts.reserved_last_segment.max_limit": checkTsReservedLastSegmentMaxLimit,
 	"ts.force_sync_file.enabled":         checkBool,
 	"ts.block_filter.sampling_ratio":     checkTsBlockFilterSamplingRatio,
-	"ts.count_recalc.cycle":              checkTsCountRecalcCycle,
+	"ts.agg_recalc.cycle":                checkTsCountRecalcCycle,
 	"ts.force_re_compress.enabled":       checkBool,
+	"ts.partition_agg.enabled":           checkBool,
 }
 
 // TsRaftlogCombineWalClusterSettingName is the name of the ts raftlog combine wal cluster setting.

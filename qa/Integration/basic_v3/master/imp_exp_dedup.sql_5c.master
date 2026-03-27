@@ -104,7 +104,7 @@ INSERT 1
 (2 rows)
 > drop table test.tb1;
 DROP TABLE
-> SET CLUSTER SETTING ts.dedup.rule = 'keep';
+> SET CLUSTER SETTING ts.dedup.rule = 'keep.experimental';
 SET CLUSTER SETTING
 > create table test.tb1(k_timestamp timestamptz not null,  usage_user INT8,
                       usage_system INT8,

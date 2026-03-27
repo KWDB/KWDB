@@ -521,12 +521,21 @@ KStatus WALBufferMgr::readUncommittedTxnID(std::vector<uint64_t>& uncommitted_id
     char* read_buf;
 
     auto current_block = read_queue.front();
-    size_t offset_in_block = current_offset - file_mgr_->GetLSNFromBlockNo(current_block->getBlockNo());
+    TS_OSN blk_lsn = file_mgr_->GetLSNFromBlockNo(current_block->getBlockNo());
+    if (blk_lsn == 0) {
+      status = FAIL;
+      break;
+    }
+    size_t offset_in_block = current_offset - blk_lsn;
     if (offset_in_block == LOG_BLOCK_MAX_LOG_SIZE) {
       read_queue.pop();
       if (!read_queue.empty()) {
         current_block = read_queue.front();
         current_offset = file_mgr_->GetLSNFromBlockNo(current_block->getBlockNo());
+        if (current_offset == 0) {
+          status = FAIL;
+          break;
+        }
         current_lsn = current_offset;
       } else {
         status = FAIL;
@@ -814,7 +823,12 @@ KStatus WALBufferMgr::readAllTxnID(std::unordered_map<uint64_t, txnOp>& txn_op, 
     char* read_buf = nullptr;
 
     auto current_block = read_queue.front();
-    size_t offset_in_block = current_offset - file_mgr_->GetLSNFromBlockNo(current_block->getBlockNo());
+    TS_OSN blk_lsn = file_mgr_->GetLSNFromBlockNo(current_block->getBlockNo());
+    if (blk_lsn == 0) {
+      status = FAIL;
+      break;
+    }
+    size_t offset_in_block = current_offset - blk_lsn;
     if (offset_in_block == LOG_BLOCK_MAX_LOG_SIZE) {
       read_queue.pop();
       if (!read_queue.empty()) {
@@ -1142,7 +1156,11 @@ KStatus WALBufferMgr::readBytes(TS_OSN& start_offset,
     read_size += n_read;
   }
 
-  start_offset = file_mgr_->GetLSNFromBlockNo(current_block->getBlockNo()) + offset_in_block;;
+  lsn = file_mgr_->GetLSNFromBlockNo(current_block->getBlockNo());
+  if (lsn == 0) {
+    return KStatus::FAIL;
+  }
+  start_offset = lsn + offset_in_block;;
   return SUCCESS;
 }
 

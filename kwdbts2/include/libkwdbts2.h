@@ -400,7 +400,7 @@ TSStatus TsDeleteTotalRange(TSEngine* engine, TSTableID table_id, uint64_t begin
  * @return
  */
 TSStatus TSCreateSnapshotForRead(TSEngine* engine, TSTableID table_id, uint64_t begin_hash, uint64_t end_hash,
-                                 KwTsSpan ts_span, uint64_t* snapshot_id);
+                                 KwTsSpan ts_span, uint64_t osn, uint64_t* snapshot_id);
 
 /**
  * @brief Return the data that needs to be transmitted this time. If the data is 0, it means that all data has been queried

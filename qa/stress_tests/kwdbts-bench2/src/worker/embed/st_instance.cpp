@@ -82,8 +82,8 @@ void StInstance::SetInputParams(const std::string& key, const std::string& value
       dedup_rule_ = kwdbts::DedupRule::OVERRIDE;
     } else if ("merge" == value) {
       dedup_rule_ = kwdbts::DedupRule::MERGE;
-    } else if ("keep" == value) {
-      dedup_rule_ = kwdbts::DedupRule::KEEP;
+    } else if ("keep.experimental" == value) {
+      dedup_rule_ = kwdbts::DedupRule::KEEP_EXPERIMENTAL;
     } else if ("reject" == value) {
       dedup_rule_ = kwdbts::DedupRule::REJECT;
     } else if ("discard" == value) {

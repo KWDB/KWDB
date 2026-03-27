@@ -46,7 +46,7 @@ class TestV2DeleteTest : public ::testing::Test {
     engine_ = new TSEngineImpl(opts_);
     auto s = engine_->Init(ctx_);
     EXPECT_EQ(s, KStatus::SUCCESS);
-    EngineOptions::g_dedup_rule = DedupRule::KEEP;
+    EngineOptions::g_dedup_rule = DedupRule::KEEP_EXPERIMENTAL;
   }
 
   ~TestV2DeleteTest() override {
@@ -100,7 +100,7 @@ class TestV2DeleteTest : public ::testing::Test {
     FillParams fill_params;
     auto s = entity_v_group->GetIterator(ctx_, table_schema_mgr->GetCurrentVersion(), entity_ids, ts_spans, block_filter,
                         scan_cols, scan_cols, agg_extend_cols, scan_agg_types, table_schema_mgr,
-                        schema, &ts_iter, entity_v_group, ts_points, false, false, fill_params);
+                        schema, &ts_iter, entity_v_group, ts_points, false, false, UINT64_MAX, fill_params);
     ASSERT_EQ(s, KStatus::SUCCESS);
 
     ResultSet res{(k_uint32) scan_cols.size()};

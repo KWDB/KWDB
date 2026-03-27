@@ -20,7 +20,7 @@ k_bool FieldAggNum::is_nullable() {
   HashAggregateOperator *hash_agg_op =
       dynamic_cast<HashAggregateOperator *>(op_);
   if (hash_agg_op != nullptr) {
-    DatumRowPtr data = *(hash_agg_op->iter_);
+    DatumRowPtr data = hash_agg_op->ht_->CurrentLine();
     if (!data) return false;
 
     char *bitmap = data + hash_agg_op->agg_null_offset_;
@@ -46,7 +46,7 @@ char *FieldAggNum::get_ptr() {
       dynamic_cast<HashAggregateOperator *>(op_);
   if (hash_agg_op != nullptr) {
     // data + offset
-    DatumRowPtr data = *(hash_agg_op->iter_);
+    DatumRowPtr data = hash_agg_op->ht_->CurrentLine();
     if (!data) return nullptr;
 
     return hash_agg_op->funcs_[num_]->Result(data);

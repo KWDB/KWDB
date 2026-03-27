@@ -128,7 +128,7 @@ TEST_F(TestV2IteratorByOSN, basic_insert) {
   uint32_t count;
   std::vector<HashIdSpan> hash_id_spans;
   hash_id_spans.push_back({2, 2});
-  s = ts_table_->GetTagIteratorByOSN(ctx_, table_version, scan_cols, osn_spans, &hash_id_spans, &iter);
+  s = ts_table_->GetTagIteratorByOSN(ctx_, table_version, scan_cols, osn_spans, UINT64_MAX, &hash_id_spans, &iter);
   ASSERT_EQ(s, KStatus::SUCCESS);
   s = iter->Next(&entity_id_list, &rs, &count);
   ASSERT_EQ(s, KStatus::SUCCESS);
@@ -142,28 +142,24 @@ TEST_F(TestV2IteratorByOSN, basic_insert) {
   osn_spans.push_back({0, 1760000 - 1});
   entity_id_list.clear();
   rs.clear();
-  s = ts_table_->GetTagIteratorByOSN(ctx_, table_version, scan_cols, osn_spans, &hash_id_spans, &iter);
+  s = ts_table_->GetTagIteratorByOSN(ctx_, table_version, scan_cols, osn_spans, UINT64_MAX, &hash_id_spans, &iter);
   ASSERT_EQ(s, KStatus::SUCCESS);
   s = iter->Next(&entity_id_list, &rs, &count);
   ASSERT_EQ(s, KStatus::SUCCESS);
-  ASSERT_EQ(count, 1);
-  op_osn = reinterpret_cast<OperatorInfoOfRecord*>(entity_id_list[0].op_with_osn.get());
-  ASSERT_TRUE(op_osn != nullptr);
-  ASSERT_TRUE(op_osn->osn == 0);
-  ASSERT_TRUE(op_osn->type == OperatorTypeOfRecord::OP_TYPE_TAG_EXISTED);
+  ASSERT_EQ(count, 0);
   delete iter;
   osn_spans.clear();
   osn_spans.push_back({1760000 + 1, UINT64_MAX});
   entity_id_list.clear();
   rs.clear();
-  s = ts_table_->GetTagIteratorByOSN(ctx_, table_version, scan_cols, osn_spans, &hash_id_spans, &iter);
+  s = ts_table_->GetTagIteratorByOSN(ctx_, table_version, scan_cols, osn_spans, UINT64_MAX, &hash_id_spans, &iter);
   ASSERT_EQ(s, KStatus::SUCCESS);
   s = iter->Next(&entity_id_list, &rs, &count);
   ASSERT_EQ(s, KStatus::SUCCESS);
   ASSERT_EQ(count, 1);
   op_osn = reinterpret_cast<OperatorInfoOfRecord*>(entity_id_list[0].op_with_osn.get());
   ASSERT_TRUE(op_osn != nullptr);
-  ASSERT_TRUE(op_osn->osn == 0);
+  ASSERT_TRUE(op_osn->osn == 1760000);
   ASSERT_TRUE(op_osn->type == OperatorTypeOfRecord::OP_TYPE_TAG_EXISTED);
   delete iter;
 
@@ -220,7 +216,7 @@ TEST_F(TestV2IteratorByOSN, basic_udpate) {
   uint32_t count;
   std::vector<HashIdSpan> hash_id_spans;
   hash_id_spans.push_back({2, 2});
-  s = ts_table_->GetTagIteratorByOSN(ctx_, table_version, scan_cols, osn_spans, &hash_id_spans, &iter);
+  s = ts_table_->GetTagIteratorByOSN(ctx_, table_version, scan_cols, osn_spans, UINT64_MAX, &hash_id_spans, &iter);
   ASSERT_EQ(s, KStatus::SUCCESS);
   uint32_t total = 0;
   do {
@@ -231,8 +227,8 @@ TEST_F(TestV2IteratorByOSN, basic_udpate) {
   ASSERT_EQ(total, 1);
   auto op_osn = reinterpret_cast<OperatorInfoOfRecord*>(entity_id_list[0].op_with_osn.get());
   ASSERT_TRUE(op_osn != nullptr);
-  ASSERT_TRUE(op_osn->osn == 0);
-  ASSERT_TRUE(op_osn->type == OperatorTypeOfRecord::OP_TYPE_TAG_EXISTED);
+  ASSERT_TRUE(op_osn->osn == 1770000);
+  ASSERT_TRUE(op_osn->type == OperatorTypeOfRecord::OP_TYPE_TAG_UPDATE);
   delete iter;
 
   kwdbts::TsIterator *m_iter;
@@ -250,11 +246,11 @@ TEST_F(TestV2IteratorByOSN, basic_udpate) {
     ASSERT_EQ(s, KStatus::SUCCESS);
     total += count;
   } while (count > 0);
-  ASSERT_EQ(total,  1);
-  ASSERT_EQ(KUint64(m_rs.data[0][0]->mem), 3600);
-  ASSERT_EQ(KUint64(m_rs.data[1][0]->mem), 1760000);
-  ASSERT_EQ(KUint8(m_rs.data[2][0]->mem), 1);
-  ASSERT_EQ(KUint8(m_rs.data[3][0]->mem), 0);
+  ASSERT_EQ(total,  2);
+  ASSERT_EQ(KUint64(m_rs.data[0][1]->mem), 3600);
+  ASSERT_EQ(KUint64(m_rs.data[1][1]->mem), 1760000);
+  ASSERT_EQ(KUint8(m_rs.data[2][1]->mem), 1);
+  ASSERT_EQ(KUint8(m_rs.data[3][1]->mem), 0);
   delete m_iter;
   m_iter = nullptr;
 
@@ -262,7 +258,7 @@ TEST_F(TestV2IteratorByOSN, basic_udpate) {
   osn_spans.push_back({0, 1780000});
   entity_id_list.clear();
   rs.clear();
-  s = ts_table_->GetTagIteratorByOSN(ctx_, table_version, scan_cols, osn_spans, &hash_id_spans, &iter);
+  s = ts_table_->GetTagIteratorByOSN(ctx_, table_version, scan_cols, osn_spans, UINT64_MAX, &hash_id_spans, &iter);
   ASSERT_EQ(s, KStatus::SUCCESS);
   total = 0;
   do {
@@ -308,7 +304,7 @@ TEST_F(TestV2IteratorByOSN, basic_udpate) {
   entity_id_list.clear();
   ResultSet res;
   res.setColumnNum(1);
-  s = ts_table_->GetEntityIdListByOSN(ctx_, pkeys, osn_spans, scan_cols, &hash_id_spans, &entity_id_list, &res, &count, 1);
+  s = ts_table_->GetEntityIdListByOSN(ctx_, pkeys, osn_spans, UINT64_MAX, scan_cols, &hash_id_spans, &entity_id_list, &res, &count, 1);
   ASSERT_EQ(s, KStatus::SUCCESS);
   ASSERT_EQ(entity_id_list.size(), 1);
   ASSERT_EQ(count, 1);
@@ -353,7 +349,7 @@ TEST_F(TestV2IteratorByOSN, basic_delete) {
   rs.setColumnNum(1);
   std::vector<HashIdSpan> hash_id_spans;
   hash_id_spans.push_back({2, 2}); // hash_id = 2
-  s = ts_table_->GetTagIteratorByOSN(ctx_, table_version, scan_cols, osn_spans, &hash_id_spans, &iter);
+  s = ts_table_->GetTagIteratorByOSN(ctx_, table_version, scan_cols, osn_spans, UINT64_MAX, &hash_id_spans, &iter);
   ASSERT_EQ(s, KStatus::SUCCESS);
   uint32_t total = 0;
   uint32_t count;
@@ -362,15 +358,20 @@ TEST_F(TestV2IteratorByOSN, basic_delete) {
     ASSERT_EQ(s, KStatus::SUCCESS);
     total += count;
   } while (count > 0);
-  ASSERT_EQ(total,  0);
+  ASSERT_EQ(total,  1);
+  auto op_osn = reinterpret_cast<OperatorInfoOfRecord*>(entity_id_list[0].op_with_osn.get());
+  ASSERT_TRUE(op_osn != nullptr);
+  ASSERT_TRUE(op_osn->osn == 1760000);
+  ASSERT_TRUE(op_osn->type == OperatorTypeOfRecord::OP_TYPE_INSERT);
+ 
   delete iter;
 
   osn_spans.clear();
-  osn_spans.push_back({0, 1780000});
+  osn_spans.push_back({0, 1770000});
   entity_id_list.clear();
   rs.clear();
   total = 0;
-  s = ts_table_->GetTagIteratorByOSN(ctx_, table_version, scan_cols, osn_spans, &hash_id_spans, &iter);
+  s = ts_table_->GetTagIteratorByOSN(ctx_, table_version, scan_cols, osn_spans, UINT64_MAX, &hash_id_spans, &iter);
   ASSERT_EQ(s, KStatus::SUCCESS);
   do {
     s = iter->Next(&entity_id_list, &rs, &count);
@@ -378,10 +379,29 @@ TEST_F(TestV2IteratorByOSN, basic_delete) {
     total += count;
   } while (count > 0);
   ASSERT_EQ(total,  1);
-  auto op_osn = reinterpret_cast<OperatorInfoOfRecord*>(entity_id_list[0].op_with_osn.get());
+  delete iter;
+
+  osn_spans.clear();
+  osn_spans.push_back({0, 1780000});
+  entity_id_list.clear();
+  rs.clear();
+  total = 0;
+  s = ts_table_->GetTagIteratorByOSN(ctx_, table_version, scan_cols, osn_spans, UINT64_MAX, &hash_id_spans, &iter);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  do {
+    s = iter->Next(&entity_id_list, &rs, &count);
+    ASSERT_EQ(s, KStatus::SUCCESS);
+    total += count;
+  } while (count > 0);
+  ASSERT_EQ(total,  2);
+  op_osn = reinterpret_cast<OperatorInfoOfRecord*>(entity_id_list[0].op_with_osn.get());
   ASSERT_TRUE(op_osn != nullptr);
   ASSERT_TRUE(op_osn->osn == 1770000);
   ASSERT_TRUE(op_osn->type == OperatorTypeOfRecord::OP_TYPE_TAG_DELETE);
+  op_osn = reinterpret_cast<OperatorInfoOfRecord*>(entity_id_list[1].op_with_osn.get());
+  ASSERT_TRUE(op_osn != nullptr);
+  ASSERT_TRUE(op_osn->osn == 1780000);
+  ASSERT_TRUE(op_osn->type == OperatorTypeOfRecord::OP_TYPE_INSERT);
   delete iter;
 
   kwdbts::TsIterator *m_iter;
@@ -399,11 +419,12 @@ TEST_F(TestV2IteratorByOSN, basic_delete) {
     ASSERT_EQ(s, KStatus::SUCCESS);
     total += count;
   } while (count > 0);
-  ASSERT_EQ(total,  1);
+  ASSERT_EQ(total,  2);
   ASSERT_EQ(m_rs.data[0][0]->mem,  nullptr);
-  ASSERT_EQ(KUint64(m_rs.data[1][0]->mem), 1770000);
-  ASSERT_EQ(KUint8(m_rs.data[2][0]->mem), 3);
-  ASSERT_EQ(KUint8(m_rs.data[3][0]->mem), 0);
+  ASSERT_EQ(KUint64(m_rs.data[0][1]->mem),  4600);
+  ASSERT_EQ(KUint64(m_rs.data[1][1]->mem), 1780000);
+  ASSERT_EQ(KUint8(m_rs.data[2][1]->mem), 1);
+  ASSERT_EQ(KUint8(m_rs.data[3][1]->mem), 0);
   delete m_iter;
   m_iter = nullptr;
 
@@ -412,7 +433,22 @@ TEST_F(TestV2IteratorByOSN, basic_delete) {
   entity_id_list.clear();
   rs.clear();
   total = 0;
-  s = ts_table_->GetTagIteratorByOSN(ctx_, table_version, scan_cols, osn_spans, &hash_id_spans, &iter);
+  s = ts_table_->GetTagIteratorByOSN(ctx_, table_version, scan_cols, osn_spans, UINT64_MAX, &hash_id_spans, &iter);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  do {
+    s = iter->Next(&entity_id_list, &rs, &count);
+    ASSERT_EQ(s, KStatus::SUCCESS);
+    total += count;
+  } while (count > 0);
+  ASSERT_EQ(total,  2);
+  delete iter;
+
+  osn_spans.clear();
+  osn_spans.push_back({1760001, 1780000});
+  entity_id_list.clear();
+  rs.clear();
+  total = 0;
+  s = ts_table_->GetTagIteratorByOSN(ctx_, table_version, scan_cols, osn_spans, 1780000, &hash_id_spans, &iter);
   ASSERT_EQ(s, KStatus::SUCCESS);
   do {
     s = iter->Next(&entity_id_list, &rs, &count);
@@ -426,8 +462,8 @@ TEST_F(TestV2IteratorByOSN, basic_delete) {
   ASSERT_TRUE(op_osn->type == OperatorTypeOfRecord::OP_TYPE_TAG_DELETE);
   op_osn = reinterpret_cast<OperatorInfoOfRecord*>(entity_id_list[1].op_with_osn.get());
   ASSERT_TRUE(op_osn != nullptr);
-  ASSERT_TRUE(op_osn->osn == 1790000);
-  ASSERT_TRUE(op_osn->type == OperatorTypeOfRecord::OP_TYPE_TAG_DELETE);
+  ASSERT_TRUE(op_osn->osn == 1780000);
+  ASSERT_TRUE(op_osn->type == OperatorTypeOfRecord::OP_TYPE_INSERT);
   delete iter;
 
   total = 0;
@@ -446,9 +482,9 @@ TEST_F(TestV2IteratorByOSN, basic_delete) {
   ASSERT_EQ(KUint64(m_rs.data[1][0]->mem), 1770000);
   ASSERT_EQ(KUint8(m_rs.data[2][0]->mem), 3);
   ASSERT_EQ(KUint8(m_rs.data[3][0]->mem), 0);
-  ASSERT_EQ(m_rs.data[0][1]->mem,  nullptr);
-  ASSERT_EQ(KUint64(m_rs.data[1][1]->mem), 1790000);
-  ASSERT_EQ(KUint8(m_rs.data[2][1]->mem), 3);
+  ASSERT_EQ(KUint64(m_rs.data[0][1]->mem),  4600);
+  ASSERT_EQ(KUint64(m_rs.data[1][1]->mem), 1780000);
+  ASSERT_EQ(KUint8(m_rs.data[2][1]->mem), 1);
   ASSERT_EQ(KUint8(m_rs.data[3][1]->mem), 0);
   delete m_iter;
   m_iter = nullptr;
@@ -462,7 +498,7 @@ TEST_F(TestV2IteratorByOSN, basic_delete) {
   entity_id_list.clear();
   ResultSet res;
   res.setColumnNum(1);
-  s = ts_table_->GetEntityIdListByOSN(ctx_, pkeys, osn_spans, scan_cols, &hash_id_spans, &entity_id_list, &res, &count, 1);
+  s = ts_table_->GetEntityIdListByOSN(ctx_, pkeys, osn_spans, UINT64_MAX, scan_cols, &hash_id_spans, &entity_id_list, &res, &count, 1);
   ASSERT_EQ(s, KStatus::SUCCESS);
   ASSERT_EQ(entity_id_list.size(), 2);
   ASSERT_EQ(count, 2);
@@ -501,7 +537,19 @@ TEST_F(TestV2IteratorByOSN, basic_metric_insert) {
   uint32_t count;
   std::vector<HashIdSpan> hash_id_spans;
   hash_id_spans.push_back({2, 2}); // hash_id = 2
-  s = ts_table_->GetTagIteratorByOSN(ctx_, table_version, scan_cols, osn_spans, &hash_id_spans, &iter);
+  s = ts_table_->GetTagIteratorByOSN(ctx_, table_version, scan_cols, osn_spans, UINT64_MAX, &hash_id_spans, &iter);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  s = iter->Next(&entity_id_list, &rs, &count);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  ASSERT_EQ(count, 0);
+  delete iter;
+
+  entity_id_list.clear();
+  rs.clear();
+  count = 0;
+  osn_spans.clear();
+  osn_spans.push_back({1770000, 1780000});
+  s = ts_table_->GetTagIteratorByOSN(ctx_, table_version, scan_cols, osn_spans, UINT64_MAX, &hash_id_spans, &iter);
   ASSERT_EQ(s, KStatus::SUCCESS);
   s = iter->Next(&entity_id_list, &rs, &count);
   ASSERT_EQ(s, KStatus::SUCCESS);
@@ -602,7 +650,7 @@ TEST_F(TestV2IteratorByOSN, basic_metric_delete) {
 
   std::vector<k_uint32> scan_cols = {0};
   std::vector<KwOSNSpan> osn_spans;
-  osn_spans.push_back({0, 1760000 - 1});
+  osn_spans.push_back({0, 1760000});
   BaseEntityIterator *iter;
   std::vector<kwdbts::EntityResultIndex> entity_id_list;
   ResultSet rs;
@@ -610,7 +658,7 @@ TEST_F(TestV2IteratorByOSN, basic_metric_delete) {
   uint32_t count;
   std::vector<HashIdSpan> hash_id_spans;
   hash_id_spans.push_back({2, 2});
-  s = ts_table_->GetTagIteratorByOSN(ctx_, table_version, scan_cols, osn_spans, &hash_id_spans, &iter);
+  s = ts_table_->GetTagIteratorByOSN(ctx_, table_version, scan_cols, osn_spans, UINT64_MAX, &hash_id_spans, &iter);
   ASSERT_EQ(s, KStatus::SUCCESS);
   s = iter->Next(&entity_id_list, &rs, &count);
   ASSERT_EQ(s, KStatus::SUCCESS);
@@ -633,7 +681,7 @@ TEST_F(TestV2IteratorByOSN, basic_metric_delete) {
     ASSERT_EQ(s, KStatus::SUCCESS);
     total += count;
   } while (count > 0);
-  ASSERT_EQ(total,  0);
+  ASSERT_EQ(total,  1);
   delete m_iter;
 
   total = 0;
@@ -647,12 +695,16 @@ TEST_F(TestV2IteratorByOSN, basic_metric_delete) {
     ASSERT_EQ(s, KStatus::SUCCESS);
     total += count;
   } while (count > 0);
-  // while osn= 1780000, has one valid metric row ,but this row deleted later, so not return.
-  ASSERT_EQ(total,  1);
+  // while osn = 1780000, has one valid metric row
+  ASSERT_EQ(total,  2);
   ASSERT_EQ(KUint64(m_rs.data[1][0]->mem), 1770000);
   ASSERT_EQ(KUint8(m_rs.data[2][0]->mem), 4);
   ASSERT_EQ(KUint64(m_rs.data[3][0]->mem), 0);
   ASSERT_EQ(KUint64((char*)(m_rs.data[3][0]->mem) + 8), 3600);
+  ASSERT_EQ(KUint64(m_rs.data[0][1]->mem), 3600);
+  ASSERT_EQ(KUint64(m_rs.data[1][1]->mem), 1780000);
+  ASSERT_EQ(KUint8(m_rs.data[2][1]->mem), 1);
+  ASSERT_EQ(KUint64(m_rs.data[3][1]->mem), 0);
   delete m_iter;
 
   total = 0;
@@ -666,7 +718,7 @@ TEST_F(TestV2IteratorByOSN, basic_metric_delete) {
     ASSERT_EQ(s, KStatus::SUCCESS);
     total += count;
   } while (count > 0);
-  ASSERT_EQ(total,  2);
+  ASSERT_EQ(total,  3);
   ASSERT_EQ(KUint64(m_rs.data[1][0]->mem), 1770000);
   ASSERT_EQ(KUint8(m_rs.data[2][0]->mem), 4);
   ASSERT_EQ(KUint64(m_rs.data[3][0]->mem), 0);
@@ -676,7 +728,10 @@ TEST_F(TestV2IteratorByOSN, basic_metric_delete) {
   ASSERT_EQ(KUint8((char*)(m_rs.data[2][0]->mem) + 1), 4);
   ASSERT_EQ(KUint64((char*)(m_rs.data[3][0]->mem) + 16), 0);
   ASSERT_EQ(KUint64((char*)(m_rs.data[3][0]->mem) + 24), 13600);
+  ASSERT_EQ(KUint64((char*)(m_rs.data[3][0]->mem) + 8), 3600);
 
+  ASSERT_EQ(KUint64(m_rs.data[1][1]->mem), 1760000);
+  ASSERT_EQ(KUint8(m_rs.data[2][1]->mem), 1);
   delete m_iter;
 
   total = 0;
@@ -690,7 +745,7 @@ TEST_F(TestV2IteratorByOSN, basic_metric_delete) {
     ASSERT_EQ(s, KStatus::SUCCESS);
     total += count;
   } while (count > 0);
-  ASSERT_EQ(total,  3);
+  ASSERT_EQ(total,  4);
   ASSERT_EQ(KUint64(m_rs.data[1][0]->mem), 1770000);
   ASSERT_EQ(KUint8(m_rs.data[2][0]->mem), 4);
   ASSERT_EQ(KUint64(m_rs.data[3][0]->mem), 0);
@@ -704,6 +759,9 @@ TEST_F(TestV2IteratorByOSN, basic_metric_delete) {
   ASSERT_EQ(KUint8((char*)(m_rs.data[2][0]->mem) + 2), 4);
   ASSERT_EQ(KUint64((char*)(m_rs.data[3][0]->mem) + 32), 0);
   ASSERT_EQ(KUint64((char*)(m_rs.data[3][0]->mem) + 40), 23600);
+
+  ASSERT_EQ(KUint64(m_rs.data[1][1]->mem), 1760000);
+  ASSERT_EQ(KUint8(m_rs.data[2][1]->mem), 1);
   delete m_iter;
 }
 // tag insert then delete all metric data. osn range return empty row, else return nothing.
@@ -738,7 +796,7 @@ TEST_F(TestV2IteratorByOSN, only_tag_data_exist) {
   uint32_t count;
   std::vector<HashIdSpan> hash_id_spans;
   hash_id_spans.push_back({2, 2});
-  s = ts_table_->GetTagIteratorByOSN(ctx_, table_version, scan_cols, osn_spans, &hash_id_spans, &iter);
+  s = ts_table_->GetTagIteratorByOSN(ctx_, table_version, scan_cols, osn_spans, UINT64_MAX, &hash_id_spans, &iter);
   ASSERT_EQ(s, KStatus::SUCCESS);
   s = iter->Next(&entity_id_list, &rs, &count);
   ASSERT_EQ(s, KStatus::SUCCESS);
@@ -768,7 +826,7 @@ TEST_F(TestV2IteratorByOSN, only_tag_data_exist) {
   entity_id_list.clear();
   osn_spans.clear();
   osn_spans.push_back({1760000, 1770000 - 1});
-  s = ts_table_->GetTagIteratorByOSN(ctx_, table_version, scan_cols, osn_spans, &hash_id_spans, &iter);
+  s = ts_table_->GetTagIteratorByOSN(ctx_, table_version, scan_cols, osn_spans, UINT64_MAX, &hash_id_spans, &iter);
   ASSERT_EQ(s, KStatus::SUCCESS);
   s = iter->Next(&entity_id_list, &rs, &count);
   ASSERT_EQ(s, KStatus::SUCCESS);
@@ -790,14 +848,13 @@ TEST_F(TestV2IteratorByOSN, only_tag_data_exist) {
   ASSERT_EQ(total,  1);
   ASSERT_EQ(KUint64(m_rs.data[1][0]->mem), 1760000);
   ASSERT_EQ(KUint8(m_rs.data[2][0]->mem), 1);
-  ASSERT_EQ(KUint8(m_rs.data[3][0]->mem), 1);
   delete m_iter;
   m_iter = nullptr;
 
   entity_id_list.clear();
   osn_spans.clear();
   osn_spans.push_back({1760000 + 1, 1770000});
-  s = ts_table_->GetTagIteratorByOSN(ctx_, table_version, scan_cols, osn_spans, &hash_id_spans, &iter);
+  s = ts_table_->GetTagIteratorByOSN(ctx_, table_version, scan_cols, osn_spans, UINT64_MAX, &hash_id_spans, &iter);
   ASSERT_EQ(s, KStatus::SUCCESS);
   s = iter->Next(&entity_id_list, &rs, &count);
   ASSERT_EQ(s, KStatus::SUCCESS);

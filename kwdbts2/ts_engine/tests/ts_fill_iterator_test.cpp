@@ -147,7 +147,7 @@ TEST_F(TestFillIterator, NONE) {
 
     s = vgroup->GetIterator(ctx_, 1, entity_ids, ts_spans, block_filter,
                             scan_cols, scan_cols, agg_extend_cols, scan_agg_types, table_schema_mgr,
-                            schema, &ts_iter, vgroup, ts_points, false, false, fill_params);
+                            schema, &ts_iter, vgroup, ts_points, false, false, UINT64_MAX, fill_params);
     ASSERT_EQ(s, KStatus::SUCCESS);
 
     ResultSet res{(k_uint32) scan_cols.size()};
@@ -173,7 +173,7 @@ TEST_F(TestFillIterator, NONE) {
 
     s = vgroup->GetIterator(ctx_, 1, entity_ids, ts_spans, block_filter,
                             scan_cols, scan_cols, agg_extend_cols, scan_agg_types, table_schema_mgr,
-                            schema, &ts_iter, vgroup, ts_points, false, false, fill_params);
+                            schema, &ts_iter, vgroup, ts_points, false, false, UINT64_MAX, fill_params);
     ASSERT_EQ(s, KStatus::SUCCESS);
 
     ASSERT_EQ(ts_iter->Next(&res, &count, &is_finished), KStatus::SUCCESS);
@@ -240,7 +240,7 @@ TEST_F(TestFillIterator, EXACT) {
 
     s = vgroup->GetIterator(ctx_, 1, entity_ids, ts_spans, block_filter,
                             scan_cols, scan_cols, agg_extend_cols, scan_agg_types, table_schema_mgr,
-                            schema, &ts_iter, vgroup, ts_points, false, false, fill_params);
+                            schema, &ts_iter, vgroup, ts_points, false, false, UINT64_MAX, fill_params);
     ASSERT_EQ(s, KStatus::SUCCESS);
 
     ResultSet res{(k_uint32) scan_cols.size()};
@@ -264,7 +264,7 @@ TEST_F(TestFillIterator, EXACT) {
     ASSERT_EQ(table_schema_mgr->GetMetricSchema(1, &schema), KStatus::SUCCESS);
     s = vgroup->GetIterator(ctx_, 1, entity_ids, ts_spans, block_filter,
                             scan_cols, scan_cols, agg_extend_cols, scan_agg_types, table_schema_mgr,
-                            schema, &ts_iter, vgroup, ts_points, false, false, fill_params);
+                            schema, &ts_iter, vgroup, ts_points, false, false, UINT64_MAX, fill_params);
     ASSERT_EQ(s, KStatus::SUCCESS);
 
     ASSERT_EQ(ts_iter->Next(&res, &count, &is_finished), KStatus::SUCCESS);
@@ -345,7 +345,7 @@ TEST_F(TestFillIterator, PREVIOUS) {
 
     s = vgroup->GetIterator(ctx_, 1, entity_ids, ts_spans, block_filter,
                             scan_cols, scan_cols, agg_extend_cols, scan_agg_types, table_schema_mgr,
-                            schema, &ts_iter, vgroup, ts_points, false, false, fill_params);
+                            schema, &ts_iter, vgroup, ts_points, false, false, UINT64_MAX, fill_params);
     ASSERT_EQ(s, KStatus::SUCCESS);
 
     ResultSet res{(k_uint32) scan_cols.size()};
@@ -369,7 +369,7 @@ TEST_F(TestFillIterator, PREVIOUS) {
     ASSERT_EQ(table_schema_mgr->GetMetricSchema(1, &schema), KStatus::SUCCESS);
     s = vgroup->GetIterator(ctx_, 1, entity_ids, ts_spans, block_filter,
                             scan_cols, scan_cols, agg_extend_cols, scan_agg_types, table_schema_mgr,
-                            schema, &ts_iter, vgroup, ts_points, false, false, fill_params);
+                            schema, &ts_iter, vgroup, ts_points, false, false, UINT64_MAX, fill_params);
     ASSERT_EQ(s, KStatus::SUCCESS);
 
     ASSERT_EQ(ts_iter->Next(&res, &count, &is_finished), KStatus::SUCCESS);
@@ -448,7 +448,7 @@ TEST_F(TestFillIterator, NEXT) {
 
     s = vgroup->GetIterator(ctx_, 1, entity_ids, ts_spans, block_filter,
                             scan_cols, scan_cols, agg_extend_cols, scan_agg_types, table_schema_mgr,
-                            schema, &ts_iter, vgroup, ts_points, false, false, fill_params);
+                            schema, &ts_iter, vgroup, ts_points, false, false, UINT64_MAX, fill_params);
     ASSERT_EQ(s, KStatus::SUCCESS);
 
     ResultSet res{(k_uint32) scan_cols.size()};
@@ -472,7 +472,7 @@ TEST_F(TestFillIterator, NEXT) {
     ASSERT_EQ(table_schema_mgr->GetMetricSchema(1, &schema), KStatus::SUCCESS);
     s = vgroup->GetIterator(ctx_, 1, entity_ids, ts_spans, block_filter,
                             scan_cols, scan_cols, agg_extend_cols, scan_agg_types, table_schema_mgr,
-                            schema, &ts_iter, vgroup, ts_points, false, false, fill_params);
+                            schema, &ts_iter, vgroup, ts_points, false, false, UINT64_MAX, fill_params);
     ASSERT_EQ(s, KStatus::SUCCESS);
 
     ASSERT_EQ(ts_iter->Next(&res, &count, &is_finished), KStatus::SUCCESS);
@@ -494,7 +494,7 @@ TEST_F(TestFillIterator, NEXT) {
     ASSERT_EQ(table_schema_mgr->GetMetricSchema(1, &schema), KStatus::SUCCESS);
     s = vgroup->GetIterator(ctx_, 1, entity_ids, ts_spans, block_filter,
                             scan_cols, scan_cols, agg_extend_cols, scan_agg_types, table_schema_mgr,
-                            schema, &ts_iter, vgroup, ts_points, false, false, fill_params);
+                            schema, &ts_iter, vgroup, ts_points, false, false, UINT64_MAX, fill_params);
     ASSERT_EQ(s, KStatus::SUCCESS);
 
     ASSERT_EQ(ts_iter->Next(&res, &count, &is_finished), KStatus::SUCCESS);
@@ -574,7 +574,7 @@ TEST_F(TestFillIterator, CLOSER) {
 
     s = vgroup->GetIterator(ctx_, 1, entity_ids, ts_spans, block_filter,
                             scan_cols, scan_cols, agg_extend_cols, scan_agg_types, table_schema_mgr,
-                            schema, &ts_iter, vgroup, ts_points, false, false, fill_params);
+                            schema, &ts_iter, vgroup, ts_points, false, false, UINT64_MAX, fill_params);
     ASSERT_EQ(s, KStatus::SUCCESS);
 
     ResultSet res{(k_uint32) scan_cols.size()};
@@ -601,7 +601,7 @@ TEST_F(TestFillIterator, CLOSER) {
     ASSERT_EQ(table_schema_mgr->GetMetricSchema(1, &schema), KStatus::SUCCESS);
     s = vgroup->GetIterator(ctx_, 1, entity_ids, ts_spans, block_filter,
                             scan_cols, scan_cols, agg_extend_cols, scan_agg_types, table_schema_mgr,
-                            schema, &ts_iter, vgroup, ts_points, false, false, fill_params);
+                            schema, &ts_iter, vgroup, ts_points, false, false, UINT64_MAX, fill_params);
     ASSERT_EQ(s, KStatus::SUCCESS);
 
     ASSERT_EQ(ts_iter->Next(&res, &count, &is_finished), KStatus::SUCCESS);
@@ -621,7 +621,7 @@ TEST_F(TestFillIterator, CLOSER) {
     ASSERT_EQ(table_schema_mgr->GetMetricSchema(1, &schema), KStatus::SUCCESS);
     s = vgroup->GetIterator(ctx_, 1, entity_ids, ts_spans, block_filter,
                             scan_cols, scan_cols, agg_extend_cols, scan_agg_types, table_schema_mgr,
-                            schema, &ts_iter, vgroup, ts_points, false, false, fill_params);
+                            schema, &ts_iter, vgroup, ts_points, false, false, UINT64_MAX, fill_params);
     ASSERT_EQ(s, KStatus::SUCCESS);
 
     ASSERT_EQ(ts_iter->Next(&res, &count, &is_finished), KStatus::SUCCESS);
@@ -698,7 +698,7 @@ TEST_F(TestFillIterator, CONSTANT) {
 
     s = vgroup->GetIterator(ctx_, 1, entity_ids, ts_spans, block_filter,
                             scan_cols, scan_cols, agg_extend_cols, scan_agg_types, table_schema_mgr,
-                            schema, &ts_iter, vgroup, ts_points, false, false, fill_params);
+                            schema, &ts_iter, vgroup, ts_points, false, false, UINT64_MAX, fill_params);
     ASSERT_EQ(s, KStatus::SUCCESS);
 
     ResultSet res{(k_uint32) scan_cols.size()};
@@ -719,7 +719,7 @@ TEST_F(TestFillIterator, CONSTANT) {
     fill_params.const_data_type = DATATYPE::INT64;
     s = vgroup->GetIterator(ctx_, 1, entity_ids, ts_spans, block_filter,
                             scan_cols, scan_cols, agg_extend_cols, scan_agg_types, table_schema_mgr,
-                            schema, &ts_iter, vgroup, ts_points, false, false, fill_params);
+                            schema, &ts_iter, vgroup, ts_points, false, false, UINT64_MAX, fill_params);
     ASSERT_EQ(s, KStatus::SUCCESS);
 
     ASSERT_EQ(ts_iter->Next(&res, &count, &is_finished), KStatus::SUCCESS);
@@ -739,7 +739,7 @@ TEST_F(TestFillIterator, CONSTANT) {
     fill_params.const_data_type = DATATYPE::CHAR;
     s = vgroup->GetIterator(ctx_, 1, entity_ids, ts_spans, block_filter,
                             scan_cols, scan_cols, agg_extend_cols, scan_agg_types, table_schema_mgr,
-                            schema, &ts_iter, vgroup, ts_points, false, false, fill_params);
+                            schema, &ts_iter, vgroup, ts_points, false, false, UINT64_MAX, fill_params);
     ASSERT_EQ(s, KStatus::SUCCESS);
 
     ASSERT_EQ(ts_iter->Next(&res, &count, &is_finished), KStatus::SUCCESS);
@@ -822,7 +822,7 @@ TEST_F(TestFillIterator, LINEAR) {
 
     s = vgroup->GetIterator(ctx_, 1, entity_ids, ts_spans, block_filter,
                             scan_cols, scan_cols, agg_extend_cols, scan_agg_types, table_schema_mgr,
-                            schema, &ts_iter, vgroup, ts_points, false, false, fill_params);
+                            schema, &ts_iter, vgroup, ts_points, false, false, UINT64_MAX, fill_params);
     ASSERT_EQ(s, KStatus::SUCCESS);
 
     ResultSet res{(k_uint32) scan_cols.size()};
@@ -845,7 +845,7 @@ TEST_F(TestFillIterator, LINEAR) {
     ASSERT_EQ(table_schema_mgr->GetMetricSchema(1, &schema), KStatus::SUCCESS);
     s = vgroup->GetIterator(ctx_, 1, entity_ids, ts_spans, block_filter,
                             scan_cols, scan_cols, agg_extend_cols, scan_agg_types, table_schema_mgr,
-                            schema, &ts_iter, vgroup, ts_points, false, false, fill_params);
+                            schema, &ts_iter, vgroup, ts_points, false, false, UINT64_MAX, fill_params);
     ASSERT_EQ(s, KStatus::SUCCESS);
 
     ASSERT_EQ(ts_iter->Next(&res, &count, &is_finished), KStatus::SUCCESS);
@@ -867,7 +867,7 @@ TEST_F(TestFillIterator, LINEAR) {
     ASSERT_EQ(table_schema_mgr->GetMetricSchema(1, &schema), KStatus::SUCCESS);
     s = vgroup->GetIterator(ctx_, 1, entity_ids, ts_spans, block_filter,
                             scan_cols, scan_cols, agg_extend_cols, scan_agg_types, table_schema_mgr,
-                            schema, &ts_iter, vgroup, ts_points, false, false, fill_params);
+                            schema, &ts_iter, vgroup, ts_points, false, false, UINT64_MAX, fill_params);
     ASSERT_EQ(s, KStatus::SUCCESS);
 
     ASSERT_EQ(ts_iter->Next(&res, &count, &is_finished), KStatus::SUCCESS);

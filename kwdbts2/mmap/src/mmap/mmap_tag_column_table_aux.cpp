@@ -190,7 +190,8 @@ std::unique_ptr<TagTuplePack> MMapTagColumnTable::GenTagPack(TagTableRowID row) 
   entityId = *reinterpret_cast<const uint32_t *>(idPtr);
   subgroupId = *reinterpret_cast<const uint32_t *>(idPtr + 4);
   this->stopRead();
-  packer->setOSN(getTagDataInfoByRowNum(row)->osn);
+  // current tag row is valid and has hash index.so only has one tag type : insert.
+  packer->setOSN(getTagDataInfoByRowNum(row)->osn[0]);
   packer->setEntityId(entityId);
   packer->setSubgroupId(subgroupId);
   packer->setVersion(metaData().m_ts_version);
@@ -260,11 +261,11 @@ uint32_t TagTuplePack::getVersion() {
 
 void TagTuplePack::setOSN(uint64_t osn) {
   if (isMemOwner_ && data_ != nullptr) {
-    *reinterpret_cast<uint32_t *>(data_ + txnOffset_) = osn;
+    *reinterpret_cast<uint64_t *>(data_ + txnOffset_) = osn;
   }
 }
 
-uint32_t TagTuplePack::getOSN() {
+uint64_t TagTuplePack::getOSN() {
   return *reinterpret_cast<uint64_t *>(data_ + txnOffset_);
 }
 

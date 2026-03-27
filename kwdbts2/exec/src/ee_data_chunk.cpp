@@ -944,12 +944,7 @@ KStatus DataChunk::Encoding(kwdbContext_p ctx,
   }
   if (use_query_compress_type_ != 0 && use_query_short_circuit) {
     const BlockCompressor* compress_codec = nullptr;
-    if (use_query_compress_type_ == 1) {
-      st = PgOriResultData(ctx, msgBuffer);
-      if (st != SUCCESS) {
-        return st;
-      }
-    } else if (use_query_compress_type_ == 2) {
+    if (use_query_compress_type_ == 2) {
       GetBlockCompressor(CompressionTypePB::LZ4_COMPRESSION, &compress_codec);
       st = PgCompressResultData(ctx, compress_codec, msgBuffer, CompressionTypePB::LZ4_COMPRESSION);
       if (st != SUCCESS) {
@@ -1911,56 +1906,6 @@ KStatus DataChunk::PgResultData(kwdbContext_p ctx, k_uint32 row, const EE_String
   Return(SUCCESS);
 }
 
-KStatus DataChunk::PgOriResultData(kwdbContext_p ctx, const EE_StringInfo& info) {
-  EnterFunc();
-  k_uint32 temp_len = info->len;
-  char* temp_addr = nullptr;
-  if (ee_appendBinaryStringInfo(info, "M0000", 5) != SUCCESS) {
-    Return(FAIL);
-  }
-
-  // set count
-  if (ee_sendint(info, Count(), 4) != SUCCESS) {
-    Return(FAIL);
-  }
-  // set column count
-  if (ee_sendint(info, col_num_, 2) != SUCCESS) {
-    Return(FAIL);
-  }
-
-  if (ee_sendint(info, row_size_, 4) != SUCCESS) {
-    Return(FAIL);
-  }
-
-  for (size_t col = 0; col < col_num_; col++) {
-    if (ee_sendint(info, col_info_[col].fixed_storage_len, 4) != SUCCESS) {
-      Return(FAIL);
-    }
-    if (ee_sendint(info, col_offset_[col], 4) != SUCCESS) {
-      Return(FAIL);
-    }
-  }
-
-  // set capacity
-  if (ee_sendint(info, Capacity(), 4) != SUCCESS) {
-    Return(FAIL);
-  }
-
-
-  // set compress type
-  if (ee_sendint(info, CompressionTypePB::NO_COMPRESSION, 2) != SUCCESS) {
-    Return(FAIL);
-  }
-  if (ee_appendBinaryStringInfo(info, GetData(), Size()) != SUCCESS) {
-    Return(FAIL);
-  }
-
-  temp_addr = &info->data[temp_len + 1];
-  k_uint32 n32 = be32toh(info->len - temp_len - 1);
-  memcpy(temp_addr, &n32, 4);
-  Return(SUCCESS);
-}
-
 KStatus DataChunk::PgCompressResultData(kwdbContext_p ctx,
                                         const BlockCompressor *compress_codec,
                                         const EE_StringInfo &info,
@@ -1992,6 +1937,15 @@ KStatus DataChunk::PgCompressResultData(kwdbContext_p ctx,
     if (ee_sendint(info, col_offset_[col], 4) != SUCCESS) {
       Return(FAIL);
     }
+    if (col_info_[col].is_string == KWStringType::VAR_LENGTH) {
+      if (ee_sendint(info, 1, 4) != SUCCESS) {
+        Return(FAIL);
+      }
+    } else {
+      if (ee_sendint(info, 0, 4) != SUCCESS) {
+        Return(FAIL);
+      }
+    }
   }
 
   // set capacity
@@ -2000,61 +1954,89 @@ KStatus DataChunk::PgCompressResultData(kwdbContext_p ctx,
   }
 
   ProtobufChunkSerrialde serial;
-  if (Count() < 10) {
-    // set compress type
-    if (ee_sendint(info, CompressionTypePB::NO_COMPRESSION, 2) != SUCCESS) {
-      Return(FAIL);
-    }
-    if (ee_appendBinaryStringInfo(info, GetData(), Size()) != SUCCESS) {
-      Return(FAIL);
-    }
-  } else {
-    // set compress type
-    if (ee_sendint(info, type, 2) != SUCCESS) {
-      Return(FAIL);
-    }
-    size_t col_size = 0;
-    k_int64 offset = 0;
-    k_uint32 bitmap_size = BitmapSize();
-    k_int64 data_size = 0;
-    if (compress_codec != nullptr) {
-      for (size_t i = 0; i < col_num_; ++i) {
-        std::string compression_scratch;
-        col_size = GetColumnInfo()[i].fixed_storage_len * Capacity() + bitmap_size;
-        KSlice input(GetData() + offset, col_size);
-        offset += col_size;
-        if (UseCompressionPool(compress_codec->GetCompressionType())) {
-          KSlice compressed_slice;
-          if (KStatus::FAIL ==
-              compress_codec->CompressBlock(input, &compressed_slice, true, col_size, nullptr, &compression_scratch)) {
-            LOG_ERROR("compress fail");
-            Return(FAIL);
-          }
-        } else {
-          k_int32 max_compressed_size = compress_codec->CalculateMaxCompressedLength(col_size);
-          if (compression_scratch.size() < max_compressed_size) {
-            compression_scratch.resize(max_compressed_size);
-          }
-          KSlice compressed_slice{compression_scratch.data(), compression_scratch.size()};
-          if (KStatus::FAIL == compress_codec->CompressBlock(input, &compressed_slice)) {
-            LOG_ERROR("compress fail");
-            Return(FAIL);
-          }
-          compression_scratch.resize(compressed_slice.data_size_);
-        }
-        data_size += compression_scratch.size();
-        // set col uncompressed_size
-        if (ee_sendint(info, col_size, 4) != SUCCESS) {
+  // set compress type
+  if (ee_sendint(info, type, 2) != SUCCESS) {
+    Return(FAIL);
+  }
+  if (ee_sendint(info, GetVarStrContainer()->len, 4) != SUCCESS) {
+    Return(FAIL);
+  }
+
+  size_t col_size = 0;
+  k_int64 offset = 0;
+  k_uint32 bitmap_size = BitmapSize();
+  k_int64 data_size = 0;
+  if (compress_codec != nullptr) {
+    if (GetVarStrContainer()->len != 0) {
+      std::string compression_var;
+      KSlice compressed_slice_var;
+      KSlice inputVar(var_str_container_->data, var_str_container_->len);
+      if (UseCompressionPool(compress_codec->GetCompressionType())) {
+        if (KStatus::FAIL ==
+            compress_codec->CompressBlock(inputVar,
+                                          &compressed_slice_var,
+                                          true,
+                                          var_str_container_->len,
+                                          nullptr,
+                                          &compression_var)) {
+          LOG_ERROR("compress fail");
           Return(FAIL);
         }
-        // set col compressed_size
-        if (ee_sendint(info, compression_scratch.size(), 4) != SUCCESS) {
+      } else {
+        k_int32 max_compressed_size = compress_codec->CalculateMaxCompressedLength(var_str_container_->len);
+        if (compression_var.size() < max_compressed_size) {
+          compression_var.resize(max_compressed_size);
+        }
+        KSlice compressed_slice{compression_var.data(), compression_var.size()};
+        if (KStatus::FAIL == compress_codec->CompressBlock(inputVar, &compressed_slice)) {
+          LOG_ERROR("compress fail");
           Return(FAIL);
         }
-        // set col data
-        if (ee_appendBinaryStringInfo(info, compression_scratch.data(), compression_scratch.size()) != SUCCESS) {
+        compression_var.resize(compressed_slice.data_size_);
+      }
+      if (ee_sendint(info, compression_var.size(), 4) != SUCCESS) {
+        Return(FAIL);
+      }
+      if (ee_appendBinaryStringInfo(info, compression_var.data(), compression_var.size()) != SUCCESS) {
+        Return(FAIL);
+      }
+    }
+    for (size_t i = 0; i < col_num_; ++i) {
+      std::string compression_scratch;
+      col_size = GetColumnInfo()[i].fixed_storage_len * Capacity() + bitmap_size;
+      KSlice input(GetData() + offset, col_size);
+      offset += col_size;
+      if (UseCompressionPool(compress_codec->GetCompressionType())) {
+        KSlice compressed_slice;
+        if (KStatus::FAIL ==
+            compress_codec->CompressBlock(input, &compressed_slice, true, col_size, nullptr, &compression_scratch)) {
+          LOG_ERROR("compress fail");
           Return(FAIL);
         }
+      } else {
+        k_int32 max_compressed_size = compress_codec->CalculateMaxCompressedLength(col_size);
+        if (compression_scratch.size() < max_compressed_size) {
+          compression_scratch.resize(max_compressed_size);
+        }
+        KSlice compressed_slice{compression_scratch.data(), compression_scratch.size()};
+        if (KStatus::FAIL == compress_codec->CompressBlock(input, &compressed_slice)) {
+          LOG_ERROR("compress fail");
+          Return(FAIL);
+        }
+        compression_scratch.resize(compressed_slice.data_size_);
+      }
+      data_size += compression_scratch.size();
+      // set col uncompressed_size
+      if (ee_sendint(info, col_size, 4) != SUCCESS) {
+        Return(FAIL);
+      }
+      // set col compressed_size
+      if (ee_sendint(info, compression_scratch.size(), 4) != SUCCESS) {
+        Return(FAIL);
+      }
+      // set col data
+      if (ee_appendBinaryStringInfo(info, compression_scratch.data(), compression_scratch.size()) != SUCCESS) {
+        Return(FAIL);
       }
     }
   }

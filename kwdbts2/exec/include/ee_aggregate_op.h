@@ -23,7 +23,6 @@
 #include "ee_global.h"
 #include "ee_hash_table.h"
 #include "ee_pb_plan.pb.h"
-
 namespace kwdbts {
 // Base Agg OP
 class BaseAggregator : public BaseOperator {
@@ -54,6 +53,7 @@ class BaseAggregator : public BaseOperator {
 
  protected:
   virtual void CalculateAggOffsets();  // calculate buffer offset
+  k_uint32 CalculateAggEffectiveWidth(DatumRowPtr bucket) const;
 
   // accumulaten for agg
   KStatus accumulateRowIntoBucket(kwdbContext_p ctx, DatumRowPtr bucket, k_uint32 agg_null_offset,
@@ -136,16 +136,12 @@ class HashAggregateOperator : public BaseAggregator {
   // accumulate one batch
   KStatus accumulateBatch(kwdbContext_p ctx, IChunk* chunk);
 
-  // accumulate one row
-  KStatus accumulateRow(kwdbContext_p ctx, DataChunkPtr& chunk, k_uint32 line);
-
   // accumulate rows
   virtual KStatus accumulateRows(kwdbContext_p ctx);
 
   virtual KStatus getAggResults(kwdbContext_p ctx, DataChunkPtr& chunk);
 
-  LinearProbingHashTable* ht_{nullptr};
-  LinearProbingHashTable::iterator iter_;
+  std::unique_ptr<BaseHashTable> ht_{nullptr};
 };
 
 /**

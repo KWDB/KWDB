@@ -242,6 +242,7 @@ KStatus RaftStore::Get(kwdbContext_p ctx, uint64_t range_id, uint64_t start, uin
         value->data = reinterpret_cast<char *>(malloc(index->value_ptr.len));
         if (value->data == nullptr) {
           LOG_ERROR("failed malloc %lu bytes, rangeID:%lu, index:%lu.", index->len, range_id, index->index_id);
+          return KStatus::FAIL;
         }
         memcpy(value->data, index->value_ptr.data, value->len);
         return KStatus::SUCCESS;
@@ -357,6 +358,7 @@ KStatus RaftStore::getDiskValue(kwdbContext_p ctx, std::shared_ptr<RaftValueOffs
   char* data = reinterpret_cast<char *>(malloc(index_id->len));
   if (data == nullptr) {
     LOG_ERROR("failed malloc %lu bytes, index:%lu.", index_id->len, index_id->index_id);
+    return KStatus::FAIL;
   }
   size_t read_num = read(get_file, data, index_id->len);
   if (read_num != index_id->len) {
@@ -377,6 +379,7 @@ KStatus RaftStore::getDiskValue(kwdbContext_p ctx, std::shared_ptr<RaftValueOffs
     value->data = reinterpret_cast<char *>(malloc(val.size()));
     if (value->data == nullptr) {
       LOG_ERROR("failed malloc %lu bytes, index:%lu.", val.size(), index_id->index_id);
+      return KStatus::FAIL;
     }
     value->len = val.size();
     memcpy(value->data, val.c_str(), val.size());

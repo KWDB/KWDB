@@ -28,6 +28,10 @@ TsStorageIterator::TsStorageIterator() {
 
 TsStorageIterator::~TsStorageIterator() {}
 
+void TsStorageIterator::SetInvoker(bool is_partition_agg_invoke) {
+  calc_partition_agg_invoke_ = is_partition_agg_invoke;
+}
+
 bool TsStorageIterator::matchesFilterRange(const BlockFilter& filter, SpanValue min, SpanValue max, DATATYPE datatype) {
   for (auto filter_span : filter.spans) {
     if (filter_span.startBoundary == FSB_NONE && filter_span.endBoundary == FSB_NONE) {
