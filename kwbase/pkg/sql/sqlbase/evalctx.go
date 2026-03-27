@@ -27,6 +27,7 @@ package sqlbase
 import (
 	"context"
 
+	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/parser"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgcode"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgerror"
@@ -207,3 +208,37 @@ var _ tree.ClientNoticeSender = &DummyClientNoticeSender{}
 
 // SendClientNotice is part of the tree.ClientNoticeSender interface.
 func (c *DummyClientNoticeSender) SendClientNotice(_ context.Context, _ error) {}
+
+// DummyTsDBAccessor implements the TsDBAccessor interface.
+type DummyTsDBAccessor struct{}
+
+var errTsDBAccessor = pgerror.New(pgcode.ScalarOperationCannotRunWithoutFullSessionContext,
+	"cannot evaluate tsDBAccessor expressions in this context")
+
+var _ tree.TsDBAccessor = &DummyTsDBAccessor{}
+
+// GetRangeRowCountFromNode is part of the tree.ClientNoticeSender interface.
+func (t *DummyTsDBAccessor) GetRangeRowCountFromNode(
+	ctx context.Context, rangeID roachpb.RangeID, nodeID roachpb.NodeID,
+) (uint64, error) {
+	return 0, errors.WithStack(errTsDBAccessor)
+}
+
+// RelocateRange relocate the range from source node to desc node.
+func (t *DummyTsDBAccessor) RelocateRange(
+	ctx context.Context, rangeID int64, src, dst roachpb.NodeID,
+) error {
+	return errors.WithStack(errTsDBAccessor)
+}
+
+// GetRangeDebugInfo get range debug info by request.
+func (t *DummyTsDBAccessor) GetRangeDebugInfo(
+	ctx context.Context, resp int64,
+) (interface{}, error) {
+	return nil, errors.WithStack(errTsDBAccessor)
+}
+
+// GetProblemRangesInfo get the info of the problem ranges.
+func (t *DummyTsDBAccessor) GetProblemRangesInfo(ctx context.Context) (interface{}, error) {
+	return nil, errors.WithStack(errTsDBAccessor)
+}
