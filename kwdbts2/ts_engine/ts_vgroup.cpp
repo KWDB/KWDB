@@ -370,31 +370,31 @@ KStatus TsVGroup::redoPut(kwdbContext_p ctx, kwdbts::TS_OSN log_lsn, const TSSli
       return KStatus::FAIL;
     }
     OperateType type;
-    TS_OSN op_osn;
+    TS_OSN op_osn = 0;
     if (!p_tag->GetOpTypeAtOSN(row_info.second, p.GetOSN(), type, op_osn)) {
-      LOG_INFO("GetOpTypeAtOSN empty.table [%lu], tag[%lu,%lu], ignore.", table_id, row_info.first, row_info.second);
+      LOG_INFO("GetOpTypeAtOSN empty.table [%lu], tag[%lu,%lu], creat osn [%lu] payload osn[%lu], ignore.",
+       table_id, row_info.first, row_info.second, op_osn, p.GetOSN());
       tag_idx_row_ok = false;
     } else {
       tag_idx_row_ok = true;
     }
   }
+  bool find_in_history = false;
   if (!tag_idx_row_ok) {
     uint32_t cur_entity_id;
     auto tag_row = tb_schema_manager->GetTagTable()->ScanTagByPKey(primary_key, p.GetOSN(),
       p.GetHashPoint(), vgroup_id, cur_entity_id);
     if (tag_row.first != INVALID_TABLE_VERSION_ID) {
-      new_tag = false;
+      find_in_history = true;
       entity_id = cur_entity_id;
-    } else {
-      new_tag = true;
     }
   }
-  if (new_tag) {
+  if (new_tag && !find_in_history) {
     vgroup_id = GetVGroupID();
     entity_id = AllocateEntityID();
     // 1. Write tag data
     assert(payload_data_flag == DataTagFlag::DATA_AND_TAG || payload_data_flag == DataTagFlag::TAG_ONLY);
-    LOG_DEBUG("tag bt insert hashPoint=%hu", p.GetHashPoint());
+    LOG_INFO("tag bt insert hashPoint=%hu, payload osn[%lu], log osn [%lu]", p.GetHashPoint(), p.GetOSN(), osn);
     std::shared_ptr<TagTable> tag_table;
     s = tb_schema_manager->GetTagSchema(ctx, &tag_table);
     if (s != KStatus::SUCCESS) {
@@ -1874,7 +1874,7 @@ KStatus TsVGroup::redoPutTag(kwdbContext_p ctx, kwdbts::TS_OSN log_lsn, const TS
     uint32_t cur_entity_id;
     auto ptag_value = tag_table->ScanTagByPKey(primary_key, p.GetOSN(), p.GetHashPoint(), vgroup_id, cur_entity_id);
     if (ptag_value.first == INVALID_TABLE_VERSION_ID) {
-      LOG_DEBUG("tag bt insert hashPoint=%hu", p.GetHashPoint());
+      LOG_INFO("tag bt insert hashPoint=%hu, OSN=%lu", p.GetHashPoint(), p.GetOSN());
       auto err_no = tag_table->InsertTagRecord(p, vgroup_id, entity_id, p.GetOSN(), OperateType::Insert);
       if (err_no < 0) {
         LOG_ERROR("InsertTagRecord failed, table id[%lu]", table_id);

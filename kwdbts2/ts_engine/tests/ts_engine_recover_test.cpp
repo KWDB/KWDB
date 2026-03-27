@@ -141,20 +141,45 @@ class TsEngineRecoverTest : public ::testing::Test {
     free(mem);
     return ret;
   }
-  uint64_t GetDataNum(TSTableID table_id, TSEntityID dev_id, KwTsSpan ts_span) {
+  uint64_t GetDataNum(TSTableID table_id, TSEntityID dev_id, KwTsSpan ts_span, int64_t& dev_num) {
     std::shared_ptr<TsTable> ts_table_dest;
     bool is_dropped = false;
     auto s = engine_->GetTsTable(ctx_, table_id, ts_table_dest, is_dropped);
     EXPECT_EQ(s, KStatus::SUCCESS);
     auto ts_table_v2 = dynamic_pointer_cast<TsTableV2Impl>(ts_table_dest);
-    uint32_t entity_id = 0;
-    uint32_t sub_group_id = 0;
-    auto pkey = GetPrimaryKey(table_id, dev_id);
-    auto find = ts_table_v2->GetSchemaManager()->GetTagTable()->hasPrimaryKey(pkey.data(), pkey.length(), entity_id, sub_group_id);
+    std::vector<EntityResultIndex> devs;
+    if (dev_id > 0) {
+      uint32_t entity_id = 0;
+      uint32_t sub_group_id = 0;
+      auto pkey = GetPrimaryKey(table_id, dev_id);
+      auto find = ts_table_v2->GetSchemaManager()->GetTagTable()->hasPrimaryKey(pkey.data(), pkey.length(), entity_id, sub_group_id);
+      devs.push_back({EntityResultIndex(1, entity_id, sub_group_id)});
+    } else {
+        std::vector<uint32_t> scan_tags{0};
+      std::vector<HashIdSpan> hps;
+      hps.push_back({0, UINT64_MAX});
+      BaseEntityIterator* iter;
+      ts_table_v2->GetTagIterator(ctx_, scan_tags, &hps, &iter, 1, UINT64_MAX);
+      ResultSet res{(k_uint32) scan_tags.size()};
+      k_uint32 fetch_total_count = 0;
+      k_uint64 ptag = 0;
+      k_uint32 count = 0;
+      do {
+        std::vector<EntityResultIndex> devs1;
+        EXPECT_EQ(iter->Next(&devs1, &res, &count), KStatus::SUCCESS);
+        if (count == 0) {
+          break;
+        }
+        devs.insert(devs.end(), devs1.begin(), devs1.end());
+        fetch_total_count += count;
+      }while(count);
+      iter->Close();
+      delete iter;
+    }
     uint64_t row_count = 0;
-    std::vector<EntityResultIndex> devs{EntityResultIndex(1, entity_id, sub_group_id)};
     ctx_->ts_engine = engine_;
     ts_table_v2->GetEntityRowCount(ctx_, devs, {ts_span}, UINT64_MAX, &row_count);
+    dev_num = devs.size();
     return row_count;
   }
   void UpdateTag(TSTableID table_id, TSEntityID dev_id, TS_OSN osn, int up_num) {
@@ -203,9 +228,10 @@ TEST_F(TsEngineRecoverTest, update5Times) {
   for (size_t i = 1; i <= 5; i++) {
     UpdateTag(table_id, 1, 1700000 + 1000 * i);
   }
-  ASSERT_EQ(GetDataNum(table_id, 1, {INT64_MIN, INT64_MAX}), 5);
+  int64_t dev_num = 0;
+  ASSERT_EQ(GetDataNum(table_id, 1, {INT64_MIN, INT64_MAX}, dev_num), 5);
   Restart();
-  ASSERT_EQ(GetDataNum(table_id, 1, {INT64_MIN, INT64_MAX}), 5);
+  ASSERT_EQ(GetDataNum(table_id, 1, {INT64_MIN, INT64_MAX}, dev_num), 5);
 }
 
 TEST_F(TsEngineRecoverTest, delete5Times) {
@@ -215,9 +241,10 @@ TEST_F(TsEngineRecoverTest, delete5Times) {
     InsertData(table_id, 1, 12345 + 10000 * i, 1, 1000, 1700000 + 100 * i);
     DeleteTag(table_id, 1, 1700000 + 100 * i + 10, 1);
   }
-  ASSERT_EQ(GetDataNum(table_id, 1, {INT64_MIN, INT64_MAX}), 0);
+  int64_t dev_num = 0;
+  ASSERT_EQ(GetDataNum(table_id, 1, {INT64_MIN, INT64_MAX}, dev_num), 0);
   Restart();
-  ASSERT_EQ(GetDataNum(table_id, 1, {INT64_MIN, INT64_MAX}), 0);
+  ASSERT_EQ(GetDataNum(table_id, 1, {INT64_MIN, INT64_MAX}, dev_num), 0);
 }
 
 TEST_F(TsEngineRecoverTest, updataDeleteTimes) {
@@ -231,7 +258,23 @@ TEST_F(TsEngineRecoverTest, updataDeleteTimes) {
       DeleteTag(table_id, 1, 1700000 + 100 * i + 10, 1);
     }
   }
-  ASSERT_EQ(GetDataNum(table_id, 1, {INT64_MIN, INT64_MAX}), 1);
+  int64_t dev_num = 0;
+  ASSERT_EQ(GetDataNum(table_id, 1, {INT64_MIN, INT64_MAX}, dev_num), 1);
   Restart();
-  ASSERT_EQ(GetDataNum(table_id, 1, {INT64_MIN, INT64_MAX}), 1);
+  ASSERT_EQ(GetDataNum(table_id, 1, {INT64_MIN, INT64_MAX}, dev_num), 1);
+}
+
+TEST_F(TsEngineRecoverTest, insertDisorderByOSN) {
+  TSTableID table_id = 10032;
+  CreateTable(table_id);
+  InsertData(table_id, 1, 12346, 1, 1000, 1700000);
+  InsertData(table_id, 1, 12345, 1, 1000, 1700000 - 100);
+  int64_t dev_num = 0;
+  ASSERT_EQ(GetDataNum(table_id, 1, {INT64_MIN, INT64_MAX}, dev_num), 2);
+  ASSERT_EQ(GetDataNum(table_id, 0, {INT64_MIN, INT64_MAX}, dev_num), 2);
+  ASSERT_EQ(dev_num, 1);
+  Restart();
+  EXPECT_EQ(GetDataNum(table_id, 1, {INT64_MIN, INT64_MAX}, dev_num), 2);
+  EXPECT_EQ(GetDataNum(table_id, 0, {INT64_MIN, INT64_MAX}, dev_num), 2);
+  ASSERT_EQ(dev_num, 1);
 }
