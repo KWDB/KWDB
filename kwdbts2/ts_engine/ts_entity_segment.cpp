@@ -461,6 +461,7 @@ KStatus TsEntityBlock::LoadColData(int32_t col_idx, const std::vector<AttributeI
     assert(*reinterpret_cast<uint32_t*>(var_offsets.data() + var_offsets.size() - sizeof(uint32_t)) == var_data.size());
   }
   TsLRUBlockCache::GetInstance().AddMemory(this, bitmap_len + column_blocks_[col_idx + 1]->buffer.size());
+  column_blocks_[col_idx + 1]->ready_flag.fetch_or(COLUMN_BLOCK_BUFFER_READY);
 #ifdef WITH_TESTS
   if (TsLRUBlockCache::GetInstance().unit_test_enabled &&
       TsLRUBlockCache::GetInstance().unit_test_phase == TsLRUBlockCache::UNIT_TEST_PHASE::COLUMN_BLOCK_CRASH_PHASE_NONE) {
@@ -483,6 +484,7 @@ KStatus TsEntityBlock::LoadAggData(int32_t col_idx, TsSliceGuard&& buffer) {
   if (buffer_len > 0) {
     column_blocks_[col_idx + 1]->agg = std::move(buffer);
     TsLRUBlockCache::GetInstance().AddMemory(this, buffer_len);
+    column_blocks_[col_idx + 1]->ready_flag.fetch_or(COLUMN_BLOCK_AGG_READY);
   }
   return KStatus::SUCCESS;
 }
