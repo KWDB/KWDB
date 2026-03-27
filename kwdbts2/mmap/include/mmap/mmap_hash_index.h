@@ -129,11 +129,7 @@ class MMapHashIndex: public MMapIndex {
 
   void bucketsWlock();
 
-  void dataRlock();
-
   void dataWlock();
-
-  void dataUnlock();
 
   void loadRecord(size_t start, size_t end);
 
@@ -185,4 +181,8 @@ class MMapHashIndex: public MMapIndex {
   inline bool isDroped() const { return metaData().m_droped; }
 
   int size() const;
+
+  void dataUnlock();
+
+  void dataRlock();
 };

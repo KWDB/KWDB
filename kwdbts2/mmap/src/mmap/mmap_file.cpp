@@ -152,17 +152,25 @@ int MMapFile::resize(size_t length) {
   // TODO(zhuderun): remove in the future
   if ((flags_ & O_ANONYMOUS) && (kwdbts::kw_used_anon_memory_size.load() + length) > kwdbts::EngineOptions::max_anon_memory_size()) {
     // check if ANON memory reach limit.
-    LogMMapFileError("resize new "+ std::to_string(length) + " bytes");
+    LOG_ERROR("%lx [KWFTL] resize failed: out of anonymous memory limit, request size: %lu", 
+              pthread_self(), length);
     return KWENOMEM;
   }
+  
+  // 如果请求大小小于等于当前大小，直接返回
+  if (length <= static_cast<size_t>(file_length_)) {
+    return 0;
+  }
+  
   new_length_ = length;
   void *mem_tmp = nullptr;
+  int fd = -1;  // 缓存文件描述符，避免重复 open/close
   if (!(flags_ & O_ANONYMOUS)) {
-    int fd;
     if ((fd = ::open(absolute_file_path_.c_str(), O_RDWR | O_CREAT,
       S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP)) < 0) {
       // mem_ = 0;  failed, reuse original address, make sure no core.
-      LogMMapFileError("open file");
+      LOG_ERROR("%lx [KWFTL] open file failed: errno[%d], path[%s]", 
+                pthread_self(), errno, absolute_file_path_.c_str());
       return reportError();
     }
     // posix_fallocate is able to detect disk full.
@@ -186,31 +194,31 @@ int MMapFile::resize(size_t length) {
 #endif
     if (length) {
 #if !defined(__x86_64__) && !defined(_M_X64)
+      // 非 x86_64 平台先 munmap 再重新 mmap
       munmap();
 #endif
-//  mmap_mtx.lock();
       mem_tmp = (!mem_) ?
           mmap(0, length, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0) :
           ::mremap(mem_, file_length_, length, MREMAP_MAYMOVE);
-//  mmap_mtx.unlock();
     }
-    close(fd);
+    if (fd >= 0) {
+      close(fd);  // 统一关闭文件描述符
+    }
   } else {  // anonymous memory
-//    mmap_mtx.lock();
+    // 匿名内存不需要 open 文件，直接使用 mremap
     mem_tmp = (!mem_) ? mmap(0, length, PROT_READ | PROT_WRITE,
       MAP_PRIVATE | MAP_ANONYMOUS, -1, 0) :
       ::mremap(mem_, file_length_, length, MREMAP_MAYMOVE);
-//    mmap_mtx.unlock();
   }
   if (mem_tmp == MAP_FAILED) {
-    // mem_ = 0;
-    LogMMapFileError("remap");
+    LOG_ERROR("%lx [KWFTL] remap failed: errno[%d], request size[%lu], current size[%lu]", 
+              pthread_self(), errno, length, file_length_);
     checkError();
     return reportError();
   }
   if (flags_ & O_ANONYMOUS) {
     // Only incremental can be recorded
-    kwdbts::kw_used_anon_memory_size.fetch_add(length - file_length_);
+    kwdbts::kw_used_anon_memory_size.fetch_add(length - file_length_, std::memory_order_relaxed);
   }
   mem_ = mem_tmp;
   file_length_ = length;
