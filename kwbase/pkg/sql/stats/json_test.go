@@ -260,7 +260,7 @@ func TestGetSortHistogram(t *testing.T) {
 	}
 }
 
-// TestDecodeAndSetHistogramNull tests the behaviour when DNull is passed in.
+// TestDecodeAndSetHistogramNull tests the behavior when DNull is passed in.
 func TestDecodeAndSetHistogramNull(t *testing.T) {
 	js := &JSONStatistic{}
 	err := js.DecodeAndSetHistogram(tree.DNull)
@@ -272,7 +272,7 @@ func TestDecodeAndSetHistogramNull(t *testing.T) {
 	}
 }
 
-// TestDecodeAndSetHistogramEmptyBytes tests the behaviour when an empty byte slice is passed in.
+// TestDecodeAndSetHistogramEmptyBytes tests the behavior when an empty byte slice is passed in.
 func TestDecodeAndSetHistogramEmptyBytes(t *testing.T) {
 	js := &JSONStatistic{}
 	datum := tree.NewDBytes(tree.DBytes(""))

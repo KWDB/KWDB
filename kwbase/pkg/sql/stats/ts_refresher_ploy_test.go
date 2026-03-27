@@ -27,6 +27,8 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/types"
 	"gitee.com/kwbasedb/kwbase/pkg/util/leaktest"
+	"gitee.com/kwbasedb/kwbase/pkg/util/protoutil"
+	"gitee.com/kwbasedb/kwbase/pkg/util/timeutil"
 	"github.com/cockroachdb/errors"
 )
 
@@ -36,22 +38,20 @@ type fakeTSRefresherPolicy struct {
 	nowFn func() time.Time
 	cpuFn func(time.Duration, bool) ([]float64, error)
 
-	firstRefreshStatsFn func(*Refresher, context.Context, sqlbase.ID, time.Duration) error
-	firstRefreshTagFn   func(*Refresher, context.Context, sqlbase.ID, []sqlbase.ColumnDescriptor, bool, *sqlbase.TableDescriptor) error
-	refreshMetricFn     func(*Refresher, context.Context, sqlbase.ID, []sqlbase.ColumnDescriptor, *sqlbase.TableDescriptor, bool) error
-	refreshTagFn        func(*Refresher, context.Context, sqlbase.ID, []sqlbase.ColumnDescriptor, bool) error
+	firstRefreshStatsFn func(context.Context, *Refresher, sqlbase.ID, time.Duration) error
+	firstRefreshTagFn   func(context.Context, *Refresher, sqlbase.ID, []sqlbase.ColumnDescriptor, bool, *sqlbase.TableDescriptor) error
+	refreshMetricFn     func(context.Context, *Refresher, sqlbase.ID, []sqlbase.ColumnDescriptor, *sqlbase.TableDescriptor, bool) error
+	refreshTagFn        func(context.Context, *Refresher, sqlbase.ID, []sqlbase.ColumnDescriptor, bool) error
 }
 
 func (f fakeTSRefresherPolicy) now() time.Time {
 	if f.nowFn != nil {
 		return f.nowFn()
 	}
-	return time.Unix(0, 0)
+	return timeutil.Unix(0, 0)
 }
 
-func (f fakeTSRefresherPolicy) cpuPercent(
-	interval time.Duration, percpu bool,
-) ([]float64, error) {
+func (f fakeTSRefresherPolicy) cpuPercent(interval time.Duration, percpu bool) ([]float64, error) {
 	if f.cpuFn != nil {
 		return f.cpuFn(interval, percpu)
 	}
@@ -59,51 +59,51 @@ func (f fakeTSRefresherPolicy) cpuPercent(
 }
 
 func (f fakeTSRefresherPolicy) firstRefreshStats(
-	r *Refresher, ctx context.Context, tableID sqlbase.ID, asOf time.Duration,
+	ctx context.Context, r *Refresher, tableID sqlbase.ID, asOf time.Duration,
 ) error {
 	if f.firstRefreshStatsFn != nil {
-		return f.firstRefreshStatsFn(r, ctx, tableID, asOf)
+		return f.firstRefreshStatsFn(ctx, r, tableID, asOf)
 	}
 	return nil
 }
 
 func (f fakeTSRefresherPolicy) firstRefreshTagStats(
-	r *Refresher,
 	ctx context.Context,
+	r *Refresher,
 	tableID sqlbase.ID,
 	colsNewDesc []sqlbase.ColumnDescriptor,
 	enableTSOrderedTable bool,
 	tabDesc *sqlbase.TableDescriptor,
 ) error {
 	if f.firstRefreshTagFn != nil {
-		return f.firstRefreshTagFn(r, ctx, tableID, colsNewDesc, enableTSOrderedTable, tabDesc)
+		return f.firstRefreshTagFn(ctx, r, tableID, colsNewDesc, enableTSOrderedTable, tabDesc)
 	}
 	return nil
 }
 
 func (f fakeTSRefresherPolicy) refreshMetricStats(
-	r *Refresher,
 	ctx context.Context,
+	r *Refresher,
 	tableID sqlbase.ID,
 	colsNewDesc []sqlbase.ColumnDescriptor,
 	tabDesc *sqlbase.TableDescriptor,
 	enableTagAutomaticCollection bool,
 ) error {
 	if f.refreshMetricFn != nil {
-		return f.refreshMetricFn(r, ctx, tableID, colsNewDesc, tabDesc, enableTagAutomaticCollection)
+		return f.refreshMetricFn(ctx, r, tableID, colsNewDesc, tabDesc, enableTagAutomaticCollection)
 	}
 	return nil
 }
 
 func (f fakeTSRefresherPolicy) refreshTagStats(
-	r *Refresher,
 	ctx context.Context,
+	r *Refresher,
 	tableID sqlbase.ID,
 	colsNewDesc []sqlbase.ColumnDescriptor,
 	enableTSOrderedTable bool,
 ) error {
 	if f.refreshTagFn != nil {
-		return f.refreshTagFn(r, ctx, tableID, colsNewDesc, enableTSOrderedTable)
+		return f.refreshTagFn(ctx, r, tableID, colsNewDesc, enableTSOrderedTable)
 	}
 	return nil
 }
@@ -242,7 +242,7 @@ func TestHandleTsMetricStats_NoStatsForcesRefresh(t *testing.T) {
 
 	setTestTSRefreshPolicy(t, fakeTSRefresherPolicy{
 		refreshMetricFn: func(
-			_ *Refresher, _ context.Context, _ sqlbase.ID, _ []sqlbase.ColumnDescriptor, _ *sqlbase.TableDescriptor, _ bool,
+			_ context.Context, _ *Refresher, _ sqlbase.ID, _ []sqlbase.ColumnDescriptor, _ *sqlbase.TableDescriptor, _ bool,
 		) error {
 			called++
 			return nil
@@ -276,7 +276,7 @@ func TestHandleTsMetricStats_SmallMutationSkipsRefresh(t *testing.T) {
 	setTestTSRefreshPolicy(t, fakeTSRefresherPolicy{
 		nowFn: func() time.Time { return base },
 		refreshMetricFn: func(
-			_ *Refresher, _ context.Context, _ sqlbase.ID, _ []sqlbase.ColumnDescriptor, _ *sqlbase.TableDescriptor, _ bool,
+			_ context.Context, _ *Refresher, _ sqlbase.ID, _ []sqlbase.ColumnDescriptor, _ *sqlbase.TableDescriptor, _ bool,
 		) error {
 			called++
 			return nil
@@ -315,7 +315,7 @@ func TestHandleTsMetricStats_TimeBasedRefresh(t *testing.T) {
 	setTestTSRefreshPolicy(t, fakeTSRefresherPolicy{
 		nowFn: func() time.Time { return base },
 		refreshMetricFn: func(
-			_ *Refresher, _ context.Context, _ sqlbase.ID, _ []sqlbase.ColumnDescriptor, _ *sqlbase.TableDescriptor, _ bool,
+			_ context.Context, _ *Refresher, _ sqlbase.ID, _ []sqlbase.ColumnDescriptor, _ *sqlbase.TableDescriptor, _ bool,
 		) error {
 			called++
 			return nil
@@ -350,7 +350,7 @@ func TestHandleTsMetricStats_ConcurrentErrorMustRefreshRequeuesZero(t *testing.T
 
 	setTestTSRefreshPolicy(t, fakeTSRefresherPolicy{
 		refreshMetricFn: func(
-			_ *Refresher, _ context.Context, _ sqlbase.ID, _ []sqlbase.ColumnDescriptor, _ *sqlbase.TableDescriptor, _ bool,
+			_ context.Context, _ *Refresher, _ sqlbase.ID, _ []sqlbase.ColumnDescriptor, _ *sqlbase.TableDescriptor, _ bool,
 		) error {
 			return ConcurrentCreateStatsError
 		},
@@ -387,7 +387,7 @@ func TestHandleTsMetricStats_ConcurrentErrorDiceRollRequeuesMax(t *testing.T) {
 	setTestTSRefreshPolicy(t, fakeTSRefresherPolicy{
 		nowFn: func() time.Time { return base },
 		refreshMetricFn: func(
-			_ *Refresher, _ context.Context, _ sqlbase.ID, _ []sqlbase.ColumnDescriptor, _ *sqlbase.TableDescriptor, _ bool,
+			_ context.Context, _ *Refresher, _ sqlbase.ID, _ []sqlbase.ColumnDescriptor, _ *sqlbase.TableDescriptor, _ bool,
 		) error {
 			return ConcurrentCreateStatsError
 		},
@@ -426,7 +426,7 @@ func TestHandleTsMetricStats_NormalErrorDoesNotRequeue(t *testing.T) {
 
 	setTestTSRefreshPolicy(t, fakeTSRefresherPolicy{
 		refreshMetricFn: func(
-			_ *Refresher, _ context.Context, _ sqlbase.ID, _ []sqlbase.ColumnDescriptor, _ *sqlbase.TableDescriptor, _ bool,
+			_ context.Context, _ *Refresher, _ sqlbase.ID, _ []sqlbase.ColumnDescriptor, _ *sqlbase.TableDescriptor, _ bool,
 		) error {
 			return context.DeadlineExceeded
 		},
@@ -459,7 +459,7 @@ func TestHandleTsTagStats_NoStatsForcesRefresh(t *testing.T) {
 
 	setTestTSRefreshPolicy(t, fakeTSRefresherPolicy{
 		refreshTagFn: func(
-			_ *Refresher, _ context.Context, _ sqlbase.ID, _ []sqlbase.ColumnDescriptor, _ bool,
+			_ context.Context, _ *Refresher, _ sqlbase.ID, _ []sqlbase.ColumnDescriptor, _ bool,
 		) error {
 			called++
 			return nil
@@ -492,7 +492,7 @@ func TestHandleTsTagStats_SmallEntityMutationSkipsRefresh(t *testing.T) {
 	setTestTSRefreshPolicy(t, fakeTSRefresherPolicy{
 		nowFn: func() time.Time { return base },
 		refreshTagFn: func(
-			_ *Refresher, _ context.Context, _ sqlbase.ID, _ []sqlbase.ColumnDescriptor, _ bool,
+			_ context.Context, _ *Refresher, _ sqlbase.ID, _ []sqlbase.ColumnDescriptor, _ bool,
 		) error {
 			called++
 			return nil
@@ -529,7 +529,7 @@ func TestHandleTsTagStats_TimeBasedRefresh(t *testing.T) {
 	setTestTSRefreshPolicy(t, fakeTSRefresherPolicy{
 		nowFn: func() time.Time { return base },
 		refreshTagFn: func(
-			_ *Refresher, _ context.Context, _ sqlbase.ID, _ []sqlbase.ColumnDescriptor, _ bool,
+			_ context.Context, _ *Refresher, _ sqlbase.ID, _ []sqlbase.ColumnDescriptor, _ bool,
 		) error {
 			called++
 			return nil
@@ -566,7 +566,7 @@ func TestHandleTsTagStats_OrderedTableUsesUnorderedThreshold(t *testing.T) {
 	setTestTSRefreshPolicy(t, fakeTSRefresherPolicy{
 		nowFn: func() time.Time { return base },
 		refreshTagFn: func(
-			_ *Refresher, _ context.Context, _ sqlbase.ID, _ []sqlbase.ColumnDescriptor, _ bool,
+			_ context.Context, _ *Refresher, _ sqlbase.ID, _ []sqlbase.ColumnDescriptor, _ bool,
 		) error {
 			called++
 			return nil
@@ -600,7 +600,7 @@ func TestHandleTsTagStats_ConcurrentErrorMustRefreshRequeuesZero(t *testing.T) {
 
 	setTestTSRefreshPolicy(t, fakeTSRefresherPolicy{
 		refreshTagFn: func(
-			_ *Refresher, _ context.Context, _ sqlbase.ID, _ []sqlbase.ColumnDescriptor, _ bool,
+			_ context.Context, _ *Refresher, _ sqlbase.ID, _ []sqlbase.ColumnDescriptor, _ bool,
 		) error {
 			return ConcurrentCreateStatsError
 		},
@@ -636,7 +636,7 @@ func TestHandleTsTagStats_ConcurrentErrorDiceRollRequeuesMax(t *testing.T) {
 	setTestTSRefreshPolicy(t, fakeTSRefresherPolicy{
 		nowFn: func() time.Time { return base },
 		refreshTagFn: func(
-			_ *Refresher, _ context.Context, _ sqlbase.ID, _ []sqlbase.ColumnDescriptor, _ bool,
+			_ context.Context, _ *Refresher, _ sqlbase.ID, _ []sqlbase.ColumnDescriptor, _ bool,
 		) error {
 			return ConcurrentCreateStatsError
 		},
@@ -674,7 +674,7 @@ func TestHandleTsTagStats_NormalErrorDoesNotRequeue(t *testing.T) {
 
 	setTestTSRefreshPolicy(t, fakeTSRefresherPolicy{
 		refreshTagFn: func(
-			_ *Refresher, _ context.Context, _ sqlbase.ID, _ []sqlbase.ColumnDescriptor, _ bool,
+			_ context.Context, _ *Refresher, _ sqlbase.ID, _ []sqlbase.ColumnDescriptor, _ bool,
 		) error {
 			return context.DeadlineExceeded
 		},
@@ -830,7 +830,7 @@ func newRefresherForMoreTests() *Refresher {
 
 func setGetTableStatsFn(
 	t *testing.T,
-	fn func(r *Refresher, ctx context.Context, tableID sqlbase.ID) ([]*TableStatistic, error),
+	fn func(ctx context.Context, r *Refresher, tableID sqlbase.ID) ([]*TableStatistic, error),
 ) {
 	old := getTableStatsFn
 	getTableStatsFn = fn
@@ -838,8 +838,7 @@ func setGetTableStatsFn(
 }
 
 func setFirstRefreshTsStatsFn(
-	t *testing.T,
-	fn func(r *Refresher, ctx context.Context, tableID sqlbase.ID) error,
+	t *testing.T, fn func(ctx context.Context, r *Refresher, tableID sqlbase.ID) error,
 ) {
 	old := firstRefreshTsStatsFn
 	firstRefreshTsStatsFn = fn
@@ -848,17 +847,14 @@ func setFirstRefreshTsStatsFn(
 
 func setGetDatabaseDescFromIDFn(
 	t *testing.T,
-	fn func(*Refresher, context.Context, sqlbase.ID) (*sqlbase.DatabaseDescriptor, error),
+	fn func(context.Context, *Refresher, sqlbase.ID) (*sqlbase.DatabaseDescriptor, error),
 ) {
 	old := getDatabaseDescFromIDFn
 	getDatabaseDescFromIDFn = fn
 	t.Cleanup(func() { getDatabaseDescFromIDFn = old })
 }
 
-func setGossipTableStatAddedFn(
-	t *testing.T,
-	fn func(*Refresher, sqlbase.ID) error,
-) {
+func setGossipTableStatAddedFn(t *testing.T, fn func(*Refresher, sqlbase.ID) error) {
 	old := gossipTableStatAddedFn
 	gossipTableStatAddedFn = fn
 	t.Cleanup(func() { gossipTableStatAddedFn = old })
@@ -916,7 +912,7 @@ func TestMaybeRefreshTsStats_GetTableStatsError(t *testing.T) {
 			return []float64{10.0}, nil
 		},
 	})
-	setGetTableStatsFn(t, func(_ *Refresher, _ context.Context, _ sqlbase.ID) ([]*TableStatistic, error) {
+	setGetTableStatsFn(t, func(_ context.Context, _ *Refresher, _ sqlbase.ID) ([]*TableStatistic, error) {
 		return nil, errors.New("cache error")
 	})
 
@@ -942,12 +938,12 @@ func TestMaybeRefreshTsStats_FirstRefreshStatsPath(t *testing.T) {
 		cpuFn: func(time.Duration, bool) ([]float64, error) {
 			return []float64{10.0}, nil
 		},
-		firstRefreshStatsFn: func(_ *Refresher, _ context.Context, _ sqlbase.ID, _ time.Duration) error {
+		firstRefreshStatsFn: func(_ context.Context, _ *Refresher, _ sqlbase.ID, _ time.Duration) error {
 			called++
 			return nil
 		},
 	})
-	setGetTableStatsFn(t, func(_ *Refresher, _ context.Context, _ sqlbase.ID) ([]*TableStatistic, error) {
+	setGetTableStatsFn(t, func(_ context.Context, _ *Refresher, _ sqlbase.ID) ([]*TableStatistic, error) {
 		return nil, nil
 	})
 
@@ -977,12 +973,12 @@ func TestMaybeRefreshTsStats_FirstRefreshTagStatsPath(t *testing.T) {
 		cpuFn: func(time.Duration, bool) ([]float64, error) {
 			return []float64{10.0}, nil
 		},
-		firstRefreshTagFn: func(_ *Refresher, _ context.Context, _ sqlbase.ID, _ []sqlbase.ColumnDescriptor, _ bool, _ *sqlbase.TableDescriptor) error {
+		firstRefreshTagFn: func(_ context.Context, _ *Refresher, _ sqlbase.ID, _ []sqlbase.ColumnDescriptor, _ bool, _ *sqlbase.TableDescriptor) error {
 			called++
 			return nil
 		},
 	})
-	setGetTableStatsFn(t, func(_ *Refresher, _ context.Context, _ sqlbase.ID) ([]*TableStatistic, error) {
+	setGetTableStatsFn(t, func(_ context.Context, _ *Refresher, _ sqlbase.ID) ([]*TableStatistic, error) {
 		return nil, nil
 	})
 
@@ -1097,11 +1093,12 @@ func TestRefreshMetricStats_UpdateTableStatisticsPath(t *testing.T) {
 	fakeEx := &fakeInternalExecutor{}
 	r.ex = fakeEx
 
-	setGetDatabaseDescFromIDFn(t, func(
-		_ *Refresher, _ context.Context, _ sqlbase.ID,
-	) (*sqlbase.DatabaseDescriptor, error) {
-		return &sqlbase.DatabaseDescriptor{Name: "db1"}, nil
-	})
+	setGetDatabaseDescFromIDFn(
+		t,
+		func(_ context.Context, _ *Refresher, _ sqlbase.ID,
+		) (*sqlbase.DatabaseDescriptor, error) {
+			return &sqlbase.DatabaseDescriptor{Name: "db1"}, nil
+		})
 
 	setGossipTableStatAddedFn(t, func(_ *Refresher, _ sqlbase.ID) error {
 		return nil
@@ -1137,7 +1134,7 @@ func TestFirstRefreshTagStats_ConcurrentErrorRequeues(t *testing.T) {
 	r.ex = fakeEx
 
 	setGetDatabaseDescFromIDFn(t, func(
-		_ *Refresher, _ context.Context, _ sqlbase.ID,
+		_ context.Context, _ *Refresher, _ sqlbase.ID,
 	) (*sqlbase.DatabaseDescriptor, error) {
 		return &sqlbase.DatabaseDescriptor{Name: "db1"}, nil
 	})
@@ -1184,9 +1181,10 @@ func TestFirstRefreshStats_ConcurrentErrorRequeues(t *testing.T) {
 
 	r := newRefresherForMoreTests()
 
-	setFirstRefreshTsStatsFn(t, func(_ *Refresher, _ context.Context, _ sqlbase.ID) error {
-		return ConcurrentCreateStatsError
-	})
+	setFirstRefreshTsStatsFn(
+		t, func(_ context.Context, _ *Refresher, _ sqlbase.ID) error {
+			return ConcurrentCreateStatsError
+		})
 
 	err := r.firstRefreshStats(context.Background(), sqlbase.ID(8), 0)
 	if !errors.Is(err, ConcurrentCreateStatsError) {
@@ -1210,7 +1208,7 @@ func TestUpdateTableStatistics_DBDescError(t *testing.T) {
 
 	r := newRefresherForMoreTests()
 
-	setGetDatabaseDescFromIDFn(t, func(_ *Refresher, _ context.Context, _ sqlbase.ID) (*sqlbase.DatabaseDescriptor, error) {
+	setGetDatabaseDescFromIDFn(t, func(_ context.Context, _ *Refresher, _ sqlbase.ID) (*sqlbase.DatabaseDescriptor, error) {
 		return nil, errors.New("db desc err")
 	})
 
@@ -1232,7 +1230,7 @@ func TestUpdateTableStatistics_QueryRowError(t *testing.T) {
 	fakeEx := &fakeInternalExecutor{queryRowErr: errors.New("query row err")}
 	r.ex = fakeEx
 
-	setGetDatabaseDescFromIDFn(t, func(_ *Refresher, _ context.Context, _ sqlbase.ID) (*sqlbase.DatabaseDescriptor, error) {
+	setGetDatabaseDescFromIDFn(t, func(_ context.Context, _ *Refresher, _ sqlbase.ID) (*sqlbase.DatabaseDescriptor, error) {
 		return &sqlbase.DatabaseDescriptor{Name: "db1"}, nil
 	})
 
@@ -1254,7 +1252,7 @@ func TestUpdateTableStatistics_EmptyQueryRowWarning(t *testing.T) {
 	fakeEx := &fakeInternalExecutor{}
 	r.ex = fakeEx
 
-	setGetDatabaseDescFromIDFn(t, func(_ *Refresher, _ context.Context, _ sqlbase.ID) (*sqlbase.DatabaseDescriptor, error) {
+	setGetDatabaseDescFromIDFn(t, func(_ context.Context, _ *Refresher, _ sqlbase.ID) (*sqlbase.DatabaseDescriptor, error) {
 		return &sqlbase.DatabaseDescriptor{Name: "db1"}, nil
 	})
 
@@ -1279,7 +1277,7 @@ func TestUpdateTableStatistics_SuccessSkipsTagColumns(t *testing.T) {
 	r.ex = fakeEx
 
 	gossipCalled := 0
-	setGetDatabaseDescFromIDFn(t, func(_ *Refresher, _ context.Context, _ sqlbase.ID) (*sqlbase.DatabaseDescriptor, error) {
+	setGetDatabaseDescFromIDFn(t, func(_ context.Context, _ *Refresher, _ sqlbase.ID) (*sqlbase.DatabaseDescriptor, error) {
 		return &sqlbase.DatabaseDescriptor{Name: "db1"}, nil
 	})
 	setGossipTableStatAddedFn(t, func(_ *Refresher, _ sqlbase.ID) error {
@@ -1325,7 +1323,7 @@ func TestUpdateTableStatistics_InsertExecError(t *testing.T) {
 	}
 	r.ex = fakeEx
 
-	setGetDatabaseDescFromIDFn(t, func(_ *Refresher, _ context.Context, _ sqlbase.ID) (*sqlbase.DatabaseDescriptor, error) {
+	setGetDatabaseDescFromIDFn(t, func(_ context.Context, _ *Refresher, _ sqlbase.ID) (*sqlbase.DatabaseDescriptor, error) {
 		return &sqlbase.DatabaseDescriptor{Name: "db1"}, nil
 	})
 
@@ -1372,13 +1370,13 @@ func makeTestHistogramData() *HistogramData {
 func TestHistogramData_MarshalUnmarshal_RoundTrip(t *testing.T) {
 	orig := makeTestHistogramData()
 
-	data, err := orig.Marshal()
+	data, err := protoutil.Marshal(orig)
 	if err != nil {
 		t.Fatalf("Marshal() error: %v", err)
 	}
 
 	var decoded HistogramData
-	if err := decoded.Unmarshal(data); err != nil {
+	if err := protoutil.Unmarshal(data, &decoded); err != nil {
 		t.Fatalf("Unmarshal() error: %v", err)
 	}
 
@@ -1396,7 +1394,7 @@ func TestHistogramData_MarshalUnmarshal_RoundTrip(t *testing.T) {
 func TestHistogramData_SizeMatchesMarshalLength(t *testing.T) {
 	m := makeTestHistogramData()
 
-	data, err := m.Marshal()
+	data, err := protoutil.Marshal(m)
 	if err != nil {
 		t.Fatalf("Marshal() error: %v", err)
 	}
@@ -1409,7 +1407,7 @@ func TestHistogramData_SizeMatchesMarshalLength(t *testing.T) {
 func TestHistogramData_MarshalToMatchesMarshal(t *testing.T) {
 	m := makeTestHistogramData()
 
-	data1, err := m.Marshal()
+	data1, err := protoutil.Marshal(m)
 	if err != nil {
 		t.Fatalf("Marshal() error: %v", err)
 	}
@@ -1434,13 +1432,13 @@ func TestHistogramData_Bucket_MarshalUnmarshal_RoundTrip(t *testing.T) {
 		UpperBound:    []byte{0x10, 0x11, 0x12},
 	}
 
-	data, err := orig.Marshal()
+	data, err := protoutil.Marshal(orig)
 	if err != nil {
 		t.Fatalf("Marshal() error: %v", err)
 	}
 
 	var decoded HistogramData_Bucket
-	if err := decoded.Unmarshal(data); err != nil {
+	if err := protoutil.Unmarshal(data, &decoded); err != nil {
 		t.Fatalf("Unmarshal() error: %v", err)
 	}
 
@@ -1458,13 +1456,13 @@ func TestHistogramData_SortedBucket_MarshalUnmarshal_RoundTrip(t *testing.T) {
 		UpperBound:        []byte{0x21, 0x22},
 	}
 
-	data, err := orig.Marshal()
+	data, err := protoutil.Marshal(orig)
 	if err != nil {
 		t.Fatalf("Marshal() error: %v", err)
 	}
 
 	var decoded HistogramData_SortedHistogramBucket
-	if err := decoded.Unmarshal(data); err != nil {
+	if err := protoutil.Unmarshal(data, &decoded); err != nil {
 		t.Fatalf("Unmarshal() error: %v", err)
 	}
 
@@ -1478,7 +1476,7 @@ func TestHistogramData_Unmarshal_WrongWireTypeForBuckets(t *testing.T) {
 	data := []byte{0x08, 0x01}
 
 	var m HistogramData
-	err := m.Unmarshal(data)
+	err := protoutil.Unmarshal(data, &m)
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -1490,7 +1488,7 @@ func TestHistogramData_Bucket_Unmarshal_WrongWireTypeForDistinctRange(t *testing
 	data := []byte{0x20, 0x01}
 
 	var m HistogramData_Bucket
-	err := m.Unmarshal(data)
+	err := protoutil.Unmarshal(data, &m)
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -1502,7 +1500,7 @@ func TestHistogramData_SortedBucket_Unmarshal_WrongWireTypeForUpperBound(t *test
 	data := []byte{0x29, 1, 2, 3, 4, 5, 6, 7, 8}
 
 	var m HistogramData_SortedHistogramBucket
-	err := m.Unmarshal(data)
+	err := protoutil.Unmarshal(data, &m)
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -1511,7 +1509,7 @@ func TestHistogramData_SortedBucket_Unmarshal_WrongWireTypeForUpperBound(t *test
 func TestHistogramData_Unmarshal_UnexpectedEOF(t *testing.T) {
 	m := makeTestHistogramData()
 
-	data, err := m.Marshal()
+	data, err := protoutil.Marshal(m)
 	if err != nil {
 		t.Fatalf("Marshal() error: %v", err)
 	}
@@ -1522,7 +1520,7 @@ func TestHistogramData_Unmarshal_UnexpectedEOF(t *testing.T) {
 	truncated := data[:len(data)-1]
 
 	var decoded HistogramData
-	err = decoded.Unmarshal(truncated)
+	err = protoutil.Unmarshal(truncated, &decoded)
 	if err != io.ErrUnexpectedEOF {
 		t.Fatalf("expected %v, got %v", io.ErrUnexpectedEOF, err)
 	}

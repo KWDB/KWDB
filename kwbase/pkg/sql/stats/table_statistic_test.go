@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
+	"gitee.com/kwbasedb/kwbase/pkg/util/protoutil"
 )
 
 func makeTestTableStatisticProto() *TableStatisticProto {
@@ -37,14 +38,14 @@ func makeTestTableStatisticProto() *TableStatisticProto {
 func TestTableStatisticProto_MarshalUnmarshal_RoundTrip(t *testing.T) {
 	orig := makeTestTableStatisticProto()
 
-	data, err := orig.Marshal()
+	data, err := protoutil.Marshal(orig)
 	if err != nil {
-		t.Fatalf("Marshal() error: %v", err)
+		t.Fatalf("protoutil.Marshal() error: %v", err)
 	}
 
 	var decoded TableStatisticProto
-	if err := decoded.Unmarshal(data); err != nil {
-		t.Fatalf("Unmarshal() error: %v", err)
+	if err := protoutil.Unmarshal(data, &decoded); err != nil {
+		t.Fatalf("protoutil.Unmarshal() error: %v", err)
 	}
 
 	if orig.TableID != decoded.TableID {
@@ -76,7 +77,7 @@ func TestTableStatisticProto_MarshalUnmarshal_RoundTrip(t *testing.T) {
 func TestTableStatisticProto_SizeMatchesMarshalLength(t *testing.T) {
 	m := makeTestTableStatisticProto()
 
-	data, err := m.Marshal()
+	data, err := protoutil.Marshal(m)
 	if err != nil {
 		t.Fatalf("Marshal() error: %v", err)
 	}
@@ -89,7 +90,7 @@ func TestTableStatisticProto_SizeMatchesMarshalLength(t *testing.T) {
 func TestTableStatisticProto_MarshalToMatchesMarshal(t *testing.T) {
 	m := makeTestTableStatisticProto()
 
-	data1, err := m.Marshal()
+	data1, err := protoutil.Marshal(m)
 	if err != nil {
 		t.Fatalf("Marshal() error: %v", err)
 	}
@@ -109,7 +110,7 @@ func TestTableStatisticProto_MarshalToMatchesMarshal(t *testing.T) {
 func TestTableStatisticProto_Unmarshal_UnexpectedEOF(t *testing.T) {
 	m := makeTestTableStatisticProto()
 
-	data, err := m.Marshal()
+	data, err := protoutil.Marshal(m)
 	if err != nil {
 		t.Fatalf("Marshal() error: %v", err)
 	}
@@ -120,7 +121,7 @@ func TestTableStatisticProto_Unmarshal_UnexpectedEOF(t *testing.T) {
 	truncated := data[:len(data)-1]
 
 	var decoded TableStatisticProto
-	err = decoded.Unmarshal(truncated)
+	err = protoutil.Unmarshal(truncated, &decoded)
 	if err == nil {
 		t.Fatal("expected error for truncated input, got nil")
 	}
@@ -139,7 +140,7 @@ func TestTableStatisticProto_Unmarshal_WrongWireType(t *testing.T) {
 	}
 
 	var decoded TableStatisticProto
-	err := decoded.Unmarshal(data)
+	err := protoutil.Unmarshal(data, &decoded)
 	if err == nil {
 		t.Fatal("expected wrong wire type error, got nil")
 	}
@@ -156,13 +157,13 @@ func TestTableStatisticProto_Unmarshal_PackedColumnIDs(t *testing.T) {
 		StatisticID: 99,
 	}
 
-	data, err := m.Marshal()
+	data, err := protoutil.Marshal(m)
 	if err != nil {
 		t.Fatalf("Marshal() error: %v", err)
 	}
 
 	var decoded TableStatisticProto
-	if err := decoded.Unmarshal(data); err != nil {
+	if err := protoutil.Unmarshal(data, &decoded); err != nil {
 		t.Fatalf("Unmarshal() error: %v", err)
 	}
 
@@ -174,7 +175,7 @@ func TestTableStatisticProto_Unmarshal_PackedColumnIDs(t *testing.T) {
 func TestSkipTableStatistic_ValidInput(t *testing.T) {
 	m := makeTestTableStatisticProto()
 
-	data, err := m.Marshal()
+	data, err := protoutil.Marshal(m)
 	if err != nil {
 		t.Fatalf("Marshal() error: %v", err)
 	}
