@@ -449,6 +449,8 @@ class WALMgr {
   using WALMgrLatch = KLatch;
   WALMgrLatch* meta_mutex_;
   bool read_chk_;
+  // 在 WALMgr 类中添加成员变量
+  char meta_flush_buf_[sizeof(WALMeta)];
 //  TsVGroup* vg_{nullptr};
 };
 }  // namespace kwdbts

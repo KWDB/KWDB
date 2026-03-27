@@ -29,29 +29,42 @@ TagTableVersionManager::~TagTableVersionManager() {
 
 TagVersionObject* TagTableVersionManager::CreateTagVersionObject(const std::vector<TagInfo>& schema, uint32_t ts_version,
                           ErrorInfo& err_info) {
+  // 快速路径：先检查是否存在（不锁）
+  {
+    rdLock();
+    auto version_obj = m_version_tables_.find(ts_version);
+    if (version_obj != m_version_tables_.end()) {
+       unLock();
+       LOG_WARN("tag table version [%u] already exist.", ts_version);
+       return version_obj->second;
+    }
+    unLock();
+  }
+  
+  // 慢路径：真正创建（写锁）
   wrLock();
+  // 双重检查
   auto version_obj = m_version_tables_.find(ts_version);
   if (version_obj != m_version_tables_.end()) {
      unLock();
-     LOG_WARN("tag table version [%u] already exist.", ts_version);
-     // err_info.errmsg = "tag table version: " + std::to_string(ts_version) + " already exist.";
-     // if already exist,mean error
      return version_obj->second;
   }
+  
   TagVersionObject* tmp_obj = KNEW TagVersionObject(m_db_path_, m_tbl_sub_path_, m_table_id_, ts_version);
   if (tmp_obj && !tmp_obj->create(schema, err_info)) {
     tmp_obj->setStatus(TAG_STATUS_CREATED);
     m_version_tables_.insert({ts_version, tmp_obj});
+    if (ts_version > m_max_version_.load()) {
+      m_max_version_.store(ts_version);
+    }
     unLock();
     return tmp_obj;
   }
   unLock();
   if (tmp_obj) {
-    // failed && rollback
     tmp_obj->remove();
     delete tmp_obj;
   }
-
   LOG_ERROR("create tag metadata version[%u] failed, %s ",ts_version, err_info.errmsg.c_str());
   return nullptr;
 }

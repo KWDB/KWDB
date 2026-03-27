@@ -233,6 +233,7 @@ KStatus WALMgr::WriteWAL(kwdbContext_p ctx, k_char* wal_log, size_t length) {
 
 KStatus WALMgr::WriteIncompleteWAL(kwdbContext_p ctx, const std::vector<LogEntry*>& logs) {
   this->Lock();
+  Defer unlock{[&]() { this->Unlock(); }};
   KStatus s;
   uint64_t current_lsn = 0;
   for (auto log : logs) {
@@ -457,7 +458,6 @@ KStatus WALMgr::WriteIncompleteWAL(kwdbContext_p ctx, const std::vector<LogEntry
         break;
     }
   }
-  this->Unlock();
   return KStatus::SUCCESS;
 }
 
@@ -1212,11 +1212,10 @@ KStatus WALMgr::initWalMeta(kwdbContext_p ctx, bool is_create) {
 
 KStatus WALMgr::flushMeta(kwdbContext_p ctx) {
   streamsize size = sizeof(WALMeta);
-
-  char* buf = new char[size];
-  memcpy(buf, &meta_, size);
+  memcpy(meta_flush_buf_, &meta_, size);
   meta_file_.seekg(0, std::ios::beg);
-  meta_file_.write(buf, size);
+  meta_file_.write(meta_flush_buf_, size);
+  
   if (opt_->wal_level == WALMode::SYNC) {
     auto helper = [](std::filebuf *fb) -> int {
       class Helper : public std::filebuf {
@@ -1229,8 +1228,6 @@ KStatus WALMgr::flushMeta(kwdbContext_p ctx) {
   } else {
     meta_file_.flush();
   }
-  delete[] buf;
-
   return SUCCESS;
 }
 
