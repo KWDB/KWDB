@@ -40,6 +40,8 @@ class BaseTupleData {
  public:
   virtual ~BaseTupleData() = default;
 
+  virtual KStatus Initialize() = 0;
+
   /**
    * @brief Get the next tuple pointer
    * @param[in] hash_val hash value for partitioning
@@ -116,6 +118,8 @@ class MemoryTupleData : public BaseTupleData {
   explicit MemoryTupleData(k_uint32 tuple_size, k_uint32 capacity = INIT_CAPACITY, k_bool allow_abandoned = true);
 
   ~MemoryTupleData() override;
+
+  KStatus Initialize() override;
 
   MemoryTupleData(const MemoryTupleData&) = delete;
   MemoryTupleData& operator=(const MemoryTupleData&) = delete;

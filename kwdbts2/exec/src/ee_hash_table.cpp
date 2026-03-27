@@ -177,6 +177,9 @@ KStatus LinearProbingHashTable::Initialize(k_uint64 capacity) {
     return KStatus::FAIL;
   }
   tuple_data_ = std::make_unique<MemoryTupleData>(tuple_size_, capacity_ / 2, allow_abandoned_);
+  if (tuple_data_->Initialize() != KStatus::SUCCESS) {
+    return KStatus::FAIL;
+  }
 
   return KStatus::SUCCESS;
 }
