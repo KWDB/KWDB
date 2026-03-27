@@ -231,6 +231,8 @@ class TsPartitionVersion {
   }
   std::vector<std::shared_ptr<TsLastSegment>> GetCompactLastSegments(int *level, int *group) const;
 
+  std::vector<std::shared_ptr<TsLastSegment>> GetVacuumLastSegments(bool force_vacuum) const;
+
   std::vector<std::shared_ptr<TsLastSegment>> GetAllLastSegments() const {
     return leveled_last_segments_.GetAllLastSegments();
   }

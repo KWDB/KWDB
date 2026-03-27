@@ -36,7 +36,7 @@ class OperatorTestBase : public ::testing::Test {
   static const string data_root;
 
   explicit OperatorTestBase() : table_id_(test_table_id) {
-    EngineOptions::g_dedup_rule = kwdbts::DedupRule::KEEP;
+    EngineOptions::g_dedup_rule = kwdbts::DedupRule::KEEP_EXPERIMENTAL;
     system(("rm -rf " + kw_home).c_str());
     system(("rm -rf " + data_root).c_str());
 

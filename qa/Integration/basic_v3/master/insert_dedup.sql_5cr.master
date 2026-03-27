@@ -67,7 +67,7 @@ INSERT 1
 (3 rows)
 > drop database test_dedup_function cascade;
 DROP DATABASE
-> SET CLUSTER SETTING ts.dedup.rule = 'keep';
+> SET CLUSTER SETTING ts.dedup.rule = 'keep.experimental';
 SET CLUSTER SETTING
 > create ts database test_dedup_function;
 CREATE TS DATABASE

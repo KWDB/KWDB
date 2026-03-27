@@ -1,5 +1,5 @@
 --- Cluster Settings
-SET CLUSTER SETTING ts.dedup.rule = 'keep';
+SET CLUSTER SETTING ts.dedup.rule = 'keep.experimental';
 SET CLUSTER SETTING sql.distsql.temp_storage.workmem = '4096Mib';
 SET CLUSTER SETTING sql.all_push_down.enabled = true;
 SET CLUSTER SETTING sql.pg_encode_short_circuit.enabled = true;

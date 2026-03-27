@@ -716,7 +716,8 @@ void TsVGroup::closeCompactThread() {
   }
 }
 
-KStatus TsVGroup::PartitionCompact(std::shared_ptr<const TsPartitionVersion> partition, bool call_by_vacuum) {
+KStatus TsVGroup::PartitionCompact(std::shared_ptr<const TsPartitionVersion> partition,
+                                   bool call_by_vacuum, bool force_vacuum) {
   TsIOEnv* env = &TsIOEnv::GetInstance();
   auto partition_id = partition->GetPartitionIdentifier();
   if (!partition->TrySetBusy(PartitionStatus::Compacting)) {
@@ -735,7 +736,7 @@ KStatus TsVGroup::PartitionCompact(std::shared_ptr<const TsPartitionVersion> par
   if (!call_by_vacuum) {
     last_segments = partition->GetCompactLastSegments(&level, &group);
   } else {
-    last_segments = partition->GetAllLastSegments();
+    last_segments = partition->GetVacuumLastSegments(force_vacuum);
   }
   if (last_segments.empty()) {
     return KStatus::SUCCESS;
@@ -2110,7 +2111,7 @@ KStatus TsVGroup::Vacuum(kwdbContext_p ctx, bool force) {
       bool need_vacuum = false;
       if (partition->GetLastSegmentsCount() != 0) {
         // force compact historical partition
-        s = PartitionCompact(partition, true);
+        s = PartitionCompact(partition, true, force);
         if (s != SUCCESS) {
           LOG_ERROR("PartitionCompact failed, [%s]", partition->GetPartitionIdentifierStr().c_str());
           continue;

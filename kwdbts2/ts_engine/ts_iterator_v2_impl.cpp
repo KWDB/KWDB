@@ -2142,8 +2142,8 @@ KStatus TsAggIteratorImpl::CountAggregate(TsScanStats* ts_scan_stats) {
           mem_ts_spans.push_back({mem_block->GetFirstTS(), mem_block->GetLastTS()});
           mem_count += mem_block->GetRowNum();
         }
-        if (EngineOptions::g_dedup_rule == DedupRule::KEEP ||
-        (checkTimestampWithSpans(mem_ts_spans, count_stats.min_ts, count_stats.max_ts) ==
+        if (EngineOptions::g_dedup_rule == DedupRule::KEEP_EXPERIMENTAL ||
+            (checkTimestampWithSpans(mem_ts_spans, count_stats.min_ts, count_stats.max_ts) ==
         TimestampCheckResult::NonOverlapping)) {
           KUint64(final_agg_data_[0].data) += count_stats.valid_count + mem_count;
         } else {

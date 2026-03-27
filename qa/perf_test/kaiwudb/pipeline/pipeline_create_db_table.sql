@@ -6,7 +6,7 @@ set cluster setting sql.pg_encode_short_circuit.enabled = true;
 set cluster setting ts.parallel_degree=8;
 set cluster setting server.tsinsert_direct.enabled = true; 
 set CLUSTER SETTING server.sql_connections.max_limit = 1000;
-set cluster setting ts.dedup.rule="keep";
+set cluster setting ts.dedup.rule="keep.experimental";
 
 CREATE TABLE db_pipec.t_point (
   k_timestamp timestamp NOT NULL,

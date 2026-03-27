@@ -45,7 +45,7 @@ select * from test_dedup_function.tb order by k_timestamp;
 drop database test_dedup_function cascade;
 
 -----Part 3: Keep Mode Scenario Practice
-SET CLUSTER SETTING ts.dedup.rule = 'keep';
+SET CLUSTER SETTING ts.dedup.rule = 'keep.experimental';
 
 create ts database test_dedup_function;
 create table test_dedup_function.tb(k_timestamp timestamptz not null,e1 timestamptz,e2 int2,e3 int,e4 int8,e5 float4,e6 float8,e7 bool,e8 char,e9 char(100),e10 nchar,e11 nchar(255),e12 char(200),e13 char(255),e14 char(100),e15 nchar(100),e16 nchar(255),e17 nchar(255),e18 varbytes,e19 varbytes(100),e20 varbytes(200),e21 varbytes(254),e22 varbytes(200)) tags (t1 int2 not null) primary tags(t1);
