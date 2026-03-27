@@ -1707,9 +1707,11 @@ KStatus TsTableV2Impl::GetTagRecordInfoByOSN(kwdbContext_p ctx,
   std::vector<KwOSNSpan>& osn_span, TS_OSN scan_osn, std::unordered_map<uint64_t, EntityResultIndex>* pkeys_status) {
   return GetTagRecordInfoByOSN(ctx, [&](TagPartitionTable* entity_tag_bt, int row_num) -> bool {
     uint32_t tag_hash;
-    entity_tag_bt->getHashpointByRowNum(row_num, &tag_hash);
-    if (!InHashIdSpan(tag_hash, hps)) {
-      return false;
+    if (!EngineOptions::isSingleNode()) {
+      entity_tag_bt->getHashpointByRowNum(row_num, &tag_hash);
+      if (!InHashIdSpan(tag_hash, hps)) {
+        return false;
+      }
     }
     return true;
   }, osn_span, scan_osn, pkeys_status);
