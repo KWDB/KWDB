@@ -110,7 +110,7 @@ enum class VacuumStatus {
 };
 
 enum class DedupRule {
-  KEEP = 0,      // not deduplicate
+  KEEP_EXPERIMENTAL = 0,      // not deduplicate
   OVERRIDE = 1,  // deduplicate by row
   REJECT = 2,    // reject duplicate rows
   DISCARD = 3,   // ignore duplicate rows

@@ -21,7 +21,7 @@ SET CLUSTER SETTING ts.raftlog_combine_wal.enabled = false;
 -- restart: c3
 -- restart: c4
 -- restart: c5
-SET CLUSTER SETTING ts.dedup.rule = 'keep';
+SET CLUSTER SETTING ts.dedup.rule = 'keep.experimental';
 SET CLUSTER SETTING ts.raftlog_combine_wal.enabled = true;
 SET CLUSTER SETTING ts.dedup.rule = 'reject';
 SET CLUSTER SETTING ts.raftlog_combine_wal.enabled = true;

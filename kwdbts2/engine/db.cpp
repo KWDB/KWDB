@@ -708,8 +708,8 @@ void TriggerSettingCallback(const std::string& key, const std::string& value) {
       EngineOptions::g_dedup_rule = kwdbts::DedupRule::OVERRIDE;
     } else if ("merge" == value) {
       EngineOptions::g_dedup_rule = kwdbts::DedupRule::MERGE;
-    } else if ("keep" == value) {
-      EngineOptions::g_dedup_rule = kwdbts::DedupRule::KEEP;
+    } else if ("keep.experimental" == value) {
+      EngineOptions::g_dedup_rule = kwdbts::DedupRule::KEEP_EXPERIMENTAL;
     } else if ("discard" == value) {
       EngineOptions::g_dedup_rule = kwdbts::DedupRule::DISCARD;
     } else {

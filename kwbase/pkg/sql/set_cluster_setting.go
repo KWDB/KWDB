@@ -143,7 +143,7 @@ func (p *planner) SetClusterSetting(
 type CheckOperation func(string) error
 
 func checkTsDedupRule(encodedValue string) error {
-	if encodedValue != "merge" && encodedValue != "keep" && encodedValue != "discard" && encodedValue != "override" {
+	if encodedValue != "merge" && encodedValue != "keep.experimental" && encodedValue != "discard" && encodedValue != "override" {
 		return errors.New("ts.dedup.rule setting value is not right")
 	}
 	return nil

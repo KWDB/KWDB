@@ -69,7 +69,7 @@ KStatus TsPartitionEntityCountManager::updateEntityCount(TsEntityCountStats* hea
   } else if (!info->is_count_valid || info->table_id != header->table_id) {
     header->valid_count = 0;
     header->is_count_valid = false;
-  } else if (EngineOptions::g_dedup_rule == DedupRule::KEEP) {
+  } else if (EngineOptions::g_dedup_rule == DedupRule::KEEP_EXPERIMENTAL) {
     header->valid_count += info->valid_count;
   } else {
     // ts span no cross with history ts span.
