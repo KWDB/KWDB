@@ -41,6 +41,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/testutils"
 	"gitee.com/kwbasedb/kwbase/pkg/testutils/serverutils"
 	"gitee.com/kwbasedb/kwbase/pkg/testutils/sqlutils"
+	"gitee.com/kwbasedb/kwbase/pkg/util/hlc"
 	"gitee.com/kwbasedb/kwbase/pkg/util/leaktest"
 	"gitee.com/kwbasedb/kwbase/pkg/util/protoutil"
 )
@@ -1435,4 +1436,622 @@ func TestSQLString(t *testing.T) {
 	if got := index.SQLString(&AnonymousTable); got != expected {
 		t.Errorf("Expected '%s', but got '%s'", expected, got)
 	}
+}
+
+func TestForeignKeyReferenceResetStringSize(t *testing.T) {
+	m := &ForeignKeyReference{
+		Table:           1,
+		Index:           2,
+		Name:            "test_ref",
+		SharedPrefixLen: 3,
+		OnDelete:        ForeignKeyReference_NO_ACTION,
+		OnUpdate:        ForeignKeyReference_NO_ACTION,
+		Match:           ForeignKeyReference_SIMPLE,
+	}
+	m.Reset()
+	if m.Table != 0 {
+		t.Errorf("Reset failed: expected Table 0, got %d", m.Table)
+	}
+
+	str := m.String()
+	if len(str) == 0 {
+		t.Error("String returned empty string")
+	}
+
+	size := m.Size()
+	if size < 0 {
+		t.Errorf("Size returned negative value: %d", size)
+	}
+
+	m2 := &ForeignKeyReference{
+		Table:           1,
+		Index:           2,
+		Name:            "test_ref",
+		SharedPrefixLen: 3,
+		OnDelete:        ForeignKeyReference_NO_ACTION,
+		OnUpdate:        ForeignKeyReference_NO_ACTION,
+		Match:           ForeignKeyReference_SIMPLE,
+	}
+	target := make([]byte, 0, 1000)
+	m2.XXX_Unmarshal(nil)
+	m2.XXX_Marshal(target, false)
+	m2.XXX_Size()
+	m2.XXX_DiscardUnknown()
+}
+
+func TestForeignKeyConstraintResetStringSize(t *testing.T) {
+	m := &ForeignKeyConstraint{
+		OriginTableID:       1,
+		OriginColumnIDs:     []ColumnID{1, 2},
+		ReferencedColumnIDs: []ColumnID{3, 4},
+		ReferencedTableID:   3,
+		Name:                "fk_test",
+		OnDelete:            ForeignKeyReference_NO_ACTION,
+		OnUpdate:            ForeignKeyReference_NO_ACTION,
+		Match:               ForeignKeyReference_SIMPLE,
+	}
+	m.Reset()
+	if m.Name != "" {
+		t.Errorf("Reset failed: expected Name empty, got %s", m.Name)
+	}
+
+	str := m.String()
+	if len(str) == 0 {
+		t.Error("String returned empty string")
+	}
+
+	size := m.Size()
+	if size < 0 {
+		t.Errorf("Size returned negative value: %d", size)
+	}
+
+	// m.XXX_DiscardUnknown()
+}
+
+func TestColumnDescriptorResetStringSize(t *testing.T) {
+	m := &ColumnDescriptor{
+		Name:     "test_col",
+		ID:       1,
+		Nullable: true,
+	}
+	m.Reset()
+	if m.Name != "" {
+		t.Errorf("Reset failed: expected Name empty")
+	}
+
+	str := m.String()
+	if len(str) == 0 {
+		t.Error("String returned empty string")
+	}
+
+	size := m.Size()
+	if size < 0 {
+		t.Errorf("Size returned negative value: %d", size)
+	}
+
+	// // m.XXX_DiscardUnknown()
+}
+
+func TestIndexDescriptorResetStringSize(t *testing.T) {
+	m := &IndexDescriptor{
+		Name:             "test_idx",
+		ID:               1,
+		Unique:           false,
+		ColumnNames:      []string{"col1"},
+		ColumnDirections: []IndexDescriptor_Direction{IndexDescriptor_ASC},
+	}
+	m.Reset()
+	if m.Name != "" {
+		t.Errorf("Reset failed")
+	}
+	str := m.String()
+	if len(str) == 0 {
+		t.Error("String empty")
+	}
+	size := m.Size()
+	if size < 0 {
+		t.Errorf("Size negative")
+	}
+	// // m.XXX_DiscardUnknown()
+}
+
+func TestConstraintToUpdateResetStringSize(t *testing.T) {
+	m := &ConstraintToUpdate{
+		ConstraintType: ConstraintToUpdate_NOT_NULL,
+		Name:           "not_null_con",
+		NotNullColumn:  1,
+	}
+	m.Reset()
+	if m.ConstraintType == ConstraintToUpdate_NOT_NULL {
+		t.Errorf("Reset failed")
+	}
+	str := m.String()
+	if len(str) == 0 {
+		t.Error("String empty")
+	}
+	size := m.Size()
+	if size < 0 {
+		t.Errorf("Size negative")
+	}
+	// // m.XXX_DiscardUnknown()
+}
+
+func TestDescriptorResetStringSize(t *testing.T) {
+	m := &Descriptor{
+		Union: &Descriptor_Table{Table: &TableDescriptor{ID: 1, Name: "test"}},
+	}
+	str := m.String()
+	if len(str) == 0 {
+		t.Error("String empty")
+	}
+	m.Reset()
+	if m.GetTable() != nil {
+		t.Errorf("Reset failed")
+	}
+	size := m.Size()
+	if size < 0 {
+		t.Errorf("Size negative")
+	}
+	// // m.XXX_DiscardUnknown()
+}
+
+func TestTableDescriptorResetStringSize(t *testing.T) {
+	m := &TableDescriptor{
+		Name: "test_table",
+		ID:   1,
+	}
+	m.Reset()
+	if m.Name != "" {
+		t.Errorf("Reset failed")
+	}
+	str := m.String()
+	if len(str) == 0 {
+		t.Error("String empty")
+	}
+	size := m.Size()
+	if size < 0 {
+		t.Errorf("Size negative")
+	}
+	// // m.XXX_DiscardUnknown()
+}
+
+func TestDatabaseDescriptorResetStringSize(t *testing.T) {
+	m := &DatabaseDescriptor{
+		Name: "test_db",
+		ID:   1,
+	}
+	m.Reset()
+	if m.Name != "" {
+		t.Errorf("Reset failed")
+	}
+	str := m.String()
+	if len(str) == 0 {
+		t.Error("String empty")
+	}
+	size := m.Size()
+	if size < 0 {
+		t.Errorf("Size negative")
+	}
+	// m.XXX_DiscardUnknown()
+}
+
+func TestSchemaDescriptorResetStringSize(t *testing.T) {
+	m := &SchemaDescriptor{
+		Name: "test_schema",
+		ID:   1,
+	}
+	m.Reset()
+	if m.Name != "" {
+		t.Errorf("Reset failed")
+	}
+	str := m.String()
+	if len(str) == 0 {
+		t.Error("String empty")
+	}
+	size := m.Size()
+	if size < 0 {
+		t.Errorf("Size negative")
+	}
+	// m.XXX_DiscardUnknown()
+}
+
+func TestConstraintValidityString(t *testing.T) {
+	if ConstraintValidity_Validated.String() != "Validated" {
+		t.Errorf("Expected Validated")
+	}
+}
+
+func TestForeignKeyReferenceMatchString(t *testing.T) {
+	if ForeignKeyReference_SIMPLE.String() != "MATCH SIMPLE" {
+		t.Errorf("Expected MATCH SIMPLE")
+	}
+}
+
+func TestIndexDescriptorDirectionString(t *testing.T) {
+	if IndexDescriptor_ASC.String() != "ASC" {
+		t.Errorf("Expected ASC")
+	}
+}
+
+func TestPrimaryKeySwapResetStringSize(t *testing.T) {
+	m := &PrimaryKeySwap{OldPrimaryIndexId: 1, NewPrimaryIndexId: 2}
+	m.Reset()
+	if m.OldPrimaryIndexId != 0 {
+		t.Error("Reset failed")
+	}
+	_ = m.String()
+	_ = m.Size()
+	// m.XXX_DiscardUnknown()
+}
+
+func TestInterleaveDescriptorResetStringSize(t *testing.T) {
+	m := &InterleaveDescriptor{Ancestors: []InterleaveDescriptor_Ancestor{{TableID: 1, IndexID: 2}}}
+	m.Reset()
+	if len(m.Ancestors) != 0 {
+		t.Error("Reset failed")
+	}
+	_ = m.String()
+	_ = m.Size()
+	// m.XXX_DiscardUnknown()
+}
+
+func TestPartitioningDescriptorResetStringSize(t *testing.T) {
+	m := &PartitioningDescriptor{NumColumns: 1}
+	m.Reset()
+	if m.NumColumns != 0 {
+		t.Error("Reset failed")
+	}
+	_ = m.String()
+	_ = m.Size()
+	// m.XXX_DiscardUnknown()
+}
+
+func TestShardedDescriptorResetStringSize(t *testing.T) {
+	m := &ShardedDescriptor{IsSharded: true, ColumnNames: []string{"col1"}}
+	m.Reset()
+	if m.IsSharded {
+		t.Error("Reset failed")
+	}
+	_ = m.String()
+	_ = m.Size()
+	// m.XXX_DiscardUnknown()
+}
+
+func TestTriggerDescriptorResetStringSize(t *testing.T) {
+	m := &TriggerDescriptor{Name: "trig"}
+	m.Reset()
+	if m.Name != "" {
+		t.Error("Reset failed")
+	}
+	_ = m.String()
+	_ = m.Size()
+	// m.XXX_DiscardUnknown()
+}
+
+func TestImportTableResetStringSize(t *testing.T) {
+	m := &ImportTable{TableName: "tbl"}
+	m.Reset()
+	if m.TableName != "" {
+		t.Error("Reset failed")
+	}
+	_ = m.String()
+	_ = m.Size()
+	// m.XXX_DiscardUnknown()
+}
+
+func TestDescriptorMutationResetStringSize(t *testing.T) {
+	m := &DescriptorMutation{Descriptor_: &DescriptorMutation_Column{Column: &ColumnDescriptor{Name: "c1"}}}
+	m.Reset()
+	if m.Descriptor_ != nil {
+		t.Error("Reset failed")
+	}
+	_ = m.String()
+	_ = m.Size()
+	// m.XXX_DiscardUnknown()
+}
+
+func TestColumnFamilyDescriptorResetStringSize(t *testing.T) {
+	m := &ColumnFamilyDescriptor{Name: "fam", ID: 1}
+	m.Reset()
+	if m.Name != "" {
+		t.Error("Reset failed")
+	}
+	_ = m.String()
+	_ = m.Size()
+	// m.XXX_DiscardUnknown()
+}
+
+func TestMaterializedViewRefreshResetStringSize(t *testing.T) {
+	m := &MaterializedViewRefresh{AsOf: hlc.Timestamp{1111111111, 1111111}}
+	m.Reset()
+	if m.AsOf.WallTime != 0 {
+		t.Error("Reset failed")
+	}
+	_ = m.String()
+	_ = m.Size()
+	// m.XXX_DiscardUnknown()
+}
+
+func TestConstraintToUpdateConstraintTypeString(t *testing.T) {
+	if ConstraintToUpdate_CHECK.String() != "CHECK" {
+		t.Error("Expected CHECK")
+	}
+}
+
+func TestConstraintToUpdateConstraintTypeFOREIGNKEYString(t *testing.T) {
+	if ConstraintToUpdate_FOREIGN_KEY.String() != "FOREIGN_KEY" {
+		t.Error("Expected FOREIGN_KEY")
+	}
+}
+
+func TestFunctionDescriptorResetStringSize(t *testing.T) {
+	m := &FunctionDescriptor{Name: "fn", ArgumentTypes: []uint32{1}, ReturnType: []uint32{2}, FunctionBody: "body"}
+	m.Reset()
+	if m.Name != "" {
+		t.Error("Reset failed")
+	}
+	_ = m.String()
+	_ = m.Size()
+	// m.XXX_DiscardUnknown()
+}
+
+func TestProcedureDescriptorResetStringSize(t *testing.T) {
+	m := &ProcedureDescriptor{Name: "proc", Parameters: []ProcParam{{Name: "p1"}}, ProcBody: "body"}
+	m.Reset()
+	if m.Name != "" {
+		t.Error("Reset failed")
+	}
+	_ = m.String()
+	_ = m.Size()
+	// m.XXX_DiscardUnknown()
+}
+
+func TestProcParamResetStringSize(t *testing.T) {
+	m := &ProcParam{Name: "param", Direction: ProcParam_InDirection}
+	m.Reset()
+	if m.Name != "" {
+		t.Error("Reset failed")
+	}
+	_ = m.String()
+	_ = m.Size()
+	// m.XXX_DiscardUnknown()
+}
+
+func TestTSDBResetStringSize(t *testing.T) {
+	m := &TSDB{Creator: "creator"}
+	m.Reset()
+	if m.Creator != "" {
+		t.Error("Reset failed")
+	}
+	_ = m.String()
+	_ = m.Size()
+	// m.XXX_DiscardUnknown()
+}
+
+func TestTSTableResetStringSize(t *testing.T) {
+	m := &TSTable{Lifetime: 20, ActiveTime: 1}
+	m.Reset()
+	if m.Lifetime != 0 {
+		t.Error("Reset failed")
+	}
+	_ = m.String()
+	_ = m.Size()
+	// m.XXX_DiscardUnknown()
+}
+
+func TestKWDBTSColumnResetStringSize(t *testing.T) {
+	m := &KWDBTSColumn{ColumnId: 2}
+	m.Reset()
+	if m.ColumnId != 0 {
+		t.Error("Reset failed")
+	}
+	_ = m.String()
+	_ = m.Size()
+	// m.XXX_DiscardUnknown()
+}
+
+func TestCDCDescriptorResetStringSize(t *testing.T) {
+	m := &CDCDescriptor{ID: 1}
+	m.Reset()
+	if m.ID != 0 {
+		t.Error("Reset failed")
+	}
+	_ = m.String()
+	_ = m.Size()
+	// m.XXX_DiscardUnknown()
+}
+
+func TestKWDBScheOptionResetStringSize(t *testing.T) {
+	m := &KWDBScheOption{Wait: "opt"}
+	m.Reset()
+	if m.Wait != "" {
+		t.Error("Reset failed")
+	}
+	_ = m.String()
+	_ = m.Size()
+	// m.XXX_DiscardUnknown()
+}
+
+func TestKWDBTagValueResetStringSize(t *testing.T) {
+	m := &KWDBTagValue{CTableName: "tag"}
+	m.Reset()
+	if m.CTableName != "" {
+		t.Error("Reset failed")
+	}
+	_ = m.String()
+	_ = m.Size()
+	// m.XXX_DiscardUnknown()
+}
+
+func TestChildDescResetStringSize(t *testing.T) {
+	m := &ChildDesc{STableName: "Stable"}
+	m.Reset()
+	_ = m.String()
+	_ = m.Size()
+	// m.XXX_DiscardUnknown()
+}
+
+func TestSortedHistogramInfoResetStringSize(t *testing.T) {
+	m := &SortedHistogramInfo{FromTimeStamp: 5}
+	m.Reset()
+	if m.FromTimeStamp != 0 {
+		t.Error("Reset failed")
+	}
+	_ = m.String()
+	_ = m.Size()
+	// m.XXX_DiscardUnknown()
+}
+
+func TestTableDescriptorCheckConstraintResetStringSize(t *testing.T) {
+	m := &TableDescriptor_CheckConstraint{Name: "check"}
+	m.Reset()
+	if m.Name != "" {
+		t.Error("Reset failed")
+	}
+	_ = m.String()
+	_ = m.Size()
+}
+
+func TestTableDescriptorNameInfoResetStringSize(t *testing.T) {
+	m := &TableDescriptor_NameInfo{ParentID: 1, Name: "tbl"}
+	m.Reset()
+	if m.Name != "" {
+		t.Error("Reset failed")
+	}
+	_ = m.String()
+	_ = m.Size()
+}
+
+func TestTableDescriptorReferenceResetStringSize(t *testing.T) {
+	m := &TableDescriptor_Reference{ID: 1}
+	m.Reset()
+	if m.ID != 0 {
+		t.Error("Reset failed")
+	}
+	_ = m.String()
+	_ = m.Size()
+}
+
+func TestTableDescriptorSequenceOptsResetStringSize(t *testing.T) {
+	m := &TableDescriptor_SequenceOpts{Start: 10}
+	m.Reset()
+	if m.Start != 0 {
+		t.Error("Reset failed")
+	}
+	_ = m.String()
+	_ = m.Size()
+}
+
+func TestTableDescriptorSchemaChangeLeaseResetStringSize(t *testing.T) {
+	m := &TableDescriptor_SchemaChangeLease{NodeID: 12345}
+	m.Reset()
+	_ = m.String()
+	_ = m.Size()
+}
+
+func TestTableDescriptorReplacementResetStringSize(t *testing.T) {
+	m := &TableDescriptor_Replacement{ID: 1}
+	m.Reset()
+	if m.ID != 0 {
+		t.Error("Reset failed")
+	}
+	_ = m.String()
+	_ = m.Size()
+}
+
+func TestPartitioningDescriptorListResetStringSize(t *testing.T) {
+	m := &PartitioningDescriptor_List{}
+	m.Reset()
+	_ = m.String()
+	_ = m.Size()
+}
+
+func TestPartitioningDescriptorRangeResetStringSize(t *testing.T) {
+	m := &PartitioningDescriptor_Range{}
+	m.Reset()
+	_ = m.String()
+	_ = m.Size()
+}
+
+func TestPartitioningDescriptorHashPointResetStringSize(t *testing.T) {
+	m := &PartitioningDescriptor_HashPoint{}
+	m.Reset()
+	_ = m.String()
+	_ = m.Size()
+}
+
+func TestDescriptorMutationColumnResetStringSize(t *testing.T) {
+	m := &DescriptorMutation_Column{}
+	_ = m.Size()
+}
+
+func TestDescriptorMutationIndexResetStringSize(t *testing.T) {
+	m := &DescriptorMutation_Index{}
+	_ = m.Size()
+}
+
+func TestDescriptorMutationConstraintResetStringSize(t *testing.T) {
+	m := &DescriptorMutation_Constraint{}
+	_ = m.Size()
+}
+
+func TestDescriptorMutationPrimaryKeySwapResetStringSize(t *testing.T) {
+	m := &DescriptorMutation_PrimaryKeySwap{}
+	_ = m.Size()
+}
+
+func TestDescriptorMutationMaterializedViewRefreshResetStringSize(t *testing.T) {
+	m := &DescriptorMutation_MaterializedViewRefresh{}
+	_ = m.Size()
+}
+
+func TestSchemaDescriptorNameInfoResetStringSize(t *testing.T) {
+	m := &SchemaDescriptor_NameInfo{Name: "sch"}
+	m.Reset()
+	if m.Name != "" {
+		t.Error("Reset failed")
+	}
+	_ = m.String()
+	_ = m.Size()
+}
+
+func TestTSColResetStringSize(t *testing.T) {
+	m := &TSCol{ColOffset: 1}
+	m.Reset()
+	if m.ColOffset != 0 {
+		t.Error("Reset failed")
+	}
+	_ = m.String()
+	_ = m.Size()
+	// m.XXX_DiscardUnknown()
+}
+
+func TestTableDescriptorMutationJobResetStringSize(t *testing.T) {
+	m := &TableDescriptor_MutationJob{MutationID: 1}
+	m.Reset()
+	if m.MutationID != 0 {
+		t.Error("Reset failed")
+	}
+	_ = m.String()
+	_ = m.Size()
+}
+
+func TestTableDescriptorGCDescriptorMutationResetStringSize(t *testing.T) {
+	m := &TableDescriptor_GCDescriptorMutation{JobID: 1}
+	m.Reset()
+	if m.JobID != 0 {
+		t.Error("Reset failed")
+	}
+	_ = m.String()
+	_ = m.Size()
+}
+
+func TestTableDescriptorSequenceOptsSequenceOwnerResetStringSize(t *testing.T) {
+	m := &TableDescriptor_SequenceOpts_SequenceOwner{OwnerTableID: 1, OwnerColumnID: 1}
+	m.Reset()
+	if m.OwnerTableID != 0 {
+		t.Error("Reset failed")
+	}
+	_ = m.String()
+	_ = m.Size()
 }

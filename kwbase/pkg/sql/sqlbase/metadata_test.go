@@ -112,7 +112,7 @@ func TestMetadataSchemaAddDescriptor(t *testing.T) {
 
 	// Create a test table descriptor
 	tableDesc := &sqlbase.TableDescriptor{
-		ID:         100, // Reserved ID
+		ID:         70, // Reserved ID
 		Name:       "test_table",
 		ParentID:   keys.RootNamespaceID,
 		Privileges: sqlbase.NewDefaultPrivilegeDescriptor(),
@@ -412,7 +412,7 @@ func TestDescriptorProtoInterface(t *testing.T) {
 	if tableDesc.GetID() != 456 {
 		t.Errorf("Expected ID 456 after setting, got %d", tableDesc.GetID())
 	}
-	if tableDesc.TypeName() != "Table" {
+	if tableDesc.TypeName() != "relation" {
 		t.Errorf("Expected type name 'Table', got '%s'", tableDesc.TypeName())
 	}
 	if tableDesc.GetName() != "test_table" {
@@ -440,7 +440,7 @@ func TestDescriptorProtoInterface(t *testing.T) {
 	if dbDesc.GetID() != 999 {
 		t.Errorf("Expected ID 999 after setting, got %d", dbDesc.GetID())
 	}
-	if dbDesc.TypeName() != "Database" {
+	if dbDesc.TypeName() != "database" {
 		t.Errorf("Expected type name 'Database', got '%s'", dbDesc.TypeName())
 	}
 	if dbDesc.GetName() != "test_db" {
