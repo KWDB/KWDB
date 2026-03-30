@@ -990,7 +990,11 @@ static KStatus FlushToLastSegment(TsIOEnv* env, TsEngineSchemaManager* schema_mg
       return FAIL;
     }
   }
-  tl_lastseg_builder->Finalize(stats);
+  s = tl_lastseg_builder->Finalize(stats);
+  if (s == FAIL) {
+    LOG_ERROR("flush failed, TsLastSegmentBuilder finalize failed.");
+    return s;
+  }
   update->AddLastSegment(partition->GetPartitionIdentifier(), LastSegmentMetaInfo{lastseg_file_number, 0, 0});
   return SUCCESS;
 }

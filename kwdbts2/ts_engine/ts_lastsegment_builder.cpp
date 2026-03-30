@@ -41,17 +41,13 @@ KStatus TsLastSegmentBuilder::PutBlockSpan(std::shared_ptr<TsBlockSpan> span) {
       if (s == FAIL) {
         return FAIL;
       }
-      std::shared_ptr<TsTableSchemaManager> table_schema_mgr;
-      s = engine_schema_manager_->GetTableSchemaMgr(span->GetTableID(), table_schema_mgr);
-      if (s == FAIL) {
-        return FAIL;
+      auto [new_metric_block_builder, status] =
+          TsMetricBlockBuilder::Create(engine_schema_manager_, span->GetTableID(), span->GetTableVersion());
+      if (status == FAIL) {
+        LOG_ERROR("Failed to create metric block builder");
+        return status;
       }
-      const std::vector<AttributeInfo>* col_schema{nullptr};
-      s = table_schema_mgr->GetColumnsExcludeDroppedPtr(&col_schema, span->GetTableVersion());
-      if (s == FAIL) {
-        return FAIL;
-      }
-      metric_block_builder_ = std::make_unique<TsMetricBlockBuilder>(col_schema, std::move(table_schema_mgr));
+      metric_block_builder_ = std::move(new_metric_block_builder);
       block_index_collector_ = std::make_unique<BlockIndexCollector>(span->GetTableID(), span->GetTableVersion());
       entity_id_buffer_.clear();
       table_version_ = current_table_version;
@@ -75,7 +71,8 @@ KStatus TsLastSegmentBuilder::PutBlockSpan(std::shared_ptr<TsBlockSpan> span) {
     if (metric_block_builder_->GetRowNum() == TsLastSegment::kNRowPerBlock) {
       s = RecordAndWriteBlockToFile();
       if (s == FAIL) {
-        return FAIL;
+        LOG_ERROR("Failed to write block to file");
+        return s;
       }
     }
     span = back_span;

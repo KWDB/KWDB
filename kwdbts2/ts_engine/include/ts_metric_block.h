@@ -23,6 +23,7 @@
 #include "ts_bufferbuilder.h"
 #include "ts_column_block.h"
 #include "ts_common.h"
+#include "ts_engine_schema_manager.h"
 #include "ts_sliceguard.h"
 #include "ts_table_schema_manager.h"
 namespace kwdbts {
@@ -69,16 +70,21 @@ class TsMetricBlockBuilder {
   // Note: DO NOT USE const reference. If so, col_schemas_ may point to an object created on
   // stack and will be destroyed after the function returns.
   std::shared_ptr<TsTableSchemaManager> table_schema_manager_;
+  std::shared_ptr<MMapMetricsTable> schema_table_;
   const std::vector<AttributeInfo>* col_schemas_{nullptr};
   std::vector<std::unique_ptr<TsColumnBlockBuilder>> column_block_builders_;
 
   int count_ = 0;
   std::vector<uint64_t> osn_buffer_;
 
+  struct PrivateConstructTag {};
+
  public:
-  explicit TsMetricBlockBuilder(const std::vector<AttributeInfo>* col_schemas,
-                                std::shared_ptr<TsTableSchemaManager> table_schema_manager)
+  explicit TsMetricBlockBuilder(std::shared_ptr<TsTableSchemaManager> table_schema_manager,
+                                std::shared_ptr<MMapMetricsTable> schema_table,
+                                const std::vector<AttributeInfo>* col_schemas, PrivateConstructTag private_)
       : table_schema_manager_(std::move(table_schema_manager)),
+        schema_table_(std::move(schema_table)),
         col_schemas_(col_schemas),
         column_block_builders_(col_schemas_->size()) {
     for (size_t i = 0; i < col_schemas->size(); i++) {
@@ -86,7 +92,30 @@ class TsMetricBlockBuilder {
     }
   }
 
-  KStatus PutBlockSpan(const std::shared_ptr<TsBlockSpan>& span);
+  static std::pair<std::unique_ptr<TsMetricBlockBuilder>, KStatus> Create(TsEngineSchemaManager* engine_schema_manager,
+                                                                          TSTableID table_id, uint32_t table_version) {
+    std::shared_ptr<TsTableSchemaManager> table_schema_manager;
+
+    auto s = engine_schema_manager->GetTableSchemaMgr(table_id, table_schema_manager);
+    if (s == FAIL) {
+      LOG_ERROR("Failed to get table schema manager for table %lu", table_id);
+      return {std::unique_ptr<TsMetricBlockBuilder>(), FAIL};
+    }
+
+    std::shared_ptr<MMapMetricsTable> schema_table;
+    s = table_schema_manager->GetMetricSchema(table_version, &schema_table);
+    if (s == FAIL) {
+      LOG_ERROR("Failed to get metric schema for version %u", table_version);
+      return {std::unique_ptr<TsMetricBlockBuilder>(), FAIL};
+    }
+
+    auto col_schemas = schema_table->getSchemaInfoExcludeDroppedPtr();
+    return {std::make_unique<TsMetricBlockBuilder>(std::move(table_schema_manager), std::move(schema_table),
+                                                   col_schemas, PrivateConstructTag{}),
+            SUCCESS};
+  }
+
+  KStatus PutBlockSpan(const std::shared_ptr<TsBlockSpan> &span);
   std::unique_ptr<TsMetricBlock> GetMetricBlock();
   int GetRowNum() const { return count_; }
   void Reset() {

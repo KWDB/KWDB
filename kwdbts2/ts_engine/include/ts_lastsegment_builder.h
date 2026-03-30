@@ -103,8 +103,8 @@ class TsLastSegmentBuilder {
         bloom_filter_(std::make_unique<LastSegmentBloomFilter>()) {
     meta_blocks_.push_back(bloom_filter_.get());
   }
-  KStatus PutBlockSpan(std::shared_ptr<TsBlockSpan> span);
-  KStatus Finalize(TsSegmentWriteStats* stats);
+  [[nodiscard]] KStatus PutBlockSpan(std::shared_ptr<TsBlockSpan> span);
+  [[nodiscard]] KStatus Finalize(TsSegmentWriteStats* stats);
   uint64_t GetFileNumber() const { return file_number_; }
   uint64_t GetMaxOSN() const;
   void Reset(std::unique_ptr<TsAppendOnlyFile>&& last_segment, uint64_t file_number) {
@@ -123,6 +123,6 @@ class TsLastSegmentBuilder {
   }
 
  private:
-  KStatus RecordAndWriteBlockToFile();
+  [[nodiscard]] KStatus RecordAndWriteBlockToFile();
 };
 }  // namespace kwdbts
