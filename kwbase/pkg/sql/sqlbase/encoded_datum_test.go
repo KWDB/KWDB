@@ -124,6 +124,104 @@ func TestEncDatum(t *testing.T) {
 	}
 }
 
+// Test EncDatum String method
+func TestEncDatumString(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	// Test with integer datum
+	intDatum := tree.NewDInt(42)
+	intEncDatum := DatumToEncDatum(types.Int, intDatum)
+	result := intEncDatum.String(types.Int)
+	expected := "42"
+	if result != expected {
+		t.Errorf("Expected %s, got %s", expected, result)
+	}
+
+	// Test with string datum
+	strDatum := tree.NewDString("hello")
+	strEncDatum := DatumToEncDatum(types.String, strDatum)
+	result = strEncDatum.String(types.String)
+	expected = "'hello'"
+	if result != expected {
+		t.Errorf("Expected %s, got %s", expected, result)
+	}
+
+	// Test with null datum
+	nullDatum := tree.DNull
+	nullEncDatum := DatumToEncDatum(types.Int, nullDatum)
+	result = nullEncDatum.String(types.Int)
+	expected = "NULL"
+	if result != expected {
+		t.Errorf("Expected %s, got %s", expected, result)
+	}
+
+	// Test with unset EncDatum
+	var unsetDatum EncDatum
+	result = unsetDatum.String(types.Int)
+	expected = "<unset>"
+	if result != expected {
+		t.Errorf("Expected %s, got %s", expected, result)
+	}
+
+	// Test with encoded but no datum
+	encodedBytes := encoding.EncodeVarintAscending(nil, 123)
+	encDatumFromEncoded := EncDatumFromEncoded(DatumEncoding_ASCENDING_KEY, encodedBytes)
+	result = encDatumFromEncoded.String(types.Int)
+	// This should decode the encoded value and return its string representation
+	// After decoding, it should return "123"
+	if result != "123" {
+		t.Errorf("Expected %s, got %s", "123", result)
+	}
+
+	// Test with error case - invalid encoding
+	invalidEncDatum := EncDatum{
+		encoding: 999, // Invalid encoding
+		encoded:  []byte{1, 2, 3},
+	}
+	result = invalidEncDatum.String(types.Int)
+	if result != "<error: unknown encoding 999>" { // Should start with "<error"
+		t.Errorf("Expected error message, got %s", result)
+	}
+}
+
+// Test DatumEncoding String method
+func TestDatumEncodingString(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	// Test ASCENDING_KEY
+	enc := DatumEncoding_ASCENDING_KEY
+	result := enc.String()
+	expected := "ASCENDING_KEY"
+	if result != expected {
+		t.Errorf("Expected %s, got %s", expected, result)
+	}
+
+	// Test DESCENDING_KEY
+	enc = DatumEncoding_DESCENDING_KEY
+	result = enc.String()
+	expected = "DESCENDING_KEY"
+	if result != expected {
+		t.Errorf("Expected %s, got %s", expected, result)
+	}
+
+	// Test VALUE
+	enc = DatumEncoding_VALUE
+	result = enc.String()
+	expected = "VALUE"
+	if result != expected {
+		t.Errorf("Expected %s, got %s", expected, result)
+	}
+
+	// Test with a temporary enum value to ensure the proto.EnumName function works properly
+	encPtr := new(DatumEncoding)
+	*encPtr = DatumEncoding_ASCENDING_KEY
+	result = encPtr.String()
+	expected = "ASCENDING_KEY"
+	if result != expected {
+		t.Errorf("Expected %s, got %s", expected, result)
+	}
+}
+
 // Test for EncodingDirToDatumEncoding function
 func TestEncodingDirToDatumEncoding(t *testing.T) {
 	defer leaktest.AfterTest(t)()
