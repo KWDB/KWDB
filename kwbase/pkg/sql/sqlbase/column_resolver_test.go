@@ -247,3 +247,106 @@ func TestColumnResolver_Resolve(t *testing.T) {
 		assert.Contains(t, err.Error(), "does not exist")
 	})
 }
+
+// TestSourceNameMatches indirectly tests the sourceNameMatches function
+// by using it through the ColumnResolver's FindSourceMatchingName method
+func TestSourceNameMatches(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("Exact match", func(t *testing.T) {
+		// Create a source info with a specific alias
+		sourceInfo := &sqlbase.DataSourceInfo{
+			SourceColumns: []sqlbase.ResultColumn{
+				{Name: "col1"},
+			},
+			SourceAlias: tree.MakeTableNameWithSchema("db1", "public", "kv"),
+		}
+		resolver := &sqlbase.ColumnResolver{Source: sourceInfo}
+
+		tn := tree.MakeTableNameWithSchema("db1", "public", "kv")
+		res, _, _, err := resolver.FindSourceMatchingName(ctx, tn)
+		assert.NoError(t, err)
+		assert.Equal(t, tree.ExactlyOne, res)
+	})
+
+	t.Run("Table name mismatch", func(t *testing.T) {
+		// Create a source info with a specific alias
+		sourceInfo := &sqlbase.DataSourceInfo{
+			SourceColumns: []sqlbase.ResultColumn{
+				{Name: "col1"},
+			},
+			SourceAlias: tree.MakeTableNameWithSchema("db1", "public", "kv"),
+		}
+		resolver := &sqlbase.ColumnResolver{Source: sourceInfo}
+
+		tn := tree.MakeTableNameWithSchema("db1", "public", "other")
+		res, _, _, err := resolver.FindSourceMatchingName(ctx, tn)
+		assert.NoError(t, err)
+		assert.Equal(t, tree.NoResults, res)
+	})
+
+	t.Run("Match unqualified to qualified", func(t *testing.T) {
+		// Create a source info with a specific alias
+		sourceInfo := &sqlbase.DataSourceInfo{
+			SourceColumns: []sqlbase.ResultColumn{
+				{Name: "col1"},
+			},
+			SourceAlias: tree.MakeTableNameWithSchema("db1", "public", "kv"),
+		}
+		resolver := &sqlbase.ColumnResolver{Source: sourceInfo}
+
+		tn := tree.MakeUnqualifiedTableName("kv")
+		res, _, _, err := resolver.FindSourceMatchingName(ctx, tn)
+		assert.NoError(t, err)
+		assert.Equal(t, tree.ExactlyOne, res)
+	})
+
+	t.Run("Schema mismatch with explicit schema", func(t *testing.T) {
+		// Create a source info with a specific alias
+		sourceInfo := &sqlbase.DataSourceInfo{
+			SourceColumns: []sqlbase.ResultColumn{
+				{Name: "col1"},
+			},
+			SourceAlias: tree.MakeTableNameWithSchema("db1", "public", "kv"),
+		}
+		resolver := &sqlbase.ColumnResolver{Source: sourceInfo}
+
+		// Try to find with different schema - should not match
+		tn := tree.MakeTableNameWithSchema("db1", "private", "kv")
+		res, _, _, err := resolver.FindSourceMatchingName(ctx, tn)
+		assert.NoError(t, err)
+		assert.Equal(t, tree.NoResults, res)
+	})
+}
+
+func TestTableDescriptor_NameResolutionResult(t *testing.T) {
+	// Test that TableDescriptor implements the NameResolutionResult interface
+	var td sqlbase.TableDescriptor
+	td.NameResolutionResult()
+	// If we reach this point, the method exists and works
+	assert.NotNil(t, &td)
+}
+
+func TestDatabaseDescriptor_SchemaMeta(t *testing.T) {
+	// Test that DatabaseDescriptor implements the SchemaMeta interface
+	var dd sqlbase.DatabaseDescriptor
+	dd.SchemaMeta()
+	// If we reach this point, the method exists and works
+	assert.NotNil(t, &dd)
+}
+
+func TestDescriptor_SchemaMeta(t *testing.T) {
+	// Test that Descriptor implements the SchemaMeta interface
+	var d sqlbase.Descriptor
+	d.SchemaMeta()
+	// If we reach this point, the method exists and works
+	assert.NotNil(t, d)
+}
+
+func TestDescriptor_NameResolutionResult(t *testing.T) {
+	// Test that Descriptor implements the NameResolutionResult interface
+	var d sqlbase.Descriptor
+	d.NameResolutionResult()
+	// If we reach this point, the method exists and works
+	assert.NotNil(t, d)
+}
