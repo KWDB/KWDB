@@ -124,6 +124,388 @@ func TestEncDatum(t *testing.T) {
 	}
 }
 
+// Test for EncodingDirToDatumEncoding function
+func TestEncodingDirToDatumEncoding(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	// Test ascending direction
+	ascEncoding := EncodingDirToDatumEncoding(encoding.Ascending)
+	if ascEncoding != DatumEncoding_ASCENDING_KEY {
+		t.Errorf("Expected ASCENDING_KEY, got %v", ascEncoding)
+	}
+
+	// Test descending direction
+	descEncoding := EncodingDirToDatumEncoding(encoding.Descending)
+	if descEncoding != DatumEncoding_DESCENDING_KEY {
+		t.Errorf("Expected DESCENDING_KEY, got %v", descEncoding)
+	}
+
+	defer func() {
+		if r := recover(); r == nil {
+			t.Error("Expected panic for invalid encoding direction")
+		}
+	}()
+
+	// Test that the function panics on invalid direction
+	// This will cause a panic due to invalid direction
+	// EncodingDirToDatumEncoding(encoding.Direction(999))
+	_ = EncodingDirToDatumEncoding(0)
+
+}
+
+// Test EncDatumRow Copy method
+func TestEncDatumRowCopy(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	var alloc DatumAlloc
+
+	// Create a test row
+	row := EncDatumRow{
+		DatumToEncDatum(types.Int, tree.NewDInt(1)),
+		DatumToEncDatum(types.String, tree.NewDString("test")),
+	}
+
+	// Test Copy method
+	rowCopy := row.Copy()
+	if len(rowCopy) != len(row) {
+		t.Errorf("Copied row has different length: %d vs %d", len(rowCopy), len(row))
+	}
+
+	// Verify the copied values
+	err := rowCopy[0].EnsureDecoded(types.Int, &alloc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = rowCopy[1].EnsureDecoded(types.String, &alloc)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if val, ok := rowCopy[0].Datum.(*tree.DInt); !ok || *val != 1 {
+		t.Errorf("First element not copied correctly")
+	}
+
+	if val, ok := rowCopy[1].Datum.(*tree.DString); !ok || string(*val) != "test" {
+		t.Errorf("Second element not copied correctly")
+	}
+}
+
+// Test EncDatumRow CopyLen method
+func TestEncDatumRowCopyLen(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	var alloc DatumAlloc
+
+	// Create a test row with 3 elements
+	row := EncDatumRow{
+		DatumToEncDatum(types.Int, tree.NewDInt(1)),
+		DatumToEncDatum(types.String, tree.NewDString("test")),
+		DatumToEncDatum(types.Bool, tree.MakeDBool(true)),
+	}
+
+	// Test CopyLen with smaller length
+	shortRow := row.CopyLen(2)
+	if len(shortRow) != 2 {
+		t.Errorf("Expected length 2, got %d", len(shortRow))
+	}
+
+	// Verify the first two elements are copied correctly
+	err := shortRow[0].EnsureDecoded(types.Int, &alloc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = shortRow[1].EnsureDecoded(types.String, &alloc)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if val, ok := shortRow[0].Datum.(*tree.DInt); !ok || *val != 1 {
+		t.Errorf("First element not copied correctly")
+	}
+
+	if val, ok := shortRow[1].Datum.(*tree.DString); !ok || string(*val) != "test" {
+		t.Errorf("Second element not copied correctly")
+	}
+}
+
+// Test EncDatumRow Size method
+func TestEncDatumRowSize(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	// Create a test row
+	row := EncDatumRow{
+		DatumToEncDatum(types.Int, tree.NewDInt(1)),
+		DatumToEncDatum(types.String, tree.NewDString("test")),
+	}
+
+	rowSize := row.Size()
+	if rowSize < EncDatumRowOverhead {
+		t.Errorf("Size should be at least EncDatumRowOverhead, got %d", rowSize)
+	}
+
+	// Each element should contribute to the total size
+	for _, ed := range row {
+		if rowSize < EncDatumRowOverhead+ed.Size() {
+			t.Errorf("Row size should account for all EncDatum elements")
+			break
+		}
+	}
+}
+
+// Test EncDatumRowContainer functionality
+func TestEncDatumRowContainerAdvanced(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	container := &EncDatumRowContainer{}
+	container.Reset()
+
+	var alloc DatumAlloc
+
+	// Create test rows
+	row1 := EncDatumRow{
+		DatumToEncDatum(types.Int, tree.NewDInt(10)),
+		DatumToEncDatum(types.String, tree.NewDString("first")),
+	}
+
+	row2 := EncDatumRow{
+		DatumToEncDatum(types.Int, tree.NewDInt(20)),
+		DatumToEncDatum(types.String, tree.NewDString("second")),
+	}
+
+	row3 := EncDatumRow{
+		DatumToEncDatum(types.Int, tree.NewDInt(30)),
+		DatumToEncDatum(types.String, tree.NewDString("third")),
+	}
+
+	// Push all rows
+	container.Push(row1)
+	container.Push(row2)
+	container.Push(row3)
+
+	// Test Peek - should return the last pushed row
+	peekedRow := container.Peek()
+	err := peekedRow[0].EnsureDecoded(types.Int, &alloc)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if val, ok := peekedRow[0].Datum.(*tree.DInt); !ok || *val != 30 {
+		t.Errorf("Peeked row should be the last pushed row")
+	}
+
+	// Pop all rows - should come back in LIFO order
+	poppedRow3 := container.Pop()
+	poppedRow2 := container.Pop()
+	poppedRow1 := container.Pop()
+
+	// Verify popped rows
+	err = poppedRow3[0].EnsureDecoded(types.Int, &alloc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if val, ok := poppedRow3[0].Datum.(*tree.DInt); !ok || *val != 30 {
+		t.Errorf("Third row not popped correctly")
+	}
+
+	err = poppedRow2[0].EnsureDecoded(types.Int, &alloc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if val, ok := poppedRow2[0].Datum.(*tree.DInt); !ok || *val != 20 {
+		t.Errorf("Second row not popped correctly")
+	}
+
+	err = poppedRow1[0].EnsureDecoded(types.Int, &alloc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if val, ok := poppedRow1[0].Datum.(*tree.DInt); !ok || *val != 10 {
+		t.Errorf("First row not popped correctly")
+	}
+
+	// Container should now be empty
+	if !container.IsEmpty() {
+		t.Error("Container should be empty after popping all rows")
+	}
+}
+
+// Test EncDatumRowAlloc functionality
+func TestEncDatumRowAlloc2(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	var alloc EncDatumRowAlloc
+
+	// Test AllocRow
+	row := alloc.AllocRow(3)
+	if len(row) != 3 {
+		t.Errorf("Allocated row should have length 3, got %d", len(row))
+	}
+
+	// Test CopyRow
+	sourceRow := EncDatumRow{
+		DatumToEncDatum(types.Int, tree.NewDInt(100)),
+		DatumToEncDatum(types.String, tree.NewDString("copy test")),
+	}
+
+	copiedRow := alloc.CopyRow(sourceRow)
+	if len(copiedRow) != len(sourceRow) {
+		t.Errorf("Copied row length mismatch: %d vs %d", len(copiedRow), len(sourceRow))
+	}
+
+	// Verify the copied values
+	var datumAlloc DatumAlloc
+	err := copiedRow[0].EnsureDecoded(types.Int, &datumAlloc)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if val, ok := copiedRow[0].Datum.(*tree.DInt); !ok || *val != 100 {
+		t.Errorf("First element not copied correctly")
+	}
+
+	err = copiedRow[1].EnsureDecoded(types.String, &datumAlloc)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if val, ok := copiedRow[1].Datum.(*tree.DString); !ok || string(*val) != "copy test" {
+		t.Errorf("Second element not copied correctly")
+	}
+}
+
+// Test DatumEncoding enum functionality
+func TestDatumEncodingEnum(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	// Test enum values
+	if DatumEncoding_ASCENDING_KEY != 0 {
+		t.Errorf("ASCENDING_KEY should be 0, got %d", DatumEncoding_ASCENDING_KEY)
+	}
+
+	if DatumEncoding_DESCENDING_KEY != 1 {
+		t.Errorf("DESCENDING_KEY should be 1, got %d", DatumEncoding_DESCENDING_KEY)
+	}
+
+	if DatumEncoding_VALUE != 2 {
+		t.Errorf("VALUE should be 2, got %d", DatumEncoding_VALUE)
+	}
+
+	// Test String method
+	if DatumEncoding_ASCENDING_KEY.String() != "ASCENDING_KEY" {
+		t.Errorf("String representation incorrect for ASCENDING_KEY")
+	}
+
+	if DatumEncoding_DESCENDING_KEY.String() != "DESCENDING_KEY" {
+		t.Errorf("String representation incorrect for DESCENDING_KEY")
+	}
+
+	if DatumEncoding_VALUE.String() != "VALUE" {
+		t.Errorf("String representation incorrect for VALUE")
+	}
+
+	// Test name mapping
+	if name, ok := DatumEncoding_name[0]; !ok || name != "ASCENDING_KEY" {
+		t.Errorf("Name mapping incorrect for 0")
+	}
+
+	if name, ok := DatumEncoding_name[1]; !ok || name != "DESCENDING_KEY" {
+		t.Errorf("Name mapping incorrect for 1")
+	}
+
+	if name, ok := DatumEncoding_name[2]; !ok || name != "VALUE" {
+		t.Errorf("Name mapping incorrect for 2")
+	}
+
+	// Test value mapping
+	if value, ok := DatumEncoding_value["ASCENDING_KEY"]; !ok || value != 0 {
+		t.Errorf("Value mapping incorrect for ASCENDING_KEY")
+	}
+
+	if value, ok := DatumEncoding_value["DESCENDING_KEY"]; !ok || value != 1 {
+		t.Errorf("Value mapping incorrect for DESCENDING_KEY")
+	}
+
+	if value, ok := DatumEncoding_value["VALUE"]; !ok || value != 2 {
+		t.Errorf("Value mapping incorrect for VALUE")
+	}
+}
+
+// Test EncDatum Unset behavior
+func TestEncDatumUnsetBehavior(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	var unsetDatum EncDatum
+
+	// Initially should be unset
+	if !unsetDatum.IsUnset() {
+		t.Error("New EncDatum should be unset")
+	}
+
+	// After UnsetDatum should still be unset
+	unsetDatum.UnsetDatum()
+	if !unsetDatum.IsUnset() {
+		t.Error("After UnsetDatum, EncDatum should be unset")
+	}
+
+	// Test with a set datum that gets unset
+	setDatum := DatumToEncDatum(types.Int, tree.NewDInt(42))
+	if setDatum.IsUnset() {
+		t.Error("Set EncDatum should not be unset")
+	}
+
+	setDatum.UnsetDatum()
+	if !setDatum.IsUnset() {
+		t.Error("After UnsetDatum, EncDatum should be unset")
+	}
+}
+
+// Test EncDatum EnsureDecoded error cases
+func TestEncDatumEnsureDecodedErrors(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	var unsetDatum EncDatum
+	var alloc DatumAlloc
+
+	// EnsureDecoded on unset datum should return error
+	err := unsetDatum.EnsureDecoded(types.Int, &alloc)
+	if err == nil {
+		t.Error("Expected error when calling EnsureDecoded on unset EncDatum")
+	}
+
+	// Test with invalid encoding
+	invalidDatum := EncDatum{
+		encoding: 999, // Invalid encoding
+		encoded:  []byte{1, 2, 3},
+	}
+
+	err = invalidDatum.EnsureDecoded(types.Int, &alloc)
+	if err == nil {
+		t.Error("Expected error when calling EnsureDecoded with invalid encoding")
+	}
+}
+
+// Test EncDatumRowToDatums error cases
+func TestEncDatumRowToDatumsErrors(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	var alloc DatumAlloc
+
+	// Create a row and types with mismatched lengths
+	typesList := []types.T{*types.Int, *types.String}
+	row := EncDatumRow{
+		DatumToEncDatum(types.Int, tree.NewDInt(123)),
+		DatumToEncDatum(types.String, tree.NewDString("str123")),
+	}
+
+	datums := make(tree.Datums, 1)
+
+	// This should return an error due to length mismatch
+	err := EncDatumRowToDatums(typesList, datums, row, &alloc)
+	if err == nil {
+		t.Error("Expected error with mismatched lengths in EncDatumRowToDatums")
+	}
+}
+
 func TestEncDatumValueFromBufferWithOffsetsAndType(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 
