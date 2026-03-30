@@ -34,7 +34,7 @@ func TestGetForDatabase(t *testing.T) {
 		val.SetInt(int64(schemaID))
 		return txn.Put(ctx, schemaKey, &val)
 	})
-	}) 
+
 	require.NoError(t, err)
 
 	err = kvDB.Txn(ctx, func(ctx context.Context, txn *kv.Txn) error {
