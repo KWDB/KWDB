@@ -251,17 +251,17 @@ TEST_F(TestMMapPTagHashIndex, Concurrent_BasicThreadSafety) {
   MMapPTagHashIndex* index = new MMapPTagHashIndex(sizeof(uint64_t));
   ErrorInfo err_info;
   index->open(test_path_, "/tmp/kwdb_mmap_test/", "", O_CREAT | O_RDWR, err_info);
-  
+
   std::vector<std::thread> threads;
   std::atomic<int> success_count(0);
-  
+
   for (int i = 0; i < 4; ++i) {
     threads.emplace_back([index, &success_count, i]() {
       for (int j = 0; j < 10; ++j) {
         uint64_t key = i * 100 + j;
         TableVersionID version = 1;
         TagPartitionTableRowID rowid = key * 10;
-        
+
         int result = index->insert(reinterpret_cast<const char*>(&key), sizeof(key), version, rowid);
         if (result == 0) {
           success_count++;
@@ -269,11 +269,130 @@ TEST_F(TestMMapPTagHashIndex, Concurrent_BasicThreadSafety) {
       }
     });
   }
-  
+
   for (auto& t : threads) {
     t.join();
   }
-  
+
   EXPECT_EQ(success_count.load(), 40);
   delete index;
+}
+
+TEST_F(TestMMapPTagHashIndex, Clear_AfterInsert) {
+  MMapPTagHashIndex index(sizeof(uint64_t));
+  ErrorInfo err_info;
+  index.open(test_path_, "/tmp/kwdb_mmap_test/", "", O_CREAT | O_RDWR, err_info);
+
+  uint64_t key = 55555;
+  index.insert(reinterpret_cast<const char*>(&key), sizeof(key), 1, 6000);
+
+  int result = index.clear();
+
+  EXPECT_EQ(result, 0);
+
+  auto get_result = index.get(reinterpret_cast<const char*>(&key), sizeof(key));
+  EXPECT_EQ(get_result.first, INVALID_TABLE_VERSION_ID);
+}
+
+TEST_F(TestMMapPTagHashIndex, Sync_AfterInsert) {
+  MMapPTagHashIndex index(sizeof(uint64_t));
+  ErrorInfo err_info;
+  index.open(test_path_, "/tmp/kwdb_mmap_test/", "", O_CREAT | O_RDWR, err_info);
+
+  uint64_t key = 66666;
+  index.insert(reinterpret_cast<const char*>(&key), sizeof(key), 1, 7000);
+
+  int result = index.sync(MS_SYNC);
+
+  EXPECT_EQ(result, 0);
+}
+
+TEST_F(TestMMapPTagHashIndex, GetAll_MultipleResults) {
+  MMapPTagHashIndex index(sizeof(uint64_t));
+  ErrorInfo err_info;
+  index.open(test_path_, "/tmp/kwdb_mmap_test/", "", O_CREAT | O_RDWR, err_info);
+
+  uint64_t key = 77777;
+
+  index.insert(reinterpret_cast<const char*>(&key), sizeof(key), 1, 8000);
+  index.insert(reinterpret_cast<const char*>(&key), sizeof(key), 2, 8001);
+
+  std::vector<std::pair<TableVersionID, TagPartitionTableRowID>> results;
+  int result = index.get_all(reinterpret_cast<const char*>(&key), sizeof(key), results);
+
+  EXPECT_EQ(result, 0);
+  EXPECT_EQ(results.size(), 2);
+}
+
+TEST_F(TestMMapPTagHashIndex, ReadFirst_AfterInsert) {
+  MMapPTagHashIndex index(sizeof(uint64_t));
+  ErrorInfo err_info;
+  index.open(test_path_, "/tmp/kwdb_mmap_test/", "", O_CREAT | O_RDWR, err_info);
+
+  uint64_t key = 88888;
+  index.insert(reinterpret_cast<const char*>(&key), sizeof(key), 1, 9000);
+  index.insert(reinterpret_cast<const char*>(&key), sizeof(key), 2, 9001);
+
+  auto result = index.read_first(reinterpret_cast<const char*>(&key), sizeof(key));
+
+  EXPECT_EQ(result.first, 1);
+  EXPECT_EQ(result.second, 9000);
+}
+
+TEST_F(TestMMapPTagHashIndex, Open_ExistingIndex) {
+  {
+    MMapPTagHashIndex index(sizeof(uint64_t));
+    ErrorInfo err_info;
+    ASSERT_EQ(index.open(test_path_, "/tmp/kwdb_mmap_test/", "", O_CREAT | O_RDWR, err_info), 0);
+
+    uint64_t key = 99999;
+    index.insert(reinterpret_cast<const char*>(&key), sizeof(key), 1, 10000);
+  }
+
+  {
+    MMapPTagHashIndex index(sizeof(uint64_t));
+    ErrorInfo err_info;
+
+    int result = index.open(test_path_, "/tmp/kwdb_mmap_test/", "", O_RDWR, err_info);
+
+    EXPECT_EQ(result, 0);
+  }
+}
+
+TEST_F(TestMMapPTagHashIndex, ElementCount_Basic) {
+  MMapPTagHashIndex index(sizeof(uint64_t));
+  ErrorInfo err_info;
+  index.open(test_path_, "/tmp/kwdb_mmap_test/", "", O_CREAT | O_RDWR, err_info);
+
+  uint64_t count = index.getElementCount();
+
+  EXPECT_EQ(count, 0);
+}
+
+TEST_F(TestMMapPTagHashIndex, Insert_DifferentKeys) {
+  MMapPTagHashIndex index(sizeof(uint64_t));
+  ErrorInfo err_info;
+  index.open(test_path_, "/tmp/kwdb_mmap_test/", "", O_CREAT | O_RDWR, err_info);
+
+  for (uint64_t i = 0; i < 10; ++i) {
+    int result = index.insert(reinterpret_cast<const char*>(&i), sizeof(i), 1, i * 100);
+    EXPECT_EQ(result, 0);
+  }
+
+  EXPECT_EQ(index.getElementCount(), 10);
+}
+
+TEST_F(TestMMapPTagHashIndex, Update_ExistingKey) {
+  MMapPTagHashIndex index(sizeof(uint64_t));
+  ErrorInfo err_info;
+  index.open(test_path_, "/tmp/kwdb_mmap_test/", "", O_CREAT | O_RDWR, err_info);
+
+  uint64_t key = 101010;
+  index.insert(reinterpret_cast<const char*>(&key), sizeof(key), 1, 110000);
+  index.insert(reinterpret_cast<const char*>(&key), sizeof(key), 2, 110001);
+
+  auto result = index.get(reinterpret_cast<const char*>(&key), sizeof(key));
+
+  EXPECT_EQ(result.first, 2);
+  EXPECT_EQ(result.second, 110001);
 }

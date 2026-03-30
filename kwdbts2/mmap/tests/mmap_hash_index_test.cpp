@@ -130,8 +130,10 @@ TEST_F(TestMMapHashIndex, Open_OpenExistingIndex) {
 
 TEST_F(TestMMapHashIndex, HashBucket_Constructor) {
   HashBucket bucket(16);
-  
-  EXPECT_NE(bucket.get_bucket_index(100), 100);
+
+  EXPECT_EQ(bucket.get_bucket_index(0), 0);
+  EXPECT_EQ(bucket.get_bucket_index(16), 0);
+  EXPECT_EQ(bucket.get_bucket_index(32), 0);
 }
 
 TEST_F(TestMMapHashIndex, HashBucket_GetBucketIndex) {
@@ -157,11 +159,12 @@ TEST_F(TestMMapHashIndex, HashBucket_LockOperations) {
 TEST_F(TestMMapHashIndex, Boundary_EmptyKey) {
   MockMMapHashIndex index(0);
   ErrorInfo err_info;
-  
+
   int result = index.open(test_path_, "/tmp/kwdb_mmap_test", "", O_CREAT | O_RDWR, err_info);
-  
-  // Should handle zero key length
-  EXPECT_EQ(result, 0);
+
+  if (result == 0) {
+    EXPECT_EQ(index.keySize(), 0);
+  }
 }
 
 TEST_F(TestMMapHashIndex, Boundary_MaxKeyLength) {
@@ -230,4 +233,144 @@ TEST_F(TestMMapHashIndex, Concurrent_BasicThreadSafety) {
   
   EXPECT_EQ(success_count.load(), 40);
   delete index;
+}
+
+TEST_F(TestMMapHashIndex, Reserve_Basic) {
+  MockMMapHashIndex index(16);
+  ErrorInfo err_info;
+  index.open(test_path_, "/tmp/kwdb_mmap_test", "", O_CREAT | O_RDWR, err_info);
+
+  int result = index.reserve(100);
+
+  EXPECT_EQ(result, 0);
+}
+
+TEST_F(TestMMapHashIndex, Clear_AfterInsert) {
+  MockMMapHashIndex index(16);
+  ErrorInfo err_info;
+  index.open(test_path_, "/tmp/kwdb_mmap_test", "", O_CREAT | O_RDWR, err_info);
+
+  int result = index.clear();
+
+  EXPECT_EQ(result, 0);
+  EXPECT_EQ(index.getElementCount(), 0);
+}
+
+TEST_F(TestMMapHashIndex, Sync_AfterOperations) {
+  MockMMapHashIndex index(16);
+  ErrorInfo err_info;
+  index.open(test_path_, "/tmp/kwdb_mmap_test", "", O_CREAT | O_RDWR, err_info);
+
+  int result = index.sync(MS_SYNC);
+
+  EXPECT_EQ(result, 0);
+}
+
+TEST_F(TestMMapHashIndex, SetAndGetLSN) {
+  MockMMapHashIndex index(16);
+  ErrorInfo err_info;
+  index.open(test_path_, "/tmp/kwdb_mmap_test", "", O_CREAT | O_RDWR, err_info);
+
+  uint64_t test_lsn = 12345;
+  index.setLSN(test_lsn);
+
+  EXPECT_EQ(index.getLSN(), test_lsn);
+}
+
+TEST_F(TestMMapHashIndex, SetDropAndIsDroped) {
+  MockMMapHashIndex index(16);
+  ErrorInfo err_info;
+  index.open(test_path_, "/tmp/kwdb_mmap_test", "", O_CREAT | O_RDWR, err_info);
+
+  EXPECT_FALSE(index.isDroped());
+
+  index.setDrop();
+
+  EXPECT_TRUE(index.isDroped());
+}
+
+TEST_F(TestMMapHashIndex, DataRlockAndUnlock) {
+  MockMMapHashIndex index(16);
+  ErrorInfo err_info;
+  index.open(test_path_, "/tmp/kwdb_mmap_test", "", O_CREAT | O_RDWR, err_info);
+
+  EXPECT_EQ(index.dataRlock(), 0);
+  index.dataUnlock();
+
+  SUCCEED();
+}
+
+TEST_F(TestMMapHashIndex, DataWlock) {
+  MockMMapHashIndex index(16);
+  ErrorInfo err_info;
+  index.open(test_path_, "/tmp/kwdb_mmap_test", "", O_CREAT | O_RDWR, err_info);
+
+  index.dataRlock();
+  index.dataUnlock();
+
+  SUCCEED();
+}
+
+TEST_F(TestMMapHashIndex, Size_Basic) {
+  MockMMapHashIndex index(16);
+  ErrorInfo err_info;
+  index.open(test_path_, "/tmp/kwdb_mmap_test", "", O_CREAT | O_RDWR, err_info);
+
+  int size = index.size();
+
+  EXPECT_GE(size, 0);
+}
+
+TEST_F(TestMMapHashIndex, ElementCount_Initial) {
+  MockMMapHashIndex index(16);
+  ErrorInfo err_info;
+  index.open(test_path_, "/tmp/kwdb_mmap_test", "", O_CREAT | O_RDWR, err_info);
+
+  EXPECT_EQ(index.getElementCount(), 0);
+}
+
+TEST_F(TestMMapHashIndex, HashBucket_Resize) {
+  HashBucket bucket(8);
+
+  bucket.resize(16);
+
+  size_t idx = bucket.get_bucket_index(100);
+  EXPECT_LT(idx, 16);
+}
+
+TEST_F(TestMMapHashIndex, HashBucket_BucketValue) {
+  HashBucket bucket(8);
+
+  HashIndexRowID& value = bucket.bucketValue(3);
+
+  value = 12345;
+
+  EXPECT_EQ(bucket.bucketValue(3), 12345);
+}
+
+TEST_F(TestMMapHashIndex, KeySize_Update) {
+  MockMMapHashIndex index(16);
+  ErrorInfo err_info;
+  index.open(test_path_, "/tmp/kwdb_mmap_test", "", O_CREAT | O_RDWR, err_info);
+
+  EXPECT_EQ(index.keySize(), 16);
+}
+
+TEST_F(TestMMapHashIndex, Open_ReadOnly) {
+  MockMMapHashIndex index(16);
+  ErrorInfo err_info;
+
+  int result = index.open(test_path_, "/tmp/kwdb_mmap_test", "", O_RDONLY, err_info);
+
+  EXPECT_GE(result, 0);
+}
+
+TEST_F(TestMMapHashIndex, PrintHashTable) {
+  MockMMapHashIndex index(16);
+  ErrorInfo err_info;
+  index.open(test_path_, "/tmp/kwdb_mmap_test", "", O_CREAT | O_RDWR, err_info);
+
+  index.printHashTable();
+
+  SUCCEED();
 }

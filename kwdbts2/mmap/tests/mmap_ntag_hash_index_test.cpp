@@ -235,17 +235,17 @@ TEST_F(TestMMapNTagHashIndex, Concurrent_BasicThreadSafety) {
   MMapNTagHashIndex* index = new MMapNTagHashIndex(sizeof(uint64_t), 100, col_ids);
   ErrorInfo err_info;
   index->open(test_path_, "/tmp/kwdb_mmap_test/", "", O_CREAT | O_RDWR, err_info);
-  
+
   std::vector<std::thread> threads;
   std::atomic<int> success_count(0);
-  
+
   for (int i = 0; i < 4; ++i) {
     threads.emplace_back([index, &success_count, i]() {
       for (int j = 0; j < 10; ++j) {
         uint64_t key = i * 100 + j;
         TableVersionID version = 1;
         TagPartitionTableRowID rowid = key * 10;
-        
+
         int result = index->insert(reinterpret_cast<const char*>(&key), sizeof(key), version, rowid);
         if (result == 0) {
           success_count++;
@@ -253,11 +253,157 @@ TEST_F(TestMMapNTagHashIndex, Concurrent_BasicThreadSafety) {
       }
     });
   }
-  
+
   for (auto& t : threads) {
     t.join();
   }
-  
+
   EXPECT_EQ(success_count.load(), 40);
   delete index;
+}
+
+TEST_F(TestMMapNTagHashIndex, UpdateKeyLen_Basic) {
+  std::vector<uint32_t> col_ids = {1};
+  MMapNTagHashIndex index(sizeof(uint64_t), 100, col_ids);
+
+  int result = index.updateKeyLen();
+
+  EXPECT_GE(result, 0);
+}
+
+TEST_F(TestMMapNTagHashIndex, Sync_AfterInsert) {
+  std::vector<uint32_t> col_ids = {1};
+  MMapNTagHashIndex index(sizeof(uint64_t), 100, col_ids);
+  ErrorInfo err_info;
+  index.open(test_path_, "/tmp/kwdb_mmap_test/", "", O_CREAT | O_RDWR, err_info);
+
+  uint64_t key = 55555;
+  index.insert(reinterpret_cast<const char*>(&key), sizeof(key), 1, 6000);
+
+  int result = index.sync(MS_SYNC);
+
+  EXPECT_EQ(result, 0);
+}
+
+TEST_F(TestMMapNTagHashIndex, Clear_AfterInsert) {
+  std::vector<uint32_t> col_ids = {1};
+  MMapNTagHashIndex index(sizeof(uint64_t), 100, col_ids);
+  ErrorInfo err_info;
+  index.open(test_path_, "/tmp/kwdb_mmap_test/", "", O_CREAT | O_RDWR, err_info);
+
+  uint64_t key = 66666;
+  index.insert(reinterpret_cast<const char*>(&key), sizeof(key), 1, 7000);
+
+  int result = index.clear();
+
+  EXPECT_EQ(result, 0);
+}
+
+TEST_F(TestMMapNTagHashIndex, GetAll_MultipleResults) {
+  std::vector<uint32_t> col_ids = {1};
+  MMapNTagHashIndex index(sizeof(uint64_t), 100, col_ids);
+  ErrorInfo err_info;
+  index.open(test_path_, "/tmp/kwdb_mmap_test/", "", O_CREAT | O_RDWR, err_info);
+
+  uint64_t key = 77777;
+
+  index.insert(reinterpret_cast<const char*>(&key), sizeof(key), 1, 8000);
+  index.insert(reinterpret_cast<const char*>(&key), sizeof(key), 2, 8001);
+
+  std::vector<std::pair<TableVersionID, TagPartitionTableRowID>> results;
+  int result = index.get_all(reinterpret_cast<const char*>(&key), sizeof(key), results);
+
+  EXPECT_EQ(result, 0);
+  EXPECT_EQ(results.size(), 2);
+}
+
+TEST_F(TestMMapNTagHashIndex, Open_ExistingIndex) {
+  {
+    std::vector<uint32_t> col_ids = {1};
+    MMapNTagHashIndex index(sizeof(uint64_t), 100, col_ids);
+    ErrorInfo err_info;
+    ASSERT_EQ(index.open(test_path_, "/tmp/kwdb_mmap_test/", "", O_CREAT | O_RDWR, err_info), 0);
+
+    uint64_t key = 88888;
+    index.insert(reinterpret_cast<const char*>(&key), sizeof(key), 1, 9000);
+  }
+
+  {
+    std::vector<uint32_t> col_ids = {1};
+    MMapNTagHashIndex index(sizeof(uint64_t), 100, col_ids);
+    ErrorInfo err_info;
+
+    int result = index.open(test_path_, "/tmp/kwdb_mmap_test/", "", O_RDWR, err_info);
+
+    EXPECT_EQ(result, 0);
+  }
+}
+
+TEST_F(TestMMapNTagHashIndex, ElementCount_Basic) {
+  std::vector<uint32_t> col_ids = {1};
+  MMapNTagHashIndex index(sizeof(uint64_t), 100, col_ids);
+  ErrorInfo err_info;
+  index.open(test_path_, "/tmp/kwdb_mmap_test/", "", O_CREAT | O_RDWR, err_info);
+
+  uint64_t count = index.getElementCount();
+
+  EXPECT_EQ(count, 0);
+}
+
+TEST_F(TestMMapNTagHashIndex, Insert_DifferentKeys) {
+  std::vector<uint32_t> col_ids = {1};
+  MMapNTagHashIndex index(sizeof(uint64_t), 100, col_ids);
+  ErrorInfo err_info;
+  index.open(test_path_, "/tmp/kwdb_mmap_test/", "", O_CREAT | O_RDWR, err_info);
+
+  for (uint64_t i = 0; i < 10; ++i) {
+    int result = index.insert(reinterpret_cast<const char*>(&i), sizeof(i), 1, i * 100);
+    EXPECT_EQ(result, 0);
+  }
+
+  EXPECT_EQ(index.getElementCount(), 10);
+}
+
+TEST_F(TestMMapNTagHashIndex, Insert_WithMultipleColIds) {
+  std::vector<uint32_t> col_ids = {1, 2, 3};
+  MMapNTagHashIndex index(24, 100, col_ids);
+  ErrorInfo err_info;
+  index.open(test_path_, "/tmp/kwdb_mmap_test/", "", O_CREAT | O_RDWR, err_info);
+
+  char key[24] = {0};
+  memcpy(key, "abc123", 6);
+
+  int result = index.insert(key, sizeof(key), 1, 1000);
+
+  EXPECT_EQ(result, 0);
+}
+
+TEST_F(TestMMapNTagHashIndex, GetColIDs_SortOrder) {
+  std::vector<uint32_t> col_ids = {30, 10, 20};
+  MMapNTagHashIndex index(sizeof(uint64_t), 100, col_ids);
+
+  auto stored_col_ids = index.getColIDs();
+
+  EXPECT_EQ(stored_col_ids.size(), 3);
+  EXPECT_EQ(stored_col_ids[0], 10);
+  EXPECT_EQ(stored_col_ids[1], 20);
+  EXPECT_EQ(stored_col_ids[2], 30);
+}
+
+TEST_F(TestMMapNTagHashIndex, Remove_ByRowID) {
+  std::vector<uint32_t> col_ids = {1};
+  MMapNTagHashIndex index(sizeof(uint64_t), 100, col_ids);
+  ErrorInfo err_info;
+  index.open(test_path_, "/tmp/kwdb_mmap_test/", "", O_CREAT | O_RDWR, err_info);
+
+  uint64_t key = 99999;
+  TableVersionID version = 1;
+  TagPartitionTableRowID rowid = 10000;
+
+  index.insert(reinterpret_cast<const char*>(&key), sizeof(key), version, rowid);
+
+  auto result = index.remove(rowid, version, reinterpret_cast<const char*>(&key), sizeof(key));
+
+  EXPECT_EQ(result.first, version);
+  EXPECT_EQ(result.second, rowid);
 }

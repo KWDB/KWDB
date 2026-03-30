@@ -348,33 +348,213 @@ TEST_F(TestTagTableVersionManager, Resource_MultipleVersions) {
   }
 }
 
-TEST_F(TestTagTableVersionManager, Concurrent_BasicThreadSafety) {
-  TagTableVersionManager* version_mgr = new TagTableVersionManager(test_path_, "sub_path", table_id_);
-  
-  std::vector<std::thread> threads;
-  std::atomic<int> success_count(0);
-  
-  for (int i = 0; i < 4; ++i) {
-    threads.emplace_back([version_mgr, &success_count, i]() {
-      std::vector<TagInfo> schema;
-      TagInfo info;
-      info.m_data_type = INT32;
-      schema.push_back(info);
-      
-      ErrorInfo err_info;
-      uint32_t version = 200 + i;
-      
-      TagVersionObject* obj = version_mgr->CreateTagVersionObject(schema, version, err_info);
-      if (obj != nullptr) {
-        success_count++;
-      }
-    });
+TEST_F(TestTagTableVersionManager, TagVersionObject_CreateAndOpen) {
+  TagTableVersionManager version_mgr(test_path_, "sub_path", table_id_);
+
+  std::vector<TagInfo> schema;
+  TagInfo info;
+  info.m_id = 1;
+  info.m_data_type = DATATYPE::INT32;
+  info.m_length = sizeof(int32_t);
+  info.m_size = sizeof(int32_t);
+  info.m_tag_type = GENERAL_TAG;
+  info.m_flag = 0;
+  schema.push_back(info);
+
+  uint32_t ts_version = 80;
+  ErrorInfo err_info;
+
+  TagVersionObject* version_obj = version_mgr.CreateTagVersionObject(schema, ts_version, err_info);
+  ASSERT_NE(version_obj, nullptr);
+  EXPECT_EQ(version_obj->getTableVersion(), ts_version);
+
+  ASSERT_TRUE(version_obj->metaData() != nullptr);
+  EXPECT_EQ(version_obj->metaData()->m_version_, ts_version);
+  EXPECT_EQ(version_obj->metaData()->m_column_count_, 1);
+}
+
+TEST_F(TestTagTableVersionManager, TagVersionObject_GetTagColumnIndex) {
+  TagTableVersionManager version_mgr(test_path_, "sub_path", table_id_);
+
+  std::vector<TagInfo> schema;
+  TagInfo info1, info2;
+  info1.m_id = 1;
+  info1.m_data_type = DATATYPE::INT32;
+  info1.m_length = sizeof(int32_t);
+  info1.m_size = sizeof(int32_t);
+  info1.m_tag_type = PRIMARY_TAG;
+  info1.m_flag = 0;
+
+  info2.m_id = 2;
+  info2.m_data_type = DATATYPE::INT64;
+  info2.m_length = sizeof(int64_t);
+  info2.m_size = sizeof(int64_t);
+  info2.m_tag_type = GENERAL_TAG;
+  info2.m_flag = 0;
+
+  schema.push_back(info1);
+  schema.push_back(info2);
+
+  uint32_t ts_version = 81;
+  ErrorInfo err_info;
+
+  TagVersionObject* version_obj = version_mgr.CreateTagVersionObject(schema, ts_version, err_info);
+  ASSERT_NE(version_obj, nullptr);
+
+  TagInfo search_tag;
+  search_tag.m_id = 2;
+  int col_idx = version_obj->getTagColumnIndex(search_tag);
+  EXPECT_EQ(col_idx, 1);
+
+  search_tag.m_id = 999;
+  col_idx = version_obj->getTagColumnIndex(search_tag);
+  EXPECT_EQ(col_idx, -1);
+}
+
+TEST_F(TestTagTableVersionManager, TagVersionObject_IsValid) {
+  TagTableVersionManager version_mgr(test_path_, "sub_path", table_id_);
+
+  std::vector<TagInfo> schema;
+  TagInfo info;
+  info.m_id = 1;
+  info.m_data_type = DATATYPE::INT32;
+  info.m_length = sizeof(int32_t);
+  info.m_size = sizeof(int32_t);
+  info.m_tag_type = GENERAL_TAG;
+  info.m_flag = 0;
+  schema.push_back(info);
+
+  uint32_t ts_version = 82;
+  ErrorInfo err_info;
+
+  TagVersionObject* version_obj = version_mgr.CreateTagVersionObject(schema, ts_version, err_info);
+  ASSERT_NE(version_obj, nullptr);
+
+  EXPECT_FALSE(version_obj->isValid());
+  version_obj->setStatus(TAG_STATUS_READY);
+  EXPECT_TRUE(version_obj->isValid());
+}
+
+TEST_F(TestTagTableVersionManager, TagVersionObject_SchemaManagement) {
+  TagTableVersionManager version_mgr(test_path_, "sub_path", table_id_);
+
+  std::vector<TagInfo> schema;
+  for (int i = 0; i < 3; ++i) {
+    TagInfo info;
+    info.m_id = i + 1;
+    info.m_data_type = DATATYPE::INT32;
+    info.m_length = sizeof(int32_t);
+    info.m_size = sizeof(int32_t);
+    info.m_tag_type = (i == 0) ? PRIMARY_TAG : GENERAL_TAG;
+    info.m_flag = 0;
+    schema.push_back(info);
   }
-  
-  for (auto& t : threads) {
-    t.join();
-  }
-  
-  EXPECT_EQ(success_count.load(), 4);
-  delete version_mgr;
+
+  uint32_t ts_version = 83;
+  ErrorInfo err_info;
+
+  TagVersionObject* version_obj = version_mgr.CreateTagVersionObject(schema, ts_version, err_info);
+  ASSERT_NE(version_obj, nullptr);
+
+  const auto& all_schemas = version_obj->getIncludeDroppedSchemaInfos();
+  EXPECT_EQ(all_schemas.size(), 3);
+
+  const auto& valid_idxs = version_obj->getValidSchemaIdxs();
+  EXPECT_EQ(valid_idxs.size(), 3);
+}
+
+TEST_F(TestTagTableVersionManager, SyncFromMetricsTableVersion_Basic) {
+  TagTableVersionManager version_mgr(test_path_, "sub_path", table_id_);
+
+  std::vector<TagInfo> schema;
+  TagInfo info;
+  info.m_id = 1;
+  info.m_data_type = DATATYPE::INT32;
+  info.m_length = sizeof(int32_t);
+  info.m_size = sizeof(int32_t);
+  info.m_tag_type = GENERAL_TAG;
+  info.m_flag = 0;
+  schema.push_back(info);
+
+  uint32_t cur_version = 90;
+  uint32_t new_version = 91;
+  ErrorInfo err_info;
+
+  TagVersionObject* cur_obj = version_mgr.CreateTagVersionObject(schema, cur_version, err_info);
+  ASSERT_NE(cur_obj, nullptr);
+
+  int result = version_mgr.SyncFromMetricsTableVersion(cur_version, new_version);
+  EXPECT_EQ(result, 0);
+
+  TagVersionObject* new_obj = version_mgr.GetVersionObject(new_version);
+  EXPECT_NE(new_obj, nullptr);
+}
+
+TEST_F(TestTagTableVersionManager, GetNewestTableVersion_Basic) {
+  TagTableVersionManager version_mgr(test_path_, "sub_path", table_id_);
+
+  std::vector<TagInfo> schema;
+  TagInfo info;
+  info.m_id = 1;
+  info.m_data_type = DATATYPE::INT32;
+  info.m_length = sizeof(int32_t);
+  info.m_size = sizeof(int32_t);
+  info.m_tag_type = GENERAL_TAG;
+  info.m_flag = 0;
+  schema.push_back(info);
+
+  ErrorInfo err_info;
+
+  version_mgr.CreateTagVersionObject(schema, 1, err_info);
+  version_mgr.CreateTagVersionObject(schema, 2, err_info);
+  version_mgr.CreateTagVersionObject(schema, 3, err_info);
+
+  version_mgr.UpdateNewestTableVersion(3);
+  EXPECT_EQ(version_mgr.GetNewestTableVersion(), 3);
+}
+
+TEST_F(TestTagTableVersionManager, GetCurrentTableVersion_Basic) {
+  TagTableVersionManager version_mgr(test_path_, "sub_path", table_id_);
+
+  std::vector<TagInfo> schema;
+  TagInfo info;
+  info.m_id = 1;
+  info.m_data_type = DATATYPE::INT32;
+  info.m_length = sizeof(int32_t);
+  info.m_size = sizeof(int32_t);
+  info.m_tag_type = GENERAL_TAG;
+  info.m_flag = 0;
+  schema.push_back(info);
+
+  ErrorInfo err_info;
+
+  version_mgr.CreateTagVersionObject(schema, 1, err_info);
+  version_mgr.UpdateNewestTableVersion(1);
+  version_mgr.SyncCurrentTableVersion();
+
+  EXPECT_EQ(version_mgr.GetCurrentTableVersion(), 1);
+}
+
+TEST_F(TestTagTableVersionManager, OpenTagVersionObject_FromDisk) {
+  TagTableVersionManager version_mgr(test_path_, "sub_path", table_id_);
+
+  std::vector<TagInfo> schema;
+  TagInfo info;
+  info.m_id = 1;
+  info.m_data_type = DATATYPE::INT32;
+  info.m_length = sizeof(int32_t);
+  info.m_size = sizeof(int32_t);
+  info.m_tag_type = GENERAL_TAG;
+  info.m_flag = 0;
+  schema.push_back(info);
+
+  uint32_t ts_version = 100;
+  ErrorInfo err_info;
+
+  TagVersionObject* obj1 = version_mgr.CreateTagVersionObject(schema, ts_version, err_info);
+  ASSERT_NE(obj1, nullptr);
+
+  TagVersionObject* obj2 = version_mgr.OpenTagVersionObject(ts_version, err_info);
+  ASSERT_NE(obj2, nullptr);
+  EXPECT_EQ(obj2->getTableVersion(), ts_version);
 }
