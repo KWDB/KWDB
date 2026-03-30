@@ -52,6 +52,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/kv"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
 	"gitee.com/kwbasedb/kwbase/pkg/security"
+	"gitee.com/kwbasedb/kwbase/pkg/server/serverpb"
 	"gitee.com/kwbasedb/kwbase/pkg/settings/cluster"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/lex"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/parser"
@@ -4384,6 +4385,80 @@ may increase either contention or retry errors, or both.`,
 		},
 	),
 
+	// Fetches the corresponding range_info_debug for the rangeID.
+	"kwdb_internal.range_info_debug": makeBuiltin(
+		tree.FunctionProperties{
+			Category: categorySystemInfo,
+		},
+		tree.Overload{
+			Types:      tree.ArgTypes{{"range_id", types.Int}},
+			ReturnType: tree.FixedReturnType(types.String),
+			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				var id *tree.DInt
+				var ok bool
+				if id, ok = args[0].(*tree.DInt); !ok {
+					return nil, pgerror.New(pgcode.InvalidParameterValue, "first arg should be int.")
+				}
+				rangeResp, err := ctx.TsDBAccessor.GetRangeDebugInfo(ctx.Context, int64(*id))
+				if err != nil {
+					return nil, err
+				}
+
+				resp, _ := rangeResp.(*serverpb.RangeResponse)
+				for k, v := range resp.ResponsesByNodeID {
+					if v.Infos == nil && v.ErrorMessage == "" {
+						delete(resp.ResponsesByNodeID, k)
+					}
+				}
+
+				jsonStr, err := gojson.Marshal(&resp.ResponsesByNodeID)
+				if err != nil {
+					return nil, err
+				}
+				jsonDatum, err := tree.ParseDJSON(string(jsonStr))
+				if err != nil {
+					return nil, err
+				}
+				prettyJSON, err := json.Pretty(tree.MustBeDJSON(jsonDatum).JSON)
+				if err != nil {
+					return nil, err
+				}
+
+				return tree.NewDString(prettyJSON), nil
+			},
+			Info: "This function is used to get range info debug message",
+		},
+	),
+
+	// Show all problem ranges.
+	"kwdb_internal.problem_ranges_debug": makeBuiltin(
+		tree.FunctionProperties{
+			Category: categorySystemInfo,
+		},
+		tree.Overload{
+			Types:      tree.ArgTypes{},
+			ReturnType: tree.FixedReturnType(types.Jsonb),
+			Fn: func(ctx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				rangeResp, err := ctx.TsDBAccessor.GetProblemRangesInfo(ctx.Context)
+				if err != nil {
+					return nil, err
+				}
+				resp, _ := rangeResp.(*serverpb.ProblemRangesResponse)
+
+				jsonStr, err := gojson.Marshal(&resp.ProblemsByNodeID)
+				if err != nil {
+					return nil, err
+				}
+				jsonDatum, err := tree.ParseDJSON(string(jsonStr))
+				if err != nil {
+					return nil, err
+				}
+				return jsonDatum, nil
+			},
+			Info: "This function is used to get problem ranges debug message",
+		},
+	),
+
 	// Identity function which is marked as impure to avoid constant folding.
 	"kwdb_internal.no_constant_folding": makeBuiltin(
 		tree.FunctionProperties{
@@ -5105,6 +5180,44 @@ may increase either contention or retry errors, or both.`,
 	//		Info: "time_bucket_gapfill groups timestamps by duration.",
 	//	},
 	//),
+
+	"relocate_range": makeBuiltin(
+		tree.FunctionProperties{DistsqlBlacklist: true, Impure: true},
+		tree.Overload{
+			Types: tree.ArgTypes{{"range_id", types.Int},
+				{"src_node_id", types.Int}, {"dst_node_id", types.Int}},
+			ReturnType: tree.FixedReturnType(types.Bool),
+			Fn: func(evalCtx *tree.EvalContext, args tree.Datums) (tree.Datum, error) {
+				var id *tree.DInt
+				var ok bool
+				if id, ok = args[0].(*tree.DInt); !ok {
+					return nil, pgerror.New(pgcode.InvalidParameterValue, "first arg should be int.")
+				}
+				rangeID := int64(*id)
+				if id, ok = args[1].(*tree.DInt); !ok {
+					return nil, pgerror.New(pgcode.InvalidParameterValue, "second arg should be int.")
+				}
+				src := roachpb.NodeID(*id)
+				if id, ok = args[2].(*tree.DInt); !ok {
+					return nil, pgerror.New(pgcode.InvalidParameterValue, "third arg should be int.")
+				}
+				dst := roachpb.NodeID(*id)
+				if rangeID < 1 {
+					return nil, errors.New("range not exist")
+				}
+				if src == dst {
+					return nil, errors.New("nothing to do")
+				}
+				err := evalCtx.TsDBAccessor.RelocateRange(evalCtx.Ctx(), rangeID, src, dst)
+				if err != nil {
+					return nil, err
+				}
+
+				return tree.DBoolTrue, err
+			},
+			Info: "get_range_data get the row count of the range data on the specified node",
+		},
+	),
 
 	"get_range_count": makeBuiltin(
 		tree.FunctionProperties{DistsqlBlacklist: true, Impure: true},

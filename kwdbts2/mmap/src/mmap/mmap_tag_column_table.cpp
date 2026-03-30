@@ -927,7 +927,7 @@ int MMapTagColumnTable::insert(uint32_t entity_id, uint32_t subgroup_id, uint32_
   startRead();
   mutexUnlock();
   *row_id = row_no;
-  TagDataInfo tagInfo{ operate_type, osn, row_no, 0};
+  TagDataInfo tagInfo{ operate_type, 0, 0, 0, 0, 0, 0, 0, osn, 0, 0};
   setTagDataInfo(row_no, &tagInfo);
 
   // put entity id
@@ -1067,23 +1067,18 @@ void MMapTagColumnTable::getEntityIdListByVGroupId(uint32_t vgroup_id, std::vect
 }
 
 int MMapTagColumnTable::getEntityIdByRownum(size_t row, std::vector<kwdbts::EntityResultIndex>* entityIdList) {
-  uint32_t entity_id;
-  uint32_t subgroup_id;
-  char* record_ptr;
-  record_ptr = entityIdStoreAddr(row);
-  memcpy(&entity_id, record_ptr, sizeof(uint32_t));
-  memcpy(&subgroup_id, record_ptr + sizeof(entity_id), sizeof(uint32_t));
-  if (CheckGroupID(subgroup_id, false) == KStatus::FAIL) {
+  uint32_t* record_ptr = reinterpret_cast<uint32_t*>(entityIdStoreAddr(row));
+  if (CheckGroupID(record_ptr[1], false) == KStatus::FAIL) {
     LOG_ERROR("Failed to obtain the vgroup id!");
   }
   char* mem = static_cast<char *>(std::malloc(primaryTagSize()));
-  memcpy(mem, record_ptr + k_entity_group_id_size, primaryTagSize());
+  memcpy(mem, &record_ptr[2], primaryTagSize());
   std::shared_ptr<void> mem_ptr(mem, free);
   // LOG_DEBUG("entityid: %u, groupid: %u", entity_id, subgroup_id);
   entityIdList->emplace_back(std::move(kwdbts::EntityResultIndex(m_meta_data_->m_entitygroup_id,
-                                                                 entity_id,
-                                                                 subgroup_id,
-                                                                 mem_ptr,
+                                                                 record_ptr[0],
+                                                                 record_ptr[1],
+                                                                 std::move(mem_ptr),
                                                                  primaryTagSize())));
   return 0;
 }
@@ -1098,23 +1093,8 @@ void MMapTagColumnTable::getHashpointByRowNum(size_t row, uint32_t *hash_point) 
 
 void MMapTagColumnTable::getHashedEntityIdByRownum(size_t row, uint32_t hps,
                          std::vector<kwdbts::EntityResultIndex>* entityIdList) {
-  uint32_t entity_id;
-  uint32_t subgroup_id;
-  char* record_ptr;
-  record_ptr = entityIdStoreAddr(row);
-  memcpy(&entity_id, record_ptr, sizeof(uint32_t));
-  memcpy(&subgroup_id, record_ptr + sizeof(entity_id), sizeof(uint32_t));
-  char* mem = static_cast<char *>(std::malloc(primaryTagSize()));
-  memcpy(mem, record_ptr + k_entity_group_id_size, primaryTagSize());
-  std::shared_ptr<void> mem_ptr(mem, free);
-  // LOG_DEBUG("entityid: %u, groupid: %u, hashid: %u", entity_id, subgroup_id, hps);
-  entityIdList->emplace_back(std::move(kwdbts::EntityResultIndex{m_meta_data_->m_entitygroup_id,
-                                                                 entity_id,
-                                                                 subgroup_id, hps,
-                                                                 mem_ptr,
-                                                                 primaryTagSize()
-                                                                 }));
-  return ;
+  getEntityIdByRownum(row, entityIdList);
+  entityIdList->back().hash_point = hps;
 }
 
 int MMapTagColumnTable::getColumnsByRownum(size_t row, const std::vector<uint32_t>& src_scan_tags_idx,

@@ -87,8 +87,8 @@ EEIteratorErrCode DistinctOperator::Init(kwdbContext_p ctx) {
       group_allow_null.push_back(input_fields[col]->is_allow_null());
     }
 
-    seen_ = KNEW LinearProbingHashTable(distinct_types, distinct_lens, 0, group_allow_null);
-    if (seen_ == nullptr || seen_->Resize() < 0) {
+    seen_ = KNEW LinearProbingHashTable(distinct_types, distinct_lens, 0, group_allow_null, false);
+    if (seen_ == nullptr || seen_->Initialize() != KStatus::SUCCESS) {
       EEPgErrorInfo::SetPgErrorInfo(ERRCODE_OUT_OF_MEMORY, "Insufficient memory");
       Return(EEIteratorErrCode::EE_ERROR);
     }
@@ -149,13 +149,23 @@ EEIteratorErrCode DistinctOperator::Next(kwdbContext_p ctx, DataChunkPtr& chunk)
         break;
       }
 
-      k_uint64 loc;
-      if (seen_->FindOrCreateGroups(data_chunk.get(), row, distinct_cols_, &loc) < 0) {
+      DatumPtr agg_ptr;
+      size_t hash_val;
+      k_bool is_used;
+      k_bool is_abandoned;
+      if (seen_->FindOrCreateGroupsAndAddTuple(
+              data_chunk.get(), row, distinct_cols_, agg_ptr, &hash_val,
+              &is_used, &is_abandoned) < 0) {
+        Return(EEIteratorErrCode::EE_ERROR);
+      }
+      if (is_abandoned) {
+        EEPgErrorInfo::SetPgErrorInfo(ERRCODE_INTERNAL_ERROR,
+                                  "Abandon data in distinct operation.");
         Return(EEIteratorErrCode::EE_ERROR);
       }
 
       // not find
-      if (!seen_->IsUsed(loc)) {
+      if (!is_used) {
         // limit
         if (limit_ && examined_rows_ >= limit_) {
           code = EEIteratorErrCode::EE_END_OF_RECORD;
@@ -172,14 +182,12 @@ EEIteratorErrCode DistinctOperator::Next(kwdbContext_p ctx, DataChunkPtr& chunk)
         FieldsToChunk(GetRender(), GetRenderSize(), i, chunk);
         chunk->AddCount();
 
-
         // rows++
         ++examined_rows_;
         ++i;
 
         // update distinct info
-        seen_->SetUsed(loc);
-        seen_->CopyGroups(data_chunk.get(), row, distinct_cols_, loc);
+        // seen_->CopyGroups(data_chunk.get(), row, distinct_cols_, loc, hash_val);
       }
     }
 
@@ -206,7 +214,7 @@ EEIteratorErrCode DistinctOperator::Next(kwdbContext_p ctx, DataChunkPtr& chunk)
   }
 
   if (code == EEIteratorErrCode::EE_END_OF_RECORD) {
-    fetcher_.Update(0, (end - start).count(), 0, seen_->Capacity() * seen_->tupleSize(), 0, 0);
+    fetcher_.Update(0, (end - start).count(), 0, seen_->Capacity() * seen_->TupleSize(), 0, 0);
   }
 
   Return(code);

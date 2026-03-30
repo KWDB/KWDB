@@ -21,12 +21,13 @@
 namespace kwdbts {
 
 TagIteratorV2Impl::TagIteratorV2Impl(std::shared_ptr<TagTable> tag_bt, uint32_t table_versioin,
-                                     const std::vector<k_uint32>& scan_tags)
-    : scan_tags_(scan_tags), tag_bt_(std::move(tag_bt)), table_version_(table_versioin) {}
+                                     const std::vector<k_uint32>& scan_tags, TS_OSN osn)
+    : scan_tags_(scan_tags), tag_bt_(std::move(tag_bt)), table_version_(table_versioin), scan_osn_(osn) {}
 
 TagIteratorV2Impl::TagIteratorV2Impl(std::shared_ptr<TagTable> tag_bt, uint32_t table_versioin,
-                                     const std::vector<k_uint32>& scan_tags, std::vector<HashIdSpan>* hps)
-    : scan_tags_(scan_tags), hps_(hps), tag_bt_(std::move(tag_bt)), table_version_(table_versioin) {}
+                                     const std::vector<k_uint32>& scan_tags, std::vector<HashIdSpan>* hps,
+                                     TS_OSN scan_osn)
+    : scan_tags_(scan_tags), hps_(hps), tag_bt_(std::move(tag_bt)), table_version_(table_versioin), scan_osn_(scan_osn) {}
 
 TagIteratorV2Impl::~TagIteratorV2Impl() {
   for (size_t idx = 0; idx < tag_partition_iters_.size(); ++idx) {
@@ -71,6 +72,7 @@ KStatus TagIteratorV2Impl::Init() {
       return FAIL;
     }
     tag_part_iter->Init();
+    tag_part_iter->SetOSNSpan({}, scan_osn_);
     tag_partition_iters_.push_back(tag_part_iter);
   }
   cur_tag_part_idx_ = 0;
@@ -138,7 +140,7 @@ TagIteratorByOSN::TagIteratorByOSN(std::shared_ptr<TagTable> tag_bt, uint32_t ta
   scan_tags_ = scan_cols;
 }
 
-KStatus TagIteratorByOSN::Init(std::vector<HashIdSpan>* hps,
+KStatus TagIteratorByOSN::Init(std::vector<HashIdSpan>* hps, TS_OSN scan_osn,
   std::unordered_map<uint64_t, EntityResultIndex> pkeys) {
   pkeys_status_ = std::move(pkeys);
   hps_ = hps;
@@ -148,7 +150,7 @@ KStatus TagIteratorByOSN::Init(std::vector<HashIdSpan>* hps,
     return KStatus::FAIL;
   }
   for (auto p : tag_partition_iters_) {
-    p->SetOSNSpan(osn_span_);
+    p->SetOSNSpan(osn_span_, scan_osn);
   }
   return KStatus::SUCCESS;
 }

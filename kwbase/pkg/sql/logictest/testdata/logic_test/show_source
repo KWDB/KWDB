@@ -62,6 +62,7 @@ multi_model_reorder_joins_limit           8
 need_control_inside_out                   off
 node_id                                   1
 optimizer_foreign_keys                    on
+pg_extend_compress                        off
 reorder_joins_limit                       4
 require_explicit_primary_keys             off
 results_buffer_size                       16384

@@ -45,6 +45,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/types"
 	"gitee.com/kwbasedb/kwbase/pkg/util/envutil"
 	"gitee.com/kwbasedb/kwbase/pkg/util/hlc"
+	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 	"gitee.com/kwbasedb/kwbase/pkg/util/mon"
 	"github.com/cockroachdb/logtags"
 	"github.com/pkg/errors"
@@ -776,4 +777,77 @@ func (p *planner) GetRangeRowCountFromNode(
 	ctx context.Context, rangeID roachpb.RangeID, nodeID roachpb.NodeID,
 ) (uint64, error) {
 	return p.ExecCfg().TsDB.GetRangeRowCount(ctx, rangeID, nodeID)
+}
+
+// RelocateRange relocate the range from source node to desc node.
+func (p *planner) RelocateRange(ctx context.Context, rangeID int64, src, dst roachpb.NodeID) error {
+	if err := p.RequireAdminRole(ctx, "relocate range"); err != nil {
+		return err
+	}
+	req := &serverpb.RangeRequest{
+		RangeId: rangeID,
+	}
+	var resp *serverpb.RangeResponse
+	var err error
+	if resp, err = p.execCfg.StatusServer.Range(ctx, req); err != nil {
+		return err
+	}
+	var foundRange bool
+	var key roachpb.RKey
+	var targets []roachpb.ReplicationTarget
+	for _, v := range resp.ResponsesByNodeID {
+		if v.Infos != nil && v.ErrorMessage == "" {
+			target := roachpb.ReplicationTarget{
+				NodeID:  v.Infos[0].SourceNodeID,
+				StoreID: v.Infos[0].SourceStoreID,
+			}
+			if v.Infos[0].SourceNodeID == src {
+				target = roachpb.ReplicationTarget{
+					NodeID:  dst,
+					StoreID: roachpb.StoreID(dst), // todo(qzy): get storeID by nodeID
+				}
+				key = v.Infos[0].State.Desc.StartKey
+				foundRange = true
+			}
+			targets = append(targets, target)
+		}
+	}
+	if !foundRange {
+		return errors.New("range not found")
+	}
+	if err = p.ExecCfg().DB.AdminRelocateRange(ctx, key, targets); err != nil {
+		return err
+	}
+	return nil
+}
+
+// GetRangeDebugInfo get range debug info by request.
+func (p *planner) GetRangeDebugInfo(ctx context.Context, rangeID int64) (interface{}, error) {
+	if err := p.RequireAdminRole(ctx, "get range debug info"); err != nil {
+		return nil, err
+	}
+	log.Infof(ctx, "get range %d debug info", rangeID)
+	req := &serverpb.RangeRequest{
+		RangeId: rangeID,
+	}
+	var resp *serverpb.RangeResponse
+	var err error
+	if resp, err = p.execCfg.StatusServer.Range(ctx, req); err != nil {
+		return nil, err
+	}
+	return resp, nil
+}
+
+// GetProblemRangesInfo get range debug info by request.
+func (p *planner) GetProblemRangesInfo(ctx context.Context) (interface{}, error) {
+	if err := p.RequireAdminRole(ctx, "get problem ranges info"); err != nil {
+		return nil, err
+	}
+	req := &serverpb.ProblemRangesRequest{}
+	var resp *serverpb.ProblemRangesResponse
+	var err error
+	if resp, err = p.execCfg.StatusServer.ProblemRanges(ctx, req); err != nil {
+		return nil, err
+	}
+	return resp, nil
 }

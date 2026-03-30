@@ -11,118 +11,215 @@
 
 #include "ee_hash_table.h"
 
+#include <algorithm>
+
 #include "ee_aggregate_func.h"
 #include "ee_combined_group_key.h"
 #include "ee_common.h"
 
 namespace kwdbts {
+namespace {
 
-HashTableIterator& HashTableIterator::operator++() {
-  if (loc_idx_ < ht_->Size()) {
-    ++loc_idx_;
+inline k_uint32 GetGroupValueSize(DatumPtr ptr, roachpb::DataType type,
+                                  k_uint32 declared_len) {
+  if (IsVarStringType(type)) {
+    return STRING_WIDE + *reinterpret_cast<k_uint16*>(ptr);
   }
-  return *this;
+  if (IsFixedStringType(type)) {
+    return STRING_WIDE + declared_len;
+  }
+  if (type == roachpb::DataType::DECIMAL) {
+    return BOOL_WIDE + declared_len;
+  }
+  return declared_len;
 }
 
-DatumPtr HashTableIterator::operator*() {
-  if (loc_idx_ >= ht_->Size()) return nullptr;
-
-  k_uint64 loc = this->ht_->entries_[loc_idx_];
-  return this->ht_->GetAggResult(loc);
+inline k_uint32 GroupNullBitmapBytes(k_uint32 group_num) {
+  return (group_num + 7) / 8;
 }
 
-bool HashTableIterator::operator==(const HashTableIterator& t) const {
-  return t.loc_idx_ == this->loc_idx_;
+inline k_uint64 RoundUpPowerOfTwo(k_uint64 v) {
+  if (v <= 1) {
+    return 1;
+  }
+  v--;
+  v |= v >> 1;
+  v |= v >> 2;
+  v |= v >> 4;
+  v |= v >> 8;
+  v |= v >> 16;
+  v |= v >> 32;
+  return v + 1;
 }
 
-bool HashTableIterator::operator!=(const HashTableIterator& t) const {
-  return t.loc_idx_ != this->loc_idx_;
+inline k_uint32 SerializeTupleForSpill(
+    DatumPtr tuple, DatumPtr out, k_uint32 group_num,
+    const std::vector<roachpb::DataType>& group_types,
+    const std::vector<k_uint32>& group_lens,
+    const std::vector<k_uint32>& group_offsets,
+    const std::vector<bool>& group_allow_null, k_uint32 group_null_offset,
+    k_uint32 group_width, k_uint32 agg_width) {
+  k_uint32 pos = 0;
+  k_uint32 null_bytes = GroupNullBitmapBytes(group_num);
+  DatumPtr null_bitmap = tuple + group_null_offset;
+  std::memcpy(out + pos, null_bitmap, null_bytes);
+  pos += null_bytes;
+
+  for (k_uint32 i = 0; i < group_num; ++i) {
+    if (group_allow_null[i] && AggregateFunc::IsNull(null_bitmap, i)) {
+      continue;
+    }
+    DatumPtr src = tuple + group_offsets[i];
+    k_uint32 bytes = GetGroupValueSize(src, group_types[i], group_lens[i]);
+    std::memcpy(out + pos, src, bytes);
+    pos += bytes;
+  }
+
+  std::memcpy(out + pos, tuple + group_width, agg_width);
+  pos += agg_width;
+  return pos;
 }
+
+inline KStatus DeserializeTupleFromSpill(
+    DatumPtr packed, k_uint32 packed_size, DatumPtr tuple, k_uint32 tuple_size,
+    k_uint32 group_num, const std::vector<roachpb::DataType>& group_types,
+    const std::vector<k_uint32>& group_lens,
+    const std::vector<k_uint32>& group_offsets,
+    const std::vector<bool>& group_allow_null, k_uint32 group_null_offset,
+    k_uint32 group_width, k_uint32 agg_width) {
+  std::memset(tuple, 0, tuple_size);
+  k_uint32 pos = 0;
+  k_uint32 null_bytes = GroupNullBitmapBytes(group_num);
+  if (packed_size < null_bytes + agg_width) {
+    return KStatus::FAIL;
+  }
+
+  DatumPtr null_bitmap = tuple + group_null_offset;
+  std::memcpy(null_bitmap, packed + pos, null_bytes);
+  pos += null_bytes;
+
+  for (k_uint32 i = 0; i < group_num; ++i) {
+    if (group_allow_null[i] && AggregateFunc::IsNull(null_bitmap, i)) {
+      continue;
+    }
+    if (IsVarStringType(group_types[i]) && pos + STRING_WIDE > packed_size) {
+      return KStatus::FAIL;
+    }
+    k_uint32 bytes =
+        GetGroupValueSize(packed + pos, group_types[i], group_lens[i]);
+    if (pos + bytes > packed_size) {
+      return KStatus::FAIL;
+    }
+    std::memcpy(tuple + group_offsets[i], packed + pos, bytes);
+    pos += bytes;
+  }
+
+  if (pos + agg_width > packed_size) {
+    return KStatus::FAIL;
+  }
+  std::memcpy(tuple + group_width, packed + pos, agg_width);
+  return KStatus::SUCCESS;
+}
+
+}  // namespace
 
 LinearProbingHashTable::LinearProbingHashTable(
     const std::vector<roachpb::DataType>& group_types,
     const std::vector<k_uint32>& group_lens, k_uint32 agg_width,
-    const std::vector<bool>& group_allow_null)
-    : capacity_(0),
-      group_types_(group_types),
-      group_lens_(group_lens),
-      agg_width_(agg_width),
-      group_allow_null_(group_allow_null) {
-  group_num_ = group_types_.size();
-  group_data_ = KNEW GroupColData[group_num_];
-  for (int i = 0; i < group_num_; i++) {
-    group_offsets_.push_back(group_width_);
-
-    group_width_ += group_lens_[i];
-    if (IsStringType(group_types_[i])) {
-      group_width_ += STRING_WIDE;
-    } else if (group_types_[i] == roachpb::DataType::DECIMAL) {
-      group_width_ += BOOL_WIDE;
-    }
-  }
-  group_null_offset_ = group_width_;
-  group_width_ += (group_types_.size() + 7) / 8;
-
-  tuple_size_ = group_width_ + agg_width_;
-}
+    const std::vector<bool>& group_allow_null,
+    k_bool allow_abandoned)
+    : BaseHashTable(group_types, group_lens, agg_width, group_allow_null, allow_abandoned) {}
 
 LinearProbingHashTable::~LinearProbingHashTable() {
-  SafeDeleteArray(data_);
+  EE_MemPoolFree(g_pstBufferPoolInfo, hash_entry_data_);
+  hash_entry_ = nullptr;
+  EE_MemPoolFree(g_pstBufferPoolInfo, spill_serialize_buf_);
+  spill_serialize_buf_ = nullptr;
+  spill_serialize_buf_size_ = 0;
   SafeDeleteArray(this->used_bitmap_);
-  SafeDeleteArray(group_data_)
+  // for (DatumPtr tuple_data : tuple_data_list_) {
+  //   EE_MemPoolFree(g_pstBufferPoolInfo, tuple_data);
+  // }
 }
 
-int LinearProbingHashTable::Resize(k_uint64 size) {
-  if (size <= capacity_) {
-    return 0;
+bool LinearProbingHashTable::IsUsed(k_uint64 loc) {
+  char* ptr = GetTuple(loc);
+  return ptr != nullptr;
+}
+
+DatumPtr LinearProbingHashTable::GetTuple(k_uint64 loc) const {
+  return hash_entry_[loc].GetPointer();
+}
+
+k_uint64 LinearProbingHashTable::GetHashVal(k_uint64 loc) const {
+  return hash_entry_[loc].GetSalt();
+}
+
+DatumPtr LinearProbingHashTable::GetAggResult(k_uint64 loc) const {
+  return hash_entry_[loc].GetPointer() + group_width_;
+}
+
+KStatus LinearProbingHashTable::Initialize(k_uint64 capacity) {
+  capacity_ = capacity;
+  mask_ = capacity - 1;
+
+  hash_entry_data_ = EE_MemPoolMalloc(g_pstBufferPoolInfo, capacity * sizeof(hash_table_entry_t));
+  if (hash_entry_data_ == nullptr) {
+    return KStatus::FAIL;
+  }
+  hash_entry_ = reinterpret_cast<hash_table_entry_t*>(hash_entry_data_);
+  std::memset(hash_entry_, 0, capacity * sizeof(hash_table_entry_t));
+
+  if (EnsureSpillSerializeBuffer(tuple_size_) != KStatus::SUCCESS) {
+    EE_MemPoolFree(g_pstBufferPoolInfo, hash_entry_data_);
+    hash_entry_data_ = nullptr;
+    hash_entry_ = nullptr;
+    return KStatus::FAIL;
+  }
+  tuple_data_ = std::make_unique<MemoryTupleData>(tuple_size_, capacity_ / 2, allow_abandoned_);
+
+  return KStatus::SUCCESS;
+}
+
+KStatus LinearProbingHashTable::Resize(k_uint64 size, PTDFeedBack feedback,
+                                   k_uint32 tuple_data_index) {
+  if (size < capacity_) {
+    return KStatus::SUCCESS;
   }
   mask_ = size - 1;
+  // 清空原有hash表
+  EE_MemPoolFree(g_pstBufferPoolInfo, hash_entry_data_);
 
-  if (entries_.size() > 0) {
-    auto new_ht = make_unique<LinearProbingHashTable>(group_types_, group_lens_, agg_width_, group_allow_null_);
-    if (!new_ht || new_ht->Resize(size) < 0) {
-      return -1;
-    }
-
-    for (k_uint64 entry : entries_) {
-      char* ptr = GetTuple(entry);
-
-      // find position in new hash table
-      k_uint64 loc;
-      if (new_ht->FindOrCreateGroups(*this, entry, &loc) < 0) {
-        return -1;
-      }
-      char* new_ptr = new_ht->GetTuple(loc);
-      std::memcpy(new_ptr, ptr, tuple_size_);
-      new_ht->SetUsed(loc);
-    }
-
-    SafeDeleteArray(this->data_);
-    SafeDeleteArray(this->used_bitmap_);
-    data_ = new_ht->data_;
-    new_ht->data_ = nullptr;
-    used_bitmap_ = new_ht->used_bitmap_;
-    new_ht->used_bitmap_ = nullptr;
-    entries_ = std::move(new_ht->entries_);
-
-    capacity_ = new_ht->capacity_;
-    mask_ = new_ht->mask_;
-  } else {
-    data_ = KNEW char[size * tuple_size_];
-    if (data_ == nullptr) {
-      return -1;
-    }
-    std::memset(data_, 0, size * tuple_size_);
-    k_uint64 used_size = (size + 7) / 8;
-    used_bitmap_ = KNEW char[used_size];
-    if (used_bitmap_ == nullptr) {
-      return -1;
-    }
-    std::memset(used_bitmap_, 0, used_size);
-    capacity_ = size;
-    mask_ = size - 1;
+  hash_entry_data_ =
+      EE_MemPoolMalloc(g_pstBufferPoolInfo, size * sizeof(hash_table_entry_t));
+  if (hash_entry_data_ == nullptr) {
+    return KStatus::FAIL;
   }
-  return 0;
+  hash_entry_ = reinterpret_cast<hash_table_entry_t*>(hash_entry_data_);
+  std::memset(hash_entry_, 0, size * sizeof(hash_table_entry_t));
+
+  capacity_ = size;
+
+  mask_ = size - 1;
+
+  while (true) {
+    DatumPtr ptr = nullptr;
+    EEIteratorErrCode err_code = tuple_data_->NextTuple(ptr);
+    if (err_code == EEIteratorErrCode::EE_END_OF_RECORD) {
+      break;
+    }
+
+    // find position in new hash table
+    k_uint64 loc;
+    size_t hash_val;
+    k_bool is_used;
+    if (FindOrCreateGroups(ptr, &loc, &hash_val, &is_used) < 0) {
+      return KStatus::FAIL;
+    }
+  }
+  tuple_data_->current_line_ = -1;
+
+  return KStatus::SUCCESS;
 }
 
 void LinearProbingHashTable::HashColumn(const DatumPtr ptr,
@@ -231,70 +328,212 @@ std::size_t LinearProbingHashTable::HashGroups(k_uint64 loc) const {
   return h;
 }
 
-k_uint64 LinearProbingHashTable::CreateNullGroups() {
+std::size_t LinearProbingHashTable::HashGroups(DatumPtr tuple_data) const {
+  std::size_t h = INIT_HASH_VALUE;
+  char* null_bitmap = tuple_data + group_null_offset_;
+  for (int i = 0; i < GroupNum(); i++) {
+    if (AggregateFunc::IsNull(null_bitmap, i)) {
+      continue;
+    }
+    HashColumn(tuple_data + group_offsets_[i], group_types_[i], &h);
+  }
+
+  return h;
+}
+
+int LinearProbingHashTable::CreateNullGroups(k_uint64 *loc, k_bool *is_used) {
   // hash the group columns
   size_t hash_val = INIT_HASH_VALUE;
-  k_uint64 loc = hash_val & mask_;
+  *loc = hash_val & mask_;
 
-  if (IsUsed(loc)) {
-    return loc;
+  if (IsUsed(*loc)) {
+    *is_used = true;
+    return 0;
   }
-
-  entries_.push_back(loc);
-  return loc;
+  *is_used = false;
+  hash_entry_[*loc].SetSalt(hash_val);
+  return 0;
 }
 
-int LinearProbingHashTable::FindOrCreateGroups(
+KStatus LinearProbingHashTable::FindOrCreateGroupsAndAddTuple(
     IChunk* chunk, k_uint64 row,
-    const std::vector<k_uint32>& group_cols, k_uint64 *loc) {
-  if (entries_.size() > capacity_ / 2 && Resize(capacity_ * 2) < 0) {
-      return -1;
-  }
+    const std::vector<k_uint32>& group_cols, DatumPtr &agg_ptr, size_t *hash_val,
+    k_bool *is_used, k_bool *is_abandoned) {
   // hash the group columns
-  size_t hash_val = HashGroups(chunk, row, group_cols);
-  *loc = hash_val & mask_;
+  *hash_val = HashGroups(chunk, row, group_cols);
+  const k_uint64 probe_salt = hash_table_entry_t::ExtractSalt(*hash_val);
+  auto loc = *hash_val & mask_;
   while (true) {
-    if (!IsUsed(*loc)) {
+    if (!IsUsed(loc)) {
       break;
     }
-    if (CompareGroups(group_cols, *loc)) {
-      return 0;
+    if (hash_entry_[loc].GetSalt() == probe_salt &&
+        CompareGroups(group_cols, loc)) {
+      *is_used = true;
+      *is_abandoned = false;
+      agg_ptr = hash_entry_[loc].GetPointer() + group_width_;
+      return KStatus::SUCCESS;
     }
 
-    *loc += 1;
-    *loc &= mask_;
+    loc += 1;
+    loc &= mask_;
   }
 
-  entries_.push_back(*loc);
-  return 1;
+  *is_used = false;
+
+  DatumPtr tuple = nullptr;
+  PTDFeedBack feedback = tuple_data_->GetNextTuplePtr(*hash_val, tuple);
+  if (feedback == PTDFeedBack::FAIL) {
+    return KStatus::FAIL;
+  } else if (feedback == PTDFeedBack::REHASH) {
+    Resize(capacity_ * 2, feedback);
+    return FindOrCreateGroupsAndAddTuple(chunk, row, group_cols, agg_ptr, hash_val, is_used, is_abandoned);
+  } else if (feedback == PTDFeedBack::ABANDONED) {
+    CopyGroups(chunk, row, group_cols, tuple, *hash_val);
+    UpdateGroupEffectiveWidth(tuple);
+
+    abandoned_count_++;
+    *is_abandoned = true;
+    agg_ptr = tuple + group_width_;
+    return KStatus::SUCCESS;
+  }
+  hash_entry_[loc].SetSalt(*hash_val);
+  hash_entry_[loc].SetPointer(tuple);
+  count_++;
+
+  CopyGroups(chunk, row, group_cols, tuple, *hash_val);
+  UpdateGroupEffectiveWidth(tuple);
+  *is_abandoned = false;
+  agg_ptr = tuple + group_width_;
+  return KStatus::SUCCESS;
 }
 
 int LinearProbingHashTable::FindOrCreateGroups(
-    const LinearProbingHashTable& other, k_uint64 row, k_uint64 *loc) {
+    const BaseHashTable& other, k_uint64 row, k_uint64 *loc, k_bool *is_used) {
   // hash the group columns
   size_t hash_val = other.HashGroups(row);
+  const k_uint64 probe_salt = hash_table_entry_t::ExtractSalt(hash_val);
   *loc = hash_val & mask_;
 
   while (true) {
     if (!IsUsed(*loc)) {
       break;
     }
-    if (kwdbts::CompareGroups(*this, *loc, other, row)) {
+    if (hash_entry_[*loc].GetSalt() == probe_salt &&
+        kwdbts::CompareGroups(*this, *loc, other, row)) {
+      *is_used = true;
       return 0;
     }
 
     *loc += 1;
     *loc &= mask_;
   }
-
-  entries_.push_back(*loc);
+  *is_used = false;
+  hash_entry_[*loc].SetSalt(hash_val);
   return 0;
+}
+
+int LinearProbingHashTable::FindOrCreateGroups(
+    const DatumPtr tuple_data, k_uint64 *loc, size_t *hash_val, k_bool *is_used) {
+  // hash the group columns
+  *hash_val = HashGroups(tuple_data);
+  const k_uint64 probe_salt = hash_table_entry_t::ExtractSalt(*hash_val);
+  *loc = *hash_val & mask_;
+
+  while (true) {
+    if (!IsUsed(*loc)) {
+      break;
+    }
+    if (hash_entry_[*loc].GetSalt() == probe_salt &&
+        CompareGroups(tuple_data, *loc)) {
+      *is_used = true;
+      return KStatus::SUCCESS;
+    }
+
+    *loc += 1;
+    *loc &= mask_;
+  }
+  *is_used = false;
+  hash_entry_[*loc].SetSalt(*hash_val);
+  hash_entry_[*loc].SetPointer(tuple_data);
+  UpdateGroupEffectiveWidth(tuple_data);
+  return KStatus::SUCCESS;
+}
+
+KStatus LinearProbingHashTable::FindOrCreateGroupsAndAddTuple(
+    const DatumPtr tuple_data, k_uint64 *loc, size_t *hash_val, k_bool *is_used, k_bool *is_abandoned) {
+  // hash the group columns
+  *hash_val = HashGroups(tuple_data);
+  const k_uint64 probe_salt = hash_table_entry_t::ExtractSalt(*hash_val);
+  *loc = *hash_val & mask_;
+
+  while (true) {
+    if (!IsUsed(*loc)) {
+      break;
+    }
+    if (hash_entry_[*loc].GetSalt() == probe_salt &&
+        CompareGroups(tuple_data, *loc)) {
+      *is_used = true;
+      *is_abandoned = false;
+      return KStatus::SUCCESS;
+    }
+
+    *loc += 1;
+    *loc &= mask_;
+  }
+  *is_used = false;
+
+  DatumPtr tuple = nullptr;
+  PTDFeedBack feedback = tuple_data_->GetNextTuplePtr(*hash_val, tuple);
+  if (feedback == PTDFeedBack::FAIL) {
+    return KStatus::FAIL;
+  } else if (feedback == PTDFeedBack::REHASH) {
+    Resize(capacity_, feedback);
+    return FindOrCreateGroupsAndAddTuple(tuple_data, loc, hash_val, is_used, is_abandoned);
+  } else if (feedback == PTDFeedBack::ABANDONED) {
+    for (int i = 0; i < group_num_; ++i) {
+      DatumPtr src = tuple_data + group_offsets_[i];
+      DatumPtr dest = tuple + group_offsets_[i];
+      std::memcpy(dest, src,
+                  GetGroupValueSize(src, group_types_[i], group_lens_[i]));
+    }
+    std::memcpy(tuple + group_null_offset_, tuple_data + group_null_offset_,
+                tuple_size_ - group_null_offset_);
+    UpdateGroupEffectiveWidth(tuple);
+    if (KStatus::SUCCESS != SaveAggTupleToDisk(tuple + group_width_)) {
+      return KStatus::FAIL;
+    }
+    abandoned_count_++;
+    *is_abandoned = true;
+    return KStatus::SUCCESS;
+  }
+  for (int i = 0; i < group_num_; ++i) {
+    DatumPtr src = tuple_data + group_offsets_[i];
+    DatumPtr dest = tuple + group_offsets_[i];
+    std::memcpy(dest, src,
+                GetGroupValueSize(src, group_types_[i], group_lens_[i]));
+  }
+  std::memcpy(tuple + group_null_offset_, tuple_data + group_null_offset_,
+              tuple_size_ - group_null_offset_);
+  UpdateGroupEffectiveWidth(tuple);
+  hash_entry_[*loc].SetSalt(*hash_val);
+  hash_entry_[*loc].SetPointer(tuple);
+  count_++;
+  *is_abandoned = false;
+  return KStatus::SUCCESS;
 }
 
 void LinearProbingHashTable::CopyGroups(IChunk* chunk, k_uint64 row,
                                         const std::vector<k_uint32>& group_cols,
-                                        k_uint64 loc) {
-  auto null_bitmap = GetTuple(loc) + group_null_offset_;
+                                        k_uint64 loc, size_t hash_val) {
+  auto tuple = GetTuple(loc);
+  CopyGroups(chunk, row, group_cols, tuple, hash_val);
+}
+
+void LinearProbingHashTable::CopyGroups(IChunk* chunk, k_uint64 row,
+                                        const std::vector<k_uint32>& group_cols,
+                                        DatumPtr tuple, size_t hash_val) {
+  auto null_bitmap = tuple + group_null_offset_;
   for (int i = 0; i < group_num_; i++) {
     k_uint32 col = group_cols[i];
     if (group_allow_null_[i]) {
@@ -306,18 +545,10 @@ void LinearProbingHashTable::CopyGroups(IChunk* chunk, k_uint64 row,
     }
 
     DatumPtr src = chunk->GetData(row, col);
-    DatumPtr dest = GetTuple(loc) + group_offsets_[i];
+    DatumPtr dest = tuple + group_offsets_[i];
 
-    if (IsVarStringType(group_types_[i])) {
-      auto len = *reinterpret_cast<k_uint16*>(src);
-      std::memcpy(dest, src, len + STRING_WIDE);
-    } else if (IsFixedStringType(group_types_[i])) {
-      std::memcpy(dest, src, group_lens_[i] + STRING_WIDE);
-    } else if (group_types_[i] == roachpb::DataType::DECIMAL) {
-      std::memcpy(dest, src, group_lens_[i] + BOOL_WIDE);
-    } else {
-      std::memcpy(dest, src, group_lens_[i]);
-    }
+    std::memcpy(dest, src,
+                GetGroupValueSize(src, group_types_[i], group_lens_[i]));
     AggregateFunc::SetNotNull(null_bitmap, i);
   }
 }
@@ -344,136 +575,273 @@ bool LinearProbingHashTable::CompareGroups(const std::vector<k_uint32>& group_co
   return true;
 }
 
-bool CompareColumn(DatumPtr left_ptr, DatumPtr right_ptr,
-                   roachpb::DataType type) {
-  switch (type) {
-    case roachpb::DataType::BOOL: {
-      k_bool left = *reinterpret_cast<k_bool*>(left_ptr);
-      k_bool right = *reinterpret_cast<k_bool*>(right_ptr);
-      if (left != right) {
-        return false;
-      }
-      break;
-    }
-    case roachpb::DataType::SMALLINT: {
-      k_int16 left = *reinterpret_cast<k_int16*>(left_ptr);
-      k_int16 right = *reinterpret_cast<k_int16*>(right_ptr);
-      if (left != right) {
-        return false;
-      }
-      break;
-    }
-    case roachpb::DataType::INT: {
-      k_int32 left = *reinterpret_cast<k_int32*>(left_ptr);
-      k_int32 right = *reinterpret_cast<k_int32*>(right_ptr);
-      if (left != right) {
-        return false;
-      }
-      break;
-    }
-    case roachpb::DataType::TIMESTAMP:
-    case roachpb::DataType::TIMESTAMPTZ:
-    case roachpb::DataType::TIMESTAMP_MICRO:
-    case roachpb::DataType::TIMESTAMP_NANO:
-    case roachpb::DataType::TIMESTAMPTZ_MICRO:
-    case roachpb::DataType::TIMESTAMPTZ_NANO:
-    case roachpb::DataType::DATE:
-    case roachpb::DataType::BIGINT: {
-      k_int64 left = *reinterpret_cast<k_int64*>(left_ptr);
-      k_int64 right = *reinterpret_cast<k_int64*>(right_ptr);
-      if (left != right) {
-        return false;
-      }
-      break;
-    }
-    case roachpb::DataType::FLOAT: {
-      k_float32 left = *reinterpret_cast<k_float32*>(left_ptr);
-      k_float32 right = *reinterpret_cast<k_float32*>(right_ptr);
-      if (fabs(left - right) > std::numeric_limits<float>::epsilon()) {
-        return false;
-      }
-      break;
-    }
-    case roachpb::DataType::DOUBLE: {
-      k_double64 left = *reinterpret_cast<k_double64*>(left_ptr);
-      k_double64 right = *reinterpret_cast<k_double64*>(right_ptr);
-      if (fabs(left - right) > std::numeric_limits<double>::epsilon()) {
-        return false;
-      }
-      break;
-    }
-    case roachpb::DataType::CHAR:
-    case roachpb::DataType::VARCHAR:
-    case roachpb::DataType::NCHAR:
-    case roachpb::DataType::NVARCHAR:
-    case roachpb::DataType::BINARY:
-    case roachpb::DataType::VARBINARY: {
-      k_uint16 left_len = *reinterpret_cast<k_uint16*>(left_ptr);
-      k_uint16 right_len = *reinterpret_cast<k_uint16*>(right_ptr);
-      if (left_len != right_len) {
-        return false;
-      }
+bool LinearProbingHashTable::CompareGroups(
+    DatumPtr tuple_data, k_uint64 loc) {
+  auto left_null_bitmap = tuple_data + group_null_offset_;
+  auto right_tuple = GetTuple(loc);
+  auto right_null_bitmap = right_tuple + group_null_offset_;
 
-      std::string_view left =
-          std::string_view{left_ptr + sizeof(k_uint16), left_len};
-      std::string_view right =
-          std::string_view{right_ptr + sizeof(k_uint16), right_len};
-      if (left != right) {
-        return false;
-      }
-      break;
-    }
-    case roachpb::DataType::DECIMAL: {
-      k_bool left_is_double = *reinterpret_cast<k_bool*>(left_ptr);
-      k_bool right_is_double = *reinterpret_cast<k_bool*>(right_ptr);
-      if (left_is_double != right_is_double) {
-        return false;
-      }
-
-      if (left_is_double) {
-        k_double64 left =
-            *reinterpret_cast<k_double64*>(left_ptr + sizeof(bool));
-        k_double64 right =
-            *reinterpret_cast<k_double64*>(right_ptr + sizeof(bool));
-        if (fabs(left - right) > std::numeric_limits<double>::epsilon()) {
-          return false;
-        }
-      } else {
-        k_int64 left = *reinterpret_cast<k_int64*>(left_ptr + sizeof(bool));
-        k_int64 right = *reinterpret_cast<k_int64*>(right_ptr + sizeof(bool));
-        if (left != right) {
-          return false;
-        }
-      }
-      break;
-    }
-    default:
-      break;
-  }
-  return true;
-}
-
-bool CompareGroups(const LinearProbingHashTable& left, k_uint64 lloc, const LinearProbingHashTable& right,
-                   k_uint64 rloc) {
-  auto left_null_bitmap = left.GetTuple(lloc) + left.group_null_offset_;
-  auto right_null_bitmap = right.GetTuple(rloc) + right.group_null_offset_;
-
-  for (int r = 0; r < left.group_num_; ++r) {
-    if (left.group_types_[r] != right.group_types_[r]) return false;
+  for (int r = 0; r < group_num_; ++r) {
     auto other_is_null = false;
-    if (left.group_allow_null_[r]) {
+    if (group_allow_null_[r]) {
       auto is_null = AGG_RESULT_IS_NULL(left_null_bitmap, r);
       other_is_null = AGG_RESULT_IS_NULL(right_null_bitmap, r);
       if (other_is_null != is_null) {
         return false;
       }
     }
-    if (!other_is_null && !CompareColumn(left.GetTuple(lloc) + left.group_offsets_[r],
-                                         right.GetTuple(rloc) + right.group_offsets_[r], left.group_types_[r])) {
+    DatumPtr left_ptr = tuple_data + group_offsets_[r];
+    DatumPtr right_ptr = right_tuple + group_offsets_[r];
+    if (!other_is_null && !CompareColumn(left_ptr, right_ptr, group_types_[r])) {
       return false;
     }
   }
   return true;
 }
 
+KStatus LinearProbingHashTable::Combine(std::vector<AggregateFunc*>* funcs, k_uint32 agg_null_offset) {
+  if (abandoned_count_ == 0) {
+    return KStatus::SUCCESS;
+  }
+  DatumPtr disk_tuple_data = nullptr;
+  if (EnsureSpillSerializeBuffer(tuple_size_) != KStatus::SUCCESS) {
+    return KStatus::FAIL;
+  }
+  DatumPtr packed_tuple_data = spill_serialize_buf_;
+  k_uint32 packed_size = 0;
+
+  if (!spill_read_phase_) {
+    StartSpillReadPhase();
+  }
+
+  while (read_partition_idx_ < kSpillPartitionNum) {
+    const auto& part = (*read_spill_partitions_)[read_partition_idx_];
+    if (part.read_count_ < part.count_) {
+      break;
+    }
+    read_partition_idx_++;
+  }
+
+  if (read_partition_idx_ >= kSpillPartitionNum) {
+    spill_read_phase_ = false;
+    return KStatus::SUCCESS;
+  }
+
+  // Reset memory data for current partition rebuild.
+  tuple_data_->Reset();
+  std::memset(hash_entry_, 0, capacity_ * sizeof(hash_table_entry_t));
+
+  auto& current_part = (*read_spill_partitions_)[read_partition_idx_];
+  const k_uint64 spill_remaining = current_part.count_ - current_part.read_count_;
+  const k_uint64 max_tuple_capacity =
+      std::max<k_uint64>(1, BaseTupleData::MAX_MEMORY_SIZE /
+                                std::max<k_uint64>(1, tuple_size_));
+  k_uint64 target_tuple_capacity = tuple_data_->GetCapacity();
+  if (spill_remaining > target_tuple_capacity) {
+    target_tuple_capacity =
+        std::min(max_tuple_capacity, RoundUpPowerOfTwo(spill_remaining));
+  }
+  if (target_tuple_capacity > tuple_data_->GetCapacity()) {
+    if (tuple_data_->Resize(target_tuple_capacity) != KStatus::SUCCESS) {
+      return KStatus::FAIL;
+    }
+  }
+
+  const k_uint64 target_hash_capacity = RoundUpPowerOfTwo(
+      std::max<k_uint64>(capacity_, tuple_data_->GetCapacity() * 2));
+  if (target_hash_capacity > capacity_) {
+    if (Resize(target_hash_capacity, PTDFeedBack::REHASH) != KStatus::SUCCESS) {
+      return KStatus::FAIL;
+    }
+  }
+
+  disk_tuple_data = EE_MemPoolMalloc(g_pstBufferPoolInfo, tuple_size_);
+  if (disk_tuple_data == nullptr) {
+    return KStatus::FAIL;
+  }
+  while (current_part.read_count_ < current_part.count_) {
+    auto ret = LoadNextFromSpillPartition(read_partition_idx_, packed_tuple_data,
+                                          tuple_size_, &packed_size);
+    if (ret == EEIteratorErrCode::EE_ERROR) {
+      EE_MemPoolFree(g_pstBufferPoolInfo, disk_tuple_data);
+      return KStatus::FAIL;
+    }
+    if (DeserializeTupleFromSpill(
+            packed_tuple_data, packed_size, disk_tuple_data, tuple_size_,
+            group_num_, group_types_, group_lens_, group_offsets_,
+            group_allow_null_, group_null_offset_, group_width_, agg_width_) !=
+        KStatus::SUCCESS) {
+      EE_MemPoolFree(g_pstBufferPoolInfo, disk_tuple_data);
+      return KStatus::FAIL;
+    }
+
+    auto tuple_data = disk_tuple_data;
+    k_uint64 loc;
+    size_t hash_val;
+    k_bool is_used;
+    k_bool is_abandoned;
+    if (FindOrCreateGroupsAndAddTuple(tuple_data, &loc, &hash_val, &is_used,
+                                      &is_abandoned) != KStatus::SUCCESS) {
+      EE_MemPoolFree(g_pstBufferPoolInfo, disk_tuple_data);
+      return KStatus::FAIL;
+    }
+    // One spill record has been consumed from the current read partition.
+    // Re-abandoned tuples will increment this counter again in SaveAggTupleToDisk path.
+    if (abandoned_count_ > 0) {
+      abandoned_count_--;
+    }
+    if (is_abandoned) {
+      continue;
+    }
+    if (!is_used) {
+      DatumPtr tuple_ptr = GetTuple(loc);
+      for (int g = 0; g < group_num_; ++g) {
+        DatumPtr src = tuple_data + group_offsets_[g];
+        DatumPtr dest = tuple_ptr + group_offsets_[g];
+        std::memcpy(dest, src,
+                    GetGroupValueSize(src, group_types_[g], group_lens_[g]));
+      }
+      std::memcpy(tuple_ptr + group_null_offset_,
+                  tuple_data + group_null_offset_,
+                  tuple_size_ - group_null_offset_);
+      UpdateGroupEffectiveWidth(tuple_ptr);
+    } else {
+      auto agg_ptr = GetAggResult(loc);
+      for (auto& func : *funcs) {
+        func->combine(agg_ptr, agg_ptr + agg_null_offset,
+                      tuple_data + group_width_,
+                      tuple_data + agg_null_offset);
+      }
+    }
+  }
+  EE_MemPoolFree(g_pstBufferPoolInfo, disk_tuple_data);
+  read_partition_idx_++;
+  if (read_partition_idx_ >= kSpillPartitionNum) {
+    spill_read_phase_ = false;
+  }
+  return KStatus::SUCCESS;
+}
+
+KStatus LinearProbingHashTable::SaveAggTupleToDisk(DatumPtr agg_ptr) {
+  if (agg_ptr == nullptr) {
+    return KStatus::FAIL;
+  }
+  if (EnsureSpillSerializeBuffer(tuple_size_) != KStatus::SUCCESS) {
+    return KStatus::FAIL;
+  }
+  DatumPtr tuple = agg_ptr - group_width_;
+  size_t hash_val = HashGroups(tuple);
+  k_uint32 part_id = static_cast<k_uint32>(hash_val & (kSpillPartitionNum - 1));
+  k_uint32 packed_size = SerializeTupleForSpill(
+      tuple, spill_serialize_buf_, group_num_, group_types_, group_lens_,
+      group_offsets_, group_allow_null_, group_null_offset_, group_width_,
+      agg_width_);
+  return SaveToSpillPartition(part_id, spill_serialize_buf_, packed_size);
+}
+
+KStatus LinearProbingHashTable::EnsureSpillSerializeBuffer(k_uint32 min_size) {
+  if (spill_serialize_buf_size_ >= min_size && spill_serialize_buf_ != nullptr) {
+    return KStatus::SUCCESS;
+  }
+  EE_MemPoolFree(g_pstBufferPoolInfo, spill_serialize_buf_);
+  spill_serialize_buf_ = EE_MemPoolMalloc(g_pstBufferPoolInfo, min_size);
+  if (spill_serialize_buf_ == nullptr) {
+    spill_serialize_buf_size_ = 0;
+    return KStatus::FAIL;
+  }
+  spill_serialize_buf_size_ = min_size;
+  return KStatus::SUCCESS;
+}
+
+KStatus LinearProbingHashTable::SaveToSpillPartition(k_uint32 part_id,
+                                                     DatumPtr tuple_data,
+                                                     k_uint32 tuple_size) {
+  if (part_id >= kSpillPartitionNum || tuple_data == nullptr || tuple_size == 0) {
+    return KStatus::FAIL;
+  }
+  if (*write_spill_partitions_ == nullptr) {
+    spill_partitions_1_ = std::make_unique<SpillPartitionState[]>(kSpillPartitionNum);
+    spill_partitions_2_ = std::make_unique<SpillPartitionState[]>(kSpillPartitionNum);
+    write_spill_partitions_ = &spill_partitions_1_;
+    read_spill_partitions_ = &spill_partitions_2_;
+  }
+  auto& part = (*write_spill_partitions_)[part_id];
+  if (part.io_cache_handler_.Write(reinterpret_cast<char*>(&tuple_size),
+                                   sizeof(tuple_size)) != KStatus::SUCCESS) {
+    return KStatus::FAIL;
+  }
+  if (part.io_cache_handler_.Write(tuple_data, tuple_size) != KStatus::SUCCESS) {
+    return KStatus::FAIL;
+  }
+  part.count_++;
+  return KStatus::SUCCESS;
+}
+
+EEIteratorErrCode LinearProbingHashTable::LoadNextFromSpillPartition(
+    k_uint32 part_id, DatumPtr tuple_data, k_uint32 tuple_capacity,
+    k_uint32* tuple_size) {
+  if (part_id >= kSpillPartitionNum || tuple_data == nullptr || tuple_size == nullptr) {
+    return EEIteratorErrCode::EE_ERROR;
+  }
+  auto& part = (*read_spill_partitions_)[part_id];
+  if (part.read_count_ >= part.count_) {
+    return EEIteratorErrCode::EE_END_OF_RECORD;
+  }
+  k_uint32 payload_size = 0;
+  if (part.io_cache_handler_.Read(reinterpret_cast<char*>(&payload_size),
+                                  part.offset_, sizeof(payload_size)) !=
+      KStatus::SUCCESS) {
+    return EEIteratorErrCode::EE_ERROR;
+  }
+  part.offset_ += sizeof(payload_size);
+  if (payload_size > tuple_capacity) {
+    return EEIteratorErrCode::EE_ERROR;
+  }
+  if (part.io_cache_handler_.Read(tuple_data, part.offset_, payload_size) !=
+      KStatus::SUCCESS) {
+    return EEIteratorErrCode::EE_ERROR;
+  }
+  part.offset_ += payload_size;
+  part.read_count_++;
+  *tuple_size = payload_size;
+  return EEIteratorErrCode::EE_OK;
+}
+
+void LinearProbingHashTable::ResetSpillPartitions(
+    std::unique_ptr<SpillPartitionState[]>& parts) {
+  for (size_t i = 0; i < kSpillPartitionNum; ++i) {
+    auto& part = parts[i];
+    part.io_cache_handler_.Reset();
+    part.offset_ = 0;
+    part.count_ = 0;
+    part.read_count_ = 0;
+  }
+}
+
+void LinearProbingHashTable::StartSpillReadPhase() {
+  if (write_spill_partitions_ == &spill_partitions_1_) {
+    read_spill_partitions_ = &spill_partitions_1_;
+    write_spill_partitions_ = &spill_partitions_2_;
+  } else {
+    read_spill_partitions_ = &spill_partitions_2_;
+    write_spill_partitions_ = &spill_partitions_1_;
+  }
+
+  ResetSpillPartitions(*write_spill_partitions_);
+  for (size_t i = 0; i < kSpillPartitionNum; ++i) {
+    auto& part = (*read_spill_partitions_)[i];
+    part.read_count_ = 0;
+  }
+  read_partition_idx_ = 0;
+  spill_read_phase_ = true;
+}
+
+DatumPtr LinearProbingHashTable::NextLine() {
+  DatumPtr ptr = nullptr;
+  EEIteratorErrCode err_code = tuple_data_->NextTuple(ptr);
+  if (err_code != EEIteratorErrCode::EE_OK) {
+    return nullptr;
+  }
+  return ptr + group_width_;
+}
 }  // namespace kwdbts

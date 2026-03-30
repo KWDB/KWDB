@@ -1,13 +1,13 @@
 // Copyright (c) 2022-present, Shanghai Yunxi Technology Co, Ltd.
 //
 // This software (KWDB) is licensed under Mulan PSL v2.
-// You can use this software according to the terms and conditions of the Mulan PSL v2.
-// You may obtain a copy of Mulan PSL v2 at:
+// You can use this software according to the terms and conditions of the Mulan
+// PSL v2. You may obtain a copy of Mulan PSL v2 at:
 //          http://license.coscl.org.cn/MulanPSL2
-// THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND,
-// EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT,
-// MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
-// See the Mulan PSL v2 for more details.
+// THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY
+// KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO
+// NON-INFRINGEMENT, MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE. See the
+// Mulan PSL v2 for more details.
 
 #include "ee_io_cache_handler.h"
 
@@ -16,8 +16,8 @@
 
 #include <algorithm>
 #include <atomic>
-#include <sstream>
 #include <cstdio>
+#include <sstream>
 
 #include "ee_exec_pool.h"
 
@@ -25,10 +25,12 @@ namespace kwdbts {
 IOCacheHandler::IOCacheHandler(k_uint64 max_file_size)
     : current_file_id_(0),
       max_file_size_(std::min(max_file_size, MAX_FILE_SIZE)) {
-  read_buffer_ = static_cast<char *>(malloc(read_buffer_size_));
+  read_buffer_ = static_cast<char*>(malloc(read_buffer_size_));
+  write_buffer_ = static_cast<char*>(malloc(write_buffer_size_));
 }
 IOCacheHandler::~IOCacheHandler() {
-  for (auto &info : io_info_) {
+  Flush();  // Flush any remaining data in write buffer
+  for (auto& info : io_info_) {
     if (info.fd_ != -1) {
       close(info.fd_);
       info.fd_ = -1;
@@ -40,6 +42,7 @@ IOCacheHandler::~IOCacheHandler() {
     }
   }
   SafeFreePointer(read_buffer_);
+  SafeFreePointer(write_buffer_);
 }
 
 void IOCacheHandler::update_lru(k_uint32 file_id) {
@@ -70,7 +73,7 @@ KStatus IOCacheHandler::Open(const k_uint32 file_id, cache_type type) {
     std::ostringstream oss;
     int64_t t = ts_inc.fetch_add(1);
     oss << ExecPool::GetInstance().db_path_ << "/cache_" << t;
-    info.path_ = static_cast<k_char *>(malloc(oss.str().size() + 1));
+    info.path_ = static_cast<k_char*>(malloc(oss.str().size() + 1));
     snprintf(info.path_, oss.str().size() + 1, "%s", oss.str().c_str());
     io_info_.push_back(info);
   }
@@ -105,42 +108,88 @@ KStatus IOCacheHandler::Open(const k_uint32 file_id, cache_type type) {
 }
 
 KStatus IOCacheHandler::Reset() {
+  Flush();  // Flush any remaining data in write buffer
   current_file_id_ = 0;
-  for (auto &info : io_info_) {
+  for (auto& info : io_info_) {
     info.size_ = 0;
     info.type_ = cache_type::CACHE_UNKNOW;
   }
+  write_buffer_offset_ = 0;
   total_size_ = 0;
   return KStatus::SUCCESS;
 }
 
-KStatus IOCacheHandler::Write(const k_char *buf, k_uint64 len) {
+KStatus IOCacheHandler::Write(const k_char* buf, k_uint64 len) {
   auto write_buf = buf;
-  while (len > 0) {
-    Open(current_file_id_, cache_type::CACHE_WRITE);
-    if (max_file_size_ == 0) {
-      if (write(io_info_[current_file_id_].fd_, write_buf, len) == -1) {
+  auto remaining = len;
+
+  while (remaining > 0) {
+    // Calculate how much space is left in the write buffer
+    k_uint64 buffer_space = write_buffer_size_ - write_buffer_offset_;
+
+    // If there's space in the buffer, write as much as possible
+    if (buffer_space > 0) {
+      k_uint64 write_size = std::min(remaining, buffer_space);
+      memcpy(write_buffer_ + write_buffer_offset_, write_buf, write_size);
+      write_buffer_offset_ += write_size;
+      write_buf += write_size;
+      remaining -= write_size;
+
+      // If buffer is full, flush it
+      if (write_buffer_offset_ >= write_buffer_size_) {
+        if (Flush() != KStatus::SUCCESS) {
+          return KStatus::FAIL;
+        }
+      }
+    } else {
+      // Buffer is full, flush it first
+      if (Flush() != KStatus::SUCCESS) {
         return KStatus::FAIL;
       }
-      break;
-    }
-    auto append_size =
-        std::min(len, max_file_size_ - io_info_[current_file_id_].size_);
-    if (write(io_info_[current_file_id_].fd_, write_buf, append_size) == -1) {
-      return KStatus::FAIL;
-    }
-    io_info_[current_file_id_].size_ += append_size;
-    len -= append_size;
-    write_buf += append_size;
-    if (len > 0) {
-      ++current_file_id_;
     }
   }
+
   total_size_ += len;
   return KStatus::SUCCESS;
 }
 
-KStatus IOCacheHandler::ReadFromBuffer(k_char *buf, k_uint64 offset,
+KStatus IOCacheHandler::Flush() {
+  if (write_buffer_offset_ == 0) {
+    return KStatus::SUCCESS;  // Nothing to flush
+  }
+
+  auto write_buf = write_buffer_;
+  auto len = write_buffer_offset_;
+
+  while (len > 0) {
+    Open(current_file_id_, cache_type::CACHE_WRITE);
+
+    auto append_size =
+        max_file_size_ == 0
+            ? len
+            : std::min(len, max_file_size_ - io_info_[current_file_id_].size_);
+
+    if (write(io_info_[current_file_id_].fd_, write_buf, append_size) == -1) {
+      return KStatus::FAIL;
+    }
+
+    if (max_file_size_ != 0) {
+      io_info_[current_file_id_].size_ += append_size;
+    }
+
+    len -= append_size;
+    write_buf += append_size;
+
+    if (len > 0) {
+      ++current_file_id_;
+    }
+  }
+
+  write_buffer_offset_ = 0;  // Reset write buffer offset
+  return KStatus::SUCCESS;
+}
+
+KStatus IOCacheHandler::ReadFromBuffer(k_char* buf, k_uint64 offset,
                                        k_uint64 len) {
   if (offset < read_buffer_offset_ ||
       offset >= read_buffer_offset_ + read_buffer_size_) {
@@ -153,7 +202,7 @@ KStatus IOCacheHandler::ReadFromBuffer(k_char *buf, k_uint64 offset,
   return KStatus::SUCCESS;
 }
 
-KStatus IOCacheHandler::ReadFromFile(k_char *buf, k_uint64 offset,
+KStatus IOCacheHandler::ReadFromFile(k_char* buf, k_uint64 offset,
                                      k_uint64 len) {
   if (max_file_size_ == 0) {
     read_buffer_offset_ = offset;
@@ -189,7 +238,7 @@ KStatus IOCacheHandler::ReadFromFile(k_char *buf, k_uint64 offset,
 
   auto file_index = offset / max_file_size_;
   auto offset_in_file = offset % max_file_size_;
-  k_char *read_buf = buf;
+  k_char* read_buf = buf;
 
   while (len > 0) {
     Open(file_index, cache_type::CACHE_READ);
@@ -208,7 +257,12 @@ KStatus IOCacheHandler::ReadFromFile(k_char *buf, k_uint64 offset,
 
   return KStatus::SUCCESS;
 }
-KStatus IOCacheHandler::Read(k_char *buf, k_uint64 offset, k_uint64 len) {
+KStatus IOCacheHandler::Read(k_char* buf, k_uint64 offset, k_uint64 len) {
+  // Flush write buffer before reading to ensure data consistency
+  if (Flush() != KStatus::SUCCESS) {
+    return KStatus::FAIL;
+  }
+
   KStatus ret = ReadFromBuffer(buf, offset, len);
   if (ret == KStatus::SUCCESS) {
     return KStatus::SUCCESS;

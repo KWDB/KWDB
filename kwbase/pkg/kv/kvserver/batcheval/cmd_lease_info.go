@@ -55,6 +55,9 @@ func LeaseInfo(
 	lease, nextLease := cArgs.EvalCtx.GetLease()
 	qps, _ := cArgs.EvalCtx.GetLeaseQPS()
 	reply.LeaseQps = qps
+	if cArgs.EvalCtx.TsEngine() != nil {
+		reply.OsnID = cArgs.EvalCtx.TsEngine().TsIDGen.GetNextID()
+	}
 	if nextLease != (roachpb.Lease{}) {
 		// If there's a lease request in progress, speculatively return that future
 		// lease.

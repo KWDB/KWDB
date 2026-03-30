@@ -39,6 +39,7 @@
 #include "ts_entity_segment_handle.h"
 #include "ts_partition_count_mgr.h"
 #include "ts_partition_meta_mgr.h"
+#include "ts_partition_agg.h"
 
 namespace kwdbts {
 using DatabaseID = uint32_t;
@@ -187,13 +188,14 @@ class TsPartitionVersion {
 
   std::shared_ptr<TsDelItemManager> del_info_;
   std::shared_ptr<TsPartitionEntityCountManager> count_info_;
-  // std::shared_ptr<TsPartitionEntityMetaManager> meta_info_;
+  std::shared_ptr<TsPartitionAggReader> agg_reader_;
 
   // Only TsVersionManager can create TsPartitionVersion
   explicit TsPartitionVersion(fs::path partition_path, PartitionIdentifier partition_info)
       : partition_path_(std::move(partition_path)),
         partition_info_(partition_info),
-        exclusive_status_(std::make_shared<std::atomic<PartitionStatus>>(PartitionStatus::None)) {}
+        exclusive_status_(std::make_shared<std::atomic<PartitionStatus>>(PartitionStatus::None)) {
+  }
 
  public:
   TsPartitionVersion(const TsPartitionVersion &) = default;
@@ -229,6 +231,8 @@ class TsPartitionVersion {
   }
   std::vector<std::shared_ptr<TsLastSegment>> GetCompactLastSegments(int *level, int *group) const;
 
+  std::vector<std::shared_ptr<TsLastSegment>> GetVacuumLastSegments(bool force_vacuum) const;
+
   std::vector<std::shared_ptr<TsLastSegment>> GetAllLastSegments() const {
     return leveled_last_segments_.GetAllLastSegments();
   }
@@ -242,6 +246,7 @@ class TsPartitionVersion {
   std::shared_ptr<TsEntitySegment> GetEntitySegment() const { return entity_segment_; }
   std::list<std::shared_ptr<TsMemSegment>> GetAllMemSegments() const;
   shared_ptr<TsPartitionEntityCountManager> GetCountManager() const { return count_info_; }
+  std::shared_ptr<TsPartitionAggReader> GetAggReader() const { return agg_reader_; }
 
   // TODO(zzr): optimize the following function ralate to deletions, deletion should also be atomic in future, this is
   // just a temporary solution
@@ -280,6 +285,17 @@ class TsPartitionVersion {
     return del_info_->GetDelMaxOSN(e_id, max_osn);
   }
   bool ShouldSetCountStatsInvalid(TSEntityID e_id);
+  /**
+   * @brief get the max osn of entity include delete operation
+   *
+   @param db_id        db id of entity
+   @param table_id     the table id of entity
+   @param entity_id    the id of entity
+   @param ts_col_type  the column type of ts column
+   @param max_osn  the max osn of entity
+   */
+  KStatus GetMaxOSN(uint32_t db_id, TSTableID table_id, TSEntityID entity_id, DATATYPE ts_col_type, TS_OSN& max_osn) const;
+  KStatus NeedCalcPartitionAgg(bool& need_calc) const;
 };
 
 class TsVGroupVersion {
@@ -341,6 +357,7 @@ enum class VersionUpdateType : uint8_t {
 
   kNewCountStatFile = 9,
   kNewVersionNumber = 10,
+  kNewAggFile = 11,
 };
 
 enum class LastSegmentMetaType : uint8_t {
@@ -389,19 +406,22 @@ class TsVersionUpdate {
   uint64_t version_num_ = 0;
   std::map<PartitionIdentifier, CountStatMetaInfo> count_flush_infos_;
 
+  bool has_new_agg_ = false;
+  std::map<PartitionIdentifier, uint64_t> new_agg_files_;
+
   bool NeedRecordFileNumber() const {
-    return has_new_lastseg_ || has_entity_segment_ || has_delete_lastseg_ || has_count_stats_;
+    return has_new_lastseg_ || has_entity_segment_ || has_delete_lastseg_ || has_count_stats_ || has_new_agg_;
   }
   bool NeedRecord() const { return need_record_; }
   bool MemSegmentsOnly() const {
     return (has_new_mem_segments_ || has_del_mem_segments_) && !has_new_partition_ && !has_new_lastseg_ &&
-           !has_delete_lastseg_ && !has_entity_segment_ && !has_next_file_number_ && !has_count_stats_;
+           !has_delete_lastseg_ && !has_entity_segment_ && !has_next_file_number_ && !has_count_stats_ && !has_new_agg_;
   }
 
  public:
   bool Empty() const {
     return !(has_new_partition_ || has_new_lastseg_ || has_delete_lastseg_ || has_new_mem_segments_ ||
-             has_del_mem_segments_ || has_entity_segment_ || has_max_lsn_ || has_count_stats_);
+             has_del_mem_segments_ || has_entity_segment_ || has_max_lsn_ || has_count_stats_ || has_new_agg_);
   }
 
   void PartitionDirCreated(const PartitionIdentifier &partition_id) {
@@ -472,6 +492,13 @@ class TsVersionUpdate {
 
   void SetVersionNum(uint64_t version_num) {
     version_num_ = version_num;
+  }
+
+  void AddAggFile(const PartitionIdentifier& partition_id, uint64_t agg_file_num) {
+    updated_partitions_.insert(partition_id);
+    new_agg_files_[partition_id] = agg_file_num;
+    has_new_agg_ = true;
+    need_record_ = true;
   }
 
   TsBufferBuilder EncodeToString() const;

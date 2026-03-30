@@ -58,7 +58,7 @@ import into test.tb1 csv data ('nodelocal://1/tbDiscard/tb1') with writewal;
 select * from test.tb1 order by k_timestamp, hostname;
 drop table test.tb1;
 -- test keep
-SET CLUSTER SETTING ts.dedup.rule = 'keep';
+SET CLUSTER SETTING ts.dedup.rule = 'keep.experimental';
 create table test.tb1(k_timestamp timestamptz not null,  usage_user INT8,
                       usage_system INT8,
                       usage_idle INT8,

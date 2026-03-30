@@ -34,7 +34,7 @@ class VacuumTest : public testing::Test {
 
   VacuumTest() {
     EngineOptions::vgroup_max_num = 1;
-    EngineOptions::g_dedup_rule = DedupRule::KEEP;
+    EngineOptions::g_dedup_rule = DedupRule::KEEP_EXPERIMENTAL;
     EngineOptions::mem_segment_max_size = INT32_MAX;
     EngineOptions::max_last_segment_num = 0;
     EngineOptions::max_compact_num = 2;

@@ -29,9 +29,13 @@ import (
 	"fmt"
 	"testing"
 
+	"gitee.com/kwbasedb/kwbase/pkg/config/zonepb"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/opt/cat"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/opt/testutils/testcat"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/types"
+	"gitee.com/kwbasedb/kwbase/pkg/util/treeprinter"
+	"github.com/gogo/protobuf/proto"
 )
 
 func TestExpandDataSourceGlob(t *testing.T) {
@@ -202,3 +206,184 @@ func TestResolveTableIndex(t *testing.T) {
 		}
 	}
 }
+
+func TestConvertColumnIDsToOrdinals(t *testing.T) {
+	col1 := &testcat.Column{Ordinal: 0, Name: ("col1")}
+	col2 := &testcat.Column{Ordinal: 1, Name: ("col2")}
+	col3 := &testcat.Column{Ordinal: 2, Name: ("col3")}
+
+	table := &testcat.Table{
+		TabName: tree.MakeTableName("", "test_table"),
+		TabID:   123,
+		Columns: []*testcat.Column{col1, col2, col3},
+	}
+
+	columnIDs := []tree.ColumnID{1, 2, 3}
+	ordinals := cat.ConvertColumnIDsToOrdinals(table, columnIDs)
+
+	expected := []int{0, 1, 2}
+	for i, exp := range expected {
+		if ordinals[i] != exp {
+			t.Errorf("Expected ordinal %d to be %d, got %d", i, exp, ordinals[i])
+		}
+	}
+}
+
+func TestFindTableColumnByName(t *testing.T) {
+	col1 := &testcat.Column{Ordinal: 1, Name: ("col1")}
+	col2 := &testcat.Column{Ordinal: 2, Name: ("col2")}
+	col3 := &testcat.Column{Ordinal: 3, Name: ("col3")}
+
+	table := &testcat.Table{
+		TabName: tree.MakeTableName("", "test_table"),
+		TabID:   123,
+		Columns: []*testcat.Column{col1, col2, col3},
+	}
+
+	// Test finding existing column
+	ordinal := cat.FindTableColumnByName(table, ("col2"))
+	if ordinal != 1 {
+		t.Errorf("Expected ordinal to be 1, got %d", ordinal)
+	}
+
+	// Test finding non-existing column
+	ordinal = cat.FindTableColumnByName(table, ("nonexistent"))
+	if ordinal != -1 {
+		t.Errorf("Expected ordinal to be -1 for non-existent column, got %d", ordinal)
+	}
+}
+
+func TestFormatTable(t *testing.T) {
+	col1 := &testcat.Column{
+		Ordinal:  1,
+		Name:     "id",
+		Type:     types.Int,
+		Nullable: false,
+	}
+	col2 := &testcat.Column{
+		Ordinal:  2,
+		Name:     ("name"),
+		Type:     types.String,
+		Nullable: true,
+	}
+
+	indexCol1 := cat.IndexColumn{Column: col1, Descending: false}
+	indexCol2 := cat.IndexColumn{Column: col2, Descending: true}
+
+	index := &testcat.Index{
+		IdxName:     "primaryIdx",
+		IdxOrdinal:  101,
+		Columns:     []cat.IndexColumn{indexCol1, indexCol2},
+		KeyCount:    1,
+		LaxKeyCount: 1,
+		Inverted:    false,
+		IdxZone: &zonepb.ZoneConfig{
+			NumReplicas:   proto.Int32(3),
+			Constraints:   []zonepb.Constraints{{Constraints: []zonepb.Constraint{{Value: "us-east", Type: zonepb.Constraint_DEPRECATED_POSITIVE}}}},
+			RangeMinBytes: proto.Int64(0),
+			RangeMaxBytes: proto.Int64(64000),
+			LeasePreferences: []zonepb.LeasePreference{
+				{
+					Constraints: []zonepb.Constraint{{Value: "a", Type: zonepb.Constraint_REQUIRED}},
+				},
+				{
+					Constraints: []zonepb.Constraint{{Value: "b", Type: zonepb.Constraint_PROHIBITED}},
+				},
+			},
+		},
+	}
+
+	family := &testcat.Family{
+		FamName: ("primary"),
+		Ordinal: 201,
+		Columns: []cat.FamilyColumn{{Column: col1, Ordinal: 1}, {Column: col2, Ordinal: 2}},
+	}
+
+	check := &cat.CheckConstraint{
+		Constraint: "id > 0",
+	}
+
+	table := &testcat.Table{
+		TabName:     tree.MakeTableName("", "users"),
+		TabID:       123,
+		Columns:     []*testcat.Column{col1, col2},
+		Indexes:     []*testcat.Index{index},
+		Families:    []*testcat.Family{family},
+		Checks:      []cat.CheckConstraint{*check},
+		OutboundFKs: []testcat.ForeignKeyConstraint{},
+	}
+
+	tp := treeprinter.New()
+	cat.FormatTable(nil, table, tp)
+	output := tp.String()
+
+	// Check that the output contains expected elements
+	if len(output) == 0 {
+		t.Error("Expected FormatTable to produce output")
+	}
+}
+
+// func TestFormatCols(t *testing.T) {
+// 	col1 := &testcat.Column{Ordinal: 1, Name: ("col1")}
+// 	col2 := &testcat.Column{Ordinal: 2, Name: ("col2")}
+
+// 	table := &testcat.TableForUtils{
+// 		Name:    ("test_table"),
+// 		Ordinal: 123,
+// 		columns: []cat.Column{col1, col2},
+// 	}
+
+// 	// Function to return column ordinals
+// 	colOrdinalFunc := func(tab cat.Table, i int) int {
+// 		return i // Simple mapping: i-th column ordinal is i
+// 	}
+
+// 	result := cat.FormatCols(table, 2, colOrdinalFunc)
+
+// 	// Check that the result contains both column names
+// 	if result != "(col1, col2)" {
+// 		t.Errorf("Expected '(col1, col2)', got '%s'", result)
+// 	}
+// }
+
+// func TestFormatColumn(t *testing.T) {
+// 	col := &testcat.Column{
+// 		Ordinal:        1,
+// 		Name:           ("test_col"),
+// 		dataType:       types.Int,
+// 		nullable:       false,
+// 		hasDefault:     true,
+// 		defaultExprStr: "10",
+// 		hidden:         true,
+// 		isComputed:     false,
+// 	}
+
+// 	var buf bytes.Buffer
+// 	cat.FormatColumn(col, false, &buf)
+// 	result := buf.String()
+
+// 	// Check that the result contains expected elements
+// 	if result == "" {
+// 		t.Error("Expected FormatColumn to produce output")
+// 	}
+// }
+
+// func TestFormatFamily(t *testing.T) {
+// 	col1 := &testcat.Column{Ordinal: 1, Name: ("col1")}
+// 	col2 := &testcat.Column{Ordinal: 2, Name: ("col2")}
+
+// 	family := &testcat.Family{
+// 		Name:    ("test_family"),
+// 		Ordinal: 201,
+// 		columns: []cat.Column{col1, col2},
+// 	}
+
+// 	var buf bytes.Buffer
+// 	cat.FormatFamily(family, &buf)
+// 	result := buf.String()
+
+// 	// Check that the result contains expected elements
+// 	if result == "" {
+// 		t.Error("Expected FormatFamily to produce output")
+// 	}
+// }

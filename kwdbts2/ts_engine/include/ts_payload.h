@@ -135,6 +135,7 @@ class TsRawPayload {
   static uint32_t GetTableVersionFromSlice(const TSSlice &raw) { return KUint32(raw.data + ts_version_offset_); }
 
   static void SetOSN(const TSSlice &raw, uint64_t osn) { KUint64(raw.data + txn_id_offset_) = osn; }
+  static uint64_t GetOSN(const TSSlice &raw) { return KUint64(raw.data + txn_id_offset_); }
 
   static void SetHashPoint(const TSSlice &raw, uint32_t hash_point) {
     KUint32(raw.data + hash_point_id_offset_) = hash_point;

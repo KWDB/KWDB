@@ -106,6 +106,9 @@ func getNewContainer(mon *mon.BytesMonitor, cols sqlbase.ResultColumns) *rowcont
 }
 
 func (ins *StmtIns) getPlan(rCtx *SpExecContext) (Plan, error) {
+	if rCtx.Fn == nil {
+		return nil, pgerror.Newf(pgcode.Internal, "build and optimize function is nil")
+	}
 	p, err := rCtx.Fn(ins.rootExpr, ins.pr, rCtx.GetLocalVariable())
 	if err != nil {
 		return nil, err
@@ -372,7 +375,7 @@ func (ins *IntoIns) Execute(params RunParam, rCtx *SpExecContext) error {
 			value := res.Result.At(0)[i]
 			t := value.ResolvedType()
 			if idx, ok := rCtx.localVarMap[v.UDFValueName]; ok {
-				rCtx.SetVariable(idx, &value)
+				rCtx.SetVariable(idx, value)
 			} else {
 				rCtx.AddVariable(&exec.LocalVariable{Data: value, Typ: *t, Name: v.UDFValueName})
 			}

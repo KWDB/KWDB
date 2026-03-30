@@ -43,9 +43,20 @@ class BoxServiceRetryableClosureStub : public BoxService,
                       ::kwdbts::PSendExecStatusResult* response, ::google::protobuf::Closure* done) override;
 
  private:
-  std::shared_ptr<kwdbts::BoxService_Stub> stub_;
+  struct Session {
+    std::shared_ptr<brpc::Channel> channel;
+    std::shared_ptr<kwdbts::BoxService_Stub> stub;
+  };
+
+  std::shared_ptr<Session> GetSessionSnapshot();
+  KStatus MaybeResetChannelOnHostDown();
+
+  friend class RetryableClosure;
+
+  std::shared_ptr<Session> session_;
   const butil::EndPoint endpoint_;
   k_int64 connection_group_ = 0;
+  k_int64 last_host_down_reset_ns_ = 0;
   std::mutex mutex_;
 
   BoxServiceRetryableClosureStub(const BoxServiceRetryableClosureStub&) = delete;

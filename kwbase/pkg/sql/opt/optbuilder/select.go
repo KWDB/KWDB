@@ -1129,6 +1129,17 @@ func (b *Builder) addInstanceTablePTag(sel *tree.SelectClause) {
 	sel.Where.Expr = andExpr
 }
 
+// check type for constFill, only constant is supported
+func checkConstFillType(expr tree.Expr) {
+	switch e := expr.(type) {
+	case *tree.StrVal, *tree.NumVal, *tree.DBool:
+	case *tree.CastExpr:
+		checkConstFillType(e.Expr)
+	default:
+		panic(pgerror.Newf(pgcode.Syntax, "CONSTANT FILL: Only constant is supported: %v", expr.String()))
+	}
+}
+
 // convert tree.Fill to TSFill
 // ConstangFill is necessary to convert tree.Expr to opt.ScalarExpr, return memo.ConstFill
 // ExactFill and RnageFill return memo.RangeFill
@@ -1139,19 +1150,11 @@ func (b *Builder) makeTSFill(scope *scope, fill tree.Fill) memo.TSFill {
 		if fill.ConstValue == nil {
 			panic(pgerror.New(pgcode.Syntax, "CONSTANT FILL: Constant empty"))
 		}
-		// constant values of type Placeholder are not supported in prepare.
-		if _, ok := fill.ConstValue.(*tree.Placeholder); ok {
-			panic(pgerror.Newf(pgcode.Syntax, "CONSTANT FILL: Only constant is supported: %v", fill.ConstValue.String()))
-		}
+		checkConstFillType(fill.ConstValue)
 		// convert tree.Expr to tree.TypedExpr
 		tExpr, err := tree.TypeCheck(fill.ConstValue, b.semaCtx, types.Any)
 		if err != nil {
 			return &memo.ConstFill{ConstExpr: nil}
-		}
-		switch tExpr.(type) {
-		case tree.Datum, *tree.CastExpr:
-		default:
-			panic(pgerror.Newf(pgcode.Syntax, "CONSTANT FILL: Only constant is supported: %v", tExpr.String()))
 		}
 		// convert tree.TypedExpr to opt.ScalarExpr
 		return &memo.ConstFill{ConstExpr: b.buildScalar(tExpr, scope, nil, nil, nil)}

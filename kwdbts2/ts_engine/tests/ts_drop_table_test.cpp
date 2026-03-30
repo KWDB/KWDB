@@ -49,7 +49,7 @@ class TestDropTable : public ::testing::Test {
     engine_ = new TSEngineImpl(opts_);
     auto s = engine_->Init(ctx_);
     EXPECT_EQ(s, KStatus::SUCCESS);
-    EngineOptions::g_dedup_rule = DedupRule::KEEP;
+    EngineOptions::g_dedup_rule = DedupRule::KEEP_EXPERIMENTAL;
   }
 
   ~TestDropTable() override {

@@ -137,12 +137,18 @@ func (r *Result) GetNextResultCols() sqlbase.ResultColumns {
 
 // GetResultTypeAndAffected get next result query type
 func (r *Result) GetResultTypeAndAffected() (tree.StatementType, int) {
+	if len(r.res) <= int(r.readIdx) {
+		return tree.StatementType(0), 0
+	}
 	return r.res[r.readIdx].StmtType, r.res[r.readIdx].RowsAffected
 }
 
 // Next returns a row data
 func (r *Result) Next() (bool, error) {
 	if r.res == nil {
+		return false, nil
+	}
+	if len(r.res) <= int(r.readIdx) {
 		return false, nil
 	}
 	res := r.res[r.readIdx]
@@ -157,6 +163,9 @@ func (r *Result) Next() (bool, error) {
 
 // Values returns a row data
 func (r *Result) Values() tree.Datums {
+	if len(r.res) <= int(r.readIdx) {
+		return nil
+	}
 	res := r.res[r.readIdx]
 	return res.Result.At(int(res.RowIdx - 1))
 }

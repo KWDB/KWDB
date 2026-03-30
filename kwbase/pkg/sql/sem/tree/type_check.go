@@ -286,6 +286,11 @@ func decorateTypeCheckError(err error, format string, a ...interface{}) error {
 // type. Instead, call it with the wildcard type types.Any if no specific type is
 // desired.
 func TypeCheck(expr Expr, ctx *SemaContext, desired *types.T) (TypedExpr, error) {
+	// There's no specification if ctx can be nil.  However we'd better have it checked
+	// if ctx == nil {
+	// 	return nil, errors.AssertionFailedf(
+	// 		"nil SemaContext input to TypeCheck")
+	// }
 	if desired == nil {
 		return nil, errors.AssertionFailedf(
 			"the desired type for tree.TypeCheck cannot be nil, use types.Any instead: %T", expr)

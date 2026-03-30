@@ -987,11 +987,11 @@ func (h *distSQLNodeHealth) check(ctx context.Context, nodeID roachpb.NodeID) er
 // PartitionTSSpansByPrimaryTagValue gets SpanPartitions
 func (dsp *DistSQLPlanner) PartitionTSSpansByPrimaryTagValue(
 	planCtx *PlanningCtx, tableID uint64, hashNum uint64, primaryTagValues ...[]byte,
-) ([]SpanPartition, []SpansType, error) {
+) ([]SpanPartition, []SpansType, uint64, error) {
 	var spans roachpb.Spans
 	points, err := api.GetHashPointByPrimaryTag(hashNum, primaryTagValues...)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, 0, err
 	}
 	hashIDMap := make(map[api.HashPoint]struct{})
 	for _, point := range points {
@@ -1010,7 +1010,7 @@ func (dsp *DistSQLPlanner) PartitionTSSpansByPrimaryTagValue(
 // PartitionTSSpansByTableID gets PartitionTSSpans by TableID
 func (dsp *DistSQLPlanner) PartitionTSSpansByTableID(
 	planCtx *PlanningCtx, tableID uint64, hashNum uint64,
-) ([]SpanPartition, []SpansType, error) {
+) ([]SpanPartition, []SpansType, uint64, error) {
 	var spans roachpb.Spans
 	span := roachpb.Span{
 		Key:    sqlbase.MakeTsRangeKey(sqlbase.ID(tableID), 0, hashNum),
@@ -1045,13 +1045,14 @@ const (
 // such nodes are assigned to the gateway.
 func (dsp *DistSQLPlanner) partitionTSSpans(
 	planCtx *PlanningCtx, spans roachpb.Spans,
-) ([]SpanPartition, []SpansType, error) {
+) ([]SpanPartition, []SpansType, uint64, error) {
 	if len(spans) == 0 {
 		panic("no spans")
 	}
 	ctx := planCtx.ctx
 	partitions := make([]SpanPartition, 0, 1)
 	partitionsType := make([]SpansType, 0, 1)
+	var osnID uint64
 	//if planCtx.isLocal {
 	//	// If we're planning locally, map all spans to the local node.
 	//	partitions = append(partitions,
@@ -1070,8 +1071,9 @@ func (dsp *DistSQLPlanner) partitionTSSpans(
 
 	if api.SingleNode {
 		partitions = append(partitions, SpanPartition{Node: dsp.nodeDesc.NodeID, Spans: spans})
+		osnID = planCtx.planner.ExecCfg().TsEngine.TsIDGen.GetNextID()
 		// partitionsType empty when start with single-node
-		return partitions, nil, nil
+		return partitions, nil, osnID, nil
 	}
 
 	useCache := tsQueryUseCache.Get(&dsp.st.SV)
@@ -1086,7 +1088,7 @@ func (dsp *DistSQLPlanner) partitionTSSpans(
 		if bytes.Compare(span.Key, span.EndKey) > 0 {
 			err := errors.Newf("invalid span[%v, %v]", span.Key, span.EndKey)
 			log.Error(ctx, err)
-			return nil, nil, err
+			return nil, nil, osnID, err
 		}
 
 		var err error
@@ -1095,7 +1097,7 @@ func (dsp *DistSQLPlanner) partitionTSSpans(
 		if useCache {
 			descs, err = getAllRangeFromRangeCache(ctx, dsp.distSender, span)
 			if err != nil {
-				return nil, nil, err
+				return nil, nil, osnID, err
 			}
 
 			nodeIDs, err = getLeaseHolderByLeaseInfoRequest(ctx, dsp, descs)
@@ -1116,6 +1118,7 @@ func (dsp *DistSQLPlanner) partitionTSSpans(
 				// use nodeIDs and range descs got before
 				nodeID = nodeIDs[pos]
 				nextKey = descs[pos].EndKey.AsRawKey()
+				osnID = planCtx.planner.ExecCfg().TsEngine.TsIDGen.GetNextID()
 			} else {
 				// get range and leaseholder one by one
 				var b kv.Batch
@@ -1124,11 +1127,14 @@ func (dsp *DistSQLPlanner) partitionTSSpans(
 				b.AddRawRequest(liReq)
 				b.Header.ReturnRangeInfo = true
 				if err = dsp.distSQLSrv.DB.Run(ctx, &b); err != nil {
-					return nil, nil, errors.Wrap(err, "looking up lease")
+					return nil, nil, 0, errors.Wrap(err, "looking up lease")
 				}
 				resp = b.RawResponse().Responses[0].GetLeaseInfo()
 				nodeID = resp.Lease.Replica.NodeID
 				nextKey = resp.RangeInfos[0].Desc.EndKey.AsRawKey()
+				if osnID == 0 || osnID > resp.OsnID {
+					osnID = resp.OsnID
+				}
 			}
 
 			threshold := kv.TsFollowerReadThreshold.Get(&dsp.st.SV)
@@ -1211,7 +1217,7 @@ func (dsp *DistSQLPlanner) partitionTSSpans(
 			rangeKey = nextKey
 		}
 	}
-	return partitions, partitionsType, nil
+	return partitions, partitionsType, osnID, nil
 }
 
 func getLeaseHolderByLeaseInfoRequest(
@@ -2161,6 +2167,7 @@ func (p *PhysicalPlan) buildPhyPlanForTagReaders(
 	resCols []int,
 	typs []types.T,
 	descColumnIDs []sqlbase.ColumnID,
+	osnID uint64,
 ) error {
 	p.ResultRouters = make([]physicalplan.ProcessorIdx, len(*rangeSpans))
 	p.Processors = make([]physicalplan.Processor, 0, len(*rangeSpans))
@@ -2202,6 +2209,7 @@ func (p *PhysicalPlan) buildPhyPlanForTagReaders(
 						TagIndexes:   tagIndexes,
 						UnionType:    unionType,
 						TagIndexIDs:  IndexIDs,
+						OsnID:        osnID,
 					},
 				},
 				Output: []execinfrapb.OutputRouterSpec{{
@@ -2267,6 +2275,7 @@ func (p *PhysicalPlan) buildPhyPlanForHashTagReaders(
 	tagResCols []int,
 	typs []types.T,
 	descColumnIDs []sqlbase.ColumnID,
+	osnID uint64,
 ) error {
 	p.ResultRouters = make([]physicalplan.ProcessorIdx, len(*rangeSpans))
 	p.Processors = make([]physicalplan.Processor, 0, len(*rangeSpans))
@@ -2316,6 +2325,7 @@ func (p *PhysicalPlan) buildPhyPlanForHashTagReaders(
 						TagIndexes:     tagIndexes,
 						UnionType:      unionType,
 						TagIndexIDs:    IndexIDs,
+						OsnID:          osnID,
 					},
 				},
 				Output: []execinfrapb.OutputRouterSpec{{
@@ -2599,13 +2609,15 @@ func (dsp *DistSQLPlanner) createTSReaders(
 	planCtx.existTSTable = true
 	var p PhysicalPlan
 	var err error
+	var osnID uint64
 	ptCols, typs, descColumnIDs, columnIDSet := visitTableMeta(n)
 
 	rangeSpans := make(map[roachpb.NodeID][]execinfrapb.HashpointSpan)
 	if planCtx.ExtendedEvalCtx.ExecCfg.StartMode == StartSingleNode {
 		rangeSpans[dsp.nodeDesc.NodeID] = []execinfrapb.HashpointSpan{}
+		osnID = planCtx.planner.ExecCfg().TsEngine.TsIDGen.GetNextID()
 	} else {
-		rangeSpans, err = dsp.getSpans(planCtx, n, ptCols)
+		rangeSpans, osnID, err = dsp.getSpans(planCtx, n, ptCols)
 		if err != nil {
 			return PhysicalPlan{}, err
 		}
@@ -2625,7 +2637,7 @@ func (dsp *DistSQLPlanner) createTSReaders(
 	if n.RelInfo.RelationalCols != nil {
 		tsColMetas, tsColMap, resCols, tagResCols := buildHashTSColsAndTSColMap(n, columnIDSet)
 		err = p.buildPhyPlanForHashTagReaders(planCtx, n, &rangeSpans, tsColMetas, tsColMap, resCols, tagResCols,
-			typs, descColumnIDs)
+			typs, descColumnIDs, osnID)
 		if err != nil {
 			return PhysicalPlan{}, err
 		}
@@ -2649,7 +2661,7 @@ func (dsp *DistSQLPlanner) createTSReaders(
 		}
 	} else {
 		tsColMetas, tsColMap, resCols := buildTSColsAndTSColMap(n, columnIDSet)
-		err = p.buildPhyPlanForTagReaders(planCtx, n, &rangeSpans, tsColMetas, tsColMap, resCols, typs, descColumnIDs)
+		err = p.buildPhyPlanForTagReaders(planCtx, n, &rangeSpans, tsColMetas, tsColMap, resCols, typs, descColumnIDs, osnID)
 		if err != nil {
 			return PhysicalPlan{}, err
 		}
@@ -6997,18 +7009,6 @@ var pgEncodeShortCircuitEnabled = settings.RegisterBoolSetting(
 	"sql.pg_encode_short_circuit.enabled", "enable the short circuit optimization", true,
 )
 
-var pgClientCompressEncodeMode = settings.RegisterValidatedIntSetting(
-	"ts.client_compress_encode.mode",
-	"compression and encode for server and decompression and decode for client: 0 means do not use K pg encode,compress, 1 means do not use compress, "+
-		"2 means lz4 compression, "+"3 means snappy compression",
-	0,
-	func(v int64) error {
-		if v < 0 || v > 3 {
-			return errors.Errorf("value must be between 0 and 3, got %d", v)
-		}
-		return nil
-	})
-
 // FinalizePlan adds a final "result" stage if necessary and populates the
 // endpoints of the plan.
 func (dsp *DistSQLPlanner) FinalizePlan(planCtx *PlanningCtx, plan *PhysicalPlan) {
@@ -7099,7 +7099,7 @@ func (dsp *DistSQLPlanner) FinalizePlan(planCtx *PlanningCtx, plan *PhysicalPlan
 		planCtx.isCommandResult {
 		plan.UseQueryShortCircuit = true
 	}
-	plan.UseCompressType = pgClientCompressEncodeMode.Get(&dsp.st.SV)
+	plan.UseCompressType = int64(planCtx.ExtendedEvalCtx.SessionData.PgExtendCompressMode)
 	// Assign processor IDs.
 	for i := range plan.Processors {
 		plan.Processors[i].Spec.ProcessorID = int32(i)
@@ -7282,14 +7282,15 @@ func tsOffsetOptimize(p *PhysicalPlan, limit, offset uint64) {
 // PartitionTSSpansByTableID() functions, and then parse it and construct it as a RangeSpans.
 func (dsp *DistSQLPlanner) getSpans(
 	planCtx *PlanningCtx, n *tsScanNode, ptCols []*sqlbase.ColumnDescriptor,
-) (map[roachpb.NodeID][]execinfrapb.HashpointSpan, error) {
+) (map[roachpb.NodeID][]execinfrapb.HashpointSpan, uint64, error) {
 	var partitions []SpanPartition
 	var partitionsType []SpansType
+	var osnID uint64
 	var err error
 	if len(n.PrimaryTagValues) != 0 && len(n.TagIndex.TagIndexValues) == 0 {
 		pTagSize, _, err := execbuilder.ComputeColumnSize(ptCols)
 		if err != nil {
-			return nil, err
+			return nil, osnID, err
 		}
 
 		payloads := make([][]byte, 0)
@@ -7297,23 +7298,28 @@ func (dsp *DistSQLPlanner) getSpans(
 		for _, col := range ptCols {
 			payloads, err = getPtagPayloads(payloads, n.PrimaryTagValues[uint32(col.ID)], offset, col.DatumType(), pTagSize)
 			if err != nil {
-				return nil, err
+				return nil, osnID, err
 			}
 			offset += int(col.TsCol.StorageLen)
 		}
 		// get partitions through PartitionTSSpansByPrimaryTagValue()
-		partitions, partitionsType, err = dsp.PartitionTSSpansByPrimaryTagValue(planCtx, uint64(n.Table.ID()), n.hashNum, payloads...)
+		partitions, partitionsType, osnID, err = dsp.PartitionTSSpansByPrimaryTagValue(planCtx, uint64(n.Table.ID()), n.hashNum, payloads...)
 	} else {
 		// get partitions through PartitionTSSpansByTableID()
-		partitions, partitionsType, err = dsp.PartitionTSSpansByTableID(planCtx, uint64(n.Table.ID()), n.hashNum)
+		partitions, partitionsType, osnID, err = dsp.PartitionTSSpansByTableID(planCtx, uint64(n.Table.ID()), n.hashNum)
 	}
 	if err != nil {
-		return nil, err
+		return nil, osnID, err
 	}
 	if len(partitions) == 0 {
-		return nil, pgerror.New(pgcode.Warning, "get Partitions error, length of Partitions is 0")
+		return nil, osnID, pgerror.New(pgcode.Warning, "get Partitions error, length of Partitions is 0")
 	}
-	return constructRangeSpans(partitions, partitionsType, n)
+	spans, err1 := constructRangeSpans(partitions, partitionsType, n)
+	if err1 != nil {
+		return nil, osnID, err1
+	}
+
+	return spans, osnID, nil
 }
 
 // constructRangeSpans construct RangeSpans base on partitions.

@@ -14,6 +14,7 @@
 #include <string>
 #include <vector>
 #include <list>
+#include <utility>
 #include <unordered_map>
 #include "cm_kwdb_context.h"
 #include "engine.h"
@@ -51,6 +52,7 @@ class STTableRangeDelAndTagInfo {
   uint64_t begin_hash_;
   uint64_t end_hash_;
   uint32_t table_version_;
+  TS_OSN scan_osn_{UINT64_MAX};
   std::list<kwdbts::EntityResultIndex> pkeys_status_;
   std::list<kwdbts::EntityResultIndex>::iterator pkey_iter_;
   std::unordered_map<std::string, TS_OSN> del_tag_osn_;
@@ -58,10 +60,12 @@ class STTableRangeDelAndTagInfo {
   std::unordered_map<std::string, EntityResultIndex> pkey_update_idx_;
   uint32_t total_tag_row_num_ = 0;
   uint32_t valid_tag_row_num_ = 0;
+  uint32_t ignore_tag_row_num_ = 0;
+  std::unordered_map<std::string, kwdbts::EntityResultIndex> pkey_last_row_;
 
  public:
-  STTableRangeDelAndTagInfo(std::shared_ptr<TsTableV2Impl> table, uint64_t b, uint64_t e, uint32_t v) :
-    table_(table), begin_hash_(b), end_hash_(e), table_version_(v) {}
+  STTableRangeDelAndTagInfo(std::shared_ptr<TsTableV2Impl> table, uint64_t b, uint64_t e, uint32_t v, TS_OSN osn) :
+    table_(table), begin_hash_(b), end_hash_(e), table_version_(v), scan_osn_(osn) {}
 
   ~STTableRangeDelAndTagInfo();
 
@@ -78,9 +82,11 @@ class STTableRangeDelAndTagInfo {
 
   KStatus WriteDelAndTagInfo(kwdbContext_p ctx, TSSlice& data, TsHashRWLatch& tag_lock);
 
-  KStatus WriteDeleteTagRecord(kwdbContext_p ctx, TSSlice& payload, OperateType type, TsHashRWLatch& tag_lock);
-  KStatus WriteUpdateTagRecord(kwdbContext_p ctx, TSSlice& payload, OperateType type, TsHashRWLatch& tag_lock);
-  KStatus WriteInsertTagRecord(kwdbContext_p ctx, TSSlice& payload, OperateType type, TsHashRWLatch& tag_lock);
+  KStatus WriteDeleteTagRecord(kwdbContext_p ctx, TSSlice& payload, OperateType type,
+    std::shared_ptr<TagTable>& tag_table, std::pair<uint64_t, uint64_t>& row_info);
+  KStatus WriteUpdateTagRecord(kwdbContext_p ctx, TSSlice& payload, OperateType type,
+    std::shared_ptr<TagTable>& tag_table, std::pair<uint64_t, uint64_t>& row_info);
+  KStatus WriteInsertTagRecord(kwdbContext_p ctx, TSSlice& payload, OperateType type, std::shared_ptr<TagTable>& tag_table);
 
   KStatus CommitDeleteInfo(kwdbContext_p ctx);
 };
@@ -88,7 +94,7 @@ class STTableRangeDelAndTagInfo {
     // package_id + table_id + table_version + row_num + data
 
 /**
- * snapshot struct
+ * snapshot struct  SNAPSHOT_VERSION = 1
  * 
    ________________________________________________________________________________________________________________________
   |      4    |    8     |       4          |     4     |       4        |      4    |    n       |       4      |      n   | 
@@ -98,6 +104,7 @@ class STTableRangeDelAndTagInfo {
  * 
  * type code : 1-tag delete. 2-metric delete
  * 
+ * 
  */
 class STPackageSnapshotData {
  public:
@@ -105,6 +112,52 @@ class STPackageSnapshotData {
     TSSlice& batch_data, uint32_t row_num, TSSlice& del_data, TSSlice* data);
 
   static bool UnpackageData(TSSlice& data, uint32_t& package_id, TSTableID& tbl_id, uint32_t& tbl_version,
+    TSSlice& batch_data, uint32_t& row_num, TSSlice& del_data);
+};
+
+/**
+ * snapshot struct  SNAPSHOT_VERSION = 2
+ * 
+   _____________________________________________________________________________________________________________________________
+  |     20    |       4          |       4        |      4       |    n       |       4      |      n   | 
+  |-----------|------------------|----------------|--------------|------------|--------------|----------|
+  | reserverd | snapshot version | package number | package1 len | package1   | package2 len | package2 |
+ * 
+ * package struct is SNAPSHOT_VERSION = 1.
+ * 
+ */
+class STSnapshotPackageBuilder {
+ private:
+  uint32_t package_id_;
+  TSTableID tbl_id_;
+  uint32_t tbl_version_;
+  uint32_t current_package_size_{0};
+  std::list<TSSlice> packages_;
+
+ public:
+  STSnapshotPackageBuilder(uint32_t package_id, TSTableID tbl_id, uint32_t tbl_version) :
+    package_id_(package_id), tbl_id_(tbl_id), tbl_version_(tbl_version) {}
+
+  inline bool OverMinThreshold() {
+    return current_package_size_ >= SNAPSHOT_MIN_PACKAGE_SIZE;
+  }
+
+  bool AddBatchData(TSSlice& batch_data, uint32_t row_num, TSSlice& del_data);
+
+  bool Package(TSSlice* data);
+};
+
+class STSnapshotPackageParser {
+ private:
+  std::list<TSSlice> packages_;
+  std::list<TSSlice>::iterator cur_package_;
+
+ public:
+  STSnapshotPackageParser() {}
+
+  bool Parser(TSSlice& p_data);
+
+  bool NextPackage(uint32_t& package_id, TSTableID& tbl_id, uint32_t& tbl_version,
     TSSlice& batch_data, uint32_t& row_num, TSSlice& del_data);
 };
 
