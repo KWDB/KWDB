@@ -52,6 +52,10 @@ insert into db.tb values(1);
 select current_timestamp(999);
 select current_timestamp(999) from db1.tb;
 select current_timestamp(999) from db.tb;
+select width_bucket(1,1,1,a) from db1.tb;
+select width_bucket(1,1,1,0) from db1.tb;
+select width_bucket(a,5,10,0) from db1.tb;
+select width_bucket(a,5,10,1) from db1.tb;
 
 drop database db1 cascade;
 drop database db cascade;
