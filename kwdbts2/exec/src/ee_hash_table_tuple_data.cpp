@@ -17,9 +17,7 @@ namespace kwdbts {
 // =================== MemoryTupleData Implementation ===================
 
 MemoryTupleData::MemoryTupleData(k_uint32 tuple_size, k_uint32 capacity, k_bool allow_abandoned)
-    : tuple_size_(tuple_size), count_(0), capacity_(capacity), allow_abandoned_(allow_abandoned) {
-
-}
+    : tuple_size_(tuple_size), count_(0), capacity_(capacity), allow_abandoned_(allow_abandoned) {}
 
 KStatus MemoryTupleData::Initialize() {
   tuple_data_ = EE_MemPoolMalloc(g_pstBufferPoolInfo, tuple_size_ * capacity_);
