@@ -12,6 +12,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include "cm_kwdb_context.h"
+#include "ts_test_base.h"
 #include "libkwdbts2.h"
 #include "me_metadata.pb.h"
 #include "ts_engine.h"
@@ -21,40 +22,11 @@
 using namespace kwdbts;  // NOLINT
 
 const string engine_root_path = "./tsdb";
-class TsEngineV2Test : public ::testing::Test {
- public:
-  EngineOptions opts_;
-  TSEngineImpl *engine_{nullptr};
-  kwdbContext_t g_ctx_{};
-  kwdbContext_p ctx_{&g_ctx_};
-
-  static void SetUpTestCase() {
-    KWDBDynamicThreadPool::GetThreadPool().InitImplicitly();
-  }
-
-  static void TearDownTestCase() {
-    auto& pool = KWDBDynamicThreadPool::GetThreadPool();
-    if (!pool.IsStop()) {
-      pool.Stop();
-    }
-#ifdef WITH_TESTS
-    KWDBDynamicThreadPool::Destroy();
-#endif
-  }
-
+class TsEngineV2Test : public TsEngineTestBase {
  public:
   TsEngineV2Test() {
-    InitKWDBContext(ctx_);
-    opts_.db_path = engine_root_path;
-    Remove(engine_root_path);
-    MakeDirectory(engine_root_path);
-    engine_ = new TSEngineImpl(opts_);
-    auto s = engine_->Init(ctx_);
-    EXPECT_EQ(s, KStatus::SUCCESS);
-  }
-
-  ~TsEngineV2Test() override {
-    delete engine_;
+    InitContext();
+    InitEngine(engine_root_path);
   }
 };
 

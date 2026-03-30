@@ -803,7 +803,6 @@ std::vector<std::shared_ptr<TsLastSegment>> TsPartitionVersion::GetVacuumLastSeg
   }
 
   auto now = std::chrono::time_point_cast<std::chrono::seconds>(std::chrono::system_clock::now());
-  auto now_minute = now.time_since_epoch().count();
   const auto &lasts = leveled_last_segments_.GetAllLastSegments();
   std::vector<std::shared_ptr<TsLastSegment>> result;
   for (auto& last : lasts) {

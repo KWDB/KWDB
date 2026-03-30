@@ -21,7 +21,6 @@ using namespace kwdbts;  // NOLINT
 
 std::string db_path = "./test_db";  // NOLINT
 
-extern bool g_go_start_service;
 
 RangeGroup test_range{default_entitygroup_id_in_dist_v2, 0};
 
@@ -42,9 +41,7 @@ class TestEngineSnapshotImgrate : public ::testing::Test {
     if (!pool.IsStop()) {
       pool.Stop();
     }
-#ifdef WITH_TESTS
     KWDBDynamicThreadPool::Destroy();
-#endif
   }
 
   TestEngineSnapshotImgrate() {
@@ -69,7 +66,6 @@ class TestEngineSnapshotImgrate : public ::testing::Test {
       exit(1);
     }
     ts_engine_desc_ = engine;
-    g_go_start_service = false;
   }
 
   ~TestEngineSnapshotImgrate() override {

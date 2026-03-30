@@ -10,46 +10,18 @@
 // See the Mulan PSL v2 for more details.
 
 #include "test_util.h"
+#include "ts_test_base.h"
 #include "ts_engine.h"
 #include "ts_table.h"
 
 using namespace kwdbts;  // NOLINT
 
 const string engine_root_path = "./tsdb";
-class TestOffsetIteratorV2 : public ::testing::Test {
- public:
-  EngineOptions opts_;
-  TSEngineImpl *engine_{nullptr};
-  kwdbContext_t g_ctx_{};
-  kwdbContext_p ctx_{&g_ctx_};
-
-  static void SetUpTestCase() {
-    KWDBDynamicThreadPool::GetThreadPool().InitImplicitly();
-  }
-
-  static void TearDownTestCase() {
-    auto& pool = KWDBDynamicThreadPool::GetThreadPool();
-    if (!pool.IsStop()) {
-      pool.Stop();
-    }
-#ifdef WITH_TESTS
-    KWDBDynamicThreadPool::Destroy();
-#endif
-  }
-
+class TestOffsetIteratorV2 : public TsEngineTestBase {
  public:
   TestOffsetIteratorV2() {
-    InitKWDBContext(ctx_);
-    opts_.db_path = engine_root_path;
-    Remove(engine_root_path);
-    MakeDirectory(engine_root_path);
-    engine_ = new TSEngineImpl(opts_);
-    auto s = engine_->Init(ctx_);
-    EXPECT_EQ(s, KStatus::SUCCESS);
-  }
-
-  ~TestOffsetIteratorV2() override {
-    delete engine_;
+    InitContext();
+    InitEngine(engine_root_path);
   }
 };
 

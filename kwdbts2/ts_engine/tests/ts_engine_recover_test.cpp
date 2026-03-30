@@ -12,6 +12,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include "cm_kwdb_context.h"
+#include "ts_test_base.h"
 #include "libkwdbts2.h"
 #include "me_metadata.pb.h"
 #include "ts_engine.h"
@@ -21,42 +22,17 @@
 using namespace kwdbts;  // NOLINT
 
 const string engine_root_path = "./tsdb";
-class TsEngineRecoverTest : public ::testing::Test {
- public:
-  EngineOptions opts_;
-  TSEngineImpl *engine_;
-  kwdbContext_t g_ctx_;
-  kwdbContext_p ctx_;
-
-  virtual void SetUp() override {
-    ctx_ = &g_ctx_;
-    InitKWDBContext(ctx_);
-    KWDBDynamicThreadPool::GetThreadPool().Init(8, ctx_);
-  }
-
-  virtual void TearDown() override {
-    KWDBDynamicThreadPool::GetThreadPool().Stop();
-  }
-
+class TsEngineRecoverTest : public TsEngineTestBase {
  public:
   TsEngineRecoverTest() {
-    ctx_ = &g_ctx_;
-    InitKWDBContext(ctx_);
-    opts_.db_path = engine_root_path;
-    Remove(engine_root_path);
-    MakeDirectory(engine_root_path);
-    engine_ = new TSEngineImpl(opts_);
-    auto s = engine_->Init(ctx_);
-    EXPECT_EQ(s, KStatus::SUCCESS);
+    InitContext();
+    InitEngine(engine_root_path);
     ctx_->ts_engine = engine_;
   }
 
   void Restart() {
     ASSERT_TRUE(engine_ != nullptr);
-    delete engine_;
-    engine_ = new TSEngineImpl(opts_);
-    auto s = engine_->Init(ctx_);
-    ASSERT_EQ(s, KStatus::SUCCESS);
+    InitEngine(opts_.db_path, false);
     ctx_->ts_engine = engine_;
   }
 
@@ -109,38 +85,7 @@ class TsEngineRecoverTest : public ::testing::Test {
     EXPECT_EQ(s , KStatus::SUCCESS);
     free(pay_load.data);
   }
-  std::string GetPrimaryKey(TSTableID table_id, TSEntityID dev_id) {
-    std::shared_ptr<kwdbts::TsTableSchemaManager> schema_mgr;
-    bool is_dropped = false;
-    KStatus s = engine_->GetTableSchemaMgr(ctx_, table_id, is_dropped, schema_mgr);
-    EXPECT_EQ(s, KStatus::SUCCESS);
-    std::vector<TagInfo> tag_schema;
-    s = schema_mgr->GetTagMeta(1, tag_schema);
-    EXPECT_EQ(s , KStatus::SUCCESS);
-    uint64_t pkey_len = 0;
-    for (size_t i = 0; i < tag_schema.size(); i++) {
-      if (tag_schema[i].isPrimaryTag()) {
-        pkey_len += tag_schema[i].m_size;
-      }
-    }
-    char* mem = reinterpret_cast<char*>(malloc(pkey_len));
-    memset(mem, 0, pkey_len);
-    std::string dev_str = intToString(dev_id);
-    size_t offset = 0;
-    for (size_t i = 0; i < tag_schema.size(); i++) {
-      if (tag_schema[i].isPrimaryTag()) {
-        if (tag_schema[i].m_data_type == DATATYPE::VARSTRING) {
-          memcpy(mem + offset, dev_str.data(), dev_str.length());
-        } else {
-          memcpy(mem + offset, (char*)(&dev_id), tag_schema[i].m_size);
-        }
-        offset += tag_schema[i].m_size;
-      }
-    }
-    auto ret = std::string{mem, pkey_len};
-    free(mem);
-    return ret;
-  }
+
   uint64_t GetDataNum(TSTableID table_id, TSEntityID dev_id, KwTsSpan ts_span, int64_t& dev_num) {
     std::shared_ptr<TsTable> ts_table_dest;
     bool is_dropped = false;
@@ -208,12 +153,6 @@ class TsEngineRecoverTest : public ::testing::Test {
     auto s = engine_->DeleteEntities(ctx_, table_id, 1, {pkey}, &count, 0, is_dropped, osn);
     ASSERT_EQ(s, KStatus::SUCCESS);
     ASSERT_EQ(count, del_num);
-  }
-
-  ~TsEngineRecoverTest() {
-    if (engine_) {
-      delete engine_;
-    }
   }
 };
 

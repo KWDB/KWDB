@@ -11,6 +11,7 @@
 
 #include "ts_lru_block_cache.h"
 #include <gtest/gtest.h>
+#include "settings.h"
 
 using namespace kwdbts;  // NOLINT
 using namespace roachpb;

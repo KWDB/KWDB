@@ -29,7 +29,6 @@
 
 extern std::map<std::string, std::string> g_cluster_settings;
 extern std::shared_mutex g_settings_mutex;
-extern bool g_go_start_service;
 
 KStatus TSEngine::Execute(kwdbContext_p ctx, QueryInfo* req, RespInfo* resp) {
   ctx->ts_engine = this;

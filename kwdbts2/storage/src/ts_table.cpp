@@ -22,7 +22,6 @@
 #include "ee_global.h"
 #include "payload_builder.h"
 
-extern bool g_go_start_service;
 namespace kwdbts {
 
 KStatus TsTable::GetLastRowBatch(kwdbContext_p ctx, uint32_t table_version, std::vector<uint32_t> scan_cols,

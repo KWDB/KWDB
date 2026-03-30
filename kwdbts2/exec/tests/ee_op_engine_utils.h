@@ -18,7 +18,6 @@
 #include "ts_engine.h"
 #include "libkwdbts2.h"
 
-extern bool g_go_start_service;
 namespace kwdbts {
 
 RangeGroup test_range{default_entitygroup_id_in_dist_v2, 0};
@@ -32,7 +31,6 @@ TSEngineImpl* CreateTestTsEngine(kwdbContext_p ctx, const string& db_path) {
   auto s = ts_engine->Init(ctx);
   EXPECT_EQ(s, KStatus::SUCCESS);
   ctx->ts_engine = ts_engine;
-  g_go_start_service = false;
   KWDBDynamicThreadPool::GetThreadPool().Init(1, ctx);
   return ts_engine;
 }

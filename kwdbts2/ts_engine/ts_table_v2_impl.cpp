@@ -25,7 +25,6 @@
 #include "ts_iterator_v2_impl.h"
 #include "ts_ts_lsn_span_utils.h"
 
-extern bool g_go_start_service;
 
 namespace kwdbts {
 
@@ -440,7 +439,9 @@ KStatus TsTableV2Impl::undoAlterTable(kwdbContext_p ctx, AlterType alter_type, r
 }
 
 KStatus TsTableV2Impl::CheckAndAddSchemaVersion(kwdbContext_p ctx, const KTableKey& table_id, uint64_t version) {
-  if (!g_go_start_service) return KStatus::SUCCESS;
+#ifdef WITH_TESTS
+  return KStatus::SUCCESS;
+#endif
   // Check if the version exists instead of checking the current version
   if (IsExistTableVersion(version)) {
     return KStatus::SUCCESS;

@@ -35,7 +35,6 @@
 std::map<std::string, std::string> g_cluster_settings;
 std::shared_mutex g_settings_mutex;
 bool g_engine_initialized = false;
-bool g_go_start_service = true;
 TSEngine* g_engine_ = nullptr;
 
 std::atomic<bool> g_is_vacuuming{false};

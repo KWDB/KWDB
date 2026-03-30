@@ -111,7 +111,7 @@ TEST_F(NetworkUtilTest, HostnameToIp) {
   EXPECT_TRUE(IsValidIp(ip));
 
   // Test invalid hostname
-  EXPECT_EQ(HostnameToIp("invalid.hostname.xyz", ip), KStatus::FAIL);
+  EXPECT_EQ(HostnameToIp("this-hostname-does-not-exist.invalid", ip), KStatus::FAIL);
 }
 
 // IsValidIp tests

@@ -71,12 +71,12 @@ class TsEntitySegmentTest : public ::testing::Test {
     if (!pool.IsStop()) {
       pool.Stop();
     }
-#ifdef WITH_TESTS
     KWDBDynamicThreadPool::Destroy();
-#endif
   }
 
-  TsEntitySegmentTest() { EngineOptions::mem_segment_max_size = INT32_MAX; }
+  TsEntitySegmentTest() {
+    EngineOptions::mem_segment_max_size = INT32_MAX;
+  }
 
   ~TsEntitySegmentTest() override = default;
 
