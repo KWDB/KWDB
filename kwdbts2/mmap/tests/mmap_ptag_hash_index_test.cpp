@@ -306,6 +306,7 @@ TEST_F(TestMMapPTagHashIndex, ReadFirst_AfterInsert) {
 
   uint64_t key = 88888;
   index.insert(reinterpret_cast<const char*>(&key), sizeof(key), 1, 9000);
+  index.insert(reinterpret_cast<const char*>(&key), sizeof(key), 2, 9001);
 
   auto result = index.read_first(reinterpret_cast<const char*>(&key), sizeof(key));
 
@@ -331,6 +332,19 @@ TEST_F(TestMMapPTagHashIndex, Open_ExistingIndex) {
 
     EXPECT_EQ(result, 0);
   }
+}
+
+TEST_F(TestMMapPTagHashIndex, Insert_DifferentKeys) {
+  MMapPTagHashIndex index(sizeof(uint64_t));
+  ErrorInfo err_info;
+  index.open("ptag_hash_index", test_path_, "", O_CREAT | O_RDWR, err_info);
+
+  for (uint64_t i = 0; i < 10; ++i) {
+    int result = index.insert(reinterpret_cast<const char*>(&i), sizeof(i), 1, i * 100);
+    EXPECT_EQ(result, 0);
+  }
+
+  EXPECT_EQ(index.getElementCount(), 10);
 }
 
 TEST_F(TestMMapPTagHashIndex, Update_ExistingKey) {

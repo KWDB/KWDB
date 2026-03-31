@@ -36,6 +36,7 @@
 #include "ts_vgroup.h"
 #include "ts_table_del_info.h"
 
+extern bool g_go_start_service;
 
 namespace kwdbts {
 
@@ -288,6 +289,8 @@ class TSEngineImpl : public TSEngine {
   KStatus CreateTsTable(kwdbContext_p ctx, TSTableID table_id, roachpb::CreateTsTable* meta,
                         std::shared_ptr<TsTable>& ts_table);
 
+  KStatus GetMeta(kwdbContext_p ctx, TSTableID table_id, uint32_t version, roachpb::CreateTsTable* meta);
+
   std::string GetDbDir() const { return options_.db_path; }
 
   WALMode GetWalMode() {
@@ -342,8 +345,6 @@ class TSEngineImpl : public TSEngine {
                             uint64_t* count, uint64_t mtr_id, const HashIdSpan& hash_span, uint64_t osn) override;
 
   KStatus ResetAllWALMgr(kwdbContext_p ctx);
-
-  KStatus SetVGroupWALMgr(kwdbContext_p ctx, uint32_t vgroup_id, TS_OSN lsn);
 
 
  private:
