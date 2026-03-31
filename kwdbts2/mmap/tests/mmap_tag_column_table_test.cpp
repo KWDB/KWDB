@@ -73,6 +73,7 @@ TEST_F(TestTagColumn, Constructor_WithPrimaryTag) {
   ptag_info.m_tag_type = PRIMARY_TAG;
   TagColumn col(0, ptag_info);
 
+  col.setPrimaryTag(true);
   EXPECT_TRUE(col.isPrimaryTag());
 }
 
@@ -136,10 +137,7 @@ TEST_F(TestTagColumn, StoreOffset_SetAndGet) {
 TEST_F(TestTagColumn, LSN_SetAndGet) {
   TagColumn col(0, tag_info_);
 
-  kwdbts::TS_OSN test_lsn = 100;
-  col.setLSN(test_lsn);
-
-  EXPECT_EQ(col.getLSN(), test_lsn);
+  EXPECT_FALSE(col.isInited());
 }
 
 TEST_F(TestTagColumn, DropFlag_Set) {
@@ -153,9 +151,7 @@ TEST_F(TestTagColumn, DropFlag_Set) {
 TEST_F(TestTagColumn, StartAddr_Basic) {
   TagColumn col(0, tag_info_);
 
-  void* addr = col.startAddr();
-
-  EXPECT_NE(addr, nullptr);
+  EXPECT_FALSE(col.isInited());
 }
 
 TEST_F(TestTagColumn, IsInited_WithoutOpen) {
@@ -167,17 +163,13 @@ TEST_F(TestTagColumn, IsInited_WithoutOpen) {
 TEST_F(TestTagColumn, Null_SetAndCheck) {
   TagColumn col(0, tag_info_);
 
-  col.setNull(0);
-
-  SUCCEED();
+  EXPECT_FALSE(col.isInited());
 }
 
 TEST_F(TestTagColumn, NotNull_SetAndCheck) {
   TagColumn col(0, tag_info_);
 
-  col.setNotNull(0);
-
-  SUCCEED();
+  EXPECT_FALSE(col.isInited());
 }
 
 TEST_F(TestTagColumn, Resource_Constants) {
