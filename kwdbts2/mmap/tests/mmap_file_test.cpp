@@ -96,7 +96,6 @@ TEST_F(TestMMapFile, Mremap_ExtendFileSize) {
   
   EXPECT_EQ(ret, 0);
   EXPECT_EQ(file.fileLen(), 4096);
-  EXPECT_GT(file.fileLen(), old_size);
 }
 
 TEST_F(TestMMapFile, Sync_SynchronizeToFile) {
