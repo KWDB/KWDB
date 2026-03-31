@@ -285,6 +285,202 @@ func TestIndexKey(t *testing.T) {
 	}
 }
 
+// TestValidateColumnDefType tests the ValidateColumnDefType function.
+func TestValidateColumnDefType(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	// Test valid types
+	validTypes := []*types.T{
+		types.Bool,
+		types.Int,
+		types.Float,
+		types.Decimal,
+		types.String,
+		types.Bytes,
+		types.Date,
+		types.TimestampTZ,
+		types.Interval,
+		types.Uuid,
+		types.Jsonb,
+		types.INet,
+	}
+
+	for _, typ := range validTypes {
+		if err := ValidateColumnDefType(typ, tree.RelationalTable); err != nil {
+			t.Errorf("type %s should be valid, got error: %v", typ, err)
+		}
+	}
+
+	// Test invalid types
+	invalidTypes := []*types.T{
+		types.Any,
+		types.Unknown,
+	}
+
+	for _, typ := range invalidTypes {
+		if err := ValidateColumnDefType(typ, tree.RelationalTable); err == nil {
+			t.Errorf("type %s should be invalid, got no error", typ)
+		}
+	}
+
+	defer func() {
+		if r := recover(); r == nil {
+			t.Error("decimal type with precision < scale should be invalid")
+		}
+	}()
+
+	// Test decimal precision validation
+	decimalType := types.MakeDecimal(5, 10) // precision < scale should fail
+	if err := ValidateColumnDefType(decimalType, tree.RelationalTable); err == nil {
+		t.Error("decimal type with precision < scale should be invalid")
+	}
+
+	// Test array validation
+	arrayType := types.MakeArray(types.Int)
+	if err := ValidateColumnDefType(arrayType, tree.RelationalTable); err != nil {
+		t.Errorf("basic array type should be valid, got error: %v", err)
+	}
+
+	// Test nested array validation (should fail)
+	nestedArrayType := types.MakeArray(types.MakeArray(types.Int))
+	if err := ValidateColumnDefType(nestedArrayType, tree.RelationalTable); err == nil {
+		t.Error("nested array type should be invalid")
+	}
+}
+
+// TestContainsNonAlphaNumSymbol tests the ContainsNonAlphaNumSymbol function.
+func TestContainsNonAlphaNumSymbol(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	testCases := []struct {
+		input    string
+		expected bool
+	}{
+		{"abc123", false},
+		{"abc123!@#", false},
+		{"hello_world", false},
+		{"hello世界", true}, // Contains Chinese characters
+		{"test-with-dashes", false},
+		{"test with spaces", false},
+		{"normal_text", false},
+		{"text_with_数字", true}, // Contains Chinese characters
+		{"", false},
+		{"12345", false},
+		{"!@#$%", false},
+	}
+
+	for _, tc := range testCases {
+		result := ContainsNonAlphaNumSymbol(tc.input)
+		if result != tc.expected {
+			t.Errorf("ContainsNonAlphaNumSymbol(%q) = %v, expected %v", tc.input, result, tc.expected)
+		}
+	}
+}
+
+// TestGetTSDataType tests the GetTSDataType function.
+func TestGetTSDataType(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	testCases := []struct {
+		input    *types.T
+		expected DataType
+	}{
+		{types.Timestamp, DataType_TIMESTAMP_MICRO},
+		{types.TimestampTZ, DataType_TIMESTAMPTZ_MICRO},
+		{types.Int2, DataType_SMALLINT},
+		{types.Int4, DataType_INT},
+		{types.Int, DataType_BIGINT},
+		{types.Float4, DataType_FLOAT},
+		{types.Float, DataType_DOUBLE},
+		{types.Bool, DataType_BOOL},
+		{types.MakeChar(10), DataType_CHAR},
+		{types.MakeNChar(10), DataType_NCHAR},
+		{types.VarChar, DataType_VARCHAR},
+		{types.MakeVarChar(10, 0), DataType_VARCHAR},
+		{types.MakeNVarChar(10), DataType_NVARCHAR},
+		{types.MakeVarBytes(10, 0), DataType_VARBYTES},
+		{types.Decimal, DataType_FLOAT}, // Decimal is not supported in TS
+		{types.Any, DataType_UNKNOWN},   // Unsupported type
+	}
+
+	for _, tc := range testCases {
+		result := GetTSDataType(tc.input)
+		if result != tc.expected {
+			t.Errorf("GetTSDataType(%v) = %v, expected %v", tc.input.Name(), result, tc.expected)
+		}
+	}
+}
+
+// TestGetStorageLenForFixedLenTypes tests the GetStorageLenForFixedLenTypes function.
+func TestGetStorageLenForFixedLenTypes(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	testCases := []struct {
+		dataType DataType
+		expected uint32
+	}{
+		{DataType_TIMESTAMP, 8},
+		{DataType_TIMESTAMP_MICRO, 8},
+		{DataType_TIMESTAMP_NANO, 8},
+		{DataType_TIMESTAMPTZ, 8},
+		{DataType_TIMESTAMPTZ_MICRO, 8},
+		{DataType_TIMESTAMPTZ_NANO, 8},
+		{DataType_BOOL, 1},
+		{DataType_SMALLINT, 2},
+		{DataType_INT, 4},
+		{DataType_BIGINT, 8},
+		{DataType_FLOAT, 4},
+		{DataType_DOUBLE, 8},
+		{DataType_CHAR, 0},    // Variable length
+		{DataType_VARCHAR, 0}, // Variable length
+		{DataType_UNKNOWN, 0}, // Unknown type
+	}
+
+	for _, tc := range testCases {
+		result := GetStorageLenForFixedLenTypes(tc.dataType)
+		if result != tc.expected {
+			t.Errorf("GetStorageLenForFixedLenTypes(%v) = %d, expected %d", tc.dataType, result, tc.expected)
+		}
+	}
+}
+
+// TestUpdateTimeColPrecision tests the UpdateTimeColPrecision function.
+func TestUpdateTimeColPrecision(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	// Test with relational table (should return same type)
+	relationalType := types.MakeTimestamp(0)
+	result := UpdateTimeColPrecision(relationalType, tree.RelationalTable)
+	if result != relationalType {
+		t.Errorf("UpdateTimeColPrecision should return same type for relational table, got %v", result)
+	}
+
+	// Test with timeseries table and timestamp with precision 0 (should update to 3)
+	tsType := types.MakeTimestamp(0)
+	tsType.InternalType.TimePrecisionIsSet = false
+	result = UpdateTimeColPrecision(tsType, tree.TimeseriesTable)
+	expected := types.MakeTimestamp(3)
+	if result.Precision() != expected.Precision() {
+		t.Errorf("UpdateTimeColPrecision should update precision to 3 for timeseries table, got %d", result.Precision())
+	}
+
+	// Test with timeseries table and timestamp with precision already set (should not update)
+	tsTypeWithPrec := types.MakeTimestamp(6)
+	result = UpdateTimeColPrecision(tsTypeWithPrec, tree.TimeseriesTable)
+	if result.Precision() != tsTypeWithPrec.Precision() {
+		t.Errorf("UpdateTimeColPrecision should not update precision when already set, got %d", result.Precision())
+	}
+
+	// Test with timeseries table and timetz with precision 0 (should update to 3)
+	timetzType := types.MakeTimeTZ(0)
+	timetzType.InternalType.TimePrecisionIsSet = false
+	result = UpdateTimeColPrecision(timetzType, tree.TimeseriesTable)
+	expectedTimetz := types.MakeTimeTZ(3)
+	if result.Precision() != expectedTimetz.Precision() {
+		t.Errorf("UpdateTimeColPrecision should update timetz precision to 3 for timeseries table, got %d", result.Precision())
+	}
+}
+
 type arrayEncodingTest struct {
 	name     string
 	datum    tree.DArray
