@@ -1029,6 +1029,17 @@ func (desc *TableDescriptor) ForeachNonDropIndex(f func(*IndexDescriptor) error)
 	return nil
 }
 
+// GeneratedFamilyName generates a family name based on the family ID and column names.
+func GeneratedFamilyName(familyID FamilyID, columnNames ...string) string {
+	var buf strings.Builder
+	fmt.Fprintf(&buf, "fam_%d", familyID)
+	for _, n := range columnNames {
+		buf.WriteString(`_`)
+		buf.WriteString(n)
+	}
+	return buf.String()
+}
+
 func generatedFamilyName(familyID FamilyID, columnNames []string) string {
 	var buf strings.Builder
 	fmt.Fprintf(&buf, "fam_%d", familyID)

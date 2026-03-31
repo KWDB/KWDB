@@ -12,8 +12,11 @@
 package sqlbase_test
 
 import (
+	"fmt"
+	"strings"
 	"testing"
 
+	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/types"
 	"github.com/stretchr/testify/require"
@@ -758,6 +761,317 @@ func TestTSDBEqual(t *testing.T) {
 	}
 }
 
+// TestColumnIDsHasPrefix tests the HasPrefix method for ColumnIDs.
+func TestColumnIDsHasPrefix(t *testing.T) {
+	// Test case 1: Empty prefix should be a prefix of any list
+	var empty sqlbase.ColumnIDs
+	c1 := sqlbase.ColumnIDs{1, 2, 3}
+	if !c1.HasPrefix(empty) {
+		t.Errorf("empty ColumnIDs should be a prefix of any list")
+	}
+
+	// Test case 2: Identical list should be a prefix
+	c2 := sqlbase.ColumnIDs{1, 2, 3}
+	if !c1.HasPrefix(c2) {
+		t.Errorf("identical ColumnIDs should be a prefix")
+	}
+
+	// Test case 3: Prefix shorter than list
+	c3 := sqlbase.ColumnIDs{1, 2}
+	if !c1.HasPrefix(c3) {
+		t.Errorf("shorter ColumnIDs should be a prefix of longer list")
+	}
+
+	// Test case 4: Prefix longer than list
+	c4 := sqlbase.ColumnIDs{1, 2, 3, 4}
+	if c1.HasPrefix(c4) {
+		t.Errorf("longer ColumnIDs should not be a prefix of shorter list")
+	}
+
+	// Test case 5: Different values
+	c5 := sqlbase.ColumnIDs{1, 3}
+	if c1.HasPrefix(c5) {
+		t.Errorf("ColumnIDs with different values should not be a prefix")
+	}
+}
+
+// TestIndexDescriptorContainsColumnID tests the ContainsColumnID method for IndexDescriptor.
+func TestIndexDescriptorContainsColumnID(t *testing.T) {
+	idx := &sqlbase.IndexDescriptor{
+		ColumnIDs:      []sqlbase.ColumnID{1, 2},
+		ExtraColumnIDs: []sqlbase.ColumnID{3},
+		StoreColumnIDs: []sqlbase.ColumnID{4},
+	}
+
+	// Test case 1: Column in ColumnIDs
+	if !idx.ContainsColumnID(1) {
+		t.Errorf("IndexDescriptor should contain column ID 1")
+	}
+
+	// Test case 2: Column in ExtraColumnIDs
+	if !idx.ContainsColumnID(3) {
+		t.Errorf("IndexDescriptor should contain column ID 3")
+	}
+
+	// Test case 3: Column in StoreColumnIDs
+	if !idx.ContainsColumnID(4) {
+		t.Errorf("IndexDescriptor should contain column ID 4")
+	}
+
+	// Test case 4: Column not present
+	if idx.ContainsColumnID(5) {
+		t.Errorf("IndexDescriptor should not contain column ID 5")
+	}
+}
+
+// TestIndexDescriptorFullColumnIDs tests the FullColumnIDs method for IndexDescriptor.
+func TestIndexDescriptorFullColumnIDs(t *testing.T) {
+	// Test case 1: Unique index
+	uniqueIdx := &sqlbase.IndexDescriptor{
+		Unique:           true,
+		ColumnIDs:        []sqlbase.ColumnID{1, 2},
+		ColumnDirections: []sqlbase.IndexDescriptor_Direction{sqlbase.IndexDescriptor_ASC, sqlbase.IndexDescriptor_DESC},
+	}
+	uniqueCols, uniqueDirs := uniqueIdx.FullColumnIDs()
+	if len(uniqueCols) != 2 || uniqueCols[0] != 1 || uniqueCols[1] != 2 {
+		t.Errorf("Unique index should return only ColumnIDs")
+	}
+	if len(uniqueDirs) != 2 || uniqueDirs[0] != sqlbase.IndexDescriptor_ASC || uniqueDirs[1] != sqlbase.IndexDescriptor_DESC {
+		t.Errorf("Unique index should return only ColumnDirections")
+	}
+
+	// Test case 2: Non-unique index
+	nonUniqueIdx := &sqlbase.IndexDescriptor{
+		Unique:           false,
+		ColumnIDs:        []sqlbase.ColumnID{1},
+		ColumnDirections: []sqlbase.IndexDescriptor_Direction{sqlbase.IndexDescriptor_ASC},
+		ExtraColumnIDs:   []sqlbase.ColumnID{2, 3},
+	}
+	nonUniqueCols, nonUniqueDirs := nonUniqueIdx.FullColumnIDs()
+	if len(nonUniqueCols) != 3 || nonUniqueCols[0] != 1 || nonUniqueCols[1] != 2 || nonUniqueCols[2] != 3 {
+		t.Errorf("Non-unique index should return ColumnIDs plus ExtraColumnIDs")
+	}
+	if len(nonUniqueDirs) != 3 || nonUniqueDirs[0] != sqlbase.IndexDescriptor_ASC || nonUniqueDirs[1] != sqlbase.IndexDescriptor_ASC || nonUniqueDirs[2] != sqlbase.IndexDescriptor_ASC {
+		t.Errorf("Non-unique index should return ColumnDirections plus ASC for ExtraColumnIDs")
+	}
+}
+
+// TestIndexDescriptorIsInterleaved tests the IsInterleaved method for IndexDescriptor.
+func TestIndexDescriptorIsInterleaved(t *testing.T) {
+	// Test case 1: Not interleaved
+	notInterleaved := &sqlbase.IndexDescriptor{}
+	if notInterleaved.IsInterleaved() {
+		t.Errorf("IndexDescriptor with no ancestors or interleaved by should not be interleaved")
+	}
+
+	// Test case 2: Interleaved with ancestors
+	withAncestors := &sqlbase.IndexDescriptor{
+		Interleave: sqlbase.InterleaveDescriptor{
+			Ancestors: []sqlbase.InterleaveDescriptor_Ancestor{{TableID: 1, IndexID: 1, SharedPrefixLen: 1}},
+		},
+	}
+	if !withAncestors.IsInterleaved() {
+		t.Errorf("IndexDescriptor with ancestors should be interleaved")
+	}
+
+	// Test case 3: Interleaved with interleaved by
+	withInterleavedBy := &sqlbase.IndexDescriptor{
+		InterleavedBy: []sqlbase.ForeignKeyReference{{Table: 1, Index: 1}},
+	}
+	if !withInterleavedBy.IsInterleaved() {
+		t.Errorf("IndexDescriptor with interleaved by should be interleaved")
+	}
+}
+
+// TestIndexDescriptorIsSharded tests the IsSharded method for IndexDescriptor.
+func TestIndexDescriptorIsSharded(t *testing.T) {
+	// Test case 1: Not sharded
+	notSharded := &sqlbase.IndexDescriptor{}
+	if notSharded.IsSharded() {
+		t.Errorf("IndexDescriptor with no sharded descriptor should not be sharded")
+	}
+
+	// Test case 2: Sharded
+	sharded := &sqlbase.IndexDescriptor{
+		Sharded: sqlbase.ShardedDescriptor{IsSharded: true},
+	}
+	if !sharded.IsSharded() {
+		t.Errorf("IndexDescriptor with IsSharded=true should be sharded")
+	}
+}
+
+// TestTableDescriptorIsTable tests the IsTable method for TableDescriptor.
+func TestTableDescriptorIsTable(t *testing.T) {
+	// Test case 1: Regular table
+	table := &sqlbase.TableDescriptor{}
+	if !table.IsTable() {
+		t.Errorf("Regular table should be considered a table")
+	}
+
+	// Test case 2: View
+	view := &sqlbase.TableDescriptor{ViewQuery: "SELECT * FROM table"}
+	if view.IsTable() {
+		t.Errorf("View should not be considered a table")
+	}
+
+	// Test case 3: Sequence
+	sequence := &sqlbase.TableDescriptor{SequenceOpts: &sqlbase.TableDescriptor_SequenceOpts{}}
+	if sequence.IsTable() {
+		t.Errorf("Sequence should not be considered a table")
+	}
+}
+
+// TestTableDescriptorIsTSTable tests the IsTSTable method for TableDescriptor.
+func TestTableDescriptorIsTSTable(t *testing.T) {
+	// Test case 1: Regular table
+	table := &sqlbase.TableDescriptor{}
+	if table.IsTSTable() {
+		t.Errorf("Regular table should not be considered a TS table")
+	}
+
+	// Test case 2: Timeseries table
+	tsTable := &sqlbase.TableDescriptor{TableType: tree.TimeseriesTable}
+	if !tsTable.IsTSTable() {
+		t.Errorf("Timeseries table should be considered a TS table")
+	}
+
+	// Test case 3: Template table
+	templateTable := &sqlbase.TableDescriptor{TableType: tree.TemplateTable}
+	if !templateTable.IsTSTable() {
+		t.Errorf("Template table should be considered a TS table")
+	}
+
+	// Test case 4: Instance table
+	instanceTable := &sqlbase.TableDescriptor{TableType: tree.InstanceTable}
+	if !instanceTable.IsTSTable() {
+		t.Errorf("Instance table should be considered a TS table")
+	}
+}
+
+// TestTableDescriptorIsPhysicalTable tests the IsPhysicalTable method for TableDescriptor.
+func TestTableDescriptorIsPhysicalTable(t *testing.T) {
+	// Test case 1: Regular table
+	table := &sqlbase.TableDescriptor{}
+	if !table.IsPhysicalTable() {
+		t.Errorf("Regular table should be considered a physical table")
+	}
+
+	// Test case 2: View
+	view := &sqlbase.TableDescriptor{ViewQuery: "SELECT * FROM table"}
+	if view.IsPhysicalTable() {
+		t.Errorf("View should not be considered a physical table")
+	}
+
+	// Test case 3: Sequence
+	sequence := &sqlbase.TableDescriptor{SequenceOpts: &sqlbase.TableDescriptor_SequenceOpts{}}
+	if !sequence.IsPhysicalTable() {
+		t.Errorf("Sequence should be considered a physical table")
+	}
+
+	// Test case 4: Materialized view
+	materializedView := &sqlbase.TableDescriptor{IsMaterializedView: true}
+	if !materializedView.IsPhysicalTable() {
+		t.Errorf("Materialized view should be considered a physical table")
+	}
+}
+
+// TestHasCompositeKeyEncoding tests the HasCompositeKeyEncoding function.
+func TestHasCompositeKeyEncoding(t *testing.T) {
+	// Test case 1: CollatedStringFamily should return true
+	if !sqlbase.HasCompositeKeyEncoding(types.CollatedStringFamily) {
+		t.Errorf("CollatedStringFamily should have composite key encoding")
+	}
+
+	// Test case 2: FloatFamily should return true
+	if !sqlbase.HasCompositeKeyEncoding(types.FloatFamily) {
+		t.Errorf("FloatFamily should have composite key encoding")
+	}
+
+	// Test case 3: DecimalFamily should return true
+	if !sqlbase.HasCompositeKeyEncoding(types.DecimalFamily) {
+		t.Errorf("DecimalFamily should have composite key encoding")
+	}
+
+	// Test case 4: IntFamily should return false
+	if sqlbase.HasCompositeKeyEncoding(types.IntFamily) {
+		t.Errorf("IntFamily should not have composite key encoding")
+	}
+}
+
+// TestDatumTypeHasCompositeKeyEncoding tests the DatumTypeHasCompositeKeyEncoding function.
+func TestDatumTypeHasCompositeKeyEncoding(t *testing.T) {
+	// Test case 1: Float type should return true
+	floatType := types.Float
+	if !sqlbase.DatumTypeHasCompositeKeyEncoding(floatType) {
+		t.Errorf("Float type should have composite key encoding")
+	}
+
+	// Test case 2: Int type should return false
+	intType := types.Int
+	if sqlbase.DatumTypeHasCompositeKeyEncoding(intType) {
+		t.Errorf("Int type should not have composite key encoding")
+	}
+}
+
+// TestMustBeValueEncoded tests the MustBeValueEncoded function.
+func TestMustBeValueEncoded(t *testing.T) {
+	// Test case 1: ArrayFamily should return true
+	if !sqlbase.MustBeValueEncoded(types.ArrayFamily) {
+		t.Errorf("ArrayFamily should be value encoded")
+	}
+
+	// Test case 2: JsonFamily should return true
+	if !sqlbase.MustBeValueEncoded(types.JsonFamily) {
+		t.Errorf("JsonFamily should be value encoded")
+	}
+
+	// Test case 3: TupleFamily should return true
+	if !sqlbase.MustBeValueEncoded(types.TupleFamily) {
+		t.Errorf("TupleFamily should be value encoded")
+	}
+
+	// Test case 4: IntFamily should return false
+	if sqlbase.MustBeValueEncoded(types.IntFamily) {
+		t.Errorf("IntFamily should not be value encoded")
+	}
+}
+
+// TestColumnTypeIsIndexable tests the ColumnTypeIsIndexable function.
+func TestColumnTypeIsIndexable(t *testing.T) {
+	// Test case 1: Int type should be indexable
+	intType := types.Int
+	if !sqlbase.ColumnTypeIsIndexable(intType) {
+		t.Errorf("Int type should be indexable")
+	}
+
+	// Test case 2: Array type should not be indexable
+	arrayType := types.MakeArray(types.Int)
+	if sqlbase.ColumnTypeIsIndexable(arrayType) {
+		t.Errorf("Array type should not be indexable")
+	}
+}
+
+// TestColumnTypeIsInvertedIndexable tests the ColumnTypeIsInvertedIndexable function.
+func TestColumnTypeIsInvertedIndexable(t *testing.T) {
+	// Test case 1: Json type should be inverted indexable
+	jsonType := types.Jsonb
+	if !sqlbase.ColumnTypeIsInvertedIndexable(jsonType) {
+		t.Errorf("Json type should be inverted indexable")
+	}
+
+	// Test case 2: Array type should be inverted indexable
+	arrayType := types.MakeArray(types.Int)
+	if !sqlbase.ColumnTypeIsInvertedIndexable(arrayType) {
+		t.Errorf("Array type should be inverted indexable")
+	}
+
+	// Test case 3: Int type should not be inverted indexable
+	intType := types.Int
+	if sqlbase.ColumnTypeIsInvertedIndexable(intType) {
+		t.Errorf("Int type should not be inverted indexable")
+	}
+}
+
 // TestTableDescriptorSize 测试 TableDescriptor_Size 函数
 func TestTableDescriptorSize(t *testing.T) {
 	testCases := []struct {
@@ -824,6 +1138,237 @@ func TestTableDescriptorMarshal(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, tc.expected, data)
 		})
+	}
+}
+
+// TestIsVirtualTable tests the IsVirtualTable global function.
+func TestIsVirtualTable(t *testing.T) {
+	// Test case: Regular table ID
+	if sqlbase.IsVirtualTable(100) {
+		t.Errorf("Regular table ID should not be considered virtual")
+	}
+
+	// Test case: Virtual table ID (using a high ID that's likely to be virtual)
+	if !sqlbase.IsVirtualTable(1000000) {
+		t.Errorf("Virtual table ID should be considered virtual")
+	}
+}
+
+// TestTableDescriptorKeysPerRow tests the KeysPerRow method for TableDescriptor.
+func TestTableDescriptorKeysPerRow(t *testing.T) {
+	// Test case: Primary index
+	table := &sqlbase.TableDescriptor{
+		PrimaryIndex: sqlbase.IndexDescriptor{ID: 1},
+		Families:     []sqlbase.ColumnFamilyDescriptor{{}, {}, {}},
+	}
+	keys, err := table.KeysPerRow(1)
+	if err != nil {
+		t.Errorf("KeysPerRow should not return error for primary index")
+	}
+	if keys != 3 {
+		t.Errorf("KeysPerRow should return number of column families for primary index")
+	}
+
+	// Test case: Secondary index with no stored columns
+	tableWithSecondary := &sqlbase.TableDescriptor{
+		PrimaryIndex: sqlbase.IndexDescriptor{ID: 1},
+		Indexes: []sqlbase.IndexDescriptor{
+			{ID: 2, StoreColumnIDs: []sqlbase.ColumnID{}},
+		},
+		Families: []sqlbase.ColumnFamilyDescriptor{{}, {}, {}},
+	}
+	keys, err = tableWithSecondary.KeysPerRow(2)
+	if err != nil {
+		t.Errorf("KeysPerRow should not return error for secondary index")
+	}
+	if keys != 1 {
+		t.Errorf("KeysPerRow should return 1 for secondary index with no stored columns")
+	}
+
+	// Test case: Secondary index with stored columns
+	tableWithStoredColumns := &sqlbase.TableDescriptor{
+		PrimaryIndex: sqlbase.IndexDescriptor{ID: 1},
+		Indexes: []sqlbase.IndexDescriptor{
+			{ID: 2, StoreColumnIDs: []sqlbase.ColumnID{1}},
+		},
+		Families: []sqlbase.ColumnFamilyDescriptor{{}, {}, {}},
+	}
+	keys, err = tableWithStoredColumns.KeysPerRow(2)
+	if err != nil {
+		t.Errorf("KeysPerRow should not return error for secondary index with stored columns")
+	}
+	if keys != 3 {
+		t.Errorf("KeysPerRow should return number of column families for secondary index with stored columns")
+	}
+}
+
+// TestTableDescriptorAllActiveAndInactiveChecks tests the AllActiveAndInactiveChecks method for TableDescriptor.
+func TestTableDescriptorAllActiveAndInactiveChecks(t *testing.T) {
+	// Test case: Table with no checks
+	table := &sqlbase.TableDescriptor{}
+	checks := table.AllActiveAndInactiveChecks()
+	if len(checks) != 0 {
+		t.Errorf("AllActiveAndInactiveChecks should return empty slice when no checks")
+	}
+
+	// Test case: Table with active checks
+	tableWithChecks := &sqlbase.TableDescriptor{
+		Checks: []*sqlbase.TableDescriptor_CheckConstraint{
+			{Name: "check1", Expr: "id > 0", Validity: sqlbase.ConstraintValidity_Validated},
+		},
+	}
+	checks = tableWithChecks.AllActiveAndInactiveChecks()
+	if len(checks) != 1 || checks[0].Name != "check1" {
+		t.Errorf("AllActiveAndInactiveChecks should return active checks")
+	}
+}
+
+// TestTableDescriptorAllActiveAndInactiveForeignKeys tests the AllActiveAndInactiveForeignKeys method for TableDescriptor.
+func TestTableDescriptorAllActiveAndInactiveForeignKeys(t *testing.T) {
+	// Test case: Table with no foreign keys
+	table := &sqlbase.TableDescriptor{}
+	fks := table.AllActiveAndInactiveForeignKeys()
+	if len(fks) != 0 {
+		t.Errorf("AllActiveAndInactiveForeignKeys should return empty slice when no foreign keys")
+	}
+
+	// Test case: Table with active foreign keys
+	tableWithFKs := &sqlbase.TableDescriptor{
+		OutboundFKs: []sqlbase.ForeignKeyConstraint{
+			{Name: "fk1", Validity: sqlbase.ConstraintValidity_Validated},
+		},
+	}
+	fks = tableWithFKs.AllActiveAndInactiveForeignKeys()
+	if len(fks) != 1 || fks[0].Name != "fk1" {
+		t.Errorf("AllActiveAndInactiveForeignKeys should return active foreign keys")
+	}
+}
+
+// TestTableDescriptorForeachNonDropIndex tests the ForeachNonDropIndex method for TableDescriptor.
+func TestTableDescriptorForeachNonDropIndex(t *testing.T) {
+	// Test case: Table with indexes
+	table := &sqlbase.TableDescriptor{
+		PrimaryIndex: sqlbase.IndexDescriptor{ID: 1, Name: "primary"},
+		Indexes: []sqlbase.IndexDescriptor{
+			{ID: 2, Name: "idx1"},
+			{ID: 3, Name: "idx2"},
+		},
+	}
+
+	var indexIDs []sqlbase.IndexID
+	err := table.ForeachNonDropIndex(func(idx *sqlbase.IndexDescriptor) error {
+		indexIDs = append(indexIDs, idx.ID)
+		return nil
+	})
+	if err != nil {
+		t.Errorf("ForeachNonDropIndex should not return error")
+	}
+	if len(indexIDs) != 3 || indexIDs[0] != 1 || indexIDs[1] != 2 || indexIDs[2] != 3 {
+		t.Errorf("ForeachNonDropIndex should iterate over all non-drop indexes")
+	}
+
+	// Test case: Return error from callback
+	err = table.ForeachNonDropIndex(func(idx *sqlbase.IndexDescriptor) error {
+		if idx.ID == 2 {
+			return fmt.Errorf("test error")
+		}
+		return nil
+	})
+	if err == nil || err.Error() != "test error" {
+		t.Errorf("ForeachNonDropIndex should return error when callback returns error")
+	}
+}
+
+// TestIndexDescriptorSQLString tests the SQLString method for IndexDescriptor.
+func TestIndexDescriptorSQLString(t *testing.T) {
+	// Test case: Basic index
+	idx := &sqlbase.IndexDescriptor{
+		Name:             "idx1",
+		ColumnNames:      []string{"col1", "col2"},
+		ColumnDirections: []sqlbase.IndexDescriptor_Direction{sqlbase.IndexDescriptor_ASC, sqlbase.IndexDescriptor_DESC},
+	}
+	tableName := tree.NewUnqualifiedTableName(tree.Name("test_table"))
+	sqlStr := idx.SQLString(tableName)
+	if !strings.Contains(sqlStr, "INDEX idx1 ON test_table (col1 ASC, col2 DESC)") {
+		t.Errorf("SQLString should return correct SQL representation")
+	}
+
+	// Test case: Unique index
+	uniqueIdx := &sqlbase.IndexDescriptor{
+		Name:             "unique_idx",
+		Unique:           true,
+		ColumnNames:      []string{"col1"},
+		ColumnDirections: []sqlbase.IndexDescriptor_Direction{sqlbase.IndexDescriptor_ASC},
+	}
+	sqlStr = uniqueIdx.SQLString(tableName)
+	if !strings.Contains(sqlStr, "UNIQUE INDEX unique_idx ON test_table (col1 ASC)") {
+		t.Errorf("SQLString should return correct SQL representation for unique index")
+	}
+
+	// Test case: Inverted index
+	invertedIdx := &sqlbase.IndexDescriptor{
+		Name:        "inverted_idx",
+		Type:        sqlbase.IndexDescriptor_INVERTED,
+		ColumnNames: []string{"col1"},
+	}
+	sqlStr = invertedIdx.SQLString(tableName)
+	if !strings.Contains(sqlStr, "INVERTED INDEX inverted_idx ON test_table (col1 ASC)") {
+		t.Errorf("SQLString should return correct SQL representation for inverted index")
+	}
+
+	// Test case: Sharded index
+	shardedIdx := &sqlbase.IndexDescriptor{
+		Name:             "sharded_idx",
+		ColumnNames:      []string{"col1"},
+		ColumnDirections: []sqlbase.IndexDescriptor_Direction{sqlbase.IndexDescriptor_ASC},
+		Sharded:          sqlbase.ShardedDescriptor{IsSharded: true, ShardBuckets: 16},
+	}
+	sqlStr = shardedIdx.SQLString(tableName)
+	if !strings.Contains(sqlStr, "USING HASH WITH BUCKET_COUNT = 16") {
+		t.Errorf("SQLString should return correct SQL representation for sharded index")
+	}
+
+	// Test case: Index with storing columns
+	storingIdx := &sqlbase.IndexDescriptor{
+		Name:             "storing_idx",
+		ColumnNames:      []string{"col1"},
+		ColumnDirections: []sqlbase.IndexDescriptor_Direction{sqlbase.IndexDescriptor_ASC},
+		StoreColumnNames: []string{"col2", "col3"},
+	}
+	sqlStr = storingIdx.SQLString(tableName)
+	if !strings.Contains(sqlStr, "STORING (col2, col3)") {
+		t.Errorf("SQLString should return correct SQL representation for index with storing columns")
+	}
+}
+
+// TestIndexDescriptorFillColumns tests the FillColumns method for IndexDescriptor.
+func TestIndexDescriptorFillColumns(t *testing.T) {
+	// Test case: Fill columns from IndexElemList
+	idx := &sqlbase.IndexDescriptor{}
+	elems := tree.IndexElemList{
+		{Column: tree.Name("col1"), Direction: tree.Ascending},
+		{Column: tree.Name("col2"), Direction: tree.Descending},
+	}
+	err := idx.FillColumns(elems)
+	if err != nil {
+		t.Errorf("FillColumns should not return error")
+	}
+	if len(idx.ColumnNames) != 2 || idx.ColumnNames[0] != "col1" || idx.ColumnNames[1] != "col2" {
+		t.Errorf("FillColumns should set column names correctly")
+	}
+	if len(idx.ColumnDirections) != 2 || idx.ColumnDirections[0] != sqlbase.IndexDescriptor_ASC || idx.ColumnDirections[1] != sqlbase.IndexDescriptor_DESC {
+		t.Errorf("FillColumns should set column directions correctly")
+	}
+}
+
+// TestGeneratedFamilyName tests the GeneratedFamilyName function.
+func TestGeneratedFamilyName(t *testing.T) {
+	// Test case: Generate family name
+	familyID := sqlbase.FamilyID(1)
+	columnNames := []string{"col1", "col2"}
+	name := sqlbase.GeneratedFamilyName(familyID, columnNames...)
+	if name != "fam_1_col1_col2" {
+		t.Errorf("GeneratedFamilyName should return correct family name")
 	}
 }
 
