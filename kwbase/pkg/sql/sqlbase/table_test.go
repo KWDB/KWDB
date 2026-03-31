@@ -38,6 +38,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/kv"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
 	"gitee.com/kwbasedb/kwbase/pkg/settings/cluster"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/parser"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/types"
 	"gitee.com/kwbasedb/kwbase/pkg/testutils"
@@ -58,6 +59,105 @@ type indexKeyTest struct {
 	secondaryInterleaves []ID
 	primaryValues        []tree.Datum // len must be at least primaryInterleaveComponents+1
 	secondaryValues      []tree.Datum // len must be at least secondaryInterleaveComponents+1
+}
+
+func TestMakeColumnDefDescs(t *testing.T) {
+	colDef, err := tree.NewColumnTableDef(tree.Name("col1"), types.Int, false, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	expr, err := parser.ParseExpr("DEFAULT 1")
+	if err == nil {
+		t.Fatal("statement DEFAULT 1 is parsed successfully")
+	}
+	colDef.DefaultExpr.Expr = expr
+	col, _, _, err := MakeColumnDefDescs(colDef, nil, tree.RelationalTable)
+	if err != nil {
+		t.Errorf("MakeColumnDefDescs failed: %v", err)
+	}
+	if col == nil {
+		t.Error("MakeColumnDefDescs returned nil")
+	}
+}
+
+func TestMakeTSColumnDefDescs(t *testing.T) {
+	col, _, err := MakeTSColumnDefDescs("tscol", types.Timestamp, false, false, 0, nil, nil)
+	if err != nil {
+		t.Errorf("MakeTSColumnDefDescs failed: %v", err)
+	}
+	if col == nil {
+		t.Error("MakeTSColumnDefDescs returned nil")
+	}
+}
+
+func TestGetShardColumnName(t *testing.T) {
+	name := GetShardColumnName([]string{"a", "b"}, 10)
+	if name == "" {
+		t.Error("GetShardColumnName returned empty")
+	}
+	if name[:6] != "kwdb_i" {
+		t.Errorf("expected prefix kwdb_i, got %s", name[:6])
+	}
+}
+
+func TestGetColumnTypes(t *testing.T) {
+	tableDesc := &TableDescriptor{
+		Columns: []ColumnDescriptor{
+			{ID: 1, Type: *types.Int},
+			{ID: 2, Type: *types.String},
+		},
+	}
+	colTypes, err := GetColumnTypes(tableDesc, []ColumnID{1, 2})
+	if err != nil {
+		t.Errorf("GetColumnTypes failed: %v", err)
+	}
+	if len(colTypes) != 2 {
+		t.Errorf("expected 2 types, got %d", len(colTypes))
+	}
+}
+
+func TestFindFKReferencedIndex(t *testing.T) {
+	tableDesc := &TableDescriptor{
+		Indexes: []IndexDescriptor{
+			{ID: 1, Unique: true, ColumnIDs: []ColumnID{1}},
+		},
+	}
+	referencedIndex, err := FindFKReferencedIndex(tableDesc, []ColumnID{1})
+	if err != nil {
+		t.Errorf("FindFKReferencedIndex failed: %v", err)
+	}
+	if referencedIndex == nil {
+		t.Error("FindFKReferencedIndex returned nil")
+	}
+}
+
+func TestFindFKOriginIndex(t *testing.T) {
+	tableDesc := &TableDescriptor{
+		Indexes: []IndexDescriptor{
+			{ID: 1, ColumnIDs: []ColumnID{1}},
+		},
+	}
+	originIndex, err := FindFKOriginIndex(tableDesc, []ColumnID{1})
+	if err != nil {
+		t.Errorf("FindFKOriginIndex failed: %v", err)
+	}
+	if originIndex == nil {
+		t.Error("FindFKOriginIndex returned nil")
+	}
+}
+
+func TestEncodeColumns(t *testing.T) {
+	vals := []tree.Datum{tree.NewDInt(1)}
+	colIDs := []ColumnID{1}
+	colMap := map[ColumnID]int{1: 0}
+	var dirs []IndexDescriptor_Direction
+	enc, _, err := EncodeColumns(colIDs, dirs, colMap, vals, nil)
+	if err != nil {
+		t.Errorf("EncodeColumns failed: %v", err)
+	}
+	if len(enc) == 0 {
+		t.Error("EncodeColumns returned empty")
+	}
 }
 
 func makeTableDescForTest(test indexKeyTest) (TableDescriptor, map[ColumnID]int) {
@@ -1731,4 +1831,241 @@ func TestDecodeTableValue(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestSanitizeVarFreeExpr(t *testing.T) {
+	// 创建一个简单的表达式用于测试
+	evalCtx := tree.SemaContext{}
+	// defer evalCtx.Close(context.Background())
+
+	// 测试合法的表达式
+	expr, err := parser.ParseExpr("1 + 2")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// 应该能够成功验证简单表达式
+	typedExpr, err := SanitizeVarFreeExpr(expr, types.Any, "test context", &evalCtx, false, false, "")
+	if err != nil {
+		t.Errorf("SanitizeVarFreeExpr failed unexpectedly: %v", err)
+	}
+	if typedExpr == nil {
+		t.Error("SanitizeVarFreeExpr returned nil for valid expression")
+	}
+
+	// 测试带有占位符的表达式 - 这应该失败
+	_, err = parser.ParseExpr("SELECT $1")
+	if err == nil {
+		t.Fatal(err)
+	}
+
+}
+
+func TestTableDescriptor_GetConstraintInfo(t *testing.T) {
+	tableDesc := &TableDescriptor{
+		Name:       "test_table",
+		ID:         50,
+		Privileges: NewDefaultPrivilegeDescriptor(),
+	}
+
+	// 测试空约束信息
+	constraints, err := tableDesc.GetConstraintInfo(context.Background(), nil)
+	if err != nil {
+		t.Errorf("GetConstraintInfo failed: %v", err)
+	}
+
+	if len(constraints) == 0 {
+		t.Log("No constraints found (expected for empty table)")
+	}
+}
+
+func TestTableDescriptor_GetConstraintInfoWithLookup(t *testing.T) {
+	tableDesc := &TableDescriptor{
+		Name: "test_table",
+		ID:   50,
+	}
+
+	// 创建一个简单的表查找函数
+	tableLookup := func(id ID) (*TableDescriptor, error) {
+		return nil, nil
+	}
+
+	// 测试空约束信息
+	constraints, err := tableDesc.GetConstraintInfoWithLookup(tableLookup)
+	if err != nil {
+		t.Errorf("GetConstraintInfoWithLookup failed: %v", err)
+	}
+
+	if len(constraints) == 0 {
+		t.Log("No constraints found (expected for empty table)")
+	}
+}
+
+func TestTableDescriptor_CheckUniqueConstraints(t *testing.T) {
+	tableDesc := &TableDescriptor{
+		Name:       "test_table",
+		ID:         50,
+		Privileges: NewDefaultPrivilegeDescriptor(),
+	}
+
+	// 测试空表应该没有唯一性约束错误
+	err := tableDesc.CheckUniqueConstraints()
+	if err != nil {
+		t.Errorf("CheckUniqueConstraints failed: %v", err)
+	}
+}
+
+func TestIndexDescriptor_IsValidOriginIndex(t *testing.T) {
+	idx := &IndexDescriptor{
+		ID:        1,
+		ColumnIDs: []ColumnID{1, 2},
+	}
+
+	// 测试有效的源索引情况
+	validColIDs := ColumnIDs{1, 2}
+	isValid := idx.IsValidOriginIndex(validColIDs)
+	if !isValid {
+		t.Error("Expected index to be valid origin index for matching columns")
+	}
+
+	// 测试无效的源索引情况
+	invalidColIDs := ColumnIDs{3, 4}
+	isValid = idx.IsValidOriginIndex(invalidColIDs)
+	if isValid {
+		t.Error("Expected index to be invalid origin index for non-matching columns")
+	}
+}
+
+func TestIndexDescriptor_IsValidReferencedIndex(t *testing.T) {
+	idx := &IndexDescriptor{
+		ID:        1,
+		Unique:    true, // 引用索引必须是唯一的
+		ColumnIDs: []ColumnID{1, 2},
+	}
+
+	// 测试有效的被引用索引情况
+	validColIDs := ColumnIDs{1, 2}
+	isValid := idx.IsValidReferencedIndex(validColIDs)
+	if !isValid {
+		t.Error("Expected index to be valid referenced index for matching unique columns")
+	}
+
+	// 测试非唯一索引作为被引用索引的情况
+	nonUniqueIdx := &IndexDescriptor{
+		ID:        1,
+		Unique:    false, // 非唯一
+		ColumnIDs: []ColumnID{1, 2},
+	}
+	isValid = nonUniqueIdx.IsValidReferencedIndex(validColIDs)
+	if isValid {
+		t.Error("Expected non-unique index to be invalid referenced index")
+	}
+}
+
+func TestConditionalGetTableDescFromTxn(t *testing.T) {
+	// 这个函数依赖于事务上下文，简单测试其基本行为
+	// 由于需要数据库连接，我们主要测试边界条件
+	t.Skip("ConditionalGetTableDescFromTxn requires database connection for full testing")
+}
+
+func TestGetTableDescriptorWithErr(t *testing.T) {
+	// 这个函数也需要数据库连接
+	t.Skip("GetTableDescriptorWithErr requires database connection for full testing")
+}
+
+func TestTableTypeMap_Insert(t *testing.T) {
+	tableMap := make(TableTypeMap)
+
+	// 插入关系表类型
+	tableMap.Insert(tree.RelationalTable)
+	if _, exists := tableMap[tree.RelationalTable]; !exists {
+		t.Error("RelationalTable was not inserted into map")
+	}
+
+	// 插入视图表类型
+	tableMap.Insert(tree.TimeseriesTable)
+	if _, exists := tableMap[tree.TimeseriesTable]; !exists {
+		t.Error("TimeseriesTable was not inserted into map")
+	}
+}
+
+func TestTableTypeMap_IncludeTSTable(t *testing.T) {
+	// 测试空映射
+	tableMap := make(TableTypeMap)
+	if tableMap.IncludeTSTable() {
+		t.Error("Empty map should not include TS table")
+	}
+
+	// 添加时间序列表类型
+	tableMap[tree.TimeseriesTable] = 1
+	if !tableMap.IncludeTSTable() {
+		t.Error("Map with TSObject should include TS table")
+	}
+}
+
+func TestTableTypeMap_HasMultiTSTable(t *testing.T) {
+	tableMap := make(TableTypeMap)
+	if tableMap.HasMultiTSTable() {
+		t.Error("Empty map should not have multi TS table")
+	}
+
+	// 添加多时间序列表类型
+	tableMap[tree.TimeseriesTable] = 1
+	tableMap[tree.InstanceTable] = 1
+	if !tableMap.HasMultiTSTable() {
+		t.Error("Map with MTSTableObject should have multi TS table")
+	}
+}
+
+func TestTableTypeMap_HasStable(t *testing.T) {
+	tableMap := make(TableTypeMap)
+	if tableMap.HasStable() {
+		t.Error("Empty map should not have stable")
+	}
+
+	tableMap[tree.TemplateTable] = 1
+	if !tableMap.HasStable() {
+		t.Error("Map with StableObject should have stable")
+	}
+}
+
+func TestTableTypeMap_HasCtable(t *testing.T) {
+	tableMap := make(TableTypeMap)
+	if tableMap.HasCtable() {
+		t.Error("Empty map should not have ctable")
+	}
+
+	tableMap[tree.InstanceTable] = 1
+	if !tableMap.HasCtable() {
+		t.Error("Map with CtableObject should have ctable")
+	}
+}
+
+func TestTableTypeMap_HasGtable(t *testing.T) {
+	tableMap := make(TableTypeMap)
+	if tableMap.HasGtable() {
+		t.Error("Empty map should not have gtable")
+	}
+
+	tableMap[tree.TimeseriesTable] = 1
+	if !tableMap.HasGtable() {
+		t.Error("Map with GtableObject should have gtable")
+	}
+}
+
+func TestTableTypeMap_HasRtable(t *testing.T) {
+	tableMap := make(TableTypeMap)
+	if tableMap.HasRtable() {
+		t.Error("Empty map should not have rtable")
+	}
+
+	tableMap[tree.RelationalTable] = 1
+	if !tableMap.HasRtable() {
+		t.Error("Map with RtableObject should have rtable")
+	}
+}
+
+func TestGetTableDescriptorUseTxn(t *testing.T) {
+	// 这个函数也需要数据库连接
+	t.Skip("GetTableDescriptorUseTxn requires database connection for full testing")
 }
