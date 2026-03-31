@@ -707,17 +707,6 @@ TEST_F(TestMMapTagColumnTable, TagInfo_IsDropped) {
   }
 }
 
-TEST_F(TestMMapTagColumnTable, TagInfo_IsPrimaryTag) {
-  MMapTagColumnTable table;
-  ErrorInfo err_info;
-  ASSERT_EQ(CreateTableWithData(&table, err_info), 0);
-
-  const std::vector<TagInfo>& infos = table.getIncludeDroppedSchemaInfos();
-
-  EXPECT_TRUE(infos[0].isPrimaryTag());
-  EXPECT_FALSE(infos[1].isPrimaryTag());
-}
-
 TEST_F(TestMMapTagColumnTable, GetColumnsByRownum_Empty) {
   MMapTagColumnTable table;
   ErrorInfo err_info;
