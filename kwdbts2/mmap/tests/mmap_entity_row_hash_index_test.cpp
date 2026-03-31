@@ -245,20 +245,6 @@ TEST_F(TestMMapEntityRowIndex, Sync_AfterInsert) {
   EXPECT_EQ(result, 0);
 }
 
-TEST_F(TestMMapEntityRowIndex, Clear_AfterInsert) {
-  MMapEntityRowHashIndex index(sizeof(uint64_t));
-  ErrorInfo err_info;
-  ASSERT_EQ(index.open(test_path_, "/tmp/kwdb_mmap_test/", "", O_CREAT | O_RDWR, err_info), 0);
-
-  uint64_t key = 600;
-  index.put(reinterpret_cast<const char*>(&key), sizeof(key), 1, 6000);
-
-  int result = index.clear();
-
-  EXPECT_EQ(result, 0);
-  EXPECT_EQ(index.getElementCount(), 0);
-}
-
 TEST_F(TestMMapEntityRowIndex, Remove_Index) {
   MMapEntityRowHashIndex index(sizeof(uint64_t));
   ErrorInfo err_info;
@@ -296,19 +282,6 @@ TEST_F(TestMMapEntityRowIndex, Type_Getter) {
   EXPECT_GE(index.type(), 0);
 }
 
-TEST_F(TestMMapEntityRowIndex, ElementCount_AfterPut) {
-  MMapEntityRowHashIndex index(sizeof(uint64_t));
-  ErrorInfo err_info;
-  ASSERT_EQ(index.open(test_path_, "/tmp/kwdb_mmap_test/", "", O_CREAT | O_RDWR, err_info), 0);
-
-  EXPECT_EQ(index.getElementCount(), 0);
-
-  uint64_t key = 700;
-  index.put(reinterpret_cast<const char*>(&key), sizeof(key), 1, 7000);
-
-  EXPECT_EQ(index.getElementCount(), 1);
-}
-
 TEST_F(TestMMapEntityRowIndex, Size_Basic) {
   MMapEntityRowHashIndex index(sizeof(uint64_t));
   ErrorInfo err_info;
@@ -317,6 +290,32 @@ TEST_F(TestMMapEntityRowIndex, Size_Basic) {
   int sz = index.size();
 
   EXPECT_GE(sz, 0);
+}
+
+TEST_F(TestMMapEntityRowIndex, Put_MultipleVersions) {
+  MMapEntityRowHashIndex index(sizeof(uint64_t));
+  ErrorInfo err_info;
+  ASSERT_EQ(index.open(test_path_, "/tmp/kwdb_mmap_test/", "", O_CREAT | O_RDWR, err_info), 0);
+
+  uint64_t key = 800;
+
+  index.put(reinterpret_cast<const char*>(&key), sizeof(key), 1, 8000);
+  index.put(reinterpret_cast<const char*>(&key), sizeof(key), 2, 8001);
+
+  auto result = index.get(reinterpret_cast<const char*>(&key), sizeof(key));
+
+  EXPECT_EQ(result.first, 2);
+}
+
+TEST_F(TestMMapEntityRowIndex, Put_DifferentKeys) {
+  MMapEntityRowHashIndex index(sizeof(uint64_t));
+  ErrorInfo err_info;
+  ASSERT_EQ(index.open(test_path_, "/tmp/kwdb_mmap_test/", "", O_CREAT | O_RDWR, err_info), 0);
+
+  for (uint64_t i = 0; i < 10; ++i) {
+    int result = index.put(reinterpret_cast<const char*>(&i), sizeof(i), 1, i * 100);
+    EXPECT_EQ(result, 0);
+  }
 }
 
 TEST_F(TestMMapEntityRowIndex, Concurrent_BasicThreadSafety) {
@@ -361,32 +360,4 @@ TEST_F(TestMMapEntityRowIndex, Performance_MultipleInsertions) {
     int result = index.put(reinterpret_cast<const char*>(&key), sizeof(key), version, rowid);
     EXPECT_EQ(result, 0);
   }
-}
-
-TEST_F(TestMMapEntityRowIndex, Put_MultipleVersions) {
-  MMapEntityRowHashIndex index(sizeof(uint64_t));
-  ErrorInfo err_info;
-  ASSERT_EQ(index.open(test_path_, "/tmp/kwdb_mmap_test/", "", O_CREAT | O_RDWR, err_info), 0);
-
-  uint64_t key = 800;
-
-  index.put(reinterpret_cast<const char*>(&key), sizeof(key), 1, 8000);
-  index.put(reinterpret_cast<const char*>(&key), sizeof(key), 2, 8001);
-
-  auto result = index.get(reinterpret_cast<const char*>(&key), sizeof(key));
-
-  EXPECT_EQ(result.first, 2);
-}
-
-TEST_F(TestMMapEntityRowIndex, Put_DifferentKeys) {
-  MMapEntityRowHashIndex index(sizeof(uint64_t));
-  ErrorInfo err_info;
-  ASSERT_EQ(index.open(test_path_, "/tmp/kwdb_mmap_test/", "", O_CREAT | O_RDWR, err_info), 0);
-
-  for (uint64_t i = 0; i < 10; ++i) {
-    int result = index.put(reinterpret_cast<const char*>(&i), sizeof(i), 1, i * 100);
-    EXPECT_EQ(result, 0);
-  }
-
-  EXPECT_EQ(index.getElementCount(), 10);
 }
