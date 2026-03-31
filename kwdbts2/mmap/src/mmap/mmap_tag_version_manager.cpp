@@ -54,9 +54,6 @@ TagVersionObject* TagTableVersionManager::CreateTagVersionObject(const std::vect
   if (tmp_obj && !tmp_obj->create(schema, err_info)) {
     tmp_obj->setStatus(TAG_STATUS_CREATED);
     m_version_tables_.insert({ts_version, tmp_obj});
-    if (ts_version > m_max_version_.load()) {
-      m_max_version_.store(ts_version);
-    }
     unLock();
     return tmp_obj;
   }
