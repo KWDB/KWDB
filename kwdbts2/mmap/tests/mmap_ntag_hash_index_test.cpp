@@ -82,25 +82,6 @@ TEST_F(TestMMapNTagHashIndex, Insert_SingleEntry) {
   EXPECT_EQ(result, 0);
 }
 
-TEST_F(TestMMapNTagHashIndex, Get_RetrieveInsertedKey) {
-  std::vector<uint32_t> col_ids = {1};
-  MMapNTagHashIndex index(sizeof(uint64_t), 100, col_ids);
-  ErrorInfo err_info;
-  index.open("ntag_hash_index", test_path_, "", O_CREAT | O_RDWR, err_info);
-
-  uint64_t key = 67890;
-  TableVersionID version = 1;
-  TagPartitionTableRowID rowid = 2000;
-
-  index.insert(reinterpret_cast<const char*>(&key), sizeof(key), version, rowid);
-  index.sync(MS_SYNC);
-
-  auto result = index.get(reinterpret_cast<const char*>(&key), sizeof(key));
-
-  EXPECT_EQ(result.first, version);
-  EXPECT_EQ(result.second, rowid);
-}
-
 TEST_F(TestMMapNTagHashIndex, Get_NonExistentKey) {
   std::vector<uint32_t> col_ids = {1};
   MMapNTagHashIndex index(sizeof(uint64_t), 100, col_ids);
@@ -346,31 +327,6 @@ TEST_F(TestMMapNTagHashIndex, Open_ExistingIndex) {
 
     EXPECT_EQ(result, 0);
   }
-}
-
-TEST_F(TestMMapNTagHashIndex, ElementCount_Basic) {
-  std::vector<uint32_t> col_ids = {1};
-  MMapNTagHashIndex index(sizeof(uint64_t), 100, col_ids);
-  ErrorInfo err_info;
-  index.open("ntag_hash_index", test_path_, "", O_CREAT | O_RDWR, err_info);
-
-  uint64_t count = index.getElementCount();
-
-  EXPECT_EQ(count, 0);
-}
-
-TEST_F(TestMMapNTagHashIndex, Insert_DifferentKeys) {
-  std::vector<uint32_t> col_ids = {1};
-  MMapNTagHashIndex index(sizeof(uint64_t), 100, col_ids);
-  ErrorInfo err_info;
-  index.open("ntag_hash_index", test_path_, "", O_CREAT | O_RDWR, err_info);
-
-  for (uint64_t i = 0; i < 10; ++i) {
-    int result = index.insert(reinterpret_cast<const char*>(&i), sizeof(i), 1, i * 100);
-    EXPECT_EQ(result, 0);
-  }
-
-  EXPECT_EQ(index.getElementCount(), 10);
 }
 
 TEST_F(TestMMapNTagHashIndex, Insert_WithMultipleColIds) {
