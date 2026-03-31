@@ -62,7 +62,7 @@ TEST_F(TestMMapEntityRowIndex, Open_CreateNewIndex) {
   MMapEntityRowHashIndex index(sizeof(uint64_t));
   ErrorInfo err_info;
 
-  int result = index.open(test_path_, "/tmp/kwdb_mmap_test/", "", O_CREAT | O_RDWR, err_info);
+  int result = index.open("entity_hash_index", test_path_, "", O_CREAT | O_RDWR, err_info);
 
   ASSERT_EQ(result, 0);
   EXPECT_TRUE(index.metaData().m_bucket_count > 0);
@@ -73,12 +73,12 @@ TEST_F(TestMMapEntityRowIndex, Open_OpenExistingIndex) {
   {
     MMapEntityRowHashIndex index(sizeof(uint64_t));
     ErrorInfo err_info;
-    ASSERT_EQ(index.open(test_path_, "/tmp/kwdb_mmap_test/", "", O_CREAT | O_RDWR, err_info), 0);
+    ASSERT_EQ(index.open("entity_hash_index", test_path_, "", O_CREAT | O_RDWR, err_info), 0);
   }
 
   MMapEntityRowHashIndex index2(sizeof(uint64_t));
   ErrorInfo err_info;
-  int result = index2.open(test_path_, "/tmp/kwdb_mmap_test/", "", O_RDWR, err_info);
+  int result = index2.open("entity_hash_index", test_path_, "", O_RDWR, err_info);
 
   EXPECT_EQ(result, 0);
 }
@@ -86,7 +86,7 @@ TEST_F(TestMMapEntityRowIndex, Open_OpenExistingIndex) {
 TEST_F(TestMMapEntityRowIndex, Put_InsertSingleKey) {
   MMapEntityRowHashIndex index(sizeof(uint64_t));
   ErrorInfo err_info;
-  ASSERT_EQ(index.open(test_path_, "/tmp/kwdb_mmap_test/", "", O_CREAT | O_RDWR, err_info), 0);
+  ASSERT_EQ(index.open("entity_hash_index", test_path_, "", O_CREAT | O_RDWR, err_info), 0);
 
   uint64_t key = 100;
   TableVersionID version = 1;
@@ -100,7 +100,7 @@ TEST_F(TestMMapEntityRowIndex, Put_InsertSingleKey) {
 TEST_F(TestMMapEntityRowIndex, Get_RetrieveInsertedKey) {
   MMapEntityRowHashIndex index(sizeof(uint64_t));
   ErrorInfo err_info;
-  ASSERT_EQ(index.open(test_path_, "/tmp/kwdb_mmap_test/", "", O_CREAT | O_RDWR, err_info), 0);
+  ASSERT_EQ(index.open("entity_hash_index", test_path_, "", O_CREAT | O_RDWR, err_info), 0);
 
   uint64_t key = 200;
   TableVersionID version = 1;
@@ -117,7 +117,7 @@ TEST_F(TestMMapEntityRowIndex, Get_RetrieveInsertedKey) {
 TEST_F(TestMMapEntityRowIndex, Get_NonExistentKey) {
   MMapEntityRowHashIndex index(sizeof(uint64_t));
   ErrorInfo err_info;
-  ASSERT_EQ(index.open(test_path_, "/tmp/kwdb_mmap_test/", "", O_CREAT | O_RDWR, err_info), 0);
+  ASSERT_EQ(index.open("entity_hash_index", test_path_, "", O_CREAT | O_RDWR, err_info), 0);
 
   uint64_t key = 300;
   auto result = index.get(reinterpret_cast<const char*>(&key), sizeof(key));
@@ -129,7 +129,7 @@ TEST_F(TestMMapEntityRowIndex, Get_NonExistentKey) {
 TEST_F(TestMMapEntityRowIndex, Delete_RemoveKey) {
   MMapEntityRowHashIndex index(sizeof(uint64_t));
   ErrorInfo err_info;
-  ASSERT_EQ(index.open(test_path_, "/tmp/kwdb_mmap_test/", "", O_CREAT | O_RDWR, err_info), 0);
+  ASSERT_EQ(index.open("entity_hash_index", test_path_, "", O_CREAT | O_RDWR, err_info), 0);
 
   uint64_t key = 400;
   TableVersionID version = 1;
@@ -151,7 +151,7 @@ TEST_F(TestMMapEntityRowIndex, Boundary_EmptyKey) {
   MMapEntityRowHashIndex index(0);
   ErrorInfo err_info;
 
-  int result = index.open(test_path_, "/tmp/kwdb_mmap_test/", "", O_CREAT | O_RDWR, err_info);
+  int result = index.open("entity_hash_index", test_path_, "", O_CREAT | O_RDWR, err_info);
 
   if (result == 0) {
     EXPECT_EQ(index.keySize(), 0);
@@ -168,7 +168,7 @@ TEST_F(TestMMapEntityRowIndex, Boundary_MultipleBucketInstances) {
   MMapEntityRowHashIndex index(16, 8, 256);
   ErrorInfo err_info;
 
-  int result = index.open(test_path_, "/tmp/kwdb_mmap_test/", "", O_CREAT | O_RDWR, err_info);
+  int result = index.open("entity_hash_index", test_path_, "", O_CREAT | O_RDWR, err_info);
 
   EXPECT_EQ(result, 0);
 }
@@ -196,14 +196,14 @@ TEST_F(TestMMapEntityRowIndex, Resource_MultipleOpenClose) {
     MMapEntityRowHashIndex index(sizeof(uint64_t));
     ErrorInfo err_info;
 
-    ASSERT_EQ(index.open(test_path_, "/tmp/kwdb_mmap_test/", "", O_CREAT | O_RDWR, err_info), 0);
+    ASSERT_EQ(index.open("entity_hash_index", test_path_, "", O_CREAT | O_RDWR, err_info), 0);
   }
 }
 
 TEST_F(TestMMapEntityRowIndex, Resource_ReserveSpace) {
   MMapEntityRowHashIndex index(sizeof(uint64_t));
   ErrorInfo err_info;
-  ASSERT_EQ(index.open(test_path_, "/tmp/kwdb_mmap_test/", "", O_CREAT | O_RDWR, err_info), 0);
+  ASSERT_EQ(index.open("entity_hash_index", test_path_, "", O_CREAT | O_RDWR, err_info), 0);
 
   int result = index.reserve(2048);
 
@@ -213,7 +213,7 @@ TEST_F(TestMMapEntityRowIndex, Resource_ReserveSpace) {
 TEST_F(TestMMapEntityRowIndex, LSN_SetAndGet) {
   MMapEntityRowHashIndex index(sizeof(uint64_t));
   ErrorInfo err_info;
-  ASSERT_EQ(index.open(test_path_, "/tmp/kwdb_mmap_test/", "", O_CREAT | O_RDWR, err_info), 0);
+  ASSERT_EQ(index.open("entity_hash_index", test_path_, "", O_CREAT | O_RDWR, err_info), 0);
 
   uint64_t test_lsn = 12345;
   index.setLSN(test_lsn);
@@ -224,7 +224,7 @@ TEST_F(TestMMapEntityRowIndex, LSN_SetAndGet) {
 TEST_F(TestMMapEntityRowIndex, Drop_SetAndCheck) {
   MMapEntityRowHashIndex index(sizeof(uint64_t));
   ErrorInfo err_info;
-  ASSERT_EQ(index.open(test_path_, "/tmp/kwdb_mmap_test/", "", O_CREAT | O_RDWR, err_info), 0);
+  ASSERT_EQ(index.open("entity_hash_index", test_path_, "", O_CREAT | O_RDWR, err_info), 0);
 
   EXPECT_FALSE(index.isDroped());
 
@@ -236,7 +236,7 @@ TEST_F(TestMMapEntityRowIndex, Drop_SetAndCheck) {
 TEST_F(TestMMapEntityRowIndex, Sync_AfterInsert) {
   MMapEntityRowHashIndex index(sizeof(uint64_t));
   ErrorInfo err_info;
-  ASSERT_EQ(index.open(test_path_, "/tmp/kwdb_mmap_test/", "", O_CREAT | O_RDWR, err_info), 0);
+  ASSERT_EQ(index.open("entity_hash_index", test_path_, "", O_CREAT | O_RDWR, err_info), 0);
 
   uint64_t key = 500;
   index.put(reinterpret_cast<const char*>(&key), sizeof(key), 1, 5000);
@@ -249,7 +249,7 @@ TEST_F(TestMMapEntityRowIndex, Sync_AfterInsert) {
 TEST_F(TestMMapEntityRowIndex, Remove_Index) {
   MMapEntityRowHashIndex index(sizeof(uint64_t));
   ErrorInfo err_info;
-  ASSERT_EQ(index.open(test_path_, "/tmp/kwdb_mmap_test/", "", O_CREAT | O_RDWR, err_info), 0);
+  ASSERT_EQ(index.open("entity_hash_index", test_path_, "", O_CREAT | O_RDWR, err_info), 0);
 
   int result = index.remove();
 
@@ -259,7 +259,7 @@ TEST_F(TestMMapEntityRowIndex, Remove_Index) {
 TEST_F(TestMMapEntityRowIndex, DataLock_Operations) {
   MMapEntityRowHashIndex index(sizeof(uint64_t));
   ErrorInfo err_info;
-  ASSERT_EQ(index.open(test_path_, "/tmp/kwdb_mmap_test/", "", O_CREAT | O_RDWR, err_info), 0);
+  ASSERT_EQ(index.open("entity_hash_index", test_path_, "", O_CREAT | O_RDWR, err_info), 0);
 
   index.dataRlock();
   index.dataUnlock();
@@ -276,7 +276,7 @@ TEST_F(TestMMapEntityRowIndex, Type_Getter) {
 TEST_F(TestMMapEntityRowIndex, Size_Basic) {
   MMapEntityRowHashIndex index(sizeof(uint64_t));
   ErrorInfo err_info;
-  ASSERT_EQ(index.open(test_path_, "/tmp/kwdb_mmap_test/", "", O_CREAT | O_RDWR, err_info), 0);
+  ASSERT_EQ(index.open("entity_hash_index", test_path_, "", O_CREAT | O_RDWR, err_info), 0);
 
   uint64_t key = 800;
 
@@ -291,7 +291,7 @@ TEST_F(TestMMapEntityRowIndex, Size_Basic) {
 TEST_F(TestMMapEntityRowIndex, Put_DifferentKeys) {
   MMapEntityRowHashIndex index(sizeof(uint64_t));
   ErrorInfo err_info;
-  ASSERT_EQ(index.open(test_path_, "/tmp/kwdb_mmap_test/", "", O_CREAT | O_RDWR, err_info), 0);
+  ASSERT_EQ(index.open("entity_hash_index", test_path_, "", O_CREAT | O_RDWR, err_info), 0);
 
   for (uint64_t i = 0; i < 10; ++i) {
     int result = index.put(reinterpret_cast<const char*>(&i), sizeof(i), 1, i * 100);
@@ -302,7 +302,7 @@ TEST_F(TestMMapEntityRowIndex, Put_DifferentKeys) {
 TEST_F(TestMMapEntityRowIndex, Concurrent_BasicThreadSafety) {
   MMapEntityRowHashIndex* index = new MMapEntityRowHashIndex(sizeof(uint64_t));
   ErrorInfo err_info;
-  index->open(test_path_, "/tmp/kwdb_mmap_test/", "", O_CREAT | O_RDWR, err_info);
+  index->open("entity_hash_index", test_path_, "", O_CREAT | O_RDWR, err_info);
 
   std::vector<std::thread> threads;
   std::atomic<int> success_count(0);
@@ -330,7 +330,7 @@ TEST_F(TestMMapEntityRowIndex, Concurrent_BasicThreadSafety) {
 TEST_F(TestMMapEntityRowIndex, Performance_MultipleInsertions) {
   MMapEntityRowHashIndex index(sizeof(uint64_t));
   ErrorInfo err_info;
-  ASSERT_EQ(index.open(test_path_, "/tmp/kwdb_mmap_test/", "", O_CREAT | O_RDWR, err_info), 0);
+  ASSERT_EQ(index.open("entity_hash_index", test_path_, "", O_CREAT | O_RDWR, err_info), 0);
 
   const int kNumInsertions = 100;
   for (int i = 0; i < kNumInsertions; ++i) {
@@ -346,7 +346,7 @@ TEST_F(TestMMapEntityRowIndex, Performance_MultipleInsertions) {
 TEST_F(TestMMapEntityRowIndex, Put_MultipleVersions) {
   MMapEntityRowHashIndex index(sizeof(uint64_t));
   ErrorInfo err_info;
-  ASSERT_EQ(index.open(test_path_, "/tmp/kwdb_mmap_test/", "", O_CREAT | O_RDWR, err_info), 0);
+  ASSERT_EQ(index.open("entity_hash_index", test_path_, "", O_CREAT | O_RDWR, err_info), 0);
 
   uint64_t key = 800;
 

@@ -61,7 +61,7 @@ TEST_F(TestMMapNTagHashIndex, Open_CreateNewIndex) {
   MMapNTagHashIndex index(sizeof(uint64_t), 100, col_ids);
   ErrorInfo err_info;
   
-  int result = index.open(test_path_, "/tmp/kwdb_mmap_test/", "", O_CREAT | O_RDWR, err_info);
+  int result = index.open("ntag_hash_index", test_path_, "", O_CREAT | O_RDWR, err_info);
   
   EXPECT_EQ(result, 0);
   EXPECT_TRUE(index.metaData().m_bucket_count > 0);
@@ -71,7 +71,7 @@ TEST_F(TestMMapNTagHashIndex, Insert_SingleEntry) {
   std::vector<uint32_t> col_ids = {1};
   MMapNTagHashIndex index(sizeof(uint64_t), 100, col_ids);
   ErrorInfo err_info;
-  index.open(test_path_, "/tmp/kwdb_mmap_test/", "", O_CREAT | O_RDWR, err_info);
+  index.open("ntag_hash_index", test_path_, "", O_CREAT | O_RDWR, err_info);
   
   uint64_t key = 12345;
   TableVersionID version = 1;
@@ -86,7 +86,7 @@ TEST_F(TestMMapNTagHashIndex, Get_RetrieveInsertedKey) {
   std::vector<uint32_t> col_ids = {1};
   MMapNTagHashIndex index(sizeof(uint64_t), 100, col_ids);
   ErrorInfo err_info;
-  index.open(test_path_, "/tmp/kwdb_mmap_test/", "", O_CREAT | O_RDWR, err_info);
+  index.open("ntag_hash_index", test_path_, "", O_CREAT | O_RDWR, err_info);
   
   uint64_t key = 67890;
   TableVersionID version = 1;
@@ -104,7 +104,7 @@ TEST_F(TestMMapNTagHashIndex, Get_NonExistentKey) {
   std::vector<uint32_t> col_ids = {1};
   MMapNTagHashIndex index(sizeof(uint64_t), 100, col_ids);
   ErrorInfo err_info;
-  index.open(test_path_, "/tmp/kwdb_mmap_test/", "", O_CREAT | O_RDWR, err_info);
+  index.open("ntag_hash_index", test_path_, "", O_CREAT | O_RDWR, err_info);
   
   uint64_t key = 11111;
   auto result = index.get(reinterpret_cast<const char*>(&key), sizeof(key));
@@ -117,7 +117,7 @@ TEST_F(TestMMapNTagHashIndex, Remove_DeleteInsertedKey) {
   std::vector<uint32_t> col_ids = {1};
   MMapNTagHashIndex index(sizeof(uint64_t), 100, col_ids);
   ErrorInfo err_info;
-  index.open(test_path_, "/tmp/kwdb_mmap_test/", "", O_CREAT | O_RDWR, err_info);
+  index.open("ntag_hash_index", test_path_, "", O_CREAT | O_RDWR, err_info);
   
   uint64_t key = 22222;
   TableVersionID version = 1;
@@ -135,7 +135,7 @@ TEST_F(TestMMapNTagHashIndex, ReadAll_MultipleVersions) {
   std::vector<uint32_t> col_ids = {1};
   MMapNTagHashIndex index(sizeof(uint64_t), 100, col_ids);
   ErrorInfo err_info;
-  index.open(test_path_, "/tmp/kwdb_mmap_test/", "", O_CREAT | O_RDWR, err_info);
+  index.open("ntag_hash_index", test_path_, "", O_CREAT | O_RDWR, err_info);
   
   uint64_t key = 33333;
   
@@ -155,7 +155,7 @@ TEST_F(TestMMapNTagHashIndex, RemoveAll_DeleteAllVersions) {
   std::vector<uint32_t> col_ids = {1};
   MMapNTagHashIndex index(sizeof(uint64_t), 100, col_ids);
   ErrorInfo err_info;
-  index.open(test_path_, "/tmp/kwdb_mmap_test/", "", O_CREAT | O_RDWR, err_info);
+  index.open("ntag_hash_index", test_path_, "", O_CREAT | O_RDWR, err_info);
   
   uint64_t key = 44444;
   
@@ -179,7 +179,7 @@ TEST_F(TestMMapNTagHashIndex, Boundary_MultipleBucketInstances) {
   MMapNTagHashIndex index(16, 8, col_ids, 4, 256);
   ErrorInfo err_info;
   
-  int result = index.open(test_path_, "/tmp/kwdb_mmap_test/", "", O_CREAT | O_RDWR, err_info);
+  int result = index.open("ntag_hash_index", test_path_, "", O_CREAT | O_RDWR, err_info);
   
   EXPECT_EQ(result, 0);
 }
@@ -216,7 +216,7 @@ TEST_F(TestMMapNTagHashIndex, Performance_BulkInsert) {
   std::vector<uint32_t> col_ids = {1};
   MMapNTagHashIndex index(sizeof(uint64_t), 100, col_ids);
   ErrorInfo err_info;
-  index.open(test_path_, "/tmp/kwdb_mmap_test/", "", O_CREAT | O_RDWR, err_info);
+  index.open("ntag_hash_index", test_path_, "", O_CREAT | O_RDWR, err_info);
   
   const int kNumInsertions = 1000;
   for (int i = 0; i < kNumInsertions; ++i) {
@@ -235,7 +235,7 @@ TEST_F(TestMMapNTagHashIndex, Concurrent_BasicThreadSafety) {
   std::vector<uint32_t> col_ids = {1};
   MMapNTagHashIndex* index = new MMapNTagHashIndex(sizeof(uint64_t), 100, col_ids);
   ErrorInfo err_info;
-  index->open(test_path_, "/tmp/kwdb_mmap_test/", "", O_CREAT | O_RDWR, err_info);
+  index->open("ntag_hash_index", test_path_, "", O_CREAT | O_RDWR, err_info);
 
   std::vector<std::thread> threads;
   std::atomic<int> success_count(0);
@@ -276,7 +276,7 @@ TEST_F(TestMMapNTagHashIndex, Sync_AfterInsert) {
   std::vector<uint32_t> col_ids = {1};
   MMapNTagHashIndex index(sizeof(uint64_t), 100, col_ids);
   ErrorInfo err_info;
-  index.open(test_path_, "/tmp/kwdb_mmap_test/", "", O_CREAT | O_RDWR, err_info);
+  index.open("ntag_hash_index", test_path_, "", O_CREAT | O_RDWR, err_info);
 
   uint64_t key = 55555;
   index.insert(reinterpret_cast<const char*>(&key), sizeof(key), 1, 6000);
@@ -290,7 +290,7 @@ TEST_F(TestMMapNTagHashIndex, Clear_AfterInsert) {
   std::vector<uint32_t> col_ids = {1};
   MMapNTagHashIndex index(sizeof(uint64_t), 100, col_ids);
   ErrorInfo err_info;
-  index.open(test_path_, "/tmp/kwdb_mmap_test/", "", O_CREAT | O_RDWR, err_info);
+  index.open("ntag_hash_index", test_path_, "", O_CREAT | O_RDWR, err_info);
 
   uint64_t key = 66666;
   index.insert(reinterpret_cast<const char*>(&key), sizeof(key), 1, 7000);
@@ -304,7 +304,7 @@ TEST_F(TestMMapNTagHashIndex, GetAll_MultipleResults) {
   std::vector<uint32_t> col_ids = {1};
   MMapNTagHashIndex index(sizeof(uint64_t), 100, col_ids);
   ErrorInfo err_info;
-  index.open(test_path_, "/tmp/kwdb_mmap_test/", "", O_CREAT | O_RDWR, err_info);
+  index.open("ntag_hash_index", test_path_, "", O_CREAT | O_RDWR, err_info);
 
   uint64_t key = 77777;
 
@@ -323,7 +323,7 @@ TEST_F(TestMMapNTagHashIndex, Open_ExistingIndex) {
     std::vector<uint32_t> col_ids = {1};
     MMapNTagHashIndex index(sizeof(uint64_t), 100, col_ids);
     ErrorInfo err_info;
-    ASSERT_EQ(index.open(test_path_, "/tmp/kwdb_mmap_test/", "", O_CREAT | O_RDWR, err_info), 0);
+    ASSERT_EQ(index.open("ntag_hash_index", test_path_, "", O_CREAT | O_RDWR, err_info), 0);
 
     uint64_t key = 88888;
     index.insert(reinterpret_cast<const char*>(&key), sizeof(key), 1, 9000);
@@ -334,7 +334,7 @@ TEST_F(TestMMapNTagHashIndex, Open_ExistingIndex) {
     MMapNTagHashIndex index(sizeof(uint64_t), 100, col_ids);
     ErrorInfo err_info;
 
-    int result = index.open(test_path_, "/tmp/kwdb_mmap_test/", "", O_RDWR, err_info);
+    int result = index.open("ntag_hash_index", test_path_, "", O_RDWR, err_info);
 
     EXPECT_EQ(result, 0);
   }
@@ -344,7 +344,7 @@ TEST_F(TestMMapNTagHashIndex, ElementCount_Basic) {
   std::vector<uint32_t> col_ids = {1};
   MMapNTagHashIndex index(sizeof(uint64_t), 100, col_ids);
   ErrorInfo err_info;
-  index.open(test_path_, "/tmp/kwdb_mmap_test/", "", O_CREAT | O_RDWR, err_info);
+  index.open("ntag_hash_index", test_path_, "", O_CREAT | O_RDWR, err_info);
 
   uint64_t count = index.getElementCount();
 
@@ -355,7 +355,7 @@ TEST_F(TestMMapNTagHashIndex, Insert_DifferentKeys) {
   std::vector<uint32_t> col_ids = {1};
   MMapNTagHashIndex index(sizeof(uint64_t), 100, col_ids);
   ErrorInfo err_info;
-  index.open(test_path_, "/tmp/kwdb_mmap_test/", "", O_CREAT | O_RDWR, err_info);
+  index.open("ntag_hash_index", test_path_, "", O_CREAT | O_RDWR, err_info);
 
   for (uint64_t i = 0; i < 10; ++i) {
     int result = index.insert(reinterpret_cast<const char*>(&i), sizeof(i), 1, i * 100);
@@ -369,7 +369,7 @@ TEST_F(TestMMapNTagHashIndex, Insert_WithMultipleColIds) {
   std::vector<uint32_t> col_ids = {1, 2, 3};
   MMapNTagHashIndex index(24, 100, col_ids);
   ErrorInfo err_info;
-  index.open(test_path_, "/tmp/kwdb_mmap_test/", "", O_CREAT | O_RDWR, err_info);
+  index.open("ntag_hash_index", test_path_, "", O_CREAT | O_RDWR, err_info);
 
   char key[24] = {0};
   memcpy(key, "abc123", 6);
@@ -395,7 +395,7 @@ TEST_F(TestMMapNTagHashIndex, Remove_ByRowID) {
   std::vector<uint32_t> col_ids = {1};
   MMapNTagHashIndex index(sizeof(uint64_t), 100, col_ids);
   ErrorInfo err_info;
-  index.open(test_path_, "/tmp/kwdb_mmap_test/", "", O_CREAT | O_RDWR, err_info);
+  index.open("ntag_hash_index", test_path_, "", O_CREAT | O_RDWR, err_info);
 
   uint64_t key = 99999;
   TableVersionID version = 1;
