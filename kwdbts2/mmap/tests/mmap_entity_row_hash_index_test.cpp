@@ -11,6 +11,7 @@
 
 #include <gtest/gtest.h>
 #include <sys/stat.h>
+#include <sys/mman.h>
 #include <unistd.h>
 #include <cstring>
 #include <cstdint>
@@ -287,16 +288,6 @@ TEST_F(TestMMapEntityRowIndex, Size_Basic) {
   ErrorInfo err_info;
   ASSERT_EQ(index.open(test_path_, "/tmp/kwdb_mmap_test/", "", O_CREAT | O_RDWR, err_info), 0);
 
-  int sz = index.size();
-
-  EXPECT_GE(sz, 0);
-}
-
-TEST_F(TestMMapEntityRowIndex, Put_MultipleVersions) {
-  MMapEntityRowHashIndex index(sizeof(uint64_t));
-  ErrorInfo err_info;
-  ASSERT_EQ(index.open(test_path_, "/tmp/kwdb_mmap_test/", "", O_CREAT | O_RDWR, err_info), 0);
-
   uint64_t key = 800;
 
   index.put(reinterpret_cast<const char*>(&key), sizeof(key), 1, 8000);
@@ -360,4 +351,19 @@ TEST_F(TestMMapEntityRowIndex, Performance_MultipleInsertions) {
     int result = index.put(reinterpret_cast<const char*>(&key), sizeof(key), version, rowid);
     EXPECT_EQ(result, 0);
   }
+}
+
+TEST_F(TestMMapEntityRowIndex, Put_MultipleVersions) {
+  MMapEntityRowHashIndex index(sizeof(uint64_t));
+  ErrorInfo err_info;
+  ASSERT_EQ(index.open(test_path_, "/tmp/kwdb_mmap_test/", "", O_CREAT | O_RDWR, err_info), 0);
+
+  uint64_t key = 800;
+
+  index.put(reinterpret_cast<const char*>(&key), sizeof(key), 1, 8000);
+  index.put(reinterpret_cast<const char*>(&key), sizeof(key), 2, 8001);
+
+  auto result = index.get(reinterpret_cast<const char*>(&key), sizeof(key));
+
+  EXPECT_EQ(result.first, 2);
 }

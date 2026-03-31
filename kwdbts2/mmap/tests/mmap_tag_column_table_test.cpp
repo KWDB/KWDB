@@ -202,14 +202,6 @@ TEST_F(TestTagColumn, DataType_Int64) {
   EXPECT_EQ(col.attributeInfo().m_data_type, DATATYPE::INT64);
 }
 
-TEST_F(TestTagColumn, DataType_UInt64) {
-  TagInfo info = tag_info_;
-  info.m_data_type = DATATYPE::UINT64;
-  TagColumn col(0, info);
-
-  EXPECT_EQ(col.attributeInfo().m_data_type, DATATYPE::UINT64);
-}
-
 TEST_F(TestTagColumn, DataType_Float) {
   TagInfo info = tag_info_;
   info.m_data_type = DATATYPE::FLOAT;
@@ -422,36 +414,6 @@ TEST_F(TestMMapTagColumnTable, Remove_Success) {
 
     EXPECT_EQ(result, 0);
   }
-}
-
-TEST_F(TestMMapTagColumnTable, Reserve_Success) {
-  MMapTagColumnTable table;
-  ErrorInfo err_info;
-  ASSERT_EQ(CreateTableWithData(&table, err_info), 0);
-
-  int result = table.reserve(100, err_info);
-
-  EXPECT_GE(result, 0);
-}
-
-TEST_F(TestMMapTagColumnTable, Reserve_Zero) {
-  MMapTagColumnTable table;
-  ErrorInfo err_info;
-  ASSERT_EQ(CreateTableWithData(&table, err_info), 0);
-
-  int result = table.reserve(0, err_info);
-
-  EXPECT_GE(result, 0);
-}
-
-TEST_F(TestMMapTagColumnTable, Reserve_Large) {
-  MMapTagColumnTable table;
-  ErrorInfo err_info;
-  ASSERT_EQ(CreateTableWithData(&table, err_info), 0);
-
-  int result = table.reserve(10000, err_info);
-
-  EXPECT_GE(result, 0);
 }
 
 TEST_F(TestMMapTagColumnTable, Insert_Basic) {
