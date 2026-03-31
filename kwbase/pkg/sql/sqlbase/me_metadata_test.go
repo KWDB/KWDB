@@ -317,6 +317,322 @@ func TestDeleteMeMsg(t *testing.T) {
 	}
 }
 
+func TestDeleteMeMsgString(t *testing.T) {
+	msg := &sqlbase.DeleteMeMsg{
+		DatabaseName: "test_db",
+		TableID:      123,
+	}
+	str := msg.String()
+	if str == "" {
+		t.Error("String() should not return empty string")
+	}
+}
+
+func TestDeleteMeMsgProtoMessage(t *testing.T) {
+	msg := &sqlbase.DeleteMeMsg{}
+	msg.ProtoMessage()
+}
+
+func TestDeleteMeMsgDescriptor(t *testing.T) {
+	msg := &sqlbase.DeleteMeMsg{}
+	_, _ = msg.Descriptor()
+}
+
+func TestDeleteMeMsgMarshal(t *testing.T) {
+	msg := &sqlbase.DeleteMeMsg{
+		DatabaseName: "test_db",
+		TableID:      123,
+	}
+	data, err := msg.Marshal()
+	if err != nil {
+		t.Fatalf("Marshal() failed: %v", err)
+	}
+	if len(data) == 0 {
+		t.Error("Marshal() should return non-empty data")
+	}
+}
+
+func TestDeleteMeMsgMarshalTo(t *testing.T) {
+	msg := &sqlbase.DeleteMeMsg{
+		DatabaseName: "test_db",
+		TableID:      123,
+	}
+	buf := make([]byte, 256)
+	n, err := msg.MarshalTo(buf)
+	if err != nil {
+		t.Fatalf("MarshalTo() failed: %v", err)
+	}
+	if n == 0 {
+		t.Error("MarshalTo() should return non-zero size")
+	}
+}
+
+func TestDeleteMeMsgXXXMerge(t *testing.T) {
+	src := &sqlbase.DeleteMeMsg{
+		DatabaseName: "test_db",
+		TableID:      123,
+	}
+	dst := &sqlbase.DeleteMeMsg{}
+	dst.XXX_Merge(src)
+	if dst.DatabaseName != src.DatabaseName || dst.TableID != src.TableID {
+		t.Errorf("XXX_Merge failed")
+	}
+}
+
+func TestKWDBHAInfoString(t *testing.T) {
+	msg := &sqlbase.KWDBHAInfo{
+		ClusterId:        "cluster1",
+		Role:             1,
+		HaStatus:         sqlbase.KWDBHAStatus_HARUNNING,
+		ConnectionStatus: sqlbase.KWDBConnectionStatus_HEALTHY,
+	}
+	str := msg.String()
+	if str == "" {
+		t.Error("String() should not return empty string")
+	}
+}
+
+func TestKWDBHAInfoProtoMessage(t *testing.T) {
+	msg := &sqlbase.KWDBHAInfo{}
+	msg.ProtoMessage()
+}
+
+func TestKWDBHAInfoDescriptor(t *testing.T) {
+	msg := &sqlbase.KWDBHAInfo{}
+	_, _ = msg.Descriptor()
+}
+
+func TestKWDBHAInfoMarshal(t *testing.T) {
+	msg := &sqlbase.KWDBHAInfo{
+		ClusterId: "cluster1",
+		Role:      1,
+	}
+	data, err := msg.Marshal()
+	if err != nil {
+		t.Fatalf("Marshal() failed: %v", err)
+	}
+	if len(data) == 0 {
+		t.Error("Marshal() should return non-empty data")
+	}
+}
+
+func TestKWDBHAInfoMarshalTo(t *testing.T) {
+	msg := &sqlbase.KWDBHAInfo{
+		ClusterId: "cluster1",
+		Role:      1,
+	}
+	buf := make([]byte, 256)
+	n, err := msg.MarshalTo(buf)
+	if err != nil {
+		t.Fatalf("MarshalTo() failed: %v", err)
+	}
+	if n == 0 {
+		t.Error("MarshalTo() should return non-zero size")
+	}
+}
+
+func TestKWDBHAInfoXXXMerge(t *testing.T) {
+	src := &sqlbase.KWDBHAInfo{
+		ClusterId: "cluster1",
+		Role:      1,
+	}
+	dst := &sqlbase.KWDBHAInfo{}
+	dst.XXX_Merge(src)
+	if dst.ClusterId != src.ClusterId || dst.Role != src.Role {
+		t.Errorf("XXX_Merge failed")
+	}
+}
+
+func TestPreRelationString(t *testing.T) {
+	msg := &sqlbase.PreRelation{
+		TableId: 123,
+	}
+	str := msg.String()
+	if str == "" {
+		t.Error("String() should not return empty string")
+	}
+}
+
+func TestPreRelationProtoMessage(t *testing.T) {
+	msg := &sqlbase.PreRelation{}
+	msg.ProtoMessage()
+}
+
+func TestPreRelationDescriptor(t *testing.T) {
+	msg := &sqlbase.PreRelation{}
+	_, _ = msg.Descriptor()
+}
+
+func TestPreRelationMarshal(t *testing.T) {
+	msg := &sqlbase.PreRelation{
+		TableId: 123,
+	}
+	data, err := msg.Marshal()
+	if err != nil {
+		t.Fatalf("Marshal() failed: %v", err)
+	}
+	if len(data) == 0 {
+		t.Error("Marshal() should return non-empty data")
+	}
+}
+
+func TestPreRelationMarshalTo(t *testing.T) {
+	msg := &sqlbase.PreRelation{
+		TableId: 123,
+	}
+	buf := make([]byte, 256)
+	n, err := msg.MarshalTo(buf)
+	if err != nil {
+		t.Fatalf("MarshalTo() failed: %v", err)
+	}
+	if n == 0 {
+		t.Error("MarshalTo() should return non-zero size")
+	}
+}
+
+func TestPreRelationXXXMerge(t *testing.T) {
+	src := &sqlbase.PreRelation{
+		TableId: 123,
+	}
+	dst := &sqlbase.PreRelation{}
+	dst.XXX_Merge(src)
+	if dst.TableId != src.TableId {
+		t.Errorf("XXX_Merge failed")
+	}
+}
+
+func TestCreateCTableString(t *testing.T) {
+	msg := &sqlbase.CreateCTable{
+		CTable: sqlbase.KWDBCTable{
+			Id:   123,
+			Name: "test_table",
+		},
+	}
+	str := msg.String()
+	if str == "" {
+		t.Error("String() should not return empty string")
+	}
+}
+
+func TestCreateCTableProtoMessage(t *testing.T) {
+	msg := &sqlbase.CreateCTable{}
+	msg.ProtoMessage()
+}
+
+func TestCreateCTableDescriptor(t *testing.T) {
+	msg := &sqlbase.CreateCTable{}
+	_, _ = msg.Descriptor()
+}
+
+func TestCreateCTableMarshal(t *testing.T) {
+	msg := &sqlbase.CreateCTable{
+		CTable: sqlbase.KWDBCTable{
+			Id:   123,
+			Name: "test_table",
+		},
+	}
+	data, err := msg.Marshal()
+	if err != nil {
+		t.Fatalf("Marshal() failed: %v", err)
+	}
+	if len(data) == 0 {
+		t.Error("Marshal() should return non-empty data")
+	}
+}
+
+func TestCreateCTableMarshalTo(t *testing.T) {
+	msg := &sqlbase.CreateCTable{
+		CTable: sqlbase.KWDBCTable{
+			Id:   123,
+			Name: "test_table",
+		},
+	}
+	buf := make([]byte, 256)
+	n, err := msg.MarshalTo(buf)
+	if err != nil {
+		t.Fatalf("MarshalTo() failed: %v", err)
+	}
+	if n == 0 {
+		t.Error("MarshalTo() should return non-zero size")
+	}
+}
+
+func TestCreateCTableXXXMerge(t *testing.T) {
+	src := &sqlbase.CreateCTable{
+		CTable: sqlbase.KWDBCTable{
+			Id:   123,
+			Name: "test_table",
+		},
+	}
+	dst := &sqlbase.CreateCTable{}
+	dst.XXX_Merge(src)
+	if dst.CTable.Id != src.CTable.Id {
+		t.Errorf("XXX_Merge failed")
+	}
+}
+
+func TestKWDBCTableString(t *testing.T) {
+	msg := &sqlbase.KWDBCTable{
+		Id:   123,
+		Name: "test_table",
+	}
+	str := msg.String()
+	if str == "" {
+		t.Error("String() should not return empty string")
+	}
+}
+
+func TestKWDBCTableProtoMessage(t *testing.T) {
+	msg := &sqlbase.KWDBCTable{}
+	msg.ProtoMessage()
+}
+
+func TestKWDBCTableDescriptor(t *testing.T) {
+	msg := &sqlbase.KWDBCTable{}
+	_, _ = msg.Descriptor()
+}
+
+func TestKWDBCTableMarshal(t *testing.T) {
+	msg := &sqlbase.KWDBCTable{
+		Id:   123,
+		Name: "test_table",
+	}
+	data, err := msg.Marshal()
+	if err != nil {
+		t.Fatalf("Marshal() failed: %v", err)
+	}
+	if len(data) == 0 {
+		t.Error("Marshal() should return non-empty data")
+	}
+}
+
+func TestKWDBCTableMarshalTo(t *testing.T) {
+	msg := &sqlbase.KWDBCTable{
+		Id:   123,
+		Name: "test_table",
+	}
+	buf := make([]byte, 256)
+	n, err := msg.MarshalTo(buf)
+	if err != nil {
+		t.Fatalf("MarshalTo() failed: %v", err)
+	}
+	if n == 0 {
+		t.Error("MarshalTo() should return non-zero size")
+	}
+}
+
+func TestKWDBCTableXXXMerge(t *testing.T) {
+	src := &sqlbase.KWDBCTable{
+		Id:   123,
+		Name: "test_table",
+	}
+	dst := &sqlbase.KWDBCTable{}
+	dst.XXX_Merge(src)
+	if dst.Id != src.Id || dst.Name != src.Name {
+		t.Errorf("XXX_Merge failed")
+	}
+}
+
 // Test KWDBHAInfo message
 func TestKWDBHAInfo(t *testing.T) {
 	msg := &sqlbase.KWDBHAInfo{
@@ -494,6 +810,262 @@ func TestKWDBKTSColumn(t *testing.T) {
 	}
 }
 
+func TestKWDBTsTableString(t *testing.T) {
+	msg := &sqlbase.KWDBTsTable{
+		TsTableId: 12345,
+		TableName: "test_ts_table",
+	}
+	str := msg.String()
+	if str == "" {
+		t.Error("String() should not return empty string")
+	}
+}
+
+func TestKWDBTsTableProtoMessage(t *testing.T) {
+	msg := &sqlbase.KWDBTsTable{}
+	msg.ProtoMessage()
+}
+
+func TestKWDBTsTableDescriptor(t *testing.T) {
+	msg := &sqlbase.KWDBTsTable{}
+	_, _ = msg.Descriptor()
+}
+
+func TestKWDBTsTableMarshal(t *testing.T) {
+	msg := &sqlbase.KWDBTsTable{
+		TsTableId: 12345,
+		TableName: "test_ts_table",
+	}
+	data, err := msg.Marshal()
+	if err != nil {
+		t.Fatalf("Marshal() failed: %v", err)
+	}
+	if len(data) == 0 {
+		t.Error("Marshal() should return non-empty data")
+	}
+}
+
+func TestKWDBTsTableMarshalTo(t *testing.T) {
+	msg := &sqlbase.KWDBTsTable{
+		TsTableId: 12345,
+		TableName: "test_ts_table",
+	}
+	buf := make([]byte, 256)
+	n, err := msg.MarshalTo(buf)
+	if err != nil {
+		t.Fatalf("MarshalTo() failed: %v", err)
+	}
+	if n == 0 {
+		t.Error("MarshalTo() should return non-zero size")
+	}
+}
+
+func TestKWDBTsTableXXXMerge(t *testing.T) {
+	src := &sqlbase.KWDBTsTable{
+		TsTableId: 12345,
+		TableName: "test_ts_table",
+	}
+	dst := &sqlbase.KWDBTsTable{}
+	dst.XXX_Merge(src)
+	if dst.TsTableId != src.TsTableId || dst.TableName != src.TableName {
+		t.Errorf("XXX_Merge failed")
+	}
+}
+
+func TestKWDBKTSColumnString(t *testing.T) {
+	msg := &sqlbase.KWDBKTSColumn{
+		ColumnId: 1,
+		Name:     "test_column",
+	}
+	str := msg.String()
+	if str == "" {
+		t.Error("String() should not return empty string")
+	}
+}
+
+func TestKWDBKTSColumnProtoMessage(t *testing.T) {
+	msg := &sqlbase.KWDBKTSColumn{}
+	msg.ProtoMessage()
+}
+
+func TestKWDBKTSColumnDescriptor(t *testing.T) {
+	msg := &sqlbase.KWDBKTSColumn{}
+	_, _ = msg.Descriptor()
+}
+
+func TestKWDBKTSColumnMarshal(t *testing.T) {
+	msg := &sqlbase.KWDBKTSColumn{
+		ColumnId: 1,
+		Name:     "test_column",
+	}
+	data, err := msg.Marshal()
+	if err != nil {
+		t.Fatalf("Marshal() failed: %v", err)
+	}
+	if len(data) == 0 {
+		t.Error("Marshal() should return non-empty data")
+	}
+}
+
+func TestKWDBKTSColumnMarshalTo(t *testing.T) {
+	msg := &sqlbase.KWDBKTSColumn{
+		ColumnId: 1,
+		Name:     "test_column",
+	}
+	buf := make([]byte, 256)
+	n, err := msg.MarshalTo(buf)
+	if err != nil {
+		t.Fatalf("MarshalTo() failed: %v", err)
+	}
+	if n == 0 {
+		t.Error("MarshalTo() should return non-zero size")
+	}
+}
+
+func TestKWDBKTSColumnXXXMerge(t *testing.T) {
+	src := &sqlbase.KWDBKTSColumn{
+		ColumnId: 1,
+		Name:     "test_column",
+	}
+	dst := &sqlbase.KWDBKTSColumn{}
+	dst.XXX_Merge(src)
+	if dst.ColumnId != src.ColumnId || dst.Name != src.Name {
+		t.Errorf("XXX_Merge failed")
+	}
+}
+
+func TestNTagIndexInfoString(t *testing.T) {
+	msg := &sqlbase.NTagIndexInfo{
+		IndexId: 1,
+		ColIds:  []uint32{1, 2, 3},
+	}
+	str := msg.String()
+	if str == "" {
+		t.Error("String() should not return empty string")
+	}
+}
+
+func TestNTagIndexInfoProtoMessage(t *testing.T) {
+	msg := &sqlbase.NTagIndexInfo{}
+	msg.ProtoMessage()
+}
+
+func TestNTagIndexInfoDescriptor(t *testing.T) {
+	msg := &sqlbase.NTagIndexInfo{}
+	_, _ = msg.Descriptor()
+}
+
+func TestNTagIndexInfoMarshal(t *testing.T) {
+	msg := &sqlbase.NTagIndexInfo{
+		IndexId: 1,
+		ColIds:  []uint32{1, 2, 3},
+	}
+	data, err := msg.Marshal()
+	if err != nil {
+		t.Fatalf("Marshal() failed: %v", err)
+	}
+	if len(data) == 0 {
+		t.Error("Marshal() should return non-empty data")
+	}
+}
+
+func TestNTagIndexInfoMarshalTo(t *testing.T) {
+	msg := &sqlbase.NTagIndexInfo{
+		IndexId: 1,
+		ColIds:  []uint32{1, 2, 3},
+	}
+	buf := make([]byte, 256)
+	n, err := msg.MarshalTo(buf)
+	if err != nil {
+		t.Fatalf("MarshalTo() failed: %v", err)
+	}
+	if n == 0 {
+		t.Error("MarshalTo() should return non-zero size")
+	}
+}
+
+func TestNTagIndexInfoXXXMerge(t *testing.T) {
+	src := &sqlbase.NTagIndexInfo{
+		IndexId: 1,
+		ColIds:  []uint32{1, 2, 3},
+	}
+	dst := &sqlbase.NTagIndexInfo{}
+	dst.XXX_Merge(src)
+	if dst.IndexId != src.IndexId {
+		t.Errorf("XXX_Merge failed")
+	}
+}
+
+func TestCreateTsTableString(t *testing.T) {
+	msg := &sqlbase.CreateTsTable{
+		TsTable: sqlbase.KWDBTsTable{
+			TsTableId: 12345,
+			TableName: "test_ts_table",
+		},
+	}
+	str := msg.String()
+	if str == "" {
+		t.Error("String() should not return empty string")
+	}
+}
+
+func TestCreateTsTableProtoMessage(t *testing.T) {
+	msg := &sqlbase.CreateTsTable{}
+	msg.ProtoMessage()
+}
+
+func TestCreateTsTableDescriptor(t *testing.T) {
+	msg := &sqlbase.CreateTsTable{}
+	_, _ = msg.Descriptor()
+}
+
+func TestCreateTsTableMarshal(t *testing.T) {
+	msg := &sqlbase.CreateTsTable{
+		TsTable: sqlbase.KWDBTsTable{
+			TsTableId: 12345,
+			TableName: "test_ts_table",
+		},
+	}
+	data, err := msg.Marshal()
+	if err != nil {
+		t.Fatalf("Marshal() failed: %v", err)
+	}
+	if len(data) == 0 {
+		t.Error("Marshal() should return non-empty data")
+	}
+}
+
+func TestCreateTsTableMarshalTo(t *testing.T) {
+	msg := &sqlbase.CreateTsTable{
+		TsTable: sqlbase.KWDBTsTable{
+			TsTableId: 12345,
+			TableName: "test_ts_table",
+		},
+	}
+	buf := make([]byte, 256)
+	n, err := msg.MarshalTo(buf)
+	if err != nil {
+		t.Fatalf("MarshalTo() failed: %v", err)
+	}
+	if n == 0 {
+		t.Error("MarshalTo() should return non-zero size")
+	}
+}
+
+func TestCreateTsTableXXXMerge(t *testing.T) {
+	src := &sqlbase.CreateTsTable{
+		TsTable: sqlbase.KWDBTsTable{
+			TsTableId: 12345,
+			TableName: "test_ts_table",
+		},
+	}
+	dst := &sqlbase.CreateTsTable{}
+	dst.XXX_Merge(src)
+	if dst.TsTable.TsTableId != src.TsTable.TsTableId {
+		t.Errorf("XXX_Merge failed")
+	}
+}
+
 // Test NTagIndexInfo message
 func TestNTagIndexInfo(t *testing.T) {
 	msg := &sqlbase.NTagIndexInfo{
@@ -607,6 +1179,72 @@ func TestBlockInfo(t *testing.T) {
 	}
 }
 
+func TestBlockInfoString(t *testing.T) {
+	msg := &sqlbase.BlockInfo{
+		Level:      "entity_segment",
+		BlocksNum:  10,
+		BlocksSize: 102400,
+	}
+	str := msg.String()
+	if str == "" {
+		t.Error("String() should not return empty string")
+	}
+}
+
+func TestBlockInfoProtoMessage(t *testing.T) {
+	msg := &sqlbase.BlockInfo{}
+	msg.ProtoMessage()
+}
+
+func TestBlockInfoDescriptor(t *testing.T) {
+	msg := &sqlbase.BlockInfo{}
+	_, _ = msg.Descriptor()
+}
+
+func TestBlockInfoMarshal(t *testing.T) {
+	msg := &sqlbase.BlockInfo{
+		Level:      "entity_segment",
+		BlocksNum:  10,
+		BlocksSize: 102400,
+	}
+	data, err := msg.Marshal()
+	if err != nil {
+		t.Fatalf("Marshal() failed: %v", err)
+	}
+	if len(data) == 0 {
+		t.Error("Marshal() should return non-empty data")
+	}
+}
+
+func TestBlockInfoMarshalTo(t *testing.T) {
+	msg := &sqlbase.BlockInfo{
+		Level:      "entity_segment",
+		BlocksNum:  10,
+		BlocksSize: 102400,
+	}
+	buf := make([]byte, 256)
+	n, err := msg.MarshalTo(buf)
+	if err != nil {
+		t.Fatalf("MarshalTo() failed: %v", err)
+	}
+	if n == 0 {
+		t.Error("MarshalTo() should return non-zero size")
+	}
+}
+
+func TestBlockInfoXXXMerge(t *testing.T) {
+	src := &sqlbase.BlockInfo{
+		Level:      "entity_segment",
+		BlocksNum:  10,
+		BlocksSize: 102400,
+	}
+	dst := &sqlbase.BlockInfo{}
+	dst.XXX_Merge(src)
+	if dst.Level != src.Level || dst.BlocksNum != src.BlocksNum {
+		t.Errorf("XXX_Merge failed")
+	}
+}
+
 // Test BlocksDistribution message
 func TestBlocksDistribution(t *testing.T) {
 	blockInfo := sqlbase.BlockInfo{
@@ -677,6 +1315,64 @@ func TestKWDBReplicationMetaData(t *testing.T) {
 
 	if !reflect.DeepEqual(msg, unmarshaled) {
 		t.Errorf("Marshal/Unmarshal failed: got %v, want %v", unmarshaled, msg)
+	}
+}
+
+func TestKWDBReplicationMetaDataString(t *testing.T) {
+	msg := &sqlbase.KWDBReplicationMetaData{
+		DescId: 123,
+	}
+	str := msg.String()
+	if str == "" {
+		t.Error("String() should not return empty string")
+	}
+}
+
+func TestKWDBReplicationMetaDataProtoMessage(t *testing.T) {
+	msg := &sqlbase.KWDBReplicationMetaData{}
+	msg.ProtoMessage()
+}
+
+func TestKWDBReplicationMetaDataDescriptor(t *testing.T) {
+	msg := &sqlbase.KWDBReplicationMetaData{}
+	_, _ = msg.Descriptor()
+}
+
+func TestKWDBReplicationMetaDataMarshal(t *testing.T) {
+	msg := &sqlbase.KWDBReplicationMetaData{
+		DescId: 123,
+	}
+	data, err := msg.Marshal()
+	if err != nil {
+		t.Fatalf("Marshal() failed: %v", err)
+	}
+	if len(data) == 0 {
+		t.Error("Marshal() should return non-empty data")
+	}
+}
+
+func TestKWDBReplicationMetaDataMarshalTo(t *testing.T) {
+	msg := &sqlbase.KWDBReplicationMetaData{
+		DescId: 123,
+	}
+	buf := make([]byte, 256)
+	n, err := msg.MarshalTo(buf)
+	if err != nil {
+		t.Fatalf("MarshalTo() failed: %v", err)
+	}
+	if n == 0 {
+		t.Error("MarshalTo() should return non-zero size")
+	}
+}
+
+func TestKWDBReplicationMetaDataXXXMerge(t *testing.T) {
+	src := &sqlbase.KWDBReplicationMetaData{
+		DescId: 123,
+	}
+	dst := &sqlbase.KWDBReplicationMetaData{}
+	dst.XXX_Merge(src)
+	if dst.DescId != src.DescId {
+		t.Errorf("XXX_Merge failed")
 	}
 }
 
