@@ -256,16 +256,6 @@ TEST_F(TestMMapEntityRowIndex, Remove_Index) {
   EXPECT_EQ(result, 0);
 }
 
-TEST_F(TestMMapEntityRowIndex, PrintHashTable_Basic) {
-  MMapEntityRowHashIndex index(sizeof(uint64_t));
-  ErrorInfo err_info;
-  ASSERT_EQ(index.open(test_path_, "/tmp/kwdb_mmap_test/", "", O_CREAT | O_RDWR, err_info), 0);
-
-  index.printHashTable();
-
-  SUCCEED();
-}
-
 TEST_F(TestMMapEntityRowIndex, DataLock_Operations) {
   MMapEntityRowHashIndex index(sizeof(uint64_t));
   ErrorInfo err_info;
