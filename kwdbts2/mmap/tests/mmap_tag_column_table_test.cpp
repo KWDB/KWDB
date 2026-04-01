@@ -267,6 +267,10 @@ class TestMMapTagColumnTable : public testing::Test {
   }
 
   int CreateTableWithData(MMapTagColumnTable* table, ErrorInfo& err_info) {
+    int open_result = table->open(table_name_, db_path_, tbl_sub_path_, O_RDWR | O_CREAT | O_EXCL, err_info);
+    if (open_result < 0 && err_info.errcode != -2) {
+      return err_info.errcode;
+    }
     return table->create(schema_, entity_group_id_, table_version_, err_info);
   }
 
