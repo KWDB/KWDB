@@ -69,23 +69,23 @@ func TestSpExecContext_ResetExecuteStatus(t *testing.T) {
 func TestSpExecContext_Inherit(t *testing.T) {
 	src := &SpExecContext{}
 	src.Init()
-	
+
 	// Add some variables to source
 	var1 := &exec.LocalVariable{Name: "var1", Typ: *types.Int}
 	src.AddVariable(var1)
-	
+
 	// Add some cursors to source
 	cursor1 := &CursorHelper{}
 	src.AddCursor("cursor1", cursor1)
-	
+
 	dest := &SpExecContext{}
 	dest.Init()
 	dest.Inherit(src)
-	
+
 	// Check that variables were inherited
 	require.Len(t, dest.localVariable, 1)
 	require.Equal(t, "var1", dest.localVariable[0].Name)
-	
+
 	// Check that cursors were inherited
 	require.Len(t, dest.localCurSorMap, 1)
 	require.NotNil(t, dest.localCurSorMap["cursor1"])
@@ -95,11 +95,11 @@ func TestSpExecContext_InheritResult(t *testing.T) {
 	src := &SpExecContext{}
 	src.Init()
 	src.InitResult()
-	
+
 	dest := &SpExecContext{}
 	dest.Init()
 	dest.InheritResult(src)
-	
+
 	// Check that results were inherited
 	require.Equal(t, src.results, dest.results)
 	require.Equal(t, src.continueExec, dest.continueExec)
@@ -108,19 +108,19 @@ func TestSpExecContext_InheritResult(t *testing.T) {
 func TestSpExecContext_AddVariable(t *testing.T) {
 	ctx := &SpExecContext{}
 	ctx.Init()
-	
+
 	// Add a variable
 	var1 := &exec.LocalVariable{Name: "var1", Typ: *types.Int}
 	ctx.AddVariable(var1)
-	
+
 	require.Len(t, ctx.localVariable, 1)
 	require.Equal(t, "var1", ctx.localVariable[0].Name)
 	require.Equal(t, 0, ctx.localVarMap["var1"])
-	
+
 	// Update the same variable
 	var1Updated := &exec.LocalVariable{Name: "var1", Typ: *types.String}
 	ctx.AddVariable(var1Updated)
-	
+
 	require.Len(t, ctx.localVariable, 1)
 	require.Equal(t, *types.String, ctx.localVariable[0].Typ)
 }
@@ -128,15 +128,15 @@ func TestSpExecContext_AddVariable(t *testing.T) {
 func TestSpExecContext_SetVariable(t *testing.T) {
 	ctx := &SpExecContext{}
 	ctx.Init()
-	
+
 	// Add a variable
 	var1 := &exec.LocalVariable{Name: "var1", Typ: *types.Int}
 	ctx.AddVariable(var1)
-	
+
 	// Set variable value
 	datum := tree.NewDInt(42)
 	ctx.SetVariable(0, datum)
-	
+
 	require.Equal(t, datum, ctx.localVariable[0].Data)
 }
 
@@ -210,11 +210,11 @@ func TestSpExecContext_SetExternalVariable(t *testing.T) {
 func TestSpExecContext_GetVariableName(t *testing.T) {
 	ctx := &SpExecContext{}
 	ctx.Init()
-	
+
 	// Add a variable
 	var1 := &exec.LocalVariable{Name: "var1", Typ: *types.Int}
 	ctx.AddVariable(var1)
-	
+
 	require.Equal(t, "var1", ctx.GetVariableName(0))
 	require.Empty(t, ctx.GetVariableName(999)) // Non-existent index
 }
@@ -222,36 +222,36 @@ func TestSpExecContext_GetVariableName(t *testing.T) {
 func TestSpExecContext_SetVariableType(t *testing.T) {
 	ctx := &SpExecContext{}
 	ctx.Init()
-	
+
 	// Add a variable
 	var1 := &exec.LocalVariable{Name: "var1", Typ: *types.Int}
 	ctx.AddVariable(var1)
-	
+
 	// Set variable type
 	ctx.SetVariableType(0, *types.String)
-	
+
 	require.Equal(t, *types.String, ctx.localVariable[0].Typ)
 }
 
 func TestSpExecContext_GetVariable(t *testing.T) {
 	ctx := &SpExecContext{}
 	ctx.Init()
-	
+
 	// Add a variable
 	var1 := &exec.LocalVariable{Name: "var1", Typ: *types.Int}
 	ctx.AddVariable(var1)
-	
+
 	require.Equal(t, var1, ctx.GetVariable(0))
 }
 
 func TestSpExecContext_GetLocalVariable(t *testing.T) {
 	ctx := &SpExecContext{}
 	ctx.Init()
-	
+
 	// Add a variable
 	var1 := &exec.LocalVariable{Name: "var1", Typ: *types.Int}
 	ctx.AddVariable(var1)
-	
+
 	vars := ctx.GetLocalVariable()
 	require.Len(t, vars, 1)
 	require.Equal(t, var1, vars[0])
@@ -260,11 +260,11 @@ func TestSpExecContext_GetLocalVariable(t *testing.T) {
 func TestSpExecContext_GetLocalCurSorMap(t *testing.T) {
 	ctx := &SpExecContext{}
 	ctx.Init()
-	
+
 	// Add a cursor
 	cursor1 := &CursorHelper{}
 	ctx.AddCursor("cursor1", cursor1)
-	
+
 	cursors := ctx.GetLocalCurSorMap()
 	require.Len(t, cursors, 1)
 	require.NotNil(t, cursors["cursor1"])
@@ -274,7 +274,7 @@ func TestSpExecContext_GetVariableLen(t *testing.T) {
 	ctx := &SpExecContext{}
 	ctx.Init()
 	require.Equal(t, 0, ctx.GetVariableLen())
-	
+
 	// Add a variable
 	var1 := &exec.LocalVariable{Name: "var1", Typ: *types.Int}
 	ctx.AddVariable(var1)
@@ -284,11 +284,11 @@ func TestSpExecContext_GetVariableLen(t *testing.T) {
 func TestSpExecContext_AddCursor(t *testing.T) {
 	ctx := &SpExecContext{}
 	ctx.Init()
-	
+
 	// Add a cursor
 	cursor1 := &CursorHelper{}
 	ctx.AddCursor("cursor1", cursor1)
-	
+
 	require.Len(t, ctx.localCurSorMap, 1)
 	require.NotNil(t, ctx.localCurSorMap["cursor1"])
 }
@@ -296,15 +296,15 @@ func TestSpExecContext_AddCursor(t *testing.T) {
 func TestSpExecContext_FindCursor(t *testing.T) {
 	ctx := &SpExecContext{}
 	ctx.Init()
-	
+
 	// Add a cursor
 	cursor1 := &CursorHelper{}
 	ctx.AddCursor("cursor1", cursor1)
-	
+
 	// Find existing cursor
 	foundCursor := ctx.FindCursor("cursor1")
 	require.NotNil(t, foundCursor)
-	
+
 	// Find non-existent cursor
 	notFoundCursor := ctx.FindCursor("cursor999")
 	require.Nil(t, notFoundCursor)
@@ -313,34 +313,34 @@ func TestSpExecContext_FindCursor(t *testing.T) {
 func TestSpExecContext_SetHandler(t *testing.T) {
 	ctx := &SpExecContext{}
 	ctx.Init()
-	
+
 	// Create a handler
 	handler := &HandlerHelper{Typ: tree.NOTFOUND}
 	ctx.SetHandler(tree.ModeContinue, handler)
-	
+
 	require.Equal(t, handler, ctx.handler[tree.ModeContinue])
 }
 
 func TestSpExecContext_SetExceptionErr(t *testing.T) {
 	ctx := &SpExecContext{}
 	ctx.Init()
-	
+
 	// Set an exception error
 	testErr := pgerror.Newf(pgcode.DatatypeMismatch, "test error")
 	ctx.SetExceptionErr(testErr)
-	
+
 	require.Equal(t, testErr, ctx.GetExceptionErr())
 }
 
 func TestSpExecContext_addReturn(t *testing.T) {
 	ctx := &SpExecContext{}
 	ctx.Init()
-	
+
 	// Add a return
 	handler := &HandlerHelper{}
 	testErr := pgerror.Newf(pgcode.DatatypeMismatch, "test error")
 	ctx.addReturn(HandlerLabel, handler, testErr)
-	
+
 	require.True(t, ctx.NeedReturn())
 	require.Equal(t, HandlerLabel, ctx.ReturnLabel())
 	require.Equal(t, handler, ctx.GetReturnHandler())
@@ -350,11 +350,11 @@ func TestSpExecContext_addReturn(t *testing.T) {
 func TestSpExecContext_CheckAndRemoveReturn(t *testing.T) {
 	ctx := &SpExecContext{}
 	ctx.Init()
-	
+
 	// Add a return
 	ctx.addReturn("testLabel", nil, nil)
 	require.True(t, ctx.NeedReturn())
-	
+
 	// Check and remove return with matching label
 	ctx.CheckAndRemoveReturn("testLabel")
 	require.False(t, ctx.NeedReturn())
@@ -365,7 +365,7 @@ func TestSpExecContext_NeedReturn(t *testing.T) {
 	ctx := &SpExecContext{}
 	ctx.Init()
 	require.False(t, ctx.NeedReturn())
-	
+
 	// Add a return
 	ctx.addReturn("testLabel", nil, nil)
 	require.True(t, ctx.NeedReturn())
@@ -375,7 +375,7 @@ func TestSpExecContext_ContinueStatus(t *testing.T) {
 	ctx := &SpExecContext{}
 	ctx.Init()
 	require.False(t, ctx.ContinueStatus())
-	
+
 	// Add a return with default label
 	ctx.addReturn(DefaultLabel, nil, nil)
 	require.True(t, ctx.ContinueStatus())
@@ -385,7 +385,7 @@ func TestSpExecContext_ReturnLabel(t *testing.T) {
 	ctx := &SpExecContext{}
 	ctx.Init()
 	require.Empty(t, ctx.ReturnLabel())
-	
+
 	// Add a return
 	ctx.addReturn("testLabel", nil, nil)
 	require.Equal(t, "testLabel", ctx.ReturnLabel())
@@ -394,11 +394,11 @@ func TestSpExecContext_ReturnLabel(t *testing.T) {
 func TestSpExecContext_GetProcedureTxn(t *testing.T) {
 	ctx := &SpExecContext{}
 	ctx.Init()
-	
+
 	// Get default transaction state
 	defaultState := ctx.GetProcedureTxn()
 	require.Equal(t, tree.ProcedureTransactionDefault, defaultState)
-	
+
 	// Set and get custom transaction state
 	customState := tree.ProcedureTxnState(1) // START
 	ctx.SetProcedureTxn(customState)
@@ -408,19 +408,19 @@ func TestSpExecContext_GetProcedureTxn(t *testing.T) {
 func TestSpExecContext_IsSetChildStackIndex(t *testing.T) {
 	ctx := &SpExecContext{}
 	ctx.Init()
-	
+
 	// Test with default label
 	ctx.addReturn(DefaultLabel, nil, nil)
 	require.True(t, ctx.IsSetChildStackIndex())
-	
+
 	// Test with handler label
 	ctx.addReturn(HandlerLabel, nil, nil)
 	require.True(t, ctx.IsSetChildStackIndex())
-	
+
 	// Test with into label
 	ctx.addReturn(IntoLabel, nil, nil)
 	require.True(t, ctx.IsSetChildStackIndex())
-	
+
 	// Test with custom label
 	ctx.addReturn("customLabel", nil, nil)
 	require.False(t, ctx.IsSetChildStackIndex())
@@ -429,13 +429,13 @@ func TestSpExecContext_IsSetChildStackIndex(t *testing.T) {
 func TestSpExecContext_Close(t *testing.T) {
 	ctx := &SpExecContext{}
 	ctx.Init()
-	
+
 	// Add a return
 	ctx.addReturn("testLabel", &HandlerHelper{}, nil)
-	
+
 	// Close the context
 	ctx.Close(context.Background())
-	
+
 	// Check that resources were cleaned up
 	require.Nil(t, ctx.results)
 	require.Empty(t, ctx.ret.labelName)

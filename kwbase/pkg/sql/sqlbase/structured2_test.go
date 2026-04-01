@@ -18,6 +18,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/types"
+	"gitee.com/kwbasedb/kwbase/pkg/util/protoutil"
 	"github.com/stretchr/testify/require"
 )
 
@@ -1476,7 +1477,7 @@ func TestTableDescriptorMarshal(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			data, err := tc.input.Marshal()
+			data, err := protoutil.Marshal(tc.input)
 			require.NoError(t, err)
 			require.Equal(t, tc.expected, data)
 		})
@@ -1813,7 +1814,7 @@ func TestColumnDescriptorMarshal(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			data, err := tc.input.Marshal()
+			data, err := protoutil.Marshal(tc.input)
 			require.NoError(t, err)
 			require.Equal(t, tc.expected, data)
 		})
@@ -1874,7 +1875,7 @@ func TestIndexDescriptorMarshal(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			data, err := tc.input.Marshal()
+			data, err := protoutil.Marshal(tc.input)
 			require.NoError(t, err)
 			require.Equal(t, tc.expected, data)
 		})
@@ -1935,7 +1936,7 @@ func TestDatabaseDescriptorMarshal(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			data, err := tc.input.Marshal()
+			data, err := protoutil.Marshal(tc.input)
 			require.NoError(t, err)
 			require.Equal(t, tc.expected, data)
 		})

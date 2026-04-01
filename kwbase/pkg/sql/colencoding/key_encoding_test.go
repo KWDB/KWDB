@@ -1,3 +1,14 @@
+// Copyright (c) 2022-present, Shanghai Yunxi Technology Co, Ltd. All rights reserved.
+//
+// This software (KWDB) is licensed under Mulan PSL v2.
+// You can use this software according to the terms and conditions of the Mulan PSL v2.
+// You may obtain a copy of Mulan PSL v2 at:
+//          http://license.coscl.org.cn/MulanPSL2
+// THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND,
+// EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT,
+// MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
+// See the Mulan PSL v2 for more details.
+
 package colencoding
 
 import (
@@ -13,6 +24,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/types"
 	"gitee.com/kwbasedb/kwbase/pkg/util/encoding"
 	"gitee.com/kwbasedb/kwbase/pkg/util/leaktest"
+	"gitee.com/kwbasedb/kwbase/pkg/util/timeutil"
 	"gitee.com/kwbasedb/kwbase/pkg/util/timeutil/pgdate"
 	"github.com/cockroachdb/apd"
 	"github.com/stretchr/testify/require"
@@ -42,7 +54,7 @@ func TestDecodeKeyValsToCols(t *testing.T) {
 		{types.Bytes, tree.NewDBytes("bytes"), sqlbase.IndexDescriptor_ASC, false},
 		{types.Decimal, &tree.DDecimal{Decimal: *apd.New(123, -2)}, sqlbase.IndexDescriptor_ASC, false},
 		{types.Date, createDDate(100), sqlbase.IndexDescriptor_ASC, false},
-		{types.Timestamp, tree.MakeDTimestamp(time.Unix(1000, 0), time.Microsecond), sqlbase.IndexDescriptor_ASC, false},
+		{types.Timestamp, tree.MakeDTimestamp(timeutil.Unix(1000, 0), time.Microsecond), sqlbase.IndexDescriptor_ASC, false},
 		// Nulls
 		{types.Int, tree.DNull, sqlbase.IndexDescriptor_ASC, true},
 		{types.String, tree.DNull, sqlbase.IndexDescriptor_DESC, true},
@@ -95,7 +107,7 @@ func TestUnmarshalColumnValueToCol(t *testing.T) {
 		{types.Bytes, tree.NewDBytes("bytes")},
 		{types.Decimal, &tree.DDecimal{Decimal: *apd.New(123, -2)}},
 		{types.Date, createDDate(100)},
-		{types.Timestamp, tree.MakeDTimestamp(time.Unix(1000, 0), time.Microsecond)},
+		{types.Timestamp, tree.MakeDTimestamp(timeutil.Unix(1000, 0), time.Microsecond)},
 	}
 
 	for _, tt := range tests {

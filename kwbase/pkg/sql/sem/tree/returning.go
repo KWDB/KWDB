@@ -103,6 +103,9 @@ func (*ReturningIntoClause) returningClause() {}
 // HasReturningClause determines if a ReturningClause is present, given a
 // variant of the ReturningClause interface.
 func HasReturningClause(clause ReturningClause) bool {
+	if clause == nil {
+		return false
+	}
 	_, ok := clause.(*NoReturningClause)
 	return !ok
 }

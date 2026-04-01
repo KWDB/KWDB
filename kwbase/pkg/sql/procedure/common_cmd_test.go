@@ -341,7 +341,7 @@ func TestSetHandlerIns_Execute(t *testing.T) {
 
 	setHandlerIns := &SetHandlerIns{
 		HandlerHelper: HandlerHelper{
-			Typ: tree.NOTFOUND,
+			Typ:    tree.NOTFOUND,
 			Action: &MockInstruction{},
 		},
 		handlerMode: tree.ModeContinue,

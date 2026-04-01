@@ -19,10 +19,11 @@ import (
 
 	"gitee.com/kwbasedb/kwbase/pkg/security/audit/event/target"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sessiondata"
+	"gitee.com/kwbasedb/kwbase/pkg/util/timeutil"
 )
 
 func TestMakeAuditInfo_Basic(t *testing.T) {
-	start := time.Now().Add(-2 * time.Second)
+	start := timeutil.Now().Add(-2 * time.Second)
 	addr := &net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 5432}
 
 	ai := MakeAuditInfo(start,

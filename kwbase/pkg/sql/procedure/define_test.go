@@ -52,7 +52,7 @@ func TestResult_HasNextResult(t *testing.T) {
 	result.AddQueryResult(queryResult2)
 
 	// Test HasNextResult
-	require.True(t, result.HasNextResult()) // Should find second result
+	require.True(t, result.HasNextResult())  // Should find second result
 	require.False(t, result.HasNextResult()) // Should return false after all results
 }
 
@@ -121,7 +121,7 @@ func TestResult_Next(t *testing.T) {
 	ctx := context.TODO()
 	monitor.Start(ctx, nil, mon.MakeStandaloneBudget(math.MaxInt64))
 	defer monitor.Stop(ctx)
-	
+
 	// Add a QueryResult with a row container
 	// datumAlloc := &sqlbase.DatumAlloc{}
 	rowContainer := rowcontainer.NewRowContainer(monitor.MakeBoundAccount(), sqlbase.ColTypeInfoFromResCols(sqlbase.ResultColumns{{Typ: types.Int}}), 1)

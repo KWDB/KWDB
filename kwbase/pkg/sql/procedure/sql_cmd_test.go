@@ -92,7 +92,7 @@ func TestDealWithHandleByTypeAndMode(t *testing.T) {
 
 	// Create handler
 	handler := &HandlerHelper{
-		Typ: tree.NOTFOUND,
+		Typ:    tree.NOTFOUND,
 		Action: &MockInstruction{},
 	}
 	rCtx.SetHandler(tree.ModeContinue, handler)
@@ -119,11 +119,11 @@ func TestDealWithHandleByType(t *testing.T) {
 
 	// Create handlers
 	continueHandler := &HandlerHelper{
-		Typ: tree.NOTFOUND,
+		Typ:    tree.NOTFOUND,
 		Action: &MockInstruction{},
 	}
 	exitHandler := &HandlerHelper{
-		Typ: tree.NOTFOUND,
+		Typ:    tree.NOTFOUND,
 		Action: &MockInstruction{},
 	}
 	rCtx.SetHandler(tree.ModeContinue, continueHandler)
