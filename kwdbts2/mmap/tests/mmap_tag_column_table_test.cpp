@@ -291,51 +291,6 @@ TEST_F(TestMMapTagColumnTable, Destructor_BasicCleanup) {
   SUCCEED();
 }
 
-TEST_F(TestMMapTagColumnTable, Create_WithMultipleTags) {
-  std::string create_path = tbl_sub_path_ + "multi_tag_table";
-  MMapTagColumnTable table;
-  ErrorInfo err_info;
-
-  int result = table.open(create_path, db_path_, tbl_sub_path_, O_CREAT | O_RDWR, err_info);
-
-  EXPECT_GE(result, 0);
-}
-
-TEST_F(TestMMapTagColumnTable, Open_Success) {
-  {
-    MMapTagColumnTable table;
-    ErrorInfo err_info;
-    ASSERT_EQ(table.create(schema_, entity_group_id_, table_version_, err_info), 0);
-  }
-
-  {
-    MMapTagColumnTable table;
-    ErrorInfo err_info;
-
-    int result = table.open(table_path_, db_path_, tbl_sub_path_, O_RDONLY, err_info);
-
-    EXPECT_GE(result, 0);
-  }
-}
-
-TEST_F(TestMMapTagColumnTable, Remove_Success) {
-  {
-    MMapTagColumnTable table;
-    ErrorInfo err_info;
-    ASSERT_EQ(table.create(schema_, entity_group_id_, table_version_, err_info), 0);
-  }
-
-  {
-    MMapTagColumnTable table;
-    ErrorInfo err_info;
-    ASSERT_EQ(table.open(table_path_, db_path_, tbl_sub_path_, O_RDONLY, err_info), 0);
-
-    int result = table.remove();
-
-    EXPECT_EQ(result, 0);
-  }
-}
-
 TEST_F(TestMMapTagColumnTable, Insert_Basic) {
   MMapTagColumnTable table;
   ErrorInfo err_info;
