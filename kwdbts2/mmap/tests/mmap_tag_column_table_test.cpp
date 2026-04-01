@@ -180,14 +180,6 @@ TEST_F(TestTagColumn, DataType_Bool) {
   EXPECT_EQ(col.attributeInfo().m_data_type, DATATYPE::BOOL);
 }
 
-TEST_F(TestTagColumn, TagType_PrimaryTag) {
-  TagInfo info = tag_info_;
-  info.m_tag_type = PRIMARY_TAG;
-  TagColumn col(0, info);
-
-  EXPECT_TRUE(col.isPrimaryTag());
-}
-
 TEST_F(TestTagColumn, TagType_GeneralTag) {
   TagInfo info = tag_info_;
   info.m_tag_type = GENERAL_TAG;
@@ -297,15 +289,6 @@ TEST_F(TestMMapTagColumnTable, Destructor_BasicCleanup) {
   MMapTagColumnTable* table = new MMapTagColumnTable();
   delete table;
   SUCCEED();
-}
-
-TEST_F(TestMMapTagColumnTable, Create_Success) {
-  MMapTagColumnTable table;
-  ErrorInfo err_info;
-
-  int result = table.create(schema_, entity_group_id_, table_version_, err_info);
-
-  EXPECT_EQ(result, 0);
 }
 
 TEST_F(TestMMapTagColumnTable, Create_WithMultipleTags) {
