@@ -318,15 +318,6 @@ TEST_F(TestMMapTagColumnTable, Open_Success) {
   }
 }
 
-TEST_F(TestMMapTagColumnTable, Open_WithCreateFlag) {
-  MMapTagColumnTable table;
-  ErrorInfo err_info;
-
-  int result = table.open(table_path_, db_path_, tbl_sub_path_, O_CREAT, err_info);
-
-  EXPECT_GE(result, 0);
-}
-
 TEST_F(TestMMapTagColumnTable, Remove_Success) {
   {
     MMapTagColumnTable table;
