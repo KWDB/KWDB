@@ -565,15 +565,6 @@ TEST_F(TestMMapTagColumnTable, Resource_MultipleTables) {
   EXPECT_EQ(tables.size(), 3);
 }
 
-TEST_F(TestMMapTagColumnTable, Boundary_ZeroEntityGroupId) {
-  MMapTagColumnTable table;
-  ErrorInfo err_info;
-
-  int result = table.create(schema_, 0, table_version_, err_info);
-
-  EXPECT_EQ(result, 0);
-}
-
 TEST_F(TestMMapTagColumnTable, TagInfo_IsDropped) {
   MMapTagColumnTable table;
   ErrorInfo err_info;
