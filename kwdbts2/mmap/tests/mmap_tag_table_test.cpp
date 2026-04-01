@@ -159,21 +159,11 @@ TEST_F(TestTagTable, Open_Success) {
   }
 }
 
-TEST_F(TestTagTable, Open_WithoutCreate) {
-  TagTable tag_table(db_path_, tbl_sub_path_, table_id_, entity_group_id_);
-  std::vector<TableVersion> invalid_versions;
-  ErrorInfo err_info;
-
-  int result = tag_table.open(invalid_versions, err_info);
-
-  EXPECT_EQ(result, 0);
-}
-
 TEST_F(TestTagTable, Remove_Success) {
   {
     TagTable tag_table(db_path_, tbl_sub_path_, table_id_, entity_group_id_);
     ErrorInfo err_info;
-    ASSERT_EQ(tag_table.create(schema_, table_version_, {}, err_info), 0);
+    ASSERT_EQ(CreateTagTableWithData(&tag_table, err_info), 0);
   }
 
   {
@@ -323,16 +313,10 @@ TEST_F(TestTagTable, GetLatestOSN_Empty) {
   EXPECT_EQ(osn, 0);
 }
 
-TEST_F(TestTagTable, Sync_WithoutCreate) {
-  TagTable tag_table(db_path_, tbl_sub_path_, table_id_, entity_group_id_);
-
-  tag_table.sync(0);
-
-  SUCCEED();
-}
-
 TEST_F(TestTagTable, GetVersionManager_InitiallyNull) {
   TagTable tag_table(db_path_, tbl_sub_path_, table_id_, entity_group_id_);
+  ErrorInfo err_info;
+  ASSERT_EQ(CreateTagTableWithData(&tag_table, err_info), 0);
 
   TagTableVersionManager* version_mgr = tag_table.GetTagTableVersionManager();
 
@@ -341,6 +325,8 @@ TEST_F(TestTagTable, GetVersionManager_InitiallyNull) {
 
 TEST_F(TestTagTable, GetPartitionManager_InitiallyNull) {
   TagTable tag_table(db_path_, tbl_sub_path_, table_id_, entity_group_id_);
+  ErrorInfo err_info;
+  ASSERT_EQ(CreateTagTableWithData(&tag_table, err_info), 0);
 
   TagPartitionTableManager* partition_mgr = tag_table.GetTagPartitionTableManager();
 
