@@ -28,6 +28,7 @@ import (
 
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
 	"gitee.com/kwbasedb/kwbase/pkg/util/json"
+	"gitee.com/kwbasedb/kwbase/pkg/util/protoutil"
 	"github.com/stretchr/testify/require"
 )
 
@@ -55,7 +56,7 @@ func TestDecodeMessage(t *testing.T) {
 	// Test decoding with valid message
 	t.Run("valid message", func(t *testing.T) {
 		attr := &roachpb.Attributes{Attrs: []string{"ssd", "fast"}}
-		data, err := attr.Marshal()
+		data, err := protoutil.Marshal(attr)
 		require.NoError(t, err)
 
 		decodedMsg, err := DecodeMessage("kwbase.roachpb.Attributes", data)
@@ -91,7 +92,7 @@ func TestMessageToJSON(t *testing.T) {
 	t.Run("mock message", func(t *testing.T) {
 		decodedMsg, _ := DecodeMessage("invalid.Message", []byte("invalid data"))
 		jsonObj, err := MessageToJSON(decodedMsg, true)
-		// This should fail because mockMessage doesn't implement the full proto.Message interface
+		// This should fail because mockMessage doesn't implement the full protoutil.Message interface
 		require.Error(t, err)
 		require.Nil(t, jsonObj)
 	})

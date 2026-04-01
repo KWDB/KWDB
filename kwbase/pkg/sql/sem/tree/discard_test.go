@@ -9,22 +9,36 @@
 // MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
 // See the Mulan PSL v2 for more details.
 
-package delegate_test
+package tree
 
 import (
-	"os"
 	"testing"
 
-	"gitee.com/kwbasedb/kwbase/pkg/security"
-	"gitee.com/kwbasedb/kwbase/pkg/security/securitytest"
-	"gitee.com/kwbasedb/kwbase/pkg/server"
-	"gitee.com/kwbasedb/kwbase/pkg/testutils/serverutils"
-	"gitee.com/kwbasedb/kwbase/pkg/testutils/testcluster"
+	"gitee.com/kwbasedb/kwbase/pkg/util/leaktest"
+	"github.com/stretchr/testify/require"
 )
 
-func TestMain(m *testing.M) {
-	security.SetAssetLoader(securitytest.EmbeddedAssets)
-	serverutils.InitTestServerFactory(server.TestServerFactory)
-	serverutils.InitTestClusterFactory(testcluster.TestClusterFactory)
-	os.Exit(m.Run())
+func TestDiscardFormat(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	testCases := []struct {
+		name     string
+		node     *Discard
+		expected string
+	}{
+		{
+			name:     "discard all",
+			node:     &Discard{Mode: DiscardModeAll},
+			expected: `DISCARD ALL`,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := NewFmtCtx(FmtSimple)
+			tc.node.Format(ctx)
+			require.Equal(t, tc.expected, ctx.CloseAndGetString())
+			require.Equal(t, tc.expected, tc.node.String())
+		})
+	}
 }
