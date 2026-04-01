@@ -184,7 +184,10 @@ func testGetResultCallBKFn(p Plan) (Plan, sqlbase.ResultColumns) {
 func testRunPlanCallBKFn(
 	r RunParam, p Plan, rc *rowcontainer.RowContainer, s tree.StatementType,
 ) (int, error) {
-	rc.AddRow(r.GetCtx(), tree.Datums{tree.NewDInt(1)})
+	_, err := rc.AddRow(r.GetCtx(), tree.Datums{tree.NewDInt(1)})
+	if err != nil {
+		return 1, err
+	}
 	return 1, nil
 }
 
