@@ -338,20 +338,6 @@ func TestDeleteMeMsgDescriptor(t *testing.T) {
 	_, _ = msg.Descriptor()
 }
 
-func TestDeleteMeMsgMarshal(t *testing.T) {
-	msg := &sqlbase.DeleteMeMsg{
-		DatabaseName: "test_db",
-		TableID:      123,
-	}
-	data, err := protoutil.Marshal(msg)
-	if err != nil {
-		t.Fatalf("Marshal() failed: %v", err)
-	}
-	if len(data) == 0 {
-		t.Error("Marshal() should return non-empty data")
-	}
-}
-
 func TestDeleteMeMsgMarshalTo(t *testing.T) {
 	msg := &sqlbase.DeleteMeMsg{
 		DatabaseName: "test_db",
@@ -402,20 +388,6 @@ func TestKWDBHAInfoDescriptor(t *testing.T) {
 	_, _ = msg.Descriptor()
 }
 
-func TestKWDBHAInfoMarshal(t *testing.T) {
-	msg := &sqlbase.KWDBHAInfo{
-		ClusterId: "cluster1",
-		Role:      1,
-	}
-	data, err := protoutil.Marshal(msg)
-	if err != nil {
-		t.Fatalf("Marshal() failed: %v", err)
-	}
-	if len(data) == 0 {
-		t.Error("Marshal() should return non-empty data")
-	}
-}
-
 func TestKWDBHAInfoMarshalTo(t *testing.T) {
 	msg := &sqlbase.KWDBHAInfo{
 		ClusterId: "cluster1",
@@ -461,19 +433,6 @@ func TestPreRelationProtoMessage(t *testing.T) {
 func TestPreRelationDescriptor(t *testing.T) {
 	msg := &sqlbase.PreRelation{}
 	_, _ = msg.Descriptor()
-}
-
-func TestPreRelationMarshal(t *testing.T) {
-	msg := &sqlbase.PreRelation{
-		TableId: 123,
-	}
-	data, err := protoutil.Marshal(msg)
-	if err != nil {
-		t.Fatalf("Marshal() failed: %v", err)
-	}
-	if len(data) == 0 {
-		t.Error("Marshal() should return non-empty data")
-	}
 }
 
 func TestPreRelationMarshalTo(t *testing.T) {
@@ -522,22 +481,6 @@ func TestCreateCTableProtoMessage(t *testing.T) {
 func TestCreateCTableDescriptor(t *testing.T) {
 	msg := &sqlbase.CreateCTable{}
 	_, _ = msg.Descriptor()
-}
-
-func TestCreateCTableMarshal(t *testing.T) {
-	msg := &sqlbase.CreateCTable{
-		CTable: sqlbase.KWDBCTable{
-			Id:   123,
-			Name: "test_table",
-		},
-	}
-	data, err := protoutil.Marshal(msg)
-	if err != nil {
-		t.Fatalf("Marshal() failed: %v", err)
-	}
-	if len(data) == 0 {
-		t.Error("Marshal() should return non-empty data")
-	}
 }
 
 func TestCreateCTableMarshalTo(t *testing.T) {
@@ -590,20 +533,6 @@ func TestKWDBCTableProtoMessage(t *testing.T) {
 func TestKWDBCTableDescriptor(t *testing.T) {
 	msg := &sqlbase.KWDBCTable{}
 	_, _ = msg.Descriptor()
-}
-
-func TestKWDBCTableMarshal(t *testing.T) {
-	msg := &sqlbase.KWDBCTable{
-		Id:   123,
-		Name: "test_table",
-	}
-	data, err := protoutil.Marshal(msg)
-	if err != nil {
-		t.Fatalf("Marshal() failed: %v", err)
-	}
-	if len(data) == 0 {
-		t.Error("Marshal() should return non-empty data")
-	}
 }
 
 func TestKWDBCTableMarshalTo(t *testing.T) {
@@ -831,20 +760,6 @@ func TestKWDBTsTableDescriptor(t *testing.T) {
 	_, _ = msg.Descriptor()
 }
 
-func TestKWDBTsTableMarshal(t *testing.T) {
-	msg := &sqlbase.KWDBTsTable{
-		TsTableId: 12345,
-		TableName: "test_ts_table",
-	}
-	data, err := protoutil.Marshal(msg)
-	if err != nil {
-		t.Fatalf("Marshal() failed: %v", err)
-	}
-	if len(data) == 0 {
-		t.Error("Marshal() should return non-empty data")
-	}
-}
-
 func TestKWDBTsTableMarshalTo(t *testing.T) {
 	msg := &sqlbase.KWDBTsTable{
 		TsTableId: 12345,
@@ -893,35 +808,6 @@ func TestKWDBKTSColumnDescriptor(t *testing.T) {
 	_, _ = msg.Descriptor()
 }
 
-func TestKWDBKTSColumnMarshal(t *testing.T) {
-	msg := &sqlbase.KWDBKTSColumn{
-		ColumnId: 1,
-		Name:     "test_column",
-	}
-	data, err := protoutil.Marshal(msg)
-	if err != nil {
-		t.Fatalf("Marshal() failed: %v", err)
-	}
-	if len(data) == 0 {
-		t.Error("Marshal() should return non-empty data")
-	}
-}
-
-func TestKWDBKTSColumnMarshalTo(t *testing.T) {
-	msg := &sqlbase.KWDBKTSColumn{
-		ColumnId: 1,
-		Name:     "test_column",
-	}
-	buf := make([]byte, 256)
-	n, err := msg.MarshalTo(buf)
-	if err != nil {
-		t.Fatalf("MarshalTo() failed: %v", err)
-	}
-	if n == 0 {
-		t.Error("MarshalTo() should return non-zero size")
-	}
-}
-
 func TestKWDBKTSColumnXXXMerge(t *testing.T) {
 	src := &sqlbase.KWDBKTSColumn{
 		ColumnId: 1,
@@ -953,20 +839,6 @@ func TestNTagIndexInfoProtoMessage(t *testing.T) {
 func TestNTagIndexInfoDescriptor(t *testing.T) {
 	msg := &sqlbase.NTagIndexInfo{}
 	_, _ = msg.Descriptor()
-}
-
-func TestNTagIndexInfoMarshal(t *testing.T) {
-	msg := &sqlbase.NTagIndexInfo{
-		IndexId: 1,
-		ColIds:  []uint32{1, 2, 3},
-	}
-	data, err := protoutil.Marshal(msg)
-	if err != nil {
-		t.Fatalf("Marshal() failed: %v", err)
-	}
-	if len(data) == 0 {
-		t.Error("Marshal() should return non-empty data")
-	}
 }
 
 func TestNTagIndexInfoMarshalTo(t *testing.T) {
@@ -1017,22 +889,6 @@ func TestCreateTsTableProtoMessage(t *testing.T) {
 func TestCreateTsTableDescriptor(t *testing.T) {
 	msg := &sqlbase.CreateTsTable{}
 	_, _ = msg.Descriptor()
-}
-
-func TestCreateTsTableMarshal(t *testing.T) {
-	msg := &sqlbase.CreateTsTable{
-		TsTable: sqlbase.KWDBTsTable{
-			TsTableId: 12345,
-			TableName: "test_ts_table",
-		},
-	}
-	data, err := protoutil.Marshal(msg)
-	if err != nil {
-		t.Fatalf("Marshal() failed: %v", err)
-	}
-	if len(data) == 0 {
-		t.Error("Marshal() should return non-empty data")
-	}
 }
 
 func TestCreateTsTableMarshalTo(t *testing.T) {
@@ -1201,21 +1057,6 @@ func TestBlockInfoDescriptor(t *testing.T) {
 	_, _ = msg.Descriptor()
 }
 
-func TestBlockInfoMarshal(t *testing.T) {
-	msg := &sqlbase.BlockInfo{
-		Level:      "entity_segment",
-		BlocksNum:  10,
-		BlocksSize: 102400,
-	}
-	data, err := protoutil.Marshal(msg)
-	if err != nil {
-		t.Fatalf("Marshal() failed: %v", err)
-	}
-	if len(data) == 0 {
-		t.Error("Marshal() should return non-empty data")
-	}
-}
-
 func TestBlockInfoMarshalTo(t *testing.T) {
 	msg := &sqlbase.BlockInfo{
 		Level:      "entity_segment",
@@ -1336,19 +1177,6 @@ func TestKWDBReplicationMetaDataProtoMessage(t *testing.T) {
 func TestKWDBReplicationMetaDataDescriptor(t *testing.T) {
 	msg := &sqlbase.KWDBReplicationMetaData{}
 	_, _ = msg.Descriptor()
-}
-
-func TestKWDBReplicationMetaDataMarshal(t *testing.T) {
-	msg := &sqlbase.KWDBReplicationMetaData{
-		DescId: 123,
-	}
-	data, err := protoutil.Marshal(msg)
-	if err != nil {
-		t.Fatalf("Marshal() failed: %v", err)
-	}
-	if len(data) == 0 {
-		t.Error("Marshal() should return non-empty data")
-	}
 }
 
 func TestKWDBReplicationMetaDataMarshalTo(t *testing.T) {

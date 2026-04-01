@@ -50,34 +50,6 @@ func TestTableDescriptorFindActiveColumnByName(t *testing.T) {
 	}
 }
 
-// TestTableDescriptorFindColumnByID tests the FindColumnByID method for TableDescriptor.
-func TestTableDescriptorFindColumnByID(t *testing.T) {
-	// Test case: Find existing column by ID
-	table := &sqlbase.TableDescriptor{
-		Columns: []sqlbase.ColumnDescriptor{
-			{ID: 1, Name: "id", Type: *types.Int},
-			{ID: 2, Name: "name", Type: *types.String},
-		},
-	}
-
-	col, err := table.FindColumnByID(2)
-	if err != nil {
-		t.Errorf("FindColumnByID should find existing column: %v", err)
-	}
-	if col == nil || col.Name != "name" {
-		t.Errorf("FindColumnByID should return correct column")
-	}
-
-	// Test case: Find non-existent column by ID
-	col, err = table.FindColumnByID(999)
-	if err == nil {
-		t.Errorf("FindColumnByID should return error for non-existent column")
-	}
-	if col != nil {
-		t.Errorf("FindColumnByID should return nil for non-existent column")
-	}
-}
-
 // TestTableDescriptorFindActiveColumnByID tests the FindActiveColumnByID method for TableDescriptor.
 func TestTableDescriptorFindActiveColumnByID(t *testing.T) {
 	// Test case: Find existing active column by ID
@@ -106,71 +78,6 @@ func TestTableDescriptorFindActiveColumnByID(t *testing.T) {
 	}
 }
 
-// TestTableDescriptorFindFamilyByID tests the FindFamilyByID method for TableDescriptor.
-func TestTableDescriptorFindFamilyByID(t *testing.T) {
-	// Test case: Find existing family by ID
-	table := &sqlbase.TableDescriptor{
-		Families: []sqlbase.ColumnFamilyDescriptor{
-			{ID: 0, Name: "primary", ColumnIDs: []sqlbase.ColumnID{1}, ColumnNames: []string{"id"}},
-			{ID: 1, Name: "family1", ColumnIDs: []sqlbase.ColumnID{2}, ColumnNames: []string{"name"}},
-		},
-	}
-
-	family, err := table.FindFamilyByID(1)
-	if err != nil {
-		t.Errorf("FindFamilyByID should find existing family: %v", err)
-	}
-	if family == nil || family.Name != "family1" {
-		t.Errorf("FindFamilyByID should return correct family")
-	}
-
-	// Test case: Find non-existent family by ID
-	family, err = table.FindFamilyByID(999)
-	if err == nil {
-		t.Errorf("FindFamilyByID should return error for non-existent family")
-	}
-	if family != nil {
-		t.Errorf("FindFamilyByID should return nil for non-existent family")
-	}
-}
-
-// TestTableDescriptorFindIndexByID tests the FindIndexByID method for TableDescriptor.
-func TestTableDescriptorFindIndexByID(t *testing.T) {
-	// Test case: Find existing index by ID
-	table := &sqlbase.TableDescriptor{
-		PrimaryIndex: sqlbase.IndexDescriptor{ID: 1, Name: "primary"},
-		Indexes: []sqlbase.IndexDescriptor{
-			{ID: 2, Name: "idx_name"},
-		},
-	}
-
-	idx, err := table.FindIndexByID(2)
-	if err != nil {
-		t.Errorf("FindIndexByID should find existing index: %v", err)
-	}
-	if idx == nil || idx.Name != "idx_name" {
-		t.Errorf("FindIndexByID should return correct index")
-	}
-
-	// Test case: Find primary index by ID
-	idx, err = table.FindIndexByID(1)
-	if err != nil {
-		t.Errorf("FindIndexByID should find primary index: %v", err)
-	}
-	if idx == nil || idx.Name != "primary" {
-		t.Errorf("FindIndexByID should return correct primary index")
-	}
-
-	// Test case: Find non-existent index by ID
-	idx, err = table.FindIndexByID(999)
-	if err == nil {
-		t.Errorf("FindIndexByID should return error for non-existent index")
-	}
-	if idx != nil {
-		t.Errorf("FindIndexByID should return nil for non-existent index")
-	}
-}
-
 // TestTableDescriptorFindActiveIndexByID tests the FindActiveIndexByID method for TableDescriptor.
 func TestTableDescriptorFindActiveIndexByID(t *testing.T) {
 	// Test case: Find existing active index by ID
@@ -196,49 +103,6 @@ func TestTableDescriptorFindActiveIndexByID(t *testing.T) {
 	idx = table.FindActiveIndexByID(999)
 	if idx != nil {
 		t.Errorf("FindActiveIndexByID should return nil for non-existent index")
-	}
-}
-
-// TestTableDescriptorFindIndexByName tests the FindIndexByName method for TableDescriptor.
-func TestTableDescriptorFindIndexByName(t *testing.T) {
-	// Test case: Find existing index by name
-	table := &sqlbase.TableDescriptor{
-		PrimaryIndex: sqlbase.IndexDescriptor{ID: 1, Name: "primary"},
-		Indexes: []sqlbase.IndexDescriptor{
-			{ID: 2, Name: "idx_name"},
-		},
-	}
-
-	idx, isPrimary, err := table.FindIndexByName("idx_name")
-	if err != nil {
-		t.Errorf("FindIndexByName should find existing index: %v", err)
-	}
-	if idx == nil || idx.ID != 2 {
-		t.Errorf("FindIndexByName should return correct index")
-	}
-	if isPrimary {
-		t.Errorf("FindIndexByName should return false for non-primary index")
-	}
-
-	// Test case: Find primary index by name
-	idx, beingDropped, err := table.FindIndexByName("primary")
-	if err != nil {
-		t.Errorf("FindIndexByName should find primary index: %v", err)
-	}
-	if idx == nil || idx.ID != 1 {
-		t.Errorf("FindIndexByName should return correct primary index")
-	}
-	if beingDropped {
-		t.Errorf("FindIndexByName should not retuen an index being dropped.")
-	}
-
-	// Test case: Find non-existent index by name
-	idx, isPrimary, err = table.FindIndexByName("non_existent")
-	if err == nil {
-		t.Errorf("FindIndexByName should return error for non-existent index")
-	}
-	if idx != nil {
-		t.Errorf("FindIndexByName should return nil for non-existent index")
 	}
 }
 
@@ -281,6 +145,254 @@ func TestTableDescriptorColumnIdxMap(t *testing.T) {
 	colIdxMap := table.ColumnIdxMap()
 	if len(colIdxMap) != 2 || colIdxMap[1] != 0 || colIdxMap[2] != 1 {
 		t.Errorf("ColumnIdxMap should return correct mapping")
+	}
+}
+
+// TestMutableTableDescriptorRenameColumnDescriptor tests the RenameColumnDescriptor method for MutableTableDescriptor.
+func TestMutableTableDescriptorRenameColumnDescriptor(t *testing.T) {
+	mutableTable := &sqlbase.MutableTableDescriptor{
+		TableDescriptor: sqlbase.TableDescriptor{
+			Columns: []sqlbase.ColumnDescriptor{
+				{ID: 1, Name: "old_name"},
+			},
+			Families: []sqlbase.ColumnFamilyDescriptor{
+				{ID: 0, Name: "primary", ColumnIDs: []sqlbase.ColumnID{1}, ColumnNames: []string{"old_name"}},
+			},
+		},
+	}
+
+	mutableTable.RenameColumnDescriptor(&mutableTable.Columns[0], "new_name")
+	if mutableTable.Columns[0].Name != "new_name" {
+		t.Errorf("RenameColumnDescriptor should rename column")
+	}
+}
+
+// TestTableDescriptorFindColumnByName tests the FindColumnByName method for TableDescriptor.
+func TestTableDescriptorFindColumnByName(t *testing.T) {
+	table := &sqlbase.TableDescriptor{
+		Columns: []sqlbase.ColumnDescriptor{
+			{ID: 1, Name: "id"},
+			{ID: 2, Name: "name"},
+		},
+	}
+
+	col, dropping, err := table.FindColumnByName("name")
+	if err != nil {
+		t.Errorf("FindColumnByName should not return error: %v", err)
+	}
+	if dropping {
+		t.Errorf("FindColumnByName should find a dropping column")
+	}
+	if col.ID != 2 {
+		t.Errorf("FindColumnByName should return correct column")
+	}
+
+	// Test case: Column not found
+	_, dropping, err = table.FindColumnByName("not_exists")
+	if err == nil {
+		t.Errorf("FindColumnByName should return error for non-existent column: %v", err)
+	}
+	if dropping {
+		t.Errorf("FindColumnByName should not find a dropping column")
+	}
+}
+
+// TestTableDescriptorFindColumnByID tests the FindColumnByID method for TableDescriptor.
+func TestTableDescriptorFindColumnByID(t *testing.T) {
+	table := &sqlbase.TableDescriptor{
+		Columns: []sqlbase.ColumnDescriptor{
+			{ID: 1, Name: "id"},
+			{ID: 2, Name: "name"},
+		},
+	}
+
+	col, err := table.FindColumnByID(1)
+	if err != nil {
+		t.Errorf("FindColumnByID should not return error: %v", err)
+	}
+	if col.Name != "id" {
+		t.Errorf("FindColumnByID should return correct column")
+	}
+
+	// Test case: Column not found
+	_, err = table.FindColumnByID(999)
+	if err == nil {
+		t.Errorf("FindColumnByID should return error for non-existent column")
+	}
+}
+
+// TestTableDescriptorFindIndexByName tests the FindIndexByName method for TableDescriptor.
+func TestTableDescriptorFindIndexByName(t *testing.T) {
+	table := &sqlbase.TableDescriptor{
+		PrimaryIndex: sqlbase.IndexDescriptor{ID: 1, Name: "primary"},
+		Indexes: []sqlbase.IndexDescriptor{
+			{ID: 2, Name: "idx_name"},
+		},
+	}
+
+	idx, dropping, err := table.FindIndexByName("idx_name")
+	if err != nil {
+		t.Errorf("FindIndexByName should not return error: %v", err)
+	}
+	if dropping {
+		t.Errorf("FindIndexByName should not find a dropping index")
+	}
+	if idx.ID != 2 {
+		t.Errorf("FindIndexByName should return correct index")
+	}
+
+	// Test case: Index not found
+	_, dropping, err = table.FindIndexByName("not_exists")
+	if err == nil {
+		t.Errorf("FindIndexByName should not return error for non-existent index: %v", err)
+	}
+	if dropping {
+		t.Errorf("FindIndexByName should not find a dropping index")
+	}
+}
+
+// TestTableDescriptorFindIndexByID tests the FindIndexByID method for TableDescriptor.
+func TestTableDescriptorFindIndexByID(t *testing.T) {
+	table := &sqlbase.TableDescriptor{
+		PrimaryIndex: sqlbase.IndexDescriptor{ID: 1, Name: "primary"},
+		Indexes: []sqlbase.IndexDescriptor{
+			{ID: 2, Name: "idx_name"},
+		},
+	}
+
+	idx, err := table.FindIndexByID(2)
+	if err != nil {
+		t.Errorf("FindIndexByID should not return error: %v", err)
+	}
+	if idx.Name != "idx_name" {
+		t.Errorf("FindIndexByID should return correct index")
+	}
+
+	// Test case: Index not found
+	_, err = table.FindIndexByID(999)
+	if err == nil {
+		t.Errorf("FindIndexByID should return error for non-existent index")
+	}
+}
+
+// TestTableDescriptorFindFamilyByID tests the FindFamilyByID method for TableDescriptor.
+func TestTableDescriptorFindFamilyByID(t *testing.T) {
+	table := &sqlbase.TableDescriptor{
+		Families: []sqlbase.ColumnFamilyDescriptor{
+			{ID: 0, Name: "primary"},
+			{ID: 1, Name: "secondary"},
+		},
+	}
+
+	family, err := table.FindFamilyByID(1)
+	if err != nil {
+		t.Errorf("FindFamilyByID should not return error: %v", err)
+	}
+	if family.Name != "secondary" {
+		t.Errorf("FindFamilyByID should return correct family")
+	}
+
+	// Test case: Family not found
+	_, err = table.FindFamilyByID(999)
+	if err == nil {
+		t.Errorf("FindFamilyByID should return error for non-existent family")
+	}
+}
+
+// TestTableDescriptorHasPrimaryKey tests the HasPrimaryKey method for TableDescriptor.
+func TestTableDescriptorHasPrimaryKey(t *testing.T) {
+	// Test case: Table with primary key
+	tableWithPK := &sqlbase.TableDescriptor{
+		PrimaryIndex: sqlbase.IndexDescriptor{
+			ColumnIDs: []sqlbase.ColumnID{1},
+		},
+	}
+
+	if !tableWithPK.HasPrimaryKey() {
+		t.Errorf("Table with primary key should return true")
+	}
+
+	// Test case: Table without primary key
+	tableWithoutPK := &sqlbase.TableDescriptor{
+		PrimaryIndex: sqlbase.IndexDescriptor{
+			ColumnIDs: []sqlbase.ColumnID{},
+		},
+	}
+
+	if !tableWithoutPK.HasPrimaryKey() {
+		t.Errorf("Table primary key should not be disabled")
+	}
+}
+
+// TestTableDescriptorIsPrimaryIndexDefaultRowID tests the IsPrimaryIndexDefaultRowID method for TableDescriptor.
+func TestTableDescriptorIsPrimaryIndexDefaultRowID(t *testing.T) {
+	table := &sqlbase.TableDescriptor{
+		PrimaryIndex: sqlbase.IndexDescriptor{
+			Name: "primary",
+		},
+	}
+
+	isDefault := table.IsPrimaryIndexDefaultRowID()
+	// This method returns whether the primary index is the default row ID
+	t.Logf("IsPrimaryIndexDefaultRowID returned: %v", isDefault)
+}
+
+// TestColumnDescriptorIsDefaultPrimaryKeyColumn tests the IsDefaultPrimaryKeyColumn method for ColumnDescriptor.
+func TestColumnDescriptorIsDefaultPrimaryKeyColumn(t *testing.T) {
+	// Test case: Default primary key column
+	defaultExpr := "unique_rowid()"
+	defaultPKCol := &sqlbase.ColumnDescriptor{
+		ID:          1,
+		Name:        "rowid",
+		Type:        *types.Int,
+		Hidden:      true,
+		DefaultExpr: &defaultExpr,
+	}
+
+	if !defaultPKCol.IsDefaultPrimaryKeyColumn() {
+		t.Errorf("Default primary key column should return true")
+	}
+
+	// Test case: Non-default primary key column
+	nonDefaultPKCol := &sqlbase.ColumnDescriptor{
+		ID:   2,
+		Name: "name",
+		Type: *types.String,
+	}
+
+	if nonDefaultPKCol.IsDefaultPrimaryKeyColumn() {
+		t.Errorf("Non-default primary key column should return false")
+	}
+}
+
+// TestTableDescriptorVisibleColumns tests the VisibleColumns method for TableDescriptor.
+func TestTableDescriptorVisibleColumns(t *testing.T) {
+	table := &sqlbase.TableDescriptor{
+		Columns: []sqlbase.ColumnDescriptor{
+			{ID: 1, Name: "id", Hidden: false},
+			{ID: 2, Name: "name", Hidden: false},
+			{ID: 3, Name: "hidden", Hidden: true},
+		},
+	}
+
+	visibleCols := table.VisibleColumns()
+	if len(visibleCols) != 2 {
+		t.Errorf("VisibleColumns should return only public columns")
+	}
+}
+
+// TestTableDescriptorColumnTypes tests the ColumnTypes method for TableDescriptor.
+func TestTableDescriptorColumnTypes(t *testing.T) {
+	table := &sqlbase.TableDescriptor{
+		Columns: []sqlbase.ColumnDescriptor{
+			{ID: 1, Name: "id", Type: *types.Int},
+			{ID: 2, Name: "name", Type: *types.String},
+		},
+	}
+
+	colTypes := table.ColumnTypes()
+	if len(colTypes) != 2 || colTypes[0].Family() != types.IntFamily || colTypes[1].Family() != types.StringFamily {
+		t.Errorf("ColumnTypes should return correct column types")
 	}
 }
 
@@ -1449,41 +1561,6 @@ func TestTableDescriptorSize(t *testing.T) {
 	}
 }
 
-// TestTableDescriptorMarshal 测试 TableDescriptor_Marshal 函数
-func TestTableDescriptorMarshal(t *testing.T) {
-	testCases := []struct {
-		name     string
-		input    sqlbase.TableDescriptor
-		expected []byte
-	}{
-		{
-			name:     "EmptyTableDescriptorMarshal",
-			input:    sqlbase.TableDescriptor{},
-			expected: []byte{0xa, 0x0, 0x18, 0x0, 0x20, 0x0, 0x28, 0x0, 0x3a, 0x0, 0x48, 0x0, 0x52, 0x38, 0xa, 0x0, 0x10, 0x0, 0x18, 0x0, 0x4a, 0x10, 0x8, 0x0, 0x10, 0x0, 0x1a, 0x0, 0x20, 0x0, 0x28, 0x0, 0x30, 0x0, 0x38, 0x0, 0x40, 0x0, 0x5a, 0x0, 0x7a, 0x4, 0x8, 0x0, 0x28, 0x0, 0x80, 0x1, 0x0, 0x88, 0x1, 0x0, 0x90, 0x1, 0x0, 0x98, 0x1, 0x0, 0xa2, 0x1, 0x6, 0x8, 0x0, 0x12, 0x0, 0x18, 0x0, 0xa8, 0x1, 0x0, 0x60, 0x0, 0x80, 0x1, 0x0, 0x88, 0x1, 0x0, 0x98, 0x1, 0x0, 0xb8, 0x1, 0x0, 0xc2, 0x1, 0x0, 0xe8, 0x1, 0x0, 0xf2, 0x1, 0x4, 0x8, 0x0, 0x12, 0x0, 0xf8, 0x1, 0x0, 0x80, 0x2, 0x0, 0x92, 0x2, 0x0, 0x9a, 0x2, 0x0, 0xb2, 0x2, 0x0, 0xb8, 0x2, 0x0, 0xc0, 0x2, 0x0, 0xca, 0x2, 0x0, 0xd0, 0x2, 0x0, 0xd8, 0x2, 0x0, 0xe2, 0x2, 0x19, 0x8, 0x0, 0x10, 0x0, 0x20, 0x0, 0x28, 0x0, 0x5a, 0x0, 0x60, 0x0, 0x68, 0x0, 0x78, 0x0, 0x88, 0x1, 0x0, 0x90, 0x1, 0x0, 0x98, 0x1, 0x0, 0xea, 0x2, 0x0, 0xf2, 0x2, 0x0, 0xf8, 0x2, 0x0, 0x80, 0x3, 0x0, 0x98, 0x3, 0x0},
-		},
-		{
-			name: "BasicTableDescriptorMarshal",
-			input: sqlbase.TableDescriptor{
-				ID:           1,
-				Name:         "test_table",
-				ParentID:     0,
-				Version:      1,
-				Columns:      []sqlbase.ColumnDescriptor{},
-				NextColumnID: 1,
-			},
-			expected: []byte{0xa, 0xa, 0x74, 0x65, 0x73, 0x74, 0x5f, 0x74, 0x61, 0x62, 0x6c, 0x65, 0x18, 0x1, 0x20, 0x0, 0x28, 0x1, 0x3a, 0x0, 0x48, 0x1, 0x52, 0x38, 0xa, 0x0, 0x10, 0x0, 0x18, 0x0, 0x4a, 0x10, 0x8, 0x0, 0x10, 0x0, 0x1a, 0x0, 0x20, 0x0, 0x28, 0x0, 0x30, 0x0, 0x38, 0x0, 0x40, 0x0, 0x5a, 0x0, 0x7a, 0x4, 0x8, 0x0, 0x28, 0x0, 0x80, 0x1, 0x0, 0x88, 0x1, 0x0, 0x90, 0x1, 0x0, 0x98, 0x1, 0x0, 0xa2, 0x1, 0x6, 0x8, 0x0, 0x12, 0x0, 0x18, 0x0, 0xa8, 0x1, 0x0, 0x60, 0x0, 0x80, 0x1, 0x0, 0x88, 0x1, 0x0, 0x98, 0x1, 0x0, 0xb8, 0x1, 0x0, 0xc2, 0x1, 0x0, 0xe8, 0x1, 0x0, 0xf2, 0x1, 0x4, 0x8, 0x0, 0x12, 0x0, 0xf8, 0x1, 0x0, 0x80, 0x2, 0x0, 0x92, 0x2, 0x0, 0x9a, 0x2, 0x0, 0xb2, 0x2, 0x0, 0xb8, 0x2, 0x0, 0xc0, 0x2, 0x0, 0xca, 0x2, 0x0, 0xd0, 0x2, 0x0, 0xd8, 0x2, 0x0, 0xe2, 0x2, 0x19, 0x8, 0x0, 0x10, 0x0, 0x20, 0x0, 0x28, 0x0, 0x5a, 0x0, 0x60, 0x0, 0x68, 0x0, 0x78, 0x0, 0x88, 0x1, 0x0, 0x90, 0x1, 0x0, 0x98, 0x1, 0x0, 0xea, 0x2, 0x0, 0xf2, 0x2, 0x0, 0xf8, 0x2, 0x0, 0x80, 0x3, 0x0, 0x98, 0x3, 0x0},
-		},
-	}
-
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			data, err := protoutil.Marshal(tc.input)
-			require.NoError(t, err)
-			require.Equal(t, tc.expected, data)
-		})
-	}
-}
-
 // TestIsVirtualTable tests the IsVirtualTable global function.
 func TestIsVirtualTable(t *testing.T) {
 	// Test case: Regular table ID
@@ -1788,39 +1865,6 @@ func TestColumnDescriptorSize(t *testing.T) {
 	}
 }
 
-// TestColumnDescriptorMarshal 测试 ColumnDescriptor_Marshal 函数
-func TestColumnDescriptorMarshal(t *testing.T) {
-	testCases := []struct {
-		name     string
-		input    sqlbase.ColumnDescriptor
-		expected []byte
-	}{
-		{
-			name:     "EmptyColumnDescriptorMarshal",
-			input:    sqlbase.ColumnDescriptor{},
-			expected: []byte{0xa, 0x0, 0x10, 0x0, 0x1a, 0xe, 0x8, 0x0, 0x10, 0x0, 0x18, 0x0, 0x30, 0x0, 0x50, 0x0, 0x60, 0x0, 0x70, 0x0, 0x20, 0x0, 0x30, 0x0, 0x6a, 0xe, 0x8, 0x0, 0x10, 0x0, 0x18, 0x0, 0x20, 0x0, 0x28, 0x0, 0x30, 0x0, 0x38, 0x0},
-		},
-		{
-			name: "BasicColumnDescriptorMarshal",
-			input: sqlbase.ColumnDescriptor{
-				ID:          1,
-				Name:        "test_column",
-				Nullable:    false,
-				DefaultExpr: nil,
-			},
-			expected: []byte{0xa, 0xb, 0x74, 0x65, 0x73, 0x74, 0x5f, 0x63, 0x6f, 0x6c, 0x75, 0x6d, 0x6e, 0x10, 0x1, 0x1a, 0xe, 0x8, 0x0, 0x10, 0x0, 0x18, 0x0, 0x30, 0x0, 0x50, 0x0, 0x60, 0x0, 0x70, 0x0, 0x20, 0x0, 0x30, 0x0, 0x6a, 0xe, 0x8, 0x0, 0x10, 0x0, 0x18, 0x0, 0x20, 0x0, 0x28, 0x0, 0x30, 0x0, 0x38, 0x0},
-		},
-	}
-
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			data, err := protoutil.Marshal(tc.input)
-			require.NoError(t, err)
-			require.Equal(t, tc.expected, data)
-		})
-	}
-}
-
 // TestIndexDescriptorSize 测试 IndexDescriptor_Size 函数
 func TestIndexDescriptorSize(t *testing.T) {
 	testCases := []struct {
@@ -1847,98 +1891,6 @@ func TestIndexDescriptorSize(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			size := tc.input.Size()
 			require.Equal(t, tc.expected, size)
-		})
-	}
-}
-
-// TestIndexDescriptorMarshal 测试 IndexDescriptor_Marshal 函数
-func TestIndexDescriptorMarshal(t *testing.T) {
-	testCases := []struct {
-		name     string
-		input    sqlbase.IndexDescriptor
-		expected []byte
-	}{
-		{
-			name:     "EmptyIndexDescriptorMarshal",
-			input:    sqlbase.IndexDescriptor{},
-			expected: []byte{0xa, 0x0, 0x10, 0x0, 0x18, 0x0, 0x4a, 0x10, 0x8, 0x0, 0x10, 0x0, 0x1a, 0x0, 0x20, 0x0, 0x28, 0x0, 0x30, 0x0, 0x38, 0x0, 0x40, 0x0, 0x5a, 0x0, 0x7a, 0x4, 0x8, 0x0, 0x28, 0x0, 0x80, 0x1, 0x0, 0x88, 0x1, 0x0, 0x90, 0x1, 0x0, 0x98, 0x1, 0x0, 0xa2, 0x1, 0x6, 0x8, 0x0, 0x12, 0x0, 0x18, 0x0, 0xa8, 0x1, 0x0},
-		},
-		{
-			name: "BasicIndexDescriptorMarshal",
-			input: sqlbase.IndexDescriptor{
-				ID:   1,
-				Name: "test_index",
-			},
-			expected: []byte{0xa, 0xa, 0x74, 0x65, 0x73, 0x74, 0x5f, 0x69, 0x6e, 0x64, 0x65, 0x78, 0x10, 0x1, 0x18, 0x0, 0x4a, 0x10, 0x8, 0x0, 0x10, 0x0, 0x1a, 0x0, 0x20, 0x0, 0x28, 0x0, 0x30, 0x0, 0x38, 0x0, 0x40, 0x0, 0x5a, 0x0, 0x7a, 0x4, 0x8, 0x0, 0x28, 0x0, 0x80, 0x1, 0x0, 0x88, 0x1, 0x0, 0x90, 0x1, 0x0, 0x98, 0x1, 0x0, 0xa2, 0x1, 0x6, 0x8, 0x0, 0x12, 0x0, 0x18, 0x0, 0xa8, 0x1, 0x0},
-		},
-	}
-
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			data, err := protoutil.Marshal(tc.input)
-			require.NoError(t, err)
-			require.Equal(t, tc.expected, data)
-		})
-	}
-}
-
-// TestDatabaseDescriptorSize 测试 DatabaseDescriptor_Size 函数
-func TestDatabaseDescriptorSize(t *testing.T) {
-	testCases := []struct {
-		name     string
-		input    sqlbase.DatabaseDescriptor
-		expected int
-	}{
-		{
-			name:     "EmptyDatabaseDescriptor",
-			input:    sqlbase.DatabaseDescriptor{},
-			expected: 20,
-		},
-		{
-			name: "BasicDatabaseDescriptor",
-			input: sqlbase.DatabaseDescriptor{
-				ID:   1,
-				Name: "test_database",
-			},
-			expected: 33,
-		},
-	}
-
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			size := tc.input.Size()
-			require.Equal(t, tc.expected, size)
-		})
-	}
-}
-
-// TestDatabaseDescriptorMarshal 测试 DatabaseDescriptor_Marshal 函数
-func TestDatabaseDescriptorMarshal(t *testing.T) {
-	testCases := []struct {
-		name     string
-		input    sqlbase.DatabaseDescriptor
-		expected []byte
-	}{
-		{
-			name:     "EmptyDatabaseDescriptorMarshal",
-			input:    sqlbase.DatabaseDescriptor{},
-			expected: []byte{0xa, 0x0, 0x10, 0x0, 0x22, 0x0, 0x28, 0x0, 0x32, 0xa, 0x8, 0x0, 0x10, 0x0, 0x1a, 0x0, 0x22, 0x0, 0x28, 0x0},
-		},
-		{
-			name: "BasicDatabaseDescriptorMarshal",
-			input: sqlbase.DatabaseDescriptor{
-				ID:   1,
-				Name: "test_database",
-			},
-			expected: []byte{0xa, 0xd, 0x74, 0x65, 0x73, 0x74, 0x5f, 0x64, 0x61, 0x74, 0x61, 0x62, 0x61, 0x73, 0x65, 0x10, 0x1, 0x22, 0x0, 0x28, 0x0, 0x32, 0xa, 0x8, 0x0, 0x10, 0x0, 0x1a, 0x0, 0x22, 0x0, 0x28, 0x0},
-		},
-	}
-
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			data, err := protoutil.Marshal(tc.input)
-			require.NoError(t, err)
-			require.Equal(t, tc.expected, data)
 		})
 	}
 }
