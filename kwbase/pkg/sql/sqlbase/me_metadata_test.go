@@ -16,7 +16,7 @@ import (
 	"testing"
 
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
-	"github.com/gogo/protobuf/proto"
+	"gitee.com/kwbasedb/kwbase/pkg/util/protoutil"
 )
 
 // Test ReplicationType enum values
@@ -301,13 +301,13 @@ func TestDeleteMeMsg(t *testing.T) {
 	}
 
 	// Test marshaling and unmarshaling
-	data, err := proto.Marshal(msg)
+	data, err := protoutil.Marshal(msg)
 	if err != nil {
 		t.Fatalf("Failed to marshal DeleteMeMsg: %v", err)
 	}
 
 	unmarshaled := &sqlbase.DeleteMeMsg{}
-	err = proto.Unmarshal(data, unmarshaled)
+	err = protoutil.Unmarshal(data, unmarshaled)
 	if err != nil {
 		t.Fatalf("Failed to unmarshal DeleteMeMsg: %v", err)
 	}
@@ -336,20 +336,6 @@ func TestDeleteMeMsgProtoMessage(t *testing.T) {
 func TestDeleteMeMsgDescriptor(t *testing.T) {
 	msg := &sqlbase.DeleteMeMsg{}
 	_, _ = msg.Descriptor()
-}
-
-func TestDeleteMeMsgMarshal(t *testing.T) {
-	msg := &sqlbase.DeleteMeMsg{
-		DatabaseName: "test_db",
-		TableID:      123,
-	}
-	data, err := msg.Marshal()
-	if err != nil {
-		t.Fatalf("Marshal() failed: %v", err)
-	}
-	if len(data) == 0 {
-		t.Error("Marshal() should return non-empty data")
-	}
 }
 
 func TestDeleteMeMsgMarshalTo(t *testing.T) {
@@ -402,20 +388,6 @@ func TestKWDBHAInfoDescriptor(t *testing.T) {
 	_, _ = msg.Descriptor()
 }
 
-func TestKWDBHAInfoMarshal(t *testing.T) {
-	msg := &sqlbase.KWDBHAInfo{
-		ClusterId: "cluster1",
-		Role:      1,
-	}
-	data, err := msg.Marshal()
-	if err != nil {
-		t.Fatalf("Marshal() failed: %v", err)
-	}
-	if len(data) == 0 {
-		t.Error("Marshal() should return non-empty data")
-	}
-}
-
 func TestKWDBHAInfoMarshalTo(t *testing.T) {
 	msg := &sqlbase.KWDBHAInfo{
 		ClusterId: "cluster1",
@@ -461,19 +433,6 @@ func TestPreRelationProtoMessage(t *testing.T) {
 func TestPreRelationDescriptor(t *testing.T) {
 	msg := &sqlbase.PreRelation{}
 	_, _ = msg.Descriptor()
-}
-
-func TestPreRelationMarshal(t *testing.T) {
-	msg := &sqlbase.PreRelation{
-		TableId: 123,
-	}
-	data, err := msg.Marshal()
-	if err != nil {
-		t.Fatalf("Marshal() failed: %v", err)
-	}
-	if len(data) == 0 {
-		t.Error("Marshal() should return non-empty data")
-	}
 }
 
 func TestPreRelationMarshalTo(t *testing.T) {
@@ -522,22 +481,6 @@ func TestCreateCTableProtoMessage(t *testing.T) {
 func TestCreateCTableDescriptor(t *testing.T) {
 	msg := &sqlbase.CreateCTable{}
 	_, _ = msg.Descriptor()
-}
-
-func TestCreateCTableMarshal(t *testing.T) {
-	msg := &sqlbase.CreateCTable{
-		CTable: sqlbase.KWDBCTable{
-			Id:   123,
-			Name: "test_table",
-		},
-	}
-	data, err := msg.Marshal()
-	if err != nil {
-		t.Fatalf("Marshal() failed: %v", err)
-	}
-	if len(data) == 0 {
-		t.Error("Marshal() should return non-empty data")
-	}
 }
 
 func TestCreateCTableMarshalTo(t *testing.T) {
@@ -592,20 +535,6 @@ func TestKWDBCTableDescriptor(t *testing.T) {
 	_, _ = msg.Descriptor()
 }
 
-func TestKWDBCTableMarshal(t *testing.T) {
-	msg := &sqlbase.KWDBCTable{
-		Id:   123,
-		Name: "test_table",
-	}
-	data, err := msg.Marshal()
-	if err != nil {
-		t.Fatalf("Marshal() failed: %v", err)
-	}
-	if len(data) == 0 {
-		t.Error("Marshal() should return non-empty data")
-	}
-}
-
 func TestKWDBCTableMarshalTo(t *testing.T) {
 	msg := &sqlbase.KWDBCTable{
 		Id:   123,
@@ -643,13 +572,13 @@ func TestKWDBHAInfo(t *testing.T) {
 	}
 
 	// Test marshaling and unmarshaling
-	data, err := proto.Marshal(msg)
+	data, err := protoutil.Marshal(msg)
 	if err != nil {
 		t.Fatalf("Failed to marshal KWDBHAInfo: %v", err)
 	}
 
 	unmarshaled := &sqlbase.KWDBHAInfo{}
-	err = proto.Unmarshal(data, unmarshaled)
+	err = protoutil.Unmarshal(data, unmarshaled)
 	if err != nil {
 		t.Fatalf("Failed to unmarshal KWDBHAInfo: %v", err)
 	}
@@ -691,13 +620,13 @@ func TestKWDBNodeInfo(t *testing.T) {
 	}
 
 	// Test marshaling and unmarshaling
-	data, err := proto.Marshal(msg)
+	data, err := protoutil.Marshal(msg)
 	if err != nil {
 		t.Fatalf("Failed to marshal KWDBNodeInfo: %v", err)
 	}
 
 	unmarshaled := &sqlbase.KWDBNodeInfo{}
-	err = proto.Unmarshal(data, unmarshaled)
+	err = protoutil.Unmarshal(data, unmarshaled)
 	if err != nil {
 		t.Fatalf("Failed to unmarshal KWDBNodeInfo: %v", err)
 	}
@@ -728,13 +657,13 @@ func TestKWDBCTable(t *testing.T) {
 	}
 
 	// Test marshaling and unmarshaling
-	data, err := proto.Marshal(msg)
+	data, err := protoutil.Marshal(msg)
 	if err != nil {
 		t.Fatalf("Failed to marshal KWDBCTable: %v", err)
 	}
 
 	unmarshaled := &sqlbase.KWDBCTable{}
-	err = proto.Unmarshal(data, unmarshaled)
+	err = protoutil.Unmarshal(data, unmarshaled)
 	if err != nil {
 		t.Fatalf("Failed to unmarshal KWDBCTable: %v", err)
 	}
@@ -762,13 +691,13 @@ func TestKWDBTsTable(t *testing.T) {
 	}
 
 	// Test marshaling and unmarshaling
-	data, err := proto.Marshal(msg)
+	data, err := protoutil.Marshal(msg)
 	if err != nil {
 		t.Fatalf("Failed to marshal KWDBTsTable: %v", err)
 	}
 
 	unmarshaled := &sqlbase.KWDBTsTable{}
-	err = proto.Unmarshal(data, unmarshaled)
+	err = protoutil.Unmarshal(data, unmarshaled)
 	if err != nil {
 		t.Fatalf("Failed to unmarshal KWDBTsTable: %v", err)
 	}
@@ -794,13 +723,13 @@ func TestKWDBKTSColumn(t *testing.T) {
 	}
 
 	// Test marshaling and unmarshaling
-	data, err := proto.Marshal(msg)
+	data, err := protoutil.Marshal(msg)
 	if err != nil {
 		t.Fatalf("Failed to marshal KWDBKTSColumn: %v", err)
 	}
 
 	unmarshaled := &sqlbase.KWDBKTSColumn{}
-	err = proto.Unmarshal(data, unmarshaled)
+	err = protoutil.Unmarshal(data, unmarshaled)
 	if err != nil {
 		t.Fatalf("Failed to unmarshal KWDBKTSColumn: %v", err)
 	}
@@ -829,20 +758,6 @@ func TestKWDBTsTableProtoMessage(t *testing.T) {
 func TestKWDBTsTableDescriptor(t *testing.T) {
 	msg := &sqlbase.KWDBTsTable{}
 	_, _ = msg.Descriptor()
-}
-
-func TestKWDBTsTableMarshal(t *testing.T) {
-	msg := &sqlbase.KWDBTsTable{
-		TsTableId: 12345,
-		TableName: "test_ts_table",
-	}
-	data, err := msg.Marshal()
-	if err != nil {
-		t.Fatalf("Marshal() failed: %v", err)
-	}
-	if len(data) == 0 {
-		t.Error("Marshal() should return non-empty data")
-	}
 }
 
 func TestKWDBTsTableMarshalTo(t *testing.T) {
@@ -893,35 +808,6 @@ func TestKWDBKTSColumnDescriptor(t *testing.T) {
 	_, _ = msg.Descriptor()
 }
 
-func TestKWDBKTSColumnMarshal(t *testing.T) {
-	msg := &sqlbase.KWDBKTSColumn{
-		ColumnId: 1,
-		Name:     "test_column",
-	}
-	data, err := msg.Marshal()
-	if err != nil {
-		t.Fatalf("Marshal() failed: %v", err)
-	}
-	if len(data) == 0 {
-		t.Error("Marshal() should return non-empty data")
-	}
-}
-
-func TestKWDBKTSColumnMarshalTo(t *testing.T) {
-	msg := &sqlbase.KWDBKTSColumn{
-		ColumnId: 1,
-		Name:     "test_column",
-	}
-	buf := make([]byte, 256)
-	n, err := msg.MarshalTo(buf)
-	if err != nil {
-		t.Fatalf("MarshalTo() failed: %v", err)
-	}
-	if n == 0 {
-		t.Error("MarshalTo() should return non-zero size")
-	}
-}
-
 func TestKWDBKTSColumnXXXMerge(t *testing.T) {
 	src := &sqlbase.KWDBKTSColumn{
 		ColumnId: 1,
@@ -953,20 +839,6 @@ func TestNTagIndexInfoProtoMessage(t *testing.T) {
 func TestNTagIndexInfoDescriptor(t *testing.T) {
 	msg := &sqlbase.NTagIndexInfo{}
 	_, _ = msg.Descriptor()
-}
-
-func TestNTagIndexInfoMarshal(t *testing.T) {
-	msg := &sqlbase.NTagIndexInfo{
-		IndexId: 1,
-		ColIds:  []uint32{1, 2, 3},
-	}
-	data, err := msg.Marshal()
-	if err != nil {
-		t.Fatalf("Marshal() failed: %v", err)
-	}
-	if len(data) == 0 {
-		t.Error("Marshal() should return non-empty data")
-	}
 }
 
 func TestNTagIndexInfoMarshalTo(t *testing.T) {
@@ -1019,22 +891,6 @@ func TestCreateTsTableDescriptor(t *testing.T) {
 	_, _ = msg.Descriptor()
 }
 
-func TestCreateTsTableMarshal(t *testing.T) {
-	msg := &sqlbase.CreateTsTable{
-		TsTable: sqlbase.KWDBTsTable{
-			TsTableId: 12345,
-			TableName: "test_ts_table",
-		},
-	}
-	data, err := msg.Marshal()
-	if err != nil {
-		t.Fatalf("Marshal() failed: %v", err)
-	}
-	if len(data) == 0 {
-		t.Error("Marshal() should return non-empty data")
-	}
-}
-
 func TestCreateTsTableMarshalTo(t *testing.T) {
 	msg := &sqlbase.CreateTsTable{
 		TsTable: sqlbase.KWDBTsTable{
@@ -1074,13 +930,13 @@ func TestNTagIndexInfo(t *testing.T) {
 	}
 
 	// Test marshaling and unmarshaling
-	data, err := proto.Marshal(msg)
+	data, err := protoutil.Marshal(msg)
 	if err != nil {
 		t.Fatalf("Failed to marshal NTagIndexInfo: %v", err)
 	}
 
 	unmarshaled := &sqlbase.NTagIndexInfo{}
-	err = proto.Unmarshal(data, unmarshaled)
+	err = protoutil.Unmarshal(data, unmarshaled)
 	if err != nil {
 		t.Fatalf("Failed to unmarshal NTagIndexInfo: %v", err)
 	}
@@ -1131,13 +987,13 @@ func TestCreateTsTable(t *testing.T) {
 	}
 
 	// Test marshaling and unmarshaling
-	data, err := proto.Marshal(msg)
+	data, err := protoutil.Marshal(msg)
 	if err != nil {
 		t.Fatalf("Failed to marshal CreateTsTable: %v", err)
 	}
 
 	unmarshaled := &sqlbase.CreateTsTable{}
-	err = proto.Unmarshal(data, unmarshaled)
+	err = protoutil.Unmarshal(data, unmarshaled)
 	if err != nil {
 		t.Fatalf("Failed to unmarshal CreateTsTable: %v", err)
 	}
@@ -1163,13 +1019,13 @@ func TestBlockInfo(t *testing.T) {
 	}
 
 	// Test marshaling and unmarshaling
-	data, err := proto.Marshal(msg)
+	data, err := protoutil.Marshal(msg)
 	if err != nil {
 		t.Fatalf("Failed to marshal BlockInfo: %v", err)
 	}
 
 	unmarshaled := &sqlbase.BlockInfo{}
-	err = proto.Unmarshal(data, unmarshaled)
+	err = protoutil.Unmarshal(data, unmarshaled)
 	if err != nil {
 		t.Fatalf("Failed to unmarshal BlockInfo: %v", err)
 	}
@@ -1199,21 +1055,6 @@ func TestBlockInfoProtoMessage(t *testing.T) {
 func TestBlockInfoDescriptor(t *testing.T) {
 	msg := &sqlbase.BlockInfo{}
 	_, _ = msg.Descriptor()
-}
-
-func TestBlockInfoMarshal(t *testing.T) {
-	msg := &sqlbase.BlockInfo{
-		Level:      "entity_segment",
-		BlocksNum:  10,
-		BlocksSize: 102400,
-	}
-	data, err := msg.Marshal()
-	if err != nil {
-		t.Fatalf("Marshal() failed: %v", err)
-	}
-	if len(data) == 0 {
-		t.Error("Marshal() should return non-empty data")
-	}
 }
 
 func TestBlockInfoMarshalTo(t *testing.T) {
@@ -1263,13 +1104,13 @@ func TestBlocksDistribution(t *testing.T) {
 	}
 
 	// Test marshaling and unmarshaling
-	data, err := proto.Marshal(msg)
+	data, err := protoutil.Marshal(msg)
 	if err != nil {
 		t.Fatalf("Failed to marshal BlocksDistribution: %v", err)
 	}
 
 	unmarshaled := &sqlbase.BlocksDistribution{}
-	err = proto.Unmarshal(data, unmarshaled)
+	err = protoutil.Unmarshal(data, unmarshaled)
 	if err != nil {
 		t.Fatalf("Failed to unmarshal BlocksDistribution: %v", err)
 	}
@@ -1302,13 +1143,13 @@ func TestKWDBReplicationMetaData(t *testing.T) {
 	}
 
 	// Test marshaling and unmarshaling
-	data, err := proto.Marshal(msg)
+	data, err := protoutil.Marshal(msg)
 	if err != nil {
 		t.Fatalf("Failed to marshal KWDBReplicationMetaData: %v", err)
 	}
 
 	unmarshaled := &sqlbase.KWDBReplicationMetaData{}
-	err = proto.Unmarshal(data, unmarshaled)
+	err = protoutil.Unmarshal(data, unmarshaled)
 	if err != nil {
 		t.Fatalf("Failed to unmarshal KWDBReplicationMetaData: %v", err)
 	}
@@ -1336,19 +1177,6 @@ func TestKWDBReplicationMetaDataProtoMessage(t *testing.T) {
 func TestKWDBReplicationMetaDataDescriptor(t *testing.T) {
 	msg := &sqlbase.KWDBReplicationMetaData{}
 	_, _ = msg.Descriptor()
-}
-
-func TestKWDBReplicationMetaDataMarshal(t *testing.T) {
-	msg := &sqlbase.KWDBReplicationMetaData{
-		DescId: 123,
-	}
-	data, err := msg.Marshal()
-	if err != nil {
-		t.Fatalf("Marshal() failed: %v", err)
-	}
-	if len(data) == 0 {
-		t.Error("Marshal() should return non-empty data")
-	}
 }
 
 func TestKWDBReplicationMetaDataMarshalTo(t *testing.T) {
@@ -1389,13 +1217,13 @@ func TestKWDBReplicationAgentMetaData(t *testing.T) {
 	}
 
 	// Test marshaling and unmarshaling
-	data, err := proto.Marshal(msg)
+	data, err := protoutil.Marshal(msg)
 	if err != nil {
 		t.Fatalf("Failed to marshal KWDBReplicationAgentMetaData: %v", err)
 	}
 
 	unmarshaled := &sqlbase.KWDBReplicationAgentMetaData{}
-	err = proto.Unmarshal(data, unmarshaled)
+	err = protoutil.Unmarshal(data, unmarshaled)
 	if err != nil {
 		t.Fatalf("Failed to unmarshal KWDBReplicationAgentMetaData: %v", err)
 	}
@@ -1416,13 +1244,13 @@ func TestKWDBReplicationProgress(t *testing.T) {
 	}
 
 	// Test marshaling and unmarshaling
-	data, err := proto.Marshal(msg)
+	data, err := protoutil.Marshal(msg)
 	if err != nil {
 		t.Fatalf("Failed to marshal KWDBReplicationProgress: %v", err)
 	}
 
 	unmarshaled := &sqlbase.KWDBReplicationProgress{}
-	err = proto.Unmarshal(data, unmarshaled)
+	err = protoutil.Unmarshal(data, unmarshaled)
 	if err != nil {
 		t.Fatalf("Failed to unmarshal KWDBReplicationProgress: %v", err)
 	}
@@ -1451,13 +1279,13 @@ func TestKWDBReplicationProgressSet(t *testing.T) {
 	}
 
 	// Test marshaling and unmarshaling
-	data, err := proto.Marshal(msg)
+	data, err := protoutil.Marshal(msg)
 	if err != nil {
 		t.Fatalf("Failed to marshal KWDBReplicationProgressSet: %v", err)
 	}
 
 	unmarshaled := &sqlbase.KWDBReplicationProgressSet{}
-	err = proto.Unmarshal(data, unmarshaled)
+	err = protoutil.Unmarshal(data, unmarshaled)
 	if err != nil {
 		t.Fatalf("Failed to unmarshal KWDBReplicationProgressSet: %v", err)
 	}
@@ -1476,13 +1304,13 @@ func TestReplicationServiceCallerFuncInputs(t *testing.T) {
 	}
 
 	// Test marshaling and unmarshaling
-	data, err := proto.Marshal(msg)
+	data, err := protoutil.Marshal(msg)
 	if err != nil {
 		t.Fatalf("Failed to marshal ReplicationServiceCallerFuncInputs: %v", err)
 	}
 
 	unmarshaled := &sqlbase.ReplicationServiceCallerFuncInputs{}
-	err = proto.Unmarshal(data, unmarshaled)
+	err = protoutil.Unmarshal(data, unmarshaled)
 	if err != nil {
 		t.Fatalf("Failed to unmarshal ReplicationServiceCallerFuncInputs: %v", err)
 	}
@@ -1504,13 +1332,13 @@ func TestWhiteList(t *testing.T) {
 	}
 
 	// Test marshaling and unmarshaling
-	data, err := proto.Marshal(msg)
+	data, err := protoutil.Marshal(msg)
 	if err != nil {
 		t.Fatalf("Failed to marshal WhiteList: %v", err)
 	}
 
 	unmarshaled := &sqlbase.WhiteList{}
-	err = proto.Unmarshal(data, unmarshaled)
+	err = protoutil.Unmarshal(data, unmarshaled)
 	if err != nil {
 		t.Fatalf("Failed to unmarshal WhiteList: %v", err)
 	}
@@ -1529,13 +1357,13 @@ func TestTSInsertSelect(t *testing.T) {
 	}
 
 	// Test marshaling and unmarshaling
-	data, err := proto.Marshal(msg)
+	data, err := protoutil.Marshal(msg)
 	if err != nil {
 		t.Fatalf("Failed to marshal TSInsertSelect: %v", err)
 	}
 
 	unmarshaled := &sqlbase.TSInsertSelect{}
-	err = proto.Unmarshal(data, unmarshaled)
+	err = protoutil.Unmarshal(data, unmarshaled)
 	if err != nil {
 		t.Fatalf("Failed to unmarshal TSInsertSelect: %v", err)
 	}

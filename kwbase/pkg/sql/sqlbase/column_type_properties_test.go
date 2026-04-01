@@ -21,6 +21,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/types"
 	"gitee.com/kwbasedb/kwbase/pkg/util/duration"
+	"gitee.com/kwbasedb/kwbase/pkg/util/timeutil"
 	"github.com/cockroachdb/apd"
 	"github.com/lib/pq/oid"
 	"github.com/stretchr/testify/assert"
@@ -227,11 +228,11 @@ func TestLimitValueWidth_TimestampFamily(t *testing.T) {
 	testColName := "testTime"
 
 	// Valid timestamp
-	validTimestamp := tree.MakeDTimestamp(time.Unix(1234567890, 123456789), time.Microsecond)
+	validTimestamp := tree.MakeDTimestamp(timeutil.Unix(1234567890, 123456789), time.Microsecond)
 	result, err := sqlbase.LimitValueWidth(timestampType, validTimestamp, &testColName)
 	assert.NoError(t, err)
 	// The result should be rounded to millisecond precision
-	roundedTimestamp := tree.MakeDTimestamp(time.Unix(1234567890, 123000000), time.Millisecond)
+	roundedTimestamp := tree.MakeDTimestamp(timeutil.Unix(1234567890, 123000000), time.Millisecond)
 	assert.Equal(t, roundedTimestamp, result)
 }
 
@@ -241,11 +242,11 @@ func TestLimitValueWidth_TimestampTZFamily(t *testing.T) {
 	testColName := "testTS"
 
 	// Valid timestamp with timezone
-	validTimestampTZ := tree.MakeDTimestampTZ(time.Unix(1234567890, 123456789), time.Microsecond)
+	validTimestampTZ := tree.MakeDTimestampTZ(timeutil.Unix(1234567890, 123456789), time.Microsecond)
 	result, err := sqlbase.LimitValueWidth(timestampTZType, validTimestampTZ, &testColName)
 	assert.NoError(t, err)
 	// The result should be rounded to millisecond precision
-	roundedTimestampTZ := tree.MakeDTimestampTZ(time.Unix(1234567890, 123000000), time.Millisecond)
+	roundedTimestampTZ := tree.MakeDTimestampTZ(timeutil.Unix(1234567890, 123000000), time.Millisecond)
 	assert.Equal(t, roundedTimestampTZ, result)
 }
 

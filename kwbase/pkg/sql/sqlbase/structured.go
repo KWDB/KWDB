@@ -3719,7 +3719,7 @@ func ColumnNeedsBackfill(desc *ColumnDescriptor) bool {
 	return desc.HasDefault() || !desc.Nullable || desc.IsComputed()
 }
 
-// HasPrimaryKey returns true if the table has a primary key.
+// HasPrimaryKey returns true if the table's primary key is NOT disabled.
 func (desc *TableDescriptor) HasPrimaryKey() bool {
 	return !desc.PrimaryIndex.Disabled
 }
