@@ -41,19 +41,19 @@ func TestCommentOnProcedureFormat(t *testing.T) {
 				Comment: nil,
 			},
 			expected: `COMMENT ON PROCEDURE proc IS NULL`},
-		{ node: &CommentOnProcedure{
+		{node: &CommentOnProcedure{
 			Name: MakeTableNameFromPrefix(
 				TableNamePrefix{SchemaName: "public", ExplicitSchema: true},
 				"test_proc",
 			),
 			Comment: &comment,
 		},
-		expected: `COMMENT ON PROCEDURE public.test_proc IS 'This is a procedure comment'`},
-		{ node: &CommentOnProcedure{
+			expected: `COMMENT ON PROCEDURE public.test_proc IS 'This is a procedure comment'`},
+		{node: &CommentOnProcedure{
 			Name:    procName,
 			Comment: strPtr("Comment with 'single' quotes"),
 		},
-		expected: `COMMENT ON PROCEDURE proc IS 'Comment with ''single'' quotes'`},
+			expected: `COMMENT ON PROCEDURE proc IS 'Comment with ''single'' quotes'`},
 	}
 
 	for i, tc := range testCases {

@@ -58,7 +58,7 @@ func TestCommentOnIndexFormat(t *testing.T) {
 				Comment: nil,
 			},
 			expected: `COMMENT ON INDEX tbl@idx IS NULL`},
-		{ node: &CommentOnIndex{
+		{node: &CommentOnIndex{
 			Index: TableIndexName{
 				Table: MakeTableNameFromPrefix(
 					TableNamePrefix{SchemaName: "public", ExplicitSchema: true},
@@ -68,12 +68,12 @@ func TestCommentOnIndexFormat(t *testing.T) {
 			},
 			Comment: &comment,
 		},
-		expected: `COMMENT ON INDEX public.test_table@test_index IS 'This is an index comment'`},
-		{ node: &CommentOnIndex{
+			expected: `COMMENT ON INDEX public.test_table@test_index IS 'This is an index comment'`},
+		{node: &CommentOnIndex{
 			Index:   indexName,
 			Comment: strPtr("Comment with 'single' quotes"),
 		},
-		expected: `COMMENT ON INDEX tbl@idx IS 'Comment with ''single'' quotes'`},
+			expected: `COMMENT ON INDEX tbl@idx IS 'Comment with ''single'' quotes'`},
 	}
 
 	for i, tc := range testCases {
