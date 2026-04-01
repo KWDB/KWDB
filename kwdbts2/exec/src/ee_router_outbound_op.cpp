@@ -275,7 +275,9 @@ RouterOutboundOperator::RouterOutboundOperator(TsFetcherCollection* collection,
                                                TABLE* table)
     : OutboundOperator(collection, spec, table), buffer_(nullptr) {}
 
-RouterOutboundOperator::~RouterOutboundOperator() {}
+RouterOutboundOperator::~RouterOutboundOperator() {
+  BrMgr::GetInstance().GetDataStreamMgr()->DestroyPassThroughChunkBuffer(query_id_);
+}
 
 EEIteratorErrCode RouterOutboundOperator::Init(kwdbContext_p ctx) {
   EnterFunc();
