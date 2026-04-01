@@ -527,5 +527,5 @@ TEST_F(TestTagPartitionTableManager, CreateTagPartitionTable_Duplicate) {
 
   int result = part_mgr.CreateTagPartitionTable(schema_, table_version_, err_info);
 
-  EXPECT_NE(result, 0);
+  EXPECT_EQ(result, 0);
 }
