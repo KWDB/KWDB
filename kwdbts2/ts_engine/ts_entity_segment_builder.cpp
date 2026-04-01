@@ -10,19 +10,13 @@
 // See the Mulan PSL v2 for more details.
 
 #include "ts_entity_segment_builder.h"
+
 #include <sys/types.h>
+
 #include <algorithm>
 #include <cstdint>
 #include <cstdio>
-#if defined(__GNUC__) && (__GNUC__ < 8)
-  #include <experimental/filesystem>
-  namespace fs = std::experimental::filesystem;
-#else
-  #include <filesystem>
-  namespace fs = std::filesystem;
-#endif
 #include <utility>
-
 
 #include "data_type.h"
 #include "kwdb_type.h"
@@ -38,7 +32,6 @@
 #include "ts_entity_segment_handle.h"
 #include "ts_filename.h"
 #include "ts_io.h"
-#include "ts_lastsegment_builder.h"
 #include "ts_sliceguard.h"
 #include "ts_version.h"
 
@@ -627,18 +620,18 @@ KStatus TsEntitySegmentBuilder::Compact(bool call_by_vacuum, TsVersionUpdate* up
     }
     TsEntityKey cur_entity_key = {block_span->GetTableID(), block_span->GetTableVersion(), block_span->GetEntityID()};
     if (entity_key == TsEntityKey{}) {
-      entity_key = cur_entity_key;
-      stats->written_devices++;
       std::shared_ptr<TsTableSchemaManager> tbl_schema_mgr = nullptr;
       bool is_dropped = false;
-      s = schema_manager_->GetTableSchemaMgr(entity_key.table_id, tbl_schema_mgr, &is_dropped);
+      s = schema_manager_->GetTableSchemaMgr(cur_entity_key.table_id, tbl_schema_mgr, &is_dropped);
       if (s == FAIL) {
         if (is_dropped) {
-          LOG_INFO("table %lu was dropped, ignore it.", entity_key.table_id);
+          LOG_INFO("table %lu was dropped, ignore it.", cur_entity_key.table_id);
           continue;
         }
         return s;
       }
+      entity_key = cur_entity_key;
+      stats->written_devices++;
       std::shared_ptr<MMapMetricsTable> table_schema;
       s = tbl_schema_mgr->GetMetricSchema(entity_key.table_version, &table_schema);
       if (s != KStatus::SUCCESS) {
