@@ -1548,13 +1548,13 @@ func TestUpdateReplicationMetaData(t *testing.T) {
 		KwdbRepMdt: *metaData,
 	}
 
-	data, err := proto.Marshal(msg)
+	data, err := protoutil.Marshal(msg)
 	if err != nil {
 		t.Fatalf("Failed to marshal UpdateReplicationMetaData: %v", err)
 	}
 
 	unmarshaled := &sqlbase.UpdateReplicationMetaData{}
-	err = proto.Unmarshal(data, unmarshaled)
+	err = protoutil.Unmarshal(data, unmarshaled)
 	if err != nil {
 		t.Fatalf("Failed to unmarshal UpdateReplicationMetaData: %v", err)
 	}
@@ -1669,13 +1669,13 @@ func TestKWDBReplicationSync(t *testing.T) {
 		IsReplicated:            1,
 	}
 
-	data, err := proto.Marshal(msg)
+	data, err := protoutil.Marshal(msg)
 	if err != nil {
 		t.Fatalf("Failed to marshal KWDBReplicationSync: %v", err)
 	}
 
 	unmarshaled := &sqlbase.KWDBReplicationSync{}
-	err = proto.Unmarshal(data, unmarshaled)
+	err = protoutil.Unmarshal(data, unmarshaled)
 	if err != nil {
 		t.Fatalf("Failed to unmarshal KWDBReplicationSync: %v", err)
 	}
