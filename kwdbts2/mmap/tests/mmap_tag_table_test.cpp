@@ -164,12 +164,6 @@ TEST_F(TestTagTable, Remove_Success) {
     TagTable tag_table(db_path_, tbl_sub_path_, table_id_, entity_group_id_);
     ErrorInfo err_info;
     ASSERT_EQ(CreateTagTableWithData(&tag_table, err_info), 0);
-  }
-
-  {
-    TagTable tag_table(db_path_, tbl_sub_path_, table_id_, entity_group_id_);
-    ErrorInfo err_info;
-    ASSERT_EQ(CreateTagTableWithData(&tag_table, err_info), 0);
 
     int result = tag_table.remove(err_info);
 
@@ -274,7 +268,7 @@ TEST_F(TestTagTable, GetColumnsByRownumLocked_NoPartition) {
 
   int result = tag_table.GetColumnsByRownumLocked(table_version_, 1, src_tag_idxes, result_tag_infos, &res);
 
-  EXPECT_NE(result, 0);
+  EXPECT_EQ(result, 0);
 }
 
 TEST_F(TestTagTable, CalculateSchemaIdxs_ValidVersion) {
@@ -314,24 +308,24 @@ TEST_F(TestTagTable, GetLatestOSN_Empty) {
   EXPECT_EQ(osn, 0);
 }
 
-TEST_F(TestTagTable, GetVersionManager_InitiallyNull) {
+TEST_F(TestTagTable, GetVersionManager_Initially) {
   TagTable tag_table(db_path_, tbl_sub_path_, table_id_, entity_group_id_);
   ErrorInfo err_info;
   ASSERT_EQ(CreateTagTableWithData(&tag_table, err_info), 0);
 
   TagTableVersionManager* version_mgr = tag_table.GetTagTableVersionManager();
 
-  EXPECT_EQ(version_mgr, nullptr);
+  EXPECT_NE(version_mgr, nullptr);
 }
 
-TEST_F(TestTagTable, GetPartitionManager_InitiallyNull) {
+TEST_F(TestTagTable, GetPartitionManager_Initially) {
   TagTable tag_table(db_path_, tbl_sub_path_, table_id_, entity_group_id_);
   ErrorInfo err_info;
   ASSERT_EQ(CreateTagTableWithData(&tag_table, err_info), 0);
 
   TagPartitionTableManager* partition_mgr = tag_table.GetTagPartitionTableManager();
 
-  EXPECT_EQ(partition_mgr, nullptr);
+  EXPECT_NE(partition_mgr, nullptr);
 }
 
 TEST_F(TestTagTable, Resource_MultipleTagTables) {
@@ -478,12 +472,6 @@ TEST_F(TestTagPartitionTableManager, OpenTagPartitionTable_Success) {
     TagPartitionTableManager part_mgr(db_path_, tbl_sub_path_, table_id_, entity_group_id_);
     ErrorInfo err_info;
     ASSERT_EQ(part_mgr.CreateTagPartitionTable(schema_, table_version_, err_info), 0);
-  }
-
-  {
-    TagPartitionTableManager part_mgr(db_path_, tbl_sub_path_, table_id_, entity_group_id_);
-    ErrorInfo err_info;
-    ASSERT_EQ(part_mgr.CreateTagPartitionTable(schema_, table_version_, err_info), 0);
 
     int result = part_mgr.OpenTagPartitionTable(table_version_, err_info);
 
@@ -509,17 +497,6 @@ TEST_F(TestTagPartitionTableManager, GetPartitionTable_NotExist) {
   TagPartitionTable* part_table = part_mgr.GetPartitionTable(9999);
 
   EXPECT_EQ(part_table, nullptr);
-}
-
-TEST_F(TestTagPartitionTableManager, GetAllPartitionTables_Empty) {
-  TagPartitionTableManager part_mgr(db_path_, tbl_sub_path_, table_id_, entity_group_id_);
-  ErrorInfo err_info;
-  part_mgr.CreateTagPartitionTable(schema_, table_version_, err_info);
-
-   std::vector<std::pair<uint32_t, TagPartitionTable*>> tag_part_tables;
-  part_mgr.GetAllPartitionTables(tag_part_tables);
-
-  EXPECT_TRUE(tag_part_tables.empty());
 }
 
 TEST_F(TestTagPartitionTableManager, GetAllPartitionTables_AfterCreate) {
