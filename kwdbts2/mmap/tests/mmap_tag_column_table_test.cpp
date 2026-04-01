@@ -427,10 +427,10 @@ TEST_F(TestMMapTagColumnTable, SetAndUnsetDeleteMark) {
   ASSERT_EQ(CreateTableWithData(&table, err_info), 0);
 
   table.setDeleteMark(1);
-  EXPECT_TRUE(table.isValidRow(1));
+  EXPECT_FALSE(table.isValidRow(1));
 
   table.unsetDeleteMark(1);
-  EXPECT_FALSE(table.isValidRow(1));
+  EXPECT_TRUE(table.isValidRow(1));
 }
 
 TEST_F(TestMMapTagColumnTable, MetaData_Access) {
