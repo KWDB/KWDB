@@ -134,44 +134,6 @@ TEST_F(TestTagColumn, StoreOffset_SetAndGet) {
   EXPECT_EQ(col.getStoreOffset(), test_offset);
 }
 
-TEST_F(TestTagColumn, LSN_SetAndGet) {
-  TagColumn col(0, tag_info_);
-
-  EXPECT_FALSE(col.isInited());
-}
-
-TEST_F(TestTagColumn, DropFlag_Set) {
-  TagColumn col(0, tag_info_);
-
-  col.setDrop();
-
-  SUCCEED();
-}
-
-TEST_F(TestTagColumn, StartAddr_Basic) {
-  TagColumn col(0, tag_info_);
-
-  EXPECT_FALSE(col.isInited());
-}
-
-TEST_F(TestTagColumn, IsInited_WithoutOpen) {
-  TagColumn col(0, tag_info_);
-
-  EXPECT_FALSE(col.isInited());
-}
-
-TEST_F(TestTagColumn, Null_SetAndCheck) {
-  TagColumn col(0, tag_info_);
-
-  EXPECT_FALSE(col.isInited());
-}
-
-TEST_F(TestTagColumn, NotNull_SetAndCheck) {
-  TagColumn col(0, tag_info_);
-
-  EXPECT_FALSE(col.isInited());
-}
-
 TEST_F(TestTagColumn, Resource_Constants) {
   EXPECT_EQ(k_per_null_bitmap_size, 1);
   EXPECT_GT(k_entity_group_id_size, 0);
