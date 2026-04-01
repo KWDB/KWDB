@@ -162,7 +162,9 @@ func TestGetNewContainer(t *testing.T) {
 	container.Close(context.Background())
 }
 
-func testProcedurePlanFn(expr memo.RelExpr, pr *physical.Required, src []*exec.LocalVariable) (exec.Plan, error) {
+func testProcedurePlanFn(
+	expr memo.RelExpr, pr *physical.Required, src []*exec.LocalVariable,
+) (exec.Plan, error) {
 	return expr, nil
 }
 
@@ -179,7 +181,9 @@ func testGetResultCallBKFn(p Plan) (Plan, sqlbase.ResultColumns) {
 	return p, resultCols
 }
 
-func testRunPlanCallBKFn(r RunParam, p Plan, rc *rowcontainer.RowContainer, s tree.StatementType) (int, error) {
+func testRunPlanCallBKFn(
+	r RunParam, p Plan, rc *rowcontainer.RowContainer, s tree.StatementType,
+) (int, error) {
 	rc.AddRow(r.GetCtx(), tree.Datums{tree.NewDInt(1)})
 	return 1, nil
 }

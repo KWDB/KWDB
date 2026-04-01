@@ -5,12 +5,11 @@ import (
 	"testing"
 
 	"gitee.com/kwbasedb/kwbase/pkg/settings/cluster"
-	"gitee.com/kwbasedb/kwbase/pkg/sql/sessiondata"
-
 	"gitee.com/kwbasedb/kwbase/pkg/sql/opt/cat"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/parser"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/privilege"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/sessiondata"
 	"github.com/stretchr/testify/require"
 )
 
@@ -31,11 +30,15 @@ func (m *mockCatalog) GetCurrentDatabase(ctx context.Context) string {
 	return "defaultdb"
 }
 
-func (m *mockCatalog) ResolveDatabase(ctx context.Context, flags cat.Flags, name string) (cat.Database, error) {
+func (m *mockCatalog) ResolveDatabase(
+	ctx context.Context, flags cat.Flags, name string,
+) (cat.Database, error) {
 	return nil, nil
 }
 
-func (m *mockCatalog) ResolveSchema(ctx context.Context, flags cat.Flags, name *cat.SchemaName) (cat.Schema, cat.SchemaName, error) {
+func (m *mockCatalog) ResolveSchema(
+	ctx context.Context, flags cat.Flags, name *cat.SchemaName,
+) (cat.Schema, cat.SchemaName, error) {
 	if name != nil && name.CatalogName != "" {
 		return nil, cat.SchemaName{CatalogName: name.CatalogName, SchemaName: "public"}, nil
 	}
@@ -46,11 +49,15 @@ func (m *mockCatalog) CheckAnyPrivilege(ctx context.Context, obj cat.Object) err
 	return nil
 }
 
-func (m *mockCatalog) ResolveDataSource(ctx context.Context, flags cat.Flags, name *cat.DataSourceName) (cat.DataSource, cat.DataSourceName, error) {
+func (m *mockCatalog) ResolveDataSource(
+	ctx context.Context, flags cat.Flags, name *cat.DataSourceName,
+) (cat.DataSource, cat.DataSourceName, error) {
 	return nil, *name, nil
 }
 
-func (m *mockCatalog) ResolveProcCatalog(ctx context.Context, name *tree.TableName, checkPri bool) (bool, *tree.CreateProcedure, error) {
+func (m *mockCatalog) ResolveProcCatalog(
+	ctx context.Context, name *tree.TableName, checkPri bool,
+) (bool, *tree.CreateProcedure, error) {
 	return true, nil, nil
 }
 
@@ -62,7 +69,9 @@ func (m *mockCatalog) HasAdminRole(ctx context.Context) (bool, error) {
 	return true, nil
 }
 
-func (m *mockCatalog) FullyQualifiedName(ctx context.Context, ds cat.DataSource) (cat.DataSourceName, error) {
+func (m *mockCatalog) FullyQualifiedName(
+	ctx context.Context, ds cat.DataSource,
+) (cat.DataSourceName, error) {
 	return cat.DataSourceName{}, nil
 }
 

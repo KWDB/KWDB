@@ -56,7 +56,9 @@ func (m *MockCursorExec) GetDatumAlloc() *sqlbase.DatumAlloc {
 	return m.datumAlloc
 }
 
-func testStartPlanFn(r RunParam, h CursorExec, rc *rowcontainer.RowContainer, s tree.StatementType, p Plan) error {
+func testStartPlanFn(
+	r RunParam, h CursorExec, rc *rowcontainer.RowContainer, s tree.StatementType, p Plan,
+) error {
 	return nil
 }
 

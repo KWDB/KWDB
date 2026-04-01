@@ -24,9 +24,7 @@
 
 package mutations
 
-import (
-	"testing"
-)
+import "testing"
 
 func TestMaxBatchSize(t *testing.T) {
 	// Test that MaxBatchSize returns a positive integer
