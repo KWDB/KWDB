@@ -169,6 +169,7 @@ TEST_F(TestTagTable, Remove_Success) {
   {
     TagTable tag_table(db_path_, tbl_sub_path_, table_id_, entity_group_id_);
     ErrorInfo err_info;
+    ASSERT_EQ(CreateTagTableWithData(&tag_table, err_info), 0);
 
     int result = tag_table.remove(err_info);
 
@@ -482,6 +483,7 @@ TEST_F(TestTagPartitionTableManager, OpenTagPartitionTable_Success) {
   {
     TagPartitionTableManager part_mgr(db_path_, tbl_sub_path_, table_id_, entity_group_id_);
     ErrorInfo err_info;
+    ASSERT_EQ(part_mgr.CreateTagPartitionTable(schema_, table_version_, err_info), 0);
 
     int result = part_mgr.OpenTagPartitionTable(table_version_, err_info);
 
@@ -501,6 +503,8 @@ TEST_F(TestTagPartitionTableManager, GetPartitionTable_AfterCreate) {
 
 TEST_F(TestTagPartitionTableManager, GetPartitionTable_NotExist) {
   TagPartitionTableManager part_mgr(db_path_, tbl_sub_path_, table_id_, entity_group_id_);
+  ErrorInfo err_info;
+  part_mgr.CreateTagPartitionTable(schema_, table_version_, err_info);
 
   TagPartitionTable* part_table = part_mgr.GetPartitionTable(9999);
 
@@ -509,8 +513,10 @@ TEST_F(TestTagPartitionTableManager, GetPartitionTable_NotExist) {
 
 TEST_F(TestTagPartitionTableManager, GetAllPartitionTables_Empty) {
   TagPartitionTableManager part_mgr(db_path_, tbl_sub_path_, table_id_, entity_group_id_);
+  ErrorInfo err_info;
+  part_mgr.CreateTagPartitionTable(schema_, table_version_, err_info);
 
-  std::vector<std::pair<uint32_t, TagPartitionTable*>> tag_part_tables;
+   std::vector<std::pair<uint32_t, TagPartitionTable*>> tag_part_tables;
   part_mgr.GetAllPartitionTables(tag_part_tables);
 
   EXPECT_TRUE(tag_part_tables.empty());
