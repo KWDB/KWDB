@@ -336,13 +336,13 @@ TEST_F(TestTagTableVersionManager, Resource_MultipleVersions) {
   ErrorInfo err_info;
   
   // Create multiple versions
-  for (uint32_t i = 0; i < 5; ++i) {
+  for (uint32_t i = 1; i <= 5; ++i) {
     TagVersionObject* obj = version_mgr.CreateTagVersionObject(schema, i + 100, err_info);
     EXPECT_NE(obj, nullptr);
   }
   
   // Verify all versions exist
-  for (uint32_t i = 0; i < 5; ++i) {
+  for (uint32_t i = 1; i <= 5; ++i) {
     TagVersionObject* obj = version_mgr.GetVersionObject(i + 100);
     EXPECT_NE(obj, nullptr);
   }
