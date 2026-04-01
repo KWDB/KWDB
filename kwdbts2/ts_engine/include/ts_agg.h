@@ -24,17 +24,18 @@ class AggCalculatorV2 {
       mem_(mem), bitmap_(bitmap), type_(type), size_(size), count_(count) {
   }
 
-  bool CalcAggForFlush(int is_not_null, uint16_t& count, void* max_addr, void* min_addr, void* sum_addr);
+  KStatus CalcAggForFlush(bool is_not_null, bool& is_overflow, uint16_t& count,
+                          void* max_addr, void* min_addr, void* sum_addr);
 
  private:
-  bool isnull(size_t row);
+  [[nodiscard]] bool isnull(size_t row) const;
 
  private:
   char* mem_;
   const TsBitmapBase* bitmap_ = nullptr;
   DATATYPE type_;
   int32_t size_;
-  uint16_t count_;
+  int32_t count_;
 };
 
 class VarColAggCalculatorV2 {
@@ -45,7 +46,7 @@ class VarColAggCalculatorV2 {
   void CalcAggForFlush(string& max, string& min, uint64_t& count);
 
  private:
-  std::vector<string> var_rows_;
+  const std::vector<string>& var_rows_;
 };
 
 

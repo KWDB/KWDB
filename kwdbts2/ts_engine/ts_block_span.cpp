@@ -416,8 +416,12 @@ KStatus TsBlockSpan::BuildCompressedData(TsBufferBuilder* data) {
       DATATYPE type = static_cast<DATATYPE>((*scan_attrs_)[scan_idx].type);
       AggCalculatorV2 aggCalc(fixed_col_value_addr, b, type, d_size, nrow_);
       auto is_not_null = (*scan_attrs_)[scan_idx].isFlag(AINFO_NOT_NULL);
-      *reinterpret_cast<bool *>(sum.data()) = aggCalc.CalcAggForFlush(is_not_null, count, max.data(),
-                                                                      min.data(), sum.data() + 1);
+      bool is_overflow = false;
+      s = aggCalc.CalcAggForFlush(is_not_null, is_overflow, count, max.data(), min.data(), sum.data() + 1);
+      if (s != KStatus::SUCCESS) {
+        return s;
+      }
+      *reinterpret_cast<bool *>(sum.data()) = is_overflow;
       if (0 != count) {
         int agg_size = 0;
         if (isSumType(col_type)) {
