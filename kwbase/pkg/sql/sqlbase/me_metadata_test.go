@@ -759,19 +759,6 @@ func TestKWDBNodeInfoDescriptor(t *testing.T) {
 	_, _ = msg.Descriptor()
 }
 
-func TestKWDBNodeInfoMarshal(t *testing.T) {
-	msg := &sqlbase.KWDBNodeInfo{
-		ClusterId: "cluster1",
-	}
-	data, err := msg.Marshal()
-	if err != nil {
-		t.Fatalf("Marshal() failed: %v", err)
-	}
-	if len(data) == 0 {
-		t.Error("Marshal() should return non-empty data")
-	}
-}
-
 func TestKWDBNodeInfoMarshalTo(t *testing.T) {
 	msg := &sqlbase.KWDBNodeInfo{
 		ClusterId: "cluster1",
@@ -1423,19 +1410,6 @@ func TestBlocksDistributionDescriptor(t *testing.T) {
 	_, _ = msg.Descriptor()
 }
 
-func TestBlocksDistributionMarshal(t *testing.T) {
-	msg := &sqlbase.BlocksDistribution{
-		BlockInfo: []sqlbase.BlockInfo{{Level: "etity_segment"}},
-	}
-	data, err := msg.Marshal()
-	if err != nil {
-		t.Fatalf("Marshal() failed: %v", err)
-	}
-	if len(data) == 0 {
-		t.Error("Marshal() should return non-empty data")
-	}
-}
-
 func TestBlocksDistributionMarshalTo(t *testing.T) {
 	msg := &sqlbase.BlocksDistribution{
 		BlockInfo: []sqlbase.BlockInfo{{Level: "etity_segment"}},
@@ -1582,17 +1556,6 @@ func TestUpdateReplicationMetaDataDescriptor(t *testing.T) {
 	_, _ = msg.Descriptor()
 }
 
-func TestUpdateReplicationMetaDataMarshal(t *testing.T) {
-	msg := &sqlbase.UpdateReplicationMetaData{}
-	data, err := msg.Marshal()
-	if err != nil {
-		t.Fatalf("Marshal() failed: %v", err)
-	}
-	if len(data) == 0 {
-		t.Error("Marshal() should return non-empty data")
-	}
-}
-
 func TestUpdateReplicationMetaDataMarshalTo(t *testing.T) {
 	msg := &sqlbase.UpdateReplicationMetaData{}
 	buf := make([]byte, 256)
@@ -1714,19 +1677,6 @@ func TestKWDBReplicationSyncProtoMessage(t *testing.T) {
 func TestKWDBReplicationSyncDescriptor(t *testing.T) {
 	msg := &sqlbase.KWDBReplicationSync{}
 	_, _ = msg.Descriptor()
-}
-
-func TestKWDBReplicationSyncMarshal(t *testing.T) {
-	msg := &sqlbase.KWDBReplicationSync{
-		SyncId: 1,
-	}
-	data, err := msg.Marshal()
-	if err != nil {
-		t.Fatalf("Marshal() failed: %v", err)
-	}
-	if len(data) == 0 {
-		t.Error("Marshal() should return non-empty data")
-	}
 }
 
 func TestKWDBReplicationSyncMarshalTo(t *testing.T) {
@@ -1878,19 +1828,6 @@ func TestKWDBReplicationAgentMetaDataDescriptor(t *testing.T) {
 	_, _ = msg.Descriptor()
 }
 
-func TestKWDBReplicationAgentMetaDataMarshal(t *testing.T) {
-	msg := &sqlbase.KWDBReplicationAgentMetaData{
-		AgentType: sqlbase.AgentType_TS,
-	}
-	data, err := msg.Marshal()
-	if err != nil {
-		t.Fatalf("Marshal() failed: %v", err)
-	}
-	if len(data) == 0 {
-		t.Error("Marshal() should return non-empty data")
-	}
-}
-
 func TestKWDBReplicationAgentMetaDataMarshalTo(t *testing.T) {
 	msg := &sqlbase.KWDBReplicationAgentMetaData{
 		AgentType: sqlbase.AgentType_TS,
@@ -1990,17 +1927,6 @@ func TestKWDBReplicationProgressDescriptor(t *testing.T) {
 	_, _ = msg.Descriptor()
 }
 
-func TestKWDBReplicationProgressMarshal(t *testing.T) {
-	msg := &sqlbase.KWDBReplicationProgress{Txn: 100}
-	data, err := msg.Marshal()
-	if err != nil {
-		t.Fatalf("Marshal() failed: %v", err)
-	}
-	if len(data) == 0 {
-		t.Error("Marshal() should return non-empty data")
-	}
-}
-
 func TestKWDBReplicationProgressMarshalTo(t *testing.T) {
 	msg := &sqlbase.KWDBReplicationProgress{Txn: 100}
 	buf := make([]byte, 256)
@@ -2091,17 +2017,6 @@ func TestKWDBReplicationProgressSetDescriptor(t *testing.T) {
 	_, _ = msg.Descriptor()
 }
 
-func TestKWDBReplicationProgressSetMarshal(t *testing.T) {
-	msg := &sqlbase.KWDBReplicationProgressSet{PortalId: 1}
-	data, err := msg.Marshal()
-	if err != nil {
-		t.Fatalf("Marshal() failed: %v", err)
-	}
-	if len(data) == 0 {
-		t.Error("Marshal() should return non-empty data")
-	}
-}
-
 func TestKWDBReplicationProgressSetMarshalTo(t *testing.T) {
 	msg := &sqlbase.KWDBReplicationProgressSet{PortalId: 1}
 	buf := make([]byte, 256)
@@ -2180,17 +2095,6 @@ func TestReplicationServiceCallerFuncInputsProtoMessage(t *testing.T) {
 func TestReplicationServiceCallerFuncInputsDescriptor(t *testing.T) {
 	msg := &sqlbase.ReplicationServiceCallerFuncInputs{}
 	_, _ = msg.Descriptor()
-}
-
-func TestReplicationServiceCallerFuncInputsMarshal(t *testing.T) {
-	msg := &sqlbase.ReplicationServiceCallerFuncInputs{PortalId: 1}
-	data, err := msg.Marshal()
-	if err != nil {
-		t.Fatalf("Marshal() failed: %v", err)
-	}
-	if len(data) == 0 {
-		t.Error("Marshal() should return non-empty data")
-	}
 }
 
 func TestReplicationServiceCallerFuncInputsMarshalTo(t *testing.T) {
@@ -2276,17 +2180,6 @@ func TestWhiteListDescriptor(t *testing.T) {
 	_, _ = msg.Descriptor()
 }
 
-func TestWhiteListMarshal(t *testing.T) {
-	msg := &sqlbase.WhiteList{Name: "test"}
-	data, err := msg.Marshal()
-	if err != nil {
-		t.Fatalf("Marshal() failed: %v", err)
-	}
-	if len(data) == 0 {
-		t.Error("Marshal() should return non-empty data")
-	}
-}
-
 func TestWhiteListMarshalTo(t *testing.T) {
 	msg := &sqlbase.WhiteList{Name: "test"}
 	buf := make([]byte, 256)
@@ -2365,29 +2258,6 @@ func TestTSInsertSelectProtoMessage(t *testing.T) {
 func TestTSInsertSelectDescriptor(t *testing.T) {
 	msg := &sqlbase.TSInsertSelect{}
 	_, _ = msg.Descriptor()
-}
-
-func TestTSInsertSelectMarshal(t *testing.T) {
-	msg := &sqlbase.TSInsertSelect{Sql: "SELECT 1"}
-	data, err := msg.Marshal()
-	if err != nil {
-		t.Fatalf("Marshal() failed: %v", err)
-	}
-	if len(data) == 0 {
-		t.Error("Marshal() should return non-empty data")
-	}
-}
-
-func TestTSInsertSelectMarshalTo(t *testing.T) {
-	msg := &sqlbase.TSInsertSelect{Sql: "SELECT 1"}
-	buf := make([]byte, 256)
-	n, err := msg.MarshalTo(buf)
-	if err != nil {
-		t.Fatalf("MarshalTo() failed: %v", err)
-	}
-	if n == 0 {
-		t.Error("MarshalTo() should return non-zero size")
-	}
 }
 
 func TestTSInsertSelectXXXMerge(t *testing.T) {

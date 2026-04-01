@@ -61,7 +61,7 @@ func TestDecodeMessage(t *testing.T) {
 		decodedMsg, err := DecodeMessage("kwbase.roachpb.Attributes", data)
 		require.NoError(t, err)
 		require.NotNil(t, decodedMsg)
-		
+
 		decodedAttr, ok := decodedMsg.(*roachpb.Attributes)
 		require.True(t, ok)
 		require.Equal(t, attr.Attrs, decodedAttr.Attrs)
@@ -108,7 +108,7 @@ func TestJSONBMarshalToMessage(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, data)
 	require.Equal(t, attr.Attrs, newAttr.Attrs)
-	
+
 	// Test with invalid JSON
 	invalidJSON, err := json.ParseJSON(`{"invalid": "format"}`)
 	require.NoError(t, err)
