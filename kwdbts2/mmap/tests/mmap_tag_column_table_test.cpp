@@ -295,6 +295,7 @@ TEST_F(TestMMapTagColumnTable, Create_WithMultipleTags) {
   MMapTagColumnTable table;
   ErrorInfo err_info;
 
+  std::vector<TagInfo> local_schema = schema_;
   TagInfo ntag_info2;
   ntag_info2.m_id = 3;
   ntag_info2.m_data_type = DATATYPE::INT64;
@@ -302,9 +303,9 @@ TEST_F(TestMMapTagColumnTable, Create_WithMultipleTags) {
   ntag_info2.m_size = sizeof(int64_t);
   ntag_info2.m_tag_type = GENERAL_TAG;
   ntag_info2.m_flag = 0;
-  schema_.push_back(ntag_info2);
+  local_schema.push_back(ntag_info2);
 
-  int result = table.create(schema_, entity_group_id_, table_version_, err_info);
+  int result = table.create(local_schema, entity_group_id_, table_version_, err_info);
 
   EXPECT_EQ(result, 0);
 }
