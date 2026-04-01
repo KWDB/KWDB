@@ -76,7 +76,7 @@ func TestCursor_Start(t *testing.T) {
 	)
 	monitor.Start(ctx, nil, mon.MakeStandaloneBudget(math.MaxInt64))
 	defer monitor.Stop(ctx)
-	
+
 	runParam := &MockRunParam{
 		ctx:     ctx,
 		evalCtx: &tree.EvalContext{},
@@ -272,7 +272,7 @@ func TestFetchCursorIns_Execute(t *testing.T) {
 
 	mockExec := &MockCursorExec{
 		nextRowReturnRow: sqlbase.EncDatumRow{encdatum},
-		datumAlloc:        datumAlloc,
+		datumAlloc:       datumAlloc,
 	}
 
 	cursor := &Cursor{
