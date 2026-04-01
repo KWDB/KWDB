@@ -18,7 +18,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/types"
 )
 
-func TestColumnTypeIsInvertedIndexable(t *testing.T) {
+func TestColumnTypeIsInvertedIndexable2(t *testing.T) {
 	tests := []struct {
 		name     string
 		typ      *types.T
@@ -87,7 +87,7 @@ func TestIndexDescriptor_ContainsColumnID2(t *testing.T) {
 	}
 }
 
-func TestGeneratedFamilyName(t *testing.T) {
+func TestGeneratedFamilyName2(t *testing.T) {
 	tests := []struct {
 		name        string
 		familyID    FamilyID
@@ -118,7 +118,7 @@ func TestGeneratedFamilyName(t *testing.T) {
 	}
 }
 
-func TestHasCompositeKeyEncoding(t *testing.T) {
+func TestHasCompositeKeyEncoding2(t *testing.T) {
 	tests := []struct {
 		name     string
 		family   types.Family
@@ -146,7 +146,7 @@ func TestHasCompositeKeyEncoding(t *testing.T) {
 	}
 }
 
-func TestDatumTypeHasCompositeKeyEncoding(t *testing.T) {
+func TestDatumTypeHasCompositeKeyEncoding2(t *testing.T) {
 	tests := []struct {
 		name     string
 		typ      *types.T
@@ -174,7 +174,7 @@ func TestDatumTypeHasCompositeKeyEncoding(t *testing.T) {
 	}
 }
 
-func TestMustBeValueEncoded(t *testing.T) {
+func TestMustBeValueEncoded2(t *testing.T) {
 	tests := []struct {
 		name     string
 		family   types.Family
