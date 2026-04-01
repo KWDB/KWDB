@@ -32,7 +32,9 @@ type mockCatalogForSchema struct {
 	schema *mockSchema
 }
 
-func (m *mockCatalogForSchema) ResolveSchema(ctx context.Context, flags cat.Flags, name *cat.SchemaName) (cat.Schema, cat.SchemaName, error) {
+func (m *mockCatalogForSchema) ResolveSchema(
+	ctx context.Context, flags cat.Flags, name *cat.SchemaName,
+) (cat.Schema, cat.SchemaName, error) {
 	if m.schema == nil {
 		return nil, *name, nil
 	}

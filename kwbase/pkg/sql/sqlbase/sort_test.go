@@ -265,7 +265,7 @@ func TestSortWithCancelCheckerNotCancelled(t *testing.T) {
 	data := intSlice{5, 2, 8, 1, 9, 3}
 	sqlbase.Sort(data, cancelChecker)
 	if !sort.IsSorted(data) {
-		t.Error("Slice should be sorted when cancel checker is not cancelled")
+		t.Error("Slice should be sorted when cancel checker is not canceled")
 	}
 }
 

@@ -34,7 +34,7 @@ func TestCancelChecker_Check(t *testing.T) {
 	ctx := context.Background()
 	cancelChecker := sqlbase.NewCancelChecker(ctx)
 
-	// Should return nil when context is not cancelled
+	// Should return nil when context is not canceled
 	for i := 0; i < 2000; i++ { // Run more than cancelCheckInterval (1024) to ensure multiple checks
 		err := cancelChecker.Check()
 		if err != nil {
@@ -43,7 +43,7 @@ func TestCancelChecker_Check(t *testing.T) {
 	}
 }
 
-// TestCancelChecker_Check_WithCancellation tests the Check method when context is cancelled
+// TestCancelChecker_Check_WithCancellation tests the Check method when context is canceled
 func TestCancelChecker_Check_WithCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancelChecker := sqlbase.NewCancelChecker(ctx)
@@ -111,7 +111,7 @@ func TestCancelChecker_Reset(t *testing.T) {
 		t.Errorf("Expected no error with initial context, got %v", err)
 	}
 
-	// Reset with a cancelled context
+	// Reset with a canceled context
 	cancel() // Cancel ctx2
 	cancelChecker.Reset(ctx2)
 
@@ -126,7 +126,7 @@ func TestCancelChecker_Reset(t *testing.T) {
 	}
 
 	if !foundError {
-		t.Error("Expected to find cancellation error after reset with cancelled context")
+		t.Error("Expected to find cancellation error after reset with canceled context")
 	}
 }
 

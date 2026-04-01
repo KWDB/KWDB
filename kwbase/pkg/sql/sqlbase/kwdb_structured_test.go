@@ -202,7 +202,9 @@ func (m *mockTxn) Get(ctx context.Context, key roachpb.Key) (kv.KeyValue, error)
 	return kv.KeyValue{}, m.getError
 }
 
-func (m *mockTxn) Scan(ctx context.Context, begin, end roachpb.Key, max int64) ([]kv.KeyValue, error) {
+func (m *mockTxn) Scan(
+	ctx context.Context, begin, end roachpb.Key, max int64,
+) ([]kv.KeyValue, error) {
 	return nil, m.scanError
 }
 
@@ -210,7 +212,9 @@ func (m *mockTxn) GetWithUnConsistency(ctx context.Context, key roachpb.Key) (kv
 	return kv.KeyValue{}, m.getUnConsistencyError
 }
 
-func (m *mockTxn) ScanWithUnReadConsistency(ctx context.Context, begin, end roachpb.Key, max int64) ([]kv.KeyValue, error) {
+func (m *mockTxn) ScanWithUnReadConsistency(
+	ctx context.Context, begin, end roachpb.Key, max int64,
+) ([]kv.KeyValue, error) {
 	return nil, m.scanUnConsistencyError
 }
 
