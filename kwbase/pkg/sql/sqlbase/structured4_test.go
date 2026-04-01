@@ -17,10 +17,9 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
 )
 
-
 func TestDatumEncodingRAI(t *testing.T) {
-    obj1 := sqlbase.DatumEncoding(0)
-    _ = obj1.Enum()
+	obj1 := sqlbase.DatumEncoding(0)
+	_ = obj1.Enum()
 	_ = obj1.String()
 	_, _ = obj1.EnumDescriptor()
 
@@ -29,8 +28,8 @@ func TestDatumEncodingRAI(t *testing.T) {
 }
 
 func TestJoinTypeRAI(t *testing.T) {
-    obj1 := sqlbase.JoinType(0)
-    _ = obj1.Enum()
+	obj1 := sqlbase.JoinType(0)
+	_ = obj1.Enum()
 	_ = obj1.String()
 	_, _ = obj1.EnumDescriptor()
 
@@ -39,8 +38,8 @@ func TestJoinTypeRAI(t *testing.T) {
 }
 
 func TestScanLockingStrengthRAI(t *testing.T) {
-    obj1 := sqlbase.ScanLockingStrength(0)
-    _ = obj1.Enum()
+	obj1 := sqlbase.ScanLockingStrength(0)
+	_ = obj1.Enum()
 	_ = obj1.String()
 	_, _ = obj1.EnumDescriptor()
 
@@ -49,8 +48,8 @@ func TestScanLockingStrengthRAI(t *testing.T) {
 }
 
 func TestScanLockingWaitPolicyRAI(t *testing.T) {
-    obj1 := sqlbase.ScanLockingWaitPolicy(0)
-    _ = obj1.Enum()
+	obj1 := sqlbase.ScanLockingWaitPolicy(0)
+	_ = obj1.Enum()
 	_ = obj1.String()
 	_, _ = obj1.EnumDescriptor()
 
@@ -59,8 +58,8 @@ func TestScanLockingWaitPolicyRAI(t *testing.T) {
 }
 
 func TestReplicationTypeRAI(t *testing.T) {
-    obj1 := sqlbase.ReplicationType(0)
-    _ = obj1.Enum()
+	obj1 := sqlbase.ReplicationType(0)
+	_ = obj1.Enum()
 	_ = obj1.String()
 	_, _ = obj1.EnumDescriptor()
 
@@ -69,8 +68,8 @@ func TestReplicationTypeRAI(t *testing.T) {
 }
 
 func TestAgentTypeRAI(t *testing.T) {
-    obj1 := sqlbase.AgentType(0)
-    _ = obj1.Enum()
+	obj1 := sqlbase.AgentType(0)
+	_ = obj1.Enum()
 	_ = obj1.String()
 	_, _ = obj1.EnumDescriptor()
 
@@ -79,8 +78,8 @@ func TestAgentTypeRAI(t *testing.T) {
 }
 
 func TestDataTypeRAI(t *testing.T) {
-    obj1 := sqlbase.DataType(0)
-    _ = obj1.Enum()
+	obj1 := sqlbase.DataType(0)
+	_ = obj1.Enum()
 	_ = obj1.String()
 	_, _ = obj1.EnumDescriptor()
 
@@ -89,8 +88,8 @@ func TestDataTypeRAI(t *testing.T) {
 }
 
 func TestVariableLengthTypeRAI(t *testing.T) {
-    obj1 := sqlbase.VariableLengthType(0)
-    _ = obj1.Enum()
+	obj1 := sqlbase.VariableLengthType(0)
+	_ = obj1.Enum()
 	_ = obj1.String()
 	_, _ = obj1.EnumDescriptor()
 
@@ -99,8 +98,8 @@ func TestVariableLengthTypeRAI(t *testing.T) {
 }
 
 func TestKWDBReplicationStatusRAI(t *testing.T) {
-    obj1 := sqlbase.KWDBReplicationStatus(0)
-    _ = obj1.Enum()
+	obj1 := sqlbase.KWDBReplicationStatus(0)
+	_ = obj1.Enum()
 	_ = obj1.String()
 	_, _ = obj1.EnumDescriptor()
 
@@ -109,8 +108,8 @@ func TestKWDBReplicationStatusRAI(t *testing.T) {
 }
 
 func TestKWDBConnectionStatusRAI(t *testing.T) {
-    obj1 := sqlbase.KWDBConnectionStatus(0)
-    _ = obj1.Enum()
+	obj1 := sqlbase.KWDBConnectionStatus(0)
+	_ = obj1.Enum()
 	_ = obj1.String()
 	_, _ = obj1.EnumDescriptor()
 
@@ -119,8 +118,8 @@ func TestKWDBConnectionStatusRAI(t *testing.T) {
 }
 
 func TestKWDBReplicationLevelRAI(t *testing.T) {
-    obj1 := sqlbase.KWDBReplicationLevel(0)
-    _ = obj1.Enum()
+	obj1 := sqlbase.KWDBReplicationLevel(0)
+	_ = obj1.Enum()
 	_ = obj1.String()
 	_, _ = obj1.EnumDescriptor()
 
@@ -129,8 +128,8 @@ func TestKWDBReplicationLevelRAI(t *testing.T) {
 }
 
 func TestColumnTypeRAI(t *testing.T) {
-    obj1 := sqlbase.ColumnType(0)
-    _ = obj1.Enum()
+	obj1 := sqlbase.ColumnType(0)
+	_ = obj1.Enum()
 	_ = obj1.String()
 	_, _ = obj1.EnumDescriptor()
 
@@ -139,8 +138,8 @@ func TestColumnTypeRAI(t *testing.T) {
 }
 
 func TestKWDBHAStatusRAI(t *testing.T) {
-    obj1 := sqlbase.KWDBHAStatus(0)
-    _ = obj1.Enum()
+	obj1 := sqlbase.KWDBHAStatus(0)
+	_ = obj1.Enum()
 	_ = obj1.String()
 	_, _ = obj1.EnumDescriptor()
 
@@ -149,8 +148,8 @@ func TestKWDBHAStatusRAI(t *testing.T) {
 }
 
 func TestConstraintValidityRAI(t *testing.T) {
-    obj1 := sqlbase.ConstraintValidity(0)
-    _ = obj1.Enum()
+	obj1 := sqlbase.ConstraintValidity(0)
+	_ = obj1.Enum()
 	_ = obj1.String()
 	_, _ = obj1.EnumDescriptor()
 
@@ -159,8 +158,8 @@ func TestConstraintValidityRAI(t *testing.T) {
 }
 
 func TestTriggerActionTimeRAI(t *testing.T) {
-    obj1 := sqlbase.TriggerActionTime(0)
-    _ = obj1.Enum()
+	obj1 := sqlbase.TriggerActionTime(0)
+	_ = obj1.Enum()
 	_ = obj1.String()
 	_, _ = obj1.EnumDescriptor()
 
@@ -169,8 +168,8 @@ func TestTriggerActionTimeRAI(t *testing.T) {
 }
 
 func TestTriggerEventRAI(t *testing.T) {
-    obj1 := sqlbase.TriggerEvent(0)
-    _ = obj1.Enum()
+	obj1 := sqlbase.TriggerEvent(0)
+	_ = obj1.Enum()
 	_ = obj1.String()
 	_, _ = obj1.EnumDescriptor()
 
@@ -179,8 +178,8 @@ func TestTriggerEventRAI(t *testing.T) {
 }
 
 func TestCDCInstanceTypeRAI(t *testing.T) {
-    obj1 := sqlbase.CDCInstanceType(0)
-    _ = obj1.Enum()
+	obj1 := sqlbase.CDCInstanceType(0)
+	_ = obj1.Enum()
 	_ = obj1.String()
 	_, _ = obj1.EnumDescriptor()
 
@@ -189,8 +188,8 @@ func TestCDCInstanceTypeRAI(t *testing.T) {
 }
 
 func TestForeignKeyReference_ActionRAI(t *testing.T) {
-    obj1 := sqlbase.ForeignKeyReference_Action(0)
-    _ = obj1.Enum()
+	obj1 := sqlbase.ForeignKeyReference_Action(0)
+	_ = obj1.Enum()
 	_ = obj1.String()
 	_, _ = obj1.EnumDescriptor()
 
@@ -199,8 +198,8 @@ func TestForeignKeyReference_ActionRAI(t *testing.T) {
 }
 
 func TestForeignKeyReference_MatchRAI(t *testing.T) {
-    obj1 := sqlbase.ForeignKeyReference_Match(0)
-    _ = obj1.Enum()
+	obj1 := sqlbase.ForeignKeyReference_Match(0)
+	_ = obj1.Enum()
 	_ = obj1.String()
 	_, _ = obj1.EnumDescriptor()
 
@@ -209,8 +208,8 @@ func TestForeignKeyReference_MatchRAI(t *testing.T) {
 }
 
 func TestIndexDescriptor_DirectionRAI(t *testing.T) {
-    obj1 := sqlbase.IndexDescriptor_Direction(0)
-    _ = obj1.Enum()
+	obj1 := sqlbase.IndexDescriptor_Direction(0)
+	_ = obj1.Enum()
 	_ = obj1.String()
 	_, _ = obj1.EnumDescriptor()
 
@@ -219,8 +218,8 @@ func TestIndexDescriptor_DirectionRAI(t *testing.T) {
 }
 
 func TestIndexDescriptor_TypeRAI(t *testing.T) {
-    obj1 := sqlbase.IndexDescriptor_Type(0)
-    _ = obj1.Enum()
+	obj1 := sqlbase.IndexDescriptor_Type(0)
+	_ = obj1.Enum()
 	_ = obj1.String()
 	_, _ = obj1.EnumDescriptor()
 
@@ -229,8 +228,8 @@ func TestIndexDescriptor_TypeRAI(t *testing.T) {
 }
 
 func TestConstraintToUpdate_ConstraintTypeRAI(t *testing.T) {
-    obj1 := sqlbase.ConstraintToUpdate_ConstraintType(0)
-    _ = obj1.Enum()
+	obj1 := sqlbase.ConstraintToUpdate_ConstraintType(0)
+	_ = obj1.Enum()
 	_ = obj1.String()
 	_, _ = obj1.EnumDescriptor()
 
@@ -239,8 +238,8 @@ func TestConstraintToUpdate_ConstraintTypeRAI(t *testing.T) {
 }
 
 func TestDescriptorMutation_StateRAI(t *testing.T) {
-    obj1 := sqlbase.DescriptorMutation_State(0)
-    _ = obj1.Enum()
+	obj1 := sqlbase.DescriptorMutation_State(0)
+	_ = obj1.Enum()
 	_ = obj1.String()
 	_, _ = obj1.EnumDescriptor()
 
@@ -249,8 +248,8 @@ func TestDescriptorMutation_StateRAI(t *testing.T) {
 }
 
 func TestDescriptorMutation_DirectionRAI(t *testing.T) {
-    obj1 := sqlbase.DescriptorMutation_Direction(0)
-    _ = obj1.Enum()
+	obj1 := sqlbase.DescriptorMutation_Direction(0)
+	_ = obj1.Enum()
 	_ = obj1.String()
 	_, _ = obj1.EnumDescriptor()
 
@@ -259,8 +258,8 @@ func TestDescriptorMutation_DirectionRAI(t *testing.T) {
 }
 
 func TestProcParam_ParamDirectionRAI(t *testing.T) {
-    obj1 := sqlbase.ProcParam_ParamDirection(0)
-    _ = obj1.Enum()
+	obj1 := sqlbase.ProcParam_ParamDirection(0)
+	_ = obj1.Enum()
 	_ = obj1.String()
 	_, _ = obj1.EnumDescriptor()
 
@@ -269,8 +268,8 @@ func TestProcParam_ParamDirectionRAI(t *testing.T) {
 }
 
 func TestTableDescriptor_StateRAI(t *testing.T) {
-    obj1 := sqlbase.TableDescriptor_State(0)
-    _ = obj1.Enum()
+	obj1 := sqlbase.TableDescriptor_State(0)
+	_ = obj1.Enum()
 	_ = obj1.String()
 	_, _ = obj1.EnumDescriptor()
 
@@ -279,8 +278,8 @@ func TestTableDescriptor_StateRAI(t *testing.T) {
 }
 
 func TestTableDescriptor_AuditModeRAI(t *testing.T) {
-    obj1 := sqlbase.TableDescriptor_AuditMode(0)
-    _ = obj1.Enum()
+	obj1 := sqlbase.TableDescriptor_AuditMode(0)
+	_ = obj1.Enum()
 	_ = obj1.String()
 	_, _ = obj1.EnumDescriptor()
 
@@ -289,8 +288,8 @@ func TestTableDescriptor_AuditModeRAI(t *testing.T) {
 }
 
 func TestTableDescriptor_LockSateRAI(t *testing.T) {
-    obj1 := sqlbase.TableDescriptor_LockSate(0)
-    _ = obj1.Enum()
+	obj1 := sqlbase.TableDescriptor_LockSate(0)
+	_ = obj1.Enum()
 	_ = obj1.String()
 	_, _ = obj1.EnumDescriptor()
 
@@ -299,8 +298,8 @@ func TestTableDescriptor_LockSateRAI(t *testing.T) {
 }
 
 func TestSchemaDescriptor_StateRAI(t *testing.T) {
-    obj1 := sqlbase.SchemaDescriptor_State(0)
-    _ = obj1.Enum()
+	obj1 := sqlbase.SchemaDescriptor_State(0)
+	_ = obj1.Enum()
 	_ = obj1.String()
 	_, _ = obj1.EnumDescriptor()
 
@@ -309,12 +308,11 @@ func TestSchemaDescriptor_StateRAI(t *testing.T) {
 }
 
 func TestChildDesc_StateRAI(t *testing.T) {
-    obj1 := sqlbase.ChildDesc_State(0)
-    _ = obj1.Enum()
+	obj1 := sqlbase.ChildDesc_State(0)
+	_ = obj1.Enum()
 	_ = obj1.String()
 	_, _ = obj1.EnumDescriptor()
 
 	empty := []byte{'"', '"'}
 	_ = obj1.UnmarshalJSON(empty)
 }
-
