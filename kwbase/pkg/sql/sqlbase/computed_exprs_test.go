@@ -12,8 +12,10 @@
 package sqlbase_test
 
 import (
+	"strings"
 	"testing"
 
+	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/transform"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/types"
@@ -109,7 +111,7 @@ func TestCannotWriteToComputedColError(t *testing.T) {
 
 	errStr := err.Error()
 	expectedSubstr := "cannot write directly to computed column \"test_column\""
-	if len(errStr) < len(expectedSubstr) || errStr[len(errStr)-len(expectedSubstr):] != expectedSubstr {
+	if !strings.HasSuffix(errStr, expectedSubstr) {
 		t.Errorf("Expected error to contain '%s', got '%s'", expectedSubstr, errStr)
 	}
 }
@@ -144,4 +146,137 @@ func TestDescContainerImplementation(t *testing.T) {
 	if result.Family() != colType.Family() {
 		t.Errorf("Expected type family %v, got %v", colType.Family(), result.Family())
 	}
+}
+
+// TestMakeComputedExprs tests the MakeComputedExprs function
+func TestMakeComputedExprs(t *testing.T) {
+	// Create a test table descriptor
+	tableDesc := &sqlbase.ImmutableTableDescriptor{
+		TableDescriptor: sqlbase.TableDescriptor{
+			ID: 1,
+			Columns: []sqlbase.ColumnDescriptor{
+				{
+					ID:   1,
+					Name: "a",
+					Type: *types.Int,
+				},
+				{
+					ID:   2,
+					Name: "b",
+					Type: *types.Int,
+				},
+				{
+					ID:          3,
+					Name:        "c",
+					Type:        *types.Int,
+					ComputeExpr: func() *string { s := "a + b"; return &s }(),
+				},
+			},
+		},
+	}
+
+	tn := tree.NewUnqualifiedTableName(tree.Name("test_table"))
+	txCtx := &transform.ExprTransformContext{}
+	evalCtx := tree.NewTestingEvalContext(nil)
+
+	// Test with columns including a computed column
+	cols := []sqlbase.ColumnDescriptor{
+		tableDesc.Columns[0],
+		tableDesc.Columns[1],
+		tableDesc.Columns[2],
+	}
+
+	computedExprs, err := sqlbase.MakeComputedExprs(cols, tableDesc, tn, txCtx, evalCtx, false)
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+
+	if len(computedExprs) != 3 {
+		t.Errorf("Expected 3 computed expressions, got %d", len(computedExprs))
+	}
+
+	// Check that non-computed columns have NULL expressions
+	if computedExprs[0] != tree.DNull {
+		t.Errorf("Expected DNull for non-computed column, got %v", computedExprs[0])
+	}
+	if computedExprs[1] != tree.DNull {
+		t.Errorf("Expected DNull for non-computed column, got %v", computedExprs[1])
+	}
+
+	// Check that computed column has a non-NULL expression
+	if computedExprs[2] == tree.DNull {
+		t.Error("Expected non-null expression for computed column")
+	}
+
+	tableDesc = &sqlbase.ImmutableTableDescriptor{
+		TableDescriptor: sqlbase.TableDescriptor{
+			ID: 1,
+			Columns: []sqlbase.ColumnDescriptor{
+				{
+					ID:          1,
+					Name:        "a",
+					Type:        *types.Int,
+					ComputeExpr: func() *string { s := "a + b"; return &s }(),
+				},
+				{
+					ID:          2,
+					Name:        "b",
+					Type:        *types.Int,
+					ComputeExpr: func() *string { s := "a + b"; return &s }(),
+				},
+				{
+					ID:          3,
+					Name:        "c",
+					Type:        *types.Int,
+					ComputeExpr: func() *string { s := "a + b"; return &s }(),
+				},
+			},
+		},
+	}
+	// Test with no computed columns
+	colsNoComputed := []sqlbase.ColumnDescriptor{
+		tableDesc.Columns[0],
+		tableDesc.Columns[1],
+	}
+
+	computedExprsNoComputed, err := sqlbase.MakeComputedExprs(colsNoComputed, tableDesc, tn, txCtx, evalCtx, false)
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+
+	// Fix: computedExprsNoComputed should be checked for length and DNulls, not for nil
+	if len(computedExprsNoComputed) != 2 {
+		t.Errorf("Expected 2 computed expressions, got %d", len(computedExprsNoComputed))
+	}
+	if computedExprsNoComputed[0] == tree.DNull {
+		t.Errorf("Expected Non-DNull for non-computed column, got %v", computedExprsNoComputed[0])
+	}
+	if computedExprsNoComputed[1] == tree.DNull {
+		t.Errorf("Expected Non-DNull for non-computed column, got %v", computedExprsNoComputed[1])
+	}
+}
+
+// TestRowIndexedVarContainer_IndexedVarEval_EdgeCases tests edge cases for IndexedVarEval
+func TestRowIndexedVarContainer_IndexedVarEval_EdgeCases(t *testing.T) {
+	// Test with empty datums
+	datums := tree.Datums{tree.DNull}
+	cols := []sqlbase.ColumnDescriptor{{ID: 1}}
+	mapping := map[sqlbase.ColumnID]int{1: 0}
+
+	container := &sqlbase.RowIndexedVarContainer{
+		CurSourceRow: datums,
+		Cols:         cols,
+		Mapping:      mapping,
+	}
+
+	// This should not panic even though the row is empty
+	result, err := container.IndexedVarEval(0, nil)
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+	// Since the mapping exists but the row is empty, this should return DNull
+	if result != tree.DNull {
+		t.Errorf("Expected DNull for empty row, got %v", result)
+	}
+
 }

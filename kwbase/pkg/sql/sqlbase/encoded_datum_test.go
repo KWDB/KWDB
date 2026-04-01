@@ -1067,6 +1067,81 @@ func TestEncDatumRowCompareToDatums(t *testing.T) {
 	}
 }
 
+// Test EncDatumRow String method
+func TestEncDatumRowString(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	// Test with integer and string datums
+	row := EncDatumRow{
+		DatumToEncDatum(types.Int, tree.NewDInt(42)),
+		DatumToEncDatum(types.String, tree.NewDString("hello")),
+	}
+
+	typesList := []types.T{*types.Int, *types.String}
+	result := row.String(typesList)
+	expected := "[42 'hello']"
+	if result != expected {
+		t.Errorf("Expected %s, got %s", expected, result)
+	}
+
+	// Test with null datum
+	rowWithNull := EncDatumRow{
+		DatumToEncDatum(types.Int, tree.NewDInt(42)),
+		DatumToEncDatum(types.Int, tree.DNull),
+	}
+
+	result = rowWithNull.String(typesList)
+	expected = "[42 NULL]"
+	if result != expected {
+		t.Errorf("Expected %s, got %s", expected, result)
+	}
+
+	// Test with unset EncDatum
+	rowWithUnset := EncDatumRow{
+		DatumToEncDatum(types.Int, tree.NewDInt(42)),
+		{}, // Unset datum
+	}
+
+	result = rowWithUnset.String(typesList)
+	expected = "[42 <unset>]"
+	if result != expected {
+		t.Errorf("Expected %s, got %s", expected, result)
+	}
+}
+
+// Test EncDatumRows String method
+func TestEncDatumRowsString(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	// Create test rows
+	row1 := EncDatumRow{
+		DatumToEncDatum(types.Int, tree.NewDInt(1)),
+		DatumToEncDatum(types.String, tree.NewDString("first")),
+	}
+
+	row2 := EncDatumRow{
+		DatumToEncDatum(types.Int, tree.NewDInt(2)),
+		DatumToEncDatum(types.String, tree.NewDString("second")),
+	}
+
+	rows := EncDatumRows{row1, row2}
+	typesList := []types.T{*types.Int, *types.String}
+
+	result := rows.String(typesList)
+	expected := "[[1 'first'] [2 'second']]"
+	if result != expected {
+		t.Errorf("Expected %s, got %s", expected, result)
+	}
+
+	// Test with empty rows
+	emptyRows := EncDatumRows{}
+	result = emptyRows.String(typesList)
+	expected = "[]"
+	if result != expected {
+		t.Errorf("Expected %s, got %s", expected, result)
+	}
+}
+
 func TestEncDatumEdgeCases(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 
