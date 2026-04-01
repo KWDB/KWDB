@@ -125,7 +125,9 @@ func TestResult_Next(t *testing.T) {
 	// Add a QueryResult with a row container
 	// datumAlloc := &sqlbase.DatumAlloc{}
 	rowContainer := rowcontainer.NewRowContainer(monitor.MakeBoundAccount(), sqlbase.ColTypeInfoFromResCols(sqlbase.ResultColumns{{Typ: types.Int}}), 1)
-	rowContainer.AddRow(ctx, tree.Datums{tree.NewDInt(42)})
+	_, err := rowContainer.AddRow(ctx, tree.Datums{tree.NewDInt(42)})
+	require.NoError(t, err)
+
 	defer rowContainer.Close(ctx)
 
 	queryResult := &QueryResult{
@@ -164,7 +166,9 @@ func TestResult_Values(t *testing.T) {
 
 	rowContainer := rowcontainer.NewRowContainer(monitor.MakeBoundAccount(), sqlbase.ColTypeInfoFromResCols(sqlbase.ResultColumns{{Typ: types.Int}}), 1)
 	expectedRow := tree.Datums{tree.NewDInt(42)}
-	rowContainer.AddRow(ctx, expectedRow)
+	_, err := rowContainer.AddRow(ctx, expectedRow)
+	require.NoError(t, err)
+
 	defer rowContainer.Close(ctx)
 
 	queryResult := &QueryResult{
@@ -173,7 +177,9 @@ func TestResult_Values(t *testing.T) {
 	result.AddQueryResult(queryResult)
 
 	// Test Values()
-	result.Next()
+	_, err = result.Next()
+	require.NoError(t, err)
+
 	values := result.Values()
 	require.Equal(t, expectedRow, values)
 }

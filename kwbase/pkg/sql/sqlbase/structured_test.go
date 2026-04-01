@@ -2055,3 +2055,126 @@ func TestTableDescriptorSequenceOptsSequenceOwnerResetStringSize(t *testing.T) {
 	_ = m.String()
 	_ = m.Size()
 }
+
+func TestColumnDescriptor_IsComputed(t *testing.T) {
+	col := ColumnDescriptor{Name: "a"}
+	if col.IsComputed() {
+		t.Error("Expected IsComputed to be false when ComputeExpr is nil")
+	}
+	expr := "a + 1"
+	col.ComputeExpr = &expr
+	if !col.IsComputed() {
+		t.Error("Expected IsComputed to be true when ComputeExpr is set")
+	}
+}
+
+func TestColumnDescriptor_HasDefault(t *testing.T) {
+	col := ColumnDescriptor{Name: "a"}
+	if col.HasDefault() {
+		t.Error("Expected HasDefault to be false when DefaultExpr is nil")
+	}
+	expr := "1"
+	col.DefaultExpr = &expr
+	if !col.HasDefault() {
+		t.Error("Expected HasDefault to be true when DefaultExpr is set")
+	}
+}
+
+func TestColumnDescriptor_IsNullable(t *testing.T) {
+	col := ColumnDescriptor{Name: "a"}
+	col.Nullable = false
+	if col.IsNullable() {
+		t.Error("Expected IsNullable to be false")
+	}
+	col.Nullable = true
+	if !col.IsNullable() {
+		t.Error("Expected IsNullable to be true")
+	}
+}
+
+func TestColumnDescriptor_SQLString(t *testing.T) {
+	col := ColumnDescriptor{Name: "a", Type: *types.Int}
+	sql := col.SQLString()
+	if sql == "" {
+		t.Error("Expected SQLString to return non-empty string")
+	}
+}
+
+func TestIndexDescriptor_IsSharded(t *testing.T) {
+	idx := IndexDescriptor{}
+	if idx.IsSharded() {
+		t.Error("Expected IsSharded to be false by default")
+	}
+	idx.Sharded.IsSharded = true
+	if !idx.IsSharded() {
+		t.Error("Expected IsSharded to be true when Sharded.IsSharded is true")
+	}
+}
+
+func TestIndexDescriptor_ContainsColumnID(t *testing.T) {
+	idx := IndexDescriptor{
+		ColumnIDs: []ColumnID{1, 2, 3},
+	}
+	if !idx.ContainsColumnID(2) {
+		t.Error("Expected ContainsColumnID to return true for 2")
+	}
+	if idx.ContainsColumnID(5) {
+		t.Error("Expected ContainsColumnID to return false for 5")
+	}
+}
+
+func TestTableDescriptor_FindColumnByName(t *testing.T) {
+	td := TableDescriptor{
+		Columns: []ColumnDescriptor{
+			{Name: "a", ID: 1},
+			{Name: "b", ID: 2},
+		},
+	}
+	col, _, err := td.FindColumnByName("b")
+	if err != nil {
+		t.Errorf("Unexpected error: %v", err)
+	}
+
+	if col == nil || col.Name != "b" {
+		t.Error("Expected to find column 'b'")
+	}
+	_, _, err = td.FindColumnByName("x")
+	if err == nil {
+		t.Error("Expected error for non-existent column")
+	}
+}
+
+func TestTableDescriptor_FindIndexByName(t *testing.T) {
+	td := TableDescriptor{
+		PrimaryIndex: IndexDescriptor{Name: "pk"},
+		Indexes: []IndexDescriptor{
+			{Name: "idx1"},
+			{Name: "idx2"},
+		},
+	}
+	idx, _, err := td.FindIndexByName("idx2")
+	if err != nil {
+		t.Errorf("Unexpected error: %v", err)
+	}
+
+	if idx == nil || idx.Name != "idx2" {
+		t.Error("Expected to find index 'idx2'")
+	}
+	_, _, err = td.FindIndexByName("notfound")
+	if err == nil {
+		t.Error("Expected error for non-existent index")
+	}
+}
+
+func TestTableDescriptor_GetColumnNames(t *testing.T) {
+	td := TableDescriptor{
+		Columns: []ColumnDescriptor{
+			{Name: "a"},
+			{Name: "b"},
+		},
+	}
+	names := td.GetColumns()
+	if len(names) != 2 || names[0].Name != "a" || names[1].Name != "b" {
+		t.Errorf("Expected column names [a b], got %v", names)
+	}
+}
