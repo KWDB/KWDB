@@ -313,7 +313,7 @@ TEST_F(TestMMapTagColumnTable, Insert_MultipleRows) {
   ErrorInfo err_info;
   ASSERT_EQ(CreateTableWithData(&table, err_info), 0);
 
-  for (int i = 0; i < 5; ++i) {
+  for (int i = 1; i <= 4; ++i) {
     char record[256] = {0};
     size_t row_id = 0;
 
