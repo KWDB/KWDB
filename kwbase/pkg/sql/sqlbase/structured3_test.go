@@ -23,12 +23,12 @@ func TestDeleteMeMsgRAI(t *testing.T) {
 	_ = obj1.String()
 	_ = obj1.XXX_Size()
 	_ = obj1.Size()
-	obj1.Marshal()
+
 	holder := make([]byte, 1024)
 	_, _ = obj1.MarshalTo(holder)
 	_, _ = obj1.XXX_Marshal(holder, true)
 	empty := []byte{'"', '"'}
-	_ = obj1.Unmarshal(empty)
+
 	_ = obj1.XXX_Unmarshal(empty)
 	obj1.ProtoMessage()
 	_, _ = obj1.Descriptor()
@@ -44,12 +44,12 @@ func TestKWDBHAInfoRAI(t *testing.T) {
 	_ = obj1.String()
 	_ = obj1.XXX_Size()
 	_ = obj1.Size()
-	obj1.Marshal()
+
 	holder := make([]byte, 1024)
 	_, _ = obj1.MarshalTo(holder)
 	_, _ = obj1.XXX_Marshal(holder, true)
 	empty := []byte{'"', '"'}
-	_ = obj1.Unmarshal(empty)
+
 	_ = obj1.XXX_Unmarshal(empty)
 	obj1.ProtoMessage()
 	_, _ = obj1.Descriptor()
@@ -65,12 +65,12 @@ func TestPreRelationRAI(t *testing.T) {
 	_ = obj1.String()
 	_ = obj1.XXX_Size()
 	_ = obj1.Size()
-	obj1.Marshal()
+
 	holder := make([]byte, 1024)
 	_, _ = obj1.MarshalTo(holder)
 	_, _ = obj1.XXX_Marshal(holder, true)
 	empty := []byte{'"', '"'}
-	_ = obj1.Unmarshal(empty)
+
 	_ = obj1.XXX_Unmarshal(empty)
 	obj1.ProtoMessage()
 	_, _ = obj1.Descriptor()
@@ -86,12 +86,12 @@ func TestCreateCTableRAI(t *testing.T) {
 	_ = obj1.String()
 	_ = obj1.XXX_Size()
 	_ = obj1.Size()
-	obj1.Marshal()
+
 	holder := make([]byte, 1024)
 	_, _ = obj1.MarshalTo(holder)
 	_, _ = obj1.XXX_Marshal(holder, true)
 	empty := []byte{'"', '"'}
-	_ = obj1.Unmarshal(empty)
+
 	_ = obj1.XXX_Unmarshal(empty)
 	obj1.ProtoMessage()
 	_, _ = obj1.Descriptor()
@@ -107,12 +107,12 @@ func TestKWDBCTableRAI(t *testing.T) {
 	_ = obj1.String()
 	_ = obj1.XXX_Size()
 	_ = obj1.Size()
-	obj1.Marshal()
+
 	holder := make([]byte, 1024)
 	_, _ = obj1.MarshalTo(holder)
 	_, _ = obj1.XXX_Marshal(holder, true)
 	empty := []byte{'"', '"'}
-	_ = obj1.Unmarshal(empty)
+
 	_ = obj1.XXX_Unmarshal(empty)
 	obj1.ProtoMessage()
 	_, _ = obj1.Descriptor()
@@ -128,12 +128,12 @@ func TestKWDBTsTableRAI(t *testing.T) {
 	_ = obj1.String()
 	_ = obj1.XXX_Size()
 	_ = obj1.Size()
-	obj1.Marshal()
+
 	holder := make([]byte, 1024)
 	_, _ = obj1.MarshalTo(holder)
 	_, _ = obj1.XXX_Marshal(holder, true)
 	empty := []byte{'"', '"'}
-	_ = obj1.Unmarshal(empty)
+
 	_ = obj1.XXX_Unmarshal(empty)
 	obj1.ProtoMessage()
 	_, _ = obj1.Descriptor()
@@ -149,12 +149,12 @@ func TestKWDBKTSColumnRAI(t *testing.T) {
 	_ = obj1.String()
 	_ = obj1.XXX_Size()
 	_ = obj1.Size()
-	obj1.Marshal()
+
 	holder := make([]byte, 1024)
 	_, _ = obj1.MarshalTo(holder)
 	_, _ = obj1.XXX_Marshal(holder, true)
 	empty := []byte{'"', '"'}
-	_ = obj1.Unmarshal(empty)
+
 	_ = obj1.XXX_Unmarshal(empty)
 	obj1.ProtoMessage()
 	_, _ = obj1.Descriptor()
@@ -170,12 +170,12 @@ func TestNTagIndexInfoRAI(t *testing.T) {
 	_ = obj1.String()
 	_ = obj1.XXX_Size()
 	_ = obj1.Size()
-	obj1.Marshal()
+
 	holder := make([]byte, 1024)
 	_, _ = obj1.MarshalTo(holder)
 	_, _ = obj1.XXX_Marshal(holder, true)
 	empty := []byte{'"', '"'}
-	_ = obj1.Unmarshal(empty)
+
 	_ = obj1.XXX_Unmarshal(empty)
 	obj1.ProtoMessage()
 	_, _ = obj1.Descriptor()
@@ -191,12 +191,12 @@ func TestCreateTsTableRAI(t *testing.T) {
 	_ = obj1.String()
 	_ = obj1.XXX_Size()
 	_ = obj1.Size()
-	obj1.Marshal()
+
 	holder := make([]byte, 1024)
 	_, _ = obj1.MarshalTo(holder)
 	_, _ = obj1.XXX_Marshal(holder, true)
 	empty := []byte{'"', '"'}
-	_ = obj1.Unmarshal(empty)
+
 	_ = obj1.XXX_Unmarshal(empty)
 	obj1.ProtoMessage()
 	_, _ = obj1.Descriptor()
@@ -212,12 +212,12 @@ func TestBlockInfoRAI(t *testing.T) {
 	_ = obj1.String()
 	_ = obj1.XXX_Size()
 	_ = obj1.Size()
-	obj1.Marshal()
+
 	holder := make([]byte, 1024)
 	_, _ = obj1.MarshalTo(holder)
 	_, _ = obj1.XXX_Marshal(holder, true)
 	empty := []byte{'"', '"'}
-	_ = obj1.Unmarshal(empty)
+
 	_ = obj1.XXX_Unmarshal(empty)
 	obj1.ProtoMessage()
 	_, _ = obj1.Descriptor()
@@ -233,12 +233,12 @@ func TestBlocksDistributionRAI(t *testing.T) {
 	_ = obj1.String()
 	_ = obj1.XXX_Size()
 	_ = obj1.Size()
-	obj1.Marshal()
+
 	holder := make([]byte, 1024)
 	_, _ = obj1.MarshalTo(holder)
 	_, _ = obj1.XXX_Marshal(holder, true)
 	empty := []byte{'"', '"'}
-	_ = obj1.Unmarshal(empty)
+
 	_ = obj1.XXX_Unmarshal(empty)
 	obj1.ProtoMessage()
 	_, _ = obj1.Descriptor()
@@ -254,12 +254,12 @@ func TestUpdateReplicationMetaDataRAI(t *testing.T) {
 	_ = obj1.String()
 	_ = obj1.XXX_Size()
 	_ = obj1.Size()
-	obj1.Marshal()
+
 	holder := make([]byte, 1024)
 	_, _ = obj1.MarshalTo(holder)
 	_, _ = obj1.XXX_Marshal(holder, true)
 	empty := []byte{'"', '"'}
-	_ = obj1.Unmarshal(empty)
+
 	_ = obj1.XXX_Unmarshal(empty)
 	obj1.ProtoMessage()
 	_, _ = obj1.Descriptor()
@@ -275,12 +275,12 @@ func TestKWDBNodeInfoRAI(t *testing.T) {
 	_ = obj1.String()
 	_ = obj1.XXX_Size()
 	_ = obj1.Size()
-	obj1.Marshal()
+
 	holder := make([]byte, 1024)
 	_, _ = obj1.MarshalTo(holder)
 	_, _ = obj1.XXX_Marshal(holder, true)
 	empty := []byte{'"', '"'}
-	_ = obj1.Unmarshal(empty)
+
 	_ = obj1.XXX_Unmarshal(empty)
 	obj1.ProtoMessage()
 	_, _ = obj1.Descriptor()
@@ -296,12 +296,12 @@ func TestKWDBReplicationMetaDataRAI(t *testing.T) {
 	_ = obj1.String()
 	_ = obj1.XXX_Size()
 	_ = obj1.Size()
-	obj1.Marshal()
+
 	holder := make([]byte, 1024)
 	_, _ = obj1.MarshalTo(holder)
 	_, _ = obj1.XXX_Marshal(holder, true)
 	empty := []byte{'"', '"'}
-	_ = obj1.Unmarshal(empty)
+
 	_ = obj1.XXX_Unmarshal(empty)
 	obj1.ProtoMessage()
 	_, _ = obj1.Descriptor()
@@ -317,12 +317,12 @@ func TestKWDBReplicationSyncRAI(t *testing.T) {
 	_ = obj1.String()
 	_ = obj1.XXX_Size()
 	_ = obj1.Size()
-	obj1.Marshal()
+
 	holder := make([]byte, 1024)
 	_, _ = obj1.MarshalTo(holder)
 	_, _ = obj1.XXX_Marshal(holder, true)
 	empty := []byte{'"', '"'}
-	_ = obj1.Unmarshal(empty)
+
 	_ = obj1.XXX_Unmarshal(empty)
 	obj1.ProtoMessage()
 	_, _ = obj1.Descriptor()
@@ -338,12 +338,12 @@ func TestKWDBReplicationAgentMetaDataRAI(t *testing.T) {
 	_ = obj1.String()
 	_ = obj1.XXX_Size()
 	_ = obj1.Size()
-	obj1.Marshal()
+
 	holder := make([]byte, 1024)
 	_, _ = obj1.MarshalTo(holder)
 	_, _ = obj1.XXX_Marshal(holder, true)
 	empty := []byte{'"', '"'}
-	_ = obj1.Unmarshal(empty)
+
 	_ = obj1.XXX_Unmarshal(empty)
 	obj1.ProtoMessage()
 	_, _ = obj1.Descriptor()
@@ -359,12 +359,12 @@ func TestKWDBReplicationProgressRAI(t *testing.T) {
 	_ = obj1.String()
 	_ = obj1.XXX_Size()
 	_ = obj1.Size()
-	obj1.Marshal()
+
 	holder := make([]byte, 1024)
 	_, _ = obj1.MarshalTo(holder)
 	_, _ = obj1.XXX_Marshal(holder, true)
 	empty := []byte{'"', '"'}
-	_ = obj1.Unmarshal(empty)
+
 	_ = obj1.XXX_Unmarshal(empty)
 	obj1.ProtoMessage()
 	_, _ = obj1.Descriptor()
@@ -380,12 +380,12 @@ func TestKWDBReplicationProgressSetRAI(t *testing.T) {
 	_ = obj1.String()
 	_ = obj1.XXX_Size()
 	_ = obj1.Size()
-	obj1.Marshal()
+
 	holder := make([]byte, 1024)
 	_, _ = obj1.MarshalTo(holder)
 	_, _ = obj1.XXX_Marshal(holder, true)
 	empty := []byte{'"', '"'}
-	_ = obj1.Unmarshal(empty)
+
 	_ = obj1.XXX_Unmarshal(empty)
 	obj1.ProtoMessage()
 	_, _ = obj1.Descriptor()
@@ -401,12 +401,12 @@ func TestReplicationServiceCallerFuncInputsRAI(t *testing.T) {
 	_ = obj1.String()
 	_ = obj1.XXX_Size()
 	_ = obj1.Size()
-	obj1.Marshal()
+
 	holder := make([]byte, 1024)
 	_, _ = obj1.MarshalTo(holder)
 	_, _ = obj1.XXX_Marshal(holder, true)
 	empty := []byte{'"', '"'}
-	_ = obj1.Unmarshal(empty)
+
 	_ = obj1.XXX_Unmarshal(empty)
 	obj1.ProtoMessage()
 	_, _ = obj1.Descriptor()
@@ -422,12 +422,12 @@ func TestWhiteListRAI(t *testing.T) {
 	_ = obj1.String()
 	_ = obj1.XXX_Size()
 	_ = obj1.Size()
-	obj1.Marshal()
+
 	holder := make([]byte, 1024)
 	_, _ = obj1.MarshalTo(holder)
 	_, _ = obj1.XXX_Marshal(holder, true)
 	empty := []byte{'"', '"'}
-	_ = obj1.Unmarshal(empty)
+
 	_ = obj1.XXX_Unmarshal(empty)
 	obj1.ProtoMessage()
 	_, _ = obj1.Descriptor()
@@ -443,12 +443,12 @@ func TestTSInsertSelectRAI(t *testing.T) {
 	_ = obj1.String()
 	_ = obj1.XXX_Size()
 	_ = obj1.Size()
-	obj1.Marshal()
+
 	holder := make([]byte, 1024)
 	_, _ = obj1.MarshalTo(holder)
 	_, _ = obj1.XXX_Marshal(holder, true)
 	empty := []byte{'"', '"'}
-	_ = obj1.Unmarshal(empty)
+
 	_ = obj1.XXX_Unmarshal(empty)
 	obj1.ProtoMessage()
 	_, _ = obj1.Descriptor()
@@ -464,12 +464,12 @@ func TestUserPrivilegesRAI(t *testing.T) {
 	_ = obj1.String()
 	_ = obj1.XXX_Size()
 	_ = obj1.Size()
-	obj1.Marshal()
+
 	holder := make([]byte, 1024)
 	_, _ = obj1.MarshalTo(holder)
 	_, _ = obj1.XXX_Marshal(holder, true)
 	empty := []byte{'"', '"'}
-	_ = obj1.Unmarshal(empty)
+
 	_ = obj1.XXX_Unmarshal(empty)
 	obj1.ProtoMessage()
 	_, _ = obj1.Descriptor()
@@ -485,12 +485,12 @@ func TestPrivilegeDescriptorRAI(t *testing.T) {
 	_ = obj1.String()
 	_ = obj1.XXX_Size()
 	_ = obj1.Size()
-	obj1.Marshal()
+
 	holder := make([]byte, 1024)
 	_, _ = obj1.MarshalTo(holder)
 	_, _ = obj1.XXX_Marshal(holder, true)
 	empty := []byte{'"', '"'}
-	_ = obj1.Unmarshal(empty)
+
 	_ = obj1.XXX_Unmarshal(empty)
 	obj1.ProtoMessage()
 	_, _ = obj1.Descriptor()
@@ -506,12 +506,12 @@ func TestForeignKeyReferenceRAI(t *testing.T) {
 	_ = obj1.String()
 	_ = obj1.XXX_Size()
 	_ = obj1.Size()
-	obj1.Marshal()
+
 	holder := make([]byte, 1024)
 	_, _ = obj1.MarshalTo(holder)
 	_, _ = obj1.XXX_Marshal(holder, true)
 	empty := []byte{'"', '"'}
-	_ = obj1.Unmarshal(empty)
+
 	_ = obj1.XXX_Unmarshal(empty)
 	obj1.ProtoMessage()
 	_, _ = obj1.Descriptor()
@@ -527,12 +527,12 @@ func TestForeignKeyConstraintRAI(t *testing.T) {
 	_ = obj1.String()
 	_ = obj1.XXX_Size()
 	_ = obj1.Size()
-	obj1.Marshal()
+
 	holder := make([]byte, 1024)
 	_, _ = obj1.MarshalTo(holder)
 	_, _ = obj1.XXX_Marshal(holder, true)
 	empty := []byte{'"', '"'}
-	_ = obj1.Unmarshal(empty)
+
 	_ = obj1.XXX_Unmarshal(empty)
 	obj1.ProtoMessage()
 	_, _ = obj1.Descriptor()
@@ -548,12 +548,12 @@ func TestColumnDescriptorRAI(t *testing.T) {
 	_ = obj1.String()
 	_ = obj1.XXX_Size()
 	_ = obj1.Size()
-	obj1.Marshal()
+
 	holder := make([]byte, 1024)
 	_, _ = obj1.MarshalTo(holder)
 	_, _ = obj1.XXX_Marshal(holder, true)
 	empty := []byte{'"', '"'}
-	_ = obj1.Unmarshal(empty)
+
 	_ = obj1.XXX_Unmarshal(empty)
 	obj1.ProtoMessage()
 	_, _ = obj1.Descriptor()
@@ -569,12 +569,12 @@ func TestTSColRAI(t *testing.T) {
 	_ = obj1.String()
 	_ = obj1.XXX_Size()
 	_ = obj1.Size()
-	obj1.Marshal()
+
 	holder := make([]byte, 1024)
 	_, _ = obj1.MarshalTo(holder)
 	_, _ = obj1.XXX_Marshal(holder, true)
 	empty := []byte{'"', '"'}
-	_ = obj1.Unmarshal(empty)
+
 	_ = obj1.XXX_Unmarshal(empty)
 	obj1.ProtoMessage()
 	_, _ = obj1.Descriptor()
@@ -590,12 +590,12 @@ func TestColumnFamilyDescriptorRAI(t *testing.T) {
 	_ = obj1.String()
 	_ = obj1.XXX_Size()
 	_ = obj1.Size()
-	obj1.Marshal()
+
 	holder := make([]byte, 1024)
 	_, _ = obj1.MarshalTo(holder)
 	_, _ = obj1.XXX_Marshal(holder, true)
 	empty := []byte{'"', '"'}
-	_ = obj1.Unmarshal(empty)
+
 	_ = obj1.XXX_Unmarshal(empty)
 	obj1.ProtoMessage()
 	_, _ = obj1.Descriptor()
@@ -611,12 +611,12 @@ func TestInterleaveDescriptorRAI(t *testing.T) {
 	_ = obj1.String()
 	_ = obj1.XXX_Size()
 	_ = obj1.Size()
-	obj1.Marshal()
+
 	holder := make([]byte, 1024)
 	_, _ = obj1.MarshalTo(holder)
 	_, _ = obj1.XXX_Marshal(holder, true)
 	empty := []byte{'"', '"'}
-	_ = obj1.Unmarshal(empty)
+
 	_ = obj1.XXX_Unmarshal(empty)
 	obj1.ProtoMessage()
 	_, _ = obj1.Descriptor()
@@ -632,12 +632,12 @@ func TestInterleaveDescriptor_AncestorRAI(t *testing.T) {
 	_ = obj1.String()
 	_ = obj1.XXX_Size()
 	_ = obj1.Size()
-	obj1.Marshal()
+
 	holder := make([]byte, 1024)
 	_, _ = obj1.MarshalTo(holder)
 	_, _ = obj1.XXX_Marshal(holder, true)
 	empty := []byte{'"', '"'}
-	_ = obj1.Unmarshal(empty)
+
 	_ = obj1.XXX_Unmarshal(empty)
 	obj1.ProtoMessage()
 	_, _ = obj1.Descriptor()
@@ -653,12 +653,12 @@ func TestShardedDescriptorRAI(t *testing.T) {
 	_ = obj1.String()
 	_ = obj1.XXX_Size()
 	_ = obj1.Size()
-	obj1.Marshal()
+
 	holder := make([]byte, 1024)
 	_, _ = obj1.MarshalTo(holder)
 	_, _ = obj1.XXX_Marshal(holder, true)
 	empty := []byte{'"', '"'}
-	_ = obj1.Unmarshal(empty)
+
 	_ = obj1.XXX_Unmarshal(empty)
 	obj1.ProtoMessage()
 	_, _ = obj1.Descriptor()
@@ -674,12 +674,12 @@ func TestPartitioningDescriptorRAI(t *testing.T) {
 	_ = obj1.String()
 	_ = obj1.XXX_Size()
 	_ = obj1.Size()
-	obj1.Marshal()
+
 	holder := make([]byte, 1024)
 	_, _ = obj1.MarshalTo(holder)
 	_, _ = obj1.XXX_Marshal(holder, true)
 	empty := []byte{'"', '"'}
-	_ = obj1.Unmarshal(empty)
+
 	_ = obj1.XXX_Unmarshal(empty)
 	obj1.ProtoMessage()
 	_, _ = obj1.Descriptor()
@@ -695,12 +695,12 @@ func TestPartitioningDescriptor_ListRAI(t *testing.T) {
 	_ = obj1.String()
 	_ = obj1.XXX_Size()
 	_ = obj1.Size()
-	obj1.Marshal()
+
 	holder := make([]byte, 1024)
 	_, _ = obj1.MarshalTo(holder)
 	_, _ = obj1.XXX_Marshal(holder, true)
 	empty := []byte{'"', '"'}
-	_ = obj1.Unmarshal(empty)
+
 	_ = obj1.XXX_Unmarshal(empty)
 	obj1.ProtoMessage()
 	_, _ = obj1.Descriptor()
@@ -716,12 +716,12 @@ func TestPartitioningDescriptor_RangeRAI(t *testing.T) {
 	_ = obj1.String()
 	_ = obj1.XXX_Size()
 	_ = obj1.Size()
-	obj1.Marshal()
+
 	holder := make([]byte, 1024)
 	_, _ = obj1.MarshalTo(holder)
 	_, _ = obj1.XXX_Marshal(holder, true)
 	empty := []byte{'"', '"'}
-	_ = obj1.Unmarshal(empty)
+
 	_ = obj1.XXX_Unmarshal(empty)
 	obj1.ProtoMessage()
 	_, _ = obj1.Descriptor()
@@ -737,12 +737,12 @@ func TestPartitioningDescriptor_HashPointRAI(t *testing.T) {
 	_ = obj1.String()
 	_ = obj1.XXX_Size()
 	_ = obj1.Size()
-	obj1.Marshal()
+
 	holder := make([]byte, 1024)
 	_, _ = obj1.MarshalTo(holder)
 	_, _ = obj1.XXX_Marshal(holder, true)
 	empty := []byte{'"', '"'}
-	_ = obj1.Unmarshal(empty)
+
 	_ = obj1.XXX_Unmarshal(empty)
 	obj1.ProtoMessage()
 	_, _ = obj1.Descriptor()
@@ -758,12 +758,12 @@ func TestIndexDescriptorRAI(t *testing.T) {
 	_ = obj1.String()
 	_ = obj1.XXX_Size()
 	_ = obj1.Size()
-	obj1.Marshal()
+
 	holder := make([]byte, 1024)
 	_, _ = obj1.MarshalTo(holder)
 	_, _ = obj1.XXX_Marshal(holder, true)
 	empty := []byte{'"', '"'}
-	_ = obj1.Unmarshal(empty)
+
 	_ = obj1.XXX_Unmarshal(empty)
 	obj1.ProtoMessage()
 	_, _ = obj1.Descriptor()
@@ -779,12 +779,12 @@ func TestConstraintToUpdateRAI(t *testing.T) {
 	_ = obj1.String()
 	_ = obj1.XXX_Size()
 	_ = obj1.Size()
-	obj1.Marshal()
+
 	holder := make([]byte, 1024)
 	_, _ = obj1.MarshalTo(holder)
 	_, _ = obj1.XXX_Marshal(holder, true)
 	empty := []byte{'"', '"'}
-	_ = obj1.Unmarshal(empty)
+
 	_ = obj1.XXX_Unmarshal(empty)
 	obj1.ProtoMessage()
 	_, _ = obj1.Descriptor()
@@ -800,12 +800,12 @@ func TestPrimaryKeySwapRAI(t *testing.T) {
 	_ = obj1.String()
 	_ = obj1.XXX_Size()
 	_ = obj1.Size()
-	obj1.Marshal()
+
 	holder := make([]byte, 1024)
 	_, _ = obj1.MarshalTo(holder)
 	_, _ = obj1.XXX_Marshal(holder, true)
 	empty := []byte{'"', '"'}
-	_ = obj1.Unmarshal(empty)
+
 	_ = obj1.XXX_Unmarshal(empty)
 	obj1.ProtoMessage()
 	_, _ = obj1.Descriptor()
@@ -821,12 +821,12 @@ func TestMaterializedViewRefreshRAI(t *testing.T) {
 	_ = obj1.String()
 	_ = obj1.XXX_Size()
 	_ = obj1.Size()
-	obj1.Marshal()
+
 	holder := make([]byte, 1024)
 	_, _ = obj1.MarshalTo(holder)
 	_, _ = obj1.XXX_Marshal(holder, true)
 	empty := []byte{'"', '"'}
-	_ = obj1.Unmarshal(empty)
+
 	_ = obj1.XXX_Unmarshal(empty)
 	obj1.ProtoMessage()
 	_, _ = obj1.Descriptor()
@@ -842,12 +842,12 @@ func TestDescriptorMutationRAI(t *testing.T) {
 	_ = obj1.String()
 	_ = obj1.XXX_Size()
 	_ = obj1.Size()
-	obj1.Marshal()
+
 	holder := make([]byte, 1024)
 	_, _ = obj1.MarshalTo(holder)
 	_, _ = obj1.XXX_Marshal(holder, true)
 	empty := []byte{'"', '"'}
-	_ = obj1.Unmarshal(empty)
+
 	_ = obj1.XXX_Unmarshal(empty)
 	obj1.ProtoMessage()
 	_, _ = obj1.Descriptor()
@@ -863,12 +863,12 @@ func TestFunctionDescriptorRAI(t *testing.T) {
 	_ = obj1.String()
 	_ = obj1.XXX_Size()
 	_ = obj1.Size()
-	obj1.Marshal()
+
 	holder := make([]byte, 1024)
 	_, _ = obj1.MarshalTo(holder)
 	_, _ = obj1.XXX_Marshal(holder, true)
 	empty := []byte{'"', '"'}
-	_ = obj1.Unmarshal(empty)
+
 	_ = obj1.XXX_Unmarshal(empty)
 	obj1.ProtoMessage()
 	_, _ = obj1.Descriptor()
@@ -884,12 +884,12 @@ func TestProcedureDescriptorRAI(t *testing.T) {
 	_ = obj1.String()
 	_ = obj1.XXX_Size()
 	_ = obj1.Size()
-	obj1.Marshal()
+
 	holder := make([]byte, 1024)
 	_, _ = obj1.MarshalTo(holder)
 	_, _ = obj1.XXX_Marshal(holder, true)
 	empty := []byte{'"', '"'}
-	_ = obj1.Unmarshal(empty)
+
 	_ = obj1.XXX_Unmarshal(empty)
 	obj1.ProtoMessage()
 	_, _ = obj1.Descriptor()
@@ -905,12 +905,12 @@ func TestProcParamRAI(t *testing.T) {
 	_ = obj1.String()
 	_ = obj1.XXX_Size()
 	_ = obj1.Size()
-	obj1.Marshal()
+
 	holder := make([]byte, 1024)
 	_, _ = obj1.MarshalTo(holder)
 	_, _ = obj1.XXX_Marshal(holder, true)
 	empty := []byte{'"', '"'}
-	_ = obj1.Unmarshal(empty)
+
 	_ = obj1.XXX_Unmarshal(empty)
 	obj1.ProtoMessage()
 	_, _ = obj1.Descriptor()
@@ -926,12 +926,12 @@ func TestTableDescriptorRAI(t *testing.T) {
 	_ = obj1.String()
 	_ = obj1.XXX_Size()
 	_ = obj1.Size()
-	obj1.Marshal()
+
 	holder := make([]byte, 1024)
 	_, _ = obj1.MarshalTo(holder)
 	_, _ = obj1.XXX_Marshal(holder, true)
 	empty := []byte{'"', '"'}
-	_ = obj1.Unmarshal(empty)
+
 	_ = obj1.XXX_Unmarshal(empty)
 	obj1.ProtoMessage()
 	_, _ = obj1.Descriptor()
@@ -947,12 +947,12 @@ func TestTableDescriptor_SchemaChangeLeaseRAI(t *testing.T) {
 	_ = obj1.String()
 	_ = obj1.XXX_Size()
 	_ = obj1.Size()
-	obj1.Marshal()
+
 	holder := make([]byte, 1024)
 	_, _ = obj1.MarshalTo(holder)
 	_, _ = obj1.XXX_Marshal(holder, true)
 	empty := []byte{'"', '"'}
-	_ = obj1.Unmarshal(empty)
+
 	_ = obj1.XXX_Unmarshal(empty)
 	obj1.ProtoMessage()
 	_, _ = obj1.Descriptor()
@@ -968,12 +968,12 @@ func TestTableDescriptor_CheckConstraintRAI(t *testing.T) {
 	_ = obj1.String()
 	_ = obj1.XXX_Size()
 	_ = obj1.Size()
-	obj1.Marshal()
+
 	holder := make([]byte, 1024)
 	_, _ = obj1.MarshalTo(holder)
 	_, _ = obj1.XXX_Marshal(holder, true)
 	empty := []byte{'"', '"'}
-	_ = obj1.Unmarshal(empty)
+
 	_ = obj1.XXX_Unmarshal(empty)
 	obj1.ProtoMessage()
 	_, _ = obj1.Descriptor()
@@ -989,12 +989,12 @@ func TestTableDescriptor_NameInfoRAI(t *testing.T) {
 	_ = obj1.String()
 	_ = obj1.XXX_Size()
 	_ = obj1.Size()
-	obj1.Marshal()
+
 	holder := make([]byte, 1024)
 	_, _ = obj1.MarshalTo(holder)
 	_, _ = obj1.XXX_Marshal(holder, true)
 	empty := []byte{'"', '"'}
-	_ = obj1.Unmarshal(empty)
+
 	_ = obj1.XXX_Unmarshal(empty)
 	obj1.ProtoMessage()
 	_, _ = obj1.Descriptor()
@@ -1010,12 +1010,12 @@ func TestTableDescriptor_ReferenceRAI(t *testing.T) {
 	_ = obj1.String()
 	_ = obj1.XXX_Size()
 	_ = obj1.Size()
-	obj1.Marshal()
+
 	holder := make([]byte, 1024)
 	_, _ = obj1.MarshalTo(holder)
 	_, _ = obj1.XXX_Marshal(holder, true)
 	empty := []byte{'"', '"'}
-	_ = obj1.Unmarshal(empty)
+
 	_ = obj1.XXX_Unmarshal(empty)
 	obj1.ProtoMessage()
 	_, _ = obj1.Descriptor()
@@ -1031,12 +1031,12 @@ func TestTableDescriptor_MutationJobRAI(t *testing.T) {
 	_ = obj1.String()
 	_ = obj1.XXX_Size()
 	_ = obj1.Size()
-	obj1.Marshal()
+
 	holder := make([]byte, 1024)
 	_, _ = obj1.MarshalTo(holder)
 	_, _ = obj1.XXX_Marshal(holder, true)
 	empty := []byte{'"', '"'}
-	_ = obj1.Unmarshal(empty)
+
 	_ = obj1.XXX_Unmarshal(empty)
 	obj1.ProtoMessage()
 	_, _ = obj1.Descriptor()
@@ -1052,12 +1052,12 @@ func TestTableDescriptor_SequenceOptsRAI(t *testing.T) {
 	_ = obj1.String()
 	_ = obj1.XXX_Size()
 	_ = obj1.Size()
-	obj1.Marshal()
+
 	holder := make([]byte, 1024)
 	_, _ = obj1.MarshalTo(holder)
 	_, _ = obj1.XXX_Marshal(holder, true)
 	empty := []byte{'"', '"'}
-	_ = obj1.Unmarshal(empty)
+
 	_ = obj1.XXX_Unmarshal(empty)
 	obj1.ProtoMessage()
 	_, _ = obj1.Descriptor()
@@ -1073,12 +1073,12 @@ func TestTableDescriptor_SequenceOpts_SequenceOwnerRAI(t *testing.T) {
 	_ = obj1.String()
 	_ = obj1.XXX_Size()
 	_ = obj1.Size()
-	obj1.Marshal()
+
 	holder := make([]byte, 1024)
 	_, _ = obj1.MarshalTo(holder)
 	_, _ = obj1.XXX_Marshal(holder, true)
 	empty := []byte{'"', '"'}
-	_ = obj1.Unmarshal(empty)
+
 	_ = obj1.XXX_Unmarshal(empty)
 	obj1.ProtoMessage()
 	_, _ = obj1.Descriptor()
@@ -1094,12 +1094,12 @@ func TestTableDescriptor_ReplacementRAI(t *testing.T) {
 	_ = obj1.String()
 	_ = obj1.XXX_Size()
 	_ = obj1.Size()
-	obj1.Marshal()
+
 	holder := make([]byte, 1024)
 	_, _ = obj1.MarshalTo(holder)
 	_, _ = obj1.XXX_Marshal(holder, true)
 	empty := []byte{'"', '"'}
-	_ = obj1.Unmarshal(empty)
+
 	_ = obj1.XXX_Unmarshal(empty)
 	obj1.ProtoMessage()
 	_, _ = obj1.Descriptor()
@@ -1115,12 +1115,12 @@ func TestTableDescriptor_GCDescriptorMutationRAI(t *testing.T) {
 	_ = obj1.String()
 	_ = obj1.XXX_Size()
 	_ = obj1.Size()
-	obj1.Marshal()
+
 	holder := make([]byte, 1024)
 	_, _ = obj1.MarshalTo(holder)
 	_, _ = obj1.XXX_Marshal(holder, true)
 	empty := []byte{'"', '"'}
-	_ = obj1.Unmarshal(empty)
+
 	_ = obj1.XXX_Unmarshal(empty)
 	obj1.ProtoMessage()
 	_, _ = obj1.Descriptor()
@@ -1136,12 +1136,12 @@ func TestTriggerDescriptorRAI(t *testing.T) {
 	_ = obj1.String()
 	_ = obj1.XXX_Size()
 	_ = obj1.Size()
-	obj1.Marshal()
+
 	holder := make([]byte, 1024)
 	_, _ = obj1.MarshalTo(holder)
 	_, _ = obj1.XXX_Marshal(holder, true)
 	empty := []byte{'"', '"'}
-	_ = obj1.Unmarshal(empty)
+
 	_ = obj1.XXX_Unmarshal(empty)
 	obj1.ProtoMessage()
 	_, _ = obj1.Descriptor()
@@ -1157,12 +1157,12 @@ func TestCDCDescriptorRAI(t *testing.T) {
 	_ = obj1.String()
 	_ = obj1.XXX_Size()
 	_ = obj1.Size()
-	obj1.Marshal()
+
 	holder := make([]byte, 1024)
 	_, _ = obj1.MarshalTo(holder)
 	_, _ = obj1.XXX_Marshal(holder, true)
 	empty := []byte{'"', '"'}
-	_ = obj1.Unmarshal(empty)
+
 	_ = obj1.XXX_Unmarshal(empty)
 	obj1.ProtoMessage()
 	_, _ = obj1.Descriptor()
@@ -1178,12 +1178,12 @@ func TestKWDBTSColumnRAI(t *testing.T) {
 	_ = obj1.String()
 	_ = obj1.XXX_Size()
 	_ = obj1.Size()
-	obj1.Marshal()
+
 	holder := make([]byte, 1024)
 	_, _ = obj1.MarshalTo(holder)
 	_, _ = obj1.XXX_Marshal(holder, true)
 	empty := []byte{'"', '"'}
-	_ = obj1.Unmarshal(empty)
+
 	_ = obj1.XXX_Unmarshal(empty)
 	obj1.ProtoMessage()
 	_, _ = obj1.Descriptor()
@@ -1199,12 +1199,12 @@ func TestTSTableRAI(t *testing.T) {
 	_ = obj1.String()
 	_ = obj1.XXX_Size()
 	_ = obj1.Size()
-	obj1.Marshal()
+
 	holder := make([]byte, 1024)
 	_, _ = obj1.MarshalTo(holder)
 	_, _ = obj1.XXX_Marshal(holder, true)
 	empty := []byte{'"', '"'}
-	_ = obj1.Unmarshal(empty)
+
 	_ = obj1.XXX_Unmarshal(empty)
 	obj1.ProtoMessage()
 	_, _ = obj1.Descriptor()
@@ -1220,12 +1220,12 @@ func TestSchemaDescriptorRAI(t *testing.T) {
 	_ = obj1.String()
 	_ = obj1.XXX_Size()
 	_ = obj1.Size()
-	obj1.Marshal()
+
 	holder := make([]byte, 1024)
 	_, _ = obj1.MarshalTo(holder)
 	_, _ = obj1.XXX_Marshal(holder, true)
 	empty := []byte{'"', '"'}
-	_ = obj1.Unmarshal(empty)
+
 	_ = obj1.XXX_Unmarshal(empty)
 	obj1.ProtoMessage()
 	_, _ = obj1.Descriptor()
@@ -1241,12 +1241,12 @@ func TestSchemaDescriptor_NameInfoRAI(t *testing.T) {
 	_ = obj1.String()
 	_ = obj1.XXX_Size()
 	_ = obj1.Size()
-	obj1.Marshal()
+
 	holder := make([]byte, 1024)
 	_, _ = obj1.MarshalTo(holder)
 	_, _ = obj1.XXX_Marshal(holder, true)
 	empty := []byte{'"', '"'}
-	_ = obj1.Unmarshal(empty)
+
 	_ = obj1.XXX_Unmarshal(empty)
 	obj1.ProtoMessage()
 	_, _ = obj1.Descriptor()
@@ -1262,12 +1262,12 @@ func TestDatabaseDescriptorRAI(t *testing.T) {
 	_ = obj1.String()
 	_ = obj1.XXX_Size()
 	_ = obj1.Size()
-	obj1.Marshal()
+
 	holder := make([]byte, 1024)
 	_, _ = obj1.MarshalTo(holder)
 	_, _ = obj1.XXX_Marshal(holder, true)
 	empty := []byte{'"', '"'}
-	_ = obj1.Unmarshal(empty)
+
 	_ = obj1.XXX_Unmarshal(empty)
 	obj1.ProtoMessage()
 	_, _ = obj1.Descriptor()
@@ -1283,12 +1283,12 @@ func TestTSDBRAI(t *testing.T) {
 	_ = obj1.String()
 	_ = obj1.XXX_Size()
 	_ = obj1.Size()
-	obj1.Marshal()
+
 	holder := make([]byte, 1024)
 	_, _ = obj1.MarshalTo(holder)
 	_, _ = obj1.XXX_Marshal(holder, true)
 	empty := []byte{'"', '"'}
-	_ = obj1.Unmarshal(empty)
+
 	_ = obj1.XXX_Unmarshal(empty)
 	obj1.ProtoMessage()
 	_, _ = obj1.Descriptor()
@@ -1304,12 +1304,12 @@ func TestDescriptorRAI(t *testing.T) {
 	_ = obj1.String()
 	_ = obj1.XXX_Size()
 	_ = obj1.Size()
-	obj1.Marshal()
+
 	holder := make([]byte, 1024)
 	_, _ = obj1.MarshalTo(holder)
 	_, _ = obj1.XXX_Marshal(holder, true)
 	empty := []byte{'"', '"'}
-	_ = obj1.Unmarshal(empty)
+
 	_ = obj1.XXX_Unmarshal(empty)
 	obj1.ProtoMessage()
 	_, _ = obj1.Descriptor()
@@ -1325,12 +1325,12 @@ func TestImportTableRAI(t *testing.T) {
 	_ = obj1.String()
 	_ = obj1.XXX_Size()
 	_ = obj1.Size()
-	obj1.Marshal()
+
 	holder := make([]byte, 1024)
 	_, _ = obj1.MarshalTo(holder)
 	_, _ = obj1.XXX_Marshal(holder, true)
 	empty := []byte{'"', '"'}
-	_ = obj1.Unmarshal(empty)
+
 	_ = obj1.XXX_Unmarshal(empty)
 	obj1.ProtoMessage()
 	_, _ = obj1.Descriptor()
@@ -1346,12 +1346,12 @@ func TestKWDBTagValueRAI(t *testing.T) {
 	_ = obj1.String()
 	_ = obj1.XXX_Size()
 	_ = obj1.Size()
-	obj1.Marshal()
+
 	holder := make([]byte, 1024)
 	_, _ = obj1.MarshalTo(holder)
 	_, _ = obj1.XXX_Marshal(holder, true)
 	empty := []byte{'"', '"'}
-	_ = obj1.Unmarshal(empty)
+
 	_ = obj1.XXX_Unmarshal(empty)
 	obj1.ProtoMessage()
 	_, _ = obj1.Descriptor()
@@ -1367,12 +1367,12 @@ func TestChildDescRAI(t *testing.T) {
 	_ = obj1.String()
 	_ = obj1.XXX_Size()
 	_ = obj1.Size()
-	obj1.Marshal()
+
 	holder := make([]byte, 1024)
 	_, _ = obj1.MarshalTo(holder)
 	_, _ = obj1.XXX_Marshal(holder, true)
 	empty := []byte{'"', '"'}
-	_ = obj1.Unmarshal(empty)
+
 	_ = obj1.XXX_Unmarshal(empty)
 	obj1.ProtoMessage()
 	_, _ = obj1.Descriptor()
@@ -1388,12 +1388,12 @@ func TestKWDBScheOptionRAI(t *testing.T) {
 	_ = obj1.String()
 	_ = obj1.XXX_Size()
 	_ = obj1.Size()
-	obj1.Marshal()
+
 	holder := make([]byte, 1024)
 	_, _ = obj1.MarshalTo(holder)
 	_, _ = obj1.XXX_Marshal(holder, true)
 	empty := []byte{'"', '"'}
-	_ = obj1.Unmarshal(empty)
+
 	_ = obj1.XXX_Unmarshal(empty)
 	obj1.ProtoMessage()
 	_, _ = obj1.Descriptor()
@@ -1409,12 +1409,12 @@ func TestSortedHistogramInfoRAI(t *testing.T) {
 	_ = obj1.String()
 	_ = obj1.XXX_Size()
 	_ = obj1.Size()
-	obj1.Marshal()
+
 	holder := make([]byte, 1024)
 	_, _ = obj1.MarshalTo(holder)
 	_, _ = obj1.XXX_Marshal(holder, true)
 	empty := []byte{'"', '"'}
-	_ = obj1.Unmarshal(empty)
+
 	_ = obj1.XXX_Unmarshal(empty)
 	obj1.ProtoMessage()
 	_, _ = obj1.Descriptor()

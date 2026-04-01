@@ -365,6 +365,26 @@ func TestDeleteMeMsgXXXMerge(t *testing.T) {
 	}
 }
 
+func TestDeleteMeMsgSize(t *testing.T) {
+	msg := &sqlbase.DeleteMeMsg{
+		DatabaseName: "test_db",
+	}
+	size := msg.Size()
+	if size == 0 {
+		t.Error("Size() should return non-zero size")
+	}
+}
+
+func TestDeleteMeMsgReset(t *testing.T) {
+	msg := &sqlbase.DeleteMeMsg{
+		DatabaseName: "test_db",
+	}
+	msg.Reset()
+	if msg.DatabaseName != "" || msg.TableID != 0 {
+		t.Error("Reset() should zero all fields")
+	}
+}
+
 func TestKWDBHAInfoString(t *testing.T) {
 	msg := &sqlbase.KWDBHAInfo{
 		ClusterId:        "cluster1",
@@ -415,6 +435,26 @@ func TestKWDBHAInfoXXXMerge(t *testing.T) {
 	}
 }
 
+func TestKWDBHAInfoSize(t *testing.T) {
+	msg := &sqlbase.KWDBHAInfo{
+		ClusterId: "cluster1",
+	}
+	size := msg.Size()
+	if size == 0 {
+		t.Error("Size() should return non-zero size")
+	}
+}
+
+func TestKWDBHAInfoReset(t *testing.T) {
+	msg := &sqlbase.KWDBHAInfo{
+		ClusterId: "cluster1",
+	}
+	msg.Reset()
+	if msg.ClusterId != "" {
+		t.Error("Reset() should zero all fields")
+	}
+}
+
 func TestPreRelationString(t *testing.T) {
 	msg := &sqlbase.PreRelation{
 		TableId: 123,
@@ -457,6 +497,26 @@ func TestPreRelationXXXMerge(t *testing.T) {
 	dst.XXX_Merge(src)
 	if dst.TableId != src.TableId {
 		t.Errorf("XXX_Merge failed")
+	}
+}
+
+func TestPreRelationSize(t *testing.T) {
+	msg := &sqlbase.PreRelation{
+		TableId: 1,
+	}
+	size := msg.Size()
+	if size == 0 {
+		t.Error("Size() should return non-zero size")
+	}
+}
+
+func TestPreRelationReset(t *testing.T) {
+	msg := &sqlbase.PreRelation{
+		TableId: 1,
+	}
+	msg.Reset()
+	if msg.TableId != 0 {
+		t.Error("Reset() should zero all fields")
 	}
 }
 
@@ -514,6 +574,26 @@ func TestCreateCTableXXXMerge(t *testing.T) {
 	}
 }
 
+func TestCreateCTableSize(t *testing.T) {
+	msg := &sqlbase.CreateCTable{
+		StableId: 4,
+	}
+	size := msg.Size()
+	if size == 0 {
+		t.Error("Size() should return non-zero size")
+	}
+}
+
+func TestCreateCTableReset(t *testing.T) {
+	msg := &sqlbase.CreateCTable{
+		StableId: 1,
+	}
+	msg.Reset()
+	if msg.StableId != 0 {
+		t.Error("Reset() should zero all fields")
+	}
+}
+
 func TestKWDBCTableString(t *testing.T) {
 	msg := &sqlbase.KWDBCTable{
 		Id:   123,
@@ -562,6 +642,26 @@ func TestKWDBCTableXXXMerge(t *testing.T) {
 	}
 }
 
+func TestKWDBCTableSize(t *testing.T) {
+	msg := &sqlbase.KWDBCTable{
+		Id: 1,
+	}
+	size := msg.Size()
+	if size == 0 {
+		t.Error("Size() should return non-zero size")
+	}
+}
+
+func TestKWDBCTableReset(t *testing.T) {
+	msg := &sqlbase.KWDBCTable{
+		Id: 1,
+	}
+	msg.Reset()
+	if msg.Id != 0 {
+		t.Error("Reset() should zero all fields")
+	}
+}
+
 // Test KWDBHAInfo message
 func TestKWDBHAInfo(t *testing.T) {
 	msg := &sqlbase.KWDBHAInfo{
@@ -583,11 +683,11 @@ func TestKWDBHAInfo(t *testing.T) {
 		t.Fatalf("Failed to unmarshal KWDBHAInfo: %v", err)
 	}
 
-	if !msg.Equal(unmarshaled) {
+	if !reflect.DeepEqual(msg, unmarshaled) {
 		t.Errorf("Equal failed: messages should be equal")
 	}
 
-	if !unmarshaled.Equal(msg) {
+	if !reflect.DeepEqual(unmarshaled, msg) {
 		t.Errorf("Equal failed: messages should be equal")
 	}
 
@@ -599,7 +699,7 @@ func TestKWDBHAInfo(t *testing.T) {
 		ConnectionStatus: sqlbase.KWDBConnectionStatus_UNHEALTHY,
 	}
 
-	if msg.Equal(msg2) {
+	if reflect.DeepEqual(msg, msg2) {
 		t.Errorf("Equal failed: messages should not be equal")
 	}
 }
@@ -631,12 +731,76 @@ func TestKWDBNodeInfo(t *testing.T) {
 		t.Fatalf("Failed to unmarshal KWDBNodeInfo: %v", err)
 	}
 
-	if !msg.Equal(unmarshaled) {
+	if !reflect.DeepEqual(msg, unmarshaled) {
 		t.Errorf("Equal failed: messages should be equal")
 	}
 
-	if !unmarshaled.Equal(msg) {
+	if !reflect.DeepEqual(unmarshaled, msg) {
 		t.Errorf("Equal failed: messages should be equal")
+	}
+}
+func TestKWDBNodeInfoString(t *testing.T) {
+	msg := &sqlbase.KWDBNodeInfo{
+		ClusterId: "cluster1",
+	}
+	str := msg.String()
+	if str == "" {
+		t.Error("String() should not return empty string")
+	}
+}
+
+func TestKWDBNodeInfoProtoMessage(t *testing.T) {
+	msg := &sqlbase.KWDBNodeInfo{}
+	msg.ProtoMessage()
+}
+
+func TestKWDBNodeInfoDescriptor(t *testing.T) {
+	msg := &sqlbase.KWDBNodeInfo{}
+	_, _ = msg.Descriptor()
+}
+
+func TestKWDBNodeInfoMarshalTo(t *testing.T) {
+	msg := &sqlbase.KWDBNodeInfo{
+		ClusterId: "cluster1",
+	}
+	buf := make([]byte, 256)
+	n, err := msg.MarshalTo(buf)
+	if err != nil {
+		t.Fatalf("MarshalTo() failed: %v", err)
+	}
+	if n == 0 {
+		t.Error("MarshalTo() should return non-zero size")
+	}
+}
+
+func TestKWDBNodeInfoXXXMerge(t *testing.T) {
+	src := &sqlbase.KWDBNodeInfo{
+		ClusterId: "cluster1",
+	}
+	dst := &sqlbase.KWDBNodeInfo{}
+	dst.XXX_Merge(src)
+	if dst.ClusterId != src.ClusterId {
+		t.Errorf("XXX_Merge failed")
+	}
+}
+
+func TestKWDBNodeInfoSize(t *testing.T) {
+	msg := &sqlbase.KWDBNodeInfo{
+		ClusterId: "cluster1",
+	}
+	size := msg.Size()
+	if size == 0 {
+		t.Error("Size() should return non-zero size")
+	}
+}
+
+func TestKWDBNodeInfoReset(t *testing.T) {
+	msg := &sqlbase.KWDBNodeInfo{
+		ClusterId: "cluster1",
+	}
+	msg.Reset()
+	if msg.ClusterId != "" {
+		t.Error("Reset() should zero all fields")
 	}
 }
 
@@ -787,6 +951,26 @@ func TestKWDBTsTableXXXMerge(t *testing.T) {
 	}
 }
 
+func TestKWDBTsTableSize(t *testing.T) {
+	msg := &sqlbase.KWDBTsTable{
+		TsTableId: 12345,
+	}
+	size := msg.Size()
+	if size == 0 {
+		t.Error("Size() should return non-zero size")
+	}
+}
+
+func TestKWDBTsTableReset(t *testing.T) {
+	msg := &sqlbase.KWDBTsTable{
+		TsTableId: 12345,
+	}
+	msg.Reset()
+	if msg.TsTableId != 0 {
+		t.Error("Reset() should zero all fields")
+	}
+}
+
 func TestKWDBKTSColumnString(t *testing.T) {
 	msg := &sqlbase.KWDBKTSColumn{
 		ColumnId: 1,
@@ -817,6 +1001,26 @@ func TestKWDBKTSColumnXXXMerge(t *testing.T) {
 	dst.XXX_Merge(src)
 	if dst.ColumnId != src.ColumnId || dst.Name != src.Name {
 		t.Errorf("XXX_Merge failed")
+	}
+}
+
+func TestKWDBKTSColumnSize(t *testing.T) {
+	msg := &sqlbase.KWDBKTSColumn{
+		ColumnId: 1,
+	}
+	size := msg.Size()
+	if size == 0 {
+		t.Error("Size() should return non-zero size")
+	}
+}
+
+func TestKWDBKTSColumnReset(t *testing.T) {
+	msg := &sqlbase.KWDBKTSColumn{
+		ColumnId: 1,
+	}
+	msg.Reset()
+	if msg.ColumnId != 0 {
+		t.Error("Reset() should zero all fields")
 	}
 }
 
@@ -865,6 +1069,26 @@ func TestNTagIndexInfoXXXMerge(t *testing.T) {
 	dst.XXX_Merge(src)
 	if dst.IndexId != src.IndexId {
 		t.Errorf("XXX_Merge failed")
+	}
+}
+
+func TestNTagIndexInfoSize(t *testing.T) {
+	msg := &sqlbase.NTagIndexInfo{
+		IndexId: 1,
+	}
+	size := msg.Size()
+	if size == 0 {
+		t.Error("Size() should return non-zero size")
+	}
+}
+
+func TestNTagIndexInfoReset(t *testing.T) {
+	msg := &sqlbase.NTagIndexInfo{
+		IndexId: 1,
+	}
+	msg.Reset()
+	if msg.IndexId != 0 {
+		t.Error("Reset() should zero all fields")
 	}
 }
 
@@ -919,6 +1143,30 @@ func TestCreateTsTableXXXMerge(t *testing.T) {
 	dst.XXX_Merge(src)
 	if dst.TsTable.TsTableId != src.TsTable.TsTableId {
 		t.Errorf("XXX_Merge failed")
+	}
+}
+
+func TestCreateTsTableSize(t *testing.T) {
+	msg := &sqlbase.CreateTsTable{
+		TsTable: sqlbase.KWDBTsTable{
+			TsTableId: 12345,
+		},
+	}
+	size := msg.Size()
+	if size == 0 {
+		t.Error("Size() should return non-zero size")
+	}
+}
+
+func TestCreateTsTableReset(t *testing.T) {
+	msg := &sqlbase.CreateTsTable{
+		TsTable: sqlbase.KWDBTsTable{
+			TsTableId: 12345,
+		},
+	}
+	msg.Reset()
+	if msg.TsTable.TsTableId != 0 {
+		t.Error("Reset() should zero all fields")
 	}
 }
 
@@ -1086,6 +1334,28 @@ func TestBlockInfoXXXMerge(t *testing.T) {
 	}
 }
 
+func TestBlockInfoSize(t *testing.T) {
+	msg := &sqlbase.BlockInfo{
+		Level:     "entity_segment",
+		BlocksNum: 10,
+	}
+	size := msg.Size()
+	if size == 0 {
+		t.Error("Size() should return non-zero size")
+	}
+}
+
+func TestBlockInfoReset(t *testing.T) {
+	msg := &sqlbase.BlockInfo{
+		Level:     "entity_segment",
+		BlocksNum: 10,
+	}
+	msg.Reset()
+	if msg.Level != "" || msg.BlocksNum != 0 {
+		t.Error("Reset() should zero all fields")
+	}
+}
+
 // Test BlocksDistribution message
 func TestBlocksDistribution(t *testing.T) {
 	blockInfo := sqlbase.BlockInfo{
@@ -1117,6 +1387,66 @@ func TestBlocksDistribution(t *testing.T) {
 
 	if !reflect.DeepEqual(msg, unmarshaled) {
 		t.Errorf("Marshal/Unmarshal failed: got %v, want %v", unmarshaled, msg)
+	}
+}
+
+func TestBlocksDistributionString(t *testing.T) {
+	msg := &sqlbase.BlocksDistribution{
+		BlockInfo: []sqlbase.BlockInfo{{Level: "etity_segment"}},
+	}
+	str := msg.String()
+	if str == "" {
+		t.Error("String() should not return empty string")
+	}
+}
+
+func TestBlocksDistributionProtoMessage(t *testing.T) {
+	msg := &sqlbase.BlocksDistribution{}
+	msg.ProtoMessage()
+}
+
+func TestBlocksDistributionDescriptor(t *testing.T) {
+	msg := &sqlbase.BlocksDistribution{}
+	_, _ = msg.Descriptor()
+}
+
+func TestBlocksDistributionMarshalTo(t *testing.T) {
+	msg := &sqlbase.BlocksDistribution{
+		BlockInfo: []sqlbase.BlockInfo{{Level: "etity_segment"}},
+	}
+	buf := make([]byte, 256)
+	n, err := msg.MarshalTo(buf)
+	if err != nil {
+		t.Fatalf("MarshalTo() failed: %v", err)
+	}
+	if n == 0 {
+		t.Error("MarshalTo() should return non-zero size")
+	}
+}
+
+func TestBlocksDistributionXXXMerge(t *testing.T) {
+	src := &sqlbase.BlocksDistribution{}
+	dst := &sqlbase.BlocksDistribution{}
+	dst.XXX_Merge(src)
+}
+
+func TestBlocksDistributionSize(t *testing.T) {
+	msg := &sqlbase.BlocksDistribution{
+		BlockInfo: []sqlbase.BlockInfo{{Level: "etity_segment"}},
+	}
+	size := msg.Size()
+	if size == 0 {
+		t.Error("Size() should return non-zero size")
+	}
+}
+
+func TestBlocksDistributionReset(t *testing.T) {
+	msg := &sqlbase.BlocksDistribution{
+		BlockInfo: []sqlbase.BlockInfo{{Level: "test"}},
+	}
+	msg.Reset()
+	if len(msg.BlockInfo) != 0 {
+		t.Error("Reset() should zero all fields")
 	}
 }
 
@@ -1169,6 +1499,231 @@ func TestKWDBReplicationMetaDataString(t *testing.T) {
 	}
 }
 
+// Test UpdateReplicationMetaData message
+func TestUpdateReplicationMetaData(t *testing.T) {
+	sync := &sqlbase.KWDBReplicationSync{
+		SyncId:               1,
+		SourceClusterId:      "source_cluster",
+		SourceIp4:            "192.168.1.1",
+		SourceConnectionId:   100,
+		SourceToken:          1000,
+		DestinationClusterId: "dest_cluster",
+		DestinationIp4:       "192.168.1.2",
+		DestinationToken:     2000,
+	}
+
+	metaData := &sqlbase.KWDBReplicationMetaData{
+		DescId:          123,
+		TotalNumOfSyncs: 1,
+		Syncs:           []*sqlbase.KWDBReplicationSync{sync},
+	}
+
+	msg := &sqlbase.UpdateReplicationMetaData{
+		KwdbRepMdt: *metaData,
+	}
+
+	data, err := protoutil.Marshal(msg)
+	if err != nil {
+		t.Fatalf("Failed to marshal UpdateReplicationMetaData: %v", err)
+	}
+
+	unmarshaled := &sqlbase.UpdateReplicationMetaData{}
+	err = protoutil.Unmarshal(data, unmarshaled)
+	if err != nil {
+		t.Fatalf("Failed to unmarshal UpdateReplicationMetaData: %v", err)
+	}
+
+	if !reflect.DeepEqual(msg, unmarshaled) {
+		t.Errorf("Marshal/Unmarshal failed: got %v, want %v", unmarshaled, msg)
+	}
+}
+
+func TestUpdateReplicationMetaDataString(t *testing.T) {
+	msg := &sqlbase.UpdateReplicationMetaData{}
+	str := msg.String()
+	if str == "" {
+		t.Error("String() should not return empty string")
+	}
+}
+
+func TestUpdateReplicationMetaDataProtoMessage(t *testing.T) {
+	msg := &sqlbase.UpdateReplicationMetaData{}
+	msg.ProtoMessage()
+}
+
+func TestUpdateReplicationMetaDataDescriptor(t *testing.T) {
+	msg := &sqlbase.UpdateReplicationMetaData{}
+	_, _ = msg.Descriptor()
+}
+
+func TestUpdateReplicationMetaDataMarshalTo(t *testing.T) {
+	msg := &sqlbase.UpdateReplicationMetaData{}
+	buf := make([]byte, 256)
+	n, err := msg.MarshalTo(buf)
+	if err != nil {
+		t.Fatalf("MarshalTo() failed: %v", err)
+	}
+	if n == 0 {
+		t.Error("MarshalTo() should return non-zero size")
+	}
+}
+
+func TestUpdateReplicationMetaDataXXXMerge(t *testing.T) {
+	src := &sqlbase.UpdateReplicationMetaData{
+		KwdbRepMdt: sqlbase.KWDBReplicationMetaData{
+			DescId: 123,
+		},
+	}
+	dst := &sqlbase.UpdateReplicationMetaData{}
+	dst.XXX_Merge(src)
+	if dst.KwdbRepMdt.DescId != src.KwdbRepMdt.DescId {
+		t.Errorf("XXX_Merge failed")
+	}
+}
+
+func TestUpdateReplicationMetaDataSize(t *testing.T) {
+	msg := &sqlbase.UpdateReplicationMetaData{
+		KwdbRepMdt: sqlbase.KWDBReplicationMetaData{
+			DescId: 123,
+		},
+	}
+	size := msg.Size()
+	if size == 0 {
+		t.Error("Size() should return non-zero size")
+	}
+}
+
+func TestUpdateReplicationMetaDataReset(t *testing.T) {
+	msg := &sqlbase.UpdateReplicationMetaData{
+		KwdbRepMdt: sqlbase.KWDBReplicationMetaData{
+			DescId: 123,
+		},
+	}
+	msg.Reset()
+	if msg.KwdbRepMdt.DescId != 0 {
+		t.Error("Reset() should zero all fields")
+	}
+}
+
+// Test KWDBReplicationSync message
+func TestKWDBReplicationSync(t *testing.T) {
+	agentMeta := &sqlbase.KWDBReplicationAgentMetaData{
+		AgentType:         sqlbase.AgentType_METADATA,
+		SourcePort:        5555,
+		DesitionationPort: 6666,
+		Frequency:         60,
+		MaxRecords:        1000,
+		Status:            sqlbase.KWDBReplicationStatus_RUNNING,
+		ReplicaDescName:   "replica1",
+	}
+
+	msg := &sqlbase.KWDBReplicationSync{
+		SyncId:                  1,
+		SourceClusterId:         "source_cluster",
+		SourceIp4:               "192.168.1.1",
+		SourceConnectionId:      100,
+		SourceToken:             1000,
+		DestinationClusterId:    "dest_cluster",
+		DestinationConnectionId: 200,
+		DestinationIp4:          "192.168.1.2",
+		DestinationToken:        2000,
+		TotalAgentMeta:          1,
+		AgentMetaData:           []*sqlbase.KWDBReplicationAgentMetaData{agentMeta},
+		IsReplicated:            1,
+	}
+
+	data, err := protoutil.Marshal(msg)
+	if err != nil {
+		t.Fatalf("Failed to marshal KWDBReplicationSync: %v", err)
+	}
+
+	unmarshaled := &sqlbase.KWDBReplicationSync{}
+	err = protoutil.Unmarshal(data, unmarshaled)
+	if err != nil {
+		t.Fatalf("Failed to unmarshal KWDBReplicationSync: %v", err)
+	}
+
+	if !reflect.DeepEqual(msg, unmarshaled) {
+		t.Errorf("Marshal/Unmarshal failed: got %v, want %v", unmarshaled, msg)
+	}
+
+	if !reflect.DeepEqual(msg, unmarshaled) {
+		t.Errorf("Equal failed: messages should be equal")
+	}
+
+	msg2 := &sqlbase.KWDBReplicationSync{
+		SyncId: 2,
+	}
+	if reflect.DeepEqual(msg, msg2) {
+		t.Errorf("Equal failed: messages should not be equal")
+	}
+}
+
+func TestKWDBReplicationSyncString(t *testing.T) {
+	msg := &sqlbase.KWDBReplicationSync{
+		SyncId: 1,
+	}
+	str := msg.String()
+	if str == "" {
+		t.Error("String() should not return empty string")
+	}
+}
+
+func TestKWDBReplicationSyncProtoMessage(t *testing.T) {
+	msg := &sqlbase.KWDBReplicationSync{}
+	msg.ProtoMessage()
+}
+
+func TestKWDBReplicationSyncDescriptor(t *testing.T) {
+	msg := &sqlbase.KWDBReplicationSync{}
+	_, _ = msg.Descriptor()
+}
+
+func TestKWDBReplicationSyncMarshalTo(t *testing.T) {
+	msg := &sqlbase.KWDBReplicationSync{
+		SyncId: 1,
+	}
+	buf := make([]byte, 256)
+	n, err := msg.MarshalTo(buf)
+	if err != nil {
+		t.Fatalf("MarshalTo() failed: %v", err)
+	}
+	if n == 0 {
+		t.Error("MarshalTo() should return non-zero size")
+	}
+}
+
+func TestKWDBReplicationSyncXXXMerge(t *testing.T) {
+	src := &sqlbase.KWDBReplicationSync{
+		SyncId: 1,
+	}
+	dst := &sqlbase.KWDBReplicationSync{}
+	dst.XXX_Merge(src)
+	if dst.SyncId != src.SyncId {
+		t.Errorf("XXX_Merge failed")
+	}
+}
+
+func TestKWDBReplicationSyncSize(t *testing.T) {
+	msg := &sqlbase.KWDBReplicationSync{
+		SyncId: 1,
+	}
+	size := msg.Size()
+	if size == 0 {
+		t.Error("Size() should return non-zero size")
+	}
+}
+
+func TestKWDBReplicationSyncReset(t *testing.T) {
+	msg := &sqlbase.KWDBReplicationSync{
+		SyncId: 1,
+	}
+	msg.Reset()
+	if msg.SyncId != 0 {
+		t.Error("Reset() should zero all fields")
+	}
+}
+
 func TestKWDBReplicationMetaDataProtoMessage(t *testing.T) {
 	msg := &sqlbase.KWDBReplicationMetaData{}
 	msg.ProtoMessage()
@@ -1204,6 +1759,26 @@ func TestKWDBReplicationMetaDataXXXMerge(t *testing.T) {
 	}
 }
 
+func TestKWDBReplicationMetaDataSize(t *testing.T) {
+	msg := &sqlbase.KWDBReplicationMetaData{
+		DescId: 123,
+	}
+	size := msg.Size()
+	if size == 0 {
+		t.Error("Size() should return non-zero size")
+	}
+}
+
+func TestKWDBReplicationMetaDataReset(t *testing.T) {
+	msg := &sqlbase.KWDBReplicationMetaData{
+		DescId: 123,
+	}
+	msg.Reset()
+	if msg.DescId != 0 {
+		t.Error("Reset() should zero all fields")
+	}
+}
+
 // Test KWDBReplicationAgentMetaData message
 func TestKWDBReplicationAgentMetaData(t *testing.T) {
 	msg := &sqlbase.KWDBReplicationAgentMetaData{
@@ -1233,6 +1808,71 @@ func TestKWDBReplicationAgentMetaData(t *testing.T) {
 	}
 }
 
+func TestKWDBReplicationAgentMetaDataString(t *testing.T) {
+	msg := &sqlbase.KWDBReplicationAgentMetaData{
+		AgentType: sqlbase.AgentType_TS,
+	}
+	str := msg.String()
+	if str == "" {
+		t.Error("String() should not return empty string")
+	}
+}
+
+func TestKWDBReplicationAgentMetaDataProtoMessage(t *testing.T) {
+	msg := &sqlbase.KWDBReplicationAgentMetaData{}
+	msg.ProtoMessage()
+}
+
+func TestKWDBReplicationAgentMetaDataDescriptor(t *testing.T) {
+	msg := &sqlbase.KWDBReplicationAgentMetaData{}
+	_, _ = msg.Descriptor()
+}
+
+func TestKWDBReplicationAgentMetaDataMarshalTo(t *testing.T) {
+	msg := &sqlbase.KWDBReplicationAgentMetaData{
+		AgentType: sqlbase.AgentType_TS,
+	}
+	buf := make([]byte, 256)
+	n, err := msg.MarshalTo(buf)
+	if err != nil {
+		t.Fatalf("MarshalTo() failed: %v", err)
+	}
+	if n == 0 {
+		t.Error("MarshalTo() should return non-zero size")
+	}
+}
+
+func TestKWDBReplicationAgentMetaDataXXXMerge(t *testing.T) {
+	src := &sqlbase.KWDBReplicationAgentMetaData{
+		AgentType: sqlbase.AgentType_TS,
+	}
+	dst := &sqlbase.KWDBReplicationAgentMetaData{}
+	dst.XXX_Merge(src)
+	if dst.AgentType != src.AgentType {
+		t.Errorf("XXX_Merge failed")
+	}
+}
+
+func TestKWDBReplicationAgentMetaDataSize(t *testing.T) {
+	msg := &sqlbase.KWDBReplicationAgentMetaData{
+		AgentType: sqlbase.AgentType_TS,
+	}
+	size := msg.Size()
+	if size == 0 {
+		t.Error("Size() should return non-zero size")
+	}
+}
+
+func TestKWDBReplicationAgentMetaDataReset(t *testing.T) {
+	msg := &sqlbase.KWDBReplicationAgentMetaData{
+		AgentType: sqlbase.AgentType_TS,
+	}
+	msg.Reset()
+	if msg.AgentType != 0 {
+		t.Error("Reset() should zero all fields")
+	}
+}
+
 // Test KWDBReplicationProgress message
 func TestKWDBReplicationProgress(t *testing.T) {
 	msg := &sqlbase.KWDBReplicationProgress{
@@ -1257,6 +1897,70 @@ func TestKWDBReplicationProgress(t *testing.T) {
 
 	if !reflect.DeepEqual(msg, unmarshaled) {
 		t.Errorf("Marshal/Unmarshal failed: got %v, want %v", unmarshaled, msg)
+	}
+
+	if !reflect.DeepEqual(msg, unmarshaled) {
+		t.Errorf("Equal failed: messages should be equal")
+	}
+
+	msg2 := &sqlbase.KWDBReplicationProgress{Txn: 200}
+	if reflect.DeepEqual(msg, msg2) {
+		t.Errorf("Equal failed: messages should not be equal")
+	}
+}
+
+func TestKWDBReplicationProgressString(t *testing.T) {
+	msg := &sqlbase.KWDBReplicationProgress{Txn: 100}
+	str := msg.String()
+	if str == "" {
+		t.Error("String() should not return empty string")
+	}
+}
+
+func TestKWDBReplicationProgressProtoMessage(t *testing.T) {
+	msg := &sqlbase.KWDBReplicationProgress{}
+	msg.ProtoMessage()
+}
+
+func TestKWDBReplicationProgressDescriptor(t *testing.T) {
+	msg := &sqlbase.KWDBReplicationProgress{}
+	_, _ = msg.Descriptor()
+}
+
+func TestKWDBReplicationProgressMarshalTo(t *testing.T) {
+	msg := &sqlbase.KWDBReplicationProgress{Txn: 100}
+	buf := make([]byte, 256)
+	n, err := msg.MarshalTo(buf)
+	if err != nil {
+		t.Fatalf("MarshalTo() failed: %v", err)
+	}
+	if n == 0 {
+		t.Error("MarshalTo() should return non-zero size")
+	}
+}
+
+func TestKWDBReplicationProgressXXXMerge(t *testing.T) {
+	src := &sqlbase.KWDBReplicationProgress{Txn: 100}
+	dst := &sqlbase.KWDBReplicationProgress{}
+	dst.XXX_Merge(src)
+	if dst.Txn != src.Txn {
+		t.Errorf("XXX_Merge failed")
+	}
+}
+
+func TestKWDBReplicationProgressSize(t *testing.T) {
+	msg := &sqlbase.KWDBReplicationProgress{Txn: 100}
+	size := msg.Size()
+	if size == 0 {
+		t.Error("Size() should return non-zero size")
+	}
+}
+
+func TestKWDBReplicationProgressReset(t *testing.T) {
+	msg := &sqlbase.KWDBReplicationProgress{Txn: 100}
+	msg.Reset()
+	if msg.Txn != 0 {
+		t.Error("Reset() should zero all fields")
 	}
 }
 
@@ -1295,6 +1999,61 @@ func TestKWDBReplicationProgressSet(t *testing.T) {
 	}
 }
 
+func TestKWDBReplicationProgressSetString(t *testing.T) {
+	msg := &sqlbase.KWDBReplicationProgressSet{PortalId: 1}
+	str := msg.String()
+	if str == "" {
+		t.Error("String() should not return empty string")
+	}
+}
+
+func TestKWDBReplicationProgressSetProtoMessage(t *testing.T) {
+	msg := &sqlbase.KWDBReplicationProgressSet{}
+	msg.ProtoMessage()
+}
+
+func TestKWDBReplicationProgressSetDescriptor(t *testing.T) {
+	msg := &sqlbase.KWDBReplicationProgressSet{}
+	_, _ = msg.Descriptor()
+}
+
+func TestKWDBReplicationProgressSetMarshalTo(t *testing.T) {
+	msg := &sqlbase.KWDBReplicationProgressSet{PortalId: 1}
+	buf := make([]byte, 256)
+	n, err := msg.MarshalTo(buf)
+	if err != nil {
+		t.Fatalf("MarshalTo() failed: %v", err)
+	}
+	if n == 0 {
+		t.Error("MarshalTo() should return non-zero size")
+	}
+}
+
+func TestKWDBReplicationProgressSetXXXMerge(t *testing.T) {
+	src := &sqlbase.KWDBReplicationProgressSet{PortalId: 1}
+	dst := &sqlbase.KWDBReplicationProgressSet{}
+	dst.XXX_Merge(src)
+	if dst.PortalId != src.PortalId {
+		t.Errorf("XXX_Merge failed")
+	}
+}
+
+func TestKWDBReplicationProgressSetSize(t *testing.T) {
+	msg := &sqlbase.KWDBReplicationProgressSet{PortalId: 1}
+	size := msg.Size()
+	if size == 0 {
+		t.Error("Size() should return non-zero size")
+	}
+}
+
+func TestKWDBReplicationProgressSetReset(t *testing.T) {
+	msg := &sqlbase.KWDBReplicationProgressSet{PortalId: 1}
+	msg.Reset()
+	if msg.PortalId != 0 {
+		t.Error("Reset() should zero all fields")
+	}
+}
+
 // Test ReplicationServiceCallerFuncInputs message
 func TestReplicationServiceCallerFuncInputs(t *testing.T) {
 	msg := &sqlbase.ReplicationServiceCallerFuncInputs{
@@ -1317,6 +2076,61 @@ func TestReplicationServiceCallerFuncInputs(t *testing.T) {
 
 	if !reflect.DeepEqual(msg, unmarshaled) {
 		t.Errorf("Marshal/Unmarshal failed: got %v, want %v", unmarshaled, msg)
+	}
+}
+
+func TestReplicationServiceCallerFuncInputsString(t *testing.T) {
+	msg := &sqlbase.ReplicationServiceCallerFuncInputs{PortalId: 1}
+	str := msg.String()
+	if str == "" {
+		t.Error("String() should not return empty string")
+	}
+}
+
+func TestReplicationServiceCallerFuncInputsProtoMessage(t *testing.T) {
+	msg := &sqlbase.ReplicationServiceCallerFuncInputs{}
+	msg.ProtoMessage()
+}
+
+func TestReplicationServiceCallerFuncInputsDescriptor(t *testing.T) {
+	msg := &sqlbase.ReplicationServiceCallerFuncInputs{}
+	_, _ = msg.Descriptor()
+}
+
+func TestReplicationServiceCallerFuncInputsMarshalTo(t *testing.T) {
+	msg := &sqlbase.ReplicationServiceCallerFuncInputs{PortalId: 1}
+	buf := make([]byte, 256)
+	n, err := msg.MarshalTo(buf)
+	if err != nil {
+		t.Fatalf("MarshalTo() failed: %v", err)
+	}
+	if n == 0 {
+		t.Error("MarshalTo() should return non-zero size")
+	}
+}
+
+func TestReplicationServiceCallerFuncInputsXXXMerge(t *testing.T) {
+	src := &sqlbase.ReplicationServiceCallerFuncInputs{PortalId: 1}
+	dst := &sqlbase.ReplicationServiceCallerFuncInputs{}
+	dst.XXX_Merge(src)
+	if dst.PortalId != src.PortalId {
+		t.Errorf("XXX_Merge failed")
+	}
+}
+
+func TestReplicationServiceCallerFuncInputsSize(t *testing.T) {
+	msg := &sqlbase.ReplicationServiceCallerFuncInputs{PortalId: 1}
+	size := msg.Size()
+	if size == 0 {
+		t.Error("Size() should return non-zero size")
+	}
+}
+
+func TestReplicationServiceCallerFuncInputsReset(t *testing.T) {
+	msg := &sqlbase.ReplicationServiceCallerFuncInputs{PortalId: 1}
+	msg.Reset()
+	if msg.PortalId != 0 {
+		t.Error("Reset() should zero all fields")
 	}
 }
 
@@ -1348,6 +2162,61 @@ func TestWhiteList(t *testing.T) {
 	}
 }
 
+func TestWhiteListString(t *testing.T) {
+	msg := &sqlbase.WhiteList{Name: "test"}
+	str := msg.String()
+	if str == "" {
+		t.Error("String() should not return empty string")
+	}
+}
+
+func TestWhiteListProtoMessage(t *testing.T) {
+	msg := &sqlbase.WhiteList{}
+	msg.ProtoMessage()
+}
+
+func TestWhiteListDescriptor(t *testing.T) {
+	msg := &sqlbase.WhiteList{}
+	_, _ = msg.Descriptor()
+}
+
+func TestWhiteListMarshalTo(t *testing.T) {
+	msg := &sqlbase.WhiteList{Name: "test"}
+	buf := make([]byte, 256)
+	n, err := msg.MarshalTo(buf)
+	if err != nil {
+		t.Fatalf("MarshalTo() failed: %v", err)
+	}
+	if n == 0 {
+		t.Error("MarshalTo() should return non-zero size")
+	}
+}
+
+func TestWhiteListXXXMerge(t *testing.T) {
+	src := &sqlbase.WhiteList{Name: "test"}
+	dst := &sqlbase.WhiteList{}
+	dst.XXX_Merge(src)
+	if dst.Name != src.Name {
+		t.Errorf("XXX_Merge failed")
+	}
+}
+
+func TestWhiteListSize(t *testing.T) {
+	msg := &sqlbase.WhiteList{Name: "test"}
+	size := msg.Size()
+	if size == 0 {
+		t.Error("Size() should return non-zero size")
+	}
+}
+
+func TestWhiteListReset(t *testing.T) {
+	msg := &sqlbase.WhiteList{Name: "test"}
+	msg.Reset()
+	if msg.Name != "" {
+		t.Error("Reset() should zero all fields")
+	}
+}
+
 // Test TSInsertSelect message
 func TestTSInsertSelect(t *testing.T) {
 	msg := &sqlbase.TSInsertSelect{
@@ -1370,5 +2239,48 @@ func TestTSInsertSelect(t *testing.T) {
 
 	if !reflect.DeepEqual(msg, unmarshaled) {
 		t.Errorf("Marshal/Unmarshal failed: got %v, want %v", unmarshaled, msg)
+	}
+}
+
+func TestTSInsertSelectString(t *testing.T) {
+	msg := &sqlbase.TSInsertSelect{Sql: "SELECT 1"}
+	str := msg.String()
+	if str == "" {
+		t.Error("String() should not return empty string")
+	}
+}
+
+func TestTSInsertSelectProtoMessage(t *testing.T) {
+	msg := &sqlbase.TSInsertSelect{}
+	msg.ProtoMessage()
+}
+
+func TestTSInsertSelectDescriptor(t *testing.T) {
+	msg := &sqlbase.TSInsertSelect{}
+	_, _ = msg.Descriptor()
+}
+
+func TestTSInsertSelectXXXMerge(t *testing.T) {
+	src := &sqlbase.TSInsertSelect{Sql: "SELECT 1"}
+	dst := &sqlbase.TSInsertSelect{}
+	dst.XXX_Merge(src)
+	if dst.Sql != src.Sql {
+		t.Errorf("XXX_Merge failed")
+	}
+}
+
+func TestTSInsertSelectSize(t *testing.T) {
+	msg := &sqlbase.TSInsertSelect{Sql: "SELECT 1"}
+	size := msg.Size()
+	if size == 0 {
+		t.Error("Size() should return non-zero size")
+	}
+}
+
+func TestTSInsertSelectReset(t *testing.T) {
+	msg := &sqlbase.TSInsertSelect{Sql: "SELECT 1"}
+	msg.Reset()
+	if msg.Sql != "" {
+		t.Error("Reset() should zero all fields")
 	}
 }

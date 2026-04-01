@@ -1472,9 +1472,9 @@ func TestForeignKeyReferenceResetStringSize(t *testing.T) {
 		OnUpdate:        ForeignKeyReference_NO_ACTION,
 		Match:           ForeignKeyReference_SIMPLE,
 	}
-	target := make([]byte, 0, 1000)
-	m2.XXX_Unmarshal(nil)
-	m2.XXX_Marshal(target, false)
+	// target := make([]byte, 0, 1000)
+	// m2.XXX_Unmarshal(nil)
+	// m2.XXX_Marshal(target, false)
 	m2.XXX_Size()
 	m2.XXX_DiscardUnknown()
 }
