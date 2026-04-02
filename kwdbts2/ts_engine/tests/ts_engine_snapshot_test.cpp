@@ -1077,7 +1077,6 @@ TEST_F(TestEngineSnapshotImgrate, mulitSnapshot) {
   ASSERT_EQ(s, KStatus::SUCCESS);
 }
 
-
 TEST_F(TestEngineSnapshotImgrate, ConvertUpdateEntities) {
   roachpb::CreateTsTable meta;
   KTableKey cur_table_id = 1006;
@@ -1294,6 +1293,70 @@ TEST_F(TestEngineSnapshotImgrate, ConvertUpdateEntities) {
   ASSERT_EQ(KUint64((char*)(rs.data[3][0]->mem) + 8), 123456);
   delete m_iter;
 
+  s = ts_engine_src_->DropTsTable(ctx_, cur_table_id);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  s = ts_engine_desc_->DropTsTable(ctx_, cur_table_id);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+}
+
+
+TEST_F(TestEngineSnapshotImgrate, ConvertWrongHashPoint) {
+  roachpb::CreateTsTable meta;
+  KTableKey cur_table_id = 1006;
+  ConstructRoachpbTable(&meta, cur_table_id);
+  std::shared_ptr<TsTable> ts_table;
+  KStatus s = ts_engine_src_->CreateTsTable(ctx_, cur_table_id, &meta, ts_table);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  s = ts_engine_desc_->CreateTsTable(ctx_, cur_table_id, &meta, ts_table);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  ctx_->ts_engine = ts_engine_src_;
+  // input data to  table 1007
+  uint64_t pkey_int = 1;
+  std::vector<std::string> pkeys;
+  std::string pkey_str = GetPrimaryKey(ts_engine_src_, cur_table_id, pkey_int);
+  pkeys.push_back(pkey_str);
+  uint64_t del_count;
+  auto ts_table_v2 = dynamic_pointer_cast<TsTableV2Impl>(ts_table);
+
+  std::shared_ptr<kwdbts::TsTableSchemaManager> schema_mgr;
+  bool is_dropped = false;
+  s = ts_engine_src_->GetTableSchemaMgr(ctx_, cur_table_id, is_dropped, schema_mgr);
+  EXPECT_EQ(s, KStatus::SUCCESS);
+  const std::vector<AttributeInfo>* metric_schema{nullptr};
+  s = schema_mgr->GetMetricMeta(1, &metric_schema);
+  EXPECT_EQ(s , KStatus::SUCCESS);
+  std::vector<TagInfo> tag_schema;
+  s = schema_mgr->GetTagMeta(1, tag_schema);
+  EXPECT_EQ(s , KStatus::SUCCESS);
+  auto pay_load = GenRowPayload(*metric_schema, tag_schema ,cur_table_id, 1, pkey_int, 1, 10000);
+  TsRawPayload::SetHashPoint(pay_load, 100);
+  TsRawPayload::SetOSN(pay_load, 100);
+  uint16_t inc_entity_cnt;
+  uint32_t inc_unordered_cnt = 0;
+  DedupResult dedup_result{0, 0, 0, TSSlice {nullptr, 0}};
+  s = ts_engine_src_->PutData(ctx_, cur_table_id, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
+  EXPECT_EQ(s , KStatus::SUCCESS);
+  TsRawPayload::SetHashPoint(pay_load, 200);
+  s = ts_engine_desc_->PutData(ctx_, cur_table_id, 0, &pay_load, 1, 0, &inc_entity_cnt, &inc_unordered_cnt, &dedup_result);
+  EXPECT_EQ(s , KStatus::SUCCESS);
+  free(pay_load.data);
+
+  uint64_t desc_snapshot_id;
+  s = ts_engine_desc_->CreateSnapshotForWrite(ctx_, cur_table_id, 0, UINT64_MAX, {INT64_MIN, 101}, &desc_snapshot_id, is_dropped, 200);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  uint64_t snapshot_id;
+  s = ts_engine_src_->CreateSnapshotForRead(ctx_, cur_table_id, 0, UINT64_MAX, {INT64_MIN, 101}, UINT64_MAX, &snapshot_id, is_dropped);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+
+  // migrate data from 1007 to 1008
+  TSSlice snapshot_data{nullptr, 0};
+  s = ts_engine_src_->GetSnapshotNextBatchData(ctx_, snapshot_id, &snapshot_data, is_dropped);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  ASSERT_TRUE(snapshot_data.data != nullptr);
+  s = ts_engine_desc_->WriteSnapshotBatchData(ctx_, desc_snapshot_id, snapshot_data, is_dropped);
+  ASSERT_EQ(s, KStatus::FAIL);
+  free(snapshot_data.data);
+  
   s = ts_engine_src_->DropTsTable(ctx_, cur_table_id);
   ASSERT_EQ(s, KStatus::SUCCESS);
   s = ts_engine_desc_->DropTsTable(ctx_, cur_table_id);

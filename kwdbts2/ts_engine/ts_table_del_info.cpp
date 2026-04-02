@@ -350,10 +350,14 @@ KStatus STTableRangeDelAndTagInfo::WriteDelAndTagInfo(kwdbContext_p ctx, TSSlice
     return s;
   }
   auto pkey = TsRawPayload::GetPrimaryKeyFromSlice(payload);
-  uint64_t hash_point = t1ha1_le(pkey.data, pkey.len);
-  tag_lock.WrLock(hash_point);
+  uint32_t p_hash_point = TsRawPayload::GetHashPoint(payload);
+  if (p_hash_point < begin_hash_ || p_hash_point > end_hash_) {
+    LOG_ERROR("payload hash point[%u] not in span[%lu,%lu]", p_hash_point, begin_hash_, end_hash_);
+    return KStatus::FAIL;
+  }
+  tag_lock.WrLock(p_hash_point);
   Defer defer{[&](){
-    tag_lock.Unlock(hash_point);
+    tag_lock.Unlock(p_hash_point);
   }};
 
   std::shared_ptr<TagTable> tag_table;
@@ -366,6 +370,20 @@ KStatus STTableRangeDelAndTagInfo::WriteDelAndTagInfo(kwdbContext_p ctx, TSSlice
     std::string pkey_str;
     BinaryToHexStr(pkey, pkey_str);
     LOG_INFO("snapshot find valid tag[%s], delete first.", pkey_str.c_str());
+    std::pair<uint64_t, uint64_t> row_info;
+    if (tag_table->GetPrimaryKeyRowInfo(pkey.data, pkey.len, row_info)) {
+      LOG_INFO("valid tag row info[%lu,%lu].", row_info.first, row_info.second);
+      auto p_tag = tag_table->GetTagPartitionTableManager()->GetPartitionTable(row_info.first);
+      if (p_tag != nullptr) {
+        uint32_t hash_point = 0;
+        p_tag->getHashpointByRowNum(row_info.second, &hash_point);
+        if (hash_point != p_hash_point) {
+          LOG_ERROR("payload hashpoint[%u], not equal with existed tag[%lu,%lu] hashpoint[%u]",
+            p_hash_point, row_info.first, row_info.second, hash_point);
+          return KStatus::FAIL;
+        }
+      }
+    }
     ErrorInfo err_info;
     std::pair<size_t, size_t> del_row_no;
     auto ret = tag_table->DeleteTagRecord(pkey.data, pkey.len, err_info,
