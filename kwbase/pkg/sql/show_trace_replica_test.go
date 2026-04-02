@@ -22,114 +22,276 @@
 // MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
 // See the Mulan PSL v2 for more details.
 
-package sql_test
+package sql
 
 import (
-	"context"
-	"fmt"
-	"reflect"
+	"regexp"
 	"testing"
 
-	"gitee.com/kwbasedb/kwbase/pkg/base"
-	"gitee.com/kwbasedb/kwbase/pkg/config/zonepb"
-	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
-	"gitee.com/kwbasedb/kwbase/pkg/server"
-	"gitee.com/kwbasedb/kwbase/pkg/testutils"
-	"gitee.com/kwbasedb/kwbase/pkg/testutils/sqlutils"
-	"gitee.com/kwbasedb/kwbase/pkg/testutils/testcluster"
 	"gitee.com/kwbasedb/kwbase/pkg/util/leaktest"
-	"github.com/gogo/protobuf/proto"
-	"github.com/pkg/errors"
+	"github.com/stretchr/testify/require"
 )
 
-func TestShowTraceReplica(t *testing.T) {
+// TestNodeStoreRangeRE tests the nodeStoreRangeRE regular expression
+func TestNodeStoreRangeRE(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 
-	t.Skip("https://gitee.com/kwbasedb/kwbase/issues/34213")
-
-	const numNodes = 4
-
-	zoneConfig := zonepb.DefaultZoneConfig()
-	zoneConfig.NumReplicas = proto.Int32(1)
-
-	ctx := context.Background()
-	tsArgs := func(node string) base.TestServerArgs {
-		return base.TestServerArgs{
-			Knobs: base.TestingKnobs{
-				Server: &server.TestingKnobs{
-					DefaultZoneConfigOverride:       &zoneConfig,
-					DefaultSystemZoneConfigOverride: &zoneConfig,
-				},
-			},
-			StoreSpecs: []base.StoreSpec{{InMemory: true, Attributes: roachpb.Attributes{Attrs: []string{node}}}},
-		}
-	}
-	tcArgs := base.TestClusterArgs{ServerArgsPerNode: map[int]base.TestServerArgs{
-		0: tsArgs(`n1`),
-		1: tsArgs(`n2`),
-		2: tsArgs(`n3`),
-		3: tsArgs(`n4`),
-	}}
-	tc := testcluster.StartTestCluster(t, numNodes, tcArgs)
-	defer tc.Stopper().Stop(ctx)
-
-	sqlDB := sqlutils.MakeSQLRunner(tc.Conns[0])
-	sqlDB.Exec(t, `ALTER RANGE "default" CONFIGURE ZONE USING constraints = '[+n4]'`)
-	sqlDB.Exec(t, `ALTER DATABASE system CONFIGURE ZONE USING constraints = '[+n4]'`)
-	sqlDB.Exec(t, `CREATE DATABASE d`)
-	sqlDB.Exec(t, `CREATE TABLE d.t1 (a INT PRIMARY KEY)`)
-	sqlDB.Exec(t, `CREATE TABLE d.t2 (a INT PRIMARY KEY)`)
-	sqlDB.Exec(t, `CREATE TABLE d.t3 (a INT PRIMARY KEY)`)
-	sqlDB.Exec(t, `ALTER TABLE d.t1 CONFIGURE ZONE USING constraints = '[+n1]'`)
-	sqlDB.Exec(t, `ALTER TABLE d.t2 CONFIGURE ZONE USING constraints = '[+n2]'`)
-	sqlDB.Exec(t, `ALTER TABLE d.t3 CONFIGURE ZONE USING constraints = '[+n3]'`)
-
 	tests := []struct {
-		query    string
-		expected [][]string
-		distinct bool
+		name     string
+		input    string
+		expected []string
+		match    bool
 	}{
 		{
-			// Read-only
-			query:    `SELECT * FROM d.t1`,
-			expected: [][]string{{`1`, `1`}},
+			name:     "standard format",
+			input:    "[n1,s2,r3/4:some-range-info]",
+			expected: []string{"[n1,s2,r3/", "1", "2", "3"},
+			match:    true,
 		},
 		{
-			// Write-only
-			query:    `UPSERT INTO d.t2 VALUES (1)`,
-			expected: [][]string{{`2`, `2`}},
+			name:     "only node information",
+			input:    "[n10,s20,r30/40]",
+			expected: []string{"[n10,s20,r30/", "10", "20", "30"},
+			match:    true,
 		},
 		{
-			// A write to delete the row.
-			query:    `DELETE FROM d.t2`,
-			expected: [][]string{{`2`, `2`}},
+			name:     "invalid format",
+			input:    "some random text",
+			expected: nil,
+			match:    false,
 		},
 		{
-			// Admin command. We use distinct because the ALTER statement is
-			// DDL and cause event log / job ranges to be touched too.
-			query:    `ALTER TABLE d.t3 SCATTER`,
-			expected: [][]string{{`4`, `4`}, {`3`, `3`}},
-			distinct: true,
+			name:     "partial match",
+			input:    "[n1,s2]",
+			expected: nil,
+			match:    false,
 		},
 	}
 
-	for _, test := range tests {
-		t.Run(test.query, func(t *testing.T) {
-			testutils.SucceedsSoon(t, func() error {
-				_ = sqlDB.Exec(t, fmt.Sprintf(`SET tracing = on; %s; SET tracing = off`, test.query))
-
-				distinct := ""
-				if test.distinct {
-					distinct = "DISTINCT"
-				}
-				actual := sqlDB.QueryStr(t,
-					fmt.Sprintf(`SELECT %s node_id, store_id FROM [SHOW EXPERIMENTAL_REPLICA TRACE FOR SESSION]`, distinct),
-				)
-				if !reflect.DeepEqual(actual, test.expected) {
-					return errors.Errorf(`%s: got %v expected %v`, test.query, actual, test.expected)
-				}
-				return nil
-			})
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			matches := nodeStoreRangeRE.FindStringSubmatch(tt.input)
+			if tt.match {
+				require.NotNil(t, matches)
+				require.Equal(t, tt.expected, matches)
+			} else {
+				require.Nil(t, matches)
+			}
 		})
 	}
+}
+
+// TestReplicaMsgRE tests the replicaMsgRE regular expression
+func TestReplicaMsgRE(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	tests := []struct {
+		name  string
+		input string
+		match bool
+	}{
+		{
+			name:  "read-write path",
+			input: "read-write path",
+			match: true,
+		},
+		{
+			name:  "read-only path",
+			input: "read-only path",
+			match: true,
+		},
+		{
+			name:  "admin path",
+			input: "admin path",
+			match: true,
+		},
+		{
+			name:  "other message",
+			input: "some other message",
+			match: false,
+		},
+		{
+			name:  "empty string",
+			input: "",
+			match: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			match := replicaMsgRE.MatchString(tt.input)
+			require.Equal(t, tt.match, match)
+		})
+	}
+}
+
+// TestNodeStoreRangeRECompile tests regex compilation
+func TestNodeStoreRangeRECompile(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	// Verify regex compiles correctly
+	require.NotNil(t, nodeStoreRangeRE)
+	require.Equal(t, "^\\[n(\\d+),s(\\d+),r(\\d+)/", nodeStoreRangeRE.String())
+}
+
+// TestReplicaMsgRECompile tests regex compilation
+func TestReplicaMsgRECompile(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	// Verify regex compiles correctly
+	require.NotNil(t, replicaMsgRE)
+	require.Equal(t, "^read-write path$|^read-only path$|^admin path$", replicaMsgRE.String())
+}
+
+// TestShowTraceReplicaNodeMethods tests methods of showTraceReplicaNode
+func TestShowTraceReplicaNodeMethods(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	// Create a mock showTraceReplicaNode
+	node := &showTraceReplicaNode{}
+
+	// Test Values method (should return nil before startExec)
+	values := node.Values()
+	require.Nil(t, values)
+}
+
+// TestNodeStoreRangeREExtract tests extracting node, store, and range IDs
+func TestNodeStoreRangeREExtract(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	tests := []struct {
+		input           string
+		expectedNodeID  int
+		expectedStoreID int
+		expectedRangeID int
+		expectError     bool
+	}{
+		{
+			input:           "[n1,s2,r3/4:test]",
+			expectedNodeID:  1,
+			expectedStoreID: 2,
+			expectedRangeID: 3,
+			expectError:     false,
+		},
+		{
+			input:           "[n100,s200,r300/400]",
+			expectedNodeID:  100,
+			expectedStoreID: 200,
+			expectedRangeID: 300,
+			expectError:     false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			matches := nodeStoreRangeRE.FindStringSubmatch(tt.input)
+			if tt.expectError {
+				require.Nil(t, matches)
+			} else {
+				require.NotNil(t, matches)
+				require.Len(t, matches, 4)
+				// matches[1] = nodeID, matches[2] = storeID, matches[3] = rangeID
+				require.NotEmpty(t, matches[1])
+				require.NotEmpty(t, matches[2])
+				require.NotEmpty(t, matches[3])
+			}
+		})
+	}
+}
+
+// TestReplicaMsgREComplex tests complex matching of replicaMsgRE
+func TestReplicaMsgREComplex(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	tests := []struct {
+		name  string
+		input string
+		match bool
+	}{
+		{
+			name:  "contains read-write path",
+			input: "read-write path",
+			match: true,
+		},
+		{
+			name:  "contains read-only path",
+			input: "read-only path",
+			match: true,
+		},
+		{
+			name:  "contains admin path",
+			input: "admin path",
+			match: true,
+		},
+		{
+			name:  "prefix match failed",
+			input: "pre-read-write path",
+			match: false,
+		},
+		{
+			name:  "suffix match failed",
+			input: "read-write path-suffix",
+			match: false,
+		},
+		{
+			name:  "case sensitive",
+			input: "READ-WRITE PATH",
+			match: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			match := replicaMsgRE.MatchString(tt.input)
+			require.Equal(t, tt.match, match, "input: %s", tt.input)
+		})
+	}
+}
+
+// TestRegexpPatterns tests regex patterns
+func TestRegexpPatterns(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	// Test nodeStoreRangeRE pattern
+	t.Run("nodeStoreRangeRE pattern", func(t *testing.T) {
+		pattern := `^\[n(\d+),s(\d+),r(\d+)/`
+		re := regexp.MustCompile(pattern)
+
+		testCases := []string{
+			"[n1,s1,r1/1:test]",
+			"[n123,s456,r789/012:range]",
+		}
+
+		for _, tc := range testCases {
+			matches := re.FindStringSubmatch(tc)
+			require.NotNil(t, matches, "should match: %s", tc)
+			require.Len(t, matches, 4)
+		}
+	})
+
+	// Test replicaMsgRE pattern
+	t.Run("replicaMsgRE pattern", func(t *testing.T) {
+		pattern := `^read-write path$|^read-only path$|^admin path$`
+		re := regexp.MustCompile(pattern)
+
+		positiveCases := []string{
+			"read-write path",
+			"read-only path",
+			"admin path",
+		}
+
+		for _, tc := range positiveCases {
+			require.True(t, re.MatchString(tc), "should match: %s", tc)
+		}
+
+		negativeCases := []string{
+			"read-write",
+			"write path",
+			"admin",
+		}
+
+		for _, tc := range negativeCases {
+			require.False(t, re.MatchString(tc), "should not match: %s", tc)
+		}
+	})
 }

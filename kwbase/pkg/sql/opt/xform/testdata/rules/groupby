@@ -1728,7 +1728,7 @@ memo (optimized, ~6KB, required=[presentation: u:2,v:3,w:4] [ordering: +4])
 memo
 INSERT INTO xyz SELECT v, w, 1.0 FROM kuvw ON CONFLICT (x) DO UPDATE SET z=2.0
 ----
-memo (optimized, ~23KB, required=[])
+memo (optimized, ~24KB, required=[])
  ├── G1: (upsert G2 G3 xyz)
  │    └── []
  │         ├── best: (upsert G2 G3 xyz)

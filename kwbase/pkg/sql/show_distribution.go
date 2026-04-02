@@ -43,6 +43,109 @@ var showTableDistributionColumns = sqlbase.ResultColumns{
 	{Name: "compression_ratio", Typ: types.String},
 }
 
+// processDBDistributionResponse processes the database distribution response,
+// converting DistributionInfo into Datums.
+// This function can be tested independently.
+func processDBDistributionResponse(
+	response *serverpb.DistributionResponse,
+) ([]tree.Datums, int, error) {
+	var capacity int
+	var rows []tree.Datums
+	var totalNum uint64
+	var totalSize uint64
+	var totalOriginalSize uint64
+	var totalLevel0 uint32
+	var totalLevel1 uint32
+	var totalLevel2 uint32
+
+	for _, info := range response.Distribution {
+		for _, block := range info.BlockInfo {
+			var compressionRatio string
+			if block.CompressionRatio == nil {
+				compressionRatio = "0"
+			} else {
+				compressionRatio = fmt.Sprintf("%.2f", *block.CompressionRatio)
+			}
+			avgSize := fmt.Sprintf("%.2f", block.AvgSize)
+			totalNum += uint64(block.BlocksNum)
+			totalSize += block.BlocksSize
+			totalOriginalSize += block.OriginalSize
+			row := tree.Datums{
+				tree.NewDString(info.NodeID),
+				tree.NewDInt(tree.DInt(block.BlocksNum)),
+				tree.NewDInt(tree.DInt(block.BlocksSize)),
+				tree.NewDString(avgSize),
+				tree.NewDString(compressionRatio),
+				tree.NewDInt(tree.DInt(block.LastSegLevel0)),
+				tree.NewDInt(tree.DInt(block.LastSegLevel1)),
+				tree.NewDInt(tree.DInt(block.LastSegLevel2)),
+			}
+			totalLevel0 += block.LastSegLevel0
+			totalLevel1 += block.LastSegLevel1
+			totalLevel2 += block.LastSegLevel2
+
+			rows = append(rows, row)
+			capacity++
+		}
+	}
+
+	// Avoid division by zero if there is no data
+	if totalNum == 0 {
+		return rows, capacity, nil
+	}
+
+	totalAvgSize := float64(totalSize) / float64(totalNum)
+	totalCompressionRatio := float64(totalOriginalSize) / float64(totalSize)
+	total := tree.Datums{
+		tree.NewDString("total"),
+		tree.NewDInt(tree.DInt(totalNum)),
+		tree.NewDInt(tree.DInt(totalSize)),
+		tree.NewDString(fmt.Sprintf("%.2f", totalAvgSize)),
+		tree.NewDString(fmt.Sprintf("%.2f", totalCompressionRatio)),
+		tree.NewDInt(tree.DInt(totalLevel0)),
+		tree.NewDInt(tree.DInt(totalLevel1)),
+		tree.NewDInt(tree.DInt(totalLevel2)),
+	}
+	rows = append(rows, total)
+	capacity++
+
+	return rows, capacity, nil
+}
+
+// processTableDistributionResponse processes the table distribution response,
+// converting DistributionInfo into Datums.
+// This function can be tested independently.
+func processTableDistributionResponse(
+	response *serverpb.DistributionResponse,
+) ([]tree.Datums, int, error) {
+	var capacity int
+	var rows []tree.Datums
+
+	for _, info := range response.Distribution {
+		for _, block := range info.BlockInfo {
+			var compressionRatio string
+			if block.CompressionRatio == nil {
+				compressionRatio = "0"
+			} else {
+				compressionRatio = fmt.Sprintf("%.2f", *block.CompressionRatio)
+			}
+			avgSize := fmt.Sprintf("%.2f", block.AvgSize)
+			row := tree.Datums{
+				tree.NewDString(info.NodeID),
+				tree.NewDString(block.Level),
+				tree.NewDInt(tree.DInt(block.BlocksNum)),
+				tree.NewDInt(tree.DInt(block.BlocksSize)),
+				tree.NewDString(avgSize),
+				tree.NewDString(compressionRatio),
+			}
+			rows = append(rows, row)
+			capacity++
+		}
+	}
+
+	return rows, capacity, nil
+}
+
 // ShowDistribution returns a SHOW DISTRIBUTION statement. The user must have any
 // privilege on the database or table.
 func (p *planner) ShowDistribution(
@@ -69,59 +172,12 @@ func (p *planner) ShowDistribution(
 		if err != nil {
 			return nil, err
 		}
-		var capacity int
-		var rows []tree.Datums
-		var totalNum uint64
-		var totalSize uint64
-		var totalAvgSize float64
-		var totalOriginalSize uint64
-		var totalLevel0 uint32
-		var totalLevel1 uint32
-		var totalLevel2 uint32
-		for _, info := range response.Distribution {
-			for _, block := range info.BlockInfo {
-				var compressionRatio string
-				if block.CompressionRatio == nil {
-					compressionRatio = "0"
-				} else {
-					compressionRatio = fmt.Sprintf("%.2f", *block.CompressionRatio)
-				}
-				avgSize := fmt.Sprintf("%.2f", block.AvgSize)
-				totalNum += uint64(block.BlocksNum)
-				totalSize += block.BlocksSize
-				totalOriginalSize += block.OriginalSize
-				row := tree.Datums{
-					tree.NewDString(info.NodeID),
-					tree.NewDInt(tree.DInt(block.BlocksNum)),
-					tree.NewDInt(tree.DInt(block.BlocksSize)),
-					tree.NewDString(avgSize),
-					tree.NewDString(compressionRatio),
-					tree.NewDInt(tree.DInt(block.LastSegLevel0)),
-					tree.NewDInt(tree.DInt(block.LastSegLevel1)),
-					tree.NewDInt(tree.DInt(block.LastSegLevel2)),
-				}
-				totalLevel0 += block.LastSegLevel0
-				totalLevel1 += block.LastSegLevel1
-				totalLevel2 += block.LastSegLevel2
 
-				rows = append(rows, row)
-				capacity++
-			}
+		rows, capacity, err := processDBDistributionResponse(response)
+		if err != nil {
+			return nil, err
 		}
-		totalAvgSize = float64(totalSize) / float64(totalNum)
-		totalCompressionRatio := float64(totalOriginalSize) / float64(totalSize)
-		total := tree.Datums{
-			tree.NewDString("total"),
-			tree.NewDInt(tree.DInt(totalNum)),
-			tree.NewDInt(tree.DInt(totalSize)),
-			tree.NewDString(fmt.Sprintf("%.2f", totalAvgSize)),
-			tree.NewDString(fmt.Sprintf("%.2f", totalCompressionRatio)),
-			tree.NewDInt(tree.DInt(totalLevel0)),
-			tree.NewDInt(tree.DInt(totalLevel1)),
-			tree.NewDInt(tree.DInt(totalLevel2)),
-		}
-		rows = append(rows, total)
-		capacity++
+
 		return &delayedNode{
 			name:    fmt.Sprintf("SHOW DISTRIBUTION FROM DATABASE %v", dbName),
 			columns: showDBDistributionColumns,
@@ -159,28 +215,10 @@ func (p *planner) ShowDistribution(
 	if err != nil {
 		return nil, err
 	}
-	var capacity int
-	var rows []tree.Datums
-	for _, info := range response.Distribution {
-		for _, block := range info.BlockInfo {
-			var compressionRatio string
-			if block.CompressionRatio == nil {
-				compressionRatio = "0"
-			} else {
-				compressionRatio = fmt.Sprintf("%.2f", *block.CompressionRatio)
-			}
-			avgSize := fmt.Sprintf("%.2f", block.AvgSize)
-			row := tree.Datums{
-				tree.NewDString(info.NodeID),
-				tree.NewDString(block.Level),
-				tree.NewDInt(tree.DInt(block.BlocksNum)),
-				tree.NewDInt(tree.DInt(block.BlocksSize)),
-				tree.NewDString(avgSize),
-				tree.NewDString(compressionRatio),
-			}
-			rows = append(rows, row)
-			capacity++
-		}
+
+	rows, capacity, err := processTableDistributionResponse(response)
+	if err != nil {
+		return nil, err
 	}
 
 	return &delayedNode{

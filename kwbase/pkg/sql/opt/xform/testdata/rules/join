@@ -1604,7 +1604,7 @@ inner-join (zigzag pqr@q pqr@r)
 memo
 SELECT q,r FROM pqr WHERE q = 1 AND r = 2
 ----
-memo (optimized, ~15KB, required=[presentation: q:2,r:3])
+memo (optimized, ~16KB, required=[presentation: q:2,r:3])
  ├── G1: (select G2 G3) (zigzag-join G3 pqr@q pqr@r) (select G4 G5) (select G6 G7) (select G8 G7)
  │    └── [presentation: q:2,r:3]
  │         ├── best: (zigzag-join G3 pqr@q pqr@r)
@@ -1790,7 +1790,7 @@ inner-join (zigzag pqr@rs pqr@ts)
 memo
 SELECT r,t FROM pqr WHERE r = 1 AND t = 'foo'
 ----
-memo (optimized, ~15KB, required=[presentation: r:3,t:5])
+memo (optimized, ~16KB, required=[presentation: r:3,t:5])
  ├── G1: (select G2 G3) (zigzag-join G3 pqr@rs pqr@ts) (select G4 G5) (select G6 G5) (select G7 G8)
  │    └── [presentation: r:3,t:5]
  │         ├── best: (zigzag-join G3 pqr@rs pqr@ts)
