@@ -1158,7 +1158,6 @@ KStatus WALBufferMgr::setHeaderBlockFirstLSN(TS_OSN first_lsn) {
 
 KStatus WALBufferMgr::writeWAL(kwdbContext_p ctx, k_char* wal_log,
                                size_t length, TS_OSN& lsn_offset) {
-  // In this method, buf_mutex is required to protect current block and the subsequent Block that may be used.
   this->Lock();
 
   size_t log_size = length;
@@ -1185,14 +1184,11 @@ KStatus WALBufferMgr::writeWAL(kwdbContext_p ctx, k_char* wal_log,
   }
 
   size_t max_str_nums = (log_size / (LOG_BLOCK_MAX_LOG_SIZE) + 2);
-  auto lens = reinterpret_cast<size_t*>(malloc(sizeof(size_t) * max_str_nums));
-  char** strs = reinterpret_cast<char**>(malloc(sizeof(char*) * max_str_nums));
-  for (int i = 0; i < max_str_nums; i++) {
-    lens[i] = 0;
-  }
+  std::vector<size_t> lens(max_str_nums, 0);
+  std::vector<char*> strs(max_str_nums, nullptr);
 
   size_t first_len = LOG_BLOCK_MAX_LOG_SIZE - offset;
-  for (int i = 0; i < max_str_nums; i++) {
+  for (size_t i = 0; i < max_str_nums; ++i) {
     if (i == 0) {
       strs[0] = wal_log;
       lens[0] = first_len;
@@ -1203,16 +1199,15 @@ KStatus WALBufferMgr::writeWAL(kwdbContext_p ctx, k_char* wal_log,
         lens[i] =
             log_size - (first_len - (BLOCK_SIZE - (LOG_BLOCK_HEADER_SIZE +
                                                    LOG_BLOCK_CHECKSUM_SIZE)));
+        max_str_nums = i + 1;
         break;
       }
       lens[i] = BLOCK_SIZE - (LOG_BLOCK_HEADER_SIZE + LOG_BLOCK_CHECKSUM_SIZE);
     }
   }
-  for (int i = 0; i < max_str_nums; i++) {
+  for (size_t i = 0; i < max_str_nums; ++i) {
     size_t write_length = currentBlock_->writeBytes(strs[i], lens[i], i > 0);
     if (lens[i] != write_length) {
-      free(lens);
-      free(strs);
       LOG_ERROR("Failed to write the WAL log.")
       this->Unlock();
       return FAIL;
@@ -1220,16 +1215,12 @@ KStatus WALBufferMgr::writeWAL(kwdbContext_p ctx, k_char* wal_log,
     if (currentBlock_->getDataLen() == LOG_BLOCK_MAX_LOG_SIZE) {
       KStatus ret = switchToNextBlock();
       if (ret == FAIL) {
-        free(lens);
-        free(strs);
         LOG_ERROR("Failed to find an available WAL Buffer block.")
         this->Unlock();
         return FAIL;
       }
     } else {
       if (i + 1 < max_str_nums && lens[i + 1] > 0) {
-        free(lens);
-        free(strs);
         LOG_ERROR("Failed to write the WAL log.")
         this->Unlock();
         return FAIL;
@@ -1237,8 +1228,6 @@ KStatus WALBufferMgr::writeWAL(kwdbContext_p ctx, k_char* wal_log,
     }
   }
   lsn_offset = getCurrentLsn();
-  free(lens);
-  free(strs);
   this->Unlock();
   return SUCCESS;
 }
