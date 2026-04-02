@@ -53,7 +53,7 @@ func TestExprTransformNormalizeExprSkipNormalize(t *testing.T) {
 	tc := &ExprTransformContext{}
 	evalCtx := &tree.EvalContext{SkipNormalize: true}
 	expr := tree.NewDInt(1)
-	
+
 	result, err := tc.NormalizeExpr(evalCtx, expr)
 	require.NoError(t, err)
 	require.Equal(t, expr, result)
@@ -64,7 +64,7 @@ func TestExprTransformNormalizeExprNormal(t *testing.T) {
 	st := cluster.MakeTestingClusterSettings()
 	evalCtx := tree.MakeTestingEvalContext(st)
 	expr := tree.NewDInt(1)
-	
+
 	result, err := tc.NormalizeExpr(&evalCtx, expr)
 	require.NoError(t, err)
 	require.Equal(t, expr, result)
@@ -84,4 +84,3 @@ func TestExprTransformAggregateInExpr(t *testing.T) {
 	}
 	require.True(t, tc.AggregateInExpr(expr2, searchPath))
 }
-
