@@ -1832,6 +1832,15 @@ func forEachTableDescWithTableLookupInternal(
 		}
 		scName, ok := schemaNames[table.GetParentSchemaID()]
 		if !ok {
+			// if we can not find schema, check if table exist,
+			// descriptor may be drooped after get all descriptors from cache.
+			if _, err := sqlbase.GetTableDescFromID(ctx, p.txn, table.ID); err != nil {
+				if errors.Is(err, sqlbase.ErrDescriptorNotFound) {
+					continue
+				} else {
+					return err
+				}
+			}
 			return errors.AssertionFailedf("schema id %d not found", table.GetParentSchemaID())
 		}
 		if err := fn(dbDesc, scName, table, lCtx); err != nil {
