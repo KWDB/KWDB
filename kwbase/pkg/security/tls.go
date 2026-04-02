@@ -245,6 +245,7 @@ func newBaseTLSConfig(caPEM []byte) (*tls.Config, error) {
 		// https://gitee.com/kwbasedb/kwbase/issues/48294
 		MaxVersion: tls.VersionTLS12,
 		// Prioritize HTTP/2, fallback to HTTP/1.1 if not supported.
-		NextProtos: []string{"h2", "http/1.1"},
+		// Also support postgresql for database clients like psycopg2
+		NextProtos: []string{"h2", "http/1.1", "postgresql"},
 	}, nil
 }
