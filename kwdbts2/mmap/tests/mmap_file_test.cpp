@@ -10,6 +10,7 @@
 // See the Mulan PSL v2 for more details.
 
 #include "mmap/mmap_file.h"
+#include "mmap/mmap_string_column.h"
 #include "gtest/gtest.h"
 #include <sys/mman.h>
 #include <fcntl.h>
@@ -350,4 +351,231 @@ TEST_F(TestMMapFile, CopyMember_PreserveState) {
   EXPECT_EQ(file2.newLen(), file1.newLen());
 }
 
+class TestMMapStringColumn : public testing::Test {
+ protected:
+  static void SetUpTestCase() {
+    mkdir("/tmp/kwdb_mmap_test", 0755);
+  }
+
+  static void TearDownTestCase() {
+    system("rm -rf /tmp/kwdb_mmap_test/*");
+  }
+
+  void SetUp() override {
+    test_file_path_ = "/tmp/kwdb_mmap_test/string_col.dat";
+    str_col_ = new MMapStringColumn(LATCH_ID_TAG_STRING_FILE_MUTEX, RWLATCH_ID_TAG_STRING_FILE_RWLOCK);
+  }
+
+  void TearDown() override {
+    delete str_col_;
+    str_col_ = nullptr;
+    unlink(test_file_path_.c_str());
+  }
+
+  MMapStringColumn* str_col_;
+  std::string test_file_path_;
+};
+
+TEST_F(TestMMapStringColumn, Constructor_DefaultLatch) {
+  MMapStringColumn str_col(LATCH_ID_TAG_STRING_FILE_MUTEX, RWLATCH_ID_TAG_STRING_FILE_RWLOCK);
+
+  EXPECT_NE(str_col.memAddr(), nullptr);
+}
+
+TEST_F(TestMMapStringColumn, Open_NewFile) {
+  int ret = str_col_->open("string_col.dat", test_file_path_, O_RDWR | O_CREAT);
+
+  EXPECT_GE(ret, 0);
+  EXPECT_GT(str_col_->fileLen(), 0);
+}
+
+TEST_F(TestMMapStringColumn, PushBack_BinaryData) {
+  ASSERT_GE(str_col_->open("string_col.dat", test_file_path_, O_RDWR | O_CREAT), 0);
+
+  const char* data = "test_binary_data";
+  int len = strlen(data);
+  size_t loc = str_col_->push_back_binary(data, len);
+
+  EXPECT_GT(loc, 0);
+  EXPECT_GE(str_col_->size(), MMapStringColumn::startLoc());
+}
+
+TEST_F(TestMMapStringColumn, PushBack_MultipleBinaryData) {
+  ASSERT_GE(str_col_->open("string_col.dat", test_file_path_, O_RDWR | O_CREAT), 0);
+
+  std::vector<std::string> test_strings = {"first", "second", "third", "fourth", "fifth"};
+  std::vector<size_t> locations;
+
+  for (const auto& str : test_strings) {
+    size_t loc = str_col_->push_back_binary(str.c_str(), str.size());
+    EXPECT_GT(loc, 0);
+    locations.push_back(loc);
+  }
+
+  EXPECT_EQ(locations.size(), test_strings.size());
+}
+
+TEST_F(TestMMapStringColumn, PushBack_NullData) {
+  ASSERT_GE(str_col_->open("string_col.dat", test_file_path_, O_RDWR | O_CREAT), 0);
+
+  size_t loc = str_col_->push_back_binary(nullptr, 0);
+
+  EXPECT_GT(loc, 0);
+}
+
+TEST_F(TestMMapStringColumn, PushBack_LargeData) {
+  ASSERT_GE(str_col_->open("string_col.dat", test_file_path_, O_RDWR | O_CREAT), 0);
+
+  std::string large_data(4096, 'A');
+  size_t loc = str_col_->push_back_binary(large_data.c_str(), large_data.size());
+
+  EXPECT_GT(loc, 0);
+}
+
+TEST_F(TestMMapStringColumn, GetStringAddr_ValidLocation) {
+  ASSERT_GE(str_col_->open("string_col.dat", test_file_path_, O_RDWR | O_CREAT), 0);
+
+  const char* data = "get_string_test";
+  int len = strlen(data);
+  size_t loc = str_col_->push_back_binary(data, len);
+
+  char* retrieved = str_col_->getStringAddr(loc);
+  EXPECT_NE(retrieved, nullptr);
+
+  uint16_t stored_len = *reinterpret_cast<uint16_t*>(retrieved);
+  EXPECT_EQ(stored_len, len);
+}
+
+TEST_F(TestMMapStringColumn, PushBackNolock_Basic) {
+  ASSERT_GE(str_col_->open("string_col.dat", test_file_path_, O_RDWR | O_CREAT), 0);
+
+  const char* data = "nolock_test";
+  int len = strlen(data);
+  size_t loc = str_col_->push_back_nolock(data, len);
+
+  EXPECT_GT(loc, 0);
+}
+
+TEST_F(TestMMapStringColumn, PushBackNolock_MultipleCalls) {
+  ASSERT_GE(str_col_->open("string_col.dat", test_file_path_, O_RDWR | O_CREAT), 0);
+
+  for (int i = 0; i < 10; ++i) {
+    std::string data = "nolock_data_" + std::to_string(i);
+    size_t loc = str_col_->push_back_nolock(data.c_str(), data.size());
+    EXPECT_GT(loc, 0);
+  }
+}
+
+TEST_F(TestMMapStringColumn, StringToAddr_Basic) {
+  ASSERT_GE(str_col_->open("string_col.dat", test_file_path_, O_RDWR | O_CREAT), 0);
+
+  std::string test_str = "string_to_addr_test";
+  size_t loc = str_col_->stringToAddr(test_str);
+
+  EXPECT_GT(loc, 0);
+}
+
+TEST_F(TestMMapStringColumn, Reserve_IncreaseCapacity) {
+  ASSERT_GE(str_col_->open("string_col.dat", test_file_path_, O_RDWR | O_CREAT), 0);
+
+  size_t old_size = str_col_->size();
+  int ret = str_col_->reserve(100, 64);
+
+  EXPECT_GE(ret, 0);
+}
+
+TEST_F(TestMMapStringColumn, Reserve_WithOldRowSize) {
+  ASSERT_GE(str_col_->open("string_col.dat", test_file_path_, O_RDWR | O_CREAT), 0);
+
+  size_t old_row_size = 10;
+  size_t new_row_size = 20;
+  int max_len = 128;
+  int ret = str_col_->reserve(old_row_size, new_row_size, max_len);
+
+  EXPECT_GE(ret, 0);
+}
+
+TEST_F(TestMMapStringColumn, Trim_ReduceSize) {
+  ASSERT_GE(str_col_->open("string_col.dat", test_file_path_, O_RDWR | O_CREAT), 0);
+
+  const char* data = "trim_test_data";
+  size_t loc = str_col_->push_back_binary(data, strlen(data));
+
+  ASSERT_GT(loc, 0);
+  size_t old_size = str_col_->size();
+
+  int ret = str_col_->trim(loc);
+
+  EXPECT_GE(ret, 0);
+}
+
+TEST_F(TestMMapStringColumn, Sync_SynchronizeData) {
+  ASSERT_GE(str_col_->open("string_col.dat", test_file_path_, O_RDWR | O_CREAT), 0);
+
+  const char* data = "sync_test";
+  str_col_->push_back_binary(data, strlen(data));
+
+  int ret = str_col_->sync(MS_SYNC);
+
+  EXPECT_EQ(ret, 0);
+}
+
+TEST_F(TestMMapStringColumn, IncSize_Basic) {
+  ASSERT_GE(str_col_->open("string_col.dat", test_file_path_, O_RDWR | O_CREAT), 0);
+
+  int ret = str_col_->incSize(1024);
+
+  EXPECT_GE(ret, 0);
+}
+
+TEST_F(TestMMapStringColumn, IncSize_ExceedCapacity) {
+  ASSERT_GE(str_col_->open("string_col.dat", test_file_path_, O_RDWR | O_CREAT), 0);
+
+  int ret = str_col_->incSize(10 * 1024 * 1024);
+
+  EXPECT_GE(ret, 0);
+}
+
+TEST_F(TestMMapStringColumn, RetryMap_AfterResize) {
+  ASSERT_GE(str_col_->open("string_col.dat", test_file_path_, O_RDWR | O_CREAT), 0);
+
+  str_col_->incSize(10 * 1024 * 1024);
+
+  int ret = str_col_->retryMap();
+
+  EXPECT_GE(ret, 0);
+}
+
+TEST_F(TestMMapStringColumn, MemAddr_AfterOpen) {
+  ASSERT_GE(str_col_->open("string_col.dat", test_file_path_, O_RDWR | O_CREAT), 0);
+
+  void* addr = str_col_->memAddr();
+
+  EXPECT_NE(addr, nullptr);
+}
+
+TEST_F(TestMMapStringColumn, RealFilePath_AfterOpen) {
+  ASSERT_GE(str_col_->open("string_col.dat", test_file_path_, O_RDWR | O_CREAT), 0);
+
+  std::string path = str_col_->realFilePath();
+
+  EXPECT_FALSE(path.empty());
+}
+
+TEST_F(TestMMapStringColumn, Remove_DeleteFile) {
+  ASSERT_GE(str_col_->open("string_col.dat", test_file_path_, O_RDWR | O_CREAT), 0);
+
+  int ret = str_col_->remove();
+
+  EXPECT_EQ(ret, 0);
+}
+
+TEST_F(TestMMapStringColumn, PushBack_HexBinaryData) {
+  ASSERT_GE(str_col_->open("string_col.dat", test_file_path_, O_RDWR | O_CREAT), 0);
+
+  std::vector<uint8_t> binary_data = {0xDE, 0xAD, 0xBE, 0xEF};
+  size_t loc = str_col_->push_back_hexbinary(binary_data.data(), binary_data.size());
+
+  EXPECT_GT(loc, 0);
+}
 }  // namespace kwdbts

@@ -417,6 +417,211 @@ TEST_F(TestTagTable, Boundary_LargeTableId) {
   SUCCEED();
 }
 
+TEST_F(TestTagTable, Open_EmptyInvalidVersions) {
+  {
+    TagTable tag_table(db_path_, tbl_sub_path_, table_id_, entity_group_id_);
+    ErrorInfo err_info;
+    ASSERT_EQ(tag_table.create(schema_, table_version_, {}, err_info), 0);
+  }
+
+  {
+    TagTable tag_table(db_path_, tbl_sub_path_, table_id_, entity_group_id_);
+    std::vector<TableVersion> invalid_versions;
+    ErrorInfo err_info;
+
+    int result = tag_table.open(invalid_versions, err_info);
+
+    EXPECT_EQ(result, 0);
+    EXPECT_TRUE(invalid_versions.empty());
+  }
+}
+
+TEST_F(TestTagTable, Open_ReopenTable) {
+  {
+    TagTable tag_table(db_path_, tbl_sub_path_, table_id_, entity_group_id_);
+    ErrorInfo err_info;
+    ASSERT_EQ(tag_table.create(schema_, table_version_, {}, err_info), 0);
+  }
+
+  {
+    TagTable tag_table(db_path_, tbl_sub_path_, table_id_, entity_group_id_);
+    std::vector<TableVersion> invalid_versions1;
+    ErrorInfo err_info;
+    ASSERT_EQ(tag_table.open(invalid_versions1, err_info), 0);
+  }
+
+  {
+    TagTable tag_table(db_path_, tbl_sub_path_, table_id_, entity_group_id_);
+    std::vector<TableVersion> invalid_versions2;
+    ErrorInfo err_info;
+
+    int result = tag_table.open(invalid_versions2, err_info);
+
+    EXPECT_EQ(result, 0);
+    EXPECT_TRUE(invalid_versions2.empty());
+  }
+}
+
+TEST_F(TestTagTable, Create_MultipleVersions) {
+  TagTable tag_table(db_path_, tbl_sub_path_, table_id_, entity_group_id_);
+  ErrorInfo err_info;
+
+  ASSERT_EQ(tag_table.create(schema_, table_version_, {}, err_info), 0);
+
+  std::vector<TagInfo> schema_v2 = schema_;
+  TagInfo new_tag;
+  new_tag.m_id = 4;
+  new_tag.m_data_type = DATATYPE::FLOAT;
+  new_tag.m_length = sizeof(float);
+  new_tag.m_size = sizeof(float);
+  new_tag.m_tag_type = GENERAL_TAG;
+  new_tag.m_flag = 0;
+  schema_v2.push_back(new_tag);
+
+  int result = tag_table.create(schema_v2, table_version_ + 1, {}, err_info);
+
+  EXPECT_EQ(result, 0);
+}
+
+TEST_F(TestTagTable, GetEntityIdListByVGroupId_MultipleVGroups) {
+  TagTable tag_table(db_path_, tbl_sub_path_, table_id_, entity_group_id_);
+  ErrorInfo err_info;
+  ASSERT_EQ(CreateTagTableWithData(&tag_table, err_info), 0);
+
+  std::vector<uint32_t> entity_id_list1;
+  tag_table.GetEntityIdListByVGroupId(1, entity_id_list1);
+  EXPECT_TRUE(entity_id_list1.empty());
+
+  std::vector<uint32_t> entity_id_list2;
+  tag_table.GetEntityIdListByVGroupId(2, entity_id_list2);
+  EXPECT_TRUE(entity_id_list2.empty());
+}
+
+TEST_F(TestTagTable, GetMaxEntityIdByVGroupId_MultipleVGroups) {
+  TagTable tag_table(db_path_, tbl_sub_path_, table_id_, entity_group_id_);
+  ErrorInfo err_info;
+  ASSERT_EQ(CreateTagTableWithData(&tag_table, err_info), 0);
+
+  uint32_t entity_id1 = UINT32_MAX;
+  tag_table.GetMaxEntityIdByVGroupId(1, entity_id1);
+
+  uint32_t entity_id2 = UINT32_MAX;
+  tag_table.GetMaxEntityIdByVGroupId(2, entity_id2);
+}
+
+TEST_F(TestTagTable, HasPrimaryKey_EmptyTable) {
+  TagTable tag_table(db_path_, tbl_sub_path_, table_id_, entity_group_id_);
+  ErrorInfo err_info;
+  ASSERT_EQ(CreateTagTableWithData(&tag_table, err_info), 0);
+
+  char ptag_data[64] = "";
+
+  uint32_t entity_id = 0;
+  uint32_t sub_group_id = 0;
+  bool result = tag_table.hasPrimaryKey(ptag_data, strlen(ptag_data), entity_id, sub_group_id);
+
+  EXPECT_FALSE(result);
+}
+
+TEST_F(TestTagTable, GetPrimaryKeyRowInfo_EmptyTable) {
+  TagTable tag_table(db_path_, tbl_sub_path_, table_id_, entity_group_id_);
+  ErrorInfo err_info;
+  ASSERT_EQ(CreateTagTableWithData(&tag_table, err_info), 0);
+
+  char ptag_data[64] = "";
+  std::pair<uint64_t, uint64_t> row_info;
+
+  bool result = tag_table.GetPrimaryKeyRowInfo(ptag_data, strlen(ptag_data), row_info);
+
+  EXPECT_FALSE(result);
+}
+
+TEST_F(TestTagTable, GetLatestOSN_InitialValue) {
+  TagTable tag_table(db_path_, tbl_sub_path_, table_id_, entity_group_id_);
+  ErrorInfo err_info;
+  ASSERT_EQ(CreateTagTableWithData(&tag_table, err_info), 0);
+
+  TS_OSN osn = tag_table.GetLatestOSN();
+
+  EXPECT_EQ(osn, 0);
+}
+
+TEST_F(TestTagTable, GetTableId) {
+  TagTable tag_table(db_path_, tbl_sub_path_, table_id_, entity_group_id_);
+  ErrorInfo err_info;
+  ASSERT_EQ(CreateTagTableWithData(&tag_table, err_info), 0);
+
+  EXPECT_EQ(tag_table.GetTableId(), table_id_);
+}
+
+TEST_F(TestTagTable, GetEntityGroupId) {
+  TagTable tag_table(db_path_, tbl_sub_path_, table_id_, entity_group_id_);
+  ErrorInfo err_info;
+  ASSERT_EQ(CreateTagTableWithData(&tag_table, err_info), 0);
+
+  EXPECT_EQ(tag_table.GetEntityGroupId(), entity_group_id_);
+}
+
+TEST_F(TestTagTable, CalculateSchemaIdxs_EmptyResultScanIdxs) {
+  TagTable tag_table(db_path_, tbl_sub_path_, table_id_, entity_group_id_);
+  ErrorInfo err_info;
+  ASSERT_EQ(CreateTagTableWithData(&tag_table, err_info), 0);
+
+  std::vector<uint32_t> result_scan_idxs;
+  std::vector<uint32_t> src_scan_idxs;
+
+  int result = tag_table.CalculateSchemaIdxs(table_version_, result_scan_idxs, schema_, &src_scan_idxs);
+
+  EXPECT_EQ(result, 0);
+  EXPECT_TRUE(src_scan_idxs.empty());
+}
+
+TEST_F(TestTagTable, CalculateSchemaIdxs_InvalidTableVersion) {
+  TagTable tag_table(db_path_, tbl_sub_path_, table_id_, entity_group_id_);
+  ErrorInfo err_info;
+  ASSERT_EQ(CreateTagTableWithData(&tag_table, err_info), 0);
+
+  std::vector<uint32_t> result_scan_idxs = {0, 1};
+  std::vector<uint32_t> src_scan_idxs;
+  TableVersion invalid_version = 9999;
+
+  int result = tag_table.CalculateSchemaIdxs(invalid_version, result_scan_idxs, schema_, &src_scan_idxs);
+
+  EXPECT_NE(result, 0);
+}
+
+TEST_F(TestTagTable, AlterTableTag_AddNewColumn) {
+  TagTable tag_table(db_path_, tbl_sub_path_, table_id_, entity_group_id_);
+  ErrorInfo err_info;
+  ASSERT_EQ(CreateTagTableWithData(&tag_table, err_info), 0);
+
+  AttributeInfo attr_info;
+  attr_info.m_id = 4;
+  attr_info.m_data_type = ATTRIBUTE_TYPE::INT64;
+  attr_info.m_size = 8;
+  attr_info.m_length = 8;
+
+  int result = tag_table.AlterTableTag(AlterType::ADD_COLUMN, attr_info, table_version_, table_version_ + 1, err_info);
+
+  EXPECT_GE(result, 0);
+}
+
+TEST_F(TestTagTable, AlterTableTag_DropColumn) {
+  TagTable tag_table(db_path_, tbl_sub_path_, table_id_, entity_group_id_);
+  ErrorInfo err_info;
+  ASSERT_EQ(CreateTagTableWithData(&tag_table, err_info), 0);
+
+  AttributeInfo attr_info;
+  attr_info.m_id = 2;
+  attr_info.m_data_type = ATTRIBUTE_TYPE::INT32;
+  attr_info.m_size = 4;
+  attr_info.m_length = 4;
+
+  int result = tag_table.AlterTableTag(AlterType::DROP_COLUMN, attr_info, table_version_, table_version_ + 1, err_info);
+
+  EXPECT_GE(result, 0);
+}
+
 class TestTagPartitionTableManager : public testing::Test {
  protected:
   static void SetUpTestCase() {
