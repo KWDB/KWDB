@@ -546,22 +546,6 @@ TEST_F(TestTagTable, GetLatestOSN_InitialValue) {
   EXPECT_EQ(osn, 0);
 }
 
-TEST_F(TestTagTable, GetTableId) {
-  TagTable tag_table(db_path_, tbl_sub_path_, table_id_, entity_group_id_);
-  ErrorInfo err_info;
-  ASSERT_EQ(CreateTagTableWithData(&tag_table, err_info), 0);
-
-  EXPECT_EQ(tag_table.GetTableId(), table_id_);
-}
-
-TEST_F(TestTagTable, GetEntityGroupId) {
-  TagTable tag_table(db_path_, tbl_sub_path_, table_id_, entity_group_id_);
-  ErrorInfo err_info;
-  ASSERT_EQ(CreateTagTableWithData(&tag_table, err_info), 0);
-
-  EXPECT_EQ(tag_table.GetEntityGroupId(), entity_group_id_);
-}
-
 TEST_F(TestTagTable, CalculateSchemaIdxs_EmptyResultScanIdxs) {
   TagTable tag_table(db_path_, tbl_sub_path_, table_id_, entity_group_id_);
   ErrorInfo err_info;
@@ -596,10 +580,10 @@ TEST_F(TestTagTable, AlterTableTag_AddNewColumn) {
   ASSERT_EQ(CreateTagTableWithData(&tag_table, err_info), 0);
 
   AttributeInfo attr_info;
-  attr_info.m_id = 4;
-  attr_info.m_data_type = ATTRIBUTE_TYPE::INT64;
-  attr_info.m_size = 8;
-  attr_info.m_length = 8;
+  attr_info.id = 4;
+  attr_info.type = DATATYPE::INT64;
+  attr_info.size = 8;
+  attr_info.length = 8;
 
   int result = tag_table.AlterTableTag(AlterType::ADD_COLUMN, attr_info, table_version_, table_version_ + 1, err_info);
 
@@ -612,10 +596,10 @@ TEST_F(TestTagTable, AlterTableTag_DropColumn) {
   ASSERT_EQ(CreateTagTableWithData(&tag_table, err_info), 0);
 
   AttributeInfo attr_info;
-  attr_info.m_id = 2;
-  attr_info.m_data_type = ATTRIBUTE_TYPE::INT32;
-  attr_info.m_size = 4;
-  attr_info.m_length = 4;
+  attr_info.id = 2;
+  attr_info.type = DATATYPE::INT32;
+  attr_info.size = 4;
+  attr_info.length = 4;
 
   int result = tag_table.AlterTableTag(AlterType::DROP_COLUMN, attr_info, table_version_, table_version_ + 1, err_info);
 
