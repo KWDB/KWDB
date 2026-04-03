@@ -30,6 +30,7 @@ func TestDeleteMeMsgRAI(t *testing.T) {
 	empty := []byte{'"', '"'}
 
 	_ = obj1.XXX_Unmarshal(empty)
+	_ = obj1.XXX_Unmarshal(holder)
 	obj1.ProtoMessage()
 	_, _ = obj1.Descriptor()
 	obj1.XXX_Merge(obj1)
@@ -51,6 +52,7 @@ func TestKWDBHAInfoRAI(t *testing.T) {
 	empty := []byte{'"', '"'}
 
 	_ = obj1.XXX_Unmarshal(empty)
+	_ = obj1.XXX_Unmarshal(holder)
 	obj1.ProtoMessage()
 	_, _ = obj1.Descriptor()
 	obj1.XXX_Merge(obj1)
@@ -72,6 +74,7 @@ func TestPreRelationRAI(t *testing.T) {
 	empty := []byte{'"', '"'}
 
 	_ = obj1.XXX_Unmarshal(empty)
+	_ = obj1.XXX_Unmarshal(holder)
 	obj1.ProtoMessage()
 	_, _ = obj1.Descriptor()
 	obj1.XXX_Merge(obj1)
@@ -93,6 +96,7 @@ func TestCreateCTableRAI(t *testing.T) {
 	empty := []byte{'"', '"'}
 
 	_ = obj1.XXX_Unmarshal(empty)
+	_ = obj1.XXX_Unmarshal(holder)
 	obj1.ProtoMessage()
 	_, _ = obj1.Descriptor()
 	obj1.XXX_Merge(obj1)
@@ -114,6 +118,7 @@ func TestKWDBCTableRAI(t *testing.T) {
 	empty := []byte{'"', '"'}
 
 	_ = obj1.XXX_Unmarshal(empty)
+	_ = obj1.XXX_Unmarshal(holder)
 	obj1.ProtoMessage()
 	_, _ = obj1.Descriptor()
 	obj1.XXX_Merge(obj1)
@@ -135,6 +140,7 @@ func TestKWDBTsTableRAI(t *testing.T) {
 	empty := []byte{'"', '"'}
 
 	_ = obj1.XXX_Unmarshal(empty)
+	_ = obj1.XXX_Unmarshal(holder)
 	obj1.ProtoMessage()
 	_, _ = obj1.Descriptor()
 	obj1.XXX_Merge(obj1)
@@ -156,6 +162,7 @@ func TestKWDBKTSColumnRAI(t *testing.T) {
 	empty := []byte{'"', '"'}
 
 	_ = obj1.XXX_Unmarshal(empty)
+	_ = obj1.XXX_Unmarshal(holder)
 	obj1.ProtoMessage()
 	_, _ = obj1.Descriptor()
 	obj1.XXX_Merge(obj1)
@@ -177,6 +184,7 @@ func TestNTagIndexInfoRAI(t *testing.T) {
 	empty := []byte{'"', '"'}
 
 	_ = obj1.XXX_Unmarshal(empty)
+	_ = obj1.XXX_Unmarshal(holder)
 	obj1.ProtoMessage()
 	_, _ = obj1.Descriptor()
 	obj1.XXX_Merge(obj1)
@@ -198,6 +206,7 @@ func TestCreateTsTableRAI(t *testing.T) {
 	empty := []byte{'"', '"'}
 
 	_ = obj1.XXX_Unmarshal(empty)
+	_ = obj1.XXX_Unmarshal(holder)
 	obj1.ProtoMessage()
 	_, _ = obj1.Descriptor()
 	obj1.XXX_Merge(obj1)
@@ -219,6 +228,7 @@ func TestBlockInfoRAI(t *testing.T) {
 	empty := []byte{'"', '"'}
 
 	_ = obj1.XXX_Unmarshal(empty)
+	_ = obj1.XXX_Unmarshal(holder)
 	obj1.ProtoMessage()
 	_, _ = obj1.Descriptor()
 	obj1.XXX_Merge(obj1)
@@ -240,6 +250,7 @@ func TestBlocksDistributionRAI(t *testing.T) {
 	empty := []byte{'"', '"'}
 
 	_ = obj1.XXX_Unmarshal(empty)
+	_ = obj1.XXX_Unmarshal(holder)
 	obj1.ProtoMessage()
 	_, _ = obj1.Descriptor()
 	obj1.XXX_Merge(obj1)
@@ -261,6 +272,7 @@ func TestUpdateReplicationMetaDataRAI(t *testing.T) {
 	empty := []byte{'"', '"'}
 
 	_ = obj1.XXX_Unmarshal(empty)
+	_ = obj1.XXX_Unmarshal(holder)
 	obj1.ProtoMessage()
 	_, _ = obj1.Descriptor()
 	obj1.XXX_Merge(obj1)
@@ -282,6 +294,7 @@ func TestKWDBNodeInfoRAI(t *testing.T) {
 	empty := []byte{'"', '"'}
 
 	_ = obj1.XXX_Unmarshal(empty)
+	_ = obj1.XXX_Unmarshal(holder)
 	obj1.ProtoMessage()
 	_, _ = obj1.Descriptor()
 	obj1.XXX_Merge(obj1)
@@ -303,6 +316,7 @@ func TestKWDBReplicationMetaDataRAI(t *testing.T) {
 	empty := []byte{'"', '"'}
 
 	_ = obj1.XXX_Unmarshal(empty)
+	_ = obj1.XXX_Unmarshal(holder)
 	obj1.ProtoMessage()
 	_, _ = obj1.Descriptor()
 	obj1.XXX_Merge(obj1)
@@ -324,6 +338,7 @@ func TestKWDBReplicationSyncRAI(t *testing.T) {
 	empty := []byte{'"', '"'}
 
 	_ = obj1.XXX_Unmarshal(empty)
+	_ = obj1.XXX_Unmarshal(holder)
 	obj1.ProtoMessage()
 	_, _ = obj1.Descriptor()
 	obj1.XXX_Merge(obj1)
@@ -345,6 +360,7 @@ func TestKWDBReplicationAgentMetaDataRAI(t *testing.T) {
 	empty := []byte{'"', '"'}
 
 	_ = obj1.XXX_Unmarshal(empty)
+	_ = obj1.XXX_Unmarshal(holder)
 	obj1.ProtoMessage()
 	_, _ = obj1.Descriptor()
 	obj1.XXX_Merge(obj1)
@@ -366,6 +382,7 @@ func TestKWDBReplicationProgressRAI(t *testing.T) {
 	empty := []byte{'"', '"'}
 
 	_ = obj1.XXX_Unmarshal(empty)
+	_ = obj1.XXX_Unmarshal(holder)
 	obj1.ProtoMessage()
 	_, _ = obj1.Descriptor()
 	obj1.XXX_Merge(obj1)
@@ -387,6 +404,7 @@ func TestKWDBReplicationProgressSetRAI(t *testing.T) {
 	empty := []byte{'"', '"'}
 
 	_ = obj1.XXX_Unmarshal(empty)
+	_ = obj1.XXX_Unmarshal(holder)
 	obj1.ProtoMessage()
 	_, _ = obj1.Descriptor()
 	obj1.XXX_Merge(obj1)
@@ -408,6 +426,7 @@ func TestReplicationServiceCallerFuncInputsRAI(t *testing.T) {
 	empty := []byte{'"', '"'}
 
 	_ = obj1.XXX_Unmarshal(empty)
+	_ = obj1.XXX_Unmarshal(holder)
 	obj1.ProtoMessage()
 	_, _ = obj1.Descriptor()
 	obj1.XXX_Merge(obj1)
@@ -429,6 +448,7 @@ func TestWhiteListRAI(t *testing.T) {
 	empty := []byte{'"', '"'}
 
 	_ = obj1.XXX_Unmarshal(empty)
+	_ = obj1.XXX_Unmarshal(holder)
 	obj1.ProtoMessage()
 	_, _ = obj1.Descriptor()
 	obj1.XXX_Merge(obj1)
@@ -450,6 +470,7 @@ func TestTSInsertSelectRAI(t *testing.T) {
 	empty := []byte{'"', '"'}
 
 	_ = obj1.XXX_Unmarshal(empty)
+	_ = obj1.XXX_Unmarshal(holder)
 	obj1.ProtoMessage()
 	_, _ = obj1.Descriptor()
 	obj1.XXX_Merge(obj1)
@@ -471,6 +492,7 @@ func TestUserPrivilegesRAI(t *testing.T) {
 	empty := []byte{'"', '"'}
 
 	_ = obj1.XXX_Unmarshal(empty)
+	_ = obj1.XXX_Unmarshal(holder)
 	obj1.ProtoMessage()
 	_, _ = obj1.Descriptor()
 	obj1.XXX_Merge(obj1)
@@ -492,6 +514,7 @@ func TestPrivilegeDescriptorRAI(t *testing.T) {
 	empty := []byte{'"', '"'}
 
 	_ = obj1.XXX_Unmarshal(empty)
+	_ = obj1.XXX_Unmarshal(holder)
 	obj1.ProtoMessage()
 	_, _ = obj1.Descriptor()
 	obj1.XXX_Merge(obj1)
@@ -513,6 +536,7 @@ func TestForeignKeyReferenceRAI(t *testing.T) {
 	empty := []byte{'"', '"'}
 
 	_ = obj1.XXX_Unmarshal(empty)
+	_ = obj1.XXX_Unmarshal(holder)
 	obj1.ProtoMessage()
 	_, _ = obj1.Descriptor()
 	obj1.XXX_Merge(obj1)
@@ -534,6 +558,7 @@ func TestForeignKeyConstraintRAI(t *testing.T) {
 	empty := []byte{'"', '"'}
 
 	_ = obj1.XXX_Unmarshal(empty)
+	_ = obj1.XXX_Unmarshal(holder)
 	obj1.ProtoMessage()
 	_, _ = obj1.Descriptor()
 	obj1.XXX_Merge(obj1)
@@ -555,6 +580,7 @@ func TestColumnDescriptorRAI(t *testing.T) {
 	empty := []byte{'"', '"'}
 
 	_ = obj1.XXX_Unmarshal(empty)
+	_ = obj1.XXX_Unmarshal(holder)
 	obj1.ProtoMessage()
 	_, _ = obj1.Descriptor()
 	obj1.XXX_Merge(obj1)
@@ -576,6 +602,7 @@ func TestTSColRAI(t *testing.T) {
 	empty := []byte{'"', '"'}
 
 	_ = obj1.XXX_Unmarshal(empty)
+	_ = obj1.XXX_Unmarshal(holder)
 	obj1.ProtoMessage()
 	_, _ = obj1.Descriptor()
 	obj1.XXX_Merge(obj1)
@@ -597,6 +624,7 @@ func TestColumnFamilyDescriptorRAI(t *testing.T) {
 	empty := []byte{'"', '"'}
 
 	_ = obj1.XXX_Unmarshal(empty)
+	_ = obj1.XXX_Unmarshal(holder)
 	obj1.ProtoMessage()
 	_, _ = obj1.Descriptor()
 	obj1.XXX_Merge(obj1)
@@ -618,6 +646,7 @@ func TestInterleaveDescriptorRAI(t *testing.T) {
 	empty := []byte{'"', '"'}
 
 	_ = obj1.XXX_Unmarshal(empty)
+	_ = obj1.XXX_Unmarshal(holder)
 	obj1.ProtoMessage()
 	_, _ = obj1.Descriptor()
 	obj1.XXX_Merge(obj1)
@@ -639,6 +668,7 @@ func TestInterleaveDescriptor_AncestorRAI(t *testing.T) {
 	empty := []byte{'"', '"'}
 
 	_ = obj1.XXX_Unmarshal(empty)
+	_ = obj1.XXX_Unmarshal(holder)
 	obj1.ProtoMessage()
 	_, _ = obj1.Descriptor()
 	obj1.XXX_Merge(obj1)
@@ -660,6 +690,7 @@ func TestShardedDescriptorRAI(t *testing.T) {
 	empty := []byte{'"', '"'}
 
 	_ = obj1.XXX_Unmarshal(empty)
+	_ = obj1.XXX_Unmarshal(holder)
 	obj1.ProtoMessage()
 	_, _ = obj1.Descriptor()
 	obj1.XXX_Merge(obj1)
@@ -681,6 +712,7 @@ func TestPartitioningDescriptorRAI(t *testing.T) {
 	empty := []byte{'"', '"'}
 
 	_ = obj1.XXX_Unmarshal(empty)
+	_ = obj1.XXX_Unmarshal(holder)
 	obj1.ProtoMessage()
 	_, _ = obj1.Descriptor()
 	obj1.XXX_Merge(obj1)
@@ -702,6 +734,7 @@ func TestPartitioningDescriptor_ListRAI(t *testing.T) {
 	empty := []byte{'"', '"'}
 
 	_ = obj1.XXX_Unmarshal(empty)
+	_ = obj1.XXX_Unmarshal(holder)
 	obj1.ProtoMessage()
 	_, _ = obj1.Descriptor()
 	obj1.XXX_Merge(obj1)
@@ -723,6 +756,7 @@ func TestPartitioningDescriptor_RangeRAI(t *testing.T) {
 	empty := []byte{'"', '"'}
 
 	_ = obj1.XXX_Unmarshal(empty)
+	_ = obj1.XXX_Unmarshal(holder)
 	obj1.ProtoMessage()
 	_, _ = obj1.Descriptor()
 	obj1.XXX_Merge(obj1)
@@ -744,6 +778,7 @@ func TestPartitioningDescriptor_HashPointRAI(t *testing.T) {
 	empty := []byte{'"', '"'}
 
 	_ = obj1.XXX_Unmarshal(empty)
+	_ = obj1.XXX_Unmarshal(holder)
 	obj1.ProtoMessage()
 	_, _ = obj1.Descriptor()
 	obj1.XXX_Merge(obj1)
@@ -765,6 +800,7 @@ func TestIndexDescriptorRAI(t *testing.T) {
 	empty := []byte{'"', '"'}
 
 	_ = obj1.XXX_Unmarshal(empty)
+	_ = obj1.XXX_Unmarshal(holder)
 	obj1.ProtoMessage()
 	_, _ = obj1.Descriptor()
 	obj1.XXX_Merge(obj1)
@@ -786,6 +822,7 @@ func TestConstraintToUpdateRAI(t *testing.T) {
 	empty := []byte{'"', '"'}
 
 	_ = obj1.XXX_Unmarshal(empty)
+	_ = obj1.XXX_Unmarshal(holder)
 	obj1.ProtoMessage()
 	_, _ = obj1.Descriptor()
 	obj1.XXX_Merge(obj1)
@@ -807,6 +844,7 @@ func TestPrimaryKeySwapRAI(t *testing.T) {
 	empty := []byte{'"', '"'}
 
 	_ = obj1.XXX_Unmarshal(empty)
+	_ = obj1.XXX_Unmarshal(holder)
 	obj1.ProtoMessage()
 	_, _ = obj1.Descriptor()
 	obj1.XXX_Merge(obj1)
@@ -828,6 +866,7 @@ func TestMaterializedViewRefreshRAI(t *testing.T) {
 	empty := []byte{'"', '"'}
 
 	_ = obj1.XXX_Unmarshal(empty)
+	_ = obj1.XXX_Unmarshal(holder)
 	obj1.ProtoMessage()
 	_, _ = obj1.Descriptor()
 	obj1.XXX_Merge(obj1)
@@ -849,6 +888,7 @@ func TestDescriptorMutationRAI(t *testing.T) {
 	empty := []byte{'"', '"'}
 
 	_ = obj1.XXX_Unmarshal(empty)
+	_ = obj1.XXX_Unmarshal(holder)
 	obj1.ProtoMessage()
 	_, _ = obj1.Descriptor()
 	obj1.XXX_Merge(obj1)
@@ -870,6 +910,7 @@ func TestFunctionDescriptorRAI(t *testing.T) {
 	empty := []byte{'"', '"'}
 
 	_ = obj1.XXX_Unmarshal(empty)
+	_ = obj1.XXX_Unmarshal(holder)
 	obj1.ProtoMessage()
 	_, _ = obj1.Descriptor()
 	obj1.XXX_Merge(obj1)
@@ -891,6 +932,7 @@ func TestProcedureDescriptorRAI(t *testing.T) {
 	empty := []byte{'"', '"'}
 
 	_ = obj1.XXX_Unmarshal(empty)
+	_ = obj1.XXX_Unmarshal(holder)
 	obj1.ProtoMessage()
 	_, _ = obj1.Descriptor()
 	obj1.XXX_Merge(obj1)
@@ -912,6 +954,7 @@ func TestProcParamRAI(t *testing.T) {
 	empty := []byte{'"', '"'}
 
 	_ = obj1.XXX_Unmarshal(empty)
+	_ = obj1.XXX_Unmarshal(holder)
 	obj1.ProtoMessage()
 	_, _ = obj1.Descriptor()
 	obj1.XXX_Merge(obj1)
@@ -933,6 +976,7 @@ func TestTableDescriptorRAI(t *testing.T) {
 	empty := []byte{'"', '"'}
 
 	_ = obj1.XXX_Unmarshal(empty)
+	_ = obj1.XXX_Unmarshal(holder)
 	obj1.ProtoMessage()
 	_, _ = obj1.Descriptor()
 	obj1.XXX_Merge(obj1)
@@ -954,6 +998,7 @@ func TestTableDescriptor_SchemaChangeLeaseRAI(t *testing.T) {
 	empty := []byte{'"', '"'}
 
 	_ = obj1.XXX_Unmarshal(empty)
+	_ = obj1.XXX_Unmarshal(holder)
 	obj1.ProtoMessage()
 	_, _ = obj1.Descriptor()
 	obj1.XXX_Merge(obj1)
@@ -975,6 +1020,7 @@ func TestTableDescriptor_CheckConstraintRAI(t *testing.T) {
 	empty := []byte{'"', '"'}
 
 	_ = obj1.XXX_Unmarshal(empty)
+	_ = obj1.XXX_Unmarshal(holder)
 	obj1.ProtoMessage()
 	_, _ = obj1.Descriptor()
 	obj1.XXX_Merge(obj1)
@@ -996,6 +1042,7 @@ func TestTableDescriptor_NameInfoRAI(t *testing.T) {
 	empty := []byte{'"', '"'}
 
 	_ = obj1.XXX_Unmarshal(empty)
+	_ = obj1.XXX_Unmarshal(holder)
 	obj1.ProtoMessage()
 	_, _ = obj1.Descriptor()
 	obj1.XXX_Merge(obj1)
@@ -1017,6 +1064,7 @@ func TestTableDescriptor_ReferenceRAI(t *testing.T) {
 	empty := []byte{'"', '"'}
 
 	_ = obj1.XXX_Unmarshal(empty)
+	_ = obj1.XXX_Unmarshal(holder)
 	obj1.ProtoMessage()
 	_, _ = obj1.Descriptor()
 	obj1.XXX_Merge(obj1)
@@ -1038,6 +1086,7 @@ func TestTableDescriptor_MutationJobRAI(t *testing.T) {
 	empty := []byte{'"', '"'}
 
 	_ = obj1.XXX_Unmarshal(empty)
+	_ = obj1.XXX_Unmarshal(holder)
 	obj1.ProtoMessage()
 	_, _ = obj1.Descriptor()
 	obj1.XXX_Merge(obj1)
@@ -1059,6 +1108,7 @@ func TestTableDescriptor_SequenceOptsRAI(t *testing.T) {
 	empty := []byte{'"', '"'}
 
 	_ = obj1.XXX_Unmarshal(empty)
+	_ = obj1.XXX_Unmarshal(holder)
 	obj1.ProtoMessage()
 	_, _ = obj1.Descriptor()
 	obj1.XXX_Merge(obj1)
@@ -1080,6 +1130,7 @@ func TestTableDescriptor_SequenceOpts_SequenceOwnerRAI(t *testing.T) {
 	empty := []byte{'"', '"'}
 
 	_ = obj1.XXX_Unmarshal(empty)
+	_ = obj1.XXX_Unmarshal(holder)
 	obj1.ProtoMessage()
 	_, _ = obj1.Descriptor()
 	obj1.XXX_Merge(obj1)
@@ -1101,6 +1152,7 @@ func TestTableDescriptor_ReplacementRAI(t *testing.T) {
 	empty := []byte{'"', '"'}
 
 	_ = obj1.XXX_Unmarshal(empty)
+	_ = obj1.XXX_Unmarshal(holder)
 	obj1.ProtoMessage()
 	_, _ = obj1.Descriptor()
 	obj1.XXX_Merge(obj1)
@@ -1122,6 +1174,7 @@ func TestTableDescriptor_GCDescriptorMutationRAI(t *testing.T) {
 	empty := []byte{'"', '"'}
 
 	_ = obj1.XXX_Unmarshal(empty)
+	_ = obj1.XXX_Unmarshal(holder)
 	obj1.ProtoMessage()
 	_, _ = obj1.Descriptor()
 	obj1.XXX_Merge(obj1)
@@ -1143,6 +1196,7 @@ func TestTriggerDescriptorRAI(t *testing.T) {
 	empty := []byte{'"', '"'}
 
 	_ = obj1.XXX_Unmarshal(empty)
+	_ = obj1.XXX_Unmarshal(holder)
 	obj1.ProtoMessage()
 	_, _ = obj1.Descriptor()
 	obj1.XXX_Merge(obj1)
@@ -1164,6 +1218,7 @@ func TestCDCDescriptorRAI(t *testing.T) {
 	empty := []byte{'"', '"'}
 
 	_ = obj1.XXX_Unmarshal(empty)
+	_ = obj1.XXX_Unmarshal(holder)
 	obj1.ProtoMessage()
 	_, _ = obj1.Descriptor()
 	obj1.XXX_Merge(obj1)
@@ -1185,6 +1240,7 @@ func TestKWDBTSColumnRAI(t *testing.T) {
 	empty := []byte{'"', '"'}
 
 	_ = obj1.XXX_Unmarshal(empty)
+	_ = obj1.XXX_Unmarshal(holder)
 	obj1.ProtoMessage()
 	_, _ = obj1.Descriptor()
 	obj1.XXX_Merge(obj1)
@@ -1206,6 +1262,7 @@ func TestTSTableRAI(t *testing.T) {
 	empty := []byte{'"', '"'}
 
 	_ = obj1.XXX_Unmarshal(empty)
+	_ = obj1.XXX_Unmarshal(holder)
 	obj1.ProtoMessage()
 	_, _ = obj1.Descriptor()
 	obj1.XXX_Merge(obj1)
@@ -1227,6 +1284,7 @@ func TestSchemaDescriptorRAI(t *testing.T) {
 	empty := []byte{'"', '"'}
 
 	_ = obj1.XXX_Unmarshal(empty)
+	_ = obj1.XXX_Unmarshal(holder)
 	obj1.ProtoMessage()
 	_, _ = obj1.Descriptor()
 	obj1.XXX_Merge(obj1)
@@ -1248,6 +1306,7 @@ func TestSchemaDescriptor_NameInfoRAI(t *testing.T) {
 	empty := []byte{'"', '"'}
 
 	_ = obj1.XXX_Unmarshal(empty)
+	_ = obj1.XXX_Unmarshal(holder)
 	obj1.ProtoMessage()
 	_, _ = obj1.Descriptor()
 	obj1.XXX_Merge(obj1)
@@ -1269,6 +1328,7 @@ func TestDatabaseDescriptorRAI(t *testing.T) {
 	empty := []byte{'"', '"'}
 
 	_ = obj1.XXX_Unmarshal(empty)
+	_ = obj1.XXX_Unmarshal(holder)
 	obj1.ProtoMessage()
 	_, _ = obj1.Descriptor()
 	// obj1.XXX_Merge(obj1)
@@ -1290,6 +1350,7 @@ func TestTSDBRAI(t *testing.T) {
 	empty := []byte{'"', '"'}
 
 	_ = obj1.XXX_Unmarshal(empty)
+	_ = obj1.XXX_Unmarshal(holder)
 	obj1.ProtoMessage()
 	_, _ = obj1.Descriptor()
 	obj1.XXX_Merge(obj1)
@@ -1311,6 +1372,7 @@ func TestDescriptorRAI(t *testing.T) {
 	empty := []byte{'"', '"'}
 
 	_ = obj1.XXX_Unmarshal(empty)
+	_ = obj1.XXX_Unmarshal(holder)
 	obj1.ProtoMessage()
 	_, _ = obj1.Descriptor()
 	obj1.XXX_Merge(obj1)
@@ -1332,6 +1394,7 @@ func TestImportTableRAI(t *testing.T) {
 	empty := []byte{'"', '"'}
 
 	_ = obj1.XXX_Unmarshal(empty)
+	_ = obj1.XXX_Unmarshal(holder)
 	obj1.ProtoMessage()
 	_, _ = obj1.Descriptor()
 	obj1.XXX_Merge(obj1)
@@ -1353,6 +1416,7 @@ func TestKWDBTagValueRAI(t *testing.T) {
 	empty := []byte{'"', '"'}
 
 	_ = obj1.XXX_Unmarshal(empty)
+	_ = obj1.XXX_Unmarshal(holder)
 	obj1.ProtoMessage()
 	_, _ = obj1.Descriptor()
 	obj1.XXX_Merge(obj1)
@@ -1374,6 +1438,7 @@ func TestChildDescRAI(t *testing.T) {
 	empty := []byte{'"', '"'}
 
 	_ = obj1.XXX_Unmarshal(empty)
+	_ = obj1.XXX_Unmarshal(holder)
 	obj1.ProtoMessage()
 	_, _ = obj1.Descriptor()
 	obj1.XXX_Merge(obj1)
@@ -1395,6 +1460,7 @@ func TestKWDBScheOptionRAI(t *testing.T) {
 	empty := []byte{'"', '"'}
 
 	_ = obj1.XXX_Unmarshal(empty)
+	_ = obj1.XXX_Unmarshal(holder)
 	obj1.ProtoMessage()
 	_, _ = obj1.Descriptor()
 	obj1.XXX_Merge(obj1)
@@ -1416,6 +1482,7 @@ func TestSortedHistogramInfoRAI(t *testing.T) {
 	empty := []byte{'"', '"'}
 
 	_ = obj1.XXX_Unmarshal(empty)
+	_ = obj1.XXX_Unmarshal(holder)
 	obj1.ProtoMessage()
 	_, _ = obj1.Descriptor()
 	obj1.XXX_Merge(obj1)

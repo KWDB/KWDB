@@ -2178,3 +2178,210 @@ func TestTableDescriptor_GetColumnNames(t *testing.T) {
 		t.Errorf("Expected column names [a b], got %v", names)
 	}
 }
+
+func TestIsShardColumn(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	// Create a mutable table descriptor
+	desc := NewMutableCreatedTableDescriptor(TableDescriptor{
+		ParentID: keys.MinUserDescID,
+		ID:       keys.MinUserDescID + 1,
+		Name:     "test_table",
+		Columns: []ColumnDescriptor{
+			{Name: "id", Type: *types.Int},
+			{Name: "name", Type: *types.String},
+			{Name: "kwdb_internal_id_shard_5", Type: *types.Int},
+		},
+		PrimaryIndex: IndexDescriptor{
+			ID:               1,
+			Name:             "primary",
+			ColumnNames:      []string{"id"},
+			ColumnIDs:        []ColumnID{1},
+			ColumnDirections: []IndexDescriptor_Direction{IndexDescriptor_ASC},
+			Sharded: ShardedDescriptor{
+				IsSharded:    true,
+				Name:         "kwdb_internal_id_shard_5",
+				ShardBuckets: 5,
+			},
+		},
+		Privileges:    NewDefaultPrivilegeDescriptor(),
+		FormatVersion: FamilyFormatVersion,
+	})
+
+	// Test shard column
+	shardCol := &ColumnDescriptor{Name: "kwdb_internal_id_shard_5", Type: *types.Int}
+	if !desc.IsShardColumn(shardCol) {
+		t.Error("expected kwdb_internal_id_shard_5 to be a shard column")
+	}
+
+	// Test non-shard column
+	nonShardCol := &ColumnDescriptor{Name: "name", Type: *types.String}
+	if desc.IsShardColumn(nonShardCol) {
+		t.Error("expected name to not be a shard column")
+	}
+}
+
+func TestAddIndexMutation(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	// Create a mutable table descriptor
+	desc := NewMutableCreatedTableDescriptor(TableDescriptor{
+		ParentID: keys.MinUserDescID,
+		ID:       keys.MinUserDescID + 1,
+		Name:     "test_table",
+		Columns: []ColumnDescriptor{
+			{ID: 1, Name: "id", Type: *types.Int},
+			{ID: 2, Name: "name", Type: *types.String},
+		},
+		PrimaryIndex: IndexDescriptor{
+			ID:               1,
+			Name:             "primary",
+			ColumnNames:      []string{"id"},
+			ColumnIDs:        []ColumnID{1},
+			ColumnDirections: []IndexDescriptor_Direction{IndexDescriptor_ASC},
+		},
+		Privileges:    NewDefaultPrivilegeDescriptor(),
+		FormatVersion: FamilyFormatVersion,
+	})
+
+	// Create an index
+	idx := &IndexDescriptor{
+		ID:               2,
+		Name:             "idx_name",
+		ColumnNames:      []string{"name"},
+		ColumnIDs:        []ColumnID{2},
+		ColumnDirections: []IndexDescriptor_Direction{IndexDescriptor_ASC},
+	}
+
+	// Add index mutation
+	err := desc.AddIndexMutation(idx, DescriptorMutation_ADD)
+	if err != nil {
+		t.Fatalf("failed to add index mutation: %v", err)
+	}
+
+	// Verify mutation was added
+	if len(desc.Mutations) != 1 {
+		t.Errorf("expected 1 mutation, got %d", len(desc.Mutations))
+	}
+
+	if desc.Mutations[0].Direction != DescriptorMutation_ADD {
+		t.Errorf("expected mutation direction ADD, got %v", desc.Mutations[0].Direction)
+	}
+}
+
+func TestMakeMutationComplete(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	// Create a mutable table descriptor
+	desc := NewMutableCreatedTableDescriptor(TableDescriptor{
+		ParentID: keys.MinUserDescID,
+		ID:       keys.MinUserDescID + 1,
+		Name:     "test_table",
+		Columns: []ColumnDescriptor{
+			{ID: 1, Name: "id", Type: *types.Int, Nullable: true},
+		},
+		PrimaryIndex: IndexDescriptor{
+			ID:               1,
+			Name:             "primary",
+			ColumnNames:      []string{"id"},
+			ColumnIDs:        []ColumnID{1},
+			ColumnDirections: []IndexDescriptor_Direction{IndexDescriptor_ASC},
+		},
+		Privileges:    NewDefaultPrivilegeDescriptor(),
+		FormatVersion: FamilyFormatVersion,
+	})
+
+	// Create a NOT NULL constraint mutation
+	ck := MakeNotNullCheckConstraint("id", 1, nil, ConstraintValidity_Validating)
+	mutation := DescriptorMutation{
+		Direction: DescriptorMutation_ADD,
+		Descriptor_: &DescriptorMutation_Constraint{
+			Constraint: &ConstraintToUpdate{
+				ConstraintType: ConstraintToUpdate_NOT_NULL,
+				Name:           ck.Name,
+				NotNullColumn:  1,
+				Check:          *ck,
+			},
+		},
+	}
+
+	// Add the check constraint to the descriptor
+	desc.Checks = append(desc.Checks, ck)
+
+	// Complete the mutation
+	err := desc.MakeMutationComplete(mutation)
+	if err != nil {
+		t.Fatalf("failed to make mutation complete: %v", err)
+	}
+
+	// Verify the column is now NOT NULL
+	col, err := desc.FindColumnByID(1)
+	if err != nil {
+		t.Fatalf("failed to find column: %v", err)
+	}
+	if col.Nullable {
+		t.Error("expected column to be NOT NULL")
+	}
+
+	// Verify the check constraint was removed
+	if len(desc.Checks) != 0 {
+		t.Errorf("expected 0 check constraints, got %d", len(desc.Checks))
+	}
+}
+
+func TestRenameConstraint(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	// Create a mutable table descriptor
+	desc := NewMutableCreatedTableDescriptor(TableDescriptor{
+		ParentID: keys.MinUserDescID,
+		ID:       keys.MinUserDescID + 1,
+		Name:     "test_table",
+		Columns: []ColumnDescriptor{
+			{ID: 1, Name: "id", Type: *types.Int},
+			{ID: 2, Name: "name", Type: *types.String},
+		},
+		PrimaryIndex: IndexDescriptor{
+			ID:               1,
+			Name:             "primary",
+			ColumnNames:      []string{"id"},
+			ColumnIDs:        []ColumnID{1},
+			ColumnDirections: []IndexDescriptor_Direction{IndexDescriptor_ASC},
+		},
+		Checks: []*TableDescriptor_CheckConstraint{
+			{
+				Name:      "old_check",
+				Expr:      "id > 0",
+				Validity:  ConstraintValidity_Validated,
+				ColumnIDs: []ColumnID{1},
+			},
+		},
+		Privileges:    NewDefaultPrivilegeDescriptor(),
+		FormatVersion: FamilyFormatVersion,
+	})
+
+	// Create constraint detail
+	detail := ConstraintDetail{
+		Kind: ConstraintTypeCheck,
+		CheckConstraint: &TableDescriptor_CheckConstraint{
+			Name:      "old_check",
+			Expr:      "id > 0",
+			Validity:  ConstraintValidity_Validated,
+			ColumnIDs: []ColumnID{1},
+		},
+	}
+
+	// Rename the constraint
+	err := desc.RenameConstraint(detail, "old_check", "new_check", nil, nil)
+	if err != nil {
+		t.Fatalf("failed to rename constraint: %v", err)
+	}
+
+	// Verify the constraint was renamed
+	if len(desc.Checks) != 1 {
+		t.Errorf("expected 1 check constraint, got %d", len(desc.Checks))
+	}
+	if detail.CheckConstraint.Name != "new_check" {
+		t.Errorf("expected constraint name 'new_check', got '%s'", detail.CheckConstraint.Name)
+	}
+}

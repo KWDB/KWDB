@@ -173,13 +173,34 @@ func TestTableDescriptorFindColumnByName(t *testing.T) {
 			{ID: 1, Name: "id"},
 			{ID: 2, Name: "name"},
 		},
+		Families: []sqlbase.ColumnFamilyDescriptor{
+			{ID: 0, Name: "primary", ColumnIDs: []sqlbase.ColumnID{1, 2}, ColumnNames: []string{"id", "name"}},
+		},
+		PrimaryIndex: sqlbase.IndexDescriptor{
+			ID:        1,
+			Name:      "primary",
+			ColumnIDs: []sqlbase.ColumnID{1},
+		},
+		Mutations: []sqlbase.DescriptorMutation{
+			{
+				Descriptor_: &sqlbase.DescriptorMutation_Column{
+					Column: &sqlbase.ColumnDescriptor{
+						ID:   2,
+						Name: "name",
+						Type: *types.Int,
+					},
+				},
+				Direction:  sqlbase.DescriptorMutation_DROP,
+				MutationID: 1,
+			},
+		},
 	}
 
 	col, dropping, err := table.FindColumnByName("name")
 	if err != nil {
 		t.Errorf("FindColumnByName should not return error: %v", err)
 	}
-	if dropping {
+	if !dropping {
 		t.Errorf("FindColumnByName should find a dropping column")
 	}
 	if col.ID != 2 {
@@ -203,13 +224,34 @@ func TestTableDescriptorFindColumnByID(t *testing.T) {
 			{ID: 1, Name: "id"},
 			{ID: 2, Name: "name"},
 		},
+		Families: []sqlbase.ColumnFamilyDescriptor{
+			{ID: 0, Name: "primary", ColumnIDs: []sqlbase.ColumnID{1, 2}, ColumnNames: []string{"id", "name"}},
+		},
+		PrimaryIndex: sqlbase.IndexDescriptor{
+			ID:        1,
+			Name:      "primary",
+			ColumnIDs: []sqlbase.ColumnID{1},
+		},
+		Mutations: []sqlbase.DescriptorMutation{
+			{
+				Descriptor_: &sqlbase.DescriptorMutation_Column{
+					Column: &sqlbase.ColumnDescriptor{
+						ID:   2,
+						Name: "name",
+						Type: *types.Int,
+					},
+				},
+				Direction:  sqlbase.DescriptorMutation_DROP,
+				MutationID: 1,
+			},
+		},
 	}
 
-	col, err := table.FindColumnByID(1)
+	col, err := table.FindColumnByID(2)
 	if err != nil {
 		t.Errorf("FindColumnByID should not return error: %v", err)
 	}
-	if col.Name != "id" {
+	if col.Name != "name" {
 		t.Errorf("FindColumnByID should return correct column")
 	}
 
@@ -413,7 +455,34 @@ func TestTableDescriptorGoingOffline(t *testing.T) {
 // TestTableDescriptorHasColumnBackfillMutation tests the HasColumnBackfillMutation method for TableDescriptor.
 func TestTableDescriptorHasColumnBackfillMutation(t *testing.T) {
 	// Test case: Table without backfill mutations
-	table := &sqlbase.TableDescriptor{}
+	table := &sqlbase.TableDescriptor{
+		Columns: []sqlbase.ColumnDescriptor{
+			{ID: 1, Name: "id"},
+			{ID: 2, Name: "name"},
+		},
+		Families: []sqlbase.ColumnFamilyDescriptor{
+			{ID: 0, Name: "primary", ColumnIDs: []sqlbase.ColumnID{1, 2}, ColumnNames: []string{"id", "name"}},
+		},
+		PrimaryIndex: sqlbase.IndexDescriptor{
+			ID:        1,
+			Name:      "primary",
+			ColumnIDs: []sqlbase.ColumnID{1},
+		},
+		Mutations: []sqlbase.DescriptorMutation{
+			{
+				Descriptor_: &sqlbase.DescriptorMutation_Column{
+					Column: &sqlbase.ColumnDescriptor{
+						ID:       2,
+						Name:     "name",
+						Type:     *types.Int,
+						Nullable: true,
+					},
+				},
+				Direction:  sqlbase.DescriptorMutation_NONE,
+				MutationID: 1,
+			},
+		},
+	}
 	if table.HasColumnBackfillMutation() {
 		t.Errorf("Table without mutations should not have backfill mutation")
 	}
