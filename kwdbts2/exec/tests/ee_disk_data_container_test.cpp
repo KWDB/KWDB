@@ -153,4 +153,134 @@ TEST_F(TestDiskDataContainer, TestDiskDataContainer) {
 
   ASSERT_EQ(tempTable2->Count(), 2);
 
+  // 测试NextLine()、GetData()等接口
+  { 
+    tempTable2->Sort();
+    
+    // 测试NextLine()
+    k_int32 line = tempTable2->NextLine();
+    ASSERT_EQ(line, 0);
+    line = tempTable2->NextLine();
+    ASSERT_EQ(line, 1);
+    line = tempTable2->NextLine();
+    ASSERT_EQ(line, -1);
+  }
+  tempTable2.reset();
+  
+  // 测试多批次数据的排序和合并
+  {
+    DataContainerPtr tempTable3 = 
+      std::make_unique<kwdbts::DiskDataContainer>(order_info, col_info, col_num);
+    tempTable3->Init();
+    
+    // 添加多个chunk
+    for (int i = 0; i < 5; i++) {
+      DataChunkPtr chunk_i = std::make_unique<kwdbts::DataChunk>(col_info, col_num, total_sample_rows);
+      ASSERT_EQ(chunk_i->Initialize(), true);
+      chunk_i->AddCount();
+      
+      k_int64 v1_i = v1 + i;
+      k_double64 v2_i = v2 + i;
+      string v3_i = v3 + "_" + std::to_string(i);
+      bool v4_i = (i % 2 == 0);
+      
+      chunk_i->InsertData(0, 0, reinterpret_cast<char*>(&v1_i), sizeof(k_int64));
+      chunk_i->InsertData(0, 1, reinterpret_cast<char*>(&v2_i), sizeof(k_double64));
+      chunk_i->InsertDecimal(0, 2, reinterpret_cast<char*>(&v2_i), true);
+      chunk_i->InsertData(0, 3, const_cast<char*>(v3_i.c_str()), v3_i.length());
+      chunk_i->InsertData(0, 4, reinterpret_cast<char*>(&v4_i), sizeof(bool));
+      
+      tempTable3->Append(chunk_i);
+    }
+    
+    ASSERT_EQ(tempTable3->Count(), 5);
+    
+    // 排序并测试
+    tempTable3->Sort();
+    
+    DataChunkPtr result_chunk = nullptr;
+    EEIteratorErrCode code = tempTable3->NextChunk(result_chunk);
+    ASSERT_EQ(code, EEIteratorErrCode::EE_OK);
+    ASSERT_NE(result_chunk, nullptr);
+    ASSERT_EQ(result_chunk->Count(), 5);
+  }
+  
+  // 测试NextChunk函数中read_merge_infos_->chunk_infos_.size()不等于1的情况
+  {
+    DataContainerPtr tempTable4 = 
+      std::make_unique<kwdbts::DiskDataContainer>(order_info, col_info, col_num);
+    tempTable4->Init();
+    
+    // 添加10个chunk，形成多个batch
+    for (int i = 0; i < 10; i++) {
+      DataChunkPtr chunk_i = std::make_unique<kwdbts::DataChunk>(col_info, col_num, total_sample_rows);
+      ASSERT_EQ(chunk_i->Initialize(), true);
+      chunk_i->AddCount();
+      
+      k_int64 v1_i = v1 + i;
+      k_double64 v2_i = v2 + i;
+      string v3_i = v3 + "_" + std::to_string(i);
+      bool v4_i = (i % 2 == 0);
+      
+      chunk_i->InsertData(0, 0, reinterpret_cast<char*>(&v1_i), sizeof(k_int64));
+      chunk_i->InsertData(0, 1, reinterpret_cast<char*>(&v2_i), sizeof(k_double64));
+      chunk_i->InsertDecimal(0, 2, reinterpret_cast<char*>(&v2_i), true);
+      chunk_i->InsertData(0, 3, const_cast<char*>(v3_i.c_str()), v3_i.length());
+      chunk_i->InsertData(0, 4, reinterpret_cast<char*>(&v4_i), sizeof(bool));
+      
+      tempTable4->Append(chunk_i);
+    }
+    
+    ASSERT_EQ(tempTable4->Count(), 10);
+    
+    // 排序 - 这会触发SortAndFlushLastChunk中的force_merge条件
+    tempTable4->Sort();
+    
+    // 调用NextChunk，此时read_merge_infos_->chunk_infos_.size()=10，不等于1
+    DataChunkPtr result_chunk = nullptr;
+    EEIteratorErrCode code = tempTable4->NextChunk(result_chunk);
+    ASSERT_EQ(code, EEIteratorErrCode::EE_OK);
+    ASSERT_NE(result_chunk, nullptr);
+  }
+  
+  // 专门测试第446行的第二个条件：(chunk_index+1) % MAX_CHUNK_BATCH_NUM == 0
+  {
+    DataContainerPtr tempTable5 = 
+      std::make_unique<kwdbts::DiskDataContainer>(order_info, col_info, col_num);
+    tempTable5->Init();
+    
+    // 添加6个chunk，这样当添加第7个chunk时，会触发batch满的条件
+    // (6+1) % 7 = 0，会进入第446行的分支
+    for (int i = 0; i < 6; i++) {
+      DataChunkPtr chunk_i = std::make_unique<kwdbts::DataChunk>(col_info, col_num, total_sample_rows);
+      ASSERT_EQ(chunk_i->Initialize(), true);
+      chunk_i->AddCount();
+      
+      k_int64 v1_i = v1 + i;
+      k_double64 v2_i = v2 + i;
+      string v3_i = v3 + "_" + std::to_string(i);
+      bool v4_i = (i % 2 == 0);
+      
+      chunk_i->InsertData(0, 0, reinterpret_cast<char*>(&v1_i), sizeof(k_int64));
+      chunk_i->InsertData(0, 1, reinterpret_cast<char*>(&v2_i), sizeof(k_double64));
+      chunk_i->InsertDecimal(0, 2, reinterpret_cast<char*>(&v2_i), true);
+      chunk_i->InsertData(0, 3, const_cast<char*>(v3_i.c_str()), v3_i.length());
+      chunk_i->InsertData(0, 4, reinterpret_cast<char*>(&v4_i), sizeof(bool));
+      
+      tempTable5->Append(chunk_i);
+    }
+    
+    ASSERT_EQ(tempTable5->Count(), 6);
+    
+    // 排序以完成所有处理
+    tempTable5->Sort();
+    
+    // 验证数据正确性
+    DataChunkPtr result_chunk = nullptr;
+    EEIteratorErrCode code = tempTable5->NextChunk(result_chunk);
+    ASSERT_EQ(code, EEIteratorErrCode::EE_OK);
+    ASSERT_NE(result_chunk, nullptr);
+    ASSERT_EQ(result_chunk->Count(), 6);
+  }
+
 }
