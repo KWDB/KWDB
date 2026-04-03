@@ -21,6 +21,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/types"
 	"gitee.com/kwbasedb/kwbase/pkg/util/hlc"
+	"gitee.com/kwbasedb/kwbase/pkg/util/leaktest"
 	"gitee.com/kwbasedb/kwbase/pkg/util/protoutil"
 	"gitee.com/kwbasedb/kwbase/pkg/util/timeutil"
 )
@@ -2181,6 +2182,877 @@ func TestTableDescriptor_FindActiveColumnsByNames(t *testing.T) {
 
 		if len(cols) != 0 {
 			t.Errorf("expected 0 columns for empty names list, got %d", len(cols))
+		}
+	})
+}
+
+func TestMakeNotNullCheckConstraint(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	// Test basic functionality
+	inuseNames := make(map[string]struct{})
+	constraint := MakeNotNullCheckConstraint("test_col", 1, inuseNames, ConstraintValidity_Validated)
+
+	if constraint.Name != "test_col_auto_not_null" {
+		t.Errorf("expected constraint name 'test_col_auto_not_null', got '%s'", constraint.Name)
+	}
+
+	if len(constraint.ColumnIDs) != 1 || constraint.ColumnIDs[0] != 1 {
+		t.Errorf("expected column ID [1], got %v", constraint.ColumnIDs)
+	}
+
+	if !constraint.IsNonNullConstraint {
+		t.Errorf("expected IsNonNullConstraint to be true")
+	}
+
+	if constraint.Validity != ConstraintValidity_Validated {
+		t.Errorf("expected validity to be Validated, got %v", constraint.Validity)
+	}
+
+	// Test name conflict resolution
+	constraint2 := MakeNotNullCheckConstraint("test_col", 2, inuseNames, ConstraintValidity_Validated)
+	if constraint2.Name != "test_col_auto_not_null1" {
+		t.Errorf("expected constraint name 'test_col_auto_not_null1', got '%s'", constraint2.Name)
+	}
+
+	// Test with nil inuseNames
+	constraint3 := MakeNotNullCheckConstraint("test_col", 3, nil, ConstraintValidity_Validated)
+	if constraint3.Name != "test_col_auto_not_null" {
+		t.Errorf("expected constraint name 'test_col_auto_not_null', got '%s'", constraint3.Name)
+	}
+}
+
+func TestDeprecatedTableKey_Key(t *testing.T) {
+	parentID := ID(100)
+	name := "test_table"
+	key := NewDeprecatedTableKey(parentID, name)
+
+	expectedKey := MakeDeprecatedNameMetadataKey(parentID, name)
+	if !key.Key().Equal(expectedKey) {
+		t.Errorf("expected key %v, got %v", expectedKey, key.Key())
+	}
+}
+
+func TestDeprecatedTableKey_Name(t *testing.T) {
+	parentID := ID(100)
+	name := "test_table"
+	key := NewDeprecatedTableKey(parentID, name)
+
+	if key.Name() != name {
+		t.Errorf("expected name %q, got %q", name, key.Name())
+	}
+}
+
+func TestProcedureDescriptor_SetID(t *testing.T) {
+	desc := &ProcedureDescriptor{}
+	newID := ID(123)
+	desc.SetID(newID)
+
+	if desc.ID != newID {
+		t.Errorf("expected ID %d, got %d", newID, desc.ID)
+	}
+}
+
+func TestProcedureDescriptor_TypeName(t *testing.T) {
+	desc := &ProcedureDescriptor{}
+	expected := "procedure"
+	result := desc.TypeName()
+
+	if result != expected {
+		t.Errorf("expected type name %q, got %q", expected, result)
+	}
+}
+
+func TestProcedureDescriptor_SetName(t *testing.T) {
+	desc := &ProcedureDescriptor{}
+	newName := "test_procedure"
+	desc.SetName(newName)
+
+	if desc.Name != newName {
+		t.Errorf("expected name %q, got %q", newName, desc.Name)
+	}
+}
+
+func TestProcedureDescriptor_GetAuditMode(t *testing.T) {
+	desc := &ProcedureDescriptor{}
+	expected := TableDescriptor_DISABLED
+	result := desc.GetAuditMode()
+
+	if result != expected {
+		t.Errorf("expected audit mode %v, got %v", expected, result)
+	}
+}
+
+func TestProcedureDescriptor_Validate(t *testing.T) {
+	// Test with valid procedure descriptor
+	desc := &ProcedureDescriptor{
+		ID:         123,
+		Name:       "test_procedure",
+		Privileges: NewDefaultPrivilegeDescriptor(),
+	}
+
+	err := desc.Validate()
+	if err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+
+	// Test with invalid ID (0)
+	descInvalidID := &ProcedureDescriptor{
+		ID:         0,
+		Name:       "test_procedure",
+		Privileges: NewDefaultPrivilegeDescriptor(),
+	}
+
+	err = descInvalidID.Validate()
+	if err == nil {
+		t.Error("expected error for invalid ID, but got nil")
+	}
+
+	// Test with empty name
+	descEmptyName := &ProcedureDescriptor{
+		ID:         123,
+		Name:       "",
+		Privileges: NewDefaultPrivilegeDescriptor(),
+	}
+
+	err = descEmptyName.Validate()
+	if err == nil {
+		t.Error("expected error for empty name, but got nil")
+	}
+}
+
+func TestTableDescriptor_GetIndexMutationCapabilities(t *testing.T) {
+	t.Run("index with DELETE_AND_WRITE_ONLY mutation", func(t *testing.T) {
+		desc := &TableDescriptor{
+			Mutations: []DescriptorMutation{
+				{
+					State: DescriptorMutation_DELETE_AND_WRITE_ONLY,
+					Descriptor_: &DescriptorMutation_Index{
+						Index: &IndexDescriptor{
+							ID: 1,
+						},
+					},
+				},
+			},
+		}
+
+		hasMutation, isWriteOnly := desc.GetIndexMutationCapabilities(1)
+		if !hasMutation {
+			t.Error("expected hasMutation to be true")
+		}
+		if !isWriteOnly {
+			t.Error("expected isWriteOnly to be true")
+		}
+	})
+
+	t.Run("index with DELETE_ONLY mutation", func(t *testing.T) {
+		desc := &TableDescriptor{
+			Mutations: []DescriptorMutation{
+				{
+					State: DescriptorMutation_DELETE_ONLY,
+					Descriptor_: &DescriptorMutation_Index{
+						Index: &IndexDescriptor{
+							ID: 1,
+						},
+					},
+				},
+			},
+		}
+
+		hasMutation, isWriteOnly := desc.GetIndexMutationCapabilities(1)
+		if !hasMutation {
+			t.Error("expected hasMutation to be true")
+		}
+		if isWriteOnly {
+			t.Error("expected isWriteOnly to be false")
+		}
+	})
+
+	t.Run("index with no mutation", func(t *testing.T) {
+		desc := &TableDescriptor{}
+
+		hasMutation, isWriteOnly := desc.GetIndexMutationCapabilities(1)
+		if hasMutation {
+			t.Error("expected hasMutation to be false")
+		}
+		if isWriteOnly {
+			t.Error("expected isWriteOnly to be false")
+		}
+	})
+}
+
+func TestTableDescriptor_FindFKByName(t *testing.T) {
+	t.Run("existing foreign key", func(t *testing.T) {
+		desc := &TableDescriptor{
+			OutboundFKs: []ForeignKeyConstraint{
+				{
+					Name: "fk_test",
+				},
+			},
+		}
+
+		fk, err := desc.FindFKByName("fk_test")
+		if err != nil {
+			t.Errorf("unexpected error: %v", err)
+		}
+		if fk == nil {
+			t.Error("expected foreign key to be found")
+		}
+		if fk.Name != "fk_test" {
+			t.Errorf("expected foreign key name 'fk_test', got '%s'", fk.Name)
+		}
+	})
+
+	t.Run("non-existent foreign key", func(t *testing.T) {
+		desc := &TableDescriptor{
+			OutboundFKs: []ForeignKeyConstraint{
+				{
+					Name: "fk_test",
+				},
+			},
+		}
+
+		fk, err := desc.FindFKByName("non_existent_fk")
+		if err == nil {
+			t.Error("expected error for non-existent foreign key")
+		}
+		if fk != nil {
+			t.Error("expected foreign key to be nil")
+		}
+	})
+}
+
+func TestTableDescriptor_FindFKForBackRef(t *testing.T) {
+	t.Run("existing backref", func(t *testing.T) {
+		desc := &TableDescriptor{
+			OutboundFKs: []ForeignKeyConstraint{
+				{
+					Name:              "fk_test",
+					ReferencedTableID: 100,
+				},
+			},
+		}
+
+		backref := &ForeignKeyConstraint{
+			Name: "fk_test",
+		}
+
+		fk, err := desc.FindFKForBackRef(100, backref)
+		if err != nil {
+			t.Errorf("unexpected error: %v", err)
+		}
+		if fk == nil {
+			t.Error("expected foreign key to be found")
+		}
+		if fk.Name != "fk_test" {
+			t.Errorf("expected foreign key name 'fk_test', got '%s'", fk.Name)
+		}
+	})
+
+	t.Run("non-existent backref", func(t *testing.T) {
+		desc := &TableDescriptor{
+			OutboundFKs: []ForeignKeyConstraint{
+				{
+					Name:              "fk_test",
+					ReferencedTableID: 100,
+				},
+			},
+		}
+
+		backref := &ForeignKeyConstraint{
+			Name: "non_existent_fk",
+		}
+
+		fk, err := desc.FindFKForBackRef(100, backref)
+		if err == nil {
+			t.Error("expected error for non-existent backref")
+		}
+		if fk != nil {
+			t.Error("expected foreign key to be nil")
+		}
+	})
+}
+
+func TestTableDescriptor_CheckTSTableStateValid(t *testing.T) {
+	t.Run("valid state (PUBLIC)", func(t *testing.T) {
+		desc := &TableDescriptor{
+			State: TableDescriptor_PUBLIC,
+			Name:  "test_table",
+		}
+
+		err := desc.CheckTSTableStateValid()
+		if err != nil {
+			t.Errorf("unexpected error: %v", err)
+		}
+	})
+
+	t.Run("invalid state (ADD)", func(t *testing.T) {
+		desc := &TableDescriptor{
+			State: TableDescriptor_ADD,
+			Name:  "test_table",
+		}
+
+		err := desc.CheckTSTableStateValid()
+		if err == nil {
+			t.Error("expected error for ADD state")
+		}
+	})
+
+	t.Run("invalid state (DROP)", func(t *testing.T) {
+		desc := &TableDescriptor{
+			State: TableDescriptor_DROP,
+			Name:  "test_table",
+		}
+
+		err := desc.CheckTSTableStateValid()
+		if err == nil {
+			t.Error("expected error for DROP state")
+		}
+	})
+
+	t.Run("invalid state (ALTER)", func(t *testing.T) {
+		desc := &TableDescriptor{
+			State: TableDescriptor_ALTER,
+			Name:  "test_table",
+		}
+
+		err := desc.CheckTSTableStateValid()
+		if err == nil {
+			t.Error("expected error for ALTER state")
+		}
+	})
+}
+
+func TestTableDescriptor_FindAllReferences(t *testing.T) {
+	t.Run("find all references", func(t *testing.T) {
+		desc := &TableDescriptor{
+			OutboundFKs: []ForeignKeyConstraint{
+				{
+					ReferencedTableID: 100,
+				},
+			},
+			InboundFKs: []ForeignKeyConstraint{
+				{
+					OriginTableID: 200,
+				},
+			},
+			Indexes: []IndexDescriptor{
+				{
+					Interleave: InterleaveDescriptor{
+						Ancestors: []InterleaveDescriptor_Ancestor{
+							{
+								TableID:         1,
+								IndexID:         1,
+								SharedPrefixLen: 1,
+							},
+						},
+					},
+					InterleavedBy: []ForeignKeyReference{{Table: 1, Index: 1}},
+				},
+			},
+			Columns: []ColumnDescriptor{
+				{
+					UsesSequenceIds: []ID{500},
+				},
+			},
+			DependsOn: []ID{600},
+			DependedOnBy: []TableDescriptor_Reference{
+				{
+					ID: 700,
+				},
+			},
+		}
+
+		references, err := desc.FindAllReferences()
+		if err != nil {
+			t.Errorf("unexpected error: %v", err)
+		}
+
+		expectedReferences := map[ID]struct{}{
+			100: {},
+			200: {},
+			500: {},
+			600: {},
+			700: {},
+		}
+
+		if len(references) != len(expectedReferences)+1 {
+			t.Errorf("expected %d references, got %d", len(expectedReferences), len(references))
+		}
+
+		for id := range expectedReferences {
+			if _, ok := references[id]; !ok {
+				t.Errorf("expected reference to table %d, not found", id)
+			}
+		}
+	})
+}
+
+func TestTableDescriptor_VisibleColumnsWithTagCol(t *testing.T) {
+	t.Run("visible columns including tag cols", func(t *testing.T) {
+		desc := &TableDescriptor{
+			Columns: []ColumnDescriptor{
+				{
+					Name:   "id",
+					Hidden: false,
+				},
+				{
+					Name:   "name",
+					Hidden: false,
+				},
+				{
+					Name:   "tag1",
+					Hidden: false,
+					TsCol: TSCol{
+						ColumnType: ColumnType_TYPE_TAG,
+					},
+					Type: *types.Int,
+				},
+				{
+					Name:   "hidden_col",
+					Hidden: true,
+				},
+			},
+		}
+
+		visibleCols := desc.VisibleColumnsWithTagCol()
+		if len(visibleCols) != 3 {
+			t.Errorf("expected 3 visible columns, got %d", len(visibleCols))
+		}
+
+		// Check that hidden column is not included
+		for _, col := range visibleCols {
+			if col.Name == "hidden_col" {
+				t.Error("expected hidden column to be excluded")
+			}
+		}
+	})
+}
+
+func TestTableDescriptor_VisibleColumnsWithTagColOrdered(t *testing.T) {
+	t.Run("visible columns ordered with data cols first", func(t *testing.T) {
+		desc := &TableDescriptor{
+			Columns: []ColumnDescriptor{
+				{
+					Name:   "tag1",
+					Hidden: false,
+					TsCol: TSCol{
+						ColumnType: ColumnType_TYPE_TAG,
+					},
+					Type: *types.Int,
+				},
+				{
+					Name:   "id",
+					Hidden: false,
+				},
+				{
+					Name:   "name",
+					Hidden: false,
+				},
+				{
+					Name:   "tag2",
+					Hidden: false,
+					TsCol: TSCol{
+						ColumnType: ColumnType_TYPE_TAG,
+					},
+					Type: *types.Int,
+				},
+				{
+					Name:   "hidden_col",
+					Hidden: true,
+				},
+			},
+		}
+
+		visibleCols := desc.VisibleColumnsWithTagColOrdered()
+		if len(visibleCols) != 4 {
+			t.Errorf("expected 4 visible columns, got %d", len(visibleCols))
+		}
+
+		// Check order: data columns first, then tag columns
+		dataColsEnd := -1
+		for i, col := range visibleCols {
+			if col.Name == "tag1" || col.Name == "tag2" {
+				if dataColsEnd == -1 {
+					dataColsEnd = i
+				}
+			} else if col.Name == "id" || col.Name == "name" {
+				if dataColsEnd != -1 {
+					t.Error("expected data columns to come before tag columns")
+				}
+			}
+		}
+
+		// Check that hidden column is not included
+		for _, col := range visibleCols {
+			if col.Name == "hidden_col" {
+				t.Error("expected hidden column to be excluded")
+			}
+		}
+	})
+}
+
+func TestSchemaDescriptor_Validate(t *testing.T) {
+	t.Run("valid schema descriptor", func(t *testing.T) {
+		desc := &SchemaDescriptor{
+			ID:         1,
+			Name:       "test_schema",
+			Privileges: NewDefaultPrivilegeDescriptor(),
+		}
+
+		err := desc.Validate()
+		if err != nil {
+			t.Errorf("unexpected error: %v", err)
+		}
+	})
+
+	t.Run("empty schema name", func(t *testing.T) {
+		desc := &SchemaDescriptor{
+			ID:         1,
+			Name:       "",
+			Privileges: NewDefaultPrivilegeDescriptor(),
+		}
+
+		err := desc.Validate()
+		if err == nil {
+			t.Error("expected error for empty schema name")
+		}
+	})
+
+	t.Run("invalid schema ID", func(t *testing.T) {
+		desc := &SchemaDescriptor{
+			ID:         0,
+			Name:       "test_schema",
+			Privileges: NewDefaultPrivilegeDescriptor(),
+		}
+
+		err := desc.Validate()
+		if err == nil {
+			t.Error("expected error for invalid schema ID")
+		}
+	})
+}
+
+func TestSchemaDescriptor_GetAuditMode(t *testing.T) {
+	t.Run("get audit mode", func(t *testing.T) {
+		desc := &SchemaDescriptor{
+			ID:   1,
+			Name: "test_schema",
+		}
+
+		auditMode := desc.GetAuditMode()
+		if auditMode != TableDescriptor_DISABLED {
+			t.Errorf("expected audit mode to be DISABLED, got %v", auditMode)
+		}
+	})
+}
+
+func TestDescriptor_GetID(t *testing.T) {
+	t.Run("get ID for table descriptor", func(t *testing.T) {
+		tableDesc := &TableDescriptor{
+			ID:   100,
+			Name: "test_table",
+		}
+		desc := &Descriptor{
+			Union: &Descriptor_Table{Table: tableDesc},
+		}
+
+		id := desc.GetID()
+		if id != 100 {
+			t.Errorf("expected ID to be 100, got %d", id)
+		}
+	})
+
+	t.Run("get ID for database descriptor", func(t *testing.T) {
+		dbDesc := &DatabaseDescriptor{
+			ID:   200,
+			Name: "test_db",
+		}
+		desc := &Descriptor{
+			Union: &Descriptor_Database{Database: dbDesc},
+		}
+
+		id := desc.GetID()
+		if id != 200 {
+			t.Errorf("expected ID to be 200, got %d", id)
+		}
+	})
+
+	t.Run("get ID for schema descriptor", func(t *testing.T) {
+		schemaDesc := &SchemaDescriptor{
+			ID:   300,
+			Name: "test_schema",
+		}
+		desc := &Descriptor{
+			Union: &Descriptor_Schema{Schema: schemaDesc},
+		}
+
+		id := desc.GetID()
+		if id != 300 {
+			t.Errorf("expected ID to be 300, got %d", id)
+		}
+	})
+
+	t.Run("get ID for unknown descriptor type", func(t *testing.T) {
+		desc := &Descriptor{}
+
+		id := desc.GetID()
+		if id != 0 {
+			t.Errorf("expected ID to be 0 for unknown descriptor type, got %d", id)
+		}
+	})
+}
+
+func TestDescriptor_GetName(t *testing.T) {
+	t.Run("get name for table descriptor", func(t *testing.T) {
+		tableDesc := &TableDescriptor{
+			ID:   100,
+			Name: "test_table",
+		}
+		desc := &Descriptor{
+			Union: &Descriptor_Table{Table: tableDesc},
+		}
+
+		name := desc.GetName()
+		if name != "test_table" {
+			t.Errorf("expected name to be 'test_table', got '%s'", name)
+		}
+	})
+
+	t.Run("get name for database descriptor", func(t *testing.T) {
+		dbDesc := &DatabaseDescriptor{
+			ID:   200,
+			Name: "test_db",
+		}
+		desc := &Descriptor{
+			Union: &Descriptor_Database{Database: dbDesc},
+		}
+
+		name := desc.GetName()
+		if name != "test_db" {
+			t.Errorf("expected name to be 'test_db', got '%s'", name)
+		}
+	})
+
+	t.Run("get name for schema descriptor", func(t *testing.T) {
+		schemaDesc := &SchemaDescriptor{
+			ID:   300,
+			Name: "test_schema",
+		}
+		desc := &Descriptor{
+			Union: &Descriptor_Schema{Schema: schemaDesc},
+		}
+
+		name := desc.GetName()
+		if name != "test_schema" {
+			t.Errorf("expected name to be 'test_schema', got '%s'", name)
+		}
+	})
+
+	t.Run("get name for unknown descriptor type", func(t *testing.T) {
+		desc := &Descriptor{}
+
+		name := desc.GetName()
+		if name != "" {
+			t.Errorf("expected name to be empty string for unknown descriptor type, got '%s'", name)
+		}
+	})
+}
+
+func TestTableDescriptor_CheckConstraint_ColumnsUsed(t *testing.T) {
+	t.Run("columns already populated", func(t *testing.T) {
+		cc := &TableDescriptor_CheckConstraint{
+			ColumnIDs: []ColumnID{1, 2, 3},
+		}
+		desc := &TableDescriptor{}
+
+		colsUsed, err := cc.ColumnsUsed(desc)
+		if err != nil {
+			t.Errorf("unexpected error: %v", err)
+		}
+		if len(colsUsed) != 3 {
+			t.Errorf("expected 3 columns used, got %d", len(colsUsed))
+		}
+		if colsUsed[0] != 1 || colsUsed[1] != 2 || colsUsed[2] != 3 {
+			t.Errorf("expected columns [1, 2, 3], got %v", colsUsed)
+		}
+	})
+
+	t.Run("parse expression and collect columns", func(t *testing.T) {
+		cc := &TableDescriptor_CheckConstraint{
+			Expr: "id > 0 AND name IS NOT NULL",
+		}
+		desc := &TableDescriptor{
+			Columns: []ColumnDescriptor{
+				{ID: 1, Name: "id"},
+				{ID: 2, Name: "name"},
+				{ID: 3, Name: "age"},
+			},
+		}
+
+		colsUsed, err := cc.ColumnsUsed(desc)
+		if err != nil {
+			t.Errorf("unexpected error: %v", err)
+		}
+		if len(colsUsed) != 2 {
+			t.Errorf("expected 2 columns used, got %d", len(colsUsed))
+		}
+		if colsUsed[0] != 1 || colsUsed[1] != 2 {
+			t.Errorf("expected columns [1, 2], got %v", colsUsed)
+		}
+	})
+
+	t.Run("expression with non-existent column", func(t *testing.T) {
+		cc := &TableDescriptor_CheckConstraint{
+			Expr: "id > 0 AND non_existent_col IS NOT NULL",
+		}
+		desc := &TableDescriptor{
+			Columns: []ColumnDescriptor{
+				{ID: 1, Name: "id"},
+				{ID: 2, Name: "name"},
+			},
+		}
+
+		colsUsed, err := cc.ColumnsUsed(desc)
+		if err == nil {
+			t.Error("expected error for non-existent column")
+		}
+		if colsUsed != nil {
+			t.Error("expected columns used to be nil")
+		}
+	})
+}
+
+func TestTableDescriptor_CheckConstraint_UsesColumn(t *testing.T) {
+	t.Run("uses specified column", func(t *testing.T) {
+		cc := &TableDescriptor_CheckConstraint{
+			Expr: "id > 0 AND name IS NOT NULL",
+		}
+		desc := &TableDescriptor{
+			Columns: []ColumnDescriptor{
+				{ID: 1, Name: "id"},
+				{ID: 2, Name: "name"},
+				{ID: 3, Name: "age"},
+			},
+		}
+
+		uses, err := cc.UsesColumn(desc, 1)
+		if err != nil {
+			t.Errorf("unexpected error: %v", err)
+		}
+		if !uses {
+			t.Error("expected to use column 1")
+		}
+
+		uses, err = cc.UsesColumn(desc, 2)
+		if err != nil {
+			t.Errorf("unexpected error: %v", err)
+		}
+		if !uses {
+			t.Error("expected to use column 2")
+		}
+	})
+
+	t.Run("does not use specified column", func(t *testing.T) {
+		cc := &TableDescriptor_CheckConstraint{
+			Expr: "id > 0 AND name IS NOT NULL",
+		}
+		desc := &TableDescriptor{
+			Columns: []ColumnDescriptor{
+				{ID: 1, Name: "id"},
+				{ID: 2, Name: "name"},
+				{ID: 3, Name: "age"},
+			},
+		}
+
+		uses, err := cc.UsesColumn(desc, 3)
+		if err != nil {
+			t.Errorf("unexpected error: %v", err)
+		}
+		if uses {
+			t.Error("expected to not use column 3")
+		}
+	})
+
+	t.Run("error parsing expression", func(t *testing.T) {
+		cc := &TableDescriptor_CheckConstraint{
+			Expr: "invalid expression",
+		}
+		desc := &TableDescriptor{
+			Columns: []ColumnDescriptor{
+				{ID: 1, Name: "id"},
+			},
+		}
+
+		uses, err := cc.UsesColumn(desc, 1)
+		if err == nil {
+			t.Error("expected error for invalid expression")
+		}
+		if uses {
+			t.Error("expected uses to be false")
+		}
+	})
+}
+
+func TestDatabaseDescriptor_GetAuditMode(t *testing.T) {
+	t.Run("get audit mode", func(t *testing.T) {
+		desc := &DatabaseDescriptor{
+			ID:   1,
+			Name: "test_db",
+		}
+
+		auditMode := desc.GetAuditMode()
+		if auditMode != TableDescriptor_DISABLED {
+			t.Errorf("expected audit mode to be DISABLED, got %v", auditMode)
+		}
+	})
+}
+
+func TestPayloadForDistTSInsert_Count(t *testing.T) {
+	t.Run("empty PerNodePayloads", func(t *testing.T) {
+		payload := &PayloadForDistTSInsert{
+			PerNodePayloads: []*SinglePayloadInfo{},
+		}
+
+		count := payload.Count()
+		if count != 0 {
+			t.Errorf("expected count to be 0 for empty PerNodePayloads, got %d", count)
+		}
+	})
+
+	t.Run("single SinglePayloadInfo", func(t *testing.T) {
+		payload := &PayloadForDistTSInsert{
+			PerNodePayloads: []*SinglePayloadInfo{
+				{
+					RowNum: 5,
+				},
+			},
+		}
+
+		count := payload.Count()
+		if count != 5 {
+			t.Errorf("expected count to be 5 for single SinglePayloadInfo, got %d", count)
+		}
+	})
+
+	t.Run("multiple SinglePayloadInfo", func(t *testing.T) {
+		payload := &PayloadForDistTSInsert{
+			PerNodePayloads: []*SinglePayloadInfo{
+				{
+					RowNum: 3,
+				},
+				{
+					RowNum: 7,
+				},
+				{
+					RowNum: 2,
+				},
+			},
+		}
+
+		count := payload.Count()
+		if count != 12 {
+			t.Errorf("expected count to be 12 for multiple SinglePayloadInfo, got %d", count)
 		}
 	})
 }
