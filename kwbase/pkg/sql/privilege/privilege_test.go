@@ -25,6 +25,8 @@
 package privilege_test
 
 import (
+	"bytes"
+	"sort"
 	"testing"
 
 	"gitee.com/kwbasedb/kwbase/pkg/sql/privilege"
@@ -74,6 +76,135 @@ func TestPrivilegeDecode(t *testing.T) {
 		}
 		if pl.SortedString() != tc.sorted {
 			t.Fatalf("%+v: wrong SortedString() output: %q", tc, pl.SortedString())
+		}
+	}
+}
+
+func TestKindMask(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+	testCases := []struct {
+		kind privilege.Kind
+		mask uint32
+		name string
+	}{
+		{privilege.ALL, 1 << privilege.ALL, "ALL"},
+		{privilege.CREATE, 1 << privilege.CREATE, "CREATE"},
+		{privilege.DROP, 1 << privilege.DROP, "DROP"},
+		{privilege.GRANT, 1 << privilege.GRANT, "GRANT"},
+		{privilege.SELECT, 1 << privilege.SELECT, "SELECT"},
+		{privilege.INSERT, 1 << privilege.INSERT, "INSERT"},
+		{privilege.DELETE, 1 << privilege.DELETE, "DELETE"},
+		{privilege.UPDATE, 1 << privilege.UPDATE, "UPDATE"},
+		{privilege.ZONECONFIG, 1 << privilege.ZONECONFIG, "ZONECONFIG"},
+		{privilege.EXECUTE, 1 << privilege.EXECUTE, "EXECUTE"},
+	}
+
+	for _, tc := range testCases {
+		if got := tc.kind.Mask(); got != tc.mask {
+			t.Errorf("%s.Mask() = %d, want %d", tc.name, got, tc.mask)
+		}
+	}
+}
+
+func TestListMethods(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	// Test Len, Swap, Less (sorting)
+	pl := privilege.List{privilege.DELETE, privilege.CREATE, privilege.ALL}
+	if pl.Len() != 3 {
+		t.Errorf("List.Len() = %d, want 3", pl.Len())
+	}
+
+	// Test sorting
+	sort.Sort(pl)
+	expected := privilege.List{privilege.ALL, privilege.CREATE, privilege.DELETE}
+	for i, p := range pl {
+		if p != expected[i] {
+			t.Errorf("List sorted incorrectly at index %d: got %v, want %v", i, p, expected[i])
+		}
+	}
+
+	// Test ToBitField
+	bitfield := pl.ToBitField()
+	expectedBits := privilege.ALL.Mask() | privilege.CREATE.Mask() | privilege.DELETE.Mask()
+	if bitfield != expectedBits {
+		t.Errorf("List.ToBitField() = %d, want %d", bitfield, expectedBits)
+	}
+
+	// Test SortedNames
+	names := pl.SortedNames()
+	expectedNames := []string{"ALL", "CREATE", "DELETE"}
+	if len(names) != len(expectedNames) {
+		t.Errorf("List.SortedNames() length = %d, want %d", len(names), len(expectedNames))
+	}
+	for i, name := range names {
+		if name != expectedNames[i] {
+			t.Errorf("List.SortedNames() at index %d: got %s, want %s", i, name, expectedNames[i])
+		}
+	}
+
+	// Test Format
+	var buf bytes.Buffer
+	pl.Format(&buf)
+	expectedFormat := "ALL, CREATE, DELETE"
+	if buf.String() != expectedFormat {
+		t.Errorf("List.Format() = %q, want %q", buf.String(), expectedFormat)
+	}
+}
+
+func TestListFromStrings(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	// Test valid case
+	validStrings := []string{"ALL", "CREATE", "SELECT"}
+	pl, err := privilege.ListFromStrings(validStrings)
+	if err != nil {
+		t.Fatalf("ListFromStrings(%v) error: %v", validStrings, err)
+	}
+	if len(pl) != 3 {
+		t.Errorf("ListFromStrings(%v) length = %d, want 3", validStrings, len(pl))
+	}
+
+	// Test case insensitivity
+	lowercaseStrings := []string{"all", "create", "select"}
+	pl2, err := privilege.ListFromStrings(lowercaseStrings)
+	if err != nil {
+		t.Fatalf("ListFromStrings(%v) error: %v", lowercaseStrings, err)
+	}
+	if len(pl2) != 3 {
+		t.Errorf("ListFromStrings(%v) length = %d, want 3", lowercaseStrings, len(pl2))
+	}
+
+	// Test invalid privilege
+	invalidStrings := []string{"ALL", "INVALID"}
+	_, err = privilege.ListFromStrings(invalidStrings)
+	if err == nil {
+		t.Errorf("ListFromStrings(%v) should have returned an error", invalidStrings)
+	}
+}
+
+func TestPredefinedPrivileges(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	// Test ReadData
+	readDataExpected := privilege.List{privilege.GRANT, privilege.SELECT}
+	if len(privilege.ReadData) != len(readDataExpected) {
+		t.Errorf("ReadData length = %d, want %d", len(privilege.ReadData), len(readDataExpected))
+	}
+	for i, p := range privilege.ReadData {
+		if p != readDataExpected[i] {
+			t.Errorf("ReadData at index %d: got %v, want %v", i, p, readDataExpected[i])
+		}
+	}
+
+	// Test ReadWriteData
+	readWriteDataExpected := privilege.List{privilege.GRANT, privilege.SELECT, privilege.INSERT, privilege.DELETE, privilege.UPDATE}
+	if len(privilege.ReadWriteData) != len(readWriteDataExpected) {
+		t.Errorf("ReadWriteData length = %d, want %d", len(privilege.ReadWriteData), len(readWriteDataExpected))
+	}
+	for i, p := range privilege.ReadWriteData {
+		if p != readWriteDataExpected[i] {
+			t.Errorf("ReadWriteData at index %d: got %v, want %v", i, p, readWriteDataExpected[i])
 		}
 	}
 }

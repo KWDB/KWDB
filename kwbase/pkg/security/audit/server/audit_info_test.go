@@ -9,24 +9,71 @@
 // MERCHANTABILITY OR FIT FOR A PARTICULAR PURPOSE.
 // See the Mulan PSL v2 for more details.
 
-package server
+package server_test
 
 import (
+	"context"
 	"errors"
 	"net"
+	"os"
 	"testing"
 	"time"
 
+	"gitee.com/kwbasedb/kwbase/pkg/security"
 	"gitee.com/kwbasedb/kwbase/pkg/security/audit/event/target"
+	"gitee.com/kwbasedb/kwbase/pkg/security/audit/server"
+	"gitee.com/kwbasedb/kwbase/pkg/security/securitytest"
+	testserver "gitee.com/kwbasedb/kwbase/pkg/server"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sessiondata"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/tests"
+	"gitee.com/kwbasedb/kwbase/pkg/testutils/serverutils"
+	"gitee.com/kwbasedb/kwbase/pkg/testutils/testcluster"
+	"gitee.com/kwbasedb/kwbase/pkg/util/leaktest"
+	"gitee.com/kwbasedb/kwbase/pkg/util/randutil"
 	"gitee.com/kwbasedb/kwbase/pkg/util/timeutil"
 )
+
+func TestMain(m *testing.M) {
+	security.SetAssetLoader(securitytest.EmbeddedAssets)
+	randutil.SeedForTests()
+	serverutils.InitTestServerFactory(testserver.TestServerFactory)
+	serverutils.InitTestClusterFactory(testcluster.TestClusterFactory)
+	os.Exit(m.Run())
+}
+
+func TestAuditEvent(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	// start test server
+	params, _ := tests.CreateTestServerParams()
+	s, DB, _ := serverutils.StartServer(t, params)
+	defer s.Stopper().Stop(context.TODO())
+
+	//prepare audit
+	createAuditStmt := "create audit stmttest ON DATABASE FOR CREATE TO root;"
+	enableAuditStmt := "ALTER AUDIT stmttest enable;"
+	openAuditStmt := "SET CLUSTER SETTING audit.enabled=true;"
+
+	if _, err := DB.Exec(openAuditStmt); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := DB.Exec(createAuditStmt); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := DB.Exec(enableAuditStmt); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := DB.Exec("CREATE DATABASE test"); err != nil {
+		t.Fatal(err)
+	}
+}
 
 func TestMakeAuditInfo_Basic(t *testing.T) {
 	start := timeutil.Now().Add(-2 * time.Second)
 	addr := &net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 5432}
 
-	ai := MakeAuditInfo(start,
+	ai := server.MakeAuditInfo(start,
 		"alice",
 		[]string{"admin", "dev"},
 		target.OperationType("TEST_OP"),
@@ -57,8 +104,8 @@ func TestMakeAuditInfo_Basic(t *testing.T) {
 	if ai.Result == nil {
 		t.Fatalf("expected Result not nil")
 	}
-	if ai.Result.Status != ExecSuccess {
-		t.Fatalf("expected result status %s, got %s", ExecSuccess, ai.Result.Status)
+	if ai.Result.Status != server.ExecSuccess {
+		t.Fatalf("expected result status %s, got %s", server.ExecSuccess, ai.Result.Status)
 	}
 	// elapsed should be non-negative
 	if ai.Elapsed < 0 {
@@ -67,14 +114,14 @@ func TestMakeAuditInfo_Basic(t *testing.T) {
 }
 
 func TestSetResult_ErrorAndRows(t *testing.T) {
-	var ai AuditInfo
+	var ai server.AuditInfo
 	ai.SetResult(errors.New("boom"), 5)
 
 	if ai.Result == nil {
 		t.Fatalf("expected Result not nil")
 	}
-	if ai.Result.Status != ExecFail {
-		t.Fatalf("expected status %s, got %s", ExecFail, ai.Result.Status)
+	if ai.Result.Status != server.ExecFail {
+		t.Fatalf("expected status %s, got %s", server.ExecFail, ai.Result.Status)
 	}
 	if ai.Result.ErrMsg != "boom" {
 		t.Fatalf("expected ErrMsg 'boom', got %q", ai.Result.ErrMsg)
@@ -85,7 +132,7 @@ func TestSetResult_ErrorAndRows(t *testing.T) {
 }
 
 func TestTarget_SetAndGet(t *testing.T) {
-	var ai AuditInfo
+	var ai server.AuditInfo
 	ai.SetTargetType(target.AuditObjectType("table"))
 	ai.SetTarget(42, "users", []string{"col1", "col2"})
 
@@ -116,7 +163,7 @@ func TestTarget_SetAndGet(t *testing.T) {
 }
 
 func TestSetClient_FromSessionData(t *testing.T) {
-	var ai AuditInfo
+	var ai server.AuditInfo
 	addr := &net.TCPAddr{IP: net.ParseIP("10.0.0.1"), Port: 6000}
 	sd := &sessiondata.SessionData{
 		ApplicationName: "myapp",
