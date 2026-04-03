@@ -478,7 +478,7 @@ TEST_F(TestTagTable, Create_MultipleVersions) {
   new_tag.m_flag = 0;
   schema_v2.push_back(new_tag);
 
-  int result = tag_table.create(schema_v2, table_version_ + 1, {}, err_info);
+  int result = tag_table.addNewPartitionVersion(schema_v2, table_version_ + 1, err_info);
 
   EXPECT_EQ(result, 0);
 }
