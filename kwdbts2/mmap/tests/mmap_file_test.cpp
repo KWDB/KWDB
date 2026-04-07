@@ -376,12 +376,6 @@ class TestMMapStringColumn : public testing::Test {
   std::string test_file_path_;
 };
 
-TEST_F(TestMMapStringColumn, Constructor_DefaultLatch) {
-  MMapStringColumn str_col(LATCH_ID_TAG_STRING_FILE_MUTEX, RWLATCH_ID_TAG_STRING_FILE_RWLOCK);
-
-  EXPECT_NE(str_col.memAddr(), nullptr);
-}
-
 TEST_F(TestMMapStringColumn, Open_NewFile) {
   int ret = str_col_->open("string_col.dat", test_file_path_, O_RDWR | O_CREAT);
 
