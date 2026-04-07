@@ -606,6 +606,141 @@ TEST_F(TestTagTable, AlterTableTag_DropColumn) {
   EXPECT_GE(result, 0);
 }
 
+TEST_F(TestTagTable, Sync_Success) {
+  TagTable tag_table(db_path_, tbl_sub_path_, table_id_, entity_group_id_);
+  ErrorInfo err_info;
+  ASSERT_EQ(CreateTagTableWithData(&tag_table, err_info), 0);
+
+  int result = tag_table.sync(MS_SYNC);
+
+  EXPECT_EQ(result, 0);
+}
+
+TEST_F(TestTagTable, Sync_WithLSN) {
+  TagTable tag_table(db_path_, tbl_sub_path_, table_id_, entity_group_id_);
+  ErrorInfo err_info;
+  ASSERT_EQ(CreateTagTableWithData(&tag_table, err_info), 0);
+
+  kwdbts::TS_OSN lsn = 1000;
+  tag_table.sync_with_lsn(lsn);
+
+  SUCCEED();
+}
+
+TEST_F(TestTagTable, GenTagPack_NotExist) {
+  TagTable tag_table(db_path_, tbl_sub_path_, table_id_, entity_group_id_);
+  ErrorInfo err_info;
+  ASSERT_EQ(CreateTagTableWithData(&tag_table, err_info), 0);
+
+  char ptag_data[64] = "nonexistent";
+
+  auto result = tag_table.GenTagPack(ptag_data, strlen(ptag_data));
+
+  EXPECT_EQ(result, nullptr);
+}
+
+TEST_F(TestTagTable, HasEntityTag_NotExist) {
+  TagTable tag_table(db_path_, tbl_sub_path_, table_id_, entity_group_id_);
+  ErrorInfo err_info;
+  ASSERT_EQ(CreateTagTableWithData(&tag_table, err_info), 0);
+
+  int32_t sub_group_id = 1;
+  int32_t entity_id = 999;
+
+  bool result = tag_table.HasEntityTag(sub_group_id, entity_id);
+
+  EXPECT_FALSE(result);
+}
+
+TEST_F(TestTagTable, GetEntityTag_NotExist) {
+  TagTable tag_table(db_path_, tbl_sub_path_, table_id_, entity_group_id_);
+  ErrorInfo err_info;
+  ASSERT_EQ(CreateTagTableWithData(&tag_table, err_info), 0);
+
+  int32_t sub_group_id = 1;
+  int32_t entity_id = 999;
+  kwdbts::TS_OSN osn = 0;
+
+  auto result = tag_table.GetEntityTag(sub_group_id, entity_id, osn);
+
+  EXPECT_EQ(result.first, INVALID_TABLE_VERSION_ID);
+  EXPECT_EQ(result.second, 0);
+}
+
+TEST_F(TestTagTable, GetNTagIndexInfo_Empty) {
+  TagTable tag_table(db_path_, tbl_sub_path_, table_id_, entity_group_id_);
+  ErrorInfo err_info;
+  ASSERT_EQ(CreateTagTableWithData(&tag_table, err_info), 0);
+
+  std::vector<uint32_t> result = tag_table.GetNTagIndexInfo(table_version_, 1);
+
+  EXPECT_TRUE(result.empty());
+}
+
+TEST_F(TestTagTable, GetAllNTagIndexs_Empty) {
+  TagTable tag_table(db_path_, tbl_sub_path_, table_id_, entity_group_id_);
+  ErrorInfo err_info;
+  ASSERT_EQ(CreateTagTableWithData(&tag_table, err_info), 0);
+
+  auto result = tag_table.GetAllNTagIndexs(table_version_);
+
+  EXPECT_TRUE(result.empty());
+}
+
+TEST_F(TestTagTable, UndoAlterTagTable_VersionBehind) {
+  TagTable tag_table(db_path_, tbl_sub_path_, table_id_, entity_group_id_);
+  ErrorInfo err_info;
+  ASSERT_EQ(CreateTagTableWithData(&tag_table, err_info), 0);
+
+  int result = tag_table.UndoAlterTagTable(0, 1, err_info);
+
+  EXPECT_EQ(result, 0);
+}
+
+TEST_F(TestTagTable, DropHashIndex_InvalidVersion) {
+  TagTable tag_table(db_path_, tbl_sub_path_, table_id_, entity_group_id_);
+  ErrorInfo err_info;
+  ASSERT_EQ(CreateTagTableWithData(&tag_table, err_info), 0);
+
+  uint32_t drop_index_id = 1;
+  int result = tag_table.DropHashIndex(drop_index_id, table_version_);
+
+  EXPECT_GE(result, 0);
+}
+
+TEST_F(TestTagTable, UndoCreateHashIndex_VersionBehind) {
+  TagTable tag_table(db_path_, tbl_sub_path_, table_id_, entity_group_id_);
+  ErrorInfo err_info;
+  ASSERT_EQ(CreateTagTableWithData(&tag_table, err_info), 0);
+
+  uint32_t index_id = 1;
+  int result = tag_table.UndoCreateHashIndex(index_id, 0, 1, err_info);
+
+  EXPECT_EQ(result, 0);
+}
+
+TEST_F(TestTagTable, UndoDropHashIndex_InvalidIndex) {
+  TagTable tag_table(db_path_, tbl_sub_path_, table_id_, entity_group_id_);
+  ErrorInfo err_info;
+  ASSERT_EQ(CreateTagTableWithData(&tag_table, err_info), 0);
+
+  std::vector<uint32_t> tags = {2};
+  uint32_t index_id = 999;
+  int result = tag_table.UndoDropHashIndex(tags, index_id, 0, 1, err_info);
+
+  EXPECT_EQ(result, 0);
+}
+
+TEST_F(TestTagTable, Init_Success) {
+  TagTable tag_table(db_path_, tbl_sub_path_, table_id_, entity_group_id_);
+  ErrorInfo err_info;
+  ASSERT_EQ(CreateTagTableWithData(&tag_table, err_info), 0);
+
+  KStatus status = tag_table.Init();
+
+  EXPECT_EQ(status, KStatus::SUCCESS);
+}
+
 class TestTagPartitionTableManager : public testing::Test {
  protected:
   static void SetUpTestCase() {
@@ -717,4 +852,63 @@ TEST_F(TestTagPartitionTableManager, CreateTagPartitionTable_Duplicate) {
   int result = part_mgr.CreateTagPartitionTable(schema_, table_version_, err_info);
 
   EXPECT_EQ(result, 0);
+}
+
+TEST_F(TestTagPartitionTableManager, GetAllPartitionTablesLessVersion) {
+  TagPartitionTableManager part_mgr(db_path_, tbl_sub_path_, table_id_, entity_group_id_);
+  ErrorInfo err_info;
+  part_mgr.CreateTagPartitionTable(schema_, table_version_, err_info);
+
+  std::vector<TagPartitionTable*> tag_part_tables;
+  part_mgr.GetAllPartitionTablesLessVersion(tag_part_tables, table_version_);
+
+  EXPECT_GE(tag_part_tables.size(), 1);
+}
+
+TEST_F(TestTagPartitionTableManager, Init_Success) {
+  TagPartitionTableManager part_mgr(db_path_, tbl_sub_path_, table_id_, entity_group_id_);
+  ErrorInfo err_info;
+
+  int result = part_mgr.Init(err_info);
+
+  EXPECT_EQ(result, 0);
+}
+
+TEST_F(TestTagPartitionTableManager, RollbackPartitionTableVersion) {
+  TagPartitionTableManager part_mgr(db_path_, tbl_sub_path_, table_id_, entity_group_id_);
+  ErrorInfo err_info;
+  part_mgr.CreateTagPartitionTable(schema_, table_version_, err_info);
+
+  int result = part_mgr.RollbackPartitionTableVersion(table_version_, err_info);
+
+  EXPECT_EQ(result, 0);
+}
+
+TEST_F(TestTagPartitionTableManager, OpenTagPartitionTable_AlreadyOpened) {
+  TagPartitionTableManager part_mgr(db_path_, tbl_sub_path_, table_id_, entity_group_id_);
+  ErrorInfo err_info;
+  ASSERT_EQ(part_mgr.CreateTagPartitionTable(schema_, table_version_, err_info), 0);
+  ASSERT_EQ(part_mgr.OpenTagPartitionTable(table_version_, err_info), 0);
+
+  int result = part_mgr.OpenTagPartitionTable(table_version_, err_info);
+
+  EXPECT_GE(result, 0);
+}
+
+TEST_F(TestTagPartitionTableManager, GetPartitionTable_AfterOpen) {
+  {
+    TagPartitionTableManager part_mgr(db_path_, tbl_sub_path_, table_id_, entity_group_id_);
+    ErrorInfo err_info;
+    ASSERT_EQ(part_mgr.CreateTagPartitionTable(schema_, table_version_, err_info), 0);
+  }
+
+  {
+    TagPartitionTableManager part_mgr(db_path_, tbl_sub_path_, table_id_, entity_group_id_);
+    ErrorInfo err_info;
+    ASSERT_EQ(part_mgr.OpenTagPartitionTable(table_version_, err_info), 0);
+
+    TagPartitionTable* part_table = part_mgr.GetPartitionTable(table_version_);
+
+    EXPECT_NE(part_table, nullptr);
+  }
 }
