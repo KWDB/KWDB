@@ -716,9 +716,10 @@ int TagTable::getDataWithRowID(TagPartitionTable* tag_partition, std::pair<Table
   auto scan_row_info = GetEntityTag(cur_entity.subGroupId, cur_entity.entityId, osn);
   if (scan_row_info.second == 0) {
     // not found
-    LOG_ERROR("table[%lu] entity[%u,%u] not found at osn[%lu].",
+    LOG_INFO("table[%lu] entity[%u, %u] not exist at osn[%lu]. ignore.",
               m_table_id, cur_entity.subGroupId, cur_entity.entityId, osn);
-    return KStatus::FAIL;
+    entity_id_list->pop_back();
+    return 1;
   }
   cur_entity.op_with_osn = std::make_shared<OperatorInfoOfRecord>
   (OperatorTypeOfRecord::OP_TYPE_INSERT, create_osn, scan_row_info.first, scan_row_info.second);
@@ -2589,7 +2590,6 @@ std::pair<TableVersionID, TagPartitionTableRowID> TagTable::GetEntityTag(int32_t
   if (idex_ret.second != 0) {
     auto tag_partition_table = m_partition_mgr_->GetPartitionTable(idex_ret.first);
     if (nullptr != tag_partition_table) {
-      LOG_WARN("primary key record's table_version[%u] does not exist.", idex_ret.first);
       OperateType type;
       TS_OSN op_osn;
       tag_partition_table->GetOpTypeAtOSN(idex_ret.second, osn, type, op_osn);
@@ -2599,6 +2599,7 @@ std::pair<TableVersionID, TagPartitionTableRowID> TagTable::GetEntityTag(int32_t
     }
   }
   if (ret.second == 0) {
+    LOG_INFO("scan all tag tables for entity[%u, %u] with osn[%lu]", sub_group_id, entity_id, osn);
     ret = ScanTagByEntityID(sub_group_id, entity_id, osn);
   }
   return ret;

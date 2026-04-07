@@ -352,4 +352,5 @@ TEST_F(TestV2Iterator, basic_del_1) {
   s = ts_table->GetEntityIdList(ctx_,  {pkey.data()}, tags_index_id, tags, TSTagOpType::opUnKnow, scan_tags, &hps, &entity_store, &res, &count_32, 1, 351);
   ASSERT_EQ(s, KStatus::SUCCESS);
   ASSERT_EQ(entity_store.size(), 1);
+  ASSERT_EQ(res.data.size(), 1);
 }
