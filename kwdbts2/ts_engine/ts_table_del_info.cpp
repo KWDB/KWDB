@@ -378,9 +378,8 @@ KStatus STTableRangeDelAndTagInfo::WriteDelAndTagInfo(kwdbContext_p ctx, TSSlice
         uint32_t hash_point = 0;
         p_tag->getHashpointByRowNum(row_info.second, &hash_point);
         if (hash_point != p_hash_point) {
-          LOG_ERROR("payload hashpoint[%u], not equal with existed tag[%lu,%lu] hashpoint[%u]",
+          LOG_WARN("payload hashpoint[%u], not equal with existed tag[%lu,%lu] hashpoint[%u]",
             p_hash_point, row_info.first, row_info.second, hash_point);
-          return KStatus::FAIL;
         }
       }
     }

@@ -33,6 +33,7 @@ class TestEngineSnapshotImgrate : public ::testing::Test {
   TSEngineImpl* ts_engine_desc_{nullptr};
 
   static void SetUpTestCase() {
+    EngineOptions::is_single_node_ = false;
     KWDBDynamicThreadPool::GetThreadPool().InitImplicitly();
   }
 
@@ -1354,8 +1355,32 @@ TEST_F(TestEngineSnapshotImgrate, ConvertWrongHashPoint) {
   ASSERT_EQ(s, KStatus::SUCCESS);
   ASSERT_TRUE(snapshot_data.data != nullptr);
   s = ts_engine_desc_->WriteSnapshotBatchData(ctx_, desc_snapshot_id, snapshot_data, is_dropped);
-  ASSERT_EQ(s, KStatus::FAIL);
+  ASSERT_EQ(s, KStatus::SUCCESS);
   free(snapshot_data.data);
+
+  std::vector<k_uint32> scan_cols = {0};
+  std::vector<KwOSNSpan> osn_spans;
+  osn_spans.push_back({0, 10187});
+  std::vector<KwTsSpan> ts_spans;
+  ts_spans.push_back({INT64_MIN, INT64_MAX});
+  BaseEntityIterator *iter;
+  std::vector<kwdbts::EntityResultIndex> entity_id_list;
+  ResultSet rs;
+  rs.setColumnNum(1);
+  uint32_t count;
+  std::vector<HashIdSpan> hash_id_spans;
+  hash_id_spans.push_back({0, UINT64_MAX});
+  s = ts_table_v2->GetTagIteratorByOSN(ctx_, 1, scan_cols, osn_spans, UINT64_MAX, &hash_id_spans, &iter);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  s = iter->Next(&entity_id_list, &rs, &count);
+  ASSERT_EQ(s, KStatus::SUCCESS);
+  ASSERT_EQ(count, 1);
+  ASSERT_EQ(entity_id_list.size(), 1);
+  ASSERT_EQ(entity_id_list[0].hash_point, 100);
+  auto op_r_info = reinterpret_cast<OperatorInfoOfRecord*>(entity_id_list[0].op_with_osn.get());
+  ASSERT_EQ(op_r_info->osn, 100);
+  ASSERT_EQ(op_r_info->type, OperatorTypeOfRecord::OP_TYPE_INSERT);
+  delete iter;
   
   s = ts_engine_src_->DropTsTable(ctx_, cur_table_id);
   ASSERT_EQ(s, KStatus::SUCCESS);

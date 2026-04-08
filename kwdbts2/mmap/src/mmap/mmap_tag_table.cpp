@@ -556,7 +556,7 @@ int TagTable::DeleteTagRecord(const char *primary_tags, int len, ErrorInfo& err_
     return -1;
   }
   auto tag_info = tag_part_table->getTagDataInfoByRowNum(ret.second);
-  if (tag_info->osn[tag_info->operate_idx] > osn) {
+  if (tag_info->osn[tag_info->operate_idx] > osn && operate_type != OperateType::DeleteBySnapshot) {
     LOG_WARN("tag insert osn[%lu] is behind current delete osn[%lu], ignore this deletion.",
               tag_info->osn[tag_info->operate_idx], osn );
     return 0;
