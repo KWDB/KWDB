@@ -765,9 +765,18 @@ func (f *ExprFmtCtx) FormatTSScanFlags(scanFlag *TSScanFlags, tp treeprinter.Nod
 
 	if scanFlag.PrimaryTagValues != nil {
 		tp1 := tp.Child("primarytagvalues:")
-		for k, v := range scanFlag.PrimaryTagValues {
+		keys := make([]uint32, 0, len(scanFlag.PrimaryTagValues))
+		for k := range scanFlag.PrimaryTagValues {
+			keys = append(keys, k)
+		}
+
+		sort.Slice(keys, func(i, j int) bool {
+			return keys[i] < keys[j]
+		})
+
+		for _, k := range keys {
 			ret1 := ""
-			for _, s := range v {
+			for _, s := range scanFlag.PrimaryTagValues[k] {
 				ret1 += s + ","
 			}
 			tp1.Childf("%v: %s", k, ret1)

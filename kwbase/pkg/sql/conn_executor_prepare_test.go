@@ -83,7 +83,7 @@ func TestPrepareWithPlaceholders(t *testing.T) {
 			require.NoError(t, err)
 		}
 
-		rows, err := sqlDB.Query("SELECT COUNT(*) FROM placeholder_test")
+		rows, err := sqlDB.Query("select count(*) FROM placeholder_test")
 		require.NoError(t, err)
 		defer rows.Close()
 
@@ -192,7 +192,7 @@ func TestPrepareInsertDirect(t *testing.T) {
 		require.NoError(t, err)
 
 		var count int
-		err = sqlDB.QueryRow("SELECT COUNT(*) FROM insert_direct_test").Scan(&count)
+		err = sqlDB.QueryRow("select count(*) FROM insert_direct_test").Scan(&count)
 		require.NoError(t, err)
 		require.Equal(t, 1, count)
 	})

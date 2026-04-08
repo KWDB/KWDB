@@ -14,13 +14,13 @@ package sql
 import (
 	"fmt"
 	"testing"
-	"time"
 
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 	"gitee.com/kwbasedb/kwbase/pkg/util/fsm"
 	"gitee.com/kwbasedb/kwbase/pkg/util/hlc"
 	"gitee.com/kwbasedb/kwbase/pkg/util/leaktest"
+	"gitee.com/kwbasedb/kwbase/pkg/util/timeutil"
 	"github.com/stretchr/testify/require"
 )
 
@@ -73,7 +73,7 @@ func TestConnFSMStatesAndEvents(t *testing.T) {
 	ev.Event()
 
 	// Payloads
-	ts := time.Now()
+	ts := timeutil.Now()
 	ht := hlc.Timestamp{}
 	payload := makeEventTxnStartPayload(roachpb.NormalUserPriority, tree.ReadWrite, ts, &ht, transitionCtx{}, tree.SerializableIsolation)
 	require.Equal(t, roachpb.NormalUserPriority, payload.pri)

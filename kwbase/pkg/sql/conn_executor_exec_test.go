@@ -65,7 +65,7 @@ func TestCommitSQLTransaction(t *testing.T) {
 		_, _ = sqlDB.Exec("COMMIT")
 
 		var count int
-		_ = sqlDB.QueryRow("SELECT COUNT(*) FROM test_commit WHERE id = 1").Scan(&count)
+		_ = sqlDB.QueryRow("select count(*) from test_commit where id = 1").Scan(&count)
 		require.Equal(t, 1, count)
 	})
 
@@ -76,7 +76,7 @@ func TestCommitSQLTransaction(t *testing.T) {
 		_, _ = sqlDB.Exec("COMMIT")
 
 		var count int
-		_ = sqlDB.QueryRow("SELECT COUNT(*) FROM test_commit WHERE id IN (2, 3)").Scan(&count)
+		_ = sqlDB.QueryRow("select count(*) from test_commit where id IN (2, 3)").Scan(&count)
 		require.Equal(t, 2, count)
 	})
 }
@@ -96,7 +96,7 @@ func TestRollbackSQLTransaction(t *testing.T) {
 		_, _ = sqlDB.Exec("ROLLBACK")
 
 		var count int
-		_ = sqlDB.QueryRow("SELECT COUNT(*) FROM test_rollback WHERE id = 1").Scan(&count)
+		_ = sqlDB.QueryRow("select count(*) FROM test_rollback WHERE id = 1").Scan(&count)
 		require.Equal(t, 0, count)
 	})
 
@@ -107,7 +107,7 @@ func TestRollbackSQLTransaction(t *testing.T) {
 		_, _ = sqlDB.Exec("ROLLBACK")
 
 		var count int
-		_ = sqlDB.QueryRow("SELECT COUNT(*) FROM test_rollback WHERE id IN (2, 3)").Scan(&count)
+		_ = sqlDB.QueryRow("select count(*) FROM test_rollback WHERE id IN (2, 3)").Scan(&count)
 		require.Equal(t, 0, count)
 	})
 
@@ -120,10 +120,10 @@ func TestRollbackSQLTransaction(t *testing.T) {
 		_, _ = sqlDB.Exec("COMMIT")
 
 		var count int
-		_ = sqlDB.QueryRow("SELECT COUNT(*) FROM test_rollback WHERE id = 4").Scan(&count)
+		_ = sqlDB.QueryRow("select count(*) FROM test_rollback WHERE id = 4").Scan(&count)
 		require.Equal(t, 1, count)
 
-		_ = sqlDB.QueryRow("SELECT COUNT(*) FROM test_rollback WHERE id = 5").Scan(&count)
+		_ = sqlDB.QueryRow("select count(*) FROM test_rollback WHERE id = 5").Scan(&count)
 		require.Equal(t, 0, count)
 	})
 }
@@ -142,7 +142,7 @@ func TestAutoCommit(t *testing.T) {
 		_, _ = sqlDB.Exec("INSERT INTO test_autocommit VALUES (1)")
 
 		var count int
-		_ = sqlDB.QueryRow("SELECT COUNT(*) FROM test_autocommit WHERE id = 1").Scan(&count)
+		_ = sqlDB.QueryRow("select count(*) FROM test_autocommit WHERE id = 1").Scan(&count)
 		require.Equal(t, 1, count)
 	})
 
@@ -157,7 +157,7 @@ func TestAutoCommit(t *testing.T) {
 		_, _ = sqlDB.Exec("INSERT INTO test_autocommit VALUES (2)")
 
 		var count int
-		_ = sqlDB.QueryRow("SELECT COUNT(*) FROM test_autocommit WHERE id = 2").Scan(&count)
+		_ = sqlDB.QueryRow("select count(*) FROM test_autocommit WHERE id = 2").Scan(&count)
 		require.Equal(t, 1, count)
 	})
 }
@@ -230,7 +230,7 @@ func TestStatementContextManagement(t *testing.T) {
 
 	t.Run("statement context with select", func(t *testing.T) {
 		var result int
-		_ = sqlDB.QueryRow("SELECT COUNT(*) FROM test_stmt_ctx").Scan(&result)
+		_ = sqlDB.QueryRow("select count(*) FROM test_stmt_ctx").Scan(&result)
 		require.Equal(t, 0, result)
 	})
 
@@ -247,7 +247,7 @@ func TestStatementContextManagement(t *testing.T) {
 		_, _ = sqlDB.Exec("INSERT INTO test_stmt_ctx VALUES (2, 'txn data')")
 
 		var count int
-		_ = sqlDB.QueryRow("SELECT COUNT(*) FROM test_stmt_ctx").Scan(&count)
+		_ = sqlDB.QueryRow("select count(*) FROM test_stmt_ctx").Scan(&count)
 		require.Equal(t, 2, count)
 
 		_, _ = sqlDB.Exec("COMMIT")
@@ -264,7 +264,7 @@ func TestPortalExhaustion(t *testing.T) {
 	_, _ = sqlDB.Exec("CREATE TABLE IF NOT EXISTS test_portal (id INT, name TEXT)")
 
 	t.Run("execute portal once", func(t *testing.T) {
-		_, _ = sqlDB.Exec("PREPARE p1 AS SELECT COUNT(*) FROM test_portal")
+		_, _ = sqlDB.Exec("PREPARE p1 AS select count(*) FROM test_portal")
 		_, _ = sqlDB.Exec("EXECUTE p1")
 	})
 
@@ -339,7 +339,7 @@ func TestStmtHasNoData(t *testing.T) {
 		_, _ = sqlDB.Exec("INSERT INTO test_no_data VALUES (2, 'test')")
 
 		var count int
-		_ = sqlDB.QueryRow("SELECT COUNT(*) FROM test_no_data").Scan(&count)
+		_ = sqlDB.QueryRow("select count(*) FROM test_no_data").Scan(&count)
 		require.Equal(t, 1, count)
 
 		var value string
@@ -363,7 +363,7 @@ func TestStatementProgress(t *testing.T) {
 		_, _ = sqlDB.Exec("COMMIT")
 
 		var count int
-		_ = sqlDB.QueryRow("SELECT COUNT(*) FROM test_progress").Scan(&count)
+		_ = sqlDB.QueryRow("select count(*) FROM test_progress").Scan(&count)
 		require.Equal(t, 1, count)
 	})
 }
@@ -424,7 +424,7 @@ func TestTransactionStates(t *testing.T) {
 
 	t.Run("state no transaction", func(t *testing.T) {
 		var count int
-		_ = sqlDB.QueryRow("SELECT COUNT(*) FROM test_states").Scan(&count)
+		_ = sqlDB.QueryRow("select count(*) FROM test_states").Scan(&count)
 		require.Equal(t, 0, count)
 	})
 
@@ -447,7 +447,7 @@ func TestTransactionStates(t *testing.T) {
 		_, _ = sqlDB.Exec("INSERT INTO test_states VALUES (3)")
 
 		var count int
-		_ = sqlDB.QueryRow("SELECT COUNT(*) FROM test_states").Scan(&count)
+		_ = sqlDB.QueryRow("select count(*) FROM test_states").Scan(&count)
 
 		_, _ = sqlDB.Exec("COMMIT")
 	})
@@ -511,7 +511,7 @@ func TestSessionIdleTimeout(t *testing.T) {
 		_, _ = sqlDB.Exec("INSERT INTO test_idle_timeout VALUES (1)")
 
 		var count int
-		_ = sqlDB.QueryRow("SELECT COUNT(*) FROM test_idle_timeout").Scan(&count)
+		_ = sqlDB.QueryRow("select count(*) FROM test_idle_timeout").Scan(&count)
 		require.Equal(t, 1, count)
 	})
 
@@ -536,7 +536,7 @@ func TestDedupClientNotice(t *testing.T) {
 		_, _ = sqlDB.Exec("COMMIT")
 
 		var count int
-		_ = sqlDB.QueryRow("SELECT COUNT(*) FROM test_dedup").Scan(&count)
+		_ = sqlDB.QueryRow("select count(*) FROM test_dedup").Scan(&count)
 		require.Equal(t, 1, count)
 	})
 }

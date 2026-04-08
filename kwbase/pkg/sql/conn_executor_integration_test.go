@@ -47,7 +47,7 @@ func TestConnectionHandlerDatabaseOperations(t *testing.T) {
 		require.NoError(t, err)
 
 		var count int
-		err = sqlDB.QueryRow("SELECT COUNT(*) FROM test_table").Scan(&count)
+		err = sqlDB.QueryRow("select count(*) FROM test_table").Scan(&count)
 		require.NoError(t, err)
 		require.Equal(t, 1, count)
 	})
@@ -135,7 +135,7 @@ func TestConnectionHandlerPreparedStatements(t *testing.T) {
 		require.NoError(t, err)
 
 		var count int
-		err = sqlDB.QueryRow("SELECT COUNT(*) FROM prep_test WHERE id = 3").Scan(&count)
+		err = sqlDB.QueryRow("select count(*) FROM prep_test WHERE id = 3").Scan(&count)
 		require.NoError(t, err)
 		require.Equal(t, 1, count)
 	})
@@ -399,7 +399,7 @@ func TestConnectionHandlerSavepoints(t *testing.T) {
 		require.NoError(t, err)
 
 		var count int
-		err = sqlDB.QueryRow("SELECT COUNT(*) FROM savepoint_test").Scan(&count)
+		err = sqlDB.QueryRow("select count(*) FROM savepoint_test").Scan(&count)
 		require.NoError(t, err)
 		require.Equal(t, 1, count)
 	})
