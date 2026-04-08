@@ -698,13 +698,21 @@ func (h ConnectionHandler) PushStmt(ctx context.Context, cmd Command) error {
 	return errors.New("stmtBuf is nil")
 }
 
-// CloseStmt connExecutor statement buffer
+// CloseStmt close statement buffer
 func (h ConnectionHandler) CloseStmt() error {
 	if h.ex.stmtBuf != nil {
 		h.ex.stmtBuf.Close()
 		return nil
 	}
 	return errors.New("stmtBuf is nil")
+}
+
+// CloseExecutor close conn executor
+func (h ConnectionHandler) CloseExecutor(ctx context.Context) {
+	if h.ex != nil {
+		r := recover()
+		h.ex.closeWrapper(ctx, r)
+	}
 }
 
 // ServeConn serves a client connection by reading commands from the stmtBuf
@@ -1743,8 +1751,6 @@ func (h ConnectionHandler) ExecRestfulStmt(ctx context.Context) (RestfulRes, err
 	if err := ex.updateTxnRewindPosMaybe(ctx, cmd, pos, advInfo); err != nil {
 		return restRes, err
 	}
-	ex.mon.Stop(ctx)
-	ex.sessionMon.Stop(ctx)
 
 	return restRes, nil
 }
