@@ -56,6 +56,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgcode"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgerror"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/stats"
 	"gitee.com/kwbasedb/kwbase/pkg/util"
 	"gitee.com/kwbasedb/kwbase/pkg/util/timeutil"
@@ -119,6 +120,8 @@ type OptTester struct {
 	seenRules RuleSet
 
 	builder strings.Builder
+	// ts white list
+	whiteList sqlbase.WhiteListMap
 }
 
 // Flags are control knobs for tests. Note that specific testcases can
@@ -209,11 +212,12 @@ type Flags struct {
 // Metadata used by the SQL query is accessed via the catalog.
 func New(catalog cat.Catalog, sql string) *OptTester {
 	ot := &OptTester{
-		catalog: catalog,
-		sql:     sql,
-		ctx:     context.Background(),
-		semaCtx: tree.MakeSemaContext(),
-		evalCtx: tree.MakeTestingEvalContext(cluster.MakeTestingClusterSettings()),
+		catalog:   catalog,
+		sql:       sql,
+		ctx:       context.Background(),
+		semaCtx:   tree.MakeSemaContext(),
+		evalCtx:   tree.MakeTestingEvalContext(cluster.MakeTestingClusterSettings()),
+		whiteList: TestGetWhiteListMap(),
 	}
 
 	// Set any OptTester-wide session flags here.
@@ -455,6 +459,13 @@ func (ot *OptTester) RunCommand(tb testing.TB, d *datadriven.TestData) string {
 
 	case "memo":
 		result, err := ot.Memo()
+		if err != nil {
+			d.Fatalf(tb, "%+v", err)
+		}
+		return result
+
+	case "tsinfo":
+		result, err := ot.TSInfo()
 		if err != nil {
 			d.Fatalf(tb, "%+v", err)
 		}
@@ -770,6 +781,78 @@ func (ot *OptTester) Memo() (string, error) {
 		return "", err
 	}
 	return o.FormatMemo(ot.Flags.MemoFormat), nil
+}
+
+// TestGetWhiteListMap gets bo_white_list to map
+func TestGetWhiteListMap() sqlbase.WhiteListMap {
+	var wl sqlbase.WhiteListMap
+	wl.Map = make(map[uint32]sqlbase.FilterInfo, 0)
+	wl.Mu.Lock()
+	var buffer bytes.Buffer
+	for _, whitelist := range sqlbase.InitWhiteList {
+		buffer.WriteString(whitelist.Name)
+		for _, t := range whitelist.ArgType {
+			buffer.WriteString(strconv.Itoa(int(t)))
+		}
+		key := memo.StringHash(buffer.String())
+		buffer.Reset()
+		wl.Map[key] = sqlbase.FilterInfo{Pos: whitelist.Position, Typ: whitelist.ArgOpt}
+	}
+	wl.Mu.Unlock()
+	return wl
+}
+
+// testExpr save expr all info
+type testExpr1 struct {
+}
+
+// IsTargetExpr checks if it's target expr to handle
+func (p *testExpr1) IsTargetExpr(self opt.Expr) bool {
+
+	return false
+}
+
+// NeedToHandleChild checks if children expr need to be handled
+func (p *testExpr1) NeedToHandleChild() bool {
+	return true
+}
+
+// HandleChildExpr deals with all child expr
+func (p *testExpr1) HandleChildExpr(parent opt.Expr, child opt.Expr) bool {
+	return true
+}
+
+// TSInfo returns a string that shows the ts push down data structure that is constructed
+// by the optimizer.
+func (ot *OptTester) TSInfo() (string, error) {
+	o := ot.makeOptimizer()
+	root, err := ot.optimizeExpr(o)
+	if err != nil {
+		return "", err
+	}
+
+	res := o.Memo().RootExpr().SimpleString(int(memo.ExprFmtHideMiscProps | memo.ExprFmtHideConstraints | memo.ExprFmtHideFuncDeps |
+		memo.ExprFmtHideRuleProps | memo.ExprFmtHideStats | memo.ExprFmtHideCost | memo.ExprFmtHideQualifications | memo.ExprFmtHidePhysProps |
+		memo.ExprFmtHideTypes | memo.ExprFmtHideNotNull | memo.ExprFmtShowEngine))
+
+	relExpr := root.(memo.RelExpr)
+	var test testExpr1
+	relExpr.Walk(&test)
+	relExpr.Private()
+	relExpr.String()
+
+	relExpr.Memo()
+	relExpr.GetAddSynchronizer()
+	relExpr.SetAddSynchronizer()
+	relExpr.ResetAddSynchronizer()
+	relExpr.RequiredPhysical()
+	relExpr.ProvidedPhysical()
+	relExpr.ClearRequiredPhysical()
+	root.IsTSEngine()
+	root.SetEngineTS()
+	relExpr.Rebuild()
+	root.SimpleString(int(memo.ExprFmtHideQualifications))
+	return res, nil
 }
 
 // Expr parses the input directly into an expression; see exprgen.Build.
@@ -1353,6 +1436,8 @@ func (ot *OptTester) buildExpr(factory *norm.Factory) error {
 func (ot *OptTester) makeOptimizer() *xform.Optimizer {
 	var o xform.Optimizer
 	o.Init(&ot.evalCtx, ot.catalog)
+	o.Factory().TSWhiteListMap = &ot.whiteList
+	o.Memo().SetWhiteList(&ot.whiteList)
 	return &o
 }
 

@@ -32,6 +32,7 @@ import (
 	"strings"
 	"unicode"
 
+	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfrapb"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/opt"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/opt/cat"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/opt/props"
@@ -95,6 +96,9 @@ const (
 
 	// ExprFmtHideColumns removes column information.
 	ExprFmtHideColumns
+
+	// ExprFmtShowEngine shows all engine information.
+	ExprFmtShowEngine
 
 	// ExprFmtHideAll shows only the basic structure of the expression.
 	// Note: this flag should be used judiciously, as its meaning changes whenever
@@ -186,7 +190,13 @@ func (f *ExprFmtCtx) formatExpr(e opt.Expr, tp treeprinter.Node) {
 }
 
 func (f *ExprFmtCtx) formatRelational(e RelExpr, tp treeprinter.Node) {
-	md := f.Memo.Metadata()
+	var md *opt.Metadata
+	if f.Memo != nil {
+		md = f.Memo.Metadata()
+	} else {
+		md = e.Memo().Metadata()
+	}
+
 	relational := e.Relational()
 	required := e.RequiredPhysical()
 	if required == nil {
@@ -216,7 +226,7 @@ func (f *ExprFmtCtx) formatRelational(e RelExpr, tp treeprinter.Node) {
 		*WindowExpr, *OpaqueRelExpr, *OpaqueMutationExpr, *OpaqueDDLExpr,
 		*AlterTableSplitExpr, *AlterTableUnsplitExpr, *AlterTableUnsplitAllExpr,
 		*AlterTableRelocateExpr, *ControlJobsExpr, *CancelQueriesExpr,
-		*CancelSessionsExpr, *CreateViewExpr, *ExportExpr:
+		*CancelSessionsExpr, *CreateViewExpr, *ExportExpr, *TSScanExpr:
 		fmt.Fprintf(f.Buffer, "%v", e.Op())
 		FormatPrivate(f, e.Private(), required)
 
@@ -309,6 +319,9 @@ func (f *ExprFmtCtx) formatRelational(e RelExpr, tp treeprinter.Node) {
 		}
 		if !f.HasFlags(ExprFmtHideMiscProps) && private.ErrorOnDup {
 			tp.Childf("error-on-dup")
+		}
+		if f.HasFlags(ExprFmtShowEngine) {
+			tp.Childf("OptFlags: %s", private.OptFlags.String())
 		}
 
 	case *LimitExpr:
@@ -418,6 +431,11 @@ func (f *ExprFmtCtx) formatRelational(e RelExpr, tp treeprinter.Node) {
 				panic(errors.AssertionFailedf("unexpected wait policy"))
 			}
 			tp.Childf("locking: %s%s", strength, wait)
+		}
+
+	case *TSScanExpr:
+		if f.HasFlags(ExprFmtShowEngine) {
+			f.FormatTSScanFlags(&t.Flags, tp)
 		}
 
 	case *LookupJoinExpr:
@@ -705,6 +723,67 @@ func (f *ExprFmtCtx) formatRelational(e RelExpr, tp treeprinter.Node) {
 
 	for i, n := 0, e.ChildCount(); i < n; i++ {
 		f.formatExpr(e.Child(i), tp)
+	}
+
+	if f.HasFlags(ExprFmtShowEngine) {
+		if e.IsTSEngine() {
+			tp.Childf("ts engine")
+		}
+	}
+}
+
+// FormatTSScanFlags Formats tsscan flags
+func (f *ExprFmtCtx) FormatTSScanFlags(scanFlag *TSScanFlags, tp treeprinter.Node) {
+	if scanFlag.AccessMode != -1 {
+		tp.Childf("readmode: %v", execinfrapb.TSTableReadMode(scanFlag.AccessMode).String())
+	}
+
+	if scanFlag.ScanAggs {
+		tp.Childf("scanaggs")
+	}
+
+	if scanFlag.TagFilter != nil {
+		tp1 := tp.Child("tagfilter")
+		for i, n := 0, scanFlag.TagFilter.ChildCount(); i < n; i++ {
+			f.formatExpr(scanFlag.TagFilter.Child(i), tp1)
+		}
+	}
+
+	if scanFlag.BlockFilter != nil {
+		tp1 := tp.Child("blockfilter")
+		for i, n := 0, scanFlag.BlockFilter.ChildCount(); i < n; i++ {
+			f.formatExpr(scanFlag.BlockFilter.Child(i), tp1)
+		}
+	}
+
+	if scanFlag.PrimaryTagFilter != nil {
+		tp1 := tp.Child("ptagfilter:")
+		for i, n := 0, scanFlag.PrimaryTagFilter.ChildCount(); i < n; i++ {
+			f.formatExpr(scanFlag.PrimaryTagFilter.Child(i), tp1)
+		}
+	}
+
+	if scanFlag.PrimaryTagValues != nil {
+		tp1 := tp.Child("primarytagvalues:")
+		for k, v := range scanFlag.PrimaryTagValues {
+			ret1 := ""
+			for _, s := range v {
+				ret1 += s + ","
+			}
+			tp1.Childf("%v: %s", k, ret1)
+		}
+	}
+
+	if scanFlag.TagIndexFilter != nil {
+		tp1 := tp.Child("tagindexfilter:")
+		for i, n := 0, scanFlag.TagIndexFilter.ChildCount(); i < n; i++ {
+			f.formatExpr(scanFlag.TagIndexFilter.Child(i), tp1)
+		}
+		tp.Childf("tagindex:%s", scanFlag.TagIndex.String())
+	}
+
+	if scanFlag.Fill != nil {
+		tp.Childf("%v", scanFlag.Fill.String())
 	}
 }
 
@@ -1155,14 +1234,16 @@ func FormatPrivate(f *ExprFmtCtx, private interface{}, physProps *physical.Requi
 
 	case *ScanPrivate:
 		// Don't output name of index if it's the primary index.
-		tab := f.Memo.metadata.Table(t.Table)
-		if t.Index == cat.PrimaryIndex {
-			fmt.Fprintf(f.Buffer, " %s", tableAlias(f, t.Table))
-		} else {
-			fmt.Fprintf(f.Buffer, " %s@%s", tableAlias(f, t.Table), tab.Index(t.Index).Name())
-		}
-		if ScanIsReverseFn(f.Memo.Metadata(), t, &physProps.Ordering) {
-			f.Buffer.WriteString(",rev")
+		if f.Memo != nil {
+			tab := f.Memo.metadata.Table(t.Table)
+			if t.Index == cat.PrimaryIndex {
+				fmt.Fprintf(f.Buffer, " %s", tableAlias(f, t.Table))
+			} else {
+				fmt.Fprintf(f.Buffer, " %s@%s", tableAlias(f, t.Table), tab.Index(t.Index).Name())
+			}
+			if ScanIsReverseFn(f.Memo.Metadata(), t, &physProps.Ordering) {
+				f.Buffer.WriteString(",rev")
+			}
 		}
 
 	case *VirtualScanPrivate:
@@ -1268,6 +1349,10 @@ func FormatPrivate(f *ExprFmtCtx, private interface{}, physProps *physical.Requi
 
 	case *ExplainPrivate, *opt.ColSet, *SetPrivate, *types.T, *ExportPrivate:
 		// Don't show anything, because it's mostly redundant.
+
+	case *TSScanPrivate:
+		// Don't output name of index if it's the primary index.
+		fmt.Fprintf(f.Buffer, " %s", tableAlias(f, t.Table))
 
 	default:
 		fmt.Fprintf(f.Buffer, " %v", private)

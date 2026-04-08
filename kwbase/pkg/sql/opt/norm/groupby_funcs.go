@@ -392,11 +392,11 @@ func onlyTagPrivateTSScan(tsScan *memo.TSScanExpr) *memo.TSScanPrivate {
 		Flags: struct {
 			AccessMode         int
 			ScanAggs           bool
-			TagFilter          opt.Exprs
+			TagFilter          memo.FiltersExpr
 			BlockFilter        memo.FiltersExpr
-			PrimaryTagFilter   opt.Exprs
+			PrimaryTagFilter   memo.FiltersExpr
 			PrimaryTagValues   memo.PTagValues
-			TagIndexFilter     opt.Exprs
+			TagIndexFilter     memo.FiltersExpr
 			TagIndex           memo.TagIndexInfo
 			HintType           keys.ScanMethodHintType
 			ExploreOrderedScan bool
@@ -429,11 +429,11 @@ func newTSScanPrivateFromOldPrivate(
 		Flags: struct {
 			AccessMode         int
 			ScanAggs           bool
-			TagFilter          opt.Exprs
+			TagFilter          memo.FiltersExpr
 			BlockFilter        memo.FiltersExpr
-			PrimaryTagFilter   opt.Exprs
+			PrimaryTagFilter   memo.FiltersExpr
 			PrimaryTagValues   memo.PTagValues
-			TagIndexFilter     opt.Exprs
+			TagIndexFilter     memo.FiltersExpr
 			TagIndex           memo.TagIndexInfo
 			HintType           keys.ScanMethodHintType
 			ExploreOrderedScan bool

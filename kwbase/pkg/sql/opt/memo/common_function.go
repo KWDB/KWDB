@@ -360,8 +360,8 @@ func CheckFilterExprCanExecInTSEngine(src opt.Expr, pos ExprPos, f CheckFunc) bo
 // e is the original filter expr.
 // m record the table cache.
 func GetPrimaryTagFilterValue(
-	private *TSScanPrivate, e opt.Expr, m *Memo,
-) (opt.Expr, []opt.Expr, []opt.Expr) {
+	private *TSScanPrivate, e opt.ScalarExpr, m *Memo,
+) (opt.ScalarExpr, FiltersExpr, FiltersExpr) {
 	tabID := private.Table
 	flags := &private.Flags
 	table := m.Metadata().TableMeta(tabID).Table
@@ -385,11 +385,11 @@ func GetPrimaryTagFilterValue(
 	if tagFilter != nil && flags.HintType == keys.ForceTagTableHint {
 		return leave, tagFilter, nil
 	}
-	var tags []opt.Expr
-	var PrimaryTags []opt.Expr
+	var tags FiltersExpr
+	var PrimaryTags FiltersExpr
 	flags.PrimaryTagValues = make(map[uint32][]string, 1)
 	for i := 0; i < len(tagFilter); i++ {
-		if !GetPrimaryTagValues(tagFilter[i], primaryColMap, &flags.PrimaryTagValues) {
+		if !GetPrimaryTagValues(tagFilter[i].Condition, primaryColMap, &flags.PrimaryTagValues) {
 			tags = append(tags, tagFilter[i])
 		} else {
 			PrimaryTags = append(PrimaryTags, tagFilter[i])
@@ -491,7 +491,9 @@ func GetAccessMode(
 // returns:
 // - leave: leave expr for exec at up engine
 // - tagFilter: tag expr filter, eg a > 10, b < 100, that can compose andexpr
-func (m *Memo) SplitTagExpr(src opt.Expr, colMap TagColMap) (leave opt.Expr, tagFilter []opt.Expr) {
+func (m *Memo) SplitTagExpr(
+	src opt.ScalarExpr, colMap TagColMap,
+) (leave opt.ScalarExpr, tagFilter FiltersExpr) {
 	// split and expr
 	switch source := src.(type) {
 	case *FiltersExpr:
@@ -501,7 +503,7 @@ func (m *Memo) SplitTagExpr(src opt.Expr, colMap TagColMap) (leave opt.Expr, tag
 		default:
 			var lev FiltersExpr
 			for i := 0; i < len(*source); i++ {
-				lea, tags := m.SplitTagExpr((*source)[i].Condition.(opt.Expr), colMap)
+				lea, tags := m.SplitTagExpr((*source)[i].Condition, colMap)
 				if lea != nil {
 					(*source)[i].Condition = lea.(opt.ScalarExpr)
 					lev = append(lev, (*source)[i])
@@ -547,7 +549,7 @@ func (m *Memo) SplitTagExpr(src opt.Expr, colMap TagColMap) (leave opt.Expr, tag
 		rLeave, _ := m.SplitTagExpr(source.Right, colMap)
 		if lLeave == nil && rLeave == nil {
 			// all or is a tag filter
-			return nil, []opt.Expr{source}
+			return nil, FiltersExpr{FiltersItem{Condition: source}}
 		}
 
 		return source, nil
@@ -563,7 +565,7 @@ func (m *Memo) SplitTagExpr(src opt.Expr, colMap TagColMap) (leave opt.Expr, tag
 			canSplit = canSplit || mode == (1<<hasTag+1<<hasSubQuery)
 		}
 		if canSplit {
-			return nil, []opt.Expr{source}
+			return nil, FiltersExpr{FiltersItem{Condition: source.(opt.ScalarExpr)}}
 		}
 
 		return source, nil
@@ -778,8 +780,8 @@ func shouldAddBlockFilter(filter FiltersItem, tabID opt.TableID, memo *Memo) boo
 
 // GetTagIndexKeyAndFilter get tag index key and tag index filters by metadata.
 func GetTagIndexKeyAndFilter(
-	private *TSScanPrivate, tagFilters *[]opt.Expr, m *Memo, filterCount int,
-) []opt.Expr {
+	private *TSScanPrivate, tagFilters *FiltersExpr, m *Memo, filterCount int,
+) FiltersExpr {
 	tabID := private.Table
 	Flags := &private.Flags
 	table := m.Metadata().TableMeta(tabID).Table
@@ -864,13 +866,13 @@ func GetTagIndexKeyAndFilter(
 		}
 	}
 
-	used := make(map[opt.Expr]struct{})
+	used := make(map[opt.ScalarExpr]struct{})
 	for _, filter := range tagIndexFilters {
-		used[filter] = struct{}{}
+		used[filter.Condition] = struct{}{}
 	}
-	var newFilters []opt.Expr
+	var newFilters FiltersExpr
 	for _, filter := range *tagFilters {
-		if _, exists := used[filter]; !exists {
+		if _, exists := used[filter.Condition]; !exists {
 			newFilters = append(newFilters, filter)
 		}
 	}
@@ -898,16 +900,16 @@ func buildTagColumnMaps(table cat.Table, tabID opt.TableID) (TagColMap, TagColMa
 
 // populateFilters used to get all equal and or filter.
 func populateFilters(
-	filters *[]opt.Expr,
+	filters *FiltersExpr,
 	tagValues *map[uint32][]string,
 	tagColMap, primaryTagColMap TagColMap,
 	filterCount int,
-) ([]opt.Expr, []opt.Expr, map[int]uint32) {
-	var tagEqFilters, tagOrFilter []opt.Expr
+) (FiltersExpr, FiltersExpr, map[int]uint32) {
+	var tagEqFilters, tagOrFilter FiltersExpr
 	filterMap := make(map[int]uint32) // Initialize filterMap
 	for _, filter := range *filters {
 		tempTagValues := make(map[uint32][]string)
-		valid, isSingleOr := GetTagValues(filter, primaryTagColMap, tagColMap, &tempTagValues, len(*filters), filterCount)
+		valid, isSingleOr := GetTagValues(filter.Condition, primaryTagColMap, tagColMap, &tempTagValues, len(*filters), filterCount)
 		if !valid {
 			continue
 		}
@@ -934,7 +936,7 @@ func populateFilters(
 // returns:
 // - get tag flag
 func GetTagValues(
-	src opt.Expr,
+	src opt.ScalarExpr,
 	primaryTagColMap, tagCol TagColMap,
 	val *map[uint32][]string,
 	tagFiltersCount, filtersCount int,
@@ -1029,9 +1031,9 @@ func GetTagValues(
 func CheckAndGetTagIndex(
 	tagIndexIDs [][]uint32,
 	tagValues map[uint32][]string,
-	tagEqFilters []opt.Expr,
+	tagEqFilters FiltersExpr,
 	filterMap map[int]uint32,
-) ([]opt.Expr, []map[uint32][]string, bool) {
+) (FiltersExpr, []map[uint32][]string, bool) {
 	if len(tagValues) == 0 || len(tagIndexIDs) == 0 || len(tagEqFilters) == 0 {
 		return nil, nil, false
 	}
@@ -1076,7 +1078,7 @@ func CheckAndGetTagIndex(
 	finalIndices := selectOptimalIndices(selectedIndices)
 
 	// Builds a filter expression that uses the selected index
-	newTagIndexFilters := make([]opt.Expr, 0)
+	newTagIndexFilters := make(FiltersExpr, 0)
 	tagIndexValues := make([]map[uint32][]string, len(finalIndices))
 	for i, idx := range finalIndices {
 		tagIndexValues[i] = make(map[uint32][]string, 0)
@@ -1205,23 +1207,23 @@ func equalColumns(a, b []uint32) bool {
 }
 
 // getPrimaryTagFilter is used to get primary tag filter.
-func getPrimaryTagFilter(src []opt.Expr, primaryColMap TagColMap) []opt.Expr {
-	var primaryFilters []opt.Expr
+func getPrimaryTagFilter(src FiltersExpr, primaryColMap TagColMap) FiltersExpr {
+	var primaryFilters FiltersExpr
 
 	for _, filter := range src {
-		extractPrimaryFilters(filter, primaryColMap, &primaryFilters)
+		extractPrimaryFilters(filter.Condition, primaryColMap, &primaryFilters)
 	}
 
 	return primaryFilters
 }
 
 // extractPrimaryFilters is used to get primary tag filter from *memo.OrExpr
-func extractPrimaryFilters(expr opt.Expr, primaryColMap TagColMap, result *[]opt.Expr) {
+func extractPrimaryFilters(expr opt.ScalarExpr, primaryColMap TagColMap, result *FiltersExpr) {
 	if orExpr, ok := expr.(*OrExpr); ok {
 		extractPrimaryFilters(orExpr.Left, primaryColMap, result)
 		extractPrimaryFilters(orExpr.Right, primaryColMap, result)
 	} else if isPrimaryTagEqualityFilter(expr, primaryColMap) {
-		*result = append(*result, expr)
+		*result = append(*result, FiltersItem{Condition: expr})
 	}
 }
 

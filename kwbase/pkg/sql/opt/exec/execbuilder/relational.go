@@ -1335,10 +1335,10 @@ func initTSBlockFilter() (columnSpans execinfrapb.TSBlockFilter) {
 
 // buildTypedExpr build expr as typed expr
 func (b *Builder) buildArrayTypedExpr(
-	array []opt.Expr, ctx *buildScalarCtx, res *[]tree.TypedExpr,
+	array memo.FiltersExpr, ctx *buildScalarCtx, res *[]tree.TypedExpr,
 ) bool {
 	for _, val := range array {
-		filter, err1 := b.buildScalar(ctx, val.(opt.ScalarExpr))
+		filter, err1 := b.buildScalar(ctx, val.Condition.(opt.ScalarExpr))
 		if err1 != nil {
 			return false
 		}

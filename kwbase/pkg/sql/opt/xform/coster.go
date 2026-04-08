@@ -39,7 +39,6 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/opt/props"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/opt/props/physical"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
-	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
 	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 	"github.com/cockroachdb/errors"
 	"golang.org/x/tools/container/intsets"
@@ -389,19 +388,16 @@ func (c *coster) computeTsScanCost(tsScan *memo.TSScanExpr) memo.Cost {
 	tsScan.Cols.ForEach(func(id opt.ColumnID) {
 		// get column metadata through logical id.
 		column := table.Column(int(id) - int(tsScan.Table.ColumnID(0)))
-		col, ok := column.(*sqlbase.ColumnDescriptor)
-		if ok {
-			if col.IsPrimaryTagCol() {
-				pTagColCount++
-				pTagColsWith += col.TsCol.StorageLen
-			} else if col.IsTagCol() {
-				if tagIndexCols.Contains(id) {
-					tagIndexColsWith += col.TsCol.StorageLen
-				}
-				tagColsWith += col.TsCol.StorageLen
-			} else {
-				colsWith += col.TsCol.StorageLen
+		if column.IsPrimaryTagCol() {
+			pTagColCount++
+			pTagColsWith += column.TsColStorgeLen()
+		} else if column.IsTagCol() {
+			if tagIndexCols.Contains(id) {
+				tagIndexColsWith += column.TsColStorgeLen()
 			}
+			tagColsWith += column.TsColStorgeLen()
+		} else {
+			colsWith += column.TsColStorgeLen()
 		}
 	})
 

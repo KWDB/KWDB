@@ -306,6 +306,7 @@ SELECT a + 1, min(b) FROM t WHERE k + a > b GROUP BY a ORDER BY a
 sort
  └── project
       ├── group-by
+      │    ├── OptFlags: 
       │    ├── select
       │    │    ├── scan t
       │    │    └── filters

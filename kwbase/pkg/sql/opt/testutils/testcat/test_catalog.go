@@ -623,6 +623,9 @@ type Table struct {
 
 	OutboundFKs []ForeignKeyConstraint
 	InboundFKs  []ForeignKeyConstraint
+
+	//ts info
+	TableType tree.TableType
 }
 
 var _ cat.Table = &Table{}
@@ -791,7 +794,7 @@ func (tt *Table) GetParentID() tree.ID {
 
 // GetTableType return which type the table is.
 func (tt *Table) GetTableType() tree.TableType {
-	return 0
+	return tt.TableType
 }
 
 // GetTriggers returns the definition of trigger
@@ -816,7 +819,16 @@ func (tt *Table) SetTableName(name string) {
 
 // GetTagMeta get name and type of all tags.
 func (tt *Table) GetTagMeta() []cat.TagMeta {
-	return nil
+	tagMeta := make([]cat.TagMeta, 0)
+	for _, col := range tt.Columns {
+		if col.IsTagCol() {
+			tagMeta = append(tagMeta, cat.TagMeta{
+				TagName: col.Name,
+				TagType: *col.Type,
+			})
+		}
+	}
+	return tagMeta
 }
 
 // AddTagMetaToTable adds tag into table desc.
@@ -993,6 +1005,9 @@ type Column struct {
 	ColType      types.T
 	DefaultExpr  *string
 	ComputedExpr *string
+
+	// ts column type
+	TsCol sqlbase.TSCol
 }
 
 var _ cat.Column = &Column{}
@@ -1009,22 +1024,22 @@ func (tc *Column) IsNullable() bool {
 
 // IsTagCol is part of the cat.Column interface.
 func (tc *Column) IsTagCol() bool {
-	return false
+	return tc.TsCol.ColumnType == sqlbase.ColumnType_TYPE_TAG || tc.TsCol.ColumnType == sqlbase.ColumnType_TYPE_PTAG
 }
 
 // IsOrdinaryTagCol is part of the cat.Column interface.
 func (tc *Column) IsOrdinaryTagCol() bool {
-	return false
+	return tc.TsCol.ColumnType == sqlbase.ColumnType_TYPE_TAG
 }
 
 // IsPrimaryTagCol is part of the cat.Column interface.
 func (tc *Column) IsPrimaryTagCol() bool {
-	return false
+	return tc.TsCol.ColumnType == sqlbase.ColumnType_TYPE_PTAG
 }
 
 // TsColStorgeLen is part of the cat.Column interface.
 func (tc *Column) TsColStorgeLen() uint64 {
-	return 0
+	return tc.TsCol.StorageLen
 }
 
 // ColName is part of the cat.Column interface.
