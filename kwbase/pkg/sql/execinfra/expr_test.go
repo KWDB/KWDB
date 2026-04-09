@@ -32,6 +32,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/settings/cluster"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfrapb"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/types"
 	"gitee.com/kwbasedb/kwbase/pkg/util/leaktest"
 )
@@ -99,5 +100,223 @@ func TestProcessExpressionConstantEval(t *testing.T) {
 	}
 	if !reflect.DeepEqual(expr, expected) {
 		t.Errorf("invalid expr '%v', expected '%v'", expr, expected)
+	}
+}
+
+// TestProcessExpressionError tests processExpression with invalid expressions.
+func TestProcessExpressionError(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	// Test with invalid syntax
+	e := execinfrapb.Expression{Expr: "@1 * @2 +"}
+	h := tree.MakeIndexedVarHelper(testVarContainer{}, 2)
+	st := cluster.MakeTestingClusterSettings()
+	evalCtx := tree.MakeTestingEvalContext(st)
+	semaCtx := tree.MakeSemaContext()
+	_, err := processExpression(e, &evalCtx, &semaCtx, &h)
+	if err == nil {
+		t.Error("expected error for invalid syntax, got nil")
+	}
+
+	// Test with out-of-bounds indexed var
+	e = execinfrapb.Expression{Expr: "@3"}
+	h = tree.MakeIndexedVarHelper(testVarContainer{}, 2)
+	_, err = processExpression(e, &evalCtx, &semaCtx, &h)
+	if err == nil {
+		t.Error("expected error for out-of-bounds indexed var, got nil")
+	}
+}
+
+// TestExprHelperInit tests the Init method of ExprHelper.
+func TestExprHelperInit(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	eh := &ExprHelper{}
+	expr := execinfrapb.Expression{Expr: "@1 + @2"}
+	typs := []types.T{*types.Int, *types.Int}
+	st := cluster.MakeTestingClusterSettings()
+	evalCtx := tree.MakeTestingEvalContext(st)
+
+	err := eh.Init(expr, typs, &evalCtx)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if eh.Expr == nil {
+		t.Error("expected Expr to be initialized, got nil")
+	}
+
+	if len(eh.Types) != 2 {
+		t.Errorf("expected Types length 2, got %d", len(eh.Types))
+	}
+}
+
+// TestExprHelperInitEmpty tests the Init method of ExprHelper with empty expression.
+func TestExprHelperInitEmpty(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	eh := &ExprHelper{}
+	expr := execinfrapb.Expression{}
+	typs := []types.T{*types.Int, *types.Int}
+	st := cluster.MakeTestingClusterSettings()
+	evalCtx := tree.MakeTestingEvalContext(st)
+
+	err := eh.Init(expr, typs, &evalCtx)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if eh.Expr != nil {
+		t.Error("expected Expr to be nil for empty expression")
+	}
+}
+
+// TestExprHelperEval tests the Eval method of ExprHelper.
+func TestExprHelperEval(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	eh := &ExprHelper{}
+	expr := execinfrapb.Expression{Expr: "@1 + @2"}
+	typs := []types.T{*types.Int, *types.Int}
+	st := cluster.MakeTestingClusterSettings()
+	evalCtx := tree.MakeTestingEvalContext(st)
+
+	err := eh.Init(expr, typs, &evalCtx)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	row := sqlbase.EncDatumRow{
+		sqlbase.DatumToEncDatum(types.Int, tree.NewDInt(1)),
+		sqlbase.DatumToEncDatum(types.Int, tree.NewDInt(2)),
+	}
+
+	result, err := eh.Eval(row)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	expected := tree.NewDInt(3)
+	if result.String() != expected.String() {
+		t.Errorf("expected %v, got %v", expected, result)
+	}
+}
+
+// TestExprHelperEvalFilter tests the EvalFilter method of ExprHelper.
+func TestExprHelperEvalFilter(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	eh := &ExprHelper{}
+	expr := execinfrapb.Expression{Expr: "@1 > @2"}
+	typs := []types.T{*types.Int, *types.Int}
+	st := cluster.MakeTestingClusterSettings()
+	evalCtx := tree.MakeTestingEvalContext(st)
+
+	err := eh.Init(expr, typs, &evalCtx)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Test with row where @1 > @2
+	row1 := sqlbase.EncDatumRow{
+		sqlbase.DatumToEncDatum(types.Int, tree.NewDInt(3)),
+		sqlbase.DatumToEncDatum(types.Int, tree.NewDInt(2)),
+	}
+
+	pass, err := eh.EvalFilter(row1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !pass {
+		t.Error("expected filter to pass for row [3, 2]")
+	}
+
+	// Test with row where @1 <= @2
+	row2 := sqlbase.EncDatumRow{
+		sqlbase.DatumToEncDatum(types.Int, tree.NewDInt(1)),
+		sqlbase.DatumToEncDatum(types.Int, tree.NewDInt(2)),
+	}
+
+	pass, err = eh.EvalFilter(row2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pass {
+		t.Error("expected filter to fail for row [1, 2]")
+	}
+}
+
+// TestExprHelperIndexedVarMethods tests the IndexedVarContainer methods of ExprHelper.
+func TestExprHelperIndexedVarMethods(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	eh := &ExprHelper{}
+	expr := execinfrapb.Expression{Expr: "@1 + @2"}
+	typs := []types.T{*types.Int, *types.Float}
+	st := cluster.MakeTestingClusterSettings()
+	evalCtx := tree.MakeTestingEvalContext(st)
+
+	err := eh.Init(expr, typs, &evalCtx)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Test IndexedVarResolvedType
+	typ := eh.IndexedVarResolvedType(0)
+	if typ.String() != types.Int.String() {
+		t.Errorf("expected type Int for index 0, got %v", typ)
+	}
+
+	typ = eh.IndexedVarResolvedType(1)
+	if typ.String() != types.Float.String() {
+		t.Errorf("expected type Float for index 1, got %v", typ)
+	}
+
+	// Test IndexedVarNodeFormatter
+	formatter := eh.IndexedVarNodeFormatter(0)
+	if formatter == nil {
+		t.Error("expected IndexedVarNodeFormatter to return non-nil")
+	}
+
+	// Test IndexedVarEval
+	eh.Row = sqlbase.EncDatumRow{
+		sqlbase.DatumToEncDatum(types.Int, tree.NewDInt(42)),
+		sqlbase.DatumToEncDatum(types.Float, tree.NewDFloat(3.14)),
+	}
+
+	datum, err := eh.IndexedVarEval(0, &evalCtx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	expected := tree.NewDInt(42)
+	if datum.String() != expected.String() {
+		t.Errorf("expected 42, got %v", datum)
+	}
+}
+
+// TestExprHelperString tests the String method of ExprHelper.
+func TestExprHelperString(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	// Test with nil Expr
+	eh := &ExprHelper{}
+	if eh.String() != "none" {
+		t.Errorf("expected 'none' for nil Expr, got '%s'", eh.String())
+	}
+
+	// Test with non-nil Expr
+	expr := execinfrapb.Expression{Expr: "@1 + @2"}
+	typs := []types.T{*types.Int, *types.Int}
+	st := cluster.MakeTestingClusterSettings()
+	evalCtx := tree.MakeTestingEvalContext(st)
+
+	err := eh.Init(expr, typs, &evalCtx)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	str := eh.String()
+	if str == "" {
+		t.Error("expected non-empty string for non-nil Expr")
 	}
 }
