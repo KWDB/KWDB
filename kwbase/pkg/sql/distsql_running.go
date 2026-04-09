@@ -1168,7 +1168,7 @@ func (r *DistSQLReceiver) Push(
 		if meta.TsPro != nil {
 			r.status = execinfra.ConsumerClosed
 			if !meta.TsPro.Success {
-				err := errors.Newf(meta.TsPro.Err)
+				err := errors.New(meta.TsPro.Err)
 				r.resultWriter.SetError(err)
 			}
 		}
@@ -1765,6 +1765,6 @@ func (dsp *DistSQLPlanner) displayQueryFlowSpec(
 
 	// only log query flow spec.
 	if isQuery {
-		log.VEventfDepth(ctx, 2, 1, buf.String())
+		log.VEventfDepth(ctx, 2, 1, "%s", buf.String())
 	}
 }

@@ -118,7 +118,7 @@ func (t *triggerHelper) ExecuteIns(
 	err := ins.Execute(&params, &t.execCtx)
 	if err != nil {
 		wrapErr := errors.Wrap(err, "TriggeredActionException")
-		return pgerror.Newf(pgcode.TriggeredActionException, wrapErr.Error())
+		return pgerror.New(pgcode.TriggeredActionException, wrapErr.Error())
 	}
 	return nil
 }

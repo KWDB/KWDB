@@ -1,0 +1,120 @@
+exec
+create table t1(a int, b int)
+----
+
+exec
+create table t2(a int, b int, c int)
+----
+
+exec
+insert into t1 values (1, 2), (3, 4)
+----
+
+exec
+insert into t2 values (1, 2, 3), (4, 5, 6)
+----
+
+exec
+create table t3(a int, b int, c int)
+----
+
+exec
+create table t4(a int)
+----
+
+exec
+create procedure p2() begin declare out_o_entry_d int; SELECT 1 INTO out_o_entry_d;select out_o_entry_d;end
+----
+
+exec
+call p2()
+----
+
+exec
+drop procedure p2
+----
+
+exec
+create procedure p2() begin declare a int;declare d int; set d = 10; select a,b,d from t1; end
+----
+
+exec
+call p2()
+----
+
+exec
+drop procedure p2
+----
+
+exec
+CREATE PROCEDURE p3(a INT4)  BEGIN DECLARE b INT4; declare c int4;declare c1 cursor for select a from t1 ; open c1;delete from t1 where a = 1;fetch c1 into b;fetch c1 into c;close c1 ;select b;select c;END
+----
+
+exec
+call p3(1)
+----
+
+exec
+drop procedure p3
+----
+
+exec
+create procedure test() label test: begin declare a int default 0; declare b int default 0; declare err int default 0; declare exit HANDLER FOR NOT FOUND,SQLEXCEPTION BEGIN SET err = -1;SELECT a,b;ROLLBACK;ENDHANDLER;START TRANSACTION;set a = 10;select a, b, 'this is t1 values' from t1;update t1 set a =  a + 1 where b > 0;insert into t1 values (a, b);label my_loop:WHILE b <= 10 DO declare d int;set d = b + 2;if d > 9 then select *, 'this is t1 values in while' from t1; leave my_loop;elsif b > 5 then select *, 'this is t2 values in while' from t2; endif; set b = b + 1; ENDWHILE; IF err = 0 THEN SELECT a,b , 'this is procedure values'; select *, 'this is t1 values' from t1;ENDIF;COMMIT; end
+----
+
+exec
+call test()
+----
+
+exec
+drop procedure test
+----
+
+exec
+create procedure p5() begin declare d int; set d = 10; insert into t1(a) values (d); if row_count() > 1 then select * from t1; endif; end
+----
+
+exec
+call p5()
+----
+
+exec
+drop procedure p5
+----
+
+exec
+create procedure test6() begin declare a int;declare b int default 0;set a = 10; declare continue HANDLER FOR NOT FOUND set b = 9; WHILE b <= 10 DO declare d int;set d = b + 2;if d > 9 then select * from t1; elsif b > 5 then select * from t2; elsif b <= 4 then select * from t3; endif;set b = b + 1; ENDWHILE; end
+----
+
+exec
+call test6()
+----
+
+exec
+drop procedure test6
+----
+
+exec
+create procedure pc6() begin set @v6 = 1; select @v6; set @v6 = 6; select @v6+3 where @v6>0 group by @v6+1 having @v6<10; end
+----
+
+exec
+call pc6()
+----
+
+exec
+drop procedure pc6
+----
+
+
+exec
+create procedure pc102() begin declare a int8; set a=102; set @v102=a;prepare p102 as select 102 where 102 = $1; execute p102(@v102); deallocate p102; end
+----
+
+exec
+call pc102()
+----
+
+exec
+drop procedure pc102
+----

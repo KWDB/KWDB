@@ -1698,7 +1698,7 @@ func (dsp *DistSQLPlanner) GetAllDistNodesInfo(
 			s := fmt.Sprintf("Problem occurs on node %d."+"Err: %s\n", failureNodes[i].NodeID, failureNodesErrs[i])
 			errStringBf.WriteString(s)
 		}
-		return nil, nil, nil, errors.Newf(errStringBf.String())
+		return nil, nil, nil, errors.New(errStringBf.String())
 	}
 	return nodes, failureNodes, failureNodesErrs, nil
 }

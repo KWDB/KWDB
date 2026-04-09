@@ -28,6 +28,7 @@ import (
 	"context"
 	"fmt"
 
+	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgcode"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgerror"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 	"github.com/cockroachdb/errors"
@@ -103,7 +104,7 @@ func (n *saveTableNode) issue(params runParams) error {
 			nil, /* txn */
 			stmt,
 		); err != nil {
-			return pgerror.Wrapf(err, "while running %s", stmt)
+			return pgerror.Wrapf(err, pgcode.Internal, "while running %s", stmt)
 		}
 		v.Rows = nil
 	}
