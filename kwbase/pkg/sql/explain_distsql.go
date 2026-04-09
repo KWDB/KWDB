@@ -144,6 +144,14 @@ func (n *explainDistSQLNode) startExec(params runParams) error {
 		return err
 	}
 
+	if n.analyze {
+		// EXPLAIN ANALYZE executes the inner statement but discards its result rows.
+		// The callback writer used below also discards pgwire bytes via AddPGResult,
+		// so treat the inner plan like a client result for pg encode short-circuit
+		// purposes. This preserves session options such as pg_extend_compress while
+		// keeping callbackResultWriter's default behavior unchanged for internal users.
+		planCtx.isCommandResult = true
+	}
 	distSQLPlanner.FinalizePlan(planCtx, &plan)
 
 	var diagram execinfrapb.FlowDiagram

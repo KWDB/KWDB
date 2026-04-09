@@ -27,6 +27,7 @@ package rowexec
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"gitee.com/kwbasedb/kwbase/pkg/kv"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfra"
@@ -119,12 +120,29 @@ func newNoopProcessor(
 // RunShortCircuit is part of the Processor interface.
 func (n *noopProcessor) RunShortCircuit(ctx context.Context, ttr execinfra.TSReader) error {
 	startTime := timeutil.Now()
-	n.execShortCircuit(ctx, ttr)
+	ctx, cancel := context.WithCancel(ctx)
+	done := n.execShortCircuit(ctx, ttr)
+	// The local TS reader goroutine uses the same TS handle that flow cleanup
+	// closes. Wait for it before returning on early termination paths.
+	cleanup := func() {
+		cancel()
+		<-done
+	}
+	return n.runShortCircuit(ctx, startTime, cleanup)
+}
 
+func (n *noopProcessor) runShortCircuit(
+	ctx context.Context, startTime time.Time, cleanup func(),
+) error {
 	ctx = n.Start(ctx)
 	dst := n.Out.Output()
 	for {
 		row, meta := n.NextShortCircuitMeta()
+		if meta != nil && meta.Err != nil {
+			dst.Push(row, meta)
+			n.ConsumerClosed()
+			return finishRunShortCircuit(dst, startTime, row, cleanup, meta.Err)
+		}
 		// Emit the row; stop if no more rows are needed.
 		if row != nil || meta != nil {
 			switch dst.Push(row, meta) {
@@ -133,29 +151,62 @@ func (n *noopProcessor) RunShortCircuit(ctx context.Context, ttr execinfra.TSRea
 				continue
 			case execinfra.DrainRequested:
 				execinfra.DrainAndForwardMetadata(ctx, n, dst)
-				dst.ProducerDone()
-				dst.AddStats(timeutil.Since(startTime), row != nil)
-				return nil
+				return finishRunShortCircuit(dst, startTime, row, cleanup, nil)
 			case execinfra.ConsumerClosed:
-				execinfra.HandleConsumerClosed(n, dst, startTime, row)
-				return nil
+				n.ConsumerClosed()
+				return finishRunShortCircuit(dst, startTime, row, cleanup, nil)
 			}
 		}
 		// row == nil && meta == nil: the source has been fully drained.
-		dst.ProducerDone()
-		dst.AddStats(timeutil.Since(startTime), row != nil)
-		return nil
+		return finishRunShortCircuit(dst, startTime, row, cleanup, nil)
 	}
 }
 
+func finishRunShortCircuit(
+	dst execinfra.RowReceiver,
+	startTime time.Time,
+	lastRow sqlbase.EncDatumRow,
+	cleanup func(),
+	retErr error,
+) error {
+	if cleanup != nil {
+		cleanup()
+	}
+	dst.ProducerDone()
+	dst.AddStats(timeutil.Since(startTime), lastRow != nil)
+	return retErr
+}
+
 // execShortCircuit get data from AE and push to commandResult.
-func (n *noopProcessor) execShortCircuit(ctx context.Context, ttr execinfra.TSReader) {
+func (n *noopProcessor) execShortCircuit(
+	ctx context.Context, ttr execinfra.TSReader,
+) <-chan struct{} {
+	done := make(chan struct{})
 	go func() {
+		defer close(done)
 		ttr := ttr.(*TsTableReader)
+		cancelDone := make(chan struct{})
+		// The flow context is canceled after RunShortCircuit returns, so tie the
+		// local reader to this context and cancel it before returning instead.
+		go func() {
+			select {
+			case <-ctx.Done():
+				ttr.cancelTsFlow()
+			case <-cancelDone:
+			}
+		}()
+		defer close(cancelDone)
+		ctxDone := ctx.Done()
 		dst := ttr.Out.Output()
 		defer dst.ProducerDone()
 		ttr.Start(ctx)
 		for {
+			select {
+			case <-ctxDone:
+				return
+			default:
+			}
+
 			rev, code, err := ttr.NextPgWire()
 			if err != nil {
 				meta := &execinfrapb.ProducerMetadata{Err: err}
@@ -167,6 +218,12 @@ func (n *noopProcessor) execShortCircuit(ctx context.Context, ttr execinfra.TSRe
 				return
 			}
 
+			select {
+			case <-ctxDone:
+				return
+			default:
+			}
+
 			err = n.Push(ctx, rev)
 			if err != nil {
 				meta := &execinfrapb.ProducerMetadata{Err: err}
@@ -175,6 +232,7 @@ func (n *noopProcessor) execShortCircuit(ctx context.Context, ttr execinfra.TSRe
 			}
 		}
 	}()
+	return done
 }
 
 // NextShortCircuitMeta Receive the results of short circuiting goroutines and meta data from other nodes.
@@ -185,9 +243,6 @@ func (n *noopProcessor) NextShortCircuitMeta() (
 	for n.State == execinfra.StateRunning {
 		row, meta := n.input.Next()
 		if meta != nil {
-			if meta.Err != nil {
-				n.MoveToDraining(nil /* err */)
-			}
 			return nil, meta
 		}
 		if row == nil {

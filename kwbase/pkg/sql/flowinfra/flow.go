@@ -525,7 +525,11 @@ func (f *FlowBase) Run(ctx context.Context, doneFn func()) error {
 
 		if f.UseQueryShortCircuit {
 			f.startedGoroutines = f.startedGoroutines || !f.IsLocal()
-			return headProc.RunShortCircuit(ctx, f.TsTableReaders[0])
+			err := headProc.RunShortCircuit(ctx, f.TsTableReaders[0])
+			if err != nil {
+				f.ctxCancel()
+			}
+			return err
 		}
 
 		if !f.isVectorized {
