@@ -1315,6 +1315,9 @@ func (sw *TSSchemaChangeWorker) handleMutationForTSTable(
 		}
 	}
 
+	if sw.p == nil {
+		return errors.Errorf("unvalidated planner")
+	}
 	_, updateDescErr := sw.p.ExecCfg().LeaseManager.Publish(
 		ctx,
 		sw.tableID,
