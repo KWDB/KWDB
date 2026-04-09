@@ -21,6 +21,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/types"
 	"gitee.com/kwbasedb/kwbase/pkg/util/leaktest"
+	"gitee.com/kwbasedb/kwbase/pkg/util/timeutil"
 )
 
 // TestBuildTimeSeriesScan tests the buildTimeSeriesScan function
@@ -416,7 +417,7 @@ func (t *testTSTable) PostgresDescriptorID() cat.StableID {
 type testTableStatistic struct{}
 
 func (s *testTableStatistic) CreatedAt() time.Time {
-	return time.Now()
+	return timeutil.Now()
 }
 
 func (s *testTableStatistic) ColumnCount() int {
