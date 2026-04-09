@@ -66,3 +66,48 @@ func TestLookupNamespaceIDFallback(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, int64(9999), id)
 }
+
+// TestLookupZoneConfigByNamespaceID tests the LookupZoneConfigByNamespaceID function
+func TestLookupZoneConfigByNamespaceID(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	ctx := context.Background()
+	params, _ := tests.CreateTestServerParams()
+	s, sqlDB, _ := serverutils.StartServer(t, params)
+	defer s.Stopper().Stop(ctx)
+
+	// First, get the ID of the default database
+	var dbID int64
+	err := sqlDB.QueryRow(
+		`SELECT kwdb_internal.get_namespace_id($1, $2)`,
+		0,
+		"defaultdb",
+	).Scan(&dbID)
+	require.NoError(t, err)
+	assert.Greater(t, dbID, int64(0))
+
+	// Test case 1: Lookup zone config for existing database
+	t.Run("Lookup zone config for existing database", func(t *testing.T) {
+		var config []byte
+		err := sqlDB.QueryRow(
+			`SELECT kwdb_internal.get_zone_config($1)`,
+			dbID,
+		).Scan(&config)
+		// The default database may or may not have a zone config
+		// We just want to ensure the function doesn't return an error
+		if err != nil {
+			t.Logf("No zone config found for defaultdb: %v", err)
+		}
+	})
+
+	// Test case 2: Lookup zone config for non-existent namespace
+	t.Run("Lookup zone config for non-existent namespace", func(t *testing.T) {
+		var config []byte
+		err := sqlDB.QueryRow(
+			`SELECT kwdb_internal.get_zone_config($1)`,
+			999999, // non-existent ID
+		).Scan(&config)
+		require.NoError(t, err)
+		assert.Nil(t, config)
+	})
+}

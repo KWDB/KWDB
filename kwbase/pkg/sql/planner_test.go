@@ -24,11 +24,16 @@
 package sql
 
 import (
+	"context"
 	"reflect"
 	"testing"
 
+	"gitee.com/kwbasedb/kwbase/pkg/base"
+	"gitee.com/kwbasedb/kwbase/pkg/security"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
+	"gitee.com/kwbasedb/kwbase/pkg/testutils/serverutils"
 	"gitee.com/kwbasedb/kwbase/pkg/util/leaktest"
+	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 )
 
 func TestTypeAsString(t *testing.T) {
@@ -88,6 +93,76 @@ func TestTypeAsString(t *testing.T) {
 			if !reflect.DeepEqual(a, expected) {
 				t.Fatalf("expected %s; got %s", expected, a)
 			}
+		}
+	})
+}
+
+// TestRelocateRange tests the RelocateRange method
+func TestRelocateRange(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+	logScope := log.Scope(t)
+	defer logScope.Close(t)
+	ctx := context.Background()
+
+	// Start a test server
+	s, _, _ := serverutils.StartServer(t, base.TestServerArgs{})
+	defer s.Stopper().Stop(ctx)
+
+	// Get the executor config
+	execCfg := s.ExecutorConfig().(ExecutorConfig)
+
+	// Create a planner with admin privileges
+	localPlanner, cleanup := NewInternalPlanner(
+		"test",
+		nil,               // No transaction needed for this test
+		security.RootUser, // Root user has admin privileges
+		&MemoryMetrics{},
+		&execCfg,
+	)
+	defer cleanup()
+	p := localPlanner.(*planner)
+	// Test case 1: RelocateRange with invalid range ID
+	t.Run("RelocateRange with invalid range ID", func(t *testing.T) {
+		// Test RelocateRange with a range ID that doesn't exist
+		err := p.RelocateRange(ctx, 999999, 1, 2)
+		// The function should return an error because the range doesn't exist
+		if err == nil {
+			t.Error("RelocateRange should return error for invalid range ID")
+		}
+	})
+}
+
+// TestGetRangeDebugInfo tests the GetRangeDebugInfo method
+func TestGetRangeDebugInfo(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+	logScope := log.Scope(t)
+	defer logScope.Close(t)
+	ctx := context.Background()
+
+	// Start a test server
+	s, _, _ := serverutils.StartServer(t, base.TestServerArgs{})
+	defer s.Stopper().Stop(ctx)
+
+	// Get the executor config
+	execCfg := s.ExecutorConfig().(ExecutorConfig)
+
+	// Create a planner with admin privileges
+	localPlanner, cleanup := NewInternalPlanner(
+		"test",
+		nil,               // No transaction needed for this test
+		security.RootUser, // Root user has admin privileges
+		&MemoryMetrics{},
+		&execCfg,
+	)
+	defer cleanup()
+	p := localPlanner.(*planner)
+	// Test case 1: GetRangeDebugInfo with invalid range ID
+	t.Run("GetRangeDebugInfo with invalid range ID", func(t *testing.T) {
+		// Test GetRangeDebugInfo with a range ID that doesn't exist
+		_, err := p.GetRangeDebugInfo(ctx, 999999)
+		// The function should return an error because the range doesn't exist
+		if err == nil {
+			t.Error("GetRangeDebugInfo should return error for invalid range ID")
 		}
 	})
 }
