@@ -233,7 +233,10 @@ func TestConnectionHandlerTransactionIsolation(t *testing.T) {
 
 		tx, err := sqlDB.Begin()
 		require.NoError(t, err)
-		defer tx.Rollback()
+		defer func(tx *gosql.Tx) {
+			err = tx.Rollback()
+			require.NoError(t, err)
+		}(tx)
 
 		_, err = tx.Exec("SELECT 1")
 		require.NoError(t, err)
@@ -256,7 +259,10 @@ func TestConnectionHandlerReadOnlyMode(t *testing.T) {
 
 		tx, err := sqlDB.Begin()
 		require.NoError(t, err)
-		defer tx.Rollback()
+		defer func(tx *gosql.Tx) {
+			err = tx.Rollback()
+			require.NoError(t, err)
+		}(tx)
 
 		_, err = tx.Exec("SELECT 1")
 		require.NoError(t, err)
@@ -281,7 +287,10 @@ func TestConnectionHandlerPriority(t *testing.T) {
 	t.Run("begin transaction", func(t *testing.T) {
 		tx, err := sqlDB.Begin()
 		require.NoError(t, err)
-		defer tx.Rollback()
+		defer func(tx *gosql.Tx) {
+			err = tx.Rollback()
+			require.NoError(t, err)
+		}(tx)
 
 		_, err = tx.Exec("SELECT 1")
 		require.NoError(t, err)
@@ -356,7 +365,10 @@ func TestConnectionHandlerErrorHandling(t *testing.T) {
 	t.Run("division by zero in transaction", func(t *testing.T) {
 		tx, err := sqlDB.Begin()
 		require.NoError(t, err)
-		defer tx.Rollback()
+		defer func(tx *gosql.Tx) {
+			err = tx.Rollback()
+			require.NoError(t, err)
+		}(tx)
 
 		_, err = tx.Exec("SELECT 1/0")
 		require.Error(t, err)
@@ -376,7 +388,10 @@ func TestConnectionHandlerSavepoints(t *testing.T) {
 	t.Run("savepoint in transaction", func(t *testing.T) {
 		tx, err := sqlDB.Begin()
 		require.NoError(t, err)
-		defer tx.Rollback()
+		defer func(tx *gosql.Tx) {
+			err = tx.Commit()
+			require.NoError(t, err)
+		}(tx)
 
 		_, err = tx.Exec("SAVEPOINT kwbase_restart")
 		require.NoError(t, err)

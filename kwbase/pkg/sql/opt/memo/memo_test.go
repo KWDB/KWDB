@@ -879,10 +879,16 @@ func TestMemoProcedureCacheIsStale(t *testing.T) {
 	var m memo.Memo
 	m.Init(&evalCtx)
 
-	m.ProcedureCacheIsStale(evalCtx.Ctx(), &evalCtx, catalog)
+	_, err = m.ProcedureCacheIsStale(evalCtx.Ctx(), &evalCtx, catalog)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	evalCtx.SessionData.ReorderJoinsLimit = 10
-	m.ProcedureCacheIsStale(evalCtx.Ctx(), &evalCtx, catalog)
+	_, err = m.ProcedureCacheIsStale(evalCtx.Ctx(), &evalCtx, catalog)
+	if err != nil {
+		t.Fatal(err)
+	}
 }
 
 func TestMemoGetPhyColIDByMetaID(t *testing.T) {

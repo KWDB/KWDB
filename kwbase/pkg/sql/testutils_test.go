@@ -143,7 +143,7 @@ func TestDistSQLPlannerExec(t *testing.T) {
 			}
 
 			// Test a more complex statement
-			sql = "SELECT COUNT(*) FROM test_db.test_table"
+			sql = "SELECT count(*) FROM test_db.test_table"
 			err = dsp.Exec(ctx, planner, sql, distribute)
 			if err != nil {
 				t.Fatalf("Exec failed: %v", err)

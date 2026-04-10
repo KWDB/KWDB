@@ -26,8 +26,9 @@ func TestDiscard(t *testing.T) {
 	p := makeTestPlanner()
 	ctx := context.TODO()
 
-	p.Discard(ctx, &tree.Discard{})
-	_, err := p.Discard(ctx, &tree.Discard{Mode: tree.DiscardMode(100)})
+	_, err := p.Discard(ctx, &tree.Discard{})
+	require.Error(t, err)
+	_, err = p.Discard(ctx, &tree.Discard{Mode: tree.DiscardMode(100)})
 	require.Error(t, err)
 
 	p.autoCommit = false
@@ -36,5 +37,6 @@ func TestDiscard(t *testing.T) {
 
 	p.autoCommit = true
 	p.preparedStatements = connExPrepStmtsAccessor{}
-	p.Discard(ctx, &tree.Discard{Mode: tree.DiscardModeAll})
+	_, err = p.Discard(ctx, &tree.Discard{Mode: tree.DiscardModeAll})
+	require.NoError(t, err)
 }

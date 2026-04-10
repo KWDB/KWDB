@@ -248,14 +248,14 @@ func TestPrepareWithTransaction(t *testing.T) {
 	t.Run("prepare in transaction", func(t *testing.T) {
 		tx, err := sqlDB.Begin()
 		require.NoError(t, err)
-		defer tx.Rollback()
 
 		_, err = tx.Exec("PREPARE txn_stmt AS SELECT * FROM txn_test")
 		require.NoError(t, err)
 
 		rows, err := tx.Query("EXECUTE txn_stmt")
 		require.NoError(t, err)
-		rows.Close()
+		err = rows.Close()
+		require.NoError(t, err)
 
 		_, err = tx.Exec("DEALLOCATE txn_stmt")
 		require.NoError(t, err)

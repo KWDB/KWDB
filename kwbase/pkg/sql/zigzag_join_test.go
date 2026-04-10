@@ -71,7 +71,7 @@ func TestZigzagJoinNode(t *testing.T) {
 			t.Error("startExec should have panicked")
 		}
 	}()
-	zj.startExec(runParams{})
+	_ = zj.startExec(runParams{})
 
 	// Test Next
 	defer func() {
@@ -79,7 +79,7 @@ func TestZigzagJoinNode(t *testing.T) {
 			t.Error("Next should have panicked")
 		}
 	}()
-	zj.Next(runParams{})
+	_, _ = zj.Next(runParams{})
 
 	// Test Values
 	defer func() {
