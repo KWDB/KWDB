@@ -56,28 +56,28 @@ func TestTSScanCanProvideOrdering(t *testing.T) {
 			evalCtx := tree.NewTestingEvalContext(nil)
 			var f norm.Factory
 			f.Init(evalCtx, tc)
-			
+
 			// Create a simple table in the catalog
 			if _, err := tc.ExecuteDDL(
 				"CREATE TABLE t1 (c1 INT, c2 INT, c3 INT, c4 INT, PRIMARY KEY(c1, c2))",
 			); err != nil {
 				t.Fatal(err)
 			}
-			
+
 			md := f.Metadata()
 			tn := tree.NewUnqualifiedTableName("t1")
 			tab := md.AddTable(tc.Table(tn), tn)
-			
+
 			// Create TSScan expression
 			var flag memo.TSScanFlags
 			flag.Direction = tree.Ascending
-			
+
 			expr := f.Memo().MemoizeTSScan(&memo.TSScanPrivate{
 				Table: tab,
 				Cols:  opt.MakeColSet(1, 2, 3, 4),
 				Flags: flag,
 			})
-			
+
 			required := physical.ParseOrderingChoice(tt.required)
 			got := tsScanCanProvideOrdering(expr, &required)
 			if got != tt.expected {
@@ -108,31 +108,31 @@ func TestTSScanBuildProvided(t *testing.T) {
 			evalCtx := tree.NewTestingEvalContext(nil)
 			var f norm.Factory
 			f.Init(evalCtx, tc)
-			
+
 			// Create a simple table in the catalog
 			if _, err := tc.ExecuteDDL(
 				"CREATE TABLE t1 (c1 INT, c2 INT, c3 INT, c4 INT, PRIMARY KEY(c1, c2))",
 			); err != nil {
 				t.Fatal(err)
 			}
-			
+
 			md := f.Metadata()
 			tn := tree.NewUnqualifiedTableName("t1")
 			tab := md.AddTable(tc.Table(tn), tn)
-			
+
 			// Create TSScan expression
 			var flag memo.TSScanFlags
 			flag.Direction = tree.Ascending
-			
+
 			expr := f.Memo().MemoizeTSScan(&memo.TSScanPrivate{
 				Table: tab,
 				Cols:  opt.MakeColSet(1, 2, 3, 4),
 				Flags: flag,
 			})
-			
+
 			required := physical.ParseOrderingChoice(tt.required)
 			result := tsScanBuildProvided(expr, &required)
-			
+
 			// The actual result depends on the table structure and metadata
 			// We just verify that the function can be called without errors
 			if result == nil {
@@ -165,10 +165,10 @@ func TestTSScanPrivateCanProvide(t *testing.T) {
 			tsScanPrivate := &memo.TSScanPrivate{
 				Cols: opt.MakeColSet(1),
 			}
-			
+
 			required := physical.ParseOrderingChoice(tt.required)
 			ok, reverse := TSScanPrivateCanProvide(nil, tsScanPrivate, &required)
-			
+
 			if ok != tt.expected {
 				t.Errorf("TSScanPrivateCanProvide() ok = %v, want %v", ok, tt.expected)
 			}
