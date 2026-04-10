@@ -45,6 +45,7 @@ package sql
 
 import (
 	"context"
+	"fmt"
 	"sync"
 
 	"gitee.com/kwbasedb/kwbase/pkg/gossip"
@@ -116,16 +117,19 @@ func NewUDFCache(
 		ShouldEvict: func(s int, key, value interface{}) bool { return s > cacheSize },
 	})
 
-	g.RegisterCallback(
-		gossip.MakePrefixPattern(gossip.KeyUDFUpdatedPrefix),
-		udfCache.udfUpdatedGossipUpdate,
-		gossip.Redundant,
-	)
-	g.RegisterCallback(
-		gossip.MakePrefixPattern(gossip.KeyUDFDeletedPrefix),
-		udfCache.udfDeletedGossipUpdate,
-		gossip.Redundant,
-	)
+	if g != nil {
+		g.RegisterCallback(
+			gossip.MakePrefixPattern(gossip.KeyUDFUpdatedPrefix),
+			udfCache.udfUpdatedGossipUpdate,
+			gossip.Redundant,
+		)
+		g.RegisterCallback(
+			gossip.MakePrefixPattern(gossip.KeyUDFDeletedPrefix),
+			udfCache.udfDeletedGossipUpdate,
+			gossip.Redundant,
+		)
+	}
+
 	return udfCache
 }
 
@@ -370,6 +374,9 @@ func (uc *UDFCache) getUdfFromDB(
 		udfFn = udf
 	}
 
+	if udfFn == nil {
+		return nil, fmt.Errorf("UDF %s not found", udfName)
+	}
 	return udfFn, nil
 }
 
