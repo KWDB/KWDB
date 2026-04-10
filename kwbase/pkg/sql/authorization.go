@@ -113,6 +113,10 @@ func (p *planner) CheckPrivilege(
 	user := p.SessionData().User
 	privs := descriptor.GetPrivileges()
 
+	if privs == nil {
+		return errors.AssertionFailedf("cannot use CheckPrivilege without privileges")
+	}
+
 	// Check if 'user' itself has privileges.
 	if privs.CheckPrivilege(user, privilege) {
 		return nil
