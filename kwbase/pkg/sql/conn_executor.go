@@ -3108,9 +3108,11 @@ func (ps connExPrepStmtsAccessor) Delete(ctx context.Context, name string) bool 
 
 // DeleteAll is part of the preparedStatementsAccessor interface.
 func (ps connExPrepStmtsAccessor) DeleteAll(ctx context.Context) {
-	ps.ex.extraTxnState.prepStmtsNamespace.resetTo(
-		ctx, prepStmtNamespace{}, &ps.ex.extraTxnState.prepStmtsNamespaceMemAcc,
-	)
+	if ps.ex != nil {
+		ps.ex.extraTxnState.prepStmtsNamespace.resetTo(
+			ctx, prepStmtNamespace{}, &ps.ex.extraTxnState.prepStmtsNamespaceMemAcc,
+		)
+	}
 }
 
 // contextStatementKey is an empty type for the handle associated with the

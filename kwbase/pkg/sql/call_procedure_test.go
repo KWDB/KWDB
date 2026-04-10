@@ -40,11 +40,11 @@ func testProcedurePlanFn(
 	return expr, nil
 }
 
-type testProcedureSenderFactory kv.SenderFunc
+type TestProcedureSenderFactory kv.SenderFunc
 
-var _ kv.TxnSenderFactory = testProcedureSenderFactory(nil)
+var _ kv.TxnSenderFactory = TestProcedureSenderFactory(nil)
 
-func (f testProcedureSenderFactory) RootTransactionalSender(
+func (f TestProcedureSenderFactory) RootTransactionalSender(
 	txn *roachpb.Transaction, _ roachpb.UserPriority,
 ) kv.TxnSender {
 	return kv.NewMockTransactionalSender(
@@ -56,7 +56,7 @@ func (f testProcedureSenderFactory) RootTransactionalSender(
 		txn)
 }
 
-func (f testProcedureSenderFactory) LeafTransactionalSender(
+func (f TestProcedureSenderFactory) LeafTransactionalSender(
 	tis *roachpb.LeafTxnInputState,
 ) kv.TxnSender {
 	return kv.NewMockTransactionalSender(
@@ -68,7 +68,7 @@ func (f testProcedureSenderFactory) LeafTransactionalSender(
 		&tis.Txn)
 }
 
-func (f testProcedureSenderFactory) NonTransactionalSender() kv.Sender {
+func (f TestProcedureSenderFactory) NonTransactionalSender() kv.Sender {
 	return nil
 }
 
@@ -88,7 +88,7 @@ func TestCallProcedure(t *testing.T) {
 
 	// Mock out DistSender's sender function to check the read consistency for
 	// outgoing BatchRequests and return an empty reply.
-	factory := testProcedureSenderFactory(
+	factory := TestProcedureSenderFactory(
 		func(_ context.Context, ba roachpb.BatchRequest,
 		) (*roachpb.BatchResponse, *roachpb.Error) {
 			return ba.CreateReply(), nil
