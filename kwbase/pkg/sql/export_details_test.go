@@ -259,7 +259,7 @@ func TestCheckBeforeExport(t *testing.T) {
 	require.NoError(t, err)
 }
 
-func execSql(ctx context.Context, connHandler ConnectionHandler, sql string) error {
+func execSQL(ctx context.Context, connHandler ConnectionHandler, sql string) error {
 	sqlStmt, err := parser.ParseOne(sql)
 	if err != nil {
 		return err
@@ -295,9 +295,15 @@ func TestExportRelationalAndTsDatabase(t *testing.T) {
 		t.Fatal(err)
 	}
 	connHandler.NewStmt()
-	execSql(ctx, connHandler, "CREATE DATABASE IF NOT EXISTS test")
-	execSql(ctx, connHandler, "COMMENT ON database test is 'database for comment';")
-	execSql(ctx, connHandler, "CREATE TABLE if not exists test.t1 (id int) comment 'testtest'")
+	if err := execSQL(ctx, connHandler, "CREATE DATABASE IF NOT EXISTS test"); err != nil {
+		t.Fatal(err)
+	}
+	if err := execSQL(ctx, connHandler, "COMMENT ON database test is 'database for comment';"); err != nil {
+		t.Fatal(err)
+	}
+	if err := execSQL(ctx, connHandler, "CREATE TABLE if not exists test.t1 (id int) comment 'testtest'"); err != nil {
+		t.Fatal(err)
+	}
 	conn := connHandler.ex
 	ast := &tree.Export{}
 	res := conn.clientComm.CreateStatementResult(
@@ -352,28 +358,3 @@ func TestExportRelationalAndTsDatabase(t *testing.T) {
 	err = exportRelationalAndTsDatabase(ctx, p, res, conn, ast, opt)
 	require.NoError(t, err)
 }
-
-//func TestDispatchExportDB(t *testing.T) {
-//	defer leaktest.AfterTest(t)()
-//	ctx := context.Background()
-//}
-//
-//func TestGetTablesNameByDatabase(t *testing.T) {
-//	defer leaktest.AfterTest(t)()
-//	ctx := context.Background()
-//}
-//
-//func TestGetTablesNameByDBWithFindComment(t *testing.T) {
-//	defer leaktest.AfterTest(t)()
-//	ctx := context.Background()
-//}
-//
-//func TestDispatchExportTSDB(t *testing.T) {
-//	defer leaktest.AfterTest(t)()
-//	ctx := context.Background()
-//}
-//
-//func TestGetTablesNameByTSDatabase(t *testing.T) {
-//	defer leaktest.AfterTest(t)()
-//	ctx := context.Background()
-//}
