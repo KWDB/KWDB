@@ -925,7 +925,7 @@ k_int32 DataChunk::Compare(size_t left, size_t right, k_uint32 col_idx,
 KStatus DataChunk::Encoding(kwdbContext_p ctx,
                             TsNextRetState nextState,
                             bool use_query_short_circuit,
-                            k_int64 use_query_compress_type_,
+                            PgCompressMode use_query_compress_type,
                             k_int64 *command_limit,
                             const vector<k_uint32> &output_type_oid,
                             k_int64 floatPrec,
@@ -943,20 +943,10 @@ KStatus DataChunk::Encoding(kwdbContext_p ctx,
   if (msgBuffer == nullptr) {
     return KStatus::FAIL;
   }
-  if (use_query_compress_type_ != 0 && use_query_short_circuit) {
-    const BlockCompressor* compress_codec = nullptr;
-    if (use_query_compress_type_ == 2) {
-      GetBlockCompressor(CompressionTypePB::LZ4_COMPRESSION, &compress_codec);
-      st = PgCompressResultData(ctx, compress_codec, msgBuffer, CompressionTypePB::LZ4_COMPRESSION);
-      if (st != SUCCESS) {
-        return st;
-      }
-    } else if (use_query_compress_type_ == 3) {
-      GetBlockCompressor(CompressionTypePB::SNAPPY_COMPRESSION, &compress_codec);
-      st = PgCompressResultData(ctx, compress_codec, msgBuffer, CompressionTypePB::SNAPPY_COMPRESSION);
-      if (st != SUCCESS) {
-        return st;
-      }
+  if (use_query_compress_type != PgCompressMode::PgCompressOff && use_query_short_circuit) {
+    st = PgCompressResultData(ctx, msgBuffer, use_query_compress_type);
+    if (st != SUCCESS) {
+      return st;
     }
   } else {
     if (DML_PG_RESULT == nextState || use_query_short_circuit) {
@@ -1907,11 +1897,18 @@ KStatus DataChunk::PgResultData(kwdbContext_p ctx, k_uint32 row, const EE_String
   Return(SUCCESS);
 }
 
-KStatus DataChunk::PgCompressResultData(kwdbContext_p ctx,
-                                        const BlockCompressor *compress_codec,
-                                        const EE_StringInfo &info,
-                                        CompressionTypePB type) {
+KStatus DataChunk::PgCompressResultData(kwdbContext_p ctx, const EE_StringInfo& info,
+                                        PgCompressMode use_query_compress_type) {
   EnterFunc();
+  const BlockCompressor* compress_codec = nullptr;
+  CompressionTypePB type = CompressionTypePB::NO_COMPRESSION;
+  if (use_query_compress_type == PgCompressMode::PgWithLz4Compress) {
+    GetBlockCompressor(CompressionTypePB::LZ4_COMPRESSION, &compress_codec);
+    type = CompressionTypePB::LZ4_COMPRESSION;
+  } else if (use_query_compress_type == PgCompressMode::PgWithSnappyCompress) {
+    GetBlockCompressor(CompressionTypePB::SNAPPY_COMPRESSION, &compress_codec);
+    type = CompressionTypePB::SNAPPY_COMPRESSION;
+  }
   k_uint32 temp_len = info->len;
   char *temp_addr = nullptr;
   if (ee_appendBinaryStringInfo(info, "M0000", 5) != SUCCESS) {

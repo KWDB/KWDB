@@ -206,5 +206,17 @@ inline uint64_t decode_fixed64(const uint8_t* buf) {
 // using RawString = std::string;
 // using RawStringPad16 = std::string;
 // #endif
+
+enum PgCompressMode {
+  // PgCompressOff means that pg extend is disabled.
+  PgCompressOff = 0,
+  // PgWithoutCompress means that that use pg extend but without compress.
+  PgWithoutCompress,
+  // PgWithLz4Compress means that ause pg extend but with lz4
+  PgWithLz4Compress,
+  // PgWithSnappyCompress means that ause pg extend but with snappy
+  PgWithSnappyCompress
+};
+
 }  // namespace kwdbts
 
