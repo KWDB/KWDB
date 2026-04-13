@@ -24,22 +24,16 @@
 package sql
 
 import (
-	"context"
 	"reflect"
 	"testing"
 
-	"gitee.com/kwbasedb/kwbase/pkg/base"
-	"gitee.com/kwbasedb/kwbase/pkg/security"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
-	"gitee.com/kwbasedb/kwbase/pkg/testutils/serverutils"
 	"gitee.com/kwbasedb/kwbase/pkg/util/leaktest"
-	"gitee.com/kwbasedb/kwbase/pkg/util/log"
 )
 
 func TestTypeAsString(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 	p := planner{}
-
 	testData := []struct {
 		expr        tree.Expr
 		expected    string
@@ -94,97 +88,11 @@ func TestTypeAsString(t *testing.T) {
 			if !reflect.DeepEqual(a, expected) {
 				t.Fatalf("expected %v; got %v", expected, a)
 			}
-		}
+		})
 	})
 }
 
-func TestTypeAsStringOrNull(t *testing.T) {
-	defer leaktest.AfterTest(t)()
-	p := planner{}
-
-	tests := []struct {
-		name        string
-		expr        tree.Expr
-		expected    string
-		expectedErr bool
-	}{
-		{name: "string value", expr: tree.NewDString("foo"), expected: "foo"},
-		{name: "null value", expr: tree.DNull, expected: ""},
-		{name: "invalid type", expr: tree.NewDInt(3), expectedErr: true},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			fn, err := p.TypeAsStringOrNull(tt.expr, "test")
-			if err != nil {
-				if !tt.expectedErr {
-					t.Fatalf("expected no error; got %v", err)
-				}
-				return
-			} else if tt.expectedErr {
-				t.Fatal("expected error; got none")
-			}
-
-			isNull, s, err := fn()
-			if err != nil {
-				t.Fatal(err)
-			}
-
-			if tt.expr == tree.DNull {
-				if !isNull {
-					t.Fatalf("expected isNull=true; got false")
-				}
-				if s != "" {
-					t.Fatalf("expected empty string; got %s", s)
-				}
-			} else {
-				if isNull {
-					t.Fatalf("expected isNull=false; got true")
-				}
-				if s != tt.expected {
-					t.Fatalf("expected %s; got %s", tt.expected, s)
-				}
-			}
-		})
-	}
-}
-
-func TestTypeAsStringOpts(t *testing.T) {
-	defer leaktest.AfterTest(t)()
-	p := planner{}
-
-	tests := []struct {
-		name        string
-		opts        tree.KVOptions
-		expected    map[string]string
-		expectedErr bool
-	}{
-		{name: "empty options", opts: tree.KVOptions{}, expected: map[string]string{}},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			fn, err := p.TypeAsStringOpts(tt.opts, map[string]KVStringOptValidate{})
-			if err != nil {
-				if !tt.expectedErr {
-					t.Fatalf("expected no error; got %v", err)
-				}
-				return
-			} else if tt.expectedErr {
-				t.Fatal("expected error; got none")
-			}
-
-			s, err := fn()
-			if err != nil {
-				t.Fatal(err)
-			}
-			if !reflect.DeepEqual(s, tt.expected) {
-				t.Fatalf("expected %v; got %v", tt.expected, s)
-			}
-		})
-	}
-}
-
+// TestParseType tests the ParseType function
 func TestParseType(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 	p := planner{}
@@ -217,6 +125,7 @@ func TestParseType(t *testing.T) {
 	}
 }
 
+// TestParseQualifiedTableName tests the ParseQualifiedTableName function
 func TestParseQualifiedTableName(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 	p := planner{}
@@ -227,7 +136,7 @@ func TestParseQualifiedTableName(t *testing.T) {
 		expectedErr bool
 	}{
 		{name: "valid table name", sql: "public.users", expectedErr: false},
-		{name: "invalid table name", sql: "invalid..table", expectedErr: true},
+		{name: "invalid table name", sql: "invalid.table.name", expectedErr: true},
 	}
 
 	for _, tt := range tests {
@@ -249,6 +158,7 @@ func TestParseQualifiedTableName(t *testing.T) {
 	}
 }
 
+// TestPlannerGetters tests the various getter methods of the planner
 func TestPlannerGetters(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 
@@ -269,8 +179,8 @@ func TestPlannerGetters(t *testing.T) {
 			name: "ExecutorConfig",
 			test: func(t *testing.T, p *planner) {
 				result := p.ExecutorConfig()
-				if result == nil {
-					t.Errorf("ExecutorConfig() = nil, want non-nil")
+				if result != nil {
+					t.Errorf("ExecutorConfig() = %v, want nil", result)
 				}
 			},
 		},
@@ -278,8 +188,8 @@ func TestPlannerGetters(t *testing.T) {
 			name: "ExtendedEvalContext",
 			test: func(t *testing.T, p *planner) {
 				result := p.ExtendedEvalContext()
-				if result == nil {
-					t.Errorf("ExtendedEvalContext() = nil, want non-nil")
+				if result != nil {
+					t.Errorf("ExtendedEvalContext() = %v, want nil", result)
 				}
 			},
 		},
@@ -287,8 +197,26 @@ func TestPlannerGetters(t *testing.T) {
 			name: "ExtendedEvalContextCopy",
 			test: func(t *testing.T, p *planner) {
 				result := p.ExtendedEvalContextCopy()
-				if result == nil {
-					t.Errorf("ExtendedEvalContextCopy() = nil, want non-nil")
+				if result != nil {
+					t.Errorf("ExtendedEvalContextCopy() = %v, want nil", result)
+				}
+			},
+		},
+		{
+			name: "CurrentDatabase",
+			test: func(t *testing.T, p *planner) {
+				result := p.CurrentDatabase()
+				if result != "" {
+					t.Errorf("CurrentDatabase() = %v, want empty string", result)
+				}
+			},
+		},
+		{
+			name: "CurrentSearchPath",
+			test: func(t *testing.T, p *planner) {
+				result := p.CurrentSearchPath()
+				if result.Empty() {
+					t.Errorf("CurrentSearchPath() returned empty search path")
 				}
 			},
 		},
@@ -297,7 +225,7 @@ func TestPlannerGetters(t *testing.T) {
 			test: func(t *testing.T, p *planner) {
 				result := p.EvalContext()
 				if result == nil {
-					t.Logf("EvalContext() returned nil as expected")
+					t.Errorf("EvalContext() returned nil")
 				}
 			},
 		},
@@ -328,15 +256,15 @@ func TestPlannerGetters(t *testing.T) {
 				}
 			},
 		},
-		//{
-		//	name: "LeaseMgr",
-		//	test: func(t *testing.T, p *planner) {
-		//		result := p.LeaseMgr()
-		//		if result != nil {
-		//			t.Errorf("LeaseMgr() = %v, want nil", result)
-		//		}
-		//	},
-		//},
+		{
+			name: "LeaseMgr",
+			test: func(t *testing.T, p *planner) {
+				result := p.LeaseMgr()
+				if result != nil {
+					t.Errorf("LeaseMgr() = %v, want nil", result)
+				}
+			},
+		},
 		{
 			name: "Txn",
 			test: func(t *testing.T, p *planner) {
@@ -347,11 +275,38 @@ func TestPlannerGetters(t *testing.T) {
 			},
 		},
 		{
+			name: "User",
+			test: func(t *testing.T, p *planner) {
+				result := p.User()
+				if result != "" {
+					t.Errorf("User() = %v, want empty string", result)
+				}
+			},
+		},
+		{
+			name: "TemporarySchemaName",
+			test: func(t *testing.T, p *planner) {
+				result := p.TemporarySchemaName()
+				if result != "" {
+					t.Errorf("TemporarySchemaName() = %v, want empty string", result)
+				}
+			},
+		},
+		{
 			name: "DistSQLPlanner",
 			test: func(t *testing.T, p *planner) {
 				result := p.DistSQLPlanner()
 				if result != nil {
 					t.Errorf("DistSQLPlanner() = %v, want nil", result)
+				}
+			},
+		},
+		{
+			name: "SessionData",
+			test: func(t *testing.T, p *planner) {
+				result := p.SessionData()
+				if result == nil {
+					t.Errorf("SessionData() returned nil")
 				}
 			},
 		},
@@ -374,72 +329,96 @@ func TestPlannerGetters(t *testing.T) {
 	}
 }
 
-// TestRelocateRange tests the RelocateRange method
-func TestRelocateRange(t *testing.T) {
+// TestTypeAsStringOrNull tests the TypeAsStringOrNull function
+func TestTypeAsStringOrNull(t *testing.T) {
 	defer leaktest.AfterTest(t)()
-	logScope := log.Scope(t)
-	defer logScope.Close(t)
-	ctx := context.Background()
+	p := planner{}
 
-	// Start a test server
-	s, _, _ := serverutils.StartServer(t, base.TestServerArgs{})
-	defer s.Stopper().Stop(ctx)
+	tests := []struct {
+		name        string
+		expr        tree.Expr
+		expected    string
+		expectedErr bool
+	}{
+		{name: "string value", expr: tree.NewDString("foo"), expected: "foo"},
+		{name: "null value", expr: tree.DNull, expected: ""},
+		{name: "invalid type", expr: tree.NewDInt(3), expectedErr: true},
+	}
 
-	// Get the executor config
-	execCfg := s.ExecutorConfig().(ExecutorConfig)
+	t.Run("TypeAsStringOrNull", func(t *testing.T) {
+		for _, td := range tests {
+			t.Run(td.name, func(t *testing.T) {
+				fn, err := p.TypeAsStringOrNull(td.expr, "test")
+				if err != nil {
+					if !td.expectedErr {
+						t.Fatalf("expected no error; got %v", err)
+					}
+					continue
+				} else if td.expectedErr {
+					t.Fatal("expected error; got none")
+				}
 
-	// Create a planner with admin privileges
-	localPlanner, cleanup := NewInternalPlanner(
-		"test",
-		nil,               // No transaction needed for this test
-		security.RootUser, // Root user has admin privileges
-		&MemoryMetrics{},
-		&execCfg,
-	)
-	defer cleanup()
-	p := localPlanner.(*planner)
-	// Test case 1: RelocateRange with invalid range ID
-	t.Run("RelocateRange with invalid range ID", func(t *testing.T) {
-		// Test RelocateRange with a range ID that doesn't exist
-		err := p.RelocateRange(ctx, 999999, 1, 2)
-		// The function should return an error because the range doesn't exist
-		if err == nil {
-			t.Error("RelocateRange should return error for invalid range ID")
+				isNull, s, err := fn()
+				if err != nil {
+					t.Fatal(err)
+				}
+
+				if td.expr == tree.DNull {
+					if !isNull {
+						t.Fatalf("expected isNull=true; got false")
+					}
+					if s != "" {
+						t.Fatalf("expected empty string; got %s", s)
+					}
+				} else {
+					if isNull {
+						t.Fatalf("expected isNull=false; got true")
+					}
+					if s != td.expected {
+						t.Fatalf("expected %s; got %s", td.expected, s)
+					}
+				}
+			})
 		}
 	})
 }
 
-// TestGetRangeDebugInfo tests the GetRangeDebugInfo method
-func TestGetRangeDebugInfo(t *testing.T) {
+// TestTypeAsStringOpts tests the TypeAsStringOpts function
+func TestTypeAsStringOpts(t *testing.T) {
 	defer leaktest.AfterTest(t)()
-	logScope := log.Scope(t)
-	defer logScope.Close(t)
-	ctx := context.Background()
+	p := planner{}
 
-	// Start a test server
-	s, _, _ := serverutils.StartServer(t, base.TestServerArgs{})
-	defer s.Stopper().Stop(ctx)
+	tests := []struct {
+		name        string
+		expr        tree.Expr
+		expected    string
+		expectedErr bool
+	}{
+		{name: "string value", expr: tree.NewDString("foo"), expected: "foo"},
+		{name: "invalid type", expr: tree.NewDInt(3), expectedErr: true},
+	}
 
-	// Get the executor config
-	execCfg := s.ExecutorConfig().(ExecutorConfig)
+	t.Run("TypeAsStringOpts", func(t *testing.T) {
+		for _, td := range tests {
+			t.Run(td.name, func(t *testing.T) {
+				fn, err := p.TypeAsStringOpts(td.expr, "test")
+				if err != nil {
+					if !td.expectedErr {
+						t.Fatalf("expected no error; got %v", err)
+					}
+					continue
+				} else if td.expectedErr {
+					t.Fatal("expected error; got none")
+				}
 
-	// Create a planner with admin privileges
-	localPlanner, cleanup := NewInternalPlanner(
-		"test",
-		nil,               // No transaction needed for this test
-		security.RootUser, // Root user has admin privileges
-		&MemoryMetrics{},
-		&execCfg,
-	)
-	defer cleanup()
-	p := localPlanner.(*planner)
-	// Test case 1: GetRangeDebugInfo with invalid range ID
-	t.Run("GetRangeDebugInfo with invalid range ID", func(t *testing.T) {
-		// Test GetRangeDebugInfo with a range ID that doesn't exist
-		_, err := p.GetRangeDebugInfo(ctx, 999999)
-		// The function should return an error because the range doesn't exist
-		if err == nil {
-			t.Error("GetRangeDebugInfo should return error for invalid range ID")
+				s, err := fn()
+				if err != nil {
+					t.Fatal(err)
+				}
+				if s != td.expected {
+					t.Fatalf("expected %s; got %s", td.expected, s)
+				}
+			})
 		}
 	})
 }

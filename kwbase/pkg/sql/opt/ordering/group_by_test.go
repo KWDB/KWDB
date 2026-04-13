@@ -142,3 +142,338 @@ func TestDistinctOnProvided(t *testing.T) {
 		})
 	}
 }
+
+// TestScalarGroupByBuildChildReqOrdering tests the scalarGroupByBuildChildReqOrdering function
+func TestScalarGroupByBuildChildReqOrdering(t *testing.T) {
+	evalCtx := tree.NewTestingEvalContext(nil /* st */)
+	var f norm.Factory
+	f.Init(evalCtx, testcat.New())
+
+	tests := []struct {
+		name     string
+		ordering string
+		childIdx int
+		expected string
+	}{
+		{
+			name:     "child index 0",
+			ordering: "+1",
+			childIdx: 0,
+			expected: "+1",
+		},
+		{
+			name:     "child index not 0",
+			ordering: "+1",
+			childIdx: 1,
+			expected: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			input := &testexpr.Instance{
+				Rel: &props.Relational{},
+			}
+			scalarGroupBy := f.Memo().MemoizeScalarGroupBy(input, nil, &memo.GroupingPrivate{
+				Ordering: physical.ParseOrderingChoice(tt.ordering),
+			})
+
+			result := scalarGroupByBuildChildReqOrdering(scalarGroupBy, nil, tt.childIdx)
+			if result.String() != tt.expected {
+				t.Errorf("scalarGroupByBuildChildReqOrdering() = %s, want %s", result.String(), tt.expected)
+			}
+		})
+	}
+}
+
+// TestGroupByCanProvideOrdering tests the groupByCanProvideOrdering function
+func TestGroupByCanProvideOrdering(t *testing.T) {
+	evalCtx := tree.NewTestingEvalContext(nil /* st */)
+	var f norm.Factory
+	f.Init(evalCtx, testcat.New())
+
+	tests := []struct {
+		name         string
+		groupingCols string
+		internal     string
+		required     string
+		expected     bool
+	}{
+		{
+			name:         "can provide ordering",
+			groupingCols: "1,2",
+			internal:     "+1",
+			required:     "+1",
+			expected:     true,
+		},
+		{
+			name:         "cannot project columns",
+			groupingCols: "1,2",
+			internal:     "+1",
+			required:     "+3",
+			expected:     false,
+		},
+		{
+			name:         "orderings do not intersect",
+			groupingCols: "1,2",
+			internal:     "+1",
+			required:     "+2",
+			expected:     false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			input := &testexpr.Instance{
+				Rel: &props.Relational{},
+			}
+			groupBy := f.Memo().MemoizeGroupBy(input, nil, &memo.GroupingPrivate{
+				GroupingCols: opt.MakeColSet(1, 2),
+				Ordering:     physical.ParseOrderingChoice(tt.internal),
+			})
+
+			required := physical.ParseOrderingChoice(tt.required)
+			result := groupByCanProvideOrdering(groupBy, &required)
+			if result != tt.expected {
+				t.Errorf("groupByCanProvideOrdering() = %v, want %v", result, tt.expected)
+			}
+		})
+	}
+}
+
+// TestGroupByBuildChildReqOrdering tests the groupByBuildChildReqOrdering function
+func TestGroupByBuildChildReqOrdering(t *testing.T) {
+	evalCtx := tree.NewTestingEvalContext(nil /* st */)
+	var f norm.Factory
+	f.Init(evalCtx, testcat.New())
+
+	tests := []struct {
+		name         string
+		groupingCols string
+		internal     string
+		required     string
+		childIdx     int
+		expected     string
+	}{
+		{
+			name:         "child index 0",
+			groupingCols: "1,2",
+			internal:     "+1",
+			required:     "+1",
+			childIdx:     0,
+			expected:     "+1",
+		},
+		{
+			name:         "child index not 0",
+			groupingCols: "1,2",
+			internal:     "+1",
+			required:     "+1",
+			childIdx:     1,
+			expected:     "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			input := &testexpr.Instance{
+				Rel: &props.Relational{},
+			}
+			groupBy := f.Memo().MemoizeGroupBy(input, nil, &memo.GroupingPrivate{
+				GroupingCols: opt.MakeColSet(1, 2),
+				Ordering:     physical.ParseOrderingChoice(tt.internal),
+			})
+
+			required := physical.ParseOrderingChoice(tt.required)
+			result := groupByBuildChildReqOrdering(groupBy, &required, tt.childIdx)
+			if result.String() != tt.expected {
+				t.Errorf("groupByBuildChildReqOrdering() = %s, want %s", result.String(), tt.expected)
+			}
+		})
+	}
+}
+
+// TestGroupByBuildProvided tests the groupByBuildProvided function
+func TestGroupByBuildProvided(t *testing.T) {
+	evalCtx := tree.NewTestingEvalContext(nil /* st */)
+	var f norm.Factory
+	f.Init(evalCtx, testcat.New())
+
+	tests := []struct {
+		name         string
+		groupingCols string
+		internal     string
+		required     string
+		input        string
+		expected     string
+	}{
+		{
+			name:         "basic provided ordering",
+			groupingCols: "1,2",
+			internal:     "+1",
+			required:     "+1",
+			input:        "+1",
+			expected:     "+1",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			input := &testexpr.Instance{
+				Rel: &props.Relational{},
+				Provided: &physical.Provided{
+					Ordering: physical.ParseOrdering(tt.input),
+				},
+			}
+			groupBy := f.Memo().MemoizeGroupBy(input, nil, &memo.GroupingPrivate{
+				GroupingCols: opt.MakeColSet(1, 2),
+				Ordering:     physical.ParseOrderingChoice(tt.internal),
+			})
+
+			required := physical.ParseOrderingChoice(tt.required)
+			result := groupByBuildProvided(groupBy, &required)
+			if result.String() != tt.expected {
+				t.Errorf("groupByBuildProvided() = %s, want %s", result.String(), tt.expected)
+			}
+		})
+	}
+}
+
+// TestDistinctOnCanProvideOrdering tests the distinctOnCanProvideOrdering function
+func TestDistinctOnCanProvideOrdering(t *testing.T) {
+	evalCtx := tree.NewTestingEvalContext(nil /* st */)
+	var f norm.Factory
+	f.Init(evalCtx, testcat.New())
+
+	tests := []struct {
+		name         string
+		groupingCols string
+		internal     string
+		required     string
+		expected     bool
+	}{
+		{
+			name:         "can provide ordering",
+			groupingCols: "1,2",
+			internal:     "+1",
+			required:     "+1",
+			expected:     true,
+		},
+		{
+			name:         "orderings do not intersect",
+			groupingCols: "1,2",
+			internal:     "+1",
+			required:     "+2",
+			expected:     false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			input := &testexpr.Instance{
+				Rel: &props.Relational{},
+			}
+			distinctOn := f.Memo().MemoizeDistinctOn(input, nil, &memo.GroupingPrivate{
+				GroupingCols: opt.MakeColSet(1, 2),
+				Ordering:     physical.ParseOrderingChoice(tt.internal),
+			})
+
+			required := physical.ParseOrderingChoice(tt.required)
+			result := distinctOnCanProvideOrdering(distinctOn, &required)
+			if result != tt.expected {
+				t.Errorf("distinctOnCanProvideOrdering() = %v, want %v", result, tt.expected)
+			}
+		})
+	}
+}
+
+// TestDistinctOnBuildChildReqOrdering tests the distinctOnBuildChildReqOrdering function
+func TestDistinctOnBuildChildReqOrdering(t *testing.T) {
+	evalCtx := tree.NewTestingEvalContext(nil /* st */)
+	var f norm.Factory
+	f.Init(evalCtx, testcat.New())
+
+	tests := []struct {
+		name         string
+		groupingCols string
+		internal     string
+		required     string
+		childIdx     int
+		expected     string
+	}{
+		{
+			name:         "child index 0",
+			groupingCols: "1,2",
+			internal:     "+1",
+			required:     "+1",
+			childIdx:     0,
+			expected:     "+1",
+		},
+		{
+			name:         "child index not 0",
+			groupingCols: "1,2",
+			internal:     "+1",
+			required:     "+1",
+			childIdx:     1,
+			expected:     "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			input := &testexpr.Instance{
+				Rel: &props.Relational{},
+			}
+			distinctOn := f.Memo().MemoizeDistinctOn(input, nil, &memo.GroupingPrivate{
+				GroupingCols: opt.MakeColSet(1, 2),
+				Ordering:     physical.ParseOrderingChoice(tt.internal),
+			})
+
+			required := physical.ParseOrderingChoice(tt.required)
+			result := distinctOnBuildChildReqOrdering(distinctOn, &required, tt.childIdx)
+			if result.String() != tt.expected {
+				t.Errorf("distinctOnBuildChildReqOrdering() = %s, want %s", result.String(), tt.expected)
+			}
+		})
+	}
+}
+
+// TestStreamingGroupingColOrdering tests the StreamingGroupingColOrdering function
+func TestStreamingGroupingColOrdering(t *testing.T) {
+	tests := []struct {
+		name         string
+		groupingCols string
+		internal     string
+		required     string
+		expected     string
+	}{
+		{
+			name:         "basic streaming ordering",
+			groupingCols: "1,2",
+			internal:     "+1",
+			required:     "+1",
+			expected:     "+1",
+		},
+		{
+			name:         "partial intersection",
+			groupingCols: "1,2",
+			internal:     "+1,+2",
+			required:     "+1,+2",
+			expected:     "+1,+2",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			g := &memo.GroupingPrivate{
+				GroupingCols: opt.MakeColSet(1, 2),
+				Ordering:     physical.ParseOrderingChoice(tt.internal),
+			}
+
+			required := physical.ParseOrderingChoice(tt.required)
+			result := StreamingGroupingColOrdering(g, &required)
+			if result.String() != tt.expected {
+				t.Errorf("StreamingGroupingColOrdering() = %s, want %s", result.String(), tt.expected)
+			}
+		})
+	}
+}
