@@ -29,6 +29,7 @@ import (
 	"testing"
 
 	"gitee.com/kwbasedb/kwbase/pkg/base"
+	"gitee.com/kwbasedb/kwbase/pkg/kv"
 	"gitee.com/kwbasedb/kwbase/pkg/security"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 	"gitee.com/kwbasedb/kwbase/pkg/testutils/serverutils"
@@ -382,7 +383,7 @@ func TestRelocateRange(t *testing.T) {
 	ctx := context.Background()
 
 	// Start a test server
-	s, _, _ := serverutils.StartServer(t, base.TestServerArgs{})
+	s, _, db := serverutils.StartServer(t, base.TestServerArgs{})
 	defer s.Stopper().Stop(ctx)
 
 	// Get the executor config
@@ -391,8 +392,8 @@ func TestRelocateRange(t *testing.T) {
 	// Create a planner with admin privileges
 	localPlanner, cleanup := NewInternalPlanner(
 		"test",
-		nil,               // No transaction needed for this test
-		security.RootUser, // Root user has admin privileges
+		kv.NewTxn(ctx, db, s.NodeID()), // No transaction needed for this test
+		security.RootUser,              // Root user has admin privileges
 		&MemoryMetrics{},
 		&execCfg,
 	)
@@ -417,7 +418,7 @@ func TestGetRangeDebugInfo(t *testing.T) {
 	ctx := context.Background()
 
 	// Start a test server
-	s, _, _ := serverutils.StartServer(t, base.TestServerArgs{})
+	s, _, db := serverutils.StartServer(t, base.TestServerArgs{})
 	defer s.Stopper().Stop(ctx)
 
 	// Get the executor config
@@ -426,8 +427,8 @@ func TestGetRangeDebugInfo(t *testing.T) {
 	// Create a planner with admin privileges
 	localPlanner, cleanup := NewInternalPlanner(
 		"test",
-		nil,               // No transaction needed for this test
-		security.RootUser, // Root user has admin privileges
+		kv.NewTxn(ctx, db, s.NodeID()), // No transaction needed for this test
+		security.RootUser,              // Root user has admin privileges
 		&MemoryMetrics{},
 		&execCfg,
 	)

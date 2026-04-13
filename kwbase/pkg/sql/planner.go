@@ -835,6 +835,21 @@ func (p *planner) GetRangeDebugInfo(ctx context.Context, rangeID int64) (interfa
 	if resp, err = p.execCfg.StatusServer.Range(ctx, req); err != nil {
 		return nil, err
 	}
+
+	// Check if any node returned valid range information
+	foundValidRange := false
+	for _, nodeResp := range resp.ResponsesByNodeID {
+		if nodeResp.Response && len(nodeResp.Infos) > 0 {
+			foundValidRange = true
+			break
+		}
+	}
+
+	// If no valid range information was found, return an error
+	if !foundValidRange {
+		return nil, errors.Errorf("range %d not found", rangeID)
+	}
+
 	return resp, nil
 }
 
