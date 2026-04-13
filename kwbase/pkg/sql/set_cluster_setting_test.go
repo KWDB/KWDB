@@ -364,7 +364,7 @@ func TestToSettingString(t *testing.T) {
 
 	// Test bool setting
 	boolSetting := settings.RegisterBoolSetting(
-		"test.bool",
+		"test.bool.enabled",
 		"test bool setting",
 		false,
 	)

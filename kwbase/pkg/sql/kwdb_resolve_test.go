@@ -15,9 +15,11 @@ import (
 	"context"
 	"testing"
 
+	"gitee.com/kwbasedb/kwbase/pkg/base"
 	"gitee.com/kwbasedb/kwbase/pkg/kv"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
+	"gitee.com/kwbasedb/kwbase/pkg/testutils/serverutils"
 	"gitee.com/kwbasedb/kwbase/pkg/tse"
 	"gitee.com/kwbasedb/kwbase/pkg/util/leaktest"
 	"github.com/cockroachdb/errors"
@@ -146,19 +148,18 @@ func TestGetNameSpaceByParentID(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 
 	ctx := context.Background()
+	// Start a test server
+	s, _, _ := serverutils.StartServer(t, base.TestServerArgs{})
+	defer s.Stopper().Stop(ctx)
 
-	// Test with a mock txn that returns "object cannot found" error
-	mockTxn := &kv.Txn{}
 	// We can't easily mock the txn.Scan method here without a proper mock implementation
 	// In a real test, we would use a mock kv.Txn that returns the appropriate error
 
 	// For now, we'll just test the function signature and basic error handling
 	// The actual implementation would require a more complex test setup
-	_, err := GetNameSpaceByParentID(ctx, mockTxn, 1, 1)
+	_, err := GetNameSpaceByParentID(ctx, kv.NewTxn(ctx, s.DB(), s.NodeID()), 1, 1)
 	// We expect an error here since we're using a real kv.Txn without proper setup
-	if err == nil {
-		t.Log("GetNameSpaceByParentID returned no error with mock txn")
-	} else {
+	if err != nil {
 		t.Logf("GetNameSpaceByParentID returned error as expected: %v", err)
 	}
 }
