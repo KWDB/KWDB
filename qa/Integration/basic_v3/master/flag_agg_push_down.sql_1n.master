@@ -66,8 +66,9 @@ CREATE TABLE
                               | ts-table            | cpu
                               | ordered type        | order scan
                               | access mode         | tagIndex
+                              | use statistic       | true
                               | ptag filter[0]      | hostname = 'host_4'
-(29 rows)
+(30 rows)
 > explain SELECT
                hostname,
                max(usage_user)

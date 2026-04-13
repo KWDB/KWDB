@@ -437,6 +437,10 @@ message TSAggregatorSpec {
     TWA = 37;
     MIN_EXTEND = 38;
     MAX_EXTEND = 39;
+    VAR_POP = 40;
+    QUANTILE = 41;
+    NORM = 42;
+    TIME_BUCKET = 43;
   }
 
   enum Type {
@@ -899,11 +903,14 @@ message TSStatisticReaderSpec {
     enum type {
       colID = 0;
       const = 1;
+      function = 2;
     }
 
     required uint32 typ = 1;
 
     required uint64 value = 2;
+
+    required string func_value = 3;
   }
 
   message Params {
@@ -923,6 +930,7 @@ message TSStatisticReaderSpec {
   optional bool scalar = 7;
 
   required bool LastRowOpt = 8;
+  optional uint64 timeBucket = 9;
 }
 
 message HashpointSpan{

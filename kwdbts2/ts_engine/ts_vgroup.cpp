@@ -1161,7 +1161,8 @@ KStatus TsVGroup::GetIterator(kwdbContext_p ctx, uint32_t version, vector<uint32
                               const std::shared_ptr<MMapMetricsTable>& schema, TsStorageIterator** iter,
                               const std::shared_ptr<TsVGroup>& vgroup,
                               const std::vector<timestamp64>& ts_points,
-                              bool reverse, bool sorted, TS_OSN scan_osn, const FillParams& fill_params) {
+                              bool reverse, bool sorted, TS_OSN scan_osn, const FillParams& fill_params,
+                              const TimeBucketInfo time_bucket_info) {
   // TODO(liuwei) update to use read_lsn to fetch Metrics data optimistically.
   // if the read_lsn is 0, ignore the read lsn checking and return all data (it's no WAL support
   // case). TS_OSN read_lsn = GetOptimisticReadLsn();
@@ -1176,7 +1177,8 @@ KStatus TsVGroup::GetIterator(kwdbContext_p ctx, uint32_t version, vector<uint32
   } else {
     // need call Next function times: entity_ids.size(), no matter Next return what.
     ts_iter = new TsAggIteratorImpl(vgroup, version, entity_ids, ts_spans, block_filter, scan_cols, ts_scan_cols,
-                                      agg_extend_cols, scan_agg_types, ts_points, table_schema_mgr, schema, scan_osn);
+                                      agg_extend_cols, scan_agg_types, ts_points, table_schema_mgr, schema,
+                                      scan_osn, time_bucket_info);
   }
   KStatus s = ts_iter->Init(reverse);
   if (s != KStatus::SUCCESS) {

@@ -296,7 +296,39 @@ EEIteratorErrCode TsStatisticScanParser::ResolveScanCols(kwdbContext_p ctx) {
   } else if (tag_last_size) {
     tag_count_index_ = insert_ts_index_;
   }
-
+  if (spec_->has_timebucket() && spec_->timebucket() > 0) {
+    //  spec_->timebucket() is in ns
+    auto time = spec_->timebucket();
+    auto timezone = ctx->timezone;
+    auto time_diff = timezone * MILLISECOND_PER_HOUR;
+    auto stype = table_->fields_[0]->get_storage_type();
+    switch (stype) {
+      case roachpb::DataType::TIMESTAMP:
+      case roachpb::DataType::TIMESTAMPTZ: {
+        time = time / 1000000;
+        break;
+      }
+      case roachpb::DataType::TIMESTAMP_MICRO:
+      case roachpb::DataType::TIMESTAMPTZ_MICRO: {
+        time = time / 1000;
+        time_diff = time_diff * MICROSECOND_PER_MILLISECOND;
+        break;
+      }
+      default:
+        time_diff = time_diff * NANOSECOND_PER_MILLISECOND;
+        break;
+    }
+    if (time == 0) time = 1;
+    time_diff = CalTimeDiff(stype, time, time_diff);
+    table_->time_bucket_info_.interval = time;
+    table_->time_bucket_info_.diff = time_diff;
+    for (auto i = 0; i < table_->scan_cols_.size(); i++) {
+      if (table_->scan_cols_[i] == 0 && table_->scan_real_agg_types_[i] == Sumfunctype::ANY_NOT_NULL) {
+        table_->scan_real_agg_types_[i] = Sumfunctype::TIME_BUCKET;
+        break;
+      }
+    }
+  }
   Return(code);
 }
 

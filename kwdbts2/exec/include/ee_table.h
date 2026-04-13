@@ -136,6 +136,7 @@ class TABLE {
   bool contain_tag_for_statistic{false};  // for statistic last_row
   std::vector<BlockFilter> block_filters_;
   k_uint64 osn_id_{UINT64_MAX};
+  TimeBucketInfo time_bucket_info_{};
 
  protected:
   // relational fields for multiple model processing

@@ -289,6 +289,8 @@ EEIteratorErrCode StorageHandler::TsOffsetNext(kwdbContext_p ctx, TsScanStats* t
       .offset = table_->offset_,
       .limit = table_->limit_,
       .scan_osn = table_->osn_id_,
+      .fill_params = ts_fill_params_,
+      .time_bucket_info = table_->time_bucket_info_
     };
     ret = ts_table_->GetOffsetIterator(ctx, params, &ts_iterator);
     if (KStatus::FAIL == ret) {
@@ -406,6 +408,8 @@ EEIteratorErrCode StorageHandler::TsStatisticCacheNext(kwdbContext_p ctx, TsScan
           .offset = table_->offset_,
           .limit = table_->limit_,
           .scan_osn = table_->osn_id_,
+          .fill_params = ts_fill_params_,
+          .time_bucket_info = table_->time_bucket_info_
       };
       ret = ts_table_->GetIterator(ctx, params, &ts_iterator);
       if (KStatus::FAIL == ret) {
@@ -659,6 +663,7 @@ EEIteratorErrCode StorageHandler::NewTsIterator(kwdbContext_p ctx) {
       .limit = table_->limit_,
       .scan_osn = table_->osn_id_,
       .fill_params = ts_fill_params_,
+      .time_bucket_info = table_->time_bucket_info_
     };
     ret = ts_table_->GetIterator(ctx, params, &ts_iterator);
 

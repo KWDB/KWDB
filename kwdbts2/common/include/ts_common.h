@@ -843,7 +843,11 @@ enum Sumfunctype {
   ELAPSED = 36,
   TWA = 37,
   MIN_EXTEND = 38,
-  MAX_EXTEND = 39
+  MAX_EXTEND = 39,
+  VAR_POP = 40,
+  QUANTILE = 41,
+  NORM = 42,
+  TIME_BUCKET = 43
 };
 
 enum WindowFunc {
@@ -1435,6 +1439,16 @@ struct BlockFilter {
 };
 
 /**
+ * @brief Defines a structure for time_bucket pushdown to storage engine,
+ * diff and interval will be used to call CALCULATE_TIME_BUCKET_VALUE to
+ * get time_bucket value.
+ */
+typedef struct {
+  int64_t diff{0};                  // time_bucket time zone diff
+  int64_t interval{0};               // time_bucket interval, 0 means no time_bucket
+} TimeBucketInfo;
+
+/**
  * @brief Defines a structure for iterator parameters, used to store various
  * parameters required for an iterator to perform a scanning operation.
  */
@@ -1453,6 +1467,7 @@ struct IteratorParams {
   k_uint32 limit;
   TS_OSN scan_osn;
   FillParams fill_params;
+  TimeBucketInfo time_bucket_info;
 };
 
 inline bool InHashIdSpan(uint32_t hp, const std::vector<HashIdSpan>* hps) {

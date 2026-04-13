@@ -215,6 +215,7 @@ func (ef *execFactory) ConstructTSScan(
 	tsScan.estimatedRowCount = uint64(rowCount)
 	tsScan.blockFilter = blockFilter
 	tsScan.reverse = flags.Direction == tree.Descending
+	tsScan.TimeBucketRange = flags.TimeBucketRange
 
 	// deal with fill
 	if tsFill != nil {

@@ -1523,7 +1523,7 @@ func (b *logicalPropsBuilder) buildProjectionsItemProps(
 	item.Typ = item.Element.DataType()
 	// if the grouped window function is count_window(count),
 	// we need to add TsCol to outerCol so that TsCol can be found when adding Orderby later.
-	if tsColID := b.mem.GetTSColIDInGroupWindow(item.Element, item.Col, -1); tsColID >= 0 {
+	if tsColID := b.mem.GetTSColIDInGroupWindow(item.Element, item.Col); tsColID >= 0 {
 		scalar.Shared.OuterCols.Add(tsColID)
 	}
 	BuildSharedProps(item.Element, &scalar.Shared)

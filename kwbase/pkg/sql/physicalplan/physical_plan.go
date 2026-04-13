@@ -32,6 +32,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -2416,18 +2417,71 @@ func (p *PhysicalPlan) AddTSOutputType(force bool) {
 	}
 }
 
+// extract the number after @; return 0 and false if not found.
+func extractNumberAfterAt(s string) (int, bool) {
+	re := regexp.MustCompile(`@(\d+)`)
+	match := re.FindStringSubmatch(s)
+	if len(match) < 2 {
+		return 0, false
+	}
+	num, err := strconv.Atoi(match[1])
+	if err != nil {
+		return 0, false
+	}
+	return num, true
+}
+
+// replaceAtNumbers replaces the number after @ with a new number from the params array
+// The number after @ is used as the index to get the new number
+// Example: @1 will be replaced by @params[1]
+func replaceAtNumbers(s string, params []uint32) (string, bool) {
+	// Match pattern @ + digits
+	re := regexp.MustCompile(`@(\d+)`)
+	replaced := false
+
+	result := re.ReplaceAllStringFunc(s, func(match string) string {
+		replaced = true
+		// Extract the number string after @
+		numStr := match[1:]
+		// Convert string to integer index
+		index, err := strconv.Atoi(numStr)
+		if err != nil {
+			return match // return original if invalid
+		}
+		// Check if index is valid in params array
+		if index >= 0 && index < len(params) {
+			// Keep @, replace the number only
+			return fmt.Sprintf("@%d", params[index-1])
+		}
+		// If index out of range, keep original
+		return match
+	})
+
+	return result, replaced
+}
+
 func getTableOutPutInfoFromPost(
 	scanPost *execinfrapb.PostProcessSpec, constValues []int64,
 ) []execinfrapb.TSStatisticReaderSpec_ParamInfo {
 	scanOutput := make([]execinfrapb.TSStatisticReaderSpec_ParamInfo, 0)
 	if len(scanPost.RenderExprs) != 0 {
 		for i, v := range scanPost.RenderExprs {
-			if v.String()[0] != '@' { //const value
+			if v.String()[0] != '@' { // exprs other than columns
 				constVal := constValues[i]
-				scanOutput = append(scanOutput, execinfrapb.TSStatisticReaderSpec_ParamInfo{
-					Typ:   execinfrapb.TSStatisticReaderSpec_ParamInfo_const,
-					Value: constVal,
-				})
+				if strings.Contains(strings.ToLower(v.String()), "function") {
+					newFuncValue, _ := replaceAtNumbers(v.String(), scanPost.OutputColumns)
+					scanOutput = append(scanOutput, execinfrapb.TSStatisticReaderSpec_ParamInfo{
+						Typ:       execinfrapb.TSStatisticReaderSpec_ParamInfo_function,
+						Value:     constVal,
+						FuncValue: newFuncValue,
+					})
+				} else {
+
+					scanOutput = append(scanOutput, execinfrapb.TSStatisticReaderSpec_ParamInfo{
+						Typ:   execinfrapb.TSStatisticReaderSpec_ParamInfo_const,
+						Value: constVal,
+					})
+				}
 			} else {
 				str := strings.Replace(scanPost.RenderExprs[i].String(), "@", "", -1)
 				val, err := strconv.Atoi(str)

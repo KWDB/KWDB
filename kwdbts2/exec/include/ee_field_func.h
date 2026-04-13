@@ -22,8 +22,6 @@
 
 namespace kwdbts {
 
-const k_int64 BASE_CONSTANT = 62135596800000;
-
 // typedef KString (*_str_fn)(Field **);
 // Base class for operations like '+', '-', '*', '/', '%'
 class FieldFuncOp : public FieldFunc {
@@ -333,21 +331,14 @@ class  FieldFuncTimeBucket : public FieldFuncOp {
     storage_type_ = sql_type_;
     storage_len_ = sizeof(k_int64);
     input_col_id_ = args_[0]->getColIdxInRs();
-    k_int64 mo = 0;
+
     if (interval_seconds_ != 0) {
-      if (storage_type_ == roachpb::DataType::TIMESTAMP_NANO || storage_type_ == roachpb::DataType::TIMESTAMPTZ_NANO) {
-        mo = ((BASE_CONSTANT % interval_seconds_) * (1000000 % interval_seconds_)) % interval_seconds_;
-      } else if (storage_type_ == roachpb::DataType::TIMESTAMP_MICRO ||
-                 storage_type_ == roachpb::DataType::TIMESTAMPTZ_MICRO) {
-        mo = (BASE_CONSTANT * 1000) % interval_seconds_;
-      } else {
-        mo = BASE_CONSTANT % interval_seconds_;
-      }
-      time_diff_mo_ = (time_diff % interval_seconds_ + mo) % interval_seconds_;
+      time_diff_mo_ = CalTimeDiff(storage_type_, interval_seconds_, time_diff);
     }
 
     allow_null_ = false;
   }
+
   enum Functype functype() override { return TIME_BUCKET_FUNC; }
 
   k_int64 ValInt() override;

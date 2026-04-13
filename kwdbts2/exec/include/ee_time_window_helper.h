@@ -40,8 +40,7 @@ class TimeWindowHelper : public WindowHelper {
   k_int64 type_scale_{1};
   k_int8 time_zone_{0};
 
-  struct tm first_tm_ {
-  }, last_tm_{};
+  struct tm first_tm_{}, last_tm_{};
 
  public:
   explicit TimeWindowHelper(TableScanOperator *op) : WindowHelper(op) {}
@@ -66,6 +65,27 @@ class TimeWindowHelper : public WindowHelper {
       Field *f =
           field->table_->GetFieldWithColNum(i + field->table_->min_tag_id_);
       row_size_ += f->get_storage_length();
+    }
+    auto time_diff = time_zone_ * MILLISECOND_PER_HOUR;
+    auto stype = field->get_storage_type();
+    switch (stype) {
+      case roachpb::DataType::TIMESTAMP:
+      case roachpb::DataType::TIMESTAMPTZ: {
+        break;
+      }
+      case roachpb::DataType::TIMESTAMP_MICRO:
+      case roachpb::DataType::TIMESTAMPTZ_MICRO: {
+        time_diff = time_diff * MICROSECOND_PER_MILLISECOND;
+        break;
+      }
+      default:
+        time_diff = time_diff * NANOSECOND_PER_MILLISECOND;
+        break;
+    }
+    if (is_sliding) {
+      time_diff_ = CalTimeDiff(stype, sliding_, time_diff_);
+    } else if (!d_var_) {
+      time_diff_ = CalTimeDiff(stype, duration_, time_diff_);
     }
     return EEIteratorErrCode::EE_OK;
   }

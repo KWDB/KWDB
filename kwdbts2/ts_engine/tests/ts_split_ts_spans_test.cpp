@@ -114,7 +114,8 @@ TEST_F(TsSplitBlockSpansTest, basic) {
   spans1.push_back(GenBlockWithSpan(start_time + 50, 1, 12, 1));
   TsBlockSpanSplitter span_splitter1(begin_ts, interval, spans1);
   std::vector<std::vector<std::shared_ptr<TsBlockSpan>>> split_block_spans1;
-  span_splitter1.SplitBlockSpans(split_block_spans1);
+  std::vector<uint64_t> block_spans_index;
+  span_splitter1.SplitBlockSpans(split_block_spans1, block_spans_index);
   EXPECT_EQ(split_block_spans1.size(), 1);
 
   std::vector<std::shared_ptr<TsBlockSpan>> blockspans1 = split_block_spans1.front();
@@ -130,7 +131,7 @@ TEST_F(TsSplitBlockSpansTest, basic) {
   spans2.push_back(GenBlockWithSpan(start_time, 1, ts_num, 1));
   TsBlockSpanSplitter span_splitter2(begin_ts, interval, spans2);
   std::vector<std::vector<std::shared_ptr<TsBlockSpan>>> split_block_spans2;
-  span_splitter2.SplitBlockSpans(split_block_spans2);
+  span_splitter2.SplitBlockSpans(split_block_spans2, block_spans_index);
   EXPECT_EQ(split_block_spans2.size(), 2);
 
   std::vector<std::shared_ptr<TsBlockSpan>> blockspans2 = split_block_spans2.front();
@@ -175,7 +176,8 @@ TEST_F(TsSplitBlockSpansTest, multi_spans_1) {
 
   TsBlockSpanSplitter span_splitter(begin_ts, interval, spans);
   std::vector<std::vector<std::shared_ptr<TsBlockSpan>>> split_block_spans;
-  span_splitter.SplitBlockSpans(split_block_spans);
+  std::vector<uint64_t> block_spans_index;
+  span_splitter.SplitBlockSpans(split_block_spans, block_spans_index);
   EXPECT_EQ(split_block_spans.size(), 3);
 
   std::vector<std::shared_ptr<TsBlockSpan>> blockspans1 = split_block_spans[0];
@@ -218,7 +220,8 @@ TEST_F(TsSplitBlockSpansTest, multi_spans_2) {
 
   TsBlockSpanSplitter span_splitter(begin_ts, interval, spans);
   std::vector<std::vector<std::shared_ptr<TsBlockSpan>>> split_block_spans;
-  span_splitter.SplitBlockSpans(split_block_spans);
+  std::vector<uint64_t> block_spans_index;
+  span_splitter.SplitBlockSpans(split_block_spans, block_spans_index);
   EXPECT_EQ(split_block_spans.size(), bucket_num);
 
   for (int i = 0; i < bucket_num; ++i) {
@@ -238,7 +241,8 @@ TEST_F(TsSplitBlockSpansTest, multi_spans_3) {
 
   TsBlockSpanSplitter span_splitter(begin_ts, interval, spans);
   std::vector<std::vector<std::shared_ptr<TsBlockSpan>>> split_block_spans;
-  span_splitter.SplitBlockSpans(split_block_spans);
+  std::vector<uint64_t> block_spans_index;
+  span_splitter.SplitBlockSpans(split_block_spans, block_spans_index);
   EXPECT_EQ(split_block_spans.size(), bucket_num);
 
   for (int i = 0; i < bucket_num; ++i) {
@@ -272,17 +276,15 @@ TEST_F(TsSplitBlockSpansTest, has_empty_time_bucket) {
 
   TsBlockSpanSplitter span_splitter(begin_ts, interval, spans);
   std::vector<std::vector<std::shared_ptr<TsBlockSpan>>> split_block_spans;
-  span_splitter.SplitBlockSpans(split_block_spans);
-  EXPECT_EQ(split_block_spans.size(), 3);
+  std::vector<uint64_t> block_spans_index;
+  span_splitter.SplitBlockSpans(split_block_spans, block_spans_index);
+  EXPECT_EQ(split_block_spans.size(), 2);
 
   std::vector<std::shared_ptr<TsBlockSpan>> blockspans1 = split_block_spans[0];
   EXPECT_EQ(blockspans1.size(), 3);
 
   std::vector<std::shared_ptr<TsBlockSpan>> blockspans2 = split_block_spans[1];
-  EXPECT_EQ(blockspans2.size(), 0);
-
-  std::vector<std::shared_ptr<TsBlockSpan>> blockspans3 = split_block_spans[2];
-  EXPECT_EQ(blockspans3.size(), 7);
+  EXPECT_EQ(blockspans2.size(), 7);
 }
 
 TEST_F(TsSplitBlockSpansTest, boundary_value1) {
@@ -295,7 +297,8 @@ TEST_F(TsSplitBlockSpansTest, boundary_value1) {
 
   TsBlockSpanSplitter span_splitter(begin_ts, interval, spans);
   std::vector<std::vector<std::shared_ptr<TsBlockSpan>>> split_block_spans;
-  span_splitter.SplitBlockSpans(split_block_spans);
+  std::vector<uint64_t> block_spans_index;
+  span_splitter.SplitBlockSpans(split_block_spans, block_spans_index);
   EXPECT_EQ(split_block_spans.size(), 4);
 
   std::vector<std::shared_ptr<TsBlockSpan>> blockspans1 = split_block_spans[0];
@@ -345,7 +348,8 @@ TEST_F(TsSplitBlockSpansTest, boundary_value2) {
   }
   TsBlockSpanSplitter span_splitter(begin_ts, interval, spans);
   std::vector<std::vector<std::shared_ptr<TsBlockSpan>>> split_block_spans;
-  span_splitter.SplitBlockSpans(split_block_spans);
+  std::vector<uint64_t> block_spans_index;
+  span_splitter.SplitBlockSpans(split_block_spans, block_spans_index);
   EXPECT_EQ(split_block_spans.size(), bucket_num + 1);
 
   for (int i = 0; i < bucket_num + 1; ++i) {
@@ -382,7 +386,8 @@ TEST_F(TsSplitBlockSpansTest, boundary_value3) {
   }
   TsBlockSpanSplitter span_splitter(begin_ts, interval, spans);
   std::vector<std::vector<std::shared_ptr<TsBlockSpan>>> split_block_spans;
-  span_splitter.SplitBlockSpans(split_block_spans);
+  std::vector<uint64_t> block_spans_index;
+  span_splitter.SplitBlockSpans(split_block_spans, block_spans_index);
   EXPECT_EQ(split_block_spans.size(), bucket_num);
 
   for (int i = 0; i < bucket_num; ++i) {
@@ -404,7 +409,8 @@ TEST_F(TsSplitBlockSpansTest, small_interval_value) {
   spans.push_back(GenBlockWithSpan(start_time, 1, ts_num, 1));
   TsBlockSpanSplitter span_splitter(begin_ts, interval, spans);
   std::vector<std::vector<std::shared_ptr<TsBlockSpan>>> split_block_spans;
-  span_splitter.SplitBlockSpans(split_block_spans);
+  std::vector<uint64_t> block_spans_index;
+  span_splitter.SplitBlockSpans(split_block_spans, block_spans_index);
   EXPECT_EQ(split_block_spans.size(), 100);
 
   for (int i = 0; i < ts_num; ++i) {

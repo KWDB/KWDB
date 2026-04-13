@@ -18,10 +18,12 @@
 #include <string>
 #include <vector>
 
+#include "ee_global.h"
 #include "engine.h"
 #include "ts_iterator_v2_impl.h"
 #include "ts_ts_lsn_span_utils.h"
 #include "ts_vgroup.h"
+#include "ts_split_block_spans.h"
 
 namespace kwdbts {
 int64_t TsMaxMilliTimestamp = 31556995200000;  // be associated with 'kwbase/pkg/sql/sem/tree/type_check.go'
@@ -1602,12 +1604,14 @@ TsAggIteratorImpl::TsAggIteratorImpl(const std::shared_ptr<TsVGroup>& vgroup, ui
                                          std::vector<Sumfunctype>& scan_agg_types,
                                          const std::vector<timestamp64>& ts_points,
                                          const std::shared_ptr<TsTableSchemaManager>& table_schema_mgr,
-                                         const std::shared_ptr<MMapMetricsTable>& schema, TS_OSN scan_osn)
+                                         const std::shared_ptr<MMapMetricsTable>& schema, TS_OSN scan_osn,
+                                         const TimeBucketInfo time_bucket_info)
     : TsStorageIteratorImpl::TsStorageIteratorImpl(vgroup, version, entity_ids, ts_spans, block_filter,
                                                        kw_scan_cols, ts_scan_cols, table_schema_mgr, schema, scan_osn),
       scan_agg_types_(scan_agg_types),
       last_ts_points_(ts_points),
-      agg_extend_cols_{agg_extend_cols} {}
+      agg_extend_cols_{agg_extend_cols},
+      time_bucket_info_(time_bucket_info) {}
 
 TsAggIteratorImpl::~TsAggIteratorImpl() {}
 
@@ -1710,6 +1714,9 @@ KStatus TsAggIteratorImpl::Init(bool is_reversed) {
       case Sumfunctype::MIN_EXTEND:
         final_agg_buffer_is_new_[i] = isVarLenType(attrs_[agg_extend_cols_[i]].type) ? true : false;
         break;
+      case Sumfunctype::TIME_BUCKET:
+        // Don't need to do anything
+        break;
       default:
         LOG_ERROR("Agg function type is not supported in storage engine: %d.", scan_agg_types_[i]);
         return KStatus::FAIL;
@@ -1793,14 +1800,12 @@ bool TsAggIteratorImpl::IsDisordered() {
   return false;
 }
 
-KStatus TsAggIteratorImpl::Next(ResultSet* res, k_uint32* count, bool* is_finished, timestamp64 ts,
-                                  TsScanStats* ts_scan_stats) {
-  *count = 0;
-  if (cur_entity_index_ >= entity_ids_.size()) {
-    *is_finished = true;
-    return KStatus::SUCCESS;
-  }
+void TsAggIteratorImpl::SwitchEntity() {
+  TsStorageIteratorImpl::SwitchEntity();
+  time_bucket_block_spans_.clear();
+}
 
+void TsAggIteratorImpl::Reset() {
   std::fill(final_agg_data_.begin(), final_agg_data_.end(), TSSlice{nullptr, 0});
 
   cur_first_col_idxs_ = first_col_idxs_;
@@ -1830,84 +1835,14 @@ KStatus TsAggIteratorImpl::Next(ResultSet* res, k_uint32* count, bool* is_finish
     last_row_candidate_.blk_span = nullptr;
     last_row_candidate_.ts = INT64_MIN;
   }
+}
 
-  KStatus ret;
-  bool last_payload_valid = false;
-  timestamp64 entity_last_ts = INVALID_TS;
-  EntityID entity_id = entity_ids_[cur_entity_index_];
-
-  std::vector<KwTsSpan> ts_spans_bkup;
-  std::vector<std::shared_ptr<const TsPartitionVersion>> ts_partitions_bkup;
-  if (only_last_ || only_last_row_) {
-    if (EngineOptions::last_cache_max_size) {
-      ret = vgroup_->GetEntityLastRowBatch(entity_id, table_version_, table_schema_mgr_, scan_schema_, parser_,
-                                           ts_spans_, kw_last_scan_cols_, entity_last_ts, last_payload_valid, res);
-      if (ret != KStatus::SUCCESS) {
-        LOG_ERROR("GetEntityLastRowBatch failed.");
-        return KStatus::FAIL;
-      }
-      if (last_payload_valid) {
-        if (entity_last_ts != INVALID_TS && (last_ts_points_.empty() || entity_last_ts <=
-                                            *min_element(last_ts_points_.begin(), last_ts_points_.end()))) {
-          bool has_null = false;
-          if (only_last_ && !only_last_row_) {
-            for (int i = 0; i < scan_agg_types_.size() && !has_null; ++i) {
-              res->data[i][0]->isNull(0, &has_null);
-            }
-          }
-          if (!has_null) {
-            *count = 1;
-            res->col_num_ = kw_scan_cols_.size();
-            res->entity_index = {1, entity_id, vgroup_->GetVGroupID()};
-            SwitchEntity();
-            return KStatus::SUCCESS;
-          }
-        }
-        res->clear();
-      }
-    }
-    if (!last_payload_valid && only_last_row_) {
-      ret = vgroup_->GetEntityLastRow(table_schema_mgr_, entity_ids_[cur_entity_index_], ts_spans_, entity_last_ts);
-      if (ret != KStatus::SUCCESS) {
-        LOG_ERROR("GetEntityLastRow failed.");
-        return ret;
-      }
-      if (entity_last_ts != INVALID_TS && (last_ts_points_.empty() || entity_last_ts <=
-                                           *min_element(last_ts_points_.begin(), last_ts_points_.end()))) {
-        ts_spans_bkup.swap(ts_spans_);
-        ts_partitions_bkup.swap(ts_partitions_);
-        ts_spans_.clear();
-        ts_spans_.push_back({entity_last_ts, entity_last_ts});
-        ts_partitions_ = vgroup_current_version_->GetPartitions(db_id_, ts_spans_, ts_col_type_);
-      }
-    }
-  }
-
-  if (CLUSTER_SETTING_COUNT_USE_STATISTICS && only_count_ts_) {
-    ret = CountAggregate(ts_scan_stats);
-  } else if (CLUSTER_SETTING_PARTITION_AGG && only_partition_agg_type_ && !calc_partition_agg_invoke_) {
-    ret = PartitionAggregate(ts_scan_stats);
-  } else {
-    ret = Aggregate(ts_scan_stats);
-  }
-  if (ret != KStatus::SUCCESS) {
-    return ret;
-  }
-
-  res->clear();
-  if (only_count_ts_ && (KInt64(final_agg_data_[0].data) == 0)) {
-    free(final_agg_data_[0].data);
-    final_agg_data_[0].data = nullptr;
-    *count = 0;
-    *is_finished = false;
-    SwitchEntity();
-    return KStatus::SUCCESS;
-  }
+inline void TsAggIteratorImpl::AddAggResult(ResultSet* res) {
   for (k_uint32 i = 0; i < kw_scan_cols_.size(); ++i) {
     TSSlice& slice = final_agg_data_[i];
     Batch* b;
     uint32_t col_idx = (scan_agg_types_[i] == Sumfunctype::MAX_EXTEND || scan_agg_types_[i] == Sumfunctype::MIN_EXTEND) ?
-                       agg_extend_cols_[i] : kw_scan_cols_[i];
+                      agg_extend_cols_[i] : kw_scan_cols_[i];
     if (slice.data == nullptr) {
       b = new AggBatch(nullptr, 0);
     } else if (!isVarLenType(attrs_[col_idx].type) || scan_agg_types_[i] == Sumfunctype::COUNT) {
@@ -1920,21 +1855,153 @@ KStatus TsAggIteratorImpl::Next(ResultSet* res, k_uint32* count, bool* is_finish
     }
     res->push_back(i, b);
   }
+}
 
-  res->entity_index = {1, entity_id, vgroup_->GetVGroupID()};
-  res->col_num_ = kw_scan_cols_.size();
-  *count = 1;
-
-  *is_finished = false;
-  if (only_last_row_ && !last_payload_valid && entity_last_ts != INVALID_TS) {
-    ts_spans_.swap(ts_spans_bkup);
-    ts_partitions_.swap(ts_partitions_bkup);
+KStatus TsAggIteratorImpl::Next(ResultSet* res, k_uint32* count, bool* is_finished, timestamp64 ts,
+                                  TsScanStats* ts_scan_stats) {
+  *count = 0;
+  if (cur_entity_index_ >= entity_ids_.size()) {
+    *is_finished = true;
+    return KStatus::SUCCESS;
   }
-  SwitchEntity();
+
+  EntityID entity_id = entity_ids_[cur_entity_index_];
+  if (time_bucket_info_.interval == 0) {
+    Reset();
+    KStatus ret;
+    bool last_payload_valid = false;
+    timestamp64 entity_last_ts = INVALID_TS;
+
+    std::vector<KwTsSpan> ts_spans_bkup;
+    std::vector<std::shared_ptr<const TsPartitionVersion>> ts_partitions_bkup;
+    if (only_last_ || only_last_row_) {
+      if (EngineOptions::last_cache_max_size) {
+        ret = vgroup_->GetEntityLastRowBatch(entity_id, table_version_, table_schema_mgr_, scan_schema_, parser_,
+                                            ts_spans_, kw_last_scan_cols_, entity_last_ts, last_payload_valid, res);
+        if (ret != KStatus::SUCCESS) {
+          LOG_ERROR("GetEntityLastRowBatch failed.");
+          return KStatus::FAIL;
+        }
+        if (last_payload_valid) {
+          if (entity_last_ts != INVALID_TS && (last_ts_points_.empty() || entity_last_ts <=
+                                              *min_element(last_ts_points_.begin(), last_ts_points_.end()))) {
+            bool has_null = false;
+            if (only_last_ && !only_last_row_) {
+              for (int i = 0; i < scan_agg_types_.size() && !has_null; ++i) {
+                res->data[i][0]->isNull(0, &has_null);
+              }
+            }
+            if (!has_null) {
+              *count = 1;
+              res->col_num_ = kw_scan_cols_.size();
+              res->entity_index = {1, entity_id, vgroup_->GetVGroupID()};
+              SwitchEntity();
+              return KStatus::SUCCESS;
+            }
+          }
+          res->clear();
+        }
+      }
+      if (!last_payload_valid && only_last_row_) {
+        ret = vgroup_->GetEntityLastRow(table_schema_mgr_, entity_ids_[cur_entity_index_], ts_spans_, entity_last_ts);
+        if (ret != KStatus::SUCCESS) {
+          LOG_ERROR("GetEntityLastRow failed.");
+          return ret;
+        }
+        if (entity_last_ts != INVALID_TS && (last_ts_points_.empty() || entity_last_ts <=
+                                            *min_element(last_ts_points_.begin(), last_ts_points_.end()))) {
+          ts_spans_bkup.swap(ts_spans_);
+          ts_partitions_bkup.swap(ts_partitions_);
+          ts_spans_.clear();
+          ts_spans_.push_back({entity_last_ts, entity_last_ts});
+          ts_partitions_ = vgroup_current_version_->GetPartitions(db_id_, ts_spans_, ts_col_type_);
+        }
+      }
+    }
+
+    if (CLUSTER_SETTING_COUNT_USE_STATISTICS && only_count_ts_) {
+      ret = CountAggregate(ts_scan_stats);
+    } else if (CLUSTER_SETTING_PARTITION_AGG && only_partition_agg_type_ && !calc_partition_agg_invoke_) {
+      ret = PartitionAggregate(ts_scan_stats);
+    } else {
+      ret = AggregateWithoutBucket(ts_scan_stats);
+    }
+    if (ret != KStatus::SUCCESS) {
+      return ret;
+    }
+
+    res->clear();
+    if (only_count_ts_ && (KInt64(final_agg_data_[0].data) == 0)) {
+      free(final_agg_data_[0].data);
+      final_agg_data_[0].data = nullptr;
+      *count = 0;
+      *is_finished = false;
+      SwitchEntity();
+      return KStatus::SUCCESS;
+    }
+
+    AddAggResult(res);
+
+    res->entity_index = {1, entity_id, vgroup_->GetVGroupID()};
+    res->col_num_ = kw_scan_cols_.size();
+    *count = 1;
+
+    *is_finished = false;
+    if (only_last_row_ && !last_payload_valid && entity_last_ts != INVALID_TS) {
+      ts_spans_.swap(ts_spans_bkup);
+      ts_partitions_.swap(ts_partitions_bkup);
+    }
+    SwitchEntity();
+  } else {
+    // Time bucket push down to storage engine.
+    auto ret = GetBlockSpans(ts_scan_stats);
+    if (ret != KStatus::SUCCESS) {
+      LOG_ERROR("GetBlockSpans failed.");
+      return ret;
+    }
+
+    // Split block spans to multiple time buckets.
+    std::vector<shared_ptr<TsBlockSpan>> ts_block_spans = SortBlockSpans(ts_block_spans_);
+
+    std::vector<uint64_t> block_spans_index;
+    if (!ts_block_spans.empty()) {
+      time_bucket_begin_ts_ = CALCULATE_TIME_BUCKET_VALUE(ts_block_spans[0]->GetFirstTS(), time_bucket_info_.diff,
+                                              time_bucket_info_.interval);
+      TsBlockSpanSplitter block_span_splitter(time_bucket_begin_ts_, time_bucket_info_.interval, ts_block_spans);
+
+      ret = block_span_splitter.SplitBlockSpans(time_bucket_block_spans_, block_spans_index);
+      if (ret == KStatus::FAIL) {
+        LOG_ERROR("block_span_splitter SplitBlockSpans failed.");
+        return ret;
+      }
+    }
+
+    // Loop all the time buckets to calculate agg data.
+    for (time_bucket_block_spans_index_ = 0; time_bucket_block_spans_index_ < time_bucket_block_spans_.size();
+              ++time_bucket_block_spans_index_) {
+      time_bucket_index_ = block_spans_index[time_bucket_block_spans_index_];
+      Reset();
+      ret = AggregateWithBucket(ts_scan_stats);
+      if (ret != KStatus::SUCCESS) {
+        LOG_ERROR("AggregateWithBucket failed.");
+        return ret;
+      }
+      // We need to add all rows as a bulk to result for better performance.
+      AddAggResult(res);
+      ++(*count);
+    }
+
+    res->entity_index = {1, entity_id, vgroup_->GetVGroupID()};
+    res->col_num_ = kw_scan_cols_.size();
+
+    *is_finished = false;
+    SwitchEntity();
+  }
   return KStatus::SUCCESS;
 }
 
-KStatus TsAggIteratorImpl::Aggregate(TsScanStats* ts_scan_stats) {
+// This is only for agg push down storage engine without time_bucket
+KStatus TsAggIteratorImpl::AggregateWithoutBucket(TsScanStats* ts_scan_stats) {
   // Scan forwards to aggrate first col along with other agg functions
   int first_partition_idx = 0;
   for (; first_partition_idx < ts_partitions_.size(); ++first_partition_idx) {
@@ -1951,7 +2018,8 @@ KStatus TsAggIteratorImpl::Aggregate(TsScanStats* ts_scan_stats) {
       LOG_ERROR("e_paritition GetBlockSpan failed.");
       return ret;
     }
-    ret = UpdateAggregation(false, ts_scan_stats);
+    std::vector<std::shared_ptr<TsBlockSpan>> sorted_block_spans = SortBlockSpans(ts_block_spans_);
+    ret = UpdateAggregation(sorted_block_spans, false, ts_scan_stats);
     if (ret != KStatus::SUCCESS) {
       return ret;
     }
@@ -1973,7 +2041,8 @@ KStatus TsAggIteratorImpl::Aggregate(TsScanStats* ts_scan_stats) {
       LOG_ERROR("e_paritition GetBlockSpan failed.");
       return ret;
     }
-    ret = UpdateAggregation(true, ts_scan_stats);
+    std::vector<std::shared_ptr<TsBlockSpan>> sorted_block_spans = SortBlockSpans(ts_block_spans_);
+    ret = UpdateAggregation(sorted_block_spans, true, ts_scan_stats);
     if (ret != KStatus::SUCCESS) {
       return ret;
     }
@@ -1994,13 +2063,65 @@ KStatus TsAggIteratorImpl::Aggregate(TsScanStats* ts_scan_stats) {
         LOG_ERROR("e_paritition GetBlockSpan failed.");
         return ret;
       }
-      ret = UpdateAggregation(true, ts_scan_stats);
+      std::vector<std::shared_ptr<TsBlockSpan>> sorted_block_spans = SortBlockSpans(ts_block_spans_);
+      ret = UpdateAggregation(sorted_block_spans, true, ts_scan_stats);
       if (ret != KStatus::SUCCESS) {
         return ret;
       }
     }
   }
+  return GenerateAggData();
+}
 
+KStatus TsAggIteratorImpl::GetBlockSpans(TsScanStats* ts_scan_stats) {
+  // Scan partitions to collect all block spans
+  ts_block_spans_.clear();
+  int first_partition_idx = 0;
+  TsScanFilterParams filter{db_id_, table_id_, vgroup_->GetVGroupID(),
+                            entity_ids_[cur_entity_index_], ts_col_type_, scan_osn_, ts_spans_};
+  for (auto partition : ts_partitions_) {
+    auto partition_version = partition.get();
+    auto ret = partition_version->GetBlockSpans(filter, &ts_block_spans_, table_schema_mgr_, scan_schema_, ts_scan_stats);
+    if (ret != KStatus::SUCCESS) {
+      LOG_ERROR("e_paritition GetBlockSpan failed.");
+      return ret;
+    }
+  }
+  return KStatus::SUCCESS;
+}
+
+// This is only for agg push down storage engine with time_bucket
+KStatus TsAggIteratorImpl::AggregateWithBucket(TsScanStats* ts_scan_stats) {
+  KStatus ret;
+  // Scan forwards to aggrate first col along with other agg functions
+  if (cur_first_col_idxs_.empty() && !has_first_row_col_) {
+    // Scan backwards to aggrate last col along with other agg functions
+    if (cur_last_col_idxs_.empty() && !has_last_row_col_) {
+      if (!first_last_only_agg_) {
+        // first and last col aggregations are done, so remove them.
+        cur_first_col_idxs_.clear();
+        cur_last_col_idxs_.clear();
+        ret = UpdateAggregation(time_bucket_block_spans_[time_bucket_block_spans_index_], true, ts_scan_stats);
+        if (ret != KStatus::SUCCESS) {
+          return ret;
+        }
+      }
+    } else {
+      ret = UpdateAggregation(time_bucket_block_spans_[time_bucket_block_spans_index_], true, ts_scan_stats);
+      if (ret != KStatus::SUCCESS) {
+        return ret;
+      }
+    }
+  } else {
+    ret = UpdateAggregation(time_bucket_block_spans_[time_bucket_block_spans_index_], false, ts_scan_stats);
+    if (ret != KStatus::SUCCESS) {
+      return ret;
+    }
+  }
+  return GenerateAggData();
+}
+
+KStatus TsAggIteratorImpl::GenerateAggData() {
   for (int i = 0; i < scan_agg_types_.size(); ++i) {
     Sumfunctype agg_type = scan_agg_types_[i];
     if (agg_type == Sumfunctype::COUNT || agg_type == Sumfunctype::SUM) {
@@ -2013,6 +2134,13 @@ KStatus TsAggIteratorImpl::Aggregate(TsScanStats* ts_scan_stats) {
         final_agg_data_[i].data = static_cast<char*>(malloc(final_agg_data_[i].len));
         memcpy(final_agg_data_[i].data, final_agg_data_[min_map_[kw_scan_cols_[i]]].data, final_agg_data_[i].len);
       }
+      continue;
+    }
+    if (agg_type == Sumfunctype::TIME_BUCKET) {
+      final_agg_data_[i].len = sizeof(timestamp64);
+      final_agg_data_[i].data = static_cast<char*>(malloc(final_agg_data_[i].len));
+      KTimestamp(final_agg_data_[i].data) = time_bucket_begin_ts_
+                  + time_bucket_info_.interval * time_bucket_index_;
       continue;
     }
     auto& c = ((agg_type == Sumfunctype::LAST_ROW || agg_type == Sumfunctype::LASTROWTS) ?
@@ -2039,17 +2167,6 @@ KStatus TsAggIteratorImpl::Aggregate(TsScanStats* ts_scan_stats) {
       memcpy(final_agg_data_[i].data, &c.ts, sizeof(timestamp64));
       final_agg_data_[i].len = sizeof(timestamp64);
       final_agg_buffer_is_new_[i] = true;
-      /* crash with following code to avoid malloc and memcpy.
-      char* value = nullptr;
-      TsBitmap bitmap;
-      auto ret = c.blk_span->GetFixLenColAddr(0, &value, bitmap, false);
-      if (ret != KStatus::SUCCESS) {
-        return ret;
-      }
-
-      final_agg_data_[i].len = c.blk_span->GetColSize(0);
-      final_agg_data_[i].data = value + c.row_idx * final_agg_data_[i].len;
-      */
     } else {
       if (!c.blk_span->IsColExist(col_idx)) {
         if (agg_type == Sumfunctype::FIRST_ROW || agg_type == Sumfunctype::LAST_ROW) {
@@ -2168,7 +2285,8 @@ KStatus TsAggIteratorImpl::CountAggregate(TsScanStats* ts_scan_stats) {
         }
       }
     }
-    ret = UpdateAggregation(false, ts_scan_stats);
+    std::vector<std::shared_ptr<TsBlockSpan>> sorted_block_spans = SortBlockSpans(ts_block_spans_);
+    ret = UpdateAggregation(sorted_block_spans, false, ts_scan_stats);
     if (ret != KStatus::SUCCESS) {
       return ret;
     }
@@ -2222,7 +2340,8 @@ KStatus TsAggIteratorImpl::PartitionAggregate(TsScanStats* ts_scan_stats) {
           LOG_ERROR("partition [%s] GetBlockSpan failed", partition->GetPartitionPath().c_str());
           return s;
         }
-        s = UpdateAggregation(false, ts_scan_stats);
+        std::vector<std::shared_ptr<TsBlockSpan>> sorted_block_spans = SortBlockSpans(ts_block_spans_);
+        s = UpdateAggregation(sorted_block_spans, false, ts_scan_stats);
         return s;
       }
     }
@@ -2384,7 +2503,8 @@ KStatus TsAggIteratorImpl::PartitionAggregate(TsScanStats* ts_scan_stats) {
         LOG_ERROR("partition [%s] GetBlockSpan failed", partition->GetPartitionPath().c_str());
         return s;
       }
-      s = UpdateAggregation(false, ts_scan_stats);
+      std::vector<std::shared_ptr<TsBlockSpan>> sorted_block_spans = SortBlockSpans(ts_block_spans_);
+      s = UpdateAggregation(sorted_block_spans, false, ts_scan_stats);
       if (s != KStatus::SUCCESS) {
         return s;
       }
@@ -2401,25 +2521,27 @@ inline bool LastTSLessThan(shared_ptr<TsBlockSpan>& a, shared_ptr<TsBlockSpan>& 
   return a->GetLastTS() < b->GetLastTS();
 }
 
-KStatus TsAggIteratorImpl::UpdateAggregation(bool can_remove_last_candidate, TsScanStats* ts_scan_stats) {
-  if (ts_block_spans_.empty()) {
-    return KStatus::SUCCESS;
+std::vector<shared_ptr<TsBlockSpan>> TsAggIteratorImpl::SortBlockSpans(
+                                                        std::list<std::shared_ptr<TsBlockSpan>>& ts_block_spans) {
+  std::vector<shared_ptr<TsBlockSpan>> sorted_block_spans;
+  if (!ts_block_spans.empty()) {
+    TsBlockSpanSortedIterator iter(ts_block_spans, vgroup_->GetSchemaMgr(), EngineOptions::g_dedup_rule);
+    iter.Init();
+    std::shared_ptr<TsBlockSpan> dedup_block_span;
+    bool is_finished = false;
+    while (iter.Next(dedup_block_span, &is_finished) == KStatus::SUCCESS && !is_finished) {
+      sorted_block_spans.push_back(std::move(dedup_block_span));
+    }
   }
-  KStatus ret;
+  return sorted_block_spans;
+}
 
-  std::vector<shared_ptr<TsBlockSpan>> ts_block_spans;
-  TsBlockSpanSortedIterator iter(ts_block_spans_, vgroup_->GetSchemaMgr(), EngineOptions::g_dedup_rule);
-  iter.Init();
-  std::shared_ptr<TsBlockSpan> dedup_block_span;
-  bool is_finished = false;
-  while (iter.Next(dedup_block_span, &is_finished) == KStatus::SUCCESS && !is_finished) {
-    ts_block_spans.push_back(std::move(dedup_block_span));
-  }
-  ts_block_spans_.clear();
+KStatus TsAggIteratorImpl::UpdateAggregation(std::vector<std::shared_ptr<TsBlockSpan>>& ts_block_spans,
+                                              bool can_remove_last_candidate, TsScanStats* ts_scan_stats) {
   if (ts_block_spans.empty()) {
     return KStatus::SUCCESS;
   }
-
+  KStatus ret;
   int block_span_idx = 0;
   if (!cur_first_col_idxs_.empty() || has_first_row_col_) {
     if (has_first_row_col_) {

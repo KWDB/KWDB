@@ -88,6 +88,7 @@ TEST_F(TestOffsetIteratorV2, basic) {
       .limit = 10,
       .scan_osn = UINT64_MAX,
       .fill_params = fill_params,
+      .time_bucket_info = {0, 0},
   };
   // ASSERT_EQ(ts_table->GetEntityIdList(ctx_, 0, UINT64_MAX, entity_results), KStatus::SUCCESS);
   ASSERT_EQ(ts_table->GetIterator(ctx_, params, &iter1), KStatus::SUCCESS);
@@ -223,6 +224,7 @@ TEST_F(TestOffsetIteratorV2, multi_partition) {
       .limit = 10,
       .scan_osn = UINT64_MAX,
       .fill_params = fill_params,
+      .time_bucket_info = {0, 0},
   };
   // ASSERT_EQ(ts_table->GetEntityIndex(ctx_, 0, UINT64_MAX, entity_results), KStatus::SUCCESS);
   ASSERT_EQ(ts_table->GetIterator(ctx_, params, &iter1), KStatus::SUCCESS);
@@ -346,6 +348,7 @@ TEST_F(TestOffsetIteratorV2, extreme) {
       .limit = 1,
       .scan_osn = UINT64_MAX,
       .fill_params = fill_params,
+      .time_bucket_info = {0, 0},
   };
   // ASSERT_EQ(ts_table->GetEntityIndex(ctx_, 0, UINT64_MAX, entity_results), KStatus::SUCCESS);
   ASSERT_EQ(ts_table->GetIterator(ctx_, params, &iter1), KStatus::SUCCESS);

@@ -2437,10 +2437,14 @@ func (p *PhysicalPlan) buildPhyPlanForTSReaders(
 	typs []types.T,
 	descColumnIDs []sqlbase.ColumnID,
 ) error {
-	//construct TSReaderSpec
-	if n.ScanAggArray && !planCtx.IsLocal() {
+	// construct TSReaderSpec
+	// if n.TimeBucketRange >0, we should push timebucket to statistic.
+	if (n.TimeBucketRange > 0 || n.ScanAggArray) && !planCtx.IsLocal() {
 		tr := execinfrapb.TSStatisticReaderSpec{TableID: uint64(n.Table.ID()), TsSpans: n.tsSpans, TsCols: colMetas,
 			TableVersion: n.Table.GetTSVersion(), LastRowOpt: n.HintType.LastRowOpt()}
+		if n.TimeBucketRange > 0 {
+			tr.TimeBucket = &n.TimeBucketRange
+		}
 		err := p.initPhyPlanForStatisticReaders(tr)
 		if err != nil {
 			return err

@@ -1340,10 +1340,11 @@ SET CLUSTER SETTING
                   │                     | ts-table            | ts1
                   │                     | ordered type        | order scan
                   │                     | access mode         | tableTableMeta
+                  │                     | use statistic       | true
                   └── scan              |                     |
                                         | table               | re1@primary
                                         | spans               | FULL SCAN
-(37 rows)
+(38 rows)
 > set cluster setting ts.sql.query_opt_mode= 1110;
 SET CLUSTER SETTING
 > select count(r.e1+r.e2) from tsdb.ts1 ts, redb.re1 r where ts.tag1=r.e1;

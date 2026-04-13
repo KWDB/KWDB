@@ -731,6 +731,7 @@ message AggregatorSpec {
     VAR_POP = 40;
     QUANTILE = 41;
     NORM = 42;
+    TIME_BUCKET = 43;
   }
 
   enum Type {

@@ -242,7 +242,8 @@ class TsVGroup {
                       const std::shared_ptr<MMapMetricsTable>& schema, TsStorageIterator** iter,
                       const std::shared_ptr<TsVGroup>& vgroup,
                       const std::vector<timestamp64>& ts_points, bool reverse, bool sorted, TS_OSN scan_osn,
-                      const FillParams& fill_params);
+                      const FillParams& fill_params,
+                      const TimeBucketInfo time_bucket_info = {0, 0});
 
   KStatus GetMetricIteratorByOSN(kwdbContext_p ctx, const std::shared_ptr<TsVGroup>& vgroup,
     std::vector<EntityResultIndex>& entity_ids, std::vector<k_uint32>& scan_cols, std::vector<k_uint32>& ts_scan_cols,

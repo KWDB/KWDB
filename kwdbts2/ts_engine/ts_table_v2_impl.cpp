@@ -356,7 +356,7 @@ KStatus TsTableV2Impl::GetNormalIterator(kwdbContext_p ctx, const IteratorParams
                             params.block_filter, params.scan_cols, ts_scan_cols, params.agg_extend_cols,
                             params.scan_agg_types, table_schema_mgr_, schema,
                             &ts_iter, vgroup, params.ts_points, params.reverse, params.sorted, params.scan_osn,
-                            params.fill_params);
+                            params.fill_params, params.time_bucket_info);
     if (s != KStatus::SUCCESS) {
       LOG_ERROR("cannot create iterator for vgroup[%u].", vgroup_iter.first);
       return s;
@@ -764,6 +764,7 @@ KStatus TsTableV2Impl::GetDataVolumeHalfTS(kwdbContext_p ctx, uint64_t begin_has
       .limit = 1,
       .scan_osn = UINT64_MAX,
       .fill_params = fill_params,
+      .time_bucket_info = {0, 0},
   };
   s = GetOffsetIterator(ctx, params, &iter);
   if (s != KStatus::SUCCESS) {
@@ -1157,6 +1158,7 @@ const std::vector<KwTsSpan>& ts_spans, TS_OSN osn, uint64_t* row_count) {
       .limit = 0,
       .scan_osn = osn,
       .fill_params = fill_params,
+      .time_bucket_info = {0, 0},
   };
   KStatus s = GetNormalIterator(ctx, params, &iter);
   if (s != KStatus::SUCCESS) {
