@@ -81,6 +81,7 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"strings"
 	"unicode"
 	"unicode/utf8"
 
@@ -220,6 +221,11 @@ type Reader struct {
 
 	// Does the line being processed by the current thread contain line breaks
 	HasSwap bool
+
+	// Number of columns with FLOAT type
+	AdjustColumnSet map[uint32]struct{}
+
+	TsColNumber int32
 }
 
 // NewReader returns a new Reader that reads from r.
@@ -738,7 +744,24 @@ parseField:
 		if _, ok := nilMap[i]; ok {
 			continue
 		}
-		dst[i] = to.StringPtr(str[preIdx:idx])
+		var strLine string
+		var strNoLine string
+		strLine = str[preIdx:idx]
+		if r.TsColNumber < 0 || int(r.TsColNumber) != i {
+			strNoLine = strLine
+		} else {
+			strNoLine = strings.Replace(strLine, "'", "", -1)
+		}
+
+		if _, ok := r.AdjustColumnSet[uint32(i)]; ok {
+			index := strings.IndexFunc(strLine, func(r rune) bool {
+				return !unicode.IsSpace(r)
+			})
+			if index != -1 {
+				strNoLine = strLine[index:]
+			}
+		}
+		dst[i] = to.StringPtr(strNoLine)
 		preIdx = idx
 	}
 

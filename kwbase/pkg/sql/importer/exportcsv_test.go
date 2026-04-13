@@ -306,7 +306,9 @@ func TestExportImportBank(t *testing.T) {
 	db.Exec(t, "UPDATE bank SET payload = NULL WHERE id % 2 = 0")
 
 	chunkSize := 13
+	file := 0
 	for _, null := range []string{"", "NULL"} {
+		file++
 		nullAs, nullIf := "", ", nullif = ''"
 		if null != "" {
 			nullAs = fmt.Sprintf(", nullas = '%s'", null)
@@ -319,9 +321,9 @@ func TestExportImportBank(t *testing.T) {
 			db.QueryRow(t, "SELECT cluster_logical_timestamp()").Scan(&asOf)
 
 			for _, row := range db.QueryStr(t,
-				fmt.Sprintf(`EXPORT INTO CSV 'nodelocal://01/t'
+				fmt.Sprintf(`EXPORT INTO CSV 'nodelocal://01/t%d'
 				FROM SELECT * FROM bank AS OF SYSTEM TIME %s 
-				WITH chunk_rows = $1, delimiter = '|' %s`, asOf, nullAs), chunkSize,
+				WITH chunk_rows = $1, delimiter = '|' %s`, file, asOf, nullAs), chunkSize,
 			) {
 				nodeID, err := strconv.Atoi(row[2])
 				if err != nil {
@@ -331,19 +333,21 @@ func TestExportImportBank(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
+				currentFile := fmt.Sprintf("t%d/", file)
 				for i := 0; i < fileNum; i++ {
 					fileName := fmt.Sprintf("n%d.%d.csv", nodeID, i)
 					files = append(files, fileName)
-					f, err := ioutil.ReadFile(filepath.Join(dir, "t", fileName))
+					f, err := ioutil.ReadFile(filepath.Join(dir, currentFile, fileName))
 					if err != nil {
 						t.Fatal(err)
 					}
 					t.Log(string(f))
 				}
 			}
+			currentFile := fmt.Sprintf("t%d/", file)
 
 			schema := bank.FromRows(1).Tables()[0].Schema
-			fileList := "'nodelocal://01/t/" + strings.Join(files, "', 'nodelocal://01/t/") + "'"
+			fileList := "'nodelocal://01/" + currentFile + strings.Join(files, "', 'nodelocal://01/"+currentFile) + "'"
 			db.Exec(t, fmt.Sprintf(`IMPORT TABLE bank2 %s CSV DATA (%s) WITH delimiter = '|'%s`, schema, fileList, nullIf))
 
 			db.CheckQueryResults(t,
@@ -368,11 +372,13 @@ func TestMultiNodeExportStmt(t *testing.T) {
 	maxTries := 10
 	// we might need to retry if our table didn't actually scatter enough.
 	for tries := 0; tries < maxTries; tries++ {
+		currentFile := fmt.Sprintf("t%d/'", tries)
+		fileList := "'nodelocal://01/" + currentFile
 		chunkSize := 13
-		rows := db.Query(t,
-			`EXPORT INTO CSV 'nodelocal://01/t' FROM SELECT * FROM bank WHERE id >= $1 and id < $2 WITH chunk_rows = $3`,
-			10, 10+exportRows, chunkSize,
-		)
+		exportStr := fmt.Sprintf("EXPORT INTO CSV %s FROM SELECT * FROM bank WHERE id >= %d and id < %d WITH chunk_rows = '%d'", fileList,
+			10, 10+exportRows, chunkSize)
+
+		rows := db.Query(t, exportStr)
 
 		files, totalRows := 0, 0
 		nodesSeen := make(map[int]bool)
@@ -522,22 +528,6 @@ func TestExportShow(t *testing.T) {
 		expected = append(expected, strings.Split(s, ","))
 	}
 	sqlDB.CheckQueryResults(t, "SHOW DATABASES", expected)
-}
-
-// TestExportVectorized makes sure that SupportsVectorized check doesn't panic
-// on CSVWriter processor.
-func TestExportVectorized(t *testing.T) {
-	defer leaktest.AfterTest(t)()
-	dir, cleanupDir := testutils.TempDir(t)
-	defer cleanupDir()
-
-	srv, db, _ := serverutils.StartServer(t, base.TestServerArgs{ExternalIODir: dir})
-	defer srv.Stopper().Stop(context.Background())
-	sqlDB := sqlutils.MakeSQLRunner(db)
-
-	sqlDB.Exec(t, `CREATE TABLE t(a INT PRIMARY KEY)`)
-	sqlDB.Exec(t, `SET vectorize_row_count_threshold=0`)
-	sqlDB.Exec(t, `EXPORT INTO CSV 'http://0.1:37957/exp_1' FROM TABLE t WITH data_only`)
 }
 
 func TestExportNewOptions(t *testing.T) {

@@ -1338,6 +1338,8 @@ message ImportTable {
   repeated string ColumnComment = 10;
   repeated string columnName = 11;
   repeated string columnIndex = 12;
+  repeated uint32 adjustColumnNumber = 13;
+  optional int32 tsColNumber = 14 [(gogoproto.nullable) = false];
 }
 
 message KWDBTagValue {

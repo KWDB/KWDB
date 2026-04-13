@@ -18,14 +18,14 @@ INSERT 1
 INSERT 1
 > insert into test.tb1 values('2024-01-01 00:00:05+00:00',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,865,577,987,NULL,NULL,NULL,NULL,NULL,NULL,NULL);
 INSERT 1
-> export into csv "nodelocal://1/tbtest1/tb1/" from table test.tb1;
+> export into csv "nodelocal://1/tbtest_1/tb1/" from table test.tb1;
   result
 -----------
   succeed
 (1 row)
 > drop table test.tb1;
 DROP TABLE
-> import table create using 'nodelocal://1/tbtest1/tb1/meta.sql' csv data ('nodelocal://1/tbtest1/tb1');
+> import table create using 'nodelocal://1/tbtest_1/tb1/meta.sql' csv data ('nodelocal://1/tbtest_1/tb1');
   job_id |  status   | fraction_completed | rows | abandon_rows | reject_rows | note
 ---------+-----------+--------------------+------+--------------+-------------+-------
   -      | succeeded |                  1 |    7 | 0            | 0           | None

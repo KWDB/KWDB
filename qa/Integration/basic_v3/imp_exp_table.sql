@@ -9,9 +9,9 @@ insert into test.tb1 values('2024-01-01 00:00:02+00:00',500,324,821,-3514.273437
 insert into test.tb1 values('2024-01-01 00:00:04+00:00',666,119,807,9944.78125,-7359.134805999276,true,'A','H','\x42',-238.10581074656693,495,736,420,659.4307861328125,-349.5548293794309,false,'m','o','\x36',3778.0368072157435);
 insert into test.tb1 values('2024-01-01 00:00:04+00:00',666,119,807,9944.78125,-7359.134805999276,true,'A','H','byte',-238.10581074656693,865,577,987,659.4307861328125,-349.5548293794309,false,'m','o','\x36',3778.0368072157435);
 insert into test.tb1 values('2024-01-01 00:00:05+00:00',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,865,577,987,NULL,NULL,NULL,NULL,NULL,NULL,NULL);
-export into csv "nodelocal://1/tbtest1/tb1/" from table test.tb1;
+export into csv "nodelocal://1/tbtest_1/tb1/" from table test.tb1;
 drop table test.tb1;
-import table create using 'nodelocal://1/tbtest1/tb1/meta.sql' csv data ('nodelocal://1/tbtest1/tb1');
+import table create using 'nodelocal://1/tbtest_1/tb1/meta.sql' csv data ('nodelocal://1/tbtest_1/tb1');
 select * from test.tb1 order by tag1, k_timestamp;
 use defaultdb;
 drop database test cascade;

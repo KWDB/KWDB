@@ -50,7 +50,7 @@ GRANT
 GRANT
 > grant insert on database test to u3;
 GRANT
-> export into csv "nodelocal://1/db" from database test with privileges;
+> export into csv "nodelocal://1/test1" from database test with privileges;
   result
 -----------
   succeed
@@ -59,7 +59,7 @@ GRANT
 SET
 > drop database test cascade;
 DROP DATABASE
-> import database csv data ("nodelocal://1//db") with privileges;
+> import database csv data ("nodelocal://1/test1") with privileges;
   job_id |  status   | fraction_completed | rows | abandon_rows | reject_rows | note
 ---------+-----------+--------------------+------+--------------+-------------+-------
   -      | succeeded |                  1 |    4 | 0            | 0           | None

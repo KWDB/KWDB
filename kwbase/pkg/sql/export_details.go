@@ -57,37 +57,30 @@ func checkBeforeExport(
 	var expOpts exportOptions
 	if !ex.planner.ExtendedEvalContext().TxnImplicit {
 		err := errors.Errorf("EXPORT cannot be used inside a transaction")
-		res.SetError(err)
 		return expOpts, err
 	}
 
 	if exp.FileFormat != "CSV" && exp.FileFormat != "SQL" {
 		err := errors.Errorf("unsupported export format: %q", exp.FileFormat)
-		res.SetError(err)
 		return expOpts, err
 	}
 	if err := ex.planner.RequireAdminRole(ctx, "EXPORT"); err != nil {
-		res.SetError(err)
 		return expOpts, err
 	}
 	optsFn, err := planner.TypeAsStringOpts(exp.Options, exportOptionExpectValues)
 	if err != nil {
-		res.SetError(err)
 		return expOpts, err
 	}
 	opts, err := optsFn()
 	if err != nil {
-		res.SetError(err)
 		return expOpts, err
 	}
 	expOpts, err = checkExportOptions(exp, planner, res, opts)
 	if err != nil {
-		res.SetError(err)
 		return expOpts, err
 	}
 	if expOpts.colName && exp.FileFormat == "SQL" {
 		err := errors.Wrapf(err, "Exporting cannot use both 'SQL' and 'column name' simultaneously")
-		res.SetError(err)
 		return expOpts, err
 	}
 	return expOpts, nil
