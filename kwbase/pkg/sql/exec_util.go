@@ -655,6 +655,8 @@ type ExecutorConfig struct {
 
 	StreamingTestingKnobs *StreamingTestingKnobs
 
+	TSSchemaChangerTestingKnobs *TSSchemaChangerTestingKnobs
+
 	// Caches updated by DistSQL.
 	RangeDescriptorCache *kvcoord.RangeDescriptorCache
 	LeaseHolderCache     *kvcoord.LeaseHolderCache

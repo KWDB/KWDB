@@ -678,7 +678,9 @@ func (r *createStatsResumer) Resume(
 		// Prepare the planning context.
 		planCtx := dsp.NewPlanningCtx(ctx, evalCtx, txn)
 		planCtx.planner = p
-
+		if p.execCfg.TSSchemaChangerTestingKnobs != nil {
+			return nil
+		}
 		// Attempt to plan and run the statistics creation, handling any execution errors.
 		if err := dsp.planAndRunCreateStats(
 			ctx, evalCtx, planCtx, txn, r.job, NewRowResultWriter(rows),

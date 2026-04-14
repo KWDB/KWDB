@@ -45,4 +45,5 @@ type TestingKnobs struct {
 	RegistryLiveness    ModuleTestingKnobs
 	Server              ModuleTestingKnobs
 	JobsTestingKnobs    ModuleTestingKnobs
+	TSSchemaChanger     ModuleTestingKnobs
 }

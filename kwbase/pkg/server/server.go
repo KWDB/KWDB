@@ -1038,6 +1038,9 @@ func NewServer(cfg Config, stopper *stop.Stopper) (*Server, error) {
 	} else {
 		execCfg.SchemaChangerTestingKnobs = new(sql.SchemaChangerTestingKnobs)
 	}
+	if tsSchemaChangerTestingKnobs := s.cfg.TestingKnobs.TSSchemaChanger; tsSchemaChangerTestingKnobs != nil {
+		execCfg.TSSchemaChangerTestingKnobs = tsSchemaChangerTestingKnobs.(*sql.TSSchemaChangerTestingKnobs)
+	}
 	if gcJobTestingKnobs := s.cfg.TestingKnobs.GCJob; gcJobTestingKnobs != nil {
 		execCfg.GCJobTestingKnobs = gcJobTestingKnobs.(*sql.GCJobTestingKnobs)
 	} else {

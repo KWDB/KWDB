@@ -813,7 +813,9 @@ func (p *PlanningCtx) GetTsDop() int32 {
 	if !p.existTSTable || p.planner == nil {
 		return sqlbase.DefaultDop
 	}
-
+	if p.ExtendedEvalCtx.ExecCfg.TSSchemaChangerTestingKnobs != nil {
+		return sqlbase.DefaultDop
+	}
 	settingsTmp := p.planner.extendedEvalCtx.Settings
 	if settingsTmp == nil {
 		return sqlbase.DefaultDop
