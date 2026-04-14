@@ -522,6 +522,7 @@ if (WITH_TESTS)
   if (KWBASE_OSS)
       file(GLOB_RECURSE KWDBTS2_SERVER_TEST_SRC
               mmap/tests/*.cpp
+              common/tests/*.cpp
               #storage/tests/*.cpp
               exec/tests/*.cpp
               #engine/tests/*.cpp

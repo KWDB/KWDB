@@ -12,15 +12,15 @@
 
 #include <algorithm>
 #include <cstdint>
-#include <map>
 #include <list>
+#include <map>
 #include <memory>
 #include <mutex>
 #include <string>
 #include <tuple>
 #include <unordered_map>
-#include <utility>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
 #include "data_type.h"
@@ -29,9 +29,10 @@
 #include "st_transaction_mgr.h"
 #include "st_wal_mgr.h"
 #include "ts_engine_schema_manager.h"
+#include "ts_hash_latch.h"
 #include "ts_mem_segment_mgr.h"
-#include "ts_version.h"
 #include "ts_partition_interval_recorder.h"
+#include "ts_version.h"
 #include "ts_partition_agg.h"
 
 extern uint16_t CLUSTER_SETTING_MAX_ROWS_PER_BLOCK;         // PARTITION_ROWS from cluster setting

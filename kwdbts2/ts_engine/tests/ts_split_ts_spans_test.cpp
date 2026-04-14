@@ -12,6 +12,8 @@
 #include "test_util.h"
 #include "ts_block_span_sorted_iterator.h"
 #include "ts_entity_segment.h"
+#include "ts_mem_seg_index.h"
+#include "ts_mem_segment_mgr.h"
 #include "ts_split_block_spans.h"
 
 using namespace kwdbts;  // NOLINT

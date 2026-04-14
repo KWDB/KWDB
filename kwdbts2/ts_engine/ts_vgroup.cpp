@@ -17,13 +17,11 @@
 #include <cstring>
 #include <memory>
 #include <algorithm>
-#include <numeric>
 #include <sstream>
 #include <thread>
 #include <unordered_set>
 #include <utility>
 #include <vector>
-#include <regex>
 #include <shared_mutex>
 #include <list>
 #include <string>
@@ -1119,7 +1117,7 @@ KStatus TsVGroup::FlushImmSegment(const std::shared_ptr<TsMemSegment>& mem_seg) 
       total_last_stats += lastseg_stats;
     }
   }
-  update.RemoveMemSegment(mem_seg);
+  update.RemoveMemSegment(mem_seg->GetId());
 
   for (auto& [par_id, info] : flush_infos) {
     uint64_t file_number = version_manager_->NewFileNumber();

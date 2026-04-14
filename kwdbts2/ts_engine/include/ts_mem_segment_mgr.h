@@ -111,6 +111,8 @@ class TsMemSegment : public TsSegmentBase, public enable_shared_from_this<TsMemS
     global_mem_seg_cv_.notify_all();
   }
 
+  int64_t GetId() const { return id_; }
+
   static int32_t GetMemSegmentsCount() { return n_mem_segments_.load(std::memory_order_relaxed); }
   static int32_t GetMaxMemSegmentsCount() { return max_memsegments_.load(std::memory_order_relaxed); }
   static bool IsApproachingLimit(double ratio = 0.8) {
@@ -251,7 +253,7 @@ class TsMemSegBlock : public TsBlock {
     }
   }
 
-  uint64_t GetOSN(int row_num) {
+  uint64_t GetOSN(int row_num) override {
     assert(row_data_.size() > row_num);
     return row_data_[row_num]->GetOSN();
   }
