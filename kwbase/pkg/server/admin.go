@@ -2858,7 +2858,7 @@ func (s *adminServer) GetRangeRowCount(
 	var tsSpans []*roachpb.TsSpan
 	tsSpans = append(tsSpans, &roachpb.TsSpan{TsStart: math.MinInt64, TsEnd: math.MaxInt64})
 	count, err := s.server.tsEngine.CountRangeData(
-		tableID, uint64(1), beginHash, endHash, tsSpans, 0, 0)
+		tableID, uint64(1), beginHash, endHash, tsSpans, 0, s.server.tsEngine.TsIDGen.GetNextID())
 	if err != nil {
 		return nil, err
 	}
