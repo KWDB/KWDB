@@ -1594,15 +1594,36 @@ func (m *Memo) checkAggStatisticUsable(aggs []AggregationsItem) bool {
 		return false
 	}
 	for i := range aggs {
-		switch aggs[i].Agg.(type) {
-		case *SumExpr, *MinExpr, *MaxExpr, *CountExpr, *FirstExpr, *FirstTimeStampExpr, *FirstRowExpr, *AvgExpr,
-			*FirstRowTimeStampExpr, *LastExpr, *LastTimeStampExpr, *LastRowExpr, *LastRowTimeStampExpr, *CountRowsExpr, *ConstAggExpr, *MinExtendExpr, *MaxExtendExpr:
+		switch t := aggs[i].Agg.(type) {
+		case *FirstExpr, *FirstTimeStampExpr, *FirstRowExpr, *FirstRowTimeStampExpr,
+			*LastExpr, *LastTimeStampExpr, *LastRowExpr, *LastRowTimeStampExpr:
+			if !m.tsInputIsFirstColumn(t.Child(0).(opt.ScalarExpr), t.Child(1).(opt.ScalarExpr)) {
+				return false
+			}
+		case *SumExpr, *MinExpr, *MaxExpr, *CountExpr, *AvgExpr, *CountRowsExpr, *ConstAggExpr, *MinExtendExpr, *MaxExtendExpr:
 		default:
 			return false
 		}
 	}
 
 	return true
+}
+
+// tsInputIsFirstColumn checks whether tsInput is the first column in the physical table.
+// If not, statistical information cannot be used.
+func (m *Memo) tsInputIsFirstColumn(input opt.ScalarExpr, tsInput opt.ScalarExpr) bool {
+	if inputCol, ok := input.(*VariableExpr); ok {
+		if tsInputCol, ok1 := tsInput.(*VariableExpr); ok1 {
+			tblID := m.Metadata().ColumnMeta(inputCol.Col).Table
+			if tblID != 0 {
+				index := tblID.ColumnOrdinal(tsInputCol.Col)
+				if index == 0 {
+					return true
+				}
+			}
+		}
+	}
+	return false
 }
 
 // CrossEngCheckResults includes various flags and an error status related to the optimization and execution checks in ts engine.

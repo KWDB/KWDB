@@ -221,7 +221,7 @@ SQLSTATE: 0A000
 ERROR: state_window(): multiple group window functions are not supported.
 SQLSTATE: 42601
 > select first(ts) as first ,count(ts) from tsdb.t1 group by a,state_window(status) union select first(ts) as first ,count(ts) from tsdb.t2 group by a;
-ERROR: group window function cannot be used in UNION.
+ERROR: group window function is only supported for use in single time series table query.
 SQLSTATE: 42601
 > select first(ts) as first ,count(ts) from tsdb.t1 where ts in (select first(ts) from tsdb.t2 group by state_window(status));
 ERROR: state_window(): group window function is only supported for use in single time series table query.
@@ -445,7 +445,7 @@ SQLSTATE: 0A000
 ERROR: session_window(): multiple group window functions are not supported.
 SQLSTATE: 42601
 > select first(ts) as first ,count(ts) from tsdb.t1 group by a,session_window(ts, '1s') union select first(ts) as first ,count(ts) from tsdb.t2 group by a;
-ERROR: group window function cannot be used in UNION.
+ERROR: group window function is only supported for use in single time series table query.
 SQLSTATE: 42601
 > select first(ts) as first ,count(ts) from tsdb.t1 where ts in (select first(ts) from tsdb.t2 group by session_window(ts, '1s'));
 ERROR: session_window(): group window function is only supported for use in single time series table query.
@@ -1082,7 +1082,7 @@ SQLSTATE: 0A000
 ERROR: count_window(): multiple group window functions are not supported.
 SQLSTATE: 42601
 > select first(ts) as first ,count(ts) from tsdb.t1 group by a,count_window(4) union select first(ts) as first ,count(ts) from tsdb.t2 group by a;
-ERROR: group window function cannot be used in UNION.
+ERROR: group window function is only supported for use in single time series table query.
 SQLSTATE: 42601
 > select first(ts) as first ,count(ts) from tsdb.t1 where ts in (select first(ts) from tsdb.t2 group by count_window(4));
 ERROR: count_window(): group window function is only supported for use in single time series table query.
@@ -1366,7 +1366,7 @@ SQLSTATE: 0A000
 ERROR: event_window(): multiple group window functions are not supported.
 SQLSTATE: 42601
 > select first(ts) as first ,count(ts) from tsdb.t1 group by a,event_window(status>2, b<3) union select first(ts) as first ,count(ts) from tsdb.t2 group by a;
-ERROR: group window function cannot be used in UNION.
+ERROR: group window function is only supported for use in single time series table query.
 SQLSTATE: 42601
 > select first(ts) as first ,count(ts) from tsdb.t1 where ts in (select first(ts) from tsdb.t2 group by event_window(status>2, b<3));
 ERROR: event_window(): group window function is only supported for use in single time series table query.
@@ -38122,7 +38122,7 @@ SQLSTATE: 0A000
 ERROR: time_window(): multiple group window functions are not supported.
 SQLSTATE: 42601
 > select first(ts) as first ,count(ts) from tsdb.t1 group by a,time_window(ts, '1mons', '1w') union select first(ts) as first ,count(ts) from tsdb.t2 group by a;
-ERROR: group window function cannot be used in UNION.
+ERROR: group window function is only supported for use in single time series table query.
 SQLSTATE: 42601
 > select first(ts) as first ,count(ts) from tsdb.t1 where ts in (select first(ts) from tsdb.t2 group by time_window(ts, '1mons', '1w'));
 ERROR: time_window(): group window function is only supported for use in single time series table query.

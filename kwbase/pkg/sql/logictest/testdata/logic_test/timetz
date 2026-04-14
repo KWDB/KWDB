@@ -132,9 +132,9 @@ statement ok
 set time zone +4
 
 query B
-select current_time() + current_timestamp()::date = current_timestamp()
+select current_time() + current_timestamp()::date = current_timestamp()::timestamptz(6)
 ----
-false
+true
 
 statement ok
 set time zone UTC

@@ -1166,7 +1166,7 @@ func (u *sqlSymUnion) triggerBody() tree.TriggerBody {
 %type <tree.TableExprs> from_list rowsfrom_list opt_from_list
 %type <tree.TablePatterns> table_pattern_list single_table_pattern_list
 %type <tree.TableNames> table_name_list opt_locked_rels
-%type <tree.Exprs> expr_list opt_expr_list tuple1_ambiguous_values tuple1_unambiguous_values
+%type <tree.Exprs> expr_list last_args opt_expr_list tuple1_ambiguous_values tuple1_unambiguous_values
 %type <*tree.Tuple> expr_tuple1_ambiguous expr_tuple_unambiguous
 %type <tree.NameList> attrs
 %type <tree.SelectExprs> target_list
@@ -1196,7 +1196,7 @@ func (u *sqlSymUnion) triggerBody() tree.TriggerBody {
 %type <tree.Exprs> trim_list
 %type <tree.Exprs> execute_param_clause
 %type <types.IntervalTypeMetadata> opt_interval_qualifier interval_qualifier interval_second
-%type <tree.Expr> overlay_placing
+%type <tree.Expr> opt_order_ts overlay_placing
 
 %type <bool> opt_unique opt_concurrently opt_cluster
 %type <bool> opt_using_gin_btree
@@ -12192,28 +12192,24 @@ special_function:
     $$.val = &tree.FuncExpr{Func: tree.WrapFunction($1), Exprs: tree.Exprs{$3.expr(), $5.expr()}}
   }
 | INTERPOLATE '(' error { return helpWithFunctionByName(sqllex, $1) }
-| LAST '(' last_column ')'
+| LAST '(' last_args ')'
   {
-    $$.val = &tree.FuncExpr{Func: tree.WrapFunction($1), Exprs: tree.Exprs{$3.expr()}}
+    $$.val = &tree.FuncExpr{Func: tree.WrapFunction($1), Exprs: $3.exprs()}
   }
-| LAST '(' last_column ',' SCONST ')'
-	{
-		$$.val = &tree.FuncExpr{Func: tree.WrapFunction($1), Exprs: tree.Exprs{$3.expr(), tree.NewStrVal($5)}}
-	}
 | LAST '(' error { return helpWithFunctionByName(sqllex, $1) }
-| LAST_ROW '(' last_column ')'
+| LAST_ROW '(' last_args ')'
   {
-    $$.val = &tree.FuncExpr{Func: tree.WrapFunction($1), Exprs: tree.Exprs{$3.expr()}}
+    $$.val = &tree.FuncExpr{Func: tree.WrapFunction($1), Exprs: $3.exprs()}
   }
 | LAST_ROW '(' error { return helpWithFunctionByName(sqllex, $1) }
-| LASTTS '(' last_column ')'
+| LASTTS '(' last_args ')'
   {
-    $$.val = &tree.FuncExpr{Func: tree.WrapFunction($1), Exprs: tree.Exprs{$3.expr()}}
+    $$.val = &tree.FuncExpr{Func: tree.WrapFunction($1), Exprs: $3.exprs()}
   }
 | LASTTS '(' error { return helpWithFunctionByName(sqllex, $1) }
-| LAST_ROW_TS '(' last_column ')'
+| LAST_ROW_TS '(' last_args ')'
   {
-    $$.val = &tree.FuncExpr{Func: tree.WrapFunction($1), Exprs: tree.Exprs{$3.expr()}}
+    $$.val = &tree.FuncExpr{Func: tree.WrapFunction($1), Exprs: $3.exprs()}
   }
 | LAST_ROW_TS '(' error { return helpWithFunctionByName(sqllex, $1) }
 | TO_TIME '(' a_expr ')'
@@ -12226,24 +12222,24 @@ special_function:
     $$.val = &tree.FuncExpr{Func: tree.WrapFunction($1), Exprs: tree.Exprs{$3.expr()}}
   }
 | TIME_TO_SEC '(' error { return helpWithFunctionByName(sqllex, $1)}
-| FIRST '(' last_column ')'
+| FIRST '(' last_args ')'
   {
-    $$.val = &tree.FuncExpr{Func: tree.WrapFunction($1), Exprs: tree.Exprs{$3.expr()}}
+    $$.val = &tree.FuncExpr{Func: tree.WrapFunction($1), Exprs: $3.exprs()}
   }
 | FIRST '(' error { return helpWithFunctionByName(sqllex, $1) }
-| FIRSTTS '(' last_column ')'
+| FIRSTTS '(' last_args ')'
   {
-    $$.val = &tree.FuncExpr{Func: tree.WrapFunction($1), Exprs: tree.Exprs{$3.expr()}}
+    $$.val = &tree.FuncExpr{Func: tree.WrapFunction($1), Exprs: $3.exprs()}
   }
 | FIRSTTS '(' error { return helpWithFunctionByName(sqllex, $1) }
-| FIRST_ROW '(' last_column ')'
+| FIRST_ROW '(' last_args ')'
   {
-    $$.val = &tree.FuncExpr{Func: tree.WrapFunction($1), Exprs: tree.Exprs{$3.expr()}}
+    $$.val = &tree.FuncExpr{Func: tree.WrapFunction($1), Exprs: $3.exprs()}
   }
 | FIRST_ROW '(' error { return helpWithFunctionByName(sqllex, $1) }
-| FIRST_ROW_TS '(' last_column ')'
+| FIRST_ROW_TS '(' last_args ')'
   {
-    $$.val = &tree.FuncExpr{Func: tree.WrapFunction($1), Exprs: tree.Exprs{$3.expr()}}
+    $$.val = &tree.FuncExpr{Func: tree.WrapFunction($1), Exprs: $3.exprs()}
   }
 | FIRST_ROW_TS '(' error { return helpWithFunctionByName(sqllex, $1) }
 | STR_TO_DATE '(' a_expr ',' a_expr ')'
@@ -12251,6 +12247,27 @@ special_function:
     $$.val = &tree.FuncExpr{Func: tree.WrapFunction($1), Exprs: tree.Exprs{$3.expr(), $5.expr()}}
   }
 | STR_TO_DATE '(' error { return helpWithFunctionByName(sqllex, $1)}
+
+last_args:
+last_column opt_order_ts
+  {
+  	argExprs := make(tree.Exprs, 0)
+    argExprs = append(argExprs, $1.expr())
+    if $2.expr() != nil {
+    	argExprs = append(argExprs, $2.expr())
+    }
+		$$.val = argExprs
+  }
+
+opt_order_ts:
+',' a_expr
+  {
+    $$.val = $2.expr()
+  }
+| /* EMPTY */
+  {
+    $$.val = tree.Expr(nil)
+  }
 
 last_column:
 column_path_with_star

@@ -1,0 +1,691 @@
+> drop database d1 cascade;
+ERROR: database "d1" does not exist
+SQLSTATE: 3D000
+> create ts database d1;
+CREATE TS DATABASE
+> use d1;
+SET
+> create table t1(ts timestamptz not null, e1 int, e2 timestamptz) tags(tag1 int not null, tag2 int) primary tags(tag1);
+CREATE TABLE
+> insert into t1 values ('2026-1-1', 1, '2026-1-31', 10,     20);
+INSERT 1
+> insert into t1 values ('2026-1-2', 2, '2026-1-30', 100,    200);
+INSERT 1
+> insert into t1 values ('2026-1-3', 3, '2026-1-29', 1000,   2000);
+INSERT 1
+> insert into t1 values ('2026-1-4', 4, '2026-1-28', 10000,  20000);
+INSERT 1
+> insert into t1 values ('2026-1-5', 5, '2026-1-27', 100000, 200000);
+INSERT 1
+> create table t2(ts timestamptz not null, e1 int, e2 timestamptz) tags(tag1 int not null, tag2 int) primary tags(tag1);
+CREATE TABLE
+> insert into t2 select * from t1;
+INSERT 5
+> drop database d2 cascade;
+ERROR: database "d2" does not exist
+SQLSTATE: 3D000
+> create database d2;
+CREATE DATABASE
+> use d2;
+SET
+> create table t1 (e1 int, e2 timestamptz);
+CREATE TABLE
+> insert into t1 values (1, '2026-1-1');
+INSERT 1
+> insert into t1 values (2, '2026-1-2');
+INSERT 1
+> insert into t1 values (3, '2026-1-3');
+INSERT 1
+> create view v1 as select t1.e1, t1.e2 from t1;
+CREATE VIEW
+> SELECT last(e1,'2020-1-1 00:00:00') FROM t1;
+ERROR: last() can only be used in timeseries table query or subquery when the second parameter is a const
+SQLSTATE: 0A000
+> SELECT first(e1,'2020-1-1 00:00:00') FROM t1;
+ERROR: the second parameter is invalid
+SQLSTATE: 22023
+> SELECT last(new_e1,'2020-1-1 00:00:00') FROM (SELECT e1 as new_e1 FROM t1);
+ERROR: last() can only be used in timeseries table query or subquery when the second parameter is a const
+SQLSTATE: 0A000
+> use d1;
+SET
+> select last(e1) from t1 ;
+  last
+--------
+     5
+(1 row)
+> select last(e1, '2026-1-3') from t1;
+  last
+--------
+     3
+(1 row)
+> select last(e1, e2) from t1 where e1 is not null;
+  last
+--------
+     1
+(1 row)
+> select last(e1, e2-1s) from t1 where e1 is not null;
+  last
+--------
+     1
+(1 row)
+> select last(*, e2) from t1 where e1 is not null;
+          last(ts)          | last(e1) |         last(e2)          | last(tag1) | last(tag2)
+----------------------------+----------+---------------------------+------------+-------------
+  2026-01-01 00:00:00+00:00 |        1 | 2026-01-31 00:00:00+00:00 |         10 |         20
+(1 row)
+> select lastts(e1) from t1;
+           lastts
+-----------------------------
+  2026-01-05 00:00:00+00:00
+(1 row)
+> select lastts(e1, '2026-1-3') from t1;
+ERROR: the second parameter is invalid
+SQLSTATE: 22023
+> select lastts(e1, e2) from t1 where e1 is not null;
+           lastts
+-----------------------------
+  2026-01-31 00:00:00+00:00
+(1 row)
+> select lastts(e1, e2-1s) from t1 where e1 is not null;
+           lastts
+-----------------------------
+  2026-01-30 23:59:59+00:00
+(1 row)
+> select lastts(*, e2) from t1 where e1 is not null;
+         lastts(ts)         |        lastts(e1)         |        lastts(e2)         |       lastts(tag1)        |       lastts(tag2)
+----------------------------+---------------------------+---------------------------+---------------------------+----------------------------
+  2026-01-31 00:00:00+00:00 | 2026-01-31 00:00:00+00:00 | 2026-01-31 00:00:00+00:00 | 2026-01-31 00:00:00+00:00 | 2026-01-31 00:00:00+00:00
+(1 row)
+> select last_row(e1) from t1;
+  last_row
+------------
+         5
+(1 row)
+> select last_row(e1, '2026-1-3') from t1;
+ERROR: the second parameter is invalid
+SQLSTATE: 22023
+> select last_row(e1, e2) from t1 where e1 is not null;
+  last_row
+------------
+         1
+(1 row)
+> select last_row(e1, e2-1s) from t1 where e1 is not null;
+  last_row
+------------
+         1
+(1 row)
+> select last_row(*, e2) from t1 where e1 is not null;
+        last_row(ts)        | last_row(e1) |       last_row(e2)        | last_row(tag1) | last_row(tag2)
+----------------------------+--------------+---------------------------+----------------+-----------------
+  2026-01-01 00:00:00+00:00 |            1 | 2026-01-31 00:00:00+00:00 |             10 |             20
+(1 row)
+> select last_row_ts(e1) from t1;
+         last_row_ts
+-----------------------------
+  2026-01-05 00:00:00+00:00
+(1 row)
+> select last_row_ts(e1, '2026-1-3') from t1;
+ERROR: the second parameter is invalid
+SQLSTATE: 22023
+> select last_row_ts(e1, e2) from t1 where e1 is not null;
+         last_row_ts
+-----------------------------
+  2026-01-31 00:00:00+00:00
+(1 row)
+> select last_row_ts(e1, e2-1s) from t1 where e1 is not null;
+         last_row_ts
+-----------------------------
+  2026-01-30 23:59:59+00:00
+(1 row)
+> select last_row_ts(*, e2) from t1 where e1 is not null;
+       last_row_ts(ts)      |      last_row_ts(e1)      |      last_row_ts(e2)      |     last_row_ts(tag1)     |     last_row_ts(tag2)
+----------------------------+---------------------------+---------------------------+---------------------------+----------------------------
+  2026-01-31 00:00:00+00:00 | 2026-01-31 00:00:00+00:00 | 2026-01-31 00:00:00+00:00 | 2026-01-31 00:00:00+00:00 | 2026-01-31 00:00:00+00:00
+(1 row)
+> select first(e1) from t1;
+  first
+---------
+      1
+(1 row)
+> select first(e1, '2026-1-3') from t1;
+ERROR: the second parameter is invalid
+SQLSTATE: 22023
+> select first(e1, e2) from t1 where e1 is not null;
+  first
+---------
+      5
+(1 row)
+> select first(e1, e2-1s) from t1 where e1 is not null;
+  first
+---------
+      5
+(1 row)
+> select first(*, e2) from t1 where e1 is not null;
+          first(ts)         | first(e1) |         first(e2)         | first(tag1) | first(tag2)
+----------------------------+-----------+---------------------------+-------------+--------------
+  2026-01-05 00:00:00+00:00 |         5 | 2026-01-27 00:00:00+00:00 |      100000 |      200000
+(1 row)
+> select firstts(e1) from t1;
+           firstts
+-----------------------------
+  2026-01-01 00:00:00+00:00
+(1 row)
+> select firstts(e1, '2026-1-3') from t1;
+ERROR: the second parameter is invalid
+SQLSTATE: 22023
+> select firstts(e1, e2) from t1 where e1 is not null;
+           firstts
+-----------------------------
+  2026-01-27 00:00:00+00:00
+(1 row)
+> select firstts(e1, e2-1s) from t1 where e1 is not null;
+           firstts
+-----------------------------
+  2026-01-26 23:59:59+00:00
+(1 row)
+> select firstts(*, e2) from t1 where e1 is not null;
+         firstts(ts)        |        firstts(e1)        |        firstts(e2)        |       firstts(tag1)       |       firstts(tag2)
+----------------------------+---------------------------+---------------------------+---------------------------+----------------------------
+  2026-01-27 00:00:00+00:00 | 2026-01-27 00:00:00+00:00 | 2026-01-27 00:00:00+00:00 | 2026-01-27 00:00:00+00:00 | 2026-01-27 00:00:00+00:00
+(1 row)
+> select first_row(e1) from t1;
+  first_row
+-------------
+          1
+(1 row)
+> select first_row(e1, '2026-1-3') from t1;
+ERROR: the second parameter is invalid
+SQLSTATE: 22023
+> select first_row(e1, e2) from t1 where e1 is not null;
+  first_row
+-------------
+          5
+(1 row)
+> select first_row(e1, e2-1s) from t1 where e1 is not null;
+  first_row
+-------------
+          5
+(1 row)
+> select first_row(*, e2) from t1 where e1 is not null;
+        first_row(ts)       | first_row(e1) |       first_row(e2)       | first_row(tag1) | first_row(tag2)
+----------------------------+---------------+---------------------------+-----------------+------------------
+  2026-01-05 00:00:00+00:00 |             5 | 2026-01-27 00:00:00+00:00 |          100000 |          200000
+(1 row)
+> select first_row_ts(e1) from t1;
+        first_row_ts
+-----------------------------
+  2026-01-01 00:00:00+00:00
+(1 row)
+> select first_row_ts(e1, '2026-1-3') from t1;
+ERROR: the second parameter is invalid
+SQLSTATE: 22023
+> select first_row_ts(e1, e2) from t1 where e1 is not null;
+        first_row_ts
+-----------------------------
+  2026-01-27 00:00:00+00:00
+(1 row)
+> select first_row_ts(e1, e2-1s) from t1 where e1 is not null;
+        first_row_ts
+-----------------------------
+  2026-01-26 23:59:59+00:00
+(1 row)
+> select first_row_ts(*, e2) from t1 where e1 is not null;
+      first_row_ts(ts)      |     first_row_ts(e1)      |     first_row_ts(e2)      |    first_row_ts(tag1)     |    first_row_ts(tag2)
+----------------------------+---------------------------+---------------------------+---------------------------+----------------------------
+  2026-01-27 00:00:00+00:00 | 2026-01-27 00:00:00+00:00 | 2026-01-27 00:00:00+00:00 | 2026-01-27 00:00:00+00:00 | 2026-01-27 00:00:00+00:00
+(1 row)
+> select last(new_e1, new_e2) from
+    (
+    select t1.e1 as new_e1, t1.e2 as new_e2 from t1 join t2 on t1.e1=t2.e1
+    );
+  last
+--------
+     1
+(1 row)
+> select last(new_e1, new_e2, '2026-1-29') from
+    (
+    select t1.e1 as new_e1, t1.e2 as new_e2 from t1 join t2 on t1.e1=t2.e1
+    );
+ERROR: at or near ",": syntax error
+SQLSTATE: 42601
+DETAIL: source SQL:
+select last(new_e1, new_e2, '2026-1-29') from
+                          ^
+HINT: try \hf last
+> select last(e1, e2) from d2.v1;
+  last
+--------
+     3
+(1 row)
+> with t3 as (select t1.e1, t1.e2 from t1 join t2 on t1.e1=t2.e1) select last(e1, e2) from t3;
+  last
+--------
+     1
+(1 row)
+> select last(e1,e2) from t1 where exists (select e1 from t2);
+  last
+--------
+     1
+(1 row)
+> select last(e1, e2) from t1 where exists (select e1 from t2 where e1 = t1.e1);
+  last
+--------
+     1
+(1 row)
+> select last(t1.e1, t1.e2) from t1 join t2 on t1.e1=t2.e1;
+  last
+--------
+     1
+(1 row)
+> select lastts(new_e1, new_e2) from
+    (
+        select t1.e1 as new_e1, t1.e2 as new_e2 from t1 join t2 on t1.e1=t2.e1
+    );
+           lastts
+-----------------------------
+  2026-01-31 00:00:00+00:00
+(1 row)
+> select lastts(new_e1, new_e2, '2026-1-29') from
+    (
+        select t1.e1 as new_e1, t1.e2 as new_e2 from t1 join t2 on t1.e1=t2.e1
+    );
+ERROR: at or near ",": syntax error
+SQLSTATE: 42601
+DETAIL: source SQL:
+select lastts(new_e1, new_e2, '2026-1-29') from
+                            ^
+HINT: try \hf lastts
+> select lastts(e1, e2) from d2.v1;
+           lastts
+-----------------------------
+  2026-01-03 00:00:00+00:00
+(1 row)
+> with t3 as (select t1.e1, t1.e2 from t1 join t2 on t1.e1=t2.e1) select lastts(e1, e2) from t3;
+           lastts
+-----------------------------
+  2026-01-31 00:00:00+00:00
+(1 row)
+> select lastts(e1,e2) from t1 where exists (select e1 from t2);
+           lastts
+-----------------------------
+  2026-01-31 00:00:00+00:00
+(1 row)
+> select lastts(e1, e2) from t1 where exists (select e1 from t2 where e1 = t1.e1);
+           lastts
+-----------------------------
+  2026-01-31 00:00:00+00:00
+(1 row)
+> select lastts(t1.e1, t1.e2) from t1 join t2 on t1.e1=t2.e1;
+           lastts
+-----------------------------
+  2026-01-31 00:00:00+00:00
+(1 row)
+> select last_row(new_e1, new_e2) from
+    (
+        select t1.e1 as new_e1, t1.e2 as new_e2 from t1 join t2 on t1.e1=t2.e1
+    );
+  last_row
+------------
+         1
+(1 row)
+> select last_row(new_e1, new_e2, '2026-1-29') from
+    (
+        select t1.e1 as new_e1, t1.e2 as new_e2 from t1 join t2 on t1.e1=t2.e1
+    );
+ERROR: at or near ",": syntax error
+SQLSTATE: 42601
+DETAIL: source SQL:
+select last_row(new_e1, new_e2, '2026-1-29') from
+                              ^
+HINT: try \hf last_row
+> select last_row(e1, e2) from d2.v1;
+  last_row
+------------
+         3
+(1 row)
+> with t3 as (select t1.e1, t1.e2 from t1 join t2 on t1.e1=t2.e1) select last_row(e1, e2) from t3;
+  last_row
+------------
+         1
+(1 row)
+> select last_row(e1,e2) from t1 where exists (select e1 from t2);
+  last_row
+------------
+         1
+(1 row)
+> select last_row(e1, e2) from t1 where exists (select e1 from t2 where e1 = t1.e1);
+  last_row
+------------
+         1
+(1 row)
+> select last_row(t1.e1, t1.e2) from t1 join t2 on t1.e1=t2.e1;
+  last_row
+------------
+         1
+(1 row)
+> select last_row_ts(new_e1, new_e2) from
+    (
+        select t1.e1 as new_e1, t1.e2 as new_e2 from t1 join t2 on t1.e1=t2.e1
+    );
+         last_row_ts
+-----------------------------
+  2026-01-31 00:00:00+00:00
+(1 row)
+> select last_row_ts(new_e1, new_e2, '2026-1-29') from
+    (
+        select t1.e1 as new_e1, t1.e2 as new_e2 from t1 join t2 on t1.e1=t2.e1
+    );
+ERROR: at or near ",": syntax error
+SQLSTATE: 42601
+DETAIL: source SQL:
+select last_row_ts(new_e1, new_e2, '2026-1-29') from
+                                 ^
+HINT: try \hf last_row_ts
+> select last_row_ts(e1, e2) from d2.v1;
+         last_row_ts
+-----------------------------
+  2026-01-03 00:00:00+00:00
+(1 row)
+> with t3 as (select t1.e1, t1.e2 from t1 join t2 on t1.e1=t2.e1) select last_row_ts(e1, e2) from t3;
+         last_row_ts
+-----------------------------
+  2026-01-31 00:00:00+00:00
+(1 row)
+> select last_row_ts(e1,e2) from t1 where exists (select e1 from t2);
+         last_row_ts
+-----------------------------
+  2026-01-31 00:00:00+00:00
+(1 row)
+> select last_row_ts(e1, e2) from t1 where exists (select e1 from t2 where e1 = t1.e1);
+         last_row_ts
+-----------------------------
+  2026-01-31 00:00:00+00:00
+(1 row)
+> select last_row_ts(t1.e1, t1.e2) from t1 join t2 on t1.e1=t2.e1;
+         last_row_ts
+-----------------------------
+  2026-01-31 00:00:00+00:00
+(1 row)
+> select first(new_e1, new_e2) from
+    (
+    select t1.e1 as new_e1, t1.e2 as new_e2 from t1 join t2 on t1.e1=t2.e1
+    );
+  first
+---------
+      5
+(1 row)
+> select first(new_e1, new_e2, '2026-1-29') from
+    (
+    select t1.e1 as new_e1, t1.e2 as new_e2 from t1 join t2 on t1.e1=t2.e1
+    );
+ERROR: at or near ",": syntax error
+SQLSTATE: 42601
+DETAIL: source SQL:
+select first(new_e1, new_e2, '2026-1-29') from
+                           ^
+HINT: try \hf first
+> select first(e1, e2) from d2.v1;
+  first
+---------
+      1
+(1 row)
+> with t3 as (select t1.e1, t1.e2 from t1 join t2 on t1.e1=t2.e1) select first(e1, e2) from t3;
+  first
+---------
+      5
+(1 row)
+> select first(e1,e2) from t1 where exists (select e1 from t2);
+  first
+---------
+      5
+(1 row)
+> select first(e1, e2) from t1 where exists (select e1 from t2 where e1 = t1.e1);
+  first
+---------
+      5
+(1 row)
+> select first(t1.e1, t1.e2) from t1 join t2 on t1.e1=t2.e1;
+  first
+---------
+      5
+(1 row)
+> select firstts(new_e1, new_e2) from
+    (
+        select t1.e1 as new_e1, t1.e2 as new_e2 from t1 join t2 on t1.e1=t2.e1
+    );
+           firstts
+-----------------------------
+  2026-01-27 00:00:00+00:00
+(1 row)
+> select firstts(new_e1, new_e2, '2026-1-29') from
+    (
+        select t1.e1 as new_e1, t1.e2 as new_e2 from t1 join t2 on t1.e1=t2.e1
+    );
+ERROR: at or near ",": syntax error
+SQLSTATE: 42601
+DETAIL: source SQL:
+select firstts(new_e1, new_e2, '2026-1-29') from
+                             ^
+HINT: try \hf firstts
+> select firstts(e1, e2) from d2.v1;
+           firstts
+-----------------------------
+  2026-01-01 00:00:00+00:00
+(1 row)
+> with t3 as (select t1.e1, t1.e2 from t1 join t2 on t1.e1=t2.e1) select firstts(e1, e2) from t3;
+           firstts
+-----------------------------
+  2026-01-27 00:00:00+00:00
+(1 row)
+> select firstts(e1,e2) from t1 where exists (select e1 from t2);
+           firstts
+-----------------------------
+  2026-01-27 00:00:00+00:00
+(1 row)
+> select firstts(e1, e2) from t1 where exists (select e1 from t2 where e1 = t1.e1);
+           firstts
+-----------------------------
+  2026-01-27 00:00:00+00:00
+(1 row)
+> select firstts(t1.e1, t1.e2) from t1 join t2 on t1.e1=t2.e1;
+           firstts
+-----------------------------
+  2026-01-27 00:00:00+00:00
+(1 row)
+> select first_row(new_e1, new_e2) from
+    (
+        select t1.e1 as new_e1, t1.e2 as new_e2 from t1 join t2 on t1.e1=t2.e1
+    );
+  first_row
+-------------
+          5
+(1 row)
+> select first_row(new_e1, new_e2, '2026-1-29') from
+    (
+        select t1.e1 as new_e1, t1.e2 as new_e2 from t1 join t2 on t1.e1=t2.e1
+    );
+ERROR: at or near ",": syntax error
+SQLSTATE: 42601
+DETAIL: source SQL:
+select first_row(new_e1, new_e2, '2026-1-29') from
+                               ^
+HINT: try \hf first_row
+> select first_row(e1, e2) from d2.v1;
+  first_row
+-------------
+          1
+(1 row)
+> with t3 as (select t1.e1, t1.e2 from t1 join t2 on t1.e1=t2.e1) select first_row(e1, e2) from t3;
+  first_row
+-------------
+          5
+(1 row)
+> select first_row(e1,e2) from t1 where exists (select e1 from t2);
+  first_row
+-------------
+          5
+(1 row)
+> select first_row(e1, e2) from t1 where exists (select e1 from t2 where e1 = t1.e1);
+  first_row
+-------------
+          5
+(1 row)
+> select first_row(t1.e1, t1.e2) from t1 join t2 on t1.e1=t2.e1;
+  first_row
+-------------
+          5
+(1 row)
+> select first_row_ts(new_e1, new_e2) from
+    (
+        select t1.e1 as new_e1, t1.e2 as new_e2 from t1 join t2 on t1.e1=t2.e1
+    );
+        first_row_ts
+-----------------------------
+  2026-01-27 00:00:00+00:00
+(1 row)
+> select first_row_ts(new_e1, new_e2, '2026-1-29') from
+    (
+        select t1.e1 as new_e1, t1.e2 as new_e2 from t1 join t2 on t1.e1=t2.e1
+    );
+ERROR: at or near ",": syntax error
+SQLSTATE: 42601
+DETAIL: source SQL:
+select first_row_ts(new_e1, new_e2, '2026-1-29') from
+                                  ^
+HINT: try \hf first_row_ts
+> select first_row_ts(e1, e2) from d2.v1;
+        first_row_ts
+-----------------------------
+  2026-01-01 00:00:00+00:00
+(1 row)
+> with t3 as (select t1.e1, t1.e2 from t1 join t2 on t1.e1=t2.e1) select first_row_ts(e1, e2) from t3;
+        first_row_ts
+-----------------------------
+  2026-01-27 00:00:00+00:00
+(1 row)
+> select first_row_ts(e1,e2) from t1 where exists (select e1 from t2);
+        first_row_ts
+-----------------------------
+  2026-01-27 00:00:00+00:00
+(1 row)
+> select first_row_ts(e1, e2) from t1 where exists (select e1 from t2 where e1 = t1.e1);
+        first_row_ts
+-----------------------------
+  2026-01-27 00:00:00+00:00
+(1 row)
+> select first_row_ts(t1.e1, t1.e2) from t1 join t2 on t1.e1=t2.e1;
+        first_row_ts
+-----------------------------
+  2026-01-27 00:00:00+00:00
+(1 row)
+> select last(e1, e2) from t1;
+  last
+--------
+     1
+(1 row)
+> select lastts(e1, e2) from t1;
+           lastts
+-----------------------------
+  2026-01-31 00:00:00+00:00
+(1 row)
+> select last_row(e1, e2) from t1;
+  last_row
+------------
+         1
+(1 row)
+> select last_row_ts(e1, e2) from t1;
+         last_row_ts
+-----------------------------
+  2026-01-31 00:00:00+00:00
+(1 row)
+> select first(e1, e2) from t1;
+  first
+---------
+      5
+(1 row)
+> select firstts(e1, e2) from t1;
+           firstts
+-----------------------------
+  2026-01-27 00:00:00+00:00
+(1 row)
+> select first_row(e1, e2) from t1;
+  first_row
+-------------
+          5
+(1 row)
+> select first_row_ts(e1, e2) from t1;
+        first_row_ts
+-----------------------------
+  2026-01-27 00:00:00+00:00
+(1 row)
+> SELECT last(e1,'2020-1-2 12:00:01.123'-1d) FROM t1 where e1=1;
+  last
+--------
+     1
+(1 row)
+> SELECT last(e1,now()) FROM t1 where e1=1;
+  last
+--------
+     1
+(1 row)
+> SELECT lastts(e1,'2020-1-2 12:00:01.123'-1d) FROM t1;
+             lastts
+---------------------------------
+  2020-01-01 12:00:01.123+00:00
+(1 row)
+> SELECT last_row(e1,'2020-1-2 12:00:01.123'-1d) FROM t1 where e1=1;
+  last_row
+------------
+         1
+(1 row)
+> SELECT last_row(e1,now()) FROM t1 where e1=1;
+  last_row
+------------
+         1
+(1 row)
+> SELECT last_row_ts(e1,'2020-1-2 12:00:01.123'-1d) FROM t1;
+           last_row_ts
+---------------------------------
+  2020-01-01 12:00:01.123+00:00
+(1 row)
+> SELECT first(e1,'2020-1-2 12:00:01.123'-1d) FROM t1 where e1=1;
+  first
+---------
+      1
+(1 row)
+> SELECT first(e1,now()) FROM t1 where e1=1;
+  first
+---------
+      1
+(1 row)
+> SELECT firstts(e1,'2020-1-2 12:00:01.123'-1d) FROM t1;
+             firstts
+---------------------------------
+  2020-01-01 12:00:01.123+00:00
+(1 row)
+> SELECT first_row(e1,'2020-1-2 12:00:01.123'-1d) FROM t1 where e1=1;
+  first_row
+-------------
+          1
+(1 row)
+> SELECT first_row(e1,now()) FROM t1 where e1=1;
+  first_row
+-------------
+          1
+(1 row)
+> SELECT first_row_ts(e1,'2020-1-2 12:00:01.123'-1d) FROM t1;
+          first_row_ts
+---------------------------------
+  2020-01-01 12:00:01.123+00:00
+(1 row)
+> SELECT last(last_e1,ts1) FROM (SELECT last(e1) as last_e1,ts as ts1 FROM t1 GROUP BY ts,event_window(e1>0,e1>0));
+ERROR: group window function is only supported for use in single time series table query.
+SQLSTATE: 42601
+> SELECT max(new_e1) FROM (SELECT max(e1) as new_e1 FROM t1 GROUP BY event_window(e1>0,e1>0));
+ERROR: group window function is only supported for use in single time series table query.
+SQLSTATE: 42601
+> drop database d1 cascade;
+DROP DATABASE
+> drop database d2 cascade;
+DROP DATABASE

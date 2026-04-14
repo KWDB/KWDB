@@ -520,9 +520,14 @@ KStatus AggTableScanOperator::ResolveAggFuncs(kwdbContext_p ctx) {
       }
       case Sumfunctype::LAST: {
         k_uint32 len = agg_output_fields_[i]->get_storage_length();
-        k_uint32 tsIdx = agg.col_idx(1);
         agg_output_fields_[i]->set_storage_type(output_fields_[argIdx]->get_storage_type());
         agg_output_fields_[i]->set_storage_length(output_fields_[argIdx]->get_storage_length());
+        if (agg.col_idx_size() <= 1) {
+          // for last(id,'2020-1-1 12:00:01.123'-1d), the second param is const time, not ts column
+          agg_func = AggregateFuncFactory::CreateAnyNotNull(agg_output_fields_[i]->get_storage_type(), i, argIdx, len);
+          break;
+        }
+        k_int32 tsIdx = agg.col_idx(1);
         k_int64 time = agg.timestampconstant(0);
         agg_func =
             AggregateFuncFactory::CreateLast(agg_output_fields_[i]->get_storage_type(), i, argIdx, len, tsIdx, time);
@@ -539,9 +544,14 @@ KStatus AggTableScanOperator::ResolveAggFuncs(kwdbContext_p ctx) {
       }
       case Sumfunctype::LAST_ROW: {
         k_uint32 len = agg_output_fields_[i]->get_storage_length();
-        k_uint32 tsIdx = agg.col_idx(1);
         agg_output_fields_[i]->set_storage_type(output_fields_[argIdx]->get_storage_type());
         agg_output_fields_[i]->set_storage_length(output_fields_[argIdx]->get_storage_length());
+        if (agg.col_idx_size() <= 1) {
+          // for last(id,'2020-1-1 12:00:01.123'-1d), the second param is const time, not ts column
+          agg_func = AggregateFuncFactory::CreateAnyNotNull(agg_output_fields_[i]->get_storage_type(), i, argIdx, len);
+          break;
+        }
+        k_uint32 tsIdx = agg.col_idx(1);
         agg_func =
             AggregateFuncFactory::CreateLastRow(agg_output_fields_[i]->get_storage_type(), i, argIdx, len, tsIdx);
         break;
@@ -556,9 +566,14 @@ KStatus AggTableScanOperator::ResolveAggFuncs(kwdbContext_p ctx) {
       }
       case Sumfunctype::FIRST: {
         k_uint32 len = agg_output_fields_[i]->get_storage_length();
-        k_uint32 tsIdx = agg.col_idx(1);
         agg_output_fields_[i]->set_storage_type(output_fields_[argIdx]->get_storage_type());
         agg_output_fields_[i]->set_storage_length(output_fields_[argIdx]->get_storage_length());
+        if (agg.col_idx_size() <= 1) {
+          // for first(id,'2020-1-1 12:00:01.123'-1d), the second param is const time, not ts column
+          agg_func = AggregateFuncFactory::CreateAnyNotNull(agg_output_fields_[i]->get_storage_type(), i, argIdx, len);
+          break;
+        }
+        k_uint32 tsIdx = agg.col_idx(1);
         agg_func = AggregateFuncFactory::CreateFirst(agg_output_fields_[i]->get_storage_type(), i, argIdx, len, tsIdx);
         break;
       }
