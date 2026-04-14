@@ -40,9 +40,9 @@ func TestPlannerVacuum(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			p, vacuumStmt := tt.setupFunc()
-			
+
 			result, err := p.Vacuum(context.Background(), vacuumStmt)
-			
+
 			if tt.expectedErr {
 				if err == nil {
 					t.Error("Vacuum() expected error, got nil")
@@ -54,7 +54,7 @@ func TestPlannerVacuum(t *testing.T) {
 				if result == nil {
 					t.Error("Vacuum() returned nil")
 				}
-				
+
 				// Verify it's a vacuumNode
 				if _, ok := result.(*vacuumNode); !ok {
 					t.Errorf("Vacuum() returned %T, want *vacuumNode", result)

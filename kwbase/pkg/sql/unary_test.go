@@ -101,7 +101,7 @@ func TestUnaryNodeNext(t *testing.T) {
 				params := runParams{
 					ctx: context.Background(),
 				}
-				
+
 				// First call should return true
 				hasNext, err := u.Next(params)
 				if err != nil {
@@ -110,7 +110,7 @@ func TestUnaryNodeNext(t *testing.T) {
 				if !hasNext {
 					t.Error("Next() first call = false, want true")
 				}
-				
+
 				// Second call should return false
 				hasNext, err = u.Next(params)
 				if err != nil {

@@ -159,7 +159,7 @@ func TestTsScanNodeClose(t *testing.T) {
 			testFunc: func(t *testing.T, n *tsScanNode) {
 				// Call Close and verify the node is reset
 				n.Close(context.Background())
-				
+
 				// Verify that the node was reset
 				if len(n.resultColumns) != 0 {
 					t.Errorf("Close() did not reset resultColumns, got length %d", len(n.resultColumns))
@@ -352,7 +352,7 @@ func TestSynchronizerNodeMethods(t *testing.T) {
 				params := runParams{
 					ctx: context.Background(),
 				}
-					err := n.startExec(params)
+				err := n.startExec(params)
 				if err == nil {
 					t.Error("startExec() expected error, got nil")
 				}

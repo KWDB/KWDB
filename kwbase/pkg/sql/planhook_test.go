@@ -209,7 +209,7 @@ func TestHookFnNodeWithSubplans(t *testing.T) {
 			if err != nil {
 				t.Errorf("startExec() returned error: %v", err)
 			}
-			
+
 			// Test Next to get the result
 			hasNext, err := node.Next(params)
 			if err != nil {
@@ -218,10 +218,10 @@ func TestHookFnNodeWithSubplans(t *testing.T) {
 			if !hasNext {
 				t.Error("Next() returned false, expected true")
 			}
-			
+
 			// Test Close with subplans
 			node.Close(context.Background())
-			
+
 			// Ensure goroutine is properly closed by calling Next again
 			hasNext, err = node.Next(params)
 			if hasNext {
