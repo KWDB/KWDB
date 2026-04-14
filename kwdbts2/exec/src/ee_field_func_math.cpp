@@ -75,10 +75,14 @@ k_int64 kmod(k_int64 x, k_int64 y) {
   return x;
 }
 k_bool powPreCheck(Field **args, k_int32 arg_count) {
+  if (roachpb::DataType::FLOAT == args[0]->get_storage_type() ||
+      roachpb::DataType::DOUBLE == args[0]->get_storage_type()) {
+    return SUCCESS;
+  }
   if (arg_count == 2 && FLT_EQUAL(args[0]->ValReal(), 0.0) &&
       FLT_EQUAL(args[1]->ValReal(), 0.0)) {
-    EEPgErrorInfo::SetPgErrorInfo(ERRCODE_INVALID_ARGUMENT_FOR_POWER_FUNCTION,
-                                  "invalid argument for power function");
+    EEPgErrorInfo::SetPgErrorInfo(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE,
+                                  "integer out of range");
     return FAIL;
   }
   return SUCCESS;
