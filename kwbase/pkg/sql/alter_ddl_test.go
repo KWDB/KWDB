@@ -374,6 +374,13 @@ func TestAlterTableIntegration(t *testing.T) {
 	_, err = db.Exec(`ALTER TABLE test_alter_table_db.test_table ADD COLUMN age INT`)
 	require.NoError(t, err)
 
+	// alter column set not null
+	_, err = db.Exec(`ALTER TABLE test_alter_table_db.test_table alter COLUMN age set not null`)
+	require.NoError(t, err)
+
+	// alter column set null
+	_, err = db.Exec(`ALTER TABLE test_alter_table_db.test_table alter COLUMN age drop not null`)
+	require.NoError(t, err)
 	// rename column
 	_, err = db.Exec(`ALTER TABLE test_alter_table_db.test_table RENAME COLUMN name TO full_name`)
 	require.NoError(t, err)
@@ -410,8 +417,24 @@ func TestAlterTSTableIntegration(t *testing.T) {
 	_, err = db.Exec(`ALTER TABLE test_ts_alter_db.test_ts_table ADD TAG tag2 int`)
 	require.NoError(t, err)
 
+	// add column
+	_, err = db.Exec(`ALTER TABLE test_ts_alter_db.test_ts_table ADD COLUMN b int`)
+	require.NoError(t, err)
+
+	// alter column type
+	_, err = db.Exec(`ALTER TABLE test_ts_alter_db.test_ts_table alter COLUMN b type int64`)
+	require.NoError(t, err)
+
+	// drop column
+	_, err = db.Exec(`ALTER TABLE test_ts_alter_db.test_ts_table DROP COLUMN b`)
+	require.NoError(t, err)
+
 	// rename tag
 	_, err = db.Exec(`ALTER TABLE test_ts_alter_db.test_ts_table RENAME TAG tag2 TO tag3`)
+	require.NoError(t, err)
+
+	// alter tag type
+	_, err = db.Exec(`ALTER TABLE test_ts_alter_db.test_ts_table alter TAG tag3 type int64`)
 	require.NoError(t, err)
 
 	// set retention

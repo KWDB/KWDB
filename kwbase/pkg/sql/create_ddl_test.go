@@ -75,6 +75,73 @@ func TestCreateAuditIntegration(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestCreateSharedIndex(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	ctx := context.Background()
+	params, _ := tests.CreateTestServerParams()
+	params.Knobs.TSSchemaChanger = &TSSchemaChangerTestingKnobs{}
+	s, db, _ := serverutils.StartServer(t, params)
+	defer s.Stopper().Stop(ctx)
+
+	_, err := db.Exec(`SET experimental_enable_hash_sharded_indexes = true`)
+	require.NoError(t, err)
+
+	// create a test database and table
+	_, err = db.Exec(`CREATE DATABASE IF NOT EXISTS test_shared_idx_db`)
+	require.NoError(t, err)
+	_, err = db.Exec(`CREATE TABLE test_shared_idx_db.test_table (id INT PRIMARY KEY, name STRING, age INT)`)
+	require.NoError(t, err)
+
+	// create a basic shared index
+	_, err = db.Exec(`CREATE INDEX idx_basic ON test_shared_idx_db.test_table (name)`)
+	require.NoError(t, err)
+
+	// create UNIQUE index
+	_, err = db.Exec(`CREATE UNIQUE INDEX idx_unique ON test_shared_idx_db.test_table (name)`)
+	require.NoError(t, err)
+
+	// create CONCURRENTLY index
+	_, err = db.Exec(`CREATE INDEX CONCURRENTLY idx_concurrent ON test_shared_idx_db.test_table (age)`)
+	require.NoError(t, err)
+
+	// create index with IF NOT EXISTS
+	_, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_basic ON test_shared_idx_db.test_table (name)`)
+	require.NoError(t, err)
+
+	// create index with explicit name
+	_, err = db.Exec(`CREATE INDEX my_custom_idx ON test_shared_idx_db.test_table (name, age)`)
+	require.NoError(t, err)
+
+	// create index with USING BTREE
+	_, err = db.Exec(`CREATE INDEX idx_btree ON test_shared_idx_db.test_table USING BTREE (name)`)
+	require.NoError(t, err)
+
+	// create index with USING GIN (if supported)
+	// _, err = db.Exec(`CREATE INDEX idx_gin ON test_shared_idx_db.test_table USING GIN (name)`)
+	// require.NoError(t, err)
+
+	// create index with HASH SHARDED option
+	_, err = db.Exec(`CREATE INDEX idx_sharded ON test_shared_idx_db.test_table (name) USING HASH WITH BUCKET_COUNT = 4`)
+	require.NoError(t, err)
+
+	// create index with STORING columns
+	_, err = db.Exec(`CREATE INDEX idx_storing ON test_shared_idx_db.test_table (name) STORING (age)`)
+	require.NoError(t, err)
+
+	// create index with composite columns
+	_, err = db.Exec(`CREATE INDEX idx_composite ON test_shared_idx_db.test_table (name, age)`)
+	require.NoError(t, err)
+
+	// create index with ASC order (default)
+	_, err = db.Exec(`CREATE INDEX idx_asc ON test_shared_idx_db.test_table (name ASC)`)
+	require.NoError(t, err)
+
+	// create index with DESC order
+	_, err = db.Exec(`CREATE INDEX idx_desc ON test_shared_idx_db.test_table (name DESC)`)
+	require.NoError(t, err)
+}
+
 func TestCreateAuditNodeMethods(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 
@@ -262,6 +329,15 @@ func TestCreateDatabaseIntegration(t *testing.T) {
 
 	// create a regular database
 	_, err := db.Exec(`CREATE DATABASE test_db`)
+	require.NoError(t, err)
+
+	_, err = db.Exec(`CREATE SCHEMA test_db.sc1`)
+	require.NoError(t, err)
+
+	_, err = db.Exec(`CREATE SCHEMA test_db.sc1`)
+	require.Error(t, err)
+
+	_, err = db.Exec(`CREATE TABLE t2 AS SELECT * FROM test_db.t1`)
 	require.NoError(t, err)
 
 	// create a TS database
@@ -1141,6 +1217,10 @@ func TestCreateStatsTSTableErrors(t *testing.T) {
 	// create statistics on timestamp column (should use tag columns instead)
 	_, err = db.Exec(`CREATE STATISTICS ts_stats_ts ON ts FROM test_ts_stats_err_db.test_ts_table`)
 	require.NoError(t, err)
+
+	// create statistics with sorted histogram
+	_, err = db.Exec(`CREATE STATISTICS test_sorted_hist ON tag1 FROM test_ts_stats_err_db.test_ts_table WITH OPTIONS COLLECT_SORTED_HISTOGRAM`)
+	require.Error(t, err)
 }
 
 func TestCreateStatsOptions(t *testing.T) {
