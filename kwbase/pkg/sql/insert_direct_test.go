@@ -13,7 +13,6 @@ package sql
 
 import (
 	"testing"
-	"time"
 
 	"gitee.com/kwbasedb/kwbase/pkg/sql/parser"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/pgwire/pgwirebase"
@@ -21,6 +20,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/types"
 	"gitee.com/kwbasedb/kwbase/pkg/util/leaktest"
+	"gitee.com/kwbasedb/kwbase/pkg/util/timeutil"
 	"github.com/lib/pq/oid"
 )
 
@@ -262,7 +262,7 @@ func TestComputeColumnSize(t *testing.T) {
 func TestGetSingleDatum(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 
-	ptCtx := tree.NewParseTimeContext(time.Now())
+	ptCtx := tree.NewParseTimeContext(timeutil.Now())
 	// Test case 1: Integer
 	intCol := sqlbase.ColumnDescriptor{
 		Name: "int_col",
@@ -307,7 +307,7 @@ func TestGetSingleDatum(t *testing.T) {
 func TestGetPrepareInputValues(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 
-	ptCtx := tree.NewParseTimeContext(time.Now())
+	ptCtx := tree.NewParseTimeContext(timeutil.Now())
 	bindCmd := &BindStmt{
 		Args: [][]byte{
 			[]byte("1"),
