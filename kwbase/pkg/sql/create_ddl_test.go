@@ -1115,7 +1115,7 @@ func TestCreateStatsIntegration(t *testing.T) {
 
 	// create statistics on multiple columns
 	_, err = db.Exec(`CREATE STATISTICS test_stats2 ON id, name, age FROM test_stats_db.test_table`)
-	require.Error(t, err)
+	require.NoError(t, err)
 
 	// create statistics without column names (uses default columns)
 	_, err = db.Exec(`CREATE STATISTICS test_stats3 FROM test_stats_db.test_table`)
