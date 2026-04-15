@@ -200,6 +200,17 @@ message(STATUS "Build with tests:${WITH_TESTS}")
 option(WITH_OPENSSL "build with OPENSSL" OFF)
 message(STATUS "Build with OPENSSL:${WITH_OPENSSL}")
 
+# Mutual exclusion between WITH_TESTS and BUILD_KWBASE
+if (WITH_TESTS AND BUILD_KWBASE)
+    message(FATAL_ERROR "WITH_TESTS and BUILD_KWBASE cannot both be ON.")
+elseif (WITH_TESTS)
+    set(BUILD_KWBASE OFF CACHE BOOL "compile kwbase" FORCE)
+    message(STATUS "WITH_TESTS is ON, setting BUILD_KWBASE OFF")
+elseif (BUILD_KWBASE)
+    set(WITH_TESTS OFF CACHE BOOL "with tests" FORCE)
+    message(STATUS "BUILD_KWBASE is ON, setting WITH_TESTS OFF")
+endif()
+
 add_subdirectory(common ${CMAKE_BINARY_DIR}/common)
 # compile kwdbts2
 add_subdirectory(kwdbts2 ${CMAKE_BINARY_DIR}/kwdbts2)
