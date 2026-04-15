@@ -40,6 +40,7 @@ import (
 	"math"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 	"unsafe"
 
@@ -385,13 +386,50 @@ var TsFreeSpaceAlertThreshold = settings.RegisterPublicValidatedByteSizeSetting(
 
 //export isCanceledCtx
 func isCanceledCtx(goCtxPtr C.uint64_t) C.bool {
-	ctx := *(*context.Context)(unsafe.Pointer(uintptr(goCtxPtr)))
+	ctx, ok := loadGoContextHandle(uint64(goCtxPtr))
+	if !ok || ctx == nil {
+		return C.bool(false)
+	}
 	select {
 	case <-ctx.Done():
 		return C.bool(true)
 	default:
 		return C.bool(false)
 	}
+}
+
+var goContextHandles sync.Map // map[uint64]context.Context
+
+var nextGoContextHandle uint64
+
+func registerGoContextHandle(ctx context.Context) (C.uint64_t, func()) {
+	if ctx == nil {
+		return 0, func() {}
+	}
+	handle := atomic.AddUint64(&nextGoContextHandle, 1)
+	goContextHandles.Store(handle, ctx)
+	return C.uint64_t(handle), func() {
+		goContextHandles.Delete(handle)
+	}
+}
+
+func registerGoContextHandlePtr(ctx *context.Context) (C.uint64_t, func()) {
+	if ctx == nil {
+		return 0, func() {}
+	}
+	return registerGoContextHandle(*ctx)
+}
+
+func loadGoContextHandle(handle uint64) (context.Context, bool) {
+	if handle == 0 {
+		return nil, false
+	}
+	v, ok := goContextHandles.Load(handle)
+	if !ok {
+		return nil, false
+	}
+	ctx, ok := v.(context.Context)
+	return ctx, ok
 }
 
 // tzCache caches time.Location objects for performance
@@ -1148,6 +1186,7 @@ type TsFetcherStats struct {
 	MemoryBlockCount   int32   // scanned memory block count
 	LastBlockCount     int32   // scanned last block count
 	EntityBlockCount   int64   // scanned entity block count
+	PartitionAggCount  int64   // partition pre-aggregation usage count
 	BlockCacheHitRatio float32 //entity block cache hit ratio
 	BlockBytes         int64   // scanned block bytes
 	AggBytes           int64   // scanned agg bytes
@@ -2016,7 +2055,8 @@ func (r *TsEngine) Vacuum(ctx context.Context, manual bool) error {
 		return nil
 	}
 	r.checkOrWaitForOpen()
-	goCtxPtr := C.uint64_t(uintptr(unsafe.Pointer(&ctx)))
+	goCtxPtr, releaseGoCtx := registerGoContextHandle(ctx)
+	defer releaseGoCtx()
 	status := C.TSVacuum(r.tdb, goCtxPtr, C.bool(manual))
 	if err := statusToError(status); err != nil {
 		return errors.Wrap(err, "failed to vacuum ts storage")
@@ -2511,6 +2551,9 @@ func AddStatsList(tsFetcher TsFetcher, statss []TsFetcherStats) []TsFetcherStats
 		if fetcher.entity_block_count > 0 {
 			statss[i].EntityBlockCount = int64(fetcher.entity_block_count)
 			statss[i].BlockCacheHitRatio = float32(fetcher.block_cache_hit_count) / float32(statss[i].EntityBlockCount)
+		}
+		if fetcher.partition_agg_count > 0 {
+			statss[i].PartitionAggCount = int64(fetcher.partition_agg_count)
 		}
 		if fetcher.block_bytes > 0 {
 			statss[i].BlockBytes = int64(fetcher.block_bytes)

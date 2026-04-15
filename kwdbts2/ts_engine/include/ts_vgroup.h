@@ -93,8 +93,12 @@ class TsVGroup {
   bool enable_cal_agg_thread_{true};
   // Id of the partition agg thread
   KThreadID calc_agg_thread_id_{0};
-  std::mutex calc_agg_mutex_;
-  std::condition_variable agg_cv_;
+  // serialize partition agg calculation for one vgroup.
+  // manual vacuum should wait for it, background recalculation should skip if busy.
+  std::mutex calc_agg_run_mutex_;
+  // synchronization primitives only for calc agg thread waiting/wakeup.
+  std::mutex calc_agg_wait_mutex_;
+  std::condition_variable calc_agg_wait_cv_;
 
   std::atomic<uint64_t> max_osn_{LOG_BLOCK_HEADER_SIZE + BLOCK_SIZE};
 
@@ -494,7 +498,7 @@ class TsVGroup {
   // Recalculate count stat.
   KStatus RecalcCountStat();
 
-  KStatus CalcPartitionAgg();
+  KStatus CalcPartitionAgg(bool force = false);
 
   // Initialize calculate aggregation thread.
   void initCalcAggThread();
@@ -528,7 +532,7 @@ class TsVGroup {
     const std::map<std::shared_ptr<TsTableSchemaManager>, std::vector<uint32_t>>& table_entity_map,
     std::map<std::shared_ptr<TsTableSchemaManager>, ClassifiedEntities>& cla_entities, bool* should_calc);
 
-  KStatus PartitionCompact(std::shared_ptr<const TsPartitionVersion> partition,
+  KStatus PartitionCompact(kwdbContext_p ctx, std::shared_ptr<const TsPartitionVersion> partition,
                            bool call_by_vacuum = false, bool force_vacuum = false);
 
   KStatus ConvertBlockSpanToResultSet(const std::vector<k_uint32>& kw_scan_cols, const TsBlockSpan& ts_blk_span,

@@ -714,7 +714,7 @@ void TsVGroup::closeCompactThread() {
   }
 }
 
-KStatus TsVGroup::PartitionCompact(std::shared_ptr<const TsPartitionVersion> partition,
+KStatus TsVGroup::PartitionCompact(kwdbContext_p ctx, std::shared_ptr<const TsPartitionVersion> partition,
                                    bool call_by_vacuum, bool force_vacuum) {
   TsIOEnv* env = &TsIOEnv::GetInstance();
   auto partition_id = partition->GetPartitionIdentifier();
@@ -735,6 +735,29 @@ KStatus TsVGroup::PartitionCompact(std::shared_ptr<const TsPartitionVersion> par
     last_segments = partition->GetCompactLastSegments(&level, &group);
   } else {
     last_segments = partition->GetVacuumLastSegments(force_vacuum);
+    if (last_segments.size() > EngineOptions::max_compact_num) {
+      if (!force_vacuum) {
+        LOG_INFO("skip compact in vacuum, because the maximum number of compact is exceeded[%zu>%d]",
+                 last_segments.size(), EngineOptions::max_compact_num);
+        return KStatus::SUCCESS;
+      } else {
+        while (last_segments.size() > EngineOptions::max_compact_num) {
+          if (ctx->relation_ctx != 0 && isCanceledCtx(ctx->relation_ctx)) {
+            LOG_INFO("Context has been canceled, stop compact.");
+            return KStatus::FAIL;
+          }
+          partition->ResetStatus();
+          LOG_INFO("wait for the partition[%s] compact to complete before vacuuming",
+                   partition->GetPartitionPath().c_str());
+          sleep(30);
+          while (!partition->TrySetBusy(PartitionStatus::Compacting)) {
+            sleep(1);
+          }
+          partition = version_manager_->Current()->GetPartition(std::get<0>(partition_id), std::get<1>(partition_id));
+          last_segments = partition->GetVacuumLastSegments(force_vacuum);
+        }
+      }
+    }
   }
   if (last_segments.empty()) {
     return KStatus::SUCCESS;
@@ -869,11 +892,17 @@ KStatus TsVGroup::Compact(bool* compacted) {
   if (compacted != nullptr) {
     *compacted = true;
   }
+  kwdbContext_t context;
+  kwdbContext_p ctx_p = &context;
+  KStatus s = InitServerKWDBContext(ctx_p);
+  if (s != KStatus::SUCCESS) {
+    return s;
+  }
   // Compact partitions
   bool success{true};
   for (auto it = partitions.rbegin(); it != partitions.rend(); ++it) {
     const auto& cur_partition = *it;
-    KStatus s = PartitionCompact(cur_partition);
+    s = PartitionCompact(ctx_p, cur_partition);
     if (s != KStatus::SUCCESS) {
       success = false;
       continue;
@@ -2104,18 +2133,17 @@ KStatus TsVGroup::Vacuum(kwdbContext_p ctx, bool force) {
   for (auto& [db_id, partitions] : all_partitions) {
     const int n = force ? partitions.size() : partitions.size() - 1;
     for (int i = 0; i < n; i++) {
-      // There is an issue with the current logic for determining whether the ctx has been cancelled.
-      // if (force && ctx->relation_ctx != 0 && isCanceledCtx(ctx->relation_ctx)) {
-      //   LOG_INFO("Context has been canceled, stop vacuum.");
-      //   return KStatus::SUCCESS;
-      // }
+      if (force && ctx->relation_ctx != 0 && isCanceledCtx(ctx->relation_ctx)) {
+        LOG_INFO("Context has been canceled, stop vacuum.");
+        return KStatus::SUCCESS;
+      }
       auto& partition = partitions[i];
       auto partition_id = partition->GetPartitionIdentifier();
       auto root_path = this->GetPath() / PartitionDirName(partition_id);
       bool need_vacuum = false;
       if (partition->GetLastSegmentsCount() != 0) {
         // force compact historical partition
-        s = PartitionCompact(partition, true, force);
+        s = PartitionCompact(ctx, partition, true, force);
         if (s != SUCCESS) {
           LOG_ERROR("PartitionCompact failed, [%s]", partition->GetPartitionIdentifierStr().c_str());
           continue;
@@ -2136,6 +2164,15 @@ KStatus TsVGroup::Vacuum(kwdbContext_p ctx, bool force) {
       }
     }
   }
+
+  if (force && CLUSTER_SETTING_PARTITION_AGG) {
+    s = CalcPartitionAgg(true);
+    if (s != KStatus::SUCCESS) {
+      LOG_ERROR("CalcPartitionAgg failed after manual vacuum.");
+      return s;
+    }
+  }
+
   return KStatus::SUCCESS;
 }
 
@@ -2689,7 +2726,15 @@ KStatus TsVGroup::GetCalcEntities(PartitionIdentifier par_id, const shared_ptr<c
   return SUCCESS;
 }
 
-KStatus TsVGroup::CalcPartitionAgg() {
+KStatus TsVGroup::CalcPartitionAgg(bool force) {
+  std::unique_lock<std::mutex> calc_agg_run_lock(calc_agg_run_mutex_, std::defer_lock);
+  if (force) {
+    calc_agg_run_lock.lock();
+  } else if (!calc_agg_run_lock.try_lock()) {
+    LOG_INFO("Skip CalcPartitionAgg for vgroup [%u], another calc agg is running.", vgroup_id_);
+    return KStatus::SUCCESS;
+  }
+
   // TsVGroup is managed by a `unique_ptr` in the engine.
   // An `std::shared_ptr` is required here to pass to the iterator interface,
   // but `shared_from_this()`/`weak_from_this()` cannot be used.
@@ -2725,6 +2770,9 @@ KStatus TsVGroup::CalcPartitionAgg() {
       table_entity_map.emplace(tbl_schema, entities);
     }
   }
+  if (table_entity_map.empty()) {
+    return KStatus::SUCCESS;
+  }
 
   std::shared_ptr<const TsVGroupVersion> cur_version = version_manager_->Current();
   auto all_partitions = cur_version->GetAllPartitions();
@@ -2732,14 +2780,16 @@ KStatus TsVGroup::CalcPartitionAgg() {
   TsVersionUpdate update;
   for (auto& [par_id, par_version] : all_partitions) {
 #ifndef WITH_TESTS
-    bool need_calc = false;
-    s = par_version->NeedCalcPartitionAgg(need_calc);
-    if (s != KStatus::SUCCESS) {
-      LOG_ERROR("NeedCalcPartitionAgg failed. path is [%s]", par_version->GetPartitionPath().c_str());
-      continue;
-    }
-    if (!need_calc) {
-      continue;
+    if (!force) {
+      bool need_calc = false;
+      s = par_version->CheckPartitionAggMTime(need_calc);
+      if (s != KStatus::SUCCESS) {
+        LOG_ERROR("CheckPartitionAggMTime failed. path is [%s]", par_version->GetPartitionPath().c_str());
+        continue;
+      }
+      if (!need_calc) {
+        continue;
+      }
     }
 #endif
     std::map<std::shared_ptr<TsTableSchemaManager>, ClassifiedEntities> cla_entities;
@@ -2798,7 +2848,7 @@ KStatus TsVGroup::CalcPartitionAgg() {
       ts_iter_guard->SetInvoker(true);
       for (auto& entity_id : classified_entities.calc_entities_) {
         ResultSet res_set{static_cast<k_uint32>(scan_cols.size())};
-        k_uint32 count;
+        k_uint32 count{0};
         bool is_finished = false;
         s = ts_iter_guard->Next(&res_set, &count, &is_finished);
         if (s != KStatus::SUCCESS) {
@@ -2825,19 +2875,22 @@ KStatus TsVGroup::CalcPartitionAgg() {
           DATATYPE col_type = idx == 0 ? DATATYPE::TIMESTAMP64 : static_cast<DATATYPE>(attrs[idx].type);
           bool is_var_col = isVarLenType(col_type);
           bool is_sum_type = isSumType(col_type);
+          bool is_null{false};
           uint64_t agg_count{0};
-          if (res_set.data[res_idx][0]->count != 0) {
+          res_set.data[res_idx][0]->isNull(0, &is_null);
+          if (!is_null) {
             agg_count = *reinterpret_cast<uint64_t*>(res_set.data[res_idx][0]->mem);
           }
-          if (!is_var_col) {
-            if (agg_count == 0) {
-              if (is_sum_type) {
-                res_idx += agg_func_num_with_sum;
-              } else {
-                res_idx += agg_func_num_without_sum;
-              }
-              continue;
+          if (is_null || agg_count == 0) {
+            if (is_sum_type) {
+              res_idx += agg_func_num_with_sum;
+            } else {
+              res_idx += agg_func_num_without_sum;
             }
+            continue;
+          }
+
+          if (!is_var_col) {
             int col_agg_size = 0;
             if (is_sum_type) {
               col_agg_size = sizeof(uint64_t) + attrs[idx].size * 2 + 9;  // 1 byte overflow, 8 bytes value
@@ -2845,46 +2898,60 @@ KStatus TsVGroup::CalcPartitionAgg() {
               col_agg_size = sizeof(uint64_t) + attrs[idx].size * 2;
             }
             col_agg.resize(col_agg_size, '\0');
+
             // count
-            memcpy(col_agg.data(), res_set.data[res_idx][0]->mem, sizeof(uint64_t));
+            if (res_set.data[res_idx][0]->mem != nullptr) {
+              memcpy(col_agg.data(), res_set.data[res_idx][0]->mem, sizeof(uint64_t));
+            }
             res_idx++;
+
             // max
-            if (idx == 0) {
-              max_ts = *reinterpret_cast<timestamp64*>(res_set.data[res_idx][0]->mem);
+            if (res_set.data[res_idx][0]->mem != nullptr) {
+              if (idx == 0) {
+                max_ts = *reinterpret_cast<timestamp64*>(res_set.data[res_idx][0]->mem);
+              }
+              memcpy(col_agg.data() + sizeof(uint64_t), res_set.data[res_idx][0]->mem, attrs[idx].size);
             }
-            memcpy(col_agg.data() + sizeof(uint64_t), res_set.data[res_idx][0]->mem, attrs[idx].size);
             res_idx++;
+
             // min
-            if (idx == 0) {
-              min_ts = *reinterpret_cast<timestamp64*>(res_set.data[res_idx][0]->mem);
+            if (res_set.data[res_idx][0]->mem != nullptr) {
+              if (idx == 0) {
+                min_ts = *reinterpret_cast<timestamp64*>(res_set.data[res_idx][0]->mem);
+              }
+              memcpy(col_agg.data() + sizeof(uint64_t) + attrs[idx].size, res_set.data[res_idx][0]->mem, attrs[idx].size);
             }
-            memcpy(col_agg.data() + sizeof(uint64_t) + attrs[idx].size, res_set.data[res_idx][0]->mem, attrs[idx].size);
             res_idx++;
+
             // sum
-            if (isSumType(static_cast<DATATYPE>(attrs[idx].type))) {
+            if (is_sum_type && res_set.data[res_idx][0]->mem != nullptr) {
               memcpy(col_agg.data() + sizeof(uint64_t) + attrs[idx].size * 2, &res_set.data[res_idx][0]->is_overflow, 1);
               memcpy(col_agg.data() + sizeof(uint64_t) + attrs[idx].size * 2 + 1, res_set.data[res_idx][0]->mem, 8);
               res_idx++;
             }
           } else {
-            if (agg_count == 0) {
-              res_idx += agg_func_num_without_sum;
-              continue;
-            }
             auto col_agg_size = sizeof(uint64_t) + 2 * sizeof(uint16_t);
             col_agg.resize(col_agg_size, '\0');
             // count
-            memcpy(col_agg.data(), res_set.data[res_idx][0]->mem, sizeof(uint64_t));
+            if (res_set.data[res_idx][0]->mem != nullptr) {
+              memcpy(col_agg.data(), res_set.data[res_idx][0]->mem, sizeof(uint64_t));
+            }
             res_idx++;
+
             // max
-            uint16_t max_len =  res_set.data[res_idx][0]->getDataLen(0);
-            memcpy(col_agg.data() + sizeof(uint64_t), &max_len, sizeof(uint16_t));
-            col_agg.append(res_set.data[res_idx][0]->getData(0) + sizeof(uint16_t), max_len);
+            if (res_set.data[res_idx][0]->mem != nullptr) {
+              uint16_t max_len =  res_set.data[res_idx][0]->getDataLen(0);
+              memcpy(col_agg.data() + sizeof(uint64_t), &max_len, sizeof(uint16_t));
+              col_agg.append(res_set.data[res_idx][0]->getData(0) + sizeof(uint16_t), max_len);
+            }
             res_idx++;
+
             // min
-            uint16_t min_len =  res_set.data[res_idx][0]->getDataLen(0);
-            memcpy(col_agg.data() + sizeof(uint64_t) + sizeof(uint16_t), &min_len, sizeof(uint16_t));
-            col_agg.append(res_set.data[res_idx][0]->getData(0) + sizeof(uint16_t), min_len);
+            if (res_set.data[res_idx][0]->mem != nullptr) {
+              uint16_t min_len =  res_set.data[res_idx][0]->getDataLen(0);
+              memcpy(col_agg.data() + sizeof(uint64_t) + sizeof(uint16_t), &min_len, sizeof(uint16_t));
+              col_agg.append(res_set.data[res_idx][0]->getData(0) + sizeof(uint16_t), min_len);
+            }
             res_idx++;
           }
         }
@@ -2955,8 +3022,8 @@ void TsVGroup::calcAggRoutine(void* args) {
         LOG_ERROR("CalPartitionAgg failed")
       }
     }
-    std::unique_lock<std::mutex> lock(calc_agg_mutex_);
-    agg_cv_.wait_for(lock, EngineOptions::agg_stats_recalc_cycle == 0 ?
+    std::unique_lock<std::mutex> lock(calc_agg_wait_mutex_);
+    calc_agg_wait_cv_.wait_for(lock, EngineOptions::agg_stats_recalc_cycle == 0 ?
         std::chrono::minutes(5) : std::chrono::seconds(EngineOptions::agg_stats_recalc_cycle),
         [this]() { return !enable_cal_agg_thread_; });
   }
@@ -2989,7 +3056,7 @@ void TsVGroup::closeCalcAggThread() {
   if (calc_agg_thread_id_ > 0) {
     // Wake up potentially dormant agg thread
     enable_cal_agg_thread_ = false;
-    agg_cv_.notify_all();
+    calc_agg_wait_cv_.notify_all();
     // Waiting for the agg thread to complete
     KWDBDynamicThreadPool::GetThreadPool().JoinThread(calc_agg_thread_id_, 0);
   }

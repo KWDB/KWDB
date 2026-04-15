@@ -529,6 +529,7 @@ KStatus TSEngineImpl::GetTsTable(kwdbContext_p ctx, const KTableKey& table_id, s
     // 2. if table no exist. try to get schema from go level.
     LOG_INFO("try creating table[%lu] by schema from rocksdb. ", table_id);
 #ifdef WITH_TESTS
+    LOG_ERROR("Not support compile option WITH_TESTS");
     return KStatus::FAIL;
 #endif
     char* error;

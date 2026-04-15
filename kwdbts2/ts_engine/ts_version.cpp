@@ -1177,7 +1177,7 @@ KStatus TsPartitionVersion::GetMaxOSN(uint32_t db_id, TSTableID table_id, TSEnti
   return KStatus::SUCCESS;
 }
 
-KStatus TsPartitionVersion::NeedCalcPartitionAgg(bool& need_calc) const {
+KStatus TsPartitionVersion::CheckPartitionAggMTime(bool& need_calc) const {
   need_calc = false;
   size_t nlastseg = leveled_last_segments_.Size();
   if (nlastseg == 0 && entity_segment_ == nullptr) {

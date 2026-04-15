@@ -289,7 +289,7 @@ class TsPartitionVersion {
    @param max_osn  the max osn of entity
    */
   KStatus GetMaxOSN(uint32_t db_id, TSTableID table_id, TSEntityID entity_id, DATATYPE ts_col_type, TS_OSN& max_osn) const;
-  KStatus NeedCalcPartitionAgg(bool& need_calc) const;
+  KStatus CheckPartitionAggMTime(bool& need_calc) const;
 };
 
 class TsVGroupVersion {

@@ -72,6 +72,7 @@ struct TsScanStats {
   int32_t memory_block_count{0};         // scanned memory block count
   int32_t last_block_count{0};           // scanned last block count
   int64_t entity_block_count{0};         // scanned entity block count
+  int64_t partition_agg_count{0};        // partition pre-aggregation usage count
   int64_t block_cache_hit_count{0};      // block cache hit count
   int64_t block_bytes{0};                // scanned block_bytes
   int64_t agg_bytes{0};                  // scanned agg_bytes
@@ -80,6 +81,7 @@ struct TsScanStats {
     memory_block_count = 0;
     last_block_count = 0;
     entity_block_count = 0;
+    partition_agg_count = 0;
     block_cache_hit_count = 0;
     block_bytes = 0;
     agg_bytes = 0;

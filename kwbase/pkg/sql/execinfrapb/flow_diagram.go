@@ -370,7 +370,7 @@ func (ts *TSStatisticReaderSpec) summary() (string, []string) {
 		details = append(details, getTSSpanStr(ts.TsSpans))
 	}
 	details = append(details, fmt.Sprintf("tableID %d", ts.TableID))
-	if *ts.TimeBucket > 0 {
+	if ts.TimeBucket != nil && *ts.TimeBucket > 0 {
 		details = append(details, fmt.Sprintf("timeBucket: %d", *ts.TimeBucket))
 	}
 	for idx := range ts.AggTypes {
@@ -858,11 +858,14 @@ func (d diagramData) ToURL() (string, url.URL, error) {
 // MakeDistsqlJSON construct json in explain analyze
 func (d diagramData) MakeDistsqlJSON(url string) (string, error) {
 	da := diagramDataDist{d.SQL, d.NodeNames, d.Processors, d.Edges, d.flowID, url}
-	json, err := json.MarshalIndent(da, "\n", "  ")
-	if err != nil {
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
+	enc.SetIndent("\n", "  ")
+	if err := enc.Encode(da); err != nil {
 		return "", err
 	}
-	return string(json), nil
+	return buf.String(), nil
 }
 
 // AddSpans implements the FlowDiagram interface.

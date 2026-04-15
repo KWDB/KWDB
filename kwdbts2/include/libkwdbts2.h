@@ -165,6 +165,7 @@ typedef struct {
   int32_t memory_block_count;         // scanned memory block count
   int32_t last_block_count;           // scanned last block count
   int64_t entity_block_count;         // scanned entity block count
+  int64_t partition_agg_count;        // partition pre-aggregation usage count
   int64_t block_cache_hit_count;      // block cache hit count
   int64_t block_bytes;                // scanned block_bytes
   int64_t agg_bytes;                  // scanned agg_bytes
