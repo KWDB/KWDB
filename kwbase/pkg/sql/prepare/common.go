@@ -23,6 +23,10 @@ type PreparedHelper struct {
 	Exec  PreparedFn
 	Check PreparedCheckFn
 	Add   PreparedAddFn
+
+	// Origin is the protocol in which this prepare statement was created.
+	// Used for reporting on `pg_prepared_statements`.
+	Origin tree.PreparedStatementOrigin
 }
 
 // PreparedResult flags prepare PreparedStatement
@@ -38,7 +42,7 @@ type PreparedFn func(
 	ctx context.Context,
 	stmtAST parser.Statement,
 	placeholderHints tree.PlaceholderTypes,
-	origin int,
+	origin tree.PreparedStatementOrigin,
 	procUserDefinedVars map[string]tree.ProcUdvInfo,
 	insidePrepareOfProcFlag uint8,
 ) (PreparedResult, error)

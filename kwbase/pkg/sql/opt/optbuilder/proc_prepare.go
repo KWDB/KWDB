@@ -21,6 +21,10 @@ import (
 
 // buildProcPrepare compiles proc_prepare_stmt (see sql.y)
 func (b *Builder) buildProcPrepare(procPrepare *tree.Prepare) memo.ProcCommand {
+	if b.PrepareHelper.Origin == tree.PreparedStatementOriginWire {
+		err := pgerror.Newf(pgcode.FeatureNotSupported, "the prepare in procedure is not allowed in wire mode")
+		panic(err)
+	}
 	if b.PrepareHelper.Check == nil || b.PrepareHelper.Exec == nil || b.PrepareHelper.Add == nil {
 		err := pgerror.Newf(pgcode.Internal, "system error, call back check function is nil")
 		panic(err)
@@ -37,7 +41,7 @@ func (b *Builder) buildProcPrepare(procPrepare *tree.Prepare) memo.ProcCommand {
 		AST:             procPrepare.Statement,
 		NumPlaceholders: procPrepare.NumPlaceholders,
 		NumAnnotations:  procPrepare.NumAnnotations,
-	}, typeHints, 2, b.semaCtx.ProcUserDefinedVars, InsidePrepareOfProcDef)
+	}, typeHints, tree.PreparedStatementOriginSQL, b.semaCtx.ProcUserDefinedVars, InsidePrepareOfProcDef)
 	if err1 != nil {
 		panic(err1)
 	}

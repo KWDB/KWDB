@@ -401,6 +401,7 @@ func (opc *optPlanningCtx) buildReusableMemo(
 
 	bld := optbuilder.New(ctx, &p.semaCtx, p.EvalContext(), &opc.catalog, f, opc.p.stmt.AST)
 	bld.KeepPlaceholders = true
+	bld.PrepareHelper.Origin = p.PrepareHelper.Origin
 	if insidePrepareOfProcFlag == optbuilder.InsidePrepareOfProcDef {
 		bld.SetProcPrepareFlags(insidePrepareOfProcFlag)
 	}

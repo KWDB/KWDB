@@ -590,7 +590,7 @@ func (ex *connExecutor) execStmtInOpenState(
 				NumAnnotations:  stmt.NumAnnotations,
 			},
 			typeHints,
-			PreparedStatementOriginSQL,
+			tree.PreparedStatementOriginSQL,
 		); err != nil {
 			return makeErrEvent(err)
 		}

@@ -19,6 +19,19 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/types"
 )
 
+// PreparedStatementOrigin is an enum representing the source of where
+// the prepare statement was made.
+type PreparedStatementOrigin int
+
+const (
+	// PreparedStatementOriginWire signifies the prepared statement was made
+	// over the wire.
+	PreparedStatementOriginWire PreparedStatementOrigin = iota + 1
+	// PreparedStatementOriginSQL signifies the prepared statement was made
+	// over a parsed SQL query.
+	PreparedStatementOriginSQL
+)
+
 // Prepare represents a PREPARE statement.
 type Prepare struct {
 	Name      Name

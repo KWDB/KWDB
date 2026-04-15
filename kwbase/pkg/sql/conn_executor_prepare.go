@@ -88,7 +88,7 @@ func (ex *connExecutor) execPrepare(
 		parseCmd.Name,
 		parseCmd.Statement,
 		parseCmd.TypeHints,
-		PreparedStatementOriginWire,
+		tree.PreparedStatementOriginWire,
 	)
 	if err != nil {
 		return retErr(err)
@@ -185,14 +185,14 @@ func (ex *connExecutor) addPreparedStmt(
 	name string,
 	stmtAST parser.Statement,
 	placeholderHints tree.PlaceholderTypes,
-	origin PreparedStatementOrigin,
+	origin tree.PreparedStatementOrigin,
 ) (*PreparedStatement, error) {
 	if _, ok := ex.extraTxnState.prepStmtsNamespace.prepStmts[name]; ok {
 		panic(fmt.Sprintf("prepared statement already exists: %q", name))
 	}
 
 	// Prepare the query. This completes the typing of placeholders.
-	prepareResult, err := ex.prepare(ctx, stmtAST, placeholderHints, int(origin), nil, 0)
+	prepareResult, err := ex.prepare(ctx, stmtAST, placeholderHints, origin, nil, 0)
 	if err != nil {
 		return nil, err
 	}
@@ -228,7 +228,7 @@ func (ex *connExecutor) prepare(
 	ctx context.Context,
 	stmtAST parser.Statement,
 	placeholderHints tree.PlaceholderTypes,
-	origin int,
+	origin tree.PreparedStatementOrigin,
 	procUserDefinedVars map[string]tree.ProcUdvInfo,
 	insidePrepareOfProcFlag uint8,
 ) (prepare.PreparedResult, error) {
@@ -247,7 +247,7 @@ func (ex *connExecutor) prepare(
 		refCount: 1,
 
 		createdAt: timeutil.Now(),
-		origin:    PreparedStatementOrigin(origin),
+		origin:    origin,
 	}
 	// NB: if we start caching the plan, we'll want to keep around the memory
 	// account used for the plan, rather than clearing it.
@@ -283,6 +283,7 @@ func (ex *connExecutor) prepare(
 		p.stmt = &stmt
 		p.semaCtx.Annotations = tree.MakeAnnotations(stmt.NumAnnotations)
 		p.semaCtx.ProcUserDefinedVars = procUserDefinedVars
+		p.PrepareHelper.Origin = origin
 		if !stmt.Insertdirectstmt.InsertFast {
 			flags, err = ex.populatePrepared(ctx, txn, placeholderHints, p, insidePrepareOfProcFlag)
 		}

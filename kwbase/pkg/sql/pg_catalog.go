@@ -1982,7 +1982,7 @@ CREATE TABLE pg_catalog.pg_prepared_statements (
 			}
 
 			fromSQL := tree.DBoolFalse
-			if stmt.origin == PreparedStatementOriginSQL {
+			if stmt.origin == tree.PreparedStatementOriginSQL {
 				fromSQL = tree.DBoolTrue
 			}
 
