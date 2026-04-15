@@ -331,11 +331,14 @@ func TestCreateDatabaseIntegration(t *testing.T) {
 	_, err := db.Exec(`CREATE DATABASE test_db`)
 	require.NoError(t, err)
 
-	_, err = db.Exec(`CREATE SCHEMA test_db.sc1`)
+	_, err = db.Exec(`CREATE SCHEMA sc1`)
 	require.NoError(t, err)
 
-	_, err = db.Exec(`CREATE SCHEMA test_db.sc1`)
+	_, err = db.Exec(`CREATE SCHEMA sc1`)
 	require.Error(t, err)
+
+	_, err = db.Exec(`CREATE TABLE test_db.t1 (id INT primary key)`)
+	require.NoError(t, err)
 
 	_, err = db.Exec(`CREATE TABLE t2 AS SELECT * FROM test_db.t1`)
 	require.NoError(t, err)
