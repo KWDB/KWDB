@@ -60,11 +60,7 @@ class MMapEntityRowHashIndex: public MMapFile {
 
   void bucketsWlock();
 
-  void dataRlock();
-
   void dataWlock();
-
-  void dataUnlock();
 
   void loadRecord(size_t start, size_t end);
 
@@ -129,4 +125,8 @@ class MMapEntityRowHashIndex: public MMapFile {
   inline bool isDroped() const {
     return metaData().m_droped;
   }
+
+  void dataRlock();
+
+  void dataUnlock();
 };

@@ -36,6 +36,7 @@
 #include "ts_vgroup.h"
 #include "ts_table_del_info.h"
 
+extern bool g_go_start_service;
 
 namespace kwdbts {
 
@@ -287,6 +288,8 @@ class TSEngineImpl : public TSEngine {
 
   KStatus CreateTsTable(kwdbContext_p ctx, TSTableID table_id, roachpb::CreateTsTable* meta,
                         std::shared_ptr<TsTable>& ts_table);
+
+  KStatus GetMeta(kwdbContext_p ctx, TSTableID table_id, uint32_t version, roachpb::CreateTsTable* meta);
 
   std::string GetDbDir() const { return options_.db_path; }
 

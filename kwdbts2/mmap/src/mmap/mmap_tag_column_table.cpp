@@ -1129,43 +1129,43 @@ int MMapTagColumnTable::getColumnsByRownum(size_t row, const std::vector<uint32_
   return 0;
 }
 
-int MMapTagColumnTable::getColumnsFromAll(const std::vector<uint32_t>& src_scan_tags,
-                      const std::vector<TagInfo>& result_scan_tag_infos, kwdbts::ResultSet* res,
-                      std::vector<TagTableRowID>* result_tag_rows) {
-  if (res == nullptr) {
-    return 0;
-  }
-  ErrorInfo err_info;
-  res->setColumnNum(src_scan_tags.size());
-  for (size_t row_num = 1; row_num <= m_meta_data_->m_row_count; row_num++) {
-    if (isValidRow(row_num)) {
-      for (size_t idx = 0; idx < src_scan_tags.size(); idx++) {
-        if (src_scan_tags[idx] == INVALID_COL_IDX) {
-          Batch* batch = new(std::nothrow) kwdbts::TagBatch(0, nullptr, 1);
-          res->push_back(idx, batch);
-          continue;
-        }
-        uint32_t col_idx = src_scan_tags[idx];
-        Batch* batch = this->GetTagBatchRecord(row_num, row_num + 1, col_idx,
-                                               result_scan_tag_infos[idx], err_info);
-        if (err_info.errcode < 0) {
-          delete batch;
-          LOG_ERROR("GetTagBatchRecord failed. error: %s ", err_info.errmsg.c_str());
-          return err_info.errcode;
-        }
-        if (UNLIKELY(batch == nullptr)) {
-          LOG_WARN("GetTagBatchRecord result is nullptr, skip this col[%u]", col_idx);
-          Batch* batch = new(std::nothrow) kwdbts::TagBatch(0, nullptr, 1);
-          res->push_back(idx, batch);
-          continue;
-        }
-        res->push_back(idx, batch);
-      }
-      result_tag_rows->emplace_back(row_num);
-    }
-  }
-  return 0;
-}
+//int MMapTagColumnTable::getColumnsFromAll(const std::vector<uint32_t>& src_scan_tags,
+//                      const std::vector<TagInfo>& result_scan_tag_infos, kwdbts::ResultSet* res,
+//                      std::vector<TagTableRowID>* result_tag_rows) {
+//  if (res == nullptr) {
+//    return 0;
+//  }
+//  ErrorInfo err_info;
+//  res->setColumnNum(src_scan_tags.size());
+//  for (size_t row_num = 1; row_num <= m_meta_data_->m_row_count; row_num++) {
+//    if (isValidRow(row_num)) {
+//      for (size_t idx = 0; idx < src_scan_tags.size(); idx++) {
+//        if (src_scan_tags[idx] == INVALID_COL_IDX) {
+//          Batch* batch = new(std::nothrow) kwdbts::TagBatch(0, nullptr, 1);
+//          res->push_back(idx, batch);
+//          continue;
+//        }
+//        uint32_t col_idx = src_scan_tags[idx];
+//        Batch* batch = this->GetTagBatchRecord(row_num, row_num + 1, col_idx,
+//                                               result_scan_tag_infos[idx], err_info);
+//        if (err_info.errcode < 0) {
+//          delete batch;
+//          LOG_ERROR("GetTagBatchRecord failed. error: %s ", err_info.errmsg.c_str());
+//          return err_info.errcode;
+//        }
+//        if (UNLIKELY(batch == nullptr)) {
+//          LOG_WARN("GetTagBatchRecord result is nullptr, skip this col[%u]", col_idx);
+//          Batch* batch = new(std::nothrow) kwdbts::TagBatch(0, nullptr, 1);
+//          res->push_back(idx, batch);
+//          continue;
+//        }
+//        res->push_back(idx, batch);
+//      }
+//      result_tag_rows->emplace_back(row_num);
+//    }
+//  }
+//  return 0;
+//}
 
 kwdbts::Batch* MMapTagColumnTable::GetTagBatchRecordWithNoConvert(size_t start_row, size_t end_row, uint32_t col, ErrorInfo& err_info) {
   kwdbts::Batch* batch = nullptr;

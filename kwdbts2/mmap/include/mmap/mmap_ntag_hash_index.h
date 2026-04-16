@@ -22,9 +22,8 @@ protected:
   std::array<int64_t , 10> tag_col_ids_;
 
   std::pair<TableVersionID, TagPartitionTableRowID> read_first(const char *key, int len) override;
-  int read_all(const char *key, int len, std::vector<std::pair<TableVersionID, TagPartitionTableRowID>> &result) override;
 
-public:
+ public:
   explicit MMapNTagHashIndex(int key_len, uint32_t index_id, std::vector<uint32_t> tag_col_ids, size_t bkt_instances = 1, size_t per_bkt_count = 1024);
   ~MMapNTagHashIndex() {};
 
@@ -51,6 +50,8 @@ public:
   std::pair<TableVersionID, TagPartitionTableRowID> get(const char *s, int len) override;
   std::pair<TableVersionID, TagPartitionTableRowID> remove(const char *key, int len) override;
   std::vector<std::pair<TableVersionID, TagPartitionTableRowID>> remove_all(const char *key, int len) override;
+
+  int read_all(const char *key, int len, std::vector<std::pair<TableVersionID, TagPartitionTableRowID>> &result) override;
 };
 
 

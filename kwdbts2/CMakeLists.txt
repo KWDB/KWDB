@@ -524,6 +524,9 @@ if (WITH_TESTS)
               mmap/tests/*.cpp
               common/tests/*.cpp
               #storage/tests/*.cpp
+              storage/tests/st_transaction_mgr_test.cpp
+              storage/tests/wal_components_test.cpp
+              storage/tests/wal_mgr_test.cpp
               exec/tests/*.cpp
               #engine/tests/*.cpp
               ts_engine/tests/*.cpp

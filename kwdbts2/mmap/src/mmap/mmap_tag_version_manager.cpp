@@ -29,15 +29,27 @@ TagTableVersionManager::~TagTableVersionManager() {
 
 TagVersionObject* TagTableVersionManager::CreateTagVersionObject(const std::vector<TagInfo>& schema, uint32_t ts_version,
                           ErrorInfo& err_info) {
+  // Fast path: check if exists first (no lock)
+  {
+    rdLock();
+    auto version_obj = m_version_tables_.find(ts_version);
+    if (version_obj != m_version_tables_.end()) {
+       unLock();
+       LOG_WARN("tag table version [%u] already exist.", ts_version);
+       return version_obj->second;
+    }
+    unLock();
+  }
+  
+  // Slow path: actually create (write lock)
   wrLock();
+  // Double-check
   auto version_obj = m_version_tables_.find(ts_version);
   if (version_obj != m_version_tables_.end()) {
      unLock();
-     LOG_WARN("tag table version [%u] already exist.", ts_version);
-     // err_info.errmsg = "tag table version: " + std::to_string(ts_version) + " already exist.";
-     // if already exist,mean error
      return version_obj->second;
   }
+  
   TagVersionObject* tmp_obj = KNEW TagVersionObject(m_db_path_, m_tbl_sub_path_, m_table_id_, ts_version);
   if (tmp_obj && !tmp_obj->create(schema, err_info)) {
     tmp_obj->setStatus(TAG_STATUS_CREATED);
@@ -47,11 +59,9 @@ TagVersionObject* TagTableVersionManager::CreateTagVersionObject(const std::vect
   }
   unLock();
   if (tmp_obj) {
-    // failed && rollback
     tmp_obj->remove();
     delete tmp_obj;
   }
-
   LOG_ERROR("create tag metadata version[%u] failed, %s ",ts_version, err_info.errmsg.c_str());
   return nullptr;
 }
