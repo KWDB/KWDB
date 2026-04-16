@@ -34,7 +34,8 @@ class TestFillIterator : public TsEngineTestBase {
 TEST_F(TestFillIterator, NONE) {
   TSTableID table_id = 999;
   roachpb::CreateTsTable pb_meta;
-  ConstructRoachpbTable(&pb_meta, table_id);
+  std::vector<roachpb::DataType> col_types = {roachpb::DataType::TIMESTAMP, roachpb::DataType::INT, roachpb::DataType::DOUBLE, roachpb::DataType::SMALLINT, roachpb::DataType::BIGINT, roachpb::DataType::FLOAT, roachpb::DataType::VARCHAR, roachpb::DataType::TIMESTAMP};
+  ConstructRoachpbTable(&pb_meta, table_id, 1, col_types);
   std::shared_ptr<TsTable> ts_table;
   auto s = engine_->CreateTsTable(ctx_, table_id, &pb_meta, ts_table);
   ASSERT_EQ(s, KStatus::SUCCESS);
@@ -73,7 +74,7 @@ TEST_F(TestFillIterator, NONE) {
     KwTsSpan ts_span = {start_ts, start_ts};
     DATATYPE ts_col_type = table_schema_mgr->GetTsColDataType();
     ts_span = ConvertMsToPrecision(ts_span, ts_col_type);
-    std::vector<k_uint32> scan_cols = {0, 1, 2};
+    std::vector<k_uint32> scan_cols = {0, 1, 2, 3, 4, 5, 6, 7};
     std::vector<Sumfunctype> scan_agg_types;
 
     std::shared_ptr<MMapMetricsTable> schema;
@@ -127,7 +128,8 @@ TEST_F(TestFillIterator, NONE) {
 TEST_F(TestFillIterator, EXACT) {
   TSTableID table_id = 999;
   roachpb::CreateTsTable pb_meta;
-  ConstructRoachpbTable(&pb_meta, table_id);
+  std::vector<roachpb::DataType> col_types = {roachpb::DataType::TIMESTAMP, roachpb::DataType::INT, roachpb::DataType::DOUBLE, roachpb::DataType::SMALLINT, roachpb::DataType::BIGINT, roachpb::DataType::FLOAT, roachpb::DataType::VARCHAR, roachpb::DataType::TIMESTAMP};
+  ConstructRoachpbTable(&pb_meta, table_id, 1, col_types);
   std::shared_ptr<TsTable> ts_table;
   auto s = engine_->CreateTsTable(ctx_, table_id, &pb_meta, ts_table);
   ASSERT_EQ(s, KStatus::SUCCESS);
@@ -166,7 +168,7 @@ TEST_F(TestFillIterator, EXACT) {
     KwTsSpan ts_span = {start_ts, start_ts};
     DATATYPE ts_col_type = table_schema_mgr->GetTsColDataType();
     ts_span = ConvertMsToPrecision(ts_span, ts_col_type);
-    std::vector<k_uint32> scan_cols = {0, 1, 2};
+    std::vector<k_uint32> scan_cols = {0, 1, 2, 3, 4, 5, 6, 7};
     std::vector<Sumfunctype> scan_agg_types;
 
     std::shared_ptr<MMapMetricsTable> schema;
@@ -225,7 +227,8 @@ TEST_F(TestFillIterator, EXACT) {
 TEST_F(TestFillIterator, PREVIOUS) {
   TSTableID table_id = 999;
   roachpb::CreateTsTable pb_meta;
-  ConstructRoachpbTable(&pb_meta, table_id);
+  std::vector<roachpb::DataType> col_types = {roachpb::DataType::TIMESTAMP, roachpb::DataType::INT, roachpb::DataType::DOUBLE, roachpb::DataType::SMALLINT, roachpb::DataType::BIGINT, roachpb::DataType::FLOAT, roachpb::DataType::VARCHAR, roachpb::DataType::TIMESTAMP};
+  ConstructRoachpbTable(&pb_meta, table_id, 1, col_types);
   std::shared_ptr<TsTable> ts_table;
   auto s = engine_->CreateTsTable(ctx_, table_id, &pb_meta, ts_table);
   ASSERT_EQ(s, KStatus::SUCCESS);
@@ -270,7 +273,7 @@ TEST_F(TestFillIterator, PREVIOUS) {
     KwTsSpan ts_span = {fill_ts, fill_ts};
     DATATYPE ts_col_type = table_schema_mgr->GetTsColDataType();
     ts_span = ConvertMsToPrecision(ts_span, ts_col_type);
-    std::vector<k_uint32> scan_cols = {0, 1, 2};
+    std::vector<k_uint32> scan_cols = {0, 1, 2, 3, 4, 5, 6, 7};
     std::vector<Sumfunctype> scan_agg_types;
 
     std::shared_ptr<MMapMetricsTable> schema;
@@ -329,7 +332,8 @@ TEST_F(TestFillIterator, PREVIOUS) {
 TEST_F(TestFillIterator, NEXT) {
   TSTableID table_id = 999;
   roachpb::CreateTsTable pb_meta;
-  ConstructRoachpbTable(&pb_meta, table_id);
+  std::vector<roachpb::DataType> col_types = {roachpb::DataType::TIMESTAMP, roachpb::DataType::INT, roachpb::DataType::DOUBLE, roachpb::DataType::SMALLINT, roachpb::DataType::BIGINT, roachpb::DataType::FLOAT, roachpb::DataType::VARCHAR, roachpb::DataType::TIMESTAMP};
+  ConstructRoachpbTable(&pb_meta, table_id, 1, col_types);
   std::shared_ptr<TsTable> ts_table;
   auto s = engine_->CreateTsTable(ctx_, table_id, &pb_meta, ts_table);
   ASSERT_EQ(s, KStatus::SUCCESS);
@@ -374,7 +378,7 @@ TEST_F(TestFillIterator, NEXT) {
     KwTsSpan ts_span = {fill_ts, fill_ts};
     DATATYPE ts_col_type = table_schema_mgr->GetTsColDataType();
     ts_span = ConvertMsToPrecision(ts_span, ts_col_type);
-    std::vector<k_uint32> scan_cols = {0, 1, 2};
+    std::vector<k_uint32> scan_cols = {0, 1, 2, 3, 4, 5, 6, 7};
     std::vector<Sumfunctype> scan_agg_types;
 
     std::shared_ptr<MMapMetricsTable> schema;
@@ -456,7 +460,8 @@ TEST_F(TestFillIterator, NEXT) {
 TEST_F(TestFillIterator, CLOSER) {
   TSTableID table_id = 999;
   roachpb::CreateTsTable pb_meta;
-  ConstructRoachpbTable(&pb_meta, table_id);
+  std::vector<roachpb::DataType> col_types = {roachpb::DataType::TIMESTAMP, roachpb::DataType::INT, roachpb::DataType::DOUBLE, roachpb::DataType::SMALLINT, roachpb::DataType::BIGINT, roachpb::DataType::FLOAT, roachpb::DataType::VARCHAR, roachpb::DataType::TIMESTAMP};
+  ConstructRoachpbTable(&pb_meta, table_id, 1, col_types);
   std::shared_ptr<TsTable> ts_table;
   auto s = engine_->CreateTsTable(ctx_, table_id, &pb_meta, ts_table);
   ASSERT_EQ(s, KStatus::SUCCESS);
@@ -500,7 +505,7 @@ TEST_F(TestFillIterator, CLOSER) {
     KwTsSpan ts_span = {fill_ts, fill_ts};
     DATATYPE ts_col_type = table_schema_mgr->GetTsColDataType();
     ts_span = ConvertMsToPrecision(ts_span, ts_col_type);
-    std::vector<k_uint32> scan_cols = {0, 1, 2};
+    std::vector<k_uint32> scan_cols = {0, 1, 2, 3, 4, 5, 6, 7};
     std::vector<Sumfunctype> scan_agg_types;
 
     std::shared_ptr<MMapMetricsTable> schema;
@@ -583,7 +588,8 @@ TEST_F(TestFillIterator, CLOSER) {
 TEST_F(TestFillIterator, CONSTANT) {
   TSTableID table_id = 999;
   roachpb::CreateTsTable pb_meta;
-  ConstructRoachpbTable(&pb_meta, table_id);
+  std::vector<roachpb::DataType> col_types = {roachpb::DataType::TIMESTAMP, roachpb::DataType::INT, roachpb::DataType::DOUBLE, roachpb::DataType::SMALLINT, roachpb::DataType::BIGINT, roachpb::DataType::FLOAT, roachpb::DataType::VARCHAR, roachpb::DataType::TIMESTAMP};
+  ConstructRoachpbTable(&pb_meta, table_id, 1, col_types);
   std::shared_ptr<TsTable> ts_table;
   auto s = engine_->CreateTsTable(ctx_, table_id, &pb_meta, ts_table);
   ASSERT_EQ(s, KStatus::SUCCESS);
@@ -622,7 +628,7 @@ TEST_F(TestFillIterator, CONSTANT) {
     KwTsSpan ts_span = {start_ts - 1, start_ts - 1};
     DATATYPE ts_col_type = table_schema_mgr->GetTsColDataType();
     ts_span = ConvertMsToPrecision(ts_span, ts_col_type);
-    std::vector<k_uint32> scan_cols = {0, 1, 2};
+    std::vector<k_uint32> scan_cols = {0, 1, 2, 3, 4, 5, 6, 7};
     std::vector<Sumfunctype> scan_agg_types;
 
     std::shared_ptr<MMapMetricsTable> schema;
@@ -704,7 +710,8 @@ TEST_F(TestFillIterator, CONSTANT) {
 TEST_F(TestFillIterator, LINEAR) {
   TSTableID table_id = 999;
   roachpb::CreateTsTable pb_meta;
-  ConstructRoachpbTable(&pb_meta, table_id);
+  std::vector<roachpb::DataType> col_types = {roachpb::DataType::TIMESTAMP, roachpb::DataType::INT, roachpb::DataType::DOUBLE, roachpb::DataType::SMALLINT, roachpb::DataType::BIGINT, roachpb::DataType::FLOAT, roachpb::DataType::VARCHAR, roachpb::DataType::TIMESTAMP};
+  ConstructRoachpbTable(&pb_meta, table_id, 1, col_types);
   std::shared_ptr<TsTable> ts_table;
   auto s = engine_->CreateTsTable(ctx_, table_id, &pb_meta, ts_table);
   ASSERT_EQ(s, KStatus::SUCCESS);
@@ -748,7 +755,7 @@ TEST_F(TestFillIterator, LINEAR) {
     KwTsSpan ts_span = {fill_ts, fill_ts};
     DATATYPE ts_col_type = table_schema_mgr->GetTsColDataType();
     ts_span = ConvertMsToPrecision(ts_span, ts_col_type);
-    std::vector<k_uint32> scan_cols = {0, 1, 2};
+    std::vector<k_uint32> scan_cols = {0, 1, 2, 3, 4, 5, 6, 7};
     std::vector<Sumfunctype> scan_agg_types;
 
     std::shared_ptr<MMapMetricsTable> schema;

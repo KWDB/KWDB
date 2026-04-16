@@ -25,7 +25,7 @@
 namespace kwdbts {
 
 void MergeTsSpans(std::list<KwTsSpan>& raw_spans, std::vector<KwTsSpan>* ret_spans) {
-  raw_spans.sort([](KwTsSpan a, KwTsSpan b) -> bool {
+  raw_spans.sort([](KwTsSpan& a, KwTsSpan& b) -> bool {
     if (a.begin < b.begin) {
       return true;
     } else if (a.begin > b.begin) {
@@ -55,11 +55,8 @@ void MergeTsSpans(std::list<KwTsSpan>& raw_spans, std::vector<KwTsSpan>* ret_spa
 }
 
 void DeplicateTsSpans(list<STDelRange>& raw_spans, list<STDelRange>* ret_spans) {
-  raw_spans.sort([](STDelRange a, STDelRange b) -> bool {
-    if (a.osn_span.end < b.osn_span.end) {
-      return true;
-    }
-    return false;
+  raw_spans.sort([](STDelRange& a, STDelRange& b) -> bool {
+    return a.osn_span.end < b.osn_span.end;
   });
   ret_spans->clear();
   STDelRange last_osn{{0, 0}, {0, 0}};

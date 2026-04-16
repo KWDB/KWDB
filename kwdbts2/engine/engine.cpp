@@ -61,7 +61,7 @@ std::atomic<int64_t> kw_used_anon_memory_size;
 
 
 void EngineOptions::init() {
-  char * env_var = getenv(ENV_KW_HOME);
+  char* env_var = getenv(ENV_KW_HOME);
   if (env_var) {
     home_ = string(env_var);
   } else {

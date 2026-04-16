@@ -57,6 +57,8 @@ struct TsRangeImgrationInfo {
   TS_OSN op_osn;
 };
 
+KStatus loadVGroupCfg(const fs::path& ts_store_path, std::map<int, std::string>& vgroup_cfg);
+
 /**
  * @brief TSEngineV2Impl
  */
@@ -128,11 +130,7 @@ class TSEngineImpl : public TSEngine {
                          std::shared_ptr<TsTableSchemaManager>& schema) override;
 
   KStatus GetAllTableSchemaMgrs(std::vector<std::shared_ptr<TsTableSchemaManager>>& tb_schema_mgr) {
-    auto s = schema_mgr_->GetAllTableSchemaMgrs(tb_schema_mgr);
-    if (s != KStatus::SUCCESS) {
-      return s;
-    }
-    return KStatus::SUCCESS;
+    return schema_mgr_->GetAllTableSchemaMgrs(tb_schema_mgr);
   }
 
   KStatus InsertTagData(kwdbContext_p ctx, const std::shared_ptr<TsTableSchemaManager>& tb_schema,

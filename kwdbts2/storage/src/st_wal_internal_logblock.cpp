@@ -124,8 +124,7 @@ KStatus EntryBlock::readBytes(size_t& offset, char*& res, size_t length,
     LOG_ERROR("too large bytes for readBytes func, length:%ld", length)
     return FAIL;
   }
-  res = new char[length];
-  memset(res, 0, length);
+  res = new char[length]();
 
   read_size = 0;
 

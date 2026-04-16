@@ -18,12 +18,10 @@
 #include <unordered_map>
 #include <memory>
 #include "kwdb_type.h"
-#include "TSLockfreeOrderList.h"
 #include "ts_common.h"
 #include "libkwdbts2.h"
 #include "st_wal_types.h"
 #include "ts_table_object.h"
-#include "mmap/mmap_string_column.h"
 
 
 namespace kwdbts {
@@ -95,7 +93,7 @@ class Payload {
     return primary_key;
   }
 
-  static uint32_t GetTsVsersionFromPayload(const TSSlice* payload) {
+  static uint32_t GetTsVersionFromPayload(const TSSlice* payload) {
     return *reinterpret_cast<uint32_t*> (payload->data + Payload::ts_version_offset_);
   }
 
@@ -103,62 +101,58 @@ class Payload {
     return *reinterpret_cast<int32_t*> (payload->data + Payload::row_num_offset_);
   }
 
-  static uint32_t GetTsVersionFromPayload(const TSSlice* payload) {
-    return *reinterpret_cast<uint32_t*> (payload->data + ts_version_offset_);
-  }
-
   // payload version
-  uint32_t GetPayloadVersion() {
+  uint32_t GetPayloadVersion() const {
     return *reinterpret_cast<uint32_t*> (slice_.data + payload_version_offset_);
   }
 
-  uint32_t GetDbId() {
+  uint32_t GetDbId() const {
     return *reinterpret_cast<uint32_t*> (slice_.data + db_id_offset_);
   }
 
-  int64_t GetTableId() {
+  int64_t GetTableId() const {
     return *reinterpret_cast<int64_t*> (slice_.data + table_id_offset_);
   }
 
   // table version
-  uint32_t GetTsVersion() {
+  uint32_t GetTsVersion() const {
     return *reinterpret_cast<uint32_t*> (slice_.data + ts_version_offset_);
   }
 
-  int32_t GetRowCount() {
+  int32_t GetRowCount() const {
     return count_;
   }
 
   // rangeGroupID --> hashPoint
-  uint32_t getHashPoint() {
+  uint32_t getHashPoint() const {
     return *reinterpret_cast<uint16_t*> (slice_.data + hash_point_id_offset_);
   }
-  void SetHashPoint(uint16_t hashpoint) {
-    uint16_t *hash = reinterpret_cast<uint16_t*>(slice_.data + hash_point_id_offset_);
+  void SetHashPoint(uint16_t hashpoint) const {
+    auto *hash = reinterpret_cast<uint16_t*>(slice_.data + hash_point_id_offset_);
     memcpy(hash, &hashpoint, sizeof(uint16_t));
   }
-  int32_t GetStartRowId() {
+  int32_t GetStartRowId() const {
     return start_row_;
   }
 
-  int32_t GetDataLength() {
+  int32_t GetDataLength() const {
     return data_len_;
   }
 
-  int32_t GetDataOffset() {
+  int32_t GetDataOffset() const {
     return data_offset_;
   }
 
   // primary tag value, multi-tags can be primary tag
-  TSSlice GetPrimaryTag() {
+  TSSlice GetPrimaryTag() const {
     return TSSlice{slice_.data + primary_offset_, static_cast<size_t>(primary_len_)};
   }
 
-  TSSlice GetNormalTag(int32_t offset, int32_t len) {
+  TSSlice GetNormalTag(int32_t offset, int32_t len) const {
     return TSSlice{slice_.data + tag_offset_ + offset, static_cast<size_t>(len)};
   }
 
-  bool HasTagValue() {
+  bool HasTagValue() const {
     return *reinterpret_cast<bool*> (slice_.data + header_size_ - 1);
   }
 
@@ -167,7 +161,7 @@ class Payload {
   }
 
   TSSlice GetTagValue(int i) {
-    return TSSlice();
+    return {};
   }
 
   int32_t GetColOffset(int col) {

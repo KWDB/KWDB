@@ -45,17 +45,17 @@ class LSNRangeUtil {
  public:
   static std::vector<STScanRange> MergeScanAndDelRange(const std::vector<STScanRange>& ranges, const STDelRange& del);
   static void MergeRangeCross(const STScanRange& range, const STDelRange& del, std::vector<STScanRange>* result);
-  static inline bool IsTSRangeNoCross(const KwTsSpan& span1, const KwTsSpan& span2) {
+  static bool IsTSRangeNoCross(const KwTsSpan& span1, const KwTsSpan& span2) {
     return (span1.begin > span2.end || span1.end < span2.begin);
   }
-  static inline bool IsSpan1IncludeSpan2(const KwTsSpan& span1, const KwTsSpan& span2) {
+  static bool IsSpan1IncludeSpan2(const KwTsSpan& span1, const KwTsSpan& span2) {
     return span1.begin <= span2.begin && span1.end >= span2.end;
   }
-  static inline bool IsSpan1IncludeSpan2(const KwOSNSpan& span1, const KwOSNSpan& span2) {
+  static bool IsSpan1IncludeSpan2(const KwOSNSpan& span1, const KwOSNSpan& span2) {
     return span1.begin <= span2.begin && span1.end >= span2.end;
   }
-  static inline bool IsSpan1CrossSpan2(const KwOSNSpan& span1, const KwOSNSpan& span2) {
-    return  !(span1.begin > span2.end || span1.end < span2.begin);
+  static bool IsSpan1CrossSpan2(const KwOSNSpan& span1, const KwOSNSpan& span2) {
+    return !(span1.begin > span2.end || span1.end < span2.begin);
   }
 };
 

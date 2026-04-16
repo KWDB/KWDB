@@ -405,7 +405,6 @@ void TSEngineImpl::PreClearDroppedTables() {
       // This directory might not exist, but we don't mind, we just need to delete.
       Remove(db_path / schema_directory / fname.substr(split_pos + 1));
       Remove(db_path / schema_directory / fname);
-      auto table_id = std::stol(fname.substr(split_pos + 1));
     }
   }
 }
@@ -777,7 +776,6 @@ KStatus TSEngineImpl::PutData(kwdbContext_p ctx, const KTableKey& table_id, uint
       created_tag_num += 1;
     }
     auto vgroup = GetVGroupByID(ctx, vgroup_id);
-    // payload_size += cur_pd.len;
     s =  dynamic_pointer_cast<TsTableV2Impl>(ts_table)->PutData(ctx, vgroup, &cur_pd, 1, mtr_id, entity_id,
             not_create_entity, dedup_result, (DedupRule)(dedup_result->dedup_rule), write_wal);
     if (s != KStatus::SUCCESS) {
@@ -1323,7 +1321,6 @@ KStatus TSEngineImpl::CreateCheckpoint(kwdbContext_p ctx) {
   if (!EnableWAL()) {
     return KStatus::SUCCESS;
   } else if (EngineOptions::isSingleNode() || !exist_explict_txn.load()) {
-    std::vector<uint64_t> vgrp_lsn;
     // 1. switch engine wal file
     KStatus s = wal_mgr_->SwitchNextFile();
     if (s == KStatus::FAIL) {
@@ -1331,6 +1328,7 @@ KStatus TSEngineImpl::CreateCheckpoint(kwdbContext_p ctx) {
       return s;
     }
 
+    std::vector<uint64_t> vgrp_lsn;
     // 2. switch vgroup wal file
     for (const auto &vgrp : vgroups_) {
       vgrp->GetWALManager()->Lock();
@@ -1847,7 +1845,10 @@ KStatus TSEngineImpl::DropResidualTsTable(kwdbContext_p ctx) {
     return s;
   }
   for (auto table_id : tables) {
-    bool is_exist = checkTableMetaExist(table_id);
+    bool is_exist = false;
+#ifndef WITH_TESTS
+    is_exist = checkTableMetaExist(table_id);
+#endif
     if (!is_exist) {
       s = DropTsTable(ctx, table_id);
       if (s != KStatus::SUCCESS) {
@@ -2233,7 +2234,7 @@ KStatus TSEngineImpl::Recover(kwdbContext_p ctx) {
   }
 
   // 4. do rollback
-  for (auto txn : txn_op) {
+  for (auto& txn : txn_op) {
     if (txn.second == txnOp::rollback) {
       if (TSMtrRollback(ctx, 0, 0, txn.first, true) == KStatus::FAIL) return KStatus::FAIL;
     }
@@ -2255,7 +2256,7 @@ KStatus TSEngineImpl::Recover(kwdbContext_p ctx) {
   }
 
   // 5. trig all vgroup flush
-  for (const auto &vgrp : vgroups_) {
+  for (const auto& vgrp : vgroups_) {
     s = vgrp->Flush();
     if (s == KStatus::FAIL) {
       LOG_ERROR("Failed to flush metric file.")
@@ -2755,12 +2756,6 @@ KStatus TSEngineImpl::Vacuum(kwdbContext_p ctx, bool force) {
     vgroup->Vacuum(ctx, force);
   }
   return SUCCESS;
-}
-
-double divideAndRound(double a, double b, int precision) {
-  double result = a / b;
-  double factor = std::pow(10.0, precision);
-  return std::round(result * factor) / factor;
 }
 
 KStatus ConstructTableBlocksDistribution(const std::shared_ptr<TsTableSchemaManager>& tb_schema_mgr,

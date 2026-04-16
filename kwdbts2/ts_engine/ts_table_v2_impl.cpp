@@ -921,7 +921,7 @@ KStatus TsTableV2Impl::GetEntityIdByNorKeys(kwdbContext_p ctx, std::shared_ptr<T
         offset += result_scan_tag_infos[col].m_size;
       }
 
-      for (auto tag : tags) {
+      for (auto& tag : tags) {
         if (0 == memcmp(tag, tag_val, tag_size)) {
           match_one = true;
           break;

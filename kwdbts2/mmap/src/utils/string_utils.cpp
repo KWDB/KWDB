@@ -103,18 +103,12 @@ bool isNULL(char *s) {
   if (s == NULL || s == nullptr || s == 0x0) {
     return true;
   }
-  char c = *s;
-  if (c == 'n' || c == 'N') {
-    c = s[1];
-    if ((c == 'u') || (c == 'U')) {
-      c = s[2];
-      if ((c == 'l') || (c == 'L')) {
-        c = s[3];
-        if (((c == 'l') || (c == 'L')) && s[4] == 0x0) {
-          return true;
-        }
-      }
-    }
+  if ((s[0] == 'n' || s[0] == 'N') &&
+      (s[1] == 'u' || s[1] == 'U') &&
+      (s[2] == 'l' || s[2] == 'L') &&
+      (s[3] == 'l' || s[3] == 'L') &&
+      s[4] == 0x0) {
+    return true;
   }
   return false;
 }

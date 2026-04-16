@@ -78,6 +78,9 @@ TEST_F(MemSegmentTester, OSN_BUG) {
   ASSERT_EQ(blocks.size(), 1);
   auto block = blocks.front();
   ASSERT_EQ(block->GetRowNum(), 1000);
+  std::list<const TSMemSegRowData*> rows;
+  ASSERT_TRUE(memseg->GetAllEntityRows(&rows));
+  ASSERT_EQ(rows.size(), 1000);
 
   for (int i = 0; i < 1000; ++i) {
     EXPECT_EQ(*block->GetOSNAddr(i), i);

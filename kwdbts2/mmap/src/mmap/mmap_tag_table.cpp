@@ -1310,6 +1310,8 @@ int TagTable::dropHashIndex(uint32_t new_version, ErrorInfo &err_info, uint32_t 
           LOG_ERROR("TagHashIndex remove failed.");
           return -1;
       }
+    delete index_file;
+    index_file = nullptr;
   } else {
       LOG_ERROR("TagHashIndex remove failed. Not find index file");
   }

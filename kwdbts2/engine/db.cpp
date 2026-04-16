@@ -110,6 +110,8 @@ TSStatus TSOpen(TSEngine** engine, TSSlice dir, TSOptions options,
   ts_engine->initRangeIndexMap(applied_indexes, range_num);
   s = ts_engine->Init(ctx);
   if (s != KStatus::SUCCESS) {
+    delete ts_engine;
+    ts_engine = nullptr;
     return ToTsStatus("open TSEngineImpl Error!");
   }
   LOG_INFO("TSEngineImpl created success.");
@@ -165,9 +167,14 @@ TSStatus TSGetMetaData(TSEngine* engine, TSTableID table_id, RangeGroup range, T
   if (!meta.SerializeToString(&meta_str)) {
     return ToTsStatus("SerializeToArray Internal Error!");
   }
-  schema->len = meta_str.size();
-  schema->data = static_cast<char*>(malloc(schema->len));
-  memcpy(schema->data, meta_str.data(), meta_str.size());
+  size_t data_size = meta_str.size();
+  schema->data = static_cast<char*>(malloc(data_size));
+  if (schema->data == nullptr) {
+    LOG_ERROR("Failed to allocate memory for schema data, size: %zu", data_size);
+    return ToTsStatus("Memory allocation failed!");
+  }
+  memcpy(schema->data, meta_str.data(), data_size);
+  schema->len = data_size;
   return kTsSuccess;
 }
 
@@ -311,7 +318,7 @@ TSStatus TSPutDataExplicit(TSEngine* engine, TSTableID table_id, TSSlice* payloa
     ss << tmp_range_group_id;
     return ToTsStatus("PutData Error! RangeGroup:" + ss.str());
   }
-  return TSStatus{nullptr, 0};
+  return kTsSuccess;
 }
 
 TSStatus TSExecQuery(TSEngine* engine, QueryInfo* req, RespInfo* resp, VecTsFetcher* fetcher) {
@@ -886,11 +893,6 @@ TSStatus TSGetDataVolume(TSEngine* engine, TSTableID table_id, uint64_t begin_ha
     }
     return ToTsStatus("GetTsTable Error!");
   }
-  s = ts_tb->GetDataVolume(ctx_p, begin_hash, end_hash, ts_span, volume);
-  if (s != KStatus::SUCCESS) {
-    LOG_ERROR("table[%lu] getdatavoluem failed", table_id);
-    return ToTsStatus("TsTable getdatavolume Error!");
-  }
   if (begin_hash > end_hash) {
     return ToTsStatus("begin hash larger than end hash.");
   }
@@ -1232,7 +1234,7 @@ TSStatus TSReadBatchData(TSEngine* engine, TSTableID table_id, uint64_t table_ve
   if (s != KStatus::SUCCESS) {
     return ToTsStatus("ReadBatchData Error!");
   }
-  return TSStatus{nullptr, 0};
+  return kTsSuccess;
 }
 
 TSStatus TSWriteBatchData(TSEngine* engine, TSTableID table_id, uint64_t table_version, uint64_t job_id,
@@ -1248,7 +1250,7 @@ TSStatus TSWriteBatchData(TSEngine* engine, TSTableID table_id, uint64_t table_v
   if (s != KStatus::SUCCESS) {
     return ToTsStatus("WriteBatchData Error!");
   }
-  return TSStatus{nullptr, 0};
+  return kTsSuccess;
 }
 
 TSStatus CancelBatchJob(TSEngine* engine, uint64_t job_id, uint64_t osn) {
@@ -1262,7 +1264,7 @@ TSStatus CancelBatchJob(TSEngine* engine, uint64_t job_id, uint64_t osn) {
   if (s != KStatus::SUCCESS) {
     return ToTsStatus("CancelBatchJob Error!");
   }
-  return TSStatus{nullptr, 0};
+  return kTsSuccess;
 }
 
 TSStatus BatchJobFinish(TSEngine* engine, uint64_t job_id) {
@@ -1276,7 +1278,7 @@ TSStatus BatchJobFinish(TSEngine* engine, uint64_t job_id) {
   if (s != KStatus::SUCCESS) {
     return ToTsStatus("BatchJobFinish Error!");
   }
-  return TSStatus{nullptr, 0};
+  return kTsSuccess;
 }
 
 TSStatus TSClose(TSEngine* engine) {
@@ -1289,7 +1291,7 @@ TSStatus TSClose(TSEngine* engine) {
   LOG_INFO("TSClose")
   engine->CreateCheckpoint(ctx);
   delete engine;
-  return TSStatus{nullptr, 0};
+  return kTsSuccess;
 }
 
 void TSFree(void* ptr) {
@@ -1582,7 +1584,7 @@ TSStatus TSRaftOpen(RaftStore** engine, TSSlice dir) {
     return ToTsStatus("open raftlog store Error!");
   }
   *engine = raftStore;
-  return TSStatus{nullptr, 0};
+  return kTsSuccess;
 }
 
 TSStatus TSWriteRaftLog(RaftStore *engine, int cnt, TSRaftlog *raftlog, bool sync) {
@@ -1596,7 +1598,7 @@ TSStatus TSWriteRaftLog(RaftStore *engine, int cnt, TSRaftlog *raftlog, bool syn
   if (s != KStatus::SUCCESS) {
     return ToTsStatus("Modify Raftlog Error!");
   }
-  return TSStatus{nullptr, 0};
+  return kTsSuccess;
 }
 
 TSStatus TSGetRaftLog(RaftStore* engine, uint64_t range_id, uint64_t start, uint64_t end, TSSlice* value) {
@@ -1615,7 +1617,7 @@ TSStatus TSGetRaftLog(RaftStore* engine, uint64_t range_id, uint64_t start, uint
     return ToTsStatus("Get Raftlog Error! Range:" + range.str()
                       + ",start index:" + index_start.str() + "end index:" + index_end.str());
   }
-  return TSStatus{nullptr, 0};
+  return kTsSuccess;
 }
 
 TSStatus TSGetFirstIndex(RaftStore* engine, uint64_t range_id, uint64_t *index_id) {
@@ -1631,7 +1633,7 @@ TSStatus TSGetFirstIndex(RaftStore* engine, uint64_t range_id, uint64_t *index_i
     range << range_id;
     return ToTsStatus("Get First Index Error! Range:" + range.str());
   }
-  return TSStatus{nullptr, 0};
+  return kTsSuccess;
 }
 
 TSStatus TSGetLastIndex(RaftStore* engine, uint64_t range_id, uint64_t* index_id) {
@@ -1647,7 +1649,7 @@ TSStatus TSGetLastIndex(RaftStore* engine, uint64_t range_id, uint64_t* index_id
     range << range_id;
     return ToTsStatus("Get Last Index Error! Range:" + range.str());
   }
-  return TSStatus{nullptr, 0};
+  return kTsSuccess;
 }
 
 TSStatus TSGetFirstRaftLog(RaftStore *engine, uint64_t range_id, TSSlice *value) {
@@ -1663,7 +1665,7 @@ TSStatus TSGetFirstRaftLog(RaftStore *engine, uint64_t range_id, TSSlice *value)
     range << range_id;
     return ToTsStatus("Get First Raftlog Error! Range:" + range.str());
   }
-  return TSStatus{nullptr, 0};
+  return kTsSuccess;
 }
 
 TSStatus TSSyncRaftLog(RaftStore* engine) {
@@ -1677,7 +1679,7 @@ TSStatus TSSyncRaftLog(RaftStore* engine) {
   if (s != KStatus::SUCCESS) {
     return ToTsStatus("Sync Raftlog Error!");
   }
-  return TSStatus{nullptr, 0};
+  return kTsSuccess;
 }
 
 TSStatus TSHasRange(RaftStore* engine, uint64_t range_id) {
@@ -1691,5 +1693,5 @@ TSStatus TSHasRange(RaftStore* engine, uint64_t range_id) {
   if (s != KStatus::SUCCESS) {
     return ToTsStatus("has no range");
   }
-  return TSStatus{nullptr, 0};
+  return kTsSuccess;
 }

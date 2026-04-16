@@ -94,7 +94,7 @@ KStatus TsPartitionEntityCountManager::AddEntityCountStats(TsEntityCountStats& i
     auto offset = mmap_alloc_.AllocateAssigned(sizeof(TsEntityCountStats), 0);
     if (offset == INVALID_POSITION) {
       LOG_ERROR("get node from index file failed. entity [%lu] path [%s].", info.entity_id, path_.c_str());
-      return FAIL;
+      return KStatus::FAIL;
     }
     auto* stats = reinterpret_cast<TsEntityCountStats*>(mmap_alloc_.addr(offset));
     stats->min_ts = info.min_ts;
@@ -106,14 +106,12 @@ KStatus TsPartitionEntityCountManager::AddEntityCountStats(TsEntityCountStats& i
     *node = offset;
     return KStatus::SUCCESS;
   }
-  {
-    auto* stats = reinterpret_cast<TsEntityCountStats*>(mmap_alloc_.addr(*node));
-    assert(stats != nullptr);
-    KStatus s = updateEntityCount(stats, &info);
-    if (s != KStatus::SUCCESS) {
-      LOG_ERROR("updateEntityCount failed. entity [%lu] path [%s].", info.entity_id, path_.c_str());
-      return KStatus::FAIL;
-    }
+  auto* stats = reinterpret_cast<TsEntityCountStats*>(mmap_alloc_.addr(*node));
+  assert(stats != nullptr);
+  KStatus s = updateEntityCount(stats, &info);
+  if (s != KStatus::SUCCESS) {
+    LOG_ERROR("updateEntityCount failed. entity [%lu] path [%s].", info.entity_id, path_.c_str());
+    return KStatus::FAIL;
   }
   return KStatus::SUCCESS;
 }
@@ -128,21 +126,18 @@ KStatus TsPartitionEntityCountManager::SetEntityCountStats(TsEntityCountStats& i
     auto offset = mmap_alloc_.AllocateAssigned(sizeof(TsEntityCountStats), 0);
     if (offset == INVALID_POSITION) {
       LOG_ERROR("get node from index file failed. entity [%lu] path [%s].", info.entity_id, path_.c_str());
-      return FAIL;
+      return KStatus::FAIL;
     }
     *node = offset;
   }
-  {
-    auto* stats = reinterpret_cast<TsEntityCountStats*>(mmap_alloc_.addr(*node));
-    assert(stats != nullptr);
-    stats->min_ts = info.min_ts;
-    stats->max_ts = info.max_ts;
-    stats->table_id = info.table_id;
-    stats->entity_id = info.entity_id;
-    stats->valid_count = info.valid_count;
-    stats->is_count_valid = info.is_count_valid;;
-  }
-
+  auto* stats = reinterpret_cast<TsEntityCountStats*>(mmap_alloc_.addr(*node));
+  assert(stats != nullptr);
+  stats->min_ts = info.min_ts;
+  stats->max_ts = info.max_ts;
+  stats->table_id = info.table_id;
+  stats->entity_id = info.entity_id;
+  stats->valid_count = info.valid_count;
+  stats->is_count_valid = info.is_count_valid;
   return KStatus::SUCCESS;
 }
 
@@ -156,22 +151,19 @@ KStatus TsPartitionEntityCountManager::GetCountStatsHeader(TsCountStatsFileHeade
 KStatus TsPartitionEntityCountManager::GetEntityCountStats(TsEntityCountStats& stats) {
   auto node = index_.GetIndexObject(stats.entity_id, false);
   if (node == nullptr) {
-    // LOG_DEBUG("not found node from index file. entity [%lu] path [%s].", stats.entity_id, path_.c_str());
     stats.is_count_valid = true;
     stats.valid_count = 0;
     stats.min_ts = INVALID_TS;
     stats.max_ts = INVALID_TS;
     return KStatus::SUCCESS;
   }
-  {
-    TsEntityCountStats* header = reinterpret_cast<TsEntityCountStats*>(mmap_alloc_.addr(*node));
-    assert(header != nullptr);
-    stats.table_id = header->table_id;
-    stats.min_ts = header->min_ts;
-    stats.max_ts = header->max_ts;
-    stats.valid_count = header->valid_count;
-    stats.is_count_valid = header->is_count_valid;
-  }
+  TsEntityCountStats* header = reinterpret_cast<TsEntityCountStats*>(mmap_alloc_.addr(*node));
+  assert(header != nullptr);
+  stats.table_id = header->table_id;
+  stats.min_ts = header->min_ts;
+  stats.max_ts = header->max_ts;
+  stats.valid_count = header->valid_count;
+  stats.is_count_valid = header->is_count_valid;
   return KStatus::SUCCESS;
 }
 

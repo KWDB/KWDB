@@ -302,7 +302,7 @@ class TsTable {
                                   timestamp64& entity_last_ts, TS_OSN osn) = 0;
 
   virtual KStatus GetLastRowBatch(kwdbContext_p ctx, uint32_t table_version, std::vector<uint32_t> scan_cols,
-                                  TS_OSN osn, ResultSet* res, k_uint32* count, bool& valid);
+                                  TS_OSN osn, ResultSet* res, k_uint32* count, bool& valid) = 0;
 
  protected:
   string db_path_;
@@ -314,7 +314,7 @@ class TsTable {
   using TsTableEntityGrpsRwLatch = KRWLatch;
   TsTableEntityGrpsRwLatch* entity_groups_mtx_{nullptr};
   using TsTableVersionRwLatch = KRWLatch;
-  TsTableVersionRwLatch* table_version_rw_lock_;
+  TsTableVersionRwLatch* table_version_rw_lock_{nullptr};
 
  private:
   using TsTableSnapshotLatch = KLatch;

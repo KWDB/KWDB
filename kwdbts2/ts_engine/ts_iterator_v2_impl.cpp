@@ -40,8 +40,7 @@ KStatus ConvertBlockSpanToResultSet(const std::vector<k_uint32>& kw_scan_cols, c
     Batch* batch;
     if (!ts_blk_span->IsColExist(kw_col_idx)) {
       // column is dropped at block version.
-      char* bitmap = nullptr;
-      batch = new Batch(bitmap, *count, bitmap, 1);
+      batch = new Batch(nullptr, *count, nullptr, 1);
     } else {
       bool col_not_null = attrs[kw_scan_cols[i]].isFlag(AINFO_NOT_NULL);
       unsigned char* bitmap = nullptr;

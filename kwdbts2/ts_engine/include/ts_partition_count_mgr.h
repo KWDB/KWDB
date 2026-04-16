@@ -19,26 +19,26 @@
 namespace kwdbts {
 
 struct TsCountStatsFileHeader {
-  uint8_t file_version;
-  uint64_t version_num;
-  TS_OSN max_osn;
-  char reserverd[8];
+  uint8_t file_version{0};
+  uint64_t version_num{0};
+  TS_OSN max_osn{0};
+  char reserved[8];
 };
 static_assert(sizeof(TsCountStatsFileHeader) == 32, "wrong size of FileHeader, please check TsEntityCountHeader.");
 
 struct TsEntityCountStats {
-  TSTableID table_id;
-  TSEntityID entity_id;
-  timestamp64 min_ts;
-  timestamp64 max_ts;
-  uint64_t valid_count;
-  bool is_count_valid;
-  char reserverd[17];
+  TSTableID table_id{0};
+  TSEntityID entity_id{0};
+  timestamp64 min_ts{0};
+  timestamp64 max_ts{0};
+  uint64_t valid_count{0};
+  bool is_count_valid{false};
+  char reserved[17];
 };
 static_assert(sizeof(TsEntityCountStats) == 64, "wrong size of TsEntityCountStat, please check TsEntityCountStat.");
 
 struct CountStatMetaInfo {
-  uint64_t file_number;
+  uint64_t file_number{0};
   std::vector<TsEntityCountStats> flush_infos;
 };
 
@@ -49,7 +49,7 @@ class TsPartitionEntityCountManager {
   TsCountStatsFileHeader* header_{nullptr};
   // get offset of first index node.
   VectorIndexForFile<uint64_t> index_;
-  bool delete_after_free_ = false;
+  bool delete_after_free_{false};
 
  public:
   explicit TsPartitionEntityCountManager(std::string path);

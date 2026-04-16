@@ -77,6 +77,7 @@ bool PayloadBuilder::SetDataRows(int count) {
   int batch_bitmap = (count + 7) / 8;
   int row_size = 0;
   bool exist_var_type = false;
+  data_schema_offset_.reserve(data_schema_.size());
   for (auto& data_schema : data_schema_) {
     data_schema_offset_.push_back(row_size);
     if (IS_VAR_DATATYPE(data_schema.type)) {

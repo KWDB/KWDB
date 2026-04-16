@@ -554,7 +554,8 @@ if (WITH_TESTS)
               storage/tests/wal_components_test.cpp
               storage/tests/wal_mgr_test.cpp
               exec/tests/*.cpp
-              #engine/tests/*.cpp
+              engine/tests/db_test.cpp
+              engine/tests/payload_test.cpp
               ts_engine/tests/*.cpp
               statistic/tests/*.cpp
               brpc/tests/*.cpp

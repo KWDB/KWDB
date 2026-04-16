@@ -440,6 +440,11 @@ TSSlice GenRowPayload(const std::vector<AttributeInfo>& metric, const std::vecto
           builder.SetColumnValue(i, j, (char*)(&cur_ts), sizeof(cur_ts));
           break;
         }
+        case DATATYPE::INT16: {
+          int data = GetRandomNumber(100);
+          builder.SetColumnValue(i, j, (char*)(&data), sizeof(data));
+          break;
+        }
         case DATATYPE::INT32: {
           int data = GetRandomNumber(1024);
           builder.SetColumnValue(i, j, (char*)(&data), sizeof(data));
@@ -460,7 +465,8 @@ TSSlice GenRowPayload(const std::vector<AttributeInfo>& metric, const std::vecto
           builder.SetColumnValue(i, j, (char*)(&data), sizeof(data));
           break;
         }
-        case ::roachpb::DataType::VARCHAR: {
+        case ::roachpb::DataType::VARCHAR:
+        case ::roachpb::DataType::VARBINARY: {
           char buf[128];
           std::sprintf(buf, "varstring_%07lu_%07" PRIu64, i, GetRandomNumber(100000));
           builder.SetColumnValue(i, j, buf, string(buf).size());
@@ -502,8 +508,23 @@ TSSlice GenRowPayloadForSumOverflow(const std::vector<AttributeInfo>& metric, co
           builder.SetColumnValue(i, j, (char*)(&cur_ts), sizeof(cur_ts));
           break;
         }
+        case DATATYPE::INT16: {
+          int16_t data = INT16_MAX;
+          builder.SetColumnValue(i, j, (char*)(&data), sizeof(data));
+          break;
+        }
+        case DATATYPE::INT32: {
+          int32_t data = INT32_MAX;
+          builder.SetColumnValue(i, j, (char*)(&data), sizeof(data));
+          break;
+        }
         case DATATYPE::INT64: {
-          uint64_t data = INT64_MAX;
+          int64_t data = INT64_MAX;
+          builder.SetColumnValue(i, j, (char*)(&data), sizeof(data));
+          break;
+        }
+        case DATATYPE::FLOAT: {
+          float data = numeric_limits<float>::max();
           builder.SetColumnValue(i, j, (char*)(&data), sizeof(data));
           break;
         }

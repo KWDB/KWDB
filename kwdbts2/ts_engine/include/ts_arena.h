@@ -40,7 +40,7 @@ class FakeRandom {
  public:
   static constexpr auto MAX_NEXT = M;
   static FakeRandom *GetInstance() {
-    thread_local FakeRandom *instance;
+    thread_local FakeRandom *instance = nullptr;
     thread_local std::aligned_storage_t<sizeof(FakeRandom)> storage;
 
     auto ret = instance;

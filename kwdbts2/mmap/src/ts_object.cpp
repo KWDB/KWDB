@@ -24,17 +24,12 @@ enum {
 };
 
 void LogObjectLockError(int type, TSObject *obj) {
-  switch(type) {
-    case OBJ_RD_LOCK_ERROR:
-      LOG_ERROR("%lx <Cannot lock(r)>: \"%s\", db: \"%s\"\n", pthread_self(),
-                obj->path().c_str(), obj->tbl_sub_path().c_str());
-      break;
-    case OBJ_WR_LOCK_ERROR:
-      LOG_ERROR("%lx <Cannot lock(w)>: \"%s\", db: \"%s\"\n", pthread_self(),
-                obj->path().c_str(), obj->tbl_sub_path().c_str());
-      break;
-    default:
-      break;
+  if (type == OBJ_RD_LOCK_ERROR) {
+    LOG_ERROR("%lx <Cannot lock(r)>: \"%s\", db: \"%s\"\n", pthread_self(),
+              obj->path().c_str(), obj->tbl_sub_path().c_str());
+  } else if (type == OBJ_WR_LOCK_ERROR) {
+    LOG_ERROR("%lx <Cannot lock(w)>: \"%s\", db: \"%s\"\n", pthread_self(),
+              obj->path().c_str(), obj->tbl_sub_path().c_str());
   }
 }
 
@@ -64,14 +59,14 @@ int TSObject::type() const {
 
 void TSObject::incRefCount() {
   refMutexLock();
-  ++(ref_count_);
+  ++ref_count_;
   refMutexUnlock();
 }
 
 int TSObject::decRefCount() {
   int ref_count;
   refMutexLock();
-  ref_count = --(ref_count_);
+  ref_count = --ref_count_;
   refMutexUnlock();
   return ref_count;
 }
@@ -87,11 +82,10 @@ const string & TSObject::tbl_sub_path() const
 
 string TSObject::directory() const {
   const string &db = tbl_sub_path();
-  if (db.empty())
+  if (db.empty()) {
     return kwdbts::s_kaiwudb;
-  if (db.back() == '\\')
-    return db.substr(0, db.size() - 1);
-  return db;
+  }
+  return (db.back() == '\\') ? db.substr(0, db.size() - 1) : db;
 }
 
 int TSObject::open(const string &obj_path, const string& db_path, const string &tbl_sub_path, int flags,
@@ -114,7 +108,7 @@ int TSObject::startRead() {
   }
 #if !defined(NDEBUG)
   rw_mtx_.lock();
-  rd_cnt_++;
+  ++rd_cnt_;
   rw_mtx_.unlock();
 #endif
   return 0;
@@ -129,7 +123,7 @@ int TSObject::startRead(ErrorInfo &err_info) {
   }
 #if !defined(NDEBUG)
   rw_mtx_.lock();
-  rd_cnt_++;
+  ++rd_cnt_;
   rw_mtx_.unlock();
 #endif
   return 0;
@@ -144,7 +138,7 @@ int TSObject::startWrite() {
   }
 #if !defined(NDEBUG)
   rw_mtx_.lock();
-  wr_cnt_++;
+  ++wr_cnt_;
   rw_mtx_.unlock();
 #endif
   return 0;
