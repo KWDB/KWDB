@@ -28,6 +28,7 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"sort"
 	"strconv"
 	"strings"
 	"testing"
@@ -35,6 +36,9 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/base"
 	"gitee.com/kwbasedb/kwbase/pkg/kv"
 	"gitee.com/kwbasedb/kwbase/pkg/roachpb"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/execinfrapb"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/physicalplan"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
 	"gitee.com/kwbasedb/kwbase/pkg/testutils/serverutils"
 	"gitee.com/kwbasedb/kwbase/pkg/testutils/sqlutils"
@@ -881,5 +885,324 @@ func TestInterleavedNodes(t *testing.T) {
 			// Rerun the same subtests but flip the tables
 			tc.table1, tc.table2 = tc.table2, tc.table1
 		}
+	}
+}
+
+func TestJoinOutColumns(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	t.Run("inner join outputs both sides", func(t *testing.T) {
+		n := &joinNode{
+			columns: make(sqlbase.ResultColumns, 4),
+			pred: &joinPredicate{
+				numLeftCols:  2,
+				numRightCols: 2,
+				joinType:     sqlbase.InnerJoin,
+			},
+		}
+
+		post, joinToStreamColMap := joinOutColumns(n, []int{5, 7}, []int{2, 4}, 10)
+
+		if !post.Projection {
+			t.Fatal("expected projection to be enabled")
+		}
+		if !reflect.DeepEqual(post.OutputColumns, []uint32{5, 7, 12, 14}) {
+			t.Fatalf("unexpected OutputColumns: %v", post.OutputColumns)
+		}
+		if !reflect.DeepEqual(joinToStreamColMap, []int{0, 1, 2, 3}) {
+			t.Fatalf("unexpected joinToStreamColMap: %v", joinToStreamColMap)
+		}
+	})
+
+	t.Run("left semi join only outputs left side", func(t *testing.T) {
+		n := &joinNode{
+			columns: make(sqlbase.ResultColumns, 2),
+			pred: &joinPredicate{
+				numLeftCols:  2,
+				numRightCols: 2,
+				joinType:     sqlbase.LeftSemiJoin,
+			},
+		}
+
+		post, joinToStreamColMap := joinOutColumns(n, []int{1, 3}, []int{8, 9}, 10)
+
+		if !post.Projection {
+			t.Fatal("expected projection to be enabled")
+		}
+		if !reflect.DeepEqual(post.OutputColumns, []uint32{1, 3}) {
+			t.Fatalf("unexpected OutputColumns: %v", post.OutputColumns)
+		}
+		if !reflect.DeepEqual(joinToStreamColMap, []int{0, 1}) {
+			t.Fatalf("unexpected joinToStreamColMap: %v", joinToStreamColMap)
+		}
+	})
+}
+
+func TestJoinOutColumnsForBatchLookupJoin(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	n := &batchLookUpJoinNode{
+		columns: make(sqlbase.ResultColumns, 3),
+	}
+
+	post, joinToStreamColMap := joinOutColumnsForBatchLookupJoin(n, []int{4, 6, 8})
+
+	if !post.Projection {
+		t.Fatal("expected projection to be enabled")
+	}
+	if !reflect.DeepEqual(post.OutputColumns, []uint32{4, 6, 8}) {
+		t.Fatalf("unexpected OutputColumns: %v", post.OutputColumns)
+	}
+	if !reflect.DeepEqual(joinToStreamColMap, []int{0, 1, 2}) {
+		t.Fatalf("unexpected joinToStreamColMap: %v", joinToStreamColMap)
+	}
+}
+
+func TestEqColsAndDistSQLOrdering(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	eq := eqCols([]int{2, 0, 1}, []int{10, 20, 30})
+	if !reflect.DeepEqual(eq, []uint32{30, 10, 20}) {
+		t.Fatalf("unexpected eqCols result: %v", eq)
+	}
+
+	ord := distsqlOrdering(
+		sqlbase.ColumnOrdering{
+			{ColIdx: 1, Direction: encoding.Ascending},
+			{ColIdx: 0, Direction: encoding.Descending},
+		},
+		[]uint32{7, 9},
+	)
+
+	exp := execinfrapb.Ordering{
+		Columns: []execinfrapb.Ordering_Column{
+			{ColIdx: 9, Direction: execinfrapb.Ordering_Column_ASC},
+			{ColIdx: 7, Direction: execinfrapb.Ordering_Column_DESC},
+		},
+	}
+	if !reflect.DeepEqual(ord, exp) {
+		t.Fatalf("unexpected DistSQL ordering:\nexpected: %+v\nactual:   %+v", exp, ord)
+	}
+}
+
+func TestComputeMergeJoinOrdering(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	t.Run("normal prefix match", func(t *testing.T) {
+		a := sqlbase.ColumnOrdering{
+			{ColIdx: 1, Direction: encoding.Ascending},
+			{ColIdx: 2, Direction: encoding.Descending},
+			{ColIdx: 5, Direction: encoding.Ascending},
+		}
+		b := sqlbase.ColumnOrdering{
+			{ColIdx: 10, Direction: encoding.Ascending},
+			{ColIdx: 11, Direction: encoding.Descending},
+			{ColIdx: 12, Direction: encoding.Descending},
+		}
+
+		got := computeMergeJoinOrdering(a, b, []int{1, 2, 9}, []int{10, 11, 12})
+		exp := sqlbase.ColumnOrdering{
+			{ColIdx: 0, Direction: encoding.Ascending},
+			{ColIdx: 1, Direction: encoding.Descending},
+		}
+		if !reflect.DeepEqual(got, exp) {
+			t.Fatalf("unexpected merge join ordering:\nexpected: %v\nactual:   %v", exp, got)
+		}
+	})
+
+	t.Run("stop on missing equality mapping", func(t *testing.T) {
+		a := sqlbase.ColumnOrdering{
+			{ColIdx: 1, Direction: encoding.Ascending},
+			{ColIdx: 8, Direction: encoding.Ascending},
+		}
+		b := sqlbase.ColumnOrdering{
+			{ColIdx: 10, Direction: encoding.Ascending},
+			{ColIdx: 11, Direction: encoding.Ascending},
+		}
+
+		got := computeMergeJoinOrdering(a, b, []int{1}, []int{10})
+		exp := sqlbase.ColumnOrdering{
+			{ColIdx: 0, Direction: encoding.Ascending},
+		}
+		if !reflect.DeepEqual(got, exp) {
+			t.Fatalf("unexpected merge join ordering:\nexpected: %v\nactual:   %v", exp, got)
+		}
+	})
+
+	t.Run("stop on direction mismatch", func(t *testing.T) {
+		a := sqlbase.ColumnOrdering{
+			{ColIdx: 1, Direction: encoding.Ascending},
+			{ColIdx: 2, Direction: encoding.Ascending},
+		}
+		b := sqlbase.ColumnOrdering{
+			{ColIdx: 10, Direction: encoding.Ascending},
+			{ColIdx: 11, Direction: encoding.Descending},
+		}
+
+		got := computeMergeJoinOrdering(a, b, []int{1, 2}, []int{10, 11})
+		exp := sqlbase.ColumnOrdering{
+			{ColIdx: 0, Direction: encoding.Ascending},
+		}
+		if !reflect.DeepEqual(got, exp) {
+			t.Fatalf("unexpected merge join ordering:\nexpected: %v\nactual:   %v", exp, got)
+		}
+	})
+
+	t.Run("panic on unequal input lengths", func(t *testing.T) {
+		defer func() {
+			if r := recover(); r == nil {
+				t.Fatal("expected computeMergeJoinOrdering to panic on mismatched equality lists")
+			}
+		}()
+		_ = computeMergeJoinOrdering(
+			sqlbase.ColumnOrdering{{ColIdx: 1, Direction: encoding.Ascending}},
+			sqlbase.ColumnOrdering{{ColIdx: 10, Direction: encoding.Ascending}},
+			[]int{1},
+			[]int{10, 11},
+		)
+	})
+}
+
+func TestSortedSpanPartitions(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	parts := sortedSpanPartitions{
+		{Node: 3},
+		{Node: 1},
+		{Node: 2},
+	}
+
+	if parts.Len() != 3 {
+		t.Fatalf("expected Len()=3, got %d", parts.Len())
+	}
+	if !parts.Less(1, 0) {
+		t.Fatal("expected parts[1] < parts[0] before sorting")
+	}
+
+	sort.Sort(parts)
+
+	exp := []roachpb.NodeID{1, 2, 3}
+	for i, nodeID := range exp {
+		if parts[i].Node != nodeID {
+			t.Fatalf("unexpected node order after sort at %d: expected %d, got %d", i, nodeID, parts[i].Node)
+		}
+	}
+}
+
+func TestSetOpAndRouterHelpers(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	t.Run("distsqlSetOpJoinType", func(t *testing.T) {
+		if got := distsqlSetOpJoinType(tree.ExceptOp); got != sqlbase.ExceptAllJoin {
+			t.Fatalf("expected ExceptAllJoin, got %v", got)
+		}
+		if got := distsqlSetOpJoinType(tree.IntersectOp); got != sqlbase.IntersectAllJoin {
+			t.Fatalf("expected IntersectAllJoin, got %v", got)
+		}
+
+		defer func() {
+			if r := recover(); r == nil {
+				t.Fatal("expected panic for unsupported set-op type")
+			}
+		}()
+		_ = distsqlSetOpJoinType(tree.UnionOp)
+	})
+
+	t.Run("router node helpers", func(t *testing.T) {
+		processors := []physicalplan.Processor{
+			{Node: 2},
+			{Node: 1},
+			{Node: 2},
+			{Node: 3},
+		}
+
+		got := getNodesOfRouters(
+			[]physicalplan.ProcessorIdx{0, 2, 3},
+			processors,
+		)
+		if !reflect.DeepEqual(got, []roachpb.NodeID{2, 3}) {
+			t.Fatalf("unexpected getNodesOfRouters result: %v", got)
+		}
+
+		got = findJoinProcessorNodes(
+			[]physicalplan.ProcessorIdx{1, 2},
+			[]physicalplan.ProcessorIdx{0, 3},
+			processors,
+		)
+		if !reflect.DeepEqual(got, []roachpb.NodeID{1, 2, 3}) {
+			t.Fatalf("unexpected findJoinProcessorNodes result: %v", got)
+		}
+
+		got = findBLJProcessorNodes(processors)
+		if !reflect.DeepEqual(got, []roachpb.NodeID{2, 1, 3}) {
+			t.Fatalf("unexpected findBLJProcessorNodes result: %v", got)
+		}
+	})
+}
+
+func TestJoinSpans(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	s, sqlDB, kvDB := serverutils.StartServer(t, base.TestServerArgs{})
+	defer s.Stopper().Stop(context.TODO())
+
+	sqlutils.CreateTestInterleavedHierarchy(t, sqlDB)
+
+	join, err := newTestJoinNode(kvDB, "parent1", "child1")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	testCases := []struct {
+		name     string
+		input    []testPartition
+		expected []testPartition
+	}{
+		{
+			name: "comment example A and B shape",
+			input: []testPartition{
+				{1, [][2]string{
+					{"/1", "/3/#/1"},
+				}},
+			},
+			expected: []testPartition{
+				{1, [][2]string{
+					{"/1", "/4"},
+				}},
+			},
+		},
+		{
+			name: "comment example C and D shape",
+			input: []testPartition{
+				{2, [][2]string{
+					{"/1/#/1", "/2/#/1"},
+				}},
+			},
+			expected: []testPartition{
+				{2, [][2]string{
+					{"/2", "/3"},
+				}},
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			parentSpans, err := makeSpanPartitions(kvDB, tc.input)
+			if err != nil {
+				t.Fatal(err)
+			}
+			actual, err := joinSpans(join, parentSpans)
+			if err != nil {
+				t.Fatal(err)
+			}
+			expected, err := makeSpanPartitions(kvDB, tc.expected)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(expected, actual) {
+				t.Fatalf("unexpected join spans:\nexpected: %v\nactual:   %v", expected, actual)
+			}
+		})
 	}
 }

@@ -27,6 +27,7 @@ package sql
 import (
 	"context"
 	gosql "database/sql"
+	"encoding/binary"
 	"fmt"
 	"net/url"
 	"reflect"
@@ -34,6 +35,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"unsafe"
 
 	"gitee.com/kwbasedb/kwbase/pkg/base"
 	"gitee.com/kwbasedb/kwbase/pkg/config/zonepb"
@@ -50,6 +52,7 @@ import (
 	"gitee.com/kwbasedb/kwbase/pkg/sql/physicalplan"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sem/tree"
 	"gitee.com/kwbasedb/kwbase/pkg/sql/sqlbase"
+	"gitee.com/kwbasedb/kwbase/pkg/sql/types"
 	"gitee.com/kwbasedb/kwbase/pkg/testutils"
 	"gitee.com/kwbasedb/kwbase/pkg/testutils/serverutils"
 	"gitee.com/kwbasedb/kwbase/pkg/testutils/sqlutils"
@@ -1247,4 +1250,1204 @@ func TestCheckNodeHealth(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestDistRecommendationCompose(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	testCases := []struct {
+		name string
+		a    distRecommendation
+		b    distRecommendation
+		exp  distRecommendation
+	}{
+		{"cannot dominates", cannotDistribute, shouldDistribute, cannotDistribute},
+		{"shouldNot dominates", canDistribute, shouldNotDistribute, shouldNotDistribute},
+		{"should dominates", canDistribute, shouldDistribute, shouldDistribute},
+		{"can with can", canDistribute, canDistribute, canDistribute},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := tc.a.compose(tc.b); got != tc.exp {
+				t.Fatalf("expected %v, got %v", tc.exp, got)
+			}
+			// compose should be symmetric for all current enum combinations.
+			if got := tc.b.compose(tc.a); got != tc.exp {
+				t.Fatalf("symmetric compose expected %v, got %v", tc.exp, got)
+			}
+		})
+	}
+}
+
+func TestDistSQLPlannerSmallHelpers(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	if got := max(10, 3); got != 10 {
+		t.Fatalf("expected 10, got %d", got)
+	}
+	if got := max(-2, -5); got != -2 {
+		t.Fatalf("expected -2, got %d", got)
+	}
+
+	if got := makePlanToStreamColMap(4); !reflect.DeepEqual(got, []int{-1, -1, -1, -1}) {
+		t.Fatalf("unexpected PlanToStreamColMap: %v", got)
+	}
+
+	buf := []int{99, 99}
+	if got := identityMap(buf, 5); !reflect.DeepEqual(got, []int{0, 1, 2, 3, 4}) {
+		t.Fatalf("unexpected identityMap result: %v", got)
+	}
+
+	inPlace := []int{7, 7, 7}
+	if got := identityMapInPlace(inPlace); !reflect.DeepEqual(got, []int{0, 1, 2}) {
+		t.Fatalf("unexpected identityMapInPlace result: %v", got)
+	}
+
+	s := UintSlice{3, 1, 2}
+	if s.Len() != 3 {
+		t.Fatalf("expected length 3, got %d", s.Len())
+	}
+	if !s.Less(1, 0) {
+		t.Fatalf("expected s[1] < s[0], got false")
+	}
+	s.Swap(0, 1)
+	if !reflect.DeepEqual([]uint32(s), []uint32{1, 3, 2}) {
+		t.Fatalf("unexpected UintSlice after swap: %v", s)
+	}
+}
+
+func TestPlanningCtxHelpers(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	p := &PlanningCtx{}
+	if p.EvalContext() != nil {
+		t.Fatalf("expected nil EvalContext")
+	}
+	if p.IsLocal() {
+		t.Fatalf("expected non-local by default")
+	}
+	if !p.EvaluateSubqueries() {
+		t.Fatalf("expected EvaluateSubqueries() to be true by default")
+	}
+	if p.IsTs() {
+		t.Fatalf("expected IsTs() to be false by default")
+	}
+	if got := p.GetTsDop(); got != sqlbase.DefaultDop {
+		t.Fatalf("expected default dop %d, got %d", sqlbase.DefaultDop, got)
+	}
+
+	p = &PlanningCtx{
+		ExtendedEvalCtx:  &extendedEvalContext{},
+		isLocal:          true,
+		noEvalSubqueries: true,
+		existTSTable:     true,
+		NodeAddresses: map[roachpb.NodeID]string{
+			1: "addr1",
+			2: "addr2",
+		},
+	}
+	if p.EvalContext() == nil {
+		t.Fatalf("expected non-nil EvalContext")
+	}
+	if !p.IsLocal() {
+		t.Fatalf("expected IsLocal() to be true")
+	}
+	if p.EvaluateSubqueries() {
+		t.Fatalf("expected EvaluateSubqueries() to be false when noEvalSubqueries=true")
+	}
+	if !p.IsTs() {
+		t.Fatalf("expected IsTs() to be true")
+	}
+	if got := p.GetTsDop(); got != sqlbase.DefaultDop {
+		t.Fatalf("expected default dop %d, got %d", sqlbase.DefaultDop, got)
+	}
+
+	if err := p.sanityCheckAddresses(); err != nil {
+		t.Fatalf("unexpected sanityCheckAddresses error: %v", err)
+	}
+
+	p.NodeAddresses[3] = "addr1"
+	if err := p.sanityCheckAddresses(); !testutils.IsError(err, "same address 'addr1'") {
+		t.Fatalf("expected duplicate address error, got %v", err)
+	}
+}
+
+func TestCheckExpr(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	dsp := &DistSQLPlanner{}
+
+	if err := dsp.checkExpr(nil); err != nil {
+		t.Fatalf("nil expr should be allowed, got %v", err)
+	}
+	if err := dsp.checkExpr(tree.NewDInt(1)); err != nil {
+		t.Fatalf("simple datum should be allowed, got %v", err)
+	}
+
+	if err := dsp.checkExpr(&tree.DOid{}); !testutils.IsError(err, "OID expressions are not supported by distsql") {
+		t.Fatalf("expected DOid rejection, got %v", err)
+	}
+
+	castExpr := &tree.CastExpr{
+		Expr: tree.NewDInt(1),
+		Type: types.Oid,
+	}
+	if err := dsp.checkExpr(castExpr); !testutils.IsError(err, "cast to .* is not supported by distsql") {
+		t.Fatalf("expected OID cast rejection, got %v", err)
+	}
+}
+
+func TestMustWrapNode(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	dsp := &DistSQLPlanner{}
+
+	normalCtx := &PlanningCtx{}
+	localCtx := &PlanningCtx{isLocal: true}
+	noEvalCtx := &PlanningCtx{noEvalSubqueries: true}
+
+	if got := dsp.mustWrapNode(normalCtx, &valuesNode{specifiedInQuery: true}); got {
+		t.Fatalf("expected query-specified valuesNode to not be wrapped")
+	}
+	if got := dsp.mustWrapNode(normalCtx, &valuesNode{specifiedInQuery: false}); !got {
+		t.Fatalf("expected non-query-specified valuesNode to be wrapped")
+	}
+	if got := dsp.mustWrapNode(localCtx, &valuesNode{specifiedInQuery: true}); !got {
+		t.Fatalf("expected local valuesNode to be wrapped")
+	}
+	if got := dsp.mustWrapNode(noEvalCtx, &valuesNode{specifiedInQuery: true}); !got {
+		t.Fatalf("expected valuesNode with noEvalSubqueries to be wrapped")
+	}
+
+	// zeroNode has a dedicated DistSQL planning path, so it should not be wrapped.
+	if got := dsp.mustWrapNode(normalCtx, &zeroNode{}); got {
+		t.Fatalf("expected zeroNode to not be wrapped")
+	}
+}
+
+func TestCheckSupportForNodeSimpleCases(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	dsp := &DistSQLPlanner{}
+
+	testCases := []struct {
+		name   string
+		node   planNode
+		expRec distRecommendation
+		expErr string
+	}{
+		{
+			name:   "nil node unsupported",
+			node:   nil,
+			expRec: cannotDistribute,
+			expErr: "unsupported node",
+		},
+		{
+			name:   "zero node distributable",
+			node:   &zeroNode{},
+			expRec: canDistribute,
+			expErr: "",
+		},
+		{
+			name:   "unary node distributable",
+			node:   &unaryNode{},
+			expRec: canDistribute,
+			expErr: "",
+		},
+		{
+			name:   "values not specified in query",
+			node:   &valuesNode{specifiedInQuery: false},
+			expRec: cannotDistribute,
+			expErr: "unsupported valuesNode, not specified in query",
+		},
+		{
+			name:   "values specified in query",
+			node:   &valuesNode{specifiedInQuery: true},
+			expRec: canDistribute,
+			expErr: "",
+		},
+		{
+			name: "values with unsupported expr",
+			node: &valuesNode{
+				specifiedInQuery: true,
+				tuples: [][]tree.TypedExpr{
+					{&tree.DOid{}},
+				},
+			},
+			expRec: cannotDistribute,
+			expErr: "OID expressions are not supported by distsql",
+		},
+		{
+			name:   "scan with row locking",
+			node:   &scanNode{lockingStrength: sqlbase.ScanLockingStrength(1)},
+			expRec: cannotDistribute,
+			expErr: "row-level locking",
+		},
+		{
+			name:   "scan with unsupported filter expr",
+			node:   &scanNode{filter: &tree.DOid{}},
+			expRec: cannotDistribute,
+			expErr: "OID expressions are not supported by distsql",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			rec, err := dsp.checkSupportForNode(tc.node)
+			if rec != tc.expRec {
+				t.Fatalf("expected recommendation %v, got %v", tc.expRec, rec)
+			}
+			if !testutils.IsError(err, tc.expErr) {
+				t.Fatalf("expected error %q, got %v", tc.expErr, err)
+			}
+		})
+	}
+}
+
+func TestCheckNodeHealthSpecialCases(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	stopper := stop.NewStopper()
+	defer stopper.Stop(context.TODO())
+
+	const nodeID = roachpb.NodeID(7)
+
+	mockGossip := gossip.NewTest(nodeID, nil /* rpcContext */, nil, /* grpcServer */
+		stopper, metric.NewRegistry(), zonepb.DefaultZoneConfigRef())
+
+	desc := &roachpb.NodeDescriptor{
+		NodeID:  nodeID,
+		Address: util.UnresolvedAddr{NetworkField: "tcp", AddressField: "testaddr-7"},
+	}
+	if err := mockGossip.SetNodeDescriptor(desc); err != nil {
+		t.Fatal(err)
+	}
+	if err := mockGossip.AddInfoProto(
+		gossip.MakeDistSQLNodeVersionKey(nodeID),
+		&execinfrapb.DistSQLVersionGossipInfo{
+			MinAcceptedVersion: execinfra.MinAcceptedVersion,
+			Version:            execinfra.Version,
+		},
+		0, /* ttl */
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	h := distSQLNodeHealth{
+		gossip: mockGossip,
+		connHealth: func(roachpb.NodeID, rpc.ConnectionClass) error {
+			return rpc.ErrNotHeartbeated
+		},
+		isLive: func(roachpb.NodeID) (bool, error) {
+			return true, nil
+		},
+	}
+
+	// Missing draining info should be treated as healthy.
+	if err := h.check(context.Background(), nodeID); err != nil {
+		t.Fatalf("expected missing draining info to be tolerated, got %v", err)
+	}
+
+	if err := mockGossip.AddInfoProto(
+		gossip.MakeDistSQLDrainingKey(nodeID),
+		&execinfrapb.DistSQLDrainingInfo{Draining: true},
+		0, /* ttl */
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := h.check(context.Background(), nodeID); !testutils.IsError(err, "because it is draining") {
+		t.Fatalf("expected draining error, got %v", err)
+	}
+}
+
+func TestTestSpanResolverIterator(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	tsr := &testSpanResolver{
+		nodes: []*roachpb.NodeDescriptor{
+			{NodeID: 1},
+			{NodeID: 2},
+		},
+		ranges: []testSpanResolverRange{
+			{startKey: "A", node: 1},
+			{startKey: "C", node: 2},
+		},
+	}
+
+	it := tsr.NewSpanResolverIterator(nil /* txn */).(*testSpanResolverIterator)
+	it.Seek(context.Background(), roachpb.Span{
+		Key:    roachpb.Key("A1"),
+		EndKey: roachpb.Key("Z"),
+	}, kvcoord.Ascending)
+
+	if !it.Valid() {
+		t.Fatalf("iterator should be valid")
+	}
+	if err := it.Error(); err != nil {
+		t.Fatalf("unexpected iterator error: %v", err)
+	}
+	if !it.NeedAnother() {
+		t.Fatalf("expected NeedAnother() to be true on the first range")
+	}
+
+	desc := it.Desc()
+	if string(desc.StartKey) != "A" || string(desc.EndKey) != "C" {
+		t.Fatalf("unexpected first desc: [%s, %s)", desc.StartKey, desc.EndKey)
+	}
+
+	replicaInfo, err := it.ReplicaInfo(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected ReplicaInfo error: %v", err)
+	}
+	if replicaInfo.NodeDesc.NodeID != 1 {
+		t.Fatalf("expected replica on node 1, got %d", replicaInfo.NodeDesc.NodeID)
+	}
+
+	it.Next(context.Background())
+	if it.NeedAnother() {
+		t.Fatalf("expected NeedAnother() to be false on the last range")
+	}
+
+	desc = it.Desc()
+	if string(desc.StartKey) != "C" {
+		t.Fatalf("unexpected second desc start key: %s", desc.StartKey)
+	}
+}
+
+func TestQueryNotSupportedErrorHelpers(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	err1 := newQueryNotSupportedError("plain message")
+	if err1 == nil || err1.Error() != "plain message" {
+		t.Fatalf("unexpected error from newQueryNotSupportedError: %v", err1)
+	}
+
+	err2 := newQueryNotSupportedErrorf("hello %s %d", "world", 7)
+	if err2 == nil || err2.Error() != "hello world 7" {
+		t.Fatalf("unexpected error from newQueryNotSupportedErrorf: %v", err2)
+	}
+}
+
+func TestCheckSupportForNodeAdditionalBranches(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	dsp := &DistSQLPlanner{}
+
+	testCases := []struct {
+		name   string
+		node   planNode
+		expRec distRecommendation
+		expErr string
+	}{
+		{
+			name:   "group over unary",
+			node:   &groupNode{plan: &unaryNode{}},
+			expRec: shouldDistribute,
+			expErr: "",
+		},
+		{
+			name:   "synchronizer over unary",
+			node:   &synchronizerNode{plan: &unaryNode{}},
+			expRec: shouldDistribute,
+			expErr: "",
+		},
+		{
+			name:   "limit over unary",
+			node:   &limitNode{plan: &unaryNode{}},
+			expRec: canDistribute,
+			expErr: "",
+		},
+		{
+			name:   "limit with unsupported count expr",
+			node:   &limitNode{plan: &unaryNode{}, countExpr: &tree.DOid{}},
+			expRec: cannotDistribute,
+			expErr: "OID expressions are not supported by distsql",
+		},
+		{
+			name:   "limit with unsupported offset expr",
+			node:   &limitNode{plan: &unaryNode{}, offsetExpr: &tree.DOid{}},
+			expRec: cannotDistribute,
+			expErr: "OID expressions are not supported by distsql",
+		},
+		{
+			name:   "lookup join distributable",
+			node:   &lookupJoinNode{input: &unaryNode{}},
+			expRec: shouldDistribute,
+			expErr: "",
+		},
+		{
+			name:   "lookup join unsupported onCond",
+			node:   &lookupJoinNode{input: &unaryNode{}, onCond: &tree.DOid{}},
+			expRec: cannotDistribute,
+			expErr: "OID expressions are not supported by distsql",
+		},
+		{
+			name:   "index join inherits child rec",
+			node:   &indexJoinNode{table: &scanNode{}, input: &unaryNode{}},
+			expRec: canDistribute,
+			expErr: "",
+		},
+		{
+			name:   "sort over unary",
+			node:   &sortNode{plan: &unaryNode{}},
+			expRec: shouldDistribute,
+			expErr: "",
+		},
+		{
+			name:   "union of unary and zero",
+			node:   &unionNode{left: &unaryNode{}, right: &zeroNode{}},
+			expRec: canDistribute,
+			expErr: "",
+		},
+		{
+			name:   "union gets shouldDistribute from left",
+			node:   &unionNode{left: &sortNode{plan: &unaryNode{}}, right: &zeroNode{}},
+			expRec: shouldDistribute,
+			expErr: "",
+		},
+		{
+			name:   "window over unary",
+			node:   &windowNode{plan: &unaryNode{}},
+			expRec: canDistribute,
+			expErr: "",
+		},
+		{
+			name:   "zigzag join distributable",
+			node:   &zigzagJoinNode{},
+			expRec: shouldDistribute,
+			expErr: "",
+		},
+		{
+			name:   "zigzag join unsupported onCond",
+			node:   &zigzagJoinNode{onCond: &tree.DOid{}},
+			expRec: cannotDistribute,
+			expErr: "OID expressions are not supported by distsql",
+		},
+		{
+			name:   "ts scan distributable",
+			node:   &tsScanNode{},
+			expRec: shouldDistribute,
+			expErr: "",
+		},
+		{
+			name:   "ts insert distributable",
+			node:   &tsInsertNode{},
+			expRec: shouldDistribute,
+			expErr: "",
+		},
+		{
+			name:   "ts insert with cdc distributable",
+			node:   &tsInsertWithCDCNode{},
+			expRec: shouldDistribute,
+			expErr: "",
+		},
+		{
+			name:   "ts delete wrong ptag",
+			node:   &tsDeleteNode{wrongPTag: true},
+			expRec: cannotDistribute,
+			expErr: "",
+		},
+		{
+			name:   "ts delete distributable",
+			node:   &tsDeleteNode{wrongPTag: false},
+			expRec: shouldDistribute,
+			expErr: "",
+		},
+		{
+			name:   "ts tag update wrong ptag",
+			node:   &tsTagUpdateNode{wrongPTag: true},
+			expRec: cannotDistribute,
+			expErr: "",
+		},
+		{
+			name:   "ts tag update distributable",
+			node:   &tsTagUpdateNode{wrongPTag: false},
+			expRec: shouldDistribute,
+			expErr: "",
+		},
+		{
+			name:   "ts ddl distributable",
+			node:   &tsDDLNode{},
+			expRec: shouldDistribute,
+			expErr: "",
+		},
+		{
+			name:   "vacuum distributable",
+			node:   &vacuumNode{},
+			expRec: shouldDistribute,
+			expErr: "",
+		},
+		{
+			name:   "operate data distributable",
+			node:   &operateDataNode{},
+			expRec: shouldDistribute,
+			expErr: "",
+		},
+		{
+			name:   "ts insert select inherits child rec",
+			node:   &tsInsertSelectNode{plan: &unaryNode{}},
+			expRec: canDistribute,
+			expErr: "",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			rec, err := dsp.checkSupportForNode(tc.node)
+			if rec != tc.expRec {
+				t.Fatalf("expected recommendation %v, got %v", tc.expRec, rec)
+			}
+			if tc.expErr == "" {
+				if err != nil {
+					t.Fatalf("expected nil error, got %v", err)
+				}
+			} else if !testutils.IsError(err, tc.expErr) {
+				t.Fatalf("expected error %q, got %v", tc.expErr, err)
+			}
+		})
+	}
+}
+
+func TestCheckNodeHealthErrorPaths(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	const nodeID = roachpb.NodeID(9)
+
+	testCases := []struct {
+		name       string
+		connErr    error
+		live       bool
+		liveErr    error
+		expErrPart string
+	}{
+		{
+			name:       "hard conn health error returns immediately",
+			connErr:    errors.New("dial failed"),
+			live:       true,
+			liveErr:    nil,
+			expErrPart: "dial failed",
+		},
+		{
+			name:       "not live is wrapped as cannot connect now",
+			connErr:    nil,
+			live:       false,
+			liveErr:    nil,
+			expErrPart: "not using n9 due to liveness",
+		},
+		{
+			name:       "liveness check error is wrapped",
+			connErr:    nil,
+			live:       true,
+			liveErr:    errors.New("liveness lookup failed"),
+			expErrPart: "not using n9 due to liveness",
+		},
+		{
+			name:       "ErrNotHeartbeated is tolerated by conn check and still hits liveness",
+			connErr:    rpc.ErrNotHeartbeated,
+			live:       false,
+			liveErr:    nil,
+			expErrPart: "not using n9 due to liveness",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			h := distSQLNodeHealth{
+				gossip: nil, // safe here because each case returns before draining-info lookup.
+				connHealth: func(roachpb.NodeID, rpc.ConnectionClass) error {
+					return tc.connErr
+				},
+				isLive: func(roachpb.NodeID) (bool, error) {
+					return tc.live, tc.liveErr
+				},
+			}
+
+			err := h.check(context.Background(), nodeID)
+			if !testutils.IsError(err, tc.expErrPart) {
+				t.Fatalf("expected error containing %q, got %v", tc.expErrPart, err)
+			}
+		})
+	}
+}
+
+func TestParsePtagValue(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	testCases := []struct {
+		name    string
+		typ     *types.T
+		value   string
+		offset  int
+		size    int
+		wantErr bool
+	}{
+		{name: "int2", typ: types.Int2, value: "12", offset: 0, size: 8},
+		{name: "int4", typ: types.Int4, value: "1234", offset: 0, size: 8},
+		{name: "int8", typ: types.Int, value: "123456", offset: 0, size: 16},
+		{name: "bool true", typ: types.Bool, value: "true", offset: 0, size: 1},
+		{name: "varchar", typ: types.MakeVarChar(8, types.TIMESERIES.Mask()), value: "abc", offset: 0, size: 16},
+		{name: "char", typ: types.MakeChar(4), value: "xy", offset: 0, size: 16},
+		{name: "int2 overflow", typ: types.Int2, value: "40000", offset: 0, size: 8, wantErr: true},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			payload := make([]byte, tc.size)
+			err := parsePtagValue(&payload, tc.value, tc.offset, tc.typ)
+			if tc.wantErr {
+				if err == nil {
+					t.Fatal("expected error, got nil")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+		})
+	}
+}
+
+func TestPhysicalPlanGetLimitOffset(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	sorter := &execinfrapb.SorterSpec{}
+	p := PhysicalPlan{
+		PhysicalPlan: physicalplan.PhysicalPlan{
+			ResultRouters: []physicalplan.ProcessorIdx{1},
+			Processors: []physicalplan.Processor{
+				{
+					Spec: execinfrapb.ProcessorSpec{
+						Core: execinfrapb.ProcessorCoreUnion{Sorter: sorter},
+					},
+				},
+				{
+					Spec: execinfrapb.ProcessorSpec{
+						Post: execinfrapb.PostProcessSpec{Limit: 10, Offset: 3},
+					},
+				},
+			},
+		},
+	}
+
+	order, limit, offset := p.getLimitOffset()
+	if order != sorter {
+		t.Fatal("expected sorter from upstream processor")
+	}
+	if limit != 10 || offset != 3 {
+		t.Fatalf("expected limit=10 offset=3, got %d %d", limit, offset)
+	}
+}
+
+func TestInitPhyPlanForStatisticReaders(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	p := PhysicalPlan{
+		PhysicalPlan: physicalplan.PhysicalPlan{
+			ResultTypes:   []types.T{*types.Int},
+			ResultRouters: []physicalplan.ProcessorIdx{0, 1},
+			Processors: []physicalplan.Processor{
+				{Node: 1},
+				{Node: 2},
+			},
+		},
+	}
+
+	spec := execinfrapb.TSStatisticReaderSpec{}
+	if err := p.initPhyPlanForStatisticReaders(spec); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(p.Processors) != 4 {
+		t.Fatalf("expected 4 processors, got %d", len(p.Processors))
+	}
+	if len(p.Streams) != 2 {
+		t.Fatalf("expected 2 streams, got %d", len(p.Streams))
+	}
+	if len(p.ResultRouters) != 2 {
+		t.Fatalf("expected 2 result routers, got %d", len(p.ResultRouters))
+	}
+	if p.GateNoopInput != 2 {
+		t.Fatalf("expected GateNoopInput=2, got %d", p.GateNoopInput)
+	}
+	if p.TsOperator != execinfrapb.OperatorType_TsSelect {
+		t.Fatalf("unexpected TsOperator: %v", p.TsOperator)
+	}
+	for _, idx := range p.ResultRouters {
+		if p.Processors[idx].Spec.Core.TsStatisticReader == nil {
+			t.Fatal("expected result router to point to TsStatisticReader")
+		}
+	}
+}
+
+func TestFinalizeTopicPlanAssignsProcessorIDs(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	dsp := &DistSQLPlanner{}
+	planCtx := &PlanningCtx{
+		NodeAddresses: map[roachpb.NodeID]string{
+			1: "n1",
+			2: "n2",
+		},
+	}
+	plan := &PhysicalPlan{
+		PhysicalPlan: physicalplan.PhysicalPlan{
+			Processors: []physicalplan.Processor{
+				{Node: 1},
+				{Node: 2},
+			},
+		},
+	}
+
+	dsp.FinalizeTopicPlan(planCtx, plan)
+
+	for i := range plan.Processors {
+		if got := plan.Processors[i].Spec.ProcessorID; got != int32(i) {
+			t.Fatalf("processor %d expected ProcessorID=%d, got %d", i, i, got)
+		}
+	}
+}
+
+func TestGetPtagPayloadsInitialAndCartesianProduct(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	t.Run("initial payloads", func(t *testing.T) {
+		got, err := getPtagPayloads(nil, []string{"1", "2"}, 0, types.Int4, 8)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(got) != 2 {
+			t.Fatalf("expected 2 payloads, got %d", len(got))
+		}
+		if len(got[0]) != 8 || len(got[1]) != 8 {
+			t.Fatalf("unexpected payload sizes: %d, %d", len(got[0]), len(got[1]))
+		}
+		if binary.LittleEndian.Uint32(got[0][0:4]) != 1 {
+			t.Fatalf("expected first payload to encode 1, got %v", got[0])
+		}
+		if binary.LittleEndian.Uint32(got[1][0:4]) != 2 {
+			t.Fatalf("expected second payload to encode 2, got %v", got[1])
+		}
+	})
+
+	t.Run("cartesian product", func(t *testing.T) {
+		base, err := getPtagPayloads(nil, []string{"1", "2"}, 0, types.Int4, 8)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		got, err := getPtagPayloads(base, []string{"3", "4"}, 4, types.Int4, 8)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(got) != 4 {
+			t.Fatalf("expected 4 payloads, got %d", len(got))
+		}
+		want := [][2]uint32{
+			{1, 3}, {1, 4}, {2, 3}, {2, 4},
+		}
+		for i := range want {
+			left := binary.LittleEndian.Uint32(got[i][0:4])
+			right := binary.LittleEndian.Uint32(got[i][4:8])
+			if left != want[i][0] || right != want[i][1] {
+				t.Fatalf("payload[%d]: expected (%d,%d), got (%d,%d)",
+					i, want[i][0], want[i][1], left, right)
+			}
+		}
+	})
+
+	t.Run("bad source propagates parse error", func(t *testing.T) {
+		_, err := getPtagPayloads(nil, []string{"not-an-int"}, 0, types.Int4, 8)
+		if err == nil {
+			t.Fatal("expected parse error, got nil")
+		}
+	})
+}
+
+func TestAddHashPointMap(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	t.Run("nil tsSpan keeps original span", func(t *testing.T) {
+		m := map[uint32][]execinfrapb.TsSpan{}
+		addHashPointMap(&m, nil, 7, 100, 200)
+
+		got := m[7]
+		if len(got) != 1 {
+			t.Fatalf("expected 1 span, got %d", len(got))
+		}
+		if got[0].FromTimeStamp != 100 || got[0].ToTimeStamp != 200 {
+			t.Fatalf("unexpected span: %+v", got[0])
+		}
+	})
+
+	t.Run("intersection cases", func(t *testing.T) {
+		m := map[uint32][]execinfrapb.TsSpan{}
+		tsSpans := []execinfrapb.TsSpan{
+			{FromTimeStamp: 110, ToTimeStamp: 120}, // fully inside
+			{FromTimeStamp: 90, ToTimeStamp: 115},  // left intersect
+			{FromTimeStamp: 180, ToTimeStamp: 220}, // right intersect
+			{FromTimeStamp: 80, ToTimeStamp: 250},  // contains whole span
+			{FromTimeStamp: 10, ToTimeStamp: 20},   // no overlap
+		}
+		addHashPointMap(&m, tsSpans, 9, 100, 200)
+
+		got := m[9]
+		if len(got) != 5 {
+			t.Fatalf("expected 4 intersected spans, got %d", len(got))
+		}
+		want := []execinfrapb.TsSpan{
+			{FromTimeStamp: 110, ToTimeStamp: 120},
+			{FromTimeStamp: 100, ToTimeStamp: 115},
+			{FromTimeStamp: 180, ToTimeStamp: 200},
+			{FromTimeStamp: 100, ToTimeStamp: 200},
+		}
+		for i := range want {
+			if got[i] != want[i] {
+				t.Fatalf("span[%d]: expected %+v, got %+v", i, want[i], got[i])
+			}
+		}
+	})
+}
+
+func TestNeedsTSTwiceAggregationEasyBranches(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	t.Run("no group cols needs twice agg", func(t *testing.T) {
+		n := &groupNode{}
+		need, err := needsTSTwiceAggregation(n, &PlanningCtx{})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !need {
+			t.Fatal("expected need=true when no group cols")
+		}
+	})
+
+	t.Run("time bucket opt does not need twice agg", func(t *testing.T) {
+		n := &groupNode{}
+		n.optType = 1
+		need, err := needsTSTwiceAggregation(n, &PlanningCtx{})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if need {
+			t.Fatal("expected need=false when TimeBucketOpt is enabled")
+		}
+	})
+}
+
+func TestCreateTSDelete(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	dsp := &DistSQLPlanner{}
+	n := &tsDeleteNode{
+		nodeIDs:         []roachpb.NodeID{1, 2},
+		delTyp:          uint8(execinfrapb.OperatorType_TsDeleteData),
+		tableID:         100,
+		hashNum:         16,
+		primaryTagID:    []uint32{1},
+		primaryTagValue: [][]byte{[]byte("ptag")},
+		partOfPTagValue: [][]byte{[]byte("part")},
+	}
+
+	p, err := dsp.createTSDelete(nil, n)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(p.ResultRouters) != 2 || len(p.Processors) != 2 {
+		t.Fatalf("unexpected plan shape: routers=%d processors=%d", len(p.ResultRouters), len(p.Processors))
+	}
+	if p.GateNoopInput != 2 {
+		t.Fatalf("expected GateNoopInput=2, got %d", p.GateNoopInput)
+	}
+	if p.TsOperator != execinfrapb.OperatorType(n.delTyp) {
+		t.Fatalf("unexpected TsOperator: %v", p.TsOperator)
+	}
+	for _, idx := range p.ResultRouters {
+		if p.Processors[idx].Spec.Core.TsDelete == nil {
+			t.Fatal("expected TsDelete core on result router")
+		}
+	}
+}
+
+func TestCreateTSTagUpdate(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	dsp := &DistSQLPlanner{}
+	n := &tsTagUpdateNode{
+		nodeIDs:       []roachpb.NodeID{1, 3},
+		tableID:       101,
+		groupID:       7,
+		primaryTagKey: [][]byte{[]byte("pk")},
+		TagValue:      [][]byte{[]byte("tv")},
+		startKey:      []byte("a"),
+		endKey:        []byte("z"),
+		osnID:         99,
+	}
+
+	p, err := dsp.createTSTagUpdate(nil, n)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(p.Processors) != 2 {
+		t.Fatalf("expected 2 processors, got %d", len(p.Processors))
+	}
+	if p.TsOperator != execinfrapb.OperatorType_TsUpdateTag {
+		t.Fatalf("unexpected TsOperator: %v", p.TsOperator)
+	}
+	for _, idx := range p.ResultRouters {
+		if p.Processors[idx].Spec.Core.TsTagUpdate == nil {
+			t.Fatal("expected TsTagUpdate core on result router")
+		}
+	}
+}
+
+func TestOperateTSDataUnsupportedType(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	dsp := &DistSQLPlanner{}
+	n := &operateDataNode{
+		nodeID:      []roachpb.NodeID{1},
+		operateType: -1,
+	}
+	_, err := dsp.operateTSData(nil, n)
+	if err == nil {
+		t.Fatal("expected error for unsupported operate type")
+	}
+}
+
+func TestOperateTSDataVacuum(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	dsp := &DistSQLPlanner{}
+	n := &operateDataNode{
+		nodeID:      []roachpb.NodeID{1, 2},
+		operateType: vacuum,
+		desc:        []sqlbase.TableDescriptor{},
+	}
+
+	p, err := dsp.operateTSData(nil, n)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if p.TsOperator != execinfrapb.OperatorType_TsVacuum {
+		t.Fatalf("unexpected TsOperator: %v", p.TsOperator)
+	}
+	if len(p.Processors) != 2 {
+		t.Fatalf("expected 2 processors, got %d", len(p.Processors))
+	}
+	if p.GateNoopInput != 2 {
+		t.Fatalf("expected GateNoopInput=2, got %d", p.GateNoopInput)
+	}
+}
+
+func TestOperateTSDataVacuumBuildsDropInfo(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	dsp := &DistSQLPlanner{}
+	desc := sqlbase.TableDescriptor{
+		ID: 123,
+		// 下面这些字段按你分支里的实际类型补最小必需值
+	}
+	n := &operateDataNode{
+		nodeID:      []roachpb.NodeID{1},
+		operateType: vacuum,
+		desc:        []sqlbase.TableDescriptor{desc},
+	}
+
+	p, err := dsp.operateTSData(nil, n)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	spec := p.Processors[p.ResultRouters[0]].Spec.Core.TsPro
+	if spec == nil {
+		t.Fatal("expected TsPro core")
+	}
+}
+
+type tsInsertPayloadSeed struct {
+	Payload       []byte
+	RowNum        uint32
+	PrimaryTagKey []byte
+	RowBytes      []byte
+	StartKey      []byte
+	EndKey        []byte
+	ValueSize     uint32
+	HashNum       uint32
+}
+
+func setUnexportedField(t *testing.T, target interface{}, field string, value interface{}) {
+	t.Helper()
+	v := reflect.ValueOf(target).Elem().FieldByName(field)
+	if !v.IsValid() {
+		t.Fatalf("field %q not found", field)
+	}
+	reflect.NewAt(v.Type(), unsafe.Pointer(v.UnsafeAddr())).Elem().Set(reflect.ValueOf(value))
+}
+
+func setNumericFields(t *testing.T, v reflect.Value, field string, n uint64) {
+	t.Helper()
+	f := v.FieldByName(field)
+	if !f.IsValid() {
+		t.Fatalf("field %q not found", field)
+	}
+	switch f.Kind() {
+	case reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uint:
+		f.SetUint(n)
+	case reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64, reflect.Int:
+		f.SetInt(int64(n))
+	default:
+		t.Fatalf("field %q has unsupported numeric kind %s", field, f.Kind())
+	}
+}
+
+func makeTsInsertNodeForTest(
+	t *testing.T, nodeIDs []roachpb.NodeID, groups [][]tsInsertPayloadSeed,
+) *tsInsertNode {
+	t.Helper()
+
+	n := &tsInsertNode{}
+	setUnexportedField(t, n, "nodeIDs", nodeIDs)
+
+	field := reflect.ValueOf(n).Elem().FieldByName("allNodePayloadInfos")
+	if !field.IsValid() {
+		t.Fatal("field allNodePayloadInfos not found")
+	}
+	fieldPtr := reflect.NewAt(field.Type(), unsafe.Pointer(field.UnsafeAddr())).Elem()
+
+	groupSliceType := field.Type() // [][]payloadInfo or [][]*payloadInfo
+	innerSliceType := groupSliceType.Elem()
+	elemType := innerSliceType.Elem()
+
+	groupVals := reflect.MakeSlice(groupSliceType, len(groups), len(groups))
+	for i, g := range groups {
+		inner := reflect.MakeSlice(innerSliceType, len(g), len(g))
+		for j, seed := range g {
+			var target reflect.Value // 真正用于 FieldByName 的结构体值
+			var store reflect.Value  // 最终写回 slice 的值
+
+			if elemType.Kind() == reflect.Ptr {
+				// slice 元素类型是 *T
+				store = reflect.New(elemType.Elem()) // *T
+				target = store.Elem()                // T
+			} else {
+				// slice 元素类型是 T
+				store = reflect.New(elemType).Elem() // T
+				target = store
+			}
+
+			f := target.FieldByName("Payload")
+			if !f.IsValid() {
+				t.Fatal("field Payload not found")
+			}
+			f.Set(reflect.ValueOf(seed.Payload))
+
+			setNumericFields(t, target, "RowNum", uint64(seed.RowNum))
+
+			f = target.FieldByName("PrimaryTagKey")
+			if !f.IsValid() {
+				t.Fatal("field PrimaryTagKey not found")
+			}
+			f.Set(reflect.ValueOf(seed.PrimaryTagKey))
+
+			if f := target.FieldByName("RowBytes"); f.IsValid() {
+				f.Set(reflect.ValueOf(seed.RowBytes))
+			}
+			if f := target.FieldByName("StartKey"); f.IsValid() {
+				f.Set(reflect.ValueOf(seed.StartKey))
+			}
+			if f := target.FieldByName("EndKey"); f.IsValid() {
+				f.Set(reflect.ValueOf(seed.EndKey))
+			}
+			if f := target.FieldByName("ValueSize"); f.IsValid() {
+				switch f.Kind() {
+				case reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uint:
+					f.SetUint(uint64(seed.ValueSize))
+				case reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64, reflect.Int:
+					f.SetInt(int64(seed.ValueSize))
+				default:
+					t.Fatalf("field ValueSize has unsupported kind %s", f.Kind())
+				}
+			}
+			if f := target.FieldByName("HashNum"); f.IsValid() {
+				switch f.Kind() {
+				case reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uint:
+					f.SetUint(uint64(seed.HashNum))
+				case reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64, reflect.Int:
+					f.SetInt(int64(seed.HashNum))
+				default:
+					t.Fatalf("field HashNum has unsupported kind %s", f.Kind())
+				}
+			}
+
+			inner.Index(j).Set(store)
+		}
+		groupVals.Index(i).Set(inner)
+	}
+	fieldPtr.Set(groupVals)
+	return n
+}
+
+func TestCreatePlanForOnePrimaryTagEmptyInput(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	dsp := &DistSQLPlanner{}
+	n := &tsScanNode{}
+	pTagID := []uint32{1}
+	pTagValue := [][]string{{}}
+
+	p, err := dsp.createPlanForOnePrimaryTag(nil, n, pTagID, &pTagValue)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(p.Processors) != 0 || len(p.PlanToStreamColMap) != 0 {
+		t.Fatalf("expected empty physical plan, got %+v", p)
+	}
+}
+
+func TestCreatePlanForUnionFastPathKeepsLeftPlan(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	dsp := &DistSQLPlanner{}
+	n := &tsScanNode{}
+	leftPlan := PhysicalPlan{
+		PhysicalPlan: physicalplan.PhysicalPlan{
+			ResultTypes:   []types.T{*types.Int},
+			ResultRouters: []physicalplan.ProcessorIdx{0},
+			Processors: []physicalplan.Processor{
+				{Node: 1},
+			},
+		},
+		PlanToStreamColMap: []int{0},
+	}
+	pTagID := []uint32{1}
+	pTagValue := [][]string{{}} // makes rightPlan empty
+
+	got, err := dsp.createPlanForUnion(nil, leftPlan, n, pTagID, &pTagValue)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !reflect.DeepEqual(got.PlanToStreamColMap, leftPlan.PlanToStreamColMap) {
+		t.Fatalf("expected left PlanToStreamColMap %v, got %v", leftPlan.PlanToStreamColMap, got.PlanToStreamColMap)
+	}
+	if len(got.Processors) != len(leftPlan.Processors) {
+		t.Fatalf("expected left plan to be returned unchanged")
+	}
+}
+
+func TestCreateTsInsertNodeForSingleModePanicsOnMultipleNodes(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	n := makeTsInsertNodeForTest(t,
+		[]roachpb.NodeID{1, 2},
+		[][]tsInsertPayloadSeed{{}, {}},
+	)
+
+	defer func() {
+		if r := recover(); r == nil {
+			t.Fatal("expected panic when single-mode nodeIDs > 1")
+		}
+	}()
+
+	_, _ = createTsInsertNodeForSingleMode(n)
 }

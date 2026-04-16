@@ -265,6 +265,29 @@ func presplitTableBoundaries(
 	return nil
 }
 
+func initImportProgressState(
+	prog *jobspb.ImportProgress, tableID sqlbase.ID, fileCount int, tableNums int,
+) {
+	prog.ReadProgress = make([]float32, fileCount)
+	if prog.TableResumePos == nil {
+		prog.TableResumePos = make(map[int32]jobspb.ImportResumePos, tableNums)
+	}
+	if _, ok := prog.TableResumePos[int32(tableID)]; !ok {
+		prog.TableResumePos[int32(tableID)] = jobspb.ImportResumePos{
+			ResumePos: make([]int64, fileCount),
+		}
+	}
+}
+
+func accumulateBulkSummaryRow(row tree.Datums, res *roachpb.BulkOpSummary) error {
+	var counts roachpb.BulkOpSummary
+	if err := protoutil.Unmarshal([]byte(*row[0].(*tree.DBytes)), &counts); err != nil {
+		return err
+	}
+	res.Add(counts)
+	return nil
+}
+
 // DistIngest is used by IMPORT to run a DistSQL flow to ingest data by starting
 // reader processes on many nodes that each read and ingest their assigned files
 // and then send back a summary of what they ingested. The combined summary is
@@ -315,16 +338,8 @@ func DistIngest(
 
 	if err := job.FractionProgressed(ctx,
 		func(ctx context.Context, details jobspb.ProgressDetails) float32 {
-			// make results for every table
 			prog := details.(*jobspb.Progress_Import).Import
-			prog.ReadProgress = make([]float32, len(from))
-			if prog.TableResumePos == nil {
-				prog.TableResumePos = make(map[int32]jobspb.ImportResumePos, tableNums)
-			}
-			// make table results for every file
-			if _, ok := prog.TableResumePos[int32(tableID)]; !ok {
-				prog.TableResumePos[int32(tableID)] = jobspb.ImportResumePos{ResumePos: make([]int64, len(from))}
-			}
+			initImportProgressState(prog, tableID, len(from), tableNums)
 			return 0.0
 		},
 	); err != nil {
@@ -368,15 +383,9 @@ func DistIngest(
 	}
 
 	var res roachpb.BulkOpSummary
-	// write file result to console or job table
 	rowResultWriter := newCallbackResultWriter(func(ctx context.Context, row tree.Datums) error {
-		var counts roachpb.BulkOpSummary
 		// unmarshal results by every spec processors; total = node counts
-		if err := protoutil.Unmarshal([]byte(*row[0].(*tree.DBytes)), &counts); err != nil {
-			return err
-		}
-		res.Add(counts)
-		return nil
+		return accumulateBulkSummaryRow(row, &res)
 	})
 
 	if table.TableType == tree.RelationalTable {
