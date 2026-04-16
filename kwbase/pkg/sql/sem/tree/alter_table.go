@@ -227,10 +227,13 @@ func (node *AlterTableAddConstraint) Format(ctx *FmtCtx) {
 
 // AlterTableAlterColumnType represents an ALTER TABLE ALTER COLUMN TYPE command.
 type AlterTableAlterColumnType struct {
-	Collation string
-	Column    Name
-	ToType    *types.T
-	Using     Expr
+	Collation     string
+	Column        Name
+	ToType        *types.T
+	Using         Expr
+	EncodeAlgo    *string
+	CompressAlgo  *string
+	CompressLevel *string
 }
 
 // TelemetryCounter implements the AlterTableCmd interface.
@@ -242,15 +245,30 @@ func (node *AlterTableAlterColumnType) TelemetryCounter() telemetry.Counter {
 func (node *AlterTableAlterColumnType) Format(ctx *FmtCtx) {
 	ctx.WriteString(" ALTER COLUMN ")
 	ctx.FormatNode(&node.Column)
-	ctx.WriteString(" SET DATA TYPE ")
-	ctx.WriteString(node.ToType.SQLString())
-	if len(node.Collation) > 0 {
-		ctx.WriteString(" COLLATE ")
-		ctx.WriteString(node.Collation)
+	ctx.WriteString(" SET DATA")
+	if node.ToType != nil {
+		ctx.WriteString(" TYPE ")
+		ctx.WriteString(node.ToType.SQLString())
+		if len(node.Collation) > 0 {
+			ctx.WriteString(" COLLATE ")
+			ctx.WriteString(node.Collation)
+		}
+		if node.Using != nil {
+			ctx.WriteString(" USING ")
+			ctx.FormatNode(node.Using)
+		}
 	}
-	if node.Using != nil {
-		ctx.WriteString(" USING ")
-		ctx.FormatNode(node.Using)
+	if node.EncodeAlgo != nil {
+		ctx.WriteString(" ENCODE ")
+		ctx.WriteString(*node.EncodeAlgo)
+	}
+	if node.CompressAlgo != nil {
+		ctx.WriteString(" COMPRESS ")
+		ctx.WriteString(*node.CompressAlgo)
+	}
+	if node.CompressLevel != nil {
+		ctx.WriteString(" LEVEL ")
+		ctx.WriteString(*node.CompressLevel)
 	}
 }
 

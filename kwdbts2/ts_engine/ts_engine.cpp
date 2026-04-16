@@ -46,7 +46,9 @@ size_t EngineOptions::min_rows_per_block = 512;
 int64_t EngineOptions::default_partition_interval = 3600 * 24 * 10;
 // default block cache max size is set to 1G
 int64_t EngineOptions::block_cache_max_size = 1024 * 1024 * 1024;
-uint8_t EngineOptions::compress_stage = 2;
+uint8_t EngineOptions::compress_stage = 3;
+CompressLevel EngineOptions::compress_level = CompressLevel::MEDIUM;
+CompressAlgo EngineOptions::compression_algorithm = CompressAlgo::kLz4;
 bool EngineOptions::compress_last_segment = true;
 #ifdef KWBASE_OSS
 bool EngineOptions::force_sync_file = false;
@@ -67,10 +69,10 @@ namespace kwdbts {
 unsigned seed = std::chrono::system_clock::now().time_since_epoch().count();
 std::mt19937 gen(seed);
 const char schema_directory[] = "schema";
-constexpr char vroup_cfg_file[] = "ts-vgroup.cfg";
+constexpr char vgroup_cfg_file[] = "ts-vgroup.cfg";
 
 KStatus loadVGroupCfg(const fs::path& ts_store_path, std::map<int, std::string>& vgroup_cfg) {
-  fs::path vgroup_cfg_path = ts_store_path / std::string(vroup_cfg_file);
+  fs::path vgroup_cfg_path = ts_store_path / std::string(vgroup_cfg_file);
   std::ifstream ifs(vgroup_cfg_path);
   if (!ifs.is_open()) {
     return SUCCESS;
@@ -940,9 +942,9 @@ KStatus TSEngineImpl::DropColumn(kwdbContext_p ctx, const KTableKey &table_id, c
   return KStatus::SUCCESS;
 }
 
-KStatus TSEngineImpl::AlterColumnType(kwdbContext_p ctx, const KTableKey &table_id, char *transaction_id,
-                                        bool& is_dropped, TSSlice new_column, TSSlice origin_column,
-                                        uint32_t cur_version, uint32_t new_version, string &err_msg) {
+KStatus TSEngineImpl::AlterColumn(kwdbContext_p ctx, const KTableKey &table_id, char *transaction_id,
+                                  bool& is_dropped, TSSlice new_column, TSSlice origin_column,
+                                  uint32_t cur_version, uint32_t new_version, AlterType alter_type, string &err_msg) {
   roachpb::KWDBKTSColumn new_col_meta;
   if (!new_col_meta.ParseFromArray(new_column.data, new_column.len)) {
     LOG_ERROR("ParseFromArray Internal Error");
@@ -958,14 +960,14 @@ KStatus TSEngineImpl::AlterColumnType(kwdbContext_p ctx, const KTableKey &table_
   // Get transaction ID.
   uint64_t x_id = tsx_manager_sys_->getMtrID(transaction_id);
 
-  // Write Alter DDL into WAL, which type is ALTER_COLUMN_TYPE.
-  s = wal_sys_->WriteDDLAlterWAL(ctx, x_id, table_id, AlterType::ALTER_COLUMN_TYPE, cur_version, new_version, origin_column);
+  // Write Alter DDL into WAL
+  s = wal_sys_->WriteDDLAlterWAL(ctx, x_id, table_id, alter_type, cur_version, new_version, origin_column);
   if (s != KStatus::SUCCESS) {
     err_msg = "Write WAL error";
     LOG_ERROR("%s", err_msg.c_str());
     return s;
   }
-  s = ts_table->AlterTable(ctx, AlterType::ALTER_COLUMN_TYPE, &new_col_meta, cur_version, new_version, err_msg);
+  s = ts_table->AlterTable(ctx, alter_type, &new_col_meta, cur_version, new_version, err_msg);
   if (s != KStatus::SUCCESS) {
     LOG_ERROR("Alter column type failed, table id: %lu, cur_version: %d, new_version: %d, error message: %s.",
     table_id, cur_version, new_version, err_msg.c_str());

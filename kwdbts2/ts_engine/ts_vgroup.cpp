@@ -2229,8 +2229,8 @@ KStatus TsVGroup::VacuumPartition(kwdbContext_p ctx, shared_ptr<const TsPartitio
   std::vector<TsEntityCountStats> invalid_counts;
   for (uint32_t entity_id = 1; entity_id <= max_entity_id; entity_id++) {
     TsEntityItem entity_item;
-    bool is_exist = false;
-    s = entity_segment->GetEntityItem(entity_id, entity_item, is_exist);
+    bool has_entity_item = false;
+    s = entity_segment->GetEntityItem(entity_id, entity_item, has_entity_item);
     if (s != SUCCESS) {
       LOG_ERROR("Vacuum failed, GetEntityItem [%u] failed", entity_id);
       cancel_vacuumer = true;
@@ -2238,15 +2238,20 @@ KStatus TsVGroup::VacuumPartition(kwdbContext_p ctx, shared_ptr<const TsPartitio
     }
     std::shared_ptr<TsTableSchemaManager> tb_schema_mgr{nullptr};
     bool is_dropped = false;
-    if (is_exist) {
-      s = schema_mgr_->GetTableSchemaMgr(entity_item.table_id, tb_schema_mgr, &is_dropped);
-      if (s != SUCCESS && !is_dropped) {
-        LOG_ERROR("Vacuum failed, GetTableSchemaMgr [%lu] failed", entity_item.table_id);
-        cancel_vacuumer = true;
-        return s;
+    if (has_entity_item) {
+      if (force) {
+        is_dropped = !checkTableMetaExist(entity_item.table_id);
+      }
+      if (!is_dropped) {
+        s = schema_mgr_->GetTableSchemaMgr(entity_item.table_id, tb_schema_mgr, &is_dropped);
+        if (s != SUCCESS && !is_dropped) {
+          LOG_ERROR("Vacuum failed, GetTableSchemaMgr [%lu] failed", entity_item.table_id);
+          cancel_vacuumer = true;
+          return s;
+        }
       }
     }
-    if (!is_exist || 0 == entity_item.cur_block_id || is_dropped) {
+    if (!has_entity_item || 0 == entity_item.cur_block_id || is_dropped) {
       TsEntityItem empty_entity_item{entity_id};
       empty_entity_item.table_id = entity_item.table_id;
       s = vacuumer->AppendEntityItem(empty_entity_item);

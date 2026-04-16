@@ -430,7 +430,14 @@ type ColumnTableDef struct {
 		Create      bool
 		IfNotExists bool
 	}
-	Comment string
+	Comment      string
+	ColumnEncode struct {
+		EncodeAlgo *string
+	}
+	ColumnCompress struct {
+		CompressAlgo  *string
+		CompressLevel *string
+	}
 }
 
 // ColumnTableDefCheckExpr represents a check constraint on a column definition
@@ -546,6 +553,19 @@ func NewColumnTableDef(
 					"multiple comments specified for column %q", name)
 			}
 			d.Comment = string(t)
+		case *ColumnEncode:
+			if d.ColumnEncode.EncodeAlgo != nil {
+				return nil, pgerror.Newf(pgcode.Syntax,
+					"multiple encode type specified for column %q", name)
+			}
+			d.ColumnEncode.EncodeAlgo = &t.EncodeAlgo
+		case *ColumnCompress:
+			if d.ColumnCompress.CompressAlgo != nil {
+				return nil, pgerror.Newf(pgcode.Syntax,
+					"multiple compress type specified for column %q", name)
+			}
+			d.ColumnCompress.CompressAlgo = &t.CompressAlgo
+			d.ColumnCompress.CompressLevel = t.CompressLevel
 		default:
 			return nil, errors.AssertionFailedf("unexpected column qualification: %T", c)
 		}
@@ -671,6 +691,18 @@ func (node *ColumnTableDef) Format(ctx *FmtCtx) {
 		ctx.WriteString(" COMMENT = ")
 		ctx.WriteString(node.Comment)
 	}
+	if node.ColumnEncode.EncodeAlgo != nil {
+		ctx.WriteString(" ENCODE ")
+		ctx.WriteString(*node.ColumnEncode.EncodeAlgo)
+	}
+	if node.ColumnCompress.CompressAlgo != nil {
+		ctx.WriteString(" COMPRESS ")
+		ctx.WriteString(*node.ColumnCompress.CompressAlgo)
+		if node.ColumnCompress.CompressLevel != nil {
+			ctx.WriteString(" LEVEL ")
+			ctx.WriteString(*node.ColumnCompress.CompressLevel)
+		}
+	}
 }
 
 func (node *ColumnTableDef) columnTypeString() string {
@@ -713,6 +745,8 @@ func (*ColumnComputedDef) columnQualification()          {}
 func (*ColumnFKConstraint) columnQualification()         {}
 func (*ColumnFamilyConstraint) columnQualification()     {}
 func (ColumnComment) columnQualification()               {}
+func (*ColumnEncode) columnQualification()               {}
+func (*ColumnCompress) columnQualification()             {}
 
 // ColumnCollation represents a COLLATE clause for a column.
 type ColumnCollation string
@@ -724,6 +758,17 @@ type ColumnDefault struct {
 
 // ColumnComment represents a Comment clause for a column.
 type ColumnComment string
+
+// ColumnEncode represents encode type on a column
+type ColumnEncode struct {
+	EncodeAlgo string
+}
+
+// ColumnCompress represents compress type on a column
+type ColumnCompress struct {
+	CompressAlgo  string
+	CompressLevel *string
+}
 
 // NotNullConstraint represents NOT NULL on a column.
 type NotNullConstraint struct{}

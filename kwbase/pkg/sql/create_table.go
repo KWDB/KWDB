@@ -1671,7 +1671,7 @@ func buildTSTableDesc(
 		}
 		n.Tags[i].TagType = tagType
 		// Building columnDesc for tags
-		tagColumn, _, err := sqlbase.MakeTSColumnDefDescs(string(n.Tags[i].TagName), n.Tags[i].TagType, n.Tags[i].Nullable, false, columnType, nil, semaCtx)
+		tagColumn, _, err := sqlbase.MakeTSColumnDefDescs(string(n.Tags[i].TagName), n.Tags[i].TagType, n.Tags[i].Nullable, false, columnType, nil, semaCtx, sqlbase.CompressInfo{})
 		if err != nil {
 			return err
 		}
@@ -1722,6 +1722,14 @@ func checkColumnDef(
 	sessionData *sessiondata.SessionData,
 	columnDefaultExprs *[]tree.TypedExpr,
 ) error {
+	if !desc.IsTSTable() {
+		if d.ColumnEncode.EncodeAlgo != nil {
+			return pgerror.Newf(pgcode.FeatureNotSupported, "ENCODE only supported on ts table")
+		}
+		if d.ColumnCompress.CompressAlgo != nil {
+			return pgerror.Newf(pgcode.FeatureNotSupported, "COMPRESS only supported on ts table")
+		}
+	}
 	version := st.Version.ActiveVersionOrEmpty(ctx)
 	if !desc.IsVirtualTable() {
 		switch d.Type.Oid() {
@@ -1814,7 +1822,12 @@ func checkAndMakeTSColDesc(
 		return nil, err
 	}
 	nullable := d.Nullable.Nullability != tree.NotNull
-	*col, expr, err = sqlbase.MakeTSColumnDefDescs(string(d.Name), d.Type, nullable, desc.TsTable.Sde, sqlbase.ColumnType_TYPE_DATA, d.DefaultExpr.Expr, semaCtx)
+	compressInfo := sqlbase.CompressInfo{
+		EncodeAlgo:    d.ColumnEncode.EncodeAlgo,
+		CompressAlgo:  d.ColumnCompress.CompressAlgo,
+		CompressLevel: d.ColumnCompress.CompressLevel,
+	}
+	*col, expr, err = sqlbase.MakeTSColumnDefDescs(string(d.Name), d.Type, nullable, desc.TsTable.Sde, sqlbase.ColumnType_TYPE_DATA, d.DefaultExpr.Expr, semaCtx, compressInfo)
 	if err != nil {
 		return nil, err
 	}

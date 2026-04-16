@@ -832,9 +832,11 @@ func (r *TsEngine) AlterTSColumnType(
 	transactionID []byte,
 	colMeta []byte,
 	originColMeta []byte,
+	isAlterType bool,
+	isAlterCompress bool,
 ) error {
 	r.checkOrWaitForOpen()
-	status := C.TSAlterColumnType(
+	status := C.TSAlterColumn(
 		r.tdb,
 		C.TSTableID(tableID),
 		(*C.char)(unsafe.Pointer(&transactionID[0])),
@@ -842,6 +844,8 @@ func (r *TsEngine) AlterTSColumnType(
 		goToTSSlice(originColMeta),
 		C.uint32_t(currentTSVersion),
 		C.uint32_t(newTSVersion),
+		C.bool(isAlterType),
+		C.bool(isAlterCompress),
 	)
 	if err := statusToError(status); err != nil {
 		return err

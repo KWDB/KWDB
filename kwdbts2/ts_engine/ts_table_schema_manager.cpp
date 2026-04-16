@@ -109,8 +109,27 @@ KStatus TsTableSchemaManager::alterTableCol(kwdbContext_p ctx, AlterType alter_t
       col_info.max_len = attr_info.max_len;
       break;
     }
-    default:
+  case ALTER_COLUMN_COMPRESS_INFO: {
+    if (col_idx < 0) {
+      LOG_ERROR("alter column compress failed: table id %lu, column (id %u) does not exists", table_id_, attr_info.id);
+      msg = "column does not exist";
       return FAIL;
+    }
+    if (latest_version == new_version) {
+      return SUCCESS;
+    }
+    auto& col_info = schema[col_idx];
+    col_info.type = attr_info.type;
+    col_info.size = attr_info.size;
+    col_info.length = attr_info.length;
+    col_info.max_len = attr_info.max_len;
+    col_info.encode_algo = attr_info.encode_algo;
+    col_info.compress_algo = attr_info.compress_algo;
+    col_info.compress_level = attr_info.compress_level;
+    break;
+  }
+  default:
+    return FAIL;
   }
   s = addMetricForAlter(schema, cur_version, new_version, err_info);
   if (s != SUCCESS) {
@@ -136,7 +155,7 @@ KStatus TsTableSchemaManager::AlterTable(kwdbContext_p ctx, AlterType alter_type
   }
   LOG_INFO("AlterTable begin. table_id: %lu alter_type: %hhu cur_version: %u new_version: %u is_general_tag: %d",
            table_id_, alter_type, cur_version, new_version, attr_info.isAttrType(COL_GENERAL_TAG));
-  if (alter_type == AlterType::ALTER_COLUMN_TYPE) {
+  if (alter_type == AlterType::ALTER_COLUMN_TYPE || alter_type == AlterType::ALTER_COLUMN_COMPRESS_INFO) {
     getDataTypeSize(attr_info);  // update max_len
   }
   if (attr_info.isAttrType(COL_GENERAL_TAG)) {
@@ -654,7 +673,15 @@ KStatus TsTableSchemaManager::parseAttrInfo(const roachpb::KWDBKTSColumn& col, A
   }
   attr_info.col_flag = static_cast<ColumnFlag>(col.col_type());
   attr_info.version = 1;
-
+  if (col.has_encode_algo()) {
+    attr_info.encode_algo = col.encode_algo();
+  }
+  if (col.has_compress_algo()) {
+    attr_info.compress_algo = col.compress_algo();
+  }
+  if (col.has_compress_level()) {
+    attr_info.compress_level = col.compress_level();
+  }
   return SUCCESS;
 }
 

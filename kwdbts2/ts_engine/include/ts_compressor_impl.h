@@ -11,10 +11,15 @@
 
 #pragma once
 
+#include <lz4.h>
+#include <zstd.h>
+#include <zlib.h>
 #include <cstddef>
+#include <cstring>
 #include <cstdint>
 #include <string>
 #include <type_traits>
+#include <vector>
 #include "ts_bufferbuilder.h"
 #include "ts_sliceguard.h"
 
@@ -40,7 +45,7 @@ class TsCompressorBase {
 class GenCompressorBase {
  public:
   virtual ~GenCompressorBase() = default;
-  virtual bool Compress(TSSlice raw, TsBufferBuilder *out) const = 0;
+  virtual bool Compress(TSSlice raw, TsBufferBuilder *out, int level) const = 0;
   virtual bool Decompress(TSSlice raw, TsSliceGuard *out) const = 0;
 };
 
@@ -52,7 +57,7 @@ class CompressorImpl {
   virtual ~CompressorImpl() = default;
   CompressorImpl(const CompressorImpl &) = delete;
   void operator=(const CompressorImpl &) = delete;
-  virtual bool Compress(TSSlice data, uint64_t count, TsBufferBuilder *out) const = 0;
+  virtual bool Compress(TSSlice data, uint64_t count, TsBufferBuilder *out, int level = 1) const = 0;
   virtual bool Decompress(TSSlice data, uint64_t count, TsSliceGuard *out) const = 0;
   virtual size_t GetUncompressedSize(TSSlice data, uint64_t count) const = 0;
 };
@@ -67,7 +72,7 @@ class GorillaInt : public CompressorImpl {
     return inst;
   }
   static constexpr int stride = 8;
-  bool Compress(TSSlice data, uint64_t count, TsBufferBuilder *out) const override;
+  bool Compress(TSSlice data, uint64_t count, TsBufferBuilder *out, int level) const override;
   bool Decompress(TSSlice data, uint64_t count, TsSliceGuard *out) const override;
   size_t GetUncompressedSize(TSSlice data, uint64_t count) const override { return stride * count; }
 };
@@ -83,7 +88,7 @@ class GorillaIntV2 : public CompressorImpl {
     return inst;
   }
   static constexpr int stride = sizeof(T);
-  bool Compress(TSSlice data, uint64_t count, TsBufferBuilder *out) const override;
+  bool Compress(TSSlice data, uint64_t count, TsBufferBuilder *out, int level) const override;
   bool Decompress(TSSlice data, uint64_t count, TsSliceGuard *out) const override;
   size_t GetUncompressedSize(TSSlice data, uint64_t count) const override { return stride * count; }
 };
@@ -99,7 +104,7 @@ class Simple8BInt : public CompressorImpl {
     return inst;
   }
   static constexpr int stride = sizeof(T);
-  bool Compress(TSSlice data, uint64_t count, TsBufferBuilder *out) const override;
+  bool Compress(TSSlice data, uint64_t count, TsBufferBuilder *out, int level) const override;
   bool Decompress(TSSlice data, uint64_t count, TsSliceGuard *out) const override;
   size_t GetUncompressedSize(TSSlice data, uint64_t count) const override { return stride * count; }
 };
@@ -115,7 +120,7 @@ class Simple8BIntV2 : public CompressorImpl {
     return inst;
   }
   static constexpr int stride = sizeof(T);
-  bool Compress(TSSlice data, uint64_t count, TsBufferBuilder *out) const override;
+  bool Compress(TSSlice data, uint64_t count, TsBufferBuilder *out, int level) const override;
   bool Decompress(TSSlice data, uint64_t count, TsSliceGuard *out) const override;
   size_t GetUncompressedSize(TSSlice data, uint64_t count) const override { return stride * count; }
 };
@@ -130,7 +135,7 @@ class BitPacking : public CompressorImpl {
     return inst;
   }
   static constexpr int stride = 1;
-  bool Compress(TSSlice data, uint64_t count, TsBufferBuilder *out) const override;
+  bool Compress(TSSlice data, uint64_t count, TsBufferBuilder *out, int level) const override;
   bool Decompress(TSSlice data, uint64_t count, TsSliceGuard *out) const override;
   size_t GetUncompressedSize(TSSlice data, uint64_t count) const override { return stride * count; }
 };
@@ -150,7 +155,7 @@ class Chimp : public CompressorImpl {
     return inst;
   }
   static constexpr int stride = sizeof(T);
-  bool Compress(TSSlice data, uint64_t count, TsBufferBuilder *out) const override;
+  bool Compress(TSSlice data, uint64_t count, TsBufferBuilder *out, int level) const override;
   bool Decompress(TSSlice data, uint64_t count, TsSliceGuard *out) const override;
   size_t GetUncompressedSize(TSSlice data, uint64_t count) const override { return stride * count; }
 };
@@ -172,33 +177,57 @@ class SnappyString : public CompressorImpl {
     static SnappyString inst;
     return inst;
   }
-  bool Compress(TSSlice data, uint64_t count, TsBufferBuilder *out) const override {
-    out->clear();
-    snappy::ByteArraySource src(data.data, data.len);
-    BufferSink sink(out);
-    snappy::Compress(&src, &sink);
-    return true;
-  }
-  bool Decompress(TSSlice data, uint64_t count, TsSliceGuard *out) const override {
-    TsBufferBuilder builder;
-    BufferSink sink(&builder);
+  bool Compress(TSSlice data, uint64_t count, TsBufferBuilder *out, int level) const override;
+  bool Decompress(TSSlice data, uint64_t count, TsSliceGuard *out) const override;
+  size_t GetUncompressedSize(TSSlice data, uint64_t count) const override;
+};
 
-    snappy::ByteArraySource src(data.data, data.len);
-    bool ok = snappy::Uncompress(&src, &sink);
-    if (!ok) {
-      return false;
-    }
-    *out = builder.GetBuffer();
-    return true;
+class LZ4String : public CompressorImpl {
+ private:
+  LZ4String() = default;
+
+ public:
+  static constexpr int stride = -1;
+  static LZ4String &GetInstance() {
+    static LZ4String inst;
+    return inst;
   }
-  size_t GetUncompressedSize(TSSlice data, uint64_t count) const override {
-    size_t result;
-    bool ok = snappy::GetUncompressedLength(data.data, data.len, &result);
-    if (ok) {
-      return result;
-    }
-    return -1;
+
+  bool Compress(TSSlice data, uint64_t count, TsBufferBuilder *out, int level) const override;
+  bool Decompress(TSSlice data, uint64_t count, TsSliceGuard *out) const override;
+  size_t GetUncompressedSize(TSSlice data, uint64_t count) const override;
+};
+
+class ZSTDString : public CompressorImpl {
+ private:
+  ZSTDString() = default;
+
+ public:
+  static constexpr int stride = -1;
+  static ZSTDString &GetInstance() {
+    static ZSTDString inst;
+    return inst;
   }
+
+    bool Compress(TSSlice data, uint64_t count, TsBufferBuilder *out, int level) const override;
+    bool Decompress(TSSlice data, uint64_t count, TsSliceGuard *out) const override;
+    size_t GetUncompressedSize(TSSlice data, uint64_t count) const override;
+};
+
+class ZLIBString : public CompressorImpl {
+ private:
+  ZLIBString() = default;
+
+ public:
+  static constexpr int stride = -1;
+  static ZLIBString &GetInstance() {
+    static ZLIBString inst;
+    return inst;
+  }
+
+    bool Compress(TSSlice data, uint64_t count, TsBufferBuilder *out, int level) const override;
+    bool Decompress(TSSlice data, uint64_t count, TsSliceGuard *out) const override;
+    size_t GetUncompressedSize(TSSlice data, uint64_t count) const override;
 };
 
 template <class Compressor>
@@ -217,20 +246,20 @@ class ConcreateTsCompressor : public TsCompressorBase {
     assert(bitmap == nullptr || bitmap->GetCount() == count);
     int stride = Compressor::stride;
     if (stride < 0 || bitmap == nullptr || bitmap->IsAllValid()) {
-      return Compressor::GetInstance().Compress(raw, count, out);
+      return Compressor::GetInstance().Compress(raw, count, out, 0);
     }
     assert(raw.len == count * stride);
 
     TsBufferBuilder valid_data;
     const char *data = raw.data;
-    out->reserve(bitmap->GetValidCount() * stride);
+    valid_data.reserve(bitmap->GetValidCount() * stride);
     for (int i = 0; i < count; ++i) {
       if ((*bitmap)[i] != kValid) continue;
       valid_data.append(data + i * stride, stride);
     }
     auto buffer = valid_data.GetBuffer();
 
-    return Compressor::GetInstance().Compress(buffer.AsSlice(), bitmap->GetValidCount(), out);
+    return Compressor::GetInstance().Compress(buffer.AsSlice(), bitmap->GetValidCount(), out, 0);
   }
 
   bool Decompress(TSSlice raw, const TsBitmapBase *bitmap, uint32_t count,
@@ -247,14 +276,12 @@ class ConcreateTsCompressor : public TsCompressorBase {
 
     assert(buf.size() == bitmap->GetValidCount() * stride);
     const char *ptr = buf.data();
-    std::string empty_buf(stride, 0);
     TsBufferBuilder builder;
+    builder.resize(static_cast<size_t>(count) * stride);
     for (int i = 0; i < count; ++i) {
       if ((*bitmap)[i] == kValid) {
-        builder.append(ptr, stride);
+        std::memcpy(builder.data() + static_cast<size_t>(i) * stride, ptr, stride);
         ptr += stride;
-      } else {
-        builder.append(empty_buf);
       }
     }
     *out = builder.GetBuffer();
@@ -272,9 +299,9 @@ class ConcreateGenCompressor : public GenCompressorBase {
     static ConcreateGenCompressor inst;
     return inst;
   }
-  bool Compress(TSSlice raw, TsBufferBuilder *out) const override {
+  bool Compress(TSSlice raw, TsBufferBuilder *out, int level) const override {
     const CompressorImpl &comp = Compressor::GetInstance();
-    return comp.Compress(raw, 0, out);
+    return comp.Compress(raw, 0, out, level);
   }
   bool Decompress(TSSlice raw, TsSliceGuard *out) const override {
     const CompressorImpl &comp = Compressor::GetInstance();

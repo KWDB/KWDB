@@ -55,6 +55,8 @@ type tsAlterTable struct {
 	alterTsColumnSuccess bool
 	err                  error
 	nodeID               int32
+	isAlterType          bool
+	isAlterCompress      bool
 }
 
 var _ execinfra.Processor = &tsAlterTable{}
@@ -83,6 +85,8 @@ func newTsAlterColumn(
 		compressInterval:  tst.CompressInterval,
 		vacuumInterval:    tst.VacuumInterval,
 		retentions:        tst.Retentions,
+		isAlterType:       tst.IsAlterType,
+		isAlterCompress:   tst.IsAlterCompress,
 	}
 	if err := tat.Init(
 		tat,
@@ -196,7 +200,8 @@ func (tct *tsAlterTable) Start(ctx context.Context) context.Context {
 			tct.err = err
 			return ctx
 		}
-		if err := tct.FlowCtx.Cfg.TsEngine.AlterTSColumnType(tct.tableID, tct.currentTSVersion, tct.newTSVersion, tct.txnID, tct.columnMeta, tct.oriColumnMeta); err != nil {
+		if err := tct.FlowCtx.Cfg.TsEngine.AlterTSColumnType(tct.tableID, tct.currentTSVersion, tct.newTSVersion,
+			tct.txnID, tct.columnMeta, tct.oriColumnMeta, tct.isAlterType, tct.isAlterCompress); err != nil {
 			tct.alterTsColumnSuccess = false
 			tct.err = err
 			return ctx

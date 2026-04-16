@@ -225,8 +225,25 @@ func checkTsCompressStage(encodedValue string) error {
 	if err != nil {
 		return err
 	}
-	if value != 0 && value != 1 && value != 2 {
-		return errors.New("invalid value, allowed values are 0, 1, or 2")
+	if value < 0 || value > 3 {
+		return errors.New("invalid value, allowed values are 0, 1, 2, or 3")
+	}
+	return nil
+}
+
+func checkTsCompressLevel(encodedValue string) error {
+	switch strings.ToLower(encodedValue) {
+	case "low", "l", "medium", "m", "high", "h":
+		return nil
+	default:
+		return errors.New("invalid value, allowed values are 'low', 'l', 'medium', 'm', 'high', 'h'")
+	}
+}
+
+func checkTsCompressAlgorithm(encodedValue string) error {
+	value := strings.ToLower(encodedValue)
+	if value != "lz4" && value != "zstd" && value != "zlib" && value != "snappy" && value != "disabled" {
+		return errors.New("Invalid algorithm, allowed: lz4 | zlib | zstd | snappy | disabled")
 	}
 	return nil
 }
@@ -283,6 +300,8 @@ var CheckClusterSetting = map[string]CheckOperation{
 	"ts.rows_per_block.min_limit":        checkTsRowsPerBlockMinLimit,
 	"ts.compact.max_limit":               checkTsCompactLastSegmentMaxLimit,
 	"ts.compress.stage":                  checkTsCompressStage,
+	"ts.compress.level":                  checkTsCompressLevel,
+	"ts.compress.algorithm":              checkTsCompressAlgorithm,
 	"ts.compress.last_segment.enabled":   checkTsCompressLastSegment,
 	"ts.reserved_last_segment.max_limit": checkTsReservedLastSegmentMaxLimit,
 	"ts.force_sync_file.enabled":         checkBool,

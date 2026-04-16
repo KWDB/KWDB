@@ -959,6 +959,10 @@ func TestLintClusterSettingNames(t *testing.T) {
 				"sql.defaults.idle_in_session_timeout": `sql.defaults.idle_in_session_timeout: use ".timeout" instead of "_timeout"`,
 				"sql.ts_stats.enabled":                 `if set, we will collect time series statistics`,
 				"ts.raft_store.sync":                   `ts.raft_store.sync: use .enabled for booleans`,
+				"ts.compress.algorithm":                `ts.compress.algorithm: part "compress" is a reserved keyword`,
+				"ts.compress.last_segment.enabled":     `ts.compress.last_segment.enabled: part "compress" is a reserved keyword`,
+				"ts.compress.level":                    `ts.compress.level: part "compress" is a reserved keyword`,
+				"ts.compress.stage":                    `ts.compress.stage: part "compress" is a reserved keyword`,
 			}
 			expectedErr, found := grandFathered[varName]
 			if !found || expectedErr != nameErr.Error() {

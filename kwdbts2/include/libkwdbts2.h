@@ -478,8 +478,8 @@ TSStatus TSAddColumn(TSEngine* engine, TSTableID table_id, char* transaction_id,
 TSStatus TSDropColumn(TSEngine* engine, TSTableID table_id, char* transaction_id, TSSlice column,
                       uint32_t cur_version, uint32_t new_version);
 
-TSStatus TSAlterColumnType(TSEngine* engine, TSTableID table_id, char* transaction_id,
-                           TSSlice new_column, TSSlice origin_column, uint32_t cur_version, uint32_t new_version);
+TSStatus TSAlterColumn(TSEngine* engine, TSTableID table_id, char* transaction_id, TSSlice new_column,
+  TSSlice origin_column, uint32_t cur_version, uint32_t new_version, bool alter_type, bool alter_compress);
 
 TSStatus TSAlterPartitionInterval(TSEngine* engine, TSTableID table_id, uint64_t partition_interval);
 

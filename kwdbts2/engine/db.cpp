@@ -745,6 +745,16 @@ void TriggerSettingCallback(const std::string& key, const std::string& value) {
     TsLRUBlockCache::GetInstance().SetMaxMemorySize(EngineOptions::block_cache_max_size);
   } else if ("ts.compress.stage" == key) {
     EngineOptions::compress_stage = atoi(value.c_str());
+  } else if ("ts.compress.level" == key) {
+    if (value == "low" || value == "l") {
+      EngineOptions::compress_level = CompressLevel::LOW;
+    } else if (value == "medium" || value == "m") {
+      EngineOptions::compress_level = CompressLevel::MEDIUM;
+    } else if (value == "high" || value == "h") {
+      EngineOptions::compress_level = CompressLevel::HIGH;
+    } else {
+      LOG_ERROR("Invalid compress level:%s", value.c_str());
+    }
   } else if ("ts.compress.last_segment.enabled" == key) {
     EngineOptions::compress_last_segment = ("true" == value);
   } else if ("ts.force_sync_file.enabled" == key) {
@@ -761,6 +771,20 @@ void TriggerSettingCallback(const std::string& key, const std::string& value) {
     EngineOptions::force_re_compress = ("true" == value);
   } else if ("ts.partition_agg.enabled" == key) {
     CLUSTER_SETTING_PARTITION_AGG = "true" == value;
+  } else if ("ts.compress.algorithm" == key) {
+    if (value == "lz4") {
+      EngineOptions::compression_algorithm = CompressAlgo::kLz4;
+    } else if (value == "zlib") {
+      EngineOptions::compression_algorithm = CompressAlgo::kZlib;
+    } else if (value == "zstd") {
+      EngineOptions::compression_algorithm = CompressAlgo::kZstd;
+    } else if (value == "snappy") {
+      EngineOptions::compression_algorithm = CompressAlgo::kSnappy;
+    } else if (value == "disabled") {
+      EngineOptions::compression_algorithm = CompressAlgo::kPlain;
+    } else {
+      LOG_ERROR("Invalid compression algorithm: %s", value.c_str());
+    }
   }
 #ifndef KWBASE_OSS
   else if ("ts.storage.autonomy.mode" == key) {  // NOLINT
@@ -1320,9 +1344,10 @@ TSStatus TSDropColumn(TSEngine* engine, TSTableID table_id, char* transaction_id
   return kTsSuccess;
 }
 
-TSStatus TSAlterColumnType(TSEngine* engine, TSTableID table_id, char* transaction_id,
+TSStatus TSAlterColumn(TSEngine* engine, TSTableID table_id, char* transaction_id,
                            TSSlice new_column, TSSlice origin_column,
-                           uint32_t cur_version, uint32_t new_version) {
+                           uint32_t cur_version, uint32_t new_version,
+                           bool alter_type, bool alter_compress) {
   kwdbContext_t context;
   kwdbContext_p ctx_p = &context;
   KStatus s = InitServerKWDBContext(ctx_p);
@@ -1332,15 +1357,27 @@ TSStatus TSAlterColumnType(TSEngine* engine, TSTableID table_id, char* transacti
 
   string err_msg;
   bool is_dropped = false;
-  s = engine->AlterColumnType(ctx_p, table_id, transaction_id, is_dropped, new_column, origin_column,
-                              cur_version, new_version, err_msg);
-  if (s != KStatus::SUCCESS) {
-    if (err_msg.empty()) {
-      err_msg = "unknown error";
+  if (alter_type) {
+    s = engine->AlterColumn(ctx_p, table_id, transaction_id, is_dropped, new_column, origin_column,
+                            cur_version, new_version, AlterType::ALTER_COLUMN_TYPE, err_msg);
+    if (s != KStatus::SUCCESS) {
+      if (err_msg.empty()) {
+        err_msg = "unknown error";
+      }
+      return ToTsStatus(err_msg);
     }
-    return ToTsStatus(err_msg);
   }
 
+  if (alter_compress) {
+    s = engine->AlterColumn(ctx_p, table_id, transaction_id, is_dropped, new_column, origin_column,
+                            cur_version, new_version, AlterType::ALTER_COLUMN_COMPRESS_INFO, err_msg);
+    if (s != KStatus::SUCCESS) {
+      if (err_msg.empty()) {
+        err_msg = "unknown error";
+      }
+      return ToTsStatus(err_msg);
+    }
+  }
     return kTsSuccess;
 }
 

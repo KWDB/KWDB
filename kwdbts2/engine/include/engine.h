@@ -545,8 +545,9 @@ struct TSEngine {
     *
     * @return KStatus
     */
-  virtual KStatus AlterColumnType(kwdbContext_p ctx, const KTableKey& table_id, char* transaction_id, bool& is_dropped,
-    TSSlice new_column, TSSlice origin_column, uint32_t cur_version, uint32_t new_version, string& msg) = 0;
+  virtual KStatus AlterColumn(kwdbContext_p ctx, const KTableKey& table_id, char* transaction_id, bool& is_dropped,
+    TSSlice new_column, TSSlice origin_column, uint32_t cur_version, uint32_t new_version, AlterType alter_type,
+    string& msg) = 0;
 
   /**
    * @brief : Gets the number of remaining threads from the thread pool and

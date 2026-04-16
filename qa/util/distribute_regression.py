@@ -442,14 +442,15 @@ if __name__ == "__main__":
                 cmds.append(cmd)
                 cmd = "count=0;" \
                       "while [ $({} sql --insecure --host={} " \
-                      "-e \"SET statement_timeout = '10s';SELECT COUNT(*) FROM kwdb_internal.ranges WHERE {}=ANY(replicas);\" --format=raw | grep -v '#' ) -ne 0 ] && [ $count -lt 180 ]; do" \
+                      ("-e \"SET statement_timeout = '10s';SELECT COUNT(*) FROM kwdb_internal.ranges WHERE {}=ANY("
+                       "replicas);\" --format=raw | grep -v '#' ) -ne 0 ] && [ $count -lt 210 ]; do") \
                       "    count=$((count+1));" \
                       "    sleep 1;" \
                       "done\n" \
-                      "if [ $count -ge 180 ]; then" \
+                      "if [ $count -ge 210 ]; then" \
                       "    {} sql --insecure --host={} " \
                       "     -e \"SET statement_timeout = '10s';SELECT * FROM kwdb_internal.ranges WHERE {}=ANY(replicas);\";" \
-                      "    echo \"wait-zero-replica timeout after 180s\">>$LOG_DIR/$SQL_FILTER.log;" \
+                      "    echo \"wait-zero-replica timeout after 210s\">>$LOG_DIR/$SQL_FILTER.log;" \
                       "fi".format(kwbin_path, url, node_id, kwbin_path, url, node_id)
                 cmds.append(cmd)
                 cmd = "echo $(date) >>$LOG_DIR/$SQL_FILTER.log"

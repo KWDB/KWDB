@@ -258,6 +258,7 @@ KStatus TsEntityBlockBuilder::GetCompressData(TsEntitySegmentBlockItem& blk_item
 
   // write column block data and column agg
   assert(n_cols_ == metric_schema_.size() + 1);
+  AttributeInfo attr_info;
   for (int col_idx = 0; col_idx < n_cols_; ++col_idx) {
     DATATYPE d_type = col_idx == 0 ? DATATYPE::INT64 : col_idx != 1 ?
                       static_cast<DATATYPE>(metric_schema_[col_idx - 1].type) : DATATYPE::TIMESTAMP64;
@@ -274,14 +275,22 @@ KStatus TsEntityBlockBuilder::GetCompressData(TsEntitySegmentBlockItem& blk_item
     }
     TsBitmapBase* b = has_bitmap ? block.bitmap.get() : nullptr;
     // compress col data & write to buffer
-    auto [first, second] = mgr.GetDefaultAlgorithm(d_type);
+    if (0 == col_idx) {
+      attr_info.encode_algo = roachpb::ENCODE_ALGO_SIMPLE8B;
+      attr_info.compress_algo = roachpb::COMPRESS_ALGO_DISABLED;
+      attr_info.compress_level = roachpb::COMPRESS_LEVEL_UNSPECIFIED;
+    } else {
+      attr_info = metric_schema_[col_idx - 1];
+    }
+    auto [encode_algo, compress_algo] = mgr.GetAlgorithm(d_type, attr_info);
     if (is_var_col) {
       // varchar offset use simple8b algorithm
-      first = TsCompAlg::kSimple8B_V2_u32;
+      encode_algo = EncodeAlgo::kSimple8B_V2_u32;
       // var offset data
       TsBufferBuilder compressed;
       TSSlice var_offsets = {block.buffer.data(), n_rows_ * sizeof(uint32_t)};
-      bool ok = mgr.CompressData(var_offsets, nullptr, n_rows_, &compressed, first, second);
+      bool ok = mgr.CompressData(var_offsets, nullptr, n_rows_, &compressed,
+        encode_algo, compress_algo, attr_info.compress_level);
       if (!ok) {
         LOG_ERROR("Compress var offset data failed, tb_id [%u], tb_version [%u], entity_id [%lu], col_idx [%d]",
           table_id_, table_version_, entity_id_, col_idx);
@@ -294,7 +303,7 @@ KStatus TsEntityBlockBuilder::GetCompressData(TsEntitySegmentBlockItem& blk_item
       compressed.clear();
       uint32_t var_data_offset = EngineOptions::max_rows_per_block * sizeof(uint32_t);
       ok = mgr.CompressVarchar({block.buffer.data() + var_data_offset, block.buffer.size() - var_data_offset},
-                               &compressed, GenCompAlg::kSnappy);
+                        &compressed, compress_algo, metric_schema_[col_idx - 1].compress_level);
       if (!ok) {
         LOG_ERROR("Compress var data failed, tb_id [%u], tb_version [%u], entity_id [%lu], col_idx [%d]",
           table_id_, table_version_, entity_id_, col_idx);
@@ -304,7 +313,7 @@ KStatus TsEntityBlockBuilder::GetCompressData(TsEntitySegmentBlockItem& blk_item
     } else {
       TsBufferBuilder compressed;
       TSSlice plain{block.buffer.data(), block.buffer.size()};
-      mgr.CompressData(plain, b, n_rows_, &compressed, first, second);
+      mgr.CompressData(plain, b, n_rows_, &compressed, encode_algo, compress_algo, attr_info.compress_level);
       data_buffer->append(compressed);
     }
     // col offset

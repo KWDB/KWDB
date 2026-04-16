@@ -24,6 +24,9 @@ AttributeInfo::AttributeInfo() {
   max_len = 0;
   version = 0;
   col_flag = COL_INVALID;
+  encode_algo = roachpb::ENCODE_ALGO_UNSPECIFIED;
+  compress_algo = roachpb::COMPRESS_ALGO_UNSPECIFIED;
+  compress_level = roachpb::COMPRESS_LEVEL_UNSPECIFIED;
 }
 
 bool AttributeInfo::operator==(AttributeInfo& rhs) const {
