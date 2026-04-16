@@ -300,7 +300,7 @@ EEIteratorErrCode TsStatisticScanParser::ResolveScanCols(kwdbContext_p ctx) {
     //  spec_->timebucket() is in ns
     auto time = spec_->timebucket();
     auto timezone = ctx->timezone;
-    auto time_diff = timezone * MILLISECOND_PER_HOUR;
+    k_int64 time_diff = timezone * MILLISECOND_PER_HOUR;
     auto stype = table_->fields_[0]->get_storage_type();
     switch (stype) {
       case roachpb::DataType::TIMESTAMP:

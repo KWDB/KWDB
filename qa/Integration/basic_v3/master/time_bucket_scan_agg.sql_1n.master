@@ -5832,7 +5832,7 @@ ORDER BY hostname, k_timestamp_b, last_ts;
                               | spans:toTime        | 2023-12-31 23:59:59.999 +0000 UTC
                               | tag filter[0]       | region = 'aaa'
 (45 rows)
-> SELECT time_bucket(k_timestamp, '2s') as k_timestamp_b,
+> SELECT time_bucket(k_timestamp, '2s') as k_timestamp_b, 
     first (usage_nice), min (usage_system), min (usage_softirq), last_row(usage_guest_nice), hostname,
     lastts(usage_user)            as last_ts
 FROM test.cpu
@@ -14650,6 +14650,31 @@ ORDER BY hostname, region, rack, k_timestamp_b, last_ts;
                               | spans:fromTime      | 1600-01-01 00:00:00 +0000 UTC
                               | spans:toTime        | 2023-12-31 23:59:59.999 +0000 UTC
 (50 rows)
+> select time_bucket(k_timestamp, '1000hour') as tb, max(usage_softirq) FROM test.cpu
+WHERE k_timestamp >= '2022-01-01 00:00:00'
+  AND k_timestamp
+    < '2024-01-01 00:00:00'
+GROUP BY hostname, region, rack, tb
+ORDER BY hostname, region, rack, tb;
+             tb             | max
+----------------------------+-------
+  2023-05-27 16:00:00+00:00 | NULL
+  2023-05-27 16:00:00+00:00 |    2
+  2023-05-27 16:00:00+00:00 |   26
+  2023-05-27 16:00:00+00:00 |    8
+  2023-05-27 16:00:00+00:00 |    6
+  2023-05-27 16:00:00+00:00 | NULL
+  2023-05-27 16:00:00+00:00 | NULL
+  2023-05-27 16:00:00+00:00 |   54
+  2023-05-27 16:00:00+00:00 | NULL
+  2023-05-27 16:00:00+00:00 |   60
+  2023-05-27 16:00:00+00:00 |   33
+  2023-05-27 16:00:00+00:00 |   71
+  2023-05-27 16:00:00+00:00 | NULL
+  2023-05-27 16:00:00+00:00 |   29
+  2023-05-27 16:00:00+00:00 |    7
+  2023-05-27 16:00:00+00:00 | NULL
+(16 rows)
 > use defaultdb;
 SET
 > drop database test cascade;
@@ -14659,7 +14684,7 @@ DROP DATABASE
     value FLOAT
 );
 CREATE TABLE
-> INSERT INTO test_data VALUES
+> INSERT INTO test_data VALUES 
 (1, 10.0),
 (1, 20.0),
 (1, 30.0),

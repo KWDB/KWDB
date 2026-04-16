@@ -3446,6 +3446,13 @@ WHERE k_timestamp >= '1600-01-01 00:00:00'
 GROUP BY hostname, region, rack, k_timestamp_b
 ORDER BY hostname, region, rack, k_timestamp_b, last_ts;
 
+select time_bucket(k_timestamp, '1000hour') as tb, max(usage_softirq) FROM test.cpu
+WHERE k_timestamp >= '2022-01-01 00:00:00'
+  AND k_timestamp
+    < '2024-01-01 00:00:00'
+GROUP BY hostname, region, rack, tb
+ORDER BY hostname, region, rack, tb;
+
 use defaultdb;
 drop database test cascade;
 
